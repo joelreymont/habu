@@ -169,6 +169,17 @@ variable PROC-PATH-I
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
+: RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu PROC-ARGV-CHECK-PATH
+   outcap errcap PROC-CAPTURE-CHECK-CAPS
+   path pathu PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout PROC-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
+   out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME ;
+
 : RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH

@@ -4,8 +4,31 @@
 \ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
 \ asserts stage2 is byte-identical to the previous native stage for the same source.
 \ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
-: S2-IN  s" stage2-src" TMP-PATH ;
-: S2-OUT s" stage2-got" TMP-PATH ;
+256 constant S2-PATH-CAP
+s" S2-PATH-CAP" s" -- n" TRUST
+create S2-PATH-BUF S2-PATH-CAP allot
+s" S2-PATH-BUF" s" -- ptr u8" TRUST
+
+: S2-PATH-CHECK ( n -- )
+   S2-PATH-CAP > IF s" stage2: path exceeds buffer" 74 die THEN ;
+
+: S2-ROOT ( -- ptr u8 n )
+   SCRIPT-ARGC 0 > IF 0 SCRIPT-ARGV$ EXIT THEN
+   s" HB_TMP" GETENV dup 0= IF drop drop s" /tmp" THEN ;
+
+: S2-PATH ( ptr u8 n -- ptr u8 n ) {: a u :}
+   S2-ROOT {: root:ptr rootu :}
+   rootu 1 + u + S2-PATH-CHECK
+   rootu 0 ?do  root i + c@  S2-PATH-BUF i + c!  loop
+   47 S2-PATH-BUF rootu + c!
+   u 0 ?do  a i + c@  S2-PATH-BUF rootu + 1 + i + c!  loop
+   S2-PATH-BUF rootu 1 + u + ;
+
+: S2-IN ( -- ptr u8 n )
+   s" stage2-src" S2-PATH ;
+
+: S2-OUT ( -- ptr u8 n )
+   s" stage2-got" S2-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $80000 constant S2-SOURCE-CAP
 $1002 constant S2-MAP-PRIVATE-ANON
@@ -17,7 +40,7 @@ s" SBUF@" s" -- ptr u8" TRUST
    dup 0 < if s" stage2: source mmap failed" 74 die then
    SBUF ! ;
 
-: READ-SRC
+: READ-SRC ( -- )
    S2-IN PATH0 0 0 open SFD !
    SFD @ 0 < IF s" stage2: cannot open source" 74 die THEN
    S2-ALLOC-SOURCE  0 SLEN !
@@ -30,7 +53,7 @@ s" SBUF@" s" -- ptr u8" TRUST
    SLEN @ 0 > 0= IF s" stage2: empty source" 74 die THEN
    SLEN @ S2-SOURCE-CAP = IF s" stage2: source exceeds buffer" 74 die THEN ;
 
-: GO
+: GO ( -- )
    READ-SRC
    SBUF@ SLEN @ EMIT-FORTH
    ASM-CODE BUILD-IMAGE

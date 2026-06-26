@@ -3,6 +3,10 @@
 How we write Forth in this repo. **BLOCKING** — code that violates these is wrong,
 not a matter of taste. Target is the native `bin/hb` engine.
 
+Durable Forth language guidance belongs here, not in `LESSONS.md`. Lessons may
+record the incident that taught a rule, but the reusable rule itself lives in this
+file.
+
 ## Naming
 
 - **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
@@ -29,11 +33,20 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Default new public/library Forth to checked typed definitions.** If the
   checker can express the layer, write an explicit typed effect and let `hb`
   verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
+- **Check every source you can — byte emitters included.** Raw byte/layout
+  emitters, ELF/Mach-O writers, tooling, tests, and build helpers are checkable
+  unless a specific primitive boundary proves otherwise. Verify with the owning
+  `bin/hb --load ...` or `tools/check.f --source-list` path before claiming the
+  checker cannot express a layer.
 - **Unchecked code is a named boundary, not a habit.** Use `0 set-check`,
   raw emitter words, or `TRUST` only for layers the checker cannot express:
   metaprogramming, source-string generators, primitive emitters, snapshot/build
   drivers, and similarly low-level support. Keep the boundary obvious in the
   file and add focused tests for the contract it asserts.
+- **Do not stub real facts with `TRUSTED:`.** A predicate, target selector, or
+  runtime fact named with `?` must execute a real body that pushes a boolean.
+  `TRUSTED:` may assert nominal identity casts or primitive boundaries, but it is
+  not a signature-only forward declaration for words owned by another file.
 - **Factor reusable helpers back into checked Forth.** If an unchecked harness or
   tool grows a helper that can be typed, move that helper to checked code instead
   of letting unchecked scaffolding become the library surface.
@@ -42,6 +55,14 @@ not a matter of taste. Target is the native `bin/hb` engine.
   diagnostics, packets, or repeated assertions, factor domain words or a focused
   checked DSL first. Giant `s"` literals, fragile escaping, and private byte
   emitters are bugs unless they are the tested boundary of that DSL.
+- **Readable DSLs execute the body they name.** Prefer forms such as
+  `[: ITEM ;] NAME-FILES` or `s" suite-name" TEST-SUITE ... ;TEST-SUITE` over
+  generic list wrappers. A generic `execute` layer needs higher-order effects the
+  checker may not model; direct row/body words keep the effect visible.
+- **Classification tables beat token ladders.** When a word becomes a long
+  `dup`/`over` chain over token classes, move the classes into row/table data and
+  factor named transition helpers. The tests should describe the table policy,
+  not reconstruct a branch ladder.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
 - **Raw compiler/emitter code is not exempt.** Unchecked words, register-level
@@ -55,6 +76,15 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - **Locals `{: a b :}`** are encouraged where they remove juggling. They bind
   inputs only; do not put `-- outputs` inside the locals form. Keep the effect in
   the stack comment.
+- **Local type annotations can erase role detail.** A local such as `a:ptr`
+  records only a pointer cell; it does not preserve `ptr u8`. If the body uses
+  byte operations such as `c@`/`c!`, keep the detailed type in the stack effect
+  and bind an untyped local name, or factor a helper whose entry effect carries
+  `( ptr u8 ... -- ... )`.
+- **Name same-type numeric slots before reordering them.** Effects such as
+  `( cap used add -- )` are all `n`; a stray `swap` type-checks but changes the
+  meaning. Bind names at the helper entry or factor role-specific helpers before
+  doing capacity, offset, or decoder arithmetic.
 - **Bind locals only at a helper entry or before control flow opens.** Do not
   introduce `{:` groups inside an active `if`, `begin`/`while`, `?do`, or after an
   `exit` path. Factor a helper whose inputs can be bound at entry, or use owned
@@ -94,8 +124,19 @@ not a matter of taste. Target is the native `bin/hb` engine.
   comment as the signature, so write `( n n -- )`, `( bool -- )`, or
   `( ptr u8 n -- )`, not arbitrary role names such as `( got want -- )`. Standard
   nominal role tokens such as `idx`, `len`, `count`, `fd`, `rc`, `reg`, `label`,
-  `va`, and `symidx` are real checker types; informal names still belong in
-  locals (`{: got want :}`), helper names, or nearby prose.
+  `va`, `symidx`, `asm`, `img`, and `snap` are real checker types; informal
+  names still belong in locals (`{: got want :}`), helper names, or nearby prose.
+- **Use real types, not reflexive `n`.** A string is `ptr u8 n`; a dereferenced
+  cell address is `ptr a`; a pointer-valued cell should preserve its nested
+  pointer role. `n` is only for genuine scalar cells.
+- **Same-cell values need nominal roles.** Values with the same runtime
+  representation but different contracts (`reg`, `label`, `va`, `symidx`, `fd`,
+  `count`, `asm`, `img`, `snap`) get distinct type tokens and negative checker
+  fixtures. A raw `( n n -- )` signature hides swaps the checker should reject.
+- **Raw role casts are not validators.** Cast words such as `>LEN`, `>IDX`,
+  `>COUNT`, `>OFF`, `>ASM`, `>IMG`, and `>SNAP` are trusted identity boundaries.
+  Public libraries should expose checked constructors and role-specific helpers
+  so length/count/offset/phase swaps fail under `CHECK!`.
 - **Unchecked/prose-only comments may name roles** when no checker hook consumes
   the comment, but keep the type shape obvious.
 - Add inline `( … )` at non-obvious points inside a longer word so the reader can
@@ -103,6 +144,57 @@ not a matter of taste. Target is the native `bin/hb` engine.
 - Use standard notation: `x` cell, `n`/`u` signed/unsigned, `d` double, `c-addr u`
   string, `xt` execution token, `nt` name token, `f`/`bool` flag, `?` for
   maybe-present.
+
+## Checker & type model
+
+- **`CHECK!` is the user contract.** Inference (`CHECK`) proves internal
+  consistency; user builds verify the body against the declared `( in -- out )`
+  and make rejection fatal. Tests for bad programs must assert build rejection,
+  not just runtime failure.
+- **Every `TRUST` has a same-change audit row.** Add or update the matching
+  `TRUSTED.md` row with effect, reason, and focused tests. Adding lines above a
+  trust site drifts the manifest; rerun `trust-lint` and fix exact line numbers
+  before commit.
+- **Typed booleans are real `bool` values.** Produce true/false with typed
+  producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
+  `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
+- **Pointer-valued cells use cell-indexed `ptr-field`.** When a typed DATA cell
+  or record field stores a pointer, compute the cell slot with `ptr-field` so
+  `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte
+  offset. Raw fixed-header byte offsets need an explicit trusted boundary or a
+  modeled byte-offset primitive.
+- **Raw state cells still need typed public effects.** Variables used from
+  checked code need explicit `TRUST` rows such as `-- ptr n`, `-- ptr bool`, or
+  `-- ptr ptr u8`. Boolean state cells are `ptr bool`, and string-pointer state
+  should remain `ptr ptr u8` plus a separate length cell.
+- **Path-sensitive control is a checker invariant.** `LEAVE`, `EXIT`, `throw`,
+  `die`, and `again` must fold or kill paths according to their declared control
+  effect. Divergent path arities are soundness bugs; after a dead path, only
+  structural closers (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
+  may appear.
+- **`RECURSE` uses the declared effect.** Recursive calls apply a fresh copy of
+  the current definition's declared signature; keep the raw declared signature
+  stable after `CHECK!` so rendered/mutated terms cannot corrupt the scheme.
+- **Quotations are xts, not closures.** `[: ... ;]` may not read surrounding
+  locals until real closures exist. The checker and compiler must reject local
+  references while a quotation is open.
+- **Checked `catch` is quotation catch.** Consume success outputs inside the
+  quotation (`[: WORD drop ;] catch`) and preserve the exact throw code as data at
+  an explicit recovery boundary. Do not widen checked code to arbitrary xt catch.
+- **Higher-order signatures publish themselves.** If a checked word with
+  quotation effects (`DIP`, `KEEP`, row callbacks) passes `CHECK!`, let it render
+  into public signatures; do not keep a `TRUST` row just to pin its scheme.
+- **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
+  unknown stack-comment tokens before checked source can use them. Add parser,
+  renderer, and `CC-*` checker support, refresh the native binary, then use the
+  role in `TRUST` rows and checked definitions.
+- **Phase tokens must reach the side effect they order.** `asm`, `img`, and
+  `snap` ghost values should flow through the final sign/write/header operation,
+  not just an early wrapper, so callers cannot skip required build stages.
+- **Seal the implicit row under declared inputs.** Row polymorphism must not let a
+  body borrow below declared inputs. A stack-preserving trusted effect such as
+  `img -- img` or `fd -- fd` must not satisfy final output by binding an implicit
+  base row that hides underflow.
 
 ## Errors
 
@@ -122,6 +214,10 @@ not a matter of taste. Target is the native `bin/hb` engine.
   to no-return metadata. Do not add dummy output values after `throw` to balance
   a branch. If the checker cannot accept a real throw guard, fix the exception
   model or track that capability gap.
+- **`die` consumes a real message and code.** Its effect is
+  `( ptr u8 n n -- )`: pass an actual byte string and exit code, not `0 0` as a
+  fake string. Model process exits as no-return control flow only at certified
+  wrappers.
 
 ## Constants
 
@@ -144,6 +240,12 @@ not a matter of taste. Target is the native `bin/hb` engine.
   `' WORD TTHROWS`. For diagnostics, capture text and match a substring.
 - Run focused fixtures during dev with their owning `tools/*-test.f`, then run
   the full native gate command shown in `docs/bootstrap.md`.
+- **False-reject claims need execution proof.** Count a checker limitation only
+  after running an unchecked copy and proving the measured stack behavior matches
+  the declared effect. Generator bugs become rejections, not false certifications.
+- **Signature-token changes need direct smoke probes.** Before rebuilding around a
+  new token, test the atom parser/type mapper directly (`ATOM-TOK?`, `TOK-TYPE`,
+  renderer output) so prefix/length mistakes fail small.
 
 ### Checker-Miss RCA
 
@@ -200,6 +302,13 @@ not a matter of taste. Target is the native `bin/hb` engine.
   `step`, compiled-word breakpoints (`BP+`, `BP*`, `BPN`), `tools/jitdump.f`,
   and `tools/imgdump.f`. Extend those tools when they cannot expose the needed
   state; do not hide a missing debug surface behind ad hoc prints.
+- **Boundary spawns must attribute failures.** Gate/test/tool boundaries that
+  spawn `hb` or another child use outcome capture for expected timeouts and
+  failures, not throw-only capture that collapses into a shell rc. The failure
+  report must include the suite/case label, phase, executable and argv/load list,
+  outcome kind/code, named rc when known, capture bytes/capacity, and captured
+  stdout/stderr. Use throw-on-timeout capture only inside a focused unit test
+  whose assertion is the named throw itself.
 - **Large native tool bundles are supported.** Do not split tools merely to dodge
   DATA pressure. `create ... allot` is for dictionary-sized static storage; large
   runtime-sized buffers use `lib/memory.f` (`MEM-ALLOC-BYTES` or
@@ -211,21 +320,45 @@ not a matter of taste. Target is the native `bin/hb` engine.
   capacity, fix the shared memory model and add a regression for the composed
   load.
 - **Missing convenience words are not bugs in the standard.** Habu currently lacks
-  words such as `pick`, `within`, and `0<>`; use variables, explicit increments, or
-  explicit comparisons.
+  words such as `pick`, `within`, and `0<>`; use variables, explicit increments,
+  or explicit comparisons (`0 = 0=` for nonzero).
 - **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
   can be checked, but audit rows must stay current and stale dates must fail lint.
-- **Typed pointer fields use `ptr-field`.** When a variable or record cell stores
-  a pointer, construct a `ptr ptr x` field with `ptr-field`, then use normal
-  `@`/`!`. Do not add `TRUSTED:` pointer reload helpers for this pattern.
+- **Typed pointer fields use cell indexes.** When a variable or record cell
+  stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
+  normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a
+  named trusted boundary for raw byte-offset header cells.
 - **Keep `TRUSTED:` bodies syntax-simple.** Do not use locals inside a trusted
   body. Factor checked helper words for real work, then keep the trusted body to
   the minimal operation that the checker cannot express.
+- **Checked tool libraries restore checking.** A shared lint/check/tool library
+  must not leave callers in unchecked mode. Declare and test any boundary
+  locally, then reinstall `CHECK!` immediately after the raw declarations.
+- **Generated checker preludes must rebind `HOOK`.** If generated source reloads
+  `src/core/checker.f` or `src/core/render.f`, it must reload
+  `src/core/check-hook.f` before `' HOOK set-check`; otherwise the hook can still
+  call the old `CHECK!`.
+- **Bootstrap/fixpoint temp roots are explicit script args.** Stage2/fixpoint
+  sources must not depend on stale seed envp capture. Pass the temp root after
+  `--`, keep all generated paths under that root, and let the build driver own
+  path construction.
+- **Generated strings use byte writers for syntax.** Habu `s"` literals do not
+  escape embedded quotes. JSON, source needles, and rows with quoting should be
+  built with checked byte/field helpers or `lib/json-write.f`, not host encoders
+  or fragile escaped string literals.
+- **Source-use guards match tokens, not substrings.** Required-word checks and
+  boundary scans must lex whole tokens and skip comments/strings; substring
+  matches create false positives (`FOO` matching `FOO-BAR`) and hide policy bugs.
 - **Preflight unchecked native emitters.** Raw image/primitive emitters still
   need checked shape tests before `BUILD-IMAGE`: no mid-control locals, no second
   locals groups, no hand-balanced descriptor math. Use named scratch cells and
   small helpers, then gate the forbidden source shapes in `tools/build-fixpoint.f`
   so bad emitters fail before a snapshot or `bin/hb` candidate is written.
+- **Emitter punctuation is semantic.** Words such as `BL,`, `LBL,`, `ADR,`, and
+  `ZBYTES,` are distinct from punctuation-less names; source-shape regressions
+  should assert exact emitted tokens. Emitter stack comments describe the
+  host/build-time stack (`( -- )`, `( n -- )`); document emitted runtime effects
+  in nearby prose or in the generated word's own contract.
 
 ## Native Forth Gotchas That Shape How We Write Code
 

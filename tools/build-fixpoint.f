@@ -126,14 +126,39 @@ variable BF-TMP-U
    infd close
    pid BF-FINISH-PID ;
 
+: BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr a )
+   s" --" >LEN PROC-ARGV+
+   BF-TMP$ >LEN PROC-ARGV+
+   >LEN PROC-ARGV-PREPARE ;
+
+: BF-RUN-STAGE-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
+   BF-PREPARE-ENV
+   exe exeu BF-PREPARE-STAGE-ARGV
+   PROC-ENV-PREPARE infd >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   infd close
+   pid BF-FINISH-PID ;
+
 : BF-RUN-ENV-EXE ( ptr u8 n -- n )
    -1 -1 -1 BF-RUN-ENV-FDS ;
+
+: BF-RUN-STAGE-ENV-EXE ( ptr u8 n -- n )
+   BF-PREPARE-ENV
+   BF-PREPARE-STAGE-ARGV
+   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
 
 : BF-RUN-ENV-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
    exe exeu src srcu BF-OPEN-INPUT BF-RUN-ENV-INFD ;
 
+: BF-RUN-STAGE-PATH-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
+   exe exeu src srcu BF-OPEN-INPUT BF-RUN-STAGE-ENV-INFD ;
+
 : BF-RUN-ENV-TMP ( ptr u8 n -- n )
    BF-A$ BF-RUN-ENV-EXE ;
+
+: BF-RUN-STAGE-TMP ( ptr u8 n -- n )
+   BF-A$ BF-RUN-STAGE-ENV-EXE ;
 
 : BF-RUN-ENV-TMP-INFILE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu src:ptr srcu :}
    exe exeu BF-A$ src srcu BF-B$ BF-OPEN-INPUT BF-RUN-ENV-INFD ;
@@ -243,6 +268,13 @@ variable BF-TMP-U
 : BF-APPEND-CHECK-ON ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" ' HOOK set-check" BF-APPEND-LINE ;
 
+: BF-APPEND-CHECKER-MODEL ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu BF-APPEND-CHECK-OFF
+   out outu s" src/core/checker.f" BF-APPEND-SOURCE
+   out outu s" src/core/render.f" BF-APPEND-SOURCE
+   out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-CHECK-ON ;
+
 : BF-TARGET-UNKNOWN ( -- )
    s" build-fixpoint: unknown target" BF-BUILD-RC die ;
 
@@ -268,6 +300,17 @@ variable BF-TMP-U
    then
    BF-TARGET-UNKNOWN ;
 
+: BF-APPEND-TARGET-ENV ( ptr u8 n -- ) {: out:ptr outu :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/env.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/env.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE
    HB-TARGET-LINUX? if
@@ -288,9 +331,11 @@ variable BF-TMP-U
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-LAYOUT
    out outu BF-APPEND-TARGET-SYS
-   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
-   out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-ENV
+   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/roles.f" BF-APPEND-SOURCE
+   out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
@@ -308,6 +353,7 @@ variable BF-TMP-U
 
 : BF-EMIT-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu driver:ptr driveru :}
    out outu BF-RESET-OUT
+   out outu BF-APPEND-CHECKER-MODEL
    out outu BF-APPEND-COMMON
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
@@ -369,14 +415,14 @@ variable BF-TMP-U
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-ENV-PATH-INFILE BF-RC0
+   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-STAGE-PATH-INFILE BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;
 
 : BF-RUN-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
-   s" hb-stage" BF-RUN-ENV-TMP BF-RC0
+   s" hb-stage" BF-RUN-STAGE-TMP BF-RC0
    s" stage2-got" BF-EXPECT ;
 
 : BF-PROMOTE-STAGE ( -- )

@@ -1,6 +1,6 @@
 \ gate-debug.f - checked runner for prop/snapshot/debug gate checks.
 \
-\ Load after test/gate-common.f and lib/codesign.f.
+\ Load after test/gate-common.f, lib/codesign.f, and tools/build-fixpoint.f.
 
 create GDB-PATH1 FS-PATH-CAP allot
 create GDB-PATH2 FS-PATH-CAP allot
@@ -38,9 +38,11 @@ variable GDB-PATH2-U
 : GDB-EXPECT-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu label:ptr labelu :}
    path pathu FILE? 0= if label labelu GE-FAIL then ;
 
-: GDB-SNAP-SRC+ ( -- )
-   BF-SNAP-SOURCE
-   s" hb-snap-src" BF-OUT$ GE-SRC-FILE+ ;
+: GDB-SNAP-SRC$ ( -- ptr u8 n )
+   s" hb-snap-src" BF-OUT$ ;
+
+: GDB-SNAP-SOURCE ( -- )
+   BF-SNAP-SOURCE ;
 
 : GDB-HB-TMP-ENV ( -- )
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+ ;
@@ -59,13 +61,13 @@ variable GDB-PATH2-U
    GDB-HB-TMP-ENV
    GDB-SNAP0!
    GDB-SNAP0$ GDB-REMOVE-FILE?
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" bin/hb" GDB-SNAP-SRC$ GE-TIMEOUT-MS GE-RUN-STDIN-FILE
    label labelu GE-EXPECT-OK
    GDB-SNAP0$ label labelu GDB-EXPECT-FILE ;
 
 : GDB-SNAPSHOT-REFRESH ( -- )
    GE-SRC-RESET
-   GDB-SNAP-SRC+
+   GDB-SNAP-SOURCE
    s" HB_TMP isolation" GDB-SNAPSHOT-RUN
    GDB-SNAP-RUN!
    GDB-SNAP-RUN$ GDB-REMOVE-FILE?
@@ -110,10 +112,10 @@ variable GDB-PATH2-U
 
 : GDB-PTY ( -- )
    GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" test/proc-pty.f"  >LEN PROC-ARGV+
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" test/proc-pty.f" GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" process/pty" GE-EXPECT-OK
    s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
@@ -136,12 +138,12 @@ variable GDB-PATH2-U
 
 : GDB-JITDUMP ( -- )
    GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" src/arch/arm64/disasm.f"  >LEN PROC-ARGV+
-   s" tools/jitdump.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" : JITDUMP-SMOKE ( -- i64 ) 7 ;"  >LEN PROC-ARGV+
-   s" JITDUMP-SMOKE"  >LEN PROC-ARGV+
+   s" --load" GE-ARG+
+   s" src/arch/arm64/disasm.f" GE-ARG+
+   s" tools/jitdump.f" GE-ARG+
+   s" --" GE-ARG+
+   s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" GE-ARG+
+   s" JITDUMP-SMOKE" GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" jitdump direct CLI" GE-EXPECT-OK
    s" ret" s" jitdump direct CLI output" GE-EXPECT-OUT-HAS

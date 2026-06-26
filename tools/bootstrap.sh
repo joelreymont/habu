@@ -26,12 +26,14 @@ case "$HABU_TARGET" in
   macos-aarch64)
     OS_LAYOUT=src/os/macos/layout.f
     OS_SYS=src/os/macos/sys.f
+    OS_ENV=src/os/macos/env.f
     OS_IMAGE=src/os/macos/macho.f
     OS_SIGN=src/os/macos/sign2.f
     ;;
   linux-aarch64)
     OS_LAYOUT=src/os/linux/layout.f
     OS_SYS=src/os/linux/sys.f
+    OS_ENV=src/os/linux/env.f
     OS_IMAGE=src/os/linux/elf.f
     OS_SIGN=src/os/linux/sign.f
     ;;
@@ -66,9 +68,11 @@ SRC_COMMON=(
   src/arch/arm64/mnem.f
   "$OS_LAYOUT"
   "$OS_SYS"
-  src/core/sha256.f
-  src/core/combinators.f
   src/habu/layout.f
+  "$OS_ENV"
+  src/core/sha256.f
+  src/core/roles.f
+  src/core/combinators.f
   src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
@@ -86,6 +90,14 @@ emit_src() {
   local out="$1"
   local driver="$2"
   : > "$out"
+  printf "0 set-check\n" >> "$out"
+  cat src/core/checker.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/render.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/check-hook.f >> "$out"
+  printf '\n' >> "$out"
+  printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
     cat "$f" >> "$out"
@@ -106,7 +118,7 @@ emit_src() {
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-EXE bye"
 
-env HB_TMP="$T" "$T/hb-stage0"
+env HB_TMP="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stage"
 chmod +x "$T/hb-stage"
@@ -114,7 +126,7 @@ chmod +x "$T/hb-stage"
 found=0
 for gen in 1 2 3 4; do
   rm -f "$T/stage2-got"
-  env HB_TMP="$T" "$T/hb-stage"
+  env HB_TMP="$T" "$T/hb-stage" -- "$T"
   test -f "$T/stage2-got"
   if cmp -s "$T/hb-stage" "$T/stage2-got"; then
     found=1
@@ -131,7 +143,7 @@ fi
 
 emit_src "$T/stage2-src" src/habu/stdin.f
 rm -f "$T/stage2-got" "$T/hb-stdin-got"
-env HB_TMP="$T" "$T/hb-stage"
+env HB_TMP="$T" "$T/hb-stage" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stdin-mk"
 chmod +x "$T/hb-stdin-mk"

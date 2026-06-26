@@ -61,6 +61,7 @@ TRUSTED: SNAP-STALE ( snap -- ) ;
    SFD @ SDB@ SCL @ DRV-WALL
    SFD @ data-base SDL @ DRV-WALL
    SFD @ TRL 40 DRV-WALL
+   SFD @ SNAP-EXTRA-PTR SNAP-EXTRA-SIZE DRV-WALL
    SFD @ close ;
 
 TRUSTED: SNAP-WRITE ( snap -- )

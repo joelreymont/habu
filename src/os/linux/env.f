@@ -5,23 +5,20 @@
 data-base constant ENV-DATA
 $2D constant ENV-DASH
 s" ENV-DATA" s" -- ptr n" TRUST
+s" ENV-DASH" s" -- n" TRUST
 
 : ARGC ( -- n )  ENV-DATA ARGC-CELL + @ ;
 s" ARGC" s" -- n" TRUST
 
-: ARGV-BASE ( -- ptr n )
+TRUSTED: ARGV-BASE ( -- ptr ptr u8 )
    ENV-DATA ARGV-CELL + @ ;
-s" ARGV-BASE" s" -- ptr n" TRUST
 
-: ARGV ( i -- z )  8 * ARGV-BASE + @ ;
-s" ARGV" s" n -- ptr u8" TRUST
+: ARGV ( n -- ptr u8 )  ARGV-BASE swap ptr-field @ ;
 
-: ENVP-BASE ( -- ptr n )
+TRUSTED: ENVP-BASE ( -- ptr ptr u8 )
    ENV-DATA ENVP-CELL + @ ;
-s" ENVP-BASE" s" -- ptr n" TRUST
 
-: ENVP ( i -- z )  8 * ENVP-BASE + @ ;
-s" ENVP" s" n -- ptr u8" TRUST
+: ENVP ( n -- ptr u8 )  ENVP-BASE swap ptr-field @ ;
 
 : ZLEN ( ptr u8 -- n ) {: z:ptr :}
    0 begin z over + c@ 0= 0= while 1 + repeat ;
@@ -79,12 +76,11 @@ s" SCRIPT-ARGV$" s" n -- ptr u8 n" TRUST
    z u + c@ 61 = ;
 s" ENV=?" s" ptr u8 ptr u8 n -- bool" TRUST
 
-: NULL$ ( -- ptr u8 n )
+TRUSTED: NULL$ ( -- ptr u8 n )
    0 0 ;
-s" NULL$" s" -- ptr u8 n" TRUST
 
 : GETENV ( ptr u8 n -- ptr u8 n ) {: a u :}
-   ENV-DATA ENVP-CELL + @ 0 = IF NULL$ exit THEN
+   ENVP-BASE 0= IF NULL$ exit THEN
    0 begin dup ENVP 0= 0= while
       dup ENVP a u ENV=? IF  ENVP u + 1 +  dup ZLEN  exit THEN
       1 + repeat
@@ -92,6 +88,7 @@ s" NULL$" s" -- ptr u8 n" TRUST
 s" GETENV" s" ptr u8 n -- ptr u8 n" TRUST
 
 256 constant TMP-PATH-CAP
+s" TMP-PATH-CAP" s" -- n" TRUST
 create TPB TMP-PATH-CAP allot
 variable TPP  variable TPQ
 : TPP@ ( -- ptr u8 )

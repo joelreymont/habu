@@ -41,6 +41,12 @@ variable PET-I
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
+: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+   {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
+   path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   PET-OUTCOME>N ;
+
 : PET-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
@@ -96,6 +102,17 @@ variable PET-I
    s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-CAPTURE
    0 T= 0 T= {: outu :}
    PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+
+: PET-RUN-ENV-OUTCOME-FALSE ( -- )
+   PET-RESET
+   s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP 1000 PET-OUTCOME
+   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+
+: PET-RUN-ENV-OUTCOME-TIMEOUT ( -- )
+   PET-RESET
+   s" 5"  >LEN PROC-ARGV+
+   s" /bin/sleep" PET-OUT PET-CAP PET-ERR PET-CAP 50 PET-OUTCOME
+   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME ( -- )
    PET-RESET
@@ -155,6 +172,8 @@ variable PET-I
    PET-RUN-ENV-CHILD
    PET-RUN-EMPTY-ENV-CHILD
    PET-RUN-INHERIT-ENV-CHILD
+   PET-RUN-ENV-OUTCOME-FALSE
+   PET-RUN-ENV-OUTCOME-TIMEOUT
    PET-RUN-ENV-STDIN-OUTCOME
    PET-RUN-ENV-STDIN-FALSE-LARGE
    PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE

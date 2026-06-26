@@ -2,17 +2,26 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f
 
 $4000 constant CRHT-BUF-CAP
+$4000 constant CRHT-ARGV-CAP
 5000 constant CRHT-TIMEOUT-MS
+10 constant CRHT-LF-C
+32 constant CRHT-SP-C
 
 variable CRHT-ROOT-U
 variable CRHT-SRC-U
 variable CRHT-DIAG-U
+variable CRHT-ARGV-U
+variable CRHT-LABEL-A
+variable CRHT-LABEL-U
+variable CRHT-PHASE-A
+variable CRHT-PHASE-U
 
 create CRHT-ROOT-BUF FS-PATH-CAP allot
 create CRHT-SRC-BUF FS-PATH-CAP allot
 create CRHT-DIAG-BUF FS-PATH-CAP allot
 create CRHT-OUT CRHT-BUF-CAP allot
 create CRHT-ERR CRHT-BUF-CAP allot
+create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
 
 : CRHT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -30,11 +39,58 @@ create CRHT-ERR CRHT-BUF-CAP allot
 : CRHT-DIAG ( -- ptr u8 n )
    CRHT-DIAG-BUF CRHT-DIAG-U @ ;
 
+: CRHT-ARGV$ ( -- ptr u8 n )
+   CRHT-ARGV-BUF CRHT-ARGV-U @ ;
+
+: CRHT-LABEL$ ( -- ptr u8 n )
+   CRHT-LABEL-A @ CRHT-LABEL-U @ ;
+
+: CRHT-PHASE$ ( -- ptr u8 n )
+   CRHT-PHASE-A @ CRHT-PHASE-U @ ;
+
+: CRHT-CONTEXT! ( ptr u8 n ptr u8 n -- )
+   CRHT-PHASE-U !
+   CRHT-PHASE-A !
+   CRHT-LABEL-U !
+   CRHT-LABEL-A ! ;
+
 : CRHT-LF ( -- )
-   10 SB-APPEND-C ;
+   CRHT-LF-C SB-APPEND-C ;
 
 : CRHT-DQ ( -- )
    34 SB-APPEND-C ;
+
+: CRHT-ARGV-RESET ( -- )
+   0 CRHT-ARGV-U !
+   PROC-ARGV-RESET ;
+
+: CRHT-ARGV-C ( n -- ) {: c :}
+   CRHT-ARGV-U @ 1 + CRHT-ARGV-CAP > if E-STR-CAPACITY throw then
+   c CRHT-ARGV-BUF CRHT-ARGV-U @ + c!
+   CRHT-ARGV-U @ 1+ CRHT-ARGV-U ! ;
+
+: CRHT-ARGV+ ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   CRHT-ARGV-U @ u + 3 + CRHT-ARGV-CAP > if E-STR-CAPACITY throw then
+   CRHT-SP-C CRHT-ARGV-C
+   CRHT-SP-C CRHT-ARGV-C
+   a CRHT-ARGV-BUF CRHT-ARGV-U @ + u BYTE-COPY
+   CRHT-ARGV-U @ u + CRHT-ARGV-U !
+   CRHT-LF-C CRHT-ARGV-C ;
+
+: CRHT-ARG+ ( ptr u8 n -- )
+   2dup CRHT-ARGV+
+   >LEN PROC-ARGV+ ;
+
+: CRHT-WARM-LOAD ( ptr u8 n -- bool ) {: entry:ptr entryu :}
+   WR-TOOLS? if
+      s" --load" CRHT-ARG+
+      s" HABU_WARM_TOOLS_TRUST" WR-TRUST$ CRHT-ARG+
+      entry entryu CRHT-ARG+
+      s" --" CRHT-ARG+
+      WR-TRUE exit
+   then
+   WR-FALSE ;
 
 : CRHT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -103,129 +159,197 @@ create CRHT-ERR CRHT-BUF-CAP allot
    CRHT-DIAG CLEANUP+ ;
 
 : CRHT-CHECK-ARGS ( ptr u8 n -- ) {: label:ptr labelu :}
-   PROC-ARGV-RESET
-   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
-      s" --json-errors"  >LEN PROC-ARGV+
-      s" --label"  >LEN PROC-ARGV+
-      label labelu  >LEN PROC-ARGV+
-      CRHT-SRC  >LEN PROC-ARGV+
+   CRHT-ARGV-RESET
+   s" tools/check-all-errors.f" CRHT-WARM-LOAD if
+      s" --json-errors" CRHT-ARG+
+      s" --label" CRHT-ARG+
+      label labelu CRHT-ARG+
+      CRHT-SRC CRHT-ARG+
       exit
    then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   label labelu  >LEN PROC-ARGV+
-   CRHT-SRC  >LEN PROC-ARGV+ ;
+   s" --load" CRHT-ARG+
+   s" lib/errors.f" CRHT-ARG+
+   s" lib/string.f" CRHT-ARG+
+   s" lib/memory.f" CRHT-ARG+
+   s" lib/vector.f" CRHT-ARG+
+   s" lib/fs.f" CRHT-ARG+
+   s" lib/process.f" CRHT-ARG+
+   s" lib/process-argv.f" CRHT-ARG+
+   s" tools/lint/text.f" CRHT-ARG+
+   s" tools/lint/token.f" CRHT-ARG+
+   s" tools/lint/lib.f" CRHT-ARG+
+   s" tools/lint/json-writer.f" CRHT-ARG+
+   s" tools/lint/source-lex.f" CRHT-ARG+
+   s" tools/check-all-errors-core.f" CRHT-ARG+
+   s" tools/argv.f" CRHT-ARG+
+   s" tools/check-all-errors.f" CRHT-ARG+
+   s" --" CRHT-ARG+
+   s" --json-errors" CRHT-ARG+
+   s" --label" CRHT-ARG+
+   label labelu CRHT-ARG+
+   CRHT-SRC CRHT-ARG+ ;
 
-: CRHT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: CRHT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: CRHT-RUN-CHECK ( ptr u8 n -- n n n )
+: CRHT-RUN-CHECK ( ptr u8 n -- n n n n )
    CRHT-CHECK-ARGS
    WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
 : CRHT-ASSERT-ARGS ( -- )
-   PROC-ARGV-RESET
-   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   CRHT-ARGV-RESET
+   s" tools/gate-json-assert.f" CRHT-WARM-LOAD if exit then
+   s" --load" CRHT-ARG+
+   s" lib/errors.f" CRHT-ARG+
+   s" lib/memory.f" CRHT-ARG+
+   s" tools/json.f" CRHT-ARG+
+   s" tools/gate-json-assert.f" CRHT-ARG+
+   s" --" CRHT-ARG+ ;
 
-: CRHT-RUN-SCHEMA ( -- n n n )
+: CRHT-RUN-SCHEMA ( -- n n n n )
    CRHT-ASSERT-ARGS
-   s" json-one-schema"  >LEN PROC-ARGV+
-   CRHT-DIAG  >LEN PROC-ARGV+
+   s" json-one-schema" CRHT-ARG+
+   CRHT-DIAG CRHT-ARG+
    WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-RUN-CLASS ( ptr u8 n -- n n n ) {: class:ptr classu :}
+: CRHT-RUN-CLASS ( ptr u8 n -- n n n n ) {: class:ptr classu :}
    CRHT-ASSERT-ARGS
-   s" diag-repair-class"  >LEN PROC-ARGV+
-   CRHT-DIAG  >LEN PROC-ARGV+
-   class classu  >LEN PROC-ARGV+
+   s" diag-repair-class" CRHT-ARG+
+   CRHT-DIAG CRHT-ARG+
+   class classu CRHT-ARG+
    WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-RUN-RSTACK ( ptr u8 n ptr u8 n -- n n n ) {: exp:ptr expu act:ptr actu :}
+: CRHT-RUN-RSTACK ( ptr u8 n ptr u8 n -- n n n n ) {: exp:ptr expu act:ptr actu :}
    CRHT-ASSERT-ARGS
-   s" diag-return-stack"  >LEN PROC-ARGV+
-   CRHT-DIAG  >LEN PROC-ARGV+
-   exp expu  >LEN PROC-ARGV+
-   act actu  >LEN PROC-ARGV+
+   s" diag-return-stack" CRHT-ARG+
+   CRHT-DIAG CRHT-ARG+
+   exp expu CRHT-ARG+
+   act actu CRHT-ARG+
    WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-RUN-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n n )
+: CRHT-RUN-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n n n )
    {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
    CRHT-ASSERT-ARGS
-   s" diag-row-effect"  >LEN PROC-ARGV+
-   CRHT-DIAG  >LEN PROC-ARGV+
-   src srcu  >LEN PROC-ARGV+
-   exp expu  >LEN PROC-ARGV+
-   act actu  >LEN PROC-ARGV+
-   class classu  >LEN PROC-ARGV+
+   s" diag-row-effect" CRHT-ARG+
+   CRHT-DIAG CRHT-ARG+
+   src srcu CRHT-ARG+
+   exp expu CRHT-ARG+
+   act actu CRHT-ARG+
+   class classu CRHT-ARG+
    WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE CRHT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-ASSERT-CLEAN ( n n n -- )
-   0 T=
-   {: outu erru :}
+: CRHT-OUTCOME. ( n -- ) {: kind :}
+   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
+   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
+   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
+   s" unknown" type ;
+
+: CRHT-RC-NAME. ( n -- ) {: rc :}
+   rc 60 = if s" E-PROC-SPAWN" type exit then
+   rc 59 = if s" E-PROC-WAIT" type exit then
+   rc 58 = if s" E-PROC-TIMEOUT" type exit then
+   rc 57 = if s" E-PROC-OUTPUT" type exit then
+   rc 56 = if s" E-PROC-TRUNCATED" type exit then
+   rc 55 = if s" E-PROC-ENV" type exit then
+   rc 54 = if s" E-PROC-PATH" type exit then
+   rc 202 = if s" E-FS-OPEN" type exit then
+   rc 198 = if s" E-FS-CAPACITY" type exit then
+   rc 104 = if s" E-STR-BOUNDS" type exit then
+   rc 103 = if s" E-STR-CAPACITY" type exit then
+   s" unmapped" type ;
+
+: CRHT-DUMP-CAPTURE ( n n n n n -- )
+   {: outu erru kind code expect :}
+   s" check-repair-hints boundary failure" type cr
+   s" case: " type CRHT-LABEL$ type cr
+   s" phase: " type CRHT-PHASE$ type cr
+   s" exe: " type WR-TOOLS$ type cr
+   s" source: " type CRHT-SRC type cr
+   s" diag: " type CRHT-DIAG type cr
+   s" expected exit: " type expect . cr
+   s" outcome: " type kind CRHT-OUTCOME.
+   s"  code: " type code . cr
+   s" rc: " type kind code PROC-OUTCOME>RC RC>N dup .
+   s" (" type CRHT-RC-NAME. s" )" type cr
+   s" stdout bytes: " type outu . s" / " type CRHT-BUF-CAP . cr
+   s" stderr bytes: " type erru . s" / " type CRHT-BUF-CAP . cr
+   s" argv:" type cr
+   CRHT-ARGV$ type
+   s" stdout:" type cr
+   CRHT-OUT outu type
+   s" stderr:" type cr
+   CRHT-ERR erru type ;
+
+: CRHT-EXPECT-OUTCOME ( n n n n n -- )
+   {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT <> if
+      outu erru kind code expect CRHT-DUMP-CAPTURE
+   then
+   code expect <> if
+      outu erru kind code expect CRHT-DUMP-CAPTURE
+   then
+   kind PROC-OUTCOME-EXIT T=
+   code expect T= ;
+
+: CRHT-EXPECT-CLEAN ( n n n n n -- )
+   {: outu erru kind code expect :}
+   outu erru kind code expect CRHT-EXPECT-OUTCOME
+   outu 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
+   erru 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
    CRHT-OUT outu CRHT-EMPTY$ T$=
    CRHT-ERR erru CRHT-EMPTY$ T$= ;
+
+: CRHT-EXPECT-DIAG ( n n n n n -- n )
+   {: outu erru kind code expect :}
+   outu erru kind code expect CRHT-EXPECT-OUTCOME
+   outu 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
+   CRHT-OUT outu CRHT-EMPTY$ T$=
+   erru ;
 
 : CRHT-CHECK-HINT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: label:ptr labelu class:ptr classu body:ptr bodyu :}
    CRHT-SRC body bodyu WRITE-ALL
-   label labelu CRHT-RUN-CHECK 70 T=
-   {: outu erru :}
-   CRHT-OUT outu CRHT-EMPTY$ T$=
+   label labelu s" check" CRHT-CONTEXT!
+   label labelu CRHT-RUN-CHECK 70 CRHT-EXPECT-DIAG {: erru :}
    CRHT-DIAG CRHT-ERR erru WRITE-ALL
-   CRHT-RUN-SCHEMA CRHT-ASSERT-CLEAN
-   class classu CRHT-RUN-CLASS CRHT-ASSERT-CLEAN ;
+   label labelu s" schema" CRHT-CONTEXT!
+   CRHT-RUN-SCHEMA 0 CRHT-EXPECT-CLEAN
+   label labelu s" class" CRHT-CONTEXT!
+   class classu CRHT-RUN-CLASS 0 CRHT-EXPECT-CLEAN ;
 
-: CRHT-ASSERT-RSTACK ( ptr u8 n ptr u8 n -- )
-   CRHT-RUN-RSTACK CRHT-ASSERT-CLEAN ;
+: CRHT-ASSERT-RSTACK ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exp:ptr expu act:ptr actu label:ptr labelu :}
+   label labelu s" return-stack" CRHT-CONTEXT!
+   exp expu act actu CRHT-RUN-RSTACK 0 CRHT-EXPECT-CLEAN ;
 
 : CRHT-ASSERT-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   CRHT-RUN-ROW-EFFECT CRHT-ASSERT-CLEAN ;
+   {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
+   src srcu s" row-effect" CRHT-CONTEXT!
+   src srcu exp expu act actu class classu CRHT-RUN-ROW-EFFECT
+   0 CRHT-EXPECT-CLEAN ;
 
 : CRHT-CHECK-ACCEPTS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu body:ptr bodyu :}
    CRHT-SRC body bodyu WRITE-ALL
-   label labelu CRHT-RUN-CHECK 0 T=
-   {: outu erru :}
-   CRHT-OUT outu CRHT-EMPTY$ T$=
-   CRHT-ERR erru CRHT-EMPTY$ T$= ;
+   label labelu s" check" CRHT-CONTEXT!
+   label labelu CRHT-RUN-CHECK 0 CRHT-EXPECT-CLEAN ;
 
 : CRHT-CASES ( -- )
    s" remove-producer" s" remove_producer" CRHT-REMOVE-PRODUCER$ CRHT-CHECK-HINT
    s" add-producer" s" add_producer" CRHT-ADD-PRODUCER$ CRHT-CHECK-HINT
    s" fix-type" s" fix_type" CRHT-FIX-TYPE$ CRHT-CHECK-HINT
    s" fix-return-stack" s" fix_return_stack" CRHT-FIX-RSTACK$ CRHT-CHECK-HINT
-   CRHT-EMPTY$ s" i64 " CRHT-ASSERT-RSTACK
+   CRHT-EMPTY$ s" i64 " s" fix-return-stack" CRHT-ASSERT-RSTACK
    s" mixed-return-stack" s" fix_return_stack" CRHT-MIXED-RSTACK$ CRHT-CHECK-HINT
-   CRHT-EMPTY$ s" i64 " CRHT-ASSERT-RSTACK
+   CRHT-EMPTY$ s" i64 " s" mixed-return-stack" CRHT-ASSERT-RSTACK
    s" balanced-return-stack" CRHT-BALANCED-RSTACK$ CRHT-CHECK-ACCEPTS
    s" row-dup-extra" s" remove_producer" CRHT-ROW-DUP-EXTRA$ CRHT-CHECK-HINT
    s" R x -- R x" s" a " s" a a " s" remove_producer" CRHT-ASSERT-ROW-EFFECT

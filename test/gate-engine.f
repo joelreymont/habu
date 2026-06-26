@@ -231,16 +231,16 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-ARGV-MODES ( -- )
    GE-WRITE-SCRIPT-ARGV
    GE-HB-RESET
-   GE-SCRIPT-PATH GE-SCRIPT-U @  >LEN PROC-ARGV+
-   s" alpha"  >LEN PROC-ARGV+
-   s" beta"  >LEN PROC-ARGV+
+   GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
+   s" alpha" GE-ARG+
+   s" beta" GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" hb script argv mode" GE-EXPECT-OK
    SB-RESET s" 2" SB-APPEND GE-SB-LF s" alpha" SB-APPEND GE-SB-LF s" beta" SB-APPEND GE-SB-LF
    SB$ s" hb script argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
-   s" alpha"  >LEN PROC-ARGV+
-   s" beta"  >LEN PROC-ARGV+
+   s" alpha" GE-ARG+
+   s" beta" GE-ARG+
    GE-SRC-RESET
    s" ARGC ." GE-SRC-LINE
    s" 1 ARGV$ type cr" GE-SRC-LINE
@@ -251,7 +251,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    SB$ s" hb pipeline argv mode output" GE-EXPECT-OUT
    GE-HB-RESET
    GT-ROOT s" no-such-hb-script.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
-   GE-SCRIPT-PATH GE-SCRIPT-U @  >LEN PROC-ARGV+
+   GE-SCRIPT-PATH GE-SCRIPT-U @ GE-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    74 s" hb missing script rc" GE-EXPECT-RC ;
 
@@ -311,12 +311,13 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" NEED-IDX" s" idx --" GE-SRC-TRUST
    s" NEED-LEN" s" len --" GE-SRC-TRUST
-   s" ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N" GE-SRC-CHECK-LINE
+   s" ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N" GE-SRC-CHECK-LINE
    s" ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
    s" ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
    s" ROLE-BAD2 ( n -- n ) >LEN IDX>N" GE-SRC-CHECK-LINE
+   s" ROLE-BAD3 ( n -- img ) >ASM" GE-SRC-CHECK-LINE
    s" ROLE-UNKNOWN ( n -- size ) >IDX" GE-SRC-CHECK-LINE
-   s" : ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N ;" GE-SRC-LINE
+   s" : ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N ;" GE-SRC-LINE
    s" 7 ROLE-ALL ." GE-SRC-LINE ;
 
 : GE-ROLE-TYPES ( -- )
@@ -326,6 +327,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    SB-RESET
    s" -1" SB-APPEND GE-SB-LF
    s" -1" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
@@ -345,11 +347,24 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-TRUSTED-EFFECT
    GE-ROLE-TYPES ;
 
+: GE-TIMEOUT-ATTRIBUTION ( -- )
+   GE-HB-RESET
+   s" 1" GE-ARG+
+   s" /bin/sleep" 50 GE-RUN-ENV
+   GT-OUTCOME-KIND @ PROC-OUTCOME-TIMEOUT <> if
+      s" gate timeout outcome attribution" GE-FAIL
+   then
+   GT-OUTCOME-CODE @ SIGKILL <> if
+      s" gate timeout signal attribution" GE-FAIL
+   then
+   s" PASS: gate timeout outcome attribution" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-TRUST-RUN
    GE-ARGV-MODES
-   GE-TYPED-SMOKE ;
+   GE-TYPED-SMOKE
+   GE-TIMEOUT-ATTRIBUTION ;
 
 : GENG-BUILD-SLICE ( -- )
    GE-BUILD-FIXPOINT

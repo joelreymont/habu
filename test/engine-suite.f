@@ -61,6 +61,16 @@ TLEAVE 4 T=
 KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 8 TKERNEL-INC 9 T=
 
+\ target predicates must be real executable booleans, not trusted signature stubs
+: TTARGET-KNOWN ( -- n )
+   HB-TARGET-KNOWN? if 1 else 0 then ;
+: TTARGET-COUNT ( -- n )
+   0
+   HB-TARGET-LINUX? if 1 + then
+   HB-TARGET-MACOS? if 1 + then ;
+TTARGET-KNOWN 1 T=
+TTARGET-COUNT 1 T=
+
 \ return stack, exit, recurse
 : TRS ( -- n ) 1 2 >r 10 + r> + ;
 TRS 13 T=
@@ -128,6 +138,7 @@ s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
 s" COK-BUILD-IMAGE ( -- img ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
 s" COK-CODESIG2 ( -- img ) ASM-CODE BUILD-IMAGE CODESIG2" CHECK! -1 T=
 s" COK-SNAP-HDR ( n -- snap n ) BUILD-SNAP-HDR" CHECK! -1 T=
+s" COK-SNAP-EXTRA ( -- ptr u8 n ) SNAP-EXTRA-PTR SNAP-EXTRA-SIZE" CHECK! -1 T=
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
 s" T-PTX-LOAD" s" span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live>" TRUST

@@ -16,6 +16,7 @@ create GE-SRC-A GE-SRC-MAX cells allot
 create GE-SRC-LEN GE-SRC-MAX cells allot
 create GE-WARM-BUF FS-PATH-CAP allot
 create GE-WARM-TRUST-BUF FS-PATH-CAP allot
+create GE-ARGV-BUF GE-SRC-CAP allot
 
 variable GE-SRC-U
 variable GE-SRC-N
@@ -23,6 +24,8 @@ variable GE-RD
 variable GE-WARM-U
 variable GE-WARM-TRUST-U
 variable GE-WARM-READY
+variable GE-INFD
+variable GE-ARGV-U
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu erru rc :}
    rc RC>N GT-OUTCOME-CODE !
@@ -30,24 +33,105 @@ variable GE-WARM-READY
    erru LEN>N GT-ERR-U !
    outu LEN>N GT-OUT-U ! ;
 
+: GE-STORE-OUTCOME ( len len n n -- )
+   GT-STORE-RUN ;
+
+: GE-ARGV-RESET ( -- )
+   0 GE-ARGV-U ! ;
+
+: GE-ARGV-C ( n -- ) {: c :}
+   GE-ARGV-U @ 1 + GE-SRC-CAP > if E-STR-CAPACITY throw then
+   c GE-ARGV-BUF GE-ARGV-U @ + c!
+   GE-ARGV-U @ 1+ GE-ARGV-U ! ;
+
+: GE-ARGV+ ( ptr u8 n -- ) {: a:ptr u :}
+   u 0 < if E-STR-BOUNDS throw then
+   GE-ARGV-U @ u + 3 + GE-SRC-CAP > if E-STR-CAPACITY throw then
+   GE-SP GE-ARGV-C
+   GE-SP GE-ARGV-C
+   a GE-ARGV-BUF GE-ARGV-U @ + u BYTE-COPY
+   GE-ARGV-U @ u + GE-ARGV-U !
+   GE-LF GE-ARGV-C ;
+
+: GE-ARGV$ ( -- ptr u8 n )
+   GE-ARGV-BUF GE-ARGV-U @ ;
+
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
    GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
-   RUN-ARGV-ENV-CAPTURE
-   GE-STORE-CAPTURE ;
+   RUN-ARGV-ENV-CAPTURE-OUTCOME
+   GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu in:ptr inu timeout :}
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
    GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE
-   GE-STORE-CAPTURE ;
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
+   GE-STORE-OUTCOME ;
+
+: GE-SPAWN-FILE-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
+   pathz argv envp GE-INFD @ >FD PROC-OUT-W @ PROC-ERR-W @
+   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   PROC-ARGV-ENV-RESET
+   GE-INFD @ close
+   pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
+   pid PROC-PID !
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+: GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu inpath:ptr inpathu timeout :}
+   PROC-ENV-INHERIT-MISSING
+   inpath inpathu FS-PATHZ open-rd GE-INFD !
+   GE-INFD @ 0 < if E-FS-OPEN throw then
+   GT-OUT-CAP >LEN GT-ERR-CAP >LEN PROC-CAPTURE-CHECK-CAPS
+   path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   timeout >MS PROC-CAPTURE-BEGIN
+   pathz argv envp GE-SPAWN-FILE-CAPTURE
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+
+: GE-OUTCOME. ( n -- ) {: kind :}
+   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
+   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
+   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
+   s" unknown" type ;
+
+: GE-RC-NAME. ( n -- ) {: rc :}
+   rc 60 = if s" E-PROC-SPAWN" type exit then
+   rc 59 = if s" E-PROC-WAIT" type exit then
+   rc 58 = if s" E-PROC-TIMEOUT" type exit then
+   rc 57 = if s" E-PROC-OUTPUT" type exit then
+   rc 56 = if s" E-PROC-TRUNCATED" type exit then
+   rc 55 = if s" E-PROC-ENV" type exit then
+   rc 54 = if s" E-PROC-PATH" type exit then
+   rc 202 = if s" E-FS-OPEN" type exit then
+   rc 198 = if s" E-FS-CAPACITY" type exit then
+   rc 104 = if s" E-STR-BOUNDS" type exit then
+   rc 103 = if s" E-STR-CAPACITY" type exit then
+   s" unmapped" type ;
+
+: GE-PRINT-OUTCOME ( -- )
+   s" outcome: " type GT-OUTCOME-KIND @ GE-OUTCOME.
+   s"  code: " type GT-OUTCOME-CODE @ .
+   s" rc: " type GT-RC@ . s" (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
+
+: GE-PRINT-CAPTURE-STATS ( -- )
+   s" stdout bytes: " type GT-OUT$ nip . s" / " type GT-OUT-CAP . cr
+   s" stderr bytes: " type GT-ERR$ nip . s" / " type GT-ERR-CAP . cr ;
 
 : GE-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
-   s" rc: " type GT-RC@ . cr
+   GE-PRINT-OUTCOME
+   GE-PRINT-CAPTURE-STATS
+   GE-ARGV$ nip 0 > if
+      s" argv:" type cr
+      GE-ARGV$ type
+   then
+   s" stdout:" type cr
    GT-OUT$ type
+   s" stderr:" type cr
    GT-ERR$ type
    s" gate phase failed" 1 die ;
 
@@ -146,6 +230,7 @@ variable GE-WARM-READY
    GE-SRC-U @ GE-RD @ + GE-SRC-U ! ;
 
 : GE-ARG+ ( ptr u8 n -- )
+   2dup GE-ARGV+
    >LEN PROC-ARGV+ ;
 
 : GE-WARM$ ( -- ptr u8 n )
@@ -175,6 +260,7 @@ variable GE-WARM-READY
 
 : GE-WARM-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
+   GE-ARGV-RESET
    s" --load" GE-ARG+
    s" lib/errors.f" GE-ARG+
    s" lib/string.f" GE-ARG+
@@ -267,7 +353,8 @@ variable GE-WARM-READY
       GE-FILES-RUN ;
 
 : GE-HB-RESET ( -- )
-   PROC-ARGV-ENV-RESET ;
+   PROC-ARGV-ENV-RESET
+   GE-ARGV-RESET ;
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN

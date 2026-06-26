@@ -190,17 +190,39 @@ variable SUITE-SLICE
    SUITE-WARM-OUT outu type
    SUITE-WARM-ERR erru type ;
 
+: SUITE-OUTCOME. ( n -- ) {: kind :}
+   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
+   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
+   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
+   s" unknown" type ;
+
+: SUITE-WARM-OK? ( n n -- bool ) {: kind code :}
+   kind PROC-OUTCOME-EXIT =
+   code 0= and ;
+
+: SUITE-WARM-FAIL ( len len n n -- ) {: outu erru kind code :}
+   s" FAIL: gate-stdlib warm tools image" type cr
+   s" outcome: " type kind SUITE-OUTCOME.
+   s"  code: " type code . cr
+   s" rc: " type kind code PROC-OUTCOME>RC RC>N . cr
+   s" stdout bytes: " type outu LEN>N . s" / " type GT-OUT-CAP . cr
+   s" stderr bytes: " type erru LEN>N . s" / " type GT-ERR-CAP . cr
+   s" stdout:" type cr
+   SUITE-WARM-OUT outu LEN>N type
+   s" stderr:" type cr
+   SUITE-WARM-ERR erru LEN>N type
+   s" gate-stdlib: warm tools image failed" 1 die ;
+
 : SUITE-WARM-RUN ( -- )
    SUITE-WARM-TOOL-ARGV
    SUITE-WARM-SUPPORT-ARGV
    PROC-ENV-RESET
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" >LEN SUITE-WARM-OUT GT-OUT-CAP >LEN SUITE-WARM-ERR GT-ERR-CAP >LEN
-   SUITE-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   {: outu erru rc :}
-   rc RC>N 0 <> if
-      outu LEN>N erru LEN>N SUITE-WARM-PRINT
-      s" gate-stdlib: warm tools image failed" 1 die
+   SUITE-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME
+   {: outu erru kind code :}
+   kind code SUITE-WARM-OK? 0= if
+      outu erru kind code SUITE-WARM-FAIL
    then ;
 
 : SUITE-WARM-PREPARE ( -- )
@@ -284,7 +306,9 @@ variable SUITE-SLICE
    s" signature-scan-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
    s" compiler-dispatch-shape" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-batch-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" build-helper-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" bootstrap-helper-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" build-fixpoint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" hb-build-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )
@@ -620,15 +644,28 @@ TEST-SUITE stdlib-batch-fixtures
    lib/process-command-test.f lib/build-test.f
 ;TEST-SUITE
 
-TEST-SUITE build-helper-fixtures
+TEST-SUITE bootstrap-helper-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
-   tools/hb-build-lib.f tools/warm-image-lib.f tools/bootstrap-codegen-test.f
+   tools/warm-image-lib.f tools/bootstrap-codegen-test.f
    bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
    src/os/image-bytes.f tools/image-bytes-test.f
-   tools/warm-image-test.f tools/build-fixpoint-test.f tools/hb-build-test.f
-   lib/codesign-test.f
+   tools/warm-image-test.f
+;TEST-SUITE
+
+TEST-SUITE build-fixpoint-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
+   tools/build-fixpoint-test.f
+;TEST-SUITE
+
+TEST-SUITE hb-build-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
+   tools/hb-build-lib.f tools/hb-build-test.f lib/codesign-test.f
 ;TEST-SUITE
 
 GT-POOL-DRAIN

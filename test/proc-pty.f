@@ -30,19 +30,25 @@ variable SFD
 variable PTY-U
 variable PTYNUM
 
+: RBUF-DUMP ( -- )
+   s" rbuf bytes: " type RN @ . cr
+   RN @ 0 > if
+      s" rbuf:" type cr
+      RBUF RN @ type cr
+   then ;
+
+: T-FAIL ( -- )
+   [char] F emit #CASE @ . cr
+   RBUF-DUMP
+   #FAIL @ 1 + #FAIL ! ;
+
 : T= {: got want :} ( n n -- )
    #CASE @ 1 + #CASE !
-   got want <> if
-      [char] F emit #CASE @ .
-      #FAIL @ 1 + #FAIL !
-   then ;
+   got want <> if T-FAIL then ;
 
 : TTRUE ( bool -- )
    #CASE @ 1 + #CASE !
-   0= if
-      [char] F emit #CASE @ .
-      #FAIL @ 1 + #FAIL !
-   then ;
+   0= if T-FAIL then ;
 
 : RCLR ( -- )
    0 RN ! ;
@@ -86,6 +92,25 @@ variable PTYNUM
 : MFD-DRAIN ( -- )
    MFD @ >FD DRAIN ;
 
+: RBUF-HAS? {: a:ptr u :} ( ptr u8 n -- bool )
+   RBUF RN @ a u CONTAINS? ;
+
+: MFD-READ-READY? ( -- bool )
+   MFD @ >FD 50 >MS POLL-IN COUNT>N 0 > if
+      MFD @ >FD READ+
+      0 0= exit
+   then
+   0 0= 0= ;
+
+: EXPECT-WAIT? {: a:ptr u :} ( ptr u8 n -- bool )
+   a u RBUF-HAS? if 0 0= exit then
+   0 begin dup 40 < while
+      MFD-READ-READY? drop
+      a u RBUF-HAS? if drop 0 0= exit then
+      1 +
+   repeat drop
+   0 0= 0= ;
+
 : SEND-C {: c :} ( c -- )
    c CH c!
    MFD @ >FD CH 1 FD-WRITE ;
@@ -110,7 +135,7 @@ variable PTYNUM
    MFD-DRAIN ;
 
 : EXPECT ( ptr u8 n -- )
-   TCONTAINS ;
+   EXPECT-WAIT? TTRUE ;
 
 : REJECT {: a:ptr u :} ( ptr u8 n -- )
    RBUF RN @ a u CONTAINS? 0= TTRUE ;

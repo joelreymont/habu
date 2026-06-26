@@ -7,6 +7,46 @@
 2000 constant GAP-MACHO-STRIPPED-TEXT-MAX
 $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
 
+: GAP-N= ( n n ptr u8 n -- ) {: got want label:ptr labelu :}
+   got want <> if label labelu GE-FAIL then ;
+
+: GAP-PH-TYPE ( n -- n )
+   GB-ELF-PH-OFF GB-U32-OFF ;
+
+: GAP-PH-FLAGS ( n -- n )
+   GB-ELF-PH-OFF GB-ELF-PH-FLAGS-OFF + GB-U32-OFF ;
+
+: GAP-PH-FILE-OFF ( n -- n )
+   GB-ELF-PH-OFF GB-ELF-PH-FILE-OFF + GB-U64-OFF ;
+
+: GAP-PH-VADDR ( n -- n )
+   GB-ELF-PH-OFF GB-ELF-PH-VADDR-OFF + GB-U64-OFF ;
+
+: GAP-PH-FILESZ ( n -- n )
+   GB-ELF-PH-OFF GB-ELF-PH-FILESZ-OFF + GB-U64-OFF ;
+
+: GAP-ASSERT-LINUX-DYNAMIC-ELF ( ptr u8 n -- ) {: label:ptr labelu :}
+   HB-TARGET-LINUX? 0= if exit then
+   GB-OUT$ GB-READ-EXEC
+   GB-ELF-PHNUM-OFF GB-U16-OFF 4 label labelu GAP-N=
+   0 GAP-PH-TYPE GB-ELF-PT-LOAD label labelu GAP-N=
+   0 GAP-PH-FLAGS GB-ELF-PF-R GB-ELF-PF-X or label labelu GAP-N=
+   1 GAP-PH-TYPE GB-ELF-PT-LOAD label labelu GAP-N=
+   1 GAP-PH-FLAGS GB-ELF-PF-R GB-ELF-PF-W or label labelu GAP-N=
+   1 GAP-PH-VADDR GB-ELF-RW-VA label labelu GAP-N=
+   1 GAP-PH-FILESZ GB-ELF-RW-SZ label labelu GAP-N=
+   2 GAP-PH-TYPE GB-ELF-PT-INTERP label labelu GAP-N=
+   2 GAP-PH-FILE-OFF GB-ELF-INTERP-OFF label labelu GAP-N=
+   2 GAP-PH-FILESZ GB-ELF-INTERP-SZ label labelu GAP-N=
+   3 GAP-PH-TYPE GB-ELF-PT-DYNAMIC label labelu GAP-N=
+   3 GAP-PH-FILE-OFF 1 GAP-PH-FILE-OFF label labelu GAP-N=
+   3 GAP-PH-VADDR GB-ELF-RW-VA label labelu GAP-N=
+   3 GAP-PH-FILESZ GB-ELF-DYNAMIC-SZ label labelu GAP-N=
+   GB-ELF-RELA-OFF GB-U64-OFF GB-ELF-DLOPEN-SLOT label labelu GAP-N=
+   GB-ELF-RELA-OFF 8 + GB-U64-OFF GB-ELF-DLOPEN-RINFO label labelu GAP-N=
+   GB-ELF-RELA-OFF 24 + GB-U64-OFF GB-ELF-DLSYM-SLOT label labelu GAP-N=
+   GB-ELF-RELA-OFF 32 + GB-U64-OFF GB-ELF-DLSYM-RINFO label labelu GAP-N= ;
+
 : GAP-SRC-DOTQ ( ptr u8 n -- ) {: a:ptr u :}
    GAP-DOT GE-SRC-C
    GE-DQ GE-SRC-C
@@ -53,6 +93,7 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    SB$ s" hb-build AOT output" GB-RUN-EXPECT
    GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz :}
    textsz GAP-STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped text" GE-FAIL then
+   s" hb-build AOT dynamic ELF shape" GAP-ASSERT-LINUX-DYNAMIC-ELF
    s" aot-stripped" s" aot-stripped call report" GAP-AOT-ASSERT
    s" PASS: hb-build AOT (engine stripped, text " type
    textsz GB-U.

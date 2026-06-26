@@ -22,7 +22,7 @@ variable GHR-SIZE
    s" EXPORT RBAD" GE-SRC-LINE ;
 
 : GHR-BUILD-REPL-CAPTURE ( -- )
-   s" --repl"  >LEN PROC-ARGV+
+   s" --repl" GB-ARGV+
    GB-HB-BUILD-ARGS
    GB-HB-BUILD-CAPTURE ;
 

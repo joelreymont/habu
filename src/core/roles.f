@@ -4,10 +4,6 @@
 \ Runtime representation is still one cell, so these conversion bodies are no-op
 \ casts. Their effects are pinned by TRUST rows and covered by the engine gate.
 
-TRUSTED: HB-TARGET-LINUX? ( -- bool ) ;
-TRUSTED: HB-TARGET-MACOS? ( -- bool ) ;
-TRUSTED: HB-TARGET-KNOWN? ( -- bool ) ;
-
 TRUSTED: >IDX ( n -- idx ) ;
 TRUSTED: IDX>N ( idx -- n ) ;
 
@@ -49,3 +45,12 @@ TRUSTED: VA>N ( va -- n ) ;
 
 TRUSTED: >SYMIDX ( n -- symidx ) ;
 TRUSTED: SYMIDX>N ( symidx -- n ) ;
+
+TRUSTED: >ASM ( n -- asm ) ;
+TRUSTED: ASM>N ( asm -- n ) ;
+
+TRUSTED: >IMG ( n -- img ) ;
+TRUSTED: IMG>N ( img -- n ) ;
+
+TRUSTED: >SNAP ( n -- snap ) ;
+TRUSTED: SNAP>N ( snap -- n ) ;

@@ -102,3 +102,10 @@ s" BUILD-IMAGE" s" asm -- img" TRUST
    CODE-OFF M-OFF M-PAD-OFF
    sfts ;
 s" BUILD-SNAP-HDR" s" n -- snap n" TRUST
+
+: SNAP-EXTRA-PTR ( -- ptr u8 )
+   MBUF ;
+s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
+
+0 constant SNAP-EXTRA-SIZE
+s" SNAP-EXTRA-SIZE" s" -- n" TRUST

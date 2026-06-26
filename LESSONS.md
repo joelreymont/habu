@@ -8,134 +8,30 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
-- **Check everything you can — byte-emitters included (STRONG RULE):**
-  `tools/check.f --source-list` passes on `src/os/image-bytes.f`, so raw
-  byte/layout emitters ARE checkable. Default ALL new code (engine, seam,
-  ELF/Mach-O emitters, tooling) to checked typed Habu and verify with
-  `--source-list`. The unchecked `0 set-check`/`TRUST` boundary is only the
-  audited minimum the checker truly can't express — never a default; "not
-  expressible as stack effects" is an overclaim, verify first.
-- **Use real types, not reflexive `n`:** a dereferenced cell address is `ptr a`
-  (so `@` yields its content, e.g. a GOT slot read for `ffi-call`); a string is
-  `ptr u8 n`; `n` only for genuine scalars. Stack comments are type tokens, not
-  role names — `( n n -- )`, not `( got want -- )` (role names fail at call sites).
-- **Every `TRUST` gets a `TRUSTED.md` row in the same change**, with effect,
-  reason, tests. Adding lines above existing `TRUST` sites drifts their rows;
-  rerun `--source-list`/`trust-lint` and fix the exact sites before the gate. A
-  line-only site fix is not a trust-base expansion.
-- **`CHECK!` is the user contract:** dogfood inference (`CHECK`) proves internal
-  consistency; user builds verify the body against declared `( in -- out )` and
-  make rejection fatal. `hb-build` accepts only `-1`; tests assert bad programs
-  fail to build.
-- **Large words hide unchecked reasoning:** if review needs reconstructing a long
-  word's stack by hand, factor first (named helpers with explicit effects), then
-  change behavior, so every intermediate contract is checked. Applies hardest to
-  raw compiler/register emitters.
-- **Classification tables beat token ladders:** `lib/regex.f` stopped repeating
-  `dup`/`over` metacharacter chains once escapable, unsupported, and emitted-token
-  bytes became table data behind `RX-BYTE-IN?`/`RX-META-TOKEN`. Pair those tables
-  with named state-transition helpers so matcher behavior changes stay visible in
-  fixtures instead of hidden inside one branch ladder.
-- **Checker-miss RCA starts before output:** scan the prompt for
-  checker/compiler-miss wording (incl. quoted/meta). First visible line is
-  `Static invariant:` naming the pre-runtime fact and the enforcing boundary; if
-  unknown, say so and reduce. Runtime fixes wait for fail-closed proof, miss
-  class (wrong boundary effect / checker semantics / codegen-runtime mismatch /
-  same-type role gap), minimal checked reproducer, and a checker/compiler/primitive
-  fix or capability dot; the bad program ends as a negative regression. The rule
-  applies even to prompts about enforcing the rule.
-- **Checker RCA audits shadows before semantics:** confirm recently-loaded words
-  didn't shadow built-ins (`CR constant` shadows `cr`, so a later `cr` pushes a
-  cell and the checker correctly flags the consumer).
-- **Persistent checker stores must scale and roll back:** `USIGS` grows for real
-  composed bundles and rolls back via `UEND` in define-check-discard loops; fixed
-  caps are compiler bugs, not reasons to trim. Same for `tools/check.f` source
-  buffers and `tools/lint/source-lex.f` token tables — grow with `lib/memory.f`.
-- **Typed booleans:** `bool` words return `0 0=`/`0 0= 0=`, never raw `0`/`-1` or
-  sentinels; pass bools via typed producers (`STR-TRUE`/`STR-FALSE`). Don't
-  compare bools with numeric `=` (`= : n n -- bool`); assert `TTRUE`/`TFALSE`.
-- **Path-sensitive control typing:** `LEAVE`/`EXIT` fold early-return states into
-  the declared output; divergent path arities are soundness bugs. `RECURSE`
-  applies a fresh copy of the declared effect (reusing the parse aliases rows).
-  Store the raw declared signature after `CHECK!` (rendering mutated terms
-  corrupts combinator schemes).
-- **Quotations are xts, not closures:** `[: ;]` may not read a surrounding local;
-  checker and compiler reject local refs while a quotation is open until real
-  closures exist.
-- **Checked `catch` is stack-preserving quotation catch:** consume the success
-  outputs inside the quotation (`[: WORD drop ;] catch`); don't widen to arbitrary
-  xt catch. `TRUST`/`set-check` inside a checked def need the same schema-1
-  `trusted_boundary_required` rejection as `evaluate` so repair loops can't learn
-  to silence the checker.
-- **Locals are input-only and pre-control:** `{:` consumes its inputs (pass them
-  explicitly afterward; don't re-`drop`); no `{:` mid-definition, inside control
-  flow, or after `exit` (the exit accumulator stays live to `;`). Prefer a named
-  scratch index in checked counted loops whose body calls helpers.
-- **False-rejects need execution proof:** count incompleteness only after running
-  an unchecked copy and measuring it matches the declared effect (`test/prop-test.f`
-  fails only on `certified AND measured != declared`; generator bugs become
-  rejections, not false certs). Malformed/`0=`-on-`i64` bodies must reject with
-  concrete `bool` vs `i64` diagnostics.
-- **Pointer cells need typed accessors:** use the checked `ptr-field` primitive to
-  build `ptr ptr x` addresses (`@`/`!` then preserve nested pointer types) instead
-  of `TRUSTED:` reload helpers. Store `mmap`/byte-pointer state behind small
-  audited `TRUSTED:` accessors so checked callers keep seeing `ptr`, not reloaded
-  `n`. Removing a file-scope `0 set-check` finds real bugs (it exposed a
-  trust-lint duplicate-manifest residue).
-- **Unchecked emitter stack bugs need typed shape gates:** the Darwin spawn
-  descriptor underflow was inside an audited native emitter boundary, not user
-  checked code. Fix was to factor raw emitters away from locals (`C-LOCAL-REF`,
-  `BYTES,`, `REG-PRIM`/`FPRIM`, Darwin spawn helpers), add typed accessor TRUST
-  rows, and gate forbidden source shapes in `tools/build-fixpoint.f` before any
-  image is written. Use `depth .` rather than `.s` when chasing build-time
-  underflow; `.s` can hide negative depth.
-- **Same-cell emitter values need nominal roles:** add checker roles for values
-  that share runtime representation but must not compose (`reg`, `label`, `va`,
-  `symidx`). A stack comment like `( n n -- )` hides swaps; role tokens plus
-  negative `CHECK!` fixtures reject them before raw emitter tests run.
-- **Emitter TRUST effects should carry semantic roles:** native spawn helpers can
-  still be an unchecked syscall/record-layout boundary while their public effect
-  says `reg`, `fd`, `label`, or `count`. Do not leave boundary signatures as raw
-  `n` when the call contract has a stronger role.
-- **Checked encoder helpers consume roles, not raw cells:** typed ARM64 helpers in
-  `bootstrap/cg/asm-checked.fs` should accept `reg`/`off` and erase with
-  `REG>N`/`OFF>N` only at bit-packing leaves. Public encoders then reject
-  register-vs-offset swaps while preserving the same instruction bytes.
-- **Nominal roles are a native-prefix contract:** role casts in `src/core/roles.f`
-  are trusted identity boundaries and must be baked by refresh; checked fixture
-  bundles consume the baked role words instead of concatenating `roles.f` directly
-  before role-typed consumers.
-- **New role names need a checker-only bootstrap stage:** old `bin/hb` rejects
-  unknown type tokens during checked calls. Add `CC-*`/renderer/parser support,
-  refresh `bin/hb`, then use the role in `TRUST` rows and checked source.
-- **`ptr-field` retires pointer reload TRUST:** variable-backed pointer cursors
-  such as `RPD@`, `PR-A@`, `FP-A@`, `EP@`, `BYP@`, and `BYA@` are plain checked
-  helpers when written as `VAR 0 ptr-field @`; do not add TRUST rows for this
-  storage pattern.
-- **Locals shape is a checker invariant:** `{:` is allowed only on live
-  top-level paths, before control/quotation frames open and before a dead `exit`
-  path. Mid-control locals are static rejections, not build-preflight-only style
-  failures.
-- **Dead paths only admit structural closers:** after `throw`, `die`, `exit`,
-  `leave`, or `again`, ordinary tokens are unreachable and must reject. Only
-  merge/close tokens (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
-  may appear while `DEADP` is set.
-- **Raw role casts are not refiners:** `>LEN`/`>IDX`/`>COUNT`/`>OFF` are trusted
-  identity casts. Public libraries should expose checked constructors (`A-LEN`,
-  `VEC-IDX`, `STR-OFF`, `JW-LEN`, `M-OFF`) and use typed helper variants so
-  length/count/offset swaps fail under `CHECK!` before runtime.
-- **Signature atom syntax needs direct smoke probes:** prefix predicates take the
-  `s"` length already on the stack. Passing an extra literal length left a
-  phantom cell under `SIG-PREFIX?` and crashed atom parsing; prove new signature
-  tokens with direct `ATOM-TOK?`/`TOK-TYPE` probes before rebuilding.
-- **Checked higher-order signatures can publish themselves:** quotation-bearing
-  explicit effects such as `DIP`/`KEEP` now render into `USIGS` and show up in
-  `tools/public-signatures.f`; do not keep a `TRUST` row for a checked body just
-  to pin its public scheme.
-- **DSL definers should reuse checked colon paths:** `KERNEL:` is a compiler
-  keyword alias for `:` so its body still goes through the normal signature
-  capture, hook check, and publication path; header-only markers such as `GRID:`
-  and `WHERE` stay immediate checked words that consume metadata tokens.
+- **Forth language rules live in `docs/forth.md`:** checker/type/style guidance
+  was moved out of this file so there is one standards source for stack comments,
+  `TRUST`, roles, locals, checked DSLs, booleans, pointer fields, quotations,
+  `catch`, and phase tokens.
+- **Checker model cutovers must rebind the hook:** reloading
+  `src/core/checker.f` and `src/core/render.f` without reloading
+  `src/core/check-hook.f` left `HOOK` calling the old `CHECK!`; the generated
+  bootstrap/fixpoint source has to refresh all three together.
+- **Old seeds may lack envp capture:** the Linux seed could read script arguments
+  but not `HB_TMP` through `GETENV`, so stage2/fixpoint now passes the temp root
+  explicitly after `--` and keeps generated paths under the build driver.
+- **`ptr-field` is cell-indexed:** Linux stage2 crashed in `ARGV$` because
+  `src/os/*/env.f` used `ptr-field` for DATA byte offsets and pre-multiplied
+  argv/envp indexes. Header reads are audited byte-offset boundaries; argv/envp
+  entries use raw cell indexes.
+- **Do not publish facts with empty trusted stubs:** adding
+  `HB-TARGET-LINUX?`/`HB-TARGET-MACOS?` to `src/core/roles.f` as empty
+  `TRUSTED:` words made `EM-ENTRY-ARGS` branch on stale stack data during
+  stage2 emission. Target predicates live in `src/os/<target>/target.f`; only
+  nominal identity casts belong in `roles.f`.
+- **Typed storage bugs cluster around raw state:** the Linux tree-shaker/env work
+  exposed pointer and boolean state cells that looked like plain `n` cells. The
+  durable rule belongs in `docs/forth.md`; the lesson is that removing unchecked
+  file scopes quickly finds these hidden contracts.
 
 ## Tool & Infra
 
@@ -146,9 +42,15 @@ lesson — keep the specific word/code/path, cut the prose.
   nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
   lints until the heavy wave drains.
 - **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
-  `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT`. Test fixtures
-  that spawn `hb` use named deadlines plus `RUN-ARGV-*-OUTCOME`, then assert
-  `PROC-OUTCOME-EXIT` and the expected code so timeouts fail with diagnostics.
+  `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT` (`rc 58` is
+  `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:
+  case/phase, executable, argv/load list, outcome kind/code, named rc, capture
+  bytes/cap, stdout, and stderr.
+- **Outcome helpers belong in process libraries:** `gate-common` had duplicated
+  the env/no-stdin outcome capture loop because `lib/process-env.f` only exposed
+  the stdin outcome variant. Add missing `RUN-ARGV-ENV-*-OUTCOME` helpers in the
+  process layer, with `process-env-test`, manifest, and docs rows, before wiring
+  gate attribution to them.
 - **Pool slot state is an invariant:** free=`-1`, active=`0`, done=`1`; set
   active before spawning. A live-count pool with free slots still marked free
   ignores its fds and spins forever after children exit.
@@ -207,13 +109,9 @@ lesson — keep the specific word/code/path, cut the prose.
   deps (`tools/date.f`, `lib/memory.f`, `lib/vector.f`, `tools/lint/intern.f`).
   Copy the `TEST-SUITE` list from `test/gate-stdlib.f` or the tool header instead
   of reconstructing from memory.
-- **Created list DSLs run directly:** pass `[: ITEM ;] NAME-FILES`, matching
-  `GE-FILES:`/`CHK-FILES:`. A generic `execute` wrapper needs a higher-order
-  effect the checker does not model and fails before testing the list.
-- **Checked dispatch rows need typed quotations:** in `tools/gate-json-assert.f`,
-  raw `[']` row actions reached `GJA-DISPATCH-ONE-FILE-ROW` as an untyped `n`
-  (`expected: ptr u8 n [ ptr u8 n-- ] actual: ptr u8 n n`). Use `[: ACTION ;]`
-  rows when a checked row helper executes a mode-specific command.
+- **Checked DSL incidents moved into the standard:** the `GE-FILES:`/`CHK-FILES:`
+  generic `execute` failure and `tools/gate-json-assert.f` raw `[']` row failure
+  are now covered by the checked DSL/quotation rules in `docs/forth.md`.
 - **Layout constants need one owner:** load `src/habu/layout.f` before every
   runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
   compatibility constants if the installed `bin/hb` needs them, then remove dups
@@ -314,11 +212,9 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Dispatch factoring starts with semantic groups:** split long native/recovery
   compiler dispatch chains into checked helper groups before adding a row DSL;
   source-shape tests guard helper presence, call graph, and removal of old chains.
-- **Emitter punctuation is semantic:** `BL,`, `LBL,`, `ADR,`, `ZBYTES,` are
-  distinct words; a dropped comma is a different token, surfacing as a terse
-  undefined-token exit in generated stage2. Source-shape regressions assert exact
-  punctuated tokens. Emitter stack comments describe the host/build stack
-  (`( -- )`, `( n -- )`); keep emitted runtime effects in adjacent prose.
+- **Emitter punctuation caused stage2 false trails:** a dropped comma changes the
+  token (`BL,` vs `BL`) and surfaced only as a terse undefined-token exit in
+  generated stage2; the durable emitter-source rule now lives in `docs/forth.md`.
 - **Mirrored codegen lands twice:** `src/habu/` and `bootstrap/cg/` are one
   contract, two sources — factor both, prove native fixpoint + Gforth recovery.
   They may use different assembler-word vocabularies for the same instructions;
@@ -463,13 +359,9 @@ lesson — keep the specific word/code/path, cut the prose.
   portable constants.
 - **Instruction disassemblers read instruction width:** `DISASM` loads one ARM64
   u32 at a time; a u64-load-and-mask can cross a 4-byte mmap fixture end.
-- **`die` is `( ptr u8 n n -- )`, no-return:** `0 0` is two ints, not a string;
-  emit a real `s" msg"` or byte-backed word; old `s" msg" type cr 1 die` doesn't
-  type-check, use `s" msg" code die`. Model process exits as branch-killing control
-  flow through certified wrappers; record no-return metadata sparsely (only
-  non-returning words + clearing redefinitions — a "returning" row per word adds
-  startup pressure). `throw` is catchable and needs its own exception/catch effect,
-  not the `die` model.
+- **`die` modeling belongs to the Forth standard:** the Linux AOT failure came
+  from treating `0 0` as a fake string and mixing `throw`/process-exit control
+  effects; the lasting rule now lives in `docs/forth.md`.
 
 ## Diagnostics & Benchmarks
 
@@ -480,12 +372,9 @@ lesson — keep the specific word/code/path, cut the prose.
   rows keep a source-preserving effect field (`R x -- R x`) beside the normalized
   one; `fix_return_stack` only when the data stack already matches (a bad `>r` that
   drops a declared output is `add_producer` first).
-- **JSON `s"` can't escape quotes:** build JSON/needles/rows with `lib/json-write.f`
-  or checked byte/field helpers (explicit quote bytes), never escaped string
-  literals. Cross-row JSON state copies `JSON-STRING$` bytes before the next
-  `JSON-PARSE` (shared reusable buffer). Row artifacts stream via a chunked Habu
-  emitter / OS-backed storage (`lib/memory.f`), never fixed-capacity builders or
-  host encoders — prompt/response/replay fields exceed small buffers.
+- **JSON quoting/storage split:** the `s"` quoting rule moved to `docs/forth.md`;
+  the infra lesson is that row artifacts exceeded fixed builders, so large
+  prompt/response/replay fields need chunked Habu emitters or OS-backed storage.
 - **Check phases must be silent:** `hb` can emit checker diagnostics yet exit 0 for
   a loaded file; live drivers treat ANY stdout/stderr from a check-only child as
   rejection. Expected-throw fixtures stay quiet (opt-in row/error reporters at the
@@ -563,6 +452,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `RUN-RC`). Large native tool bundles (lint tables + `json.f` + big buffers) can
   corrupt reads — lean standalone reader + distinct scratch vars; stream large
   JSONL in chunks, reserve fixed buffers only for bounded summaries.
+- **Build helper fixtures stay split by boundary:** composing bootstrap-codegen,
+  warm-image, build-fixpoint, hb-build, and codesign tests in one `hb` image hit
+  rc 76 before `hb-build-test.f` started, while each boundary group passed alone.
+  Keep `bootstrap-helper-fixtures`, `build-fixpoint-fixtures`, and
+  `hb-build-fixtures` separate.
 - **Captured gate children need heartbeat polls:** a silent child looks hung if
   `poll` waits the full timeout; gate capture loops poll in heartbeat slices,
   print label-only wait lines, keep child stdout/stderr for failures. Progress
@@ -597,27 +491,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **`stage2-src` cap is a builder contract:** AOT maker generation can exceed the
   256 KiB stage2 reader for tiny user source; reproduce with `hb-build` child
   output, raise the named cap deliberately, keep fail-closed overflow.
-- **Source-use guards match exact tokens:** required-word checks compare whole
-  source tokens, not substrings (`PROP-DEFAULTS` matched `PROP-DEFAULTS-OK?`;
-  boundary scans skip comments/strings, else `ENTRUSTED-VALUE` false-rejects).
-  Keep exact-token scanner helpers in a separate file loaded only by drivers that
-  need them (folding into the base bundle tips file/process tests into capacity
-  failure). `0<>` isn't a Habu word — use `0 = 0=`.
-- **Name numeric buffer-room inputs:** effects like `( cap used add -- )` are all
-  `n`; a stray `swap` type-checks but inverts capacity/add. Bind `add` at the
-  caller, pass `cap used add` explicitly. Emitter helpers own their output buffer
-  (a numeric renderer from another snippet type-checks while appending to the wrong
-  global buffer). Name decoder shift constants (`BYTE-BITS 7 *` destabilizes
-  locals-heavy defs); keep decoder bodies straight-line.
-- **Shared tool libraries end checked:** `tools/lint/lib.f` must not leave callers
-  in unchecked mode; downstream scanners declare+test any unchecked boundary
-  locally and reinstall `CHECK!` immediately after raw declarations. Immediate-word
-  fixtures (`postpone`/`compile,`) execute during compilation — keep wrappers
-  inside the tested boundary, then restore `CHECK!`. Replay fixtures keep the
-  first-bad path immutable (don't overwrite with a repaired candidate). Deep
-  factoring/comment-only fixes record `file:line` findings in a durable doc
-  (`docs/factorization-review.md`) and prove with focused source loads +
-  `trust-lint` + the native gate.
+- **Source scanners and lint cores exposed standards gaps:** substring source-use
+  matches, same-type numeric buffer arguments, and unchecked shared lint cores now
+  have durable rules in `docs/forth.md`. The remaining lesson is to keep bulky
+  exact-token scanner helpers out of base bundles unless their driver needs them.
 - **Commit is a gate, not a checkpoint:** the project rule now treats `jj commit`
   as blocked until changed Forth diffs are scanned for definitions and unchecked
   boundaries, exact owning `bin/hb --load ...` paths are checked, and boundary
@@ -642,14 +519,9 @@ lesson — keep the specific word/code/path, cut the prose.
   the same primitive-facing `$1002` anonymous/private `mmap` convention as
   `lib/memory.f` for that buffer; raw Linux `$22` is for emitted startup syscalls,
   not the public `mmap` primitive.
-- **Phase tokens should reach the final side effect:** `asm` on `BUILD-IMAGE`
-  only proves wrapping order. Keep the ghost token alive through signing and the
-  final write (`img`), and through snapshot header construction to stream write
-  (`snap`), so checked callers cannot call a later boundary out of order.
-- **Seal the implicit signature row:** row polymorphism must not let a body borrow
-  below declared inputs. A stack-preserving trusted effect (`img -- img`,
-  `fd -- fd`) can otherwise satisfy final output by binding the implicit base row,
-  hiding underflow. Keep the base row open after body checking.
+- **Phase-token and row-sealing fixes moved into the standard:** the `asm`/`img`/
+  `snap` ordering and implicit-row underflow lessons are now checker/type-model
+  rules in `docs/forth.md`.
 - **Benchmark driver buffers are shared infrastructure:** the LLM drivers route
   raw model text, repair packets, bundle output, and checker captures through
   `DS-*` spans. Keep those spans OS-backed and capacity-checked at the shared

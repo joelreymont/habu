@@ -43,6 +43,9 @@ $3668 constant RRECP-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+s" ARGC-CELL" s" -- n" TRUST
+s" ARGV-CELL" s" -- n" TRUST
+s" ENVP-CELL" s" -- n" TRUST
 $3688 constant PEND-CELL
 $3690 constant TKA-CELL
 $3698 constant TKL-CELL

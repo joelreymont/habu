@@ -15,6 +15,8 @@ $19 constant GB-LC-SEGMENT-64
 $464C457F constant GB-ELF-MAGIC
 $B7 constant GB-ELF-MACHINE-AARCH64
 1 constant GB-ELF-PT-LOAD
+2 constant GB-ELF-PT-DYNAMIC
+3 constant GB-ELF-PT-INTERP
 1 constant GB-ELF-PF-X
 2 constant GB-ELF-PF-W
 4 constant GB-ELF-PF-R
@@ -24,7 +26,19 @@ $B7 constant GB-ELF-MACHINE-AARCH64
 56 constant GB-ELF-PHNUM-OFF
 0 constant GB-ELF-PH-TYPE-OFF
 4 constant GB-ELF-PH-FLAGS-OFF
+8 constant GB-ELF-PH-FILE-OFF
+16 constant GB-ELF-PH-VADDR-OFF
 32 constant GB-ELF-PH-FILESZ-OFF
+$120 constant GB-ELF-INTERP-OFF
+27 constant GB-ELF-INTERP-SZ
+$1B8 constant GB-ELF-RELA-OFF
+$500000 constant GB-ELF-RW-VA
+$5000B0 constant GB-ELF-DLOPEN-SLOT
+$5000B8 constant GB-ELF-DLSYM-SLOT
+$C0 constant GB-ELF-RW-SZ
+$B0 constant GB-ELF-DYNAMIC-SZ
+$100000401 constant GB-ELF-DLOPEN-RINFO
+$200000401 constant GB-ELF-DLSYM-RINFO
 34 constant GB-DQ
 
 create GB-SRC-PATH FS-PATH-CAP allot
@@ -62,7 +76,7 @@ variable GB-LC-OFF
    GB-SRC$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
 
 : GB-ARGV+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
+   GE-ARG+ ;
 
 : GB-TARGET-UNKNOWN ( -- )
    E-BUILD-SOURCE throw ;
@@ -81,26 +95,26 @@ variable GB-LC-OFF
 : GB-BUILD-ARGV ( -- )
    GE-HB-RESET
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
-   s" lib/build.f"  >LEN PROC-ARGV+
-   s" lib/codesign.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
-   s" tools/hb-build.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" GB-ARGV+
+   s" lib/errors.f" GB-ARGV+
+   s" lib/string.f" GB-ARGV+
+   s" lib/fs.f" GB-ARGV+
+   s" lib/fs-mutate.f" GB-ARGV+
+   s" lib/process.f" GB-ARGV+
+   s" lib/process-argv.f" GB-ARGV+
+   s" lib/process-env.f" GB-ARGV+
+   s" lib/source.f" GB-ARGV+
+   s" lib/build.f" GB-ARGV+
+   s" lib/codesign.f" GB-ARGV+
+   s" tools/build-fixpoint.f" GB-ARGV+
+   s" tools/hb-build-lib.f" GB-ARGV+
+   s" tools/hb-build.f" GB-ARGV+
+   s" --" GB-ARGV+ ;
 
 : GB-HB-BUILD-ARGS ( -- )
-   GB-SRC$  >LEN PROC-ARGV+
-   s" -o"  >LEN PROC-ARGV+
-   GB-OUT$  >LEN PROC-ARGV+ ;
+   GB-SRC$ GB-ARGV+
+   s" -o" GB-ARGV+
+   GB-OUT$ GB-ARGV+ ;
 
 : GB-HB-BUILD-CAPTURE ( -- )
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
@@ -124,25 +138,25 @@ variable GB-LC-OFF
 
 : GB-AOT-REPORT ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-HB-RESET
-   s" tools/aot-call-report.f"  >LEN PROC-ARGV+
-   GB-OUT$  >LEN PROC-ARGV+
+   s" tools/aot-call-report.f" GB-ARGV+
+   GB-OUT$ GB-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    GB-REPORT$ GT-OUT$ WRITE-ALL ;
 
 : GB-GJA-ARGV ( -- )
    GE-HB-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
+   s" --load" GB-ARGV+
+   s" lib/errors.f" GB-ARGV+
+   s" lib/memory.f" GB-ARGV+
+   s" tools/json.f" GB-ARGV+
+   s" tools/gate-json-assert.f" GB-ARGV+
+   s" --" GB-ARGV+ ;
 
 : GB-GJA ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    GB-GJA-ARGV
-   mode modeu  >LEN PROC-ARGV+
-   GB-REPORT$  >LEN PROC-ARGV+
+   mode modeu GB-ARGV+
+   GB-REPORT$ GB-ARGV+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK ;
 
