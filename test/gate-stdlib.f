@@ -569,6 +569,10 @@ TEST-SUITE float-parse
    lib/errors.f lib/string.f lib/test.f lib/float.f lib/float-test.f
 ;TEST-SUITE
 
+TEST-SUITE fmt-numbers
+   lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f lib/fmt-test.f
+;TEST-SUITE
+
 TEST-SUITE array-helpers
    lib/errors.f lib/array.f lib/array-test.f
 ;TEST-SUITE

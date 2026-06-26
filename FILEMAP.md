@@ -183,6 +183,8 @@ points stay listed.
 - `lib/ffi-test.f` — focused coverage for FFI dlopen/dlsym, fixed-arity calls, and C-string marshalling.
 - `lib/float.f` — checked decimal string to IEEE-double parsing (STR>FLOAT) with power-of-ten scaling.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.
+- `lib/fmt.f` — checked number formatting into the string builder: unsigned/signed ints and fixed-decimal floats.
+- `lib/fmt-test.f` — focused coverage for integer and fixed-decimal float formatting and rounding.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
