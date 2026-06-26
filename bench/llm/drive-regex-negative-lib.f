@@ -53,9 +53,7 @@
    MRUN-TEXT$ DRX-EVALUATE-TEXT ;
 
 : DRX-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DS-PREPARE
    0 DS-TOKENS !
    DS-RAW-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL

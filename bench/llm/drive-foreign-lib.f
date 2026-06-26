@@ -442,7 +442,7 @@ variable DFG-START
    DS-WRITE-EMPTY-ARTIFACTS ;
 
 : DFG-PROMPT-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U !
+   path pathu DS-READ-OUT-FILE
    DS-OUT-BUF DS-OUT-U @ DS-PROMPT-LN ;
 
 : DFG-ADD-FEEDBACK ( -- )
@@ -470,9 +470,7 @@ variable DFG-START
    E-DS-USAGE throw ;
 
 : DFG-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DFG-PREPARE
    DFG-STATE-RESET
    DFG-WALL-SNAPSHOT

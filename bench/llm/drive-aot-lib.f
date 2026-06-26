@@ -270,9 +270,7 @@ variable DA-BIN-U
    MRUN-TEXT$ DA-EVALUATE-TEXT ;
 
 : DA-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DA-PREPARE
    0 DS-TOKENS !
    DS-RAW-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL

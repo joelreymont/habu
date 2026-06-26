@@ -6,11 +6,12 @@
 \ lib/memory.f, lib/json-write.f, src/core/sha256.f, and bench/llm/live-row.f.
 
 4096 constant DS-PROMPT-CAP
-8192 constant DS-CAND-CAP
+8192 constant DS-CAND-INIT-CAP
 8192 constant DS-TEST-CAP
-8192 constant DS-OUT-CAP
-8192 constant DS-ERR-CAP
+8192 constant DS-OUT-INIT-CAP
+8192 constant DS-ERR-INIT-CAP
 1024 constant DS-MSG-CAP
+4 constant DS-CAPTURE-64K
 45 constant DS-DASH
 48 constant DS-ZERO
 57 constant DS-NINE
@@ -27,10 +28,10 @@
 -3232 constant E-DS-CANDIDATE
 
 create DS-PROMPT-BUF DS-PROMPT-CAP allot
-create DS-CAND-BUF DS-CAND-CAP allot
+create DS-CAND-BOOT DS-CAND-INIT-CAP allot
 create DS-TEST-BUF DS-TEST-CAP allot
-create DS-OUT-BUF DS-OUT-CAP allot
-create DS-ERR-BUF DS-ERR-CAP allot
+create DS-OUT-BOOT DS-OUT-INIT-CAP allot
+create DS-ERR-BOOT DS-ERR-INIT-CAP allot
 create DS-MSG-BUF DS-MSG-CAP allot
 
 create DS-ROOT-BUF FS-PATH-CAP allot
@@ -43,9 +44,15 @@ create DS-TEST-PATH FS-PATH-CAP allot
 create DS-BUNDLE-PATH FS-PATH-CAP allot
 
 variable DS-PROMPT-U
+variable DS-CAND-A
+variable DS-CAND-CAP-U
 variable DS-CAND-U
 variable DS-TEST-U
+variable DS-OUT-A
+variable DS-OUT-CAP-U
 variable DS-OUT-U
+variable DS-ERR-A
+variable DS-ERR-CAP-U
 variable DS-ERR-U
 variable DS-MSG-U
 variable DS-ROOT-U
@@ -105,6 +112,98 @@ variable DS-STOP
 : DS-RUN-TIMEOUT ( -- n )
    DS-RUN-TIMEOUT-U @ 0 > if DS-RUN-TIMEOUT-U @ exit then
    DS-HB-TIMEOUT ;
+
+: DS-CAND-A-FIELD ( -- ptr ptr u8 )
+   DS-CAND-A 0 ptr-field ;
+
+: DS-OUT-A-FIELD ( -- ptr ptr u8 )
+   DS-OUT-A 0 ptr-field ;
+
+: DS-ERR-A-FIELD ( -- ptr ptr u8 )
+   DS-ERR-A 0 ptr-field ;
+
+: DS-CAND-BUF ( -- ptr u8 )
+   DS-CAND-A-FIELD @ ;
+
+: DS-OUT-BUF ( -- ptr u8 )
+   DS-OUT-A-FIELD @ ;
+
+: DS-ERR-BUF ( -- ptr u8 )
+   DS-ERR-A-FIELD @ ;
+
+: DS-CAND-BUF! ( ptr u8 -- )
+   DS-CAND-A-FIELD ! ;
+
+: DS-OUT-BUF! ( ptr u8 -- )
+   DS-OUT-A-FIELD ! ;
+
+: DS-ERR-BUF! ( ptr u8 -- )
+   DS-ERR-A-FIELD ! ;
+
+: DS-CAND-CAP ( -- n )
+   DS-CAND-CAP-U @ ;
+
+: DS-OUT-CAP ( -- n )
+   DS-OUT-CAP-U @ ;
+
+: DS-ERR-CAP ( -- n )
+   DS-ERR-CAP-U @ ;
+
+: DS-CAND-SPAN! ( ptr u8 n -- )
+   DS-CAND-CAP-U ! DS-CAND-BUF! ;
+
+: DS-OUT-SPAN! ( ptr u8 n -- )
+   DS-OUT-CAP-U ! DS-OUT-BUF! ;
+
+: DS-ERR-SPAN! ( ptr u8 n -- )
+   DS-ERR-CAP-U ! DS-ERR-BUF! ;
+
+: DS-MIN-ONE ( n -- n )
+   dup 1 < if drop 1 then ;
+
+: DS-ADD-NEED ( n n -- n ) {: used inc :}
+   used 0 < if E-DS-CAPACITY throw then
+   inc 0 < if E-DS-CAPACITY throw then
+   MEM-MAX-N inc - used < if E-DS-CAPACITY throw then
+   used inc + ;
+
+: DS-ENSURE-CAND ( n -- ) {: need :}
+   need DS-MIN-ONE {: want :}
+   want DS-CAND-CAP <= if exit then
+   want MEM-ALLOC-64K-SPAN DS-CAND-SPAN! ;
+
+: DS-ENSURE-OUT ( n -- ) {: need :}
+   need DS-MIN-ONE {: want :}
+   want DS-OUT-CAP <= if exit then
+   want MEM-ALLOC-64K-SPAN DS-OUT-SPAN! ;
+
+: DS-ENSURE-ERR ( n -- ) {: need :}
+   need DS-MIN-ONE {: want :}
+   want DS-ERR-CAP <= if exit then
+   want MEM-ALLOC-64K-SPAN DS-ERR-SPAN! ;
+
+: DS-CAND-ROOM ( n -- )
+   DS-CAND-U @ swap DS-ADD-NEED DS-ENSURE-CAND ;
+
+: DS-CAPTURE-CAP ( -- n )
+   DS-CAPTURE-64K MEM-64K-BYTES ;
+
+: DS-ENSURE-CAPTURE ( -- )
+   DS-CAPTURE-CAP DS-ENSURE-OUT
+   DS-CAPTURE-CAP DS-ENSURE-ERR ;
+
+: DS-OUT-TEXT! ( ptr u8 n -- ) {: text:ptr textu :}
+   textu DS-ENSURE-OUT
+   text DS-OUT-BUF textu BYTE-COPY
+   textu DS-OUT-U ! ;
+
+: DS-READ-OUT-FILE ( ptr u8 n -- ) {: path:ptr pathu :}
+   path pathu FILE-SIZE DS-ENSURE-OUT
+   path pathu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U ! ;
+
+DS-CAND-BOOT DS-CAND-INIT-CAP DS-CAND-SPAN!
+DS-OUT-BOOT DS-OUT-INIT-CAP DS-OUT-SPAN!
+DS-ERR-BOOT DS-ERR-INIT-CAP DS-ERR-SPAN!
 
 : DS-BUF-ROOM ( n n n -- ) {: add cap used :}
    add 0 < if E-DS-CAPACITY throw then
@@ -184,9 +283,11 @@ TRUSTED: DS-SEED$ ( -- ptr u8 n )
    0 DS-CAND-U ! ;
 
 : DS-CAND+ ( ptr u8 n -- )
+   dup DS-CAND-ROOM
    DS-CAND-BUF DS-CAND-CAP DS-CAND-U DS-BUF+ ;
 
 : DS-CAND-C ( n -- )
+   1 DS-CAND-ROOM
    DS-CAND-BUF DS-CAND-CAP DS-CAND-U DS-BUF-C ;
 
 : DS-CAND-LN ( ptr u8 n -- )
@@ -516,6 +617,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
 
 : DS-HB-CAPTURE-MS ( n -- ) {: timeout :}
    PROC-ENV-INHERIT-MISSING
+   DS-ENSURE-CAPTURE
    s" bin/hb" >LEN DS-OUT-BUF DS-OUT-CAP >LEN
    DS-ERR-BUF DS-ERR-CAP >LEN timeout >MS
    RUN-ARGV-ENV-CAPTURE {: outu erru rc :}
@@ -751,9 +853,7 @@ TRUSTED: DS-LINE$ ( -- ptr u8 n )
    DS-WRITE-EMPTY-ARTIFACTS ;
 
 : DS-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DS-PREPARE
    0 DS-TOKENS !
    DS-RAW-PATH$ DS-OUT-BUF DS-OUT-U @ WRITE-ALL

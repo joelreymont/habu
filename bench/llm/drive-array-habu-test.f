@@ -5,6 +5,41 @@ T-RESET
 : DAHT-PROMPT-HAS ( ptr u8 n -- )
    DS-PROMPT$ 2swap CONTAINS? TTRUE ;
 
+9000 constant DAHT-BIG-N
+variable DAHT-BIG-A
+
+: DAHT-BIG-A-FIELD ( -- ptr ptr u8 )
+   DAHT-BIG-A 0 ptr-field ;
+
+: DAHT-BIG-A@ ( -- ptr u8 )
+   DAHT-BIG-A-FIELD @ ;
+
+: DAHT-BIG-A! ( ptr u8 -- )
+   DAHT-BIG-A-FIELD ! ;
+
+: DAHT-BIG-ALLOC ( -- )
+   DAHT-BIG-N MEM-ALLOC-64K-SPAN drop DAHT-BIG-A! ;
+
+: DAHT-BIG-FILL ( -- )
+   0 begin dup DAHT-BIG-N < while
+      32 DAHT-BIG-A@ over + c!
+      1+
+   repeat drop ;
+
+: DAHT-BIG-COPY ( ptr u8 n n -- ) {: src:ptr u off :}
+   src DAHT-BIG-A@ off + u BYTE-COPY ;
+
+: DAHT-BIG$ ( -- ptr u8 n )
+   DAHT-BIG-A@ DAHT-BIG-N ;
+
+: DAHT-BIG-ARGMAX$ ( -- ptr u8 n )
+   DAHT-BIG-ALLOC
+   DAHT-BIG-FILL
+   s" : ARGMAX ( ptr a n -- i64 ) >LEN A-ARGMAX IDX>N ;" {: src:ptr u :}
+   10 DAHT-BIG-A@ DAHT-BIG-N u - 1- + c!
+   src u DAHT-BIG-N u - DAHT-BIG-COPY
+   DAHT-BIG$ ;
+
 s" id	label	command	args	parser	token_fields	timeout_s
 fixture	Fixture	/bin/echo	{prompt}	raw		2
 " MR-REGISTRY!
@@ -50,6 +85,20 @@ LR-ROW$ s" prompt_sha256" CONTAINS? TTRUE
 LR-ROW$ s" final_bundle_sha256" CONTAINS? TTRUE
 LR-ROW$ s" runtime_repetitions" CONTAINS? TTRUE
 LR-ROW$ s" runtime_warmups" CONTAINS? TTRUE
+LR-ROW$ s" ok" CONTAINS? TTRUE
+CLEANUP-RUN
+
+s" fixture" MR-REQUIRE s" arrays" DS-CATEGORY!
+s" test-seed" DS-SEED! 1 DS-TRIAL ! 49 DS-TASK-ORDER ! 2 DS-K ! 1 DS-MAX-REPAIRS !
+49 DS-ID ! s" ARGMAX" DS-NAME! s" ptr a n -- i64" DS-SIG! s" Return first max index." DS-SPEC!
+s" as" DAH-CONV! s" [3 1 4 1 5] -> 4; [9 1 1] -> 0; [1 5 5 2] -> 1; [5] -> 0" DAH-VECTORS! DAH-VECTORS$ DS-TESTS!
+s" stdlib" DAH-ARM!
+DAHT-BIG-ARGMAX$ DAH-RUN-TEXT
+LR-OUTCOME$ s" pass" T$=
+LR-FIRST-CHECKER$ s" certified" T$=
+LR-TESTS-PASSED @ -1 T=
+DS-OUT-CAP 8192 > TTRUE
+LR-ROW$ s" habu-stdlib" CONTAINS? TTRUE
 LR-ROW$ s" ok" CONTAINS? TTRUE
 CLEANUP-RUN
 

@@ -649,3 +649,8 @@ lesson — keep the specific word/code/path, cut the prose.
   below declared inputs. A stack-preserving trusted effect (`img -- img`,
   `fd -- fd`) can otherwise satisfy final output by binding the implicit base row,
   hiding underflow. Keep the base row open after body checking.
+- **Benchmark driver buffers are shared infrastructure:** the LLM drivers route
+  raw model text, repair packets, bundle output, and checker captures through
+  `DS-*` spans. Keep those spans OS-backed and capacity-checked at the shared
+  helpers (`DS-OUT-TEXT!`, `DS-READ-OUT-FILE`, `DS-HB-CAPTURE-MS`) so one arm
+  cannot silently bias pass/reject accounting with a local fixed-buffer throw.

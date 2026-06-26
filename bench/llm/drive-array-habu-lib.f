@@ -343,7 +343,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
 
 : DAH-APPEND-FILE-TO ( ptr u8 n ptr u8 n -- )
    {: file:ptr fileu dst:ptr dstu :}
-   file fileu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U !
+   file fileu DS-READ-OUT-FILE
    dst dstu DS-OUT-BUF DS-OUT-U @ APPEND-FILE ;
 
 : DAH-WRITE-SCRIPT ( -- )
@@ -543,7 +543,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    DAH-ROUND @ 1+ DAH-ROUND ! ;
 
 : DAH-PROMPT-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U !
+   path pathu DS-READ-OUT-FILE
    DS-OUT-BUF DS-OUT-U @ DS-PROMPT-LN ;
 
 : DAH-REJECT-FEEDBACK ( -- )
@@ -617,9 +617,7 @@ TRUSTED: DAH-ARM$ ( -- ptr u8 n )
    repeat ;
 
 : DAH-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DAH-PREPARE
    DAH-STATE-RESET
    DAH-WALL-SNAPSHOT

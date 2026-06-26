@@ -275,6 +275,7 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
 
 : DFH-EXTRACT-CANDIDATE ( ptr u8 n -- ) {: a:ptr u :}
    DS-CAND-RESET
+   u DS-ENSURE-CAND
    a u DS-CAND-BUF DS-CAND-CAP FC-EXTRACT-CANDIDATE if
       DS-CAND-U !
       exit
@@ -392,7 +393,7 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    DS-WRITE-EMPTY-ARTIFACTS ;
 
 : DFH-PROMPT-FILE+ ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu DS-OUT-BUF DS-OUT-CAP READ-ALL DS-OUT-U !
+   path pathu DS-READ-OUT-FILE
    DS-OUT-BUF DS-OUT-U @ DS-PROMPT-LN ;
 
 : DFH-REJECT-FEEDBACK-REPAIR ( -- )
@@ -470,9 +471,7 @@ TRUSTED: DFH-BUNDLE$ ( -- ptr u8 n )
    repeat ;
 
 : DFH-RUN-TEXT ( ptr u8 n -- ) {: text:ptr textu :}
-   textu DS-OUT-CAP > if E-DS-CAPACITY throw then
-   text DS-OUT-BUF textu BYTE-COPY
-   textu DS-OUT-U !
+   text textu DS-OUT-TEXT!
    DFH-PREPARE
    DFH-STATE-RESET
    DFH-NEXT-ROUND
