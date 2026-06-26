@@ -91,7 +91,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 

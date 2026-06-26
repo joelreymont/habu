@@ -176,7 +176,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
@@ -1402,6 +1402,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
+   LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    ['] PFX-PATH-ROW PFX-FILES ;
@@ -2376,8 +2377,12 @@ variable CFSK2
    9 DATA PEND-CELL LDR,  9 lcompile CBNZ, ;
 
 : C-COLON-TOKEN? ( n -- ) {: lnotcolon :}
-   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
-   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND, ;
+   LBL LBL {: ok ktry :}
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-EQ ok BCOND,
+   ktry LBL,
+   0 LKWKERNEL @ ADR,  1 7 MOVZ,  LKWCMP @ BL,  0 lnotcolon CBZ,
+   ok LBL, ;
 
 : C-COLON-CODE-ROOM ( -- )
    LBL {: cpok :}
@@ -2753,7 +2758,7 @@ variable CFSK2
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !
+   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWQUOT !  LBL LKWSEMIQ ! ;
 
 : EMIT-LABEL-SIGNALS ( -- )

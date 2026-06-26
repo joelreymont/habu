@@ -646,6 +646,7 @@ create ENDLOC-KW 58 c, 125 c,
    LKWCOMPC @ LBL,  s" compile," BYTES,
    LKWDOES @ LBL,  s" does>" BYTES,
    LKWTRUSTED @ LBL, s" trusted:" BYTES,
+   LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    ['] PFX-PATH-ROW PFX-FILES ;
@@ -1739,9 +1740,10 @@ s" c-local-ref" s" n n --" TRUST
       9 DATA PEND-CELL LDR,  9 LCOMPILE @ CBNZ, ;
 
 : EM-INTERPRET-COLON ( n -- ) {: lnotcolon :}
-   LBL LBL {: cpok ndok :}
-   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotcolon BCOND,
-   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE lnotcolon BCOND,
+   LBL LBL LBL LBL {: cpok ndok kcolon ktry :}
+   9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE ktry BCOND,
+   kcolon LBL,
       2 3 MOVZ,  LPROT @ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -1771,6 +1773,9 @@ s" c-local-ref" s" n n --" TRUST
          9 $D10043FF LIT64,  LCEMIT @ BL,
          9 $F90003FE LIT64,  LCEMIT @ BL,
          LMAIN @ B,
+   ktry LBL,
+   0 LKWKERNEL @ ADR,  1 7 MOVZ,  LKWCMP @ BL,  0 lnotcolon CBZ,
+   kcolon B,
    lnotcolon LBL, ;
 s" em-interpret-colon" s" n --" TRUST
 
@@ -2154,7 +2159,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !
+   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWQUOT !  LBL LKWSEMIQ ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )

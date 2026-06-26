@@ -818,3 +818,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
+1	ptx	lib/ptx.f	module			lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	checked PTX kernel header vocabulary
+1	ptx	lib/ptx.f	word	PTX-BLOCK-LEGAL?	(n -- bool)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	validate a CUDA block size token
+1	ptx	lib/ptx.f	word	PTX-BLOCK-CHECK	(n --)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	throw E-PTX-BLOCK for an illegal CUDA block size
+1	ptx	lib/ptx.f	word	%BLOCK	(n --)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	record the active PTX kernel block size
+1	ptx	lib/ptx.f	word	PTX-BLOCK@	(-- n)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	return the active PTX kernel block size
+1	ptx	lib/ptx.f	word	PTX-PARSE-REQ	(-- ptr u8 n)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	parse one required kernel header token
+1	ptx	lib/ptx.f	word	PTX-SKIP-ONE	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	consume one kernel header token
+1	ptx	lib/ptx.f	word	GRID:	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX grid header marker
+1	ptx	lib/ptx.f	word	WHERE	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX launch constraint marker

@@ -255,6 +255,7 @@ variable SUITE-SLICE
    s" table-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" regex-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-TOOL? ( -- bool )
@@ -551,6 +552,10 @@ TEST-SUITE regex-stdlib
 
 TEST-SUITE map-stdlib
    lib/errors.f lib/string.f lib/map.f lib/map-test.f
+;TEST-SUITE
+
+TEST-SUITE ptx-stdlib
+   lib/errors.f lib/test.f lib/ptx.f lib/ptx-test.f
 ;TEST-SUITE
 
 TEST-SUITE-STDIN source-stdlib-stdin DATA

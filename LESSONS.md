@@ -132,6 +132,10 @@ lesson — keep the specific word/code/path, cut the prose.
   explicit effects such as `DIP`/`KEEP` now render into `USIGS` and show up in
   `tools/public-signatures.f`; do not keep a `TRUST` row for a checked body just
   to pin its public scheme.
+- **DSL definers should reuse checked colon paths:** `KERNEL:` is a compiler
+  keyword alias for `:` so its body still goes through the normal signature
+  capture, hook check, and publication path; header-only markers such as `GRID:`
+  and `WHERE` stay immediate checked words that consume metadata tokens.
 
 ## Tool & Infra
 

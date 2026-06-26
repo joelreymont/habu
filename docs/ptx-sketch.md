@@ -26,7 +26,7 @@ as metavariables; executable checked code must use the explicit tokens.
 | `uniform<T>` | a `T` provably identical across all lanes of the block |
 | `rowidx<extent-r>` | row index proven `< R` (sound only under the launch ABI, below) |
 
-`%block B` requires `B` ∈ a legal CUDA block size: a **multiple of 32, `1 ≤ B ≤
+`%BLOCK B` requires `B` ∈ a legal CUDA block size: a **multiple of 32, `1 ≤ B ≤
 1024`**. Warp count is `⌈B/32⌉`; a partial final warp uses an active-lane mask.
 (Vector loads — `vec4<T>` / `LOAD.V4` — are **not in v0**; they need a dedicated
 vector-lane + tail effect and land with the vectorization milestone.)
@@ -106,12 +106,17 @@ inactive lane (poison), so "load returns 0" is gone — masks, not magic zeros.
 Equal length is *proven*: both spans share extent `N` (built by `MK-SPAN=`). No
 collective ⇒ masked lanes may simply not store (a branch is legal here).
 
+Load `lib/errors.f lib/ptx.f` before kernel source. `KERNEL:` is a compiler
+keyword alias for `:` so the normal checker verifies the body against the
+declared effect; `GRID:` and `WHERE` are compile-time header markers consumed by
+`lib/ptx.f`.
+
 ```forth
-%block 256
-KERNEL: SAXPY  ( span<G,f32,N>  span<G,f32,N>  uniform<f32> -- )  grid: ceil(N/256)
-   {: x:span<G,f32,N>  y:span<G,f32,N>  a:uniform<f32> :}
-   x GRID-CTX {: g :}             \ gridctx<256,N>
-   x g LOAD  a SCALE              \ tile<f32,256,M> = a*x   (mul.rn)
+%BLOCK 256
+KERNEL: SAXPY  ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-256
+   {: x:span<space-global,f32,extent-n>  y:span<space-global,f32,extent-n>  a:uniform<f32> :}
+   x GRID-CTX {: g:gridctx<block-256,extent-n,mask-live> :}
+   x g LOAD  a SCALE              \ tile<f32,block-256,mask-live> = a*x
    y g LOAD  +.                   \ + y                     (add.rn)
    y g STORE ;
 ```
@@ -124,13 +129,13 @@ global index). Collectives ⇒ **bounds are predicated, never branched**, and th
 reduction is mask-aware. Requires `C > 0`.
 
 ```forth
-%block 1024
-KERNEL: SOFTMAX-ROWS ( matrix<G,f32,R,C>  matrix<G,f32,R,C> -- )  grid: R   where C <= 1024
-   {: in:matrix<G,f32,R,C>  out:matrix<G,f32,R,C> :}
-   ROW {: r :}                    \ rowidx<R>
-   in r ROW-SPAN {: xs :}         \ span<G,f32,C>
-   xs ROW-CTX {: c :}             \ rowctx<1024,C> ; mask = tid < C
-   xs c LOAD {: x :}              \ tile<f32,1024,M>
+%BLOCK 1024
+KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r   WHERE extent-c <= block-1024
+   {: in:matrix<space-global,f32,extent-r,extent-c>  out:matrix<space-global,f32,extent-r,extent-c> :}
+   ROW {: r:rowidx<extent-r> :}
+   in r ROW-SPAN {: xs:span<space-global,f32,extent-c> :}
+   xs ROW-CTX {: c:rowctx<block-1024,extent-c,mask-live> :}
+   xs c LOAD {: x:tile<f32,block-1024,mask-live> :}
    x BLOCK-MAX {: m :}            \ uniform<f32>  (inactive lanes seed -inf)
    x m B- EXP. {: e :}            \ tile = exp(x - m)
    e BLOCK-SUM {: s :}            \ uniform<f32>  (inactive lanes seed 0)
@@ -263,8 +268,8 @@ equal correctness, or there is no claim.
    is the checker term machinery: `<`/`>`/`,` signature tokens, atom tokens for
    space/extent/mask/block/alignment, `T-PARAM` side tables for terms such as
    `span<space-global,f32,extent-n>`, field-by-field unify, render/record
-   round-trip, and a self-host fixpoint rebuild. The remaining M2 surface is the
-   PTX defining vocabulary: `KERNEL:`, `%block`, `grid:`, and `where`.
+   round-trip, and a self-host fixpoint rebuild. The M2 defining vocabulary is
+   `KERNEL:` plus `lib/ptx.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
 3. **Toolchain spike (no checker):** a minimal PTX encoder under `src/arch/ptx/`
    (a new ISA target sharing none of `src/arch/arm64/`) emits header-complete
    `saxpy.ptx` from hand-built IR → `ptxas -arch=sm_87` → run on the Orin via the

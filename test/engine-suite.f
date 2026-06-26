@@ -58,6 +58,8 @@ TPLOOP 5 T=
 TJ 12 T=
 : TLEAVE ( -- n ) 0 10 0 do 1 + dup 4 = if leave then loop ;
 TLEAVE 4 T=
+KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
+8 TKERNEL-INC 9 T=
 
 \ return stack, exit, recurse
 : TRS ( -- n ) 1 2 >r 10 + r> + ;
