@@ -142,19 +142,21 @@ lesson — keep the specific word/code/path, cut the prose.
   handle. FFI usage: `DLOPEN-SLOT @`/`DLSYM-SLOT @` give dlopen/dlsym; `ffi-call
   ( argbuf fn -- rc )` loads x0..x7 (≤8 args). Run-mode hangs (use `--load`, not
   `bin/hb file.f`); processes hang on exit unless the module/ctx are released.
-- **GPU launch blocked on an FFI-ABI / context-binding gap, not the launch API.**
-  The old ≤8-arg launch path (`cuMemAlloc`/`cuMemsetD32`/`cuFuncSetBlockShape`/
-  `cuParamSetv`/`cuLaunchGrid`) avoids `cuLaunchKernel`'s 11 args, so it is
-  callable. But `cuMemAlloc` returns 201 INVALID_CONTEXT *even after*
-  `cuCtxSetCurrent` returns 0 (handle non-zero). The current context is
-  thread/TLS state CUDA reads per call; `ffi-call` (`BFFI-CALL`, habu1.f:982) only
-  marshals x0..x7 + BLR and likely doesn't preserve a register/TLS state CUDA's
-  context lookup needs (leading hypotheses: the AAPCS64 platform reg x18, or
-  TPIDR-based TLS, or a primary-context-state nuance). Needs FFI-trampoline
-  debugging (M1c-class) + a fixpoint rebuild (recoverable via `../habu/bin/hb`).
-  That single fix unblocks launch → CPU-golden → the eval matrix. Module load,
-  function lookup, and `cuInit` all work, so the chain is one ABI fix from a live
-  checked-kernel run.
+- **GPU launch WORKS — the blocker was driver SYMBOL VERSIONING, not the FFI/ABI
+  (resolved 2026-06-27).** `cuMemAlloc` returned 201 INVALID_CONTEXT *even though*
+  `cuCtxGetCurrent` confirmed the context was current (handle matched the retained
+  ctx) — which REFUTED the x18/TLS hypothesis. The real cause: the modern CUDA
+  driver's actual entry points are the **`_v2` symbols**; `dlsym("cuMemAlloc")`
+  returns a deprecated stub that fails. Using `cuMemAlloc_v2` / `cuMemsetD32_v2` /
+  `cuMemcpyDtoH_v2` (the non-versioned setup/launch symbols are fine: `cuInit`,
+  `cuDeviceGet`, `cuModuleLoad`, `cuModuleGetFunction`, `cuFuncSetBlockShape`,
+  `cuParamSetv`, `cuParamSetSize`, `cuLaunchGrid`, `cuCtxSynchronize`) the **full
+  SAXPY launch runs and is CORRECT** on the Orin: y = a*x+y = 3*2+0 = 6.0
+  (f32 0x40C00000), matching the CPU golden (`tools/ptx/cuda-launch.f`, PASS).
+  The deprecated `cuLaunchGrid`/`cuParamSet*` path (<=8 args) avoids needing an
+  `ffi-call` >8-arg extension for `cuLaunchKernel`. NO engine change was needed.
+  The eval-matrix data path is OPEN: emit checked kernel -> ptxas -> cubin ->
+  load -> launch -> compare golden, all from Habu.
 - **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
   checker instantiates a called word's effect by RE-PARSING its stored signature
   STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;

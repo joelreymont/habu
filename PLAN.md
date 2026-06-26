@@ -41,16 +41,17 @@ Built + tested this session (the older sections below predate it):
    the mask/extent-identity negatives reject. Mechanism now precisely located and
    bounded (see `LESSONS.md`): re-parse-per-call instantiation + unique atom
    naming in `SIG-TYPE`/`MK-ATOM`; needs a `checker.f` change + fixpoint rebuild.
-3. **PTX codegen → device** — *substantially validated on-device 2026-06-27* (this
-   IS an Orin: local GPU, `ptxas` 12.6, Tegra `libcuda`). Proven end-to-end:
-   checked SAXPY → emitted PTX → `ptxas -arch=sm_87` → cubin → **loaded as a live
-   GPU module via the Habu FFI** (`cuInit`/`cuDeviceGet`/`cuDevicePrimaryCtxRetain`/
-   `cuModuleLoad`/`cuModuleGetFunction` all rc 0, valid SAXPY function handle —
-   `tools/ptx/cuda-load.f`). Remaining for a full launch + CPU-golden compare:
-   device malloc/memcpy + param marshalling via the **old ≤8-arg launch API**
-   (`cuFuncSetBlockShape`/`cuParamSetv`/`cuLaunchGrid`) — no engine change needed
-   (avoids `cuLaunchKernel`'s 11 args, which would need an `ffi-call` stack-spill
-   extension = M1c). That full launch is the eval-matrix data path.
+3. **PTX codegen → device — WORKING on-device end-to-end (2026-06-27).** This IS an
+   Orin (local GPU, `ptxas` 12.6, Tegra `libcuda`, sm_87). The full chain runs and
+   is **verified correct on the GPU**: checked SAXPY → emitted PTX →
+   `ptxas -arch=sm_87` → cubin → load → **launch** → CPU-golden compare, all via
+   the Habu FFI. `tools/ptx/cuda-launch.f` launches SAXPY (x=2.0, y=0, a=3.0) and
+   reads back y = 6.0 (f32 0x40C00000) = PASS. The deprecated ≤8-arg launch API
+   (`cuFuncSetBlockShape`/`cuParamSetv`/`cuLaunchGrid`) avoids `cuLaunchKernel`'s
+   11 args, and the real driver entry points are the **`_v2`** memory symbols
+   (the earlier INVALID_CONTEXT was symbol versioning, not an ABI gap) — **no
+   engine change needed**. The eval-matrix data path is now OPEN: this generalizes
+   to the M11 kernel set + the maki/eval harness to produce the pass@k/GB-s matrix.
 
 The thesis "better target" claim stays **unmade** until item 3 produces the data.
 
