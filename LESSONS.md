@@ -50,6 +50,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
   nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
   lints until the heavy wave drains.
+- **Do not duplicate heavyweight boundary builds in aggregate gates:** move the
+  unique assertions into the dedicated AOT/REPL/fixpoint boundary slices, keep
+  stdlib tail focused on library fixtures, and protect shared maker caches with
+  an atomic lock so concurrent slices do not rebuild the same maker.
 - **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
   `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT` (`rc 58` is
   `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:

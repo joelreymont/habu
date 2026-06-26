@@ -92,9 +92,7 @@ variable GB-LC-OFF
    then
    GB-TARGET-UNKNOWN ;
 
-: GB-BUILD-ARGV ( -- )
-   GE-HB-RESET
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+: GB-BUILD-LOADS ( -- )
    s" --load" GB-ARGV+
    s" lib/errors.f" GB-ARGV+
    s" lib/string.f" GB-ARGV+
@@ -107,9 +105,18 @@ variable GB-LC-OFF
    s" lib/build.f" GB-ARGV+
    s" lib/codesign.f" GB-ARGV+
    s" tools/build-fixpoint.f" GB-ARGV+
+   s" tools/warm-run.f" GB-ARGV+
    s" tools/hb-build-lib.f" GB-ARGV+
    s" tools/hb-build.f" GB-ARGV+
    s" --" GB-ARGV+ ;
+
+: GB-BUILD-ARGV-TMP ( ptr u8 n -- ) {: tmp:ptr tmpu :}
+   GE-HB-RESET
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   GB-BUILD-LOADS ;
+
+: GB-BUILD-ARGV ( -- )
+   GT-ROOT GB-BUILD-ARGV-TMP ;
 
 : GB-HB-BUILD-ARGS ( -- )
    GB-SRC$ GB-ARGV+

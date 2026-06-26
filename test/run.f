@@ -11,11 +11,13 @@
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
 create TR-TOOLS-TRUST-BUF FS-PATH-CAP allot
+create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
 variable TR-TOOLS-TRUST-U
+variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 
 : TR-WARM$ ( -- ptr u8 n )
@@ -30,6 +32,9 @@ variable TR-PATH-U
 : TR-TOOLS-TRUST$ ( -- ptr u8 n )
    TR-TOOLS-TRUST-BUF TR-TOOLS-TRUST-U @ ;
 
+: TR-BUILD-CACHE$ ( -- ptr u8 n )
+   TR-BUILD-CACHE-BUF TR-BUILD-CACHE-U @ ;
+
 : TR-USAGE ( -- )
    s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
 
@@ -42,6 +47,11 @@ variable TR-PATH-U
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
    then
    TR-USAGE ;
+
+: TR-BUILD-CACHE-ENV ( -- )
+   GT-ROOT s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
+   TR-BUILD-CACHE$ MAKE-DIRS
+   s" HABU_BUILD_CACHE" >LEN TR-BUILD-CACHE$ >LEN PROC-ENV+ ;
 
 : TR-START ( -- )
    GT-RESET
@@ -65,6 +75,7 @@ variable TR-PATH-U
    PROC-ENV-RESET
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-BUILD-CACHE-ENV
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -338,9 +349,12 @@ variable TR-PATH-U
    idx IDX>N 2 >= idx IDX>N 4 <= and
    idx IDX>N 18 = or ;
 
+: TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
+   s" 2" ;
+
 : TR-PHASE-POOL-ENV ( idx -- ) {: idx :}
    idx TR-STDLIB-SLICE? if
-      s" HABU_GATE_POOL_SLOTS" >LEN s" 2" >LEN PROC-ENV+
+      s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
    then ;
 
 : TR-PHASE-BASE ( idx -- ) {: idx :}
@@ -350,6 +364,7 @@ variable TR-PATH-U
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
    TR-TOOLS-ENV
+   TR-BUILD-CACHE-ENV
    idx TR-PHASE-POOL-ENV
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+

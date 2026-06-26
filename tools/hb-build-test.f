@@ -1,5 +1,5 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
 
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
@@ -13,8 +13,6 @@ variable HBT-BAD-SRC-U
 variable HBT-BAD-OUT-U
 variable HBT-REPL-SRC-U
 variable HBT-REPL-OUT-U
-variable HBT-REPL-BAD-SRC-U
-variable HBT-REPL-BAD-OUT-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
@@ -25,8 +23,6 @@ create HBT-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-REPL-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-OUT-BUF FS-PATH-CAP allot
-create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
-create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
@@ -66,12 +62,6 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 
 : HBT-REPL-OUT ( -- ptr u8 n )
    HBT-REPL-OUT-BUF HBT-REPL-OUT-U @ ;
-
-: HBT-REPL-BAD-SRC ( -- ptr u8 n )
-   HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U @ ;
-
-: HBT-REPL-BAD-OUT ( -- ptr u8 n )
-   HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U @ ;
 
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -123,14 +113,6 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBB-LF SB-APPEND-C
    SB$ ;
 
-: HBT-REPL-BAD-SRC$ ( -- ptr u8 n )
-   SB-RESET
-   s" : RBAD ( i64 -- i64 ) 0= ;" SB-APPEND
-   HBB-LF SB-APPEND-C
-   s" EXPORT RBAD" SB-APPEND
-   HBB-LF SB-APPEND-C
-   SB$ ;
-
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-hb-build" TMPDIR-MKDIR {: a:ptr u :}
@@ -145,17 +127,15 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-ROOT s" bad" HBT-BAD-OUT-BUF HBT-BAD-OUT-U HBT-PATH!
    HBT-ROOT s" repl.f" HBT-REPL-SRC-BUF HBT-REPL-SRC-U HBT-PATH!
    HBT-ROOT s" repl" HBT-REPL-OUT-BUF HBT-REPL-OUT-U HBT-PATH!
-   HBT-ROOT s" repl-bad.f" HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U HBT-PATH!
-   HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
    HBT-OK-SRC HBT-OK-SRC$ WRITE-ALL
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
-   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
-   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL ;
+   HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL ;
 
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN 2swap >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -168,6 +148,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" tools/warm-run.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
@@ -199,12 +180,6 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-REPL-SRC  >LEN PROC-ARGV+
    s" -o"  >LEN PROC-ARGV+
    HBT-REPL-OUT  >LEN PROC-ARGV+ ;
-
-: HBT-ADD-REPL-BAD ( -- )
-   s" --repl"  >LEN PROC-ARGV+
-   HBT-REPL-BAD-SRC  >LEN PROC-ARGV+
-   s" -o"  >LEN PROC-ARGV+
-   HBT-REPL-BAD-OUT  >LEN PROC-ARGV+ ;
 
 : HBT-BUILD-OK ( -- )
    HBT-ARGV-BASE
@@ -280,65 +255,13 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-BUILD-MISSING-TMP ( -- )
    HBT-NEW-TMP EXISTS? TFALSE
    HBT-NEW-TMP HBT-ARGV-BASE-TMP
-   HBT-ADD-OK
-   HBT-RUN-HB-BUILD 0 T=
-   {: outu erru :}
-   HBT-ERR erru HBT-EMPTY$ T$=
-   HBT-OUT outu s" hb-build OK: " CONTAINS? TTRUE
-   HBT-NEW-TMP DIR? TTRUE
-   HBT-OK-OUT FILE? TTRUE ;
-
-: HBT-Q ( -- )
-   HBB-DQ SB-APPEND-C ;
-
-: HBT-QRAW ( ptr u8 n -- )
-   HBT-Q
-   SB-APPEND
-   HBT-Q ;
-
-: HBT-JSON-SCHEMA$ ( -- ptr u8 n )
-   SB-RESET
-   s" schema_version" HBT-QRAW
-   s" :1" SB-APPEND
-   SB$ ;
-
-: HBT-JSON-KV$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: key:ptr keyu val:ptr valu :}
-   SB-RESET
-   key keyu HBT-QRAW
-   s" :" SB-APPEND
-   val valu HBT-QRAW
-   SB$ ;
-
-: HBT-JSON-CODE$ ( -- ptr u8 n )
-   s" code" s" E-AOT-UNSUPPORTED" HBT-JSON-KV$ ;
-
-: HBT-JSON-WORD$ ( -- ptr u8 n )
-   s" word" s" MAIN" HBT-JSON-KV$ ;
-
-: HBT-JSON-TOKEN$ ( -- ptr u8 n )
-   s" token" s" here" HBT-JSON-KV$ ;
-
-: HBT-REJECT-BAD ( -- )
-   HBT-ARGV-BASE
    HBT-ADD-BAD
    HBT-RUN-HB-BUILD 0 T<>
    {: outu erru :}
    HBT-OUT outu HBT-EMPTY$ T$=
-   HBT-ERR erru HBT-JSON-SCHEMA$ CONTAINS? TTRUE
-   HBT-ERR erru HBT-JSON-CODE$ CONTAINS? TTRUE
-   HBT-ERR erru HBT-JSON-WORD$ CONTAINS? TTRUE
-   HBT-ERR erru HBT-JSON-TOKEN$ CONTAINS? TTRUE
+   HBT-ERR erru s" E-AOT-UNSUPPORTED" CONTAINS? TTRUE
+   HBT-NEW-TMP DIR? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
-
-: HBT-REJECT-REPL-BAD ( -- )
-   HBT-ARGV-BASE
-   HBT-ADD-REPL-BAD
-   HBT-RUN-HB-BUILD 0 T<>
-   {: outu erru :}
-   HBT-OUT outu HBT-EMPTY$ T$=
-   HBT-ERR erru s" expected: i64" CONTAINS? TTRUE
-   HBT-ERR erru s" actual: bool" CONTAINS? TTRUE
-   HBT-REPL-BAD-OUT EXISTS? TFALSE ;
 
 : HBT-MAIN ( -- )
    T-RESET
@@ -349,8 +272,6 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-BUILD-MISSING-TMP
-   HBT-REJECT-BAD
-   HBT-REJECT-REPL-BAD
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT

@@ -18,13 +18,6 @@
 : GAN-EXPECT-NO-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-OUT$ FILE? if label labelu GE-FAIL then ;
 
-: GAN-BUILD-OK ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-WRITE-SRC
-   GB-BUILD-ARGV
-   GAN-BUILD-CAPTURE
-   label labelu GE-EXPECT-OK
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
-
 : GAN-BUILD-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
@@ -32,14 +25,6 @@
    GAN-BUILD-CAPTURE
    label labelu GE-EXPECT-NONZERO
    label labelu GAN-EXPECT-NO-OUT ;
-
-: GAN-BUILD-STRICT-OK ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-WRITE-SRC
-   GB-BUILD-ARGV
-   s" --strict-signatures" GB-ARGV+
-   GAN-BUILD-CAPTURE
-   label labelu GE-EXPECT-OK
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
 
 : GAN-BUILD-STRICT-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
@@ -53,6 +38,15 @@
 : GAN-BUILD-JSON-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC
    GB-BUILD-ARGV
+   s" --json-errors" GB-ARGV+
+   GAN-REMOVE-OUT
+   GAN-BUILD-CAPTURE
+   label labelu GE-EXPECT-NONZERO
+   label labelu GAN-EXPECT-NO-OUT ;
+
+: GAN-BUILD-JSON-NZ-TMP ( ptr u8 n ptr u8 n -- ) {: tmp:ptr tmpu label:ptr labelu :}
+   GB-WRITE-SRC
+   tmp tmpu GB-BUILD-ARGV-TMP
    s" --json-errors" GB-ARGV+
    GAN-REMOVE-OUT
    GAN-BUILD-CAPTURE
@@ -73,17 +67,6 @@
    s" hb-build strict missing signature" GAN-BUILD-STRICT-NZ
    s" E-MISSING-SIGNATURE" s" hb-build strict missing signature diagnostic" GE-EXPECT-ERR-HAS ;
 
-: GAN-SOURCE-STRICT-OK ( -- )
-   GE-SRC-RESET
-   s" : MAIN ( -- ) 42 . CR ;" GE-SRC-LINE ;
-
-: GAN-STRICT-OK ( -- )
-   s" hb-strict-ok.f" s" hb-strict-ok" s" hb-strict-ok.err" GAN-PATHS
-   GAN-SOURCE-STRICT-OK
-   s" hb-build strict good build" GAN-BUILD-STRICT-OK
-   SB-RESET s" 42" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build strict output" GB-RUN-EXPECT ;
-
 : GAN-SOURCE-UNCHECKABLE ( -- )
    GE-SRC-RESET
    s" : U ( -- ) [: leave ;] drop ;" GE-SRC-LINE
@@ -97,29 +80,21 @@
 
 : GAN-SOURCE-AOT-UNSAFE ( -- )
    GE-SRC-RESET
-   s" : MAIN ( -- ) here . CR ;" GE-SRC-LINE ;
-
-: GAN-AOT-UNSAFE ( -- )
-   s" hb-aot-unsafe.f" s" hb-aot-unsafe" s" hb-aot-unsafe.err" GAN-PATHS
-   GAN-SOURCE-AOT-UNSAFE
-   s" hb-build AOT unsafe here" GAN-BUILD-JSON-NZ
-   s" code" s" E-AOT-UNSUPPORTED" s" hb-build AOT unsafe code" GB-EXPECT-ERR-STR-FIELD
-   s" schema_version" s" 1" s" hb-build AOT unsafe schema version" GB-EXPECT-ERR-RAW-FIELD
-   s" token" s" here" s" hb-build AOT unsafe token" GB-EXPECT-ERR-STR-FIELD
-   s" word" s" MAIN" s" hb-build AOT unsafe word" GB-EXPECT-ERR-STR-FIELD
-   s" reason" s" stripped AOT has no persistent data region" s" hb-build AOT unsafe reason" GB-EXPECT-ERR-STR-FIELD
-   s" byte_end" s" hb-build AOT unsafe byte_end" GB-EXPECT-ERR-FIELD ;
-
-: GAN-SOURCE-LONG-UNSAFE ( -- )
-   GE-SRC-RESET
    s" : LONG-AOT-UNSAFE-CALLER-WORD ( -- ) here drop ;" GE-SRC-LINE
    s" : MAIN ( -- ) LONG-AOT-UNSAFE-CALLER-WORD ;" GE-SRC-LINE ;
 
-: GAN-LONG-UNSAFE ( -- )
-   s" hb-aot-long-unsafe.f" s" hb-aot-long-unsafe" s" hb-aot-long-unsafe.err" GAN-PATHS
-   GAN-SOURCE-LONG-UNSAFE
-   s" hb-build AOT long unsafe" GAN-BUILD-JSON-NZ
-   s" word" s" LONG-AOT-UNSAFE-CALLER-WORD" s" hb-build AOT long unsafe word" GB-EXPECT-ERR-STR-FIELD ;
+: GAN-AOT-UNSAFE ( -- )
+   s" hb-aot-unsafe.f" s" hb-aot-unsafe" s" hb-aot-unsafe-tmp" GAN-PATHS
+   GAN-SOURCE-AOT-UNSAFE
+   GB-REPORT$ EXISTS? if s" hb-build missing HB_TMP setup" GE-FAIL then
+   GB-REPORT$ s" hb-build AOT unsafe here" GAN-BUILD-JSON-NZ-TMP
+   GB-REPORT$ DIR? 0= if s" hb-build created HB_TMP dir" GE-FAIL then
+   s" code" s" E-AOT-UNSUPPORTED" s" hb-build AOT unsafe code" GB-EXPECT-ERR-STR-FIELD
+   s" schema_version" s" 1" s" hb-build AOT unsafe schema version" GB-EXPECT-ERR-RAW-FIELD
+   s" token" s" here" s" hb-build AOT unsafe token" GB-EXPECT-ERR-STR-FIELD
+   s" word" s" LONG-AOT-UNSAFE-CALLER-WORD" s" hb-build AOT unsafe word" GB-EXPECT-ERR-STR-FIELD
+   s" reason" s" stripped AOT has no persistent data region" s" hb-build AOT unsafe reason" GB-EXPECT-ERR-STR-FIELD
+   s" byte_end" s" hb-build AOT unsafe byte_end" GB-EXPECT-ERR-FIELD ;
 
 : GAN-CLO-LINE ( n -- ) {: n :}
    s" : W" GE-SRC+
@@ -171,28 +146,15 @@
    GAN-SOURCE-MALSIG
    s" hb-build malformed signature" GAN-BUILD-NZ ;
 
-: GAN-SOURCE-TYPEBAD ( -- )
-   GE-SRC-RESET
-   s" : B ( -- i64 ) 1.5 1 + ;" GE-SRC-LINE
-   s" : MAIN ( -- ) B . CR ;" GE-SRC-LINE ;
-
-: GAN-TYPEBAD ( -- )
-   s" hb-typebad.f" s" hb-typebad" s" hb-typebad.err" GAN-PATHS
-   GAN-SOURCE-TYPEBAD
-   s" hb-build checker rejection" GAN-BUILD-NZ ;
-
 : GAN-RUN ( -- )
    s" hb-gate-aot-negative" GT-START
    GAN-STRICT-MISSING
-   GAN-STRICT-OK
    GAN-UNCHECKABLE
    GAN-AOT-UNSAFE
-   GAN-LONG-UNSAFE
    GAN-CLOSURE-LIMIT
    s" PASS: hb-build strict signatures + uncheckable/AOT-unsafe rejection" type cr
    GAN-BADSIG
    GAN-MALSIG
-   GAN-TYPEBAD
    GT-CLEANUP
    s" PASS: hb-build rejects bad checked programs" type cr
    s" PASS: native hb-build AOT negative gate phase" type cr ;

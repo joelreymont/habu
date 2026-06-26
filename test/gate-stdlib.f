@@ -308,7 +308,6 @@ variable SUITE-SLICE
    s" stdlib-batch-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" bootstrap-helper-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" build-fixpoint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" hb-build-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )
@@ -665,7 +664,8 @@ TEST-SUITE hb-build-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
-   tools/hb-build-lib.f tools/hb-build-test.f lib/codesign-test.f
+   tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
+   lib/codesign-test.f
 ;TEST-SUITE
 
 GT-POOL-DRAIN

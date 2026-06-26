@@ -71,6 +71,15 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    GB-WRITE-SRC
    label labelu GB-HB-BUILD ;
 
+: GAP-BUILD-STRICT ( ptr u8 n -- ) {: label:ptr labelu :}
+   GB-WRITE-SRC
+   GB-BUILD-ARGV
+   s" --strict-signatures" GB-ARGV+
+   GB-HB-BUILD-ARGS
+   GB-HB-BUILD-CAPTURE
+   label labelu GE-EXPECT-OK
+   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
+
 : GAP-AOT-ASSERT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    label labelu GB-AOT-REPORT
    mode modeu label labelu GB-GJA ;
@@ -88,7 +97,7 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
 : GAP-FIB ( -- )
    s" hb-at.f" s" hb-at" s" hb-at-call-report.json" GAP-PATHS
    GAP-FIB-SOURCE
-   s" hb-build AOT FIB" GAP-BUILD
+   s" hb-build AOT FIB strict" GAP-BUILD-STRICT
    SB-RESET s" 55" GE-OUT-LINE GE-SB-LF
    SB$ s" hb-build AOT output" GB-RUN-EXPECT
    GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz :}
@@ -123,74 +132,34 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    n 1+ GE-SRC-U+
    s"  1 + ;" GE-SRC-LINE ;
 
-: GAP-CLOSURE-SOURCE ( -- )
+: GAP-FEATURES-SOURCE ( -- )
    GE-SRC-RESET
    s" : W259 ( -- n ) 1 ;" GE-SRC-LINE
    258 begin dup -1 > while
       dup GAP-CLOSURE-LINE
       1-
    repeat drop
-   s" : MAIN ( -- ) W0 . CR ;" GE-SRC-LINE ;
-
-: GAP-CLOSURE ( -- )
-   s" hb-cl.f" s" hb-cl" s" hb-cl-report.json" GAP-PATHS
-   GAP-CLOSURE-SOURCE
-   s" hb-build AOT closure stress" GAP-BUILD
-   SB-RESET s" 260" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT closure stress output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT closure stress (260 reachable words)" type cr ;
-
-: GAP-LONG-SOURCE ( -- )
-   GE-SRC-RESET
    s" : LONG-AOT-CALLED-WORD-NAME ( -- n ) 34 ;" GE-SRC-LINE
-   s" : MAIN ( -- ) LONG-AOT-CALLED-WORD-NAME . CR ;" GE-SRC-LINE ;
-
-: GAP-LONG ( -- )
-   s" hb-aot-long.f" s" hb-aot-long" s" hb-aot-long-report.json" GAP-PATHS
-   GAP-LONG-SOURCE
-   s" hb-build AOT long names" GAP-BUILD
-   SB-RESET s" 34" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT long-name output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT long dictionary names" type cr ;
-
-: GAP-SQUOTE-SOURCE ( -- )
-   GE-SRC-RESET
-   s" : MAIN ( -- ) " GE-SRC+
-   s" hi" GE-SRC-S"
-   s"  type CR ;" GE-SRC-LINE ;
-
-: GAP-SQUOTE ( -- )
-   s" hb-str.f" s" hb-str" s" hb-str-report.json" GAP-PATHS
-   GAP-SQUOTE-SOURCE
-   s" hb-build AOT S-quote build" GAP-BUILD
-   SB-RESET s" hi" GE-OUT-LINE
-   SB$ s" hb-build AOT S-quote output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT S-quote string literal (PC-relative, relocation-safe)" type cr ;
-
-: GAP-PARSE-SOURCE ( -- )
-   GE-SRC-RESET
-   s" : MAIN ( -- ) " GE-SRC+
+   s" : MAIN ( -- ) W0 . CR LONG-AOT-CALLED-WORD-NAME . CR " GE-SRC+
    s" hi" GAP-SRC-DOTQ
    s"  CR " GE-SRC+
    s" ok" GAP-SRC-CQ
    s"  count type CR ;" GE-SRC-LINE ;
 
-: GAP-PARSE ( -- )
-   s" hb-parse.f" s" hb-parse" s" hb-parse-report.json" GAP-PATHS
-   GAP-PARSE-SOURCE
-   s" hb-build AOT parsing words" GAP-BUILD
-   SB-RESET s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE
-   SB$ s" hb-build AOT parsing-word output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT dot-quote/C-quote parsing words" type cr ;
+: GAP-FEATURES ( -- )
+   s" hb-features.f" s" hb-features" s" hb-features-report.json" GAP-PATHS
+   GAP-FEATURES-SOURCE
+   s" hb-build AOT bundled features" GAP-BUILD
+   SB-RESET s" 260" GE-OUT-LINE GE-SB-LF s" 34" GE-OUT-LINE GE-SB-LF
+   s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE
+   SB$ s" hb-build AOT bundled feature output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT closure/long-name/parsing features" type cr ;
 
 : GAP-RUN ( -- )
    s" hb-gate-aot-positive" GT-START
    GAP-FIB
    GAP-COMPACT
-   GAP-CLOSURE
-   GAP-LONG
-   GAP-SQUOTE
-   GAP-PARSE
+   GAP-FEATURES
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;
 

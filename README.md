@@ -51,7 +51,8 @@ Build an AOT binary:
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
   lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f \
-  tools/build-fixpoint.f tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
+  tools/build-fixpoint.f tools/warm-run.f tools/hb-build-lib.f \
+  tools/hb-build.f -- prog.f -o prog
 ```
 
 Run the native gate:

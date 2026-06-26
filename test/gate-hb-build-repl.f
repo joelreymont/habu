@@ -14,7 +14,9 @@ variable GHR-SIZE
    GE-SRC-RESET
    s" : SQ ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" EXPORT SQ" GE-SRC-LINE
-   s" 9 SQ . CR" GE-SRC-LINE ;
+   s" : SHOW-ARGS ( -- ) SCRIPT-ARGC 0 > if SCRIPT-ARGC . CR 0 SCRIPT-ARGV$ type cr then ;" GE-SRC-LINE
+   s" 9 SQ . CR" GE-SRC-LINE
+   s" SHOW-ARGS" GE-SRC-LINE ;
 
 : GHR-SOURCE-BAD ( -- )
    GE-SRC-RESET
@@ -51,6 +53,21 @@ variable GHR-SIZE
    SB-RESET s" 81" GE-OUT-LINE GE-SB-LF
    SB$ s" hb-build --repl output" GB-RUN-EXPECT ;
 
+: GHR-ARGS-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" 81" GE-OUT-LINE GE-SB-LF
+   s" 2" GE-OUT-LINE GE-SB-LF
+   s" alpha" GE-OUT-LINE
+   SB$ ;
+
+: GHR-RUN-ARGS-EXPECT ( -- )
+   PROC-ARGV-ENV-RESET
+   s" alpha" >LEN PROC-ARGV+
+   s" beta" >LEN PROC-ARGV+
+   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" hb-build --repl argv output" GE-EXPECT-OK
+   GHR-ARGS-OUT$ s" hb-build --repl argv output" GE-EXPECT-OUT ;
+
 : GHR-IMGDUMP ( -- )
    GE-HB-RESET
    s" --load" GB-ARGV+
@@ -69,6 +86,7 @@ variable GHR-SIZE
    s" hb-build --repl" GHR-BUILD-REPL-OK
    GB-OUT$ FILE-SIZE GHR-SIZE !
    GHR-RUN-EXPECT
+   GHR-RUN-ARGS-EXPECT
    GHR-IMGDUMP ;
 
 : GHR-BAD ( -- )

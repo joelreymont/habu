@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
-\ lib/source.f, lib/codesign.f, and tools/build-fixpoint.f.
+\ lib/source.f, lib/codesign.f, tools/build-fixpoint.f, and tools/warm-run.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -14,6 +14,8 @@
 
 create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
+create HBB-MAKER-PATH FS-PATH-CAP allot
+create HBB-LOCK-PATH FS-PATH-CAP allot
 create HBB-OUT-BUF HBB-CAPTURE-CAP allot
 create HBB-ERR-BUF HBB-CAPTURE-CAP allot
 create HBB-LF-BUF 1 allot
@@ -21,14 +23,15 @@ HBB-LF HBB-LF-BUF c!
 
 variable HBB-SRC-U
 variable HBB-OUT-U
+variable HBB-MAKER-U
+variable HBB-LOCK-U
 variable HBB-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-STRICT
-variable HBB-TAIL
-variable HBB-FOUND
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
+variable HBB-LOCK-DEADLINE
 
 : HBB-TRUE ( -- bool )
    0 0= ;
@@ -164,13 +167,26 @@ variable HBB-JSON-FOUND
    HBB-ENV-TMP? if exit then
    s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
+: HBB-PREPARE-MAKER-CACHE ( -- )
+   s" HABU_BUILD_CACHE" GETENV dup 0= if 2drop exit then
+   2dup EXISTS? if
+      2dup DIR? 0= if s" hb-build: HABU_BUILD_CACHE is not a directory" HBB-USAGE-RC die then
+      2drop
+   else
+      MAKE-DIRS
+   then ;
+
 : HBB-CLEANUP ( -- )
    CLEANUP-RUN
    BF-TMP-RESET ;
 
 : HBB-CMD-RESET ( -- )
    PROC-ARGV-RESET
-   BF-PREPARE-ENV ;
+   BF-PREPARE-ENV
+   PROC-ENV-INHERIT-MISSING ;
+
+: HBB-LOAD-END ( -- )
+   s" --"  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-LINT-LOADS ( -- )
    s" --load"  >LEN PROC-ARGV+
@@ -182,25 +198,21 @@ variable HBB-JSON-FOUND
    s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+ ;
 
-: HBB-ADD-AOT-LINT-CMD ( -- )
-   HBB-CMD-RESET
+: HBB-ADD-AOT-LINT-ENTRY ( -- )
+   s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
    HBB-ADD-LINT-LOADS
    s" tools/aot-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
+   HBB-LOAD-END ;
 
-: HBB-ADD-SIGNATURE-LINT-CMD ( -- )
-   HBB-CMD-RESET
+: HBB-ADD-SIGNATURE-LINT-ENTRY ( -- )
+   s" tools/signature-lint.f" WR-TOOLS-LOAD if exit then
    HBB-ADD-LINT-LOADS
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
-   HBB-SRC$  >LEN PROC-ARGV+ ;
+   HBB-LOAD-END ;
 
-: HBB-ADD-DIAG-ORIGIN-CMD ( -- )
-   HBB-CMD-RESET
+: HBB-ADD-DIAG-ORIGIN-ENTRY ( -- )
+   s" tools/diag-origin.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -210,19 +222,35 @@ variable HBB-JSON-FOUND
    s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
    s" tools/diag-origin.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
+   HBB-LOAD-END ;
+
+: HBB-ADD-AOT-LINT-CMD ( -- )
+   HBB-CMD-RESET
+   HBB-ADD-AOT-LINT-ENTRY
+   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
+   HBB-SRC$  >LEN PROC-ARGV+ ;
+
+: HBB-ADD-SIGNATURE-LINT-CMD ( -- )
+   HBB-CMD-RESET
+   HBB-ADD-SIGNATURE-LINT-ENTRY
+   HBB-JSON @ if s" --json"  >LEN PROC-ARGV+ then
+   HBB-SRC$  >LEN PROC-ARGV+ ;
+
+: HBB-ADD-DIAG-ORIGIN-CMD ( -- )
+   HBB-CMD-RESET
+   HBB-ADD-DIAG-ORIGIN-ENTRY
    HBB-SRC$  >LEN PROC-ARGV+ ;
 
 : HBB-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : HBB-RUN-HB-CAPTURE ( -- n n n )
-   s" bin/hb" >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   WR-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
 : HBB-RUN-DIAG-CAPTURE ( -- n n n )
-   s" bin/hb" >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   WR-TOOLS$ >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
@@ -270,43 +298,27 @@ variable HBB-JSON-FOUND
 : HBB-MK-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-mk" else s" hb-aot-mk" then ;
 
+: HBB-MAKER$ ( -- ptr u8 n )
+   s" HABU_BUILD_CACHE" GETENV dup 0= if 2drop BF-TMP$ then
+   HBB-MK-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
+   HBB-MAKER-PATH HBB-MAKER-U @ ;
+
+: HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
+   {: a:ptr u suf:ptr su dst:ptr up:ptr :}
+   u su + FS-PATH-CAP > if E-BUILD-PATH throw then
+   a dst u BYTE-COPY
+   suf dst u + su BYTE-COPY
+   u su + up ! ;
+
+: HBB-LOCK$ ( -- ptr u8 n )
+   HBB-MAKER$ s" .lock" HBB-LOCK-PATH HBB-LOCK-U HBB-SUFFIX!
+   HBB-LOCK-PATH HBB-LOCK-U @ ;
+
 : HBB-MAKER-SRC-NAME$ ( -- ptr u8 n )
    s" hb-maker-src" ;
 
-: HBB-SB-DQ ( -- )
-   HBB-DQ SB-APPEND-C ;
-
-: HBB-DIAG-LINE$ ( -- ptr u8 n )
-   SB-RESET
-   s" s" SB-APPEND
-   HBB-SB-DQ
-   s"  " SB-APPEND
-   HBB-SRC$ SB-APPEND
-   HBB-SB-DQ
-   s"  DIAG-FILE!" SB-APPEND
-   SB$ ;
-
-: HBB-LAST-LINE-START ( -- n )
-   0 HBB-TAIL !
-   0 HBB-FOUND !
-   BF-SOURCE-LEN @ 0 > if BF-SOURCE-LEN @ 1- HBB-TAIL ! then
-   begin HBB-TAIL @ 0 > HBB-FOUND @ 0= and while
-      BF-SOURCE-BUF HBB-TAIL @ 1- + c@ HBB-LF = if
-         -1 HBB-FOUND !
-      else
-         HBB-TAIL @ 1- HBB-TAIL !
-      then
-   repeat
-   HBB-TAIL @ ;
-
 : HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
-   HBB-DRIVER$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
-   HBB-LAST-LINE-START {: tail :}
-   out outu BF-OUT$ BF-SOURCE-BUF tail APPEND-FILE
-   out outu HBB-DIAG-LINE$ BF-APPEND-LINE
-   HBB-JSON @ if out outu s" -1 JSON-DIAGS !" BF-APPEND-LINE then
-   out outu BF-OUT$ BF-SOURCE-BUF tail + BF-SOURCE-LEN @ tail - APPEND-FILE
-   out outu BF-APPEND-LF ;
+   out outu HBB-DRIVER$ BF-APPEND-SOURCE ;
 
 : HBB-MAKER-SOURCE ( -- )
    HBB-MAKER-SRC-NAME$ BF-RESET-OUT
@@ -320,16 +332,65 @@ variable HBB-JSON-FOUND
    s" stage2-src" BF-APPEND-DRIVER-IO
    s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
 
-: HBB-BUILD-MAKER ( -- )
+: HBB-MAKER-READY? ( -- bool )
+   HBB-MAKER$ EXECUTABLE? ;
+
+: HBB-SLEEP-MS ( n -- )
+   PROC-PFD 0 rot poll drop ;
+
+: HBB-LOCK-DEADLINE! ( -- )
+   mono-ns HBB-TIMEOUT-MS PROC-NS-PER-MS * + HBB-LOCK-DEADLINE ! ;
+
+: HBB-LOCK-TIMEOUT? ( -- bool )
+   mono-ns HBB-LOCK-DEADLINE @ >= ;
+
+: HBB-LOCK-BUSY? ( -- bool )
+   HBB-LOCK$ DIR? if HBB-TRUE exit then
+   HBB-LOCK$ EXISTS? if E-FS-IO throw then
+   HBB-FALSE ;
+
+: HBB-TRY-MAKER-LOCK? ( -- bool )
+   HBB-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if HBB-TRUE exit then
+   HBB-LOCK-BUSY? if HBB-FALSE exit then
+   E-FS-IO throw ;
+
+: HBB-ACQUIRE-MAKER-LOCK? ( -- bool )
+   HBB-LOCK-DEADLINE!
+   begin
+      HBB-MAKER-READY? if HBB-FALSE exit then
+      HBB-TRY-MAKER-LOCK? if HBB-TRUE exit then
+      HBB-LOCK-TIMEOUT? if s" hb-build: maker cache lock timeout" HBB-BUILD-RC die then
+      50 HBB-SLEEP-MS
+   again ;
+
+: HBB-RELEASE-MAKER-LOCK ( -- )
+   HBB-LOCK$ REMOVE-DIR ;
+
+: HBB-INSTALL-MAKER ( -- )
+   s" stage2-got" BF-A$ HBB-MAKER$ RENAME-FILE
+   HBB-MAKER$ CHMOD-X ;
+
+: HBB-BUILD-MAKER-LOCKED ( -- )
+   HBB-MAKER-READY? if exit then
    HBB-MAKER-SOURCE
    HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
    s" bin/hb" s" stage2-src" BF-A$ BF-RUN-ENV-PATH-INFILE
-   dup 0 <> if s" hb-build: native maker build failed" HBB-BUILD-RC die then drop
+   dup 0 <> if
+      HBB-RELEASE-MAKER-LOCK
+      s" hb-build: native maker build failed" HBB-BUILD-RC die
+   then drop
    s" stage2-got" BF-EXPECT
-   s" stage2-got" HBB-MK-NAME$ BF-RENAME-TMP
-   HBB-MK-NAME$ BF-CHMOD-X-TMP ;
+   HBB-INSTALL-MAKER ;
+
+: HBB-BUILD-MAKER ( -- )
+   HBB-PREPARE-MAKER-CACHE
+   HBB-MAKER-READY? if exit then
+   HBB-ACQUIRE-MAKER-LOCK? if
+      HBB-BUILD-MAKER-LOCKED
+      HBB-RELEASE-MAKER-LOCK
+   then ;
 
 : HBB-READ-COMMENTED-SOURCE ( -- )
    HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !
@@ -401,10 +462,19 @@ variable HBB-JSON-FOUND
 : HBB-PREPARE-PROGRAM-SOURCE ( -- )
    HBB-REPL @ if HBB-PREPARE-REPL-SOURCE else HBB-PREPARE-AOT-SOURCE then ;
 
-: HBB-RUN-MAKER-CMD ( -- n n n )
+: HBB-JSON-FLAG$ ( -- ptr u8 n )
+   HBB-JSON @ if s" 1" exit then
+   s" 0" ;
+
+: HBB-RUN-MAKER-ARGS ( -- )
    PROC-ARGV-RESET
+   HBB-SRC$ >LEN PROC-ARGV+
+   HBB-JSON-FLAG$ >LEN PROC-ARGV+ ;
+
+: HBB-RUN-MAKER-CMD ( -- n n n )
+   HBB-RUN-MAKER-ARGS
    BF-PREPARE-ENV
-   HBB-MK-NAME$ BF-A$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   HBB-MAKER$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 

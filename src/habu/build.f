@@ -21,6 +21,14 @@ $40000 constant PMAX
 : BLD-PB@ PB @ ;
 s" BLD-PB@" s" -- ptr u8" TRUST
 
+: BLD-FALSE ( -- bool ) 0 0= 0= ;
+: BLD-JSON-ARG? ( -- bool )
+   ARGC 2 <= IF BLD-FALSE EXIT THEN
+   2 ARGV$ dup 1 = IF drop c@ 49 = ELSE 2drop BLD-FALSE THEN ;
+: BLD-RUNTIME-ARGS ( -- )
+   ARGC 1 > IF 1 ARGV$ DIAG-FILE! THEN
+   BLD-JSON-ARG? IF -1 JSON-DIAGS ! THEN ;
+
 : ENSURE-PBUF
    PB @ 0= IF here PB !  PMAX allot THEN ;
 
@@ -160,7 +168,8 @@ TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
       2dup V-RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
    REPEAT 2drop ;
 
-: GO
+: GO ( -- )
+   BLD-RUNTIME-ARGS
    READ-CHECK
    VERIFY-SOURCE
    READ-PROG

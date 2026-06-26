@@ -25,6 +25,14 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
 
+: AOT-FALSE ( -- bool ) 0 0= 0= ;
+: AOT-JSON-ARG? ( -- bool )
+   ARGC 2 <= IF AOT-FALSE EXIT THEN
+   2 ARGV$ dup 1 = IF drop c@ 49 = ELSE 2drop AOT-FALSE THEN ;
+: AOT-RUNTIME-ARGS ( -- )
+   ARGC 1 > IF 1 ARGV$ DIAG-FILE! THEN
+   AOT-JSON-ARG? IF -1 JSON-DIAGS ! THEN ;
+
 : USER-HOOK
    CHECK!  dup -1 <> IF s" hb-build: check did not certify" 70 die THEN ;
 
@@ -401,7 +409,7 @@ variable RP  variable RE  variable RV
    ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
    AOT-OUT DRV-WRITE-IMAGE ;
 
-: GO  READ-PROG  SENTSET
+: GO ( -- )  AOT-RUNTIME-ARGS  READ-PROG  SENTSET
    ['] USER-HOOK set-check
    AOT-PB@ DATA-VA INP-CELL + !
    AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
