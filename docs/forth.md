@@ -387,6 +387,19 @@ file.
 - **Control words and ticks are compile-only** — `if`/`else`/`then`,
   `begin`/`while`/`repeat`, `[']`, `i`, `?do`, and `;` must live inside a
   `:` definition, never at the top level.
+- **A `begin <cond> while <body> repeat` condition may only *add* a flag.** The
+  stack below the flag at `while` must equal the stack at `begin`; a condition
+  that net-produces carry values (e.g. `a u NEXT-TOKEN` leaving a token span
+  under the flag) is rejected at `repeat`. Establish loop-carried values *before*
+  `begin` (they thread through unchanged), or move the production into the body —
+  a peek-only flag condition plus an extract-in-body step.
+- **A no-`else` `if` must be stack-neutral.** If the true branch changes stack
+  depth the merge at `then` fails (`expected: … actual:`). Bind the consumed
+  value into a local *before* the `if` so both paths balance, or add `else drop`.
+- **A local may not be bound after an `exit` has appeared on a path.** Binding
+  after a *closed* `if`/`else` with no early `exit` is fine; the blocker is
+  specifically a prior early-return guard. Put all `{:` groups ahead of the first
+  guard, or factor the post-guard work into a helper that binds at its entry.
 - **`parse-name` returns a transient `( c-addr u )`** that the next
   `s"`/`."`/`refill` invalidates — `move` the bytes into your own buffer
   immediately; never hold the pointer across another parsing word.
