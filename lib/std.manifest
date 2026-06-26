@@ -829,3 +829,16 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ptx	lib/ptx.f	word	PTX-SKIP-ONE	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	active	consume one kernel header token
 1	ptx	lib/ptx.f	word	GRID:	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX grid header marker
 1	ptx	lib/ptx.f	word	WHERE	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX launch constraint marker
+1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked C-ABI foreign calls over dlopen/dlsym and the AAPCS64 trampoline
+1	ffi	lib/ffi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI argument slot index
+1	ffi	lib/ffi.f	word	FFI-ARG!	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one cell into an FFI argument slot
+1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
+1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
+1	ffi	lib/ffi.f	word	CALL0	(n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with no arguments
+1	ffi	lib/ffi.f	word	CALL1	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with one cell argument
+1	ffi	lib/ffi.f	word	CALL2	(n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with two cell arguments
+1	ffi	lib/ffi.f	word	CALL3	(n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with three cell arguments
+1	ffi	lib/ffi.f	word	CALL4	(n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with four cell arguments
+1	ffi	lib/ffi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with five cell arguments
+1	ffi	lib/ffi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with six cell arguments
+1	ffi	lib/ffi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	copy a byte-string into a buffer and NUL-terminate it

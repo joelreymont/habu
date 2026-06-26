@@ -179,6 +179,8 @@ points stay listed.
 - `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.
+- `lib/ffi.f` — checked C-ABI foreign-call library: dlopen/dlsym plus the AAPCS64 trampoline for calling shared-library functions.
+- `lib/ffi-test.f` — focused coverage for FFI dlopen/dlsym, fixed-arity calls, and C-string marshalling.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.

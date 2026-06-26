@@ -561,6 +561,10 @@ TEST-SUITE string-helpers
    lib/errors.f lib/string.f lib/string-test.f
 ;TEST-SUITE
 
+TEST-SUITE ffi-cabi
+   lib/errors.f lib/string.f lib/test.f lib/ffi.f lib/ffi-test.f
+;TEST-SUITE
+
 TEST-SUITE array-helpers
    lib/errors.f lib/array.f lib/array-test.f
 ;TEST-SUITE
