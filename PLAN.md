@@ -41,8 +41,16 @@ Built + tested this session (the older sections below predate it):
    the mask/extent-identity negatives reject. Mechanism now precisely located and
    bounded (see `LESSONS.md`): re-parse-per-call instantiation + unique atom
    naming in `SIG-TYPE`/`MK-ATOM`; needs a `checker.f` change + fixpoint rebuild.
-3. **PTX codegen → device** — lowering the type-only kernels to run on `zed`; the
-   prerequisite for the eval-matrix data that would earn the thesis.
+3. **PTX codegen → device** — *substantially validated on-device 2026-06-27* (this
+   IS an Orin: local GPU, `ptxas` 12.6, Tegra `libcuda`). Proven end-to-end:
+   checked SAXPY → emitted PTX → `ptxas -arch=sm_87` → cubin → **loaded as a live
+   GPU module via the Habu FFI** (`cuInit`/`cuDeviceGet`/`cuDevicePrimaryCtxRetain`/
+   `cuModuleLoad`/`cuModuleGetFunction` all rc 0, valid SAXPY function handle —
+   `tools/ptx/cuda-load.f`). Remaining for a full launch + CPU-golden compare:
+   device malloc/memcpy + param marshalling via the **old ≤8-arg launch API**
+   (`cuFuncSetBlockShape`/`cuParamSetv`/`cuLaunchGrid`) — no engine change needed
+   (avoids `cuLaunchKernel`'s 11 args, which would need an `ffi-call` stack-spill
+   extension = M1c). That full launch is the eval-matrix data path.
 
 The thesis "better target" claim stays **unmade** until item 3 produces the data.
 
