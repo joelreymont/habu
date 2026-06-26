@@ -132,6 +132,29 @@ lesson — keep the specific word/code/path, cut the prose.
   root plan is drift. Current verification in `STATUS.md`, memory in `LESSONS.md`,
   ready work in `dot ready`. Completed/landed plans retire their root docs; root
   Markdown is contracts, status, or active work only.
+- **On-device validated: this environment IS an Orin (2026-06-27).** Local GPU
+  (`/dev/nvidia0`, `nvidia-smi` = "Orin (nvgpu)", compute_cap 8.7), `ptxas` 12.6,
+  Tegra `libcuda.so`. Proven end-to-end: checked SAXPY → `PTX-EMIT-SAXPY` →
+  `ptxas -arch=sm_87` → cubin → **loaded as a live GPU module via the Habu FFI**
+  (`tools/ptx/cuda-load.f`): `cuInit`/`cuDeviceGet`/`cuDevicePrimaryCtxRetain`
+  (NOT `cuCtxCreate` — that hangs on the Orin's camera primary context)/
+  `cuCtxSetCurrent`/`cuModuleLoad`/`cuModuleGetFunction` all rc 0, valid function
+  handle. FFI usage: `DLOPEN-SLOT @`/`DLSYM-SLOT @` give dlopen/dlsym; `ffi-call
+  ( argbuf fn -- rc )` loads x0..x7 (≤8 args). Run-mode hangs (use `--load`, not
+  `bin/hb file.f`); processes hang on exit unless the module/ctx are released.
+- **GPU launch blocked on an FFI-ABI / context-binding gap, not the launch API.**
+  The old ≤8-arg launch path (`cuMemAlloc`/`cuMemsetD32`/`cuFuncSetBlockShape`/
+  `cuParamSetv`/`cuLaunchGrid`) avoids `cuLaunchKernel`'s 11 args, so it is
+  callable. But `cuMemAlloc` returns 201 INVALID_CONTEXT *even after*
+  `cuCtxSetCurrent` returns 0 (handle non-zero). The current context is
+  thread/TLS state CUDA reads per call; `ffi-call` (`BFFI-CALL`, habu1.f:982) only
+  marshals x0..x7 + BLR and likely doesn't preserve a register/TLS state CUDA's
+  context lookup needs (leading hypotheses: the AAPCS64 platform reg x18, or
+  TPIDR-based TLS, or a primary-context-state nuance). Needs FFI-trampoline
+  debugging (M1c-class) + a fixpoint rebuild (recoverable via `../habu/bin/hb`).
+  That single fix unblocks launch → CPU-golden → the eval matrix. Module load,
+  function lookup, and `cuInit` all work, so the chain is one ABI fix from a live
+  checked-kernel run.
 - **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
   checker instantiates a called word's effect by RE-PARSING its stored signature
   STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;
