@@ -44,6 +44,11 @@ s" +."   VJP-NONLINEAR? TFALSE
 s" LOAD EXP. STORE" AD-REVERSE  s" LOAD SAVED-Y *. STORE" STR= TTRUE
 s" ROW-LOAD BLOCK-MAX ROW-STORE" AD-REVERSE
    s" ROW-LOAD SAVED-X SAVED-MX BLOCK-MAX-SELECT ROW-STORE" STR= TTRUE
+\ binary nonlinear ops: 2-output adjoints expand with stack-threaded cotangents
+s" LOAD *. STORE" AD-REVERSE
+   s" LOAD DUP SAVED-Y *. SWAP SAVED-X *. STORE" STR= TTRUE
+s" LOAD B- STORE" AD-REVERSE
+   s" LOAD DUP BLOCK-SUM NEG STORE" STR= TTRUE
 
 \ algebraic-simplify: adjacent NEG NEG cancels (double negation = identity)
 s" NEG NEG"          AD-SIMPLIFY s" "       STR= TTRUE

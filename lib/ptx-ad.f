@@ -37,6 +37,10 @@
 : VJP-EXPAND ( ptr u8 n -- ptr u8 n )
    2dup s" EXP."      STR= if 2drop s" SAVED-Y *."                       exit then
    2dup s" BLOCK-MAX" STR= if 2drop s" SAVED-X SAVED-MX BLOCK-MAX-SELECT" exit then
+   \ binary nonlinear ops: 2-output adjoints, the cotangents threaded by the
+   \ stack juggling (DUP/SWAP) inside the expansion (docs/autograd.md table):
+   2dup s" *." STR= if 2drop s" DUP SAVED-Y *. SWAP SAVED-X *." exit then  \ dx=dz.y, dy=dz.x
+   2dup s" B-" STR= if 2drop s" DUP BLOCK-SUM NEG"              exit then  \ dt=dz, ds=-Sum(dz)
    VJP-ADJOINT ;
 
 \ --- forward token spans (offset,len into the source body) ---
