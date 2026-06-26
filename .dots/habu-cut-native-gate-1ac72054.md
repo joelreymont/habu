@@ -32,5 +32,6 @@ strict signatures, bad checked effects, malformed definitions, REPL bad effects,
 and AOT-unsafe token JSON through `tools/check-test.f`,
 `tools/aot-lint-test.f`, `tools/hb-build-test.f`, and diagnostics slices.
 Focused AOT negative passed in 19.59s, `tools/aot-lint-test.f` passed in 3.14s,
-and the documented full native gate passed in 1m50.82s. Remaining long poles:
+and the documented full native gate passed in 1m51.62s after rebasing onto the
+FFI library change. Remaining long poles:
 AOT positive, engine repair/build, stdlib tool-boundary, and REPL builder work.
