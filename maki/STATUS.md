@@ -15,6 +15,11 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
   L2 weight decay as float update rules (the per-weight math). Runnable.
 - **Losses** (`maki/loss.f`, `maki/loss-test.f`) — MSE + its gradient, and L1
   (the per-element rule). Runnable.
+- **Autograd orchestration** (`maki/autograd.f`, `maki/autograd-test.f`) — tensor
+  ops (ADD/MUL/RELU) paired with their VJP (backward) rules, at the element level,
+  **with NUMERIC gradient verification**: each analytic VJP is checked against the
+  central finite difference. This is the gradcheck the type system cannot give —
+  the strongest form of the verified-gradient thesis, demonstrated numerically.
 
 The optimizer/loss element rules apply per-weight; the tensor-level apply (one
 update / one reduction over a whole tensor) lowers onto a Habu-PTX kernel once
