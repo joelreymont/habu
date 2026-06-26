@@ -17,6 +17,11 @@ s" LOAD DUP BLOCK-SUM" AD-REVERSE s" BROADCAST +. STORE" STR= TTRUE
 s" +." AD-REVERSE s" DUP" STR= TTRUE
 \ a longer linear pipeline
 s" LOAD LOAD +. STORE" AD-REVERSE s" LOAD DUP STORE STORE" STR= TTRUE
+\ row pipeline (ROW-LOAD/ROW-STORE mutual adjoints; NEG self-adjoint)
+s" ROW-LOAD" VJP-ADJOINT s" ROW-STORE" STR= TTRUE
+s" NEG" VJP-ADJOINT s" NEG" STR= TTRUE
+s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" AD-REVERSE
+   s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" STR= TTRUE
 
 \ a forward word with no registered adjoint fails closed
 : BAD-VJP ( -- )  s" SCALE" VJP-ADJOINT 2drop ;

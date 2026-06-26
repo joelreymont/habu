@@ -21,6 +21,9 @@
    2dup s" BROADCAST" STR= if 2drop s" BLOCK-SUM" exit then
    2dup s" LOAD"      STR= if 2drop s" STORE"     exit then
    2dup s" STORE"     STR= if 2drop s" LOAD"      exit then
+   2dup s" ROW-LOAD"  STR= if 2drop s" ROW-STORE" exit then
+   2dup s" ROW-STORE" STR= if 2drop s" ROW-LOAD"  exit then
+   2dup s" NEG"       STR= if 2drop s" NEG"       exit then
    E-PTX-NOVJP throw ;
 
 \ --- forward token spans (offset,len into the source body) ---
