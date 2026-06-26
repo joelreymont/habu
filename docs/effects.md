@@ -44,6 +44,8 @@ addresses vs symbol indexes. They are fail-closed concrete types: `idx` does not
 unify with `len`, and neither unifies with a plain `n`. Introduce or remove a
 role only through an explicit checked constructor/coercion word or an audited
 boundary effect; do not rely on generic integer operations to launder a role.
+Unchecked native emitters should still expose these roles in their `TRUST`
+effects, so checked callers reject register/fd/label swaps before raw codegen.
 
 ## Examples (from `src/prims.fs`)
 

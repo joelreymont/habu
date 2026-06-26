@@ -134,8 +134,15 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 9 TROLE-VA 9 T=
 : TROLE-SYMIDX ( n -- n ) >SYMIDX SYMIDX>N ;
 10 TROLE-SYMIDX 10 T=
+: TROLE-LINUX-DUP2 ( reg fd reg -- ) LINUX-DUP2-FD ;
+: TROLE-DARWIN-DUP2 ( reg fd -- ) SPAWN-DUP2-ACTION ;
+: TROLE-DARWIN-FINISH ( label label -- ) SPAWN-DARWIN-FINISH ;
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
+s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) LINUX-DUP2-FD" T-CHECK-REJECTS
+s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) LINUX-SPAWN" T-CHECK-REJECTS
+s" CBAD-DARWIN-DUP2 ( reg reg -- ) SPAWN-DUP2-ACTION" T-CHECK-REJECTS
+s" CBAD-DARWIN-FINISH ( reg label -- ) SPAWN-DARWIN-FINISH" T-CHECK-REJECTS
 : ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
 s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-IF ( i64 bool -- i64 ) if {: x:i64 :} x else drop 0 then" T-CHECK-REJECTS

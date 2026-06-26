@@ -215,6 +215,8 @@ variable BF-TMP-U
    s" : FPRIM-L {: na:ptr nu xt :}" BF-SOURCE-MUST-LACK
    s" : REG-PRIM {: na:ptr nu lbl elbl :}" BF-SOURCE-MUST-LACK
    s" : ?PRIM-SPACE {: na:ptr nu :}" BF-SOURCE-MUST-LACK
+   s" : SPAWN-DUP2-ACTION ( reg fd -- )" BF-SOURCE-MUST-HAVE
+   s" : SPAWN-CHDIR-ACTION ( reg label -- )" BF-SOURCE-MUST-HAVE
    s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" BF-SOURCE-MUST-LACK
    s" : SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}" BF-SOURCE-MUST-LACK
    s" 14 SP SPAWN-ADESC-OFF SZA-I @ + STR," BF-SOURCE-MUST-HAVE

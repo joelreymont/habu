@@ -93,6 +93,10 @@ lesson — keep the specific word/code/path, cut the prose.
   that share runtime representation but must not compose (`reg`, `label`, `va`,
   `symidx`). A stack comment like `( n n -- )` hides swaps; role tokens plus
   negative `CHECK!` fixtures reject them before raw emitter tests run.
+- **Emitter TRUST effects should carry semantic roles:** native spawn helpers can
+  still be an unchecked syscall/record-layout boundary while their public effect
+  says `reg`, `fd`, `label`, or `count`. Do not leave boundary signatures as raw
+  `n` when the call contract has a stronger role.
 - **Checked encoder helpers consume roles, not raw cells:** typed ARM64 helpers in
   `bootstrap/cg/asm-checked.fs` should accept `reg`/`off` and erase with
   `REG>N`/`OFF>N` only at bit-packing leaves. Public encoders then reject

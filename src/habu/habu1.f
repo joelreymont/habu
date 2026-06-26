@@ -126,15 +126,15 @@ variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES
 $80000 constant LINUX-O-CLOEXEC
 LINUX-F-LINUX-SPECIFIC-BASE LINUX-F-DUPFD-CLOEXEC-OFF + constant LINUX-F-DUPFD-CLOEXEC
 
-: LINUX-SPAWN-FAIL ( n -- )
+: LINUX-SPAWN-FAIL ( reg -- )
    {: errfd :}
    0 errfd 0 ADDI,
    15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
    1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
-s" linux-spawn-fail" s" n --" TRUST
+s" linux-spawn-fail" s" reg --" TRUST
 
-: LINUX-DUP2-FD ( n n n -- )
+: LINUX-DUP2-FD ( reg fd reg -- )
    {: fdreg newfd errfd :}
    LBL LBL {: skip ok :}
    fdreg 0 CMPI,  C-LT skip BCOND,
@@ -144,9 +144,9 @@ s" linux-spawn-fail" s" n --" TRUST
       errfd LINUX-SPAWN-FAIL
    ok LBL,
    skip LBL, ;
-s" linux-dup2-fd" s" n n n --" TRUST
+s" linux-dup2-fd" s" reg fd reg --" TRUST
 
-: LINUX-CHDIR-FD ( n n -- )
+: LINUX-CHDIR-FD ( reg reg -- )
    {: cwdreg errfd :}
    LBL LBL {: skip ok :}
    cwdreg 0 CMPI,  C-LT skip BCOND,
@@ -155,7 +155,7 @@ s" linux-dup2-fd" s" n n n --" TRUST
       errfd LINUX-SPAWN-FAIL
    ok LBL,
    skip LBL, ;
-s" linux-chdir-fd" s" n n --" TRUST
+s" linux-chdir-fd" s" reg reg --" TRUST
 
 : LINUX-SPAWN-CLOSE-R ( -- )
    0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,  NR-CLOSE SYS, ;
@@ -214,20 +214,20 @@ s" linux-spawn-parent" s" --" TRUST
 : LINUX-SPAWN-CHILD ( -- )
    LINUX-SPAWN-CLOSE-R
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   9 SP 24 LDR,  9 14 LINUX-CHDIR-FD
+   9 SP 24 LDR,  9 >REG 14 >REG LINUX-CHDIR-FD
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   9 SP 32 LDR,  9 0 14 LINUX-DUP2-FD
+   9 SP 32 LDR,  9 >REG 0 >FD 14 >REG LINUX-DUP2-FD
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   9 SP 40 LDR,  9 1 14 LINUX-DUP2-FD
+   9 SP 40 LDR,  9 >REG 1 >FD 14 >REG LINUX-DUP2-FD
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   9 SP 48 LDR,  9 2 14 LINUX-DUP2-FD
+   9 SP 48 LDR,  9 >REG 2 >FD 14 >REG LINUX-DUP2-FD
    0 SP 0 LDR,  1 SP 8 LDR,  2 SP 16 LDR,
    NR-EXECVE SYS,
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
-   14 LINUX-SPAWN-FAIL ;
+   14 >REG LINUX-SPAWN-FAIL ;
 s" linux-spawn-child" s" --" TRUST
 
-: LINUX-SPAWN ( n n n n n n n -- )
+: LINUX-SPAWN ( reg reg reg reg reg reg reg -- )
    {: pathreg argvreg envreg cwdreg infd outfd errfd :}
    LBL LBL LBL LBL {: child closefail fail done :}
    SP SP LINUX-SPAWN-FRAME SUBI,
@@ -252,7 +252,7 @@ s" linux-spawn-child" s" --" TRUST
    done LBL,
    SP SP LINUX-SPAWN-FRAME ADDI,
    9 G-PUSH ;
-s" linux-spawn" s" n n n n n n n --" TRUST
+s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
 
 : BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    LBL LBL LBL {: spok spdn spw :}
@@ -264,7 +264,7 @@ s" linux-spawn" s" n n n n n n n --" TRUST
       10 SP 16 ADDI,
       11 SP 48 ADDI,
       13 0 MOVN,
-      9 10 11 13 13 13 13 LINUX-SPAWN
+      9 >REG 10 >REG 11 >REG 13 >REG 13 >REG 13 >REG 13 >REG LINUX-SPAWN
       9 G-POP
       9 0 CMPI,  C-LT spdn BCOND,
       0 9 0 ADDI,
@@ -471,10 +471,10 @@ variable BSP-OK  variable BSP-DN  variable BSP-SAD
 variable SZA-I
 
 \ Emit one PSFA_DUP2 record into the runtime file-actions blob at x13.
-: SPAWN-DUP2-ARGS ( n n -- )
+: SPAWN-DUP2-ARGS ( reg fd -- )
    SDA-NEW !  SDA-FD ! ;
 
-: SPAWN-DUP2-ACTION ( n n -- )
+: SPAWN-DUP2-ACTION ( reg fd -- )
    SPAWN-DUP2-ARGS
    LBL SDA-SKIP !
    SDA-FD @ 0 CMPI,  C-LT SDA-SKIP @ BCOND,
@@ -485,16 +485,16 @@ variable SZA-I
    15 SDA-NEW @ MOVZ,  15 14 8 STRW,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
    SDA-SKIP @ LBL, ;
-s" spawn-dup2-action" s" n n --" TRUST
+s" spawn-dup2-action" s" reg fd --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
-: SPAWN-CHDIR-ARGS ( n n -- )
+: SPAWN-CHDIR-ARGS ( reg label -- )
    SCA-FAIL !  SCA-CWD ! ;
 
 : SPAWN-CHDIR-LABELS ( -- )
    LBL SCA-COPY !  LBL SCA-OVER !  LBL SCA-DONE ! ;
 
-: SPAWN-CHDIR-ACTION ( n n -- )
+: SPAWN-CHDIR-ACTION ( reg label -- )
    SPAWN-CHDIR-ARGS
    SPAWN-CHDIR-LABELS
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
@@ -516,7 +516,7 @@ s" spawn-dup2-action" s" n n --" TRUST
    SCA-OVER @ LBL,
    9 0 MOVN,  SCA-FAIL @ B,
    SCA-DONE @ LBL, ;
-s" spawn-chdir-action" s" n n --" TRUST
+s" spawn-chdir-action" s" reg label --" TRUST
 
 : SPAWN-DARWIN-FRAME3-ENTER ( -- )
    SP SP SPAWN-FRAME3 SUBI, ;
@@ -538,17 +538,17 @@ s" spawn-darwin-frame4-enter" s" --" TRUST
    SP SP SPAWN-FRAME4-A ADDI, ;
 s" spawn-darwin-frame4-leave" s" --" TRUST
 
-: SPAWN-DARWIN-ACTIONS-RESET ( n -- )
+: SPAWN-DARWIN-ACTIONS-RESET ( count -- )
    SACT-CAP !
    13 SP SPAWN-ACTIONS-OFF ADDI,
    14 SACT-CAP @ MOVZ,  14 13 SPAWN-FA-CAP-OFF STRW,
    14 0 MOVZ,  14 13 SPAWN-FA-COUNT-OFF STRW, ;
-s" spawn-darwin-actions-reset" s" n --" TRUST
+s" spawn-darwin-actions-reset" s" count --" TRUST
 
 : SPAWN-DARWIN-STDIO-ACTIONS ( -- )
-   10 0 SPAWN-DUP2-ACTION
-   11 1 SPAWN-DUP2-ACTION
-   12 2 SPAWN-DUP2-ACTION ;
+   10 >REG 0 >FD SPAWN-DUP2-ACTION
+   11 >REG 1 >FD SPAWN-DUP2-ACTION
+   12 >REG 2 >FD SPAWN-DUP2-ACTION ;
 s" spawn-darwin-stdio-actions" s" --" TRUST
 
 : SPAWN-DARWIN-ZERO-ADESC ( -- )
@@ -569,38 +569,38 @@ s" spawn-darwin-zero-adesc" s" --" TRUST
    13 SP SPAWN-ADESC-FA-PTR-OFF STR, ;
 s" spawn-darwin-fill-adesc" s" --" TRUST
 
-: SPAWN-DARWIN-NULLABLE-ADESC ( n -- )
+: SPAWN-DARWIN-NULLABLE-ADESC ( label -- )
    SAD-HAS !
    14 13 SPAWN-FA-COUNT-OFF LDRW,
    2 SP SPAWN-ADESC-OFF ADDI,
    14 SAD-HAS @ CBNZ,
       2 0 MOVZ,
    SAD-HAS @ LBL, ;
-s" spawn-darwin-nullable-adesc" s" n --" TRUST
+s" spawn-darwin-nullable-adesc" s" label --" TRUST
 
 : SPAWN-DARWIN-USE-ADESC ( -- )
    2 SP SPAWN-ADESC-OFF ADDI, ;
 s" spawn-darwin-use-adesc" s" --" TRUST
 
-: SPAWN-DARWIN-PID-PATH ( n -- )
+: SPAWN-DARWIN-PID-PATH ( reg -- )
    SPD-PATH !
    0 SP SPAWN-PID-OFF ADDI,
    1 SPD-PATH @ 0 ADDI, ;
-s" spawn-darwin-pid-path" s" n --" TRUST
+s" spawn-darwin-pid-path" s" reg --" TRUST
 
-: SPAWN-DARWIN-ARGV-ENVP ( n n -- )
+: SPAWN-DARWIN-ARGV-ENVP ( reg reg -- )
    SAE-ENVP !  SAE-ARGV !
    3 SAE-ARGV @ 0 ADDI,
    4 SAE-ENVP @ 0 ADDI, ;
-s" spawn-darwin-argv-envp" s" n n --" TRUST
+s" spawn-darwin-argv-envp" s" reg reg --" TRUST
 
-: SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( n -- )
+: SPAWN-DARWIN-DEFAULT-ARGV-ENVP ( reg -- )
    SDEF-PATH !
    SDEF-PATH @ SP SPAWN-ARGV-OFF STR,
    14 0 MOVZ,
    14 SP SPAWN-ARGV-END-OFF STR,
    14 SP SPAWN-ENVP-OFF STR, ;
-s" spawn-darwin-default-argv-envp" s" n --" TRUST
+s" spawn-darwin-default-argv-envp" s" reg --" TRUST
 
 : SPAWN-DARWIN-DEFAULT-ENVP ( -- )
    14 0 MOVZ,
@@ -612,13 +612,13 @@ s" spawn-darwin-default-envp" s" --" TRUST
    4 SP SPAWN-ENVP-OFF ADDI, ;
 s" spawn-darwin-use-default-argv-envp" s" --" TRUST
 
-: SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( n -- )
+: SPAWN-DARWIN-ARGV-DEFAULT-ENVP ( reg -- )
    SADV-ARGV !
    3 SADV-ARGV @ 0 ADDI,
    4 SP SPAWN-ARGV-OFF ADDI, ;
-s" spawn-darwin-argv-default-envp" s" n --" TRUST
+s" spawn-darwin-argv-default-envp" s" reg --" TRUST
 
-: SPAWN-DARWIN-FINISH ( n n -- )
+: SPAWN-DARWIN-FINISH ( label label -- )
    SFIN-FAIL !  SFIN-OK !
    NR-SPAWN SYS,
    9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK @ CBZ,
@@ -627,7 +627,7 @@ s" spawn-darwin-argv-default-envp" s" n --" TRUST
    9 SP SPAWN-PID-OFF LDR,
    SFIN-FAIL @ LBL,
    9 G-PUSH ;
-s" spawn-darwin-finish" s" n n --" TRUST
+s" spawn-darwin-finish" s" label label --" TRUST
 
 : BSP-LABELS3 ( -- )
    LBL BSP-OK !  LBL BSP-DN !  LBL BSP-SAD ! ;
@@ -645,20 +645,20 @@ s" spawn-darwin-finish" s" n n --" TRUST
       13 SP 32 STR,
       13 0 MOVN,
       14 SP 16 ADDI,  15 SP 32 ADDI,
-      9 14 15 13 10 11 12 LINUX-SPAWN
+      9 >REG 14 >REG 15 >REG 13 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       SP SP 64 ADDI,
       exit
    THEN
    SPAWN-DARWIN-FRAME3-ENTER
-   9 SPAWN-DARWIN-DEFAULT-ARGV-ENVP
-   3 SPAWN-DARWIN-ACTIONS-RESET
+   9 >REG SPAWN-DARWIN-DEFAULT-ARGV-ENVP
+   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
-   9 SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
+   9 >REG SPAWN-DARWIN-PID-PATH
+   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
    SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
-   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
+   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
@@ -669,20 +669,20 @@ s" spawn-darwin-finish" s" n n --" TRUST
       13 0 MOVZ,  13 SP 0 STR,
       13 0 MOVN,
       15 SP 0 ADDI,
-      8 9 15 13 10 11 12 LINUX-SPAWN
+      8 >REG 9 >REG 15 >REG 13 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       SP SP 16 ADDI,
       exit
    THEN
    SPAWN-DARWIN-FRAME3-ENTER
    SPAWN-DARWIN-DEFAULT-ENVP
-   3 SPAWN-DARWIN-ACTIONS-RESET
+   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
-   8 SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
-   9 SPAWN-DARWIN-ARGV-DEFAULT-ENVP
-   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
+   8 >REG SPAWN-DARWIN-PID-PATH
+   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
+   9 >REG SPAWN-DARWIN-ARGV-DEFAULT-ENVP
+   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVIO                     \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
@@ -690,37 +690,37 @@ s" spawn-darwin-finish" s" n n --" TRUST
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
       13 0 MOVN,
-      8 9 7 13 10 11 12 LINUX-SPAWN
+      8 >REG 9 >REG 7 >REG 13 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
    THEN
    SPAWN-DARWIN-FRAME3-ENTER
-   3 SPAWN-DARWIN-ACTIONS-RESET
+   3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
-   8 SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ SPAWN-DARWIN-NULLABLE-ADESC
-   9 7 SPAWN-DARWIN-ARGV-ENVP
-   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
+   8 >REG SPAWN-DARWIN-PID-PATH
+   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
+   9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
+   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
 : BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
    BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
-      8 9 7 6 10 11 12 LINUX-SPAWN
+      8 >REG 9 >REG 7 >REG 6 >REG 10 >REG 11 >REG 12 >REG LINUX-SPAWN
       exit
    THEN
    SPAWN-DARWIN-FRAME4-ENTER
-   4 SPAWN-DARWIN-ACTIONS-RESET
-   6 BSP-DN @ SPAWN-CHDIR-ACTION
+   4 >COUNT SPAWN-DARWIN-ACTIONS-RESET
+   6 >REG BSP-DN @ >LABEL SPAWN-CHDIR-ACTION
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
    SPAWN-DARWIN-FILL-ADESC
-   8 SPAWN-DARWIN-PID-PATH
+   8 >REG SPAWN-DARWIN-PID-PATH
    SPAWN-DARWIN-USE-ADESC
-   9 7 SPAWN-DARWIN-ARGV-ENVP
-   BSP-OK @ BSP-DN @ SPAWN-DARWIN-FINISH
+   9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
+   BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME4-LEAVE ;
 
 : BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)

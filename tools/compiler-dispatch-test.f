@@ -111,6 +111,8 @@ variable CDT-LEN
    s" : FPRIM-L {: na:ptr nu xt :}" CDT-MUST-LACK
    s" : REG-PRIM {: na:ptr nu lbl elbl :}" CDT-MUST-LACK
    s" : ?PRIM-SPACE {: na:ptr nu :}" CDT-MUST-LACK
+   s" : SPAWN-DUP2-ACTION ( reg fd -- )" CDT-MUST-HAVE
+   s" : SPAWN-CHDIR-ACTION ( reg label -- )" CDT-MUST-HAVE
    s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" CDT-MUST-LACK
    s" : SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}" CDT-MUST-LACK
    s" : BSPAWNIO" CDT-MUST-HAVE

@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-26
-Gate: passing; 31.22s on 2026-06-26 with warm checker/tool images and the checked DAG pool
+Gate: passing; 31.25s on 2026-06-26 with warm checker/tool images and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
