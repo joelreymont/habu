@@ -72,6 +72,64 @@ VJP: *.         ( dz x y   -- dx dy )       ... dz⊙y , dz⊙x ;
 [`inference.md`](inference.md): stack juggling has cognitive, not runtime, cost,
 so VJP bodies still prefer names at fan-out joints.)
 
+## Full VJP table (the M6 primitives)
+
+Every M6 forward primitive and its adjoint. `Σ` is `BLOCK-SUM`; ⊙/⊘ are
+elementwise mul/div; "saves" lists the forward values the backward needs — the
+tape replacement, supplied by save or recompute (below). Linear ops save nothing.
+
+**Elementwise** `( tile tile -- tile )`:
+
+| forward | z = | adjoint | saves |
+| --- | --- | --- | --- |
+| `+.` | x + y | `dx=dz, dy=dz`  →  `DUP` | — |
+| `-.` | x − y | `dx=dz, dy=−dz`  →  `DUP NEG` | — |
+| `*.` | x ⊙ y | `dx=dz⊙y, dy=dz⊙x` | x, y |
+| `/.` | x ⊘ y | `dx=dz⊘y, dy=−dz⊙z⊘y` | y, z |
+
+**Broadcast** `( tile uniform -- tile )` **and** `FMA.`:
+
+| forward | z = | adjoint | saves |
+| --- | --- | --- | --- |
+| `SCALE` | a · x | `dx=a·dz, da=Σ(dz⊙x)` | a, x |
+| `B-` | x − s | `dx=dz, ds=−Σdz`  →  `DUP BLOCK-SUM NEG` | — |
+| `B/` | x ⊘ s | `dx=dz⊘s, ds=−Σ(dz⊙z)⊘s` | s, z |
+| `FMA.` | a·x + y | `da=Σ(dz⊙x), dx=a·dz, dy=dz` | a, x |
+
+(`B+`/`B*`, if added, are symmetric: `B+` → `dx=dz, ds=Σdz`; `B*` → `dx=s·dz, ds=Σ(dz⊙x)`.)
+
+**Unary and collectives:**
+
+| forward | z = | adjoint | saves |
+| --- | --- | --- | --- |
+| `EXP.` | exp(x) | `dx=dz⊙y`  →  `( dz y -- dx ) y *.` | output y |
+| `BLOCK-SUM` | Σx | `dx=BROADCAST(ds)` (masked) | — |
+| `BLOCK-MAX` | max x | `dx = ds` at the arg-max lane, 0 elsewhere (sub-gradient) | x, m |
+
+**Memory** (the adjoint reverses direction):
+
+| forward | adjoint | note |
+| --- | --- | --- |
+| `LOAD ( span ctx -- tile )` | `STORE` of `dt` into the input's gradient span | scatter-**add** (`red.global.add`, arch-gated) if the input is read >1× across the grid; plain store if read once |
+| `STORE ( tile span ctx -- )` | `LOAD` of `dt` from the output's gradient span | plain load |
+
+**Stack and structural:**
+
+| forward | adjoint | note |
+| --- | --- | --- |
+| `DUP ( t -- t t )` | `+.` | fan-out's adjoint sums the two cotangents |
+| `DROP ( t -- )` | push a zero tile | a dropped value has zero cotangent |
+| `SWAP` / `OVER` / `ROT` | inverse permutation (self for `SWAP`) | the reversal reorders cotangents; no data |
+| `ROW` `ROW-SPAN` `GRID-CTX` `ROW-CTX` `MK-SPAN` `MK-MATRIX` | **lifted unchanged** | addressing/index/context carry no data gradient; the backward *recomputes* the same addressing (as `SOFTMAX-ROWS-BWD` recomputes `ROW`/`ROW-SPAN`/`ROW-CTX`) |
+
+The table closes the system: the **only** adjoints that are not already M6
+primitives are `BROADCAST` (the named form of the implicit broadcast inside
+`B-`/`B/`) and the `BLOCK-MAX` arg-max **select** (a masked scatter — the one
+genuinely new primitive the AD layer needs). Everything else reuses a forward
+primitive. That is why `SOFTMAX-ROWS-BWD` is buildable the moment `BROADCAST` is
+named, and why a full transformer block's backward needs only the `BLOCK-MAX`
+select beyond M6 + matmul (M11).
+
 ## The reverse pass
 
 Given a forward word `W`:
