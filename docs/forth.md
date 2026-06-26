@@ -20,7 +20,11 @@ file.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
   they do not collide with built-ins. Do not use loop words such as `i` or `j`
-  as locals.
+  as locals — a `{: i :}` local shadows the loop-index word and fails with a
+  baffling signature: the engine emits the bare token (`i`) to stdout and exits
+  `75` with no checker diagnostic. If a definition load prints a lone built-in
+  word name and dies, suspect a local that collides with `i`/`j`/`k`. Use `idx`,
+  `ix`, `ji`, etc.
 - **Check for collisions with built-ins** before naming — Forth dictionaries are
   case-insensitive here, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
