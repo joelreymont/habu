@@ -16,11 +16,12 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
 | `token` | string | required | Token that anchored the diagnostic. |
+| `dead_owner` | string | dead-code only | Terminating token (`throw`, `die`, `exit`, `leave`, `again`, or a no-return word) that made the later token unreachable. |
 | `token_index` | integer | required | Zero-based token index within the captured definition body. |
 | `file` | string | required | Wrapper label or source path attached to the diagnostic. |
 | `line` | integer | required | One-based source line for the token. |
@@ -93,6 +94,8 @@ Current checker classes:
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
+- `remove_dead_code`: ordinary tokens appeared after a terminating control word;
+  remove them or move the work before the terminating path.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
@@ -110,6 +113,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
+| `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |

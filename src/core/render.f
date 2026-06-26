@@ -212,9 +212,10 @@ variable DSUGE  variable DSUGA
 : DCODE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
+   DEADERR @ IF s" E-DEAD-CODE" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
@@ -225,6 +226,7 @@ variable DSUGE  variable DSUGA
 : REPAIR-CLASS ( -- a u )
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
+   DEADERR @ IF s" remove_dead_code" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF s" fix_signature_syntax" EXIT THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
@@ -241,6 +243,7 @@ variable DSUGE  variable DSUGA
 : SUGGEST-TEXT ( -- a u )
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
+   DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF s" Repair the stack-effect comment syntax, including --." EXIT THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
@@ -272,6 +275,7 @@ variable JPOS  variable JLINE  variable JCOL
 : DIAG-PROSE
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
+   DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN ;
@@ -284,6 +288,7 @@ variable JPOS  variable JLINE  variable JCOL
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
+   DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
    s" line" JKEY  JABS-LINE JNUM  44 EMIT1

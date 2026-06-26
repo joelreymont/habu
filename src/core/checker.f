@@ -199,6 +199,7 @@ variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable THDROW  variable THRROW  variable THSET
 variable XROW  variable XRROW  variable XSET  variable DEADP
+variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -1359,6 +1360,9 @@ variable SKI  variable SKF
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
+: DEAD-OWNER! ( ptr u8 n -- )
+   DEADTU !  DEADTA ! ;
+
 : DEAD-CLOSE? {: a u :}
    a u s" else"   STR= IF -1 EXIT THEN
    a u s" then"   STR= IF -1 EXIT THEN
@@ -1425,16 +1429,19 @@ s" <input>" DIAG-FILE!
    a u TOKFOLD drop
    CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
-   TKF TFU @ LIVE-TOKEN? 0= IF 0 OK ! ELSE
+   TKF TFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
    TKF TFU @ s" {:" STR= IF LOC-BEGIN ELSE
    TKF TFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
+   OK @ IF TKF TFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
    TKF TFU @ LOC-REF? 0= IF
    TKF TFU @ DO-TOK
    OK @ IF TKF TFU @ THROW-TOK? IF THROW-EDGE THEN THEN
-   OK @ IF TKF TFU @ DEAD-TOK? IF -1 DEADP ! THEN THEN
+   OK @ IF TKF TFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -1449,7 +1456,8 @@ s" <input>" DIAG-FILE!
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
-   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 THDROW !  0 THRROW !  0 THSET !
+   0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
+   0 THDROW !  0 THRROW !  0 THSET !
    0 SGBAD !  0 UNSAFE !  0 LOCALBAD ! ;
 
 : CHECK-SCAN ( -- )

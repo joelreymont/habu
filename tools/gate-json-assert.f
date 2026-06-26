@@ -298,6 +298,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
    GJA-SUGGEST-ROW IF exit THEN
+   s" remove_dead_code" s" Remove tokens after the terminating control word, or move the work before it."
+   GJA-SUGGEST-ROW IF exit THEN
    s" fix_signature_syntax" s" Repair the stack-effect comment syntax, including --."
    GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."

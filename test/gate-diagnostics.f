@@ -189,7 +189,21 @@ variable GDX-PATH-U
    s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted return-stack imbalance" GDX-CHECK-JSON
    s" habu-json-ret.err" GDX-WRITE-ERR
-   s" diag-repair-class" s" habu-json-ret.err" s" fix_return_stack" s" return stack class" GDX-GJA2S ;
+   s" diag-repair-class" s" habu-json-ret.err" s" fix_return_stack" s" return stack class" GDX-GJA2S
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JDEAD ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 + ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted dead-code padding" GDX-CHECK-JSON
+   s" code" s" E-DEAD-CODE" s" dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
+   s" dead_owner" s" throw" s" dead-code owner" GDX-EXPECT-ERR-JSTR
+   s" habu-json-dead.err" GDX-WRITE-ERR
+   s" diag-repair-class" s" habu-json-dead.err" s" remove_dead_code" s" dead-code class" GDX-GJA2S
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted die dead-code padding" GDX-CHECK-JSON
+   s" code" s" E-DEAD-CODE" s" die dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
+   s" dead_owner" s" die" s" die dead-code owner" GDX-EXPECT-ERR-JSTR ;
 
 : GDX-FILE-ORIGIN ( -- )
    GE-HB-RESET
