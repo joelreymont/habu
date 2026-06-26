@@ -63,7 +63,7 @@ detected.
 
 1. validates that Gforth supports `{:` locals;
 2. uses `test/nf.fs` and `bootstrap/` to create private bootstrap executables in
-   `HB_TMP`;
+   `HB_TMP` from the same native source layers used by `tools/build-fixpoint.f`;
 3. uses those private executables to produce `bin/hb`;
 4. runs the normal `bin/hb` self-refresh so the installed binary is rebuilt from
    current source and reaches the byte-for-byte fixpoint.

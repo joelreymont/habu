@@ -101,6 +101,10 @@ lesson — keep the specific word/code/path, cut the prose.
   such as `RPD@`, `PR-A@`, `FP-A@`, `EP@`, `BYP@`, and `BYA@` are plain checked
   helpers when written as `VAR 0 ptr-field @`; do not add TRUST rows for this
   storage pattern.
+- **Locals shape is a checker invariant:** `{:` is allowed only on live
+  top-level paths, before control/quotation frames open and before a dead `exit`
+  path. Mid-control locals are static rejections, not build-preflight-only style
+  failures.
 
 ## Tool & Infra
 
@@ -128,6 +132,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **No-binary recovery installs only `bin/hb`** (generated/ignored): recover with
   `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh`; Gforth makes only `HB_TMP`
   artifacts, then `bin/hb` self-refreshes. Daily work never uses the Gforth path.
+- **Bootstrap source parity matters:** `tools/bootstrap.sh` must append the same
+  native source layers as `tools/build-fixpoint.f` (including
+  `src/os/image-bytes.f`). Keep bootstrap `bootstrap/cg/forth.fs` emitter calls
+  syntactically real (`MOVZ,`, `BCOND,`, `ADDI,`) because Gforth catches the
+  comma-less raw word immediately.
 - **Gforth host needs locals:** Homebrew 0.7.3 can't parse `{:` and isn't usable;
   use snapshot `0.7.9_20260610` (macOS: configure `UNSUITABLE_CC=none`, wrapper
   execs `gforth-itc -i gforth-light.fi`) or `GFORTH=…/gforth-fast`. Bootstrap

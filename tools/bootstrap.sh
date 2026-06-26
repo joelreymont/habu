@@ -72,6 +72,7 @@ SRC_COMMON=(
   src/habu/treeshake.f
   src/habu/rt.f
   src/habu/crash.f
+  src/os/image-bytes.f
   "$OS_IMAGE"
   "$OS_SIGN"
   src/habu/habu1.f

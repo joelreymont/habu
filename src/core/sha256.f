@@ -49,6 +49,9 @@ variable SHA-NEED
 variable SHA-NBLK
 variable SHA-FD
 variable SHA-RD
+variable SHA-T1
+variable SHA-T2
+variable SHA-BLEN
 
 : BE32@ ( ptr u8 -- n )
    dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
@@ -57,11 +60,11 @@ variable SHA-RD
 
 \ one compression round for schedule index ri (local named ri, not i, to keep loop-i)
 : SHA-ROUND {: ri :}
-   7 STV  4 STV BSIG1 +  4 STV 5 STV 6 STV CH +  KK ri cells + @ +  WS ri cells + @ +  M32  {: t1 :}
-   0 STV BSIG0  0 STV 1 STV 2 STV MAJ +  M32  {: t2 :}
+   7 STV  4 STV BSIG1 +  4 STV 5 STV 6 STV CH +  KK ri cells + @ +  WS ri cells + @ +  M32  SHA-T1 !
+   0 STV BSIG0  0 STV 1 STV 2 STV MAJ +  M32  SHA-T2 !
    7 0 DO  ST 6 i - cells + @  ST 7 i - cells + !  LOOP   \ h=g g=f f=e d=c c=b b=a
-   4 STV t1 + M32  ST 4 cells + !                          \ e = d + t1
-   t1 t2 + M32  ST 0 cells + ! ;                           \ a = t1 + t2
+   4 STV SHA-T1 @ + M32  ST 4 cells + !                     \ e = d + t1
+   SHA-T1 @ SHA-T2 @ + M32  ST 0 cells + ! ;                \ a = t1 + t2
 
 : SHA-BLOCK ( ptr u8 -- )
    {: a:ptr :}
@@ -108,9 +111,9 @@ create PBLK 128 allot
 : SHA-PAD ( ptr u8 n n -- n )
    {: tail:ptr tl ub :}
    PBLK 128 ZFILL  tail PBLK tl BMOVE  128 PBLK tl + c!
-   tl 56 < if 64 else 128 then {: blen :}
-   ub 8 *  PBLK blen 8 - +  BE64!
-   blen 64 / ;
+   tl 56 < if 64 else 128 then SHA-BLEN !
+   ub 8 *  PBLK SHA-BLEN @ 8 - +  BE64!
+   SHA-BLEN @ 64 / ;
 
 \ SHA-256 of [a,u) -> writes 32 bytes to dst
 : SHA256-UPDATE ( ptr u8 n -- )

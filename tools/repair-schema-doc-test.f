@@ -118,6 +118,7 @@ create RSD-ERR RSD-BUF-CAP allot
    s" fix_type" RSD-NEED-DOC-CLASS
    s" fix_return_stack" RSD-NEED-DOC-CLASS
    s" trusted_boundary_required" RSD-NEED-DOC-CLASS
+   s" factor_local_shape" RSD-NEED-DOC-CLASS
    s" fix_signature_syntax" RSD-NEED-DOC-CLASS
    s" rewrite_uncheckable" RSD-NEED-DOC-CLASS
    s" unknown_rejection" RSD-NEED-DOC-CLASS ;

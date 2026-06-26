@@ -208,9 +208,10 @@ variable DSUGE  variable DSUGA
    34 EMIT1 ;
 : DCODE
    UNSAFE @ IF s" E-UNSAFE" ELSE
+   LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
@@ -220,6 +221,7 @@ variable DSUGE  variable DSUGA
    THEN ;
 : REPAIR-CLASS ( -- a u )
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
+   LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF s" fix_signature_syntax" EXIT THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
@@ -235,6 +237,7 @@ variable DSUGE  variable DSUGA
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF s" Repair the stack-effect comment syntax, including --." EXIT THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN

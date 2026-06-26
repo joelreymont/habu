@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-26
-Gate: passing; 31.14s on 2026-06-26 with warm checker/tool images and the checked DAG pool
+Gate: passing; 31.22s on 2026-06-26 with warm checker/tool images and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -49,7 +49,9 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Row unification** — full row polymorphism over both the data and return rows.
 - **Return-stack ops** — `>R R> R@ 2>R 2R> 2R@` typed; balance enforced.
 - **`execute`** — `xt ≡ quot<E>`; all four of the quotation's rows are threaded.
-- **Locals** — typed `{: a:n :}` scope.
+- **Locals** — typed `{: a:n :}` scope; locals introduced inside active control
+  flow, inside quotations, or after a dead `exit` path reject with
+  `E-BAD-LOCAL-SHAPE`.
 - **Control flow** — `IF/ELSE/THEN`, `BEGIN…UNTIL/WHILE…REPEAT/AGAIN`,
   `?DO…LOOP/+LOOP`, `I J UNLOOP RECURSE`; branch states unified at the joins.
 - **Leave** — `leave` must carry the loop-exit row (= the post-`?DO` row of a

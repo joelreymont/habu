@@ -138,6 +138,8 @@ s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
 : ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
 s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
+s" CBAD-LOCAL-IF ( i64 bool -- i64 ) if {: x:i64 :} x else drop 0 then" T-CHECK-REJECTS
+s" CBAD-LOCAL-AFTER-EXIT ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate

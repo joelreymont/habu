@@ -16,7 +16,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -90,6 +90,9 @@ Current checker classes:
   that requires audited `TRUST` or a modeled rewrite. This includes adversarial
   attempts to call `evaluate`, declare effects with `TRUST`, or disable/replace
   the checker hook with `set-check` from inside a checked definition.
+- `factor_local_shape`: locals were introduced inside active control flow, inside
+  a quotation, or after a dead `exit` path; factor a helper or move locals before
+  control opens.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
@@ -106,6 +109,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_type` | `Change the body so produced types match the signature.` |
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
+| `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |

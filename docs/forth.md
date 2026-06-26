@@ -60,6 +60,9 @@ not a matter of taste. Target is the native `bin/hb` engine.
   `exit` path. Factor a helper whose inputs can be bound at entry, or use owned
   scratch cells for loop/control state. Mid-control locals can fail in raw
   compilation at `{:` before the checked diagnostic path can explain the bug.
+- **Keep locals before live control.** A later `{:` group is valid only while the
+  definition is still on a live top-level path; factor another helper instead of
+  introducing locals inside control flow or after `exit`.
 - **Do not build deep locals stacks.** Habu locals are reliable for shallow
   factoring; nested helper calls from loop/callback bodies should use stack-based
   leaf helpers or explicitly separate scratch variables so inner helpers cannot

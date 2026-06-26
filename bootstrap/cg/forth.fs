@@ -785,21 +785,21 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
 : C-NUM-INIT-REGS ( -- )
-   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ ;
+   11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
 
 : C-NUM-SIGN ( n n -- ) {: ldone ndoll :}
    10 ldone CBZ,                                                \ empty token -> fail
    15 9 0 LDRB,  15 45 CMPI,  C-NE ndoll BCOND,                 \ leading '-'
       13 0 MOVN,  14 1 MOVZ,
    ndoll LBL,
-   14 10 CMP,  C-GE ldone BCOND ;                               \ "-" only -> fail
+   14 10 CMP,  C-GE ldone BCOND, ;                              \ "-" only -> fail
 
 : C-NUM-BASE ( n n -- ) {: ldone nohex :}
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE nohex BCOND,    \ '$' prefix
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
    2 0 MOVZ,                                                    \ frac mode off
-   14 10 CMP,  C-GE ldone BCOND ;                               \ nothing after sign/$ -> fail
+   14 10 CMP,  C-GE ldone BCOND, ;                              \ nothing after sign/$ -> fail
 
 : C-NUM-DOT ( n n n -- ) {: ldone lloop ndot :}
    15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
@@ -837,7 +837,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
 
 : C-NUM-INT-FINISH ( -- )
-   11 11 13 MUL,  12 1 MOVZ ;
+   11 11 13 MUL,  12 1 MOVZ, ;
 
 : EMIT-NUM ( -- )
    LNUM @ LBL,
@@ -918,14 +918,14 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
    lsbody LBL,  15 14 CMP,  C-GE lcopy BCOND,
       9 15 0 LDRW,  15 15 4 ADDI,
       8 $FC000000 LIT64,  10 9 8 AND,  8 $94000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,
-      8 $FC000000 LIT64,  10 9 8 AND,  8 $14000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ B
+      8 $FC000000 LIT64,  10 9 8 AND,  8 $14000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND, \ B
       8 $FF000010 LIT64,  10 9 8 AND,  8 $54000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ B.cond
       8 $7E000000 LIT64,  10 9 8 AND,  8 $34000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ CBZ/CBNZ
       8 $7E000000 LIT64,  10 9 8 AND,  8 $36000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ TBZ/TBNZ
       8 $FFFFFC1F LIT64,  10 9 8 AND,
          8 $D63F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BLR
          8 $D61F0000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,                                \ BR
-      8 $D65F03C0 LIT64,  9 8 CMP,  C-EQ lcall BCOND,                                    \ RET
+      8 $D65F03C0 LIT64,  9 8 CMP,  C-EQ lcall BCOND,                                   \ RET
       8 $1F000000 LIT64,  10 9 8 AND,  8 $10000000 LIT64,  10 8 CMP,  C-EQ lcall BCOND,  \ ADR/ADRP
       lsbody B,
    lcopy LBL,
@@ -1326,7 +1326,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
       5 $80000000 LIT64,  13 11 5 AND,
       LBL {: pisb :}  LBL {: pdone :}
-      13 pisb CBZ,                                    \ bit31==0 -> B (imm26)
+      13 pisb CBZ,                                   \ bit31==0 -> B (imm26)
          5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,  pdone B,
       pisb LBL,  5 $3FFFFFF LIT64,  10 10 5 AND,
       pdone LBL,  11 11 10 ORR,  11 9 0 STRW,  RET,
@@ -1969,7 +1969,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ S" (interpret mode): copy the string to HERE (transient — no allot) and push
 \ ( addr len ). Compile mode bakes bytes into the code image instead (c-sdq).
 : C-QUOTE-START ( -- )
-   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI ;
+   12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
 : C-QUOTE-EOF ( -- )
    0 74 MOVZ,  NR-EXIT SYS, ;

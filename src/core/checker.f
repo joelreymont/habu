@@ -389,6 +389,7 @@ create NMAP 26 cells allot
 variable NRES  variable NDI  variable NDH
 variable SGBAD
 variable UNSAFE
+variable LOCALBAD
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -1044,6 +1045,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 : CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
 create LOCNB 1024 allot   create LOCLN 64 cells allot   create LOCTV 64 cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+variable #CFC
 variable QDEPTH
 
 variable LCO
@@ -1080,13 +1082,20 @@ variable LCO
    a u s" --" STR= IF -1 UNCK ! ELSE
    a u LOC-ADD THEN THEN ;
 
+: LOC-REJECT ( -- )
+   0 OK !  -1 FAILSET !  -1 LOCALBAD ! ;
+
+: LOC-BEGIN ( -- )
+   #CFC @ 0 >  DEADP @ or IF LOC-REJECT ELSE
+   1 LMODE !  #LOC @ LGRP ! THEN ;
+
 : LOC-REF? {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
      a u  LOCNB LI @ 16 * +  LI @ cells LOCLN + @  STR= IF
        QDEPTH @ 0 > IF
-          0 OK !
+          LOC-REJECT
        ELSE
           LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !
        THEN
@@ -1105,7 +1114,7 @@ create CFXRO 32 cells allot   create CFXRR 32 cells allot
 create CFXST 32 cells allot    create CFXDP 32 cells allot
 create CFTXD 32 cells allot   create CFTXR 32 cells allot
 create CFTXS 32 cells allot
-variable #CFC  variable CTMP  variable RTMP  variable CFH  variable INDO
+variable CTMP  variable RTMP  variable CFH  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
@@ -1400,7 +1409,7 @@ s" <input>" DIAG-FILE!
    CAP-FAIL
    TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
    LMODE @ IF TKF TFU @ LOC-TOK ELSE
-   TKF TFU @ s" {:" STR= IF 1 LMODE !  #LOC @ LGRP ! ELSE
+   TKF TFU @ s" {:" STR= IF LOC-BEGIN ELSE
    TKF TFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
@@ -1423,7 +1432,7 @@ s" <input>" DIAG-FILE!
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 THDROW !  0 THRROW !  0 THSET !
-   0 SGBAD !  0 UNSAFE ! ;
+   0 SGBAD !  0 UNSAFE !  0 LOCALBAD ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
@@ -1457,7 +1466,7 @@ s" <input>" DIAG-FILE!
    THEN ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET

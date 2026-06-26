@@ -60,16 +60,14 @@ $100 constant AT-SYMLINK-NOFOLLOW
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
 
 : OS-OPEN-FLAGS ( -- )
+   LBL LBL LBL {: noappend nocreat notrunc :}
    7 3 MOVZ,  6 1 7 AND,
-   LBL {: noappend :}
    7 8 MOVZ,  7 1 7 AND,  7 noappend CBZ,
       7 $400 MOVZ,  6 6 7 ORR,
    noappend LBL,
-   LBL {: nocreat :}
    7 $200 MOVZ,  7 1 7 AND,  7 nocreat CBZ,
       7 $40 MOVZ,  6 6 7 ORR,
    nocreat LBL,
-   LBL {: notrunc :}
    7 $400 MOVZ,  7 1 7 AND,  7 notrunc CBZ,
       7 $200 MOVZ,  6 6 7 ORR,
    notrunc LBL,
