@@ -25,3 +25,12 @@ one checked process. Focused AOT positive passed in 35.28s, AOT negative in
 full native gate passed in 2m06.99s. Remaining long pole is still gate DAG
 contention: stdlib tool-boundary, engine repair, AOT positive/negative, engine
 build, and REPL overlap heavily.
+
+Checkpoint 2026-06-27: cut AOT negative from six `hb-build` CLI failures to the
+one hb-build-only closure-limit failure. Existing gate coverage already checks
+strict signatures, bad checked effects, malformed definitions, REPL bad effects,
+and AOT-unsafe token JSON through `tools/check-test.f`,
+`tools/aot-lint-test.f`, `tools/hb-build-test.f`, and diagnostics slices.
+Focused AOT negative passed in 19.59s, `tools/aot-lint-test.f` passed in 3.14s,
+and the documented full native gate passed in 1m50.82s. Remaining long poles:
+AOT positive, engine repair/build, stdlib tool-boundary, and REPL builder work.

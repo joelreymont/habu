@@ -68,6 +68,23 @@ create ALT-ERR ALT-BUF-CAP allot
    ALT-DQ s" <stdin>" SB-APPEND ALT-DQ
    SB$ ;
 
+: ALT-JSON-STR-FIELD$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: key:ptr keyu val:ptr valu :}
+   SB-RESET
+   ALT-DQ key keyu SB-APPEND ALT-DQ
+   58 SB-APPEND-C
+   ALT-DQ val valu SB-APPEND ALT-DQ
+   SB$ ;
+
+: ALT-JSON-TOKEN$ ( -- ptr u8 n )
+   s" token" s" here" ALT-JSON-STR-FIELD$ ;
+
+: ALT-JSON-WORD$ ( -- ptr u8 n )
+   s" word" s" MAIN" ALT-JSON-STR-FIELD$ ;
+
+: ALT-JSON-REASON$ ( -- ptr u8 n )
+   s" reason" s" stripped AOT has no persistent data region" ALT-JSON-STR-FIELD$ ;
+
 : ALT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-aot-lint" TMPDIR-MKDIR {: a:ptr u :}
@@ -145,7 +162,10 @@ create ALT-ERR ALT-BUF-CAP allot
    ALT-RUN-BAD-JSON 1 ALT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    ALT-OUT outu ALT-JSON-CODE$ CONTAINS? TTRUE
-   ALT-OUT outu ALT-JSON-LABEL$ CONTAINS? TTRUE ;
+   ALT-OUT outu ALT-JSON-LABEL$ CONTAINS? TTRUE
+   ALT-OUT outu ALT-JSON-TOKEN$ CONTAINS? TTRUE
+   ALT-OUT outu ALT-JSON-WORD$ CONTAINS? TTRUE
+   ALT-OUT outu ALT-JSON-REASON$ CONTAINS? TTRUE ;
 
 : ALT-MAIN ( -- )
    T-RESET

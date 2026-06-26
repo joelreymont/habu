@@ -571,3 +571,8 @@ lesson — keep the specific word/code/path, cut the prose.
   native `DATE-NOW` UTC date unless an explicit test date is passed. Do not
   update `Last verified` to the operator's local date during a late-night run;
   the full gate will reject it even if a manual lint with a local date passes.
+- **Gate phase cuts must move coverage, not drop it:** AOT-negative was slow
+  because it repeated checker/signature/AOT-lint failures through full
+  `hb-build` children. Keep one CLI boundary for hb-build-only behavior such as
+  closure-limit failure, and move semantic assertions to their owning checked
+  tool tests (`check-test`, diagnostics, `aot-lint-test`, `hb-build-test`).
