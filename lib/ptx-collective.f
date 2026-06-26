@@ -51,3 +51,9 @@ TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 
 TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
    E-PTX-NOIMPL throw ;
+
+\ BROADCAST is the named form of the implicit broadcast in B-/B/, and the type-dual
+\ (mutual adjoint) of BLOCK-SUM: reverse-mode AD substitutes BROADCAST for the
+\ adjoint of a reduce. Needed by the autograd VJP table (docs/autograd.md).
+TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
+   E-PTX-NOIMPL throw ;

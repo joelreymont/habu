@@ -35,3 +35,6 @@ TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 
 TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    E-PTX-NOIMPL throw ;
+
+TRUSTED: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   E-PTX-NOIMPL throw ;
