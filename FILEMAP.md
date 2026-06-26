@@ -16,6 +16,8 @@ points stay listed.
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
 - `docs/ptx-sketch.md` — Habu→PTX v0 language spec.
+- `docs/inference.md` — Habu→PTX local type inference: infer bodies, annotate the contract edge.
+- `docs/autograd.md` — Habu→PTX reverse-mode autograd: AD as a syntactic reversal; verified gradients.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 
 ## Core Checker
