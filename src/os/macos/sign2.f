@@ -36,16 +36,16 @@ $00020400 constant CD-VERSION
 variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: bigger __TEXT)
 
 : ADD-CODESIG-LC ( -- )
-   MH-HDR-SZ  20 M-LE32@ +  {: at :}
-   LC-CODE-SIG  at M-LE32!   16  at 4 + M-LE32!
-   SIG-DOFF @   at 8 + M-LE32!   SB-SIZE  at 12 + M-LE32!
-   16 M-LE32@ 1 +  16 M-LE32!
-   20 M-LE32@ 16 +  20 M-LE32! ;
+   MH-HDR-SZ  20 M-OFF M-LE32@ +  {: at :}
+   LC-CODE-SIG  at M-OFF M-LE32!   16  at 4 + M-OFF M-LE32!
+   SIG-DOFF @   at 8 + M-OFF M-LE32!   SB-SIZE  at 12 + M-OFF M-LE32!
+   16 M-OFF M-LE32@ 1 +  16 M-OFF M-LE32!
+   20 M-OFF M-LE32@ 16 +  20 M-OFF M-LE32! ;
 
 : PATCH-LINKEDIT ( -- )
    LE-OFF @ {: le :}
-   SB-SIZE $4000 ALN  le 32 + M-LE64!
-   SB-SIZE            le 48 + M-LE64! ;
+   SB-SIZE $4000 ALN  le 32 + M-OFF M-LE64!
+   SB-SIZE            le 48 + M-OFF M-LE64! ;
 
 : CD-HDR, ( -- )
    CSMAGIC-CODEDIR M-BE32   CD-SIZE M-BE32   CD-VERSION M-BE32   CD-ADHOC M-BE32
@@ -62,13 +62,13 @@ variable CSI
 : CODESIG2 ( -- )
    MLEN @ SIG-DOFF !
    ADD-CODESIG-LC  PATCH-LINKEDIT
-   SIG-DOFF @ M-BE-RESET
+   SIG-DOFF @ M-OFF M-BE-RESET
    CSMAGIC-EMBEDDED M-BE32   SB-SIZE M-BE32   1 M-BE32
    0 M-BE32   20 M-BE32
    CD-HDR,
-   SIGA@ SIGU @ M-BE-BYTES  0 M-BE8
+   SIGA@ SIGU @ M-LEN M-BE-BYTES-LEN  0 M-BE8
    0 CSI ! begin CSI @ NCSLOTS < while
-     MBUF CSI @ CS-PAGE * +  CS-PAGE  M-BE-PTR  SHA256  CS-HASH M-BE-SKIP
+     MBUF CSI @ CS-PAGE * +  CS-PAGE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN ! ;
 s" CODESIG2" s" --" TRUST

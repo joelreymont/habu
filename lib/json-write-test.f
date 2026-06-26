@@ -30,6 +30,12 @@ MEM-64K 17 + constant JWT-LARGE-N
 : JWT-FALSE ( -- bool )
    JWT-TRUE 0= ;
 
+TRUSTED: JWT-CHECK-REJECTS ( ptr u8 n -- )
+   DIAGXT @ >r
+   0 DIAGXT !
+   CHECK! 0 T=
+   r> DIAGXT ! ;
+
 : JWT-EXPECTED-OBJECT$ ( -- ptr u8 n )
    SB-RESET
    JW-LBRACE SB-APPEND-C
@@ -97,6 +103,12 @@ MEM-64K 17 + constant JWT-LARGE-N
 : JWT-RAW-NEG ( -- )
    s" x" drop -1 JW-RAW ;
 
+: JWT-LEN-NEG ( -- )
+   -1 JW-LEN drop ;
+
+: JWT-LEN-HIGH ( -- )
+   MEM-MAX-N 1 + JW-LEN drop ;
+
 : JWT-C-NEG ( -- )
    -1 JW-C ;
 
@@ -127,7 +139,10 @@ MEM-64K 17 + constant JWT-LARGE-N
    [: JWT-C-NEG ;] E-JW-BYTE TTHROWSQ
    [: JWT-C-HIGH ;] E-JW-BYTE TTHROWSQ
    [: JWT-U-NEG ;] E-JW-BYTE TTHROWSQ
-   [: JWT-HUGE-ROOM ;] E-JW-CAPACITY TTHROWSQ ;
+   [: JWT-HUGE-ROOM ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-LEN-NEG ;] E-JW-CAPACITY TTHROWSQ
+   [: JWT-LEN-HIGH ;] E-JW-CAPACITY TTHROWSQ
+   s" BAD-JW-RAW-LEN ( ptr u8 off -- ) JW-RAW-LEN" JWT-CHECK-REJECTS ;
 
 : JWT-MAIN ( -- )
    T-RESET

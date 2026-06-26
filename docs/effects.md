@@ -141,6 +141,11 @@ that merge the dead path, such as `else`, `then`, `loop`, `+loop`, `repeat`,
   `>REG REG>N`, `>LABEL LABEL>N`, `>VA VA>N`, and `>SYMIDX SYMIDX>N`.
   These are runtime identity casts over one cell; their only purpose is making
   semantic role changes explicit to the checker.
+- Library boundaries should prefer checked refinement constructors over raw
+  role casts. Examples: `A-LEN`, `A-IDX`, `A-COUNT`, `VEC-LEN`, `VEC-IDX`,
+  `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `JW-LEN`, `M-LEN`, and
+  `M-OFF`. These constructors reject negative, overflowing, or out-of-capacity
+  inputs before the nominal role reaches checked code.
 - Phase roles (`asm`, `img`, `snap`) are boundary tokens. They are produced and
   consumed by trusted build-image/snapshot words, not by public numeric casts.
 - Trusted defining words use `TRUSTED: NAME ( definer-eff ) create ... does>

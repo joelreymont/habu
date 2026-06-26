@@ -34,6 +34,12 @@ create STR-TEST-RIGHT-WS
 : STR-ASSERT$ ( ptr u8 n ptr u8 n -- )
    STR= STR-ASSERT ;
 
+TRUSTED: STR-CHECK-REJECTS ( ptr u8 n -- )
+   DIAGXT @ >r
+   0 DIAGXT !
+   CHECK! 0 STR-ASSERT=
+   r> DIAGXT ! ;
+
 : STR-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- ) {: a:ptr u sep start exp:ptr exp-u exp-next exp-ok :}
    a u sep start SPLIT-NEXT
    STR-TEST-SPLIT-OK !
@@ -64,6 +70,15 @@ create STR-TEST-RIGHT-WS
    SB-CAP 0 ?do STR-TEST-A-CHAR SB-APPEND-C loop
    STR-TEST-A-CHAR SB-APPEND-C ;
 
+: STR-TEST-LEN-NEG ( -- )
+   -1 STR-LEN drop ;
+
+: STR-TEST-OFF-NEG ( -- )
+   -1 STR-OFF drop ;
+
+: STR-TEST-COUNT-NEG ( -- )
+   -1 STR-COUNT drop ;
+
 : STR-TEST-BUILDER ( -- )
    SB-RESET
    s" ab" SB-APPEND
@@ -75,6 +90,11 @@ create STR-TEST-RIGHT-WS
    s" beta" SB-APPEND
    SB$ s" alpha-beta" STR-ASSERT$
    [: STR-TEST-SB-OVERFLOW ;] catch E-STR-CAPACITY STR-ASSERT=
+   [: STR-TEST-LEN-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-OFF-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   [: STR-TEST-COUNT-NEG ;] catch E-STR-BOUNDS STR-ASSERT=
+   s" BAD-BYTE-COPY-LEN ( ptr u8 ptr u8 off -- ) BYTE-COPY-LEN" STR-CHECK-REJECTS
+   s" BAD-SB-APPEND-LEN ( ptr u8 off -- ) SB-APPEND-LEN" STR-CHECK-REJECTS
    SB-RESET ;
 
 : STR-TEST-SPLIT ( -- )
@@ -144,6 +164,7 @@ s" " LTRIM nip 0 STR-ASSERT=
 s" " RTRIM nip 0 STR-ASSERT=
 s" copy" drop STR-TEST-BUF 4 BYTE-COPY
 STR-TEST-BUF 4 s" copy" STR-ASSERT$
+STR-TEST-BUF 0 STR-TEST-BUF 0 STR-LEN BYTE-COPY-LEN
 STR-TEST-BUF 0 STR-TEST-BUF 0 BYTE-COPY
 STR-TEST-BUILDER
 STR-TEST-SPLIT

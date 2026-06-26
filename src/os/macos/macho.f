@@ -31,18 +31,20 @@ variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign po
 
 : SEG, ( ptr u8 n n n n n n n n -- ) {: a:ptr u vma vmsz foff fsz prot nsects extra :}
    LC-SEG64 M32   72 extra + M32
-   a u M-NAME16
+   a u M-LEN M-NAME16-LEN
    vma M64  vmsz M64  foff M64  fsz M64
    prot M32  prot M32  nsects M32  0 M32 ;
 
 : SECT, ( ptr u8 n ptr u8 n n n n n n -- ) {: na:ptr nu sa:ptr su addr size off al fl :}
-   na nu M-NAME16   sa su M-NAME16
+   na nu M-LEN M-NAME16-LEN   sa su M-LEN M-NAME16-LEN
    addr M64  size M64  off M32  al M32
    0 M32  0 M32  fl M32  0 M32 0 M32 0 M32 ;
 
 : DYLINKER, ( -- )
    LC-DYLINKER M32  32 M32  12 M32
-   s" /usr/lib/dyld" {: a:ptr u :}  a u M-BYTES  32 12 - u - M-ZEROS ;
+   s" /usr/lib/dyld" {: a:ptr u :}
+   a u M-LEN M-BYTES-LEN
+   32 12 - u - M-LEN M-ZEROS-LEN ;
 
 : MAIN, ( n -- ) {: entryoff :}
    LC-MAIN M32  24 M32  entryoff M64  0 M64 ;
@@ -50,7 +52,9 @@ variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign po
 : DYLIB, ( -- )
    LC-DYLIB M32  56 M32  24 M32
    2 M32  $054C0000 M32  $00010000 M32     \ ts=2, cur=1356.0.0, compat=1.0.0
-   s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}  a u M-BYTES  56 24 - u - M-ZEROS ;
+   s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}
+   a u M-LEN M-BYTES-LEN
+   56 24 - u - M-LEN M-ZEROS-LEN ;
 32 constant MH-HDR-SZ                \ mach_header_64 size
 variable NCMDS
 
@@ -61,8 +65,8 @@ variable NCMDS
    0 M32  0 M32  MH-FLAGS M32  0 M32 ;
 
 : PATCH-HDR ( -- )
-   NCMDS @ 16 M-LE32!
-   M-HERE MH-HDR-SZ - 20 M-LE32! ;
+   NCMDS @ 16 M-OFF M-LE32!
+   M-HERE MH-HDR-SZ - 20 M-OFF M-LE32! ;
 
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
    ASM-CODE  M-RESET  0 NCMDS !
@@ -75,9 +79,9 @@ variable NCMDS
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR
    CODELEN @  MPAGE CODE-OFF -  > IF s" macho: code exceeds __TEXT page" 73 die THEN
-   CODE-OFF M-PAD
-   CODE CODELEN @ M-BYTES
-   TEXTSZ M-PAD
+   CODE-OFF M-OFF M-PAD-OFF
+   CODE CODELEN @ M-LEN M-BYTES-LEN
+   TEXTSZ M-OFF M-PAD-OFF
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
@@ -95,6 +99,6 @@ s" BUILD-IMAGE" s" asm --" TRUST
    s" __LINKEDIT" VMBASE sfts + MPAGE sfts 0 1 0 0 SEG,  LC+
    DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
    PATCH-HDR
-   CODE-OFF M-PAD
+   CODE-OFF M-OFF M-PAD-OFF
    sfts ;
 s" BUILD-SNAP-HDR" s" n -- n" TRUST

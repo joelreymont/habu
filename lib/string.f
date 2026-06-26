@@ -21,6 +21,18 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
 create SB-BUF SB-CAP allot
 variable SB-LEN
 
+: STR-LEN ( n -- len )
+   dup 0 < if E-STR-BOUNDS throw then
+   >LEN ;
+
+: STR-OFF ( n -- off )
+   dup 0 < if E-STR-BOUNDS throw then
+   >OFF ;
+
+: STR-COUNT ( n -- count )
+   dup 0 < if E-STR-BOUNDS throw then
+   >COUNT ;
+
 create STR-MAX-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 56 c, 53 c, 52 c, 55 c, 55 c, 53 c, 56 c, 48 c, 55 c,
 create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 56 c, 53 c, 52 c, 55 c, 55 c, 53 c, 56 c, 48 c, 56 c,
 
@@ -30,11 +42,14 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : STR-FALSE ( -- bool )
    STR-TRUE 0= ;
 
-: BYTE-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr u :}
-   0 begin dup u < while
+: BYTE-COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u :}
+   0 begin dup u LEN>N < while
       dup src + c@ over dst + c!
       1+
    repeat drop ;
+
+: BYTE-COPY ( ptr u8 ptr u8 n -- )
+   STR-LEN BYTE-COPY-LEN ;
 
 : ASCII-LOWER ( n -- n )
    dup STR-BEFORE-A > over STR-AFTER-Z < and if STR-SPACE + then ;
@@ -107,17 +122,22 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : TRIM ( ptr u8 n -- ptr u8 n )
    LTRIM RTRIM ;
 
-: SB-CHECK-ROOM ( n -- ) {: add :}
-   add 0 < if E-STR-BOUNDS throw then
-   add SB-CAP SB-LEN @ - > if E-STR-CAPACITY throw then ;
+: SB-CHECK-LEN-ROOM ( len -- ) {: add :}
+   add LEN>N SB-CAP SB-LEN @ - > if E-STR-CAPACITY throw then ;
+
+: SB-CHECK-ROOM ( n -- )
+   STR-LEN SB-CHECK-LEN-ROOM ;
 
 : SB-RESET ( -- )
    0 SB-LEN ! ;
 
-: SB-APPEND ( ptr u8 n -- ) {: a:ptr u :}
-   u SB-CHECK-ROOM
-   a SB-BUF SB-LEN @ + u BYTE-COPY
-   SB-LEN @ u + SB-LEN ! ;
+: SB-APPEND-LEN ( ptr u8 len -- ) {: a:ptr u :}
+   u SB-CHECK-LEN-ROOM
+   a SB-BUF SB-LEN @ + u BYTE-COPY-LEN
+   SB-LEN @ u LEN>N + SB-LEN ! ;
+
+: SB-APPEND ( ptr u8 n -- )
+   STR-LEN SB-APPEND-LEN ;
 
 : SB-APPEND-C ( n -- ) {: c :}
    c 0 < if E-STR-BOUNDS throw then

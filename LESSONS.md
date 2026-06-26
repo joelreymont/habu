@@ -120,6 +120,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `leave`, or `again`, ordinary tokens are unreachable and must reject. Only
   merge/close tokens (`else`, `then`, `loop`, `+loop`, `repeat`, `again`, `;]`)
   may appear while `DEADP` is set.
+- **Raw role casts are not refiners:** `>LEN`/`>IDX`/`>COUNT`/`>OFF` are trusted
+  identity casts. Public libraries should expose checked constructors (`A-LEN`,
+  `VEC-IDX`, `STR-OFF`, `JW-LEN`, `M-OFF`) and use typed helper variants so
+  length/count/offset swaps fail under `CHECK!` before runtime.
 
 ## Tool & Infra
 

@@ -10,6 +10,24 @@
 2 constant VEC-GROWTH
 MEM-MAX-CELLS constant VEC-MAX-CELLS
 
+: VEC-COUNT ( n -- count )
+   dup 0 < if E-VEC-CAPACITY throw then
+   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
+   >COUNT ;
+
+: VEC-CAP-COUNT ( n -- count )
+   dup 0= if E-VEC-CAPACITY throw then
+   VEC-COUNT ;
+
+: VEC-LEN ( n -- len )
+   dup 0 < if E-VEC-BOUNDS throw then
+   dup VEC-MAX-CELLS > if E-VEC-CAPACITY throw then
+   >LEN ;
+
+: VEC-IDX ( n -- idx )
+   dup 0 < if E-VEC-BOUNDS throw then
+   >IDX ;
+
 : VEC-CHECK-NEED ( count -- ) {: need :}
    need COUNT>N 0 < if E-VEC-CAPACITY throw then
    need COUNT>N VEC-MAX-CELLS > if E-VEC-CAPACITY throw then ;
@@ -47,13 +65,13 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    VEC-LEN-OFF VEC-CELL-FIELD ;
 
 : VEC-LEN@ ( ptr a -- len )
-   VEC-LEN-FIELD @ >LEN ;
+   VEC-LEN-FIELD @ VEC-LEN ;
 
 : VEC-CAP-FIELD ( ptr a -- ptr a )
    VEC-CAP-OFF VEC-CELL-FIELD ;
 
 : VEC-CAP@ ( ptr a -- count )
-   VEC-CAP-FIELD @ >COUNT ;
+   VEC-CAP-FIELD @ VEC-COUNT ;
 
 : VEC-CAP! ( count ptr a -- ) {: cap vec:ptr :}
    cap VEC-CHECK-CAP
@@ -67,10 +85,10 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 : VEC-INIT ( ptr a count -- ) {: vec:ptr cap :}
    cap VEC-ALLOC-CELLS vec VEC-DATA!
    cap vec VEC-CAP!
-   0 >LEN vec VEC-LEN! ;
+   0 VEC-LEN vec VEC-LEN! ;
 
 : VEC-CLEAR ( ptr a -- )
-   0 >LEN swap VEC-LEN! ;
+   0 VEC-LEN swap VEC-LEN! ;
 
 : VEC-CHECK-INDEX ( ptr a idx -- ) {: vec:ptr ix :}
    ix IDX>N 0 < if E-VEC-BOUNDS throw then
@@ -124,7 +142,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
       else
          VEC-GROWTH *
       then
-   repeat >COUNT ;
+   repeat VEC-COUNT ;
 
 : VEC-ENSURE ( ptr a count -- ) {: vec:ptr need :}
    need VEC-CHECK-NEED
@@ -132,10 +150,11 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec vec need VEC-GROW-CAP VEC-RESIZE ;
 
 : VEC-PUSH-AT ( a ptr a n -- idx ) {: value vec:ptr old :}
-   vec old 1 + >COUNT VEC-ENSURE
+   old VEC-IDX drop
+   vec old 1 + VEC-COUNT VEC-ENSURE
    value vec VEC-DATA@ old VEC-CELL-FIELD !
-   old 1 + >LEN vec VEC-LEN!
-   old >IDX ;
+   old 1 + VEC-LEN vec VEC-LEN!
+   old VEC-IDX ;
 
 : VEC-PUSH ( a ptr a -- idx ) {: value vec:ptr :}
    value vec vec VEC-LEN@ LEN>N VEC-PUSH-AT ;
@@ -148,6 +167,6 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 
 : VEC-EACH ( R ptr a [ R idx a -- R ] -- R ) {: vec:ptr q :}
    vec VEC-LEN@ LEN>N 0 ?do
-      i >IDX vec i >IDX VEC@ q execute
+      i VEC-IDX vec i VEC-IDX VEC@ q execute
    loop ;
 s" VEC-EACH" s" R ptr a [ R idx a -- R ] -- R" TRUST

@@ -1,6 +1,9 @@
 schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	errors	lib/errors.f	module			lib/errors-test.f	docs/stdlib.md	stdlib-errors	planned	central named throw-code ranges and stdlib failure policy
 1	array	lib/array.f	module			lib/array-test.f	docs/stdlib.md	stdlib-array	active	checked array handles indexing bounds and scalar kernels
+1	array	lib/array.f	word	A-LEN	(n -- len)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array length role
+1	array	lib/array.f	word	A-IDX	(n -- idx)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array index role
+1	array	lib/array.f	word	A-COUNT	(n -- count)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	refine a nonnegative raw integer into an array count role
 1	array	lib/array.f	word	A-CHECK-INDEX	(len idx --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate one zero-based index against an array length
 1	array	lib/array.f	word	A-CHECK-RANGE	(len idx count --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	validate start and count against an array length
 1	array	lib/array.f	word	A-CHECK-NONEMPTY	(len --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	require a positive array length
@@ -48,6 +51,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	table	lib/table.f	word	TBL-PAIR!	(ptr u8 len ptr a count count idx idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	store one counted byte-string field pair
 1	table	lib/table.f	word	TBL-PAIR$	(ptr a count count idx idx -- ptr u8 len)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	read one counted byte-string field pair
 1	vector	lib/vector.f	module			lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	checked growable cell-vector helpers backed by OS memory
+1	vector	lib/vector.f	word	VEC-COUNT	(n -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	refine a nonnegative bounded raw integer into a vector count role
+1	vector	lib/vector.f	word	VEC-CAP-COUNT	(n -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	refine a positive bounded raw integer into a vector capacity count
+1	vector	lib/vector.f	word	VEC-LEN	(n -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	refine a nonnegative bounded raw integer into a vector length role
+1	vector	lib/vector.f	word	VEC-IDX	(n -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	refine a nonnegative raw integer into a vector index role
 1	vector	lib/vector.f	word	VEC-CHECK-NEED	(count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative requested vector capacity
 1	vector	lib/vector.f	word	VEC-CHECK-CAP	(count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a positive vector capacity
 1	vector	lib/vector.f	word	VEC-CHECK-LEN	(len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate a nonnegative vector length
@@ -84,8 +91,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-PUSH-A	(ptr u8 ptr a -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	append a byte pointer and return its index
 1	vector	lib/vector.f	word	VEC-EACH	(R ptr a [ R idx a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
 1	string	lib/string.f	module			lib/string-test.f	docs/stdlib.md	stdlib-string	active	checked byte-string predicates builders split and parse helpers
+1	string	lib/string.f	word	STR-LEN	(n -- len)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string length role
+1	string	lib/string.f	word	STR-OFF	(n -- off)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string offset role
+1	string	lib/string.f	word	STR-COUNT	(n -- count)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string count role
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
+1	string	lib/string.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes using an already refined length role
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase
 1	string	lib/string.f	word	ASCII-UPPER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII lowercase byte to uppercase
@@ -100,8 +111,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	LTRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove leading ASCII whitespace
 1	string	lib/string.f	word	RTRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove trailing ASCII whitespace
 1	string	lib/string.f	word	TRIM	(ptr u8 n -- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	remove leading and trailing ASCII whitespace
+1	string	lib/string.f	word	SB-CHECK-LEN-ROOM	(len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	validate string builder capacity for an already refined append length
 1	string	lib/string.f	word	SB-CHECK-ROOM	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	validate string builder capacity for an append
 1	string	lib/string.f	word	SB-RESET	(--)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	clear the shared string builder
+1	string	lib/string.f	word	SB-APPEND-LEN	(ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append bytes to the shared builder using a refined length role
 1	string	lib/string.f	word	SB-APPEND	(ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append counted bytes to the shared string builder
 1	string	lib/string.f	word	SB-APPEND-C	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append one byte to the shared string builder
 1	string	lib/string.f	word	SB$	(-- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return current shared string builder bytes
@@ -114,16 +127,20 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
+1	json-write	lib/json-write.f	word	JW-LEN	(n -- len)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	refine a bounded raw integer into a JSON writer append length role
 1	json-write	lib/json-write.f	word	JW-CAP	(-- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return current JSON writer output capacity
 1	json-write	lib/json-write.f	word	JW-STORE-SPAN	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	install a newly allocated JSON writer output span
 1	json-write	lib/json-write.f	word	JW-MIN-ONE	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clamp a byte need to at least one byte
+1	json-write	lib/json-write.f	word	JW-NEED-CAP-LEN	(len -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	compute required JSON writer length from a refined append length
 1	json-write	lib/json-write.f	word	JW-NEED-CAP	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	compute required JSON writer length for an append
 1	json-write	lib/json-write.f	word	JW-COPY-OLD	(ptr u8 --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	copy existing JSON output into a new span
 1	json-write	lib/json-write.f	word	JW-GROW	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	grow JSON writer output storage for a required length
+1	json-write	lib/json-write.f	word	JW-CHECK-LEN-ROOM	(len --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	ensure JSON writer capacity for an already refined append length
 1	json-write	lib/json-write.f	word	JW-CHECK-ROOM	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	ensure JSON writer output capacity for an append
 1	json-write	lib/json-write.f	word	JW-ENSURE-INITIAL	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	allocate the initial JSON writer output span
 1	json-write	lib/json-write.f	word	JW-RESET	(--)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	clear the JSON writer output buffer
 1	json-write	lib/json-write.f	word	JW-C	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append one checked JSON output byte
+1	json-write	lib/json-write.f	word	JW-RAW-LEN	(ptr u8 len --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes using a refined length role
 1	json-write	lib/json-write.f	word	JW-RAW	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	append raw JSON token bytes
 1	json-write	lib/json-write.f	word	JW-HEX	(n -- n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	convert a low hex digit to uppercase ASCII
 1	json-write	lib/json-write.f	word	JW-U00	(n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit a JSON u00xx escape for one control byte

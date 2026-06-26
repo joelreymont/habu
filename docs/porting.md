@@ -60,7 +60,10 @@ Drivers call `ASM-CODE BUILD-IMAGE`; the target image file implements the actual
 format.
 `src/os/image-bytes.f` owns the shared executable byte buffer, endian stores,
 patch helpers, and signing blob cursor; target image files own only format
-layout policy.
+layout policy. Use `M-LEN` and `M-OFF` at target-format boundaries before
+calling typed helpers such as `M-BYTES-LEN`, `M-NAME16-LEN`, `M-PAD-OFF`,
+`M-LE32@`, `M-LE32!`, and `M-LE64!`; raw byte counts should not cross into
+these helpers.
 
 - macOS uses Mach-O plus signing.
 - Linux uses ELF64 with executable `PT_LOAD` detection requiring read+execute

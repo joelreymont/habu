@@ -86,6 +86,10 @@ overrun `len`. `A-CHECK-NONEMPTY ( len -- )` throws `E-A-BOUNDS` for negative
 lengths and `E-A-EMPTY` for zero length. `A-CHECK-WHOLE ( len -- )` accepts
 empty arrays and throws `E-A-BOUNDS` only for negative lengths.
 
+Use `A-LEN`, `A-IDX`, and `A-COUNT` to refine raw integers into checked array
+roles at module boundaries. They reject negative inputs before values reach the
+role-typed array words.
+
 Numeric scalar kernels are `A-SUM`, `A-MIN`, `A-MAX`, `A-COUNT-EVEN`,
 `A-ARGMAX`, and `A-MAX-INDEX`. `A-MIN`, `A-MAX`, `A-ARGMAX`, and `A-MAX-INDEX`
 require a non-empty array and throw `E-A-EMPTY` for length zero; `A-ARGMAX` and
@@ -107,6 +111,9 @@ non-empty array, `MIRROR-INDEX` returns `len - 1 - index`, and `EVEN?` returns a
 Forth boolean for integer parity.
 
 ```forth
+A-LEN             ( n -- len )
+A-IDX             ( n -- idx )
+A-COUNT           ( n -- count )
 A-CHECK-INDEX     ( len idx -- )
 A-CHECK-RANGE     ( len idx count -- )
 A-CHECK-NONEMPTY  ( len -- )
@@ -186,6 +193,11 @@ pointers use `VEC-A@` / `VEC-A!`, and generic cell code can use `VEC@` /
 the current capacity; it throws `E-VEC-CAPACITY` only for invalid or overflowing
 capacity requests and `E-VEC-BOUNDS` for invalid indexes or impossible lengths.
 
+Use `VEC-COUNT`, `VEC-CAP-COUNT`, `VEC-LEN`, and `VEC-IDX` to refine raw
+integers before calling role-typed vector words. `VEC-CAP-COUNT` rejects zero
+because allocation and initialization require positive capacity; `VEC-COUNT`
+allows zero for requested active length.
+
 The data pointer field is checked with `ptr-field`, which constructs the typed
 `ptr ptr x` address used by normal `@` and `!`. Numeric header fields and vector
 slots use `VEC-CELL-FIELD` so indexed cell addresses remain typed as `ptr a`.
@@ -193,6 +205,10 @@ Bounds, growth, copying, length, capacity, and iteration behavior are checked
 Forth.
 
 ```forth
+VEC-COUNT           ( n -- count )
+VEC-CAP-COUNT       ( n -- count )
+VEC-LEN             ( n -- len )
+VEC-IDX             ( n -- idx )
 VEC-CHECK-NEED      ( count -- )
 VEC-CHECK-CAP       ( count -- )
 VEC-CHECK-LEN       ( len -- )
@@ -236,10 +252,18 @@ module boundary explicitly says it owns path conversion. `SB-*` words operate on
 the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 `E-STR-BOUNDS` instead of truncating silently. `STR>NUMBER?` parses a signed
 i64 and returns `0 false` on invalid or out-of-range input.
+`STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
+roles and reject negative values. Typed variants such as `BYTE-COPY-LEN` and
+`SB-APPEND-LEN` keep already-refined lengths from being laundered through plain
+`n`.
 
 ```forth
+STR-LEN         ( n -- len )
+STR-OFF         ( n -- off )
+STR-COUNT       ( n -- count )
 STR-TRUE        ( -- bool )
 STR-FALSE       ( -- bool )
+BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
 BYTE-COPY       ( ptr u8 ptr u8 n -- )
 ASCII-LOWER     ( n -- n )
 ASCII-UPPER     ( n -- n )
@@ -254,8 +278,10 @@ COUNT-CHAR      ( ptr u8 n n -- n )
 LTRIM           ( ptr u8 n -- ptr u8 n )
 RTRIM           ( ptr u8 n -- ptr u8 n )
 TRIM            ( ptr u8 n -- ptr u8 n )
+SB-CHECK-LEN-ROOM ( len -- )
 SB-CHECK-ROOM   ( n -- )
 SB-RESET        ( -- )
+SB-APPEND-LEN   ( ptr u8 len -- )
 SB-APPEND       ( ptr u8 n -- )
 SB-APPEND-C     ( n -- )
 SB$             ( -- ptr u8 n )
@@ -282,18 +308,24 @@ It owns an OS-backed growable output buffer, emits compact JSON, escapes string
 control bytes/quotes/backslashes, and throws `E-JW-CAPACITY` or `E-JW-BYTE`
 instead of truncating or emitting invalid bytes. Commas remain explicit so object
 and array shape is visible in code. Load it after `lib/memory.f`.
+`JW-LEN` refines raw byte counts into `len`, and the `*-LEN` variants preserve
+that role through capacity checking and raw JSON appends.
 
 ```forth
+JW-LEN         ( n -- len )
 JW-CAP         ( -- n )
 JW-STORE-SPAN  ( ptr u8 n -- )
 JW-MIN-ONE     ( n -- n )
+JW-NEED-CAP-LEN ( len -- n )
 JW-NEED-CAP    ( n -- n )
 JW-COPY-OLD    ( ptr u8 -- )
 JW-GROW        ( n -- )
+JW-CHECK-LEN-ROOM ( len -- )
 JW-CHECK-ROOM  ( n -- )
 JW-ENSURE-INITIAL ( -- )
 JW-RESET       ( -- )
 JW-C           ( n -- )
+JW-RAW-LEN     ( ptr u8 len -- )
 JW-RAW         ( ptr u8 n -- )
 JW-HEX         ( n -- n )
 JW-U00         ( n -- )

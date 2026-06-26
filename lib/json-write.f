@@ -26,7 +26,7 @@ create JW-NUM-BUF JW-NUM-CAP allot
 
 variable JW-BUF-A
 variable JW-BUF-CAP
-variable JW-LEN
+variable JW-OUT-LEN
 variable JW-NUM-I
 
 TRUSTED: JW-BUF ( -- ptr u8 )
@@ -35,47 +35,60 @@ TRUSTED: JW-BUF ( -- ptr u8 )
 : JW-CAP ( -- n )
    JW-BUF-CAP @ ;
 
+: JW-LEN ( n -- len )
+   dup 0 < if E-JW-CAPACITY throw then
+   dup MEM-MAX-N > if E-JW-CAPACITY throw then
+   >LEN ;
+
 : JW-STORE-SPAN ( ptr u8 n -- )
    JW-BUF-CAP ! JW-BUF-A ! ;
 
 : JW-MIN-ONE ( n -- n )
    dup JW-MIN-CAP < if drop JW-MIN-CAP then ;
 
-: JW-NEED-CAP ( n -- n ) {: add :}
-   add 0 < if E-JW-CAPACITY throw then
-   JW-LEN @ 0 < if E-JW-CAPACITY throw then
-   add MEM-MAX-N JW-LEN @ - >= if E-JW-CAPACITY throw then
-   JW-LEN @ add + ;
+: JW-NEED-CAP-LEN ( len -- n ) {: add :}
+   JW-OUT-LEN @ 0 < if E-JW-CAPACITY throw then
+   add LEN>N MEM-MAX-N JW-OUT-LEN @ - >= if E-JW-CAPACITY throw then
+   JW-OUT-LEN @ add LEN>N + ;
+
+: JW-NEED-CAP ( n -- n )
+   JW-LEN JW-NEED-CAP-LEN ;
 
 : JW-COPY-OLD ( ptr u8 -- ) {: dst:ptr :}
-   JW-LEN @ 0 > if JW-BUF dst JW-LEN @ BYTE-COPY then ;
+   JW-OUT-LEN @ 0 > if JW-BUF dst JW-OUT-LEN @ BYTE-COPY then ;
 
 : JW-GROW ( n -- ) {: need :}
    need JW-MIN-ONE MEM-ALLOC-64K-SPAN
    over JW-COPY-OLD
    JW-STORE-SPAN ;
 
+: JW-CHECK-LEN-ROOM ( len -- )
+   JW-NEED-CAP-LEN dup JW-CAP > if JW-GROW else drop then ;
+
 : JW-CHECK-ROOM ( n -- )
-   JW-NEED-CAP dup JW-CAP > if JW-GROW else drop then ;
+   JW-LEN JW-CHECK-LEN-ROOM ;
 
 : JW-ENSURE-INITIAL ( -- )
    JW-CAP 0= if JW-MIN-CAP JW-GROW then ;
 
 : JW-RESET ( -- )
    JW-ENSURE-INITIAL
-   0 JW-LEN ! ;
+   0 JW-OUT-LEN ! ;
 
 : JW-C ( n -- ) {: c :}
    c 0 < if E-JW-BYTE throw then
    c JW-BYTE-MAX > if E-JW-BYTE throw then
    1 JW-CHECK-ROOM
-   c JW-BUF JW-LEN @ + c!
-   JW-LEN @ 1+ JW-LEN ! ;
+   c JW-BUF JW-OUT-LEN @ + c!
+   JW-OUT-LEN @ 1+ JW-OUT-LEN ! ;
 
-: JW-RAW ( ptr u8 n -- ) {: a:ptr u :}
-   u JW-CHECK-ROOM
-   a JW-BUF JW-LEN @ + u BYTE-COPY
-   JW-LEN @ u + JW-LEN ! ;
+: JW-RAW-LEN ( ptr u8 len -- ) {: a:ptr u :}
+   u JW-CHECK-LEN-ROOM
+   a JW-BUF JW-OUT-LEN @ + u BYTE-COPY-LEN
+   JW-OUT-LEN @ u LEN>N + JW-OUT-LEN ! ;
+
+: JW-RAW ( ptr u8 n -- )
+   JW-LEN JW-RAW-LEN ;
 
 : JW-HEX ( n -- n )
    dup 10 < if JW-ZERO + else 55 + then ;
@@ -166,4 +179,4 @@ TRUSTED: JW-BUF ( -- ptr u8 )
 
 : JW$ ( -- ptr u8 n )
    JW-ENSURE-INITIAL
-   JW-BUF JW-LEN @ ;
+   JW-BUF JW-OUT-LEN @ ;

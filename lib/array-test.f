@@ -63,92 +63,98 @@ TRUSTED: }T ( R -- )
    AT-WORK cell+ !
    AT-WORK ! ;
 
+TRUSTED: AT-CHECK-REJECTS ( ptr u8 n -- )
+   DIAGXT @ >r
+   0 DIAGXT !
+   CHECK! 0 AT=
+   r> DIAGXT ! ;
+
 : AT-CHECK-INDEX ( n n -- ) {: len ix :}
-   len >LEN ix >IDX A-CHECK-INDEX ;
+   len A-LEN ix A-IDX A-CHECK-INDEX ;
 
 : AT-CHECK-RANGE ( n n n -- ) {: len start cnt :}
-   len >LEN start >IDX cnt >COUNT A-CHECK-RANGE ;
+   len A-LEN start A-IDX cnt A-COUNT A-CHECK-RANGE ;
 
 : AT-CHECK-NONEMPTY ( n -- )
-   >LEN A-CHECK-NONEMPTY ;
+   A-LEN A-CHECK-NONEMPTY ;
 
 : AT-CHECK-WHOLE ( n -- )
-   >LEN A-CHECK-WHOLE ;
+   A-LEN A-CHECK-WHOLE ;
 
 : AT-A@ ( ptr a n n -- a ) {: arr:ptr len ix :}
-   arr len >LEN ix >IDX A@ ;
+   arr len A-LEN ix A-IDX A@ ;
 
 : AT-A! ( a ptr a n n -- ) {: value arr:ptr len ix :}
-   value arr len >LEN ix >IDX A! ;
+   value arr len A-LEN ix A-IDX A! ;
 
 : AT-A+! ( n ptr a n n -- ) {: delta arr:ptr len ix :}
-   delta arr len >LEN ix >IDX A+! ;
+   delta arr len A-LEN ix A-IDX A+! ;
 
 : AT-A-SWAP ( ptr a n n n -- ) {: arr:ptr len ix jx :}
-   arr len >LEN ix >IDX jx >IDX A-SWAP ;
+   arr len A-LEN ix A-IDX jx A-IDX A-SWAP ;
 
 : AT-LAST-INDEX ( n -- n )
-   >LEN LAST-INDEX IDX>N ;
+   A-LEN LAST-INDEX IDX>N ;
 
 : AT-MIRROR-INDEX ( n n -- n ) {: len ix :}
-   len >LEN ix >IDX MIRROR-INDEX IDX>N ;
+   len A-LEN ix A-IDX MIRROR-INDEX IDX>N ;
 
 : AT-A-SUM ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-SUM ;
+   arr len A-LEN A-SUM ;
 
 : AT-A-MIN ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-MIN ;
+   arr len A-LEN A-MIN ;
 
 : AT-A-MAX ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-MAX ;
+   arr len A-LEN A-MAX ;
 
 : AT-A-COUNT-EVEN ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-COUNT-EVEN COUNT>N ;
+   arr len A-LEN A-COUNT-EVEN COUNT>N ;
 
 : AT-A-ARGMAX ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-ARGMAX IDX>N ;
+   arr len A-LEN A-ARGMAX IDX>N ;
 
 : AT-A-MAX-INDEX ( ptr n n -- n ) {: arr:ptr len :}
-   arr len >LEN A-MAX-INDEX IDX>N ;
+   arr len A-LEN A-MAX-INDEX IDX>N ;
 
 : AT-A-REVERSE-RANGE! ( ptr a n n n -- ) {: arr:ptr len start cnt :}
-   arr len >LEN start >IDX cnt >COUNT A-REVERSE-RANGE! ;
+   arr len A-LEN start A-IDX cnt A-COUNT A-REVERSE-RANGE! ;
 
 : AT-A-REVERSE! ( ptr a n -- ) {: arr:ptr len :}
-   arr len >LEN A-REVERSE! ;
+   arr len A-LEN A-REVERSE! ;
 
 : AT-A-PREFIX-SUM! ( ptr n n -- ) {: arr:ptr len :}
-   arr len >LEN A-PREFIX-SUM! ;
+   arr len A-LEN A-PREFIX-SUM! ;
 
 : AT-A-RUNMAX! ( ptr n n -- ) {: arr:ptr len :}
-   arr len >LEN A-RUNMAX! ;
+   arr len A-LEN A-RUNMAX! ;
 
 : AT-A-FILL! ( a ptr a n -- ) {: value arr:ptr len :}
-   value arr len >LEN A-FILL! ;
+   value arr len A-LEN A-FILL! ;
 
 : AT-A-MAP! ( ptr a n [ a -- a ] -- ) {: arr:ptr len q :}
-   arr len >LEN q A-MAP! ;
+   arr len A-LEN q A-MAP! ;
 
 : AT-A-MAPI! ( ptr a n [ idx a -- a ] -- ) {: arr:ptr len q :}
-   arr len >LEN q A-MAPI! ;
+   arr len A-LEN q A-MAPI! ;
 
 : AT-A-FOLD ( ptr a n b [ b a -- b ] -- b ) {: arr:ptr len acc q :}
-   arr len >LEN acc q A-FOLD ;
+   arr len A-LEN acc q A-FOLD ;
 
 : AT-A-FOLDI ( ptr a n b [ b idx a -- b ] -- b ) {: arr:ptr len acc q :}
-   arr len >LEN acc q A-FOLDI ;
+   arr len A-LEN acc q A-FOLDI ;
 
 : AT-A-SCAN! ( ptr n n n [ n n -- n ] -- ) {: arr:ptr len acc q :}
-   arr len >LEN acc q A-SCAN! ;
+   arr len A-LEN acc q A-SCAN! ;
 
 : AT-A-SCAN1! ( ptr n n [ n n -- n ] -- ) {: arr:ptr len q :}
-   arr len >LEN q A-SCAN1! ;
+   arr len A-LEN q A-SCAN1! ;
 
 : AT-A-FIND-INDEX ( ptr a n [ a -- bool ] -- n ) {: arr:ptr len q :}
-   arr len >LEN q A-FIND-INDEX ;
+   arr len A-LEN q A-FIND-INDEX ;
 
 : AT-A-FIND-INDEXI ( ptr a n [ idx a -- bool ] -- n ) {: arr:ptr len q :}
-   arr len >LEN q A-FIND-INDEXI ;
+   arr len A-LEN q A-FIND-INDEXI ;
 
 : AT-WORK5@ ( -- n n n n n )
    AT-WORK 5 0 AT-A@
@@ -202,6 +208,15 @@ TRUSTED: }T ( R -- )
 
 : AT-CHECK-WHOLE-NEG ( -- )
    -1 AT-CHECK-WHOLE ;
+
+: AT-LEN-NEG ( -- )
+   -1 A-LEN drop ;
+
+: AT-IDX-NEG ( -- )
+   -1 A-IDX drop ;
+
+: AT-COUNT-NEG ( -- )
+   -1 A-COUNT drop ;
 
 : AT-AFETCH-HIGH ( -- )
    AT-NORMAL 5 5 AT-A@ drop ;
@@ -277,7 +292,12 @@ TRUSTED: }T ( R -- )
    [: AT-CHECK-NONEMPTY-EMPTY ;] catch E-A-EMPTY AT=
    [: AT-CHECK-NONEMPTY-NEG ;] catch E-A-BOUNDS AT=
    [: AT-CHECK-WHOLE-VALID ;] catch 0 AT=
-   [: AT-CHECK-WHOLE-NEG ;] catch E-A-BOUNDS AT= ;
+   [: AT-CHECK-WHOLE-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-LEN-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-IDX-NEG ;] catch E-A-BOUNDS AT=
+   [: AT-COUNT-NEG ;] catch E-A-BOUNDS AT=
+   s" BAD-A-FETCH ( ptr a len count -- a ) A@" AT-CHECK-REJECTS
+   s" BAD-A-RANGE ( len idx len -- ) A-CHECK-RANGE" AT-CHECK-REJECTS ;
 
 : AT-TEST-ACCESS ( -- )
    AT-ONE 1 0 AT-A@ 42 AT=
