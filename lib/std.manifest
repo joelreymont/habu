@@ -842,3 +842,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi	lib/ffi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with five cell arguments
 1	ffi	lib/ffi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with six cell arguments
 1	ffi	lib/ffi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	copy a byte-string into a buffer and NUL-terminate it
+1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
+1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
+1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range
+1	float	lib/float.f	word	POW10	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a signed integer power
+1	float	lib/float.f	word	FL-DIGITS>F	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse an unsigned run of decimal digits into a double
+1	float	lib/float.f	word	FL-STRIP-SIGN	(ptr u8 n -- ptr u8 n bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	strip a leading sign, returning the rest and negativity
+1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	index of the e/E exponent marker, or -1
+1	float	lib/float.f	word	FL-SIG	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse an unsigned significand with optional fraction
+1	float	lib/float.f	word	FL-EXP-AT	(ptr u8 n n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse the exponent after a marker position, returning mantissa length
+1	float	lib/float.f	word	FL-PARSE-EXP	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse any exponent suffix, returning mantissa length
+1	float	lib/float.f	word	STR>FLOAT	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse a decimal float string into an IEEE double
