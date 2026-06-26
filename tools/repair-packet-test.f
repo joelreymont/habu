@@ -186,6 +186,7 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" repair-packet"  >LEN PROC-ARGV+

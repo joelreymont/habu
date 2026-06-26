@@ -241,7 +241,7 @@ variable TR-PATH-U
    s" test/gate-aot-negative.f"  >LEN PROC-ARGV+ ;
 
 : TR-HB-BUILD-REPL-ARGS ( -- )
-   TR-BUILD-COMMON
+   TR-BUILD-LIB-COMMON
    s" test/gate-hb-build-repl.f"  >LEN PROC-ARGV+ ;
 
 : TR-STDLIB ( -- )

@@ -76,6 +76,7 @@ variable GDX-PATH-U
    s" lib/errors.f" GDX-ARG+
    s" lib/memory.f" GDX-ARG+
    s" tools/json.f" GDX-ARG+
+   s" tools/gate-json-assert-core.f" GDX-ARG+
    s" tools/gate-json-assert.f" GDX-ARG+
    s" --" GDX-ARG+ ;
 

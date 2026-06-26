@@ -4,11 +4,17 @@
 
 : GB-HBB-PREPARE ( -- )
    HBB-RESET-OPTIONS
-   GB-SRC$ GB-OUT$ HBB-AOT-PATHS!
+   GB-SRC$ GB-OUT$ HBB-PATHS!
+   GT-ROOT BF-TMP! ;
+
+: GB-HBB-PREPARE-REPL ( -- )
+   HBB-RESET-OPTIONS
+   HBB-REPL-ON
+   GB-SRC$ GB-OUT$ HBB-PATHS!
    GT-ROOT BF-TMP! ;
 
 : GB-HBB-BUILD-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
-   HBB-BUILD-AOT
+   HBB-BUILD
    BF-TMP-RESET
    GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
 
@@ -21,4 +27,9 @@
    GB-WRITE-SRC
    GB-HBB-PREPARE
    HBB-STRICT-ON
+   GB-HBB-BUILD-OUT ;
+
+: GB-HBB-BUILD-REPL ( ptr u8 n -- )
+   GB-WRITE-SRC
+   GB-HBB-PREPARE-REPL
    GB-HBB-BUILD-OUT ;

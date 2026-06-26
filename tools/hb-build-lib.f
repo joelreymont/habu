@@ -125,7 +125,10 @@ variable HBB-LOCK-DEADLINE
 : HBB-STRICT-ON ( -- )
    -1 HBB-STRICT ! ;
 
-: HBB-AOT-PATHS! ( ptr u8 n ptr u8 n -- )
+: HBB-REPL-ON ( -- )
+   -1 HBB-REPL ! ;
+
+: HBB-PATHS! ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu out:ptr outu :}
    src srcu HBB-SRC!
    out outu HBB-OUT! ;
@@ -519,7 +522,7 @@ variable HBB-LOCK-DEADLINE
    then type
    cr ;
 
-: HBB-BUILD-AOT ( -- )
+: HBB-BUILD ( -- )
    HBB-RUN-SIGNATURE-LINT
    HBB-RUN-AOT-LINT
    HBB-BUILD-MAKER
@@ -530,5 +533,5 @@ variable HBB-LOCK-DEADLINE
 : HBB-MAIN ( -- )
    HBB-PARSE
    HBB-PREPARE-TMP
-   HBB-BUILD-AOT
+   HBB-BUILD
    HBB-CLEANUP ;

@@ -1,5 +1,5 @@
 \ check-repair-hints-test.f - checked fixtures for repair-class diagnostics.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/check-repair-hints-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 
 $4000 constant CRHT-BUF-CAP
 $4000 constant CRHT-ARGV-CAP
@@ -198,55 +198,11 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-ASSERT-ARGS ( -- )
-   CRHT-ARGV-RESET
-   s" tools/gate-json-assert.f" CRHT-WARM-LOAD if exit then
-   s" --load" CRHT-ARG+
-   s" lib/errors.f" CRHT-ARG+
-   s" lib/memory.f" CRHT-ARG+
-   s" tools/json.f" CRHT-ARG+
-   s" tools/gate-json-assert.f" CRHT-ARG+
-   s" --" CRHT-ARG+ ;
+: CRHT-ASSERT-SCHEMA ( -- )
+   CRHT-DIAG GJA-JSON-ONE-SCHEMA ;
 
-: CRHT-RUN-SCHEMA ( -- n n n n )
-   CRHT-ASSERT-ARGS
-   s" json-one-schema" CRHT-ARG+
-   CRHT-DIAG CRHT-ARG+
-   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
-   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
-
-: CRHT-RUN-CLASS ( ptr u8 n -- n n n n ) {: class:ptr classu :}
-   CRHT-ASSERT-ARGS
-   s" diag-repair-class" CRHT-ARG+
-   CRHT-DIAG CRHT-ARG+
-   class classu CRHT-ARG+
-   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
-   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
-
-: CRHT-RUN-RSTACK ( ptr u8 n ptr u8 n -- n n n n ) {: exp:ptr expu act:ptr actu :}
-   CRHT-ASSERT-ARGS
-   s" diag-return-stack" CRHT-ARG+
-   CRHT-DIAG CRHT-ARG+
-   exp expu CRHT-ARG+
-   act actu CRHT-ARG+
-   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
-   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
-
-: CRHT-RUN-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- n n n n )
-   {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
-   CRHT-ASSERT-ARGS
-   s" diag-row-effect" CRHT-ARG+
-   CRHT-DIAG CRHT-ARG+
-   src srcu CRHT-ARG+
-   exp expu CRHT-ARG+
-   act actu CRHT-ARG+
-   class classu CRHT-ARG+
-   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
-   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
+: CRHT-ASSERT-CLASS ( ptr u8 n -- )
+   CRHT-DIAG 2swap GJA-DIAG-REPAIR-CLASS ;
 
 : CRHT-OUTCOME. ( n -- ) {: kind :}
    kind PROC-OUTCOME-EXIT = if s" exit" type exit then
@@ -322,20 +278,19 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    label labelu CRHT-RUN-CHECK 70 CRHT-EXPECT-DIAG {: erru :}
    CRHT-DIAG CRHT-ERR erru WRITE-ALL
    label labelu s" schema" CRHT-CONTEXT!
-   CRHT-RUN-SCHEMA 0 CRHT-EXPECT-CLEAN
+   CRHT-ASSERT-SCHEMA
    label labelu s" class" CRHT-CONTEXT!
-   class classu CRHT-RUN-CLASS 0 CRHT-EXPECT-CLEAN ;
+   class classu CRHT-ASSERT-CLASS ;
 
 : CRHT-ASSERT-RSTACK ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: exp:ptr expu act:ptr actu label:ptr labelu :}
    label labelu s" return-stack" CRHT-CONTEXT!
-   exp expu act actu CRHT-RUN-RSTACK 0 CRHT-EXPECT-CLEAN ;
+   CRHT-DIAG exp expu act actu GJA-DIAG-RETURN-STACK ;
 
 : CRHT-ASSERT-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
    src srcu s" row-effect" CRHT-CONTEXT!
-   src srcu exp expu act actu class classu CRHT-RUN-ROW-EFFECT
-   0 CRHT-EXPECT-CLEAN ;
+   CRHT-DIAG src srcu exp expu act actu class classu GJA-DIAG-ROW-EFFECT ;
 
 : CRHT-CHECK-ACCEPTS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu body:ptr bodyu :}
    CRHT-SRC body bodyu WRITE-ALL

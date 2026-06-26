@@ -133,7 +133,8 @@ points stay listed.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
 - `tools/json-only-test.f` — checked fixture coverage for JSON diagnostic filtering.
 - `tools/json-file.f` — dynamic file-backed JSONL cursor shared by benchmark validators and reducers.
-- `tools/gate-json-assert.f` — native JSON assertions for the default gate.
+- `tools/gate-json-assert-core.f` — native JSON assertion library for gate tests.
+- `tools/gate-json-assert.f` — CLI entrypoint for native JSON assertions.
 - `tools/repair-schema-doc-test.f` — checked fixture coverage for repair diagnostic schema docs.
 - `tools/repair-packet-test.f` — checked fixture coverage for repair packet generation.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.

@@ -1,6 +1,6 @@
 \ gate-hb-build-repl.f - checked runner for hb-build --repl checks.
 \
-\ Load after test/gate-build-common.f.
+\ Load after test/gate-build-common.f and test/gate-build-hbb.f.
 
 variable GHR-SIZE
 
@@ -35,11 +35,7 @@ variable GHR-SIZE
    GB-OUT$ FILE? if label labelu GE-FAIL then ;
 
 : GHR-BUILD-REPL-OK ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-WRITE-SRC
-   GB-BUILD-ARGV
-   GHR-BUILD-REPL-CAPTURE
-   label labelu GE-EXPECT-OK
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
+   label labelu GB-HBB-BUILD-REPL ;
 
 : GHR-BUILD-REPL-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    GB-WRITE-SRC

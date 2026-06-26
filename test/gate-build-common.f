@@ -163,6 +163,7 @@ variable GB-LC-OFF
    s" lib/errors.f" GB-ARGV+
    s" lib/memory.f" GB-ARGV+
    s" tools/json.f" GB-ARGV+
+   s" tools/gate-json-assert-core.f" GB-ARGV+
    s" tools/gate-json-assert.f" GB-ARGV+
    s" --" GB-ARGV+ ;
 

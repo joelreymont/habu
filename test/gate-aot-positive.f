@@ -82,17 +82,24 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    HB-TARGET-MACOS? if GAP-MACHO-STRIPPED-TEXT-MAX exit then
    GB-TARGET-UNKNOWN ;
 
+: GAP-FIB-DEFS ( -- )
+   s" : FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;" GE-SRC-LINE ;
+
 : GAP-FIB-SOURCE ( -- )
    GE-SRC-RESET
-   s" : FIB ( n -- n ) DUP 2 < IF EXIT THEN DUP 1 - RECURSE SWAP 2 - RECURSE + ;" GE-SRC-LINE
+   GAP-FIB-DEFS
    s" : MAIN ( -- ) 10 FIB . CR ;" GE-SRC-LINE ;
+
+: GAP-FIB-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 55" GE-OUT-LINE GE-SB-LF
+   SB$ ;
 
 : GAP-FIB ( -- )
    s" hb-at.f" s" hb-at" s" hb-at-call-report.json" GAP-PATHS
    GAP-FIB-SOURCE
    s" hb-build AOT FIB strict" GAP-BUILD-STRICT
-   SB-RESET s" 55" GE-OUT-LINE GE-SB-LF
-   SB$ s" hb-build AOT output" GB-RUN-EXPECT
+   GAP-FIB-EXPECT s" hb-build AOT output" GB-RUN-EXPECT
    GB-OUT$ GB-EXEC-TEXT-SIZE {: textsz :}
    textsz GAP-STRIPPED-TEXT-MAX >= if s" hb-build AOT stripped text" GE-FAIL then
    s" hb-build AOT dynamic ELF shape" GAP-ASSERT-LINUX-DYNAMIC-ELF
@@ -101,22 +108,9 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    textsz GB-U.
    s"  B vs ~11800 embed)" type cr ;
 
-: GAP-COMPACT-SOURCE ( -- )
-   GE-SRC-RESET
+: GAP-COMPACT-DEFS ( -- )
    s" : BIG ( i64 -- i64 ) 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ 1+ ;" GE-SRC-LINE
-   s" : WRAP ( i64 -- i64 ) DUP 0< IF NEGATE ELSE BIG THEN 1+ ;" GE-SRC-LINE
-   s" : MAIN ( -- ) 1 WRAP . " GE-SRC+
-   s" ok" GE-SRC-S"
-   s"  type CR ;" GE-SRC-LINE ;
-
-: GAP-COMPACT ( -- )
-   s" hb-compact.f" s" hb-compact" s" hb-compact-call-report.json" GAP-PATHS
-   GAP-COMPACT-SOURCE
-   s" hb-build AOT compact calls" GAP-BUILD
-   SB-RESET s" 22" GE-OUT-LINE s" ok" GE-OUT-LINE
-   SB$ s" hb-build AOT compact call output" GB-RUN-EXPECT
-   s" aot-compact" s" aot-compact call report" GAP-AOT-ASSERT
-   s" PASS: hb-build AOT compact call layout" type cr ;
+   s" : WRAP ( i64 -- i64 ) DUP 0< IF NEGATE ELSE BIG THEN 1+ ;" GE-SRC-LINE ;
 
 : GAP-CLOSURE-LINE ( n -- ) {: n :}
    s" : W" GE-SRC+
@@ -125,34 +119,48 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    n 1+ GE-SRC-U+
    s"  1 + ;" GE-SRC-LINE ;
 
-: GAP-FEATURES-SOURCE ( -- )
-   GE-SRC-RESET
+: GAP-FEATURE-DEFS ( -- )
    s" : W259 ( -- n ) 1 ;" GE-SRC-LINE
    258 begin dup -1 > while
       dup GAP-CLOSURE-LINE
       1-
    repeat drop
-   s" : LONG-AOT-CALLED-WORD-NAME ( -- n ) 34 ;" GE-SRC-LINE
-   s" : MAIN ( -- ) W0 . CR LONG-AOT-CALLED-WORD-NAME . CR " GE-SRC+
+   s" : LONG-AOT-CALLED-WORD-NAME ( -- n ) 34 ;" GE-SRC-LINE ;
+
+: GAP-BUNDLE-MAIN ( -- )
+   s" : MAIN ( -- ) 1 WRAP . " GE-SRC+
+   s" ok" GE-SRC-S"
+   s"  type CR W0 . CR LONG-AOT-CALLED-WORD-NAME . CR " GE-SRC+
    s" hi" GAP-SRC-DOTQ
    s"  CR " GE-SRC+
    s" ok" GAP-SRC-CQ
    s"  count type CR ;" GE-SRC-LINE ;
 
-: GAP-FEATURES ( -- )
-   s" hb-features.f" s" hb-features" s" hb-features-report.json" GAP-PATHS
-   GAP-FEATURES-SOURCE
-   s" hb-build AOT bundled features" GAP-BUILD
-   SB-RESET s" 260" GE-OUT-LINE GE-SB-LF s" 34" GE-OUT-LINE GE-SB-LF
+: GAP-BUNDLE-SOURCE ( -- )
+   GE-SRC-RESET
+   GAP-COMPACT-DEFS
+   GAP-FEATURE-DEFS
+   GAP-BUNDLE-MAIN ;
+
+: GAP-BUNDLE-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 22" GE-OUT-LINE s" ok" GE-OUT-LINE
+   s" 260" GE-OUT-LINE GE-SB-LF s" 34" GE-OUT-LINE GE-SB-LF
    s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE
-   SB$ s" hb-build AOT bundled feature output" GB-RUN-EXPECT
-   s" PASS: hb-build AOT closure/long-name/parsing features" type cr ;
+   SB$ ;
+
+: GAP-BUNDLE ( -- )
+   s" hb-aot-bundle.f" s" hb-aot-bundle" s" hb-aot-bundle-report.json" GAP-PATHS
+   GAP-BUNDLE-SOURCE
+   s" hb-build AOT compact/features" GAP-BUILD
+   GAP-BUNDLE-EXPECT s" hb-build AOT compact/features output" GB-RUN-EXPECT
+   s" aot-compact" s" aot-compact call report" GAP-AOT-ASSERT
+   s" PASS: hb-build AOT compact/feature coverage" type cr ;
 
 : GAP-RUN ( -- )
    s" hb-gate-aot-positive" GT-START
    GAP-FIB
-   GAP-COMPACT
-   GAP-FEATURES
+   GAP-BUNDLE
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;
 

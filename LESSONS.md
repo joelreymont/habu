@@ -577,3 +577,8 @@ lesson — keep the specific word/code/path, cut the prose.
   `hb-build` children. Keep one CLI boundary for hb-build-only behavior such as
   closure-limit failure, and move semantic assertions to their owning checked
   tool tests (`check-test`, diagnostics, `aot-lint-test`, `hb-build-test`).
+- **Do not spawn assertion tools from fixture loops:** repair-hints spent most
+  of its time re-invoking `gate-json-assert` for JSON schema/class checks after
+  each checker rejection. Split assertion tools into checked cores plus thin CLI
+  entries, load the core in the owning fixture, and keep subprocesses only for
+  the boundary under test.

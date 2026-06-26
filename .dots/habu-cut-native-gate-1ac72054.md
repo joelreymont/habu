@@ -35,3 +35,15 @@ Focused AOT negative passed in 19.59s, `tools/aot-lint-test.f` passed in 3.14s,
 and the documented full native gate passed in 1m51.62s after rebasing onto the
 FFI library change. Remaining long poles:
 AOT positive, engine repair/build, stdlib tool-boundary, and REPL builder work.
+
+Checkpoint 2026-06-27: split `tools/gate-json-assert.f` into a checked core plus
+thin CLI entry so repair-hints tests can assert JSON schema/class/return-stack
+in-process instead of spawning `gate-json-assert` for every rejected fixture.
+Positive AOT coverage now uses two builds: the strict FIB binary still owns the
+stripped-text and dynamic-ELF proof, while one bundled binary covers compact
+direct calls, closure depth, long names, and parsing words. Focused
+`check-repair-hints-test.f` passed in 28.44s, engine repair slice in 30.57s,
+AOT-positive in 28.13s, stdlib tool-boundary in 46.02s, and the documented full
+native gate passed in 1m43.35s after rebasing onto the `lib/fmt.f` change.
+Remaining long poles: AOT positive under
+contention, stdlib tool-boundary, engine build, and REPL builder work.

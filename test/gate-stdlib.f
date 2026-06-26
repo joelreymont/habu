@@ -179,6 +179,7 @@ variable SUITE-SLICE
    s" tools/lint/source-lex.f" SUITE-ARG+
    s" tools/diag-origin-core.f" SUITE-ARG+
    s" tools/json.f" SUITE-ARG+
+   s" tools/gate-json-assert-core.f" SUITE-ARG+
    s" tools/json-only-core.f" SUITE-ARG+
    s" tools/signature-lint-core.f" SUITE-ARG+
    s" tools/checked-boundary-lint-core.f" SUITE-ARG+

@@ -86,9 +86,9 @@ GE-FILES: GE-PROCESS-CWD-CHECK-FILES
 ;GE-FILES
 
 GE-FILES: GE-REPAIR-HINTS-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f tools/warm-run.f
-   tools/check-repair-hints-test.f
+   tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 ;GE-FILES
 
 GE-FILES: GE-HB-BASELINE-RUN-FILES
