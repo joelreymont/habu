@@ -21,9 +21,15 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
   central finite difference. This is the gradcheck the type system cannot give —
   the strongest form of the verified-gradient thesis, demonstrated numerically.
 
-The optimizer/loss element rules apply per-weight; the tensor-level apply (one
-update / one reduction over a whole tensor) lowers onto a Habu-PTX kernel once
-codegen lands. The rules themselves are exact, checked, and tested now.
+- **Training loop** (`maki/train.f`, `maki/train-test.f`) — the forward → loss →
+  backward → optimizer cycle, composing autograd + loss + optim into a step that
+  **provably reduces the loss**: a 1-weight linear model trains from loss 36 to ~0
+  and the weight converges to the optimum over 20 SGD steps. Runnable.
+
+The optimizer/loss/autograd element rules apply per-weight; the tensor-level apply
+(one update / reduction / op over a whole tensor) lowers onto a Habu-PTX kernel
+once codegen lands. The rules themselves are exact, checked, gradient-verified,
+and tested now.
 
 ## Next (see root PLAN.md + dots)
 
