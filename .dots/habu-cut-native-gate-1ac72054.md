@@ -14,3 +14,14 @@ build-fixpoint fixture. Focused engine build passed in 28.64s, focused stdlib
 tail passed in 32.22s, and the documented full native gate passed in 2m07.75s.
 Remaining long poles: AOT negative/positive, engine repair, tool-boundary, and
 engine build/REPL contention.
+
+Checkpoint 2026-06-27: moved positive AOT hb-build cases from spawned CLI
+children to checked in-process `tools/hb-build-lib.f` helpers while keeping
+negative and REPL boundary phases spawned. `test/gate-build-common.f` now models
+the executable read buffer as runtime `lib/memory.f` storage instead of a large
+static `allot`, so the shared common helper can compose with `hb-build-lib` in
+one checked process. Focused AOT positive passed in 35.28s, AOT negative in
+50.56s, REPL in 26.52s, `tools/hb-build-test.f` in 38.32s, and the documented
+full native gate passed in 2m06.99s. Remaining long pole is still gate DAG
+contention: stdlib tool-boundary, engine repair, AOT positive/negative, engine
+build, and REPL overlap heavily.

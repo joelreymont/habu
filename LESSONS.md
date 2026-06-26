@@ -561,3 +561,9 @@ lesson — keep the specific word/code/path, cut the prose.
   PTX and `ptxas` must assemble it; second, the CUDA Driver harness must launch
   the cubin and compare CPU golden. On `zed`, `ptxas` exists at
   `/usr/local/cuda-12.6/bin/ptxas` but is not on `PATH`.
+- **Composable gate helpers cannot own large static buffers:** loading
+  `tools/hb-build-lib.f` ahead of `test/gate-build-common.f` tripped the native
+  data-space guard at the common executable read buffer before any new checked
+  helper ran. When a gate helper may compose with other checked tools, model
+  file/image storage as runtime `lib/memory.f` allocation sized from `FILE-SIZE`;
+  keep always-resident `create ... allot` buffers for small fixed metadata only.

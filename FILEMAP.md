@@ -195,5 +195,6 @@ points stay listed.
 
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/run.f` — default native gate.
+- `test/gate-build-hbb.f` — in-process checked hb-build helpers for positive AOT gate coverage.
 - `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.

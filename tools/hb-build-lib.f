@@ -117,6 +117,19 @@ variable HBB-LOCK-DEADLINE
 : HBB-PATH-HAS-DQ? ( ptr u8 n -- bool )
    HBB-DQ INDEX-OF 0 >= ;
 
+: HBB-RESET-OPTIONS ( -- )
+   0 HBB-REPL !
+   0 HBB-JSON !
+   0 HBB-STRICT ! ;
+
+: HBB-STRICT-ON ( -- )
+   -1 HBB-STRICT ! ;
+
+: HBB-AOT-PATHS! ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu out:ptr outu :}
+   src srcu HBB-SRC!
+   out outu HBB-OUT! ;
+
 : HBB-INC-I ( -- )
    HBB-I @ 1+ HBB-I ! ;
 
@@ -139,9 +152,7 @@ variable HBB-LOCK-DEADLINE
    begin HBB-PARSE-OPTION? while repeat ;
 
 : HBB-PARSE ( -- )
-   0 HBB-REPL !
-   0 HBB-JSON !
-   0 HBB-STRICT !
+   HBB-RESET-OPTIONS
    0 HBB-I !
    HBB-PARSE-OPTIONS
    SCRIPT-ARGC HBB-I @ - 3 <> if HBB-USAGE then

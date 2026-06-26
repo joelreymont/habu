@@ -1,8 +1,7 @@
 \ gate-build-common.f - checked helpers for native hb-build gate slices.
 \
-\ Load after test/gate-common.f.
+\ Load after test/gate-common.f and lib/memory.f.
 
-$40000 constant GB-EXEC-CAP
 $FEEDFACF constant GB-MH-MAGIC64
 $19 constant GB-LC-SEGMENT-64
 32 constant GB-MH-SIZE
@@ -44,11 +43,12 @@ $200000401 constant GB-ELF-DLSYM-RINFO
 create GB-SRC-PATH FS-PATH-CAP allot
 create GB-OUT-PATH FS-PATH-CAP allot
 create GB-REPORT-PATH FS-PATH-CAP allot
-create GB-EXEC-BUF GB-EXEC-CAP allot
 
 variable GB-SRC-U
 variable GB-OUT-U
 variable GB-REPORT-U
+variable GB-EXEC-A
+variable GB-EXEC-CAP-U
 variable GB-EXEC-U
 variable GB-TEXT-SIZE-V
 variable GB-TEXT-FOUND
@@ -62,6 +62,12 @@ variable GB-LC-OFF
 
 : GB-REPORT$ ( -- ptr u8 n )
    GB-REPORT-PATH GB-REPORT-U @ ;
+
+: GB-EXEC-BUF ( -- ptr u8 )
+   GB-EXEC-A @ ;
+
+: GB-EXEC-CAPACITY ( -- n )
+   GB-EXEC-CAP-U @ ;
 
 : GB-SRC! ( ptr u8 n -- ) {: name:ptr nameu :}
    name nameu GB-SRC-PATH GT-PATH GB-SRC-U ! ;
@@ -208,8 +214,20 @@ variable GB-LC-OFF
 : GB-U16@ ( ptr u8 -- n ) {: p:ptr :}
    p c@  p 1 + c@ 8 lshift or ;
 
+: GB-EXEC-ALLOC ( n -- ) {: need :}
+   need MEM-ALLOC-64K-SPAN {: buf:ptr cap :}
+   buf GB-EXEC-A !
+   cap GB-EXEC-CAP-U ! ;
+
+: GB-EXEC-ENSURE ( n -- ) {: need :}
+   need GB-EXEC-CAPACITY <= if exit then
+   need GB-EXEC-ALLOC ;
+
 : GB-READ-EXEC ( ptr u8 n -- ) {: path:ptr pathu :}
-   path pathu GB-EXEC-BUF GB-EXEC-CAP READ-ALL GB-EXEC-U ! ;
+   path pathu FILE-SIZE {: need :}
+   need GB-EXEC-ENSURE
+   path pathu GB-EXEC-BUF GB-EXEC-CAPACITY READ-ALL GB-EXEC-U !
+   GB-EXEC-U @ need <> if E-BUILD-SOURCE throw then ;
 
 : GB-RANGE ( n n -- ) {: off u :}
    off 0 < if E-BUILD-SOURCE throw then

@@ -1,6 +1,6 @@
 \ gate-aot-positive.f - checked runner for positive hb-build AOT checks.
 \
-\ Load after test/gate-build-common.f.
+\ Load after test/gate-build-common.f and test/gate-build-hbb.f.
 
 46 constant GAP-DOT
 99 constant GAP-C-LOWER
@@ -68,17 +68,10 @@ $3000 constant GAP-ELF-STRIPPED-TEXT-MAX
    report reportu GB-REPORT! ;
 
 : GAP-BUILD ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-WRITE-SRC
-   label labelu GB-HB-BUILD ;
+   label labelu GB-HBB-BUILD ;
 
 : GAP-BUILD-STRICT ( ptr u8 n -- ) {: label:ptr labelu :}
-   GB-WRITE-SRC
-   GB-BUILD-ARGV
-   s" --strict-signatures" GB-ARGV+
-   GB-HB-BUILD-ARGS
-   GB-HB-BUILD-CAPTURE
-   label labelu GE-EXPECT-OK
-   GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;
+   label labelu GB-HBB-BUILD-STRICT ;
 
 : GAP-AOT-ASSERT ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
    label labelu GB-AOT-REPORT
