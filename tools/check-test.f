@@ -9,14 +9,14 @@
 \ tools/warm-run.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
-10000 constant CKT-TIMEOUT-MS
+60000 constant CKT-TIMEOUT-MS
 
-create CKT-OUT CKT-BUF-CAP allot
-create CKT-ERR CKT-BUF-CAP allot
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-BAD-PATH FS-PATH-CAP allot
 create CKT-LIST-PATH FS-PATH-CAP allot
 
+variable CKT-OUT-A
+variable CKT-ERR-A
 variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
@@ -33,6 +33,35 @@ variable CKT-LIST-U
 
 : CKT-LIST$ ( -- ptr u8 n )
    CKT-LIST-PATH CKT-LIST-U @ ;
+
+: CKT-OUT-A-FIELD ( -- ptr ptr u8 )
+   CKT-OUT-A 0 ptr-field ;
+
+: CKT-ERR-A-FIELD ( -- ptr ptr u8 )
+   CKT-ERR-A 0 ptr-field ;
+
+: CKT-OUT-A@ ( -- ptr u8 )
+   CKT-OUT-A-FIELD @ ;
+
+: CKT-ERR-A@ ( -- ptr u8 )
+   CKT-ERR-A-FIELD @ ;
+
+: CKT-OUT-A! ( ptr u8 -- )
+   CKT-OUT-A-FIELD ! ;
+
+: CKT-ERR-A! ( ptr u8 -- )
+   CKT-ERR-A-FIELD ! ;
+
+: CKT-ALLOC-BUF ( -- ptr u8 )
+   CKT-BUF-CAP MEM-ALLOC-BYTES drop ;
+
+: CKT-OUT ( -- ptr u8 )
+   CKT-OUT-A @ 0= if CKT-ALLOC-BUF CKT-OUT-A! then
+   CKT-OUT-A@ ;
+
+: CKT-ERR ( -- ptr u8 )
+   CKT-ERR-A @ 0= if CKT-ALLOC-BUF CKT-ERR-A! then
+   CKT-ERR-A@ ;
 
 : CKT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;

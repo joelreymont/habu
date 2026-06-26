@@ -5,6 +5,7 @@
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
+10000 constant BLTT-TIMEOUT-MS
 
 variable BLTT-ROOT-U
 variable BLTT-DRIVER-U
@@ -114,41 +115,41 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ARGV-BASE
    s" errors"  >LEN PROC-ARGV+ ;
 
-: BLTT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: BLTT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: BLTT-HB-CAPTURE ( -- n n n )
+: BLTT-HB-CAPTURE ( -- n n n n )
    s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
-   BLTT-ERR BLTT-BUF-CAP >LEN 1000 >MS
-   RUN-ARGV-CAPTURE BLTT-CAPTURE>N ;
+   BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
 
-: BLTT-TOOL-CAPTURE ( -- n n n )
+: BLTT-TOOL-CAPTURE ( -- n n n n )
    WR-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
-   BLTT-ERR BLTT-BUF-CAP >LEN 1000 >MS
-   RUN-ARGV-CAPTURE BLTT-CAPTURE>N ;
+   BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
 
-: BLTT-RUN-MISSING-MODULE ( -- n n n )
+: BLTT-RUN-MISSING-MODULE ( -- n n n n )
    BLTT-ARGV-ERRORS
    s" missing-module" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-MISSING-SCRIPT ( -- n n n )
+: BLTT-RUN-MISSING-SCRIPT ( -- n n n n )
    BLTT-ARGV-ERRORS
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-MISSING BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-BUNDLE-LIB ( -- n n n )
+: BLTT-RUN-BUNDLE-LIB ( -- n n n n )
    BLTT-ARGV-ERRORS
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-BUNDLE ( -- n n n )
+: BLTT-RUN-BUNDLE ( -- n n n n )
    PROC-ARGV-RESET
    s" --load" BLTT-ARG+
    BLTT-BUNDLE BLTT-ARG+
@@ -157,21 +158,28 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" args" BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
+: BLTT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
+: BLTT-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T<>
+   outu erru ;
+
 : BLTT-TEST-MISSING-MODULE ( -- )
-   BLTT-RUN-MISSING-MODULE 0 T<>
-   {: outu erru :}
+   BLTT-RUN-MISSING-MODULE BLTT-EXPECT-EXIT-NZ {: outu erru :}
    outu 0 T=
    BLTT-ERR erru s" missing module" CONTAINS? TTRUE ;
 
 : BLTT-TEST-MISSING-SCRIPT ( -- )
-   BLTT-RUN-MISSING-SCRIPT 0 T<>
-   {: outu erru :}
+   BLTT-RUN-MISSING-SCRIPT BLTT-EXPECT-EXIT-NZ {: outu erru :}
    outu 0 T=
    BLTT-ERR erru s" missing script" CONTAINS? TTRUE ;
 
 : BLTT-TEST-BUILD-BUNDLE ( -- )
-   BLTT-RUN-BUNDLE-LIB 0 T=
-   {: outu erru :}
+   BLTT-RUN-BUNDLE-LIB 0 BLTT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu :}
@@ -181,8 +189,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
 
 : BLTT-TEST-RUN-BUNDLE ( -- )
-   BLTT-RUN-BUNDLE 0 T=
-   {: outu erru :}
+   BLTT-RUN-BUNDLE 0 BLTT-EXPECT-EXIT {: outu erru :}
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-OUT outu BLTT-OK$ CONTAINS? TTRUE ;
 

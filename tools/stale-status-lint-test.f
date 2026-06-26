@@ -2,6 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/stale-status-lint-test.f
 
 4096 constant SST-CAP
+10000 constant SST-TIMEOUT-MS
 1050 constant SST-LONG-LINES
 10 constant SST-LF-C
 
@@ -168,26 +169,34 @@ create SST-ERR SST-CAP allot
    SST-ROOT  >LEN PROC-ARGV+
    today todayu  >LEN PROC-ARGV+ ;
 
-: SST-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: SST-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: SST-RUN ( ptr u8 n -- n n n )
+: SST-RUN ( ptr u8 n -- n n n n )
    SST-ARGV
    WR-TOOLS$  >LEN SST-OUT SST-CAP >LEN SST-ERR SST-CAP >LEN
-   1000 >MS RUN-ARGV-CAPTURE SST-CAPTURE>N ;
+   SST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME SST-CAPTURE>N ;
 
-: SST-RUN-DEFAULT ( -- n n n )
+: SST-RUN-DEFAULT ( -- n n n n )
    s" 2026-06-16" SST-RUN ;
 
+: SST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
+: SST-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T<>
+   outu erru ;
+
 : SST-EXPECT-OK ( -- )
-   SST-RUN-DEFAULT 0 T=
-   {: outu erru :}
+   SST-RUN-DEFAULT 0 SST-EXPECT-EXIT {: outu erru :}
    SST-OUT outu SST-GOOD-OUT$ T$=
    SST-ERR erru SST-EMPTY$ T$= ;
 
 : SST-EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: today:ptr todayu code:ptr codeu needle:ptr needleu :}
-   today todayu SST-RUN 0 T<>
-   {: outu erru :}
+   today todayu SST-RUN SST-EXPECT-EXIT-NZ {: outu erru :}
    erru 0 T=
    SST-OUT outu code codeu CONTAINS? TTRUE
    needleu 0 > if SST-OUT outu needle needleu CONTAINS? TTRUE then ;

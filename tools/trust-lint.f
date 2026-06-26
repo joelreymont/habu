@@ -1,8 +1,8 @@
 \ trust-lint.f - CLI wrapper for TRUSTED.md drift lint.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f,
+\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/trust-lint-core.f, and tools/argv.f.
-\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/fs.f
+\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/memory.f lib/fs.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/trust-lint-core.f tools/argv.f tools/trust-lint.f -- [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]

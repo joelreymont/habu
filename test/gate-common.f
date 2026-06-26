@@ -178,6 +178,7 @@ variable GE-WARM-READY
    s" --load" GE-ARG+
    s" lib/errors.f" GE-ARG+
    s" lib/string.f" GE-ARG+
+   s" lib/memory.f" GE-ARG+
    s" lib/fs.f" GE-ARG+
    s" lib/fs-mutate.f" GE-ARG+
    s" lib/process.f" GE-ARG+

@@ -6,6 +6,7 @@
 
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
+$1002 constant BFT-MAP-PRIVATE-ANON
 120000 constant BFT-TIMEOUT-MS
 
 variable BFT-ROOT-U
@@ -13,6 +14,7 @@ variable BFT-HB-NEW-U
 variable BFT-STAGE2-U
 variable BFT-SNAP-U
 variable BFT-BUILD-FILES
+variable BFT-READ-A
 
 create BFT-ROOT-BUF FS-PATH-CAP allot
 create BFT-HB-NEW-BUF FS-PATH-CAP allot
@@ -20,7 +22,15 @@ create BFT-STAGE2-BUF FS-PATH-CAP allot
 create BFT-SNAP-BUF FS-PATH-CAP allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
-create BFT-READ-BUF BFT-READ-CAP allot
+
+: BFT-READ-BUF ( -- ptr u8 )
+   BFT-READ-A @ ;
+s" BFT-READ-BUF" s" -- ptr u8" TRUST
+
+: BFT-ALLOC-READ ( -- )
+   0 BFT-READ-CAP 3 BFT-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" build-fixpoint-test: read mmap failed" 76 die then
+   BFT-READ-A ! ;
 
 : BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -56,6 +66,7 @@ create BFT-READ-BUF BFT-READ-CAP allot
    CLEANUP-RESET
    s" habu-build-fixpoint" TMPDIR-MKDIR {: a:ptr u :}
    a u BFT-ROOT-BUF BFT-ROOT-U BFT-COPY!
+   BFT-ALLOC-READ
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
@@ -105,6 +116,11 @@ create BFT-READ-BUF BFT-READ-CAP allot
    BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
 
+: BFT-TEST-STAGE2-SCRATCH ( -- )
+   BFT-STAGE2 BFT-READ {: u :}
+   BFT-READ-BUF u s" S2-SOURCE-CAP allot" CONTAINS? TFALSE
+   BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
+
 : BFT-TEST-SNAP-SOURCE ( -- )
    BFT-SNAP BFT-READ {: u :}
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE ;
@@ -115,6 +131,7 @@ create BFT-READ-BUF BFT-READ-CAP allot
    s" stage2-src" BF-A$ BFT-STAGE2 T$=
    BF-STAGE2-SOURCE
    BFT-STAGE2 FILE? TTRUE
+   BFT-TEST-STAGE2-SCRATCH
    BF-TMP-RESET ;
 
 : BFT-BUILD-FILE? ( ptr u8 n -- bool )

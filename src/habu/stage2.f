@@ -8,13 +8,19 @@
 : S2-OUT s" stage2-got" TMP-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $80000 constant S2-SOURCE-CAP
+$1002 constant S2-MAP-PRIVATE-ANON
 : SBUF@ SBUF @ ;
 s" SBUF@" s" -- ptr u8" TRUST
+
+: S2-ALLOC-SOURCE ( -- )
+   0 S2-SOURCE-CAP 3 S2-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" stage2: source mmap failed" 74 die then
+   SBUF ! ;
 
 : READ-SRC
    S2-IN PATH0 0 0 open SFD !
    SFD @ 0 < IF s" stage2: cannot open source" 74 die THEN
-   here SBUF !  S2-SOURCE-CAP allot  0 SLEN !
+   S2-ALLOC-SOURCE  0 SLEN !
    BEGIN                                                 \ loop: read() may return short
      SFD @  SBUF@ SLEN @ +  S2-SOURCE-CAP SLEN @ -  read SRD !
      SRD @ 0 >

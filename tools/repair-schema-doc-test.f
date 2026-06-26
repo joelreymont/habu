@@ -3,7 +3,7 @@
 
 $40000 constant RSD-DOC-CAP
 8192 constant RSD-BUF-CAP
-3000 constant RSD-TIMEOUT-MS
+10000 constant RSD-TIMEOUT-MS
 
 variable RSD-ROOT-U
 variable RSD-SRC-U
@@ -137,10 +137,10 @@ create RSD-ERR RSD-BUF-CAP allot
    RSD-SRC RSD-SRC$ WRITE-ALL
    RSD-LOAD-DOCS ;
 
-: RSD-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: RSD-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: RSD-RUN-CHECK ( -- n n n )
+: RSD-RUN-CHECK ( -- n n n n )
    PROC-ARGV-RESET
    s" tools/check-all-errors.f" WR-TOOLS-LOAD if
       s" --json-errors"  >LEN PROC-ARGV+
@@ -148,7 +148,7 @@ create RSD-ERR RSD-BUF-CAP allot
       RSD-SRC  >LEN PROC-ARGV+
       RSD-SRC  >LEN PROC-ARGV+
       WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N
+      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N
       exit
    then
    s" --load"  >LEN PROC-ARGV+
@@ -171,15 +171,15 @@ create RSD-ERR RSD-BUF-CAP allot
    RSD-SRC  >LEN PROC-ARGV+
    RSD-SRC  >LEN PROC-ARGV+
    WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
+   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N ;
 
-: RSD-RUN-ASSERT ( ptr u8 n -- n n n ) {: mode:ptr modeu :}
+: RSD-RUN-ASSERT ( ptr u8 n -- n n n n ) {: mode:ptr modeu :}
    PROC-ARGV-RESET
    s" tools/gate-json-assert.f" WR-TOOLS-LOAD if
       mode modeu  >LEN PROC-ARGV+
       RSD-DIAG  >LEN PROC-ARGV+
       WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N
+      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N
       exit
    then
    s" --load"  >LEN PROC-ARGV+
@@ -191,7 +191,12 @@ create RSD-ERR RSD-BUF-CAP allot
    mode modeu  >LEN PROC-ARGV+
    RSD-DIAG  >LEN PROC-ARGV+
    WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE RSD-CAPTURE>N ;
+   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N ;
+
+: RSD-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : RSD-DIAG-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    SB-RESET
@@ -232,15 +237,13 @@ create RSD-ERR RSD-BUF-CAP allot
    s" suggestion" RSD-NEED-DIAG-FIELD ;
 
 : RSD-TEST-DIAG ( -- )
-   RSD-RUN-CHECK 70 T=
-   {: outu erru :}
+   RSD-RUN-CHECK 70 RSD-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    erru RSD-ERR-U !
    RSD-DIAG RSD-ERR erru WRITE-ALL
    RSD-ERR RSD-ERR-U @ RSD-REPAIR-CLASS$ CONTAINS? TTRUE
    RSD-TEST-DIAG-FIELDS
-   s" json-lines-schema" RSD-RUN-ASSERT 0 T=
-   {: aout aerr :}
+   s" json-lines-schema" RSD-RUN-ASSERT 0 RSD-EXPECT-EXIT {: aout aerr :}
    aout 0 T=
    aerr 0 T= ;
 

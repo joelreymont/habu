@@ -10,11 +10,8 @@
 : SNAP-OUT s" hb-snap0" TMP-PATH ;
 
 create TRL 40 allot
-create ZPG 4096 allot
-variable ZREM
-variable ZC
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
-variable SNL  variable SFTS  variable SFD
+variable SNL  variable SFTS  variable SPAD  variable SFD
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
 : STB-CELL@ STB @ ;
@@ -22,13 +19,23 @@ s" STB-CELL@" s" -- ptr n" TRUST
 : SDB@ SDB @ ;
 s" SDB@" s" -- ptr u8" TRUST
 
-: WPAD {: fd n :}
-   n ZREM !
-   BEGIN ZREM @ 0 > WHILE
-     ZREM @ 4096 > IF 4096 ELSE ZREM @ THEN ZC !
-     fd ZPG ZC @ DRV-WALL
-     ZREM @ ZC @ - ZREM !
-   REPEAT ;
+: SNAP-SIZE! ( -- )
+   STSZ @ SCL @ + SDL @ + 40 + SNL ! ;
+
+: SNAP-HDR! ( -- )
+   SNL @ BUILD-SNAP-HDR SFTS ! ;
+
+: SNAP-PAD! ( -- )
+   SNAP-HDR!
+   SFTS @ CODE-OFF - SNL @ - SPAD ! ;
+
+: SNAP-ABSORB-PAD ( -- )
+   SNAP-SIZE!
+   SNAP-PAD!
+   SDL @ SPAD @ + SDL !
+   SNAP-SIZE!
+   SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
+   SNAP-HDR! ;
 
 : SNAP-HDR
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
@@ -38,8 +45,7 @@ s" SDB@" s" -- ptr u8" TRUST
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
-   STSZ @ SCL @ + SDL @ + 40 + SNL !      \ new executable text content size
-   SNL @ BUILD-SNAP-HDR SFTS ! ;
+   SNAP-ABSORB-PAD ;
 : SNAPGO
    SNAP-HDR
    \ trailer: magic, old text base, dict count, region length, data length
@@ -53,7 +59,6 @@ s" SDB@" s" -- ptr u8" TRUST
    SFD @ SDB@ SCL @ DRV-WALL
    SFD @ data-base SDL @ DRV-WALL
    SFD @ TRL 40 DRV-WALL
-   SFD @  SFTS @ CODE-OFF - SNL @ -  WPAD
    SFD @ close
    DRV-EXIT-OK ;
 

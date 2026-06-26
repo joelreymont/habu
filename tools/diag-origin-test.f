@@ -1,10 +1,11 @@
 \ diag-origin-test.f - checked fixtures for tools/diag-origin.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/diag-origin-core.f
 \ tools/warm-run.f tools/diag-origin-test.f
 
 4096 constant DGT-BUF-CAP
+10000 constant DGT-TIMEOUT-MS
 
 variable DGT-ROOT-U
 variable DGT-IN-U
@@ -77,18 +78,19 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-ROOT s" input.f" DGT-IN-BUF JOIN-PATH DGT-IN-U !
    DGT-IN CLEANUP+ ;
 
-: DGT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: DGT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: DGT-RUN ( -- n n n )
+: DGT-RUN ( -- n n n n )
    PROC-ARGV-RESET
    s" tools/diag-origin.f" WR-TOOLS-LOAD if DGT-IN DGT-ARG+ else
    s" --load" DGT-ARG+
    s" lib/errors.f" DGT-ARG+
    s" lib/string.f" DGT-ARG+
+   s" lib/memory.f" DGT-ARG+
    s" tools/lint/text.f" DGT-ARG+
    s" tools/lint/token.f" DGT-ARG+
    s" tools/lint/lib.f" DGT-ARG+
@@ -97,8 +99,14 @@ create DGT-ERR DGT-BUF-CAP allot
    s" --" DGT-ARG+
    DGT-IN DGT-ARG+
    then
-   WR-TOOLS$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
+   DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    DGT-CAPTURE>N ;
+
+: DGT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : DGT-RUN-CORE ( -- n )
    DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN>BUF LEN>N ;
@@ -108,8 +116,7 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-OUT outu DGT-WANT$ T$= ;
 
 : DGT-TEST-CLI ( -- )
-   DGT-RUN 0 T=
-   {: outu erru :}
+   DGT-RUN 0 DGT-EXPECT-EXIT {: outu erru :}
    DGT-OUT outu DGT-WANT$ T$=
    DGT-ERR erru DGT-EMPTY$ T$= ;
 

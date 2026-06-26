@@ -4,6 +4,7 @@
 \ tools/repl-lint-test.f
 
 4096 constant RLT-CAP
+10000 constant RLT-TIMEOUT-MS
 
 variable RLT-ROOT-U
 variable RLT-SRC-DIR-U
@@ -130,25 +131,29 @@ create RLT-ERR RLT-CAP allot
    s" --" RLT-ARG+
    RLT-ROOT RLT-ARG+ ;
 
-: RLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: RLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: RLT-RUN ( -- n n n )
+: RLT-RUN ( -- n n n n )
    RLT-ARGV
-   WR-TOOLS$ >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN
+   RLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    RLT-CAPTURE>N ;
+
+: RLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : RLT-TEST-GOOD ( -- )
    RLT-REPL RLT-GOOD$ WRITE-ALL
-   RLT-RUN 0 T=
-   {: outu erru :}
+   RLT-RUN 0 RLT-EXPECT-EXIT {: outu erru :}
    RLT-OUT outu RLT-GOOD-OUT$ T$=
    RLT-ERR erru RLT-EMPTY$ T$= ;
 
 : RLT-TEST-BAD ( -- )
    RLT-REPL RLT-BAD$ WRITE-ALL
-   RLT-RUN 1 T=
-   {: outu erru :}
+   RLT-RUN 1 RLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    RLT-OUT outu RLT-BAD-FINDING$ CONTAINS? TTRUE
    RLT-OUT outu RLT-BAD-ADVICE$ CONTAINS? TTRUE

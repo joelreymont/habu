@@ -4,9 +4,39 @@
 \ after the encoders. CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
 $80000 constant CODE-CAP-BYTES
 131071 constant CODE-CAP-WORDS
-create CODE CODE-CAP-BYTES allot   variable CP
+$1002 constant ICODE-MAP-PRIVATE-ANON
+2048 constant ICODE-TAB-CELLS
+4 constant ICODE-TAB-COUNT
+ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
+variable CODE-A
+variable ICODE-TAB-A
+variable CP
 
-: ARESET ( -- ) 0 CP ! ;
+: CODE-ALLOC ( -- n )
+   0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < IF s" icode: code mmap failed" 72 die THEN ;
+
+: CODE ( -- ptr u8 )
+   CODE-A @ 0= IF CODE-ALLOC CODE-A ! THEN
+   CODE-A @ ;
+s" CODE" s" -- ptr u8" TRUST
+
+: ICODE-TAB-ALLOC ( -- n )
+   0 ICODE-TAB-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < IF s" icode: table mmap failed" 72 die THEN ;
+
+: ICODE-TABS ( -- ptr n )
+   ICODE-TAB-A @ 0= IF ICODE-TAB-ALLOC ICODE-TAB-A ! THEN
+   ICODE-TAB-A @ ;
+s" ICODE-TABS" s" -- ptr n" TRUST
+
+: ICODE-TAB ( n -- ptr n )
+   ICODE-TABS swap ICODE-TAB-CELLS * cells + ;
+
+: ARESET ( -- )
+   CODE drop
+   ICODE-TABS drop
+   0 CP ! ;
 
 : CW@ ( n -- ptr u8 ) {: w :}  CODE w 4 * + ;                      \ byte addr of word w
 
@@ -26,9 +56,14 @@ variable EP
    u 16 rshift 255 and EP@ 2 + c@ or EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c@ or EP@ 3 + c! ;
 \ labels: LBLP[id] = defining word pos, or -1 if pending.
 2048 constant LBL-CAP
-create LBLP LBL-CAP cells allot   variable NLBL
+\ Keep the historical table names as accessors so emitter code stays readable.
+: LBLP ( -- ptr n ) 0 ICODE-TAB ;
+variable NLBL
 \ fixups: site word-pos, target label, kind (0=B26, 1=cond/CBZ 19-bit, 2=ADR)
-create FXS 2048 cells allot   create FXL 2048 cells allot   create FXK 2048 cells allot   variable NFX
+: FXS ( -- ptr n ) 1 ICODE-TAB ;
+: FXL ( -- ptr n ) 2 ICODE-TAB ;
+: FXK ( -- ptr n ) 3 ICODE-TAB ;
+variable NFX
 
 : ASM-INIT ( -- )  ARESET  0 NLBL !  0 NFX !  0 BEGIN dup cells LBLP + -1 swap ! 1 + dup LBL-CAP 1- > UNTIL drop ;
 

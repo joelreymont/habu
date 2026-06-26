@@ -4,6 +4,7 @@
 \ tools/warm-run.f tools/checked-boundary-lint-test.f
 
 4096 constant CBLT-BUF-CAP
+10000 constant CBLT-TIMEOUT-MS
 1400 constant CBLT-LARGE-LINES
 
 variable CBLT-ROOT-U
@@ -145,15 +146,15 @@ create CBLT-LF-BYTE 10 c,
    s" tools/checked-boundary-lint.f" CBLT-ARG+
    s" --" CBLT-ARG+ ;
 
-: CBLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: CBLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: CBLT-HB-CAPTURE ( -- n n n )
+: CBLT-HB-CAPTURE ( -- n n n n )
    WR-TOOLS$  >LEN CBLT-OUT CBLT-BUF-CAP >LEN
-   CBLT-ERR CBLT-BUF-CAP >LEN 1000 >MS
-   RUN-ARGV-CAPTURE CBLT-CAPTURE>N ;
+   CBLT-ERR CBLT-BUF-CAP >LEN CBLT-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE-OUTCOME CBLT-CAPTURE>N ;
 
-: CBLT-RUN-CURRENT ( -- n n n )
+: CBLT-RUN-CURRENT ( -- n n n n )
    CBLT-ARGV-LOAD
    s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
    s" bench/llm/report.f"  >LEN PROC-ARGV+
@@ -173,43 +174,49 @@ create CBLT-LF-BYTE 10 c,
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-GOOD ( -- n n n )
+: CBLT-RUN-GOOD ( -- n n n n )
    CBLT-ARGV-LOAD
    CBLT-GOOD  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-STRICT-GOOD ( -- n n n )
+: CBLT-RUN-STRICT-GOOD ( -- n n n n )
    CBLT-ARGV-LOAD
    s" --strict-boundary"  >LEN PROC-ARGV+
    CBLT-GOOD  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-STRICT-TRUSTED ( -- n n n )
+: CBLT-RUN-STRICT-TRUSTED ( -- n n n n )
    CBLT-ARGV-LOAD
    s" --strict-boundary"  >LEN PROC-ARGV+
    CBLT-TRUSTED  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-LARGE ( -- n n n )
+: CBLT-RUN-LARGE ( -- n n n n )
    CBLT-ARGV-LOAD
    CBLT-LARGE  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-BAD ( -- n n n )
+: CBLT-RUN-BAD ( -- n n n n )
    CBLT-ARGV-LOAD
    CBLT-BAD  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-CROSS ( -- n n n )
+: CBLT-RUN-CROSS ( -- n n n n )
    CBLT-ARGV-LOAD
    CBLT-OFF  >LEN PROC-ARGV+
    CBLT-CROSS  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-ASSERT-CLEAN ( n n n -- ) {: outu erru rc :}
-   rc 0 T=
+: CBLT-ASSERT-CLEAN ( n n n n -- ) {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T=
    CBLT-OUT outu CBLT-EMPTY$ T$=
    CBLT-ERR erru CBLT-EMPTY$ T$= ;
+
+: CBLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : CBLT-TEST-CURRENT ( -- )
    CBLT-RUN-CURRENT CBLT-ASSERT-CLEAN ;
@@ -221,20 +228,17 @@ create CBLT-LF-BYTE 10 c,
    CBLT-RUN-LARGE CBLT-ASSERT-CLEAN ;
 
 : CBLT-TEST-BAD ( -- )
-   CBLT-RUN-BAD 1 T=
-   {: outu erru :}
+   CBLT-RUN-BAD 1 CBLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    CBLT-OUT outu CBLT-CODE$ CONTAINS? TTRUE ;
 
 : CBLT-TEST-CROSS ( -- )
-   CBLT-RUN-CROSS 1 T=
-   {: outu erru :}
+   CBLT-RUN-CROSS 1 CBLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    CBLT-OUT outu s" CROSS-BAD" CONTAINS? TTRUE ;
 
 : CBLT-TEST-STRICT ( -- )
-   CBLT-RUN-STRICT-GOOD 1 T=
-   {: outu erru :}
+   CBLT-RUN-STRICT-GOOD 1 CBLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    CBLT-OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
    CBLT-OUT outu s" set-check" CONTAINS? TTRUE ;

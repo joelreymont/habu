@@ -4,7 +4,7 @@
 
 65536 constant EXT-COPY-CAP
 8192 constant EXT-CAPTURE-CAP
-5000 constant EXT-TIMEOUT-MS
+10000 constant EXT-TIMEOUT-MS
 
 variable EXT-TEMP-U
 variable EXT-FILES-U
@@ -149,13 +149,13 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    b u s" examples/build-script.f" EXT-ADD-SOURCE
    b u ;
 
-: EXT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: EXT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: EXT-RUN-HB ( -- n n n )
+: EXT-RUN-HB ( -- n n n n )
    s" bin/hb"  >LEN EXT-OUT EXT-CAPTURE-CAP >LEN
    EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE EXT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME EXT-CAPTURE>N ;
 
 : EXT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -166,9 +166,10 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    EXT-ARG+
    s" --" EXT-ARG+ ;
 
-: EXT-ASSERT-OK ( n n n -- )
-   0 T=
-   {: outu erru :}
+: EXT-ASSERT-OK ( n n n n -- )
+   {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T=
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK$ T$= ;
 

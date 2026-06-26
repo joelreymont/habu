@@ -1,7 +1,7 @@
 \ warm-image-test.f - fixture for tools/warm-image-lib.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-\ lib/source.f lib/codesign.f tools/warm-image-lib.f tools/warm-image-test.f
+\ lib/source.f lib/codesign.f lib/memory.f tools/warm-image-lib.f tools/warm-image-test.f
 
 65536 constant WIT-CAP
 120000 constant WIT-TIMEOUT-MS
@@ -111,6 +111,7 @@ create WIT-RUN-ERR WIT-CAP allot
    s" --load" WIT-ARG+
    s" lib/errors.f" WIT-ARG+
    s" lib/string.f" WIT-ARG+
+   s" lib/memory.f" WIT-ARG+
    s" lib/fs.f" WIT-ARG+
    s" lib/fs-mutate.f" WIT-ARG+
    s" lib/process.f" WIT-ARG+
@@ -186,9 +187,25 @@ create WIT-RUN-ERR WIT-CAP allot
    outu drop erru drop
    rc 0 T<> ;
 
+: WIT-LIB-HAS? ( ptr u8 n -- bool )
+   s" tools/warm-image-lib.f" WI-SRC-BUF WI-SRC-CAP READ-ALL {: u :}
+   WI-SRC-BUF u 2swap CONTAINS? ;
+
+: WIT-LIB-MUST-HAVE ( ptr u8 n -- )
+   WIT-LIB-HAS? TTRUE ;
+
+: WIT-TEST-TAIL-DEPS ( -- )
+   s" src/arch/arm64/asm.f" WIT-LIB-MUST-HAVE
+   s" src/arch/arm64/icode.f" WIT-LIB-MUST-HAVE
+   s" src/os/linux/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/macos/layout.f" WIT-LIB-MUST-HAVE
+   s" src/habu/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/image-bytes.f" WIT-LIB-MUST-HAVE ;
+
 : WIT-MAIN ( -- )
    T-RESET
    WIT-PREPARE
+   WIT-TEST-TAIL-DEPS
    WIT-TEST-BAKE
    WIT-TEST-RUN
    WIT-TEST-NOTRUST-RUNS

@@ -62,7 +62,9 @@ variable IBT-LEN
 
 : IBT-TEST-SOURCE-SHAPE ( -- )
    s" src/os/image-bytes.f" IBT-LOAD
-   s" create MBUF MSIZE allot" IBT-MUST-HAVE
+   s" create MBUF MSIZE allot" IBT-MUST-LACK
+   s" : MBUF ( -- ptr u8 )" IBT-MUST-HAVE
+   s" image-bytes: mmap failed" IBT-MUST-HAVE
    s" : M-LE32@ ( n -- n )" IBT-MUST-HAVE
    s" : M-LE64! ( n n -- )" IBT-MUST-HAVE
    s" : M-BE32 ( n -- )" IBT-MUST-HAVE

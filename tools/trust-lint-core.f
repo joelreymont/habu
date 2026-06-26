@@ -1,11 +1,15 @@
 \ trust-lint-core.f - keep TRUST sites pinned to TRUSTED.md.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f,
+\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 90 constant TL-MAX-AUDIT-AGE
 384 constant TL-MAX
 32 constant TL-NUM-CAP
 16 constant TL-CELL-MAX
+7 constant TL-S-TABLES
+10 constant TL-M-TABLES
+TL-S-TABLES TL-MAX * constant TL-S-CELLS
+TL-M-TABLES TL-MAX * constant TL-M-CELLS
 
 10 constant TL-LF
 45 constant TL-DASH
@@ -20,28 +24,11 @@ create TL-SITE-BUF FS-PATH-CAP allot
 create TL-NUM-BUF TL-NUM-CAP allot
 create TL-ONE 1 allot
 
-create TL-S-NO TL-MAX cells allot
-create TL-S-NL TL-MAX cells allot
-create TL-S-EO TL-MAX cells allot
-create TL-S-EL TL-MAX cells allot
-create TL-S-PO TL-MAX cells allot
-create TL-S-PL TL-MAX cells allot
-create TL-S-LINE TL-MAX cells allot
-
-create TL-M-NO TL-MAX cells allot
-create TL-M-NL TL-MAX cells allot
-create TL-M-EO TL-MAX cells allot
-create TL-M-EL TL-MAX cells allot
-create TL-M-TO TL-MAX cells allot
-create TL-M-TL TL-MAX cells allot
-create TL-M-SO TL-MAX cells allot
-create TL-M-SL TL-MAX cells allot
-create TL-M-AO TL-MAX cells allot
-create TL-M-AL TL-MAX cells allot
-
 create TL-CO TL-CELL-MAX cells allot
 create TL-CL TL-CELL-MAX cells allot
 
+variable TL-S-TAB-A
+variable TL-M-TAB-A
 variable TL-END
 variable TL-S#
 variable TL-M#
@@ -78,6 +65,8 @@ variable TL-NU
 variable TL-NB
 variable TL-NV
 
+: TL-S-TAB-A-FIELD ( -- ptr ptr a ) TL-S-TAB-A 0 ptr-field ;
+: TL-M-TAB-A-FIELD ( -- ptr ptr a ) TL-M-TAB-A 0 ptr-field ;
 : TL-CUR-PATH-A-FIELD ( -- ptr ptr u8 ) TL-CUR-PATH-A 0 ptr-field ;
 : TL-ROOT-A-FIELD ( -- ptr ptr u8 ) TL-ROOT-A 0 ptr-field ;
 : TL-STR-A-FIELD ( -- ptr ptr u8 ) TL-STR-A 0 ptr-field ;
@@ -86,6 +75,8 @@ variable TL-NV
 : TL-NA-FIELD ( -- ptr ptr u8 ) TL-NA 0 ptr-field ;
 : TL-NB-FIELD ( -- ptr ptr u8 ) TL-NB 0 ptr-field ;
 
+: TL-S-TAB-A@ ( -- ptr a ) TL-S-TAB-A-FIELD @ ;
+: TL-M-TAB-A@ ( -- ptr a ) TL-M-TAB-A-FIELD @ ;
 : TL-CUR-PATH-A@ ( -- ptr u8 ) TL-CUR-PATH-A-FIELD @ ;
 : TL-ROOT-A@ ( -- ptr u8 ) TL-ROOT-A-FIELD @ ;
 : TL-STR-A@ ( -- ptr u8 ) TL-STR-A-FIELD @ ;
@@ -94,6 +85,8 @@ variable TL-NV
 : TL-NA@ ( -- ptr u8 ) TL-NA-FIELD @ ;
 : TL-NB@ ( -- ptr u8 ) TL-NB-FIELD @ ;
 
+: TL-S-TAB-A! ( ptr a -- ) TL-S-TAB-A-FIELD ! ;
+: TL-M-TAB-A! ( ptr a -- ) TL-M-TAB-A-FIELD ! ;
 : TL-CUR-PATH-A! ( ptr u8 -- ) TL-CUR-PATH-A-FIELD ! ;
 : TL-ROOT-A! ( ptr u8 -- ) TL-ROOT-A-FIELD ! ;
 : TL-STR-A! ( ptr u8 -- ) TL-STR-A-FIELD ! ;
@@ -101,6 +94,38 @@ variable TL-NV
 : TL-LA! ( ptr u8 -- ) TL-LA-FIELD ! ;
 : TL-NA! ( ptr u8 -- ) TL-NA-FIELD ! ;
 : TL-NB! ( ptr u8 -- ) TL-NB-FIELD ! ;
+
+: TL-ALLOC-TABLES ( -- )
+   TL-S-TAB-A @ 0= if TL-S-CELLS >COUNT MEM-ALLOC-CELLS TL-S-TAB-A! then
+   TL-M-TAB-A @ 0= if TL-M-CELLS >COUNT MEM-ALLOC-CELLS TL-M-TAB-A! then ;
+
+: TL-TABLE-OFF ( n -- n )
+   TL-MAX * cells ;
+
+: TL-S-TABLE ( n -- ptr a )
+   TL-S-TAB-A@ swap TL-TABLE-OFF + ;
+
+: TL-M-TABLE ( n -- ptr a )
+   TL-M-TAB-A@ swap TL-TABLE-OFF + ;
+
+: TL-S-NO ( -- ptr a ) 0 TL-S-TABLE ;
+: TL-S-NL ( -- ptr a ) 1 TL-S-TABLE ;
+: TL-S-EO ( -- ptr a ) 2 TL-S-TABLE ;
+: TL-S-EL ( -- ptr a ) 3 TL-S-TABLE ;
+: TL-S-PO ( -- ptr a ) 4 TL-S-TABLE ;
+: TL-S-PL ( -- ptr a ) 5 TL-S-TABLE ;
+: TL-S-LINE ( -- ptr a ) 6 TL-S-TABLE ;
+
+: TL-M-NO ( -- ptr a ) 0 TL-M-TABLE ;
+: TL-M-NL ( -- ptr a ) 1 TL-M-TABLE ;
+: TL-M-EO ( -- ptr a ) 2 TL-M-TABLE ;
+: TL-M-EL ( -- ptr a ) 3 TL-M-TABLE ;
+: TL-M-TO ( -- ptr a ) 4 TL-M-TABLE ;
+: TL-M-TL ( -- ptr a ) 5 TL-M-TABLE ;
+: TL-M-SO ( -- ptr a ) 6 TL-M-TABLE ;
+: TL-M-SL ( -- ptr a ) 7 TL-M-TABLE ;
+: TL-M-AO ( -- ptr a ) 8 TL-M-TABLE ;
+: TL-M-AL ( -- ptr a ) 9 TL-M-TABLE ;
 
 : TL-C! ( n -- ) TL-ONE c! ;
 
@@ -193,10 +218,10 @@ variable TL-NV
 : TL-O$ ( n n -- ptr u8 n )
    swap TL-STR-A@ + swap ;
 
-: TL-A@ ( ptr n n -- n )
+: TL-A@ ( ptr a n -- n )
    cells + @ ;
 
-: TL-A! ( n ptr n n -- )
+: TL-A! ( n ptr a n -- )
    cells + ! ;
 
 : TL-S-NAME$ ( n -- ptr u8 n ) {: k :} TL-S-NO k TL-A@ TL-S-NL k TL-A@ TL-O$ ;
@@ -600,6 +625,7 @@ variable TL-NV
    a u TL-ROOTED$ 2dup EXISTS? IF [: TL-SCAN-SRC-FILE ;] WALK-FILES ELSE 2drop THEN ;
 
 : TL-RESET ( -- )
+   TL-ALLOC-TABLES
    TL-REQUIRE-BUFFERS
    0 TL-END !  0 TL-S# !  0 TL-M# !  0 TL-BAD !
 ;

@@ -189,6 +189,11 @@ variable BF-TMP-U
 
 : BF-PREFLIGHT-ICODE ( -- )
    s" src/arch/arm64/icode.f" BF-READ-SOURCE
+   s" variable CODE-A" BF-SOURCE-MUST-HAVE
+   s" : CODE ( -- ptr u8 )" BF-SOURCE-MUST-HAVE
+   s" : ICODE-TABS ( -- ptr n )" BF-SOURCE-MUST-HAVE
+   s" icode: code mmap failed" BF-SOURCE-MUST-HAVE
+   s" icode: table mmap failed" BF-SOURCE-MUST-HAVE
    s" variable BYA" BF-SOURCE-MUST-HAVE
    s" variable BYU" BF-SOURCE-MUST-HAVE
    s" : BYA@ ( -- ptr u8 )" BF-SOURCE-MUST-HAVE
@@ -197,6 +202,9 @@ variable BF-TMP-U
    s" : BYTES-COPY ( -- )" BF-SOURCE-MUST-HAVE
    s" : BYTES-PAD ( -- )" BF-SOURCE-MUST-HAVE
    s" : BYTES, ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
+   s" create CODE CODE-CAP-BYTES allot" BF-SOURCE-MUST-LACK
+   s" create LBLP LBL-CAP cells allot" BF-SOURCE-MUST-LACK
+   s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK
    s" {: a:ptr u :}" BF-SOURCE-MUST-LACK ;
 
 : BF-PREFLIGHT-HABU1 ( -- )

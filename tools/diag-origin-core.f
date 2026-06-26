@@ -1,5 +1,5 @@
 \ diag-origin-core.f - inject checker diagnostic origin markers before definitions.
-\ Load after lib/errors.f, lib/string.f, tools/lint/text.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, tools/lint/text.f,
 \ tools/lint/token.f, and tools/lint/lib.f.
 
 $40000 constant DO-FILE-CAP
@@ -16,10 +16,10 @@ $40000 constant DO-FILE-CAP
 58 constant DO-COLON-C
 92 constant DO-BSLASH
 
-create DO-FILE-BUF DO-FILE-CAP allot
 create DO-NUM-BUF DO-NUM-CAP allot
 create DO-ONE 1 allot
 
+variable DO-FILE-A
 variable DO-SRC-A
 variable DO-SRC-U
 variable DO-X
@@ -52,6 +52,24 @@ variable DO-OUT-BUF?
 
 : DO-FALSE ( -- bool )
    DO-TRUE 0= ;
+
+: DO-FILE-A-FIELD ( -- ptr ptr u8 )
+   DO-FILE-A 0 ptr-field ;
+
+: DO-FILE-A@ ( -- ptr u8 )
+   DO-FILE-A-FIELD @ ;
+
+: DO-FILE-A! ( ptr u8 -- )
+   DO-FILE-A-FIELD ! ;
+
+: DO-ALLOC-FILE-BUF ( -- )
+   DO-FILE-A @ 0= if
+      DO-FILE-CAP MEM-ALLOC-BYTES drop DO-FILE-A!
+   then ;
+
+: DO-FILE-BUF ( -- ptr u8 )
+   DO-ALLOC-FILE-BUF
+   DO-FILE-A@ ;
 
 : DO-SRC-A-FIELD ( -- ptr ptr u8 )
    DO-SRC-A 0 ptr-field ;

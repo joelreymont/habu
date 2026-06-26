@@ -101,6 +101,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `bootstrap/cg/asm-checked.fs` should accept `reg`/`off` and erase with
   `REG>N`/`OFF>N` only at bit-packing leaves. Public encoders then reject
   register-vs-offset swaps while preserving the same instruction bytes.
+- **Nominal roles are a native-prefix contract:** role casts in `src/core/roles.f`
+  are trusted identity boundaries and must be baked by refresh; checked fixture
+  bundles consume the baked role words instead of concatenating `roles.f` directly
+  before role-typed consumers.
 - **`ptr-field` retires pointer reload TRUST:** variable-backed pointer cursors
   such as `RPD@`, `PR-A@`, `FP-A@`, `EP@`, `BYP@`, and `BYA@` are plain checked
   helpers when written as `VAR 0 ptr-field @`; do not add TRUST rows for this
@@ -118,6 +122,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
   nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
   lints until the heavy wave drains.
+- **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
+  `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT`. Test fixtures
+  that spawn `hb` use named deadlines plus `RUN-ARGV-*-OUTCOME`, then assert
+  `PROC-OUTCOME-EXIT` and the expected code so timeouts fail with diagnostics.
 - **Pool slot state is an invariant:** free=`-1`, active=`0`, done=`1`; set
   active before spawning. A live-count pool with free slots still marked free
   ignores its fds and spins forever after children exit.
@@ -240,6 +248,14 @@ lesson — keep the specific word/code/path, cut the prose.
   bytes via `MEM-ALLOC-64K-SPAN`/`lib/memory.f`. Derive the live base through
   `data-base`, never a duplicated numeric DATA address (a gen-1 stage runs old
   startup while interpreting new source).
+- **Warm composition finds hidden DATA buffers:** `diag-origin`, `signature-lint`,
+  `trust-lint`, and `icode` failed only when loaded together. Runtime file
+  buffers, scan tables, assembler code, and fixup tables belong in OS mappings;
+  keep dictionary DATA for persistent definitions and small cells.
+- **Warm JSON parser storage is runtime scratch:** `tools/json.f` parse tables,
+  string storage, and writer/error buffers are part of the warm checker prefix;
+  keep them in lazy `lib/memory.f` mappings or the 67 KiB warm trust sidecar can
+  fail before diagnostics run.
 - **Code/dict region guards (a lone `:` failing closed):** check `cp@ dbase@ -`.
   At/past `REGION - $4000` → code-region guard (remove one-use compiled fixtures,
   then grow `REGION`). Well below + rc 77 → dictionary guard: grow `DICT-CAP`,
@@ -587,3 +603,18 @@ lesson — keep the specific word/code/path, cut the prose.
   `--load` prefix omits `lib/process-env.f` and fails at
   `PROC-ENV-INHERIT-MISSING` before testing changed code. Use the exact native
   gate command for commit evidence.
+- **Warm-image tails mirror builder deps and trailer layout:** warm snapshot
+  sources that append `src/os/*/{elf,macho}.f` must first append ARM64
+  assembler/code-buffer sources and target/shared layout
+  (`src/arch/arm64/{asm,icode}.f`, `src/os/<target>/layout.f`,
+  `src/habu/layout.f`), or child snapshots fail at `ASM-LEN`/`CODE-OFF`. The
+  snapshot trailer must remain the final 40 bytes of the rounded text segment;
+  absorb alignment padding into the copied DATA span instead of writing zeros
+  after the trailer, or startup misses `SNAP-CELL` and replays the cold prefix.
+- **Stage2 source input is runtime scratch:** a refreshed snapshot `bin/hb`
+  starts with substantial DATA already occupied by the checked prefix. Keeping
+  stage2's `$80000` source buffer as `here ... allot` combines with `CODE` and
+  `MBUF` and trips the silent native `DP-CHECK` guard on the second refresh. Use
+  the same primitive-facing `$1002` anonymous/private `mmap` convention as
+  `lib/memory.f` for that buffer; raw Linux `$22` is for emitted startup syscalls,
+  not the public `mmap` primitive.

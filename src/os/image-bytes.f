@@ -1,11 +1,23 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
 
 $90000 constant MSIZE
-create MBUF MSIZE allot
+$1002 constant M-MAP-PRIVATE-ANON
+variable MBUF-A
 variable MP
 variable MLEN
-s" MBUF" s" -- ptr u8" TRUST
 s" MLEN" s" -- ptr n" TRUST
+
+: M-ALLOC-BUF ( -- n )
+   0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" image-bytes: mmap failed" 74 die then ;
+
+: M-ENSURE-BUF ( -- )
+   MBUF-A @ 0= if M-ALLOC-BUF MBUF-A ! then ;
+
+: MBUF ( -- ptr u8 )
+   M-ENSURE-BUF
+   MBUF-A @ ;
+s" MBUF" s" -- ptr u8" TRUST
 
 : MP@ ( -- ptr u8 ) MP @ ;
 s" MP@" s" -- ptr u8" TRUST

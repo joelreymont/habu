@@ -4,6 +4,7 @@
 \ tools/signature-lint-test.f
 
 4096 constant SLT-BUF-CAP
+10000 constant SLT-TIMEOUT-MS
 
 variable SLT-ROOT-U
 variable SLT-GOOD-U
@@ -139,65 +140,67 @@ create SLT-ERR SLT-BUF-CAP allot
    s" tools/signature-lint.f" SLT-ARG+
    s" --" SLT-ARG+ ;
 
-: SLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: SLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: SLT-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
+: SLT-RUN ( ptr u8 n -- n n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
+   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    SLT-CAPTURE>N ;
 
-: SLT-RUN-JSON ( ptr u8 n -- n n n ) {: a:ptr u :}
+: SLT-RUN-JSON ( ptr u8 n -- n n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    s" --json" SLT-ARG+
    a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
+   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    SLT-CAPTURE>N ;
 
-: SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n ) {: a:ptr u :}
+: SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    s" --json" SLT-ARG+
    s" --label" SLT-ARG+
    s" <stdin>" SLT-ARG+
    a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
+   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    SLT-CAPTURE>N ;
 
+: SLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
 : SLT-TEST-GOOD ( -- )
-   SLT-GOOD SLT-RUN 0 T=
-   {: outu erru :}
+   SLT-GOOD SLT-RUN 0 SLT-EXPECT-EXIT {: outu erru :}
    SLT-OUT outu SLT-EMPTY$ T$=
    SLT-ERR erru SLT-EMPTY$ T$= ;
 
 : SLT-TEST-MISSING ( -- )
-   SLT-MISSING SLT-RUN 1 T=
-   {: outu erru :}
+   SLT-MISSING SLT-RUN 1 SLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
 
 : SLT-TEST-MISSING-JSON ( -- )
-   SLT-MISSING SLT-RUN-JSON-LABEL 1 T=
-   {: outu erru :}
+   SLT-MISSING SLT-RUN-JSON-LABEL 1 SLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    SLT-OUT outu SLT-JSON-MISSING$ CONTAINS? TTRUE
    SLT-OUT outu SLT-JSON-LABEL$ CONTAINS? TTRUE ;
 
 : SLT-TEST-GOOD-JSON-LABEL ( -- )
-   SLT-GOOD SLT-RUN-JSON-LABEL 0 T=
-   {: outu erru :}
+   SLT-GOOD SLT-RUN-JSON-LABEL 0 SLT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    erru 0 T= ;
 
 : SLT-TEST-OPTOUT-JSON ( -- )
-   SLT-OPTOUT SLT-RUN-JSON 1 T=
-   {: outu erru :}
+   SLT-OPTOUT SLT-RUN-JSON 1 SLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    SLT-OUT outu SLT-JSON-UNVERIFIED$ CONTAINS? TTRUE ;
 
 : SLT-TEST-MISSING-NAME ( -- )
-   SLT-NAME SLT-RUN 1 T=
-   {: outu erru :}
+   SLT-NAME SLT-RUN 1 SLT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    SLT-OUT outu SLT-NAME-CODE$ CONTAINS? TTRUE ;
 

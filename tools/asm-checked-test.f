@@ -1,5 +1,6 @@
 \ asm-checked-test.f - checked ARM64 encoder layout regression.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
+\ Run after native refresh:
+\ bin/hb --load lib/errors.f lib/string.f lib/test.f bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
 
 : R1 ( -- reg ) 1 >REG ;
 : R2 ( -- reg ) 2 >REG ;

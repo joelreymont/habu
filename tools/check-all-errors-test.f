@@ -4,6 +4,7 @@
 \ tools/check-all-errors-test.f
 
 4096 constant CAE-BUF-CAP
+10000 constant CAE-TIMEOUT-MS
 1400 constant CAE-LARGE-LINES
 530 constant CAE-MANY-DEFS
 530 constant CAE-MANY-SUPPORT
@@ -187,8 +188,8 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE s" : CAP-SUP-BAD ( i64 -- i64 ) CAP-SUP + dup ;" APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
-: CAE-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: CAE-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
 : CAE-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -219,22 +220,27 @@ create CAE-LF-BYTE 10 c,
    file fileu  >LEN PROC-ARGV+
    file fileu  >LEN PROC-ARGV+ ;
 
-: CAE-HB-CAPTURE ( -- n n n )
-   WR-TOOLS$ >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN 2000 >MS RUN-ARGV-CAPTURE
+: CAE-HB-CAPTURE ( -- n n n n )
+   WR-TOOLS$ >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN
+   CAE-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    CAE-CAPTURE>N ;
 
-: CAE-RUN ( -- n n n )
+: CAE-RUN ( -- n n n n )
    CAE-IN CAE-ARGV-CHECK
    CAE-HB-CAPTURE ;
 
-: CAE-RUN-LARGE ( -- n n n )
+: CAE-RUN-LARGE ( -- n n n n )
    CAE-LARGE CAE-ARGV-CHECK
    CAE-HB-CAPTURE ;
 
+: CAE-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
 : CAE-TEST-SUPPORT-SOURCE ( -- )
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
-   CAE-RUN 70 T=
-   {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-BADSUP$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
@@ -242,8 +248,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-AS-ADD-TASK-LEAK ( -- )
    CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
-   CAE-RUN 70 T=
-   {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-ASADD$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-BMTID$ CONTAINS? TFALSE
@@ -251,15 +256,13 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-MANY-DEFS-OK ( -- )
    CAE-WRITE-MANY-DEFS-OK
-   CAE-RUN-LARGE 0 T=
-   {: outu erru :}
+   CAE-RUN-LARGE 0 CAE-EXPECT-EXIT {: outu erru :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-EMPTY$ T$= ;
 
 : CAE-TEST-MANY-SUPPORT ( -- )
    CAE-WRITE-MANY-SUPPORT
-   CAE-RUN-LARGE 70 T=
-   {: outu erru :}
+   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: outu erru :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-CAPSUPBAD$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-CAPSUP$ CONTAINS? TFALSE
@@ -268,15 +271,13 @@ create CAE-LF-BYTE 10 c,
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
-   CAE-RUN 70 T=
-   {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
    CAE-ERR erru 10 COUNT-CHAR 2 T=
    CAE-WRITE-LARGE
-   CAE-RUN-LARGE 70 T=
-   {: loutu lerru :}
+   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: loutu lerru :}
    CAE-OUT loutu CAE-EMPTY$ T$=
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
    CAE-TEST-SUPPORT-SOURCE

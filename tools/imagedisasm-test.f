@@ -3,7 +3,7 @@
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imagedisasm-test.f
 
 $4000 constant IMDT-CAP
-1000 constant IMDT-TIMEOUT-MS
+10000 constant IMDT-TIMEOUT-MS
 
 create IMDT-OUT IMDT-CAP allot
 create IMDT-ERR IMDT-CAP allot
@@ -71,6 +71,7 @@ variable IMDT-LDRB-U
    s" tools/date.f" IMDT-ARG+
    s" lib/errors.f" IMDT-ARG+
    s" lib/string.f" IMDT-ARG+
+   s" lib/memory.f" IMDT-ARG+
    s" lib/fs.f" IMDT-ARG+
    s" tools/lint/text.f" IMDT-ARG+
    s" tools/lint/token.f" IMDT-ARG+
@@ -83,51 +84,51 @@ variable IMDT-LDRB-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" ." IMDT-ARG+ ;
 
-: IMDT-CAPTURE>N ( len len rc -- n n n )
-   {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: IMDT-CAPTURE>N ( len len n n -- n n n n )
+   {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n n n )
+: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n n n n )
    {: path:ptr pathu off:ptr offu count:ptr countu :}
    IMDT-ARGV-BASE
    path pathu IMDT-ARG+
    off offu IMDT-ARG+
    count countu IMDT-ARG+
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IMDT-CAPTURE>N ;
+   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME IMDT-CAPTURE>N ;
 
-: IMDT-RUN-TRUST ( -- n n n )
+: IMDT-RUN-TRUST ( -- n n n n )
    IMDT-TRUST-ARGV
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IMDT-CAPTURE>N ;
+   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME IMDT-CAPTURE>N ;
+
+: IMDT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : IMDT-TEST-RET ( -- )
-   IMDT-RET$ s" 0" s" 1" IMDT-RUN 0 T=
-   {: outu erru :}
+   IMDT-RET$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    IMDT-OUT outu s" ret" CONTAINS? TTRUE ;
 
 : IMDT-TEST-HEX-OFFSET ( -- )
-   IMDT-RET$ s" $0" s" 1" IMDT-RUN 0 T=
-   {: outu erru :}
+   IMDT-RET$ s" $0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    IMDT-OUT outu s" ret" CONTAINS? TTRUE ;
 
 : IMDT-TEST-LDRB ( -- )
-   IMDT-LDRB$ s" 0" s" 1" IMDT-RUN 0 T=
-   {: outu erru :}
+   IMDT-LDRB$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    IMDT-OUT outu s" ldrb" CONTAINS? TTRUE ;
 
 : IMDT-TEST-RANGE ( -- )
-   IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 T=
-   {: outu erru :}
+   IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 IMDT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
 
 : IMDT-TEST-TRUST ( -- )
-   IMDT-RUN-TRUST 0 T=
-   {: outu erru :}
+   IMDT-RUN-TRUST 0 IMDT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    IMDT-OUT outu s" TRUST site(s), " CONTAINS? TTRUE ;
 

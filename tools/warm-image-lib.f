@@ -1,8 +1,8 @@
 \ warm-image-lib.f - checked warm snapshot image baker.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/source.f, and
-\ lib/codesign.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
+\ lib/source.f, and lib/codesign.f.
 
 262144 constant WI-SRC-CAP
 65536 constant WI-CAP
@@ -10,17 +10,17 @@
 64 constant WI-USAGE-RC
 74 constant WI-RC
 
-create WI-SRC-BUF WI-SRC-CAP allot
 create WI-ROOT-BUF FS-PATH-CAP allot
 create WI-SRC-PATH-BUF FS-PATH-CAP allot
 create WI-SNAP-BUF FS-PATH-CAP allot
 create WI-OUT-PATH-BUF FS-PATH-CAP allot
 create WI-TRUST-PATH-BUF FS-PATH-CAP allot
-create WI-OUT WI-CAP allot
-create WI-ERR WI-CAP allot
 create WI-LF-BUF 1 allot
 10 WI-LF-BUF c!
 
+variable WI-SRC-BUF-A
+variable WI-OUT-A
+variable WI-ERR-A
 variable WI-ROOT-U
 variable WI-SRC-PATH-U
 variable WI-SNAP-U
@@ -28,6 +28,30 @@ variable WI-OUT-PATH-U
 variable WI-TRUST-PATH-U
 variable WI-I
 variable WI-SRC-LEN
+
+: WI-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: WI-PTR-U8@ ( ptr a -- ptr u8 )
+   WI-PTR-U8-FIELD @ ;
+
+: WI-PTR-U8! ( ptr u8 ptr a -- )
+   WI-PTR-U8-FIELD ! ;
+
+: WI-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: WI-SRC-BUF ( -- ptr u8 )
+   WI-SRC-BUF-A @ 0= if WI-SRC-CAP WI-ALLOC-BUF WI-SRC-BUF-A WI-PTR-U8! then
+   WI-SRC-BUF-A WI-PTR-U8@ ;
+
+: WI-OUT ( -- ptr u8 )
+   WI-OUT-A @ 0= if WI-CAP WI-ALLOC-BUF WI-OUT-A WI-PTR-U8! then
+   WI-OUT-A WI-PTR-U8@ ;
+
+: WI-ERR ( -- ptr u8 )
+   WI-ERR-A @ 0= if WI-CAP WI-ALLOC-BUF WI-ERR-A WI-PTR-U8! then
+   WI-ERR-A WI-PTR-U8@ ;
 
 : WI-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u 0 < if E-FS-PATH throw then
@@ -143,6 +167,11 @@ variable WI-SRC-LEN
    HB-TARGET-MACOS? if s" src/os/macos/macho.f" exit then
    s" warm-image: unknown target" WI-RC die ;
 
+: WI-TARGET-LAYOUT ( -- ptr u8 n )
+   HB-TARGET-LINUX? if s" src/os/linux/layout.f" exit then
+   HB-TARGET-MACOS? if s" src/os/macos/layout.f" exit then
+   s" warm-image: unknown target" WI-RC die ;
+
 : WI-APPEND-ARGS ( -- )
    1 WI-I !
    begin WI-I @ SCRIPT-ARGC < while
@@ -152,6 +181,10 @@ variable WI-SRC-LEN
 
 : WI-APPEND-TAIL ( -- )
    s" 0 set-check" WI-LINE
+   s" src/arch/arm64/asm.f" WI-APPEND-SOURCE
+   s" src/arch/arm64/icode.f" WI-APPEND-SOURCE
+   WI-TARGET-LAYOUT WI-APPEND-SOURCE
+   s" src/habu/layout.f" WI-APPEND-SOURCE
    s" src/os/image-bytes.f" WI-APPEND-SOURCE
    WI-TARGET-IMAGE WI-APPEND-SOURCE
    s" src/habu/driver-io.f" WI-APPEND-SOURCE

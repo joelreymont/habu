@@ -10,10 +10,10 @@ $10000 constant SL-FILE-CAP
 32 constant SL-SP
 58 constant SL-COLON-C
 
-create SL-FILE-BUF SL-FILE-CAP allot
 create SL-NUM-BUF SL-NUM-CAP allot
 create SL-LF-BUF 1 allot
 
+variable SL-BUF-A
 variable SL-BAD
 variable SL-I
 variable SL-KIND
@@ -35,6 +35,9 @@ variable SL-WORD-U
 variable SL-SUG-A
 variable SL-SUG-U
 
+: SL-BUF-A-FIELD ( -- ptr ptr u8 )
+   SL-BUF-A 0 ptr-field ;
+
 : SL-FILE-A-FIELD ( -- ptr ptr u8 )
    SL-FILE-A 0 ptr-field ;
 
@@ -47,6 +50,9 @@ variable SL-SUG-U
 : SL-SUG-A-FIELD ( -- ptr ptr u8 )
    SL-SUG-A 0 ptr-field ;
 
+: SL-BUF-A@ ( -- ptr u8 )
+   SL-BUF-A-FIELD @ ;
+
 : SL-FILE-A@ ( -- ptr u8 )
    SL-FILE-A-FIELD @ ;
 
@@ -58,6 +64,9 @@ variable SL-SUG-U
 
 : SL-SUG-A@ ( -- ptr u8 )
    SL-SUG-A-FIELD @ ;
+
+: SL-BUF-A! ( ptr u8 -- )
+   SL-BUF-A-FIELD ! ;
 
 : SL-FILE-A! ( ptr u8 -- )
    SL-FILE-A-FIELD ! ;
@@ -76,6 +85,15 @@ variable SL-SUG-U
 
 : SL-OUT-FD! ( fd -- )
    SL-OUT-FD ! ;
+
+: SL-ALLOC-FILE-BUF ( -- )
+   SL-BUF-A @ 0= if
+      SL-FILE-CAP MEM-ALLOC-BYTES drop SL-BUF-A!
+   then ;
+
+: SL-FILE-BUF ( -- ptr u8 )
+   SL-ALLOC-FILE-BUF
+   SL-BUF-A@ ;
 
 : SL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    u 0= IF exit THEN

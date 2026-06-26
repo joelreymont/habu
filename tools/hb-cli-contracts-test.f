@@ -2,12 +2,14 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-cli-contracts-test.f
 
 2048 constant HCT-CAP
+10000 constant HCT-TIMEOUT-MS
 
 variable HCT-ROOT-U
 variable HCT-CHILD-U
 variable HCT-OUT-U
 variable HCT-ERR-U
 variable HCT-RC
+variable HCT-KIND
 
 create HCT-ROOT-BUF FS-PATH-CAP allot
 create HCT-CHILD-BUF FS-PATH-CAP allot
@@ -61,12 +63,14 @@ create HCT-ERR HCT-CAP allot
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN 1000 >MS RUN-ARGV-STDIN-CAPTURE
-   {: outu erru rc :}
-   rc RC>N HCT-RC !
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   {: outu erru kind code :}
+   kind HCT-KIND !
+   code HCT-RC !
    erru LEN>N HCT-ERR-U !
    outu LEN>N HCT-OUT-U !
-   HCT-RC @ 0 T= HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
+   HCT-KIND @ PROC-OUTCOME-EXIT T= HCT-RC @ 0 T=
+   HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
 
 : HCT-MAIN ( -- )

@@ -4,6 +4,7 @@
 \ tools/public-signatures-test.f
 
 8192 constant PST-BUF-CAP
+10000 constant PST-TIMEOUT-MS
 
 variable PST-ROOT-U
 variable PST-FIX-U
@@ -108,30 +109,34 @@ create PST-ERR PST-BUF-CAP allot
    s" tools/public-signatures.f" PST-ARG+
    s" --" PST-ARG+ ;
 
-: PST-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: PST-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: PST-RUN ( ptr u8 n -- n n n ) {: a:ptr u :}
+: PST-RUN ( ptr u8 n -- n n n n ) {: a:ptr u :}
    PST-ARGV-LOAD
    a u PST-ARG+
    WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
+   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
 
-: PST-RUN-NOARG ( -- n n n )
+: PST-RUN-NOARG ( -- n n n n )
    PST-ARGV-LOAD
    WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
+   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
 
-: PST-RUN-TRUST ( ptr u8 n -- n n n ) {: a:ptr u :}
+: PST-RUN-TRUST ( ptr u8 n -- n n n n ) {: a:ptr u :}
    PST-ARGV-LOAD
    s" --trust" PST-ARG+
    a u PST-ARG+
    WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   1000 >MS RUN-ARGV-CAPTURE PST-CAPTURE>N ;
+   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
+
+: PST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
 
 : PST-TEST-GOOD ( -- )
-   s" examples/llm/good.f" PST-RUN 0 T=
-   {: outu erru :}
+   s" examples/llm/good.f" PST-RUN 0 PST-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    PST-OUT outu PST-SCHEMA$ CONTAINS? TTRUE
    PST-OUT outu s" SQUARE" PST-WORD$ CONTAINS? TTRUE
@@ -140,8 +145,7 @@ create PST-ERR PST-BUF-CAP allot
    PST-OUT outu s" (i64 [ i64 -- i64 ] -- i64)" PST-SIG$ CONTAINS? TTRUE ;
 
 : PST-TEST-FIXTURE ( -- )
-   PST-FIX PST-RUN 0 T=
-   {: outu erru :}
+   PST-FIX PST-RUN 0 PST-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    PST-OUT outu s" LOWER" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (x -- x)" PST-SIG$ CONTAINS? TTRUE
@@ -177,8 +181,7 @@ create PST-ERR PST-BUF-CAP allot
    s" KFIX" s" -- a" PST-TRUST$ ;
 
 : PST-TEST-TRUST ( -- )
-   PST-FIX PST-RUN-TRUST 0 T=
-   {: outu erru :}
+   PST-FIX PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    PST-OUT outu PST-TRUST-LOWER$ CONTAINS? TTRUE
    PST-OUT outu PST-TRUST-CAPS$ CONTAINS? TTRUE
@@ -186,8 +189,7 @@ create PST-ERR PST-BUF-CAP allot
    PST-OUT outu s" MIXED" CONTAINS? TFALSE ;
 
 : PST-TEST-NOARG ( -- )
-   PST-RUN-NOARG 64 T=
-   {: outu erru :}
+   PST-RUN-NOARG 64 PST-EXPECT-EXIT {: outu erru :}
    PST-OUT outu PST-EMPTY$ T$=
    PST-ERR erru PST-USAGE$ CONTAINS? TTRUE ;
 

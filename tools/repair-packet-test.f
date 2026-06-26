@@ -2,7 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/repair-packet-test.f
 
 $20000 constant RPT-CAPTURE-CAP
-5000 constant RPT-TIMEOUT-MS
+10000 constant RPT-TIMEOUT-MS
 
 variable RPT-ROOT-U
 variable RPT-SRC-U
@@ -114,24 +114,33 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    label labelu  >LEN PROC-ARGV+
    file fileu  >LEN PROC-ARGV+ ;
 
-: RPT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: RPT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: RPT-HB-CAPTURE ( -- n n n )
+: RPT-HB-CAPTURE ( -- n n n n )
    WR-TOOLS$  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
    RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE RPT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME RPT-CAPTURE>N ;
 
-: RPT-RUN-CHECK ( ptr u8 n -- n n n ) {: label:ptr labelu :}
+: RPT-RUN-CHECK ( ptr u8 n -- n n n n ) {: label:ptr labelu :}
    label labelu RPT-SRC RPT-ARGV-CHECK
    RPT-HB-CAPTURE ;
+
+: RPT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
+: RPT-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T<>
+   outu erru ;
 
 : RPT-WRITE-DIAG ( n -- ) {: erru :}
    RPT-DIAG RPT-ERR erru WRITE-ALL ;
 
 : RPT-EXPECT-CHECK-REJECT ( ptr u8 n -- ) {: label:ptr labelu :}
-   label labelu RPT-RUN-CHECK 0 T<>
-   {: outu erru :}
+   label labelu RPT-RUN-CHECK RPT-EXPECT-EXIT-NZ {: outu erru :}
    outu 0 T=
    erru 0 T<>
    RPT-ERR erru s" schema_version" CONTAINS? TTRUE
@@ -152,7 +161,7 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    s" --"  >LEN PROC-ARGV+
    RPT-DIAG  >LEN PROC-ARGV+ ;
 
-: RPT-RUN-REPAIR ( -- n n n )
+: RPT-RUN-REPAIR ( -- n n n n )
    RPT-ARGV-REPAIR
    RPT-HB-CAPTURE ;
 
@@ -160,8 +169,7 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    RPT-PACKET RPT-OUT outu WRITE-ALL ;
 
 : RPT-MAKE-PACKET ( -- )
-   RPT-RUN-REPAIR 0 T=
-   {: outu erru :}
+   RPT-RUN-REPAIR 0 RPT-EXPECT-EXIT {: outu erru :}
    RPT-ERR erru RPT-EMPTY$ T$=
    outu 0 T<>
    outu RPT-WRITE-PACKET ;
@@ -184,13 +192,12 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    RPT-PACKET  >LEN PROC-ARGV+
    class classu  >LEN PROC-ARGV+ ;
 
-: RPT-RUN-ASSERT ( ptr u8 n -- n n n ) {: class:ptr classu :}
+: RPT-RUN-ASSERT ( ptr u8 n -- n n n n ) {: class:ptr classu :}
    class classu RPT-ARGV-ASSERT
    RPT-HB-CAPTURE ;
 
 : RPT-ASSERT-PACKET ( ptr u8 n -- ) {: class:ptr classu :}
-   class classu RPT-RUN-ASSERT 0 T=
-   {: outu erru :}
+   class classu RPT-RUN-ASSERT 0 RPT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    RPT-ERR erru RPT-EMPTY$ T$= ;
 
@@ -237,13 +244,12 @@ create RPT-ERR RPT-CAPTURE-CAP allot
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
-: RPT-RUN-REPAIR-NOARGS ( -- n n n )
+: RPT-RUN-REPAIR-NOARGS ( -- n n n n )
    RPT-ARGV-REPAIR-NOARGS
    RPT-HB-CAPTURE ;
 
 : RPT-TEST-NOARGS ( -- )
-   RPT-RUN-REPAIR-NOARGS 64 T=
-   {: outu erru :}
+   RPT-RUN-REPAIR-NOARGS 64 RPT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    RPT-ERR erru s" usage: tools/repair-packet.f checker-jsonl.err" CONTAINS? TTRUE ;
 

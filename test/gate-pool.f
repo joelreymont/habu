@@ -6,6 +6,9 @@
 2 constant GT-POOL-FDS
 8 constant GT-PFD-SZ
 1000 constant GT-POOL-POLL-MS
+$1002 constant GT-POOL-MAP-PRIVATE-ANON
+GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
+GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
 
 create GT-POOL-PIDS GT-POOL-MAX cells allot
 create GT-POOL-OUT-RS GT-POOL-MAX cells allot
@@ -23,13 +26,33 @@ create GT-POOL-TIMEOUTS GT-POOL-MAX cells allot
 create GT-POOL-LABELS GT-POOL-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-LABEL-US GT-POOL-MAX cells allot
 create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
-create GT-POOL-OUT-BUFS GT-POOL-MAX GT-OUT-CAP * allot
-create GT-POOL-ERR-BUFS GT-POOL-MAX GT-ERR-CAP * allot
 create GT-POOL-PROBE 1 allot
 
+variable GT-POOL-OUT-BUFS-A
+variable GT-POOL-ERR-BUFS-A
 variable GT-POOL-LIVE
 variable GT-POOL-RD
 variable GT-POOL-LIMIT
+
+: GT-POOL-OUT-BUFS ( -- ptr u8 )
+   GT-POOL-OUT-BUFS-A @ ;
+s" GT-POOL-OUT-BUFS" s" -- ptr u8" TRUST
+
+: GT-POOL-ERR-BUFS ( -- ptr u8 )
+   GT-POOL-ERR-BUFS-A @ ;
+s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
+
+: GT-POOL-ALLOC-BYTES ( n -- n ) {: bytes :}
+   0 bytes 3 GT-POOL-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" gate-pool: mmap failed" 76 die then ;
+
+: GT-POOL-ALLOC-BUFFERS ( -- )
+   GT-POOL-OUT-BUFS-A @ 0= if
+      GT-POOL-OUT-BYTES GT-POOL-ALLOC-BYTES GT-POOL-OUT-BUFS-A !
+   then
+   GT-POOL-ERR-BUFS-A @ 0= if
+      GT-POOL-ERR-BYTES GT-POOL-ALLOC-BYTES GT-POOL-ERR-BUFS-A !
+   then ;
 
 : GT-POOL-PID-PTR ( idx -- ptr pid )
    IDX>N cells GT-POOL-PIDS + ;
@@ -178,6 +201,7 @@ variable GT-POOL-LIMIT
    -1 idx GT-POOL-DONE-PTR ! ;
 
 : GT-POOL-RESET ( -- )
+   GT-POOL-ALLOC-BUFFERS
    GT-POOL-ENV-LIMIT GT-POOL-LIMIT !
    0 GT-POOL-LIVE !
    0 begin dup GT-POOL-MAX < while

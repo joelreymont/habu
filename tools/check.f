@@ -33,11 +33,6 @@ $20000 constant CHK-ERR-CAP
 69 constant CHK-E-UNAVAILABLE
 70 constant CHK-E-CHECK
 
-create CHK-SRC-BUF CHK-SRC-CAP allot
-create CHK-RUN-BUF CHK-RUN-CAP allot
-create CHK-ORIGIN-BUF CHK-ORIGIN-CAP allot
-create CHK-OUT-BUF CHK-OUT-CAP allot
-create CHK-ERR-BUF CHK-ERR-CAP allot
 create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
@@ -45,6 +40,12 @@ create CHK-RUN-PATH-BUF FS-PATH-CAP allot
 create CHK-POS-A CHK-MAX-POS cells allot
 create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-ONE 1 allot
+
+variable CHK-SRC-BUF-A
+variable CHK-RUN-BUF-A
+variable CHK-ORIGIN-BUF-A
+variable CHK-OUT-BUF-A
+variable CHK-ERR-BUF-A
 
 variable CHK-ARG-I
 variable CHK-POS-N
@@ -84,6 +85,29 @@ variable CHK-ROOT-U
 
 : CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
    CHK-PTR-U8-SLOT ! ;
+
+: CHK-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: CHK-SRC-BUF ( -- ptr u8 )
+   CHK-SRC-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-SRC-BUF-A ! then
+   CHK-SRC-BUF-A @ ;
+
+: CHK-RUN-BUF ( -- ptr u8 )
+   CHK-RUN-BUF-A @ 0= if CHK-RUN-CAP CHK-ALLOC-BUF CHK-RUN-BUF-A ! then
+   CHK-RUN-BUF-A @ ;
+
+: CHK-ORIGIN-BUF ( -- ptr u8 )
+   CHK-ORIGIN-BUF-A @ 0= if CHK-ORIGIN-CAP CHK-ALLOC-BUF CHK-ORIGIN-BUF-A ! then
+   CHK-ORIGIN-BUF-A @ ;
+
+: CHK-OUT-BUF ( -- ptr u8 )
+   CHK-OUT-BUF-A @ 0= if CHK-OUT-CAP CHK-ALLOC-BUF CHK-OUT-BUF-A ! then
+   CHK-OUT-BUF-A @ ;
+
+: CHK-ERR-BUF ( -- ptr u8 )
+   CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
+   CHK-ERR-BUF-A @ ;
 
 : CHK-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    u 0= if exit then

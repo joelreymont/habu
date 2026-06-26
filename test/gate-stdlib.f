@@ -147,6 +147,7 @@ variable SUITE-SLICE
    s" --load" SUITE-ARG+
    s" lib/errors.f" SUITE-ARG+
    s" lib/string.f" SUITE-ARG+
+   s" lib/memory.f" SUITE-ARG+
    s" lib/fs.f" SUITE-ARG+
    s" lib/fs-mutate.f" SUITE-ARG+
    s" lib/process.f" SUITE-ARG+
@@ -434,7 +435,7 @@ TEST-SUITE repl-lint
 ;TEST-SUITE
 
 TEST-SUITE trust-lint
-   tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
+   tools/date.f lib/errors.f lib/string.f lib/memory.f lib/fs.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/trust-lint-core.f tools/argv.f
    tools/trust-lint.f
 ;TEST-SUITE
@@ -608,9 +609,9 @@ TEST-SUITE stdlib-batch-fixtures
 ;TEST-SUITE
 
 TEST-SUITE build-helper-fixtures
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f lib/process-env.f lib/source.f
-   lib/build.f lib/codesign.f tools/build-fixpoint.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
    tools/hb-build-lib.f tools/warm-image-lib.f tools/bootstrap-codegen-test.f
    bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
    src/os/image-bytes.f tools/image-bytes-test.f

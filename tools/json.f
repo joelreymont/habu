@@ -41,25 +41,18 @@ $7FFFFFFFFFFFFFFF constant JSON-MAX-N
 JSON-MAX-N JSON-STR-GRAIN / constant JSON-MAX-STR-GRAINS
 64 constant JSON-MAX-DEPTH
 128 constant JSON-ERR-CAP
+6 constant JSON-NODE-TABLES
+2 constant JSON-ITEM-TABLES
+4 constant JSON-PAIR-TABLES
+JSON-NODE-TABLES JSON-MAX-NODES * constant JSON-NODE-CELLS
+JSON-ITEM-TABLES JSON-MAX-ITEMS * constant JSON-ITEM-CELLS
+JSON-PAIR-TABLES JSON-MAX-PAIRS * constant JSON-PAIR-CELLS
+JSON-NODE-CELLS JSON-ITEM-CELLS + constant JSON-PAIR-OFF-CELLS
+JSON-PAIR-OFF-CELLS JSON-PAIR-CELLS + constant JSON-TABLE-CELLS
 
-create J-KINDS JSON-MAX-NODES cells allot
-create J-VALS  JSON-MAX-NODES cells allot
-create J-OFFS  JSON-MAX-NODES cells allot
-create J-LENS  JSON-MAX-NODES cells allot
-create J-START JSON-MAX-NODES cells allot
-create J-COUNT JSON-MAX-NODES cells allot
-
-create J-ITEMS JSON-MAX-ITEMS cells allot
-create J-ITEM-NEXT JSON-MAX-ITEMS cells allot
-create J-KEY-OFF JSON-MAX-PAIRS cells allot
-create J-KEY-LEN JSON-MAX-PAIRS cells allot
-create J-PAIR-VAL JSON-MAX-PAIRS cells allot
-create J-PAIR-NEXT JSON-MAX-PAIRS cells allot
-
-create JSON-STR-BOOT JSON-STR-BOOT-CAP allot
-create JSON-OUT-BUF JSON-OUT-CAP allot
-create JSON-ERR-BUF JSON-ERR-CAP allot
-
+variable JSON-TAB-A
+variable JSON-OUT-A
+variable JSON-ERR-A
 variable JSON-NODES
 variable JSON-ITEMS
 variable JSON-PAIRS
@@ -119,6 +112,18 @@ variable JSON-PARSE-TRY-ROOT
 : JSON-PTR-U8! ( ptr u8 ptr a -- )
    JSON-PTR-U8-FIELD ! ;
 
+: JSON-PTR-A-FIELD ( ptr a -- ptr ptr a )
+   0 ptr-field ;
+
+: JSON-PTR-A@ ( ptr a -- ptr a )
+   JSON-PTR-A-FIELD @ ;
+
+: JSON-PTR-A! ( ptr a ptr a -- )
+   JSON-PTR-A-FIELD ! ;
+
+: JSON-ALLOC-BYTES ( n -- ptr u8 )
+   MEM-ALLOC-PTR ;
+
 : JSON-A@ ( -- ptr u8 ) JSON-A JSON-PTR-U8@ ;
 : JSON-A! ( ptr u8 -- ) JSON-A JSON-PTR-U8! ;
 : JSON-GKA@ ( -- ptr u8 ) JSON-GKA JSON-PTR-U8@ ;
@@ -127,11 +132,59 @@ variable JSON-PARSE-TRY-ROOT
 : JSONL-A! ( ptr u8 -- ) JSONL-A JSON-PTR-U8! ;
 : JSONL-LA@ ( -- ptr u8 ) JSONL-LA JSON-PTR-U8@ ;
 : JSONL-LA! ( ptr u8 -- ) JSONL-LA JSON-PTR-U8! ;
-: JSON-STR-BUF ( -- ptr u8 ) JSON-STR-P JSON-PTR-U8@ ;
 : JSON-STR-P! ( ptr u8 -- ) JSON-STR-P JSON-PTR-U8! ;
+: JSON-TAB-A@ ( -- ptr a ) JSON-TAB-A JSON-PTR-A@ ;
+: JSON-TAB-A! ( ptr a -- ) JSON-TAB-A JSON-PTR-A! ;
+: JSON-OUT-A! ( ptr u8 -- ) JSON-OUT-A JSON-PTR-U8! ;
+: JSON-ERR-A! ( ptr u8 -- ) JSON-ERR-A JSON-PTR-U8! ;
 
-JSON-STR-BOOT JSON-STR-P!
-JSON-STR-BOOT-CAP JSON-STR-CAP-U !
+: JSON-ENSURE-TABLES ( -- )
+   JSON-TAB-A @ 0= IF JSON-TABLE-CELLS >COUNT MEM-ALLOC-CELLS JSON-TAB-A! THEN ;
+
+: JSON-TAB-BASE ( -- ptr a )
+   JSON-ENSURE-TABLES
+   JSON-TAB-A@ ;
+
+: JSON-NODE-TABLE ( n -- ptr a )
+   JSON-TAB-BASE swap JSON-MAX-NODES * cells + ;
+
+: JSON-ITEM-TABLE ( n -- ptr a )
+   JSON-TAB-BASE JSON-NODE-CELLS cells + swap JSON-MAX-ITEMS * cells + ;
+
+: JSON-PAIR-TABLE ( n -- ptr a )
+   JSON-TAB-BASE JSON-PAIR-OFF-CELLS cells + swap JSON-MAX-PAIRS * cells + ;
+
+: J-KINDS ( -- ptr a ) 0 JSON-NODE-TABLE ;
+: J-VALS ( -- ptr a ) 1 JSON-NODE-TABLE ;
+: J-OFFS ( -- ptr a ) 2 JSON-NODE-TABLE ;
+: J-LENS ( -- ptr a ) 3 JSON-NODE-TABLE ;
+: J-START ( -- ptr a ) 4 JSON-NODE-TABLE ;
+: J-COUNT ( -- ptr a ) 5 JSON-NODE-TABLE ;
+
+: J-ITEMS ( -- ptr a ) 0 JSON-ITEM-TABLE ;
+: J-ITEM-NEXT ( -- ptr a ) 1 JSON-ITEM-TABLE ;
+: J-KEY-OFF ( -- ptr a ) 0 JSON-PAIR-TABLE ;
+: J-KEY-LEN ( -- ptr a ) 1 JSON-PAIR-TABLE ;
+: J-PAIR-VAL ( -- ptr a ) 2 JSON-PAIR-TABLE ;
+: J-PAIR-NEXT ( -- ptr a ) 3 JSON-PAIR-TABLE ;
+
+: JSON-ENSURE-STR-BOOT ( -- )
+   JSON-STR-P @ 0= IF
+      JSON-STR-BOOT-CAP JSON-ALLOC-BYTES JSON-STR-P!
+      JSON-STR-BOOT-CAP JSON-STR-CAP-U !
+   THEN ;
+
+: JSON-STR-BUF ( -- ptr u8 )
+   JSON-ENSURE-STR-BOOT
+   JSON-STR-P JSON-PTR-U8@ ;
+
+: JSON-OUT-BUF ( -- ptr u8 )
+   JSON-OUT-A @ 0= IF JSON-OUT-CAP JSON-ALLOC-BYTES JSON-OUT-A! THEN
+   JSON-OUT-A JSON-PTR-U8@ ;
+
+: JSON-ERR-BUF ( -- ptr u8 )
+   JSON-ERR-A @ 0= IF JSON-ERR-CAP JSON-ALLOC-BYTES JSON-ERR-A! THEN
+   JSON-ERR-A JSON-PTR-U8@ ;
 
 : JSON-COPY ( ptr u8 i64 ptr u8 -- )
    {: a:ptr u dst:ptr :}
@@ -220,11 +273,11 @@ JSON-STR-BOOT-CAP JSON-STR-CAP-U !
    0 JSON-ERR-POS !
    0 JSON-DEPTH ! ;
 
-: J-CELL@ ( i64 ptr n -- i64 )
+: J-CELL@ ( i64 ptr a -- i64 )
    {: n base:ptr :}
    base n cells + @ ;
 
-: J-CELL! ( i64 i64 ptr n -- )
+: J-CELL! ( i64 i64 ptr a -- )
    {: x n base:ptr :}
    x base n cells + ! ;
 

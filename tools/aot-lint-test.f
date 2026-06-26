@@ -4,6 +4,7 @@
 \ tools/aot-lint-test.f
 
 4096 constant ALT-BUF-CAP
+10000 constant ALT-TIMEOUT-MS
 
 variable ALT-ROOT-U
 variable ALT-GOOD-U
@@ -98,45 +99,50 @@ create ALT-ERR ALT-BUF-CAP allot
    s" tools/aot-lint.f" ALT-ARG+
    s" --" ALT-ARG+ ;
 
-: ALT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
+: ALT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+   outu LEN>N erru LEN>N kind code ;
 
-: ALT-RUN-GOOD ( -- n n n )
+: ALT-RUN-GOOD ( -- n n n n )
    ALT-ARGV-LOAD
    ALT-GOOD ALT-ARG+
-   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN
+   ALT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    ALT-CAPTURE>N ;
 
-: ALT-RUN-BAD ( -- n n n )
+: ALT-RUN-BAD ( -- n n n n )
    ALT-ARGV-LOAD
    ALT-BAD ALT-ARG+
-   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN
+   ALT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    ALT-CAPTURE>N ;
 
-: ALT-RUN-BAD-JSON ( -- n n n )
+: ALT-RUN-BAD-JSON ( -- n n n n )
    ALT-ARGV-LOAD
    s" --json" ALT-ARG+
    s" --label" ALT-ARG+
    s" <stdin>" ALT-ARG+
    ALT-BAD ALT-ARG+
-   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN 1000 >MS RUN-ARGV-CAPTURE
+   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN
+   ALT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    ALT-CAPTURE>N ;
 
+: ALT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT T=
+   code expect T=
+   outu erru ;
+
 : ALT-TEST-GOOD ( -- )
-   ALT-RUN-GOOD 0 T=
-   {: outu erru :}
+   ALT-RUN-GOOD 0 ALT-EXPECT-EXIT {: outu erru :}
    ALT-OUT outu ALT-EMPTY$ T$=
    ALT-ERR erru ALT-EMPTY$ T$= ;
 
 : ALT-TEST-BAD ( -- )
-   ALT-RUN-BAD 1 T=
-   {: outu erru :}
+   ALT-RUN-BAD 1 ALT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    ALT-OUT outu ALT-CODE$ CONTAINS? TTRUE ;
 
 : ALT-TEST-BAD-JSON ( -- )
-   ALT-RUN-BAD-JSON 1 T=
-   {: outu erru :}
+   ALT-RUN-BAD-JSON 1 ALT-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    ALT-OUT outu ALT-JSON-CODE$ CONTAINS? TTRUE
    ALT-OUT outu ALT-JSON-LABEL$ CONTAINS? TTRUE ;
