@@ -64,11 +64,8 @@ variable FS-IO-WR
 : FS-TRUE ( -- bool )
    0 0= ;
 
-TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
-   + ;
-
 : FS-BYTE@ ( ptr u8 n -- n )
-   FS-BYTE-OFFSET c@ ;
+   BYTE+ c@ ;
 
 : FS-U16@ ( ptr u8 -- n ) {: a:ptr :}
    a 0 FS-BYTE@ a 1 FS-BYTE@ FS-BYTE-BITS lshift or ;
@@ -332,7 +329,7 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
    FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN FS-THROW-WALK then ;
 
 : FS-DIRENT-RECLEN ( ptr u8 -- n )
-   FS-DIRENT-RECLEN-OFF FS-BYTE-OFFSET FS-U16@ ;
+   FS-DIRENT-RECLEN-OFF BYTE+ FS-U16@ ;
 
 : FS-TARGET-UNKNOWN ( -- )
    E-FS-DIR throw ;
@@ -358,11 +355,11 @@ TRUSTED: FS-BYTE-OFFSET ( ptr u8 n -- ptr u8 )
 
 : FS-DIRENT-NAMELEN ( ptr u8 -- n )
    HB-TARGET-LINUX? if FS-LINUX-DIRENT-NAMELEN exit then
-   HB-TARGET-MACOS? if FS-DIRENT-NAMELEN-OFF FS-BYTE-OFFSET FS-U16@ exit then
+   HB-TARGET-MACOS? if FS-DIRENT-NAMELEN-OFF BYTE+ FS-U16@ exit then
    FS-TARGET-UNKNOWN ;
 
 : FS-DIRENT-NAME ( ptr u8 -- ptr u8 n )
-   dup FS-DIRENT-NAME-OFFSET FS-BYTE-OFFSET swap FS-DIRENT-NAMELEN ;
+   dup FS-DIRENT-NAME-OFFSET BYTE+ swap FS-DIRENT-NAMELEN ;
 
 : FS-DIRENT-NAME-END ( ptr u8 -- n ) {: ent:ptr :}
    FS-DIRENT-NAME-OFFSET ent FS-DIRENT-NAMELEN + ;

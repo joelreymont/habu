@@ -50,6 +50,10 @@ file.
 - **Factor reusable helpers back into checked Forth.** If an unchecked harness or
   tool grows a helper that can be typed, move that helper to checked code instead
   of letting unchecked scaffolding become the library surface.
+- **Try the checked factor before adding trust.** If existing primitive effects
+  can express the operation, define a small typed word and use it from callers;
+  add a primitive model or `TRUSTED:` shim only after proving the checker cannot
+  certify that helper.
 - **Build checked task vocabulary before fighting syntax.** If a test, tool, or
   benchmark needs structured rows, JSON/TSV fragments, generated source,
   diagnostics, packets, or repeated assertions, factor domain words or a focused

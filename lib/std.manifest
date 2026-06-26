@@ -96,6 +96,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-COUNT	(n -- count)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string count role
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
+1	string	lib/string.f	word	BYTE+	(ptr u8 n -- ptr u8)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	offset a checked byte pointer by a raw byte count
 1	string	lib/string.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes using an already refined length role
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase

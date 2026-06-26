@@ -32,6 +32,9 @@ lesson — keep the specific word/code/path, cut the prose.
   exposed pointer and boolean state cells that looked like plain `n` cells. The
   durable rule belongs in `docs/forth.md`; the lesson is that removing unchecked
   file scopes quickly finds these hidden contracts.
+- **Try a checked factor before new trust:** `FS-BYTE-OFFSET` looked like it
+  needed a primitive, but `: BYTE+ ( ptr u8 n -- ptr u8 ) + ;` certified against
+  existing pointer arithmetic and let the trust row disappear.
 
 ## Tool & Infra
 
