@@ -433,6 +433,28 @@ lesson — keep the specific word/code/path, cut the prose.
   the cubin; the old `/tmp/saxpy_run.c` C smoke was useful evidence, not repo
   infrastructure.
 
+- **M4a crux — trusted span constructors need FRESH extent-token minting
+  (proven 2026-06-27).** M2's parametric types are built and work, but the M4
+  constructor `MK-SPAN ( ptr u32 -- span<...,extent-n> )` cannot just use the
+  nominal atom `extent-n`: a probe (`TRUSTED: MKS … span<…,extent-n>` twice, fed to
+  `NEEDSAME ( span<…,extent-n> span<…,extent-n> -- )`) CERTIFIES (exit 0), so two
+  *independent* spans wrongly share `extent-n` — violating ptx-sketch.md ("a lone
+  MK-SPAN yields a fresh N that unifies with nothing"). The model split: kernel
+  *signatures* use nominal atoms (`extent-r`/`extent-c`, equal-by-name, to ASSERT
+  agreement), but *constructors* must mint a fresh extent per call (`MK-SPAN=` is
+  the explicit share-one-fresh-token form). Resolved design (worked through, not yet
+  built): a field **type-variable** (`span<…,e>`) does NOT work — fresh unification
+  vars unify freely, so two independent spans could always be unified "equal,"
+  which is exactly the unsoundness to prevent. The constructor must mint a
+  per-call-fresh **rigid (skolem) extent token** that unifies only with itself;
+  `MK-SPAN=` mints one rigid token stamped on both outputs. A kernel needing equal
+  extents is polymorphic in the extent and requires the SAME token twice, so
+  passing two DISTINCT rigid skolems forces them equal and FAILS (reject), while
+  two `MK-SPAN=` outputs share one skolem and pass. This is a genuine checker
+  extension (per-call rigid-token minting at trusted constructors), not just word
+  signatures — it is the real M4a work. The current nominal-atom model is correct
+  for signatures but insufficient for constructors.
+
 ## Linux AOT / ELF
 
 - **Linux AOT gates parse ELF structure:** inspect ELF64 program headers and
