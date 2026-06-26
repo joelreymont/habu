@@ -126,6 +126,16 @@ s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
 s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
+: TROLE-REG ( n -- n ) >REG REG>N ;
+7 TROLE-REG 7 T=
+: TROLE-LABEL ( n -- n ) >LABEL LABEL>N ;
+8 TROLE-LABEL 8 T=
+: TROLE-VA ( n -- n ) >VA VA>N ;
+9 TROLE-VA 9 T=
+: TROLE-SYMIDX ( n -- n ) >SYMIDX SYMIDX>N ;
+10 TROLE-SYMIDX 10 T=
+s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
+s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate

@@ -12,7 +12,7 @@ sig    = stack '--' stack ( '|' stack '--' stack )?
 stack  = rowvar? type*
 type   = conname | role | tyvar | 'ptr' type | '[' stack '--' stack ']'
 conname= i64 u8 u32 cell bool char str addr
-role   = idx len count off fd rc pid ms ns tok
+role   = idx len count off fd rc pid ms ns tok reg label va symidx
 tyvar  = a..z          (same letter → same type var, per signature)
 rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 ```
@@ -33,17 +33,17 @@ rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 | `i64 u8 u32 cell` | integers of given width (`cell` = machine word) |
 | `bool` | a flag (distinct from `i64` — comparisons return `bool`) |
 | `char str addr` | character, string body (`c-addr u` as one value), raw address |
-| `idx len count off fd rc pid ms ns tok` | nominal scalar roles; distinct from each other and from plain `n` |
+| `idx len count off fd rc pid ms ns tok reg label va symidx` | nominal scalar roles; distinct from each other and from plain `n` |
 | `ptr<τ>` written `ptr τ` | typed pointer; `@`/`!` move `τ` |
 | `[ S -- S' ]` | a quotation / `xt` carrying its own effect |
 
 Nominal roles are for same-representation values whose meanings must not mix:
 array indexes vs lengths, file descriptors vs return codes, elapsed milliseconds
-vs nanoseconds, and token indexes vs counts. They are fail-closed concrete types:
-`idx` does not unify with `len`, and neither unifies with a plain `n`. Introduce
-or remove a role only through an explicit checked constructor/coercion word or an
-audited boundary effect; do not rely on generic integer operations to launder a
-role.
+vs nanoseconds, token indexes vs counts, registers vs labels, and virtual
+addresses vs symbol indexes. They are fail-closed concrete types: `idx` does not
+unify with `len`, and neither unifies with a plain `n`. Introduce or remove a
+role only through an explicit checked constructor/coercion word or an audited
+boundary effect; do not rely on generic integer operations to launder a role.
 
 ## Examples (from `src/prims.fs`)
 
@@ -126,9 +126,11 @@ If a branch only throws, it contributes no normal output to the join.
 - To chart an **already-defined** word's effect (so the checker can use it as a
   leaf) without redefining it in native habu: `s" name" s" eff" TRUST`.
 - Nominal scalar roles (`idx`, `len`, `count`, `off`, `fd`, `rc`, `pid`, `ms`,
-  `ns`, `tok`) are entered and left through audited no-op conversions:
+  `ns`, `tok`, `reg`, `label`, `va`, `symidx`) are entered and left through
+  audited no-op conversions:
   `>IDX IDX>N`, `>LEN LEN>N`, `>COUNT COUNT>N`, `>OFF OFF>N`, `>FD FD>N`,
-  `>RC RC>N`, `>PID PID>N`, `>MS MS>N`, `>NS NS>N`, and `>TOK TOK>N`.
+  `>RC RC>N`, `>PID PID>N`, `>MS MS>N`, `>NS NS>N`, `>TOK TOK>N`,
+  `>REG REG>N`, `>LABEL LABEL>N`, `>VA VA>N`, and `>SYMIDX SYMIDX>N`.
   These are runtime identity casts over one cell; their only purpose is making
   semantic role changes explicit to the checker.
 - Trusted defining words use `TRUSTED: NAME ( definer-eff ) create ... does>

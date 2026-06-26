@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-26
-Gate: passing; 31.39s on 2026-06-26 with warm checker/tool images and the checked DAG pool
+Gate: passing; 31.20s on 2026-06-26 with warm checker/tool images and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -61,7 +61,8 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
 - **Quotation scoping** — `[: ;]` is a nested scope with its own exit accumulator;
   a quote's early `exit` does NOT leak to the enclosing word.
 - **Sig grammar** — distinct concrete types (`i64 u8 u32 cell char str addr bool`,
-  `n` = generic int), type vars, named row vars, the `| rin -- rout` return
+  `n` = generic int), nominal roles (`idx len count off fd rc pid ms ns tok reg
+  label va symidx`), type vars, named row vars, the `| rin -- rout` return
   clause, quotation sub-sigs `[ in -- out [| rin -- rout] ]` (recorded so
   combinator call sites check against them), nested quotations.
 - **Parsing words** — `s"`, `c"`, `."`, `[char]`, and interpret-mode `char` are

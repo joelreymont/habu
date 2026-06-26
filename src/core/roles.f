@@ -60,4 +60,24 @@ s" >TOK" s" n -- tok" TRUST
 : TOK>N ( tok -- n ) ;
 s" TOK>N" s" tok -- n" TRUST
 
+: >REG ( n -- reg ) ;
+s" >REG" s" n -- reg" TRUST
+: REG>N ( reg -- n ) ;
+s" REG>N" s" reg -- n" TRUST
+
+: >LABEL ( n -- label ) ;
+s" >LABEL" s" n -- label" TRUST
+: LABEL>N ( label -- n ) ;
+s" LABEL>N" s" label -- n" TRUST
+
+: >VA ( n -- va ) ;
+s" >VA" s" n -- va" TRUST
+: VA>N ( va -- n ) ;
+s" VA>N" s" va -- n" TRUST
+
+: >SYMIDX ( n -- symidx ) ;
+s" >SYMIDX" s" n -- symidx" TRUST
+: SYMIDX>N ( symidx -- n ) ;
+s" SYMIDX>N" s" symidx -- n" TRUST
+
 ' HOOK set-check

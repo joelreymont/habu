@@ -89,6 +89,10 @@ lesson — keep the specific word/code/path, cut the prose.
   rows, and gate forbidden source shapes in `tools/build-fixpoint.f` before any
   image is written. Use `depth .` rather than `.s` when chasing build-time
   underflow; `.s` can hide negative depth.
+- **Same-cell emitter values need nominal roles:** add checker roles for values
+  that share runtime representation but must not compose (`reg`, `label`, `va`,
+  `symidx`). A stack comment like `( n n -- )` hides swaps; role tokens plus
+  negative `CHECK!` fixtures reject them before raw emitter tests run.
 
 ## Tool & Infra
 
