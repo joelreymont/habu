@@ -57,3 +57,11 @@ TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
 \ adjoint of a reduce. Needed by the autograd VJP table (docs/autograd.md).
 TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
    E-PTX-NOIMPL throw ;
+
+\ BLOCK-MAX arg-max SELECT - the one genuinely new primitive the AD layer needs
+\ (docs/autograd.md): the adjoint of BLOCK-MAX. A masked scatter that routes the
+\ cotangent ds to the arg-max lane and 0 elsewhere (sub-gradient). Inputs: ds (the
+\ uniform cotangent), the saved tile x, and the saved max mx. Tie-break is the
+\ deterministic LOWEST global lane index, matched to the forward BLOCK-MAX.
+TRUSTED: BLOCK-MAX-SELECT ( uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m> )
+   E-PTX-NOIMPL throw ;

@@ -21,6 +21,18 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
    e BLOCK-SUM    {: s :}
    e s B/  out r ROW-SPAN c ROW-STORE ;
 
+\ Exercises BLOCK-MAX-SELECT (the BLOCK-MAX adjoint): load a row, take its max,
+\ then scatter a cotangent back to the arg-max lane.
+KERNEL: MAX-SELECT-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+   {: in out :}
+   ROW            {: r :}
+   in r ROW-SPAN  {: xs :}
+   xs ROW-CTX     {: c :}
+   xs c ROW-LOAD  {: x :}
+   x BLOCK-MAX    {: mx :}
+   mx x mx BLOCK-MAX-SELECT       \ ( ds=mx, x, mx -- dx tile )
+   out r ROW-SPAN c ROW-STORE ;
+
 \ Clean load past this point is the positive proof: SOFTMAX-ROWS certified.
 
 T-REPORT
