@@ -109,6 +109,13 @@ lesson — keep the specific word/code/path, cut the prose.
   deps (`tools/date.f`, `lib/memory.f`, `lib/vector.f`, `tools/lint/intern.f`).
   Copy the `TEST-SUITE` list from `test/gate-stdlib.f` or the tool header instead
   of reconstructing from memory.
+- **Use the current gate command, not stale handoffs:** after the Darwin spawn
+  F04 macOS validation, the old handoff gate without `test/gate-pool.f` exited at
+  `GT-POOL-START`; the `docs/bootstrap.md` command with
+  `test/gate-pool.f test/run.f` passed the full native gate.
+- **Close platform dots only with target evidence:** Darwin spawn factoring closed
+  after real macOS arm64 refresh, source-shape, process/argv/env/cwd, PTY, and
+  full native gate passes; Linux evidence alone was not enough for F04.
 - **Checked DSL incidents moved into the standard:** the `GE-FILES:`/`CHK-FILES:`
   generic `execute` failure and `tools/gate-json-assert.f` raw `[']` row failure
   are now covered by the checked DSL/quotation rules in `docs/forth.md`.
