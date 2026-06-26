@@ -109,6 +109,8 @@
 -3400 constant E-PTX-SYNTAX
 -3401 constant E-PTX-BLOCK
 -3402 constant E-PTX-NOIMPL   \ tile op typed but not yet lowered to PTX (codegen = M4e)
+-3403 constant E-PTX-NOVJP    \ forward word has no registered adjoint (VJP)
+-3404 constant E-PTX-ADCAP    \ AD reverse-pass token capacity exceeded
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST
