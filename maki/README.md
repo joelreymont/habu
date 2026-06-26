@@ -21,15 +21,29 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
 - **Extractable.** Treat the habu↔maki seam as an API even in-repo; extract `maki/`
   to its own repo when the Habu-PTX API stabilizes.
 
-## Load prelude
+## Maki gate (its own, outside the Habu trust root)
 
-Maki source loads the Habu libraries it needs, then maki files, e.g.:
+Maki runs through its own `bin/hb --load` path — the Habu libraries it needs, then
+the maki components and their tests (each test runs on load, printing `test: ok`):
 
 ```
 bin/hb --load lib/errors.f lib/string.f lib/test.f \
   lib/ptx.f lib/ptx-tile.f lib/ptx-collective.f \
-  maki/tensor.f maki/tensor-test.f
+  maki/tensor.f      maki/tensor-test.f \
+  maki/optim.f       maki/optim-test.f \
+  maki/loss.f        maki/loss-test.f \
+  maki/autograd.f    maki/autograd-test.f \
+  maki/train.f       maki/train-test.f \
+  maki/onnx.f        maki/onnx-test.f \
+  maki/eval.f        maki/eval-test.f
 ```
+
+## Components (v0, all runnable + tested)
+
+`tensor` (shape/dtype) · `autograd` (VJP rules + numeric gradcheck) · `optim`
+(SGD family) · `loss` (MSE/L1) · `train` (a loop that converges) · `onnx`
+(fail-closed op lowering) · `eval` (checker-as-judge + pass@k). The element/scalar
+rules lower onto the checked Habu-PTX kernels once codegen lands.
 
 ## Status
 
