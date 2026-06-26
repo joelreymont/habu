@@ -93,10 +93,10 @@ variable BCG-LEN
 
 : BCG-TEST-ASM-CHECKED ( -- )
    s" bootstrap/cg/asm-checked.fs" BCG-LOAD
-   s" : A-RRR16 ( a b c d -- e )" BCG-MUST-HAVE
-   s" : A-RRI10 ( a b c d -- e )" BCG-MUST-HAVE
-   s" : A-MOVW ( a b c d -- e )" BCG-MUST-HAVE
-   s" : A-LS-UOFF ( a b c d -- e )" BCG-MUST-HAVE
+   s" : A-RRR16 ( reg reg n n -- n )" BCG-MUST-HAVE
+   s" : A-RRI10 ( reg reg n n -- n )" BCG-MUST-HAVE
+   s" : A-MOVW ( reg n n n -- n )" BCG-MUST-HAVE
+   s" : A-LS-UOFF ( reg reg off n -- n )" BCG-MUST-HAVE
    s" 2332033024 A-RRR16" BCG-MUST-HAVE
    s" $9AC00C00 A-RRR16" BCG-MUST-HAVE
    s" $D63F0000 A-R1-5" BCG-MUST-HAVE
