@@ -91,28 +91,7 @@ variable HOST-PATH-U
 : HOST-SCAN-CONTENT? ( ptr u8 n -- bool )
    s" .sh" HAS-EXT? ;
 
-: HOST-FORTH-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" ./bench/llm/drive-forth" PREFIX? 0= IF LINT-FALSE exit THEN
-   a u s" .sh" HAS-EXT? 0= IF LINT-FALSE exit THEN
-   s" ./bench/llm/drive-forth" nip s" .sh" nip + u = ;
-
-: HOST-BENCH-DRIVER-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" ./bench/llm/drive-" PREFIX? 0= IF LINT-FALSE exit THEN
-   a u s" .sh" HAS-EXT? ;
-
-: HOST-BENCH-SHELL? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" ./bench/llm/" PREFIX? 0= IF LINT-FALSE exit THEN
-   a u s" .sh" HAS-EXT? ;
-
-: HOST-BENCH-BASELINE? ( ptr u8 n -- bool )
-   2dup s" ./bench/llm/drive-habu.sh" FS-PATH= IF 2drop LINT-FALSE exit THEN
-   2dup HOST-FORTH-SHELL? IF 2drop LINT-FALSE exit THEN
-   s" ./bench/llm/report.f" FS-PATH= ;
-
 : HOST-RETIRED-SHELL? ( ptr u8 n -- bool )
-   2dup HOST-BENCH-SHELL? IF 2drop LINT-TRUE exit THEN
-   2dup s" ./bench/llm/perf.sh" FS-PATH= IF 2drop LINT-TRUE exit THEN
-   2dup HOST-FORTH-SHELL? IF 2drop LINT-TRUE exit THEN
    2dup s" ./tools/seed.sh" FS-PATH= IF 2drop LINT-TRUE exit THEN
    2drop LINT-FALSE ;
 
@@ -139,7 +118,6 @@ variable HOST-PATH-U
    HOST-BUF HOST-LEN @ HOST-CHECK-B ;
 
 : HOST-SCAN-FILE {: a:ptr u :} ( ptr u8 n -- )
-   a u HOST-BENCH-BASELINE? IF exit THEN
    a u HOST-RETIRED-SHELL? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-PATH-BAD? IF a u HOST-REPORT-PATH exit THEN
    a u HOST-TEXT? 0= IF exit THEN

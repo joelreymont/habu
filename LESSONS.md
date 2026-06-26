@@ -152,10 +152,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Pool slot state is an invariant:** free=`-1`, active=`0`, done=`1`; set
   active before spawning. A live-count pool with free slots still marked free
   ignores its fds and spins forever after children exit.
-- **Native port gates ≠ benchmark runtime gates:** port validation proves
+- **Native port gates do not need language runtimes:** port validation proves
   `bin/hb`, target source selection, syscalls/env, ELF AOT, checker/lints,
-  self-refresh, REPL, Habu tooling on the target. Keep JS/Python/Rust/TS and live
-  model runs under `bench/llm/run.f` on the Mac bench host, off small port targets.
+  self-refresh, REPL, and Habu tooling on the target. Do not install JS/Python/
+  Rust/TS/model stacks to prove a native port.
 - **One public binary:** `bin/hb` (tty REPL, piped stdin, `hb script.f args`, or
   `hb --load lib.f tool.f -- args`). Build-only engines stay temp under `HB_TMP`;
   no legacy aliases/maker binaries.
@@ -218,6 +218,11 @@ lesson — keep the specific word/code/path, cut the prose.
   runtime prefix (env, baked REPL, stepper, watch, debug). Refresh once with
   compatibility constants if the installed `bin/hb` needs them, then remove dups
   and prove with the regenerated binary.
+- **Retire stale benchmark programs:** the old cross-language LLM matrix already
+  answered the active planning question (Habu cost was roughly 8-10x TypeScript/
+  Rust on the hard array tail). Do not maintain that harness while GPU/PTX is the
+  focus; keep only the status note unless a new publication-grade claim becomes
+  active work.
 - **Manifest policy is row data plus one validator:** doc and module-note
   requirements in `tools/stdlib-manifest-test.f` stay maintainable when grouped
   as checked rows; branch ladders hide policy drift and make adding requirements
@@ -237,9 +242,8 @@ lesson — keep the specific word/code/path, cut the prose.
   earliest one first.
 - **History filters must include JJ refs:** after removing generated outputs,
   verify `git rev-list --objects --all`, not just `master`; colocated JJ keeps
-  blobs via `refs/jj/keep` and `.jjconflict-*`. Ignore generated benchmark output
-  by shape/dir (JSON/JSONL/logs/reports at `bench/llm/` or `bench/llm/results/`),
-  not run name, so reruns can't enter a change.
+  blobs via `refs/jj/keep` and `.jjconflict-*`. Ignore generated output by
+  shape (JSON/JSONL/logs/reports), not run name, so reruns can't enter a change.
 
 ## Runtime, Codegen, AOT
 
@@ -495,10 +499,6 @@ lesson — keep the specific word/code/path, cut the prose.
   `catch` dot lands. Checker-only stubs are contracts — update the stub in the same
   change as any consumed API move (runtime tests with the real module don't prove
   the gate models new constants/effects/codes).
-- **Never mix JSON stubs with runtime parser tests:** `bench/llm/diagnostic-json-check-stub.f`
-  deliberately redefines `JSON-GET` to return missing data for checker-only
-  fixtures; loading it beside real `tools/json.f` makes row assertions fail with
-  fake `E-RA-MISSING`. Runtime fixtures load the real parser only.
 - **`tools/check.f` modes:** `--all-errors` checks top-level defs independently, so
   on bundled stdlib it falsely flags deps as undefined and multiplies gate time —
   run the fast fail-closed bundle check first, all-errors only after failure or

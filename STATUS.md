@@ -79,29 +79,16 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   for LLM repair. The native gate asserts this with `tools/gate-json-assert.f`.
 - **Time/date** — `epoch-seconds` and `mono-ns` are checker-modeled native
   primitives. `tools/date.f` provides checked UTC Gregorian helpers:
-  `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`; lints and LLM metric
-  validators use them instead of host date tools.
+  `PARSE-YMD`, `FORMAT-YMD`, and `FORMAT-EPOCH-UTC`; lints use them instead of
+  host date tools.
 
 ## Current state and gaps
 
-- **LLM-native scorecard** — current reference benchmark infrastructure is
-  native-only: `bench/llm/run.f` validates the task set, checked reference
-  solutions, functional tests, and metric JSONL. The scorecard fields are
-  `first_pass_checker`, `first_pass_tests`, `tests_passed`, `repair_iterations`,
-  `checker_iterations`, `diagnostic_count`, `diagnostic_token`,
-  `diagnostic_span`, `diagnostic_expected`, `diagnostic_actual`,
-  `diagnostic_code`, `diagnostic_repair_class`, `all_errors_stable`,
-  `tokens_used`, `wall_ms`, `final_chars`, `trust_uses`, and
-  `signature_weakened`. Per-task candidate/repair directories can be converted
-  to attempt JSONL with `bench/llm/run-attempts.f`; the native validator then
-  summarizes failure buckets, diagnostic-quality gaps, and per-category coverage.
-  Date-stamped run IDs (`*-YYYY-MM-DD`) are validated in Habu. The reference
-  gate requires quotation, return-stack, strings, files, and AOT-safe benchmark
-  categories. `bench/llm/perf.f` records quick feedback-loop latency, with
-  `--full` covering rebuild and AOT timings. The last attempted Codex
-  cross-language array comparison was invalidated by model-output truncation;
-  `model-run.f` now uses Codex `--output-last-message`, and the matrix must be
-  rerun before updating "best LLM target" benchmark status.
+- **LLM benchmark harness retired** — the cross-language benchmark machinery is
+  no longer active infrastructure. The last useful result was enough for current
+  planning: Habu used roughly 8-10x the output tokens of TypeScript/Rust on the
+  hard array tail. There is no current publication-grade cross-language claim;
+  rebuild a fresh harness only if that becomes the active goal again.
 - **AOT-strip linker** — done and the DEFAULT. The native `tools/hb-build.f` path AOT-
   compiles `: MAIN ;` to a native binary with the engine stripped (fib __text
   540 B vs 11836 B embed). `--repl` verifies the user source's checked

@@ -132,8 +132,6 @@ variable FM-NUM-L
    s" tools/diag-origin-test.f" FM-REQ
    s" tools/json-only-core.f" FM-REQ
    s" tools/json-only.f" FM-REQ
-   s" tools/jsonl-merge.f" FM-REQ
-   s" tools/jsonl-merge-test.f" FM-REQ
    s" tools/gate-json-assert.f" FM-REQ
    s" tools/repair-schema-doc-test.f" FM-REQ
    s" tools/repair-packet-test.f" FM-REQ
@@ -182,26 +180,12 @@ variable FM-NUM-L
    s" test/gate-pool.f" FM-REQ
    s" test/run.f" FM-REQ ;
 
-: FM-CHECK-REQUIRED-LLM-BENCH ( -- )
-   s" bench/llm/tasks.tsv" FM-REQ
-   s" bench/llm/grade.f" FM-REQ
-   s" bench/llm/grade-test.f" FM-REQ
-   s" bench/llm/report-test.f" FM-REQ
-   s" bench/llm/drive-array-habu-lib.f" FM-REQ
-   s" bench/llm/drive-array-habu-test.f" FM-REQ
-   s" bench/llm/drive-array-habu-repair-test.f" FM-REQ
-   s" tools/json-file.f" FM-REQ
-   s" bench/llm/validate-results-lib.f" FM-REQ
-   s" bench/llm/validate-results.f" FM-REQ
-   s" bench/llm/validate-results-test.f" FM-REQ ;
-
 : FM-CHECK-REQUIRED ( -- )
    FM-CHECK-REQUIRED-ROOT
    FM-CHECK-REQUIRED-CORE
    FM-CHECK-REQUIRED-BUILD
    FM-CHECK-REQUIRED-DIAG
-   FM-CHECK-REQUIRED-TOOLS
-   FM-CHECK-REQUIRED-LLM-BENCH ;
+   FM-CHECK-REQUIRED-TOOLS ;
 
 : FM-U. ( n -- )
    0 FM-NUM-L !

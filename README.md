@@ -70,16 +70,10 @@ bin/hb --load lib/errors.f \
 The default gate is the native platform-port gate. It runs as a checked bounded
 DAG pool with private `HB_TMP` roots and temporary warm images; current verified
 timing is recorded in [`STATUS.md`](STATUS.md). It must pass on the target
-machine and does not run LLM benchmark fixtures or require JavaScript, Rust,
-TypeScript, or model runtimes. LLM benchmark checks are separate benchmark-host
-work; on the Mac benchmark machine, run:
-
-```sh
-bin/hb --load lib/errors.f \
-  lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test-runner.f test/gate-common.f \
-  bench/llm/run-lib.f bench/llm/run.f
-```
+machine and does not require JavaScript, Rust, TypeScript, Python, or model
+runtimes. The old cross-language LLM benchmark harness was retired after it
+showed Habu using about 8-10x the output tokens of TypeScript/Rust on the hard
+array tail; active work is now the checked PTX/GPU path.
 
 ## The type system
 

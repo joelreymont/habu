@@ -1,2 +1,0 @@
-# Retired: bench/llm/tasks.tsv is the canonical V2 task manifest.
-# Live array benchmark rows are the tasks with harness=array.

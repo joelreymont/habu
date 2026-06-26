@@ -104,21 +104,6 @@ the gate temp root. `hb-check-warm` supports checker/diagnostic slices.
 such as `check-all-errors` and `gate-json-assert`. These are temporary cache
 artifacts and must not be committed.
 
-LLM benchmark checks are separate benchmark-host work. Run the benchmark gate on
-the Mac benchmark machine, where language runtimes and model tooling are
-maintained:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f \
-  bench/llm/run-lib.f bench/llm/run.f
-```
-
-Live cross-language benchmark comparisons additionally require `node`,
-`python3` or `PYTHON`, `rustc` or `RUSTC`, `bun`, and model tooling on `PATH`.
-Do not install those runtimes on a small target box solely to validate a Habu
-platform port; they prove benchmark host setup, not the native engine.
-
 ## Future Port Checklist
 
 1. Add one target source seam under `src/os/<target>/` for syscalls, environment,
@@ -132,5 +117,3 @@ platform port; they prove benchmark host setup, not the native engine.
    tools/bootstrap.sh`; after that, use only native `bin/hb`.
 4. Run the refresh command above and require a byte-for-byte fixpoint.
 5. Run the native port gate above on the target machine.
-6. Run the `bench/llm/run.f` benchmark gate on the Mac benchmark host when
-   changing LLM benchmark drivers or reducers.

@@ -91,23 +91,10 @@ Core words:
 - `JSONLF-CLOSE ( -- )`
 
 The cursor reads fixed-size chunks and grows the current line through
-`lib/memory.f`, so benchmark rows are limited by OS allocation and parser table
+`lib/memory.f`, so JSONL rows are limited by OS allocation and parser table
 capacity, not by a fixed line buffer. Empty physical lines are reported as
 `JSONL-ROW-BLANK`, final partial lines are returned once, EOF is idempotent, and
 early `JSONLF-CLOSE` is allowed.
-
-## JSONL Merge
-
-`tools/jsonl-merge.f` validates and merges JSONL object rows from shard files:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f tools/argv.f tools/json.f tools/json-file.f tools/jsonl-merge.f -- OUT.jsonl IN1.jsonl IN2.jsonl
-```
-
-Blank rows are skipped. Every nonblank input row must parse as a JSON object; a
-malformed row or non-object row fails the merge with the source path and line
-number. Duplicate benchmark keys are intentionally left to
-`bench/llm/validate-results.f`, which has the schema-specific uniqueness rules.
 
 ## Writer
 

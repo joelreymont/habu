@@ -104,35 +104,11 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   `signature_weakened=false` always. Fix bodies before signatures.
 - Cost: track `tokens_used`, `wall_ms`, and `final_chars`; fast feedback matters
   because checker calls sit inside the LLM repair loop.
-- Coverage: report results by benchmark category, not just aggregate pass rate.
-  A model that passes arithmetic but fails quotations, return-stack code, strings,
-  files, or AOT-safe programs is not done. The native validator fails the
-  reference benchmark unless those required categories are present in
-  `bench/llm/tasks.tsv`.
-- Live benchmark rows use `schema_version:2`. Required identity and context:
-  `run_id`, `model_id`, `arm`, `task_id`, `trial_id`, `task_family`, `model`,
-  `model_version`, `model_date`, `trial`, `task_order`, `k_trials`, and
-  `order_seed`. If the registry cannot know model version/date, record the stable
-  nonempty value `unknown`.
-- Required live outcome evidence: `outcome`, `rounds`, `first_pass`,
-  `first_pass_checker`, `first_pass_tests`, `tests_passed`,
-  `repair_iterations`, `checker_iterations`, diagnostic quality booleans,
-  `tokens`, `tokens_used`, `wall_ms`, `source_chars`, `final_chars`, trust and
-  signature fields, `runtime_ms`, `runtime_repetitions`, `runtime_warmups`, and
-  `runtime_status`.
-- Required replay evidence: inline `prompt`, `raw_response`,
-  `extracted_candidate`, `checker_diagnostics`, `repair_packet`, `test_output`,
-  and `final_bundle`, each paired with a `*_sha256` field.
+- Coverage: report by capability family, not just aggregate pass rate. A model
+  that passes arithmetic but fails quotations, return-stack code, strings,
+  files, AOT-safe programs, or PTX/GPU vocabulary is not done.
 
-Run the reference scorecard with `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-common.f bench/llm/run-lib.f bench/llm/run.f`. It validates the task set,
-the checked reference solutions, functional tests, and the JSONL metric schema.
-To summarize a real model attempt, place per-task candidate files under a
-candidate directory (`1.f` or repair rounds as `1/1.f`, `1/2.f`, ...), run the
-native `bench/llm/run-attempts.f` CLI through `bin/hb --load`, then pass the
-resulting JSONL to the native validator; add `--json` for a machine-readable
-summary with failure buckets and per-category coverage. Date-stamped run IDs use
-`*-YYYY-MM-DD` and are validated by the native date parser.
-Run `bench/llm/perf.f` through `bin/hb --load` for quick latency measurements of
-the checker, functional tests, metric validator, property-test smoke, and
-microbench smoke; add `--full` when rebuild and AOT build/runtime timings are
-needed.
+The old cross-language LLM benchmark harness is retired. It had already answered
+the planning question: Habu cost roughly 8-10x TypeScript/Rust output tokens on
+the hard array tail. Do not maintain or resurrect the harness unless a fresh,
+publication-grade language comparison becomes active work.

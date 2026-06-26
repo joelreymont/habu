@@ -14,32 +14,22 @@ variable HLT-N
 
 : HLT-PATH-POLICY ( -- )
    s" ./tools/helper.py" HOST-PATH-BAD? HLT-ASSERT
-   s" ./bench/llm/drive-python.f" HOST-PATH-BAD? 0= HLT-ASSERT
-   s" ./bench/llm/drive-python-test.f" HOST-PATH-BAD? 0= HLT-ASSERT
-   s" ./bench/llm/test.py" HOST-PATH-BAD? HLT-ASSERT ;
+   s" ./tools/helper.f" HOST-PATH-BAD? 0= HLT-ASSERT ;
 
 : HLT-CONTENT-POLICY ( -- )
    s" ./tools/new-host.sh" HOST-SCAN-CONTENT? HLT-ASSERT
-   s" ./bench/llm/drive-foreign-lib.f" HOST-SCAN-CONTENT? 0= HLT-ASSERT
+   s" ./tools/check.f" HOST-SCAN-CONTENT? 0= HLT-ASSERT
    s" ./FILEMAP.md" HOST-SCAN-CONTENT? 0= HLT-ASSERT ;
 
-: HLT-BENCH-SHELL-POLICY ( -- )
-   s" ./bench/llm/drive-js.sh" HOST-BENCH-DRIVER-SHELL? HLT-ASSERT
-   s" ./bench/llm/drive-python.sh" HOST-BENCH-DRIVER-SHELL? HLT-ASSERT
-   s" ./bench/llm/drive-python.f" HOST-BENCH-DRIVER-SHELL? 0= HLT-ASSERT
-   s" ./bench/llm/run.sh" HOST-BENCH-SHELL? HLT-ASSERT
-   s" ./bench/llm/run.f" HOST-BENCH-SHELL? 0= HLT-ASSERT
-   s" ./bench/llm/drive-js.sh" HOST-BENCH-BASELINE? 0= HLT-ASSERT
-   s" ./bench/llm/drive-js.sh" HOST-RETIRED-SHELL? HLT-ASSERT
-   s" ./bench/llm/grade.sh" HOST-RETIRED-SHELL? HLT-ASSERT
-   s" ./bench/llm/grade-test.sh" HOST-RETIRED-SHELL? HLT-ASSERT
-   s" ./bench/llm/run.sh" HOST-RETIRED-SHELL? HLT-ASSERT ;
+: HLT-RETIRED-SHELL-POLICY ( -- )
+   s" ./tools/seed.sh" HOST-RETIRED-SHELL? HLT-ASSERT
+   s" ./tools/bootstrap.sh" HOST-RETIRED-SHELL? 0= HLT-ASSERT ;
 
 : HLT-MAIN ( -- )
    1 HLT-N !
    HLT-PATH-POLICY
    HLT-CONTENT-POLICY
-   HLT-BENCH-SHELL-POLICY
+   HLT-RETIRED-SHELL-POLICY
    s" host-lint-test: ok (" type HLT-N @ 1- . s"  assertions)" type cr ;
 
 HLT-MAIN

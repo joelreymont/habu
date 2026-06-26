@@ -157,12 +157,7 @@ create CBLT-LF-BYTE 10 c,
 : CBLT-RUN-CURRENT ( -- n n n n )
    CBLT-ARGV-LOAD
    s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
-   s" bench/llm/report.f"  >LEN PROC-ARGV+
-   s" bench/llm/parse-resp-lib.f"  >LEN PROC-ARGV+
-   s" bench/llm/parse-resp.f"  >LEN PROC-ARGV+
    s" tools/json-file.f"  >LEN PROC-ARGV+
-   s" bench/llm/validate-results-lib.f"  >LEN PROC-ARGV+
-   s" bench/llm/validate-results.f"  >LEN PROC-ARGV+
    s" tools/host-lint.f"  >LEN PROC-ARGV+
    s" tools/filemap-lint.f"  >LEN PROC-ARGV+
    s" tools/parallel-agent-lint.f"  >LEN PROC-ARGV+
