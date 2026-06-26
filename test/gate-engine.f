@@ -1,6 +1,7 @@
 \ gate-engine.f - checked runner for engine and public hb gate checks.
 \
-\ Load after test/gate-common.f, lib/build.f, lib/codesign.f, and tools/build-fixpoint.f.
+\ Load after test/gate-common.f, lib/memory.f, lib/build.f, lib/codesign.f,
+\ and tools/build-fixpoint.f.
 
 64 constant GENG-USAGE-RC
 0 constant GENG-ALL-ID
@@ -15,6 +16,16 @@ create GE-CAND-PATH FS-PATH-CAP allot
 variable GE-SCRIPT-U
 variable GE-CAND-U
 variable GENG-SLICE
+variable GE-PROF-I
+variable GE-REG-I
+variable GE-JIT-I
+variable GE-IMG-I
+variable GE-IMG-BUILD-I
+variable GE-HABU1-I
+
+create GE-CHECK-OFF-LINE
+10 c, 48 c, 32 c, 115 c, 101 c, 116 c, 45 c,
+99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : GENG-USAGE ( -- )
    s" usage: test/gate-engine.f [build|fixtures|repair|runtime]" GENG-USAGE-RC die ;
@@ -150,10 +161,90 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
       s" hb-new candidate executable" GE-FAIL
    then ;
 
+: GE-CHECK-OFF-LINE$ ( -- ptr u8 n )
+   GE-CHECK-OFF-LINE 13 ;
+
+: GE-OLD-HOOK$ ( -- ptr u8 n )
+   SB-RESET
+   s" : HOOK ( ptr u8 n -- n ) CHECK! " SB-APPEND
+   s" dup -1 <> if 70 throw then ; ' HOOK set-check" SB-APPEND
+   SB$ ;
+
+: GE-READ-BUILD-TMP ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu :}
+   name nameu BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap :}
+   name nameu BF-A$ buf cap READ-ALL {: got :}
+   buf got ;
+
+: GE-SHAPE-HAS ( ptr u8 n ptr u8 n ptr u8 n -- ) {: a:ptr u needle:ptr needleu label:ptr labelu :}
+   a u needle needleu CONTAINS? 0= if label labelu GE-FAIL then ;
+
+: GE-SHAPE-LACKS ( ptr u8 n ptr u8 n ptr u8 n -- ) {: a:ptr u needle:ptr needleu label:ptr labelu :}
+   a u needle needleu CONTAINS? if label labelu GE-FAIL then ;
+
+: GE-SHAPE-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u needle:ptr needleu :}
+   a u needle needleu FIND-SUB ;
+
+: GE-SHAPE-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u start needle:ptr needleu :}
+   start 0 < if -1 exit then
+   start u >= if -1 exit then
+   a start BYTE+ u start - needle needleu FIND-SUB
+   dup 0 < if exit then
+   start + ;
+
+: GE-SHAPE-FOUND ( n ptr u8 n -- n ) {: pos label:ptr labelu :}
+   pos 0 < if label labelu GE-FAIL then
+   pos ;
+
+: GE-SHAPE-NOT-FOUND ( n ptr u8 n -- )
+   {: pos label:ptr labelu :}
+   pos 0 >= if label labelu GE-FAIL then ;
+
+: GE-STAGE2-SOURCE-SHAPE ( -- )
+   s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
+   a u GE-OLD-HOOK$ s" build stage2 stale hook" GE-SHAPE-LACKS
+   a u s" 0 set-check" s" build stage2 unchecked boundary" GE-SHAPE-HAS
+   a u s" ' HOOK set-check" s" build stage2 hook install" GE-SHAPE-HAS
+   a u s" STDIN-OUT" s" build stage2 stdin output" GE-SHAPE-HAS ;
+
+: GE-STAGE2-SCRATCH-SHAPE ( -- )
+   BF-STAGE2-SOURCE
+   s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
+   a u s" S2-SOURCE-CAP allot" s" build stage2 static source buffer" GE-SHAPE-LACKS
+   a u s" stage2: source mmap failed" s" build stage2 mmap source" GE-SHAPE-HAS ;
+
+: GE-STAGE2-ORDER-SHAPE ( -- )
+   s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
+   a u s" : BPROF-ON" GE-SHAPE-FIND s" build stage2 prof" GE-SHAPE-FOUND GE-PROF-I !
+   a u GE-PROF-I @ s" : EMIT-VRINIT" GE-SHAPE-FIND-AFTER s" build stage2 regalloc" GE-SHAPE-FOUND GE-REG-I !
+   a u GE-REG-I @ s" : FOLD-ENTRY" GE-SHAPE-FIND-AFTER s" build stage2 jit" GE-SHAPE-FOUND GE-JIT-I !
+   GE-PROF-I @ GE-REG-I @ >= if s" build stage2 prof/reg order" GE-FAIL then
+   GE-REG-I @ GE-JIT-I @ >= if s" build stage2 reg/jit order" GE-FAIL then ;
+
+: GE-STAGE2-IMAGE-SHAPE ( -- )
+   s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
+   a u s" : ASM-CODELEN!" GE-SHAPE-FIND s" build stage2 image token" GE-SHAPE-FOUND GE-IMG-I !
+   a u GE-IMG-I @ s" : BUILD-IMAGE" GE-SHAPE-FIND-AFTER s" build stage2 image build" GE-SHAPE-FOUND GE-IMG-BUILD-I !
+   a u GE-IMG-BUILD-I @ s" : RPD@" GE-SHAPE-FIND-AFTER s" build stage2 habu1 after image" GE-SHAPE-FOUND GE-HABU1-I !
+   a u GE-IMG-BUILD-I @ GE-CHECK-OFF-LINE$ GE-SHAPE-FIND-AFTER s" build stage2 image unchecked span" GE-SHAPE-NOT-FOUND
+   GE-IMG-I @ GE-IMG-BUILD-I @ >= if s" build stage2 image order" GE-FAIL then
+   GE-IMG-BUILD-I @ GE-HABU1-I @ >= if s" build stage2 habu1 order" GE-FAIL then ;
+
+: GE-SNAP-SOURCE-SHAPE ( -- )
+   s" hb-snap-src" GE-READ-BUILD-TMP {: a:ptr u :}
+   a u s" SNAP-MAGIC" s" build snapshot source magic" GE-SHAPE-HAS ;
+
+: GE-BUILD-SOURCE-SHAPE ( -- )
+   GE-STAGE2-SOURCE-SHAPE
+   GE-STAGE2-ORDER-SHAPE
+   GE-STAGE2-IMAGE-SHAPE
+   GE-SNAP-SOURCE-SHAPE ;
+
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
+   GE-STAGE2-SCRATCH-SHAPE
    BF-BUILD-ALL
+   GE-BUILD-SOURCE-SHAPE
    BF-TMP-RESET
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE

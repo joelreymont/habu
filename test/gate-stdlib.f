@@ -307,7 +307,6 @@ variable SUITE-SLICE
    s" compiler-dispatch-shape" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-batch-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" bootstrap-helper-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" build-fixpoint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )

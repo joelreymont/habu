@@ -159,6 +159,7 @@ variable TR-PATH-U
 
 : TR-ENGINE-ARGS ( -- )
    TR-COMMON
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
