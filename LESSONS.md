@@ -124,6 +124,10 @@ lesson — keep the specific word/code/path, cut the prose.
   identity casts. Public libraries should expose checked constructors (`A-LEN`,
   `VEC-IDX`, `STR-OFF`, `JW-LEN`, `M-OFF`) and use typed helper variants so
   length/count/offset swaps fail under `CHECK!` before runtime.
+- **Signature atom syntax needs direct smoke probes:** prefix predicates take the
+  `s"` length already on the stack. Passing an extra literal length left a
+  phantom cell under `SIG-PREFIX?` and crashed atom parsing; prove new signature
+  tokens with direct `ATOM-TOK?`/`TOK-TYPE` probes before rebuilding.
 
 ## Tool & Infra
 

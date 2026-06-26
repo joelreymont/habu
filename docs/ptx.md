@@ -168,12 +168,13 @@ backend":
    indirect-result, stack spill, callee-saved discipline — plus out-param/`void**`
    struct marshalling and Tegra-path libcuda discovery. Sized as a milestone
    (see `ptx-sketch.md` M1); it is not "dlopen + marshalling."
-2. **A parametric-type extension to a self-hosting checker.** `src/core/checker.f`
-   has only `T-CON/T-VAR/T-PTR/T-QUOT/S-ROW`, a fixed `CC-MAX=22` enum, a
-   whitespace-only sig lexer, and single letters already bound to row/type vars.
-   `span<S,T,N>`/`tile<T,B,M>` need lexer, namespace, term-encoding, unify, and
-   `render.f` changes that must survive the self-host fixpoint (see M2) — a real
-   project, not "indexed type constructors."
+2. **A parametric-type extension to a self-hosting checker.** M2 core support is
+   a checker feature, not a syntax note: `<`/`>`/`,` signature tokens, explicit
+   atom namespaces (`space-*`, `extent-*`, `mask-*`, `block-*`, `align-*`),
+   side-table encoded `T-PARAM` terms such as
+   `span<space-global,f32,extent-n>`, field-by-field unify, render/record
+   round-trip, and a self-host fixpoint rebuild. The remaining M2 surface is the
+   PTX defining vocabulary (`KERNEL:`, `%block`, `grid:`, `where`).
 
 The linux-aarch64 `bin/hb` itself already exists (it lives on the Orin, `zed`);
 the macOS checkout simply doesn't contain it. The Orin must also have a CUDA

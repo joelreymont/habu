@@ -128,12 +128,21 @@ s" COK-CODESIG2 ( -- img ) ASM-CODE BUILD-IMAGE CODESIG2" CHECK! -1 T=
 s" COK-SNAP-HDR ( n -- snap n ) BUILD-SNAP-HDR" CHECK! -1 T=
 s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
+s" T-PTX-LOAD" s" span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live>" TRUST
+s" T-PTX-ADD" s" tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live>" TRUST
+s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" CHECK! -1 T=
+s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" CHECK! -1 T=
+s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" CHECK! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
 s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
+s" CBAD-PTX-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-REJECTS
+s" CBAD-PTX-EXTENT ( span<space-global,f32,extent-m> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-REJECTS
+s" CBAD-PTX-MASK ( tile<f32,block-256,mask-a> tile<f32,block-256,mask-b> -- tile<f32,block-256,mask-a> ) T-PTX-ADD" T-CHECK-REJECTS
+s" CBAD-PTX-ID-SPACE ( span<space-shared,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" T-CHECK-REJECTS
 : TROLE-REG ( n -- n ) >REG REG>N ;
 7 TROLE-REG 7 T=
 : TROLE-LABEL ( n -- n ) >LABEL LABEL>N ;

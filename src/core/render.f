@@ -60,8 +60,15 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    p CC-STR  = IF s" str"  RSTR ELSE
    p CC-ADDR = IF s" addr" RSTR ELSE
    p CC-BOOL = IF s" bool" RSTR ELSE
+   p CC-F32  = IF s" f32"  RSTR ELSE
    p ROLE-OUT? 0= IF 63 EMIT1 THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+
+: ATOM-REND {: t :}
+   t ATOM>A t ATOM>U RSTR ;
+
+: PARAM-START {: t :}
+   t PARAM>NAME-A t PARAM>NAME-U RSTR  60 EMIT1 ;
 
 \ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
 \ quotation has a non-neutral return-stack effect (two nesting levels; deeper
@@ -78,7 +85,16 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 : Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | ptr | '?'
    r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
    r TAG T-CON = IF r PAY CON-OUT ELSE
-   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE 63 EMIT1 THEN THEN THEN ;
+   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
+   r TAG T-ATOM = IF r ATOM-REND ELSE
+   r TAG T-PARAM = IF
+     r PARAM-START
+     0 BEGIN dup r PARAM>ARGC < WHILE
+       dup 0 > IF 44 EMIT1 THEN
+       r over PARAM>ARG RECURSE
+       1 +
+     REPEAT drop 62 EMIT1
+   ELSE 63 EMIT1 THEN THEN THEN THEN THEN ;
 
 : Q2REND-ROW {: row :}  0 Q2BN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -105,7 +121,16 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
      91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW
      r Q2RET  93 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN THEN ;
+   ELSE
+   r TAG T-ATOM = IF r ATOM-REND ELSE
+   r TAG T-PARAM = IF
+     r PARAM-START
+     0 BEGIN dup r PARAM>ARGC < WHILE
+       dup 0 > IF 44 EMIT1 THEN
+       r over PARAM>ARG RECURSE
+       1 +
+     REPEAT drop 62 EMIT1
+   ELSE 63 EMIT1 THEN THEN THEN THEN THEN THEN ;
 
 : QREND-ROW {: row :}  0 QRBN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -130,7 +155,16 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
      91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
      45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
      r QRET  93 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN THEN ;
+   ELSE
+   r TAG T-ATOM = IF r ATOM-REND ELSE
+   r TAG T-PARAM = IF
+     r PARAM-START
+     0 BEGIN dup r PARAM>ARGC < WHILE
+       dup 0 > IF 44 EMIT1 THEN
+       r over PARAM>ARG RECURSE
+       1 +
+     REPEAT drop 62 EMIT1
+   ELSE 63 EMIT1 THEN THEN THEN THEN THEN THEN ;
 create RBUF 64 cells allot   variable RBN
 
 : REND-COLLECT {: s :}  0 RBN !  s

@@ -1,6 +1,6 @@
 0 constant T-CON   1 constant T-VAR   2 constant T-PTR
 3 constant S-ROW   4 constant S-PUSH
-5 constant T-QUOT
+5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
 -1 constant UNBOUND
 2048 constant MAXTV            \ typevar pool (engine-sized bodies allocate hundreds)
 create TVT MAXTV cells allot   create RVT MAXTV cells allot
@@ -64,6 +64,61 @@ create QXHA MAXQE cells allot   create QXNA MAXQE cells allot   variable QEN
    xd q PAY cells QXDA + !
    xr q PAY cells QXRA + ! ;
 
+512 constant MAXATOM
+create ATOMA MAXATOM cells allot
+create ATOMU MAXATOM cells allot
+variable ATOMN
+: ATOMA-FIELD ( n -- ptr ptr u8 )
+   cells ATOMA + 0 ptr-field ;
+: MK-ATOM {: a u :}
+   ATOMN @ MAXATOM 1 - > IF s" checker: out of atom terms" 76 die THEN
+   a ATOMN @ ATOMA-FIELD !
+   u ATOMN @ cells ATOMU + !
+   ATOMN @ 3 lshift T-ATOM or
+   ATOMN @ 1 + ATOMN ! ;
+: ATOM>A ( n -- ptr u8 ) PAY ATOMA-FIELD @ ;
+: ATOM>U ( n -- n ) PAY cells ATOMU + @ ;
+
+512 constant MAXPARAM
+4 constant PARAM-MAX-ARGS
+create PARAMA MAXPARAM cells allot
+create PARAMU MAXPARAM cells allot
+create PARAMC MAXPARAM cells allot
+create PARAMARGS MAXPARAM PARAM-MAX-ARGS * cells allot
+create PARAM-SCR PARAM-MAX-ARGS cells allot
+variable PARAMN
+variable PARAM-SCR-N
+variable PARAM-I
+: PARAMA-FIELD ( n -- ptr ptr u8 )
+   cells PARAMA + 0 ptr-field ;
+: PARAM>NAME-A ( n -- ptr u8 ) PAY PARAMA-FIELD @ ;
+: PARAM>NAME-U ( n -- n ) PAY cells PARAMU + @ ;
+: PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
+: PARAM-ARG-IDX ( n n -- ptr n ) {: p idx :}
+   p PAY PARAM-MAX-ARGS * idx + cells PARAMARGS + ;
+: PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
+: PARAM-ARG-OR-DUMMY ( n n -- n ) {: p idx :}
+   idx p PARAM>ARGC < IF p idx PARAM>ARG ELSE 1 MK-CON THEN ;
+: PARAM-SCR-RESET ( -- ) 0 PARAM-SCR-N ! ;
+: PARAM-SCR-FULL? ( -- bool )
+   PARAM-SCR-N @ PARAM-MAX-ARGS >= ;
+: PARAM-SCR+ ( t -- )
+   PARAM-SCR-N @ cells PARAM-SCR + !
+   PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
+: MK-PARAM {: a u :}
+   PARAMN @ MAXPARAM 1 - > IF s" checker: out of param terms" 76 die THEN
+   a PARAMN @ PARAMA-FIELD !
+   u PARAMN @ cells PARAMU + !
+   PARAM-SCR-N @ PARAMN @ cells PARAMC + !
+   0 PARAM-I !
+   BEGIN PARAM-I @ PARAM-SCR-N @ < WHILE
+      PARAM-I @ cells PARAM-SCR + @
+      PARAMN @ PARAM-MAX-ARGS * PARAM-I @ + cells PARAMARGS + !
+      PARAM-I @ 1 + PARAM-I !
+   REPEAT
+   PARAMN @ 3 lshift T-PARAM or
+   PARAMN @ 1 + PARAMN ! ;
+
 4096 constant MAXPUSH          \ push records (engine-sized bodies need hundreds; evaluate's recovery guards grew EM-COMPILE)
 create SPA MAXPUSH 16 * allot   variable SPN
 
@@ -120,8 +175,8 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 16 constant CC-FD   17 constant CC-RC   18 constant CC-PID   19 constant CC-MS
 20 constant CC-NS   21 constant CC-TOK  22 constant CC-REG   23 constant CC-LABEL
 24 constant CC-VA   25 constant CC-SYMIDX 26 constant CC-ASM
-27 constant CC-IMG  28 constant CC-SNAP
-29 constant CC-MAX
+27 constant CC-IMG  28 constant CC-SNAP  29 constant CC-F32
+30 constant CC-MAX
 : INT-FAM? {: code :}
    code 1 = IF -1 EXIT THEN
    code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
@@ -134,12 +189,27 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
    t1 PAY 1 = t2 PAY INT-FAM? and IF -1 EXIT THEN
    t2 PAY 1 = t1 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
 
+: ATOM-OK? {: t1 t2 :}
+   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U STR= ;
+
+: PARAM-NAME-OK? {: t1 t2 :}
+   t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U STR= ;
+
+: PARAM-PAIR-ARGS {: t1 t2 :}
+   t1 PARAM>ARGC t2 PARAM>ARGC <> IF 0 UOK ! EXIT THEN
+   t1 t2 PARAM-NAME-OK? 0= IF 0 UOK ! EXIT THEN
+   0 PARAM-I !
+   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
+      t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
+      PARAM-I @ 1 + PARAM-I !
+   REPEAT ;
+
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
    over ISROW IF 2dup ROW-OCC? IF 2drop 0 UOK ! ELSE swap PAY RV! THEN ELSE
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop 0 UOK ! ELSE PAY RV! THEN ELSE
    2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 
-variable TOCC  variable TODN
+variable TOCC  variable TODN  variable TOPARAM
 
 \ TY-OCC? ( v t -- f ) : does tyvar v occur in t, descending through quot
 \ effect rows? One worklist holds both terms and rows (disjoint tag spaces);
@@ -163,7 +233,15 @@ variable TOCC  variable TODN
       dup TAG T-QUOT = IF
         dup Q>DIN swap  dup Q>DOUT swap  dup Q>RIN swap  Q>ROUT
         TODN @ 4 + TODN !
-      ELSE drop THEN THEN THEN
+      ELSE
+      dup TAG T-PARAM = IF
+        dup TOPARAM !  drop
+        TOPARAM @ 0 PARAM-ARG-OR-DUMMY
+        TOPARAM @ 1 PARAM-ARG-OR-DUMMY
+        TOPARAM @ 2 PARAM-ARG-OR-DUMMY
+        TOPARAM @ 3 PARAM-ARG-OR-DUMMY
+        TODN @ PARAM-MAX-ARGS + TODN !
+      ELSE drop THEN THEN THEN THEN
      THEN
    REPEAT
    TOCC @ ;
@@ -178,13 +256,17 @@ variable TOCC  variable TODN
      Q>ROUT swap Q>ROUT swap PAIR ELSE
    over TAG T-PTR =  over TAG T-PTR =  and IF
      over PTR>INNER over PTR>INNER PAIR 2drop ELSE
+   over TAG T-ATOM =  over TAG T-ATOM =  and IF
+     2dup ATOM-OK? IF 2drop ELSE 2drop 0 UOK ! THEN ELSE
+   over TAG T-PARAM =  over TAG T-PARAM =  and IF
+     2dup PARAM-PAIR-ARGS 2drop ELSE
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN
-   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN ;
+   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 : UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
    0 USP !  -1 UOK !  PAIR
@@ -202,6 +284,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
+   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
@@ -430,17 +513,37 @@ variable LOCALBAD
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
    a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN
    a u s" u32"  STR= IF CC-U32  EXIT THEN   a u s" cell" STR= IF CC-CELL EXIT THEN
-   a u s" char" STR= IF CC-CHAR EXIT THEN   a u s" str"  STR= IF CC-STR  EXIT THEN
+   a u s" f32"  STR= IF CC-F32  EXIT THEN   a u s" char" STR= IF CC-CHAR EXIT THEN
+   a u s" str"  STR= IF CC-STR  EXIT THEN
    a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN
    a u ROLE-OF ;
 : BAD-SIG-TYPE  -1 SGBAD !  1 MK-CON ;
+: SIG-PREFIX? {: a u p v :}
+   u v < IF 0 EXIT THEN
+   a v p v STR= ;
+: ATOM-TOK? {: a u :}
+   a u s" space-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" extent-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" mask-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" block-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" align-" SIG-PREFIX? ;
+: PARAM-CTOR? {: a u :}
+   a u s" ptr" STR= IF -1 EXIT THEN
+   a u s" span" STR= IF -1 EXIT THEN
+   a u s" matrix" STR= IF -1 EXIT THEN
+   a u s" gridctx" STR= IF -1 EXIT THEN
+   a u s" rowctx" STR= IF -1 EXIT THEN
+   a u s" tile" STR= IF -1 EXIT THEN
+   a u s" uniform" STR= IF -1 EXIT THEN
+   a u s" rowidx" STR= ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
+   a u ATOM-TOK? IF a u MK-ATOM ELSE
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   BAD-SIG-TYPE THEN THEN THEN THEN THEN ;
+   BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN ;
 
 : LOCAL-TYPE {: a u :}
    a u s" ptr" STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
@@ -450,14 +553,22 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
 : PK!  PKU !  PKA !  -1 PKHAVE ! ;                   \ ( a u -- )
 : PKRESET 0 PKHAVE ! ;
-\ NEXT-SIG-TOK ( -- a u ) : next whitespace token over the SB/SL/SI cursor;
+\ NEXT-SIG-TOK ( -- a u ) : next signature token over the SB/SL/SI cursor.
+\ Whitespace separates tokens, and `<`, `>`, `,` are single-token delimiters so
+\ parametric types can be written without spaces: `span<space-global,f32,extent-n>`.
 \ ( a 0 ) at end. Honors one pushed-back token.
+: SIG-DELIM-CHAR? {: c :}
+   c 60 = IF -1 EXIT THEN
+   c 62 = IF -1 EXIT THEN
+   c 44 = ;
 : NEXT-SIG-TOK
    PKHAVE @ IF 0 PKHAVE ! PKA @ PKU @ EXIT THEN
    BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
    SI @ SL @ < 0= IF SB @ 0 EXIT THEN
    SB @ SI @ + SS !
-   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and WHILE SI @ 1 + SI ! REPEAT
+   SB @ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS @ 1 EXIT THEN
+   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and
+      SB @ SI @ + c@ SIG-DELIM-CHAR? 0= and WHILE SI @ 1 + SI ! REPEAT
    SS @ SB @ SI @ + SS @ - ;
 
 : UPPER? {: c :} c 64 > c 91 < and ;
@@ -469,6 +580,25 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" |"  STR= ;
 
 : SIG-TYPE {: a u :}
+   a u PARAM-CTOR? IF
+      NEXT-SIG-TOK 2dup s" <" STR= IF
+         2drop PARAM-SCR-RESET
+         BEGIN
+            NEXT-SIG-TOK 2dup s" >" STR= IF
+               2drop a u MK-PARAM EXIT
+            THEN
+            2dup DELIM? IF 2drop -1 SGBAD ! a u MK-PARAM EXIT THEN
+            PARAM-SCR-FULL? IF 2drop -1 SGBAD ! a u MK-PARAM EXIT THEN
+            RECURSE PARAM-SCR+
+            NEXT-SIG-TOK 2dup s" ," STR= IF 2drop ELSE
+            2dup s" >" STR= IF 2drop a u MK-PARAM EXIT ELSE
+               2drop -1 SGBAD ! a u MK-PARAM EXIT
+            THEN THEN
+         AGAIN
+      ELSE
+         PK!
+      THEN
+   THEN
    a u s" ptr" STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF PK! -1 SGBAD ! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;

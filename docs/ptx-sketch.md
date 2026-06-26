@@ -8,28 +8,33 @@ indexing, lane-mask discipline, uniformity, and tile/matrix shape. Strategy:
 
 ## Types (one spelling)
 
+Checked signatures use explicit atom tokens, not single-letter metavariables:
+`space-global`, `space-shared`, `extent-n`, `extent-r`, `extent-c`,
+`mask-live`, `block-256`, and `align-16`. The prose below still uses `S/T/N/M`
+as metavariables; executable checked code must use the explicit tokens.
+
 | Type | Meaning |
 | ---- | ------- |
 | `f32 f16 bf16 u32 i32` | scalar element types (Orin sm_87: bf16/f16 yes, no fp8) |
-| `ptr<S,T>` | raw pointer in space `S` (no extent) — only at trusted boundaries |
-| `span<S,T,N>` | base + **extent token** `N` in space `S`, element `T` |
-| `span<S,T,N,A>` | … with alignment refinement `A` ∈ `{4,8,16}` bytes |
-| `matrix<S,T,R,C>` | `R`×`C`, row-major, row stride `C` |
-| `gridctx<B,N>` | flat grid-strided context over extent `N`; lane index = global `i` |
-| `rowctx<B,N>` | one-block-per-row context over extent `N`; lane index = local `tid` |
-| `tile<T,B,M>` | `B`-lane tile of `T` with **active-lane mask** `M`; inactive lanes are poison |
+| `ptr<space-global,f32>` | raw pointer in one space (no extent) — only at trusted boundaries |
+| `span<space-global,f32,extent-n>` | base + **extent token** in one space |
+| `span<space-global,f32,extent-n,align-16>` | … with alignment refinement |
+| `matrix<space-global,f32,extent-r,extent-c>` | `R`×`C`, row-major, row stride `C` |
+| `gridctx<block-256,extent-n,mask-live>` | flat grid-strided context over `N`; lane index = global `i` |
+| `rowctx<block-256,extent-n,mask-live>` | one-block-per-row context over `N`; lane index = local `tid` |
+| `tile<f32,block-256,mask-live>` | `B`-lane tile of `T` with **active-lane mask** `M`; inactive lanes are poison |
 | `uniform<T>` | a `T` provably identical across all lanes of the block |
-| `rowidx<R>` | row index proven `< R` (sound only under the launch ABI, below) |
+| `rowidx<extent-r>` | row index proven `< R` (sound only under the launch ABI, below) |
 
 `%block B` requires `B` ∈ a legal CUDA block size: a **multiple of 32, `1 ≤ B ≤
 1024`**. Warp count is `⌈B/32⌉`; a partial final warp uses an active-lane mask.
 (Vector loads — `vec4<T>` / `LOAD.V4` — are **not in v0**; they need a dedicated
 vector-lane + tail effect and land with the vectorization milestone.)
 
-`S` ∈ `{G global, Sh shared, C const, L local}`. **v0 implements `G` only;** `Sh/C/L`
-are reserved (their load/store words land with the shared-memory milestone).
-`N,R,C` are type-level tokens (quantified like row variables): same token ⇒ the
-checker proves agreement; it does not know the runtime value.
+`S` maps to `space-global`, `space-shared`, `space-const`, or `space-local`.
+**v0 implements `space-global` only;** the others are reserved. `N/R/C` map to
+`extent-*` tokens: same token ⇒ the checker proves agreement; it does not know
+the runtime value.
 
 ## Trusted boundaries (where extents/strides are asserted)
 
@@ -194,7 +199,7 @@ condition. Bounds are never a branch around a collective — they are the mask `
 
 **Rejected at compile time:** a global op on a non-global span; load/store without
 a ctx; a ctx whose extent ≠ the span's; mixing two mask tokens; a collective under
-lane-varying control flow; `where C <= B` violated; `LOAD.V4` on an under-aligned
+lane-varying control flow; `LOAD.V4` on an under-aligned
 span; mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
 
 **Not guaranteed (honest):** the runtime extent/stride asserted at `MK-SPAN*`/
@@ -218,11 +223,12 @@ harness. Criterion 6: `SCALE`+`+.` two-rounding → M4; `EXP.` tolerance → M6.
 2. `ptxas -arch=sm_87 saxpy.ptx` assembles with no warnings.
 3. Runs on device via the CUDA Driver API; matches a CPU golden within tol.
 4. **Negative checker tests reject** (each a minimal program, at compile time):
-   wrong-space load; missing ctx; extent mismatch; mixed masks; `C > B` softmax;
-   row-local ctx used as grid ctx; collective under a lane-varying predicate;
-   raw pointer arithmetic on a span; non-block-uniform reachability of a collective.
+   wrong-space load; missing ctx; extent mismatch; mixed masks; row-local ctx
+   used as grid ctx; collective under a lane-varying predicate; raw pointer
+   arithmetic on a span; non-block-uniform reachability of a collective.
 5. **Host launch tests** (runtime, not the checker): `blockDim != B`,
-   `gridDim.x != R`, and `gridDim.x*blockDim.x > 2³²−1` each fail the launch.
+   `gridDim.x != R`, `C > B`, and `gridDim.x*blockDim.x > 2³²−1` each fail the
+   launch.
 6. Numerics: `SCALE`+`+.` is two-rounding (not fma) unless `FMA.`; `EXP.` within
    the tolerance measured and pinned on sm_87.
 
@@ -253,19 +259,12 @@ equal correctness, or there is no claim.
    `cuModuleLoad`/`cuModuleGetFunction`/`cuLaunchKernel`) + the launch-ABI check.
    The linux `bin/hb` runs on `zed`; ensure a CUDA toolkit (`ptxas`) is installed.
    Blocks every on-device step.
-2. **Checker parametric-type extension (prerequisite, large).** Today every type
-   term is one tagged cell (3-bit tag, `CC-MAX=22` enum, single-index payload),
-   the signature lexer (`NEXT-SIG-TOK`) splits on whitespace only, and single
-   letters already bind row vars (uppercase) / type vars (lowercase). Parametric
-   types require: lexing `<`/`>`/`,` as delimiters; a **disjoint namespace** for
-   space/extent/mask tokens (not the occupied letters); a new term **encoding**
-   (new tag + side-table à la `PTRA`/`QEA` for the multi-field `span<S,T,N>`) and
-   a unify arm comparing parametric terms field-by-field; `render.f`'s `REND-TYPE`
-   (and its `QREND-1`/`Q2REND-1` leaf arms) taught every new tag; and the
-   extension must **bootstrap through the self-host
-   fixpoint** (the old checker checks the new checker source — the RCA-blocking
-   stall case). Plus the `KERNEL:`/`%block`/`grid:`/`where` defining words. Blocks
-   the typed DSL (M4+), not the spike (M3).
+2. **Checker parametric-type extension (prerequisite, large).** Core M2 support
+   is the checker term machinery: `<`/`>`/`,` signature tokens, atom tokens for
+   space/extent/mask/block/alignment, `T-PARAM` side tables for terms such as
+   `span<space-global,f32,extent-n>`, field-by-field unify, render/record
+   round-trip, and a self-host fixpoint rebuild. The remaining M2 surface is the
+   PTX defining vocabulary: `KERNEL:`, `%block`, `grid:`, and `where`.
 3. **Toolchain spike (no checker):** a minimal PTX encoder under `src/arch/ptx/`
    (a new ISA target sharing none of `src/arch/arm64/`) emits header-complete
    `saxpy.ptx` from hand-built IR → `ptxas -arch=sm_87` → run on the Orin via the
@@ -286,10 +285,7 @@ equal correctness, or there is no claim.
     shared staging + accumulator policy → fused softmax→flash-attention; then run
     the LLM matrix.
 
-## Open design questions (from oracle review — resolve at M1/M2)
-
-These are unsettled and must be decided as M1/M2 land; the examples above are
-illustrative, not final syntax/semantics.
+## Resolved M1/M2 Decisions
 
 1. **Shape constraints are compile- vs launch-time.** Extent tokens (`N,R,C`) are
    runtime values, **equality-checked** at compile time. Inequalities/arithmetic —
@@ -298,17 +294,16 @@ illustrative, not final syntax/semantics.
    rejections (unless a shape becomes a const-generic). So the `C>B` and coverage
    acceptance tests are **host launch tests**, not checker-negatives.
 2. **Mask token belongs on the ctx:** `gridctx<B,N,M>`/`rowctx<B,N,M>` so
-   `STORE`/elementwise can require the same `M` as the tile (not yet threaded
-   through every signature above).
+   `STORE`/elementwise can require the same `M` as the tile.
 3. **Kernel ABI:** the concrete `span`→`(base,len[,align])`, `matrix`→
    `(base,rows,cols[,stride])`, `uniform`→scalar lowering to `.param` + the
    `void**` `kernelParams` packing/lifetimes + equal-token runtime dedup.
 4. **No overload resolution yet:** v0 should use **distinct** grid/row words
    (e.g. `LOAD`/`ROW-LOAD`) rather than overloading `LOAD` on ctx kind.
-5. **Staged self-host bootstrap (M2):** the old checker can't parse `<…>`, so
-   encode the new term/unify machinery in **old** syntax first, rebootstrap, then
-   enable parametric syntax. Define the real disjoint token syntax (the example
-   letters `S/N/R/C/M` collide with row/type vars).
+5. **Staged self-host bootstrap (M2):** the term/unify machinery is encoded in
+   old syntax first, then the refreshed checker accepts parametric syntax. The
+   real token syntax is prefixed atoms (`space-*`, `extent-*`, `mask-*`,
+   `block-*`, `align-*`); single letters remain type/row variables.
 6. **Numeric capability on arithmetic:** `+.`/`SCALE`/… are `T`-generic but lower
    to float ops (`mul.rn.f32`); add an int-vs-float capability constraint.
 7. **Context interop:** use `cuDevicePrimaryCtxRetain` (the camera pipeline
