@@ -43,6 +43,9 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    p CC-LABEL = IF s" label" RSTR -1 EXIT THEN
    p CC-VA    = IF s" va"    RSTR -1 EXIT THEN
    p CC-SYMIDX = IF s" symidx" RSTR -1 EXIT THEN
+   p CC-ASM   = IF s" asm"   RSTR -1 EXIT THEN
+   p CC-IMG   = IF s" img"   RSTR -1 EXIT THEN
+   p CC-SNAP  = IF s" snap"  RSTR -1 EXIT THEN
    0 ;
 
 : CON-OUT {: p :}

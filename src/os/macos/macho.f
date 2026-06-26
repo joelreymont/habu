@@ -20,8 +20,8 @@ $100000000 constant VMBASE
 $80000    constant MPAGE             \ maximum generated code window for builder images
 variable CODELEN
 
-: ASM-CODE ( -- )  ASM-LEN CODELEN ! ;      \ code already assembled in icode's CODE
-s" ASM-CODE" s" --" TRUST
+: ASM-CODE ( -- asm )  ASM-LEN CODELEN ! ;  \ code already assembled in icode's CODE
+s" ASM-CODE" s" -- asm" TRUST
 
 \ __TEXT sized to CONTENT (16 KB pages), not a fixed page count: a 24 KB
 \ program is a 28 KB binary, not a fixed-cap binary. MPAGE is only the fail-closed
@@ -81,8 +81,8 @@ variable NCMDS
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
-: BUILD-IMAGE ( -- )  BUILD-MACHO ;
-s" BUILD-IMAGE" s" --" TRUST
+: BUILD-IMAGE ( asm -- )  BUILD-MACHO ;
+s" BUILD-IMAGE" s" asm --" TRUST
 
 : BUILD-SNAP-HDR ( n -- n ) {: snl :}
    CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}

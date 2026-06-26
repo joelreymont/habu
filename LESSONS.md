@@ -105,6 +105,9 @@ lesson — keep the specific word/code/path, cut the prose.
   are trusted identity boundaries and must be baked by refresh; checked fixture
   bundles consume the baked role words instead of concatenating `roles.f` directly
   before role-typed consumers.
+- **New role names need a checker-only bootstrap stage:** old `bin/hb` rejects
+  unknown type tokens during checked calls. Add `CC-*`/renderer/parser support,
+  refresh `bin/hb`, then use the role in `TRUST` rows and checked source.
 - **`ptr-field` retires pointer reload TRUST:** variable-backed pointer cursors
   such as `RPD@`, `PR-A@`, `FP-A@`, `EP@`, `BYP@`, and `BYA@` are plain checked
   helpers when written as `VAR 0 ptr-field @`; do not add TRUST rows for this

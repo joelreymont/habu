@@ -120,6 +120,7 @@ TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
    0 DIAGXT !
    CHECK! 0 T=
    r> DIAGXT ! ;
+s" COK-BUILD-IMAGE ( -- ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
@@ -139,6 +140,7 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 : TROLE-DARWIN-FINISH ( label label -- ) SPAWN-DARWIN-FINISH ;
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
+s" CBAD-BUILD-IMAGE ( -- ) BUILD-IMAGE" T-CHECK-REJECTS
 s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) LINUX-DUP2-FD" T-CHECK-REJECTS
 s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) LINUX-SPAWN" T-CHECK-REJECTS
 s" CBAD-DARWIN-DUP2 ( reg reg -- ) SPAWN-DUP2-ACTION" T-CHECK-REJECTS

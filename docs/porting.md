@@ -56,7 +56,8 @@ requires the sigset-size argument.
 
 ## Executable Images
 
-Drivers call `BUILD-IMAGE`; the target image file implements the actual format.
+Drivers call `ASM-CODE BUILD-IMAGE`; the target image file implements the actual
+format.
 `src/os/image-bytes.f` owns the shared executable byte buffer, endian stores,
 patch helpers, and signing blob cursor; target image files own only format
 layout policy.

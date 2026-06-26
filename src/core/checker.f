@@ -119,8 +119,9 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 12 constant CC-IDX  13 constant CC-LEN  14 constant CC-COUNT 15 constant CC-OFF
 16 constant CC-FD   17 constant CC-RC   18 constant CC-PID   19 constant CC-MS
 20 constant CC-NS   21 constant CC-TOK  22 constant CC-REG   23 constant CC-LABEL
-24 constant CC-VA   25 constant CC-SYMIDX
-26 constant CC-MAX
+24 constant CC-VA   25 constant CC-SYMIDX 26 constant CC-ASM
+27 constant CC-IMG  28 constant CC-SNAP
+29 constant CC-MAX
 : INT-FAM? {: code :}
    code 1 = IF -1 EXIT THEN
    code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
@@ -421,7 +422,9 @@ variable LOCALBAD
    a u s" pid"   STR= IF CC-PID   EXIT THEN   a u s" ms"  STR= IF CC-MS  EXIT THEN
    a u s" ns"    STR= IF CC-NS    EXIT THEN   a u s" tok" STR= IF CC-TOK EXIT THEN
    a u s" reg"   STR= IF CC-REG   EXIT THEN   a u s" label" STR= IF CC-LABEL EXIT THEN
-   a u s" va"    STR= IF CC-VA    EXIT THEN   a u s" symidx" STR= IF CC-SYMIDX EXIT THEN   0 ;
+   a u s" va"    STR= IF CC-VA    EXIT THEN   a u s" symidx" STR= IF CC-SYMIDX EXIT THEN
+   a u s" asm"   STR= IF CC-ASM   EXIT THEN   a u s" img" STR= IF CC-IMG EXIT THEN
+   a u s" snap"  STR= IF CC-SNAP  EXIT THEN   0 ;
 
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
    a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN

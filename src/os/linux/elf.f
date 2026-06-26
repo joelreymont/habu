@@ -20,8 +20,8 @@ $80000 constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
-: ASM-CODE ( -- )  ASM-LEN CODELEN ! ;
-s" ASM-CODE" s" --" TRUST
+: ASM-CODE ( -- asm )  ASM-LEN CODELEN ! ;
+s" ASM-CODE" s" -- asm" TRUST
 
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $FFF +  $FFF invert and ;
 
@@ -60,8 +60,8 @@ s" ASM-CODE" s" --" TRUST
    TEXTSZ M-PAD
    M-HERE MLEN ! ;
 
-: BUILD-IMAGE ( -- )  BUILD-ELF ;
-s" BUILD-IMAGE" s" --" TRUST
+: BUILD-IMAGE ( asm -- )  BUILD-ELF ;
+s" BUILD-IMAGE" s" asm --" TRUST
 
 : BUILD-SNAP-HDR ( n -- n ) {: snl :}
    CODE-OFF snl + $FFF + $FFF invert and {: sfts :}

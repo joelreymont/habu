@@ -12,7 +12,7 @@ sig    = stack '--' stack ( '|' stack '--' stack )?
 stack  = rowvar? type*
 type   = conname | role | tyvar | 'ptr' type | '[' stack '--' stack ']'
 conname= i64 u8 u32 cell bool char str addr
-role   = idx len count off fd rc pid ms ns tok reg label va symidx
+role   = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
 tyvar  = a..z          (same letter → same type var, per signature)
 rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 ```
@@ -33,19 +33,21 @@ rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 | `i64 u8 u32 cell` | integers of given width (`cell` = machine word) |
 | `bool` | a flag (distinct from `i64` — comparisons return `bool`) |
 | `char str addr` | character, string body (`c-addr u` as one value), raw address |
-| `idx len count off fd rc pid ms ns tok reg label va symidx` | nominal scalar roles; distinct from each other and from plain `n` |
+| `idx len count off fd rc pid ms ns tok reg label va symidx asm img snap` | nominal roles; distinct from each other and from plain `n` |
 | `ptr<τ>` written `ptr τ` | typed pointer; `@`/`!` move `τ` |
 | `[ S -- S' ]` | a quotation / `xt` carrying its own effect |
 
 Nominal roles are for same-representation values whose meanings must not mix:
 array indexes vs lengths, file descriptors vs return codes, elapsed milliseconds
-vs nanoseconds, token indexes vs counts, registers vs labels, and virtual
-addresses vs symbol indexes. They are fail-closed concrete types: `idx` does not
-unify with `len`, and neither unifies with a plain `n`. Introduce or remove a
-role only through an explicit checked constructor/coercion word or an audited
-boundary effect; do not rely on generic integer operations to launder a role.
-Unchecked native emitters should still expose these roles in their `TRUST`
-effects, so checked callers reject register/fd/label swaps before raw codegen.
+vs nanoseconds, token indexes vs counts, registers vs labels, virtual addresses
+vs symbol indexes, and image-build phases such as assembled code, executable
+image, and snapshot header state. They are fail-closed concrete types: `idx`
+does not unify with `len`, and neither unifies with a plain `n`. Introduce or
+remove a role only through an explicit checked constructor/coercion word or an
+audited boundary effect; do not rely on generic integer operations to launder a
+role. Unchecked native emitters should still expose these roles in their `TRUST`
+effects, so checked callers reject register/fd/label swaps and out-of-order
+build phases before raw codegen.
 
 ## Examples (from `src/prims.fs`)
 
@@ -135,6 +137,8 @@ If a branch only throws, it contributes no normal output to the join.
   `>REG REG>N`, `>LABEL LABEL>N`, `>VA VA>N`, and `>SYMIDX SYMIDX>N`.
   These are runtime identity casts over one cell; their only purpose is making
   semantic role changes explicit to the checker.
+- Phase roles (`asm`, `img`, `snap`) are boundary tokens. They are produced and
+  consumed by trusted build-image/snapshot words, not by public numeric casts.
 - Trusted defining words use `TRUSTED: NAME ( definer-eff ) create ... does>
   ( created-eff ) body ;`. `definer-eff` is the effect of invoking the defining
   word itself; the `created-eff` immediately after `does>` is recorded for each
