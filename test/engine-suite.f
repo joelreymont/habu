@@ -136,6 +136,8 @@ s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
 10 TROLE-SYMIDX 10 T=
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
+: ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
+s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate

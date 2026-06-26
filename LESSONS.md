@@ -97,6 +97,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `bootstrap/cg/asm-checked.fs` should accept `reg`/`off` and erase with
   `REG>N`/`OFF>N` only at bit-packing leaves. Public encoders then reject
   register-vs-offset swaps while preserving the same instruction bytes.
+- **`ptr-field` retires pointer reload TRUST:** variable-backed pointer cursors
+  such as `RPD@`, `PR-A@`, `FP-A@`, `EP@`, `BYP@`, and `BYA@` are plain checked
+  helpers when written as `VAR 0 ptr-field @`; do not add TRUST rows for this
+  storage pattern.
 
 ## Tool & Infra
 

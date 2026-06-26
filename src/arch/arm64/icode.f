@@ -14,8 +14,7 @@ create CODE CODE-CAP-BYTES allot   variable CP
 \ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
 \ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
 variable EP
-: EP@ ( -- ptr u8 ) EP @ ;
-s" EP@" s" -- ptr u8" TRUST
+: EP@ ( -- ptr u8 ) EP 0 ptr-field @ ;
 
 : EMITW ( n -- ) {: u :}  1 CP?  CP @ CW@ EP !                \ store u LE at CODE[CP], CP++
    u 255 and EP@ c!  u 8 rshift 255 and EP@ 1 + c!
@@ -91,10 +90,8 @@ variable LBI
 variable BYP
 variable BYA
 variable BYU
-: BYP@ ( -- ptr u8 ) BYP @ ;
-s" BYP@" s" -- ptr u8" TRUST
-: BYA@ ( -- ptr u8 ) BYA @ ;
-s" BYA@" s" -- ptr u8" TRUST
+: BYP@ ( -- ptr u8 ) BYP 0 ptr-field @ ;
+: BYA@ ( -- ptr u8 ) BYA 0 ptr-field @ ;
 
 : BYTES-ARGS ( ptr u8 n -- )
    BYU !  BYA ! ;

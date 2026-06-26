@@ -23,12 +23,9 @@ create PNPOOL PRIM-NAME-CAP allot   variable PNP   variable #PL
 variable RPD
 variable PR-A  variable PR-U  variable PR-L  variable PR-E
 variable FP-A  variable FP-U  variable FP-XT
-: RPD@ RPD @ ;
-s" RPD@" s" -- ptr u8" TRUST
-: PR-A@ PR-A @ ;
-s" PR-A@" s" -- ptr u8" TRUST
-: FP-A@ FP-A @ ;
-s" FP-A@" s" -- ptr u8" TRUST
+: RPD@ ( -- ptr u8 ) RPD 0 ptr-field @ ;
+: PR-A@ ( -- ptr u8 ) PR-A 0 ptr-field @ ;
+: FP-A@ ( -- ptr u8 ) FP-A 0 ptr-field @ ;
 
 : PR-SPACE ( -- )
    #PL @ PRIM-CAP >= IF s" primitive registry full" 76 die THEN
