@@ -39,6 +39,12 @@ s" +."   VJP-NONLINEAR? TFALSE
 10 3  AD-RECOMPUTE? TTRUE      \ recompute(3) < save(10)
 3 10  AD-RECOMPUTE? TFALSE     \ recompute(10) !< save(3)
 
+\ nonlinear automation: a unary nonlinear op auto-derives its adjoint EXPANSION
+\ (with saved-value references) inside the reversed backward
+s" LOAD EXP. STORE" AD-REVERSE  s" LOAD SAVED-Y *. STORE" STR= TTRUE
+s" ROW-LOAD BLOCK-MAX ROW-STORE" AD-REVERSE
+   s" ROW-LOAD SAVED-X SAVED-MX BLOCK-MAX-SELECT ROW-STORE" STR= TTRUE
+
 \ algebraic-simplify: adjacent NEG NEG cancels (double negation = identity)
 s" NEG NEG"          AD-SIMPLIFY s" "       STR= TTRUE
 s" DUP NEG NEG +."   AD-SIMPLIFY s" DUP +." STR= TTRUE

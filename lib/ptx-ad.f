@@ -26,6 +26,19 @@
    2dup s" NEG"       STR= if 2drop s" NEG"       exit then
    E-PTX-NOVJP throw ;
 
+\ VJP-EXPAND: like VJP-ADJOINT but emits the multi-word adjoint EXPANSION for the
+\ NONLINEAR unary ops, referencing saved primals/outputs by name (SAVED-*). These
+\ are the single-cotangent nonlinear adjoints (docs/autograd.md): EXP.'s backward
+\ is dz (.) y (y = saved output); BLOCK-MAX's backward scatters dz to the arg-max
+\ lane using the saved x and max. Binary nonlinear ops (*./B-/B//SCALE) have
+\ MULTI-output adjoints needing the data-flow/cotangent-threading model (the deeper
+\ reverse-pass layer, dot habu-ad-reverse-pass) - they still route through
+\ VJP-ADJOINT and fail closed until that lands.
+: VJP-EXPAND ( ptr u8 n -- ptr u8 n )
+   2dup s" EXP."      STR= if 2drop s" SAVED-Y *."                       exit then
+   2dup s" BLOCK-MAX" STR= if 2drop s" SAVED-X SAVED-MX BLOCK-MAX-SELECT" exit then
+   VJP-ADJOINT ;
+
 \ --- forward token spans (offset,len into the source body) ---
 64 constant AD-MAX-TOK
 create AD-TOK-OFF AD-MAX-TOK cells allot
@@ -58,7 +71,7 @@ variable AD-START
 : AD-EMIT-TOK ( ptr u8 n -- ) {: a ix :}
    a  ix cells AD-TOK-OFF + @ +         \ token ptr<u8>
    ix cells AD-TOK-LEN + @              \ token len
-   VJP-ADJOINT SB-APPEND ;
+   VJP-EXPAND SB-APPEND ;
 
 \ emit all tokens in REVERSE, VJP-substituted, single-space joined.
 : AD-EMIT-REV ( ptr u8 -- ) {: a :}
