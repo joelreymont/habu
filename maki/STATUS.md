@@ -26,10 +26,18 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
   **provably reduces the loss**: a 1-weight linear model trains from loss 36 to ~0
   and the weight converges to the optimum over 20 SGD steps. Runnable.
 
+- **ONNX import** (`maki/onnx.f`, `maki/onnx-test.f`) — the op-coverage lowering
+  table (Add/Mul/Relu/Softmax/Gemm → maki/Habu-PTX entries) with a **fail-closed**
+  policy: an unsupported op is rejected, never silently approximated. Runnable.
+- **Eval harness core** (`maki/eval.f`, `maki/eval-test.f`) — the thesis's judge:
+  the CHECKER scores each candidate kernel (certify = pass), with pass@1/pass@k
+  tallying. The model-generation + repair arm is external; this is the correctness
+  gate it is scored against. Runnable.
+
 The optimizer/loss/autograd element rules apply per-weight; the tensor-level apply
 (one update / reduction / op over a whole tensor) lowers onto a Habu-PTX kernel
 once codegen lands. The rules themselves are exact, checked, gradient-verified,
-and tested now.
+and tested now. No "better target" claim until the full eval matrix runs.
 
 ## Next (see root PLAN.md + dots)
 
