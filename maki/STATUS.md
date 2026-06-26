@@ -9,8 +9,16 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
 
 - **Tensor shape + dtype metadata** (`maki/tensor.f`, `maki/tensor-test.f`) — the
   v0 tensor type foundation: 2D shape arithmetic (element count, broadcast
-  compatibility) and the sm_87 dtype set (f32 / f16 / bf16 / u32 / i32) with byte
-  sizes. Pure checked Habu, runnable, independent of the type-only PTX runtime.
+  compatibility/result) and the sm_87 dtype set (f32 / f16 / bf16 / u32 / i32)
+  with byte sizes. Pure checked Habu, runnable.
+- **Optimizers** (`maki/optim.f`, `maki/optim-test.f`) — SGD, SGD+momentum, and
+  L2 weight decay as float update rules (the per-weight math). Runnable.
+- **Losses** (`maki/loss.f`, `maki/loss-test.f`) — MSE + its gradient, and L1
+  (the per-element rule). Runnable.
+
+The optimizer/loss element rules apply per-weight; the tensor-level apply (one
+update / one reduction over a whole tensor) lowers onto a Habu-PTX kernel once
+codegen lands. The rules themselves are exact, checked, and tested now.
 
 ## Next (see root PLAN.md + dots)
 
