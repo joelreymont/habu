@@ -616,7 +616,7 @@ TEST-SUITE map-stdlib
 ;TEST-SUITE
 
 TEST-SUITE ptx-stdlib
-   lib/errors.f lib/test.f lib/ptx.f lib/ptx-test.f
+   lib/errors.f lib/test.f lib/ptx.f lib/ptx-test.f lib/ptx-tile.f lib/ptx-tile-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-toolchain
