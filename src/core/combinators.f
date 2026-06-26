@@ -2,11 +2,9 @@
 
 : DIP ( R a [ R -- S ] -- S a )
    swap >r execute r> ;
-s" DIP" s" R a [ R -- S ] -- S a" TRUST
 
 : KEEP ( R a [ R a -- S ] -- S a )
    over >r execute r> ;
-s" KEEP" s" R a [ R a -- S ] -- S a" TRUST
 
 \ BI/TRI and the iterators must keep quotations available across calls. Modeling
 \ that in checked code would require recursive quotation types, so these are

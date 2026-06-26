@@ -130,6 +130,9 @@ unconditional loop back-edges) are rejected unless they are structural closers
 that merge the dead path, such as `else`, `then`, `loop`, `+loop`, `repeat`,
 `again`, or `;]`.
 
+Checked definitions with explicit higher-order effects record those effects for
+later callers; use `TRUST` only when the body itself cannot be checked.
+
 ## Escape hatches
 
 - `TRUSTED: NAME ( eff ) body ;` — record `eff` for `NAME` **without** checking

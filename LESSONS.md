@@ -128,6 +128,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `s"` length already on the stack. Passing an extra literal length left a
   phantom cell under `SIG-PREFIX?` and crashed atom parsing; prove new signature
   tokens with direct `ATOM-TOK?`/`TOK-TYPE` probes before rebuilding.
+- **Checked higher-order signatures can publish themselves:** quotation-bearing
+  explicit effects such as `DIP`/`KEEP` now render into `USIGS` and show up in
+  `tools/public-signatures.f`; do not keep a `TRUST` row for a checked body just
+  to pin its public scheme.
 
 ## Tool & Infra
 
