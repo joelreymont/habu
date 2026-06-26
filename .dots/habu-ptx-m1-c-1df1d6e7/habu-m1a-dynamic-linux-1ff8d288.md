@@ -1,9 +1,11 @@
 ---
 title: "M1a: dynamic Linux ELF (first-symbol bootstrap)"
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-06-25T13:48:30.803398+02:00\""
+created-at: "\"\\\"2026-06-25T13:48:30.803398+02:00\\\"\""
+closed-at: "2026-06-26T20:47:33.460298+02:00"
+close-reason: "completed: Linux bin/hb is dynamic ET_EXEC with PT_INTERP /lib/ld-linux-aarch64.so.1, RW PT_DYNAMIC, DT_NEEDED libc.so.6, SysV hash, R_AARCH64_GLOB_DAT for dlopen/dlsym at 0x5000b0/0x5000b8, nonzero runtime slots, AOT positive dynamic-ELF assertions, and full native gate pass."
 ---
 
 PIVOTAL. The Linux bin/hb is a static no-libc ELF (src/os/linux/elf.f: ET_EXEC, single PT_LOAD, no PT_INTERP/.dynamic) -> no dlopen exists. Decision: make it a DYNAMIC ELF so ld.so provides dlopen/dlsym. Extend elf.f: PT_INTERP=/lib/ld-linux-aarch64.so.1; .dynamic with DT_NEEDED libc.so.6 (glibc>=2.34 has dlopen/dlsym in libc); .dynsym/.dynstr/.gnu.hash; .rela.plt + PLT/GOT stubs for dlopen,dlsym. PRIMARY RISK: the self-host snapshot/image embedding (src/habu/snap.f) must still produce a working dynamic bin/hb that self-rebuilds. Verify on zed: dynamic bin/hb self-hosts + resolves dlopen via PLT.
