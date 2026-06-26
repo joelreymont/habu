@@ -27,9 +27,10 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
   the strongest form of the verified-gradient thesis, demonstrated numerically.
 
 - **Training loop** (`maki/train.f`, `maki/train-test.f`) — the forward → loss →
-  backward → optimizer cycle, composing autograd + loss + optim into a step that
-  **provably reduces the loss**: a 1-weight linear model trains from loss 36 to ~0
-  and the weight converges to the optimum over 20 SGD steps. Runnable.
+  backward → optimizer cycle that **provably reduces the loss**, at both scalar and
+  **TENSOR** scale: a 1-weight model trains loss 36→~0, and a whole weight TENSOR
+  [0,0] trains to the optimum [3,4] with tensor loss 180→~0 over 50 SGD epochs
+  (composing the tensor arrays + gradient + loss + optim). Runnable on the host.
 
 - **ONNX import** (`maki/onnx.f`, `maki/onnx-test.f`) — the op-coverage lowering
   table (Add/Mul/Relu/Softmax/Gemm → maki/Habu-PTX entries) with a **fail-closed**
