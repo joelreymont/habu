@@ -338,6 +338,10 @@ file.
 - **Checked tool libraries restore checking.** A shared lint/check/tool library
   must not leave callers in unchecked mode. Declare and test any boundary
   locally, then reinstall `CHECK!` immediately after the raw declarations.
+- **Generated unchecked spans are split at the first checkable file.** When a
+  build tool emits `0 set-check`, prove the shortest source span empirically,
+  reinstall the hook as soon as the next file checks, and pin the cut with a
+  source-shape regression.
 - **Generated checker preludes must rebind `HOOK`.** If generated source reloads
   `src/core/checker.f` or `src/core/render.f`, it must reload
   `src/core/check-hook.f` before `' HOOK set-check`; otherwise the hook can still

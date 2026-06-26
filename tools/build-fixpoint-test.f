@@ -15,6 +15,11 @@ variable BFT-STAGE2-U
 variable BFT-SNAP-U
 variable BFT-BUILD-FILES
 variable BFT-READ-A
+variable BFT-PROF-I
+variable BFT-REGON-I
+variable BFT-REG-I
+variable BFT-JITOFF-I
+variable BFT-JIT-I
 
 create BFT-ROOT-BUF FS-PATH-CAP allot
 create BFT-HB-NEW-BUF FS-PATH-CAP allot
@@ -109,12 +114,34 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 : BFT-READ ( ptr u8 n -- n )
    BFT-READ-BUF BFT-READ-CAP READ-ALL ;
 
+: BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u start needle:ptr nu :}
+   start 0 < if -1 exit then
+   start u >= if -1 exit then
+   a start BYTE+ u start - needle nu FIND-SUB
+   dup 0 < if exit then
+   start + ;
+
+: BFT-FOUND ( n -- )
+   0 >= TTRUE ;
+
 : BFT-TEST-STAGE2-SOURCE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
    BFT-READ-BUF u s" 0 set-check" CONTAINS? TTRUE
    BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
+
+: BFT-TEST-CHECKED-REGALLOC ( -- )
+   BFT-STAGE2 BFT-READ {: u :}
+   BFT-READ-BUF u s" : BPROF-ON" FIND-SUB dup BFT-FOUND BFT-PROF-I !
+   BFT-READ-BUF u BFT-PROF-I @ s" ' HOOK set-check" BFT-FIND-AFTER dup BFT-FOUND BFT-REGON-I !
+   BFT-READ-BUF u BFT-REGON-I @ s" : EMIT-VRINIT" BFT-FIND-AFTER dup BFT-FOUND BFT-REG-I !
+   BFT-READ-BUF u BFT-REG-I @ s" 0 set-check" BFT-FIND-AFTER dup BFT-FOUND BFT-JITOFF-I !
+   BFT-READ-BUF u BFT-JITOFF-I @ s" : FOLD-ENTRY" BFT-FIND-AFTER dup BFT-FOUND BFT-JIT-I !
+   BFT-PROF-I @ BFT-REGON-I @ < TTRUE
+   BFT-REGON-I @ BFT-REG-I @ < TTRUE
+   BFT-REG-I @ BFT-JITOFF-I @ < TTRUE
+   BFT-JITOFF-I @ BFT-JIT-I @ < TTRUE ;
 
 : BFT-TEST-STAGE2-SCRATCH ( -- )
    BFT-STAGE2 BFT-READ {: u :}
@@ -164,6 +191,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    BFT-TEST-BUILD
    BFT-TEST-NO-BUILD-SHIMS
    BFT-TEST-STAGE2-SOURCE
+   BFT-TEST-CHECKED-REGALLOC
    BFT-TEST-SNAP-SOURCE
    BFT-TEST-ALL-STANDALONE
    CLEANUP-RUN

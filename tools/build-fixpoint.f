@@ -311,8 +311,10 @@ variable BF-TMP-U
    then
    BF-TARGET-UNKNOWN ;
 
+: BF-APPEND-IMAGE-BYTES ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE ;
+
 : BF-APPEND-TARGET-IMAGE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/os/image-bytes.f" BF-APPEND-SOURCE
    HB-TARGET-LINUX? if
       out outu s" src/os/linux/elf.f" BF-APPEND-SOURCE
       out outu s" src/os/linux/sign.f" BF-APPEND-SOURCE
@@ -337,13 +339,16 @@ variable BF-TMP-U
    out outu s" src/core/roles.f" BF-APPEND-SOURCE
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-IMAGE-BYTES
+   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-CHECK-ON
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu BF-APPEND-CHECK-ON ;
