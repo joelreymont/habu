@@ -165,7 +165,7 @@ TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    VERIFY-SOURCE
    READ-PROG
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
-   0 STDIN? !
+   0 0= 0= STDIN? !
    BLD-PB@ PN @ EMIT-FORTH
    ASM-CODE BUILD-IMAGE
    s" hb-prog" SET-SIGID  CODESIG2

@@ -332,37 +332,47 @@ s" c-bp-watch-dump" s" n n --" TRUST
    HB-TARGET-MACOS? if exit then
    C-TARGET-UNKNOWN ;
 
-: PFX-LOAD? ( n -- n )
-   dup PFX-COMMON = if drop -1 exit then
-   dup PFX-LINUX = if drop HB-TARGET-LINUX? if -1 else 0 then exit then
-   PFX-MACOS = if HB-TARGET-MACOS? if -1 else 0 then else 0 then ;
+: PFX-LOAD? ( n -- bool )
+   dup PFX-COMMON = if drop 0 0= exit then
+   dup PFX-LINUX = if drop HB-TARGET-LINUX? exit then
+   PFX-MACOS = if HB-TARGET-MACOS? else 0 0= 0= then ;
 
-: PFX-ROW ( xt n n ptr u8 n -- ) {: xt kind var a u :}
-   kind var a u xt execute ;
-
-: PFX-FILES ( xt -- ) {: xt :}
-   xt PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-ROW
-   xt PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-ROW
-   xt PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-ROW
-   xt PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-ROW
-   xt PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-ROW
-   xt PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-ROW
-   xt PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-ROW
-   xt PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-ROW
-   xt PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-ROW
-   xt PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-ROW
-   xt PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-ROW ;
-
-: PFX-LOAD-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+: PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    kind PFX-LOAD? if 12 var @ ADR,  LSRCRD @ BL, then ;
 
-: PFX-PATH-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+: PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var @ LBL,  a u ZBYTES, ;
+
+: PFX-LOAD-FILES ( -- )
+   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
+   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-LOAD-ROW
+   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
+   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW ;
+
+: PFX-PATH-FILES ( -- )
+   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
+   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
+   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-PATH-ROW
+   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-PATH-ROW
+   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
+   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
    PFX-TARGET-OK
-   ['] PFX-LOAD-ROW PFX-FILES ;
+   PFX-LOAD-FILES ;
 
 : EMIT-COLD-PREFIX ( -- )
    LBL {: done :}
@@ -649,7 +659,7 @@ create ENDLOC-KW 58 c, 125 c,
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
-   ['] PFX-PATH-ROW PFX-FILES ;
+   PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w :}  9 w LIT64,  LCEMIT @ BL, ;
@@ -1414,24 +1424,25 @@ create ENDLOC-KW 58 c, 125 c,
    C-CALL ;
 variable CFSK
 
-: CF-ENTRY ( n ptr u8 n n -- ) {: lmainlbl kwvar:ptr kwlen hxt :}
+TRUSTED: EM-HXT-EXECUTE ( n -- )
+   execute ;
+
+: CF-ENTRY ( n ptr a n n -- ) {: lmainlbl kwvar:ptr kwlen hxt :}
    LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
    LVSPILL @ BL,
-   hxt execute  lmainlbl B,
+   hxt EM-HXT-EXECUTE  lmainlbl B,
    CFSK @ LBL, ;
-s" cf-entry" s" n ptr a n n --" TRUST
 
 \ cfn-entry: keyword case WITHOUT the spill — loop words manage the VS
 \ themselves (BEGIN snapshots it, AGAIN/REPEAT reconcile to the snapshot).
-: CFN-ENTRY ( n ptr u8 n n -- ) {: lmainlbl kwvar:ptr kwlen hxt :}
+: CFN-ENTRY ( n ptr a n n -- ) {: lmainlbl kwvar:ptr kwlen hxt :}
    LBL CFSK !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
-   hxt execute  lmainlbl B,
+   hxt EM-HXT-EXECUTE  lmainlbl B,
    CFSK @ LBL, ;
-s" cfn-entry" s" n ptr a n n --" TRUST
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
@@ -1442,7 +1453,7 @@ variable CFSK2
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
 \ a REGISTER top branches directly (no spill + memory pop); con or empty falls
 \ back to the spill + pop path. hxtr gets the condition reg in x14.
-: CFB-ENTRY ( n ptr u8 n n n -- ) {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
+: CFB-ENTRY ( n ptr a n n n -- ) {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -1453,19 +1464,18 @@ variable CFSK2
    SP SP 16 SUBI,  14 SP 8 STR,
    LVDROP @ BL,  LVSPILL @ BL,
    14 SP 8 LDR,  SP SP 16 ADDI,
-   hxtr execute
+   hxtr EM-HXT-EXECUTE
    lmainlbl B,
    CFSK2 @ LBL,
    LVSPILL @ BL,
-   hxtm execute
+   hxtm EM-HXT-EXECUTE
    lmainlbl B,
    CFSK @ LBL, ;
-s" cfb-entry" s" n ptr a n n n --" TRUST
 
 \ cfbn-entry: like CFB-ENTRY but the register path neither spills nor saves —
 \ UNTIL reconciles to the BEGIN snapshot itself; the condition reg x14 survives
 \ LVDROP (which only relabels the VS, no emission).
-: CFBN-ENTRY ( n ptr u8 n n n -- ) {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
+: CFBN-ENTRY ( n ptr a n n n -- ) {: lmainlbl kwvar:ptr kwlen hxtm hxtr :}
    LBL CFSK !  LBL CFSK2 !
    0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
    0 CFSK @ CBZ,
@@ -1474,14 +1484,13 @@ s" cfb-entry" s" n ptr a n n n --" TRUST
    7 CFSK2 @ CBNZ,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  14 8 0 LDR,
    LVDROP @ BL,
-   hxtr execute
+   hxtr EM-HXT-EXECUTE
    lmainlbl B,
    CFSK2 @ LBL,
    LVSPILL @ BL,
-   hxtm execute
+   hxtm EM-HXT-EXECUTE
    lmainlbl B,
    CFSK @ LBL, ;
-s" cfbn-entry" s" n ptr a n n n --" TRUST
 
 : J-IFR ( -- )  C-PUSHCP  8 $B4000000 LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
 
@@ -1567,11 +1576,13 @@ s" c-local-ref" s" n n --" TRUST
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
+TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
+
 : EM-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
-   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 EM-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 DATA-VA LIT64,  0 5 CMP,
+   5 EM-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT SYS,
    dvok LBL, ;

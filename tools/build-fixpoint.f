@@ -343,15 +343,11 @@ variable BF-TMP-U
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
-   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-CHECK-ON
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-CHECK-OFF
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-CHECK-ON ;
+   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;

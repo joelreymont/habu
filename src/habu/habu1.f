@@ -3,8 +3,8 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
-variable STDIN?   0 STDIN? !
-s" STDIN?" s" -- ptr n" TRUST
+variable STDIN?   0 0= 0= STDIN? !
+s" STDIN?" s" -- ptr bool" TRUST
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
 $F9000269 constant W-PUSH0
@@ -128,7 +128,7 @@ LINUX-F-LINUX-SPECIFIC-BASE LINUX-F-DUPFD-CLOEXEC-OFF + constant LINUX-F-DUPFD-C
 
 : LINUX-SPAWN-FAIL ( reg -- )
    {: errfd :}
-   0 errfd 0 ADDI,
+   0 errfd REG>N 0 ADDI,
    15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
    1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -137,9 +137,9 @@ s" linux-spawn-fail" s" reg --" TRUST
 : LINUX-DUP2-FD ( reg fd reg -- )
    {: fdreg newfd errfd :}
    LBL LBL {: skip ok :}
-   fdreg 0 CMPI,  C-LT skip BCOND,
-   fdreg newfd CMPI,  C-EQ skip BCOND,
-   0 fdreg 0 ADDI,  1 newfd MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
+   fdreg REG>N 0 CMPI,  C-LT skip BCOND,
+   fdreg REG>N newfd FD>N CMPI,  C-EQ skip BCOND,
+   0 fdreg REG>N 0 ADDI,  1 newfd FD>N MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
    9 C-CS CSET,  9 ok CBZ,
       errfd LINUX-SPAWN-FAIL
    ok LBL,
@@ -149,8 +149,8 @@ s" linux-dup2-fd" s" reg fd reg --" TRUST
 : LINUX-CHDIR-FD ( reg reg -- )
    {: cwdreg errfd :}
    LBL LBL {: skip ok :}
-   cwdreg 0 CMPI,  C-LT skip BCOND,
-   0 cwdreg 0 ADDI,  NR-CHDIR SYS,
+   cwdreg REG>N 0 CMPI,  C-LT skip BCOND,
+   0 cwdreg REG>N 0 ADDI,  NR-CHDIR SYS,
    9 C-CS CSET,  9 ok CBZ,
       errfd LINUX-SPAWN-FAIL
    ok LBL,
@@ -231,8 +231,8 @@ s" linux-spawn-child" s" --" TRUST
    {: pathreg argvreg envreg cwdreg infd outfd errfd :}
    LBL LBL LBL LBL {: child closefail fail done :}
    SP SP LINUX-SPAWN-FRAME SUBI,
-   pathreg SP 0 STR,  argvreg SP 8 STR,  envreg SP 16 STR,  cwdreg SP 24 STR,
-   infd SP 32 STR,  outfd SP 40 STR,  errfd SP 48 STR,
+   pathreg REG>N SP 0 STR,  argvreg REG>N SP 8 STR,  envreg REG>N SP 16 STR,  cwdreg REG>N SP 24 STR,
+   infd REG>N SP 32 STR,  outfd REG>N SP 40 STR,  errfd REG>N SP 48 STR,
    0 SP LINUX-SPAWN-PIPE-R-OFF ADDI,  1 LINUX-O-CLOEXEC LIT64,  NR-PIPE SYS,
    9 C-CS CSET,  9 fail CBNZ,
    LINUX-SPAWN-PREP-W

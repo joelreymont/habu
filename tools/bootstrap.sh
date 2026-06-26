@@ -100,20 +100,8 @@ emit_src() {
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
-    if [[ "$f" == "src/habu/habu1.f" ]]; then
-      printf "0 set-check\n" >> "$out"
-    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
-    if [[ "$f" == "src/habu/prof.f" ]]; then
-      printf "' HOOK set-check\n" >> "$out"
-    fi
-    if [[ "$f" == "src/habu/regalloc.f" ]]; then
-      printf "0 set-check\n" >> "$out"
-    fi
-    if [[ "$f" == "src/habu/habu2.f" ]]; then
-      printf "' HOOK set-check\n" >> "$out"
-    fi
   done
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"

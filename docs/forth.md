@@ -54,6 +54,10 @@ file.
   can express the operation, define a small typed word and use it from callers;
   add a primitive model or `TRUSTED:` shim only after proving the checker cannot
   certify that helper.
+- **Trust the uncheckable operation, not the dispatcher.** For indirect emitter
+  callbacks, keep the row/dispatch word checked and isolate only the raw
+  `execute` in a tiny `TRUSTED:` shim. Do not convert a whole factored dispatcher
+  to trusted just because one leaf operation is higher-order.
 - **Build checked task vocabulary before fighting syntax.** If a test, tool, or
   benchmark needs structured rows, JSON/TSV fragments, generated source,
   diagnostics, packets, or repeated assertions, factor domain words or a focused

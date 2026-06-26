@@ -1091,37 +1091,47 @@ create ZBYTE 0 c,
    HB-TARGET-MACOS? if exit then
    C-TARGET-UNKNOWN ;
 
-: PFX-LOAD? ( n -- n )
-   dup PFX-COMMON = if drop -1 exit then
-   dup PFX-LINUX = if drop HB-TARGET-LINUX? if -1 else 0 then exit then
-   PFX-MACOS = if HB-TARGET-MACOS? if -1 else 0 then else 0 then ;
+: PFX-LOAD? ( n -- bool )
+   dup PFX-COMMON = if drop 0 0= exit then
+   dup PFX-LINUX = if drop HB-TARGET-LINUX? exit then
+   PFX-MACOS = if HB-TARGET-MACOS? else 0 0= 0= then ;
 
-: PFX-ROW ( xt n n ptr u8 n -- ) {: xt kind var a u :}
-   kind var a u xt execute ;
-
-: PFX-FILES ( xt -- ) {: xt :}
-   xt PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-ROW
-   xt PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-ROW
-   xt PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-ROW
-   xt PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-ROW
-   xt PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-ROW
-   xt PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-ROW
-   xt PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-ROW
-   xt PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-ROW
-   xt PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-ROW
-   xt PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-ROW
-   xt PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-ROW ;
-
-: PFX-LOAD-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+: PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    kind PFX-LOAD? if 12 var @ ADR,  LSRCRD @ BL, then ;
 
-: PFX-PATH-ROW ( n n ptr u8 n -- ) {: kind var a u :}
+: PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var @ LBL,  a u ZBYTES, ;
+
+: PFX-LOAD-FILES ( -- )
+   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
+   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-LOAD-ROW
+   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
+   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW ;
+
+: PFX-PATH-FILES ( -- )
+   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
+   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
+   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-PATH-ROW
+   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-PATH-ROW
+   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
+   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
    PFX-TARGET-OK
-   ['] PFX-LOAD-ROW PFX-FILES ;
+   PFX-LOAD-FILES ;
 
 : EMIT-COLD-PREFIX ( -- )
    LBL {: done :}
@@ -1405,7 +1415,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
-   ['] PFX-PATH-ROW PFX-FILES ;
+   PFX-PATH-FILES ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : C-EMITW ( n -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word
@@ -2213,11 +2223,13 @@ variable CFSK2
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
+: EMIT-DATA-VA>N ( -- n ) DATA-VA ;
+
 : EMIT-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
-   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 EMIT-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 DATA-VA LIT64,  0 5 CMP,
+   5 EMIT-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT SYS,
    dvok LBL, ;

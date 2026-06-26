@@ -468,6 +468,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `RUN-RC`). Large native tool bundles (lint tables + `json.f` + big buffers) can
   corrupt reads — lean standalone reader + distinct scratch vars; stream large
   JSONL in chunks, reserve fixed buffers only for bounded summaries.
+- **Source-shape checks distinguish code from quoted code:** generated builders may
+  contain strings such as `s" 0 set-check"` that are intended runtime source.
+  Tests that ban generated check-off lines should match newline-delimited source
+  lines, not raw substrings.
 - **Build helper fixtures stay split by boundary:** composing bootstrap-codegen,
   warm-image, build-fixpoint, hb-build, and codesign tests in one `hb` image hit
   rc 76 before `hb-build-test.f` started, while each boundary group passed alone.
@@ -538,6 +542,12 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Phase-token and row-sealing fixes moved into the standard:** the `asm`/`img`/
   `snap` ordering and implicit-row underflow lessons are now checker/type-model
   rules in `docs/forth.md`.
+- **Emitter hard-hook cutovers keep roles until raw opcodes:** checked public
+  helpers should retain nominal roles (`reg`, `ptr bool`, `ptr a`) and erase only
+  at raw mnemonic/immediate boundaries (`REG>N`, narrow trusted fixed-VA numeric
+  helpers). The CF-ENTRY cutover worked by keeping dispatchers checked and moving
+  only raw `execute` into `EM-HXT-EXECUTE`; whole trusted dispatcher bodies with
+  scratch cells crashed during `EMIT-FORTH`.
 - **Benchmark driver buffers are shared infrastructure:** the LLM drivers route
   raw model text, repair packets, bundle output, and checker captures through
   `DS-*` spans. Keep those spans OS-backed and capacity-checked at the shared

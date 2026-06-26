@@ -98,7 +98,7 @@ s" HB@" s" -- ptr u8" TRUST
 
 : GO ( -- )
    READ-REPL
-   1 STDIN? !
+   0 0= STDIN? !
    HB@ HL @ EMIT-FORTH
    ASM-CODE BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2
