@@ -567,3 +567,7 @@ lesson — keep the specific word/code/path, cut the prose.
   helper ran. When a gate helper may compose with other checked tools, model
   file/image storage as runtime `lib/memory.f` allocation sized from `FILE-SIZE`;
   keep always-resident `create ... allot` buffers for small fixed metadata only.
+- **`STATUS.md` verified date is UTC for the gate:** `stale-status-lint` uses the
+  native `DATE-NOW` UTC date unless an explicit test date is passed. Do not
+  update `Last verified` to the operator's local date during a late-night run;
+  the full gate will reject it even if a manual lint with a local date passes.

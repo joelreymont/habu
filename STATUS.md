@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-06-27
+Last verified: 2026-06-26
 Gate: passing; 2m06.99s on 2026-06-27 on Linux/aarch64 with warm checker/tool images, shared hb-build maker cache, in-process positive AOT builds, and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
