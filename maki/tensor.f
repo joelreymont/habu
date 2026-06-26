@@ -34,3 +34,14 @@ create DT-SIZES  4 , 2 , 2 , 4 , 4 ,    \ bytes per dtype, indexed by DT-*
 
 : TENSOR-BYTES ( n n n -- n ) {: rows cols dt :}
    rows cols SHAPE-ELEMS  dt DT-SIZE  * ;
+
+: SHAPE-EQUAL? ( n n n n -- bool ) {: r1 c1 r2 c2 :}
+   r1 r2 =  c1 c2 =  and ;
+
+\ Broadcast result dim: for compatible dims (equal, or one is 1) the non-1 wins,
+\ which is max. Pair with SHAPE-BCAST? to guard compatibility first.
+: DIM-MAX ( n n -- n ) {: a b :}
+   a b > if a else b then ;
+
+: BCAST-SHAPE ( n n n n -- n n ) {: r1 c1 r2 c2 :}
+   r1 r2 DIM-MAX  c1 c2 DIM-MAX ;

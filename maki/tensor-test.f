@@ -24,6 +24,14 @@ DT-I32  DT-SIZE  4 T=
 3 4 DT-F32  TENSOR-BYTES 48 T=
 2 8 DT-F16  TENSOR-BYTES 32 T=
 
+\ exact shape equality
+3 4 3 4 SHAPE-EQUAL? TTRUE
+3 4 3 5 SHAPE-EQUAL? TFALSE
+
+\ broadcast result shape (non-1 dim wins)
+3 1 3 4 BCAST-SHAPE  4 T=  3 T=     \ -> (3,4): cols then rows off the stack
+1 1 6 8 BCAST-SHAPE  8 T=  6 T=     \ -> (6,8)
+
 \ invalid dtype fails closed
 : BAD-DT ( -- )  99 DT-SIZE drop ;
 ' BAD-DT E-MK-DTYPE TTHROWS
