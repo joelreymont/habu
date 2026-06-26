@@ -17,10 +17,21 @@ Four parallel reviewers (completeness, specificity/realism, edge-cases, scout)
 re-grounded in `docs/`, the dot chain, the checker surface, and the gate lints.
 The load-bearing corrections, all verified against code:
 
-- **M2 has no dot.** The parametric-type checker extension (ptx.md §Foundational
-  prerequisites #2; ptx-sketch.md §Milestones #2) is "large" and gates M4→M11 +
-  inference + AD + all of Maki. `dot ls` has no `m2`; M4's dot even says "also
-  needs M2". The old "m1 … m11 chain" claim was false. → M2 added below.
+- **M2 is already built+landed — corrected by measurement (2026-06-27).** The
+  review flagged "M2 has no dot" (ptx-sketch.md §Milestones #2 sizes it "large")
+  and inferred it was an unbuilt gate. **That inference was wrong.** The
+  parametric-type machinery is implemented in `src/core/checker.f` and works in the
+  installed `bin/hb`: `SIG-TYPE`/`MK-PARAM` parse `span<space-global,f32,extent-n>`;
+  the unifier does field-by-field param unify; `render.f` round-trips; `KERNEL:`/
+  `GRID:`/`WHERE`/`%BLOCK` check (lib/ptx-test.f runs clean). Empirically a matching
+  parametric sig certifies (exit 0); `space-global`→`space-shared` and `extent-r`→
+  `extent-c` mismatches reject with field-precise diagnostics (exit 70). The "no
+  dot" was because M2 was *done*, not unbuilt. **The real checker-track frontier is
+  M4 (the tile *operation* vocabulary — MK-SPAN/GRID-CTX/LOAD/STORE/SCALE/
+  collectives — none of which exist yet), now UNBLOCKED.** The only owed M2 remnant
+  is a committed parametric type-mismatch negative-regression suite (the rejects
+  work but aren't pinned in the gate). Lesson recorded in LESSONS.md: ground
+  capability claims in the checker source, not the dot tracker + spec.
 - **Maki (workstream D) is named, not designed.** No `maki/` dir, no design doc
   for tensors / optimizers / losses / ONNX / training / eval orchestration. Only
   the *Habu* features (A=ptx-sketch.md, B=inference.md, C=autograd.md) are
@@ -83,8 +94,11 @@ Three layers, not two:
   disclosure, BLOCK-MAX tie-break, read-multiplicity default, gradient-buffer
   extent disclosure).
 - Dots: `habu-ptx-m1` (+ `m1a` done / `m1b` ready / `m1c`,`m1d` blocked), `m3`
-  (active), `m4 … m11`, `habu-ptx-local-type`, `habu-ptx-ad-reverse`. **No `m2`,
-  no PTX-IR/opt-layer dot, no Maki dots yet** — `/small-dots` creates them.
+  (active), `m4 … m11`, `habu-ptx-local-type`, `habu-ptx-ad-reverse`, plus the
+  `/small-dots` additions (PTX-IR-layer, autograd primitives + pass, 6 Maki
+  design-doc gates, Maki impl, the 3 trust-fence dots, the parametric
+  negative-regression dot). **M2 is built (closed by evidence), so M4 is the ready
+  checker-track frontier.**
 - `src/arch/ptx/emit.f` — a **hardcoded one-kernel SAXPY PTX string printer**
   (literal `s" …"` per instruction), not a parametric encoder; M3's device-run
   acceptance is still unmet (needs the M1d CUDA Driver harness on `zed`). The
@@ -216,8 +230,9 @@ the on-device track and gates nothing on the checker track.
 
 1. **On-device track:** M1b (ready) → M1c → M1d (CUDA Driver harness) →
    M3-device-run vs CPU golden. Unblocks every on-device acceptance.
-2. **Checker track (in parallel, no CUDA needed):** **M2 parametric checker** +
-   **M3-emit** (minimal encoder) → M4 tile DSL + negatives → M5 mask/uniformity →
+2. **Checker track (in parallel, no CUDA needed):** ~~M2 parametric checker~~
+   (**already built+landed in checker.f** — see *Review log*) + **M3-emit** (minimal
+   encoder) → **M4 tile DSL + negatives (the ready frontier)** → M5 mask/uniformity →
    M6 collectives/softmax (needs the parametric encoder, see *Current state*). M6
    is the autograd gate.
 3. **PTX IR + opt layer** (new — fold/DCE/CSE/peephole): a pre-M6 parallel item on

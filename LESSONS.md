@@ -132,6 +132,18 @@ lesson — keep the specific word/code/path, cut the prose.
   root plan is drift. Current verification in `STATUS.md`, memory in `LESSONS.md`,
   ready work in `dot ready`. Completed/landed plans retire their root docs; root
   Markdown is contracts, status, or active work only.
+- **Ground capability claims in the source, not the dot tracker + spec.** The PLAN
+  review concluded "M2 (parametric checker) is a large unbuilt gate" from `dot ls`
+  (no `m2` dot) + the spec calling it "large", and elevated it to CRITICAL. A
+  10-second empirical check refuted it: M2 is fully built+landed in
+  `src/core/checker.f` (`SIG-TYPE`/`MK-PARAM` parse `span<...>`, field-by-field
+  unify, `render.f` round-trip, `KERNEL:`/`GRID:`/`WHERE`) and works in the
+  installed `bin/hb` — a matching parametric sig certifies (exit 0), space/extent
+  mismatches reject with field-precise diagnostics (exit 70). A "missing dot" can
+  mean *done*, not *unbuilt*. Before sizing a checker feature as a prerequisite,
+  run a minimal certify/reject probe through `bin/hb`; the real unbuilt frontier
+  was M4 (the tile *operations*: MK-SPAN/LOAD/STORE/SCALE/collectives — absent),
+  not M2.
 - **Dot hygiene:** use only documented commands — `dot add "T" -d '…'`,
   `dot ready`, `dot ls`, `dot tree`, `dot show <id>`, `dot on/off <id> -r '…'`.
   Mark/close the exact printed ID (don't infer from filenames). `-P <root-id>`
