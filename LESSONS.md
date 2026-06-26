@@ -132,6 +132,24 @@ lesson — keep the specific word/code/path, cut the prose.
   root plan is drift. Current verification in `STATUS.md`, memory in `LESSONS.md`,
   ready work in `dot ready`. Completed/landed plans retire their root docs; root
   Markdown is contracts, status, or active work only.
+- **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
+  checker instantiates a called word's effect by RE-PARSING its stored signature
+  STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;
+  re-parsed through `SIG-TYPE`). Type vars freshen per parse (`NMAP-RESET` +
+  `VAR-OF`→`FRESH`), but nominal atoms (`MK-ATOM`) keep their literal name, so two
+  parses of `extent-n`/`mask-live` produce string-equal atoms — the exact reason a
+  constructor's extent/mask is NOT fresh per call (the soundness gap). FIX: add a
+  fresh-marker atom convention (e.g. `mask-fresh`/`extent-fresh`); in `SIG-TYPE`/
+  `MK-ATOM`, mint a UNIQUE name (base + a global counter) for a marked atom so each
+  call's parse yields a distinct RIGID atom that string-mismatches others. Declare
+  `GRID-CTX`/`ROW-CTX`/`MK-SPAN` outputs with the fresh marker. Result: two
+  independent ctxs get distinct rigid masks → a mixed-mask op rejects (a generic
+  op's var requires both equal; distinct rigid atoms don't unify), while one ctx
+  bound to a local reuses its single fresh mask → SAXPY still certifies. Requires a
+  `checker.f` change + a fixpoint rebuild — do it in a focused session with a
+  recovery path (a current gforth or a known-good `bin/hb`), since a bad rebuild
+  bricks the engine and the local gforth is too old to bootstrap. Closes dot
+  `habu-add-per-call`.
 - **Local type inference is already built too (proven 2026-06-27).** Like M2, the
   inference.md feature ("infer bodies, annotate the edge") is operational in the
   shipped checker: untyped intermediate locals (`{: x :}`/`{: g :}`/`{: c :}`)

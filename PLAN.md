@@ -11,6 +11,41 @@ subagents grounded in code on 2026-06-26 — see *Review log* below); the accept
 findings are folded in here. Next it is split (`/small-dots`) and implemented by
 another agent **in this workspace** (`~/Work/habu-maki`, branch `maki`).
 
+## Implementation status (2026-06-27)
+
+Built + tested this session (the older sections below predate it):
+
+- **Habu-PTX checked kernels:** M4 tile vocab (`lib/ptx-tile.f`) + checked SAXPY;
+  M6 collectives/rows (`lib/ptx-collective.f`) + checked SOFTMAX-ROWS; both AD
+  primitives **BROADCAST** and **BLOCK-MAX-SELECT**; verified-gradient
+  SOFTMAX-ROWS-BWD. Gate-wired (`ptx-stdlib`), trust-lint green.
+- **Reverse-mode AD transform** (`lib/ptx-ad.f`): VJP table + reverse pass that
+  auto-derives backwards for **linear + unary-nonlinear (EXP./BLOCK-MAX) +
+  binary-nonlinear (\*./B-)** ops; algebraic-simplify peephole; save-vs-recompute
+  (VJP-SAVES + cost decision). (`B/`'s adjoint needs a uniform÷uniform op — dotted.)
+- **Found already-built (probed, not assumed):** M2 parametric checker; **local
+  type inference** (untyped intermediates infer + thread; misuse rejects).
+- **Maki framework** (`maki/`, fenced/one-way/extractable, its own gate): tensor
+  shape+dtype, **tensor-scale float arrays + tensor SGD**, autograd VJPs with
+  **numeric gradcheck**, optimizers (SGD family), losses (MSE/L1), a training loop
+  that **converges at tensor scale** (weight tensor [0,0]→[3,4]), ONNX fail-closed
+  op-lowering, and the eval harness **checker-as-judge** + pass@k. 9 components,
+  all runnable + tested.
+
+**Deep remainder (each a focused session; honestly unbuilt):**
+
+1. **M5 uniformity** — a uniform/lane-varying control effect in `checker.f`
+   (reject collectives under divergent control). Only matters for kernels with
+   data-dependent branches; current straight-line kernels are trivially uniform.
+2. **Rigid-token soundness** — fresh rigid extent/mask minting at constructors so
+   the mask/extent-identity negatives reject. Mechanism now precisely located and
+   bounded (see `LESSONS.md`): re-parse-per-call instantiation + unique atom
+   naming in `SIG-TYPE`/`MK-ATOM`; needs a `checker.f` change + fixpoint rebuild.
+3. **PTX codegen → device** — lowering the type-only kernels to run on `zed`; the
+   prerequisite for the eval-matrix data that would earn the thesis.
+
+The thesis "better target" claim stays **unmade** until item 3 produces the data.
+
 ## Review log (2026-06-26, folded in)
 
 Four parallel reviewers (completeness, specificity/realism, edge-cases, scout)
