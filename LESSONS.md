@@ -449,11 +449,12 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Verify emitted primitive bytes statically:** compute the exact ARM64 encodings
   and `grep` the on-disk `bin/hb` for the contiguous byte stream (ASLR slides the
   `[']` xt; file bytes are fixed) — proves codegen without a runtime call.
-- **M3 spike proven — Habu-emitted saxpy runs on the Orin GPU, bit-exact:**
-  `tools/ptx/saxpy.f` emits `.version 8.3`/`.target sm_87` PTX, `ptxas` (CUDA 12.6)
-  assembles it, the cubin matches a CPU golden 0/1000. Bit-exactness needs matching
-  rounding: `mul.rn.f32`+`add.rn.f32` (two roundings; SASS `FMUL`+`FADD`, not
-  `FFMA`) vs a golden compiled `-ffp-contract=off`.
+- **M3 has two proof levels:** `tools/ptx/saxpy.f` emits `.version 8.3`/
+  `.target sm_87` PTX and `tools/ptx/ptxas-smoke.f` proves `ptxas` assembly on
+  Orin without committing `.ptx`/`.cubin` artifacts. GPU launch + CPU golden is
+  not an M3 completion proof until the Habu CUDA Driver harness (M1d) launches
+  the cubin; the old `/tmp/saxpy_run.c` C smoke was useful evidence, not repo
+  infrastructure.
 
 ## Linux AOT / ELF
 
@@ -654,3 +655,7 @@ lesson — keep the specific word/code/path, cut the prose.
   `DS-*` spans. Keep those spans OS-backed and capacity-checked at the shared
   helpers (`DS-OUT-TEXT!`, `DS-READ-OUT-FILE`, `DS-HB-CAPTURE-MS`) so one arm
   cannot silently bias pass/reject accounting with a local fixed-buffer throw.
+- **PTX toolchain proof has two gates:** first, Habu must emit header-complete
+  PTX and `ptxas` must assemble it; second, the CUDA Driver harness must launch
+  the cubin and compare CPU golden. On `zed`, `ptxas` exists at
+  `/usr/local/cuda-12.6/bin/ptxas` but is not on `PATH`.

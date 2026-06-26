@@ -185,6 +185,11 @@ toolkit (`ptxas`) installed.
 - **Execution model:** tile-level (the stack holds tiles, not scalars).
 - **Backend:** PTX-direct → `ptxas` (own the codegen; ptxas does register
   allocation, scheduling, SASS).
+- **M3 local encoder:** `src/arch/ptx/emit.f` emits the checked sm_87 SAXPY PTX
+  toolchain kernel; `tools/ptx/saxpy.f` is the CLI entrypoint and
+  `tools/ptx/saxpy-test.f` pins the header/instruction contract.
+  `tools/ptx/ptxas-smoke.f` is the Orin-only checked smoke for the `ptxas`
+  step; cubin launch waits for the Habu CUDA Driver harness.
 - **Type system v0:** typed address spaces + extent-relative bounds + typed
   collectives (exact types in [`ptx-sketch.md`](ptx-sketch.md)).
 - **Flagship:** a real camera kernel (demosaic) proves the pipeline; fused

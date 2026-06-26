@@ -53,6 +53,8 @@ points stay listed.
   `BP+`, `BP*`, `BPN`, `BP-`, and `BP.`.
 - `src/habu/layout.f` — shared native image, dictionary, and snapshot layout
   constants used by builders and image inspection tools.
+- `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
+  toolchain spike.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
   `tools/jitdump.f` and `tools/imagedisasm.f`.
 - `tools/jitdump.f` — disassemble a compiled word from a source snippet; see
@@ -107,6 +109,10 @@ points stay listed.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
 - `tools/imagedisasm.f` — native raw image slice disassembler.
 - `tools/imagedisasm-test.f` — checked fixture coverage for raw image disassembly.
+- `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
+- `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
+- `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,
+  runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
 - `tools/srclist.f` — canonical source order.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.

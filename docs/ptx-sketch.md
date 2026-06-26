@@ -270,10 +270,12 @@ equal correctness, or there is no claim.
    `span<space-global,f32,extent-n>`, field-by-field unify, render/record
    round-trip, and a self-host fixpoint rebuild. The M2 defining vocabulary is
    `KERNEL:` plus `lib/ptx.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
-3. **Toolchain spike (no checker):** a minimal PTX encoder under `src/arch/ptx/`
-   (a new ISA target sharing none of `src/arch/arm64/`) emits header-complete
-   `saxpy.ptx` from hand-built IR → `ptxas -arch=sm_87` → run on the Orin via the
-   M1 harness → CPU golden.
+3. **Toolchain spike (no checker):** `src/arch/ptx/emit.f` is the minimal PTX
+   encoder for hand-built IR and `tools/ptx/saxpy.f` emits a header-complete
+   sm_87 `SAXPY` kernel. Current proof: local and Orin `bin/hb` both emit PTX;
+   `tools/ptx/ptxas-smoke.f` runs `ptxas` on Orin and deletes generated
+   artifacts. Remaining proof is launching the cubin through the M1 CUDA Driver
+   harness and comparing against CPU golden.
 4. **Tile DSL v0 + negatives:** `span`/`gridctx`/`tile<T,B,M>`, `MK-SPAN=`,
    `GRID-CTX`, `LOAD/STORE`, elementwise; saxpy from checked source; the
    non-collective negative cases.

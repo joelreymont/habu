@@ -256,6 +256,7 @@ variable SUITE-SLICE
    s" regex-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-toolchain" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-TOOL? ( -- bool )
@@ -556,6 +557,12 @@ TEST-SUITE map-stdlib
 
 TEST-SUITE ptx-stdlib
    lib/errors.f lib/test.f lib/ptx.f lib/ptx-test.f
+;TEST-SUITE
+
+TEST-SUITE ptx-toolchain
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/process-argv.f lib/process-env.f src/arch/ptx/emit.f
+   tools/ptx/saxpy-test.f
 ;TEST-SUITE
 
 TEST-SUITE-STDIN source-stdlib-stdin DATA

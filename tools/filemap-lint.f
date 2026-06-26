@@ -99,6 +99,7 @@ variable FM-NUM-L
    s" src/habu/stepper.f" FM-REQ
    s" src/habu/debug.f" FM-REQ
    s" src/habu/layout.f" FM-REQ
+   s" src/arch/ptx/emit.f" FM-REQ
    s" src/arch/arm64/disasm.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED-BUILD ( -- )
@@ -115,6 +116,9 @@ variable FM-NUM-L
    s" tools/hb-build-test.f" FM-REQ
    s" tools/imgdump.f" FM-REQ
    s" tools/imgdump-test.f" FM-REQ
+   s" tools/ptx/saxpy.f" FM-REQ
+   s" tools/ptx/saxpy-test.f" FM-REQ
+   s" tools/ptx/ptxas-smoke.f" FM-REQ
    s" tools/build-fixpoint.f" FM-REQ
    s" tools/build-fixpoint-main.f" FM-REQ
    s" tools/build-fixpoint-test.f" FM-REQ ;
