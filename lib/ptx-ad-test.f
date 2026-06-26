@@ -27,4 +27,22 @@ s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" AD-REVERSE
 : BAD-VJP ( -- )  s" SCALE" VJP-ADJOINT 2drop ;
 ' BAD-VJP E-PTX-NOVJP TTHROWS
 
+\ save-vs-recompute: nonlinear ops save primals/outputs, linear ones save nothing
+s" EXP."      VJP-SAVES 1 T=
+s" *."        VJP-SAVES 2 T=
+s" BLOCK-MAX" VJP-SAVES 2 T=
+s" +."        VJP-SAVES 0 T=
+s" LOAD"      VJP-SAVES 0 T=
+s" EXP." VJP-NONLINEAR? TTRUE
+s" +."   VJP-NONLINEAR? TFALSE
+\ recompute chosen only when cheaper than the save round-trip
+10 3  AD-RECOMPUTE? TTRUE      \ recompute(3) < save(10)
+3 10  AD-RECOMPUTE? TFALSE     \ recompute(10) !< save(3)
+
+\ algebraic-simplify: adjacent NEG NEG cancels (double negation = identity)
+s" NEG NEG"          AD-SIMPLIFY s" "       STR= TTRUE
+s" DUP NEG NEG +."   AD-SIMPLIFY s" DUP +." STR= TTRUE
+s" NEG"              AD-SIMPLIFY s" NEG"     STR= TTRUE
+s" +. STORE"         AD-SIMPLIFY s" +. STORE" STR= TTRUE
+
 T-REPORT

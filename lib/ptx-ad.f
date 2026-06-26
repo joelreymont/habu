@@ -74,3 +74,56 @@ variable AD-START
    a u AD-TOKENIZE
    a AD-EMIT-REV
    SB$ ;
+
+\ --- save-vs-recompute: how many forward values an op's backward must save ---
+\ Linear (data-free) adjoints save 0; nonlinear ones consume saved primals/outputs
+\ (docs/autograd.md "Full VJP table" saves column). This is the tape's replacement,
+\ finite and known at compile time.
+: VJP-SAVES ( ptr u8 n -- n )
+   2dup s" EXP."      STR= if 2drop 1 exit then   \ saves output y
+   2dup s" SCALE"     STR= if 2drop 2 exit then   \ saves a, x
+   2dup s" *."        STR= if 2drop 2 exit then   \ saves x, y
+   2dup s" B/"        STR= if 2drop 2 exit then   \ saves s, z
+   2dup s" BLOCK-MAX" STR= if 2drop 2 exit then   \ saves x, m (arg-max select)
+   2dup s" +."        STR= if 2drop 0 exit then
+   2dup s" -."        STR= if 2drop 0 exit then
+   2dup s" DUP"       STR= if 2drop 0 exit then
+   2dup s" BLOCK-SUM" STR= if 2drop 0 exit then
+   2dup s" BROADCAST" STR= if 2drop 0 exit then
+   2dup s" LOAD"      STR= if 2drop 0 exit then
+   2dup s" STORE"     STR= if 2drop 0 exit then
+   2dup s" ROW-LOAD"  STR= if 2drop 0 exit then
+   2dup s" ROW-STORE" STR= if 2drop 0 exit then
+   2dup s" NEG"       STR= if 2drop 0 exit then
+   E-PTX-NOVJP throw ;
+
+: VJP-NONLINEAR? ( ptr u8 n -- bool )  VJP-SAVES 0 > ;
+
+\ save-vs-recompute decision (docs/autograd.md "Checkpointing"): recompute the
+\ forward slice when that is cheaper than the global save+reload round-trip.
+: AD-RECOMPUTE? ( n n -- bool ) {: save-cost recompute-cost :}
+   recompute-cost save-cost < ;
+
+\ --- algebraic-simplify (peephole): cancel adjacent NEG NEG (double negation) ---
+\ Token i as a string, reconstructed from the recorded span and the base ptr.
+: TOK-STR ( ptr u8 n -- ptr u8 n ) {: ix :}
+   ix cells AD-TOK-OFF + @  +          \ base(on stack) + offset -> token ptr
+   ix cells AD-TOK-LEN + @ ;           \ token len
+
+: TOK-IS-NEG? ( ptr u8 n -- bool )  TOK-STR s" NEG" STR= ;
+
+\ separator: a space before a token unless the builder is still empty
+: SB-SEP ( -- )  SB$ nip 0 > if $20 SB-APPEND-C then ;
+
+\ AD-SIMPLIFY: drop adjacent NEG NEG pairs from a body, preserving the rest.
+: AD-SIMPLIFY ( ptr u8 n -- ptr u8 n ) {: a u :}
+   a u AD-TOKENIZE
+   SB-RESET
+   0 begin dup AD-TOK-N @ < while             ( ix )
+      dup 1+ AD-TOK-N @ <                      \ has a next token?
+      over a swap TOK-IS-NEG? and              \ tok[ix] = NEG?
+      over 1+ a swap TOK-IS-NEG? and           \ tok[ix+1] = NEG?
+      if  2 +                                  \ cancel the pair
+      else  SB-SEP  dup a swap TOK-STR SB-APPEND  1+  then
+   repeat drop
+   SB$ ;
