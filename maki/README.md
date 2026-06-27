@@ -28,7 +28,7 @@ the maki components and their tests (each test runs on load, printing `test: ok`
 
 ```
 bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
-  lib/fs.f lib/fs-mutate.f \
+  lib/fs.f lib/fs-mutate.f lib/ffi.f \
   src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/cg-collective.f \
   lib/ptx/header.f lib/ptx/tile.f lib/ptx/tile-v4.f lib/ptx/collective.f \
   maki/array.f       maki/array-test.f \
@@ -40,8 +40,14 @@ bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
   maki/onnx.f        maki/onnx-test.f \
   maki/eval.f        maki/eval-test.f \
   maki/fusion.f      maki/fusion-test.f \
-  maki/eval-fixture.f maki/eval-repair.f
+  maki/eval-fixture.f maki/eval-repair.f \
+  maki/device-smoke.f
 ```
+
+The leading `lib/ffi.f` is the device-FFI canary: a stale `bin/hb` (predating the
+AAPCS64 FFI-ABI primitives) fails to load it, so the gate stops early at the FFI
+layer instead of erroring cryptically deep in a device tool. `maki/device-smoke.f`
+then runs a live `cuInit`/`cuDeviceGet` smoke on the Orin (SKIPPED off-device).
 
 ## Components (v0, all runnable + tested)
 

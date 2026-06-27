@@ -84,6 +84,12 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.
 
+If a device tool (`maki/eval-device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
+cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
+native FFI primitive — **refresh it with the command above.** The maki gate guards this:
+it loads `lib/ffi.f` (which fails closed on a stale engine) and runs `maki/device-smoke.f`,
+a live `cuInit`/`cuDeviceGet` canary, so the break surfaces early at the FFI layer.
+
 Run the gate after bootstrap or refresh:
 
 ```sh
