@@ -186,6 +186,10 @@ points stay listed.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.
 - `lib/fmt.f` — checked number formatting into the string builder: unsigned/signed ints and fixed-decimal floats.
 - `lib/fmt-test.f` — focused coverage for integer and fixed-decimal float formatting and rounding.
+- `lib/sort.f` — in-place ascending heapsort of float cell arrays (O(n log n), no scratch buffer).
+- `lib/sort-test.f` — focused coverage for FSORT! ordering, duplicates, negatives, and degenerate lengths.
+- `lib/stats.f` — float-array summary statistics: sum/mean/min/max/variance/stddev/percentile/median.
+- `lib/stats-test.f` — focused coverage for the stats reductions and interpolated percentiles.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.

@@ -861,3 +861,23 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fmt	lib/fmt.f	word	SB-FIX	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a float with k decimal places, round half-up
 1	fmt	lib/fmt.f	word	U.0	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
 1	fmt	lib/fmt.f	word	F.N	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a float with k decimal places
+1	ffi	lib/ffi.f	word	FFI-CALLN	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function of any arity; arg cells preset via FFI-ARG!, spills past 8 to the stack
+1	sort	lib/sort.f	module			lib/sort-test.f	docs/stdlib.md	stdlib-sort	active	in-place ascending heapsort of float cell arrays
+1	sort	lib/sort.f	word	FX@	(ptr r n -- r)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	published	read a float cell by index
+1	sort	lib/sort.f	word	FX-SWAP	(ptr r n n --)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	active	swap two float cells by index
+1	sort	lib/sort.f	word	HS-CHILD	(ptr r n -- n)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	active	heap: larger child index within a size, or -1
+1	sort	lib/sort.f	word	HS-STEP	(ptr r n -- bool)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	active	heap: one sift-down step, true to continue
+1	sort	lib/sort.f	word	HS-SIFT	(ptr r n n --)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	active	heap: sift a root node down through a size
+1	sort	lib/sort.f	word	FSORT!	(ptr r n --)	lib/sort-test.f	docs/stdlib.md	stdlib-sort	published	sort float cells ascending in place
+1	stats	lib/stats.f	module			lib/stats-test.f	docs/stdlib.md	stdlib-stats	active	float-array summary statistics
+1	stats	lib/stats.f	word	FMIN2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum of two floats
+1	stats	lib/stats.f	word	FMAX2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	maximum of two floats
+1	stats	lib/stats.f	word	IMIN	(n n -- n)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum of two integers
+1	stats	lib/stats.f	word	FSUM	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	sum of a float array
+1	stats	lib/stats.f	word	FMEAN	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	arithmetic mean of a float array
+1	stats	lib/stats.f	word	FMIN	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum element of a float array
+1	stats	lib/stats.f	word	FMAX	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	maximum element of a float array
+1	stats	lib/stats.f	word	FVAR	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	population variance of a float array
+1	stats	lib/stats.f	word	FSTDDEV	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	population standard deviation
+1	stats	lib/stats.f	word	FPERCENTILE	(ptr r n r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	interpolated percentile of a sorted float array
+1	stats	lib/stats.f	word	FMEDIAN	(ptr r n -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	median of a sorted float array

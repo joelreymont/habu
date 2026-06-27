@@ -574,6 +574,14 @@ TEST-SUITE fmt-numbers
    lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f lib/fmt-test.f
 ;TEST-SUITE
 
+TEST-SUITE float-sort
+   lib/errors.f lib/test.f lib/sort.f lib/sort-test.f
+;TEST-SUITE
+
+TEST-SUITE float-stats
+   lib/errors.f lib/test.f lib/sort.f lib/stats.f lib/stats-test.f
+;TEST-SUITE
+
 TEST-SUITE array-helpers
    lib/errors.f lib/array.f lib/array-test.f
 ;TEST-SUITE
