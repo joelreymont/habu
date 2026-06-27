@@ -290,8 +290,11 @@ is a later, smaller addition.
   test** — a wrong rewrite type-checks but changes the gradient.
 - **Save-vs-recompute policy** with an **explicit documented cost model** + a test
   that save and recompute yield within-tol-identical gradients; + **scatter-add**
-  lowering (`red.global.add`, verify sm_87 availability first) as the conservative
-  default for accumulating adjoints.
+  lowering as the conservative default for accumulating adjoints. The primitive,
+  `red.global.add.f32`, is **VERIFIED on sm_87** (2026-06-28): ptxas assembles it
+  warning-free and a 256-thread launch atomically accumulates to 256.0 on the Orin
+  (`tools/ptx/redadd-device-test.f`, closes habu-ptx-ad-verify) — no `atom.global.add`
+  CAS-loop fallback needed.
 - **`VJP:` table** for the M6 forward primitives, **each entry carrying a
   finite-difference gradcheck** (the table is itself hand-written backwards — the
   thing ML most fears; it is not trustworthy until gradchecked). `SOFTMAX-ROWS-BWD`

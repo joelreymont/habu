@@ -139,6 +139,10 @@ points stay listed.
   transcendental op gradcheck.f gates (d exp/dx = exp(x), non-constant gradient).
 - `tools/ptx/expbwd-cg.f` — checked EXP backward kernel (dx=dz*savedy, the SAVED-Y→real-load
   resolution); gradcheck.f runs it on device and checks its output = the numeric gradient.
+- `tools/ptx/redadd-cg.f` — raw-PTX emit driver for a `red.global.add.f32` kernel (each thread
+  atomically adds 1.0 to out[0]); the scatter-add primitive reverse-mode fan-in adjoints need.
+- `tools/ptx/redadd-device-test.f` — Orin device proof that `red.global.add.f32` assembles for
+  sm_87 and accumulates correctly (256 atomic adds = 256.0); closes habu-ptx-ad-verify.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and

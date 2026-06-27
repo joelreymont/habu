@@ -129,6 +129,7 @@ variable TR-CHECK-WARM-READY
 : TR-BASE ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if 2drop else MAKE-DIRS then
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
@@ -177,8 +178,17 @@ variable TR-CHECK-WARM-READY
    suf dst u + su BYTE-COPY
    u su + lenp ! ;
 
+\ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
+\ in (content-stamped in gate-stdlib.f, so cross-run reuse is sound), else the
+\ per-run GT-ROOT. Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and
+\ HABU_WARM_TOOLS resolve to the same place. The checker warm + per-run sharing keep
+\ using GT-ROOT via HABU_GATE_WARM_ROOT.
+: TR-WARM-ROOT$ ( -- ptr u8 n )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if exit then
+   2drop GT-ROOT ;
+
 : TR-TOOLS-PATHS ( -- )
-   GT-ROOT s" hb-tools-warm" TR-TOOLS-BUF JOIN-PATH TR-TOOLS-U !
+   TR-WARM-ROOT$ s" hb-tools-warm" TR-TOOLS-BUF JOIN-PATH TR-TOOLS-U !
    TR-TOOLS$ s" .trust.f" TR-TOOLS-TRUST-BUF TR-TOOLS-TRUST-U TR-SUFFIX! ;
 
 : TR-TOOLS-ENV ( -- )

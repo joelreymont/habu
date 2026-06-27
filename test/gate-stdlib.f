@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test-runner.f,
-\ and test/gate-pool.f.
+\ test/gate-pool.f, and src/core/sha256.f (the warm-image content key).
 
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
@@ -26,6 +26,12 @@ create SUITE-WARM-BUF FS-PATH-CAP allot
 create SUITE-WARM-TRUST-BUF FS-PATH-CAP allot
 create SUITE-WARM-OUT GT-OUT-CAP allot
 create SUITE-WARM-ERR GT-ERR-CAP allot
+create SUITE-WARM-STAMP-BUF FS-PATH-CAP allot
+create SUITE-KEY-HEX 80 allot
+create SUITE-KEY-DG 40 allot
+create SUITE-FILE-DG 40 allot
+create SUITE-STAMP-RD 80 allot
+variable SUITE-WARM-STAMP-U
 variable SUITE-LABEL-U
 variable SUITE-STDIN-U
 variable SUITE-WARM-U
@@ -129,26 +135,78 @@ variable SUITE-SLICE
 : SUITE-WARM-TRUST$ ( -- ptr u8 n )
    SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U @ ;
 
+\ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
+\ in (content-stamped, so cross-run reuse is sound), else the per-run shared
+\ HABU_GATE_WARM_ROOT, else an owned temp. Must match TR-TOOLS-PATHS in run.f so the
+\ baked image and HABU_WARM_TOOLS resolve to the same place.
 : SUITE-SET-ROOT ( -- )
    0 SUITE-OWN-ROOT !
-   s" HABU_GATE_WARM_ROOT" GETENV dup 0= if
-      2drop
-      CLEANUP-RESET
-      s" hb-stdlib-warm" TMPDIR-MKDIR GT-COPY-ROOT!
-      GT-ROOT CLEANUP-TREE+
-      -1 SUITE-OWN-ROOT !
-      exit
-   then
-   GT-COPY-ROOT! ;
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if GT-COPY-ROOT! exit then 2drop
+   s" HABU_GATE_WARM_ROOT" GETENV dup 0= 0= if GT-COPY-ROOT! exit then 2drop
+   CLEANUP-RESET
+   s" hb-stdlib-warm" TMPDIR-MKDIR GT-COPY-ROOT!
+   GT-ROOT CLEANUP-TREE+
+   -1 SUITE-OWN-ROOT ! ;
 
 : SUITE-WARM-PATHS ( -- )
    GT-ROOT s" hb-tools-warm" SUITE-WARM-BUF JOIN-PATH SUITE-WARM-U !
    SUITE-WARM$ s" .trust.f" SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U SUITE-SUFFIX! ;
 
+: SUITE-KEY-FILE+ ( ptr u8 n -- )
+   SUITE-FILE-DG SHA256-FILE drop
+   SUITE-FILE-DG 32 SHA256-UPDATE ;
+
+\ Content key over the warm image's inputs: the compiler (bin/hb), the baker, and
+\ every baked tool source. KEEP THE FILE LIST IN SYNC with SUITE-WARM-SUPPORT-ARGV
+\ (a drift means a stale image could be reused). A persistent warm image is reused
+\ only when this key matches, so any input change forces a rebake.
+: SUITE-WARM-KEY! ( -- )
+   SHA256-RESET
+   s" bin/hb" SUITE-KEY-FILE+
+   s" tools/warm-image-lib.f" SUITE-KEY-FILE+
+   s" tools/warm-image.f" SUITE-KEY-FILE+
+   s" tools/date.f" SUITE-KEY-FILE+
+   s" lib/errors.f" SUITE-KEY-FILE+
+   s" lib/string.f" SUITE-KEY-FILE+
+   s" lib/memory.f" SUITE-KEY-FILE+
+   s" lib/vector.f" SUITE-KEY-FILE+
+   s" lib/fs.f" SUITE-KEY-FILE+
+   s" lib/fs-mutate.f" SUITE-KEY-FILE+
+   s" lib/process.f" SUITE-KEY-FILE+
+   s" lib/process-argv.f" SUITE-KEY-FILE+
+   s" lib/source.f" SUITE-KEY-FILE+
+   s" tools/lint/text.f" SUITE-KEY-FILE+
+   s" tools/lint/intern.f" SUITE-KEY-FILE+
+   s" tools/lint/token.f" SUITE-KEY-FILE+
+   s" tools/lint/lib.f" SUITE-KEY-FILE+
+   s" tools/lint/json-writer.f" SUITE-KEY-FILE+
+   s" tools/lint/source-lex.f" SUITE-KEY-FILE+
+   s" tools/argv.f" SUITE-KEY-FILE+
+   s" tools/diag-origin-core.f" SUITE-KEY-FILE+
+   s" tools/json.f" SUITE-KEY-FILE+
+   s" tools/gate-json-assert-core.f" SUITE-KEY-FILE+
+   s" tools/json-only-core.f" SUITE-KEY-FILE+
+   s" tools/signature-lint-core.f" SUITE-KEY-FILE+
+   s" tools/checked-boundary-lint-core.f" SUITE-KEY-FILE+
+   s" tools/typed-local-diff-lint-core.f" SUITE-KEY-FILE+
+   s" tools/trust-lint-core.f" SUITE-KEY-FILE+
+   s" tools/check-all-errors-core.f" SUITE-KEY-FILE+
+   SUITE-KEY-DG SHA256-FINAL
+   SUITE-KEY-DG SUITE-KEY-HEX SHA256>HEX ;
+
+: SUITE-WARM-STAMP$ ( -- ptr u8 n )
+   SUITE-WARM$ s" .stamp" SUITE-WARM-STAMP-BUF SUITE-WARM-STAMP-U SUITE-SUFFIX!
+   SUITE-WARM-STAMP-BUF SUITE-WARM-STAMP-U @ ;
+
+\ A cached warm image is valid only if image + trust exist AND the content stamp
+\ matches the current key. SUITE-WARM-KEY! must run before this check.
 : SUITE-WARM-CACHED? ( -- bool )
-   SUITE-WARM$ EXECUTABLE?
-   SUITE-WARM-TRUST$ FILE?
-   and ;
+   SUITE-WARM$ EXECUTABLE? 0= if SUITE-FALSE exit then
+   SUITE-WARM-TRUST$ FILE? 0= if SUITE-FALSE exit then
+   SUITE-WARM-STAMP$ FILE? 0= if SUITE-FALSE exit then
+   SUITE-WARM-STAMP$ SUITE-STAMP-RD 80 READ-ALL
+   dup 64 <> if drop SUITE-FALSE exit then
+   SUITE-STAMP-RD swap SUITE-KEY-HEX 64 STR= ;
 
 : SUITE-WARM-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
@@ -240,8 +298,10 @@ variable SUITE-SLICE
 : SUITE-WARM-PREPARE ( -- )
    SUITE-SET-ROOT
    SUITE-WARM-PATHS
+   SUITE-WARM-KEY!
    SUITE-WARM-CACHED? if exit then
-   SUITE-WARM-RUN ;
+   SUITE-WARM-RUN
+   SUITE-WARM-STAMP$ SUITE-KEY-HEX 64 WRITE-ALL ;
 
 : SUITE-CLEANUP ( -- )
    SUITE-OWN-ROOT @ if CLEANUP-RUN then ;
