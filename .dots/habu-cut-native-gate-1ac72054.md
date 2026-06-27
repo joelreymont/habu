@@ -127,3 +127,18 @@ The documented full native gate passed in 1m36.02s (user 318.18s/sys 5.40s).
 Current long poles under full contention: engine build 67.180s, AOT positive
 63.399s, stdlib check-cli 58.519s, prop/snapshot/debug 57.426s, stdlib
 tool-boundary 54.797s, and engine fixtures 47.442s.
+
+Checkpoint 2026-06-27: accepted the six-phase early schedule as the current
+sufficient Linux/aarch64 checkpoint. `test/run.f` now starts
+prop/snapshot/debug and AOT-negative in the initial independent wave alongside
+warm-tools, warm-checker, AOT-positive, and engine-build. The documented full
+native gate passed in 1m33.93s (user 319.86s/sys 4.76s). Rejected and reverted
+experiments: separate hb-build maker warm regressed the full gate to 1m40.52s;
+debug-only early scheduling regressed to 1m40.00s; 7-slot and 9-slot runs passed
+but regressed to 1m35.34s and 1m36.80s; moving stdlib lint earlier exposed a
+`stdlib-manifest` timeout/failure under contention; warm-tools manifest loading
+passed standalone but regressed the full gate to 1m40.13s. Remaining long poles
+in the accepted run: engine build 67.482s, AOT positive 59.032s, stdlib
+check-cli 58.374s, stdlib tool-boundary 51.403s, engine fixtures 45.193s, and
+diagnostics repair 43.714s. The 30s target remains active work, but this is a
+validated stop point.

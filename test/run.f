@@ -362,7 +362,9 @@ variable TR-PATH-U
    idx IDX>N 5 = ;
 
 : TR-EARLY-PHASE? ( idx -- bool ) {: idx :}
+   idx IDX>N 6 = if 0 0= exit then
    idx IDX>N 7 = if 0 0= exit then
+   idx IDX>N 8 = if 0 0= exit then
    idx IDX>N 15 = if 0 0= exit then
    0 0= 0= ;
 

@@ -57,6 +57,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
   nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
   lints until the heavy wave drains.
+- **Full DAG timing beats isolated wins:** on Linux/aarch64, separate hb-build
+  maker warming and warm-tools manifest loading passed focused probes but
+  regressed the full gate under contention. Keep only schedule moves that improve
+  the documented full command; record reverted timings in the dot so failed
+  variants are not rediscovered.
 - **Batch diagnostic fixtures at the source:** if many checked rejects use the
   same tool load path, write one source file, run one `check-all-errors`, and
   assert each JSONL row by `word`/`repair_class`. Per-case checker spawns hide
