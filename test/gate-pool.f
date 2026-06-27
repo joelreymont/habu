@@ -3,6 +3,7 @@
 \ Load after lib/process-env.f and lib/test-runner.f.
 
 12 constant GT-POOL-MAX
+8 constant GT-POOL-DEFAULT
 2 constant GT-POOL-FDS
 8 constant GT-PFD-SZ
 1000 constant GT-POOL-POLL-MS
@@ -168,7 +169,7 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    n ;
 
 : GT-POOL-ENV-LIMIT ( -- n )
-   s" HABU_GATE_POOL_SLOTS" GETENV dup 0= if 2drop GT-POOL-MAX exit then
+   s" HABU_GATE_POOL_SLOTS" GETENV dup 0= if 2drop GT-POOL-DEFAULT exit then
    STR>NUMBER? 0= if drop E-TBL-FIELD throw then
    GT-POOL-CHECK-LIMIT ;
 

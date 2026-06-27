@@ -56,3 +56,11 @@ warm-dependent phases as soon as both warm images pass. After rebasing onto
 `df46d77b`, the documented full native gate passed in 1m34.87s. Remaining long poles: stdlib tool-boundary,
 check-cli/debug/diagnostic slices after warm-up, and residual AOT-negative
 contention.
+
+Checkpoint 2026-06-27: measured pool contention on this 4-thread Orin target.
+With the four-slot stdlib nested pool, full-gate wall times were: outer 12
+default 1m33.44s, outer 10 1m34.62s, outer 8 1m31.92s, and outer 4 1m49.08s.
+Set the checked gate pool default to 8 while preserving the 12-slot max for
+explicit overrides, and raised stdlib nested slices from 2 to 4. The documented
+default gate command passed in 1m29.40s. Remaining long poles: stdlib
+tool-boundary, prop/snapshot/debug, and check-cli under full load.

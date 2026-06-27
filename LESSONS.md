@@ -600,3 +600,8 @@ lesson — keep the specific word/code/path, cut the prose.
   before launching every worker serialized independent builder long poles behind
   unrelated tool images. Start phases as soon as their own prerequisites exist
   and only export warm-tool env to phases that actually use it.
+- **Gate pool defaults need full-load measurement:** isolated slices improved
+  when the stdlib nested pool rose from 2 to 4, but the full gate only improved
+  after measuring outer-pool contention on the 4-thread Orin. Keep a higher
+  max for explicit overrides, but choose the default from documented full-gate
+  timings, not from a single slice.

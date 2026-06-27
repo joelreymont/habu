@@ -378,7 +378,7 @@ variable TR-PATH-U
    idx IDX>N 17 = ;
 
 : TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
-   s" 2" ;
+   s" 4" ;
 
 : TR-PHASE-POOL-ENV ( idx -- ) {: idx :}
    idx TR-STDLIB-SLICE? if
