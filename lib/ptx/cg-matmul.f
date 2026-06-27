@@ -36,15 +36,16 @@
 \   - bigger micro-tiles (8x8) + bigger block tiles (128x128);
 \   - the last stretch to Triton may need its MMA/dot path (tensor-core-adjacent).
 \
-\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. Of the three missing
-\ typed capabilities, the CHECKED COUNTED LOOP now exists (lib/ptx/tile-loop.f TILE-LOOP,
-\ capability (a) - the checker types and enforces the K-reduction's accumulator-preserving
-\ body). Still missing: a SHARED-MEMORY matrix-tile type and a REGISTER ACCUMULATOR type
-\ threaded across the loop, so MM is still emitted as raw PTX rather than composed from
-\ checked tile words. It is a named, tested boundary (device-golden correct vs CPU A*B)
-\ per CLAUDE.md; the remaining typed capabilities are dotted (habu-tiled-gemm-codegen +
-\ habu-checker-capability-typed sub-dots b/c/re-express). When those land, MM becomes a
-\ checked KERNEL: body like SAXPY/softmax. Load after
+\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. Two of the three missing
+\ typed capabilities now exist as checked tile-DSL vocabulary: the CHECKED COUNTED LOOP
+\ (lib/ptx/tile-loop.f TILE-LOOP, capability (a)) and the SHARED-MEMORY tile type
+\ (lib/ptx/tile-smem.f STAGE/SLOAD/SSTORE, capability (b) - space-shared distinct from
+\ space-global). Still missing: a REGISTER ACCUMULATOR type (c), and the codegen that
+\ lowers a checked KERNEL: MM body to this same PTX (the STAGE/SLOAD bodies throw
+\ E-PTX-NOIMPL today). So MM is still emitted as raw PTX. It is a named, tested boundary
+\ (device-golden correct vs CPU A*B) per CLAUDE.md; the remaining work is dotted
+\ (habu-tiled-gemm-codegen + habu-checker-capability-typed sub-dots c/re-express). When
+\ those land, MM becomes a checked KERNEL: body like SAXPY/softmax. Load after
 \ src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
 \ ==============================================================================
 
