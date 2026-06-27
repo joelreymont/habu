@@ -186,6 +186,35 @@ claim (SAXPY v4 reaches parity at the memory ceiling, not a win) or that the
 checker catches *semantic* errors (it does not; that is the device-golden gate's
 job).
 
+## Multi-op authoring: the advantage compounds on a FUSED kernel
+
+Extending the authoring loop from single ops to a fused chain `y = relu(a*x + y)`
+(scale → add → relu). Independent subagents (k=3/target) authored it; **pass@1 =
+3/3 both** — the fused chain is reachable in either target. The difference is again
+*where bugs are caught*, and a longer fused chain has MORE structural ways to break.
+Input x=2, y=-10, a=3 (so relu(a*x+y)=relu(-4)=0 distinguishes a missing relu):
+
+| fused-relu error              | Habu-PTX (checked)          | Triton (real)            |
+|-------------------------------|-----------------------------|--------------------------|
+| correct relu(a*x+y)           | GREEN                       | GREEN                    |
+| missing relu (semantic)       | runtime (device, got -4)    | runtime (got -4)         |
+| **missing store (structural)**| **author** — stack effect   | **runtime** (silent -10) |
+| **extra op after store**      | **author** — stack effect   | (runtime/compile)        |
+| span-as-uniform / scalar-as-ptr (type) | **author** — type  | compile                  |
+
+The win is the **structural** class: Habu's checker types the *whole fused chain*
+end to end, so a missing store or an extra op is rejected at author time with a
+located diagnostic (`at 'relu-v4' ... tile<f32,a,b>` left on the stack); in Triton
+the identical missing-store **compiles clean and silently writes -10**, caught only
+by a device run. Both catch name/type errors before running (Habu author, Triton
+compile); neither catches the *semantic* missing-relu statically (both need the
+device golden). So the checked-target advantage does not wash out as kernels get
+bigger — it **compounds**, because fusion (which we get for free, see above) adds
+exactly the stack-discipline surface the checker covers and Triton does not.
+
+Graders: `/tmp/grade_habu_fused.sh` (v4 emit → ptxas → device golden vs CPU) and
+`/tmp/triton-compare/grade_one_fused.py`; external arm, same as the rest.
+
 ## Model-driven pass@k + repair (live experiment)
 
 The error-catch matrix above is fixture-based (the candidate behaviours are fixed
