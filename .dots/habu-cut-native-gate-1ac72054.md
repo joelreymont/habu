@@ -81,5 +81,8 @@ batched source, runs one all-errors check, then uses new checked JSONL helpers i
 `tools/gate-json-assert-core.f` to assert each row by `word` plus
 `repair_class`, return-stack details, and row-effect details. Focused
 `check-repair-hints-test.f` passed in 11.88s, and the owning engine repair slice
-passed in 14.84s with the diagnostic run reporting 11.815s. Full-gate evidence
-still pending for this checkpoint.
+passed in 14.84s with the diagnostic run reporting 11.815s. The documented full
+native gate passed in 1m46.76s; under full contention, engine repair passed in
+19.480s. Remaining long poles: AOT positive 77.526s, stdlib tool-boundary
+68.722s, REPL 69.309s, engine build 66.457s, stdlib check-cli 56.522s,
+prop/snapshot/debug 53.619s, and engine fixtures 42.765s.
