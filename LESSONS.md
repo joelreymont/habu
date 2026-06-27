@@ -12,7 +12,7 @@ lesson — keep the specific word/code/path, cut the prose.
   references ahead of keyword dispatch means `C-LOCAL-REF` must call `LBCAP`
   after `LLOC-FIND`; otherwise runtime emits the local but the hook checks a
   different body.
-- **Namespace qualification is only a non-edge colon:** `hb:COUNT` qualifies
+- **Namespace qualification is only a non-edge colon:** `HB:COUNT` qualifies
   through a wordlist; `GE-FILES:` stays an ordinary Forth word. Keep `LFIND`,
   definition storage, xref, and docs on that same rule.
 - **Forth language rules live in `docs/forth.md`:** checker/type/style guidance

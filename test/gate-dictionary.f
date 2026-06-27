@@ -234,13 +234,14 @@ $63 constant GD-C-LOWER
    GE-HB-RESET
    GE-SRC-RESET
    s" : COUNT ( -- n ) 1 ;" GE-SRC-LINE
-   s" : hb:COUNT ( -- n ) 2 ;" GE-SRC-LINE
+   s" : HB:COUNT ( -- n ) 2 ;" GE-SRC-LINE
    s" COUNT ." GE-SRC-LINE
-   s" hb:COUNT ." GE-SRC-LINE
-   s" USE-HB ( -- n ) hb:COUNT" GE-SRC-CHECK-LINE
-   s" : HBCALL ( -- n ) hb:COUNT ;" GE-SRC-LINE
+   s" HB:COUNT ." GE-SRC-LINE
+   s" USE-HB ( -- n ) HB:COUNT" GE-SRC-CHECK-LINE
+   s" : HBCALL ( -- n ) HB:COUNT ;" GE-SRC-LINE
    s" HBCALL ." GE-SRC-LINE
-   s" hb:COUNT" GE-SRC-S"
+   s" hb:count ." GE-SRC-LINE
+   s" HB:COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
    s" COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
@@ -253,6 +254,7 @@ $63 constant GD-C-LOWER
    s" 1" GE-OUT-LINE
    s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
    s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE

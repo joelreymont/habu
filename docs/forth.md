@@ -37,8 +37,15 @@ file.
   machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
   human quantities where base 10 is clearer.
 - **Use wordlist namespaces for global collisions.** Qualified names use one
-  colon: `hb:COUNT`, `ptx:COUNT`, `maki:COUNT`. The qualifier names a wordlist
+  colon: `HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`. The qualifier names a wordlist
   namespace; the dictionary record stores the tail (`COUNT`) in that wordlist.
+  Match qualifier case to the word vocabulary: project-defined namespaces and
+  words are uppercase (`HB:COUNT`); lowercase built-in namespaces keep lowercase
+  qualifiers and lowercase names (`forth:count`). Do not mix cases across the
+  qualifier and word (`hb:COUNT`, `HB:count`); write matching-case forms such
+  as all-project uppercase (`HB:COUNT`) or lowercase built-in vocabulary
+  (`forth:count`). Use `hb:count` only for an intentionally lowercase
+  vocabulary.
   Qualification is only a token with exactly one non-edge colon; names that
   start or end with `:` are ordinary Forth words. Do not fake namespaces with
   raw global prefixes when the runtime supports a real wordlist-qualified name.
