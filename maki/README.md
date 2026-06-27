@@ -45,6 +45,28 @@ bin/hb --load lib/errors.f lib/string.f lib/test.f \
 (fail-closed op lowering) · `eval` (checker-as-judge + pass@k). The element/scalar
 rules lower onto the checked Habu-PTX kernels once codegen lands.
 
+## On the Orin GPU (validated on hardware)
+
+The element/scalar rules now lower onto the checked Habu-PTX kernels and run on
+the device, each verified correct-vs-CPU on the Orin:
+
+- **A maki tensor op (AXPY)** runs on the GPU (`maki/gpu.f` + `gpu-test.f`).
+- **A maki SGD step** `w -= lr·g` lowers onto the checked SAXPY kernel and matches
+  CPU `T-SGD!` bit-for-bit (`maki/gpu-sgd-test.f`).
+- **maki trains on the GPU** — 3 SGD epochs of `y=w·x` / MSE run the optimizer on
+  the device; weights converge `[2,4,6,8]→[1.125,1.375,1.625,1.875]` and the loss
+  falls 84→1.3125 (`maki/gpu-train.f` + `gpu-train-test.f`).
+- **A checked `SOFTMAX-ROWS` kernel** emits its own PTX (block reduction via
+  shared-mem + bar.sync) and runs within 1 ULP of the CPU golden
+  (`tools/ptx/softmax-cg.f` → `tools/ptx/softmax-launch.f`).
+- **GB/s:** the SAXPY kernel sustains ~42.9 GB/s on the Orin (`tools/ptx/bandwidth.f`).
+
+Still owed (no "better target" thesis claim until these land): the auto-derived
+`SOFTMAX-ROWS-BWD` device gradcheck (needs the reverse-pass AD: fan-out/nonlinear
+cotangent threading + SAVED-* buffers — dot `habu-ad-reverse-pass`), and the full
+comparative eval matrix (pass@k / tokens-to-green / repair rounds vs Triton — the
+external LLM + Triton arm).
+
 ## Status
 
 See [`STATUS.md`](STATUS.md). Active work is in the root dot chain (`maki-*` /
