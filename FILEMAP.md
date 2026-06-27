@@ -172,7 +172,8 @@ points stay listed.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
-- `tools/stale-status-lint.f` — stale status/count lint.
+- `tools/stale-status-lint-core.f` — reusable stale status/count lint core.
+- `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.
 - `tools/stale-status-lint-test.f` — checked fixture coverage for stale status/count lint.
 - `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
 - `tools/string.f` — shared checked byte-string helper library.

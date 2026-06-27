@@ -643,3 +643,11 @@ lesson — keep the specific word/code/path, cut the prose.
   into the DATA-resident boot buffer before exec. When warm-image composition
   grows, size the persisted boot capacity for the supported gate workload and
   rerun the native snapshot/full gate.
+- **Typed-local checks happen before validation:** splitting or moving Forth
+  source can make old bare locals look newly introduced. Run the diff locals
+  scan before focused tests, annotate concrete roles (`n`, `len`, etc.), and
+  let `bin/hb` reject wrong annotations instead of treating the move as legacy.
+- **Keep global warm images lean:** baking large one-off tool cores into the
+  shared warm image can leave too little dictionary/data headroom for tools that
+  are loaded later. Prefer explicit multi-file warm loads for the boundary that
+  needs them, and measure cached child time separately from warm build/cleanup.

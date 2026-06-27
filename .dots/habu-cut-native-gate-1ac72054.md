@@ -111,3 +111,19 @@ rebasing; the documented full native gate passed in 1m38.25s (user 324.78s/sys
 4.86s). New long poles: stdlib tool-boundary 68.787s, engine build 64.061s, AOT
 positive 59.635s, stdlib check-cli 59.500s, prop/snapshot/debug 55.939s, and
 engine fixtures 45.173s.
+
+Checkpoint 2026-06-27: split `tools/stale-status-lint.f` into a checked reusable
+core plus a thin CLI wrapper. `tools/stale-status-lint-test.f` now runs semantic
+fixtures in-process through the core and keeps only CLI/output/bad-argv cases at
+the process boundary. Direct stale-status fixture time fell from 26.08s to
+9.62s. The global tools warm image stays lean; `tools/warm-run.f` now supports
+explicit two-file warm loads for wrappers such as stale-status core+CLI instead
+of baking that one-off core into every warm tool image. Focused stdlib
+tool-boundary passed at 32.31s with a fresh fixed warm root and 20.21s with the
+fixed warm root cached. A normal temp-root run passed but took 91.28s wall with
+only 64.73s user, so remaining work is to root-cause/optimize default warm
+temp-root build/cleanup overhead instead of the child tool tests themselves.
+The documented full native gate passed in 1m36.02s (user 318.18s/sys 5.40s).
+Current long poles under full contention: engine build 67.180s, AOT positive
+63.399s, stdlib check-cli 58.519s, prop/snapshot/debug 57.426s, stdlib
+tool-boundary 54.797s, and engine fixtures 47.442s.

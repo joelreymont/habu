@@ -1,7 +1,11 @@
 \ stale-status-lint-test.f - checked fixtures for tools/stale-status-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/stale-status-lint-test.f
+\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
+\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
+\ tools/stale-status-lint-core.f tools/stale-status-lint-test.f
 
 4096 constant SST-CAP
+32 constant SST-DATE-CAP
 10000 constant SST-TIMEOUT-MS
 1050 constant SST-LONG-LINES
 10 constant SST-LF-C
@@ -12,6 +16,7 @@ variable SST-LESSONS-U
 variable SST-README-U
 variable SST-JJ-U
 variable SST-JJ-DIR-U
+variable SST-CORE-TODAY-U
 
 create SST-ROOT-BUF FS-PATH-CAP allot
 create SST-STATUS-BUF FS-PATH-CAP allot
@@ -19,15 +24,16 @@ create SST-LESSONS-BUF FS-PATH-CAP allot
 create SST-README-BUF FS-PATH-CAP allot
 create SST-JJ-BUF FS-PATH-CAP allot
 create SST-JJ-DIR-BUF FS-PATH-CAP allot
+create SST-CORE-TODAY-BUF SST-DATE-CAP allot
 create SST-OUT SST-CAP allot
 create SST-ERR SST-CAP allot
 
-: SST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: SST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: SST-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+: SST-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
    pa pu na nu dst JOIN-PATH lenp ! ;
 
 : SST-ROOT ( -- ptr u8 n )
@@ -48,6 +54,9 @@ create SST-ERR SST-CAP allot
 : SST-JJ-DIR ( -- ptr u8 n )
    SST-JJ-DIR-BUF SST-JJ-DIR-U @ ;
 
+: SST-CORE-TODAY ( -- ptr u8 n )
+   SST-CORE-TODAY-BUF SST-CORE-TODAY-U @ ;
+
 : SST-LF ( -- )
    SST-LF-C SB-APPEND-C ;
 
@@ -55,7 +64,7 @@ create SST-ERR SST-CAP allot
    SB-RESET
    SB$ ;
 
-: SST-STATUS$ ( ptr u8 n -- ptr u8 n ) {: date:ptr dateu :}
+: SST-STATUS$ ( ptr u8 n -- ptr u8 n ) {: date:ptr dateu:n :}
    SB-RESET
    s" # Status" SB-APPEND SST-LF
    SST-LF
@@ -140,7 +149,7 @@ create SST-ERR SST-CAP allot
 
 : SST-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-stale-status" TMPDIR-MKDIR {: a:ptr u :}
+   s" habu-stale-status" TMPDIR-MKDIR {: a:ptr u:n :}
    a u SST-ROOT-BUF SST-ROOT-U SST-COPY!
    SST-ROOT CLEANUP-TREE+
    SST-ROOT s" STATUS.md" SST-STATUS-BUF SST-STATUS-U SST-PATH!
@@ -150,9 +159,9 @@ create SST-ERR SST-CAP allot
    SST-ROOT s" .jj-ws/master-test/STATUS.md" SST-JJ-BUF SST-JJ-U SST-PATH!
    SST-RESET-FILES ;
 
-: SST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
+: SST-ARGV ( ptr u8 n -- ) {: today:ptr todayu:n :}
    PROC-ARGV-RESET
-   s" tools/stale-status-lint.f" WR-TOOLS-LOAD if
+   s" tools/stale-status-lint-core.f" s" tools/stale-status-lint.f" WR-TOOLS-LOAD2 if
       SST-ROOT  >LEN PROC-ARGV+
       today todayu  >LEN PROC-ARGV+
       exit
@@ -164,12 +173,13 @@ create SST-ERR SST-CAP allot
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
+   s" tools/stale-status-lint-core.f"  >LEN PROC-ARGV+
    s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    SST-ROOT  >LEN PROC-ARGV+
    today todayu  >LEN PROC-ARGV+ ;
 
-: SST-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
+: SST-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
    outu LEN>N erru LEN>N kind code ;
 
 : SST-RUN ( ptr u8 n -- n n n n )
@@ -180,28 +190,50 @@ create SST-ERR SST-CAP allot
 : SST-RUN-DEFAULT ( -- n n n n )
    s" 2026-06-16" SST-RUN ;
 
-: SST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+: SST-CORE-TODAY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u SST-DATE-CAP > if E-FS-PATH throw then
+   a SST-CORE-TODAY-BUF u BYTE-COPY
+   u SST-CORE-TODAY-U ! ;
+
+: SST-RUN-CORE-ACT ( -- )
+   SST-ROOT SS-ROOT!
+   SST-CORE-TODAY SS-PARSE-TODAY SS-TODAY-DAYS !
+   STALE-STATUS-LINT ;
+
+: SST-RUN-CORE ( ptr u8 n -- n )
+   SST-CORE-TODAY!
+   [: SST-RUN-CORE-ACT ;] catch ;
+
+: SST-EXPECT-CORE-OK ( -- )
+   s" 2026-06-16" SST-RUN-CORE 0 T=
+   SS-BAD @ 0 T= ;
+
+: SST-EXPECT-CORE-BAD ( -- )
+   s" 2026-06-16" SST-RUN-CORE 0 T<>
+   SS-BAD @ 0 > TTRUE ;
+
+: SST-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
    kind PROC-OUTCOME-EXIT T=
    code expect T=
    outu erru ;
 
-: SST-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
+: SST-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu:n erru:n kind:n code:n :}
    kind PROC-OUTCOME-EXIT T=
    code 0 T<>
    outu erru ;
 
 : SST-EXPECT-OK ( -- )
-   SST-RUN-DEFAULT 0 SST-EXPECT-EXIT {: outu erru :}
+   SST-RUN-DEFAULT 0 SST-EXPECT-EXIT {: outu:n erru:n :}
    SST-OUT outu SST-GOOD-OUT$ T$=
    SST-ERR erru SST-EMPTY$ T$= ;
 
-: SST-EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: today:ptr todayu code:ptr codeu needle:ptr needleu :}
-   today todayu SST-RUN SST-EXPECT-EXIT-NZ {: outu erru :}
+: SST-EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: today:ptr todayu:n code:ptr codeu:n needle:ptr needleu:n :}
+   today todayu SST-RUN SST-EXPECT-EXIT-NZ {: outu:n erru:n :}
    erru 0 T=
    SST-OUT outu code codeu CONTAINS? TTRUE
    needleu 0 > if SST-OUT outu needle needleu CONTAINS? TTRUE then ;
 
-: SST-EXPECT-BAD ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu needle:ptr needleu :}
+: SST-EXPECT-BAD ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n needle:ptr needleu:n :}
    s" 2026-06-16" code codeu needle needleu SST-EXPECT-BAD-TODAY ;
 
 : SST-TEST-CLEAN ( -- )
@@ -216,7 +248,7 @@ create SST-ERR SST-CAP allot
 : SST-TEST-BAD-STATUS-DATE ( -- )
    SST-RESET-FILES
    s" 2026-02-29" SST-WRITE-STATUS
-   s" BAD-STATUS-DATE" s" Last verified invalid `2026-02-29`" SST-EXPECT-BAD ;
+   SST-EXPECT-CORE-BAD ;
 
 : SST-TEST-BAD-TODAY ( -- )
    SST-RESET-FILES
@@ -230,48 +262,48 @@ create SST-ERR SST-CAP allot
 : SST-TEST-COUNT-TRIPLE ( -- )
    SST-RESET-FILES
    SST-README SST-README-TRIPLE$ WRITE-ALL
-   s" STALE-STATUS" s" README.md:1: count-shaped string" SST-EXPECT-BAD ;
+   SST-EXPECT-CORE-BAD ;
 
 : SST-TEST-COUNT-UNCHECKABLE ( -- )
    SST-RESET-FILES
    SST-README SST-README-UNCHECKABLE$ WRITE-ALL
-   s" STALE-STATUS" s" README.md:1: count-shaped string" SST-EXPECT-BAD ;
+   SST-EXPECT-CORE-BAD ;
 
 : SST-TEST-COUNT-UPPERCASE ( -- )
    SST-RESET-FILES
    SST-README SST-README-UPPER-COUNT$ WRITE-ALL
-   s" STALE-STATUS" s" README.md:1: count-shaped string" SST-EXPECT-BAD ;
+   SST-EXPECT-CORE-BAD ;
 
 : SST-TEST-SHORT-COUNT ( -- )
    SST-RESET-FILES
    SST-README SST-README-SHORT-COUNT$ WRITE-ALL
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-TEST-EMBEDDED-COUNT ( -- )
    SST-RESET-FILES
    SST-README SST-README-EMBEDDED-COUNT$ WRITE-ALL
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-TEST-PARTIAL-RATIO ( -- )
    SST-RESET-FILES
    SST-README SST-README-PARTIAL-RATIO$ WRITE-ALL
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-TEST-FENCED-COUNTS ( -- )
    SST-RESET-FILES
    SST-README SST-README-FENCE$ WRITE-ALL
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-TEST-LONG-MARKDOWN ( -- )
    SST-RESET-FILES
    SST-WRITE-LONG-README
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-TEST-SKIP-JJ-WS ( -- )
    SST-RESET-FILES
    SST-JJ-DIR MAKE-DIRS
    SST-JJ s" 890 certified" WRITE-ALL
-   SST-EXPECT-OK ;
+   SST-EXPECT-CORE-OK ;
 
 : SST-MAIN ( -- )
    T-RESET

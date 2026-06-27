@@ -177,6 +177,7 @@ variable SUITE-SLICE
    s" tools/lint/lib.f" SUITE-ARG+
    s" tools/lint/json-writer.f" SUITE-ARG+
    s" tools/lint/source-lex.f" SUITE-ARG+
+   s" tools/argv.f" SUITE-ARG+
    s" tools/diag-origin-core.f" SUITE-ARG+
    s" tools/json.f" SUITE-ARG+
    s" tools/gate-json-assert-core.f" SUITE-ARG+
@@ -184,8 +185,7 @@ variable SUITE-SLICE
    s" tools/signature-lint-core.f" SUITE-ARG+
    s" tools/checked-boundary-lint-core.f" SUITE-ARG+
    s" tools/trust-lint-core.f" SUITE-ARG+
-   s" tools/check-all-errors-core.f" SUITE-ARG+
-   s" tools/argv.f" SUITE-ARG+ ;
+   s" tools/check-all-errors-core.f" SUITE-ARG+ ;
 
 : SUITE-WARM-PRINT ( n n -- ) {: outu erru :}
    SUITE-WARM-OUT outu type
@@ -468,6 +468,7 @@ TEST-SUITE trust-lint
 TEST-SUITE stale-status-lint
    tools/date.f lib/errors.f lib/string.f lib/fs.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/argv.f
+   tools/stale-status-lint-core.f
    tools/stale-status-lint.f
 ;TEST-SUITE
 
@@ -532,8 +533,9 @@ TEST-TOOL-SUITE tool-boundary-check-repair
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-doc-public
-   tools/public-signatures-test.f tools/stale-status-lint-test.f
-   tools/repair-schema-doc-test.f tools/examples-test.f
+   tools/public-signatures-test.f tools/stale-status-lint-core.f
+   tools/stale-status-lint-test.f tools/repair-schema-doc-test.f
+   tools/examples-test.f
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-lints
