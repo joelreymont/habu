@@ -75,6 +75,33 @@ Words that cross compiler/runtime boundaries are explicit `TRUSTED:` or `TRUST`
 sites and are tracked in [`TRUSTED.md`](TRUSTED.md). New Forth should be checked
 unless the boundary is deliberately documented and tested.
 
+## Maki — an ML framework on a checked GPU kernel DSL
+
+[`maki/`](maki/README.md) is an ML framework layered on Habu and a **checked PTX
+kernel backend**. The thesis: *checked kernels + verified gradients* are a better
+target for LLM-authored ML — a GPU kernel DSL whose type system makes a defined
+class of GPU bugs (wrong address space, out-of-extent indexing, mixed lane masks)
+**unrepresentable**, and whose backward pass is checked by the same type system as
+the forward. No "better target" claim is made until the eval matrix produces data.
+
+- **Habu-PTX kernel DSL** (`lib/ptx*.f`) — `tile<T,B,M>`/`span`/`matrix` parametric
+  types; checked `KERNEL:` definitions (SAXPY, numerically-stable SOFTMAX-ROWS) that
+  emit PTX, assemble with `ptxas -arch=sm_87`, and **run correct-vs-golden on the
+  NVIDIA Orin GPU** via a Habu FFI to the CUDA Driver API.
+- **Reverse-mode autograd** (`lib/ptx-ad.f`) — AD as a syntactic reversal of the
+  concatenative IR (no runtime tape); a VJP table + reverse pass that auto-derives
+  backwards, with algebraic-simplify and save-vs-recompute. Verified gradients:
+  `SOFTMAX-ROWS-BWD` is checked, and maki's tensor-op VJPs pass a numeric gradcheck.
+- **Maki framework** (`maki/`) — tensor/array types, autograd orchestration,
+  optimizers (SGD family) + losses, ONNX op import, and a training loop that
+  converges at tensor scale; plus the LLM-target **eval harness** (the checker as
+  the correctness judge for candidate kernels). Strictly one-way dependency
+  (`maki → habu`), fenced out of the trust root (not in `TRUSTED.md`/fixpoint/gate),
+  extractable to its own repo.
+
+See [`maki/README.md`](maki/README.md), [`PLAN.md`](PLAN.md), and the design docs
+`docs/ptx.md` / `docs/ptx-sketch.md` / `docs/inference.md` / `docs/autograd.md`.
+
 ## Docs
 
 - [`docs/bootstrap.md`](docs/bootstrap.md) — bootstrap, refresh, and porting.
