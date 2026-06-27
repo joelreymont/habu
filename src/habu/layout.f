@@ -86,5 +86,9 @@ $248 constant QXH-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
 $260 constant DEF-WL-CELL
+$27C0 constant PKG-PUB-CELL
+$27C8 constant PKG-PRI-CELL
+$27D0 constant PKG-PARENT-CELL
+$27D8 constant PKG-REC-CELL
 $2800 constant RSTK-OFF
 $3800 constant DATA-START

@@ -90,8 +90,8 @@ variable LKWEXIT variable LKWREC
 variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUNLOOP
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
-variable LKWDOES variable LKWQUOT variable LKWSEMIQ
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
+variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWENDPACKAGE variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
@@ -1494,9 +1494,9 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-FIND
    LFIND LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qtailok nloop nnext ncmp nmatch nend ninl
-      fstart floop fdone fnext fcmp fmatch finl :}
+      fstart floop fdone fnext fcmp fmatch finl fmiss ftryglobal ffound :}
    13 0 MOVZ,
    17 0 MOVZ,
    qscan LBL,
@@ -1504,7 +1504,7 @@ s" emit-fp-prims" s" --" TRUST
       14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
    qnone LBL,
-      2 0 MOVZ,  fstart B,
+      2 DATA PKG-PRI-CELL LDR,  fstart B,
    qhas LBL,
       17 0 CMPI,  C-EQ qnone BCOND,
       14 17 1 ADDI,  14 10 CMP,  C-GE qnone BCOND,
@@ -1564,7 +1564,16 @@ s" emit-fp-prims" s" --" TRUST
          14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
          13 1 MOVZ,  13 13 14 ORR,  fnext B,
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
-   fdone LBL,  RET, ;
+   fdone LBL,
+      13 ffound CBNZ,
+      14 DATA PKG-PRI-CELL LDR,  14 fmiss CBZ,
+      14 2 CMP,  C-NE ftryglobal BCOND,
+         2 DATA PKG-PUB-CELL LDR,  fstart B,
+      ftryglobal LBL,
+      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE fmiss BCOND,
+         2 0 MOVZ,  fstart B,
+      ffound LBL,
+      fmiss LBL,  RET, ;
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;

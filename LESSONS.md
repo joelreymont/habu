@@ -877,3 +877,8 @@ lesson — keep the specific word/code/path, cut the prose.
   subprocess came back `TIMEOUT` not `EXIT`: the tell was assertions on `kind`/
   `code`/stderr failing while the `stdout==0` assertion passed. Route every warm
   subprocess through `WR-TOOLS-LOAD`.
+- **DATA layout overlaps can masquerade as checker hangs:** package runtime cells
+  at `$268..$280` overlapped the JIT virtual-stack value array (`VVAL-OFF=$250`);
+  a fifth literal `10` wrote `$270`, poisoned `PKG-PRI-CELL`, and sent lookup into
+  bogus wordlist state. Relocate persistent cells outside JIT scratch ranges and
+  gate with a five-literal compiler regression.

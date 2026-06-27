@@ -230,6 +230,17 @@ $63 constant GD-C-LOWER
    s" 7" GE-OUT-LINE
    SB$ s" hb local-first output" GE-EXPECT-OUT ;
 
+: GD-LITERAL-FIRST ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : 10 ( -- ) ;" GE-SRC-LINE
+   s" : CALL10 ( -- n ) 10 ;" GE-SRC-LINE
+   s" CALL10 ." GE-SRC-LINE
+   s" hb numeric literals before dictionary lookup" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 10" GE-OUT-LINE
+   SB$ s" hb numeric literal-first output" GE-EXPECT-OUT ;
+
 : GD-NAMESPACE-QUALIFIED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -261,6 +272,131 @@ $63 constant GD-C-LOWER
    s" 3" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    SB$ s" hb wordlist namespace qualification output" GE-EXPECT-OUT ;
+
+: GD-PACKAGE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package HB" GE-SRC-LINE
+   s" : HIDDEN ( -- n ) 3 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : EXPOSED ( -- n ) HIDDEN 4 + ;" GE-SRC-LINE
+   s" private" GE-SRC-LINE
+   s" : HIDDEN2 ( -- n ) EXPOSED 5 + ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : EXPOSED2 ( -- n ) HIDDEN2 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" HB:EXPOSED ." GE-SRC-LINE
+   s" HB:EXPOSED2 ." GE-SRC-LINE
+   s" : CALL-HB ( -- n ) HB:EXPOSED ;" GE-SRC-LINE
+   s" CALL-HB ." GE-SRC-LINE
+   s" hb:exposed ." GE-SRC-LINE
+   s" hB:eXpOsEd ." GE-SRC-LINE
+   s" EXPOSED" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
+   s" HIDDEN" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
+   s" package hb" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : MORE ( -- n ) EXPOSED 10 + ;" GE-SRC-LINE
+   s" : AGAIN ( -- n ) HIDDEN 7 + ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" HB:MORE ." GE-SRC-LINE
+   s" HB:AGAIN ." GE-SRC-LINE ;
+
+: GD-PACKAGE-RUNTIME ( -- )
+   GE-HB-RESET
+   GD-PACKAGE-SOURCE
+   s" hb package public/private/reopen" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 7" GE-OUT-LINE
+   s" 12" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 17" GE-OUT-LINE
+   s" 10" GE-OUT-LINE
+   SB$ s" hb package public/private/reopen output" GE-EXPECT-OUT ;
+
+: GD-PACKAGE-JIT-STACK-ISOLATION ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : FIVE-LITS ( -- n n n n n ) 10 10 10 10 10 ;" GE-SRC-LINE
+   s" FIVE-LITS + + + + ." GE-SRC-LINE
+   s" hb package cells do not overlap jit stack" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 50" GE-OUT-LINE
+   SB$ s" hb package cells do not overlap jit stack output" GE-EXPECT-OUT ;
+
+: GD-PACKAGE-CHECK-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package CK" GE-SRC-LINE
+   s" : HELP ( -- n ) 2 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : EXPORTED ( -- n ) HELP 5 + ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" USE-CK ( -- n ) CK:EXPORTED" GE-SRC-CHECK-LINE
+   s" BAD-CK ( -- n ) HELP" GE-SRC-CHECK-LINE ;
+
+: GD-PACKAGE-CHECK-GOOD-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package CK" GE-SRC-LINE
+   s" : HELP ( -- n ) 2 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : EXPORTED ( -- n ) HELP 5 + ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
+
+: GD-PACKAGE-CHECK ( -- )
+   GE-HB-RESET
+   GD-PACKAGE-CHECK-SOURCE
+   s" hb package checker scope" GE-HB-RUN-STDIN
+   SB-RESET
+   s" -1" GE-OUT-LINE
+   s" 1" GE-OUT-LINE
+   SB$ s" hb package checker scope output" GE-EXPECT-OUT
+   GD-PACKAGE-CHECK-GOOD-SOURCE
+   s" check.f package certification" GE-CHECK-RUN ;
+
+: GD-RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+
+: GD-PACKAGE-MISUSE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET  s" public" GE-SRC-LINE
+   $4B s" public" s" package rejects public outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" private" GE-SRC-LINE
+   $4B s" private" s" package rejects private outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" end-package" GE-SRC-LINE
+   $4B s" end-package" s" package rejects end outside" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" package A" GE-SRC-LINE  s" package B" GE-SRC-LINE
+   $4B s" package" s" package rejects nesting" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" package" GE-SRC-LINE
+   $4A s" package" s" package rejects missing name" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET  s" package A:B" GE-SRC-LINE
+   $4B s" A:B" s" package rejects qualified name" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package P" GE-SRC-LINE
+   s" : H ( -- n ) 1 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" P:H ." GE-SRC-LINE
+   $46 s" P:H" s" package hides private qualified word" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package P" GE-SRC-LINE
+   s" : H ( -- n ) 1 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : BAD ( -- n ) H ;" GE-SRC-LINE
+   $46 s" at 'h'" s" package rejects private checked call" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package P" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : E ( -- n ) 1 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" E ." GE-SRC-LINE
+   $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-SOURCE ;
 
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
@@ -327,7 +463,12 @@ $63 constant GD-C-LOWER
    GD-LOCAL-QUOT-CHECKS
    GD-LOCAL-QUOT-COMPILE-FAIL
    GD-LOCAL-FIRST
+   GD-LITERAL-FIRST
    GD-NAMESPACE-QUALIFIED
+   GD-PACKAGE-RUNTIME
+   GD-PACKAGE-JIT-STACK-ISOLATION
+   GD-PACKAGE-CHECK
+   GD-PACKAGE-MISUSE
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW

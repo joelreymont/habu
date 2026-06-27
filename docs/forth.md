@@ -53,6 +53,69 @@ file.
   Qualification is only a token with exactly one non-edge colon; names that
   start or end with `:` are ordinary Forth words. Do not fake namespaces with
   raw global prefixes when the runtime supports a real wordlist-qualified name.
+- **Use packages for file-level namespaces.** `package NAME` opens NAME's private
+  wordlist, `public` switches definitions to NAME's exported wordlist, `private`
+  switches back to internal definitions, and `end-package` restores the previous
+  current wordlist. Public words are called as `NAME:WORD`; private words are
+  visible only while the package is open, including reopened package blocks.
+  Keep qualifier and word case matched as above (`HB:COUNT` or `hb:count`, not
+  `hb:COUNT`).
+
+### Packages
+
+Packages are real wordlist namespaces for file/module scope. Use the lowercase
+keywords because they are language words; keep package names and project-defined
+words uppercase unless the package intentionally belongs to a lowercase
+vocabulary.
+
+```forth
+package HB
+
+: HELPER ( n -- n )
+   2 * ;
+
+public
+
+: COUNT ( -- n )
+   5 HELPER ;
+
+private
+
+: INTERNAL ( -- n )
+   COUNT 1 + ;
+
+end-package
+```
+
+- `package NAME` consumes the next token, rejects a missing name, rejects names
+  containing `:`, rejects nesting, opens NAME's private wordlist, and saves the
+  caller's current wordlist. Definitions are private by default.
+- `public` is valid only inside a package and switches new definitions to the
+  package public/export wordlist. Public words are called from outside as
+  `NAME:WORD`; unqualified global lookup must not find them.
+- `private` is valid only inside a package and switches new definitions back to
+  the package private wordlist. Private words are visible by unqualified name
+  only while that package is open; `NAME:PRIVATE-WORD` must not resolve.
+- `end-package` is valid only inside a package. It restores the saved current
+  wordlist and clears both runtime and checker package scope.
+- Reopening the same package with `package NAME` reuses its public wordlist and
+  private wordlist, so later package blocks can call earlier private helpers and
+  add more public exports.
+- While a package is open, unqualified lookup tries the package private wordlist,
+  then the package public wordlist, then the saved/global lookup path. This lets
+  public words call private helpers without qualification and lets later private
+  helpers call earlier public words.
+- Qualified names use the existing single-colon wordlist syntax. The qualifier
+  selects the package public wordlist and the dictionary record stores the tail,
+  so `HB:COUNT` resolves public `COUNT` in package `HB`.
+- Package scope is mirrored into the checker. Signatures recorded inside
+  `private` are visible only to later checked code in the same open package;
+  signatures recorded inside `public` are visible as `NAME:WORD`.
+- Every package feature must have native gate coverage for runtime lookup,
+  checker certification, private isolation, public export, reopen behavior,
+  case-insensitive lookup, and fail-closed misuse (`public`/`private`/
+  `end-package` outside a package, nested packages, missing package names, and
+  qualified package names).
 
 ## Words & factoring
 
@@ -435,6 +498,13 @@ file.
   locals groups, no hand-balanced descriptor math. Use named scratch cells and
   small helpers, then gate the forbidden source shapes in `tools/build-fixpoint.f`
   so bad emitters fail before a snapshot or `bin/hb` candidate is written.
+- **Fixed DATA header cells need a layout audit.** Before adding a new native
+  runtime cell in `src/habu/layout.f`, check the reserved JIT/runtime ranges:
+  virtual stack tags/values (`VTAG-OFF`, `VVAL-OFF`), snapshot stack
+  (`SNAPSTK-OFF`), body buffer, return stack, locals table, register tables,
+  breakpoints, and snapshot cells. A cell inside a scratch range will be
+  overwritten by ordinary compiled source; add a focused regression for the
+  exact overlap class.
 - **Emitter punctuation is semantic.** Words such as `BL,`, `LBL,`, `ADR,`, and
   `ZBYTES,` are distinct from punctuation-less names; source-shape regressions
   should assert exact emitted tokens. Emitter stack comments describe the

@@ -1026,6 +1026,125 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 
 : FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  a u SCAN-USIGS  FSU @ ;
 
+0 constant CHECKER-PACKAGE-NONE
+1 constant CHECKER-PACKAGE-PRIVATE
+2 constant CHECKER-PACKAGE-PUBLIC
+$100 constant CHECKER-PACKAGE-CAP
+$240 constant CHECKER-PACKAGE-TOKEN-CAP
+create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
+create CHECKER-PACKAGE-TOKEN CHECKER-PACKAGE-TOKEN-CAP allot
+variable CHECKER-PACKAGE-U
+variable CHECKER-PACKAGE-MODE
+variable CHECKER-TOKEN-U
+variable CHECKER-COLON-N
+variable CHECKER-COLON-I
+
+: CHECKER-FOLD-C ( n -- n ) {: c:n :}
+   c $41 < IF c EXIT THEN
+   c $5A > IF c EXIT THEN
+   c $20 or ;
+
+: CHECKER-PACKAGE-ACTIVE? ( -- bool )
+   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
+
+: CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
+   a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
+
+: CHECKER-PACKAGE-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHECKER-PACKAGE-CAP >= IF s" checker: package name too long" 76 die THEN
+   0 BEGIN dup u < WHILE
+      a over CHECKER-PACKAGE-COPY-C
+      1 +
+   REPEAT drop
+   u CHECKER-PACKAGE-U ! ;
+
+: CHECKER-PACKAGE ( ptr u8 n -- )
+   CHECKER-PACKAGE-COPY
+   CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
+
+: CHECKER-PUBLIC ( -- )
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PUBLIC CHECKER-PACKAGE-MODE ! THEN ;
+
+: CHECKER-PRIVATE ( -- )
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! THEN ;
+
+: CHECKER-END-PACKAGE ( -- )
+   CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
+   0 CHECKER-PACKAGE-U ! ;
+
+: CHECKER-TOKEN-C ( n -- ) {: c:n :}
+   CHECKER-TOKEN-U @ CHECKER-PACKAGE-TOKEN-CAP >= IF s" checker: package token too long" 76 die THEN
+   c CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ + c!
+   CHECKER-TOKEN-U @ 1+ CHECKER-TOKEN-U ! ;
+
+: CHECKER-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      a over + c@ CHECKER-TOKEN-C
+      1 +
+   REPEAT drop ;
+
+: CHECKER-PACKAGE-PREFIX ( -- )
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-TOKEN+
+   $3A CHECKER-TOKEN-C ;
+
+: CHECKER-BUILD-PUBLIC ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 CHECKER-TOKEN-U !
+   CHECKER-PACKAGE-PREFIX
+   a u CHECKER-TOKEN+
+   CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ ;
+
+: CHECKER-BUILD-PRIVATE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 CHECKER-TOKEN-U !
+   CHECKER-PACKAGE-PREFIX
+   s" private:" CHECKER-TOKEN+
+   a u CHECKER-TOKEN+
+   CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ ;
+
+: CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 CHECKER-COLON-N !
+   -1 CHECKER-COLON-I !
+   0 BEGIN dup u < WHILE
+      a over + c@ $3A = IF
+         CHECKER-COLON-N @ 0= IF dup CHECKER-COLON-I ! THEN
+         CHECKER-COLON-N @ 1+ CHECKER-COLON-N !
+      THEN
+      1 +
+   REPEAT drop ;
+
+: CHECKER-PACKAGE-MAP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CHECKER-PACKAGE-ACTIVE? 0= IF 0 EXIT THEN
+   a u CHECKER-COLON-SCAN
+   CHECKER-COLON-N @ 0= IF -1 EXIT THEN
+   CHECKER-COLON-N @ 1 = IF
+      CHECKER-COLON-I @ 0= IF -1 EXIT THEN
+      CHECKER-COLON-I @ u 1- = IF -1 EXIT THEN
+   THEN
+   0 ;
+
+: CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 FSU !
+   a u SCAN-USIGS
+   FSU @ 0 <> ;
+
+: CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-PACKAGE-MAP? IF
+      a u CHECKER-BUILD-PRIVATE CHECKER-FIND-USIG IF EXIT THEN
+      a u CHECKER-BUILD-PUBLIC CHECKER-FIND-USIG IF EXIT THEN
+   THEN
+   a u CHECKER-FIND-USIG drop ;
+
+: CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECKER-PACKAGE-MAP? IF
+      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC = IF
+         a u CHECKER-BUILD-PUBLIC EXIT
+      THEN
+      a u CHECKER-BUILD-PRIVATE EXIT
+   THEN
+   a u ;
+
+: CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
+
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
 \ means a call may reach a catchable throw edge.
@@ -1206,14 +1325,19 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u s" constant" STR= IF s" n --" PARSE-SIG -1 EXIT THEN
    0 ;
 
+: LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u ALLDIG? IF s" -- n" PARSE-SIG -1 EXIT THEN
+   a u FLODIG? IF s" -- r" PARSE-SIG -1 EXIT THEN
+   0 ;
+
 : DO-TOK {: a u :}
    a u DEFINER-TOK IF EXIT THEN
-   0 FSU !  a u SCAN-USIGS
+   a u LITERAL-TOK? IF EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SIG
    FSU @ IF FSA @ FSU @ PARSE-SIG ELSE
    PTAB a u TRY-TAB IF EXIT THEN
    TSEEN @ IF TFA @ TFU @ PARSE-SIG ELSE
-   a u ALLDIG? IF s" -- n" PARSE-SIG ELSE
-   a u FLODIG? IF s" -- r" PARSE-SIG ELSE -1 UNCK ! THEN THEN THEN THEN ;
+   -1 UNCK ! THEN THEN ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
@@ -1619,7 +1743,7 @@ s" <input>" DIAG-FILE!
 \ Usage:  s" myword" s" n n -- n" trust
 : TRUST {: na nu sa su :}
    na nu TOKFOLD drop
-   sa su  TKF TFU @  USIG-ADD ;
+   sa su  TKF TFU @  CHECKER-USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
    a u s" evaluate" STR= IF -1 EXIT THEN
@@ -1734,7 +1858,7 @@ s" <input>" DIAG-FILE!
          NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
       VSIG @ SGSEEN @ and IF
-         SGA @ SGU @  NMA @ NMU @  USIG-ADD
+         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-ADD
       ELSE
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
       THEN

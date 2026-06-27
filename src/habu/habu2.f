@@ -657,8 +657,8 @@ create ENDLOC-KW 58 c, 125 c,
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,
-   LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,
+   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1790,8 +1790,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
-   cwok LBL,
-   9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
+   cwok LBL,  9 0 MOVZ,
+   9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    G-INSTALL-CRASH
    G-INSTALL-TRAP
    9 LDOESPATCH LABEL@ ADR,  9 DATA DOESP-CELL STR,
@@ -1873,7 +1873,181 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    lnotcolon LBL, ;
 s" em-interpret-colon" s" label --" TRUST
 
+: C-FIND-GLOBAL ( ptr n n -- ) {: name:ptr len:n :}
+   LBL {: ok:label :}
+   SP SP 16 SUBI,
+   14 DATA PKG-PUB-CELL LDR,  14 SP 0 STR,
+   14 DATA PKG-PRI-CELL LDR,  14 SP 8 STR,
+   14 0 MOVZ,  14 DATA PKG-PUB-CELL STR,  14 DATA PKG-PRI-CELL STR,
+   9 name LABEL@ ADR,  10 len MOVZ,  LFIND LABEL@ BL,
+   14 SP 0 LDR,  14 DATA PKG-PUB-CELL STR,
+   14 SP 8 LDR,  14 DATA PKG-PRI-CELL STR,
+   SP SP 16 ADDI,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 name LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+s" c-find-global" s" ptr n n --" TRUST
+
+: C-CALL-CHECKER-PACKAGE ( -- )
+   LCHKPACKAGE 15 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED ;
+s" c-call-checker-package" s" --" TRUST
+
+: C-CALL-CHECKER-PUBLIC ( -- )
+   LCHKPUB 14 C-FIND-GLOBAL
+   C-CALL-X11-SAVED ;
+s" c-call-checker-public" s" --" TRUST
+
+: C-CALL-CHECKER-PRIVATE ( -- )
+   LCHKPRI 15 C-FIND-GLOBAL
+   C-CALL-X11-SAVED ;
+s" c-call-checker-private" s" --" TRUST
+
+: C-CALL-CHECKER-END-PACKAGE ( -- )
+   LCHKENDPKG 19 C-FIND-GLOBAL
+   C-CALL-X11-SAVED ;
+s" c-call-checker-end-package" s" --" TRUST
+
+: C-PACKAGE-FAIL ( n -- ) {: rc:n :}
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT SYS, ;
+s" c-package-fail" s" n --" TRUST
+
+: C-PACKAGE-NAME-GUARD ( -- )
+   LBL LBL LBL {: scan:label bad:label done:label :}
+   14 0 MOVZ,
+   scan LBL,
+      15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
+      15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-EQ bad BCOND,
+      14 14 1 ADDI,  scan B,
+   bad LBL,  $4B C-PACKAGE-FAIL
+   done LBL, ;
+s" c-package-name-guard" s" --" TRUST
+
+: C-PACKAGE-NEW-PRIVATE-WID ( -- )
+   12 DATA WIDN-CELL LDR,
+   13 12 1 ADDI,  13 DATA WIDN-CELL STR, ;
+s" c-package-new-private-wid" s" --" TRUST
+
+: C-PACKAGE-ALLOC-WIDS ( -- )
+   17 DATA WIDN-CELL LDR,
+   16 17 1 ADDI,
+   15 17 2 ADDI,  15 DATA WIDN-CELL STR, ;
+s" c-package-alloc-wids" s" --" TRUST
+
+: C-PACKAGE-NEW-RECORD ( -- )
+   C-QUALIFY-CAP
+   C-PACKAGE-ALLOC-WIDS
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   C-STORE-NAME
+   11 DATA WIDN-CELL LDR,  11 11 2 SUBI,
+   12 11 1 ADDI,
+   11 9 0 STR,  12 9 8 STR,
+   15 0 MOVN,  15 9 40 STR,
+   NDICT NDICT 1 ADDI,
+   5 9 0 ADDI, ;
+s" c-package-new-record" s" --" TRUST
+
+: C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
+   LBL {: havepri:label :}
+   12 havepri CBNZ,
+      C-PACKAGE-NEW-PRIVATE-WID
+      12 5 8 STR,
+   havepri LBL,
+   done B, ;
+s" c-package-existing-private" s" label --" TRUST
+
+: C-PACKAGE-ENSURE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label make:label done:label :}
+   C-PACKAGE-NAME-GUARD
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   nloop LBL,
+      6 make CBZ,
+      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,
+      15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
+      16 5 24 ADDI,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+         16 5 24 LDR,
+      ninl LBL,
+      7 0 MOVZ,
+      ncmp LBL,
+         15 DATA TKL-CELL LDR,  7 15 CMP,  C-GE nmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 DATA TKA-CELL LDR,  4 4 7 ADD,  4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE nnext BCOND,
+         7 7 1 ADDI,  ncmp B,
+      nmatch LBL,
+         11 5 0 LDR,  12 5 8 LDR,
+         done C-PACKAGE-EXISTING-PRIVATE
+      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
+   make LBL,
+      C-PACKAGE-NEW-RECORD
+   done LBL, ;
+s" c-package-ensure" s" --" TRUST
+
+: C-PACKAGE ( -- )
+   LBL LBL {: inactive:label hastok:label :}
+   9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
+      $4B C-PACKAGE-FAIL
+   inactive LBL,
+   LTOK LABEL@ BL,  0 hastok CBNZ,
+      $4A C-PACKAGE-FAIL
+   hastok LBL,
+   C-CALL-CHECKER-PACKAGE
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   C-PACKAGE-ENSURE
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   9 DATA CUR-CELL LDR,  9 DATA PKG-PARENT-CELL STR,
+   11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
+   5 DATA PKG-REC-CELL STR,
+   12 DATA CUR-CELL STR, ;
+s" c-package" s" --" TRUST
+
+: C-PUBLIC ( -- )
+   LBL {: active:label :}
+   9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
+      $4B C-PACKAGE-FAIL
+   active LBL,
+   C-CALL-CHECKER-PUBLIC
+   9 DATA PKG-PUB-CELL LDR,
+   9 DATA CUR-CELL STR, ;
+s" c-public" s" --" TRUST
+
+: C-PRIVATE ( -- )
+   LBL {: active:label :}
+   9 DATA PKG-PRI-CELL LDR,  9 active CBNZ,
+      $4B C-PACKAGE-FAIL
+   active LBL,
+   C-CALL-CHECKER-PRIVATE
+   9 DATA PKG-PRI-CELL LDR,
+   9 DATA CUR-CELL STR, ;
+s" c-private" s" --" TRUST
+
+: C-END-PACKAGE ( -- )
+   LBL {: active:label :}
+   9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
+      $4B C-PACKAGE-FAIL
+   active LBL,
+   C-CALL-CHECKER-END-PACKAGE
+   9 DATA PKG-PARENT-CELL LDR,  9 DATA CUR-CELL STR,
+   9 0 MOVZ,
+   9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
+   9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR, ;
+s" c-end-package" s" --" TRUST
+
 : EM-INTERPRET-DEFINE-KEYWORDS ( -- )
+   s" package" KEEP? IF LMAIN LABEL@ LKWPACKAGE 7 ['] C-PACKAGE CF-ENTRY THEN
+   s" public" KEEP? IF LMAIN LABEL@ LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY THEN
+   s" private" KEEP? IF LMAIN LABEL@ LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY THEN
+   s" end-package" KEEP? IF LMAIN LABEL@ LKWENDPACKAGE 11 ['] C-END-PACKAGE CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN LABEL@ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
@@ -2254,6 +2428,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWENDPACKAGE !
+   LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LKWQUOT !  LBL LKWSEMIQ ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )

@@ -10,6 +10,14 @@
 : XRT-SUFFIX: ( -- n )
    44 ;
 
+package XRT
+: XRT-PRIVATE ( -- n )
+   45 ;
+public
+: XRT-PUBLIC ( -- n )
+   XRT-PRIVATE 1 + ;
+end-package
+
 : XRT-CALLER ( n -- n )
    XRT-SAMPLE + ;
 
@@ -30,7 +38,10 @@
    s" hB:xRt-SaMpLe" 0 search-wl 0= TTRUE
    s" xrt-suffix:" XRT-EXPECT-FOUND {: erec :}
    erec XREF-NAME$ s" XRT-SUFFIX:" T$=
-   erec XREF-WORDLIST get-current T= ;
+   erec XREF-WORDLIST get-current T=
+   s" XRT:XRT-PUBLIC" XRT-EXPECT-FOUND {: prec :} \ typed-local-lint: allow-bare-local
+   prec XREF-NAME$ s" XRT-PUBLIC" T$=
+   s" XRT:XRT-PRIVATE" XREF-FIND XREF-FOUND? TFALSE ;
 
 : XRT-MISSING ( -- )
    s" XRT-NO-SUCH-WORD" XREF-FIND XREF-FOUND? TFALSE ;
