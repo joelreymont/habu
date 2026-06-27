@@ -893,3 +893,41 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	prelude	lib/prelude.f	word	FALSE	(-- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	canonical false flag
 1	prelude	lib/prelude.f	word	0<>	(n -- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	nonzero test
 1	prelude	lib/prelude.f	word	FDROP	(r --)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	drop a float cell
+1	render	lib/render.f	module			lib/render-test.f	docs/stdlib.md	stdlib-render	active	byte buffer + CSV/JSON/Markdown formatters and key/value DSL
+1	render	lib/render.f	word	RB-RESET	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-C	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB+	(ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-U	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB#	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-NL	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB$	(-- ptr u8 n)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	QT	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	CM	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	QSTR	(ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	QK	(ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	SPACES	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-BOOL	(bool --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	KVN	(i64 i64 ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	KVS	(ptr u8 n i64 ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	KVB	(bool i64 ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-3	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-MILLI3	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-FIXED3	(n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-4	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-FFIX3	(r --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RB-RATIO4	(n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	LBAR	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	BAR	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	RBAR	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	MD-S	(ptr u8 n ptr u8 n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	MD-N	(ptr u8 n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	MD-R	(ptr u8 n n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	CVN	(ptr u8 n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	render	lib/render.f	word	CVR	(ptr u8 n n n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
+1	report	lib/report.f	module			lib/report-test.f	docs/stdlib.md	stdlib-report	active	declarative table reporting engine (columns -> CSV/Markdown)
+1	report	lib/report.f	word	TBL-RESET	(--)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	COL+	(ptr u8 n n [ n -- ] --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	COL-HDR@	(n -- ptr u8 n)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	COL-CELL	(n n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	TBL-CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word

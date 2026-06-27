@@ -213,6 +213,10 @@ points stay listed.
 - `lib/hashmap-test.f` — coverage for HASH64/HM-PROBE/HM-CLEAR including collision probing and clear.
 - `lib/prelude.f` — checked boolean/flag (true/false/0<>) and float-stack (fdrop/fdup/fover/f<=/f>=) conveniences core omits.
 - `lib/prelude-test.f` — coverage for the prelude flag and float-stack helpers.
+- `lib/render.f` — byte buffer + CSV/JSON/Markdown formatters (RB-MILLI3/FIXED3/RATIO4/FFIX3) and a key/value DSL (MD-*/CV*/KV*).
+- `lib/render-test.f` — coverage for the render formatters and key/value DSL.
+- `lib/report.f` — declarative table reporting engine: declare columns once, render to CSV or Markdown.
+- `lib/report-test.f` — coverage for the report engine (one column set to CSV + Markdown).
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
