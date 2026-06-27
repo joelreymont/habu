@@ -645,6 +645,12 @@ lesson — keep the specific word/code/path, cut the prose.
   signatures in one child and size the runtime capture buffer for the measured
   batched output. Per-file export children hide startup cost and make warm
   phases look inherently slow.
+- **Warm trust preludes expose only standard signatures:** a word like
+  `tools/date.f` `PARSE-YMD` is invisible to `public-signatures --trust` when
+  its `( in -- out )` comment appears after `{: :}` locals. Warm-loaded CLI
+  wrappers then fail before runtime. Keep the effect immediately after the word
+  name, and pass cross-image buffers as real `ptr u8` values from
+  `MEM-ALLOC-BYTES`, not raw `create` storage.
 - **Semantic xref belongs in the image:** when investigating dictionary or call
   ownership, prefer baked native Forth words (`LATEST`, `XREF-FIND`, `XREF`,
   `SEE`, `WORDS`) over source search. If the existing words do not expose the
@@ -659,6 +665,10 @@ lesson — keep the specific word/code/path, cut the prose.
   source can make old bare locals look newly introduced. Run the diff locals
   scan before focused tests, annotate concrete roles (`n`, `len`, etc.), and
   let `bin/hb` reject wrong annotations instead of treating the move as legacy.
+- **Diff lint must stream large patches:** `typed-local-diff-lint` read the diff
+  dynamically but still fed all lines through the capped shared `SPLIT-LINES`
+  table. Commit gates should process patch lines in place and keep a fixture
+  above the old 1024-line limit.
 - **Keep global warm images lean:** baking large one-off tool cores into the
   shared warm image can leave too little dictionary/data headroom for tools that
   are loaded later. Prefer explicit multi-file warm loads for the boundary that

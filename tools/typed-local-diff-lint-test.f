@@ -6,6 +6,8 @@
 \ tools/typed-local-diff-lint-test.f
 
 4096 constant TLDT-BUF-CAP
+$10000 constant TLDT-LARGE-CAP
+1100 constant TLDT-LARGE-LINES
 10000 constant TLDT-TIMEOUT-MS
 
 variable TLDT-ROOT-U
@@ -14,6 +16,8 @@ variable TLDT-BAD-U
 variable TLDT-IGNORED-U
 variable TLDT-ALLOW-U
 variable TLDT-MD-U
+variable TLDT-LARGE-U
+variable TLDT-LARGE-SRC-U
 
 create TLDT-ROOT-BUF FS-PATH-CAP allot
 create TLDT-GOOD-BUF FS-PATH-CAP allot
@@ -21,8 +25,10 @@ create TLDT-BAD-BUF FS-PATH-CAP allot
 create TLDT-IGNORED-BUF FS-PATH-CAP allot
 create TLDT-ALLOW-BUF FS-PATH-CAP allot
 create TLDT-MD-BUF FS-PATH-CAP allot
+create TLDT-LARGE-BUF FS-PATH-CAP allot
 create TLDT-OUT TLDT-BUF-CAP allot
 create TLDT-ERR TLDT-BUF-CAP allot
+create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 
 : TLDT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -45,6 +51,9 @@ create TLDT-ERR TLDT-BUF-CAP allot
 
 : TLDT-MD ( -- ptr u8 n )
    TLDT-MD-BUF TLDT-MD-U @ ;
+
+: TLDT-LARGE ( -- ptr u8 n )
+   TLDT-LARGE-BUF TLDT-LARGE-U @ ;
 
 : TLDT-LF ( -- )
    10 SB-APPEND-C ;
@@ -95,6 +104,27 @@ create TLDT-ERR TLDT-BUF-CAP allot
    s" +example {: x :} text" SB-APPEND TLDT-LF
    SB$ ;
 
+: TLDT-LARGE-APPEND ( ptr u8 n -- )
+   TLDT-LARGE-SRC TLDT-LARGE-CAP TLDT-LARGE-SRC-U BUF-APPEND ;
+
+: TLDT-LARGE-LF ( -- )
+   10 TLDT-LARGE-SRC TLDT-LARGE-CAP TLDT-LARGE-SRC-U BUF-APPEND-C ;
+
+: TLDT-LARGE-DIFF-HEAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" diff --git a/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND
+   s"  b/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND TLDT-LARGE-LF
+   s" +++ b/" TLDT-LARGE-APPEND path pathu TLDT-LARGE-APPEND TLDT-LARGE-LF
+   s" @@ -1,0 +1,1100 @@" TLDT-LARGE-APPEND TLDT-LARGE-LF ;
+
+: TLDT-LARGE$ ( -- ptr u8 n )
+   0 TLDT-LARGE-SRC-U !
+   s" lib/large.f" TLDT-LARGE-DIFF-HEAD
+   0 begin dup TLDT-LARGE-LINES < while
+      s" +: OK ( n -- n ) {: x:n :} x ;" TLDT-LARGE-APPEND TLDT-LARGE-LF
+      1+
+   repeat drop
+   TLDT-LARGE-SRC TLDT-LARGE-SRC-U @ ;
+
 : TLDT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -111,16 +141,19 @@ create TLDT-ERR TLDT-BUF-CAP allot
    TLDT-ROOT s" ignored.diff" TLDT-IGNORED-BUF JOIN-PATH TLDT-IGNORED-U !
    TLDT-ROOT s" allow.diff" TLDT-ALLOW-BUF JOIN-PATH TLDT-ALLOW-U !
    TLDT-ROOT s" note.diff" TLDT-MD-BUF JOIN-PATH TLDT-MD-U !
+   TLDT-ROOT s" large.diff" TLDT-LARGE-BUF JOIN-PATH TLDT-LARGE-U !
    TLDT-GOOD CLEANUP+
    TLDT-BAD CLEANUP+
    TLDT-IGNORED CLEANUP+
    TLDT-ALLOW CLEANUP+
    TLDT-MD CLEANUP+
+   TLDT-LARGE CLEANUP+
    TLDT-GOOD TLDT-GOOD$ WRITE-ALL
    TLDT-BAD TLDT-BAD$ WRITE-ALL
    TLDT-IGNORED TLDT-IGNORED$ WRITE-ALL
    TLDT-ALLOW TLDT-ALLOW$ WRITE-ALL
-   TLDT-MD TLDT-MD$ WRITE-ALL ;
+   TLDT-MD TLDT-MD$ WRITE-ALL
+   TLDT-LARGE TLDT-LARGE$ WRITE-ALL ;
 
 : TLDT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -167,6 +200,9 @@ create TLDT-ERR TLDT-BUF-CAP allot
 : TLDT-TEST-GOOD ( -- )
    TLDT-GOOD TLDT-RUN TLDT-ASSERT-CLEAN ;
 
+: TLDT-TEST-LARGE ( -- )
+   TLDT-LARGE TLDT-RUN TLDT-ASSERT-CLEAN ;
+
 : TLDT-TEST-IGNORED ( -- )
    TLDT-IGNORED TLDT-RUN TLDT-ASSERT-CLEAN ;
 
@@ -188,6 +224,7 @@ create TLDT-ERR TLDT-BUF-CAP allot
    T-RESET
    TLDT-PREPARE
    TLDT-TEST-GOOD
+   TLDT-TEST-LARGE
    TLDT-TEST-IGNORED
    TLDT-TEST-ALLOW
    TLDT-TEST-NON-FORTH

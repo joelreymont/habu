@@ -289,6 +289,7 @@ variable SUITE-SLICE
    s" tool-boundary-check-repair" SUITE-LABEL= if SUITE-TRUE exit then
    s" tool-boundary-doc-public" SUITE-LABEL= if SUITE-TRUE exit then
    s" tool-boundary-lints" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tool-boundary-typed-local" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-CHECK-CLI? ( -- bool )
@@ -542,8 +543,11 @@ TEST-TOOL-SUITE tool-boundary-doc-public
 TEST-TOOL-SUITE tool-boundary-lints
    tools/repl-lint-test.f tools/diag-origin-test.f tools/aot-lint-test.f
    tools/signature-lint-test.f tools/checked-boundary-lint-test.f
-   tools/typed-local-diff-lint-test.f tools/bundle-lib-test.f
-   tools/json-only-test.f
+   tools/bundle-lib-test.f tools/json-only-test.f
+;TEST-SUITE
+
+TEST-TOOL-SUITE tool-boundary-typed-local
+   tools/typed-local-diff-lint-test.f
 ;TEST-SUITE
 
 TEST-SUITE check-cli-boundary

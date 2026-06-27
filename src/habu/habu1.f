@@ -62,8 +62,8 @@ variable FPL  variable FPE
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG
-   FPL @ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
-   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE @ LBL, ;
+   FPL LABEL@ LBL,  SP SP 16 SUBI,  30 SP 0 STR,
+   FP-XT @ execute  30 SP 0 LDR,  SP SP 16 ADDI,  RET,  FPE LABEL@ LBL, ;
 s" fprim" s" ptr u8 n n --" TRUST
 
 : FPRIM-L ( ptr u8 n n -- )           \ LEAF prim: no BL/BLR in body -> no x30 frame
@@ -71,7 +71,7 @@ s" fprim" s" ptr u8 n n --" TRUST
    FP-KEEP? 0= IF EXIT THEN
    LBL FPL !  LBL FPE !
    FP-REG
-   FPL @ LBL,  FP-XT @ execute  RET,  FPE @ LBL, ;
+   FPL LABEL@ LBL,  FP-XT @ execute  RET,  FPE LABEL@ LBL, ;
 s" fprim-l" s" ptr u8 n n --" TRUST
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
@@ -477,14 +477,14 @@ variable SZA-I
 : SPAWN-DUP2-ACTION ( reg fd -- )
    SPAWN-DUP2-ARGS
    LBL SDA-SKIP !
-   SDA-FD @ 0 CMPI,  C-LT SDA-SKIP @ BCOND,
+   SDA-FD @ 0 CMPI,  C-LT SDA-SKIP LABEL@ BCOND,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  15 SPAWN-ACTION-SIZE MOVZ,  14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,  14 14 13 ADD,
    15 PSFA-DUP2 MOVZ,  15 14 0 STRW,
    SDA-FD @ 14 4 STRW,
    15 SDA-NEW @ MOVZ,  15 14 8 STRW,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
-   SDA-SKIP @ LBL, ;
+   SDA-SKIP LABEL@ LBL, ;
 s" spawn-dup2-action" s" reg fd --" TRUST
 
 \ Emit one PSFA_CHDIR record into the runtime file-actions blob at x13.
@@ -503,19 +503,19 @@ s" spawn-dup2-action" s" reg fd --" TRUST
    16 SCA-CWD @ 0 ADDI,
    17 14 SPAWN-CHDIR-PATH-OFF ADDI,
    18 SPAWN-CHDIR-PATH-CAP MOVZ,
-   SCA-COPY @ LBL,
-      18 0 CMPI,  C-EQ SCA-OVER @ BCOND,
+   SCA-COPY LABEL@ LBL,
+      18 0 CMPI,  C-EQ SCA-OVER LABEL@ BCOND,
       15 16 0 LDRB,
       15 17 0 STRB,
       16 16 1 ADDI,
       17 17 1 ADDI,
       18 18 1 SUBI,
-      15 SCA-COPY @ CBNZ,
+      15 SCA-COPY LABEL@ CBNZ,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
-   SCA-DONE @ B,
-   SCA-OVER @ LBL,
-   9 0 MOVN,  SCA-FAIL @ B,
-   SCA-DONE @ LBL, ;
+   SCA-DONE LABEL@ B,
+   SCA-OVER LABEL@ LBL,
+   9 0 MOVN,  SCA-FAIL LABEL@ B,
+   SCA-DONE LABEL@ LBL, ;
 s" spawn-chdir-action" s" reg label --" TRUST
 
 : SPAWN-DARWIN-FRAME3-ENTER ( -- )
@@ -573,9 +573,9 @@ s" spawn-darwin-fill-adesc" s" --" TRUST
    SAD-HAS !
    14 13 SPAWN-FA-COUNT-OFF LDRW,
    2 SP SPAWN-ADESC-OFF ADDI,
-   14 SAD-HAS @ CBNZ,
+   14 SAD-HAS LABEL@ CBNZ,
       2 0 MOVZ,
-   SAD-HAS @ LBL, ;
+   SAD-HAS LABEL@ LBL, ;
 s" spawn-darwin-nullable-adesc" s" label --" TRUST
 
 : SPAWN-DARWIN-USE-ADESC ( -- )
@@ -621,11 +621,11 @@ s" spawn-darwin-argv-default-envp" s" reg --" TRUST
 : SPAWN-DARWIN-FINISH ( label label -- )
    SFIN-FAIL !  SFIN-OK !
    NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK @ CBZ,
-      9 0 MOVN,  SFIN-FAIL @ B,
-   SFIN-OK @ LBL,
+   9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK LABEL@ CBZ,
+      9 0 MOVN,  SFIN-FAIL LABEL@ B,
+   SFIN-OK LABEL@ LBL,
    9 SP SPAWN-PID-OFF LDR,
-   SFIN-FAIL @ LBL,
+   SFIN-FAIL LABEL@ LBL,
    9 G-PUSH ;
 s" spawn-darwin-finish" s" label label --" TRUST
 
@@ -776,14 +776,14 @@ s" spawn-darwin-finish" s" label label --" TRUST
 
 : BCOMPILE  A G-POP  11 9 0 ADDI,
    SP SP 16 SUBI,  11 SP 8 STR,
-   2 3 MOVZ,  LPROT @ BL,
+   2 3 MOVZ,  LPROT LABEL@ BL,
    11 SP 8 LDR,
    5 $FFFF MOVZ,
-   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT @ BL,
-   9 $D63F0200 LIT64,  LCEMIT @ BL,
-   2 5 MOVZ,  LPROT @ BL,
+   7 11 5 AND,    7 7 5 LSLI,  8 $D2800010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 16 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2A00010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   7 11 32 LSRI,  7 7 5 AND,   7 7 5 LSLI,  8 $F2C00010 LIT64,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   9 $D63F0200 LIT64,  LCEMIT LABEL@ BL,
+   2 5 MOVZ,  LPROT LABEL@ BL,
    SP SP 16 ADDI, ;
 
 : BEMIT A G-POP  13 9 0 ADDI,  G-EMITC ;
@@ -972,20 +972,71 @@ s" spawn-darwin-finish" s" label label --" TRUST
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
-\ ---- FFI: AAPCS64 trampoline, <=8 integer/pointer args ----
-\ ( argbuf fn -- ret ) : load 8 cells from argbuf into x0-x7, blr fn, push x0.
+\ ---- FFI: AAPCS64 trampolines ----
+\ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
+\ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
+\ stack spill, and integer/float return variants for the checked lib/ffi.f API.
 \ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
-\ preserves the data stack; x30 is framed by FPRIM (this prim has a BLR). Only
-\ integer/pointer args — the entire CUDA Driver surface except cuLaunchKernel,
-\ whose 9th-11th stack args need the >8 path (separate prim, later).
+\ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).
+: BFFI-LOAD-X0-X7 ( -- )
+   0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
+   4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
+
 : BFFI-CALL
    16 G-POP                                            \ x16 = fn
    15 G-POP                                            \ x15 = argbuf
-   0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
-   4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR,
+   BFFI-LOAD-X0-X7
    16 BLR,
    0 G-PUSH ;
+
+: BFFI-LOAD-DREG ( n n -- ) {: d:n off:n :}
+   9 17 off LDR,  d 9 FMOVXD, ;
+
+: BFFI-LOAD-D0-D7 ( -- )
+   0 0 BFFI-LOAD-DREG    1 $8 BFFI-LOAD-DREG
+   2 $10 BFFI-LOAD-DREG  3 $18 BFFI-LOAD-DREG
+   4 $20 BFFI-LOAD-DREG  5 $28 BFFI-LOAD-DREG
+   6 $30 BFFI-LOAD-DREG  7 $38 BFFI-LOAD-DREG ;
+
+: BFFI-COPY-ABI-STACK ( -- )
+   LBL {: lskip:label :}  LBL {: lloop:label :}  LBL {: ldone:label :}
+   14 0 CMPI,  C-LE lskip BCOND,                      \ stackcells <= 0 -> no spill
+   10 14 0 ADDI,                                      \ x10 = cells left
+   11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,
+   12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,        \ sp -= align(cells*8,16)
+   12 13 0 ADDI,  13 SP 0 ADDI,                       \ x12=src, x13=dst
+   lloop LBL,
+      10 ldone CBZ,
+      9 12 0 LDR,  9 13 0 STR,
+      12 12 $8 ADDI,  13 13 $8 ADDI,
+      10 10 1 SUBI,  lloop B,
+   ldone LBL,
+   lskip LBL, ;
+
+: BFFI-CALL-ABI-CORE ( -- )
+   16 G-POP                                            \ x16 = fn
+   14 G-POP                                            \ x14 = stack cell count
+   13 G-POP                                            \ x13 = prepacked stack cells
+   17 G-POP                                            \ x17 = FP argbuf
+   15 G-POP                                            \ x15 = integer argbuf
+   20 SP $8 STR,                                       \ park caller x20 in frame slot
+   20 SP 0 ADDI,                                       \ x20 = frame sp
+   BFFI-COPY-ABI-STACK
+   BFFI-LOAD-X0-X7
+   8 15 $40 LDR,                                       \ x8 = indirect-result address
+   BFFI-LOAD-D0-D7
+   16 BLR,
+   SP 20 0 ADDI,
+   20 SP $8 LDR, ;
+
+: BFFI-CALL-ABI ( -- )
+   BFFI-CALL-ABI-CORE
+   0 G-PUSH ;
+
+: BFFI-CALL-ABI-R ( -- )
+   BFFI-CALL-ABI-CORE
+   9 0 FMOVDX,  9 G-PUSH ;
 
 \ ---- FFI: general AAPCS64 trampoline, any integer/pointer arity ----
 \ ( argbuf nargs fn -- ret ) : x0-x7 from argbuf[0..7]; args 9..nargs spilled to
@@ -1015,8 +1066,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
          10 10 1 SUBI,  lloop B,                       \ extra--, loop
       ldone LBL,
    lskip LBL,
-   0 15 0   LDR,   1 15 $8  LDR,   2 15 $10 LDR,   3 15 $18 LDR,
-   4 15 $20 LDR,   5 15 $28 LDR,   6 15 $30 LDR,   7 15 $38 LDR,
+   BFFI-LOAD-X0-X7
    16 BLR,
    SP 20 0 ADDI,                                       \ restore sp from x20
    20 SP $8 LDR,                                       \ restore caller x20
@@ -1126,9 +1176,9 @@ s" linux-stat-fix" s" n --" TRUST
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
-   2 3 MOVZ,  LPROT @ BL,
+   2 3 MOVZ,  LPROT LABEL@ BL,
    9 SP 8 LDR,  10 SP 16 LDR,  10 9 0 STRW,
-   2 5 MOVZ,  LPROT @ BL,
+   2 5 MOVZ,  LPROT LABEL@ BL,
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
@@ -1204,7 +1254,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BPARSE-NAME
    LBL LBL {: none done :}
-   LTOK @ BL,
+   LTOK LABEL@ BL,
    0 none CBZ,
       9 DATA TKA-CELL LDR,  9 G-PUSH
       9 DATA TKL-CELL LDR,  9 G-PUSH
@@ -1284,6 +1334,8 @@ s" linux-stat-fix" s" n --" TRUST
    s" mmap" ['] BMMAP FPRIM-L
    s" ffi-call" ['] BFFI-CALL FPRIM
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+   s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
+   s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
@@ -1383,15 +1435,15 @@ s" emit-prims" s" --" TRUST
 s" emit-fp-prims" s" --" TRUST
 
 : EMIT-CEMIT
-   LCEMIT @ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+   LCEMIT LABEL@ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
 \ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
 \ truncation would let the check hook certify code it never saw.
 : EMIT-BCAP
-   LBCAP @ LBL,
+   LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
-   LBCS @ LBL,
+   LBCS LABEL@ LBL,
    LBL LBL LBL {: bok bcp bcd :}
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
@@ -1408,7 +1460,7 @@ s" emit-fp-prims" s" --" TRUST
    RET, ;
 
 : EMIT-TOK
-   LTOK @ LBL,
+   LTOK LABEL@ LBL,
    LBL LBL LBL LBL LBL {: tskip thas tscan tgot tnone :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
    tskip LBL,
@@ -1425,11 +1477,11 @@ s" emit-fp-prims" s" --" TRUST
    tnone LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
 : EMIT-PROT
-   LPROT @ LBL,
+   LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
 
 : EMIT-FLUSH
-   LFLUSH @ LBL,
+   LFLUSH LABEL@ LBL,
    LBL LBL LBL LBL {: fdl fdd fil fid :}
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
@@ -1441,7 +1493,7 @@ s" emit-fp-prims" s" --" TRUST
    fid LBL,  DSB-ISH,  ISB,  RET, ;
 
 : EMIT-FIND
-   LFIND @ LBL,
+   LFIND LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: floop fdone fnext fcmp fmatch finl :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
    floop LBL,
@@ -1470,21 +1522,21 @@ s" emit-fp-prims" s" --" TRUST
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
 
-: C-NUM-SIGN ( n n -- ) {: ldone ndoll :}
+: C-NUM-SIGN ( label label -- ) {: ldone:label ndoll:label :}
    10 ldone CBZ,
    15 9 0 LDRB,  15 45 CMPI,  C-NE ndoll BCOND,
       13 0 MOVN,  14 1 MOVZ,
    ndoll LBL,
    14 10 CMP,  C-GE ldone BCOND, ;
 
-: C-NUM-BASE ( n n -- ) {: ldone nohex :}
+: C-NUM-BASE ( label label -- ) {: ldone:label nohex:label :}
    5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE nohex BCOND,
       6 16 MOVZ,  14 14 1 ADDI,
    nohex LBL,
    2 0 MOVZ,                                                    \ frac mode off
    14 10 CMP,  C-GE ldone BCOND, ;
 
-: C-NUM-DOT ( n n n -- ) {: ldone lloop ndot :}
+: C-NUM-DOT ( label label label -- ) {: ldone:label lloop:label ndot:label :}
    15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
       6 10 CMPI,  C-NE ldone BCOND,                             \ only base 10
       2 ldone CBNZ,                                             \ second dot -> fail
@@ -1492,7 +1544,7 @@ s" emit-fp-prims" s" --" TRUST
       14 14 1 ADDI,  lloop B,
    ndot LBL, ;
 
-: C-NUM-DIGIT ( n n n n -- ) {: ldone gotd nd nuc :}
+: C-NUM-DIGIT ( label label label label -- ) {: ldone:label gotd:label nd:label nuc:label :}
    15 48 CMPI,  C-LT ldone BCOND,
    15 57 CMPI,  C-GT nd BCOND,
       7 15 48 SUBI,  gotd B,
@@ -1504,15 +1556,15 @@ s" emit-fp-prims" s" --" TRUST
    15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
       7 15 55 SUBI, ;
 
-: C-NUM-INT-STEP ( n -- ) {: lloop :}
+: C-NUM-INT-STEP ( label -- ) {: lloop:label :}
    11 11 6 MUL,  11 11 7 ADD,
    14 14 1 ADDI,  lloop B, ;
 
-: C-NUM-FRAC-STEP ( n -- ) {: lloop :}
+: C-NUM-FRAC-STEP ( label -- ) {: lloop:label :}
    5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
    14 14 1 ADDI,  lloop B, ;
 
-: C-NUM-FLOAT-FINISH ( n n -- ) {: ldone fpos :}
+: C-NUM-FLOAT-FINISH ( label label -- ) {: ldone:label fpos:label :}
    3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
@@ -1523,7 +1575,7 @@ s" emit-fp-prims" s" --" TRUST
    11 11 13 MUL,  12 1 MOVZ, ;
 
 : EMIT-NUM ( -- )
-   LNUM @ LBL,
+   LNUM LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
    C-NUM-INIT-REGS
@@ -1549,20 +1601,20 @@ s" emit-fp-prims" s" --" TRUST
    0 BEGIN dup #PL @ < WHILE
       dup cells PLEN + @ DNAME-INL > IF
          LBL over cells PNLBL + !
-         dup cells PNLBL + @ LBL,
+         dup cells PNLBL + LABEL@ LBL,
          dup cells PNAM + @ over cells PLEN + @ BYTES,
       ELSE
          -1 over cells PNLBL + !
       THEN
       1 + REPEAT drop
-   LNCOUNT @ LBL,  #PL @ DCQ,
-   LDICT @ LBL,
+   LNCOUNT LABEL@ LBL,  #PL @ DCQ,
+   LDICT LABEL@ LBL,
    0 BEGIN dup #PL @ < WHILE
-      dup cells PLBL + @ DLBL,
-      dup cells PEL  + @ DLBL,
+      dup cells PLBL + LABEL@ DLBL,
+      dup cells PEL  + LABEL@ DLBL,
       dup cells PLEN + @ DNAME-INL > IF
          dup cells PLEN + @ DNAME-EXT or DCQ,
-         dup cells PNLBL + @ DLBL,
+         dup cells PNLBL + LABEL@ DLBL,
          0 DCQ,
       ELSE
          dup cells PLEN + @ DCQ,

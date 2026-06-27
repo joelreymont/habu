@@ -230,7 +230,7 @@ create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLE
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
-   MLBL @ BL,                              \ bl MAIN (resolved when MLBL is placed)
+   MLBL LABEL@ BL,                              \ bl MAIN (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT SYS, ;               \ exit(0)
 variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 : BIMM? {: w :}  w $7C000000 and $14000000 = ;
@@ -385,7 +385,7 @@ variable DENSE-RV
 : COPY-PLANNED-BLOBS
    0 WI ! BEGIN WI @ NCLO @ < WHILE
       WI @ cells CLO + @ REC2 !
-      WI @ 0= IF MLBL @ LBL, THEN          \ MAIN is closure word 0 -> place its label
+      WI @ 0= IF MLBL LABEL@ LBL, THEN          \ MAIN is closure word 0 -> place its label
       REC2 @ COPY-COMPACT-BLOB
       WI @ 1+ WI ! REPEAT ;
 : COPY-BLOBS  PLAN-BLOBS  COPY-PLANNED-BLOBS ;

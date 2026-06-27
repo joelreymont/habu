@@ -12,7 +12,7 @@ $10000004 constant LINUX-SA-PROF-FLAGS
 $0042 constant MACOS-SA-PROF-FLAGS
 
 : EMIT-PROFDUMP ( -- )
-   LPROFDUMP @ LBL,
+   LPROFDUMP LABEL@ LBL,
    LBL LBL LBL LBL LBL {: dl dn dd dret pinl :}
    5 DBASE 0 ADDI,  6 0 MOVZ,
    dl LBL,
@@ -46,7 +46,7 @@ s" c-prof-mctx>r21" s" --" TRUST
 s" c-prof-pc>r9" s" --" TRUST
 
 : EMIT-PROF ( -- )
-   LPROFH @ LBL,
+   LPROFH LABEL@ LBL,
    LBL LBL LBL LBL LBL {: pl pnext pdone prep psig :}
    C-PROF-MCTX>R21  C-PROF-PC>R9
    10 DATA PROF-TOT LDR,  10 10 1 ADDI,  10 DATA PROF-TOT STR,
@@ -64,11 +64,11 @@ s" c-prof-pc>r9" s" --" TRUST
    12 DATA PROF-OTHER LDR,  12 12 1 ADDI,  12 DATA PROF-OTHER STR,
    psig LBL,
    0 4 0 ADDI,  NR-SIGRETURN SYS,
-   prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
+   prep LBL,  LPROFDUMP LABEL@ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
 
 : C-PROF-SIGACTION-FRAME ( -- )
    SP SP 32 SUBI,
-   9 LPROFH @ ADR,  9 SP 0 STR,
+   9 LPROFH LABEL@ ADR,  9 SP 0 STR,
    HB-TARGET-LINUX? IF
       10 LINUX-SA-PROF-FLAGS LIT64,  10 SP 8 STR,
       10 0 MOVZ,  10 SP 16 STR,  10 SP 24 STR,
@@ -116,7 +116,7 @@ s" c-prof-timer-done" s" --" TRUST
    C-PROF-TIMER
    C-PROF-TIMER-DONE ;
 
-: BPROF-REPORT ( -- )  SP SP 16 SUBI,  30 SP 0 STR,  LPROFDUMP @ BL,
+: BPROF-REPORT ( -- )  SP SP 16 SUBI,  30 SP 0 STR,  LPROFDUMP LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI, ;
 
 : EMIT-PROF-PRIMS ( -- )

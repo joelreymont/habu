@@ -30,7 +30,7 @@ CRH-INIT
 \ LHEX ( x9=val ): write 16 hex digits + newline to fd 2. Leaf; clobbers
 \ x9..x15 and x0-x2/x16 (write syscall).
 : EMIT-HEX ( -- )
-   LHEX @ LBL,
+   LHEX LABEL@ LBL,
    LBL LBL LBL {: hl hd hlet :}
    SP SP 32 SUBI,
    14 SP 0 ADDI,
@@ -81,16 +81,16 @@ s" c-crash-pc>r9" s" --" TRUST
 
 : C-CRASH-PRINT-REGS ( -- )
    HB-TARGET-LINUX? IF
-      9 21 LINUX-MCTX-FP-OFF LDR,  LHEX @ BL,
-      9 21 LINUX-MCTX-LR-OFF LDR,  LHEX @ BL,
-      9 21 LINUX-MCTX-SP-OFF LDR,  LHEX @ BL,
-      C-CRASH-PC>R9  LHEX @ BL,
+      9 21 LINUX-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
+      9 21 LINUX-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
+      9 21 LINUX-MCTX-SP-OFF LDR,  LHEX LABEL@ BL,
+      C-CRASH-PC>R9  LHEX LABEL@ BL,
       exit
    THEN
-   9 21 MACOS-MCTX-FP-OFF LDR,  LHEX @ BL,
-   9 21 MACOS-MCTX-LR-OFF LDR,  LHEX @ BL,
-   9 21 MACOS-MCTX-SP-OFF LDR,  LHEX @ BL,
-   C-CRASH-PC>R9  LHEX @ BL, ;
+   9 21 MACOS-MCTX-FP-OFF LDR,  LHEX LABEL@ BL,
+   9 21 MACOS-MCTX-LR-OFF LDR,  LHEX LABEL@ BL,
+   9 21 MACOS-MCTX-SP-OFF LDR,  LHEX LABEL@ BL,
+   C-CRASH-PC>R9  LHEX LABEL@ BL, ;
 s" c-crash-print-regs" s" --" TRUST
 
 : C-CRASH-PC-WORD ( n -- ) {: off :}
@@ -99,8 +99,8 @@ s" c-crash-print-regs" s" --" TRUST
    off 0< IF 9 9 off negate SUBI, ELSE 9 9 off ADDI, THEN
    10 RBASE-VA LIT64,  9 10 CMP,  C-LT zero BCOND,
    10 RBASE-VA REGION + 4 - LIT64,  9 10 CMP,  C-GT zero BCOND,
-   9 9 0 LDRW,  LHEX @ BL,  done B,
-   zero LBL,  9 0 MOVZ,  LHEX @ BL,
+   9 9 0 LDRW,  LHEX LABEL@ BL,  done B,
+   zero LBL,  9 0 MOVZ,  LHEX LABEL@ BL,
    done LBL, ;
 s" c-crash-pc-word" s" n --" TRUST
 
@@ -121,15 +121,15 @@ s" c-crash-pc0" s" --" TRUST
 s" c-crash-pc+4" s" --" TRUST
 
 : EMIT-CRASH-HANDLER ( -- )
-   LCRASHH @ LBL,
+   LCRASHH LABEL@ LBL,
    LBL LBL {: rl RD :}
       C-CRASH-ENTRY
-      1 LHDR @ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
+      1 LHDR LABEL@ ADR,  0 2 MOVZ,  2 CRHL @ MOVZ,  NR-WRITE SYS,
       C-CRASH-MCTX>R21
-      9 20 0 ADDI,  LHEX @ BL,
+      9 20 0 ADDI,  LHEX LABEL@ BL,
       20 0 MOVZ,
       rl LBL,  20 29 CMPI,  C-GE RD BCOND,
-         C-CRASH-XREG>R9  LHEX @ BL,
+         C-CRASH-XREG>R9  LHEX LABEL@ BL,
          20 20 1 ADDI,  rl B,
       RD LBL,
       C-CRASH-PRINT-REGS
@@ -138,7 +138,7 @@ s" c-crash-pc+4" s" --" TRUST
       C-CRASH-PC0
       C-CRASH-PC+4
       0 134 MOVZ,  NR-EXIT SYS,
-   LHDR @ LBL,  CRH CRHL @ BYTES, ;
+   LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
 
 : INSTALL-SIGACT ( n -- )
    {: signo :}
@@ -161,7 +161,7 @@ s" c-crash-pc+4" s" --" TRUST
    SP SP 64 ADDI, ;
 
 : G-INSTALL-CRASH ( -- )
-   9 LCRASHH @ ADR,  9 C-SIGACTION-FRAME
+   9 LCRASHH LABEL@ ADR,  9 C-SIGACTION-FRAME
    HB-TARGET-LINUX? IF
       4 INSTALL-SIGACT  5 INSTALL-SIGACT  7 INSTALL-SIGACT  8 INSTALL-SIGACT  11 INSTALL-SIGACT
    ELSE

@@ -844,7 +844,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" search-wl" s" ptr u8 n n -- n" PT+
    s" parse-name" s" -- ptr u8 n" PT+
    s" ffi-call" s" ptr a n -- n" PT+
-   s" ffi-call-n" s" ptr a n n -- n" PT+ ;
+   s" ffi-call-n" s" ptr a n n -- n" PT+
+   s" ffi-call-abi" s" ptr a ptr b ptr c n n -- n" PT+
+   s" ffi-call-abi-r" s" ptr a ptr b ptr c n n -- r" PT+ ;
 
 : PT-FLOAT-PRIMS ( -- )
    s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+

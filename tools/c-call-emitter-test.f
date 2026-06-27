@@ -33,15 +33,15 @@ variable CCET-LEN
    needle needleu CCET-COUNT want T= ;
 
 : CCET-TEST-HELPERS ( -- )
-   s" : C-CALL-BRANCH-NO-PROLOGUE ( n -- )" CCET-MUST-HAVE
-   s" : C-CALL-PROLOGUE-SPAN ( n -- )" CCET-MUST-HAVE
-   s" : C-CALL-REQUIRE-RET-SLOT ( n -- )" CCET-MUST-HAVE
-   s" : C-CALL-PLAIN-SPAN ( n -- )" CCET-MUST-HAVE
-   s" : C-CALL-REJECT-MASKED ( n n n -- )" CCET-MUST-HAVE
-   s" : C-CALL-REJECT-EXACT ( n n -- )" CCET-MUST-HAVE
-   s" : C-CALL-REJECT-UNSAFE ( n -- )" CCET-MUST-HAVE
-   s" : C-CALL-SCAN-SAFE ( n n n -- )" CCET-MUST-HAVE
-   s" : C-CALL-COPY-INLINE ( n n -- )" CCET-MUST-HAVE
+   s" : C-CALL-BRANCH-NO-PROLOGUE ( label -- )" CCET-MUST-HAVE
+   s" : C-CALL-PROLOGUE-SPAN ( label -- )" CCET-MUST-HAVE
+   s" : C-CALL-REQUIRE-RET-SLOT ( label -- )" CCET-MUST-HAVE
+   s" : C-CALL-PLAIN-SPAN ( label -- )" CCET-MUST-HAVE
+   s" : C-CALL-REJECT-MASKED ( n n label -- )" CCET-MUST-HAVE
+   s" : C-CALL-REJECT-EXACT ( n label -- )" CCET-MUST-HAVE
+   s" : C-CALL-REJECT-UNSAFE ( label -- )" CCET-MUST-HAVE
+   s" : C-CALL-SCAN-SAFE ( label label label -- )" CCET-MUST-HAVE
+   s" : C-CALL-COPY-INLINE ( label label -- )" CCET-MUST-HAVE
    s" : C-CALL-EMIT-ABSOLUTE ( -- )" CCET-MUST-HAVE ;
 
 : CCET-TEST-HELPER-USES ( -- )

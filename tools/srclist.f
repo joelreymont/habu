@@ -64,6 +64,7 @@ variable SL-DRIVER-U
    SL-TARGET-UNKNOWN ;
 
 : SL-PREFIX ( -- )
+   s" src/core/roles.f " type
    s" src/arch/arm64/asm.f src/arch/arm64/icode.f " type
    s" src/arch/arm64/mnem.f " type
    SL-TARGET-LAYOUT-SYS

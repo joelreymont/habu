@@ -228,13 +228,13 @@ variable BF-TMP-U
    s" src/habu/habu2.f" BF-READ-SOURCE
    s" variable CLOC-MAIN  variable CLOC-NOT" BF-SOURCE-MUST-HAVE
    s" variable CLOC-MEM   variable CLOC-QOK" BF-SOURCE-MUST-HAVE
-   s" : C-LOCAL-REF-ARGS ( n n -- )" BF-SOURCE-MUST-HAVE
+   s" : C-LOCAL-REF-ARGS ( label label -- )" BF-SOURCE-MUST-HAVE
    s" : C-LOCAL-REF-LABELS ( -- )" BF-SOURCE-MUST-HAVE
    s" : EMIT-RESET-BUILDER ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
    s" {: lmainlbl notloc :}" BF-SOURCE-MUST-LACK
    s" LBL LBL {: lmem qlrefok :}" BF-SOURCE-MUST-LACK
    s" {: a:ptr u :}" BF-SOURCE-MUST-LACK
-   s" CLOC-MAIN @ B," BF-SOURCE-MUST-HAVE
+   s" CLOC-MAIN LABEL@ B," BF-SOURCE-MUST-HAVE
    s" CLOC-MAIN @ B ;" BF-SOURCE-MUST-LACK ;
 
 : BF-PREFLIGHT-ICODE ( -- )
@@ -353,6 +353,7 @@ variable BF-TMP-U
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/core/roles.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -361,7 +362,6 @@ variable BF-TMP-U
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE
    out outu BF-APPEND-TARGET-ENV
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
-   out outu s" src/core/roles.f" BF-APPEND-SOURCE
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE

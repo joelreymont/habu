@@ -830,8 +830,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ptx	lib/ptx.f	word	GRID:	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX grid header marker
 1	ptx	lib/ptx.f	word	WHERE	(--)	lib/ptx-test.f	docs/ptx-sketch.md	stdlib-ptx	published	compile-time PTX launch constraint marker
 1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked C-ABI foreign calls over dlopen/dlsym and the AAPCS64 trampoline
+1	ffi	lib/ffi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	validate a scratch-buffer slot index
+1	ffi	lib/ffi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	validate a caller-supplied scratch-buffer count
 1	ffi	lib/ffi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI argument slot index
+1	ffi	lib/ffi.f	word	FFI-FSLOT	(n -- ptr r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI floating-point register slot index
+1	ffi	lib/ffi.f	word	FFI-STACK-SLOT	(n -- ptr n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI stack spill slot index
+1	ffi	lib/ffi.f	word	FFI-STACK-FSLOT	(n -- ptr r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI floating-point stack spill slot index
 1	ffi	lib/ffi.f	word	FFI-ARG!	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one cell into an FFI argument slot
+1	ffi	lib/ffi.f	word	FFI-FARG!	(r n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one float into an FFI floating-point register slot
+1	ffi	lib/ffi.f	word	FFI-STACK!	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one cell into an FFI stack spill slot
+1	ffi	lib/ffi.f	word	FFI-FSTACK!	(r n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one float into an FFI stack spill slot
+1	ffi	lib/ffi.f	word	FFI-X8!	(n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store the AAPCS64 indirect-result register cell
 1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
 1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
 1	ffi	lib/ffi.f	word	CALL0	(n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with no arguments
@@ -841,6 +850,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi	lib/ffi.f	word	CALL4	(n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with four cell arguments
 1	ffi	lib/ffi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with five cell arguments
 1	ffi	lib/ffi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with six cell arguments
+1	ffi	lib/ffi.f	word	FFI-CALLABI	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning x0
+1	ffi	lib/ffi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
 1	ffi	lib/ffi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	copy a byte-string into a buffer and NUL-terminate it
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power

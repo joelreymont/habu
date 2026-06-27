@@ -123,7 +123,7 @@ variable DATE-RUN
    DATE-M @ DATE-FEB <= IF DATE-Y @ 1+ DATE-Y ! THEN
    DATE-Y @ DATE-M @ DATE-D @ ;
 
-: DATE-N {: a:ptr pos len :} ( ptr u8 n n -- n bool )
+: DATE-N ( ptr u8 n n -- n bool ) {: a:ptr pos:n len:n :}
    0 DATE-I !
    0
    begin DATE-I @ len < while
@@ -132,7 +132,7 @@ variable DATE-RUN
       DATE-I @ 1+ DATE-I !
    repeat 0 0= ;
 
-: PARSE-YMD {: a:ptr u :} ( ptr u8 n -- n bool )
+: PARSE-YMD ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u DATE-LEN <> IF 0 0 0= 0= exit THEN
    a DATE-YEAR-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
    a DATE-MONTH-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
@@ -142,7 +142,7 @@ variable DATE-RUN
    DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF 0 0 0= 0= exit THEN
    DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS 0 0= ;
 
-: DATE-WIDTH! {: n width dst:ptr pos :} ( n n ptr u8 n -- )
+: DATE-WIDTH! ( n n ptr u8 n -- ) {: n:n width:n dst:ptr pos:n :}
    n DATE-RUN !
    width 1- DATE-I !
    begin DATE-I @ 0 >= while

@@ -27,7 +27,7 @@ variable DOT-LBL  variable ATOI-LBL
    NR-WRITE SYS,
    SP SP 32 ADDI, ;
 
-: EMIT-DOT  DOT-LBL @ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  G-PRINT9  RET, ;
+: EMIT-DOT  DOT-LBL LABEL@ LBL,  XDS XDS 8 SUBI,  9 XDS 0 LDR,  G-PRINT9  RET, ;
 
 \ Print x9 as UNSIGNED decimal + newline. Same itoa loop as G-PRINT9 but UDIV
 \ and no sign handling. Clobbers x9-x13 + 32 bytes of sp scratch.
@@ -51,7 +51,7 @@ variable DOT-LBL  variable ATOI-LBL
 
 \ ATOI: NUL-terminated decimal string at x9 -> push i64 (leading '-' ok). Leaf.
 : EMIT-ATOI
-   ATOI-LBL @ LBL,
+   ATOI-LBL LABEL@ LBL,
    LBL LBL LBL {: lpos lloop ldone :}
    10 0 MOVZ,
    11 1 MOVZ,

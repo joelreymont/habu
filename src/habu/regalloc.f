@@ -29,7 +29,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 \ LVRINIT ( -- ) : fill VRTAB/VRITAB from the VRPACK literal. Run once at startup
 \ (idempotent; snapshot images carry the tables but re-running is harmless).
 : EMIT-VRINIT
-   LVRINIT @ LBL,
+   LVRINIT LABEL@ LBL,
    LBL {: pl :}  LBL {: pd :}  LBL {: fl :}  LBL {: fd :}
    5 0 MOVZ,
    pl LBL,                                   \ poison the inverse table
@@ -57,7 +57,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 
 \ LVRALLOC ( -- x14=reg | 0 ) : grab a free register from the pool bitmask
 : EMIT-VRALLOC
-   LVRALLOC @ LBL,
+   LVRALLOC LABEL@ LBL,
    LBL LBL LBL {: rl rgot rno :}
    6 DATA VRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,
@@ -71,7 +71,7 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 
 \ LFRALLOC ( -- x14=dreg | 0 ) : grab a free FLOAT register (d8..d15)
 : EMIT-FRALLOC
-   LFRALLOC @ LBL,
+   LFRALLOC LABEL@ LBL,
    LBL LBL LBL {: rl rgot rno :}
    6 DATA FRFREE-CELL LDR,  5 0 MOVZ,
    rl LBL,
@@ -86,6 +86,6 @@ $3620 constant VRITAB-OFF       \ 32 B: register number -> idx ($FF = not pooled
 \ LVBIT ( x7=reg -- x8=its free-mask bit ) : reg -> 1<<idx via the inverse
 \ table. Preserves x7; clobbers x10. Callers or (free) / eor (claim) the mask.
 : EMIT-VBIT
-   LVBIT @ LBL,
+   LVBIT LABEL@ LBL,
    10 VRITAB-OFF LIT64,  10 DATA 10 ADD,  10 10 7 ADD,  10 10 0 LDRB,
    8 1 MOVZ,  8 8 10 LSLV,  RET, ;

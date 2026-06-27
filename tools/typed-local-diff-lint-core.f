@@ -7,6 +7,8 @@
 43 constant TLD-PLUS-C
 44 constant TLD-COMMA-C
 45 constant TLD-MINUS-C
+10 constant TLD-LF-C
+13 constant TLD-CR-C
 58 constant TLD-COLON-C
 
 create TLD-NUM TLD-NUM-CAP allot
@@ -25,6 +27,7 @@ variable TLD-ALLOW-GROUP
 variable TLD-NUM-I
 variable TLD-HUNK-START
 variable TLD-HUNK-END
+variable TLD-SCAN-START
 
 : TLD-FILE-A-FIELD ( -- ptr ptr u8 )
    TLD-FILE-A 0 ptr-field ;
@@ -208,12 +211,27 @@ variable TLD-HUNK-END
    TLD-FALSE TLD-IN-LOCALS !
    TLD-FALSE TLD-ALLOW-GROUP ! ;
 
+: TLD-LINE-TRIM-CR ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0 > IF
+      a u 1- + c@ TLD-CR-C = IF a u 1- exit THEN
+   THEN
+   a u ;
+
+: TLD-PROCESS-LINE-SPAN ( ptr u8 n -- )
+   TLD-LINE-TRIM-CR TLD-PROCESS-LINE ;
+
 : TYPED-LOCAL-DIFF-LINT-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPLIT-LINES
-   0 begin dup SN# @ < while
-      dup S@ TLD-PROCESS-LINE
+   0 TLD-SCAN-START !
+   0 begin dup u < while
+      dup a + c@ TLD-LF-C = IF
+         a TLD-SCAN-START @ + over TLD-SCAN-START @ - TLD-PROCESS-LINE-SPAN
+         dup 1+ TLD-SCAN-START !
+      THEN
       1+
-   repeat drop ;
+   repeat drop
+   TLD-SCAN-START @ u < IF
+      a TLD-SCAN-START @ + u TLD-SCAN-START @ - TLD-PROCESS-LINE-SPAN
+   THEN ;
 
 : TLD-ALLOC-DIFF ( n -- ) {: need:n :}
    need 1 < IF 1 ELSE need THEN

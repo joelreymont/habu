@@ -9,16 +9,29 @@
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-list ROOT [TODAY] SOURCE...
 
 $10000 constant TL-ARGV-STR-CAP
-$14000 constant TL-ARGV-FILE-CAP
+$20000 constant TL-ARGV-FILE-CAP
 
-create TL-ARGV-STR-BUF TL-ARGV-STR-CAP allot
-create TL-ARGV-FILE-BUF TL-ARGV-FILE-CAP allot
-
+variable TL-ARGV-STR-BUF-A
+variable TL-ARGV-FILE-BUF-A
 variable TL-ARGV-SOURCE-ONLY
 variable TL-ARGV-SOURCE-LIST
 variable TL-ARGV-SOURCE-FIRST
 variable TL-ARGV-SOURCE-A
 variable TL-ARGV-SOURCE-U
+
+: TL-ARGV-STR-BUF ( -- ptr u8 )
+   TL-ARGV-STR-BUF-A @ 0= if
+      TL-ARGV-STR-CAP MEM-ALLOC-BYTES drop
+      TL-ARGV-STR-BUF-A 0 ptr-field !
+   then
+   TL-ARGV-STR-BUF-A 0 ptr-field @ ;
+
+: TL-ARGV-FILE-BUF ( -- ptr u8 )
+   TL-ARGV-FILE-BUF-A @ 0= if
+      TL-ARGV-FILE-CAP MEM-ALLOC-BYTES drop
+      TL-ARGV-FILE-BUF-A 0 ptr-field !
+   then
+   TL-ARGV-FILE-BUF-A 0 ptr-field @ ;
 
 : TL-ARGV-SOURCE-A-FIELD ( -- ptr ptr u8 )
    TL-ARGV-SOURCE-A 0 ptr-field ;

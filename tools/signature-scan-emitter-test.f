@@ -33,8 +33,6 @@ variable SSET-LEN
    needle needleu SSET-COUNT want T= ;
 
 : SSET-TEST-COMMON-HELPERS ( -- )
-   s" : C-SIG-START ( n -- )" SSET-MUST-HAVE
-   s" : C-SIG-END ( n -- )" SSET-MUST-HAVE
    s" : C-SIG-INNER$ ( -- )" SSET-MUST-HAVE
    s" : C-SIG-FULL$ ( -- )" SSET-MUST-HAVE
    s" : C-SIG-CAPTURE-TSIG ( -- )" SSET-MUST-HAVE
@@ -44,6 +42,8 @@ variable SSET-LEN
 : SSET-TEST-NATIVE ( -- )
    s" src/habu/habu2.f" SSET-LOAD
    SSET-TEST-COMMON-HELPERS
+   s" : C-SIG-START ( label -- )" SSET-MUST-HAVE
+   s" : C-SIG-END ( label -- )" SSET-MUST-HAVE
    s" : C-PARSE-REQUIRED-SIG ( -- )" SSET-MUST-HAVE
    s" : C-PARSE-TRUST-SIG ( -- )" SSET-MUST-HAVE
    s" C-PARSE-REQUIRED-SIG ;" SSET-MUST-HAVE
@@ -57,6 +57,8 @@ variable SSET-LEN
 : SSET-TEST-BOOTSTRAP ( -- )
    s" bootstrap/cg/forth.fs" SSET-LOAD
    SSET-TEST-COMMON-HELPERS
+   s" : C-SIG-START ( n -- )" SSET-MUST-HAVE
+   s" : C-SIG-END ( n -- )" SSET-MUST-HAVE
    s" C-COLON-MAYBE-SIG" 2 SSET-COUNT=
    s" C-SIG-START" 3 SSET-COUNT=
    s" C-SIG-CAPTURE-TSIG" 2 SSET-COUNT=

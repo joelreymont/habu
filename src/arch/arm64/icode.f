@@ -71,10 +71,15 @@ variable NFX
 
 : FX? ( -- )  NFX @ 2047 > IF s" icode: out of fixups" 72 die THEN ;
 
-: LBL ( -- n )  ?LBL  NLBL @ dup 1 + NLBL ! ;
+: LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 
-: FX+ ( n n n -- ) {: site lbl kind :}  FX?                       \ record a forward fixup
-   site NFX @ cells FXS + !  lbl NFX @ cells FXL + !  kind NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
+: LABEL@ ( ptr n -- label ) @ >LABEL ;
+
+: LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
+
+: FX+ ( n label n -- ) {: site:n lbl:label kind:n :}  FX?          \ record a forward fixup
+   site NFX @ cells FXS + !  lbl LABEL>N NFX @ cells FXL + !
+   kind NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
 
 \ encode a word delta into the branch word for a kind
 : D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
@@ -83,32 +88,32 @@ variable NFX
 \ emit a branch (base already encoded with delta=0) to a label; resolve or defer
 variable BBASE  variable BKIND
 
-: BR-EMIT ( n -- ) {: lbl :}                                  \ BBASE/BKIND set; emits + records if fwd
-   lbl cells LBLP + @  dup 0 < IF                     \ pos on stack (0< isn't a standalone prim)
+: BR-EMIT ( label -- ) {: lbl:label :}                    \ BBASE/BKIND set; emits + records if fwd
+   lbl LABEL>N cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
      drop  CP @ lbl BKIND @ FX+  BBASE @ EMITW
    ELSE  CP @ -  BKIND @ 0= IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
 
-: B, ( n -- ) {: lbl :}  335544320  BBASE !  0 BKIND !  lbl BR-EMIT ;
+: B, ( label -- ) {: lbl:label :}  335544320  BBASE !  0 BKIND !  lbl BR-EMIT ;
 
-: BL, ( n -- ) {: lbl :}  2483027968 BBASE !  0 BKIND !  lbl BR-EMIT ;
+: BL, ( label -- ) {: lbl:label :}  2483027968 BBASE !  0 BKIND !  lbl BR-EMIT ;
 
-: BCOND, ( n n -- ) {: cond lbl :}  1409286144 cond or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: BCOND, ( n label -- ) {: cond:n lbl:label :}  1409286144 cond or BBASE !  1 BKIND !  lbl BR-EMIT ;
 
-: CBZ, ( n n -- ) {: rt lbl :}  3019898880 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: CBZ, ( n label -- ) {: rt:n lbl:label :}  3019898880 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
 
-: CBNZ, ( n n -- ) {: rt lbl :}  3036676096 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: CBNZ, ( n label -- ) {: rt:n lbl:label :}  3036676096 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
 
 \ adr rd, label: PC-relative address (kind-2 fixup when forward)
-: ADR, ( n n -- ) {: RD lbl :}
-   lbl cells LBLP + @ dup 0 < IF
+: ADR, ( n label -- ) {: RD:n lbl:label :}
+   lbl LABEL>N cells LBLP + @ dup 0 < IF
      drop  CP @ lbl 2 FX+  RD 0 ENC-ADR EMITW
    ELSE  CP @ - 4 *  RD swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch all pending fixups that target it
 variable LBI
 
-: LBL, ( n -- ) {: lbl :}  CP @ lbl cells LBLP + !
+: LBL, ( label -- ) {: lbl:label :}  CP @ lbl LABEL>N cells LBLP + !
    0 LBI ! BEGIN LBI @ NFX @ < WHILE
-     LBI @ cells FXL + @ lbl = IF
+     LBI @ cells FXL + @ lbl LABEL>N = IF
        CP @ LBI @ cells FXS + @ -                    \ delta = here - site (words)
        LBI @ cells FXK + @ 0 = IF D26 ELSE
          LBI @ cells FXK + @ 1 = IF D19 ELSE 4 * ENC-ADRD THEN THEN
@@ -120,8 +125,8 @@ variable LBI
 \ --- data layer ---
 : DCQ, ( n -- ) {: x :}  x $FFFFFFFF and EMITW  x 32 rshift EMITW ;   \ one 64-bit cell, LE
 
-: DLBL, ( n -- ) {: lbl :}                                            \ cell = label's byte offset
-   lbl cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
+: DLBL, ( label -- ) {: lbl:label :}                                  \ cell = label's byte offset
+   lbl LABEL>N cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
 variable BYP
 variable BYA
 variable BYU
