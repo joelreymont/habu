@@ -342,6 +342,7 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    0 FAILTU ! ;
 variable TOKIX  variable FAILIX  variable DVERD
 variable FAILB  variable FAILE
+variable TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
 : STEP {: din dout :}
@@ -1518,7 +1519,6 @@ variable QTMP
    a u s" recurse" STR= IF CF-RECURSE ELSE
    0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
-variable TBASE variable TBLEN variable TI variable TSTART
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
 variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
@@ -1645,9 +1645,9 @@ s" <input>" DIAG-FILE!
    OK @ IF TKF TFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
+   TKF TFU @ LOC-REF? 0= IF
    TKF TFU @ CF-TOK? 0= IF
    TKF TFU @ RS-TOK? 0= IF
-   TKF TFU @ LOC-REF? 0= IF
    TKF TFU @ DO-TOK
    OK @ IF TKF TFU @ THROW-TOK? IF THROW-EDGE THEN THEN
    OK @ IF TKF TFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN

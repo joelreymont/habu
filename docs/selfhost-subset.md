@@ -76,7 +76,8 @@ differently, and subset source must be written for the standalone's semantics:
 - `FIND` takes the **newest** matching definition (scans to the last match), so
   redefinition shadows correctly — but earlier callers are not retro-bound.
 - `,` lays an 8-byte cell. Instructions are 4-byte; build them with `C,` bytes.
-- A local named `i` is shadowed by the loop-index keyword `I` — name locals `ix`.
+- Locals are lexical and local-first; a declared local named `i` resolves before
+  the loop-index keyword inside its scope.
 - `{: … :}` may appear once per definition, before any `IF`/loop; locals declared
   inside control flow corrupt the frame.
 - Number output (`.`) is decimal only; input accepts decimal and `$hex`.

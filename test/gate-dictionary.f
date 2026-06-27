@@ -213,6 +213,53 @@ $63 constant GD-C-LOWER
    75 s" hb compiler rejects local capture in quotation rc" GE-EXPECT-RC
    s" x" s" hb compiler rejects local capture in quotation diagnostic" GE-EXPECT-ERR-HAS ;
 
+: GD-LOCAL-FIRST ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : LDUP ( n -- n ) {: dup:n :} dup ;" GE-SRC-LINE
+   s" 7 LDUP ." GE-SRC-LINE
+   s" : LI ( n -- n ) {: i:n :} i ;" GE-SRC-LINE
+   s" 8 LI ." GE-SRC-LINE
+   s" : LMASK ( n -- n ) $FF and ;" GE-SRC-LINE
+   s" : LRD ( n n n -- n ) {: RD imm hw :} RD LMASK ;" GE-SRC-LINE
+   s" 7 7 7 LRD ." GE-SRC-LINE
+   s" hb locals resolve before dictionary and loop words" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 7" GE-OUT-LINE
+   s" 8" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   SB$ s" hb local-first output" GE-EXPECT-OUT ;
+
+: GD-NAMESPACE-QUALIFIED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : COUNT ( -- n ) 1 ;" GE-SRC-LINE
+   s" : hb:COUNT ( -- n ) 2 ;" GE-SRC-LINE
+   s" COUNT ." GE-SRC-LINE
+   s" hb:COUNT ." GE-SRC-LINE
+   s" USE-HB ( -- n ) hb:COUNT" GE-SRC-CHECK-LINE
+   s" : HBCALL ( -- n ) hb:COUNT ;" GE-SRC-LINE
+   s" HBCALL ." GE-SRC-LINE
+   s" hb:COUNT" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
+   s" COUNT" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
+   s" : GE-FILES: ( -- n ) 3 ;" GE-SRC-LINE
+   s" GE-FILES: ." GE-SRC-LINE
+   s" GE-FILES:" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
+   s" hb wordlist namespace qualification" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 1" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   s" 3" GE-OUT-LINE
+   s" 0" GE-OUT-LINE
+   SB$ s" hb wordlist namespace qualification output" GE-EXPECT-OUT ;
+
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
    s" hi" GD-SRC-DOTQ s"  cr" GE-SRC-LINE
@@ -277,6 +324,8 @@ $63 constant GD-C-LOWER
    GD-COMBINATOR-CHECKS
    GD-LOCAL-QUOT-CHECKS
    GD-LOCAL-QUOT-COMPILE-FAIL
+   GD-LOCAL-FIRST
+   GD-NAMESPACE-QUALIFIED
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW

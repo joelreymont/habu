@@ -4,6 +4,12 @@
 : XRT-SAMPLE ( -- n )
    42 ;
 
+: hb:XRT-SAMPLE ( -- n )
+   43 ;
+
+: XRT-SUFFIX: ( -- n )
+   44 ;
+
 : XRT-CALLER ( n -- n )
    XRT-SAMPLE + ;
 
@@ -16,7 +22,14 @@
    rec XREF-LEN 0 > TTRUE
    rec XREF-START 0 > TTRUE
    rec XREF-NAME-LEN 10 T=
-   rec XREF-WORDLIST get-current T= ;
+   rec XREF-WORDLIST get-current T=
+   s" hb:xrt-sample" XRT-EXPECT-FOUND {: qrec :}
+   qrec XREF-NAME$ s" XRT-SAMPLE" T$=
+   qrec XREF-WORDLIST get-current T<>
+   s" hb:XRT-SAMPLE" 0 search-wl 0= TTRUE
+   s" xrt-suffix:" XRT-EXPECT-FOUND {: erec :}
+   erec XREF-NAME$ s" XRT-SUFFIX:" T$=
+   erec XREF-WORDLIST get-current T= ;
 
 : XRT-MISSING ( -- )
    s" XRT-NO-SUCH-WORD" XREF-FIND XREF-FOUND? TFALSE ;

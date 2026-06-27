@@ -1083,6 +1083,92 @@ create ENDLOC-KW 58 c, 125 c,
       0 76 MOVZ,  NR-EXIT SYS,
    done LBL, ;
 
+: C-QUALIFY-FAIL ( n -- ) {: rc:n :}
+   0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT SYS, ;
+
+: C-QUALIFY-CAP ( -- )
+   LBL {: room :}
+   14 DICT-CAP MOVZ,  NDICT 14 CMP,  C-LT room BCOND,
+      $4D C-QUALIFY-FAIL
+   room LBL, ;
+
+: C-QUALIFY-DEF ( -- )
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
+   11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
+   12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
+   14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
+   9 11 0 ADDI,  10 12 0 ADDI,  17 0 MOVZ,
+   qscan LBL,
+      17 10 CMP,  C-GE qnone BCOND,
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
+      17 17 1 ADDI,  qscan B,
+   qnone LBL,
+      C-QUALIFY-CAP
+      done B,
+   qhas LBL,
+      17 0 CMPI,  C-EQ qnone BCOND,
+      14 17 1 ADDI,  14 10 CMP,  C-GE qnone BCOND,
+      14 0 MOVZ,  14 DATA DEF-WL-CELL STR,
+      14 17 1 ADDI,
+   qtail LBL,
+      14 10 CMP,  C-GE qlookup BCOND,
+      15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
+      14 14 1 ADDI,  qtail B,
+   qlookup LBL,
+      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   nloop LBL,
+      6 nend CBZ,
+      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+      16 5 24 ADDI,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+         16 5 24 LDR,
+      ninl LBL,
+      7 0 MOVZ,
+      ncmp LBL,
+         7 17 CMP,  C-GE nmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE nnext BCOND,
+         7 7 1 ADDI,  ncmp B,
+      nmatch LBL,
+         14 5 0 LDR,  14 DATA DEF-WL-CELL STR,
+         nend B,
+      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
+   nend LBL,
+      14 DATA DEF-WL-CELL LDR,  14 0 CMPI,  C-NE qapply BCOND,
+      C-QUALIFY-CAP
+      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,
+      15 14 1 ADDI,  15 DATA WIDN-CELL STR,
+      9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+      11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
+      17 DATA TKL-CELL STR,
+      C-STORE-NAME
+      14 DATA DEF-WL-CELL LDR,  14 9 0 STR,
+      15 0 MOVZ,  15 9 8 STR,
+      15 0 MOVN,  15 9 40 STR,
+      NDICT NDICT 1 ADDI,
+   qapply LBL,
+      11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
+      12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
+      C-QUALIFY-CAP
+      done B,
+   qbad LBL,
+      $4B C-QUALIFY-FAIL
+   done LBL, ;
+s" c-qualify-def" s" --" TRUST
+
+: C-STORE-DEF-NAME ( -- )
+   C-STORE-NAME
+   14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
+   11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
+   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR, ;
+s" c-store-def-name" s" --" TRUST
+
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE LABEL@ LBL,
@@ -1090,10 +1176,10 @@ create ENDLOC-KW 58 c, 125 c,
    2 3 MOVZ,  LPROT LABEL@ BL,
    LTOK LABEL@ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
+   C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   C-STORE-NAME
+   C-STORE-DEF-NAME
    CP 9 0 STR,
-   14 DATA CUR-CELL LDR,  14 9 40 STR,
    11 DATA 0 LDR,
    C-LIT
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
@@ -1115,10 +1201,11 @@ create ENDLOC-KW 58 c, 125 c,
 : C-CONSTANT ( -- )
    2 3 MOVZ,  LPROT LABEL@ BL,  LTOK LABEL@ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
+   C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   C-STORE-NAME
+   C-STORE-DEF-NAME
    15 G-POP                                             \ n -> x15 after name storage (clobbers x15)
-   CP 9 0 STR,  14 DATA CUR-CELL LDR,  14 9 40 STR,
+   CP 9 0 STR,
    11 15 0 ADDI,  C-LIT
    9 W-RET LIT64,  LCEMIT LABEL@ BL,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
@@ -1159,24 +1246,24 @@ create ENDLOC-KW 58 c, 125 c,
    2 3 MOVZ,  LPROT LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+      0 $4C MOVZ,  NR-EXIT SYS,
    cpok LBL,
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 77 MOVZ,  NR-EXIT SYS,
+      0 $4D MOVZ,  NR-EXIT SYS,
    ndok LBL,
    LTOK LABEL@ BL,  0 done CBZ,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+   LBCAP LABEL@ BL,
+   C-QUALIFY-DEF
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    9 DATA PEND-CELL STR,
-   C-STORE-NAME
+   C-STORE-DEF-NAME
    CP 9 0 STR,
-   14 DATA CUR-CELL LDR,  14 9 40 STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-   12 DATA BODYLEN-CELL STR,
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
-   LBCAP LABEL@ BL,
    C-PARSE-TRUST-SIG
    12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
    12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
@@ -1303,16 +1390,11 @@ create ENDLOC-KW 58 c, 125 c,
    xok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
-   LBL LBL LBL LBL LBL LBL {: nlok noti ncp ncd tsl tsd :}
-   11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
+   LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
+   11 DATA LOCN-CELL LDR,  11 $40 CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 $4B MOVZ,  NR-EXIT SYS,
    nlok LBL,
-   13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
-   13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
-   noti LBL,
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
    tsl LBL,  14 8 CMP,  C-GE tsd BCOND,
@@ -1510,6 +1592,7 @@ variable CFSK2
    C-LOCAL-REF-ARGS
    C-LOCAL-REF-LABELS
    LLOC-FIND LABEL@ BL,  0 0 CMPI,  C-LT CLOC-NOT LABEL@ BCOND,
+   LBCAP LABEL@ BL,
    11 DATA QPATCH-CELL LDR,  11 CLOC-QOK LABEL@ CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -1753,28 +1836,28 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 : EM-INTERPRET-COLON ( label -- ) {: lnotcolon:label :}
    LBL LBL LBL LBL {: cpok ndok kcolon ktry :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
-   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 58 CMPI,  C-NE ktry BCOND,
+   9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 $3A CMPI,  C-NE ktry BCOND,
    kcolon LBL,
       2 3 MOVZ,  LPROT LABEL@ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 76 MOVZ,  NR-EXIT SYS,
+         0 $4C MOVZ,  NR-EXIT SYS,
       cpok LBL,
       9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 77 MOVZ,  NR-EXIT SYS,
+         0 $4D MOVZ,  NR-EXIT SYS,
       ndok LBL,
       LTOK LABEL@ BL,
+      12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
+      LBCAP LABEL@ BL,             \ seed with the NAME (checker records certified sigs)
+      C-QUALIFY-DEF
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       9 DATA PEND-CELL STR,
-      C-STORE-NAME
+      C-STORE-DEF-NAME
       CP 9 0 STR,
-      14 DATA CUR-CELL LDR,  14 9 40 STR,
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-      12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
       C-CLEAR-TRUSTED-STATE
-      LBCAP LABEL@ BL,             \ seed with the NAME (checker records certified sigs)
       C-COLON-MAYBE-SIG
          12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
@@ -2130,8 +2213,8 @@ s" em-compile-exit" s" --" TRUST
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
    lnotsemi EM-COMPILE-SEMI
-   EM-COMPILE-KEYWORDS
    EM-COMPILE-LOCAL
+   EM-COMPILE-KEYWORDS
    EM-COMPILE-LITERAL
    EM-COMPILE-OPS
    EM-COMPILE-CALL

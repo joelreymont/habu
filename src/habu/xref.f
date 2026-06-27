@@ -8,6 +8,7 @@
 2 constant XREF-FLAGS-SLOT
 3 constant XREF-NAME-SLOT
 5 constant XREF-WORDLIST-SLOT
+-1 constant XREF-NAMESPACE-WL
 
 32 constant XREF-SP
 
@@ -89,13 +90,43 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 : XREF-MATCH? ( ptr a ptr u8 n -- bool ) {: rec name u :}
    rec XREF-NAME$ name u XREF-STR=CI ;
 
-: XREF-FIND ( ptr u8 n -- ptr a ) {: name u :}
+: XREF-FIND-WL ( ptr u8 n n -- ptr a ) {: name u wid :}
    ndict@ 1-
    begin dup 0 >= while
-      dup XREF-REC name u XREF-MATCH? if XREF-REC exit then
+      dup XREF-REC XREF-WORDLIST wid = if
+         dup XREF-REC name u XREF-MATCH? if XREF-REC exit then
+      then
       1-
    repeat drop
    XREF-NULL ;
+
+variable XREF-QI
+variable XREF-QWID
+
+: XREF-QUAL-INDEX ( ptr u8 n -- n ) {: name u :}
+   -1 XREF-QI !
+   0 begin dup u < while
+      name over + c@ $3A = if
+         XREF-QI @ 0 >= if drop -2 exit then
+         dup XREF-QI !
+      then
+      1+
+   repeat drop
+   XREF-QI @ dup 0 < if exit then
+   dup 0= if drop -1 exit then
+   dup u 1- = if drop -1 exit then ;
+
+: XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr a ) {: name u idx :}
+   name idx XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if drop XREF-NULL exit then
+   XREF-START XREF-QWID !
+   name idx + 1+  u idx - 1-  XREF-QWID @  XREF-FIND-WL ;
+
+: XREF-FIND ( ptr u8 n -- ptr a ) {: name u :}
+   name u XREF-QUAL-INDEX {: idx :}
+   idx -2 = if XREF-NULL exit then
+   idx 0 >= if name u idx XREF-FIND-QUALIFIED exit then
+   name u 0 XREF-FIND-WL ;
 
 : XREF-NAME. ( ptr a -- )
    XREF-NAME$ type ;

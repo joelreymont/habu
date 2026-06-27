@@ -8,6 +8,13 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Local-first compiler dispatch still owns checker capture:** moving local
+  references ahead of keyword dispatch means `C-LOCAL-REF` must call `LBCAP`
+  after `LLOC-FIND`; otherwise runtime emits the local but the hook checks a
+  different body.
+- **Namespace qualification is only a non-edge colon:** `hb:COUNT` qualifies
+  through a wordlist; `GE-FILES:` stays an ordinary Forth word. Keep `LFIND`,
+  definition storage, xref, and docs on that same rule.
 - **Forth language rules live in `docs/forth.md`:** checker/type/style guidance
   was moved out of this file so there is one standards source for stack comments,
   `TRUST`, roles, locals, checked DSLs, booleans, pointer fields, quotations,
@@ -51,6 +58,13 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Focused gate slices need a temp root:** direct-loading
+  `test/gate-dictionary.f` does not run `TR-START`; pass `HB_TMP` and
+  `HABU_GATE_WARM_ROOT` or use `test/run.f`, or warm images resolve to
+  `/hb-check-warm` and fail with `E-FS-OPEN`.
+- **Nested lint subprocesses need their own timeout caps:** fast tool probes can
+  keep a tight timeout, but a fixture that spawns `trust-lint` or another
+  repo-scale tool must use a separate cap sized for aggregate-gate contention.
 - **Dot blocker edges need a gate:** stale `.dots/*` `blocks:` IDs made work look
   blocked on deleted/completed tasks. `tools/dot-dep-lint.f` now walks `.dots/`
   directly and fails the lint slice on any blocker that is not backed by a dot

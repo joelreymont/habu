@@ -83,5 +83,8 @@ $230 constant CREATEP-CELL
 $238 constant QPATCH-CELL
 $240 constant QENT-CELL
 $248 constant QXH-CELL
+$250 constant DEF-TKA-CELL
+$258 constant DEF-TKL-CELL
+$260 constant DEF-WL-CELL
 $2800 constant RSTK-OFF
 $3800 constant DATA-START

@@ -22,18 +22,26 @@ file.
   allocate/reset `X-ALLOC` / `X-RESET`.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
-  they do not collide with built-ins. Do not use loop words such as `i` or `j`
-  as locals — a `{: i :}` local shadows the loop-index word and fails with a
-  baffling signature: the engine emits the bare token (`i`) to stdout and exits
-  `75` with no checker diagnostic. If a definition load prints a lone built-in
-  word name and dies, suspect a local that collides with `i`/`j`/`k`. Use `idx`,
-  `ix`, `ji`, etc.
+  they remain readable. Locals are lexical and local-first: a declared local
+  named `i`, `count`, or `dup` must resolve to that local inside its scope.
+  Prefer clearer names (`idx`, `len`, `value`) when they improve readability,
+  but do not encode global dictionary collision workarounds into local names.
 - **Check for collisions with built-ins** before naming — Forth dictionaries are
   case-insensitive here, so `CON?`/`VAR?` clash with existing words. Prefix to
   disambiguate (`TYCON?`, `TYVAR?`). When in doubt, `' NAME` in a REPL: if it
   resolves, the name is taken.
 - **Do not shadow native primitive names.** Later dictionary entries can replace
   primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
+- **Prefer hex for numeric literals.** Use `$...` for byte values, masks,
+  addresses, offsets, syscall/exit constants, instruction encodings, and other
+  machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
+  human quantities where base 10 is clearer.
+- **Use wordlist namespaces for global collisions.** Qualified names use one
+  colon: `hb:COUNT`, `ptx:COUNT`, `maki:COUNT`. The qualifier names a wordlist
+  namespace; the dictionary record stores the tail (`COUNT`) in that wordlist.
+  Qualification is only a token with exactly one non-edge colon; names that
+  start or end with `:` are ordinary Forth words. Do not fake namespaces with
+  raw global prefixes when the runtime supports a real wordlist-qualified name.
 
 ## Words & factoring
 
