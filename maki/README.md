@@ -97,6 +97,15 @@ the device, each verified correct-vs-CPU on the Orin:
     same order, Triton ~1.5×. The gap is the launch path (Habu-PTX still uses the
     deprecated `cuLaunchGrid`; dotted), not codegen; both are launch/occupancy
     bound well under the Orin's ~200 GB/s peak.
+  - **Model-driven pass@k (live):** independent Claude subagents (k=5/task/target,
+    given op semantics only) authored SAXPY and softmax kernels, graded through each
+    target's full device loop. SAXPY pass@1 5/5 both; softmax Triton 5/5, Habu-PTX
+    3/5 → 5/5 after diagnostic-guided repair (1–2 rounds). Both targets are highly
+    reachable; every Habu failure was an **author-time static reject** with a located
+    order diagnostic (zero GPU) that drove repair to green, where Triton's analogous
+    errors surface only at runtime. (Softmax pass@1 gap is confounded by a prompt
+    spec error; see [`docs/eval-triton.md`](../docs/eval-triton.md) for the full
+    method + caveats.)
   - **Earned claim:** a checked stack-effect target is a viable Triton replacement
     that **shifts the stack-discipline error class left to author time** — caught
     statically, zero GPU — where Triton finds it only at runtime, at competitive

@@ -140,3 +140,62 @@ runtime, at competitive (same-order) bandwidth. **Not** earned: any "faster than
 Triton" claim (it is currently ~1.5× slower on this microbench) or that the
 checker catches *semantic* errors (it does not; that is the device-golden gate's
 job).
+
+## Model-driven pass@k + repair (live experiment)
+
+The error-catch matrix above is fixture-based (the candidate behaviours are fixed
+by language semantics, so it is an objective measurement, not a curated sample).
+To get the **pass@k / repair-rounds** column the thesis asks for, the generator
+must be an *independent stochastic model*, not a fixture we curate. So we used
+**independent Claude `general-purpose` subagents as the generator** (k=5 per task
+per target), each given the task + op *semantics* (not the assembled answer), and
+graded every sample through the target's full loop: Triton via compile +
+device-golden (`/tmp/triton-compare/grade_one.py`, `grade_softmax.py`), Habu-PTX
+via checker → emit → ptxas → device-golden (`/tmp/grade_habu*.sh`, wrapping the
+committed `lib/ptx` + `maki/eval-device*.f` pipeline). Generator population: Claude
+subagents — state that bias; this is not a claim about all LLMs.
+
+Two tasks, golden x=2,y=0,a=3→6.0 (SAXPY) and softmax([1,2,3,4]):
+
+| task    | Triton pass@1 | Habu-PTX pass@1 | Habu-PTX after diagnostic-guided repair |
+|---------|---------------|-----------------|-----------------------------------------|
+| SAXPY   | 5/5           | 5/5             | — (0 repairs needed)                    |
+| softmax | 5/5           | 3/5             | 5/5 (one fixed in 1 round, one in 2)    |
+
+Unbiased pass@k for the Habu softmax round (n=5, c=3): pass@1 = 0.6, pass@2 = 0.9,
+pass@3 = 1.0.
+
+What this shows, and the honest caveats:
+
+- **Both targets are highly reachable by the model.** For SAXPY both are 5/5; the
+  novel checked DSL is as authorable as Triton (which the model knows from
+  training) once given a short op spec. So the thesis is **not** "the checked
+  target has a higher first-try rate" — on these tasks it does not.
+- **The differentiator is the failure mode, not the rate.** All 5 Triton samples
+  passed both tasks (no Triton failures to repair here — the model knows Triton
+  cold). Every Habu-PTX failure was an **author-time static reject** with a
+  precise expected-vs-actual *order* diagnostic and **zero GPU**, e.g.
+  `at 'row-store' expected: tile span rowctx  actual: span rowctx tile`. Feeding
+  that raw diagnostic back, the model repaired to green in 1 round (sample sh4) and
+  2 rounds (sh3, whose first repair was a different wrong order — caught again,
+  precisely, with no GPU). The earlier fixture battery shows the contrast: Triton's
+  analogous stack-discipline/order errors surface only at **runtime** as a wrong
+  number, with no located signal to repair from.
+- **Caveat — the softmax pass@1 gap is confounded.** Our softmax prompt mislabelled
+  ROW-STORE's argument order as `(span ctx tile)`; the real order is
+  `(tile span ctx)`. The two Habu failures followed the wrong spec literally; the
+  three passes used the natural stack idiom (leave the tile on the stack, append
+  span+ctx). So 3/5 reflects our prompt error as much as the DSL — do **not** read
+  it as "softmax is harder in Habu-PTX." It is, however, a faithful demonstration
+  that when the *human spec* is subtly wrong, the checker catches the resulting
+  error at author time and the located diagnostic drives repair to green — exactly
+  where an unchecked target would emit a silently wrong number.
+- **Repair asymmetry is not measured.** Triton produced no failures in these rounds,
+  so there is no Triton repair-rounds number to compare against Habu's 1–2. The
+  defensible claim is only about *when* and *how located* the failure signal is
+  (author-time, type-precise vs runtime, wrong-number), not that one repairs in
+  fewer rounds.
+
+Reproduce: the grader scripts are in `/tmp/triton-compare/` and `/tmp/grade_habu*.sh`
+(external generation/grading arm, kept out of the tree per `host-lint`); the Habu
+graders wrap the committed `lib/ptx/*` + `maki/eval-device*.f` pipeline.

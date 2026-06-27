@@ -54,9 +54,13 @@ and tested now.
   errors before running (Habu-PTX at author time, Triton at compile), but the
   stack-discipline class (missing store, wrong arity) is caught at **author time** by
   Habu-PTX's checker with zero GPU and only at **runtime** by Triton (3/5 battery bugs
-  slipped); bandwidth Triton 63 vs Habu-PTX 42.5 GB/s (launch-path gap, dotted). The
-  earned claim: a checked target shifts the stack-discipline error class left to
-  author time at competitive bandwidth — NOT "faster than Triton".
+  slipped); bandwidth Triton 63 vs Habu-PTX 42.5 GB/s (launch-path gap, dotted). A
+  **model-driven pass@k** (independent Claude subagents authoring kernels, k=5/task/
+  target, graded through each full device loop) adds: SAXPY 5/5 both; softmax Triton
+  5/5, Habu 3/5 → 5/5 after diagnostic-guided repair (1–2 rounds) — every Habu failure
+  an author-time static reject with a located diagnostic. The earned claim: a checked
+  target shifts the stack-discipline error class left to author time at competitive
+  bandwidth — NOT "faster than Triton" and NOT a higher first-try rate.
 
 ## Next (see root PLAN.md + dots)
 

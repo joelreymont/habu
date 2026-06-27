@@ -176,6 +176,25 @@ lesson — keep the specific word/code/path, cut the prose.
   the Triton (Python) baseline lives as fenced ```python blocks in `docs/eval-triton.md`
   (reproduction reference) with the working scripts in `/tmp`; the Habu reducers
   (`bandwidth.f`, `eval-compare.f`, `eval-device.f`) remain the live column.
+- **Model-driven pass@k needs an INDEPENDENT generator, not a curated fixture.** A
+  real pass@k/repair number requires a stochastic generator we don't curate (curating
+  the bug distribution makes the number a construction). Used independent Claude
+  `general-purpose` subagents (k=5/task/target) as the generator; graded each through
+  the target's full loop (Triton compile+device-golden; Habu checker+emit+ptxas+device).
+  Result (docs/eval-triton.md): SAXPY 5/5 both; softmax Triton 5/5, Habu 3/5→5/5 after
+  diagnostic-guided repair (1–2 rounds). Both highly reachable; the differentiator is
+  failure MODE — every Habu failure was an author-time static reject with a located
+  order diagnostic (`at 'row-store' expected: tile span rowctx actual: span rowctx tile`),
+  zero GPU, which drove repair. Honest caveats logged: the softmax pass@1 gap was
+  CONFOUNDED by my own prompt mis-spec of ROW-STORE's arg order (real order tile/span/ctx),
+  and Triton produced no failures to repair so repair-rounds isn't a symmetric comparison.
+- **Subagent grading harness gotchas:** Triton `@jit` rejects `exec`'d source ("should
+  be defined in a Python file") — import the candidate as a real module file. Loading
+  `maki/eval-device-sm.f` as a library runs its inline test block + `bye`; strip to a
+  definitions-only copy for reuse. Normalize generated Habu candidates (strip a leading
+  `:`/trailing `;`) before wrapping as `: K ... ;`. ROW-STORE consumes (tile span ctx)
+  with the tile DEEPEST — the natural idiom leaves the tile on the stack then appends
+  span+ctx.
 - **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
   checker instantiates a called word's effect by RE-PARSING its stored signature
   STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;
