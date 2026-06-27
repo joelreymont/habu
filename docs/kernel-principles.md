@@ -71,12 +71,16 @@ A K-looping GEMM from it is device-correct (max|err| 0.03 at 512³).
   than FP32 reg-block 283, because it's **global-memory-starved** (tensor cores don't
   help until you feed them).
 - + register reuse (warp computes 16×64 = 8 MMA cols, A fragment reused 8×): **336
-  GFLOP/s** (512³) — now *above* the FP32 path and on the tensor-core roof. Device-
-  correct (max|err| 0.03).
-- next rungs (dotted `habu-tensor-core-mma`): **shared-mem A/B staging** (amortize
-  global loads across the block — currently each warp re-reads global, which is why
-  1024³ falls to 245), **double-buffering** (`num_stages`), bigger block tiles → climb
-  toward Triton's 1474. The reuse-then-stage order is exactly what the roofline predicts.
+  GFLOP/s** (512³, 245 at 1024³) — above the FP32 path, on the tensor-core roof.
+- + **shared-mem A/B staging** (64×64 block, 4 warps, cooperative stage + bar.sync):
+  **371 GFLOP/s** (512³ 350, 1024³ 371 — staging fixed the 1024³ global-thrash). All
+  device-correct (max|err| 0.03 = TF32).
+- We are at ~25% of Triton (1474) / ~39% of the FP32 roof. The remaining rungs (dotted
+  `habu-tensor-core-mma`) are the standard high-perf suite, each a roofline/5-levers
+  move: **larger BK** (fewer bar.syncs, more compute/sync), **double-buffering**
+  (`num_stages` — hide the global-load latency the bar.sync currently exposes),
+  **bank-conflict-free shared** (pad/swizzle), and **`ldmatrix`** for fragment loads.
+  Reuse → stage → pipeline is the roofline-predicted order; each rung measured.
 
 ## The five things that govern speed (check all five)
 
