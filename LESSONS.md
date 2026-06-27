@@ -760,3 +760,22 @@ lesson — keep the specific word/code/path, cut the prose.
   shared warm image can leave too little dictionary/data headroom for tools that
   are loaded later. Prefer explicit multi-file warm loads for the boundary that
   needs them, and measure cached child time separately from warm build/cleanup.
+- **GPU readback args are dst-then-src; verify the golden by hand:** maki AXPY on
+  the Orin produced `y[0]` unchanged because `cuMemcpyDtoH_v2` was called as
+  `(srcDevice dstHost n)` — it is `(dstHost srcDevice n)`. The kernel was correct
+  the whole time; only readback failed. A per-call `rc` print localized it (all
+  rc=0 except `dtoh=1`). Separately, the test's own golden was wrong: `2*4+40=48`,
+  not 44 — the GPU was right, the assertion was the bug. Compute goldens, never eyeball.
+- **lib/ subdirs are research sub-libraries, not flat stdlib:** the stdlib manifest
+  grammar (`SMT-LIB-FILE?`) only admits flat `lib/<module>.f`, but the coverage
+  walk recursed and demanded module rows for `lib/ptx/*.f` it could not express.
+  Gate `SMT-COLLECT-LIB-FILE` on `SMT-LIB-FILE?` so coverage tracks only flat
+  modules; nested dirs (`lib/ptx/`) stay trust-audited + `-test.f` + gate-covered
+  but out of the curated public-API manifest (mirrors top-level `maki/`).
+- **Warm-image tests must use the warm form, not re-`--load` bundled libs:**
+  `repair-packet-test`'s no-args case ran `$HABU_WARM_TOOLS --load lib/... repair-packet.f`
+  — recompiling libs the warm binary already has (~3s uncontended vs ~0.5s warm
+  form). Under ~14-way pool concurrency it blew past the 10s timeout, so the
+  subprocess came back `TIMEOUT` not `EXIT`: the tell was assertions on `kind`/
+  `code`/stderr failing while the `stdout==0` assertion passed. Route every warm
+  subprocess through `WR-TOOLS-LOAD`.

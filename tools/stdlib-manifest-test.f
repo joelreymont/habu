@@ -629,8 +629,13 @@ variable SMT-J
    2dup s" .f" ENDS-WITH? 0= IF 2drop 0 0= 0= exit THEN
    s" -test.f" ENDS-WITH? 0= ;
 
+\ Coverage tracks only FLAT lib/<module>.f stdlib modules - the same paths the
+\ manifest grammar (SMT-LIB-FILE?) admits. Nested sub-libraries (e.g. lib/ptx/)
+\ are a separate research tier: trust-audited (trust-lint), type-checked via
+\ their own load paths, and unit-tested by their -test.f + the ptx-stdlib gate,
+\ but not part of the curated flat-stdlib public API surface.
 : SMT-COLLECT-LIB-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u SMT-LIB-SOURCE? IF a u SMT-ADD-LIB-FILE THEN ;
+   a u SMT-LIB-SOURCE? a u SMT-LIB-FILE? and IF a u SMT-ADD-LIB-FILE THEN ;
 
 : SMT-CHECK-LIB-COVERAGE ( -- )
    s" lib" [: SMT-COLLECT-LIB-FILE ;] WALK-FILES

@@ -259,8 +259,13 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-PACKET RPT-OUT RPT-CAPTURE-CAP READ-ALL {: packetu :}
    RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE ;
 
+\ Warm-aware like RPT-ARGV-REPAIR: against the warm tools image, load the trust
+\ snapshot + entry (no diag arg) instead of re-compiling already-bundled libs.
+\ The redundant full --load took ~3s uncontended and timed out under pool
+\ concurrency; the warm form runs in ~0.5s with identical exit 64 + usage output.
 : RPT-ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
+   s" tools/repair-packet.f" WR-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
