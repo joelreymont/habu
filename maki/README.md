@@ -9,9 +9,10 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
 
 - **One-way dependency: `maki → habu`, never the reverse.** Maki loads Habu
   libraries (`lib/*.f`, the PTX vocabulary `lib/ptx*.f`); Habu core, the gate, and
-  the fixpoint must never reference `maki/`. (A dependency lint is owed —
-  dot `habu-add-maki-one`; until it lands, the seam is held by review + the gate's
-  explicit allow-lists.)
+  the fixpoint must never reference `maki/`. Enforced by `tools/maki-dep-lint.f`
+  (token-scans `src/`, `lib/`, `test/` for any forbidden `maki/` path reference and
+  throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
+  `maki-dep-lint-fixtures`.
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
   the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
   application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.
