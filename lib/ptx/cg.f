@@ -49,6 +49,24 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
 
+\ --- f64 -> f32 IEEE-754 marshalling (host side: kernel params/arrays are f32,
+\ Habu floats are 64-bit cells). R>BITS reinterprets a float as its 64-bit pattern
+\ (the one thin trusted cast). F64>F32 repacks to 32-bit (truncating mantissa,
+\ flush-to-zero on under/overflow; normal range is exact; denormals/NaN are a
+\ documented boundary). ---
+TRUSTED: R>BITS ( r -- n ) ;
+
+: F64>F32 ( r -- n ) {: r :}
+   r R>BITS {: b :}
+   b 63 rshift 1 and {: sgn :}
+   b 52 rshift $7FF and {: e64 :}
+   b $FFFFFFFFFFFFF and 29 rshift {: m32 :}        \ top 23 mantissa bits
+   e64 896 - {: e32 :}                              \ rebias 1023 -> 127 (bound before control flow)
+   e64 0= if 0 exit then                            \ +/-0 and flushed denormals
+   e32 1 < if 0 exit then                           \ underflow -> 0
+   e32 254 > if  sgn 31 lshift $7F800000 or  exit then   \ overflow -> +/-inf
+   sgn 31 lshift  e32 23 lshift or  m32 or ;
+
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
 : EMIT-GRID-CTX ( n -- n ) {: spanrd :}    \ span base unused (index is from tid)
