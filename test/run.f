@@ -7,6 +7,8 @@
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
 19 constant TR-PHASES
+0 constant TR-TOOLS-WARM-SLOT
+1 constant TR-CHECK-WARM-SLOT
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -366,6 +368,15 @@ variable TR-PATH-U
    idx IDX>N 2 >= idx IDX>N 4 <= and
    idx IDX>N 18 = or ;
 
+: TR-TOOLS-PHASE? ( idx -- bool ) {: idx :}
+   idx TR-STDLIB-SLICE? if 0 0= exit then
+   idx IDX>N 5 = ;
+
+: TR-EARLY-PHASE? ( idx -- bool ) {: idx :}
+   idx IDX>N 7 = if 0 0= exit then
+   idx IDX>N 15 = if 0 0= exit then
+   idx IDX>N 17 = ;
+
 : TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
    s" 2" ;
 
@@ -374,13 +385,16 @@ variable TR-PATH-U
       s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
    then ;
 
+: TR-PHASE-TOOLS-ENV ( idx -- ) {: idx :}
+   idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then ;
+
 : TR-PHASE-BASE ( idx -- ) {: idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    idx TR-PHASE-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
-   TR-TOOLS-ENV
+   idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
    idx TR-PHASE-POOL-ENV
    PROC-ENV-INHERIT-MISSING
@@ -400,22 +414,41 @@ variable TR-PATH-U
    s" bin/hb" idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
 
 : TR-PHASE-SPAWN-RANGE ( n n -- ) {: start end :}
-   GT-POOL-RESET
    start begin dup end < while
       dup >IDX TR-PHASE-START
       1+
    repeat drop ;
 
-: TR-WARM-DRAIN ( -- )
+: TR-WARM-DONE? ( -- bool )
+   TR-TOOLS-WARM-SLOT >IDX GT-POOL-DONE@ 0 <>
+   TR-CHECK-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> and ;
+
+: TR-DRAIN-UNTIL-WARM ( -- )
+   begin TR-WARM-DONE? 0= while
+      GT-POOL-STEP
+   repeat ;
+
+: TR-EARLY-START ( -- )
+   GT-POOL-RESET
    0 TR-WARM-PHASES TR-PHASE-SPAWN-RANGE
-   GT-POOL-DRAIN ;
+   0 begin dup TR-PHASES < while
+      dup >IDX TR-EARLY-PHASE? if dup >IDX TR-PHASE-START then
+      1+
+   repeat drop ;
+
+: TR-LATE-START ( -- )
+   TR-WARM-PHASES begin dup TR-PHASES < while
+      dup >IDX TR-EARLY-PHASE? 0= if dup >IDX TR-PHASE-START then
+      1+
+   repeat drop ;
 
 : TR-WORK-DRAIN ( -- )
-   TR-WARM-PHASES TR-PHASES TR-PHASE-SPAWN-RANGE
+   TR-LATE-START
    GT-POOL-DRAIN ;
 
 : TR-DAG-RUN ( -- )
-   TR-WARM-DRAIN
+   TR-EARLY-START
+   TR-DRAIN-UNTIL-WARM
    TR-WORK-DRAIN ;
 
 : TR-MAIN ( -- )

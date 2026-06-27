@@ -1,7 +1,7 @@
 # habu — Status
 
-Last verified: 2026-06-26
-Gate: passing; 1m43.35s on 2026-06-27 on Linux/aarch64 with warm checker/tool images, shared hb-build maker cache, two-build positive AOT coverage, direct repair JSON assertions, deduplicated AOT negative coverage, and the checked DAG pool
+Last verified: 2026-06-27
+Gate: passing; 1m34.87s on 2026-06-27 on Linux/aarch64 after rebasing onto df46d77b, with early independent builder phases, warm checker/tool images, shared hb-build maker cache, two-build positive AOT coverage, direct repair JSON assertions, deduplicated AOT negative coverage, and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

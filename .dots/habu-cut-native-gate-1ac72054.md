@@ -47,3 +47,12 @@ AOT-positive in 28.13s, stdlib tool-boundary in 46.02s, and the documented full
 native gate passed in 1m43.35s after rebasing onto the `lib/fmt.f` change.
 Remaining long poles: AOT positive under
 contention, stdlib tool-boundary, engine build, and REPL builder work.
+
+Checkpoint 2026-06-27: fixed the gate DAG so independent builder long poles
+start at time zero instead of waiting for both warm images. `test/run.f` now
+sets warm-tools env only for phases that actually use the tools image, starts
+AOT-positive, engine build, and REPL alongside warm-image baking, then launches
+warm-dependent phases as soon as both warm images pass. After rebasing onto
+`df46d77b`, the documented full native gate passed in 1m34.87s. Remaining long poles: stdlib tool-boundary,
+check-cli/debug/diagnostic slices after warm-up, and residual AOT-negative
+contention.

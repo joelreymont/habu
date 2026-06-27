@@ -596,3 +596,7 @@ lesson — keep the specific word/code/path, cut the prose.
   each checker rejection. Split assertion tools into checked cores plus thin CLI
   entries, load the core in the owning fixture, and keep subprocesses only for
   the boundary under test.
+- **Gate dependencies are per phase, not global:** waiting for every warm image
+  before launching every worker serialized independent builder long poles behind
+  unrelated tool images. Start phases as soon as their own prerequisites exist
+  and only export warm-tool env to phases that actually use it.
