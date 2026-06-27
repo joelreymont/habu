@@ -175,6 +175,16 @@ variable GDX-PATH-U
    s" habu-json.err" GDX-WRITE-ERR
    GDX-CHECK-JSON-FIELDS ;
 
+: GDX-UNKNOWN-SIGNATURE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JSIG ( got expected -- bool ) <= ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted unknown signature type" GDX-CHECK-JSON
+   s" code" s" E-UNKNOWN-SIGNATURE-TYPE" s" unknown signature type code" GDX-EXPECT-ERR-JSTR
+   s" token" s" got" s" unknown signature type token" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_signature_type" s" unknown signature repair class" GDX-EXPECT-ERR-JSTR
+   s" suggestion" s" Use a known stack-signature type or a single-letter type variable." s" unknown signature suggestion" GDX-EXPECT-ERR-JSTR ;
+
 : GDX-REPAIR-CLASSES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -382,6 +392,7 @@ variable GDX-PATH-U
    s" hb-gate-diagnostics-undef-primary" GT-START
    GDX-UNDEFINED-RECURSIVE
    GDX-PRIMARY-JSON
+   GDX-UNKNOWN-SIGNATURE
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 
@@ -404,6 +415,7 @@ variable GDX-PATH-U
 : GDX-SERIAL ( -- )
    s" hb-gate-diagnostics" GT-START
    GDX-PRIMARY-JSON
+   GDX-UNKNOWN-SIGNATURE
    GDX-REPAIR-CLASSES
    GDX-FILE-ORIGIN
    GDX-STRICT-SIGNATURES

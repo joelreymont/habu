@@ -160,6 +160,9 @@ variable CKT-LIST-U
 : CKT-NOSIG$ ( -- ptr u8 n )
    s" : NOSIG dup ;" ;
 
+: CKT-UNKNOWN-SIG$ ( -- ptr u8 n )
+   s" : BAD ( got expected -- bool ) <= ;" ;
+
 : CKT-UNCHECKED$ ( -- ptr u8 n )
    s" 0 set-check : BAD ( -- ) ;" ;
 
@@ -233,6 +236,13 @@ variable CKT-LIST-U
    CKT-ERR erru s" schema_version" CONTAINS? TTRUE
    CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE ;
 
+: CKT-TEST-UNKNOWN-SIGNATURE ( -- )
+   CKT-UNKNOWN-SIG$ CKT-RUN 70 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" unknown type 'got' in signature" CONTAINS? TTRUE
+   CKT-ERR erru s" <=" CONTAINS? TFALSE ;
+
 : CKT-TEST-BOUNDARY-LINT ( -- )
    CKT-UNCHECKED$ CKT-RUN 1 T=
    {: outu erru :}
@@ -283,6 +293,7 @@ variable CKT-LIST-U
    CKT-TEST-BOUNDARY-LINT
    CKT-TEST-STRICT-SIGNATURE
    CKT-TEST-STRICT-SIGNATURE-JSON
+   CKT-TEST-UNKNOWN-SIGNATURE
    CKT-TEST-USAGE
    CKT-TEST-DIE
    CKT-TEST-UNTERM-STRINGS

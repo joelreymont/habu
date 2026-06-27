@@ -248,7 +248,7 @@ variable DSUGE  variable DSUGA
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD @ IF s" E-BAD-SIGNATURE" ELSE
+   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE s" E-BAD-SIGNATURE" THEN ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 : RETURN-MISMATCH? ( -- f )
@@ -262,7 +262,10 @@ variable DSUGE  variable DSUGA
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
-   SGBAD @ IF s" fix_signature_syntax" EXIT THEN
+   SGBAD @ IF
+      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE s" fix_signature_syntax" THEN
+      EXIT
+   THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
    DEXP @ 0= IF
       s" unknown_rejection" EXIT
@@ -279,7 +282,14 @@ variable DSUGE  variable DSUGA
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
-   SGBAD @ IF s" Repair the stack-effect comment syntax, including --." EXIT THEN
+   SGBAD @ IF
+      SGBAD-UNKNOWN? IF
+         s" Use a known stack-signature type or a single-letter type variable."
+      ELSE
+         s" Repair the stack-effect comment syntax, including --."
+      THEN
+      EXIT
+   THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
    DEXP @ 0= IF
       s" Inspect the token, signature, and raw stack evidence." EXIT
@@ -307,6 +317,10 @@ variable JPOS  variable JLINE  variable JCOL
 : JABS-BSTART ( -- n )  DIAGB0 @ FAILB @ + ;
 : JABS-BEND ( -- n )  DIAGB0 @ FAILE @ + ;
 : DIAG-PROSE
+   SGBAD-UNKNOWN? IF
+     s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : unknown type '" DTXT
+     FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
+   THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN

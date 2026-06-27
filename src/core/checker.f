@@ -462,8 +462,9 @@ variable RSH
 
 \ --- generic signature parser: build a step effect from a textual " in -- out "
 \ stack effect. A single lowercase letter is a polymorphic type variable (shared
-\ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2);
-\ anything else folds to int. Row variable is shared so the effect is row-polymorphic.
+\ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2).
+\ Unknown multi-char tokens mark the signature malformed; row variables are
+\ shared so the effect is row-polymorphic.
 create NMAP 26 cells allot
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
@@ -472,7 +473,12 @@ create NMAP 26 cells allot
 
 : LOWER? {: c :} c 96 > c 123 < and ;
 variable NRES  variable NDI  variable NDH
+0 constant SGBAD-SYNTAX-KIND
+1 constant SGBAD-UNKNOWN-KIND
 variable SGBAD
+variable SGBAD-A
+variable SGBAD-U
+variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
 
@@ -517,7 +523,31 @@ variable LOCALBAD
    a u s" str"  STR= IF CC-STR  EXIT THEN
    a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN
    a u ROLE-OF ;
-: BAD-SIG-TYPE  -1 SGBAD !  1 MK-CON ;
+: SGBAD-CLEAR ( -- )
+   0 SGBAD !
+   0 SGBAD-A !
+   0 SGBAD-U !
+   SGBAD-SYNTAX-KIND SGBAD-KIND ! ;
+
+: SGBAD-SET ( ptr u8 n n -- ) {: a u kind :}
+   SGBAD @ IF exit THEN
+   -1 SGBAD !
+   a SGBAD-A !
+   u SGBAD-U !
+   kind SGBAD-KIND ! ;
+
+: SGBAD-SYNTAX! ( ptr u8 n -- )
+   SGBAD-SYNTAX-KIND SGBAD-SET ;
+
+: SGBAD-UNKNOWN! ( ptr u8 n -- )
+   SGBAD-UNKNOWN-KIND SGBAD-SET ;
+
+: SGBAD-UNKNOWN? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-UNKNOWN-KIND = and ;
+
+: BAD-SIG-TYPE ( ptr u8 n -- type )
+   SGBAD-UNKNOWN!
+   1 MK-CON ;
 : SIG-PREFIX? {: a u p v :}
    u v < IF 0 EXIT THEN
    a v p v STR= ;
@@ -543,7 +573,7 @@ variable LOCALBAD
    a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
    a u ATOM-TOK? IF a u MK-ATOM ELSE
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN ;
+   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN ;
 
 : LOCAL-TYPE {: a u :}
    a u s" ptr" STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
@@ -587,12 +617,12 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
             NEXT-SIG-TOK 2dup s" >" STR= IF
                2drop a u MK-PARAM EXIT
             THEN
-            2dup DELIM? IF 2drop -1 SGBAD ! a u MK-PARAM EXIT THEN
-            PARAM-SCR-FULL? IF 2drop -1 SGBAD ! a u MK-PARAM EXIT THEN
+            2dup DELIM? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
+            PARAM-SCR-FULL? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
             RECURSE PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," STR= IF 2drop ELSE
             2dup s" >" STR= IF 2drop a u MK-PARAM EXIT ELSE
-               2drop -1 SGBAD ! a u MK-PARAM EXIT
+               SGBAD-SYNTAX! a u MK-PARAM EXIT
             THEN THEN
          AGAIN
       ELSE
@@ -600,7 +630,7 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
       THEN
    THEN
    a u s" ptr" STR= IF
-      NEXT-SIG-TOK 2dup DELIM? IF PK! -1 SGBAD ! 1 MK-CON ELSE RECURSE MK-PTR THEN
+      NEXT-SIG-TOK 2dup DELIM? IF 2dup SGBAD-SYNTAX! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
 
 create ROWMAP 26 cells allot
@@ -611,7 +641,8 @@ create ROWMAP 26 cells allot
 \ missing or wrong). A malformed contract must REJECT, never silently parse as
 \ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
-: EXPECT-SIG {: ea eu :}  NEXT-SIG-TOK ea eu STR= 0= IF -1 SGBAD ! THEN ;
+: EXPECT-SIG {: ea eu :}
+   NEXT-SIG-TOK 2dup ea eu STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
@@ -645,7 +676,7 @@ create ROWMAP 26 cells allot
            2dup s" ]" STR= IF
               2drop
            ELSE
-              2drop -1 SGBAD !
+              SGBAD-SYNTAX!
            THEN
            r> swap >r swap r> dup                     \ row qin qout qrin qrout
         THEN
@@ -1088,6 +1119,7 @@ create TVSAVE MAXTV cells allot   create RVSAVE MAXTV cells allot
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-SGBAD
+variable SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDROW  variable SV-THRROW  variable SV-THSET
@@ -1103,7 +1135,9 @@ variable SV-THDROW  variable SV-THRROW  variable SV-THSET
    SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
-   SGBAD @ SV-SGBAD !  SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
+   SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
+   SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
+   SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDROW @ SV-THDROW !  THRROW @ SV-THRROW !  THSET @ SV-THSET ! ;
 
@@ -1114,7 +1148,9 @@ variable SV-THDROW  variable SV-THRROW  variable SV-THSET
    REPEAT drop ;
 
 : TRIAL-REST-SG
-   SV-SGBAD @ SGBAD !  SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
+   SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
+   SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
+   SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
 
 : TRIAL-REST
@@ -1492,6 +1528,34 @@ variable CTLNEW
 variable TFU
 variable SKI  variable SKF
 
+: SGBAD-IN-SOURCE? ( -- bool )
+   SGBAD-U @ 0= IF 0 EXIT THEN
+   SGBAD-A @ TBASE @ < IF 0 EXIT THEN
+   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF 0 EXIT THEN
+   -1 ;
+
+: SGBAD-COPY-TOKEN ( -- )
+   SGBAD-U @ TOKBUF-ENSURE
+   SGBAD-A @ FAILTK SGBAD-U @ CCOPY
+   SGBAD-U @ FAILTU ! ;
+
+: SGBAD-SPAN! ( -- )
+   SGBAD-IN-SOURCE? IF
+      SGBAD-A @ TBASE @ - FAILB !
+      FAILB @ SGBAD-U @ + FAILE !
+   ELSE
+      TSTART @ FAILB !
+      TI @ FAILE !
+   THEN ;
+
+: SGBAD-FAIL! ( -- )
+   SGBAD @ 0= IF exit THEN
+   FAILSET @ IF exit THEN
+   SGBAD-COPY-TOKEN
+   SGBAD-SPAN!
+   0 FAILIX !
+   -1 FAILSET ! ;
+
 : STRING-OPENER? {: a u :}
    a u SDQN 2 STR= IF -1 EXIT THEN
    a u CDQN 2 STR= IF -1 EXIT THEN
@@ -1603,7 +1667,7 @@ s" <input>" DIAG-FILE!
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   0 SGBAD !  0 UNSAFE !  0 LOCALBAD ! ;
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
@@ -1615,6 +1679,7 @@ s" <input>" DIAG-FILE!
          VSIG @ IF
            TBASE @ TSTART @ + SGA !  TI @ TSTART @ - SGU !
            TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           SGBAD-FAIL!
            PD-BASE @ SGDBASE !
            RR-SHARED @ SGRBASE !
            SGHASR @ IF

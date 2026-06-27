@@ -320,6 +320,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_signature_syntax" s" Repair the stack-effect comment syntax, including --."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_signature_type" s" Use a known stack-signature type or a single-letter type variable."
+   GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
    GJA-SUGGEST-ROW IF exit THEN
    s" unknown_rejection" s" Inspect the token, signature, and raw stack evidence."

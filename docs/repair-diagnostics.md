@@ -97,6 +97,8 @@ Current checker classes:
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
+- `fix_signature_type`: the stack-effect comment names an unknown multi-character
+  type; use a known nominal type or a single-letter type variable.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -115,6 +117,7 @@ The checker `suggestion` field is stable short text derived only from
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
+| `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

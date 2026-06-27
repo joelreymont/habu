@@ -465,7 +465,9 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" 7" SB-APPEND GE-SB-LF
    SB$ s" hb nominal role output" GE-EXPECT-OUT
    s" E-MISMATCH" s" hb nominal role code" GE-EXPECT-ERR-HAS
-   s" E-BAD-SIGNATURE" s" hb unknown role code" GE-EXPECT-ERR-HAS
+   s" E-UNKNOWN-SIGNATURE-TYPE" s" hb unknown role code" GE-EXPECT-ERR-HAS
+   s" size" s" hb unknown role token" GE-EXPECT-ERR-HAS
+   s" fix_signature_type" s" hb unknown role repair class" GE-EXPECT-ERR-HAS
    s" expected" s" hb nominal role expected field" GE-EXPECT-ERR-HAS
    s" len" s" hb nominal role expected type" GE-EXPECT-ERR-HAS
    s" actual" s" hb nominal role actual field" GE-EXPECT-ERR-HAS
