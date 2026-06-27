@@ -69,6 +69,20 @@ TRUSTED: R>BITS ( r -- n ) ;
    e32 254 > if  sgn 31 lshift $7F800000 or  exit then   \ overflow -> +/-inf
    sgn 31 lshift  e32 23 lshift or  m32 or ;
 
+\ inverse: read a device-returned f32 bit pattern back into a Habu f64 float (the
+\ readback marshalling; BITS>R is the one thin trusted reinterpret). +/-0 and inf
+\ are handled; f32 normals widen exactly, NaN is a documented boundary.
+TRUSTED: BITS>R ( n -- r ) ;
+
+: F32>F64 ( n -- r ) {: b :}
+   b 31 rshift 1 and {: sgn :}
+   b 23 rshift $FF and {: e32 :}
+   b $7FFFFF and {: m32 :}                          \ 23 mantissa bits
+   sgn 63 lshift {: hi :}                           \ sign in f64 bit 63
+   e32 0= if hi BITS>R exit then                    \ +/-0 (denormals flush to 0)
+   e32 $FF = if hi $7FF 52 lshift or BITS>R exit then   \ +/-inf
+   hi  e32 896 + 52 lshift or  m32 29 lshift or  BITS>R ;
+
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
 : EMIT-GRID-CTX ( n -- n ) {: spanrd :}    \ span base unused (index is from tid)

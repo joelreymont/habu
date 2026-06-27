@@ -72,3 +72,9 @@ variable GDX variable GDY variable GABITS variable GNVAR
 
 \ result element i (f32 bits) after the launch
 : G-RESULT ( n -- n )  GHY swap F32@ ;
+
+\ tensor SGD step on the GPU: w[i] -= lr*g[i], lowered onto the SAXPY kernel
+\ (a = -lr, x = grad, y = weight, so a*x+y = w - lr*g). Put grad as x and weight
+\ as y via G-PUT, then G-SGD; G-RESULT i is the updated weight. Matches maki/array.f
+\ T-SGD! on the f32-marshalled inputs - the optimizer step runs on device.
+: G-SGD ( r -- )  fnegate G-LAUNCH ;
