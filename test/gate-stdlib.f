@@ -587,6 +587,10 @@ TEST-SUITE float-stats
    lib/errors.f lib/test.f lib/sort.f lib/stats.f lib/stats-test.f
 ;TEST-SUITE
 
+TEST-SUITE hashmap
+   lib/errors.f lib/string.f lib/test.f lib/hashmap.f lib/hashmap-test.f
+;TEST-SUITE
+
 TEST-SUITE array-helpers
    lib/errors.f lib/array.f lib/array-test.f
 ;TEST-SUITE

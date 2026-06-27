@@ -197,6 +197,8 @@ points stay listed.
 - `lib/sort-test.f` — focused coverage for FSORT! ordering, duplicates, negatives, and degenerate lengths.
 - `lib/stats.f` — float-array summary statistics: sum/mean/min/max/variance/stddev/percentile/median.
 - `lib/stats-test.f` — focused coverage for the stats reductions and interpolated percentiles.
+- `lib/hashmap.f` — open-addressing integer-key hash probe over caller-supplied arrays (O(1) amortized lookups).
+- `lib/hashmap-test.f` — coverage for HASH64/HM-PROBE/HM-CLEAR including collision probing and clear.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
