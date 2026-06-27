@@ -38,6 +38,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 : GC-EMIT-SAXPY ( -- n )  GC-PRELUDE  s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-RELU  ( -- n )  GC-PRELUDE  s" tools/ptx/relu-cg.f"  >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-EXP   ( -- n )  GC-PRELUDE  s" tools/ptx/exp-cg.f"   >LEN PROC-ARGV+  GC-RUN-EMIT ;
+: GC-EMIT-EXPBWD ( -- n ) GC-PRELUDE  s" tools/ptx/expbwd-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 
 : GC-PTXAS ( -- n )
    PROC-ARGV-RESET
@@ -79,6 +80,22 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    GC-RBUF P>N GC-DY @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
    GC-RBUF @ $FFFFFFFF and ;
 
+\ launch a 2-input backward kernel: x=dz, y=savedy (n=1) -> result in x[0] f32 bits
+: GC-AT-2IN ( n n -- n ) {: dzbits sybits :}
+   GC-DX @ dzbits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ dz
+   GC-DY @ sybits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ savedy
+   $40400000 GC-AB !  1 GC-NV !
+   GC-FUNC @ 256 1 1      s" cuFuncSetBlockShape" GC-SYM CALL4 drop
+   GC-FUNC @ 24           s" cuParamSetSize"  GC-SYM CALL2 drop
+   GC-FUNC @ 0  GC-DX P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
+   GC-FUNC @ 8  GC-DY P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
+   GC-FUNC @ 16 GC-AB P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
+   GC-FUNC @ 20 GC-NV P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
+   GC-FUNC @ 1 1          s" cuLaunchGrid"    GC-SYM CALL3 drop
+   0                      s" cuCtxSynchronize" GC-SYM CALL1 drop
+   GC-RBUF P>N GC-DX @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop      \ backward output in dz (x)
+   GC-RBUF @ $FFFFFFFF and ;
+
 \ central difference of the loaded kernel w.r.t. x at x0, step h -> a Habu float
 : GC-CENTRAL ( r r -- r ) {: x0 h :}
    x0 h f+ F64>F32 GC-AT F32>F64 {: zp :}
@@ -104,6 +121,10 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    1.0 0.001 GC-CENTRAL {: ge :}                       \ numeric d exp/dx at x=1
    1.0 F64>F32 GC-AT F32>F64 {: ey :}                  \ exp(1) = the analytic gradient
    GC-UNLOAD
+   \ --- EXP BACKWARD KERNEL (resolved SAVED-Y): dx = dz * savedy, run on device ---
+   GC-EMIT-EXPBWD drop GC-PTXAS 0 T=  GC-LOAD
+   $3F800000 ey F64>F32 GC-AT-2IN F32>F64 {: gb :}     \ backward(dz=1.0, savedy=exp(1)) = exp(1)
+   GC-UNLOAD
    GC-CTX-FINI                                         \ release BEFORE exit
    gs 3.0 GC-NEAR? TTRUE                               \ SAXPY: correct dx=a=3 -> PASS
    gs 2.0 GC-NEAR? TFALSE                              \ SAXPY: wrong dx=2 -> REJECTED
@@ -112,7 +133,8 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    gm 1.0 GC-NEAR? TFALSE                              \ RELU x<0: wrong dx=1 -> REJECTED
    ge ey GC-NEAR? TTRUE                                \ EXP: d exp/dx = exp(x) -> PASS
    ge 1.0 GC-NEAR? TFALSE                              \ EXP: wrong constant dx=1 -> REJECTED
-   s" device gradcheck: SAXPY (linear), RELU (step), EXP (transcendental) gradients verified by central difference on the Orin (wrong VJPs rejected)" type cr
+   gb ge GC-NEAR? TTRUE                                \ EXP BACKWARD KERNEL output = numeric gradient
+   s" device gradcheck: SAXPY/RELU/EXP forward gradients AND the resolved EXP backward KERNEL (dz*savedy) verified on the Orin" type cr
    T-REPORT ;
 
 GRADCHECK-MAIN
