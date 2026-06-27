@@ -14,7 +14,15 @@
 \ Triton (parity at the memory ceiling); there is NO unfused baseline. Checked Habu;
 \ load after the PTX v4 vocab + maki/eval.f (SB-* string builder) + lib/fs-mutate.f.
 
+\ Wrapped in `package MAKI`: the words export as `MAKI:FUSE-*` / `MAKI:OP-*`, isolated
+\ from the global/habu namespace (docs/forth.md "Packages"). E-FUSE stays global (a
+\ cross-cutting error code, like lib/errors.f's E-*); the package body reaches it via the
+\ package's global-fallback lookup.
+
 -5002 constant E-FUSE  \ unfusible / unknown op, or chain overflow (fail-closed)
+
+package MAKI
+public
 
 \ elementwise op codes (maki/ONNX subgraph nodes)
 0 constant OP-SCALE    \ tile := tile * uniform a   (ONNX Mul-by-scalar / Gemm alpha)
@@ -37,12 +45,18 @@ variable FUSE-NOPS
    FUSE-NOPS @ FUSE-MAX >= if E-FUSE throw then
    op  FUSE-NOPS @ cells FUSE-OPS + !  FUSE-NOPS @ 1+ FUSE-NOPS ! ;
 
+private
+
 \ append the fused word sequence (the WHOLE fusion) to the string builder: bind
 \ inputs, make the per-thread ctx, load x, CONCATENATE each op's words, store.
+\ Internal helper - NOT part of the public interface (no MAKI:FUSE-BODY export); only
+\ FUSE-DRIVER uses it.
 : FUSE-BODY ( -- )
    s"  {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4" SB-APPEND
    FUSE-NOPS @ 0 do  FUSE-OPS i cells + @  FUSE-OP-WORDS SB-APPEND  loop
    s"  y g STORE-V4" SB-APPEND ;
+
+public
 
 \ write a driver that defines the fused kernel K (entry SAXPY) and emits it (v4)
 : FUSE-DRIVER ( -- )
@@ -55,3 +69,5 @@ variable FUSE-NOPS
       SB-APPEND  10 SB-APPEND-C
    s" bye" SB-APPEND  10 SB-APPEND-C
    s" /tmp/fuse-driver.f" SB$ WRITE-ALL ;
+
+end-package

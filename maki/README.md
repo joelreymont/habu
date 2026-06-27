@@ -13,13 +13,15 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
   (token-scans `src/`, `lib/`, `test/` for any forbidden `maki/` path reference and
   throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
   `maki-dep-lint-fixtures`.
-- **Maki words live in the `MK:` wordlist namespace.** Maki application words are
-  defined `: MK:WORD ( … ) … ;` so they live in the `MK` wordlist, not the global/habu
-  namespace — a bare `WORD` reference from habu core does not resolve, enforcing the
-  one-way seam at the *dictionary* level (the runtime wordlist feature, `docs/forth.md`).
-  Adopted module-by-module: `maki/onnx.f` (`MK:ONNX-LOWER`) is the worked example;
-  rollout to the remaining maki modules is dotted (`habu-maki-mk-namespace`). Error
-  constants keep the cross-cutting `E-MK-*` form.
+- **Maki words live in the `MAKI` package (wordlist namespace).** Each maki file is
+  wrapped in `package MAKI` / `public` / `end-package`, so its words live in the `MAKI`
+  wordlist, not the global/habu namespace — a bare `WORD` reference from habu core does
+  not resolve, enforcing the one-way seam at the *dictionary* level (the runtime package
+  feature, `docs/forth.md` "Packages"). External callers use `MAKI:WORD`; maki-internal
+  cross-file calls reopen `package MAKI` and use bare names; tests reopen the package too.
+  Adopted module-by-module: `maki/onnx.f` (`MAKI:ONNX-LOWER`) and `maki/fusion.f` are the
+  worked examples; rollout to the remaining maki modules is dotted
+  (`habu-roll-out-the-...`). Cross-cutting error constants keep the global `E-MK-*` form.
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
   the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
   application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.

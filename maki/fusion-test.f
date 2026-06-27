@@ -1,5 +1,9 @@
 \ maki/fusion-test.f - op-fusion = concatenation: each node maps to its tile
 \ word(s), the chain accumulates, unknown/overflow fail closed.
+\ Reopens `package MAKI` so the maki words resolve by bare name (the test is part of the
+\ maki module); the harness words (T-*) and E-FUSE resolve via the package global fallback.
+
+package MAKI
 
 T-RESET
 
@@ -22,3 +26,5 @@ FUSE-NOPS @  3 T=
 ' OVERFLOW-FUSE E-FUSE TTHROWS
 
 T-REPORT
+
+end-package
