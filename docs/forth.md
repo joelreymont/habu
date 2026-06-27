@@ -109,6 +109,14 @@ end-package
 - Qualified names use the existing single-colon wordlist syntax. The qualifier
   selects the package public wordlist and the dictionary record stores the tail,
   so `HB:COUNT` resolves public `COUNT` in package `HB`.
+- **Qualify only across package boundaries.** `NAME:WORD` is for callers *outside*
+  `NAME`. A file that belongs to package `NAME` reopens it with `package NAME` and
+  calls `NAME`'s words by their bare names — writing `NAME:WORD` inside `NAME`'s own
+  files is redundant noise. A call into a *different* package either qualifies
+  (`OTHER:WORD`) or reopens that package. Structure a subsystem as a small set of
+  internal module packages plus one public-interface package the outside world
+  qualifies against; the internal packages call each other across boundaries, the
+  public package composes them, and only truly external code writes the qualifier.
 - Package scope is mirrored into the checker. Signatures recorded inside
   `private` are visible only to later checked code in the same open package;
   signatures recorded inside `public` are visible as `NAME:WORD`.
