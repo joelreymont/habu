@@ -230,9 +230,6 @@ variable TR-PATH-U
 
 : TR-DEBUG-ARGS ( -- )
    TR-COMMON
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/codesign.f"  >LEN PROC-ARGV+
-   s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" test/gate-debug.f"  >LEN PROC-ARGV+ ;
 
 : TR-AOT-POSITIVE-ARGS ( -- )
@@ -274,7 +271,7 @@ variable TR-PATH-U
 : TR-DEBUG ( -- )
    TR-BASE
    TR-DEBUG-ARGS
-   s" native prop/snapshot/debug gate phase" TR-RUN ;
+   s" native prop/debug gate phase" TR-RUN ;
 
 : TR-AOT-POSITIVE ( -- )
    TR-BASE
@@ -293,7 +290,7 @@ variable TR-PATH-U
    idx IDX>N 3 = if s" native stdlib check-cli slice" exit then
    idx IDX>N 4 = if s" native stdlib tail slice" exit then
    idx IDX>N 5 = if s" native engine repair slice" exit then
-   idx IDX>N 6 = if s" native prop/snapshot/debug gate phase" exit then
+   idx IDX>N 6 = if s" native prop/debug gate phase" exit then
    idx IDX>N 7 = if s" native hb-build AOT positive gate phase" exit then
    idx IDX>N 8 = if s" native hb-build AOT negative gate phase" exit then
    idx IDX>N 9 = if s" native engine fixture slice" exit then

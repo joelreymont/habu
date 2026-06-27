@@ -242,8 +242,12 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-BUILD-FIXPOINT ( -- )
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
+   BF-PREFLIGHT
+   BF-STAGE2-SOURCE
    GE-STAGE2-SCRATCH-SHAPE
-   BF-BUILD-ALL
+   BF-STAGE-FIXPOINT-FROM-SOURCE
+   BF-BUILD-STDIN-FROM-STAGE
+   BF-BUILD-SNAP-FROM-STDIN
    GE-BUILD-SOURCE-SHAPE
    BF-TMP-RESET
    GE-CANDIDATE!
@@ -278,6 +282,42 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-ENGINE-SUITE ( -- )
    GE-CANDIDATE$ s" engine suite on hb-new" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
+
+: GE-SNAPSHOT-HOOK-SOURCE ( -- )
+   GE-SRC-RESET
+   s" data-base $1B0 + @ 0= ." GE-SRC-LINE
+   s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
+   s" 7 SQOK ." GE-SRC-LINE ;
+
+: GE-SNAPSHOT-STDIN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu label:ptr labelu :}
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   label labelu GE-EXPECT-OK ;
+
+: GE-SNAPSHOT-HOOK-CHECK ( ptr u8 n -- ) {: exe:ptr exeu :}
+   GE-HB-RESET
+   GE-SNAPSHOT-HOOK-SOURCE
+   exe exeu s" hb-new refresh/check hook" GE-SNAPSHOT-STDIN
+   SB-RESET
+   s" 0" GE-OUT-LINE
+   s" 49" GE-OUT-LINE
+   SB$ s" hb-new refresh/check hook output" GE-EXPECT-OUT ;
+
+: GE-SNAPSHOT-LONG-SOURCE ( -- )
+   GE-SRC-RESET
+   s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
+
+: GE-SNAPSHOT-LONG-LOOKUP ( ptr u8 n -- ) {: exe:ptr exeu :}
+   GE-HB-RESET
+   GE-SNAPSHOT-LONG-SOURCE
+   exe exeu s" hb-new long-name snapshot dictionary lookup" GE-SNAPSHOT-STDIN
+   SB-RESET
+   s" 42" GE-OUT-LINE
+   SB$ s" hb-new long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;
+
+: GE-SNAPSHOT-CANDIDATE-CHECKS ( -- )
+   GE-CANDIDATE$ GE-SNAPSHOT-HOOK-CHECK
+   GE-CANDIDATE$ GE-SNAPSHOT-LONG-LOOKUP
+   s" PASS: hb-new snapshot hook/dictionary coverage" type cr ;
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
@@ -460,6 +500,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GENG-BUILD-SLICE ( -- )
    GE-BUILD-FIXPOINT
    GE-ENGINE-SUITE
+   GE-SNAPSHOT-CANDIDATE-CHECKS
    GT-CLEANUP
    s" PASS: native engine build gate slice" type cr ;
 
@@ -490,6 +531,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-BUILD-FIXPOINT
    GE-RUN-EXTRA-FIXTURES
    GE-ENGINE-SUITE
+   GE-SNAPSHOT-CANDIDATE-CHECKS
    GE-RUNTIME-CHECKS
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;

@@ -7,6 +7,10 @@ $20007452 constant TIOCPTYUNLK
 $40045431 constant LINUX-TIOCSPTLCK
 $80045430 constant LINUX-TIOCGPTN
 2 constant PTY-OPEN-RDWR
+10 constant PTY-POLL-MS
+300 constant PTY-DRAIN-MAX-POLLS
+200 constant PTY-EXPECT-MAX-POLLS
+1 constant PTY-QUIET-POLLS
 
 create RBUF 4096 allot
 create NL 1 allot
@@ -84,8 +88,8 @@ variable PTYNUM
 : DRAIN {: fd :} ( fd -- )
    RCLR
    0 QUIET !
-   0 begin dup 60 < QUIET @ 6 < and while
-      fd 50 >MS POLL-IN COUNT>N 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
+   0 begin dup PTY-DRAIN-MAX-POLLS < QUIET @ PTY-QUIET-POLLS < and while
+      fd PTY-POLL-MS >MS POLL-IN COUNT>N 0 > if fd READ+ 0 QUIET ! else QUIET @ 1 + QUIET ! then
       1 +
    repeat drop ;
 
@@ -96,7 +100,7 @@ variable PTYNUM
    RBUF RN @ a u CONTAINS? ;
 
 : MFD-READ-READY? ( -- bool )
-   MFD @ >FD 50 >MS POLL-IN COUNT>N 0 > if
+   MFD @ >FD PTY-POLL-MS >MS POLL-IN COUNT>N 0 > if
       MFD @ >FD READ+
       0 0= exit
    then
@@ -104,7 +108,7 @@ variable PTYNUM
 
 : EXPECT-WAIT? {: a:ptr u :} ( ptr u8 n -- bool )
    a u RBUF-HAS? if 0 0= exit then
-   0 begin dup 40 < while
+   0 begin dup PTY-EXPECT-MAX-POLLS < while
       MFD-READ-READY? drop
       a u RBUF-HAS? if drop 0 0= exit then
       1 +

@@ -62,6 +62,11 @@ lesson — keep the specific word/code/path, cut the prose.
   regressed the full gate under contention. Keep only schedule moves that improve
   the documented full command; record reverted timings in the dot so failed
   variants are not rediscovered.
+- **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
+  spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
+  polls. Preserve max wait windows, but use small named poll intervals and a
+  minimal quiet threshold so prompt-driven tests finish when the expected bytes
+  arrive.
 - **Batch diagnostic fixtures at the source:** if many checked rejects use the
   same tool load path, write one source file, run one `check-all-errors`, and
   assert each JSONL row by `word`/`repair_class`. Per-case checker spawns hide

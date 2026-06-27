@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-27
-Gate: passing; 1m33.93s on 2026-06-27 on Linux/aarch64 with batched warm-image trust export, batched repair-diagnostic JSONL assertions, measured 8-way outer and 4-way nested gate pools, early independent builder phases, prop/snapshot/debug and AOT-negative started in the initial independent wave, warm checker/tool images, shared hb-build maker cache, single-build strict positive AOT coverage, deduplicated AOT negative coverage, REPL builder coverage folded into `tools/hb-build-test.f`, stale-status fixtures moved in-process through a checked core, and the checked DAG pool
+Gate: passing; 1m28.77s on 2026-06-27 on Linux/aarch64 with batched warm-image trust export, batched repair-diagnostic JSONL assertions, measured 8-way outer and 4-way nested gate pools, early independent builder phases, prop/debug no longer rebuilding a duplicate snapshot, snapshot hook/dictionary assertions moved onto the freshly built `hb-new`, fast bounded PTY polling, AOT-negative started in the initial independent wave, warm checker/tool images, shared hb-build maker cache, single-build strict positive AOT coverage, deduplicated AOT negative coverage, REPL builder coverage folded into `tools/hb-build-test.f`, stale-status fixtures moved in-process through a checked core, and the checked DAG pool
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

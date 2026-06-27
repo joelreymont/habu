@@ -462,9 +462,7 @@ variable BF-TMP-U
 : BF-STAGE-MATCH? ( -- bool )
    s" hb-stage" s" stage2-got" BF-TMP-FILE= ;
 
-: BF-STAGE-FIXPOINT ( -- )
-   BF-PREFLIGHT
-   BF-STAGE2-SOURCE
+: BF-STAGE-FIXPOINT-FROM-SOURCE ( -- )
    BF-BOOTSTRAP-STAGE
    0 BF-GEN !
    0 BF-FOUND !
@@ -482,8 +480,12 @@ variable BF-TMP-U
    BF-FOUND @ 0= if s" FIXPOINT BROKEN: no convergence after 4 generations" BF-BUILD-RC die then
    s" bin/hb refresh OK: compiler fixpoint" type cr ;
 
-: BF-BUILD-STDIN ( -- )
+: BF-STAGE-FIXPOINT ( -- )
    BF-PREFLIGHT
+   BF-STAGE2-SOURCE
+   BF-STAGE-FIXPOINT-FROM-SOURCE ;
+
+: BF-BUILD-STDIN-FROM-STAGE ( -- )
    BF-STDIN-SOURCE
    BF-RUN-STAGE
    s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP
@@ -495,9 +497,13 @@ variable BF-TMP-U
    s" hb-stdin" BF-CHMOD-X-TMP
    s" hb-stdin" BF-CODESIGN-VERIFY-TMP ;
 
+: BF-BUILD-STDIN ( -- )
+   BF-PREFLIGHT
+   BF-BUILD-STDIN-FROM-STAGE ;
+
 : BF-BUILD-STDIN-FRESH ( -- )
    BF-STAGE-FIXPOINT
-   BF-BUILD-STDIN ;
+   BF-BUILD-STDIN-FROM-STAGE ;
 
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
@@ -513,7 +519,7 @@ variable BF-TMP-U
 
 : BF-BUILD-ALL ( -- )
    BF-STAGE-FIXPOINT
-   BF-BUILD-STDIN
+   BF-BUILD-STDIN-FROM-STAGE
    BF-BUILD-SNAP-FROM-STDIN ;
 
 : BF-INSTALL-HB-NEW ( -- )

@@ -142,3 +142,16 @@ in the accepted run: engine build 67.482s, AOT positive 59.032s, stdlib
 check-cli 58.374s, stdlib tool-boundary 51.403s, engine fixtures 45.193s, and
 diagnostics repair 43.714s. The 30s target remains active work, but this is a
 validated stop point.
+
+Checkpoint 2026-06-27: removed duplicate snapshot work from the prop/debug
+phase and made the PTY harness stop waiting on fixed quiet sleeps. The snapshot
+hook and long-name dictionary lookup checks now run against the freshly built
+`hb-new` in the engine-build slice, while the HB_TMP build boundary remains
+covered by `tools/build-fixpoint-test.f`. `test/proc-pty.f` now uses named
+10ms polling constants with the same max wait windows but only one quiet poll,
+cutting direct PTY time from 18.50s to 1.37s. Focused debug fell from about 31s
+wall / 5.86s CPU after the snapshot move to 6.37s wall / 5.67s CPU, and focused
+engine build passed at 29.88s with the moved snapshot checks. The documented full
+native gate passed in 1m28.77s (user 313.53s/sys 4.83s). Remaining long poles:
+engine build 66.256s, AOT positive 59.524s, stdlib check-cli 57.226s, stdlib
+tool-boundary 50.613s, engine fixtures 48.768s, and diagnostics repair 41.578s.
