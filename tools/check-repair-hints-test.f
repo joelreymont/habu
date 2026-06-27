@@ -102,6 +102,12 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    CRHT-LF
    SB$ ;
 
+: CRHT-SRC-CLEAR ( -- )
+   CRHT-SRC CRHT-EMPTY$ WRITE-ALL ;
+
+: CRHT-SRC+ ( ptr u8 n -- )
+   CRHT-SRC 2swap APPEND-FILE ;
+
 : CRHT-REMOVE-PRODUCER$ ( -- ptr u8 n )
    s" : DIAG-REMOVE-PRODUCER ( i64 -- i64 ) dup ;" CRHT-LINE$ ;
 
@@ -198,12 +204,6 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
 
-: CRHT-ASSERT-SCHEMA ( -- )
-   CRHT-DIAG GJA-JSON-ONE-SCHEMA ;
-
-: CRHT-ASSERT-CLASS ( ptr u8 n -- )
-   CRHT-DIAG 2swap GJA-DIAG-REPAIR-CLASS ;
-
 : CRHT-OUTCOME. ( n -- ) {: kind :}
    kind PROC-OUTCOME-EXIT = if s" exit" type exit then
    kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
@@ -272,48 +272,68 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    CRHT-OUT outu CRHT-EMPTY$ T$=
    erru ;
 
-: CRHT-CHECK-HINT ( ptr u8 n ptr u8 n ptr u8 n -- ) {: label:ptr labelu class:ptr classu body:ptr bodyu :}
-   CRHT-SRC body bodyu WRITE-ALL
-   label labelu s" check" CRHT-CONTEXT!
-   label labelu CRHT-RUN-CHECK 70 CRHT-EXPECT-DIAG {: erru :}
-   CRHT-DIAG CRHT-ERR erru WRITE-ALL
-   label labelu s" schema" CRHT-CONTEXT!
-   CRHT-ASSERT-SCHEMA
-   label labelu s" class" CRHT-CONTEXT!
-   class classu CRHT-ASSERT-CLASS ;
-
-: CRHT-ASSERT-RSTACK ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: exp:ptr expu act:ptr actu label:ptr labelu :}
-   label labelu s" return-stack" CRHT-CONTEXT!
-   CRHT-DIAG exp expu act actu GJA-DIAG-RETURN-STACK ;
-
-: CRHT-ASSERT-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
-   src srcu s" row-effect" CRHT-CONTEXT!
-   CRHT-DIAG src srcu exp expu act actu class classu GJA-DIAG-ROW-EFFECT ;
-
 : CRHT-CHECK-ACCEPTS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu body:ptr bodyu :}
    CRHT-SRC body bodyu WRITE-ALL
    label labelu s" check" CRHT-CONTEXT!
    label labelu CRHT-RUN-CHECK 0 CRHT-EXPECT-CLEAN ;
 
+: CRHT-BAD-BATCH-SOURCE ( -- )
+   CRHT-SRC-CLEAR
+   CRHT-REMOVE-PRODUCER$ CRHT-SRC+
+   CRHT-ADD-PRODUCER$ CRHT-SRC+
+   CRHT-FIX-TYPE$ CRHT-SRC+
+   CRHT-FIX-RSTACK$ CRHT-SRC+
+   CRHT-MIXED-RSTACK$ CRHT-SRC+
+   CRHT-ROW-DUP-EXTRA$ CRHT-SRC+
+   CRHT-TRUSTED-EVAL$ CRHT-SRC+
+   CRHT-TRUSTED-TRUST$ CRHT-SRC+
+   CRHT-TRUSTED-SET-CHECK$ CRHT-SRC+
+   CRHT-SIGNATURE-SYNTAX$ CRHT-SRC+
+   CRHT-REWRITE-UNCHECKABLE$ CRHT-SRC+ ;
+
+: CRHT-RUN-BAD-BATCH ( -- )
+   CRHT-BAD-BATCH-SOURCE
+   s" repair-batch" s" check" CRHT-CONTEXT!
+   s" repair-batch" CRHT-RUN-CHECK 70 CRHT-EXPECT-DIAG {: erru :}
+   CRHT-DIAG CRHT-ERR erru WRITE-ALL
+   s" repair-batch" s" schema" CRHT-CONTEXT!
+   CRHT-DIAG GJA-JSON-LINES-SCHEMA ;
+
+: CRHT-ASSERT-WORD-CLASS ( ptr u8 n ptr u8 n -- ) {: word:ptr wordu class:ptr classu :}
+   word wordu s" class" CRHT-CONTEXT!
+   CRHT-DIAG word wordu class classu GJA-DIAG-WORD-REPAIR-CLASS ;
+
+: CRHT-ASSERT-WORD-RSTACK ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: word:ptr wordu exp:ptr expu act:ptr actu :}
+   word wordu s" return-stack" CRHT-CONTEXT!
+   CRHT-DIAG word wordu exp expu act actu GJA-DIAG-WORD-RETURN-STACK ;
+
+: CRHT-ASSERT-WORD-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: word:ptr wordu src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
+   word wordu s" row-effect" CRHT-CONTEXT!
+   CRHT-DIAG word wordu src srcu exp expu act actu class classu GJA-DIAG-WORD-ROW-EFFECT ;
+
+: CRHT-BAD-BATCH-ASSERTS ( -- )
+   s" diag-remove-producer" s" remove_producer" CRHT-ASSERT-WORD-CLASS
+   s" diag-add-producer" s" add_producer" CRHT-ASSERT-WORD-CLASS
+   s" diag-fix-type" s" fix_type" CRHT-ASSERT-WORD-CLASS
+   s" diag-fix-rstack" s" fix_return_stack" CRHT-ASSERT-WORD-CLASS
+   s" diag-fix-rstack" CRHT-EMPTY$ s" i64 " CRHT-ASSERT-WORD-RSTACK
+   s" diag-mixed-rstack" s" fix_return_stack" CRHT-ASSERT-WORD-CLASS
+   s" diag-mixed-rstack" CRHT-EMPTY$ s" i64 " CRHT-ASSERT-WORD-RSTACK
+   s" diag-row-dup-extra" s" remove_producer" CRHT-ASSERT-WORD-CLASS
+   s" diag-row-dup-extra" s" R x -- R x" s" a " s" a a " s" remove_producer" CRHT-ASSERT-WORD-ROW-EFFECT
+   s" diag-trusted-boundary" s" trusted_boundary_required" CRHT-ASSERT-WORD-CLASS
+   s" diag-trusted-boundary-trust" s" trusted_boundary_required" CRHT-ASSERT-WORD-CLASS
+   s" diag-trusted-boundary-set-check" s" trusted_boundary_required" CRHT-ASSERT-WORD-CLASS
+   s" diag-signature-syntax" s" fix_signature_syntax" CRHT-ASSERT-WORD-CLASS
+   s" diag-rewrite-uncheckable" s" rewrite_uncheckable" CRHT-ASSERT-WORD-CLASS ;
+
 : CRHT-CASES ( -- )
-   s" remove-producer" s" remove_producer" CRHT-REMOVE-PRODUCER$ CRHT-CHECK-HINT
-   s" add-producer" s" add_producer" CRHT-ADD-PRODUCER$ CRHT-CHECK-HINT
-   s" fix-type" s" fix_type" CRHT-FIX-TYPE$ CRHT-CHECK-HINT
-   s" fix-return-stack" s" fix_return_stack" CRHT-FIX-RSTACK$ CRHT-CHECK-HINT
-   CRHT-EMPTY$ s" i64 " s" fix-return-stack" CRHT-ASSERT-RSTACK
-   s" mixed-return-stack" s" fix_return_stack" CRHT-MIXED-RSTACK$ CRHT-CHECK-HINT
-   CRHT-EMPTY$ s" i64 " s" mixed-return-stack" CRHT-ASSERT-RSTACK
+   CRHT-RUN-BAD-BATCH
+   CRHT-BAD-BATCH-ASSERTS
    s" balanced-return-stack" CRHT-BALANCED-RSTACK$ CRHT-CHECK-ACCEPTS
-   s" row-dup-extra" s" remove_producer" CRHT-ROW-DUP-EXTRA$ CRHT-CHECK-HINT
-   s" R x -- R x" s" a " s" a a " s" remove_producer" CRHT-ASSERT-ROW-EFFECT
-   s" row-dup-ok" CRHT-ROW-DUP-OK$ CRHT-CHECK-ACCEPTS
-   s" trusted-boundary" s" trusted_boundary_required" CRHT-TRUSTED-EVAL$ CRHT-CHECK-HINT
-   s" trusted-boundary-trust" s" trusted_boundary_required" CRHT-TRUSTED-TRUST$ CRHT-CHECK-HINT
-   s" trusted-boundary-set-check" s" trusted_boundary_required" CRHT-TRUSTED-SET-CHECK$ CRHT-CHECK-HINT
-   s" signature-syntax" s" fix_signature_syntax" CRHT-SIGNATURE-SYNTAX$ CRHT-CHECK-HINT
-   s" rewrite-uncheckable" s" rewrite_uncheckable" CRHT-REWRITE-UNCHECKABLE$ CRHT-CHECK-HINT ;
+   s" row-dup-ok" CRHT-ROW-DUP-OK$ CRHT-CHECK-ACCEPTS ;
 
 : CRHT-MAIN ( -- )
    T-RESET

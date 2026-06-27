@@ -245,6 +245,24 @@ variable GJA-DIRECT
    0 GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
    JSON-PARSE dup GJA-OBJ ;
 
+: GJA-LINE-JSON ( n -- n )
+   GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
+   JSON-PARSE dup GJA-OBJ ;
+
+: GJA-DIAG-WORD? ( n ptr u8 n -- bool ) {: root word:ptr wordu :}
+   root s" word" GJA-REQ word wordu GJA-STR= ;
+
+: GJA-FIND-WORD ( ptr u8 n ptr u8 n -- n ) {: json:ptr jsonu word:ptr wordu :}
+   json jsonu GJA-READ GJA-SPLIT-LINES
+   GJA-LINE# @ 0= IF s" no JSON lines" GJA-FAIL THEN
+   0 GJA-I !
+   begin GJA-I @ GJA-LINE# @ < while
+      GJA-I @ GJA-LINE-JSON dup word wordu GJA-DIAG-WORD? IF exit THEN
+      drop
+      GJA-I @ 1+ GJA-I !
+   repeat
+   s" missing JSON diagnostic word" GJA-FAIL ;
+
 : GJA-SRC-LINE-COL ( n -- )
    GJA-IDX !
    1 GJA-LINE !
@@ -308,13 +326,21 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    2drop s" unknown repair class in suggestion assertion" GJA-FAIL ;
 
+: GJA-DIAG-CLASS-SUGGEST ( n ptr u8 n -- ) {: root class:ptr classu :}
+   root s" repair_class" GJA-REQ
+   class classu GJA-ASSERT-STR
+   root s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
+   class classu GJA-SUGGEST-FOR GJA-ASSERT-STR ;
+
 : GJA-DIAG-REPAIR-CLASS ( ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
-   GJA-ROOT @ s" repair_class" GJA-REQ
-   class classu GJA-ASSERT-STR
-   GJA-ROOT @ s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
-   class classu GJA-SUGGEST-FOR GJA-ASSERT-STR ;
+   GJA-ROOT @ class classu GJA-DIAG-CLASS-SUGGEST ;
+
+: GJA-DIAG-WORD-REPAIR-CLASS ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: json:ptr jsonu word:ptr wordu class:ptr classu :}
+   json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
+   GJA-ROOT @ class classu GJA-DIAG-CLASS-SUGGEST ;
 
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu class:ptr classu :}
@@ -381,6 +407,25 @@ variable GJA-DIRECT
    GJA-ROOT @ s" expected" GJA-REQ exp expu GJA-ASSERT-STR
    GJA-ROOT @ s" actual" GJA-REQ act actu GJA-ASSERT-STR
    GJA-ROOT @ s" repair_class" GJA-REQ class classu GJA-ASSERT-STR ;
+
+: GJA-DIAG-WORD-RETURN-STACK ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: json:ptr jsonu word:ptr wordu exp:ptr expu act:ptr actu :}
+   json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
+   GJA-ROOT @ GJA-DIAG-COMMON
+   GJA-ROOT @ s" repair_class" GJA-REQ s" fix_return_stack" GJA-ASSERT-STR
+   GJA-ROOT @ s" return_stack" GJA-REQ dup GJA-OBJ
+   dup s" expected" GJA-REQ exp expu GJA-ASSERT-STR
+   s" actual" GJA-REQ act actu GJA-ASSERT-STR ;
+
+: GJA-DIAG-WORD-ROW-EFFECT ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: json:ptr jsonu word:ptr wordu src:ptr srcu exp:ptr expu act:ptr actu class:ptr classu :}
+   json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
+   GJA-ROOT @ GJA-DIAG-COMMON
+   GJA-ROOT @ s" declared_effect_source" GJA-REQ src srcu GJA-ASSERT-STR
+   GJA-ROOT @ s" expected" GJA-REQ exp expu GJA-ASSERT-STR
+   GJA-ROOT @ s" actual" GJA-REQ act actu GJA-ASSERT-STR
+   GJA-ROOT @ s" repair_class" GJA-REQ
+   class classu GJA-ASSERT-STR ;
 
 : GJA-ALL-ROW0 ( n -- )
    dup GJA-DIAG-COMMON

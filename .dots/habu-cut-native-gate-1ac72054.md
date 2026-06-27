@@ -74,3 +74,12 @@ warm-image tests passed; stdlib warm fell to 9.96s and checker warm to 9.14s in
 isolation. The documented full native gate passed in 1m21.93s. Remaining long
 poles: AOT-positive/build/REPL builder phases and stdlib tool-boundary under full
 load.
+
+Checkpoint 2026-06-27: `tools/check-repair-hints-test.f` no longer spawns
+`tools/check-all-errors.f` once per rejecting fixture. The test writes one
+batched source, runs one all-errors check, then uses new checked JSONL helpers in
+`tools/gate-json-assert-core.f` to assert each row by `word` plus
+`repair_class`, return-stack details, and row-effect details. Focused
+`check-repair-hints-test.f` passed in 11.88s, and the owning engine repair slice
+passed in 14.84s with the diagnostic run reporting 11.815s. Full-gate evidence
+still pending for this checkpoint.
