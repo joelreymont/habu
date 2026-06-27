@@ -106,6 +106,7 @@ variable GE-ARGV-U
    rc 56 = if s" E-PROC-TRUNCATED" type exit then
    rc 55 = if s" E-PROC-ENV" type exit then
    rc 54 = if s" E-PROC-PATH" type exit then
+   rc 78 = if s" E-DUP-DEFINITION" type exit then
    rc 202 = if s" E-FS-OPEN" type exit then
    rc 198 = if s" E-FS-CAPACITY" type exit then
    rc 104 = if s" E-STR-BOUNDS" type exit then
@@ -298,6 +299,7 @@ variable GE-ARGV-U
    s" tools/json-only-core.f" GE-ARG+
    s" tools/signature-lint-core.f" GE-ARG+
    s" tools/checked-boundary-lint-core.f" GE-ARG+
+   s" tools/reserved-name-lint-core.f" GE-ARG+
    s" tools/trust-lint-core.f" GE-ARG+
    s" tools/check-all-errors-core.f" GE-ARG+
    s" tools/argv.f" GE-ARG+ ;
@@ -398,6 +400,13 @@ variable GE-ARGV-U
    GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GE-EXPECT-SILENT ;
+
+: GE-CHECK-RUN-BAD ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   GE-CHECK-ARGV
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
 : GE-CHECK-SRC-LIST ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV

@@ -1,16 +1,23 @@
 \ run.f - checked native default gate runner.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f, lib/process.f, lib/process-argv.f,
-\ lib/process-env.f, lib/test-runner.f, and test/gate-pool.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
+\ lib/test-runner.f, and test/gate-pool.f.
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
-$15F90 constant TR-DEFAULT-BUDGET-MS
+$1ADB0 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
-18 constant TR-PHASES
+21 constant TR-PHASES
+$F constant TR-LATE-PHASES
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
+
+\ Longest post-warm phases first; this keeps 4-core ARM gates inside budget
+\ without dropping coverage or raising the threshold.
+create TR-LATE-ORDER
+$2 , $3 , $4 , $5 , $9 , $A , $C , $B , $11 , $12 , $13 , $14 , $D , $E , $10 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -123,6 +130,7 @@ variable TR-GATE-START-NS
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
@@ -174,11 +182,9 @@ variable TR-GATE-START-NS
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
-   s" lib/memory.f"  >LEN PROC-ARGV+
    s" test/gate-build-common.f"  >LEN PROC-ARGV+ ;
 
 : TR-BUILD-LIB ( -- )
-   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/source.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
@@ -207,6 +213,21 @@ variable TR-GATE-START-NS
 : TR-STDLIB-LINT-ARGS ( -- )
    s" lint" TR-STDLIB-SLICE-ARGS ;
 
+: TR-STDLIB-LINT-TOOLS-ARGS ( -- )
+   s" lint-tools" TR-STDLIB-SLICE-ARGS ;
+
+: TR-STDLIB-LINT-MANIFEST-ARGS ( -- )
+   s" tools/lint/text.f"  >LEN PROC-ARGV+
+   s" tools/lint/token.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/stdlib-manifest-test.f"  >LEN PROC-ARGV+ ;
+
+: TR-STDLIB-LINT-ARTIFACTS-ARGS ( -- )
+   s" lint-artifacts" TR-STDLIB-SLICE-ARGS ;
+
+: TR-STDLIB-LINT-LIBS-ARGS ( -- )
+   s" lint-libs" TR-STDLIB-SLICE-ARGS ;
+
 : TR-STDLIB-TOOL-ARGS ( -- )
    s" tool" TR-STDLIB-SLICE-ARGS ;
 
@@ -218,7 +239,6 @@ variable TR-GATE-START-NS
 
 : TR-ENGINE-ARGS ( -- )
    TR-COMMON
-   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
@@ -342,7 +362,10 @@ variable TR-GATE-START-NS
    idx IDX>N 14 = if s" native dictionary/checker gate phase" exit then
    idx IDX>N 15 = if s" native engine build slice" exit then
    idx IDX>N 16 = if s" native engine runtime slice" exit then
-   idx IDX>N 17 = if s" native stdlib lint slice" exit then
+   idx IDX>N 17 = if s" native stdlib lint tools slice" exit then
+   idx IDX>N 18 = if s" native stdlib lint manifest slice" exit then
+   idx IDX>N 19 = if s" native stdlib lint artifacts slice" exit then
+   idx IDX>N 20 = if s" native stdlib lint libs slice" exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx :}
@@ -363,7 +386,10 @@ variable TR-GATE-START-NS
    idx IDX>N 14 = if s" gate-dict" exit then
    idx IDX>N 15 = if s" gate-engine-build" exit then
    idx IDX>N 16 = if s" gate-engine-runtime" exit then
-   idx IDX>N 17 = if s" gate-stdlib-lint" exit then
+   idx IDX>N 17 = if s" gate-stdlib-lint-tools" exit then
+   idx IDX>N 18 = if s" gate-stdlib-lint-manifest" exit then
+   idx IDX>N 19 = if s" gate-stdlib-lint-artifacts" exit then
+   idx IDX>N 20 = if s" gate-stdlib-lint-libs" exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-ARGS ( idx -- ) {: idx :}
@@ -384,7 +410,10 @@ variable TR-GATE-START-NS
    idx IDX>N 14 = if TR-DICTIONARY-ARGS exit then
    idx IDX>N 15 = if TR-ENGINE-BUILD-ARGS exit then
    idx IDX>N 16 = if TR-ENGINE-RUNTIME-ARGS exit then
-   idx IDX>N 17 = if TR-STDLIB-LINT-ARGS exit then
+   idx IDX>N 17 = if TR-STDLIB-LINT-TOOLS-ARGS exit then
+   idx IDX>N 18 = if TR-STDLIB-LINT-MANIFEST-ARGS exit then
+   idx IDX>N 19 = if TR-STDLIB-LINT-ARTIFACTS-ARGS exit then
+   idx IDX>N 20 = if TR-STDLIB-LINT-LIBS-ARGS exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-TMP! ( idx -- ) {: idx :}
@@ -393,7 +422,10 @@ variable TR-GATE-START-NS
 
 : TR-STDLIB-SLICE? ( idx -- bool ) {: idx :}
    idx IDX>N 2 >= idx IDX>N 4 <= and
-   idx IDX>N 17 = or ;
+   idx IDX>N 17 = or
+   idx IDX>N 18 = or
+   idx IDX>N 19 = or
+   idx IDX>N 20 = or ;
 
 : TR-TOOLS-PHASE? ( idx -- bool ) {: idx :}
    idx TR-STDLIB-SLICE? if 0 0= exit then
@@ -430,6 +462,7 @@ variable TR-GATE-START-NS
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+
@@ -457,6 +490,9 @@ variable TR-GATE-START-NS
       GT-POOL-STEP
    repeat ;
 
+: TR-LATE-ORDER@ ( idx -- idx ) {: idx :}
+   idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
+
 : TR-EARLY-START ( -- )
    GT-POOL-RESET
    0 TR-WARM-PHASES TR-PHASE-SPAWN-RANGE
@@ -466,8 +502,8 @@ variable TR-GATE-START-NS
    repeat drop ;
 
 : TR-LATE-START ( -- )
-   TR-WARM-PHASES begin dup TR-PHASES < while
-      dup >IDX TR-EARLY-PHASE? 0= if dup >IDX TR-PHASE-START then
+   0 begin dup TR-LATE-PHASES < while
+      dup >IDX TR-LATE-ORDER@ TR-PHASE-START
       1+
    repeat drop ;
 

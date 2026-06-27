@@ -32,10 +32,10 @@ create HCT-ERR HCT-CAP allot
 
 : HCT-CHILD$ ( -- ptr u8 n )
    SB-RESET
-   s" create B 32 allot" SB-APPEND HCT-LF
+   s" create HCT-BUF 32 allot" SB-APPEND HCT-LF
    s" : MAIN ( -- )" SB-APPEND HCT-LF
-   s"    B 32 >LEN READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
-   s"    B swap type cr ;" SB-APPEND HCT-LF
+   s"    HCT-BUF 32 >LEN READ-STDIN-ALL LEN>N dup ." SB-APPEND HCT-LF
+   s"    HCT-BUF swap type cr ;" SB-APPEND HCT-LF
    s" MAIN" SB-APPEND HCT-LF
    SB$ ;
 
@@ -58,6 +58,7 @@ create HCT-ERR HCT-CAP allot
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/source.f"  >LEN PROC-ARGV+
    HCT-CHILD  >LEN PROC-ARGV+

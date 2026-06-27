@@ -72,7 +72,7 @@ variable PAT-I
    s" %s-%s"  >LEN PROC-ARGV+
    s" left"  >LEN PROC-ARGV+
    s" right"  >LEN PROC-ARGV+
-   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD RUN-ARGV-IO-RC RC>N 0 T=
+   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC RC>N 0 T=
    PAT-OUT-W @ close
    PAT-READ 10 T=
    PAT-BUF 10 s" left-right" T$=
@@ -84,7 +84,7 @@ variable PAT-I
    PAT-IN-W @ s" argv-stdin" write 10 T=
    PAT-IN-W @ close
    PROC-ARGV-RESET
-   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD RUN-ARGV-IO-RC RC>N 0 T=
+   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC RC>N 0 T=
    PAT-IN-R @ close
    PAT-OUT-W @ close
    PAT-READ 10 T=
@@ -94,7 +94,7 @@ variable PAT-I
 : PAT-SPAWN-MISSING ( -- )
    PROC-ARGV-RESET
    s" ignored"  >LEN PROC-ARGV+
-   s" /no/such/habu-process-argv-test" >LEN -1 >FD -1 >FD -1 >FD SPAWN-ARGV-IO drop ;
+   s" /no/such/habu-process-argv-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO drop ;
 
 : PAT-TOO-MANY-ARGS ( -- )
    PROC-ARGV-RESET

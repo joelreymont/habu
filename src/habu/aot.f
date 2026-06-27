@@ -13,7 +13,7 @@
 0 set-check
 
 variable PB  variable PN  variable PFD  variable PRD
-variable SI
+variable AOT-SI
 $40000 constant PMAX
 : AOT-PB@ PB @ ;
 s" AOT-PB@" s" -- ptr u8" TRUST
@@ -56,10 +56,10 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 : SENTSET  s"  AOT-LINK " {: sa:ptr su :}
    su SENT-ROOM
-   0 SI !
-   BEGIN SI @ su < WHILE
-      sa SI @ + c@  AOT-PB@ PN @ + SI @ + c!
-      SI @ 1 + SI !
+   0 AOT-SI !
+   BEGIN AOT-SI @ su < WHILE
+      sa AOT-SI @ + c@  AOT-PB@ PN @ + AOT-SI @ + c!
+      AOT-SI @ 1 + AOT-SI !
    REPEAT
    PN @ su + PN ! ;
 

@@ -55,7 +55,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-DRIVER$ ( -- ptr u8 n )
    SB-RESET
-   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after errors, combinators, and array." SB-APPEND BLTT-LF
+   92 SB-APPEND-C s"  bundle-lib smoke driver; loaded after errors and array." SB-APPEND BLTT-LF
    BLTT-LF
    s" 100 constant BLT-FAIL" SB-APPEND BLTT-LF
    BLTT-LF
@@ -184,7 +184,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ERR erru BLTT-EMPTY$ T$=
    BLTT-BUNDLE BLTT-BUNDLE-READ BLTT-BUNDLE-CAP READ-ALL {: bundleu :}
    BLTT-BUNDLE-READ bundleu s" lib/errors.f" CONTAINS? TTRUE
-   BLTT-BUNDLE-READ bundleu s" src/core/combinators.f" CONTAINS? TTRUE
+   BLTT-BUNDLE-READ bundleu s" src/core/combinators.f" CONTAINS? TFALSE
    BLTT-BUNDLE-READ bundleu s" lib/array.f" CONTAINS? TTRUE
    BLTT-BUNDLE-READ bundleu s" BLT-MAIN" CONTAINS? TTRUE ;
 

@@ -187,8 +187,8 @@ s" CBAD-LOCAL-AFTER-EXIT ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate
-: TI ( -- n ) IM5 ;
-TI 5 T=
+: ES-TI ( -- n ) IM5 ;
+ES-TI 5 T=
 \ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
 \ not checked user code. TP must compile through P5 while the trusted immediate
 \ boundary is active.
@@ -197,15 +197,15 @@ TRUSTED: P5 ( -- i64 ) postpone IM5 ; immediate
 TP 5 T=
 
 \ child processes: run-rc spawns + waits (paths need a NUL)
-create PZB 64 allot
-: PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
-   0 begin dup u < while  dup a + c@  over PZB + c!  1 + repeat drop
-   0 PZB u + c!  PZB ;
-s" /usr/bin/true" PATHZ run-rc 0 T=
-s" /usr/bin/false" PATHZ run-rc 1 T=
+create ES-PZB 64 allot
+: ES-PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u:n :}
+   0 begin dup u < while  dup a + c@  over ES-PZB + c!  1 + repeat drop
+   0 ES-PZB u + c!  ES-PZB ;
+s" /usr/bin/true" ES-PATHZ run-rc 0 T=
+s" /usr/bin/false" ES-PATHZ run-rc 1 T=
 
 \ filesystem syscalls
-create STB 256 allot
+create ES-STB 256 allot
 create DBUF 4096 allot
 create RLB 64 allot
 create ES-TARGETZ
@@ -217,26 +217,26 @@ create ES-LINKZ
 create DIRBASE 8 allot
 variable DFD
 : U16@ ( ptr u8 -- n ) {: a:ptr :} a c@ a 1 + c@ 8 lshift or ;
-: MODE@ ( -- n ) STB 4 + U16@ ;
-s" AGENTS.md" PATHZ 0 access 0 T=
-s" /nonexistent-habu-fs" PATHZ 0 access -1 T=
-s" AGENTS.md" PATHZ STB stat64 0 T=
+: MODE@ ( -- n ) ES-STB 4 + U16@ ;
+s" AGENTS.md" ES-PATHZ 0 access 0 T=
+s" /nonexistent-habu-fs" ES-PATHZ 0 access -1 T=
+s" AGENTS.md" ES-PATHZ ES-STB stat64 0 T=
 MODE@ $F000 and $8000 = -1 T=
-s" src" PATHZ STB stat64 0 T=
+s" src" ES-PATHZ ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = -1 T=
-s" src/os/macos" PATHZ open-rd DFD !
+s" src/os/macos" ES-PATHZ open-rd DFD !
 DFD @ 0 >= -1 T=
 0 DIRBASE !
 DFD @ DBUF 4096 DIRBASE getdirentries64 0 > -1 T=
 DFD @ close
-s" /tmp/habu-engine-suite-mkdir" PATHZ rmdir drop
-s" /tmp/habu-engine-suite-mkdir" PATHZ 493 mkdir 0 T=
-s" /tmp/habu-engine-suite-mkdir" PATHZ STB stat64 0 T=
+s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir drop
+s" /tmp/habu-engine-suite-mkdir" ES-PATHZ 493 mkdir 0 T=
+s" /tmp/habu-engine-suite-mkdir" ES-PATHZ ES-STB stat64 0 T=
 MODE@ $F000 and $4000 = -1 T=
-s" /tmp/habu-engine-suite-mkdir" PATHZ rmdir 0 T=
+s" /tmp/habu-engine-suite-mkdir" ES-PATHZ rmdir 0 T=
 ES-LINKZ unlink drop
 ES-TARGETZ ES-LINKZ symlink 0 T=
-ES-LINKZ STB lstat64 0 T=
+ES-LINKZ ES-STB lstat64 0 T=
 MODE@ $F000 and $A000 = -1 T=
 ES-LINKZ RLB 64 readlink 9 T=
 RLB c@ 65 T=
@@ -261,7 +261,7 @@ TFNEG -1 T=
 s" " nip 0 T=
 
 \ run-rc spawn failure -> -1 (not a hang or garbage status)
-s" /nonexistent-habu-x" PATHZ run-rc -1 T=
+s" /nonexistent-habu-x" ES-PATHZ run-rc -1 T=
 
 \ snapshot-writer intrinsics are sane
 $340000000 constant ES-LINUX-DATA-VA
@@ -330,8 +330,8 @@ TPN2 7 T=
 \ loop-resident float accumulator surviving BEGIN back edges in a d-reg
 : TFD ( -- bool ) 2.0 dup f+ 4.0 f= ;
 TFD -1 T=
-: TFA ( n -- bool ) {: n:n :} 0.0 0 begin 1 + swap 1.5 f+ swap dup n = until drop 6.0 f= ;
-4 TFA -1 T=
+: ES-TFA ( n -- bool ) {: n:n :} 0.0 0 begin 1 + swap 1.5 f+ swap dup n = until drop 6.0 f= ;
+4 ES-TFA -1 T=
 \ a call spills the float (bits to the memory stack); the prim path finishes
 : TF5 ( -- n ) 5 ;
 : TFC ( -- bool ) 0.5 TF5 drop 0.5 f+ 1.0 f= ;

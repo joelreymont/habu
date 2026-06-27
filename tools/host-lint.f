@@ -45,7 +45,7 @@ variable HOST-PATH-U
    v 0= IF 0 exit THEN
    u v < IF -1 exit THEN
    0 begin dup u v - <= while
-      dup a + v b v STR=CI IF exit THEN
+      dup a + v b v LINT-STR=CI IF exit THEN
       1+
    repeat drop -1 ;
 
@@ -53,7 +53,7 @@ variable HOST-PATH-U
    v 0= IF 0 exit THEN
    u v < IF -1 exit THEN
    0 begin dup u v - <= while
-      dup a + v b v STR= IF exit THEN
+      dup a + v b v LINT-STR= IF exit THEN
       1+
    repeat drop -1 ;
 

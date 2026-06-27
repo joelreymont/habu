@@ -25,8 +25,3 @@ variable RDP
 
 : RD32 {: p:ptr :} ( ptr u8 -- n )
    p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
-
-\ trust stub: subsets that load the builder source WITHOUT the checker still
-\ execute the `s" name" s" sig" trust` declarations — drop the four args.
-\ checker.f redefines trust with the real USIG recorder (latest wins).
-: TRUST {: na nu sa su :} ;

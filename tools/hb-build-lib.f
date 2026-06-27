@@ -359,15 +359,21 @@ variable HBB-LOCK-DEADLINE
 
 : HBB-MAKER-SOURCE ( -- )
    HBB-MAKER-SRC-NAME$ BF-RESET-OUT
+   HBB-MAKER-SRC-NAME$ BF-APPEND-RUN-PRELUDE
    HBB-MAKER-SRC-NAME$ BF-APPEND-COMMON
    HBB-MAKER-SRC-NAME$ BF-APPEND-DRIVER-IO
    HBB-MAKER-SRC-NAME$ HBB-APPEND-DRIVER ;
 
 : HBB-STAGE2-SOURCE ( -- )
    s" stage2-src" BF-RESET-OUT
+   s" stage2-src" BF-APPEND-RUN-PRELUDE
    s" stage2-src" BF-APPEND-COMMON
    s" stage2-src" BF-APPEND-DRIVER-IO
    s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
+
+: HBB-STAGE2-RUN-SOURCE ( -- )
+   HBB-STAGE2-SOURCE
+   BF-STAGE2-RUN-SOURCE ;
 
 : HBB-MAKER-READY? ( -- bool )
    HBB-MAKER$ EXECUTABLE? ;
@@ -410,10 +416,10 @@ variable HBB-LOCK-DEADLINE
 : HBB-BUILD-MAKER-LOCKED ( -- )
    HBB-MAKER-READY? if exit then
    HBB-MAKER-SOURCE
-   HBB-STAGE2-SOURCE
+   HBB-STAGE2-RUN-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-ENV-PATH-INFILE
+   s" bin/hb" s" stage2-run-src" BF-A$ BF-RUN-STAGE-PATH-INFILE
    dup 0 <> if
       HBB-RELEASE-MAKER-LOCK
       s" hb-build: native maker build failed" HBB-BUILD-RC die
@@ -443,17 +449,6 @@ variable HBB-LOCK-DEADLINE
 : HBB-TARGET-UNKNOWN ( -- )
    s" hb-build: unknown target" HBB-BUILD-RC die ;
 
-: HBB-APPEND-TARGET-ENV ( -- )
-   HB-TARGET-LINUX? if
-      HBB-SRC-NAME$ s" src/os/linux/env.f" BF-APPEND-SOURCE
-      exit
-   then
-   HB-TARGET-MACOS? if
-      HBB-SRC-NAME$ s" src/os/macos/env.f" BF-APPEND-SOURCE
-      exit
-   then
-   HBB-TARGET-UNKNOWN ;
-
 : HBB-APPEND-TARGET-REPL-TERM ( -- )
    HB-TARGET-LINUX? if
       HBB-SRC-NAME$ s" src/os/linux/repl-term.f" BF-APPEND-SOURCE
@@ -468,13 +463,7 @@ variable HBB-LOCK-DEADLINE
 : HBB-RESET-RUNTIME-SOURCE ( -- )
    HBB-SRC-NAME$ BF-RESET-OUT
    HBB-SRC-NAME$ s" 0 set-check" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" : TRUST ( ptr u8 n ptr u8 n -- ) 2drop 2drop ;" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" src/habu/layout.f" BF-APPEND-SOURCE
-   HBB-APPEND-TARGET-ENV
-   HBB-SRC-NAME$ s" : SCRIPT-ARG-START ( -- n ) 1 ;" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" : SCRIPT-ARGC ( -- n ) ARGC 1 - dup 0 < if drop 0 then ;" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" : SCRIPT-ARGV ( i -- z ) 1 + ARGV ;" BF-APPEND-LINE
-   HBB-SRC-NAME$ s" : SCRIPT-ARGV$ ( i -- a u ) SCRIPT-ARGV dup ZLEN ;" BF-APPEND-LINE ;
+   HBB-SRC-NAME$ s" src/habu/bundle-argv.f" BF-APPEND-SOURCE ;
 
 : HBB-APPEND-REPL-TARGET ( -- )
    HBB-APPEND-TARGET-REPL-TERM ;

@@ -12,7 +12,7 @@ $80000 constant SMT-STR-CAP
 64 constant SMT-MOD-MAX
 64 constant SMT-LIB-MAX
 11 constant SMT-FIELDS
-5000 constant SMT-TIMEOUT-MS
+$7530 constant SMT-TIMEOUT-MS
 
 9 constant SMT-TAB
 10 constant SMT-LF
@@ -243,21 +243,21 @@ variable SMT-J
 
 : SMT-LIB-FILE? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 7 < IF 0 0= 0= exit THEN
-   a u s" lib/" STARTS-WITH? 0= IF 0 0= 0= exit THEN
-   a u s" .f" ENDS-WITH? 0= IF 0 0= 0= exit THEN
+   a u s" lib/" LINT-STARTS-WITH? 0= IF 0 0= 0= exit THEN
+   a u s" .f" LINT-ENDS-WITH? 0= IF 0 0= 0= exit THEN
    a 4 + u 6 - SMT-MODULE-NAME? ;
 
 : SMT-KIND? ( ptr u8 n -- bool )
-   2dup s" module" STR= IF 2drop 0 0= exit THEN
-   s" word" STR= ;
+   2dup s" module" LINT-STR= IF 2drop 0 0= exit THEN
+   s" word" LINT-STR= ;
 
 : SMT-STATUS? ( ptr u8 n -- bool )
-   2dup s" planned" STR= IF 2drop 0 0= exit THEN
-   2dup s" active" STR= IF 2drop 0 0= exit THEN
-   s" published" STR= ;
+   2dup s" planned" LINT-STR= IF 2drop 0 0= exit THEN
+   2dup s" active" LINT-STR= IF 2drop 0 0= exit THEN
+   s" published" LINT-STR= ;
 
 : SMT-NOT-PLANNED? ( ptr u8 n -- bool )
-   s" planned" STR= 0= ;
+   s" planned" LINT-STR= 0= ;
 
 : SMT-MAN-F$ ( n -- ptr u8 n ) {: k :}
    SMT-MF-O k SMT-A@ SMT-MF-L k SMT-A@ SMT-STR$ ;
@@ -285,15 +285,15 @@ variable SMT-J
 
 : SMT-MAN-WORD= ( n ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: k fa:ptr fu wa:ptr wu ea:ptr eu :}
-   k SMT-MAN-F$ fa fu STR= 0= IF 0 0= 0= exit THEN
-   k SMT-MAN-W$ wa wu STR= 0= IF 0 0= 0= exit THEN
-   k SMT-MAN-E$ ea eu STR= ;
+   k SMT-MAN-F$ fa fu LINT-STR= 0= IF 0 0= 0= exit THEN
+   k SMT-MAN-W$ wa wu LINT-STR= 0= IF 0 0= 0= exit THEN
+   k SMT-MAN-E$ ea eu LINT-STR= ;
 
 : SMT-PUB-WORD= ( n ptr u8 n ptr u8 n ptr u8 n -- bool )
    {: k fa:ptr fu wa:ptr wu ea:ptr eu :}
-   k SMT-PUB-F$ fa fu STR= 0= IF 0 0= 0= exit THEN
-   k SMT-PUB-W$ wa wu STR= 0= IF 0 0= 0= exit THEN
-   k SMT-PUB-E$ ea eu STR= ;
+   k SMT-PUB-F$ fa fu LINT-STR= 0= IF 0 0= 0= exit THEN
+   k SMT-PUB-W$ wa wu LINT-STR= 0= IF 0 0= 0= exit THEN
+   k SMT-PUB-E$ ea eu LINT-STR= ;
 
 : SMT-FIND-MAN-WORD ( ptr u8 n ptr u8 n ptr u8 n -- n )
    {: fa:ptr fu wa:ptr wu ea:ptr eu :}
@@ -311,13 +311,13 @@ variable SMT-J
 
 : SMT-FIND-MOD-FILE ( ptr u8 n -- n ) {: fa:ptr fu :}
    0 begin dup SMT-MOD-N @ < while
-      dup SMT-MOD-F$ fa fu STR= IF exit THEN
+      dup SMT-MOD-F$ fa fu LINT-STR= IF exit THEN
       1+
    repeat drop -1 ;
 
 : SMT-FIND-LIB-FILE ( ptr u8 n -- n ) {: fa:ptr fu :}
    0 begin dup SMT-LIB-N @ < while
-      dup SMT-LIB-F$ fa fu STR= IF exit THEN
+      dup SMT-LIB-F$ fa fu LINT-STR= IF exit THEN
       1+
    repeat drop -1 ;
 
@@ -353,7 +353,7 @@ variable SMT-J
    SMT-LIB-N @ 1+ SMT-LIB-N ! ;
 
 : SMT-CHECK-DOC-ROW ( ptr u8 n -- ) {: a:ptr u :}
-   SMT-DOC-BUF SMT-DOC-U @ a u CONTAINS? 0= IF
+   SMT-DOC-BUF SMT-DOC-U @ a u LINT-CONTAINS? 0= IF
       s" missing stdlib doc contract: " SMT-ERR
       a u SMT-ERR
       SMT-NL
@@ -486,8 +486,8 @@ variable SMT-J
 
 : SMT-CHECK-MODULE-NOTE-ROW ( n ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
    {: line module:ptr mu notes:ptr nu target:ptr tu need:ptr needu msg:ptr msgu :}
-   module mu target tu STR= IF
-      notes nu need needu CONTAINS? 0= IF line msg msgu SMT-ROW-FINDING THEN
+   module mu target tu LINT-STR= IF
+      notes nu need needu LINT-CONTAINS? 0= IF line msg msgu SMT-ROW-FINDING THEN
    THEN ;
 
 : SMT-NOTE-REGEX-ROW ( n ptr u8 n ptr u8 n -- )
@@ -585,7 +585,7 @@ variable SMT-J
 : SMT-CHECK-ROW ( ptr u8 n n -- ) {: a:ptr u line :}
    a u SMT-SPLIT-FIELDS
    SMT-FIELD-N @ SMT-FIELDS <> IF line s" expected 11 tab-separated columns" SMT-ROW-FINDING exit THEN
-   a 0 SMT-FIELD$ s" 1" STR= 0= IF line s" schema_version must be 1" SMT-ROW-FINDING THEN
+   a 0 SMT-FIELD$ s" 1" LINT-STR= 0= IF line s" schema_version must be 1" SMT-ROW-FINDING THEN
    a 1 SMT-FIELD$ SMT-MODULE-NAME? 0= IF line s" invalid module name " a 1 SMT-FIELD$ SMT-ROW-FINDING$ THEN
    a 2 SMT-FIELD$ SMT-LIB-FILE? 0= IF line s" file must be a stable lib/<module>.f path" SMT-ROW-FINDING THEN
    a 3 SMT-FIELD$ SMT-KIND? 0= IF line s" kind must be module or word" SMT-ROW-FINDING THEN
@@ -594,14 +594,14 @@ variable SMT-J
    a 10 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" notes are required" SMT-ROW-FINDING THEN
    a 9 SMT-FIELD$ SMT-STATUS? 0= IF line s" status must be planned, active, or published" SMT-ROW-FINDING THEN
    a 7 SMT-FIELD$ FILE? 0= IF line s" doc path missing: " a 7 SMT-FIELD$ SMT-ROW-FINDING$ THEN
-   a 3 SMT-FIELD$ s" module" STR= IF
+   a 3 SMT-FIELD$ s" module" LINT-STR= IF
       a 4 SMT-FIELD$ SMT-EMPTY? 0= IF line s" module rows must leave word empty" SMT-ROW-FINDING THEN
       a 5 SMT-FIELD$ SMT-EMPTY? 0= IF line s" module rows must leave effect empty" SMT-ROW-FINDING THEN
       a 2 SMT-FIELD$ SMT-ADD-MOD-FILE
       line a 1 SMT-FIELD$ a 10 SMT-FIELD$ SMT-CHECK-MODULE-NOTES
       exit
    THEN
-   a 3 SMT-FIELD$ s" word" STR= IF
+   a 3 SMT-FIELD$ s" word" LINT-STR= IF
       a 4 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" word rows require word" SMT-ROW-FINDING THEN
       a 5 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" word rows require effect" SMT-ROW-FINDING THEN
       a 9 SMT-FIELD$ SMT-NOT-PLANNED? 0= IF line s" word rows must be source-backed, not planned" SMT-ROW-FINDING THEN
@@ -614,7 +614,7 @@ variable SMT-J
 : SMT-PARSE-MANIFEST ( -- )
    s" lib/std.manifest" SMT-MAN-BUF SMT-MAN-CAP READ-FILE nip SMT-MAN-U !
    SMT-MAN-BUF SMT-MAN-U @ 0 SMT-LINE-END SMT-FIRST !
-   SMT-MAN-BUF SMT-FIRST @ SMT-LINE-LEN SMT-HEADER$ STR= 0= IF s" unexpected manifest header" SMT-FINDING THEN
+   SMT-MAN-BUF SMT-FIRST @ SMT-LINE-LEN SMT-HEADER$ LINT-STR= 0= IF s" unexpected manifest header" SMT-FINDING THEN
    SMT-FIRST @ 1+ SMT-I !
    2 SMT-J !
    begin SMT-I @ SMT-MAN-U @ < while
@@ -626,8 +626,8 @@ variable SMT-J
    SMT-MOD-N @ 0= IF s" expected at least one module row" SMT-FINDING THEN ;
 
 : SMT-LIB-SOURCE? ( ptr u8 n -- bool )
-   2dup s" .f" ENDS-WITH? 0= IF 2drop 0 0= 0= exit THEN
-   s" -test.f" ENDS-WITH? 0= ;
+   2dup s" .f" LINT-ENDS-WITH? 0= IF 2drop 0 0= 0= exit THEN
+   s" -test.f" LINT-ENDS-WITH? 0= ;
 
 \ Coverage tracks only FLAT lib/<module>.f stdlib modules - the same paths the
 \ manifest grammar (SMT-LIB-FILE?) admits. Nested sub-libraries (e.g. lib/ptx/)
@@ -683,7 +683,7 @@ variable SMT-J
    {: a:ptr u needle:ptr nu start :}
    start 0 < IF -1 exit THEN
    u start < IF -1 exit THEN
-   a start + u start - needle nu FIND-SUB dup 0 < IF exit THEN
+   a start + u start - needle nu LINT-FIND-SUB dup 0 < IF exit THEN
    start + ;
 
 : SMT-CAPTURE-AFTER ( ptr u8 n ptr u8 n n -- ptr u8 n n bool )
@@ -691,7 +691,7 @@ variable SMT-J
    a u key ku start SMT-FIND-FROM SMT-JSON-POS !
    SMT-JSON-POS @ 0 < IF a 0 start 0 0= 0= exit THEN
    SMT-JSON-POS @ ku + SMT-JSON-BODY !
-   a SMT-JSON-BODY @ + u SMT-JSON-BODY @ - SMT-DQ INDEX-OF SMT-JSON-END !
+   a SMT-JSON-BODY @ + u SMT-JSON-BODY @ - SMT-DQ LINT-INDEX-OF SMT-JSON-END !
    SMT-JSON-END @ 0 < IF a 0 start 0 0= 0= exit THEN
    a SMT-JSON-BODY @ + SMT-JSON-END @
    SMT-JSON-BODY @ SMT-JSON-END @ + 1+

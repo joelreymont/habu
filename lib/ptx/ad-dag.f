@@ -87,7 +87,7 @@ variable AD-VSP
 \ BLOCK-MAX: dx = BLOCK-MAX-SELECT(ct, x, mx)
 : AD-VJP-BMAX ( n -- ) {: id :}
    id AD-CT@  id AD-A@ AD-REG@  id AD-REG@  EMIT-BLOCK-MAX-SELECT  id AD-A@ swap AD-ACC ;
-\ B- (a - b): da = ct ; db = -Sum(ct)
+\ PTX:B- (a - b): da = ct ; db = -Sum(ct)
 : AD-VJP-BSUB ( n -- ) {: id :}
    id AD-A@  id AD-CT@  AD-ACC
    id AD-CT@ EMIT-BLOCK-SUM EMIT-NEG  id AD-B@ swap AD-ACC ;
@@ -97,7 +97,7 @@ variable AD-VSP
 \ BLOCK-SUM: da = BROADCAST(ct)
 : AD-VJP-BSUM ( n -- ) {: id :}
    id AD-CT@ EMIT-BROADCAST  id AD-A@ swap AD-ACC ;
-\ B/ (y = a/b): da = ct/b ; db = -Sum(ct*y)/b
+\ PTX:B/ (y = a/b): da = ct/b ; db = -Sum(ct*y)/b
 : AD-VJP-BDIV ( n -- ) {: id :}
    id AD-CT@  id AD-B@ AD-REG@  EMIT-B/  id AD-A@ swap AD-ACC
    id AD-CT@ id AD-REG@ EMIT-MUL EMIT-BLOCK-SUM  id AD-B@ AD-REG@ EMIT-B/ EMIT-NEG

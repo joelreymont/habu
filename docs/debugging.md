@@ -71,8 +71,8 @@ generated code before falling back to external tools.
 ```
 bin/hb --load src/arch/arm64/disasm.f tools/jitdump.f -- ': S dup * ;' S
 bin/hb --load lib/errors.f lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- bin/hb $1000 16
-bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- bin/hb
-bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- old-hb new-hb
+bin/hb --load tools/imgdump.f -- bin/hb
+bin/hb --load tools/imgdump.f -- old-hb new-hb
 ```
 
 ## Dictionary / xref inspection

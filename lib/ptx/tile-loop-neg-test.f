@@ -4,8 +4,8 @@
 \ preserve the accumulator) and asserts the checker REJECTED it: non-zero exit AND a
 \ diagnostic located at 'tile-loop'. This pins the typed-counted-loop soundness as a
 \ reproducible regression - the checker must reject an accumulator-violating body before
-\ runtime. Load after the process libs (lib/fs.f, lib/process.f, lib/process-argv.f,
-\ lib/process-env.f) and lib/test.f.
+\ runtime. Load after lib/memory.f, the process libs (lib/fs.f, lib/process.f,
+\ lib/process-argv.f, lib/process-env.f), and lib/test.f.
 
 create TLN-OUT $2000 allot
 create TLN-ERR $4000 allot

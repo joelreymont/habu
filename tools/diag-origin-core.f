@@ -197,7 +197,7 @@ variable DO-OUT-BUF?
 
 : DO-SKIP-IGNORED ( -- )
    begin DO-END? 0= while
-      DO-C@ WS? if
+      DO-C@ LINT-WS? if
          DO-ADV drop
       else DO-C@ DO-BSLASH = if
          DO-SKIP-LINE
@@ -219,7 +219,7 @@ variable DO-OUT-BUF?
    DO-COMMENT start DO-X @ line col DO-SAVE-TOKEN ;
 
 : DO-WORD-TOKEN ( n n n -- ) {: start line col :}
-   begin DO-END? 0= DO-C@ WS? 0= and while
+   begin DO-END? 0= DO-C@ LINT-WS? 0= and while
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN

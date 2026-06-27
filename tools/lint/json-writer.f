@@ -34,7 +34,7 @@ variable LJW-NUM-I
 
 : LJW-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
    LJW-LEN @ u + LJW-CAP > IF s" lint-json: buffer overflow" 76 die THEN
-   a LJW-BUF LJW-LEN @ + u BMOVE
+   a LJW-BUF LJW-LEN @ + u LINT-BMOVE
    LJW-LEN @ u + LJW-LEN ! ;
 
 : LJW-HEX ( n -- c )

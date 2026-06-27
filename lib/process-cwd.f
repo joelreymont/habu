@@ -16,7 +16,7 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
 : PROC-ARGV-ENV-CWD-RESET ( -- )
    PROC-ARGV-ENV-RESET ;
 
-: SPAWN-ARGV-ENV-CWD-IO ( ptr u8 len ptr u8 len fd fd fd -- pid )
+: PROC-SPAWN-ARGV-ENV-CWD-IO ( ptr u8 len ptr u8 len fd fd fd -- pid )
    {: path:ptr pathu cwd:ptr cwdu infd outfd errfd :}
    path pathu PROC-ARGV-PREPARE PROC-ENV-PREPARE cwd cwdu PROC-CWDZ
    infd outfd errfd PROC-SPAWN-ARGV-ENV-CWD-RAW {: pid :}
@@ -24,8 +24,8 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- rc )
-   SPAWN-ARGV-ENV-CWD-IO WAIT-RC ;
+: PROC-RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- rc )
+   PROC-SPAWN-ARGV-ENV-CWD-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )
    {: pathz:ptr argv:ptr envp:ptr cwdz:ptr :}

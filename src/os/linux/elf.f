@@ -65,29 +65,29 @@ variable ELF-TEXT-SIZE
    VMBASE + ;
 
 : ELF-IDENT ( -- )
-   ELF-MAG0 M8  ELF-MAG1 M8  ELF-MAG2 M8  ELF-MAG3 M8
-   ELFCLASS64 M8  ELFDATA2LSB M8  EV-CURRENT M8  0 M8  0 M8
+   ELF-MAG0 IMG-M8  ELF-MAG1 IMG-M8  ELF-MAG2 IMG-M8  ELF-MAG3 IMG-M8
+   ELFCLASS64 IMG-M8  ELFDATA2LSB IMG-M8  EV-CURRENT IMG-M8  0 IMG-M8  0 IMG-M8
    7 M-LEN M-ZEROS-LEN ;
 
 : ELF-HDR, ( -- )
    ELF-IDENT
-   ET-EXEC M16  EM-AARCH64 M16  EV-CURRENT M32
-   VMBASE CODE-OFF + M64
-   ELF-HDR-SZ M64
-   0 M64
-   0 M32
-   ELF-HDR-SZ M16  ELF-PHDR-SZ M16  ELF-PHDR-N M16
-   0 M16  0 M16  0 M16 ;
+   ET-EXEC IMG-M16  EM-AARCH64 IMG-M16  EV-CURRENT IMG-M32
+   VMBASE CODE-OFF + IMG-M64
+   ELF-HDR-SZ IMG-M64
+   0 IMG-M64
+   0 IMG-M32
+   ELF-HDR-SZ IMG-M16  ELF-PHDR-SZ IMG-M16  ELF-PHDR-N IMG-M16
+   0 IMG-M16  0 IMG-M16  0 IMG-M16 ;
 
 : ELF-PHDR, ( n n n n n n -- ) {: typ flags off va filesz align :}
-   typ M32
-   flags M32
-   off M64
-   va M64
-   va M64
-   filesz M64
-   filesz M64
-   align M64 ;
+   typ IMG-M32
+   flags IMG-M32
+   off IMG-M64
+   va IMG-M64
+   va IMG-M64
+   filesz IMG-M64
+   filesz IMG-M64
+   align IMG-M64 ;
 
 : ELF-RX-PHDR, ( -- )
    PT-LOAD PF-RX 0 VMBASE ELF-TEXT-SIZE @ $1000 ELF-PHDR, ;
@@ -111,17 +111,17 @@ variable ELF-TEXT-SIZE
 : ELF-INTERP, ( -- )
    ELF-INTERP-OFF M-OFF M-PAD-OFF
    s" /lib/ld-linux-aarch64.so.1" M-BYTES
-   0 M8 ;
+   0 IMG-M8 ;
 
 : ELF-HASH, ( -- )
    ELF-HASH-OFF M-OFF M-PAD-OFF
-   1 M32  3 M32  1 M32  0 M32  2 M32  0 M32 ;
+   1 IMG-M32  3 IMG-M32  1 IMG-M32  0 IMG-M32  2 IMG-M32  0 IMG-M32 ;
 
 : ELF-SYM-NULL, ( -- )
    ELF-SYM-SZ M-ZEROS ;
 
 : ELF-SYM, ( n -- ) {: nameoff :}
-   nameoff M32  $12 M8  0 M8  0 M16  0 M64  0 M64 ;
+   nameoff IMG-M32  $12 IMG-M8  0 IMG-M8  0 IMG-M16  0 IMG-M64  0 IMG-M64 ;
 
 : ELF-DYNSYM, ( -- )
    ELF-DYNSYM-OFF M-OFF M-PAD-OFF
@@ -131,18 +131,18 @@ variable ELF-TEXT-SIZE
 
 : ELF-DYNSTR, ( -- )
    ELF-DYNSTR-OFF M-OFF M-PAD-OFF
-   0 M8
-   s" dlopen" M-BYTES 0 M8
-   s" dlsym" M-BYTES 0 M8
-   s" libc.so.6" M-BYTES 0 M8 ;
+   0 IMG-M8
+   s" dlopen" M-BYTES 0 IMG-M8
+   s" dlsym" M-BYTES 0 IMG-M8
+   s" libc.so.6" M-BYTES 0 IMG-M8 ;
 
 : ELF-R-INFO ( n -- n )
    32 lshift ELF-R-AARCH64-GLOB-DAT or ;
 
 : ELF-RELA, ( -- )
    ELF-RELA-OFF M-OFF M-PAD-OFF
-   DLOPEN-SLOT-VA VA>N M64  1 ELF-R-INFO M64  0 M64
-   DLSYM-SLOT-VA VA>N M64   2 ELF-R-INFO M64  0 M64 ;
+   DLOPEN-SLOT-VA VA>N IMG-M64  1 ELF-R-INFO IMG-M64  0 IMG-M64
+   DLSYM-SLOT-VA VA>N IMG-M64   2 ELF-R-INFO IMG-M64  0 IMG-M64 ;
 
 : ELF-RX-META, ( -- )
    ELF-INTERP,
@@ -153,8 +153,8 @@ variable ELF-TEXT-SIZE
    CODE-OFF M-OFF M-PAD-OFF ;
 
 : ELF-DYN, ( n n -- ) {: tag val :}
-   tag M64
-   val M64 ;
+   tag IMG-M64
+   val IMG-M64 ;
 
 : ELF-DYNAMIC, ( -- )
    DT-HASH     ELF-HASH-OFF ELF-VA ELF-DYN,
@@ -170,7 +170,7 @@ variable ELF-TEXT-SIZE
    0 0 ELF-DYN, ;
 
 : ELF-GOT, ( -- )
-   0 M64  0 M64 ;
+   0 IMG-M64  0 IMG-M64 ;
 
 : ELF-RW-AT, ( n -- ) {: off :}
    off M-OFF M-PAD-OFF

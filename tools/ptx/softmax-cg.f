@@ -16,9 +16,9 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
    xs ROW-CTX     {: c :}
    xs c ROW-LOAD  {: x :}
    x BLOCK-MAX    {: mx :}
-   x mx B- EXP.   {: e :}
+   x mx PTX:B- EXP.   {: e :}
    e BLOCK-SUM    {: s :}
-   e s B/  out r ROW-SPAN c ROW-STORE ;
+   e s PTX:B/  out r ROW-SPAN c ROW-STORE ;
 
 \ scaffold the entry, run the checked body in emit mode (in=%rd1 out=%rd2 k=%r1), close
 : EMIT-SOFTMAX ( -- )

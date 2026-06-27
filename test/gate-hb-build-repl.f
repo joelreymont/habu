@@ -67,8 +67,6 @@ variable GHR-SIZE
 : GHR-IMGDUMP ( -- )
    GE-HB-RESET
    s" --load" GB-ARGV+
-   GB-TARGET-LAYOUT
-   s" src/habu/layout.f" GB-ARGV+
    s" tools/imgdump.f" GB-ARGV+
    s" --" GB-ARGV+
    GB-OUT$ GB-ARGV+

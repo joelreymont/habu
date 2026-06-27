@@ -251,15 +251,15 @@ variable PS-ARG-I
 : PS-TRUST-ENTRY ( ptr u8 n -- ) {: sig:ptr sigu :}
    PS-NAME-A@ PS-NAME-U @ PS-UPPER$ PS-TRUST-Q
    32 PS-C
-   sig sigu TRIM PS-TRUST-Q
+   sig sigu LINT-TRIM PS-TRUST-Q
    s"  TRUST" PS-OUT
    PS-LF-C PS-C ;
 
 : PS-SIGNATURE$ ( ptr u8 n -- ptr u8 n )
-   TRIM PS-TU ! PS-TA!
+   LINT-TRIM PS-TU ! PS-TA!
    PS-TU @ 2 + PS-SIG-CAP > IF s" public-signatures: signature too long" PS-DIE THEN
    40 PS-SIG-BUF c!
-   PS-TA@ PS-SIG-BUF 1+ PS-TU @ BMOVE
+   PS-TA@ PS-SIG-BUF 1+ PS-TU @ LINT-BMOVE
    41 PS-SIG-BUF PS-TU @ 1+ + c!
    PS-SIG-BUF PS-TU @ 2 + ;
 
@@ -386,7 +386,7 @@ variable PS-ARG-I
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
-         PS-TOK$ s" EXPORT" STR=CI IF
+         PS-TOK$ s" EXPORT" LINT-STR=CI IF
             PS-NEXT-TOK IF PS-WORD? IF PS-TOK$ INTERN-FOLD drop THEN THEN
          THEN
       THEN
@@ -439,7 +439,7 @@ variable PS-ARG-I
    PS-SAVE-NAME
    PS-NEXT-TOK 0= IF exit THEN
    PS-COMMENT? 0= IF exit THEN
-   PS-CONTENT$ s" --" CONTAINS? 0= IF exit THEN
+   PS-CONTENT$ s" --" LINT-CONTAINS? 0= IF exit THEN
    PS-SAVE-SIG
    PS-PUBLIC? IF PS-EXPORTED? file-a file-u PS-EMIT-PUBLIC THEN ;
 
@@ -451,16 +451,16 @@ variable PS-ARG-I
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
-   a u s" constant" STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" create" STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
-   a u s" variable" STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
+   a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
 : PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u :}
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
-         PS-TOK$ s" :" STR= IF
+         PS-TOK$ s" :" LINT-STR= IF
             file-a file-u PS-MAYBE-DEF
          ELSE
             PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
@@ -473,14 +473,14 @@ variable PS-ARG-I
    PS-COLLECT-EXPORTS
    file-a file-u PS-SCAN-DEFS ;
 
-: PS-START ( -- )
+: PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !
    PS-TRUST @ IF exit THEN
    PS-JSON-OBJECT-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-JSON-COMMA
    s" definitions" PS-JSON-KEY PS-JSON-ARRAY-START ;
 
-: PS-END ( -- )
+: PS-JSON-DOC-END ( -- )
    PS-TRUST @ IF exit THEN
    PS-JSON-ARRAY-END
    PS-JSON-OBJECT-END
@@ -490,7 +490,7 @@ variable PS-ARG-I
    0 PS-TRUST !
    0 PS-ARG-I !
    SCRIPT-ARGC 0= IF PS-USAGE THEN
-   0 SCRIPT-ARGV$ s" --trust" STR= IF
+   0 SCRIPT-ARGV$ s" --trust" LINT-STR= IF
       -1 PS-TRUST !
       1 PS-ARG-I !
    THEN
@@ -498,11 +498,11 @@ variable PS-ARG-I
 
 : PS-MAIN ( -- )
    PS-PARSE-ARGS
-   PS-START
+   PS-JSON-DOC-START
    begin PS-ARG-I @ SCRIPT-ARGC < while
       PS-ARG-I @ SCRIPT-ARGV$ PS-SCAN-FILE
       PS-ARG-I @ 1+ PS-ARG-I !
    repeat
-   PS-END ;
+   PS-JSON-DOC-END ;
 
 PS-MAIN

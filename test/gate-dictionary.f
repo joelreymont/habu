@@ -7,6 +7,16 @@ $2E constant GD-DOT
 $63 constant GD-C-LOWER
 600 constant GD-LONG-NAME-LEN
 
+create GD-INC-CORE FS-PATH-CAP allot
+create GD-INC-API FS-PATH-CAP allot
+create GD-INC-MAIN FS-PATH-CAP allot
+create GD-INC-DUP FS-PATH-CAP allot
+
+variable GD-INC-CORE-U
+variable GD-INC-API-U
+variable GD-INC-MAIN-U
+variable GD-INC-DUP-U
+
 : GD-EMIT-LONG-NAME ( -- )
    GD-LONG-NAME-LEN GD-A GE-SRC-REPEAT-C ;
 
@@ -31,6 +41,94 @@ $63 constant GD-C-LOWER
    a u GE-SRC+
    GE-DQ GE-SRC-C ;
 
+: GD-INC-CORE$ ( -- ptr u8 n )
+   GD-INC-CORE GD-INC-CORE-U @ ;
+
+: GD-INC-API$ ( -- ptr u8 n )
+   GD-INC-API GD-INC-API-U @ ;
+
+: GD-INC-MAIN$ ( -- ptr u8 n )
+   GD-INC-MAIN GD-INC-MAIN-U @ ;
+
+: GD-INC-DUP$ ( -- ptr u8 n )
+   GD-INC-DUP GD-INC-DUP-U @ ;
+
+: GD-INC-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: name:ptr nameu dst:ptr up:ptr :}
+   GT-ROOT name nameu dst JOIN-PATH up ! ;
+
+: GD-INC-PATHS ( -- )
+   s" odin-core.f" GD-INC-CORE GD-INC-CORE-U GD-INC-PATH!
+   s" odin-api.f" GD-INC-API GD-INC-API-U GD-INC-PATH!
+   s" odin-main.f" GD-INC-MAIN GD-INC-MAIN-U GD-INC-PATH!
+   s" odin-dup.f" GD-INC-DUP GD-INC-DUP-U GD-INC-PATH! ;
+
+: GD-SB-LINE ( ptr u8 n -- )
+   SB-APPEND
+   GE-LF SB-APPEND-C ;
+
+: GD-SB-INCLUDE-LINE ( ptr u8 n -- )
+   s" include " SB-APPEND
+   SB-APPEND
+   GE-LF SB-APPEND-C ;
+
+: GD-SB-S" ( ptr u8 n -- )
+   s" s" SB-APPEND
+   GE-DQ SB-APPEND-C
+   GE-SP SB-APPEND-C
+   SB-APPEND
+   GE-DQ SB-APPEND-C ;
+
+: GD-WRITE-CORE ( -- )
+   SB-RESET
+   s" package ODIN" GD-SB-LINE
+   s" : H ( -- n ) 9 ;" GD-SB-LINE
+   s" public" GD-SB-LINE
+   s" : CORE ( -- n ) H ;" GD-SB-LINE
+   s" end-package" GD-SB-LINE
+   GD-INC-CORE$ SB$ WRITE-ALL ;
+
+: GD-WRITE-API-BODY ( -- )
+   s" package ODIN" GD-SB-LINE
+   s" public" GD-SB-LINE
+   s" : GET ( -- n ) H ;" GD-SB-LINE
+   s" end-package" GD-SB-LINE ;
+
+: GD-WRITE-API-NOINC ( -- )
+   SB-RESET
+   GD-WRITE-API-BODY
+   GD-INC-API$ SB$ WRITE-ALL ;
+
+: GD-WRITE-API-INCLUDE ( -- )
+   SB-RESET
+   GD-INC-CORE$ GD-SB-INCLUDE-LINE
+   GD-WRITE-API-BODY
+   GD-INC-API$ SB$ WRITE-ALL ;
+
+: GD-WRITE-MAIN-RUN ( -- )
+   SB-RESET
+   s" ODIN:GET ." GD-SB-LINE
+   GD-INC-MAIN$ SB$ WRITE-ALL ;
+
+: GD-WRITE-MAIN-INCLUDE ( -- )
+   SB-RESET
+   GD-INC-API$ GD-SB-INCLUDE-LINE
+   s" ODIN:GET ." GD-SB-LINE
+   GD-INC-MAIN$ SB$ WRITE-ALL ;
+
+: GD-WRITE-MAIN-INCLUDED ( -- )
+   SB-RESET
+   GD-INC-API$ GD-SB-S"
+   s"  included" GD-SB-LINE
+   s" ODIN:GET ." GD-SB-LINE
+   GD-INC-MAIN$ SB$ WRITE-ALL ;
+
+: GD-WRITE-DUP ( -- )
+   SB-RESET
+   s" package ODIN" GD-SB-LINE
+   s" : H ( -- n ) 1 ;" GD-SB-LINE
+   s" end-package" GD-SB-LINE
+   GD-INC-DUP$ SB$ WRITE-ALL ;
+
 : GD-LONG-DICTIONARY-SOURCE ( -- )
    GE-SRC-RESET
    s" : LONG-DICTIONARY-NAME-ADDONE ( i64 -- i64 ) 1 + ;" GE-SRC-LINE
@@ -44,9 +142,6 @@ $63 constant GD-C-LOWER
    s"  get-current search-wl 0= ." GE-SRC-LINE
    s" long-dictionary-name-addone" GE-SRC-S"
    s"  get-current search-wl 0= ." GE-SRC-LINE
-   s" : LONG-REDEFINE-NAME ( -- i64 ) 1 ;" GE-SRC-LINE
-   s" : LONG-REDEFINE-NAME ( -- i64 ) 2 ;" GE-SRC-LINE
-   s" LONG-REDEFINE-NAME ." GE-SRC-LINE
    s" TRUSTED: LONG-DICTIONARY-TRUSTED ( n -- n ) dup ;" GE-SRC-LINE
    s" USE ( n -- n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
    s" BAD ( n -- n n ) LONG-DICTIONARY-TRUSTED" GE-SRC-CHECK-LINE
@@ -62,7 +157,6 @@ $63 constant GD-C-LOWER
    s" 77" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    s" 0" GE-OUT-LINE
-   s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    s" 9" GE-OUT-LINE
@@ -218,8 +312,8 @@ $63 constant GD-C-LOWER
    GE-SRC-RESET
    s" : LDUP ( n -- n ) {: dup:n :} dup ;" GE-SRC-LINE
    s" 7 LDUP ." GE-SRC-LINE
-   s" : LI ( n -- n ) {: i:n :} i ;" GE-SRC-LINE
-   s" 8 LI ." GE-SRC-LINE
+   s" : GD-LOCAL-I ( n -- n ) {: i:n :} i ;" GE-SRC-LINE
+   s" 8 GD-LOCAL-I ." GE-SRC-LINE
    s" : LMASK ( n -- n ) $FF and ;" GE-SRC-LINE
    s" : LRD ( n n n -- n ) {: RD imm hw :} RD LMASK ;" GE-SRC-LINE
    s" 7 7 7 LRD ." GE-SRC-LINE
@@ -244,17 +338,24 @@ $63 constant GD-C-LOWER
 : GD-NAMESPACE-QUALIFIED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" : COUNT ( -- n ) 1 ;" GE-SRC-LINE
-   s" : HB:COUNT ( -- n ) 2 ;" GE-SRC-LINE
-   s" COUNT ." GE-SRC-LINE
-   s" HB:COUNT ." GE-SRC-LINE
-   s" USE-HB ( -- n ) HB:COUNT" GE-SRC-CHECK-LINE
-   s" : HBCALL ( -- n ) HB:COUNT ;" GE-SRC-LINE
+   s" : GD-COUNT ( -- n ) 1 ;" GE-SRC-LINE
+   s" : HB:GD-COUNT ( -- n ) 2 ;" GE-SRC-LINE
+   s" package HBT" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" TRUSTED: GD-TRUSTED ( -- n ) 7 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" GD-COUNT ." GE-SRC-LINE
+   s" HB:GD-COUNT ." GE-SRC-LINE
+   s" USE-HB ( -- n ) HB:GD-COUNT" GE-SRC-CHECK-LINE
+   s" USE-HBT-TRUSTED ( -- n ) HBT:GD-TRUSTED" GE-SRC-CHECK-LINE
+   s" : HBCALL ( -- n ) HB:GD-COUNT ;" GE-SRC-LINE
+   s" : HBTRUSTCALL ( -- n ) HBT:GD-TRUSTED ;" GE-SRC-LINE
    s" HBCALL ." GE-SRC-LINE
-   s" hb:count ." GE-SRC-LINE
-   s" HB:COUNT" GE-SRC-S"
+   s" HBTRUSTCALL ." GE-SRC-LINE
+   s" hb:gd-count ." GE-SRC-LINE
+   s" HB:GD-COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
-   s" COUNT" GE-SRC-S"
+   s" GD-COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
    s" : GE-FILES: ( -- n ) 3 ;" GE-SRC-LINE
    s" GE-FILES: ." GE-SRC-LINE
@@ -265,7 +366,9 @@ $63 constant GD-C-LOWER
    s" 1" GE-OUT-LINE
    s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
    s" 2" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
    s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
@@ -364,6 +467,145 @@ $63 constant GD-C-LOWER
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
+: GD-DUPLICATE-DEFINITION-REJECTS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
+   s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   $4E s" RESET" s" package rejects duplicate public word" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" : H ( -- n ) 1 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package ODIN" GE-SRC-LINE
+   s" : H ( -- n ) 2 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : GET ( -- n ) H ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   $4E s" H" s" package rejects duplicate private word across reopen" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
+   s" : reset ( -- n ) 2 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   $4E s" reset" s" package rejects case-variant duplicate word" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" variable CELL" GE-SRC-LINE
+   s" variable cell" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   $4E s" cell" s" package rejects duplicate variable word" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
+   s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
+   $4E s" RESET" s" global wordlist rejects duplicate word" GD-RUN-BAD-SOURCE ;
+
+: GD-PACKAGE-SHADOW-POSITIVES ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : COUNT ( -- n ) 7 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package MK" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" ODIN:COUNT ." GE-SRC-LINE
+   s" ODIN:RESET ." GE-SRC-LINE
+   s" MK:RESET ." GE-SRC-LINE
+   s" 3 dup + ." GE-SRC-LINE
+   s" hb package duplicate positives" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 7" GE-OUT-LINE
+   s" 1" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" 6" GE-OUT-LINE
+   SB$ s" hb package duplicate positives output" GE-EXPECT-OUT ;
+
+: GD-PACKAGE-DUPLICATE-CHECK ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package ODIN" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
+   s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   $4E s" duplicate definition" s" check.f rejects package duplicate definition" GE-CHECK-RUN-BAD ;
+
+: GD-RUN-LOAD-ONE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu label:ptr labelu :}
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   path pathu GE-ARG+
+   s" --" GE-ARG+
+   label labelu GT-PROGRESS-RUN
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   label labelu GE-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
+
+: GD-RUN-LOAD-THREE ( ptr u8 n -- ) {: label:ptr labelu :}
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   GD-INC-CORE$ GE-ARG+
+   GD-INC-API$ GE-ARG+
+   GD-INC-MAIN$ GE-ARG+
+   s" --" GE-ARG+
+   label labelu GT-PROGRESS-RUN
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   label labelu GE-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
+
+: GD-RUN-LOAD-BAD ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   GD-INC-MAIN$ GE-ARG+
+   s" --" GE-ARG+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+
+: GD-EXPECT-GET9 ( ptr u8 n -- ) {: label:ptr labelu :}
+   SB-RESET
+   s" 9" GE-OUT-LINE
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GD-PACKAGE-MULTIFILE-LOAD ( -- )
+   GD-INC-PATHS
+   GD-WRITE-CORE
+   GD-WRITE-API-NOINC
+   GD-WRITE-MAIN-RUN
+   s" hb package reopen across load files" GD-RUN-LOAD-THREE
+   s" hb package reopen across load files output" GD-EXPECT-GET9 ;
+
+: GD-PACKAGE-INCLUDE ( -- )
+   GD-INC-PATHS
+   GD-WRITE-CORE
+   GD-WRITE-API-INCLUDE
+   GD-WRITE-MAIN-INCLUDE
+   GD-INC-MAIN$ s" hb include nested package source" GD-RUN-LOAD-ONE
+   s" hb include nested package source output" GD-EXPECT-GET9
+   GD-WRITE-MAIN-INCLUDED
+   GD-INC-MAIN$ s" hb included string package source" GD-RUN-LOAD-ONE
+   s" hb included string package source output" GD-EXPECT-GET9
+   GD-WRITE-DUP
+   SB-RESET
+   GD-INC-DUP$ GD-SB-INCLUDE-LINE
+   s" package ODIN" GD-SB-LINE
+   s" : H ( -- n ) 2 ;" GD-SB-LINE
+   s" end-package" GD-SB-LINE
+   GD-INC-MAIN$ SB$ WRITE-ALL
+   $4E s" duplicate definition" s" hb include rejects duplicate package reopen" GD-RUN-LOAD-BAD ;
+
 : GD-PACKAGE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET  s" public" GE-SRC-LINE
@@ -397,6 +639,81 @@ $63 constant GD-C-LOWER
    s" end-package" GE-SRC-LINE
    s" E ." GE-SRC-LINE
    $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-SOURCE ;
+
+: GD-STRUCTURE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
+   s" CELL +FIELD POINT.X" GE-SRC-LINE
+   s" CELL +FIELD POINT.Y" GE-SRC-LINE
+   s" CFIELD: POINT.FLAGS" GE-SRC-LINE
+   s" END-STRUCTURE" GE-SRC-LINE
+   s" POINT ." GE-SRC-LINE
+   s" create GD-POINT POINT allot" GE-SRC-LINE
+   s" 11 GD-POINT POINT.X !" GE-SRC-LINE
+   s" 22 GD-POINT POINT.Y !" GE-SRC-LINE
+   s" 123 GD-POINT POINT.FLAGS c!" GE-SRC-LINE
+   s" GD-POINT POINT.X @ ." GE-SRC-LINE
+   s" GD-POINT POINT.Y @ ." GE-SRC-LINE
+   s" GD-POINT POINT.FLAGS c@ ." GE-SRC-LINE
+   s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
+   s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE ;
+
+: GD-STRUCTURES ( -- )
+   GE-HB-RESET
+   GD-STRUCTURE-SOURCE
+   s" hb structures field layout and typing" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 17" GE-OUT-LINE
+   s" 11" GE-OUT-LINE
+   s" 22" GE-OUT-LINE
+   s" 123" GE-OUT-LINE
+   SB$ s" hb structures output" GE-EXPECT-OUT ;
+
+: GD-STRUCTURE-MISUSE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" CELL +FIELD GD-NO-STRUCT.FIELD" GE-SRC-LINE
+   $4C s" structure: no active structure" s" structures reject field outside begin" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" BEGIN-STRUCTURE OUTER" GE-SRC-LINE
+   s" BEGIN-STRUCTURE INNER" GE-SRC-LINE
+   $4C s" structure: nested begin" s" structures reject nesting" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
+   s" CFIELD: POINT.FLAGS" GE-SRC-LINE
+   s" END-STRUCTURE" GE-SRC-LINE
+   s" GD-BAD-FLAGS ( ptr a -- n ) POINT.FLAGS @" GE-SRC-LINE
+   $46 s" GD-BAD-FLAGS" s" structures reject byte field cell load" GE-CHECK-RUN-BAD ;
+
+: GD-ENUMS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 ENUM GD-E0 ENUM GD-E1 ENUM4 GD-E4 ENUM GD-E8 drop" GE-SRC-LINE
+   s" GD-E0 ." GE-SRC-LINE
+   s" GD-E1 ." GE-SRC-LINE
+   s" GD-E4 ." GE-SRC-LINE
+   s" GD-E8 ." GE-SRC-LINE
+   s" : GD-USE-E4 ( -- n ) GD-E4 ;" GE-SRC-LINE
+   s" GD-USE-E4 ." GE-SRC-LINE
+   s" package GD-EV" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" 100 ENUM CODE-A ENUM4 CODE-B drop" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" GD-EV:CODE-A ." GE-SRC-LINE
+   s" GD-EV:CODE-B ." GE-SRC-LINE
+   s" hb enums sequence and package scope" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 0" GE-OUT-LINE
+   s" 1" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" 6" GE-OUT-LINE
+   s" 2" GE-OUT-LINE
+   s" 100" GE-OUT-LINE
+   s" 101" GE-OUT-LINE
+   SB$ s" hb enums output" GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" 0 ENUM GD-EDUP ENUM GD-EDUP drop" GE-SRC-LINE
+   $4E s" GD-EDUP" s" enums reject duplicate constant names" GD-RUN-BAD-SOURCE ;
 
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
@@ -444,13 +761,12 @@ $63 constant GD-C-LOWER
    GE-HB-RESET
    GE-SRC-RESET
    s" lib/test.f" GE-SRC-FILE+
-   s" src/habu/xref.f" GE-SRC-FILE+
    s" tools/xref-test.f" GE-SRC-FILE+
    s" hb native xref words" GE-HB-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 
 : GD-MAIN ( -- )
-   GT-RESET
+   s" hb-gate-dictionary" GT-START
    GD-LONG-DICTIONARY
    GD-WORDLIST
    GD-LONG-NAME
@@ -468,12 +784,21 @@ $63 constant GD-C-LOWER
    GD-PACKAGE-RUNTIME
    GD-PACKAGE-JIT-STACK-ISOLATION
    GD-PACKAGE-CHECK
+   GD-DUPLICATE-DEFINITION-REJECTS
+   GD-PACKAGE-SHADOW-POSITIVES
+   GD-PACKAGE-DUPLICATE-CHECK
+   GD-PACKAGE-MULTIFILE-LOAD
+   GD-PACKAGE-INCLUDE
    GD-PACKAGE-MISUSE
+   GD-STRUCTURES
+   GD-STRUCTURE-MISUSE
+   GD-ENUMS
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW
    GD-NAMED-ROW-RUN
    GD-XREF
+   GT-CLEANUP
    s" PASS: native dictionary/checker gate phase" type cr ;
 
 GD-MAIN

@@ -1,5 +1,5 @@
 \ xref-test.f - focused tests for live dictionary xref words.
-\ Load after lib/test.f and src/habu/xref.f.
+\ Load after lib/test.f; xref words are baked into bin/hb.
 
 : XRT-SAMPLE ( -- n )
    42 ;

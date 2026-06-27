@@ -32,6 +32,18 @@ file.
   resolves, the name is taken.
 - **Do not shadow native primitive names.** Later dictionary entries can replace
   primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
+- **Do not define parser/control reserved words.** `I`, `J`, `DO`, `LOOP`,
+  `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
+  `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`, and the other compiler-dispatch
+  tokens are not ordinary global names even though the dictionary is
+  case-insensitive. A generated converter that strips prefixes must run
+  `tools/reserved-name-lint.f` after naturalization so `CC-I` becomes `IX`, not
+  bare `I`; `CC-J` becomes `JX`, not bare `J`. `tools/check.f` runs this lint
+  before spawning the checker child, so reserved-name failures must report
+  `E-RESERVED-DEFINITION` with file/line/token instead of a silent rc 70. This
+  rule applies to published definition names (`:`, `TRUSTED:`, `KERNEL:`,
+  `create`, `variable`, `constant`); lexical locals such as `{: i:n :}` remain
+  legal and resolve local-first inside their definition.
 - **Prefer hex for numeric literals.** Use `$...` for byte values, masks,
   addresses, offsets, syscall/exit constants, instruction encodings, and other
   machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
@@ -99,9 +111,66 @@ end-package
   only while that package is open; `NAME:PRIVATE-WORD` must not resolve.
 - `end-package` is valid only inside a package. It restores the saved current
   wordlist and clears both runtime and checker package scope.
-- Reopening the same package with `package NAME` reuses its public wordlist and
-  private wordlist, so later package blocks can call earlier private helpers and
-  add more public exports.
+- Reopening the same package with `package NAME` resumes the same public
+  wordlist and the same private wordlist; it does not create a new module scope.
+  Later package blocks loaded after earlier ones can call earlier private
+  helpers, call earlier public words unqualified while the package is open, and
+  add more public exports. Load order is still the dependency order: reopening a
+  package does not load any source file by itself.
+- Multi-file packages are split by reopening the package in each file. If the
+  loader already supplies every package file in dependency order, do not add an
+  include just to repeat that fact: `bin/hb --load odin/core.f odin/api.f` is
+  sufficient, and `tools/check.f --source-list odin/core.f odin/api.f` is the
+  checker-only form. Use include only when a source file or entry file should
+  own loading its dependencies.
+- The purpose of include is source composition, not namespace sharing. Use it
+  when a file should be self-sufficient or when a top-level entry file should
+  assemble a package from submodules:
+
+```forth
+\ odin/core.f
+package ODIN
+
+: HELPER ( -- n )
+   9 ;
+
+public
+
+: CORE ( -- n )
+   HELPER ;
+
+end-package
+```
+
+```forth
+\ odin/api.f
+include odin/core.f
+
+package ODIN
+
+public
+
+: RUN ( -- n )
+   CORE ;
+
+end-package
+```
+
+  `include path/to/file.f` parses the next whitespace-delimited filename and
+  loads that source immediately. `s" path/to/file.f" included` is the lower-level
+  string form. Do not include a file merely so two files can see the same private
+  helpers; reopening the package provides that shared package scope after both
+  files have been loaded. Prefer explicit `--load`/source-list order for gates
+  and build scripts when that order is already known by the caller.
+- A package public or private wordlist is a no-duplicate set. Publishing a word
+  whose folded tail already exists in the active target wordlist is an error,
+  including across reopened package blocks and across `:`, `create`, `variable`,
+  `constant`, and `TRUSTED:` publishing paths. This is case-insensitive:
+  `RESET` and `reset` are the same tail.
+- Shadowing an outer/global/built-in word from inside a package remains legal
+  because it publishes into a different wordlist. The same tail may also appear
+  in different packages (`ODIN:RESET` and `MK:RESET`); only duplicates in the
+  same package public/private wordlist are rejected.
 - While a package is open, unqualified lookup tries the package private wordlist,
   then the package public wordlist, then the saved/global lookup path. This lets
   public words call private helpers without qualification and lets later private
@@ -117,14 +186,58 @@ end-package
   internal module packages plus one public-interface package the outside world
   qualifies against; the internal packages call each other across boundaries, the
   public package composes them, and only truly external code writes the qualifier.
-- Package scope is mirrored into the checker. Signatures recorded inside
-  `private` are visible only to later checked code in the same open package;
-  signatures recorded inside `public` are visible as `NAME:WORD`.
+- Package scope is mirrored into the checker. Certified definitions recorded
+  inside `private` are visible only to later checked code in the same open
+  package; certified definitions recorded inside `public` are visible as
+  `NAME:WORD`. The checker must reject duplicate certified definitions in the
+  same active package wordlist before runtime.
 - Every package feature must have native gate coverage for runtime lookup,
   checker certification, private isolation, public export, reopen behavior,
   case-insensitive lookup, and fail-closed misuse (`public`/`private`/
   `end-package` outside a package, nested packages, missing package names, and
   qualified package names).
+
+### Structures And Enums
+
+Structures are a checked Forth layout DSL. Use the SwiftForth-style stack
+protocol: `BEGIN-STRUCTURE NAME` opens a structure and creates `NAME` as the
+final byte-size word; field words thread the offset; `END-STRUCTURE` seals the
+size. Do not define raw offset constants by hand when this DSL fits.
+
+```forth
+BEGIN-STRUCTURE POINT
+   CELL +FIELD POINT.X
+   CELL +FIELD POINT.Y
+   CFIELD: POINT.FLAGS
+END-STRUCTURE
+```
+
+- `CELL` is the machine cell byte size. Prefer it to raw `$8` in field layouts.
+- `+FIELD` has defining-time effect `( ptr a n n -- ptr a n )` and creates a
+  field accessor with runtime effect `( ptr a -- ptr a )`; use `@`/`!` for cell
+  fields.
+- `CFIELD:` has defining-time effect `( ptr a n -- ptr a n )` and creates a
+  field accessor with runtime effect `( ptr a -- ptr u8 )`; use `c@`/`c!` for
+  byte fields. A byte field followed by cell `@` must reject under the checker.
+- `BEGIN-STRUCTURE` rejects nesting and field words reject use outside an active
+  structure. Add a gate test when introducing a new field-defining word.
+- Keep field names qualified by the structure (`POINT.X`, `POINT.FLAGS`) so the
+  dictionary and xref output communicate ownership.
+
+Enums are checked defining words built on `create ... does>`. Use them for named
+integer/status families instead of hand-maintained numeric drift:
+
+```forth
+0 ENUM E-OK
+  ENUM E-OPEN
+  ENUM4 E-RANGE
+drop
+```
+
+`ENUM` defines the next name as the current value and returns `value + 1`;
+`ENUM4` returns `value + 4`. Definitions publish through the active wordlist, so
+package scope, duplicate-definition rejection, and case-insensitive lookup apply
+exactly as for `:`, `create`, `variable`, and `constant`.
 
 ## Words & factoring
 
@@ -293,6 +406,10 @@ end-package
   `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte
   offset. Raw fixed-header byte offsets need an explicit trusted boundary or a
   modeled byte-offset primitive.
+- **Byte pointers are not cell pointers.** `ptr u8` is a byte span and must use
+  `c@`/`c!` for byte access. Cell `@`/`!` over a concrete `ptr u8` is a checker
+  error; if a cell stores a byte pointer, model the address as `ptr ptr u8`
+  through `ptr-field` and then use `@`/`!` on that cell address.
 - **Raw state cells still need typed public effects.** Variables used from
   checked code need explicit `TRUST` rows such as `-- ptr n`, `-- ptr bool`, or
   `-- ptr ptr u8`. Boolean state cells are `ptr bool`, and string-pointer state
@@ -487,10 +604,13 @@ end-package
   build tool emits `0 set-check`, prove the shortest source span empirically,
   reinstall the hook as soon as the next file checks, and pin the cut with a
   source-shape regression.
-- **Generated checker preludes must rebind `HOOK`.** If generated source reloads
-  `src/core/checker.f` or `src/core/render.f`, it must reload
-  `src/core/check-hook.f` before `' HOOK set-check`; otherwise the hook can still
-  call the old `CHECK!`.
+- **Generated checker preludes must rebind a fresh named hook.** If generated
+  source reloads `src/core/checker.f` or `src/core/render.f`, or assembles a
+  source image outside the normal `src/core/check-hook.f` path, it must install
+  a hook built against that generated source after the unchecked span. Stdin
+  stage output installs `' HB-CHECK-HOOK set-check`; snapshot/AOT stages install
+  their own named hooks. Source-shape gates should reject stale direct
+  `' HOOK set-check` installs and require the named final hook.
 - **Bootstrap/fixpoint temp roots are explicit script args.** Stage2/fixpoint
   sources must not depend on stale seed envp capture. Pass the temp root after
   `--`, keep all generated paths under that root, and let the build driver own
@@ -499,6 +619,11 @@ end-package
   escape embedded quotes. JSON, source needles, and rows with quoting should be
   built with checked byte/field helpers or `lib/json-write.f`, not host encoders
   or fragile escaped string literals.
+- **Generated fixtures use unique test-owned names.** Strict duplicate rejection
+  is a feature, so fixture generators must publish names with a tool/test prefix
+  and a unique suffix (`CAE-CAP-OK-0`, `GDX-AE-BAD1`, etc.). Do not reuse baked
+  generic names such as `OK`, `BAD`, `FOLD`, `RESET`, or a repeated generated
+  stem unless the fixture is specifically testing duplicate rejection.
 - **Source-use guards match tokens, not substrings.** Required-word checks and
   boundary scans must lex whole tokens and skip comments/strings; substring
   matches create false positives (`FOO` matching `FOO-BAR`) and hide policy bugs.
@@ -514,6 +639,18 @@ end-package
   breakpoints, and snapshot cells. A cell inside a scratch range will be
   overwritten by ordinary compiled source; add a focused regression for the
   exact overlap class.
+- **Warm snapshots hide the baked tail instead of replaying core sources.** When
+  a warm-image entry needs to redefine a baked tail word such as `SNAP-OUT`, emit
+  `HIDE-DEFS-FROM` for that tail and append the actual snapshot entry file. Do
+  not replay already-baked core, target, or image files just to mask duplicate
+  definitions; that hides stale process state and makes strict duplicate checks
+  look like the problem.
+- **Snapshot builders reset process-local image pointers.** Restored DATA cells
+  are persistent, but mmap-backed image builder pointers and cursors (`MBUF-A`,
+  `MP`, `MLEN`, etc.) are valid only in the process that created them. Clear
+  those transient cells in a named reset word before `BUILD-SNAP-HDR` or fresh
+  image emission; never rely on source replay or variable redefinition to zero
+  them.
 - **Emitter punctuation is semantic.** Words such as `BL,`, `LBL,`, `ADR,`, and
   `ZBYTES,` are distinct from punctuation-less names; source-shape regressions
   should assert exact emitted tokens. Emitter stack comments describe the

@@ -60,8 +60,8 @@ variable SSET-LEN
    s" : C-SIG-START ( n -- )" SSET-MUST-HAVE
    s" : C-SIG-END ( n -- )" SSET-MUST-HAVE
    s" C-COLON-MAYBE-SIG" 2 SSET-COUNT=
-   s" C-SIG-START" 3 SSET-COUNT=
-   s" C-SIG-CAPTURE-TSIG" 2 SSET-COUNT=
+   s" C-SIG-START" 4 SSET-COUNT=
+   s" C-SIG-CAPTURE-TSIG" 3 SSET-COUNT=
    s" LBL {: nsig :}  LBL {: sigq :}  LBL {: sp1 :}" SSET-MUST-LACK
    s" 16 14 1 ADDI,  10 15 14 SUB" SSET-MUST-LACK ;
 

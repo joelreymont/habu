@@ -345,7 +345,7 @@ variable FAILB  variable FAILE
 variable TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
-: STEP {: din dout :}
+: CHECKER-STEP {: din dout :}
    DCUR @ WAS !
    DCUR @ din UNIFY
    dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  -1 FAILSET ! THEN
@@ -715,10 +715,10 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    dr PSIDE  PR-OUT ! PD-OUT !
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG 2drop STEP ;
+: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG 2drop CHECKER-STEP ;
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
-\ (no STEP), for verifying a definition's body against its own ( in -- out ).
+\ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
 
 \ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
@@ -868,8 +868,10 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 : PT-SYSTEM-PRIMS ( -- )
    s" rbase" s" -- n" PT+
    s" cp@" s" -- n" PT+
+   s" cp!" s" n --" PT+
    s" dbase@" s" -- n" PT+
    s" ndict@" s" -- n" PT+
+   s" ndict!" s" n --" PT+
    s" data-base" s" -- ptr a" PT+
    s" wordlist" s" -- n" PT+
    s" get-current" s" -- n" PT+
@@ -1008,6 +1010,48 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
    su U!+  sa su UBS  UALIGN!
    UTERM! ;
 
+: USIG-NEXT ( ptr a -- ptr a )
+   dup @ UREC-NEXT ;
+
+: USIG-NAME$ ( ptr a -- ptr u8 n )
+   dup cell+ swap @ ;
+
+: USIG-OFF ( ptr a -- n )
+   USIGS - ;
+
+: USIG-END? ( ptr a -- bool )
+   @ 0= ;
+
+: USIG-FOLD-C ( n -- n ) {: c:n :}
+   c $41 < if c exit then
+   c $5A > if c exit then
+   c $20 or ;
+
+: USIG-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> if 0 exit then
+   0 begin dup u < while
+      dup a + c@ USIG-FOLD-C
+      over b + c@ USIG-FOLD-C <> if drop 0 exit then
+      1+
+   repeat drop
+   0 0= ;
+
+: USIG-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
+   rec USIG-NAME$ a u USIG-STR=CI ;
+
+: USIG-FIND-OFF-REC ( ptr a ptr u8 n -- n bool ) {: rec:ptr a:ptr u:n :}
+   rec USIG-END? if 0 0 exit then
+   rec a u USIG-MATCH? if rec USIG-OFF -1 exit then
+   rec USIG-NEXT a u recurse ;
+
+: USIG-FIND-OFF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   USIGS a u USIG-FIND-OFF-REC ;
+
+: CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u USIG-FIND-OFF 0= if s" checker: missing signature truncation mark" 76 die then
+   UEND !
+   UTERM! ;
+
 : SCAN-SIGS {: tab a u :}  tab FP !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
      FNL !  FP @ 1 + FNP !
@@ -1038,6 +1082,8 @@ variable CHECKER-PACKAGE-MODE
 variable CHECKER-TOKEN-U
 variable CHECKER-COLON-N
 variable CHECKER-COLON-I
+variable CHECKER-REC-A
+variable CHECKER-REC-U
 
 : CHECKER-FOLD-C ( n -- n ) {: c:n :}
    c $41 < IF c EXIT THEN
@@ -1144,6 +1190,28 @@ variable CHECKER-COLON-I
 
 : CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
+
+: CHECKER-REC-NAME! ( ptr u8 n -- )
+   CHECKER-RECORD-NAME CHECKER-REC-U ! CHECKER-REC-A ! ;
+
+: CHECKER-REC-A@ ( -- ptr u8 )
+   CHECKER-REC-A @ ;
+
+: CHECKER-REC-U@ ( -- n )
+   CHECKER-REC-U @ ;
+
+: CHECKER-CERT-DUP? ( -- bool )
+   CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
+
+: CHECKER-DUP-DEFINITION ( -- )
+   $2 s" checker: duplicate definition: " write drop
+   $2 CHECKER-REC-A@ CHECKER-REC-U@ write drop
+   s" " $4E die ;
+
+: CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   na nu CHECKER-REC-NAME!
+   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -1330,9 +1398,34 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u FLODIG? IF s" -- r" PARSE-SIG -1 EXIT THEN
    0 ;
 
+: BYTE-CON? ( t -- bool )
+   T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop 0 ;
+
+: BYTE-PTR? ( t -- bool )
+   T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop 0 ;
+
+: ROW-TOP-BYTE-PTR? ( row -- bool )
+   R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop 0 ;
+
+: CELL-FETCH-TOK ( -- )
+   DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
+   s" ptr a -- a" PARSE-SIG
+   bad IF 0 OK ! THEN ;
+
+: CELL-STORE-TOK ( -- )
+   DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
+   s" a ptr a --" PARSE-SIG
+   bad IF 0 OK ! THEN ;
+
+: CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" @" STR= IF CELL-FETCH-TOK -1 EXIT THEN
+   a u s" !" STR= IF CELL-STORE-TOK -1 EXIT THEN
+   0 ;
+
 : DO-TOK {: a u :}
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
+   a u CELL-MEMORY-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FSU @ IF FSA @ FSU @ PARSE-SIG ELSE
    PTAB a u TRY-TAB IF EXIT THEN
@@ -1374,7 +1467,7 @@ variable LCO
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
-   LCH @  LROW @ MK-ROW  STEP ;
+   LCH @  LROW @ MK-ROW  CHECKER-STEP ;
 
 : LOC-TOK {: a u :}
    a u s" :}" STR= IF 0 LMODE ! LOC-BIND ELSE
@@ -1650,7 +1743,7 @@ variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f inst
 variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
 \ way (into a scratch copy: the source text may live in the read-only image).
-variable TFU
+variable TKFU
 variable SKI  variable SKF
 
 : SGBAD-IN-SOURCE? ( -- bool )
@@ -1716,13 +1809,13 @@ variable SKI  variable SKF
      dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
      over TKF + c!  1 +
    REPEAT drop
-   u TFU !  -1 ;
+   u TKFU !  -1 ;
 : FAIL-SPAN! ( -- )
    TSTART @ TBASE @ - FAILB !
-   FAILB @ TFU @ + FAILE ! ;
+   FAILB @ TKFU @ + FAILE ! ;
 : CAP-FAIL ( -- )
    FAILSET @ 0= IF
-      TKF FAILTK TFU @ CCOPY  TFU @ FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
+      TKF FAILTK TKFU @ CCOPY  TKFU @ FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
    THEN ;
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
@@ -1743,7 +1836,7 @@ s" <input>" DIAG-FILE!
 \ Usage:  s" myword" s" n n -- n" trust
 : TRUST {: na nu sa su :}
    na nu TOKFOLD drop
-   sa su  TKF TFU @  CHECKER-USIG-ADD ;
+   sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
    a u s" evaluate" STR= IF -1 EXIT THEN
@@ -1761,21 +1854,21 @@ s" <input>" DIAG-FILE!
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    CAP-FAIL
-   TOK0 @ IF TKF NMB TFU @ CCOPY  NMB NMA !  TFU @ NMU !  0 TOK0 ! ELSE
-   TKF TFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
-   LMODE @ IF TKF TFU @ LOC-TOK ELSE
-   TKF TFU @ s" {:" STR= IF LOC-BEGIN ELSE
-   TKF TFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
-   OK @ IF TKF TFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
-   TKF TFU @ LOC-REF? 0= IF
-   TKF TFU @ CF-TOK? 0= IF
-   TKF TFU @ RS-TOK? 0= IF
-   TKF TFU @ DO-TOK
-   OK @ IF TKF TFU @ THROW-TOK? IF THROW-EDGE THEN THEN
-   OK @ IF TKF TFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   TKF TFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
+   TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
+   TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
+   LMODE @ IF TKF TKFU @ LOC-TOK ELSE
+   TKF TKFU @ s" {:" STR= IF LOC-BEGIN ELSE
+   TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
+   OK @ IF TKF TKFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TKFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TKFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
+   TKF TKFU @ LOC-REF? 0= IF
+   TKF TKFU @ CF-TOK? 0= IF
+   TKF TKFU @ RS-TOK? 0= IF
+   TKF TKFU @ DO-TOK
+   OK @ IF TKF TKFU @ THROW-TOK? IF THROW-EDGE THEN THEN
+   OK @ IF TKF TKFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
+   TKF TKFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -1858,7 +1951,7 @@ s" <input>" DIAG-FILE!
          NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
       VSIG @ SGSEEN @ and IF
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-ADD
+         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
       ELSE
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
       THEN

@@ -1,6 +1,6 @@
 \ sha256-file-test.f - checked fixture coverage for streaming SHA-256 helpers.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f src/core/sha256.f tools/sha256-file-test.f
+\ lib/fs-mutate.f tools/sha256-file-test.f
 
 5000 constant SFT-BIG-LEN
 

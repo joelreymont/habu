@@ -34,7 +34,7 @@ variable PTA  variable PTU
    PSA@ PX @ + c@ ;
 
 : PAT-WS? ( -- bool )
-   PAT-END? IF LINT-FALSE ELSE PAT-C@ WS? THEN ;
+   PAT-END? IF LINT-FALSE ELSE PAT-C@ LINT-WS? THEN ;
 
 : PAT-ADV ( -- )
    PX @ 1+ PX ! ;
@@ -43,14 +43,14 @@ variable PTA  variable PTU
    begin PAT-WS? while PAT-ADV repeat ;
 
 : PAT-WORD-END? ( -- bool )
-   PAT-END? IF LINT-TRUE ELSE PAT-C@ WS? THEN ;
+   PAT-END? IF LINT-TRUE ELSE PAT-C@ LINT-WS? THEN ;
 
 : PAT-TOK$ ( -- ptr u8 n )
    PTA@ PTU @ ;
 
 : PAT-TOK= ( ptr u8 n -- bool )
    {: a:ptr u :}
-   PAT-TOK$ a u STR=CI ;
+   PAT-TOK$ a u LINT-STR=CI ;
 
 : PAT-TOK-SQ? ( -- bool )
    PTU @ 2 <> IF LINT-FALSE exit THEN
@@ -90,14 +90,14 @@ variable PTA  variable PTU
    PAT-SKIP-IGNORED
    PAT-END? IF LINT-FALSE exit THEN
    PSA@ PX @ + PTA!
-   begin PAT-END? 0= PAT-C@ WS? 0= and while PAT-ADV repeat
+   begin PAT-END? 0= PAT-C@ LINT-WS? 0= and while PAT-ADV repeat
    PSA@ PX @ + PTA@ - PTU !
    LINT-TRUE ;
 
 : PAT-CAP-STRING-1 ( -- bool )
    PAT-TOK-SQ? 0= IF LINT-FALSE exit THEN
    PAT-END? IF LINT-FALSE exit THEN
-   PAT-C@ WS? 0= IF LINT-FALSE exit THEN
+   PAT-C@ LINT-WS? 0= IF LINT-FALSE exit THEN
    PAT-SKIP-WS
    PSA@ PX @ + P1A!
    begin PAT-END? 0= PAT-C@ DQUOTE <> and while PAT-ADV repeat
@@ -109,7 +109,7 @@ variable PTA  variable PTU
 : PAT-CAP-STRING-2 ( -- bool )
    PAT-TOK-SQ? 0= IF LINT-FALSE exit THEN
    PAT-END? IF LINT-FALSE exit THEN
-   PAT-C@ WS? 0= IF LINT-FALSE exit THEN
+   PAT-C@ LINT-WS? 0= IF LINT-FALSE exit THEN
    PAT-SKIP-WS
    PSA@ PX @ + P2A!
    begin PAT-END? 0= PAT-C@ DQUOTE <> and while PAT-ADV repeat
@@ -133,7 +133,7 @@ variable PTA  variable PTU
    begin PAT-END? 0= PAT-C@ 41 <> and while PAT-ADV repeat
    PAT-END? IF LINT-FALSE exit THEN
    PSA@ PX @ + P2A@ - P2U !
-   P2A@ P2U @ TRIM P2U ! P2A!
+   P2A@ P2U @ LINT-TRIM P2U ! P2A!
    PAT-ADV
    LINT-TRUE ;
 
@@ -177,10 +177,10 @@ variable PTA  variable PTU
    {: a:ptr u :}
    a u PAT-RESET
    begin PAT-READ-TOKEN while
-      PAT-TOK$ s" -SRC" SUFFIX? IF
+      PAT-TOK$ s" -SRC" LINT-SUFFIX? IF
          PAT-READ-TOKEN IF
             PAT-CAP-STRING-1 IF
-               P1A@ P1U @ s" src/" STARTS-WITH?
+               P1A@ P1U @ s" src/" LINT-STARTS-WITH?
                P1A@ P1U @ s" .f" HAS-EXT? and IF LINT-TRUE exit THEN
             THEN
          THEN
@@ -209,15 +209,15 @@ variable PTA  variable PTU
 : SIG-OPTOUT? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u SPLIT-WHITESPACE
    SN# @ 1 = IF
-      0 S@ s" infer" STR=CI IF LINT-TRUE exit THEN
-      0 S@ s" private" STR=CI IF LINT-TRUE exit THEN
+      0 S@ s" infer" LINT-STR=CI IF LINT-TRUE exit THEN
+      0 S@ s" private" LINT-STR=CI IF LINT-TRUE exit THEN
    THEN
    SN# @ 2 = IF
-      0 S@ s" infer" STR=CI  1 S@ s" private" STR=CI and IF LINT-TRUE exit THEN
-      0 S@ s" private" STR=CI  1 S@ s" infer" STR=CI and IF LINT-TRUE exit THEN
+      0 S@ s" infer" LINT-STR=CI  1 S@ s" private" LINT-STR=CI and IF LINT-TRUE exit THEN
+      0 S@ s" private" LINT-STR=CI  1 S@ s" infer" LINT-STR=CI and IF LINT-TRUE exit THEN
    THEN LINT-FALSE ;
 : SIG-KIND ( ptr u8 n -- n ) {: a:ptr u :}
-   a u s" --" CONTAINS? IF SIG-TYPED exit THEN
+   a u s" --" LINT-CONTAINS? IF SIG-TYPED exit THEN
    a u SIG-OPTOUT? IF SIG-OPTOUT exit THEN
    SIG-MISSING ;
 

@@ -1,6 +1,8 @@
 \ proc-pty.f — focused native process/PTY harness. Run with:
 \   bin/hb < test/proc-pty.f
 
+package PROC-PTY
+
 $20007454 constant TIOCPTYGRANT
 $40807453 constant TIOCPTYGNAME
 $20007452 constant TIOCPTYUNLK
@@ -162,7 +164,7 @@ variable PTYNUM
    ERR-R @ >FD FD-CLOEXEC! ;
 
 : CAPTURE-START-HB ( -- )
-   s" bin/hb" >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD SPAWN-IO PID !
+   s" bin/hb" >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROC-SPAWN-IO PID !
    PID @ 0 > TTRUE ;
 
 : CAPTURE-CLOSE-CHILD-ENDS ( -- )
@@ -175,7 +177,7 @@ variable PTYNUM
    IN-W @ close ;
 
 : CAPTURE-EXPECT-RC ( -- )
-   PID @ >PID WAIT-RC RC>N 0 T= ;
+   PID @ >PID PROC-WAIT-RC RC>N 0 T= ;
 
 : CAPTURE-EXPECT-OUT ( -- )
    RCLR
@@ -222,7 +224,7 @@ variable PTYNUM
    0 PTY-PATH-C ;
 
 : OPEN-PTY-MASTER ( n -- ) {: flags :}
-   s" /dev/ptmx" >LEN PATHZ flags 0 open MFD !
+   s" /dev/ptmx" >LEN PROC-PATHZ flags 0 open MFD !
    MFD @ 2 > TTRUE
    MFD @ >FD FD-CLOEXEC! ;
 
@@ -259,7 +261,7 @@ variable PTYNUM
 
 : PTY-START-HB ( -- )
    OPEN-PTY
-   s" bin/hb" >LEN SFD @ >FD SFD @ >FD SFD @ >FD SPAWN-IO PID !
+   s" bin/hb" >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID !
    PID @ 0 > TTRUE
    SFD @ close
    MFD-DRAIN ;
@@ -333,19 +335,19 @@ variable PTYNUM
    s"  ok" EXPECT ;
 
 : PTY-BP-SOURCE ( -- )
-   s" : SQ dup * ;" STEP-LN
+   s" : SQB dup * ;" STEP-LN
    s"  ok" EXPECT
    s" : IN1 1 + ;" STEP-LN
    s"  ok" EXPECT ;
 
 : PTY-BP-ARM-ONESHOT ( -- )
-   s" ' SQ BP+" STEP-LN
+   s" ' SQB BP+" STEP-LN
    s"  ok" EXPECT
    s" ' IN1 BP+" STEP-LN
    s"  ok" EXPECT ;
 
 : PTY-BP-RUN-SQ ( -- )
-   s" 7 SQ ." STEP-LN
+   s" 7 SQB ." STEP-LN
    s" habu-bp:" EXPECT
    s" 49" EXPECT ;
 
@@ -355,7 +357,7 @@ variable PTYNUM
    s" 10" EXPECT ;
 
 : PTY-BP-RUN-SQ-CLEARED ( -- )
-   s" 6 SQ ." STEP-LN
+   s" 6 SQB ." STEP-LN
    s" 36" EXPECT
    s" habu-bp:" REJECT ;
 
@@ -582,7 +584,7 @@ variable PTYNUM
 
 : PTY-STOP-HB ( -- )
    4 SEND-C
-   PID @ >PID WAIT-RC RC>N 0 T=
+   PID @ >PID PROC-WAIT-RC RC>N 0 T=
    MFD @ close ;
 
 : PTY-BASIC ( -- )
@@ -626,3 +628,4 @@ variable PTYNUM
 CAPTURE-HB
 PTY-HB
 REPORT
+end-package

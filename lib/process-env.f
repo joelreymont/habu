@@ -1,7 +1,7 @@
 \ process-env.f - checked argv/env process helpers and PATH lookup.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/process.f, and
-\ lib/process-argv.f. Kept separate from process-argv so old native seeds can
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/process.f,
+\ and lib/process-argv.f. Kept separate from process-argv so old native seeds can
 \ still run the build-fixpoint installer before this newer primitive exists.
 
 256 constant PROC-ENV-MAX
@@ -9,13 +9,42 @@
 61 constant PROC-ENV-EQUAL
 58 constant PROC-PATH-SEP
 47 constant PROC-PATH-SLASH
-create PROC-ENV-TABLE PROC-ENV-MAX 1 + cells allot
-create PROC-ENV-BUF PROC-ENV-BUF-CAP allot
-
 variable PROC-ENV-N
 variable PROC-ENV-OFF
 variable PROC-ENV-I
 variable PROC-PATH-I
+variable PROC-ENV-TABLE-A
+variable PROC-ENV-BUF-A
+
+: PROC-ENV-TABLE-A-FIELD ( -- ptr ptr a )
+   PROC-ENV-TABLE-A 0 ptr-field ;
+
+: PROC-ENV-TABLE@ ( -- ptr a )
+   PROC-ENV-TABLE-A-FIELD @ ;
+
+: PROC-ENV-TABLE! ( ptr a -- )
+   PROC-ENV-TABLE-A-FIELD ! ;
+
+: PROC-ENV-TABLE ( -- ptr a )
+   PROC-ENV-TABLE@ 0= if
+      PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-TABLE!
+   then
+   PROC-ENV-TABLE@ ;
+
+: PROC-ENV-BUF-A-FIELD ( -- ptr ptr u8 )
+   PROC-ENV-BUF-A 0 ptr-field ;
+
+: PROC-ENV-BUF@ ( -- ptr u8 )
+   PROC-ENV-BUF-A-FIELD @ ;
+
+: PROC-ENV-BUF! ( ptr u8 -- )
+   PROC-ENV-BUF-A-FIELD ! ;
+
+: PROC-ENV-BUF ( -- ptr u8 )
+   PROC-ENV-BUF@ 0= if
+      PROC-ENV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ENV-BUF!
+   then
+   PROC-ENV-BUF@ ;
 
 : PROC-ENV-TRUE ( -- bool )
    0 0= ;
@@ -130,15 +159,15 @@ variable PROC-PATH-I
    PROC-ARGV-RESET
    PROC-ENV-RESET ;
 
-: SPAWN-ARGV-ENV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
+: PROC-SPAWN-ARGV-ENV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE PROC-ENV-PREPARE infd outfd errfd
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- rc )
-   SPAWN-ARGV-ENV-IO WAIT-RC ;
+: PROC-RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- rc )
+   PROC-SPAWN-ARGV-ENV-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
    pathz argv envp -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-ARGV-ENV-RAW {: pid :}

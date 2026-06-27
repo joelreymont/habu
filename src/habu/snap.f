@@ -40,7 +40,15 @@ s" SDB@" s" -- ptr u8" TRUST
    SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
    SNAP-HDR! ;
 
+: SNAP-RESET-IMAGE-BUFFER ( -- )
+   \ MBUF-A is a process-local mmap pointer; restored images must allocate
+   \ their own buffer before emitting a fresh ELF/snapshot header.
+   0 MBUF-A !
+   0 MP !
+   0 MLEN ! ;
+
 : SNAP-HDR ( -- snap )
+   SNAP-RESET-IMAGE-BUFFER
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
@@ -57,12 +65,15 @@ s" SDB@" s" -- ptr u8" TRUST
    \ stream: header, engine text, region, data, trailer, zero pad
    SNAP-OUT PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
-   SFD @ MBUF CODE-OFF DRV-WALL
+   MBUF {: hdr:ptr :}
+   SNAP-EXTRA-PTR {: extra:ptr :}
+   SNAP-RESET-IMAGE-BUFFER
+   SFD @ hdr CODE-OFF DRV-WALL
    SFD @ STB@ STSZ @ DRV-WALL
    SFD @ SDB@ SCL @ DRV-WALL
    SFD @ data-base SDL @ DRV-WALL
    SFD @ TRL 40 DRV-WALL
-   SFD @ SNAP-EXTRA-PTR SNAP-EXTRA-SIZE DRV-WALL
+   SFD @ extra SNAP-EXTRA-SIZE DRV-WALL
    SFD @ close ;
 
 : SNAP-WRITE ( snap -- )

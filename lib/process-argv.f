@@ -1,15 +1,30 @@
 \ process-argv.f - checked argv process helpers.
 \
-\ Load after lib/errors.f and lib/process.f.
+\ Load after lib/errors.f, lib/memory.f, and lib/process.f.
 
 64 constant PROC-ARGV-MAX
 32768 constant PROC-ARGV-BUF-CAP
 
 create PROC-ARGV-TABLE PROC-ARGV-MAX 1 + cells allot
-create PROC-ARGV-BUF PROC-ARGV-BUF-CAP allot
 
 variable PROC-ARGV-N
 variable PROC-ARGV-OFF
+variable PROC-ARGV-BUF-A
+
+: PROC-ARGV-BUF-A-FIELD ( -- ptr ptr u8 )
+   PROC-ARGV-BUF-A 0 ptr-field ;
+
+: PROC-ARGV-BUF@ ( -- ptr u8 )
+   PROC-ARGV-BUF-A-FIELD @ ;
+
+: PROC-ARGV-BUF! ( ptr u8 -- )
+   PROC-ARGV-BUF-A-FIELD ! ;
+
+: PROC-ARGV-BUF ( -- ptr u8 )
+   PROC-ARGV-BUF@ 0= if
+      PROC-ARGV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ARGV-BUF!
+   then
+   PROC-ARGV-BUF@ ;
 
 : PROC-SPAWN-ARGV-RAW ( ptr u8 ptr a fd fd fd -- pid )
    {: pathz:ptr argv:ptr infd outfd errfd :}
@@ -43,19 +58,19 @@ variable PROC-ARGV-OFF
 
 : PROC-ARGV-PREPARE ( ptr u8 len -- ptr u8 ptr a ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then
-   path pathu PATHZ {: pathz:ptr :}
+   path pathu PROC-PATHZ {: pathz:ptr :}
    pathz 0 >IDX PROC-ARGV-SLOT !
    0 PROC-ARGV-N @ COUNT>N 1+ >IDX PROC-ARGV-SLOT !
    pathz PROC-ARGV-TABLE ;
 
-: SPAWN-ARGV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
+: PROC-SPAWN-ARGV-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-ARGV-PREPARE infd outfd errfd PROC-SPAWN-ARGV-RAW {: pid :}
    PROC-ARGV-RESET
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- rc )
-   SPAWN-ARGV-IO WAIT-RC ;
+: PROC-RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- rc )
+   PROC-SPAWN-ARGV-IO PROC-WAIT-RC ;
 
 : PROC-ARGV-CHECK-PATH ( ptr u8 len -- ) {: path:ptr pathu :}
    pathu LEN>N 0 <= if E-PROC-OUTPUT throw then

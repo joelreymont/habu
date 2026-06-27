@@ -5,7 +5,15 @@
 64 constant GDX-USAGE-RC
 
 create GDX-PATH-BUF FS-PATH-CAP allot
+create GDX-TRUST-ROOT-BUF FS-PATH-CAP allot
+create GDX-TRUST-SRC-DIR-BUF FS-PATH-CAP allot
+create GDX-TRUST-SRC-BUF FS-PATH-CAP allot
+create GDX-TRUST-MAN-BUF FS-PATH-CAP allot
 variable GDX-PATH-U
+variable GDX-TRUST-ROOT-U
+variable GDX-TRUST-SRC-DIR-U
+variable GDX-TRUST-SRC-U
+variable GDX-TRUST-MAN-U
 
 : GDX-USAGE ( -- )
    s" usage: test/gate-diagnostics.f [warm|diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe]" GDX-USAGE-RC die ;
@@ -50,6 +58,43 @@ variable GDX-PATH-U
 
 : GDX-PATH$ ( -- ptr u8 n )
    GDX-PATH-BUF GDX-PATH-U @ ;
+
+: GDX-TRUST-ROOT$ ( -- ptr u8 n )
+   GDX-TRUST-ROOT-BUF GDX-TRUST-ROOT-U @ ;
+
+: GDX-TRUST-SRC-DIR$ ( -- ptr u8 n )
+   GDX-TRUST-SRC-DIR-BUF GDX-TRUST-SRC-DIR-U @ ;
+
+: GDX-TRUST-SRC$ ( -- ptr u8 n )
+   GDX-TRUST-SRC-BUF GDX-TRUST-SRC-U @ ;
+
+: GDX-TRUST-MAN$ ( -- ptr u8 n )
+   GDX-TRUST-MAN-BUF GDX-TRUST-MAN-U @ ;
+
+: GDX-TRUST-PATHS ( -- )
+   GT-ROOT s" trust-stale" GDX-TRUST-ROOT-BUF JOIN-PATH GDX-TRUST-ROOT-U !
+   GDX-TRUST-ROOT$ s" src" GDX-TRUST-SRC-DIR-BUF JOIN-PATH GDX-TRUST-SRC-DIR-U !
+   GDX-TRUST-SRC-DIR$ s" trust.f" GDX-TRUST-SRC-BUF JOIN-PATH GDX-TRUST-SRC-U !
+   GDX-TRUST-ROOT$ s" TRUSTED.md" GDX-TRUST-MAN-BUF JOIN-PATH GDX-TRUST-MAN-U ! ;
+
+: GDX-TRUST-SRC-TEXT$ ( -- ptr u8 n )
+   SB-RESET
+   s" TRUSTED: foo ( n -- n )" SB-APPEND GE-SB-LF
+   s"    dup ;" SB-APPEND GE-SB-LF
+   SB$ ;
+
+: GDX-TRUST-MAN-TEXT$ ( -- ptr u8 n )
+   SB-RESET
+   s" | Word | Effect | Reason | Tests | Site | Last audited |" SB-APPEND GE-SB-LF
+   s" |------|--------|--------|-------|------|--------------|" SB-APPEND GE-SB-LF
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-13 |" SB-APPEND GE-SB-LF
+   SB$ ;
+
+: GDX-TRUST-FIXTURE ( -- )
+   GDX-TRUST-PATHS
+   GDX-TRUST-SRC-DIR$ MAKE-DIRS
+   GDX-TRUST-SRC$ GDX-TRUST-SRC-TEXT$ WRITE-ALL
+   GDX-TRUST-MAN$ GDX-TRUST-MAN-TEXT$ WRITE-ALL ;
 
 : GDX-ARG+ ( ptr u8 n -- )
    GE-ARG+ ;
@@ -233,12 +278,12 @@ variable GDX-PATH-U
 : GDX-STRICT-SIGNATURES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" : NOSIG dup ;" GE-SRC-LINE
+   s" : GDX-NOSIG dup ;" GE-SRC-LINE
    s" tools/check.f --strict-signatures accepted nosig" GDX-CHECK-STRICT
    s" E-MISSING-SIGNATURE" s" strict-signatures text diagnostic" GE-EXPECT-ERR-HAS
    GE-HB-RESET
    GE-SRC-RESET
-   s" : NOSIG dup ;" GE-SRC-LINE
+   s" : GDX-NOSIG dup ;" GE-SRC-LINE
    s" tools/check.f --strict-signatures --json-errors accepted nosig" GDX-CHECK-STRICT-JSON
    s" code" s" E-MISSING-SIGNATURE" s" strict-signatures JSON diagnostic" GDX-EXPECT-ERR-JSTR
    GE-HB-RESET
@@ -290,10 +335,10 @@ variable GDX-PATH-U
 
 : GDX-ALL-ERRORS-SOURCE ( -- )
    GE-SRC-RESET
-   s" : OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
-   s" : SEMI ( -- i64 ) [char] ; ;" GE-SRC-LINE
-   s" : BAD1 ( i64 -- i64 ) dup ;" GE-SRC-LINE
-   s" : BAD2 ( i64 -- ) >r ;" GE-SRC-LINE ;
+   s" : GDX-AE-OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
+   s" : GDX-AE-SEMI ( -- i64 ) [char] ; ;" GE-SRC-LINE
+   s" : GDX-AE-BAD1 ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   s" : GDX-AE-BAD2 ( i64 -- ) >r ;" GE-SRC-LINE ;
 
 : GDX-ALL-ERRORS ( -- )
    GE-HB-RESET
@@ -354,6 +399,7 @@ variable GDX-PATH-U
    s" public-signatures" s" public-signatures.json" s" public signatures output" GDX-GJA1 ;
 
 : GDX-TRUST-LINT-STALE ( -- )
+   GDX-TRUST-FIXTURE
    GE-HB-RESET
    s" --load" GDX-ARG+
    s" tools/date.f" GDX-ARG+
@@ -368,7 +414,7 @@ variable GDX-PATH-U
    s" tools/argv.f" GDX-ARG+
    s" tools/trust-lint.f" GDX-ARG+
    s" --" GDX-ARG+
-   s" ." GDX-ARG+
+   GDX-TRUST-ROOT$ GDX-ARG+
    s" 2026-10-01" GDX-ARG+
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" trust-lint accepted stale audit dates" GE-EXPECT-NONZERO

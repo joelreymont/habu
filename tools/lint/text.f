@@ -49,35 +49,35 @@ variable RFD  variable RGOT  variable RLEN
    buf RLEN @ ;
 
 \ ---- string ops ------------------------------------------------------------
-: STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: LINT-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while
       dup a + c@ over b + c@ <> IF drop LINT-FALSE exit THEN
       1+
    repeat drop LINT-TRUE ;
 
-: PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: LINT-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v < IF LINT-FALSE exit THEN
-   a v b v STR= ;
+   a v b v LINT-STR= ;
 
-\ FIND-SUB ( a u sa su -- idx | -1 ) : index of first occurrence of sa/su in a/u
-: FIND-SUB ( ptr u8 n ptr u8 n -- n ) {: a:ptr u sa:ptr su :}
+\ LINT-FIND-SUB ( a u sa su -- idx | -1 ) : index of first occurrence of sa/su in a/u
+: LINT-FIND-SUB ( ptr u8 n ptr u8 n -- n ) {: a:ptr u sa:ptr su :}
    su 0= IF 0 exit THEN
    0 begin dup u su - <= while
-      dup a +  su  sa su STR= IF exit THEN  1+
+      dup a +  su  sa su LINT-STR= IF exit THEN  1+
    repeat  drop  -1 ;
 
-: CONTAINS? ( ptr u8 n ptr u8 n -- bool )
-   FIND-SUB 0< LINT-NOT ;
+: LINT-CONTAINS? ( ptr u8 n ptr u8 n -- bool )
+   LINT-FIND-SUB 0< LINT-NOT ;
 
 \ ---- more string ops for the linters ----
-: BMOVE ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
+: LINT-BMOVE ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
    0 begin dup u < while  dup a + c@  over dst + c!  1+  repeat  drop ;
 
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
-: STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: LINT-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while
       dup a + c@ LINT-FOLD over b + c@ LINT-FOLD <> IF drop LINT-FALSE exit THEN
@@ -99,25 +99,25 @@ variable RFD  variable RGOT  variable RLEN
 : COPY-LOWER ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}  a u dst FOLD-TO ;
 : COPY-UPPER ( ptr u8 n ptr u8 -- ) {: a:ptr u dst:ptr :}
    0 begin dup u < while  dup a + c@ ASCII-UP  over dst + c!  1+  repeat  drop ;
-: WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
-: LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: LINT-WS? ( n -- bool )  dup 32 = over 9 = or over 10 = or swap LINT-CR = or ;
+: LINT-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
-      dup a + c@ WS? 0= IF dup a +  u rot -  exit THEN  1+
+      dup a + c@ LINT-WS? 0= IF dup a +  u rot -  exit THEN  1+
    repeat  drop  a 0 ;
-: RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: LINT-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    u RLEN !
    begin RLEN @ 0 > while
-      a RLEN @ 1- + c@ WS? IF RLEN @ 1- RLEN ! ELSE a RLEN @ exit THEN
+      a RLEN @ 1- + c@ LINT-WS? IF RLEN @ 1- RLEN ! ELSE a RLEN @ exit THEN
    repeat  a 0 ;
-: TRIM ( ptr u8 n -- ptr u8 n )  LTRIM RTRIM ;
-: STARTS-WITH? ( ptr u8 n ptr u8 n -- bool )  PREFIX? ;
-: SUFFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
+: LINT-TRIM ( ptr u8 n -- ptr u8 n )  LINT-LTRIM LINT-RTRIM ;
+: LINT-STARTS-WITH? ( ptr u8 n ptr u8 n -- bool )  LINT-PREFIX? ;
+: LINT-SUFFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v < IF LINT-FALSE exit THEN
-   a u v - + v b v STR= ;
-: ENDS-WITH? ( ptr u8 n ptr u8 n -- bool )  SUFFIX? ;
-: INDEX-OF ( ptr u8 n n -- n ) {: a:ptr u c :}
+   a u v - + v b v LINT-STR= ;
+: LINT-ENDS-WITH? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
+: LINT-INDEX-OF ( ptr u8 n n -- n ) {: a:ptr u c :}
    0 begin dup u < while  dup a + c@ c = IF exit THEN  1+  repeat  drop -1 ;
-: COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
+: LINT-COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
    0  0 begin dup u < while
       dup a + c@ c = IF swap 1+ swap THEN  1+
    repeat  drop ;
@@ -145,16 +145,16 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
 : SPLIT-WHITESPACE ( ptr u8 n -- ) {: a:ptr u :}
    SPLIT-CLEAR  0 RGOT !
    begin RGOT @ u < while
-      begin RGOT @ u <  a RGOT @ + c@ WS? and while RGOT @ 1+ RGOT ! repeat
+      begin RGOT @ u <  a RGOT @ + c@ LINT-WS? and while RGOT @ 1+ RGOT ! repeat
       RGOT @ u < IF
          RGOT @ RLEN !
-         begin RGOT @ u <  a RGOT @ + c@ WS? 0= and while RGOT @ 1+ RGOT ! repeat
+         begin RGOT @ u <  a RGOT @ + c@ LINT-WS? 0= and while RGOT @ 1+ RGOT ! repeat
          a RLEN @ +  RGOT @ RLEN @ -  SPLIT+
       THEN
    repeat ;
 : BUF-APPEND ( ptr u8 n ptr u8 n ptr n -- ) {: a:ptr u dst:ptr cap lp:ptr :}
    lp @ u + cap > IF s" lint: string buffer overflow" 1 die THEN
-   a dst lp @ + u BMOVE  lp @ u + lp ! ;
+   a dst lp @ + u LINT-BMOVE  lp @ u + lp ! ;
 : BUF-APPEND-C ( n ptr u8 n ptr n -- ) {: c dst:ptr cap lp:ptr :}
    lp @ 1+ cap > IF s" lint: string buffer overflow" 1 die THEN
    c dst lp @ + c!  lp @ 1+ lp ! ;
@@ -164,9 +164,9 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
       dup 0 > IF sep su dst cap lp BUF-APPEND THEN
       dup S@ dst cap lp BUF-APPEND  1+
    repeat  drop ;
-: HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  SUFFIX? ;
+: HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
 : PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u SLASH INDEX-OF 0 >= IF LINT-TRUE exit THEN
+   a u SLASH LINT-INDEX-OF 0 >= IF LINT-TRUE exit THEN
    a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN

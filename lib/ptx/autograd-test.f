@@ -5,7 +5,7 @@
 \ is an ordinary kernel, CHECKED by the same parametric type system as the forward
 \ - so a mask / extent / address-space mistake in a GRADIENT is a compile error.
 \ y, dy, dx share extent-r/extent-c by token, so one row context serves all three
-\ spans; the mask threads from ROW-LOAD through *./BLOCK-SUM/B-/*. to ROW-STORE.
+\ spans; the mask threads from ROW-LOAD through *./BLOCK-SUM/PTX:B-/*. to ROW-STORE.
 \
 \ NB this is TYPE-verified, not NUMERICALLY verified: the checker proves the
 \ gradient's types, not that it is the correct derivative. Numeric correctness is
@@ -24,7 +24,7 @@ KERNEL: SOFTMAX-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<sp
    ys  c ROW-LOAD {: yt :}
    dys c ROW-LOAD {: dyt :}
    dyt yt *. BLOCK-SUM {: s :}
-   dyt s B-  yt *.
+   dyt s PTX:B-  yt *.
    dx r ROW-SPAN c ROW-STORE ;
 
 \ Exercises BROADCAST: the reduce-then-fill (BLOCK-SUM then BROADCAST) is exactly

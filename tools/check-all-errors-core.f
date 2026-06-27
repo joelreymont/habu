@@ -314,11 +314,11 @@ variable CA-JSON
 
 : CA-TOK= ( n ptr u8 n -- bool ) {: k a:ptr u :}
    k CA-TOK-WORD? CA-NOT IF CA-FALSE exit THEN
-   k LTOK a u STR= ;
+   k LEX-TOK a u LINT-STR= ;
 
 : CA-TOK-CI= ( n ptr u8 n -- bool ) {: k a:ptr u :}
    k CA-TOK-WORD? CA-NOT IF CA-FALSE exit THEN
-   k LTOK a u STR=CI ;
+   k LEX-TOK a u LINT-STR=CI ;
 
 : CA-PARSE-NEXT? ( n -- bool ) {: k :}
    k s" char" CA-TOK= IF CA-TRUE exit THEN
@@ -328,7 +328,7 @@ variable CA-JSON
    CA-SRC-A@ + c@ ;
 
 : CA-TOK-END-BYTE {: k :} ( k -- n )
-   k LB@ k LTOK nip + ;
+   k LB@ k LEX-TOK nip + ;
 
 : CA-LINE-START-BYTE ( n -- n )
    begin dup 0 > while
@@ -592,18 +592,18 @@ variable CA-JSON
    CA-RUN-PROGRAM ;
 
 : CA-JSON-LINE? ( ptr u8 n -- bool )
-   TRIM dup 0= IF 2drop CA-FALSE exit THEN
+   LINT-TRIM dup 0= IF 2drop CA-FALSE exit THEN
    drop c@ CA-LBRACE = ;
 
 : CA-ERR-LINE ( n n -- ptr u8 n ) {: start end :}
    CA-ERR-A@ start + end start - ;
 
 : CA-EMIT-ERR-LINE ( n n -- ) {: start end :}
-   start end CA-ERR-LINE TRIM CA-ERR
+   start end CA-ERR-LINE LINT-TRIM CA-ERR
    CA-LF$ CA-ERR ;
 
 : CA-WORD$ ( n -- ptr u8 n ) {: k :}
-   k CA-DEFTOK@ 1+ LTOK ;
+   k CA-DEFTOK@ 1+ LEX-TOK ;
 
 : CA-DEF-SOURCE$ ( n -- ptr u8 n ) {: k :}
    CA-SRC-A@ k CA-DEFTOK@ 1+ LB@ +
@@ -612,7 +612,7 @@ variable CA-JSON
 : CA-DECLARED$ ( n -- ptr u8 n bool ) {: k :}
    k CA-DEFTOK@ 2 + dup L# @ >= IF drop s" " CA-FALSE exit THEN
    dup LK@ L-COMMENT <> IF drop s" " CA-FALSE exit THEN
-   LCONTENT TRIM CA-TRUE ;
+   LCONTENT LINT-TRIM CA-TRUE ;
 
 : CA-BODY-START ( n -- n ) {: k :}
    k CA-DEFTOK@ 2 +
@@ -628,7 +628,7 @@ variable CA-JSON
       CA-J @ CA-TOK-WORD? IF
          CA-J @ s" ;" CA-TOK= IF 0 0 CA-FALSE exit THEN
          CA-ORD @ 1+ CA-ORD !
-         CA-J @ LTOK a u STR= IF CA-J @ CA-ORD @ CA-TRUE exit THEN
+         CA-J @ LEX-TOK a u LINT-STR= IF CA-J @ CA-ORD @ CA-TRUE exit THEN
       THEN
       CA-J @ 1+ CA-J !
    repeat
@@ -645,13 +645,13 @@ variable CA-JSON
    s" repair_class" LJW-KEY s" unknown_rejection" LJW-STRING LJW-COMMA
    s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
    s" word" LJW-KEY k CA-WORD$ LJW-STRING LJW-COMMA
-   s" token" LJW-KEY tok LTOK LJW-STRING LJW-COMMA
+   s" token" LJW-KEY tok LEX-TOK LJW-STRING LJW-COMMA
    s" token_index" LJW-KEY ord LJW-U LJW-COMMA
    s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
    s" line" LJW-KEY tok LL@ LJW-U LJW-COMMA
    s" column" LJW-KEY tok LC@ LJW-U LJW-COMMA
    s" byte_start" LJW-KEY tok LB@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY tok LB@ tok LTOK nip + LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY tok LB@ tok LEX-TOK nip + LJW-U LJW-COMMA
    s" definition_source" LJW-KEY k CA-DEF-SOURCE$ LJW-STRING LJW-COMMA
    k CA-DECLARED$ IF
       2dup s" declared_effect" LJW-KEY LJW-STRING LJW-COMMA
@@ -699,7 +699,7 @@ variable CA-JSON
    70 throw ;
 
 : CA-TRY-RAW-JSON ( n -- bool ) {: k :}
-   CA-ERR-A@ CA-ERR-LEN @ TRIM CA-RAW-U ! CA-RAW-A!
+   CA-ERR-A@ CA-ERR-LEN @ LINT-TRIM CA-RAW-U ! CA-RAW-A!
    CA-RAW-U @ 0= IF CA-FALSE exit THEN
    k CA-RAW-A@ CA-RAW-U @ CA-FIND-BODY-TOKEN IF
       CA-MATCH-ORD ! CA-MATCH-TOK !

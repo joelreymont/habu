@@ -35,10 +35,10 @@ variable SEED   1 SEED !
 512 constant BBUF-CAP
 1024 constant PBUF-CAP
 create BBUF BBUF-CAP allot   variable BLEN     \ the body
-create PBUF PBUF-CAP allot  variable PLEN     \ the full def / the runner
-variable SA  variable SU  variable BI  variable PJ  variable NJ
+create PBUF PBUF-CAP allot  variable PBUF-U   \ the full def / the runner
+variable SA  variable SU  variable PJ  variable NJ
 variable RUN-SEED  variable N  variable RI
-: B+  ( ptr u8 n -- ) {: a:ptr u :}
+: PROP-B+  ( ptr u8 n -- ) {: a:ptr u :}
    0 begin dup u < while
       dup a + c@  BBUF BLEN @ + c!
       BLEN @ 1+ BLEN !
@@ -46,8 +46,8 @@ variable RUN-SEED  variable N  variable RI
    repeat drop ;
 : P+  ( ptr u8 n -- ) {: a:ptr u :}
    0 begin dup u < while
-      dup a + c@  PBUF PLEN @ + c!
-      PLEN @ 1+ PLEN !
+      dup a + c@  PBUF PBUF-U @ + c!
+      PBUF-U @ 1+ PBUF-U !
       1+
    repeat drop ;
 : BD  ( n -- ) {: digit :}
@@ -61,10 +61,10 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
       1+
    repeat drop ;
 : PC   ( n -- ) {: c :}
-   c PBUF PLEN @ + c!
-   PLEN @ 1+ PLEN ! ;
+   c PBUF PBUF-U @ + c!
+   PBUF-U @ 1+ PBUF-U ! ;
 : POS. ( -- )  s" seed " type RUN-SEED @ .  s" iteration " type RI @ . ;
-: DEF. ( -- )  PBUF PLEN @ type cr ;
+: DEF. ( -- )  PBUF PBUF-U @ type cr ;
 : BODY. ( -- )  BBUF BLEN @ type cr ;
 
 \ ---- depth-tracked generator over the integer sublanguage ----
@@ -74,43 +74,43 @@ variable PERT?                             \ declared out perturbed away from th
 : BLET  ( n -- ) {: idx :}
    idx 97 + BBUF BLEN @ + c!
    BLEN @ 1+ BLEN !
-   s"  " B+ ;   \ emit letter a+i then space
-: STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
+   s"  " PROP-B+ ;   \ emit letter a+i then space
+: PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
       DEP @ 1 >= IF 4 ELSE 1 THEN RND% K !
-      K @ 0 = IF s" 3 0 ?do loop " B+ exit THEN              \ bounded neutral loop
-      K @ 1 = IF s" dup 0= if 1+ else 1- then " B+ exit THEN \ balanced branch
-      K @ 2 = IF s" >r r> " B+ exit THEN                     \ balanced return stack
-               s" [: 1+ ;] execute " B+ exit THEN            \ quotation applied
+      K @ 0 = IF s" 3 0 ?do loop " PROP-B+ exit THEN              \ bounded neutral loop
+      K @ 1 = IF s" dup 0= if 1+ else 1- then " PROP-B+ exit THEN \ balanced branch
+      K @ 2 = IF s" >r r> " PROP-B+ exit THEN                     \ balanced return stack
+               s" [: 1+ ;] execute " PROP-B+ exit THEN            \ quotation applied
    DEP @ 2 >= IF 15 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
    K @ 0 = IF                                                  \ push a value: a local ref, or a literal
-      LOC? @ 0= 0= IF NIN @ RND% BLET ELSE 10 RND% BD s"  " B+ THEN
+      LOC? @ 0= 0= IF NIN @ RND% BLET ELSE 10 RND% BD s"  " PROP-B+ THEN
       DEP @ 1+ DEP !  exit THEN
-   K @ 1 = IF s" 1+ " B+      exit THEN
-   K @ 2 = IF s" 1- " B+      exit THEN
-   K @ 3 = IF s" negate " B+  exit THEN
-   K @ 4 = IF s" dup " B+   DEP @ 1+ DEP !  exit THEN
-   K @ 5 = IF s" drop " B+  DEP @ 1- DEP !  exit THEN
-   K @ 6 = IF s" + " B+     DEP @ 1- DEP !  exit THEN
-   K @ 7 = IF s" over " B+  DEP @ 1+ DEP !  exit THEN
-   K @ 8 = IF s" nip " B+   DEP @ 1- DEP !  exit THEN
-   K @ 9 = IF s" swap " B+  exit THEN
-   K @ 10 = IF s" - " B+    DEP @ 1- DEP !  exit THEN
-   K @ 11 = IF s" * " B+    DEP @ 1- DEP !  exit THEN
-   K @ 12 = IF s" and " B+  DEP @ 1- DEP !  exit THEN
-   K @ 13 = IF s" or " B+   DEP @ 1- DEP !  exit THEN
-             s" xor " B+    DEP @ 1- DEP ! ;
+   K @ 1 = IF s" 1+ " PROP-B+      exit THEN
+   K @ 2 = IF s" 1- " PROP-B+      exit THEN
+   K @ 3 = IF s" negate " PROP-B+  exit THEN
+   K @ 4 = IF s" dup " PROP-B+   DEP @ 1+ DEP !  exit THEN
+   K @ 5 = IF s" drop " PROP-B+  DEP @ 1- DEP !  exit THEN
+   K @ 6 = IF s" + " PROP-B+     DEP @ 1- DEP !  exit THEN
+   K @ 7 = IF s" over " PROP-B+  DEP @ 1+ DEP !  exit THEN
+   K @ 8 = IF s" nip " PROP-B+   DEP @ 1- DEP !  exit THEN
+   K @ 9 = IF s" swap " PROP-B+  exit THEN
+   K @ 10 = IF s" - " PROP-B+    DEP @ 1- DEP !  exit THEN
+   K @ 11 = IF s" * " PROP-B+    DEP @ 1- DEP !  exit THEN
+   K @ 12 = IF s" and " PROP-B+  DEP @ 1- DEP !  exit THEN
+   K @ 13 = IF s" or " PROP-B+   DEP @ 1- DEP !  exit THEN
+             s" xor " PROP-B+    DEP @ 1- DEP ! ;
 variable STEPS  variable GI
 : GEN-BODY  ( n n -- ) {: in-count use-flag :}  \ fill BBUF with a body, set NIN and the true residual DEP
    in-count 0 > if use-flag 0= if 0 else -1 then else 0 then LOC? !
    in-count NIN !  0 BLEN !
    LOC? @ 0= 0= IF                          \ {: a b c :} prefix binds the NIN inputs as locals
-      s" {: " B+  0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " B+  0 DEP !
+      s" {: " PROP-B+  0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " PROP-B+  0 DEP !
    ELSE NIN @ DEP ! THEN
    6 RND% 3 + STEPS !
-   0 GI ! begin GI @ STEPS @ < while  STEP  GI @ 1+ GI !  repeat ;   \ build body, compute true DEP
+   0 GI ! begin GI @ STEPS @ < while  PROP-STEP  GI @ 1+ GI !  repeat ;   \ build body, compute true DEP
 : HEAD  ( n n n -- ) {: name-ch in-arity out-arity :}  \ PBUF += ": <nch> ( din -- dout ) "  (TFLAG picks i64/n)
-   0 PLEN !  s" : " P+  name-ch PC  s"  ( " P+  in-arity PTY  s" -- " P+  out-arity PTY  s" ) " P+ ;
+   0 PBUF-U !  s" : " P+  name-ch PC  s"  ( " P+  in-arity PTY  s" -- " P+  out-arity PTY  s" ) " P+ ;
 : BODY+  ( -- )  BBUF BLEN @ P+  s" ; " P+ ;
 : GEN  ( -- )   \ PBUF := ": G ( i64*NIN -- i64*DOUT ) <body> ;"
    0 TFLAG !
@@ -123,48 +123,50 @@ variable STEPS  variable GI
    71 NIN @ DOUT @ HEAD  BODY+ ;           \ 71 = 'G'
 
 \ ---- driver: check, then run + measure, in-process; forget each program ----
-variable NCERT  variable NFC  variable NFR  variable RJ
+variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ ---- complete checkpoint/rollback: a `: G ;` grows THREE persistent stores —
 \ code (CP), the name dict (NDICT) and the checker's certified-signature table
 \ (UEND, the USIGS cursor). Per-check transient pools (the term arena, QEN) reset
 \ themselves in the checker's NEW; the `:` handler resets the codegen scratch. So a
-\ correct forget = restore exactly CP/NDICT/UEND. USIGS can grow for real composed
-\ tools, but an unbounded sweep must restore UEND so discarded certified defs do
-\ not accumulate. Two levels (program + shrink variant) let shrinking roll back
-\ inside a program's own checkpoint.
+\ correct forget = restore exactly CP/NDICT/UEND plus the USIGS terminator.
+\ USIGS can grow for real composed tools, but an unbounded sweep must restore
+\ UEND and write the terminator so discarded certified defs do not remain
+\ visible to later duplicate checks. Two levels (program + shrink variant) let
+\ shrinking roll back inside a program's own checkpoint.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
 TRUSTED: MARK    ( -- )  cp@ CPSAVE !  ndict@ NDSAVE !  UEND @ UESAVE ! ;
-TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND ! ;
+TRUSTED: FORGET  ( -- )  NDSAVE @ ndict!  CPSAVE @ cp!  UESAVE @ UEND !  UTERM! ;
 TRUSTED: SMARK   ( -- )  cp@ SCPSV !   ndict@ SNDSV !   UEND @ SUESV ! ;
-TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND ! ;
+TRUSTED: SFORGET ( -- )  SNDSV @ ndict!  SCPSV @ cp!    SUESV @ UEND !  UTERM! ;
 TRUSTED: CHK-MARK ( -- ) cp@ CHKCPSV ! ndict@ CHKNDSV ! UEND @ CHKUESV ! ;
-TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! ;
+TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM! ;
 \ ---- shared measurement: build "depth BASE ! <nin×7> <nch> depth BASE @ - CLEAR-MEAS" ----
 : RUN1  ( n n -- ) {: name-ch in-arity :}
-   0 PLEN ! s" depth BASE ! " P+
+   0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 TRUSTED: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
 TRUSTED: CHK  ( ptr u8 n -- )
    CHK-MARK
+   0 VERD !
    ['] CHK-HOOK set-check
    evaluate
    ['] PROP-CHECK-HOOK set-check
    VERD @ -1 <> IF CHK-FORGET THEN ;
 TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
-   0 LAST-TRAP !  RUN1  PBUF PLEN @ evaluate
+   0 LAST-TRAP !  RUN1  PBUF PBUF-U @ evaluate
    ERR@ 0 = IF
       dup 0< IF  drop -1 LAST-TRAP !  ELSE  LAST-MEAS !  THEN
    ELSE  -1 LAST-TRAP !  THEN ;
 : FC-SET-ARITY ( n n -- )
-   FC-MEAS !  FC-EXP !  1 FC-KIND !  NFC @ 1+ NFC ! ;
+   FC-MEAS !  FC-EXP !  1 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-SET-TRAP ( n -- )
-   FC-EXP !  2 FC-KIND !  NFC @ 1+ NFC ! ;
+   FC-EXP !  2 FC-KIND !  PROP-NFC @ 1+ PROP-NFC ! ;
 : FC-LINE  ( n -- )
    s" prop-test: FALSE-CERT " type POS.
    s" word " type emit s"  " type
@@ -179,7 +181,7 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    ELSE  LAST-MEAS @ expected <> IF  expected LAST-MEAS @ FC-SET-ARITY  name-ch FC-LINE  THEN THEN ;
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u :}
    s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
-   s" variant: " type PBUF PLEN @ type cr
+   s" variant: " type PBUF PBUF-U @ type cr
    s" body: " type BODY. ;
 
 \ ---- metamorphic subsumption: an i64-certified body must also certify under the
@@ -187,8 +189,8 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
 \ coverage); i64-cert but n-reject is a checker inconsistency (logged, non-fatal). ----
 variable NSUB  variable NSI
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
-   SMARK  1 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PLEN @ CHK
-   VERD @ -1 = IF  NSUB @ 1+ NSUB !  71 NIN @ DOUT @ MEASURE
+   SMARK  1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
+   VERD @ -1 = IF  NSUB @ 1+ NSUB !  83 NIN @ DOUT @ MEASURE
    ELSE  NSI @ LOG-LIMIT < IF s" subsumption" LOG-META THEN  NSI @ 1+ NSI !  THEN
    SFORGET ;
 
@@ -199,8 +201,8 @@ TRUSTED: REND-SIG$ ( -- ptr u8 n )
    REND-SIG ;
 : ROUNDTRIP  ( -- )   \ pre: G just certified; REND-SIG holds G's rendered effect
    REND-SIG$  RSU !  RSA !
-   SMARK  0 PLEN ! s" : G ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PLEN @ CHK
-   VERD @ -1 = IF  NRT @ 1+ NRT !  71 NIN @ DOUT @ MEASURE
+   SMARK  0 PBUF-U ! s" : R ( " P+  RSA @ RSU @ P+  s"  ) " P+  BBUF BLEN @ P+  s" ; " P+  PBUF PBUF-U @ CHK
+   VERD @ -1 = IF  NRT @ 1+ NRT !  82 NIN @ DOUT @ MEASURE
    ELSE  NRI @ LOG-LIMIT < IF s" round-trip" LOG-META THEN  NRI @ 1+ NRI !  THEN
    SFORGET ;
 
@@ -209,12 +211,12 @@ TRUSTED: REND-SIG$ ( -- ptr u8 n )
 variable NCMP  variable NCI  variable CAI  variable CAO  variable CBO
 : COMPOSE  ( -- )
    SMARK  0 TFLAG !
-   3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  65 CAI @ CAO @ HEAD  BODY+  PBUF PLEN @ CHK   \ A=65
+   3 RND% 0 GEN-BODY  NIN @ CAI !  DEP @ CAO !  88 CAI @ CAO @ HEAD  BODY+  PBUF PBUF-U @ CHK   \ X=88
    VERD @ -1 = IF
-      CAO @ 0 GEN-BODY  DEP @ CBO !  66 CAO @ CBO @ HEAD  BODY+  PBUF PLEN @ CHK              \ B=66, in=CAO
+      CAO @ 0 GEN-BODY  DEP @ CBO !  89 CAO @ CBO @ HEAD  BODY+  PBUF PBUF-U @ CHK              \ Y=89, in=CAO
       VERD @ -1 = IF
-         0 PLEN ! s" : C ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) A B ; " P+  PBUF PLEN @ CHK   \ C=67
-         VERD @ -1 = IF  NCMP @ 1+ NCMP !  67 CAI @ CBO @ MEASURE
+         0 PBUF-U ! s" : Z ( " P+  CAI @ PTY  s" -- " P+  CBO @ PTY  s" ) X Y ; " P+  PBUF PBUF-U @ CHK   \ Z=90
+         VERD @ -1 = IF  NCMP @ 1+ NCMP !  90 CAI @ CBO @ MEASURE
          ELSE  NCI @ LOG-LIMIT < IF s" composition" LOG-META THEN  NCI @ 1+ NCI !  THEN
       THEN
    THEN
@@ -231,13 +233,13 @@ variable BSAVE
    begin BLEN @ 0 > BBUF BLEN @ 1- + c@ 32 <> and while  BLEN @ 1- BLEN !  repeat  0 0= ;
 : REBUILD-G ( -- )  0 TFLAG !  71 NIN @ DOUT @ HEAD  BODY+ ;   \ PBUF := ": G ( NIN -- DOUT ) BBUF ;"
 : FCFAIL?  ( -- bool )   \ does the current BBUF certify AND run to an arity != DOUT (or trap)?
-   SMARK  REBUILD-G  PBUF PLEN @ CHK
+   SMARK  REBUILD-G  PBUF PBUF-U @ CHK
    VERD @ -1 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  SFORGET ;
-: STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PLEN @ CHK  VERD @ -1 =  SFORGET ;
+: STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
-   SMARK  0 set-check  PBUF PLEN @ evaluate  ['] PROP-CHECK-HOOK set-check
+   SMARK  0 set-check  PBUF PBUF-U @ evaluate  ['] PROP-CHECK-HOOK set-check
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
       LAST-TRAP @ IF  0  ELSE  LAST-MEAS @ DOUT @ =  THEN
    ELSE  0  THEN  SFORGET ;
@@ -258,11 +260,11 @@ TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejec
 variable NFC0
 : ONE  ( -- )
    MARK  GEN                                 \ checkpoint, then build ": G ( ... ) <body> ;"
-   PBUF PLEN @ CHK
+   PBUF PBUF-U @ CHK
    VERD @ -1 = IF                            \ CERTIFIED: measured out-arity must equal declared
       NCERT @ 1+ NCERT !
-      NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
-      NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
+      PROP-NFC @ NFC0 !  71 NIN @ DOUT @ MEASURE   \ base run-and-compare
+      PROP-NFC @ NFC0 @ > IF                       \ a FALSE-CERT: shrink to a minimal counterexample & print
          s" original: " type  REBUILD-G  DEF.
          [: FCFAIL? ;] SHRINK
          s" minimized counterexample: " type  REBUILD-G  DEF. THEN
@@ -276,10 +278,10 @@ variable NFC0
    FORGET                                    \ forget G (code + dict entry + recorded sig)
    COMPOSE ;                                  \ independent two-body composition probe
 : RUN  ( n n -- )
-   N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
+   N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
    0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat
    s" prop-test: " type N @ . s" programs, " type
-   NCERT @ . s" certified, " type  NFC @ . s" FALSE-CERT(s), " type
+   NCERT @ . s" certified, " type  PROP-NFC @ . s" FALSE-CERT(s), " type
    NFR @ . s" false-reject(s)" type cr
    s" prop-test: metamorphic — " type  NSUB @ . s" subsumption + " type
    NRT @ . s" round-trip + " type  NCMP @ . s" composition runs; " type
@@ -312,15 +314,15 @@ variable NFC0
 \ (a sound checker never hands us a real false-cert to shrink, so exercise the
 \ machinery on an achievable predicate).
 : SELFTEST-SHRINK ( -- )
-   0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " B+  1 NIN !  1 DOUT !
+   0 BLEN !  s" dup drop 1+ 1- negate 1+ 1- " PROP-B+  1 NIN !  1 DOUT !
    BLEN @  [: STILLCERT? ;] SHRINK  BLEN @  >  0= IF
       s" prop-test: self-test SHRINK BROKEN (no reduction)" 1 die THEN
-   s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PLEN @ type s" )" type cr ;
+   s" prop-test: shrink OK (delta-debug reduced to: " type  REBUILD-G  PBUF PBUF-U @ type s" )" type cr ;
 
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
-: FINISH  NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
+: FINISH  PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
 variable ARG-N  variable ARG-I  variable ARG-L
 : ARG>U?  ( ptr u8 -- n bool ) {: z:ptr :}   \ parse a non-empty decimal argv c-string
    z ZLEN ARG-L !  ARG-L @ 0= IF 0 0 0= 0= exit THEN

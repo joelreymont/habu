@@ -118,36 +118,36 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-BUF 32 read ;
 
 : TEST-SPAWN-FAIL ( -- )
-   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO drop ;
+   s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO drop ;
 
 : TEST-WAIT-BAD ( -- )
-   -1 >PID WAIT-RC drop ;
+   -1 >PID PROC-WAIT-RC drop ;
 
 : TEST-POLL-WAIT ( -- )
    PT-R @ 1 >MS POLL-IN-OR-TIMEOUT drop ;
 
 : TEST-PATHZ ( -- )
-   s" /usr/bin/true" >LEN PATHZ dup ZLEN 13 T=
+   s" /usr/bin/true" >LEN PROC-PATHZ dup ZLEN 13 T=
    13 + c@ 0 T=
-   s" /usr/bin/true" >LEN RUN-RC RC>N 0 T=
-   s" /usr/bin/false" >LEN RUN-RC RC>N 1 T= ;
+   s" /usr/bin/true" >LEN PROC-RUN-RC RC>N 0 T=
+   s" /usr/bin/false" >LEN PROC-RUN-RC RC>N 1 T= ;
 
 : TEST-SPAWN-WAIT ( -- )
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-RC RC>N 0 T=
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC RC>N 0 T=
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 
-: TEST-WAIT-STATUS ( -- )
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-STATUS 0 T=
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-STATUS 256 T= ;
+: TEST-PROC-WAIT-STATUS ( -- )
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 0 T=
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 256 T= ;
 
-: TEST-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
+: TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
 
-: TEST-WAIT-OUTCOME-SIGNAL ( -- )
+: TEST-PROC-WAIT-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -TERM $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD SPAWN-ARGV-IO WAIT-OUTCOME 15 T= PROC-OUTCOME-SIGNAL T= ;
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-OUTCOME 15 T= PROC-OUTCOME-SIGNAL T= ;
 
 : TEST-PROC-OUTCOME>RC ( -- )
    PROC-OUTCOME-EXIT 7 PROC-OUTCOME>RC RC>N 7 T=
@@ -237,7 +237,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PIPE-PAIR PT-OUT-W ! PT-OUT-R !
    PT-IN-W @ s" cat-in" write 6 T=
    PT-IN-W @ close
-   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD RUN-IO-RC RC>N 0 T=
+   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROC-RUN-IO-RC RC>N 0 T=
    PT-IN-R @ close
    PT-OUT-W @ close
    PT-OUT-R @ PT-READ 6 T=
@@ -257,9 +257,9 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-PREPARE
    TEST-PATHZ
    TEST-SPAWN-WAIT
-   TEST-WAIT-STATUS
-   TEST-WAIT-OUTCOME-EXIT
-   TEST-WAIT-OUTCOME-SIGNAL
+   TEST-PROC-WAIT-STATUS
+   TEST-PROC-WAIT-OUTCOME-EXIT
+   TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
    TEST-WAIT-FAIL
    TEST-PIPE

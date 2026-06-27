@@ -72,8 +72,11 @@ $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
-$2740 constant EVAL-FRAME  \ re-entrant evaluate save frame, 8 cells:
-                           \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
+$280 constant EVAL-FRAME  \ re-entrant evaluate save frames, 8 cells each:
+                          \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
+$40 constant EVAL-FRAME-SIZE
+$6 constant EVAL-FRAME-SHIFT
+$8 constant EVAL-MAX-DEPTH
 $2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
 $2788 constant TSIG-U-CELL
 $2790 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
@@ -230,15 +233,28 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- )  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BCPSET ( -- )      A G-POP  CP A 0 ADDI, ;      \ ( addr -- ) set CP
+: BNDSET ( -- )      A G-POP  NDICT A 0 ADDI, ;   \ ( n -- ) set NDICT
 
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
-\ frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+\ depth-indexed frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+: C-EVAL-FRAME-ADDR ( n n n -- ) {: depth dst scratch :}
+   dst EVAL-FRAME LIT64,
+   scratch depth EVAL-FRAME-SHIFT LSLI,
+   dst dst scratch ADD,
+   dst DATA dst ADD, ;
+
 : B-EVAL ( -- )
+   LBL {: ok :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,             \ x14 = &frame
+   11 DATA EVALD-CELL LDR,
+   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT ok BCOND,
+      BRK,
+   ok LBL,
+   11 14 15 C-EVAL-FRAME-ADDR                        \ x14 = &frame[EVALD]
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
@@ -596,6 +612,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
+   s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
@@ -947,8 +964,9 @@ variable LTRAPH   variable LBPH
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
-variable LPHOOK         variable LPHABULAYOUT   variable LPLINUXENV     variable LPMACOSENV
-variable LPROLES        variable LPCOMBINATORS
+variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPSCRIPTARGV
+variable LPROLES        variable LPINCLUDE      variable LPSTRUCTURES
+variable LPENUMS        variable LPCOMBINATORS  variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -1102,36 +1120,57 @@ create ZBYTE 0 c,
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var @ LBL,  a u ZBYTES, ;
 
-: PFX-LOAD-FILES ( -- )
+: PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW ;
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
+   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
+   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
+
+: PFX-LOAD-SCRIPT-ARGV ( -- )
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
+
+: PFX-LOAD-SCRIPT-ARGV-COLD ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   PFX-LOAD-SCRIPT-ARGV
+   done LBL, ;
+
+: PFX-LOAD-FILES ( -- )
+   PFX-LOAD-BASE-FILES
+   PFX-LOAD-SCRIPT-ARGV ;
 
 : PFX-PATH-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
-   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-PATH-ROW
-   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW ;
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
+   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
+   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
    PFX-TARGET-OK
-   PFX-LOAD-FILES ;
+   PFX-LOAD-BASE-FILES ;
 
 : EMIT-COLD-PREFIX ( -- )
    LBL {: done :}
@@ -1203,6 +1242,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    17 9 0 ADDI,
    SRC-RL @ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -1245,9 +1285,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-FPLAIN @ C-ARG--LOAD?
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    C-SOURCE-FIND-SEP
    SRC-FPLAIN @ LBL,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    SRC-FREADY @ LBL, ;
 
 : C-SOURCE-APPEND-ARG ( -- )
@@ -1272,6 +1314,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-FAIL-REPL-DONE ( -- )
    SRC-SFAIL @ LBL,  0 74 MOVZ,  NR-EXIT SYS,
    SRC-REPL @ LBL,
+   PFX-LOAD-SCRIPT-ARGV-COLD
    11 LSRC @ ADR,  11 DATA INP-CELL STR,
    5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
    SRC-DONE @ B,
@@ -1609,6 +1652,62 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
+: C-CALL-TRUST-PEND ( -- )
+   C-FIND-TRUST
+   12 DATA PEND-CELL LDR,
+   C-PUSH-DREC-NAME
+   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED ;
+
+: C-CALL-TRUST-PEND-MAYBE ( -- )
+   LBL {: done :}
+   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
+   13 done CBZ,
+   12 DATA PEND-CELL LDR,
+   C-PUSH-DREC-NAME
+   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
+   C-CALL-X11-SAVED
+   done LBL, ;
+
+: C-DIE-DOES ( -- )
+   0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
+   0 70 MOVZ,  NR-EXIT SYS, ;
+
+: C-CALL-CHECK-DOES ( -- )
+   LBL LBL {: found good :}
+   9 LKWCHKDOES @ ADR,  10 11 MOVZ,  LFIND @ BL,
+   13 found CBNZ,
+      0 2 MOVZ,  1 LKWCHKDOES @ ADR,  2 11 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT SYS,
+   found LBL,
+   9 DATA BODYBUF-OFF ADDI,
+   10 DATA DOESB-CELL LDR,
+   9 9 10 ADD,  9 G-PUSH
+   12 DATA BODYLEN-CELL LDR,  12 12 10 SUB,  12 G-PUSH
+   9 DATA TCSIG-A-CELL LDR,  9 G-PUSH
+   9 DATA TCSIG-U-CELL LDR,  9 G-PUSH
+   SP SP 16 SUBI,  30 SP 0 STR,  11 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   10 G-POP  11 0 MOVN,  10 11 CMP,  C-EQ good BCOND,
+      C-DIE-DOES
+   good LBL, ;
+
+: C-CALL-CHECK-DEFINER ( -- )
+   LBL LBL LBL LBL {: nohook fulllen lenok good :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+   10 DATA DOESB-CELL LDR,  10 fulllen CBZ,
+      10 10 6 SUBI,  lenok B,
+   fulllen LBL,
+      10 DATA BODYLEN-CELL LDR,
+   lenok LBL,
+   10 G-PUSH
+   9 DATA HOOK-CELL LDR,
+   SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+   10 G-POP  10 good CBNZ,
+      C-DIE-DOES
+   good LBL,
+   nohook LBL, ;
+
 : C-EMIT-DATA-X9! ( n -- ) {: off :}
    9 20 off W-STRX C-EMITW ;
 
@@ -1663,6 +1762,18 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SIG-BAD ( -- )
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 76 MOVZ,  NR-EXIT SYS, ;
+
+: C-PARSE-REQUIRED-SIG ( -- )
+   LBL LBL {: done bad :}
+   bad C-SIG-START
+   bad C-SIG-END
+   C-SIG-CAPTURE-TSIG
+   done B,
+   bad LBL,  C-SIG-BAD
+   done LBL, ;
+
+: C-PARSE-TRUST-SIG ( -- )
+   C-PARSE-REQUIRED-SIG ;
 
 : C-PARSE-CREATED-SIG ( -- )
    LBL LBL LBL LBL {: cpy cpd done bad :}
@@ -2441,6 +2552,24 @@ variable CFSK2
    9 $D10043FF LIT64,  LCEMIT @ BL,
    9 $F90003FE LIT64,  LCEMIT @ BL, ;
 
+: C-CLEAR-TRUSTED-STATE ( -- )
+   9 0 MOVZ,
+   9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
+   9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
+   9 DATA DOESB-CELL STR,
+   9 DATA TRUSTED-CELL STR, ;
+
+: C-TRUSTED ( -- )
+   2 3 MOVZ,  LPROT @ BL,
+   C-COLON-CODE-ROOM
+   C-COLON-DICT-ROOM
+   C-COLON-PENDING-DREC
+   C-CLEAR-TRUSTED-STATE
+   12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
+   C-PARSE-TRUST-SIG
+   C-COLON-RESET-COMPILE-STATE
+   C-COLON-WORD-PROLOGUE ;
+
 : EMIT-INTERPRET-COLON ( n n -- ) {: lmain lnotcolon :}
    lnotcolon C-COLON-TOKEN?
       2 3 MOVZ,  LPROT @ BL,
@@ -2455,6 +2584,7 @@ variable CFSK2
 
 : EMIT-INTERPRET-WORDS ( n n -- ) {: lmain lundef :}
    LBL {: lnotnum :}
+   lmain LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY
    lmain LKWCREATE 6 ['] C-CREATE   CF-ENTRY
    lmain LKWVAR    8 ['] C-VARIABLE CF-ENTRY
    lmain LKWCONST  8 ['] C-CONSTANT CF-ENTRY
@@ -2493,15 +2623,25 @@ variable CFSK2
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
 : EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
-   LBL LBL {: nohook rejected :}
-   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
-      10 DATA BODYLEN-CELL LDR,  10 G-PUSH
-      SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
-      10 G-POP  10 rejected CBZ,
-   nohook LBL,
-      NDICT NDICT 1 ADDI,
-   rejected LBL,
+   LBL LBL LBL LBL LBL {: wastrusted ndhas ndchk musttrust pubdone :}
+   10 DATA TRUSTED-CELL LDR,  10 wastrusted CBNZ,
+      C-CALL-CHECK-DEFINER
+   wastrusted LBL,
+   10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
+   10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
+      C-DIE-DOES
+   ndhas LBL,
+   10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
+      C-CALL-CHECK-DOES
+   ndchk LBL,
+   10 DATA TRUSTED-CELL LDR,  10 musttrust CBNZ,
+      C-CALL-TRUST-PEND-MAYBE
+      pubdone B,
+   musttrust LBL,
+      C-CALL-TRUST-PEND
+   pubdone LBL,
+   NDICT NDICT 1 ADDI,
+   C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
 
@@ -2665,8 +2805,8 @@ variable CFSK2
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
 : EMIT-EVAL-UNDEF-ROLLBACK ( -- )
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   9 14 15 C-EVAL-FRAME-ADDR
    CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
    9 14 56 LDR,  9 DATA DP-CELL STR,
    EMIT-RESET-COMPILE-STATE
@@ -2699,8 +2839,8 @@ variable CFSK2
    0 70 MOVZ,  NR-EXIT SYS, ;
 
 : EMIT-EVAL-CLEAN-EXIT ( -- )
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   9 14 15 C-EVAL-FRAME-ADDR
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
@@ -2780,7 +2920,8 @@ variable CFSK2
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
-   LBL LPLINUXENV !  LBL LPMACOSENV !  LBL LPROLES !  LBL LPCOMBINATORS ! ;
+   LBL LPENVBASE !  LBL LPSCRIPTARGV !  LBL LPROLES !  LBL LPINCLUDE !
+   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

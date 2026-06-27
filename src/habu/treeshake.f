@@ -2,7 +2,7 @@
 \ emitted and seeded ONLY if its name appears as a whitespace token in the
 \ user program (SHK-A/SHK-U). Sound over-approximation; default off = keep
 \ all. Gates: FPRIM/FPRIM-L (habu1.f) + keyword entries (habu2.f EM-COMPILE);
-\ armed by build.f. Load after env.f, before habu1.f.
+\ armed by build.f. Load after the shared argv/env prefix, before habu1.f.
 
 variable SHAKE?   variable SHK-A   variable SHK-U
 variable SKP  variable STS
@@ -11,7 +11,8 @@ s" SHK-A" s" -- ptr ptr u8" TRUST
 s" SHK-U" s" -- ptr n" TRUST
 s" SKP" s" -- ptr n" TRUST
 s" STS" s" -- ptr n" TRUST
-: SHK-A@ SHK-A @ ;
+: SHK-A@ ( -- ptr u8 )
+   SHK-A @ ;
 s" SHK-A@" s" -- ptr u8" TRUST
 
 : SHK-LC ( c -- c )  dup 64 > over 91 < and IF 32 + THEN ;
@@ -65,7 +66,8 @@ s" RSP" s" -- ptr n" TRUST
 s" RTS" s" -- ptr n" TRUST
 s" TA" s" -- ptr ptr u8" TRUST
 s" TU" s" -- ptr n" TRUST
-: TA@ TA @ ;
+: TA@ ( -- ptr u8 )
+   TA @ ;
 s" TA@" s" -- ptr u8" TRUST
 
 : NMF= ( ptr u8 ptr u8 n -- bool ) {: s a u :}

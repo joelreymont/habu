@@ -58,7 +58,7 @@ create WIT-RUN-ERR WIT-CAP allot
    SB-RESET
    s" : WIT-INC ( i64 -- i64 ) 1 + ;" SB-APPEND
    STR-LF SB-APPEND-C
-   s" : FOLD ( i64 -- i64 ) 7 + ;" SB-APPEND
+   s" : WIT-FOLD ( i64 -- i64 ) 7 + ;" SB-APPEND
    STR-LF SB-APPEND-C
    SB$ ;
 
@@ -68,7 +68,7 @@ create WIT-RUN-ERR WIT-CAP allot
    STR-LF SB-APPEND-C
    s" 41 WIT-RUN . CR" SB-APPEND
    STR-LF SB-APPEND-C
-   s" 35 FOLD . CR" SB-APPEND
+   s" 35 WIT-FOLD . CR" SB-APPEND
    STR-LF SB-APPEND-C
    SB$ ;
 
@@ -194,19 +194,22 @@ create WIT-RUN-ERR WIT-CAP allot
 : WIT-LIB-MUST-HAVE ( ptr u8 n -- )
    WIT-LIB-HAS? TTRUE ;
 
-: WIT-TEST-TAIL-DEPS ( -- )
-   s" src/arch/arm64/asm.f" WIT-LIB-MUST-HAVE
-   s" src/arch/arm64/icode.f" WIT-LIB-MUST-HAVE
-   s" src/os/linux/layout.f" WIT-LIB-MUST-HAVE
-   s" src/os/macos/layout.f" WIT-LIB-MUST-HAVE
-   s" src/habu/layout.f" WIT-LIB-MUST-HAVE
-   s" src/core/roles.f" WIT-LIB-MUST-HAVE
-   s" src/os/image-bytes.f" WIT-LIB-MUST-HAVE ;
+: WIT-LIB-MUST-NOT-HAVE ( ptr u8 n -- )
+   WIT-LIB-HAS? TFALSE ;
+
+: WIT-TEST-SNAPSHOT-TAIL ( -- )
+   s" HIDE-DEFS-FROM" WIT-LIB-MUST-HAVE
+   s" SNAP-OUT" WIT-LIB-MUST-HAVE
+   s" src/habu/snap.f" WIT-LIB-MUST-HAVE
+   s" src/arch/arm64/asm.f" WIT-LIB-MUST-NOT-HAVE
+   s" src/arch/arm64/icode.f" WIT-LIB-MUST-NOT-HAVE
+   s" src/core/roles.f" WIT-LIB-MUST-NOT-HAVE
+   s" src/os/image-bytes.f" WIT-LIB-MUST-NOT-HAVE ;
 
 : WIT-MAIN ( -- )
    T-RESET
    WIT-PREPARE
-   WIT-TEST-TAIL-DEPS
+   WIT-TEST-SNAPSHOT-TAIL
    WIT-TEST-BAKE
    WIT-TEST-RUN
    WIT-TEST-NOTRUST-RUNS

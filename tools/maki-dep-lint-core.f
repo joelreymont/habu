@@ -50,7 +50,7 @@ variable MDL-NL#
    a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
 
 : MDL-PATH! ( ptr u8 n -- ) {: a:ptr u :}
-   a MDL-PATH u BMOVE  u MDL-PATHU ! ;
+   a MDL-PATH u LINT-BMOVE  u MDL-PATHU ! ;
 
 : MDL-HIT ( ptr u8 n -- ) {: t:ptr tu :}
    s" MAKI-DEP " type
@@ -62,7 +62,7 @@ variable MDL-NL#
 
 : MDL-SCAN-TOKENS ( -- )
    0 begin dup TN# @ < while
-      dup TOK 2dup s" maki/" CONTAINS? IF MDL-HIT ELSE 2drop THEN
+      dup TOK 2dup s" maki/" LINT-CONTAINS? IF MDL-HIT ELSE 2drop THEN
       1+
    repeat drop ;
 

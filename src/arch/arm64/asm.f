@@ -1,9 +1,9 @@
 \ asm.fs — ARM64 instruction encoders in the STANDALONE's Forth (operands -> u32).
 \ Decimal constants preserve the bit layout used by the native engine builder.
 \ The standalone encodes ARM64 directly instead of relying on baked host output.
-4294967295 constant W32
+$FFFFFFFF constant ARM64-W32
 
-: MSK ( n -- n ) W32 and ;
+: MSK ( n -- n ) ARM64-W32 and ;
 
 \ move-wide: rd imm16 hw -> u32
 : MOVZHW ( n n n -- n ) {: RD imm hw :} 3531603968 RD or  imm 5 lshift or  hw 21 lshift or MSK ;

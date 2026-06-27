@@ -34,28 +34,28 @@ variable CODELEN
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
 
 : SEG, ( ptr u8 n n n n n n n n -- ) {: a:ptr u vma vmsz foff fsz prot nsects extra :}
-   LC-SEG64 M32   72 extra + M32
+   LC-SEG64 IMG-M32   72 extra + IMG-M32
    a u M-LEN M-NAME16-LEN
-   vma M64  vmsz M64  foff M64  fsz M64
-   prot M32  prot M32  nsects M32  0 M32 ;
+   vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
+   prot IMG-M32  prot IMG-M32  nsects IMG-M32  0 IMG-M32 ;
 
 : SECT, ( ptr u8 n ptr u8 n n n n n n -- ) {: na:ptr nu sa:ptr su addr size off al fl :}
    na nu M-LEN M-NAME16-LEN   sa su M-LEN M-NAME16-LEN
-   addr M64  size M64  off M32  al M32
-   0 M32  0 M32  fl M32  0 M32 0 M32 0 M32 ;
+   addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
+   0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
 
 : DYLINKER, ( -- )
-   LC-DYLINKER M32  32 M32  12 M32
+   LC-DYLINKER IMG-M32  32 IMG-M32  12 IMG-M32
    s" /usr/lib/dyld" {: a:ptr u :}
    a u M-LEN M-BYTES-LEN
    32 12 - u - M-LEN M-ZEROS-LEN ;
 
 : MAIN, ( n -- ) {: entryoff :}
-   LC-MAIN M32  24 M32  entryoff M64  0 M64 ;
+   LC-MAIN IMG-M32  24 IMG-M32  entryoff IMG-M64  0 IMG-M64 ;
 
 : DYLIB, ( -- )
-   LC-DYLIB M32  56 M32  24 M32
-   2 M32  $054C0000 M32  $00010000 M32     \ ts=2, cur=1356.0.0, compat=1.0.0
+   LC-DYLIB IMG-M32  56 IMG-M32  24 IMG-M32
+   2 IMG-M32  $054C0000 IMG-M32  $00010000 IMG-M32     \ ts=2, cur=1356.0.0, compat=1.0.0
    s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}
    a u M-LEN M-BYTES-LEN
    56 24 - u - M-LEN M-ZEROS-LEN ;
@@ -65,8 +65,8 @@ variable NCMDS
 : LC+ ( -- )  NCMDS @ 1 + NCMDS ! ;
 
 : MH-HDR, ( -- )
-   MH-MAGIC64 M32  CPU-ARM64 M32  0 M32  MH-EXECUTE M32
-   0 M32  0 M32  MH-FLAGS M32  0 M32 ;
+   MH-MAGIC64 IMG-M32  CPU-ARM64 IMG-M32  0 IMG-M32  MH-EXECUTE IMG-M32
+   0 IMG-M32  0 IMG-M32  MH-FLAGS IMG-M32  0 IMG-M32 ;
 
 : PATCH-HDR ( -- )
    NCMDS @ 16 M-OFF M-LE32!

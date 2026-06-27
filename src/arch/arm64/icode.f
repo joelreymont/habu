@@ -1,7 +1,7 @@
 \ icode.fs — minimal single-pass assembler in the STANDALONE's Forth: emit ARM64
 \ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
-\ after the encoders. CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
+\ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
 $80000 constant CODE-CAP-BYTES
 131071 constant CODE-CAP-WORDS
 $1002 constant ICODE-MAP-PRIVATE-ANON
@@ -10,7 +10,7 @@ $1002 constant ICODE-MAP-PRIVATE-ANON
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 variable CODE-A
 variable ICODE-TAB-A
-variable CP
+variable ASM-CP
 
 : CODE-ALLOC ( -- n )
    0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
@@ -36,20 +36,20 @@ s" ICODE-TABS" s" -- ptr n" TRUST
 : ARESET ( -- )
    CODE drop
    ICODE-TABS drop
-   0 CP ! ;
+   0 ASM-CP ! ;
 
 : CW@ ( n -- ptr u8 ) {: w :}  CODE w 4 * + ;                      \ byte addr of word w
 
-: CP? ( n -- ) {: n :}  CP @ n + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
+: ASM-CP? ( n -- ) {: n :}  ASM-CP @ n + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
 \ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
 \ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
 variable EP
 : EP@ ( -- ptr u8 ) EP 0 ptr-field @ ;
 
-: EMITW ( n -- ) {: u :}  1 CP?  CP @ CW@ EP !                \ store u LE at CODE[CP], CP++
+: EMITW ( n -- ) {: u :}  1 ASM-CP?  ASM-CP @ CW@ EP !        \ store u LE at CODE[ASM-CP], ASM-CP++
    u 255 and EP@ c!  u 8 rshift 255 and EP@ 1 + c!
    u 16 rshift 255 and EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c!
-   CP @ 1 + CP ! ;
+   ASM-CP @ 1 + ASM-CP ! ;
 
 : PATCH ( n n -- ) {: u w :}  w CW@ EP !                        \ OR u into the word already at w (delta bits)
    u 255 and EP@ c@ or EP@ c!  u 8 rshift 255 and EP@ 1 + c@ or EP@ 1 + c!
@@ -90,8 +90,8 @@ variable BBASE  variable BKIND
 
 : BR-EMIT ( label -- ) {: lbl:label :}                    \ BBASE/BKIND set; emits + records if fwd
    lbl LABEL>N cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
-     drop  CP @ lbl BKIND @ FX+  BBASE @ EMITW
-   ELSE  CP @ -  BKIND @ 0= IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
+     drop  ASM-CP @ lbl BKIND @ FX+  BBASE @ EMITW
+   ELSE  ASM-CP @ -  BKIND @ 0= IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
 
 : B, ( label -- ) {: lbl:label :}  335544320  BBASE !  0 BKIND !  lbl BR-EMIT ;
 
@@ -106,15 +106,15 @@ variable BBASE  variable BKIND
 \ adr rd, label: PC-relative address (kind-2 fixup when forward)
 : ADR, ( n label -- ) {: RD:n lbl:label :}
    lbl LABEL>N cells LBLP + @ dup 0 < IF
-     drop  CP @ lbl 2 FX+  RD 0 ENC-ADR EMITW
-   ELSE  CP @ - 4 *  RD swap ENC-ADR EMITW  THEN ;
+     drop  ASM-CP @ lbl 2 FX+  RD 0 ENC-ADR EMITW
+   ELSE  ASM-CP @ - 4 *  RD swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch all pending fixups that target it
 variable LBI
 
-: LBL, ( label -- ) {: lbl:label :}  CP @ lbl LABEL>N cells LBLP + !
+: LBL, ( label -- ) {: lbl:label :}  ASM-CP @ lbl LABEL>N cells LBLP + !
    0 LBI ! BEGIN LBI @ NFX @ < WHILE
      LBI @ cells FXL + @ lbl LABEL>N = IF
-       CP @ LBI @ cells FXS + @ -                    \ delta = here - site (words)
+       ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
        LBI @ cells FXK + @ 0 = IF D26 ELSE
          LBI @ cells FXK + @ 1 = IF D19 ELSE 4 * ENC-ADRD THEN THEN
        LBI @ cells FXS + @ PATCH
@@ -137,7 +137,7 @@ variable BYU
    BYU !  BYA ! ;
 
 : BYTES-CAP ( -- )
-   BYU @ 3 + 4 / CP?  CP @ 4 * CODE + BYP ! ;
+   BYU @ 3 + 4 / ASM-CP?  ASM-CP @ 4 * CODE + BYP ! ;
 
 : BYTES-COPY ( -- )
    0 BEGIN dup BYU @ < WHILE
@@ -152,18 +152,18 @@ variable BYU
    BYTES-CAP
    BYTES-COPY
    BYTES-PAD
-   BYP@ CODE - 4 / CP ! ;
+   BYP@ CODE - 4 / ASM-CP ! ;
 \ --- 64-bit constant synthesis: minimal MOVZ/MOVN + MOVK chain. The stage2
 \ fixpoint depends on this exact encoding policy. ---
-variable LCH  variable LFI  variable LCI
+variable LIT-CH  variable LFI  variable LCI
 
 : CHUNK16 ( n n -- n ) {: x n :}  x n 16 * rshift $FFFF and ;
 
-: NZC ( n -- n ) {: x :}  0 LCH !  0 BEGIN dup 4 < WHILE
-     x over CHUNK16 0 <> IF LCH @ 1 + LCH ! THEN  1 + REPEAT drop  LCH @ ;
+: NZC ( n -- n ) {: x :}  0 LIT-CH !  0 BEGIN dup 4 < WHILE
+     x over CHUNK16 0 <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
 
-: NFC ( n -- n ) {: x :}  0 LCH !  0 BEGIN dup 4 < WHILE
-     x over CHUNK16 $FFFF <> IF LCH @ 1 + LCH ! THEN  1 + REPEAT drop  LCH @ ;
+: NFC ( n -- n ) {: x :}  0 LIT-CH !  0 BEGIN dup 4 < WHILE
+     x over CHUNK16 $FFFF <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
 
 : MAX1 ( n -- n ) {: n :}  n 1 < IF 1 ELSE n THEN ;
 
@@ -179,18 +179,18 @@ variable LCH  variable LFI  variable LCI
    RD  x LFI @ CHUNK16  LFI @ MOVZHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
-       x LCI @ CHUNK16 LCH !
-       LCH @ 0 <> IF RD LCH @ LCI @ MOVKHW EMITW THEN THEN
+      x LCI @ CHUNK16 LIT-CH !
+      LIT-CH @ 0 <> IF RD LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
 : LITN ( n n -- ) {: RD x :}  x 1STNF LFI !
    RD  x LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
-       x LCI @ CHUNK16 LCH !
-       LCH @ $FFFF <> IF RD LCH @ LCI @ MOVKHW EMITW THEN THEN
+      x LCI @ CHUNK16 LIT-CH !
+      LIT-CH @ $FFFF <> IF RD LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
 : LIT64, ( n n -- ) {: RD x :}  x NFC MAX1  x NZC MAX1  < IF RD x LITN ELSE RD x LITZ THEN ;
 
-: ASM-LEN ( -- n )  CP @ 4 * ;
+: ASM-LEN ( -- n )  ASM-CP @ 4 * ;

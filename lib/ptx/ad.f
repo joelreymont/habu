@@ -8,7 +8,7 @@
 \ producing the backward body, which is then an ordinary checked kernel.
 \
 \ v0 SCOPE (named, dotted boundary): linear primitives only; no cotangent-saving
-\ for nonlinear ops (*./EXP./SCALE/B-/BLOCK-MAX), no DUP/fan-out cotangent
+\ for nonlinear ops (*./EXP./SCALE/PTX:B-/BLOCK-MAX), no DUP/fan-out cotangent
 \ threading beyond the 1:1 adjoint, no algebraic-simplify, no control flow. Those
 \ are the autograd dot chain (habu-ad-reverse-pass, habu-ad-vjp-primitive). Load
 \ after lib/errors.f and lib/string.f.
@@ -30,7 +30,7 @@
 \ NONLINEAR unary ops, referencing saved primals/outputs by name (SAVED-*). These
 \ are the single-cotangent nonlinear adjoints (docs/autograd.md): EXP.'s backward
 \ is dz (.) y (y = saved output); BLOCK-MAX's backward scatters dz to the arg-max
-\ lane using the saved x and max. Binary nonlinear ops (*./B-/B//SCALE) have
+\ lane using the saved x and max. Binary nonlinear ops (*./PTX:B-/PTX:B//SCALE) have
 \ MULTI-output adjoints needing the data-flow/cotangent-threading model (the deeper
 \ reverse-pass layer, dot habu-ad-reverse-pass) - they still route through
 \ VJP-ADJOINT and fail closed until that lands.
@@ -40,9 +40,9 @@
    \ binary nonlinear ops: 2-output adjoints, the cotangents threaded by the
    \ stack juggling (DUP/SWAP) inside the expansion (docs/autograd.md table):
    2dup s" *." STR= if 2drop s" DUP SAVED-Y *. SWAP SAVED-X *." exit then  \ dx=dz.y, dy=dz.x
-   2dup s" B-" STR= if 2drop s" DUP BLOCK-SUM NEG"              exit then  \ dt=dz, ds=-Sum(dz)
-   \ B/ : z = x/s. dx = dz/s ; ds = -Sum(dz*z)/s (z = saved output, s = saved uniform).
-   2dup s" B/" STR= if 2drop s" DUP SAVED-S B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S U/" exit then
+   2dup s" PTX:B-" STR= if 2drop s" DUP BLOCK-SUM NEG"          exit then  \ dt=dz, ds=-Sum(dz)
+   \ PTX:B/ : z = x/s. dx = dz/s; ds = -Sum(dz*z)/s (saved z and s).
+   2dup s" PTX:B/" STR= if 2drop s" DUP SAVED-S PTX:B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S PTX:U/" exit then
    VJP-ADJOINT ;
 
 \ --- forward token spans (offset,len into the source body) ---
@@ -102,7 +102,7 @@ variable AD-START
    2dup s" EXP."      STR= if 2drop 1 exit then   \ saves output y
    2dup s" SCALE"     STR= if 2drop 2 exit then   \ saves a, x
    2dup s" *."        STR= if 2drop 2 exit then   \ saves x, y
-   2dup s" B/"        STR= if 2drop 2 exit then   \ saves s, z
+   2dup s" PTX:B/"    STR= if 2drop 2 exit then   \ saves s, z
    2dup s" BLOCK-MAX" STR= if 2drop 2 exit then   \ saves x, m (arg-max select)
    2dup s" +."        STR= if 2drop 0 exit then
    2dup s" -."        STR= if 2drop 0 exit then

@@ -91,26 +91,34 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWENDPACKAGE variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWENDPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
-: B+   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
+: B+ ( -- )
+   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
 
-: B-   B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
+: B- ( -- )
+   B G-POP  A G-POP  A A B SUB,  A G-PUSH ;
 
-: B*   B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
+: B* ( -- )
+   B G-POP  A G-POP  A A B MUL,  A G-PUSH ;
 
-: BDUP  A G-POP  A G-PUSH  A G-PUSH ;
+: BDUP ( -- )
+   A G-POP  A G-PUSH  A G-PUSH ;
 
-: BDROP XDS XDS 8 SUBI, ;
+: BDROP ( -- )
+   XDS XDS 8 SUBI, ;
 
-: BSWAP A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
+: BSWAP ( -- )
+   A G-POP  B G-POP  A G-PUSH  B G-PUSH ;
 
-: BDOT  A G-POP  G-PRINT9 ;
+: BDOT ( -- )
+   A G-POP  G-PRINT9 ;
 
-: BU.   A G-POP  G-PRINTU9 ;
+: BU. ( -- )
+   A G-POP  G-PRINTU9 ;
 
 56 constant LINUX-SPAWN-PIPE-R-OFF
 60 constant LINUX-SPAWN-PIPE-W-OFF
@@ -254,7 +262,8 @@ s" linux-spawn-child" s" --" TRUST
    9 G-PUSH ;
 s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
 
-: BRUNRC  A G-POP                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+: BRUNRC ( -- )                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
+   A G-POP
    LBL LBL LBL {: spok spdn spw :}
    HB-TARGET-LINUX? IF
       SP SP 64 SUBI,
@@ -305,7 +314,7 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
    9 G-PUSH
    SP SP 64 ADDI, ;
 
-: BPIPE                              \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
+: BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
    LBL LBL {: pok pdn :}
    HB-TARGET-LINUX? IF
       SP SP 16 SUBI,
@@ -326,7 +335,8 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
    0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
    pdn LBL, ;
 
-: BDUP2  1 G-POP  0 G-POP            \ ( oldfd newfd -- rc ) rc=newfd or -1
+: BDUP2 ( -- )                     \ ( oldfd newfd -- rc ) rc=newfd or -1
+   1 G-POP  0 G-POP
    LBL LBL {: dok ddn :}
    HB-TARGET-LINUX? IF 2 0 MOVZ, THEN
    NR-DUP2 SYS,
@@ -355,7 +365,8 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
    SP SP 64 ADDI, ;
 s" linux-ignore-sigpipe" s" --" TRUST
 
-: BFCNTL  2 G-POP  1 G-POP  0 G-POP  \ ( fd cmd arg -- rc ) rc=sysret or -1
+: BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -1
+   2 G-POP  1 G-POP  0 G-POP
    LBL LBL LBL {: fok fdn freal :}
    HB-TARGET-LINUX? IF
       1 73 CMPI,  C-NE freal BCOND,
@@ -370,7 +381,8 @@ s" linux-ignore-sigpipe" s" --" TRUST
    fdn LBL,
    0 G-PUSH ;
 
-: BPOLL  2 G-POP  1 G-POP  0 G-POP   \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
+: BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
+   2 G-POP  1 G-POP  0 G-POP
    LBL LBL LBL LBL {: pok pdn pneg pcall :}
    HB-TARGET-LINUX? IF
       SP SP 32 SUBI,
@@ -400,7 +412,8 @@ s" linux-ignore-sigpipe" s" --" TRUST
    pdn LBL,
    0 G-PUSH ;
 
-: BKILL  1 G-POP  0 G-POP           \ ( pid sig -- rc ) rc=0 or -1
+: BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1
+   1 G-POP  0 G-POP
    LBL LBL {: kok kdn :}
    NR-KILL SYS,
    9 C-CS CSET,  9 kok CBZ,
@@ -409,7 +422,8 @@ s" linux-ignore-sigpipe" s" --" TRUST
    kdn LBL,
    0 G-PUSH ;
 
-: BWAITRC  A G-POP                    \ ( pid -- rc ) wait4; -1 = wait failed
+: BWAITRC ( -- )                   \ ( pid -- rc ) wait4; -1 = wait failed
+   A G-POP
    LBL LBL {: wok wdn :}
    SP SP 16 SUBI,
    0 9 0 ADDI,
@@ -424,7 +438,8 @@ s" linux-ignore-sigpipe" s" --" TRUST
    9 G-PUSH
    SP SP 16 ADDI, ;
 
-: BWAITSTATUS  A G-POP                \ ( pid -- status ) wait4 raw status; -1 = wait failed
+: BWAITSTATUS ( -- )               \ ( pid -- status ) wait4 raw status; -1 = wait failed
+   A G-POP
    LBL LBL {: wok wdn :}
    SP SP 16 SUBI,
    0 9 0 ADDI,
@@ -635,7 +650,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BSP-LABELS2 ( -- )
    LBL BSP-OK !  LBL BSP-DN ! ;
 
-: BSPAWNIO                            \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNIO ( -- )                  \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
    HB-TARGET-LINUX? IF
@@ -661,7 +676,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVIO                        \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -685,7 +700,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVENVIO                     \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -704,7 +719,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVENVCWDIO                  \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
    BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -723,12 +738,12 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME4-LEAVE ;
 
-: BCPFETCH    9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
-: BNDICTFETCH 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
-: BDBASEFETCH 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
-: BDATAFETCH  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
-: BCPSET   A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
-: BNDSET   A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
+: BCPFETCH ( -- ) 9 CP 0 ADDI,  A G-PUSH ;     \ ( -- addr ) live CP (snapshot writer)
+: BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
+: BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
+: BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BCPSET ( -- ) A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
+: BNDSET ( -- ) A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
 : BEPOCHSECONDS ( -- )
    LBL {: ok :}
@@ -756,10 +771,21 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
-\ frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: B-EVAL
+\ depth-indexed frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
+: C-EVAL-FRAME-ADDR ( n n n -- ) {: depth dst scratch :}
+   dst EVAL-FRAME LIT64,
+   scratch depth EVAL-FRAME-SHIFT LSLI,
+   dst dst scratch ADD,
+   dst DATA dst ADD, ;
+
+: B-EVAL ( -- )
+   LBL {: ok :}
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,             \ x14 = &frame
+   11 DATA EVALD-CELL LDR,
+   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT ok BCOND,
+      BRK,
+   ok LBL,
+   11 14 15 C-EVAL-FRAME-ADDR                        \ x14 = &frame[EVALD]
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
    30 14 16 STR,                                     \ leaf prim: x30 = caller return
@@ -771,10 +797,12 @@ s" spawn-darwin-finish" s" label label --" TRUST
    11 9 10 ADD,  11 DATA INE-CELL STR,               \ INE = a + u
    9 DATA LMAINP-CELL LDR,  9 BR, ;
 
-: BCREATE  15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
+: BCREATE ( -- )
+   15 0 MOVZ,  16 20 CREATEP-CELL LDR,  16 BLR, ;   \ ( "name" -- ) runtime CREATE via the
                                      \ startup-stored cell: subsets emit prims w/o labels
 
-: BCOMPILE  A G-POP  11 9 0 ADDI,
+: BCOMPILE ( -- )
+   A G-POP  11 9 0 ADDI,
    SP SP 16 SUBI,  11 SP 8 STR,
    2 3 MOVZ,  LPROT LABEL@ BL,
    11 SP 8 LDR,
@@ -786,13 +814,16 @@ s" spawn-darwin-finish" s" label label --" TRUST
    2 5 MOVZ,  LPROT LABEL@ BL,
    SP SP 16 ADDI, ;
 
-: BEMIT A G-POP  13 9 0 ADDI,  G-EMITC ;
+: BEMIT ( -- )
+   A G-POP  13 9 0 ADDI,  G-EMITC ;
 
-: BCR   13 10 MOVZ,  G-EMITC ;
+: BCR ( -- )
+   13 10 MOVZ,  G-EMITC ;
 
-: BSPACE 13 32 MOVZ,  G-EMITC ;
+: BSPACE ( -- )
+   13 32 MOVZ,  G-EMITC ;
 
-: B.S
+: B.S ( -- )
    LBL LBL {: sl sd :}
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
    sl LBL,
@@ -802,126 +833,178 @@ s" spawn-darwin-finish" s" label label --" TRUST
       sl B,
    sd LBL, ;
 
-: BDEPTH
+: BDEPTH ( -- )
    A DATA S0-CELL LDR,
    A XDS A SUB,
    A A 3 ASRI,
    A G-PUSH ;
 
-: (CMP) {: cond :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
+: (CMP) ( n -- )
+   {: cond :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: B=  C-EQ (CMP) ;
+: B= ( -- )
+   C-EQ (CMP) ;
 
-: B<> C-NE (CMP) ;
+: B<> ( -- )
+   C-NE (CMP) ;
 
-: B<  C-LT (CMP) ;
+: B< ( -- )
+   C-LT (CMP) ;
 
-: B>  C-GT (CMP) ;
+: B> ( -- )
+   C-GT (CMP) ;
 
-: B<= C-LE (CMP) ;
+: B<= ( -- )
+   C-LE (CMP) ;
 
-: B>= C-GE (CMP) ;
+: B>= ( -- )
+   C-GE (CMP) ;
 
-: B0= A G-POP  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A G-PUSH ;
+: B0= ( -- )
+   A G-POP  A 0 CMPI,  A C-EQ CSET,  A SP A SUB,  A G-PUSH ;
 
-: B0< A G-POP  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A G-PUSH ;
+: B0< ( -- )
+   A G-POP  A 0 CMPI,  A C-LT CSET,  A SP A SUB,  A G-PUSH ;
 
-: B1+ A G-POP  A A 1 ADDI,  A G-PUSH ;
+: B1+ ( -- )
+   A G-POP  A A 1 ADDI,  A G-PUSH ;
 
-: B1- A G-POP  A A 1 SUBI,  A G-PUSH ;
+: B1- ( -- )
+   A G-POP  A A 1 SUBI,  A G-PUSH ;
 
-: BAND B G-POP A G-POP  A A B AND, A G-PUSH ;
+: BAND ( -- )
+   B G-POP A G-POP  A A B AND, A G-PUSH ;
 
-: BOR  B G-POP A G-POP  A A B ORR, A G-PUSH ;
+: BOR ( -- )
+   B G-POP A G-POP  A A B ORR, A G-PUSH ;
 
-: BXOR B G-POP A G-POP  A A B EOR, A G-PUSH ;
+: BXOR ( -- )
+   B G-POP A G-POP  A A B EOR, A G-PUSH ;
 
-: BINV A G-POP  B 0 MOVN,  A A B EOR,  A G-PUSH ;
+: BINV ( -- )
+   A G-POP  B 0 MOVN,  A A B EOR,  A G-PUSH ;
 
-: BNEG A G-POP  A SP A SUB,  A G-PUSH ;
+: BNEG ( -- )
+   A G-POP  A SP A SUB,  A G-PUSH ;
 
-: BLSH B G-POP A G-POP  A A B LSLV, A G-PUSH ;
+: BLSH ( -- )
+   B G-POP A G-POP  A A B LSLV, A G-PUSH ;
 
-: BRSH B G-POP A G-POP  A A B LSRV, A G-PUSH ;
+: BRSH ( -- )
+   B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
-: BDIV0? LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
+: BDIV0? ( -- )
+   LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
 
-: BDIV B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
+: BDIV ( -- )
+   B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
 
-: BMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
+: BMOD ( -- )
+   B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
-: BDIVMOD B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+: BDIVMOD ( -- )
+   B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
 
-: BABS A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
+: BABS ( -- )
+   A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
 
-: BMIN B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMIN ( -- )
+   B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
 
-: BMAX B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMAX ( -- )
+   B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
 
-: BNIP  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
+: BNIP ( -- )
+   A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
 
-: BOVER B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
+: BOVER ( -- )
+   B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH ;
 
-: BTUCK B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
+: BTUCK ( -- )
+   B G-POP A G-POP  B G-PUSH A G-PUSH B G-PUSH ;
 
-: BROT  C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
+: BROT ( -- )
+   C G-POP B G-POP A G-POP  B G-PUSH C G-PUSH A G-PUSH ;
 
-: BMROT C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
+: BMROT ( -- )
+   C G-POP B G-POP A G-POP  C G-PUSH A G-PUSH B G-PUSH ;
 
-: B2DUP B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
+: B2DUP ( -- )
+   B G-POP A G-POP  A G-PUSH B G-PUSH A G-PUSH B G-PUSH ;
 
-: B2DROP XDS XDS 16 SUBI, ;
+: B2DROP ( -- )
+   XDS XDS 16 SUBI, ;
 
-: B2SWAP EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+: B2SWAP ( -- )
+   EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: B2OVER EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+: B2OVER ( -- )
+   EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: BQDUP A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
+: BQDUP ( -- )
+   A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
 
-: BFETCH  A G-POP  A A 0 LDR,  A G-PUSH ;
+: BFETCH ( -- )
+   A G-POP  A A 0 LDR,  A G-PUSH ;
 
-: BSTORE  B G-POP A G-POP  A B 0 STR, ;
+: BSTORE ( -- )
+   B G-POP A G-POP  A B 0 STR, ;
 
-: BPTRFIELD  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
+: BPTRFIELD ( -- )
+   B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
-: BPLUSSTORE B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+: BPLUSSTORE ( -- )
+   B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
-: BCFETCH A G-POP  A A 0 LDRB, A G-PUSH ;
+: BCFETCH ( -- )
+   A G-POP  A A 0 LDRB, A G-PUSH ;
 
-: BCSTORE B G-POP A G-POP  A B 0 STRB, ;
+: BCSTORE ( -- )
+   B G-POP A G-POP  A B 0 STRB, ;
 
-: BCELLS  A G-POP  A A 3 LSLI, A G-PUSH ;
+: BCELLS ( -- )
+   A G-POP  A A 3 LSLI, A G-PUSH ;
 
-: BCELLPLUS A G-POP  A A 8 ADDI, A G-PUSH ;
+: BCELLPLUS ( -- )
+   A G-POP  A A 8 ADDI, A G-PUSH ;
 
-: BCHARS ;
+: BCHARS ( -- ) ;
 
-: BCHARPLUS A G-POP  A A 1 ADDI, A G-PUSH ;
+: BCHARPLUS ( -- )
+   A G-POP  A A 1 ADDI, A G-PUSH ;
 
-: BCOUNT A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
+: BCOUNT ( -- )
+   A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
-: RSTK-PUSH {: reg :}
+: RSTK-PUSH ( n -- )
+   {: reg :}
    14 DATA RSP-CELL LDR,
    15 14 3 LSLI,  15 DATA 15 ADD,
    reg 15 RSTK-OFF STR,
    14 14 1 ADDI,  14 DATA RSP-CELL STR, ;
 
-: RSTK-POP {: reg :}
+: RSTK-POP ( n -- )
+   {: reg :}
    14 DATA RSP-CELL LDR,
    14 14 1 SUBI,
    15 14 3 LSLI,  15 DATA 15 ADD,
    reg 15 RSTK-OFF LDR,
    14 DATA RSP-CELL STR, ;
 
-: B2TOR B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
+: B2TOR ( -- )
+   B G-POP A G-POP  A RSTK-PUSH  B RSTK-PUSH ;
 
-: B2RFROM B RSTK-POP  A RSTK-POP  A G-PUSH  B G-PUSH ;
+: B2RFROM ( -- )
+   B RSTK-POP  A RSTK-POP  A G-PUSH  B G-PUSH ;
 
-: B2RFETCH B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
+: B2RFETCH ( -- )
+   B RSTK-POP  A RSTK-POP  A RSTK-PUSH  B RSTK-PUSH  A G-PUSH  B G-PUSH ;
 
-: BHERE   7 DATA 0 LDR,  7 G-PUSH ;
+: BHERE ( -- )
+   7 DATA 0 LDR,  7 G-PUSH ;
 
-: DP-CHECK {: reg :} ( reg -- )
+: DP-CHECK ( n -- )
+   {: reg :}
    LBL LBL {: low-ok high-ok :}
    5 DATA-START MOVZ,  5 DATA 5 ADD,
    reg 5 CMP,  C-GE low-ok BCOND,
@@ -932,18 +1015,23 @@ s" spawn-darwin-finish" s" label label --" TRUST
       0 76 MOVZ,  NR-EXIT SYS,
    high-ok LBL, ;
 
-: BALLOT  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
+: BALLOT ( -- )
+   A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
-: BCOMMA  A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
+: BCOMMA ( -- )
+   A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
 
-: BCCOMMA A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
+: BCCOMMA ( -- )
+   A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
-: BTYPE   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
+: BTYPE ( -- )
+   2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
 
-: BDIE    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
+: BDIE ( -- )
+   7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
-: SYS-PUSH                         \ ( -- ) push x0, or -1 when the syscall carry is set
+: SYS-PUSH ( -- )                  \ push x0, or -1 when the syscall carry is set
    LBL LBL {: ok done :}
    9 C-CS CSET,  9 ok CBZ,
       0 0 MOVN,  done B,
@@ -951,7 +1039,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    done LBL,
    0 G-PUSH ;
 
-: BOPEN
+: BOPEN ( -- )
    2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 2 0 ADDI,
@@ -961,13 +1049,16 @@ s" spawn-darwin-finish" s" label label --" TRUST
    THEN
    NR-OPEN SYS,  SYS-PUSH ;
 
-: BWRITE  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
+: BWRITE ( -- )
+   2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
-: BREAD   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  SYS-PUSH ;
+: BREAD ( -- )
+   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  SYS-PUSH ;
 
-: BIOCTL  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
+: BIOCTL ( -- )
+   2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
 
-: BMMAP
+: BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
@@ -983,7 +1074,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
 
-: BFFI-CALL
+: BFFI-CALL ( -- )
    16 G-POP                                            \ x16 = fn
    15 G-POP                                            \ x15 = argbuf
    BFFI-LOAD-X0-X7
@@ -1046,7 +1137,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ to restore it afterward; the caller's x20 parks in the FPRIM frame's free
 \ [sp,#8] slot. Shifted-register SUB treats r31 as XZR not SP, so sp is lowered
 \ via a temp. Integer/pointer args only.
-: BFFI-CALL-N
+: BFFI-CALL-N ( -- )
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
@@ -1072,68 +1163,70 @@ s" spawn-darwin-finish" s" label label --" TRUST
    20 SP $8 LDR,                                       \ restore caller x20
    0 G-PUSH ;
 
-: BOPENRD A G-POP  A OS-OPEN-RD  SYS-PUSH ;
+: BOPENRD ( -- )
+   A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
-: BACCESS
+: BACCESS ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
    THEN
    NR-ACCESS SYS,  SYS-PUSH ;
 
-: BUNLINK
+: BUNLINK ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 0 MOVZ,
    THEN
    NR-UNLINK SYS,  SYS-PUSH ;
 
-: BRENAME
+: BRENAME ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       3 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  2 99 MOVN,
    THEN
    NR-RENAME SYS,  SYS-PUSH ;
 
-: BCHMOD
+: BCHMOD ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
    THEN
    NR-CHMOD SYS,  SYS-PUSH ;
 
-: BSYMLINK
+: BSYMLINK ( -- )
    2 G-POP  0 G-POP
    HB-TARGET-LINUX? IF 1 99 MOVN, ELSE 1 1 MOVN, THEN
    3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    NR-SYMLINKAT SYS,  SYS-PUSH ;
 
-: BREADLINK
+: BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
 
-: BMKDIR
+: BMKDIR ( -- )
    1 G-POP  0 G-POP
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,
    THEN
    NR-MKDIR SYS,  SYS-PUSH ;
 
-: BRMDIR
+: BRMDIR ( -- )
    0 G-POP
    HB-TARGET-LINUX? IF
       1 0 0 ADDI,  0 99 MOVN,  2 $200 MOVZ,
    THEN
    NR-RMDIR SYS,  SYS-PUSH ;
 
-: LINUX-STAT-FIX {: bufreg :}
+: LINUX-STAT-FIX ( n -- )
+   {: bufreg :}
    5 bufreg 16 LDRW,  5 bufreg 4 STRW,
    5 bufreg 48 LDR,   5 bufreg 96 STR, ;
 s" linux-stat-fix" s" n --" TRUST
 
-: BSTAT64
+: BSTAT64 ( -- )
    1 G-POP  0 G-POP
    LBL LBL {: ok done :}
    HB-TARGET-LINUX? IF
@@ -1149,7 +1242,7 @@ s" linux-stat-fix" s" n --" TRUST
    THEN
    NR-STAT64 SYS,  SYS-PUSH ;
 
-: BLSTAT64
+: BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
    LBL LBL {: ok done :}
    HB-TARGET-LINUX? IF
@@ -1165,14 +1258,14 @@ s" linux-stat-fix" s" n --" TRUST
    THEN
    NR-LSTAT64 SYS,  SYS-PUSH ;
 
-: BGETDIRENTRIES64
+: BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
    9 DCCVAU,  DSB-ISH,  9 ICIVAU,  DSB-ISH,  ISB, ;
 
-: BPATCH32                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
+: BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
@@ -1182,13 +1275,16 @@ s" linux-stat-fix" s" n --" TRUST
    9 SP 8 LDR,  C-FLUSH-X9-LINE
    SP SP 32 ADDI, ;
 
-: BCLOSE  0 G-POP  NR-CLOSE SYS, ;
+: BCLOSE ( -- )
+   0 G-POP  NR-CLOSE SYS, ;
 
-: BRBASE  9 DATA RBASE-CELL LDR,  9 G-PUSH ;
+: BRBASE ( -- )
+   9 DATA RBASE-CELL LDR,  9 G-PUSH ;
 
-: BEXEC   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
+: BEXEC ( -- )
+   A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
-: BCATCH
+: BCATCH ( -- )
    LBL LBL {: lres lpush :}
    A G-POP
    SP SP 48 SUBI,
@@ -1205,7 +1301,7 @@ s" linux-stat-fix" s" n --" TRUST
    lres LBL,
    lpush LBL,  9 G-PUSH ;
 
-: BTHROW
+: BTHROW ( -- )
    LBL {: lnoh :}
    A G-POP
    11 DATA 8 LDR,
@@ -1219,15 +1315,19 @@ s" linux-stat-fix" s" n --" TRUST
    10 DATA RRECP-CELL LDR,  10 BR,
    lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
-: BWORDLIST  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
+: BWORDLIST ( -- )
+   9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
-: BGETCUR    9 DATA CUR-CELL LDR,  9 G-PUSH ;
+: BGETCUR ( -- )
+   9 DATA CUR-CELL LDR,  9 G-PUSH ;
 
-: BSETCUR    A G-POP  A DATA CUR-CELL STR, ;
+: BSETCUR ( -- )
+   A G-POP  A DATA CUR-CELL STR, ;
 
-: BSETCHECK  A G-POP  A DATA HOOK-CELL STR, ;
+: BSETCHECK ( -- )
+   A G-POP  A DATA HOOK-CELL STR, ;
 
-: BSWL
+: BSWL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
    2 G-POP  1 G-POP  0 G-POP
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
@@ -1252,7 +1352,7 @@ s" linux-stat-fix" s" n --" TRUST
       wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
    wend LBL,  11 G-PUSH ;
 
-: BPARSE-NAME
+: BPARSE-NAME ( -- )
    LBL LBL {: none done :}
    LTOK LABEL@ BL,
    0 none CBZ,
@@ -1362,41 +1462,57 @@ s" emit-prims" s" --" TRUST
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
-: BF+    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
+: BF+ ( -- )
+   B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FADD,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF-    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
+: BF- ( -- )
+   B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FSUB,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF*    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
+: BF* ( -- )
+   B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FMUL,  A 0 FMOVDX,  A G-PUSH ;
 
-: BF/    B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
+: BF/ ( -- )
+   B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 0 1 FDIV,  A 0 FMOVDX,  A G-PUSH ;
 
-: BFNEG  A G-POP  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A G-PUSH ;
+: BFNEG ( -- )
+   A G-POP  0 A FMOVXD,  0 0 FNEG,   A 0 FMOVDX,  A G-PUSH ;
 
-: BFABS  A G-POP  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A G-PUSH ;
+: BFABS ( -- )
+   A G-POP  0 A FMOVXD,  0 0 FABS,   A 0 FMOVDX,  A G-PUSH ;
 
-: BFSQRT A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
+: BFSQRT ( -- )
+   A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
 
-: (FCMP) {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+: (FCMP) ( n -- )
+   {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
    A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: BF<  C-MI (FCMP) ;
+: BF< ( -- )
+   C-MI (FCMP) ;
 
-: BF>  C-GT (FCMP) ;
+: BF> ( -- )
+   C-GT (FCMP) ;
 
-: BF=  C-EQ (FCMP) ;
+: BF= ( -- )
+   C-EQ (FCMP) ;
 
-: (FCMP0) {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
+: (FCMP0) ( n -- )
+   {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
    A cond CSET,  A SP A SUB,  A G-PUSH ;
 
-: BF0< C-MI (FCMP0) ;
+: BF0< ( -- )
+   C-MI (FCMP0) ;
 
-: BF0= C-EQ (FCMP0) ;
+: BF0= ( -- )
+   C-EQ (FCMP0) ;
 
-: BS>F  A G-POP  0 A SCVTF,   A 0 FMOVDX,  A G-PUSH ;
+: BS>F ( -- )
+   A G-POP  0 A SCVTF,   A 0 FMOVDX,  A G-PUSH ;
 
-: BF>S  A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
+: BF>S ( -- )
+   A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
-: BFDOT
+: BFDOT ( -- )
    LBL LBL LBL {: fl il sd :}
    A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
@@ -1424,7 +1540,7 @@ s" emit-prims" s" --" TRUST
    NR-WRITE SYS,
    SP SP 48 ADDI, ;
 
-: EMIT-FP-PRIMS
+: EMIT-FP-PRIMS ( -- )
    s" f+" ['] BF+ FPRIM-L   s" f-" ['] BF- FPRIM-L   s" f*" ['] BF* FPRIM-L
    s" f/" ['] BF/ FPRIM-L   s" fnegate" ['] BFNEG FPRIM-L
    s" fabs" ['] BFABS FPRIM-L  s" fsqrt" ['] BFSQRT FPRIM-L
@@ -1434,13 +1550,13 @@ s" emit-prims" s" --" TRUST
    s" f." ['] BFDOT FPRIM-L ;
 s" emit-fp-prims" s" --" TRUST
 
-: EMIT-CEMIT
+: EMIT-CEMIT ( -- )
    LCEMIT LABEL@ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
 \ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
 \ truncation would let the check hook certify code it never saw.
-: EMIT-BCAP
+: EMIT-BCAP ( -- )
    LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS LABEL@ LBL,
@@ -1459,7 +1575,7 @@ s" emit-fp-prims" s" --" TRUST
    14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
    RET, ;
 
-: EMIT-TOK
+: EMIT-TOK ( -- )
    LTOK LABEL@ LBL,
    LBL LBL LBL LBL LBL {: tskip thas tscan tgot tnone :}
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
@@ -1476,11 +1592,11 @@ s" emit-fp-prims" s" --" TRUST
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
    tnone LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
-: EMIT-PROT
+: EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
 
-: EMIT-FLUSH
+: EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,
    LBL LBL LBL LBL {: fdl fdd fil fid :}
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
@@ -1492,7 +1608,7 @@ s" emit-fp-prims" s" --" TRUST
    fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
    fid LBL,  DSB-ISH,  ISB,  RET, ;
 
-: EMIT-FIND
+: EMIT-FIND ( -- )
    LFIND LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qtailok nloop nnext ncmp nmatch nend ninl
@@ -1653,7 +1769,7 @@ s" emit-fp-prims" s" --" TRUST
    lint LBL,  C-NUM-INT-FINISH
    ldone LBL,  RET, ;
 
-: EMIT-DICT
+: EMIT-DICT ( -- )
    0 BEGIN dup #PL @ < WHILE
       dup cells PLEN + @ DNAME-INL > IF
          LBL over cells PNLBL + !

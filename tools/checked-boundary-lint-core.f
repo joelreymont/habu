@@ -191,19 +191,19 @@ variable UB-OUT-FD
 
 : UB-TOK= ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   UB-TOK$ a u STR= ;
+   UB-TOK$ a u LINT-STR= ;
 
 : UB-PREV= ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   UB-PREV$ a u STR= ;
+   UB-PREV$ a u LINT-STR= ;
 
 : UB-TOK=CI ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   UB-TOK$ a u STR=CI ;
+   UB-TOK$ a u LINT-STR=CI ;
 
 : UB-PREV=CI ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   UB-PREV$ a u STR=CI ;
+   UB-PREV$ a u LINT-STR=CI ;
 
 : UB-SAVE-PREV ( -- )
    UB-TOK-A@ UB-PREV-A!
@@ -243,7 +243,7 @@ variable UB-OUT-FD
    s" ;" UB-TOK= ;
 
 : UB-HOOK-NAME? ( ptr u8 n -- bool )
-   s" CHECK-HOOK" ENDS-WITH? ;
+   s" CHECK-HOOK" LINT-ENDS-WITH? ;
 
 : UB-JSON-BASE ( ptr u8 n -- )
    {: code:ptr codeu:n :}

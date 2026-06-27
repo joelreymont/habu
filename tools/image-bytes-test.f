@@ -1,5 +1,5 @@
 \ image-bytes-test.f - shared executable image byte writer regression.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f src/os/image-bytes.f tools/image-bytes-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f tools/image-bytes-test.f
 
 $20000 constant IBT-CAP
 create IBT-BUF IBT-CAP allot
@@ -28,10 +28,10 @@ TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
 
 : IBT-TEST-LITTLE-ENDIAN ( -- )
    M-RESET
-   $12 M8
-   $3456 M16
-   $789ABCDE M32
-   $1122334455667788 M64
+   $12 IMG-M8
+   $3456 IMG-M16
+   $789ABCDE IMG-M32
+   $1122334455667788 IMG-M64
    M-HERE 15 T=
    3 M-OFF M-LE32@ $789ABCDE T=
    $AABBCCDD 2 M-OFF M-LE32!
@@ -74,7 +74,7 @@ TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
 
 : IBT-PAD-BACK ( -- )
    M-RESET
-   4 M8
+   4 IMG-M8
    0 M-OFF M-PAD-OFF ;
 
 : IBT-NAME-LONG ( -- )
@@ -100,11 +100,11 @@ TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
    s" src/os/linux/elf.f" IBT-LOAD
    s" create MBUF MSIZE allot" IBT-MUST-LACK
    s" variable MP" IBT-MUST-LACK
-   s" : M8" IBT-MUST-LACK
+   s" : IMG-M8" IBT-MUST-LACK
    s" src/os/macos/macho.f" IBT-LOAD
    s" create MBUF MSIZE allot" IBT-MUST-LACK
    s" variable MP" IBT-MUST-LACK
-   s" : M8" IBT-MUST-LACK
+   s" : IMG-M8" IBT-MUST-LACK
    s" variable PHP" IBT-MUST-LACK
    s" : PL!" IBT-MUST-LACK
    s" src/os/macos/sign2.f" IBT-LOAD

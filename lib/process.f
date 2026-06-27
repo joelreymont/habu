@@ -65,10 +65,10 @@ variable PROC-OUTCOME-CODE
    0 dst u LEN>N + c!
    dst ;
 
-: PATHZ ( ptr u8 len -- ptr u8 )
+: PROC-PATHZ ( ptr u8 len -- ptr u8 )
    PROC-PATHZ-BUF PROC-PATHZ-CAP >LEN PROC-ZCOPY ;
 
-: WAIT-STATUS ( pid -- n )
+: PROC-WAIT-STATUS ( pid -- n )
    PROC-WAIT-STATUS-RAW {: status :}
    status 0 < if E-PROC-WAIT throw then
    status ;
@@ -88,22 +88,22 @@ variable PROC-OUTCOME-CODE
 : PROC-STATUS>RC ( n -- rc )
    PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
 
-: WAIT-OUTCOME ( pid -- n n )
-   WAIT-STATUS PROC-STATUS>OUTCOME ;
+: PROC-WAIT-OUTCOME ( pid -- n n )
+   PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 
-: WAIT-RC ( pid -- rc )
-   WAIT-STATUS PROC-STATUS>RC ;
+: PROC-WAIT-RC ( pid -- rc )
+   PROC-WAIT-STATUS PROC-STATUS>RC ;
 
-: SPAWN-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
-   a u PATHZ infd outfd errfd PROC-SPAWN-RAW {: pid :}
+: PROC-SPAWN-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
+   a u PROC-PATHZ infd outfd errfd PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: RUN-RC ( ptr u8 len -- rc )
-   -1 >FD -1 >FD -1 >FD SPAWN-IO WAIT-RC ;
+: PROC-RUN-RC ( ptr u8 len -- rc )
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC ;
 
-: RUN-IO-RC ( ptr u8 len fd fd fd -- rc )
-   SPAWN-IO WAIT-RC ;
+: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- rc )
+   PROC-SPAWN-IO PROC-WAIT-RC ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
    fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;
@@ -178,7 +178,7 @@ variable PROC-OUTCOME-CODE
 
 : PROC-REAP-CAPTURE ( -- )
    PROC-PID @ dup PID>N 0 >= if
-      WAIT-STATUS dup PROC-STATUS !
+      PROC-WAIT-STATUS dup PROC-STATUS !
       dup PROC-STATUS>RC PROC-RC !
       PROC-STATUS>OUTCOME PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
       -1 >PID PROC-PID !
@@ -189,7 +189,7 @@ variable PROC-OUTCOME-CODE
 : PROC-REAP-CAPTURE-TIMEOUT ( -- )
    PROC-PID @ dup PID>N 0 >= if
       dup SIGKILL PROC-KILL-RAW drop
-      WAIT-STATUS PROC-STATUS !
+      PROC-WAIT-STATUS PROC-STATUS !
       -1 >PID PROC-PID !
    else
       drop
@@ -459,7 +459,7 @@ variable PROC-OUTCOME-CODE
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap PROC-CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:ptr :}
+   path pathu PROC-PATHZ {: pathz:ptr :}
    timeout PROC-CAPTURE-BEGIN
    pathz PROC-SPAWN-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
@@ -469,7 +469,7 @@ variable PROC-OUTCOME-CODE
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap PROC-CAPTURE-CHECK-CAPS
-   path pathu PATHZ {: pathz:ptr :}
+   path pathu PROC-PATHZ {: pathz:ptr :}
    timeout PROC-CAPTURE-BEGIN
    pathz PROC-SPAWN-CAPTURE
    out outcap err errcap PROC-RUN-CAPTURE-OUTCOME-LOOP

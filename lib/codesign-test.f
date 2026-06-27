@@ -65,7 +65,7 @@ create CST-ENSURE-BUF FS-PATH-CAP allot
    PROC-ARGV-RESET
    src srcu  >LEN PROC-ARGV+
    dst dstu  >LEN PROC-ARGV+
-   s" /bin/cp" >LEN -1 >FD -1 >FD -1 >FD RUN-ARGV-IO-RC RC>N 0 T= ;
+   s" /bin/cp" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-ARGV-IO-RC RC>N 0 T= ;
 
 : CST-WRITE-SCRIPT ( -- )
    CST-SCRIPT-SRC s" #!/bin/sh\nexit 0\n" WRITE-ALL ;

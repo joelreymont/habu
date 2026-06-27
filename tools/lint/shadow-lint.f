@@ -5,19 +5,21 @@
 \ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/shadow-lint.f
 \ Tokenization is checked; lib.f owns the PAT scanner boundaries.
 
+package SHADOW-LINT-TOOL
+
 create FB 131072 allot                       \ one file at a time
 
 \ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----
 create PNAMES 8192 allot   variable PEND
 $200 constant PMAX
-create POFF PMAX cells allot   create PLEN PMAX cells allot   variable PN#
+create POFF PMAX cells allot   create PRIM-LEN PMAX cells allot   variable PN#
 : ADD-PRIM  ( ptr u8 n -- ) {: a:ptr u :}
-   a  PNAMES PEND @ +  u BMOVE
-   PNAMES PEND @ +  POFF PN# @ cells + !   u PLEN PN# @ cells + !
+   a  PNAMES PEND @ +  u LINT-BMOVE
+   PNAMES PEND @ +  POFF PN# @ cells + !   u PRIM-LEN PN# @ cells + !
    PEND @ u + PEND !   PN# @ 1+ PN# ! ;
 : PRIM?  ( ptr u8 n -- bool ) {: a:ptr u :}   \ case-insensitive membership
    0 begin dup PN# @ < while
-      dup cells POFF + @  over cells PLEN + @  a u STR=CI IF drop LINT-TRUE exit THEN  1+
+      dup cells POFF + @  over cells PRIM-LEN + @  a u LINT-STR=CI IF drop LINT-TRUE exit THEN  1+
    repeat  drop  LINT-FALSE ;
 
 \ token "NAME"" (trailing quote from s" NAME") -> NAME
@@ -31,7 +33,7 @@ variable SI
 : SCAN-PRIMS  ( -- )
    0 PN# !  0 PEND !  3 SI !
    begin SI @ TN# @ < while
-      SI @ TOK s" FPRIM" PREFIX?  SI @ 2 - TOK s" [']" STR= and IF
+      SI @ TOK s" FPRIM" LINT-PREFIX?  SI @ 2 - TOK s" [']" LINT-STR= and IF
          SI @ 3 - TOK TRIMQ ADD-PRIM THEN
       SI @ 1+ SI !
    repeat ;
@@ -39,10 +41,10 @@ variable SI
 \ ---- lint one toolchain file: any defining word whose name is a prim is a SHADOW ----
 variable BAD  variable LI
 : DEF-NAME-OFFSET ( n -- n )
-   dup TOK s" :" STR= IF drop 1 exit THEN
-   dup TOK s" constant" STR=CI IF drop 1 exit THEN
-   dup TOK s" variable" STR=CI IF drop 1 exit THEN
-   dup TOK s" create" STR=CI IF drop 1 exit THEN
+   dup TOK s" :" LINT-STR= IF drop 1 exit THEN
+   dup TOK s" constant" LINT-STR=CI IF drop 1 exit THEN
+   dup TOK s" variable" LINT-STR=CI IF drop 1 exit THEN
+   dup TOK s" create" LINT-STR=CI IF drop 1 exit THEN
    drop 0 ;
 
 : LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu k :}
@@ -72,10 +74,12 @@ variable BAD  variable LI
    s" src/core/sha256.f"    LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
-   s" src/os/macos/sys.f"   LINT-FILE   s" src/os/macos/env.f"   LINT-FILE
+   s" src/os/macos/sys.f"   LINT-FILE
    s" src/os/macos/repl-term.f" LINT-FILE
    s" src/os/linux/layout.f" LINT-FILE   s" src/os/linux/sys.f"   LINT-FILE
-   s" src/os/linux/env.f"   LINT-FILE   s" src/habu/layout.f"    LINT-FILE
+   s" src/os/env-base.f"    LINT-FILE   s" src/os/script-argv.f" LINT-FILE
+   s" src/habu/bundle-argv.f" LINT-FILE
+   s" src/habu/layout.f"    LINT-FILE
    s" src/os/linux/repl-term.f" LINT-FILE
    s" src/habu/treeshake.f" LINT-FILE
    s" src/habu/rt.f"        LINT-FILE   s" src/habu/crash.f"     LINT-FILE
@@ -88,3 +92,4 @@ variable BAD  variable LI
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr  1 die
    ELSE  s" shadow-lint: clean (" type PN# @ . s"  prims checked)" type cr  THEN ;
 SHADOW-LINT
+end-package

@@ -3,8 +3,8 @@
 \ Spawns bin/hb to load lib/ptx/tile-smem-neg.f (a kernel that reads a global span through
 \ SLOAD, which requires a shared span) and asserts the checker REJECTED it: non-zero exit
 \ AND a diagnostic located at 'sload'. This pins the space-shared / space-global
-\ never-unify rule as a reproducible regression. Load after the process libs (lib/fs.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f) and lib/test.f.
+\ never-unify rule as a reproducible regression. Load after lib/memory.f, the process
+\ libs (lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f), and lib/test.f.
 
 create TSN-OUT $2000 allot
 create TSN-ERR $4000 allot

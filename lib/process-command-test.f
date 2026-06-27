@@ -4,7 +4,7 @@
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
-: PCMDT-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
+: PCMDT-PROC-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
    path pathu >LEN timeout >MS PROC-CMD-RUN-RC RC>N ;
 
 : PCMDT-RUN-OUTCOME ( ptr u8 n n -- n n ) {: path:ptr pathu timeout :}
@@ -40,7 +40,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" %s:%s" >LEN PROC-CMD-ARG+
    s" left" >LEN PROC-CMD-ARG+
    s" right" >LEN PROC-CMD-ARG+
-   s" /usr/bin/printf" 1000 PCMDT-RUN-RC 0 T=
+   s" /usr/bin/printf" 1000 PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ s" left:right" T$=
    PCMDT-ERR-LEN 0 T=
    PROC-ARGV-N @ COUNT>N 0 T=
@@ -49,7 +49,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-RUN-STDIN ( -- )
    PROC-CMD-RESET
    s" cmd-stdin" PCMDT-IN!
-   s" /bin/cat" 1000 PCMDT-RUN-RC 0 T=
+   s" /bin/cat" 1000 PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ s" cmd-stdin" T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -58,7 +58,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" 1000 PCMDT-RUN-RC 0 T=
+   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENV-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -67,7 +67,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST=entry" PCMDT-ENV-ENTRY+
-   s" bin/hb" 1000 PCMDT-RUN-RC 0 T=
+   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENTRY-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -75,7 +75,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-RESET
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" 1000 PCMDT-RUN-RC 0 T=
+   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-INHERIT-EXPECTED$ T$= ;
 
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )
@@ -89,7 +89,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-YES-TRUNCATED ( -- )
    PROC-CMD-RESET
-   s" /usr/bin/yes" 1000 PCMDT-RUN-RC drop ;
+   s" /usr/bin/yes" 1000 PCMDT-PROC-RUN-RC drop ;
 
 : PCMDT-TOO-MANY-ARGS ( -- )
    PROC-CMD-RESET

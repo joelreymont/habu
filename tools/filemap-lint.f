@@ -14,7 +14,7 @@ variable FM-NUM-L
 : FM-NL ( -- ) 10 emit ;
 
 : FM-PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" /" CONTAINS? IF LINT-TRUE exit THEN
+   a u s" /" LINT-CONTAINS? IF LINT-TRUE exit THEN
    a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN
@@ -130,6 +130,12 @@ variable FM-NUM-L
    s" tools/signature-lint-core.f" FM-REQ
    s" tools/signature-lint.f" FM-REQ
    s" tools/signature-lint-test.f" FM-REQ
+   s" tools/reserved-name-lint-core.f" FM-REQ
+   s" tools/reserved-name-lint.f" FM-REQ
+   s" tools/reserved-name-lint-test.f" FM-REQ
+   s" tools/duplicate-definition-lint-core.f" FM-REQ
+   s" tools/duplicate-definition-lint.f" FM-REQ
+   s" tools/duplicate-definition-lint-test.f" FM-REQ
    s" tools/aot-lint.f" FM-REQ
    s" tools/aot-lint-test.f" FM-REQ
    s" tools/diag-origin-core.f" FM-REQ

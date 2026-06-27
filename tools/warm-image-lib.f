@@ -4,8 +4,8 @@
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/source.f, and lib/codesign.f.
 
-262144 constant WI-SRC-CAP
-262144 constant WI-CAP
+$40000 constant WI-SRC-CAP
+$40000 constant WI-CAP
 120000 constant WI-TIMEOUT-MS
 64 constant WI-USAGE-RC
 74 constant WI-RC
@@ -16,7 +16,8 @@ create WI-SNAP-BUF FS-PATH-CAP allot
 create WI-OUT-PATH-BUF FS-PATH-CAP allot
 create WI-TRUST-PATH-BUF FS-PATH-CAP allot
 create WI-LF-BUF 1 allot
-10 WI-LF-BUF c!
+create WI-CHAR-BUF 1 allot
+$0a WI-LF-BUF c!
 
 variable WI-SRC-BUF-A
 variable WI-OUT-A
@@ -116,6 +117,35 @@ variable WI-SRC-LEN
    WI-SRC-PATH a u APPEND-FILE
    WI-SRC-PATH WI-LF-BUF 1 APPEND-FILE ;
 
+: WI-SRC-C ( n -- )
+   WI-CHAR-BUF c!
+   WI-SRC-PATH WI-CHAR-BUF 1 APPEND-FILE ;
+
+: WI-SRC$ ( ptr u8 n -- ) {: a:ptr u :}
+   WI-SRC-PATH a u APPEND-FILE ;
+
+: WI-SRC-NL ( -- )
+   WI-SRC-PATH WI-LF-BUF 1 APPEND-FILE ;
+
+: WI-SRC-BL ( -- )
+   $20 WI-SRC-C ;
+
+: WI-SRC-QUOTE ( -- )
+   $22 WI-SRC-C ;
+
+: WI-SRC-SQUOTE ( -- )
+   $73 WI-SRC-C
+   WI-SRC-QUOTE
+   WI-SRC-BL ;
+
+: WI-APPEND-PRELUDE ( -- )
+   WI-SRC-SQUOTE
+   s" SNAP-OUT" WI-SRC$
+   WI-SRC-QUOTE
+   WI-SRC-BL
+   s" HIDE-DEFS-FROM" WI-SRC$
+   WI-SRC-NL ;
+
 : WI-APPEND-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    a u WI-SRC-BUF WI-SRC-CAP READ-ALL WI-SRC-LEN !
    WI-SRC-PATH WI-SRC-BUF WI-SRC-LEN @ APPEND-FILE
@@ -179,30 +209,12 @@ variable WI-SRC-LEN
       WI-I @ 1+ WI-I !
    repeat ;
 
-: WI-TARGET-IMAGE ( -- ptr u8 n )
-   HB-TARGET-LINUX? if s" src/os/linux/elf.f" exit then
-   HB-TARGET-MACOS? if s" src/os/macos/macho.f" exit then
-   s" warm-image: unknown target" WI-RC die ;
-
-: WI-TARGET-LAYOUT ( -- ptr u8 n )
-   HB-TARGET-LINUX? if s" src/os/linux/layout.f" exit then
-   HB-TARGET-MACOS? if s" src/os/macos/layout.f" exit then
-   s" warm-image: unknown target" WI-RC die ;
-
 : WI-APPEND-ARGS ( -- )
    WI-APPEND-SUPPORT-SOURCES
    WI-APPEND-TRUSTS ;
 
 : WI-APPEND-TAIL ( -- )
    s" 0 set-check" WI-LINE
-   s" src/core/roles.f" WI-APPEND-SOURCE
-   s" src/arch/arm64/asm.f" WI-APPEND-SOURCE
-   s" src/arch/arm64/icode.f" WI-APPEND-SOURCE
-   WI-TARGET-LAYOUT WI-APPEND-SOURCE
-   s" src/habu/layout.f" WI-APPEND-SOURCE
-   s" src/os/image-bytes.f" WI-APPEND-SOURCE
-   WI-TARGET-IMAGE WI-APPEND-SOURCE
-   s" src/habu/driver-io.f" WI-APPEND-SOURCE
    s" src/habu/snap.f" WI-APPEND-SOURCE ;
 
 : WI-CHILD-ENV ( -- )
@@ -236,6 +248,7 @@ variable WI-SRC-LEN
    WI-SET-OUT
    WI-SET-TRUST-PATH
    WI-PREPARE
+   WI-APPEND-PRELUDE
    WI-APPEND-ARGS
    WI-APPEND-TAIL
    WI-RUN-CHILD

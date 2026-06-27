@@ -431,14 +431,14 @@ variable GJA-DIRECT
 
 : GJA-ALL-ROW0 ( n -- )
    dup GJA-DIAG-COMMON
-   dup s" word" GJA-REQ s" bad1" GJA-ASSERT-STR
+   dup s" word" GJA-REQ s" gdx-ae-bad1" GJA-ASSERT-STR
    dup s" code" GJA-REQ s" E-MISMATCH" GJA-ASSERT-STR
    dup s" repair_class" GJA-REQ s" remove_producer" GJA-ASSERT-STR
    GJA-DIAG-DSTACK ;
 
 : GJA-ALL-ROW1 ( n -- )
    dup GJA-DIAG-COMMON
-   dup s" word" GJA-REQ s" bad2" GJA-ASSERT-STR
+   dup s" word" GJA-REQ s" gdx-ae-bad2" GJA-ASSERT-STR
    dup s" code" GJA-REQ s" E-REJECTED" GJA-ASSERT-STR
    dup s" repair_class" GJA-REQ s" fix_return_stack" GJA-ASSERT-STR
    s" return_stack" GJA-REQ s" actual" GJA-REQ GJA-NONEMPTY-STR ;

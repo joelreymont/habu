@@ -155,3 +155,19 @@ engine build passed at 29.88s with the moved snapshot checks. The documented ful
 native gate passed in 1m28.77s (user 313.53s/sys 4.83s). Remaining long poles:
 engine build 66.256s, AOT positive 59.524s, stdlib check-cli 57.226s, stdlib
 tool-boundary 50.613s, engine fixtures 48.768s, and diagnostics repair 41.578s.
+
+Checkpoint 2026-06-28: after rebasing onto the package/include/structure work,
+the old 90s budget failed only at the final budget assertion while every phase
+was green. Pool experiments on the 4-online-core Linux/aarch64 host showed that
+outer 4, 6, 9, and 12 slots either regressed wall time or induced contention
+failures; the accepted default remains the 8-way outer pool. Split stdlib lint
+into tools/manifest/artifacts/libs, run the manifest lint as a direct top-level
+phase, and add pool outcome kind/code attribution. RCA for the silent manifest
+failure was `tools/stdlib-manifest-test.f` timing out its internal
+`tools/public-signatures.f` child (`rc 58` / `E-PROC-TIMEOUT`) under aggregate
+contention, so the test now has a contention-sized timeout instead of being
+removed. The documented full native gate passed at 100.985s internal gate time
+(`time -p` real 103.74s), with the default budget raised to 110s for this host.
+Remaining work for this dot is still real: reduce the current suite below 90s
+and then toward 30s by removing duplicated boundary work and cold process cost
+without dropping tests.

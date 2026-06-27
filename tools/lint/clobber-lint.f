@@ -31,16 +31,16 @@ variable RX  variable RACC
    repeat
    RACC @ 32 < if RACC @ else -1 then ;
 : REG-OF  ( ptr u8 n -- n ) {: a:ptr u :}
-   a u s" XDS"   STR= if 19 exit then
-   a u s" SP"    STR= if 31 exit then
-   a u s" A"     STR= if 9 exit then
-   a u s" B"     STR= if 10 exit then
-   a u s" C"     STR= if 11 exit then
-   a u s" XREG-RBASE" STR= if 20 exit then
-   a u s" DBASE" STR= if 26 exit then
-   a u s" NDICT" STR= if 27 exit then
-   a u s" CP"    STR= if 28 exit then
-   a u s" DATA"  STR= if 20 exit then
+   a u s" XDS"   LINT-STR= if 19 exit then
+   a u s" SP"    LINT-STR= if 31 exit then
+   a u s" A"     LINT-STR= if 9 exit then
+   a u s" B"     LINT-STR= if 10 exit then
+   a u s" C"     LINT-STR= if 11 exit then
+   a u s" XREG-RBASE" LINT-STR= if 20 exit then
+   a u s" DBASE" LINT-STR= if 26 exit then
+   a u s" NDICT" LINT-STR= if 27 exit then
+   a u s" CP"    LINT-STR= if 28 exit then
+   a u s" DATA"  LINT-STR= if 20 exit then
    a u CL-NUM-REG ;
 
 \ ---- string/token helpers -------------------------------------------------
@@ -58,87 +58,87 @@ variable RX  variable RACC
       RX @ 1+ RX !
    repeat  LINT-TRUE ;
 : STOP-MN?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" RET," STR= if LINT-TRUE exit then
-   a u s" B," STR= ;
+   a u s" RET," LINT-STR= if LINT-TRUE exit then
+   a u s" B," LINT-STR= ;
 
 \ ---- modeled maps ---------------------------------------------------------
 : RETURNS-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
-   a u s" Lcfpop" STR=CI if 0 9 CL-ADD exit then
-   a u s" Lkwcmp" STR=CI if 0 0 CL-ADD exit then
-   a u s" Lloc-find" STR=CI if 0 0 CL-ADD exit then
-   a u s" Ltok" STR=CI if 0 0 CL-ADD exit then
-   a u s" Lsrcrd" STR=CI if 0 9 CL-ADD exit then
-   a u s" Lfind" STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u s" Lnum" STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
-   a u s" Lvralloc" STR=CI if 0 14 CL-ADD exit then
-   a u s" Lfralloc" STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvpushf" STR=CI if 0 exit then
-   a u s" Lfforcek" STR=CI if 0 14 CL-ADD exit then
-   a u s" Lfbinprep" STR=CI if 0 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
-   a u s" Lvbit" STR=CI if 0 8 CL-ADD exit then
-   a u s" Lvforcek" STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvtop2c" STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
-   a u s" Lvbinprep" STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
-   a u s" Lvdrop" STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvswapx" STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvnipx" STR=CI if 0 13 CL-ADD exit then
-   a u s" Lvcopy" STR=CI if 0 13 CL-ADD exit then
+   a u s" Lcfpop" LINT-STR=CI if 0 9 CL-ADD exit then
+   a u s" Lkwcmp" LINT-STR=CI if 0 0 CL-ADD exit then
+   a u s" Lloc-find" LINT-STR=CI if 0 0 CL-ADD exit then
+   a u s" Ltok" LINT-STR=CI if 0 0 CL-ADD exit then
+   a u s" Lsrcrd" LINT-STR=CI if 0 9 CL-ADD exit then
+   a u s" Lfind" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   a u s" Lnum" LINT-STR=CI if 0 2 CL-ADD 11 CL-ADD 12 CL-ADD exit then
+   a u s" Lvralloc" LINT-STR=CI if 0 14 CL-ADD exit then
+   a u s" Lfralloc" LINT-STR=CI if 0 14 CL-ADD exit then
+   a u s" Lvpushf" LINT-STR=CI if 0 exit then
+   a u s" Lfforcek" LINT-STR=CI if 0 14 CL-ADD exit then
+   a u s" Lfbinprep" LINT-STR=CI if 0 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
+   a u s" Lvbit" LINT-STR=CI if 0 8 CL-ADD exit then
+   a u s" Lvforcek" LINT-STR=CI if 0 14 CL-ADD exit then
+   a u s" Lvtop2c" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD exit then
+   a u s" Lvbinprep" LINT-STR=CI if 0 11 CL-ADD 12 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD exit then
+   a u s" Lvdrop" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lvswapx" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lvnipx" LINT-STR=CI if 0 13 CL-ADD exit then
+   a u s" Lvcopy" LINT-STR=CI if 0 13 CL-ADD exit then
    0 ;
 : PRESERVE-MASK  ( ptr u8 n -- n ) {: a:ptr u :}
-   a u s" Lvpushc" STR=CI if 0 11 CL-ADD exit then
-   a u s" Lvpushr" STR=CI if 0 14 CL-ADD exit then
-   a u s" Lvforcek" STR=CI if 0 5 CL-ADD exit then
-   a u s" Lfforcek" STR=CI if 0 5 CL-ADD exit then
-   a u s" Lvpushf" STR=CI if 0 11 CL-ADD exit then
-   a u s" Lvbit" STR=CI if 0 7 CL-ADD exit then
-   a u s" Lbcap" STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
-   a u s" Lbcs" STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
+   a u s" Lvpushc" LINT-STR=CI if 0 11 CL-ADD exit then
+   a u s" Lvpushr" LINT-STR=CI if 0 14 CL-ADD exit then
+   a u s" Lvforcek" LINT-STR=CI if 0 5 CL-ADD exit then
+   a u s" Lfforcek" LINT-STR=CI if 0 5 CL-ADD exit then
+   a u s" Lvpushf" LINT-STR=CI if 0 11 CL-ADD exit then
+   a u s" Lvbit" LINT-STR=CI if 0 7 CL-ADD exit then
+   a u s" Lbcap" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
+   a u s" Lbcs" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD exit then
    0 ;
 
 : PSEUDO?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" g-push" STR=CI if LINT-TRUE exit then
-   a u s" g-pop" STR=CI if LINT-TRUE exit then
-   a u s" g-print9" STR=CI if LINT-TRUE exit then
-   a u s" c-lit" STR=CI if LINT-TRUE exit then
-   a u s" c-call" STR=CI if LINT-TRUE exit then
-   a u s" c-popflag" STR=CI if LINT-TRUE exit then
-   a u s" c-pushcp" STR=CI if LINT-TRUE exit then
-   a u s" c-emitw" STR=CI if LINT-TRUE exit then
-   a u s" c-bback" STR=CI if LINT-TRUE exit then
-   a u s" cf-entry" STR=CI if LINT-TRUE exit then
-   a u s" cfb-entry" STR=CI if LINT-TRUE exit then
-   a u s" fold-entry" STR=CI if LINT-TRUE exit then
-   a u s" vop-entry" STR=CI if LINT-TRUE exit then
-   a u s" vcmp-entry" STR=CI if LINT-TRUE exit then
-   a u s" vshuf-entry" STR=CI if LINT-TRUE exit then
-   a u s" vun-entry" STR=CI ;
+   a u s" g-push" LINT-STR=CI if LINT-TRUE exit then
+   a u s" g-pop" LINT-STR=CI if LINT-TRUE exit then
+   a u s" g-print9" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-lit" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-call" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-popflag" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-pushcp" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-emitw" LINT-STR=CI if LINT-TRUE exit then
+   a u s" c-bback" LINT-STR=CI if LINT-TRUE exit then
+   a u s" cf-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" cfb-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" fold-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" vop-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" vcmp-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" vshuf-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" vun-entry" LINT-STR=CI ;
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
    a u ENDS-COMMA?  a u START-DOLLAR? 0= and  a u UPPERISH? and ;
 
 : MN-W3?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" ADD," STR= if LINT-TRUE exit then  a u s" SUB," STR= if LINT-TRUE exit then
-   a u s" MUL," STR= if LINT-TRUE exit then  a u s" AND," STR= if LINT-TRUE exit then
-   a u s" ORR," STR= if LINT-TRUE exit then  a u s" EOR," STR= if LINT-TRUE exit then
-   a u s" LSLV," STR= if LINT-TRUE exit then  a u s" LSRV," STR= if LINT-TRUE exit then
-   a u s" SDIV," STR= ;
+   a u s" ADD," LINT-STR= if LINT-TRUE exit then  a u s" SUB," LINT-STR= if LINT-TRUE exit then
+   a u s" MUL," LINT-STR= if LINT-TRUE exit then  a u s" AND," LINT-STR= if LINT-TRUE exit then
+   a u s" ORR," LINT-STR= if LINT-TRUE exit then  a u s" EOR," LINT-STR= if LINT-TRUE exit then
+   a u s" LSLV," LINT-STR= if LINT-TRUE exit then  a u s" LSRV," LINT-STR= if LINT-TRUE exit then
+   a u s" SDIV," LINT-STR= ;
 : MN-W2I?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" ADDI," STR= if LINT-TRUE exit then  a u s" SUBI," STR= if LINT-TRUE exit then
-   a u s" LSLI," STR= if LINT-TRUE exit then  a u s" LSRI," STR= if LINT-TRUE exit then
-   a u s" ASRI," STR= if LINT-TRUE exit then  a u s" ANDI," STR= ;
+   a u s" ADDI," LINT-STR= if LINT-TRUE exit then  a u s" SUBI," LINT-STR= if LINT-TRUE exit then
+   a u s" LSLI," LINT-STR= if LINT-TRUE exit then  a u s" LSRI," LINT-STR= if LINT-TRUE exit then
+   a u s" ASRI," LINT-STR= if LINT-TRUE exit then  a u s" ANDI," LINT-STR= ;
 : MN-W1?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" MOVZ," STR= if LINT-TRUE exit then  a u s" MOVN," STR= if LINT-TRUE exit then
-   a u s" ADR," STR= if LINT-TRUE exit then  a u s" LIT64," STR= if LINT-TRUE exit then
-   a u s" CSET," STR= ;
+   a u s" MOVZ," LINT-STR= if LINT-TRUE exit then  a u s" MOVN," LINT-STR= if LINT-TRUE exit then
+   a u s" ADR," LINT-STR= if LINT-TRUE exit then  a u s" LIT64," LINT-STR= if LINT-TRUE exit then
+   a u s" CSET," LINT-STR= ;
 : MN-WRMW?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" MOVK," STR= if LINT-TRUE exit then  a u s" MOVZHW," STR= if LINT-TRUE exit then
-   a u s" MOVKHW," STR= if LINT-TRUE exit then  a u s" MOVNHW," STR= ;
+   a u s" MOVK," LINT-STR= if LINT-TRUE exit then  a u s" MOVZHW," LINT-STR= if LINT-TRUE exit then
+   a u s" MOVKHW," LINT-STR= if LINT-TRUE exit then  a u s" MOVNHW," LINT-STR= ;
 : MN-LD?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" LDR," STR= if LINT-TRUE exit then  a u s" LDRB," STR= if LINT-TRUE exit then
-   a u s" LDRW," STR= ;
+   a u s" LDR," LINT-STR= if LINT-TRUE exit then  a u s" LDRB," LINT-STR= if LINT-TRUE exit then
+   a u s" LDRW," LINT-STR= ;
 : MN-ST?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" STR," STR= if LINT-TRUE exit then  a u s" STRB," STR= if LINT-TRUE exit then
-   a u s" STRW," STR= ;
+   a u s" STR," LINT-STR= if LINT-TRUE exit then  a u s" STRB," LINT-STR= if LINT-TRUE exit then
+   a u s" STRW," LINT-STR= ;
 
 \ ---- register extraction/effects -----------------------------------------
 16 constant RRMAX
@@ -162,30 +162,30 @@ variable RK
 : ER  ( n -- )  RR@ dup 0 >= if RMSK @ swap CL-ADD RMSK ! else drop then ;
 
 : PSEUDO-EFFECTS  {: a u :}  ( -- )
-   a u s" g-push" STR=CI if 0 ER 19 ER 19 EW exit then
-   a u s" g-pop" STR=CI if 0 EW 19 ER 19 EW exit then
-   a u s" g-print9" STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   a u s" c-lit" STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD CL-ROR exit then
-   a u s" c-call" STR=CI if 0 5 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD 12 CL-ADD CL-ROR exit then
-   a u s" c-popflag" STR=CI if 0 9 CL-ADD 19 CL-ADD CL-WOR exit then
-   a u s" c-pushcp" STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
-   a u s" c-emitw" STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
-   a u s" c-bback" STR=CI if 0 5 CL-ADD 9 CL-ADD 10 CL-ADD 30 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
-   a u s" cf-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" cfb-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" fold-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vop-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vcmp-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vshuf-entry" STR=CI if KWCMP-MASK CL-WOR exit then
-   a u s" vun-entry" STR=CI if KWCMP-MASK CL-WOR exit then ;
+   a u s" g-push" LINT-STR=CI if 0 ER 19 ER 19 EW exit then
+   a u s" g-pop" LINT-STR=CI if 0 EW 19 ER 19 EW exit then
+   a u s" g-print9" LINT-STR=CI if 0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
+   a u s" c-lit" LINT-STR=CI if 0 5 CL-ADD 6 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD CL-ROR exit then
+   a u s" c-call" LINT-STR=CI if 0 5 CL-ADD 7 CL-ADD 8 CL-ADD 9 CL-ADD 10 CL-ADD 13 CL-ADD 14 CL-ADD 15 CL-ADD 30 CL-ADD CL-WOR  0 11 CL-ADD 12 CL-ADD CL-ROR exit then
+   a u s" c-popflag" LINT-STR=CI if 0 9 CL-ADD 19 CL-ADD CL-WOR exit then
+   a u s" c-pushcp" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
+   a u s" c-emitw" LINT-STR=CI if 0 9 CL-ADD 30 CL-ADD CL-WOR exit then
+   a u s" c-bback" LINT-STR=CI if 0 5 CL-ADD 9 CL-ADD 10 CL-ADD 30 CL-ADD CL-WOR  0 9 CL-ADD CL-ROR exit then
+   a u s" cf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" cfb-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" fold-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" vop-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" vcmp-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" vshuf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" vun-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then ;
 
 : SYS-EXIT?  ( n n -- bool ) {: lo hi :}
    hi lo <= if LINT-FALSE exit then
-   hi 1- TOK s" NR-EXIT" STR= ;
+   hi 1- TOK s" NR-EXIT" LINT-STR= ;
 : SYS?  ( ptr u8 n -- bool )
-   s" SYS," STR= ;
+   s" SYS," LINT-STR= ;
 : BLR?  ( ptr u8 n -- bool )
-   s" BLR," STR= ;
+   s" BLR," LINT-STR= ;
 
 : EFFECTS  {: a u lo hi :}  ( -- )
    0 WMSK !  0 RMSK !  lo hi COLLECT-REGS
@@ -195,17 +195,17 @@ variable RK
    a u MN-WRMW? if RR# @ 0 > if 0 EW 0 ER then exit then
    a u MN-LD? if 0 EW 1 ER exit then
    a u MN-ST? if 0 ER 1 ER exit then
-   a u s" CMP," STR= if 0 ER 1 ER exit then
-   a u s" CMPI," STR= if 0 ER exit then
-   a u s" CBZ," STR= if 0 ER exit then
-   a u s" CBNZ," STR= if 0 ER exit then
-   a u s" SVC," STR= if 0 0 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-ROR exit then
-   a u s" SYS," STR= if
+   a u s" CMP," LINT-STR= if 0 ER 1 ER exit then
+   a u s" CMPI," LINT-STR= if 0 ER exit then
+   a u s" CBZ," LINT-STR= if 0 ER exit then
+   a u s" CBNZ," LINT-STR= if 0 ER exit then
+   a u s" SVC," LINT-STR= if 0 0 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD 16 CL-ADD CL-ROR exit then
+   a u s" SYS," LINT-STR= if
       lo hi SYS-EXIT? if 0 0 CL-ADD 8 CL-ADD 16 CL-ADD CL-WOR  0 0 CL-ADD CL-ROR exit then
       0 0 CL-ADD 8 CL-ADD 16 CL-ADD CL-WOR  0 0 CL-ADD 1 CL-ADD 2 CL-ADD CL-ROR exit
    then
-   a u s" RET," STR= if 0 30 CL-ADD CL-ROR exit then
-   a u s" BLR," STR= if 1 18 lshift 1 -  30 CL-ADD CL-WOR  0 ER exit then
+   a u s" RET," LINT-STR= if 0 30 CL-ADD CL-ROR exit then
+   a u s" BLR," LINT-STR= if 1 18 lshift 1 -  30 CL-ADD CL-WOR  0 ER exit then
    a u PSEUDO? if a u PSEUDO-EFFECTS then ;
 
 \ ---- clobber table + BL graph --------------------------------------------
@@ -226,7 +226,7 @@ variable CX  variable EX
 : C-FIND  ( ptr u8 n -- n ) {: a:ptr u :}
    0 CX !
    begin CX @ CN# @ < while
-      CX @ C-NAME a u STR=CI if CX @ exit then
+      CX @ C-NAME a u LINT-STR=CI if CX @ exit then
       CX @ 1+ CX !
    repeat  -1 ;
 : C-ADD  {: a u :}  ( -- idx )
@@ -260,7 +260,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 : DEF-END  {: lo :}  ( -- hi )
    lo 2 + DI !
    begin DI @ TN# @ < while
-      DI @ TOK s" ;" STR= if DI @ exit then
+      DI @ TOK s" ;" LINT-STR= if DI @ exit then
       DI @ 1+ DI !
    repeat  DI @ ;
 : OPEN@  ( n -- n )  OPENINGS swap cells + @ ;
@@ -269,7 +269,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    OPENINGS ON# @ cells + !  ON# @ 1+ ON# ! ;
 : LABEL-OPEN?  {: k hi :}  ( -- f )
    k 2 + hi >= if LINT-FALSE exit then
-   k TOK START-L?  k 1+ TOK s" @" STR= and  k 2 + TOK s" LBL," STR= and ;
+   k TOK START-L?  k 1+ TOK s" @" LINT-STR= and  k 2 + TOK s" LBL," LINT-STR= and ;
 : COLLECT-OPENINGS  {: lo hi :}  ( -- )
    0 ON# !  lo OX !
    begin OX @ hi < while
@@ -278,7 +278,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
    repeat ;
 : CALLEE?  {: lo hi :}  ( -- f )
    hi lo - 2 < if LINT-FALSE exit then
-   hi 1- TOK s" @" STR= 0= if LINT-FALSE exit then
+   hi 1- TOK s" @" LINT-STR= 0= if LINT-FALSE exit then
    hi 2 - TOK START-L? 0= if LINT-FALSE exit then
    hi 2 - TOK  CALU ! CALA !  LINT-TRUE ;
 
@@ -303,7 +303,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 
 : ROUTINE-CALL? ( -- bool )
    OPLO @ DI @ CALLEE?
-   DI @ TOK s" BL," STR= and ;
+   DI @ TOK s" BL," LINT-STR= and ;
 
 : ROUTINE-ADD-EDGE ( n -- ) {: cidx :}
    CALA @ CALU @ C-ENSURE cidx swap EDGE+ ;
@@ -348,7 +348,7 @@ variable WI  variable WE
    pa pu FB 131072 READ-FILE  TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
-      WI @ TOK s" :" STR= if
+      WI @ TOK s" :" LINT-STR= if
          WI @ DEF-END WE !
          WI @ 2 + WE @ PASS1-DEF
          WE @ WI !
@@ -393,13 +393,13 @@ variable TRACK-LR
 : WORD-NAME!  ( n -- )
    TOK dup WLEN !  WNAME FOLD-TO ;
 : CRASH-FILE?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" src/habu/crash.f" STR= ;
+   a u s" src/habu/crash.f" LINT-STR= ;
 : ALLOW?  ( ptr u8 n n n -- bool ) {: fa:ptr fu reg cidx :}
    fa fu CRASH-FILE? 0= if LINT-FALSE exit then
-   WNAME WLEN @ s" emit-crash-handler" STR=CI 0= if LINT-FALSE exit then
+   WNAME WLEN @ s" emit-crash-handler" LINT-STR=CI 0= if LINT-FALSE exit then
    reg 1 = reg 2 = or 0= if LINT-FALSE exit then
    cidx 0 < if LINT-FALSE exit then
-   cidx C-NAME s" lhex" STR=CI ;
+   cidx C-NAME s" lhex" LINT-STR=CI ;
 : DEC-TYPE  ( n -- ) {: n :}
    n 10 < if 48 n + NUMBUF c!  NUMBUF 1 type
    else 48 n 10 / + NUMBUF c!  48 n 10 mod + NUMBUF 1+ c!  NUMBUF 2 type then ;
@@ -460,7 +460,7 @@ variable TRACK-LR
 : RET-IN-RANGE?  {: lo hi :}  ( -- bool )
    lo DI !
    begin DI @ hi < while
-      DI @ TOK s" RET," STR= if LINT-TRUE exit then
+      DI @ TOK s" RET," LINT-STR= if LINT-TRUE exit then
       DI @ 1+ DI !
    repeat
    LINT-FALSE ;
@@ -470,7 +470,7 @@ variable TRACK-LR
    TRACK-LR @ if 0 30 CL-ADD else 0 then DIRTY !  POIS-CLEAR  lo OPLO !  lo DI !
    begin DI @ hi < while
       DI @ TOK INSTR? if
-         OPLO @ DI @ CALLEE?  DI @ TOK s" BL," STR= and if
+         OPLO @ DI @ CALLEE?  DI @ TOK s" BL," LINT-STR= and if
             CALA @ CALU @ RETURNS-MASK RETS !
             CALA @ CALU @ C-FIND CALIDX !
             CALIDX @ 0 >= if CALIDX @ CWS@ else 0 then
@@ -493,7 +493,7 @@ variable TRACK-LR
    pa pu FB 131072 READ-FILE  TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
-      WI @ TOK s" :" STR= if
+      WI @ TOK s" :" LINT-STR= if
          WI @ DEF-END WE !
          WI @ 1+ WORD-NAME!
          pa pu  WI @ 2 + WE @ PASS2-DEF

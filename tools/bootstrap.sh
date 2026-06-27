@@ -24,16 +24,16 @@ export HABU_TARGET
 
 case "$HABU_TARGET" in
   macos-aarch64)
+    OS_TARGET=src/os/macos/target.f
     OS_LAYOUT=src/os/macos/layout.f
     OS_SYS=src/os/macos/sys.f
-    OS_ENV=src/os/macos/env.f
     OS_IMAGE=src/os/macos/macho.f
     OS_SIGN=src/os/macos/sign2.f
     ;;
   linux-aarch64)
+    OS_TARGET=src/os/linux/target.f
     OS_LAYOUT=src/os/linux/layout.f
     OS_SYS=src/os/linux/sys.f
-    OS_ENV=src/os/linux/env.f
     OS_IMAGE=src/os/linux/elf.f
     OS_SIGN=src/os/linux/sign.f
     ;;
@@ -63,15 +63,20 @@ else
 fi
 
 SRC_COMMON=(
+  src/core/roles.f
+  "$OS_TARGET"
   src/arch/arm64/asm.f
   src/arch/arm64/icode.f
   src/arch/arm64/mnem.f
   "$OS_LAYOUT"
   "$OS_SYS"
   src/habu/layout.f
-  "$OS_ENV"
+  src/os/env-base.f
+  src/os/script-argv.f
+  src/core/include.f
+  src/core/structures.f
+  src/core/enums.f
   src/core/sha256.f
-  src/core/roles.f
   src/core/combinators.f
   src/habu/treeshake.f
   src/habu/rt.f
@@ -87,10 +92,72 @@ SRC_COMMON=(
   src/habu/xref.f
 )
 
+emit_boot_hide() {
+  cat >> "$1" <<'EOF'
+TRUSTED: BOOT-N>REC ( n -- ptr a ) ;
+TRUSTED: BOOT-A>U8 ( ptr a -- ptr u8 ) ;
+TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
+$0 constant BOOT-XREF-START-SLOT
+$2 constant BOOT-XREF-FLAGS-SLOT
+$3 constant BOOT-XREF-NAME-SLOT
+: BOOT-XREF-REC ( n -- ptr a )
+   DREC * dbase@ + BOOT-N>REC ;
+: BOOT-XREF-CELL@ ( ptr a n -- n )
+   cells + @ ;
+: BOOT-XREF-PTR@ ( ptr a n -- ptr u8 )
+   BOOT-XREF-CELL@ BOOT-N>U8 ;
+: BOOT-XREF-START ( ptr a -- n )
+   BOOT-XREF-START-SLOT BOOT-XREF-CELL@ ;
+: BOOT-XREF-FLAGS ( ptr a -- n )
+   BOOT-XREF-FLAGS-SLOT BOOT-XREF-CELL@ ;
+: BOOT-XREF-NAME-LEN ( ptr a -- n )
+   BOOT-XREF-FLAGS DNAME-LEN-MASK and ;
+: BOOT-XREF-EXT? ( ptr a -- bool )
+   BOOT-XREF-FLAGS DNAME-EXT and 0= 0= ;
+: BOOT-XREF-INLINE-NAME ( ptr a -- ptr u8 )
+   $18 + BOOT-A>U8 ;
+: BOOT-XREF-NAME-A ( ptr a -- ptr u8 ) {: rec:ptr :}
+   rec BOOT-XREF-EXT? if rec BOOT-XREF-NAME-SLOT BOOT-XREF-PTR@ exit then
+   rec BOOT-XREF-INLINE-NAME ;
+: BOOT-XREF-NAME$ ( ptr a -- ptr u8 n ) {: rec:ptr :}
+   rec BOOT-XREF-NAME-A
+   rec BOOT-XREF-NAME-LEN ;
+: BOOT-XREF-FOLD-C ( n -- n ) {: c:n :}
+   c $41 < if c exit then
+   c $5A > if c exit then
+   c $20 or ;
+: BOOT-XREF-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> if 0 0= 0= exit then
+   0 begin dup u < while
+      dup a + c@ BOOT-XREF-FOLD-C
+      over b + c@ BOOT-XREF-FOLD-C <> if drop 0 0= 0= exit then
+      1+
+   repeat drop
+   0 0= ;
+: BOOT-XREF-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
+   rec BOOT-XREF-NAME$ name u BOOT-XREF-STR=CI ;
+: BOOT-XREF-FIND-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
+   ndict@ 1-
+   begin dup 0 >= while
+      dup BOOT-XREF-REC name u BOOT-XREF-MATCH? if exit then
+      1-
+   repeat drop
+   -1 ;
+: BOOT-HIDE-DICT-FROM ( ptr u8 n -- )
+   BOOT-XREF-FIND-INDEX dup 0 < if s" bootstrap: hide word not found" 76 die then
+   ndict! ;
+s" T-CON" BOOT-HIDE-DICT-FROM
+EOF
+}
+
 emit_src() {
   local out="$1"
   local driver="$2"
+  local mode="${3:-seed}"
   : > "$out"
+  if [[ "$mode" == "native" ]]; then
+    emit_boot_hide "$out"
+  fi
   printf "0 set-check\n" >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
@@ -113,6 +180,7 @@ emit_src() {
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-EXE bye"
 
+emit_src "$T/stage2-src" src/habu/stage2.f native
 env HB_TMP="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stage"
@@ -136,7 +204,7 @@ if [[ "$found" != "1" ]]; then
   exit 74
 fi
 
-emit_src "$T/stage2-src" src/habu/stdin.f
+emit_src "$T/stage2-src" src/habu/stdin.f native
 rm -f "$T/stage2-got" "$T/hb-stdin-got"
 env HB_TMP="$T" "$T/hb-stage" -- "$T"
 test -f "$T/stage2-got"
@@ -148,7 +216,7 @@ test -f "$T/hb-stdin-got"
 mv "$T/hb-stdin-got" "$T/hb-stdin"
 chmod +x "$T/hb-stdin"
 
-emit_src "$T/hb-snap-src" src/habu/snap.f
+emit_src "$T/hb-snap-src" src/habu/snap.f native
 rm -f "$T/hb-snap0" "$T/hb-new"
 env HB_TMP="$T" "$T/hb-stdin" < "$T/hb-snap-src"
 test -f "$T/hb-snap0"

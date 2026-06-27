@@ -79,7 +79,7 @@ variable PCT-I
    PCT-RESET
    s" rel.txt"  >LEN PROC-ARGV+
    s" /bin/cat" >LEN s" /no/such/habu-process-cwd-test" >LEN -1 >FD -1 >FD -1 >FD
-   SPAWN-ARGV-ENV-CWD-IO drop ;
+   PROC-SPAWN-ARGV-ENV-CWD-IO drop ;
 
 : PCT-RUN-MISSING-CWD ( -- )
    [: PCT-MISSING-CWD ;] E-PROC-SPAWN TTHROWSQ

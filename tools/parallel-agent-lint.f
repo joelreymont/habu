@@ -33,7 +33,7 @@ variable PAL-NUM-L
    PAL-BAD @ 1+ PAL-BAD ! ;
 
 : PAL-REQ {: a u :} ( ptr u8 n -- )
-   PAL-BUF PAL-LEN @ a u CONTAINS? 0= IF a u PAL-MISSING THEN ;
+   PAL-BUF PAL-LEN @ a u LINT-CONTAINS? 0= IF a u PAL-MISSING THEN ;
 
 : PARALLEL-AGENT-LINT ( -- )
    0 PAL-BAD !

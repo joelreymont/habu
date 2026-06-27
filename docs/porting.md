@@ -13,13 +13,14 @@ Each target owns these files under `src/os/<target>/`:
   closed target set.
 - `layout.f` — executable/data virtual addresses and image layout constants.
 - `sys.f` — raw syscall numbers and `SYS, ( n -- )`.
-- `env.f` — argv/envp access over startup-captured DATA cells.
 - `repl-term.f` — terminal ioctl, raw-mode, and termios offsets for baked REPLs.
 - image builder and signer — `elf.f`/`sign.f` on Linux, `macho.f`/`sign2.f` on
   macOS.
 
-The common engine layout lives in `src/habu/layout.f`. Standard source prefixes
-load it before target env code; do not duplicate fixed DATA offsets in env,
+The common engine layout lives in `src/habu/layout.f`. Startup argv/envp access is
+shared in `src/os/env-base.f`; `src/os/script-argv.f` owns the `bin/hb --load`
+argument convention, and `src/habu/bundle-argv.f` owns standalone bundle
+arguments. Do not add per-target env files or duplicate fixed DATA offsets in
 REPL, stepper, debugger, or tool support files.
 
 ## Source Selection

@@ -47,31 +47,6 @@ s" HB@" s" -- ptr u8" TRUST
 : HUNKNOWN-TARGET ( -- )
    s" hb: unknown target" 76 die ;
 
-: READ-REPL-PREFIX ( -- )
-   s" src/core/util.f" HFILE
-   HB-TARGET-LINUX? IF
-      s" src/os/linux/target.f" HFILE
-   ELSE HB-TARGET-MACOS? IF
-      s" src/os/macos/target.f" HFILE
-   ELSE
-      HUNKNOWN-TARGET
-   THEN
-   THEN
-   s" src/core/checker.f" HFILE
-   s" src/core/render.f" HFILE
-   s" src/habu/layout.f" HFILE
-   HB-TARGET-LINUX? IF
-      s" src/os/linux/env.f" HFILE
-   ELSE HB-TARGET-MACOS? IF
-      s" src/os/macos/env.f" HFILE
-   ELSE
-      HUNKNOWN-TARGET
-   THEN
-   THEN
-   s" src/core/check-hook.f" HFILE
-   s" src/core/roles.f" HFILE
-   s" src/core/combinators.f" HFILE ;
-
 : READ-REPL-TARGET ( -- )
    HB-TARGET-LINUX? IF
       s" src/os/linux/repl-term.f" HFILE
@@ -84,8 +59,6 @@ s" HB@" s" -- ptr u8" TRUST
 
 : READ-REPL ( -- )
    here HB !  HMAX allot  0 HL !
-   s" 0 set-check" HLINE
-   READ-REPL-PREFIX
    s" 0 set-check" HLINE
    READ-REPL-TARGET
    REPL-SRC PATH0 RD-1

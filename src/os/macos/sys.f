@@ -2,14 +2,6 @@
 \ Engine emitters say
 \ `NR-WRITE SYS,`; porting to another OS/arch swaps this file.
 
-: HB-TARGET-LINUX? ( -- bool )
-   0 0= 0= ;
-
-: HB-TARGET-MACOS? ( -- bool )
-   0 0= ;
-
-: HB-TARGET-KNOWN? ( -- bool )
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or ;
 $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
 

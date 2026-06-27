@@ -1,6 +1,6 @@
 \ source.f - checked source materialization helpers.
 \
-\ Load after lib/errors.f, lib/string.f, and lib/fs.f.
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, and lib/fs.f.
 
 $20000 constant SOURCE-CAP
 1 constant SOURCE-PROBE-CAP
@@ -10,10 +10,10 @@ $20000 constant SOURCE-CAP
 13 constant SOURCE-CR
 32 constant SOURCE-SPACE
 
-create SOURCE-BUF SOURCE-CAP allot
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
 create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
 
+variable SOURCE-BUF-A
 variable SOURCE-LEN
 variable SOURCE-RD
 variable SOURCE-I
@@ -25,6 +25,22 @@ variable SOURCE-LS-FD
 variable SOURCE-LS-RD
 variable SOURCE-LS-LEN
 variable SOURCE-LS-LINE#
+
+: SOURCE-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: SOURCE-PTR-U8@ ( ptr a -- ptr u8 )
+   SOURCE-PTR-U8-FIELD @ ;
+
+: SOURCE-PTR-U8! ( ptr u8 ptr a -- )
+   SOURCE-PTR-U8-FIELD ! ;
+
+: SOURCE-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: SOURCE-BUF ( -- ptr u8 )
+   SOURCE-BUF-A @ 0= if SOURCE-CAP SOURCE-ALLOC-BUF SOURCE-BUF-A SOURCE-PTR-U8! then
+   SOURCE-BUF-A SOURCE-PTR-U8@ ;
 
 : SOURCE-READ-PROBE ( -- )
    0 SOURCE-PROBE SOURCE-PROBE-CAP read SOURCE-RD !

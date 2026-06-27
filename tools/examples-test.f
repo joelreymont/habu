@@ -8,18 +8,50 @@
 
 variable EXT-TEMP-U
 variable EXT-FILES-U
-
-create EXT-TEMP-BUF FS-PATH-CAP allot
-create EXT-FILES-BUF FS-PATH-CAP allot
-create EXT-PATH-BUF FS-PATH-CAP allot
-create EXT-COPY-BUF EXT-COPY-CAP allot
-create EXT-OUT EXT-CAPTURE-CAP allot
-create EXT-ERR EXT-CAPTURE-CAP allot
+variable EXT-TEMP-A
+variable EXT-FILES-A
+variable EXT-PATH-A
+variable EXT-COPY-A
+variable EXT-OUT-A
+variable EXT-ERR-A
 
 : EXT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
+
+: EXT-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: EXT-PTR-U8@ ( ptr a -- ptr u8 )
+   EXT-PTR-U8-FIELD @ ;
+
+: EXT-PTR-U8! ( ptr u8 ptr a -- )
+   EXT-PTR-U8-FIELD ! ;
+
+: EXT-ALLOC-BUF ( n ptr a -- ptr u8 ) {: cap slot:ptr :}
+   slot EXT-PTR-U8@ 0= if
+      cap MEM-ALLOC-BYTES drop slot EXT-PTR-U8!
+   then
+   slot EXT-PTR-U8@ ;
+
+: EXT-TEMP-BUF ( -- ptr u8 )
+   FS-PATH-CAP EXT-TEMP-A EXT-ALLOC-BUF ;
+
+: EXT-FILES-BUF ( -- ptr u8 )
+   FS-PATH-CAP EXT-FILES-A EXT-ALLOC-BUF ;
+
+: EXT-PATH-BUF ( -- ptr u8 )
+   FS-PATH-CAP EXT-PATH-A EXT-ALLOC-BUF ;
+
+: EXT-COPY-BUF ( -- ptr u8 )
+   EXT-COPY-CAP EXT-COPY-A EXT-ALLOC-BUF ;
+
+: EXT-OUT ( -- ptr u8 )
+   EXT-CAPTURE-CAP EXT-OUT-A EXT-ALLOC-BUF ;
+
+: EXT-ERR ( -- ptr u8 )
+   EXT-CAPTURE-CAP EXT-ERR-A EXT-ALLOC-BUF ;
 
 : EXT-TEMP ( -- ptr u8 n )
    EXT-TEMP-BUF EXT-TEMP-U @ ;
@@ -102,7 +134,6 @@ create EXT-ERR EXT-CAPTURE-CAP allot
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" src/core/combinators.f" EXT-ADD-SOURCE-LF
    b u s" lib/array.f" EXT-ADD-SOURCE-LF
    b u s" examples/array.f" EXT-ADD-SOURCE
    b u ;

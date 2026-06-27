@@ -123,8 +123,9 @@ variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
-variable LPHOOK         variable LPHABULAYOUT   variable LPLINUXENV     variable LPMACOSENV
-variable LPROLES        variable LPCOMBINATORS
+variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPSCRIPTARGV
+variable LPROLES        variable LPINCLUDE      variable LPSTRUCTURES
+variable LPENUMS        variable LPCOMBINATORS  variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -343,36 +344,57 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var LABEL@ LBL,  a u ZBYTES, ;
 
-: PFX-LOAD-FILES ( -- )
+: PFX-LOAD-BASE-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-LOAD-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
-   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-LOAD-ROW
-   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW ;
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
+   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
+   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
+
+: PFX-LOAD-SCRIPT-ARGV ( -- )
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
+
+: PFX-LOAD-SCRIPT-ARGV-COLD ( -- )
+   LBL {: done :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   PFX-LOAD-SCRIPT-ARGV
+   done LBL, ;
+
+: PFX-LOAD-FILES ( -- )
+   PFX-LOAD-BASE-FILES
+   PFX-LOAD-SCRIPT-ARGV ;
 
 : PFX-PATH-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
-   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
-   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PATH-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
-   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
-   PFX-LINUX  LPLINUXENV     s" src/os/linux/env.f"     PFX-PATH-ROW
-   PFX-MACOS  LPMACOSENV     s" src/os/macos/env.f"     PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
-   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW ;
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
+   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
+   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
    PFX-TARGET-OK
-   PFX-LOAD-FILES ;
+   PFX-LOAD-BASE-FILES ;
 
 : EMIT-COLD-PREFIX ( -- )
    LBL {: done :}
@@ -442,6 +464,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    17 9 0 ADDI,
    SRC-RL LABEL@ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -484,9 +507,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-FPLAIN @ C-ARG--LOAD?
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    C-SOURCE-FIND-SEP
    SRC-FPLAIN LABEL@ LBL,
    EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
    SRC-FREADY LABEL@ LBL, ;
 
 : C-SOURCE-APPEND-ARG ( -- )
@@ -511,6 +536,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-SOURCE-FAIL-REPL-DONE ( -- )
    SRC-SFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT SYS,
    SRC-REPL LABEL@ LBL,
+   PFX-LOAD-SCRIPT-ARGV-COLD
    11 LSRC LABEL@ ADR,  11 DATA INP-CELL STR,
    5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
    SRC-DONE LABEL@ B,
@@ -658,7 +684,7 @@ create ENDLOC-KW 58 c, 125 c,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1093,6 +1119,40 @@ create ENDLOC-KW 58 c, 125 c,
       $4D C-QUALIFY-FAIL
    room LBL, ;
 
+: C-DUP-DEF-FAIL ( -- )
+   0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+   0 $4E MOVZ,  NR-EXIT SYS, ;
+s" c-dup-def-fail" s" --" TRUST
+
+: C-REJECT-DUP-DEF ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: nloop nnext ncmp nmatch nend ninl done :}
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   nloop LBL,
+      6 nend CBZ,
+      14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,
+      15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
+      16 5 24 ADDI,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+         16 5 24 LDR,
+      ninl LBL,
+      7 0 MOVZ,
+      ncmp LBL,
+         15 DATA TKL-CELL LDR,  7 15 CMP,  C-GE nmatch BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 DATA TKA-CELL LDR,  4 4 7 ADD,  4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE nnext BCOND,
+         7 7 1 ADDI,  ncmp B,
+      nmatch LBL,
+         C-DUP-DEF-FAIL
+      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
+   nend LBL,
+   done LBL, ;
+s" c-reject-dup-def" s" --" TRUST
+
 : C-QUALIFY-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
@@ -1106,6 +1166,7 @@ create ENDLOC-KW 58 c, 125 c,
       17 17 1 ADDI,  qscan B,
    qnone LBL,
       C-QUALIFY-CAP
+      C-REJECT-DUP-DEF
       done B,
    qhas LBL,
       17 0 CMPI,  C-EQ qnone BCOND,
@@ -1156,6 +1217,7 @@ create ENDLOC-KW 58 c, 125 c,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
       C-QUALIFY-CAP
+      C-REJECT-DUP-DEF
       done B,
    qbad LBL,
       $4B C-QUALIFY-FAIL
@@ -2143,10 +2205,13 @@ s" em-compile-publish-trusted" s" --" TRUST
 s" em-compile-publish-hooked" s" --" TRUST
 
 : EM-COMPILE-PUBLISH ( -- )
-   LBL {: hooked :}
-   9 DATA TSIG-U-CELL LDR,  9 hooked CBZ,
+   LBL LBL {: checked unsigned :}
+   9 DATA HOOK-CELL LDR,  9 checked CBNZ,
+      EM-COMPILE-PUBLISH-HOOKED
+   checked LBL,
+   9 DATA TSIG-U-CELL LDR,  9 unsigned CBZ,
       EM-COMPILE-PUBLISH-TRUSTED
-   hooked LBL,
+   unsigned LBL,
    EM-COMPILE-PUBLISH-HOOKED ;
 s" em-compile-publish" s" --" TRUST
 
@@ -2312,8 +2377,8 @@ s" em-compile-call" s" --" TRUST
 s" em-reset-compile-state" s" --" TRUST
 
 : EM-EVAL-UNDEF-ROLLBACK ( -- )
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   9 14 15 C-EVAL-FRAME-ADDR
    CP 14 40 LDR,  NDICT 14 48 LDR,  XDS 14 32 LDR,
    9 14 56 LDR,  9 DATA DP-CELL STR,
    EM-RESET-COMPILE-STATE
@@ -2349,8 +2414,8 @@ s" em-repl-recover" s" --" TRUST
 s" em-compile-undef" s" --" TRUST
 
 : EM-EVAL-CLEAN-EXIT ( -- )
-   14 EVAL-FRAME LIT64,  14 DATA 14 ADD,
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
+   9 14 15 C-EVAL-FRAME-ADDR
    9 14 0 LDR,  9 DATA INP-CELL STR,
    9 14 8 LDR,  9 DATA INE-CELL STR,
    9 0 MOVZ,  9 DATA EVALERR-CELL STR,
@@ -2396,12 +2461,13 @@ s" em-compile-exit" s" --" TRUST
    EM-COMPILE-EXIT ;
 s" em-compile" s" --" TRUST
 
-: EMIT-MAIN
+: EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !
    EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE ;
 s" emit-main" s" --" TRUST
 variable SRCA
-: SRCA@ SRCA @ ;
+: SRCA@ ( -- ptr u8 )
+   SRCA @ ;
 s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-RESET-BUILDER ( ptr u8 n -- )
@@ -2429,6 +2495,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWENDPACKAGE !
+   LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LKWQUOT !  LBL LKWSEMIQ ! ;
 
@@ -2442,7 +2509,8 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
-   LBL LPLINUXENV !  LBL LPMACOSENV !  LBL LPROLES !  LBL LPCOMBINATORS ! ;
+   LBL LPENVBASE !  LBL LPSCRIPTARGV !  LBL LPROLES !  LBL LPINCLUDE !
+   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

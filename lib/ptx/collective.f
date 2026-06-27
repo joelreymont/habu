@@ -5,8 +5,8 @@
 \ (lib/ptx/tile.f). Row addressing (ROW / ROW-SPAN / ROW-CTX / ROW-LOAD /
 \ ROW-STORE) is the one-block-per-row context, kept DISTINCT from the grid words
 \ (no overload, per ptx-sketch.md Resolved-M1/M2 #4). Collectives (BLOCK-MAX /
-\ BLOCK-SUM) consume a tile and produce a block-uniform scalar; B- / B/ broadcast
-\ a uniform across a tile; EXP. is the unary exponential. Element `t`, row extent
+\ BLOCK-SUM) consume a tile and produce a block-uniform scalar; PTX:B- / PTX:B/
+\ broadcast a uniform across a tile; EXP. is the unary exponential. Element `t`, row extent
 \ `e`, column extent `k`, block `b`, mask `m` are polymorphic type vars threaded
 \ by unification (NB n/f/r are reserved tokens - use e/k/b/m/t).
 \
@@ -45,6 +45,9 @@ TRUSTED: BLOCK-MAX ( tile<f32,b,m> -- uniform<f32> )
 TRUSTED: BLOCK-SUM ( tile<f32,b,m> -- uniform<f32> )
    EMIT-BLOCK-SUM ;
 
+package PTX
+public
+
 TRUSTED: B- ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-B- ;
 
@@ -56,10 +59,12 @@ TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 TRUSTED: U/ ( uniform<t> uniform<t> -- uniform<t> )
    EMIT-U/ ;
 
+end-package
+
 TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
    EMIT-EXP ;
 
-\ BROADCAST is the named form of the implicit broadcast in B-/B/, and the type-dual
+\ BROADCAST is the named form of the implicit broadcast in PTX:B-/PTX:B/, and the type-dual
 \ (mutual adjoint) of BLOCK-SUM: reverse-mode AD substitutes BROADCAST for the
 \ adjoint of a reduce. Needed by the autograd VJP table (docs/autograd.md).
 TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )

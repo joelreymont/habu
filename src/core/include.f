@@ -1,0 +1,132 @@
+\ include.f - checked source include words.
+\
+\ `include` is source composition. Package reopening owns shared namespace;
+\ this file only gives source files a checked way to load dependencies.
+
+$400 constant INCLUDE-PATH-CAP
+$20000 constant INCLUDE-BUF-CAP
+$8 constant INCLUDE-MAX-DEPTH
+$1002 constant INCLUDE-MAP-PRIVATE-ANON
+$1 constant INCLUDE-PROBE-CAP
+$4A constant INCLUDE-IO-RC
+$46 constant INCLUDE-EVAL-RC
+INCLUDE-MAX-DEPTH INCLUDE-BUF-CAP * constant INCLUDE-BUF-TOTAL
+
+create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
+create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
+
+variable INCLUDE-BUFS-A
+variable INCLUDE-DEPTH
+variable INCLUDE-FD
+variable INCLUDE-U
+variable INCLUDE-RD
+
+-1 INCLUDE-FD !
+
+: INCLUDE-FALSE ( -- bool )
+   0 0= 0= ;
+
+: INCLUDE-TRUE ( -- bool )
+   0 0= ;
+
+TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
+
+: INCLUDE-DIE ( ptr u8 n -- )
+   INCLUDE-IO-RC die ;
+
+: INCLUDE-EVAL-DIE ( ptr u8 n -- )
+   INCLUDE-EVAL-RC die ;
+
+: INCLUDE-CLOSE ( -- )
+   INCLUDE-FD @ dup 0 >= if
+      close
+   else
+      drop
+   then
+   -1 INCLUDE-FD ! ;
+
+: INCLUDE-IO-DIE ( ptr u8 n -- )
+   INCLUDE-CLOSE
+   INCLUDE-DIE ;
+
+: INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+   u 0 <= if s" include: missing path" INCLUDE-DIE then
+   u INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then
+   a u ;
+
+: INCLUDE-PATH0 ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
+   a u INCLUDE-CHECK-PATH 2drop
+   0 begin dup u < while
+      dup a + c@ over INCLUDE-PATH + c!
+      1+
+   repeat drop
+   0 INCLUDE-PATH u + c!
+   INCLUDE-PATH ;
+
+: INCLUDE-CHECK-DEPTH ( n -- )
+   dup 0 < if s" include: depth underflow" INCLUDE-DIE then
+   INCLUDE-MAX-DEPTH >= if s" include: nested too deeply" INCLUDE-DIE then ;
+
+: INCLUDE-PUSH ( -- )
+   INCLUDE-DEPTH @ INCLUDE-CHECK-DEPTH
+   INCLUDE-DEPTH @ 1 + INCLUDE-DEPTH ! ;
+
+: INCLUDE-POP ( -- )
+   INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
+   INCLUDE-DEPTH ! ;
+
+: INCLUDE-BUFS@ ( -- ptr u8 )
+   INCLUDE-BUFS-A @ INCLUDE-MMAP-PTR ;
+
+: INCLUDE-ALLOC-BUFS ( -- )
+   INCLUDE-BUFS-A @ 0= if
+      0 INCLUDE-BUF-TOTAL 3 INCLUDE-MAP-PRIVATE-ANON -1 0 mmap
+      dup 0 < if s" include: buffer mmap failed" INCLUDE-DIE then
+      INCLUDE-BUFS-A !
+   then ;
+
+: INCLUDE-SLOT ( -- ptr u8 )
+   INCLUDE-ALLOC-BUFS
+   INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
+   INCLUDE-BUF-CAP * INCLUDE-BUFS@ + ;
+
+: INCLUDE-OPEN ( ptr u8 n -- )
+   INCLUDE-PATH0 open-rd INCLUDE-FD !
+   INCLUDE-FD @ 0 < if s" include: open failed" INCLUDE-DIE then ;
+
+: INCLUDE-PROBE-OVERFLOW ( -- bool )
+   INCLUDE-FD @ INCLUDE-PROBE INCLUDE-PROBE-CAP read INCLUDE-RD !
+   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
+   INCLUDE-RD @ 0 > if s" include: file too large" INCLUDE-IO-DIE then
+   INCLUDE-TRUE ;
+
+: INCLUDE-READ-DONE? ( -- bool )
+   INCLUDE-U @ INCLUDE-BUF-CAP >= if INCLUDE-PROBE-OVERFLOW exit then
+   INCLUDE-FD @ INCLUDE-SLOT INCLUDE-U @ + INCLUDE-BUF-CAP INCLUDE-U @ - read INCLUDE-RD !
+   INCLUDE-RD @ 0 < if s" include: read failed" INCLUDE-IO-DIE then
+   INCLUDE-RD @ 0 = if INCLUDE-TRUE exit then
+   INCLUDE-U @ INCLUDE-RD @ + INCLUDE-U !
+   INCLUDE-FALSE ;
+
+: INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )
+   INCLUDE-OPEN
+   0 INCLUDE-U !
+   begin INCLUDE-READ-DONE? 0= while repeat
+   INCLUDE-CLOSE
+   INCLUDE-SLOT INCLUDE-U @ ;
+
+: INCLUDE-EVALERR? ( -- bool )
+   data-base EVALERR-CELL + @ 0 = 0= ;
+
+TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
+   evaluate ;
+
+: included ( ptr u8 n -- )
+   INCLUDE-PUSH
+   INCLUDE-READ-ALL INCLUDE-EVALUATE
+   INCLUDE-POP
+   INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
+
+: include ( -- )
+   parse-name INCLUDE-CHECK-PATH included ;
+immediate

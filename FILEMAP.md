@@ -28,6 +28,9 @@ points stay listed.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
+- `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`.
+- `src/core/structures.f` — checked `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL.
+- `src/core/enums.f` — checked `ENUM` and `ENUM4` defining words for named integer families.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
 
 ## Native Engine And Builders
@@ -153,6 +156,12 @@ points stay listed.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
+- `tools/reserved-name-lint-core.f` — reusable source scanner rejecting definitions named like parser/control reserved words (`I`, `J`, `LOOP`, `TRUST`, etc.).
+- `tools/reserved-name-lint.f` — CLI wrapper for reserved definition-name lint; run after generated prefix-stripping/naturalization.
+- `tools/reserved-name-lint-test.f` — checked fixture coverage for reserved definition-name lint and `tools/check.f` preflight behavior.
+- `tools/duplicate-definition-lint-core.f` — reusable source scanner rejecting duplicate published definitions across source lists.
+- `tools/duplicate-definition-lint.f` — CLI wrapper for duplicate published-definition lint.
+- `tools/duplicate-definition-lint-test.f` — checked fixture coverage for duplicate definition detection and source-list preflight behavior.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.

@@ -56,32 +56,32 @@ GE-FILES: GE-FS-MUTATE-CHECK-FILES
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-ARGV-RUN-FILES
-   lib/errors.f lib/test.f lib/process.f lib/process-argv.f
+   lib/errors.f lib/test.f lib/memory.f lib/process.f lib/process-argv.f
    lib/process-argv-test.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-ARGV-CHECK-FILES
-   lib/errors.f lib/process.f lib/process-argv.f
+   lib/errors.f lib/memory.f lib/process.f lib/process-argv.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-ENV-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/process-env-test.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-ENV-CHECK-FILES
-   lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f
+   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f
    lib/process-env.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-CWD-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
    lib/process-cwd-test.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-CWD-CHECK-FILES
-   lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f
+   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f
    lib/process-env.f lib/process-cwd.f
 ;GE-FILES
 
@@ -92,7 +92,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 ;GE-FILES
 
 GE-FILES: GE-HB-BASELINE-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
 ;GE-FILES
 
@@ -170,6 +170,9 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" dup -1 <> if 70 throw then ; ' HOOK set-check" SB-APPEND
    SB$ ;
 
+: GE-STAGE2-HOOK$ ( -- ptr u8 n )
+   s" ' HB-CHECK-HOOK set-check" ;
+
 : GE-READ-BUILD-TMP ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu :}
    name nameu BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap :}
    name nameu BF-A$ buf cap READ-ALL {: got :}
@@ -202,8 +205,9 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-STAGE2-SOURCE-SHAPE ( -- )
    s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
    a u GE-OLD-HOOK$ s" build stage2 stale hook" GE-SHAPE-LACKS
+   a u s" ' HOOK set-check" s" build stage2 direct hook install" GE-SHAPE-LACKS
    a u s" 0 set-check" s" build stage2 unchecked boundary" GE-SHAPE-HAS
-   a u s" ' HOOK set-check" s" build stage2 hook install" GE-SHAPE-HAS
+   a u GE-STAGE2-HOOK$ s" build stage2 hook install" GE-SHAPE-HAS
    a u s" STDIN-OUT" s" build stage2 stdin output" GE-SHAPE-HAS ;
 
 : GE-STAGE2-SCRATCH-SHAPE ( -- )
@@ -405,8 +409,8 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-DEPTH ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" : QDEPTH ( -- n ) depth ;" GE-SRC-LINE
-   s" QDEPTH ." GE-SRC-LINE
+   s" : GE-QDEPTH ( -- n ) depth ;" GE-SRC-LINE
+   s" GE-QDEPTH ." GE-SRC-LINE
    s" hb depth prim certify+run" GE-HB-RUN-STDIN
    SB-RESET s" 0" SB-APPEND GE-SB-LF
    SB$ s" hb depth prim certify+run output" GE-EXPECT-OUT ;
@@ -442,14 +446,14 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" NEED-IDX" s" idx --" GE-SRC-TRUST
    s" NEED-LEN" s" len --" GE-SRC-TRUST
-   s" ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N" GE-SRC-CHECK-LINE
-   s" ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
-   s" ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
-   s" ROLE-BAD2 ( n -- n ) >LEN IDX>N" GE-SRC-CHECK-LINE
-   s" ROLE-BAD3 ( n -- img ) >ASM" GE-SRC-CHECK-LINE
-   s" ROLE-UNKNOWN ( n -- size ) >IDX" GE-SRC-CHECK-LINE
-   s" : ROLE-ALL ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N ;" GE-SRC-LINE
-   s" 7 ROLE-ALL ." GE-SRC-LINE ;
+   s" GE-ROLE-ALL-CHECK ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N" GE-SRC-CHECK-LINE
+   s" GE-ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
+   s" GE-ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
+   s" GE-ROLE-BAD2 ( n -- n ) >LEN IDX>N" GE-SRC-CHECK-LINE
+   s" GE-ROLE-BAD3 ( n -- img ) >ASM" GE-SRC-CHECK-LINE
+   s" GE-ROLE-UNKNOWN ( n -- size ) >IDX" GE-SRC-CHECK-LINE
+   s" : GE-ROLE-ALL-RUN ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N ;" GE-SRC-LINE
+   s" 7 GE-ROLE-ALL-RUN ." GE-SRC-LINE ;
 
 : GE-ROLE-TYPES ( -- )
    GE-HB-RESET

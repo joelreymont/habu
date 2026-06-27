@@ -138,8 +138,10 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 : BFT-TEST-STAGE2-SOURCE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
-   BFT-READ-BUF u s" 0 set-check" CONTAINS? TTRUE
-   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
+   BFT-READ-BUF u s" variable SEQ" CONTAINS? TFALSE
+   BFT-READ-BUF u s" : STR=" CONTAINS? TFALSE
+   BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TFALSE
+   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TFALSE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
 
 : BFT-TEST-CHECKED-REGALLOC ( -- )
@@ -166,6 +168,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 
 : BFT-TEST-SNAP-SOURCE ( -- )
    BFT-SNAP BFT-READ {: u :}
+   BFT-READ-BUF u s" variable SEQ" CONTAINS? TFALSE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )

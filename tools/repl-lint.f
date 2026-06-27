@@ -82,19 +82,19 @@ variable REPL-ROOT-U
 
 : REPL-ROOT-SELF? ( -- bool )
    REPL-ROOT-U @ 0= if LINT-TRUE exit then
-   REPL-ROOT-A@ REPL-ROOT-U @ s" ." STR= ;
+   REPL-ROOT-A@ REPL-ROOT-U @ s" ." LINT-STR= ;
 
 : REPL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    REPL-ROOT-SELF? if a u exit then
    REPL-ROOT-U @ u + 1 + REPL-PATH-CAP > if s" repl-lint: root path too long" 1 die then
-   REPL-ROOT-A@ REPL-PATH-BUF REPL-ROOT-U @ BMOVE
+   REPL-ROOT-A@ REPL-PATH-BUF REPL-ROOT-U @ LINT-BMOVE
    REPL-ROOT-A@ REPL-ROOT-U @ 1- + c@ SLASH = if
-      a REPL-PATH-BUF REPL-ROOT-U @ + u BMOVE
+      a REPL-PATH-BUF REPL-ROOT-U @ + u LINT-BMOVE
       REPL-PATH-BUF REPL-ROOT-U @ u +
       exit
    then
    SLASH REPL-PATH-BUF REPL-ROOT-U @ + c!
-   a REPL-PATH-BUF REPL-ROOT-U @ 1 + + u BMOVE
+   a REPL-PATH-BUF REPL-ROOT-U @ 1 + + u LINT-BMOVE
    REPL-PATH-BUF REPL-ROOT-U @ 1 + u + ;
 
 : TRIM-DQUOTE  ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
@@ -107,7 +107,7 @@ variable REPL-ROOT-U
    a c@ LINT-FOLD 115 =  a 1+ c@ DQUOTE = and ;
 
 : SRC-PATH-TRIMMED? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" src/" STARTS-WITH?
+   a u s" src/" LINT-STARTS-WITH?
    a u s" .f" HAS-EXT? and ;
 
 : SRC-PATH-TOK? ( ptr u8 n -- bool )
@@ -164,7 +164,7 @@ variable REPL-ROOT-U
    -1 PARENS? !  TOKENIZE
    0 REPL-I !
    begin REPL-I @ 2 + TN# @ < while
-      REPL-I @ TOK s" -SRC" SUFFIX? if
+      REPL-I @ TOK s" -SRC" LINT-SUFFIX? if
             REPL-I @ 1+ TOK SQUOTE-TOK? if
                REPL-I @ 2 + TOK SRC-PATH-TOK? if
                   REPL-I @ 2 + TOK TRIM-DQUOTE ADD-REPL-PATH
@@ -182,8 +182,8 @@ variable REPL-ROOT-U
    SORT-REPL-PATHS ;
 
 : FATAL-TOK?  ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" die" STR=CI if LINT-TRUE exit then
-   a u s" bye" STR=CI ;
+   a u s" die" LINT-STR=CI if LINT-TRUE exit then
+   a u s" bye" LINT-STR=CI ;
 
 : R-END? ( -- bool )
    REPL-X @ REPL-SRC-U @ >= ;
@@ -220,7 +220,7 @@ variable REPL-ROOT-U
 
 : R-SKIP-IGNORED ( -- )
    begin R-END? 0= while
-      R-C@ WS? if
+      R-C@ LINT-WS? if
          R-ADV drop
       else R-C@ 92 = if
          R-SKIP-LINE
@@ -238,7 +238,7 @@ variable REPL-ROOT-U
    REPL-SRC-A@ REPL-X @ + REPL-TOK-A!
    REPL-X @ REPL-TMP !
    REPL-LINE @ REPL-TOK-LINE !
-   begin R-END? 0= R-C@ WS? 0= and while
+   begin R-END? 0= R-C@ LINT-WS? 0= and while
       R-ADV drop
    repeat
    REPL-X @ REPL-TMP @ - REPL-TOK-U !

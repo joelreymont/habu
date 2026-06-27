@@ -119,7 +119,7 @@ variable INTERN-CHUNK-I
    u INTERN-CHUNK-I @ INTERN-ALLOC-IN-CHUNK ;
 
 : INTERN-COPY-TO ( ptr u8 n ptr u8 -- ptr u8 ) {: a:ptr u dst:ptr :}
-   a dst u BMOVE
+   a dst u LINT-BMOVE
    dst ;
 
 : INTERN-COPY$ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}

@@ -19,7 +19,7 @@ variable SL-DRIVER-U
    repeat drop SL-TRUE ;
 
 : SL-USAGE ( -- )
-   s" usage: bin/hb --load tools/argv.f tools/srclist.f -- [stage2|stdin|snap|build|aot]" SL-USAGE-RC die ;
+   s" usage: bin/hb --load tools/srclist.f -- [stage2|stdin|snap|build|aot]" SL-USAGE-RC die ;
 
 : SL-DRIVER? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" stage2" SL-STR= if SL-TRUE exit then
@@ -64,7 +64,7 @@ variable SL-DRIVER-U
    SL-TARGET-UNKNOWN ;
 
 : SL-PREFIX ( -- )
-   s" src/core/roles.f " type
+   s" src/os/env-base.f src/core/roles.f " type
    s" src/arch/arm64/asm.f src/arch/arm64/icode.f " type
    s" src/arch/arm64/mnem.f " type
    SL-TARGET-LAYOUT-SYS
@@ -73,6 +73,7 @@ variable SL-DRIVER-U
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
    s" src/habu/jit.f src/habu/habu2.f src/habu/xref.f " type
+   s" src/os/script-argv.f " type
    s" src/habu/driver-io.f src/habu/" type ;
 
 : SRCLIST-MAIN ( -- )

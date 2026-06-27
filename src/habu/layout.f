@@ -55,7 +55,10 @@ $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-$2740 constant EVAL-FRAME
+$280 constant EVAL-FRAME
+$40 constant EVAL-FRAME-SIZE
+$6 constant EVAL-FRAME-SHIFT
+$8 constant EVAL-MAX-DEPTH
 $2780 constant TSIG-A-CELL
 $2788 constant TSIG-U-CELL
 $2790 constant TCSIG-A-CELL

@@ -8,15 +8,47 @@
 
 variable JOT-ROOT-U
 variable JOT-IN-U
-
-create JOT-ROOT-BUF FS-PATH-CAP allot
-create JOT-IN-BUF FS-PATH-CAP allot
-create JOT-OUT JOT-BUF-CAP allot
-create JOT-ERR JOT-BUF-CAP allot
+variable JOT-ROOT-A
+variable JOT-IN-A
+variable JOT-OUT-A
+variable JOT-ERR-A
 
 : JOT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
+
+: JOT-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: JOT-PTR-U8@ ( ptr a -- ptr u8 )
+   JOT-PTR-U8-FIELD @ ;
+
+: JOT-PTR-U8! ( ptr u8 ptr a -- )
+   JOT-PTR-U8-FIELD ! ;
+
+: JOT-ALLOC-SIZED-BUF ( n ptr a -- ptr u8 ) {: cap slot:ptr :}
+   slot JOT-PTR-U8@ 0= if
+      cap MEM-ALLOC-BYTES drop slot JOT-PTR-U8!
+   then
+   slot JOT-PTR-U8@ ;
+
+: JOT-ALLOC-BUF ( ptr a -- ptr u8 )
+   JOT-BUF-CAP swap JOT-ALLOC-SIZED-BUF ;
+
+: JOT-ALLOC-PATH ( ptr a -- ptr u8 )
+   FS-PATH-CAP swap JOT-ALLOC-SIZED-BUF ;
+
+: JOT-ROOT-BUF ( -- ptr u8 )
+   JOT-ROOT-A JOT-ALLOC-PATH ;
+
+: JOT-IN-BUF ( -- ptr u8 )
+   JOT-IN-A JOT-ALLOC-PATH ;
+
+: JOT-OUT ( -- ptr u8 )
+   JOT-OUT-A JOT-ALLOC-BUF ;
+
+: JOT-ERR ( -- ptr u8 )
+   JOT-ERR-A JOT-ALLOC-BUF ;
 
 : JOT-ROOT ( -- ptr u8 n )
    JOT-ROOT-BUF JOT-ROOT-U @ ;

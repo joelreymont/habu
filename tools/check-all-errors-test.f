@@ -8,16 +8,19 @@
 1400 constant CAE-LARGE-LINES
 530 constant CAE-MANY-DEFS
 530 constant CAE-MANY-SUPPORT
+32 constant CAE-NUM-CAP
 
 variable CAE-ROOT-U
 variable CAE-IN-U
 variable CAE-LARGE-U
+variable CAE-NUM-I
 
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
 create CAE-LARGE-BUF FS-PATH-CAP allot
 create CAE-OUT CAE-BUF-CAP allot
 create CAE-ERR CAE-BUF-CAP allot
+create CAE-NUM CAE-NUM-CAP allot
 create CAE-LF-BYTE 10 c,
 
 : CAE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -34,46 +37,62 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE-BUF CAE-LARGE-U @ ;
 
 : CAE-LF ( -- )
-   10 SB-APPEND-C ;
+   $0a SB-APPEND-C ;
+
+: CAE-U$ ( n -- ptr u8 n ) {: u:n :}
+   CAE-NUM-CAP CAE-NUM-I !
+   u 0= if
+      CAE-NUM-I @ 1- CAE-NUM-I !
+      48 CAE-NUM CAE-NUM-I @ + c!
+      CAE-NUM CAE-NUM-I @ + 1
+      exit
+   then
+   u begin dup 0 > while
+      dup 10 mod 48 +
+      CAE-NUM-I @ 1- CAE-NUM-I !
+      CAE-NUM CAE-NUM-I @ + c!
+      10 /
+   repeat drop
+   CAE-NUM CAE-NUM-I @ + CAE-NUM-CAP CAE-NUM-I @ - ;
 
 : CAE-DQ ( -- )
-   34 SB-APPEND-C ;
+   $22 SB-APPEND-C ;
 
 : CAE-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" : OK ( i64 -- i64 ) dup * ;" SB-APPEND CAE-LF
-   s" : SEMI ( -- i64 ) [char] ; ;" SB-APPEND CAE-LF
-   s" : BAD1 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
-   s" : BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
+   s" : CAE-OK ( i64 -- i64 ) dup * ;" SB-APPEND CAE-LF
+   s" : CAE-SEMI ( -- i64 ) [char] ; ;" SB-APPEND CAE-LF
+   s" : CAE-BAD1 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-SUPPORT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" 7 constant SUP-K" SB-APPEND CAE-LF
-   s" variable SUP-V" SB-APPEND CAE-LF
-   s" create SUP-B 1 cells allot" SB-APPEND CAE-LF
-   s" TRUSTED: SUP-T ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
-   s" : OK-SUP ( i64 -- i64 ) SUP-T SUP-K + ;" SB-APPEND CAE-LF
-   s" : BAD-SUP ( i64 -- i64 ) SUP-T SUP-K + SUP-V @ drop SUP-B drop dup ;" SB-APPEND CAE-LF
+   s" 7 constant CAE-SUP-K" SB-APPEND CAE-LF
+   s" variable CAE-SUP-V" SB-APPEND CAE-LF
+   s" create CAE-SUP-B 1 cells allot" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-SUP-T ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-OK-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + ;" SB-APPEND CAE-LF
+   s" : CAE-BAD-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + CAE-SUP-V @ drop CAE-SUP-B drop dup ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-AS-LEAK-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" 0 constant BM-T-ID" SB-APPEND CAE-LF
-   s" variable AS-COUNT" SB-APPEND CAE-LF
-   s" TRUSTED: AS-LINE$ ( -- ptr u8 n ) s" SB-APPEND
+   s" 0 constant CAE-BM-T-ID" SB-APPEND CAE-LF
+   s" variable CAE-AS-COUNT" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-AS-LINE$ ( -- ptr u8 n ) s" SB-APPEND
    CAE-DQ 32 SB-APPEND-C s" 1	SQUARE	(i64 -- i64)" SB-APPEND CAE-DQ
    s"  ;" SB-APPEND CAE-LF
-   s" : BM-TASK-FIELD$ ( ptr u8 n n -- ptr u8 n ) drop ;" SB-APPEND CAE-LF
-   s" : AS-REQUIRE-NEW-ID ( ptr u8 n -- ) 2drop ;" SB-APPEND CAE-LF
-   s" : AS-ADD-TASK ( -- )" SB-APPEND CAE-LF
-   s"    AS-LINE$ BM-T-ID BM-TASK-FIELD$ AS-REQUIRE-NEW-ID" SB-APPEND CAE-LF
-   s"    AS-COUNT @" SB-APPEND CAE-LF
-   s"    AS-COUNT @ 1+ AS-COUNT ! ;" SB-APPEND CAE-LF
+   s" : CAE-BM-TASK-FIELD$ ( ptr u8 n n -- ptr u8 n ) drop ;" SB-APPEND CAE-LF
+   s" : CAE-AS-REQUIRE-NEW-ID ( ptr u8 n -- ) 2drop ;" SB-APPEND CAE-LF
+   s" : CAE-AS-ADD-TASK ( -- )" SB-APPEND CAE-LF
+   s"    CAE-AS-LINE$ CAE-BM-T-ID CAE-BM-TASK-FIELD$ CAE-AS-REQUIRE-NEW-ID" SB-APPEND CAE-LF
+   s"    CAE-AS-COUNT @" SB-APPEND CAE-LF
+   s"    CAE-AS-COUNT @ 1+ CAE-AS-COUNT ! ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-LARGE-START$ ( -- ptr u8 n )
-   s" : LARGE-BAD ( i64 -- i64 ) ( " ;
+   s" : CAE-LARGE-BAD ( i64 -- i64 ) ( " ;
 
 : CAE-LARGE-LINE$ ( -- ptr u8 n )
    s" check all errors generated program padding 0123456789 abcdefghijklmnopqrstuvwxyz" ;
@@ -89,63 +108,63 @@ create CAE-LF-BYTE 10 c,
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" large-bad" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-large-bad" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-WORD-BAD1$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" bad1" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-bad1" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-WORD-BAD2$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" bad2" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-bad2" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-WORD-BADSUP$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" bad-sup" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-bad-sup" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-TOKEN-SUPK$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" token" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" SUP-K" SB-APPEND CAE-DQ
+   CAE-DQ s" CAE-SUP-K" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-WORD-ASADD$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" as-add-task" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-as-add-task" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-WORD-CAPSUPBAD$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" cap-sup-bad" SB-APPEND CAE-DQ
+   CAE-DQ s" cae-cap-sup-bad" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-TOKEN-CAPSUP$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" token" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" CAP-SUP" SB-APPEND CAE-DQ
+   CAE-DQ s" CAE-CAP-SUP" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-TOKEN-BMTID$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" token" SB-APPEND CAE-DQ
    58 SB-APPEND-C
-   CAE-DQ s" BM-T-ID" SB-APPEND CAE-DQ
+   CAE-DQ s" CAE-BM-T-ID" SB-APPEND CAE-DQ
    SB$ ;
 
 : CAE-PREPARE ( -- )
@@ -175,17 +194,20 @@ create CAE-LF-BYTE 10 c,
 : CAE-WRITE-MANY-DEFS-OK ( -- )
    CAE-LARGE CAE-EMPTY$ WRITE-ALL
    CAE-MANY-DEFS 0 ?do
-      CAE-LARGE s" : CAP-OK ( i64 -- i64 ) 1 + ;" APPEND-FILE
+      CAE-LARGE s" : CAE-CAP-OK-" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
+      CAE-LARGE s"  ( i64 -- i64 ) 1 + ;" APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop ;
 
 : CAE-WRITE-MANY-SUPPORT ( -- )
    CAE-LARGE CAE-EMPTY$ WRITE-ALL
    CAE-MANY-SUPPORT 0 ?do
-      CAE-LARGE s" 7 constant CAP-SUP" APPEND-FILE
+      CAE-LARGE s" 7 constant CAE-CAP-SUP-" APPEND-FILE
+      CAE-LARGE i CAE-U$ APPEND-FILE
       CAE-LARGE CAE-APPEND-LF
    loop
-   CAE-LARGE s" : CAP-SUP-BAD ( i64 -- i64 ) CAP-SUP + dup ;" APPEND-FILE
+   CAE-LARGE s" : CAE-CAP-SUP-BAD ( i64 -- i64 ) CAE-CAP-SUP-0 + dup ;" APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
 : CAE-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}

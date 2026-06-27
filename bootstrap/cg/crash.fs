@@ -24,7 +24,7 @@ CRH-INIT
 
 40 constant MACOS-SA-SIGINFO
 4 constant LINUX-SA-SIGINFO
-8 constant LINUX-SIGSET-SIZE
+8 constant CRASH-LINUX-SIGSET-SIZE
 48 constant MCTX-OFF           \ macOS ucontext -> mcontext pointer offset
 16 constant SS-OFF             \ macOS mcontext -> __ss.__x[0] offset
 176 constant LINUX-UC-MCTX-OFF
@@ -155,7 +155,7 @@ CRH-INIT
 \ struct __sigaction { handler, tramp, mask, flags } on the stack and syscalls.
 : INSTALL-SIGACT ( signo -- )
    0 swap MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
+   HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
 : C-SIGACTION-FRAME ( n -- )

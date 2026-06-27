@@ -94,20 +94,20 @@ variable TLD-SCAN-START
    a c@ c = ;
 
 : TLD-STARTS? ( ptr u8 n ptr u8 n -- bool )
-   STARTS-WITH? ;
+   LINT-STARTS-WITH? ;
 
 : TLD-TOKEN= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k LTOK a u STR= ;
+   k LEX-TOK a u LINT-STR= ;
 
 : TLD-TYPED-LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u TLD-COLON-C INDEX-OF 0 < TLD-NOT ;
+   a u TLD-COLON-C LINT-INDEX-OF 0 < TLD-NOT ;
 
 : TLD-FORTH-FILE? ( -- bool )
-   TLD-FILE$ s" .f" ENDS-WITH? IF TLD-TRUE exit THEN
-   TLD-FILE$ s" .fs" ENDS-WITH? ;
+   TLD-FILE$ s" .f" LINT-ENDS-WITH? IF TLD-TRUE exit THEN
+   TLD-FILE$ s" .fs" LINT-ENDS-WITH? ;
 
 : TLD-ALLOW-LINE? ( ptr u8 n -- bool )
-   s" typed-local-lint: allow-bare-local" CONTAINS? ;
+   s" typed-local-lint: allow-bare-local" LINT-CONTAINS? ;
 
 : TLD-SOURCE-LINE ( n -- n ) {: k:n :}
    TLD-NEW-LINE @ k LL@ + 1- ;
@@ -121,7 +121,7 @@ variable TLD-SCAN-START
    TLD-COLON-C TLD-C
    k LC@ TLD-U$ TLD-OUT
    s" : `" TLD-OUT
-   k LTOK TLD-OUT
+   k LEX-TOK TLD-OUT
    s" ` needs :type inside {: :}" TLD-OUT
    10 TLD-C ;
 
@@ -134,7 +134,7 @@ variable TLD-SCAN-START
    THEN
    TLD-IN-LOCALS @ TLD-NOT IF exit THEN
    TLD-ALLOW-GROUP @ IF exit THEN
-   k LTOK TLD-TYPED-LOCAL? TLD-NOT IF k TLD-REPORT-LOCAL THEN ;
+   k LEX-TOK TLD-TYPED-LOCAL? TLD-NOT IF k TLD-REPORT-LOCAL THEN ;
 
 : TLD-SCAN-ADDED-SOURCE ( ptr u8 n -- ) {: a:ptr u:n :}
    TLD-FORTH-FILE? TLD-NOT IF exit THEN
@@ -173,7 +173,7 @@ variable TLD-SCAN-START
    repeat ;
 
 : TLD-PARSE-HUNK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TLD-PLUS-C INDEX-OF 1+ TLD-HUNK-START !
+   a u TLD-PLUS-C LINT-INDEX-OF 1+ TLD-HUNK-START !
    TLD-HUNK-START @ 0 <= IF exit THEN
    a u TLD-HUNK-START @ TLD-NUM-END TLD-HUNK-END !
    TLD-HUNK-END @ TLD-HUNK-START @ <= IF exit THEN

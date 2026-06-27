@@ -65,24 +65,24 @@ variable AL-CURRENT-U
    ARGV-LABEL? IF ARGV-LABEL$ ELSE a u THEN ;
 
 : AL-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u s" @" STR=CI IF LINT-TRUE exit THEN
-   a u s" !" STR=CI IF LINT-TRUE exit THEN
-   a u s" c@" STR=CI IF LINT-TRUE exit THEN
-   a u s" c!" STR=CI IF LINT-TRUE exit THEN
-   a u s" here" STR=CI IF LINT-TRUE exit THEN
-   a u s" allot" STR=CI IF LINT-TRUE exit THEN
-   a u s" ," STR=CI IF LINT-TRUE exit THEN
-   a u s" c," STR=CI IF LINT-TRUE exit THEN
-   a u s" create" STR=CI IF LINT-TRUE exit THEN
-   a u s" compile," STR=CI IF LINT-TRUE exit THEN
-   a u s" patch32" STR=CI ;
+   a u s" @" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" !" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" c@" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" c!" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" here" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" allot" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" ," LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" c," LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" create" LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" compile," LINT-STR=CI IF LINT-TRUE exit THEN
+   a u s" patch32" LINT-STR=CI ;
 
 : AL-WORD-TOK? ( n -- bool ) {: k :}
    k L# @ >= IF LINT-FALSE exit THEN
    k LK@ L-WORD = ;
 
 : AL-TOK-END ( n -- n ) {: k :}
-   k LB@ k LTOK nip + ;
+   k LB@ k LEX-TOK nip + ;
 
 : AL-JSON-FINDING ( n -- ) {: k :}
    LJW-RESET
@@ -95,7 +95,7 @@ variable AL-CURRENT-U
    s" byte_start" LJW-KEY k LB@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY k AL-TOK-END LJW-U LJW-COMMA
    s" word" LJW-KEY AL-CURRENT-A@ AL-CURRENT-U @ LJW-STRING LJW-COMMA
-   s" token" LJW-KEY k LTOK LJW-STRING LJW-COMMA
+   s" token" LJW-KEY k LEX-TOK LJW-STRING LJW-COMMA
    s" reason" LJW-KEY s" stripped AOT has no persistent data region" LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY
    s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" LJW-STRING
@@ -108,7 +108,7 @@ variable AL-CURRENT-U
    58 emit k LL@ AL-U$ AL-OUT
    58 emit k LC@ AL-U$ AL-OUT
    s" : `" AL-OUT
-   k LTOK AL-OUT
+   k LEX-TOK AL-OUT
    s" ` is not supported by stripped AOT" AL-OUT
    AL-NL ;
 
@@ -118,20 +118,20 @@ variable AL-CURRENT-U
 
 : AL-HANDLE-WORD ( n -- ) {: k :}
    AL-EXPECT-NAME @ IF
-      k LTOK AL-CURRENT!
+      k LEX-TOK AL-CURRENT!
       0 AL-EXPECT-NAME !
       exit
    THEN
-   k LTOK s" :" STR= IF
+   k LEX-TOK s" :" LINT-STR= IF
       -1 AL-EXPECT-NAME !
       s" " AL-CURRENT!
       exit
    THEN
-   k LTOK s" ;" STR= IF
+   k LEX-TOK s" ;" LINT-STR= IF
       s" " AL-CURRENT!
       exit
    THEN
-   k LTOK AL-UNSAFE? IF k AL-REPORT THEN ;
+   k LEX-TOK AL-UNSAFE? IF k AL-REPORT THEN ;
 
 : AL-SCAN-TOKENS ( -- )
    0 AL-I !

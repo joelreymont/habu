@@ -54,31 +54,31 @@ variable DDL-LINE
    a u n - ;
 
 : DDL-MD? ( ptr u8 n -- bool )
-   s" .md" ENDS-WITH? ;
+   s" .md" LINT-ENDS-WITH? ;
 
 : DDL-DOT-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" .dots/" STARTS-WITH?
+   a u s" .dots/" LINT-STARTS-WITH?
    a u DDL-MD? and ;
 
 : DDL-DOT-ID$ ( ptr u8 n -- ptr u8 n )
    BASENAME DDL-MD-U DDL-DROP-TAIL ;
 
 : DDL-FM-MARK? ( ptr u8 n -- bool )
-   TRIM s" ---" STR= ;
+   LINT-TRIM s" ---" LINT-STR= ;
 
 : DDL-BLOCKS-LINE? ( ptr u8 n -- bool )
-   TRIM s" blocks:" STR= ;
+   LINT-TRIM s" blocks:" LINT-STR= ;
 
 : DDL-BLOCKER-LINE-TRIM? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 2 < IF LINT-FALSE exit THEN
    a c@ DDL-DASH <> IF LINT-FALSE exit THEN
-   a 1 + c@ WS? ;
+   a 1 + c@ LINT-WS? ;
 
 : DDL-BLOCKER-LINE? ( ptr u8 n -- bool )
-   TRIM DDL-BLOCKER-LINE-TRIM? ;
+   LINT-TRIM DDL-BLOCKER-LINE-TRIM? ;
 
 : DDL-BLOCKER$ ( ptr u8 n -- ptr u8 n )
-   TRIM 2 DDL-SKIP TRIM ;
+   LINT-TRIM 2 DDL-SKIP LINT-TRIM ;
 
 : DDL-FM-OPEN? ( -- bool )
    DDL-FM @ 1 = ;
@@ -96,7 +96,7 @@ variable DDL-LINE
    DDL-FM @ 1 = IF DDL-CLOSE-FM exit THEN ;
 
 : DDL-NONEMPTY? ( ptr u8 n -- bool )
-   TRIM nip 0 > ;
+   LINT-TRIM nip 0 > ;
 
 : DDL-MISSING ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n line:n id:ptr idu:n :}
    s" DOT-DEP-MISSING " type

@@ -18,7 +18,7 @@ The full port gate loads this slice through `test/run.f`.
 ## Process Capture
 
 `lib/process.f` exposes checked helpers over the raw runtime primitives.
-Checked code should use `SPAWN-IO`, `WAIT-RC`, `RUN-RC`, and capture helpers;
+Checked code should use `PROC-SPAWN-IO`, `PROC-WAIT-RC`, `PROC-RUN-RC`, and capture helpers;
 they accept counted paths and throw named process errors for primitive failures.
 
 `spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` is target-specific:

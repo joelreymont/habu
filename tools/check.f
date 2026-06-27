@@ -5,7 +5,8 @@
 \ tools/lint/json-writer.f, tools/lint/source-lex.f,
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
-\ tools/trust-lint-core.f, tools/check-all-errors-core.f, and tools/argv.f.
+\ tools/reserved-name-lint-core.f, tools/trust-lint-core.f,
+\ tools/check-all-errors-core.f, and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -146,7 +147,7 @@ variable CHK-ROOT-U
    SCRIPT-ARGV$ ;
 
 : CHK-ARG= ( n ptr u8 n -- bool ) {: idx a:ptr u :}
-   idx CHK-ARG$ a u STR= ;
+   idx CHK-ARG$ a u LINT-STR= ;
 
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
@@ -171,10 +172,10 @@ variable CHK-ROOT-U
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
 : CHK-PARSE-ONE ( ptr u8 n -- ) {: a:ptr u :}
-   a u s" --json-errors" STR= if -1 CHK-JSON ! exit then
-   a u s" --strict-signatures" STR= if -1 CHK-STRICT ! exit then
-   a u s" --all-errors" STR= if -1 CHK-ALL ! exit then
-   a u s" --source-list" STR= if -1 CHK-SOURCE-LIST ! exit then
+   a u s" --json-errors" LINT-STR= if -1 CHK-JSON ! exit then
+   a u s" --strict-signatures" LINT-STR= if -1 CHK-STRICT ! exit then
+   a u s" --all-errors" LINT-STR= if -1 CHK-ALL ! exit then
+   a u s" --source-list" LINT-STR= if -1 CHK-SOURCE-LIST ! exit then
    a u CHK-DASH? if CHK-USAGE then
    a u CHK-ADD-POS ;
 
@@ -276,7 +277,7 @@ variable CHK-ROOT-U
    CHK-POS-N @ 0= if CHK-MATERIALIZE-STDIN else CHK-MATERIALIZE-FILE then ;
 
 : CHK-LABEL-DQ? ( -- bool )
-   CHK-LABEL CHK-DQ INDEX-OF 0 >= ;
+   CHK-LABEL CHK-DQ LINT-INDEX-OF 0 >= ;
 
 : CHK-CHECK-LABEL ( -- )
    CHK-LABEL-DQ? if s" check.f: source path contains a double quote, cannot set DIAG-FILE" CHK-E-USAGE CHK-FAIL then ;
@@ -370,6 +371,13 @@ variable CHK-ROOT-U
    CHK-SOURCE CHECKED-BOUNDARY-LINT-FILE
    CHECKED-BOUNDARY-LINT-FINISH ;
 
+: CHK-RUN-RESERVED-NAMES ( -- )
+   RESERVED-NAME-LINT-RESET
+   2 >FD RNL-OUT-FD!
+   CHK-JSON @ RNL-JSON!
+   CHK-SOURCE CHK-LABEL RESERVED-NAME-LINT-FILE-AS
+   RESERVED-NAME-LINT-FINISH ;
+
 : CHK-TRUST-SETUP ( -- )
    CHK-RUN-BUF CHK-RUN-CAP CHK-ORIGIN-BUF CHK-ORIGIN-CAP TRUST-LINT-BUFFERS!
    2 >FD TL-OUT-FD!
@@ -447,6 +455,7 @@ variable CHK-ROOT-U
 : CHECK-MAIN ( -- )
    CHK-PARSE
    CHK-MATERIALIZE
+   CHK-RUN-RESERVED-NAMES
    CHK-RUN-BOUNDARY
    CHK-RUN-TRUST
    CHK-RUN-STRICT

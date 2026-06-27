@@ -98,7 +98,7 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    0 BT-SB-C, ;
 
 : BT-SB-ARTIFACT-DATA ( -- )
-   s" create A 97 c, 114 c, 116 c, 105 c, 102 c, 97 c, 99 c, 116 c, " SB-APPEND ;
+   s" create BT-ART-BUF 97 c, 114 c, 116 c, 105 c, 102 c, 97 c, 99 c, 116 c, " SB-APPEND ;
 
 : BT-SCRIPT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    SB-RESET
@@ -111,7 +111,7 @@ create BT-TOP-DIE-SRC-BUF FS-PATH-CAP allot
    BT-SHEBANG
    BT-ART BT-SB-PATH
    BT-SB-ARTIFACT-DATA
-   s" P 1537 420 open dup A 8 write drop close" SB-APPEND
+   s" P 1537 420 open dup BT-ART-BUF 8 write drop close" SB-APPEND
    SB$ ;
 
 : BT-WRITE-FILE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}

@@ -1,17 +1,16 @@
 \ imgdump.f — habu image inspector, in habu.
-\ Run: bin/hb --load src/os/<target>/layout.f src/habu/layout.f
-\ tools/imgdump.f -- <image> [image2]
+\ Run: bin/hb --load tools/imgdump.f -- <image> [image2]
 \ Reads the image path argument, locates the snapshot trailer, maps the live region
 \ payload, and prints one line per word: name $start $len. With two images,
 \ compares name+length first, then reports offset-only shifts.
-\ Requires the target layout plus src/habu/layout.f.
+\ Uses the target/image layout already present in the native cold prefix.
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD
 1024 constant IPATH-CAP
 create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
-variable TOFF  variable TBASE  variable TNDICT  variable TREG  variable TDATA
+variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDATA
 variable ROFF  variable SCAN-OFF  variable HAS-SNAP
 variable RUNV  variable BESTO  variable BESTN
 variable SNAP-DIRECT-OFF
@@ -40,7 +39,7 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
 
 : IMG-USAGE ( -- )
-   s" usage: bin/hb --load src/os/<target>/layout.f src/habu/layout.f tools/imgdump.f -- image [image2] | --pc image pc" 64 die ;
+   s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc" 64 die ;
 
 : IMG-PATH$ ( -- ptr u8 n )
    SCRIPT-ARGC 1 < if IMG-USAGE then
@@ -86,8 +85,16 @@ variable HV  variable HP
    HB HP @ +  HN @  type ;
 
 \ ---- snapshot and dict entry fields ----
-: I@ {: o :} ( n -- n )
-   IB@ o + @ ;
+: I@ ( n -- n ) {: o :}
+   IB@ o + {: p:ptr :}
+   p c@
+   p 1 + c@ 8 lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or
+   p 4 + c@ 32 lshift or
+   p 5 + c@ 40 lshift or
+   p 6 + c@ 48 lshift or
+   p 7 + c@ 56 lshift or ;
 : E-S {: o :} ( n -- n )
    o I@ ;
 : E-E {: o :} ( n -- n )
@@ -142,7 +149,7 @@ variable OKV
 : LOAD-SNAPSHOT ( -- )
    FIND-SNAPSHOT 0= if 0 HAS-SNAP ! exit then
    -1 HAS-SNAP !
-   TOFF @ 8 + I@ TBASE !
+   TOFF @ 8 + I@ IMG-TBASE !
    TOFF @ 16 + I@ TNDICT !
    TOFF @ 24 + I@ TREG !
    TOFF @ 32 + I@ TDATA !
@@ -151,7 +158,7 @@ variable OKV
 : PTR>OFF {: p :} ( n -- n )
    HAS-SNAP @ 0= if -1 exit then
    p RBASE-VA >=  p RBASE-VA TREG @ + < and if p RBASE-VA - ROFF @ + exit then
-   p TBASE @ >=  p TBASE @ ROFF @ CODE-OFF - + < and if p TBASE @ - CODE-OFF + exit then
+   p IMG-TBASE @ >=  p IMG-TBASE @ ROFF @ CODE-OFF - + < and if p IMG-TBASE @ - CODE-OFF + exit then
    -1 ;
 : E-NAME-OFF {: o :} ( n -- n )
    o E-F DNAME-EXT and 0= if o 24 + else o 24 + I@ PTR>OFF then ;
@@ -230,14 +237,7 @@ variable OKV
 : A-START@ ( n -- n ) cells A-START + @ ;
 : A-LEN@ ( n -- n ) cells A-LEN + @ ;
 
-: STR= {: a:ptr au b:ptr bu :} ( ptr u8 n ptr u8 n -- bool )
-   au bu <> if 0 0= 0= exit then
-   0 begin dup au < while
-      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
-      1 +
-   repeat drop 0 0= ;
-
-: DIGIT? ( n -- n bool ) {: c :}
+: IMG-HEX-DIGIT? ( n -- n bool ) {: c :}
    c 48 >= c 57 <= and if c 48 - 0 0= exit then
    c 65 >= c 70 <= and if c 55 - 0 0= exit then
    c 97 >= c 102 <= and if c 87 - 0 0= exit then
@@ -257,7 +257,7 @@ variable OKV
    0 NUM-I !
    0 NUM-ACC !
    begin NUM-I @ u < while
-      a NUM-I @ + c@ DIGIT? 0= if drop 0 0 0= 0= exit then
+      a NUM-I @ + c@ IMG-HEX-DIGIT? 0= if drop 0 0 0= 0= exit then
       NUM-DIG !
       NUM-ACC @ 16 * NUM-DIG @ + NUM-ACC !
       NUM-I @ 1 + NUM-I !

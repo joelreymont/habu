@@ -14,6 +14,10 @@
 3 constant SUITE-TOOL-ID
 4 constant SUITE-CHECK-CLI-ID
 5 constant SUITE-TAIL-ID
+6 constant SUITE-LINT-TOOLS-ID
+7 constant SUITE-LINT-LIBS-ID
+8 constant SUITE-LINT-ARTIFACTS-ID
+9 constant SUITE-LINT-MANIFEST-ID
 
 variable SUITE-DONE
 create SUITE-LABEL-BUF SUITE-NAME-CAP allot
@@ -36,7 +40,7 @@ variable SUITE-SLICE
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [warm|lint|tool|check-cli|tail]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail]" SUITE-USAGE-RC die ;
 
 : SUITE-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -50,6 +54,10 @@ variable SUITE-SLICE
    SCRIPT-ARGC 1 <> if SUITE-USAGE then
    s" warm" SUITE-ARG0= if SUITE-WARM-ID SUITE-SLICE! exit then
    s" lint" SUITE-ARG0= if SUITE-LINT-ID SUITE-SLICE! exit then
+   s" lint-tools" SUITE-ARG0= if SUITE-LINT-TOOLS-ID SUITE-SLICE! exit then
+   s" lint-manifest" SUITE-ARG0= if SUITE-LINT-MANIFEST-ID SUITE-SLICE! exit then
+   s" lint-artifacts" SUITE-ARG0= if SUITE-LINT-ARTIFACTS-ID SUITE-SLICE! exit then
+   s" lint-libs" SUITE-ARG0= if SUITE-LINT-LIBS-ID SUITE-SLICE! exit then
    s" tool" SUITE-ARG0= if SUITE-TOOL-ID SUITE-SLICE! exit then
    s" check-cli" SUITE-ARG0= if SUITE-CHECK-CLI-ID SUITE-SLICE! exit then
    s" tail" SUITE-ARG0= if SUITE-TAIL-ID SUITE-SLICE! exit then
@@ -184,6 +192,8 @@ variable SUITE-SLICE
    s" tools/json-only-core.f" SUITE-ARG+
    s" tools/signature-lint-core.f" SUITE-ARG+
    s" tools/checked-boundary-lint-core.f" SUITE-ARG+
+   s" tools/reserved-name-lint-core.f" SUITE-ARG+
+   s" tools/duplicate-definition-lint-core.f" SUITE-ARG+
    s" tools/typed-local-diff-lint-core.f" SUITE-ARG+
    s" tools/trust-lint-core.f" SUITE-ARG+
    s" tools/check-all-errors-core.f" SUITE-ARG+ ;
@@ -256,8 +266,7 @@ variable SUITE-SLICE
 : SUITE-WARM? ( -- bool )
    SUITE-SLICE @ SUITE-WARM-ID = ;
 
-: SUITE-LINT? ( -- bool )
-   SUITE-SLICE @ SUITE-LINT-ID <> if SUITE-FALSE exit then
+: SUITE-LINT-TOOLS-LABEL? ( -- bool )
    s" shadow-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
@@ -271,13 +280,21 @@ variable SUITE-SLICE
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" text-foundation-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" stdlib-manifest" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   SUITE-FALSE ;
+
+: SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )
+   s" text-foundation-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" json-file-cursor" SUITE-LABEL= if SUITE-TRUE exit then
    s" imgdump-compare" SUITE-LABEL= if SUITE-TRUE exit then
    s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
    s" streaming-sha256" SUITE-LABEL= if SUITE-TRUE exit then
+   SUITE-FALSE ;
+
+: SUITE-LINT-MANIFEST-LABEL? ( -- bool )
+   s" stdlib-manifest" SUITE-LABEL= ;
+
+: SUITE-LINT-LIBS-LABEL? ( -- bool )
    s" string-helpers" SUITE-LABEL= if SUITE-TRUE exit then
    s" array-helpers" SUITE-LABEL= if SUITE-TRUE exit then
    s" table-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
@@ -289,6 +306,19 @@ variable SUITE-SLICE
    s" ptx-tile-acc-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-gemm-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-toolchain" SUITE-LABEL= if SUITE-TRUE exit then
+   SUITE-FALSE ;
+
+: SUITE-LINT? ( -- bool )
+   SUITE-SLICE @ SUITE-LINT-ID = if
+      SUITE-LINT-TOOLS-LABEL? if SUITE-TRUE exit then
+      SUITE-LINT-MANIFEST-LABEL? if SUITE-TRUE exit then
+      SUITE-LINT-ARTIFACTS-LABEL? if SUITE-TRUE exit then
+      SUITE-LINT-LIBS-LABEL? exit
+   then
+   SUITE-SLICE @ SUITE-LINT-TOOLS-ID = if SUITE-LINT-TOOLS-LABEL? exit then
+   SUITE-SLICE @ SUITE-LINT-MANIFEST-ID = if SUITE-LINT-MANIFEST-LABEL? exit then
+   SUITE-SLICE @ SUITE-LINT-ARTIFACTS-ID = if SUITE-LINT-ARTIFACTS-LABEL? exit then
+   SUITE-SLICE @ SUITE-LINT-LIBS-ID = if SUITE-LINT-LIBS-LABEL? exit then
    SUITE-FALSE ;
 
 : SUITE-TOOL? ( -- bool )
@@ -403,7 +433,6 @@ variable SUITE-SLICE
 : TEST-SUITE-IMGDUMP ( -- )
    SUITE-PARSE-LABEL
    SUITE-HB
-   SUITE-ARG-TARGET-LAYOUT
    SUITE-PARSE-ARGS
    SUITE-RUN? 0= if exit then
    SUITE-LABEL$ SUITE-HB-RUN ;
@@ -546,13 +575,12 @@ TEST-SUITE json-file-cursor
 ;TEST-SUITE
 
 TEST-SUITE-IMGDUMP imgdump-compare
-   src/habu/layout.f lib/errors.f lib/string.f lib/test.f lib/fs.f
-   lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
-   tools/imgdump-test.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f tools/imgdump.f tools/imgdump-test.f
 ;TEST-SUITE
 
 TEST-SUITE imagedisasm-tool
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f src/arch/arm64/disasm.f
    tools/imagedisasm.f tools/imagedisasm-test.f
 ;TEST-SUITE
@@ -575,6 +603,7 @@ TEST-TOOL-SUITE tool-boundary-doc-public
 TEST-TOOL-SUITE tool-boundary-lints
    tools/repl-lint-test.f tools/diag-origin-test.f tools/aot-lint-test.f
    tools/signature-lint-test.f tools/checked-boundary-lint-test.f
+   tools/reserved-name-lint-test.f tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f tools/json-only-test.f
 ;TEST-SUITE
 
@@ -588,7 +617,8 @@ TEST-SUITE check-cli-boundary
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/typed-local-diff-lint-core.f
+   tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
+   tools/typed-local-diff-lint-core.f
    tools/trust-lint-core.f
    tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
    tools/check-test.f
@@ -596,7 +626,7 @@ TEST-SUITE check-cli-boundary
 
 TEST-SUITE streaming-sha256
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
-   src/core/sha256.f tools/sha256-file-test.f
+   tools/sha256-file-test.f
 ;TEST-SUITE
 
 TEST-SUITE string-helpers
@@ -652,34 +682,34 @@ TEST-SUITE ptx-stdlib
 ;TEST-SUITE
 
 TEST-SUITE ptx-tile-loop-neg
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/ptx/tile-loop-neg-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-tile-smem-neg
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/ptx/tile-smem-neg-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-tile-acc-neg
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/ptx/tile-acc-neg-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-gemm-checked-neg
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/ptx/gemm-checked-neg-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-toolchain
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f src/arch/ptx/emit.f
    tools/ptx/saxpy-test.f
 ;TEST-SUITE
 
 TEST-SUITE-STDIN source-stdlib-stdin DATA
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
-   lib/source.f lib/source-test.f -- stdin
+   lib/memory.f lib/source.f lib/source-test.f -- stdin
 ;TEST-SUITE
 
 TEST-SUITE argv-stdlib-mocks
@@ -738,7 +768,7 @@ TEST-SUITE bootstrap-helper-fixtures
    lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
    tools/warm-image-lib.f tools/bootstrap-codegen-test.f
    bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
-   src/os/image-bytes.f tools/image-bytes-test.f
+   tools/image-bytes-test.f
    tools/warm-image-test.f
 ;TEST-SUITE
 

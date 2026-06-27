@@ -80,14 +80,14 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    s" : WRAP ( i64 -- i64 ) DUP 0< IF NEGATE ELSE BIG THEN 1+ ;" GE-SRC-LINE ;
 
 : GAP-CLOSURE-LINE ( n -- ) {: n :}
-   s" : W" GE-SRC+
+   s" : GAPW" GE-SRC+
    n GE-SRC-U+
-   s"  ( -- n ) W" GE-SRC+
+   s"  ( -- n ) GAPW" GE-SRC+
    n 1+ GE-SRC-U+
    s"  1 + ;" GE-SRC-LINE ;
 
 : GAP-FEATURE-DEFS ( -- )
-   s" : W259 ( -- n ) 1 ;" GE-SRC-LINE
+   s" : GAPW259 ( -- n ) 1 ;" GE-SRC-LINE
    258 begin dup -1 > while
       dup GAP-CLOSURE-LINE
       1-
@@ -97,7 +97,7 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 : GAP-BUNDLE-MAIN ( -- )
    s" : MAIN ( -- ) 10 FIB . CR 1 WRAP . " GE-SRC+
    s" ok" GE-SRC-S"
-   s"  type CR W0 . CR LONG-AOT-CALLED-WORD-NAME . CR " GE-SRC+
+   s"  type CR GAPW0 . CR LONG-AOT-CALLED-WORD-NAME . CR " GE-SRC+
    s" hi" GAP-SRC-DOTQ
    s"  CR " GE-SRC+
    s" ok" GAP-SRC-CQ

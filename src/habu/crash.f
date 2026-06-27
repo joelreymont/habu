@@ -11,7 +11,7 @@ create CRH 80 allot  variable CRHL
 CRH-INIT
 40 constant MACOS-SA-SIGINFO
 4 constant LINUX-SA-SIGINFO
-8 constant LINUX-SIGSET-SIZE
+8 constant CRASH-LINUX-SIGSET-SIZE
 48 constant MCTX-OFF           \ macOS ucontext -> mcontext pointer offset
 16 constant SS-OFF             \ macOS mcontext -> __ss.__x[0] offset
 176 constant LINUX-UC-MCTX-OFF
@@ -143,7 +143,7 @@ s" c-crash-pc+4" s" --" TRUST
 : INSTALL-SIGACT ( n -- )
    {: signo :}
    0 signo MOVZ,  1 SP 0 ADDI,  2 0 MOVZ,
-   HB-TARGET-LINUX? IF 3 LINUX-SIGSET-SIZE MOVZ, THEN
+   HB-TARGET-LINUX? IF 3 CRASH-LINUX-SIGSET-SIZE MOVZ, THEN
    NR-SIGACTION SYS, ;
 
 : C-SIGACTION-FRAME ( n -- ) {: handler :}

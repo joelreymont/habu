@@ -62,16 +62,18 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
 
 : EMITS ( ptr u8 n -- ) {: a u :}  1 a u write drop ;
 
-: EMIT1 ( c -- )  KB c!  1 KB 1 write drop ;
+: REPL-EMIT1 ( c -- )
+   KB c!
+   1 KB 1 write drop ;
 
 : KEY1 ( -- c )  0 KB 1 read drop  KB c@ ;
 
 \ full-line redraw: CR, clear-to-eol, prompt, line, cursor back to LPOS
 : REDRAW ( -- )
-   13 EMIT1  27 EMIT1  91 EMIT1  75 EMIT1
+   13 REPL-EMIT1  27 REPL-EMIT1  91 REPL-EMIT1  75 REPL-EMIT1
    s" habu> " EMITS
    LBUF LLEN @ EMITS
-   LLEN @ LPOS @ - 0 ?do 8 EMIT1 loop ;
+   LLEN @ LPOS @ - 0 ?do 8 REPL-EMIT1 loop ;
 
 : CLEARLN ( -- )  0 LLEN !  0 LPOS ! ;
 
@@ -123,7 +125,7 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
    k 66 = IF HDOWN THEN ;
 
 : DOKEY ( n -- ) {: c :}
-   c 13 =  c 10 = or IF 13 EMIT1 10 EMIT1  1 DONE !  exit THEN
+   c 13 =  c 10 = or IF 13 REPL-EMIT1 10 REPL-EMIT1  1 DONE !  exit THEN
    c 4 = IF LLEN @ 0 = IF 2 DONE ! THEN exit THEN
    c 3 = IF CLEARLN REDRAW exit THEN
    c 1 = IF 0 LPOS ! REDRAW exit THEN

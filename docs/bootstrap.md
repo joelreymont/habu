@@ -76,8 +76,8 @@ native checked engine rebuilt from current source.
 After `bin/hb` exists, do not use Gforth for normal work:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/memory.f lib/codesign.f \
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 ```
 
@@ -93,9 +93,9 @@ a live `cuInit`/`cuDeviceGet` canary, so the break surfaces early at the FFI lay
 Run the gate after bootstrap or refresh:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f \
-  test/run.f
+bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f \
+  test/gate-pool.f test/run.f
 ```
 
 This is the native port gate. It runs as a checked bounded DAG pool with
@@ -112,8 +112,10 @@ artifacts and must not be committed.
 
 ## Future Port Checklist
 
-1. Add one target source seam under `src/os/<target>/` for syscalls, environment,
-   executable layout, signing policy, terminal constants, and target metadata.
+1. Add one target source seam under `src/os/<target>/` for syscalls, executable
+   layout, signing policy, terminal constants, and target metadata. Startup
+   argv/envp access stays shared in `src/os/env-base.f`; do not add target
+   `env.f` fallbacks.
 2. Wire the target into `tools/bootstrap.sh`, `tools/build-fixpoint.f`, and the
    native source-list builders (`src/habu/habu2.f`, `bootstrap/cg/forth.fs`,
    `src/habu/stdin.f`, and `tools/hb-build-lib.f`) so bootstrap, refresh,

@@ -187,7 +187,7 @@ variable TL-NV
 
 : TL-ROOT-SELF? ( -- bool )
    TL-ROOT-U @ 0= IF TL-TRUE exit THEN
-   TL-ROOT-A@ TL-ROOT-U @ s" ." STR= ;
+   TL-ROOT-A@ TL-ROOT-U @ s" ." LINT-STR= ;
 
 : TL-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    TL-ROOT-SELF? IF a u exit THEN
@@ -205,13 +205,13 @@ variable TL-NV
 : TL-REL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    TL-ROOT-SELF? IF a u exit THEN
    u TL-ROOT-U @ <= IF a u exit THEN
-   a TL-ROOT-U @ TL-ROOT-A@ TL-ROOT-U @ STR= 0= IF a u exit THEN
+   a TL-ROOT-U @ TL-ROOT-A@ TL-ROOT-U @ LINT-STR= 0= IF a u exit THEN
    a TL-ROOT-U @ + c@ FS-SLASH <> IF a u exit THEN
    a TL-ROOT-U @ 1 + +  u TL-ROOT-U @ 1 + - ;
 
 : TL-STORE$ ( ptr u8 n -- n n ) {: a:ptr u :}
    TL-END @ u + TL-STR-LIMIT @ > IF s" trust-lint: string store overflow" TL-FAIL THEN
-   a TL-STR-A@ TL-END @ + u BMOVE
+   a TL-STR-A@ TL-END @ + u LINT-BMOVE
    TL-END @ u
    TL-END @ u + TL-END ! ;
 
@@ -235,28 +235,28 @@ variable TL-NV
 
 : TL-FIND-SITE ( ptr u8 n -- n ) {: a:ptr u :}
    0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ a u STR= IF exit THEN
+      dup TL-S-NAME$ a u LINT-STR= IF exit THEN
       1+
    repeat drop -1 ;
 
 : TL-FIND-MAN ( ptr u8 n -- n ) {: a:ptr u :}
    0 begin dup TL-M# @ < while
-      dup TL-M-NAME$ a u STR= IF exit THEN
+      dup TL-M-NAME$ a u LINT-STR= IF exit THEN
       1+
    repeat drop -1 ;
 
 : TL-FIND-SITE-IN-PATH ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu path:ptr pathu :}
    0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ name nameu STR= if
-         dup TL-S-PATH$ path pathu STR= if exit then
+      dup TL-S-NAME$ name nameu LINT-STR= if
+         dup TL-S-PATH$ path pathu LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
 
 : TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu site:ptr siteu :}
    0 begin dup TL-M# @ < while
-      dup TL-M-NAME$ name nameu STR= if
-         dup TL-M-SITE$ site siteu STR= if exit then
+      dup TL-M-NAME$ name nameu LINT-STR= if
+         dup TL-M-SITE$ site siteu LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
@@ -270,7 +270,7 @@ variable TL-NV
 
 : TL-SITE+ ( ptr u8 n -- ) {: a:ptr u :}
    TL-SITE-U @ u + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
-   a TL-SITE-BUF TL-SITE-U @ + u BMOVE
+   a TL-SITE-BUF TL-SITE-U @ + u LINT-BMOVE
    TL-SITE-U @ u + TL-SITE-U ! ;
 
 : TL-SITE-C ( n -- ) {: c :}
@@ -292,8 +292,8 @@ variable TL-NV
 
 : TL-FIND-SITE-FOR-MAN ( n -- n ) {: mk :}
    0 begin dup TL-S# @ < while
-      dup TL-S-NAME$ mk TL-M-NAME$ STR= if
-         dup TL-SCAN-SITE$ mk TL-M-SITE$ STR= if exit then
+      dup TL-S-NAME$ mk TL-M-NAME$ LINT-STR= if
+         dup TL-SCAN-SITE$ mk TL-M-SITE$ LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
@@ -386,7 +386,7 @@ variable TL-NV
          begin TL-I @ u <  a TL-I @ + c@ TL-PIPE <> and while
             TL-I @ 1+ TL-I !
          repeat
-         a TL-START @ +  TL-I @ TL-START @ -  TRIM TL-CELL!
+         a TL-START @ +  TL-I @ TL-START @ -  LINT-TRIM TL-CELL!
       ELSE
          TL-I @ 1+ TL-I !
       THEN
@@ -406,22 +406,22 @@ variable TL-NV
    repeat drop TL-TRUE ;
 
 : TL-MAN-NAME-CELL$ ( -- ptr u8 n )
-   0 TL-CELL$ TL-UNBACKTICK TRIM ;
+   0 TL-CELL$ TL-UNBACKTICK LINT-TRIM ;
 
 : TL-MAN-EFF-CELL$ ( -- ptr u8 n )
-   1 TL-CELL$ TL-UNBACKTICK TRIM ;
+   1 TL-CELL$ TL-UNBACKTICK LINT-TRIM ;
 
 : TL-MAN-TEST-CELL$ ( -- ptr u8 n )
-   3 TL-CELL$ TRIM ;
+   3 TL-CELL$ LINT-TRIM ;
 
 : TL-MAN-SITE-CELL$ ( -- ptr u8 n )
-   4 TL-CELL$ TRIM ;
+   4 TL-CELL$ LINT-TRIM ;
 
 : TL-MAN-AUDIT-CELL$ ( -- ptr u8 n )
-   5 TL-CELL$ TRIM ;
+   5 TL-CELL$ LINT-TRIM ;
 
 : TL-MAN-HEADER? ( -- bool )
-   TL-MAN-NAME-CELL$ s" Word" STR= ;
+   TL-MAN-NAME-CELL$ s" Word" LINT-STR= ;
 
 : TL-MAN-SEPARATOR? ( -- bool )
    TL-MAN-NAME-CELL$ TL-SEPARATOR? ;
@@ -496,8 +496,8 @@ variable TL-NV
 : TL-B-END? ( -- bool ) TL-BI @ TL-NV @ >= ;
 : TL-A-C@ ( -- n ) TL-NA@ TL-AI @ + c@ ;
 : TL-B-C@ ( -- n ) TL-NB@ TL-BI @ + c@ ;
-: TL-A-WS? ( -- bool ) TL-A-END? IF TL-FALSE ELSE TL-A-C@ WS? THEN ;
-: TL-B-WS? ( -- bool ) TL-B-END? IF TL-FALSE ELSE TL-B-C@ WS? THEN ;
+: TL-A-WS? ( -- bool ) TL-A-END? IF TL-FALSE ELSE TL-A-C@ LINT-WS? THEN ;
+: TL-B-WS? ( -- bool ) TL-B-END? IF TL-FALSE ELSE TL-B-C@ LINT-WS? THEN ;
 
 : TL-N-SKIP ( -- )
    begin TL-A-WS? while TL-AI @ 1+ TL-AI ! repeat
@@ -556,12 +556,12 @@ variable TL-NV
    THEN ;
 
 : TL-CHECK-SITE-DRIFT ( n -- ) {: sk :}
-   sk TL-SCAN-SITE$ TL-K @ TL-M-SITE$ STR= 0= IF
+   sk TL-SCAN-SITE$ TL-K @ TL-M-SITE$ LINT-STR= 0= IF
       sk TL-K @ TL-SITE-DRIFT
    THEN ;
 
 : TL-CHECK-TEST-CELL ( n -- ) {: sk :}
-   TL-K @ TL-M-TEST$ TRIM nip 0= IF
+   TL-K @ TL-M-TEST$ LINT-TRIM nip 0= IF
       s" UNTESTED " TL-OUT sk TL-PRINT-SITE
       s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
       s" ` has an empty Tests cell in TRUSTED.md" TL-OUT TL-NL
@@ -609,8 +609,8 @@ variable TL-NV
    sk TL-CHECK-AUDIT-DATE ;
 
 : TL-SCANNED-SITE? ( ptr u8 n -- bool )
-   2dup s" src/" STARTS-WITH? IF 2drop TL-TRUE exit THEN
-   s" lib/" STARTS-WITH? ;
+   2dup s" src/" LINT-STARTS-WITH? IF 2drop TL-TRUE exit THEN
+   s" lib/" LINT-STARTS-WITH? ;
 
 : TL-CHECK-STALE-ROW ( n -- ) {: mk :}
    mk TL-M-SITE$ TL-SCANNED-SITE? TL-NOT IF exit THEN

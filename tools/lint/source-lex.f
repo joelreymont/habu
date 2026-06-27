@@ -7,7 +7,7 @@
 2 constant LEX-GROWTH
 variable LEX-CAP
 variable L#   variable LEX-A   variable LEX-U   variable LX
-variable LNO  variable LCO  variable LS  variable LSL  variable LSC
+variable LEX-LINE-N  variable LEX-COL-N  variable LEX-START  variable LEX-START-LINE  variable LEX-START-COL
 variable LEX-COMMENT-LEN
 variable LEX-UNTERM-QUOTE
 variable LEX-UNTERM-BYTE
@@ -77,7 +77,7 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    cu LEX-CLEN-V VEC-PUSH-N drop
    LEX-SYNC-COUNT ;
 
-: LTOK ( n -- ptr u8 n ) {: k :}
+: LEX-TOK ( n -- ptr u8 n ) {: k :}
    LEX-ADDR-V k >IDX VEC-A@
    LEX-LEN-V k >IDX VEC-N@ ;
 
@@ -106,7 +106,7 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 : LEX-ADV ( -- n )
    LEX-C@
    LX @ 1+ LX !
-   dup 10 = if LNO @ 1+ LNO ! 1 LCO ! else LCO @ 1+ LCO ! then ;
+   dup 10 = if LEX-LINE-N @ 1+ LEX-LINE-N ! 1 LEX-COL-N ! else LEX-COL-N @ 1+ LEX-COL-N ! then ;
 
 : LEX-SKIP-QUOTE ( -- bool )
    begin LEX-END? 0= while LEX-ADV DQUOTE = if LINT-TRUE exit then repeat
@@ -121,7 +121,7 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 : LEX-UNTERM-QUOTE? ( -- bool )
    LEX-UNTERM-QUOTE @ ;
 
-: STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
+: LEX-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
    u 2 <> if LINT-FALSE exit then
    a 1+ c@ DQUOTE <> if LINT-FALSE exit then
    a c@ LINT-FOLD 115 = if LINT-TRUE exit then
@@ -143,24 +143,24 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    begin LEX-END? 0= LEX-C@ 41 <> and while LEX-ADV drop repeat
    LX @ PSTART @ - LEX-COMMENT-LEN !
    LEX-END? 0= if LEX-ADV drop then
-   L-COMMENT LEX-A@ LS @ + LX @ LS @ - LS @ LSL @ LSC @
+   L-COMMENT LEX-A@ LEX-START @ + LX @ LEX-START @ - LEX-START @ LEX-START-LINE @ LEX-START-COL @
    LEX-COMMENT-A LEX-COMMENT-U LEX-ADD ;
 
 : LEX-WORD ( -- )
-   begin LEX-END? 0= LEX-C@ WS? 0= and while LEX-ADV drop repeat
-   L-WORD LEX-A@ LS @ + LX @ LS @ - LS @ LSL @ LSC @ LEX-A@ 0 LEX-ADD
-   L# @ 1- dup LTOK STRING-OPENER? if
+   begin LEX-END? 0= LEX-C@ LINT-WS? 0= and while LEX-ADV drop repeat
+   L-WORD LEX-A@ LEX-START @ + LX @ LEX-START @ - LEX-START @ LEX-START-LINE @ LEX-START-COL @ LEX-A@ 0 LEX-ADD
+   L# @ 1- dup LEX-TOK LEX-STRING-OPENER? if
       LEX-SKIP-QUOTE 0= if dup LEX-MARK-UNTERM-QUOTE then
    then drop ;
 
 : LEX-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
-   a LEX-A! u LEX-U ! 0 LX ! 1 LNO ! 1 LCO !
+   a LEX-A! u LEX-U ! 0 LX ! 1 LEX-LINE-N ! 1 LEX-COL-N !
    0 LEX-UNTERM-QUOTE !
    LEX-RESET-TABLES
    begin LEX-END? 0= while
-      LEX-C@ WS? if LEX-ADV drop
+      LEX-C@ LINT-WS? if LEX-ADV drop
       else
-         LX @ LS !  LNO @ LSL !  LCO @ LSC !
+         LX @ LEX-START !  LEX-LINE-N @ LEX-START-LINE !  LEX-COL-N @ LEX-START-COL !
          LEX-C@ 92 = if LEX-LINE-COMMENT
          else LEX-C@ 40 = if LEX-PAREN-COMMENT
          else LEX-WORD then then

@@ -194,7 +194,7 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
 : BUILD-RUN ( ptr u8 n ptr u8 n -- n ) {: cmd:ptr cmdu artifact:ptr artifactu :}
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FILE? 0= if E-BUILD-COMMAND throw then
-   cmd cmdu >LEN RUN-RC RC>N {: rc :}
+   cmd cmdu >LEN PROC-RUN-RC RC>N {: rc :}
    rc 0 <> if E-BUILD-STATUS throw then
    artifact artifactu BUILD-EXPECT
    rc ;

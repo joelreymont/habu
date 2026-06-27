@@ -5,6 +5,7 @@
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
+\ tools/reserved-name-lint-core.f
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
 \ tools/warm-run.f tools/check-test.f
 
@@ -90,6 +91,7 @@ variable CKT-LIST-U
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
+   s" tools/reserved-name-lint-core.f"  >LEN PROC-ARGV+
    s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
    s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
@@ -152,57 +154,60 @@ variable CKT-LIST-U
    CKT-LIST$ CKT-RUN-SOURCE-LIST-PATH ;
 
 : CKT-GOOD$ ( -- ptr u8 n )
-   s" : OK ( i64 -- i64 ) dup * ;" ;
+   s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
 
 : CKT-BAD$SRC ( -- ptr u8 n )
-   s" : BAD ( i64 -- i64 ) dup ;" ;
+   s" : CKT-BAD-WORD ( i64 -- i64 ) dup ;" ;
 
 : CKT-NOSIG$ ( -- ptr u8 n )
-   s" : NOSIG dup ;" ;
+   s" : CKT-NOSIG dup ;" ;
 
 : CKT-UNKNOWN-SIG$ ( -- ptr u8 n )
-   s" : BAD ( got expected -- bool ) <= ;" ;
+   s" : CKT-UNKNOWN-SIG ( got expected -- bool ) <= ;" ;
 
 : CKT-UNCHECKED$ ( -- ptr u8 n )
-   s" 0 set-check : BAD ( -- ) ;" ;
+   s" 0 set-check : CKT-UNCHECKED ( -- ) ;" ;
+
+: CKT-RESERVED$ ( -- ptr u8 n )
+   s" variable I" ;
 
 : CKT-DIE$ ( -- ptr u8 n )
    SB-RESET
-   s" : BYE ( -- ) s" SB-APPEND
-   34 SB-APPEND-C
+   s" : CKT-BYE ( -- ) s" SB-APPEND
+   $22 SB-APPEND-C
    s"  bye" SB-APPEND
-   34 SB-APPEND-C
+   $22 SB-APPEND-C
    s"  5 die ;" SB-APPEND
-   10 SB-APPEND-C
-   s" BYE" SB-APPEND
+   $0a SB-APPEND-C
+   s" CKT-BYE" SB-APPEND
    SB$ ;
 
 : CKT-UNTERM-SDQ$ ( -- ptr u8 n )
    SB-RESET
-   s" : BAD ( -- ptr u8 n ) s" SB-APPEND
-   34 SB-APPEND-C
+   s" : CKT-UNTERM-SDQ ( -- ptr u8 n ) s" SB-APPEND
+   $22 SB-APPEND-C
    s"  nope ;" SB-APPEND
    SB$ ;
 
 : CKT-UNTERM-CQ$ ( -- ptr u8 n )
    SB-RESET
-   s" : BAD ( -- ptr u8 ) c" SB-APPEND
-   34 SB-APPEND-C
+   s" : CKT-UNTERM-CQ ( -- ptr u8 ) c" SB-APPEND
+   $22 SB-APPEND-C
    s"  nope ;" SB-APPEND
    SB$ ;
 
 : CKT-UNTERM-DOTQ$ ( -- ptr u8 n )
    SB-RESET
-   s" : BAD ( -- ) ." SB-APPEND
-   34 SB-APPEND-C
+   s" : CKT-UNTERM-DOTQ ( -- ) ." SB-APPEND
+   $22 SB-APPEND-C
    s"  nope ;" SB-APPEND
    SB$ ;
 
 : CKT-LOCAL-TRUSTED$ ( -- ptr u8 n )
    SB-RESET
-   s" TRUSTED: LOCAL-TEST ( -- ) ;" SB-APPEND
-   10 SB-APPEND-C
-   s" : OK ( -- ) LOCAL-TEST ;" SB-APPEND
+   s" TRUSTED: CKT-LOCAL-TEST ( -- ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-OK ( -- ) CKT-LOCAL-TEST ;" SB-APPEND
    SB$ ;
 
 : CKT-PREPARE ( -- )
@@ -249,6 +254,13 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE ;
 
+: CKT-TEST-RESERVED-NAME ( -- )
+   CKT-RESERVED$ CKT-RUN 1 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   CKT-ERR erru s" `I`" CONTAINS? TTRUE ;
+
 : CKT-TEST-USAGE ( -- )
    CKT-RUN-ARGS 64 T=
    {: outu erru :}
@@ -277,7 +289,14 @@ variable CKT-LIST-U
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
-   CKT-ERR erru s" LOCAL-TEST" CONTAINS? TTRUE ;
+   CKT-ERR erru s" CKT-LOCAL-TEST" CONTAINS? TTRUE ;
+
+: CKT-TEST-SOURCE-LIST-RESERVED ( -- )
+   CKT-RESERVED$ CKT-RUN-SOURCE-LIST 1 T=
+   {: outu erru :}
+   outu 0 T=
+   CKT-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   CKT-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
 : CKT-TEST-SOURCE-LIST-AUDITED-LIB ( -- )
    s" lib/test.f" CKT-RUN-SOURCE-LIST-PATH 0 T=
@@ -291,6 +310,7 @@ variable CKT-LIST-U
    CKT-TEST-GOOD
    CKT-TEST-FILE-LABEL
    CKT-TEST-BOUNDARY-LINT
+   CKT-TEST-RESERVED-NAME
    CKT-TEST-STRICT-SIGNATURE
    CKT-TEST-STRICT-SIGNATURE-JSON
    CKT-TEST-UNKNOWN-SIGNATURE
@@ -298,6 +318,7 @@ variable CKT-LIST-U
    CKT-TEST-DIE
    CKT-TEST-UNTERM-STRINGS
    CKT-TEST-SOURCE-LIST-LOCAL-TRUST
+   CKT-TEST-SOURCE-LIST-RESERVED
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN
    T-REPORT

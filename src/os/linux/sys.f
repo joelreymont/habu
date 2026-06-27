@@ -3,14 +3,6 @@
 \ restores the existing convention by comparing x0 with -4095 after svc:
 \ carry set means error, carry clear means success.
 
-: HB-TARGET-LINUX? ( -- bool )
-   0 0= ;
-
-: HB-TARGET-MACOS? ( -- bool )
-   0 0= 0= ;
-
-: HB-TARGET-KNOWN? ( -- bool )
-   HB-TARGET-LINUX? HB-TARGET-MACOS? or ;
 $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 

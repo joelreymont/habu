@@ -228,28 +228,12 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    then
    HBT-RUN-OUT outn HBT-81-ARGS$ T$= ;
 
-: HBT-TARGET-UNKNOWN ( -- )
-   E-BUILD-SOURCE throw ;
-
 : HBT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
-
-: HBT-TARGET-LAYOUT ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f" HBT-ARG+
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f" HBT-ARG+
-      exit
-   then
-   HBT-TARGET-UNKNOWN ;
 
 : HBT-IMGDUMP-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" HBT-ARG+
-   HBT-TARGET-LAYOUT
-   s" src/habu/layout.f" HBT-ARG+
    s" tools/imgdump.f" HBT-ARG+
    s" --" HBT-ARG+
    HBT-REPL-OUT HBT-ARG+ ;

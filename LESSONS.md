@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -8,6 +8,19 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Cell `@` must reject byte spans:** `CHECK!` accepted `ptr u8 @` because the
+  primitive model treated `@` as unconstrained `ptr a -- a`. The fix belongs in
+  checker primitive semantics: concrete `ptr u8` uses `c@`/`c!`; pointer-valued
+  cells are modeled as `ptr ptr u8` and read through `ptr-field @`.
+- **Package reopen is scope, include is composition:** reopening `package NAME`
+  resumes the same private/public wordlists and duplicate set; `--load`,
+  source-list, or include still owns file dependency order. Do not include a
+  file merely to share the package namespace.
+- **Duplicate package definitions belong at publish time:** package namespaces
+  concentrate many natural names, so same-wordlist redefinition must fail in
+  both `C-QUALIFY-DEF` and the certified checker signature recorder. Explicit
+  `TRUST` remains the audited override/refinement path; normal definitions must
+  not silently replace earlier package public/private rows.
 - **Local-first compiler dispatch still owns checker capture:** moving local
   references ahead of keyword dispatch means `C-LOCAL-REF` must call `LBCAP`
   after `LLOC-FIND`; otherwise runtime emits the local but the hook checks a
@@ -58,6 +71,22 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Strict duplicates expose generic fixture names:** once redefinition fails
+  closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
+  collide with baked or sibling words. Prefix generated names by fixture/tool and
+  keep shared lint helpers in a tool-owned vocabulary.
+- **Warm snapshot tails hide, they do not replay:** replaying baked core/target
+  files used to dodge duplicate `SNAP-OUT`, but it also reset state by accident.
+  Emit `HIDE-DEFS-FROM SNAP-OUT`, append `snap.f`, and test that old tail deps
+  are absent.
+- **Image mmap pointers are transient:** `MBUF-A` persisted through a restored
+  image and crashed the next `IMG-M8`. Snapshot writers must clear mmap-backed
+  image buffer pointers/cursors before building a new header.
+- **Reserved parser names need a preflight lint:** `variable I` can pass the raw
+  engine but make `tools/check.f --source-list` fail as silent rc 70 because `i/j`
+  are compiler loop-control tokens. `tools/reserved-name-lint.f` now runs before
+  the checker child; generated converters must run it after prefix stripping so
+  naturalized names become `IX`/`JX`, not bare `I`/`J`.
 - **Focused gate slices need a temp root:** direct-loading
   `test/gate-dictionary.f` does not run `TR-START`; pass `HB_TMP` and
   `HABU_GATE_WARM_ROOT` or use `test/run.f`, or warm images resolve to
@@ -87,6 +116,11 @@ lesson — keep the specific word/code/path, cut the prose.
   regressed the full gate under contention. Keep only schedule moves that improve
   the documented full command; record reverted timings in the dot so failed
   variants are not rediscovered.
+- **Gate budgets must match measured host capacity:** on 2026-06-28 the full
+  native gate was all-green at 100.985s internal time on the 4-online-core
+  Linux/aarch64 target. A 90s default budget was below measured capacity for the
+  current suite; keep the 90s/30s goal active, but use the documented full-gate
+  command and phase timings to earn lower budgets instead of dropping coverage.
 - **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
   spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
   polls. Preserve max wait windows, but use small named poll intervals and a
@@ -109,6 +143,12 @@ lesson — keep the specific word/code/path, cut the prose.
   `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:
   case/phase, executable, argv/load list, outcome kind/code, named rc, capture
   bytes/cap, stdout, and stderr.
+- **Manifest lint needs top-level scheduling under load:** `stdlib-manifest-test`
+  was fast alone but its internal `public-signatures` child hit the old 5s
+  timeout under full-gate contention and surfaced only as `rc 58` until pool
+  outcome attribution printed the throw code. Schedule the manifest lint as a
+  direct gate phase, size its child timeout for aggregate contention, and keep
+  the test instead of hiding it inside a nested batch.
 - **Outcome helpers belong in process libraries:** `gate-common` had duplicated
   the env/no-stdin outcome capture loop because `lib/process-env.f` only exposed
   the stdin outcome variant. Add missing `RUN-ARGV-ENV-*-OUTCOME` helpers in the
@@ -467,10 +507,10 @@ lesson — keep the specific word/code/path, cut the prose.
   argv/env/cwd layers prepare state only. Duplication made every capture variant
   a stack-juggling audit.
 - **Linux spawn needs an exec-failure handshake:** `clone` success ≠ `execve`
-  success. `SPAWN-IO` uses a close-on-exec error pipe: child writes one byte before
+  success. `PROC-SPAWN-IO` uses a close-on-exec error pipe: child writes one byte before
   exiting on `chdir`/`dup2`/`execve` failure; parent reads EOF = success, or reads
   the byte, reaps, returns `-1`. Copy the fd to x0 before reusing that register for
-  the marker byte. Else checked `SPAWN-IO` returns a pid for a missing exe.
+  the marker byte. Else checked `PROC-SPAWN-IO` returns a pid for a missing exe.
 - **Baked REPL needs explicit hook boundaries:** the snapshot prepends `0 set-check`
   then reinstalls a `CHECK!` hook before user input. The standard prefix's
   `roles.f` restores `' HOOK set-check`, so a baked tty bundle emits another
@@ -686,7 +726,7 @@ lesson — keep the specific word/code/path, cut the prose.
   test/driver until multiple users prove shared surface — appending to large
   live-driver bundles surfaces as an unrelated rc 76 capacity failure. Load
   transitive deps in child bundles (`lib/build.f` needs `lib/process.f` for
-  `RUN-RC`). Large native tool bundles (lint tables + `json.f` + big buffers) can
+  `PROC-RUN-RC`). Large native tool bundles (lint tables + `json.f` + big buffers) can
   corrupt reads — lean standalone reader + distinct scratch vars; stream large
   JSONL in chunks, reserve fixed buffers only for bounded summaries.
 - **Source-shape checks distinguish code from quoted code:** generated builders may
@@ -701,7 +741,7 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Captured gate children need heartbeat polls:** a silent child looks hung if
   `poll` waits the full timeout; gate capture loops poll in heartbeat slices,
   print label-only wait lines, keep child stdout/stderr for failures. Progress
-  must exist at every blocking layer — a top-level `WAIT-RC` blinds the user even
+  must exist at every blocking layer — a top-level `PROC-WAIT-RC` blinds the user even
   if children print heartbeats.
 - **Gate heartbeat capture has one owner:** `lib/test-runner.f` owns
   progress-aware drain/flush/stdin capture. Gate files set up phases and

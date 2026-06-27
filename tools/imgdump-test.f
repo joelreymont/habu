@@ -1,7 +1,5 @@
 \ imgdump-test.f - checked fixture coverage for tools/imgdump.f compare mode.
-\ Run: bin/hb --load src/os/linux/layout.f src/habu/layout.f lib/errors.f
-\ lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f
-\ lib/process-argv.f tools/imgdump-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
 \ tools/imgdump-test.f
 
@@ -71,24 +69,9 @@ variable IDT-DIFF-U
 : IDT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: IDT-TARGET-UNKNOWN ( -- )
-   s" imgdump-test: unknown target" 64 die ;
-
-: IDT-ARGV-LAYOUT ( -- )
-   HB-TARGET-LINUX? IF
-      s" src/os/linux/layout.f" IDT-ARG+
-   ELSE HB-TARGET-MACOS? IF
-      s" src/os/macos/layout.f" IDT-ARG+
-   ELSE
-      IDT-TARGET-UNKNOWN
-   THEN
-   THEN
-   s" src/habu/layout.f" IDT-ARG+ ;
-
 : IDT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
    s" --load" IDT-ARG+
-   IDT-ARGV-LAYOUT
    s" tools/imgdump.f" IDT-ARG+
    s" --" IDT-ARG+ ;
 

@@ -147,7 +147,7 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
 : GT-POOL-KILL-SLOT ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PID>N 0 >= if
       idx GT-POOL-PID@ SIGKILL PROC-KILL-RAW drop
-      idx GT-POOL-PID@ WAIT-STATUS drop
+      idx GT-POOL-PID@ PROC-WAIT-STATUS drop
       -1 >PID idx GT-POOL-PID-PTR !
    then
    idx GT-POOL-CLOSE-WRITES
@@ -363,14 +363,19 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    idx GT-POOL-OUT-BUF idx GT-POOL-OUT-U-PTR @ type
    idx GT-POOL-ERR-BUF idx GT-POOL-ERR-U-PTR @ type ;
 
+: GT-POOL-OUTCOME-LINE ( idx -- ) {: idx :}
+   s" outcome kind: " type idx GT-POOL-KIND-PTR @ .
+   s" code: " type idx GT-POOL-CODE-PTR @ . cr ;
+
 : GT-POOL-FAIL ( idx -- ) {: idx :}
    idx GT-POOL-OUTPUT
+   idx GT-POOL-OUTCOME-LINE
    GT-POOL-KILL-ALL
    s" FAIL: " type idx GT-POOL-LABEL$ type cr
    s" gate pool phase failed" 1 die ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
-   idx GT-POOL-PID@ WAIT-OUTCOME idx GT-POOL-CODE-PTR ! idx GT-POOL-KIND-PTR !
+   idx GT-POOL-PID@ PROC-WAIT-OUTCOME idx GT-POOL-CODE-PTR ! idx GT-POOL-KIND-PTR !
    -1 >PID idx GT-POOL-PID-PTR !
    1 idx GT-POOL-DONE-PTR !
    GT-POOL-LIVE @ 1- GT-POOL-LIVE !
@@ -397,6 +402,7 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    PROC-OUTCOME-TIMEOUT idx GT-POOL-KIND-PTR !
    SIGKILL idx GT-POOL-CODE-PTR !
    idx GT-POOL-OUTPUT
+   idx GT-POOL-OUTCOME-LINE
    GT-POOL-KILL-ALL
    s" FAIL: " type idx GT-POOL-LABEL$ type cr
    s" gate pool phase timed out" 1 die ;

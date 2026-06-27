@@ -100,6 +100,16 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
    repeat drop
    XREF-NULL ;
 
+: XREF-FIND-WL-INDEX ( ptr u8 n n -- n ) {: name u wid :}
+   ndict@ 1-
+   begin dup 0 >= while
+      dup XREF-REC XREF-WORDLIST wid = if
+         dup XREF-REC name u XREF-MATCH? if exit then
+      then
+      1-
+   repeat drop
+   -1 ;
+
 variable XREF-QI
 variable XREF-QWID
 
@@ -122,11 +132,31 @@ variable XREF-QWID
    XREF-START XREF-QWID !
    name idx + 1+  u idx - 1-  XREF-QWID @  XREF-FIND-WL ;
 
+: XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n ) {: name u idx :}
+   name idx XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? 0= if drop -1 exit then
+   XREF-START XREF-QWID !
+   name idx + 1+  u idx - 1-  XREF-QWID @  XREF-FIND-WL-INDEX ;
+
 : XREF-FIND ( ptr u8 n -- ptr a ) {: name u :}
    name u XREF-QUAL-INDEX {: idx :}
    idx -2 = if XREF-NULL exit then
    idx 0 >= if name u idx XREF-FIND-QUALIFIED exit then
    name u 0 XREF-FIND-WL ;
+
+: XREF-FIND-INDEX ( ptr u8 n -- n ) {: name u :}
+   name u XREF-QUAL-INDEX {: idx :}
+   idx -2 = if -1 exit then
+   idx 0 >= if name u idx XREF-FIND-QUALIFIED-INDEX exit then
+   name u 0 XREF-FIND-WL-INDEX ;
+
+: XREF-REQUIRE-INDEX ( n -- n )
+   dup 0 >= if exit then
+   s" xref: word not found" 76 die ;
+
+: HIDE-DEFS-FROM ( ptr u8 n -- ) {: name:ptr u:n :}
+   name u CHECKER-USIGS-TRUNCATE-FROM
+   name u XREF-FIND-INDEX XREF-REQUIRE-INDEX ndict! ;
 
 : XREF-NAME. ( ptr a -- )
    XREF-NAME$ type ;

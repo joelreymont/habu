@@ -101,7 +101,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase
 1	string	lib/string.f	word	ASCII-UPPER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII lowercase byte to uppercase
-1	string	lib/string.f	word	STR=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings exactly
 1	string	lib/string.f	word	STR=CI	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings case-insensitively
 1	string	lib/string.f	word	STARTS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string prefix
 1	string	lib/string.f	word	ENDS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string suffix
@@ -404,6 +403,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs-mutate	lib/fs-mutate.f	word	FS-MUT-CLEANUP-REMOVE	(n --)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	active	remove one cleanup registration if it exists
 1	fs-mutate	lib/fs-mutate.f	word	CLEANUP-RUN	(--)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	run cleanup registrations in reverse order
 1	source	lib/source.f	module			lib/source-test.f	docs/stdlib.md	stdlib-source	active	checked bounded source materialization and source-list transforms
+1	source	lib/source.f	word	SOURCE-PTR-U8-FIELD	(ptr a -- ptr ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return a typed byte-pointer field address for source buffers
+1	source	lib/source.f	word	SOURCE-PTR-U8@	(ptr a -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	read a source byte-buffer pointer through a typed pointer field
+1	source	lib/source.f	word	SOURCE-PTR-U8!	(ptr u8 ptr a --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	write a source byte-buffer pointer through a typed pointer field
+1	source	lib/source.f	word	SOURCE-ALLOC-BUF	(n -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	allocate OS-backed source byte-buffer storage
+1	source	lib/source.f	word	SOURCE-BUF	(-- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the lazily allocated source materialization buffer
 1	source	lib/source.f	word	SOURCE-READ-PROBE	(--)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	probe one extra stdin byte after a full buffer to reject truncation
 1	source	lib/source.f	word	READ-STDIN-ALL	(ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	read fd zero into a caller buffer and fail closed on overflow
 1	source	lib/source.f	word	SOURCE-APPEND-BYTES	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append bytes into a bounded destination tracked by a length cell
@@ -437,16 +441,16 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-KILL-RAW	(pid n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children
 1	process	lib/process.f	word	PROC-ZCOPY	(ptr u8 len ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted bytes into a bounded NUL-terminated process buffer
-1	process	lib/process.f	word	PATHZ	(ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
-1	process	lib/process.f	word	WAIT-STATUS	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
+1	process	lib/process.f	word	PROC-PATHZ	(ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
+1	process	lib/process.f	word	PROC-WAIT-STATUS	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
 1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to outcome kind and exit or signal code
 1	process	lib/process.f	word	PROC-OUTCOME>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map outcome kind and code to historical rc with non-exits as 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
-1	process	lib/process.f	word	WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
-1	process	lib/process.f	word	WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
-1	process	lib/process.f	word	SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
-1	process	lib/process.f	word	RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
-1	process	lib/process.f	word	RUN-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
+1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
+1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
+1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
+1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
+1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
 1	process	lib/process.f	word	FD-CLOEXEC!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
 1	process	lib/process.f	word	FD-NOSIGPIPE!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	disable SIGPIPE delivery for writes to a parent-owned fd
 1	process	lib/process.f	word	PIPE-PAIR	(-- fd fd)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
@@ -505,6 +509,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
 1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr outcome kind and code
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for argv byte storage
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF@	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read the argv byte-storage pointer
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF!	(ptr u8 --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	write the argv byte-storage pointer
+1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated argv byte storage
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-RAW	(ptr u8 ptr a fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-io alias for checked argv wrappers
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-RESET	(--)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	clear argv extra-arg count and backing string buffer offset
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-SLOT	(idx -- ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	return one checked argv pointer-table slot
@@ -512,8 +520,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-ZCOPY	(ptr u8 len -- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	copy counted argv bytes into the module NUL-terminated argv string buffer
 1	process-argv	lib/process-argv.f	word	PROC-ARGV+	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	append one counted extra argv string after argv0
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-PREPARE	(ptr u8 len -- ptr u8 ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	install executable path as argv0 and terminate the argv pointer table
-1	process-argv	lib/process-argv.f	word	SPAWN-ARGV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
-1	process-argv	lib/process-argv.f	word	RUN-ARGV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
+1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
+1	process-argv	lib/process-argv.f	word	PROC-RUN-ARGV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
@@ -522,6 +530,14 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture and outcome kind/code
 1	process-env	lib/process-env.f	module			lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	checked child envp builder and deterministic executable lookup
+1	process-env	lib/process-env.f	word	PROC-ENV-TABLE-A-FIELD	(-- ptr ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for envp table storage
+1	process-env	lib/process-env.f	word	PROC-ENV-TABLE@	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the envp table pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-TABLE!	(ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	write the envp table pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-TABLE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated envp pointer table
+1	process-env	lib/process-env.f	word	PROC-ENV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for env byte storage
+1	process-env	lib/process-env.f	word	PROC-ENV-BUF@	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the env byte-storage pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-BUF!	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	write the env byte-storage pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-BUF	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated env byte storage
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-RAW	(ptr u8 ptr a ptr a fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-io alias captured after native primitive rebuild
 1	process-env	lib/process-env.f	word	PROC-ENV-TRUE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a true flag for env helper internals
 1	process-env	lib/process-env.f	word	PROC-ENV-FALSE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a false flag for env helper internals
@@ -543,8 +559,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-ONE	(idx -- idx)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one parent envp entry unless overridden
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-MISSING	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	copy parent envp entries whose names are not already present
 1	process-env	lib/process-env.f	word	PROC-ARGV-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state together
-1	process-env	lib/process-env.f	word	SPAWN-ARGV-ENV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
-1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
+1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
+1	process-env	lib/process-env.f	word	PROC-RUN-ARGV-ENV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdout stderr capture fds
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdin stdout stderr capture fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc
@@ -594,8 +610,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-RAW	(ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-cwd-io alias captured after native primitive rebuild
 1	process-cwd	lib/process-cwd.f	word	PROC-CWDZ	(ptr u8 len -- ptr u8)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	copy one checked cwd path into separate NUL-terminated storage
 1	process-cwd	lib/process-cwd.f	word	PROC-ARGV-ENV-CWD-RESET	(--)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state after cwd spawn attempts
-1	process-cwd	lib/process-cwd.f	word	SPAWN-ARGV-ENV-CWD-IO	(ptr u8 len ptr u8 len fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp child cwd and explicit stdio fds
-1	process-cwd	lib/process-cwd.f	word	RUN-ARGV-ENV-CWD-IO-RC	(ptr u8 len ptr u8 len fd fd fd -- rc)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp child cwd stdio fds and return exit status
+1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-IO	(ptr u8 len ptr u8 len fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp child cwd and explicit stdio fds
+1	process-cwd	lib/process-cwd.f	word	PROC-RUN-ARGV-ENV-CWD-IO-RC	(ptr u8 len ptr u8 len fd fd fd -- rc)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp child cwd stdio fds and return exit status
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-CAPTURE	(ptr u8 ptr a ptr a ptr u8 --)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv envp and cwd with stdout stderr capture fds
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE	(ptr u8 ptr a ptr a ptr u8 --)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv envp and cwd with stdin stdout stderr capture fds
 1	process-cwd	lib/process-cwd.f	word	RUN-ARGV-ENV-CWD-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv envp and child cwd with bounded stdout stderr rc capture
@@ -788,6 +804,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build	lib/build.f	word	BUILD-TRUE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a true flag for build helpers
 1	build	lib/build.f	word	BUILD-WHITE?	(n -- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	test whether a byte is build-source whitespace
 1	codesign	lib/codesign.f	module			lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	checked executable promotion and target signing policy helpers for build artifacts
+1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8-FIELD	(ptr a -- ptr ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return a typed byte-pointer field address for codesign buffers
+1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8@	(ptr a -- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	read a codesign byte-buffer pointer through a typed pointer field
+1	codesign	lib/codesign.f	word	CODESIGN-PTR-U8!	(ptr u8 ptr a --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	write a codesign byte-buffer pointer through a typed pointer field
+1	codesign	lib/codesign.f	word	CODESIGN-BUF	(ptr a n -- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return a lazily allocated bounded codesign capture buffer
+1	codesign	lib/codesign.f	word	CODESIGN-OUT	(-- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign stdout capture buffer
+1	codesign	lib/codesign.f	word	CODESIGN-ERR	(-- ptr u8)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the codesign stderr capture buffer
 1	codesign	lib/codesign.f	word	CODESIGN-TOOL	(-- ptr u8 n)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	return the absolute macOS codesign executable path
 1	codesign	lib/codesign.f	word	CODESIGN-RC0	(n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	throw E-BUILD-STATUS for nonzero codesign rc
 1	codesign	lib/codesign.f	word	CODESIGN-EXPECT-TOOL	(--)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	active	require the codesign tool to exist

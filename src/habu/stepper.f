@@ -64,7 +64,7 @@ variable SLEN  variable SPOS  variable STEPPING
 : REST-OF ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}  a  SBUF SLEN @ +  a -  ;     \ token start .. end
 
 \ between tokens: show the stack the last token left, then feed the next one
-: NEXT-TOK ( -- ptr u8 n )
+: S-NEXT-TOK ( -- ptr u8 n )
    .s
    BPW-DUMP
    S-SKIP
@@ -76,7 +76,7 @@ variable SLEN  variable SPOS  variable STEPPING
       s" step> " EMITS  over over EMITS  s"  " EMITS
    THEN ;
 
-: SRD-LINE ( -- ptr u8 n )  STEPPING @ IF NEXT-TOK ELSE RD-LINE THEN ;
+: SRD-LINE ( -- ptr u8 n )  STEPPING @ IF S-NEXT-TOK ELSE RD-LINE THEN ;
 
 : S-INSTALL ( -- )  TTY? IF ['] SRD-LINE DATAB REPLH-CELL + ! THEN ;
 S-INSTALL

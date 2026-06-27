@@ -1,14 +1,35 @@
 \ codesign.f - checked executable promotion and ad-hoc signing helpers.
 \
-\ Load after lib/errors.f, lib/fs.f, lib/fs-mutate.f, lib/process.f,
-\ and lib/process-argv.f.
+\ Load after lib/errors.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
+\ lib/process.f, and lib/process-argv.f.
 
 4096 constant CODESIGN-OUT-CAP
 4096 constant CODESIGN-ERR-CAP
 10000 constant CODESIGN-TIMEOUT-MS
 
-create CODESIGN-OUT CODESIGN-OUT-CAP allot
-create CODESIGN-ERR CODESIGN-ERR-CAP allot
+variable CODESIGN-OUT-A
+variable CODESIGN-ERR-A
+
+: CODESIGN-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: CODESIGN-PTR-U8@ ( ptr a -- ptr u8 )
+   CODESIGN-PTR-U8-FIELD @ ;
+
+: CODESIGN-PTR-U8! ( ptr u8 ptr a -- )
+   CODESIGN-PTR-U8-FIELD ! ;
+
+: CODESIGN-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
+   slot CODESIGN-PTR-U8@ 0= if
+      cap MEM-ALLOC-BYTES drop slot CODESIGN-PTR-U8!
+   then
+   slot CODESIGN-PTR-U8@ ;
+
+: CODESIGN-OUT ( -- ptr u8 )
+   CODESIGN-OUT-A CODESIGN-OUT-CAP CODESIGN-BUF ;
+
+: CODESIGN-ERR ( -- ptr u8 )
+   CODESIGN-ERR-A CODESIGN-ERR-CAP CODESIGN-BUF ;
 
 : CODESIGN-TOOL ( -- ptr u8 n )
    s" /usr/bin/codesign" ;

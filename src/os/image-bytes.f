@@ -52,26 +52,26 @@ s" MP@" s" -- ptr u8" TRUST
 : M-CHECK-ROOM ( len -- ) {: u :}
    M-HERE u LEN>N + MSIZE > if s" image-bytes: write exceeds buffer" M-FAIL then ;
 
-: M8 ( n -- ) {: b :}
+: IMG-M8 ( n -- ) {: b :}
    M-ROOM1
    b MP@ c!
    MP@ 1 + MP ! ;
 
-: M16 ( n -- ) {: h :}
-   h M8
-   h 8 rshift M8 ;
+: IMG-M16 ( n -- ) {: h :}
+   h IMG-M8
+   h 8 rshift IMG-M8 ;
 
-: M32 ( n -- ) {: w :}
-   w M16
-   w 16 rshift M16 ;
+: IMG-M32 ( n -- ) {: w :}
+   w IMG-M16
+   w 16 rshift IMG-M16 ;
 
-: M64 ( n -- ) {: x :}
-   x M32
-   x 32 rshift M32 ;
+: IMG-M64 ( n -- ) {: x :}
+   x IMG-M32
+   x 32 rshift IMG-M32 ;
 
 : M-ZEROS-LEN ( len -- ) {: u :}
    u M-CHECK-ROOM
-   u LEN>N begin dup 0 > while 0 M8 1 - repeat drop ;
+   u LEN>N begin dup 0 > while 0 IMG-M8 1 - repeat drop ;
 
 : M-ZEROS ( n -- )
    M-LEN M-ZEROS-LEN ;
@@ -79,7 +79,7 @@ s" MP@" s" -- ptr u8" TRUST
 : M-BYTES-LEN ( ptr u8 len -- ) {: a:ptr u :}
    u M-CHECK-ROOM
    0 begin dup u LEN>N < while
-      dup a + c@ M8
+      dup a + c@ IMG-M8
       1 +
    repeat drop ;
 

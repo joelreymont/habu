@@ -3,23 +3,32 @@
 \ own Mach-O with zero gforth and zero external codesign. Verified against FIPS-180.
 4294967295 constant W32
 
-: M32 W32 and ;
+: M32 ( n -- n )
+   W32 and ;
 
-: ROTR {: n :} dup n rshift swap 32 n - lshift or M32 ;
+: ROTR ( n n -- n )
+   {: n :} dup n rshift swap 32 n - lshift or M32 ;
 
-: SHR rshift ;
+: SHR ( n n -- n )
+   rshift ;
 
-: CH {: x y z :} x y and  x invert z and  xor ;
+: CH ( n n n -- n )
+   {: x y z :} x y and  x invert z and  xor ;
 
-: MAJ {: x y z :} x y and  x z and  y z and  xor xor ;
+: MAJ ( n n n -- n )
+   {: x y z :} x y and  x z and  y z and  xor xor ;
 
-: BSIG0 dup 2 ROTR  over 13 ROTR  rot 22 ROTR  xor xor ;
+: BSIG0 ( n -- n )
+   dup 2 ROTR  over 13 ROTR  rot 22 ROTR  xor xor ;
 
-: BSIG1 dup 6 ROTR  over 11 ROTR  rot 25 ROTR  xor xor ;
+: BSIG1 ( n -- n )
+   dup 6 ROTR  over 11 ROTR  rot 25 ROTR  xor xor ;
 
-: SSIG0 dup 7 ROTR  over 18 ROTR  rot 3 SHR  xor xor ;
+: SSIG0 ( n -- n )
+   dup 7 ROTR  over 18 ROTR  rot 3 SHR  xor xor ;
 
-: SSIG1 dup 17 ROTR  over 19 ROTR  rot 10 SHR  xor xor ;
+: SSIG1 ( n -- n )
+   dup 17 ROTR  over 19 ROTR  rot 10 SHR  xor xor ;
 create KK
   1116352408 , 1899447441 , 3049323471 , 3921009573 , 961987163 , 1508970993 , 2453635748 , 2870763221 ,
   3624381080 , 310598401 , 607225278 , 1426881987 , 1925078388 , 2162078206 , 2614888103 , 3248222580 ,
@@ -56,10 +65,12 @@ variable SHA-BLEN
 : BE32@ ( ptr u8 -- n )
    dup c@ 24 lshift  over 1 + c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
 
-: STV cells ST + @ ;
+: STV ( n -- n )
+   cells ST + @ ;
 
 \ one compression round for schedule index ri (local named ri, not i, to keep loop-i)
-: SHA-ROUND {: ri :}
+: SHA-ROUND ( n -- )
+   {: ri :}
    7 STV  4 STV BSIG1 +  4 STV 5 STV 6 STV CH +  KK ri cells + @ +  WS ri cells + @ +  M32  SHA-T1 !
    0 STV BSIG0  0 STV 1 STV 2 STV MAJ +  M32  SHA-T2 !
    7 0 DO  ST 6 i - cells + @  ST 7 i - cells + !  LOOP   \ h=g g=f f=e d=c c=b b=a
@@ -76,7 +87,8 @@ variable SHA-BLEN
    64 0 DO  i SHA-ROUND  LOOP
    8 0 DO  H i cells + @  ST i cells + @ +  M32  H i cells + !  LOOP ;
 
-: SHA-INIT 8 0 DO  HH0 i cells + @  H i cells + !  LOOP ;
+: SHA-INIT ( -- )
+   8 0 DO  HH0 i cells + @  H i cells + !  LOOP ;
 
 : SHA256-RESET ( -- )
    SHA-INIT

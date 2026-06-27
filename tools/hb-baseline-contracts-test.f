@@ -83,8 +83,8 @@ variable HBT-PROP-U
 
 : HBT-STDIN-TOOL$SRC ( -- ptr u8 n )
    SB-RESET
-   s" create B 32 allot" SB-APPEND HBT-LF
-   s" : MAIN ( -- ) B 32 >LEN READ-STDIN-ALL LEN>N dup . B swap type cr ;" SB-APPEND HBT-LF
+   s" create HBT-DATA-BUF 32 allot" SB-APPEND HBT-LF
+   s" : MAIN ( -- ) HBT-DATA-BUF 32 >LEN READ-STDIN-ALL LEN>N dup . HBT-DATA-BUF swap type cr ;" SB-APPEND HBT-LF
    s" MAIN" SB-APPEND HBT-LF
    SB$ ;
 
@@ -175,6 +175,7 @@ variable HBT-PROP-U
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/source.f"  >LEN PROC-ARGV+
    HBT-STDIN-TOOL$  >LEN PROC-ARGV+

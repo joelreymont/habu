@@ -10,7 +10,7 @@ variable TEST-N
    s" text-foundation-test failed at assertion " type TEST-N @ . cr
    s" text-foundation-test failed" 1 die ;
 : ASSERT=  ( n n -- )  = ASSERT ;
-: ASSERT$  ( ptr u8 n ptr u8 n -- )  STR= ASSERT ;
+: ASSERT$  ( ptr u8 n ptr u8 n -- )  LINT-STR= ASSERT ;
 
 $100 constant FIX-CAP
 create STR-FIX FIX-CAP allot     variable STR-LEN
@@ -155,16 +155,16 @@ variable BIG-LEX-U
 
 : TEST-STRINGS  ( -- )
    STR-FIX$ SPLIT-LINES  SN# @ 2 ASSERT=
-   0 S@ TRIM s" Alpha beta" ASSERT$
-   1 S@ TRIM s" Gamma" ASSERT$
+   0 S@ LINT-TRIM s" Alpha beta" ASSERT$
+   1 S@ LINT-TRIM s" Gamma" ASSERT$
    STR-FIX$ SPLIT-WHITESPACE  SN# @ 3 ASSERT=
    0 S@ s" Alpha" ASSERT$  1 S@ s" beta" ASSERT$  2 S@ s" Gamma" ASSERT$
    s" hello.f" s" .f" HAS-EXT? ASSERT
    s" hello.fs" s" .zig" HAS-EXT? 0= ASSERT
-   s" Habu" s" Ha" STARTS-WITH? ASSERT
-   s" Habu" s" bu" ENDS-WITH? ASSERT
-   s" banana" 97 COUNT-CHAR 3 ASSERT=
-   s" banana" 110 INDEX-OF 2 ASSERT= ;
+   s" Habu" s" Ha" LINT-STARTS-WITH? ASSERT
+   s" Habu" s" bu" LINT-ENDS-WITH? ASSERT
+   s" banana" 97 LINT-COUNT-CHAR 3 ASSERT=
+   s" banana" 110 LINT-INDEX-OF 2 ASSERT= ;
 
 : TEST-SCANNERS  ( -- )
    TRUST-FIX$ TRUST-SITE? ASSERT
@@ -193,19 +193,19 @@ variable BIG-LEX-U
    LEX-FIX$ LEX-SOURCE
    LEX-UNTERM-QUOTE? 0= ASSERT
    L# @ 7 ASSERT=
-   0 LK@ L-WORD ASSERT=    0 LTOK s" :" ASSERT$
+   0 LK@ L-WORD ASSERT=    0 LEX-TOK s" :" ASSERT$
    0 LB@ 0 ASSERT=  0 LL@ 1 ASSERT=  0 LC@ 1 ASSERT=
-   1 LK@ L-WORD ASSERT=    1 LTOK s" SQ" ASSERT$
+   1 LK@ L-WORD ASSERT=    1 LEX-TOK s" SQ" ASSERT$
    1 LB@ 2 ASSERT=  1 LL@ 1 ASSERT=  1 LC@ 3 ASSERT=
    2 LK@ L-COMMENT ASSERT= 2 LCONTENT s"  n -- n " ASSERT$
    2 LB@ 5 ASSERT=  2 LL@ 1 ASSERT=  2 LC@ 6 ASSERT=
-   3 LTOK nip 2 ASSERT=  3 LTOK drop c@ 115 ASSERT=  3 LTOK drop 1+ c@ DQUOTE ASSERT=
+   3 LEX-TOK nip 2 ASSERT=  3 LEX-TOK drop c@ 115 ASSERT=  3 LEX-TOK drop 1+ c@ DQUOTE ASSERT=
    3 LB@ 16 ASSERT=  3 LL@ 1 ASSERT=  3 LC@ 17 ASSERT=
-   4 LTOK s" dup" ASSERT$
+   4 LEX-TOK s" dup" ASSERT$
    4 LB@ 33 ASSERT=  4 LL@ 1 ASSERT=  4 LC@ 34 ASSERT=
-   5 LTOK nip 2 ASSERT=  5 LTOK drop c@ 99 ASSERT=  5 LTOK drop 1+ c@ DQUOTE ASSERT=
+   5 LEX-TOK nip 2 ASSERT=  5 LEX-TOK drop c@ 99 ASSERT=  5 LEX-TOK drop 1+ c@ DQUOTE ASSERT=
    5 LB@ 48 ASSERT=  5 LL@ 2 ASSERT=  5 LC@ 1 ASSERT=
-   6 LTOK s" ;" ASSERT$
+   6 LEX-TOK s" ;" ASSERT$
    6 LB@ 54 ASSERT=  6 LL@ 2 ASSERT=  6 LC@ 7 ASSERT= ;
 
 : TEST-LEXER-UNTERM-QUOTE ( -- )
@@ -238,9 +238,9 @@ variable BIG-LEX-U
 : TEST-BIG-LEXER  ( -- )
    BIG-LEX$ LEX-SOURCE
    L# @ BIG-LEX-TOKENS ASSERT=
-   0 LTOK s" x" ASSERT$
-   8192 LTOK s" x" ASSERT$
-   BIG-LEX-TOKENS 1- LTOK s" x" ASSERT$ ;
+   0 LEX-TOK s" x" ASSERT$
+   8192 LEX-TOK s" x" ASSERT$
+   BIG-LEX-TOKENS 1- LEX-TOK s" x" ASSERT$ ;
 
 : TEXT-FOUNDATION-TEST  ( -- )
    1 TEST-N !

@@ -1,7 +1,13 @@
 # habu — Status
 
-Last verified: 2026-06-27
-Gate: passing; 1m28.77s on 2026-06-27 on Linux/aarch64 with batched warm-image trust export, batched repair-diagnostic JSONL assertions, measured 8-way outer and 4-way nested gate pools, early independent builder phases, prop/debug no longer rebuilding a duplicate snapshot, snapshot hook/dictionary assertions moved onto the freshly built `hb-new`, fast bounded PTY polling, AOT-negative started in the initial independent wave, warm checker/tool images, shared hb-build maker cache, single-build strict positive AOT coverage, deduplicated AOT negative coverage, REPL builder coverage folded into `tools/hb-build-test.f`, stale-status fixtures moved in-process through a checked core, and the checked DAG pool
+Last verified: 2026-06-28
+Gate: passing; 100.985s internal gate time on 2026-06-28 on
+Linux/aarch64 with 4 online cores. The native gate uses an 8-way checked DAG
+pool, 4-way nested stdlib pool, split stdlib lint slices
+(tools/manifest/artifacts/libs), a direct manifest phase, attributed pool
+outcomes, and a 110s default budget. The sub-90s/30s gate target remains active
+work in `.dots/habu-cut-native-gate-1ac72054.md`; use
+`HABU_GATE_BUDGET_MS=<ms>` for stricter local timing checks.
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -15,7 +21,7 @@ it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. Native
 `tools/build-fixpoint-main.f -- install` refreshes `bin/hb` and runs the self-check;
-`bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f` is the Habu-native
+`bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f` is the Habu-native
 gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`

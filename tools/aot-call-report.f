@@ -14,24 +14,24 @@ SCAN-READ-CAP SCAN-CARRY-CAP + constant SCAN-BUF-CAP
 1024 constant REPORT-PATH-CAP
 32 constant JSON-NUM-CAP
 
-9 constant C-TAB
-10 constant C-LF
-13 constant C-CR
-32 constant C-SP
-34 constant C-DQ
-44 constant C-COMMA
-48 constant C-ZERO
-58 constant C-COLON
-91 constant C-LBRACK
-92 constant C-BACKSLASH
-93 constant C-RBRACK
-102 constant C-F
-110 constant C-N
-114 constant C-R
-116 constant C-T
-117 constant C-U
-123 constant C-LBRACE
-125 constant C-RBRACE
+9 constant ACR-C-TAB
+10 constant ACR-C-LF
+13 constant ACR-C-CR
+32 constant ACR-C-SP
+34 constant ACR-C-DQ
+44 constant ACR-C-COMMA
+48 constant ACR-C-ZERO
+58 constant ACR-C-COLON
+91 constant ACR-C-LBRACK
+92 constant ACR-C-BACKSLASH
+93 constant ACR-C-RBRACK
+102 constant ACR-C-F
+110 constant ACR-C-N
+114 constant ACR-C-R
+116 constant ACR-C-T
+117 constant ACR-C-U
+123 constant ACR-C-LBRACE
+125 constant ACR-C-RBRACE
 
 0 constant SCAN-COUNT
 1 constant SCAN-DIRECT-SITES
@@ -88,44 +88,44 @@ variable JSON-NUM-N
    OUT-BYTE 1 type ;
 
 : JSON-NIBBLE ( n -- n ) {: n :}
-   n 10 < if n C-ZERO + else n 55 + then ;
+   n 10 < if n ACR-C-ZERO + else n 55 + then ;
 
 : JSON-U00 ( n -- ) {: c :}
-   C-BACKSLASH OUT-C
-   C-U OUT-C
-   C-ZERO OUT-C
-   C-ZERO OUT-C
+   ACR-C-BACKSLASH OUT-C
+   ACR-C-U OUT-C
+   ACR-C-ZERO OUT-C
+   ACR-C-ZERO OUT-C
    c 4 rshift JSON-NIBBLE OUT-C
    c $F and JSON-NIBBLE OUT-C ;
 
 : JSON-ESC-C ( n -- ) {: c :}
-   c C-DQ = if C-BACKSLASH OUT-C C-DQ OUT-C exit then
-   c C-BACKSLASH = if C-BACKSLASH OUT-C C-BACKSLASH OUT-C exit then
-   c C-LF = if C-BACKSLASH OUT-C C-N OUT-C exit then
-   c C-CR = if C-BACKSLASH OUT-C C-R OUT-C exit then
-   c C-TAB = if C-BACKSLASH OUT-C C-T OUT-C exit then
-   c C-SP < if c JSON-U00 exit then
+   c ACR-C-DQ = if ACR-C-BACKSLASH OUT-C ACR-C-DQ OUT-C exit then
+   c ACR-C-BACKSLASH = if ACR-C-BACKSLASH OUT-C ACR-C-BACKSLASH OUT-C exit then
+   c ACR-C-LF = if ACR-C-BACKSLASH OUT-C ACR-C-N OUT-C exit then
+   c ACR-C-CR = if ACR-C-BACKSLASH OUT-C ACR-C-R OUT-C exit then
+   c ACR-C-TAB = if ACR-C-BACKSLASH OUT-C ACR-C-T OUT-C exit then
+   c ACR-C-SP < if c JSON-U00 exit then
    c OUT-C ;
 
 : JSON-STRING ( ptr u8 n -- ) {: a:ptr u :}
-   C-DQ OUT-C
+   ACR-C-DQ OUT-C
    0 begin dup u < while
       dup a + c@ JSON-ESC-C
       1+
    repeat drop
-   C-DQ OUT-C ;
+   ACR-C-DQ OUT-C ;
 
 : JSON-KEY ( ptr u8 n -- )
    JSON-STRING
-   C-COLON OUT-C ;
+   ACR-C-COLON OUT-C ;
 
 : JSON-NUM ( n -- ) {: n :}
    n 0 < if s" aot-call-report: negative json number" 74 die then
    n JSON-NUM-V !
    0 JSON-NUM-N !
-   JSON-NUM-V @ 0= if C-ZERO OUT-C exit then
+   JSON-NUM-V @ 0= if ACR-C-ZERO OUT-C exit then
    begin JSON-NUM-V @ 0 > while
-      JSON-NUM-V @ 10 mod C-ZERO +  JSON-NUM-BUF JSON-NUM-N @ + c!
+      JSON-NUM-V @ 10 mod ACR-C-ZERO +  JSON-NUM-BUF JSON-NUM-N @ + c!
       JSON-NUM-N @ 1+ JSON-NUM-N !
       JSON-NUM-N @ JSON-NUM-CAP > if s" aot-call-report: number buffer full" 74 die then
       JSON-NUM-V @ 10 / JSON-NUM-V !
@@ -139,7 +139,7 @@ variable JSON-NUM-N
    ARRAY-FIRST @ if
       0 ARRAY-FIRST !
    else
-      C-COMMA OUT-C
+      ACR-C-COMMA OUT-C
    then
    n JSON-NUM ;
 
@@ -244,22 +244,22 @@ variable JSON-NUM-N
 
 : EMIT-DIRECT-SITES ( -- )
    -1 ARRAY-FIRST !
-   C-LBRACK OUT-C
+   ACR-C-LBRACK OUT-C
    SCAN-DIRECT-SITES SCAN-FILE
-   C-RBRACK OUT-C ;
+   ACR-C-RBRACK OUT-C ;
 
 : EMIT-STENCIL-SITES ( -- )
    -1 ARRAY-FIRST !
-   C-LBRACK OUT-C
+   ACR-C-LBRACK OUT-C
    SCAN-STENCIL-SITES SCAN-FILE
-   C-RBRACK OUT-C ;
+   ACR-C-RBRACK OUT-C ;
 
 : JSON-FIELD-COMMA ( -- )
-   C-COMMA OUT-C ;
+   ACR-C-COMMA OUT-C ;
 
 : REPORT-JSON ( -- )
    REPORT-COUNT
-   C-LBRACE OUT-C
+   ACR-C-LBRACE OUT-C
    s" schema_version" JSON-KEY 1 JSON-NUM JSON-FIELD-COMMA
    s" file" JSON-KEY REPORT-FILE$ JSON-STRING JSON-FIELD-COMMA
    s" file_bytes" JSON-KEY REPORT-BYTES @ JSON-NUM JSON-FIELD-COMMA
@@ -269,8 +269,8 @@ variable JSON-NUM-N
    s" direct_bl_instructions" JSON-KEY REPORT-BLS @ JSON-NUM JSON-FIELD-COMMA
    s" direct_bl_sites" JSON-KEY EMIT-DIRECT-SITES JSON-FIELD-COMMA
    s" sites" JSON-KEY EMIT-STENCIL-SITES
-   C-RBRACE OUT-C
-   C-LF OUT-C ;
+   ACR-C-RBRACE OUT-C
+   ACR-C-LF OUT-C ;
 
 : USAGE ( -- )
    s" usage: tools/aot-call-report.f binary" 64 die ;

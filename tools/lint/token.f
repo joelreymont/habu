@@ -10,7 +10,7 @@ create TBOL TMAX cells allot
 
 variable TN#
 variable PARENS?
-variable TI
+variable LINT-TI
 variable TS
 variable BOL
 
@@ -64,19 +64,19 @@ variable BOL
    T-BOL@ ;
 
 : TOK= ( n ptr u8 n -- bool ) {: k a:ptr u :}
-   k TOK a u STR= ;
+   k TOK a u LINT-STR= ;
 
 : TEOL? ( n -- bool )
    1+ dup TN# @ >= if drop LINT-TRUE else TOK0? then ;
 
 : TOKEN-C@ ( ptr u8 -- n )
-   TI @ + c@ ;
+   LINT-TI @ + c@ ;
 
 : TOKEN-ADV ( -- )
-   TI @ 1+ TI ! ;
+   LINT-TI @ 1+ LINT-TI ! ;
 
 : TOKEN-SKIP-SPACE ( ptr u8 n -- ) {: a:ptr u :}
-   begin TI @ u < while
+   begin LINT-TI @ u < while
       a TOKEN-C@ SP? if
          a TOKEN-C@ 10 = if LINT-TRUE BOL ! then
          TOKEN-ADV
@@ -86,37 +86,37 @@ variable BOL
    repeat ;
 
 : TOKEN-SKIP-LINE ( ptr u8 n -- ) {: a:ptr u :}
-   begin TI @ u < a TOKEN-C@ 10 <> and while
+   begin LINT-TI @ u < a TOKEN-C@ 10 <> and while
       TOKEN-ADV
    repeat ;
 
 : TOKEN-PAREN-START? ( ptr u8 n -- bool ) {: a:ptr u :}
    PARENS-ENABLED? 0= if LINT-FALSE exit then
    a TOKEN-C@ 40 <> if LINT-FALSE exit then
-   TI @ 1+ u >= if LINT-FALSE exit then
-   a TI @ 1+ + c@ 32 = ;
+   LINT-TI @ 1+ u >= if LINT-FALSE exit then
+   a LINT-TI @ 1+ + c@ 32 = ;
 
 : TOKEN-SKIP-PAREN ( ptr u8 n -- ) {: a:ptr u :}
-   begin TI @ u < a TOKEN-C@ 41 <> and while
+   begin LINT-TI @ u < a TOKEN-C@ 41 <> and while
       TOKEN-ADV
    repeat
-   TI @ u < if TOKEN-ADV then ;
+   LINT-TI @ u < if TOKEN-ADV then ;
 
 : TOKEN-READ ( ptr u8 n -- ) {: a:ptr u :}
-   TI @ TS !
+   LINT-TI @ TS !
    BOL? LINT-FALSE BOL !
-   begin TI @ u < a TOKEN-C@ SP? 0= and while
+   begin LINT-TI @ u < a TOKEN-C@ SP? 0= and while
       TOKEN-ADV
    repeat
-   a TS @ + TI @ TS @ - rot TOKEN+ ;
+   a TS @ + LINT-TI @ TS @ - rot TOKEN+ ;
 
 : TOKENIZE ( ptr u8 n -- ) {: a:ptr u :}
    0 TN# !
-   0 TI !
+   0 LINT-TI !
    LINT-TRUE BOL !
-   begin TI @ u < while
+   begin LINT-TI @ u < while
       a u TOKEN-SKIP-SPACE
-      TI @ u < if
+      LINT-TI @ u < if
          a TOKEN-C@ 92 = if a u TOKEN-SKIP-LINE
          else a u TOKEN-PAREN-START? if a u TOKEN-SKIP-PAREN
          else a u TOKEN-READ then then

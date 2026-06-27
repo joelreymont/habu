@@ -150,9 +150,9 @@ variable SS-FENCE
 
 : SS-REL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SS-ROOT$ {: root:ptr rootu:n :}
-   rootu 0 >  root rootu s" ." STR= 0= and IF
+   rootu 0 >  root rootu s" ." LINT-STR= 0= and IF
       u rootu > IF
-         a rootu root rootu STR= IF
+         a rootu root rootu LINT-STR= IF
             a rootu + c@ SS-SLASH = IF
                a rootu 1 + +  u rootu 1 + -  exit
             THEN
@@ -174,7 +174,7 @@ variable SS-FENCE
 : SS-ROOT-SELF? ( -- bool )
    SS-ROOT$ {: root:ptr rootu:n :}
    rootu 0= IF SS-TRUE exit THEN
-   root rootu s" ." STR= ;
+   root rootu s" ." LINT-STR= ;
 
 : SS-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SS-ROOT$ {: root:ptr rootu:n :}
@@ -194,20 +194,20 @@ variable SS-FENCE
 
 : SS-ALLOWED? ( ptr u8 n -- bool )
    SS-REL
-   2dup s" STATUS.md" STR= IF 2drop SS-TRUE exit THEN
-   s" LESSONS.md" STR= ;
+   2dup s" STATUS.md" LINT-STR= IF 2drop SS-TRUE exit THEN
+   s" LESSONS.md" LINT-STR= ;
 
 : SS-SKIP-PATH? ( ptr u8 n -- bool )
-   SS-REL s" .jj-ws/" STARTS-WITH? ;
+   SS-REL s" .jj-ws/" LINT-STARTS-WITH? ;
 
 : SS-MD? ( ptr u8 n -- bool )
    s" .md" HAS-EXT? ;
 
 : SS-LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   a u b v STARTS-WITH? ;
+   a u b v LINT-STARTS-WITH? ;
 
 : SS-FENCE-LINE? ( ptr u8 n -- bool )
-   TRIM s" ```" STARTS-WITH? ;
+   LINT-TRIM s" ```" LINT-STARTS-WITH? ;
 
 : SS-FENCE-TOGGLE ( -- )
    SS-FENCE @ 0= IF -1 ELSE 0 THEN SS-FENCE ! ;
@@ -219,9 +219,9 @@ variable SS-FENCE
    repeat ;
 
 : SS-STATUS-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TRIM
+   a u LINT-TRIM
    2dup s" Last verified:" SS-LINE-PREFIX? IF
-      14 SS-SKIP LTRIM
+      14 SS-SKIP LINT-LTRIM
       SS-DATE-U ! SS-DATE-A!
       -1 SS-FOUND? !
    ELSE
@@ -292,7 +292,7 @@ variable SS-FENCE
    SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
    SS-DATE$ PARSE-YMD 0= IF drop SS-BAD-STATUS-DATE exit THEN
    drop
-   SS-TODAY$ 2dup SS-DATE$ STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
+   SS-TODAY$ 2dup SS-DATE$ LINT-STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
 
 : SS-BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos:n :}
    pos 0= IF SS-TRUE exit THEN
@@ -314,7 +314,7 @@ variable SS-FENCE
 
 : SS-WORD-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u:n pos:n b:ptr v:n :}
    u pos - v < IF SS-FALSE exit THEN
-   a pos + v b v STR=CI ;
+   a pos + v b v LINT-STR=CI ;
 
 : SS-SCAN-ADVANCE ( -- )
    SS-SCAN-X @ 1+ SS-SCAN-X ! ;
@@ -336,7 +336,7 @@ variable SS-FENCE
 : SS-CURRENT-WS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    SS-SCAN-X @ u >= IF SS-FALSE exit THEN
-   a SS-SCAN-C@ WS? ;
+   a SS-SCAN-C@ LINT-WS? ;
 
 : SS-SKIP-WS ( ptr u8 n -- )
    {: a:ptr u:n :}

@@ -140,7 +140,7 @@ variable SL-SUG-U
    k LB@ SL-BYTE ! ;
 
 : SL-TOK-END ( n -- n ) {: k :}
-   k LB@ k LTOK nip + ;
+   k LB@ k LEX-TOK nip + ;
 
 : SL-END! ( n -- )
    SL-END !
@@ -165,7 +165,7 @@ variable SL-SUG-U
    LJW$ SL-OUT SL-NL ;
 
 : SL-MISSING-SIG? ( -- f )
-   SL-CODE-A@ SL-CODE-U @ s" E-MISSING-SIGNATURE" STR= ;
+   SL-CODE-A@ SL-CODE-U @ s" E-MISSING-SIGNATURE" LINT-STR= ;
 
 : SL-TEXT-FINDING ( -- )
    SL-CODE-A@ SL-CODE-U @ SL-OUT
@@ -199,7 +199,7 @@ variable SL-SUG-U
    s" E-MISSING-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    name SL-TOK-END SL-END!
-   name LTOK SL-WORD!
+   name LEX-TOK SL-WORD!
    s" add a typed `( in -- out )` signature immediately after the word name" SL-SUG!
    SL-REPORT ;
 
@@ -207,7 +207,7 @@ variable SL-SUG-U
    s" E-UNVERIFIED-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    sig SL-TOK-END SL-END!
-   name LTOK SL-WORD!
+   name LEX-TOK SL-WORD!
    s" agent-facing strict mode requires a typed `( in -- out )` signature" SL-SUG!
    SL-REPORT ;
 
@@ -221,7 +221,7 @@ variable SL-SUG-U
 
 : SL-COLON? ( n -- bool ) {: k :}
    k SL-WORD-TOK? LINT-NOT IF LINT-FALSE exit THEN
-   k LTOK s" :" STR= ;
+   k LEX-TOK s" :" LINT-STR= ;
 
 : SL-SIG-KIND ( n -- n ) {: k :}
    k SL-COMMENT-TOK? LINT-NOT IF SIG-MISSING exit THEN

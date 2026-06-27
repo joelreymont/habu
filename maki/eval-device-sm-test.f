@@ -7,7 +7,7 @@ T-RESET
 
 \ correct softmax -> certify AND device-correct -> GREEN(2)
 s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx B- EXP. {: e :} e BLOCK-SUM {: s :} e s B/ out r ROW-SPAN c ROW-STORE"  GRADE-SM  2 T=
-\ B- instead of B/ (TYPE-IDENTICAL) -> certifies but device output != softmax -> TYPED-WRONG(1)
+\ PTX:B- instead of PTX:B/ (TYPE-IDENTICAL) -> certifies but device output != softmax -> TYPED-WRONG(1)
 s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx B- EXP. {: e :} e BLOCK-SUM {: s :} e s B- out r ROW-SPAN c ROW-STORE"  GRADE-SM  1 T=
 \ ill-typed (missing ROW-STORE) -> checker rejects -> REJECTED(0)
 s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx B- EXP. {: e :} e BLOCK-SUM {: s :} e s B/"  GRADE-SM  0 T=

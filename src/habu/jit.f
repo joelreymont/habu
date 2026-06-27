@@ -17,7 +17,7 @@ $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
 $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapshot
 
-: EMIT-VLITPUSH
+: EMIT-VLITPUSH ( -- )
    LVLITPUSH LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,
    14 16 MOVZ,  LVMOVK LABEL@ BL,                            \ movz/movk x16,val (x16: never pooled)
@@ -25,7 +25,7 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
    9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: EMIT-VSPILL
+: EMIT-VSPILL ( -- )
    LVSPILL LABEL@ LBL,
    LBL LBL LBL LBL {: vl vd vcon vnext :}
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -52,7 +52,7 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
    6 FRALL MOVZ,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: EMIT-VPUSHC
+: EMIT-VPUSHC ( -- )
    LVPUSHC LABEL@ LBL,
    LBL {: room :}
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
@@ -66,7 +66,7 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVTOP2C ( -- x13=ok x11=a x12=b ) : are the top two VS entries constants? (no pop)
-: EMIT-VTOP2C
+: EMIT-VTOP2C ( -- )
    LVTOP2C LABEL@ LBL,
    LBL {: no :}
    13 0 MOVZ,
@@ -79,7 +79,7 @@ $36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapsho
    no LBL,  RET, ;
 
 \ LVFOLDPUT ( x11=result ) : val[VSP-2] = result (still con), VSP--
-: EMIT-VFOLDPUT
+: EMIT-VFOLDPUT ( -- )
    LVFOLDPUT LABEL@ LBL,
    6 DATA VSP-CELL LDR,  5 6 2 SUBI,
    8 5 3 LSLI,  8 8 VVAL-OFF ADDI,  8 DATA 8 ADD,  11 8 0 STR,
@@ -105,25 +105,31 @@ TRUSTED: JIT-XT-EXECUTE ( n -- )
    FESK LABEL@ LBL, ;
 s" fold-entry" s" label ptr a n n --" TRUST
 
-: VF+ 11 11 12 ADD, ;   \ fold helpers — NOT f+/f-/f*: those are the FLOAT prims
+: VF+ ( -- )
+   11 11 12 ADD, ;   \ fold helpers -- NOT f+/f-/f*: those are the FLOAT prims
 
-: VF- 11 11 12 SUB, ;
+: VF- ( -- )
+   11 11 12 SUB, ;
 
-: VF* 11 11 12 MUL, ;
+: VF* ( -- )
+   11 11 12 MUL, ;
 
-: FAND 11 11 12 AND, ;
+: FAND ( -- )
+   11 11 12 AND, ;
 
-: FOR2 11 11 12 ORR, ;
+: FOR2 ( -- )
+   11 11 12 ORR, ;
 
-: FXOR2 11 11 12 EOR, ;
+: FXOR2 ( -- )
+   11 11 12 EOR, ;
 
-: EMIT-FOLDKW
+: EMIT-FOLDKW ( -- )
    LKWPLUS LABEL@ LBL,  s" +" BYTES,    LKWMINUS LABEL@ LBL,  s" -" BYTES,
    LKWSTAR LABEL@ LBL,  s" *" BYTES,    LKWAND2 LABEL@ LBL,   s" and" BYTES,
    LKWOR2 LABEL@ LBL,   s" or" BYTES,   LKWXOR2 LABEL@ LBL,   s" xor" BYTES, ;
 variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  variable LKWNIP2
 
-: EMIT-SHUFKW
+: EMIT-SHUFKW ( -- )
    LKWDUP2 LABEL@ LBL,   s" dup" BYTES,    LKWDROP2 LABEL@ LBL,  s" drop" BYTES,
    LKWSWAP2 LABEL@ LBL,  s" swap" BYTES,   LKWOVER2 LABEL@ LBL,  s" over" BYTES,
    LKWNIP2 LABEL@ LBL,   s" nip" BYTES, ;
@@ -217,7 +223,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 
 \ LVFORCEK ( x5=k -- x14=reg | 0 ) : force VS entry k into a register, in place.
 \ Atomic: an allocation failure mutates nothing.
-: EMIT-VFORCEK
+: EMIT-VFORCEK ( -- )
    LVFORCEK LABEL@ LBL,
    LBL LBL {: fr fd :}
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,
@@ -272,7 +278,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
 : C-VBIN-RET ( -- )
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-: EMIT-VBINPREP
+: EMIT-VBINPREP ( -- )
    LVBINPREP LABEL@ LBL,
    LBL LBL LBL {: bno bfold bdone :}
    C-VBIN-FRAME
@@ -300,7 +306,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    6 DATA VSP-CELL LDR,  6 6 1 SUBI,  6 DATA VSP-CELL STR,
    13 3 MOVZ,  bdone B, ;
 
-: EMIT-VBINIPREP
+: EMIT-VBINIPREP ( -- )
    LVBINIPREP LABEL@ LBL,
    LBL LBL LBL LBL {: bno bfold b2 bdone :}
    C-VBIN-FRAME
@@ -314,7 +320,7 @@ variable LKWDUP2  variable LKWDROP2  variable LKWSWAP2  variable LKWOVER2  varia
    bdone LBL,  C-VBIN-RET ;
 
 \ LVPUSHR ( x14=reg ) : push a register entry (spill-on-full keeps x14 claimed)
-: EMIT-VPUSHR
+: EMIT-VPUSHR ( -- )
    LVPUSHR LABEL@ LBL,
    LBL {: pr :}
    SP SP 16 SUBI,  30 SP 0 STR,  14 SP 8 STR,
@@ -372,23 +378,32 @@ variable FESK6
 s" vopi-entry" s" label ptr a n n n n --" TRUST
 s" vop-entry" s" label ptr a n n n --" TRUST
 
-: E+   8 $8B000000 LIT64, ;
+: E+ ( -- )
+   8 $8B000000 LIT64, ;
 
-: E-   8 $CB000000 LIT64, ;
+: E- ( -- )
+   8 $CB000000 LIT64, ;
 
-: E*   8 $9B007C00 LIT64, ;
+: E* ( -- )
+   8 $9B007C00 LIT64, ;
 
-: EAND 8 $8A000000 LIT64, ;
+: EAND ( -- )
+   8 $8A000000 LIT64, ;
 
-: EOR2 8 $AA000000 LIT64, ;
+: EOR2 ( -- )
+   8 $AA000000 LIT64, ;
 
-: EXOR 8 $CA000000 LIT64, ;
+: EXOR ( -- )
+   8 $CA000000 LIT64, ;
 
-: EI2N  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
+: EI2N ( -- )
+   9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  7 15 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;
 
-: EI+  8 $91000000 LIT64,  EI2N ;
+: EI+ ( -- )
+   8 $91000000 LIT64,  EI2N ;
 
-: EI-  8 $D1000000 LIT64,  EI2N ;
+: EI- ( -- )
+   8 $D1000000 LIT64,  EI2N ;
 variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKWLE2  variable LKWGE2
 
 \ comparison entry: fold -> dispatch computes the flag; registers -> emit
@@ -410,7 +425,7 @@ variable LKWEQ2  variable LKWNE2  variable LKWLT2  variable LKWGT2  variable LKW
       lmainlbl B,
    FESK LABEL@ LBL, ;
 
-: EMIT-CMPKW
+: EMIT-CMPKW ( -- )
    LKWEQ2 LABEL@ LBL,  s" =" BYTES,    LKWNE2 LABEL@ LBL,  s" <>" BYTES,
    LKWLT2 LABEL@ LBL,  s" <" BYTES,    LKWGT2 LABEL@ LBL,  s" >" BYTES,
    LKWLE2 LABEL@ LBL,  s" <=" BYTES,   LKWGE2 LABEL@ LBL,  s" >=" BYTES, ;
@@ -418,7 +433,7 @@ variable LVDROP  variable LVSWAPX  variable LVNIPX  variable LVCOPY
 $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
 \ LVDROP ( -- x13=ok ) : drop ANY top entry (reg -> free, con -> forget); no code
-: EMIT-VDROP
+: EMIT-VDROP ( -- )
    LVDROP LABEL@ LBL,
    LBL LBL {: no fr :}
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -442,7 +457,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVSWAPX ( -- x13=ok ) : swap ANY top two entries (pure relabel; no code)
-: EMIT-VSWAPX
+: EMIT-VSWAPX ( -- )
    LVSWAPX LABEL@ LBL,
    LBL {: no :}
    13 0 MOVZ,
@@ -457,7 +472,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    no LBL,  RET, ;
 
 \ LVNIPX ( -- x13=ok ) : remove the DEEP entry (free if reg), keep top; no code
-: EMIT-VNIPX
+: EMIT-VNIPX ( -- )
    LVNIPX LABEL@ LBL,
    LBL LBL {: no fr :}
    SP SP 16 SUBI,  30 SP 0 STR,
@@ -487,7 +502,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
    no LBL,  30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 \ LVCOPY ( x5=k -- x13=ok ) : push a copy of entry k (con free; reg = one mov)
-: EMIT-VCOPY
+: EMIT-VCOPY ( -- )
    LVCOPY LABEL@ LBL,
    LBL LBL LBL {: no isreg done :}
    SP SP 32 SUBI,  30 SP 0 STR,
@@ -513,7 +528,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ constant (double bits, unmaterialized — LNUM's x2 flag marks float parses
 \ so the loop snapshot knows to force them into d-regs, not x-regs) ----
 \ LVPUSHF ( x11=bits ) : record a float constant; spill first if full.
-: EMIT-VPUSHF
+: EMIT-VPUSHF ( -- )
    LVPUSHF LABEL@ LBL,
    LBL {: room :}
    SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,
@@ -529,7 +544,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 \ LFFORCEK ( x5=k -- x14=dreg | 0 ) : force entry k into a d-reg, in place.
 \ tag 2 -> already there; tag 1 (a con holding double BITS) -> materialize via
 \ movz/movk x16 + fmov dN,x16; tag 0 (int reg) -> 0 (type error: generic path).
-: EMIT-FFORCEK
+: EMIT-FFORCEK ( -- )
    LFFORCEK LABEL@ LBL,
    LBL LBL LBL {: ffr ffd ffno :}
    SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,
@@ -563,7 +578,7 @@ $AA0003E0 constant W-MOVRR        \ orr rd,xzr,rs (| rd | rs<<16)
 
 \ LFBINPREP ( -- x13=mode ) : 0 fall-through; 2 d-regs ready (x14=rd, x15=rm;
 \ rm freed in FRFREE; VSP--). Mirrors LVBINPREP without a fold mode.
-: EMIT-FBINPREP
+: EMIT-FBINPREP ( -- )
    LFBINPREP LABEL@ LBL,
    LBL LBL {: fbno fb2 :}
    SP SP 32 SUBI,  30 SP 0 STR,
@@ -592,7 +607,7 @@ variable FESK5
    lmainlbl B,
    FESK5 LABEL@ LBL, ;
 
-: EMIT-FOPKW
+: EMIT-FOPKW ( -- )
    LKWFPLUS LABEL@ LBL,  s" f+" BYTES,   LKWFMINUS LABEL@ LBL,  s" f-" BYTES,
    LKWFSTAR LABEL@ LBL,  s" f*" BYTES,   LKWFSLASH LABEL@ LBL,  s" f/" BYTES, ;
 
@@ -648,7 +663,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
    6 6 1 ADDI,  6 DATA SNAPSP-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
-: EMIT-VSNAP
+: EMIT-VSNAP ( -- )
    LVSNAP LABEL@ LBL,
    LBL LBL LBL LBL LBL LBL {: fl fd fail spush pl pd :}
    LBL {: plo :}  LBL {: pnx :}  LBL {: snok :}
@@ -746,7 +761,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
    6 FRALL MOVZ,  7 DATA FRCLM-CELL LDR,  6 6 7 EOR,  6 DATA FRFREE-CELL STR,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
-: EMIT-VRECON
+: EMIT-VRECON ( -- )
    LVRECON LABEL@ LBL,
    LBL LBL LBL LBL LBL {: cl cd rel rl rln :}
    LBL {: chi :}  LBL {: cnx :}  LBL {: rhi :}  LBL {: rnx :}
@@ -772,15 +787,20 @@ variable FESK3
    FESK3 LABEL@ LBL, ;
 s" vshuf-entry" s" label ptr a n n n --" TRUST
 
-: XDUP   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVCOPY LABEL@ BL, ;
+: XDUP ( -- )
+   6 DATA VSP-CELL LDR,  5 6 1 SUBI,  LVCOPY LABEL@ BL, ;
 
-: XOVER  6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVCOPY LABEL@ BL, ;
+: XOVER ( -- )
+   6 DATA VSP-CELL LDR,  5 6 2 SUBI,  LVCOPY LABEL@ BL, ;
 
-: XDROP  LVDROP LABEL@ BL, ;
+: XDROP ( -- )
+   LVDROP LABEL@ BL, ;
 
-: XSWAP  LVSWAPX LABEL@ BL, ;
+: XSWAP ( -- )
+   LVSWAPX LABEL@ BL, ;
 
-: XNIP   LVNIPX LABEL@ BL, ;
+: XNIP ( -- )
+   LVNIPX LABEL@ BL, ;
 variable LKWINC  variable LKWDEC  variable LKWZEQ  variable LKWZLT
 variable LKWNEG2  variable LKWINV2
 variable FESK4
@@ -805,43 +825,59 @@ variable FESK4
    FESK4 LABEL@ LBL, ;
 s" vun-entry" s" label ptr a n n n --" TRUST
 
-: FU1+  11 11 1 ADDI, ;
+: FU1+ ( -- )
+   11 11 1 ADDI, ;
 
-: FU1-  11 11 1 SUBI, ;
+: FU1- ( -- )
+   11 11 1 SUBI, ;
 
-: FUNEG 11 SP 11 SUB, ;
+: FUNEG ( -- )
+   11 SP 11 SUB, ;
 
-: FUINV 7 0 MOVN,  11 11 7 EOR, ;
+: FUINV ( -- )
+   7 0 MOVN,  11 11 7 EOR, ;
 
-: FU0=  11 0 CMPI,  11 0 CSET,  11 SP 11 SUB, ;
+: FU0= ( -- )
+   11 0 CMPI,  11 0 CSET,  11 SP 11 SUB, ;
 
-: FU0<  11 0 CMPI,  11 11 CSET,  11 SP 11 SUB, ;
+: FU0< ( -- )
+   11 0 CMPI,  11 11 CSET,  11 SP 11 SUB, ;
 
-: EU2R  9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;   \ base | rd | rm<<16
+: EU2R ( -- )
+   9 8 14 ORR,  7 14 16 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;   \ base | rd | rm<<16
 
-: EU2N  9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;    \ base | rd | rn<<5
+: EU2N ( -- )
+   9 8 14 ORR,  7 14 5 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL, ;    \ base | rd | rn<<5
 
-: EU1+  8 $91000400 LIT64,  EU2N ;
+: EU1+ ( -- )
+   8 $91000400 LIT64,  EU2N ;
 
-: EU1-  8 $D1000400 LIT64,  EU2N ;
+: EU1- ( -- )
+   8 $D1000400 LIT64,  EU2N ;
 
-: EUNEG 8 $CB0003E0 LIT64,  EU2R ;
+: EUNEG ( -- )
+   8 $CB0003E0 LIT64,  EU2R ;
 
-: EUINV 8 $AA2003E0 LIT64,  EU2R ;
+: EUINV ( -- )
+   8 $AA2003E0 LIT64,  EU2R ;
 
-: EUCMP0  8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
+: EUCMP0 ( -- )
+   8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
 : EUCSET ( n -- ) {: cond:n :}  8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL, ;
 
-: EU0=  EUCMP0  0 EUCSET  EUNEG ;
+: EU0= ( -- )
+   EUCMP0  0 EUCSET  EUNEG ;
 
-: EU0<  EUCMP0  11 EUCSET  EUNEG ;
+: EU0< ( -- )
+   EUCMP0  11 EUCSET  EUNEG ;
 
-: EMIT-UNKW
+: EMIT-UNKW ( -- )
    LKWINC LABEL@ LBL,   s" 1+" BYTES,      LKWDEC LABEL@ LBL,   s" 1-" BYTES,
    LKWZEQ LABEL@ LBL,   s" 0=" BYTES,      LKWZLT LABEL@ LBL,   s" 0<" BYTES,
    LKWNEG2 LABEL@ LBL,  s" negate" BYTES,  LKWINV2 LABEL@ LBL,  s" invert" BYTES, ;
 
-: EMIT-JIT  EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
+: EMIT-JIT ( -- )
+   EMIT-VLITPUSH  EMIT-VSPILL  EMIT-VPUSHC  EMIT-VTOP2C  EMIT-VFOLDPUT
    EMIT-VRALLOC  EMIT-VBIT  EMIT-VRINIT  EMIT-FRALLOC  EMIT-VPUSHF  EMIT-FFORCEK  EMIT-FBINPREP  EMIT-FOPKW  EMIT-VMOVK  EMIT-VFORCEK  EMIT-VBINPREP  EMIT-VBINIPREP  EMIT-VPUSHR
    EMIT-VDROP  EMIT-VSWAPX  EMIT-VNIPX  EMIT-VCOPY  EMIT-VSNAP  EMIT-VRECON ;

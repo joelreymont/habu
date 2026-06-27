@@ -21,6 +21,35 @@ variable BCG-LEN
 : BCG-MUST-LACK ( ptr u8 n -- )
    BCG-HAS? 0= TTRUE ;
 
+: BCG-POS ( ptr u8 n -- n )
+   BCG-SOURCE 2swap FIND-SUB ;
+
+: BCG-POS-FOUND ( ptr u8 n -- n )
+   BCG-POS dup 0 >= TTRUE ;
+
+: BCG-MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru later:ptr lateru :}
+   earlier earlieru BCG-POS-FOUND
+   later lateru BCG-POS-FOUND
+   < TTRUE ;
+
+: BCG-FIND-AFTER ( n ptr u8 n -- n ) {: start needle:ptr nu :}
+   BCG-SOURCE {: src:ptr srcu :}
+   start 0 < if -1 exit then
+   start srcu >= if -1 exit then
+   src start + srcu start - needle nu FIND-SUB
+   dup 0 < if exit then
+   start + ;
+
+: BCG-MUST-NOT-FIND-BEFORE ( n n ptr u8 n -- ) {: start end needle:ptr nu :}
+   start needle nu BCG-FIND-AFTER {: pos :}
+   pos 0 < if exit then
+   pos end >= TTRUE ;
+
+: BCG-MUST-FIND-BEFORE ( n n ptr u8 n -- )
+   {: start end needle:ptr nu :}
+   start needle nu BCG-FIND-AFTER dup 0 >= TTRUE
+   end < TTRUE ;
+
 : BCG-TEST-INSTALL-FAIL-CLOSED ( -- )
    s" bootstrap/cg/install.fs" BCG-LOAD
    s" : BODY-ARITY ( -- n )  ['] TRY-ARITY CG-CATCH ;" BCG-MUST-HAVE
@@ -46,7 +75,16 @@ variable BCG-LEN
    s" LPUTIL @ ADR" BCG-MUST-LACK
    s" LSRCRD @ BL then" BCG-MUST-LACK
    s" a u ZBYTES ;" BCG-MUST-LACK
-   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK ;
+   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK
+   s" PFX-COMMON LPCHECKER" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
+   s" PFX-COMMON LPCHECKER" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
+   s" PFX-COMMON LPHOOK" s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-BEFORE
+   s" PFX-COMMON LPHOOK" s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-BEFORE
+   s" PFX-COMMON LPHOOK" s" PFX-COMMON LPROLES" BCG-MUST-BEFORE
+   s" PFX-COMMON LPROLES" s" PFX-COMMON LPINCLUDE" BCG-MUST-BEFORE
+   s" PFX-COMMON LPINCLUDE" s" PFX-COMMON LPSTRUCTURES" BCG-MUST-BEFORE
+   s" PFX-COMMON LPSTRUCTURES" s" PFX-COMMON LPENUMS" BCG-MUST-BEFORE
+   s" PFX-COMMON LPENUMS" s" PFX-COMMON LPCOMBINATORS" BCG-MUST-BEFORE ;
 
 : BCG-TEST-PREFIX-LIST-BOOTSTRAP ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
@@ -62,6 +100,17 @@ variable BCG-LEN
 : BCG-TEST-PREFIX-LIST ( -- )
    BCG-TEST-PREFIX-LIST-BOOTSTRAP
    BCG-TEST-PREFIX-LIST-NATIVE ;
+
+: BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT ( -- )
+   s" : C-SOURCE-BAKED" BCG-POS-FOUND {: start :}
+   start s" : EMIT-SOURCE" BCG-FIND-AFTER dup 0 >= TTRUE {: end :}
+   start end s" EMIT-COLD-PREFIX" BCG-MUST-FIND-BEFORE ;
+
+: BCG-TEST-BAKED-SOURCE-PREFIX ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT
+   s" src/habu/habu2.f" BCG-LOAD
+   BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT ;
 
 : BCG-TEST-TRUST-CALLS-CURRENT ( -- )
    s" : C-PUSH-DATA-CELL ( n -- )" BCG-MUST-HAVE
@@ -119,6 +168,7 @@ variable BCG-LEN
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
+   BCG-TEST-BAKED-SOURCE-PREFIX
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER
    BCG-TEST-ASM-CHECKED
