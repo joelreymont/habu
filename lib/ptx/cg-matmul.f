@@ -36,13 +36,15 @@
 \   - bigger micro-tiles (8x8) + bigger block tiles (128x128);
 \   - the last stretch to Triton may need its MMA/dot path (tensor-core-adjacent).
 \
-\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. The tile DSL type
-\ system (tile.f) cannot yet express shared-memory matrix tiles, a register
-\ accumulator threaded across a loop, or a checked counted loop, so MM is emitted as
-\ raw PTX rather than composed from checked tile words. It is a named, tested boundary
-\ (device-golden correct vs CPU A*B) per CLAUDE.md; the missing typed capabilities are
-\ dotted (habu-tiled-gemm-codegen + a checked-loop / shared-tile type dot). When those
-\ land, MM becomes a checked KERNEL: body like SAXPY/softmax. Load after
+\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. Of the three missing
+\ typed capabilities, the CHECKED COUNTED LOOP now exists (lib/ptx/tile-loop.f TILE-LOOP,
+\ capability (a) - the checker types and enforces the K-reduction's accumulator-preserving
+\ body). Still missing: a SHARED-MEMORY matrix-tile type and a REGISTER ACCUMULATOR type
+\ threaded across the loop, so MM is still emitted as raw PTX rather than composed from
+\ checked tile words. It is a named, tested boundary (device-golden correct vs CPU A*B)
+\ per CLAUDE.md; the remaining typed capabilities are dotted (habu-tiled-gemm-codegen +
+\ habu-checker-capability-typed sub-dots b/c/re-express). When those land, MM becomes a
+\ checked KERNEL: body like SAXPY/softmax. Load after
 \ src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
 \ ==============================================================================
 
