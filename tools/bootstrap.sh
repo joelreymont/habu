@@ -84,6 +84,7 @@ SRC_COMMON=(
   src/habu/regalloc.f
   src/habu/jit.f
   src/habu/habu2.f
+  src/habu/xref.f
 )
 
 emit_src() {
@@ -177,7 +178,7 @@ restore_hb_on_failure() {
 trap restore_hb_on_failure EXIT
 mv "$T/hb-new" bin/hb
 env HB_TMP="$T/native" bin/hb --load \
-  lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f \
+  lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
   lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 trap - EXIT

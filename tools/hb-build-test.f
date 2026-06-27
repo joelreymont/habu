@@ -1,5 +1,5 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
 
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
@@ -139,6 +139,7 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/fs.f"  >LEN PROC-ARGV+
    s" lib/fs-mutate.f"  >LEN PROC-ARGV+
    s" lib/process.f"  >LEN PROC-ARGV+

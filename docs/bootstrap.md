@@ -77,8 +77,8 @@ After `bin/hb` exists, do not use Gforth for normal work:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/codesign.f tools/build-fixpoint.f \
-  tools/build-fixpoint-main.f -- install
+  lib/process-argv.f lib/process-env.f lib/memory.f lib/codesign.f \
+  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 ```
 
 `bin/hb --load` selects the host core/checker/env source prefix from the

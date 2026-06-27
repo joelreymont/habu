@@ -102,6 +102,7 @@ variable GB-LC-OFF
    s" --load" GB-ARGV+
    s" lib/errors.f" GB-ARGV+
    s" lib/string.f" GB-ARGV+
+   s" lib/memory.f" GB-ARGV+
    s" lib/fs.f" GB-ARGV+
    s" lib/fs-mutate.f" GB-ARGV+
    s" lib/process.f" GB-ARGV+

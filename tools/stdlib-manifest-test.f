@@ -1,5 +1,7 @@
 \ stdlib-manifest-test.f - validate lib/std.manifest without host text tools.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
+\ lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
+\ tools/lint/lib.f tools/stdlib-manifest-test.f
 
 $30000 constant SMT-MAN-CAP
 $10000 constant SMT-DOC-CAP
@@ -21,11 +23,43 @@ $40000 constant SMT-STR-CAP
 123 constant SMT-AFTER-Z
 34 constant SMT-DQ
 
-create SMT-MAN-BUF SMT-MAN-CAP allot
-create SMT-DOC-BUF SMT-DOC-CAP allot
-create SMT-PUB-BUF SMT-PUB-CAP allot
-create SMT-ERR-BUF SMT-ERR-CAP allot
-create SMT-STR-BUF SMT-STR-CAP allot
+variable SMT-MAN-BUF-A
+variable SMT-DOC-BUF-A
+variable SMT-PUB-BUF-A
+variable SMT-ERR-BUF-A
+variable SMT-STR-BUF-A
+
+: SMT-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: SMT-PTR-U8@ ( ptr a -- ptr u8 )
+   SMT-PTR-U8-FIELD @ ;
+
+: SMT-PTR-U8! ( ptr u8 ptr a -- )
+   SMT-PTR-U8-FIELD ! ;
+
+: SMT-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: SMT-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
+   slot @ 0= if cap SMT-ALLOC-BUF slot SMT-PTR-U8! then
+   slot SMT-PTR-U8@ ;
+
+: SMT-MAN-BUF ( -- ptr u8 )
+   SMT-MAN-BUF-A SMT-MAN-CAP SMT-BUF ;
+
+: SMT-DOC-BUF ( -- ptr u8 )
+   SMT-DOC-BUF-A SMT-DOC-CAP SMT-BUF ;
+
+: SMT-PUB-BUF ( -- ptr u8 )
+   SMT-PUB-BUF-A SMT-PUB-CAP SMT-BUF ;
+
+: SMT-ERR-BUF ( -- ptr u8 )
+   SMT-ERR-BUF-A SMT-ERR-CAP SMT-BUF ;
+
+: SMT-STR-BUF ( -- ptr u8 )
+   SMT-STR-BUF-A SMT-STR-CAP SMT-BUF ;
+
 create SMT-ONE 1 allot
 create SMT-NUM 32 allot
 create SMT-FIELD-O SMT-FIELDS cells allot

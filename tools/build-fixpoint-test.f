@@ -1,5 +1,5 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f
 \ lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f
 \ tools/build-fixpoint.f tools/build-fixpoint-test.f
@@ -91,6 +91,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" BFT-ARG+
    s" lib/string.f" BFT-ARG+
+   s" lib/memory.f" BFT-ARG+
    s" lib/fs.f" BFT-ARG+
    s" lib/fs-mutate.f" BFT-ARG+
    s" lib/process.f" BFT-ARG+

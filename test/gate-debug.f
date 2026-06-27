@@ -1,6 +1,7 @@
 \ gate-debug.f - checked runner for prop/snapshot/debug gate checks.
 \
-\ Load after test/gate-common.f, lib/codesign.f, and tools/build-fixpoint.f.
+\ Load after test/gate-common.f, lib/memory.f, lib/codesign.f, and
+\ tools/build-fixpoint.f.
 
 create GDB-PATH1 FS-PATH-CAP allot
 create GDB-PATH2 FS-PATH-CAP allot

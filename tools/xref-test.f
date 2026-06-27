@@ -1,0 +1,35 @@
+\ xref-test.f - focused tests for live dictionary xref words.
+\ Load after lib/test.f and src/habu/xref.f.
+
+: XRT-SAMPLE ( -- n )
+   42 ;
+
+: XRT-CALLER ( n -- n )
+   XRT-SAMPLE + ;
+
+: XRT-EXPECT-FOUND ( ptr u8 n -- ptr a )
+   XREF-FIND dup XREF-FOUND? TTRUE ;
+
+: XRT-FOUND ( -- )
+   s" xrt-sample" XRT-EXPECT-FOUND {: rec :}
+   rec XREF-NAME$ s" XRT-SAMPLE" T$=
+   rec XREF-LEN 0 > TTRUE
+   rec XREF-START 0 > TTRUE
+   rec XREF-NAME-LEN 10 T=
+   rec XREF-WORDLIST get-current T= ;
+
+: XRT-MISSING ( -- )
+   s" XRT-NO-SUCH-WORD" XREF-FIND XREF-FOUND? TFALSE ;
+
+: XRT-LATEST ( -- )
+   LATEST XREF-NAME$ s" XRT-MAIN" T$= ;
+
+: XRT-MAIN ( -- )
+   T-RESET
+   XRT-FOUND
+   XRT-MISSING
+   XRT-LATEST
+   T-REPORT
+   s" xref-test: ok" type cr ;
+
+XRT-MAIN

@@ -255,6 +255,15 @@ $63 constant GD-C-LOWER
    SB-RESET s" 5" GE-OUT-LINE
    SB$ s" hb named-row sig run output" GE-EXPECT-OUT ;
 
+: GD-XREF ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" lib/test.f" GE-SRC-FILE+
+   s" src/habu/xref.f" GE-SRC-FILE+
+   s" tools/xref-test.f" GE-SRC-FILE+
+   s" hb native xref words" GE-HB-RUN-STDIN
+   s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
+
 : GD-MAIN ( -- )
    GT-RESET
    GD-LONG-DICTIONARY
@@ -272,6 +281,7 @@ $63 constant GD-C-LOWER
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW
    GD-NAMED-ROW-RUN
+   GD-XREF
    s" PASS: native dictionary/checker gate phase" type cr ;
 
 GD-MAIN

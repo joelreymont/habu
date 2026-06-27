@@ -230,6 +230,7 @@ variable TR-PATH-U
 
 : TR-DEBUG-ARGS ( -- )
    TR-COMMON
+   s" lib/memory.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" test/gate-debug.f"  >LEN PROC-ARGV+ ;

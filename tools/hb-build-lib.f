@@ -2,7 +2,8 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
-\ lib/source.f, lib/codesign.f, tools/build-fixpoint.f, and tools/warm-run.f.
+\ lib/memory.f, lib/source.f, lib/codesign.f, tools/build-fixpoint.f,
+\ and tools/warm-run.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -16,11 +17,11 @@ create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-LOCK-PATH FS-PATH-CAP allot
-create HBB-OUT-BUF HBB-CAPTURE-CAP allot
-create HBB-ERR-BUF HBB-CAPTURE-CAP allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
+variable HBB-OUT-BUF-A
+variable HBB-ERR-BUF-A
 variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAKER-U
@@ -32,6 +33,28 @@ variable HBB-STRICT
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
 variable HBB-LOCK-DEADLINE
+
+: HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: HBB-PTR-U8@ ( ptr a -- ptr u8 )
+   HBB-PTR-U8-FIELD @ ;
+
+: HBB-PTR-U8! ( ptr u8 ptr a -- )
+   HBB-PTR-U8-FIELD ! ;
+
+: HBB-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: HBB-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
+   slot @ 0= if cap HBB-ALLOC-BUF slot HBB-PTR-U8! then
+   slot HBB-PTR-U8@ ;
+
+: HBB-OUT-BUF ( -- ptr u8 )
+   HBB-OUT-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
+
+: HBB-ERR-BUF ( -- ptr u8 )
+   HBB-ERR-BUF-A HBB-CAPTURE-CAP HBB-BUF ;
 
 : HBB-TRUE ( -- bool )
    0 0= ;

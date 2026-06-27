@@ -9,11 +9,27 @@
 $40000 constant JSON-ONLY-IN-CAP
 
 create JSON-ONLY-PATH JSON-ONLY-PATH-CAP allot
-create JSON-ONLY-IN JSON-ONLY-IN-CAP allot
 
 variable JSON-ONLY-FD
 variable JSON-ONLY-LEN
 variable JSON-ONLY-RD
+variable JSON-ONLY-IN-A
+
+: JSON-ONLY-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: JSON-ONLY-PTR-U8@ ( ptr a -- ptr u8 )
+   JSON-ONLY-PTR-U8-FIELD @ ;
+
+: JSON-ONLY-PTR-U8! ( ptr u8 ptr a -- )
+   JSON-ONLY-PTR-U8-FIELD ! ;
+
+: JSON-ONLY-ALLOC-IN ( -- ptr u8 )
+   JSON-ONLY-IN-CAP MEM-ALLOC-BYTES drop ;
+
+: JSON-ONLY-IN ( -- ptr u8 )
+   JSON-ONLY-IN-A @ 0= if JSON-ONLY-ALLOC-IN JSON-ONLY-IN-A JSON-ONLY-PTR-U8! then
+   JSON-ONLY-IN-A JSON-ONLY-PTR-U8@ ;
 
 : JSON-ONLY-COPY-BYTES ( ptr u8 ptr u8 n -- )
    {: a:ptr dst:ptr u :}

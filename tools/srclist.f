@@ -71,7 +71,8 @@ variable SL-DRIVER-U
    s" src/habu/layout.f src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
-   s" src/habu/jit.f src/habu/habu2.f src/habu/driver-io.f src/habu/" type ;
+   s" src/habu/jit.f src/habu/habu2.f src/habu/xref.f " type
+   s" src/habu/driver-io.f src/habu/" type ;
 
 : SRCLIST-MAIN ( -- )
    SL-DRIVER$ SL-DRIVER!

@@ -887,7 +887,7 @@ variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable F
 \ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0
 \ terminated. Names are dictionary strings, not counted bytes.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-$40000 constant USIGS-INIT-CAP
+$80000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 3 constant USIGS-PROT-RW

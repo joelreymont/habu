@@ -12,15 +12,28 @@ $40000 constant RP-IN-CAP
 32 constant RP-NUM-CAP
 
 create RP-PATH RP-PATH-CAP allot
-create RP-IN RP-IN-CAP allot
 create RP-NUM RP-NUM-CAP allot
 
+variable RP-IN-A
 variable RP-FD
 variable RP-RD
 variable RP-LEN
 variable RP-N
 variable RP-NUM-I
 variable RP-NODE
+
+: RP-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: RP-PTR-U8@ ( ptr a -- ptr u8 )
+   RP-PTR-U8-FIELD @ ;
+
+: RP-PTR-U8! ( ptr u8 ptr a -- )
+   RP-PTR-U8-FIELD ! ;
+
+: RP-IN ( -- ptr u8 )
+   RP-IN-A @ 0= if RP-IN-CAP MEM-ALLOC-BYTES drop RP-IN-A RP-PTR-U8! then
+   RP-IN-A RP-PTR-U8@ ;
 
 : RP-COPY ( ptr u8 ptr u8 n -- )
    {: a:ptr dst:ptr u :}

@@ -1,5 +1,7 @@
 \ repair-schema-doc-test.f - checked fixture for repair diagnostic docs.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/repair-schema-doc-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/json.f tools/gate-json-assert-core.f tools/repair-schema-doc-test.f
 
 $40000 constant RSD-DOC-CAP
 8192 constant RSD-BUF-CAP
@@ -11,14 +13,42 @@ variable RSD-DIAG-U
 variable RSD-DOC-U
 variable RSD-LLM-U
 variable RSD-ERR-U
+variable RSD-DOC-BUF-A
+variable RSD-LLM-BUF-A
+variable RSD-OUT-A
+variable RSD-ERR-A
 
 create RSD-ROOT-BUF FS-PATH-CAP allot
 create RSD-SRC-BUF FS-PATH-CAP allot
 create RSD-DIAG-BUF FS-PATH-CAP allot
-create RSD-DOC-BUF RSD-DOC-CAP allot
-create RSD-LLM-BUF RSD-DOC-CAP allot
-create RSD-OUT RSD-BUF-CAP allot
-create RSD-ERR RSD-BUF-CAP allot
+
+: RSD-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: RSD-PTR-U8@ ( ptr a -- ptr u8 )
+   RSD-PTR-U8-FIELD @ ;
+
+: RSD-PTR-U8! ( ptr u8 ptr a -- )
+   RSD-PTR-U8-FIELD ! ;
+
+: RSD-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: RSD-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
+   slot @ 0= if cap RSD-ALLOC-BUF slot RSD-PTR-U8! then
+   slot RSD-PTR-U8@ ;
+
+: RSD-DOC-BUF ( -- ptr u8 )
+   RSD-DOC-BUF-A RSD-DOC-CAP RSD-BUF ;
+
+: RSD-LLM-BUF ( -- ptr u8 )
+   RSD-LLM-BUF-A RSD-DOC-CAP RSD-BUF ;
+
+: RSD-OUT ( -- ptr u8 )
+   RSD-OUT-A RSD-BUF-CAP RSD-BUF ;
+
+: RSD-ERR ( -- ptr u8 )
+   RSD-ERR-A RSD-BUF-CAP RSD-BUF ;
 
 : RSD-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then

@@ -1,6 +1,6 @@
 \ build-fixpoint.f - checked self-rebuild orchestration.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 
 262144 constant BF-SOURCE-CAP
@@ -10,16 +10,16 @@
 64 constant BF-USAGE-RC
 74 constant BF-BUILD-RC
 
-create BF-SOURCE-BUF BF-SOURCE-CAP allot
 create BF-ART-PATH FS-PATH-CAP allot
 create BF-OUT-PATH FS-PATH-CAP allot
 create BF-A-PATH FS-PATH-CAP allot
 create BF-B-PATH FS-PATH-CAP allot
-create BF-CMP-A BF-CMP-CAP allot
-create BF-CMP-B BF-CMP-CAP allot
 create BF-LF-BUF 1 allot
 BF-LF BF-LF-BUF c!
 
+variable BF-SOURCE-BUF-A
+variable BF-CMP-A-BUF-A
+variable BF-CMP-B-BUF-A
 variable BF-SOURCE-LEN
 variable BF-A-LEN
 variable BF-B-LEN
@@ -41,6 +41,31 @@ variable BF-TMP-U
 
 : BF-TMP-A! ( ptr u8 -- )
    BF-TMP-A-FIELD ! ;
+
+: BF-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: BF-PTR-U8@ ( ptr a -- ptr u8 )
+   BF-PTR-U8-FIELD @ ;
+
+: BF-PTR-U8! ( ptr u8 ptr a -- )
+   BF-PTR-U8-FIELD ! ;
+
+: BF-ALLOC-BUF ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
+
+: BF-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
+   slot @ 0= if cap BF-ALLOC-BUF slot BF-PTR-U8! then
+   slot BF-PTR-U8@ ;
+
+: BF-SOURCE-BUF ( -- ptr u8 )
+   BF-SOURCE-BUF-A BF-SOURCE-CAP BF-BUF ;
+
+: BF-CMP-A ( -- ptr u8 )
+   BF-CMP-A-BUF-A BF-CMP-CAP BF-BUF ;
+
+: BF-CMP-B ( -- ptr u8 )
+   BF-CMP-B-BUF-A BF-CMP-CAP BF-BUF ;
 
 : BF-TRUE ( -- bool )
    0 0= ;
@@ -347,7 +372,8 @@ variable BF-TMP-U
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
-   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
+   out outu s" src/habu/xref.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;

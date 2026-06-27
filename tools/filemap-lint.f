@@ -99,6 +99,7 @@ variable FM-NUM-L
    s" src/habu/stepper.f" FM-REQ
    s" src/habu/debug.f" FM-REQ
    s" src/habu/layout.f" FM-REQ
+   s" src/habu/xref.f" FM-REQ
    s" src/arch/ptx/emit.f" FM-REQ
    s" src/arch/arm64/disasm.f" FM-REQ ;
 

@@ -1,5 +1,7 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/repair-packet-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ tools/json.f tools/gate-json-assert-core.f tools/repair-packet-test.f
 
 $20000 constant RPT-CAPTURE-CAP
 10000 constant RPT-TIMEOUT-MS
@@ -8,13 +10,35 @@ variable RPT-ROOT-U
 variable RPT-SRC-U
 variable RPT-DIAG-U
 variable RPT-PACKET-U
+variable RPT-OUT-A
+variable RPT-ERR-A
 
 create RPT-ROOT-BUF FS-PATH-CAP allot
 create RPT-SRC-BUF FS-PATH-CAP allot
 create RPT-DIAG-BUF FS-PATH-CAP allot
 create RPT-PACKET-BUF FS-PATH-CAP allot
-create RPT-OUT RPT-CAPTURE-CAP allot
-create RPT-ERR RPT-CAPTURE-CAP allot
+
+: RPT-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
+
+: RPT-PTR-U8@ ( ptr a -- ptr u8 )
+   RPT-PTR-U8-FIELD @ ;
+
+: RPT-PTR-U8! ( ptr u8 ptr a -- )
+   RPT-PTR-U8-FIELD ! ;
+
+: RPT-ALLOC-BUF ( -- ptr u8 )
+   RPT-CAPTURE-CAP MEM-ALLOC-BYTES drop ;
+
+: RPT-BUF ( ptr a -- ptr u8 ) {: slot:ptr :}
+   slot @ 0= if RPT-ALLOC-BUF slot RPT-PTR-U8! then
+   slot RPT-PTR-U8@ ;
+
+: RPT-OUT ( -- ptr u8 )
+   RPT-OUT-A RPT-BUF ;
+
+: RPT-ERR ( -- ptr u8 )
+   RPT-ERR-A RPT-BUF ;
 
 : RPT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then

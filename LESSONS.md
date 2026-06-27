@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-26
+Last updated: 2026-06-27
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -215,6 +215,11 @@ lesson — keep the specific word/code/path, cut the prose.
   string storage, and writer/error buffers are part of the warm checker prefix;
   keep them in lazy `lib/memory.f` mappings or the 67 KiB warm trust sidecar can
   fail before diagnostics run.
+- **Batched warm tools expose static scratch debt:** after xref/checker state
+  growth, static 256 KiB buffers in `build-fixpoint`, `hb-build`, `repair-packet`,
+  `json-only`, `repair-schema-doc-test`, and `stdlib-manifest-test` failed as
+  silent rc 76 under warm suites. Large source, capture, doc, and JSON buffers use
+  lazy `lib/memory.f` mappings; update the owning load list, not the batch shape.
 - **Code/dict region guards (a lone `:` failing closed):** check `cp@ dbase@ -`.
   At/past `REGION - $4000` → code-region guard (remove one-use compiled fixtures,
   then grow `REGION`). Well below + rc 77 → dictionary guard: grow `DICT-CAP`,
@@ -611,6 +616,12 @@ lesson — keep the specific word/code/path, cut the prose.
   batched output. Per-file export children hide startup cost and make warm
   phases look inherently slow.
 - **Semantic xref belongs in the image:** when investigating dictionary or call
-  ownership, prefer native Forth words over source search. If `XREF`/`SEE`-style
-  words are missing from `bin/hb`, track and build that capability instead of
-  normalizing text search as the semantic path.
+  ownership, prefer baked native Forth words (`LATEST`, `XREF-FIND`, `XREF`,
+  `SEE`, `WORDS`) over source search. If the existing words do not expose the
+  needed relationship, extend that in-image surface instead of normalizing text
+  search as the semantic path.
+- **Snapshot checker state must fit DATA, not only mmap:** `USIGS` can grow
+  dynamically while checking, but warm snapshot images must persist the table
+  into the DATA-resident boot buffer before exec. When warm-image composition
+  grows, size the persisted boot capacity for the supported gate workload and
+  rerun the native snapshot/full gate.
