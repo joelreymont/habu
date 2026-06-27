@@ -41,6 +41,8 @@
    \ stack juggling (DUP/SWAP) inside the expansion (docs/autograd.md table):
    2dup s" *." STR= if 2drop s" DUP SAVED-Y *. SWAP SAVED-X *." exit then  \ dx=dz.y, dy=dz.x
    2dup s" B-" STR= if 2drop s" DUP BLOCK-SUM NEG"              exit then  \ dt=dz, ds=-Sum(dz)
+   \ B/ : z = x/s. dx = dz/s ; ds = -Sum(dz*z)/s (z = saved output, s = saved uniform).
+   2dup s" B/" STR= if 2drop s" DUP SAVED-S B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S U/" exit then
    VJP-ADJOINT ;
 
 \ --- forward token spans (offset,len into the source body) ---

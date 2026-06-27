@@ -51,6 +51,11 @@ TRUSTED: B- ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-B/ ;
 
+\ U/ : uniform / uniform - the scalar divide the softmax B/ adjoint needs
+\ (ds = -Sum(dz*z)/s divides one block-uniform by another). Lowers to div.rn.f32.
+TRUSTED: U/ ( uniform<t> uniform<t> -- uniform<t> )
+   EMIT-U/ ;
+
 TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
    EMIT-EXP ;
 

@@ -49,6 +49,12 @@ s" LOAD *. STORE" AD-REVERSE
    s" LOAD DUP SAVED-Y *. SWAP SAVED-X *. STORE" STR= TTRUE
 s" LOAD B- STORE" AD-REVERSE
    s" LOAD DUP BLOCK-SUM NEG STORE" STR= TTRUE
+\ B/ (z=x/s): dx=dz/s, ds=-Sum(dz*z)/s - the last softmax op's 2-output adjoint
+s" LOAD B/ STORE" AD-REVERSE
+   s" LOAD DUP SAVED-S B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S U/ STORE" STR= TTRUE
+\ the FULL softmax forward now derives a complete backward (every op covered, incl. B/) -
+\ AD-REVERSE does not throw E-PTX-NOVJP and produces a non-empty backward body
+s" LOAD DUP BLOCK-MAX B- EXP. DUP BLOCK-SUM B/" AD-REVERSE nip 0 > TTRUE
 
 \ algebraic-simplify: adjacent NEG NEG cancels (double negation = identity)
 s" NEG NEG"          AD-SIMPLIFY s" "       STR= TTRUE

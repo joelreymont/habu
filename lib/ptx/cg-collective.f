@@ -181,6 +181,12 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" div.rn.f32 " CG-S r CG-F s" , " CG-S tile CG-F s" , " CG-S unif CG-F s" ;" CG-S CG-LINE
    r ;
 
+\ U/ : uniform / uniform - the scalar divide the B/ adjoint needs (ds = -Sum(dz*z)/s)
+: EMIT-U/ ( n n -- n ) {: a b :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" div.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
+   r ;
+
 \ BROADCAST : uniform -> tile (every lane already holds the reduced scalar)
 : EMIT-BROADCAST ( n -- n ) {: unif :}
    CG-NEXT-F {: r :}
