@@ -13,6 +13,7 @@ points stay listed.
 - `STATUS.md` — current verification status and known gaps.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
 - `docs/ptx-sketch.md` — Habu→PTX v0 language spec.
