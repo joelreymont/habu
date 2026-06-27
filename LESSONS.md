@@ -145,6 +145,20 @@ lesson — keep the specific word/code/path, cut the prose.
   requirements in `tools/stdlib-manifest-test.f` stay maintainable when grouped
   as checked rows; branch ladders hide policy drift and make adding requirements
   look like control-flow work.
+- **stdlib gained `ffi`/`float`/`fmt`:** `lib/ffi.f` (typed `DLOPEN`/`DLSYM`/
+  `CALL0..6`/`>CSTR` over the `ffi-call` trampoline), `lib/float.f` (`STR>FLOAT`
+  decimal→f64 + `POW10`), `lib/fmt.f` (`SB-U`/`SB-INT`/`SB-FIX` builders +
+  `U.0`/`F.N`). Registering a new lib = `std.manifest` rows for every public
+  colon word (match `tools/public-signatures.f` output *exactly* —
+  `TRUSTED:`/constants/`.0`-style names are NOT extracted, so they get no row), a
+  `FILEMAP.md` row, a `gate-stdlib.f` `TEST-SUITE`, and `TRUSTED.md` rows for any
+  `TRUSTED:`. The doc-contract check is a curated spot-list, not per-module.
+- **Habu's locals/loop discipline costs first-time iteration:** porting real code
+  (Odin's tegrastats/netpbm parsers to `../odin-habu`) hit the same walls
+  repeatedly — no local bind after `exit`, a `begin/while` condition may only add
+  a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
+  words. The rules now live in `docs/forth.md`; once known, later ports needed
+  ~zero checker iterations. The win is verification, not authoring speed.
 
 ## VCS
 
