@@ -99,3 +99,15 @@ contention, down from 77.526s, but wall time regressed slightly from 1m46.76s.
 Remaining long poles: REPL 75.823s, engine build 70.776s, stdlib tool-boundary
 70.117s, stdlib check-cli 58.626s, prop/snapshot/debug 57.657s, and engine
 fixtures 41.150s.
+
+Checkpoint 2026-06-27: removed the standalone native hb-build REPL phase and
+folded its unique coverage into `tools/hb-build-test.f`. The fixture now keeps
+REPL success in-process through `tools/hb-build-lib.f`, tests bad REPL source at
+the maker-capture boundary instead of spawning a full `hb-build.f` child, and
+leaves only the missing/fresh `HB_TMP` check on the CLI/env boundary. The
+duplicate AOT success fixture was removed because `test/gate-aot-positive.f`
+owns that proof. Focused `tools/hb-build-test.f` passed in 32.03s cold after
+rebasing; the documented full native gate passed in 1m38.25s (user 324.78s/sys
+4.86s). New long poles: stdlib tool-boundary 68.787s, engine build 64.061s, AOT
+positive 59.635s, stdlib check-cli 59.500s, prop/snapshot/debug 55.939s, and
+engine fixtures 45.173s.

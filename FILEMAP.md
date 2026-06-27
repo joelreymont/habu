@@ -99,7 +99,8 @@ points stay listed.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
-- `tools/hb-build-test.f` — checked fixture coverage for native AOT/REPL builds.
+- `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
+  hb-build boundary rejections.
 - `tools/warm-image-lib.f` — checked tool library that bakes warm snapshot images
   plus generated trust-sidecar sources from support files for fast fixture
   subprocesses.

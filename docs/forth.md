@@ -85,9 +85,12 @@ file.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
   ROLL`, stop and either factor a helper or use locals. Deep juggling is exactly
   what this project forbids in *user* code — hold our own code to it.
-- **Locals `{: a b :}`** are encouraged where they remove juggling. They bind
-  inputs only; do not put `-- outputs` inside the locals form. Keep the effect in
-  the stack comment.
+- **Locals `{: a:type b:type :}`** are encouraged where they remove juggling.
+  They bind inputs only; do not put `-- outputs` inside the locals form. Keep
+  the effect in the stack comment. New locals are typed by default when the
+  concrete checker type is known; a bare local name is allowed only when the
+  entry stack effect intentionally preserves richer role detail that the local
+  annotation cannot express, or when the missing typed capability is documented.
 - **Local type annotations can erase role detail.** A local such as `a:ptr`
   records only a pointer cell; it does not preserve `ptr u8`. If the body uses
   byte operations such as `c@`/`c!`, keep the detailed type in the stack effect

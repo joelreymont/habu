@@ -127,11 +127,13 @@ constants; and a `T{ … -> … }T` test for every word.
 - Forth commit gate (BLOCKING): before `jj commit`, any change
   touching `.f` or `.fs` source must prove checked Habu was used wherever
   possible. Scan the diff for new/changed `:`, `+:`, `CHECKED:`, `TRUSTED:`,
-  `0 set-check`, and `TRUST` sites; every new or changed definition needs a real
-  typed stack effect unless it is an explicitly documented boundary. Every
-  changed Forth file must be checked through its exact owning `bin/hb --load ...`
-  path or documented as an explicit uncheckable boundary, and every unchecked
-  boundary needs a focused test plus a dot for the missing typed capability.
+  `0 set-check`, `TRUST`, and `{:` sites; every new or changed definition needs
+  a real typed stack effect unless it is an explicitly documented boundary, and
+  every new or changed locals group needs typed locals unless it documents a
+  role-preserving exception from `docs/forth.md`. Every changed Forth file must
+  be checked through its exact owning `bin/hb --load ...` path or documented as
+  an explicit uncheckable boundary, and every unchecked boundary needs a focused
+  test plus a dot for the missing typed capability.
   Treat a failed or skipped commit gate as unfinished work, not as something to
   commit first and clean up later.
 - Commit after each significant change or feature; include new files.

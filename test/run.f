@@ -6,7 +6,7 @@
 64 constant TR-USAGE-RC
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
-19 constant TR-PHASES
+18 constant TR-PHASES
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
 
@@ -243,10 +243,6 @@ variable TR-PATH-U
    TR-BUILD-COMMON
    s" test/gate-aot-negative.f"  >LEN PROC-ARGV+ ;
 
-: TR-HB-BUILD-REPL-ARGS ( -- )
-   TR-BUILD-LIB-COMMON
-   s" test/gate-hb-build-repl.f"  >LEN PROC-ARGV+ ;
-
 : TR-STDLIB ( -- )
    TR-BASE
    TR-STDLIB-ARGS
@@ -290,11 +286,6 @@ variable TR-PATH-U
    TR-AOT-NEGATIVE-ARGS
    s" native hb-build AOT negative gate phase" TR-RUN ;
 
-: TR-HB-BUILD-REPL ( -- )
-   TR-BASE
-   TR-HB-BUILD-REPL-ARGS
-   s" native hb-build REPL gate phase" TR-RUN ;
-
 : TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx :}
    idx IDX>N 0= if s" native stdlib tools warm image" exit then
    idx IDX>N 1 = if s" native checker warm image gate phase" exit then
@@ -313,8 +304,7 @@ variable TR-PATH-U
    idx IDX>N 14 = if s" native dictionary/checker gate phase" exit then
    idx IDX>N 15 = if s" native engine build slice" exit then
    idx IDX>N 16 = if s" native engine runtime slice" exit then
-   idx IDX>N 17 = if s" native hb-build REPL gate phase" exit then
-   idx IDX>N 18 = if s" native stdlib lint slice" exit then
+   idx IDX>N 17 = if s" native stdlib lint slice" exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx :}
@@ -335,8 +325,7 @@ variable TR-PATH-U
    idx IDX>N 14 = if s" gate-dict" exit then
    idx IDX>N 15 = if s" gate-engine-build" exit then
    idx IDX>N 16 = if s" gate-engine-runtime" exit then
-   idx IDX>N 17 = if s" gate-repl" exit then
-   idx IDX>N 18 = if s" gate-stdlib-lint" exit then
+   idx IDX>N 17 = if s" gate-stdlib-lint" exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-ARGS ( idx -- ) {: idx :}
@@ -357,8 +346,7 @@ variable TR-PATH-U
    idx IDX>N 14 = if TR-DICTIONARY-ARGS exit then
    idx IDX>N 15 = if TR-ENGINE-BUILD-ARGS exit then
    idx IDX>N 16 = if TR-ENGINE-RUNTIME-ARGS exit then
-   idx IDX>N 17 = if TR-HB-BUILD-REPL-ARGS exit then
-   idx IDX>N 18 = if TR-STDLIB-LINT-ARGS exit then
+   idx IDX>N 17 = if TR-STDLIB-LINT-ARGS exit then
    E-TBL-BOUNDS throw ;
 
 : TR-PHASE-TMP! ( idx -- ) {: idx :}
@@ -367,7 +355,7 @@ variable TR-PATH-U
 
 : TR-STDLIB-SLICE? ( idx -- bool ) {: idx :}
    idx IDX>N 2 >= idx IDX>N 4 <= and
-   idx IDX>N 18 = or ;
+   idx IDX>N 17 = or ;
 
 : TR-TOOLS-PHASE? ( idx -- bool ) {: idx :}
    idx TR-STDLIB-SLICE? if 0 0= exit then
@@ -376,7 +364,7 @@ variable TR-PATH-U
 : TR-EARLY-PHASE? ( idx -- bool ) {: idx :}
    idx IDX>N 7 = if 0 0= exit then
    idx IDX>N 15 = if 0 0= exit then
-   idx IDX>N 17 = ;
+   0 0= 0= ;
 
 : TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
    s" 4" ;
