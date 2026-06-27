@@ -616,7 +616,7 @@ TEST-SUITE map-stdlib
 ;TEST-SUITE
 
 TEST-SUITE ptx-stdlib
-   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-collective.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ad.f lib/ptx/ad-test.f
+   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/cg-collective.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/tile-v4.f lib/ptx/tile-v4-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ad.f lib/ptx/ad-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-toolchain

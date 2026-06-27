@@ -127,11 +127,36 @@ Triton error-catch battery (6 candidates):
   including a *missing store* that silently produced `0.0`.
 - **Semantic** value bugs (x+y) neither target catches statically; both need a
   golden/device run. (Our device-golden grader `maki/eval-device.f` is that run.)
-- **Bandwidth:** Triton 63.0 GB/s vs Habu-PTX 42.5 GB/s at this N — same order of
-  magnitude, Triton ~1.5×. The gap is the launch path, not codegen: Habu-PTX still
-  uses the deprecated `cuLaunchGrid` + per-param `cuParamSetv` path (an 11-arg
-  `cuLaunchKernel` faulted; dotted) and an untuned BLOCK; both are well under the
-  Orin's ~200 GB/s LPDDR5 peak, i.e. launch/occupancy bound at 2²⁰.
+- **Bandwidth:** scalar Habu-PTX 42.5 vs Triton 63.0 GB/s — the gap is **codegen
+  vectorization** (RCA: Habu emitted scalar `ld.global.f32`, Triton `ld.global.v2`).
+  Implementing a checked **v4** tile vocab (`lib/ptx/cg-vec.f` + `tile-v4.f`:
+  `ld.global.v4.f32` / `st.global.v4.f32`, 4 elements/thread) lifts Habu-PTX to
+  **63 GB/s — matching Triton** (device-golden correct; certifies in the ptx-stdlib
+  gate). See "Beating the ceiling" for why neither goes higher.
+
+### Beating the ceiling (why 63 is the wall, not a codegen gap)
+
+We then tried to *beat* Triton. It is not possible on this kernel, and the data
+says why: **63 GB/s is the memory-bandwidth ceiling, not a codegen limit.**
+
+- **More memory-level parallelism is flat.** Unrolled grid-strided v4 with K=1,2,4,8
+  chunks/thread (4→32 elements/thread, up to 8 v4 loads in flight) all measure
+  **63 GB/s**. If the kernel were MLP- or instruction-bound, more chunks would help.
+- **Occupancy is 40× saturated.** The device is an **Orin NX (4 SMs, 6144 threads at
+  full occupancy)**; N=2²⁰ launches 262 144 threads. Not occupancy-bound.
+- **The EMC clock is already at max** (3199 MHz, verified via bpmp) even at 15W;
+  locking clocks (`jetson_clocks`) changed nothing.
+- So Habu-PTX-v4 and Triton both sit at ~63 GB/s ≈ **the achievable streaming
+  bandwidth** (~62% of the Orin NX ~102 GB/s spec; read-read-write triads typically
+  reach 60-70% of spec). At N=16M both edge to ~66.
+
+**Conclusion:** on a *memory-bound* kernel you cannot beat the memory system, and
+Triton is already at it — "faster than Triton" is unreachable by codegen here; the
+correct v4 result is **parity at the ceiling**. To actually go faster you must move
+less memory (fuse ops so intermediates are never written/re-read) or measure a
+*compute-bound* kernel, where codegen quality (FMA throughput, tiling) is the
+bottleneck instead of DRAM. (25W/MAXN would raise the HW envelope but barely helps —
+EMC is already maxed.)
 
 **Earned claim:** a checked stack-effect target is a viable Triton replacement
 that **shifts the stack-discipline error class left to author time** — caught

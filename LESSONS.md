@@ -195,6 +195,21 @@ lesson — keep the specific word/code/path, cut the prose.
   `:`/trailing `;`) before wrapping as `: K ... ;`. ROW-STORE consumes (tile span ctx)
   with the tile DEEPEST — the natural idiom leaves the tile on the stack then appends
   span+ctx.
+- **v4 vectorization closes the bandwidth gap to Triton; 63 GB/s is the MEMORY ceiling,
+  not codegen (2026-06-27).** The scalar codegen emitted `ld.global.f32` (1 elem/thread)
+  -> 42.5 GB/s vs Triton's `ld.global.v2` 63. Added a checked v4 tile vocab
+  (`lib/ptx/cg-vec.f` EMIT-*-V4 + `tile-v4.f`: `ld.global.v4.f32`/`st.global.v4.f32`,
+  4 elems/thread, same parametric tile types so the SAME SAXPY body certifies — v4 is a
+  codegen rep, not a type change) -> 63 GB/s, MATCHING Triton (device-golden PASS). Then
+  tried to BEAT it: unrolled grid-strided v4 K=1/2/4/8 (up to 8 v4 loads in flight) is
+  FLAT at 63; occupancy is 40x saturated (Orin NX = 4 SMs / 6144 threads); EMC already
+  maxed (3199 MHz, jetson_clocks no-op). So 63 is the achievable streaming bandwidth
+  (~62% of the ~102 GB/s Orin NX spec), and BOTH targets sit at it. You cannot beat the
+  memory system on a memory-bound kernel — "faster than Triton" needs LESS traffic
+  (op fusion) or a COMPUTE-bound kernel. Sig gotcha: v4 emit-helper stack sigs must use
+  the generic-int token `n` (role names like `base`/`spanrd` bind as fresh type vars and
+  the checker rejected at `!`). Device knobs: nvpmodel -m 0 (MAXN) was rejected on this
+  unit; jetson_clocks locks clocks but needs `--store` before `--restore`.
 - **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
   checker instantiates a called word's effect by RE-PARSING its stored signature
   STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;
