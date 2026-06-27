@@ -157,6 +157,17 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   needed state, extend the debugger/stepper before falling back to print-marker
   probes. See `docs/debugging.md` for the baked Forth stepper, breakpoint/watch
   tools, JIT/image dumpers, and gdb/lldb fallback boundary.
+- **Build the tool, don't bisect by hand (BLOCKING).** When you hit a crash, an
+  opaque exit code, a hang, or a checker miss, your first move is to get *evidence*
+  with a real tool — and if no tool exposes it, **build a small reusable debug
+  word/tool** (or extend the stepper/debugger/dumpers) rather than guessing with
+  repeated print/edit/retry cycles. Examples that pay for themselves: a `WHY-THREW`
+  that runs a load under `catch` and reports the throw code + site; a `gdb` catch on
+  the exit/`svc` to read `x0` (an opaque exit `183` was `x0 = -3401 = E-PTX-BLOCK`);
+  an IR/PTX dumper; a register/operand inspector. Keep these tools — add them to
+  `tools/` or `docs/debugging.md` so the next crash starts with a tool, not a guess.
+  Trial-and-error print-bisecting is the slow path and is forbidden once a tool
+  could answer the question.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
   not edit the current tree; workers edit isolated jj workspaces unless their
   file ownership is disjoint.
