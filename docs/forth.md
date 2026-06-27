@@ -46,6 +46,16 @@ file.
 - **Default new public/library Forth to checked typed definitions.** If the
   checker can express the layer, write an explicit typed effect and let `hb`
   verify it, e.g. `: SQUARE ( i64 -- i64 ) dup * ;`.
+- **Keep control flow and multi-step computation out of argument lists.** The
+  checker *does* accept `if/else` (and comparisons like `f> 0=`) producing a value
+  mid-arg-list — e.g. `s" k" 1 0 > if 5 else 6 then 2.0 L-OF` type-checks and runs,
+  so this is a readability/safety rule, not a checker limit. Prefer extracting the
+  value into a named word with a real effect (`: DET-MINRATE ( -- r ) ... ;`) or a
+  pre-bound local, then pass the simple word. Dense arg lists that splice `if/else`,
+  comparisons, and several `@`/`F@` reads are where a wrong cell *type* (a `bool`
+  from `0 >` where the callee wants `n`) hides — it surfaces at a *later* call as a
+  confusing "expected n actual bool", not at the offending column. One value per
+  concept; let each line read as the field it emits.
 - **Check every source you can — byte emitters included.** Raw byte/layout
   emitters, ELF/Mach-O writers, tooling, tests, and build helpers are checkable
   unless a specific primitive boundary proves otherwise. Verify with the owning
