@@ -1,11 +1,12 @@
 # Habu → PTX: a checked GPU kernel DSL
 
-**Thesis:** a statically-checked, concatenative GPU DSL whose type system makes a
-defined class of GPU bugs *unrepresentable* (address space, extent-relative
-bounds, collective protocol). Working hypothesis — to be measured, not asserted
-(see the experiment in [`ptx-sketch.md`](ptx-sketch.md)) — that this is a better
-target for LLM-generated kernels. Not "beat Triton on FLOPS" (unwinnable
-near-term); compete where the incumbents are strong-but-unsafe and LLMs struggle.
+**Thesis:** a statically-checked, concatenative GPU DSL whose type system shifts a
+defined class of GPU bugs left to author time: address-space mismatches,
+extent-relative access discipline, and collective protocol errors. Fresh
+per-call extent/mask identity and full collective semantics are still active
+work (`habu-add-per-call`, `habu-fix-ptx-collective-997cfcce`). The measured
+claim is not "beat Triton on FLOPS"; it is that checked source gives earlier,
+more located failures for the stack-discipline class where LLMs struggle.
 
 ## Runtime / hardware
 
@@ -74,12 +75,15 @@ in [`ptx-sketch.md`](ptx-sketch.md):
   shared span is untypable. Eliminates memory-space confusion.
 - **Extent-relative bounds:** a load needs a tile context *derived from the span
   it reads*, so its mask is computed against that span's declared extent `N`.
-  Out-of-bounds **relative to the declared span** is unrepresentable.
-  Constructing a span asserts its extent — the trusted boundary, like Rust's
-  `slice::from_raw_parts`. This is not universal memory safety; it is relational
-  consistency between a span's declared length and every access to it.
-- **Typed collectives:** block/warp reductions carry a mask identity (max→−∞,
-  sum→0) and reject under divergent control flow.
+  Current v0 proves agreement for shared tokens; independent fresh extent/mask
+  distinctness needs the rigid-token checker work. Constructing a span asserts
+  its extent — the trusted boundary, like Rust's `slice::from_raw_parts`.
+  This is not universal memory safety; it is relational consistency between a
+  span's declared length and every access to it.
+- **Typed collectives:** block/warp reductions are meant to carry per-collective
+  mask identities (max→−∞, sum→0) and reject under divergent control flow. The
+  current softmax path is device-proven, but generic collective mask/block
+  hardening is still dotted before this is a full device-proof claim.
 - **Shape tokens:** `tile<T,B,M>` / `matrix<S,T,R,C>` travel in the effect, so
   composition shape-checks by unification.
 
@@ -122,9 +126,10 @@ knowledge is required:
    emit one register-resident kernel instead of N kernels round-tripping global
    memory (the bandwidth-bound common case). Structural, not an analysis pass.
 2. **Type-driven memory shaping:** for layout/ctx/element-size patterns the
-   checker can prove (contiguous span + flat ctx), Habu emits coalesced loads, and
-   — only under a typed alignment+width proof — a vectorized load (`ld.global.v4`)
-   with a masked scalar tail, from the type, not an optimizer guess. Shared-memory staging (`cp.async`) and `bar.sync` are
+   checker can prove (contiguous span + flat ctx), Habu emits coalesced loads. The
+   current v4 path emits `ld.global.v4` / `st.global.v4` behind explicit `*-V4`
+   trusted primitives and an `N % 4 == 0` precondition; typed alignment proofs and
+   masked scalar tails are future work, not current guarantees. Shared-memory staging (`cp.async`) and `bar.sync` are
    *deferred* to the shared-memory/barrier milestone (v0 does not model shared
    aliasing), not claimed as checked yet.
 3. **A PTX IR + opt layer is new work, not reuse.** The self-hosted `bin/hb`
@@ -154,31 +159,24 @@ knowledge is required:
 - **Zero ecosystem** vs PyTorch-integrated incumbents; the wedge must be
   safety/LLM, not generality.
 
-## Foundational prerequisites (surfaced by plan review)
+## Landed foundation and remaining gaps
 
-The plan review found two capabilities the milestones assume but the runtime/
-checker do not yet have — both are prerequisite *build* work, not "another
-backend":
+The plan review originally surfaced FFI and parametric stack types as
+prerequisites. Both are now landed on the Linux/aarch64 Orin path:
 
-1. **A real C-ABI FFI (the AAPCS64 calling convention).** Habu reaches the OS
-   only via raw `svc` syscalls and has no userspace function-call ABI; `C-CALL` is
-   internal codegen, no `dlopen`/`dlsym`. Process-spawn exists (so `ptxas` is
-   invokable), but calling `cuMemAlloc`/`cuModuleLoad`/`cuLaunchKernel` requires
-   the whole AAPCS64 standard — int args x0–x7, **FP args v0–v7**, x8
-   indirect-result, stack spill, callee-saved discipline — plus out-param/`void**`
-   struct marshalling and Tegra-path libcuda discovery. Sized as a milestone
-   (see `ptx-sketch.md` M1); it is not "dlopen + marshalling."
-2. **A parametric-type extension to a self-hosting checker.** M2 core support is
-   a checker feature, not a syntax note: `<`/`>`/`,` signature tokens, explicit
-   atom namespaces (`space-*`, `extent-*`, `mask-*`, `block-*`, `align-*`),
-   side-table encoded `T-PARAM` terms such as
-   `span<space-global,f32,extent-n>`, field-by-field unify, render/record
-   round-trip, and a self-host fixpoint rebuild. The M2 defining vocabulary is
-   `KERNEL:` plus `lib/ptx/header.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
+1. **AAPCS64 FFI + dynamic ELF:** `lib/ffi.f` calls CUDA Driver functions through
+   loader-resolved `dlopen`/`dlsym` slots, with integer/pointer calls, stack-spill
+   support, and float-return helpers. Current device tools still need stronger
+   fail-closed rc wrappers and cleanup (dot `habu-make-ptx-device-c0eb12a3`).
+2. **Parametric checker terms:** signatures such as
+   `span<space-global,f32,extent-n>` and `tile<f32,block-256,mask-live>` parse,
+   render, unify field-by-field, and gate `KERNEL:` bodies. Fresh per-call rigid
+   extent/mask minting remains open (dot `habu-add-per-call`).
 
-The linux-aarch64 `bin/hb` itself already exists (it lives on the Orin, `zed`);
-the macOS checkout simply doesn't contain it. The Orin must also have a CUDA
-toolkit (`ptxas`) installed.
+The remaining PTX foundation work is semantic, not bootstrap: correct generic
+collective mask/block lowering (dot `habu-fix-ptx-collective-997cfcce`), typed
+v4 alignment/tail proofs beyond the current `N % 4 == 0` path, and durable
+device proof/gate hardening listed above.
 
 ## Decisions (locked)
 
@@ -194,8 +192,9 @@ toolkit (`ptxas`) installed.
   collectives (exact types in [`ptx-sketch.md`](ptx-sketch.md)).
 - **Flagship:** a real camera kernel (demosaic) proves the pipeline; fused
   softmax→attention (fp16/bf16; Orin is sm_87, no fp8) is the role-facing headline.
-- **LLM claim:** deferred to the experiment in [`ptx-sketch.md`](ptx-sketch.md) —
-  no "better LLM target" claim until the matrix exists.
+- **LLM claim:** the current Orin matrix earns the stack-discipline-left-shift
+  claim and SAXPY v4 bandwidth parity only; broader "faster than Triton" and
+  semantic-error static-checking claims remain unearned.
 
 ## Sources (accessed 2026-06-25)
 

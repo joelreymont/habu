@@ -78,20 +78,20 @@ unless the boundary is deliberately documented and tested.
 ## Maki — an ML framework on a checked GPU kernel DSL
 
 [`maki/`](maki/README.md) is an ML framework layered on Habu and a **checked PTX
-kernel backend**. The thesis: *checked kernels + verified gradients* are a better
-target for LLM-authored ML — a GPU kernel DSL whose type system makes a defined
-class of GPU bugs (wrong address space, out-of-extent indexing, mixed lane masks)
-**unrepresentable**, and whose backward pass is checked by the same type system as
-the forward. No "better target" claim is made until the eval matrix produces data.
+kernel backend**. The thesis: *checked kernels + checked AD transforms* are a better
+target for LLM-authored ML — a GPU kernel DSL whose type system shifts stack,
+address-space, and mask/extent discipline bugs to author-time diagnostics. Fresh
+per-call extent/mask identity is still an open checker soundness item, tracked in
+dot `habu-add-per-call`.
 
-- **Habu-PTX kernel DSL** (`lib/ptx*.f`) — `tile<T,B,M>`/`span`/`matrix` parametric
+- **Habu-PTX kernel DSL** (`lib/ptx/`) — `tile<T,B,M>`/`span`/`matrix` parametric
   types; checked `KERNEL:` definitions (SAXPY, numerically-stable SOFTMAX-ROWS) that
   emit PTX, assemble with `ptxas -arch=sm_87`, and **run correct-vs-golden on the
   NVIDIA Orin GPU** via a Habu FFI to the CUDA Driver API.
-- **Reverse-mode autograd** (`lib/ptx/ad.f`) — AD as a syntactic reversal of the
-  concatenative IR (no runtime tape); a VJP table + reverse pass that auto-derives
-  backwards, with algebraic-simplify and save-vs-recompute. Verified gradients:
-  `SOFTMAX-ROWS-BWD` is checked, and maki's tensor-op VJPs pass a numeric gradcheck.
+- **Reverse-mode autograd v0** (`lib/ptx/ad.f`) — AD as a syntactic reversal of
+  the concatenative IR (no runtime tape); the VJP table/reverse pass and checked
+  backward fixtures exist. Device finite-difference gradcheck remains the hard
+  gate before claiming derivative correctness for generated PTX gradients.
 - **Maki framework** (`maki/`) — tensor/array types, autograd orchestration,
   optimizers (SGD family) + losses, ONNX op import, and a training loop that
   converges at tensor scale; plus the LLM-target **eval harness** (the checker as

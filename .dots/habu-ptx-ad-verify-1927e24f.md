@@ -5,7 +5,8 @@ priority: 2
 issue-type: task
 created-at: "2026-06-26T23:59:59.024799+02:00"
 blocks:
-  - habu-ptx-m6-collectives-12cf0e2d
+  - habu-make-ptx-device-c0eb12a3
+  - habu-fix-ptx-collective-997cfcce
 ---
 
 Small but BLOCKING for scatter-add. autograd.md assumes red.global.add / atom.global.add are arch-gated-available on sm_87 for accumulating adjoints (fan-in gradients). This is ASSERTED, not verified. Confirm ptxas -arch=sm_87 accepts red.global.add.f32 AND it runs on the Orin device; if unsupported, record the atom.global.add CAS-loop fallback.

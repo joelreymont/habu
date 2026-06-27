@@ -5,7 +5,8 @@ priority: 1
 issue-type: task
 created-at: "2026-06-27T08:06:44.248329+02:00"
 blocks:
-  - habu-ptx-m6-collectives-12cf0e2d
+  - habu-make-ptx-device-c0eb12a3
+  - habu-fix-ptx-collective-997cfcce
 ---
 
 Gap #9 (the maki deployment seam). Maki ops (optim/loss/autograd/train) run on CPU float arrays (maki/array.f); they do NOT lower onto the checked Habu-PTX kernels for GPU tensor execution. Build the maki -> Habu-PTX lowering: a maki tensor op (e.g. elementwise add, the SGD step, softmax) selects/instantiates the checked kernel, emits it, and launches it on device (via the proven FFI path tools/ptx/cuda-launch.f, _v2 symbols). Then maki training runs on the GPU.

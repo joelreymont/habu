@@ -26,11 +26,13 @@ analytic VJP, per-element relative tol, randomized inputs) as a hard gate, and t
 algebraic simplifier carries a numeric-equivalence test per rewrite rule. No
 derivative-class "verified" claim until gradcheck is the gate.
 
-Status: **design, not implemented.** AD does not exist in the tree yet. It slots
-after the forward collective milestone (M6): every adjoint the flagship
-softmax→attention path needs is already a forward primitive. The genuinely new
-work is the reverse pass, an algebraic-simplify layer, and a save-vs-recompute
-policy — itemised under *What is new work*.
+Status: **v0 implemented, verification still scoped.** `lib/ptx/ad.f` implements
+the VJP table/reverse pass for the checked PTX words covered by
+`lib/ptx/ad-test.f`, and the checked backward fixtures exercise the stack/type
+surface. Remaining work is device finite-difference gradcheck as the hard gate,
+DAG validation hardening, algebraic simplification, save-vs-recompute policy,
+and a public typed zero-seeded row-load or per-collective identity for the current
+backward emitter path.
 
 ## Why concatenative is the right substrate
 
@@ -123,10 +125,10 @@ tape replacement, supplied by save or recompute (below). Linear ops save nothing
 
 **Tie-break (required, not optional).** When two lanes equal the max the arg-max
 lane is not unique and the sub-gradient is ill-defined. The forward `BLOCK-MAX`
-reduction computes the max *value* via `shfl.sync` and does not pin an index; warp
-reduction order is not a stable tie-break. So the forward contract fixes a
-**deterministic** winner — **lowest global lane index** — and lowers the forward
-argmax to match it; the backward routes the **entire** `ds` to that single lane.
+reduction computes only the max *value* (currently through the shared-memory
+thread-0 fold) and does not by itself pin an index. So the forward contract fixes
+a **deterministic** winner — **lowest global lane index** — and lowers the adjoint
+selector to match it; the backward routes the **entire** `ds` to that single lane.
 A tie-input gradcheck fixture (two lanes equal max) must assert `Σ(dx)=ds` and that
 the chosen lane equals the forward's. (`docs/stdlib.md`'s "smallest index" rule is
 for the CPU `A-ARGMAX` and does NOT carry to the GPU `BLOCK-MAX`.)
@@ -205,25 +207,31 @@ shared-token construction); only then is `len(dx)=len(y)` proven rather than
 re-asserted. A gradient-buffer length mismatch is otherwise a trusted-boundary bug,
 not a compile error:
 
+The public checked surface still needs `ROW-LOAD-Z` or per-collective identities
+before this can be ordinary source; the current device proof uses the emitter-only
+`EMIT-ROW-LOAD-Z` for `dy` so inactive lanes contribute zero instead of `-inf`.
+
 ```forth
-%BLOCK 1024
+%BLOCK 256
 KERNEL: SOFTMAX-ROWS-BWD ( y:matrix<space-global,f32,extent-r,extent-c>
                            dy:matrix<space-global,f32,extent-r,extent-c>
-                           dx:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+                           dx:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    ROW {: r :}
    y  r ROW-SPAN {: ys :}
    dy r ROW-SPAN {: dys :}
    ys ROW-CTX {: c :}                  \ extents agree by shared token ⇒ valid for ys, dys, and dx's span
-   ys  c LOAD {: yt :}                 \ y  tile   (fan-out: ⊙dy and the final ⊙)
-   dys c LOAD {: dyt :}                \ dy tile   (fan-out: ⊙y and the − s)
-   dyt yt *. BLOCK-SUM {: s :}         \ s = Σ(dy ⊙ y)            uniform, mask-aware
+   ys  c ROW-LOAD {: yt :}             \ y  tile   (fan-out: ⊙dy and the final ⊙)
+   dys c ROW-LOAD-Z {: dyt :}          \ target public zero-seeded dy load
+   dyt yt *. BLOCK-SUM {: s :}         \ s = Σ(dy ⊙ y); generic mask-safe sum is dotted
    dyt s B-  yt *.                     \ (dy − s) ⊙ y  = dx
-   dx r ROW-SPAN c STORE ;
+   dx r ROW-SPAN c ROW-STORE ;
 ```
 
 Locals only at the fan-out tiles (`yt`, `dyt`); the math is point-free; the mask
-token threads from `LOAD` through `*.`/`B-` to `STORE`. The gradient is checked
-exactly as the forward is.
+token threads from row loads through `*.`/`B-` to `ROW-STORE`. Once the public
+zero-seeded load or per-collective identity lands, the gradient is checked exactly
+as the forward is; until then, the checked fixture and the emitter path are a v0
+proof, not the final public source surface.
 
 ## Memory adjoints and accumulation
 
@@ -296,7 +304,7 @@ is a later, smaller addition.
 ## Why it matters
 
 A wrong custom backward is the nastiest silent bug in ML and the place an LLM is
-most likely to be subtly wrong. PyTorch cannot check it; here it is a compile
-error. **Verified gradients** are a property the runtime-tape model structurally
-cannot offer — and the strongest form of the [`ptx.md`](ptx.md) LLM-target
-hypothesis, now covering the gradient and not only the forward.
+most likely to be subtly wrong. Habu can make mask/extent/address-space mistakes
+in the backward a compile error, but derivative-rule mistakes still need the
+device finite-difference gradcheck gate. The stronger claim is a checked gradient
+surface plus numeric gradient validation, not static proof of calculus.

@@ -13,9 +13,9 @@
 
 T-RESET
 
-1024 %BLOCK
+256 %BLOCK
 
-KERNEL: SOFTMAX-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+KERNEL: SOFTMAX-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: y dy dx :}
    ROW            {: r :}
    y  r ROW-SPAN  {: ys :}
@@ -29,7 +29,7 @@ KERNEL: SOFTMAX-ROWS-BWD ( matrix<space-global,f32,extent-r,extent-c>  matrix<sp
 
 \ Exercises BROADCAST: the reduce-then-fill (BLOCK-SUM then BROADCAST) is exactly
 \ the adjoint shape reverse-mode AD substitutes for a reduce's pullback.
-KERNEL: SUM-BROADCAST ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+KERNEL: SUM-BROADCAST ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: in out :}
    ROW           {: r :}
    in r ROW-SPAN {: xs :}

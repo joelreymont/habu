@@ -51,6 +51,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Device proofs must fail closed:** CUDA/FFI proof tools are not allowed to
+  print `NO` and exit success, reuse stale readback buffers, or drop Driver rc
+  values. Device gates need rc-checked wrappers, private temp roots, sentinels,
+  cleanup, and nonuniform multi-element goldens before they can support claims.
 - **Gate speed RCA follows the phase wall clock:** warm images cut repeated
   inner-tool recompiles; the bigger wall cut came from a bounded checked DAG
   pool. Do not mutate `bin/hb` inside the gate: build candidates under private
@@ -166,11 +170,14 @@ lesson — keep the specific word/code/path, cut the prose.
   `torch.cuda.is_available()` is True. The generic SBSA wheel has no sm_87 ATen cubins
   (`cudaErrorNoKernelImageForDevice` on `x+x`), but **Triton JIT-compiles each kernel
   for sm_87 at runtime**, so Triton kernels run — just avoid ATen GPU ops (alloc +
-  H2D/D2H memcpy only). Result (`docs/eval-triton.md`): Triton 63 GB/s vs Habu-PTX
-  42.5 (launch-path gap — deprecated `cuLaunchGrid` — not codegen); Triton catches
-  name/type errors at compile but the **stack-discipline class only at runtime** (3/5
-  battery bugs slipped, incl. a missing-store → silent 0.0) where Habu-PTX's checker
-  rejects at author time. The thesis MECHANISM is now backed by real-target data.
+  H2D/D2H memcpy only). Result (`docs/eval-triton.md`): scalar Habu-PTX measured
+  42.5 GB/s vs Triton 63 GB/s; RCA showed the gap was **codegen vectorization**
+  (scalar global loads/stores vs vectorized global traffic), and the checked v4
+  tile path now reaches ~63 GB/s parity. Triton catches name/type errors at compile
+  but the **stack-discipline class only at runtime** (3/5 battery bugs slipped,
+  incl. a missing-store → silent 0.0) where Habu-PTX's checker rejects at author
+  time. The thesis MECHANISM is now backed by real-target data; do not revive the
+  superseded launch-path-gap explanation.
 - **External baseline stays out of the tree (host-lint).** `host-lint` WALK-FILES the
   whole repo and `1 throw`s on any `.py` path; `.md`/`.f` content is not scanned. So
   the Triton (Python) baseline lives as fenced ```python blocks in `docs/eval-triton.md`
@@ -825,12 +832,13 @@ lesson — keep the specific word/code/path, cut the prose.
   `cuDevicePrimaryCtxRetain` + loaded module. Adding `cuModuleUnload` +
   `cuDevicePrimaryCtxRelease` before `bye` exits clean. Buffered stdout (and any
   `tr`/`tail` in the pipe) is lost on a hang — localize with fd-2 markers to a file.
-- **Block-reduction softmax emits cleanly; seed identity at LOAD, not per-op:**
-  one block per row, shared-mem + bar.sync + thread-0 sequential fold. EMIT-ROW-LOAD
-  seeds inactive lanes (col>=k) with -inf, so `max` ignores them and `exp(-inf-max)=0`
-  drops out of the sum — BLOCK-MAX/BLOCK-SUM need no per-collective masking. Runs
-  within 1 ULP of the CPU golden on the Orin (ex2.approx exp). `exit 70` after `bye`
-  is the established on-device-proof convention (SAXPY `cuda-launch.f` does the same).
+- **Do not generalize the softmax collective proof to all reductions:** current
+  one-block-per-row lowering is shared-mem + bar.sync + thread-0 sequential fold.
+  `ROW-LOAD` seeds inactive lanes with -inf, which is right for `BLOCK-MAX`; softmax
+  then gets a valid `BLOCK-SUM` only because `EXP.` maps those inactive lanes to 0.
+  Direct row-sum/backward paths need per-collective identity or first-class mask
+  carry (`habu-fix-ptx-collective-997cfcce`). Runs within 1 ULP for the current
+  softmax golden on the Orin, but that proof is not a generic reduction proof.
 - **Stack-signature tokens must be TYPES, not role words:** `( got expected -- bool )`
   silently binds `got`/`expected` as fresh type vars, so a downstream `n n` op
   mismatches with a confusing `at '<='`. Use `( n n -- bool )`. Locals `{: got :}`

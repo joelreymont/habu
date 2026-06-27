@@ -3,14 +3,14 @@
 \ The KERNEL: definition IS the positive proof: the body certifies against its
 \ declared parametric effect. in/out share extent-r/extent-c by token, so one
 \ row context `c` is valid for both spans; the mask token threads from ROW-LOAD
-\ through B-/EXP./B- /B/ to ROW-STORE by unification. A reject would emit a
+\ through B-/EXP./BLOCK-SUM/B/ to ROW-STORE by unification. A reject would emit a
 \ diagnostic and fail the load.
 
 T-RESET
 
-1024 %BLOCK
+256 %BLOCK
 
-KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: in out :}
    ROW            {: r :}
    in r ROW-SPAN  {: xs :}
@@ -23,7 +23,7 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
 
 \ Exercises BLOCK-MAX-SELECT (the BLOCK-MAX adjoint): load a row, take its max,
 \ then scatter a cotangent back to the arg-max lane.
-KERNEL: MAX-SELECT-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+KERNEL: MAX-SELECT-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: in out :}
    ROW            {: r :}
    in r ROW-SPAN  {: xs :}

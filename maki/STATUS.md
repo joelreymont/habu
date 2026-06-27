@@ -40,10 +40,10 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
   tallying. The model-generation + repair arm is external; this is the correctness
   gate it is scored against. Runnable.
 
-The optimizer/loss/autograd element rules apply per-weight; the tensor-level apply
-(one update / reduction / op over a whole tensor) lowers onto a Habu-PTX kernel
-once codegen lands. The rules themselves are exact, checked, gradient-verified,
-and tested now.
+The optimizer/loss/autograd element rules apply per-weight. Current checked
+device proofs cover selected lowered kernels and GPU SGD demos; a general tensor
+handle/lowering API that maps arbitrary Maki tensor ops onto Habu-PTX remains
+future work.
 
 - **On device + eval matrix vs real Triton (DONE 2026-06-27).** Checked kernels
   emit PTX, assemble (`ptxas -arch=sm_87`), and run correct-vs-CPU on the Orin
@@ -54,7 +54,8 @@ and tested now.
   errors before running (Habu-PTX at author time, Triton at compile), but the
   stack-discipline class (missing store, wrong arity) is caught at **author time** by
   Habu-PTX's checker with zero GPU and only at **runtime** by Triton (3/5 battery bugs
-  slipped); bandwidth Triton 63 vs Habu-PTX 42.5 GB/s (launch-path gap, dotted). A
+  slipped); bandwidth scalar Habu-PTX 42.5 GB/s vs Triton 63 GB/s, with checked
+  v4 Habu-PTX now reaching ~63 GB/s parity after the codegen vectorization fix. A
   **model-driven pass@k** (independent Claude subagents authoring kernels, k=5/task/
   target, graded through each full device loop) adds: SAXPY 5/5 both; softmax Triton
   5/5, Habu 3/5 → 5/5 after diagnostic-guided repair (1–2 rounds) — every Habu failure

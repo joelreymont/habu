@@ -26,10 +26,12 @@ as metavariables; executable checked code must use the explicit tokens.
 | `uniform<T>` | a `T` provably identical across all lanes of the block |
 | `rowidx<extent-r>` | row index proven `< R` (sound only under the launch ABI, below) |
 
-`%BLOCK B` requires `B` ∈ a legal CUDA block size: a **multiple of 32, `1 ≤ B ≤
-1024`**. Warp count is `⌈B/32⌉`; a partial final warp uses an active-lane mask.
-(Vector loads — `vec4<T>` / `LOAD.V4` — are **not in v0**; they need a dedicated
-vector-lane + tail effect and land with the vectorization milestone.)
+`%BLOCK B` accepts a legal CUDA block size: a **multiple of 32, `1 <= B <=
+1024`**. Current row/collective emitters are device-proofed for `block-256`
+(`SM-BLK=256`); deriving the reduction bound from `%BLOCK` is tracked by
+`habu-fix-ptx-collective-997cfcce`. The v4 load/store path exists today through
+explicit `*-V4` words, with scalar residual tails and alignment proofs still
+dotted.
 
 `S` maps to `space-global`, `space-shared`, `space-const`, or `space-local`.
 **v0 implements `space-global` only;** the others are reserved. `N/R/C` map to
@@ -43,16 +45,18 @@ that assert the runtime length — like Rust `slice::from_raw_parts`. Wrong leng
 *here* is unchecked; everything downstream is checked relative to it.
 
 ```
-TRUSTED: MK-SPAN   ( ptr<S,T> u32 -- span<S,T,N> )          \ fresh extent token N
+TRUSTED: MK-SPAN   ( ptr<S,T> u32 -- span<S,T,N> )          \ extent token N; rigid freshness is dotted
 TRUSTED: MK-SPAN=  ( ptr<S,T> ptr<S,U> u32 -- span<S,T,N> span<S,U,N> )  \ SHARED N: asserts equal length
 TRUSTED: MK-MATRIX ( ptr<S,T> u32 u32 -- matrix<S,T,R,C> )  \ rows cols; v0 matrix is DENSE row-major (stride = C);
                                                             \ asserts R*C <= 2^32-1 elements and R*C*sizeof(T) fits u64.
                                                             \ A pitched/strided matrix<S,T,R,C,P> is a later milestone.
 ```
 
-A lone `MK-SPAN` yields a fresh `N` that unifies with nothing else — so two
-independent spans are *not* assumed equal length. Kernels needing equal extents
-(e.g. saxpy) take spans built by `MK-SPAN=` (or the launch ABI checks lengths).
+Current checker support proves agreement for shared tokens: a context derived
+from a span must be used with the same extent token, and kernels needing equal
+extents (e.g. saxpy) take spans built by `MK-SPAN=`. The stronger rule that two
+independent `MK-SPAN` calls mint distinct rigid extents is still tracked by
+`habu-add-per-call`; do not rely on it until that dot lands.
 
 ## Launch ABI (makes grid/block facts sound)
 
@@ -69,14 +73,14 @@ lane-varying. Kernel scalar args (e.g. `a:uniform<f32>`) are uniform by this rul
 ## Words (exact signatures)
 
 ```
-GRID-CTX  ( span<S,T,N> -- gridctx<B,N> )      \ flat: lane i = ctaid*ntid+tid; mask = i < N
-ROW-CTX   ( span<S,T,N> -- rowctx<B,N> )       \ row-local: lane = tid; mask = tid < N
+GRID-CTX  ( span<S,T,N> -- gridctx<B,N,M> )    \ flat: lane i = ctaid*ntid+tid; mask M = i < N
+ROW-CTX   ( span<S,T,N> -- rowctx<B,N,M> )     \ row-local: lane = tid; mask M = tid < N
 
 \ The span carries the base address; the ctx carries lane index + mask only.
-LOAD   ( span<G,T,N> gridctx<B,N> -- tile<T,B,M> )    \ masked coalesced load; M = ctx mask
-LOAD   ( span<G,T,N> rowctx<B,N>  -- tile<T,B,M> )    \ (overload on ctx kind)
-STORE  ( tile<T,B,M> span<G,T,N> gridctx<B,N> -- )    \ writes active lanes only
-STORE  ( tile<T,B,M> span<G,T,N> rowctx<B,N>  -- )    \ row form needs a ROW-SPAN'd span<G,T,C>
+LOAD       ( span<G,T,N> gridctx<B,N,M> -- tile<T,B,M> )    \ masked coalesced load; M = ctx mask
+STORE      ( tile<T,B,M> span<G,T,N> gridctx<B,N,M> -- )    \ writes active lanes only
+ROW-LOAD   ( span<G,T,N> rowctx<B,N,M> -- tile<T,B,M> )     \ row-local load
+ROW-STORE  ( tile<T,B,M> span<G,T,N> rowctx<B,N,M> -- )     \ row-local store
 
 SCALE        ( tile<T,B,M> uniform<T> -- tile<T,B,M> )      \ tile*scalar; lowers mul.rn (no contraction)
 +. -. *. /.  ( tile<T,B,M> tile<T,B,M> -- tile<T,B,M> )     \ elementwise; mask M must match
@@ -84,22 +88,26 @@ B- B/        ( tile<T,B,M> uniform<T> -- tile<T,B,M> )      \ tile (op) uniform 
 FMA.         ( uniform<T> tile<T,B,M> tile<T,B,M> -- tile<T,B,M> )  \ a*x+y, single rounding (fma.rn)
 EXP.         ( tile<f32,B,M> -- tile<f32,B,M> )             \ ex2.approx.ftz(x*log2e); tolerance acceptance-gated
 
-BLOCK-MAX BLOCK-SUM ( tile<f32,B,M> -- uniform<f32> )       \ mask-aware all-block reduction (see lowering).
-                                                            \ Inactive lanes seed identity (-inf / 0). Requires
-                                                            \ block-uniform reachability; rejects under any
-                                                            \ lane-varying predicate.
+BLOCK-MAX BLOCK-SUM ( tile<f32,B,M> -- uniform<f32> )       \ current straight-line block reductions (see lowering).
+                                                            \ Generic per-collective inactive-lane identities and
+                                                            \ divergent-control rejection are still dotted.
 
 ROW       ( -- rowidx<R> )                                   \ blockIdx.x; sound via launch ABI gridDim.x==R
 ROW-SPAN  ( matrix<S,T,R,C> rowidx<R> -- span<S,T,C> )       \ base = r*C (checked), extent C
 ```
 
-Vectorized load (`LOAD.V4`) is **deferred** to the vectorization milestone: it
-needs a `vec4` lane type, a per-lane 16-byte alignment proof, and an explicit
-scalar-residual (tail) effect — none of which v0 expresses.
+Vectorized load/store is explicit today: `GRID-CTX-V4`, `LOAD-V4`, `STORE-V4`,
+`SCALE-V4`, and `ADD-V4` keep the same checked `tile<T,B,M>` surface while the
+emitter uses `ld.global.v4.f32` / `st.global.v4.f32` with 4 elements/thread.
+The current v4 path assumes `N % 4 == 0`; typed alignment proofs and scalar
+residual tails remain dotted.
 
-Elementwise/collective words require matching mask token `M`; an op mixing two
-different masks rejects. `tile<T,B,M>` never yields a defined scalar for an
-inactive lane (poison), so "load returns 0" is gone — masks, not magic zeros.
+Elementwise/collective words require a shared mask token `M`; the checker proves
+agreement when the same token is threaded through the stack effect. Rejection of
+independently minted masks that should be distinct still needs per-call rigid
+tokens (`habu-add-per-call`). `tile<T,B,M>` should not promise a defined scalar
+for an inactive lane; current emitters need the collective mask hardening dot for
+generic inactive-lane semantics.
 
 ## Kernel: vector add `y = a*x + y`
 
@@ -123,23 +131,23 @@ KERNEL: SAXPY  ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n
 
 ## Kernel: numerically-stable softmax over each row
 
-`where C <= B` is a checked constraint (a `C>B` instantiation rejects). Grid is
-`R` blocks; `ROW` is bound by the launch ABI. Row-local ctx ⇒ lane = `tid` (not a
-global index). Collectives ⇒ **bounds are predicated, never branched**, and the
-reduction is mask-aware. Requires `C > 0`.
+`where C <= B` is a launch-time host validation, not a compile-time checker
+rejection. Grid is `R` blocks; `ROW` is bound by the launch ABI. Row-local ctx
+⇒ lane = `tid` (not a global index). Collectives ⇒ **bounds are predicated,
+never branched**, and the reduction is mask-aware. Requires `C > 0`.
 
 ```forth
-%BLOCK 1024
-KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r   WHERE extent-c <= block-1024
+%BLOCK 256
+KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r   WHERE extent-c <= block-256
    {: in:matrix<space-global,f32,extent-r,extent-c>  out:matrix<space-global,f32,extent-r,extent-c> :}
    ROW {: r:rowidx<extent-r> :}
    in r ROW-SPAN {: xs:span<space-global,f32,extent-c> :}
-   xs ROW-CTX {: c:rowctx<block-1024,extent-c,mask-live> :}
-   xs c LOAD {: x:tile<f32,block-1024,mask-live> :}
-   x BLOCK-MAX {: m :}            \ uniform<f32>  (inactive lanes seed -inf)
+   xs ROW-CTX {: c:rowctx<block-256,extent-c,mask-live> :}
+   xs c ROW-LOAD {: x:tile<f32,block-256,mask-live> :}
+   x BLOCK-MAX {: m :}            \ uniform<f32>; current ROW-LOAD seeds inactive lanes -inf
    x m B- EXP. {: e :}            \ tile = exp(x - m)
-   e BLOCK-SUM {: s :}            \ uniform<f32>  (inactive lanes seed 0)
-   e s B/  out r ROW-SPAN c STORE ;
+   e BLOCK-SUM {: s :}            \ uniform<f32>; inactive lanes are 0 here because exp(-inf-m)=0
+   e s B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
 ## Lowering rules
@@ -153,19 +161,16 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
   (two roundings). `FMA.` → `fma.rn.f32` (one). `EXP.` → `mul.f32 x,log2e` +
   `ex2.approx.ftz.f32` (tolerance acceptance-gated, measured on sm_87;
   `EXP.PRECISE` → libdevice).
-- **Collectives use predication, not branches:** in a kernel with collectives,
-  the bounds mask is carried as a predicate; *no thread leaves via `bra`* before a
-  `shfl.sync`/`bar.sync`. Inactive lanes execute the collective seeded with its
-  identity. A non-collective kernel (saxpy) may branch on the mask.
-- **Collective lowering (`BLOCK-*`):** intra-warp `shfl.sync.down.b32` with the
-  **full-warp membermask** (membermask is reachability — all executing lanes must
-  be named — *not* data validity; inactive lanes are seeded with the identity
-  separately, before the shuffle) → each warp lane 0 writes its partial to a `⌈B/32⌉`-slot shared
-  array → `bar.sync` → warp 0 reduces the `⌈B/32⌉` partials (a partial final warp
-  contributes the identity) → broadcast the `uniform` result via shared + `bar.sync`.
-  Sound only because `B` is a multiple of 32, `≤ 1024`, and the barrier is reached
-  block-uniformly (next section). This lowering depends on the verified barrier
-  model (milestone 5).
+- **Collectives use predication for row bounds:** in a kernel with collectives,
+  the bounds mask is carried as a predicate; all threads reach the reduction
+  barriers. A non-collective kernel (saxpy) may branch on the mask.
+- **Current collective lowering (`BLOCK-*`):** each thread writes its tile value
+  to shared memory, `bar.sync`, thread 0 sequentially folds `SM-BLK=256` shared
+  slots, writes the uniform result back to shared memory, `bar.sync`, and every
+  lane reloads the result. This is the current softmax path, not the future
+  warp-`shfl.sync` performance path. Generic mask identities for every
+  collective and checker rejection of non-block-uniform reachability are tracked
+  by `habu-fix-ptx-collective-997cfcce` / the M5 uniformity work.
 
 ```ptx
 .version 8.3
@@ -188,24 +193,28 @@ DONE: ret;
 }
 ```
 
-## Uniformity and collectives (the rule)
+## Uniformity and collectives (target rule)
 
 `uniform<T>` is identical across all lanes; `tile<…>` is lane-varying. A
-collective consumes a `tile` and produces a `uniform`. The checker tracks a
-uniform/lane-varying effect on control flow and requires, for a collective or
-`bar.sync`, **block-uniform reachability**: *every* thread of the block reaches
-the same barrier the same number of times. A collective reached under any
-lane-varying predicate — or under a uniform-but-not-block-wide branch that some
-threads skip — **rejects** (it would deadlock or read inactive lanes). A uniform
-*value* is necessary but not sufficient; block-uniform *reachability* is the
-condition. Bounds are never a branch around a collective — they are the mask `M`.
+collective consumes a `tile` and produces a `uniform`. The intended checker model
+tracks a uniform/lane-varying effect on control flow and rejects any collective
+or `bar.sync` without **block-uniform reachability**: every thread of the block
+must reach the same barrier the same number of times. Current checked support is
+the straight-line collective path used by the device-proven softmax kernels; the
+general divergence/reachability rejection remains M5 work. Bounds are never a
+branch around a collective in the current softmax path; they are represented by
+the row mask.
 
 ## What is and isn't guaranteed
 
-**Rejected at compile time:** a global op on a non-global span; load/store without
-a ctx; a ctx whose extent ≠ the span's; mixing two mask tokens; a collective under
-lane-varying control flow; `LOAD.V4` on an under-aligned
-span; mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
+**Rejected at compile time now:** a global op on a non-global span; load/store
+without a ctx; a ctx whose extent token does not match the span token;
+mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
+
+**Intended but still dotted:** rejecting independently mixed mask/extent tokens
+needs per-call fresh rigid tokens; rejecting collectives under lane-varying
+control flow needs the uniformity/barrier model; v4 alignment and scalar-tail
+proofs sit beyond the current `N % 4 == 0` path.
 
 **Not guaranteed (honest):** the runtime extent/stride asserted at `MK-SPAN*`/
 `MK-MATRIX` (trusted); that the host passed matching `gridDim`/`blockDim` (the
@@ -217,34 +226,38 @@ not universal memory safety.
 
 ## Acceptance criteria (by milestone)
 
-Which criterion lands with which milestone: 1–3 (emit, assemble, device run) →
+Which criterion lands with which milestone: 1-3 (emit, assemble, device run) ->
 M3 spike. Criterion 4 splits by what each negative needs: wrong-space / missing
-ctx / extent mismatch / mixed masks / raw-ptr-arith → M4; collective-under-
-lane-varying / non-block-uniform-reachability → M5; `C>B` / row-local-ctx-as-grid
-→ M6 (they need `matrix`/`rowctx`/`where`). Criterion 5 (host launch tests) → M1
-harness. Criterion 6: `SCALE`+`+.` two-rounding → M4; `EXP.` tolerance → M6.
+ctx / explicit shared-token extent mismatch / raw-ptr-arith -> M4; independent
+mixed masks/extents -> rigid-token work (`habu-add-per-call`);
+collective-under-lane-varying / non-block-uniform-reachability -> M5;
+`C>B` / row-local-ctx-as-grid -> M6 launch/header validation. Criterion 5 (host
+launch tests) -> M1 harness. Criterion 6: `SCALE`+`+.` two-rounding -> M4;
+`EXP.` tolerance -> M6.
 
 1. `bin/hb` emits a header-complete `saxpy.ptx` from the checked source above.
 2. `ptxas -arch=sm_87 saxpy.ptx` assembles with no warnings.
 3. Runs on device via the CUDA Driver API; matches a CPU golden within tol.
-4. **Negative checker tests reject** (each a minimal program, at compile time):
-   wrong-space load; missing ctx; extent mismatch; mixed masks; row-local ctx
-   used as grid ctx; collective under a lane-varying predicate; raw pointer
-   arithmetic on a span; non-block-uniform reachability of a collective.
+4. **Negative checker tests reject** the landed cases (each a minimal program,
+   at compile time): wrong-space load; missing ctx; explicit shared-token extent
+   mismatch; raw pointer arithmetic on a span. Dotted target negatives: independent
+   mixed masks/extents, row-local ctx used as grid ctx, collective under a
+   lane-varying predicate, and non-block-uniform reachability of a collective.
 5. **Host launch tests** (runtime, not the checker): `blockDim != B`,
    `gridDim.x != R`, `C > B`, and `gridDim.x*blockDim.x > 2³²−1` each fail the
    launch.
 6. Numerics: `SCALE`+`+.` is two-rounding (not fma) unless `FMA.`; `EXP.` within
    the tolerance measured and pinned on sm_87.
 
-## LLM experiment (claim deferred until measured)
+## LLM experiment (measured status)
 
-No "better LLM target" claim until this validates: kernels {vector-add,
-row-reduce, argmax, softmax-row}; arms {Habu-PTX DSL, raw Triton} with the same
-model + checker/compiler-in-loop repair; metrics {pass@k vs CPU golden, repair
-rounds, output tokens to green, runtime correctness, achieved GB/s (% of memory
-speed-of-light)}. Bar: the checked arm wins on repair rounds or tokens-to-green at
-equal correctness, or there is no claim.
+The Orin eval matrix now covers SAXPY and softmax-row against real Triton. The
+earned claim is narrower and stronger: Habu-PTX shifts the stack-discipline error
+class to author-time diagnostics with zero GPU work, and v4 SAXPY reaches Triton
+bandwidth parity at the memory ceiling. It has **not** earned a broad
+"faster than Triton" claim, a higher first-try pass@k claim, or static detection
+of semantic value bugs. The durable reproducibility/eval-matrix follow-up remains
+tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
 
 ## Milestones
 
@@ -287,7 +300,8 @@ equal correctness, or there is no claim.
 8. **Camera demosaic** (Bayer→RGB) on real frames vs reference.
 9. **Bench + autotuner + precision:** GB/s & % speed-of-light, autotune, perf
    gate; f16/bf16.
-10. **Vectorization:** `LOAD.V4` (alignment proof + tail).
+10. **Vectorization tails/alignment:** current `*-V4` words handle the divisible
+    v4 path; typed alignment proofs and scalar residual tails remain.
 11. **Attention + experiment:** multi-tile rows, a matmul/attention tile IR,
     shared staging + accumulator policy → fused softmax→flash-attention; then run
     the LLM matrix.

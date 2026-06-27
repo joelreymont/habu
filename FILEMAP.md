@@ -119,6 +119,17 @@ points stay listed.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
+- `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
+  vocabulary.
+- `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
+  SOFTMAX-ROWS forward/backward emit drivers.
+- `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
+  `tools/ptx/softmax-gradcheck.f` — Orin CUDA Driver proofs for launch,
+  softmax, and finite-difference gradient checking.
+- `tools/ptx/bandwidth.f` — Orin SAXPY bandwidth measurement for the Habu-PTX
+  column.
+- `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
+  verification status outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.

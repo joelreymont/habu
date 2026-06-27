@@ -34,7 +34,7 @@ stack slots being popped. So `{: x :}` after `LOAD` binds `x` to whatever `LOAD`
 pushed — already known — with **all its tokens intact**:
 
 ```
-xs c LOAD            \ stack: ( … -- tile<f32,block-256,mask-live> )
+xs c ROW-LOAD        \ stack: ( … -- tile<f32,block-256,mask-live> )
         {: x :}      \ x : tile<f32,block-256,mask-live>   (inferred, tokens and all)
 ```
 
@@ -47,18 +47,18 @@ matching the stack-comment convention.)
 The v0 sketch annotates every intermediate for didactic clarity:
 
 ```forth
-%BLOCK 1024
+%BLOCK 256
 KERNEL: SOFTMAX-ROWS ( in:matrix<space-global,f32,extent-r,extent-c>
-                       out:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+                       out:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: in:matrix<space-global,f32,extent-r,extent-c>  out:matrix<space-global,f32,extent-r,extent-c> :}
    ROW {: r:rowidx<extent-r> :}
    in r ROW-SPAN {: xs:span<space-global,f32,extent-c> :}
-   xs ROW-CTX  {: c:rowctx<block-1024,extent-c,mask-live> :}
-   xs c LOAD   {: x:tile<f32,block-1024,mask-live> :}
+   xs ROW-CTX  {: c:rowctx<block-256,extent-c,mask-live> :}
+   xs c ROW-LOAD   {: x:tile<f32,block-256,mask-live> :}
    x BLOCK-MAX {: m:uniform<f32> :}
-   x m B- EXP. {: e:tile<f32,block-1024,mask-live> :}
+   x m B- EXP. {: e:tile<f32,block-256,mask-live> :}
    e BLOCK-SUM {: s:uniform<f32> :}
-   e s B/  out r ROW-SPAN c STORE ;
+   e s B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
 With local inference, every intermediate annotation is redundant — the checker
@@ -67,13 +67,13 @@ fan-out / long-lived joints (`r` spans the kernel; `xs` fans to `ROW-CTX`+`LOAD`
 `c` spans `LOAD`→`STORE`):
 
 ```forth
-%BLOCK 1024
+%BLOCK 256
 KERNEL: SOFTMAX-ROWS ( in:matrix<space-global,f32,extent-r,extent-c>
-                       out:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+                       out:matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    ROW           {: r :}        \ long-lived: in-span + out-span
    in r ROW-SPAN {: xs :}       \ fan-out: ROW-CTX + LOAD
    xs ROW-CTX    {: c :}        \ long-lived: LOAD + STORE
-   xs c LOAD  DUP BLOCK-MAX B- EXP.  DUP BLOCK-SUM B/  out r ROW-SPAN c STORE ;
+   xs c ROW-LOAD  DUP BLOCK-MAX B- EXP.  DUP BLOCK-SUM B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
 The whole numerically-stable softmax is the two point-free phrases
@@ -95,17 +95,17 @@ KERNEL: SAXPY ( x:span<space-global,f32,extent-n>  y:span<space-global,f32,exten
 ## The real prize: inference threads the proofs, not just the types
 
 Inference here is over a system whose types carry **relational contracts**, so an
-inferred intermediate keeps them. In the softmax body, `xs c LOAD` infers
-`x : tile<f32,block-1024,mask-live>` — and that `mask-live` token is the *same*
-token `c` carries. So the closing `… c STORE` still discharges the mask check
-(`STORE` requires the tile's mask token to equal the ctx's), even though nothing
+inferred intermediate keeps them. In the softmax body, `xs c ROW-LOAD` infers
+`x : tile<f32,block-256,mask-live>` — and that `mask-live` token is the *same*
+token `c` carries. So the closing `… c ROW-STORE` still discharges the mask check
+(`ROW-STORE` requires the tile's mask token to equal the ctx's), even though nothing
 in the body was annotated. The author wrote the dataflow; inference supplied and
 **proved** the bookkeeping:
 
 ```forth
-   xs c LOAD        \ x : tile<…,mask M>     where M is c's mask token
+   xs c ROW-LOAD    \ x : tile<…,mask M>     where M is c's mask token
    …                \ B-, EXP., B/ preserve M (elementwise: same-mask in, same-mask out)
-   … c STORE        \ STORE ( tile<…,M> span ctx<…,M> -- ) : M must match — it does, by inference
+   … c ROW-STORE    \ ROW-STORE ( tile<…,M> span ctx<…,M> -- ) : M must match — it does, by inference
 ```
 
 Lose inference and you would re-annotate `M` at every step; gain it and the

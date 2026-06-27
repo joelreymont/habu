@@ -62,12 +62,14 @@ the device, each verified correct-vs-CPU on the Orin:
 - **A checked `SOFTMAX-ROWS` kernel** emits its own PTX (block reduction via
   shared-mem + bar.sync) and runs within 1 ULP of the CPU golden
   (`tools/ptx/softmax-cg.f` → `tools/ptx/softmax-launch.f`).
-- **Auto-derived softmax gradient passes a device gradcheck** — a real reverse-mode
-  AD engine (`lib/ptx/ad-dag.f`) symbolic-executes the forward into a value-numbered
-  DAG and emits `SOFTMAX-ROWS-BWD` (recompute + cotangent pass with fan-out sums);
-  on the Orin it matches central finite differences of the forward to <1e-2
-  (`tools/ptx/softmax-bwd-cg.f` → `tools/ptx/softmax-gradcheck.f`).
-- **GB/s:** the SAXPY kernel sustains ~42.9 GB/s on the Orin (`tools/ptx/bandwidth.f`).
+- **Checked softmax backward fixture exists** — the reverse-mode AD work can emit
+  `SOFTMAX-ROWS-BWD` (recompute + cotangent pass with fan-out sums), and the
+  checked fixture covers its stack/type surface. The device finite-difference
+  gradcheck gate remains the hard blocker before claiming derivative correctness
+  for generated PTX gradients.
+- **GB/s:** the scalar SAXPY kernel sustains ~42.9 GB/s on the Orin; the checked
+  v4 tile path reaches ~63 GB/s, matching the Triton SAXPY baseline at the
+  streaming-memory ceiling.
 
 - **Device-golden autograder (task-general)** — `maki/eval-device.f` grades a
   candidate by `certify AND run-correct`: `GRADE-CANDIDATE` certifies, spawns
@@ -93,10 +95,13 @@ the device, each verified correct-vs-CPU on the Orin:
     at runtime** — 3 of 5 battery bugs slipped to runtime, including a *missing
     store* that silently produced `0.0`. Semantic value bugs (x+y) neither catches
     statically; both need the device-golden run (`maki/eval-device.f`).
-  - **Bandwidth:** Triton 63.0 GB/s vs Habu-PTX 42.5 GB/s (N=2²⁰, 200 iters) —
-    same order, Triton ~1.5×. The gap is the launch path (Habu-PTX still uses the
-    deprecated `cuLaunchGrid`; dotted), not codegen; both are launch/occupancy
-    bound well under the Orin's ~200 GB/s peak.
+  - **Bandwidth:** the scalar Habu-PTX path measured 42.5 GB/s vs Triton 63.0
+    GB/s (N=2²⁰, 200 iters). Follow-up RCA found a codegen vectorization gap:
+    scalar `ld.global.f32` / `st.global.f32` vs Triton's vectorized global
+    traffic. The checked v4 tile vocabulary (`LOAD-V4` / `STORE-V4`) now emits
+    `ld.global.v4.f32` / `st.global.v4.f32` and reaches ~63 GB/s, matching
+    Triton on this memory-bound microbench. General tails/alignment proofs remain
+    separate dots.
   - **Model-driven pass@k (live):** independent Claude subagents (k=5/task/target,
     given op semantics only) authored SAXPY and softmax kernels, graded through each
     target's full device loop. SAXPY pass@1 5/5 both; softmax Triton 5/5, Habu-PTX
@@ -106,23 +111,23 @@ the device, each verified correct-vs-CPU on the Orin:
     errors surface only at runtime. (Softmax pass@1 gap is confounded by a prompt
     spec error; see [`docs/eval-triton.md`](../docs/eval-triton.md) for the full
     method + caveats.)
-  - **Earned claim:** a checked stack-effect target is a viable Triton replacement
-    that **shifts the stack-discipline error class left to author time** — caught
+  - **Earned claim:** the measured SAXPY/softmax slice shows a viable checked
+    target that **shifts the stack-discipline error class left to author time** — caught
     statically, zero GPU — where Triton finds it only at runtime, at competitive
-    bandwidth. **Not** earned: any "faster than Triton" claim (currently ~1.5×
-    slower on this microbench) or that the checker catches *semantic* errors.
+    bandwidth. **Not** earned: a broad "faster than Triton" claim; SAXPY v4
+    reaches parity at the memory ceiling, not a general win, and the checker
+    still does not catch *semantic* value errors.
 
-- **Checker ablation (complementary, internal)** — `maki/eval-compare.f` ablates
-  the one variable in isolation: Habu-PTX **with vs without** its own static
-  checker. Over a 9-candidate SAXPY fixture (3 correct, 5 type/stack, 1 semantic):
-  **with** the checker, 5/6 bugs are caught before execution (4 GPU runs);
-  **without** any static check, 0/6 are caught before execution and all 9 must run.
-  This isolates the checker's contribution from Triton's confounds (different
-  compiler, language, launch path).
+- **Checker ablation (owed)** — a true no-checker ablation is not yet implemented:
+  `maki/eval-compare.f` still goes through `GRADE-CANDIDATE`, so checker-rejected
+  candidates are short-circuited rather than run through an unchecked emit/device
+  path. Dot `habu-implement-true-no-afa79f63` owns the real ablation before this
+  result should be cited.
 
-The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden grading
-(task-general), repair-rounds, tokens-to-green, GB/s, the checker ablation, and now
-the **real-Triton eval matrix** — is built, run on hardware, and committed.
+The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden
+grading (task-general), repair-rounds, tokens-to-green, GB/s, and the real-Triton
+eval matrix snapshot — has run on hardware. Durable in-tree grader and true
+no-checker ablation follow-up work remains dotted.
 
 ## Status
 

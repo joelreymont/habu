@@ -5,7 +5,8 @@ priority: 2
 issue-type: task
 created-at: "2026-06-26T23:59:59.028074+02:00"
 blocks:
-  - habu-ptx-m6-collectives-12cf0e2d
+  - habu-make-ptx-device-c0eb12a3
+  - habu-fix-ptx-collective-997cfcce
 ---
 
 The HARD GATE that makes verified-gradients a real claim. Review crux: the checker proves TYPES not the DERIVATIVE; a wrong VJP entry or wrong algebraic rewrite type-checks and ships a silently wrong gradient. Build a device-run central-difference gradcheck (vs the analytic VJP, per-element relative tol, randomized inputs) usable as a gate over every VJP: entry and every generated backward.

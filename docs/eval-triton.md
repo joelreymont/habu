@@ -127,17 +127,17 @@ Triton error-catch battery (6 candidates):
   including a *missing store* that silently produced `0.0`.
 - **Semantic** value bugs (x+y) neither target catches statically; both need a
   golden/device run. (Our device-golden grader `maki/eval-device.f` is that run.)
-- **Bandwidth:** scalar Habu-PTX 42.5 vs Triton 63.0 GB/s — the gap is **codegen
-  vectorization** (RCA: Habu emitted scalar `ld.global.f32`, Triton `ld.global.v2`).
-  Implementing a checked **v4** tile vocab (`lib/ptx/cg-vec.f` + `tile-v4.f`:
-  `ld.global.v4.f32` / `st.global.v4.f32`, 4 elements/thread) lifts Habu-PTX to
-  **63 GB/s — matching Triton** (device-golden correct; certifies in the ptx-stdlib
-  gate). See "Beating the ceiling" for why neither goes higher.
+- **Bandwidth:** scalar Habu-PTX measured 42.5 GB/s vs Triton 63.0 GB/s; RCA found
+  the gap was codegen vectorization (`ld.global.f32` scalar loads/stores vs
+  Triton's `ld.global.v2`). Implementing a checked **v4** tile vocabulary
+  (`lib/ptx/cg-vec.f` + `tile-v4.f`: `ld.global.v4.f32` / `st.global.v4.f32`,
+  4 elements/thread) lifts Habu-PTX to **63 GB/s, matching Triton** with
+  device-golden correctness and ptx-stdlib certification.
 
 ### Beating the ceiling (why 63 is the wall, not a codegen gap)
 
-We then tried to *beat* Triton. It is not possible on this kernel, and the data
-says why: **63 GB/s is the memory-bandwidth ceiling, not a codegen limit.**
+We then tried to *beat* Triton. The data says 63 GB/s is the streaming-memory
+ceiling for this kernel on this device, not a remaining SAXPY codegen limit.
 
 - **More memory-level parallelism is flat.** Unrolled grid-strided v4 with K=1,2,4,8
   chunks/thread (4→32 elements/thread, up to 8 v4 loads in flight) all measure
@@ -146,23 +146,20 @@ says why: **63 GB/s is the memory-bandwidth ceiling, not a codegen limit.**
   full occupancy)**; N=2²⁰ launches 262 144 threads. Not occupancy-bound.
 - **The EMC clock is already at max** (3199 MHz, verified via bpmp) even at 15W;
   locking clocks (`jetson_clocks`) changed nothing.
-- So Habu-PTX-v4 and Triton both sit at ~63 GB/s ≈ **the achievable streaming
-  bandwidth** (~62% of the Orin NX ~102 GB/s spec; read-read-write triads typically
-  reach 60-70% of spec). At N=16M both edge to ~66.
+- So Habu-PTX-v4 and Triton both sit at ~63 GB/s, roughly the achievable streaming
+  bandwidth for a read/read/write triad on this Orin NX. At N=16M both edge to ~66.
 
 **Conclusion:** on a *memory-bound* kernel you cannot beat the memory system, and
-Triton is already at it — "faster than Triton" is unreachable by codegen here; the
-correct v4 result is **parity at the ceiling**. To actually go faster you must move
-less memory (fuse ops so intermediates are never written/re-read) or measure a
-*compute-bound* kernel, where codegen quality (FMA throughput, tiling) is the
-bottleneck instead of DRAM. (25W/MAXN would raise the HW envelope but barely helps —
-EMC is already maxed.)
+Triton is already at it. The correct v4 result is parity at the ceiling. To go
+faster you must move less memory (fuse ops so intermediates are never written and
+re-read) or measure a compute-bound kernel where FMA throughput and tiling, not
+DRAM, are the bottleneck.
 
-**Earned claim:** a checked stack-effect target is a viable Triton replacement
-that **shifts the stack-discipline error class left to author time** — caught
+**Earned claim:** in this measured SAXPY/softmax slice, a checked stack-effect
+target **shifts the stack-discipline error class left to author time** — caught
 statically, with a located diagnostic and zero GPU — where Triton finds it only at
-runtime, at competitive (same-order) bandwidth. **Not** earned: any "faster than
-Triton" claim (it is currently ~1.5× slower on this microbench) or that the
+runtime, at competitive bandwidth. **Not** earned: any broad "faster than Triton"
+claim (SAXPY v4 reaches parity at the memory ceiling, not a win) or that the
 checker catches *semantic* errors (it does not; that is the device-golden gate's
 job).
 
@@ -221,6 +218,8 @@ What this shows, and the honest caveats:
   (author-time, type-precise vs runtime, wrong-number), not that one repairs in
   fewer rounds.
 
-Reproduce: the grader scripts are in `/tmp/triton-compare/` and `/tmp/grade_habu*.sh`
-(external generation/grading arm, kept out of the tree per `host-lint`); the Habu
-graders wrap the committed `lib/ptx/*` + `maki/eval-device*.f` pipeline.
+Reproduction status: this was a real one-off device run, but the model-generation
+and grading wrapper scripts lived under `/tmp`. Treat the table as a recorded
+snapshot until dot `habu-commit-checked-habu-a8ab5f56` lands the checked Habu
+grader in-tree and dot `habu-re-run-habu-20318fcf` reruns softmax with the
+corrected `ROW-STORE` prompt.

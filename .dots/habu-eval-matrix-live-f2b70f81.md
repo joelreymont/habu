@@ -6,4 +6,4 @@ issue-type: task
 created-at: "2026-06-27T12:11:42.947866+02:00"
 ---
 
-pass@k is over a curated 8-candidate fixture (maki/eval-fixture.f), not k stochastic samples from a generator. Drive candidate generation from a model endpoint (or a seeded sampler) and compute pass@k as P(>=1 of k samples certify+device-correct). Needs a model endpoint wired through maki/eval.f. Blocks the Habu-PTX-vs-Triton comparison's statistical validity.
+Initial stochastic pass@k data was collected on 2026-06-27 using independent Claude subagents as the generator and is recorded in docs/eval-triton.md. This dot is now the durability follow-up, not a blocker for that recorded snapshot: commit a checked Habu grader/generation harness so future pass@k runs do not depend on /tmp scripts or ad hoc subagent transcripts. Coordinate with habu-commit-checked-habu-a8ab5f56 and habu-re-run-habu-20318fcf.

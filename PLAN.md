@@ -17,8 +17,8 @@ Built + tested this session (the older sections below predate it):
 
 - **Habu-PTX checked kernels:** M4 tile vocab (`lib/ptx/tile.f`) + checked SAXPY;
   M6 collectives/rows (`lib/ptx/collective.f`) + checked SOFTMAX-ROWS; both AD
-  primitives **BROADCAST** and **BLOCK-MAX-SELECT**; verified-gradient
-  SOFTMAX-ROWS-BWD. Gate-wired (`ptx-stdlib`), trust-lint green.
+  primitives **BROADCAST** and **BLOCK-MAX-SELECT**; checked SOFTMAX-ROWS-BWD
+  fixture. Gate-wired (`ptx-stdlib`), trust-lint green.
 - **Reverse-mode AD transform** (`lib/ptx/ad.f`): VJP table + reverse pass that
   auto-derives backwards for **linear + unary-nonlinear (EXP./BLOCK-MAX) +
   binary-nonlinear (\*./B-)** ops; algebraic-simplify peephole; save-vs-recompute
@@ -53,7 +53,10 @@ Built + tested this session (the older sections below predate it):
    engine change needed**. The eval-matrix data path is now OPEN: this generalizes
    to the M11 kernel set + the maki/eval harness to produce the pass@k/GB-s matrix.
 
-The thesis "better target" claim stays **unmade** until item 3 produces the data.
+This review-log block is historical. The current earned claim is in
+`docs/eval-triton.md`: Habu-PTX shifts the stack-discipline error class left to
+author time and reaches SAXPY v4 bandwidth parity, but it has not earned a broad
+"faster than Triton" or semantic-error-static-checking claim.
 
 ## Review log (2026-06-26, folded in)
 
@@ -70,23 +73,33 @@ The load-bearing corrections, all verified against code:
   `GRID:`/`WHERE`/`%BLOCK` check (lib/ptx/header-test.f runs clean). Empirically a matching
   parametric sig certifies (exit 0); `space-global`→`space-shared` and `extent-r`→
   `extent-c` mismatches reject with field-precise diagnostics (exit 70). The "no
-  dot" was because M2 was *done*, not unbuilt. **The real checker-track frontier is
-  M4 (the tile *operation* vocabulary — MK-SPAN/GRID-CTX/LOAD/STORE/SCALE/
-  collectives — none of which exist yet), now UNBLOCKED.** The only owed M2 remnant
-  is a committed parametric type-mismatch negative-regression suite (the rejects
-  work but aren't pinned in the gate). Lesson recorded in LESSONS.md: ground
-  capability claims in the checker source, not the dot tracker + spec.
-- **Maki (workstream D) is named, not designed.** No `maki/` dir, no design doc
-  for tensors / optimizers / losses / ONNX / training / eval orchestration. Only
-  the *Habu* features (A=ptx-sketch.md, B=inference.md, C=autograd.md) are
-  specced. → D is gated on design docs (see *Maki design docs owed*).
-- **"Verified gradients" is type-verified, not numerically verified.** The checker
-  proves address-space/extent/mask/uniformity — *not* derivative correctness. A
-  wrong VJP entry or wrong algebraic rewrite type-checks and ships a silently
-  wrong gradient. There is no finite-difference gradcheck anywhere. The review
-  found a concrete instance: `autograd.md` `OVER` adjoint was wrong (a fan-out
-  treated as a permutation). → gradcheck is now a hard gate; the claim is scoped;
-  `docs/autograd.md` is patched.
+  dot" was because M2 was *done*, not unbuilt. The remaining checker-track
+  frontier is fresh rigid extent/mask minting (`habu-add-per-call`) plus committed
+  parametric type-mismatch negative regressions.
+- **Maki workstream status has advanced.** The original review found only names,
+  not a `maki/` implementation. Current `maki/` has checked tensor/array,
+  optimizer/loss/train/autograd/eval code and status docs. Remaining design and
+  implementation work is tracked by the open `habu-write-docs-maki-*` and
+  `habu-maki-*` dots.
+- **"Verified gradients" is type-verified plus numerically gated, not static
+  calculus proof.** The checker proves address-space/extent/mask/uniformity —
+  *not* derivative correctness. A wrong VJP entry or wrong algebraic rewrite
+  type-checks and ships a silently wrong gradient. Softmax now has a device
+  gradcheck proof, but the hard gate over every VJP/generated backward remains
+  the open device-gradcheck dot. The review found a concrete instance:
+  `autograd.md` `OVER` adjoint was wrong (a fan-out treated as a permutation).
+- **M4/M6 implementation status changed after this review.** The old finding
+  that M4 tile words and collectives did not exist is now historical: current
+  `lib/ptx/tile.f`, `lib/ptx/collective.f`, and `lib/ptx/cg-collective.f` provide
+  the v0 checked vocabulary and emitters. The remaining blocker is correctness
+  hardening: fresh rigid extent/mask tokens (`habu-add-per-call`), collective
+  mask/block semantics (`habu-fix-ptx-collective-997cfcce`), and AD DAG bounds
+  (`habu-harden-ptx-ad-bd3ee8fe`).
+- **Maki implementation status changed after this review.** The old finding that
+  no `maki/` directory or design existed is now historical. Current Maki has
+  checked tensor/array, optim/loss/train/autograd/eval files plus status docs.
+  Remaining work is in the open Maki dots, especially device proof hardening and
+  durable checked evaluation tooling.
 - **The "read multiplicity already tracked" claim is false.** `docs/effects.md`
   has no multiplicity/linearity effect, and grid-global aliasing is structurally
   invisible to a per-thread checker. → scatter-add is the conservative default;
@@ -326,9 +339,10 @@ Work in `~/Work/habu-maki` on branch `maki`. Then:
 ## Non-goals / honesty
 
 - Not beating cuBLAS GEMM — `ptx.md` concedes the FLOPS axis. The thesis is
-  **checked kernels + verified gradients** as a better target for LLM-authored ML.
-- **"Verified gradients" means type-verified, not numerically verified.** The
-  checker proves address-space / extent / mask / uniformity — the bug *class* an
+  **checked kernels + checked AD transforms with device gradcheck gates** as a
+  better target for LLM-authored ML.
+- **"Verified gradients" means type-verified plus numerically gated, not static
+  calculus proof.** The checker proves address-space / extent / mask / uniformity — the bug *class* an
   LLM most often fumbles — but **not** that a VJP entry or an algebraic rewrite is
   the correct derivative. A wrong rule type-checks. Therefore: every `VJP:` entry
   and every generated backward **must pass a device-run finite-difference
@@ -336,5 +350,7 @@ Work in `~/Work/habu-maki` on branch `maki`. Then:
   as a **hard gate**; the algebraic simplifier carries a numeric-equivalence test
   per rewrite rule. Make no "verified gradient" claim for the derivative-rule
   class until gradcheck is the gate.
-- No "better LLM target" claim until step 8 produces the data (both the
-  kernel-authoring matrix and the Maki model eval).
+- The current Orin matrix earns the kernel-authoring stack-discipline-left-shift
+  claim and SAXPY v4 bandwidth parity. It does not yet earn broad
+  faster-than-Triton, semantic-error static-checking, or full Maki model-eval
+  claims.
