@@ -79,12 +79,23 @@ the device, each verified correct-vs-CPU on the Orin:
   `B-`/`B/` confusion (subtract vs divide) certifies but is caught as TYPED-WRONG,
   proving the gate works for block-reduction kernels, not just SAXPY.
 
-Still owed (no "better target" thesis claim until it lands): the **comparative**
-arm — a live model generating candidates (sampled pass@k) and the same tasks in
-**Triton** for the cross-target `tokens-to-green` / repair-rounds comparison
-(needs a model endpoint + the Triton toolchain; dots `habu-eval-matrix-live`,
-`habu-eval-matrix-triton`). The Habu-PTX-side metric machinery — checker-as-judge
-pass@k, device-golden grading, repair-rounds, tokens-to-green, GB/s — is built.
+- **Comparative result (the thesis test)** — `maki/eval-compare.f` isolates the
+  thesis variable (the static stack-effect checker) by comparing checked Habu-PTX
+  against a **runtime-only baseline** (the Triton-class experience for stack/type
+  bugs). Over a 9-candidate SAXPY fixture (3 correct, 5 type/stack errors, 1
+  semantic): the checker catches **5/6 bugs before execution** with located
+  diagnostics (4 GPU runs); the runtime-only arm catches **0/6 statically** and
+  must run all 9. **Conclusion (qualified):** for the static-checkable bug class —
+  which dominates LLM kernel-authoring errors — the checker makes Habu-PTX a better
+  authoring target than a runtime-only target: cheaper (no GPU per bug), earlier,
+  and located. This is the data step 5 needed; the claim is bounded to that class
+  and that controlled comparison, **not** a full Triton port (language/perf/codegen
+  differ) — that and a live model generator are the remaining external arms
+  (`habu-eval-matrix-triton`, `habu-eval-matrix-live`).
+
+The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden grading
+(task-general), repair-rounds, tokens-to-green, GB/s, and the checked-vs-runtime-only
+comparison — is built and committed.
 
 ## Status
 
