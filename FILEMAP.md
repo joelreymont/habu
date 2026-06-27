@@ -127,8 +127,10 @@ points stay listed.
 - `tools/ptx/acc-device-test.f` — committed device-correctness regression: the checked
   accumulator kernel emits, ptxas-assembles, and computes x*y=6.0 on the Orin.
 - `tools/ptx/gradcheck.f` — device-run central-difference gradcheck (the AD hard gate):
-  verifies d(a*x)/dx=a on the Orin vs the analytic VJP; wrong VJP rejected. Releases the
-  primary context (GC-FINI) to exit cleanly.
+  gates SAXPY (linear, dx=a) and RELU (nonlinear, dx=step) on the Orin vs the analytic VJP;
+  wrong VJPs rejected. Retains the primary context once, releases once (or bin/hb hangs at exit).
+- `tools/ptx/relu-cg.f` — checked RELU kernel (y=max(x,0)) run through the codegen; the
+  nonlinear op gradcheck.f gates.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
