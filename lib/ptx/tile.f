@@ -38,3 +38,6 @@ TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
 
 TRUSTED: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-MUL ;
+
+TRUSTED: RELU ( tile<t,b,m> -- tile<t,b,m> )
+   EMIT-RELU ;

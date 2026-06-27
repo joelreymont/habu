@@ -67,6 +67,14 @@
    loop
    r ;
 
+\ RELU-V4: lane-wise max(tile, 0) -> tile
+: EMIT-RELU-V4 ( n -- n ) {: tb :}
+   CG-NEXT-F4 {: r :}
+   4 0 do
+      SB-RESET s" max.f32 " CG-S  r i + CG-F  s" , " CG-S  tb i + CG-F  s" , 0f00000000;" CG-S CG-LINE
+   loop
+   r ;
+
 \ STORE-V4: one 16-byte vector store of the 4 lane regs
 : EMIT-STORE-V4 ( n n n -- ) {: tb spanrd ctxrd :}
    spanrd ctxrd CG-VEC-ADDR {: a :}

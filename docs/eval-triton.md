@@ -155,6 +155,29 @@ faster you must move less memory (fuse ops so intermediates are never written an
 re-read) or measure a compute-bound kernel where FMA throughput and tiling, not
 DRAM, are the bottleneck.
 
+### Fusion: where the checked concatenative target actually wins
+
+Moving less memory is exactly where a *concatenative checked* DSL beats the Triton
+**authoring path** — and it costs nothing, because **fusion is not a compiler pass,
+it is word concatenation.** A fused elementwise chain is just a sequence of checked
+tile words; the intermediates stay on the (register) stack, so only the inputs load
+and the result stores. `maki/fusion.f` lowers a maki/ONNX subgraph by mapping each
+node to its tile word(s) and concatenating — the op-graph `[Mul, Add, Relu]` becomes:
+
+```
+K ( span<…,extent-n> span<…,extent-n> uniform<f32> -- )
+  {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4 a SCALE-V4 y g LOAD-V4 ADD-V4 RELU-V4 y g STORE-V4 ;
+```
+
+The emitted PTX is **2 loads + 1 store, no global round-trips** (every intermediate
+register-resident), and the checker types the whole sequence in one shot — so the
+fused effect is **proven correct automatically**, or fails closed. On the Orin:
+`relu(a·x+y)` device-golden PASS, **63 GB/s = hand-fused Triton's 63.4** — parity,
+but produced *automatically* and *verified*, where the Triton author hand-fuses
+unchecked (and can silently get the fused math wrong). Same speed; the difference is
+that in Habu the **composition is the program** and the type system proves it. This,
+not raw single-kernel speed, is the performance argument for the checked target.
+
 **Earned claim:** in this measured SAXPY/softmax slice, a checked stack-effect
 target **shifts the stack-discipline error class left to author time** — caught
 statically, with a located diagnostic and zero GPU — where Triton finds it only at

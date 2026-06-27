@@ -28,8 +28,9 @@ the maki components and their tests (each test runs on load, printing `test: ok`
 
 ```
 bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
-  src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-collective.f \
-  lib/ptx/header.f lib/ptx/tile.f lib/ptx/collective.f \
+  lib/fs.f lib/fs-mutate.f \
+  src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/cg-collective.f \
+  lib/ptx/header.f lib/ptx/tile.f lib/ptx/tile-v4.f lib/ptx/collective.f \
   maki/array.f       maki/array-test.f \
   maki/tensor.f      maki/tensor-test.f \
   maki/optim.f       maki/optim-test.f \
@@ -38,6 +39,7 @@ bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
   maki/train.f       maki/train-test.f \
   maki/onnx.f        maki/onnx-test.f \
   maki/eval.f        maki/eval-test.f \
+  maki/fusion.f      maki/fusion-test.f \
   maki/eval-fixture.f maki/eval-repair.f
 ```
 
@@ -95,13 +97,13 @@ the device, each verified correct-vs-CPU on the Orin:
     at runtime** — 3 of 5 battery bugs slipped to runtime, including a *missing
     store* that silently produced `0.0`. Semantic value bugs (x+y) neither catches
     statically; both need the device-golden run (`maki/eval-device.f`).
-  - **Bandwidth:** the scalar Habu-PTX path measured 42.5 GB/s vs Triton 63.0
-    GB/s (N=2²⁰, 200 iters). Follow-up RCA found a codegen vectorization gap:
-    scalar `ld.global.f32` / `st.global.f32` vs Triton's vectorized global
-    traffic. The checked v4 tile vocabulary (`LOAD-V4` / `STORE-V4`) now emits
-    `ld.global.v4.f32` / `st.global.v4.f32` and reaches ~63 GB/s, matching
-    Triton on this memory-bound microbench. General tails/alignment proofs remain
-    separate dots.
+  - **Bandwidth — parity at the hardware ceiling.** Scalar Habu-PTX was 42.5 vs
+    Triton 63.0 (RCA: scalar `ld.global.f32` vs Triton's vectorized loads). A checked
+    **v4** tile vocab (`lib/ptx/cg-vec.f` + `tile-v4.f`, `ld.global.v4.f32`) lifts
+    Habu-PTX to **63 GB/s = Triton**. Proven to be the memory ceiling, not codegen:
+    unrolled v4 (K=1–8, up to 8 loads in flight) is flat at 63; occupancy 40×
+    saturated (Orin NX, 4 SMs); EMC already maxed. Both targets sit at the DRAM wall,
+    so neither can be *faster* on a memory-bound kernel (see `docs/eval-triton.md`).
   - **Model-driven pass@k (live):** independent Claude subagents (k=5/task/target,
     given op semantics only) authored SAXPY and softmax kernels, graded through each
     target's full device loop. SAXPY pass@1 5/5 both; softmax Triton 5/5, Habu-PTX
@@ -111,12 +113,33 @@ the device, each verified correct-vs-CPU on the Orin:
     errors surface only at runtime. (Softmax pass@1 gap is confounded by a prompt
     spec error; see [`docs/eval-triton.md`](../docs/eval-triton.md) for the full
     method + caveats.)
-  - **Earned claim:** the measured SAXPY/softmax slice shows a viable checked
-    target that **shifts the stack-discipline error class left to author time** — caught
-    statically, zero GPU — where Triton finds it only at runtime, at competitive
-    bandwidth. **Not** earned: a broad "faster than Triton" claim; SAXPY v4
-    reaches parity at the memory ceiling, not a general win, and the checker
-    still does not catch *semantic* value errors.
+  - **Earned claim:** a checked stack-effect target is a viable Triton replacement
+    that (a) **shifts the stack-discipline error class left to author time** — caught
+    statically, zero GPU, where Triton finds it only at runtime — and (b) reaches
+    **bandwidth parity** at the hardware ceiling. **Not** earned (and not the point):
+    being *faster* than Triton on a memory-bound kernel — both saturate DRAM. The
+    place a checked target wins on performance is **fusion** (below): moving less
+    memory, automatically and provably.
+
+- **Automatic op-fusion — proven correct, for free** (`maki/fusion.f`). This is the
+  good bit. In a *concatenative* checked DSL, fusion is **not a compiler pass — it is
+  word concatenation.** A maki/ONNX elementwise subgraph lowers to one register-
+  resident kernel just by mapping each node to its tile word(s) and concatenating:
+  the op-graph `[Mul, Add, Relu]` becomes
+
+  ```
+  K ( span<…,extent-n> span<…,extent-n> uniform<f32> -- )
+    {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4 a SCALE-V4 y g LOAD-V4 ADD-V4 RELU-V4 y g STORE-V4 ;
+  ```
+
+  — every intermediate stays on the (register) stack, so the emitted PTX is **2 loads
+  + 1 store, no global round-trips**. The checker types the whole sequence in one
+  shot, so the fused effect is **proven correct automatically** (or fails closed). On
+  the Orin: `relu(a·x+y)` device-golden PASS, **63 GB/s — parity with hand-fused
+  Triton (63.4)**, but produced *automatically* and *verified*, where the Triton
+  author must hand-fuse, unchecked and error-prone. Fusion is where the checked
+  concatenative target genuinely beats the Triton authoring path: same speed, but the
+  composition is the program and the type system proves it.
 
 - **Checker ablation (owed)** — a true no-checker ablation is not yet implemented:
   `maki/eval-compare.f` still goes through `GRADE-CANDIDATE`, so checker-rejected

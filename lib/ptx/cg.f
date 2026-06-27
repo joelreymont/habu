@@ -125,6 +125,12 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" mul.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
    r ;
 
+\ RELU: max(tile, 0) -> tile (the elementwise nonlinearity; for fusion demos)
+: EMIT-RELU ( n -- n ) {: tilef :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" max.f32 " CG-S r CG-F s" , " CG-S tilef CG-F s" , 0f00000000;" CG-S CG-LINE
+   r ;
+
 \ STORE: tile -> span base + ctx offset (active lanes)
 : EMIT-STORE ( n n n -- ) {: tilef spanrd ctxrd :}
    CG-NEXT-RD {: a :}
