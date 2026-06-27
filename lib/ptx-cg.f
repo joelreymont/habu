@@ -42,6 +42,13 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
 : CG-RET ( -- )   s" DONE:" PTX-L  s" ret;" PTX-L ;
 : CG-CLOSE ( -- ) s" }" PTX-L ;
 
+\ A kernel arg is a PTX register number; SPAN-REG / UNIFORM-REG assert its kernel
+\ TYPE so the emit driver runs the checked kernel checked (the only unchecked
+\ surface is these thin from-register identity casts - the codegen analogue of
+\ MK-SPAN's from_raw_parts boundary). CG-PARAMS sets x=%rd1, y=%rd2, a=%f1.
+TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
+TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
+
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
 : EMIT-GRID-CTX ( n -- n ) {: spanrd :}    \ span base unused (index is from tid)
@@ -78,6 +85,12 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
    SB-RESET s" add.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
    r ;
 
+\ *. : tile * tile -> tile (mul.rn)
+: EMIT-MUL ( n n -- n ) {: a b :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" mul.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
+   r ;
+
 \ STORE: tile -> span base + ctx offset (active lanes)
 : EMIT-STORE ( n n n -- ) {: tilef spanrd ctxrd :}
    CG-NEXT-RD {: a :}
@@ -85,16 +98,8 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
 
-\ --- SAXPY emit, lowering the checked dataflow x g LOAD a SCALE  y g LOAD +.  y g STORE ---
-\ x=%rd1, y=%rd2, a=%f1 (set by CG-PARAMS).
-: EMIT-SAXPY-BODY ( -- )
-   1 EMIT-GRID-CTX {: g :}          \ g = byte-offset reg
-   1 g EMIT-LOAD  1 EMIT-SCALE      \ x g LOAD a SCALE  -> tile
-   2 g EMIT-LOAD  EMIT-ADD          \ y g LOAD +.       -> tile
-   2 g EMIT-STORE ;                 \ y g STORE
-
-: EMIT-SAXPY ( -- )
-   CG-RESET
-   CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS
-   EMIT-SAXPY-BODY
-   CG-RET CG-CLOSE ;
+\ The per-op emitters above are what the CHECKED tile ops (lib/ptx-tile.f) call in
+\ their TRUSTED: bodies, so RUNNING a checked KERNEL: body in emit mode produces
+\ its PTX. The entry scaffolding (CG-HEADER..CG-PARAMS / CG-RET / CG-CLOSE) wraps
+\ that body; see tools/ptx/saxpy-cg.f for the SAXPY driver. Param registers set by
+\ CG-PARAMS: x=%rd1, y=%rd2, a=%f1, n=%r1.

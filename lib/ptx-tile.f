@@ -22,19 +22,19 @@
 \ do not. Load after lib/errors.f.
 
 TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-GRID-CTX ;
 
 TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-LOAD ;
 
 TRUSTED: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
-   E-PTX-NOIMPL throw ;
+   EMIT-STORE ;
 
 TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-SCALE ;
 
 TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ADD ;
 
 TRUSTED: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-MUL ;
