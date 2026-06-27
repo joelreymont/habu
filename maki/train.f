@@ -6,6 +6,14 @@
 \ tensor/batched version maps each op onto a Habu-PTX kernel; here it runs on
 \ Habu floats so convergence is testable now. maki -> habu only.
 \ Load after maki/autograd.f, maki/loss.f, maki/optim.f.
+\
+\ Wrapped in `package MAKI`: the training API exports as `MAKI:TRAIN-N` etc. The body
+\ consumes maki words still defined globally (MUL-F / MSE / MSE-GRAD / SGD / T-GET / T-SET)
+\ via the package's global-fallback lookup; once those modules join `package MAKI` the
+\ same bare references resolve inside the package (docs/forth.md "Packages").
+
+package MAKI
+public
 
 \ current loss of the linear model: L = MSE(w*x, t)
 : LOSS-AT ( r r r -- r ) {: w x t :}
@@ -47,3 +55,5 @@
    epochs 0 ?do
       lr wb xb tb len T-TRAIN-STEP!
    loop ;
+
+end-package

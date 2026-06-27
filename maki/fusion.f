@@ -14,14 +14,14 @@
 \ Triton (parity at the memory ceiling); there is NO unfused baseline. Checked Habu;
 \ load after the PTX v4 vocab + maki/eval.f (SB-* string builder) + lib/fs-mutate.f.
 
-\ Wrapped in `package MAKI`: the words export as `MAKI:FUSE-*` / `MAKI:OP-*`, isolated
-\ from the global/habu namespace (docs/forth.md "Packages"). E-FUSE stays global (a
-\ cross-cutting error code, like lib/errors.f's E-*); the package body reaches it via the
-\ package's global-fallback lookup.
+\ Fusion is an INTERNAL maki building-block module, so it lives in its own `package FUSION`
+\ (not the public `MAKI` interface): words export as `FUSION:FUSE-*` / `FUSION:OP-*`,
+\ isolated from global/habu (docs/forth.md "Packages"). E-FUSE stays global (a cross-cutting
+\ error code, like lib/errors.f's E-*); the package body reaches it via global fallback.
 
 -5002 constant E-FUSE  \ unfusible / unknown op, or chain overflow (fail-closed)
 
-package MAKI
+package FUSION
 public
 
 \ elementwise op codes (maki/ONNX subgraph nodes)
@@ -49,7 +49,7 @@ private
 
 \ append the fused word sequence (the WHOLE fusion) to the string builder: bind
 \ inputs, make the per-thread ctx, load x, CONCATENATE each op's words, store.
-\ Internal helper - NOT part of the public interface (no MAKI:FUSE-BODY export); only
+\ Internal helper - NOT part of the public interface (no FUSION:FUSE-BODY export); only
 \ FUSE-DRIVER uses it.
 : FUSE-BODY ( -- )
    s"  {: x y a :} x GRID-CTX-V4 {: g :} x g LOAD-V4" SB-APPEND

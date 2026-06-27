@@ -1,5 +1,9 @@
 \ maki/train-test.f - the training loop actually learns (loss decreases to ~0).
 \ Model y = w*x ; data (x=2, t=6) ; optimum w = 3. Start w=0, lr=0.1.
+\ Reopens `package MAKI` so the train words resolve bare; array words (T-FILL/T-SET/T-GET)
+\ and the harness resolve via the package global fallback.
+
+package MAKI
 
 T-RESET
 
@@ -33,3 +37,5 @@ WT 1 T-GET  1000.0 f* 0.5 f+ f>s  4000 T=     \ w[1] -> 4
 WT XT TT 2 T-LOSS  1000.0 f* 0.5 f+ f>s  0 T= \ tensor loss -> ~0
 
 T-REPORT
+
+end-package

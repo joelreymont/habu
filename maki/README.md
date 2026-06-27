@@ -13,15 +13,24 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
   (token-scans `src/`, `lib/`, `test/` for any forbidden `maki/` path reference and
   throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
   `maki-dep-lint-fixtures`.
-- **Maki words live in the `MAKI` package (wordlist namespace).** Each maki file is
-  wrapped in `package MAKI` / `public` / `end-package`, so its words live in the `MAKI`
-  wordlist, not the global/habu namespace — a bare `WORD` reference from habu core does
-  not resolve, enforcing the one-way seam at the *dictionary* level (the runtime package
-  feature, `docs/forth.md` "Packages"). External callers use `MAKI:WORD`; maki-internal
-  cross-file calls reopen `package MAKI` and use bare names; tests reopen the package too.
-  Adopted module-by-module: `maki/onnx.f` (`MAKI:ONNX-LOWER`) and `maki/fusion.f` are the
-  worked examples; rollout to the remaining maki modules is dotted
-  (`habu-roll-out-the-...`). Cross-cutting error constants keep the global `E-MK-*` form.
+- **Layered package namespaces (the runtime package feature, `docs/forth.md` "Packages").**
+  `package NAME` / `public` / `private` / `end-package` gives each module a real wordlist
+  namespace; a bare `WORD` reference from habu core does not resolve, enforcing the one-way
+  seam at the *dictionary* level. The layering:
+  - **`MAKI` is the public interface** — the user-facing API (model import, training, eval)
+    lives in `package MAKI` and exports as `MAKI:WORD`. `maki/onnx.f` (`MAKI:ONNX-LOWER`)
+    and `maki/train.f` (`MAKI:TRAIN-N`) are the worked examples.
+  - **Internal building-block modules each get their OWN package** — `FUSION` (kernel
+    fusion; `maki/fusion.f`, with the internal `FUSE-BODY` marked `private` so it is *not*
+    exported), and to follow `OPTIM` / `TENSOR` / `LOSS` / `AUTOGRAD` / `ARRAY`. The
+    PTX kernel vocabulary (`lib/ptx`) is the canonical internal module — a future
+    `package PTX`.
+  - Cross-package calls use the qualified `PKG:WORD` form (or reopen the package for bare
+    names); tests reopen their module's package. Cross-cutting error constants keep the
+    global `E-MK-*` form.
+  - The core agent is adding `include` so one package can span several files without each
+    reopening it; adopt it for the multi-file `MAKI` interface once it lands. Rollout to
+    the remaining modules is dotted (`habu-roll-out-the-...`).
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
   the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
   application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.
