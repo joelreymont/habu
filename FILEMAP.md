@@ -191,6 +191,9 @@ points stay listed.
 - `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.
 - `tools/stale-status-lint-test.f` — checked fixture coverage for stale status/count lint.
 - `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
+- `tools/dot-dep-lint-core.f` — reusable dot blocker dependency validator.
+- `tools/dot-dep-lint.f` — CLI wrapper for dot blocker dependency lint.
+- `tools/dot-dep-lint-test.f` — checked fixture coverage for dot blocker dependency lint.
 - `tools/string.f` — shared checked byte-string helper library.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.

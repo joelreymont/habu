@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-06-25T13:43:16.915481+02:00"
-blocks:
-  - habu-ptx-m3-toolchain-736060e3
 ---
 
-docs/ptx-sketch.md M4 (also needs M2). span/gridctx/tile<T,B,M>, MK-SPAN=, GRID-CTX, distinct grid/row LOAD/STORE (no overload), elementwise (SCALE/+./-.); saxpy from checked source; non-collective negatives + data-mask identity.
+docs/ptx-sketch.md M4 (M2 and the M3 local encoder are landed). span/gridctx/tile<T,B,M>, MK-SPAN=, GRID-CTX, distinct grid/row LOAD/STORE (no overload), elementwise (SCALE/+./-.); saxpy from checked source; non-collective negatives + data-mask identity.

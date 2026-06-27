@@ -51,6 +51,13 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Dot blocker edges need a gate:** stale `.dots/*` `blocks:` IDs made work look
+  blocked on deleted/completed tasks. `tools/dot-dep-lint.f` now walks `.dots/`
+  directly and fails the lint slice on any blocker that is not backed by a dot
+  file.
+- **New PTX trusted primitives need rows before merge:** local `master` had
+  `RELU`/`RELU-V4` TRUSTED sites without `TRUSTED.md` rows; the full native lint
+  slice caught it. Add the row and a checked kernel fixture in the same change.
 - **Device proofs must fail closed:** CUDA/FFI proof tools are not allowed to
   print `NO` and exit success, reuse stale readback buffers, or drop Driver rc
   values. Device gates need rc-checked wrappers, private temp roots, sentinels,

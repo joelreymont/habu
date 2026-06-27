@@ -267,6 +267,8 @@ variable SUITE-SLICE
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" parallel-agent-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" filemap-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" text-foundation-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-manifest" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
@@ -488,6 +490,18 @@ TEST-SUITE filemap-lint
    lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
    tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
    tools/filemap-lint.f
+;TEST-SUITE
+
+TEST-SUITE dot-dep-lint
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+   tools/lint/text.f tools/lint/intern.f tools/dot-dep-lint-core.f
+   tools/dot-dep-lint.f
+;TEST-SUITE
+
+TEST-SUITE dot-dep-lint-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f lib/fs.f
+   tools/lint/text.f tools/lint/intern.f tools/dot-dep-lint-core.f
+   tools/dot-dep-lint-test.f
 ;TEST-SUITE
 
 TEST-SUITE text-foundation-fixtures

@@ -171,6 +171,9 @@ variable FM-NUM-L
    s" tools/stale-status-lint.f" FM-REQ
    s" tools/stale-status-lint-test.f" FM-REQ
    s" tools/parallel-agent-lint.f" FM-REQ
+   s" tools/dot-dep-lint-core.f" FM-REQ
+   s" tools/dot-dep-lint.f" FM-REQ
+   s" tools/dot-dep-lint-test.f" FM-REQ
    s" tools/spawn-emitter-test.f" FM-REQ
    s" tools/c-call-emitter-test.f" FM-REQ
    s" tools/signature-scan-emitter-test.f" FM-REQ

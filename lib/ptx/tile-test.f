@@ -17,6 +17,11 @@ KERNEL: SAXPY ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>
    y g LOAD  +.
    y g STORE ;
 
+KERNEL: RELU-SPAN ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
+   dup GRID-CTX
+   2dup LOAD RELU
+   rot rot STORE ;
+
 \ Clean load past this point is the positive proof: KERNEL: verified SAXPY's body
 \ against its declared parametric effect. A reject emits a diagnostic + fails load.
 
