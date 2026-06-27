@@ -52,6 +52,32 @@ classifying the bound.
    lever for compute kernels (alongside aggressive fusion for memory-bound chains).
    → owed a dot (tensor-core MMA codegen).
 
+## TF32 tensor-core MMA — validated fragment layout (Orin sm_87)
+
+The compute beat-Triton lever. `mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32`
+computes D[16×8] = A[16×8]·B[8×8] + C across one warp. **Device-validated** lane→
+element layout (gid = lane>>2, t = lane&3) — getting this wrong is the course's #1
+"correct in NumPy, garbage on device":
+
+- **A** (16×8 row-major), 4 tf32/lane: a0=A[gid][t], a1=A[gid+8][t], a2=A[gid][t+4], a3=A[gid+8][t+4].
+- **B** (8×8), 2 tf32/lane: b0=B[t][gid], b1=B[t+4][gid]. (cvt.rna.tf32.f32 each operand.)
+- **C/D** (16×8), 4 f32/lane: d0=C[gid][2t], d1=C[gid][2t+1], d2=C[gid+8][2t], d3=C[gid+8][2t+1].
+
+Isolated 16×8×8 tile verified vs CPU to max|err| 3.4e-3 (= TF32 ~10-bit mantissa).
+A K-looping GEMM from it is device-correct (max|err| 0.03 at 512³).
+
+**Roofline-guided optimization ladder (measured, the methodology working):**
+- naive MMA (1 tile/warp, global fragment loads, no reuse): **105 GFLOP/s** — *slower*
+  than FP32 reg-block 283, because it's **global-memory-starved** (tensor cores don't
+  help until you feed them).
+- + register reuse (warp computes 16×64 = 8 MMA cols, A fragment reused 8×): **336
+  GFLOP/s** (512³) — now *above* the FP32 path and on the tensor-core roof. Device-
+  correct (max|err| 0.03).
+- next rungs (dotted `habu-tensor-core-mma`): **shared-mem A/B staging** (amortize
+  global loads across the block — currently each warp re-reads global, which is why
+  1024³ falls to 245), **double-buffering** (`num_stages`), bigger block tiles → climb
+  toward Triton's 1474. The reuse-then-stage order is exactly what the roofline predicts.
+
 ## The five things that govern speed (check all five)
 
 1. **Occupancy** — enough resident warps to hide latency. *Means, not goal*: a
