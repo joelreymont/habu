@@ -121,6 +121,16 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 ## Workflow
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
+- **Master is always green (BLOCKING, NON-NEGOTIABLE).** NEVER move/push the
+  `master` bookmark to a commit whose gates are not proven green. Do feature work on
+  your OWN branch/bookmark (e.g. `maki-<topic>`), commit+push THERE freely, and only
+  fast-forward `master` to it AFTER running the full owning gates and confirming they
+  pass: the maki gate (`maki/README.md` command), the ptx-stdlib + any touched native
+  gate slice, and `host-lint` + `filemap-lint` — all green, on the exact rebased tree
+  you intend to merge. If any gate is red, skipped, or unrun, the merge does not
+  happen; fix or dot the blocker first. A red master is a stop-the-line incident, not
+  a "clean up later". Direct commits to `master` are forbidden; master only ever moves
+  by a verified-green fast-forward from a branch.
 - Commit rule (BLOCKING): `jj commit` is a proof checkpoint, not a stash. Before
   creating it, inspect `jj diff`, identify the touched source classes, run the
   focused validation for those paths through native `bin/hb`, and record any
