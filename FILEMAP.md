@@ -199,6 +199,8 @@ points stay listed.
 - `lib/stats-test.f` — focused coverage for the stats reductions and interpolated percentiles.
 - `lib/hashmap.f` — open-addressing integer-key hash probe over caller-supplied arrays (O(1) amortized lookups).
 - `lib/hashmap-test.f` — coverage for HASH64/HM-PROBE/HM-CLEAR including collision probing and clear.
+- `lib/prelude.f` — checked boolean/flag (true/false/0<>) and float-stack (fdrop/fdup/fover/f<=/f>=) conveniences core omits.
+- `lib/prelude-test.f` — coverage for the prelude flag and float-stack helpers.
 - `lib/test-runner.f` — checked gate runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test-runner-test.f` — focused coverage for gate runner process, timeout, and failure aggregation helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.

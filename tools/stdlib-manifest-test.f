@@ -5,9 +5,9 @@
 
 $30000 constant SMT-MAN-CAP
 $10000 constant SMT-DOC-CAP
-$40000 constant SMT-PUB-CAP                 \ public-signatures JSON for the whole stdlib
+$80000 constant SMT-PUB-CAP                 \ public-signatures JSON for the whole stdlib
 $4000 constant SMT-ERR-CAP
-$40000 constant SMT-STR-CAP
+$80000 constant SMT-STR-CAP
 1024 constant SMT-WORD-MAX
 64 constant SMT-MOD-MAX
 64 constant SMT-LIB-MAX
