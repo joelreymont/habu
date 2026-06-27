@@ -127,6 +127,9 @@ points stay listed.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
+- `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
+- `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
+- `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
 - `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test.f` — checked fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin-core.f` — reusable source-origin marker injection core.

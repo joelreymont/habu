@@ -91,6 +91,8 @@ file.
   concrete checker type is known; a bare local name is allowed only when the
   entry stack effect intentionally preserves richer role detail that the local
   annotation cannot express, or when the missing typed capability is documented.
+  New diff-introduced bare locals must be made explicit with
+  `typed-local-lint: allow-bare-local` so review sees the exception.
 - **Local type annotations can erase role detail.** A local such as `a:ptr`
   records only a pointer cell; it does not preserve `ptr u8`. If the body uses
   byte operations such as `c@`/`c!`, keep the detailed type in the stack effect

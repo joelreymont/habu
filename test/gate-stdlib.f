@@ -184,6 +184,7 @@ variable SUITE-SLICE
    s" tools/json-only-core.f" SUITE-ARG+
    s" tools/signature-lint-core.f" SUITE-ARG+
    s" tools/checked-boundary-lint-core.f" SUITE-ARG+
+   s" tools/typed-local-diff-lint-core.f" SUITE-ARG+
    s" tools/trust-lint-core.f" SUITE-ARG+
    s" tools/check-all-errors-core.f" SUITE-ARG+ ;
 
@@ -541,7 +542,8 @@ TEST-TOOL-SUITE tool-boundary-doc-public
 TEST-TOOL-SUITE tool-boundary-lints
    tools/repl-lint-test.f tools/diag-origin-test.f tools/aot-lint-test.f
    tools/signature-lint-test.f tools/checked-boundary-lint-test.f
-   tools/bundle-lib-test.f tools/json-only-test.f
+   tools/typed-local-diff-lint-test.f tools/bundle-lib-test.f
+   tools/json-only-test.f
 ;TEST-SUITE
 
 TEST-SUITE check-cli-boundary
@@ -550,7 +552,8 @@ TEST-SUITE check-cli-boundary
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f
    tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/trust-lint-core.f
+   tools/checked-boundary-lint-core.f tools/typed-local-diff-lint-core.f
+   tools/trust-lint-core.f
    tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
    tools/check-test.f
 ;TEST-SUITE

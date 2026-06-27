@@ -179,7 +179,9 @@ lesson — keep the specific word/code/path, cut the prose.
 
 - **Diff gates must scan locals:** typed definitions are not enough; added `{:
   ... :}` groups need typed locals unless they are the documented
-  role-preserving exception from `docs/forth.md`.
+  role-preserving exception from `docs/forth.md`. Use the Habu-native
+  `tools/typed-local-diff-lint.f`; manual `rg` scans are too easy to skip or
+  misread.
 - **Repo edits go through patches/Edit:** even mechanical/one-line changes, so
   broad rewrites, duplicate defs, and shell-expanded capture groups stay reviewable.
 - **Commits are proof checkpoints:** run the path-specific Habu gate before
