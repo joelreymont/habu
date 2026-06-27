@@ -54,6 +54,10 @@ lesson — keep the specific word/code/path, cut the prose.
   same tool load path, write one source file, run one `check-all-errors`, and
   assert each JSONL row by `word`/`repair_class`. Per-case checker spawns hide
   real coverage behind startup cost.
+- **Merge positive builder proofs by invariant:** if two successful builds only
+  differ by fixture payload, one strict feature bundle can own recursion, parser,
+  closure, binary-shape, and output checks. Size caps should prove "no engine
+  embed" for that bundle, not preserve a tiny-source threshold.
 - **Do not duplicate heavyweight boundary builds in aggregate gates:** move the
   unique assertions into the dedicated AOT/REPL/fixpoint boundary slices, keep
   stdlib tail focused on library fixtures, and protect shared maker caches with

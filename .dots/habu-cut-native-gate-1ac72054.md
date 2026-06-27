@@ -86,3 +86,12 @@ native gate passed in 1m46.76s; under full contention, engine repair passed in
 19.480s. Remaining long poles: AOT positive 77.526s, stdlib tool-boundary
 68.722s, REPL 69.309s, engine build 66.457s, stdlib check-cli 56.522s,
 prop/snapshot/debug 53.619s, and engine fixtures 42.765s.
+
+Checkpoint 2026-06-27: `test/gate-aot-positive.f` now builds one strict AOT
+feature bundle instead of separate FIB-strict and compact/features binaries. The
+single source covers recursion, compact/direct calls, closure depth, long names,
+`S"`/`C"`/`."` parsing, Linux dynamic ELF shape, stripped-size cap, and both
+call-report assertions. The size invariant is now a 64 KiB stripped feature cap
+that still rules out embedding the ~300 KiB maker/engine. Focused AOT positive
+passed in 27.95s with text 24,576 B. Full-gate evidence pending for this
+checkpoint.
