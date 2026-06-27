@@ -28,13 +28,16 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    s" lib/errors.f"         >LEN PROC-ARGV+  s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/float.f"          >LEN PROC-ARGV+  s" lib/fmt.f"     >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+ ;
+   s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
+   s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
+   s" lib/ptx/collective.f" >LEN PROC-ARGV+ ;
 : GC-RUN-EMIT ( -- n )
    s" bin/hb" >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
    s" /tmp/gc.ptx" GC-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 : GC-EMIT-SAXPY ( -- n )  GC-PRELUDE  s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-RELU  ( -- n )  GC-PRELUDE  s" tools/ptx/relu-cg.f"  >LEN PROC-ARGV+  GC-RUN-EMIT ;
+: GC-EMIT-EXP   ( -- n )  GC-PRELUDE  s" tools/ptx/exp-cg.f"   >LEN PROC-ARGV+  GC-RUN-EMIT ;
 
 : GC-PTXAS ( -- n )
    PROC-ARGV-RESET
@@ -96,13 +99,20 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    2.0 0.001 GC-CENTRAL {: gp :}                       \ at x=+2
    -2.0 0.001 GC-CENTRAL {: gm :}                      \ at x=-2
    GC-UNLOAD
+   \ --- EXP (transcendental): d exp(x)/dx = exp(x) = the forward value (non-constant) ---
+   GC-EMIT-EXP drop    GC-PTXAS 0 T=  GC-LOAD
+   1.0 0.001 GC-CENTRAL {: ge :}                       \ numeric d exp/dx at x=1
+   1.0 F64>F32 GC-AT F32>F64 {: ey :}                  \ exp(1) = the analytic gradient
+   GC-UNLOAD
    GC-CTX-FINI                                         \ release BEFORE exit
    gs 3.0 GC-NEAR? TTRUE                               \ SAXPY: correct dx=a=3 -> PASS
    gs 2.0 GC-NEAR? TFALSE                              \ SAXPY: wrong dx=2 -> REJECTED
    gp 1.0 GC-NEAR? TTRUE                               \ RELU x>0: dx=1 -> PASS
    gm 0.0 GC-NEAR? TTRUE                               \ RELU x<0: dx=0 -> PASS
    gm 1.0 GC-NEAR? TFALSE                              \ RELU x<0: wrong dx=1 -> REJECTED
-   s" device gradcheck: SAXPY dx=a=3 and RELU dx=step verified by central difference on the Orin (wrong VJPs rejected)" type cr
+   ge ey GC-NEAR? TTRUE                                \ EXP: d exp/dx = exp(x) -> PASS
+   ge 1.0 GC-NEAR? TFALSE                              \ EXP: wrong constant dx=1 -> REJECTED
+   s" device gradcheck: SAXPY (linear), RELU (step), EXP (transcendental) gradients verified by central difference on the Orin (wrong VJPs rejected)" type cr
    T-REPORT ;
 
 GRADCHECK-MAIN

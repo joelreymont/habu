@@ -131,6 +131,8 @@ points stay listed.
   wrong VJPs rejected. Retains the primary context once, releases once (or bin/hb hangs at exit).
 - `tools/ptx/relu-cg.f` — checked RELU kernel (y=max(x,0)) run through the codegen; the
   nonlinear op gradcheck.f gates.
+- `tools/ptx/exp-cg.f` — checked EXP kernel (y=exp(x)) run through the codegen; the
+  transcendental op gradcheck.f gates (d exp/dx = exp(x), non-constant gradient).
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
