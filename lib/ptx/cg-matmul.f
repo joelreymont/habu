@@ -41,13 +41,14 @@
 \ (lib/ptx/tile-loop.f TILE-LOOP, (a)), the SHARED-MEMORY tile type (lib/ptx/tile-smem.f
 \ STAGE/SLOAD/SSTORE, (b) - space-shared distinct from space-global), and the REGISTER
 \ ACCUMULATOR type (lib/ptx/tile-acc.f ACC-ZERO/ACC-FMA/ACC-TILE/ACC-LOOP, (c) - acc<>
-\ distinct from tile<>, an unfinalized accumulator cannot be stored). What remains is the
-\ RE-EXPRESSION + CODEGEN: lower a checked KERNEL: MM body composed from these words to
-\ this same PTX (the tile bodies throw E-PTX-NOIMPL today; the loop body cannot yet
-\ capture the spans/index it needs - dot habu-quotation-capture). So MM is still emitted
-\ as raw PTX. It is a named, tested boundary (device-golden correct vs CPU A*B) per
-\ CLAUDE.md; the remaining work is dotted (habu-tiled-gemm-codegen + habu-re-express-tiled).
-\ When those land, MM becomes a checked KERNEL: body like SAXPY/softmax. Load after
+\ distinct from tile<>, an unfinalized accumulator cannot be stored). The tiled-GEMM
+\ DATA-FLOW is now EXPRESSIBLE + TYPE-CHECKED as a checked KERNEL: body (MM-CHECKED in
+\ lib/ptx/gemm-checked-test.f: zero acc, inline checked K-loop staging A/B to shared and
+\ FMA-accumulating, finalize, store). What remains is CODEGEN: the tile-DSL op bodies throw
+\ E-PTX-NOIMPL, so MM-CHECKED type-checks but does not yet emit; lowering it to this same
+\ PTX (and a 2-D grid) is dotted habu-tiled-gemm-codegen. Until then MM here stays the
+\ raw-PTX emit path - a named, tested boundary (device-golden correct vs CPU A*B) per
+\ CLAUDE.md. When codegen lands, this raw boundary is deleted and MM IS MM-CHECKED. Load after
 \ src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
 \ ==============================================================================
 

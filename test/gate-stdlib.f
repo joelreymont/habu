@@ -287,6 +287,7 @@ variable SUITE-SLICE
    s" ptx-tile-loop-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-smem-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-acc-neg" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ptx-gemm-checked-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-toolchain" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
@@ -647,7 +648,7 @@ TEST-SUITE map-stdlib
 ;TEST-SUITE
 
 TEST-SUITE ptx-stdlib
-   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/cg-collective.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/tile-loop.f lib/ptx/tile-loop-test.f lib/ptx/tile-smem.f lib/ptx/tile-smem-test.f lib/ptx/tile-acc.f lib/ptx/tile-acc-test.f lib/ptx/tile-v4.f lib/ptx/tile-v4-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ad.f lib/ptx/ad-test.f
+   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/cg-collective.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/tile-loop.f lib/ptx/tile-loop-test.f lib/ptx/tile-smem.f lib/ptx/tile-smem-test.f lib/ptx/tile-acc.f lib/ptx/tile-acc-test.f lib/ptx/gemm-checked-test.f lib/ptx/tile-v4.f lib/ptx/tile-v4-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ad.f lib/ptx/ad-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-tile-loop-neg
@@ -663,6 +664,11 @@ TEST-SUITE ptx-tile-smem-neg
 TEST-SUITE ptx-tile-acc-neg
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/ptx/tile-acc-neg-test.f
+;TEST-SUITE
+
+TEST-SUITE ptx-gemm-checked-neg
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f
+   lib/process-argv.f lib/process-env.f lib/ptx/gemm-checked-neg-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-toolchain
