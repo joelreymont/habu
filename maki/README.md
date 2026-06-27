@@ -38,7 +38,7 @@ bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
   maki/train.f       maki/train-test.f \
   maki/onnx.f        maki/onnx-test.f \
   maki/eval.f        maki/eval-test.f \
-  maki/eval-fixture.f
+  maki/eval-fixture.f maki/eval-repair.f
 ```
 
 ## Components (v0, all runnable + tested)
