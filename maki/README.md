@@ -59,13 +59,17 @@ the device, each verified correct-vs-CPU on the Orin:
 - **A checked `SOFTMAX-ROWS` kernel** emits its own PTX (block reduction via
   shared-mem + bar.sync) and runs within 1 ULP of the CPU golden
   (`tools/ptx/softmax-cg.f` → `tools/ptx/softmax-launch.f`).
+- **Auto-derived softmax gradient passes a device gradcheck** — a real reverse-mode
+  AD engine (`lib/ptx/ad-dag.f`) symbolic-executes the forward into a value-numbered
+  DAG and emits `SOFTMAX-ROWS-BWD` (recompute + cotangent pass with fan-out sums);
+  on the Orin it matches central finite differences of the forward to <1e-2
+  (`tools/ptx/softmax-bwd-cg.f` → `tools/ptx/softmax-gradcheck.f`).
 - **GB/s:** the SAXPY kernel sustains ~42.9 GB/s on the Orin (`tools/ptx/bandwidth.f`).
 
-Still owed (no "better target" thesis claim until these land): the auto-derived
-`SOFTMAX-ROWS-BWD` device gradcheck (needs the reverse-pass AD: fan-out/nonlinear
-cotangent threading + SAVED-* buffers — dot `habu-ad-reverse-pass`), and the full
-comparative eval matrix (pass@k / tokens-to-green / repair rounds vs Triton — the
-external LLM + Triton arm).
+Still owed (no "better target" thesis claim until it lands): the full comparative
+eval matrix — `maki/eval.f` scores candidate kernels by checker certification
+(pass@k), and that runs over a fixture now; the live-LLM generation + Triton
+comparison (tokens-to-green / repair rounds vs Triton) is the remaining arm.
 
 ## Status
 
