@@ -79,23 +79,41 @@ the device, each verified correct-vs-CPU on the Orin:
   `B-`/`B/` confusion (subtract vs divide) certifies but is caught as TYPED-WRONG,
   proving the gate works for block-reduction kernels, not just SAXPY.
 
-- **Comparative result (the thesis test)** — `maki/eval-compare.f` isolates the
-  thesis variable (the static stack-effect checker) by comparing checked Habu-PTX
-  against a **runtime-only baseline** (the Triton-class experience for stack/type
-  bugs). Over a 9-candidate SAXPY fixture (3 correct, 5 type/stack errors, 1
-  semantic): the checker catches **5/6 bugs before execution** with located
-  diagnostics (4 GPU runs); the runtime-only arm catches **0/6 statically** and
-  must run all 9. **Conclusion (qualified):** for the static-checkable bug class —
-  which dominates LLM kernel-authoring errors — the checker makes Habu-PTX a better
-  authoring target than a runtime-only target: cheaper (no GPU per bug), earlier,
-  and located. This is the data step 5 needed; the claim is bounded to that class
-  and that controlled comparison, **not** a full Triton port (language/perf/codegen
-  differ) — that and a live model generator are the remaining external arms
-  (`habu-eval-matrix-triton`, `habu-eval-matrix-live`).
+- **Eval matrix vs real Triton (validated on the Orin)** — Triton 3.5.1 +
+  torch 2.9.1+cu126 run on this Orin (sm_87), no reflash; full reproduction and the
+  side-by-side matrix in [`docs/eval-triton.md`](../docs/eval-triton.md). Real
+  Triton JIT-compiles each kernel for sm_87 and runs, so the comparison is
+  apples-to-apples. Results:
+  - **Error-catch timing (the thesis mechanism):** over the SAXPY error battery,
+    **both** targets catch name/type errors before running — Habu-PTX at *author*
+    time (static stack-effect check, zero GPU), Triton at *compile* time. The
+    distinguishing class is **stack discipline** (missing store, wrong arity, extra
+    op): Habu-PTX rejects these at author time with a located diagnostic and **no
+    GPU work**; in Triton the analogous kernels **compile clean and are caught only
+    at runtime** — 3 of 5 battery bugs slipped to runtime, including a *missing
+    store* that silently produced `0.0`. Semantic value bugs (x+y) neither catches
+    statically; both need the device-golden run (`maki/eval-device.f`).
+  - **Bandwidth:** Triton 63.0 GB/s vs Habu-PTX 42.5 GB/s (N=2²⁰, 200 iters) —
+    same order, Triton ~1.5×. The gap is the launch path (Habu-PTX still uses the
+    deprecated `cuLaunchGrid`; dotted), not codegen; both are launch/occupancy
+    bound well under the Orin's ~200 GB/s peak.
+  - **Earned claim:** a checked stack-effect target is a viable Triton replacement
+    that **shifts the stack-discipline error class left to author time** — caught
+    statically, zero GPU — where Triton finds it only at runtime, at competitive
+    bandwidth. **Not** earned: any "faster than Triton" claim (currently ~1.5×
+    slower on this microbench) or that the checker catches *semantic* errors.
+
+- **Checker ablation (complementary, internal)** — `maki/eval-compare.f` ablates
+  the one variable in isolation: Habu-PTX **with vs without** its own static
+  checker. Over a 9-candidate SAXPY fixture (3 correct, 5 type/stack, 1 semantic):
+  **with** the checker, 5/6 bugs are caught before execution (4 GPU runs);
+  **without** any static check, 0/6 are caught before execution and all 9 must run.
+  This isolates the checker's contribution from Triton's confounds (different
+  compiler, language, launch path).
 
 The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden grading
-(task-general), repair-rounds, tokens-to-green, GB/s, and the checked-vs-runtime-only
-comparison — is built and committed.
+(task-general), repair-rounds, tokens-to-green, GB/s, the checker ablation, and now
+the **real-Triton eval matrix** — is built, run on hardware, and committed.
 
 ## Status
 

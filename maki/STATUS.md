@@ -43,7 +43,20 @@ the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
 The optimizer/loss/autograd element rules apply per-weight; the tensor-level apply
 (one update / reduction / op over a whole tensor) lowers onto a Habu-PTX kernel
 once codegen lands. The rules themselves are exact, checked, gradient-verified,
-and tested now. No "better target" claim until the full eval matrix runs.
+and tested now.
+
+- **On device + eval matrix vs real Triton (DONE 2026-06-27).** Checked kernels
+  emit PTX, assemble (`ptxas -arch=sm_87`), and run correct-vs-CPU on the Orin
+  (SAXPY, SOFTMAX-ROWS within 1 ULP; maki trains 3 SGD epochs on the GPU; the
+  auto-derived SOFTMAX-ROWS-BWD passes a device finite-difference gradcheck). The
+  eval matrix now compares **checked Habu-PTX vs real Triton 3.5.1 + torch 2.9.1+cu126
+  run on this Orin** (no reflash; see `../docs/eval-triton.md`): both catch name/type
+  errors before running (Habu-PTX at author time, Triton at compile), but the
+  stack-discipline class (missing store, wrong arity) is caught at **author time** by
+  Habu-PTX's checker with zero GPU and only at **runtime** by Triton (3/5 battery bugs
+  slipped); bandwidth Triton 63 vs Habu-PTX 42.5 GB/s (launch-path gap, dotted). The
+  earned claim: a checked target shifts the stack-discipline error class left to
+  author time at competitive bandwidth — NOT "faster than Triton".
 
 ## Next (see root PLAN.md + dots)
 

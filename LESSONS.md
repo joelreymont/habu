@@ -157,6 +157,25 @@ lesson — keep the specific word/code/path, cut the prose.
   `ffi-call` >8-arg extension for `cuLaunchKernel`. NO engine change was needed.
   The eval-matrix data path is OPEN: emit checked kernel -> ptxas -> cubin ->
   load -> launch -> compare golden, all from Habu.
+- **Real Triton on the Orin without a reflash (eval matrix DONE 2026-06-27).** The
+  GPU driver is BSP-pinned at CUDA 12.6 (`cuDriverGetVersion=12060`); a 13.x driver
+  needs a destructive JetPack-7 reflash (don't). pypi's default torch is `cu130` →
+  won't load (`driver too old`), and the Jetson torch index `pypi.jetson-ai-lab.dev`
+  is DNS-unreachable — BUT `download.pytorch.org` carries `torch-2.9.1+cu126`
+  aarch64/cp310, and **cu126 matches the 12.6 driver exactly**, so
+  `torch.cuda.is_available()` is True. The generic SBSA wheel has no sm_87 ATen cubins
+  (`cudaErrorNoKernelImageForDevice` on `x+x`), but **Triton JIT-compiles each kernel
+  for sm_87 at runtime**, so Triton kernels run — just avoid ATen GPU ops (alloc +
+  H2D/D2H memcpy only). Result (`docs/eval-triton.md`): Triton 63 GB/s vs Habu-PTX
+  42.5 (launch-path gap — deprecated `cuLaunchGrid` — not codegen); Triton catches
+  name/type errors at compile but the **stack-discipline class only at runtime** (3/5
+  battery bugs slipped, incl. a missing-store → silent 0.0) where Habu-PTX's checker
+  rejects at author time. The thesis MECHANISM is now backed by real-target data.
+- **External baseline stays out of the tree (host-lint).** `host-lint` WALK-FILES the
+  whole repo and `1 throw`s on any `.py` path; `.md`/`.f` content is not scanned. So
+  the Triton (Python) baseline lives as fenced ```python blocks in `docs/eval-triton.md`
+  (reproduction reference) with the working scripts in `/tmp`; the Habu reducers
+  (`bandwidth.f`, `eval-compare.f`, `eval-device.f`) remain the live column.
 - **Rigid-token fix is now a precise, bounded change (located 2026-06-27).** The
   checker instantiates a called word's effect by RE-PARSING its stored signature
   STRING per call (user/prim sigs are stored as text at `USIGS`, checker.f:886;

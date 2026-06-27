@@ -18,6 +18,7 @@ points stay listed.
 - `docs/ptx-sketch.md` — Habu→PTX v0 language spec.
 - `docs/inference.md` — Habu→PTX local type inference: infer bodies, annotate the contract edge.
 - `docs/autograd.md` — Habu→PTX reverse-mode autograd: AD as a syntactic reversal; verified gradients.
+- `docs/eval-triton.md` — eval matrix: checked Habu-PTX vs real Triton on the Orin (install, reproduction, results).
 - `docs/seed.md` — native seed trust root and no-binary recovery.
 
 ## Core Checker

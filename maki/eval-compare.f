@@ -1,17 +1,19 @@
-\ maki/eval-compare.f - the comparative eval: checked Habu-PTX vs a runtime-only
-\ (Triton-class) baseline, isolating the thesis variable - the static stack-effect checker.
+\ maki/eval-compare.f - CHECKER ABLATION: Habu-PTX with vs without its static checker.
 \
-\ The thesis is "checked kernels are a better LLM target than Triton". Triton itself
-\ is unavailable here (no triton/torch, not installable offline), but the variable
-\ under test is the STATIC checker: with it, a type/stack bug is rejected at AUTHOR
-\ time with a located diagnostic and no GPU; without it (the Triton-class experience
-\ for this bug class) the same bug is found only by emitting, assembling, and running
-\ - or worse, slips through as a plausible-looking wrong number. GRADE-CANDIDATE's
-\ verdict already encodes this: 0 = checker-rejected (caught statically, NO device
-\ run), 1 = certifies-but-device-wrong (semantic, needs a run), 2 = green. So we tally
-\ a fixture and report, per arm, how many bugs are caught BEFORE execution and how
-\ many GPU runs the loop costs. Honest caveat: a controlled isolation of the checker
-\ variable, not a full Triton port (language/perf differ). Load after maki/eval-device.f.
+\ This is the COMPLEMENTARY, internal experiment to the real Habu-PTX-vs-Triton eval
+\ matrix (now run on the Orin; see docs/eval-triton.md). The vs-Triton comparison has
+\ a confound: Triton is a different compiler, language, and launch path. This ablates
+\ the ONE variable in isolation - Habu-PTX with vs without its own static checker - so
+\ the checker's contribution is attributable. With the static checker, a type/stack
+\ bug is rejected at AUTHOR time with a located diagnostic and no GPU; without any
+\ static check, the same bug is found only by emitting, assembling, and running -
+\ later, unlocated, GPU-costly, and a plausible-looking wrong number can slip through.
+\ GRADE-CANDIDATE's verdict encodes the with-checker arm: 0 = checker-rejected (caught
+\ statically, NO device run), 1 = certifies-but-device-wrong (semantic, needs a run),
+\ 2 = green. The without-checker arm has no static signal: every candidate must be
+\ run. The real-Triton matrix confirms the same mechanism against the actual target:
+\ Triton catches name/type errors at compile but the stack-discipline class only at
+\ runtime. Load after maki/eval-device.f.
 
 variable NC0  variable NC1  variable NC2     \ counts of verdict 0 / 1 / 2
 : CMP-RESET ( -- )  0 NC0 !  0 NC1 !  0 NC2 ! ;
@@ -45,11 +47,11 @@ NC1 @  1 T=
 \ the checker caught the 5 type/stack bugs with ZERO device runs; the semantic one needs a run
 CMP-STATIC  5 T=
 
-s" === comparative eval: checked Habu-PTX vs runtime-only (Triton-class) baseline ===" type cr
+s" === checker ablation: Habu-PTX WITH vs WITHOUT its static checker ===" type cr
 s" fixture: " type CMP-TOTAL . s" candidates, " type CMP-BUGS . s" bugs (" type NC0 @ . s" type/stack + " type NC1 @ . s" semantic)" type cr
-s" Habu-PTX (static checker): " type CMP-STATIC . s" / " type CMP-BUGS . s" bugs caught BEFORE execution (located diagnostics); GPU runs = " type CMP-HB-RUNS . cr
-s" Triton-class (runtime-only): 0 / " type CMP-BUGS . s" bugs caught before execution; GPU runs = " type CMP-TOTAL . s"  (must run every candidate)" type cr
-s" => the checker catches the type/stack bug class statically; only the semantic bug needs a device run on either side." type cr
+s" WITH checker:    " type CMP-STATIC . s" / " type CMP-BUGS . s" bugs caught BEFORE execution (located diagnostics); GPU runs = " type CMP-HB-RUNS . cr
+s" WITHOUT checker: 0 / " type CMP-BUGS . s" bugs caught before execution; GPU runs = " type CMP-TOTAL . s"  (no static signal -> must run every candidate)" type cr
+s" => the static checker catches the type/stack bug class for free; that is the checker's value. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr
 
 T-REPORT
 bye
