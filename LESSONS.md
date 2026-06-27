@@ -882,3 +882,11 @@ lesson — keep the specific word/code/path, cut the prose.
   a fifth literal `10` wrote `$270`, poisoned `PKG-PRI-CELL`, and sent lookup into
   bogus wordlist state. Relocate persistent cells outside JIT scratch ranges and
   gate with a five-literal compiler regression.
+- **Device-FFI "launch hang" RCA: write markers to a FILE, not piped stdout.** A
+  device gradcheck (`tools/ptx/gradcheck.f`) looked like it hung mid-launch, but
+  piped stdout block-buffers so `type cr` progress markers were lost on the
+  timeout-kill. File-output markers showed every cuda call returned — the hang was
+  at process EXIT from a retained primary context never released (the line-169
+  gotcha). Always pair `cuDevicePrimaryCtxRetain` with `cuModuleUnload` +
+  `cuDevicePrimaryCtxRelease` before exit (a `GC-FINI`); `acc-device-test.f` works
+  only because it does.

@@ -126,6 +126,9 @@ points stay listed.
   the PTX codegen; lowers ACC-ZERO/ACC-FMA/ACC-TILE to mov/fma/identity.
 - `tools/ptx/acc-device-test.f` — committed device-correctness regression: the checked
   accumulator kernel emits, ptxas-assembles, and computes x*y=6.0 on the Orin.
+- `tools/ptx/gradcheck.f` — device-run central-difference gradcheck (the AD hard gate):
+  verifies d(a*x)/dx=a on the Orin vs the analytic VJP; wrong VJP rejected. Releases the
+  primary context (GC-FINI) to exit cleanly.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
