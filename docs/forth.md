@@ -12,8 +12,11 @@ file.
 - **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
   (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core Forth words stay
   lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
-- **Hyphens, never underscores.** `T-CON`, `TV-RESET`, `MAX-TV` — not `T_CON`.
-  Underscores are not idiomatic Forth.
+- **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
+  `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
+  `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores
+  are not idiomatic Forth, even when the file ports an underscore-named source from
+  another language; name the Habu file in Habu style.
 - **Conventional suffixes/prefixes**: predicates end `?` (`TYVAR?`); conversions
   `>X` (`TERM>TAG`, `S>NUMBER?`); fetch/store `X@` / `X!` (`TV@` / `TV!`);
   allocate/reset `X-ALLOC` / `X-RESET`.

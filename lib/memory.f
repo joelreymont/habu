@@ -28,9 +28,9 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    dup COUNT>N MEM-MAX-CELLS > if E-MEM-SIZE throw then
    drop ;
 
-: MEM-64K-BYTES ( n -- n ) {: count :}
-   count MEM-CHECK-64K-COUNT
-   count MEM-64K * ;
+: MEM-64K-BYTES ( n -- n ) {: cnt :}
+   cnt MEM-CHECK-64K-COUNT
+   cnt MEM-64K * ;
 
 : MEM-CELLS>BYTES ( count -- n )
    dup MEM-CHECK-CELL-COUNT
