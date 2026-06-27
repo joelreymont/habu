@@ -93,5 +93,9 @@ single source covers recursion, compact/direct calls, closure depth, long names,
 `S"`/`C"`/`."` parsing, Linux dynamic ELF shape, stripped-size cap, and both
 call-report assertions. The size invariant is now a 64 KiB stripped feature cap
 that still rules out embedding the ~300 KiB maker/engine. Focused AOT positive
-passed in 27.95s with text 24,576 B. Full-gate evidence pending for this
-checkpoint.
+passed in 27.95s with text 24,576 B. The documented full native gate passed in
+1m49.27s (user 357.36s/sys 4.85s); AOT positive passed in 68.835s under full
+contention, down from 77.526s, but wall time regressed slightly from 1m46.76s.
+Remaining long poles: REPL 75.823s, engine build 70.776s, stdlib tool-boundary
+70.117s, stdlib check-cli 58.626s, prop/snapshot/debug 57.657s, and engine
+fixtures 41.150s.
