@@ -41,6 +41,13 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Model phase tokens as checked cells:** `asm`/`img`/`snap` cannot be empty
   trusted ghosts when their defining files are checked; push a nominal cell at
   the producer and erase/preserve it at the next phase boundary.
+- **Function-passing is a checked capability — don't default to unchecked:** I
+  almost copied `combinators.f`'s `0 set-check` boundary for a generic comparator
+  `SORT!`. Empirically the checker verifies a quotation parameter executed through
+  a call chain AND a `?do`/`begin` loop (E1–E5 probes), so `lib/sort.f` `SORT!`
+  ( `ptr a n [ a a -- bool ] --` ) is fully checked. `combinators.f` MAP/FOLD/EACH
+  are an unchecked boundary that predates this and could likely be checked too —
+  it is not a model to copy. The reusable rule is in `docs/forth.md`.
 
 ## Tool & Infra
 

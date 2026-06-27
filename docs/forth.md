@@ -196,6 +196,16 @@ file.
 - **Higher-order signatures publish themselves.** If a checked word with
   quotation effects (`DIP`, `KEEP`, row callbacks) passes `CHECK!`, let it render
   into public signatures; do not keep a `TRUST` row just to pin its scheme.
+- **Default new higher-order words to CHECKED — function-passing is a checked
+  capability.** The checker verifies a quotation parameter (`[ a a -- bool ]`,
+  `[ a -- a ]`, …) executed through a call chain AND inside a `?do`/`begin` loop:
+  bind the quotation as an ordinary local, thread it to helpers, and `execute` it.
+  A comparator heapsort, map, fold, and filter all check this way. Do NOT reach
+  for `0 set-check`/`TRUST` for function-passing by precedent — the older
+  `src/core/combinators.f` (MAP/FOLD/EACH) is an unchecked boundary that predates
+  this and is *not* a model to copy. Only drop to an unchecked boundary after a
+  minimal reproducer proves the checker rejects the specific higher-order shape,
+  and file a checker-capability gap (per the Checker-Miss RCA below).
 - **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
   unknown stack-comment tokens before checked source can use them. Add parser,
   renderer, and `CC-*` checker support, refresh the native binary, then use the
