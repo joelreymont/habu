@@ -138,6 +138,21 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
 
+\ ACC-ZERO: a fresh register accumulator = 0 (the gridctx is type-only here)
+: EMIT-ACC-ZERO ( n -- n ) {: ctxrd :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" mov.f32 " CG-S r CG-F s" , 0f00000000;" CG-S CG-LINE
+   r ;
+
+\ ACC-FMA: acc = a*b + acc  (one fused multiply-add K-step)
+: EMIT-ACC-FMA ( n n n -- n ) {: accf af bf :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" fma.rn.f32 " CG-S r CG-F s" , " CG-S af CG-F s" , " CG-S bf CG-F s" , " CG-S accf CG-F s" ;" CG-S CG-LINE
+   r ;
+
+\ ACC-TILE: finalize - the accumulator register IS the result tile (identity)
+: EMIT-ACC-TILE ( n -- n ) ;
+
 \ The per-op emitters above are what the CHECKED tile ops (lib/ptx/tile.f) call in
 \ their TRUSTED: bodies, so RUNNING a checked KERNEL: body in emit mode produces
 \ its PTX. The entry scaffolding (CG-HEADER..CG-PARAMS / CG-RET / CG-CLOSE) wraps

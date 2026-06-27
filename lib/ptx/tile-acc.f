@@ -20,18 +20,18 @@
 \                                         K-reduction), enforcing an acc-preserving body.
 \
 \ TRUSTED: because the emit lowers to PTX (mov.f32 0f0; fma.rn.f32; the loop unroll) the
-\ checker cannot infer; the declared effect is the contract (TRUSTED.md). Bodies throw
-\ E-PTX-NOIMPL until the GEMM/attention re-expression codegen lands - kernels are CHECKED
-\ here, not run. Load after lib/ptx/tile.f.
+\ checker cannot infer; the declared effect is the contract (TRUSTED.md). The bodies emit
+\ via the cg.f helpers, so a checked KERNEL: using these LOWERS to PTX (device-verified by
+\ tools/ptx/acc-device-test.f). Load after lib/ptx/cg.f and lib/ptx/tile.f.
 
 TRUSTED: ACC-ZERO ( gridctx<b,e,m> -- acc<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ACC-ZERO ;
 
 TRUSTED: ACC-FMA ( acc<t,b,m> tile<t,b,m> tile<t,b,m> -- acc<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ACC-FMA ;
 
 TRUSTED: ACC-TILE ( acc<t,b,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ACC-TILE ;
 
 TRUSTED: ACC-LOOP ( n acc<t,b,m> [ acc<t,b,m> -- acc<t,b,m> ] -- acc<t,b,m> )
    {: cnt acc body :}
