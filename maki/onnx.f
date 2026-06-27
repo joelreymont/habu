@@ -8,8 +8,10 @@
 
 -5001 constant E-MK-ONNX   \ unsupported ONNX op (fail-closed import)
 
-\ ONNX op name -> the maki/Habu-PTX entry it lowers onto.
-: ONNX-LOWER ( ptr u8 n -- ptr u8 n )
+\ ONNX op name -> the maki/Habu-PTX entry it lowers onto. Defined in the `MK` wordlist
+\ (maki namespace): callers use `MK:ONNX-LOWER`; a bare `ONNX-LOWER` does not resolve in
+\ the global namespace, so maki words cannot collide with or be reached from habu core.
+: MK:ONNX-LOWER ( ptr u8 n -- ptr u8 n )
    2dup s" Add"     STR= if 2drop s" ADD-F"        exit then
    2dup s" Mul"     STR= if 2drop s" MUL-F"        exit then
    2dup s" Relu"    STR= if 2drop s" RELU-F"       exit then

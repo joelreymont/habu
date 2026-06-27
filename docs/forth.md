@@ -37,8 +37,12 @@ file.
   machine-adjacent numbers. Decimal is acceptable for small counts and ordinary
   human quantities where base 10 is clearer.
 - **Use wordlist namespaces for global collisions.** Qualified names use one
-  colon: `HB:COUNT`, `PTX:COUNT`, `MAKI:COUNT`. The qualifier names a wordlist
-  namespace; the dictionary record stores the tail (`COUNT`) in that wordlist.
+  colon: `HB:COUNT`, `PTX:COUNT`, `MK:COUNT` (the maki namespace — short, per Forth
+  minimalism). The qualifier names a wordlist namespace; the dictionary record stores
+  the tail (`COUNT`) in that wordlist. Maki application words are defined `MK:WORD` so
+  they live in the `MK` wordlist, never the global/habu namespace (a bare reference
+  does not resolve — enforcing the one-way maki↔habu seam at the dictionary level,
+  complementing `tools/maki-dep-lint.f`).
   Match qualifier case to the word vocabulary: project-defined namespaces and
   words are uppercase (`HB:COUNT`); lowercase built-in namespaces keep lowercase
   qualifiers and lowercase names (`forth:count`). Do not mix cases across the

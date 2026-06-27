@@ -13,6 +13,13 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
   (token-scans `src/`, `lib/`, `test/` for any forbidden `maki/` path reference and
   throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
   `maki-dep-lint-fixtures`.
+- **Maki words live in the `MK:` wordlist namespace.** Maki application words are
+  defined `: MK:WORD ( … ) … ;` so they live in the `MK` wordlist, not the global/habu
+  namespace — a bare `WORD` reference from habu core does not resolve, enforcing the
+  one-way seam at the *dictionary* level (the runtime wordlist feature, `docs/forth.md`).
+  Adopted module-by-module: `maki/onnx.f` (`MK:ONNX-LOWER`) is the worked example;
+  rollout to the remaining maki modules is dotted (`habu-maki-mk-namespace`). Error
+  constants keep the cross-cutting `E-MK-*` form.
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
   the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
   application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.
