@@ -10,53 +10,55 @@
 \ `e`, column extent `k`, block `b`, mask `m` are polymorphic type vars threaded
 \ by unification (NB n/f/r are reserved tokens - use e/k/b/m/t).
 \
-\ These are PTX PRIMITIVES (TRUSTED: boundaries; bodies throw E-PTX-NOIMPL until
-\ codegen). Kernels are CHECKED here, not run; ptx-collective-test.f certifies a
-\ numerically-stable SOFTMAX-ROWS. Collective lowering (warp shfl + shared
-\ staging + bar.sync, identity-seeded inactive lanes) is M6 codegen, deferred.
+\ These are PTX PRIMITIVES (TRUSTED: boundaries). The forward ops now LOWER in
+\ emit mode: each body calls its EMIT-* helper (lib/ptx/cg-collective.f), so the
+\ checked SOFTMAX-ROWS body that ptx-collective-test.f certifies also emits PTX -
+\ shared-mem + bar.sync block reduction, identity-seeded inactive lanes (proven
+\ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f). BLOCK-MAX-SELECT
+\ (the BLOCK-MAX adjoint) still throws E-PTX-NOIMPL pending its AD-pass lowering.
 \
 \ BOUNDARY (named, tested; capability dotted). As in lib/ptx/tile.f, the checker
 \ proves token AGREEMENT but not token-identity DISTINCTNESS, so mixed-mask /
 \ independent-extent negatives are not yet rejected; fix = per-call fresh rigid
 \ token minting (dot habu-add-per-call). Block-uniform-reachability of a collective
 \ under divergent control flow is the separate M5 uniformity model, not yet here.
-\ Load after lib/errors.f and lib/ptx/header.f.
+\ Load after lib/errors.f, lib/ptx/cg.f, and lib/ptx/cg-collective.f (EMIT-*).
 
 TRUSTED: ROW ( -- rowidx<e> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ROW ;
 
 TRUSTED: ROW-SPAN ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ROW-SPAN ;
 
 TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ROW-CTX ;
 
 TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-ROW-LOAD ;
 
 TRUSTED: ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
-   E-PTX-NOIMPL throw ;
+   EMIT-ROW-STORE ;
 
 TRUSTED: BLOCK-MAX ( tile<f32,b,m> -- uniform<f32> )
-   E-PTX-NOIMPL throw ;
+   EMIT-BLOCK-MAX ;
 
 TRUSTED: BLOCK-SUM ( tile<f32,b,m> -- uniform<f32> )
-   E-PTX-NOIMPL throw ;
+   EMIT-BLOCK-SUM ;
 
 TRUSTED: B- ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-B- ;
 
 TRUSTED: B/ ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-B/ ;
 
 TRUSTED: EXP. ( tile<f32,b,m> -- tile<f32,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-EXP ;
 
 \ BROADCAST is the named form of the implicit broadcast in B-/B/, and the type-dual
 \ (mutual adjoint) of BLOCK-SUM: reverse-mode AD substitutes BROADCAST for the
 \ adjoint of a reduce. Needed by the autograd VJP table (docs/autograd.md).
 TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-BROADCAST ;
 
 \ BLOCK-MAX arg-max SELECT - the one genuinely new primitive the AD layer needs
 \ (docs/autograd.md): the adjoint of BLOCK-MAX. A masked scatter that routes the

@@ -8,13 +8,14 @@
 \ (span/ctx -> rd, tile/uniform -> f). Load after lib/errors.f, lib/string.f,
 \ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
 
-variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
+variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 
-: CG-RESET ( -- )  2 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP ! ;  \ after the param loads
+: CG-RESET ( -- )  2 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;  \ after param loads
 : CG-NEXT-F  ( -- n )  CG-NF  @ dup 1+ CG-NF  ! ;
 : CG-NEXT-RD ( -- n )  CG-NRD @ dup 1+ CG-NRD ! ;
 : CG-NEXT-R  ( -- n )  CG-NR  @ dup 1+ CG-NR  ! ;
 : CG-NEXT-P  ( -- n )  CG-NP  @ dup 1+ CG-NP  ! ;
+: CG-NEXT-L  ( -- n )  CG-NL  @ dup 1+ CG-NL  ! ;   \ fresh PTX label id
 
 \ append operands / literals to the shared string builder, then emit the line
 : CG-S  ( ptr u8 n -- )  SB-APPEND ;
@@ -22,6 +23,7 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP
 : CG-RD ( n -- )  s" %rd" SB-APPEND SB-U ;
 : CG-R  ( n -- )  s" %r"  SB-APPEND SB-U ;
 : CG-P  ( n -- )  s" %p"  SB-APPEND SB-U ;
+: CG-L  ( n -- )  s" $L"  SB-APPEND SB-U ;          \ label operand: $L<n>
 : CG-LINE ( -- )  SB$ PTX-L ;
 
 \ --- module / entry scaffolding ---

@@ -766,6 +766,22 @@ lesson — keep the specific word/code/path, cut the prose.
   the whole time; only readback failed. A per-call `rc` print localized it (all
   rc=0 except `dtoh=1`). Separately, the test's own golden was wrong: `2*4+40=48`,
   not 44 — the GPU was right, the assertion was the bug. Compute goldens, never eyeball.
+- **A retained CUDA primary context hangs at process exit, not in the kernel:**
+  the emitted SOFTMAX-ROWS "hung" — but stderr markers (fd 2, unbuffered syscall)
+  showed `cuCtxSynchronize` RETURNED; the stall was teardown with a live
+  `cuDevicePrimaryCtxRetain` + loaded module. Adding `cuModuleUnload` +
+  `cuDevicePrimaryCtxRelease` before `bye` exits clean. Buffered stdout (and any
+  `tr`/`tail` in the pipe) is lost on a hang — localize with fd-2 markers to a file.
+- **Block-reduction softmax emits cleanly; seed identity at LOAD, not per-op:**
+  one block per row, shared-mem + bar.sync + thread-0 sequential fold. EMIT-ROW-LOAD
+  seeds inactive lanes (col>=k) with -inf, so `max` ignores them and `exp(-inf-max)=0`
+  drops out of the sum — BLOCK-MAX/BLOCK-SUM need no per-collective masking. Runs
+  within 1 ULP of the CPU golden on the Orin (ex2.approx exp). `exit 70` after `bye`
+  is the established on-device-proof convention (SAXPY `cuda-launch.f` does the same).
+- **Stack-signature tokens must be TYPES, not role words:** `( got expected -- bool )`
+  silently binds `got`/`expected` as fresh type vars, so a downstream `n n` op
+  mismatches with a confusing `at '<='`. Use `( n n -- bool )`. Locals `{: got :}`
+  may use any name; the `( ... )` stack sig may not.
 - **lib/ subdirs are research sub-libraries, not flat stdlib:** the stdlib manifest
   grammar (`SMT-LIB-FILE?`) only admits flat `lib/<module>.f`, but the coverage
   walk recursed and demanded module rows for `lib/ptx/*.f` it could not express.
