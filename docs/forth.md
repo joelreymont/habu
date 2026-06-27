@@ -314,6 +314,12 @@ file.
   `step`, compiled-word breakpoints (`BP+`, `BP*`, `BPN`), `tools/jitdump.f`,
   and `tools/imgdump.f`. Extend those tools when they cannot expose the needed
   state; do not hide a missing debug surface behind ad hoc prints.
+- **Semantic xref is an in-image responsibility.** Dictionary ownership,
+  word-reference, and call/reference RCA should use Forth words in the live
+  image (`XREF`/`SEE`/`USES`/`USED-BY` or their current equivalents), with any
+  CLI as a thin wrapper. Use source search only to locate files or as a temporary
+  fallback after verifying the native word is missing; then add a dot for the
+  missing Forth capability.
 - **Boundary spawns must attribute failures.** Gate/test/tool boundaries that
   spawn `hb` or another child use outcome capture for expected timeouts and
   failures, not throw-only capture that collapses into a shell rc. The failure

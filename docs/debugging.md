@@ -75,6 +75,14 @@ bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- bin/hb
 bin/hb --load src/os/linux/layout.f src/habu/layout.f tools/imgdump.f -- old-hb new-hb
 ```
 
+## Dictionary / xref inspection
+Semantic dictionary and reference inspection should be Forth words in the live
+image, not external text search. As of 2026-06-27, `bin/hb` exposes low-level
+dictionary words such as `latest` and `body>`, but does not yet expose
+`XREF`/`SEE`-style public xref words. Track that as
+`habu-add-native-forth-03e0e21a`; until it lands, source search is only a
+temporary locator fallback, not the preferred semantic inspection path.
+
 ## External disassembly — last resort
 Use external disassemblers only when the native disassembler lacks an encoding.
 On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.

@@ -64,3 +64,13 @@ Set the checked gate pool default to 8 while preserving the 12-slot max for
 explicit overrides, and raised stdlib nested slices from 2 to 4. The documented
 default gate command passed in 1m29.40s. Remaining long poles: stdlib
 tool-boundary, prop/snapshot/debug, and check-cli under full load.
+
+Checkpoint 2026-06-27: `tools/warm-image-lib.f` was still spawning
+`tools/public-signatures.f --trust` once per support file even though
+`public-signatures` accepts a list of files. Batched trust export into one child
+per warm image and raised the named runtime capture cap to model the measured
+batched artifacts (77,191 bytes for tools warm, 69,126 for checker warm). Focused
+warm-image tests passed; stdlib warm fell to 9.96s and checker warm to 9.14s in
+isolation. The documented full native gate passed in 1m21.93s. Remaining long
+poles: AOT-positive/build/REPL builder phases and stdlib tool-boundary under full
+load.

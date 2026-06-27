@@ -5,7 +5,7 @@
 \ lib/source.f, and lib/codesign.f.
 
 262144 constant WI-SRC-CAP
-65536 constant WI-CAP
+262144 constant WI-CAP
 120000 constant WI-TIMEOUT-MS
 64 constant WI-USAGE-RC
 74 constant WI-RC
@@ -131,7 +131,7 @@ variable WI-SRC-LEN
    WI-OUT outu type
    WI-ERR erru type ;
 
-: WI-SIG-ARGV ( ptr u8 n -- ) {: a:ptr u :}
+: WI-SIG-ARGV-BASE ( -- )
    PROC-ARGV-RESET
    s" --load" WI-ARG+
    s" lib/errors.f" WI-ARG+
@@ -143,11 +143,21 @@ variable WI-SRC-LEN
    s" tools/lint/lib.f" WI-ARG+
    s" tools/public-signatures.f" WI-ARG+
    s" --" WI-ARG+
-   s" --trust" WI-ARG+
-   a u WI-ARG+ ;
+   s" --trust" WI-ARG+ ;
 
-: WI-APPEND-TRUST ( ptr u8 n -- ) {: a:ptr u :}
-   a u WI-SIG-ARGV
+: WI-SIG-ARGV-SUPPORTS ( -- )
+   1 WI-I !
+   begin WI-I @ SCRIPT-ARGC < while
+      WI-I @ SCRIPT-ARGV$ WI-ARG+
+      WI-I @ 1+ WI-I !
+   repeat ;
+
+: WI-SIG-ARGV ( -- )
+   WI-SIG-ARGV-BASE
+   WI-SIG-ARGV-SUPPORTS ;
+
+: WI-RUN-SIG-EXPORT ( -- )
+   WI-SIG-ARGV
    s" bin/hb" >LEN WI-OUT WI-CAP >LEN WI-ERR WI-CAP >LEN
    WI-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu erru rc :}
@@ -158,9 +168,16 @@ variable WI-SRC-LEN
    WI-TRUST-PATH WI-OUT outu LEN>N APPEND-FILE
    WI-TRUST-PATH WI-LF-BUF 1 APPEND-FILE ;
 
-: WI-APPEND-SUPPORT ( ptr u8 n -- ) {: a:ptr u :}
-   a u WI-APPEND-COMMENTED-SOURCE
-   a u WI-APPEND-TRUST ;
+: WI-APPEND-TRUSTS ( -- )
+   SCRIPT-ARGC 1 <= if exit then
+   WI-RUN-SIG-EXPORT ;
+
+: WI-APPEND-SUPPORT-SOURCES ( -- )
+   1 WI-I !
+   begin WI-I @ SCRIPT-ARGC < while
+      WI-I @ SCRIPT-ARGV$ WI-APPEND-COMMENTED-SOURCE
+      WI-I @ 1+ WI-I !
+   repeat ;
 
 : WI-TARGET-IMAGE ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" src/os/linux/elf.f" exit then
@@ -173,11 +190,8 @@ variable WI-SRC-LEN
    s" warm-image: unknown target" WI-RC die ;
 
 : WI-APPEND-ARGS ( -- )
-   1 WI-I !
-   begin WI-I @ SCRIPT-ARGC < while
-      WI-I @ SCRIPT-ARGV$ WI-APPEND-SUPPORT
-      WI-I @ 1+ WI-I !
-   repeat ;
+   WI-APPEND-SUPPORT-SOURCES
+   WI-APPEND-TRUSTS ;
 
 : WI-APPEND-TAIL ( -- )
    s" 0 set-check" WI-LINE

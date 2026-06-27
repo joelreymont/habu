@@ -605,3 +605,12 @@ lesson — keep the specific word/code/path, cut the prose.
   after measuring outer-pool contention on the 4-thread Orin. Keep a higher
   max for explicit overrides, but choose the default from documented full-gate
   timings, not from a single slice.
+- **Warm-image trust export is a batch artifact:** `public-signatures --trust`
+  already accepts many files, so warm-image baking should export all support
+  signatures in one child and size the runtime capture buffer for the measured
+  batched output. Per-file export children hide startup cost and make warm
+  phases look inherently slow.
+- **Semantic xref belongs in the image:** when investigating dictionary or call
+  ownership, prefer native Forth words over source search. If `XREF`/`SEE`-style
+  words are missing from `bin/hb`, track and build that capability instead of
+  normalizing text search as the semantic path.
