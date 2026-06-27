@@ -34,6 +34,17 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 : CG-SM-RET ( -- )    s" ret;" PTX-L ;
 : CG-SM-CLOSE ( -- )  s" }" PTX-L ;
 
+\ backward entry: x (input), dy (incoming cotangent), out (dx); x=%rd1 dy=%rd2
+\ out=%rd3 k=%r1.  Reuses CG-SM-OPEN/RET/CLOSE.
+: CG-BW-RESET ( -- )  1 CG-NF !  4 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
+: CG-BW-ENTRY ( -- )
+   s" .visible .entry SOFTMAX_BWD(.param .u64 p_x, .param .u64 p_dy, .param .u64 p_out, .param .u32 p_k)" PTX-L ;
+: CG-BW-PARAMS ( -- )
+   s" ld.param.u64 %rd1, [p_x];" PTX-L
+   s" ld.param.u64 %rd2, [p_dy];" PTX-L
+   s" ld.param.u64 %rd3, [p_out];" PTX-L
+   s" ld.param.u32 %r1, [p_k];" PTX-L ;
+
 : CG-LDEF ( n -- )  SB-RESET CG-L s" :" CG-S CG-LINE ;        \ emit "$L<n>:"
 
 \ --- per-op emitters (register numbers) ---
@@ -77,9 +88,23 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" @" CG-S p CG-P s"  ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
    t ;
 
+\ ROW-LOAD-Z: like ROW-LOAD but inactive lanes seed 0 (for cotangent/dy loads in
+\ the backward, where -inf would make -inf*0 = NaN poison the reductions).
+: EMIT-ROW-LOAD-Z ( n n -- n ) {: span ctx :}
+   CG-NEXT-RD {: a :}
+   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S span CG-RD s" , " CG-S ctx CG-RD s" ;" CG-S CG-LINE
+   CG-NEXT-R {: rt :}
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   CG-NEXT-P {: p :}
+   SB-RESET s" setp.lt.u32 " CG-S p CG-P s" , " CG-S rt CG-R s" , %r1;" CG-S CG-LINE
+   CG-NEXT-F {: t :}
+   SB-RESET s" mov.f32 " CG-S t CG-F s" , 0f00000000;" CG-S CG-LINE
+   SB-RESET s" @" CG-S p CG-P s"  ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
+   t ;
+
 \ Block reduction: smem[tid]=tile; bar; thread0 folds 0..SM-BLK-1; bar; bcast.
 \ opmax true -> max.f32, false -> add.f32.  Inactive lanes already hold identity.
-: EMIT-REDUCE ( n bool -- n ) {: tile opmax :}
+: EMIT-REDUCE ( n n -- n ) {: tile op :}        \ op: 0=max 1=add 2=min
    CG-NEXT-R {: rt :}  CG-NEXT-R {: roff :}  CG-NEXT-R {: rsm :}  CG-NEXT-R {: ra :}
    CG-NEXT-L {: lloop :}  CG-NEXT-L {: lend :}  CG-NEXT-L {: lskip :}
    SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
@@ -103,7 +128,7 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" mul.lo.s32 " CG-S ro2 CG-R s" , " CG-S ri CG-R s" , 4;" CG-S CG-LINE
    SB-RESET s" add.s32 " CG-S ra2 CG-R s" , " CG-S rsm CG-R s" , " CG-S ro2 CG-R s" ;" CG-S CG-LINE
    SB-RESET s" ld.shared.f32 " CG-S fe CG-F s" , [" CG-S ra2 CG-R s" ];" CG-S CG-LINE
-   SB-RESET opmax if s" max.f32 " else s" add.f32 " then CG-S
+   SB-RESET op 0 = if s" max.f32 " else op 1 = if s" add.f32 " else s" min.f32 " then then CG-S
       facc CG-F s" , " CG-S facc CG-F s" , " CG-S fe CG-F s" ;" CG-S CG-LINE
    SB-RESET s" add.s32 " CG-S ri CG-R s" , " CG-S ri CG-R s" , 1;" CG-S CG-LINE
    SB-RESET s" bra " CG-S lloop CG-L s" ;" CG-S CG-LINE
@@ -115,8 +140,27 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" ld.shared.f32 " CG-S u CG-F s" , [SMEM];" CG-S CG-LINE
    u ;
 
-: EMIT-BLOCK-MAX ( n -- n )  0 0=     EMIT-REDUCE ;   \ true  -> max
-: EMIT-BLOCK-SUM ( n -- n )  0 0= 0=  EMIT-REDUCE ;   \ false -> add
+: EMIT-BLOCK-MAX ( n -- n )  0 EMIT-REDUCE ;
+: EMIT-BLOCK-SUM ( n -- n )  1 EMIT-REDUCE ;
+: EMIT-BLOCK-MIN ( n -- n )  2 EMIT-REDUCE ;          \ used by BLOCK-MAX-SELECT
+
+\ BLOCK-MAX-SELECT (the BLOCK-MAX adjoint): route the cotangent ds to the LOWEST
+\ lane where x==mx and 0 elsewhere. candidate = (x==mx) ? float(tid) : +inf; the
+\ arg-max lane is block-min(candidate); dx = (tid==argmax) ? ds : 0.
+: EMIT-BLOCK-MAX-SELECT ( n n n -- n ) {: ds x mx :}
+   CG-NEXT-R {: rt :}  CG-NEXT-F {: ftid :}
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   SB-RESET s" cvt.rn.f32.u32 " CG-S ftid CG-F s" , " CG-S rt CG-R s" ;" CG-S CG-LINE
+   CG-NEXT-P {: peq :}  CG-NEXT-F {: fcand :}
+   SB-RESET s" setp.eq.f32 " CG-S peq CG-P s" , " CG-S x CG-F s" , " CG-S mx CG-F s" ;" CG-S CG-LINE
+   SB-RESET s" mov.f32 " CG-S fcand CG-F s" , 0f7F800000;" CG-S CG-LINE          \ +inf
+   SB-RESET s" selp.f32 " CG-S fcand CG-F s" , " CG-S ftid CG-F s" , " CG-S fcand CG-F s" , " CG-S peq CG-P s" ;" CG-S CG-LINE
+   fcand EMIT-BLOCK-MIN {: fargmax :}
+   CG-NEXT-P {: psel :}  CG-NEXT-F {: fdx :}
+   SB-RESET s" setp.eq.f32 " CG-S psel CG-P s" , " CG-S ftid CG-F s" , " CG-S fargmax CG-F s" ;" CG-S CG-LINE
+   SB-RESET s" mov.f32 " CG-S fdx CG-F s" , 0f00000000;" CG-S CG-LINE             \ 0
+   SB-RESET s" selp.f32 " CG-S fdx CG-F s" , " CG-S ds CG-F s" , " CG-S fdx CG-F s" , " CG-S psel CG-P s" ;" CG-S CG-LINE
+   fdx ;
 
 \ B- : tile - uniform (broadcast subtract)
 : EMIT-B- ( n n -- n ) {: tile unif :}
@@ -141,6 +185,12 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 : EMIT-BROADCAST ( n -- n ) {: unif :}
    CG-NEXT-F {: r :}
    SB-RESET s" mov.f32 " CG-S r CG-F s" , " CG-S unif CG-F s" ;" CG-S CG-LINE
+   r ;
+
+\ NEG : tile -> -tile (used by the B-/B/ adjoints in the AD pass)
+: EMIT-NEG ( n -- n ) {: tile :}
+   CG-NEXT-F {: r :}
+   SB-RESET s" neg.f32 " CG-S r CG-F s" , " CG-S tile CG-F s" ;" CG-S CG-LINE
    r ;
 
 \ ROW-STORE : masked store to rowbase+coloff (active lanes only)

@@ -66,4 +66,4 @@ TRUSTED: BROADCAST ( uniform<f32> -- tile<f32,b,m> )
 \ uniform cotangent), the saved tile x, and the saved max mx. Tie-break is the
 \ deterministic LOWEST global lane index, matched to the forward BLOCK-MAX.
 TRUSTED: BLOCK-MAX-SELECT ( uniform<f32> tile<f32,b,m> uniform<f32> -- tile<f32,b,m> )
-   E-PTX-NOIMPL throw ;
+   EMIT-BLOCK-MAX-SELECT ;
