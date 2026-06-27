@@ -4,6 +4,8 @@
 \ lib/process-env.f, lib/test-runner.f, and test/gate-pool.f.
 
 64 constant TR-USAGE-RC
+65 constant TR-BUDGET-RC
+$15F90 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
 18 constant TR-PHASES
@@ -21,6 +23,7 @@ variable TR-TOOLS-U
 variable TR-TOOLS-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
+variable TR-GATE-START-NS
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -49,6 +52,44 @@ variable TR-PATH-U
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
    then
    TR-USAGE ;
+
+: TR-GATE-START! ( -- )
+   mono-ns TR-GATE-START-NS ! ;
+
+: TR-GATE-ELAPSED-MS ( -- n )
+   mono-ns TR-GATE-START-NS @ - PROC-NS-PER-MS / ;
+
+: TR-BUDGET-CHECK ( n -- n ) {: budget:n :}
+   budget 1 < if E-TBL-FIELD throw then
+   budget ;
+
+: TR-BUDGET-MS ( -- n )
+   s" HABU_GATE_BUDGET_MS" GETENV dup 0= if
+      2drop TR-DEFAULT-BUDGET-MS exit
+   then
+   STR>NUMBER? 0= if drop E-TBL-FIELD throw then
+   TR-BUDGET-CHECK ;
+
+: TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
+   s" FAIL: native gate budget (" type
+   elapsed GT-U-TYPE
+   s" ms > " type
+   budget GT-U-TYPE
+   s" ms)" type cr
+   s" native gate budget exceeded" TR-BUDGET-RC die ;
+
+: TR-PASS ( n n -- ) {: elapsed:n budget:n :}
+   s" PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build) (" type
+   elapsed GT-U-TYPE
+   s" ms <= " type
+   budget GT-U-TYPE
+   s" ms budget)" type cr ;
+
+: TR-FINISH ( -- )
+   TR-GATE-ELAPSED-MS {: elapsed:n :}
+   TR-BUDGET-MS {: budget:n :}
+   elapsed budget > if elapsed budget TR-BUDGET-FAIL then
+   elapsed budget TR-PASS ;
 
 : TR-BUILD-CACHE-ENV ( -- )
    GT-ROOT s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
@@ -440,12 +481,13 @@ variable TR-PATH-U
    TR-WORK-DRAIN ;
 
 : TR-MAIN ( -- )
+   TR-GATE-START!
    TR-CHECK-ARGS
    TR-START
    TR-CLEAN-WARM
    TR-EXPECT-HB
    TR-DAG-RUN
    GT-CLEANUP
-   s" PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build)" type cr ;
+   TR-FINISH ;
 
 TR-MAIN
