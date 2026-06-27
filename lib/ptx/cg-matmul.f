@@ -36,16 +36,18 @@
 \   - bigger micro-tiles (8x8) + bigger block tiles (128x128);
 \   - the last stretch to Triton may need its MMA/dot path (tensor-core-adjacent).
 \
-\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. Two of the three missing
-\ typed capabilities now exist as checked tile-DSL vocabulary: the CHECKED COUNTED LOOP
-\ (lib/ptx/tile-loop.f TILE-LOOP, capability (a)) and the SHARED-MEMORY tile type
-\ (lib/ptx/tile-smem.f STAGE/SLOAD/SSTORE, capability (b) - space-shared distinct from
-\ space-global). Still missing: a REGISTER ACCUMULATOR type (c), and the codegen that
-\ lowers a checked KERNEL: MM body to this same PTX (the STAGE/SLOAD bodies throw
-\ E-PTX-NOIMPL today). So MM is still emitted as raw PTX. It is a named, tested boundary
-\ (device-golden correct vs CPU A*B) per CLAUDE.md; the remaining work is dotted
-\ (habu-tiled-gemm-codegen + habu-checker-capability-typed sub-dots c/re-express). When
-\ those land, MM becomes a checked KERNEL: body like SAXPY/softmax. Load after
+\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. All THREE missing typed
+\ capabilities now exist as checked tile-DSL vocabulary: the CHECKED COUNTED LOOP
+\ (lib/ptx/tile-loop.f TILE-LOOP, (a)), the SHARED-MEMORY tile type (lib/ptx/tile-smem.f
+\ STAGE/SLOAD/SSTORE, (b) - space-shared distinct from space-global), and the REGISTER
+\ ACCUMULATOR type (lib/ptx/tile-acc.f ACC-ZERO/ACC-FMA/ACC-TILE/ACC-LOOP, (c) - acc<>
+\ distinct from tile<>, an unfinalized accumulator cannot be stored). What remains is the
+\ RE-EXPRESSION + CODEGEN: lower a checked KERNEL: MM body composed from these words to
+\ this same PTX (the tile bodies throw E-PTX-NOIMPL today; the loop body cannot yet
+\ capture the spans/index it needs - dot habu-quotation-capture). So MM is still emitted
+\ as raw PTX. It is a named, tested boundary (device-golden correct vs CPU A*B) per
+\ CLAUDE.md; the remaining work is dotted (habu-tiled-gemm-codegen + habu-re-express-tiled).
+\ When those land, MM becomes a checked KERNEL: body like SAXPY/softmax. Load after
 \ src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
 \ ==============================================================================
 

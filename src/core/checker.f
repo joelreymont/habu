@@ -564,6 +564,7 @@ variable LOCALBAD
    a u s" gridctx" STR= IF -1 EXIT THEN
    a u s" rowctx" STR= IF -1 EXIT THEN
    a u s" tile" STR= IF -1 EXIT THEN
+   a u s" acc" STR= IF -1 EXIT THEN
    a u s" uniform" STR= IF -1 EXIT THEN
    a u s" rowidx" STR= ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
