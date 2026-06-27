@@ -69,10 +69,19 @@ the device, each verified correct-vs-CPU on the Orin:
   (`tools/ptx/softmax-bwd-cg.f` → `tools/ptx/softmax-gradcheck.f`).
 - **GB/s:** the SAXPY kernel sustains ~42.9 GB/s on the Orin (`tools/ptx/bandwidth.f`).
 
-Still owed (no "better target" thesis claim until it lands): the full comparative
-eval matrix — `maki/eval.f` scores candidate kernels by checker certification
-(pass@k), and that runs over a fixture now; the live-LLM generation + Triton
-comparison (tokens-to-green / repair rounds vs Triton) is the remaining arm.
+- **Device-golden autograder** — `maki/eval-device.f` grades a candidate by
+  `certify AND run-correct`: `GRADE-CANDIDATE` certifies, spawns `bin/hb` to emit
+  the candidate's PTX, ptxas-assembles, runs on the Orin, and compares the task
+  golden. A SAXPY that computes `x+y` (forgetting the scale) *certifies* yet is
+  graded TYPED-WRONG by the device gate, while the correct one is GREEN — so
+  device-gated pass@k (1/3) is stricter than certification pass@k (2/3).
+
+Still owed (no "better target" thesis claim until it lands): the **comparative**
+arm — a live model generating candidates (sampled pass@k) and the same tasks in
+**Triton** for the cross-target `tokens-to-green` / repair-rounds comparison
+(needs a model endpoint + the Triton toolchain; dots `habu-eval-matrix-live`,
+`habu-eval-matrix-triton`). The Habu-PTX-side metric machinery — checker-as-judge
+pass@k, device-golden grading, repair-rounds, tokens-to-green, GB/s — is built.
 
 ## Status
 
