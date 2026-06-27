@@ -54,7 +54,7 @@ and tested now. No "better target" claim until the full eval matrix runs.
 
 ## Underneath (Habu-PTX, in `lib/`)
 
-The checked kernel vocabulary maki builds on: M4 tile ops (`lib/ptx-tile.f`,
-checked SAXPY), M6 collectives + softmax (`lib/ptx-collective.f`, checked
+The checked kernel vocabulary maki builds on: M4 tile ops (`lib/ptx/tile.f`,
+checked SAXPY), M6 collectives + softmax (`lib/ptx/collective.f`, checked
 SOFTMAX-ROWS), and the AD primitives + verified-gradient kernel
-(`lib/ptx-autograd-test.f`, checked SOFTMAX-ROWS-BWD).
+(`lib/ptx/autograd-test.f`, checked SOFTMAX-ROWS-BWD).

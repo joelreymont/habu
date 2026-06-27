@@ -3,7 +3,7 @@
 \ The KERNEL: definition IS the positive proof: it certifies against its declared
 \ parametric effect (a reject would emit a checker diagnostic and fail the load).
 \ The element type f32, extent token extent-n, and block-256 instantiate the
-\ polymorphic operation signatures in lib/ptx-tile.f; the mask token threads from
+\ polymorphic operation signatures in lib/ptx/tile.f; the mask token threads from
 \ GRID-CTX through LOAD / SCALE / +. to STORE by unification.
 
 T-RESET

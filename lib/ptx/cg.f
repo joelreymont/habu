@@ -98,7 +98,7 @@ TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
 
-\ The per-op emitters above are what the CHECKED tile ops (lib/ptx-tile.f) call in
+\ The per-op emitters above are what the CHECKED tile ops (lib/ptx/tile.f) call in
 \ their TRUSTED: bodies, so RUNNING a checked KERNEL: body in emit mode produces
 \ its PTX. The entry scaffolding (CG-HEADER..CG-PARAMS / CG-RET / CG-CLOSE) wraps
 \ that body; see tools/ptx/saxpy-cg.f for the SAXPY driver. Param registers set by

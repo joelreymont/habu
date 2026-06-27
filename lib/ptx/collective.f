@@ -2,7 +2,7 @@
 \
 \ The row-local and block-collective operations the softmax/reduction kernels
 \ compose, on top of the M2 parametric types and the M4 tile surface
-\ (lib/ptx-tile.f). Row addressing (ROW / ROW-SPAN / ROW-CTX / ROW-LOAD /
+\ (lib/ptx/tile.f). Row addressing (ROW / ROW-SPAN / ROW-CTX / ROW-LOAD /
 \ ROW-STORE) is the one-block-per-row context, kept DISTINCT from the grid words
 \ (no overload, per ptx-sketch.md Resolved-M1/M2 #4). Collectives (BLOCK-MAX /
 \ BLOCK-SUM) consume a tile and produce a block-uniform scalar; B- / B/ broadcast
@@ -15,12 +15,12 @@
 \ numerically-stable SOFTMAX-ROWS. Collective lowering (warp shfl + shared
 \ staging + bar.sync, identity-seeded inactive lanes) is M6 codegen, deferred.
 \
-\ BOUNDARY (named, tested; capability dotted). As in lib/ptx-tile.f, the checker
+\ BOUNDARY (named, tested; capability dotted). As in lib/ptx/tile.f, the checker
 \ proves token AGREEMENT but not token-identity DISTINCTNESS, so mixed-mask /
 \ independent-extent negatives are not yet rejected; fix = per-call fresh rigid
 \ token minting (dot habu-add-per-call). Block-uniform-reachability of a collective
 \ under divergent control flow is the separate M5 uniformity model, not yet here.
-\ Load after lib/errors.f and lib/ptx.f.
+\ Load after lib/errors.f and lib/ptx/header.f.
 
 TRUSTED: ROW ( -- rowidx<e> )
    E-PTX-NOIMPL throw ;

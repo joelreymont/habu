@@ -15,11 +15,11 @@ another agent **in this workspace** (`~/Work/habu-maki`, branch `maki`).
 
 Built + tested this session (the older sections below predate it):
 
-- **Habu-PTX checked kernels:** M4 tile vocab (`lib/ptx-tile.f`) + checked SAXPY;
-  M6 collectives/rows (`lib/ptx-collective.f`) + checked SOFTMAX-ROWS; both AD
+- **Habu-PTX checked kernels:** M4 tile vocab (`lib/ptx/tile.f`) + checked SAXPY;
+  M6 collectives/rows (`lib/ptx/collective.f`) + checked SOFTMAX-ROWS; both AD
   primitives **BROADCAST** and **BLOCK-MAX-SELECT**; verified-gradient
   SOFTMAX-ROWS-BWD. Gate-wired (`ptx-stdlib`), trust-lint green.
-- **Reverse-mode AD transform** (`lib/ptx-ad.f`): VJP table + reverse pass that
+- **Reverse-mode AD transform** (`lib/ptx/ad.f`): VJP table + reverse pass that
   auto-derives backwards for **linear + unary-nonlinear (EXP./BLOCK-MAX) +
   binary-nonlinear (\*./B-)** ops; algebraic-simplify peephole; save-vs-recompute
   (VJP-SAVES + cost decision). (`B/`'s adjoint needs a uniform÷uniform op — dotted.)
@@ -67,7 +67,7 @@ The load-bearing corrections, all verified against code:
   parametric-type machinery is implemented in `src/core/checker.f` and works in the
   installed `bin/hb`: `SIG-TYPE`/`MK-PARAM` parse `span<space-global,f32,extent-n>`;
   the unifier does field-by-field param unify; `render.f` round-trips; `KERNEL:`/
-  `GRID:`/`WHERE`/`%BLOCK` check (lib/ptx-test.f runs clean). Empirically a matching
+  `GRID:`/`WHERE`/`%BLOCK` check (lib/ptx/header-test.f runs clean). Empirically a matching
   parametric sig certifies (exit 0); `space-global`→`space-shared` and `extent-r`→
   `extent-c` mismatches reject with field-precise diagnostics (exit 70). The "no
   dot" was because M2 was *done*, not unbuilt. **The real checker-track frontier is
@@ -103,7 +103,7 @@ Three layers, not two:
 
 1. **Habu core** — checked Forth, JIT/AOT, the trust root (`TRUSTED.md`, the
    byte-for-byte fixpoint, the native gate), the arm64 targets. General-purpose.
-2. **PTX kernel backend** — `src/arch/ptx/`, `lib/ptx.f`, the `tile<T,B,M>` type
+2. **PTX kernel backend** — `src/arch/ptx/`, `lib/ptx/header.f`, the `tile<T,B,M>` type
    system, milestones M1–M11, the **M2 parametric-type checker extension**, a
    general PTX **IR + opt layer** (new — see workstream C / ptx.md §3),
    *inference*, the AD *reverse-pass transform*. A **codegen target of the Habu
@@ -258,7 +258,7 @@ in exactly two repo-wide tree-walkers + one missing lint; these are owed work:
   listed-but-missing / required-but-absent) — adding `maki/` does not trip it.
   Over-worry retracted; no action.
 - Document the maki `bin/hb --load` prelude (the habu lib order from
-  `docs/bootstrap.md` + `lib/ptx.f` + the PTX layer, then maki files) in the maki
+  `docs/bootstrap.md` + `lib/ptx/header.f` + the PTX layer, then maki files) in the maki
   scaffold; it does not exist yet.
 
 ## Sequencing (critical path — two tracks)

@@ -28,7 +28,7 @@ the maki components and their tests (each test runs on load, printing `test: ok`
 
 ```
 bin/hb --load lib/errors.f lib/string.f lib/test.f \
-  lib/ptx.f lib/ptx-tile.f lib/ptx-collective.f \
+  lib/ptx/header.f lib/ptx/tile.f lib/ptx/collective.f \
   maki/tensor.f      maki/tensor-test.f \
   maki/optim.f       maki/optim-test.f \
   maki/loss.f        maki/loss-test.f \

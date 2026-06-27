@@ -174,7 +174,7 @@ backend":
    side-table encoded `T-PARAM` terms such as
    `span<space-global,f32,extent-n>`, field-by-field unify, render/record
    round-trip, and a self-host fixpoint rebuild. The M2 defining vocabulary is
-   `KERNEL:` plus `lib/ptx.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
+   `KERNEL:` plus `lib/ptx/header.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
 
 The linux-aarch64 `bin/hb` itself already exists (it lives on the Orin, `zed`);
 the macOS checkout simply doesn't contain it. The Orin must also have a CUDA

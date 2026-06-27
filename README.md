@@ -88,7 +88,7 @@ the forward. No "better target" claim is made until the eval matrix produces dat
   types; checked `KERNEL:` definitions (SAXPY, numerically-stable SOFTMAX-ROWS) that
   emit PTX, assemble with `ptxas -arch=sm_87`, and **run correct-vs-golden on the
   NVIDIA Orin GPU** via a Habu FFI to the CUDA Driver API.
-- **Reverse-mode autograd** (`lib/ptx-ad.f`) — AD as a syntactic reversal of the
+- **Reverse-mode autograd** (`lib/ptx/ad.f`) — AD as a syntactic reversal of the
   concatenative IR (no runtime tape); a VJP table + reverse pass that auto-derives
   backwards, with algebraic-simplify and save-vs-recompute. Verified gradients:
   `SOFTMAX-ROWS-BWD` is checked, and maki's tensor-op VJPs pass a numeric gradcheck.

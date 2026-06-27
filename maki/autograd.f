@@ -2,7 +2,7 @@
 \
 \ This is the maki autograd layer: tensor ops paired with their vector-Jacobian
 \ products (the backward rules). Distinct from the Habu PRIMITIVE VJP pass
-\ (lib/ptx-ad.f): these are TENSOR ops that lower onto the checked PTX primitives;
+\ (lib/ptx/ad.f): these are TENSOR ops that lower onto the checked PTX primitives;
 \ here they are the element-level rules, runnable in Habu floats so the VJP can be
 \ NUMERICALLY verified (finite differences) - the gradcheck the type system cannot
 \ give. The tensor-level apply over whole tensors lowers onto PTX kernels, later.

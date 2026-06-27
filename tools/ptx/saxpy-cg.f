@@ -1,10 +1,10 @@
 \ saxpy-cg.f - emit the CHECKED SAXPY kernel to PTX via the codegen.
 \
 \ The KERNEL: SAXPY body both TYPE-CHECKS (against its declared parametric effect)
-\ AND, run in emit mode, lowers to PTX: each tile op (lib/ptx-tile.f) calls its
-\ EMIT-* helper (lib/ptx-cg.f). So this is the same checked kernel that the
-\ ptx-stdlib gate certifies - now it produces its own PTX. Load after lib/ptx-cg.f
-\ and lib/ptx-tile.f; emits to stdout.
+\ AND, run in emit mode, lowers to PTX: each tile op (lib/ptx/tile.f) calls its
+\ EMIT-* helper (lib/ptx/cg.f). So this is the same checked kernel that the
+\ ptx-stdlib gate certifies - now it produces its own PTX. Load after lib/ptx/cg.f
+\ and lib/ptx/tile.f; emits to stdout.
 
 256 %BLOCK
 KERNEL: SAXPY ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-256

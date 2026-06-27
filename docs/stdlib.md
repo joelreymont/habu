@@ -34,7 +34,7 @@ Planned module files:
 - `lib/build.f`
 - `lib/time.f`
 - `lib/date.f`
-- `lib/ptx.f`
+- `lib/ptx/header.f`
 
 Each module gets a focused test file named in the manifest and documentation in
 this file. Source files stay one concern per file, and new public/library words
@@ -74,9 +74,9 @@ and `ptr u8 n` for keys.
 
 ## PTX
 
-`lib/ptx.f` provides the checked PTX kernel header vocabulary used by
+`lib/ptx/header.f` provides the checked PTX kernel header vocabulary used by
 `docs/ptx-sketch.md`. `KERNEL:` is a compiler keyword alias for `:`; load
-`lib/errors.f lib/ptx.f` before kernel sources. `%BLOCK` validates legal CUDA
+`lib/errors.f lib/ptx/header.f` before kernel sources. `%BLOCK` validates legal CUDA
 block sizes (multiple of 32 and `1 <= n <= 1024`). `GRID:` and `WHERE` are
 compile-time header markers consumed before the checked kernel body.
 

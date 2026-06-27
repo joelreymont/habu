@@ -106,10 +106,10 @@ inactive lane (poison), so "load returns 0" is gone — masks, not magic zeros.
 Equal length is *proven*: both spans share extent `N` (built by `MK-SPAN=`). No
 collective ⇒ masked lanes may simply not store (a branch is legal here).
 
-Load `lib/errors.f lib/ptx.f` before kernel source. `KERNEL:` is a compiler
+Load `lib/errors.f lib/ptx/header.f` before kernel source. `KERNEL:` is a compiler
 keyword alias for `:` so the normal checker verifies the body against the
 declared effect; `GRID:` and `WHERE` are compile-time header markers consumed by
-`lib/ptx.f`.
+`lib/ptx/header.f`.
 
 ```forth
 %BLOCK 256
@@ -269,7 +269,7 @@ equal correctness, or there is no claim.
    space/extent/mask/block/alignment, `T-PARAM` side tables for terms such as
    `span<space-global,f32,extent-n>`, field-by-field unify, render/record
    round-trip, and a self-host fixpoint rebuild. The M2 defining vocabulary is
-   `KERNEL:` plus `lib/ptx.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
+   `KERNEL:` plus `lib/ptx/header.f`'s `%BLOCK`, `GRID:`, and `WHERE`.
 3. **Toolchain spike (no checker):** `src/arch/ptx/emit.f` is the minimal PTX
    encoder for hand-built IR and `tools/ptx/saxpy.f` emits a header-complete
    sm_87 `SAXPY` kernel. Current proof: local and Orin `bin/hb` both emit PTX;
