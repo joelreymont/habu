@@ -108,3 +108,8 @@
 -3499 constant E-PTX-LAST
 -3400 constant E-PTX-SYNTAX
 -3401 constant E-PTX-BLOCK
+
+\ FFI: -3500..-3599
+-3500 constant E-FFI-FIRST
+-3599 constant E-FFI-LAST
+-3500 constant E-FFI-ARITY

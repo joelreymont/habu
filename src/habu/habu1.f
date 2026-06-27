@@ -987,6 +987,41 @@ s" spawn-darwin-finish" s" label label --" TRUST
    16 BLR,
    0 G-PUSH ;
 
+\ ---- FFI: general AAPCS64 trampoline, any integer/pointer arity ----
+\ ( argbuf nargs fn -- ret ) : x0-x7 from argbuf[0..7]; args 9..nargs spilled to
+\ the stack (16-byte aligned per the ABI) by an exact runtime loop -- no arity
+\ cap, no garbage slots. argbuf must hold max(8,nargs) cells. The BLR clobbers
+\ caller-saved regs, so x20 (callee-saved) carries the frame sp across the call
+\ to restore it afterward; the caller's x20 parks in the FPRIM frame's free
+\ [sp,#8] slot. Shifted-register SUB treats r31 as XZR not SP, so sp is lowered
+\ via a temp. Integer/pointer args only.
+: BFFI-CALL-N
+   16 G-POP                                            \ x16 = fn
+   14 G-POP                                            \ x14 = nargs
+   15 G-POP                                            \ x15 = argbuf
+   20 SP $8 STR,                                       \ park caller x20 in frame slot
+   20 SP 0 ADDI,                                       \ x20 = frame sp
+   LBL {: lskip :}  LBL {: lloop :}  LBL {: ldone :}
+   14 8 CMPI,  C-LE lskip BCOND,                       \ nargs <= 8 -> no spill
+      10 14 8 SUBI,                                    \ x10 = extra = nargs - 8
+      11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,  \ salloc = (extra*8+$F)&~$F
+      12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,      \ sp -= salloc
+      12 15 $40 ADDI,                                  \ x12 = src = argbuf + 8 cells
+      13 SP 0 ADDI,                                    \ x13 = dst = sp
+      lloop LBL,
+      10 ldone CBZ,                                    \ extra == 0 -> done
+         9 12 0 LDR,  9 13 0 STR,                      \ [dst] = [src]
+         12 12 $8 ADDI,  13 13 $8 ADDI,               \ src++, dst++
+         10 10 1 SUBI,  lloop B,                       \ extra--, loop
+      ldone LBL,
+   lskip LBL,
+   0 15 0   LDR,   1 15 $8  LDR,   2 15 $10 LDR,   3 15 $18 LDR,
+   4 15 $20 LDR,   5 15 $28 LDR,   6 15 $30 LDR,   7 15 $38 LDR,
+   16 BLR,
+   SP 20 0 ADDI,                                       \ restore sp from x20
+   20 SP $8 LDR,                                       \ restore caller x20
+   0 G-PUSH ;
+
 : BOPENRD A G-POP  A OS-OPEN-RD  SYS-PUSH ;
 
 : BACCESS
@@ -1248,6 +1283,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM-L   s" ioctl" ['] BIOCTL FPRIM-L
    s" mmap" ['] BMMAP FPRIM-L
    s" ffi-call" ['] BFFI-CALL FPRIM
+   s" ffi-call-n" ['] BFFI-CALL-N FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L
    s" access" ['] BACCESS FPRIM-L
    s" unlink" ['] BUNLINK FPRIM-L   s" rename" ['] BRENAME FPRIM-L   s" chmod" ['] BCHMOD FPRIM-L
