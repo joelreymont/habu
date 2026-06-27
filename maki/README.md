@@ -89,6 +89,20 @@ the device, each verified correct-vs-CPU on the Orin:
   (2/3). `maki/eval-device-sm.f` adds the **softmax** task: the type-identical
   `B-`/`B/` confusion (subtract vs divide) certifies but is caught as TYPED-WRONG,
   proving the gate works for block-reduction kernels, not just SAXPY.
+- **Unified authoring grader** — `maki/eval-author.f` `GRADE-AUTHOR ( a u task -- verdict )`
+  dispatches a candidate to its task's device-golden grader (`TASK-SAXPY` → `GRADE-CANDIDATE`,
+  `TASK-SOFTMAX` → `GRADE-SM`), failing closed on an unknown task. This replaces the
+  throwaway `/tmp` grade scripts so the model-driven authoring matrix is reproducible from
+  the committed tree. Orin-only device suite (run alongside `eval-device-test.f` /
+  `eval-device-sm-test.f` / `eval-author-test.f`):
+
+  ```
+  bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
+    lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/ffi.f \
+    src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-collective.f lib/ptx/header.f lib/ptx/tile.f \
+    lib/ptx/collective.f maki/eval.f maki/eval-device.f maki/eval-device-sm.f \
+    maki/eval-author.f maki/eval-author-test.f
+  ```
 
 - **Eval matrix vs real Triton (validated on the Orin)** — Triton 3.5.1 +
   torch 2.9.1+cu126 run on this Orin (sm_87), no reflash; full reproduction and the
