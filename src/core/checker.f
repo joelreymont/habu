@@ -833,216 +833,9 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
 
-\ --- prim table: name/sig pairs [nlen][name][slen][sig]...[0], scanned by FIND-SIG.
-\ A data table (not a 26-branch word) because the standalone INLINES colon-word
-\ bodies, so a dispatch word with many PARSE-SIG calls overflows. DO-TOK stays small.
-\ prim sig table: records [nlen][name][slen][sig], 0-terminated — built from
-\ readable strings (PT+ keeps the terminator as it appends).
-3072 constant PTAB-CAP
-create PTAB PTAB-CAP allot  variable PTP
-create SDQN 2 allot   115 SDQN c!   34 SDQN 1 + c!    \ the two chars of `s"`
-create CDQN 2 allot    99 CDQN c!   34 CDQN 1 + c!    \ the two chars of `c"`
-create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
-
-: PT2+ {: a u :}
-   PTP @ u + 2 +  PTAB PTAB-CAP 2 - +  > IF s" checker: prim table full" 76 die THEN
-   u PTP @ c!
-   0 BEGIN dup u < WHILE  dup a + c@  over PTP @ + 1 + c!  1 + REPEAT drop
-   PTP @ 1 + u + PTP !  0 PTP @ c! ;
-
-: PT+ {: na nu sa su :}  na nu PT2+  sa su PT2+ ;
-
-: PT-STACK-PRIMS ( -- )
-   s" dup" s" a -- a a" PT+
-   s" drop" s" a --" PT+
-   s" swap" s" a b -- b a" PT+
-   s" over" s" a b -- a b a" PT+
-   s" nip" s" a b -- b" PT+
-   s" tuck" s" a b -- b a b" PT+
-   s" rot" s" a b c -- b c a" PT+
-   s" -rot" s" a b c -- c a b" PT+
-   s" 2dup" s" a b -- a b a b" PT+
-   s" 2drop" s" a b --" PT+
-   s" 2swap" s" a b c d -- c d a b" PT+
-   s" 2over" s" a b c d -- a b c d a b" PT+ ;
-
-: PT-NUMERIC-PRIMS ( -- )
-   s" +" s" n n -- n" PT+
-   s" +" s" ptr a n -- ptr a" PT+
-   s" +" s" n ptr a -- ptr a" PT+
-   s" -" s" n n -- n" PT+
-   s" -" s" ptr a n -- ptr a" PT+
-   s" -" s" ptr a ptr a -- n" PT+
-   s" *" s" n n -- n" PT+
-   s" and" s" n n -- n" PT+
-   s" and" s" f f -- f" PT+
-   s" or" s" n n -- n" PT+
-   s" or" s" f f -- f" PT+
-   s" xor" s" n n -- n" PT+
-   s" xor" s" f f -- f" PT+
-   s" 1+" s" n -- n" PT+
-   s" 1+" s" ptr a -- ptr a" PT+
-   s" 1-" s" n -- n" PT+
-   s" 1-" s" ptr a -- ptr a" PT+
-   s" negate" s" n -- n" PT+
-   s" invert" s" n -- n" PT+
-   s" 0=" s" a -- f" PT+
-   s" 0<" s" n -- f" PT+
-   s" =" s" n n -- f" PT+
-   s" =" s" ptr a ptr a -- f" PT+
-   s" <" s" n n -- f" PT+
-   s" <" s" ptr a ptr a -- f" PT+
-   s" >" s" n n -- f" PT+
-   s" >" s" ptr a ptr a -- f" PT+
-   s" <>" s" n n -- f" PT+
-   s" <>" s" ptr a ptr a -- f" PT+
-   s" <=" s" n n -- f" PT+
-   s" <=" s" ptr a ptr a -- f" PT+
-   s" >=" s" n n -- f" PT+
-   s" >=" s" ptr a ptr a -- f" PT+
-   s" /" s" n n -- n" PT+
-   s" mod" s" n n -- n" PT+
-   s" /mod" s" n n -- n n" PT+
-   s" abs" s" n -- n" PT+
-   s" min" s" n n -- n" PT+
-   s" max" s" n n -- n" PT+
-   s" lshift" s" n n -- n" PT+
-   s" rshift" s" n n -- n" PT+
-   s" cells" s" n -- n" PT+
-   s" cell+" s" ptr a -- ptr a" PT+
-   s" cell+" s" n -- n" PT+
-   s" chars" s" n -- n" PT+
-   s" char+" s" ptr a -- ptr a" PT+
-   s" char+" s" n -- n" PT+ ;
-
-: PT-MEMORY-PRIMS ( -- )
-   s" @" s" ptr a -- a" PT+
-   s" !" s" a ptr a --" PT+
-   s" ptr-field" s" ptr a n -- ptr ptr b" PT+
-   s" +!" s" n ptr n --" PT+
-   s" c@" s" ptr u8 -- u8" PT+
-   s" c!" s" u8 ptr u8 --" PT+
-   s" atomic@" s" ptr a -- a" PT+
-   s" atomic!" s" a ptr a --" PT+
-   s" atomic-add" s" n ptr n -- n" PT+
-   s" atomic-cas" s" a a ptr a -- a" PT+
-   s" fence" s" --" PT+
-   s" run-in-stack" s" n ptr u8 n --" PT+
-   s" count" s" ptr u8 -- ptr u8 n" PT+ ;
-
-: PT-OUTPUT-PRIMS ( -- )
-   s" ." s" n --" PT+
-   s" .s" s" --" PT+
-   s" depth" s" -- n" PT+
-   s" here" s" -- ptr a" PT+
-   s" allot" s" n --" PT+
-   s" ," s" n --" PT+
-   s" c," s" n --" PT+
-   s" type" s" ptr u8 n --" PT+
-   s" script-argc" s" -- n" PT+
-   s" script-argv$" s" n -- ptr u8 n" PT+
-   s" throw" s" n --" PT+
-   s" die" s" ptr u8 n n --" PT+ ;
-
-: PT-FS-PRIMS ( -- )
-   s" open" s" ptr u8 n n -- n" PT+
-   s" read" s" n ptr u8 n -- n" PT+
-   s" ioctl" s" n n ptr a -- n" PT+
-   s" mmap" s" n n n n n n -- n" PT+
-   s" path0" s" ptr u8 n -- ptr u8" PT+
-   s" open-rd" s" ptr u8 -- n" PT+
-   s" access" s" ptr u8 n -- n" PT+
-   s" unlink" s" ptr u8 -- n" PT+
-   s" rename" s" ptr u8 ptr u8 -- n" PT+
-   s" chmod" s" ptr u8 n -- n" PT+
-   s" symlink" s" ptr u8 ptr u8 -- n" PT+
-   s" readlink" s" ptr u8 ptr u8 n -- n" PT+
-   s" mkdir" s" ptr u8 n -- n" PT+
-   s" rmdir" s" ptr u8 -- n" PT+
-   s" stat64" s" ptr u8 ptr u8 -- n" PT+
-   s" lstat64" s" ptr u8 ptr u8 -- n" PT+
-   s" getdirentries64" s" n ptr u8 n ptr n -- n" PT+
-   s" pipe" s" -- n n n" PT+
-   s" dup2" s" n n -- n" PT+
-   s" fcntl" s" n n n -- n" PT+
-   s" poll" s" ptr a n n -- n" PT+
-   s" kill" s" n n -- n" PT+ ;
-
-: PT-PROCESS-PRIMS ( -- )
-   s" spawn-io" s" ptr u8 n n n -- n" PT+
-   s" spawn-argv-io" s" ptr u8 ptr a n n n -- n" PT+
-   s" spawn-argv-env-io" s" ptr u8 ptr a ptr a n n n -- n" PT+
-   s" spawn-argv-env-cwd-io" s" ptr u8 ptr a ptr a ptr u8 n n n -- n" PT+
-   s" wait-rc" s" n -- n" PT+
-   s" wait-status" s" n -- n" PT+
-   s" patch32" s" n n --" PT+
-   s" write" s" n ptr u8 n -- n" PT+
-   s" close" s" n --" PT+
-   s" epoch-seconds" s" -- n" PT+
-   s" mono-ns" s" -- n" PT+
-   s" prof-on" s" n --" PT+
-   s" prof-report" s" --" PT+ ;
-
-: PT-SYSTEM-PRIMS ( -- )
-   s" rbase" s" -- n" PT+
-   s" cp@" s" -- n" PT+
-   s" cp!" s" n --" PT+
-   s" dbase@" s" -- n" PT+
-   s" ndict@" s" -- n" PT+
-   s" ndict!" s" n --" PT+
-   s" data-base" s" -- ptr a" PT+
-   s" wordlist" s" -- n" PT+
-   s" get-current" s" -- n" PT+
-   s" set-current" s" n --" PT+
-   s" search-wl" s" ptr u8 n n -- n" PT+
-   s" parse-name" s" -- ptr u8 n" PT+
-   s" ffi-call" s" ptr a n -- n" PT+
-   s" ffi-call-n" s" ptr a n n -- n" PT+
-   s" ffi-call-abi" s" ptr a ptr b ptr c n n -- n" PT+
-   s" ffi-call-abi-r" s" ptr a ptr b ptr c n n -- r" PT+ ;
-
-: PT-FLOAT-PRIMS ( -- )
-   s" f+" s" r r -- r" PT+    s" f-" s" r r -- r" PT+
-   s" f*" s" r r -- r" PT+    s" f/" s" r r -- r" PT+
-   s" fnegate" s" r -- r" PT+  s" fabs" s" r -- r" PT+  s" fsqrt" s" r -- r" PT+
-   s" f<" s" r r -- f" PT+    s" f>" s" r r -- f" PT+   s" f=" s" r r -- f" PT+
-   s" f0<" s" r -- f" PT+     s" f0=" s" r -- f" PT+
-   s" s>f" s" n -- r" PT+     s" f>s" s" r -- n" PT+    s" f." s" r --" PT+ ;
-
-: PT-LITERAL-PRIMS ( -- )
-   SDQN 2 PT2+  s" -- ptr u8 n" PT2+
-   CDQN 2 PT2+  s" -- ptr u8" PT2+
-   DOTQN 2 PT2+ s" --" PT2+
-   s" [']" s" -- n" PT+
-   s" char" s" -- n" PT+
-   s" [char]" s" -- n" PT+
-   s" emit" s" n --" PT+
-   s" cr" s" --" PT+
-   s" space" s" --" PT+
-   s" u." s" n --" PT+ ;
-
-: PT-DEFINER-PRIMS ( -- )
-   s" create" s" -- ptr a" PT+
-   s" variable" s" -- ptr a" PT+
-   s" constant" s" -- a" PT+ ;
-
-: PTABLE ( -- )
-   PTAB PTP !  0 PTAB c!
-   PT-STACK-PRIMS
-   PT-NUMERIC-PRIMS
-   PT-MEMORY-PRIMS
-   PT-OUTPUT-PRIMS
-   PT-FS-PRIMS
-   PT-PROCESS-PRIMS
-   PT-SYSTEM-PRIMS
-   PT-FLOAT-PRIMS
-   PT-LITERAL-PRIMS
-   PT-DEFINER-PRIMS ;
-PTABLE
-variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable FSP  variable FP
-\ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0
-\ terminated. Names are dictionary strings, not counted bytes.
-\ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
+variable FP
+\ user sigs: certified words recorded as effect records after the structural
+\ primitive-effect prefix. The renderer appends user records so later wins.
 \ The baked checker image stores canonical typed effect graphs for certified
 \ words, not rendered signature strings. The static boot arena must hold that
 \ snapshot without relying on process-local mmap state.
@@ -1055,12 +848,14 @@ $1002 constant USIGS-MAP-ANON
 0 constant USIGS-OFF-ZERO
 create USIGS-BOOT USIGS-INIT-CAP allot
 variable USIGS-P   variable USIGS-CAP-U   variable UEND
+variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 variable CHK-CAND
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
 USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
+0 USIGS-USER-OFF !
 0 CHK-CAND !
 
 : USIGS-COPY {: src:ptr dst:ptr n :}
@@ -1070,6 +865,7 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
    USIGS-BOOT USIGS-P !
    USIGS-INIT-CAP USIGS-CAP-U !
    0 UEND !
+   0 USIGS-USER-OFF !
    0 USIGS !
    0 USIGS-GROW-CAP !
    0 USIGS-GROW-NEXT ! ;
@@ -1126,6 +922,9 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 : USIGS-RESTORE-END ( n -- )
    UEND !
    UTERM! ;
+
+: USIGS-USER ( -- ptr a )
+   USIGS USIGS-USER-OFF @ + ;
 
 : UREC-END {: su nu :}
    UEND @ cell+ nu + UALIGN cell+ su + UALIGN ;
@@ -1441,7 +1240,7 @@ variable CHECKER-REC-SYM
    UEND @ swap ER.NEXT !
    UTERM! ;
 
-: E-ADD-EFFECT ( n n n n n ptr u8 n -- ) {: din:n dout:n rin:n rout:n hasr:n name:ptr nameu:n :}
+: E-BUILD-EFFECT ( n n n n n ptr u8 n -- n ) {: din:n dout:n rin:n rout:n hasr:n name:ptr nameu:n :}
    name nameu E-REC-START E-OFF >r
    E-COPY-MAPS-RESET
    EFF-ACTIVE r@ E-PTR ER.ACTIVE !
@@ -1454,7 +1253,11 @@ variable CHECKER-REC-SYM
    hasr r@ E-PTR ER.HASR !
    EC-TVN @ r@ E-PTR ER.TVN !
    EC-RVN @ r@ E-PTR ER.RVN !
-   r> E-PTR E-REC-FINISH ;
+   r@ E-PTR E-REC-FINISH
+   r> ;
+
+: E-ADD-EFFECT ( n n n n n ptr u8 n -- )
+   E-BUILD-EFFECT drop ;
 
 : E-ADD-DELETED ( ptr u8 n -- )
    E-REC-START E-OFF >r
@@ -1489,11 +1292,11 @@ variable CHECKER-REC-SYM
    rec USIG-NEXT a u recurse ;
 
 : USIG-FIND-OFF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   USIGS a u USIG-FIND-OFF-REC ;
+   USIGS-USER a u USIG-FIND-OFF-REC ;
 
 : SCAN-USIGS {: a:ptr u:n :}
    0 FEP !
-   USIGS FP !
+   USIGS-USER FP !
    begin FP @ USIG-END? 0= while
       FP @ a u USIG-MATCH? if
          -1 EHIT !
@@ -1504,7 +1307,7 @@ variable CHECKER-REC-SYM
 
 : SCAN-USIGS-SYM {: sym:n :}
    0 FEP !
-   USIGS FP !
+   USIGS-USER FP !
    begin FP @ USIG-END? 0= while
       FP @ sym USIG-MATCH-SYM? if
          -1 EHIT !
@@ -1589,21 +1392,313 @@ variable CHECKER-REC-SYM
    then
    MK-QUOT ;
 
+256 constant PE-CAP
+1 constant PE-ACTIVE
+create PE-SYM PE-CAP cells allot
+create PE-EFF PE-CAP cells allot
+create PE-FLAGS PE-CAP cells allot
+variable #PE
+variable PE-I
+create SDQN 2 allot   115 SDQN c!   34 SDQN 1 + c!    \ the two chars of `s"`
+create CDQN 2 allot    99 CDQN c!   34 CDQN 1 + c!    \ the two chars of `c"`
+create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
+
+: PE-SYM@ ( n -- n )
+   cells PE-SYM + @ ;
+
+: PE-EFF@ ( n -- n )
+   cells PE-EFF + @ ;
+
+: PE-FLAGS@ ( n -- n )
+   cells PE-FLAGS + @ ;
+
+: PE-ACTIVE? ( n -- bool )
+   PE-FLAGS@ PE-ACTIVE and 0 <> ;
+
+: PRIM-CHECK-CAP ( -- )
+   #PE @ PE-CAP >= IF s" checker: prim table full" 76 die THEN ;
+
+: PRIM-ADD ( n n n -- ) {: sym:n eff:n flags:n :}
+   PRIM-CHECK-CAP
+   sym #PE @ cells PE-SYM + !
+   eff #PE @ cells PE-EFF + !
+   flags #PE @ cells PE-FLAGS + !
+   #PE @ 1 + #PE ! ;
+
+: PRIM-FIRST-SYM ( n -- n ) {: sym:n :}
+   0 PE-I !
+   begin PE-I @ #PE @ < while
+      PE-I @ PE-ACTIVE? IF
+         PE-I @ PE-SYM@ sym = IF PE-I @ PE-EFF@ EXIT THEN
+      THEN
+      PE-I @ 1 + PE-I !
+   repeat
+   0 ;
+
+: PE-SYM-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-INTERN ;
+
+variable PE-NA
+variable PE-NU
+variable PE-BASE
+variable PE-DIN
+variable PE-DOUT
+variable PE-RIN
+variable PE-ROUT
+variable PE-HASR
+variable PE-SYM-ID
+variable PE-EFF-ID
+
+: PE-NA@ ( -- ptr u8 )
+   PE-NA 0 ptr-field @ ;
+
+: PE-NA! ( ptr u8 -- )
+   PE-NA 0 ptr-field ! ;
+
+: PE-OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a PE-NA!  u PE-NU !
+   NEW
+   NMAP-RESET
+   ROWMAP-RESET
+   SGBAD-CLEAR
+   FRESH MK-ROW dup PE-BASE ! dup PE-DIN ! PE-DOUT !
+   0 PE-RIN !  0 PE-ROUT !  0 PE-HASR ! ;
+
+: PRIM: ( -- )
+   parse-name PE-OPEN ;
+
+: PE-CLOSE ( -- )
+   PE-NA@ PE-NU @ PE-SYM-OF PE-SYM-ID !
+   PE-SYM-ID @ CHECKER-REC-SYM !
+   PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
+   PE-NA@ PE-NU @ E-BUILD-EFFECT PE-EFF-ID !
+   PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD ;
+
+: PRIM; ( -- )
+   PE-CLOSE ;
+
+: PE-IN ( n -- )
+   PE-DIN @ MK-PUSH PE-DIN ! ;
+
+: PE-OUT ( n -- )
+   PE-DOUT @ MK-PUSH PE-DOUT ! ;
+
+: PE-A ( -- n ) $61 VAR-OF ;
+: PE-B ( -- n ) $62 VAR-OF ;
+: PE-C ( -- n ) $63 VAR-OF ;
+: PE-D ( -- n ) $64 VAR-OF ;
+: PE-N ( -- n ) CC-N MK-CON ;
+: PE-F ( -- n ) CC-BOOL MK-CON ;
+: PE-R ( -- n ) CC-R MK-CON ;
+: PE-U8 ( -- n ) CC-U8 MK-CON ;
+: PE-PTR ( n -- n ) MK-PTR ;
+: PE-PTR-A ( -- n ) PE-A PE-PTR ;
+: PE-PTR-B ( -- n ) PE-B PE-PTR ;
+: PE-PTR-C ( -- n ) PE-C PE-PTR ;
+: PE-PTR-N ( -- n ) PE-N PE-PTR ;
+: PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
+: PE-PTR-PTR-B ( -- n ) PE-B PE-PTR PE-PTR ;
+
+: PTABLE-START ( -- )
+   0 #PE !
+   0 UEND !
+   UTERM! ;
+
+: PTABLE-END ( -- )
+   UEND @ USIGS-USER-OFF !
+   UTERM! ;
+
+PTABLE-START
+
+PRIM: dup   PE-A PE-IN  PE-A PE-OUT PE-A PE-OUT PRIM;
+PRIM: drop  PE-A PE-IN PRIM;
+PRIM: swap  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT PRIM;
+PRIM: over  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT PRIM;
+PRIM: nip   PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PRIM;
+PRIM: tuck  PE-A PE-IN PE-B PE-IN  PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
+PRIM: rot   PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-B PE-OUT PE-C PE-OUT PE-A PE-OUT PRIM;
+PRIM: -rot  PE-A PE-IN PE-B PE-IN PE-C PE-IN  PE-C PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
+PRIM: 2dup  PE-A PE-IN PE-B PE-IN  PE-A PE-OUT PE-B PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
+PRIM: 2drop PE-A PE-IN PE-B PE-IN PRIM;
+PRIM: 2swap PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
+            PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
+PRIM: 2over PE-A PE-IN PE-B PE-IN PE-C PE-IN PE-D PE-IN
+            PE-A PE-OUT PE-B PE-OUT PE-C PE-OUT PE-D PE-OUT PE-A PE-OUT PE-B PE-OUT PRIM;
+
+PRIM: +      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: +      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: +      PE-N PE-IN PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: -      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: -      PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: -      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
+PRIM: *      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: and    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: and    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
+PRIM: or     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: or     PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
+PRIM: xor    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: xor    PE-F PE-IN PE-F PE-IN  PE-F PE-OUT PRIM;
+PRIM: 1+     PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: 1+     PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: 1-     PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: 1-     PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: negate PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: invert PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: 0=     PE-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: 0<     PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: =      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: =      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: <      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: <      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: >      PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: >      PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: <>     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: <>     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: <=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: <=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: >=     PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: >=     PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-F PE-OUT PRIM;
+PRIM: /      PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: mod    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: /mod   PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: abs    PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: min    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: max    PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: lshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: rshift PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: cells  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: cell+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: cell+  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: chars  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: char+  PE-PTR-A PE-IN  PE-PTR-A PE-OUT PRIM;
+PRIM: char+  PE-N PE-IN  PE-N PE-OUT PRIM;
+
+PRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
+PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
+PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
+PRIM: +!         PE-N PE-IN PE-PTR-N PE-IN PRIM;
+PRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT PRIM;
+PRIM: c!         PE-U8 PE-IN PE-PTR-U8 PE-IN PRIM;
+PRIM: atomic@    PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
+PRIM: atomic!    PE-A PE-IN PE-PTR-A PE-IN PRIM;
+PRIM: atomic-add PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: atomic-cas PE-A PE-IN PE-A PE-IN PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
+PRIM: fence      PRIM;
+PRIM: run-in-stack PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: count      PE-PTR-U8 PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+
+PRIM: .            PE-N PE-IN PRIM;
+PRIM: .s           PRIM;
+PRIM: depth        PE-N PE-OUT PRIM;
+PRIM: here         PE-PTR-A PE-OUT PRIM;
+PRIM: allot        PE-N PE-IN PRIM;
+PRIM: ,            PE-N PE-IN PRIM;
+PRIM: c,           PE-N PE-IN PRIM;
+PRIM: type         PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: script-argc  PE-N PE-OUT PRIM;
+PRIM: script-argv$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: throw        PE-N PE-IN PRIM;
+PRIM: die          PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+
+PRIM: open     PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: read     PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: ioctl    PE-N PE-IN PE-N PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;
+PRIM: mmap     PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: path0    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
+PRIM: open-rd  PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: access   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: unlink   PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: rename   PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: chmod    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: symlink  PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: readlink PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: mkdir    PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: rmdir    PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: stat64   PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: lstat64  PE-PTR-U8 PE-IN PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: getdirentries64
+   PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: pipe     PE-N PE-OUT PE-N PE-OUT PE-N PE-OUT PRIM;
+PRIM: dup2     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: fcntl    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: poll     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: kill     PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+
+PRIM: spawn-io  PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: spawn-argv-io
+   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: spawn-argv-env-io
+   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN
+   PE-N PE-OUT PRIM;
+PRIM: spawn-argv-env-cwd-io
+   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
+   PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: wait-status   PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: patch32       PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: close         PE-N PE-IN PRIM;
+PRIM: epoch-seconds PE-N PE-OUT PRIM;
+PRIM: mono-ns       PE-N PE-OUT PRIM;
+PRIM: prof-on       PE-N PE-IN PRIM;
+PRIM: prof-report   PRIM;
+
+PRIM: rbase          PE-N PE-OUT PRIM;
+PRIM: cp@            PE-N PE-OUT PRIM;
+PRIM: cp!            PE-N PE-IN PRIM;
+PRIM: dbase@         PE-N PE-OUT PRIM;
+PRIM: ndict@         PE-N PE-OUT PRIM;
+PRIM: ndict!         PE-N PE-IN PRIM;
+PRIM: data-base      PE-PTR-A PE-OUT PRIM;
+PRIM: wordlist       PE-N PE-OUT PRIM;
+PRIM: get-current    PE-N PE-OUT PRIM;
+PRIM: set-current    PE-N PE-IN PRIM;
+PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                     PE-N PE-OUT PRIM;
+PRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
+                     PE-R PE-OUT PRIM;
+
+PRIM: f+      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: f-      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: f*      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: f/      PE-R PE-IN PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: fnegate PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: fabs    PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: fsqrt   PE-R PE-IN  PE-R PE-OUT PRIM;
+PRIM: f<      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
+PRIM: f>      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
+PRIM: f=      PE-R PE-IN PE-R PE-IN  PE-F PE-OUT PRIM;
+PRIM: f0<     PE-R PE-IN  PE-F PE-OUT PRIM;
+PRIM: f0=     PE-R PE-IN  PE-F PE-OUT PRIM;
+PRIM: s>f     PE-N PE-IN  PE-R PE-OUT PRIM;
+PRIM: f>s     PE-R PE-IN  PE-N PE-OUT PRIM;
+PRIM: f.      PE-R PE-IN PRIM;
+
+PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
+PRIM: ."     PRIM;
+PRIM: [']    PE-N PE-OUT PRIM;
+PRIM: char   PE-N PE-OUT PRIM;
+PRIM: [char] PE-N PE-OUT PRIM;
+PRIM: emit   PE-N PE-IN PRIM;
+PRIM: cr     PRIM;
+PRIM: space  PRIM;
+PRIM: u.     PE-N PE-IN PRIM;
+
+PRIM: create   PE-PTR-A PE-OUT PRIM;
+PRIM: variable PE-PTR-A PE-OUT PRIM;
+PRIM: constant PE-A PE-OUT PRIM;
+
+PTABLE-END
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
    a u USIG-FIND-OFF 0= if s" checker: missing signature truncation mark" 76 die then
    UEND !
    UTERM! ;
-
-: SCAN-SIGS {: tab a u :}  tab FP !
-   BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
-     FNL !  FP @ 1 + FNP !
-     FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
-     a u FNP @ FNL @ USIG-STR=CI IF FSP @ FSA ! FSL @ FSU ! THEN
-     FSP @ FSL @ + FP !
-   REPEAT drop ;
-
-: FIND-SIG {: a:ptr u:n :}  0 FSU !  PTAB a u SCAN-SIGS  a u SCAN-USIGS  FSU @ FEP @ or ;
 
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
@@ -1754,6 +1849,12 @@ variable DFER-FLAG-SAVE
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    0 FEP !
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
+
+: FIND-SIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SIG
+   FEP @ IF -1 EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
+   dup IF E-PTR FEP ! -1 ELSE drop 0 THEN ;
 
 : DFER-ENSURE ( n -- )
    DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
@@ -2092,20 +2193,26 @@ variable SV-THDROW  variable SV-THRROW  variable SV-THSET
    a u PARSE-SIG
    OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN ;
 
-variable TSEEN  variable TSOK  variable TFA  variable TFU
+variable TSEEN  variable TSOK  variable TFA
 
-: TRY-TAB {: tab a u :}
-   0 TSEEN !  0 TSOK !  0 TFU !  tab FP !
-   BEGIN FP @ c@ dup WHILE
-     FNL !  FP @ 1 + FNP !
-     FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
-     a u FNP @ FNL @ CORE-STR= IF
-       TSEEN @ 0= IF FSP @ TFA !  FSL @ TFU ! THEN
-       -1 TSEEN !
-       TSOK @ 0= IF FSP @ FSL @ TRY-SIG IF -1 TSOK ! THEN THEN
-     THEN
-     FSP @ FSL @ + FP !
-   REPEAT drop
+: TRY-EFF ( ptr a -- bool ) {: h:ptr :}
+   TRIAL-SAVE
+   h EFF-APPLY
+   OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN ;
+
+: TRY-PRIMS ( n -- bool ) {: sym:n :}
+   0 TSEEN !  0 TSOK !  0 TFA !
+   0 PE-I !
+   begin PE-I @ #PE @ < while
+      PE-I @ PE-ACTIVE? IF
+         PE-I @ PE-SYM@ sym = IF
+            TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
+            -1 TSEEN !
+            TSOK @ 0= IF PE-I @ PE-EFF@ E-PTR TRY-EFF IF -1 TSOK ! THEN THEN
+         THEN
+      THEN
+      PE-I @ 1 + PE-I !
+   repeat
    TSOK @ ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
@@ -2164,8 +2271,8 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u CELL-MEMORY-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SIG
    FEP @ IF FEP @ EFF-APPLY ELSE
-   PTAB a u TRY-TAB IF EXIT THEN
-   TSEEN @ IF TFA @ TFU @ PARSE-SIG ELSE
+   a u CHECKER-FIND-ACTIVE-SYM TRY-PRIMS IF EXIT THEN
+   TSEEN @ IF TFA @ E-PTR EFF-APPLY ELSE
    -1 UNCK ! THEN THEN ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes

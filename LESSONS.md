@@ -8,6 +8,11 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Parser-word table rows must execute at top level:** `PRIM:` originally sat
+  inside `PT-*` colon words, so it would compile instead of consuming the next
+  source token; literal names such as `s"` then broke compilation. Primitive
+  effect declarations now run top-level: `PRIM:` consumes the name token
+  immediately and the `PE-IN`/`PE-OUT` constructors build the stored effect.
 - **Symbol interners must consume miss sentinels:** `SYM-INTERN` initially left
   the `0` id returned by a failed `SYM-FIND` under the new id, corrupting the
   first `TRUST` during stage-source loading. For `( id bool )` finders, every
