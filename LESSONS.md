@@ -102,6 +102,11 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
+  default native gate budget to 160s hid duplicated gate work after the suite had
+  already been cut near 90s. Keep the default at the current green threshold and
+  use `HABU_GATE_BUDGET_MS` only as an explicit slow-host override while the 30s
+  architecture work removes duplicate launches/builds.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`

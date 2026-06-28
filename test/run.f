@@ -6,7 +6,7 @@
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
-$27100 constant TR-DEFAULT-BUDGET-MS  \ 160000ms: headroom on the 4-core ZED Box (warm ~123s with quirk-fix fixtures); sub-90s is active work (habu-cut-native-gate)
+90000 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
 21 constant TR-PHASES

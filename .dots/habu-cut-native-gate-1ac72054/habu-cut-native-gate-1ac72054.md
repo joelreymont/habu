@@ -171,3 +171,15 @@ removed. The documented full native gate passed at 100.985s internal gate time
 Remaining work for this dot is still real: reduce the current suite below 90s
 and then toward 30s by removing duplicated boundary work and cold process cost
 without dropping tests.
+
+Checkpoint 2026-06-28: RCA on the budget creep found the bad policy: the default
+budget had climbed from the already-achieved ~90s line to 120s and then 160s to
+paper over checker/diagnostic additions. Restored the default stop-line to 90s
+and documented slow hosts as explicit `HABU_GATE_BUDGET_MS` overrides only. A
+fresh full native gate passed at 78.002s <= 90s. Current real tails are stdlib
+check-cli (53.288s), stdlib tool-boundary (52.842s), engine fixtures (37.233s),
+diagnostics repair (33.276s), engine build (28.901s), dictionary/checker
+(27.956s), and diagnostics undef-primary (25.057s). New child dots under the
+main-gate audit own the 30s architecture: single Habu-under-test artifact, warm
+gate-runner image, stdlib tool subprocess collapse, dictionary/diagnostic
+batching, inline AOT assertions, and launch/build counters.
