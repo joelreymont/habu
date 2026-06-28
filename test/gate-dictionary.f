@@ -461,6 +461,23 @@ variable GD-INC-DUP-U
    GD-PACKAGE-CHECK-GOOD-SOURCE
    s" check.f package certification" GE-CHECK-RUN ;
 
+: GD-PACKAGE-NORET ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GD-NR" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-NR-OK ( n -- n ) dup 0 < if GD-NR:STOP then 1 + ;" GE-SRC-LINE
+   s" check.f package no-return metadata" GE-CHECK-RUN
+   GE-SRC-RESET
+   s" package GD-NR" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-NR-BAD ( n -- n ) dup 0 < if GD-NR:STOP 0 then 1 + ;" GE-SRC-LINE
+   $46 s" gd-nr-bad" s" check.f package no-return rejects live tail" GE-CHECK-RUN-BAD ;
+
 : GD-RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
@@ -908,6 +925,7 @@ variable GD-INC-DUP-U
    GD-PACKAGE-RUNTIME
    GD-PACKAGE-JIT-STACK-ISOLATION
    GD-PACKAGE-CHECK
+   GD-PACKAGE-NORET
    GD-DUPLICATE-DEFINITION-REJECTS
    GD-EXPLICIT-REDEFINITION
    GD-PACKAGE-SHADOW-POSITIVES

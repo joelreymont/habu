@@ -134,9 +134,13 @@ TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
    r> DIAGXT ! ;
 variable TC-UEND
 variable TC-NEND
+variable TC-SYMN
+variable TC-SYMU
 variable TC-DIAG
 UEND @ TC-UEND !
 NORET-END @ TC-NEND !
+SYM-N @ TC-SYMN !
+SYM-STR-U @ TC-SYMU !
 s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
 s" A ( n -- n ) dup drop" CHECK-CANDIDATE! -1 T=
 DIAGXT @ TC-DIAG !
@@ -146,6 +150,8 @@ TC-DIAG @ DIAGXT !
 s" T-CAND-THROW ( n -- n ) dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
 UEND @ TC-UEND @ = -1 T=
 NORET-END @ TC-NEND @ = -1 T=
+SYM-N @ TC-SYMN @ = -1 T=
+SYM-STR-U @ TC-SYMU @ = -1 T=
 variable TG-UEND
 variable TG-CAP
 variable TG-USIGS-P

@@ -8,6 +8,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Symbol interners must consume miss sentinels:** `SYM-INTERN` initially left
+  the `0` id returned by a failed `SYM-FIND` under the new id, corrupting the
+  first `TRUST` during stage-source loading. For `( id bool )` finders, every
+  miss path must `drop` the sentinel before publishing a new record.
 - **Checker metadata loops need owned indexes:** the integer-type table crash was
   `CT-FIND` using `over` to recover the loop code after pushing search strings;
   it passed a pointer as the type code and `CT-NAME$` fetched through garbage.

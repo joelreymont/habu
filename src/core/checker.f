@@ -1146,6 +1146,100 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
    repeat drop
    0 0= ;
 
+$4000 constant SYM-CAP
+$100000 constant SYM-STR-CAP
+0 constant SYM-GLOBAL
+1 constant SYM-PRIVATE
+2 constant SYM-PUBLIC
+
+create SYM-PKG-A SYM-CAP cells allot
+create SYM-PKG-U SYM-CAP cells allot
+create SYM-NAME-A SYM-CAP cells allot
+create SYM-NAME-U SYM-CAP cells allot
+create SYM-VIS SYM-CAP cells allot
+create SYM-STR SYM-STR-CAP allot
+variable SYM-N
+variable SYM-STR-U
+variable SYM-I
+variable SYM-DST
+variable SYM-ID
+
+1 SYM-N !
+0 SYM-STR-U !
+
+: SYM-PKG-A-FIELD ( n -- ptr ptr u8 )
+   cells SYM-PKG-A + 0 ptr-field ;
+
+: SYM-NAME-A-FIELD ( n -- ptr ptr u8 )
+   cells SYM-NAME-A + 0 ptr-field ;
+
+: SYM-DST-FIELD ( -- ptr ptr u8 )
+   SYM-DST 0 ptr-field ;
+
+: SYM-DST@ ( -- ptr u8 )
+   SYM-DST-FIELD @ ;
+
+: SYM-DST! ( ptr u8 -- )
+   SYM-DST-FIELD ! ;
+
+: SYM-PKG$ ( n -- ptr u8 n )
+   dup SYM-PKG-A-FIELD @
+   swap cells SYM-PKG-U + @ ;
+
+: SYM-NAME$ ( n -- ptr u8 n )
+   dup SYM-NAME-A-FIELD @
+   swap cells SYM-NAME-U + @ ;
+
+: SYM-STR-NEED ( n -- )
+   SYM-STR-U @ + SYM-STR-CAP > IF s" checker: symbol strings full" 76 die THEN ;
+
+: SYM-COPY-FOLD ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u SYM-STR-NEED
+   SYM-STR SYM-STR-U @ + SYM-DST!
+   0 SYM-I !
+   begin SYM-I @ u < while
+      a SYM-I @ + c@ USIG-FOLD-C SYM-DST@ SYM-I @ + c!
+      SYM-I @ 1 + SYM-I !
+   repeat
+   SYM-STR-U @ u + SYM-STR-U !
+   SYM-DST@ u ;
+
+: SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
+   id cells SYM-VIS + @ vis <> IF 0 EXIT THEN
+   id SYM-PKG$ pkg pkgu USIG-STR=CI 0= IF 0 EXIT THEN
+   id SYM-NAME$ name nameu USIG-STR=CI ;
+
+: SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+   1 SYM-I !
+   begin SYM-I @ SYM-N @ < while
+      pkg pkgu vis name nameu SYM-I @ SYM-MATCH? IF SYM-I @ -1 EXIT THEN
+      SYM-I @ 1 + SYM-I !
+   repeat
+   0 0 ;
+
+: SYM-PKG! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+   a u SYM-COPY-FOLD {: dst:ptr len:n :}
+   dst id SYM-PKG-A-FIELD !
+   len id cells SYM-PKG-U + ! ;
+
+: SYM-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
+   a u SYM-COPY-FOLD {: dst:ptr len:n :}
+   dst id SYM-NAME-A-FIELD !
+   len id cells SYM-NAME-U + ! ;
+
+: SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
+   pkg pkgu id SYM-PKG!
+   name nameu id SYM-NAME!
+   vis id cells SYM-VIS + ! ;
+
+: SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+   pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
+   SYM-N @ SYM-CAP >= IF s" checker: symbol table full" 76 die THEN
+   SYM-N @ SYM-ID !
+   pkg pkgu vis name nameu SYM-ID @ SYM-SET
+   SYM-ID @ 1 + SYM-N !
+   SYM-ID @ ;
+
 \ checker-registry.f - typed checker effect store.
 \
 \ Loaded from checker.f after the signature parser and before callers need
@@ -1164,7 +1258,7 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 6 constant EN-ATOM
 7 constant EN-PARAM
 
-$48 constant EFF-REC
+$50 constant EFF-REC
 $48 constant EFF-NODE
 
 : ER.NEXT   ( ptr a -- ptr a ) $00 + ;
@@ -1176,6 +1270,7 @@ $48 constant EFF-NODE
 : ER.HASR   ( ptr a -- ptr a ) $30 + ;
 : ER.TVN    ( ptr a -- ptr a ) $38 + ;
 : ER.RVN    ( ptr a -- ptr a ) $40 + ;
+: ER.SYM    ( ptr a -- ptr a ) $48 + ;
 
 : EN.TAG ( ptr a -- ptr a ) $00 + ;
 : EN.A   ( ptr a -- ptr a ) $08 + ;
@@ -1198,6 +1293,8 @@ create EI-RV MAXTV cells allot
 variable FEP
 variable EHIT
 variable E-START
+variable CHECKER-REC-SYM
+0 CHECKER-REC-SYM !
 
 : E-MAP-RESET-ONE ( ptr a -- ) {: p:ptr :}
    0 begin dup MAXTV < while
@@ -1336,6 +1433,7 @@ variable E-START
    0 r@ ER.NEXT !  0 r@ ER.ACTIVE !
    0 r@ ER.DIN !   0 r@ ER.DOUT !  0 r@ ER.RIN !  0 r@ ER.ROUT !
    0 r@ ER.HASR !  0 r@ ER.TVN !   0 r@ ER.RVN !
+   CHECKER-REC-SYM @ r@ ER.SYM !
    r@ EFF-REC + USIGS - UEND !
    r> ;
 
@@ -1379,6 +1477,12 @@ variable E-START
 : USIG-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
    rec USIG-NAME$ a u USIG-STR=CI ;
 
+: USIG-SYM@ ( ptr a -- n )
+   E-REC-HDR ER.SYM @ ;
+
+: USIG-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+   rec USIG-SYM@ sym = ;
+
 : USIG-FIND-OFF-REC ( ptr a ptr u8 n -- n bool ) {: rec:ptr a:ptr u:n :}
    rec USIG-END? if 0 0 exit then
    rec a u USIG-MATCH? if rec USIG-OFF -1 exit then
@@ -1392,6 +1496,17 @@ variable E-START
    USIGS FP !
    begin FP @ USIG-END? 0= while
       FP @ a u USIG-MATCH? if
+         -1 EHIT !
+         FP @ E-REC-HDR dup ER.ACTIVE @ if FEP ! else drop 0 FEP ! then
+      then
+      FP @ USIG-NEXT FP !
+   repeat ;
+
+: SCAN-USIGS-SYM {: sym:n :}
+   0 FEP !
+   USIGS FP !
+   begin FP @ USIG-END? 0= while
+      FP @ sym USIG-MATCH-SYM? if
          -1 EHIT !
          FP @ E-REC-HDR dup ER.ACTIVE @ if FEP ! else drop 0 FEP ! then
       then
@@ -1494,16 +1609,17 @@ variable E-START
 1 constant CHECKER-PACKAGE-PRIVATE
 2 constant CHECKER-PACKAGE-PUBLIC
 $100 constant CHECKER-PACKAGE-CAP
-$240 constant CHECKER-PACKAGE-TOKEN-CAP
 create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
-create CHECKER-PACKAGE-TOKEN CHECKER-PACKAGE-TOKEN-CAP allot
 variable CHECKER-PACKAGE-U
 variable CHECKER-PACKAGE-MODE
-variable CHECKER-TOKEN-U
 variable CHECKER-COLON-N
 variable CHECKER-COLON-I
 variable CHECKER-REC-A
 variable CHECKER-REC-U
+variable CHECKER-QA
+variable CHECKER-QU
+variable CHECKER-TA
+variable CHECKER-TU
 
 $10000 constant DFER-CAP
 create DFERS DFER-CAP allot
@@ -1548,34 +1664,6 @@ variable DFER-FLAG-SAVE
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
 
-: CHECKER-TOKEN-C ( n -- ) {: c:n :}
-   CHECKER-TOKEN-U @ CHECKER-PACKAGE-TOKEN-CAP >= IF s" checker: package token too long" 76 die THEN
-   c CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ + c!
-   CHECKER-TOKEN-U @ 1+ CHECKER-TOKEN-U ! ;
-
-: CHECKER-TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 BEGIN dup u < WHILE
-      a over + c@ CHECKER-TOKEN-C
-      1 +
-   REPEAT drop ;
-
-: CHECKER-PACKAGE-PREFIX ( -- )
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-TOKEN+
-   $3A CHECKER-TOKEN-C ;
-
-: CHECKER-BUILD-PUBLIC ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 CHECKER-TOKEN-U !
-   CHECKER-PACKAGE-PREFIX
-   a u CHECKER-TOKEN+
-   CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ ;
-
-: CHECKER-BUILD-PRIVATE ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 CHECKER-TOKEN-U !
-   CHECKER-PACKAGE-PREFIX
-   s" private:" CHECKER-TOKEN+
-   a u CHECKER-TOKEN+
-   CHECKER-PACKAGE-TOKEN CHECKER-TOKEN-U @ ;
-
 : CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CHECKER-COLON-N !
    -1 CHECKER-COLON-I !
@@ -1587,26 +1675,85 @@ variable DFER-FLAG-SAVE
       1 +
    REPEAT drop ;
 
-: CHECKER-PACKAGE-MAP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   CHECKER-PACKAGE-ACTIVE? 0= IF 0 EXIT THEN
-   a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0= IF -1 EXIT THEN
-   CHECKER-COLON-N @ 1 = IF
-      CHECKER-COLON-I @ 0= IF -1 EXIT THEN
-      CHECKER-COLON-I @ u 1- = IF -1 EXIT THEN
-   THEN
-   0 ;
+: CHECKER-QA-FIELD ( -- ptr ptr u8 )
+   CHECKER-QA 0 ptr-field ;
 
-: CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u SCAN-USIGS
+: CHECKER-TA-FIELD ( -- ptr ptr u8 )
+   CHECKER-TA 0 ptr-field ;
+
+: CHECKER-QA@ ( -- ptr u8 )
+   CHECKER-QA-FIELD @ ;
+
+: CHECKER-TA@ ( -- ptr u8 )
+   CHECKER-TA-FIELD @ ;
+
+: CHECKER-QA! ( ptr u8 -- )
+   CHECKER-QA-FIELD ! ;
+
+: CHECKER-TA! ( ptr u8 -- )
+   CHECKER-TA-FIELD ! ;
+
+: CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-COLON-SCAN
+   CHECKER-COLON-N @ 1 <> IF 0 EXIT THEN
+   CHECKER-COLON-I @ 0= IF 0 EXIT THEN
+   CHECKER-COLON-I @ u 1 - = IF 0 EXIT THEN
+   a CHECKER-QA!
+   CHECKER-COLON-I @ CHECKER-QU !
+   a CHECKER-COLON-I @ + 1 + CHECKER-TA!
+   u CHECKER-COLON-I @ - 1 - CHECKER-TU !
+   -1 ;
+
+: CHECKER-QPKG$ ( -- ptr u8 n )
+   CHECKER-QA@ CHECKER-QU @ ;
+
+: CHECKER-QTAIL$ ( -- ptr u8 n )
+   CHECKER-TA@ CHECKER-TU @ ;
+
+: CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-INTERN ;
+
+: CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" " SYM-GLOBAL a u SYM-FIND IF EXIT THEN drop 0 ;
+
+: CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+   pkg pkgu SYM-PUBLIC a u SYM-INTERN ;
+
+: CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+   pkg pkgu SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
+
+: CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+   pkg pkgu vis a u SYM-INTERN ;
+
+: CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+   pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
+
+: CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
+   CHECKER-PACKAGE-ACTIVE? IF
+      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-PACKAGE-MODE @ a u CHECKER-PKG-SYM EXIT
+   THEN
+   a u CHECKER-GLOBAL-SYM ;
+
+: CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
+   CHECKER-PACKAGE-ACTIVE? IF
+      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
+      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
+   THEN
+   a u CHECKER-GLOBAL-SYM? ;
+
+: CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   sym SCAN-USIGS-SYM
    FEP @ 0 <> ;
 
+: CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
+
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHECKER-PACKAGE-MAP? IF
-      a u CHECKER-BUILD-PRIVATE CHECKER-FIND-USIG IF EXIT THEN
-      a u CHECKER-BUILD-PUBLIC CHECKER-FIND-USIG IF EXIT THEN
-   THEN
-   a u CHECKER-FIND-USIG drop ;
+   0 FEP !
+   a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
 
 : DFER-ENSURE ( n -- )
    DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
@@ -1624,7 +1771,7 @@ variable DFER-FLAG-SAVE
    DFER-A ! ;
 
 : DFER-NEED ( -- n )
-   DFER-END @ cell+ DFER-U @ + UALIGN cell+ cell+ ;
+   DFER-END @ cell+ DFER-U @ + UALIGN cell+ cell+ cell+ ;
 
 : DFER-LEN! ( -- )
    DFER-U @ DFERS DFER-END @ + !
@@ -1642,6 +1789,10 @@ variable DFER-FLAG-SAVE
    DFER-FLAG-SAVE @ DFERS DFER-END @ + !
    DFER-END @ cell+ DFER-END ! ;
 
+: DFER-SYM! ( -- )
+   CHECKER-REC-SYM @ DFERS DFER-END @ + !
+   DFER-END @ cell+ DFER-END ! ;
+
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
@@ -1651,6 +1802,7 @@ variable DFER-FLAG-SAVE
    DFER-LEN!
    DFER-COPY
    DFER-FLAG!
+   DFER-SYM!
    DFER-TERM ;
 
 : DFER-ADD ( ptr u8 n -- )
@@ -1663,7 +1815,7 @@ variable DFER-FLAG-SAVE
    dup @ cell+ + DFERS - UALIGN DFERS + ;
 
 : DFER-NEXT ( ptr a -- ptr a )
-   DFER-FLAG-PTR cell+ ;
+   DFER-FLAG-PTR cell+ cell+ ;
 
 : DFER-NAME$ ( ptr a -- ptr u8 n )
    dup cell+ swap @ ;
@@ -1671,11 +1823,17 @@ variable DFER-FLAG-SAVE
 : DFER-FLAG@ ( ptr a -- n )
    DFER-FLAG-PTR @ ;
 
+: DFER-SYM@ ( ptr a -- n )
+   DFER-FLAG-PTR cell+ @ ;
+
 : DFER-END? ( ptr a -- bool )
    @ 0= ;
 
 : DFER-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
    rec DFER-NAME$ a u USIG-STR=CI ;
+
+: DFER-MATCH-SYM? ( ptr a n -- bool ) {: rec:ptr sym:n :}
+   rec DFER-SYM@ sym = ;
 
 variable DFER-HIT
 variable DFER-VALUE
@@ -1694,20 +1852,26 @@ variable DFER-VALUE
    DFERS a u DFER-SCAN
    DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 THEN ;
 
-: CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u CHECKER-PACKAGE-MAP? IF
-      a u CHECKER-BUILD-PRIVATE DFER-FIND IF -1 EXIT THEN
-      a u CHECKER-BUILD-PUBLIC DFER-FIND IF -1 EXIT THEN
+: DFER-SCAN-SYM ( ptr a n -- ) {: rec:ptr sym:n :}
+   rec DFER-END? IF EXIT THEN
+   rec sym DFER-MATCH-SYM? IF
+      -1 DFER-HIT !
+      rec DFER-FLAG@ DFER-VALUE !
    THEN
-   a u DFER-FIND ;
+   rec DFER-NEXT sym RECURSE ;
+
+: DFER-FIND-SYM ( n -- bool ) {: sym:n :}
+   sym 0= IF 0 EXIT THEN
+   0 DFER-HIT !
+   0 DFER-VALUE !
+   DFERS sym DFER-SCAN-SYM
+   DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 THEN ;
+
+: CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
 
 : CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u CHECKER-PACKAGE-MAP? IF
-      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC = IF
-         a u CHECKER-BUILD-PUBLIC EXIT
-      THEN
-      a u CHECKER-BUILD-PRIVATE EXIT
-   THEN
+   a u CHECKER-RECORD-SYM CHECKER-REC-SYM !
    a u ;
 
 : CHECKER-DEFER ( ptr u8 n -- )
@@ -1752,14 +1916,14 @@ variable DFER-VALUE
 $10000 constant NORET-INIT-CAP
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
-NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT c!
-variable NORET-POS   variable NORET-LEN   variable NORET-FLAG
+NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
+variable NORET-POS   variable NORET-FLAG   variable NORET-SYM
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
 
 : NORET-TERM ( -- )
-   0 NORETS NORET-END @ + c! ;
+   0 NORETS NORET-END @ + ! ;
 
 : NORET-RESTORE-END ( n -- )
    NORET-END !
@@ -1769,7 +1933,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-END !
-   0 NORET-BOOT c!
+   0 NORET-BOOT !
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -1777,11 +1941,11 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORETS NORET-BOOT = ;
 
 : NORET-SNAPSHOT-CAP ( -- )
-   NORET-END @ 1 + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
+   NORET-END @ cell+ NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
 
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ 1 + USIGS-COPY THEN
+   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ cell+ USIGS-COPY THEN
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-GROW-CAP !
@@ -1790,7 +1954,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 : NORET-GROW {: need :}
    need USIGS-ROUND-CAP NORET-GROW-CAP !
    NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ 1 + USIGS-COPY
+   NORETS NORET-GROW-NEXT @ NORET-END @ cell+ USIGS-COPY
    NORET-GROW-NEXT @ NORET-P !
    NORET-GROW-CAP @ NORET-CAP-U ! ;
 
@@ -1803,18 +1967,43 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    USIGS-SNAPSHOT-PERSIST
    NORET-SNAPSHOT-PERSIST ;
 
+: NORET-REC ( -- ptr a )
+   NORETS NORET-END @ + ;
+
+: NORET-NAME$ ( ptr a -- ptr u8 n )
+   dup cell+ swap @ ;
+
+: NORET-FLAG-PTR ( ptr a -- ptr a )
+   dup @ cell+ + NORETS - UALIGN NORETS + ;
+
+: NORET-FLAG@ ( ptr a -- n )
+   NORET-FLAG-PTR @ ;
+
+: NORET-SYM@ ( ptr a -- n )
+   NORET-FLAG-PTR cell+ @ ;
+
+: NORET-NEXT ( ptr a -- ptr a )
+   NORET-FLAG-PTR cell+ cell+ ;
+
+: NORET-END? ( ptr a -- bool )
+   @ 0= ;
+
 : NORET-ADD {: a u flag :}
-   NORET-END @ u + 3 + NORET-ENSURE
-   u NORETS NORET-END @ + c!
-   NORET-END @ 1 + NORET-END !
+   a u CHECKER-RECORD-SYM NORET-SYM !
+   NORET-END @ cell+ u + UALIGN cell+ cell+ cell+ NORET-ENSURE
+   u NORETS NORET-END @ + !
+   NORET-END @ cell+ NORET-END !
    0 BEGIN dup u < WHILE
       dup a + c@ NORETS NORET-END @ + c!
       NORET-END @ 1 + NORET-END !
       1 +
    REPEAT drop
-   flag NORETS NORET-END @ + c!
-   NORET-END @ 1 + NORET-END !
-   0 NORETS NORET-END @ + c! ;
+   NORET-END @ UALIGN NORET-END !
+   flag NORETS NORET-END @ + !
+   NORET-END @ cell+ NORET-END !
+   NORET-SYM @ NORETS NORET-END @ + !
+   NORET-END @ cell+ NORET-END !
+   NORET-TERM ;
 
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
@@ -1822,22 +2011,25 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    name nameu DFER-DELETE
    name nameu 0 NORET-ADD ;
 
-: CTL-FLAGS {: a u :}
+: CTL-FLAGS-SYM {: sym:n :}
+   sym 0= IF 0 EXIT THEN
    0 NORET-FLAG !
    0 NORET-POS !
-   BEGIN NORETS NORET-POS @ + c@ dup WHILE
-      NORET-LEN !
-      a u NORETS NORET-POS @ + 1 + NORET-LEN @ USIG-STR=CI IF
-         NORETS NORET-POS @ + 1 + NORET-LEN @ + c@ NORET-FLAG !
+   BEGIN NORETS NORET-POS @ + NORET-END? 0= WHILE
+      NORETS NORET-POS @ + NORET-SYM@ sym = IF
+         NORETS NORET-POS @ + NORET-FLAG@ NORET-FLAG !
       THEN
-      NORET-POS @ 1 + NORET-LEN @ + 1 + NORET-POS !
-   REPEAT drop
+      NORETS NORET-POS @ + NORET-NEXT NORETS - NORET-POS !
+   REPEAT
    NORET-FLAG @ ;
 
-: NORET-USER? {: a u :}
+: CTL-FLAGS {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SYM CTL-FLAGS-SYM ;
+
+: NORET-USER? {: a:ptr u:n :}
    a u CTL-FLAGS CTL-DEAD and 0 <> ;
 
-: THROW-USER? {: a u :}
+: THROW-USER? {: a:ptr u:n :}
    a u CTL-FLAGS CTL-THROW and 0 <> ;
 
 : DEAD-TOK? {: a u :}
@@ -2575,11 +2767,15 @@ variable IS-TU
 
 variable CAND-UEND
 variable CAND-NEND
+variable CAND-SYMN
+variable CAND-SYMU
 variable CAND-VERD
 
 : CHECK-CANDIDATE-START ( -- )
    UEND @ CAND-UEND !
    NORET-END @ CAND-NEND !
+   SYM-N @ CAND-SYMN !
+   SYM-STR-U @ CAND-SYMU !
    -1 CHK-CAND !
    -1 VSIG ! ;
 
@@ -2589,6 +2785,8 @@ variable CAND-VERD
    0 CHK-CAND !
    CAND-UEND @ USIGS-RESTORE-END
    CAND-NEND @ NORET-RESTORE-END
+   CAND-SYMN @ SYM-N !
+   CAND-SYMU @ SYM-STR-U !
    CAND-VERD @ ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n )
