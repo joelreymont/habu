@@ -6,7 +6,7 @@
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
-$1ADB0 constant TR-DEFAULT-BUDGET-MS
+$1D4C0 constant TR-DEFAULT-BUDGET-MS  \ 120000ms: 4-core ZED Box warm gate runs ~117s; sub-90s is active work (habu-cut-native-gate)
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
 21 constant TR-PHASES

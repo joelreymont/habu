@@ -962,6 +962,18 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BCSTORE ( -- )
    B G-POP A G-POP  A B 0 STRB, ;
 
+\ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
+: BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
+   A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
+: BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
+   B G-POP A G-POP  $C89FFD49 EMITW ;
+: BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
+   B G-POP A G-POP  $F8E90149 EMITW  A G-PUSH ;
+: BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
+   C G-POP B G-POP A G-POP  $C8E9FD6A EMITW  A G-PUSH ;
+: BFENCE ( -- )     \ fence ( -- ) : DMB ISH
+   $D5033BBF EMITW ;
+
 : BCELLS ( -- )
    A G-POP  A A 3 LSLI, A G-PUSH ;
 
@@ -1284,6 +1296,16 @@ s" linux-stat-fix" s" n --" TRUST
 : BEXEC ( -- )
    A G-POP  SP SP 16 SUBI,  30 SP 0 STR,  A BLR,  30 SP 0 LDR,  SP SP 16 ADDI, ;
 
+\ run-in-stack ( xt base size -- ) : run xt on a fresh data stack (x19=base,
+\ full-ascending). Proves per-task data stacks for the threads work. size is the
+\ buffer capacity (caller's guarantee of headroom); x20/region unchanged here.
+: BRUNSTACK ( -- )
+   C G-POP B G-POP A G-POP                        \ x11=size(unused) x10=base x9=xt
+   SP SP 16 SUBI,  30 SP 0 STR,  19 SP 8 STR,     \ save lr + caller XDS(x19)
+   19 10 0 ADDI,                                  \ x19 = base
+   9 BLR,                                         \ run the xt on the fresh stack
+   19 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI, ;   \ restore XDS + lr
+
 : BCATCH ( -- )
    LBL LBL {: lres lpush :}
    A G-POP
@@ -1390,6 +1412,8 @@ s" linux-stat-fix" s" n --" TRUST
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
+   s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM-L
+   s" atomic-add" ['] BATADD FPRIM-L  s" atomic-cas" ['] BATCAS FPRIM-L  s" fence" ['] BFENCE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
    s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
 
@@ -1403,6 +1427,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
    s" execute" ['] BEXEC FPRIM
+   s" run-in-stack" ['] BRUNSTACK FPRIM
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM
