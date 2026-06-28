@@ -19,3 +19,12 @@
 \ RELU: z = max(0, x)  (nonlinear: backward gates on the sign of the saved x)
 : RELU-F   ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;
 : RELU-BWD ( r r -- r ) {: dz x :}  x f0< if 0.0 else dz then ;
+
+\ SUB: z = x - y       (linear: backward copies +dz to x, -dz to y)
+: SUB-F   ( r r -- r )    f- ;
+: SUB-BWD ( r -- r r )    {: dz:r :}  dz  dz -1.0 f* ;
+
+\ SQUARE: z = x*x      (nonlinear: backward needs the saved primal x; dx = dz*2x)
+\ With SUB this gives the MSE residual square (a-t)^2 and its gradient.
+: SQUARE-F   ( r -- r )   {: x:r :}  x x f* ;
+: SQUARE-BWD ( r r -- r ) {: dz:r x:r :}  dz x f*  2.0 f* ;

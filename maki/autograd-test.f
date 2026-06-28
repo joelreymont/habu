@@ -31,4 +31,18 @@ T-RESET
 \ finite-difference at x=-2: 0
 -1.999 RELU-F  -2.001 RELU-F  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  0 T=
 
+\ --- SUB forward + backward: z=x-y ; dx=dz, dy=-dz ---
+4.0 3.0 SUB-F   1000.0 f* 0.5 f+ f>s  1000 T=   \ 4-3 = 1
+1.0 SUB-BWD                                     \ ( dx dy )
+   1000.0 f* 0.5 f- f>s -1000 T=                \ dy = -1
+   1000.0 f* 0.5 f+ f>s  1000 T=                \ dx = 1
+\ finite-difference d(x-y)/dx at x=4 (y=3): (SUB(4.001,3)-SUB(3.999,3))/0.002 = 1
+4.001 3.0 SUB-F  3.999 3.0 SUB-F  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  1000 T=
+
+\ --- SQUARE forward + backward at x=3: z=9 ; dx=dz*2x=6 ---
+3.0 SQUARE-F    1000.0 f* 0.5 f+ f>s  9000 T=   \ 3*3 = 9
+1.0 3.0 SQUARE-BWD  1000.0 f* 0.5 f+ f>s  6000 T=   \ dz*2x = 6
+\ finite-difference d(x*x)/dx at x=3: (SQUARE(3.001)-SQUARE(2.999))/0.002 = 6
+3.001 SQUARE-F  2.999 SQUARE-F  f-  0.002 f/  1000.0 f* 0.5 f+ f>s  6000 T=
+
 T-REPORT
