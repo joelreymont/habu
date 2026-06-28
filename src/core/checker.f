@@ -182,12 +182,14 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
    code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
    code CC-U32 = IF -1 EXIT THEN  code CC-CELL = IF -1 EXIT THEN
    code CC-CHAR = IF -1 EXIT THEN code CC-ADDR = ;
-\ CON-OK? ( t1 t2 -- f ) : two concrete cons unify iff equal, or one is the
-\ generic int n(1) and the other is int-family (n subsumes any int width).
+\ CON-OK? ( t1 t2 -- f ) : two concrete cons unify iff equal, or both are
+\ int-family (C3: u8/u16/u32/i64/n/cell/char/addr all interchange — every int is
+\ a 64-bit cell at runtime, so narrow widths widen with no value change). Nominal
+\ roles (pid/fd/rc/idx/len/...) are NOT int-family and stay strict: they still
+\ require an explicit conversion, exactly as before.
 : CON-OK? {: t1 t2 :}
    t1 PAY t2 PAY = IF -1 EXIT THEN
-   t1 PAY 1 = t2 PAY INT-FAM? and IF -1 EXIT THEN
-   t2 PAY 1 = t1 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
+   t1 PAY INT-FAM? t2 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
 
 : ATOM-OK? {: t1 t2 :}
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U STR= ;
