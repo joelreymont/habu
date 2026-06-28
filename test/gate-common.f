@@ -4,6 +4,8 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test-runner.f.
 
+include test/gate-stats.f
+
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
@@ -57,6 +59,7 @@ variable GE-ARGV-U
    GE-ARGV-BUF GE-ARGV-U @ ;
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu timeout :}
+   s" helper-spawn" GS-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
    GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
@@ -64,6 +67,7 @@ variable GE-ARGV-U
    GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu in:ptr inu timeout :}
+   s" helper-spawn" GS-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN in inu >LEN GT-OUT-BUF GT-OUT-CAP >LEN
    GT-ERR-BUF GT-ERR-CAP >LEN timeout >MS
@@ -81,6 +85,7 @@ variable GE-ARGV-U
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu inpath:ptr inpathu timeout :}
+   s" helper-spawn" GS-EVENT
    PROC-ENV-INHERIT-MISSING
    inpath inpathu FS-PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then
@@ -306,7 +311,13 @@ variable GE-ARGV-U
 
 : GE-WARM-BAKE ( -- )
    GE-WARM-PATHS
-   GE-WARM-CACHED? if -1 GE-WARM-READY ! exit then
+   GE-WARM-CACHED? if
+      s" warm-cache-hit" GS-EVENT
+      -1 GE-WARM-READY !
+      exit
+   then
+   s" warm-cache-miss" GS-EVENT
+   s" warm-build" GS-EVENT
    GE-WARM-TOOL-ARGV
    GE-CHECK-SUPPORT-ARGV
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
@@ -360,18 +371,24 @@ variable GE-ARGV-U
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
+   s" inner-hb-spawn" GS-EVENT
+   s" boundary-test" GS-EVENT
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
+   s" inner-hb-stdin" GS-EVENT
+   s" boundary-test" GS-EVENT
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN-NZ ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
+   s" inner-hb-stdin" GS-EVENT
+   s" boundary-test" GS-EVENT
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;

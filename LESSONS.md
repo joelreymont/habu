@@ -188,6 +188,9 @@ lesson — keep the specific word/code/path, cut the prose.
   Linux/aarch64 target. A 90s default budget was below measured capacity for the
   current suite; keep the 90s/30s goal active, but use the documented full-gate
   command and phase timings to earn lower budgets instead of dropping coverage.
+- **Gate instrumentation must survive cleanup:** appending counters under `GT-ROOT`
+  and summarizing after `GT-CLEANUP` produces a false all-zero report. Emit the
+  stats summary before deleting the gate temp tree, then enforce the time budget.
 - **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
   spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
   polls. Preserve max wait windows, but use small named poll intervals and a

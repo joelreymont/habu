@@ -244,6 +244,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-SNAP-SOURCE-SHAPE ;
 
 : GE-BUILD-FIXPOINT ( -- )
+   s" candidate-build" GS-EVENT
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
    BF-PREFLIGHT

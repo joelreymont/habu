@@ -96,6 +96,9 @@ points stay listed.
 
 ## Tools And Gates
 
+- `test/gate-stats.f` — checked append-only counter log and summary helpers for
+  native gate duplicate-work RCA.
+- `test/gate-stats-test.f` — focused fixture for gate stats event counting.
 - `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.

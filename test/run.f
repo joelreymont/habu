@@ -4,6 +4,8 @@
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/test-runner.f, and test/gate-pool.f.
 
+include test/gate-stats.f
+
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
 90000 constant TR-DEFAULT-BUDGET-MS
@@ -116,10 +118,11 @@ variable TR-CHECK-WARM-READY
       2drop
       s" hb-gate" TMPDIR-MKDIR GT-COPY-ROOT!
       GT-ROOT CLEANUP-TREE+
-      exit
+   else
+      2dup MAKE-DIRS
+      GT-COPY-ROOT!
    then
-   2dup MAKE-DIRS
-   GT-COPY-ROOT! ;
+   GT-ROOT GS-ROOT! ;
 
 : TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
@@ -133,6 +136,7 @@ variable TR-CHECK-WARM-READY
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
+   GS-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -146,6 +150,7 @@ variable TR-CHECK-WARM-READY
    s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
 
 : TR-SPAWN-CAPTURE ( -- )
+   s" top-capture-spawn" GS-EVENT
    s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
    PROC-CAPTURE-RESET
    TR-TIMEOUT-MS >MS PROC-CAPTURE-DEADLINE!
@@ -474,6 +479,7 @@ variable TR-CHECK-WARM-READY
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
    idx TR-PHASE-POOL-ENV
+   GS-ENV+
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -489,6 +495,7 @@ variable TR-CHECK-WARM-READY
 : TR-PHASE-START ( idx -- ) {: idx :}
    idx TR-PHASE-BASE
    idx TR-PHASE-ARGS
+   s" top-phase-spawn" GS-EVENT
    s" bin/hb" idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
 
 : TR-PHASE-SPAWN-RANGE ( n n -- ) {: start end :}
@@ -573,6 +580,7 @@ variable TR-CHECK-WARM-READY
    TR-CLEAN-WARM
    TR-EXPECT-HB
    TR-DAG-RUN
+   GS-SUMMARY
    GT-CLEANUP
    TR-FINISH ;
 

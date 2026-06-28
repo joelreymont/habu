@@ -14,6 +14,13 @@
    GT-ROOT BF-TMP! ;
 
 : GB-HBB-BUILD-OUT ( ptr u8 n -- ) {: label:ptr labelu :}
+   HBB-MAKER-READY? if
+      s" maker-cache-hit" GS-EVENT
+   else
+      s" maker-cache-miss" GS-EVENT
+      s" maker-build" GS-EVENT
+   then
+   s" maker-run" GS-EVENT
    HBB-BUILD
    BF-TMP-RESET
    GB-OUT$ FILE? 0= if label labelu GE-FAIL then ;

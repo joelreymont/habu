@@ -4,6 +4,8 @@
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/source.f, and lib/codesign.f.
 
+include test/gate-stats.f
+
 $40000 constant WI-SRC-CAP
 $40000 constant WI-CAP
 120000 constant WI-TIMEOUT-MS
@@ -188,6 +190,7 @@ variable WI-SRC-LEN
    WI-SIG-ARGV-SUPPORTS ;
 
 : WI-RUN-SIG-EXPORT ( -- )
+   s" warm-sig-export" GS-EVENT
    WI-SIG-ARGV
    s" bin/hb" >LEN WI-OUT WI-CAP >LEN WI-ERR WI-CAP >LEN
    WI-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
@@ -229,6 +232,7 @@ variable WI-SRC-LEN
    WI-SRC-PATH WI-ARG+ ;
 
 : WI-RUN-CHILD ( -- )
+   s" warm-snapshot" GS-EVENT
    WI-CHILD-ARGV
    WI-CHILD-ENV
    s" bin/hb" >LEN WI-OUT WI-CAP >LEN WI-ERR WI-CAP >LEN

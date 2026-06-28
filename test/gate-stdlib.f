@@ -4,6 +4,8 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test-runner.f,
 \ test/gate-pool.f, and src/core/sha256.f (the warm-image content key).
 
+include test/gate-stats.f
+
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 128 constant SUITE-NAME-CAP
@@ -284,6 +286,7 @@ variable SUITE-SLICE
    s" gate-stdlib: warm tools image failed" 1 die ;
 
 : SUITE-WARM-RUN ( -- )
+   s" warm-build" GS-EVENT
    SUITE-WARM-TOOL-ARGV
    SUITE-WARM-SUPPORT-ARGV
    PROC-ENV-RESET
@@ -299,7 +302,8 @@ variable SUITE-SLICE
    SUITE-SET-ROOT
    SUITE-WARM-PATHS
    SUITE-WARM-KEY!
-   SUITE-WARM-CACHED? if exit then
+   SUITE-WARM-CACHED? if s" warm-cache-hit" GS-EVENT exit then
+   s" warm-cache-miss" GS-EVENT
    SUITE-WARM-RUN
    SUITE-WARM-STAMP$ SUITE-KEY-HEX 64 WRITE-ALL ;
 
@@ -336,6 +340,7 @@ variable SUITE-SLICE
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" parallel-agent-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" filemap-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
@@ -466,11 +471,15 @@ variable SUITE-SLICE
    s" --load" SUITE-ARG+ ;
 
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   s" inner-hb-spawn" GS-EVENT
+   s" boundary-test" GS-EVENT
    s" bin/hb" SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
    GT-POOL-DRAIN
    label labelu GT-PROGRESS-RUN
+   s" inner-hb-stdin" GS-EVENT
+   s" boundary-test" GS-EVENT
    s" bin/hb" in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
    label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
@@ -585,6 +594,12 @@ TEST-SUITE filemap-lint
    lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f
    tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
    tools/filemap-lint.f
+;TEST-SUITE
+
+TEST-SUITE gate-stats
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/process-env.f
+   test/gate-stats.f test/gate-stats-test.f
 ;TEST-SUITE
 
 TEST-SUITE dot-dep-lint

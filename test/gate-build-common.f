@@ -131,6 +131,7 @@ variable GB-LC-OFF
    GB-OUT$ GB-ARGV+ ;
 
 : GB-HB-BUILD-CAPTURE ( -- )
+   s" maker-run" GS-EVENT
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    ;
 

@@ -1,6 +1,6 @@
 ---
 title: Audit main gate duplicated work
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-06-28T19:02:08.158764+02:00"
