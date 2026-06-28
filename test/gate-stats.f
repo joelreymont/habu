@@ -36,6 +36,9 @@ variable GS-MAKER-MISS
 variable GS-MAKER-BUILD
 variable GS-MAKER-RUN
 variable GS-CANDIDATE
+variable GS-CANDIDATE-HIT
+variable GS-CANDIDATE-MISS
+variable GS-CANDIDATE-INSTALL
 variable GS-HELPER-SPAWN
 
 : GS-FALSE ( -- bool )
@@ -111,6 +114,9 @@ variable GS-HELPER-SPAWN
    0 GS-MAKER-BUILD !
    0 GS-MAKER-RUN !
    0 GS-CANDIDATE !
+   0 GS-CANDIDATE-HIT !
+   0 GS-CANDIDATE-MISS !
+   0 GS-CANDIDATE-INSTALL !
    0 GS-HELPER-SPAWN ! ;
 
 : GS-LINE= ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
@@ -137,6 +143,9 @@ variable GS-HELPER-SPAWN
    off u s" maker-build" GS-LINE= if GS-MAKER-BUILD GS-INC exit then
    off u s" maker-run" GS-LINE= if GS-MAKER-RUN GS-INC exit then
    off u s" candidate-build" GS-LINE= if GS-CANDIDATE GS-INC exit then
+   off u s" candidate-cache-hit" GS-LINE= if GS-CANDIDATE-HIT GS-INC exit then
+   off u s" candidate-cache-miss" GS-LINE= if GS-CANDIDATE-MISS GS-INC exit then
+   off u s" candidate-cache-install" GS-LINE= if GS-CANDIDATE-INSTALL GS-INC exit then
    off u s" helper-spawn" GS-LINE= if GS-HELPER-SPAWN GS-INC exit then ;
 
 : GS-SCAN ( -- )
@@ -185,5 +194,8 @@ variable GS-HELPER-SPAWN
    GS-MAKER-BUILD @ s" maker-build" GS-ITEM.
    GS-MAKER-RUN @ s" maker-run" GS-ITEM.
    GS-CANDIDATE @ s" candidate" GS-ITEM.
+   GS-CANDIDATE-HIT @ s" candidate-hit" GS-ITEM.
+   GS-CANDIDATE-MISS @ s" candidate-miss" GS-ITEM.
+   GS-CANDIDATE-INSTALL @ s" candidate-install" GS-ITEM.
    GS-HELPER-SPAWN @ s" helper-spawn" GS-ITEM.
    cr ;

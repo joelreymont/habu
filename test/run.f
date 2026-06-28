@@ -13,6 +13,7 @@ include test/gate-stats.f
 21 constant TR-PHASES
 $2 constant TR-CHECK-WARM-PHASES
 $D constant TR-LATE-PHASES
+9 constant TR-UNDER-PREFIX-U
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
 3 constant TR-RUNNER-WARM-SLOT
@@ -35,9 +36,15 @@ create TR-RUNNER-BUF FS-PATH-CAP allot
 create TR-RUNNER-TRUST-BUF FS-PATH-CAP allot
 create TR-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
+create TR-UNDER-KEY-HEX 80 allot
+create TR-UNDER-KEY-DG 40 allot
+create TR-UNDER-CACHE-BUF FS-PATH-CAP allot
+create TR-UNDER-CACHE-TMP-BUF FS-PATH-CAP allot
+create TR-UNDER-CACHE-LOCK-BUF FS-PATH-CAP allot
+create TR-UNDER-NAME-BUF 80 allot
 create TR-RUNNER-KEY-HEX 80 allot
 create TR-RUNNER-KEY-DG 40 allot
-create TR-RUNNER-FILE-DG 40 allot
+create TR-KEY-FILE-DG 40 allot
 create TR-RUNNER-STAMP-RD 80 allot
 
 variable TR-WARM-U
@@ -49,11 +56,17 @@ variable TR-UNDER-U
 variable TR-RUNNER-U
 variable TR-RUNNER-TRUST-U
 variable TR-RUNNER-STAMP-U
+variable TR-UNDER-CACHE-U
+variable TR-UNDER-CACHE-TMP-U
+variable TR-UNDER-CACHE-LOCK-U
+variable TR-UNDER-NAME-U
 variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
 variable TR-UNDER-READY
 variable TR-RUNNER-READY
+variable TR-UNDER-CACHE-HIT
+variable TR-UNDER-CACHE-RC
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -82,6 +95,18 @@ variable TR-RUNNER-READY
 : TR-RUNNER-STAMP$ ( -- ptr u8 n )
    TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U @ ;
 
+: TR-UNDER-CACHE$ ( -- ptr u8 n )
+   TR-UNDER-CACHE-BUF TR-UNDER-CACHE-U @ ;
+
+: TR-UNDER-CACHE-TMP$ ( -- ptr u8 n )
+   TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U @ ;
+
+: TR-UNDER-CACHE-LOCK$ ( -- ptr u8 n )
+   TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U @ ;
+
+: TR-UNDER-NAME$ ( -- ptr u8 n )
+   TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
+
 : TR-USAGE ( -- )
    s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
 
@@ -94,6 +119,12 @@ variable TR-RUNNER-READY
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
    then
    TR-USAGE ;
+
+: TR-TRUE ( -- bool )
+   0 0= ;
+
+: TR-FALSE ( -- bool )
+   TR-TRUE 0= ;
 
 : TR-GATE-START! ( -- )
    mono-ns TR-GATE-START-NS ! ;
@@ -142,6 +173,7 @@ variable TR-RUNNER-READY
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
    0 TR-UNDER-READY !
+   0 TR-UNDER-CACHE-HIT !
    0 TR-RUNNER-READY ! ;
 
 : TR-UNDER-ENV+ ( -- )
@@ -285,6 +317,21 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    test/gate-aot-negative-lib.f
 ;TR-FILES
 
+TR-FILES: TR-UNDER-SOURCE-FILES
+   tools/build-fixpoint.f test/gate-common-lib.f test/gate-engine-lib.f
+   test/gate-engine.f src/habu/hide.f src/core/util.f src/core/checker.f
+   src/core/render.f src/core/check-hook.f src/core/roles.f
+   src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
+   src/habu/layout.f src/os/env-base.f src/os/script-argv.f
+   src/core/structures.f src/core/enums.f src/core/exec-vector.f
+   src/core/sha256.f src/core/combinators.f src/habu/treeshake.f
+   src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
+   src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
+   src/habu/xref.f src/habu/driver-io.f src/core/include.f
+   src/habu/stage2.f src/habu/stdin.f src/habu/snap.f src/habu/repl.f
+   src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
+;TR-FILES
+
 \ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
 \ in (content-stamped in gate-stdlib.f, so cross-run reuse is sound), else the
 \ per-run GT-ROOT. Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and
@@ -311,9 +358,12 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    TR-RUNNER$ s" .trust.f" TR-RUNNER-TRUST-BUF TR-RUNNER-TRUST-U TR-SUFFIX!
    TR-RUNNER$ s" .stamp" TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U TR-SUFFIX! ;
 
-: TR-RUNNER-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TR-RUNNER-FILE-DG SHA256-FILE dup 0 <> if throw then drop
-   TR-RUNNER-FILE-DG 32 SHA256-UPDATE ;
+: TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TR-KEY-FILE-DG SHA256-FILE dup 0 <> if throw then drop
+   TR-KEY-FILE-DG 32 SHA256-UPDATE ;
+
+: TR-RUNNER-KEY-FILE+ ( ptr u8 n -- )
+   TR-KEY-FILE+ ;
 
 : TR-RUNNER-KEY-SUPPORT ( -- )
    [: TR-RUNNER-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES ;
@@ -328,6 +378,107 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    TR-RUNNER-KEY-SUPPORT
    TR-RUNNER-KEY-DG SHA256-FINAL
    TR-RUNNER-KEY-DG TR-RUNNER-KEY-HEX SHA256>HEX ;
+
+: TR-UNDER-SOURCE-KEY ( -- )
+   [: TR-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES
+   [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
+
+: TR-UNDER-LINUX-KEY ( -- )
+   s" target:linux-aarch64" SHA256-UPDATE
+   s" src/os/linux/target.f" TR-KEY-FILE+
+   s" src/os/linux/layout.f" TR-KEY-FILE+
+   s" src/os/linux/sys.f" TR-KEY-FILE+
+   s" src/os/linux/elf.f" TR-KEY-FILE+
+   s" src/os/linux/sign.f" TR-KEY-FILE+
+   s" src/os/linux/repl-term.f" TR-KEY-FILE+ ;
+
+: TR-UNDER-MACOS-KEY ( -- )
+   s" target:macos-aarch64" SHA256-UPDATE
+   s" src/os/macos/target.f" TR-KEY-FILE+
+   s" src/os/macos/layout.f" TR-KEY-FILE+
+   s" src/os/macos/sys.f" TR-KEY-FILE+
+   s" src/os/macos/macho.f" TR-KEY-FILE+
+   s" src/os/macos/sign2.f" TR-KEY-FILE+
+   s" src/os/macos/repl-term.f" TR-KEY-FILE+ ;
+
+: TR-UNDER-TARGET-KEY ( -- )
+   HB-TARGET-LINUX? if TR-UNDER-LINUX-KEY exit then
+   HB-TARGET-MACOS? if TR-UNDER-MACOS-KEY exit then
+   s" Habu-under-test cache unknown target" TR-FAIL ;
+
+: TR-UNDER-KEY! ( -- )
+   SHA256-RESET
+   s" hb-under-test-cache-v1" SHA256-UPDATE
+   s" bin/hb" TR-KEY-FILE+
+   TR-UNDER-SOURCE-KEY
+   TR-UNDER-TARGET-KEY
+   TR-UNDER-KEY-DG SHA256-FINAL
+   TR-UNDER-KEY-DG TR-UNDER-KEY-HEX SHA256>HEX ;
+
+: TR-PERSIST? ( -- bool )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
+      2drop TR-FALSE exit
+   then
+   2drop TR-TRUE ;
+
+: TR-PERSIST$ ( -- ptr u8 n )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
+      2drop E-FS-PATH throw
+   then ;
+
+: TR-UNDER-NAME! ( -- )
+   s" hb-under-" {: p:ptr pu:n :}
+   pu TR-UNDER-PREFIX-U <> if E-STR-BOUNDS throw then
+   p TR-UNDER-NAME-BUF pu BYTE-COPY
+   TR-UNDER-KEY-HEX TR-UNDER-NAME-BUF pu + 64 BYTE-COPY
+   pu 64 + TR-UNDER-NAME-U ! ;
+
+: TR-UNDER-CACHE-PATHS ( -- )
+   TR-UNDER-NAME!
+   TR-PERSIST$ MAKE-DIRS
+   TR-PERSIST$ TR-UNDER-NAME$ TR-UNDER-CACHE-BUF JOIN-PATH TR-UNDER-CACHE-U !
+   TR-UNDER-CACHE$ s" .tmp" TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U TR-SUFFIX!
+   TR-UNDER-CACHE$ s" .lock" TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U TR-SUFFIX! ;
+
+: TR-UNDER-CACHE-KEY! ( -- )
+   TR-UNDER-KEY!
+   TR-UNDER-CACHE-PATHS ;
+
+: TR-UNDER-CACHE-LOCK? ( -- bool )
+   TR-UNDER-CACHE-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if TR-TRUE exit then
+   TR-UNDER-CACHE-LOCK$ DIR? if TR-FALSE exit then
+   E-FS-IO throw ;
+
+: TR-UNDER-CACHE-UNLOCK ( -- )
+   TR-UNDER-CACHE-LOCK$ DIR? if TR-UNDER-CACHE-LOCK$ REMOVE-DIR then ;
+
+: TR-UNDER-CACHE-RESTORE ( -- )
+   TR-PERSIST? 0= if exit then
+   TR-UNDER-CACHE-KEY!
+   TR-UNDER-CACHE$ EXECUTABLE? 0= if s" candidate-cache-miss" GS-EVENT exit then
+   s" candidate-cache-hit" GS-EVENT
+   TR-UNDER-CACHE$ TR-UNDER$ COPY-FILE-STREAM
+   TR-UNDER$ CHMOD-X
+   -1 TR-UNDER-CACHE-HIT !
+   -1 TR-UNDER-READY ! ;
+
+: TR-UNDER-CACHE-INSTALL-LOCKED ( -- )
+   TR-UNDER-CACHE$ EXECUTABLE? if exit then
+   TR-UNDER-CACHE-TMP$ EXISTS? if TR-UNDER-CACHE-TMP$ REMOVE-FILE then
+   TR-UNDER$ TR-UNDER-CACHE-TMP$ COPY-FILE-STREAM
+   TR-UNDER-CACHE-TMP$ CHMOD-X
+   TR-UNDER-CACHE-TMP$ TR-UNDER-CACHE$ RENAME-FILE
+   s" candidate-cache-install" GS-EVENT ;
+
+: TR-UNDER-CACHE-INSTALL ( -- )
+   TR-PERSIST? 0= if exit then
+   TR-UNDER-CACHE-HIT @ 0 <> if exit then
+   TR-UNDER-CACHE-KEY!
+   TR-UNDER-CACHE$ EXECUTABLE? if exit then
+   TR-UNDER-CACHE-LOCK? 0= if exit then
+   [: TR-UNDER-CACHE-INSTALL-LOCKED ;] catch TR-UNDER-CACHE-RC !
+   TR-UNDER-CACHE-UNLOCK
+   TR-UNDER-CACHE-RC @ 0 <> if TR-UNDER-CACHE-RC @ throw then ;
 
 : TR-RUNNER-CACHED? ( -- bool )
    TR-RUNNER$ EXECUTABLE? 0= if 0 0= 0= exit then
@@ -772,7 +923,8 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    begin TR-UNDER-DONE? 0= while
       GT-POOL-STEP
    repeat
-   TR-EXPECT-UNDER ;
+   TR-EXPECT-UNDER
+   TR-UNDER-CACHE-INSTALL ;
 
 : TR-DRAIN-UNTIL-WARM ( -- )
    begin TR-WARM-DONE? 0= while
@@ -800,7 +952,7 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    TR-WARM-READY-RESET
    0 >IDX TR-PHASE-START
    1 >IDX TR-PHASE-START
-   15 >IDX TR-PHASE-START
+   TR-UNDER-READY @ 0= if 15 >IDX TR-PHASE-START then
    TR-RUNNER-START
    7 >IDX TR-PHASE-START
    8 >IDX TR-PHASE-START
@@ -837,6 +989,7 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    TR-START
    TR-CLEAN-WARM
    TR-EXPECT-HB
+   TR-UNDER-CACHE-RESTORE
    TR-DAG-RUN
    GS-SUMMARY
    GT-CLEANUP

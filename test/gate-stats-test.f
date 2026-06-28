@@ -42,6 +42,9 @@ variable GST-ROOT-U
    s" maker-build" GS-EVENT
    s" maker-run" GS-EVENT
    s" candidate-build" GS-EVENT
+   s" candidate-cache-hit" GS-EVENT
+   s" candidate-cache-miss" GS-EVENT
+   s" candidate-cache-install" GS-EVENT
    s" helper-spawn" GS-EVENT ;
 
 : GST-SCAN ( -- )
@@ -68,6 +71,9 @@ variable GST-ROOT-U
    GS-MAKER-BUILD @ 1 T=
    GS-MAKER-RUN @ 1 T=
    GS-CANDIDATE @ 1 T=
+   GS-CANDIDATE-HIT @ 1 T=
+   GS-CANDIDATE-MISS @ 1 T=
+   GS-CANDIDATE-INSTALL @ 1 T=
    GS-HELPER-SPAWN @ 1 T= ;
 
 : GST-TEST-SCAN ( -- )

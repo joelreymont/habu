@@ -1,9 +1,9 @@
 ---
 title: "Sound content-hash artifact cache: build engine once per gate"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-06-28T09:51:09.926533+02:00"
+created-at: "\"2026-06-28T09:51:09.926533+02:00\""
 ---
 
 GOAL: cut the native port gate from ~96s toward the ~62s idle floor (proven achievable) by building the engine ONCE and reusing it, the way the user directed ('pre-build hb once, reuse for tests, no rebuilding').
@@ -24,3 +24,14 @@ SOUND DESIGN (build once, reuse, content-keyed):
 VERIFY: (a) 2nd run with unchanged inputs -> warm/AOT phases near-instant (cache hit), gate < 90s with margin; (b) touch one baked source -> that artifact's key changes -> it rebakes (prove with a minimal edit + the phase re-running); (c) full gate stays green, all 18 slices pass; (d) run host/filemap lints.
 
 ALSO: the live ~96s measurements are inflated by a concurrent 'codex resume' agent (PID 288177, loadavg 8-10) saturating the shared 4-core machine; clean measurement needs that load gone or coordinated. Files: test/run.f (TR-BUILD-CACHE-ENV, HABU_GATE_WARM_ROOT wiring), test/gate-stdlib.f (SUITE-SET-ROOT/WARM-PATHS/CACHED?/WARM-RUN + support table), test/gate-diagnostics.f (checker warm), tools/hb-build-lib.f (HBB-MAKER-READY? content key).
+
+Checkpoint 2026-06-28: `test/run.f` now keys `hb-under-test` from `bin/hb`, the
+runner/build harness, all emitted engine sources, target-specific image/sys/repl
+sources, and baked REPL/debug sources. With `HABU_GATE_WARM_PERSIST` set, a miss
+runs the existing fixpoint build and installs the candidate under the content
+key; a hit copies it into the per-run root, marks `HABU_UNDER_TEST` ready, skips
+the engine-build phase, and starts under-test slices immediately. Verified miss:
+80.81s wall with `candidate-miss=1 candidate-install=1`; verified hit: 63.64s
+wall / 60.594s internal with `candidate-hit=1 candidate=0`. Remaining work:
+content-key the AOT maker (`maker-miss=1 maker-build=1` still appears every gate)
+and continue cutting the residual under-test/tool/diagnostic waves toward 30s.

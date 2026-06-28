@@ -110,6 +110,11 @@ lesson — keep the specific word/code/path, cut the prose.
   already been cut near 90s. Keep the default at the current green threshold and
   use `HABU_GATE_BUDGET_MS` only as an explicit slow-host override while the 30s
   architecture work removes duplicate launches/builds.
+- **Cache Habu-under-test by content, not path:** the full gate's first wall was
+  a fresh fixpoint build before any under-test phase could start. Hash `bin/hb`,
+  the runner/build harness, and every emitted engine/repl source; a persistent
+  hit can unblock under-test slices immediately, while a miss still runs the
+  normal fixpoint and installs the produced candidate under that key.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
