@@ -130,8 +130,7 @@ variable TL-NV
 : TL-C! ( n -- ) TL-ONE c! ;
 
 : TL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= if exit then
-   fd a u write u <> if E-FS-IO throw then ;
+   fd a u LINT-OUT-WRITE ;
 
 : TL-OUT ( ptr u8 n -- )
    TL-OUT-FD @ -rot TL-WRITE ;

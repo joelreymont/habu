@@ -115,7 +115,7 @@ TEST-SUITE imagedisasm-tool
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-trust
-   tools/trust-lint-test.f
+   tools/trust-lint-core.f tools/trust-lint-test.f
    tools/aot-call-report.f tools/aot-call-report-test.f
 ;TEST-SUITE
 
@@ -130,14 +130,17 @@ TEST-TOOL-SUITE tool-boundary-doc-public
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-lints
-   tools/repl-lint-test.f tools/diag-origin-test.f tools/aot-lint-test.f
-   tools/signature-lint-test.f tools/checked-boundary-lint-test.f
-   tools/reserved-name-lint-test.f tools/duplicate-definition-lint-test.f
+   tools/repl-lint-test.f tools/diag-origin-test.f
+   tools/aot-lint-core.f tools/aot-lint-test.f
+   tools/signature-lint-core.f tools/signature-lint-test.f
+   tools/checked-boundary-lint-core.f tools/checked-boundary-lint-test.f
+   tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
+   tools/duplicate-definition-lint-core.f tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f tools/json-only-test.f
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-typed-local
-   tools/typed-local-diff-lint-test.f
+   tools/typed-local-diff-lint-core.f tools/typed-local-diff-lint-test.f
 ;TEST-SUITE
 
 TEST-SUITE check-cli-boundary

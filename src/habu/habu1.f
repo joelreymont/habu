@@ -80,6 +80,7 @@ variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBC
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
+variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE

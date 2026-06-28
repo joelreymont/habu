@@ -856,6 +856,60 @@ variable GD-INC-DUP-U
    s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
    $4C s" GD-XV-NOT-DEFER" s" execution vector rejects non-defer target" GD-RUN-BAD-SOURCE ;
 
+: GD-CASE-SOURCE ( -- )
+   GE-SRC-RESET
+   s" : GD-CASE-PICK ( n -- n ) case 1 of 10 endof 2 of 20 endof 30 swap endcase ;" GE-SRC-LINE
+   s" : GD-CASE-NEST ( n n -- n ) {: inner:n outer:n :}" GE-SRC-LINE
+   s"    outer case" GE-SRC-LINE
+   s"       1 of inner case 5 of 15 endof 16 swap endcase endof" GE-SRC-LINE
+   s"       2 of 20 endof" GE-SRC-LINE
+   s"       99 swap" GE-SRC-LINE
+   s"    endcase ;" GE-SRC-LINE
+   s" package GDCASE" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : PICK ( n -- n ) case 7 of 70 endof 80 swap endcase ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-CASE-PKG ( n -- n ) GDCASE:PICK ;" GE-SRC-LINE ;
+
+: GD-CASES ( -- )
+   GE-HB-RESET
+   GD-CASE-SOURCE
+   s" 1 GD-CASE-PICK ." GE-SRC-LINE
+   s" 2 GD-CASE-PICK ." GE-SRC-LINE
+   s" 9 GD-CASE-PICK ." GE-SRC-LINE
+   s" 5 1 GD-CASE-NEST ." GE-SRC-LINE
+   s" 4 1 GD-CASE-NEST ." GE-SRC-LINE
+   s" 0 2 GD-CASE-NEST ." GE-SRC-LINE
+   s" 9 3 GD-CASE-NEST ." GE-SRC-LINE
+   s" 7 GD-CASE-PKG ." GE-SRC-LINE
+   s" 8 GD-CASE-PKG ." GE-SRC-LINE
+   s" hb checked case control" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 10" GE-OUT-LINE
+   s" 20" GE-OUT-LINE
+   s" 30" GE-OUT-LINE
+   s" 15" GE-OUT-LINE
+   s" 16" GE-OUT-LINE
+   s" 20" GE-OUT-LINE
+   s" 99" GE-OUT-LINE
+   s" 70" GE-OUT-LINE
+   s" 80" GE-OUT-LINE
+   SB$ s" hb checked case control output" GE-EXPECT-OUT
+   GD-CASE-SOURCE
+   s" check.f checked case certification" GE-CHECK-RUN ;
+
+: GD-CASE-MISUSE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GD-CASE-BAD-ARM ( n -- n ) case 1 of 10 11 endof 20 swap endcase ;" GE-SRC-LINE
+   $46 s" gd-case-bad-arm" s" check.f rejects case effect mismatch" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" : GD-CASE-MISSING-END ( n -- n ) case 1 of 10 endof ;" GE-SRC-LINE
+   $46 s" gd-case-missing-end" s" check.f rejects unterminated case" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" : GD-CASE-ORPHAN-OF ( n -- n ) 1 of 2 endof ;" GE-SRC-LINE
+   $46 s" gd-case-orphan-of" s" check.f rejects of outside case" GE-CHECK-RUN-BAD ;
+
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
    s" hi" GD-SRC-DOTQ s"  cr" GE-SRC-LINE
@@ -939,6 +993,8 @@ variable GD-INC-DUP-U
    GD-EXEC-VECTORS
    GD-EXEC-VECTOR-PACKAGE
    GD-EXEC-VECTOR-MISUSE
+   GD-CASES
+   GD-CASE-MISUSE
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW
@@ -946,4 +1002,3 @@ variable GD-INC-DUP-U
    GD-XREF
    GT-CLEANUP
    s" PASS: native dictionary/checker gate phase" type cr ;
-

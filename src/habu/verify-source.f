@@ -18,15 +18,30 @@ variable VS-L
 variable VS-LINE
 variable VS-COL
 variable VS-POS
+variable VS-BASE-LINE
+variable VS-BASE-COL
+variable VS-BASE-BYTE
 
 create VS-BUF BODYBUF-CAP allot
 
 : VS-SRC@ ( -- ptr u8 )
    VS-A 0 ptr-field @ ;
 
+: VS-BASE-RESET ( -- )
+   1 VS-BASE-LINE !
+   1 VS-BASE-COL !
+   0 VS-BASE-BYTE ! ;
+
 : VS-SRC! ( ptr u8 n -- )
+   VS-BASE-RESET
    VS-U !
    VS-A ! ;
+
+: VS-SRC-AT! ( ptr u8 n n n n -- ) {: a:ptr u:n line:n col:n byte:n :}
+   a u VS-SRC!
+   line VS-BASE-LINE !
+   col VS-BASE-COL !
+   byte VS-BASE-BYTE ! ;
 
 : VS-SKIP-WS ( -- )
    BEGIN VS-I @ VS-U @ < IF VS-SRC@ VS-I @ + c@ 33 < ELSE 0 0= 0= THEN WHILE
@@ -105,8 +120,14 @@ create VS-BUF BODYBUF-CAP allot
    REPEAT
    VS-LINE @ VS-COL @ ;
 
+: VS-ABS-ORIGIN ( n -- n n n ) {: idx:n :}
+   idx VS-LINE-COL {: line:n col:n :}
+   VS-BASE-LINE @ line + 1 -
+   line 1 = IF VS-BASE-COL @ col + 1 - ELSE col THEN
+   VS-BASE-BYTE @ idx + ;
+
 : VS-ORIGIN! ( n -- )
-   dup VS-LINE-COL rot DIAG-ORIGIN! ;
+   VS-ABS-ORIGIN DIAG-ORIGIN! ;
 
 : VS-MAYBE-SIG ( -- )
    VS-SKIP-WS
@@ -149,6 +170,35 @@ create VS-BUF BODYBUF-CAP allot
       VS-TA @ VS-TU @ VS-ENDS-Q? IF EXIT THEN
    AGAIN ;
 
+: VS-PARSE-NEXT? ( ptr u8 n -- bool )
+   2dup s" char" CORE-STR= IF 2drop 0 0= exit THEN
+   s" [char]" CORE-STR= ;
+
+: VS-APP-NEXT-BODY ( -- )
+   VS-BODY!
+   VS-TU @ 0= IF s" verify-source: missing parsed token" 74 die THEN
+   VS-TA @ VS-TU @ VS-APP ;
+
+: VS-APP-BODY-TOKEN ( -- )
+   VS-TA @ VS-TU @ VS-PARSE-NEXT? IF
+      VS-TA @ VS-TU @ VS-APP
+      VS-APP-NEXT-BODY
+      exit
+   THEN
+   VS-TA @ VS-TU @ VS-OPN? IF
+      VS-TA @ VS-TU @ VS-APP-STRING
+   ELSE
+      VS-TA @ VS-TU @ VS-APP
+   THEN ;
+
+: VS-SKIP-NEXT-BODY ( -- )
+   VS-BODY!
+   VS-TU @ 0= IF s" verify-source: missing parsed token" 74 die THEN ;
+
+: VS-SKIP-BODY-TOKEN ( -- )
+   VS-TA @ VS-TU @ VS-PARSE-NEXT? IF VS-SKIP-NEXT-BODY exit THEN
+   VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-SKIP-STRING-REST THEN ;
+
 TRUSTED: VS-CHECK-BODY ( ptr u8 n -- n )
    CHECK! ;
 
@@ -171,7 +221,7 @@ TRUSTED: VS-CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
       VS-TU @ 0= IF s" verify-source: unterminated does body" 74 die THEN
       VS-L @ 0= IF VS-START @ VS-ORIGIN! THEN
       VS-TA @ VS-TU @ s" ;" CORE-STR= IF sig sigu VS-VERIFY-DOES-BODY EXIT THEN
-      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-APP-STRING ELSE VS-TA @ VS-TU @ VS-APP THEN
+      VS-APP-BODY-TOKEN
    AGAIN ;
 
 TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
@@ -196,7 +246,7 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
       VS-BODY!
       VS-TU @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
       VS-TA @ VS-TU @ s" ;" CORE-STR= IF EXIT THEN
-      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-SKIP-STRING-REST THEN
+      VS-SKIP-BODY-TOKEN
    AGAIN ;
 
 : VS-TRUSTED ( -- )
@@ -249,7 +299,7 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
       VS-TU @ 0= IF s" verify-source: unterminated definition" 74 die THEN
       VS-TA @ VS-TU @ s" ;" CORE-STR= IF VS-VERIFY-BODY EXIT THEN
       VS-TA @ VS-TU @ s" does>" CORE-STR= IF VS-VERIFY-DOES EXIT THEN
-      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-APP-STRING ELSE VS-TA @ VS-TU @ VS-APP THEN
+      VS-APP-BODY-TOKEN
    AGAIN ;
 
 : VS-VERIFY-SOURCE ( -- )
@@ -260,10 +310,24 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
       2dup VS-RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
    REPEAT 2drop ;
 
-: VERIFY-SOURCE-BUF ( ptr u8 n -- )
-   CHECKER-CANDIDATE-SCOPE-START
-   VS-SRC!
-   [: VS-VERIFY-SOURCE ;] catch
-   CHECKER-CANDIDATE-SCOPE-DONE
+: VERIFY-SOURCE-THROW ( n -- )
    dup 0= IF drop exit THEN
    throw ;
+
+: VERIFY-SOURCE-RUN ( -- )
+   [: VS-VERIFY-SOURCE ;] catch VERIFY-SOURCE-THROW ;
+
+: VERIFY-SOURCE-BUF-IN-SCOPE ( ptr u8 n -- )
+   VS-SRC!
+   VERIFY-SOURCE-RUN ;
+
+: VERIFY-SOURCE-BUF-AT-IN-SCOPE ( ptr u8 n n n n -- )
+   VS-SRC-AT!
+   VERIFY-SOURCE-RUN ;
+
+: VERIFY-SOURCE-BUF ( ptr u8 n -- )
+   VS-SRC!
+   CHECKER-CANDIDATE-SCOPE-START
+   [: VERIFY-SOURCE-RUN ;] catch
+   CHECKER-CANDIDATE-SCOPE-DONE
+   VERIFY-SOURCE-THROW ;

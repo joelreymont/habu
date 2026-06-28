@@ -1,7 +1,12 @@
 \ trust-lint-test.f - checked fixtures for tools/trust-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/trust-lint-test.f
+\ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
+\ lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
+\ tools/warm-run.f tools/trust-lint-core.f tools/trust-lint-test.f
 
 8192 constant TLT-CAP
+$10000 constant TLT-STR-CAP
+$20000 constant TLT-FILE-CAP
 10000 constant TLT-TIMEOUT-MS
 10 constant TLT-LF
 48 constant TLT-ZERO
@@ -16,6 +21,8 @@ variable TLT-LIB-TRUST-U
 variable TLT-LIB-DEF-U
 variable TLT-BENCH-U
 variable TLT-BENCH-TRUST-U
+variable TLT-CORE-SRC-A
+variable TLT-CORE-SRC-U
 
 create TLT-ROOT-BUF FS-PATH-CAP allot
 create TLT-CASE-BUF FS-PATH-CAP allot
@@ -29,8 +36,19 @@ create TLT-BENCH-BUF FS-PATH-CAP allot
 create TLT-BENCH-TRUST-BUF FS-PATH-CAP allot
 create TLT-OUT TLT-CAP allot
 create TLT-ERR TLT-CAP allot
+create TLT-STR-BUF TLT-STR-CAP allot
+create TLT-FILE-BUF TLT-FILE-CAP allot
 create TLT-LF-BUF 1 allot
 TLT-LF TLT-LF-BUF c!
+
+: TLT-CORE-SRC-A-FIELD ( -- ptr ptr u8 )
+   TLT-CORE-SRC-A 0 ptr-field ;
+
+: TLT-CORE-SRC-A@ ( -- ptr u8 )
+   TLT-CORE-SRC-A-FIELD @ ;
+
+: TLT-CORE-SRC-A! ( ptr u8 -- )
+   TLT-CORE-SRC-A-FIELD ! ;
 
 : TLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -69,6 +87,13 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-BENCH-TRUST ( -- ptr u8 n )
    TLT-BENCH-TRUST-BUF TLT-BENCH-TRUST-U @ ;
+
+: TLT-CORE-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TLT-CORE-SRC-A!
+   u TLT-CORE-SRC-U ! ;
+
+: TLT-CORE-SRC$ ( -- ptr u8 n )
+   TLT-CORE-SRC-A@ TLT-CORE-SRC-U @ ;
 
 : TLT-LF+ ( -- )
    TLT-LF SB-APPEND-C ;
@@ -254,45 +279,73 @@ TLT-LF TLT-LF-BUF c!
 : TLT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: TLT-RUN ( ptr u8 n -- n n n )
+: TLT-RUN-CLI ( ptr u8 n -- n n n )
    TLT-ARGV
    WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
+
+: TLT-TODAY>N ( ptr u8 n -- n )
+   PARSE-YMD 0= if drop E-FS-PATH throw then ;
+
+: TLT-CORE-SETUP ( ptr u8 n -- )
+   TLT-OUT TLT-CAP LINT-OUT-BUFFER!
+   TLT-STR-BUF TLT-STR-CAP TLT-FILE-BUF TLT-FILE-CAP TRUST-LINT-BUFFERS!
+   TLT-CASE TRUST-LINT-ROOT!
+   TLT-TODAY>N TRUST-LINT-TODAY! ;
+
+: TLT-CORE-FINISH ( n -- n n n ) {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 rc ;
+
+: TLT-RUN ( ptr u8 n -- n n n )
+   TLT-CORE-SETUP
+   [: TRUST-LINT ;] catch TLT-CORE-FINISH ;
 
 : TLT-RUN-DEFAULT ( -- n n n )
    s" 2026-06-16" TLT-RUN ;
 
 : TLT-RUN-SOURCE ( ptr u8 n -- n n n )
-   s" 2026-06-16" TLT-SOURCE-ARGV
-   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
-   TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
+   TLT-CORE-SRC!
+   s" 2026-06-16" TLT-CORE-SETUP
+   [: TLT-CORE-SRC$ TRUST-LINT-SOURCE-FILE ;] catch TLT-CORE-FINISH ;
 
 : TLT-RUN-SOURCE-LIST ( -- n n n )
-   s" 2026-06-16" TLT-SOURCE-LIST-ARGV
-   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
-   TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
+   s" 2026-06-16" TLT-CORE-SETUP
+   [:
+      TRUST-LINT-RESET
+      TLT-SRC-TRUST TRUST-LINT-SOURCE+
+      TLT-LIB-TRUST TRUST-LINT-SOURCE+
+      TRUST-LINT-SOURCES-FINISH
+   ;] catch TLT-CORE-FINISH ;
 
 : TLT-EXPECT-OK ( n n -- ) {: sites rows :}
    TLT-RUN-DEFAULT 0 T=
-   {: outu erru :}
+   {: outu:n erru:n :}
    TLT-OUT outu sites rows TLT-OK$ T$=
    TLT-ERR erru TLT-EMPTY$ T$= ;
 
 : TLT-EXPECT-SOURCE-OK ( ptr u8 n n n -- ) {: src:ptr srcu sites rows :}
    src srcu TLT-RUN-SOURCE 0 T=
-   {: outu erru :}
+   {: outu:n erru:n :}
    TLT-OUT outu sites rows TLT-OK$ T$=
    TLT-ERR erru TLT-EMPTY$ T$= ;
 
 : TLT-EXPECT-SOURCE-LIST-OK ( n n -- ) {: sites rows :}
    TLT-RUN-SOURCE-LIST 0 T=
-   {: outu erru :}
+   {: outu:n erru:n :}
    TLT-OUT outu sites rows TLT-OK$ T$=
    TLT-ERR erru TLT-EMPTY$ T$= ;
 
-: TLT-EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: code:ptr codeu today:ptr todayu needle:ptr needleu :}
+: TLT-EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n today:ptr todayu:n needle:ptr needleu:n :}
    today todayu TLT-RUN 0 T<>
-   {: outu erru :}
+   {: outu:n erru:n :}
+   erru 0 T=
+   TLT-OUT outu code codeu CONTAINS? TTRUE
+   needleu 0 > if TLT-OUT outu needle needleu CONTAINS? TTRUE then ;
+
+: TLT-EXPECT-BAD-TODAY-CLI ( ptr u8 n ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n today:ptr todayu:n needle:ptr needleu:n :}
+   today todayu TLT-RUN-CLI 0 T<>
+   {: outu:n erru:n :}
    erru 0 T=
    TLT-OUT outu code codeu CONTAINS? TTRUE
    needleu 0 > if TLT-OUT outu needle needleu CONTAINS? TTRUE then ;
@@ -387,7 +440,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-BAD-TODAY ( -- )
    s" bad-today" TLT-MAKE-BASE
-   s" BAD-TODAY" s" 2026-02-29" s" " TLT-EXPECT-BAD-TODAY ;
+   s" BAD-TODAY" s" 2026-02-29" s" " TLT-EXPECT-BAD-TODAY-CLI ;
 
 : TLT-TEST-FUTURE-AUDIT ( -- )
    s" future-audit" TLT-MAKE-BASE

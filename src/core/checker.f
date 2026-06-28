@@ -2360,6 +2360,31 @@ variable RSHAS  variable RSGIN  variable RSGOUT  variable RSGRIN  variable RSGRO
 variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@DED #CFC @ 1 - cells CFDED + @ ;
 
+: CF-BELOW-CASE? ( -- bool )
+   #CFC @ 2 < IF 0 EXIT THEN
+   #CFC @ 2 - cells CFKND + @ 7 = ;
+
+: CF-CASE-IDX ( -- n )
+   #CFC @ 2 - ;
+
+: CF-CASE-HAS? ( n -- bool ) {: idx:n :}
+   idx cells CFDED + @ ;
+
+: CF-CASE-HAS! ( n -- ) {: idx:n :}
+   -1 idx cells CFDED + ! ;
+
+: CF-CASE-DATA@ ( n -- n ) {: idx:n :}
+   idx cells CFSB + @ ;
+
+: CF-CASE-RET@ ( n -- n ) {: idx:n :}
+   idx cells CFRB + @ ;
+
+: CF-CASE-DATA! ( n n -- ) {: row:n idx:n :}
+   row idx cells CFSB + ! ;
+
+: CF-CASE-RET! ( n n -- ) {: row:n idx:n :}
+   row idx cells CFRB + ! ;
+
 : CF-PUSH {: k s0 s1 r0 r1 :}
    #CFC @ 31 > IF -1 UNCK ! ELSE
      k #CFC @ cells CFKND + !  s0 #CFC @ cells CFSA + !  s1 #CFC @ cells CFSB + !
@@ -2379,6 +2404,10 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-DROP #CFC @ 1 - #CFC ! ;
 
 : CF-MT? #CFC @ 0 > 0= ;
+
+: CF-FAIL ( -- )
+   0 OK !
+   -1 FAILSET ! ;
 
 : SUNI {: s :}
    DCUR @ s UNIFY
@@ -2424,8 +2453,54 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-IF  s" bool --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
 
+: CF-CASE ( -- )
+   7 DCUR @ 0 RCUR @ 0 CF-PUSH
+   0 #CFC @ 1 - cells CFDED + ! ;
+
+: CF-CASE-ACCUM ( n -- ) {: idx:n :}
+   OK @ 0= IF EXIT THEN
+   DEADP @ IF EXIT THEN
+   idx CF-CASE-HAS? IF
+      idx CF-CASE-DATA@ SUNI
+      idx CF-CASE-RET@ RSUNI
+   ELSE
+      DCUR @ idx CF-CASE-DATA!
+      RCUR @ idx CF-CASE-RET!
+      idx CF-CASE-HAS!
+   THEN ;
+
+: CF-OF ( -- )
+   CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
+      s" n --" PARSE-SIG
+      CF@A SUNI
+      CF@RA RSUNI
+      s" n --" PARSE-SIG
+      8 CF@A 0 CF@RA 0 CF-PUSH
+   THEN THEN ;
+
+: CF-ENDOF ( -- )
+   CF-BELOW-CASE? 0= IF CF-FAIL ELSE CF@K 8 <> IF CF-FAIL ELSE
+      CF-CASE-IDX CF-CASE-ACCUM
+      CF@A CTMP !  CF@RA RTMP !
+      0 DEADP !
+      CF-DROP
+      CTMP @ DCUR !  RTMP @ RCUR !
+   THEN THEN ;
+
+: CF-ENDCASE ( -- )
+   CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
+      DEADP @ 0= IF s" n --" PARSE-SIG THEN
+      #CFC @ 1 - CF-CASE-ACCUM
+      CF@DED IF
+         CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+      ELSE
+         -1 DEADP !
+      THEN
+      CF-DROP
+   THEN THEN ;
+
 : CF-ELSE
-   CF-MT? IF -1 UNCK ! ELSE CF@K 1 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 1 <> IF CF-FAIL ELSE
      DEADP @ #CFC @ 1 - cells CFDED + !  0 DEADP !       \ save if-branch deadness; else runs live
      DCUR @ CTMP !  CF@A DCUR !
      RCUR @ RTMP !  CF@RA RCUR !
@@ -2435,7 +2510,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    THEN THEN ;
 
 : CF-THEN
-   CF-MT? IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
         DEADP @ IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
         ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-DROP
@@ -2446,7 +2521,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
         ELSE nip IF 0 DEADP !                             \ if exited -> keep else (in DCUR)
         ELSE CF@B SUNI CF@RB RSUNI 0 DEADP ! THEN THEN THEN
         CF-DROP
-     ELSE -1 UNCK ! THEN THEN THEN ;
+     ELSE CF-FAIL THEN THEN THEN ;
 
 : CF-EXIT                                                 \ early return: accumulate, kill path
    XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
@@ -2460,23 +2535,23 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-UNTIL
    s" bool --" PARSE-SIG
-   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
 
 : CF-AGAIN                              \ unconditional loop: code after AGAIN is unreachable
-   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
    s" bool --" PARSE-SIG
-   CF-MT? IF -1 UNCK ! ELSE CF@K 3 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      4 #CFC @ 1 - cells CFKND + !
      DCUR @ #CFC @ 1 - cells CFSB + !
      RCUR @ #CFC @ 1 - cells CFRB + !
    THEN THEN ;
 
 : CF-REPEAT
-   CF-MT? IF -1 UNCK ! ELSE CF@K 4 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !  CF-DROP THEN THEN ;
 
 : CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
@@ -2487,14 +2562,14 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 \ the DO-point row (a zero-trip ?do or a leave both leave exactly that). Live
 \ fall-through: the back edge requires a stack-neutral body (CF@A SUNI).
 : CF-LOOP
-   CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
      ELSE  CF@A SUNI  CF@RA RSUNI  THEN
      CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
 
 : CF-+LOOP
    s" n --" PARSE-SIG
-   CF-MT? IF -1 UNCK ! ELSE CF@K 5 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
      ELSE  CF@A SUNI  CF@RA RSUNI  THEN
      CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
@@ -2502,12 +2577,12 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup cells CFKND + @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
-   INDO @ IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
+   INDO @ IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
 
 : CF-J                                     \ needs two enclosing DO frames
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
-   INDO @ 1 > IF s" -- n" PARSE-SIG ELSE -1 UNCK ! THEN ;
+   INDO @ 1 > IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
 
 variable LVDO  variable LVDN
 \ CF-FINDDO ( -- ) : LVDO = index of the nearest enclosing DO frame, or -1.
@@ -2526,7 +2601,7 @@ variable LVDO  variable LVDN
 \ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
 : CF-LEAVE
    CF-FINDDO
-   LVDO @ 0< IF -1 UNCK ! ELSE
+   LVDO @ 0< IF CF-FAIL ELSE
      LVDO @ cells CFSA + @ SUNI
      LVDO @ cells CFRA + @ RSUNI
      -1 DEADP ! THEN ;
@@ -2545,7 +2620,7 @@ variable LVDO  variable LVDN
 variable QTMP
 
 : CF-SEMIQ  \ ;] — quot<nested effect> pushed onto the restored outer row
-   CF-MT? IF -1 UNCK ! ELSE CF@K 6 <> IF -1 UNCK ! ELSE
+   CF-MT? IF CF-FAIL ELSE CF@K 6 <> IF CF-FAIL ELSE
      XSET @ IF                                   \ fold the quote's OWN early returns into its effect
        DEADP @ IF XROW @ DCUR !  XRROW @ RCUR !
        ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
@@ -2569,6 +2644,10 @@ variable QTMP
    a u s" if" CORE-STR= IF CF-IF ELSE
    a u s" else" CORE-STR= IF CF-ELSE ELSE
    a u s" then" CORE-STR= IF CF-THEN ELSE
+   a u s" case" CORE-STR= IF CF-CASE ELSE
+   a u s" of" CORE-STR= IF CF-OF ELSE
+   a u s" endof" CORE-STR= IF CF-ENDOF ELSE
+   a u s" endcase" CORE-STR= IF CF-ENDCASE ELSE
    a u s" begin" CORE-STR= IF CF-BEGIN ELSE
    a u s" until" CORE-STR= IF CF-UNTIL ELSE
    a u s" again" CORE-STR= IF CF-AGAIN ELSE
@@ -2584,7 +2663,7 @@ variable QTMP
    a u s" leave" CORE-STR= IF CF-LEAVE ELSE
    a u s" unloop" CORE-STR= IF CF-UNLOOP ELSE
    a u s" recurse" CORE-STR= IF CF-RECURSE ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
@@ -2657,6 +2736,8 @@ variable SKI  variable SKF
    a u s" then"   CORE-STR= IF -1 EXIT THEN
    a u s" loop"   CORE-STR= IF -1 EXIT THEN
    a u s" +loop"  CORE-STR= IF -1 EXIT THEN
+   a u s" endof"  CORE-STR= IF -1 EXIT THEN
+   a u s" endcase" CORE-STR= IF -1 EXIT THEN
    a u s" repeat" CORE-STR= IF -1 EXIT THEN
    a u s" again"  CORE-STR= IF -1 EXIT THEN
    a u s" ;]"     CORE-STR= IF -1 EXIT THEN
@@ -2848,7 +2929,7 @@ variable IS-TU
       SGOUT @ SUNI-IN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF
       RCUR @ SGROUT @ UNIFY-IN OK @ and OK !
@@ -2877,6 +2958,28 @@ variable CAND-NEND
 variable CAND-SYMN
 variable CAND-SYMU
 variable CAND-VERD
+variable CSCOPE-UEND
+variable CSCOPE-NEND
+variable CSCOPE-SYMN
+variable CSCOPE-SYMU
+variable CSCOPE-CAND
+variable CSCOPE-VSIG
+
+: CHECKER-SCOPE-START ( -- )
+   UEND @ CSCOPE-UEND !
+   NORET-END @ CSCOPE-NEND !
+   SYM-N @ CSCOPE-SYMN !
+   SYM-STR-U @ CSCOPE-SYMU !
+   CHK-CAND @ CSCOPE-CAND !
+   VSIG @ CSCOPE-VSIG ! ;
+
+: CHECKER-SCOPE-DONE ( -- )
+   CSCOPE-UEND @ USIGS-RESTORE-END
+   CSCOPE-NEND @ NORET-RESTORE-END
+   CSCOPE-SYMN @ SYM-N !
+   CSCOPE-SYMU @ SYM-STR-U !
+   CSCOPE-CAND @ CHK-CAND !
+   CSCOPE-VSIG @ VSIG ! ;
 
 : CHECK-CANDIDATE-START ( -- )
    UEND @ CAND-UEND !
@@ -2939,7 +3042,7 @@ variable CAND-VERD
    CHECK-NO-BORROW
    SGOUT @ SUNI-IN
    OK @ IF SGOUT @ DCUR ! THEN
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-IN OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;

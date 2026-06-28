@@ -100,8 +100,7 @@ variable UB-OUT-FD
    UB-CARRY-OFF ! ;
 
 : UB-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" checked-boundary-lint: write failed" 74 die THEN ;
+   fd a u LINT-OUT-WRITE ;
 
 : UB-OUT ( ptr u8 n -- )
    UB-OUT-FD @ -rot UB-WRITE ;

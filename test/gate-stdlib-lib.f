@@ -187,11 +187,15 @@ variable SUITE-SLICE
    s" tools/json.f" SUITE-KEY-FILE+
    s" tools/gate-json-assert-core.f" SUITE-KEY-FILE+
    s" tools/json-only-core.f" SUITE-KEY-FILE+
+   s" tools/aot-lint-core.f" SUITE-KEY-FILE+
    s" tools/signature-lint-core.f" SUITE-KEY-FILE+
    s" tools/checked-boundary-lint-core.f" SUITE-KEY-FILE+
+   s" tools/reserved-name-lint-core.f" SUITE-KEY-FILE+
+   s" tools/duplicate-definition-lint-core.f" SUITE-KEY-FILE+
    s" tools/typed-local-diff-lint-core.f" SUITE-KEY-FILE+
    s" tools/trust-lint-core.f" SUITE-KEY-FILE+
    s" tools/check-all-errors-core.f" SUITE-KEY-FILE+
+   s" src/habu/verify-source.f" SUITE-KEY-FILE+
    SUITE-KEY-DG SHA256-FINAL
    SUITE-KEY-DG SUITE-KEY-HEX SHA256>HEX ;
 
@@ -249,6 +253,7 @@ variable SUITE-SLICE
    s" tools/json.f" SUITE-ARG+
    s" tools/gate-json-assert-core.f" SUITE-ARG+
    s" tools/json-only-core.f" SUITE-ARG+
+   s" tools/aot-lint-core.f" SUITE-ARG+
    s" tools/signature-lint-core.f" SUITE-ARG+
    s" tools/checked-boundary-lint-core.f" SUITE-ARG+
    s" tools/reserved-name-lint-core.f" SUITE-ARG+
@@ -529,6 +534,7 @@ variable SUITE-SLICE
    s" tools/lint/lib.f" SUITE-ARG+
    s" tools/lint/json-writer.f" SUITE-ARG+
    s" tools/lint/source-lex.f" SUITE-ARG+
+   s" tools/check-all-errors-core.f" SUITE-ARG+
    s" tools/json.f" SUITE-ARG+
    s" tools/diag-origin-core.f" SUITE-ARG+
    s" tools/json-only-core.f" SUITE-ARG+

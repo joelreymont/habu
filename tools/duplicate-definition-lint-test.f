@@ -1,7 +1,7 @@
 \ duplicate-definition-lint-test.f - checked fixtures for duplicate-definition-lint.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/duplicate-definition-lint-test.f
+\ tools/duplicate-definition-lint-core.f tools/duplicate-definition-lint-test.f
 
 $1000 constant DDLT-BUF-CAP
 $2710 constant DDLT-TIMEOUT-MS
@@ -113,17 +113,6 @@ variable DDLT-CASE-U
    DDLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    DDLT-CAPTURE>N ;
 
-: DDLT-RUN-GOOD ( -- n n n n )
-   DDLT-ARGV-LOAD
-   DDLT-GOOD$ DDLT-ARG+
-   DDLT-CAPTURE ;
-
-: DDLT-RUN-CROSS ( -- n n n n )
-   DDLT-ARGV-LOAD
-   DDLT-BAD-A$ DDLT-ARG+
-   DDLT-BAD-B$ DDLT-ARG+
-   DDLT-CAPTURE ;
-
 : DDLT-RUN-JSON ( -- n n n n )
    DDLT-ARGV-LOAD
    s" --json" DDLT-ARG+
@@ -131,6 +120,27 @@ variable DDLT-CASE-U
    s" <stage2-src>" DDLT-ARG+
    DDLT-CASE$ DDLT-ARG+
    DDLT-CAPTURE ;
+
+: DDLT-CORE-SETUP ( bool -- ) {: json:bool :}
+   DUPLICATE-DEFINITION-LINT-RESET
+   DDLT-OUT DDLT-BUF-CAP LINT-OUT-BUFFER!
+   json DDL-JSON! ;
+
+: DDLT-CORE-FINISH ( -- n n n n )
+   [: DUPLICATE-DEFINITION-LINT-FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 PROC-OUTCOME-EXIT rc ;
+
+: DDLT-RUN-CORE-GOOD ( -- n n n n )
+   LINT-FALSE DDLT-CORE-SETUP
+   DDLT-GOOD$ DUPLICATE-DEFINITION-LINT-FILE
+   DDLT-CORE-FINISH ;
+
+: DDLT-RUN-CORE-CROSS ( -- n n n n )
+   LINT-FALSE DDLT-CORE-SETUP
+   DDLT-BAD-A$ DUPLICATE-DEFINITION-LINT-FILE
+   DDLT-BAD-B$ DUPLICATE-DEFINITION-LINT-FILE
+   DDLT-CORE-FINISH ;
 
 : DDLT-JSON-WORD-RESET$ ( -- ptr u8 n )
    SB-RESET
@@ -149,12 +159,12 @@ variable DDLT-CASE-U
    outu erru ;
 
 : DDLT-TEST-GOOD ( -- )
-   DDLT-RUN-GOOD 0 DDLT-EXPECT-EXIT {: outu erru :}
+   DDLT-RUN-CORE-GOOD 0 DDLT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : DDLT-TEST-CROSS ( -- )
-   DDLT-RUN-CROSS 1 DDLT-EXPECT-EXIT {: outu erru :}
+   DDLT-RUN-CORE-CROSS 1 DDLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    DDLT-OUT outu s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
    DDLT-OUT outu s" `LCH`" CONTAINS? TTRUE

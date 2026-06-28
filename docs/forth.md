@@ -34,7 +34,8 @@ file.
   primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
 - **Do not define parser/control reserved words.** `I`, `J`, `DO`, `LOOP`,
   `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
-  `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`, `UNDEFINE`, and the other
+  `CASE`, `OF`, `ENDOF`, `ENDCASE`, `TRUSTED:`, `PACKAGE`, `PUBLIC`,
+  `PRIVATE`, `UNDEFINE`, and the other
   compiler-dispatch/lifecycle tokens are not ordinary global names even though the dictionary is
   case-insensitive. A generated converter that strips prefixes must run
   `tools/reserved-name-lint.f` after naturalization so `CC-I` becomes `IX`, not
@@ -696,6 +697,18 @@ exactly as for `:`, `create`, `variable`, and `constant`.
 - **A no-`else` `if` must be stack-neutral.** If the true branch changes stack
   depth the merge at `then` fails (`expected: … actual:`). Bind the consumed
   value into a local *before* the `if` so both paths balance, or add `else drop`.
+- **Malformed control syntax is a rejection, not `uncheckable`.** Orphan closers,
+  unterminated control frames, `i`/`j` outside enough loops, and `leave` outside a
+  loop must make `CHECK!` return `0`; `uncheckable` is reserved for modeled-word
+  gaps, not parser/control imbalance.
+- **`case/of/endof/endcase` is standard selector control flow.** Write the
+  selector before `case`, each key before `of`, each matched arm before `endof`,
+  and optional default code before `endcase`. `of` compares the key with the
+  preserved selector; matched arms consume the selector, while the fall-through
+  default path keeps it until `endcase` drops it. Therefore a default arm that
+  produces a value must leave the selector on top for `endcase` to remove, e.g.
+  `30 swap endcase`. The checker requires integer keys/selectors and unifies
+  every live arm plus the default to one data/return-stack effect.
 - **A local may not be bound after an `exit` has appeared on a path.** Binding
   after a *closed* `if`/`else` with no early `exit` is fine; the blocker is
   specifically a prior early-return guard. Put all `{:` groups ahead of the first

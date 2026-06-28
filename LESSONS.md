@@ -99,6 +99,9 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Keep include as a two-leaf boundary:** source composition needs checked
   path/read/depth code plus only the mmap pointer refinement and final `evaluate`
   crossing as `TRUSTED:` leaves. Do not grow include to hide source-order bugs.
+- **Malformed control is not uncheckable:** orphan closers and unterminated
+  `if`/loop/quotation/`case` frames must set `OK=0`; `UNCK` is for missing
+  checker model coverage, not syntax imbalance.
 
 ## Tool & Infra
 
@@ -1008,3 +1011,8 @@ lesson — keep the specific word/code/path, cut the prose.
   gotcha). Always pair `cuDevicePrimaryCtxRetain` with `cuModuleUnload` +
   `cuDevicePrimaryCtxRelease` before exit (a `GC-FINI`); `acc-device-test.f` works
   only because it does.
+- **All-errors checks should be scoped, not subprocessed:** per-definition
+  `bin/hb --load ...` gave correct stderr isolation but dominated the tool gate.
+  Use a checker registry scope plus diagnostic-buffer capture for normal
+  duplicate-definition semantics, and reserve candidate scope only for generated
+  candidate checks where shadowing loaded libraries is intentional.

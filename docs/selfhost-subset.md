@@ -24,7 +24,8 @@ both, so source may use whichever reads best.
 and `{: a b :}` read-only locals.
 
 **Control flow** (case-folded, so UPPER-CASE source matches) — `IF` `THEN` `ELSE`,
-`BEGIN` `UNTIL` `AGAIN` `WHILE` `REPEAT`, `DO` `LOOP` `I`.
+`BEGIN` `UNTIL` `AGAIN` `WHILE` `REPEAT`, `CASE` `OF` `ENDOF` `ENDCASE`,
+`DO` `LOOP` `I`.
 
 **String / tick** — `S" …"`, `C" …"`, `." …"`, `['] NAME`.
 

@@ -76,8 +76,7 @@ variable TLD-SCAN-START
    TLD-NUM TLD-NUM-I @ + TLD-NUM-CAP TLD-NUM-I @ - ;
 
 : TLD-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" typed-local-diff-lint: write failed" 74 die THEN ;
+   fd a u LINT-OUT-WRITE ;
 
 : TLD-OUT ( ptr u8 n -- )
    1 -rot TLD-WRITE ;

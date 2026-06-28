@@ -6,7 +6,7 @@
 \ tools/diag-origin-core.f, tools/json.f, tools/json-only-core.f,
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
 \ tools/reserved-name-lint-core.f, tools/trust-lint-core.f,
-\ tools/check-all-errors-core.f, and tools/argv.f.
+\ tools/check-all-errors-core.f (which loads verify-source.f), and tools/argv.f.
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -15,8 +15,6 @@
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
 ' CHK-CHECK-HOOK set-check
-
-include src/habu/verify-source.f
 
 $40000 constant CHK-SRC-CAP
 $50000 constant CHK-RUN-CAP
@@ -418,8 +416,13 @@ variable CHK-ROOT-U
    CHK-JSON @ CHECK-ALL-ERRORS-JSON!
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS-FILE ;
 
+: CHK-RUN-ALL-FLUSH ( -- )
+   CHECK-ALL-ERRORS-OUT$ CHK-ERR ;
+
 : CHK-RUN-ALL ( -- )
-   [: CHK-RUN-ALL-CURRENT ;] catch dup 0= if drop exit then
+   [: CHK-RUN-ALL-CURRENT ;] catch
+   CHK-RUN-ALL-FLUSH
+   dup 0= if drop exit then
    CHK-THROW ;
 
 : CHK-RUN-STATIC ( -- )

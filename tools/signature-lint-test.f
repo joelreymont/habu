@@ -1,7 +1,7 @@
 \ signature-lint-test.f - checked fixtures for tools/signature-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/signature-lint-test.f
+\ tools/signature-lint-core.f tools/signature-lint-test.f
 
 4096 constant SLT-BUF-CAP
 10000 constant SLT-TIMEOUT-MS
@@ -144,21 +144,6 @@ create SLT-ERR SLT-BUF-CAP allot
 : SLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
-: SLT-RUN ( ptr u8 n -- n n n n ) {: a:ptr u :}
-   SLT-ARGV-LOAD
-   a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
-   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   SLT-CAPTURE>N ;
-
-: SLT-RUN-JSON ( ptr u8 n -- n n n n ) {: a:ptr u :}
-   SLT-ARGV-LOAD
-   s" --json" SLT-ARG+
-   a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
-   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   SLT-CAPTURE>N ;
-
 : SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n n ) {: a:ptr u :}
    SLT-ARGV-LOAD
    s" --json" SLT-ARG+
@@ -169,18 +154,44 @@ create SLT-ERR SLT-BUF-CAP allot
    SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    SLT-CAPTURE>N ;
 
+: SLT-CORE-SETUP ( bool -- ) {: json:bool :}
+   SIGNATURE-LINT-RESET
+   SLT-OUT SLT-BUF-CAP LINT-OUT-BUFFER!
+   json SL-JSON! ;
+
+: SLT-CORE-FINISH ( -- n n n n )
+   [: SIGNATURE-LINT-FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 PROC-OUTCOME-EXIT rc ;
+
+: SLT-RUN-CORE ( ptr u8 n -- n n n n )
+   LINT-FALSE SLT-CORE-SETUP
+   SIGNATURE-LINT-FILE
+   SLT-CORE-FINISH ;
+
+: SLT-RUN-CORE-JSON ( ptr u8 n -- n n n n )
+   LINT-TRUE SLT-CORE-SETUP
+   SIGNATURE-LINT-FILE
+   SLT-CORE-FINISH ;
+
+: SLT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n n )
+   {: a:ptr u:n :}
+   LINT-TRUE SLT-CORE-SETUP
+   a u s" <stdin>" SIGNATURE-LINT-FILE-AS
+   SLT-CORE-FINISH ;
+
 : SLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=
    code expect T=
    outu erru ;
 
 : SLT-TEST-GOOD ( -- )
-   SLT-GOOD SLT-RUN 0 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-GOOD SLT-RUN-CORE 0 SLT-EXPECT-EXIT {: outu:n erru:n :}
    SLT-OUT outu SLT-EMPTY$ T$=
    SLT-ERR erru SLT-EMPTY$ T$= ;
 
 : SLT-TEST-MISSING ( -- )
-   SLT-MISSING SLT-RUN 1 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-MISSING SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
 
@@ -191,17 +202,17 @@ create SLT-ERR SLT-BUF-CAP allot
    SLT-OUT outu SLT-JSON-LABEL$ CONTAINS? TTRUE ;
 
 : SLT-TEST-GOOD-JSON-LABEL ( -- )
-   SLT-GOOD SLT-RUN-JSON-LABEL 0 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-GOOD SLT-RUN-CORE-JSON-LABEL 0 SLT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : SLT-TEST-OPTOUT-JSON ( -- )
-   SLT-OPTOUT SLT-RUN-JSON 1 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-OPTOUT SLT-RUN-CORE-JSON 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    SLT-OUT outu SLT-JSON-UNVERIFIED$ CONTAINS? TTRUE ;
 
 : SLT-TEST-MISSING-NAME ( -- )
-   SLT-NAME SLT-RUN 1 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-NAME SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    SLT-OUT outu SLT-NAME-CODE$ CONTAINS? TTRUE ;
 

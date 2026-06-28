@@ -14,6 +14,19 @@
 create PATHBUF 1024 allot
 create READ-PROBE 1 allot
 variable RFD  variable RGOT  variable RLEN
+variable LINT-OUT-A
+variable LINT-OUT-CAP
+variable LINT-OUT-U
+variable LINT-OUT-ON
+
+: LINT-OUT-A-FIELD ( -- ptr ptr u8 )
+   LINT-OUT-A 0 ptr-field ;
+
+: LINT-OUT-A@ ( -- ptr u8 )
+   LINT-OUT-A-FIELD @ ;
+
+: LINT-OUT-A! ( ptr u8 -- )
+   LINT-OUT-A-FIELD ! ;
 
 : LINT-TRUE ( -- bool )
    0 0= ;
@@ -23,6 +36,29 @@ variable RFD  variable RGOT  variable RLEN
 
 : LINT-NOT ( bool -- bool )
    IF LINT-FALSE ELSE LINT-TRUE THEN ;
+
+: LINT-OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a LINT-OUT-A!
+   cap LINT-OUT-CAP !
+   0 LINT-OUT-U !
+   LINT-TRUE LINT-OUT-ON ! ;
+
+: LINT-OUT-BUFFER-OFF ( -- )
+   LINT-FALSE LINT-OUT-ON ! ;
+
+: LINT-OUT$ ( -- ptr u8 n )
+   LINT-OUT-A@ LINT-OUT-U @ ;
+
+: LINT-FD-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+   u 0= IF exit THEN
+   fd a u write u <> IF s" lint: write failed" 74 die THEN ;
+
+: LINT-OUT-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+   LINT-OUT-ON @ IF
+      a u LINT-OUT-A@ LINT-OUT-CAP @ LINT-OUT-U BUF-APPEND
+      exit
+   THEN
+   fd a u LINT-FD-WRITE ;
 
 : LINT-PATHZ ( ptr u8 n -- ) {: a:ptr u :}
    u 1+ 1024 > IF s" lint: path too long" 1 die THEN

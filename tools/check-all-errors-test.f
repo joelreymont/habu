@@ -1,6 +1,9 @@
 \ check-all-errors-test.f - checked fixtures for tools/check-all-errors.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f
+\ tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
 \ tools/check-all-errors-test.f
 
 4096 constant CAE-BUF-CAP
@@ -14,6 +17,9 @@ variable CAE-ROOT-U
 variable CAE-IN-U
 variable CAE-LARGE-U
 variable CAE-NUM-I
+variable CAE-RUN-A
+variable CAE-RUN-U
+variable CAE-RC
 
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
@@ -35,6 +41,22 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-LARGE ( -- ptr u8 n )
    CAE-LARGE-BUF CAE-LARGE-U @ ;
+
+: CAE-RUN-A-FIELD ( -- ptr ptr u8 )
+   CAE-RUN-A 0 ptr-field ;
+
+: CAE-RUN-A@ ( -- ptr u8 )
+   CAE-RUN-A-FIELD @ ;
+
+: CAE-RUN-A! ( ptr u8 -- )
+   CAE-RUN-A-FIELD ! ;
+
+: CAE-RUN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CAE-RUN-U !
+   a CAE-RUN-A! ;
+
+: CAE-RUN$ ( -- ptr u8 n )
+   CAE-RUN-A@ CAE-RUN-U @ ;
 
 : CAE-LF ( -- )
    $0a SB-APPEND-C ;
@@ -76,6 +98,11 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-OK-XV ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
    s" : CAE-OK-SUP ( i64 -- i64 ) [: CAE-OK-XV ;] is CAE-SUP-XV CAE-SUP-XV CAE-SUP-T CAE-SUP-K + ;" SB-APPEND CAE-LF
    s" : CAE-BAD-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + CAE-SUP-V @ drop CAE-SUP-B drop dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-UNDEF-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-UDEF ( i64 -- i64 ) dup NOPE ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-AS-LEAK-SOURCE$ ( -- ptr u8 n )
@@ -155,6 +182,20 @@ create CAE-LF-BYTE 10 c,
    CAE-DQ s" cae-cap-sup-bad" SB-APPEND CAE-DQ
    SB$ ;
 
+: CAE-CODE-UNDEFINED$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-UNDEFINED" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-NOPE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" NOPE" SB-APPEND CAE-DQ
+   SB$ ;
+
 : CAE-TOKEN-CAPSUP$ ( -- ptr u8 n )
    SB-RESET
    CAE-DQ s" token" SB-APPEND CAE-DQ
@@ -215,6 +256,16 @@ create CAE-LF-BYTE 10 c,
 : CAE-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
+: CAE-RUN-CORE-ACT ( -- )
+   CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS-FILE ;
+
+: CAE-CORE-CAPTURE ( ptr u8 n -- n n n n )
+   CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
+
 : CAE-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
@@ -250,11 +301,13 @@ create CAE-LF-BYTE 10 c,
    CAE-CAPTURE>N ;
 
 : CAE-RUN ( -- n n n n )
-   CAE-IN CAE-ARGV-CHECK
-   CAE-HB-CAPTURE ;
+   CAE-IN CAE-CORE-CAPTURE ;
 
 : CAE-RUN-LARGE ( -- n n n n )
-   CAE-LARGE CAE-ARGV-CHECK
+   CAE-LARGE CAE-CORE-CAPTURE ;
+
+: CAE-RUN-CLI ( -- n n n n )
+   CAE-IN CAE-ARGV-CHECK
    CAE-HB-CAPTURE ;
 
 : CAE-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
@@ -264,7 +317,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-SUPPORT-SOURCE ( -- )
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
-   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-BADSUP$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
@@ -272,7 +325,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-AS-ADD-TASK-LEAK ( -- )
    CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
-   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-ASADD$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-BMTID$ CONTAINS? TFALSE
@@ -280,22 +333,38 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-MANY-DEFS-OK ( -- )
    CAE-WRITE-MANY-DEFS-OK
-   CAE-RUN-LARGE 0 CAE-EXPECT-EXIT {: outu erru :}
+   CAE-RUN-LARGE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-EMPTY$ T$= ;
 
 : CAE-TEST-MANY-SUPPORT ( -- )
    CAE-WRITE-MANY-SUPPORT
-   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: outu erru :}
+   CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-CAPSUPBAD$ CONTAINS? TTRUE
    CAE-ERR erru CAE-TOKEN-CAPSUP$ CONTAINS? TFALSE
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
+: CAE-TEST-UNDEFINED-JSON ( -- )
+   CAE-IN CAE-UNDEF-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-ERR erru CAE-CODE-UNDEFINED$ CONTAINS? TTRUE
+   CAE-ERR erru CAE-TOKEN-NOPE$ CONTAINS? TTRUE
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-CLI-SMOKE ( -- )
+   CAE-IN CAE-SOURCE$ WRITE-ALL
+   CAE-RUN-CLI 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
-   CAE-RUN 70 CAE-EXPECT-EXIT {: outu erru :}
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-OUT outu CAE-EMPTY$ T$=
    CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
@@ -308,6 +377,8 @@ create CAE-LF-BYTE 10 c,
    CAE-TEST-AS-ADD-TASK-LEAK
    CAE-TEST-MANY-DEFS-OK
    CAE-TEST-MANY-SUPPORT
+   CAE-TEST-UNDEFINED-JSON
+   CAE-TEST-CLI-SMOKE
    CLEANUP-RUN
    CAE-ROOT EXISTS? TFALSE
    T-REPORT

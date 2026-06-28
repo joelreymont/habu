@@ -121,17 +121,6 @@ variable CKT-LIST-U
    s" --all-errors"  >LEN PROC-ARGV+
    src srcu CKT-STDIN-CAPTURE ;
 
-: CKT-RUN-STRICT ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --strict-signatures"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
-
-: CKT-RUN-STRICT-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --strict-signatures"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
-
 : CKT-RUN-FILE-JSON ( -- n n n )
    CKT-ARGV-BASE
    s" --json-errors"  >LEN PROC-ARGV+
@@ -159,15 +148,6 @@ variable CKT-LIST-U
 : CKT-BAD$SRC ( -- ptr u8 n )
    s" : CKT-BAD-WORD ( i64 -- i64 ) dup ;" ;
 
-: CKT-NOSIG$ ( -- ptr u8 n )
-   s" : CKT-NOSIG dup ;" ;
-
-: CKT-UNKNOWN-SIG$ ( -- ptr u8 n )
-   s" : CKT-UNKNOWN-SIG ( got expected -- bool ) <= ;" ;
-
-: CKT-UNCHECKED$ ( -- ptr u8 n )
-   s" 0 set-check : CKT-UNCHECKED ( -- ) ;" ;
-
 : CKT-RESERVED$ ( -- ptr u8 n )
    s" variable I" ;
 
@@ -189,27 +169,6 @@ variable CKT-LIST-U
    s"  nope ;" SB-APPEND
    SB$ ;
 
-: CKT-UNTERM-CQ$ ( -- ptr u8 n )
-   SB-RESET
-   s" : CKT-UNTERM-CQ ( -- ptr u8 ) c" SB-APPEND
-   $22 SB-APPEND-C
-   s"  nope ;" SB-APPEND
-   SB$ ;
-
-: CKT-UNTERM-DOTQ$ ( -- ptr u8 n )
-   SB-RESET
-   s" : CKT-UNTERM-DOTQ ( -- ) ." SB-APPEND
-   $22 SB-APPEND-C
-   s"  nope ;" SB-APPEND
-   SB$ ;
-
-: CKT-LOCAL-TRUSTED$ ( -- ptr u8 n )
-   SB-RESET
-   s" TRUSTED: CKT-LOCAL-TEST ( -- ) ;" SB-APPEND
-   $0a SB-APPEND-C
-   s" : CKT-OK ( -- ) CKT-LOCAL-TEST ;" SB-APPEND
-   SB$ ;
-
 : CKT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-check-test" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
@@ -226,40 +185,6 @@ variable CKT-LIST-U
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru CKT-BAD$ CONTAINS? TTRUE ;
-
-: CKT-TEST-STRICT-SIGNATURE ( -- )
-   CKT-NOSIG$ CKT-RUN-STRICT 1 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE
-   CKT-ERR erru s" signature-lint:" CONTAINS? TTRUE ;
-
-: CKT-TEST-STRICT-SIGNATURE-JSON ( -- )
-   CKT-NOSIG$ CKT-RUN-STRICT-JSON 1 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" schema_version" CONTAINS? TTRUE
-   CKT-ERR erru s" E-MISSING-SIGNATURE" CONTAINS? TTRUE ;
-
-: CKT-TEST-UNKNOWN-SIGNATURE ( -- )
-   CKT-UNKNOWN-SIG$ CKT-RUN 70 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" unknown type 'got' in signature" CONTAINS? TTRUE
-   CKT-ERR erru s" <=" CONTAINS? TFALSE ;
-
-: CKT-TEST-BOUNDARY-LINT ( -- )
-   CKT-UNCHECKED$ CKT-RUN 1 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" CHECKER-MUTATION" CONTAINS? TTRUE ;
-
-: CKT-TEST-RESERVED-NAME ( -- )
-   CKT-RESERVED$ CKT-RUN 1 T=
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   CKT-ERR erru s" `I`" CONTAINS? TTRUE ;
 
 : CKT-TEST-USAGE ( -- )
    CKT-RUN-ARGS 64 T=
@@ -279,17 +204,8 @@ variable CKT-LIST-U
    outu 0 T=
    CKT-ERR erru s" E-" CONTAINS? TTRUE ;
 
-: CKT-TEST-UNTERM-STRINGS ( -- )
-   CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING
-   CKT-UNTERM-CQ$ CKT-EXPECT-UNTERM-STRING
-   CKT-UNTERM-DOTQ$ CKT-EXPECT-UNTERM-STRING ;
-
-: CKT-TEST-SOURCE-LIST-LOCAL-TRUST ( -- )
-   CKT-LOCAL-TRUSTED$ CKT-RUN-SOURCE-LIST 0 T<>
-   {: outu erru :}
-   outu 0 T=
-   CKT-ERR erru s" UNMANIFESTED" CONTAINS? TTRUE
-   CKT-ERR erru s" CKT-LOCAL-TEST" CONTAINS? TTRUE ;
+: CKT-TEST-UNTERM-STRING ( -- )
+   CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING ;
 
 : CKT-TEST-SOURCE-LIST-RESERVED ( -- )
    CKT-RESERVED$ CKT-RUN-SOURCE-LIST 1 T=
@@ -309,15 +225,9 @@ variable CKT-LIST-U
    CKT-PREPARE
    CKT-TEST-GOOD
    CKT-TEST-FILE-LABEL
-   CKT-TEST-BOUNDARY-LINT
-   CKT-TEST-RESERVED-NAME
-   CKT-TEST-STRICT-SIGNATURE
-   CKT-TEST-STRICT-SIGNATURE-JSON
-   CKT-TEST-UNKNOWN-SIGNATURE
    CKT-TEST-USAGE
    CKT-TEST-DIE
-   CKT-TEST-UNTERM-STRINGS
-   CKT-TEST-SOURCE-LIST-LOCAL-TRUST
+   CKT-TEST-UNTERM-STRING
    CKT-TEST-SOURCE-LIST-RESERVED
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN

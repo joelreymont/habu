@@ -670,6 +670,8 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
    LKWUNTIL LABEL@ LBL,  s" until"  BYTES,    LKWAGAIN LABEL@ LBL,  s" again"  BYTES,
    LKWWHILE LABEL@ LBL,  s" while"  BYTES,    LKWREPEAT LABEL@ LBL, s" repeat" BYTES,
+   LKWCASE LABEL@ LBL,   s" case"   BYTES,    LKWOF LABEL@ LBL,     s" of"     BYTES,
+   LKWENDOF LABEL@ LBL,  s" endof"  BYTES,    LKWENDCASE LABEL@ LBL, s" endcase" BYTES,
    LKWCREATE LABEL@ LBL, s" create" BYTES,    LKWVAR LABEL@ LBL,    s" variable" BYTES,
    LKWSQ LABEL@ LBL,     SQ-KW 2 BYTES,
    LKWCQ LABEL@ LBL,     CQ-KW 2 BYTES,
@@ -711,6 +713,31 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
 : J-THEN ( -- )  LCFPOP LABEL@ BL,  LPAT LABEL@ BL, ;
 
 : J-ELSE ( -- )  LCFPOP LABEL@ BL,  14 9 0 ADDI,  C-PUSHCP  $14000000 C-EMITW  9 14 0 ADDI,  LPAT LABEL@ BL, ;
+
+: J-CASE ( -- )
+   9 0 MOVZ,  LCFPUSH LABEL@ BL, ;
+
+: J-OF ( -- )
+   C-POP-X16
+   $F85F8269 C-EMITW
+   $EB10013F C-EMITW
+   $9A9F17E9 C-EMITW
+   C-PUSHCP
+   $B4000009 C-EMITW
+   $D1002273 C-EMITW ;
+
+: J-ENDOF ( -- )
+   J-ELSE ;
+
+: J-ENDCASE ( -- )
+   LBL LBL {: cloop:label done:label :}
+   $D1002273 C-EMITW
+   cloop LBL,
+      LCFPOP LABEL@ BL,
+      9 done CBZ,
+      LPAT LABEL@ BL,
+      cloop B,
+   done LBL, ;
 
 \ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
@@ -2391,7 +2418,11 @@ s" em-compile-semi" s" label --" TRUST
    s" until" KEEP? IF LMAIN LABEL@ LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY THEN
    s" again" KEEP? IF LMAIN LABEL@ LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY THEN
    s" while" KEEP? IF LMAIN LABEL@ LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY THEN
-   s" repeat" KEEP? IF LMAIN LABEL@ LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY THEN ;
+   s" repeat" KEEP? IF LMAIN LABEL@ LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY THEN
+   s" case" KEEP? IF LMAIN LABEL@ LKWCASE 4 ['] J-CASE CFN-ENTRY THEN
+   s" of" KEEP? IF LMAIN LABEL@ LKWOF 2 ['] J-OF CF-ENTRY THEN
+   s" endof" KEEP? IF LMAIN LABEL@ LKWENDOF 5 ['] J-ENDOF CF-ENTRY THEN
+   s" endcase" KEEP? IF LMAIN LABEL@ LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY THEN ;
 s" em-compile-control-keywords" s" --" TRUST
 
 : EM-COMPILE-STRING-KEYWORDS ( -- )
@@ -2640,6 +2671,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
+   LBL LKWCASE !  LBL LKWOF !  LBL LKWENDOF !  LBL LKWENDCASE !
    LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
    LBL LKWTYPE !
    LBL LKWTICK !  LBL LKWBTICK !

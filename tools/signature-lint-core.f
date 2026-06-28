@@ -96,8 +96,7 @@ variable SL-SUG-U
    SL-BUF-A@ ;
 
 : SL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" signature-lint: write failed" 74 die THEN ;
+   fd a u LINT-OUT-WRITE ;
 
 : SL-OUT ( ptr u8 n -- )
    SL-OUT-FD @ -rot SL-WRITE ;

@@ -239,6 +239,7 @@ variable HBB-LOCK-DEADLINE
 : HBB-ADD-AOT-LINT-ENTRY ( -- )
    s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
    HBB-ADD-LINT-LOADS
+   s" tools/aot-lint-core.f"  >LEN PROC-ARGV+
    s" tools/aot-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 

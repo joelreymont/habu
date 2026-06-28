@@ -97,25 +97,30 @@ variable GE-ARGV-U
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-OUTCOME. ( n -- ) {: kind:n :}
-   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
-   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
-   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
-   s" unknown" type ;
+   kind case
+      PROC-OUTCOME-EXIT of s" exit" type endof
+      PROC-OUTCOME-SIGNAL of s" signal" type endof
+      PROC-OUTCOME-TIMEOUT of s" timeout" type endof
+      s" unknown" type
+   endcase ;
 
 : GE-RC-NAME. ( n -- ) {: rc:n :}
-   rc 60 = if s" E-PROC-SPAWN" type exit then
-   rc 59 = if s" E-PROC-WAIT" type exit then
-   rc 58 = if s" E-PROC-TIMEOUT" type exit then
-   rc 57 = if s" E-PROC-OUTPUT" type exit then
-   rc 56 = if s" E-PROC-TRUNCATED" type exit then
-   rc 55 = if s" E-PROC-ENV" type exit then
-   rc 54 = if s" E-PROC-PATH" type exit then
-   rc 78 = if s" E-DUP-DEFINITION" type exit then
-   rc 202 = if s" E-FS-OPEN" type exit then
-   rc 198 = if s" E-FS-CAPACITY" type exit then
-   rc 104 = if s" E-STR-BOUNDS" type exit then
-   rc 103 = if s" E-STR-CAPACITY" type exit then
-   s" unmapped" type ;
+   rc case
+      60 of s" E-PROC-SPAWN" type endof
+      59 of s" E-PROC-WAIT" type endof
+      58 of s" E-PROC-TIMEOUT" type endof
+      57 of s" E-PROC-OUTPUT" type endof
+      56 of s" E-PROC-TRUNCATED" type endof
+      55 of s" E-PROC-ENV" type endof
+      54 of s" E-PROC-PATH" type endof
+      70 of s" E-CHECK" type endof
+      78 of s" E-DUP-DEFINITION" type endof
+      202 of s" E-FS-OPEN" type endof
+      198 of s" E-FS-CAPACITY" type endof
+      104 of s" E-STR-BOUNDS" type endof
+      103 of s" E-STR-CAPACITY" type endof
+      s" unmapped" type
+   endcase ;
 
 : GE-PRINT-OUTCOME ( -- )
    s" outcome: " type GT-OUTCOME-KIND @ GE-OUTCOME.

@@ -58,6 +58,25 @@ TPLOOP 5 T=
 TJ 12 T=
 : TLEAVE ( -- n ) 0 10 0 do 1 + dup 4 = if leave then loop ;
 TLEAVE 4 T=
+: TCASE ( n -- n )
+   case
+      1 of 10 endof
+      2 of 20 endof
+      30 swap
+   endcase ;
+1 TCASE 10 T=
+2 TCASE 20 T=
+9 TCASE 30 T=
+: TNESTCASE ( n n -- n ) {: inner:n outer:n :}
+   outer case
+      1 of inner case 5 of 15 endof 16 swap endcase endof
+      2 of 20 endof
+      99 swap
+   endcase ;
+5 1 TNESTCASE 15 T=
+4 1 TNESTCASE 16 T=
+0 2 TNESTCASE 20 T=
+9 3 TNESTCASE 99 T=
 KERNEL: TKERNEL-INC ( n -- n ) 1+ ;
 8 TKERNEL-INC 9 T=
 
@@ -204,6 +223,14 @@ s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
 s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
+s" COK-CASE ( i64 -- i64 ) case 1 of 10 endof 2 of 20 endof 30 swap endcase" CHECK! -1 T=
+s" CBAD-CASE-ARM ( i64 -- i64 ) case 1 of 10 11 endof 20 swap endcase" T-CHECK-REJECTS
+s" CBAD-CASE-MISSING ( i64 -- i64 ) case 1 of 10 endof" T-CHECK-REJECTS
+s" CBAD-CASE-ORPHAN ( i64 -- i64 ) 1 of 2 endof" T-CHECK-REJECTS
+s" CBAD-IF-MISSING ( i64 -- i64 ) dup 0 > if 1" T-CHECK-REJECTS
+s" CBAD-THEN-ORPHAN ( i64 -- i64 ) 1 then" T-CHECK-REJECTS
+s" CBAD-I-ORPHAN ( -- i64 ) i" T-CHECK-REJECTS
+s" CBAD-LEAVE-ORPHAN ( -- ) leave" T-CHECK-REJECTS
 s" CBAD-PTX-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-REJECTS
 s" CBAD-PTX-EXTENT ( span<space-global,f32,extent-m> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-REJECTS
 s" CBAD-PTX-MASK ( tile<f32,block-256,mask-a> tile<f32,block-256,mask-b> -- tile<f32,block-256,mask-a> ) T-PTX-ADD" T-CHECK-REJECTS

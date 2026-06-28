@@ -138,6 +138,7 @@ variable FM-NUM-L
    s" tools/duplicate-definition-lint-core.f" FM-REQ
    s" tools/duplicate-definition-lint.f" FM-REQ
    s" tools/duplicate-definition-lint-test.f" FM-REQ
+   s" tools/aot-lint-core.f" FM-REQ
    s" tools/aot-lint.f" FM-REQ
    s" tools/aot-lint-test.f" FM-REQ
    s" tools/diag-origin-core.f" FM-REQ

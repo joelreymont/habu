@@ -175,7 +175,8 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
-- `tools/aot-lint.f` — stripped-AOT unsupported-word lint.
+- `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
+- `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint.
 - `tools/aot-lint-test.f` — checked fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin-core.f` — reusable source-origin marker injection core.
 - `tools/diag-origin.f` — CLI wrapper for checker JSON source-origin markers.

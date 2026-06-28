@@ -1,7 +1,8 @@
 \ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/warm-run.f tools/checked-boundary-lint-test.f
+\ tools/warm-run.f tools/checked-boundary-lint-core.f
+\ tools/checked-boundary-lint-test.f
 
 4096 constant CBLT-BUF-CAP
 10000 constant CBLT-TIMEOUT-MS
@@ -173,38 +174,41 @@ create CBLT-LF-BYTE 10 c,
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    CBLT-HB-CAPTURE ;
 
-: CBLT-RUN-GOOD ( -- n n n n )
-   CBLT-ARGV-LOAD
-   CBLT-GOOD  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-CORE-SETUP ( bool -- ) {: strict:bool :}
+   CHECKED-BOUNDARY-LINT-RESET
+   CBLT-OUT CBLT-BUF-CAP LINT-OUT-BUFFER!
+   strict UB-STRICT-BOUNDARY! ;
 
-: CBLT-RUN-STRICT-GOOD ( -- n n n n )
-   CBLT-ARGV-LOAD
-   s" --strict-boundary"  >LEN PROC-ARGV+
-   CBLT-GOOD  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-CORE-FINISH ( -- n n n n )
+   [: CHECKED-BOUNDARY-LINT-FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 PROC-OUTCOME-EXIT rc ;
 
-: CBLT-RUN-STRICT-TRUSTED ( -- n n n n )
-   CBLT-ARGV-LOAD
-   s" --strict-boundary"  >LEN PROC-ARGV+
-   CBLT-TRUSTED  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-RUN-CORE-FILE ( ptr u8 n bool -- n n n n ) {: path:ptr pathu:n strict:bool :}
+   strict CBLT-CORE-SETUP
+   path pathu CHECKED-BOUNDARY-LINT-FILE
+   CBLT-CORE-FINISH ;
 
-: CBLT-RUN-LARGE ( -- n n n n )
-   CBLT-ARGV-LOAD
-   CBLT-LARGE  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-RUN-CORE-GOOD ( -- n n n n )
+   CBLT-GOOD LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-BAD ( -- n n n n )
-   CBLT-ARGV-LOAD
-   CBLT-BAD  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-RUN-CORE-LARGE ( -- n n n n )
+   CBLT-LARGE LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CROSS ( -- n n n n )
-   CBLT-ARGV-LOAD
-   CBLT-OFF  >LEN PROC-ARGV+
-   CBLT-CROSS  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
+: CBLT-RUN-CORE-BAD ( -- n n n n )
+   CBLT-BAD LINT-FALSE CBLT-RUN-CORE-FILE ;
+
+: CBLT-RUN-CORE-STRICT-GOOD ( -- n n n n )
+   CBLT-GOOD LINT-TRUE CBLT-RUN-CORE-FILE ;
+
+: CBLT-RUN-CORE-STRICT-TRUSTED ( -- n n n n )
+   CBLT-TRUSTED LINT-TRUE CBLT-RUN-CORE-FILE ;
+
+: CBLT-RUN-CORE-CROSS ( -- n n n n )
+   LINT-FALSE CBLT-CORE-SETUP
+   CBLT-OFF CHECKED-BOUNDARY-LINT-FILE
+   CBLT-CROSS CHECKED-BOUNDARY-LINT-FILE
+   CBLT-CORE-FINISH ;
 
 : CBLT-ASSERT-CLEAN ( n n n n -- ) {: outu erru kind code :}
    kind PROC-OUTCOME-EXIT T=
@@ -221,29 +225,29 @@ create CBLT-LF-BYTE 10 c,
    CBLT-RUN-CURRENT CBLT-ASSERT-CLEAN ;
 
 : CBLT-TEST-GOOD ( -- )
-   CBLT-RUN-GOOD CBLT-ASSERT-CLEAN ;
+   CBLT-RUN-CORE-GOOD CBLT-ASSERT-CLEAN ;
 
 : CBLT-TEST-LARGE ( -- )
-   CBLT-RUN-LARGE CBLT-ASSERT-CLEAN ;
+   CBLT-RUN-CORE-LARGE CBLT-ASSERT-CLEAN ;
 
 : CBLT-TEST-BAD ( -- )
-   CBLT-RUN-BAD 1 CBLT-EXPECT-EXIT {: outu erru :}
+   CBLT-RUN-CORE-BAD 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    CBLT-OUT outu CBLT-CODE$ CONTAINS? TTRUE ;
 
 : CBLT-TEST-CROSS ( -- )
-   CBLT-RUN-CROSS 1 CBLT-EXPECT-EXIT {: outu erru :}
+   CBLT-RUN-CORE-CROSS 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    CBLT-OUT outu s" CROSS-BAD" CONTAINS? TTRUE ;
 
 : CBLT-TEST-STRICT ( -- )
-   CBLT-RUN-STRICT-GOOD 1 CBLT-EXPECT-EXIT {: outu erru :}
+   CBLT-RUN-CORE-STRICT-GOOD 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    CBLT-OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
    CBLT-OUT outu s" set-check" CONTAINS? TTRUE ;
 
 : CBLT-TEST-STRICT-TRUSTED ( -- )
-   CBLT-RUN-STRICT-TRUSTED CBLT-ASSERT-CLEAN ;
+   CBLT-RUN-CORE-STRICT-TRUSTED CBLT-ASSERT-CLEAN ;
 
 : CBLT-MAIN ( -- )
    T-RESET

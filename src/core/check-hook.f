@@ -17,6 +17,11 @@ s" RD32" s" ptr u8 -- n" TRUST
 s" DIAG-FILE!" s" ptr u8 n --" TRUST
 s" DIAG-ORIGIN!" s" n n n --" TRUST
 s" DIAG-JSON!" s" bool --" TRUST
+s" DIAG-BUFFER!" s" ptr u8 n --" TRUST
+s" DIAG-BUFFER-OFF" s" --" TRUST
+s" DIAG-BUFFER$" s" -- ptr u8 n" TRUST
+s" CHECKER-SCOPE-START" s" --" TRUST
+s" CHECKER-SCOPE-DONE" s" --" TRUST
 s" CHECK-CANDIDATE!" s" ptr u8 n -- n" TRUST
 s" CHECKER-CANDIDATE-SCOPE-START" s" --" TRUST
 s" CHECKER-CANDIDATE-SCOPE-DONE" s" --" TRUST

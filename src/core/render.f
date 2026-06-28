@@ -11,6 +11,11 @@ variable RDST   0 RDST !                 \ 0 = stdout, 1 = RSBUF (sig recording)
 16384 constant RSBUF-CAP
 create RSBUF RSBUF-CAP allot   variable RSN
 variable RQM                             \ a '?' rendered = unknown tag, don't record
+variable RDIAG-ON
+variable RDIAG-A
+variable RDIAG-CAP
+variable RDIAG-U
+variable RDIAG-I
 
 : EMIT1 {: c :}
    c 63 = IF 1 RQM ! THEN
@@ -18,6 +23,36 @@ variable RQM                             \ a '?' rendered = unknown tag, don't r
      RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
+
+: DIAG-BUFFER! ( ptr u8 n -- )
+   {: a:ptr cap:n :}
+   a RDIAG-A !
+   cap RDIAG-CAP !
+   0 RDIAG-U !
+   -1 RDIAG-ON ! ;
+
+: DIAG-BUFFER-OFF ( -- )
+   0 RDIAG-ON !
+   0 RDIAG-U ! ;
+
+: DIAG-BUFFER$ ( -- ptr u8 n )
+   RDIAG-A @ RDIAG-U @ ;
+
+: RDIAG-COPY ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   0 RDIAG-I !
+   BEGIN RDIAG-I @ u < WHILE
+      a RDIAG-I @ + c@
+      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
+      RDIAG-I @ 1 + RDIAG-I !
+   REPEAT ;
+
+: RDIAG-APPEND ( ptr u8 n -- )
+   {: a:ptr u:n :}
+   RDIAG-ON @ 0= IF 2 a u write drop EXIT THEN
+   RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
+   a u RDIAG-COPY
+   RDIAG-U @ u + RDIAG-U ! ;
 create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
 
 : SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
@@ -346,6 +381,6 @@ variable JPOS  variable JLINE  variable JCOL
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
    JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
-   2 RSBUF RSN @ write drop
+   RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !

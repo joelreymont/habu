@@ -1,6 +1,7 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/argv.f tools/warm-run.f tools/json.f tools/json-only-core.f
 \ tools/json-only-test.f
 
 1024 constant JOT-BUF-CAP
@@ -138,17 +139,18 @@ variable JOT-ERR-A
 : JOT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
-: JOT-RUN ( ptr u8 n -- n n n n ) {: path:ptr pathu :}
-   JOT-ARGV-LOAD
-   WR-TOOLS? 0= if s" --"  >LEN PROC-ARGV+ then
-   path pathu  >LEN PROC-ARGV+
-   WR-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
-   JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME JOT-CAPTURE>N ;
-
 : JOT-RUN-NOARG ( -- n n n n )
    JOT-ARGV-LOAD
    WR-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME JOT-CAPTURE>N ;
+
+: JOT-RUN-CORE ( ptr u8 n -- n n n n )
+   JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
+   JSON-ONLY-FILTER
+   JSON-ONLY-JSON$ nip
+   JSON-ONLY-PROSE$ nip
+   JSON-ONLY-BUFFERS-OFF
+   PROC-OUTCOME-EXIT 0 ;
 
 : JOT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=
@@ -156,32 +158,27 @@ variable JOT-ERR-A
    outu erru ;
 
 : JOT-MIXED-CASE ( -- )
-   JOT-IN JOT-MIXED-IN$ WRITE-ALL
-   JOT-IN JOT-RUN 0 JOT-EXPECT-EXIT {: outu erru :}
+   JOT-MIXED-IN$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-MIXED-OUT$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 
 : JOT-BAD-CASE ( -- )
-   JOT-IN JOT-BAD$ WRITE-ALL
-   JOT-IN JOT-RUN 0 JOT-EXPECT-EXIT {: outu erru :}
+   JOT-BAD$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-BAD$ T$= ;
 
 : JOT-ARRAY-CASE ( -- )
-   JOT-IN JOT-ARRAY$ WRITE-ALL
-   JOT-IN JOT-RUN 0 JOT-EXPECT-EXIT {: outu erru :}
+   JOT-ARRAY$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-ARRAY$ T$= ;
 
 : JOT-PROSE-CASE ( -- )
-   JOT-IN JOT-PROSE$ WRITE-ALL
-   JOT-IN JOT-RUN 0 JOT-EXPECT-EXIT {: outu erru :}
+   JOT-PROSE$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-PROSE$ T$= ;
 
 : JOT-ZERO-CASE ( -- )
-   JOT-IN JOT-EMPTY$ WRITE-ALL
-   JOT-IN JOT-RUN 0 JOT-EXPECT-EXIT {: outu erru :}
+   JOT-EMPTY$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}
    JOT-OUT outu JOT-EMPTY$ T$=
    JOT-ERR erru JOT-EMPTY$ T$= ;
 

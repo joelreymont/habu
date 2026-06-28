@@ -1,7 +1,10 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/json.f tools/gate-json-assert-core.f tools/repair-packet-test.f
+\ lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f
+\ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
+\ tools/repair-packet-test.f
 
 $20000 constant RPT-CAPTURE-CAP
 10000 constant RPT-TIMEOUT-MS
@@ -12,6 +15,8 @@ variable RPT-DIAG-U
 variable RPT-PACKET-U
 variable RPT-OUT-A
 variable RPT-ERR-A
+variable RPT-LABEL-A
+variable RPT-LABEL-U
 
 create RPT-ROOT-BUF FS-PATH-CAP allot
 create RPT-SRC-BUF FS-PATH-CAP allot
@@ -26,6 +31,12 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 
 : RPT-PTR-U8! ( ptr u8 ptr a -- )
    RPT-PTR-U8-FIELD ! ;
+
+: RPT-LABEL-A@ ( -- ptr u8 )
+   RPT-LABEL-A RPT-PTR-U8@ ;
+
+: RPT-LABEL-A! ( ptr u8 -- )
+   RPT-LABEL-A RPT-PTR-U8! ;
 
 : RPT-ALLOC-BUF ( -- ptr u8 )
    RPT-CAPTURE-CAP MEM-ALLOC-BYTES drop ;
@@ -59,6 +70,13 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 
 : RPT-PACKET ( -- ptr u8 n )
    RPT-PACKET-BUF RPT-PACKET-U @ ;
+
+: RPT-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a RPT-LABEL-A!
+   u RPT-LABEL-U ! ;
+
+: RPT-LABEL$ ( -- ptr u8 n )
+   RPT-LABEL-A@ RPT-LABEL-U @ ;
 
 : RPT-LF ( -- )
    10 SB-APPEND-C ;
@@ -109,35 +127,6 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 : RPT-WRITE-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    RPT-SRC a u RPT-SOURCE$ WRITE-ALL ;
 
-: RPT-ARGV-CHECK ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu file:ptr fileu :}
-   PROC-ARGV-RESET
-   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
-      s" --json-errors"  >LEN PROC-ARGV+
-      s" --label"  >LEN PROC-ARGV+
-      label labelu  >LEN PROC-ARGV+
-      file fileu  >LEN PROC-ARGV+
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   label labelu  >LEN PROC-ARGV+
-   file fileu  >LEN PROC-ARGV+ ;
-
 : RPT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
@@ -146,9 +135,15 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME RPT-CAPTURE>N ;
 
-: RPT-RUN-CHECK ( ptr u8 n -- n n n n ) {: label:ptr labelu :}
-   label labelu RPT-SRC RPT-ARGV-CHECK
-   RPT-HB-CAPTURE ;
+: RPT-RUN-CHECK-ACT ( -- )
+   RPT-LABEL$ RPT-SRC CHECK-ALL-ERRORS-FILE ;
+
+: RPT-RUN-CHECK ( ptr u8 n -- n n n n )
+   RPT-LABEL!
+   RPT-ERR RPT-CAPTURE-CAP RPT-OUT RPT-CAPTURE-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: RPT-RUN-CHECK-ACT ;] catch {: rc:n :}
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
 
 : RPT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=

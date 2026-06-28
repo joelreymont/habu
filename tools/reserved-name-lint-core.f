@@ -51,8 +51,7 @@ variable RNL-NUM-I
    RNL-OUT-FD ! ;
 
 : RNL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= if exit then
-   fd a u write u <> if s" reserved-name-lint: write failed" 74 die then ;
+   fd a u LINT-OUT-WRITE ;
 
 : RNL-OUT ( ptr u8 n -- )
    RNL-OUT-FD @ -rot RNL-WRITE ;
@@ -114,6 +113,10 @@ variable RNL-NUM-I
    a u s" again" LINT-STR=CI if LINT-TRUE exit then
    a u s" while" LINT-STR=CI if LINT-TRUE exit then
    a u s" repeat" LINT-STR=CI if LINT-TRUE exit then
+   a u s" case" LINT-STR=CI if LINT-TRUE exit then
+   a u s" of" LINT-STR=CI if LINT-TRUE exit then
+   a u s" endof" LINT-STR=CI if LINT-TRUE exit then
+   a u s" endcase" LINT-STR=CI if LINT-TRUE exit then
    a u s" do" LINT-STR=CI if LINT-TRUE exit then
    a u s" ?do" LINT-STR=CI if LINT-TRUE exit then
    a u s" loop" LINT-STR=CI if LINT-TRUE exit then

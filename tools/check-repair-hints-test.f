@@ -6,6 +6,7 @@ $4000 constant CRHT-ARGV-CAP
 5000 constant CRHT-TIMEOUT-MS
 10 constant CRHT-LF-C
 32 constant CRHT-SP-C
+34 constant CRHT-DEEP-IF-N
 
 variable CRHT-ROOT-U
 variable CRHT-SRC-U
@@ -151,8 +152,20 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
 : CRHT-SIGNATURE-SYNTAX$ ( -- ptr u8 n )
    s" : DIAG-SIGNATURE-SYNTAX ( i64 ) 1 + ;" CRHT-LINE$ ;
 
+: CRHT-DEEP-IFS ( -- )
+   CRHT-DEEP-IF-N 0 ?do s" 0 0= if " SB-APPEND loop ;
+
+: CRHT-DEEP-THENS ( -- )
+   CRHT-DEEP-IF-N 0 ?do s" then " SB-APPEND loop ;
+
 : CRHT-REWRITE-UNCHECKABLE$ ( -- ptr u8 n )
-   s" : DIAG-REWRITE-UNCHECKABLE ( i64 -- i64 ) leave ;" CRHT-LINE$ ;
+   SB-RESET
+   s" : DIAG-REWRITE-UNCHECKABLE ( -- ) " SB-APPEND
+   CRHT-DEEP-IFS
+   CRHT-DEEP-THENS
+   s" ;" SB-APPEND
+   CRHT-LF
+   SB$ ;
 
 : CRHT-PREPARE ( -- )
    CLEANUP-RESET

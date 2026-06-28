@@ -1,7 +1,9 @@
 \ reserved-name-lint-test.f - checked fixtures for reserved-name-lint.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/reserved-name-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/warm-run.f
+\ tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
 
 $1000 constant RNLT-BUF-CAP
 $2710 constant RNLT-TIMEOUT-MS
@@ -50,6 +52,7 @@ variable RNLT-CASE-U
    s" variable I" SB-APPEND RNLT-LF
    s" 1 constant j" SB-APPEND RNLT-LF
    s" : LOOP ( -- ) ;" SB-APPEND RNLT-LF
+   s" : CASE ( -- ) ;" SB-APPEND RNLT-LF
    s" : undefine ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
@@ -97,16 +100,6 @@ variable RNLT-CASE-U
    RNLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
    RNLT-CAPTURE>N ;
 
-: RNLT-RUN-GOOD ( -- n n n n )
-   RNLT-ARGV-LOAD
-   RNLT-GOOD$ RNLT-ARG+
-   RNLT-CAPTURE ;
-
-: RNLT-RUN-BAD ( -- n n n n )
-   RNLT-ARGV-LOAD
-   RNLT-BAD$ RNLT-ARG+
-   RNLT-CAPTURE ;
-
 : RNLT-RUN-JSON ( -- n n n n )
    RNLT-ARGV-LOAD
    s" --json" RNLT-ARG+
@@ -114,6 +107,21 @@ variable RNLT-CASE-U
    s" <converted>" RNLT-ARG+
    RNLT-CASE$ RNLT-ARG+
    RNLT-CAPTURE ;
+
+: RNLT-CORE-SETUP ( bool -- ) {: json:bool :}
+   RESERVED-NAME-LINT-RESET
+   RNLT-OUT RNLT-BUF-CAP LINT-OUT-BUFFER!
+   json RNL-JSON! ;
+
+: RNLT-CORE-FINISH ( -- n n n n )
+   [: RESERVED-NAME-LINT-FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 PROC-OUTCOME-EXIT rc ;
+
+: RNLT-RUN-CORE ( ptr u8 n -- n n n n )
+   LINT-FALSE RNLT-CORE-SETUP
+   RESERVED-NAME-LINT-FILE
+   RNLT-CORE-FINISH ;
 
 : RNLT-JSON-WORD-I$ ( -- ptr u8 n )
    SB-RESET
@@ -132,17 +140,18 @@ variable RNLT-CASE-U
    outu erru ;
 
 : RNLT-TEST-GOOD ( -- )
-   RNLT-RUN-GOOD 0 RNLT-EXPECT-EXIT {: outu erru :}
+   RNLT-GOOD$ RNLT-RUN-CORE 0 RNLT-EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
 : RNLT-TEST-BAD ( -- )
-   RNLT-RUN-BAD 1 RNLT-EXPECT-EXIT {: outu erru :}
+   RNLT-BAD$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
    RNLT-OUT outu s" `I`" CONTAINS? TTRUE
    RNLT-OUT outu s" `j`" CONTAINS? TTRUE
    RNLT-OUT outu s" `LOOP`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `CASE`" CONTAINS? TTRUE
    RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-JSON ( -- )

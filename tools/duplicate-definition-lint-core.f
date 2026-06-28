@@ -139,8 +139,7 @@ variable DDL-NUM-I
    DDL-OUT-FD ! ;
 
 : DDL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
-   u 0= if exit then
-   fd a u write u <> if s" duplicate-definition-lint: write failed" 74 die then ;
+   fd a u LINT-OUT-WRITE ;
 
 : DDL-OUT ( ptr u8 n -- )
    DDL-OUT-FD @ -rot DDL-WRITE ;
