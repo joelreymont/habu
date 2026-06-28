@@ -858,6 +858,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `--load` prefix omits `lib/process-env.f` and fails at
   `PROC-ENV-INHERIT-MISSING` before testing changed code. Use the exact native
   gate command for commit evidence.
+- **Warm gate runners are harness artifacts:** bake side-effect-free phase libs
+  into a runner keyed by the runner source and seed image, then pass
+  `HABU_UNDER_TEST` as runtime env for candidate checks. Baking the runner from
+  the candidate on the critical path regressed the full gate to 98.469s; starting
+  the runner in the early pool keeps the gate at 80.467s.
 - **Warm-image tails mirror builder deps and trailer layout:** warm snapshot
   sources that append `src/os/*/{elf,macho}.f` must first append ARM64
   assembler/code-buffer sources and target/shared layout

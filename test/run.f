@@ -10,12 +10,12 @@ include test/gate-stats.f
 65 constant TR-BUDGET-RC
 90000 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
-2 constant TR-WARM-PHASES
 21 constant TR-PHASES
 $2 constant TR-CHECK-WARM-PHASES
 $D constant TR-LATE-PHASES
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
+3 constant TR-RUNNER-WARM-SLOT
 
 \ Longest post-warm phases first; this keeps ARM gates inside budget without
 \ dropping coverage or raising the threshold.
@@ -31,7 +31,14 @@ create TR-TOOLS-TRUST-BUF FS-PATH-CAP allot
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
+create TR-RUNNER-BUF FS-PATH-CAP allot
+create TR-RUNNER-TRUST-BUF FS-PATH-CAP allot
+create TR-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
+create TR-RUNNER-KEY-HEX 80 allot
+create TR-RUNNER-KEY-DG 40 allot
+create TR-RUNNER-FILE-DG 40 allot
+create TR-RUNNER-STAMP-RD 80 allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
@@ -39,10 +46,14 @@ variable TR-TOOLS-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 variable TR-UNDER-U
+variable TR-RUNNER-U
+variable TR-RUNNER-TRUST-U
+variable TR-RUNNER-STAMP-U
 variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
 variable TR-UNDER-READY
+variable TR-RUNNER-READY
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -61,6 +72,15 @@ variable TR-UNDER-READY
 
 : TR-UNDER$ ( -- ptr u8 n )
    TR-UNDER-BUF TR-UNDER-U @ ;
+
+: TR-RUNNER$ ( -- ptr u8 n )
+   TR-RUNNER-BUF TR-RUNNER-U @ ;
+
+: TR-RUNNER-TRUST$ ( -- ptr u8 n )
+   TR-RUNNER-TRUST-BUF TR-RUNNER-TRUST-U @ ;
+
+: TR-RUNNER-STAMP$ ( -- ptr u8 n )
+   TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U @ ;
 
 : TR-USAGE ( -- )
    s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
@@ -121,7 +141,8 @@ variable TR-UNDER-READY
 : TR-UNDER-PATHS ( -- )
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
-   0 TR-UNDER-READY ! ;
+   0 TR-UNDER-READY !
+   0 TR-RUNNER-READY ! ;
 
 : TR-UNDER-ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
@@ -140,7 +161,7 @@ variable TR-UNDER-READY
    GT-ROOT GS-ROOT!
    TR-UNDER-PATHS ;
 
-: TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
+: TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type cr
    GT-CLEANUP
    label labelu 1 die ;
@@ -197,7 +218,7 @@ variable TR-UNDER-READY
    PROC-OUTCOME-KIND @ PROC-OUTCOME-EXIT =
    PROC-OUTCOME-CODE @ 0= and ;
 
-: TR-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+: TR-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    TR-SPAWN-CAPTURE
    label labelu GT-PROGRESS-CAPTURE-FLUSH
@@ -213,11 +234,56 @@ variable TR-UNDER-READY
    TR-WARM$ FILE? if TR-WARM$ REMOVE-FILE then ;
 
 : TR-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u suf:ptr su dst:ptr lenp:ptr :}
+   {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
    u su + FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    suf dst u + su BYTE-COPY
    u su + lenp ! ;
+
+: TR-FILES-END? ( ptr u8 n -- bool )
+   s" ;TR-FILES" STR= ;
+
+: TR-FILES-ITEM, ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   u c,
+   0 begin dup u < while
+      dup a + c@ c,
+      1+
+   repeat drop ;
+
+: TR-FILES-PARSE ( -- )
+   begin
+      parse-name dup 0= if 2drop E-STR-BOUNDS throw then
+      2dup TR-FILES-END? if 2drop 0 c, exit then
+      TR-FILES-ITEM,
+   again ;
+
+\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
+: TR-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+   p begin dup c@ 0= 0= while
+      dup 1+ over c@ q execute
+      dup c@ 1 + +
+   repeat drop ;
+
+: TR-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+   swap TR-FILES-WALK ;
+
+: TR-FILES: ( -- )
+   create TR-FILES-PARSE
+   does> ( [ ptr u8 n -- ] -- )
+      TR-FILES-RUN ;
+
+TR-FILES: TR-RUNNER-SUPPORT-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
+   lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
+   tools/warm-run.f tools/hb-build-lib.f test/gate-pool.f test/gate-stats.f
+   test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
+   test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
+   test/gate-build-common.f test/gate-build-hbb.f test/gate-aot-positive-lib.f
+   test/gate-aot-negative-lib.f
+;TR-FILES
 
 \ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
 \ in (content-stamped in gate-stdlib.f, so cross-run reuse is sound), else the
@@ -236,6 +302,94 @@ variable TR-UNDER-READY
    TR-TOOLS-PATHS
    s" HABU_WARM_TOOLS" >LEN TR-TOOLS$ >LEN PROC-ENV+
    s" HABU_WARM_TOOLS_TRUST" >LEN TR-TOOLS-TRUST$ >LEN PROC-ENV+ ;
+
+: TR-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: TR-RUNNER-PATHS ( -- )
+   TR-WARM-ROOT$ s" hb-gate-warm" TR-RUNNER-BUF JOIN-PATH TR-RUNNER-U !
+   TR-RUNNER$ s" .trust.f" TR-RUNNER-TRUST-BUF TR-RUNNER-TRUST-U TR-SUFFIX!
+   TR-RUNNER$ s" .stamp" TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U TR-SUFFIX! ;
+
+: TR-RUNNER-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TR-RUNNER-FILE-DG SHA256-FILE dup 0 <> if throw then drop
+   TR-RUNNER-FILE-DG 32 SHA256-UPDATE ;
+
+: TR-RUNNER-KEY-SUPPORT ( -- )
+   [: TR-RUNNER-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES ;
+
+: TR-RUNNER-KEY! ( -- )
+   SHA256-RESET
+   s" bin/hb" TR-RUNNER-KEY-FILE+
+   s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
+   s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
+   s" test/gate-runner-entry.f" TR-RUNNER-KEY-FILE+
+   s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
+   TR-RUNNER-KEY-SUPPORT
+   TR-RUNNER-KEY-DG SHA256-FINAL
+   TR-RUNNER-KEY-DG TR-RUNNER-KEY-HEX SHA256>HEX ;
+
+: TR-RUNNER-CACHED? ( -- bool )
+   TR-RUNNER$ EXECUTABLE? 0= if 0 0= 0= exit then
+   TR-RUNNER-TRUST$ FILE? 0= if 0 0= 0= exit then
+   TR-RUNNER-STAMP$ FILE? 0= if 0 0= 0= exit then
+   TR-RUNNER-STAMP$ TR-RUNNER-STAMP-RD 80 READ-ALL
+   dup 64 <> if drop 0 0= 0= exit then
+   TR-RUNNER-STAMP-RD swap TR-RUNNER-KEY-HEX 64 STR= ;
+
+: TR-RUNNER-TOOL-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" TR-ARG+
+   s" lib/errors.f" TR-ARG+
+   s" lib/string.f" TR-ARG+
+   s" lib/memory.f" TR-ARG+
+   s" lib/fs.f" TR-ARG+
+   s" lib/fs-mutate.f" TR-ARG+
+   s" lib/process.f" TR-ARG+
+   s" lib/process-argv.f" TR-ARG+
+   s" lib/process-env.f" TR-ARG+
+   s" lib/source.f" TR-ARG+
+   s" lib/codesign.f" TR-ARG+
+   s" tools/warm-image-lib.f" TR-ARG+
+   s" tools/warm-image.f" TR-ARG+
+   s" --" TR-ARG+
+   TR-RUNNER$ TR-ARG+ ;
+
+: TR-RUNNER-SUPPORT-ARGV ( -- )
+   [: TR-ARG+ ;] TR-RUNNER-SUPPORT-FILES ;
+
+: TR-RUNNER-START ( -- )
+   TR-RUNNER-PATHS
+   TR-RUNNER-KEY!
+   TR-RUNNER-CACHED? if s" warm-cache-hit" GS-EVENT -1 TR-RUNNER-READY ! exit then
+   s" warm-cache-miss" GS-EVENT
+   s" warm-build" GS-EVENT
+   s" gate-runner-build" GS-EVENT
+   TR-RUNNER-TOOL-ARGV
+   TR-RUNNER-SUPPORT-ARGV
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-BUILD-CACHE-ENV
+   GS-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" s" native warm gate runner image" TR-TIMEOUT-MS
+   TR-RUNNER-WARM-SLOT >IDX GT-POOL-START-SLOT ;
+
+: TR-RUNNER-EXPECT ( -- )
+   TR-RUNNER$ EXECUTABLE? 0= if
+      s" missing warm gate runner image" TR-FAIL
+   then
+   TR-RUNNER-TRUST$ FILE? 0= if
+      s" missing warm gate runner trust file" TR-FAIL
+   then
+   TR-RUNNER-STAMP$ TR-RUNNER-KEY-HEX 64 WRITE-ALL
+   -1 TR-RUNNER-READY ! ;
+
+: TR-RUNNER-DONE? ( -- bool )
+   TR-RUNNER-READY @ 0 <> if 0 0= exit then
+   TR-RUNNER-WARM-SLOT >IDX GT-POOL-DONE@ 0= if 0 0= 0= exit then
+   TR-RUNNER-EXPECT
+   0 0= ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
@@ -259,7 +413,7 @@ variable TR-UNDER-READY
    s" test/gate-pool.f"  >LEN PROC-ARGV+
    s" test/gate-stdlib.f"  >LEN PROC-ARGV+ ;
 
-: TR-STDLIB-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu :}
+: TR-STDLIB-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu:n :}
    TR-STDLIB-ARGS
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
@@ -301,7 +455,7 @@ variable TR-UNDER-READY
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" test/gate-engine.f"  >LEN PROC-ARGV+ ;
 
-: TR-ENGINE-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu :}
+: TR-ENGINE-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu:n :}
    TR-ENGINE-ARGS
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
@@ -326,7 +480,7 @@ variable TR-UNDER-READY
    TR-COMMON
    s" test/gate-diagnostics.f"  >LEN PROC-ARGV+ ;
 
-: TR-DIAG-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu :}
+: TR-DIAG-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu:n :}
    TR-DIAGNOSTICS-ARGS
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
@@ -401,7 +555,7 @@ variable TR-UNDER-READY
    TR-AOT-NEGATIVE-ARGS
    s" native hb-build AOT negative gate phase" TR-RUN ;
 
-: TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx :}
+: TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N 0= if s" native stdlib tools warm image" exit then
    idx IDX>N 1 = if s" native checker warm image gate phase" exit then
    idx IDX>N 2 = if s" native stdlib tool-boundary slice" exit then
@@ -425,7 +579,7 @@ variable TR-UNDER-READY
    idx IDX>N 20 = if s" native stdlib lint libs slice" exit then
    E-TBL-BOUNDS throw ;
 
-: TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx :}
+: TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N 0= if s" gate-stdlib-warm" exit then
    idx IDX>N 1 = if s" gate-check-warm" exit then
    idx IDX>N 2 = if s" gate-stdlib-tool" exit then
@@ -449,7 +603,7 @@ variable TR-UNDER-READY
    idx IDX>N 20 = if s" gate-stdlib-lint-libs" exit then
    E-TBL-BOUNDS throw ;
 
-: TR-PHASE-ARGS ( idx -- ) {: idx :}
+: TR-PHASE-ARGS ( idx -- ) {: idx:idx :}
    idx IDX>N 0= if TR-STDLIB-WARM-ARGS exit then
    idx IDX>N 1 = if TR-DIAG-WARM-ARGS exit then
    idx IDX>N 2 = if TR-STDLIB-TOOL-ARGS exit then
@@ -473,37 +627,51 @@ variable TR-UNDER-READY
    idx IDX>N 20 = if TR-STDLIB-LINT-LIBS-ARGS exit then
    E-TBL-BOUNDS throw ;
 
-: TR-PHASE-TMP! ( idx -- ) {: idx :}
+: TR-PHASE-RUNNER-TOKEN ( idx -- ptr u8 n ) {: idx:idx :}
+   idx IDX>N 2 = if s" tool" exit then
+   idx IDX>N 3 = if s" check-cli" exit then
+   idx IDX>N 4 = if s" tail" exit then
+   idx IDX>N 5 = if s" repair" exit then
+   idx IDX>N 6 = if s" debug" exit then
+   idx IDX>N 7 = if s" aot-positive" exit then
+   idx IDX>N 8 = if s" aot-negative" exit then
+   idx IDX>N 9 = if s" fixtures" exit then
+   idx IDX>N 10 = if s" diag-repair" exit then
+   idx IDX>N 11 = if s" diag-undef-primary" exit then
+   idx IDX>N 12 = if s" diag-all-strict" exit then
+   idx IDX>N 13 = if s" diag-file-unsafe" exit then
+   idx IDX>N 14 = if s" dictionary" exit then
+   idx IDX>N 16 = if s" runtime" exit then
+   idx IDX>N 17 = if s" lint-tools" exit then
+   idx IDX>N 18 = if s" lint-manifest" exit then
+   idx IDX>N 19 = if s" lint-artifacts" exit then
+   idx IDX>N 20 = if s" lint-libs" exit then
+   E-TBL-BOUNDS throw ;
+
+: TR-PHASE-TMP! ( idx -- ) {: idx:idx :}
    GT-ROOT idx TR-PHASE-DIR TR-PATH-BUF JOIN-PATH TR-PATH-U !
    TR-PATH$ MAKE-DIRS ;
 
-: TR-STDLIB-SLICE? ( idx -- bool ) {: idx :}
+: TR-STDLIB-SLICE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N 2 >= idx IDX>N 4 <= and
    idx IDX>N 17 = or
    idx IDX>N 18 = or
    idx IDX>N 19 = or
    idx IDX>N 20 = or ;
 
-: TR-TOOLS-PHASE? ( idx -- bool ) {: idx :}
+: TR-TOOLS-PHASE? ( idx -- bool ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if 0 0= exit then
    idx IDX>N 5 = ;
-
-: TR-EARLY-PHASE? ( idx -- bool ) {: idx :}
-   idx IDX>N 6 = if 0 0= exit then
-   idx IDX>N 7 = if 0 0= exit then
-   idx IDX>N 8 = if 0 0= exit then
-   idx IDX>N 15 = if 0 0= exit then
-   0 0= 0= ;
 
 : TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
    s" 4" ;
 
-: TR-PHASE-POOL-ENV ( idx -- ) {: idx :}
+: TR-PHASE-POOL-ENV ( idx -- ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if
       s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
    then ;
 
-: TR-PHASE-TOOLS-ENV ( idx -- ) {: idx :}
+: TR-PHASE-TOOLS-ENV ( idx -- ) {: idx:idx :}
    idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then ;
 
 : TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
@@ -514,6 +682,13 @@ variable TR-UNDER-READY
    idx IDX>N 15 = if 0 0= 0= exit then
    TR-UNDER-READY @ 0 <> ;
 
+: TR-PHASE-RUNNER? ( idx -- bool ) {: idx:idx :}
+   TR-RUNNER-READY @ 0= if 0 0= 0= exit then
+   idx IDX>N 0= if 0 0= 0= exit then
+   idx IDX>N 1 = if 0 0= 0= exit then
+   idx IDX>N 15 = if 0 0= 0= exit then
+   0 0= ;
+
 : TR-PHASE-UNDER-ENV ( idx -- ) {: idx:idx :}
    idx TR-PHASE-UNDER-ENV? if
       s" under-env" GS-EVENT
@@ -521,21 +696,11 @@ variable TR-UNDER-READY
    then ;
 
 : TR-PHASE-EXE ( idx -- ptr u8 n ) {: idx:idx :}
+   idx TR-PHASE-RUNNER? if TR-RUNNER$ exit then
    idx TR-PHASE-UNDER-EXE? if TR-UNDER$ exit then
    s" bin/hb" ;
 
-: TR-PHASE-BASE ( idx -- ) {: idx :}
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   idx TR-PHASE-TMP!
-   s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
-   s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
-   idx TR-PHASE-TOOLS-ENV
-   TR-BUILD-CACHE-ENV
-   idx TR-PHASE-POOL-ENV
-   GS-ENV+
-   idx TR-PHASE-UNDER-ENV
-   PROC-ENV-INHERIT-MISSING
+: TR-PHASE-ARGV-COLD ( -- )
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -547,18 +712,37 @@ variable TR-UNDER-READY
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
 
-: TR-PHASE-START ( idx -- ) {: idx :}
+: TR-PHASE-ARGV-RUNNER ( idx -- ) {: idx:idx :}
+   s" --load"  >LEN PROC-ARGV+
+   s" test/gate-runner-entry.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   idx TR-PHASE-RUNNER-TOKEN >LEN PROC-ARGV+ ;
+
+: TR-PHASE-BASE ( idx -- ) {: idx:idx :}
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   idx TR-PHASE-TMP!
+   s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
+   s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
+   idx TR-PHASE-TOOLS-ENV
+   TR-BUILD-CACHE-ENV
+   idx TR-PHASE-POOL-ENV
+   GS-ENV+
+   idx TR-PHASE-UNDER-ENV
+   PROC-ENV-INHERIT-MISSING
+   idx TR-PHASE-RUNNER? if
+      idx TR-PHASE-ARGV-RUNNER
+   else
+      TR-PHASE-ARGV-COLD
+   then ;
+
+: TR-PHASE-START ( idx -- ) {: idx:idx :}
    idx TR-PHASE-BASE
-   idx TR-PHASE-ARGS
+   idx TR-PHASE-RUNNER? 0= if idx TR-PHASE-ARGS then
    s" top-phase-spawn" GS-EVENT
+   idx TR-PHASE-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
-
-: TR-PHASE-SPAWN-RANGE ( n n -- ) {: start end :}
-   start begin dup end < while
-      dup >IDX TR-PHASE-START
-      1+
-   repeat drop ;
 
 : TR-WARM-READY-RESET ( -- )
    0 TR-TOOLS-WARM-READY !
@@ -600,20 +784,28 @@ variable TR-UNDER-READY
       GT-POOL-STEP
    repeat ;
 
-: TR-CHECK-WARM-ORDER@ ( idx -- idx ) {: idx :}
+: TR-DRAIN-UNTIL-RUNNER ( -- )
+   begin TR-RUNNER-DONE? 0= while
+      GT-POOL-STEP
+   repeat ;
+
+: TR-CHECK-WARM-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-CHECK-WARM-ORDER + @ >IDX ;
 
-: TR-LATE-ORDER@ ( idx -- idx ) {: idx :}
+: TR-LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
 
 : TR-EARLY-START ( -- )
    GT-POOL-RESET
    TR-WARM-READY-RESET
-   0 TR-WARM-PHASES TR-PHASE-SPAWN-RANGE
-   0 begin dup TR-PHASES < while
-      dup >IDX TR-EARLY-PHASE? if dup >IDX TR-PHASE-START then
-      1+
-   repeat drop ;
+   0 >IDX TR-PHASE-START
+   1 >IDX TR-PHASE-START
+   15 >IDX TR-PHASE-START
+   TR-RUNNER-START
+   7 >IDX TR-PHASE-START
+   8 >IDX TR-PHASE-START
+   TR-DRAIN-UNTIL-RUNNER
+   6 >IDX TR-PHASE-START ;
 
 : TR-LATE-START ( -- )
    0 begin dup TR-LATE-PHASES < while

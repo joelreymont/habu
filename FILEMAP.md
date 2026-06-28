@@ -272,6 +272,24 @@ points stay listed.
 
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/run.f` — default native gate.
+- `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
+- `test/gate-common-lib.f` — side-effect-free native gate helper definitions for warm-runner baking.
+- `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
+- `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
+- `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.
+- `test/gate-engine.f` — thin entry wrapper for engine/public-hb gate slices.
+- `test/gate-engine-lib.f` — side-effect-free engine/public-hb gate definitions.
+- `test/gate-diagnostics.f` — thin entry wrapper for checker diagnostic slices.
+- `test/gate-diagnostics-lib.f` — side-effect-free checker diagnostic gate definitions.
+- `test/gate-dictionary.f` — thin entry wrapper for dictionary/checker contracts.
+- `test/gate-dictionary-lib.f` — side-effect-free dictionary/checker contract definitions.
+- `test/gate-debug.f` — thin entry wrapper for prop/debug checks.
+- `test/gate-debug-lib.f` — side-effect-free prop/debug gate definitions.
 - `test/gate-build-hbb.f` — in-process checked hb-build helpers for positive AOT gate coverage.
+- `test/gate-aot-positive.f` — thin entry wrapper for AOT positive checks.
+- `test/gate-aot-positive-lib.f` — side-effect-free AOT positive gate definitions.
+- `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
+- `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
+- `test/gate-runner-entry.f` — tiny dispatch entry loaded by the baked warm gate runner.
 - `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.

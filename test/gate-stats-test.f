@@ -25,6 +25,8 @@ variable GST-ROOT-U
    s" top-capture-spawn" GS-EVENT
    s" under-phase-spawn" GS-EVENT
    s" under-env" GS-EVENT
+   s" runner-phase-spawn" GS-EVENT
+   s" gate-runner-build" GS-EVENT
    s" inner-hb-spawn" GS-EVENT
    s" inner-hb-stdin" GS-EVENT
    s" inner-hb-stdin" GS-EVENT
@@ -51,6 +53,8 @@ variable GST-ROOT-U
    GS-TOP-CAPTURE @ 1 T=
    GS-UNDER-PHASE @ 1 T=
    GS-UNDER-ENV @ 1 T=
+   GS-RUNNER-PHASE @ 1 T=
+   GS-RUNNER-BUILD @ 1 T=
    GS-INNER-HB @ 1 T=
    GS-INNER-HB-STDIN @ 2 T=
    GS-BOUNDARY @ 2 T=
