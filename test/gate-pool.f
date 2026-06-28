@@ -3,10 +3,10 @@
 \ Load after lib/process-env.f and lib/test-runner.f.
 
 12 constant GT-POOL-MAX
-8 constant GT-POOL-DEFAULT
+6 constant GT-POOL-DEFAULT
 2 constant GT-POOL-FDS
 8 constant GT-PFD-SZ
-1000 constant GT-POOL-POLL-MS
+$64 constant GT-POOL-POLL-MS
 $1002 constant GT-POOL-MAP-PRIVATE-ANON
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES

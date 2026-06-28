@@ -76,6 +76,25 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Gate budget proofs need an uncontended Habu host:** full-gate timing is
+  meaningless while another worktree is running `test/run.f`; a concurrent
+  `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
+  children competing for CPU. Check for active Habu gates before claiming a
+  budget regression or pass. In this exec environment, focused `--load` smoke
+  commands also need explicit stdin EOF (`printf '' | bin/hb --load ...`) or the
+  REPL can wait on an open pipe until the harness kills it.
+- **Gate phase order must follow measured tails:** adding dictionary/checker
+  coverage can turn a formerly short late slice into the critical tail. Keep
+  `test/run.f` `TR-LATE-ORDER` sorted by measured post-warm duration so coverage
+  additions do not push a 20s+ slice behind every lint cleanup phase. Split
+  check-warm-only tails (`engine fixture`, `dictionary/checker`) from
+  tools-warm-dependent tails; waiting for both warm images before starting all
+  late phases wastes several seconds. Record warm completion in persistent flags,
+  not fixed pool-slot probes, before reusing slots for later phases. The gate
+  pool poll timeout is part of the budget too; a 1000ms poll can lose the whole
+  margin at the final phase, while `$64`ms keeps attribution responsive without
+  busy-spinning. On this 4-online-core Linux/aarch64 target, six top-level slots
+  outperformed eight because several phases spawn nested pools.
 - **Strict duplicates expose generic fixture names:** once redefinition fails
   closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
   collide with baked or sibling words. Prefix generated names by fixture/tool and

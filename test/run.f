@@ -10,14 +10,18 @@ $1ADB0 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
 2 constant TR-WARM-PHASES
 21 constant TR-PHASES
-$F constant TR-LATE-PHASES
+$2 constant TR-CHECK-WARM-PHASES
+$D constant TR-LATE-PHASES
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
 
-\ Longest post-warm phases first; this keeps 4-core ARM gates inside budget
-\ without dropping coverage or raising the threshold.
+\ Longest post-warm phases first; this keeps ARM gates inside budget without
+\ dropping coverage or raising the threshold.
+create TR-CHECK-WARM-ORDER
+$9 , $E ,
+
 create TR-LATE-ORDER
-$2 , $3 , $4 , $5 , $9 , $A , $C , $B , $11 , $12 , $13 , $14 , $D , $E , $10 ,
+$3 , $2 , $A , $4 , $B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -31,6 +35,8 @@ variable TR-TOOLS-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 variable TR-GATE-START-NS
+variable TR-TOOLS-WARM-READY
+variable TR-CHECK-WARM-READY
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -481,20 +487,46 @@ variable TR-GATE-START-NS
       1+
    repeat drop ;
 
+: TR-WARM-READY-RESET ( -- )
+   0 TR-TOOLS-WARM-READY !
+   0 TR-CHECK-WARM-READY ! ;
+
+: TR-WARM-READY-MARK ( -- )
+   TR-TOOLS-WARM-READY @ 0= if
+      TR-TOOLS-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> if -1 TR-TOOLS-WARM-READY ! then
+   then
+   TR-CHECK-WARM-READY @ 0= if
+      TR-CHECK-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> if -1 TR-CHECK-WARM-READY ! then
+   then ;
+
 : TR-WARM-DONE? ( -- bool )
-   TR-TOOLS-WARM-SLOT >IDX GT-POOL-DONE@ 0 <>
-   TR-CHECK-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> and ;
+   TR-WARM-READY-MARK
+   TR-TOOLS-WARM-READY @ 0 <>
+   TR-CHECK-WARM-READY @ 0 <> and ;
+
+: TR-CHECK-WARM-DONE? ( -- bool )
+   TR-WARM-READY-MARK
+   TR-CHECK-WARM-READY @ 0 <> ;
 
 : TR-DRAIN-UNTIL-WARM ( -- )
    begin TR-WARM-DONE? 0= while
       GT-POOL-STEP
    repeat ;
 
+: TR-DRAIN-UNTIL-CHECK-WARM ( -- )
+   begin TR-CHECK-WARM-DONE? 0= while
+      GT-POOL-STEP
+   repeat ;
+
+: TR-CHECK-WARM-ORDER@ ( idx -- idx ) {: idx :}
+   idx IDX>N cells TR-CHECK-WARM-ORDER + @ >IDX ;
+
 : TR-LATE-ORDER@ ( idx -- idx ) {: idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
 
 : TR-EARLY-START ( -- )
    GT-POOL-RESET
+   TR-WARM-READY-RESET
    0 TR-WARM-PHASES TR-PHASE-SPAWN-RANGE
    0 begin dup TR-PHASES < while
       dup >IDX TR-EARLY-PHASE? if dup >IDX TR-PHASE-START then
@@ -507,12 +539,20 @@ variable TR-GATE-START-NS
       1+
    repeat drop ;
 
+: TR-CHECK-WARM-START ( -- )
+   0 begin dup TR-CHECK-WARM-PHASES < while
+      dup >IDX TR-CHECK-WARM-ORDER@ TR-PHASE-START
+      1+
+   repeat drop ;
+
 : TR-WORK-DRAIN ( -- )
    TR-LATE-START
    GT-POOL-DRAIN ;
 
 : TR-DAG-RUN ( -- )
    TR-EARLY-START
+   TR-DRAIN-UNTIL-CHECK-WARM
+   TR-CHECK-WARM-START
    TR-DRAIN-UNTIL-WARM
    TR-WORK-DRAIN ;
 
