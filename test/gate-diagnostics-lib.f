@@ -1,15 +1,17 @@
 \ gate-diagnostics.f - checked runner for checker diagnostic contracts.
 \
-\ Load after test/gate-common.f.
+\ Load after test/gate-common.f, tools/json.f, and tools/gate-json-assert-core.f.
 
 64 constant GDX-USAGE-RC
 
 create GDX-PATH-BUF FS-PATH-CAP allot
+create GDX-PATH2-BUF FS-PATH-CAP allot
 create GDX-TRUST-ROOT-BUF FS-PATH-CAP allot
 create GDX-TRUST-SRC-DIR-BUF FS-PATH-CAP allot
 create GDX-TRUST-SRC-BUF FS-PATH-CAP allot
 create GDX-TRUST-MAN-BUF FS-PATH-CAP allot
 variable GDX-PATH-U
+variable GDX-PATH2-U
 variable GDX-TRUST-ROOT-U
 variable GDX-TRUST-SRC-DIR-U
 variable GDX-TRUST-SRC-U
@@ -56,8 +58,14 @@ variable GDX-TRUST-MAN-U
 : GDX-PATH! ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu GDX-PATH-BUF GT-PATH GDX-PATH-U ! ;
 
+: GDX-PATH2! ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu GDX-PATH2-BUF GT-PATH GDX-PATH2-U ! ;
+
 : GDX-PATH$ ( -- ptr u8 n )
    GDX-PATH-BUF GDX-PATH-U @ ;
+
+: GDX-PATH2$ ( -- ptr u8 n )
+   GDX-PATH2-BUF GDX-PATH2-U @ ;
 
 : GDX-TRUST-ROOT$ ( -- ptr u8 n )
    GDX-TRUST-ROOT-BUF GDX-TRUST-ROOT-U @ ;
@@ -115,39 +123,53 @@ variable GDX-TRUST-MAN-U
    GDX-PATH!
    GDX-PATH$ GE-SRC-BUF GE-SRC-U @ WRITE-ALL ;
 
-: GDX-GJA-RESET ( -- )
-   GE-HB-RESET
-   s" --load" GDX-ARG+
-   s" lib/errors.f" GDX-ARG+
-   s" lib/memory.f" GDX-ARG+
-   s" tools/json.f" GDX-ARG+
-   s" tools/gate-json-assert-core.f" GDX-ARG+
-   s" tools/gate-json-assert.f" GDX-ARG+
-   s" --" GDX-ARG+ ;
+: GDX-GJA1-DISPATCH ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n :}
+   file fileu GDX-PATH!
+   mode modeu s" json-lines-schema" STR= if GDX-PATH$ GJA-JSON-LINES-SCHEMA exit then
+   mode modeu s" json-one-schema" STR= if GDX-PATH$ GJA-JSON-ONE-SCHEMA exit then
+   mode modeu s" all-errors" STR= if GDX-PATH$ GJA-ALL-ERRORS exit then
+   mode modeu s" diag-contract" STR= if GDX-PATH$ GJA-DIAG-CONTRACT exit then
+   mode modeu s" sarif" STR= if GDX-PATH$ GJA-SARIF exit then
+   mode modeu s" public-signatures" STR= if GDX-PATH$ GJA-PUBLIC-SIGNATURES exit then
+   GDX-USAGE ;
 
-: GDX-GJA-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK ;
+: GDX-GJA2S-DISPATCH ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n arg:ptr argu:n :}
+   file fileu GDX-PATH!
+   mode modeu s" diag-repair-class" STR= if GDX-PATH$ arg argu GJA-DIAG-REPAIR-CLASS exit then
+   GDX-USAGE ;
+
+: GDX-GJA2P-DISPATCH ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n arg:ptr argu:n :}
+   file fileu GDX-PATH!
+   arg argu GDX-PATH2!
+   mode modeu s" diag-file-origin" STR= if GDX-PATH$ GDX-PATH2$ GJA-DIAG-FILE-ORIGIN exit then
+   GDX-USAGE ;
+
+: GDX-GJA-PROGRESS ( ptr u8 n -- )
+   GT-PROGRESS-RUN ;
+
+: GDX-GJA-PASS ( ptr u8 n -- )
+   GT-PROGRESS-PASS ;
 
 : GDX-GJA1 ( ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n label:ptr labelu:n :}
-   GDX-GJA-RESET
-   mode modeu GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   label labelu GDX-GJA-RUN ;
+   label labelu GDX-GJA-PROGRESS
+   mode modeu file fileu GDX-GJA1-DISPATCH
+   label labelu GDX-GJA-PASS ;
 
 : GDX-GJA2S ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n arg:ptr argu:n label:ptr labelu:n :}
-   GDX-GJA-RESET
-   mode modeu GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   arg argu GDX-ARG+
-   label labelu GDX-GJA-RUN ;
+   label labelu GDX-GJA-PROGRESS
+   mode modeu file fileu arg argu GDX-GJA2S-DISPATCH
+   label labelu GDX-GJA-PASS ;
 
 : GDX-GJA2P ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: mode:ptr modeu:n file:ptr fileu:n arg:ptr argu:n label:ptr labelu:n :}
-   GDX-GJA-RESET
-   mode modeu GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   arg argu GDX-PATH-ARGV+
-   label labelu GDX-GJA-RUN ;
+   label labelu GDX-GJA-PROGRESS
+   mode modeu file fileu arg argu GDX-GJA2P-DISPATCH
+   label labelu GDX-GJA-PASS ;
+
+: GDX-DIAG-WORD-CLASS ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n word:ptr wordu:n class:ptr classu:n label:ptr labelu:n :}
+   label labelu GDX-GJA-PROGRESS
+   file fileu GDX-PATH!
+   GDX-PATH$ word wordu class classu GJA-DIAG-WORD-REPAIR-CLASS
+   label labelu GDX-GJA-PASS ;
 
 : GDX-DIAG-CONTRACT ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
    s" diag-contract" file fileu label labelu GDX-GJA1 ;
@@ -247,39 +269,21 @@ variable GDX-TRUST-MAN-U
    GE-HB-RESET
    GE-SRC-RESET
    s" : JMISS ( i64 -- i64 ) drop ;" GE-SRC-LINE
-   s" tools/check.f --json-errors accepted missing producer" GDX-CHECK-JSON
-   s" habu-json-miss.err" GDX-WRITE-ERR
-   s" habu-json-miss.err" s" missing producer diagnostic contract" GDX-DIAG-CONTRACT
-   s" diag-repair-class" s" habu-json-miss.err" s" add_producer" s" missing producer class" GDX-GJA2S
-   GE-HB-RESET
-   GE-SRC-RESET
    s" : JTYPE ( i64 -- i64 ) 0= ;" GE-SRC-LINE
-   s" tools/check.f --json-errors accepted type mismatch" GDX-CHECK-JSON
-   s" habu-json-type.err" GDX-WRITE-ERR
-   s" habu-json-type.err" s" type mismatch diagnostic contract" GDX-DIAG-CONTRACT
-   s" diag-repair-class" s" habu-json-type.err" s" fix_type" s" type mismatch class" GDX-GJA2S
-   GE-HB-RESET
-   GE-SRC-RESET
    s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
-   s" tools/check.f --json-errors accepted return-stack imbalance" GDX-CHECK-JSON
-   s" habu-json-ret.err" GDX-WRITE-ERR
-   s" habu-json-ret.err" s" return stack diagnostic contract" GDX-DIAG-CONTRACT
-   s" diag-repair-class" s" habu-json-ret.err" s" fix_return_stack" s" return stack class" GDX-GJA2S
-   GE-HB-RESET
-   GE-SRC-RESET
    s" : JDEAD ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 + ;" GE-SRC-LINE
-   s" tools/check.f --json-errors accepted dead-code padding" GDX-CHECK-JSON
+   s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
+   s" tools/check.f --json-errors --all-errors accepted repair class batch" GDX-CHECK-JSON-ALL
    s" code" s" E-DEAD-CODE" s" dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
    s" dead_owner" s" throw" s" dead-code owner" GDX-EXPECT-ERR-JSTR
-   s" habu-json-dead.err" GDX-WRITE-ERR
-   s" habu-json-dead.err" s" dead-code diagnostic contract" GDX-DIAG-CONTRACT
-   s" diag-repair-class" s" habu-json-dead.err" s" remove_dead_code" s" dead-code class" GDX-GJA2S
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : JDIE ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 + ;" GE-SRC-LINE
-   s" tools/check.f --json-errors accepted die dead-code padding" GDX-CHECK-JSON
-   s" code" s" E-DEAD-CODE" s" die dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
-   s" dead_owner" s" die" s" die dead-code owner" GDX-EXPECT-ERR-JSTR ;
+   s" dead_owner" s" die" s" die dead-code owner" GDX-EXPECT-ERR-JSTR
+   s" habu-json-repair.err" GDX-WRITE-ERR
+   s" habu-json-repair.err" s" repair batch diagnostic contract" GDX-DIAG-CONTRACT
+   s" habu-json-repair.err" s" jmiss" s" add_producer" s" missing producer class" GDX-DIAG-WORD-CLASS
+   s" habu-json-repair.err" s" jtype" s" fix_type" s" type mismatch class" GDX-DIAG-WORD-CLASS
+   s" habu-json-repair.err" s" jret" s" fix_return_stack" s" return stack class" GDX-DIAG-WORD-CLASS
+   s" habu-json-repair.err" s" jdead" s" remove_dead_code" s" dead-code class" GDX-DIAG-WORD-CLASS
+   s" habu-json-repair.err" s" jdie" s" remove_dead_code" s" die dead-code class" GDX-DIAG-WORD-CLASS ;
 
 : GDX-FILE-ORIGIN ( -- )
    GE-HB-RESET

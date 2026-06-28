@@ -206,3 +206,12 @@ internal / 56.88s wall with `warm-hit=16`, `warm-miss=0`, `warm-build=0`,
 duplicated boundary waves: engine fixtures ~35.6s, diagnostics repair ~30.9s,
 stdlib check-cli/tool-boundary ~28s, `inner-hb=55`, `inner-hb-stdin=40`,
 `boundary=95`, and `helper-spawn=151`.
+
+Checkpoint 2026-06-28: removed `tools/gate-json-assert.f` child processes from
+the diagnostics gate. `test/gate-diagnostics.f` now loads
+`tools/gate-json-assert-core.f`, `test/gate-diagnostics-lib.f` calls those
+checked assertion words directly, and repair-class diagnostics are batched into
+one `tools/check.f --json-errors --all-errors` run with per-word class
+assertions. Focused diagnostics repair fell to 11.82s with 3 helper spawns. Full
+hot gate passed at 48.621s internal / 51.61s wall with `warm-hit=16`,
+`maker-hit=1`, `candidate-hit=1`, and `helper-spawn=123`.

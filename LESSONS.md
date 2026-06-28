@@ -151,6 +151,9 @@ lesson — keep the specific word/code/path, cut the prose.
   margin at the final phase, while `$64`ms keeps attribution responsive without
   busy-spinning. On this 4-online-core Linux/aarch64 target, six top-level slots
   outperformed eight because several phases spawn nested pools.
+- **Do not spawn assertion tools for semantic checks:** gate JSON assertions are
+  checked library words in `tools/gate-json-assert-core.f`; calling them
+  in-process preserved coverage and cut hot helper spawns from 151 to 123.
 - **Strict duplicates expose generic fixture names:** once redefinition fails
   closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
   collide with baked or sibling words. Prefix generated names by fixture/tool and
