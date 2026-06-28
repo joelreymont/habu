@@ -178,6 +178,20 @@ s" T-PTX-ADD" s" tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- 
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" CHECK! -1 T=
 s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" CHECK! -1 T=
 s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" CHECK! -1 T=
+s" T-NEED-I64" s" i64 --" TRUST
+s" T-NEED-U32" s" u32 --" TRUST
+s" T-NEED-U16" s" u16 --" TRUST
+s" T-NEED-U8" s" u8 --" TRUST
+s" T-GIVE-U16" s" -- u16" TRUST
+s" T-GIVE-U8" s" -- u8" TRUST
+s" T-GIVE-I64" s" -- i64" TRUST
+s" COK-U8-WIDEN-IN ( u8 -- ) T-NEED-I64" CHECK! -1 T=
+s" COK-U8-WIDEN-OUT ( -- i64 ) T-GIVE-U8" CHECK! -1 T=
+s" COK-U16-WIDEN-IN ( u16 -- ) T-NEED-U32" CHECK! -1 T=
+s" COK-U16-WIDEN-OUT ( -- u32 ) T-GIVE-U16" CHECK! -1 T=
+s" CBAD-I64-NARROW-IN ( i64 -- ) T-NEED-U8" T-CHECK-REJECTS
+s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
+s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

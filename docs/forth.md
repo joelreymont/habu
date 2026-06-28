@@ -405,6 +405,11 @@ exactly as for `:`, `create`, `variable`, and `constant`.
 - **Typed booleans are real `bool` values.** Produce true/false with typed
   producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
   `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
+- **Structural integers widen, roles do not.** The checker models structural
+  integer tokens with width/sign metadata: `u8 -> u16 -> u32 -> n/cell/i64`
+  widening is implicit when lossless, but narrowing and same-width sign changes
+  require an explicit conversion. Nominal roles (`idx`, `len`, `fd`, `rc`, `pid`,
+  `asm`, `img`, `snap`, etc.) never widen to each other or to bare integers.
 - **Pointer-valued cells use cell-indexed `ptr-field`.** When a typed DATA cell
   or record field stores a pointer, compute the cell slot with `ptr-field` so
   `@`/`!` preserve nested pointer types. The index is a cell slot, not a byte

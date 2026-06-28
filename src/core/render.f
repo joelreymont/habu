@@ -28,41 +28,11 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
 
 : RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: ROLE-OUT? {: p :}
-   p CC-IDX   = IF s" idx"   RSTR -1 EXIT THEN
-   p CC-LEN   = IF s" len"   RSTR -1 EXIT THEN
-   p CC-COUNT = IF s" count" RSTR -1 EXIT THEN
-   p CC-OFF   = IF s" off"   RSTR -1 EXIT THEN
-   p CC-FD    = IF s" fd"    RSTR -1 EXIT THEN
-   p CC-RC    = IF s" rc"    RSTR -1 EXIT THEN
-   p CC-PID   = IF s" pid"   RSTR -1 EXIT THEN
-   p CC-MS    = IF s" ms"    RSTR -1 EXIT THEN
-   p CC-NS    = IF s" ns"    RSTR -1 EXIT THEN
-   p CC-TOK   = IF s" tok"   RSTR -1 EXIT THEN
-   p CC-REG   = IF s" reg"   RSTR -1 EXIT THEN
-   p CC-LABEL = IF s" label" RSTR -1 EXIT THEN
-   p CC-VA    = IF s" va"    RSTR -1 EXIT THEN
-   p CC-SYMIDX = IF s" symidx" RSTR -1 EXIT THEN
-   p CC-ASM   = IF s" asm"   RSTR -1 EXIT THEN
-   p CC-IMG   = IF s" img"   RSTR -1 EXIT THEN
-   p CC-SNAP  = IF s" snap"  RSTR -1 EXIT THEN
-   0 ;
-
 : CON-OUT {: p :}
-   p 1 = IF 110 EMIT1 ELSE
    p 2 = IF 102 EMIT1 ELSE
-   p 3 = IF 114 EMIT1 ELSE
-   p CC-I64  = IF s" i64"  RSTR ELSE
-   p CC-U8   = IF s" u8"   RSTR ELSE
-   p CC-U32  = IF s" u32"  RSTR ELSE
-   p CC-CELL = IF s" cell" RSTR ELSE
-   p CC-CHAR = IF s" char" RSTR ELSE
-   p CC-STR  = IF s" str"  RSTR ELSE
-   p CC-ADDR = IF s" addr" RSTR ELSE
-   p CC-BOOL = IF s" bool" RSTR ELSE
-   p CC-F32  = IF s" f32"  RSTR ELSE
-   p ROLE-OUT? 0= IF 63 EMIT1 THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   p 0 > p CC-MAX < and IF
+      p CT-NAME$ dup IF RSTR ELSE 2drop 63 EMIT1 THEN
+   ELSE 63 EMIT1 THEN THEN ;
 
 : ATOM-REND {: t :}
    t ATOM>A t ATOM>U RSTR ;

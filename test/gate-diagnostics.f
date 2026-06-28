@@ -149,6 +149,9 @@ variable GDX-TRUST-MAN-U
    arg argu GDX-PATH-ARGV+
    label labelu GDX-GJA-RUN ;
 
+: GDX-DIAG-CONTRACT ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
+   s" diag-contract" file fileu label labelu GDX-GJA1 ;
+
 : GDX-CHECK-JSON ( ptr u8 n -- ) {: label:ptr labelu :}
    GE-CHECK-ARGV
    s" --json-errors" GDX-ARG+
@@ -210,6 +213,7 @@ variable GDX-TRUST-MAN-U
    s" byte_end" s" --json-errors byte_end" GDX-EXPECT-ERR-JKEY
    s" definition_source" s" --json-errors definition source" GDX-EXPECT-ERR-JKEY
    s" json-lines-schema" s" habu-json.err" s" json lines schema" GDX-GJA1
+   s" habu-json.err" s" primary diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-json.err" s" remove_producer" s" remove producer class" GDX-GJA2S ;
 
 : GDX-PRIMARY-JSON ( -- )
@@ -245,18 +249,21 @@ variable GDX-TRUST-MAN-U
    s" : JMISS ( i64 -- i64 ) drop ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted missing producer" GDX-CHECK-JSON
    s" habu-json-miss.err" GDX-WRITE-ERR
+   s" habu-json-miss.err" s" missing producer diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-json-miss.err" s" add_producer" s" missing producer class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
    s" : JTYPE ( i64 -- i64 ) 0= ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted type mismatch" GDX-CHECK-JSON
    s" habu-json-type.err" GDX-WRITE-ERR
+   s" habu-json-type.err" s" type mismatch diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-json-type.err" s" fix_type" s" type mismatch class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
    s" : JRET ( i64 -- ) >r ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted return-stack imbalance" GDX-CHECK-JSON
    s" habu-json-ret.err" GDX-WRITE-ERR
+   s" habu-json-ret.err" s" return stack diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-json-ret.err" s" fix_return_stack" s" return stack class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
@@ -265,6 +272,7 @@ variable GDX-TRUST-MAN-U
    s" code" s" E-DEAD-CODE" s" dead-code diagnostic code" GDX-EXPECT-ERR-JSTR
    s" dead_owner" s" throw" s" dead-code owner" GDX-EXPECT-ERR-JSTR
    s" habu-json-dead.err" GDX-WRITE-ERR
+   s" habu-json-dead.err" s" dead-code diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-json-dead.err" s" remove_dead_code" s" dead-code class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
@@ -282,6 +290,7 @@ variable GDX-TRUST-MAN-U
    s" habu-json-file.f" GDX-WRITE-SRC
    s" habu-json-file.f" s" tools/check.f --json-errors accepted file bad def" GDX-CHECK-FILE-JSON
    s" habu-json-file.err" GDX-WRITE-ERR
+   s" habu-json-file.err" s" file-origin diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-file-origin" s" habu-json-file.err" s" habu-json-file.f" s" file origin" GDX-GJA2P ;
 
 : GDX-STRICT-SIGNATURES ( -- )
@@ -325,6 +334,7 @@ variable GDX-TRUST-MAN-U
    s" habu-unsafe.err" GDX-WRITE-ERR
    s" code" s" E-UNSAFE" s" unsafe checker E-UNSAFE" GDX-EXPECT-ERR-JSTR
    s" token" s" evaluate" s" unsafe checker token" GDX-EXPECT-ERR-JSTR
+   s" habu-unsafe.err" s" unsafe diagnostic contract" GDX-DIAG-CONTRACT
    s" diag-repair-class" s" habu-unsafe.err" s" trusted_boundary_required" s" unsafe repair class" GDX-GJA2S
    GE-HB-RESET
    GE-SRC-RESET
@@ -366,6 +376,7 @@ variable GDX-TRUST-MAN-U
    s" habu-all-errors.f" GDX-WRITE-SRC
    s" habu-all-errors.f" s" tools/check.f --all-errors accepted bad defs" GDX-CHECK-FILE-JSON-ALL
    s" habu-all-errors.err" GDX-WRITE-ERR
+   s" habu-all-errors.err" s" all-errors diagnostic contract" GDX-DIAG-CONTRACT
    s" all-errors" s" habu-all-errors.err" s" all-errors diagnostics" GDX-GJA1 ;
 
 : GDX-UNDEFINED-RECURSIVE ( -- )
@@ -376,6 +387,7 @@ variable GDX-TRUST-MAN-U
    s" habu-undef.err" GDX-WRITE-ERR
    s" code" s" E-UNDEFINED" s" undefined diagnostic code" GDX-EXPECT-ERR-JSTR
    s" token" s" NOPE" s" undefined diagnostic token" GDX-EXPECT-ERR-JSTR
+   s" habu-undef.err" s" undefined diagnostic contract" GDX-DIAG-CONTRACT
    s" json-one-schema" s" habu-undef.err" s" undefined schema" GDX-GJA1
    s" diag-repair-class" s" habu-undef.err" s" unknown_rejection" s" undefined repair class" GDX-GJA2S
    GE-HB-RESET
@@ -384,6 +396,7 @@ variable GDX-TRUST-MAN-U
    s" tools/check.f --all-errors accepted recursive self-call" GDX-CHECK-JSON-ALL
    s" habu-recursive.err" GDX-WRITE-ERR
    s" token" s" POW" s" recursive diagnostic token" GDX-EXPECT-ERR-JSTR
+   s" habu-recursive.err" s" recursive diagnostic contract" GDX-DIAG-CONTRACT
    s" json-one-schema" s" habu-recursive.err" s" recursive schema" GDX-GJA1 ;
 
 : GDX-SARIF ( -- )

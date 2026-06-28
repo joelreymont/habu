@@ -1,7 +1,9 @@
 # MISSING — Habu ergonomics: what porting Odin surfaced, and how to fix it properly
 
-Status: design proposal for review. Author: FFI/port agent. Audience: the agent
-working on Habu core (checker/compiler/stdlib).
+Status: design proposal with partial implementation. Foundation C, Foundation
+A2, and the floating-point cleanup are landed; A1 and B remain active checker
+work. Author: FFI/port agent. Audience: the agent working on Habu core
+(checker/compiler/stdlib).
 
 ## Why this document exists
 
@@ -26,10 +28,10 @@ the end so the work stays traceable.
 
 | Foundation | Open items it resolves | Nature of the change |
 |---|---|---|
-| **A. A data-driven integer type algebra** | declarable nominal integer types; narrow→wide integer widening | type *representation* in the checker |
+| **A. A data-driven integer type algebra** | narrow→wide integer widening landed; declarable nominal integer types remain | type *representation* in the checker |
 | **B. A lexical local-variable environment** | clear error when a local shadows a builtin; block-scoped locals; locals allowed to shadow ordinary words | name *resolution* + slot codegen |
-| **C. Structured type-syntax diagnostics** | bare-pointer signature error at the offending site (done as the template); unknown-signature-token error (already landed) | error *production* in checker/render |
-| **(cleanup) Floating-point prelude words** | re-add `f<=` `f>=` `fdup` `fover` after fixing the public-signature extractor | stdlib + signature extractor |
+| **C. Structured type-syntax diagnostics** | contract gate landed over checker JSONL fixtures | error *production* in checker/render |
+| **(cleanup) Floating-point prelude words** | `f<=` `f>=` `fdup` `fover` landed | stdlib + signature extractor |
 
 Each foundation is described in full below, with the concrete code touchpoints I
 know from working in this tree. Every change here is a checker/compiler change, so
@@ -86,15 +88,15 @@ guarantee you wrap the int in a struct and pay an ergonomic tax everywhere. A ta
 table gives the Odin domain compile-checked distinct integers at zero runtime
 cost. This is a place Habu can be *better* than Zig, not just even with it.
 
-### Problem A2 — narrow→wide integer widening is rejected
+### Problem A2 — narrow→wide integer widening is implemented
 
-Passing or storing a `u8` where a wider integer (`u32`, `cell`, `n`, `i64`) is
-expected forces an explicit conversion even though widening a smaller unsigned
-integer into a larger one is always lossless. The flat `INT-FAM?` set models "all
-in the family interconvert" with no notion of *direction*, so it can neither allow
-the safe direction implicitly nor reject the unsafe one.
+Previously, passing or storing a `u8` where a wider integer (`u32`, `cell`, `n`,
+`i64`) was expected forced an explicit conversion even though widening a smaller
+unsigned integer into a larger one is always lossless. The old flat `INT-FAM?`
+set modeled "all in the family interconvert" with no notion of *direction*, so it
+could neither allow the safe direction implicitly nor reject the unsafe one.
 
-**The right fix:** replace the flat family with a **width lattice**. Give each
+**Implemented fix:** replace the flat family with a **width lattice**. Give each
 structural integer a width (`u8`=8, `u16`=16, `u32`=32, `cell`/`n`/`i64`=64) and a
 signedness. Then:
 - **Widening** (smaller → larger, compatible signedness) is implicit and sound.
@@ -185,6 +187,9 @@ token plus a bare exit code).
 
 ### The improvement: generalize the shape into an enforced contract
 
+Status: the contract gate is implemented for checker JSONL fixtures. The parser
+promotion below remains useful for future syntax work.
+
 Two moves:
 
 1. **Promote the signature parser.** Turn `E-BAD-SIGNATURE` from a catch-all into
@@ -202,16 +207,9 @@ Two moves:
 
 ## Cleanup — floating-point prelude words the extractor rejects
 
-`f<=`, `f>=`, `fdup`, `fover` need to come back to the prelude, but they currently
-trip the public-signature extractor. Two decisions block the re-add:
-
-- the extractor must be taught to **emit the `<=` / `>=` names** correctly
-  (the comparison operators are what it chokes on), and
-- decide **generic-vs-per-type** for the stack shufflers (`fdup`/`fover`): either
-  one generic shuffler that works across cell/float, or float-specific words.
-
-Land the extractor fix first, then re-add the four words with signatures and the
-usual prelude coverage.
+Done: `f<=`, `f>=`, `fdup`, and `fover` are back in `lib/prelude.f`, public
+signature extraction emits `F<=`/`F>=`, the four words have manifest rows and
+`lib/prelude-test.f` coverage.
 
 ---
 
@@ -255,14 +253,12 @@ Every item is a checker/compiler/stdlib change and is therefore bound by:
 
 Suggested order, cheapest/lowest-risk first so each de-risks the next:
 
-1. **Foundation C** — diagnostic contract. Cheapest; the template already exists;
-   low blast radius. Do first because it de-risks Foundation A's new syntax.
-2. **Width lattice (Foundation A2)** — a self-contained `CON-OK?` relation change,
-   no codegen impact.
+1. **Foundation C** — diagnostic contract. Landed.
+2. **Width lattice (Foundation A2)** — landed as a self-contained `CON-OK?`
+   relation change, no codegen impact.
 3. **Nominal tag table (Foundation A1)** — needs the declaration syntax (rides on
    C) and converter generation; medium.
-4. **Floating-point prelude cleanup** — independent; slot anywhere once the
-   extractor fix is in.
+4. **Floating-point prelude cleanup** — landed.
 5. **Foundation B (locals environment)** — largest, codegen + fixpoint risk;
    temp-engine prototype, do last and most carefully.
 
@@ -274,13 +270,13 @@ Parent: `habu-habu-quirk-fixes-5a0d1f1e`.
 
 | Descriptive name in this doc | Dot ID | State |
 |---|---|---|
-| Floating-point prelude words `f<=`/`f>=`/`fdup`/`fover` | `habu-a-followup-prelude-c92f07f3` | open |
+| Floating-point prelude words `f<=`/`f>=`/`fdup`/`fover` | `habu-a-followup-prelude-c92f07f3` | done |
 | Unknown-signature-token error at offending site | `habu-b1-unknown-signature-0ffd951c` | done |
 | Clear error when a local shadows a builtin | `habu-b2-local-shadows-ae2492da` | open |
 | Bare-pointer signature error at offending site (the template) | `habu-b3-bare-ptr-4939e141` | implemented, pending gate-green merge |
 | Block-scoped locals (mid-control + after-exit) | `habu-c1-block-scoped-fa472987` | open |
 | Declarable/extensible nominal integer types | `habu-c2-extensible-nominal-25afdeae` | open |
-| Narrow→wide integer widening (`u8`/`u16`/`u32` → `n`/`i64`) | `habu-c3-narrow-wide-c3413ebe` | open |
+| Narrow→wide integer widening (`u8`/`u16`/`u32` → `n`/`i64`) | `habu-checker-int-lattice-ed8f99ab` | implemented, pending gate-green merge |
 | Locals may shadow ordinary words (`i`/`j`/`k`/`code`/`dup`) | `habu-c4-locals-shadow-3c7310cb` | open |
 | Fixpoint + gate-green constraint for all engine fixes | `habu-constraint-fixpoint-gate-81094225` | open |
 

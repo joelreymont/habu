@@ -169,6 +169,7 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
    REPEAT
    r = or ;
 
+1 constant CC-N     2 constant CC-F     3 constant CC-R
 4 constant CC-I64   5 constant CC-U8    6 constant CC-U32   7 constant CC-CELL
 8 constant CC-CHAR  9 constant CC-STR  10 constant CC-ADDR  11 constant CC-BOOL
 12 constant CC-IDX  13 constant CC-LEN  14 constant CC-COUNT 15 constant CC-OFF
@@ -176,20 +177,128 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 20 constant CC-NS   21 constant CC-TOK  22 constant CC-REG   23 constant CC-LABEL
 24 constant CC-VA   25 constant CC-SYMIDX 26 constant CC-ASM
 27 constant CC-IMG  28 constant CC-SNAP  29 constant CC-F32
-30 constant CC-MAX
+30 constant CC-U16 31 constant CC-MAX
+
+0 constant CT-NONE
+1 constant CT-INT
+2 constant CT-ROLE
+3 constant CT-BOOL
+4 constant CT-FLOAT
+5 constant CT-OBJ
+
+0 constant CS-NONE
+1 constant CS-GENERIC
+2 constant CS-SIGNED
+3 constant CS-UNSIGNED
+4 constant CS-ADDR
+
+0 constant UK-EXACT
+1 constant UK-INPUT
+variable UNIFY-KIND
+UK-EXACT UNIFY-KIND !
+
+create CT-NAME-A CC-MAX cells allot
+create CT-NAME-U CC-MAX cells allot
+create CT-CLASS CC-MAX cells allot
+create CT-WIDTH CC-MAX cells allot
+create CT-SIGN CC-MAX cells allot
+variable CT-I
+
+: CT-NAME-FIELD ( n -- ptr ptr u8 )
+   cells CT-NAME-A + 0 ptr-field ;
+
+: CT-SET ( ptr u8 n n n n n -- ) {: a:ptr u:n code:n class:n width:n sign:n :}
+   a code CT-NAME-FIELD !
+   u code cells CT-NAME-U + !
+   class code cells CT-CLASS + !
+   width code cells CT-WIDTH + !
+   sign code cells CT-SIGN + ! ;
+
+: CT-INIT ( -- )
+   s" n"       CC-N      CT-INT   64 CS-GENERIC CT-SET
+   s" f"       CC-F      CT-BOOL   1 CS-NONE    CT-SET
+   s" r"       CC-R      CT-FLOAT 64 CS-NONE    CT-SET
+   s" i64"     CC-I64    CT-INT   64 CS-SIGNED  CT-SET
+   s" u8"      CC-U8     CT-INT    8 CS-UNSIGNED CT-SET
+   s" u32"     CC-U32    CT-INT   32 CS-UNSIGNED CT-SET
+   s" cell"    CC-CELL   CT-INT   64 CS-GENERIC CT-SET
+   s" char"    CC-CHAR   CT-INT    8 CS-UNSIGNED CT-SET
+   s" str"     CC-STR    CT-OBJ    0 CS-NONE    CT-SET
+   s" addr"    CC-ADDR   CT-INT   64 CS-ADDR    CT-SET
+   s" bool"    CC-BOOL   CT-BOOL   1 CS-NONE    CT-SET
+   s" idx"     CC-IDX    CT-ROLE  64 CS-NONE    CT-SET
+   s" len"     CC-LEN    CT-ROLE  64 CS-NONE    CT-SET
+   s" count"   CC-COUNT  CT-ROLE  64 CS-NONE    CT-SET
+   s" off"     CC-OFF    CT-ROLE  64 CS-NONE    CT-SET
+   s" fd"      CC-FD     CT-ROLE  64 CS-NONE    CT-SET
+   s" rc"      CC-RC     CT-ROLE  64 CS-NONE    CT-SET
+   s" pid"     CC-PID    CT-ROLE  64 CS-NONE    CT-SET
+   s" ms"      CC-MS     CT-ROLE  64 CS-NONE    CT-SET
+   s" ns"      CC-NS     CT-ROLE  64 CS-NONE    CT-SET
+   s" tok"     CC-TOK    CT-ROLE  64 CS-NONE    CT-SET
+   s" reg"     CC-REG    CT-ROLE  64 CS-NONE    CT-SET
+   s" label"   CC-LABEL  CT-ROLE  64 CS-NONE    CT-SET
+   s" va"      CC-VA     CT-ROLE  64 CS-NONE    CT-SET
+   s" symidx"  CC-SYMIDX CT-ROLE  64 CS-NONE    CT-SET
+   s" asm"     CC-ASM    CT-ROLE  64 CS-NONE    CT-SET
+   s" img"     CC-IMG    CT-ROLE  64 CS-NONE    CT-SET
+   s" snap"    CC-SNAP   CT-ROLE  64 CS-NONE    CT-SET
+   s" f32"     CC-F32    CT-FLOAT 32 CS-NONE    CT-SET
+   s" u16"     CC-U16    CT-INT   16 CS-UNSIGNED CT-SET ;
+
+CT-INIT
+
+: CT-CLASS@ ( n -- n )
+   cells CT-CLASS + @ ;
+
+: CT-WIDTH@ ( n -- n )
+   cells CT-WIDTH + @ ;
+
+: CT-SIGN@ ( n -- n )
+   cells CT-SIGN + @ ;
+
+: CT-INT? ( n -- bool )
+   CT-CLASS@ CT-INT = ;
+
+: CT-NAME$ ( n -- ptr u8 n )
+   dup CT-NAME-FIELD @
+   swap cells CT-NAME-U + @ ;
+
+: CT-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n code:n :}
+   code CT-NAME$ a u CORE-STR= ;
+
+: CT-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   1 CT-I !
+   begin CT-I @ CC-MAX < while
+      a u CT-I @ CT-NAME= IF CT-I @ exit THEN
+      CT-I @ 1 + CT-I !
+   repeat 0 ;
+
 : INT-FAM? {: code :}
-   code 1 = IF -1 EXIT THEN
-   code CC-I64 = IF -1 EXIT THEN  code CC-U8 = IF -1 EXIT THEN
-   code CC-U32 = IF -1 EXIT THEN  code CC-CELL = IF -1 EXIT THEN
-   code CC-CHAR = IF -1 EXIT THEN code CC-ADDR = ;
-\ CON-OK? ( t1 t2 -- f ) : two concrete cons unify iff equal, or both are
-\ int-family (C3: u8/u16/u32/i64/n/cell/char/addr all interchange — every int is
-\ a 64-bit cell at runtime, so narrow widths widen with no value change). Nominal
-\ roles (pid/fd/rc/idx/len/...) are NOT int-family and stay strict: they still
-\ require an explicit conversion, exactly as before.
+   code CT-INT? ;
+
+: INT-WIDENS? {: got:n want:n :}
+   got want = IF -1 EXIT THEN
+   got INT-FAM? want INT-FAM? and 0= IF 0 EXIT THEN
+   got CC-N = IF -1 EXIT THEN
+   want CC-N = IF -1 EXIT THEN
+   got CT-WIDTH@ want CT-WIDTH@ <= 0= IF 0 EXIT THEN
+   got CT-SIGN@ CS-GENERIC = IF -1 EXIT THEN
+   want CT-SIGN@ CS-GENERIC = IF -1 EXIT THEN
+   got CT-SIGN@ want CT-SIGN@ = IF -1 EXIT THEN
+   got CT-SIGN@ CS-UNSIGNED = want CT-SIGN@ CS-SIGNED = and
+   got CT-WIDTH@ want CT-WIDTH@ < and ;
+
+\ CON-OK? ( t1 t2 -- f ) : exact joins require the same concrete code except for
+\ generic n/int-family interaction. Input/output checks use the integer lattice:
+\ a narrower concrete int can flow into a wider one; widening never applies to
+\ nominal roles (pid/fd/rc/idx/len/...), which stay strict.
 : CON-OK? {: t1 t2 :}
    t1 PAY t2 PAY = IF -1 EXIT THEN
-   t1 PAY INT-FAM? t2 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
+   UNIFY-KIND @ UK-INPUT = IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
+   t1 PAY CC-N = t2 PAY INT-FAM? and IF -1 EXIT THEN
+   t2 PAY CC-N = t1 PAY INT-FAM? and IF -1 EXIT THEN
+   0 ;
 
 : ATOM-OK? {: t1 t2 :}
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
@@ -276,6 +385,15 @@ variable TOCC  variable TODN  variable TOPARAM
      UNPAIR  over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN
    REPEAT
    UOK @ ;
+
+: UNIFY-EXACT ( n n -- bool )
+   UK-EXACT UNIFY-KIND !
+   UNIFY ;
+
+: UNIFY-IN ( n n -- bool )
+   UK-INPUT UNIFY-KIND !
+   UNIFY
+   UK-EXACT UNIFY-KIND ! ;
 variable FV
 
 : FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
@@ -352,7 +470,7 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 
 : CHECKER-STEP {: din dout :}
    DCUR @ WAS !
-   DCUR @ din UNIFY
+   DCUR @ din UNIFY-IN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  -1 FAILSET ! THEN
    OK @ and OK !  dout DCUR ! ;
 
@@ -402,8 +520,8 @@ variable QTT  variable QD2  variable QR2
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
-     DCUR @ QTT @ Q>DIN  UNIFY OK @ and OK !
-     RCUR @ QTT @ Q>RIN  UNIFY OK @ and OK !
+     DCUR @ QTT @ Q>DIN  UNIFY-IN OK @ and OK !
+     RCUR @ QTT @ Q>RIN  UNIFY-IN OK @ and OK !
      QTT @ Q>XHAS IF
         THROW-EDGE
      THEN
@@ -435,13 +553,13 @@ variable RSRET
    rest DCUR !
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
-     DCUR @ QTT @ Q>DIN   UNIFY OK @ and OK !
-     RCUR @ QTT @ Q>RIN   UNIFY OK @ and OK !
+     DCUR @ QTT @ Q>DIN   UNIFY-IN OK @ and OK !
+     RCUR @ QTT @ Q>RIN   UNIFY-IN OK @ and OK !
      QTT @ Q>XDEAD IF
         QTT @ Q>XHAS 0= IF 0 RSRET !  -1 DEADP ! THEN
      ELSE
-        DCUR @ QTT @ Q>DOUT  UNIFY OK @ and OK !
-        RCUR @ QTT @ Q>ROUT  UNIFY OK @ and OK !
+        DCUR @ QTT @ Q>DOUT  UNIFY-IN OK @ and OK !
+        RCUR @ QTT @ Q>ROUT  UNIFY-IN OK @ and OK !
      THEN
    ELSE QTT @ TAG T-VAR = IF
      DCUR @ DCUR @ RCUR @ RCUR @ MK-QUOT QR2 !
@@ -512,24 +630,8 @@ variable LOCALBAD
 \ (the prim DB and the toolchain's own body use n), and the unifier lets n
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
-: ROLE-OF {: a u :}                     \ nominal scalar role -> con code, or 0
-   a u s" idx"   CORE-STR= IF CC-IDX   EXIT THEN   a u s" len" CORE-STR= IF CC-LEN EXIT THEN
-   a u s" count" CORE-STR= IF CC-COUNT EXIT THEN   a u s" off" CORE-STR= IF CC-OFF EXIT THEN
-   a u s" fd"    CORE-STR= IF CC-FD    EXIT THEN   a u s" rc"  CORE-STR= IF CC-RC  EXIT THEN
-   a u s" pid"   CORE-STR= IF CC-PID   EXIT THEN   a u s" ms"  CORE-STR= IF CC-MS  EXIT THEN
-   a u s" ns"    CORE-STR= IF CC-NS    EXIT THEN   a u s" tok" CORE-STR= IF CC-TOK EXIT THEN
-   a u s" reg"   CORE-STR= IF CC-REG   EXIT THEN   a u s" label" CORE-STR= IF CC-LABEL EXIT THEN
-   a u s" va"    CORE-STR= IF CC-VA    EXIT THEN   a u s" symidx" CORE-STR= IF CC-SYMIDX EXIT THEN
-   a u s" asm"   CORE-STR= IF CC-ASM   EXIT THEN   a u s" img" CORE-STR= IF CC-IMG EXIT THEN
-   a u s" snap"  CORE-STR= IF CC-SNAP  EXIT THEN   0 ;
-
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
-   a u s" i64"  CORE-STR= IF CC-I64  EXIT THEN   a u s" u8"   CORE-STR= IF CC-U8   EXIT THEN
-   a u s" u32"  CORE-STR= IF CC-U32  EXIT THEN   a u s" cell" CORE-STR= IF CC-CELL EXIT THEN
-   a u s" f32"  CORE-STR= IF CC-F32  EXIT THEN   a u s" char" CORE-STR= IF CC-CHAR EXIT THEN
-   a u s" str"  CORE-STR= IF CC-STR  EXIT THEN
-   a u s" addr" CORE-STR= IF CC-ADDR EXIT THEN   a u s" bool" CORE-STR= IF CC-BOOL EXIT THEN
-   a u ROLE-OF ;
+   a u CT-FIND ;
 : SGBAD-CLEAR ( -- )
    0 SGBAD !
    0 SGBAD-A !
@@ -1354,7 +1456,7 @@ variable E-START
    h ER.DOUT @ E-INST
    CHECKER-STEP
    h ER.HASR @ if
-      RCUR @ h ER.RIN @ E-INST UNIFY OK @ and OK !
+      RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
    then ;
 
@@ -1984,7 +2086,14 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
    OK @ and OK ! ;
 
+: SUNI-IN {: s:n :}
+   DCUR @ s UNIFY-IN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   OK @ and OK ! ;
+
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
+
+: RSUNI-IN {: s:n :}  RCUR @ s UNIFY-IN OK @ and OK ! ;
 
 : ROW-OPEN? ( row -- bool )
    R-RES TAG S-ROW = ;
@@ -2010,8 +2119,8 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
       SGHASR @ RHAS !
       RROUT !  RRIN !  RDOUT !  RDIN !
       SG-REST
-      RDIN @ SUNI  RDOUT @ DCUR !
-      RHAS @ IF RRIN @ RSUNI  RROUT @ RCUR ! THEN
+      RDIN @ SUNI-IN  RDOUT @ DCUR !
+      RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
    ELSE -1 UNCK ! THEN ;
 
 : CF-IF  s" bool --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
@@ -2437,13 +2546,13 @@ variable IS-TU
    CHECK-FOLD-EXITS
    VSIG @ SGSEEN @ and IF CHECK-NO-BORROW THEN
    VSIG @ SGSEEN @ and IF
-      SGOUT @ SUNI
+      SGOUT @ SUNI-IN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF
-      RCUR @ SGROUT @ UNIFY OK @ and OK !
+      RCUR @ SGROUT @ UNIFY-IN OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
    CHECK-VERDICT                                      \ malformed/unsafe rejects
@@ -2523,9 +2632,9 @@ variable CAND-VERD
    CHECK-SCAN
    CHECK-FOLD-EXITS
    CHECK-NO-BORROW
-   SGOUT @ SUNI
+   SGOUT @ SUNI-IN
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF -1 UNCK ! THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
-   SGHASR @ IF RCUR @ SGROUT @ UNIFY OK @ and OK ! THEN
+   SGHASR @ IF RCUR @ SGROUT @ UNIFY-IN OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;

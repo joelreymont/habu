@@ -375,6 +375,7 @@ variable GJA-DIRECT
    dup GJA-SCHEMA1
    dup s" code" GJA-REQ GJA-NONEMPTY-STR
    dup s" repair_class" GJA-REQ GJA-NONEMPTY-STR
+   dup s" verdict" GJA-REQ GJA-NONEMPTY-STR
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
    dup s" token" GJA-REQ GJA-NONEMPTY-STR
    dup s" token_index" GJA-REQ-INTF
@@ -384,11 +385,34 @@ variable GJA-DIRECT
    dup s" byte_start" GJA-REQ-INTF
    dup s" byte_end" GJA-REQ-INTF
    dup s" definition_source" GJA-REQ GJA-NONEMPTY-STR
+   dup s" declared_effect" GJA-REQ GJA-NONEMPTY-STR
+   dup s" declared_effect_source" GJA-REQ GJA-NONEMPTY-STR
+   dup s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
    dup s" suggestion" GJA-REQ GJA-NONEMPTY-STR
    dup s" return_stack" GJA-REQ dup GJA-OBJ
    dup s" expected" GJA-REQ-STRF
    s" actual" GJA-REQ-STRF
    drop ;
+
+: GJA-DIAG-VERDICT ( n -- )
+   s" verdict" GJA-REQ
+   dup s" rejected" GJA-STR= IF drop exit THEN
+   s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
+
+: GJA-DIAG-CONTRACT-ROW ( n -- )
+   dup GJA-DIAG-COMMON
+   dup GJA-DIAG-VERDICT
+   dup s" repair_class" GJA-REQ JSON-STRING$ GJA-DIAG-CLASS-SUGGEST ;
+
+: GJA-DIAG-CONTRACT ( ptr u8 n -- )
+   GJA-READ GJA-SPLIT-LINES
+   GJA-LINE# @ 0= IF s" no JSON diagnostics" GJA-FAIL THEN
+   0 GJA-I !
+   begin GJA-I @ GJA-LINE# @ < while
+      GJA-I @ GJA-LINE$ 2dup GJA-LINE-STARTS-OBJECT
+      JSON-PARSE dup GJA-OBJ GJA-DIAG-CONTRACT-ROW
+      GJA-I @ 1+ GJA-I !
+   repeat ;
 
 : GJA-DIAG-DSTACK ( n -- )
    dup s" expected" GJA-REQ-STRF
@@ -556,6 +580,8 @@ variable GJA-DIRECT
    s" json-one-schema" [: GJA-JSON-ONE-SCHEMA ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    s" all-errors" [: GJA-ALL-ERRORS ;]
+   GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
+   s" diag-contract" [: GJA-DIAG-CONTRACT ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN
    s" sarif" [: GJA-SARIF ;]
    GJA-DISPATCH-ONE-FILE-ROW IF GJA-TRUE exit THEN

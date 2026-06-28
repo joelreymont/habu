@@ -10,6 +10,8 @@ LLM prompt object built from those checker diagnostics.
 Checker diagnostics are newline-delimited JSON objects with
 `schema_version: 1`. They are emitted on stderr and remain valid JSON object
 lines even when the checker rejects the input.
+The native gate enforces the required field set with `tools/gate-json-assert.f
+diag-contract` over every checker JSONL fixture emitted by `test/gate-diagnostics.f`.
 
 Fields:
 

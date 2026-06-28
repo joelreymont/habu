@@ -8,6 +8,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Checker metadata loops need owned indexes:** the integer-type table crash was
+  `CT-FIND` using `over` to recover the loop code after pushing search strings;
+  it passed a pointer as the type code and `CT-NAME$` fetched through garbage.
+  Store table scan indexes in named cells or locals before pushing payload data.
 - **Cell `@` must reject byte spans:** `CHECK!` accepted `ptr u8 @` because the
   primitive model treated `@` as unconstrained `ptr a -- a`. The fix belongs in
   checker primitive semantics: concrete `ptr u8` uses `c@`/`c!`; pointer-valued
