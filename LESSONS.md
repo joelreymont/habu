@@ -240,6 +240,11 @@ lesson — keep the specific word/code/path, cut the prose.
   unique assertions into the dedicated AOT/REPL/fixpoint boundary slices, keep
   stdlib tail focused on library fixtures, and protect shared maker caches with
   an atomic lock so concurrent slices do not rebuild the same maker.
+- **Semantic check-tool fixtures should not spawn the wrapper:** reserve
+  `tools/check.f` subprocesses for argv/env/stdin/exit/source-label contracts.
+  `tools/check-test.f` kept positive verification and unterminated-string
+  diagnostics as full wrapper subprocesses even though `VERIFY-SOURCE-BUF` and
+  `CHECK-ALL-ERRORS-FILE` already owned those invariants.
 - **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
   `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT` (`rc 58` is
   `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:

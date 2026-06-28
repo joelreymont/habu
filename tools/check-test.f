@@ -142,6 +142,16 @@ variable CKT-LIST-U
    CKT-LIST$ 2swap WRITE-ALL
    CKT-LIST$ CKT-RUN-SOURCE-LIST-PATH ;
 
+: CKT-CORE-ACT ( -- )
+   CKT-BAD$ CKT-BAD$ CHECK-ALL-ERRORS-FILE ;
+
+: CKT-CORE-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   CKT-BAD$ src srcu WRITE-ALL
+   CKT-ERR CKT-BUF-CAP CKT-OUT CKT-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: CKT-CORE-ACT ;] catch {: rc:n :}
+   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
+
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
 
@@ -178,7 +188,7 @@ variable CKT-LIST-U
    CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
 
 : CKT-TEST-GOOD ( -- )
-   CKT-GOOD$ CKT-RUN 0 T= 0 T= 0 T= ;
+   [: CKT-GOOD$ VERIFY-SOURCE-BUF ;] catch 0 T= ;
 
 : CKT-TEST-FILE-LABEL ( -- )
    CKT-RUN-FILE-JSON 70 T=
@@ -199,7 +209,7 @@ variable CKT-LIST-U
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
 
 : CKT-EXPECT-UNTERM-STRING ( ptr u8 n -- ) {: src:ptr srcu :}
-   src srcu CKT-RUN-JSON-ALL 70 T=
+   src srcu CKT-CORE-JSON 70 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" E-" CONTAINS? TTRUE ;

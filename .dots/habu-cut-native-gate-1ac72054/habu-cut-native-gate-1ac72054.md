@@ -225,3 +225,12 @@ dictionary wrapper passed at 30.52s wall after dead wrapper removal. Full hot
 gate passed at 48.101s internal / 51.09s wall with `helper-spawn=113`;
 remaining critical path is engine fixtures 36.535s, stdlib check-cli 30.148s,
 stdlib tool-boundary 29.788s, and AOT-positive 27.071s under contention.
+
+Checkpoint 2026-06-28: collapsed two pure `tools/check.f` semantic fixtures into
+the loaded check-test process. Positive verification now calls `VERIFY-SOURCE-BUF`
+directly and the unterminated-string JSON diagnostic uses
+`CHECK-ALL-ERRORS-FILE`; spawned `tools/check.f` coverage remains for explicit
+CLI/file/source-list/runtime contracts. Focused check-cli fell to 16.222s
+internal / 26.04s wall. Full hot gate passed at 47.260s internal / 50.05s wall;
+remaining critical path is engine fixtures 35.977s, stdlib tool-boundary
+29.505s, and AOT-positive 26.788s under contention.
