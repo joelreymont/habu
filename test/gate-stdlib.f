@@ -470,17 +470,23 @@ variable SUITE-SLICE
    PROC-ARGV-RESET
    s" --load" SUITE-ARG+ ;
 
+: SUITE-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop s" bin/hb" exit
+   then
+   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
    s" inner-hb-spawn" GS-EVENT
    s" boundary-test" GS-EVENT
-   s" bin/hb" SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
+   SUITE-HB$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu label:ptr labelu :}
    GT-POOL-DRAIN
    label labelu GT-PROGRESS-RUN
    s" inner-hb-stdin" GS-EVENT
    s" boundary-test" GS-EVENT
-   s" bin/hb" in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
+   SUITE-HB$ in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
    label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 

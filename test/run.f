@@ -30,15 +30,19 @@ create TR-TOOLS-BUF FS-PATH-CAP allot
 create TR-TOOLS-TRUST-BUF FS-PATH-CAP allot
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
+create TR-UNDER-BUF FS-PATH-CAP allot
+create TR-UNDER-HEX 64 allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
 variable TR-TOOLS-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
+variable TR-UNDER-U
 variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
+variable TR-UNDER-READY
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -54,6 +58,9 @@ variable TR-CHECK-WARM-READY
 
 : TR-BUILD-CACHE$ ( -- ptr u8 n )
    TR-BUILD-CACHE-BUF TR-BUILD-CACHE-U @ ;
+
+: TR-UNDER$ ( -- ptr u8 n )
+   TR-UNDER-BUF TR-UNDER-U @ ;
 
 : TR-USAGE ( -- )
    s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
@@ -111,6 +118,14 @@ variable TR-CHECK-WARM-READY
    TR-BUILD-CACHE$ MAKE-DIRS
    s" HABU_BUILD_CACHE" >LEN TR-BUILD-CACHE$ >LEN PROC-ENV+ ;
 
+: TR-UNDER-PATHS ( -- )
+   GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
+   TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
+   0 TR-UNDER-READY ! ;
+
+: TR-UNDER-ENV+ ( -- )
+   s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
+
 : TR-START ( -- )
    GT-RESET
    CLEANUP-RESET
@@ -122,12 +137,33 @@ variable TR-CHECK-WARM-READY
       2dup MAKE-DIRS
       GT-COPY-ROOT!
    then
-   GT-ROOT GS-ROOT! ;
+   GT-ROOT GS-ROOT!
+   TR-UNDER-PATHS ;
 
 : TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu :}
    s" FAIL: " type label labelu type cr
    GT-CLEANUP
    label labelu 1 die ;
+
+: TR-UNDER-SHA! ( -- )
+   TR-UNDER$ TR-UNDER-HEX SHA256-FILE-HEX 0 <> if
+      s" failed to hash Habu-under-test" TR-FAIL
+   then ;
+
+: TR-UNDER-LINE ( -- )
+   TR-UNDER-SHA!
+   s" Habu-under-test: " type
+   TR-UNDER$ type
+   s"  sha256=" type
+   TR-UNDER-HEX 64 type cr ;
+
+: TR-EXPECT-UNDER ( -- )
+   TR-UNDER$ EXECUTABLE? 0= if
+      s" missing Habu-under-test: " type TR-UNDER$ type cr
+      s" Habu-under-test not produced executable" TR-FAIL
+   then
+   -1 TR-UNDER-READY !
+   TR-UNDER-LINE ;
 
 : TR-BASE ( -- )
    PROC-ARGV-RESET
@@ -470,6 +506,24 @@ variable TR-CHECK-WARM-READY
 : TR-PHASE-TOOLS-ENV ( idx -- ) {: idx :}
    idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then ;
 
+: TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
+   idx IDX>N 15 = if 0 0= exit then
+   TR-UNDER-READY @ 0 <> ;
+
+: TR-PHASE-UNDER-EXE? ( idx -- bool ) {: idx:idx :}
+   idx IDX>N 15 = if 0 0= 0= exit then
+   TR-UNDER-READY @ 0 <> ;
+
+: TR-PHASE-UNDER-ENV ( idx -- ) {: idx:idx :}
+   idx TR-PHASE-UNDER-ENV? if
+      s" under-env" GS-EVENT
+      TR-UNDER-ENV+
+   then ;
+
+: TR-PHASE-EXE ( idx -- ptr u8 n ) {: idx:idx :}
+   idx TR-PHASE-UNDER-EXE? if TR-UNDER$ exit then
+   s" bin/hb" ;
+
 : TR-PHASE-BASE ( idx -- ) {: idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -480,6 +534,7 @@ variable TR-CHECK-WARM-READY
    TR-BUILD-CACHE-ENV
    idx TR-PHASE-POOL-ENV
    GS-ENV+
+   idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -496,7 +551,8 @@ variable TR-CHECK-WARM-READY
    idx TR-PHASE-BASE
    idx TR-PHASE-ARGS
    s" top-phase-spawn" GS-EVENT
-   s" bin/hb" idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+   idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
+   idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
 
 : TR-PHASE-SPAWN-RANGE ( n n -- ) {: start end :}
    start begin dup end < while
@@ -521,9 +577,18 @@ variable TR-CHECK-WARM-READY
    TR-TOOLS-WARM-READY @ 0 <>
    TR-CHECK-WARM-READY @ 0 <> and ;
 
+: TR-UNDER-DONE? ( -- bool )
+   TR-UNDER$ EXECUTABLE? ;
+
 : TR-CHECK-WARM-DONE? ( -- bool )
    TR-WARM-READY-MARK
    TR-CHECK-WARM-READY @ 0 <> ;
+
+: TR-DRAIN-UNTIL-UNDER ( -- )
+   begin TR-UNDER-DONE? 0= while
+      GT-POOL-STEP
+   repeat
+   TR-EXPECT-UNDER ;
 
 : TR-DRAIN-UNTIL-WARM ( -- )
    begin TR-WARM-DONE? 0= while
@@ -568,6 +633,7 @@ variable TR-CHECK-WARM-READY
 
 : TR-DAG-RUN ( -- )
    TR-EARLY-START
+   TR-DRAIN-UNTIL-UNDER
    TR-DRAIN-UNTIL-CHECK-WARM
    TR-CHECK-WARM-START
    TR-DRAIN-UNTIL-WARM

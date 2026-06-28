@@ -369,7 +369,13 @@ variable GE-ARGV-U
    PROC-ARGV-ENV-RESET
    GE-ARGV-RESET ;
 
-: GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+: GE-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop s" bin/hb" exit
+   then
+   2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+
+: GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    s" inner-hb-spawn" GS-EVENT
    s" boundary-test" GS-EVENT
@@ -377,11 +383,19 @@ variable GE-ARGV-U
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
+: GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu :}
+   label labelu GT-PROGRESS-RUN
+   s" inner-hb-spawn" GS-EVENT
+   s" boundary-test" GS-EVENT
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
+   label labelu GE-EXPECT-OK
+   label labelu GT-PROGRESS-PASS ;
+
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu GT-PROGRESS-RUN
    s" inner-hb-stdin" GS-EVENT
    s" boundary-test" GS-EVENT
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
@@ -389,7 +403,7 @@ variable GE-ARGV-U
    label labelu GT-PROGRESS-RUN
    s" inner-hb-stdin" GS-EVENT
    s" boundary-test" GS-EVENT
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;
 

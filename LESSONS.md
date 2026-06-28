@@ -191,6 +191,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Gate instrumentation must survive cleanup:** appending counters under `GT-ROOT`
   and summarizing after `GT-CLEANUP` produces a false all-zero report. Emit the
   stats summary before deleting the gate temp tree, then enforce the time budget.
+- **Shared Habu-under-test is a pipeline prerequisite:** build the candidate in
+  the early engine-build slot, publish it atomically, print path+SHA, then release
+  downstream phases onto `HABU_UNDER_TEST`. This preserves overlap and proves the
+  rebuilt binary without serializing the whole gate behind fixpoint.
 - **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
   spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
   polls. Preserve max wait windows, but use small named poll intervals and a

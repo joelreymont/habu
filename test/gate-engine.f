@@ -12,9 +12,11 @@
 
 create GE-SCRIPT-PATH FS-PATH-CAP allot
 create GE-CAND-PATH FS-PATH-CAP allot
+create GE-SRC-CAND-PATH FS-PATH-CAP allot
 
 variable GE-SCRIPT-U
 variable GE-CAND-U
+variable GE-SRC-CAND-U
 variable GENG-SLICE
 variable GE-PROF-I
 variable GE-REG-I
@@ -148,18 +150,58 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-HB-BASELINE-RUN ( -- )
    GE-LOAD-RESET
    [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
-   s" hb baseline contracts" GE-HB-RUN ;
+   s" hb baseline contracts" GE-BIN-HB-RUN ;
+
+: GE-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a GE-CAND-PATH u BYTE-COPY
+   u GE-CAND-U ! ;
+
+: GE-SRC-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a GE-SRC-CAND-PATH u BYTE-COPY
+   u GE-SRC-CAND-U ! ;
+
+: GE-DEFAULT-CANDIDATE! ( -- )
+   GT-ROOT s" hb-new" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
+
+: GE-ENV-CANDIDATE? ( -- bool )
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop 0 0= 0= exit
+   then
+   GE-CANDIDATE-PATH!
+   0 0= ;
 
 : GE-CANDIDATE! ( -- )
-   GT-ROOT s" hb-new" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
+   GE-ENV-CANDIDATE? if exit then
+   GE-DEFAULT-CANDIDATE! ;
 
 : GE-CANDIDATE$ ( -- ptr u8 n )
    GE-CAND-PATH GE-CAND-U @ ;
 
+: GE-SRC-CANDIDATE$ ( -- ptr u8 n )
+   GE-SRC-CAND-PATH GE-SRC-CAND-U @ ;
+
 : GE-EXPECT-CANDIDATE ( -- )
    GE-CANDIDATE$ EXECUTABLE? 0= if
-      s" hb-new candidate executable" GE-FAIL
+      s" Habu-under-test candidate executable" GE-FAIL
    then ;
+
+: GE-SRC-CANDIDATE! ( -- )
+   s" hb-new" BF-A$ GE-SRC-CANDIDATE-PATH! ;
+
+: GE-REMOVE-CANDIDATE ( -- )
+   GE-CANDIDATE$ EXISTS? if GE-CANDIDATE$ REMOVE-FILE then ;
+
+: GE-PROMOTE-CANDIDATE ( -- )
+   GE-CANDIDATE!
+   GE-SRC-CANDIDATE!
+   GE-SRC-CANDIDATE$ GE-CANDIDATE$ STR= if exit then
+   GE-REMOVE-CANDIDATE
+   GE-SRC-CANDIDATE$ GE-CANDIDATE$ RENAME-FILE
+   GE-CANDIDATE$ CHMOD-X ;
 
 : GE-CHECK-OFF-LINE$ ( -- ptr u8 n )
    GE-CHECK-OFF-LINE 13 ;
@@ -254,8 +296,8 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    BF-BUILD-STDIN-FROM-STAGE
    BF-BUILD-SNAP-FROM-STDIN
    GE-BUILD-SOURCE-SHAPE
+   GE-PROMOTE-CANDIDATE
    BF-TMP-RESET
-   GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
    s" PASS: self-rebuild fixpoint" type cr ;
 
@@ -285,7 +327,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" PASS: " type label labelu type cr ;
 
 : GE-ENGINE-SUITE ( -- )
-   GE-CANDIDATE$ s" engine suite on hb-new" GE-ENGINE-SUITE-ON
+   GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
 
 : GE-SNAPSHOT-HOOK-SOURCE ( -- )
@@ -301,11 +343,11 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-SNAPSHOT-HOOK-CHECK ( ptr u8 n -- ) {: exe:ptr exeu :}
    GE-HB-RESET
    GE-SNAPSHOT-HOOK-SOURCE
-   exe exeu s" hb-new refresh/check hook" GE-SNAPSHOT-STDIN
+   exe exeu s" Habu-under-test refresh/check hook" GE-SNAPSHOT-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE
    s" 49" GE-OUT-LINE
-   SB$ s" hb-new refresh/check hook output" GE-EXPECT-OUT ;
+   SB$ s" Habu-under-test refresh/check hook output" GE-EXPECT-OUT ;
 
 : GE-SNAPSHOT-LONG-SOURCE ( -- )
    GE-SRC-RESET
@@ -314,15 +356,15 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-SNAPSHOT-LONG-LOOKUP ( ptr u8 n -- ) {: exe:ptr exeu :}
    GE-HB-RESET
    GE-SNAPSHOT-LONG-SOURCE
-   exe exeu s" hb-new long-name snapshot dictionary lookup" GE-SNAPSHOT-STDIN
+   exe exeu s" Habu-under-test long-name snapshot dictionary lookup" GE-SNAPSHOT-STDIN
    SB-RESET
    s" 42" GE-OUT-LINE
-   SB$ s" hb-new long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;
+   SB$ s" Habu-under-test long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;
 
 : GE-SNAPSHOT-CANDIDATE-CHECKS ( -- )
    GE-CANDIDATE$ GE-SNAPSHOT-HOOK-CHECK
    GE-CANDIDATE$ GE-SNAPSHOT-LONG-LOOKUP
-   s" PASS: hb-new snapshot hook/dictionary coverage" type cr ;
+   s" PASS: Habu-under-test snapshot hook/dictionary coverage" type cr ;
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE

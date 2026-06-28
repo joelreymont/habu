@@ -19,6 +19,8 @@ variable GS-START
 
 variable GS-TOP-PHASE
 variable GS-TOP-CAPTURE
+variable GS-UNDER-PHASE
+variable GS-UNDER-ENV
 variable GS-INNER-HB
 variable GS-INNER-HB-STDIN
 variable GS-BOUNDARY
@@ -90,6 +92,8 @@ variable GS-HELPER-SPAWN
 : GS-RESET-COUNTS ( -- )
    0 GS-TOP-PHASE !
    0 GS-TOP-CAPTURE !
+   0 GS-UNDER-PHASE !
+   0 GS-UNDER-ENV !
    0 GS-INNER-HB !
    0 GS-INNER-HB-STDIN !
    0 GS-BOUNDARY !
@@ -112,6 +116,8 @@ variable GS-HELPER-SPAWN
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
    off u s" top-phase-spawn" GS-LINE= if GS-TOP-PHASE GS-INC exit then
    off u s" top-capture-spawn" GS-LINE= if GS-TOP-CAPTURE GS-INC exit then
+   off u s" under-phase-spawn" GS-LINE= if GS-UNDER-PHASE GS-INC exit then
+   off u s" under-env" GS-LINE= if GS-UNDER-ENV GS-INC exit then
    off u s" inner-hb-spawn" GS-LINE= if GS-INNER-HB GS-INC exit then
    off u s" inner-hb-stdin" GS-LINE= if GS-INNER-HB-STDIN GS-INC exit then
    off u s" boundary-test" GS-LINE= if GS-BOUNDARY GS-INC exit then
@@ -156,6 +162,8 @@ variable GS-HELPER-SPAWN
    s" gate counts: " type
    GS-TOP-PHASE @ s" top-phase" GS-ITEM.
    GS-TOP-CAPTURE @ s" top-capture" GS-ITEM.
+   GS-UNDER-PHASE @ s" under-phase" GS-ITEM.
+   GS-UNDER-ENV @ s" under-env" GS-ITEM.
    GS-INNER-HB @ s" inner-hb" GS-ITEM.
    GS-INNER-HB-STDIN @ s" inner-hb-stdin" GS-ITEM.
    GS-BOUNDARY @ s" boundary" GS-ITEM.
