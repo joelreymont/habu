@@ -922,6 +922,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	prelude	lib/prelude.f	word	FALSE	(-- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	canonical false flag
 1	prelude	lib/prelude.f	word	0<>	(n -- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	nonzero test
 1	prelude	lib/prelude.f	word	FDROP	(r --)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	drop a float cell
+1	prelude	lib/prelude.f	word	FDUP	(r -- r r)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	duplicate the top float cell
+1	prelude	lib/prelude.f	word	FOVER	(r r -- r r r)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	copy the second float cell to the top
+1	prelude	lib/prelude.f	word	F<=	(r r -- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	float less-than-or-equal
+1	prelude	lib/prelude.f	word	F>=	(r r -- bool)	lib/prelude-test.f	docs/stdlib.md	stdlib-prelude	published	float greater-than-or-equal
 1	render	lib/render.f	module			lib/render-test.f	docs/stdlib.md	stdlib-render	active	byte buffer + CSV/JSON/Markdown formatters and key/value DSL
 1	render	lib/render.f	word	RB-RESET	(--)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
 1	render	lib/render.f	word	RB-C	(n --)	lib/render-test.f	docs/stdlib.md	stdlib-render	published	render helper
