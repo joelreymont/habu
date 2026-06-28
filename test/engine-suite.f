@@ -132,6 +132,38 @@ TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
    0 DIAGXT !
    CHECK! 0 T=
    r> DIAGXT ! ;
+variable TC-UEND
+variable TC-NEND
+variable TC-DIAG
+UEND @ TC-UEND !
+NORET-END @ TC-NEND !
+s" A ( n -- n ) 1+" CHECK-CANDIDATE! -1 T=
+s" A ( n -- n ) dup drop" CHECK-CANDIDATE! -1 T=
+DIAGXT @ TC-DIAG !
+0 DIAGXT !
+s" A ( n -- n n ) drop" CHECK-CANDIDATE! 0 T=
+TC-DIAG @ DIAGXT !
+s" T-CAND-THROW ( n -- n ) dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
+UEND @ TC-UEND @ = -1 T=
+NORET-END @ TC-NEND @ = -1 T=
+variable TG-UEND
+variable TG-CAP
+variable TG-USIGS-P
+variable TG-GROW-CAP
+variable TG-GROW-NEXT
+UEND @ TG-UEND !
+USIGS-CAP-U @ TG-CAP !
+USIGS-P @ TG-USIGS-P !
+USIGS-GROW-CAP @ TG-GROW-CAP !
+USIGS-GROW-NEXT @ TG-GROW-NEXT !
+UEND @ 128 + USIGS-CAP-U !
+s" T-GROW-PAIR" s" ptr u8 n ptr u8 n -- ptr u8 n" TRUST
+s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" CHECK! -1 T=
+TG-USIGS-P @ USIGS-P !
+TG-CAP @ USIGS-CAP-U !
+TG-GROW-CAP @ USIGS-GROW-CAP !
+TG-GROW-NEXT @ USIGS-GROW-NEXT !
+TG-UEND @ USIGS-RESTORE-END
 s" T-PHASE-ID" s" img -- img" TRUST
 s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" CHECK! -1 T=
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS

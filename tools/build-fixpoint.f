@@ -40,6 +40,9 @@ variable BF-FOUND
 variable BF-PID
 variable BF-TMP-A
 variable BF-TMP-U
+variable BF-STRIP-R
+variable BF-STRIP-W
+variable BF-STRIP-OFF
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
    BF-TMP-A 0 ptr-field ;
@@ -179,6 +182,13 @@ variable BF-TMP-U
    BF-TMP$ >LEN PROC-ARGV+
    >LEN PROC-ARGV-PREPARE ;
 
+: BF-PREPARE-LOAD-STAGE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   s" --load" >LEN PROC-ARGV+
+   src srcu >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   BF-TMP$ >LEN PROC-ARGV+
+   exe exeu >LEN PROC-ARGV-PREPARE ;
+
 : BF-RUN-STAGE-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
    exe exeu BF-PREPARE-STAGE-ARGV
@@ -186,6 +196,12 @@ variable BF-TMP-U
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    infd close
    pid BF-FINISH-PID ;
+
+: BF-RUN-LOAD-STAGE ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   BF-PREPARE-ENV
+   exe exeu src srcu BF-PREPARE-LOAD-STAGE-ARGV
+   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
 
 : BF-RUN-ENV-EXE ( ptr u8 n -- n )
    -1 -1 -1 BF-RUN-ENV-FDS ;
@@ -226,25 +242,43 @@ variable BF-TMP-U
 : BF-APPEND-LF ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-OUT$ BF-LF-BUF 1 APPEND-FILE ;
 
-: BF-APPEND-C ( ptr u8 n n -- ) {: out:ptr outu c :}
+: BF-APPEND-C ( ptr u8 n n -- ) {: out:ptr outu:n c:n :}
    c BF-CHAR-BUF c!
    out outu BF-OUT$ BF-CHAR-BUF 1 APPEND-FILE ;
 
-: BF-APPEND-LINE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu a:ptr u :}
+: BF-APPEND-LINE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
    out outu a u BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
-: BF-APPEND-HIDE-DEFS-FROM ( ptr u8 n ptr u8 n -- ) {: out:ptr outu name:ptr nameu :}
+: BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
    out outu s" s" BF-APPEND-BYTES
    out outu BF-DQ BF-APPEND-C
    out outu BF-SP BF-APPEND-C
    out outu name nameu BF-APPEND-BYTES
    out outu BF-DQ BF-APPEND-C
-   out outu s"  HIDE-DEFS-FROM" BF-APPEND-BYTES
+   out outu BF-SP BF-APPEND-C
+   out outu word wordu BF-APPEND-BYTES
+   out outu BF-APPEND-LF ;
+
+: BF-APPEND-HIDE2-CALL ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr au:n b:ptr bu:n word:ptr wordu:n :}
+   out outu s" s" BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu a au BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu s" s" BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu b bu BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu word wordu BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
 : BF-STAGE2-HIDE-DEFS ( ptr u8 n -- )
-   s" >IDX" BF-APPEND-HIDE-DEFS-FROM ;
+   2dup s" BFR-USIGS-RESET" BF-APPEND-LINE
+   s" SEQ" s" T-CON" s" BFR-HIDE-DICT-FROM-EARLIEST" BF-APPEND-HIDE2-CALL ;
 
 : BF-APP-CLOSE ( ptr n -- ) {: p:ptr :}
    p @ dup 0 >= if close else drop then
@@ -292,15 +326,73 @@ variable BF-TMP-U
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
 
-: BF-APPEND-TMP-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu src:ptr srcu :}
-   src srcu BF-A$ out outu BF-OUT$ BF-APPEND-FILE-STREAM
-   out outu BF-APPEND-LF ;
-
 : BF-READ-SOURCE ( ptr u8 n -- )
    BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
 
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
+
+: BF-SOURCE-FIND ( ptr u8 n -- n )
+   BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap FIND-SUB ;
+
+: BF-SOURCE-REQUIRE ( n -- n )
+   dup 0 >= if exit then
+   s" build-fixpoint: source split marker missing" BF-BUILD-RC die ;
+
+: BF-SRC-C@ ( n -- u8 )
+   BF-SOURCE-BUF + c@ ;
+
+: BF-SRC-C! ( u8 n -- )
+   BF-SOURCE-BUF + c! ;
+
+: BF-STRIP-WRITE ( u8 -- )
+   BF-STRIP-W @ BF-SRC-C!
+   BF-STRIP-W @ 1+ BF-STRIP-W ! ;
+
+: BF-STRIP-R++ ( -- )
+   BF-STRIP-R @ 1+ BF-STRIP-R ! ;
+
+: BF-STRIP-SKIP-PAREN ( -- )
+   BF-STRIP-R++
+   begin BF-STRIP-R @ BF-STRIP-OFF @ < while
+      BF-STRIP-R @ BF-SRC-C@ 41 = if BF-STRIP-R++ exit then
+      BF-STRIP-R++
+   repeat ;
+
+: BF-STRIP-KEEP ( -- )
+   BF-STRIP-R @ BF-SRC-C@ BF-STRIP-WRITE
+   BF-STRIP-R++ ;
+
+: BF-STRIP-RANGE ( n -- n )
+   BF-STRIP-OFF !
+   0 BF-STRIP-R !
+   0 BF-STRIP-W !
+   begin BF-STRIP-R @ BF-STRIP-OFF @ < while
+      BF-STRIP-R @ BF-SRC-C@ 40 = if
+         BF-STRIP-SKIP-PAREN
+      else
+         BF-STRIP-KEEP
+      then
+   repeat
+   BF-STRIP-W @ ;
+
+: BF-APPEND-SOURCE-BEFORE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-READ-SOURCE
+   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
+   out outu BF-SOURCE-BUF off BF-APPEND-BYTES
+   out outu BF-APPEND-LF ;
+
+: BF-APPEND-SOURCE-BEFORE-STRIPPED ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-READ-SOURCE
+   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE BF-STRIP-RANGE {: kept:n :}
+   out outu BF-SOURCE-BUF kept BF-APPEND-BYTES
+   out outu BF-APPEND-LF ;
+
+: BF-APPEND-SOURCE-FROM ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n src:ptr srcu:n mark:ptr marku:n :}
+   src srcu BF-READ-SOURCE
+   mark marku BF-SOURCE-FIND BF-SOURCE-REQUIRE {: off:n :}
+   out outu BF-SOURCE-BUF off + BF-SOURCE-LEN @ off - BF-APPEND-BYTES
+   out outu BF-APPEND-LF ;
 
 : BF-SOURCE-MUST-HAVE ( ptr u8 n -- )
    BF-SOURCE-HAS? 0= if s" build-fixpoint: native emitter shape missing" BF-BUILD-RC die then ;
@@ -423,8 +515,40 @@ variable BF-TMP-U
    then
    BF-TARGET-UNKNOWN ;
 
-: BF-APPEND-ROLES ( ptr u8 n -- ) {: out:ptr outu :}
+: BF-APPEND-ROLES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/roles.f" BF-APPEND-SOURCE ;
+
+: BF-APPEND-CHECKER-BOOT ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" src/core/util.f" BF-APPEND-SOURCE
+   out outu s" src/core/checker.f" BF-APPEND-SOURCE
+   out outu s" src/core/render.f" BF-APPEND-SOURCE
+   out outu s" src/core/check-hook.f" BF-APPEND-SOURCE ;
+
+: BF-APPEND-CHECK-OFF ( ptr u8 n -- )
+   s" 0 set-check" BF-APPEND-LINE ;
+
+: BF-APPEND-FRESH-CHECK-HOOK ( ptr u8 n -- )
+   s" ' HOOK set-check" BF-APPEND-LINE ;
+
+: BF-APPEND-SQUOTE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
+   out outu s" s" BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu a u BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C ;
+
+: BF-APPEND-TRUST ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n sig:ptr sigu:n :}
+   out outu name nameu BF-APPEND-SQUOTE
+   out outu BF-SP BF-APPEND-C
+   out outu sig sigu BF-APPEND-SQUOTE
+   out outu s"  TRUST" BF-APPEND-LINE ;
+
+: BF-APPEND-IMAGE-TRUSTS ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" ASM-CODE" s" -- asm" BF-APPEND-TRUST
+   out outu s" BUILD-IMAGE" s" asm -- img" BF-APPEND-TRUST
+   out outu s" BUILD-SNAP-HDR" s" n -- snap n" BF-APPEND-TRUST
+   out outu s" SET-SIGID" s" ptr u8 n --" BF-APPEND-TRUST
+   out outu s" CODESIG2" s" img -- img" BF-APPEND-TRUST ;
 
 : BF-APPEND-HABU-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE ;
@@ -461,7 +585,6 @@ variable BF-TMP-U
    out outu BF-APPEND-HABU-LAYOUT
    out outu BF-APPEND-ENV-BASE
    out outu BF-APPEND-SCRIPT-ARGV
-   out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-STRUCTURES
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
@@ -471,7 +594,10 @@ variable BF-TMP-U
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
+   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
+   out outu BF-APPEND-FRESH-CHECK-HOOK
+   out outu BF-APPEND-IMAGE-TRUSTS
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
@@ -483,7 +609,10 @@ variable BF-TMP-U
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu BF-STAGE2-HIDE-DEFS ;
+   out outu s" src/habu/hide.f" BF-APPEND-SOURCE
+   out outu s" BFR-CHECK-OFF" BF-APPEND-LINE
+   out outu BF-STAGE2-HIDE-DEFS
+   out outu BF-APPEND-CHECKER-BOOT ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-RUN-PRELUDE ;
@@ -506,6 +635,7 @@ variable BF-TMP-U
    out outu BF-RESET-OUT
    out outu BF-APPEND-STDIN-RUN-PRELUDE
    out outu BF-APPEND-COMMON
+   out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
@@ -557,10 +687,6 @@ variable BF-TMP-U
 : BF-STAGE2-SOURCE ( -- )
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
-: BF-STAGE2-RUN-SOURCE ( -- )
-   s" stage2-run-src" BF-RESET-OUT
-   s" stage2-run-src" s" stage2-src" BF-APPEND-TMP-SOURCE ;
-
 : BF-STDIN-SOURCE ( -- )
    s" stage2-src" s" src/habu/stdin.f" BF-EMIT-SOURCE ;
 
@@ -570,8 +696,7 @@ variable BF-TMP-U
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   BF-STAGE2-RUN-SOURCE
-   s" bin/hb" s" stage2-run-src" BF-A$ BF-RUN-STAGE-PATH-INFILE BF-RC0
+   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;

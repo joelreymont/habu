@@ -18,9 +18,13 @@ Measured **only against real Triton on the Orin** — no unchecked/eager baselin
   kernels placed on the roofline (`docs/kernel-principles.md`).
 
 ## Graders + device gate
-`maki/eval-device.f` grades `certify AND run-correct` (emit → ptxas → device golden);
-`maki/eval-compare.f` is the internal checker-ablation. The committed device-correctness
-regressions for the GEMM/attention kernels are `tools/ptx/{matmul,attention}-device-test.f`.
+`maki/eval.f` scores model candidates through `CHECK-CANDIDATE!`, not raw `CHECK!`:
+candidate signatures are allowed to shadow existing names during that one check, then
+the checker registries are restored so repeated `K`/`A` candidates do not poison the
+host dictionary. `maki/eval-device.f` grades `certify AND run-correct` (emit → ptxas →
+device golden); `maki/eval-compare.f` is the internal checker-ablation. The committed
+device-correctness regressions for the GEMM/attention kernels are
+`tools/ptx/{matmul,attention}-device-test.f`.
 
 ## Design intent + roadmap
 Retire the remaining `/tmp` graders into committed checked-Habu tools

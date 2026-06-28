@@ -192,10 +192,10 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
    t1 PAY INT-FAM? t2 PAY INT-FAM? and IF -1 EXIT THEN  0 ;
 
 : ATOM-OK? {: t1 t2 :}
-   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U STR= ;
+   t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
 : PARAM-NAME-OK? {: t1 t2 :}
-   t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U STR= ;
+   t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U CORE-STR= ;
 
 : PARAM-PAIR-ARGS {: t1 t2 :}
    t1 PARAM>ARGC t2 PARAM>ARGC <> IF 0 UOK ! EXIT THEN
@@ -347,6 +347,9 @@ variable FAILB  variable FAILE
 variable TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
+: DIAG-JSON! ( bool -- )
+   JSON-DIAGS ! ;
+
 : CHECKER-STEP {: din dout :}
    DCUR @ WAS !
    DCUR @ din UNIFY
@@ -452,14 +455,14 @@ variable RSH
 
 : RS-TOK? {: a u :}
    -1 RSH !
-   a u s" >r" STR= IF RS->R ELSE
-   a u s" r>" STR= IF RSR> ELSE
-   a u s" r@" STR= IF RSR@ ELSE
-   a u s" 2>r" STR= IF RS2->R ELSE
-   a u s" 2r>" STR= IF RS2R> ELSE
-   a u s" 2r@" STR= IF RS2R@ ELSE
-   a u s" execute" STR= IF RSEXEC ELSE
-   a u s" catch" STR= IF RSCATCH ELSE
+   a u s" >r" CORE-STR= IF RS->R ELSE
+   a u s" r>" CORE-STR= IF RSR> ELSE
+   a u s" r@" CORE-STR= IF RSR@ ELSE
+   a u s" 2>r" CORE-STR= IF RS2->R ELSE
+   a u s" 2r>" CORE-STR= IF RS2R> ELSE
+   a u s" 2r@" CORE-STR= IF RS2R@ ELSE
+   a u s" execute" CORE-STR= IF RSEXEC ELSE
+   a u s" catch" CORE-STR= IF RSCATCH ELSE
    0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
@@ -510,22 +513,22 @@ variable LOCALBAD
 \ subsume any int-family code (so '( i64 -- i64 )' over an n-typed prim still
 \ checks). r(3)=float. Table-driven to keep the body small (inline-safe).
 : ROLE-OF {: a u :}                     \ nominal scalar role -> con code, or 0
-   a u s" idx"   STR= IF CC-IDX   EXIT THEN   a u s" len" STR= IF CC-LEN EXIT THEN
-   a u s" count" STR= IF CC-COUNT EXIT THEN   a u s" off" STR= IF CC-OFF EXIT THEN
-   a u s" fd"    STR= IF CC-FD    EXIT THEN   a u s" rc"  STR= IF CC-RC  EXIT THEN
-   a u s" pid"   STR= IF CC-PID   EXIT THEN   a u s" ms"  STR= IF CC-MS  EXIT THEN
-   a u s" ns"    STR= IF CC-NS    EXIT THEN   a u s" tok" STR= IF CC-TOK EXIT THEN
-   a u s" reg"   STR= IF CC-REG   EXIT THEN   a u s" label" STR= IF CC-LABEL EXIT THEN
-   a u s" va"    STR= IF CC-VA    EXIT THEN   a u s" symidx" STR= IF CC-SYMIDX EXIT THEN
-   a u s" asm"   STR= IF CC-ASM   EXIT THEN   a u s" img" STR= IF CC-IMG EXIT THEN
-   a u s" snap"  STR= IF CC-SNAP  EXIT THEN   0 ;
+   a u s" idx"   CORE-STR= IF CC-IDX   EXIT THEN   a u s" len" CORE-STR= IF CC-LEN EXIT THEN
+   a u s" count" CORE-STR= IF CC-COUNT EXIT THEN   a u s" off" CORE-STR= IF CC-OFF EXIT THEN
+   a u s" fd"    CORE-STR= IF CC-FD    EXIT THEN   a u s" rc"  CORE-STR= IF CC-RC  EXIT THEN
+   a u s" pid"   CORE-STR= IF CC-PID   EXIT THEN   a u s" ms"  CORE-STR= IF CC-MS  EXIT THEN
+   a u s" ns"    CORE-STR= IF CC-NS    EXIT THEN   a u s" tok" CORE-STR= IF CC-TOK EXIT THEN
+   a u s" reg"   CORE-STR= IF CC-REG   EXIT THEN   a u s" label" CORE-STR= IF CC-LABEL EXIT THEN
+   a u s" va"    CORE-STR= IF CC-VA    EXIT THEN   a u s" symidx" CORE-STR= IF CC-SYMIDX EXIT THEN
+   a u s" asm"   CORE-STR= IF CC-ASM   EXIT THEN   a u s" img" CORE-STR= IF CC-IMG EXIT THEN
+   a u s" snap"  CORE-STR= IF CC-SNAP  EXIT THEN   0 ;
 
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
-   a u s" i64"  STR= IF CC-I64  EXIT THEN   a u s" u8"   STR= IF CC-U8   EXIT THEN
-   a u s" u32"  STR= IF CC-U32  EXIT THEN   a u s" cell" STR= IF CC-CELL EXIT THEN
-   a u s" f32"  STR= IF CC-F32  EXIT THEN   a u s" char" STR= IF CC-CHAR EXIT THEN
-   a u s" str"  STR= IF CC-STR  EXIT THEN
-   a u s" addr" STR= IF CC-ADDR EXIT THEN   a u s" bool" STR= IF CC-BOOL EXIT THEN
+   a u s" i64"  CORE-STR= IF CC-I64  EXIT THEN   a u s" u8"   CORE-STR= IF CC-U8   EXIT THEN
+   a u s" u32"  CORE-STR= IF CC-U32  EXIT THEN   a u s" cell" CORE-STR= IF CC-CELL EXIT THEN
+   a u s" f32"  CORE-STR= IF CC-F32  EXIT THEN   a u s" char" CORE-STR= IF CC-CHAR EXIT THEN
+   a u s" str"  CORE-STR= IF CC-STR  EXIT THEN
+   a u s" addr" CORE-STR= IF CC-ADDR EXIT THEN   a u s" bool" CORE-STR= IF CC-BOOL EXIT THEN
    a u ROLE-OF ;
 : SGBAD-CLEAR ( -- )
    0 SGBAD !
@@ -558,7 +561,7 @@ variable LOCALBAD
    1 MK-CON ;
 : SIG-PREFIX? {: a u p v :}
    u v < IF 0 EXIT THEN
-   a v p v STR= ;
+   a v p v CORE-STR= ;
 : ATOM-TOK? {: a u :}
    a u s" space-" SIG-PREFIX? IF -1 EXIT THEN
    a u s" extent-" SIG-PREFIX? IF -1 EXIT THEN
@@ -566,15 +569,15 @@ variable LOCALBAD
    a u s" block-" SIG-PREFIX? IF -1 EXIT THEN
    a u s" align-" SIG-PREFIX? ;
 : PARAM-CTOR? {: a u :}
-   a u s" ptr" STR= IF -1 EXIT THEN
-   a u s" span" STR= IF -1 EXIT THEN
-   a u s" matrix" STR= IF -1 EXIT THEN
-   a u s" gridctx" STR= IF -1 EXIT THEN
-   a u s" rowctx" STR= IF -1 EXIT THEN
-   a u s" tile" STR= IF -1 EXIT THEN
-   a u s" acc" STR= IF -1 EXIT THEN
-   a u s" uniform" STR= IF -1 EXIT THEN
-   a u s" rowidx" STR= ;
+   a u s" ptr" CORE-STR= IF -1 EXIT THEN
+   a u s" span" CORE-STR= IF -1 EXIT THEN
+   a u s" matrix" CORE-STR= IF -1 EXIT THEN
+   a u s" gridctx" CORE-STR= IF -1 EXIT THEN
+   a u s" rowctx" CORE-STR= IF -1 EXIT THEN
+   a u s" tile" CORE-STR= IF -1 EXIT THEN
+   a u s" acc" CORE-STR= IF -1 EXIT THEN
+   a u s" uniform" CORE-STR= IF -1 EXIT THEN
+   a u s" rowidx" CORE-STR= ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -585,7 +588,7 @@ variable LOCALBAD
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN ;
 
 : LOCAL-TYPE {: a u :}
-   a u s" ptr" STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
+   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
 
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
@@ -614,23 +617,23 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 : ROW-LEAD? {: a u :} u 1 = a c@ UPPER? and ;        \ a single upper letter leads a row
 : DELIM? {: a u :}                                   \ stack terminator
    u 0 = IF -1 EXIT THEN
-   a u s" --" STR= IF -1 EXIT THEN
-   a u s" ]"  STR= IF -1 EXIT THEN
-   a u s" |"  STR= ;
+   a u s" --" CORE-STR= IF -1 EXIT THEN
+   a u s" ]"  CORE-STR= IF -1 EXIT THEN
+   a u s" |"  CORE-STR= ;
 
 : SIG-TYPE {: a u :}
    a u PARAM-CTOR? IF
-      NEXT-SIG-TOK 2dup s" <" STR= IF
+      NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-RESET
          BEGIN
-            NEXT-SIG-TOK 2dup s" >" STR= IF
+            NEXT-SIG-TOK 2dup s" >" CORE-STR= IF
                2drop a u MK-PARAM EXIT
             THEN
             2dup DELIM? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
             PARAM-SCR-FULL? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
             RECURSE PARAM-SCR+
-            NEXT-SIG-TOK 2dup s" ," STR= IF 2drop ELSE
-            2dup s" >" STR= IF 2drop a u MK-PARAM EXIT ELSE
+            NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
+            2dup s" >" CORE-STR= IF 2drop a u MK-PARAM EXIT ELSE
                SGBAD-SYNTAX! a u MK-PARAM EXIT
             THEN THEN
          AGAIN
@@ -638,7 +641,7 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
          PK!
       THEN
    THEN
-   a u s" ptr" STR= IF
+   a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
 
@@ -651,7 +654,7 @@ create ROWMAP 26 cells allot
 \ some other effect. EXPECT-SIG consumes the next sig token and fails closed if
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
 : EXPECT-SIG {: ea eu :}
-   NEXT-SIG-TOK 2dup ea eu STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
+   NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
@@ -664,7 +667,7 @@ create ROWMAP 26 cells allot
    ELSE PK! tail THEN                                 \ push back token; row = tail
    BEGIN
      NEXT-SIG-TOK 2dup DELIM? IF PK! EXIT THEN        \ ( row a u )->PK!->( row ), return
-     2dup s" [" STR= IF
+     2dup s" [" CORE-STR= IF
         2drop
         FRESH MK-ROW                                  \ q data row
         FRESH MK-ROW                                  \ q return row
@@ -673,7 +676,7 @@ create ROWMAP 26 cells allot
         >r >r                                         \ park qin qr
         RECURSE                                       \ row qout
         r>
-        NEXT-SIG-TOK 2dup s" |" STR= IF
+        NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
            2drop
            dup RECURSE                                \ row qout qr qrin
            s" --" EXPECT-SIG
@@ -682,7 +685,7 @@ create ROWMAP 26 cells allot
            swap drop                                  \ row qout qrout
            r> r> 2swap >r rot r>                      \ row qin qout qrin qrout
         ELSE
-           2dup s" ]" STR= IF
+           2dup s" ]" CORE-STR= IF
               2drop
            ELSE
               SGBAD-SYNTAX!
@@ -709,7 +712,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ ordinary sigs cost no extra typevars.
 : PSIDE {: dtail :}
    dtail PSTACK                                   \ data part (stops at | -- ])
-   NEXT-SIG-TOK 2dup s" |" STR= IF
+   NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
       2drop  -1 SGHASR !  RRTAIL PSTACK           \ ( drow rrow ) explicit return
    ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
 
@@ -909,6 +912,7 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    CDQN 2 PT2+  s" -- ptr u8" PT2+
    DOTQN 2 PT2+ s" --" PT2+
    s" [']" s" -- n" PT+
+   s" char" s" -- n" PT+
    s" [char]" s" -- n" PT+
    s" emit" s" n --" PT+
    s" cr" s" --" PT+
@@ -937,7 +941,10 @@ variable FSA  variable FSU  variable FNL  variable FNP  variable FSL  variable F
 \ user sigs: certified words recorded as [ulen][name][ulen][sig]*, cell-0
 \ terminated. Names are dictionary strings, not counted bytes.
 \ Appended by the renderer (RECXT hook); scanned after PTAB so later wins.
-$80000 constant USIGS-INIT-CAP
+\ The baked checker image stores canonical typed effect graphs for certified
+\ words, not rendered signature strings. The static boot arena must hold that
+\ snapshot without relying on process-local mmap state.
+$400000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 3 constant USIGS-PROT-RW
@@ -947,10 +954,12 @@ $1002 constant USIGS-MAP-ANON
 create USIGS-BOOT USIGS-INIT-CAP allot
 variable USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
+variable CHK-CAND
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
 USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
+0 CHK-CAND !
 
 : USIGS-COPY {: src:ptr dst:ptr n :}
    n 0 > IF n 0 DO src i + c@ dst i + c! LOOP THEN ;
@@ -1012,28 +1021,14 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 \ UTERM! ( -- )
 : UTERM! 0 USIGS UEND @ + ! ;
 
+: USIGS-RESTORE-END ( n -- )
+   UEND !
+   UTERM! ;
+
 : UREC-END {: su nu :}
    UEND @ cell+ nu + UALIGN cell+ su + UALIGN ;
 
 : UREC-NEXT {: fp len :} fp USIGS - cell+ len + UALIGN USIGS + ;
-
-: USIG-ADD {: sa su na nu :}
-   su nu UREC-END cell+ USIGS-ENSURE
-   nu U!+  na nu UBS  UALIGN!
-   su U!+  sa su UBS  UALIGN!
-   UTERM! ;
-
-: USIG-NEXT ( ptr a -- ptr a )
-   dup @ UREC-NEXT ;
-
-: USIG-NAME$ ( ptr a -- ptr u8 n )
-   dup cell+ swap @ ;
-
-: USIG-OFF ( ptr a -- n )
-   USIGS - ;
-
-: USIG-END? ( ptr a -- bool )
-   @ 0= ;
 
 : USIG-FOLD-C ( n -- n ) {: c:n :}
    c $41 < if c exit then
@@ -1049,6 +1044,236 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
    repeat drop
    0 0= ;
 
+\ checker-registry.f - typed checker effect store.
+\
+\ Loaded from checker.f after the signature parser and before callers need
+\ certified word lookup. Source strings are parsed once at boundary adapters;
+\ callers instantiate the stored effect graph.
+
+0 constant EFF-DELETED
+1 constant EFF-ACTIVE
+
+0 constant EN-CON
+1 constant EN-VAR
+2 constant EN-ROW
+3 constant EN-PTR
+4 constant EN-PUSH
+5 constant EN-QUOT
+6 constant EN-ATOM
+7 constant EN-PARAM
+
+$48 constant EFF-REC
+$48 constant EFF-NODE
+
+: ER.NEXT   ( ptr a -- ptr a ) $00 + ;
+: ER.ACTIVE ( ptr a -- ptr a ) $08 + ;
+: ER.DIN    ( ptr a -- ptr a ) $10 + ;
+: ER.DOUT   ( ptr a -- ptr a ) $18 + ;
+: ER.RIN    ( ptr a -- ptr a ) $20 + ;
+: ER.ROUT   ( ptr a -- ptr a ) $28 + ;
+: ER.HASR   ( ptr a -- ptr a ) $30 + ;
+: ER.TVN    ( ptr a -- ptr a ) $38 + ;
+: ER.RVN    ( ptr a -- ptr a ) $40 + ;
+
+: EN.TAG ( ptr a -- ptr a ) $00 + ;
+: EN.A   ( ptr a -- ptr a ) $08 + ;
+: EN.B   ( ptr a -- ptr a ) $10 + ;
+: EN.C   ( ptr a -- ptr a ) $18 + ;
+: EN.D   ( ptr a -- ptr a ) $20 + ;
+: EN.E   ( ptr a -- ptr a ) $28 + ;
+: EN.F   ( ptr a -- ptr a ) $30 + ;
+: EN.G   ( ptr a -- ptr a ) $38 + ;
+: EN.H   ( ptr a -- ptr a ) $40 + ;
+
+create EC-TV MAXTV cells allot
+create EC-RV MAXTV cells allot
+variable EC-TVN
+variable EC-RVN
+
+create EI-TV MAXTV cells allot
+create EI-RV MAXTV cells allot
+
+variable FEP
+variable EHIT
+variable E-START
+
+: E-MAP-RESET-ONE ( ptr a -- ) {: p:ptr :}
+   0 begin dup MAXTV < while
+      UNBOUND over cells p + !
+      1 +
+   repeat drop ;
+
+: E-COPY-MAPS-RESET ( -- )
+   EC-TV E-MAP-RESET-ONE
+   EC-RV E-MAP-RESET-ONE
+   0 EC-TVN !
+   0 EC-RVN ! ;
+
+: E-TV-ID ( n -- n ) {: id:n :}
+   id cells EC-TV + dup @ UNBOUND = if
+      EC-TVN @ over !
+      EC-TVN @ 1+ EC-TVN !
+   then @ ;
+
+: E-RV-ID ( n -- n ) {: id:n :}
+   id cells EC-RV + dup @ UNBOUND = if
+      EC-RVN @ over !
+      EC-RVN @ 1+ EC-RVN !
+   then @ ;
+
+: E-OFF ( ptr a -- n )
+   USIGS - ;
+
+: E-PTR ( n -- ptr a )
+   USIGS + ;
+
+: E-ENSURE-NODE ( -- )
+   UEND @ EFF-NODE + cell+ USIGS-ENSURE ;
+
+: E-NODE-NEW ( n -- ptr a ) {: tag:n :}
+   E-ENSURE-NODE
+   USIGS UEND @ + >r
+   tag r@ EN.TAG !
+   0 r@ EN.A !  0 r@ EN.B !  0 r@ EN.C !  0 r@ EN.D !
+   0 r@ EN.E !  0 r@ EN.F !  0 r@ EN.G !  0 r@ EN.H !
+   UEND @ EFF-NODE + UEND !
+   r> ;
+
+: E-NODE-OFF ( n -- n )
+   E-NODE-NEW E-OFF ;
+
+: E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
+   UEND @ p EN.A !
+   u p EN.B !
+   UEND @ u + UALIGN cell+ USIGS-ENSURE
+   a u UBS
+   UALIGN! ;
+
+: E-RES ( n -- n ) {: x:n :}
+   x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
+
+: E-COPY ( n -- n ) {: x:n :}
+   x 0= if 0 exit then
+   x E-RES TAG T-CON = if
+      EN-CON E-NODE-NEW E-OFF >r
+      x E-RES PAY r@ E-PTR EN.A !
+      r> exit
+   then
+   x E-RES TAG T-VAR = if
+      EN-VAR E-NODE-NEW E-OFF >r
+      x E-RES PAY E-TV-ID r@ E-PTR EN.A !
+      r> exit
+   then
+   x E-RES TAG S-ROW = if
+      EN-ROW E-NODE-NEW E-OFF >r
+      x E-RES PAY E-RV-ID r@ E-PTR EN.A !
+      r> exit
+   then
+   x E-RES TAG T-PTR = if
+      EN-PTR E-NODE-NEW E-OFF >r
+      x E-RES PTR>INNER RECURSE r@ E-PTR EN.A !
+      r> exit
+   then
+   x E-RES TAG S-PUSH = if
+      EN-PUSH E-NODE-NEW E-OFF >r
+      x E-RES P>TYPE RECURSE r@ E-PTR EN.A !
+      x E-RES P>REST RECURSE r@ E-PTR EN.B !
+      r> exit
+   then
+   x E-RES TAG T-QUOT = if
+      EN-QUOT E-NODE-NEW E-OFF >r
+      x E-RES Q>DIN RECURSE r@ E-PTR EN.A !
+      x E-RES Q>DOUT RECURSE r@ E-PTR EN.B !
+      x E-RES Q>RIN RECURSE r@ E-PTR EN.C !
+      x E-RES Q>ROUT RECURSE r@ E-PTR EN.D !
+      x E-RES Q>XHAS r@ E-PTR EN.E !
+      x E-RES Q>XDEAD r@ E-PTR EN.F !
+      x E-RES Q>XDOUT r@ E-PTR EN.G !
+      x E-RES Q>XROUT r@ E-PTR EN.H !
+      r> exit
+   then
+   x E-RES TAG T-ATOM = if
+      EN-ATOM E-NODE-NEW E-OFF >r
+      x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
+      r> exit
+   then
+   x E-RES TAG T-PARAM = if
+      EN-PARAM E-NODE-NEW E-OFF >r
+      x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
+      x E-RES PARAM>ARGC r@ E-PTR EN.C !
+      x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
+      x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
+      x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
+      x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG RECURSE r@ E-PTR EN.G ! then
+      r> exit
+   then
+   0 ;
+
+: E-REC-HDR ( ptr a -- ptr a )
+   dup @ cell+ + USIGS - UALIGN USIGS + ;
+
+: USIG-NEXT ( ptr a -- ptr a )
+   E-REC-HDR ER.NEXT @ E-PTR ;
+
+: USIG-NAME$ ( ptr a -- ptr u8 n )
+   dup cell+ swap @ ;
+
+: USIG-OFF ( ptr a -- n )
+   E-OFF ;
+
+: USIG-END? ( ptr a -- bool )
+   @ 0= ;
+
+: E-REC-START ( ptr u8 n -- ptr a ) {: a:ptr u:n :}
+   UEND @ cell+ u + UALIGN EFF-REC + cell+ USIGS-ENSURE
+   UEND @ E-START !
+   u U!+
+   a u UBS
+   UALIGN!
+   USIGS E-START @ + E-REC-HDR >r
+   0 r@ ER.NEXT !  0 r@ ER.ACTIVE !
+   0 r@ ER.DIN !   0 r@ ER.DOUT !  0 r@ ER.RIN !  0 r@ ER.ROUT !
+   0 r@ ER.HASR !  0 r@ ER.TVN !   0 r@ ER.RVN !
+   r@ EFF-REC + USIGS - UEND !
+   r> ;
+
+: E-REC-FINISH ( ptr a -- )
+   UEND @ swap ER.NEXT !
+   UTERM! ;
+
+: E-ADD-EFFECT ( n n n n n ptr u8 n -- ) {: din:n dout:n rin:n rout:n hasr:n name:ptr nameu:n :}
+   name nameu E-REC-START E-OFF >r
+   E-COPY-MAPS-RESET
+   EFF-ACTIVE r@ E-PTR ER.ACTIVE !
+   din E-COPY r@ E-PTR ER.DIN !
+   dout E-COPY r@ E-PTR ER.DOUT !
+   hasr if
+      rin E-COPY r@ E-PTR ER.RIN !
+      rout E-COPY r@ E-PTR ER.ROUT !
+   then
+   hasr r@ E-PTR ER.HASR !
+   EC-TVN @ r@ E-PTR ER.TVN !
+   EC-RVN @ r@ E-PTR ER.RVN !
+   r> E-PTR E-REC-FINISH ;
+
+: E-ADD-DELETED ( ptr u8 n -- )
+   E-REC-START E-OFF >r
+   EFF-DELETED r@ E-PTR ER.ACTIVE !
+   r> E-PTR E-REC-FINISH ;
+
+: E-PARSE-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   NEW
+   SGBAD-CLEAR
+   sa su PARSE-SIG-RAW
+   SGBAD @ if s" checker: bad stored signature" 76 die then
+   SGHASR @ na nu E-ADD-EFFECT ;
+
+: USIG-ADD ( ptr u8 n ptr u8 n -- )
+   E-PARSE-ADD ;
+
+: USIG-DELETE ( ptr u8 n -- )
+   E-ADD-DELETED ;
+
 : USIG-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
    rec USIG-NAME$ a u USIG-STR=CI ;
 
@@ -1060,6 +1285,94 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 : USIG-FIND-OFF ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    USIGS a u USIG-FIND-OFF-REC ;
 
+: SCAN-USIGS {: a:ptr u:n :}
+   0 FEP !
+   USIGS FP !
+   begin FP @ USIG-END? 0= while
+      FP @ a u USIG-MATCH? if
+         -1 EHIT !
+         FP @ E-REC-HDR dup ER.ACTIVE @ if FEP ! else drop 0 FEP ! then
+      then
+      FP @ USIG-NEXT FP !
+   repeat ;
+
+: E-INST-RESET ( ptr a -- ) {: h:ptr :}
+   0 begin dup h ER.TVN @ < while
+      UNBOUND over cells EI-TV + !
+      1 +
+   repeat drop
+   0 begin dup h ER.RVN @ < while
+      UNBOUND over cells EI-RV + !
+      1 +
+   repeat drop ;
+
+: E-I-TV ( n -- n ) {: id:n :}
+   id cells EI-TV + dup @ UNBOUND = if
+      FRESH MK-VAR over !
+   then @ ;
+
+: E-I-RV ( n -- n ) {: id:n :}
+   id cells EI-RV + dup @ UNBOUND = if
+      FRESH MK-ROW over !
+   then @ ;
+
+: E-I-STR ( ptr a -- ptr u8 n )
+   dup EN.A @ E-PTR swap EN.B @ ;
+
+: E-INST ( n -- n ) {: off:n :}
+   off 0= if 0 exit then
+   off E-PTR >r
+   r@ EN.TAG @ EN-CON = if r@ EN.A @ MK-CON r> drop exit then
+   r@ EN.TAG @ EN-VAR = if r@ EN.A @ E-I-TV r> drop exit then
+   r@ EN.TAG @ EN-ROW = if r@ EN.A @ E-I-RV r> drop exit then
+   r@ EN.TAG @ EN-PTR = if r@ EN.A @ RECURSE MK-PTR r> drop exit then
+   r@ EN.TAG @ EN-PUSH = if r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop exit then
+   r@ EN.TAG @ EN-QUOT = if
+      r@ EN.A @ RECURSE
+      r@ EN.B @ RECURSE
+      r@ EN.C @ RECURSE
+      r@ EN.D @ RECURSE
+      MK-QUOT
+      dup r@ EN.E @ r@ EN.F @ r@ EN.G @ r@ EN.H @ QX!
+      r> drop exit
+   then
+   r@ EN.TAG @ EN-ATOM = if r@ E-I-STR MK-ATOM r> drop exit then
+   r@ EN.TAG @ EN-PARAM = if
+      PARAM-SCR-RESET
+      r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
+      r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
+      r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
+      r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
+      r@ E-I-STR MK-PARAM r> drop exit
+   then
+   r> drop
+   0 ;
+
+: EFF-APPLY ( ptr a -- ) {: h:ptr :}
+   h E-INST-RESET
+   h ER.DIN @ E-INST
+   h ER.DOUT @ E-INST
+   CHECKER-STEP
+   h ER.HASR @ if
+      RCUR @ h ER.RIN @ E-INST UNIFY OK @ and OK !
+      h ER.ROUT @ E-INST RCUR !
+   then ;
+
+: EFF-QUOT ( ptr a -- n ) {: h:ptr :}
+   h E-INST-RESET
+   h ER.HASR @ if
+      h ER.DIN @ E-INST
+      h ER.DOUT @ E-INST
+      h ER.RIN @ E-INST
+      h ER.ROUT @ E-INST
+   else
+      h ER.DIN @ E-INST
+      h ER.DOUT @ E-INST
+      FRESH MK-ROW dup
+   then
+   MK-QUOT ;
+
+
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
    a u USIG-FIND-OFF 0= if s" checker: missing signature truncation mark" 76 die then
    UEND !
@@ -1069,19 +1382,11 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
    BEGIN FP @ c@ dup WHILE                       \ no locals inside the loop (corrupts frame)
      FNL !  FP @ 1 + FNP !
      FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
-     a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
+     a u FNP @ FNL @ USIG-STR=CI IF FSP @ FSA ! FSL @ FSU ! THEN
      FSP @ FSL @ + FP !
    REPEAT drop ;
 
-: SCAN-USIGS {: a u :}  USIGS FP !
-   BEGIN FP @ @ dup WHILE
-     FNL !  FP @ cell+ FNP !
-     FP @ FNL @ UREC-NEXT dup @ FSL ! cell+ FSP !
-     a u FNP @ FNL @ STR= IF FSP @ FSA ! FSL @ FSU ! THEN
-     FSP @ FSL @ + USIGS - UALIGN USIGS + FP !
-   REPEAT drop ;
-
-: FIND-SIG {: a u :}  0 FSU !  PTAB a u SCAN-SIGS  a u SCAN-USIGS  FSU @ ;
+: FIND-SIG {: a:ptr u:n :}  0 FSU !  PTAB a u SCAN-SIGS  a u SCAN-USIGS  FSU @ FEP @ or ;
 
 0 constant CHECKER-PACKAGE-NONE
 1 constant CHECKER-PACKAGE-PRIVATE
@@ -1097,6 +1402,16 @@ variable CHECKER-COLON-N
 variable CHECKER-COLON-I
 variable CHECKER-REC-A
 variable CHECKER-REC-U
+
+$10000 constant DFER-CAP
+create DFERS DFER-CAP allot
+variable DFER-END
+variable DFER-A
+variable DFER-U
+variable DFER-I
+variable DFER-FLAG-SAVE
+0 DFERS !
+0 DFER-END !
 
 : CHECKER-FOLD-C ( n -- n ) {: c:n :}
    c $41 < IF c EXIT THEN
@@ -1181,9 +1496,8 @@ variable CHECKER-REC-U
    0 ;
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 FSU !
    a u SCAN-USIGS
-   FSU @ 0 <> ;
+   FEP @ 0 <> ;
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-PACKAGE-MAP? IF
@@ -1191,6 +1505,99 @@ variable CHECKER-REC-U
       a u CHECKER-BUILD-PUBLIC CHECKER-FIND-USIG IF EXIT THEN
    THEN
    a u CHECKER-FIND-USIG drop ;
+
+: DFER-ENSURE ( n -- )
+   DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
+
+: DFER-C! ( n -- )
+   DFERS DFER-END @ + c!
+   DFER-END @ 1+ DFER-END ! ;
+
+: DFER-A@ ( -- ptr u8 )
+   DFER-A 0 ptr-field @ ;
+
+: DFER-ARGS! ( ptr u8 n n -- )
+   DFER-FLAG-SAVE !
+   DFER-U !
+   DFER-A ! ;
+
+: DFER-NEED ( -- n )
+   DFER-END @ cell+ DFER-U @ + UALIGN cell+ cell+ ;
+
+: DFER-LEN! ( -- )
+   DFER-U @ DFERS DFER-END @ + !
+   DFER-END @ cell+ DFER-END ! ;
+
+: DFER-COPY ( -- )
+   0 DFER-I !
+   BEGIN DFER-I @ DFER-U @ < WHILE
+      DFER-A@ DFER-I @ + c@ DFER-C!
+      DFER-I @ 1+ DFER-I !
+   REPEAT ;
+
+: DFER-FLAG! ( -- )
+   DFER-END @ UALIGN DFER-END !
+   DFER-FLAG-SAVE @ DFERS DFER-END @ + !
+   DFER-END @ cell+ DFER-END ! ;
+
+: DFER-TERM ( -- )
+   0 DFERS DFER-END @ + ! ;
+
+: DFER-ADD-FLAG ( ptr u8 n n -- )
+   DFER-ARGS!
+   DFER-NEED DFER-ENSURE
+   DFER-LEN!
+   DFER-COPY
+   DFER-FLAG!
+   DFER-TERM ;
+
+: DFER-ADD ( ptr u8 n -- )
+   1 DFER-ADD-FLAG ;
+
+: DFER-DELETE ( ptr u8 n -- )
+   0 DFER-ADD-FLAG ;
+
+: DFER-FLAG-PTR ( ptr a -- ptr a )
+   dup @ cell+ + DFERS - UALIGN DFERS + ;
+
+: DFER-NEXT ( ptr a -- ptr a )
+   DFER-FLAG-PTR cell+ ;
+
+: DFER-NAME$ ( ptr a -- ptr u8 n )
+   dup cell+ swap @ ;
+
+: DFER-FLAG@ ( ptr a -- n )
+   DFER-FLAG-PTR @ ;
+
+: DFER-END? ( ptr a -- bool )
+   @ 0= ;
+
+: DFER-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
+   rec DFER-NAME$ a u USIG-STR=CI ;
+
+variable DFER-HIT
+variable DFER-VALUE
+
+: DFER-SCAN ( ptr a ptr u8 n -- ) {: rec:ptr a:ptr u:n :}
+   rec DFER-END? IF EXIT THEN
+   rec a u DFER-MATCH? IF
+      -1 DFER-HIT !
+      rec DFER-FLAG@ DFER-VALUE !
+   THEN
+   rec DFER-NEXT a u RECURSE ;
+
+: DFER-FIND ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 DFER-HIT !
+   0 DFER-VALUE !
+   DFERS a u DFER-SCAN
+   DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 THEN ;
+
+: CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u CHECKER-PACKAGE-MAP? IF
+      a u CHECKER-BUILD-PRIVATE DFER-FIND IF -1 EXIT THEN
+      a u CHECKER-BUILD-PUBLIC DFER-FIND IF -1 EXIT THEN
+   THEN
+   a u DFER-FIND ;
 
 : CHECKER-RECORD-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u CHECKER-PACKAGE-MAP? IF
@@ -1200,6 +1607,9 @@ variable CHECKER-REC-U
       a u CHECKER-BUILD-PRIVATE EXIT
    THEN
    a u ;
+
+: CHECKER-DEFER ( ptr u8 n -- )
+   CHECKER-RECORD-NAME DFER-ADD ;
 
 : CHECKER-USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    sa su na nu CHECKER-RECORD-NAME USIG-ADD ;
@@ -1214,6 +1624,7 @@ variable CHECKER-REC-U
    CHECKER-REC-U @ ;
 
 : CHECKER-CERT-DUP? ( -- bool )
+   CHK-CAND @ IF 0 EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
 : CHECKER-DUP-DEFINITION ( -- )
@@ -1225,6 +1636,11 @@ variable CHECKER-REC-U
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
+
+: CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na nu CHECKER-REC-NAME!
+   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
+   BROW @ DCUR @ 0 0 0 CHECKER-REC-A@ CHECKER-REC-U@ E-ADD-EFFECT ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -1239,6 +1655,13 @@ variable NORET-POS   variable NORET-LEN   variable NORET-FLAG
 variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
+
+: NORET-TERM ( -- )
+   0 NORETS NORET-END @ + c! ;
+
+: NORET-RESTORE-END ( n -- )
+   NORET-END !
+   NORET-TERM ;
 
 : NORET-RESET ( -- )
    NORET-BOOT NORET-P !
@@ -1291,12 +1714,18 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORET-END @ 1 + NORET-END !
    0 NORETS NORET-END @ + c! ;
 
+: CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
+   name nameu USIG-DELETE
+   name nameu DFER-DELETE
+   name nameu 0 NORET-ADD ;
+
 : CTL-FLAGS {: a u :}
    0 NORET-FLAG !
    0 NORET-POS !
    BEGIN NORETS NORET-POS @ + c@ dup WHILE
       NORET-LEN !
-      a u NORETS NORET-POS @ + 1 + NORET-LEN @ STR= IF
+      a u NORETS NORET-POS @ + 1 + NORET-LEN @ USIG-STR=CI IF
          NORETS NORET-POS @ + 1 + NORET-LEN @ + c@ NORET-FLAG !
       THEN
       NORET-POS @ 1 + NORET-LEN @ + 1 + NORET-POS !
@@ -1310,12 +1739,12 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    a u CTL-FLAGS CTL-THROW and 0 <> ;
 
 : DEAD-TOK? {: a u :}
-   a u s" die" STR= IF -1 EXIT THEN
-   a u s" throw" STR= IF -1 EXIT THEN
+   a u s" die" CORE-STR= IF -1 EXIT THEN
+   a u s" throw" CORE-STR= IF -1 EXIT THEN
    a u NORET-USER? ;
 
 : THROW-TOK? {: a u :}
-   a u s" throw" STR= IF -1 EXIT THEN
+   a u s" throw" CORE-STR= IF -1 EXIT THEN
    a u THROW-USER? ;
 create TVSAVE MAXTV cells allot   create RVSAVE MAXTV cells allot
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
@@ -1376,7 +1805,7 @@ variable TSEEN  variable TSOK  variable TFA  variable TFU
    BEGIN FP @ c@ dup WHILE
      FNL !  FP @ 1 + FNP !
      FNP @ FNL @ + dup c@ FSL ! 1 + FSP !
-     a u FNP @ FNL @ STR= IF
+     a u FNP @ FNL @ CORE-STR= IF
        TSEEN @ 0= IF FSP @ TFA !  FSL @ TFU ! THEN
        -1 TSEEN !
        TSOK @ 0= IF FSP @ FSL @ TRY-SIG IF -1 TSOK ! THEN THEN
@@ -1401,9 +1830,9 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : DEFINER-TOK {: a u :}
    SGSEEN @ 0= IF 0 EXIT THEN
-   a u s" create" STR= IF -1 EXIT THEN
-   a u s" variable" STR= IF -1 EXIT THEN
-   a u s" constant" STR= IF s" n --" PARSE-SIG -1 EXIT THEN
+   a u s" create" CORE-STR= IF -1 EXIT THEN
+   a u s" variable" CORE-STR= IF -1 EXIT THEN
+   a u s" constant" CORE-STR= IF s" n --" PARSE-SIG -1 EXIT THEN
    0 ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -1431,8 +1860,8 @@ variable FLD  variable FLI  variable FLO  variable FLC
    bad IF 0 OK ! THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" @" STR= IF CELL-FETCH-TOK -1 EXIT THEN
-   a u s" !" STR= IF CELL-STORE-TOK -1 EXIT THEN
+   a u s" @" CORE-STR= IF CELL-FETCH-TOK -1 EXIT THEN
+   a u s" !" CORE-STR= IF CELL-STORE-TOK -1 EXIT THEN
    0 ;
 
 : DO-TOK {: a u :}
@@ -1440,7 +1869,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u LITERAL-TOK? IF EXIT THEN
    a u CELL-MEMORY-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SIG
-   FSU @ IF FSA @ FSU @ PARSE-SIG ELSE
+   FEP @ IF FEP @ EFF-APPLY ELSE
    PTAB a u TRY-TAB IF EXIT THEN
    TSEEN @ IF TFA @ TFU @ PARSE-SIG ELSE
    -1 UNCK ! THEN THEN ;
@@ -1483,8 +1912,8 @@ variable LCO
    LCH @  LROW @ MK-ROW  CHECKER-STEP ;
 
 : LOC-TOK {: a u :}
-   a u s" :}" STR= IF 0 LMODE ! LOC-BIND ELSE
-   a u s" --" STR= IF -1 UNCK ! ELSE
+   a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
+   a u s" --" CORE-STR= IF -1 UNCK ! ELSE
    a u LOC-ADD THEN THEN ;
 
 : LOC-REJECT ( -- )
@@ -1498,7 +1927,7 @@ variable LCO
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
      LI @ 1 - LI !
-     a u  LOCNB LI @ 16 * +  LI @ cells LOCLN + @  STR= IF
+     a u  LOCNB LI @ 16 * +  LI @ cells LOCLN + @  CORE-STR= IF
        QDEPTH @ 0 > IF
           LOC-REJECT
        ELSE
@@ -1727,26 +2156,26 @@ variable QTMP
 
 : CF-TOK? {: a u :}
    -1 CFH !
-   a u s" [:" STR= IF CF-QUOT ELSE
-   a u s" ;]" STR= IF CF-SEMIQ ELSE
-   a u s" if" STR= IF CF-IF ELSE
-   a u s" else" STR= IF CF-ELSE ELSE
-   a u s" then" STR= IF CF-THEN ELSE
-   a u s" begin" STR= IF CF-BEGIN ELSE
-   a u s" until" STR= IF CF-UNTIL ELSE
-   a u s" again" STR= IF CF-AGAIN ELSE
-   a u s" while" STR= IF CF-WHILE ELSE
-   a u s" repeat" STR= IF CF-REPEAT ELSE
-   a u s" do" STR= IF CF-DO ELSE
-   a u s" ?do" STR= IF CF-DO ELSE
-   a u s" loop" STR= IF CF-LOOP ELSE
-   a u s" +loop" STR= IF CF-+LOOP ELSE
-   a u s" i" STR= IF CF-I ELSE
-   a u s" j" STR= IF CF-J ELSE
-   a u s" exit" STR= IF CF-EXIT ELSE
-   a u s" leave" STR= IF CF-LEAVE ELSE
-   a u s" unloop" STR= IF CF-UNLOOP ELSE
-   a u s" recurse" STR= IF CF-RECURSE ELSE
+   a u s" [:" CORE-STR= IF CF-QUOT ELSE
+   a u s" ;]" CORE-STR= IF CF-SEMIQ ELSE
+   a u s" if" CORE-STR= IF CF-IF ELSE
+   a u s" else" CORE-STR= IF CF-ELSE ELSE
+   a u s" then" CORE-STR= IF CF-THEN ELSE
+   a u s" begin" CORE-STR= IF CF-BEGIN ELSE
+   a u s" until" CORE-STR= IF CF-UNTIL ELSE
+   a u s" again" CORE-STR= IF CF-AGAIN ELSE
+   a u s" while" CORE-STR= IF CF-WHILE ELSE
+   a u s" repeat" CORE-STR= IF CF-REPEAT ELSE
+   a u s" do" CORE-STR= IF CF-DO ELSE
+   a u s" ?do" CORE-STR= IF CF-DO ELSE
+   a u s" loop" CORE-STR= IF CF-LOOP ELSE
+   a u s" +loop" CORE-STR= IF CF-+LOOP ELSE
+   a u s" i" CORE-STR= IF CF-I ELSE
+   a u s" j" CORE-STR= IF CF-J ELSE
+   a u s" exit" CORE-STR= IF CF-EXIT ELSE
+   a u s" leave" CORE-STR= IF CF-LEAVE ELSE
+   a u s" unloop" CORE-STR= IF CF-UNLOOP ELSE
+   a u s" recurse" CORE-STR= IF CF-RECURSE ELSE
    0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    CFH @ ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
@@ -1788,9 +2217,13 @@ variable SKI  variable SKF
    -1 FAILSET ! ;
 
 : STRING-OPENER? {: a u :}
-   a u SDQN 2 STR= IF -1 EXIT THEN
-   a u CDQN 2 STR= IF -1 EXIT THEN
-   a u DOTQN 2 STR= ;
+   a u SDQN 2 CORE-STR= IF -1 EXIT THEN
+   a u CDQN 2 CORE-STR= IF -1 EXIT THEN
+   a u DOTQN 2 CORE-STR= ;
+
+: PARSE-LIT? {: a:ptr u:n :}
+   a u s" [char]" CORE-STR= IF -1 EXIT THEN
+   a u s" char" CORE-STR= ;
 
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
@@ -1799,17 +2232,26 @@ variable SKI  variable SKF
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
+: SKIP-PARSE-LIT-PAYLOAD ( -- )
+   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 <= ELSE 0 0= 0= THEN WHILE
+      TI @ 1 + TI !
+   REPEAT
+   TI @ TBLEN @ >= IF 0 OK ! exit THEN
+   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
+      TI @ 1 + TI !
+   REPEAT ;
+
 : DEAD-OWNER! ( ptr u8 n -- )
    DEADTU !  DEADTA ! ;
 
 : DEAD-CLOSE? {: a u :}
-   a u s" else"   STR= IF -1 EXIT THEN
-   a u s" then"   STR= IF -1 EXIT THEN
-   a u s" loop"   STR= IF -1 EXIT THEN
-   a u s" +loop"  STR= IF -1 EXIT THEN
-   a u s" repeat" STR= IF -1 EXIT THEN
-   a u s" again"  STR= IF -1 EXIT THEN
-   a u s" ;]"     STR= IF -1 EXIT THEN
+   a u s" else"   CORE-STR= IF -1 EXIT THEN
+   a u s" then"   CORE-STR= IF -1 EXIT THEN
+   a u s" loop"   CORE-STR= IF -1 EXIT THEN
+   a u s" +loop"  CORE-STR= IF -1 EXIT THEN
+   a u s" repeat" CORE-STR= IF -1 EXIT THEN
+   a u s" again"  CORE-STR= IF -1 EXIT THEN
+   a u s" ;]"     CORE-STR= IF -1 EXIT THEN
    0 ;
 
 : LIVE-TOKEN? {: a u :}
@@ -1852,14 +2294,14 @@ s" <input>" DIAG-FILE!
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
-   a u s" evaluate" STR= IF -1 EXIT THEN
-   a u s" trust" STR= IF -1 EXIT THEN
-   a u s" set-check" STR= IF -1 EXIT THEN
-   a u s" postpone" STR= IF -1 EXIT THEN
-   a u s" compile," STR= IF -1 EXIT THEN
-   a u s" immediate" STR= IF -1 EXIT THEN
-   a u s" [" STR= IF -1 EXIT THEN
-   a u s" ]" STR= ;
+   a u s" evaluate" CORE-STR= IF -1 EXIT THEN
+   a u s" trust" CORE-STR= IF -1 EXIT THEN
+   a u s" set-check" CORE-STR= IF -1 EXIT THEN
+   a u s" postpone" CORE-STR= IF -1 EXIT THEN
+   a u s" compile," CORE-STR= IF -1 EXIT THEN
+   a u s" immediate" CORE-STR= IF -1 EXIT THEN
+   a u s" [" CORE-STR= IF -1 EXIT THEN
+   a u s" ]" CORE-STR= ;
 
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
@@ -1909,9 +2351,10 @@ variable IS-TU
 : IS-TOK ( -- )
    IS-NEXT-TOKEN 0= IF IS-FAIL EXIT THEN
    TOKFOLD drop
+   TKF TKFU @ CHECKER-FIND-ACTIVE-DEFER 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
-   FSU @ 0= IF IS-FAIL EXIT THEN
-   FSA @ FSU @ IS-QUOT-ROWS IS-APPLY ;
+   FEP @ 0= IF IS-FAIL EXIT THEN
+   FEP @ EFF-QUOT IS-APPLY ;
 
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
@@ -1919,12 +2362,12 @@ variable IS-TU
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
-   TKF TKFU @ s" {:" STR= IF LOC-BEGIN ELSE
+   TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
-   TKF TKFU @ s" is" STR= IF IS-TOK ELSE
-   OK @ IF TKF TKFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TKFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
-   OK @ IF TKF TKFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
+   TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
+   OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TKFU @ s" leave" CORE-STR= IF a u DEAD-OWNER! THEN THEN
+   OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ RS-TOK? 0= IF
@@ -1932,6 +2375,7 @@ variable IS-TU
    OK @ IF TKF TKFU @ THROW-TOK? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    TKF TKFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
+   TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -2019,6 +2463,35 @@ variable IS-TU
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
       THEN
    THEN ;
+
+variable CAND-UEND
+variable CAND-NEND
+variable CAND-VERD
+
+: CHECK-CANDIDATE-START ( -- )
+   UEND @ CAND-UEND !
+   NORET-END @ CAND-NEND !
+   -1 CHK-CAND !
+   -1 VSIG ! ;
+
+: CHECK-CANDIDATE-DONE ( n -- n )
+   CAND-VERD !
+   0 VSIG !
+   0 CHK-CAND !
+   CAND-UEND @ USIGS-RESTORE-END
+   CAND-NEND @ NORET-RESTORE-END
+   CAND-VERD @ ;
+
+: CHECK-CANDIDATE! ( ptr u8 n -- n )
+   CHECK-CANDIDATE-START
+   CHECK
+   CHECK-CANDIDATE-DONE ;
+
+: CHECKER-CANDIDATE-SCOPE-START ( -- )
+   CHECK-CANDIDATE-START ;
+
+: CHECKER-CANDIDATE-SCOPE-DONE ( -- )
+   0 CHECK-CANDIDATE-DONE drop ;
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.

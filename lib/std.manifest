@@ -102,6 +102,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase
 1	string	lib/string.f	word	ASCII-UPPER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII lowercase byte to uppercase
+1	string	lib/string.f	word	STR=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings byte-for-byte
 1	string	lib/string.f	word	STR=CI	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings case-insensitively
 1	string	lib/string.f	word	STARTS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string prefix
 1	string	lib/string.f	word	ENDS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string suffix

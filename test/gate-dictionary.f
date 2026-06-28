@@ -503,7 +503,49 @@ variable GD-INC-DUP-U
    GE-SRC-RESET
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   $4E s" RESET" s" global wordlist rejects duplicate word" GD-RUN-BAD-SOURCE ;
+   $4E s" RESET" s" global wordlist rejects duplicate word" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
+   $4E s" dup" s" primitive shadow attempt rejects without undefine" GD-RUN-BAD-SOURCE ;
+
+: GD-EXPLICIT-REDEFINITION ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GD-RDEF ( -- n ) 1 ;" GE-SRC-LINE
+   s" undefine GD-RDEF" GE-SRC-LINE
+   s" : GD-RDEF ( -- n ) 2 ;" GE-SRC-LINE
+   s" GD-RDEF ." GE-SRC-LINE
+   s" package GD-RPKG" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 3 ;" GE-SRC-LINE
+   s" undefine RESET" GE-SRC-LINE
+   s" : RESET ( -- n ) 4 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" GD-RPKG:RESET ." GE-SRC-LINE
+   s" defer GD-RV ( -- n )" GE-SRC-LINE
+   s" undefine GD-RV" GE-SRC-LINE
+   s" defer GD-RV ( -- n )" GE-SRC-LINE
+   s" : GD-RV-FIVE ( -- n ) 5 ;" GE-SRC-LINE
+   s" : GD-RV-INSTALL ( -- ) [: GD-RV-FIVE ;] is GD-RV ;" GE-SRC-LINE
+   s" GD-RV-INSTALL GD-RV ." GE-SRC-LINE
+   s" hb explicit undefine redefinition" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 2" GE-OUT-LINE
+   s" 4" GE-OUT-LINE
+   s" 5" GE-OUT-LINE
+   SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT
+   GE-SRC-RESET
+   s" : GD-CRED ( -- n ) 1 ;" GE-SRC-LINE
+   s" undefine GD-CRED" GE-SRC-LINE
+   s" : GD-CRED ( -- n ) 2 ;" GE-SRC-LINE
+   s" : GD-CUSE ( -- n ) GD-CRED ;" GE-SRC-LINE
+   s" defer GD-CDV ( -- n )" GE-SRC-LINE
+   s" undefine GD-CDV" GE-SRC-LINE
+   s" defer GD-CDV ( -- n )" GE-SRC-LINE
+   s" : GD-CDV-FIVE ( -- n ) 5 ;" GE-SRC-LINE
+   s" : GD-CDV-INSTALL ( -- ) [: GD-CDV-FIVE ;] is GD-CDV ;" GE-SRC-LINE
+   s" : GD-CDV-CALL ( -- n ) GD-CDV-INSTALL GD-CDV ;" GE-SRC-LINE
+   s" check.f explicit undefine redefinition" GE-CHECK-RUN ;
 
 : GD-PACKAGE-SHADOW-POSITIVES ( -- )
    GE-HB-RESET
@@ -791,6 +833,10 @@ variable GD-INC-DUP-U
    GE-SRC-RESET
    s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
    s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
+   $46 s" at 'is'" s" check.f rejects non-defer execution vector target" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
+   s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
    $4C s" GD-XV-NOT-DEFER" s" execution vector rejects non-defer target" GD-RUN-BAD-SOURCE ;
 
 : GD-PARSING-RUNTIME-SOURCE ( -- )
@@ -863,6 +909,7 @@ variable GD-INC-DUP-U
    GD-PACKAGE-JIT-STACK-ISOLATION
    GD-PACKAGE-CHECK
    GD-DUPLICATE-DEFINITION-REJECTS
+   GD-EXPLICIT-REDEFINITION
    GD-PACKAGE-SHADOW-POSITIVES
    GD-PACKAGE-DUPLICATE-CHECK
    GD-PACKAGE-MULTIFILE-LOAD

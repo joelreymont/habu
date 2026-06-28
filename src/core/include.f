@@ -4,12 +4,13 @@
 \ this file only gives source files a checked way to load dependencies.
 
 $400 constant INCLUDE-PATH-CAP
-$20000 constant INCLUDE-BUF-CAP
+$80000 constant INCLUDE-BUF-CAP
 $8 constant INCLUDE-MAX-DEPTH
 $1002 constant INCLUDE-MAP-PRIVATE-ANON
 $1 constant INCLUDE-PROBE-CAP
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
+$37D8 constant INCLUDE-EVALERR-CELL
 INCLUDE-MAX-DEPTH INCLUDE-BUF-CAP * constant INCLUDE-BUF-TOTAL
 
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
@@ -116,7 +117,7 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    INCLUDE-SLOT INCLUDE-U @ ;
 
 : INCLUDE-EVALERR? ( -- bool )
-   data-base EVALERR-CELL + @ 0 = 0= ;
+   data-base INCLUDE-EVALERR-CELL + @ 0 = 0= ;
 
 TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
    evaluate ;

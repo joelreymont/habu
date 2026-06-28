@@ -12,6 +12,7 @@ $1002 constant BFT-MAP-PRIVATE-ANON
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
 variable BFT-STAGE2-U
+variable BFT-RUN-U
 variable BFT-SNAP-U
 variable BFT-BUILD-FILES
 variable BFT-READ-A
@@ -25,6 +26,7 @@ variable BFT-HABU1-I
 create BFT-ROOT-BUF FS-PATH-CAP allot
 create BFT-HB-NEW-BUF FS-PATH-CAP allot
 create BFT-STAGE2-BUF FS-PATH-CAP allot
+create BFT-RUN-BUF FS-PATH-CAP allot
 create BFT-SNAP-BUF FS-PATH-CAP allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
@@ -58,6 +60,9 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 : BFT-STAGE2 ( -- ptr u8 n )
    BFT-STAGE2-BUF BFT-STAGE2-U @ ;
 
+: BFT-RUN ( -- ptr u8 n )
+   BFT-RUN-BUF BFT-RUN-U @ ;
+
 : BFT-SNAP ( -- ptr u8 n )
    BFT-SNAP-BUF BFT-SNAP-U @ ;
 
@@ -82,6 +87,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    BFT-ROOT CLEANUP-TREE+
    BFT-ROOT s" hb-new" BFT-HB-NEW-BUF BFT-HB-NEW-U BFT-PATH!
    BFT-ROOT s" stage2-src" BFT-STAGE2-BUF BFT-STAGE2-U BFT-PATH!
+   BFT-ROOT s" stage2-run-src" BFT-RUN-BUF BFT-RUN-U BFT-PATH!
    BFT-ROOT s" hb-snap-src" BFT-SNAP-BUF BFT-SNAP-U BFT-PATH! ;
 
 : BFT-ARGV-BUILD ( -- )
@@ -138,11 +144,23 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 : BFT-TEST-STAGE2-SOURCE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HOOK set-check" CONTAINS? TFALSE
-   BFT-READ-BUF u s" variable SEQ" CONTAINS? TFALSE
+   BFT-READ-BUF u s" variable SEQ" CONTAINS? TTRUE
    BFT-READ-BUF u s" : STR=" CONTAINS? TFALSE
-   BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TFALSE
-   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TFALSE
+   BFT-READ-BUF u s" : CORE-STR=" CONTAINS? TTRUE
+   BFT-READ-BUF u s" include src/core/checker-registry.f" CONTAINS? TFALSE
+   BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
+   BFT-READ-BUF u s" src/core/include.f" CONTAINS? TFALSE
+   BFT-READ-BUF u s" BFR-USIGS-RESET" CONTAINS? TTRUE
+   BFT-READ-BUF u s" BFR-CHECK-OFF" CONTAINS? TTRUE
+   BFT-READ-BUF u s" BFR-HIDE-DICT-FROM-EARLIEST" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
+   BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
+   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
+
+: BFT-TEST-NO-STAGE2-RUN-SOURCE ( -- )
+   BFT-RUN FILE? TFALSE ;
 
 : BFT-TEST-CHECKED-REGALLOC ( -- )
    BFT-STAGE2 BFT-READ {: u :}
@@ -168,7 +186,11 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
 
 : BFT-TEST-SNAP-SOURCE ( -- )
    BFT-SNAP BFT-READ {: u :}
-   BFT-READ-BUF u s" variable SEQ" CONTAINS? TFALSE
+   BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" : included ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
@@ -202,6 +224,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    BFT-TEST-BUILD
    BFT-TEST-NO-BUILD-SHIMS
    BFT-TEST-STAGE2-SOURCE
+   BFT-TEST-NO-STAGE2-RUN-SOURCE
    BFT-TEST-CHECKED-TARGET-IMAGE
    BFT-TEST-CHECKED-REGALLOC
    BFT-TEST-SNAP-SOURCE

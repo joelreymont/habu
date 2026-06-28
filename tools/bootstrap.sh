@@ -73,7 +73,6 @@ SRC_COMMON=(
   src/habu/layout.f
   src/os/env-base.f
   src/os/script-argv.f
-  src/core/include.f
   src/core/structures.f
   src/core/enums.f
   src/core/exec-vector.f
@@ -160,6 +159,8 @@ emit_src() {
     emit_boot_hide "$out"
   fi
   printf "0 set-check\n" >> "$out"
+  cat src/core/util.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/render.f >> "$out"
@@ -169,9 +170,24 @@ emit_src() {
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
+    if [[ "$f" == "$OS_IMAGE" ]]; then
+      printf "0 set-check\n" >> "$out"
+    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
+    if [[ "$f" == "$OS_SIGN" ]]; then
+      printf "' HOOK set-check\n" >> "$out"
+      printf 's" ASM-CODE" s" -- asm" TRUST\n' >> "$out"
+      printf 's" BUILD-IMAGE" s" asm -- img" TRUST\n' >> "$out"
+      printf 's" BUILD-SNAP-HDR" s" n -- snap n" TRUST\n' >> "$out"
+      printf 's" SET-SIGID" s" ptr u8 n --" TRUST\n' >> "$out"
+      printf 's" CODESIG2" s" img -- img" TRUST\n' >> "$out"
+    fi
   done
+  if [[ "$driver" == "src/habu/snap.f" ]]; then
+    cat src/core/include.f >> "$out"
+    printf '\n' >> "$out"
+  fi
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"
   cat "$driver" >> "$out"

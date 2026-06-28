@@ -34,8 +34,8 @@ file.
   primitive signatures and codegen hooks; `shadow-lint` gates this class of bug.
 - **Do not define parser/control reserved words.** `I`, `J`, `DO`, `LOOP`,
   `+LOOP`, `LEAVE`, `UNLOOP`, `IF`, `THEN`, `BEGIN`, `REPEAT`, `TRUST`,
-  `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`, and the other compiler-dispatch
-  tokens are not ordinary global names even though the dictionary is
+  `TRUSTED:`, `PACKAGE`, `PUBLIC`, `PRIVATE`, `UNDEFINE`, and the other
+  compiler-dispatch/lifecycle tokens are not ordinary global names even though the dictionary is
   case-insensitive. A generated converter that strips prefixes must run
   `tools/reserved-name-lint.f` after naturalization so `CC-I` becomes `IX`, not
   bare `I`; `CC-J` becomes `JX`, not bare `J`. `tools/check.f` runs this lint
@@ -167,6 +167,10 @@ end-package
   including across reopened package blocks and across `:`, `create`, `variable`,
   `constant`, and `TRUSTED:` publishing paths. This is case-insensitive:
   `RESET` and `reset` are the same tail.
+- Redefinition is explicit only. To replace a word, write `undefine NAME` first;
+  this retires the exact active wordlist entry and clears checker-side
+  signature, defer-target, and control metadata. A later definition may then
+  reuse the same name. Silent last-definition-wins shadowing is always an error.
 - Shadowing an outer/global/built-in word from inside a package remains legal
   because it publishes into a different wordlist. The same tail may also appear
   in different packages (`ODIN:RESET` and `MK:RESET`); only duplicates in the
@@ -613,13 +617,13 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   build tool emits `0 set-check`, prove the shortest source span empirically,
   reinstall the hook as soon as the next file checks, and pin the cut with a
   source-shape regression.
-- **Generated checker preludes must rebind a fresh named hook.** If generated
-  source reloads `src/core/checker.f` or `src/core/render.f`, or assembles a
-  source image outside the normal `src/core/check-hook.f` path, it must install
-  a hook built against that generated source after the unchecked span. Stdin
-  stage output installs `' HB-CHECK-HOOK set-check`; snapshot/AOT stages install
-  their own named hooks. Source-shape gates should reject stale direct
-  `' HOOK set-check` installs and require the named final hook.
+- **Generated checker preludes must rebind the existing hook.** If generated
+  source emits `0 set-check` for an audited unchecked span after loading
+  `src/core/check-hook.f`, it must reinstall that existing `HOOK` immediately
+  afterward with `' HOOK set-check`. Do not define a second hook name in baked
+  tty/stdin bundles; explicit duplicate-definition enforcement makes that fail
+  closed on startup. Snapshot/AOT stages that install a different hook keep that
+  hook local to the stage and must not leak a duplicate REPL hook into `bin/hb`.
 - **Bootstrap/fixpoint temp roots are explicit script args.** Stage2/fixpoint
   sources must not depend on stale seed envp capture. Pass the temp root after
   `--`, keep all generated paths under that root, and let the build driver own
@@ -648,12 +652,13 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   breakpoints, and snapshot cells. A cell inside a scratch range will be
   overwritten by ordinary compiled source; add a focused regression for the
   exact overlap class.
-- **Warm snapshots hide the baked tail instead of replaying core sources.** When
-  a warm-image entry needs to redefine a baked tail word such as `SNAP-OUT`, emit
-  `HIDE-DEFS-FROM` for that tail and append the actual snapshot entry file. Do
-  not replay already-baked core, target, or image files just to mask duplicate
-  definitions; that hides stale process state and makes strict duplicate checks
-  look like the problem.
+- **Warm snapshots retire the baked tail instead of replaying core sources.**
+  When a warm-image entry needs to replace a baked tail word such as `SNAP-OUT`,
+  use the explicit definition-lifecycle path (`undefine NAME` for one word,
+  `HIDE-DEFS-FROM` only for refresh tail truncation) and append the actual
+  snapshot entry file. Do not replay already-baked core, target, or image files
+  just to mask duplicate definitions; that hides stale process state and makes
+  strict duplicate checks look like the problem.
 - **Snapshot builders reset process-local image pointers.** Restored DATA cells
   are persistent, but mmap-backed image builder pointers and cursors (`MBUF-A`,
   `MP`, `MLEN`, etc.) are valid only in the process that created them. Clear

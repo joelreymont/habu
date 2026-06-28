@@ -192,7 +192,7 @@ create RBUF 64 cells allot   variable RBN
 \ word just stays unrecorded) on unknown tags or absurd var counts.
 : REC-SIG {: na nu :}
    REND-SIG
-   RQM @ 0 =  NLET @ 27 <  and  IF na nu CHECKER-USIG-CERT-ADD ELSE drop drop THEN ;
+   RQM @ 0 =  NLET @ 27 <  and  IF drop drop na nu CHECKER-USIG-CERT-CURRENT ELSE drop drop THEN ;
 ' REC-SIG RECXT !
 
 \ DIAG-PRINT ( -- ) : reject diagnostic, one line to stderr —

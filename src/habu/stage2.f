@@ -55,6 +55,7 @@ s" SBUF@" s" -- ptr u8" TRUST
 
 : GO ( -- )
    READ-SRC
+   DRV-RETIRE-RELOADS
    SBUF@ SLEN @ EMIT-FORTH
    ASM-CODE BUILD-IMAGE
    s" hb" SET-SIGID  CODESIG2

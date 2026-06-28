@@ -2,7 +2,7 @@
 
 Last verified: 2026-06-28
 Gate: passing; 102.772s internal gate time on 2026-06-28 on
-Linux/aarch64 with 4 online cores. The native gate uses an 8-way checked DAG
+Linux/aarch64 with 4 online cores. The native gate uses a 6-way checked DAG
 pool, 4-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), a direct manifest phase, attributed pool
 outcomes, and a 160s default budget (4-core ZED Box warm gate runs ~117-123s with quirk-fix fixtures). The sub-90s/30s gate target remains active

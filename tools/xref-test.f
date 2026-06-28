@@ -10,6 +10,14 @@
 : XRT-SUFFIX: ( -- n )
    44 ;
 
+: XRT-REDEF ( -- n )
+   1 ;
+
+undefine XRT-REDEF
+
+: XRT-REDEF ( -- n )
+   2 ;
+
 package XRT
 : XRT-PRIVATE ( -- n )
    45 ;
@@ -46,6 +54,10 @@ end-package
 : XRT-MISSING ( -- )
    s" XRT-NO-SUCH-WORD" XREF-FIND XREF-FOUND? TFALSE ;
 
+: XRT-UNDEFINE ( -- )
+   XRT-REDEF 2 T=
+   s" XRT-REDEF" XREF-FIND dup XREF-FOUND? TTRUE XREF-WORDLIST XREF-RETIRED-WL T<> ;
+
 : XRT-LATEST ( -- )
    LATEST XREF-NAME$ s" XRT-MAIN" T$= ;
 
@@ -53,6 +65,7 @@ end-package
    T-RESET
    XRT-FOUND
    XRT-MISSING
+   XRT-UNDEFINE
    XRT-LATEST
    T-REPORT
    s" xref-test: ok" type cr ;

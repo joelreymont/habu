@@ -73,6 +73,19 @@ lesson — keep the specific word/code/path, cut the prose.
   `defer NAME ( effect )` plus `[: IMPL ;] is NAME` keeps assignment checked, and
   every source pre-verifier (`hb-build`, all-errors reducers) must learn new
   top-level definers instead of treating them as ordinary tokens.
+- **Eval grading is not load checking:** `CHECK!` is the persistent load hook and
+  must keep certified signatures for later definitions. Model-candidate grading
+  uses `CHECK-CANDIDATE!`, which suppresses duplicate-name rejection only for that
+  candidate and restores `USIGS`/`NORETS` afterward.
+- **Runtime definers must publish checker facts:** a parent preverify pass cannot
+  help the child checker registry. `create`/`variable`/`constant` must publish
+  their `TRUST` effects in the native compiler when the hook is installed.
+- **Parser-word payloads are part of the checked body:** `[char]`/`char` consume a
+  source token before codegen, so the compiler body capture must append that token
+  and the checker must model the parser word as one literal plus one skipped token.
+- **Keep include as a two-leaf boundary:** source composition needs checked
+  path/read/depth code plus only the mmap pointer refinement and final `evaluate`
+  crossing as `TRUSTED:` leaves. Do not grow include to hide source-order bugs.
 
 ## Tool & Infra
 
@@ -99,6 +112,13 @@ lesson — keep the specific word/code/path, cut the prose.
   closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
   collide with baked or sibling words. Prefix generated names by fixture/tool and
   keep shared lint helpers in a tool-owned vocabulary.
+- **Core bootstrap helpers need private names:** do not move public stdlib words
+  behind checker-hook trust to dodge duplicate definitions. Give bootstrap-only
+  helpers a core-owned name such as `CORE-STR=` and let `lib/string.f` publish
+  the public `STR=` contract so stale native `bin/hb` can self-refresh.
+- **`is` needs checker-owned target kind:** runtime `DEFER-MAGIC` validation is
+  not enough. `defer` must record a checker-visible target-kind entry, and
+  `tools/check.f` must reject `is` on non-defer words before runtime.
 - **Warm snapshot tails hide, they do not replay:** replaying baked core/target
   files used to dodge duplicate `SNAP-OUT`, but it also reset state by accident.
   Emit `HIDE-DEFS-FROM SNAP-OUT`, append `snap.f`, and test that old tail deps
@@ -541,12 +561,11 @@ lesson — keep the specific word/code/path, cut the prose.
   the byte, reaps, returns `-1`. Copy the fd to x0 before reusing that register for
   the marker byte. Else checked `PROC-SPAWN-IO` returns a pid for a missing exe.
 - **Baked REPL needs explicit hook boundaries:** the snapshot prepends `0 set-check`
-  then reinstalls a `CHECK!` hook before user input. The standard prefix's
-  `roles.f` restores `' HOOK set-check`, so a baked tty bundle emits another
-  `0 set-check` after the prefix and before `repl-term.f`/`repl.f`/watch/stepper/
-  debug — without it the tty path rejects audited debug words (rc 70) and echoes
-  PTY input with no prompt. Core fixtures (`src/core/sha256.f`) don't disable
-  checking themselves; put `0 set-check` in the harness.
+  then reinstalls `HOOK` before user input. The tty bundle emits `0 set-check`
+  before `repl-term.f`/`repl.f`/watch/stepper/debug and then only `' HOOK
+  set-check`; defining a second `HB-CHECK-HOOK` collides once explicit
+  duplicate-definition enforcement is active. Core fixtures (`src/core/sha256.f`)
+  don't disable checking themselves; put `0 set-check` in the harness.
 - **`--load` leaves stdin as tool data:** so a post-load probe piped to fd0 doesn't
   run — put capacity probes in an explicit loaded source file when measuring
   `here`/metadata. Gate load lists factor into `TEST-SUITE … ;TEST-SUITE` blocks

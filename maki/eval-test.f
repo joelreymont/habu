@@ -6,6 +6,9 @@ T-RESET
 s" GOOD-K ( n -- n ) 1+"          CHECK-PASSES? TTRUE
 s" BAD-K ( n -- n n ) drop"       CHECK-PASSES? TFALSE
 s" GOOD2 ( n -- n ) dup drop"     CHECK-PASSES? TTRUE
+s" K ( n -- n ) 1+"               CHECK-PASSES? TTRUE
+s" K ( n -- n ) dup drop"         CHECK-PASSES? TTRUE
+s" A ( n -- n ) 1+"               CHECK-PASSES? TTRUE
 
 \ scoring a batch of candidates: 2 of 3 certify (pass@1 holds)
 EV-RESET

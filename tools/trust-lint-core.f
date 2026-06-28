@@ -3,7 +3,7 @@
 \ tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 90 constant TL-MAX-AUDIT-AGE
-384 constant TL-MAX
+512 constant TL-MAX
 32 constant TL-NUM-CAP
 16 constant TL-CELL-MAX
 7 constant TL-S-TABLES

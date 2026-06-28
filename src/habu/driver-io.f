@@ -7,6 +7,10 @@ variable DRV-WALL-FD
 variable DRV-WALL-A
 variable DRV-WALL-U
 
+: DRV-RETIRE-RELOADS ( -- )
+   s" include" UNDEFINE-IF-DEFINED
+   s" included" UNDEFINE-IF-DEFINED ;
+
 : DRV-WALL-A-FIELD ( -- ptr ptr u8 )
    DRV-WALL-A 0 ptr-field ;
 

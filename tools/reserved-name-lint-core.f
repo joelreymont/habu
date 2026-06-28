@@ -154,7 +154,8 @@ variable RNL-NUM-I
    a u s" package" LINT-STR=CI if LINT-TRUE exit then
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
-   a u s" end-package" LINT-STR=CI ;
+   a u s" end-package" LINT-STR=CI if LINT-TRUE exit then
+   a u s" undefine" LINT-STR=CI ;
 
 : RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then

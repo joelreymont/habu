@@ -61,8 +61,10 @@ points stay listed.
   `BP+`, `BP*`, `BPN`, `BP-`, and `BP.`.
 - `src/habu/layout.f` — shared native image, dictionary, and snapshot layout
   constants used by builders and image inspection tools.
-- `src/habu/xref.f` — baked live dictionary inspection words: `LATEST`,
-  `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
+- `src/habu/hide.f` — refresh-only dictionary/signature truncation prelude used
+  before reloading common engine source.
+- `src/habu/xref.f` — baked live dictionary lifecycle/inspection words:
+  `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
   toolchain spike.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by

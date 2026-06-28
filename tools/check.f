@@ -16,6 +16,8 @@
    CHECK! dup -1 <> if 70 throw then ;
 ' CHK-CHECK-HOOK set-check
 
+include src/habu/verify-source.f
+
 $40000 constant CHK-SRC-CAP
 $50000 constant CHK-RUN-CAP
 $50000 constant CHK-ORIGIN-CAP
@@ -55,6 +57,7 @@ variable CHK-STRICT
 variable CHK-ALL
 variable CHK-SOURCE-LIST
 variable CHK-SRC-U
+variable CHK-PRE-U
 variable CHK-RUN-U
 variable CHK-ORIGIN-U
 variable CHK-OUT-U
@@ -426,6 +429,13 @@ variable CHK-ROOT-U
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
+: CHK-RUN-PREVERIFY ( -- )
+   CHK-LABEL DIAG-FILE!
+   CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
+   CHK-SOURCE FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
+   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
+   CHK-SRC-BUF CHK-PRE-U @ VERIFY-SOURCE-BUF ;
+
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL
    CHK-LOAD-RESET
@@ -462,6 +472,7 @@ variable CHK-ROOT-U
    CHK-ALL @ if CHK-RUN-ALL then
    CHK-CHECK-LABEL
    CHK-RUN-DIAG
+   CHK-RUN-PREVERIFY
    CHK-BUILD-RUN
    CHK-RUN-HB
    CHK-HANDLE-HB ;

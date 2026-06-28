@@ -1,9 +1,9 @@
 ---
 title: "Eval grader: isolate candidate checks (namespace per candidate)"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-06-28T12:01:01.569965+02:00"
+created-at: "\"2026-06-28T12:01:01.569965+02:00\""
 ---
 
 FOR THE CHECKER-OWNING AGENT. This is a core src/core/checker.f change — maki must not edit checker.f. BLOCKING the maki gate (maki/README command, the owning gate for maki changes).

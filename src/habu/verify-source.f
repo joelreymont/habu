@@ -1,0 +1,269 @@
+\ verify-source.f - pre-compile checked source verifier.
+\
+\ Load after checker/render/hook support. This scanner verifies colon
+\ definitions with CHECK! and records top-level defining words that the checker
+\ needs before those definitions are compiled by the native compiler.
+
+variable VS-A
+variable VS-U
+variable VS-I
+variable VS-T
+variable VS-SKIPSTR
+variable VS-FOUND
+variable VS-START
+variable VS-TA
+variable VS-TU
+variable VS-ENDQ
+variable VS-L
+variable VS-LINE
+variable VS-COL
+variable VS-POS
+
+create VS-BUF BODYBUF-CAP allot
+
+: VS-SRC@ ( -- ptr u8 )
+   VS-A 0 ptr-field @ ;
+
+: VS-SRC! ( ptr u8 n -- )
+   VS-U !
+   VS-A ! ;
+
+: VS-SKIP-WS ( -- )
+   BEGIN VS-I @ VS-U @ < IF VS-SRC@ VS-I @ + c@ 33 < ELSE 0 0= 0= THEN WHILE
+      VS-I @ 1 + VS-I !
+   REPEAT ;
+
+: VS-SKIP-PAST ( n -- ) {: ch:n :}
+   0 VS-FOUND !
+   BEGIN VS-I @ VS-U @ < WHILE
+      VS-SRC@ VS-I @ + c@  VS-I @ 1 + VS-I !  ch = IF -1 VS-FOUND ! EXIT THEN
+   REPEAT ;
+
+: VS-NEXT-RAW ( -- ptr u8 n )
+   VS-SKIP-WS
+   VS-I @ VS-U @ >= IF VS-SRC@ 0 EXIT THEN
+   VS-I @ VS-START !
+   BEGIN VS-I @ VS-U @ < IF VS-SRC@ VS-I @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
+      VS-I @ 1 + VS-I !
+   REPEAT
+   VS-SRC@ VS-START @ +  VS-I @ VS-START @ - ;
+
+: VS-OPN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 2 = IF
+      a 1 + c@ 34 = IF
+         a c@ 115 =  a c@ 46 = or  a c@ 99 = or
+      ELSE 0 0= 0= THEN
+   ELSE 0 0= 0= THEN ;
+
+: VS-NEXT ( -- ptr u8 n )
+   BEGIN
+      VS-NEXT-RAW
+      dup 0= IF EXIT THEN
+      2dup 1 = swap c@ 92 = and IF 2drop 10 VS-SKIP-PAST ELSE
+      2dup 1 = swap c@ 40 = and IF 2drop 41 VS-SKIP-PAST ELSE
+      VS-SKIPSTR @ 0= 0= IF
+         2dup VS-OPN? IF 2drop 34 VS-SKIP-PAST ELSE EXIT THEN
+      ELSE EXIT THEN
+      THEN THEN
+   AGAIN ;
+
+: VS-NEXT-SCAN ( -- ptr u8 n )
+   -1 VS-SKIPSTR !
+   VS-NEXT ;
+
+: VS-NEXT-BODY ( -- ptr u8 n )
+   0 VS-SKIPSTR !
+   VS-NEXT ;
+
+: VS-RAW! ( -- )
+   VS-NEXT-RAW  VS-TU !  VS-TA ! ;
+
+: VS-BODY! ( -- )
+   VS-NEXT-BODY  VS-TU !  VS-TA ! ;
+
+: VS-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   VS-L @ u + 1 + BODYBUF-CAP > IF s" verify-source: check body too long" 74 die THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@  VS-BUF VS-L @ + c!
+      VS-L @ 1 + VS-L !
+      1 +
+   REPEAT drop
+   32 VS-BUF VS-L @ + c!  VS-L @ 1 + VS-L ! ;
+
+: VS-LINE-COL ( n -- n n ) {: idx:n :}
+   1 VS-LINE !
+   1 VS-COL !
+   0 VS-POS !
+   BEGIN VS-POS @ idx <  VS-POS @ VS-U @ < and WHILE
+      VS-SRC@ VS-POS @ + c@ 10 = IF
+         VS-LINE @ 1 + VS-LINE !
+         1 VS-COL !
+      ELSE
+         VS-COL @ 1 + VS-COL !
+      THEN
+      VS-POS @ 1 + VS-POS !
+   REPEAT
+   VS-LINE @ VS-COL @ ;
+
+: VS-ORIGIN! ( n -- )
+   dup VS-LINE-COL rot DIAG-ORIGIN! ;
+
+: VS-MAYBE-SIG ( -- )
+   VS-SKIP-WS
+   VS-I @ VS-U @ < IF
+      VS-SRC@ VS-I @ + c@ 40 = IF
+         VS-I @ VS-START !
+         41 VS-SKIP-PAST
+         VS-FOUND @ 0= IF s" verify-source: unterminated signature" 74 die THEN
+         VS-SRC@ VS-START @ +  VS-I @ VS-START @ -  VS-APP
+      THEN
+   THEN ;
+
+: VS-REQUIRE-SIG ( -- ptr u8 n )
+   VS-SKIP-WS
+   VS-I @ VS-U @ >= IF s" verify-source: missing signature" 74 die THEN
+   VS-SRC@ VS-I @ + c@ 40 <> IF s" verify-source: missing signature" 74 die THEN
+   VS-I @ 1+ VS-START !
+   41 VS-SKIP-PAST
+   VS-FOUND @ 0= IF s" verify-source: unterminated signature" 74 die THEN
+   VS-SRC@ VS-START @ + VS-I @ VS-START @ - 1 - ;
+
+: VS-ENDS-Q? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0 > IF a u + 1 - c@ 34 = ELSE 0 0= 0= THEN ;
+
+: VS-APP-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u VS-APP
+   BEGIN
+      VS-RAW!
+      VS-TU @ 0= IF s" verify-source: unterminated string" 74 die THEN
+      VS-TA @ VS-TU @ VS-ENDS-Q? VS-ENDQ !
+      VS-TA @ VS-TU @ VS-APP
+      VS-ENDQ @ IF EXIT THEN
+   AGAIN ;
+
+: VS-SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u VS-ENDS-Q? IF exit THEN
+   BEGIN
+      VS-RAW!
+      VS-TU @ 0= IF s" verify-source: unterminated string" 74 die THEN
+      VS-TA @ VS-TU @ VS-ENDS-Q? IF EXIT THEN
+   AGAIN ;
+
+TRUSTED: VS-CHECK-BODY ( ptr u8 n -- n )
+   CHECK! ;
+
+: VS-VERIFY-BODY ( -- )
+   VS-BUF VS-L @ VS-CHECK-BODY  dup -1 <> IF 70 throw THEN drop ;
+
+TRUSTED: VS-CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
+   CHECK-DOES! ;
+
+: VS-VERIFY-DOES-BODY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+   VS-BUF VS-L @ sig sigu VS-CHECK-DOES-BODY
+   dup -1 <> IF 70 throw THEN drop ;
+
+: VS-VERIFY-DOES ( -- )
+   VS-VERIFY-BODY
+   VS-REQUIRE-SIG {: sig:ptr sigu:n :}
+   0 VS-L !
+   BEGIN
+      VS-BODY!
+      VS-TU @ 0= IF s" verify-source: unterminated does body" 74 die THEN
+      VS-L @ 0= IF VS-START @ VS-ORIGIN! THEN
+      VS-TA @ VS-TU @ s" ;" CORE-STR= IF sig sigu VS-VERIFY-DOES-BODY EXIT THEN
+      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-APP-STRING ELSE VS-TA @ VS-TU @ VS-APP THEN
+   AGAIN ;
+
+TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
+   TRUST ;
+
+: VS-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+   VS-NEXT-SCAN
+   dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
+   sig sigu VS-TRUST-SIG ;
+
+: VS-TRUST-DEFER-SIG ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   name nameu VS-REQUIRE-SIG VS-TRUST-SIG
+   name nameu CHECKER-DEFER ;
+
+: VS-TRUST-DEFER ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing defer name" 74 die THEN
+   name nameu VS-TRUST-DEFER-SIG ;
+
+: VS-SKIP-TRUSTED-BODY ( -- )
+   BEGIN
+      VS-BODY!
+      VS-TU @ 0= IF s" verify-source: unterminated trusted definition" 74 die THEN
+      VS-TA @ VS-TU @ s" ;" CORE-STR= IF EXIT THEN
+      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-SKIP-STRING-REST THEN
+   AGAIN ;
+
+: VS-TRUSTED ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing trusted name" 74 die THEN
+   name nameu VS-REQUIRE-SIG VS-TRUST-SIG
+   VS-SKIP-TRUSTED-BODY ;
+
+: VS-UNDEFINE ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing undefine name" 74 die THEN
+   name nameu CHECKER-UNDEFINE ;
+
+: VS-PACKAGE ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing package name" 74 die THEN
+   name nameu CHECKER-PACKAGE ;
+
+: VS-PUBLIC ( -- )
+   CHECKER-PUBLIC ;
+
+: VS-PRIVATE ( -- )
+   CHECKER-PRIVATE ;
+
+: VS-END-PACKAGE ( -- )
+   CHECKER-END-PACKAGE ;
+
+: VS-RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" package" CORE-STR= IF VS-PACKAGE 0 0= EXIT THEN
+   a u s" public" CORE-STR= IF VS-PUBLIC 0 0= EXIT THEN
+   a u s" private" CORE-STR= IF VS-PRIVATE 0 0= EXIT THEN
+   a u s" end-package" CORE-STR= IF VS-END-PACKAGE 0 0= EXIT THEN
+   a u s" constant" CORE-STR= IF s" -- a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" CORE-STR= IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" CORE-STR= IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" defer" CORE-STR= IF VS-TRUST-DEFER 0 0= EXIT THEN
+   a u s" TRUSTED:" CORE-STR= IF VS-TRUSTED 0 0= EXIT THEN
+   a u s" undefine" CORE-STR= IF VS-UNDEFINE 0 0= EXIT THEN
+   0 0= 0= ;
+
+: VS-VERIFY-DEF ( -- )
+   0 VS-L !
+   VS-BODY!
+   VS-TU @ 0= IF s" verify-source: missing word name" 74 die THEN
+   VS-START @ VS-ORIGIN!
+   VS-TA @ VS-TU @ VS-APP
+   VS-MAYBE-SIG
+   BEGIN
+      VS-BODY!
+      VS-TU @ 0= IF s" verify-source: unterminated definition" 74 die THEN
+      VS-TA @ VS-TU @ s" ;" CORE-STR= IF VS-VERIFY-BODY EXIT THEN
+      VS-TA @ VS-TU @ s" does>" CORE-STR= IF VS-VERIFY-DOES EXIT THEN
+      VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-APP-STRING ELSE VS-TA @ VS-TU @ VS-APP THEN
+   AGAIN ;
+
+: VS-VERIFY-SOURCE ( -- )
+   0 VS-I !
+   BEGIN
+      VS-NEXT-SCAN dup 0 > WHILE
+      2dup s" :" CORE-STR= IF 2drop VS-VERIFY-DEF ELSE
+      2dup VS-RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+   REPEAT 2drop ;
+
+: VERIFY-SOURCE-BUF ( ptr u8 n -- )
+   CHECKER-CANDIDATE-SCOPE-START
+   VS-SRC!
+   [: VS-VERIFY-SOURCE ;] catch
+   CHECKER-CANDIDATE-SCOPE-DONE
+   dup 0= IF drop exit THEN
+   throw ;

@@ -1,8 +1,8 @@
 \ util.fs — shared in-subset helpers for the selfhost layer. Load FIRST (before
-\ walk.fs / checker.fs / vs.fs, which all use STR=).
+\ walk.fs / checker.fs / vs.fs, which all use CORE-STR=).
 variable SEQ
 
-: STR= {: a:ptr u b:ptr v :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
+: CORE-STR= {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) byte-wise string equality
    u v = IF
      -1 SEQ !
      0 BEGIN dup u < WHILE

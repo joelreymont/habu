@@ -65,7 +65,7 @@ s" HB@" s" -- ptr u8" TRUST
    WATCH-SRC PATH0 RD-1
    STEP-SRC PATH0 RD-1
    DBG-SRC PATH0 RD-1
-   s" TRUSTED: HB-CHECK-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ; ' HB-CHECK-HOOK set-check" HLINE
+   s" ' HOOK set-check" HLINE
    HL @ 2 > 0= IF s" hb: repl/stepper sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 

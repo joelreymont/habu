@@ -50,6 +50,7 @@ variable RNLT-CASE-U
    s" variable I" SB-APPEND RNLT-LF
    s" 1 constant j" SB-APPEND RNLT-LF
    s" : LOOP ( -- ) ;" SB-APPEND RNLT-LF
+   s" : undefine ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
 : RNLT-CASE-SRC$ ( -- ptr u8 n )
@@ -141,7 +142,8 @@ variable RNLT-CASE-U
    RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
    RNLT-OUT outu s" `I`" CONTAINS? TTRUE
    RNLT-OUT outu s" `j`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `LOOP`" CONTAINS? TTRUE ;
+   RNLT-OUT outu s" `LOOP`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-JSON ( -- )
    RNLT-RUN-JSON 1 RNLT-EXPECT-EXIT {: outu erru :}

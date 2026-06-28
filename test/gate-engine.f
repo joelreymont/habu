@@ -171,7 +171,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    SB$ ;
 
 : GE-STAGE2-HOOK$ ( -- ptr u8 n )
-   s" ' HB-CHECK-HOOK set-check" ;
+   s" ' HOOK set-check" ;
 
 : GE-READ-BUILD-TMP ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu :}
    name nameu BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap :}
@@ -205,7 +205,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-STAGE2-SOURCE-SHAPE ( -- )
    s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u :}
    a u GE-OLD-HOOK$ s" build stage2 stale hook" GE-SHAPE-LACKS
-   a u s" ' HOOK set-check" s" build stage2 direct hook install" GE-SHAPE-LACKS
+   a u s" HB-CHECK-HOOK" s" build stage2 duplicate hook def" GE-SHAPE-LACKS
    a u s" 0 set-check" s" build stage2 unchecked boundary" GE-SHAPE-HAS
    a u GE-STAGE2-HOOK$ s" build stage2 hook install" GE-SHAPE-HAS
    a u s" STDIN-OUT" s" build stage2 stdin output" GE-SHAPE-HAS ;

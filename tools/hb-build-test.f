@@ -250,6 +250,10 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
 : HBT-IMGDUMP-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" HBT-ARG+
+   s" lib/errors.f" HBT-ARG+
+   s" lib/string.f" HBT-ARG+
+   s" lib/memory.f" HBT-ARG+
+   s" lib/fs.f" HBT-ARG+
    s" tools/imgdump.f" HBT-ARG+
    s" --" HBT-ARG+
    HBT-REPL-OUT HBT-ARG+ ;

@@ -45,6 +45,9 @@ variable DDLT-CASE-U
 : DDLT-GOOD-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : OK ( -- n ) 1 ;" SB-APPEND DDLT-LF
+   s" : REDO ( -- n ) 1 ;" SB-APPEND DDLT-LF
+   s" undefine REDO" SB-APPEND DDLT-LF
+   s" : redo ( -- n ) 2 ;" SB-APPEND DDLT-LF
    s" variable STATE" SB-APPEND DDLT-LF
    s" 7 constant LIMIT" SB-APPEND DDLT-LF
    SB$ ;

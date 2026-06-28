@@ -126,15 +126,11 @@ variable STEPS  variable GI
 variable NCERT  variable PROP-NFC  variable NFR  variable RJ
 variable LAST-MEAS  variable LAST-TRAP
 variable FC-KIND  variable FC-EXP  variable FC-MEAS
-\ ---- complete checkpoint/rollback: a `: G ;` grows THREE persistent stores —
-\ code (CP), the name dict (NDICT) and the checker's certified-signature table
-\ (UEND, the USIGS cursor). Per-check transient pools (the term arena, QEN) reset
-\ themselves in the checker's NEW; the `:` handler resets the codegen scratch. So a
-\ correct forget = restore exactly CP/NDICT/UEND plus the USIGS terminator.
-\ USIGS can grow for real composed tools, but an unbounded sweep must restore
-\ UEND and write the terminator so discarded certified defs do not remain
-\ visible to later duplicate checks. Two levels (program + shrink variant) let
-\ shrinking roll back inside a program's own checkpoint.
+\ ---- complete checkpoint/rollback: a `: G ;` grows persistent code, dictionary,
+\ certified signatures, and no-return metadata. Rejected candidates are checked
+\ without compiling; accepted candidates are compiled with the hook off after
+\ CHECK! has already certified their effect. Two levels (program + shrink variant)
+\ let shrinking roll back inside a program's own checkpoint.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
@@ -151,13 +147,22 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 TRUSTED: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
+TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
+   0 set-check
+   evaluate
+   ['] PROP-CHECK-HOOK set-check ;
+: CHK-BODY$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a 2 + u 4 - ;
 TRUSTED: CHK  ( ptr u8 n -- )
    CHK-MARK
    0 VERD !
-   ['] CHK-HOOK set-check
-   evaluate
-   ['] PROP-CHECK-HOOK set-check
-   VERD @ -1 <> IF CHK-FORGET THEN ;
+   2dup CHK-BODY$ CHECK! VERD !
+   VERD @ -1 = IF
+      CHK-COMPILE-CERT
+   ELSE
+      2drop
+      CHK-FORGET
+   THEN ;
 TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    0 LAST-TRAP !  RUN1  PBUF PBUF-U @ evaluate
    ERR@ 0 = IF

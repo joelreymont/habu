@@ -13,7 +13,7 @@
 
 TRUSTED: CHECK-PASSES? ( ptr u8 n -- bool )
    DIAGXT @ >r  0 DIAGXT !          \ silence reject diagnostics during scoring
-   CHECK!  -1 =                     \ CHECK! verdict: -1 certified / 0 rejected / 1 uncheckable
+   CHECK-CANDIDATE!  -1 =           \ verdict: -1 certified / 0 rejected / 1 uncheckable
    r> DIAGXT ! ;
 
 variable EV-PASS

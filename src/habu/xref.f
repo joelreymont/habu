@@ -9,6 +9,7 @@
 3 constant XREF-NAME-SLOT
 5 constant XREF-WORDLIST-SLOT
 -1 constant XREF-NAMESPACE-WL
+-2 constant XREF-RETIRED-WL
 
 32 constant XREF-SP
 
@@ -55,6 +56,9 @@ TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
 
 : XREF-WORDLIST ( ptr a -- n )
    XREF-WORDLIST-SLOT XREF-CELL@ ;
+
+: XREF-RETIRED? ( ptr a -- bool )
+   XREF-WORDLIST XREF-RETIRED-WL = ;
 
 : XREF-NAME-LEN ( ptr a -- n )
    XREF-FLAGS DNAME-LEN-MASK and ;
@@ -150,9 +154,55 @@ variable XREF-QWID
    idx 0 >= if name u idx XREF-FIND-QUALIFIED-INDEX exit then
    name u 0 XREF-FIND-WL-INDEX ;
 
+: XREF-FIND-CURRENT-INDEX ( ptr u8 n -- n )
+   get-current XREF-FIND-WL-INDEX ;
+
+: XREF-FIND-TARGET-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
+   name u XREF-QUAL-INDEX {: idx:n :}
+   idx -2 = if -1 exit then
+   idx 0 >= if name u idx XREF-FIND-QUALIFIED-INDEX exit then
+   name u XREF-FIND-CURRENT-INDEX ;
+
 : XREF-REQUIRE-INDEX ( n -- n )
    dup 0 >= if exit then
    s" xref: word not found" 76 die ;
+
+: XREF-REQUIRE-UNDEFINE ( n -- n )
+   dup 0 >= if exit then
+   s" undefine: word not found" 70 die ;
+
+TRUSTED: XREF-PATCH32 ( n ptr a -- )
+   patch32 ;
+
+: XREF-RETIRE ( ptr a -- )
+   XREF-WORDLIST-SLOT cells + {: p:ptr :}
+   XREF-RETIRED-WL p XREF-PATCH32
+   -1 p 4 + XREF-PATCH32 ;
+
+: XREF-RETIRE-WL ( ptr u8 n n -- ) {: name:ptr u:n wid:n :}
+   ndict@ 1-
+   begin dup 0 >= while
+      dup XREF-REC XREF-WORDLIST wid = if
+         dup XREF-REC name u XREF-MATCH? if
+            dup XREF-REC XREF-RETIRE
+         then
+      then
+      1-
+   repeat drop ;
+
+: UNDEFINE-NAME ( ptr u8 n -- ) {: name:ptr u:n :}
+   name u XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-REC XREF-WORDLIST {: wid:n :}
+   name u wid XREF-RETIRE-WL
+   name u CHECKER-UNDEFINE ;
+
+: UNDEFINE-FOUND ( ptr u8 n n -- ) {: name:ptr u:n idx:n :}
+   idx XREF-REC XREF-WORDLIST
+   name u rot XREF-RETIRE-WL
+   name u CHECKER-UNDEFINE ;
+
+: UNDEFINE-IF-DEFINED ( ptr u8 n -- ) {: name:ptr u:n :}
+   name u XREF-FIND-INDEX {: idx:n :}
+   idx 0 >= if name u idx UNDEFINE-FOUND then ;
 
 : HIDE-DEFS-FROM ( ptr u8 n -- ) {: name:ptr u:n :}
    name u CHECKER-USIGS-TRUNCATE-FROM
@@ -180,8 +230,12 @@ variable XREF-QWID
 : SEE ( -- )
    XREF ;
 
+: undefine ( -- )
+   parse-name dup 0= if s" undefine: missing name" 70 die then
+   UNDEFINE-NAME ;
+
 : WORDS ( -- )
    0 begin dup ndict@ < while
-      dup XREF-REC XREF-NAME. space
+      dup XREF-REC dup XREF-RETIRED? if drop else XREF-NAME. space then
       1+
    repeat drop cr ;

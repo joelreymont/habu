@@ -175,25 +175,28 @@ variable DDL-NUM-I
 : DDL-TOK-END ( n -- n ) {: k :}
    k LB@ k LEX-TOK nip + ;
 
-: DDL-PARSE-NEXT? ( n -- bool ) {: k :}
+: DDL-PARSE-NEXT? ( n -- bool ) {: k:n :}
    k LEX-TOK s" char" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" [char]" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" '" LINT-STR= if LINT-TRUE exit then
    k LEX-TOK s" [']" LINT-STR= if LINT-TRUE exit then
    k LEX-TOK s" postpone" LINT-STR=CI ;
 
-: DDL-COLON-DEFINER? ( n -- bool ) {: k :}
+: DDL-COLON-DEFINER? ( n -- bool ) {: k:n :}
    k LEX-TOK s" :" LINT-STR= if LINT-TRUE exit then
    k LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
    k LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" KERNEL:" LINT-STR=CI ;
 
-: DDL-DATA-DEFINER? ( n -- bool ) {: k :}
+: DDL-DATA-DEFINER? ( n -- bool ) {: k:n :}
    k LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" constant" LINT-STR=CI ;
 
-: DDL-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u idx :}
+: DDL-UNDEFINE? ( n -- bool ) {: k:n :}
+   k LEX-TOK s" undefine" LINT-STR=CI ;
+
+: DDL-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
    a u idx DDL-NAME$ LINT-STR=CI ;
 
 : DDL-HASH-NAME ( ptr u8 n -- n ) {: a:ptr u :}
@@ -278,7 +281,11 @@ variable DDL-NUM-I
 : DDL-ADD-DEF ( n -- )
    dup LEX-TOK rot DDL-ADD-DEF$ ;
 
-: DDL-CHECK-NAME ( n -- ) {: k :}
+: DDL-DELETE-DEF ( n -- ) {: k:n :}
+   k DDL-WORD? 0= if exit then
+   k LEX-TOK DDL-FIND dup 0 >= if 0 swap DDL-NAME-U! else drop then ;
+
+: DDL-CHECK-NAME ( n -- ) {: k:n :}
    k DDL-WORD? 0= if exit then
    k LEX-TOK DDL-FIND dup 0 >= if k DDL-REPORT else drop k DDL-ADD-DEF then ;
 
@@ -290,6 +297,11 @@ variable DDL-NUM-I
    DDL-I @ DDL-COLON-DEFINER? if
       DDL-I @ 1+ DDL-CHECK-NAME
       -1 DDL-IN-DEF !
+      exit
+   then
+   DDL-I @ DDL-UNDEFINE? if
+      DDL-I @ 1+ DDL-DELETE-DEF
+      DDL-I @ 1+ DDL-I !
       exit
    then
    DDL-I @ DDL-DATA-DEFINER? if DDL-I @ 1+ DDL-CHECK-NAME then ;

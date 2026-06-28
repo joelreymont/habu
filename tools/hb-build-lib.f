@@ -356,6 +356,7 @@ variable HBB-LOCK-DEADLINE
    s" hb-maker-src" ;
 
 : HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
+   HBB-REPL @ if out outu s" src/habu/verify-source.f" BF-APPEND-SOURCE then
    out outu HBB-DRIVER$ BF-APPEND-SOURCE ;
 
 : HBB-MAKER-SOURCE ( -- )
@@ -371,10 +372,6 @@ variable HBB-LOCK-DEADLINE
    s" stage2-src" BF-APPEND-COMMON
    s" stage2-src" BF-APPEND-DRIVER-IO
    s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
-
-: HBB-STAGE2-RUN-SOURCE ( -- )
-   HBB-STAGE2-SOURCE
-   BF-STAGE2-RUN-SOURCE ;
 
 : HBB-MAKER-READY? ( -- bool )
    HBB-MAKER$ EXECUTABLE? ;
@@ -417,10 +414,10 @@ variable HBB-LOCK-DEADLINE
 : HBB-BUILD-MAKER-LOCKED ( -- )
    HBB-MAKER-READY? if exit then
    HBB-MAKER-SOURCE
-   HBB-STAGE2-RUN-SOURCE
+   HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
-   s" bin/hb" s" stage2-run-src" BF-A$ BF-RUN-STAGE-PATH-INFILE
+   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE
    dup 0 <> if
       HBB-RELEASE-MAKER-LOCK
       s" hb-build: native maker build failed" HBB-BUILD-RC die

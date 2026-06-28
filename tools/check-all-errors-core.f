@@ -453,17 +453,22 @@ variable CA-JSON
    dup k swap CA-ADD-DEF-RANGE
    CA-I ! ;
 
-: CA-COLLECT-CREATE ( n -- ) {: k :}
+: CA-COLLECT-CREATE ( n -- ) {: k:n :}
    k CA-ADD-SUPPORT-LINE
    k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
 
-: CA-COLLECT-DEFER ( n -- ) {: k :}
+: CA-COLLECT-DEFER ( n -- ) {: k:n :}
    k CA-ADD-SUPPORT-LINE
    k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
 
-: CA-COLLECT-SUPPORT ( n -- ) {: k :}
+: CA-COLLECT-UNDEFINE ( n -- ) {: k:n :}
+   k CA-ADD-SUPPORT-LINE
+   k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
+
+: CA-COLLECT-SUPPORT ( n -- ) {: k:n :}
    k s" TRUSTED:" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUSTED exit THEN
    k s" defer" CA-TOK-CI= IF k CA-COLLECT-DEFER exit THEN
+   k s" undefine" CA-TOK-CI= IF k CA-COLLECT-UNDEFINE exit THEN
    k s" create" CA-TOK-CI= IF k CA-COLLECT-CREATE exit THEN
    k s" variable" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
    k s" constant" CA-TOK-CI= IF k CA-ADD-SUPPORT-CONSTANT exit THEN
