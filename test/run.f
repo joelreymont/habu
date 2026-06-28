@@ -143,6 +143,17 @@ variable TR-UNDER-CACHE-RC
    STR>NUMBER? 0= if drop E-TBL-FIELD throw then
    TR-BUDGET-CHECK ;
 
+: TR-PERSIST? ( -- bool )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
+      2drop TR-FALSE exit
+   then
+   2drop TR-TRUE ;
+
+: TR-PERSIST$ ( -- ptr u8 n )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
+      2drop E-FS-PATH throw
+   then ;
+
 : TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
    s" FAIL: native gate budget (" type
    elapsed GT-U-TYPE
@@ -165,7 +176,11 @@ variable TR-UNDER-CACHE-RC
    elapsed budget TR-PASS ;
 
 : TR-BUILD-CACHE-ENV ( -- )
-   GT-ROOT s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
+   TR-PERSIST? if
+      TR-PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
+   else
+      GT-ROOT s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
+   then
    TR-BUILD-CACHE$ MAKE-DIRS
    s" HABU_BUILD_CACHE" >LEN TR-BUILD-CACHE$ >LEN PROC-ENV+ ;
 
@@ -414,17 +429,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-UNDER-TARGET-KEY
    TR-UNDER-KEY-DG SHA256-FINAL
    TR-UNDER-KEY-DG TR-UNDER-KEY-HEX SHA256>HEX ;
-
-: TR-PERSIST? ( -- bool )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
-      2drop TR-FALSE exit
-   then
-   2drop TR-TRUE ;
-
-: TR-PERSIST$ ( -- ptr u8 n )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
-      2drop E-FS-PATH throw
-   then ;
 
 : TR-UNDER-NAME! ( -- )
    s" hb-under-" {: p:ptr pu:n :}

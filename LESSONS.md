@@ -115,6 +115,11 @@ lesson — keep the specific word/code/path, cut the prose.
   the runner/build harness, and every emitted engine/repl source; a persistent
   hit can unblock under-test slices immediately, while a miss still runs the
   normal fixpoint and installs the produced candidate under that key.
+- **Persistent maker caches must be keyed by emitted maker inputs:** once
+  `HABU_BUILD_CACHE` points outside the per-run temp root, `hb-aot-mk` and
+  `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
+  helper libs, build-fixpoint source, target source, common engine source, and
+  selected AOT/REPL driver, then put the mode in the key.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`

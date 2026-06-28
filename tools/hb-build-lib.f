@@ -17,6 +17,10 @@ create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-LOCK-PATH FS-PATH-CAP allot
+create HBB-MAKER-NAME-BUF 128 allot
+create HBB-MAKER-KEY-HEX 80 allot
+create HBB-MAKER-KEY-DG 40 allot
+create HBB-MAKER-FILE-DG 40 allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
@@ -26,6 +30,7 @@ variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAKER-U
 variable HBB-LOCK-U
+variable HBB-MAKER-NAME-U
 variable HBB-I
 variable HBB-REPL
 variable HBB-JSON
@@ -337,10 +342,126 @@ variable HBB-LOCK-DEADLINE
 : HBB-MK-NAME$ ( -- ptr u8 n )
    HBB-REPL @ if s" hb-build-mk" else s" hb-aot-mk" then ;
 
-: HBB-MAKER$ ( -- ptr u8 n )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if 2drop BF-TMP$ then
-   HBB-MK-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
+: HBB-MAKER-NAME$ ( -- ptr u8 n )
+   HBB-MAKER-NAME-BUF HBB-MAKER-NAME-U @ ;
+
+: HBB-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u HBB-MAKER-FILE-DG SHA256-FILE dup 0 <> if throw then drop
+   HBB-MAKER-FILE-DG 32 SHA256-UPDATE ;
+
+: HBB-KEY-LOAD-FILES ( -- )
+   s" lib/errors.f" HBB-KEY-FILE+
+   s" lib/string.f" HBB-KEY-FILE+
+   s" lib/memory.f" HBB-KEY-FILE+
+   s" lib/fs.f" HBB-KEY-FILE+
+   s" lib/fs-mutate.f" HBB-KEY-FILE+
+   s" lib/process.f" HBB-KEY-FILE+
+   s" lib/process-argv.f" HBB-KEY-FILE+
+   s" lib/process-env.f" HBB-KEY-FILE+
+   s" lib/source.f" HBB-KEY-FILE+
+   s" lib/build.f" HBB-KEY-FILE+
+   s" lib/codesign.f" HBB-KEY-FILE+
+   s" tools/build-fixpoint.f" HBB-KEY-FILE+
+   s" tools/warm-run.f" HBB-KEY-FILE+
+   s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
+
+: HBB-KEY-COMMON-SOURCES ( -- )
+   s" src/habu/hide.f" HBB-KEY-FILE+
+   s" src/core/util.f" HBB-KEY-FILE+
+   s" src/core/checker.f" HBB-KEY-FILE+
+   s" src/core/render.f" HBB-KEY-FILE+
+   s" src/core/check-hook.f" HBB-KEY-FILE+
+   s" src/core/roles.f" HBB-KEY-FILE+
+   s" src/arch/arm64/asm.f" HBB-KEY-FILE+
+   s" src/arch/arm64/icode.f" HBB-KEY-FILE+
+   s" src/arch/arm64/mnem.f" HBB-KEY-FILE+
+   s" src/habu/layout.f" HBB-KEY-FILE+
+   s" src/os/env-base.f" HBB-KEY-FILE+
+   s" src/os/script-argv.f" HBB-KEY-FILE+
+   s" src/core/structures.f" HBB-KEY-FILE+
+   s" src/core/enums.f" HBB-KEY-FILE+
+   s" src/core/exec-vector.f" HBB-KEY-FILE+
+   s" src/core/sha256.f" HBB-KEY-FILE+
+   s" src/core/combinators.f" HBB-KEY-FILE+
+   s" src/habu/treeshake.f" HBB-KEY-FILE+
+   s" src/habu/rt.f" HBB-KEY-FILE+
+   s" src/habu/crash.f" HBB-KEY-FILE+
+   s" src/os/image-bytes.f" HBB-KEY-FILE+
+   s" src/habu/habu1.f" HBB-KEY-FILE+
+   s" src/habu/prof.f" HBB-KEY-FILE+
+   s" src/habu/regalloc.f" HBB-KEY-FILE+
+   s" src/habu/jit.f" HBB-KEY-FILE+
+   s" src/habu/habu2.f" HBB-KEY-FILE+
+   s" src/habu/xref.f" HBB-KEY-FILE+
+   s" src/habu/driver-io.f" HBB-KEY-FILE+
+   s" src/habu/maker.f" HBB-KEY-FILE+ ;
+
+: HBB-KEY-LINUX-SOURCES ( -- )
+   s" target:linux-aarch64" SHA256-UPDATE
+   s" src/os/linux/target.f" HBB-KEY-FILE+
+   s" src/os/linux/layout.f" HBB-KEY-FILE+
+   s" src/os/linux/sys.f" HBB-KEY-FILE+
+   s" src/os/linux/elf.f" HBB-KEY-FILE+
+   s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
+
+: HBB-KEY-MACOS-SOURCES ( -- )
+   s" target:macos-aarch64" SHA256-UPDATE
+   s" src/os/macos/target.f" HBB-KEY-FILE+
+   s" src/os/macos/layout.f" HBB-KEY-FILE+
+   s" src/os/macos/sys.f" HBB-KEY-FILE+
+   s" src/os/macos/macho.f" HBB-KEY-FILE+
+   s" src/os/macos/sign2.f" HBB-KEY-FILE+ ;
+
+: HBB-KEY-TARGET-SOURCES ( -- )
+   HB-TARGET-LINUX? if HBB-KEY-LINUX-SOURCES exit then
+   HB-TARGET-MACOS? if HBB-KEY-MACOS-SOURCES exit then
+   s" hb-build: unknown target" HBB-BUILD-RC die ;
+
+: HBB-KEY-DRIVER-SOURCES ( -- )
+   HBB-REPL @ if
+      s" maker-mode:repl" SHA256-UPDATE
+      s" src/habu/verify-source.f" HBB-KEY-FILE+
+      s" src/habu/build.f" HBB-KEY-FILE+
+      exit
+   then
+   s" maker-mode:aot" SHA256-UPDATE
+   s" src/habu/aot.f" HBB-KEY-FILE+ ;
+
+: HBB-MAKER-KEY! ( -- )
+   SHA256-RESET
+   s" hb-build-maker-cache-v1" SHA256-UPDATE
+   s" bin/hb" HBB-KEY-FILE+
+   HBB-KEY-LOAD-FILES
+   HBB-KEY-COMMON-SOURCES
+   HBB-KEY-TARGET-SOURCES
+   HBB-KEY-DRIVER-SOURCES
+   HBB-MAKER-KEY-DG SHA256-FINAL
+   HBB-MAKER-KEY-DG HBB-MAKER-KEY-HEX SHA256>HEX ;
+
+: HBB-MAKER-NAME! ( -- )
+   HBB-MK-NAME$ {: a:ptr u:n :}
+   u 65 + 128 > if E-BUILD-PATH throw then
+   a HBB-MAKER-NAME-BUF u BYTE-COPY
+   45 HBB-MAKER-NAME-BUF u + c!
+   HBB-MAKER-KEY-HEX HBB-MAKER-NAME-BUF u 1 + + 64 BYTE-COPY
+   u 65 + HBB-MAKER-NAME-U ! ;
+
+: HBB-MAKER-TMP$ ( -- ptr u8 n )
+   BF-TMP$ HBB-MK-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
    HBB-MAKER-PATH HBB-MAKER-U @ ;
+
+: HBB-MAKER-CACHE$ ( ptr u8 n -- ptr u8 n ) {: root:ptr rootu:n :}
+   root rootu MAKE-DIRS
+   HBB-MAKER-KEY!
+   HBB-MAKER-NAME!
+   root rootu HBB-MAKER-NAME$ HBB-MAKER-PATH JOIN-PATH HBB-MAKER-U !
+   HBB-MAKER-PATH HBB-MAKER-U @ ;
+
+: HBB-MAKER$ ( -- ptr u8 n )
+   s" HABU_BUILD_CACHE" GETENV dup 0= if
+      2drop HBB-MAKER-TMP$ exit
+   then
+   HBB-MAKER-CACHE$ ;
 
 : HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u suf:ptr su dst:ptr up:ptr :}

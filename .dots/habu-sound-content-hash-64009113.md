@@ -35,3 +35,14 @@ the engine-build phase, and starts under-test slices immediately. Verified miss:
 wall / 60.594s internal with `candidate-hit=1 candidate=0`. Remaining work:
 content-key the AOT maker (`maker-miss=1 maker-build=1` still appears every gate)
 and continue cutting the residual under-test/tool/diagnostic waves toward 30s.
+
+Checkpoint 2026-06-28: `tools/hb-build-lib.f` now keys `hb-aot-mk`/`hb-build-mk`
+by mode, `bin/hb`, the build library/helper loads, `tools/build-fixpoint.f`,
+target source, common emitted engine source, `src/habu/maker.f`, and the selected
+AOT/REPL driver. `test/run.f` now points `HABU_BUILD_CACHE` at
+`$HABU_GATE_WARM_PERSIST/hb-build-cache` when a persistent warm root is set.
+Verified first run after the key change: `maker-miss=1 maker-build=1`, 64.117s
+internal / 66.92s wall. Verified second run: `maker-hit=1 maker-build=0`,
+60.101s internal / 63.04s wall. Remaining work: checker warm is still per-run
+(`warm-miss=1 warm-build=1`), and the residual 60s wall is dominated by the
+under-test/tool/diagnostic waves, not by builder recompilation.

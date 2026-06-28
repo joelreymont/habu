@@ -1,9 +1,9 @@
 # habu — Status
 
 Last verified: 2026-06-28
-Gate: passing; 60.594s internal gate time / 63.64s wall on 2026-06-28 on
+Gate: passing; 60.101s internal gate time / 63.04s wall on 2026-06-28 on
 macOS/aarch64 with 12 online cores, content-hash warm-cache hits, and a
-content-hash `hb-under-test` cache hit. The native gate uses a 6-way checked DAG
+content-hash `hb-under-test` plus AOT maker cache hit. The native gate uses a 6-way checked DAG
 pool, 4-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), a direct manifest phase, attributed pool
 outcomes, and a 90s default budget. The sub-90s/30s gate target remains active
