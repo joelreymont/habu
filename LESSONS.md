@@ -120,6 +120,14 @@ lesson — keep the specific word/code/path, cut the prose.
   `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
   helper libs, build-fixpoint source, target source, common engine source, and
   selected AOT/REPL driver, then put the mode in the key.
+- **Content keys cannot nest the global SHA context:** `SHA256-FILE` resets the
+  global SHA state, so using it while an outer cache key is active collapses the
+  key. Build a tagged manifest of version strings, file names, and per-file
+  digests, hash the manifest once with `lib/content-key.f`, and prove
+  invalidation by changing a baked source and requiring a miss.
+- **Stdlib files have four registry points:** adding a library file requires the
+  source file, `lib/std.manifest`, `FILEMAP.md`, and `tools/filemap-lint.f`.
+  Miss one and the direct manifest gate is the first correct failure.
 - **Pool slots are host policy, not universal truth:** on this macOS/aarch64
   12-core host, hot-cache full gates measured 6/7/8/10 slots at
   60.101/56.407/53.532/54.350s internal; 8 wins. Keep Linux conservative until

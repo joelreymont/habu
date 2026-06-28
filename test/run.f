@@ -4,6 +4,7 @@
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/test-runner.f, and test/gate-pool.f.
 
+include lib/content-key.f
 include test/gate-stats.f
 
 64 constant TR-USAGE-RC
@@ -37,14 +38,11 @@ create TR-RUNNER-TRUST-BUF FS-PATH-CAP allot
 create TR-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
 create TR-UNDER-KEY-HEX 80 allot
-create TR-UNDER-KEY-DG 40 allot
 create TR-UNDER-CACHE-BUF FS-PATH-CAP allot
 create TR-UNDER-CACHE-TMP-BUF FS-PATH-CAP allot
 create TR-UNDER-CACHE-LOCK-BUF FS-PATH-CAP allot
 create TR-UNDER-NAME-BUF 80 allot
 create TR-RUNNER-KEY-HEX 80 allot
-create TR-RUNNER-KEY-DG 40 allot
-create TR-KEY-FILE-DG 40 allot
 create TR-RUNNER-STAMP-RD 80 allot
 
 variable TR-WARM-U
@@ -324,7 +322,7 @@ variable TR-UNDER-CACHE-RC
 TR-FILES: TR-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
-   lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
+   lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
    tools/warm-run.f tools/hb-build-lib.f test/gate-pool.f test/gate-stats.f
    test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
@@ -350,8 +348,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 \ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
 \ in (content-stamped in gate-stdlib.f, so cross-run reuse is sound), else the
 \ per-run GT-ROOT. Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and
-\ HABU_WARM_TOOLS resolve to the same place. The checker warm + per-run sharing keep
-\ using GT-ROOT via HABU_GATE_WARM_ROOT.
+\ HABU_WARM_TOOLS resolve to the same place. Checker warm uses the same persistent
+\ root through GE-WARM-ROOT and validates with its own content stamp.
 : TR-WARM-ROOT$ ( -- ptr u8 n )
    s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if exit then
    2drop GT-ROOT ;
@@ -374,8 +372,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER$ s" .stamp" TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U TR-SUFFIX! ;
 
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TR-KEY-FILE-DG SHA256-FILE dup 0 <> if throw then drop
-   TR-KEY-FILE-DG 32 SHA256-UPDATE ;
+   a u CK-FILE+ ;
 
 : TR-RUNNER-KEY-FILE+ ( ptr u8 n -- )
    TR-KEY-FILE+ ;
@@ -384,22 +381,25 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    [: TR-RUNNER-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES ;
 
 : TR-RUNNER-KEY! ( -- )
-   SHA256-RESET
+   CK-RESET
+   s" hb-gate-runner-cache-v3" CK-TEXT+
    s" bin/hb" TR-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
+   s" tools/public-signatures-core.f" TR-RUNNER-KEY-FILE+
+   s" tools/public-signatures.f" TR-RUNNER-KEY-FILE+
+   s" lib/content-key.f" TR-RUNNER-KEY-FILE+
    s" test/gate-runner-entry.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
    TR-RUNNER-KEY-SUPPORT
-   TR-RUNNER-KEY-DG SHA256-FINAL
-   TR-RUNNER-KEY-DG TR-RUNNER-KEY-HEX SHA256>HEX ;
+   TR-RUNNER-KEY-HEX CK-FINAL-HEX ;
 
 : TR-UNDER-SOURCE-KEY ( -- )
    [: TR-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES
    [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
 
 : TR-UNDER-LINUX-KEY ( -- )
-   s" target:linux-aarch64" SHA256-UPDATE
+   s" target:linux-aarch64" CK-TEXT+
    s" src/os/linux/target.f" TR-KEY-FILE+
    s" src/os/linux/layout.f" TR-KEY-FILE+
    s" src/os/linux/sys.f" TR-KEY-FILE+
@@ -408,7 +408,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" src/os/linux/repl-term.f" TR-KEY-FILE+ ;
 
 : TR-UNDER-MACOS-KEY ( -- )
-   s" target:macos-aarch64" SHA256-UPDATE
+   s" target:macos-aarch64" CK-TEXT+
    s" src/os/macos/target.f" TR-KEY-FILE+
    s" src/os/macos/layout.f" TR-KEY-FILE+
    s" src/os/macos/sys.f" TR-KEY-FILE+
@@ -422,13 +422,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" Habu-under-test cache unknown target" TR-FAIL ;
 
 : TR-UNDER-KEY! ( -- )
-   SHA256-RESET
-   s" hb-under-test-cache-v1" SHA256-UPDATE
+   CK-RESET
+   s" hb-under-test-cache-v2" CK-TEXT+
    s" bin/hb" TR-KEY-FILE+
    TR-UNDER-SOURCE-KEY
    TR-UNDER-TARGET-KEY
-   TR-UNDER-KEY-DG SHA256-FINAL
-   TR-UNDER-KEY-DG TR-UNDER-KEY-HEX SHA256>HEX ;
+   TR-UNDER-KEY-HEX CK-FINAL-HEX ;
 
 : TR-UNDER-NAME! ( -- )
    s" hb-under-" {: p:ptr pu:n :}

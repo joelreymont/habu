@@ -835,6 +835,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	codesign	lib/codesign.f	word	CODESIGN-ENSURE	(ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	verify an executable path or apply target signing policy and verify it
 1	codesign	lib/codesign.f	word	PROMOTE-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	chmod executable and rename a source artifact to a destination
 1	codesign	lib/codesign.f	word	PROMOTE-SIGNED-EXECUTABLE	(ptr u8 n ptr u8 n --)	lib/codesign-test.f	docs/stdlib.md	stdlib-codesign	published	apply target signing policy chmod promote and verify an executable artifact
+1	content-key	lib/content-key.f	module			lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	checked manifest-hash builder for sound content-addressed caches
+1	content-key	lib/content-key.f	word	CK-RESET	(--)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	clear the manifest buffer
+1	content-key	lib/content-key.f	word	CK-CAP-CHECK	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	validate manifest append capacity
+1	content-key	lib/content-key.f	word	CK-U8+	(n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append one byte to the manifest
+1	content-key	lib/content-key.f	word	CK-BYTES+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append counted bytes to the manifest
+1	content-key	lib/content-key.f	word	CK-FRAG+	(n ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append one tagged counted manifest fragment
+1	content-key	lib/content-key.f	word	CK-TEXT+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append a cache version or mode string
+1	content-key	lib/content-key.f	word	CK-DIGEST+	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append one 32-byte digest fragment
+1	content-key	lib/content-key.f	word	CK-FILE+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append a file path and its SHA-256 digest
+1	content-key	lib/content-key.f	word	CK-FINAL	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	hash the accumulated manifest into a digest buffer
+1	content-key	lib/content-key.f	word	CK-FINAL-HEX	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	hash the accumulated manifest into a hex digest buffer
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds

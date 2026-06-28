@@ -319,7 +319,7 @@ TEST-SUITE hb-build-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
-   tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
+   lib/content-key.f tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
    lib/codesign-test.f
 ;TEST-SUITE
 

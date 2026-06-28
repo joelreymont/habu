@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test-runner.f,
-\ test/gate-pool.f, and src/core/sha256.f (the warm-image content key).
+\ test/gate-pool.f, and lib/content-key.f.
 
 
 120000 constant SUITE-TIMEOUT-MS
@@ -29,8 +29,6 @@ create SUITE-WARM-OUT GT-OUT-CAP allot
 create SUITE-WARM-ERR GT-ERR-CAP allot
 create SUITE-WARM-STAMP-BUF FS-PATH-CAP allot
 create SUITE-KEY-HEX 80 allot
-create SUITE-KEY-DG 40 allot
-create SUITE-FILE-DG 40 allot
 create SUITE-STAMP-RD 80 allot
 variable SUITE-WARM-STAMP-U
 variable SUITE-LABEL-U
@@ -154,18 +152,22 @@ variable SUITE-SLICE
    SUITE-WARM$ s" .trust.f" SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U SUITE-SUFFIX! ;
 
 : SUITE-KEY-FILE+ ( ptr u8 n -- )
-   SUITE-FILE-DG SHA256-FILE drop
-   SUITE-FILE-DG 32 SHA256-UPDATE ;
+   CK-FILE+ ;
 
 \ Content key over the warm image's inputs: the compiler (bin/hb), the baker, and
-\ every baked tool source. KEEP THE FILE LIST IN SYNC with SUITE-WARM-SUPPORT-ARGV
-\ (a drift means a stale image could be reused). A persistent warm image is reused
-\ only when this key matches, so any input change forces a rebake.
+\ every baked tool source plus baker-side trust-export dependencies. KEEP THE
+\ baked-source portion IN SYNC with SUITE-WARM-SUPPORT-ARGV (a drift means a
+\ stale image could be reused). A persistent warm image is reused only when this
+\ key matches, so any input change forces a rebake.
 : SUITE-WARM-KEY! ( -- )
-   SHA256-RESET
+   CK-RESET
+   s" hb-tools-warm-cache-v3" CK-TEXT+
    s" bin/hb" SUITE-KEY-FILE+
    s" tools/warm-image-lib.f" SUITE-KEY-FILE+
    s" tools/warm-image.f" SUITE-KEY-FILE+
+   s" tools/public-signatures-core.f" SUITE-KEY-FILE+
+   s" tools/public-signatures.f" SUITE-KEY-FILE+
+   s" lib/content-key.f" SUITE-KEY-FILE+
    s" tools/date.f" SUITE-KEY-FILE+
    s" lib/errors.f" SUITE-KEY-FILE+
    s" lib/string.f" SUITE-KEY-FILE+
@@ -175,7 +177,9 @@ variable SUITE-SLICE
    s" lib/fs-mutate.f" SUITE-KEY-FILE+
    s" lib/process.f" SUITE-KEY-FILE+
    s" lib/process-argv.f" SUITE-KEY-FILE+
+   s" lib/process-env.f" SUITE-KEY-FILE+
    s" lib/source.f" SUITE-KEY-FILE+
+   s" lib/codesign.f" SUITE-KEY-FILE+
    s" tools/lint/text.f" SUITE-KEY-FILE+
    s" tools/lint/intern.f" SUITE-KEY-FILE+
    s" tools/lint/token.f" SUITE-KEY-FILE+
@@ -196,8 +200,7 @@ variable SUITE-SLICE
    s" tools/trust-lint-core.f" SUITE-KEY-FILE+
    s" tools/check-all-errors-core.f" SUITE-KEY-FILE+
    s" src/habu/verify-source.f" SUITE-KEY-FILE+
-   SUITE-KEY-DG SHA256-FINAL
-   SUITE-KEY-DG SUITE-KEY-HEX SHA256>HEX ;
+   SUITE-KEY-HEX CK-FINAL-HEX ;
 
 : SUITE-WARM-STAMP$ ( -- ptr u8 n )
    SUITE-WARM$ s" .stamp" SUITE-WARM-STAMP-BUF SUITE-WARM-STAMP-U SUITE-SUFFIX!

@@ -5,4 +5,5 @@
 \ lib/test-runner.f.
 
 include test/gate-stats.f
+include lib/content-key.f
 include test/gate-common-lib.f

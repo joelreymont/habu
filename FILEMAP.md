@@ -106,6 +106,8 @@ points stay listed.
 - `tools/check.f` — Habu-native checked engine runner.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
+- `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.
+- `lib/content-key-test.f` — checked fixture coverage for content-key stability and invalidation.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.

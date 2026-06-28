@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
-\ lib/test-runner.f.
+\ lib/test-runner.f, and lib/content-key.f.
 
 
 $40000 constant GE-SRC-CAP
@@ -17,6 +17,9 @@ create GE-SRC-A GE-SRC-MAX cells allot
 create GE-SRC-LEN GE-SRC-MAX cells allot
 create GE-WARM-BUF FS-PATH-CAP allot
 create GE-WARM-TRUST-BUF FS-PATH-CAP allot
+create GE-WARM-STAMP-BUF FS-PATH-CAP allot
+create GE-WARM-KEY-HEX 80 allot
+create GE-WARM-STAMP-RD 80 allot
 create GE-ARGV-BUF GE-SRC-CAP allot
 
 variable GE-SRC-U
@@ -24,6 +27,7 @@ variable GE-SRC-N
 variable GE-RD
 variable GE-WARM-U
 variable GE-WARM-TRUST-U
+variable GE-WARM-STAMP-U
 variable GE-WARM-READY
 variable GE-INFD
 variable GE-ARGV-U
@@ -250,6 +254,8 @@ variable GE-ARGV-U
    GE-WARM-TRUST-BUF GE-WARM-TRUST-U @ ;
 
 : GE-WARM-ROOT ( -- ptr u8 n )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if exit then
+   2drop
    s" HABU_GATE_WARM_ROOT" GETENV dup 0= if 2drop GT-ROOT exit then ;
 
 : GE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
@@ -258,83 +264,6 @@ variable GE-ARGV-U
    a dst u BYTE-COPY
    suf dst u + su BYTE-COPY
    u su + lenp ! ;
-
-: GE-WARM-PATHS ( -- )
-   GE-WARM-ROOT s" hb-check-warm" GE-WARM-BUF JOIN-PATH GE-WARM-U !
-   GE-WARM$ s" .trust.f" GE-WARM-TRUST-BUF GE-WARM-TRUST-U GE-SUFFIX! ;
-
-: GE-WARM-CACHED? ( -- bool )
-   GE-WARM$ EXECUTABLE?
-   GE-WARM-TRUST$ FILE?
-   and ;
-
-: GE-WARM-TOOL-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   GE-ARGV-RESET
-   s" --load" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/process-env.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" lib/codesign.f" GE-ARG+
-   s" tools/warm-image-lib.f" GE-ARG+
-   s" tools/warm-image.f" GE-ARG+
-   s" --" GE-ARG+
-   GE-WARM$ GE-ARG+ ;
-
-: GE-CHECK-SUPPORT-ARGV ( -- )
-   s" tools/date.f" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/vector.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" tools/lint/text.f" GE-ARG+
-   s" tools/lint/token.f" GE-ARG+
-   s" tools/lint/lib.f" GE-ARG+
-   s" tools/lint/json-writer.f" GE-ARG+
-   s" tools/lint/source-lex.f" GE-ARG+
-   s" tools/diag-origin-core.f" GE-ARG+
-   s" tools/json.f" GE-ARG+
-   s" tools/json-only-core.f" GE-ARG+
-   s" tools/signature-lint-core.f" GE-ARG+
-   s" tools/checked-boundary-lint-core.f" GE-ARG+
-   s" tools/reserved-name-lint-core.f" GE-ARG+
-   s" tools/trust-lint-core.f" GE-ARG+
-   s" tools/check-all-errors-core.f" GE-ARG+
-   s" tools/argv.f" GE-ARG+ ;
-
-: GE-WARM-BAKE ( -- )
-   GE-WARM-PATHS
-   GE-WARM-CACHED? if
-      s" warm-cache-hit" GS-EVENT
-      -1 GE-WARM-READY !
-      exit
-   then
-   s" warm-cache-miss" GS-EVENT
-   s" warm-build" GS-EVENT
-   GE-WARM-TOOL-ARGV
-   GE-CHECK-SUPPORT-ARGV
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" warm checker image" GE-EXPECT-OK
-   -1 GE-WARM-READY ! ;
-
-: GE-CHECK-WARM ( -- )
-   GE-WARM-READY @ if exit then
-   GE-WARM-BAKE ;
-
-: GE-CHECK-EXE ( -- ptr u8 n )
-   GE-CHECK-WARM
-   GE-WARM$ ;
 
 : GE-FILES-END? ( ptr u8 n -- bool )
    s" ;GE-FILES" STR= ;
@@ -369,6 +298,105 @@ variable GE-ARGV-U
    create GE-FILES-PARSE
    does> ( [ ptr u8 n -- ] -- )
       GE-FILES-RUN ;
+
+GE-FILES: GE-WARM-BAKER-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
+   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/source.f lib/codesign.f lib/content-key.f tools/lint/text.f tools/lint/intern.f
+   tools/lint/token.f tools/lint/lib.f tools/warm-image-lib.f
+   tools/warm-image.f tools/public-signatures-core.f tools/public-signatures.f
+;GE-FILES
+
+GE-FILES: GE-CHECK-SUPPORT-FILES
+   tools/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f
+   lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
+   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+   tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f
+   tools/json.f tools/json-only-core.f tools/signature-lint-core.f
+   tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
+   tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
+;GE-FILES
+
+: GE-WARM-PATHS ( -- )
+   GE-WARM-ROOT 2dup MAKE-DIRS
+   s" hb-check-warm" GE-WARM-BUF JOIN-PATH GE-WARM-U !
+   GE-WARM$ s" .trust.f" GE-WARM-TRUST-BUF GE-WARM-TRUST-U GE-SUFFIX!
+   GE-WARM$ s" .stamp" GE-WARM-STAMP-BUF GE-WARM-STAMP-U GE-SUFFIX! ;
+
+: GE-WARM-STAMP$ ( -- ptr u8 n )
+   GE-WARM-STAMP-BUF GE-WARM-STAMP-U @ ;
+
+: GE-WARM-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CK-FILE+ ;
+
+: GE-WARM-BAKER-KEY ( -- )
+   [: GE-WARM-KEY-FILE+ ;] GE-WARM-BAKER-FILES ;
+
+: GE-CHECK-SUPPORT-KEY ( -- )
+   [: GE-WARM-KEY-FILE+ ;] GE-CHECK-SUPPORT-FILES ;
+
+: GE-WARM-KEY! ( -- )
+   CK-RESET
+   s" hb-check-warm-cache-v2" CK-TEXT+
+   s" bin/hb" GE-WARM-KEY-FILE+
+   GE-WARM-BAKER-KEY
+   GE-CHECK-SUPPORT-KEY
+   GE-WARM-KEY-HEX CK-FINAL-HEX ;
+
+: GE-WARM-CACHED? ( -- bool )
+   GE-WARM$ EXECUTABLE? 0= if 0 0= 0= exit then
+   GE-WARM-TRUST$ FILE? 0= if 0 0= 0= exit then
+   GE-WARM-STAMP$ FILE? 0= if 0 0= 0= exit then
+   GE-WARM-STAMP$ GE-WARM-STAMP-RD 80 READ-ALL
+   dup 64 <> if drop 0 0= 0= exit then
+   GE-WARM-STAMP-RD swap GE-WARM-KEY-HEX 64 STR= ;
+
+: GE-WARM-TOOL-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   GE-ARGV-RESET
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/string.f" GE-ARG+
+   s" lib/memory.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+
+   s" lib/fs-mutate.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+
+   s" lib/process-env.f" GE-ARG+
+   s" lib/source.f" GE-ARG+
+   s" lib/codesign.f" GE-ARG+
+   s" tools/warm-image-lib.f" GE-ARG+
+   s" tools/warm-image.f" GE-ARG+
+   s" --" GE-ARG+
+   GE-WARM$ GE-ARG+ ;
+
+: GE-CHECK-SUPPORT-ARGV ( -- )
+   [: GE-ARG+ ;] GE-CHECK-SUPPORT-FILES ;
+
+: GE-WARM-BAKE ( -- )
+   GE-WARM-PATHS
+   GE-WARM-KEY!
+   GE-WARM-CACHED? if
+      s" warm-cache-hit" GS-EVENT
+      -1 GE-WARM-READY !
+      exit
+   then
+   s" warm-cache-miss" GS-EVENT
+   s" warm-build" GS-EVENT
+   GE-WARM-TOOL-ARGV
+   GE-CHECK-SUPPORT-ARGV
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   s" warm checker image" GE-EXPECT-OK
+   GE-WARM-STAMP$ GE-WARM-KEY-HEX 64 WRITE-ALL
+   -1 GE-WARM-READY ! ;
+
+: GE-CHECK-WARM ( -- )
+   GE-WARM-READY @ if exit then
+   GE-WARM-BAKE ;
+
+: GE-CHECK-EXE ( -- ptr u8 n )
+   GE-CHECK-WARM
+   GE-WARM$ ;
 
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET

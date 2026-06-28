@@ -2,8 +2,8 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
-\ lib/memory.f, lib/source.f, lib/codesign.f, tools/build-fixpoint.f,
-\ and tools/warm-run.f.
+\ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
+\ tools/build-fixpoint.f, and tools/warm-run.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -19,8 +19,6 @@ create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-LOCK-PATH FS-PATH-CAP allot
 create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
-create HBB-MAKER-KEY-DG 40 allot
-create HBB-MAKER-FILE-DG 40 allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
@@ -346,8 +344,7 @@ variable HBB-LOCK-DEADLINE
    HBB-MAKER-NAME-BUF HBB-MAKER-NAME-U @ ;
 
 : HBB-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u HBB-MAKER-FILE-DG SHA256-FILE dup 0 <> if throw then drop
-   HBB-MAKER-FILE-DG 32 SHA256-UPDATE ;
+   a u CK-FILE+ ;
 
 : HBB-KEY-LOAD-FILES ( -- )
    s" lib/errors.f" HBB-KEY-FILE+
@@ -361,6 +358,7 @@ variable HBB-LOCK-DEADLINE
    s" lib/source.f" HBB-KEY-FILE+
    s" lib/build.f" HBB-KEY-FILE+
    s" lib/codesign.f" HBB-KEY-FILE+
+   s" lib/content-key.f" HBB-KEY-FILE+
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
    s" tools/warm-run.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
@@ -397,7 +395,7 @@ variable HBB-LOCK-DEADLINE
    s" src/habu/maker.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-LINUX-SOURCES ( -- )
-   s" target:linux-aarch64" SHA256-UPDATE
+   s" target:linux-aarch64" CK-TEXT+
    s" src/os/linux/target.f" HBB-KEY-FILE+
    s" src/os/linux/layout.f" HBB-KEY-FILE+
    s" src/os/linux/sys.f" HBB-KEY-FILE+
@@ -405,7 +403,7 @@ variable HBB-LOCK-DEADLINE
    s" src/os/linux/sign.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-MACOS-SOURCES ( -- )
-   s" target:macos-aarch64" SHA256-UPDATE
+   s" target:macos-aarch64" CK-TEXT+
    s" src/os/macos/target.f" HBB-KEY-FILE+
    s" src/os/macos/layout.f" HBB-KEY-FILE+
    s" src/os/macos/sys.f" HBB-KEY-FILE+
@@ -419,24 +417,23 @@ variable HBB-LOCK-DEADLINE
 
 : HBB-KEY-DRIVER-SOURCES ( -- )
    HBB-REPL @ if
-      s" maker-mode:repl" SHA256-UPDATE
+      s" maker-mode:repl" CK-TEXT+
       s" src/habu/verify-source.f" HBB-KEY-FILE+
       s" src/habu/build.f" HBB-KEY-FILE+
       exit
    then
-   s" maker-mode:aot" SHA256-UPDATE
+   s" maker-mode:aot" CK-TEXT+
    s" src/habu/aot.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
-   SHA256-RESET
-   s" hb-build-maker-cache-v1" SHA256-UPDATE
+   CK-RESET
+   s" hb-build-maker-cache-v2" CK-TEXT+
    s" bin/hb" HBB-KEY-FILE+
    HBB-KEY-LOAD-FILES
    HBB-KEY-COMMON-SOURCES
    HBB-KEY-TARGET-SOURCES
    HBB-KEY-DRIVER-SOURCES
-   HBB-MAKER-KEY-DG SHA256-FINAL
-   HBB-MAKER-KEY-DG HBB-MAKER-KEY-HEX SHA256>HEX ;
+   HBB-MAKER-KEY-HEX CK-FINAL-HEX ;
 
 : HBB-MAKER-NAME! ( -- )
    HBB-MK-NAME$ {: a:ptr u:n :}

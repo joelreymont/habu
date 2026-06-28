@@ -192,3 +192,17 @@ caches hot on macOS/aarch64, measured default/specified pool slots using
 macOS; Linux keeps the existing 6-slot default and the env override remains.
 Verified default macOS gate after the change: 54.018s internal / 56.95s wall
 with `candidate-hit=1`, `maker-hit=1`, and `maker-build=0`.
+
+Checkpoint 2026-06-28: RCA found a cache-soundness bug in the content-key
+builders. `SHA256-FILE` resets the global SHA context, so using it while building
+an outer `SHA256` key collapsed multi-file keys instead of combining all inputs.
+`lib/content-key.f` now builds a tagged manifest from version strings, file
+names, and per-file digests, then hashes that manifest once. Proved invalidation
+by changing a baked tools-warm source (`tools/json-only-core.f`) and requiring
+`warm-cache-miss`/`warm-build`, then reverting and requiring a miss back to the
+original key followed by `warm-cache-hit`. Full hot gate passed at 53.947s
+internal / 56.88s wall with `warm-hit=16`, `warm-miss=0`, `warm-build=0`,
+`maker-hit=1`, and `candidate-hit=1`. Remaining 30s blockers are still the
+duplicated boundary waves: engine fixtures ~35.6s, diagnostics repair ~30.9s,
+stdlib check-cli/tool-boundary ~28s, `inner-hb=55`, `inner-hb-stdin=40`,
+`boundary=95`, and `helper-spawn=151`.
