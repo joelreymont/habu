@@ -117,13 +117,13 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    s" @@ -1,0 +1,1100 @@" TLDT-LARGE-APPEND TLDT-LARGE-LF ;
 
 : TLDT-LARGE$ ( -- ptr u8 n )
-   0 TLDT-LARGE-SRC-U !
+   TLDT-LARGE-SRC-U BUF-RESET
    s" lib/large.f" TLDT-LARGE-DIFF-HEAD
    0 begin dup TLDT-LARGE-LINES < while
       s" +: OK ( n -- n ) {: x:n :} x ;" TLDT-LARGE-APPEND TLDT-LARGE-LF
       1+
    repeat drop
-   TLDT-LARGE-SRC TLDT-LARGE-SRC-U @ ;
+   TLDT-LARGE-SRC TLDT-LARGE-SRC-U BUF-LEN@ ;
 
 : TLDT-EMPTY$ ( -- ptr u8 n )
    SB-RESET

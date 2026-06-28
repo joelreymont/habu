@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-28
-Gate: passing; 100.985s internal gate time on 2026-06-28 on
+Gate: passing; 102.772s internal gate time on 2026-06-28 on
 Linux/aarch64 with 4 online cores. The native gate uses an 8-way checked DAG
 pool, 4-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), a direct manifest phase, attributed pool

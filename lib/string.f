@@ -21,6 +21,10 @@ STR-MAX-I64 negate 1 - constant STR-MIN-I64
 create SB-BUF SB-CAP allot
 variable SB-LEN
 
+: BUFFER: ( n -- )
+   dup 0 < if E-STR-BOUNDS throw then
+   create allot does> ( -- ptr u8 ) ;
+
 : STR-LEN ( n -- len )
    dup 0 < if E-STR-BOUNDS throw then
    >LEN ;
@@ -144,6 +148,37 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 
 : SB$ ( -- ptr u8 n )
    SB-BUF SB-LEN @ ;
+
+: BUF-CHECK-LEN ( len len ptr len -- )
+   {: add cap lenp:ptr :}
+   add LEN>N 0 < if E-STR-BOUNDS throw then
+   lenp @ LEN>N 0 < if E-STR-BOUNDS throw then
+   lenp @ LEN>N cap LEN>N > if E-STR-CAPACITY throw then
+   add LEN>N cap LEN>N lenp @ LEN>N - > if E-STR-CAPACITY throw then ;
+
+: BUF-RESET ( ptr len -- )
+   0 >LEN swap ! ;
+
+: BUF-LEN@ ( ptr len -- n )
+   @ LEN>N ;
+
+: BUF-APPEND-LEN ( ptr u8 len ptr u8 len ptr len -- )
+   {: src:ptr u dst:ptr cap lenp:ptr :}
+   u cap lenp BUF-CHECK-LEN
+   src dst lenp @ LEN>N + u BYTE-COPY-LEN
+   lenp @ LEN>N u LEN>N + >LEN lenp ! ;
+
+: BUF-APPEND ( ptr u8 n ptr u8 n ptr len -- )
+   {: src:ptr u dst:ptr cap lenp:ptr :}
+   src u STR-LEN dst cap STR-LEN lenp BUF-APPEND-LEN ;
+
+: BUF-APPEND-C ( n ptr u8 n ptr len -- )
+   {: c dst:ptr cap lenp:ptr :}
+   c 0 < if E-STR-BOUNDS throw then
+   c STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   1 >LEN cap STR-LEN lenp BUF-CHECK-LEN
+   c dst lenp @ LEN>N + c!
+   lenp @ LEN>N 1+ >LEN lenp ! ;
 
 : SPLIT-NEXT ( ptr u8 n n n -- ptr u8 n n bool ) {: a:ptr u sep start :}
    start 0 < if a 0 start STR-FALSE exit then

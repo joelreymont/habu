@@ -152,14 +152,8 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
          a RLEN @ +  RGOT @ RLEN @ -  SPLIT+
       THEN
    repeat ;
-: BUF-APPEND ( ptr u8 n ptr u8 n ptr n -- ) {: a:ptr u dst:ptr cap lp:ptr :}
-   lp @ u + cap > IF s" lint: string buffer overflow" 1 die THEN
-   a dst lp @ + u LINT-BMOVE  lp @ u + lp ! ;
-: BUF-APPEND-C ( n ptr u8 n ptr n -- ) {: c dst:ptr cap lp:ptr :}
-   lp @ 1+ cap > IF s" lint: string buffer overflow" 1 die THEN
-   c dst lp @ + c!  lp @ 1+ lp ! ;
-: JOIN-SPLIT ( ptr u8 n ptr u8 n ptr n -- ) {: sep:ptr su dst:ptr cap lp:ptr :}
-   0 lp !
+: JOIN-SPLIT ( ptr u8 n ptr u8 n ptr len -- ) {: sep:ptr su dst:ptr cap lp:ptr :}
+   lp BUF-RESET
    0 begin dup SN# @ < while
       dup 0 > IF sep su dst cap lp BUF-APPEND THEN
       dup S@ dst cap lp BUF-APPEND  1+

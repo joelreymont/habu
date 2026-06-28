@@ -1,5 +1,5 @@
 \ text-foundation-test.f - focused tests for tools/lint/text.f text helpers.
-\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
 
 variable TEST-N
 : ASSERT  ( bool -- )
@@ -13,7 +13,7 @@ variable TEST-N
 : ASSERT$  ( ptr u8 n ptr u8 n -- )  LINT-STR= ASSERT ;
 
 $100 constant FIX-CAP
-create STR-FIX FIX-CAP allot     variable STR-LEN
+create STR-FIX FIX-CAP allot     variable STR-FIX-LEN
 create TRUST-FIX FIX-CAP allot   variable TRUST-LEN
 create SRC-FIX FIX-CAP allot     variable SRC-LEN
 create BT-FIX FIX-CAP allot      variable BT-LEN
@@ -39,19 +39,19 @@ variable BIG-LEX-U
    32 BIG-LEX-A@ k 2 * 1+ + c! ;
 
 : INIT-STR-FIX  ( -- )
-   0 STR-LEN !
-   32 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C
-   32 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C
-   s" Alpha beta" STR-FIX FIX-CAP STR-LEN BUF-APPEND
-   10 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C
-   s" Gamma" STR-FIX FIX-CAP STR-LEN BUF-APPEND
-   32 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C
-   32 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C
-   10 STR-FIX FIX-CAP STR-LEN BUF-APPEND-C ;
-: STR-FIX$  ( -- a u )  STR-FIX STR-LEN @ ;
+   STR-FIX-LEN BUF-RESET
+   32 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C
+   32 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C
+   s" Alpha beta" STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND
+   10 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C
+   s" Gamma" STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND
+   32 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C
+   32 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C
+   10 STR-FIX FIX-CAP STR-FIX-LEN BUF-APPEND-C ;
+: STR-FIX$  ( -- ptr u8 n )  STR-FIX STR-FIX-LEN BUF-LEN@ ;
 
 : INIT-TRUST-FIX  ( -- )
-   0 TRUST-LEN !
+   TRUST-LEN BUF-RESET
    s" prefix s" TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND
    DQUOTE TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND-C
    32 TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND-C
@@ -65,10 +65,10 @@ variable BIG-LEX-U
    DQUOTE TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND-C
    s"  TRUST \\ comment" TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND
    10 TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND-C ;
-: TRUST-FIX$  ( -- a u )  TRUST-FIX TRUST-LEN @ ;
+: TRUST-FIX$  ( -- ptr u8 n )  TRUST-FIX TRUST-LEN BUF-LEN@ ;
 
 : TRUST-FIX-RESET  ( -- )
-   0 TRUST-LEN ! ;
+   TRUST-LEN BUF-RESET ;
 
 : TRUST-FIX+  ( ptr u8 n -- )
    TRUST-FIX FIX-CAP TRUST-LEN BUF-APPEND ;
@@ -94,7 +94,7 @@ variable BIG-LEX-U
    TRUST-FIX$ ;
 
 : INIT-SRC-FIX  ( -- )
-   0 SRC-LEN !
+   SRC-LEN BUF-RESET
    s" : REPL-SRC s" SRC-FIX FIX-CAP SRC-LEN BUF-APPEND
    DQUOTE SRC-FIX FIX-CAP SRC-LEN BUF-APPEND-C
    32 SRC-FIX FIX-CAP SRC-LEN BUF-APPEND-C
@@ -102,16 +102,16 @@ variable BIG-LEX-U
    DQUOTE SRC-FIX FIX-CAP SRC-LEN BUF-APPEND-C
    s"  ;" SRC-FIX FIX-CAP SRC-LEN BUF-APPEND
    10 SRC-FIX FIX-CAP SRC-LEN BUF-APPEND-C ;
-: SRC-FIX$  ( -- a u )  SRC-FIX SRC-LEN @ ;
+: SRC-FIX$  ( -- ptr u8 n )  SRC-FIX SRC-LEN BUF-LEN@ ;
 
 : INIT-BT-FIX  ( -- )
-   0 BT-LEN !
+   BT-LEN BUF-RESET
    s" See `tools/lint/source-lex.f` and `plain`." BT-FIX FIX-CAP BT-LEN BUF-APPEND
    10 BT-FIX FIX-CAP BT-LEN BUF-APPEND-C ;
-: BT-FIX$  ( -- a u )  BT-FIX BT-LEN @ ;
+: BT-FIX$  ( -- ptr u8 n )  BT-FIX BT-LEN BUF-LEN@ ;
 
 : INIT-LEX-FIX  ( -- )
-   0 LEX-LEN !
+   LEX-LEN BUF-RESET
    s" : SQ ( n -- n ) s" LEX-FIX FIX-CAP LEX-LEN BUF-APPEND
    DQUOTE LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C
    s"  hi : ; ( x )" LEX-FIX FIX-CAP LEX-LEN BUF-APPEND
@@ -126,16 +126,16 @@ variable BIG-LEX-U
    DQUOTE LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C
    s"  ;" LEX-FIX FIX-CAP LEX-LEN BUF-APPEND
    10 LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C ;
-: LEX-FIX$  ( -- a u )  LEX-FIX LEX-LEN @ ;
+: LEX-FIX$  ( -- ptr u8 n )  LEX-FIX LEX-LEN BUF-LEN@ ;
 
 : INIT-TOK-FIX  ( -- )
-   0 TOK-LEN !
+   TOK-LEN BUF-RESET
    s" : X ( n -- n ) dup " TOK-FIX FIX-CAP TOK-LEN BUF-APPEND
    92 TOK-FIX FIX-CAP TOK-LEN BUF-APPEND-C
    s"  skip" TOK-FIX FIX-CAP TOK-LEN BUF-APPEND
    10 TOK-FIX FIX-CAP TOK-LEN BUF-APPEND-C
    s" : Y ;" TOK-FIX FIX-CAP TOK-LEN BUF-APPEND ;
-: TOK-FIX$  ( -- a u )  TOK-FIX TOK-LEN @ ;
+: TOK-FIX$  ( -- ptr u8 n )  TOK-FIX TOK-LEN BUF-LEN@ ;
 
 : INIT-BIG-LEX  ( -- )
    BIG-LEX-TOKENS 2 * MEM-ALLOC-BYTES BIG-LEX-U ! BIG-LEX-A!
@@ -209,11 +209,11 @@ variable BIG-LEX-U
    6 LB@ 54 ASSERT=  6 LL@ 2 ASSERT=  6 LC@ 7 ASSERT= ;
 
 : TEST-LEXER-UNTERM-QUOTE ( -- )
-   0 LEX-LEN !
+   LEX-LEN BUF-RESET
    s" : BAD s" LEX-FIX FIX-CAP LEX-LEN BUF-APPEND
    DQUOTE LEX-FIX FIX-CAP LEX-LEN BUF-APPEND-C
    s"  nope" LEX-FIX FIX-CAP LEX-LEN BUF-APPEND
-   LEX-FIX LEX-LEN @ LEX-SOURCE
+   LEX-FIX LEX-LEN BUF-LEN@ LEX-SOURCE
    LEX-UNTERM-QUOTE? ASSERT
    LEX-UNTERM-BYTE @ 6 ASSERT=
    LEX-UNTERM-LINE @ 1 ASSERT=

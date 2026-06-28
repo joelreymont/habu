@@ -658,6 +658,7 @@ variable SMT-J
    PROC-ARGV-RESET
    s" --load" SMT-ARG+
    s" lib/errors.f" SMT-ARG+
+   s" lib/string.f" SMT-ARG+
    s" lib/memory.f" SMT-ARG+
    s" lib/vector.f" SMT-ARG+
    s" tools/lint/text.f" SMT-ARG+

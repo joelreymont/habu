@@ -165,6 +165,7 @@ variable WI-SRC-LEN
    PROC-ARGV-RESET
    s" --load" WI-ARG+
    s" lib/errors.f" WI-ARG+
+   s" lib/string.f" WI-ARG+
    s" lib/memory.f" WI-ARG+
    s" lib/vector.f" WI-ARG+
    s" tools/lint/text.f" WI-ARG+

@@ -478,22 +478,22 @@ variable SUITE-SLICE
 GATE-STDLIB-MAIN
 
 TEST-SUITE shadow-lint
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+   lib/errors.f lib/string.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
    tools/lint/shadow-lint.f
 ;TEST-SUITE
 
 TEST-SUITE clobber-lint
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+   lib/errors.f lib/string.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
    tools/lint/clobber-lint.f
 ;TEST-SUITE
 
 TEST-SUITE clobber-lint-fixtures
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+   lib/errors.f lib/string.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
    tools/lint/clobber-lint.f tools/lint/clobber-lint-test.f
 ;TEST-SUITE
 
 TEST-SUITE repl-lint
-   lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f
    tools/lint/intern.f tools/lint/token.f tools/lint/lib.f tools/argv.f
    tools/repl-lint.f
 ;TEST-SUITE
@@ -517,12 +517,12 @@ TEST-SUITE host-lint
 ;TEST-SUITE
 
 TEST-SUITE parallel-agent-lint
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+   lib/errors.f lib/string.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
    tools/parallel-agent-lint.f
 ;TEST-SUITE
 
 TEST-SUITE filemap-lint
-   lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f
    tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
    tools/filemap-lint.f
 ;TEST-SUITE
@@ -552,7 +552,7 @@ TEST-SUITE maki-dep-lint-fixtures
 ;TEST-SUITE
 
 TEST-SUITE text-foundation-fixtures
-   lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f
    tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f
    tools/lint/text-foundation-test.f
 ;TEST-SUITE

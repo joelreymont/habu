@@ -100,6 +100,7 @@ create PST-ERR PST-BUF-CAP allot
    s" tools/public-signatures.f" WR-TOOLS-LOAD if exit then
    s" --load" PST-ARG+
    s" lib/errors.f" PST-ARG+
+   s" lib/string.f" PST-ARG+
    s" lib/memory.f" PST-ARG+
    s" lib/vector.f" PST-ARG+
    s" tools/lint/text.f" PST-ARG+

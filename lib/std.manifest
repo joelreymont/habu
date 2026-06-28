@@ -96,6 +96,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-COUNT	(n -- count)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	refine a nonnegative raw integer into a string count role
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
+1	string	lib/string.f	word	BUFFER:	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	define a byte buffer whose word returns ptr u8
 1	string	lib/string.f	word	BYTE+	(ptr u8 n -- ptr u8)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	offset a checked byte pointer by a raw byte count
 1	string	lib/string.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes using an already refined length role
 1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
@@ -118,6 +119,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	SB-APPEND	(ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append counted bytes to the shared string builder
 1	string	lib/string.f	word	SB-APPEND-C	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append one byte to the shared string builder
 1	string	lib/string.f	word	SB$	(-- ptr u8 n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return current shared string builder bytes
+1	string	lib/string.f	word	BUF-CHECK-LEN	(len len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	validate capacity for a caller-owned bounded byte buffer append
+1	string	lib/string.f	word	BUF-RESET	(ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	clear a caller-owned bounded byte buffer length cell
+1	string	lib/string.f	word	BUF-LEN@	(ptr len -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	read a caller-owned bounded byte buffer length as a raw count
+1	string	lib/string.f	word	BUF-APPEND-LEN	(ptr u8 len ptr u8 len ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append refined-length bytes into a caller-owned bounded byte buffer
+1	string	lib/string.f	word	BUF-APPEND	(ptr u8 n ptr u8 n ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append counted bytes into a caller-owned bounded byte buffer
+1	string	lib/string.f	word	BUF-APPEND-C	(n ptr u8 n ptr len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	append one byte into a caller-owned bounded byte buffer
 1	string	lib/string.f	word	SPLIT-NEXT	(ptr u8 n n n -- ptr u8 n n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return the next separator-delimited field
 1	string	lib/string.f	word	STR-DIGIT?	(n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test an ASCII decimal digit byte
 1	string	lib/string.f	word	STR-DIGIT-VALUE	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII decimal digit byte to value

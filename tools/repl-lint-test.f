@@ -120,6 +120,7 @@ create RLT-ERR RLT-CAP allot
    s" tools/repl-lint.f" WR-TOOLS-LOAD if RLT-ROOT RLT-ARG+ exit then
    s" --load" RLT-ARG+
    s" lib/errors.f" RLT-ARG+
+   s" lib/string.f" RLT-ARG+
    s" lib/memory.f" RLT-ARG+
    s" lib/vector.f" RLT-ARG+
    s" tools/lint/text.f" RLT-ARG+

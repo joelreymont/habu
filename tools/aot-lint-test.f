@@ -105,6 +105,7 @@ create ALT-ERR ALT-BUF-CAP allot
    s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
    s" --load" ALT-ARG+
    s" lib/errors.f" ALT-ARG+
+   s" lib/string.f" ALT-ARG+
    s" lib/memory.f" ALT-ARG+
    s" lib/vector.f" ALT-ARG+
    s" tools/lint/text.f" ALT-ARG+

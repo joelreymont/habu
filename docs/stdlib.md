@@ -264,7 +264,9 @@ i64 and returns `0 false` on invalid or out-of-range input.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
 roles and reject negative values. Typed variants such as `BYTE-COPY-LEN` and
 `SB-APPEND-LEN` keep already-refined lengths from being laundered through plain
-`n`.
+`n`. `BUFFER:` defines caller-owned byte buffers; `BUF-*` helpers reset, read,
+and append into a caller-owned `(buffer, capacity, length-cell)` triple and throw
+instead of truncating or overflowing.
 
 ```forth
 STR-LEN         ( n -- len )
@@ -272,6 +274,7 @@ STR-OFF         ( n -- off )
 STR-COUNT       ( n -- count )
 STR-TRUE        ( -- bool )
 STR-FALSE       ( -- bool )
+BUFFER:         ( n -- )
 BYTE+           ( ptr u8 n -- ptr u8 )
 BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
 BYTE-COPY       ( ptr u8 ptr u8 n -- )
@@ -294,6 +297,12 @@ SB-APPEND-LEN   ( ptr u8 len -- )
 SB-APPEND       ( ptr u8 n -- )
 SB-APPEND-C     ( n -- )
 SB$             ( -- ptr u8 n )
+BUF-CHECK-LEN   ( len len ptr len -- )
+BUF-RESET       ( ptr len -- )
+BUF-LEN@        ( ptr len -- n )
+BUF-APPEND-LEN  ( ptr u8 len ptr u8 len ptr len -- )
+BUF-APPEND      ( ptr u8 n ptr u8 n ptr len -- )
+BUF-APPEND-C    ( n ptr u8 n ptr len -- )
 SPLIT-NEXT      ( ptr u8 n n n -- ptr u8 n n bool )
 STR-DIGIT?      ( n -- bool )
 STR-DIGIT-VALUE ( n -- n )
@@ -306,8 +315,10 @@ STR>NUMBER?     ( ptr u8 n -- n bool )
 
 `FIND-SUB` and `INDEX-OF` return `-1` on no match. Builder words append to the
 module's current string-builder buffer and throw a named capacity error when the
-next append would exceed that buffer; they never truncate silently. `SPLIT-NEXT`
-returns the next field, the next scan index, and a success flag.
+next append would exceed that buffer; they never truncate silently. Caller-owned
+buffer appends use the same rule and keep the current length in a `ptr len`
+cell. `SPLIT-NEXT` returns the next field, the next scan index, and a success
+flag.
 
 ## JSON Write
 

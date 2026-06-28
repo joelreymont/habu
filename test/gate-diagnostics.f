@@ -384,6 +384,7 @@ variable GDX-TRUST-MAN-U
    GE-HB-RESET
    s" --load" GDX-ARG+
    s" lib/errors.f" GDX-ARG+
+   s" lib/string.f" GDX-ARG+
    s" lib/memory.f" GDX-ARG+
    s" lib/vector.f" GDX-ARG+
    s" tools/lint/text.f" GDX-ARG+

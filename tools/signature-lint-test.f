@@ -128,6 +128,7 @@ create SLT-ERR SLT-BUF-CAP allot
    s" tools/signature-lint.f" WR-TOOLS-LOAD if exit then
    s" --load" SLT-ARG+
    s" lib/errors.f" SLT-ARG+
+   s" lib/string.f" SLT-ARG+
    s" lib/memory.f" SLT-ARG+
    s" lib/vector.f" SLT-ARG+
    s" tools/lint/text.f" SLT-ARG+

@@ -116,6 +116,11 @@ lesson — keep the specific word/code/path, cut the prose.
   regressed the full gate under contention. Keep only schedule moves that improve
   the documented full command; record reverted timings in the dot so failed
   variants are not rediscovered.
+- **Borrow SwiftForth semantics, not unsafe contracts:** SwiftForth's `PLACE`,
+  `APPEND`, `ZPLACE`, and `ZAPPEND` explicitly do not check destination capacity.
+  In Habu, borrowed string-buffer utilities must carry capacity and length cells
+  (`BUF-APPEND*`) and throw named errors; do not import unchecked string mutation
+  under familiar names.
 - **Gate budgets must match measured host capacity:** on 2026-06-28 the full
   native gate was all-green at 100.985s internal time on the 4-online-core
   Linux/aarch64 target. A 90s default budget was below measured capacity for the
