@@ -149,6 +149,7 @@ variable FM-NUM-L
    s" tools/gate-json-assert-core.f" FM-REQ
    s" tools/gate-json-assert.f" FM-REQ
    s" tools/repair-schema-doc-test.f" FM-REQ
+   s" tools/repair-packet-core.f" FM-REQ
    s" tools/repair-packet-test.f" FM-REQ
    s" tools/check-repair-hints-test.f" FM-REQ
    s" lib/process-cwd.f" FM-REQ
@@ -161,6 +162,7 @@ variable FM-NUM-L
    s" tools/checked-boundary-lint.f" FM-REQ
    s" tools/checked-boundary-lint-test.f" FM-REQ
    s" tools/diag-to-sarif.f" FM-REQ
+   s" tools/public-signatures-core.f" FM-REQ
    s" tools/public-signatures.f" FM-REQ
    s" tools/public-signatures-test.f" FM-REQ
    s" tools/stdlib-manifest-test.f" FM-REQ ;

@@ -1,11 +1,12 @@
 \ repair-schema-doc-test.f - checked fixture for repair diagnostic docs.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/json.f tools/gate-json-assert-core.f tools/repair-schema-doc-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+\ tools/lint/source-lex.f tools/check-all-errors-core.f tools/json.f
+\ tools/gate-json-assert-core.f tools/repair-schema-doc-test.f
 
 $40000 constant RSD-DOC-CAP
 8192 constant RSD-BUF-CAP
-10000 constant RSD-TIMEOUT-MS
 
 variable RSD-ROOT-U
 variable RSD-SRC-U
@@ -168,62 +169,14 @@ create RSD-DIAG-BUF FS-PATH-CAP allot
    RSD-SRC RSD-SRC$ WRITE-ALL
    RSD-LOAD-DOCS ;
 
-: RSD-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
+: RSD-RUN-CHECK-ACT ( -- )
+   RSD-SRC RSD-SRC CHECK-ALL-ERRORS-FILE ;
 
 : RSD-RUN-CHECK ( -- n n n n )
-   PROC-ARGV-RESET
-   s" tools/check-all-errors.f" WR-TOOLS-LOAD if
-      s" --json-errors"  >LEN PROC-ARGV+
-      s" --label"  >LEN PROC-ARGV+
-      RSD-SRC  >LEN PROC-ARGV+
-      RSD-SRC  >LEN PROC-ARGV+
-      WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   RSD-SRC  >LEN PROC-ARGV+
-   RSD-SRC  >LEN PROC-ARGV+
-   WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N ;
-
-: RSD-RUN-ASSERT ( ptr u8 n -- n n n n ) {: mode:ptr modeu :}
-   PROC-ARGV-RESET
-   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if
-      mode modeu  >LEN PROC-ARGV+
-      RSD-DIAG  >LEN PROC-ARGV+
-      WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-      RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   mode modeu  >LEN PROC-ARGV+
-   RSD-DIAG  >LEN PROC-ARGV+
-   WR-TOOLS$  >LEN RSD-OUT RSD-BUF-CAP >LEN RSD-ERR RSD-BUF-CAP >LEN
-   RSD-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME RSD-CAPTURE>N ;
+   RSD-ERR RSD-BUF-CAP RSD-OUT RSD-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: RSD-RUN-CHECK-ACT ;] catch {: rc:n :}
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
 
 : RSD-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=
@@ -275,9 +228,7 @@ create RSD-DIAG-BUF FS-PATH-CAP allot
    RSD-DIAG RSD-ERR erru WRITE-ALL
    RSD-ERR RSD-ERR-U @ RSD-REPAIR-CLASS$ CONTAINS? TTRUE
    RSD-TEST-DIAG-FIELDS
-   s" json-lines-schema" RSD-RUN-ASSERT 0 RSD-EXPECT-EXIT {: aout aerr :}
-   aout 0 T=
-   aerr 0 T= ;
+   RSD-DIAG GJA-JSON-LINES-SCHEMA ;
 
 : RSD-MAIN ( -- )
    T-RESET

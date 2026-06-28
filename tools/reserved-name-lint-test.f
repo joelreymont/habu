@@ -6,14 +6,12 @@
 \ tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
 
 $1000 constant RNLT-BUF-CAP
-$2710 constant RNLT-TIMEOUT-MS
 
 create RNLT-ROOT FS-PATH-CAP allot
 create RNLT-GOOD FS-PATH-CAP allot
 create RNLT-BAD FS-PATH-CAP allot
 create RNLT-CASE FS-PATH-CAP allot
 create RNLT-OUT RNLT-BUF-CAP allot
-create RNLT-ERR RNLT-BUF-CAP allot
 
 variable RNLT-ROOT-U
 variable RNLT-GOOD-U
@@ -70,44 +68,6 @@ variable RNLT-CASE-U
    RNLT-BAD$ RNLT-BAD-SRC$ WRITE-ALL
    RNLT-CASE$ RNLT-CASE-SRC$ WRITE-ALL ;
 
-: RNLT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: RNLT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/reserved-name-lint.f" WR-TOOLS-LOAD if exit then
-   s" --load" RNLT-ARG+
-   s" lib/errors.f" RNLT-ARG+
-   s" lib/string.f" RNLT-ARG+
-   s" lib/memory.f" RNLT-ARG+
-   s" lib/vector.f" RNLT-ARG+
-   s" lib/fs.f" RNLT-ARG+
-   s" tools/lint/text.f" RNLT-ARG+
-   s" tools/lint/token.f" RNLT-ARG+
-   s" tools/lint/lib.f" RNLT-ARG+
-   s" tools/lint/json-writer.f" RNLT-ARG+
-   s" tools/lint/source-lex.f" RNLT-ARG+
-   s" tools/reserved-name-lint-core.f" RNLT-ARG+
-   s" tools/argv.f" RNLT-ARG+
-   s" tools/reserved-name-lint.f" RNLT-ARG+
-   s" --" RNLT-ARG+ ;
-
-: RNLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: RNLT-CAPTURE ( -- n n n n )
-   WR-TOOLS$ >LEN RNLT-OUT RNLT-BUF-CAP >LEN RNLT-ERR RNLT-BUF-CAP >LEN
-   RNLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   RNLT-CAPTURE>N ;
-
-: RNLT-RUN-JSON ( -- n n n n )
-   RNLT-ARGV-LOAD
-   s" --json" RNLT-ARG+
-   s" --label" RNLT-ARG+
-   s" <converted>" RNLT-ARG+
-   RNLT-CASE$ RNLT-ARG+
-   RNLT-CAPTURE ;
-
 : RNLT-CORE-SETUP ( bool -- ) {: json:bool :}
    RESERVED-NAME-LINT-RESET
    RNLT-OUT RNLT-BUF-CAP LINT-OUT-BUFFER!
@@ -121,6 +81,11 @@ variable RNLT-CASE-U
 : RNLT-RUN-CORE ( ptr u8 n -- n n n n )
    LINT-FALSE RNLT-CORE-SETUP
    RESERVED-NAME-LINT-FILE
+   RNLT-CORE-FINISH ;
+
+: RNLT-RUN-CORE-JSON ( -- n n n n )
+   LINT-TRUE RNLT-CORE-SETUP
+   RNLT-CASE$ s" <converted>" RESERVED-NAME-LINT-FILE-AS
    RNLT-CORE-FINISH ;
 
 : RNLT-JSON-WORD-I$ ( -- ptr u8 n )
@@ -155,7 +120,7 @@ variable RNLT-CASE-U
    RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-JSON ( -- )
-   RNLT-RUN-JSON 1 RNLT-EXPECT-EXIT {: outu erru :}
+   RNLT-RUN-CORE-JSON 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    RNLT-OUT outu s" schema_version" CONTAINS? TTRUE
    RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE

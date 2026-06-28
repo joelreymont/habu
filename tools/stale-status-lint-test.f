@@ -1,12 +1,11 @@
 \ stale-status-lint-test.f - checked fixtures for tools/stale-status-lint.f.
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
-\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ lib/fs.f lib/fs-mutate.f lib/process.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/stale-status-lint-core.f tools/stale-status-lint-test.f
 
 4096 constant SST-CAP
 32 constant SST-DATE-CAP
-10000 constant SST-TIMEOUT-MS
 1050 constant SST-LONG-LINES
 10 constant SST-LF-C
 
@@ -144,9 +143,6 @@ create SST-ERR SST-CAP allot
    SST-LESSONS SST-LESSONS$ WRITE-ALL
    SST-README SST-README-GOOD$ WRITE-ALL ;
 
-: SST-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
 : SST-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-stale-status" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -159,37 +155,6 @@ create SST-ERR SST-CAP allot
    SST-ROOT s" .jj-ws/master-test/STATUS.md" SST-JJ-BUF SST-JJ-U SST-PATH!
    SST-RESET-FILES ;
 
-: SST-ARGV ( ptr u8 n -- ) {: today:ptr todayu:n :}
-   PROC-ARGV-RESET
-   s" tools/stale-status-lint-core.f" s" tools/stale-status-lint.f" WR-TOOLS-LOAD2 if
-      SST-ROOT  >LEN PROC-ARGV+
-      today todayu  >LEN PROC-ARGV+
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/stale-status-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   SST-ROOT  >LEN PROC-ARGV+
-   today todayu  >LEN PROC-ARGV+ ;
-
-: SST-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
-   outu LEN>N erru LEN>N kind code ;
-
-: SST-RUN ( ptr u8 n -- n n n n )
-   SST-ARGV
-   WR-TOOLS$  >LEN SST-OUT SST-CAP >LEN SST-ERR SST-CAP >LEN
-   SST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME SST-CAPTURE>N ;
-
-: SST-RUN-DEFAULT ( -- n n n n )
-   s" 2026-06-16" SST-RUN ;
-
 : SST-CORE-TODAY! ( ptr u8 n -- ) {: a:ptr u:n :}
    u SST-DATE-CAP > if E-FS-PATH throw then
    a SST-CORE-TODAY-BUF u BYTE-COPY
@@ -200,17 +165,16 @@ create SST-ERR SST-CAP allot
    SST-CORE-TODAY SS-PARSE-TODAY SS-TODAY-DAYS !
    STALE-STATUS-LINT ;
 
-: SST-RUN-CORE ( ptr u8 n -- n )
+: SST-RUN ( ptr u8 n -- n n n n )
    SST-CORE-TODAY!
-   [: SST-RUN-CORE-ACT ;] catch ;
+   SST-OUT SST-CAP SS-OUT-BUFFER!
+   SST-ERR SST-CAP SS-ERR-BUFFER!
+   [: SST-RUN-CORE-ACT ;] catch {: rc:n :}
+   SS-OUT$ nip SS-ERR$ nip PROC-OUTCOME-EXIT rc
+   SS-BUFFERS-OFF ;
 
-: SST-EXPECT-CORE-OK ( -- )
-   s" 2026-06-16" SST-RUN-CORE 0 T=
-   SS-BAD @ 0 T= ;
-
-: SST-EXPECT-CORE-BAD ( -- )
-   s" 2026-06-16" SST-RUN-CORE 0 T<>
-   SS-BAD @ 0 > TTRUE ;
+: SST-RUN-DEFAULT ( -- n n n n )
+   s" 2026-06-16" SST-RUN ;
 
 : SST-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
    kind PROC-OUTCOME-EXIT T=
@@ -221,6 +185,18 @@ create SST-ERR SST-CAP allot
    kind PROC-OUTCOME-EXIT T=
    code 0 T<>
    outu erru ;
+
+: SST-EXPECT-CORE-OK ( -- )
+   SST-RUN-DEFAULT 0 SST-EXPECT-EXIT {: outu:n erru:n :}
+   SST-OUT outu SST-GOOD-OUT$ T$=
+   SST-ERR erru SST-EMPTY$ T$=
+   SS-BAD @ 0 T= ;
+
+: SST-EXPECT-CORE-BAD ( -- )
+   SST-RUN-DEFAULT SST-EXPECT-EXIT-NZ {: outu:n erru:n :}
+   outu 0 T<>
+   erru 0 T=
+   SS-BAD @ 0 > TTRUE ;
 
 : SST-EXPECT-OK ( -- )
    SST-RUN-DEFAULT 0 SST-EXPECT-EXIT {: outu:n erru:n :}

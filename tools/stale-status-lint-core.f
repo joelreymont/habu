@@ -40,6 +40,12 @@ variable SS-SRC-U
 variable SS-LINE-S
 variable SS-LINE-E
 variable SS-FENCE
+variable SS-OUT-A
+variable SS-OUT-CAP
+variable SS-OUT-U
+variable SS-ERR-A
+variable SS-ERR-CAP
+variable SS-ERR-U
 
 : SS-ROOT-A-FIELD ( -- ptr ptr u8 )
    SS-ROOT-A 0 ptr-field ;
@@ -53,6 +59,12 @@ variable SS-FENCE
 : SS-DISP-A-FIELD ( -- ptr ptr u8 )
    SS-DISP-A 0 ptr-field ;
 
+: SS-OUT-A-FIELD ( -- ptr ptr u8 )
+   SS-OUT-A 0 ptr-field ;
+
+: SS-ERR-A-FIELD ( -- ptr ptr u8 )
+   SS-ERR-A 0 ptr-field ;
+
 : SS-ROOT-A@ ( -- ptr u8 )
    SS-ROOT-A-FIELD @ ;
 
@@ -65,6 +77,12 @@ variable SS-FENCE
 : SS-DISP-A@ ( -- ptr u8 )
    SS-DISP-A-FIELD @ ;
 
+: SS-OUT-A@ ( -- ptr u8 )
+   SS-OUT-A-FIELD @ ;
+
+: SS-ERR-A@ ( -- ptr u8 )
+   SS-ERR-A-FIELD @ ;
+
 : SS-ROOT-A! ( ptr u8 -- )
    SS-ROOT-A-FIELD ! ;
 
@@ -76,6 +94,12 @@ variable SS-FENCE
 
 : SS-DISP-A! ( ptr u8 -- )
    SS-DISP-A-FIELD ! ;
+
+: SS-OUT-A! ( ptr u8 -- )
+   SS-OUT-A-FIELD ! ;
+
+: SS-ERR-A! ( ptr u8 -- )
+   SS-ERR-A-FIELD ! ;
 
 : SS-ROOT$ ( -- ptr u8 n )
    SS-ROOT-A@ SS-ROOT-U @ ;
@@ -94,12 +118,50 @@ variable SS-FENCE
 
 : SS-C! ( n -- ) SS-ONE c! ;
 
+: SS-OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a SS-OUT-A!
+   cap SS-OUT-CAP !
+   0 SS-OUT-U ! ;
+
+: SS-ERR-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a SS-ERR-A!
+   cap SS-ERR-CAP !
+   0 SS-ERR-U ! ;
+
+: SS-BUFFERS-OFF ( -- )
+   NULL$ drop SS-OUT-A!
+   NULL$ drop SS-ERR-A!
+   0 SS-OUT-CAP !
+   0 SS-ERR-CAP !
+   0 SS-OUT-U !
+   0 SS-ERR-U ! ;
+
+: SS-OUT$ ( -- ptr u8 n )
+   SS-OUT-A@ SS-OUT-U @ ;
+
+: SS-ERR$ ( -- ptr u8 n )
+   SS-ERR-A@ SS-ERR-U @ ;
+
+: SS-OUT-BUFFERED? ( -- bool )
+   SS-OUT-A@ 0= 0= ;
+
+: SS-ERR-BUFFERED? ( -- bool )
+   SS-ERR-A@ 0= 0= ;
+
 : SS-OUT ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
+   SS-OUT-BUFFERED? IF
+      SS-OUT-A@ SS-OUT-CAP @ SS-OUT-U BUF-APPEND
+      exit
+   THEN
    1 -rot write drop ;
 
 : SS-ERR ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
+   SS-ERR-BUFFERED? IF
+      SS-ERR-A@ SS-ERR-CAP @ SS-ERR-U BUF-APPEND
+      exit
+   THEN
    2 -rot write drop ;
 
 : SS-C ( n -- )

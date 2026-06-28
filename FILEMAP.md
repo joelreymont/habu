@@ -188,6 +188,7 @@ points stay listed.
 - `tools/gate-json-assert-core.f` — native JSON assertion library for gate tests.
 - `tools/gate-json-assert.f` — CLI entrypoint for native JSON assertions.
 - `tools/repair-schema-doc-test.f` — checked fixture coverage for repair diagnostic schema docs.
+- `tools/repair-packet-core.f` — reusable checker JSONL to repair-packet core.
 - `tools/repair-packet-test.f` — checked fixture coverage for repair packet generation.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
@@ -199,7 +200,8 @@ points stay listed.
 - `tools/checked-boundary-lint.f` — CLI wrapper for unchecked-boundary lint.
 - `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
-- `tools/public-signatures.f` — emits typed public-word manifests for agents.
+- `tools/public-signatures-core.f` — reusable public-signature manifest emitter core.
+- `tools/public-signatures.f` — CLI entrypoint for typed public-word manifests.
 - `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
 - `tools/stdlib-manifest-test.f` — validates `lib/std.manifest`, stdlib docs, and source-backed signatures.
 - `tools/spawn-emitter-test.f` — source-shape coverage for factored Darwin

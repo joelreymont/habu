@@ -1,13 +1,15 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/public-signatures-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
+\ tools/public-signatures-core.f tools/public-signatures-test.f
 
 8192 constant PST-BUF-CAP
-10000 constant PST-TIMEOUT-MS
 
 variable PST-ROOT-U
 variable PST-FIX-U
+variable PST-RUN-A
+variable PST-RUN-U
 
 create PST-ROOT-BUF FS-PATH-CAP allot
 create PST-FIX-BUF FS-PATH-CAP allot
@@ -23,6 +25,22 @@ create PST-ERR PST-BUF-CAP allot
 
 : PST-FIX ( -- ptr u8 n )
    PST-FIX-BUF PST-FIX-U @ ;
+
+: PST-RUN-A-FIELD ( -- ptr ptr u8 )
+   PST-RUN-A 0 ptr-field ;
+
+: PST-RUN-A@ ( -- ptr u8 )
+   PST-RUN-A-FIELD @ ;
+
+: PST-RUN-A! ( ptr u8 -- )
+   PST-RUN-A-FIELD ! ;
+
+: PST-RUN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a PST-RUN-A!
+   u PST-RUN-U ! ;
+
+: PST-RUN$ ( -- ptr u8 n )
+   PST-RUN-A@ PST-RUN-U @ ;
 
 : PST-LF ( -- )
    10 SB-APPEND-C ;
@@ -92,44 +110,37 @@ create PST-ERR PST-BUF-CAP allot
    PST-FIX CLEANUP+
    PST-FIX PST-FIXTURE$ WRITE-ALL ;
 
-: PST-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
+: PST-CORE-SETUP ( n -- ) {: flag:n :}
+   PST-OUT PST-BUF-CAP PS-OUT-BUFFER!
+   PST-ERR PST-BUF-CAP PS-ERR-BUFFER!
+   flag PS-TRUST ! ;
 
-: PST-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/public-signatures.f" WR-TOOLS-LOAD if exit then
-   s" --load" PST-ARG+
-   s" lib/errors.f" PST-ARG+
-   s" lib/string.f" PST-ARG+
-   s" lib/memory.f" PST-ARG+
-   s" lib/vector.f" PST-ARG+
-   s" tools/lint/text.f" PST-ARG+
-   s" tools/lint/intern.f" PST-ARG+
-   s" tools/lint/token.f" PST-ARG+
-   s" tools/lint/lib.f" PST-ARG+
-   s" tools/public-signatures.f" PST-ARG+
-   s" --" PST-ARG+ ;
+: PST-CORE-FINISH ( n -- n n n n ) {: rc:n :}
+   PS-OUT$ nip PS-ERR$ nip PROC-OUTCOME-EXIT rc
+   PS-BUFFERS-OFF ;
 
-: PST-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
+: PST-RUN-FILE-ACT ( -- )
+   PS-JSON-DOC-START
+   PST-RUN$ PS-SCAN-FILE
+   PS-JSON-DOC-END ;
 
-: PST-RUN ( ptr u8 n -- n n n n ) {: a:ptr u :}
-   PST-ARGV-LOAD
-   a u PST-ARG+
-   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
+: PST-RUN-CORE ( ptr u8 n n -- n n n n ) {: flag:n :}
+   PST-RUN!
+   flag PST-CORE-SETUP
+   [: PST-RUN-FILE-ACT ;] catch PST-CORE-FINISH ;
+
+: PST-RUN ( ptr u8 n -- n n n n )
+   0 PST-RUN-CORE ;
+
+: PST-RUN-TRUST ( ptr u8 n -- n n n n )
+   -1 PST-RUN-CORE ;
+
+: PST-RUN-NOARG-ACT ( -- )
+   PS-USAGE ;
 
 : PST-RUN-NOARG ( -- n n n n )
-   PST-ARGV-LOAD
-   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
-
-: PST-RUN-TRUST ( ptr u8 n -- n n n n ) {: a:ptr u :}
-   PST-ARGV-LOAD
-   s" --trust" PST-ARG+
-   a u PST-ARG+
-   WR-TOOLS$  >LEN PST-OUT PST-BUF-CAP >LEN PST-ERR PST-BUF-CAP >LEN
-   PST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME PST-CAPTURE>N ;
+   0 PST-CORE-SETUP
+   [: PST-RUN-NOARG-ACT ;] catch PST-CORE-FINISH ;
 
 : PST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=

@@ -665,6 +665,7 @@ variable SMT-J
    s" tools/lint/intern.f" SMT-ARG+
    s" tools/lint/token.f" SMT-ARG+
    s" tools/lint/lib.f" SMT-ARG+
+   s" tools/public-signatures-core.f" SMT-ARG+
    s" tools/public-signatures.f" SMT-ARG+
    s" --" SMT-ARG+
    0 begin dup SMT-MOD-N @ < while

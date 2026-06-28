@@ -1,10 +1,11 @@
 \ duplicate-definition-lint-test.f - checked fixtures for duplicate-definition-lint.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/duplicate-definition-lint-core.f tools/duplicate-definition-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+\ tools/lint/source-lex.f tools/duplicate-definition-lint-core.f
+\ tools/duplicate-definition-lint-test.f
 
 $1000 constant DDLT-BUF-CAP
-$2710 constant DDLT-TIMEOUT-MS
 
 create DDLT-ROOT FS-PATH-CAP allot
 create DDLT-GOOD FS-PATH-CAP allot
@@ -12,7 +13,6 @@ create DDLT-BAD-A FS-PATH-CAP allot
 create DDLT-BAD-B FS-PATH-CAP allot
 create DDLT-CASE FS-PATH-CAP allot
 create DDLT-OUT DDLT-BUF-CAP allot
-create DDLT-ERR DDLT-BUF-CAP allot
 
 variable DDLT-ROOT-U
 variable DDLT-GOOD-U
@@ -83,44 +83,6 @@ variable DDLT-CASE-U
    DDLT-BAD-B$ DDLT-BAD-B-SRC$ WRITE-ALL
    DDLT-CASE$ DDLT-CASE-SRC$ WRITE-ALL ;
 
-: DDLT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: DDLT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/duplicate-definition-lint.f" WR-TOOLS-LOAD if exit then
-   s" --load" DDLT-ARG+
-   s" lib/errors.f" DDLT-ARG+
-   s" lib/string.f" DDLT-ARG+
-   s" lib/memory.f" DDLT-ARG+
-   s" lib/vector.f" DDLT-ARG+
-   s" lib/fs.f" DDLT-ARG+
-   s" tools/lint/text.f" DDLT-ARG+
-   s" tools/lint/token.f" DDLT-ARG+
-   s" tools/lint/lib.f" DDLT-ARG+
-   s" tools/lint/json-writer.f" DDLT-ARG+
-   s" tools/lint/source-lex.f" DDLT-ARG+
-   s" tools/duplicate-definition-lint-core.f" DDLT-ARG+
-   s" tools/argv.f" DDLT-ARG+
-   s" tools/duplicate-definition-lint.f" DDLT-ARG+
-   s" --" DDLT-ARG+ ;
-
-: DDLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: DDLT-CAPTURE ( -- n n n n )
-   WR-TOOLS$ >LEN DDLT-OUT DDLT-BUF-CAP >LEN DDLT-ERR DDLT-BUF-CAP >LEN
-   DDLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   DDLT-CAPTURE>N ;
-
-: DDLT-RUN-JSON ( -- n n n n )
-   DDLT-ARGV-LOAD
-   s" --json" DDLT-ARG+
-   s" --label" DDLT-ARG+
-   s" <stage2-src>" DDLT-ARG+
-   DDLT-CASE$ DDLT-ARG+
-   DDLT-CAPTURE ;
-
 : DDLT-CORE-SETUP ( bool -- ) {: json:bool :}
    DUPLICATE-DEFINITION-LINT-RESET
    DDLT-OUT DDLT-BUF-CAP LINT-OUT-BUFFER!
@@ -140,6 +102,11 @@ variable DDLT-CASE-U
    LINT-FALSE DDLT-CORE-SETUP
    DDLT-BAD-A$ DUPLICATE-DEFINITION-LINT-FILE
    DDLT-BAD-B$ DUPLICATE-DEFINITION-LINT-FILE
+   DDLT-CORE-FINISH ;
+
+: DDLT-RUN-CORE-JSON ( -- n n n n )
+   LINT-TRUE DDLT-CORE-SETUP
+   DDLT-CASE$ s" <stage2-src>" DUPLICATE-DEFINITION-LINT-FILE-AS
    DDLT-CORE-FINISH ;
 
 : DDLT-JSON-WORD-RESET$ ( -- ptr u8 n )
@@ -172,7 +139,7 @@ variable DDLT-CASE-U
    DDLT-OUT outu s" bad-b.f" CONTAINS? TTRUE ;
 
 : DDLT-TEST-JSON ( -- )
-   DDLT-RUN-JSON 1 DDLT-EXPECT-EXIT {: outu erru :}
+   DDLT-RUN-CORE-JSON 1 DDLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    DDLT-OUT outu s" schema_version" CONTAINS? TTRUE
    DDLT-OUT outu s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE

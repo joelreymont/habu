@@ -425,6 +425,7 @@ variable GDX-TRUST-MAN-U
    s" tools/lint/intern.f" GDX-ARG+
    s" tools/lint/token.f" GDX-ARG+
    s" tools/lint/lib.f" GDX-ARG+
+   s" tools/public-signatures-core.f" GDX-ARG+
    s" tools/public-signatures.f" GDX-ARG+
    s" --" GDX-ARG+
    s" examples/llm/good.f" GDX-ARG+

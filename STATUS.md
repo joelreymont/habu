@@ -1,11 +1,11 @@
 # habu — Status
 
 Last verified: 2026-06-28
-Gate: passing; 102.772s internal gate time on 2026-06-28 on
-Linux/aarch64 with 4 online cores. The native gate uses a 6-way checked DAG
+Gate: passing; 71.622s internal gate time / 74.30s wall on 2026-06-28 on
+macOS/aarch64 with 12 online cores and a content-hash warm-cache hit. The native gate uses a 6-way checked DAG
 pool, 4-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), a direct manifest phase, attributed pool
-outcomes, and a 160s default budget (4-core ZED Box warm gate runs ~117-123s with quirk-fix fixtures). The sub-90s/30s gate target remains active
+outcomes, and a 160s default budget. The sub-90s/30s gate target remains active
 work in `.dots/habu-cut-native-gate-1ac72054.md`; use
 `HABU_GATE_BUDGET_MS=<ms>` for stricter local timing checks.
 Certified: 979  Uncheckable: 0  Rejected: 0

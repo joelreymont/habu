@@ -1016,3 +1016,8 @@ lesson — keep the specific word/code/path, cut the prose.
   Use a checker registry scope plus diagnostic-buffer capture for normal
   duplicate-definition semantics, and reserve candidate scope only for generated
   candidate checks where shadowing loaded libraries is intentional.
+- **Tool fixtures need entry/lib splits:** if a `*-test.f` validates semantic JSON
+  or text output by spawning `bin/hb --load ... tool.f`, it rebuilds the same core
+  for every case. Put reusable logic and buffered output in `*-core.f`, leave
+  `tool.f` as a thin `MAIN` entry, and keep only one CLI smoke for argv/wrapper
+  behavior.

@@ -1,14 +1,13 @@
 \ typed-local-diff-lint-test.f - checked fixtures for typed-local diff lint.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/source-lex.f tools/warm-run.f tools/typed-local-diff-lint-core.f
+\ tools/lint/source-lex.f tools/typed-local-diff-lint-core.f
 \ tools/typed-local-diff-lint-test.f
 
 4096 constant TLDT-BUF-CAP
 $10000 constant TLDT-LARGE-CAP
 1100 constant TLDT-LARGE-LINES
-10000 constant TLDT-TIMEOUT-MS
 
 variable TLDT-ROOT-U
 variable TLDT-GOOD-U
@@ -27,7 +26,6 @@ create TLDT-ALLOW-BUF FS-PATH-CAP allot
 create TLDT-MD-BUF FS-PATH-CAP allot
 create TLDT-LARGE-BUF FS-PATH-CAP allot
 create TLDT-OUT TLDT-BUF-CAP allot
-create TLDT-ERR TLDT-BUF-CAP allot
 create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 
 : TLDT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
@@ -155,37 +153,6 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-MD TLDT-MD$ WRITE-ALL
    TLDT-LARGE TLDT-LARGE$ WRITE-ALL ;
 
-: TLDT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: TLDT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/typed-local-diff-lint.f" WR-TOOLS-LOAD IF exit THEN
-   s" --load" TLDT-ARG+
-   s" lib/errors.f" TLDT-ARG+
-   s" lib/string.f" TLDT-ARG+
-   s" lib/memory.f" TLDT-ARG+
-   s" lib/vector.f" TLDT-ARG+
-   s" lib/fs.f" TLDT-ARG+
-   s" tools/lint/text.f" TLDT-ARG+
-   s" tools/lint/token.f" TLDT-ARG+
-   s" tools/lint/lib.f" TLDT-ARG+
-   s" tools/lint/source-lex.f" TLDT-ARG+
-   s" tools/typed-local-diff-lint-core.f" TLDT-ARG+
-   s" tools/argv.f" TLDT-ARG+
-   s" tools/typed-local-diff-lint.f" TLDT-ARG+
-   s" --" TLDT-ARG+ ;
-
-: TLDT-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
-   outu LEN>N erru LEN>N kind code ;
-
-: TLDT-RUN ( ptr u8 n -- n n n n ) {: path:ptr pathu:n :}
-   TLDT-ARGV-LOAD
-   path pathu TLDT-ARG+
-   WR-TOOLS$ >LEN TLDT-OUT TLDT-BUF-CAP >LEN TLDT-ERR TLDT-BUF-CAP >LEN
-   TLDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   TLDT-CAPTURE>N ;
-
 : TLDT-CORE-SETUP ( -- )
    TYPED-LOCAL-DIFF-LINT-RESET
    TLDT-OUT TLDT-BUF-CAP LINT-OUT-BUFFER! ;
@@ -204,7 +171,7 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    kind PROC-OUTCOME-EXIT T=
    code 0 T=
    TLDT-OUT outu TLDT-EMPTY$ T$=
-   TLDT-ERR erru TLDT-EMPTY$ T$= ;
+   erru 0 T= ;
 
 : TLDT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
    kind PROC-OUTCOME-EXIT T=
@@ -232,7 +199,7 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-OUT outu s" x" CONTAINS? TTRUE ;
 
 : TLDT-TEST-BAD ( -- )
-   TLDT-BAD TLDT-RUN 1 TLDT-EXPECT-EXIT TLDT-ASSERT-BAD ;
+   TLDT-BAD TLDT-RUN-CORE 1 TLDT-EXPECT-EXIT TLDT-ASSERT-BAD ;
 
 : TLDT-MAIN ( -- )
    T-RESET

@@ -1,10 +1,11 @@
 \ signature-lint-test.f - checked fixtures for tools/signature-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/signature-lint-core.f tools/signature-lint-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+\ tools/lint/source-lex.f tools/signature-lint-core.f
+\ tools/signature-lint-test.f
 
 4096 constant SLT-BUF-CAP
-10000 constant SLT-TIMEOUT-MS
 
 variable SLT-ROOT-U
 variable SLT-GOOD-U
@@ -18,7 +19,6 @@ create SLT-MISSING-BUF FS-PATH-CAP allot
 create SLT-OPTOUT-BUF FS-PATH-CAP allot
 create SLT-NAME-BUF FS-PATH-CAP allot
 create SLT-OUT SLT-BUF-CAP allot
-create SLT-ERR SLT-BUF-CAP allot
 
 : SLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -120,40 +120,6 @@ create SLT-ERR SLT-BUF-CAP allot
    SLT-OPTOUT SLT-OPTOUT$ WRITE-ALL
    SLT-NAME SLT-NAME$ WRITE-ALL ;
 
-: SLT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: SLT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/signature-lint.f" WR-TOOLS-LOAD if exit then
-   s" --load" SLT-ARG+
-   s" lib/errors.f" SLT-ARG+
-   s" lib/string.f" SLT-ARG+
-   s" lib/memory.f" SLT-ARG+
-   s" lib/vector.f" SLT-ARG+
-   s" tools/lint/text.f" SLT-ARG+
-   s" tools/lint/token.f" SLT-ARG+
-   s" tools/lint/lib.f" SLT-ARG+
-   s" tools/lint/json-writer.f" SLT-ARG+
-   s" tools/lint/source-lex.f" SLT-ARG+
-   s" tools/signature-lint-core.f" SLT-ARG+
-   s" tools/argv.f" SLT-ARG+
-   s" tools/signature-lint.f" SLT-ARG+
-   s" --" SLT-ARG+ ;
-
-: SLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: SLT-RUN-JSON-LABEL ( ptr u8 n -- n n n n ) {: a:ptr u :}
-   SLT-ARGV-LOAD
-   s" --json" SLT-ARG+
-   s" --label" SLT-ARG+
-   s" <stdin>" SLT-ARG+
-   a u SLT-ARG+
-   WR-TOOLS$ >LEN SLT-OUT SLT-BUF-CAP >LEN SLT-ERR SLT-BUF-CAP >LEN
-   SLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   SLT-CAPTURE>N ;
-
 : SLT-CORE-SETUP ( bool -- ) {: json:bool :}
    SIGNATURE-LINT-RESET
    SLT-OUT SLT-BUF-CAP LINT-OUT-BUFFER!
@@ -188,7 +154,7 @@ create SLT-ERR SLT-BUF-CAP allot
 : SLT-TEST-GOOD ( -- )
    SLT-GOOD SLT-RUN-CORE 0 SLT-EXPECT-EXIT {: outu:n erru:n :}
    SLT-OUT outu SLT-EMPTY$ T$=
-   SLT-ERR erru SLT-EMPTY$ T$= ;
+   erru 0 T= ;
 
 : SLT-TEST-MISSING ( -- )
    SLT-MISSING SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
@@ -196,7 +162,7 @@ create SLT-ERR SLT-BUF-CAP allot
    SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
 
 : SLT-TEST-MISSING-JSON ( -- )
-   SLT-MISSING SLT-RUN-JSON-LABEL 1 SLT-EXPECT-EXIT {: outu erru :}
+   SLT-MISSING SLT-RUN-CORE-JSON-LABEL 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    SLT-OUT outu SLT-JSON-MISSING$ CONTAINS? TTRUE
    SLT-OUT outu SLT-JSON-LABEL$ CONTAINS? TTRUE ;

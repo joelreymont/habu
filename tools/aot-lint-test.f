@@ -1,12 +1,10 @@
 \ aot-lint-test.f - checked fixtures for tools/aot-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/lint/text.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ tools/lint/source-lex.f tools/aot-lint-core.f tools/argv.f
-\ tools/warm-run.f tools/aot-lint-test.f
+\ tools/lint/source-lex.f tools/aot-lint-core.f tools/aot-lint-test.f
 
 4096 constant ALT-BUF-CAP
-10000 constant ALT-TIMEOUT-MS
 
 variable ALT-ROOT-U
 variable ALT-GOOD-U
@@ -16,7 +14,6 @@ create ALT-ROOT-BUF FS-PATH-CAP allot
 create ALT-GOOD-BUF FS-PATH-CAP allot
 create ALT-BAD-BUF FS-PATH-CAP allot
 create ALT-OUT ALT-BUF-CAP allot
-create ALT-ERR ALT-BUF-CAP allot
 
 : ALT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -99,40 +96,6 @@ create ALT-ERR ALT-BUF-CAP allot
    ALT-GOOD ALT-GOOD$ WRITE-ALL
    ALT-BAD ALT-BAD$ WRITE-ALL ;
 
-: ALT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: ALT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
-   s" --load" ALT-ARG+
-   s" lib/errors.f" ALT-ARG+
-   s" lib/string.f" ALT-ARG+
-   s" lib/memory.f" ALT-ARG+
-   s" lib/vector.f" ALT-ARG+
-   s" tools/lint/text.f" ALT-ARG+
-   s" tools/lint/token.f" ALT-ARG+
-   s" tools/lint/lib.f" ALT-ARG+
-   s" tools/lint/json-writer.f" ALT-ARG+
-   s" tools/lint/source-lex.f" ALT-ARG+
-   s" tools/aot-lint-core.f" ALT-ARG+
-   s" tools/argv.f" ALT-ARG+
-   s" tools/aot-lint.f" ALT-ARG+
-   s" --" ALT-ARG+ ;
-
-: ALT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: ALT-RUN-BAD-JSON ( -- n n n n )
-   ALT-ARGV-LOAD
-   s" --json" ALT-ARG+
-   s" --label" ALT-ARG+
-   s" <stdin>" ALT-ARG+
-   ALT-BAD ALT-ARG+
-   WR-TOOLS$ >LEN ALT-OUT ALT-BUF-CAP >LEN ALT-ERR ALT-BUF-CAP >LEN
-   ALT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   ALT-CAPTURE>N ;
-
 : ALT-CORE-SETUP ( bool -- ) {: json:bool :}
    AOT-LINT-RESET
    ALT-OUT ALT-BUF-CAP LINT-OUT-BUFFER!
@@ -148,6 +111,11 @@ create ALT-ERR ALT-BUF-CAP allot
    AOT-LINT-FILE
    ALT-CORE-FINISH ;
 
+: ALT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
+   LINT-TRUE ALT-CORE-SETUP
+   a u s" <stdin>" AOT-LINT-FILE-AS
+   ALT-CORE-FINISH ;
+
 : ALT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
    kind PROC-OUTCOME-EXIT T=
    code expect T=
@@ -156,7 +124,7 @@ create ALT-ERR ALT-BUF-CAP allot
 : ALT-TEST-GOOD ( -- )
    ALT-GOOD ALT-RUN-CORE 0 ALT-EXPECT-EXIT {: outu:n erru:n :}
    ALT-OUT outu ALT-EMPTY$ T$=
-   ALT-ERR erru ALT-EMPTY$ T$= ;
+   erru 0 T= ;
 
 : ALT-TEST-BAD ( -- )
    ALT-BAD ALT-RUN-CORE 1 ALT-EXPECT-EXIT {: outu:n erru:n :}
@@ -164,7 +132,7 @@ create ALT-ERR ALT-BUF-CAP allot
    ALT-OUT outu ALT-CODE$ CONTAINS? TTRUE ;
 
 : ALT-TEST-BAD-JSON ( -- )
-   ALT-RUN-BAD-JSON 1 ALT-EXPECT-EXIT {: outu erru :}
+   ALT-BAD ALT-RUN-CORE-JSON-LABEL 1 ALT-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    ALT-OUT outu ALT-JSON-CODE$ CONTAINS? TTRUE
    ALT-OUT outu ALT-JSON-LABEL$ CONTAINS? TTRUE

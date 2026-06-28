@@ -174,6 +174,7 @@ variable WI-SRC-LEN
    s" tools/lint/intern.f" WI-ARG+
    s" tools/lint/token.f" WI-ARG+
    s" tools/lint/lib.f" WI-ARG+
+   s" tools/public-signatures-core.f" WI-ARG+
    s" tools/public-signatures.f" WI-ARG+
    s" --" WI-ARG+
    s" --trust" WI-ARG+ ;

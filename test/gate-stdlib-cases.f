@@ -120,12 +120,16 @@ TEST-TOOL-SUITE tool-boundary-trust
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-check-repair
-   tools/check-all-errors-test.f tools/repair-packet-test.f
+   tools/check-all-errors-test.f tools/repair-packet-core.f
+   tools/gate-json-assert-core.f
+   tools/repair-packet-test.f
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-doc-public
-   tools/public-signatures-test.f tools/stale-status-lint-core.f
-   tools/stale-status-lint-test.f tools/repair-schema-doc-test.f
+   tools/public-signatures-core.f tools/public-signatures-test.f
+   tools/stale-status-lint-core.f
+   tools/stale-status-lint-test.f tools/gate-json-assert-core.f
+   tools/repair-schema-doc-test.f
    tools/examples-test.f
 ;TEST-SUITE
 

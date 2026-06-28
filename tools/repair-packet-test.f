@@ -4,7 +4,7 @@
 \ lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
-\ tools/repair-packet-test.f
+\ tools/argv.f tools/repair-packet-core.f tools/repair-packet-test.f
 
 $20000 constant RPT-CAPTURE-CAP
 10000 constant RPT-TIMEOUT-MS
@@ -165,61 +165,16 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-ERR erru s" schema_version" CONTAINS? TTRUE
    erru RPT-WRITE-DIAG ;
 
-: RPT-ARGV-REPAIR ( -- )
-   PROC-ARGV-RESET
-   s" tools/repair-packet.f" WR-TOOLS-LOAD if
-      RPT-DIAG  >LEN PROC-ARGV+
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/repair-packet.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   RPT-DIAG  >LEN PROC-ARGV+ ;
-
-: RPT-RUN-REPAIR ( -- n n n n )
-   RPT-ARGV-REPAIR
-   RPT-HB-CAPTURE ;
-
-: RPT-WRITE-PACKET ( n -- ) {: outu :}
-   RPT-PACKET RPT-OUT outu WRITE-ALL ;
+: RPT-PACKET$ ( -- ptr u8 n )
+   RPT-DIAG RP-READ-FILE 2dup RP-COUNT >r RP-FIRST r> RP-PACKET ;
 
 : RPT-MAKE-PACKET ( -- )
-   RPT-RUN-REPAIR 0 RPT-EXPECT-EXIT {: outu erru :}
-   RPT-ERR erru RPT-EMPTY$ T$=
-   outu 0 T<>
-   outu RPT-WRITE-PACKET ;
-
-: RPT-ARGV-ASSERT ( ptr u8 n -- ) {: class:ptr classu :}
-   PROC-ARGV-RESET
-   s" tools/gate-json-assert.f" WR-TOOLS-LOAD if
-      s" repair-packet"  >LEN PROC-ARGV+
-      RPT-PACKET  >LEN PROC-ARGV+
-      class classu  >LEN PROC-ARGV+
-      exit
-   then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
-   s" tools/gate-json-assert.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" repair-packet"  >LEN PROC-ARGV+
-   RPT-PACKET  >LEN PROC-ARGV+
-   class classu  >LEN PROC-ARGV+ ;
-
-: RPT-RUN-ASSERT ( ptr u8 n -- n n n n ) {: class:ptr classu :}
-   class classu RPT-ARGV-ASSERT
-   RPT-HB-CAPTURE ;
+   RPT-PACKET$ {: a:ptr u:n :}
+   u 0 T<>
+   RPT-PACKET a u WRITE-ALL ;
 
 : RPT-ASSERT-PACKET ( ptr u8 n -- ) {: class:ptr classu :}
-   class classu RPT-RUN-ASSERT 0 RPT-EXPECT-EXIT {: outu erru :}
-   outu 0 T=
-   RPT-ERR erru RPT-EMPTY$ T$= ;
+   RPT-PACKET class classu GJA-REPAIR-PACKET ;
 
 : RPT-CASE-PATHS ( ptr u8 n -- ) {: name:ptr nameu :}
    name nameu RPT-SRC!
@@ -254,18 +209,16 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-PACKET RPT-OUT RPT-CAPTURE-CAP READ-ALL {: packetu :}
    RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE ;
 
-\ Warm-aware like RPT-ARGV-REPAIR: against the warm tools image, load the trust
-\ snapshot + entry (no diag arg) instead of re-compiling already-bundled libs.
-\ The redundant full --load took ~3s uncontended and timed out under pool
-\ concurrency; the warm form runs in ~0.5s with identical exit 64 + usage output.
+\ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
 : RPT-ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
-   s" tools/repair-packet.f" WR-TOOLS-LOAD if exit then
+   s" tools/repair-packet-core.f" s" tools/repair-packet.f" WR-TOOLS-LOAD2 if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
    s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/repair-packet-core.f"  >LEN PROC-ARGV+
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
