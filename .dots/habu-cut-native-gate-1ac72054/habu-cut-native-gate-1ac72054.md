@@ -183,3 +183,12 @@ diagnostics repair (33.276s), engine build (28.901s), dictionary/checker
 main-gate audit own the 30s architecture: single Habu-under-test artifact, warm
 gate-runner image, stdlib tool subprocess collapse, dictionary/diagnostic
 batching, inline AOT assertions, and launch/build counters.
+
+Checkpoint 2026-06-28: with content-keyed `hb-under-test` and hb-build maker
+caches hot on macOS/aarch64, measured default/specified pool slots using
+`HABU_GATE_WARM_PERSIST=/tmp/habu-warm-repro`: 6 slots = 60.101s internal /
+63.04s wall, 7 slots = 56.407s / 59.34s, 8 slots = 53.532s / 56.44s, 10 slots =
+54.350s / 57.29s. Set `test/gate-pool.f` to use 8 slots by default only on
+macOS; Linux keeps the existing 6-slot default and the env override remains.
+Verified default macOS gate after the change: 54.018s internal / 56.95s wall
+with `candidate-hit=1`, `maker-hit=1`, and `maker-build=0`.

@@ -3,7 +3,8 @@
 \ Load after lib/process-env.f and lib/test-runner.f.
 
 12 constant GT-POOL-MAX
-6 constant GT-POOL-DEFAULT
+6 constant GT-POOL-LINUX-DEFAULT
+8 constant GT-POOL-MACOS-DEFAULT
 2 constant GT-POOL-FDS
 8 constant GT-PFD-SZ
 $64 constant GT-POOL-POLL-MS
@@ -167,6 +168,10 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    n 1 < if E-TBL-BOUNDS throw then
    n GT-POOL-MAX > if E-TBL-BOUNDS throw then
    n ;
+
+: GT-POOL-DEFAULT ( -- n )
+   HB-TARGET-MACOS? if GT-POOL-MACOS-DEFAULT exit then
+   GT-POOL-LINUX-DEFAULT ;
 
 : GT-POOL-ENV-LIMIT ( -- n )
    s" HABU_GATE_POOL_SLOTS" GETENV dup 0= if 2drop GT-POOL-DEFAULT exit then

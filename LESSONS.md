@@ -120,6 +120,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
   helper libs, build-fixpoint source, target source, common engine source, and
   selected AOT/REPL driver, then put the mode in the key.
+- **Pool slots are host policy, not universal truth:** on this macOS/aarch64
+  12-core host, hot-cache full gates measured 6/7/8/10 slots at
+  60.101/56.407/53.532/54.350s internal; 8 wins. Keep Linux conservative until
+  measured there, and leave `HABU_GATE_POOL_SLOTS` as the explicit override.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
