@@ -1,9 +1,11 @@
 ---
 title: "C4: locals shadow words in body"
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-06-27T13:15:58.135709+02:00"
+created-at: "\"2026-06-27T13:15:58.135709+02:00\""
+closed-at: "2026-06-28T15:12:41.451253+02:00"
+close-reason: "Locals already shadow ordinary words/builtins on the C3 gate-green engine (dup->5, code->7, over->8 via test/c4-shadow-test.f); reserved-name handling covers it, no engine change needed. Structural loop-index shadowing inside a do-loop is B2's domain (still open)."
 blocks:
   - habu-b2-local-shadows-ae2492da
 ---
