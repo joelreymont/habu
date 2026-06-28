@@ -157,6 +157,9 @@ variable CKT-START-NS
 : CKT-RESERVED$ ( -- ptr u8 n )
    s" variable I" ;
 
+: CKT-UNDEFINED$SRC ( -- ptr u8 n )
+   s" : CKT-MISS ( i64 -- i64 ) dup NOPE ;" ;
+
 : CKT-RUN-SOURCE-LIST-RESERVED-CORE ( -- n n n )
    CKT-LIST$ CKT-RESERVED$ WRITE-ALL
    RESERVED-NAME-LINT-RESET
@@ -243,6 +246,16 @@ variable CKT-START-NS
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ( -- )
+   CKT-LIST$ CKT-UNDEFINED$SRC WRITE-ALL
+   CKT-LIST$ CKT-DIRECT-SOURCE-LIST-PATH 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" check.f: source preverify failed before run" CONTAINS? TTRUE
+   CKT-ERR erru CKT-LIST$ CONTAINS? TTRUE
+   CKT-ERR erru s" E-UNCHECKABLE" CONTAINS? TTRUE
+   CKT-ERR erru s" NOPE" CONTAINS? TTRUE ;
+
 : CKT-TEST-REQUIRE-FACADE ( -- )
    s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
@@ -267,6 +280,7 @@ variable CKT-START-NS
    s" check/duplicate-all-errors" [: CKT-TEST-DUP-ALL ;] CKT-RUN
    s" check/source-list-reserved" [: CKT-TEST-SOURCE-LIST-RESERVED ;] CKT-RUN
    s" check/source-list-audited-lib" [: CKT-TEST-SOURCE-LIST-AUDITED-LIB ;] CKT-RUN
+   s" check/source-list-preverify-diag" [: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT

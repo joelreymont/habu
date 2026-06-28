@@ -722,6 +722,10 @@ variable CHK-DEP-ORDER-N
 : CHK-RUN-N ( n -- )
    CHK-U$ CHK-RUN+ ;
 
+: CHK-ERR-NONNEG ( n -- )
+   dup 0 < if drop s" <negative>" CHK-ERR exit then
+   CHK-U$ CHK-ERR ;
+
 : CHK-BUILD-PREFIX ( -- )
    s" 0 set-check" CHK-RUN-LN
    s" s" CHK-RUN+
@@ -852,9 +856,44 @@ variable CHK-DEP-ORDER-N
       1+
    repeat drop ;
 
-: CHK-RUN-PREVERIFY ( -- )
+: CHK-RUN-PREVERIFY-ACT ( -- )
    CHK-DEP-ORDER-N @ 0 > if CHK-PREVERIFY-ORDER exit then
    CHK-LABEL CHK-SOURCE CHK-PREVERIFY-FILE-AS ;
+
+: CHK-SOURCE-LIST-REPORT ( -- )
+   CHK-SOURCE-LIST @ 0= if exit then
+   s" check.f: source-list entries:" CHK-ERR-LN
+   0 begin dup CHK-POS-N @ < while
+      s"   " CHK-ERR
+      dup CHK-POS$ CHK-ERR
+      CHK-LF CHK-ERR-C
+      1+
+   repeat drop ;
+
+: CHK-PREVERIFY-DIAG-START ( -- )
+   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
+
+: CHK-PREVERIFY-DIAG-FLUSH ( -- )
+   DIAG-BUFFER$ CHK-ERR
+   DIAG-BUFFER-OFF ;
+
+: CHK-PREVERIFY-FAIL ( n -- ) {: rc:n :}
+   CHK-JSON @ if CHK-PREVERIFY-DIAG-FLUSH rc CHK-THROW then
+   s" check.f: source preverify failed before run" CHK-ERR-LN
+   s" check.f: label " CHK-ERR  CHK-LABEL CHK-ERR  CHK-LF CHK-ERR-C
+   s" check.f: throw code " CHK-ERR  rc CHK-ERR-NONNEG  CHK-LF CHK-ERR-C
+   CHK-SOURCE-LIST-REPORT
+   CHK-PREVERIFY-DIAG-FLUSH
+   rc CHK-THROW ;
+
+: CHK-RUN-PREVERIFY ( -- )
+   CHK-JSON @ {: old-json:n :}
+   CHK-PREVERIFY-DIAG-START
+   -1 CHK-JSON !
+   [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
+   old-json CHK-JSON !
+   rc 0= if DIAG-BUFFER-OFF exit then
+   rc CHK-PREVERIFY-FAIL ;
 
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL

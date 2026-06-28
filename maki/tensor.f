@@ -8,19 +8,26 @@
 
 -5000 constant E-MK-DTYPE   \ dtype tag out of range
 
+package MAKI
+public
+
 \ Element dtypes (Orin sm_87: bf16/f16 yes, no fp8).
 0 constant DT-F32   1 constant DT-F16   2 constant DT-BF16
 3 constant DT-U32   4 constant DT-I32
 5 constant DT-N             \ number of dtypes (range bound)
 
-create DT-SIZES  4 , 2 , 2 , 4 , 4 ,    \ bytes per dtype, indexed by DT-*
-
 : DT-VALID? ( n -- bool ) {: dt :}
    dt 0 < 0=  dt DT-N <  and ;
 
 : DT-SIZE ( n -- n ) {: dt :}
-   dt DT-VALID? 0= if E-MK-DTYPE throw then
-   dt cells DT-SIZES + @ ;
+   dt case
+      DT-F32  of 4 endof
+      DT-F16  of 2 endof
+      DT-BF16 of 2 endof
+      DT-U32  of 4 endof
+      DT-I32  of 4 endof
+      E-MK-DTYPE throw
+   endcase ;
 
 \ A v0 tensor shape is 2D: ( rows cols ) on the stack.
 : SHAPE-ELEMS ( n n -- n )  * ;
@@ -45,3 +52,5 @@ create DT-SIZES  4 , 2 , 2 , 4 , 4 ,    \ bytes per dtype, indexed by DT-*
 
 : BCAST-SHAPE ( n n n n -- n n ) {: r1 c1 r2 c2 :}
    r1 r2 DIM-MAX  c1 c2 DIM-MAX ;
+
+end-package

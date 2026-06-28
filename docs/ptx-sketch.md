@@ -148,7 +148,7 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
    x BLOCK-MAX {: m :}            \ uniform<f32>; inactive lanes reduce as -inf
    x m B- EXP. {: e :}            \ tile = exp(x - m)
    e BLOCK-SUM {: s :}            \ uniform<f32>; inactive lanes reduce as 0
-   e s B/  out r ROW-SPAN c ROW-STORE ;
+   e s PTX:B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
 ## Lowering rules

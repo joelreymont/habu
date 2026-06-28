@@ -38,7 +38,7 @@
    s" .visible .entry SOFTMAX_ROWS(.param .u64 p_in, .param .u64 p_out, .param .u32 p_k)" PTX-L ;
 : CG-SM-OPEN ( -- )
    s" {" PTX-L
-   s" .reg .pred %p<16>;" PTX-L
+   s" .reg .pred %p<32>;" PTX-L
    s" .reg .f32 %f<64>;" PTX-L
    s" .reg .b32 %r<64>;" PTX-L
    s" .reg .b64 %rd<32>;" PTX-L

@@ -5,6 +5,9 @@
 \ parameter tensor) lowers onto a Habu-PTX kernel, later; this is the rule itself,
 \ runnable checked Habu (Habu has a float stack: f+ f- f* f/). maki -> habu only.
 
+package MAKI
+public
+
 \ Plain SGD:        w' = w - lr*g
 : SGD ( r r r -- r ) {: w g lr :}
    w  lr g f*  f- ;
@@ -36,3 +39,5 @@
    v g b2 ADAM-V {: v2 :}
    w m2 v2 lr eps bc1 bc2 ADAM-W
    m2 v2 ;
+
+end-package

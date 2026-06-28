@@ -17,20 +17,19 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
   `package NAME` / `public` / `private` / `end-package` gives each module a real wordlist
   namespace; a bare `WORD` reference from habu core does not resolve, enforcing the one-way
   seam at the *dictionary* level. The layering:
-  - **`MAKI` is the public interface** — the user-facing API (model import, training, eval)
-    lives in `package MAKI` and exports as `MAKI:WORD`. `maki/onnx.f` (`MAKI:ONNX-LOWER`)
-    and `maki/train.f` (`MAKI:TRAIN-N`) are the worked examples.
-  - **Internal building-block modules each get their OWN package** — `FUSION` (kernel
-    fusion; `maki/fusion.f`, with the internal `FUSE-BODY` marked `private` so it is *not*
-    exported), and to follow `OPTIM` / `TENSOR` / `LOSS` / `AUTOGRAD` / `ARRAY`. The
-    PTX kernel vocabulary (`lib/ptx`) is the canonical internal module — a future
-    `package PTX`.
+  - **`MAKI` is the public interface** — model import, training, eval, and CPU reference
+    kernels live in reopened `package MAKI` blocks and export the intended API as
+    `MAKI:WORD`. Implementation helpers stay private to the package.
+  - Multi-file `MAKI` modules compose with `require`, not repeated raw includes. Each file
+    declares its dependencies, reopens `package MAKI`, defines private helpers by default,
+    and switches to `public` only for the module boundary. Tests require the module they
+    exercise and reopen `package MAKI` for bare test calls.
+  - Specialized internal vocabularies get their own package when they are a separate
+    language surface. `FUSION` is the worked example; its renderer body is `private` and
+    only the driver-level API is exported. The PTX kernel vocabulary (`lib/ptx`) is the
+    canonical future internal module — a future `package PTX`.
   - Cross-package calls use the qualified `PKG:WORD` form (or reopen the package for bare
-    names); tests reopen their module's package. Cross-cutting error constants keep the
-    global `E-MK-*` form.
-  - The core agent is adding `include` so one package can span several files without each
-    reopening it; adopt it for the multi-file `MAKI` interface once it lands. Rollout to
-    the remaining modules is dotted (`habu-roll-out-the-...`).
+    names). Cross-cutting error constants keep the global `E-MK-*` form.
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
   the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
   application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.
@@ -58,6 +57,18 @@ bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
   maki/optim.f       maki/optim-test.f \
   maki/loss.f        maki/loss-test.f \
   maki/autograd.f    maki/autograd-test.f \
+  maki/fmath.f       maki/fmath-test.f \
+  maki/softmax.f     maki/softmax-test.f \
+  maki/celoss.f      maki/celoss-test.f \
+  maki/matmul.f      maki/matmul-test.f \
+  maki/linear.f      maki/linear-test.f \
+  maki/autograd-tensor.f maki/autograd-tensor-test.f \
+  maki/loss-tensor.f maki/loss-tensor-test.f \
+  maki/layernorm.f   maki/layernorm-test.f \
+  maki/gelu.f        maki/gelu-test.f \
+  maki/embedding.f   maki/embedding-test.f \
+  maki/attention.f   maki/attention-test.f \
+  maki/mlp.f         maki/mlp-test.f \
   maki/train.f       maki/train-test.f \
   maki/onnx.f        maki/onnx-test.f \
   maki/eval.f        maki/eval-test.f \

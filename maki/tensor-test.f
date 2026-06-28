@@ -1,5 +1,10 @@
 \ maki/tensor-test.f - runnable tests for the maki tensor shape + dtype system.
 
+require lib/test.f
+require maki/tensor.f
+
+package MAKI
+
 T-RESET
 
 \ dtype byte sizes
@@ -37,3 +42,5 @@ DT-I32  DT-SIZE  4 T=
 ' BAD-DT E-MK-DTYPE TTHROWS
 
 T-REPORT
+
+end-package

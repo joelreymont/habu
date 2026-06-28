@@ -1,5 +1,8 @@
 \ maki/array-test.f - the optimizer runs at TENSOR scale (over real arrays).
 
+require lib/test.f
+require maki/array.f
+
 T-RESET
 
 create TW 4 cells allot

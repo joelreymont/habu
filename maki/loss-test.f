@@ -1,5 +1,10 @@
 \ maki/loss-test.f - runnable tests for the maki losses.
 
+require lib/test.f
+require maki/loss.f
+
+package MAKI
+
 T-RESET
 
 \ MSE: pred=0.5 tgt=0.0 -> 0.25 ; x4 -> 1
@@ -16,3 +21,5 @@ T-RESET
 0.5 1.0 L1         4.0 f* 0.5 f+ f>s  2 T=
 
 T-REPORT
+
+end-package

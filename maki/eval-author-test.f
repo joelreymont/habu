@@ -6,6 +6,8 @@
 \ emitted, ptxas-assembled, and run on the device). Load after maki/eval-device.f,
 \ maki/eval-device-sm.f, and maki/eval-author.f.
 
+package MAKI
+
 : BAD-TASK ( -- )  s" K ( -- )" 99 GRADE-AUTHOR drop ;   \ unknown task
 
 : EVAL-AUTHOR-MAIN ( -- )
@@ -17,8 +19,8 @@
    s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."              TASK-SAXPY GRADE-AUTHOR  0 T=   \ no store -> checker-rejected
 
    \ --- softmax-rows task ---
-   s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx B- EXP. {: e :} e BLOCK-SUM {: s :} e s B/ out r ROW-SPAN c ROW-STORE"  TASK-SOFTMAX GRADE-AUTHOR  2 T=   \ correct -> GREEN
-   s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx B- EXP. {: e :} e BLOCK-SUM {: s :} e s B- out r ROW-SPAN c ROW-STORE"  TASK-SOFTMAX GRADE-AUTHOR  1 T=   \ B- not B/ -> device-wrong
+   s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B/ out r ROW-SPAN c ROW-STORE"  TASK-SOFTMAX GRADE-AUTHOR  2 T=   \ correct -> GREEN
+   s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent-r,extent-c> -- ) {: in out :} ROW {: r :} in r ROW-SPAN {: xs :} xs ROW-CTX {: c :} xs c ROW-LOAD {: x :} x BLOCK-MAX {: mx :} x mx PTX:B- EXP. {: e :} e BLOCK-SUM {: s :} e s PTX:B- out r ROW-SPAN c ROW-STORE"  TASK-SOFTMAX GRADE-AUTHOR  1 T=   \ B- not B/ -> device-wrong
 
    \ --- unknown task fails closed ---
    ['] BAD-TASK E-MK-EVAL TTHROWS
@@ -27,3 +29,5 @@
    T-REPORT ;
 
 EVAL-AUTHOR-MAIN
+
+end-package

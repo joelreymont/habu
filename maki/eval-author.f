@@ -13,10 +13,18 @@
 \ (Habu Only). Load after maki/eval-device.f and maki/eval-device-sm.f.
 
 -5003 constant E-MK-EVAL          \ unknown eval task (fail-closed)
+
+package MAKI
+public
+
 0 constant TASK-SAXPY
 1 constant TASK-SOFTMAX
 
 : GRADE-AUTHOR ( ptr u8 n n -- n ) {: a u task :}
-   task TASK-SAXPY   = if a u GRADE-CANDIDATE exit then
-   task TASK-SOFTMAX = if a u GRADE-SM       exit then
-   E-MK-EVAL throw ;
+   task case
+      TASK-SAXPY   of a u GRADE-CANDIDATE endof
+      TASK-SOFTMAX of a u GRADE-SM        endof
+      E-MK-EVAL throw
+   endcase ;
+
+end-package

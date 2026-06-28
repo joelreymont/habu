@@ -1,6 +1,11 @@
 \ maki/optim-test.f - runnable tests for the maki optimizers.
 \ Float assertions scale and round (x f* 0.5 f+ f>s) to dodge binary-fp jitter.
 
+require lib/test.f
+require maki/optim.f
+
+package MAKI
+
 T-RESET
 
 \ SGD: w=1.0 g=0.5 lr=0.5 -> 1.0 - 0.25 = 0.75 ; x4 -> 3
@@ -34,3 +39,5 @@ T-RESET
    10.0 f* 0.5 f+ f>s    9 T=    \ w'
 
 T-REPORT
+
+end-package

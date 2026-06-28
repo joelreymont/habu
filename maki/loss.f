@@ -4,6 +4,9 @@
 \ the element loss reduced over a tensor (a BLOCK-SUM kernel), later; this is the
 \ element rule, runnable checked Habu. maki -> habu only.
 
+package MAKI
+public
+
 \ Squared error:        L = (pred - tgt)^2
 : MSE ( r r -- r ) {: pred tgt :}
    pred tgt f-  {: d :}  d d f* ;
@@ -15,3 +18,5 @@
 \ Absolute error:       L = |pred - tgt|
 : L1 ( r r -- r ) {: pred tgt :}
    pred tgt f-  fabs ;
+
+end-package

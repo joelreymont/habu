@@ -3,6 +3,9 @@
 \ Reopens `package MAKI` so the train words resolve bare; array words (T-FILL/T-SET/T-GET)
 \ and the harness resolve via the package global fallback.
 
+require lib/test.f
+require maki/train.f
+
 package MAKI
 
 T-RESET

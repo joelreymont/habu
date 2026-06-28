@@ -170,12 +170,38 @@ lesson — keep the specific word/code/path, cut the prose.
   loads before `render.f`, so `{: x:? :}` records show-inferred locals in checker
   state and calls `LOCSHOWXT`; `render.f` installs the printer after its type
   renderer exists.
+- **Generated candidates must honor package exports:** after `lib/ptx/collective.f`
+  moved `B-`/`B/` behind `package PTX`, maki softmax grader strings that still
+  used bare `B-`/`B/` certified as rejected. External generated code must call
+  exported package words as `PTX:B-`/`PTX:B/`; reopened-package bare names are only
+  for code loaded inside that package.
 
 ## Tool & Infra
 
 - **Test framework and project policy are separate:** `lib/test.f` owns the
   reusable suite/group/test mechanics and setup/teardown hooks; Habu-specific
   warm images, filters, and process argv live in the Habu test adapter.
+- **Source-list preverify needs its own diagnostics:** `tools/check.f --source-list`
+  can fail before the child `hb` run, so relying on the child stderr collapses to
+  exit 70. Buffer preverify checker diagnostics directly, print the source-list
+  entries in default mode, keep `--json-errors` JSON-only, and prove the behavior
+  through the `TEST:SUITE check-cli-boundary` runner instead of shell chunk-bisecting.
+- **Focused suites go through the runner support entry:** `test/gate-stdlib.f`
+  assumes `lib/process-env.f`, `test/gate-pool.f`, and runner setup are already
+  loaded; a hand prelude crashed in `PROC-ENV+`. Use
+  `bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f -- lint-libs-ptx`
+  or `-- check-cli` so the new suite groups print `GROUP:`/`PASS:` and carry their
+  process/env context.
+- **Emitter shape tests are not assembler proof:** `tools/ptx/softmax-bwd-cg.f`
+  rendered plausible text but `ptxas` rejected undeclared predicates above `%p15`;
+  `tools/ptx/softmax-bwd-opt-cg.f` rendered `SOFTMAX_BWD_OPT` while loading stale
+  `[p_x]`. For PTX emitters, keep the text fixture, then assemble the exact emitted
+  artifact before claiming device proof.
+- **Test entry files should not end in `bye`:** `maki/eval-device-test.f`,
+  `maki/eval-compare.f`, `tools/ptx/softmax-launch.f`, and
+  `tools/ptx/softmax-gradcheck.f` all printed `test: ok` and then exited nonzero
+  because of a trailing top-level `bye`. Let `T-REPORT` be the exit boundary for
+  loadable tests.
 - **In-process eval needs state rollback:** `GE-EVAL-FORGET` must restore more
   than `cp`/`ndict`/`UEND`; current wordlist and `JSON-DIAGS` leaked across
   resident tests until they were snapshotted. Runtime-wide profiler state is

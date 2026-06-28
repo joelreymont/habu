@@ -5,12 +5,16 @@
 \ maki/optim (SGD) into a training step that PROVABLY reduces the loss. The
 \ tensor/batched version maps each op onto a Habu-PTX kernel; here it runs on
 \ Habu floats so convergence is testable now. maki -> habu only.
-\ Load after maki/autograd.f, maki/loss.f, maki/optim.f.
+\ Dependencies are loaded with `require` so the file is standalone under `bin/hb --load`.
 \
 \ Wrapped in `package MAKI`: the training API exports as `MAKI:TRAIN-N` etc. The body
-\ consumes maki words still defined globally (MUL-F / MSE / MSE-GRAD / SGD / T-GET / T-SET)
-\ via the package's global-fallback lookup; once those modules join `package MAKI` the
-\ same bare references resolve inside the package (docs/forth.md "Packages").
+\ consumes package-local autograd words and still reaches the older scalar/tensor
+\ helpers through the package global fallback.
+
+require maki/autograd.f
+require maki/loss.f
+require maki/optim.f
+require maki/array.f
 
 package MAKI
 public

@@ -109,4 +109,3 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 T-RESET
 GC-RUN
 T-REPORT
-bye

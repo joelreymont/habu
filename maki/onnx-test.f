@@ -3,6 +3,9 @@
 \ maki words resolve by bare name - no redundant MAKI: qualifier inside the package
 \ (docs/forth.md "Qualify only across package boundaries").
 
+require lib/test.f
+require maki/onnx.f
+
 package MAKI
 
 T-RESET

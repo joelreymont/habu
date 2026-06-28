@@ -12,6 +12,8 @@
 \ code stays global (cross-cutting, like lib/errors.f's E-* codes); the package body
 \ reaches it via the package's global-fallback lookup.
 
+require lib/string.f
+
 -5001 constant E-MK-ONNX   \ unsupported ONNX op (fail-closed import)
 
 package MAKI

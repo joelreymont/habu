@@ -58,7 +58,7 @@ KERNEL: SOFTMAX-ROWS ( in:matrix<space-global,f32,extent-r,extent-c>
    x BLOCK-MAX {: m:uniform<f32> :}
    x m B- EXP. {: e:tile<f32,block-256,mask-live> :}
    e BLOCK-SUM {: s:uniform<f32> :}
-   e s B/  out r ROW-SPAN c ROW-STORE ;
+   e s PTX:B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
 With local inference, every intermediate annotation is redundant — the checker

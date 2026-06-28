@@ -21,4 +21,3 @@ EVD-PASS  @  1 T=                                   \ ONE green (device-correct)
 s" device-golden pass@k: green(certify AND device-correct)=" type EVD-PASS @ . s" / total=" type EVD-TOTAL @ . cr
 
 T-REPORT
-bye

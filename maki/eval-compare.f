@@ -54,4 +54,3 @@ s" WITHOUT checker: 0 / " type CMP-BUGS . s" bugs caught before execution; GPU r
 s" => the static checker catches the type/stack bug class for free; that is the checker's value. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr
 
 T-REPORT
-bye
