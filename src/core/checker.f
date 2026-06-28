@@ -476,6 +476,7 @@ create NMAP 26 cells allot
 variable NRES  variable NDI  variable NDH
 0 constant SGBAD-SYNTAX-KIND
 1 constant SGBAD-UNKNOWN-KIND
+2 constant SGBAD-BAREPTR-KIND
 variable SGBAD
 variable SGBAD-A
 variable SGBAD-U
@@ -545,6 +546,10 @@ variable LOCALBAD
 
 : SGBAD-UNKNOWN? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-UNKNOWN-KIND = and ;
+: SGBAD-BAREPTR! ( ptr u8 n -- )
+   SGBAD-BAREPTR-KIND SGBAD-SET ;
+: SGBAD-BAREPTR? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
 
 : BAD-SIG-TYPE ( ptr u8 n -- type )
    SGBAD-UNKNOWN!
@@ -632,7 +637,7 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
       THEN
    THEN
    a u s" ptr" STR= IF
-      NEXT-SIG-TOK 2dup DELIM? IF 2dup SGBAD-SYNTAX! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
+      NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
 
 create ROWMAP 26 cells allot

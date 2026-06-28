@@ -230,6 +230,15 @@ variable GDX-TRUST-MAN-U
    s" repair_class" s" fix_signature_type" s" unknown signature repair class" GDX-EXPECT-ERR-JSTR
    s" suggestion" s" Use a known stack-signature type or a single-letter type variable." s" unknown signature suggestion" GDX-EXPECT-ERR-JSTR ;
 
+: GDX-BARE-PTR-SIGNATURE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JBPTR ( ptr -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted bare ptr signature" GDX-CHECK-JSON
+   s" code" s" E-BARE-PTR-SIGNATURE" s" bare ptr signature code" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_bare_ptr_element" s" bare ptr repair class" GDX-EXPECT-ERR-JSTR
+   s" suggestion" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." s" bare ptr suggestion" GDX-EXPECT-ERR-JSTR ;
+
 : GDX-REPAIR-CLASSES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -448,6 +457,7 @@ variable GDX-TRUST-MAN-U
    GDX-ALL-ERRORS
    GDX-SARIF
    GDX-STRICT-SIGNATURES
+   GDX-BARE-PTR-SIGNATURE
    GDX-LOAD-FAIL-CLOSED
    GT-CLEANUP
    s" PASS: native checker diagnostics all-strict slice" type cr ;
@@ -463,6 +473,7 @@ variable GDX-TRUST-MAN-U
    s" hb-gate-diagnostics" GT-START
    GDX-PRIMARY-JSON
    GDX-UNKNOWN-SIGNATURE
+   GDX-BARE-PTR-SIGNATURE
    GDX-REPAIR-CLASSES
    GDX-FILE-ORIGIN
    GDX-STRICT-SIGNATURES

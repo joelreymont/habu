@@ -5,7 +5,7 @@ Gate: passing; 102.772s internal gate time on 2026-06-28 on
 Linux/aarch64 with 4 online cores. The native gate uses an 8-way checked DAG
 pool, 4-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), a direct manifest phase, attributed pool
-outcomes, and a 120s default budget (4-core ZED Box warm gate runs ~117s). The sub-90s/30s gate target remains active
+outcomes, and a 160s default budget (4-core ZED Box warm gate runs ~117-123s with quirk-fix fixtures). The sub-90s/30s gate target remains active
 work in `.dots/habu-cut-native-gate-1ac72054.md`; use
 `HABU_GATE_BUDGET_MS=<ms>` for stricter local timing checks.
 Certified: 979  Uncheckable: 0  Rejected: 0

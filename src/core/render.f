@@ -248,7 +248,7 @@ variable DSUGE  variable DSUGA
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE s" E-BAD-SIGNATURE" THEN ELSE
+   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN ;
 : DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
 : RETURN-MISMATCH? ( -- f )
@@ -263,7 +263,7 @@ variable DSUGE  variable DSUGA
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF
-      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE s" fix_signature_syntax" THEN
+      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE s" fix_signature_syntax" THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
@@ -285,9 +285,11 @@ variable DSUGE  variable DSUGA
    SGBAD @ IF
       SGBAD-UNKNOWN? IF
          s" Use a known stack-signature type or a single-letter type variable."
+      ELSE SGBAD-BAREPTR? IF
+         s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
       ELSE
          s" Repair the stack-effect comment syntax, including --."
-      THEN
+      THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
@@ -320,6 +322,10 @@ variable JPOS  variable JLINE  variable JCOL
    SGBAD-UNKNOWN? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : unknown type '" DTXT
      FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT
+   THEN
+   SGBAD-BAREPTR? IF
+     s" habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
