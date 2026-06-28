@@ -234,3 +234,14 @@ CLI/file/source-list/runtime contracts. Focused check-cli fell to 16.222s
 internal / 26.04s wall. Full hot gate passed at 47.260s internal / 50.05s wall;
 remaining critical path is engine fixtures 35.977s, stdlib tool-boundary
 29.505s, and AOT-positive 26.788s under contention.
+
+Checkpoint 2026-06-29: batched the engine fixture source-list checks. The four
+fs/process support checks now run as one unique dependency-ordered source list
+while the runtime/boundary fixtures still run separately against Habu-under-test
+or baseline `bin/hb`. Focused engine fixtures fell from 32.36s wall to 21.98s
+wall. Full hot gate passed at 45.631s internal / 48.62s wall with
+`helper-spawn=110`; remaining critical path is stdlib tool-boundary 30.047s,
+AOT-positive 26.843s, check-cli 26.452s, and engine fixtures 24.081s under
+contention. Rejected experiment: raising the nested stdlib pool from 4 to 5 on
+macOS regressed the hot full gate to 46.187s internal / 49.06s wall, so the
+4-slot nested default remains correct on this host.

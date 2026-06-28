@@ -245,6 +245,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `tools/check-test.f` kept positive verification and unterminated-string
   diagnostics as full wrapper subprocesses even though `VERIFY-SOURCE-BUF` and
   `CHECK-ALL-ERRORS-FILE` already owned those invariants.
+- **Batch source-list checks by dependency graph:** engine fixture checks for
+  fs/process libraries spawned one checker-warm child per module group even
+  though the unique dependency closure is one ordered source list. One combined
+  `GE-CHECK-SRC-LIST` preserved certification coverage and cut the focused
+  fixture slice by about 10s.
 - **Nested gate captures report outcomes:** under full gate concurrency, 1s/5s
   `RUN-ARGV-CAPTURE` calls can throw silently before `T-REPORT` (`rc 58` is
   `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:

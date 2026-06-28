@@ -53,27 +53,14 @@ GE-FILES: GE-FS-MUTATE-RUN-FILES
    lib/fs-mutate-test.f
 ;GE-FILES
 
-GE-FILES: GE-FS-MUTATE-CHECK-FILES
-   lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f
-;GE-FILES
-
 GE-FILES: GE-PROCESS-ARGV-RUN-FILES
    lib/errors.f lib/test.f lib/memory.f lib/process.f lib/process-argv.f
    lib/process-argv-test.f
 ;GE-FILES
 
-GE-FILES: GE-PROCESS-ARGV-CHECK-FILES
-   lib/errors.f lib/memory.f lib/process.f lib/process-argv.f
-;GE-FILES
-
 GE-FILES: GE-PROCESS-ENV-RUN-FILES
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
    lib/process-argv.f lib/process-env.f lib/process-env-test.f
-;GE-FILES
-
-GE-FILES: GE-PROCESS-ENV-CHECK-FILES
-   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f
-   lib/process-env.f
 ;GE-FILES
 
 GE-FILES: GE-PROCESS-CWD-RUN-FILES
@@ -82,9 +69,9 @@ GE-FILES: GE-PROCESS-CWD-RUN-FILES
    lib/process-cwd-test.f
 ;GE-FILES
 
-GE-FILES: GE-PROCESS-CWD-CHECK-FILES
-   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f
-   lib/process-env.f lib/process-cwd.f
+GE-FILES: GE-ENGINE-STDLIB-CHECK-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
 ;GE-FILES
 
 GE-FILES: GE-REPAIR-HINTS-RUN-FILES
@@ -107,40 +94,25 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    [: GE-ARG+ ;] GE-FS-MUTATE-RUN-FILES
    s" fs mutation stdlib" GE-HB-RUN ;
 
-: GE-FS-MUTATE-CHECK ( -- )
-   GE-SRC-RESET
-   [: GE-SRC-FILE+ ;] GE-FS-MUTATE-CHECK-FILES
-   s" fs mutation stdlib check" GE-CHECK-SRC-LIST ;
-
 : GE-PROCESS-ARGV-RUN ( -- )
    GE-LOAD-RESET
    [: GE-ARG+ ;] GE-PROCESS-ARGV-RUN-FILES
    s" process argv stdlib" GE-HB-RUN ;
-
-: GE-PROCESS-ARGV-CHECK ( -- )
-   GE-SRC-RESET
-   [: GE-SRC-FILE+ ;] GE-PROCESS-ARGV-CHECK-FILES
-   s" process argv check" GE-CHECK-SRC-LIST ;
 
 : GE-PROCESS-ENV-RUN ( -- )
    GE-LOAD-RESET
    [: GE-ARG+ ;] GE-PROCESS-ENV-RUN-FILES
    s" process env stdlib" GE-HB-RUN ;
 
-: GE-PROCESS-ENV-CHECK ( -- )
-   GE-SRC-RESET
-   [: GE-SRC-FILE+ ;] GE-PROCESS-ENV-CHECK-FILES
-   s" process env check" GE-CHECK-SRC-LIST ;
-
 : GE-PROCESS-CWD-RUN ( -- )
    GE-LOAD-RESET
    [: GE-ARG+ ;] GE-PROCESS-CWD-RUN-FILES
    s" process cwd stdlib" GE-HB-RUN ;
 
-: GE-PROCESS-CWD-CHECK ( -- )
+: GE-ENGINE-STDLIB-CHECK ( -- )
    GE-SRC-RESET
-   [: GE-SRC-FILE+ ;] GE-PROCESS-CWD-CHECK-FILES
-   s" process cwd check" GE-CHECK-SRC-LIST ;
+   [: GE-SRC-FILE+ ;] GE-ENGINE-STDLIB-CHECK-FILES
+   s" engine stdlib support check" GE-CHECK-SRC-LIST ;
 
 : GE-REPAIR-HINTS-RUN ( -- )
    GE-LOAD-RESET
@@ -303,13 +275,10 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 
 : GE-RUN-STD-FIXTURES ( -- )
    GE-FS-MUTATE-RUN
-   GE-FS-MUTATE-CHECK
    GE-PROCESS-ARGV-RUN
-   GE-PROCESS-ARGV-CHECK
    GE-PROCESS-ENV-RUN
-   GE-PROCESS-ENV-CHECK
    GE-PROCESS-CWD-RUN
-   GE-PROCESS-CWD-CHECK
+   GE-ENGINE-STDLIB-CHECK
    GE-HB-BASELINE-RUN ;
 
 : GE-RUN-EXTRA-FIXTURES ( -- )
@@ -584,4 +553,3 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-RUNTIME-CHECKS
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;
-
