@@ -715,6 +715,84 @@ variable GD-INC-DUP-U
    s" 0 ENUM GD-EDUP ENUM GD-EDUP drop" GE-SRC-LINE
    $4E s" GD-EDUP" s" enums reject duplicate constant names" GD-RUN-BAD-SOURCE ;
 
+: GD-EXEC-VECTOR-SOURCE ( -- )
+   GE-SRC-RESET
+   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : GD-XV-SEVEN ( -- i64 ) 7 ;" GE-SRC-LINE
+   s" : GD-XV-INSTALL-FIVE ( -- ) [: GD-XV-FIVE ;] is GD-XV-ACTION ;" GE-SRC-LINE
+   s" : GD-XV-INSTALL-SEVEN ( -- ) [: GD-XV-SEVEN ;] is GD-XV-ACTION ;" GE-SRC-LINE
+   s" GD-XV-INSTALL-FIVE" GE-SRC-LINE
+   s" GD-XV-ACTION ." GE-SRC-LINE
+   s" GD-XV-INSTALL-SEVEN" GE-SRC-LINE
+   s" GD-XV-ACTION ." GE-SRC-LINE ;
+
+: GD-EXEC-VECTOR-CHECK-SOURCE ( -- )
+   GE-SRC-RESET
+   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : GD-XV-INSTALL-FIVE ( -- ) [: GD-XV-FIVE ;] is GD-XV-ACTION ;" GE-SRC-LINE
+   s" : GD-XV-CALL ( -- i64 ) GD-XV-INSTALL-FIVE GD-XV-ACTION ;" GE-SRC-LINE ;
+
+: GD-EXEC-VECTORS ( -- )
+   GE-HB-RESET
+   GD-EXEC-VECTOR-SOURCE
+   s" hb checked execution vectors" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 5" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   SB$ s" hb checked execution vectors output" GE-EXPECT-OUT
+   GD-EXEC-VECTOR-CHECK-SOURCE
+   s" check.f execution vector certification" GE-CHECK-RUN ;
+
+: GD-EXEC-VECTOR-PACKAGE-CHECK-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package GDXV" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" defer RUN ( -- i64 )" GE-SRC-LINE
+   s" : FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : INSTALL ( -- ) [: FIVE ;] is RUN ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-XV-PKG-CALL ( -- i64 ) GDXV:INSTALL GDXV:RUN ;" GE-SRC-LINE ;
+
+: GD-EXEC-VECTOR-PACKAGE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GDXV" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" defer RUN ( -- i64 )" GE-SRC-LINE
+   s" : FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : INSTALL ( -- ) [: FIVE ;] is RUN ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" GDXV:INSTALL" GE-SRC-LINE
+   s" GDXV:RUN ." GE-SRC-LINE
+   s" hb package execution vector" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 5" GE-OUT-LINE
+   SB$ s" hb package execution vector output" GE-EXPECT-OUT
+   GD-EXEC-VECTOR-PACKAGE-CHECK-SOURCE
+   s" check.f package execution vector certification" GE-CHECK-RUN ;
+
+: GD-EXEC-VECTOR-MISUSE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" defer GD-XV-UNSET ( -- i64 )" GE-SRC-LINE
+   s" GD-XV-UNSET ." GE-SRC-LINE
+   $4C s" defer: unset execution vector" s" execution vector rejects unset call" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
+   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-BAD ( -- ) [: 1 2 ;] is GD-XV-ACTION ;" GE-SRC-LINE
+   $46 s" at 'is'" s" check.f rejects effect-mismatched execution vector assignment" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : GD-XV-BAD-TICK ( -- ) ['] GD-XV-FIVE is GD-XV-ACTION ;" GE-SRC-LINE
+   $46 s" at 'is'" s" check.f rejects raw xt execution vector assignment" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
+   s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
+   $4C s" GD-XV-NOT-DEFER" s" execution vector rejects non-defer target" GD-RUN-BAD-SOURCE ;
+
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
    s" hi" GD-SRC-DOTQ s"  cr" GE-SRC-LINE
@@ -793,6 +871,9 @@ variable GD-INC-DUP-U
    GD-STRUCTURES
    GD-STRUCTURE-MISUSE
    GD-ENUMS
+   GD-EXEC-VECTORS
+   GD-EXEC-VECTOR-PACKAGE
+   GD-EXEC-VECTOR-MISUSE
    GD-PARSING-RUNTIME
    GD-PARSING-CHECK
    GD-DATA-OVERFLOW

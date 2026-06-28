@@ -53,6 +53,15 @@ views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
 buffers, map keys, paths, and capture buffers use `ptr u8 n`. Quotation effects
 are written in brackets, for example `[ ptr u8 n -- ]`.
 
+## Execution Vectors
+
+Use checked deferred words for late-bound callbacks and backend hooks:
+`defer ACTION ( effect )` declares the stable call surface, and checked code
+installs an implementation with `[: IMPL ;] is ACTION`. Do not model dispatch as
+`variable`/`@ execute` or raw `[']` storage; the checker cannot prove those xt
+cells preserve the declared effect. An unset deferred word exits with the
+execution-vector error instead of silently jumping through zero.
+
 ## Handle Representation
 
 The checker currently has pointer types, not nominal handle types. Byte-oriented

@@ -457,8 +457,13 @@ variable CA-JSON
    k CA-ADD-SUPPORT-LINE
    k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
 
+: CA-COLLECT-DEFER ( n -- ) {: k :}
+   k CA-ADD-SUPPORT-LINE
+   k k CA-LINE-SAFE-END CA-LAST-TOK-BEFORE CA-I ! ;
+
 : CA-COLLECT-SUPPORT ( n -- ) {: k :}
    k s" TRUSTED:" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUSTED exit THEN
+   k s" defer" CA-TOK-CI= IF k CA-COLLECT-DEFER exit THEN
    k s" create" CA-TOK-CI= IF k CA-COLLECT-CREATE exit THEN
    k s" variable" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
    k s" constant" CA-TOK-CI= IF k CA-ADD-SUPPORT-CONSTANT exit THEN

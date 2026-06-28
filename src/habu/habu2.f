@@ -125,7 +125,8 @@ variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
 variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPSCRIPTARGV
 variable LPROLES        variable LPINCLUDE      variable LPSTRUCTURES
-variable LPENUMS        variable LPCOMBINATORS  variable LPXREF
+variable LPENUMS        variable LPEXECVECTOR   variable LPCOMBINATORS
+variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -357,6 +358,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
 
@@ -388,6 +390,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
@@ -657,6 +660,8 @@ create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
+$4842444546455201 constant DEFER-MAGIC
+variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 
 : EMIT-KWDATA ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
@@ -684,13 +689,15 @@ create ENDLOC-KW 58 c, 125 c,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
 
 : C-POPFLAG ( -- )  $D1002273 C-EMITW  $F9400269 C-EMITW ;
+
+: C-POP-X16 ( -- )  $D1002273 C-EMITW  $F9400270 C-EMITW ;
 
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH LABEL@ BL, ;
 
@@ -1335,6 +1342,112 @@ s" c-store-def-name" s" --" TRUST
    9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
    9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
    done LBL, ;
+
+: C-DEFER-DIE-TOKEN ( n -- ) {: rc :}
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT SYS, ;
+s" c-defer-die-token" s" n --" TRUST
+
+: C-DEFER-FIND-UNSET ( -- )
+   LBL {: found :}
+   9 LKWDEFERUNSET LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,
+   13 found CBNZ,
+      $46 C-DEFER-DIE-TOKEN
+   found LBL, ;
+s" c-defer-find-unset" s" --" TRUST
+
+: C-DEFER-CELL ( -- )
+   C-DEFER-FIND-UNSET
+   7 DATA DP-CELL LDR,
+   7 7 7 ADDI,  7 7 3 LSRI,  7 7 3 LSLI,
+   11 7 0 STR,
+   7 DATA DEFER-XT-CELL STR,
+   7 7 8 ADDI,  7 DP-CHECK  7 DATA DP-CELL STR, ;
+s" c-defer-cell" s" --" TRUST
+
+: C-DEFER-EMIT-CODE ( -- )
+   $D10043FF C-EMITW
+   $F90003FE C-EMITW
+   11 DATA DEFER-XT-CELL LDR,
+   C-X9-LIT
+   16 9 0 W-LDRX C-EMITW
+   C-CALL-BLR-X16 C-EMITW
+   $F94003FE C-EMITW
+   $910043FF C-EMITW
+   W-RET C-EMITW ;
+s" c-defer-emit-code" s" --" TRUST
+
+: C-DEFER-META-WRITE ( -- )
+   11 DEFER-MAGIC LIT64,  11 28 0 STR,  28 28 8 ADDI,
+   11 DATA DEFER-XT-CELL LDR,  11 28 0 STR,  28 28 8 ADDI, ;
+s" c-defer-meta-write" s" --" TRUST
+
+: C-DEFER-ROOM ( -- )
+   LBL LBL {: cpok ndok :}
+   9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
+      $4C C-DEFER-DIE-TOKEN
+   cpok LBL,
+   9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+      $4D C-DEFER-DIE-TOKEN
+   ndok LBL, ;
+s" c-defer-room" s" --" TRUST
+
+: C-DEFER ( -- )
+   LBL {: named :}
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   C-DEFER-ROOM
+   LTOK LABEL@ BL,  0 named CBNZ,
+      $4A C-DEFER-DIE-TOKEN
+   named LBL,
+   12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,
+   C-CLEAR-TRUSTED-STATE
+   C-PARSE-REQUIRED-SIG
+   C-DEFER-CELL
+   C-QUALIFY-DEF
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   9 DATA PEND-CELL STR,
+   C-STORE-DEF-NAME
+   CP 9 0 STR,
+   C-DEFER-EMIT-CODE
+   9 DATA PEND-CELL LDR,
+   10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,
+   C-DEFER-META-WRITE
+   NDICT NDICT 1 ADDI,
+   9 DATA PEND-CELL LDR,  9 9 0 LDR,
+   2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
+   C-CALL-TRUST-PEND
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR, ;
+s" c-defer" s" --" TRUST
+
+: C-DEFER-TARGET-META ( -- )
+   LBL LBL LBL {: named found ok :}
+   LTOK LABEL@ BL,  0 named CBNZ,
+      $4A C-DEFER-DIE-TOKEN
+   named LBL,
+   LBCAP LABEL@ BL,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   13 found CBNZ,
+      $46 C-DEFER-DIE-TOKEN
+   found LBL,
+   14 11 12 ADD,
+   15 14 0 LDR,
+   5 DEFER-MAGIC LIT64,
+   15 5 CMP,  C-EQ ok BCOND,
+      $4C C-DEFER-DIE-TOKEN
+   ok LBL,
+   14 14 8 ADDI,  14 14 0 LDR,
+   14 DATA DEFER-META-CELL STR, ;
+s" c-defer-target-meta" s" --" TRUST
+
+: J-IS ( -- )
+   C-DEFER-TARGET-META
+   LVSPILL LABEL@ BL,
+   C-POP-X16
+   11 DATA DEFER-META-CELL LDR,
+   C-X9-LIT
+   16 9 0 W-STRX C-EMITW ;
+s" j-is" s" --" TRUST
 
 : C-IMMEDIATE ( -- )
    2 3 MOVZ,  LPROT LABEL@ BL,
@@ -2111,6 +2224,7 @@ s" c-end-package" s" --" TRUST
    s" private" KEEP? IF LMAIN LABEL@ LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY THEN
    s" end-package" KEEP? IF LMAIN LABEL@ LKWENDPACKAGE 11 ['] C-END-PACKAGE CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
+   s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
    s" variable" KEEP? IF LMAIN LABEL@ LKWVAR    8 ['] C-VARIABLE CF-ENTRY THEN
    s" constant" KEEP? IF LMAIN LABEL@ LKWCONST  8 ['] C-CONSTANT CF-ENTRY THEN
@@ -2250,6 +2364,7 @@ s" em-compile-string-keywords" s" --" TRUST
    s" postpone" KEEP? IF LMAIN LABEL@ LKWPOST   8 ['] C-POSTPONE CF-ENTRY THEN
    s" does>" KEEP? IF LMAIN LABEL@ LKWDOES   5 ['] J-DOES     CF-ENTRY THEN
    s" [:" KEEP? IF LMAIN LABEL@ LKWQUOT   2 ['] J-QUOT     CF-ENTRY THEN
+   s" is" KEEP? IF LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY THEN
    s" ;]" KEEP? IF LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY THEN ;
 s" em-compile-meta-keywords" s" --" TRUST
 
@@ -2497,7 +2612,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWENDPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LKWQUOT !  LBL LKWSEMIQ ! ;
+   LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
@@ -2510,7 +2625,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPSCRIPTARGV !  LBL LPROLES !  LBL LPINCLUDE !
-   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
+   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

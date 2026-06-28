@@ -68,6 +68,11 @@ lesson — keep the specific word/code/path, cut the prose.
   ( `ptr a n [ a a -- bool ] --` ) is fully checked. `combinators.f` MAP/FOLD/EACH
   are an unchecked boundary that predates this and could likely be checked too —
   it is not a model to copy. The reusable rule is in `docs/forth.md`.
+- **Deferred execution must carry its effect:** raw xt cells (`variable`/`@ execute`
+  or `['] ... is`) let the stored implementation escape checker knowledge.
+  `defer NAME ( effect )` plus `[: IMPL ;] is NAME` keeps assignment checked, and
+  every source pre-verifier (`hb-build`, all-errors reducers) must learn new
+  top-level definers instead of treating them as ordinary tokens.
 
 ## Tool & Infra
 

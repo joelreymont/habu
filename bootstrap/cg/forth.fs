@@ -966,7 +966,8 @@ variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
 variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPSCRIPTARGV
 variable LPROLES        variable LPINCLUDE      variable LPSTRUCTURES
-variable LPENUMS        variable LPCOMBINATORS  variable LPXREF
+variable LPENUMS        variable LPEXECVECTOR   variable LPCOMBINATORS
+variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -1133,6 +1134,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
 
@@ -1164,6 +1166,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
@@ -2921,7 +2924,7 @@ variable CFSK2
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPSCRIPTARGV !  LBL LPROLES !  LBL LPINCLUDE !
-   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
+   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

@@ -86,6 +86,7 @@ variable FM-NUM-L
 : FM-CHECK-REQUIRED-CORE ( -- )
    s" src/core/checker.f" FM-REQ
    s" src/core/render.f" FM-REQ
+   s" src/core/exec-vector.f" FM-REQ
    s" src/core/sha256.f" FM-REQ
    s" src/os/linux/layout.f" FM-REQ
    s" src/os/macos/layout.f" FM-REQ

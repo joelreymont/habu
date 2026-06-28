@@ -438,6 +438,9 @@ variable BF-TMP-U
 : BF-APPEND-COMBINATORS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/combinators.f" BF-APPEND-SOURCE ;
 
+: BF-APPEND-EXEC-VECTOR ( ptr u8 n -- ) {: out:ptr outu :}
+   out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE ;
+
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/include.f" BF-APPEND-SOURCE ;
 
@@ -461,6 +464,7 @@ variable BF-TMP-U
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-STRUCTURES
    out outu BF-APPEND-ENUMS
+   out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE

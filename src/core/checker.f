@@ -1851,6 +1851,55 @@ s" <input>" DIAG-FILE!
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
+variable ISQ
+variable IS-TA
+variable IS-TU
+
+: IS-WS? ( n -- bool )
+   32 <= ;
+
+: IS-SKIP-WS ( -- )
+   BEGIN TI @ TBLEN @ < WHILE
+      TBASE @ TI @ + c@ IS-WS? 0= IF exit THEN
+      TI @ 1 + TI !
+   REPEAT ;
+
+: IS-NEXT-TOKEN ( -- ptr u8 n bool )
+   IS-SKIP-WS
+   TI @ TBLEN @ >= IF 0 0 0 0 EXIT THEN
+   TBASE @ TI @ + IS-TA !
+   0 IS-TU !
+   BEGIN TI @ TBLEN @ < WHILE
+      TBASE @ TI @ + c@ IS-WS? IF
+         IS-TA @ IS-TU @ -1 EXIT
+      THEN
+      IS-TU @ 1 + IS-TU !
+      TI @ 1 + TI !
+   REPEAT
+   IS-TA @ IS-TU @ -1 ;
+
+: IS-FAIL ( -- )
+   0 OK !
+   -1 FAILSET ! ;
+
+: IS-QUOT-ROWS ( ptr u8 n -- n )
+   PARSE-SIG-RAW
+   SGHASR @ 0= IF 2drop FRESH MK-ROW dup THEN
+   MK-QUOT ;
+
+: IS-APPLY ( n -- )
+   ISQ !
+   FRESH MK-ROW {: rest :}
+   DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
+   rest DCUR ! ;
+
+: IS-TOK ( -- )
+   IS-NEXT-TOKEN 0= IF IS-FAIL EXIT THEN
+   TOKFOLD drop
+   TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
+   FSU @ 0= IF IS-FAIL EXIT THEN
+   FSA @ FSU @ IS-QUOT-ROWS IS-APPLY ;
+
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    CAP-FAIL
@@ -1859,6 +1908,7 @@ s" <input>" DIAG-FILE!
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
    TKF TKFU @ s" {:" STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
+   TKF TKFU @ s" is" STR= IF IS-TOK ELSE
    OK @ IF TKF TKFU @ s" exit" STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" leave" STR= IF a u DEAD-OWNER! THEN THEN
    OK @ IF TKF TKFU @ s" again" STR= IF a u DEAD-OWNER! THEN THEN
@@ -1869,7 +1919,7 @@ s" <input>" DIAG-FILE!
    OK @ IF TKF TKFU @ THROW-TOK? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
    TKF TKFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    TOKIX @ 1 + TOKIX ! ;

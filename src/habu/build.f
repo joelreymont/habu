@@ -141,10 +141,25 @@ TRUSTED: V-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    dup 0= IF s" hb-build: missing defining-word name" 74 die THEN
    sig sigu V-TRUST-SIG ;
 
+: V-TRUST-DEFER-SIG {: name:ptr nameu:n :}
+   V-SKIP-WS
+   VI @ PN @ >= IF s" hb-build: missing defer signature" 74 die THEN
+   BLD-PB@ VI @ + c@ 40 <> IF s" hb-build: missing defer signature" 74 die THEN
+   VI @ 1+ VSTART !
+   41 V-SKIP-PAST
+   VFOUND @ 0= IF s" hb-build: unterminated defer signature" 74 die THEN
+   name nameu BLD-PB@ VSTART @ + VI @ VSTART @ - 1 - V-TRUST-SIG ;
+
+: V-TRUST-DEFER ( -- )
+   V-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" hb-build: missing defer name" 74 die THEN
+   name nameu V-TRUST-DEFER-SIG ;
+
 : V-RECORD-DEFINER? {: a:ptr u :}
    a u s" constant" STR= IF s" -- a" V-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR= IF s" -- ptr a" V-TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR= IF s" -- ptr a" V-TRUST-NEXT 0 0= EXIT THEN
+   a u s" defer" STR= IF V-TRUST-DEFER 0 0= EXIT THEN
    0 0= 0= ;
 
 : V-VERIFY-DEF

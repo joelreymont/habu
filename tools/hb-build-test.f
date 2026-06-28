@@ -84,11 +84,21 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    HBB-LF SB-APPEND-C
    s" variable SLOT" SB-APPEND
    HBB-LF SB-APPEND-C
+   s" defer APPLY ( i64 -- i64 )" SB-APPEND
+   HBB-LF SB-APPEND-C
    s" : SQ ( i64 -- i64 ) FIVE drop PAD drop SLOT drop dup * ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" : INC ( i64 -- i64 ) 1 + ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" : INSTALL-APPLY ( -- ) [: INC ;] is APPLY ;" SB-APPEND
    HBB-LF SB-APPEND-C
    s" EXPORT SQ" SB-APPEND
    HBB-LF SB-APPEND-C
    s" : SHOW-ARGS ( -- ) SCRIPT-ARGC 0 > if SCRIPT-ARGC . CR 0 SCRIPT-ARGV$ type cr then ;" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" INSTALL-APPLY" SB-APPEND
+   HBB-LF SB-APPEND-C
+   s" 9 APPLY . CR" SB-APPEND
    HBB-LF SB-APPEND-C
    s" 9 SQ . CR" SB-APPEND
    HBB-LF SB-APPEND-C
@@ -179,8 +189,11 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    s" -o"  >LEN PROC-ARGV+
    HBT-BAD-OUT  >LEN PROC-ARGV+ ;
 
-: HBT-81$ ( -- ptr u8 n )
+: HBT-REPL-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
+   s" 10" SB-APPEND
+   HBB-LF SB-APPEND-C
+   HBB-LF SB-APPEND-C
    s" 81" SB-APPEND
    HBB-LF SB-APPEND-C
    HBB-LF SB-APPEND-C
@@ -197,10 +210,13 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    rcn 0 <> if s" repl rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-RUN-OUT outn HBT-81$ T$= ;
+   HBT-RUN-OUT outn HBT-REPL-EXPECTED$ T$= ;
 
-: HBT-81-ARGS$ ( -- ptr u8 n )
+: HBT-REPL-ARGS-EXPECTED$ ( -- ptr u8 n )
    SB-RESET
+   s" 10" SB-APPEND
+   HBB-LF SB-APPEND-C
+   HBB-LF SB-APPEND-C
    s" 81" SB-APPEND
    HBB-LF SB-APPEND-C
    HBB-LF SB-APPEND-C
@@ -221,12 +237,12 @@ create HBT-RUN-ERR HBT-CAPTURE-CAP allot
    rcn 0 <> if s" repl args rc: " type rcn . cr HBT-RUN-OUT outn type HBT-RUN-ERR errn type then
    rcn 0 T=
    HBT-RUN-ERR errn HBT-EMPTY$ T$=
-   HBT-RUN-OUT outn HBT-81-ARGS$ T-STR= 0= if
+   HBT-RUN-OUT outn HBT-REPL-ARGS-EXPECTED$ T-STR= 0= if
       s" repl args stdout: " type HBT-RUN-OUT outn type cr
       s" actual len: " type outn . cr
-      s" expect len: " type HBT-81-ARGS$ nip . cr
+      s" expect len: " type HBT-REPL-ARGS-EXPECTED$ nip . cr
    then
-   HBT-RUN-OUT outn HBT-81-ARGS$ T$= ;
+   HBT-RUN-OUT outn HBT-REPL-ARGS-EXPECTED$ T$= ;
 
 : HBT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;

@@ -441,6 +441,15 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   this and is *not* a model to copy. Only drop to an unchecked boundary after a
   minimal reproducer proves the checker rejects the specific higher-order shape,
   and file a checker-capability gap (per the Checker-Miss RCA below).
+- **Execution vectors are typed `defer` words, not raw xt cells.**
+  `defer ACTION ( in -- out )` declares the vector's public effect, and checked
+  code installs an implementation with a typed quotation:
+  `: INIT ( -- ) [: IMPL ;] is ACTION ;`. The checker must prove the quotation
+  effect exactly matches the deferred word's declared effect. Do not write
+  `variable ACTION`/`@ execute` dispatch tables or `['] IMPL is ACTION`; raw xt
+  storage loses the effect. Calling an unset deferred word fails closed with the
+  execution-vector error. `@EXECUTE` is not a general replacement for `defer`
+  until its zero no-op behavior has a checked stack-effect model.
 - **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
   unknown stack-comment tokens before checked source can use them. Add parser,
   renderer, and `CC-*` checker support, refresh the native binary, then use the

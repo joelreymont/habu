@@ -68,7 +68,7 @@ variable SL-DRIVER-U
    s" src/arch/arm64/asm.f src/arch/arm64/icode.f " type
    s" src/arch/arm64/mnem.f " type
    SL-TARGET-LAYOUT-SYS
-   s" src/core/sha256.f src/core/combinators.f " type
+   s" src/core/exec-vector.f src/core/sha256.f src/core/combinators.f " type
    s" src/habu/layout.f src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type

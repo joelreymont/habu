@@ -71,8 +71,10 @@ create CAE-LF-BYTE 10 c,
    s" 7 constant CAE-SUP-K" SB-APPEND CAE-LF
    s" variable CAE-SUP-V" SB-APPEND CAE-LF
    s" create CAE-SUP-B 1 cells allot" SB-APPEND CAE-LF
+   s" defer CAE-SUP-XV ( i64 -- i64 )" SB-APPEND CAE-LF
    s" TRUSTED: CAE-SUP-T ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
-   s" : CAE-OK-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + ;" SB-APPEND CAE-LF
+   s" : CAE-OK-XV ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" : CAE-OK-SUP ( i64 -- i64 ) [: CAE-OK-XV ;] is CAE-SUP-XV CAE-SUP-XV CAE-SUP-T CAE-SUP-K + ;" SB-APPEND CAE-LF
    s" : CAE-BAD-SUP ( i64 -- i64 ) CAE-SUP-T CAE-SUP-K + CAE-SUP-V @ drop CAE-SUP-B drop dup ;" SB-APPEND CAE-LF
    SB$ ;
 
