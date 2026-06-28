@@ -441,14 +441,26 @@ variable GD-INC-DUP-U
    s" USE-CK ( -- n ) CK:EXPORTED" GE-SRC-CHECK-LINE
    s" BAD-CK ( -- n ) HELP" GE-SRC-CHECK-LINE ;
 
-: GD-PACKAGE-CHECK-GOOD-SOURCE ( -- )
-   GE-SRC-RESET
+: GD-PACKAGE-CHECK-GOOD-BODY ( -- )
    s" package CK" GE-SRC-LINE
    s" : HELP ( -- n ) 2 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : EXPORTED ( -- n ) HELP 5 + ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
+
+: GD-CHECK-BAD-ALL ( ptr u8 n -- )
+   GE-CHECK-ARGV
+   s" --all-errors" GE-ARG+
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 -rot GE-EXPECT-RC ;
+
+: GD-PACKAGE-NORET-GOOD-BODY ( -- )
+   s" package GD-NR" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-NR-OK ( n -- n ) dup 0 < if GD-NR:STOP then 1 + ;" GE-SRC-LINE ;
 
 : GD-PACKAGE-CHECK ( -- )
    GE-HB-RESET
@@ -457,19 +469,10 @@ variable GD-INC-DUP-U
    SB-RESET
    s" -1" GE-OUT-LINE
    s" 1" GE-OUT-LINE
-   SB$ s" hb package checker scope output" GE-EXPECT-OUT
-   GD-PACKAGE-CHECK-GOOD-SOURCE
-   s" check.f package certification" GE-CHECK-RUN ;
+   SB$ s" hb package checker scope output" GE-EXPECT-OUT ;
 
 : GD-PACKAGE-NORET ( -- )
    GE-HB-RESET
-   GE-SRC-RESET
-   s" package GD-NR" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
-   s" end-package" GE-SRC-LINE
-   s" : GD-NR-OK ( n -- n ) dup 0 < if GD-NR:STOP then 1 + ;" GE-SRC-LINE
-   s" check.f package no-return metadata" GE-CHECK-RUN
    GE-SRC-RESET
    s" package GD-NR" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -550,8 +553,9 @@ variable GD-INC-DUP-U
    s" 2" GE-OUT-LINE
    s" 4" GE-OUT-LINE
    s" 5" GE-OUT-LINE
-   SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT
-   GE-SRC-RESET
+   SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT ;
+
+: GD-EXPLICIT-REDEF-CHECK-BODY ( -- )
    s" : GD-CRED ( -- n ) 1 ;" GE-SRC-LINE
    s" undefine GD-CRED" GE-SRC-LINE
    s" : GD-CRED ( -- n ) 2 ;" GE-SRC-LINE
@@ -561,8 +565,7 @@ variable GD-INC-DUP-U
    s" defer GD-CDV ( -- n )" GE-SRC-LINE
    s" : GD-CDV-FIVE ( -- n ) 5 ;" GE-SRC-LINE
    s" : GD-CDV-INSTALL ( -- ) [: GD-CDV-FIVE ;] is GD-CDV ;" GE-SRC-LINE
-   s" : GD-CDV-CALL ( -- n ) GD-CDV-INSTALL GD-CDV ;" GE-SRC-LINE
-   s" check.f explicit undefine redefinition" GE-CHECK-RUN ;
+   s" : GD-CDV-CALL ( -- n ) GD-CDV-INSTALL GD-CDV ;" GE-SRC-LINE ;
 
 : GD-PACKAGE-SHADOW-POSITIVES ( -- )
    GE-HB-RESET
@@ -786,8 +789,7 @@ variable GD-INC-DUP-U
    s" GD-XV-INSTALL-SEVEN" GE-SRC-LINE
    s" GD-XV-ACTION ." GE-SRC-LINE ;
 
-: GD-EXEC-VECTOR-CHECK-SOURCE ( -- )
-   GE-SRC-RESET
+: GD-EXEC-VECTOR-CHECK-BODY ( -- )
    s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
    s" : GD-XV-FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
    s" : GD-XV-INSTALL-FIVE ( -- ) [: GD-XV-FIVE ;] is GD-XV-ACTION ;" GE-SRC-LINE
@@ -800,12 +802,9 @@ variable GD-INC-DUP-U
    SB-RESET
    s" 5" GE-OUT-LINE
    s" 7" GE-OUT-LINE
-   SB$ s" hb checked execution vectors output" GE-EXPECT-OUT
-   GD-EXEC-VECTOR-CHECK-SOURCE
-   s" check.f execution vector certification" GE-CHECK-RUN ;
+   SB$ s" hb checked execution vectors output" GE-EXPECT-OUT ;
 
-: GD-EXEC-VECTOR-PACKAGE-CHECK-SOURCE ( -- )
-   GE-SRC-RESET
+: GD-EXEC-VECTOR-PACKAGE-CHECK-BODY ( -- )
    s" package GDXV" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" defer RUN ( -- i64 )" GE-SRC-LINE
@@ -828,9 +827,7 @@ variable GD-INC-DUP-U
    s" hb package execution vector" GE-HB-RUN-STDIN
    SB-RESET
    s" 5" GE-OUT-LINE
-   SB$ s" hb package execution vector output" GE-EXPECT-OUT
-   GD-EXEC-VECTOR-PACKAGE-CHECK-SOURCE
-   s" check.f package execution vector certification" GE-CHECK-RUN ;
+   SB$ s" hb package execution vector output" GE-EXPECT-OUT ;
 
 : GD-EXEC-VECTOR-MISUSE ( -- )
    GE-HB-RESET
@@ -839,25 +836,23 @@ variable GD-INC-DUP-U
    s" GD-XV-UNSET ." GE-SRC-LINE
    $4C s" defer: unset execution vector" s" execution vector rejects unset call" GD-RUN-BAD-SOURCE
    GE-SRC-RESET
-   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
-   s" : GD-XV-BAD ( -- ) [: 1 2 ;] is GD-XV-ACTION ;" GE-SRC-LINE
-   $46 s" at 'is'" s" check.f rejects effect-mismatched execution vector assignment" GE-CHECK-RUN-BAD
-   GE-SRC-RESET
-   s" defer GD-XV-ACTION ( -- i64 )" GE-SRC-LINE
-   s" : GD-XV-FIVE ( -- i64 ) 5 ;" GE-SRC-LINE
-   s" : GD-XV-BAD-TICK ( -- ) ['] GD-XV-FIVE is GD-XV-ACTION ;" GE-SRC-LINE
-   $46 s" at 'is'" s" check.f rejects raw xt execution vector assignment" GE-CHECK-RUN-BAD
-   GE-SRC-RESET
-   s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
-   s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
-   $46 s" at 'is'" s" check.f rejects non-defer execution vector target" GE-CHECK-RUN-BAD
+   s" defer GD-XV-ACTION-A ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-BAD-A ( -- ) [: 1 2 ;] is GD-XV-ACTION-A ;" GE-SRC-LINE
+   s" defer GD-XV-ACTION-B ( -- i64 )" GE-SRC-LINE
+   s" : GD-XV-FIVE-B ( -- i64 ) 5 ;" GE-SRC-LINE
+   s" : GD-XV-BAD-TICK-B ( -- ) ['] GD-XV-FIVE-B is GD-XV-ACTION-B ;" GE-SRC-LINE
+   s" : GD-XV-NOT-DEFER-C ( -- ) ;" GE-SRC-LINE
+   s" : GD-XV-BAD-TARGET-C ( -- ) [: ;] is GD-XV-NOT-DEFER-C ;" GE-SRC-LINE
+   s" check.f rejects execution vector misuse batch" GD-CHECK-BAD-ALL
+   s" gd-xv-bad-a" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
+   s" gd-xv-bad-tick-b" s" check.f rejects raw xt execution vector assignment" GE-EXPECT-ERR-HAS
+   s" gd-xv-bad-target-c" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
    s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
    $4C s" GD-XV-NOT-DEFER" s" execution vector rejects non-defer target" GD-RUN-BAD-SOURCE ;
 
-: GD-CASE-SOURCE ( -- )
-   GE-SRC-RESET
+: GD-CASE-BODY ( -- )
    s" : GD-CASE-PICK ( n -- n ) case 1 of 10 endof 2 of 20 endof 30 swap endcase ;" GE-SRC-LINE
    s" : GD-CASE-NEST ( n n -- n ) {: inner:n outer:n :}" GE-SRC-LINE
    s"    outer case" GE-SRC-LINE
@@ -870,6 +865,10 @@ variable GD-INC-DUP-U
    s" : PICK ( n -- n ) case 7 of 70 endof 80 swap endcase ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : GD-CASE-PKG ( n -- n ) GDCASE:PICK ;" GE-SRC-LINE ;
+
+: GD-CASE-SOURCE ( -- )
+   GE-SRC-RESET
+   GD-CASE-BODY ;
 
 : GD-CASES ( -- )
    GE-HB-RESET
@@ -894,21 +893,18 @@ variable GD-INC-DUP-U
    s" 99" GE-OUT-LINE
    s" 70" GE-OUT-LINE
    s" 80" GE-OUT-LINE
-   SB$ s" hb checked case control output" GE-EXPECT-OUT
-   GD-CASE-SOURCE
-   s" check.f checked case certification" GE-CHECK-RUN ;
+   SB$ s" hb checked case control output" GE-EXPECT-OUT ;
 
 : GD-CASE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
    s" : GD-CASE-BAD-ARM ( n -- n ) case 1 of 10 11 endof 20 swap endcase ;" GE-SRC-LINE
-   $46 s" gd-case-bad-arm" s" check.f rejects case effect mismatch" GE-CHECK-RUN-BAD
-   GE-SRC-RESET
    s" : GD-CASE-MISSING-END ( n -- n ) case 1 of 10 endof ;" GE-SRC-LINE
-   $46 s" gd-case-missing-end" s" check.f rejects unterminated case" GE-CHECK-RUN-BAD
-   GE-SRC-RESET
    s" : GD-CASE-ORPHAN-OF ( n -- n ) 1 of 2 endof ;" GE-SRC-LINE
-   $46 s" gd-case-orphan-of" s" check.f rejects of outside case" GE-CHECK-RUN-BAD ;
+   s" check.f rejects case misuse batch" GD-CHECK-BAD-ALL
+   s" gd-case-bad-arm" s" check.f rejects case effect mismatch" GE-EXPECT-ERR-HAS
+   s" gd-case-missing-end" s" check.f rejects unterminated case" GE-EXPECT-ERR-HAS
+   s" gd-case-orphan-of" s" check.f rejects of outside case" GE-EXPECT-ERR-HAS ;
 
 : GD-PARSING-RUNTIME-SOURCE ( -- )
    GE-SRC-RESET
@@ -927,14 +923,21 @@ variable GD-INC-DUP-U
    s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE s" bye" GE-OUT-LINE s" yo" GE-OUT-LINE
    SB$ s" hb parsing-word runtime surface output" GE-EXPECT-OUT ;
 
-: GD-PARSING-CHECK-SOURCE ( -- )
-   GE-SRC-RESET
+: GD-PARSING-CHECK-BODY ( -- )
    s" : DQ ( -- ) " GE-SRC+ s" ok" GD-SRC-DOTQ s"  ;" GE-SRC-LINE
    s" : CQ ( -- ptr u8 n ) " GE-SRC+ s" ok" GD-SRC-CQ s"  count ;" GE-SRC-LINE ;
 
-: GD-PARSING-CHECK ( -- )
-   GD-PARSING-CHECK-SOURCE
-   s" check.f parsing-word certification" GE-CHECK-RUN ;
+: GD-CHECK-POSITIVE-BATCH ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GD-PACKAGE-CHECK-GOOD-BODY
+   GD-PACKAGE-NORET-GOOD-BODY
+   GD-EXPLICIT-REDEF-CHECK-BODY
+   GD-EXEC-VECTOR-CHECK-BODY
+   GD-EXEC-VECTOR-PACKAGE-CHECK-BODY
+   GD-CASE-BODY
+   GD-PARSING-CHECK-BODY
+   s" check.f dictionary positive certification batch" GE-CHECK-RUN ;
 
 : GD-DATA-OVERFLOW ( -- )
    GE-HB-RESET
@@ -996,7 +999,7 @@ variable GD-INC-DUP-U
    GD-CASES
    GD-CASE-MISUSE
    GD-PARSING-RUNTIME
-   GD-PARSING-CHECK
+   GD-CHECK-POSITIVE-BATCH
    GD-DATA-OVERFLOW
    GD-NAMED-ROW-RUN
    GD-XREF

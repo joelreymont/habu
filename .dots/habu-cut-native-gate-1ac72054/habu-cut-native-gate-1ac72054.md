@@ -215,3 +215,13 @@ one `tools/check.f --json-errors --all-errors` run with per-word class
 assertions. Focused diagnostics repair fell to 11.82s with 3 helper spawns. Full
 hot gate passed at 48.621s internal / 51.61s wall with `warm-hit=16`,
 `maker-hit=1`, `candidate-hit=1`, and `helper-spawn=123`.
+
+Checkpoint 2026-06-28: batched dictionary checker work without adding verifier
+state to the shared warm runner. A direct `verify-source.f` bake overflowed the
+warm runner's persisted checker signature table, so dictionary positives now run
+as one checker-warm `tools/check.f` batch and execution-vector/CASE negatives
+run as two `--all-errors` batches with per-case stderr needles. Focused
+dictionary wrapper passed at 30.52s wall after dead wrapper removal. Full hot
+gate passed at 48.101s internal / 51.09s wall with `helper-spawn=113`;
+remaining critical path is engine fixtures 36.535s, stdlib check-cli 30.148s,
+stdlib tool-boundary 29.788s, and AOT-positive 27.071s under contention.

@@ -987,6 +987,11 @@ lesson — keep the specific word/code/path, cut the prose.
   shared warm image can leave too little dictionary/data headroom for tools that
   are loaded later. Prefer explicit multi-file warm loads for the boundary that
   needs them, and measure cached child time separately from warm build/cleanup.
+- **Do not bake verifier cores into the gate runner for one slice:** adding
+  `src/habu/verify-source.f` to `TR-RUNNER-SUPPORT-FILES` overflowed the warm
+  runner's persisted checker signature table (`checker: user sigs snapshot too
+  large`). Batch dictionary checker cases through the existing checker warm image
+  unless the shared runner really needs the verifier resident.
 - **GPU readback args are dst-then-src; verify the golden by hand:** maki AXPY on
   the Orin produced `y[0]` unchanged because `cuMemcpyDtoH_v2` was called as
   `(srcDevice dstHost n)` — it is `(dstHost srcDevice n)`. The kernel was correct
