@@ -119,7 +119,7 @@ $D63F0200 constant C-CALL-BLR-X16
    ldone LBL, ;
 
 \ ---- source setup: baked LSRC or stdin ----
-variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH
+variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
@@ -130,6 +130,8 @@ variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
+\ B2: "habu: local must be at word top, not in a loop/branch, quotation, or after exit\n" ($50 bytes)
+create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, $61 c, $6C c, $20 c, $6D c, $75 c, $73 c, $74 c, $20 c, $62 c, $65 c, $20 c, $61 c, $74 c, $20 c, $77 c, $6F c, $72 c, $64 c, $20 c, $74 c, $6F c, $70 c, $2C c, $20 c, $6E c, $6F c, $74 c, $20 c, $69 c, $6E c, $20 c, $61 c, $20 c, $6C c, $6F c, $6F c, $70 c, $2F c, $62 c, $72 c, $61 c, $6E c, $63 c, $68 c, $2C c, $20 c, $71 c, $75 c, $6F c, $74 c, $61 c, $74 c, $69 c, $6F c, $6E c, $2C c, $20 c, $6F c, $72 c, $20 c, $61 c, $66 c, $74 c, $65 c, $72 c, $20 c, $65 c, $78 c, $69 c, $74 c, $0A c,
 create ZBYTE 0 c,
 
 : ZBYTES, ( ptr u8 n -- )
@@ -277,7 +279,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LCRASHH LABEL@ B,
    LBPH LABEL@ LBL,  BPH-KW 9 BYTES,
    LBPSH LABEL@ LBL, BPS-KW 15 BYTES,
-   LBPWH LABEL@ LBL, BPW-KW 15 BYTES, ;
+   LBPWH LABEL@ LBL, BPW-KW 15 BYTES,
+   LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -1549,19 +1552,21 @@ s" j-is" s" --" TRUST
    LTOK LABEL@ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-LIT  bk LBL, ;
 
+: C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
+   1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $50 MOVZ,  NR-WRITE SYS,
+   0 $4B MOVZ,  NR-EXIT SYS, ;
+s" c-lbrace-die" s" --" TRUST
+
 : C-LBRACE-GUARDS ( -- )
    LBL LBL LBL {: cfok xok qlok :}
    5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      C-LBRACE-DIE
    cfok LBL,
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      C-LBRACE-DIE
    qlok LBL,
    11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      C-LBRACE-DIE
    xok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
@@ -2618,7 +2623,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !
-   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !
+   LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSHBANG ! ;
 
 : EMIT-LABEL-SOURCES ( -- )

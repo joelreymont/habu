@@ -332,6 +332,17 @@ variable GDX-TRUST-MAN-U
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
 
+: GDX-LOCAL-IN-LOOP ( -- )   \ B2: a local inside control flow aborts with a clear message, not a bare {:
+   GE-HB-RESET  GE-SRC-RESET
+   s" : BAD ( -- ) 3 0 do {: i :} i . loop ;" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   $4B s" B2 local-in-loop exits 75" GE-EXPECT-RC
+   s" must be at word top" s" B2 local-in-loop diagnostic" GE-EXPECT-ERR-HAS
+   GE-HB-RESET  GE-SRC-RESET
+   s" : OKL ( n -- n ) {: a :} a ;" GE-SRC-LINE
+   s" 5 OKL ." GE-SRC-LINE
+   s" B2 word-top local still compiles" GE-HB-RUN-STDIN ;
+
 : GDX-LOAD-FAIL-CLOSED ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -466,6 +477,7 @@ variable GDX-TRUST-MAN-U
    s" hb-gate-diagnostics-file-unsafe" GT-START
    GDX-FILE-ORIGIN
    GDX-UNSAFE-CHECKS
+   GDX-LOCAL-IN-LOOP
    GT-CLEANUP
    s" PASS: native checker diagnostics file-unsafe slice" type cr ;
 
@@ -478,6 +490,7 @@ variable GDX-TRUST-MAN-U
    GDX-FILE-ORIGIN
    GDX-STRICT-SIGNATURES
    GDX-UNSAFE-CHECKS
+   GDX-LOCAL-IN-LOOP
    GDX-LOAD-FAIL-CLOSED
    GDX-ALL-ERRORS
    GDX-UNDEFINED-RECURSIVE
