@@ -810,6 +810,12 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
    s" +!" s" n ptr n --" PT+
    s" c@" s" ptr u8 -- u8" PT+
    s" c!" s" u8 ptr u8 --" PT+
+   s" atomic@" s" ptr a -- a" PT+
+   s" atomic!" s" a ptr a --" PT+
+   s" atomic-add" s" n ptr n -- n" PT+
+   s" atomic-cas" s" a a ptr a -- a" PT+
+   s" fence" s" --" PT+
+   s" run-in-stack" s" n ptr u8 n --" PT+
    s" count" s" ptr u8 -- ptr u8 n" PT+ ;
 
 : PT-OUTPUT-PRIMS ( -- )
