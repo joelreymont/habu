@@ -174,6 +174,10 @@ TEST-SUITE string-helpers
    lib/errors.f lib/string.f lib/string-test.f
 ;TEST-SUITE
 
+TEST-SUITE ffi-abi
+   lib/errors.f lib/string.f lib/test.f lib/ffi-abi.f lib/ffi-abi-test.f
+;TEST-SUITE
+
 TEST-SUITE ffi-cabi
    lib/errors.f lib/string.f lib/test.f lib/ffi.f lib/ffi-test.f
 ;TEST-SUITE

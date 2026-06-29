@@ -264,16 +264,13 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
 ## Milestones
 
 1. **Host enablement — a real C-ABI FFI + CUDA Driver harness (prerequisite,
-   large).** Habu reaches the OS only via raw `svc` syscalls; it has **no
-   userspace function-call ABI** (`C-CALL` is internal codegen; no `dlopen`/
-   `dlsym`). This is an **AAPCS64 call trampoline** — only the subset the CUDA
+   large).** Habu has a checked **AAPCS64 call trampoline** for the subset the CUDA
    Driver calls use (scalar int/ptr/float args + out-pointers; no HFA/HVA/
    variadics), not the whole standard: x0–x7 int args, **v0–v7 FP args**, x8
    indirect-result, stack spill for args ≥9, callee-saved x19–x28 + 16-byte SP;
-   pointer/out-param and `void**`-`kernelParams` struct marshalling with
-   by-pointer readback; a **first-symbol bootstrap** (how `dlopen`/`dlsym` are
-   resolved before any FFI exists — a build-linked libdl entry table or an ELF
-   link-map resolver); `dlopen`/`dlsym` resolving libcuda at the **Tegra path**
+   pointer/out-param and `void**`-`kernelParams` marshalling with by-pointer
+   readback. Linux resolves `dlopen`/`dlsym` from dynamic ELF loader slots before
+   calling libcuda at the **Tegra path**
    (`/usr/lib/aarch64-linux-gnu/tegra/libcuda.so`, not the toolkit stub); then the
    Driver harness (`cuInit`/`cuCtxCreate`/`cuMemAlloc`/`cuMemcpy` H2D+D2H/
    `cuModuleLoad`/`cuModuleGetFunction`/`cuLaunchKernel`) + the launch-ABI check.

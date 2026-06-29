@@ -4,7 +4,7 @@
 \ tools/lint/lib.f tools/stdlib-manifest-test.f
 
 $30000 constant SMT-MAN-CAP
-$10000 constant SMT-DOC-CAP
+$12000 constant SMT-DOC-CAP
 $80000 constant SMT-PUB-CAP                 \ public-signatures JSON for the whole stdlib
 $4000 constant SMT-ERR-CAP
 $80000 constant SMT-STR-CAP

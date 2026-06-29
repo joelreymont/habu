@@ -895,30 +895,45 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
-1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked C-ABI foreign calls over dlopen/dlsym and the AAPCS64 trampoline
-1	ffi	lib/ffi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	validate a scratch-buffer slot index
-1	ffi	lib/ffi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	validate a caller-supplied scratch-buffer count
-1	ffi	lib/ffi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI argument slot index
-1	ffi	lib/ffi.f	word	FFI-FSLOT	(n -- ptr r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI floating-point register slot index
-1	ffi	lib/ffi.f	word	FFI-STACK-SLOT	(n -- ptr n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI stack spill slot index
-1	ffi	lib/ffi.f	word	FFI-STACK-FSLOT	(n -- ptr r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	address of FFI floating-point stack spill slot index
-1	ffi	lib/ffi.f	word	FFI-ARG!	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one cell into an FFI argument slot
-1	ffi	lib/ffi.f	word	FFI-FARG!	(r n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one float into an FFI floating-point register slot
-1	ffi	lib/ffi.f	word	FFI-STACK!	(n n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one cell into an FFI stack spill slot
-1	ffi	lib/ffi.f	word	FFI-FSTACK!	(r n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store one float into an FFI stack spill slot
-1	ffi	lib/ffi.f	word	FFI-X8!	(n --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	store the AAPCS64 indirect-result register cell
+1	ffi-abi	lib/ffi-abi.f	module			lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	checked AAPCS64 FFI calls and marshalling without dynamic loader slots
+1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a scratch-buffer slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a caller-supplied scratch-buffer count
+1	ffi-abi	lib/ffi-abi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI argument slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FSLOT	(n -- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI floating-point register slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI stack spill slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-FSLOT	(n -- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI floating-point stack spill slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-ARG!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one cell into an FFI argument slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-PTR-ARG!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	store one pointer into an FFI argument slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FARG!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one float into an FFI floating-point register slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one cell into an FFI stack spill slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FSTACK!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one float into an FFI stack spill slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-X8!	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store the AAPCS64 indirect-result register cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT@	(ptr n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	read a caller-owned out-param cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT!	(n ptr n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	write a caller-owned out-param cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-COUNT	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the current kernelParams count
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-RESET	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	clear the kernelParams pointer array
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-CHECK	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a kernelParams slot index
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-PTR-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one kernelParams pointer slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-VAL-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one library-owned kernelParams value cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-BUMP	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	advance the kernelParams count past one written slot
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a caller-owned kernel parameter pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-N+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a scalar kernel parameter in library-owned storage
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address and count
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS>N	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address as a cell
+1	ffi-abi	lib/ffi-abi.f	word	CALL0	(n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with no arguments
+1	ffi-abi	lib/ffi-abi.f	word	CALL1	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with one cell argument
+1	ffi-abi	lib/ffi-abi.f	word	CALL2	(n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with two cell arguments
+1	ffi-abi	lib/ffi-abi.f	word	CALL3	(n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with three cell arguments
+1	ffi-abi	lib/ffi-abi.f	word	CALL4	(n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with four cell arguments
+1	ffi-abi	lib/ffi-abi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with five cell arguments
+1	ffi-abi	lib/ffi-abi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with six cell arguments
+1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLN	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function of any arity; arg cells preset via FFI-ARG!, spills past 8 to the stack
+1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning x0
+1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
+1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
+1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked dynamic loading layer over the AAPCS64 FFI ABI
 1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
 1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
-1	ffi	lib/ffi.f	word	CALL0	(n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with no arguments
-1	ffi	lib/ffi.f	word	CALL1	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with one cell argument
-1	ffi	lib/ffi.f	word	CALL2	(n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with two cell arguments
-1	ffi	lib/ffi.f	word	CALL3	(n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with three cell arguments
-1	ffi	lib/ffi.f	word	CALL4	(n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with four cell arguments
-1	ffi	lib/ffi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with five cell arguments
-1	ffi	lib/ffi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function pointer with six cell arguments
-1	ffi	lib/ffi.f	word	FFI-CALLABI	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning x0
-1	ffi	lib/ffi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
-1	ffi	lib/ffi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	copy a byte-string into a buffer and NUL-terminate it
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range
@@ -938,7 +953,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fmt	lib/fmt.f	word	SB-FIX	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a float with k decimal places, round half-up
 1	fmt	lib/fmt.f	word	U.0	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
 1	fmt	lib/fmt.f	word	F.N	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a float with k decimal places
-1	ffi	lib/ffi.f	word	FFI-CALLN	(n n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	call a function of any arity; arg cells preset via FFI-ARG!, spills past 8 to the stack
 1	stats	lib/stats.f	module			lib/stats-test.f	docs/stdlib.md	stdlib-stats	active	float-array summary statistics
 1	stats	lib/stats.f	word	FMIN2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum of two floats
 1	stats	lib/stats.f	word	FMAX2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	maximum of two floats

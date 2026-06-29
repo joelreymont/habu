@@ -166,10 +166,12 @@ knowledge is required:
 The plan review originally surfaced FFI and parametric stack types as
 prerequisites. Both are now landed on the Linux/aarch64 Orin path:
 
-1. **AAPCS64 FFI + dynamic ELF:** `lib/ffi.f` calls CUDA Driver functions through
-   loader-resolved `dlopen`/`dlsym` slots, with integer/pointer calls, stack-spill
-   support, and float-return helpers. Current device tools still need stronger
-   fail-closed rc wrappers and cleanup (dot `habu-make-ptx-device-c0eb12a3`).
+1. **AAPCS64 FFI + dynamic ELF:** `lib/ffi-abi.f` provides target-independent
+   integer/pointer calls, stack-spill support, float-return helpers, out-param
+   readback, and `void**` kernelParams packing. `lib/ffi.f` adds the Linux
+   dynamic loader layer through loader-resolved `dlopen`/`dlsym` slots. Current
+   device tools still need stronger fail-closed rc wrappers and cleanup (dot
+   `habu-make-ptx-device-c0eb12a3`).
 2. **Parametric checker terms:** signatures such as
    `span<space-global,f32,extent-n>` and `tile<f32,block-256,mask-live>` parse,
    render, unify field-by-field, and gate `KERNEL:` bodies. Fresh per-call rigid

@@ -261,7 +261,9 @@ points stay listed.
 - `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.
-- `lib/ffi.f` — checked C-ABI foreign-call library: dlopen/dlsym plus AAPCS64 x0-x8, d0-d7, stack-spill, and int/float-return trampolines.
+- `lib/ffi-abi.f` — checked target-independent AAPCS64 FFI calls and marshalling: x0-x8, d0-d7, stack-spill, out-params, kernelParams, and int/float-return trampolines.
+- `lib/ffi-abi-test.f` — focused coverage for portable FFI marshalling without dynamic loader slots.
+- `lib/ffi.f` — checked dynamic loading layer over the FFI ABI: dlopen/dlsym through target-provided loader slots.
 - `lib/ffi-test.f` — focused coverage for FFI dlopen/dlsym, fixed-arity calls, C-string marshalling, FP args/returns, x8, and stack spill.
 - `lib/float.f` — checked decimal string to IEEE-double parsing (STR>FLOAT) with power-of-ten scaling.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.

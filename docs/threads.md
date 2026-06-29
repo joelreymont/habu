@@ -100,8 +100,9 @@ each (confirm cell-by-cell in Step 0):
 (loop stack), `LVD-CELL`/`VSP-CELL` (locals/var state), `HND-CELL` (catch/throw
 frame head), `INP-CELL`/`INE-CELL` (input cursor), `TKA-CELL`/`TKL-CELL` (current
 token), `EVALD-CELL` (eval depth), `EVALERR-CELL`, `REPLH-CELL` (repl handler),
-plus the FFI scratch buffers `FFI-BUF/FFI-FBUF/FFI-STACK-BUF/FFI-DLBUF`
-(`lib/ffi.f:9` — "single-threaded scratch buffers ... Do not nest").
+plus the FFI scratch buffers `FFI-BUF/FFI-FBUF/FFI-STACK-BUF`,
+`FFI-KPARAM-PBUF/FFI-KPARAM-VBUF`, and `FFI-DLBUF`
+(`lib/ffi-abi.f:8` / `lib/ffi.f:7` — single-threaded scratch; do not nest).
 
 **Compile-only → stay process-global (untouched while tasks run):**
 `DP-CELL`/`CP`/`NDICT` (dictionary + code cursors, `here/allot/,/c,` via
@@ -161,8 +162,8 @@ shrinks the migration set well below codex's initial worst case.
 - `LVD-CELL` ($578) + `LVH-OFF` ($580) region — locals values (depth + frame)
 - `HND-CELL` (8) — catch/throw handler frame head
 - `SSCR-CELL` ($1D8), `GTOD-SCRATCH` ($1E0), `LASTC-CELL` ($560) — execution scratch
-- FFI marshalling scratch (`lib/ffi.f`): `FFI-BUF/FFI-FBUF/FFI-STACK-BUF/FFI-DLBUF`
-  (ffi.f:9 "single-threaded scratch buffers … Do not nest")
+- FFI marshalling scratch (`lib/ffi-abi.f`, `lib/ffi.f`):
+  `FFI-BUF/FFI-FBUF/FFI-STACK-BUF/FFI-KPARAM-*` and `FFI-DLBUF`
 - (debugger, only if used live) `BPA/BPTAB/BPWBASE/BPWN`
 
 **Process-global, COMPILE-ONLY — safe (no compilation while tasks live):**

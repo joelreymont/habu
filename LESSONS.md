@@ -1142,3 +1142,9 @@ lesson — keep the specific word/code/path, cut the prose.
   process across phases, so stale `PROC-ARGV` entries from a prior tool command
   can leak into `BF-RUN-LOAD-STAGE` and run the wrong child entry. Every `BF-*`
   spawn helper resets argv before preparing its own stage/exe command.
+- **Keep FFI ABI separate from loader binding:** AAPCS64 marshalling, out-params,
+  and `void** kernelParams` are portable and gateable on every host; `DLOPEN`/
+  `DLSYM` depend on OS image support (`DLOPEN-SLOT`/`DLSYM-SLOT` on dynamic ELF).
+  Put portable helpers in `lib/ffi-abi.f`, keep `lib/ffi.f` as the loader layer,
+  and invoke gate slices through their wrapper so includes like `content-key.f`
+  are owned in one place.

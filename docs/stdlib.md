@@ -20,6 +20,8 @@ Planned module files:
 - `lib/regex.f`
 - `lib/map.f`
 - `lib/memory.f`
+- `lib/ffi-abi.f`
+- `lib/ffi.f`
 - `lib/fs.f`
 - `lib/source.f`
 - `lib/process.f`
@@ -266,6 +268,56 @@ VEC-PUSH            ( a ptr a -- idx )
 VEC-PUSH-N          ( n ptr a -- idx )
 VEC-PUSH-A          ( ptr u8 ptr a -- idx )
 VEC-EACH            ( R ptr a [ R idx a -- R ] -- R )
+```
+
+## FFI ABI
+
+`lib/ffi-abi.f` is the target-independent AAPCS64 foreign-call surface. It owns
+the typed scratch buffers for integer/pointer registers, floating-point
+registers, stack spill slots, out-parameter readback, and CUDA-style
+`void** kernelParams` packing. These helpers do not require a dynamic loader and
+are part of the local checked gate on macOS and Linux.
+
+Scratch storage is single-threaded and call-scoped: prepare one call, execute it,
+then prepare the next. `FFI-KPARAM-N+` stores scalar parameters in library-owned
+cells that remain stable until the next `FFI-KPARAM-RESET`; `FFI-KPARAM+` stores a
+caller-owned parameter pointer, so the caller owns that pointed-to lifetime.
+
+`lib/ffi.f` is the dynamic loader layer over `lib/ffi-abi.f`. On Linux/aarch64 it
+calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
+(`DLOPEN-SLOT`, `DLSYM-SLOT`). The current macOS Mach-O writer does not provide an
+equivalent loader slot path, so macOS locally validates `lib/ffi-abi.f` but does
+not yet claim dynamic `DLOPEN` runtime support.
+
+```forth
+FFI-ARG!          ( n n -- )
+FFI-PTR-ARG!      ( ptr a n -- )
+FFI-FARG!         ( r n -- )
+FFI-STACK!        ( n n -- )
+FFI-FSTACK!       ( r n -- )
+FFI-X8!           ( n -- )
+FFI-OUT@          ( ptr n -- n )
+FFI-OUT!          ( n ptr n -- )
+FFI-KPARAM-COUNT  ( -- n )
+FFI-KPARAM-RESET  ( -- )
+FFI-KPARAM+       ( ptr a -- )
+FFI-KPARAM-N+     ( n -- )
+FFI-KPARAMS       ( -- ptr n n )
+FFI-KPARAMS>N     ( -- n )
+CALL0             ( n -- n )
+CALL1             ( n n -- n )
+CALL2             ( n n n -- n )
+CALL3             ( n n n n -- n )
+CALL4             ( n n n n n -- n )
+CALL5             ( n n n n n n -- n )
+CALL6             ( n n n n n n n -- n )
+FFI-CALLN         ( n n -- n )
+FFI-CALLABI       ( n n -- n )
+FFI-CALLABI-R     ( n n -- r )
+>CSTR             ( ptr u8 n ptr u8 -- )
+RTLD-NOW          ( -- n )
+DLOPEN            ( ptr u8 n -- n )
+DLSYM             ( n ptr u8 -- n )
 ```
 
 ## String
