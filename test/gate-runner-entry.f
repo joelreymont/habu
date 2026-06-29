@@ -31,13 +31,13 @@
 : GR-DISPATCH ( -- )
    s" tool" GR-ARG0= if GR-TOOL exit then
    GR-STDLIB? if GR-STDLIB exit then
-   s" repair" GR-ARG0= if GE-MAIN exit then
-   s" fixtures" GR-ARG0= if GE-MAIN exit then
-   s" runtime" GR-ARG0= if GE-MAIN exit then
-   s" diag-repair" GR-ARG0= if GDX-DISPATCH exit then
-   s" diag-undef-primary" GR-ARG0= if GDX-DISPATCH exit then
-   s" diag-all-strict" GR-ARG0= if GDX-DISPATCH exit then
-   s" diag-file-unsafe" GR-ARG0= if GDX-DISPATCH exit then
+   s" repair" GR-ARG0= if GENG-REPAIR-SLICE exit then
+   s" fixtures" GR-ARG0= if GENG-FIXTURES-SLICE exit then
+   s" runtime" GR-ARG0= if GENG-RUNTIME-SLICE exit then
+   s" diag-repair" GR-ARG0= if GDX-REPAIR-SLICE exit then
+   s" diag-undef-primary" GR-ARG0= if GDX-UNDEF-PRIMARY-SLICE exit then
+   s" diag-all-strict" GR-ARG0= if GDX-ALL-STRICT-SLICE exit then
+   s" diag-file-unsafe" GR-ARG0= if GDX-FILE-UNSAFE-SLICE exit then
    s" dictionary" GR-ARG0= if GD-MAIN exit then
    s" debug" GR-ARG0= if GDB-RUN exit then
    GR-USAGE ;

@@ -638,7 +638,7 @@ s" spawn-darwin-argv-default-envp" s" reg --" TRUST
    SFIN-FAIL !  SFIN-OK !
    NR-SPAWN SYS,
    9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK LABEL@ CBZ,
-      9 0 MOVN,  SFIN-FAIL LABEL@ B,
+      9 SP 0 SUB,  SFIN-FAIL LABEL@ B,
    SFIN-OK LABEL@ LBL,
    9 SP SPAWN-PID-OFF LDR,
    SFIN-FAIL LABEL@ LBL,
@@ -651,7 +651,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BSP-LABELS2 ( -- )
    LBL BSP-OK !  LBL BSP-DN ! ;
 
-: BSPAWNIO ( -- )                  \ ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNIO ( -- )                  \ ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP
    HB-TARGET-LINUX? IF
@@ -677,7 +677,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVIO ( -- )              \ ( pathz argvp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -701,7 +701,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVENVIO ( -- )           \ ( pathz argvp envp stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS3
    12 G-POP  11 G-POP  10 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF
@@ -720,7 +720,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
 
-: BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-1 )
+: BSPAWNARGVENVCWDIO ( -- )        \ ( pathz argvp envp cwdz stdinfd stdoutfd stderrfd -- pid|-errno )
    BSP-LABELS2
    12 G-POP  11 G-POP  10 G-POP  6 G-POP  7 G-POP  9 G-POP  8 G-POP
    HB-TARGET-LINUX? IF

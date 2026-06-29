@@ -21,10 +21,11 @@ The full port gate loads this slice through `test/run.f`.
 Checked code should use `PROC-SPAWN-IO`, `PROC-WAIT-RC`, `PROC-RUN-RC`, and capture helpers;
 they accept counted paths and throw named process errors for primitive failures.
 
-`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-1 )` is target-specific:
+`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )` is target-specific:
 
 - macOS wraps syscall 244, `posix_spawn(pid*, path, adesc, argv, envp)`. The
   descriptor folds file actions and attributes; Habu emits only dup2 actions.
+  Failures preserve the kernel errno as a negative pid code.
 - Linux uses a close-on-exec exec-failure pipe around `clone`/`execve`. The
   parent returns a pid only after the child has either successfully exec'd
   (pipe EOF) or reported setup failure.

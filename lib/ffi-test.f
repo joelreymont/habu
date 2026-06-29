@@ -3,6 +3,10 @@
 
 create FFI-T-LIBC   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libc.so.6"
 create FFI-T-LIBM   108 c, 105 c, 98 c, 109 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libm.so.6"
+create FFI-T-LIBSYSTEM
+   47 c, 117 c, 115 c, 114 c, 47 c, 108 c, 105 c, 98 c, 47 c,
+   108 c, 105 c, 98 c, 83 c, 121 c, 115 c, 116 c, 101 c, 109 c,
+   46 c, 66 c, 46 c, 100 c, 121 c, 108 c, 105 c, 98 c, 0 c,            \ "/usr/lib/libSystem.B.dylib"
 create FFI-T-STRLEN 115 c, 116 c, 114 c, 108 c, 101 c, 110 c, 0 c,                 \ "strlen"
 create FFI-T-STRNCMP 115 c, 116 c, 114 c, 110 c, 99 c, 109 c, 112 c, 0 c,          \ "strncmp"
 create FFI-T-GETPID 103 c, 101 c, 116 c, 112 c, 105 c, 100 c, 0 c,                 \ "getpid"
@@ -16,9 +20,15 @@ create FFI-T-X8-OUT 1 cells allot
 variable FFI-T-LIB
 variable FFI-T-MATH
 
-: FFI-T-OPEN ( -- n )  FFI-T-LIBC RTLD-NOW DLOPEN ;
+: FFI-T-LIB-PATH ( -- ptr u8 )
+   HB-TARGET-MACOS? if FFI-T-LIBSYSTEM exit then
+   FFI-T-LIBC ;
+: FFI-T-MATH-PATH ( -- ptr u8 )
+   HB-TARGET-MACOS? if FFI-T-LIBSYSTEM exit then
+   FFI-T-LIBM ;
+: FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH RTLD-NOW DLOPEN ;
 : FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name DLSYM ;
-: FFI-T-OPEN-MATH ( -- n )  FFI-T-LIBM RTLD-NOW DLOPEN ;
+: FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH RTLD-NOW DLOPEN ;
 : FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name DLSYM ;
 
 \ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's

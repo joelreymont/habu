@@ -17,44 +17,56 @@ runs (rc 42). Regenerate: see `bench/`-style stub in this doc's history.
 | flags | `0x00200085` = MH_NOUNDEFS\|MH_DYLDLINK\|MH_TWOLEVEL\|**MH_PIE** |
 | reserved | 0 |
 
-## Load commands (clang reference emits 16; minimal runnable subset is fewer)
+## Load Commands
 1. `LC_SEGMENT_64 __PAGEZERO` — vmaddr 0, vmsize `0x1_0000_0000`, no file, prot 0.
-2. `LC_SEGMENT_64 __TEXT` — vmaddr `0x1_0000_0000`, **maps the header + load cmds +
-   `__text`** (fileoff 0, filesize = vmsize = one page `0x4000`), initprot/maxprot
-   `0x5` (r-x), 1 section `__text` (code at file offset just past the load cmds;
-   ref had `__text` at offset 728, the entry).
-3. `LC_SEGMENT_64 __LINKEDIT` — fileoff `0x4000`, holds fixups/symtab/signature;
-   prot `0x1` (r--).
-4. `LC_DYLD_CHAINED_FIXUPS` — dataoff/size into __LINKEDIT. **Likely required even
-   with zero imports** (modern dyld for PIE); emit a minimal/empty chained-fixups
-   blob. *Confirm empirically in 0.1c — dropping it is the first thing to test.*
-5. `LC_LOAD_DYLINKER` — name `/usr/lib/dyld`.
-6. `LC_MAIN` — `entryoff` = file offset of `_main` (the `__text` start); stacksize 0.
-7. `LC_LOAD_DYLIB` — name `/usr/lib/libSystem.B.dylib` (satisfies AMFI; we call no
-   symbol from it — code is svc-only).
-8. `LC_CODE_SIGNATURE` — dataoff/size of the ad-hoc CodeDirectory in __LINKEDIT.
-   **Apply via `codesign -s -` after writing** (the one tooling touch, plan-accepted)
-   rather than hand-emitting the SHA-256 page hashes. codesign is "linker-signed"
-   adhoc: `flags=0x20002 (adhoc,linker-signed)`, CodeDirectory `v=20400`.
+2. `LC_SEGMENT_64 __TEXT` — vmaddr `0x1_0000_0000`, fileoff 0, filesize/vmsize
+   = rounded header plus `__text`, initprot/maxprot `0x5` (r-x), one `__text`
+   section at `CODE-OFF`.
+3. `LC_SEGMENT_64 __DATA_CONST` — one page immediately after `__TEXT`, with
+   section `__got` holding two non-lazy symbol pointers for libSystem `_dlopen`
+   and `_dlsym`.
+4. `LC_SEGMENT_64 __LINKEDIT` — immediately after `__DATA_CONST`, initially
+   holding the chained-fixups blob; signing grows the segment to include the
+   CodeDirectory.
+5. `LC_DYLD_CHAINED_FIXUPS` — points at the 104-byte fixups blob in `__LINKEDIT`.
+   The starts table names the `__DATA_CONST` segment offset, so dyld rewrites the
+   two GOT cells before `LC_MAIN` transfers control.
+6. `LC_LOAD_DYLINKER` — name `/usr/lib/dyld`.
+7. `LC_MAIN` — `entryoff = CODE-OFF`; stacksize 0.
+8. `LC_LOAD_DYLIB` — name `/usr/lib/libSystem.B.dylib`.
+9. `LC_CODE_SIGNATURE` — inserted by `src/os/macos/sign2.f` for AOT images or by
+   the native build promotion path for snapshots.
 
-Optional in the clang ref, drop unless 0.1c shows dyld needs them: `LC_DYLD_EXPORTS_TRIE`,
-`LC_SYMTAB`/`LC_DYSYMTAB` (may need empty stubs), `LC_UUID` (**omit for fixpoint
-determinism**, §Goal), `LC_BUILD_VERSION`, `LC_SOURCE_VERSION`,
-`LC_FUNCTION_STARTS`, `LC_DATA_IN_CODE`.
+Optional clang-reference commands remain omitted for deterministic self-hosting:
+`LC_DYLD_EXPORTS_TRIE`, `LC_SYMTAB`/`LC_DYSYMTAB`, `LC_UUID`,
+`LC_BUILD_VERSION`, `LC_SOURCE_VERSION`, `LC_FUNCTION_STARTS`, and
+`LC_DATA_IN_CODE`.
 
-## Build/test loop (Phase 0.1, no C, no FFI)
+## Build/Test Loop
 1. Compose the whole image in a Forth buffer (header → load cmds → align → `__text`
    code → __LINKEDIT).
 2. Write with `create-file`/`write-file`; `chmod +x` via `system`.
-3. `system" codesign -s - <file>"` (ad-hoc).
-4. `system" <file>"`; capture stdout + `$?`.
+3. Sign with the in-image signer or the target signing policy.
+4. Execute the file and capture stdout plus status.
 *Accept (0.1c):* an `svc exit(42)` stub yields rc 42.
+
+## FFI Slots
+
+`DLOPEN-SLOT` and `DLSYM-SLOT` compute the GOT cell addresses from the Mach-O
+header text-size field at runtime. Snapshot generation stages the extra
+`__DATA_CONST`/`__LINKEDIT` bytes in the image buffer at `CODE-OFF`, but the
+chained-fixups blob records the final segment offset (`sfts`) so dyld binds the
+real mapped page. The signer hashes a partial final code page when fixups make
+the code limit non-page-aligned.
 
 ## Determinism (Phase G fixpoint)
 Omit `LC_UUID`; zero timestamps; emit `CODE-TABLE` words in insertion order;
 normalized-image diff excludes `LC_CODE_SIGNATURE` and `LC_UUID`.
 
-## Reference dump (clang, for byte-level comparison)
-ncmds 16, sizeofcmds 664; `__TEXT` vmsize `0x4000`, `__text` size `0xc`, entryoff
-728; `__LINKEDIT` fileoff `0x4000` filesize 456. Use `otool -l` / `otool -h` on a
-freshly built reference to byte-diff against the Forth emitter's output.
+## Reference Dump
+
+The chained-fixup/GOT encoding follows a current `clang -arch arm64` reference
+that imports `dlopen` and `dlsym`: `__DATA_CONST,__got` has two cells, and the
+104-byte chained-fixups blob binds them to libSystem `_dlopen` and `_dlsym`.
+Keep `LC_UUID` and other timestamp-like commands out of the Habu emitter so the
+self-host fixpoint remains deterministic.

@@ -25,6 +25,14 @@ variable  SIG-DOFF
 : SB-SIZE ( -- n )   20 CD-SIZE + ;
 
 : ALN ( n n -- n ) {: n a :}  n a 1 - +  a 1 - invert and ;
+: CS-REM ( -- n )
+   SIG-DOFF @ CS-PAGE mod ;
+
+: CS-SLOT-SIZE ( n -- n ) {: idx:n :}
+   idx NCSLOTS 1 - = if
+      CS-REM dup 0 <> if exit then drop
+   then
+   CS-PAGE ;
 $FADE0CC0 constant CSMAGIC-EMBEDDED
 $FADE0C02 constant CSMAGIC-CODEDIR
 $00020400 constant CD-VERSION
@@ -43,8 +51,9 @@ variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: b
 
 : PATCH-LINKEDIT ( -- )
    LE-OFF @ {: le :}
-   SB-SIZE $4000 ALN  le 32 + M-OFF M-LE64!
-   SB-SIZE            le 48 + M-OFF M-LE64! ;
+   LE-BASE-SIZE @ SB-SIZE + {: size:n :}
+   size $4000 ALN  le 32 + M-OFF M-LE64!
+   size            le 48 + M-OFF M-LE64! ;
 
 : CD-HDR, ( -- )
    CSMAGIC-CODEDIR M-BE32   CD-SIZE M-BE32   CD-VERSION M-BE32   CD-ADHOC M-BE32
@@ -67,7 +76,7 @@ variable CSI
    CD-HDR,
    SIGA@ SIGU @ M-LEN M-BE-BYTES-LEN  0 M-BE8
    0 CSI ! begin CSI @ NCSLOTS < while
-     MBUF CSI @ CS-PAGE * +  CS-PAGE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
+     MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
    M-BE-HERE MLEN ! ;
 : CODESIG2 ( img -- img )

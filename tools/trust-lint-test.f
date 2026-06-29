@@ -185,6 +185,10 @@ TLT-LF TLT-LF-BUF c!
    TLT-LIB MAKE-DIRS
    TLT-LIB-TRUST TLT-LIB-TRUST$ WRITE-ALL ;
 
+: TLT-ADD-LIB-SAME-TRUST ( -- )
+   TLT-LIB MAKE-DIRS
+   TLT-LIB-TRUST TLT-BASE-SRC$ WRITE-ALL ;
+
 : TLT-ADD-LIB-DEF ( -- )
    TLT-LIB MAKE-DIRS
    TLT-LIB-DEF TLT-LIB-DEF$ WRITE-ALL ;
@@ -403,6 +407,22 @@ TLT-LF TLT-LF-BUF c!
    2 2 TLT-EXPECT-OK
    2 2 TLT-EXPECT-SOURCE-LIST-OK ;
 
+: TLT-TEST-DUP-NAME-SITES ( -- )
+   s" duplicate-name-sites" TLT-MAKE-BASE
+   TLT-ADD-LIB-SAME-TRUST
+   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   2 2 TLT-EXPECT-OK
+   2 2 TLT-EXPECT-SOURCE-LIST-OK ;
+
+: TLT-TEST-DUP-NAME-MISSING-SITE ( -- )
+   s" duplicate-name-missing-site" TLT-CASE!
+   TLT-SRC MAKE-DIR
+   TLT-SRC-TRUST TLT-BASE-SRC$ WRITE-ALL
+   TLT-WRITE-MAN-HEADER
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/other.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   s" UNMANIFESTED" s" src/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
+
 : TLT-TEST-DUP-TRUST ( -- )
    s" duplicate-trust" TLT-MAKE-BASE
    TLT-SRC-TRUST TLT-BASE-SRC$ APPEND-FILE
@@ -478,6 +498,8 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-STALE-LIB-ROW
    TLT-TEST-DUP-SRC-LIB
    TLT-TEST-MULTISITE-TRUST
+   TLT-TEST-DUP-NAME-SITES
+   TLT-TEST-DUP-NAME-MISSING-SITE
    TLT-TEST-DUP-TRUST
    TLT-TEST-EFFECT-DRIFT
    TLT-TEST-SITE-DRIFT-PATH

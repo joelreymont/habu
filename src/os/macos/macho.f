@@ -16,8 +16,15 @@ $19       constant LC-SEG64
 $0E       constant LC-DYLINKER
 $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
+$80000034 constant LC-DYLD-CHAINED-FIXUPS
 $100000000 constant VMBASE
 $80000    constant MPAGE             \ maximum generated code window for builder images
+$4000     constant MACHO-PAGE
+$4000     constant DATA-CONST-SIZE
+104       constant MACHO-FIXUPS-SIZE
+$10       constant SG-READ-ONLY
+$6        constant S-NON-LAZY-SYMBOL-POINTERS
+6         constant DYLD-CHAINED-PTR-64-OFFSET
 variable CODELEN
 
 : ASM-CODELEN! ( -- )
@@ -32,14 +39,29 @@ variable CODELEN
 \ maximum generated-code window for builder images.
 : TEXTSZ ( -- n )  CODE-OFF CODELEN @ +  $3FFF +  $3FFF invert and ;
 variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign post-pass)
+variable LE-BASE-SIZE
+32 constant MH-HDR-SZ                \ mach_header_64 size
+variable NCMDS
 
-: SEG, ( ptr u8 n n n n n n n n -- ) {: a:ptr u vma vmsz foff fsz prot nsects extra :}
+: LC+ ( -- )
+   NCMDS @ 1 + NCMDS ! ;
+
+: LINKOFF ( n -- n )
+   DATA-CONST-SIZE + ;
+
+: VA+ ( n -- n )
+   VMBASE + ;
+
+: SEGX, ( ptr u8 n n n n n n n n n -- ) {: a:ptr u:n vma:n vmsz:n foff:n fsz:n prot:n nsects:n extra:n flags:n :}
    LC-SEG64 IMG-M32   72 extra + IMG-M32
    a u M-LEN M-NAME16-LEN
    vma IMG-M64  vmsz IMG-M64  foff IMG-M64  fsz IMG-M64
-   prot IMG-M32  prot IMG-M32  nsects IMG-M32  0 IMG-M32 ;
+   prot IMG-M32  prot IMG-M32  nsects IMG-M32  flags IMG-M32 ;
 
-: SECT, ( ptr u8 n ptr u8 n n n n n n -- ) {: na:ptr nu sa:ptr su addr size off al fl :}
+: SEG, ( ptr u8 n n n n n n n n -- )
+   0 SEGX, ;
+
+: SECT, ( ptr u8 n ptr u8 n n n n n n -- ) {: na:ptr nu:n sa:ptr su:n addr:n size:n off:n al:n fl:n :}
    na nu M-LEN M-NAME16-LEN   sa su M-LEN M-NAME16-LEN
    addr IMG-M64  size IMG-M64  off IMG-M32  al IMG-M32
    0 IMG-M32  0 IMG-M32  fl IMG-M32  0 IMG-M32 0 IMG-M32 0 IMG-M32 ;
@@ -59,10 +81,68 @@ variable LE-OFF                      \ file offset of the __LINKEDIT LC (sign po
    s" /usr/lib/libSystem.B.dylib" {: a:ptr u :}
    a u M-LEN M-BYTES-LEN
    56 24 - u - M-LEN M-ZEROS-LEN ;
-32 constant MH-HDR-SZ                \ mach_header_64 size
-variable NCMDS
 
-: LC+ ( -- )  NCMDS @ 1 + NCMDS ! ;
+: CHAINED-FIXUPS, ( n -- ) {: linkoff:n :}
+   LC-DYLD-CHAINED-FIXUPS IMG-M32
+   16 IMG-M32
+   linkoff IMG-M32
+   MACHO-FIXUPS-SIZE IMG-M32 ;
+
+: DATA-CONST-SEG, ( n -- ) {: textsz:n :}
+   s" __DATA_CONST" textsz VA+ DATA-CONST-SIZE textsz DATA-CONST-SIZE 3 1 80 SG-READ-ONLY SEGX,
+   s" __got" s" __DATA_CONST" textsz VA+ 16 textsz 3 S-NON-LAZY-SYMBOL-POINTERS SECT, ;
+
+: LINKEDIT-SEG, ( n -- ) {: textsz:n :}
+   textsz LINKOFF {: linkoff:n :}
+   M-HERE LE-OFF !
+   s" __LINKEDIT" linkoff VA+ MACHO-PAGE linkoff MACHO-FIXUPS-SIZE 1 0 0 SEG, ;
+
+: MACHO-GOT, ( -- )
+   0 IMG-M32  $80100000 IMG-M32
+   1 IMG-M32  $80000000 IMG-M32 ;
+
+: MACHO-FIXUPS, ( n -- ) {: segoff:n :}
+   0 IMG-M32                 \ fixups_version
+   $20 IMG-M32               \ starts_offset
+   $50 IMG-M32               \ imports_offset
+   $58 IMG-M32               \ symbols_offset
+   2 IMG-M32                 \ imports_count
+   1 IMG-M32                 \ DYLD_CHAINED_IMPORT
+   0 IMG-M32                 \ uncompressed symbol strings
+   4 M-ZEROS
+   4 IMG-M32  0 IMG-M32  0 IMG-M32  $18 IMG-M32  0 IMG-M32
+   4 M-ZEROS
+   $18 IMG-M32
+   MACHO-PAGE IMG-M16
+   DYLD-CHAINED-PTR-64-OFFSET IMG-M16
+   segoff IMG-M64
+   0 IMG-M32
+   1 IMG-M16
+   0 IMG-M16
+   $201 IMG-M32
+   $1201 IMG-M32
+   0 IMG-M8
+   s" _dlopen" M-BYTES 0 IMG-M8
+   s" _dlsym" M-BYTES 0 IMG-M8 ;
+
+: MACHO-EXTRA, ( n n -- ) {: off:n segoff:n :}
+   off M-OFF M-PAD-OFF
+   MACHO-GOT,
+   DATA-CONST-SIZE 16 - M-ZEROS
+   off DATA-CONST-SIZE + M-OFF M-PAD-OFF
+   segoff MACHO-FIXUPS,
+   MACHO-FIXUPS-SIZE LE-BASE-SIZE ! ;
+
+: MACHO-CMDS, ( n n -- ) {: textsz:n textlen:n :}
+   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
+   s" __TEXT" VMBASE textsz 0 textsz 5 1 80 SEG,  LC+
+      s" __text" s" __TEXT" VMBASE CODE-OFF + textlen CODE-OFF 2 $80000400 SECT,
+   textsz DATA-CONST-SEG,  LC+
+   textsz LINKEDIT-SEG,  LC+
+   textsz LINKOFF CHAINED-FIXUPS,  LC+
+   DYLINKER,  LC+
+   CODE-OFF MAIN,  LC+
+   DYLIB,  LC+ ;
 
 : MH-HDR, ( -- )
    MH-MAGIC64 IMG-M32  CPU-ARM64 IMG-M32  0 IMG-M32  MH-EXECUTE IMG-M32
@@ -75,17 +155,13 @@ variable NCMDS
 : BUILD-MACHO ( -- )                        \ assumes icode's CODE holds the program
    ASM-CODELEN!  M-RESET  0 NCMDS !
    MH-HDR,
-   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
-   s" __TEXT" VMBASE TEXTSZ 0 TEXTSZ 5 1 80 SEG,  LC+
-      s" __text" s" __TEXT" VMBASE CODE-OFF + CODELEN @ CODE-OFF 2 $80000400 SECT,
-   M-HERE LE-OFF !
-   s" __LINKEDIT" VMBASE TEXTSZ + MPAGE TEXTSZ 0 1 0 0 SEG,  LC+
-   DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
+   TEXTSZ CODELEN @ MACHO-CMDS,
    PATCH-HDR
    CODELEN @  MPAGE CODE-OFF -  > IF s" macho: code exceeds __TEXT page" 73 die THEN
    CODE-OFF M-OFF M-PAD-OFF
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
+   TEXTSZ TEXTSZ MACHO-EXTRA,
    M-HERE MLEN ! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
@@ -98,19 +174,15 @@ variable NCMDS
    CODE-OFF snl + $3FFF + $3FFF invert and {: sfts :}
    M-RESET  0 NCMDS !
    MH-HDR,
-   s" __PAGEZERO" 0 VMBASE 0 0 0 0 0 SEG,  LC+
-   s" __TEXT" VMBASE sfts 0 sfts 5 1 80 SEG,  LC+
-      s" __text" s" __TEXT" VMBASE CODE-OFF + snl CODE-OFF 2 $80000400 SECT,
-   M-HERE LE-OFF !
-   s" __LINKEDIT" VMBASE sfts + MPAGE sfts 0 1 0 0 SEG,  LC+
-   DYLINKER,  LC+   CODE-OFF MAIN,  LC+   DYLIB,  LC+
+   sfts snl MACHO-CMDS,
    PATCH-HDR
    CODE-OFF M-OFF M-PAD-OFF
+   CODE-OFF sfts MACHO-EXTRA,
    SNAP-PHASE sfts ;
 
 : SNAP-EXTRA-PTR ( -- ptr u8 )
-   MBUF ;
+   MBUF CODE-OFF + ;
 s" SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
 
-0 constant SNAP-EXTRA-SIZE
+DATA-CONST-SIZE MACHO-FIXUPS-SIZE + constant SNAP-EXTRA-SIZE
 s" SNAP-EXTRA-SIZE" s" -- n" TRUST

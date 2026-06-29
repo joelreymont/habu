@@ -1,5 +1,5 @@
 \ process-test.f -- focused tests for lib/process.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f
 
 variable PT-R
 variable PT-W
@@ -25,6 +25,8 @@ create PT-CAPTURE-HANG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-ERR-LONG-BUF FS-PATH-CAP allot
 create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
 create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
+
+2 constant PT-ENOENT
 
 : PT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -120,6 +122,12 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : TEST-SPAWN-FAIL ( -- )
    s" /no/such/habu-process-test" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO drop ;
 
+: TEST-SPAWN-RAW-MISSING ( -- )
+   s" /no/such/habu-process-test" >LEN PROC-PATHZ
+   -1 >FD -1 >FD -1 >FD PROC-SPAWN-RAW PID>N {: code:n :}
+   code 0 < TTRUE
+   HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
+
 : TEST-WAIT-BAD ( -- )
    -1 >PID PROC-WAIT-RC drop ;
 
@@ -133,6 +141,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    s" /usr/bin/false" >LEN PROC-RUN-RC RC>N 1 T= ;
 
 : TEST-SPAWN-WAIT ( -- )
+   TEST-SPAWN-RAW-MISSING
    s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC RC>N 0 T=
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 

@@ -252,6 +252,12 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
       s" ms)" type cr
    then ;
 
+: GT-POOL-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
+   s" gate-pool spawn raw code: " type pid PID>N . cr
+   HB-TARGET-MACOS? if
+      s" gate-pool spawn errno: " type pid PID>N negate . cr
+   then ;
+
 : GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx path:ptr pathu :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
@@ -259,7 +265,7 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    pathz argv envp -1 >FD idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
+   pid PID>N 0 < if pid GT-POOL-SPAWN-FAIL. E-PROC-SPAWN GT-POOL-THROW then
    pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES ;
 

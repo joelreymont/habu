@@ -285,9 +285,10 @@ caller-owned parameter pointer, so the caller owns that pointed-to lifetime.
 
 `lib/ffi.f` is the dynamic loader layer over `lib/ffi-abi.f`. On Linux/aarch64 it
 calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
-(`DLOPEN-SLOT`, `DLSYM-SLOT`). The current macOS Mach-O writer does not provide an
-equivalent loader slot path, so macOS locally validates `lib/ffi-abi.f` but does
-not yet claim dynamic `DLOPEN` runtime support.
+(`DLOPEN-SLOT`, `DLSYM-SLOT`). On macOS/aarch64 the Mach-O writer emits a
+`__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
+`_dlopen` and `_dlsym`; the same checked `DLOPEN`/`DLSYM` words read those
+resolved slots.
 
 ```forth
 FFI-ARG!          ( n n -- )
@@ -932,8 +933,11 @@ polls one fd for readable input and returns the raw poll result as `count`;
 `E-PROC-OUTPUT` for poll failure.
 
 `PROC-WAIT-RAW` and `PROC-SPAWN-RAW` are raw primitive aliases captured before
-the checked wrapper names are defined. Application code should prefer
-`PROC-SPAWN-IO`, `PROC-WAIT-RC`, and `PROC-RUN-RC`.
+the checked wrapper names are defined. A failed raw spawn returns a negative
+target code (`-errno` on macOS; the Linux exec-failure handshake still reports
+negative failure), while checked wrappers convert any negative pid to
+`E-PROC-SPAWN`. Application code should prefer `PROC-SPAWN-IO`,
+`PROC-WAIT-RC`, and `PROC-RUN-RC`.
 
 `lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
 It is loaded after the native engine rebuild because older seeds do not know

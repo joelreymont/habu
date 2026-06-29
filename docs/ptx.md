@@ -164,12 +164,13 @@ knowledge is required:
 ## Landed foundation and remaining gaps
 
 The plan review originally surfaced FFI and parametric stack types as
-prerequisites. Both are now landed on the Linux/aarch64 Orin path:
+prerequisites. The portable FFI ABI is landed on macOS/aarch64 and Linux/aarch64;
+CUDA device proof remains Linux/Orin-specific:
 
-1. **AAPCS64 FFI + dynamic ELF:** `lib/ffi-abi.f` provides target-independent
+1. **AAPCS64 FFI + target loader slots:** `lib/ffi-abi.f` provides target-independent
    integer/pointer calls, stack-spill support, float-return helpers, out-param
-   readback, and `void**` kernelParams packing. `lib/ffi.f` adds the Linux
-   dynamic loader layer through loader-resolved `dlopen`/`dlsym` slots. Current
+   readback, and `void**` kernelParams packing. `lib/ffi.f` adds
+   loader-resolved `dlopen`/`dlsym` slots on Linux ELF and macOS Mach-O. Current
    device tools still need stronger fail-closed rc wrappers and cleanup (dot
    `habu-make-ptx-device-c0eb12a3`).
 2. **Parametric checker terms:** signatures such as

@@ -1148,3 +1148,25 @@ lesson — keep the specific word/code/path, cut the prose.
   Put portable helpers in `lib/ffi-abi.f`, keep `lib/ffi.f` as the loader layer,
   and invoke gate slices through their wrapper so includes like `content-key.f`
   are owned in one place.
+- **Spawn command builders should return a checked summary:** a helper that mutates
+  global `PROC-ARGV`/`PROC-ENV` and then immediately spawns can fail invisibly if
+  the caller never observes the prepared state. Return the prepared argc (or an
+  equivalent checked summary) and assert it before `PROC-ARGV-PREPARE`; the
+  build-fixpoint fixture caught an empty child invocation this way.
+- **Gate timing RCA separates cache-fill from hot architecture:** after a native
+  spawn/harness rebuild, the full gate measured 65.093s internal with warm
+  misses/candidate install before the early-lint scheduler fix, 41.551s internal
+  with one warm refill after the fix, then 30.123s internal hot with warm-miss=0
+  and candidate-hit=1. Treat cache-fill as budget coverage and hot-cache as the
+  harness architecture number; do not compare cache-fill to prior hot runs.
+- **Early lint phases still need warm-build quiescence:** `lint-manifest` and
+  `lint-libs` need only the under-test binary semantically, but starting their
+  nested stdlib pools while tools/check warm images are rebuilding exposed
+  intermittent `E-FS-IO` under full-DAG contention. Start them early only when
+  `TR-WARM-DONE?` is already true; otherwise let the late DAG overlap them with
+  the long checker/tool tails.
+- **Spawn boundaries preserve errno until attribution:** Darwin `posix_spawn`
+  failure used to collapse `errno in x0` to `-1`, so full-DAG failures became
+  opaque `E-PROC-SPAWN`. Keep raw spawns returning `pid|-errno`, prove missing
+  executable as `-ENOENT`, and let gate-owned wrappers print raw code/errno
+  before converting to the public `E-PROC-SPAWN` API.

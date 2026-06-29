@@ -8,6 +8,7 @@
 $80000 constant BFT-READ-CAP
 $1002 constant BFT-MAP-PRIVATE-ANON
 120000 constant BFT-TIMEOUT-MS
+13 constant BFT-BUILD-ARGV#
 
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
@@ -90,7 +91,7 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    BFT-ROOT s" stage2-run-src" BFT-RUN-BUF BFT-RUN-U BFT-PATH!
    BFT-ROOT s" hb-snap-src" BFT-SNAP-BUF BFT-SNAP-U BFT-PATH! ;
 
-: BFT-ARGV-BUILD ( -- )
+: BFT-ARGV-BUILD ( -- n )
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" HB_TMP" >LEN BFT-ENV$ >LEN PROC-ENV+
@@ -106,15 +107,22 @@ s" BFT-READ-BUF" s" -- ptr u8" TRUST
    s" lib/build.f" BFT-ARG+
    s" lib/codesign.f" BFT-ARG+
    s" tools/build-fixpoint.f" BFT-ARG+
-   s" tools/build-fixpoint-main.f" BFT-ARG+ ;
+   s" tools/build-fixpoint-main.f" BFT-ARG+
+   PROC-ARGV-N @ COUNT>N ;
 
 : BFT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
 : BFT-RUN-BUILD ( -- n n n )
-   BFT-ARGV-BUILD
-   s" bin/hb" >LEN BFT-OUT BFT-CAPTURE-CAP >LEN BFT-ERR BFT-CAPTURE-CAP >LEN
-   BFT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   BFT-ARGV-BUILD BFT-BUILD-ARGV# T=
+   s" bin/hb" >LEN PROC-ARGV-CHECK-PATH
+   BFT-CAPTURE-CAP >LEN BFT-CAPTURE-CAP >LEN PROC-CAPTURE-CHECK-CAPS
+   s" bin/hb" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   BFT-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
+   pathz argv envp PROC-SPAWN-ARGV-ENV-CAPTURE
+   BFT-OUT BFT-CAPTURE-CAP >LEN BFT-ERR BFT-CAPTURE-CAP >LEN PROC-RUN-CAPTURE-LOOP
+   PROC-CAPTURE-FINISH-RC
    BFT-CAPTURE>N ;
 
 : BFT-TEST-BUILD ( -- )

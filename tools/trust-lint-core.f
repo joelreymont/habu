@@ -252,13 +252,25 @@ variable TL-NV
       1+
    repeat drop -1 ;
 
-: TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu site:ptr siteu :}
+: TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu:n site:ptr siteu:n :}
    0 begin dup TL-M# @ < while
       dup TL-M-NAME$ name nameu LINT-STR= if
          dup TL-M-SITE$ site siteu LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
+
+: TL-FIND-UNIQUE-MAN ( ptr u8 n -- n ) {: name:ptr nameu:n :}
+   -1 TL-J !
+   0 TL-I !
+   begin TL-I @ TL-M# @ < while
+      TL-I @ TL-M-NAME$ name nameu LINT-STR= if
+         TL-J @ 0 >= if -2 exit then
+         TL-I @ TL-J !
+      then
+      TL-I @ 1+ TL-I !
+   repeat
+   TL-J @ ;
 
 : TL-PRINT-SITE ( n -- )
    dup TL-S-PATH$ TL-OUT
@@ -534,7 +546,7 @@ variable TL-NV
 : TL-FIND-MANIFEST-SITE ( n -- bool ) {: sk :}
    sk TL-S-NAME$ sk TL-SCAN-SITE$ TL-FIND-MAN-SITE dup 0 < IF
       drop
-      sk TL-S-NAME$ TL-FIND-MAN dup 0 < IF
+      sk TL-S-NAME$ TL-FIND-UNIQUE-MAN dup 0 < IF
          drop
          sk TL-UNMANIFESTED-SITE
       ELSE

@@ -1,8 +1,8 @@
 # habu — Status
 
 Last verified: 2026-06-29
-Gate: passing; 30.936s internal hot-cache gate time and 66.640s cache-fill gate
-time on 2026-06-29 on macOS/aarch64 with 12 online cores, per-file content-key
+Gate: passing; 30.123s internal hot-cache gate time and 41.551s one-warm-refill
+gate time on 2026-06-29 on macOS/aarch64 with 12 online cores, per-file content-key
 warm-cache hits, manifest-hashed `hb-under-test`, warm runner hits, and AOT maker
 cache hits. The native gate uses an 8-way macOS checked DAG pool, 4-way nested
 stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
