@@ -1,6 +1,6 @@
 ---
 title: Scalar-residual tail for v4 (general n, correctness)
-status: active
+status: open
 priority: 3
 issue-type: task
 created-at: "2026-06-27T15:19:39.082623+02:00"
