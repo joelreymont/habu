@@ -274,3 +274,12 @@ splitting `tool-boundary-lints` into three parallel suites cut focused wall to
 processes, so it was reverted. Remaining 30s blockers are now AOT-positive
 ~31.7s, check-cli/tool-boundary ~25s, and late lint manifest/libs/tools tails
 under contention.
+
+Checkpoint 2026-06-29: accepted a guarded full-DAG scheduling cut. Hot runs
+restore the content-keyed Habu-under-test before early phases; `test/run.f` now
+starts `stdlib-manifest` and `stdlib-lint-libs` early only when that artifact is
+ready, and skips their late duplicates. Full hot gate improved to 43.301s
+internal / 46.32s wall with unchanged process counts (`inner-hb=55`,
+`boundary=95`, `helper-spawn=106`). Rejected early `stdlib-lint-artifacts`
+because it regressed to 43.676s internal / 46.70s wall by filling the early
+pool.

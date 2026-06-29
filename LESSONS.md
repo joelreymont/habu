@@ -168,6 +168,11 @@ lesson — keep the specific word/code/path, cut the prose.
   ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
   added top-level subprocesses. Keep the in-process semantic cuts; revert splits
   that only win in isolation.
+- **Schedule early only when the artifact invariant is already true:** hot gates
+  restore content-keyed `HABU_UNDER_TEST` before `TR-EARLY-START`, so source-only
+  lint slices can run early under the candidate. Guard early manifest/libs on
+  `TR-UNDER-READY`; leave artifact lint late because filling the early pool
+  regressed the full DAG.
 - **Strict duplicates expose generic fixture names:** once redefinition fails
   closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
   collide with baked or sibling words. Prefix generated names by fixture/tool and

@@ -62,6 +62,8 @@ variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
 variable TR-UNDER-READY
+variable TR-MANIFEST-EARLY
+variable TR-LIBS-EARLY
 variable TR-RUNNER-READY
 variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
@@ -186,6 +188,8 @@ variable TR-UNDER-CACHE-RC
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
    0 TR-UNDER-READY !
+   0 TR-MANIFEST-EARLY !
+   0 TR-LIBS-EARLY !
    0 TR-UNDER-CACHE-HIT !
    0 TR-RUNNER-READY ! ;
 
@@ -955,6 +959,23 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
 
+: TR-MANIFEST-EARLY? ( -- bool )
+   TR-MANIFEST-EARLY @ 0 <> ;
+
+: TR-LIBS-EARLY? ( -- bool )
+   TR-LIBS-EARLY @ 0 <> ;
+
+: TR-TRY-EARLY-LINTS ( -- )
+   TR-UNDER-READY @ 0= if exit then
+   18 >IDX TR-PHASE-START
+   -1 TR-MANIFEST-EARLY !
+   20 >IDX TR-PHASE-START
+   -1 TR-LIBS-EARLY ! ;
+
+: TR-LATE-SKIP? ( idx -- bool ) {: idx:idx :}
+   idx IDX>N 18 = TR-MANIFEST-EARLY? and
+   idx IDX>N 20 = TR-LIBS-EARLY? and or ;
+
 : TR-EARLY-START ( -- )
    GT-POOL-RESET
    TR-WARM-READY-RESET
@@ -965,11 +986,13 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    7 >IDX TR-PHASE-START
    8 >IDX TR-PHASE-START
    TR-DRAIN-UNTIL-RUNNER
-   6 >IDX TR-PHASE-START ;
+   6 >IDX TR-PHASE-START
+   TR-TRY-EARLY-LINTS ;
 
 : TR-LATE-START ( -- )
    0 begin dup TR-LATE-PHASES < while
-      dup >IDX TR-LATE-ORDER@ TR-PHASE-START
+      dup >IDX TR-LATE-ORDER@
+      dup TR-LATE-SKIP? if drop else TR-PHASE-START then
       1+
    repeat drop ;
 
