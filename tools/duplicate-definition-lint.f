@@ -1,8 +1,7 @@
 \ duplicate-definition-lint.f - CLI wrapper for flat duplicate-definition lint.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, tools/lint/source-lex.f,
-\ tools/duplicate-definition-lint-core.f, and tools/argv.f.
+\ tools/lint/json-writer.f, tools/duplicate-definition-lint-core.f, and tools/argv.f.
 
 : DUPLICATE-DEFINITION-LINT-ARGV-FILE ( n -- ) {: idx :}
    ARGV-LABEL? if

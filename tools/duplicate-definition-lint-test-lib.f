@@ -2,8 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
 \ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ tools/lint/source-lex.f tools/duplicate-definition-lint-core.f
-\ tools/duplicate-definition-lint-test.f
+\ tools/duplicate-definition-lint-core.f tools/duplicate-definition-lint-test.f
 
 $1000 constant DDLT-BUF-CAP
 
@@ -45,6 +44,7 @@ variable DDLT-CASE-U
 : DDLT-GOOD-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : OK ( -- n ) 1 ;" SB-APPEND DDLT-LF
+   s" : (OK) ( -- n ) 2 ;" SB-APPEND DDLT-LF
    s" : REDO ( -- n ) 1 ;" SB-APPEND DDLT-LF
    s" undefine REDO" SB-APPEND DDLT-LF
    s" : redo ( -- n ) 2 ;" SB-APPEND DDLT-LF

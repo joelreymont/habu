@@ -1,7 +1,7 @@
 \ duplicate-definition-lint-core.f - report duplicate flat source definitions.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/json-writer.f, and tools/lint/source-lex.f.
+\ and tools/lint/json-writer.f.
 
 $1000 constant DDL-DEF-CAP
 $2000 constant DDL-HASH-CAP
@@ -27,7 +27,6 @@ variable DDL-FILE-LABEL-A
 variable DDL-FILE-LABEL-U
 variable DDL-DEF#
 variable DDL-BAD
-variable DDL-I
 variable DDL-HASH-I
 variable DDL-HASH-H
 variable DDL-PROBE-I
@@ -36,6 +35,14 @@ variable DDL-IN-DEF
 variable DDL-JSON
 variable DDL-OUT-FD
 variable DDL-NUM-I
+variable DDL-SCAN-I
+variable DDL-SCAN-LINE
+variable DDL-SCAN-COL
+variable DDL-TOK-A
+variable DDL-TOK-U
+variable DDL-TOK-BYTE
+variable DDL-TOK-LINE
+variable DDL-TOK-COL
 
 : DDL-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -167,33 +174,115 @@ variable DDL-NUM-I
    repeat drop
    DDL-NUM DDL-NUM-I @ + DDL-NUM-CAP DDL-NUM-I @ - ;
 
-: DDL-WORD? ( n -- bool ) {: k :}
-   k L# @ >= if LINT-FALSE exit then
-   k LK@ L-WORD = ;
+: DDL-TOK-A@ ( -- ptr u8 )
+   DDL-TOK-A DDL-PTR-U8@ ;
 
-: DDL-TOK-END ( n -- n ) {: k :}
-   k LB@ k LEX-TOK nip + ;
+: DDL-TOK-A! ( ptr u8 -- )
+   DDL-TOK-A DDL-PTR-U8! ;
 
-: DDL-PARSE-NEXT? ( n -- bool ) {: k:n :}
-   k LEX-TOK s" char" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" [char]" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" '" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" [']" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" postpone" LINT-STR=CI ;
+: DDL-TOK$ ( -- ptr u8 n )
+   DDL-TOK-A@ DDL-TOK-U @ ;
 
-: DDL-COLON-DEFINER? ( n -- bool ) {: k:n :}
-   k LEX-TOK s" :" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" KERNEL:" LINT-STR=CI ;
+: DDL-TOK-END ( -- n )
+   DDL-TOK-BYTE @ DDL-TOK-U @ + ;
 
-: DDL-DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" constant" LINT-STR=CI ;
+: DDL-SCAN-END? ( -- bool )
+   DDL-SCAN-I @ DDL-SRC-U @ >= ;
 
-: DDL-UNDEFINE? ( n -- bool ) {: k:n :}
-   k LEX-TOK s" undefine" LINT-STR=CI ;
+: DDL-SCAN-C@ ( -- n )
+   DDL-SRC-A@ DDL-SCAN-I @ + c@ ;
+
+: DDL-SCAN-ADV ( -- n )
+   DDL-SCAN-C@
+   DDL-SCAN-I @ 1+ DDL-SCAN-I !
+   dup DDL-LF = if
+      DDL-SCAN-LINE @ 1+ DDL-SCAN-LINE !
+      1 DDL-SCAN-COL !
+   else
+      DDL-SCAN-COL @ 1+ DDL-SCAN-COL !
+   then ;
+
+: DDL-SKIP-LINE-COMMENT ( -- )
+   begin DDL-SCAN-END? 0= DDL-SCAN-C@ DDL-LF <> and while
+      DDL-SCAN-ADV drop
+   repeat ;
+
+: DDL-SKIP-PAREN-COMMENT ( -- )
+   DDL-SCAN-ADV drop
+   begin DDL-SCAN-END? 0= DDL-SCAN-C@ 41 <> and while
+      DDL-SCAN-ADV drop
+   repeat
+   DDL-SCAN-END? 0= if DDL-SCAN-ADV drop then ;
+
+: DDL-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 2 <> if LINT-FALSE exit then
+   a 1+ c@ DQUOTE <> if LINT-FALSE exit then
+   a c@ LINT-FOLD 115 = if LINT-TRUE exit then
+   a c@ DOT = if LINT-TRUE exit then
+   a c@ LINT-FOLD 99 = ;
+
+: DDL-SKIP-QUOTE ( -- )
+   begin DDL-SCAN-END? 0= while
+      DDL-SCAN-ADV DQUOTE = if exit then
+   repeat ;
+
+: DDL-MARK-WORD ( -- )
+   DDL-SRC-A@ DDL-SCAN-I @ + DDL-TOK-A!
+   DDL-SCAN-I @ DDL-TOK-BYTE !
+   DDL-SCAN-LINE @ DDL-TOK-LINE !
+   DDL-SCAN-COL @ DDL-TOK-COL ! ;
+
+: DDL-SCAN-RAW-WORD ( -- )
+   DDL-MARK-WORD
+   begin DDL-SCAN-END? 0= DDL-SCAN-C@ LINT-WS? 0= and while
+      DDL-SCAN-ADV drop
+   repeat
+   DDL-SCAN-I @ DDL-TOK-BYTE @ - DDL-TOK-U ! ;
+
+: DDL-SCAN-WORD ( -- )
+   DDL-SCAN-RAW-WORD
+   DDL-TOK$ DDL-STRING-OPENER? if DDL-SKIP-QUOTE then ;
+
+: DDL-SKIP-WS ( -- )
+   begin DDL-SCAN-END? 0= DDL-SCAN-C@ LINT-WS? and while
+      DDL-SCAN-ADV drop
+   repeat ;
+
+: DDL-NEXT-RAW-WORD? ( -- bool )
+   DDL-SKIP-WS
+   DDL-SCAN-END? if LINT-FALSE exit then
+   DDL-SCAN-RAW-WORD
+   LINT-TRUE ;
+
+: DDL-NEXT-TOKEN? ( -- bool )
+   begin DDL-SCAN-END? 0= while
+      DDL-SCAN-C@ LINT-WS? if DDL-SCAN-ADV drop
+      else DDL-SCAN-C@ 92 = if DDL-SKIP-LINE-COMMENT
+      else DDL-SCAN-C@ 40 = if DDL-SKIP-PAREN-COMMENT
+      else DDL-SCAN-WORD LINT-TRUE exit then then then
+   repeat
+   LINT-FALSE ;
+
+: DDL-PARSE-NEXT? ( -- bool )
+   DDL-TOK$ s" char" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" [char]" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" '" LINT-STR= if LINT-TRUE exit then
+   DDL-TOK$ s" [']" LINT-STR= if LINT-TRUE exit then
+   DDL-TOK$ s" postpone" LINT-STR=CI ;
+
+: DDL-COLON-DEFINER? ( -- bool )
+   DDL-TOK$ s" :" LINT-STR= if LINT-TRUE exit then
+   DDL-TOK$ s" +:" LINT-STR= if LINT-TRUE exit then
+   DDL-TOK$ s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" KERNEL:" LINT-STR=CI ;
+
+: DDL-DATA-DEFINER? ( -- bool )
+   DDL-TOK$ s" create" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" variable" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" constant" LINT-STR=CI ;
+
+: DDL-UNDEFINE? ( -- bool )
+   DDL-TOK$ s" undefine" LINT-STR=CI ;
 
 : DDL-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
    a u idx DDL-NAME$ LINT-STR=CI ;
@@ -231,90 +320,87 @@ variable DDL-NUM-I
       DDL-HASH-STEP
    again ;
 
-: DDL-JSON-FINDING ( n n -- ) {: first k :}
+: DDL-JSON-FINDING ( n -- ) {: first:n :}
    LJW-RESET
    LJW-OBJECT-START
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
    s" file" LJW-KEY DDL-FILE-LABEL-A@ DDL-FILE-LABEL-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY k LL@ LJW-U LJW-COMMA
-   s" column" LJW-KEY k LC@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY k LB@ LJW-U LJW-COMMA
-   s" byte_end" LJW-KEY k DDL-TOK-END LJW-U LJW-COMMA
-   s" word" LJW-KEY k LEX-TOK LJW-STRING LJW-COMMA
+   s" line" LJW-KEY DDL-TOK-LINE @ LJW-U LJW-COMMA
+   s" column" LJW-KEY DDL-TOK-COL @ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY DDL-TOK-BYTE @ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY DDL-TOK-END LJW-U LJW-COMMA
+   s" word" LJW-KEY DDL-TOK$ LJW-STRING LJW-COMMA
    s" first_file" LJW-KEY first DDL-FILE$ LJW-STRING LJW-COMMA
    s" first_line" LJW-KEY first DDL-LINE@ LJW-U LJW-COMMA
    s" first_column" LJW-KEY first DDL-COL@ LJW-U
    LJW-OBJECT-END
    LJW$ DDL-OUT DDL-NL ;
 
-: DDL-TEXT-FINDING ( n n -- ) {: first k :}
+: DDL-TEXT-FINDING ( n -- ) {: first:n :}
    s" E-DUPLICATE-DEFINITION " DDL-OUT
    DDL-FILE-LABEL-A@ DDL-FILE-LABEL-U @ DDL-OUT
-   DDL-COLON-C DDL-C k LL@ DDL-U$ DDL-OUT
-   DDL-COLON-C DDL-C k LC@ DDL-U$ DDL-OUT
+   DDL-COLON-C DDL-C DDL-TOK-LINE @ DDL-U$ DDL-OUT
+   DDL-COLON-C DDL-C DDL-TOK-COL @ DDL-U$ DDL-OUT
    s" : `" DDL-OUT
-   k LEX-TOK DDL-OUT
+   DDL-TOK$ DDL-OUT
    s" ` already defined at " DDL-OUT
    first DDL-FILE$ DDL-OUT
    DDL-COLON-C DDL-C first DDL-LINE@ DDL-U$ DDL-OUT
    DDL-COLON-C DDL-C first DDL-COL@ DDL-U$ DDL-OUT
    DDL-NL ;
 
-: DDL-REPORT ( n n -- ) {: first k :}
+: DDL-REPORT ( n -- ) {: first:n :}
    DDL-BAD @ 1+ DDL-BAD !
-   DDL-JSON @ if first k DDL-JSON-FINDING exit then
-   first k DDL-TEXT-FINDING ;
+   DDL-JSON @ if first DDL-JSON-FINDING exit then
+   first DDL-TEXT-FINDING ;
 
-: DDL-ADD-DEF$ ( ptr u8 n n -- ) {: a:ptr u k :}
+: DDL-ADD-DEF$ ( ptr u8 n -- ) {: a:ptr u:n :}
    DDL-DEF# @ DDL-DEF-CAP >= if s" duplicate-definition-lint: too many definitions" 77 die then
    a DDL-DEF# @ DDL-NAME-A!
    u DDL-DEF# @ DDL-NAME-U!
    DDL-FILE-LABEL-A@ DDL-DEF# @ DDL-FILE-A!
    DDL-FILE-LABEL-U @ DDL-DEF# @ DDL-FILE-U!
-   k LL@ DDL-DEF# @ DDL-LINE!
-   k LC@ DDL-DEF# @ DDL-COL!
+   DDL-TOK-LINE @ DDL-DEF# @ DDL-LINE!
+   DDL-TOK-COL @ DDL-DEF# @ DDL-COL!
    a u DDL-DEF# @ DDL-HASH-ADD
    DDL-DEF# @ 1+ DDL-DEF# ! ;
 
-: DDL-ADD-DEF ( n -- )
-   dup LEX-TOK rot DDL-ADD-DEF$ ;
+: DDL-ADD-DEF ( -- )
+   DDL-TOK$ DDL-ADD-DEF$ ;
 
-: DDL-DELETE-DEF ( n -- ) {: k:n :}
-   k DDL-WORD? 0= if exit then
-   k LEX-TOK DDL-FIND dup 0 >= if 0 swap DDL-NAME-U! else drop then ;
+: DDL-DELETE-DEF ( -- )
+   DDL-TOK$ DDL-FIND dup 0 >= if 0 swap DDL-NAME-U! else drop then ;
 
-: DDL-CHECK-NAME ( n -- ) {: k:n :}
-   k DDL-WORD? 0= if exit then
-   k LEX-TOK DDL-FIND dup 0 >= if k DDL-REPORT else drop k DDL-ADD-DEF then ;
+: DDL-CHECK-NAME ( -- )
+   DDL-TOK$ DDL-FIND dup 0 >= if DDL-REPORT else drop DDL-ADD-DEF then ;
 
 : DDL-HANDLE-IN-DEF ( -- )
-   DDL-I @ DDL-PARSE-NEXT? if DDL-I @ 1+ DDL-I ! exit then
-   DDL-I @ LEX-TOK s" ;" LINT-STR= if 0 DDL-IN-DEF ! then ;
+   DDL-PARSE-NEXT? if DDL-NEXT-RAW-WORD? drop exit then
+   DDL-TOK$ s" ;" LINT-STR= if 0 DDL-IN-DEF ! then ;
 
 : DDL-HANDLE-TOP ( -- )
-   DDL-I @ DDL-COLON-DEFINER? if
-      DDL-I @ 1+ DDL-CHECK-NAME
+   DDL-COLON-DEFINER? if
+      DDL-NEXT-RAW-WORD? if DDL-CHECK-NAME then
       -1 DDL-IN-DEF !
       exit
    then
-   DDL-I @ DDL-UNDEFINE? if
-      DDL-I @ 1+ DDL-DELETE-DEF
-      DDL-I @ 1+ DDL-I !
+   DDL-UNDEFINE? if
+      DDL-NEXT-RAW-WORD? if DDL-DELETE-DEF then
       exit
    then
-   DDL-I @ DDL-DATA-DEFINER? if DDL-I @ 1+ DDL-CHECK-NAME then ;
+   DDL-DATA-DEFINER? if DDL-NEXT-RAW-WORD? if DDL-CHECK-NAME then then ;
 
 : DDL-SCAN-TOKEN ( -- )
-   DDL-I @ DDL-WORD? 0= if exit then
    DDL-IN-DEF @ if DDL-HANDLE-IN-DEF else DDL-HANDLE-TOP then ;
 
 : DDL-SCAN ( -- )
-   0 DDL-I !
+   0 DDL-SCAN-I !
+   1 DDL-SCAN-LINE !
+   1 DDL-SCAN-COL !
    0 DDL-IN-DEF !
-   begin DDL-I @ L# @ < while
+   begin DDL-NEXT-TOKEN? while
       DDL-SCAN-TOKEN
-      DDL-I @ 1+ DDL-I !
    repeat ;
 
 : DDL-ALLOC-NEED ( n -- n ) {: n :}
@@ -355,7 +441,6 @@ variable DDL-NUM-I
    {: path:ptr pathu label:ptr labelu :}
    label DDL-FILE-LABEL-A! labelu DDL-FILE-LABEL-U !
    path pathu DDL-LOAD-SOURCE
-   DDL-SRC-A@ DDL-SRC-U @ LEX-SOURCE
    DDL-SCAN ;
 
 : DUPLICATE-DEFINITION-LINT-FILE ( ptr u8 n -- )

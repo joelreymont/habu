@@ -227,6 +227,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Nested lint subprocesses need their own timeout caps:** fast tool probes can
   keep a tight timeout, but a fixture that spawns `trust-lint` or another
   repo-scale tool must use a separate cap sized for aggregate-gate contention.
+- **Repo-scale source lints stream, not vectorize:** duplicate-definition linting
+  generated stage2 source took >40s when it first built a full token vector. A
+  streaming scanner over the source buffer cut the same 400KB stage2 file to ~2s;
+  use raw `parse-name` semantics for definer payloads so words such as `(CMP)` are
+  not mistaken for comments.
 - **Dot blocker edges need a gate:** stale `.dots/*` `blocks:` IDs made work look
   blocked on deleted/completed tasks. `tools/dot-dep-lint.f` now walks `.dots/`
   directly and fails the lint slice on any blocker that is not backed by a dot
