@@ -107,6 +107,31 @@ test<TAB>label<TAB>subject<TAB>runner<TAB>boundary<TAB>sha
 That lets the summary answer which subject owns the critical path and which
 load lists are still duplicated.
 
+## Host Profiles
+
+Timing regression checks are host-specific. Use named profiles instead of
+remembering slot counts or cache state:
+
+| Profile | Host proof | Slots | Nested | Hot budget | Cold budget |
+|---|---|---:|---:|---:|---:|
+| `macos-arm64-4x2` | macOS ARM64 target | 4 | 2 | 55000ms / 60000ms wall | 70000ms / 70000ms wall |
+| `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
+| `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
+
+The default profile is `auto`: the runner inspects the target and host files
+before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
+`--pool-slots`, `--nested-pool-slots`, `--budget-ms`, or `--wall-budget-ms`
+arguments override the profile when they appear after it.
+
+`--cold-cache` selects a private per-run cache root under the suite temp
+directory, applies the profile cold budget unless the user supplied explicit
+budget arguments, and proves cache-fill behavior without deleting the persistent
+warm cache.
+
+The runner's wall budget is monotonic elapsed time from `TR-MAIN`; wrap the
+command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
+hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
+
 ## Implementation Sequence
 
 1. Test timing metrics and slowest-test summary.
@@ -158,7 +183,7 @@ load lists are still duplicated.
 
 ## Targets
 
-Short-term zed target: hot cache, uncontended, `--budget-ms 70000` passes with
+Short-term Jetson/Orin target: hot cache, uncontended, `--budget-ms 70000` passes with
 `warm-miss=0`.
 
 Architecture target:
@@ -166,8 +191,8 @@ Architecture target:
 - `inner-hb + inner-hb-stdin <= 15`;
 - `helper-spawn <= 25`;
 - `boundary <= 20`;
-- slowest host-source semantic test under 10 seconds on zed;
-- hot zed median near 30 seconds once candidate-source batching and dependency
+- slowest host-source semantic test under 10 seconds on Jetson/Orin;
+- hot Jetson/Orin median near 30 seconds once candidate-source batching and dependency
   scheduling land.
 
 Generated stats, caches, warm images, and gate logs remain local artifacts and

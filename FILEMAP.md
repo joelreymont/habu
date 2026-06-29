@@ -14,6 +14,8 @@ points stay listed.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
 - `skills/habu-bootstrap/SKILL.md` — current bootstrap and refresh commands.
 - `skills/habu-gate/SKILL.md` — current native gate commands and timing args.
+- `skills/habu-host-profiles/SKILL.md` — host-class macOS and Jetson/Orin timing
+  profiles.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.

@@ -29,9 +29,11 @@ Use the repo skills for current commands:
 
 - [`skills/habu-bootstrap/SKILL.md`](skills/habu-bootstrap/SKILL.md) — recover
   missing `bin/hb` with Gforth 0.7.9+, refresh the self-hosted engine, and port
-  bootstrap work to zed/Linux.
+  bootstrap work to Linux/aarch64.
 - [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md) — run focused and
   full native gates with explicit pool and budget arguments.
+- [`skills/habu-host-profiles/SKILL.md`](skills/habu-host-profiles/SKILL.md) —
+  run host-class macOS and Jetson/Orin timing profiles.
 - [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md) — build AOT
   binaries and REPL images.
 
@@ -90,6 +92,8 @@ See [`maki/README.md`](maki/README.md), [`PLAN.md`](PLAN.md), and the design doc
   and engine refresh commands.
 - [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md) — native gate
   commands.
+- [`skills/habu-host-profiles/SKILL.md`](skills/habu-host-profiles/SKILL.md) —
+  host-class timing profiles.
 - [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md) — AOT and REPL
   build commands.
 - [`STATUS.md`](STATUS.md) — current gate status.

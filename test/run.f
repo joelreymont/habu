@@ -9,11 +9,13 @@ include test/gate-stats.f
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
+66 constant TR-PROFILE-RC
 70000 constant TR-DEFAULT-BUDGET-MS
 4 constant TR-DEFAULT-NESTED-POOL-SLOTS
 600000 constant TR-TIMEOUT-MS
 26 constant TR-PHASES
 32 constant TR-NUM-CAP
+$100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 $2 constant TR-CHECK-WARM-PHASES
 $14 constant TR-LATE-PHASES
@@ -24,6 +26,9 @@ $14 constant TR-LATE-PHASES
 3 constant TR-RUNNER-WARM-SLOT
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
+1 constant TR-PROFILE-MACOS-ARM64-4X2
+2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
+3 constant TR-PROFILE-LINUX-ARM64-4X2
 
 \ Longest post-warm phases first; this keeps ARM gates inside budget without
 \ dropping coverage or raising the threshold.
@@ -66,6 +71,7 @@ create TR-AOT-RUNNER-KEY-HEX 80 allot
 create TR-AOT-RUNNER-STAMP-RD 80 allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
 create TR-NUM-BUF TR-NUM-CAP allot
+create TR-HOST-BUF TR-HOST-CAP allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
@@ -101,8 +107,13 @@ variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
 variable TR-ARG-I
 variable TR-BUDGET
+variable TR-WALL-BUDGET
+variable TR-BUDGET-USER
+variable TR-WALL-BUDGET-USER
 variable TR-NESTED-POOL
 variable TR-TIMINGS
+variable TR-COLD-CACHE
+variable TR-PROFILE-ID
 variable TR-NUM-U
 
 : TR-WARM$ ( -- ptr u8 n )
@@ -163,7 +174,7 @@ variable TR-NUM-U
    TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--pool-slots N] [--nested-pool-slots N] [--budget-ms N] [--timings]" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--budget-ms N] [--wall-budget-ms N] [--cold-cache] [--timings]" TR-USAGE-RC die ;
 
 : TR-ARG$ ( -- ptr u8 n )
    TR-ARG-I @ SCRIPT-ARGV$ ;
@@ -179,12 +190,6 @@ variable TR-NUM-U
 : TR-ADVANCE ( n -- )
    TR-ARG-I @ + TR-ARG-I ! ;
 
-: TR-ARGS-DEFAULTS ( -- )
-   TR-DEFAULT-BUDGET-MS TR-BUDGET !
-   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
-   0 TR-TIMINGS !
-   0 TR-UNDER-ARG-U ! ;
-
 : TR-POOL-OPT ( -- )
    TR-ARG-VALUE$ TR-POS-NUM GT-POOL-SLOTS!
    2 TR-ADVANCE ;
@@ -195,11 +200,113 @@ variable TR-NUM-U
 
 : TR-BUDGET-OPT ( -- )
    TR-ARG-VALUE$ TR-POS-NUM TR-BUDGET !
+   -1 TR-BUDGET-USER !
+   2 TR-ADVANCE ;
+
+: TR-WALL-BUDGET-OPT ( -- )
+   TR-ARG-VALUE$ TR-POS-NUM TR-WALL-BUDGET !
+   -1 TR-WALL-BUDGET-USER !
    2 TR-ADVANCE ;
 
 : TR-TIMINGS-OPT ( -- )
    -1 TR-TIMINGS !
    1 TR-ADVANCE ;
+
+: TR-COLD-CACHE-OPT ( -- )
+   -1 TR-COLD-CACHE !
+   1 TR-ADVANCE ;
+
+: TR-PROFILE-FAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   msg msgu TR-PROFILE-RC die ;
+
+: TR-HOST-READ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u EXISTS? 0= if s" missing host profile file" TR-PROFILE-FAIL then
+   a u TR-HOST-BUF TR-HOST-CAP READ-ALL
+   TR-HOST-BUF swap ;
+
+: TR-JETSON-MODEL? ( -- bool )
+   s" /proc/device-tree/model" TR-HOST-READ s" NVIDIA Jetson" CONTAINS? ;
+
+: TR-JETSON-ONLINE? ( -- bool )
+   s" /sys/devices/system/cpu/online" TR-HOST-READ TRIM s" 0-7" STR= ;
+
+: TR-DETECT-PROFILE ( -- n )
+   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-4X2 exit then
+   HB-TARGET-LINUX? if
+      s" /proc/device-tree/model" EXISTS? if
+         TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
+      then
+      TR-PROFILE-LINUX-ARM64-4X2 exit
+   then
+   s" no supported timed host profile" TR-PROFILE-FAIL ;
+
+: TR-PROFILE-ID? ( ptr u8 n -- n )
+   2dup s" auto" STR= if 2drop TR-DETECT-PROFILE exit then
+   2dup s" macos-arm64-4x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-4X2 exit then
+   2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
+   2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
+   2drop TR-USAGE ;
+
+: TR-PROFILE-APPLY ( n -- ) {: id:n :}
+   id TR-PROFILE-ID !
+   0 TR-BUDGET-USER !
+   0 TR-WALL-BUDGET-USER !
+   id case
+      TR-PROFILE-MACOS-ARM64-4X2 of
+         4 GT-POOL-SLOTS!
+         2 TR-NESTED-POOL !
+         55000 TR-BUDGET !
+         60000 TR-WALL-BUDGET !
+      endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
+         4 GT-POOL-SLOTS!
+         2 TR-NESTED-POOL !
+         100000 TR-BUDGET !
+         110000 TR-WALL-BUDGET !
+      endof
+      TR-PROFILE-LINUX-ARM64-4X2 of
+         4 GT-POOL-SLOTS!
+         2 TR-NESTED-POOL !
+         120000 TR-BUDGET !
+         0 TR-WALL-BUDGET !
+      endof
+   endcase ;
+
+: TR-ARGS-DEFAULTS ( -- )
+   TR-DEFAULT-BUDGET-MS TR-BUDGET !
+   0 TR-WALL-BUDGET !
+   0 TR-BUDGET-USER !
+   0 TR-WALL-BUDGET-USER !
+   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
+   0 TR-TIMINGS !
+   0 TR-COLD-CACHE !
+   0 TR-UNDER-ARG-U !
+   TR-DETECT-PROFILE TR-PROFILE-APPLY ;
+
+: TR-COLD-BUDGET-MS ( -- n )
+   TR-PROFILE-ID @ case
+      TR-PROFILE-MACOS-ARM64-4X2 of 70000 endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 endof
+      TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
+      TR-BUDGET @ swap
+   endcase ;
+
+: TR-COLD-WALL-BUDGET-MS ( -- n )
+   TR-PROFILE-ID @ case
+      TR-PROFILE-MACOS-ARM64-4X2 of 70000 endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 endof
+      TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
+      TR-WALL-BUDGET @ swap
+   endcase ;
+
+: TR-COLD-BUDGETS ( -- )
+   TR-COLD-CACHE @ 0 = if exit then
+   TR-BUDGET-USER @ 0= if TR-COLD-BUDGET-MS TR-BUDGET ! then
+   TR-WALL-BUDGET-USER @ 0= if TR-COLD-WALL-BUDGET-MS TR-WALL-BUDGET ! then ;
+
+: TR-PERF-PROFILE-OPT ( -- )
+   TR-ARG-VALUE$ TR-PROFILE-ID? TR-PROFILE-APPLY
+   2 TR-ADVANCE ;
 
 : TR-UNDER-ARG! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -219,6 +326,9 @@ variable TR-NUM-U
    TR-ARG$ s" --pool-slots" STR= if TR-POOL-OPT exit then
    TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
    TR-ARG$ s" --budget-ms" STR= if TR-BUDGET-OPT exit then
+   TR-ARG$ s" --wall-budget-ms" STR= if TR-WALL-BUDGET-OPT exit then
+   TR-ARG$ s" --perf-profile" STR= if TR-PERF-PROFILE-OPT exit then
+   TR-ARG$ s" --cold-cache" STR= if TR-COLD-CACHE-OPT exit then
    TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
    TR-USAGE ;
 
@@ -227,7 +337,8 @@ variable TR-NUM-U
    0 TR-ARG-I !
    begin TR-ARG-I @ SCRIPT-ARGC < while
       TR-PARSE-ARG
-   repeat ;
+   repeat
+   TR-COLD-BUDGETS ;
 
 : TR-TRUE ( -- bool )
    0 0= ;
@@ -243,6 +354,43 @@ variable TR-NUM-U
 
 : TR-BUDGET-MS ( -- n )
    TR-BUDGET @ ;
+
+: TR-WALL-BUDGET-MS ( -- n )
+   TR-WALL-BUDGET @ ;
+
+: TR-WALL-BUDGET? ( -- bool )
+   TR-WALL-BUDGET-MS 0 > ;
+
+: TR-PROFILE$ ( -- ptr u8 n )
+   TR-PROFILE-ID @ case
+      TR-PROFILE-MACOS-ARM64-4X2 of s" macos-arm64-4x2" endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
+      TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
+      s" unknown" rot
+   endcase ;
+
+: TR-CACHE-MODE$ ( -- ptr u8 n )
+   TR-COLD-CACHE @ 0 <> if s" cold" exit then
+   s" warm" ;
+
+: TR-CHECK-MACOS-PROFILE ( -- )
+   HB-TARGET-MACOS? 0= if s" macos-arm64-4x2 requires macOS target" TR-PROFILE-FAIL then ;
+
+: TR-CHECK-JETSON-PROFILE ( -- )
+   HB-TARGET-LINUX? 0= if s" jetson-orin-clocks-4x2 requires Linux target" TR-PROFILE-FAIL then
+   TR-JETSON-MODEL? 0= if s" jetson-orin-clocks-4x2 requires NVIDIA Jetson model" TR-PROFILE-FAIL then
+   TR-JETSON-ONLINE? 0= if s" jetson-orin-clocks-4x2 requires CPUs 0-7 online" TR-PROFILE-FAIL then ;
+
+: TR-CHECK-LINUX-PROFILE ( -- )
+   HB-TARGET-LINUX? 0= if s" linux-arm64-4x2 requires Linux target" TR-PROFILE-FAIL then ;
+
+: TR-CHECK-PROFILE ( -- )
+   TR-PROFILE-ID @ case
+      TR-PROFILE-MACOS-ARM64-4X2 of TR-CHECK-MACOS-PROFILE endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
+      TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
+      drop s" unknown perf profile" TR-PROFILE-FAIL
+   endcase ;
 
 : TR-PERSIST-TMP ( -- )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
@@ -262,7 +410,11 @@ variable TR-NUM-U
    then
    TR-PERSIST-XDG ;
 
+: TR-PERSIST-COLD ( -- )
+   GT-ROOT s" cold-cache" TR-PERSIST-BUF JOIN-PATH TR-PERSIST-U ! ;
+
 : TR-PERSIST-INIT ( -- )
+   TR-COLD-CACHE @ 0 <> if TR-PERSIST-COLD exit then
    TR-PERSIST-DEFAULT ;
 
 : TR-PERSIST? ( -- bool )
@@ -286,6 +438,14 @@ variable TR-NUM-U
    s" ms)" type cr
    s" native test suite budget exceeded" TR-BUDGET-RC die ;
 
+: TR-WALL-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
+   s" FAIL: native test suite wall budget (" type
+   elapsed GT-U-TYPE
+   s" ms > " type
+   budget GT-U-TYPE
+   s" ms)" type cr
+   s" native test suite wall budget exceeded" TR-BUDGET-RC die ;
+
 : TR-PASS ( n n -- ) {: elapsed:n budget:n :}
    s" PASS: native test suite (fixpoint + engine suite + checked hb + repl + hb-build) (" type
    elapsed GT-U-TYPE
@@ -293,10 +453,24 @@ variable TR-NUM-U
    budget GT-U-TYPE
    s" ms budget)" type cr ;
 
+: TR-PERF-LINE ( -- )
+   s" perf-profile: " type TR-PROFILE$ type
+   s"  cache=" type TR-CACHE-MODE$ type
+   s"  pool=" type GT-POOL-LIMIT @ GT-U-TYPE
+   s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
+   TR-WALL-BUDGET? if
+      s"  wall-budget-ms=" type TR-WALL-BUDGET-MS GT-U-TYPE
+   then
+   cr ;
+
 : TR-FINISH ( -- )
    TR-GATE-ELAPSED-MS {: elapsed:n :}
    TR-BUDGET-MS {: budget:n :}
+   TR-PERF-LINE
    elapsed budget > if elapsed budget TR-BUDGET-FAIL then
+   TR-WALL-BUDGET? if
+      elapsed TR-WALL-BUDGET-MS > if elapsed TR-WALL-BUDGET-MS TR-WALL-BUDGET-FAIL then
+   then
    elapsed budget TR-PASS ;
 
 : TR-BUILD-CACHE-ENV ( -- )
@@ -1511,6 +1685,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-MAIN ( -- )
    TR-GATE-START!
    TR-CHECK-ARGS
+   TR-CHECK-PROFILE
    TR-START
    TR-CLEAN-WARM
    TR-EXPECT-HB

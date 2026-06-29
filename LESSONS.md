@@ -1235,3 +1235,8 @@ lesson — keep the specific word/code/path, cut the prose.
   shared `LNX-*` variables, then nested helpers reused `LNX-DONE`. Use typed
   label locals for emitter control flow whenever a word calls another emitter
   helper that can allocate labels.
+- **Timing budgets are host profiles, not global truth:** macOS ARM64, generic
+  Linux ARM64, and Jetson/Orin have different CPU envelopes even with the same
+  4/2 pool policy. Let the suite auto-detect a concrete host profile, use
+  `--cold-cache` for cache-fill proofs, and reserve generic budgets for local
+  safety checks.
