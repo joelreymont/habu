@@ -42,6 +42,9 @@ s" PTX-BAD-MASK-SUB {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s 
 s" PTX-BAD-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
 s" PTX-BAD-EXTENT ( span<space-global,f32,extent-r> gridctx<block-256,extent-c,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
 s" PTX-BAD-TILE-MASK ( tile<f32,block-256,mask-a> tile<f32,block-256,mask-b> -- tile<f32,block-256,mask-a> ) +." PTX-CHECK-REJECTS
+s" PTX-BAD-MISSING-CTX ( span<space-global,f32,extent-n> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
+s" PTX-BAD-ROWCTX-AS-GRID ( span<space-global,f32,extent-n> rowctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
+s" PTX-BAD-SPAN-ARITH ( span<space-global,f32,extent-n> n -- n ) +" PTX-CHECK-REJECTS
 s" PTX-BAD-SPAN-SYNTAX ( span<space-global,f32,extent-n -- )" PTX-CHECK-REJECTS
 SGBAD @ TTRUE
 
