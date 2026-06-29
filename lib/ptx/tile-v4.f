@@ -4,8 +4,9 @@
 \ kernel body type-checks end to end exactly as the scalar SAXPY does - the v4-ness
 \ is a pure codegen representation (a tile = 4 consecutive lane regs, cg-vec.f), not
 \ a type change. A kernel built from these ops emits ld.global.v4.f32 / st.global.v4
-\ with 4 elements per thread. PRECONDITION n%4==0 (see cg-vec.f). These are PTX
-\ PRIMITIVES (TRUSTED: boundary, like tile.f). Load after lib/ptx/cg.f + cg-vec.f.
+\ with 4 elements per thread and predicated scalar residual lanes for general n.
+\ These are PTX PRIMITIVES (TRUSTED: boundary, like tile.f). Load after
+\ lib/ptx/cg.f + cg-vec.f.
 
 TRUSTED: GRID-CTX-V4 ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX-V4 ;

@@ -30,6 +30,8 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 : CG-P  ( n -- )  s" %p"  SB-APPEND SB-U ;
 : CG-L  ( n -- )  s" $L"  SB-APPEND SB-U ;          \ label operand: $L<n>
 : CG-LINE ( -- )  SB$ PTX-L ;
+: CG-LDEF ( n -- )
+   SB-RESET CG-L s" :" CG-S CG-LINE ;
 
 : CG-BIN-OP$ ( n -- ptr u8 n )
    case

@@ -65,8 +65,6 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    s" ld.param.u64 %rd3, [p_out];" PTX-L
    s" ld.param.u32 %r1, [p_k];" PTX-L ;
 
-: CG-LDEF ( n -- )  SB-RESET CG-L s" :" CG-S CG-LINE ;        \ emit "$L<n>:"
-
 \ --- per-op emitters (register numbers) ---
 \ ROW: r = blockIdx.x (one block per row).
 : EMIT-ROW ( -- n )

@@ -2,9 +2,10 @@
 \
 \ Same checked SAXPY body as saxpy-cg.f, but composed from the v4 tile ops
 \ (tile-v4.f): each thread owns 4 consecutive elements and the body lowers to
-\ ld.global.v4.f32 / st.global.v4.f32 (cg-vec.f). Entry name stays SAXPY so the
-\ existing launchers/graders work. PRECONDITION: launch with grid=ceil(n/(BLOCK*4))
-\ and n%4==0. Load after lib/ptx/cg.f + cg-vec.f + lib/ptx/tile.f + tile-v4.f.
+\ ld.global.v4.f32 / st.global.v4.f32 on full vectors and predicated scalar lanes
+\ for the residual tail. Entry name stays SAXPY so the existing launchers/graders
+\ work. Launch with grid=ceil(n/(BLOCK*4)). Load after lib/ptx/cg.f + cg-vec.f +
+\ lib/ptx/tile.f + tile-v4.f.
 
 256 %BLOCK
 KERNEL: SAXPY ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-1024

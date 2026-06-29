@@ -110,6 +110,12 @@ variable PTXT-OUT-U
    s" div.rn.f32 %f6, %f4, %f5;" PTXT-HAS
    s" sub.rn.f32 %f10, %f2, %f6;" PTXT-HAS
    s" div.rn.f32 %f18, %f10, %f14;" PTXT-HAS
+   s" ld.global.v4.f32 {%f2, %f3, %f4, %f5}, [%rd4];" PTXT-HAS
+   s" @%p3 ld.global.f32 %f2, [%rd4];" PTXT-HAS
+   s" @%p6 ld.global.f32 %f5, [%rd7];" PTXT-HAS
+   s" st.global.v4.f32 [%rd19], {%f18, %f19, %f20, %f21};" PTXT-HAS
+   s" @%p18 st.global.f32 [%rd19], %f18;" PTXT-HAS
+   s" @%p21 st.global.f32 [%rd22], %f21;" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-SOFTMAX-CG-OUTPUT ( -- )

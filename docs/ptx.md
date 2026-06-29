@@ -130,9 +130,10 @@ knowledge is required:
    memory (the bandwidth-bound common case). Structural, not an analysis pass.
 2. **Type-driven memory shaping:** for layout/ctx/element-size patterns the
    checker can prove (contiguous span + flat ctx), Habu emits coalesced loads. The
-   current v4 path emits `ld.global.v4` / `st.global.v4` behind explicit `*-V4`
-   trusted primitives and an `N % 4 == 0` precondition; typed alignment proofs and
-   masked scalar tails are future work, not current guarantees. Shared-memory staging (`cp.async`) and `bar.sync` are
+   current v4 path emits `ld.global.v4` / `st.global.v4` for full vectors and
+   predicated scalar lanes for residual vectors behind explicit `*-V4` trusted
+   primitives; typed alignment proofs remain future work, not current guarantees.
+   Shared-memory staging (`cp.async`) and `bar.sync` are
    *deferred* to the shared-memory/barrier milestone (v0 does not model shared
    aliasing), not claimed as checked yet.
 3. **A PTX IR + opt layer is new work, not reuse.** The self-hosted `bin/hb`
@@ -181,10 +182,9 @@ CUDA device proof remains Linux/Orin-specific:
    `fresh-extent-*` and `fresh-mask-*`.
 
 The remaining PTX foundation work is semantic, not bootstrap: correct generic
-collective uniformity/barrier lowering, typed
-v4 alignment/tail proofs beyond the current `N % 4 == 0` path, int-vs-float
-arithmetic capability constraints, and durable device proof/gate hardening
-listed above.
+collective uniformity/barrier lowering, typed v4 alignment proofs, int-vs-float
+arithmetic capability constraints, and durable device proof/gate hardening listed
+above.
 
 ## Decisions (locked)
 

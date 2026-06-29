@@ -30,7 +30,8 @@ as metavariables; executable checked code must use the explicit tokens.
 1024`**. Row/collective emitters derive their shared-memory size and reduction
 fold bound from `%BLOCK`; `WHERE extent-* <= block-N` rejects a block mismatch at
 load/emit time. The v4 load/store path exists today through explicit `*-V4`
-words, with scalar residual tails and alignment proofs still dotted.
+words. Scalar residual tails use predicated per-lane loads and stores; typed
+alignment proofs remain dotted.
 
 `S` maps to `space-global`, `space-shared`, `space-const`, or `space-local`.
 **v0 implements `space-global` only;** the others are reserved. `N/R/C` map to
@@ -99,8 +100,8 @@ ROW-SPAN  ( matrix<S,T,R,C> rowidx<R> -- span<S,T,C> )       \ base = r*C (check
 Vectorized load/store is explicit today: `GRID-CTX-V4`, `LOAD-V4`, `STORE-V4`,
 `SCALE-V4`, and `ADD-V4` keep the same checked `tile<T,B,M>` surface while the
 emitter uses `ld.global.v4.f32` / `st.global.v4.f32` with 4 elements/thread.
-The current v4 path assumes `N % 4 == 0`; typed alignment proofs and scalar
-residual tails remain dotted.
+Full vectors use vector load/store; residual vectors use predicated scalar lanes,
+so the codegen surface handles general `N`. Typed alignment proofs remain dotted.
 
 Elementwise/collective words require a shared mask token `M`; the checker proves
 agreement when the same token is threaded through the stack effect. Context
@@ -211,9 +212,9 @@ without a ctx; a ctx whose extent token does not match the span token;
 mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
 
 **Still dotted:** rejecting collectives under lane-varying control flow needs the
-uniformity/barrier model; v4 alignment and scalar-tail proofs sit beyond the
-current `N % 4 == 0` path. Independently mixed mask/extent tokens are rejected
-when their constructors use `fresh-mask-*` / `fresh-extent-*` templates.
+uniformity/barrier model; v4 typed alignment proofs remain beyond the current
+codegen surface. Independently mixed mask/extent tokens are rejected when their
+constructors use `fresh-mask-*` / `fresh-extent-*` templates.
 
 **Not guaranteed (honest):** the runtime extent/stride asserted at `MK-SPAN*`/
 `MK-MATRIX` (trusted); that the host passed matching `gridDim`/`blockDim` (the
@@ -296,8 +297,8 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
 8. **Camera demosaic** (Bayer→RGB) on real frames vs reference.
 9. **Bench + autotuner + precision:** GB/s & % speed-of-light, autotune, perf
    gate; f16/bf16.
-10. **Vectorization tails/alignment:** current `*-V4` words handle the divisible
-    v4 path; typed alignment proofs and scalar residual tails remain.
+10. **Vectorization alignment:** current `*-V4` words handle full vectors plus
+    predicated scalar residual lanes; typed alignment proofs remain.
 11. **Attention + experiment:** multi-tile rows, a matmul/attention tile IR,
     shared staging + accumulator policy → fused softmax→flash-attention; then run
     the LLM matrix.
