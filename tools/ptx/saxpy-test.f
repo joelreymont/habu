@@ -127,6 +127,7 @@ variable PTXT-OUT-U
    PTXT-RUN-OPS-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" sub.rn.f32 %f4, %f2, %f3;" PTXT-HAS
    s" div.rn.f32 %f6, %f4, %f5;" PTXT-HAS
+   s" fma.rn.f32" PTXT-HAS
    s" sub.rn.f32 %f10, %f2, %f6;" PTXT-HAS
    s" div.rn.f32 %f18, %f10, %f14;" PTXT-HAS
    s" ld.global.v4.f32 {%f2, %f3, %f4, %f5}, [%rd4];" PTXT-HAS

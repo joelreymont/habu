@@ -31,6 +31,9 @@ TRUSTED: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
 TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-SCALE ;
 
+TRUSTED: FMA. ( uniform<t> tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-FMA ;
+
 TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-ADD ;
 

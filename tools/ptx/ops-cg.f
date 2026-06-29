@@ -5,11 +5,13 @@
 
 256 %BLOCK
 
-KERNEL: TILE-OPS ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
-   {: x y :} \ typed-local-lint: allow-bare-local
+KERNEL: TILE-OPS ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- )  GRID: ceil-n-256
+   {: x y a :} \ typed-local-lint: allow-bare-local
    x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
    x g LOAD  y g LOAD  -.
    y g LOAD  /.
+   y g STORE
+   a x g LOAD  y g LOAD  FMA.
    y g STORE ;
 
 KERNEL: TILE-OPS-V4 ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
@@ -21,7 +23,7 @@ KERNEL: TILE-OPS-V4 ( span<space-global,f32,extent-n> span<space-global,f32,exte
 
 : EMIT-TILE-OPS ( -- )
    CG-RESET  CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS
-   1 SPAN-REG  2 SPAN-REG  TILE-OPS
+   1 SPAN-REG  2 SPAN-REG  1 UNIFORM-REG  TILE-OPS
    CG-RET CG-CLOSE ;
 
 : EMIT-TILE-OPS-V4 ( -- )

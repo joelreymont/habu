@@ -129,6 +129,12 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" mul.rn.f32 " CG-S r CG-F s" , " CG-S unif CG-F s" , " CG-S tilef CG-F s" ;" CG-S CG-LINE
    r ;
 
+: EMIT-FMA ( n n n -- n ) {: unif:n tilef:n addf:n :}
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" fma.rn.f32 " CG-S r CG-F
+   s" , " CG-S unif CG-F s" , " CG-S tilef CG-F s" , " CG-S addf CG-F s" ;" CG-S CG-LINE
+   r ;
+
 : EMIT-BIN-F32 ( n n n -- n ) {: a:n b:n op:n :}
    CG-NEXT-F {: r:n :}
    SB-RESET op CG-BIN-OP$ CG-S r CG-F
