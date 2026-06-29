@@ -135,6 +135,8 @@ points stay listed.
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
   vocabulary.
+- `tools/ptx/ops-cg.f` — checked scalar/v4 elementwise op kernel bodies run
+  through the PTX codegen vocabulary.
 - `tools/ptx/acc-cg.f` — checked AXPY-ACC kernel (register-accumulator ops) run through
   the PTX codegen; lowers ACC-ZERO/ACC-FMA/ACC-TILE to mov/fma/identity.
 - `tools/ptx/acc-device-test.f` — committed device-correctness regression: the checked

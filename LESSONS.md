@@ -214,6 +214,9 @@ lesson — keep the specific word/code/path, cut the prose.
 - **New PTX trusted primitives need rows before merge:** local `master` had
   `RELU`/`RELU-V4` TRUSTED sites without `TRUSTED.md` rows; the full native lint
   slice caught it. Add the row and a checked kernel fixture in the same change.
+- **PTX elementwise ops share one codegen contract:** scalar and v4 tile binary
+  ops route through typed opcode-to-mnemonic helpers; adding `-.`/`/.` means
+  updating scalar/v4 TRUSTED rows plus both type-check and emitted-mnemonic tests.
 - **Device proofs must fail closed:** CUDA/FFI proof tools are not allowed to
   print `NO` and exit success, reuse stale readback buffers, or drop Driver rc
   values. Device gates need rc-checked wrappers, private temp roots, sentinels,

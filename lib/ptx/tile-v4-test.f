@@ -22,6 +22,13 @@ KERNEL: RELU-SPAN-V4 ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
    2dup LOAD-V4 RELU-V4
    rot rot STORE-V4 ;
 
+KERNEL: SUBDIV-SPAN-V4 ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
+   {: x y :} \ typed-local-lint: allow-bare-local
+   x GRID-CTX-V4 {: g :} \ typed-local-lint: allow-bare-local
+   x g LOAD-V4  y g LOAD-V4  SUB-V4
+   y g LOAD-V4  DIV-V4
+   y g STORE-V4 ;
+
 \ Clean load past this point is the positive proof: the v4 SAXPY body certifies
 \ against its declared parametric effect (same proof as scalar tile-test.f).
 

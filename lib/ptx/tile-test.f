@@ -4,7 +4,7 @@
 \ parametric effect (a reject would emit a checker diagnostic and fail the load).
 \ The element type f32, extent token extent-n, and block-256 instantiate the
 \ polymorphic operation signatures in lib/ptx/tile.f; the mask token threads from
-\ GRID-CTX through LOAD / SCALE / +. to STORE by unification.
+\ GRID-CTX through LOAD / SCALE / +. / -. / /. to STORE by unification.
 
 T-RESET
 
@@ -28,8 +28,17 @@ KERNEL: RELU-SPAN ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
    2dup LOAD RELU
    rot rot STORE ;
 
+KERNEL: SUBDIV-SPAN ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
+   {: x y :} \ typed-local-lint: allow-bare-local
+   x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
+   x g LOAD  y g LOAD  -.
+   y g LOAD  /.
+   y g STORE ;
+
 s" PTX-GOOD-MASK-SHARED {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD +." CHECK! -1 T=
 s" PTX-BAD-MASK-DISTINCT {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD +." PTX-CHECK-REJECTS
+s" PTX-GOOD-MASK-SUBDIV {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD -. s g LOAD /." CHECK! -1 T= \ typed-local-lint: allow-bare-local
+s" PTX-BAD-MASK-SUB {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD -." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 
 \ Clean load past this point is the positive proof: KERNEL: verified SAXPY's body
 \ against its declared parametric effect. A reject emits a diagnostic + fails load.

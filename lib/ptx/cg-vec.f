@@ -59,13 +59,26 @@
    loop
    r ;
 
-\ ADD-V4: lane-wise tile + tile -> tile
-: EMIT-ADD-V4 ( n n -- n ) {: a b :}
-   CG-NEXT-F4 {: r :}
+\ binary tile op: lane-wise tile op tile -> tile
+: EMIT-BIN-F32-V4 ( n n n -- n ) {: a:n b:n op:n :}
+   CG-NEXT-F4 {: r:n :}
    4 0 do
-      SB-RESET s" add.rn.f32 " CG-S  r i + CG-F  s" , " CG-S  a i + CG-F  s" , " CG-S  b i + CG-F  s" ;" CG-S CG-LINE
+      SB-RESET op CG-BIN-OP$ CG-S  r i + CG-F
+      s" , " CG-S  a i + CG-F  s" , " CG-S  b i + CG-F  s" ;" CG-S CG-LINE
    loop
    r ;
+
+\ ADD-V4: lane-wise tile + tile -> tile
+: EMIT-ADD-V4 ( n n -- n ) CG-OP-ADD EMIT-BIN-F32-V4 ;
+
+\ SUB-V4: lane-wise tile - tile -> tile
+: EMIT-SUB-V4 ( n n -- n ) CG-OP-SUB EMIT-BIN-F32-V4 ;
+
+\ MUL-V4: lane-wise tile * tile -> tile
+: EMIT-MUL-V4 ( n n -- n ) CG-OP-MUL EMIT-BIN-F32-V4 ;
+
+\ DIV-V4: lane-wise tile / tile -> tile
+: EMIT-DIV-V4 ( n n -- n ) CG-OP-DIV EMIT-BIN-F32-V4 ;
 
 \ RELU-V4: lane-wise max(tile, 0) -> tile
 : EMIT-RELU-V4 ( n -- n ) {: tb :}

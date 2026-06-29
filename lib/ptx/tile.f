@@ -34,8 +34,14 @@ TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 TRUSTED: +. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-ADD ;
 
+TRUSTED: -. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-SUB ;
+
 TRUSTED: *. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-MUL ;
+
+TRUSTED: /. ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-DIV ;
 
 TRUSTED: RELU ( tile<t,b,m> -- tile<t,b,m> )
    EMIT-RELU ;

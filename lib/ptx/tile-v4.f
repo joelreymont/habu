@@ -22,5 +22,14 @@ TRUSTED: SCALE-V4 ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
 TRUSTED: ADD-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
    EMIT-ADD-V4 ;
 
+TRUSTED: SUB-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-SUB-V4 ;
+
+TRUSTED: MUL-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-MUL-V4 ;
+
+TRUSTED: DIV-V4 ( tile<t,b,m> tile<t,b,m> -- tile<t,b,m> )
+   EMIT-DIV-V4 ;
+
 TRUSTED: RELU-V4 ( tile<t,b,m> -- tile<t,b,m> )
    EMIT-RELU-V4 ;

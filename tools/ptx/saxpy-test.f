@@ -1,4 +1,4 @@
-\ saxpy-test.f - focused tests for the PTX SAXPY encoder.
+\ saxpy-test.f - focused tests for PTX text and checked-codegen output.
 \
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f, lib/process.f,
 \ lib/process-argv.f, lib/process-env.f, and src/arch/ptx/emit.f.
@@ -32,6 +32,26 @@ variable PTXT-OUT-U
    PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PTXT-CAPTURE>N ;
 
+: PTXT-RUN-OPS-CG ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/float.f"  >LEN PROC-ARGV+
+   s" lib/fmt.f"  >LEN PROC-ARGV+
+   s" lib/test.f"  >LEN PROC-ARGV+
+   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
+   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
+   s" lib/ptx/cg-vec.f"  >LEN PROC-ARGV+
+   s" lib/ptx/header.f"  >LEN PROC-ARGV+
+   s" lib/ptx/tile.f"  >LEN PROC-ARGV+
+   s" lib/ptx/tile-v4.f"  >LEN PROC-ARGV+
+   s" tools/ptx/ops-cg.f"  >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
+   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   PTXT-CAPTURE>N ;
+
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .version 8.3" PTXT-HAS
@@ -46,7 +66,16 @@ variable PTXT-OUT-U
    s" DONE:" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+: PTXT-OPS-CG-OUTPUT ( -- )
+   PTXT-RUN-OPS-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" sub.rn.f32 %f4, %f2, %f3;" PTXT-HAS
+   s" div.rn.f32 %f6, %f4, %f5;" PTXT-HAS
+   s" sub.rn.f32 %f10, %f2, %f6;" PTXT-HAS
+   s" div.rn.f32 %f18, %f10, %f14;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
+PTXT-OPS-CG-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

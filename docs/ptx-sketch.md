@@ -292,8 +292,8 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
    artifacts. Remaining proof is launching the cubin through the M1 CUDA Driver
    harness and comparing against CPU golden.
 4. **Tile DSL v0 + negatives:** `span`/`gridctx`/`tile<T,B,M>`, `MK-SPAN=`,
-   `GRID-CTX`, `LOAD/STORE`, elementwise; saxpy from checked source; the
-   non-collective negative cases.
+   `GRID-CTX`, `LOAD/STORE`, scalar `SCALE` and elementwise `+.`/`-.`/`*.`/`/.`;
+   saxpy from checked source; the non-collective negative cases.
 5. **Mask + uniformity + barrier model:** `uniform<T>`, the uniform/lane-varying
    effect, predicated bounds, a verified `bar.sync` phase; collective negatives.
 6. **Collectives + softmax-rows:** `BLOCK-MAX/SUM`, `rowctx`, `matrix`,

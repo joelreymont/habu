@@ -10,6 +10,11 @@
 
 variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 
+0 constant CG-OP-ADD
+1 constant CG-OP-SUB
+2 constant CG-OP-MUL
+3 constant CG-OP-DIV
+
 : CG-RESET ( -- )  2 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;  \ after param loads
 : CG-NEXT-F  ( -- n )  CG-NF  @ dup 1+ CG-NF  ! ;
 : CG-NEXT-RD ( -- n )  CG-NRD @ dup 1+ CG-NRD ! ;
@@ -25,6 +30,15 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 : CG-P  ( n -- )  s" %p"  SB-APPEND SB-U ;
 : CG-L  ( n -- )  s" $L"  SB-APPEND SB-U ;          \ label operand: $L<n>
 : CG-LINE ( -- )  SB$ PTX-L ;
+
+: CG-BIN-OP$ ( n -- ptr u8 n )
+   case
+      CG-OP-ADD of s" add.rn.f32 " endof
+      CG-OP-SUB of s" sub.rn.f32 " endof
+      CG-OP-MUL of s" mul.rn.f32 " endof
+      CG-OP-DIV of s" div.rn.f32 " endof
+      drop s" cg: unknown binary op" 76 die
+   endcase ;
 
 \ --- module / entry scaffolding ---
 : CG-HEADER ( -- )  PTX-HEADER-SM87  PTX-NL ;
@@ -113,17 +127,23 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" mul.rn.f32 " CG-S r CG-F s" , " CG-S unif CG-F s" , " CG-S tilef CG-F s" ;" CG-S CG-LINE
    r ;
 
-\ +. : tile + tile -> tile (add.rn)
-: EMIT-ADD ( n n -- n ) {: a b :}
-   CG-NEXT-F {: r :}
-   SB-RESET s" add.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
+: EMIT-BIN-F32 ( n n n -- n ) {: a:n b:n op:n :}
+   CG-NEXT-F {: r:n :}
+   SB-RESET op CG-BIN-OP$ CG-S r CG-F
+   s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
    r ;
 
+\ +. : tile + tile -> tile (add.rn)
+: EMIT-ADD ( n n -- n ) CG-OP-ADD EMIT-BIN-F32 ;
+
+\ -. : tile - tile -> tile (sub.rn)
+: EMIT-SUB ( n n -- n ) CG-OP-SUB EMIT-BIN-F32 ;
+
 \ *. : tile * tile -> tile (mul.rn)
-: EMIT-MUL ( n n -- n ) {: a b :}
-   CG-NEXT-F {: r :}
-   SB-RESET s" mul.rn.f32 " CG-S r CG-F s" , " CG-S a CG-F s" , " CG-S b CG-F s" ;" CG-S CG-LINE
-   r ;
+: EMIT-MUL ( n n -- n ) CG-OP-MUL EMIT-BIN-F32 ;
+
+\ /. : tile / tile -> tile (div.rn)
+: EMIT-DIV ( n n -- n ) CG-OP-DIV EMIT-BIN-F32 ;
 
 \ RELU: max(tile, 0) -> tile (the elementwise nonlinearity; for fusion demos)
 : EMIT-RELU ( n -- n ) {: tilef :}

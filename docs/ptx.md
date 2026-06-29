@@ -178,8 +178,9 @@ prerequisites. Both are now landed on the Linux/aarch64 Orin path:
 
 The remaining PTX foundation work is semantic, not bootstrap: correct generic
 collective mask/block lowering (dot `habu-fix-ptx-collective-997cfcce`), typed
-v4 alignment/tail proofs beyond the current `N % 4 == 0` path, and durable
-device proof/gate hardening listed above.
+v4 alignment/tail proofs beyond the current `N % 4 == 0` path, int-vs-float
+arithmetic capability constraints, and durable device proof/gate hardening
+listed above.
 
 ## Decisions (locked)
 
