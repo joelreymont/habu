@@ -45,7 +45,7 @@ points stay listed.
 - `src/habu/aot.f` — stripped AOT linker driver.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
 - `src/habu/maker.f` — generic maker-image build driver for `hb-build`.
-- `src/habu/snap.f` — checked image writer for `bin/hb`.
+- `src/habu/snap.f` — checked image writer for warm snapshot cache images.
 - `src/habu/stdin.f` — internal stdin/interactive engine builder.
 
 ## Debugging And Inspection
@@ -105,7 +105,8 @@ points stay listed.
 - `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
-- `tools/build-fixpoint.f` — checked native stage/stdin/snapshot build driver.
+- `tools/build-fixpoint.f` — checked native stage/stdin build driver; explicit
+  `snap` builds warm snapshot candidates for cache/debug paths.
 - `tools/check-core.f` — reusable Habu-native checked engine runner core.
 - `tools/check.f` — thin CLI entrypoint for the checked engine runner.
 - `tools/check-main.f` — no-include checked engine entry for warm tool images.

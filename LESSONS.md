@@ -126,8 +126,8 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
   default native gate budget to 160s hid duplicated gate work after the suite had
   already been cut near 90s. Keep the default at the current green threshold and
-  use `HABU_GATE_BUDGET_MS` only as an explicit slow-host override while the 30s
-  architecture work removes duplicate launches/builds.
+  use `test/run.f -- --budget-ms N` as the explicit slow-host override while the
+  30s architecture work removes duplicate launches/builds.
 - **Cache Habu-under-test by content, not path:** the full gate's first wall was
   a fresh fixpoint build before any under-test phase could start. Hash `bin/hb`,
   the runner/build harness, and every emitted engine/repl source; a persistent
@@ -149,7 +149,8 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Pool slots are host policy, not universal truth:** on this macOS/aarch64
   12-core host, hot-cache full gates measured 6/7/8/10 slots at
   60.101/56.407/53.532/54.350s internal; 8 wins. Keep Linux conservative until
-  measured there, and leave `HABU_GATE_POOL_SLOTS` as the explicit override.
+  measured there, and use discoverable argv knobs:
+  `test/run.f -- --pool-slots N --nested-pool-slots M`.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
@@ -255,7 +256,7 @@ lesson — keep the specific word/code/path, cut the prose.
   inner-tool recompiles; the bigger wall cut came from a bounded checked DAG
   pool. Do not mutate `bin/hb` inside the gate: build candidates under private
   `HB_TMP`, run independent stdlib/diagnostic/engine slices concurrently, bound
-  nested pools with `HABU_GATE_POOL_SLOTS`, and delay short timeout-sensitive
+  nested pools with `--nested-pool-slots`, and delay short timeout-sensitive
   lints until the heavy wave drains.
 - **Full DAG timing beats isolated wins:** on Linux/aarch64, separate hb-build
   maker warming and warm-tools manifest loading passed focused probes but
@@ -316,6 +317,13 @@ lesson — keep the specific word/code/path, cut the prose.
   `E-PROC-TIMEOUT`). Gate boundaries use outcome capture plus attribution:
   case/phase, executable, argv/load list, outcome kind/code, named rc, capture
   bytes/cap, stdout, and stderr.
+- **Gate entries catch their own throws:** a direct `test/gate-engine.f -- build`
+  can fail before child attribution runs. Entry wrappers catch top-level throws,
+  print the phase label plus throw code/name, then rethrow so rc stays useful.
+- **Small-engine suites use test-owned checker fixtures:** `bin/hb` must not bake
+  image/spawn emitter words just so checker algebra probes can run. Use local
+  `T-*` TRUST rows for role algebra in `test/engine-suite.f`; keep real emitter
+  source coverage in build-fixpoint/source-shape tests.
 - **Manifest lint needs top-level scheduling under load:** `stdlib-manifest-test`
   was fast alone but its internal `public-signatures` child hit the old 5s
   timeout under full-gate contention and surfaced only as `rc 58` until pool
@@ -1143,8 +1151,8 @@ lesson — keep the specific word/code/path, cut the prose.
   token. Keep re-entrant evaluator frames above scratch and below `DATA-START`,
   with an engine-suite high-arity `evaluate` regression.
 - **Create persistent gate roots before content-key hashing:** per-file digest
-  cache auto-opens `HABU_GATE_WARM_PERSIST/content-key.cache`, so the gate must
-  create the persistent root before any `CK-FILE+` key construction, including
+  cache uses the gate warm root's `content-key.cache`, so the gate must create
+  the persistent root before any `CK-FILE+` key construction, including
   under-test cache restore.
 - **Build-fixpoint child helpers own argv state:** warm gate images reuse one
   process across phases, so stale `PROC-ARGV` entries from a prior tool command
@@ -1178,3 +1186,12 @@ lesson — keep the specific word/code/path, cut the prose.
   opaque `E-PROC-SPAWN`. Keep raw spawns returning `pid|-errno`, prove missing
   executable as `-ENOENT`, and let gate-owned wrappers print raw code/errno
   before converting to the public `E-PROC-SPAWN` API.
+- **Small-engine tools own their non-baked layout deps:** after shrinking
+  `bin/hb`, tools like `imgdump` cannot assume target executable constants such
+  as `DATA-SIZE` are resident. Load target layout on demand, but keep common
+  dictionary layout in the cold prefix so duplicate-definition checks stay
+  fail-closed.
+- **Trust drift is audit maintenance, not architecture work:** moving emitter
+  helpers shifts `TRUSTED.md` site pins and correctly fails `trust-lint`; update
+  those rows after deciding the boundary still belongs. Do not hide a red
+  `trust-lint` by starting a broad trust-reduction refactor in the same change.

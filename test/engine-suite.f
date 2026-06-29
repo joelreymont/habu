@@ -1,15 +1,46 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
-\ gforth. A failure prints F<index> and the run exits 1 via the final report.
+\ gforth. A failure prints F<index>, assertion detail, and exits 1 via report.
 
 variable #FAIL
 variable #CASE
 
+256 constant T-LABEL-CAP
+create T-LABEL-BUF T-LABEL-CAP allot
+variable T-LABEL-U
+
+: T-LABEL-CLEAR ( -- )
+   0 T-LABEL-U ! ;
+
+: T-LABEL$ ( -- ptr u8 n )
+   T-LABEL-BUF T-LABEL-U @ ;
+
+: T-LABEL ( ptr u8 n -- ) {: a:ptr u:n :}
+   u T-LABEL-CAP > if s" engine-suite: label too long" 1 die then
+   0 begin dup u < while
+      dup a + c@  over T-LABEL-BUF + c!
+      1+
+   repeat drop
+   u T-LABEL-U ! ;
+
+: T-LABEL. ( -- )
+   T-LABEL-U @ 0 > if s" case: " type T-LABEL$ type cr then ;
+
+: T-FAIL+ ( -- )
+   #FAIL @ 1 + #FAIL ! ;
+
+: T-FAIL ( -- )
+   [char] F emit #CASE @ .
+   T-LABEL.
+   T-FAIL+ ;
+
 : T= ( n n -- ) {: got:n want:n :}
    #CASE @ 1 + #CASE !
    got want <> if
-     [char] F emit #CASE @ .
-     #FAIL @ 1 + #FAIL !
-   then ;
+      T-FAIL
+      s" assert: expected " type want .
+      s" got " type got .
+   then
+   T-LABEL-CLEAR ;
 
 \ arithmetic, stack, comparisons
 5 dup * 25 T=
@@ -181,10 +212,15 @@ TFOLD 6 T=
 TMAP
 TFOLD 9 T=
 TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
+   2dup T-LABEL
    DIAGXT @ >r
    0 DIAGXT !
    CHECK! 0 T=
    r> DIAGXT ! ;
+
+TRUSTED: T-CHECK-PASSES ( ptr u8 n -- )
+   2dup T-LABEL
+   CHECK! -1 T= ;
 variable TC-UEND
 variable TC-NEND
 variable TC-SYMN
@@ -217,21 +253,27 @@ USIGS-GROW-CAP @ TG-GROW-CAP !
 USIGS-GROW-NEXT @ TG-GROW-NEXT !
 UEND @ 128 + USIGS-CAP-U !
 s" T-GROW-PAIR" s" ptr u8 n ptr u8 n -- ptr u8 n" TRUST
-s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" CHECK! -1 T=
+s" COK-GROW-PAIR ( ptr u8 n ptr u8 n -- ptr u8 n ) T-GROW-PAIR" T-CHECK-PASSES
 TG-USIGS-P @ USIGS-P !
 TG-CAP @ USIGS-CAP-U !
 TG-GROW-CAP @ USIGS-GROW-CAP !
 TG-GROW-NEXT @ USIGS-GROW-NEXT !
 TG-UEND @ USIGS-RESTORE-END
 s" T-PHASE-ID" s" img -- img" TRUST
-s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" CHECK! -1 T=
+s" COK-PHASE-ID ( img -- img ) T-PHASE-ID" T-CHECK-PASSES
 s" CBAD-PHASE-BORROW ( -- ) T-PHASE-ID" T-CHECK-REJECTS
-s" COK-BUILD-IMAGE ( -- img ) ASM-CODE BUILD-IMAGE" CHECK! -1 T=
-s" COK-CODESIG2 ( -- img ) ASM-CODE BUILD-IMAGE CODESIG2" CHECK! -1 T=
-s" COK-SNAP-HDR ( n -- snap n ) BUILD-SNAP-HDR" CHECK! -1 T=
-s" COK-SNAP-EXTRA ( -- ptr u8 n ) SNAP-EXTRA-PTR SNAP-EXTRA-SIZE" CHECK! -1 T=
-s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
-s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
+s" T-ASM-CODE" s" -- asm" TRUST
+s" T-BUILD-IMAGE" s" asm -- img" TRUST
+s" T-CODESIG2" s" img -- img" TRUST
+s" T-BUILD-SNAP-HDR" s" n -- snap n" TRUST
+s" T-SNAP-EXTRA-PTR" s" -- ptr u8" TRUST
+s" T-SNAP-EXTRA-SIZE" s" -- n" TRUST
+s" COK-BUILD-IMAGE ( -- img ) T-ASM-CODE T-BUILD-IMAGE" T-CHECK-PASSES
+s" COK-CODESIG2 ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-CODESIG2" T-CHECK-PASSES
+s" COK-SNAP-HDR ( n -- snap n ) T-BUILD-SNAP-HDR" T-CHECK-PASSES
+s" COK-SNAP-EXTRA ( -- ptr u8 n ) T-SNAP-EXTRA-PTR T-SNAP-EXTRA-SIZE" T-CHECK-PASSES
+s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" T-CHECK-PASSES
+s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" T-CHECK-PASSES
 s" T-PTX-LOAD" s" span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live>" TRUST
 s" T-PTX-ADD" s" tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live>" TRUST
 s" T-PTX-GRID" s" span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live>" TRUST
@@ -240,16 +282,16 @@ s" T-PTX-MADD" s" tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-
 s" T-MK-SPAN" s" n -- span<space-global,f32,fresh-extent-n>" TRUST
 s" T-MK-SPAN=" s" n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n>" TRUST
 s" T-PTX-SAME-EXTENT" s" span<space-global,f32,e> span<space-global,f32,e> --" TRUST
-s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" CHECK! -1 T=
-s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" CHECK! -1 T=
-s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" CHECK! -1 T=
-s" COK-PTX-RIGID-SHARED ( n -- ) T-MK-SPAN= T-PTX-SAME-EXTENT" CHECK! -1 T=
+s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" T-CHECK-PASSES
+s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
+s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" T-CHECK-PASSES
+s" COK-PTX-RIGID-SHARED ( n -- ) T-MK-SPAN= T-PTX-SAME-EXTENT" T-CHECK-PASSES
 s" CBAD-PTX-RIGID-LONE ( n n -- ) T-MK-SPAN swap T-MK-SPAN T-PTX-SAME-EXTENT" T-CHECK-REJECTS
-s" COK-PTX-RET-SHARED T-MK-SPAN=" CHECK! -1 T=
-s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" CHECK! -1 T=
-s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" CHECK! -1 T=
+s" COK-PTX-RET-SHARED T-MK-SPAN=" T-CHECK-PASSES
+s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" T-CHECK-PASSES
+s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" T-CHECK-PASSES
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
-s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" CHECK! -1 T=
+s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
 s" T-NEED-I64" s" i64 --" TRUST
 s" T-NEED-U32" s" u32 --" TRUST
@@ -258,10 +300,10 @@ s" T-NEED-U8" s" u8 --" TRUST
 s" T-GIVE-U16" s" -- u16" TRUST
 s" T-GIVE-U8" s" -- u8" TRUST
 s" T-GIVE-I64" s" -- i64" TRUST
-s" COK-U8-WIDEN-IN ( u8 -- ) T-NEED-I64" CHECK! -1 T=
-s" COK-U8-WIDEN-OUT ( -- i64 ) T-GIVE-U8" CHECK! -1 T=
-s" COK-U16-WIDEN-IN ( u16 -- ) T-NEED-U32" CHECK! -1 T=
-s" COK-U16-WIDEN-OUT ( -- u32 ) T-GIVE-U16" CHECK! -1 T=
+s" COK-U8-WIDEN-IN ( u8 -- ) T-NEED-I64" T-CHECK-PASSES
+s" COK-U8-WIDEN-OUT ( -- i64 ) T-GIVE-U8" T-CHECK-PASSES
+s" COK-U16-WIDEN-IN ( u16 -- ) T-NEED-U32" T-CHECK-PASSES
+s" COK-U16-WIDEN-OUT ( -- u32 ) T-GIVE-U16" T-CHECK-PASSES
 s" CBAD-I64-NARROW-IN ( i64 -- ) T-NEED-U8" T-CHECK-REJECTS
 s" CBAD-I64-NARROW-OUT ( -- u8 ) T-GIVE-I64" T-CHECK-REJECTS
 s" CBAD-U32-NARROW-IN ( u32 -- ) T-NEED-U16" T-CHECK-REJECTS
@@ -269,7 +311,7 @@ DEFTYPE node
 s" T->NODE" s" n -- node" TRUST
 s" T-NODE>N" s" node -- n" TRUST
 s" T-NEED-NODE" s" node --" TRUST
-s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" CHECK! -1 T=
+s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
@@ -279,7 +321,7 @@ s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
 s" CBAD-TIMES ( i64 -- i64 i64 ) 5 [: 1+ ;] TIMES" T-CHECK-REJECTS
 s" CBAD-MAP ( ptr i64 i64 -- i64 ) [: 1+ ;] MAP" T-CHECK-REJECTS
 s" CBAD-QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" T-CHECK-REJECTS
-s" COK-CASE ( i64 -- i64 ) case 1 of 10 endof 2 of 20 endof 30 swap endcase" CHECK! -1 T=
+s" COK-CASE ( i64 -- i64 ) case 1 of 10 endof 2 of 20 endof 30 swap endcase" T-CHECK-PASSES
 s" CBAD-CASE-ARM ( i64 -- i64 ) case 1 of 10 11 endof 20 swap endcase" T-CHECK-REJECTS
 s" CBAD-CASE-MISSING ( i64 -- i64 ) case 1 of 10 endof" T-CHECK-REJECTS
 s" CBAD-CASE-ORPHAN ( i64 -- i64 ) 1 of 2 endof" T-CHECK-REJECTS
@@ -299,22 +341,26 @@ s" CBAD-PTX-ID-SPACE ( span<space-shared,f32,extent-n> -- span<space-global,f32,
 9 TROLE-VA 9 T=
 : TROLE-SYMIDX ( n -- n ) >SYMIDX SYMIDX>N ;
 10 TROLE-SYMIDX 10 T=
-: TROLE-LINUX-DUP2 ( reg fd reg -- ) LINUX-DUP2-FD ;
-: TROLE-DARWIN-DUP2 ( reg fd -- ) SPAWN-DUP2-ACTION ;
-: TROLE-DARWIN-FINISH ( label label -- ) SPAWN-DARWIN-FINISH ;
 s" CBAD-REG-LABEL ( reg label -- reg ) nip" T-CHECK-REJECTS
 s" CBAD-VA-SYMIDX ( va symidx -- va ) nip" T-CHECK-REJECTS
-s" CBAD-BUILD-IMAGE ( -- ) BUILD-IMAGE" T-CHECK-REJECTS
-s" CBAD-BUILD-IMAGE-STALE ( -- img ) ASM-CODE BUILD-IMAGE BUILD-IMAGE" T-CHECK-REJECTS
-s" CBAD-CODESIG2 ( -- ) CODESIG2" T-CHECK-REJECTS
-s" CBAD-SNAP-HDR ( n -- n ) BUILD-SNAP-HDR" T-CHECK-REJECTS
+s" CBAD-BUILD-IMAGE ( -- ) T-BUILD-IMAGE" T-CHECK-REJECTS
+s" CBAD-BUILD-IMAGE-STALE ( -- img ) T-ASM-CODE T-BUILD-IMAGE T-BUILD-IMAGE" T-CHECK-REJECTS
+s" CBAD-CODESIG2 ( -- ) T-CODESIG2" T-CHECK-REJECTS
+s" CBAD-SNAP-HDR ( n -- n ) T-BUILD-SNAP-HDR" T-CHECK-REJECTS
 s" CBAD-THROW-DUMMY ( i64 -- i64 ) dup 0 < if 1 throw 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-DIE-DUMMY ( i64 -- i64 ) dup 0 < if here 0 1 die 0 then 1 +" T-CHECK-REJECTS
 s" CBAD-EXIT-DUMMY ( i64 -- i64 ) exit 0" T-CHECK-REJECTS
-s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) LINUX-DUP2-FD" T-CHECK-REJECTS
-s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) LINUX-SPAWN" T-CHECK-REJECTS
-s" CBAD-DARWIN-DUP2 ( reg reg -- ) SPAWN-DUP2-ACTION" T-CHECK-REJECTS
-s" CBAD-DARWIN-FINISH ( reg label -- ) SPAWN-DARWIN-FINISH" T-CHECK-REJECTS
+s" T-LINUX-DUP2-FD" s" reg fd reg --" TRUST
+s" T-LINUX-SPAWN" s" reg reg reg reg reg reg reg --" TRUST
+s" T-SPAWN-DUP2-ACTION" s" reg fd --" TRUST
+s" T-SPAWN-DARWIN-FINISH" s" label label --" TRUST
+s" TROLE-LINUX-DUP2 ( reg fd reg -- ) T-LINUX-DUP2-FD" T-CHECK-PASSES
+s" CBAD-LINUX-DUP2-FD ( reg reg reg -- ) T-LINUX-DUP2-FD" T-CHECK-REJECTS
+s" CBAD-LINUX-SPAWN ( reg reg reg fd reg reg reg -- ) T-LINUX-SPAWN" T-CHECK-REJECTS
+s" TROLE-DARWIN-DUP2 ( reg fd -- ) T-SPAWN-DUP2-ACTION" T-CHECK-PASSES
+s" TROLE-DARWIN-FINISH ( label label -- ) T-SPAWN-DARWIN-FINISH" T-CHECK-PASSES
+s" CBAD-DARWIN-DUP2 ( reg reg -- ) T-SPAWN-DUP2-ACTION" T-CHECK-REJECTS
+s" CBAD-DARWIN-FINISH ( reg label -- ) T-SPAWN-DARWIN-FINISH" T-CHECK-REJECTS
 : ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
 s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
 s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS

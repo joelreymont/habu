@@ -9,7 +9,9 @@ stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
 in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool
 semantic fixtures, batched engine fixture source-list checks, attributed pool
-outcomes, a default content-keyed gate cache, and a 70s default budget.
+outcomes, a default content-keyed gate cache, and a 70s default budget. Host
+timing policy is exposed as script args: `--pool-slots`, `--nested-pool-slots`,
+and `--budget-ms`.
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -32,7 +34,9 @@ only private `HB_TMP` artifacts from `bootstrap/`, then installs exactly
 `bin/hb` for macOS ARM64 or Linux AArch64 and immediately refreshes that binary
 from current source. The gate,
 daily refresh, benchmark, and verification paths remain Habu-native and run with
-Gforth absent.
+Gforth absent. The installed `bin/hb` is the small stdin/TTY engine, not a warm
+snapshot; warm snapshot images are content-keyed cache artifacts rebuilt by the
+gate when needed.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, and 979/0/0 after the native primitive,

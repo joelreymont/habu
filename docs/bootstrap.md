@@ -1,6 +1,9 @@
 # Bootstrap
 
 `bin/hb` is generated and ignored. It is the only installed native build output.
+It is the small stdin/TTY engine, not a warm snapshot: core/checker/tool source
+is loaded from the checkout at process start, and large dictionaries/checker
+arenas live in runtime memory instead of being baked into the executable.
 A checkout without `bin/hb` uses Gforth only to create private bootstrap
 artifacts under `HB_TMP`; those artifacts exist only to produce `bin/hb`.
 
@@ -73,12 +76,12 @@ detected.
 1. validates that Gforth supports `{:` locals;
 2. uses `test/nf.fs` and `bootstrap/` to create private bootstrap executables in
    `HB_TMP` from the same native source layers used by `tools/build-fixpoint.f`;
-3. uses those private executables to produce `bin/hb`;
+3. uses those private executables to produce the small stdin engine as `bin/hb`;
 4. runs the normal `bin/hb` self-refresh so the installed binary is rebuilt from
    current source and reaches the byte-for-byte fixpoint.
 
 The temporary files are not build products. The final installed `bin/hb` is the
-native checked engine rebuilt from current source.
+native checked stdin/TTY engine rebuilt from current source.
 
 ## Periodic No-Binary Check
 
@@ -96,7 +99,7 @@ tools/bootstrap.sh
 ```
 
 `HABU_BOOTSTRAP_CHECK_ONLY=1` builds the private Gforth/native bootstrap chain
-through `hb-new` and exits before replacing `bin/hb`.
+through `hb-stdin` and exits before replacing `bin/hb`.
 
 ## Refresh `bin/hb`
 
@@ -128,7 +131,9 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
 This is the native port gate. It runs as a checked bounded DAG pool with
 private `HB_TMP` roots. It proves the host `bin/hb`, source selection,
 checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
-current platform under the default 70s budget. It intentionally does not run LLM
+current platform under the default 70s budget. Host policy is argv, not env:
+append `-- --pool-slots N --nested-pool-slots M --budget-ms B` when measuring a
+specific machine. It intentionally does not run LLM
 benchmark fixtures or require JavaScript, Python, Rust, TypeScript, or model
 runtimes.
 
@@ -139,6 +144,10 @@ supports checker/diagnostic slices. `hb-tools-warm` plus
 `hb-tools-warm.trust.f` supports tool subprocess fixtures such as
 `check-all-errors` and `gate-json-assert`. These are regenerable local cache
 artifacts and must not be committed.
+
+Warm snapshots are cache artifacts only. They are allowed to bake a live
+dictionary because the cache is local and content-keyed; `bin/hb` itself must
+stay the small source-loading engine.
 
 ## Future Port Checklist
 

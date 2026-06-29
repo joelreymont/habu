@@ -689,7 +689,13 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test.f	word	T-CASES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion case count
 1	test	lib/test.f	word	T-FAILURES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion failure count
 1	test	lib/test.f	word	T-NEXT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	increment assertion case count
+1	test	lib/test.f	word	T-LABEL-CLEAR	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	clear current assertion label
+1	test	lib/test.f	word	T-LABEL$	(-- ptr u8 n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return current assertion label bytes
+1	test	lib/test.f	word	T-LABEL	(ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	set current assertion label
+1	test	lib/test.f	word	T-LABEL.	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	print current assertion label when present
+1	test	lib/test.f	word	T-FAIL+	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	increment assertion failure count
 1	test	lib/test.f	word	T-FAIL	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure
+1	test	lib/test.f	word	T-ASSERT-DETAIL	(ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure with detail text
 1	test	lib/test.f	word	T-ASSERT	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert a Forth boolean
 1	test	lib/test.f	word	T=	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric equality
 1	test	lib/test.f	word	T<>	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric inequality

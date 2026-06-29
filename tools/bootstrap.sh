@@ -239,18 +239,8 @@ test -f "$T/hb-stdin-got"
 mv "$T/hb-stdin-got" "$T/hb-stdin"
 chmod +x "$T/hb-stdin"
 
-emit_src "$T/hb-snap-src" src/habu/snap.f native
-rm -f "$T/hb-snap0" "$T/hb-new"
-env HB_TMP="$T" "$T/hb-stdin" < "$T/hb-snap-src"
-test -f "$T/hb-snap0"
-mv "$T/hb-snap0" "$T/hb-new"
-if [[ "$HABU_TARGET" == "macos-aarch64" ]]; then
-  codesign -s - --force "$T/hb-new" >/dev/null
-fi
-chmod +x "$T/hb-new"
-
 if [[ "${HABU_BOOTSTRAP_CHECK_ONLY:-}" == "1" ]]; then
-  printf 'bootstrap check OK: %s/hb-new\n' "$T"
+  printf 'bootstrap check OK: %s/hb-stdin\n' "$T"
   exit 0
 fi
 
@@ -272,7 +262,7 @@ restore_hb_on_failure() {
   exit "$rc"
 }
 trap restore_hb_on_failure EXIT
-mv "$T/hb-new" bin/hb
+mv "$T/hb-stdin" bin/hb
 env HB_TMP="$T/native" bin/hb --load \
   lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
   lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \

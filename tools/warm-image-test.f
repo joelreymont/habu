@@ -199,12 +199,19 @@ create WIT-RUN-ERR WIT-CAP allot
 
 : WIT-TEST-SNAPSHOT-TAIL ( -- )
    s" HIDE-DEFS-FROM" WIT-LIB-MUST-HAVE
-   s" SNAP-OUT" WIT-LIB-MUST-HAVE
+   s" WI-HIDE-MARKER" WIT-LIB-MUST-HAVE
+   s" SNAP-OUT" WIT-LIB-MUST-NOT-HAVE
    s" src/habu/snap.f" WIT-LIB-MUST-HAVE
-   s" src/arch/arm64/asm.f" WIT-LIB-MUST-NOT-HAVE
-   s" src/arch/arm64/icode.f" WIT-LIB-MUST-NOT-HAVE
+   s" src/arch/arm64/asm.f" WIT-LIB-MUST-HAVE
+   s" src/arch/arm64/icode.f" WIT-LIB-MUST-HAVE
+   s" src/arch/arm64/mnem.f" WIT-LIB-MUST-HAVE
    s" src/core/roles.f" WIT-LIB-MUST-NOT-HAVE
-   s" src/os/image-bytes.f" WIT-LIB-MUST-NOT-HAVE ;
+   s" src/os/image-bytes.f" WIT-LIB-MUST-HAVE
+   s" src/os/macos/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/macos/macho.f" WIT-LIB-MUST-HAVE
+   s" src/os/linux/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/linux/elf.f" WIT-LIB-MUST-HAVE
+   s" src/habu/driver-io.f" WIT-LIB-MUST-HAVE ;
 
 : WIT-MAIN ( -- )
    T-RESET

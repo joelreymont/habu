@@ -692,7 +692,7 @@ variable BF-STRIP-OFF
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
 : BF-STDIN-SOURCE ( -- )
-   s" stage2-src" s" src/habu/stdin.f" BF-EMIT-SOURCE ;
+   s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-STDIN-RUN-SOURCE ;
@@ -773,15 +773,17 @@ variable BF-STRIP-OFF
    s" hb-new" BF-CODESIGN-FORCE-TMP
    s" hb-new" BF-CHMOD-X-TMP
    s" hb-new" BF-EXPECT
-   s" bin/hb refresh OK: candidate validated" type cr ;
+   s" snapshot image OK: candidate validated" type cr ;
 
 : BF-BUILD-ALL ( -- )
-   BF-STAGE-FIXPOINT
-   BF-BUILD-STDIN-FROM-STAGE
+   BF-BUILD-STDIN-FRESH ;
+
+: BF-BUILD-SNAP-FRESH ( -- )
+   BF-BUILD-ALL
    BF-BUILD-SNAP-FROM-STDIN ;
 
-: BF-INSTALL-HB-NEW ( -- )
-   s" hb-new" BF-A$ s" bin/hb" RENAME-FILE
+: BF-INSTALL-HB ( -- )
+   s" hb-stdin" BF-A$ s" bin/hb" RENAME-FILE
    s" bin/hb" CHMOD-X ;
 
 : BF-BIN-HB? ( ptr u8 n -- bool )
@@ -796,13 +798,13 @@ variable BF-STRIP-OFF
    s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : BF-INSTALL ( -- )
-   BF-BUILD-ALL
-   BF-INSTALL-HB-NEW
+   BF-BUILD-STDIN-FRESH
+   BF-INSTALL-HB
    BF-CLEAN-BIN
-   s" bin/hb ready (checked engine, tty REPL + stdin)" type cr ;
+   s" bin/hb ready (small checked engine, tty REPL + stdin)" type cr ;
 
 : BF-USAGE ( -- )
-   s" usage: tools/build-fixpoint.f [all|install|stage|stdin]" BF-USAGE-RC die ;
+   s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap]" BF-USAGE-RC die ;
 
 : BF-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -814,4 +816,5 @@ variable BF-STRIP-OFF
    s" install" BF-ARG0= if BF-INSTALL exit then
    s" stage" BF-ARG0= if BF-STAGE-FIXPOINT exit then
    s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
+   s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;

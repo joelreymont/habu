@@ -15,15 +15,10 @@ variable LVPUSHF   variable LFFORCEK  variable LFBINPREP
 variable LKWFPLUS  variable LKWFMINUS  variable LKWFSTAR  variable LKWFSLASH
 variable LVTOP2C   variable LVFOLDPUT
 variable LVMOVK  variable LVFORCEK  variable LVBINPREP  variable LVBINIPREP  variable LVPUSHR
-$200 constant VSP-CELL          \ VS depth
-$210 constant VTAG-OFF          \ 32 tag bytes   (1=con, 0=reg)
-$250 constant VVAL-OFF          \ 32 value cells (constant or register number)
-32   constant VSMAX
 $F9000260 constant W-PUSHR      \ str xR,[x19]  (or with R)
 $FD000260 constant W-FPUSHR     \ str dR,[x19]  (or with R) — tag 2 = FLOAT reg
 $FD400260 constant W-FPOPR      \ ldr dR,[x19]
 $9E670200 constant W-FMOVD16    \ fmov dR, x16  (or with R)
-$36B8 constant FRCLM-CELL       \ recon scratch: float claims found in a snapshot
 
 \ LVLITPUSH ( x11=val ) : emit movz/movk x9,val + push — the C-LIT sequence as a
 \ BL-able routine (the dispatch's inline C-LIT becomes a call to this).

@@ -123,9 +123,10 @@ variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBA
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPUTIL         variable LPCHECKER      variable LPRENDER
-variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPSCRIPTARGV
+variable LPHOOK         variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
+variable LPSCRIPTARGV
 variable LPROLES        variable LPSTRUCTURES
-variable LPENUMS        variable LPEXECVECTOR   variable LPCOMBINATORS
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPCOMBINATORS
 variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
@@ -358,9 +359,11 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
+   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
 
@@ -388,10 +391,12 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW
    PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
+   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
@@ -537,12 +542,26 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       C-SOURCE-APPEND-LF
       SRC-FLOOP LABEL@ B, ;
 
+: C-SOURCE-APPEND-LSRC ( -- )
+   LBL LBL {: loop:label done:label :}
+   12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
+   loop LBL,
+      12 13 CMP,  C-GE done BCOND,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
+      4 12 0 LDRB,  4 9 0 STRB,
+      12 12 1 ADDI,  9 9 1 ADDI,
+      loop B,
+   done LBL, ;
+
 : C-SOURCE-FAIL-REPL-DONE ( -- )
    SRC-SFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT SYS,
    SRC-REPL LABEL@ LBL,
+   SRC-SFAIL @ C-SOURCE-MMAP
+   11 0 0 ADDI,  9 11 0 ADDI,
+   EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
-   11 LSRC LABEL@ ADR,  11 DATA INP-CELL STR,
-   5 SRCN @ LIT64,  11 11 5 ADD,  11 DATA INE-CELL STR,
+   C-SOURCE-APPEND-LSRC
+   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    SRC-DONE LABEL@ B,
    SRC-DONE LABEL@ LBL, ;
 
@@ -2725,8 +2744,9 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPUTIL !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !  LBL LPHABULAYOUT !
-   LBL LPENVBASE !  LBL LPSCRIPTARGV !  LBL LPROLES !
-   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPCOMBINATORS !  LBL LPXREF ! ;
+   LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
+   LBL LPSTRUCTURES !  LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !
+   LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

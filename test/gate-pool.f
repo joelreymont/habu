@@ -35,6 +35,7 @@ variable GT-POOL-ERR-BUFS-A
 variable GT-POOL-LIVE
 variable GT-POOL-RD
 variable GT-POOL-LIMIT
+variable GT-POOL-REQ
 
 : GT-POOL-OUT-BUFS ( -- ptr u8 )
    GT-POOL-OUT-BUFS-A @ ;
@@ -173,10 +174,12 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    HB-TARGET-MACOS? if GT-POOL-MACOS-DEFAULT exit then
    GT-POOL-LINUX-DEFAULT ;
 
-: GT-POOL-ENV-LIMIT ( -- n )
-   s" HABU_GATE_POOL_SLOTS" GETENV dup 0= if 2drop GT-POOL-DEFAULT exit then
-   STR>NUMBER? 0= if drop E-TBL-FIELD throw then
-   GT-POOL-CHECK-LIMIT ;
+: GT-POOL-SLOTS! ( n -- )
+   GT-POOL-CHECK-LIMIT GT-POOL-REQ ! ;
+
+: GT-POOL-LIMIT-SELECT ( -- n )
+   GT-POOL-REQ @ dup 0 > if GT-POOL-CHECK-LIMIT exit then
+   drop GT-POOL-DEFAULT ;
 
 : GT-POOL-OPEN-PIPE ( ptr fd ptr fd -- ) {: rp:ptr wp:ptr :}
    PIPE-PAIR {: r w :}
@@ -208,7 +211,7 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
 
 : GT-POOL-RESET ( -- )
    GT-POOL-ALLOC-BUFFERS
-   GT-POOL-ENV-LIMIT GT-POOL-LIMIT !
+   GT-POOL-LIMIT-SELECT GT-POOL-LIMIT !
    0 GT-POOL-LIVE !
    0 begin dup GT-POOL-MAX < while
       dup >IDX GT-POOL-RESET-SLOT

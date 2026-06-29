@@ -1191,6 +1191,12 @@ where the checker cannot express the contract.
 T-RESET         ( -- )
 T-CASES         ( -- n )
 T-FAILURES      ( -- n )
+T-LABEL-CLEAR   ( -- )
+T-LABEL$        ( -- ptr u8 n )
+T-LABEL         ( ptr u8 n -- )
+T-LABEL.        ( -- )
+T-FAIL+         ( -- )
+T-ASSERT-DETAIL ( ptr u8 n -- )
 T-ASSERT        ( bool -- )
 T=              ( n n -- )
 T<>             ( n n -- )
@@ -1279,10 +1285,12 @@ BUILD-STEP-RUN       ( ptr a -- n )
 ```
 
 `lib/test.f` assertions throw named test errors and keep one final report path;
-they never mask assertion failures. `TTHROWSQ` takes a stack-preserving quotation
-plus an expected throw code and uses the checker's modeled `catch` effect.
-`TTHROWS` keeps the audited execution-token boundary for top-level test scripts,
-where `[: ;]` quotation syntax is unavailable.
+they never mask assertion failures. `T-LABEL` attaches a bounded case label to
+the next assertion, and successful or failed assertions clear the label after
+printing details. `TTHROWSQ` takes a stack-preserving quotation plus an expected
+throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
+audited execution-token boundary for top-level test scripts, where `[: ;]`
+quotation syntax is unavailable.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked

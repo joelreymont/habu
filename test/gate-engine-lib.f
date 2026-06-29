@@ -24,29 +24,61 @@ variable GE-JIT-I
 variable GE-IMG-I
 variable GE-IMG-BUILD-I
 variable GE-HABU1-I
+variable GENG-ARG-I
+variable GENG-SLICE-SEEN
 
 create GE-CHECK-OFF-LINE
 10 c, 48 c, 32 c, 115 c, 101 c, 116 c, 45 c,
 99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : GENG-USAGE ( -- )
-   s" usage: test/gate-engine.f [build|fixtures|repair|runtime]" GENG-USAGE-RC die ;
+   s" usage: test/gate-engine.f [build|fixtures|repair|runtime] [--pool-slots N]" GENG-USAGE-RC die ;
 
-: GENG-ARG0= ( ptr u8 n -- bool )
-   0 SCRIPT-ARGV$ STR= ;
+: GENG-ARG$ ( -- ptr u8 n )
+   GENG-ARG-I @ SCRIPT-ARGV$ ;
+
+: GENG-ARG-VALUE$ ( -- ptr u8 n )
+   GENG-ARG-I @ 1+ SCRIPT-ARGC >= if GENG-USAGE then
+   GENG-ARG-I @ 1+ SCRIPT-ARGV$ ;
+
+: GENG-POS-NUM ( ptr u8 n -- n )
+   STR>NUMBER? 0= if drop GENG-USAGE then
+   dup 1 < if drop GENG-USAGE then ;
+
+: GENG-ADVANCE ( n -- )
+   GENG-ARG-I @ + GENG-ARG-I ! ;
 
 : GENG-SLICE! ( n -- )
    GENG-SLICE ! ;
 
+: GENG-POOL-OPT ( -- )
+   GENG-ARG-VALUE$ GENG-POS-NUM GT-POOL-SLOTS!
+   2 GENG-ADVANCE ;
+
+: GENG-SLICE-ARG? ( -- bool )
+   GENG-ARG$ s" build" STR= if GENG-BUILD-ID GENG-SLICE! 0 0= exit then
+   GENG-ARG$ s" fixtures" STR= if GENG-FIXTURES-ID GENG-SLICE! 0 0= exit then
+   GENG-ARG$ s" repair" STR= if GENG-REPAIR-ID GENG-SLICE! 0 0= exit then
+   GENG-ARG$ s" runtime" STR= if GENG-RUNTIME-ID GENG-SLICE! 0 0= exit then
+   0 0= 0= ;
+
+: GENG-SLICE-OPT ( -- )
+   GENG-SLICE-SEEN @ if GENG-USAGE then
+   GENG-SLICE-ARG? 0= if GENG-USAGE then
+   -1 GENG-SLICE-SEEN !
+   1 GENG-ADVANCE ;
+
+: GENG-PARSE-ARG ( -- )
+   GENG-ARG$ s" --pool-slots" STR= if GENG-POOL-OPT exit then
+   GENG-SLICE-OPT ;
+
 : GENG-PARSE-SLICE ( -- )
    GENG-ALL-ID GENG-SLICE!
-   SCRIPT-ARGC 0= if exit then
-   SCRIPT-ARGC 1 <> if GENG-USAGE then
-   s" build" GENG-ARG0= if GENG-BUILD-ID GENG-SLICE! exit then
-   s" fixtures" GENG-ARG0= if GENG-FIXTURES-ID GENG-SLICE! exit then
-   s" repair" GENG-ARG0= if GENG-REPAIR-ID GENG-SLICE! exit then
-   s" runtime" GENG-ARG0= if GENG-RUNTIME-ID GENG-SLICE! exit then
-   GENG-USAGE ;
+   0 GENG-SLICE-SEEN !
+   0 GENG-ARG-I !
+   begin GENG-ARG-I @ SCRIPT-ARGC < while
+      GENG-PARSE-ARG
+   repeat ;
 
 GE-FILES: GE-FS-MUTATE-RUN-FILES
    lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f

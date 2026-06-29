@@ -73,9 +73,14 @@ $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
+$36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL
 $1E0 constant GTOD-SCRATCH
+$200 constant VSP-CELL
+$210 constant VTAG-OFF
+$250 constant VVAL-OFF
+32 constant VSMAX
 $600 constant LOOP-STK-OFF
 $800 constant BODYBUF-OFF
 8000 constant BODYBUF-CAP

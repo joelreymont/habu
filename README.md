@@ -1,9 +1,10 @@
 # habu — Checked Forth
 
 Habu is a self-hosted, checked Forth for macOS ARM64 and Linux AArch64.
-`bin/hb` is the native engine: it type-checks Forth stack effects, JIT-compiles
-words to ARM64 code, rebuilds itself to a byte-for-byte fixpoint, and can AOT
-build standalone binaries.
+`bin/hb` is the small native engine: it type-checks Forth stack effects,
+JIT-compiles words to ARM64 code, rebuilds itself to a byte-for-byte fixpoint,
+and can AOT build standalone binaries. It is not a warm snapshot; the large
+dictionary/checker state is loaded from source into runtime memory.
 
 Core pieces:
 
@@ -38,6 +39,10 @@ echo ': SQ ( i64 -- i64 ) dup * ; 7 SQ .' | bin/hb
 bin/hb script.f arg...
 ```
 
+Run commands from the repo root, or from a tree where the `src/`, `lib/`,
+`tools/`, and `test/` paths are available. Warm snapshot images are only
+regenerable gate/cache artifacts.
+
 Refresh the self-hosted engine:
 
 ```sh
@@ -63,6 +68,9 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
   test/gate-pool.f \
   test/run.f
 ```
+
+Host policy knobs are explicit script args, for example:
+`test/run.f -- --pool-slots 8 --nested-pool-slots 4 --budget-ms 70000`.
 
 ## Checked Forth
 

@@ -1,5 +1,5 @@
 \ hb-baseline-contracts-test.f - checked baseline contracts for public bin/hb.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
 
 $8000 constant HBT-CAP

@@ -10,8 +10,10 @@ include test/gate-stats.f
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
 70000 constant TR-DEFAULT-BUDGET-MS
+4 constant TR-DEFAULT-NESTED-POOL-SLOTS
 600000 constant TR-TIMEOUT-MS
 21 constant TR-PHASES
+32 constant TR-NUM-CAP
 $2 constant TR-CHECK-WARM-PHASES
 $F constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
@@ -53,6 +55,7 @@ create TR-RUNNER-STAMP-RD 80 allot
 create TR-AOT-RUNNER-KEY-HEX 80 allot
 create TR-AOT-RUNNER-STAMP-RD 80 allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
+create TR-NUM-BUF TR-NUM-CAP allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
@@ -83,6 +86,10 @@ variable TR-RUNNER-READY
 variable TR-AOT-RUNNER-READY
 variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
+variable TR-ARG-I
+variable TR-BUDGET
+variable TR-NESTED-POOL
+variable TR-NUM-U
 
 : TR-WARM$ ( -- ptr u8 n )
    TR-WARM-BUF TR-WARM-U @ ;
@@ -133,17 +140,53 @@ variable TR-UNDER-CACHE-RC
    TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--pool-slots N] [--nested-pool-slots N] [--budget-ms N]" TR-USAGE-RC die ;
 
-: TR-ARG0= ( ptr u8 n -- bool )
-   0 SCRIPT-ARGV$ STR= ;
+: TR-ARG$ ( -- ptr u8 n )
+   TR-ARG-I @ SCRIPT-ARGV$ ;
 
-: TR-CHECK-ARGS ( -- )
-   SCRIPT-ARGC 0= if exit then
-   SCRIPT-ARGC 1 = s" full" TR-ARG0= and if
+: TR-ARG-VALUE$ ( -- ptr u8 n )
+   TR-ARG-I @ 1+ SCRIPT-ARGC >= if TR-USAGE then
+   TR-ARG-I @ 1+ SCRIPT-ARGV$ ;
+
+: TR-POS-NUM ( ptr u8 n -- n )
+   STR>NUMBER? 0= if drop TR-USAGE then
+   dup 1 < if drop TR-USAGE then ;
+
+: TR-ADVANCE ( n -- )
+   TR-ARG-I @ + TR-ARG-I ! ;
+
+: TR-ARGS-DEFAULTS ( -- )
+   TR-DEFAULT-BUDGET-MS TR-BUDGET !
+   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL ! ;
+
+: TR-POOL-OPT ( -- )
+   TR-ARG-VALUE$ TR-POS-NUM GT-POOL-SLOTS!
+   2 TR-ADVANCE ;
+
+: TR-NESTED-POOL-OPT ( -- )
+   TR-ARG-VALUE$ TR-POS-NUM GT-POOL-CHECK-LIMIT TR-NESTED-POOL !
+   2 TR-ADVANCE ;
+
+: TR-BUDGET-OPT ( -- )
+   TR-ARG-VALUE$ TR-POS-NUM TR-BUDGET !
+   2 TR-ADVANCE ;
+
+: TR-PARSE-ARG ( -- )
+   TR-ARG$ s" full" STR= if
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
    then
+   TR-ARG$ s" --pool-slots" STR= if TR-POOL-OPT exit then
+   TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
+   TR-ARG$ s" --budget-ms" STR= if TR-BUDGET-OPT exit then
    TR-USAGE ;
+
+: TR-CHECK-ARGS ( -- )
+   TR-ARGS-DEFAULTS
+   0 TR-ARG-I !
+   begin TR-ARG-I @ SCRIPT-ARGC < while
+      TR-PARSE-ARG
+   repeat ;
 
 : TR-TRUE ( -- bool )
    0 0= ;
@@ -158,7 +201,7 @@ variable TR-UNDER-CACHE-RC
    mono-ns TR-GATE-START-NS @ - PROC-NS-PER-MS / ;
 
 : TR-BUDGET-MS ( -- n )
-   TR-DEFAULT-BUDGET-MS ;
+   TR-BUDGET @ ;
 
 : TR-PERSIST-TMP ( -- )
    s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
@@ -440,6 +483,29 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
+: TR-NUM$ ( n -- ptr u8 n )
+   dup 0 < if E-TBL-FIELD throw then
+   TR-NUM-CAP TR-NUM-U !
+   dup 0= if
+      drop
+      TR-NUM-U @ 1- TR-NUM-U !
+      STR-ZERO TR-NUM-BUF TR-NUM-U @ + c!
+   else
+      begin dup 0 > while
+         TR-NUM-U @ 1- TR-NUM-U !
+         dup 10 mod STR-ZERO + TR-NUM-BUF TR-NUM-U @ + c!
+         10 /
+      repeat drop
+   then
+   TR-NUM-BUF TR-NUM-U @ + TR-NUM-CAP TR-NUM-U @ - ;
+
+: TR-NUM-ARG+ ( n -- )
+   TR-NUM$ TR-ARG+ ;
+
+: TR-POOL-ARG+ ( n -- )
+   s" --pool-slots" TR-ARG+
+   TR-NUM-ARG+ ;
+
 : TR-RUNNER-PATHS ( -- )
    TR-WARM-ROOT$ s" hb-gate-warm" TR-RUNNER-BUF JOIN-PATH TR-RUNNER-U !
    TR-RUNNER$ s" .trust.f" TR-RUNNER-TRUST-BUF TR-RUNNER-TRUST-U TR-SUFFIX!
@@ -465,6 +531,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" bin/hb" TR-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
+   s" src/habu/snap.f" TR-RUNNER-KEY-FILE+
    s" tools/public-signatures-core.f" TR-RUNNER-KEY-FILE+
    s" tools/public-signatures.f" TR-RUNNER-KEY-FILE+
    s" lib/content-key.f" TR-RUNNER-KEY-FILE+
@@ -485,6 +552,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" bin/hb" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-AOT-RUNNER-KEY-FILE+
+   s" src/habu/snap.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/public-signatures-core.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/public-signatures.f" TR-AOT-RUNNER-KEY-FILE+
    s" lib/content-key.f" TR-AOT-RUNNER-KEY-FILE+
@@ -996,16 +1064,13 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx TR-STDLIB-SLICE? if 0 0= exit then
    idx IDX>N 5 = ;
 
-: TR-NESTED-POOL-SLOTS$ ( -- ptr u8 n )
-   s" 4" ;
-
-: TR-PHASE-POOL-ENV ( idx -- ) {: idx:idx :}
+: TR-PHASE-POOL-ARGS ( idx -- ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if
-      s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
+      TR-NESTED-POOL @ TR-POOL-ARG+
       exit
    then
    idx IDX>N 9 = if
-      s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
+      TR-NESTED-POOL @ TR-POOL-ARG+
    then ;
 
 : TR-PHASE-TOOLS-ENV ( idx -- ) {: idx:idx :}
@@ -1082,7 +1147,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-PERSIST-ENV+
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
-   idx TR-PHASE-POOL-ENV
    GS-ENV+
    idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
@@ -1097,6 +1161,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-PHASE-START ( idx -- ) {: idx:idx :}
    idx TR-PHASE-BASE
    idx TR-PHASE-WARM-RUNNER? 0= if idx TR-PHASE-ARGS then
+   idx TR-PHASE-POOL-ARGS
    s" top-phase-spawn" GS-EVENT
    idx TR-PHASE-AOT-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-RUNNER? if s" runner-phase-spawn" GS-EVENT then

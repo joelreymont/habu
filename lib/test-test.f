@@ -8,8 +8,13 @@
    5 throw ;
 
 T-RESET
+s" numeric mismatch" T-LABEL
 1 2 T=
 T-CASES 1 T=
+T-FAILURES 1 T=
+
+T-RESET
+T-FAIL+
 T-FAILURES 1 T=
 
 T-RESET
@@ -26,7 +31,17 @@ T-RESET
 s" alpha" s" alpha" T$=
 s" alpha" s" beta" T$<>
 ' TT-THROW-7 7 TTHROWS
+T-LABEL$ s" " T$=
+s" alpha-label" T-LABEL
+T-LABEL$ s" alpha-label" T$=
+T-LABEL$ s" " T$=
+s" clear-label" T-LABEL
+T-LABEL-CLEAR
+T-LABEL$ s" " T$=
+s" true label" T-LABEL
+-1 TTRUE
+T-LABEL$ s" " T$=
 
-T-CASES 7 T=
+T-CASES 13 T=
 T-FAILURES 0 T=
 T-REPORT

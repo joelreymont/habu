@@ -141,8 +141,9 @@ variable WI-SRC-LEN
    WI-SRC-BL ;
 
 : WI-APPEND-PRELUDE ( -- )
+   s" : WI-HIDE-MARKER ( -- ) ;" WI-LINE
    WI-SRC-SQUOTE
-   s" SNAP-OUT" WI-SRC$
+   s" WI-HIDE-MARKER" WI-SRC$
    WI-SRC-QUOTE
    WI-SRC-BL
    s" HIDE-DEFS-FROM" WI-SRC$
@@ -218,8 +219,35 @@ variable WI-SRC-LEN
    WI-APPEND-SUPPORT-SOURCES
    WI-APPEND-TRUSTS ;
 
-: WI-APPEND-TAIL ( -- )
+: WI-UNKNOWN-TARGET ( -- )
+   s" warm-image: unknown target" WI-USAGE-RC die ;
+
+: WI-APPEND-TARGET-IMAGE ( -- )
+   HB-TARGET-LINUX? if
+      s" src/os/linux/layout.f" WI-APPEND-SOURCE
+      s" src/os/linux/elf.f" WI-APPEND-SOURCE
+      s" src/os/linux/sign.f" WI-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      s" src/os/macos/layout.f" WI-APPEND-SOURCE
+      s" src/os/macos/macho.f" WI-APPEND-SOURCE
+      s" src/os/macos/sign2.f" WI-APPEND-SOURCE
+      exit
+   then
+   WI-UNKNOWN-TARGET ;
+
+: WI-APPEND-IMAGE-SOURCE ( -- )
    s" 0 set-check" WI-LINE
+   s" src/arch/arm64/asm.f" WI-APPEND-SOURCE
+   s" src/arch/arm64/icode.f" WI-APPEND-SOURCE
+   s" src/arch/arm64/mnem.f" WI-APPEND-SOURCE
+   s" src/os/image-bytes.f" WI-APPEND-SOURCE
+   WI-APPEND-TARGET-IMAGE
+   s" src/habu/driver-io.f" WI-APPEND-SOURCE ;
+
+: WI-APPEND-TAIL ( -- )
+   WI-APPEND-IMAGE-SOURCE
    s" src/habu/snap.f" WI-APPEND-SOURCE ;
 
 : WI-CHILD-ENV ( -- )

@@ -42,6 +42,8 @@ variable SUITE-WARM-CAND-TRUST-U
 variable SUITE-OWN-ROOT
 variable SUITE-SLICE
 variable SUITE-SKIP-TOOL-LINTS
+variable SUITE-ARG-I
+variable SUITE-SLICE-SEEN
 
 : SUITE-TRUE ( -- bool )
    0 0= ;
@@ -50,10 +52,21 @@ variable SUITE-SKIP-TOOL-LINTS
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N]" SUITE-USAGE-RC die ;
 
-: SUITE-ARG0= ( ptr u8 n -- bool )
-   0 SCRIPT-ARGV$ STR= ;
+: SUITE-ARG$ ( -- ptr u8 n )
+   SUITE-ARG-I @ SCRIPT-ARGV$ ;
+
+: SUITE-ARG-VALUE$ ( -- ptr u8 n )
+   SUITE-ARG-I @ 1+ SCRIPT-ARGC >= if SUITE-USAGE then
+   SUITE-ARG-I @ 1+ SCRIPT-ARGV$ ;
+
+: SUITE-POS-NUM ( ptr u8 n -- n )
+   STR>NUMBER? 0= if drop SUITE-USAGE then
+   dup 1 < if drop SUITE-USAGE then ;
+
+: SUITE-ADVANCE ( n -- )
+   SUITE-ARG-I @ + SUITE-ARG-I ! ;
 
 : SUITE-SLICE! ( n -- )
    SUITE-SLICE ! ;
@@ -63,20 +76,39 @@ variable SUITE-SKIP-TOOL-LINTS
 
 : SUITE-INLINE-WORK ( -- ) ;
 
+: SUITE-POOL-OPT ( -- )
+   SUITE-ARG-VALUE$ SUITE-POS-NUM GT-POOL-SLOTS!
+   2 SUITE-ADVANCE ;
+
+: SUITE-SLICE-ARG? ( -- bool )
+   SUITE-ARG$ s" warm" STR= if SUITE-WARM-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" lint" STR= if SUITE-LINT-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" lint-tools" STR= if SUITE-LINT-TOOLS-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" lint-manifest" STR= if SUITE-LINT-MANIFEST-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" lint-artifacts" STR= if SUITE-LINT-ARTIFACTS-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" lint-libs" STR= if SUITE-LINT-LIBS-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" tool" STR= if SUITE-TOOL-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" check-cli" STR= if SUITE-CHECK-CLI-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-ARG$ s" tail" STR= if SUITE-TAIL-ID SUITE-SLICE! SUITE-TRUE exit then
+   SUITE-FALSE ;
+
+: SUITE-SLICE-OPT ( -- )
+   SUITE-SLICE-SEEN @ if SUITE-USAGE then
+   SUITE-SLICE-ARG? 0= if SUITE-USAGE then
+   -1 SUITE-SLICE-SEEN !
+   1 SUITE-ADVANCE ;
+
+: SUITE-PARSE-ARG ( -- )
+   SUITE-ARG$ s" --pool-slots" STR= if SUITE-POOL-OPT exit then
+   SUITE-SLICE-OPT ;
+
 : SUITE-PARSE-SLICE ( -- )
    SUITE-ALL-ID SUITE-SLICE!
-   SCRIPT-ARGC 0= if exit then
-   SCRIPT-ARGC 1 <> if SUITE-USAGE then
-   s" warm" SUITE-ARG0= if SUITE-WARM-ID SUITE-SLICE! exit then
-   s" lint" SUITE-ARG0= if SUITE-LINT-ID SUITE-SLICE! exit then
-   s" lint-tools" SUITE-ARG0= if SUITE-LINT-TOOLS-ID SUITE-SLICE! exit then
-   s" lint-manifest" SUITE-ARG0= if SUITE-LINT-MANIFEST-ID SUITE-SLICE! exit then
-   s" lint-artifacts" SUITE-ARG0= if SUITE-LINT-ARTIFACTS-ID SUITE-SLICE! exit then
-   s" lint-libs" SUITE-ARG0= if SUITE-LINT-LIBS-ID SUITE-SLICE! exit then
-   s" tool" SUITE-ARG0= if SUITE-TOOL-ID SUITE-SLICE! exit then
-   s" check-cli" SUITE-ARG0= if SUITE-CHECK-CLI-ID SUITE-SLICE! exit then
-   s" tail" SUITE-ARG0= if SUITE-TAIL-ID SUITE-SLICE! exit then
-   SUITE-USAGE ;
+   0 SUITE-SLICE-SEEN !
+   0 SUITE-ARG-I !
+   begin SUITE-ARG-I @ SCRIPT-ARGC < while
+      SUITE-PARSE-ARG
+   repeat ;
 
 : SUITE-CHECK-ARGS ( -- )
    SUITE-PARSE-SLICE ;
@@ -181,6 +213,7 @@ variable SUITE-SKIP-TOOL-LINTS
    s" bin/hb" SUITE-KEY-FILE+
    s" tools/warm-image-lib.f" SUITE-KEY-FILE+
    s" tools/warm-image.f" SUITE-KEY-FILE+
+   s" src/habu/snap.f" SUITE-KEY-FILE+
    s" tools/public-signatures-core.f" SUITE-KEY-FILE+
    s" tools/public-signatures.f" SUITE-KEY-FILE+
    s" tools/date.f" SUITE-KEY-FILE+

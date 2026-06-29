@@ -92,18 +92,21 @@ variable IDT-DIFF-U
    IDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE IDT-CAPTURE>N ;
 
 : IDT-TEST-DUMP ( -- )
+   s" imgdump single image" T-LABEL
    IDT-A$ IDT-RUN-1 0 T=
    {: outu erru :}
    erru 0 T=
    IDT-OUT outu s" A $100 $c" CONTAINS? TTRUE ;
 
 : IDT-TEST-IDENTICAL ( -- )
+   s" imgdump identical images" T-LABEL
    IDT-A$ IDT-SAME$ IDT-RUN-2 0 T=
    {: outu erru :}
    erru 0 T=
    IDT-OUT outu s" identical dicts" CONTAINS? TTRUE ;
 
 : IDT-TEST-SHIFT ( -- )
+   s" imgdump shifted offsets" T-LABEL
    IDT-A$ IDT-SHIFT$ IDT-RUN-2 0 T=
    {: outu erru :}
    erru 0 T=
@@ -112,6 +115,7 @@ variable IDT-DIFF-U
    IDT-OUT outu s" A $120 $c" CONTAINS? TTRUE ;
 
 : IDT-TEST-DIFF ( -- )
+   s" imgdump name/size diff" T-LABEL
    IDT-A$ IDT-DIFF$ IDT-RUN-2 1 T=
    {: outu erru :}
    IDT-OUT outu s" word size/name differences" CONTAINS? TTRUE

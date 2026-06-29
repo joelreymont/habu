@@ -141,6 +141,17 @@ variable GE-ARGV-U
 
 : GE-RC-NAME. ( n -- ) {: rc:n :}
    rc case
+      E-PROC-SPAWN of s" E-PROC-SPAWN" type endof
+      E-PROC-WAIT of s" E-PROC-WAIT" type endof
+      E-PROC-TIMEOUT of s" E-PROC-TIMEOUT" type endof
+      E-PROC-OUTPUT of s" E-PROC-OUTPUT" type endof
+      E-PROC-TRUNCATED of s" E-PROC-TRUNCATED" type endof
+      E-PROC-ENV of s" E-PROC-ENV" type endof
+      E-PROC-PATH of s" E-PROC-PATH" type endof
+      E-FS-OPEN of s" E-FS-OPEN" type endof
+      E-FS-CAPACITY of s" E-FS-CAPACITY" type endof
+      E-STR-BOUNDS of s" E-STR-BOUNDS" type endof
+      E-STR-CAPACITY of s" E-STR-CAPACITY" type endof
       60 of s" E-PROC-SPAWN" type endof
       59 of s" E-PROC-WAIT" type endof
       58 of s" E-PROC-TIMEOUT" type endof
@@ -156,6 +167,13 @@ variable GE-ARGV-U
       103 of s" E-STR-CAPACITY" type endof
       s" unmapped" type
    endcase ;
+
+: GE-THROW-REPORT ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
+   rc 0= if exit then
+   s" FAIL: " type label labelu type cr
+   s" throw: " type rc .
+   s" name: " type rc GE-RC-NAME. cr
+   rc throw ;
 
 : GE-PRINT-OUTCOME ( -- )
    s" outcome: " type GT-OUTCOME-KIND @ GE-OUTCOME.

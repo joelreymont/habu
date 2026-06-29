@@ -3,7 +3,20 @@
 \ Reads the image path argument, locates the snapshot trailer, maps the live region
 \ payload, and prints one line per word: name $start $len. With two images,
 \ compares name+length first, then reports offset-only shifts.
-\ Uses the target/image layout already present in the native cold prefix.
+\ Loads the target executable layout on demand; common dictionary layout is
+\ already present in the native cold prefix.
+
+: IMG-FALSE ( -- bool )
+   0 0= 0= ;
+
+: IMG-LOAD-TARGET-LAYOUT ( -- )
+   s" DATA-SIZE" XREF-FIND 0= if
+      HB-TARGET-LINUX? if s" src/os/linux/layout.f" included exit then
+      HB-TARGET-MACOS? if s" src/os/macos/layout.f" included exit then
+      s" imgdump: unknown target" 74 die
+   then ;
+
+IMG-LOAD-TARGET-LAYOUT
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD
@@ -113,25 +126,25 @@ variable OKV
    repeat drop
    OKV @ ;
 : SNAP-CORE? {: o :} ( n -- bool )
-   o 40 + IL @ > if 0 0= 0= exit then
-   o I@ SNAP-MAGIC = 0= if 0 0= 0= exit then
-   o 16 + I@ 1 < if 0 0= 0= exit then
-   o 16 + I@ DICT-CAP > if 0 0= 0= exit then
-   o 24 + I@ 0 <= if 0 0= 0= exit then
-   o 24 + I@ REGION > if 0 0= 0= exit then
-   o 32 + I@ 0 <= if 0 0= 0= exit then
-   o 32 + I@ DATA-SIZE > if 0 0= 0= exit then
-   o 16 + I@ DREC *  o 24 + I@ > if 0 0= 0= exit then
+   o 40 + IL @ > if IMG-FALSE exit then
+   o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
+   o 16 + I@ 1 < if IMG-FALSE exit then
+   o 16 + I@ DICT-CAP > if IMG-FALSE exit then
+   o 24 + I@ 0 <= if IMG-FALSE exit then
+   o 24 + I@ REGION > if IMG-FALSE exit then
+   o 32 + I@ 0 <= if IMG-FALSE exit then
+   o 32 + I@ DATA-SIZE > if IMG-FALSE exit then
+   o 16 + I@ DREC *  o 24 + I@ > if IMG-FALSE exit then
    0 0= ;
 
 : SNAP? {: o :} ( n -- bool )
-   o SNAP-CORE? 0= if 0 0= 0= exit then
-   o 24 + I@ o 32 + I@ +  o <> if 0 0= 0= exit then
+   o SNAP-CORE? 0= if IMG-FALSE exit then
+   o 24 + I@ o 32 + I@ +  o <> if IMG-FALSE exit then
    0 0= ;
 
 : SNAP-DIRECT? {: o :} ( n -- bool )
-   o SNAP-CORE? 0= if 0 0= 0= exit then
-   o 24 + I@ o 32 + I@ +  o > if 0 0= 0= exit then
+   o SNAP-CORE? 0= if IMG-FALSE exit then
+   o 24 + I@ o 32 + I@ +  o > if IMG-FALSE exit then
    0 0= ;
 : FIND-SNAPSHOT ( -- bool )
    -1 TOFF !
@@ -167,10 +180,10 @@ variable OKV
    dup o E-L + IL @ > if s" imgdump: truncated name" 74 die then
    IB@ +  o E-L ;
 : ENT? {: o :} ( n -- bool )
-   o E-S 0 <= if 0 0= 0= exit then
-   o E-E 0 < if 0 0= 0= exit then
-   HAS-SNAP @ if o E-S PTR>OFF 0 < if 0 0= 0= exit then then
-   o E-L 1 < if 0 0= 0= exit then
+   o E-S 0 <= if IMG-FALSE exit then
+   o E-E 0 < if IMG-FALSE exit then
+   HAS-SNAP @ if o E-S PTR>OFF 0 < if IMG-FALSE exit then then
+   o E-L 1 < if IMG-FALSE exit then
    o E-NAME-OFF dup 0 < if drop 0 0= 0= exit then
    dup o E-L + IL @ > if drop 0 0= 0= exit then
    IB@ +  o E-L PRN? ;
