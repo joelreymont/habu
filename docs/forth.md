@@ -383,6 +383,9 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   representation but different contracts (`reg`, `label`, `va`, `symidx`, `fd`,
   `count`, `asm`, `img`, `snap`) get distinct type tokens and negative checker
   fixtures. A raw `( n n -- )` signature hides swaps the checker should reject.
+- **Declare new nominal roles explicitly.** Use top-level `DEFTYPE name` before a
+  signature mentions a project-specific same-cell role. Unknown type tokens
+  remain errors, so misspellings do not become fresh types.
 - **Raw role casts are not validators.** Cast words such as `>LEN`, `>IDX`,
   `>COUNT`, `>OFF`, `>ASM`, `>IMG`, and `>SNAP` are trusted identity boundaries.
   Public libraries should expose checked constructors and role-specific helpers

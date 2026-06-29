@@ -4,6 +4,10 @@
 \ Runtime representation is still one cell, so these conversion bodies are no-op
 \ casts. Their effects are pinned by TRUST rows and covered by the engine gate.
 
+: DEFTYPE ( -- )
+   parse-name dup 0= IF s" deftype: missing name" 70 die THEN
+   CHECKER-DEFTYPE ;
+
 TRUSTED: >IDX ( n -- idx ) ;
 TRUSTED: IDX>N ( idx -- n ) ;
 

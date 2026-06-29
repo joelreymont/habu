@@ -188,6 +188,8 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 24 constant CC-VA   25 constant CC-SYMIDX 26 constant CC-ASM
 27 constant CC-IMG  28 constant CC-SNAP  29 constant CC-F32
 30 constant CC-U16 31 constant CC-MAX
+256 constant CT-CAP
+4096 constant CT-STR-CAP
 
 0 constant CT-NONE
 1 constant CT-INT
@@ -207,22 +209,64 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 variable UNIFY-KIND
 UK-EXACT UNIFY-KIND !
 
-create CT-NAME-A CC-MAX cells allot
-create CT-NAME-U CC-MAX cells allot
-create CT-CLASS CC-MAX cells allot
-create CT-WIDTH CC-MAX cells allot
-create CT-SIGN CC-MAX cells allot
+create CT-NAME-A CT-CAP cells allot
+create CT-NAME-U CT-CAP cells allot
+create CT-CLASS CT-CAP cells allot
+create CT-WIDTH CT-CAP cells allot
+create CT-SIGN CT-CAP cells allot
+create CT-STR CT-STR-CAP allot
+variable CTN
+variable CT-STR-U
 variable CT-I
+variable CT-J
+variable CT-DST
+
+1 CTN !
+0 CT-STR-U !
 
 : CT-NAME-FIELD ( n -- ptr ptr u8 )
    cells CT-NAME-A + 0 ptr-field ;
 
+: CT-DST-FIELD ( -- ptr ptr u8 )
+   CT-DST 0 ptr-field ;
+
+: CT-DST@ ( -- ptr u8 )
+   CT-DST-FIELD @ ;
+
+: CT-DST! ( ptr u8 -- )
+   CT-DST-FIELD ! ;
+
+: CT-CODE-CHECK ( n -- )
+   dup 0 <= IF s" checker: bad signature type code" 76 die THEN
+   CT-CAP >= IF s" checker: signature type table full" 76 die THEN ;
+
+: CT-ROOM ( n -- )
+   CTN @ CT-CAP >= IF s" checker: signature type table full" 76 die THEN
+   CT-STR-U @ + CT-STR-CAP > IF s" checker: signature type strings full" 76 die THEN ;
+
+: CT-COPY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u CT-ROOM
+   CT-STR CT-STR-U @ + CT-DST!
+   0 CT-J !
+   begin CT-J @ u < while
+      a CT-J @ + c@ CT-DST@ CT-J @ + c!
+      CT-J @ 1 + CT-J !
+   repeat
+   CT-STR-U @ u + CT-STR-U !
+   CT-DST@ u ;
+
+: CT-ADVANCE ( n -- )
+   1 + dup CTN @ > IF CTN ! ELSE drop THEN ;
+
 : CT-SET ( ptr u8 n n n n n -- ) {: a:ptr u:n code:n class:n width:n sign:n :}
-   a code CT-NAME-FIELD !
-   u code cells CT-NAME-U + !
+   code CT-CODE-CHECK
+   a u CT-COPY {: dst:ptr len:n :}
+   dst code CT-NAME-FIELD !
+   len code cells CT-NAME-U + !
    class code cells CT-CLASS + !
    width code cells CT-WIDTH + !
-   sign code cells CT-SIGN + ! ;
+   sign code cells CT-SIGN + !
+   code CT-ADVANCE ;
 
 : CT-INIT ( -- )
    s" n"       CC-N      CT-INT   64 CS-GENERIC CT-SET
@@ -279,7 +323,7 @@ CT-INIT
 
 : CT-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
    1 CT-I !
-   begin CT-I @ CC-MAX < while
+   begin CT-I @ CTN @ < while
       a u CT-I @ CT-NAME= IF CT-I @ exit THEN
       CT-I @ 1 + CT-I !
    repeat 0 ;
@@ -741,6 +785,25 @@ variable LOCALBAD
    a u s" acc" CORE-STR= IF -1 EXIT THEN
    a u s" uniform" CORE-STR= IF -1 EXIT THEN
    a u s" rowidx" CORE-STR= ;
+: TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 = IF a c@ LOWER? EXIT THEN
+   0 ;
+: TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ dup 60 = swap dup 62 = swap 44 = or or IF drop -1 EXIT THEN
+      1+
+   repeat drop 0 ;
+: TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF -1 EXIT THEN
+   a u CT-FIND 0 <> IF -1 EXIT THEN
+   a u PARAM-CTOR? IF -1 EXIT THEN
+   a u ATOM-TOK? IF -1 EXIT THEN
+   a u FRESH-ATOM-TOK? IF -1 EXIT THEN
+   a u TYPE-VAR-TOK? IF -1 EXIT THEN
+   a u TYPE-BAD-CHAR? ;
+: CT-ADD-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
+   a u CTN @ CT-ROLE 64 CS-NONE CT-SET ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -2194,6 +2257,9 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    name nameu DFER-DELETE
    name nameu 0 NORET-ADD ;
 
+: CHECKER-DEFTYPE ( ptr u8 n -- )
+   CT-ADD-NOMINAL ;
+
 : CTL-FLAGS-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN
    0 NORET-FLAG !
@@ -3053,11 +3119,15 @@ variable CAND-UEND
 variable CAND-NEND
 variable CAND-SYMN
 variable CAND-SYMU
+variable CAND-CTN
+variable CAND-CTU
 variable CAND-VERD
 variable CSCOPE-UEND
 variable CSCOPE-NEND
 variable CSCOPE-SYMN
 variable CSCOPE-SYMU
+variable CSCOPE-CTN
+variable CSCOPE-CTU
 variable CSCOPE-CAND
 variable CSCOPE-VSIG
 
@@ -3066,6 +3136,8 @@ variable CSCOPE-VSIG
    NORET-END @ CSCOPE-NEND !
    SYM-N @ CSCOPE-SYMN !
    SYM-STR-U @ CSCOPE-SYMU !
+   CTN @ CSCOPE-CTN !
+   CT-STR-U @ CSCOPE-CTU !
    CHK-CAND @ CSCOPE-CAND !
    VSIG @ CSCOPE-VSIG ! ;
 
@@ -3074,6 +3146,8 @@ variable CSCOPE-VSIG
    CSCOPE-NEND @ NORET-RESTORE-END
    CSCOPE-SYMN @ SYM-N !
    CSCOPE-SYMU @ SYM-STR-U !
+   CSCOPE-CTN @ CTN !
+   CSCOPE-CTU @ CT-STR-U !
    CSCOPE-CAND @ CHK-CAND !
    CSCOPE-VSIG @ VSIG ! ;
 
@@ -3082,6 +3156,8 @@ variable CSCOPE-VSIG
    NORET-END @ CAND-NEND !
    SYM-N @ CAND-SYMN !
    SYM-STR-U @ CAND-SYMU !
+   CTN @ CAND-CTN !
+   CT-STR-U @ CAND-CTU !
    -1 CHK-CAND !
    -1 VSIG ! ;
 
@@ -3093,6 +3169,8 @@ variable CSCOPE-VSIG
    CAND-NEND @ NORET-RESTORE-END
    CAND-SYMN @ SYM-N !
    CAND-SYMU @ SYM-STR-U !
+   CAND-CTN @ CTN !
+   CAND-CTU @ CT-STR-U !
    CAND-VERD @ ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n )

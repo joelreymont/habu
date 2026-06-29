@@ -447,6 +447,9 @@ lesson — keep the specific word/code/path, cut the prose.
   jumped back into `LCFPOP` (`pc=lr=...aa44`) and branch-local definitions hung
   at compile time. Any helper that gains a `BL` gets a real LR frame in the same
   change.
+- **Extensible nominal types must be explicit:** `DEFTYPE` registers a copied,
+  global nominal role before signatures use it; unknown signature tokens still
+  reject. Silent auto-interning would turn typos into distinct "valid" roles.
 - **Ground capability claims in the source, not the dot tracker + spec.** The PLAN
   review concluded "M2 (parametric checker) is a large unbuilt gate" from `dot ls`
   (no `m2` dot) + the spec calling it "large", and elevated it to CRITICAL. A

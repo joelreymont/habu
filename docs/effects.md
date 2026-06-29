@@ -10,9 +10,10 @@ notation, parsed by `PARSE-SIG` (`src/sigparse.fs`).
 ```
 sig    = stack '--' stack ( '|' stack '--' stack )?
 stack  = rowvar? type*
-type   = conname | role | tyvar | 'ptr' type | '[' stack '--' stack ']'
+type   = conname | role | declared-role | tyvar | 'ptr' type | '[' stack '--' stack ']'
 conname= i64 u8 u32 cell bool char str addr
 role   = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
+declared-role = a multi-character token declared by `DEFTYPE`
 tyvar  = a..z          (same letter → same type var, per signature)
 rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 ```
@@ -52,6 +53,11 @@ audited boundary effect; do not rely on generic integer operations to launder a
 role. Unchecked native emitters should still expose these roles in their `TRUST`
 effects, so checked callers reject register/fd/label swaps and out-of-order
 build phases before raw codegen.
+
+`DEFTYPE name` declares a new nominal cell type for later signatures. The name is
+global, explicit, and fail-closed: it cannot reuse a built-in type, parametric
+constructor, atom prefix, or one-letter type variable. Unknown type tokens still
+reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
 
 ## Examples (from `src/prims.fs`)
 

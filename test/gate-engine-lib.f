@@ -456,14 +456,20 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-ROLE-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
+   s" DEFTYPE size" GE-SRC-LINE
    s" NEED-IDX" s" idx --" GE-SRC-TRUST
    s" NEED-LEN" s" len --" GE-SRC-TRUST
+   s" NEED-SIZE" s" size --" GE-SRC-TRUST
+   s" >SIZE" s" n -- size" GE-SRC-TRUST
+   s" SIZE>N" s" size -- n" GE-SRC-TRUST
    s" GE-ROLE-ALL-CHECK ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N" GE-SRC-CHECK-LINE
    s" GE-ROLE-OK ( n -- ) >IDX NEED-IDX" GE-SRC-CHECK-LINE
    s" GE-ROLE-BAD ( n -- ) >IDX NEED-LEN" GE-SRC-CHECK-LINE
    s" GE-ROLE-BAD2 ( n -- n ) >LEN IDX>N" GE-SRC-CHECK-LINE
    s" GE-ROLE-BAD3 ( n -- img ) >ASM" GE-SRC-CHECK-LINE
-   s" GE-ROLE-UNKNOWN ( n -- size ) >IDX" GE-SRC-CHECK-LINE
+   s" GE-SIZE-OK ( n -- n ) >SIZE SIZE>N" GE-SRC-CHECK-LINE
+   s" GE-SIZE-BAD ( n -- ) >IDX NEED-SIZE" GE-SRC-CHECK-LINE
+   s" GE-ROLE-UNKNOWN ( n -- unknownsize ) >IDX" GE-SRC-CHECK-LINE
    s" : GE-ROLE-ALL-RUN ( n -- n ) >IDX IDX>N >LEN LEN>N >COUNT COUNT>N >OFF OFF>N >FD FD>N >RC RC>N >PID PID>N >MS MS>N >NS NS>N >TOK TOK>N >ASM ASM>N >IMG IMG>N >SNAP SNAP>N ;" GE-SRC-LINE
    s" 7 GE-ROLE-ALL-RUN ." GE-SRC-LINE ;
 
@@ -477,12 +483,14 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
+   s" -1" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
    s" 7" SB-APPEND GE-SB-LF
    SB$ s" hb nominal role output" GE-EXPECT-OUT
    s" E-MISMATCH" s" hb nominal role code" GE-EXPECT-ERR-HAS
    s" E-UNKNOWN-SIGNATURE-TYPE" s" hb unknown role code" GE-EXPECT-ERR-HAS
-   s" size" s" hb unknown role token" GE-EXPECT-ERR-HAS
+   s" unknownsize" s" hb unknown role token" GE-EXPECT-ERR-HAS
    s" fix_signature_type" s" hb unknown role repair class" GE-EXPECT-ERR-HAS
    s" expected" s" hb nominal role expected field" GE-EXPECT-ERR-HAS
    s" len" s" hb nominal role expected type" GE-EXPECT-ERR-HAS
