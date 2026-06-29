@@ -35,6 +35,8 @@ variable GS-MAKER-HIT
 variable GS-MAKER-MISS
 variable GS-MAKER-BUILD
 variable GS-MAKER-RUN
+variable GS-ARTIFACT-HIT
+variable GS-ARTIFACT-MISS
 variable GS-CANDIDATE
 variable GS-CANDIDATE-HIT
 variable GS-CANDIDATE-MISS
@@ -113,6 +115,8 @@ variable GS-HELPER-SPAWN
    0 GS-MAKER-MISS !
    0 GS-MAKER-BUILD !
    0 GS-MAKER-RUN !
+   0 GS-ARTIFACT-HIT !
+   0 GS-ARTIFACT-MISS !
    0 GS-CANDIDATE !
    0 GS-CANDIDATE-HIT !
    0 GS-CANDIDATE-MISS !
@@ -142,6 +146,8 @@ variable GS-HELPER-SPAWN
    off u s" maker-cache-miss" GS-LINE= if GS-MAKER-MISS GS-INC exit then
    off u s" maker-build" GS-LINE= if GS-MAKER-BUILD GS-INC exit then
    off u s" maker-run" GS-LINE= if GS-MAKER-RUN GS-INC exit then
+   off u s" artifact-cache-hit" GS-LINE= if GS-ARTIFACT-HIT GS-INC exit then
+   off u s" artifact-cache-miss" GS-LINE= if GS-ARTIFACT-MISS GS-INC exit then
    off u s" candidate-build" GS-LINE= if GS-CANDIDATE GS-INC exit then
    off u s" candidate-cache-hit" GS-LINE= if GS-CANDIDATE-HIT GS-INC exit then
    off u s" candidate-cache-miss" GS-LINE= if GS-CANDIDATE-MISS GS-INC exit then
@@ -193,6 +199,8 @@ variable GS-HELPER-SPAWN
    GS-MAKER-MISS @ s" maker-miss" GS-ITEM.
    GS-MAKER-BUILD @ s" maker-build" GS-ITEM.
    GS-MAKER-RUN @ s" maker-run" GS-ITEM.
+   GS-ARTIFACT-HIT @ s" artifact-hit" GS-ITEM.
+   GS-ARTIFACT-MISS @ s" artifact-miss" GS-ITEM.
    GS-CANDIDATE @ s" candidate" GS-ITEM.
    GS-CANDIDATE-HIT @ s" candidate-hit" GS-ITEM.
    GS-CANDIDATE-MISS @ s" candidate-miss" GS-ITEM.

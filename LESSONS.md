@@ -177,6 +177,11 @@ lesson — keep the specific word/code/path, cut the prose.
   ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
   added top-level subprocesses. Keep the in-process semantic cuts; revert splits
   that only win in isolation.
+- **Artifact caches must key content, not temp paths:** `hb-build` output caching
+  first missed every run because `CK-FILE+` included the temporary source path in
+  addition to the digest. Use a stable logical label plus the source digest for
+  generated/temp-owned inputs. AOT-positive fell to ~13s hot, but the full gate
+  barely moved because AOT-negative became the critical path.
 - **Schedule early only when the artifact invariant is already true:** hot gates
   restore content-keyed `HABU_UNDER_TEST` before `TR-EARLY-START`, so source-only
   lint slices can run early under the candidate. Guard early manifest/libs on

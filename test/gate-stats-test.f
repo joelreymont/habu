@@ -41,6 +41,8 @@ variable GST-ROOT-U
    s" maker-cache-miss" GS-EVENT
    s" maker-build" GS-EVENT
    s" maker-run" GS-EVENT
+   s" artifact-cache-hit" GS-EVENT
+   s" artifact-cache-miss" GS-EVENT
    s" candidate-build" GS-EVENT
    s" candidate-cache-hit" GS-EVENT
    s" candidate-cache-miss" GS-EVENT
@@ -70,6 +72,8 @@ variable GST-ROOT-U
    GS-MAKER-MISS @ 1 T=
    GS-MAKER-BUILD @ 1 T=
    GS-MAKER-RUN @ 1 T=
+   GS-ARTIFACT-HIT @ 1 T=
+   GS-ARTIFACT-MISS @ 1 T=
    GS-CANDIDATE @ 1 T=
    GS-CANDIDATE-HIT @ 1 T=
    GS-CANDIDATE-MISS @ 1 T=
