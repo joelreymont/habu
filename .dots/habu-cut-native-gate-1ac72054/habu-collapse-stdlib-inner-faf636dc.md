@@ -39,3 +39,19 @@ validation in-process into `test/run.f` removed the two visible warm child
 phases, but serialized content-key hashing before any real phase could start.
 The hot full gate regressed to 46577ms internal / 50.54s wall. Keep warm
 validation parallel until the content-key check itself is made cheaper.
+
+Progress 2026-06-29: split hot lint fixtures into load-only `*-test-lib.f`
+libraries plus thin entry wrappers, added `test/gate-stdlib-inline-lib.f`, and
+made the warm runner's `tool` entry skip the spawned `tool-boundary-lints`
+suite while running those lints in-process immediately before `GT-POOL-DRAIN`.
+This keeps the remaining tool-boundary child suites overlapped instead of
+serializing the inline work. Proof on the exact tree: direct warm-runner `tool`
+slice passed at 15.05s wall with no `RUN: tool-boundary-lints`; hot full native
+gate passed at 28139ms internal / 31.47s wall with `candidate-hit=1`,
+`runner-build=0`, `warm-miss=0`, and budget `28139ms <= 90000ms`. Commit gates:
+typed-local diff lint passed, `filemap-lint: 247 path(s), 0 finding(s)`, and
+`host-lint: 0 finding(s)`. Remaining debt: aggregate counters still report
+`inner-hb=55`, `inner-hb-stdin=41`, `helper-spawn=106`; those are now overlapped
+enough for the hot internal gate target, but further wall-clock cuts require
+batching the remaining CLI contract smokes rather than adding more top-level
+suite splits.

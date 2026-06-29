@@ -177,6 +177,11 @@ lesson — keep the specific word/code/path, cut the prose.
   ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
   added top-level subprocesses. Keep the in-process semantic cuts; revert splits
   that only win in isolation.
+- **Inline warm-runner work must overlap child suites:** the winning
+  `tool-boundary-lints` cut split tests into load-only libs, skipped the cold
+  child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running
+  them before spawning sibling suites serialized the slice and lost the full-DAG
+  win.
 - **Artifact caches must key content, not temp paths:** `hb-build` output caching
   first missed every run because `CK-FILE+` included the temporary source path in
   addition to the digest. Use a stable logical label plus the source digest for

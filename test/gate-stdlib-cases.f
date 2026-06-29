@@ -328,6 +328,7 @@ TEST-SUITE hb-build-fixtures
    lib/codesign-test.f
 ;TEST-SUITE
 
+SUITE-INLINE-WORK
 GT-POOL-DRAIN
 SUITE-CLEANUP
 s" PASS: native lint/stdlib gate phase" type cr

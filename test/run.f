@@ -366,6 +366,7 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    tools/warm-run.f tools/hb-build-lib.f tools/json.f tools/gate-json-assert-core.f
    test/gate-pool.f test/gate-stats.f test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
+   test/gate-stdlib-inline-lib.f
 ;TR-FILES
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES

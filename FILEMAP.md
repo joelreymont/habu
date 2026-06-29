@@ -173,24 +173,30 @@ points stay listed.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
+- `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for warm gate runners.
 - `tools/signature-lint-test.f` — checked fixture coverage for strict typed-signature lint.
 - `tools/reserved-name-lint-core.f` — reusable source scanner rejecting definitions named like parser/control reserved words (`I`, `J`, `LOOP`, `TRUST`, etc.).
 - `tools/reserved-name-lint.f` — CLI wrapper for reserved definition-name lint; run after generated prefix-stripping/naturalization.
+- `tools/reserved-name-lint-test-lib.f` — load-only reserved-name lint fixture library for warm gate runners.
 - `tools/reserved-name-lint-test.f` — checked fixture coverage for reserved definition-name lint and `tools/check.f` preflight behavior.
 - `tools/duplicate-definition-lint-core.f` — reusable source scanner rejecting duplicate published definitions across source lists.
 - `tools/duplicate-definition-lint.f` — CLI wrapper for duplicate published-definition lint.
+- `tools/duplicate-definition-lint-test-lib.f` — load-only duplicate-definition lint fixture library for warm gate runners.
 - `tools/duplicate-definition-lint-test.f` — checked fixture coverage for duplicate definition detection and source-list preflight behavior.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
 - `tools/aot-lint-core.f` — reusable stripped-AOT unsupported-word scanner.
 - `tools/aot-lint.f` — CLI wrapper for stripped-AOT unsupported-word lint.
+- `tools/aot-lint-test-lib.f` — load-only stripped-AOT lint fixture library for warm gate runners.
 - `tools/aot-lint-test.f` — checked fixture coverage for stripped-AOT source lint.
 - `tools/diag-origin-core.f` — reusable source-origin marker injection core.
 - `tools/diag-origin.f` — CLI wrapper for checker JSON source-origin markers.
+- `tools/diag-origin-test-lib.f` — load-only diagnostic-origin fixture library for warm gate runners.
 - `tools/diag-origin-test.f` — checked fixture coverage for diagnostic origin markers.
 - `tools/json-only-core.f` — reusable JSON diagnostic line filter core.
 - `tools/json-only.f` — keeps wrapper JSON mode machine-only on known diagnostics.
+- `tools/json-only-test-lib.f` — load-only JSON-only fixture library for warm gate runners.
 - `tools/json-only-test.f` — checked fixture coverage for JSON diagnostic filtering.
 - `tools/json-file.f` — dynamic file-backed JSONL cursor shared by benchmark validators and reducers.
 - `tools/gate-json-assert-core.f` — native JSON assertion library for gate tests.
@@ -206,6 +212,7 @@ points stay listed.
 - `tools/check-all-errors-test.f` — checked fixture coverage for all-errors checking.
 - `tools/checked-boundary-lint-core.f` — reusable unchecked-boundary scanner core for checker and CLI paths.
 - `tools/checked-boundary-lint.f` — CLI wrapper for unchecked-boundary lint.
+- `tools/checked-boundary-lint-test-lib.f` — load-only unchecked-boundary lint fixture library for warm gate runners.
 - `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
 - `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
 - `tools/public-signatures-core.f` — reusable public-signature manifest emitter core.
@@ -224,11 +231,13 @@ points stay listed.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/bundle-lib-core.f` — reusable stdlib bundle construction core.
 - `tools/bundle-lib.f` — CLI wrapper for stdlib bundle construction.
+- `tools/bundle-lib-test-lib.f` — load-only stdlib bundle fixture library for warm gate runners.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.
 - `tools/examples-test.f` — checked fixture coverage for stdlib examples.
 - `tools/filemap-lint.f` — freshness lint for this file.
 - `tools/repl-lint-core.f` — reusable scanner rejecting REPL-baked code that exits the interactive session.
 - `tools/repl-lint.f` — CLI wrapper for REPL exit lint.
+- `tools/repl-lint-test-lib.f` — load-only REPL exit lint fixture library for warm gate runners.
 - `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
 - `tools/trust-lint-core.f` — reusable `TRUSTED.md` drift scanner core.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
@@ -305,5 +314,6 @@ points stay listed.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
 - `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
 - `test/gate-runner-entry.f` — tiny dispatch entry loaded by the baked warm gate runner.
+- `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for baked warm runners.
 - `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.

@@ -41,6 +41,7 @@ variable SUITE-WARM-CAND-U
 variable SUITE-WARM-CAND-TRUST-U
 variable SUITE-OWN-ROOT
 variable SUITE-SLICE
+variable SUITE-SKIP-TOOL-LINTS
 
 : SUITE-TRUE ( -- bool )
    0 0= ;
@@ -56,6 +57,11 @@ variable SUITE-SLICE
 
 : SUITE-SLICE! ( n -- )
    SUITE-SLICE ! ;
+
+: SUITE-SKIP-TOOL-LINTS! ( -- )
+   -1 SUITE-SKIP-TOOL-LINTS ! ;
+
+: SUITE-INLINE-WORK ( -- ) ;
 
 : SUITE-PARSE-SLICE ( -- )
    SUITE-ALL-ID SUITE-SLICE!
@@ -428,7 +434,10 @@ variable SUITE-SLICE
    s" tool-boundary-trust" SUITE-LABEL= if SUITE-TRUE exit then
    s" tool-boundary-check-repair" SUITE-LABEL= if SUITE-TRUE exit then
    s" tool-boundary-doc-public" SUITE-LABEL= if SUITE-TRUE exit then
-   s" tool-boundary-lints" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tool-boundary-lints" SUITE-LABEL= if
+      SUITE-SKIP-TOOL-LINTS @ 0= if SUITE-TRUE exit then
+      SUITE-FALSE exit
+   then
    s" tool-boundary-typed-local" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 

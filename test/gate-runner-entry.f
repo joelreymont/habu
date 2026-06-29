@@ -24,7 +24,12 @@
 : GR-STDLIB ( -- )
    s" test/gate-stdlib-cases.f" included ;
 
+: GR-TOOL ( -- )
+   SUITE-SKIP-TOOL-LINTS!
+   GR-STDLIB ;
+
 : GR-DISPATCH ( -- )
+   s" tool" GR-ARG0= if GR-TOOL exit then
    GR-STDLIB? if GR-STDLIB exit then
    s" repair" GR-ARG0= if GE-MAIN exit then
    s" fixtures" GR-ARG0= if GE-MAIN exit then
