@@ -859,7 +859,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	content-key	lib/content-key.f	word	CK-CACHE-PATH?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	report whether an explicit content-key cache path is set
 1	content-key	lib/content-key.f	word	CK-CACHE-PATH!	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	set an explicit content-key cache file path
 1	content-key	lib/content-key.f	word	CK-CACHE-ROOT!	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	set the content-key cache file under a root directory
-1	content-key	lib/content-key.f	word	CK-CACHE-ENV-PATH?	(ptr u8 n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load a cache path from an environment variable
 1	content-key	lib/content-key.f	word	CK-CACHE-ENV-ROOT?	(ptr u8 n -- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load a cache root from an environment variable
 1	content-key	lib/content-key.f	word	CK-CACHE-AUTO?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	resolve the content-key cache path from explicit or environment configuration
 1	content-key	lib/content-key.f	word	CK-CACHE-LOAD?	(-- bool)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	active	load the content-key digest cache when configured and present

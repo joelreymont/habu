@@ -733,10 +733,8 @@ CK-FINAL-HEX      ( ptr u8 -- )
 `CK-FILE+` records the path in the manifest but hashes file content through a
 metadata-validated per-file digest cache when one is configured. `CK-CACHE-PATH!`
 sets an explicit cache file, `CK-CACHE-ROOT!` uses `content-key.cache` under a
-root directory, and `CK-CACHE-CLEAR!` clears the explicit setting. Without an
-explicit path it checks `HABU_CONTENT_KEY_CACHE`, then
-`HABU_GATE_WARM_PERSIST/content-key.cache`, then
-`HABU_GATE_WARM_ROOT/content-key.cache`.
+root directory, and `CK-CACHE-CLEAR!` clears the explicit setting. Gate child
+processes use the gate-supplied `HABU_GATE_WARM_ROOT/content-key.cache`.
 
 ## Source Materialization
 

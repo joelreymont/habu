@@ -150,13 +150,11 @@ variable SUITE-SKIP-TOOL-LINTS
 : SUITE-WARM-CAND-TRUST$ ( -- ptr u8 n )
    SUITE-WARM-CAND-TRUST-BUF SUITE-WARM-CAND-TRUST-U @ ;
 
-\ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
-\ in (content-stamped, so cross-run reuse is sound), else the per-run shared
-\ HABU_GATE_WARM_ROOT, else an owned temp. Must match TR-TOOLS-PATHS in run.f so the
-\ baked image and HABU_WARM_TOOLS resolve to the same place.
+\ Tools-warm root: the gate-supplied HABU_GATE_WARM_ROOT when this runs under
+\ test/run.f, else an owned temp. Must match TR-TOOLS-PATHS in run.f so the baked
+\ image and HABU_WARM_TOOLS resolve to the same place.
 : SUITE-SET-ROOT ( -- )
    0 SUITE-OWN-ROOT !
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if GT-COPY-ROOT! exit then 2drop
    s" HABU_GATE_WARM_ROOT" GETENV dup 0= 0= if GT-COPY-ROOT! exit then 2drop
    CLEANUP-RESET
    s" hb-stdlib-warm" TMPDIR-MKDIR GT-COPY-ROOT!

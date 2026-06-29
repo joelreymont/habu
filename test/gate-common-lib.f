@@ -254,8 +254,6 @@ variable GE-ARGV-U
    GE-WARM-TRUST-BUF GE-WARM-TRUST-U @ ;
 
 : GE-WARM-ROOT ( -- ptr u8 n )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if exit then
-   2drop
    s" HABU_GATE_WARM_ROOT" GETENV dup 0= if 2drop GT-ROOT exit then ;
 
 : GE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )

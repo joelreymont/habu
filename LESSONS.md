@@ -182,6 +182,11 @@ lesson — keep the specific word/code/path, cut the prose.
   child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running
   them before spawning sibling suites serialized the slice and lost the full-DAG
   win.
+- **Gate caches must be default-on and content-keyed:** a 40s budget failed a
+  cache-fill run at 71.015s even though the hot path was ~31s. Keep warm images,
+  `hb-under-test`, maker, artifact, and file-digest caches under the default
+  user cache root, remove opt-in cache overrides, and let the 70s gate catch
+  real regressions.
 - **Artifact caches must key content, not temp paths:** `hb-build` output caching
   first missed every run because `CK-FILE+` included the temporary source path in
   addition to the digest. Use a stable logical label plus the source digest for

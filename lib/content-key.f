@@ -102,18 +102,12 @@ variable CK-PREFIX-U
 : CK-CACHE-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" content-key.cache" CK-CACHE-PATH-BUF JOIN-PATH CK-CACHE-PATH-U ! ;
 
-: CK-CACHE-ENV-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u GETENV dup 0= if 2drop CK-FALSE exit then
-   CK-CACHE-PATH! CK-TRUE ;
-
 : CK-CACHE-ENV-ROOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u GETENV dup 0= if 2drop CK-FALSE exit then
    CK-CACHE-ROOT! CK-TRUE ;
 
 : CK-CACHE-AUTO? ( -- bool )
    CK-CACHE-PATH? if CK-TRUE exit then
-   s" HABU_CONTENT_KEY_CACHE" CK-CACHE-ENV-PATH? if CK-TRUE exit then
-   s" HABU_GATE_WARM_PERSIST" CK-CACHE-ENV-ROOT? if CK-TRUE exit then
    s" HABU_GATE_WARM_ROOT" CK-CACHE-ENV-ROOT? if CK-TRUE exit then
    CK-FALSE ;
 

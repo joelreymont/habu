@@ -101,13 +101,16 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
 This is the native port gate. It runs as a checked bounded DAG pool with
 private `HB_TMP` roots. It proves the host `bin/hb`, source selection,
 checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
-current platform. It intentionally does not run LLM benchmark fixtures or
-require JavaScript, Python, Rust, TypeScript, or model runtimes.
+current platform under the default 70s budget. It intentionally does not run LLM
+benchmark fixtures or require JavaScript, Python, Rust, TypeScript, or model
+runtimes.
 
 Checker-heavy gate fixtures bake warm images with `tools/warm-image.f` under
-the gate temp root. `hb-check-warm` supports checker/diagnostic slices.
-`hb-tools-warm` plus `hb-tools-warm.trust.f` supports tool subprocess fixtures
-such as `check-all-errors` and `gate-json-assert`. These are temporary cache
+the default content-keyed gate cache (`$XDG_CACHE_HOME/habu-gate`,
+`$HOME/.cache/habu-gate`, or `$TMPDIR/habu-gate-cache`). `hb-check-warm`
+supports checker/diagnostic slices. `hb-tools-warm` plus
+`hb-tools-warm.trust.f` supports tool subprocess fixtures such as
+`check-all-errors` and `gate-json-assert`. These are regenerable local cache
 artifacts and must not be committed.
 
 ## Future Port Checklist

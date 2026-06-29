@@ -9,7 +9,7 @@ include test/gate-stats.f
 
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
-90000 constant TR-DEFAULT-BUDGET-MS
+70000 constant TR-DEFAULT-BUDGET-MS
 600000 constant TR-TIMEOUT-MS
 21 constant TR-PHASES
 $2 constant TR-CHECK-WARM-PHASES
@@ -52,6 +52,7 @@ create TR-RUNNER-KEY-HEX 80 allot
 create TR-RUNNER-STAMP-RD 80 allot
 create TR-AOT-RUNNER-KEY-HEX 80 allot
 create TR-AOT-RUNNER-STAMP-RD 80 allot
+create TR-PERSIST-BUF FS-PATH-CAP allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
@@ -71,6 +72,7 @@ variable TR-UNDER-CACHE-U
 variable TR-UNDER-CACHE-TMP-U
 variable TR-UNDER-CACHE-LOCK-U
 variable TR-UNDER-NAME-U
+variable TR-PERSIST-U
 variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
@@ -155,33 +157,42 @@ variable TR-UNDER-CACHE-RC
 : TR-GATE-ELAPSED-MS ( -- n )
    mono-ns TR-GATE-START-NS @ - PROC-NS-PER-MS / ;
 
-: TR-BUDGET-CHECK ( n -- n ) {: budget:n :}
-   budget 1 < if E-TBL-FIELD throw then
-   budget ;
-
 : TR-BUDGET-MS ( -- n )
-   s" HABU_GATE_BUDGET_MS" GETENV dup 0= if
-      2drop TR-DEFAULT-BUDGET-MS exit
+   TR-DEFAULT-BUDGET-MS ;
+
+: TR-PERSIST-TMP ( -- )
+   s" TMPDIR" GETENV dup 0= if 2drop s" /tmp" then
+   s" habu-gate-cache" TR-PERSIST-BUF JOIN-PATH TR-PERSIST-U ! ;
+
+: TR-PERSIST-HOME ( ptr u8 n -- ) {: home:ptr homeu:n :}
+   home homeu s" .cache/habu-gate" TR-PERSIST-BUF JOIN-PATH TR-PERSIST-U ! ;
+
+: TR-PERSIST-XDG ( ptr u8 n -- ) {: root:ptr rootu:n :}
+   root rootu s" habu-gate" TR-PERSIST-BUF JOIN-PATH TR-PERSIST-U ! ;
+
+: TR-PERSIST-DEFAULT ( -- )
+   s" XDG_CACHE_HOME" GETENV dup 0= if
+      2drop
+      s" HOME" GETENV dup 0= if 2drop TR-PERSIST-TMP exit then
+      TR-PERSIST-HOME exit
    then
-   STR>NUMBER? 0= if drop E-TBL-FIELD throw then
-   TR-BUDGET-CHECK ;
+   TR-PERSIST-XDG ;
+
+: TR-PERSIST-INIT ( -- )
+   TR-PERSIST-DEFAULT ;
 
 : TR-PERSIST? ( -- bool )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
-      2drop TR-FALSE exit
-   then
-   2drop TR-TRUE ;
+   TR-PERSIST-U @ 0 > ;
 
 : TR-PERSIST$ ( -- ptr u8 n )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
-      2drop E-FS-PATH throw
-   then ;
+   TR-PERSIST? 0= if E-FS-PATH throw then
+   TR-PERSIST-BUF TR-PERSIST-U @ ;
 
 : TR-PERSIST-ENSURE ( -- )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
-      2drop exit
-   then
-   MAKE-DIRS ;
+   TR-PERSIST$ MAKE-DIRS ;
+
+: TR-PERSIST-ENV+ ( -- )
+   s" HABU_GATE_WARM_ROOT" >LEN TR-PERSIST$ >LEN PROC-ENV+ ;
 
 : TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
    s" FAIL: native gate budget (" type
@@ -205,11 +216,7 @@ variable TR-UNDER-CACHE-RC
    elapsed budget TR-PASS ;
 
 : TR-BUILD-CACHE-ENV ( -- )
-   TR-PERSIST? if
-      TR-PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
-   else
-      GT-ROOT s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
-   then
+   TR-PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
    TR-BUILD-CACHE$ MAKE-DIRS
    s" HABU_BUILD_CACHE" >LEN TR-BUILD-CACHE$ >LEN PROC-ENV+ ;
 
@@ -237,7 +244,9 @@ variable TR-UNDER-CACHE-RC
       2dup MAKE-DIRS
       GT-COPY-ROOT!
    then
+   TR-PERSIST-INIT
    TR-PERSIST-ENSURE
+   TR-PERSIST$ CK-CACHE-ROOT!
    GT-ROOT GS-ROOT!
    TR-UNDER-PATHS ;
 
@@ -271,7 +280,7 @@ variable TR-UNDER-CACHE-RC
    PROC-ENV-RESET
    TR-PERSIST-ENSURE
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-PERSIST-ENV+
    TR-BUILD-CACHE-ENV
    GS-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -397,14 +406,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
 ;TR-FILES
 
-\ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
-\ in (content-stamped in gate-stdlib.f, so cross-run reuse is sound), else the
-\ per-run GT-ROOT. Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and
-\ HABU_WARM_TOOLS resolve to the same place. Checker warm uses the same persistent
-\ root through GE-WARM-ROOT and validates with its own content stamp.
+\ Tools-warm root: the content-keyed gate cache selected by TR-PERSIST-INIT.
+\ Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and HABU_WARM_TOOLS
+\ resolve to the same place. Checker warm uses the same root through GE-WARM-ROOT
+\ and validates with its own content stamp.
 : TR-WARM-ROOT$ ( -- ptr u8 n )
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= 0= if exit then
-   2drop GT-ROOT ;
+   TR-PERSIST$ ;
 
 : TR-TOOLS-PATHS ( -- )
    TR-WARM-ROOT$ s" hb-tools-warm" TR-TOOLS-BUF JOIN-PATH TR-TOOLS-U !
@@ -643,6 +650,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER-SUPPORT-ARGV
    PROC-ENV-RESET
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-PERSIST-ENV+
    TR-BUILD-CACHE-ENV
    GS-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -660,6 +668,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-AOT-RUNNER-SUPPORT-ARGV
    PROC-ENV-RESET
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-PERSIST-ENV+
    TR-BUILD-CACHE-ENV
    GS-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -1070,7 +1079,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    PROC-ENV-RESET
    idx TR-PHASE-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
-   s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-PERSIST-ENV+
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
    idx TR-PHASE-POOL-ENV
