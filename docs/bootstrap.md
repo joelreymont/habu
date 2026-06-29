@@ -24,6 +24,15 @@ rm -f "$tmp"
 That command must print `1` and exit zero. If the usable Gforth is not first on
 `PATH`, set `GFORTH=/path/to/gforth`.
 
+The preferred persistent local install path is `~/.local/bin/gforth`; verify it
+with:
+
+```sh
+~/.local/bin/gforth --version
+```
+
+The known-good recovery version is `gforth 0.7.9_20260610`.
+
 On macOS, a local snapshot build can be used as the recovery host without
 installing it:
 
@@ -70,6 +79,24 @@ detected.
 
 The temporary files are not build products. The final installed `bin/hb` is the
 native checked engine rebuilt from current source.
+
+## Periodic No-Binary Check
+
+The normal native gate uses an existing `bin/hb`; it does not prove the
+from-scratch Gforth recovery path. Run this periodic check after engine/compiler
+changes:
+
+```sh
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/habu-bootstrap-check.XXXXXX")
+HABU_ALLOW_BOOTSTRAP=1 \
+HABU_BOOTSTRAP_CHECK_ONLY=1 \
+GFORTH="${GFORTH:-$HOME/.local/bin/gforth}" \
+HB_TMP="$tmp" \
+tools/bootstrap.sh
+```
+
+`HABU_BOOTSTRAP_CHECK_ONLY=1` builds the private Gforth/native bootstrap chain
+through `hb-new` and exits before replacing `bin/hb`.
 
 ## Refresh `bin/hb`
 

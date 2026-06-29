@@ -166,6 +166,43 @@ variable BCG-LEN
    s" 16 lshift swap 5 lshift or swap or" BCG-MUST-LACK
    s" 10 lshift swap 5 lshift or swap or" BCG-MUST-LACK ;
 
+: BCG-TEST-GFORTH-LOCALS ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" done:label" BCG-MUST-LACK
+   s" qexit:label" BCG-MUST-LACK
+   s" qlok:label" BCG-MUST-LACK ;
+
+: BCG-TEST-BOOTSTRAP-DATA-SIZE ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" $2000000 constant DATA-SIZE" BCG-MUST-HAVE
+   s" $300000 constant DATA-SIZE" BCG-MUST-LACK
+   s" src/os/linux/layout.f" BCG-LOAD
+   s" $2000000 constant DATA-SIZE" BCG-MUST-HAVE
+   s" $300000 constant DATA-SIZE" BCG-MUST-LACK ;
+
+: BCG-TEST-PROF-CNT-HIGH ( -- )
+   s" bootstrap/cg/prof.fs" BCG-LOAD
+   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-HAVE
+   s" $1F0000 constant PROF-CNT" BCG-MUST-LACK
+   s" src/habu/prof.f" BCG-LOAD
+   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-HAVE
+   s" $1F0000 constant PROF-CNT" BCG-MUST-LACK ;
+
+: BCG-TEST-PUBLISH-HOOK-SPLIT ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" : EMIT-COMPILE-PUBLISH-TRUSTED" BCG-MUST-HAVE
+   s" : EMIT-COMPILE-PUBLISH-HOOKED" BCG-MUST-HAVE
+   s" : EMIT-COMPILE-PUBLISH ( n -- )" BCG-MUST-HAVE
+   s" BODYBUF-OFF ADDI,  10 G-PUSH" BCG-MUST-HAVE
+   s" C-CALL-TRUST-PEND-MAYBE" BCG-MUST-LACK ;
+
+: BCG-TEST-BOOTSTRAP-HIDE-PRELUDE ( -- )
+   s" tools/bootstrap.sh" BCG-LOAD
+   s" BOOT-USIGS-RESET" BCG-MUST-HAVE
+   s" SEQ" BCG-MUST-HAVE
+   s" BOOT-HIDE-DICT-FROM" BCG-MUST-HAVE
+   s" T-CON" BCG-MUST-LACK ;
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-INSTALL-FAIL-CLOSED
@@ -175,6 +212,11 @@ variable BCG-LEN
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER
    BCG-TEST-ASM-CHECKED
+   BCG-TEST-GFORTH-LOCALS
+   BCG-TEST-BOOTSTRAP-DATA-SIZE
+   BCG-TEST-PROF-CNT-HIGH
+   BCG-TEST-PUBLISH-HOOK-SPLIT
+   BCG-TEST-BOOTSTRAP-HIDE-PRELUDE
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 

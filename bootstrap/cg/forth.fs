@@ -33,7 +33,7 @@ $60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC f
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF
-$300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
+$2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 
 require exec.fs
@@ -406,6 +406,14 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BCOUNT ( -- ) A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
+: C-EXIT76 ( ptr u8 n -- ) {: a u :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: msg code :} \ typed-local-lint: allow-bare-local
+   code B,
+   msg LBL,  a u BYTES,
+   code LBL,
+   0 2 MOVZ,  1 msg ADR,  2 u MOVZ,  NR-WRITE SYS,
+   0 76 MOVZ,  NR-EXIT SYS, ;
+
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : BHERE ( -- )   7 DATA 0 LDR,  7 G-PUSH ;
 
@@ -413,11 +421,11 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    LBL LBL {: low-ok high-ok :}
    5 DATA-START MOVZ,  5 DATA 5 ADD,
    reg 5 CMP,  C-GE low-ok BCOND,
-      0 76 MOVZ,  NR-EXIT SYS,
+      s" bootstrap: data pointer below data start" C-EXIT76
    low-ok LBL,
    5 DATA-SIZE LIT64,  5 DATA 5 ADD,
    reg 5 CMP,  C-LE high-ok BCOND,
-      0 76 MOVZ,  NR-EXIT SYS,
+      s" bootstrap: data pointer exceeds data region" C-EXIT76
    high-ok LBL, ;
 
 : BALLOT ( -- )  A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
@@ -1375,7 +1383,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ Lcfpush(x9=val), Lcfpop(->x9), Lpat(x9=addr: patch CBZ/B to current CP),
 \ Lkwcmp(x0=kwaddr x1=kwlen -> x0=match? vs TKA/TKL, case-folded).
 : C-EMIT-DROP-X12 ( -- )
-   LBL {: done:label :}
+   LBL {: done :} \ typed-local-lint: allow-bare-local
    12 done CBZ,
       9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
    done LBL, ;
@@ -1643,7 +1651,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the current word's entry (PEND slot.addr) — every word has the standard
 \ prologue/epilogue, so calling into the open definition is well-formed.
 : J-EXIT ( -- )
-   LBL {: qexit:label :}
+   LBL {: qexit :} \ typed-local-lint: allow-bare-local
    9 DATA QPATCH-CELL LDR,  9 qexit CBNZ,
       12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12
    qexit LBL,
@@ -1695,16 +1703,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
-
-: C-CALL-TRUST-PEND-MAYBE ( -- )
-   LBL {: done :}
-   9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
-   13 done CBZ,
-   12 DATA PEND-CELL LDR,
-   C-PUSH-DREC-NAME
-   TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
-   C-CALL-X11-SAVED
-   done LBL, ;
 
 : C-DIE-DOES ( -- )
    0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
@@ -1797,8 +1795,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-SIG-FULL$  LBCS @ BL, ;
 
 : C-SIG-BAD ( -- )
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT SYS, ;
+   s" bootstrap: signature parse failed" C-EXIT76 ;
 
 : C-PARSE-REQUIRED-SIG ( -- )
    LBL LBL {: done bad :}
@@ -1954,8 +1951,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       scd LBL,
       done B,
    fail LBL,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+      s" bootstrap: definition name too long" C-EXIT76
    done LBL, ;
 
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
@@ -2051,7 +2047,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
-   LBL {: qlok:label :}
+   LBL {: qlok :} \ typed-local-lint: allow-bare-local
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
@@ -2166,7 +2162,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: counted string literal too long" C-EXIT76
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
    14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
@@ -2225,7 +2221,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-QUOTE-CONSUME
    C-QUOTE-SAVE
    LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: compiled counted string too long" C-EXIT76
    capok LBL,
    C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
@@ -2539,8 +2535,7 @@ variable CFSK2
 : C-COLON-CODE-ROOM ( -- )
    LBL {: cpok :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+      s" bootstrap: code region full" C-EXIT76
    cpok LBL, ;
 
 : C-COLON-DICT-ROOM ( -- )
@@ -2651,11 +2646,11 @@ variable CFSK2
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL, ;
 
-: EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :}
-   LBL LBL LBL LBL LBL {: wastrusted ndhas ndchk musttrust pubdone :}
-   10 DATA TRUSTED-CELL LDR,  10 wastrusted CBNZ,
+: EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: ttrusted ndhas ndchk :} \ typed-local-lint: allow-bare-local
+   10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
       C-CALL-CHECK-DEFINER
-   wastrusted LBL,
+   ttrusted LBL,
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-DIE-DOES
@@ -2663,16 +2658,35 @@ variable CFSK2
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
       C-CALL-CHECK-DOES
    ndchk LBL,
-   10 DATA TRUSTED-CELL LDR,  10 musttrust CBNZ,
-      C-CALL-TRUST-PEND-MAYBE
-      pubdone B,
-   musttrust LBL,
-      C-CALL-TRUST-PEND
-   pubdone LBL,
+   C-CALL-TRUST-PEND
    NDICT NDICT 1 ADDI,
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
+
+: EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: nohook rejected :} \ typed-local-lint: allow-bare-local
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+      10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
+      10 DATA BODYLEN-CELL LDR,  10 G-PUSH
+      SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
+      10 G-POP  10 rejected CBZ,
+   nohook LBL,
+      NDICT NDICT 1 ADDI,
+   rejected LBL,
+   C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,
+   lmain B, ;
+
+: EMIT-COMPILE-PUBLISH ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: checked unsigned :} \ typed-local-lint: allow-bare-local
+   9 DATA HOOK-CELL LDR,  9 checked CBNZ,
+      lmain EMIT-COMPILE-PUBLISH-HOOKED
+   checked LBL,
+   9 DATA TSIG-U-CELL LDR,  9 unsigned CBZ,
+      lmain EMIT-COMPILE-PUBLISH-TRUSTED
+   unsigned LBL,
+   lmain EMIT-COMPILE-PUBLISH-HOOKED ;
 
 : EMIT-COMPILE-SEMI ( n n -- ) {: lmain lnotsemi :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
@@ -2682,7 +2696,7 @@ variable CFSK2
       14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
       EMIT-COMPILE-RET
       EMIT-COMPILE-FLUSH-PEND
-      lmain EMIT-COMPILE-PUBLISH-HOOKED
+      lmain EMIT-COMPILE-PUBLISH
    lnotsemi LBL, ;
 
 : EMIT-COMPILE-CONTROL-KEYWORDS ( n -- ) {: lmain :}

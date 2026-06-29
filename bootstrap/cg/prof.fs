@@ -13,7 +13,7 @@ variable LPROFH   variable LPROFDUMP
 $1E0 constant PROF-TOT          \ samples taken
 $1E8 constant PROF-LIM          \ sample limit (auto-dump + exit(99) when reached)
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
-$1F0000 constant PROF-CNT       \ counters: one cell per dict slot (high in data region)
+DATA-SIZE $10000 - constant PROF-CNT \ counters: one cell per dict slot (high in data region)
 14  constant SIGALRM
 48 constant PROF-MACOS-MCTX-OFF
 176 constant PROF-LINUX-UC-MCTX-OFF

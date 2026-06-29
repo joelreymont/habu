@@ -110,6 +110,11 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **No-binary bootstrap is its own gate path:** Gforth runs `bootstrap/cg/forth.fs`,
+  so Habu typed locals such as `done:label` are literal Gforth names and break
+  codegen. The bootstrap data region must also fit static checker state
+  (`USIGS-BOOT`), and its native reload prelude must reset user signatures and
+  hide from `SEQ` before reloading current source.
 - **Do not bake one-off AOT gate support into the warm runner:** adding
   `tools/aot-call-report.f` to the runner image overflowed the checker user-signature
   snapshot even though AOT phases are scheduled cold/early. Keep AOT-only report/assert

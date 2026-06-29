@@ -6,7 +6,7 @@ variable LPROFH   variable LPROFDUMP
 $1E0 constant PROF-TOT
 $1E8 constant PROF-LIM
 $1F8 constant PROF-OTHER      \ samples outside any dict word (main loop, helpers)
-$1F0000 constant PROF-CNT
+DATA-SIZE $10000 - constant PROF-CNT
 14  constant SIGALRM
 $10000004 constant LINUX-SA-PROF-FLAGS
 $0042 constant MACOS-SA-PROF-FLAGS

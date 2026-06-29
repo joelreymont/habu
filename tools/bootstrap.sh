@@ -97,6 +97,8 @@ emit_boot_hide() {
 TRUSTED: BOOT-N>REC ( n -- ptr a ) ;
 TRUSTED: BOOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: BOOT-N>U8 ( n -- ptr u8 ) ;
+TRUSTED: BOOT-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
+TRUSTED: BOOT-UEND! ( n -- ) UEND ! ;
 $0 constant BOOT-XREF-START-SLOT
 $2 constant BOOT-XREF-FLAGS-SLOT
 $3 constant BOOT-XREF-NAME-SLOT
@@ -146,7 +148,11 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-HIDE-DICT-FROM ( ptr u8 n -- )
    BOOT-XREF-FIND-INDEX dup 0 < if s" bootstrap: hide word not found" 76 die then
    ndict! ;
-s" T-CON" BOOT-HIDE-DICT-FROM
+: BOOT-USIGS-RESET ( -- )
+   0 BOOT-UEND!
+   0 BOOT-USIG-END-PTR ! ;
+BOOT-USIGS-RESET
+s" SEQ" BOOT-HIDE-DICT-FROM
 EOF
 }
 
@@ -242,6 +248,11 @@ if [[ "$HABU_TARGET" == "macos-aarch64" ]]; then
   codesign -s - --force "$T/hb-new" >/dev/null
 fi
 chmod +x "$T/hb-new"
+
+if [[ "${HABU_BOOTSTRAP_CHECK_ONLY:-}" == "1" ]]; then
+  printf 'bootstrap check OK: %s/hb-new\n' "$T"
+  exit 0
+fi
 
 mkdir -p bin "$T/native"
 OLD_HB="$T/bin-hb-before-bootstrap"
