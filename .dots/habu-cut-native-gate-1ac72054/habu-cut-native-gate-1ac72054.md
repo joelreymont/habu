@@ -245,3 +245,16 @@ AOT-positive 26.843s, check-cli 26.452s, and engine fixtures 24.081s under
 contention. Rejected experiment: raising the nested stdlib pool from 4 to 5 on
 macOS regressed the hot full gate to 46.187s internal / 49.06s wall, so the
 4-slot nested default remains correct on this host.
+
+Checkpoint 2026-06-29: inlined AOT report/assertion helpers. `GB-AOT-REPORT`
+now calls `REPORT-JSON-BUFFER` in-process, and `GB-GJA` dispatches directly to
+`GJA-JSON-ONE-SCHEMA`, `GJA-AOT-STRIPPED`, and `GJA-AOT-COMPACT`; one
+`tools/aot-call-report.f` CLI smoke remains in the tool-boundary suite. Focused
+AOT positive passed in 19.57s wall, AOT negative in 18.51s wall, and the hot
+full gate passed at 46.183s internal / 49.20s wall with `helper-spawn=106`,
+`warm-hit=16`, `maker-hit=1`, and `candidate-hit=1`. Rejected experiment:
+baking `tools/aot-call-report.f` plus AOT gate files into `hb-gate-warm`
+overflowed the checker user-signature snapshot; AOT phases are scheduled
+cold/early, so the runner no longer advertises or bakes AOT-only support.
+Remaining 30s blocker: the late stdlib/lint scheduling wave, especially
+tool-boundary/check-cli plus manifest/libs after the first wave drains.

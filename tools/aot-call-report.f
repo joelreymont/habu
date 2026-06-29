@@ -43,6 +43,9 @@ create OUT-BYTE 1 allot
 create JSON-NUM-BUF JSON-NUM-CAP allot
 
 variable REPORT-PATH-U
+variable REPORT-OUT-A
+variable REPORT-OUT-CAP
+variable REPORT-OUT-U
 variable SCAN-FD
 variable SCAN-GOT
 variable SCAN-FILE-OFF
@@ -65,6 +68,15 @@ variable JSON-NUM-N
 : REPORT-FALSE ( -- bool )
    0 0= 0= ;
 
+: REPORT-OUT-A-FIELD ( -- ptr ptr u8 )
+   REPORT-OUT-A 0 ptr-field ;
+
+: REPORT-OUT-A@ ( -- ptr u8 )
+   REPORT-OUT-A-FIELD @ ;
+
+: REPORT-OUT-A! ( ptr u8 -- )
+   REPORT-OUT-A-FIELD ! ;
+
 : REPORT-COPY-BYTES ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
    0 begin dup u < while
       dup a + c@  over dst + c!
@@ -83,7 +95,38 @@ variable JSON-NUM-N
 : REPORT-PATH0 ( -- ptr u8 )
    REPORT-PATH ;
 
+: REPORT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a 0= if s" aot-call-report: output buffer missing" 74 die then
+   cap 0 < if s" aot-call-report: output buffer capacity invalid" 74 die then
+   a REPORT-OUT-A!
+   cap REPORT-OUT-CAP !
+   0 REPORT-OUT-U ! ;
+
+: REPORT-BUFFER-OFF ( -- )
+   NULL$ drop REPORT-OUT-A!
+   0 REPORT-OUT-CAP !
+   0 REPORT-OUT-U ! ;
+
+: REPORT-OUT$ ( -- ptr u8 n )
+   REPORT-OUT-A@ REPORT-OUT-U @ ;
+
+: REPORT-BUFFERED? ( -- bool )
+   REPORT-OUT-A@ 0= 0= ;
+
+: REPORT-ROOM ( n -- ) {: add:n :}
+   add 0 < if s" aot-call-report: output append invalid" 74 die then
+   REPORT-OUT-U @ 0 < if s" aot-call-report: output length invalid" 74 die then
+   add REPORT-OUT-CAP @ REPORT-OUT-U @ - > if
+      s" aot-call-report: output buffer full" 74 die
+   then ;
+
+: REPORT-BUF-C ( n -- ) {: c:n :}
+   1 REPORT-ROOM
+   c REPORT-OUT-A@ REPORT-OUT-U @ + c!
+   REPORT-OUT-U @ 1+ REPORT-OUT-U ! ;
+
 : OUT-C ( n -- ) {: c :}
+   REPORT-BUFFERED? if c REPORT-BUF-C exit then
    c OUT-BYTE c!
    OUT-BYTE 1 type ;
 
@@ -272,12 +315,20 @@ variable JSON-NUM-N
    ACR-C-RBRACE OUT-C
    ACR-C-LF OUT-C ;
 
+: REPORT-JSON-BUFFER ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: path:ptr pathu:n out:ptr cap:n :}
+   path pathu REPORT-FILE!
+   out cap REPORT-BUFFER!
+   REPORT-JSON
+   REPORT-OUT$ ;
+
 : USAGE ( -- )
    s" usage: tools/aot-call-report.f binary" 64 die ;
 
 : REPORT-MAIN ( -- )
    SCRIPT-ARGC 1 <> if USAGE then
    0 SCRIPT-ARGV$ REPORT-FILE!
+   REPORT-BUFFER-OFF
    REPORT-JSON ;
 
 : MAYBE-REPORT-MAIN ( -- )

@@ -274,6 +274,11 @@ variable TR-UNDER-CACHE-RC
 : TR-COMMON ( -- )
    s" test/gate-common.f"  >LEN PROC-ARGV+ ;
 
+: TR-BUILD-ASSERT-LIBS ( -- )
+   s" tools/json.f"  >LEN PROC-ARGV+
+   s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
+   s" tools/aot-call-report.f"  >LEN PROC-ARGV+ ;
+
 : TR-CLEAN-WARM ( -- )
    GT-ROOT s" hb-check-warm" TR-WARM-BUF JOIN-PATH TR-WARM-U !
    TR-WARM$ FILE? if TR-WARM$ REMOVE-FILE then ;
@@ -326,8 +331,6 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    tools/warm-run.f tools/hb-build-lib.f tools/json.f tools/gate-json-assert-core.f
    test/gate-pool.f test/gate-stats.f test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
-   test/gate-build-common.f test/gate-build-hbb.f test/gate-aot-positive-lib.f
-   test/gate-aot-negative-lib.f
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
@@ -382,7 +385,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-gate-runner-cache-v3" CK-TEXT+
+   s" hb-gate-runner-cache-v4" CK-TEXT+
    s" bin/hb" TR-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
@@ -547,6 +550,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
+   TR-BUILD-ASSERT-LIBS
    s" test/gate-build-common.f"  >LEN PROC-ARGV+ ;
 
 : TR-BUILD-LIB ( -- )
@@ -560,6 +564,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-BUILD-LIB-COMMON ( -- )
    TR-COMMON
    TR-BUILD-LIB
+   TR-BUILD-ASSERT-LIBS
    s" test/gate-build-common.f"  >LEN PROC-ARGV+
    s" test/gate-build-hbb.f"  >LEN PROC-ARGV+ ;
 
@@ -787,8 +792,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx IDX>N 4 = if s" tail" exit then
    idx IDX>N 5 = if s" repair" exit then
    idx IDX>N 6 = if s" debug" exit then
-   idx IDX>N 7 = if s" aot-positive" exit then
-   idx IDX>N 8 = if s" aot-negative" exit then
    idx IDX>N 9 = if s" fixtures" exit then
    idx IDX>N 10 = if s" diag-repair" exit then
    idx IDX>N 11 = if s" diag-undef-primary" exit then
@@ -840,6 +843,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER-READY @ 0= if 0 0= 0= exit then
    idx IDX>N 0= if 0 0= 0= exit then
    idx IDX>N 1 = if 0 0= 0= exit then
+   idx IDX>N 7 = if 0 0= 0= exit then
+   idx IDX>N 8 = if 0 0= 0= exit then
    idx IDX>N 15 = if 0 0= 0= exit then
    0 0= ;
 

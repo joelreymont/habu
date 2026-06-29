@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-28
+Last updated: 2026-06-29
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -105,6 +105,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Do not bake one-off AOT gate support into the warm runner:** adding
+  `tools/aot-call-report.f` to the runner image overflowed the checker user-signature
+  snapshot even though AOT phases are scheduled cold/early. Keep AOT-only report/assert
+  helpers on the cold AOT paths and reserve the runner image for phases it actually runs.
 - **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
   default native gate budget to 160s hid duplicated gate work after the suite had
   already been cut near 90s. Keep the default at the current green threshold and

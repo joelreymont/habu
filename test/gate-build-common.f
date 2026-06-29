@@ -39,6 +39,7 @@ $B0 constant GB-ELF-DYNAMIC-SZ
 $100000401 constant GB-ELF-DLOPEN-RINFO
 $200000401 constant GB-ELF-DLSYM-RINFO
 34 constant GB-DQ
+$8000 constant GB-REPORT-CAP
 
 create GB-SRC-PATH FS-PATH-CAP allot
 create GB-OUT-PATH FS-PATH-CAP allot
@@ -47,6 +48,7 @@ create GB-REPORT-PATH FS-PATH-CAP allot
 variable GB-SRC-U
 variable GB-OUT-U
 variable GB-REPORT-U
+variable GB-REPORT-BUF-A
 variable GB-EXEC-A
 variable GB-EXEC-CAP-U
 variable GB-EXEC-U
@@ -62,6 +64,21 @@ variable GB-LC-OFF
 
 : GB-REPORT$ ( -- ptr u8 n )
    GB-REPORT-PATH GB-REPORT-U @ ;
+
+: GB-REPORT-BUF-A-FIELD ( -- ptr ptr u8 )
+   GB-REPORT-BUF-A 0 ptr-field ;
+
+: GB-REPORT-BUF-A@ ( -- ptr u8 )
+   GB-REPORT-BUF-A-FIELD @ ;
+
+: GB-REPORT-BUF-A! ( ptr u8 -- )
+   GB-REPORT-BUF-A-FIELD ! ;
+
+: GB-REPORT-BUF ( -- ptr u8 )
+   GB-REPORT-BUF-A@ 0= if
+      GB-REPORT-CAP MEM-ALLOC-BYTES drop GB-REPORT-BUF-A!
+   then
+   GB-REPORT-BUF-A@ ;
 
 : GB-EXEC-BUF ( -- ptr u8 )
    GB-EXEC-A @ ;
@@ -153,29 +170,15 @@ variable GB-LC-OFF
    want wantu label labelu GE-EXPECT-OUT ;
 
 : GB-AOT-REPORT ( ptr u8 n -- ) {: label:ptr labelu :}
-   GE-HB-RESET
-   s" tools/aot-call-report.f" GB-ARGV+
-   GB-OUT$ GB-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK
-   GB-REPORT$ GT-OUT$ WRITE-ALL ;
-
-: GB-GJA-ARGV ( -- )
-   GE-HB-RESET
-   s" --load" GB-ARGV+
-   s" lib/errors.f" GB-ARGV+
-   s" lib/memory.f" GB-ARGV+
-   s" tools/json.f" GB-ARGV+
-   s" tools/gate-json-assert-core.f" GB-ARGV+
-   s" tools/gate-json-assert.f" GB-ARGV+
-   s" --" GB-ARGV+ ;
+   GB-OUT$ FILE? 0= if label labelu GE-FAIL then
+   GB-OUT$ GB-REPORT-BUF GB-REPORT-CAP REPORT-JSON-BUFFER {: out:ptr outu:n :}
+   GB-REPORT$ out outu WRITE-ALL ;
 
 : GB-GJA ( ptr u8 n ptr u8 n -- ) {: mode:ptr modeu label:ptr labelu :}
-   GB-GJA-ARGV
-   mode modeu GB-ARGV+
-   GB-REPORT$ GB-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   label labelu GE-EXPECT-OK ;
+   mode modeu s" json-one-schema" STR= if GB-REPORT$ GJA-JSON-ONE-SCHEMA exit then
+   mode modeu s" aot-stripped" STR= if GB-REPORT$ GJA-AOT-STRIPPED exit then
+   mode modeu s" aot-compact" STR= if GB-REPORT$ GJA-AOT-COMPACT exit then
+   label labelu GE-FAIL ;
 
 : GB-J-DQ ( -- )
    GB-DQ SB-APPEND-C ;

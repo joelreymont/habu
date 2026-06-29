@@ -35,8 +35,6 @@
    s" diag-file-unsafe" GR-ARG0= if GDX-DISPATCH exit then
    s" dictionary" GR-ARG0= if GD-MAIN exit then
    s" debug" GR-ARG0= if GDB-RUN exit then
-   s" aot-positive" GR-ARG0= if GAP-RUN exit then
-   s" aot-negative" GR-ARG0= if GAN-RUN exit then
    GR-USAGE ;
 
 : GR-MAIN ( -- )
