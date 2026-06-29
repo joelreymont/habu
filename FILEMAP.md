@@ -216,10 +216,13 @@ points stay listed.
   dispatch and code-section emitter groups in native and recovery codegen.
 - `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
+- `tools/bundle-lib-core.f` — reusable stdlib bundle construction core.
+- `tools/bundle-lib.f` — CLI wrapper for stdlib bundle construction.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.
 - `tools/examples-test.f` — checked fixture coverage for stdlib examples.
 - `tools/filemap-lint.f` — freshness lint for this file.
-- `tools/repl-lint.f` — rejects REPL-baked code that exits the interactive session.
+- `tools/repl-lint-core.f` — reusable scanner rejecting REPL-baked code that exits the interactive session.
+- `tools/repl-lint.f` — CLI wrapper for REPL exit lint.
 - `tools/repl-lint-test.f` — checked fixture coverage for REPL exit lint.
 - `tools/trust-lint-core.f` — reusable `TRUSTED.md` drift scanner core.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.

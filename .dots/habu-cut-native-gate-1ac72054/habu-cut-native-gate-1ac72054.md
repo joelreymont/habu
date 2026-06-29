@@ -258,3 +258,19 @@ overflowed the checker user-signature snapshot; AOT phases are scheduled
 cold/early, so the runner no longer advertises or bakes AOT-only support.
 Remaining 30s blocker: the late stdlib/lint scheduling wave, especially
 tool-boundary/check-cli plus manifest/libs after the first wave drains.
+
+Checkpoint 2026-06-29: collapsed more stdlib tool subprocess work without
+keeping the focused-only suite split. `repl-lint` and `bundle-lib` now have
+checked core/entry splits; `repl-lint-test` runs scanner semantics in-process,
+and `bundle-lib-test` builds the successful bundle in-process while retaining
+missing-input/generated-bundle process boundaries. Fixed warm-tools cache
+publish so failed candidate bakes cannot pair a new trust file with an old
+image/stamp. Focused hot `test/gate-stdlib.f -- tool` passed at 22.81s wall
+with the lints tail at 16.717s. Full hot gate passed at 44.811s internal /
+47.81s wall with `inner-hb=55`, `inner-hb-stdin=40`, `boundary=95`,
+`helper-spawn=106`, `warm-hit=16`, and `candidate-hit=1`. Rejected experiment:
+splitting `tool-boundary-lints` into three parallel suites cut focused wall to
+18.29s but regressed hot full gate slightly and added two top-level child
+processes, so it was reverted. Remaining 30s blockers are now AOT-positive
+~31.7s, check-cli/tool-boundary ~25s, and late lint manifest/libs/tools tails
+under contention.

@@ -1,10 +1,9 @@
 \ repl-lint-test.f - checked fixtures for tools/repl-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/repl-lint-test.f
+\ lib/fs-mutate.f tools/lint/text.f tools/lint/intern.f tools/lint/token.f
+\ tools/lint/lib.f tools/repl-lint-core.f tools/repl-lint-test.f
 
 4096 constant RLT-CAP
-10000 constant RLT-TIMEOUT-MS
 
 variable RLT-ROOT-U
 variable RLT-SRC-DIR-U
@@ -95,9 +94,6 @@ create RLT-ERR RLT-CAP allot
 : RLT-BAD-SUMMARY$ ( -- ptr u8 n )
    s" repl-lint: 1 finding(s)" ;
 
-: RLT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
 : RLT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-repl-lint" TMPDIR-MKDIR {: a:ptr u :}
@@ -115,46 +111,26 @@ create RLT-ERR RLT-CAP allot
    RLT-STEPPER RLT-EMPTY$ WRITE-ALL
    RLT-DEBUG RLT-EMPTY$ WRITE-ALL ;
 
-: RLT-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" tools/repl-lint.f" WR-TOOLS-LOAD if RLT-ROOT RLT-ARG+ exit then
-   s" --load" RLT-ARG+
-   s" lib/errors.f" RLT-ARG+
-   s" lib/string.f" RLT-ARG+
-   s" lib/memory.f" RLT-ARG+
-   s" lib/vector.f" RLT-ARG+
-   s" tools/lint/text.f" RLT-ARG+
-   s" tools/lint/intern.f" RLT-ARG+
-   s" tools/lint/token.f" RLT-ARG+
-   s" tools/lint/lib.f" RLT-ARG+
-   s" tools/argv.f" RLT-ARG+
-   s" tools/repl-lint.f" RLT-ARG+
-   s" --" RLT-ARG+
-   RLT-ROOT RLT-ARG+ ;
+: RLT-RUN-CORE ( -- n n n )
+   RLT-ROOT REPL-ROOT!
+   RLT-OUT RLT-CAP LINT-OUT-BUFFER!
+   REPL-LINT-CHECK {: bad:n :}
+   LINT-OUT$ nip LINT-OUT-BUFFER-OFF
+   0 bad 0 > if 1 else 0 then ;
 
-: RLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: RLT-RUN ( -- n n n n )
-   RLT-ARGV
-   WR-TOOLS$ >LEN RLT-OUT RLT-CAP >LEN RLT-ERR RLT-CAP >LEN
-   RLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   RLT-CAPTURE>N ;
-
-: RLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT T=
+: RLT-EXPECT-CODE ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 
 : RLT-TEST-GOOD ( -- )
    RLT-REPL RLT-GOOD$ WRITE-ALL
-   RLT-RUN 0 RLT-EXPECT-EXIT {: outu erru :}
+   RLT-RUN-CORE 0 RLT-EXPECT-CODE {: outu:n erru:n :}
    RLT-OUT outu RLT-GOOD-OUT$ T$=
    RLT-ERR erru RLT-EMPTY$ T$= ;
 
 : RLT-TEST-BAD ( -- )
    RLT-REPL RLT-BAD$ WRITE-ALL
-   RLT-RUN 1 RLT-EXPECT-EXIT {: outu erru :}
+   RLT-RUN-CORE 1 RLT-EXPECT-CODE {: outu:n erru:n :}
    erru 0 T=
    RLT-OUT outu RLT-BAD-FINDING$ CONTAINS? TTRUE
    RLT-OUT outu RLT-BAD-ADVICE$ CONTAINS? TTRUE

@@ -1,9 +1,11 @@
 ---
 title: Audit main gate duplicated work
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-06-28T19:02:08.158764+02:00"
+created-at: "\"2026-06-28T19:02:08.158764+02:00\""
+closed-at: "2026-06-29T02:55:27.007004+02:00"
+close-reason: "research completed and implementation child dots landed: single under-test artifact, warm runner/image cache, dictionary batching, AOT assertion inlining, engine fixture batching, and stdlib tool subprocess collapse. Latest full hot gate: 44.811s internal / 47.81s wall; broader 30s target remains under parent cut-native-gate."
 ---
 
 Problem: main native gate still repeats expensive work: multiple phases launch bin/hb children that reload common libs/tools, some phases rebuild/check Habu-like artifacts independently, and semantic tests remain at CLI/process boundaries where one loaded process could run the same assertions. Desired direction: build the candidate Habu once into HB_TMP, make it the single Habu-under-test for downstream phases, derive warm checker/tools images once from that candidate/content hash, and split tests into in-process semantic libraries plus thin process-boundary proofs only where CLI/isolation is the invariant. Research task: inspect test/run.f, gate-pool, warm-image, hb-build, build-fixpoint, and long-pole gate slices; quantify duplicate hb launches/builds/load bundles; identify which tests can safely move in-process and which must remain separate processes. Acceptance: produce a code-grounded gate review with file:line findings, a DAG/artifact-cache redesign, risks, and implementation subdots before changing gate behavior.

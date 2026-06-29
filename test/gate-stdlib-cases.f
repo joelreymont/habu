@@ -17,8 +17,8 @@ TEST-SUITE clobber-lint-fixtures
 
 TEST-SUITE repl-lint
    lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f
-   tools/lint/intern.f tools/lint/token.f tools/lint/lib.f tools/argv.f
-   tools/repl-lint.f
+   tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
+   tools/repl-lint-core.f tools/argv.f tools/repl-lint.f
 ;TEST-SUITE
 
 TEST-SUITE trust-lint
@@ -134,13 +134,13 @@ TEST-TOOL-SUITE tool-boundary-doc-public
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-lints
-   tools/repl-lint-test.f tools/diag-origin-test.f
+   tools/repl-lint-core.f tools/repl-lint-test.f tools/diag-origin-test.f
    tools/aot-lint-core.f tools/aot-lint-test.f
    tools/signature-lint-core.f tools/signature-lint-test.f
    tools/checked-boundary-lint-core.f tools/checked-boundary-lint-test.f
    tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
    tools/duplicate-definition-lint-core.f tools/duplicate-definition-lint-test.f
-   tools/bundle-lib-test.f tools/json-only-test.f
+   tools/bundle-lib-core.f tools/bundle-lib-test.f tools/json-only-test.f
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-typed-local

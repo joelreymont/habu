@@ -158,6 +158,16 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Do not spawn assertion tools for semantic checks:** gate JSON assertions are
   checked library words in `tools/gate-json-assert-core.f`; calling them
   in-process preserved coverage and cut hot helper spawns from 151 to 123.
+- **Warm image cache publishes must be stamp-last:** a failed warm-tools bake
+  wrote a new `hb-tools-warm.trust.f` beside an old image/stamp, so the next
+  cache hit paired mismatched artifacts and failed with `checker: duplicate
+  definition: repl-file-cap`. Build into candidate image/trust paths, delete
+  the old stamp before publish, rename artifacts, then write the stamp last.
+- **Focused gate wins must survive the full DAG:** splitting
+  `tool-boundary-lints` into parallel suites cut the focused tool slice from
+  ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
+  added top-level subprocesses. Keep the in-process semantic cuts; revert splits
+  that only win in isolation.
 - **Strict duplicates expose generic fixture names:** once redefinition fails
   closed, tool fixtures named `OK`/`BAD`/`FOLD` and shared helpers named `STR=`
   collide with baked or sibling words. Prefix generated names by fixture/tool and

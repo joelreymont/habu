@@ -172,9 +172,12 @@ variable FM-NUM-L
 : FM-CHECK-REQUIRED-TOOLS ( -- )
    s" tools/aot-call-report.f" FM-REQ
    s" tools/aot-call-report-test.f" FM-REQ
+   s" tools/bundle-lib-core.f" FM-REQ
+   s" tools/bundle-lib.f" FM-REQ
    s" tools/bundle-lib-test.f" FM-REQ
    s" tools/examples-test.f" FM-REQ
    s" tools/filemap-lint.f" FM-REQ
+   s" tools/repl-lint-core.f" FM-REQ
    s" tools/repl-lint.f" FM-REQ
    s" tools/repl-lint-test.f" FM-REQ
    s" tools/trust-lint-core.f" FM-REQ

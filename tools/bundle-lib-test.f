@@ -1,7 +1,7 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
-\ tools/bundle-lib-test.f
+\ tools/bundle-lib-core.f tools/bundle-lib-test.f
 
 8192 constant BLTT-BUF-CAP
 $20000 constant BLTT-BUNDLE-CAP
@@ -97,12 +97,13 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-ARGV-TOOL ( -- )
    PROC-ARGV-RESET
-   s" tools/bundle-lib.f" WR-TOOLS-LOAD if exit then
+   s" tools/bundle-lib-core.f" s" tools/bundle-lib.f" WR-TOOLS-LOAD2 if exit then
    s" --load" BLTT-ARG+
    s" lib/errors.f" BLTT-ARG+
    s" lib/string.f" BLTT-ARG+
    s" lib/fs.f" BLTT-ARG+
    s" lib/fs-mutate.f" BLTT-ARG+
+   s" tools/bundle-lib-core.f" BLTT-ARG+
    s" tools/bundle-lib.f" BLTT-ARG+
    s" --" BLTT-ARG+ ;
 
@@ -143,11 +144,14 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-TOOL-CAPTURE ;
 
 : BLTT-RUN-BUNDLE-LIB ( -- n n n n )
-   BLTT-ARGV-ERRORS
-   s" array" BLTT-ARG+
-   s" --" BLTT-ARG+
-   BLTT-DRIVER BLTT-ARG+
-   BLTT-TOOL-CAPTURE ;
+   BL-RESET
+   BLTT-BUNDLE BL-OUT!
+   s" errors" BL-MOD+
+   s" array" BL-MOD+
+   BLTT-DRIVER BL-SCRIPT!
+   BL-VERIFY
+   BL-EMIT-BUNDLE
+   0 0 PROC-OUTCOME-EXIT 0 ;
 
 : BLTT-RUN-BUNDLE ( -- n n n n )
    PROC-ARGV-RESET

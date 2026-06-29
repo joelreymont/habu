@@ -25,6 +25,8 @@ create SUITE-LABEL-BUF SUITE-NAME-CAP allot
 create SUITE-STDIN-BUF SUITE-STDIN-CAP allot
 create SUITE-WARM-BUF FS-PATH-CAP allot
 create SUITE-WARM-TRUST-BUF FS-PATH-CAP allot
+create SUITE-WARM-CAND-BUF FS-PATH-CAP allot
+create SUITE-WARM-CAND-TRUST-BUF FS-PATH-CAP allot
 create SUITE-WARM-OUT GT-OUT-CAP allot
 create SUITE-WARM-ERR GT-ERR-CAP allot
 create SUITE-WARM-STAMP-BUF FS-PATH-CAP allot
@@ -35,6 +37,8 @@ variable SUITE-LABEL-U
 variable SUITE-STDIN-U
 variable SUITE-WARM-U
 variable SUITE-WARM-TRUST-U
+variable SUITE-WARM-CAND-U
+variable SUITE-WARM-CAND-TRUST-U
 variable SUITE-OWN-ROOT
 variable SUITE-SLICE
 
@@ -134,6 +138,12 @@ variable SUITE-SLICE
 : SUITE-WARM-TRUST$ ( -- ptr u8 n )
    SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U @ ;
 
+: SUITE-WARM-CAND$ ( -- ptr u8 n )
+   SUITE-WARM-CAND-BUF SUITE-WARM-CAND-U @ ;
+
+: SUITE-WARM-CAND-TRUST$ ( -- ptr u8 n )
+   SUITE-WARM-CAND-TRUST-BUF SUITE-WARM-CAND-TRUST-U @ ;
+
 \ Tools-warm root: the persistent HABU_GATE_WARM_PERSIST dir if the operator opted
 \ in (content-stamped, so cross-run reuse is sound), else the per-run shared
 \ HABU_GATE_WARM_ROOT, else an owned temp. Must match TR-TOOLS-PATHS in run.f so the
@@ -149,7 +159,9 @@ variable SUITE-SLICE
 
 : SUITE-WARM-PATHS ( -- )
    GT-ROOT s" hb-tools-warm" SUITE-WARM-BUF JOIN-PATH SUITE-WARM-U !
-   SUITE-WARM$ s" .trust.f" SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U SUITE-SUFFIX! ;
+   SUITE-WARM$ s" .trust.f" SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U SUITE-SUFFIX!
+   SUITE-WARM$ s" .new" SUITE-WARM-CAND-BUF SUITE-WARM-CAND-U SUITE-SUFFIX!
+   SUITE-WARM-CAND$ s" .trust.f" SUITE-WARM-CAND-TRUST-BUF SUITE-WARM-CAND-TRUST-U SUITE-SUFFIX! ;
 
 : SUITE-KEY-FILE+ ( ptr u8 n -- )
    CK-FILE+ ;
@@ -232,7 +244,7 @@ variable SUITE-SLICE
    s" tools/warm-image-lib.f" SUITE-ARG+
    s" tools/warm-image.f" SUITE-ARG+
    s" --" SUITE-ARG+
-   SUITE-WARM$ SUITE-ARG+ ;
+   SUITE-WARM-CAND$ SUITE-ARG+ ;
 
 : SUITE-WARM-SUPPORT-ARGV ( -- )
    s" tools/date.f" SUITE-ARG+
@@ -279,6 +291,22 @@ variable SUITE-SLICE
    kind PROC-OUTCOME-EXIT =
    code 0= and ;
 
+: SUITE-REMOVE-FILE? ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? if a u REMOVE-FILE then ;
+
+: SUITE-WARM-CLEAN-CANDIDATE ( -- )
+   SUITE-WARM-CAND$ SUITE-REMOVE-FILE?
+   SUITE-WARM-CAND-TRUST$ SUITE-REMOVE-FILE? ;
+
+: SUITE-WARM-DROP-STAMP ( -- )
+   SUITE-WARM-STAMP$ SUITE-REMOVE-FILE? ;
+
+: SUITE-WARM-PUBLISH ( -- )
+   SUITE-WARM-DROP-STAMP
+   SUITE-WARM-CAND-TRUST$ SUITE-WARM-TRUST$ RENAME-FILE
+   SUITE-WARM-CAND$ SUITE-WARM$ RENAME-FILE
+   SUITE-WARM-STAMP$ SUITE-KEY-HEX 64 ATOMIC-WRITE-FILE ;
+
 : SUITE-WARM-FAIL ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
    s" FAIL: gate-stdlib warm tools image" type cr
    s" outcome: " type kind SUITE-OUTCOME.
@@ -302,6 +330,7 @@ variable SUITE-SLICE
    SUITE-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME
    {: outu:len erru:len kind:n code:n :}
    kind code SUITE-WARM-OK? 0= if
+      SUITE-WARM-CLEAN-CANDIDATE
       outu erru kind code SUITE-WARM-FAIL
    then ;
 
@@ -311,8 +340,9 @@ variable SUITE-SLICE
    SUITE-WARM-KEY!
    SUITE-WARM-CACHED? if s" warm-cache-hit" GS-EVENT exit then
    s" warm-cache-miss" GS-EVENT
+   SUITE-WARM-CLEAN-CANDIDATE
    SUITE-WARM-RUN
-   SUITE-WARM-STAMP$ SUITE-KEY-HEX 64 WRITE-ALL ;
+   SUITE-WARM-PUBLISH ;
 
 : SUITE-CLEANUP ( -- )
    SUITE-OWN-ROOT @ if CLEANUP-RUN then ;
