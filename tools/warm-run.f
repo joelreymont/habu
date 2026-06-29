@@ -59,3 +59,16 @@
       WR-TRUE exit
    then
    WR-FALSE ;
+
+: WR-CHECK? ( -- bool )
+   s" HABU_WARM_CHECK" WR-EXE? ;
+
+: WR-CHECK$ ( -- ptr u8 n )
+   s" HABU_WARM_CHECK" WR-EXE$ ;
+
+: WR-CHECK-LOAD ( ptr u8 n -- bool ) {: entry:ptr entryu:n :}
+   WR-CHECK? if
+      s" HABU_WARM_CHECK_TRUST" entry entryu WR-WARM-LOAD
+      WR-TRUE exit
+   then
+   WR-FALSE ;

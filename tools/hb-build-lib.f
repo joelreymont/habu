@@ -15,7 +15,6 @@
 create HBB-SRC-PATH FS-PATH-CAP allot
 create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-PATH FS-PATH-CAP allot
-create HBB-LOCK-PATH FS-PATH-CAP allot
 create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-DIGEST 40 allot
@@ -32,7 +31,6 @@ variable HBB-ERR-BUF-A
 variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAKER-U
-variable HBB-LOCK-U
 variable HBB-MAKER-NAME-U
 variable HBB-ARTIFACT-U
 variable HBB-ARTIFACT-TMP-U
@@ -50,7 +48,6 @@ variable HBB-MAKER-RUN
 variable HBB-ARTIFACT-HIT
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
-variable HBB-LOCK-DEADLINE
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -518,10 +515,6 @@ HBB-INSTALL-CHILD-LINTS
    suf dst u + su BYTE-COPY
    u su + up ! ;
 
-: HBB-LOCK$ ( -- ptr u8 n )
-   HBB-MAKER$ s" .lock" HBB-LOCK-PATH HBB-LOCK-U HBB-SUFFIX!
-   HBB-LOCK-PATH HBB-LOCK-U @ ;
-
 : HBB-MAKER-SRC-NAME$ ( -- ptr u8 n )
    s" hb-maker-src" ;
 
@@ -546,42 +539,11 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-MAKER-READY? ( -- bool )
    HBB-MAKER$ EXECUTABLE? ;
 
-: HBB-SLEEP-MS ( n -- )
-   PROC-PFD 0 rot poll drop ;
-
-: HBB-LOCK-DEADLINE! ( -- )
-   mono-ns HBB-TIMEOUT-MS PROC-NS-PER-MS * + HBB-LOCK-DEADLINE ! ;
-
-: HBB-LOCK-TIMEOUT? ( -- bool )
-   mono-ns HBB-LOCK-DEADLINE @ >= ;
-
-: HBB-LOCK-BUSY? ( -- bool )
-   HBB-LOCK$ DIR? if HBB-TRUE exit then
-   HBB-LOCK$ EXISTS? if E-FS-IO throw then
-   HBB-FALSE ;
-
-: HBB-TRY-MAKER-LOCK? ( -- bool )
-   HBB-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if HBB-TRUE exit then
-   HBB-LOCK-BUSY? if HBB-FALSE exit then
-   E-FS-IO throw ;
-
-: HBB-ACQUIRE-MAKER-LOCK? ( -- bool )
-   HBB-LOCK-DEADLINE!
-   begin
-      HBB-MAKER-READY? if HBB-FALSE exit then
-      HBB-TRY-MAKER-LOCK? if HBB-TRUE exit then
-      HBB-LOCK-TIMEOUT? if s" hb-build: maker cache lock timeout" HBB-BUILD-RC die then
-      50 HBB-SLEEP-MS
-   again ;
-
-: HBB-RELEASE-MAKER-LOCK ( -- )
-   HBB-LOCK$ REMOVE-DIR ;
-
 : HBB-INSTALL-MAKER ( -- )
    s" stage2-got" BF-A$ HBB-MAKER$ RENAME-FILE
    HBB-MAKER$ CHMOD-X ;
 
-: HBB-BUILD-MAKER-LOCKED ( -- )
+: HBB-BUILD-MAKER-FRESH ( -- )
    HBB-MAKER-READY? if exit then
    HBB-MAKER-SOURCE
    HBB-STAGE2-SOURCE
@@ -589,7 +551,6 @@ HBB-INSTALL-CHILD-LINTS
    HBB-MK-NAME$ BF-REMOVE-TMP
    s" bin/hb" s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE
    dup 0 <> if
-      HBB-RELEASE-MAKER-LOCK
       s" hb-build: native maker build failed" HBB-BUILD-RC die
    then drop
    s" stage2-got" BF-EXPECT
@@ -598,13 +559,8 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-BUILD-MAKER ( -- )
    HBB-PREPARE-MAKER-CACHE
    HBB-MAKER-READY? if -1 HBB-MAKER-HIT ! exit then
-   HBB-ACQUIRE-MAKER-LOCK? if
-      -1 HBB-MAKER-BUILD !
-      HBB-BUILD-MAKER-LOCKED
-      HBB-RELEASE-MAKER-LOCK
-   else
-      -1 HBB-MAKER-HIT !
-   then ;
+   -1 HBB-MAKER-BUILD !
+   HBB-BUILD-MAKER-FRESH ;
 
 : HBB-READ-COMMENTED-SOURCE ( -- )
    HBB-SRC$ BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN !

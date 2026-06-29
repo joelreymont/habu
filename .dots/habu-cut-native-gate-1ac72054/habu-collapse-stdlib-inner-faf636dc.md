@@ -17,3 +17,19 @@ full gate now passes at 42104ms internal / 45.42s wall, down from the prior
 43273ms internal baseline; `check-cli` hot full slice is 23633ms and
 `tool-boundary` is still 27494ms. Next work: cut `tool-boundary-lints` and
 engine fixture tails without adding more top-level contention.
+
+Progress 2026-06-29: routed `tools/check-test.f` CLI smokes through the
+checker-warm image (`HABU_WARM_CHECK`) so `tools/check-core.f` is baked once
+instead of reloaded through tools-warm for each check wrapper boundary. Moved
+`check-repair-hints-test` repair-class checks in-process through
+`CHECK-ALL-ERRORS-FILE`; engine repair now loads the core explicitly instead of
+hiding it in a child process. RCA on a failed full run found the AOT maker cache
+lock was the wrong invariant: concurrent AOT phases share one maker key, and
+the waiter timed out while the holder was still building under contention.
+Removed the maker lock and kept atomic publish by private temp build +
+`rename`. Proof: `hb-build-test` passed, focused AOT-positive cold passed in
+39.18s, focused AOT-negative hot passed in 20.15s, and hot full gate passed at
+40935ms internal / 44.21s wall with `candidate-hit=1`, `runner-build=0`,
+`warm-miss=0`, `maker-hit=1`, `helper-spawn=106`. Remaining blocker:
+`tool-boundary` is still 26559ms and engine fixtures are 25108ms under full
+contention.

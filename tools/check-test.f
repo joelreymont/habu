@@ -21,6 +21,7 @@ variable CKT-ERR-A
 variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
+variable CKT-USE-CHECK
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -67,8 +68,14 @@ variable CKT-LIST-U
 : CKT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
+: CKT-EXE$ ( -- ptr u8 n )
+   CKT-USE-CHECK @ if WR-CHECK$ exit then
+   WR-TOOLS$ ;
+
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
+   0 CKT-USE-CHECK !
+   s" tools/check-main.f" WR-CHECK-LOAD if -1 CKT-USE-CHECK ! exit then
    s" tools/check-core.f" s" tools/check-main.f" WR-TOOLS-LOAD2 if exit then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
@@ -102,12 +109,12 @@ variable CKT-LIST-U
    outu LEN>N erru LEN>N rc RC>N ;
 
 : CKT-STDIN-CAPTURE ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   WR-TOOLS$ >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   CKT-EXE$ >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
    CKT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
    CKT-CAPTURE>N ;
 
 : CKT-CAPTURE ( -- n n n )
-   WR-TOOLS$ >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
+   CKT-EXE$ >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
    CKT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    CKT-CAPTURE>N ;
 

@@ -31,6 +31,8 @@ $3 , $2 , $8 , $7 , $A , $4 , $B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
 create TR-TOOLS-TRUST-BUF FS-PATH-CAP allot
+create TR-CHECK-BUF FS-PATH-CAP allot
+create TR-CHECK-TRUST-BUF FS-PATH-CAP allot
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
@@ -54,6 +56,8 @@ create TR-AOT-RUNNER-STAMP-RD 80 allot
 variable TR-WARM-U
 variable TR-TOOLS-U
 variable TR-TOOLS-TRUST-U
+variable TR-CHECK-U
+variable TR-CHECK-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 variable TR-UNDER-U
@@ -401,6 +405,21 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-TOOLS-PATHS
    s" HABU_WARM_TOOLS" >LEN TR-TOOLS$ >LEN PROC-ENV+
    s" HABU_WARM_TOOLS_TRUST" >LEN TR-TOOLS-TRUST$ >LEN PROC-ENV+ ;
+
+: TR-CHECK$ ( -- ptr u8 n )
+   TR-CHECK-BUF TR-CHECK-U @ ;
+
+: TR-CHECK-TRUST$ ( -- ptr u8 n )
+   TR-CHECK-TRUST-BUF TR-CHECK-TRUST-U @ ;
+
+: TR-CHECK-PATHS ( -- )
+   TR-WARM-ROOT$ s" hb-check-warm" TR-CHECK-BUF JOIN-PATH TR-CHECK-U !
+   TR-CHECK$ s" .trust.f" TR-CHECK-TRUST-BUF TR-CHECK-TRUST-U TR-SUFFIX! ;
+
+: TR-CHECK-ENV ( -- )
+   TR-CHECK-PATHS
+   s" HABU_WARM_CHECK" >LEN TR-CHECK$ >LEN PROC-ENV+
+   s" HABU_WARM_CHECK_TRUST" >LEN TR-CHECK-TRUST$ >LEN PROC-ENV+ ;
 
 : TR-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -967,7 +986,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    then ;
 
 : TR-PHASE-TOOLS-ENV ( idx -- ) {: idx:idx :}
-   idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then ;
+   idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then
+   idx IDX>N 3 = if TR-CHECK-ENV then ;
 
 : TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
    idx IDX>N 15 = if 0 0= exit then

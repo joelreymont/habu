@@ -1,17 +1,18 @@
 \ check-repair-hints-test.f - checked fixtures for repair-class diagnostics.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f
+\ tools/check-all-errors-core.f tools/warm-run.f tools/json.f
+\ tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 
 $4000 constant CRHT-BUF-CAP
-$4000 constant CRHT-ARGV-CAP
-5000 constant CRHT-TIMEOUT-MS
 10 constant CRHT-LF-C
-32 constant CRHT-SP-C
 34 constant CRHT-DEEP-IF-N
 
 variable CRHT-ROOT-U
 variable CRHT-SRC-U
 variable CRHT-DIAG-U
-variable CRHT-ARGV-U
 variable CRHT-LABEL-A
 variable CRHT-LABEL-U
 variable CRHT-PHASE-A
@@ -22,7 +23,6 @@ create CRHT-SRC-BUF FS-PATH-CAP allot
 create CRHT-DIAG-BUF FS-PATH-CAP allot
 create CRHT-OUT CRHT-BUF-CAP allot
 create CRHT-ERR CRHT-BUF-CAP allot
-create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
 
 : CRHT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -39,9 +39,6 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
 
 : CRHT-DIAG ( -- ptr u8 n )
    CRHT-DIAG-BUF CRHT-DIAG-U @ ;
-
-: CRHT-ARGV$ ( -- ptr u8 n )
-   CRHT-ARGV-BUF CRHT-ARGV-U @ ;
 
 : CRHT-LABEL$ ( -- ptr u8 n )
    CRHT-LABEL-A @ CRHT-LABEL-U @ ;
@@ -60,38 +57,6 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
 
 : CRHT-DQ ( -- )
    34 SB-APPEND-C ;
-
-: CRHT-ARGV-RESET ( -- )
-   0 CRHT-ARGV-U !
-   PROC-ARGV-RESET ;
-
-: CRHT-ARGV-C ( n -- ) {: c :}
-   CRHT-ARGV-U @ 1 + CRHT-ARGV-CAP > if E-STR-CAPACITY throw then
-   c CRHT-ARGV-BUF CRHT-ARGV-U @ + c!
-   CRHT-ARGV-U @ 1+ CRHT-ARGV-U ! ;
-
-: CRHT-ARGV+ ( ptr u8 n -- ) {: a:ptr u :}
-   u 0 < if E-STR-BOUNDS throw then
-   CRHT-ARGV-U @ u + 3 + CRHT-ARGV-CAP > if E-STR-CAPACITY throw then
-   CRHT-SP-C CRHT-ARGV-C
-   CRHT-SP-C CRHT-ARGV-C
-   a CRHT-ARGV-BUF CRHT-ARGV-U @ + u BYTE-COPY
-   CRHT-ARGV-U @ u + CRHT-ARGV-U !
-   CRHT-LF-C CRHT-ARGV-C ;
-
-: CRHT-ARG+ ( ptr u8 n -- )
-   2dup CRHT-ARGV+
-   >LEN PROC-ARGV+ ;
-
-: CRHT-WARM-LOAD ( ptr u8 n -- bool ) {: entry:ptr entryu :}
-   WR-TOOLS? if
-      s" --load" CRHT-ARG+
-      s" HABU_WARM_TOOLS_TRUST" WR-TRUST$ CRHT-ARG+
-      entry entryu CRHT-ARG+
-      s" --" CRHT-ARG+
-      WR-TRUE exit
-   then
-   WR-FALSE ;
 
 : CRHT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -177,45 +142,15 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    CRHT-SRC CLEANUP+
    CRHT-DIAG CLEANUP+ ;
 
-: CRHT-CHECK-ARGS ( ptr u8 n -- ) {: label:ptr labelu :}
-   CRHT-ARGV-RESET
-   s" tools/check-all-errors.f" CRHT-WARM-LOAD if
-      s" --json-errors" CRHT-ARG+
-      s" --label" CRHT-ARG+
-      label labelu CRHT-ARG+
-      CRHT-SRC CRHT-ARG+
-      exit
-   then
-   s" --load" CRHT-ARG+
-   s" lib/errors.f" CRHT-ARG+
-   s" lib/string.f" CRHT-ARG+
-   s" lib/memory.f" CRHT-ARG+
-   s" lib/vector.f" CRHT-ARG+
-   s" lib/fs.f" CRHT-ARG+
-   s" lib/process.f" CRHT-ARG+
-   s" lib/process-argv.f" CRHT-ARG+
-   s" tools/lint/text.f" CRHT-ARG+
-   s" tools/lint/token.f" CRHT-ARG+
-   s" tools/lint/lib.f" CRHT-ARG+
-   s" tools/lint/json-writer.f" CRHT-ARG+
-   s" tools/lint/source-lex.f" CRHT-ARG+
-   s" tools/check-all-errors-core.f" CRHT-ARG+
-   s" tools/argv.f" CRHT-ARG+
-   s" tools/check-all-errors.f" CRHT-ARG+
-   s" --" CRHT-ARG+
-   s" --json-errors" CRHT-ARG+
-   s" --label" CRHT-ARG+
-   label labelu CRHT-ARG+
-   CRHT-SRC CRHT-ARG+ ;
-
-: CRHT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
+: CRHT-RUN-CHECK-ACT ( -- )
+   CRHT-LABEL$ CRHT-SRC CHECK-ALL-ERRORS-FILE ;
 
 : CRHT-RUN-CHECK ( ptr u8 n -- n n n n )
-   CRHT-CHECK-ARGS
-   WR-TOOLS$ >LEN CRHT-OUT CRHT-BUF-CAP >LEN
-   CRHT-ERR CRHT-BUF-CAP >LEN CRHT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CRHT-CAPTURE>N ;
+   2drop
+   CRHT-ERR CRHT-BUF-CAP CRHT-OUT CRHT-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: CRHT-RUN-CHECK-ACT ;] catch {: rc:n :}
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
 
 : CRHT-OUTCOME. ( n -- ) {: kind :}
    kind PROC-OUTCOME-EXIT = if s" exit" type exit then
@@ -252,8 +187,6 @@ create CRHT-ARGV-BUF CRHT-ARGV-CAP allot
    s" (" type CRHT-RC-NAME. s" )" type cr
    s" stdout bytes: " type outu . s" / " type CRHT-BUF-CAP . cr
    s" stderr bytes: " type erru . s" / " type CRHT-BUF-CAP . cr
-   s" argv:" type cr
-   CRHT-ARGV$ type
    s" stdout:" type cr
    CRHT-OUT outu type
    s" stderr:" type cr

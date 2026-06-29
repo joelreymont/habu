@@ -272,15 +272,20 @@ lesson — keep the specific word/code/path, cut the prose.
   differ by fixture payload, one strict feature bundle can own recursion, parser,
   closure, binary-shape, and output checks. Size caps should prove "no engine
   embed" for that bundle, not preserve a tiny-source threshold.
-- **Do not duplicate heavyweight boundary builds in aggregate gates:** move the
-  unique assertions into the dedicated AOT/REPL/fixpoint boundary slices, keep
-  stdlib tail focused on library fixtures, and protect shared maker caches with
-  an atomic lock so concurrent slices do not rebuild the same maker.
+- **Do not lock shared maker caches:** AOT positive/negative can miss the same
+  maker key concurrently. A mkdir lock timed out under full-gate contention and
+  left a stale lock after pool teardown. Build makers in each private `HB_TMP`
+  and publish the completed executable with atomic `rename`; cold races may
+  duplicate work, but they cannot deadlock the cache.
 - **Semantic check-tool fixtures should not spawn the wrapper:** reserve
   `tools/check.f` subprocesses for argv/env/stdin/exit/source-label contracts.
   `tools/check-test.f` kept positive verification and unterminated-string
   diagnostics as full wrapper subprocesses even though `VERIFY-SOURCE-BUF` and
   `CHECK-ALL-ERRORS-FILE` already owned those invariants.
+- **Use checker-warm for checker CLI smokes:** when a test must keep a real
+  `tools/check.f` argv/stdin boundary, run it through the checker-warm image
+  with `check-core` baked and only `tools/check-main.f` loaded. The general
+  tools-warm image should not recompile checker core for each smoke.
 - **Batch source-list checks by dependency graph:** engine fixture checks for
   fs/process libraries spawned one checker-warm child per module group even
   though the unique dependency closure is one ordered source list. One combined
