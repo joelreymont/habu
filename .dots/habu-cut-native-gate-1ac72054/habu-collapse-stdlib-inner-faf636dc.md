@@ -33,3 +33,9 @@ Removed the maker lock and kept atomic publish by private temp build +
 `warm-miss=0`, `maker-hit=1`, `helper-spawn=106`. Remaining blocker:
 `tool-boundary` is still 26559ms and engine fixtures are 25108ms under full
 contention.
+
+Rejected experiment 2026-06-29: moving persistent tools/checker warm cache-hit
+validation in-process into `test/run.f` removed the two visible warm child
+phases, but serialized content-key hashing before any real phase could start.
+The hot full gate regressed to 46577ms internal / 50.54s wall. Keep warm
+validation parallel until the content-key check itself is made cheaper.
