@@ -589,12 +589,17 @@ FS-PATHZ                ( ptr u8 n -- ptr u8 )
 EXISTS?                 ( ptr u8 n -- bool )
 FS-STAT-MODE@           ( -- n )
 FS-STAT-SIZE@           ( -- n )
+FS-STAT-MTIME-SEC@      ( -- n )
+FS-STAT-MTIME-NS@       ( -- n )
+FS-STAT-CTIME-SEC@      ( -- n )
+FS-STAT-CTIME-NS@       ( -- n )
 FS-TRY-STAT             ( ptr u8 n -- bool )
 FS-TRY-LSTAT            ( ptr u8 n -- bool )
 FS-TRY-STAT-MODE        ( ptr u8 n -- n )
 FS-TRY-LSTAT-MODE       ( ptr u8 n -- n )
 STAT-MODE               ( ptr u8 n -- n )
 FILE-SIZE               ( ptr u8 n -- n )
+FILE-META               ( ptr u8 n -- n n n n n )
 FILE?                   ( ptr u8 n -- bool )
 DIR?                    ( ptr u8 n -- bool )
 SYMLINK?                ( ptr u8 n -- bool )
@@ -705,6 +710,33 @@ copy it before storing it.
 buffers or syscall results. They throw named filesystem errors on path overflow,
 stat/open/read/write failure, directory-depth overflow, and output capacity
 overflow.
+
+`FILE-META` requires a regular file and returns size, mtime seconds, mtime
+nanoseconds, ctime seconds, and ctime nanoseconds from the normalized shared stat
+layout. Content-key caching uses this metadata to skip rehashing unchanged files.
+
+## Content Keys
+
+`lib/content-key.f` builds stable manifest hashes for gate and builder caches.
+Callers append version strings and source files, then hash the accumulated
+manifest into a binary or hex digest:
+
+```forth
+CK-RESET          ( -- )
+CK-TEXT+          ( ptr u8 n -- )
+CK-DIGEST+        ( ptr u8 -- )
+CK-FILE+          ( ptr u8 n -- )
+CK-FINAL          ( ptr u8 -- )
+CK-FINAL-HEX      ( ptr u8 -- )
+```
+
+`CK-FILE+` records the path in the manifest but hashes file content through a
+metadata-validated per-file digest cache when one is configured. `CK-CACHE-PATH!`
+sets an explicit cache file, `CK-CACHE-ROOT!` uses `content-key.cache` under a
+root directory, and `CK-CACHE-CLEAR!` clears the explicit setting. Without an
+explicit path it checks `HABU_CONTENT_KEY_CACHE`, then
+`HABU_GATE_WARM_PERSIST/content-key.cache`, then
+`HABU_GATE_WARM_ROOT/content-key.cache`.
 
 ## Source Materialization
 

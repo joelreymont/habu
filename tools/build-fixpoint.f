@@ -167,22 +167,26 @@ variable BF-STRIP-OFF
 
 : BF-RUN-ENV-FDS ( ptr u8 n n n n -- n ) {: exe:ptr exeu infd outfd errfd :}
    BF-PREPARE-ENV
+   PROC-ARGV-RESET
    exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD outfd >FD errfd >FD
    PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
 
 : BF-RUN-ENV-INFD ( ptr u8 n n -- n ) {: exe:ptr exeu infd :}
    BF-PREPARE-ENV
+   PROC-ARGV-RESET
    exe exeu >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE infd >FD -1 >FD -1 >FD
    PROC-SPAWN-ARGV-ENV-RAW {: pid :}
    infd close
    pid BF-FINISH-PID ;
 
 : BF-PREPARE-STAGE-ARGV ( ptr u8 n -- ptr u8 ptr a )
+   PROC-ARGV-RESET
    s" --" >LEN PROC-ARGV+
    BF-TMP$ >LEN PROC-ARGV+
    >LEN PROC-ARGV-PREPARE ;
 
 : BF-PREPARE-LOAD-STAGE-ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    src srcu >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+

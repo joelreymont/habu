@@ -1236,7 +1236,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : LINUX-STAT-FIX ( n -- )
    {: bufreg :}
    5 bufreg 16 LDRW,  5 bufreg 4 STRW,
-   5 bufreg 48 LDR,   5 bufreg 96 STR, ;
+   5 bufreg 48 LDR,   6 bufreg 88 LDR,   7 bufreg 96 LDR,
+   8 bufreg 104 LDR,  9 bufreg 112 LDR,
+   5 bufreg 96 STR,   6 bufreg 48 STR,   7 bufreg 56 STR,
+   8 bufreg 64 STR,   9 bufreg 72 STR, ;
 s" linux-stat-fix" s" n --" TRUST
 
 : BSTAT64 ( -- )

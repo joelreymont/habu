@@ -1,6 +1,6 @@
 \ gate-stdlib.f - entry wrapper for the default gate lint/stdlib phase.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test-runner.f,
 \ test/gate-pool.f. Native bin/hb already carries src/core/sha256.f.
 

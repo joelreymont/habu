@@ -129,51 +129,6 @@ create CBLT-LF-BYTE 10 c,
    CBLT-TRUSTED CBLT-TRUSTED$ WRITE-ALL
    CBLT-WRITE-LARGE ;
 
-: CBLT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: CBLT-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/checked-boundary-lint.f" WR-TOOLS-LOAD if exit then
-   s" --load" CBLT-ARG+
-   s" lib/errors.f" CBLT-ARG+
-   s" lib/string.f" CBLT-ARG+
-   s" lib/memory.f" CBLT-ARG+
-   s" lib/fs.f" CBLT-ARG+
-   s" tools/lint/text.f" CBLT-ARG+
-   s" tools/lint/json-writer.f" CBLT-ARG+
-   s" tools/checked-boundary-lint-core.f" CBLT-ARG+
-   s" tools/argv.f" CBLT-ARG+
-   s" tools/checked-boundary-lint.f" CBLT-ARG+
-   s" --" CBLT-ARG+ ;
-
-: CBLT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: CBLT-HB-CAPTURE ( -- n n n n )
-   WR-TOOLS$  >LEN CBLT-OUT CBLT-BUF-CAP >LEN
-   CBLT-ERR CBLT-BUF-CAP >LEN CBLT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME CBLT-CAPTURE>N ;
-
-: CBLT-RUN-CURRENT ( -- n n n n )
-   CBLT-ARGV-LOAD
-   s" tools/checked-boundary-lint.f"  >LEN PROC-ARGV+
-   s" tools/json-file.f"  >LEN PROC-ARGV+
-   s" tools/host-lint.f"  >LEN PROC-ARGV+
-   s" tools/filemap-lint.f"  >LEN PROC-ARGV+
-   s" tools/parallel-agent-lint.f"  >LEN PROC-ARGV+
-   s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint.f"  >LEN PROC-ARGV+
-   s" tools/typed-local-diff-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/typed-local-diff-lint.f"  >LEN PROC-ARGV+
-   s" tools/typed-local-diff-lint-test.f"  >LEN PROC-ARGV+
-   s" tools/stale-status-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/stale-status-lint.f"  >LEN PROC-ARGV+
-   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/trust-lint.f"  >LEN PROC-ARGV+
-   CBLT-HB-CAPTURE ;
-
 : CBLT-CORE-SETUP ( bool -- ) {: strict:bool :}
    CHECKED-BOUNDARY-LINT-RESET
    CBLT-OUT CBLT-BUF-CAP LINT-OUT-BUFFER!
@@ -183,6 +138,25 @@ create CBLT-LF-BYTE 10 c,
    [: CHECKED-BOUNDARY-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 PROC-OUTCOME-EXIT rc ;
+
+: CBLT-RUN-CURRENT ( -- n n n n )
+   LINT-FALSE CBLT-CORE-SETUP
+   s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/json-file.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/filemap-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/parallel-agent-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/typed-local-diff-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/typed-local-diff-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/typed-local-diff-lint-test.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/stale-status-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   CBLT-CORE-FINISH ;
 
 : CBLT-RUN-CORE-FILE ( ptr u8 n bool -- n n n n ) {: path:ptr pathu:n strict:bool :}
    strict CBLT-CORE-SETUP

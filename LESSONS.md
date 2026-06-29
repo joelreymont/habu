@@ -1119,3 +1119,16 @@ lesson — keep the specific word/code/path, cut the prose.
   for every case. Put reusable logic and buffered output in `*-core.f`, leave
   `tool.f` as a thin `MAIN` entry, and keep only one CLI smoke for argv/wrapper
   behavior.
+- **Evaluate frames must live outside compiler scratch:** `EVAL-FRAME=$280`
+  overlapped `VVAL-OFF=$250` and `SNAPSTK-OFF=$360`; compiling a seven-argument
+  call inside `evaluate` overwrote the saved outer `INP` and crashed on the next
+  token. Keep re-entrant evaluator frames above scratch and below `DATA-START`,
+  with an engine-suite high-arity `evaluate` regression.
+- **Create persistent gate roots before content-key hashing:** per-file digest
+  cache auto-opens `HABU_GATE_WARM_PERSIST/content-key.cache`, so the gate must
+  create the persistent root before any `CK-FILE+` key construction, including
+  under-test cache restore.
+- **Build-fixpoint child helpers own argv state:** warm gate images reuse one
+  process across phases, so stale `PROC-ARGV` entries from a prior tool command
+  can leak into `BF-RUN-LOAD-STAGE` and run the wrong child entry. Every `BF-*`
+  spawn helper resets argv before preparing its own stage/exe command.

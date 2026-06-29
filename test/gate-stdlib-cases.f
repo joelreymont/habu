@@ -165,6 +165,11 @@ TEST-SUITE streaming-sha256
    tools/sha256-file-test.f
 ;TEST-SUITE
 
+TEST-SUITE content-key-cache
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
+   lib/content-key.f lib/content-key-test.f
+;TEST-SUITE
+
 TEST-SUITE string-helpers
    lib/errors.f lib/string.f lib/string-test.f
 ;TEST-SUITE

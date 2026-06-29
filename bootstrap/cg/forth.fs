@@ -75,7 +75,7 @@ $36A0 constant INP-CELL    \ input cursor (was x21)
 $36A8 constant INE-CELL    \ input end    (was x22)
 $36C0 constant BPA-CELL    \ one-shot breakpoint addr (0 = none; debug.f sets)
 $36D0 constant BPTAB-OFF   \ 16 breakpoints: (addr, saved-instr) 16 B each, addr 0 = empty
-$280 constant EVAL-FRAME  \ re-entrant evaluate save frames, 8 cells each:
+$3800 constant EVAL-FRAME \ re-entrant evaluate save frames, 8 cells each:
                           \ +0 INP +8 INE +16 RET +24 SP +32 XDS +40 CP +48 NDICT +56 DP
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
@@ -108,7 +108,7 @@ $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$3800 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack)
+$3A00 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack + eval frames)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,

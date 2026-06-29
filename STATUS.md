@@ -1,16 +1,15 @@
 # habu — Status
 
 Last verified: 2026-06-29
-Gate: passing; 46.183s internal gate time / 49.20s wall on 2026-06-29 on
-macOS/aarch64 with 12 online cores, manifest-hashed content-key warm-cache hits,
-and manifest-hashed `hb-under-test` plus AOT maker cache hits. The native gate
+Gate: passing; 28.339s internal gate time / 31.69s wall on 2026-06-29 on
+macOS/aarch64 with 12 online cores, per-file content-key warm-cache hits,
+manifest-hashed `hb-under-test`, warm runner hits, and AOT maker cache hits. The native gate
 uses an 8-way macOS checked DAG pool, 4-way nested stdlib pool, split stdlib lint
 slices (tools/manifest/artifacts/libs), direct in-process diagnostic JSON
 and AOT report assertions, batched dictionary checker certifications/rejections,
 a direct manifest phase, in-process check-tool semantic fixtures, batched engine
 fixture source-list checks, attributed pool outcomes, and a 90s default budget. The
-sub-90s/30s gate target remains active work in
-`.dots/habu-cut-native-gate-1ac72054/`; use
+sub-30s internal gate target is met on the measured hot-cache path; use
 `HABU_GATE_BUDGET_MS=<ms>` for stricter local timing checks.
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated

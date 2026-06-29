@@ -126,6 +126,46 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
    s" hb baseline contracts" GE-BIN-HB-RUN ;
 
+: GE-RUN-ENV-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
+   s" helper-spawn" GS-EVENT
+   PROC-ENV-INHERIT-MISSING
+   path pathu label labelu timeout GT-POOL-START ;
+
+: GE-HB-RUN-ASYNC ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   s" inner-hb-spawn" GS-EVENT
+   s" boundary-test" GS-EVENT
+   GE-HB$ GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
+
+: GE-BIN-HB-RUN-ASYNC ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   s" inner-hb-spawn" GS-EVENT
+   s" boundary-test" GS-EVENT
+   s" bin/hb" GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
+
+: GE-FS-MUTATE-RUN-ASYNC ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-FS-MUTATE-RUN-FILES
+   s" fs mutation stdlib" GE-HB-RUN-ASYNC ;
+
+: GE-PROCESS-ARGV-RUN-ASYNC ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-ARGV-RUN-FILES
+   s" process argv stdlib" GE-HB-RUN-ASYNC ;
+
+: GE-PROCESS-ENV-RUN-ASYNC ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-ENV-RUN-FILES
+   s" process env stdlib" GE-HB-RUN-ASYNC ;
+
+: GE-PROCESS-CWD-RUN-ASYNC ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-PROCESS-CWD-RUN-FILES
+   s" process cwd stdlib" GE-HB-RUN-ASYNC ;
+
+: GE-HB-BASELINE-RUN-ASYNC ( -- )
+   GE-LOAD-RESET
+   [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
+   s" hb baseline contracts" GE-BIN-HB-RUN-ASYNC ;
+
 : GE-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -276,12 +316,14 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" PASS: self-rebuild fixpoint" type cr ;
 
 : GE-RUN-STD-FIXTURES ( -- )
-   GE-FS-MUTATE-RUN
-   GE-PROCESS-ARGV-RUN
-   GE-PROCESS-ENV-RUN
-   GE-PROCESS-CWD-RUN
+   GT-POOL-RESET
+   GE-FS-MUTATE-RUN-ASYNC
+   GE-PROCESS-ARGV-RUN-ASYNC
+   GE-PROCESS-ENV-RUN-ASYNC
+   GE-PROCESS-CWD-RUN-ASYNC
+   GE-HB-BASELINE-RUN-ASYNC
    GE-ENGINE-STDLIB-CHECK
-   GE-HB-BASELINE-RUN ;
+   GT-POOL-DRAIN ;
 
 : GE-RUN-EXTRA-FIXTURES ( -- )
    GE-RUN-STD-FIXTURES

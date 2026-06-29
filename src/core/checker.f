@@ -964,7 +964,7 @@ variable FP
 \ The baked checker image stores canonical typed effect graphs for certified
 \ words, not rendered signature strings. The static boot arena must hold that
 \ snapshot without relying on process-local mmap state.
-$400000 constant USIGS-INIT-CAP
+$800000 constant USIGS-INIT-CAP
 $10000 constant USIGS-GRAIN
 $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 3 constant USIGS-PROT-RW

@@ -179,7 +179,6 @@ variable SUITE-SLICE
    s" tools/warm-image.f" SUITE-KEY-FILE+
    s" tools/public-signatures-core.f" SUITE-KEY-FILE+
    s" tools/public-signatures.f" SUITE-KEY-FILE+
-   s" lib/content-key.f" SUITE-KEY-FILE+
    s" tools/date.f" SUITE-KEY-FILE+
    s" lib/errors.f" SUITE-KEY-FILE+
    s" lib/string.f" SUITE-KEY-FILE+
@@ -391,6 +390,7 @@ variable SUITE-SLICE
    s" imgdump-compare" SUITE-LABEL= if SUITE-TRUE exit then
    s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
    s" streaming-sha256" SUITE-LABEL= if SUITE-TRUE exit then
+   s" content-key-cache" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-MANIFEST-LABEL? ( -- bool )

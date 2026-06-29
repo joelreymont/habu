@@ -177,6 +177,12 @@ variable TR-UNDER-CACHE-RC
       2drop E-FS-PATH throw
    then ;
 
+: TR-PERSIST-ENSURE ( -- )
+   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if
+      2drop exit
+   then
+   MAKE-DIRS ;
+
 : TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
    s" FAIL: native gate budget (" type
    elapsed GT-U-TYPE
@@ -231,6 +237,7 @@ variable TR-UNDER-CACHE-RC
       2dup MAKE-DIRS
       GT-COPY-ROOT!
    then
+   TR-PERSIST-ENSURE
    GT-ROOT GS-ROOT!
    TR-UNDER-PATHS ;
 
@@ -262,7 +269,7 @@ variable TR-UNDER-CACHE-RC
 : TR-BASE ( -- )
    PROC-ARGV-RESET
    PROC-ENV-RESET
-   s" HABU_GATE_WARM_PERSIST" GETENV dup 0= if 2drop else MAKE-DIRS then
+   TR-PERSIST-ENSURE
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
    s" HABU_GATE_WARM_ROOT" >LEN GT-ROOT >LEN PROC-ENV+
    TR-BUILD-CACHE-ENV
@@ -374,8 +381,9 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f test/gate-common-lib.f test/gate-engine-lib.f
-   test/gate-engine.f src/habu/hide.f src/core/util.f src/core/checker.f
+   tools/build-fixpoint.f test/gate-pool.f test/gate-common-lib.f
+   test/gate-engine-lib.f test/gate-engine.f src/habu/hide.f
+   src/core/util.f src/core/checker.f
    src/core/render.f src/core/check-hook.f src/core/roles.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
@@ -767,6 +775,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
+   s" test/gate-pool.f"  >LEN PROC-ARGV+
    s" test/gate-engine.f"  >LEN PROC-ARGV+ ;
 
 : TR-ENGINE-SLICE-ARGS ( ptr u8 n -- ) {: slice:ptr sliceu:n :}
@@ -982,6 +991,10 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-PHASE-POOL-ENV ( idx -- ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if
+      s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
+      exit
+   then
+   idx IDX>N 9 = if
       s" HABU_GATE_POOL_SLOTS" >LEN TR-NESTED-POOL-SLOTS$ >LEN PROC-ENV+
    then ;
 

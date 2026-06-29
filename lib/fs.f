@@ -15,6 +15,10 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 48 constant FS-BYTE-BITS-6
 56 constant FS-BYTE-BITS-7
 4 constant FS-STAT-MODE-OFF
+48 constant FS-STAT-MTIME-SEC-OFF
+56 constant FS-STAT-MTIME-NS-OFF
+64 constant FS-STAT-CTIME-SEC-OFF
+72 constant FS-STAT-CTIME-NS-OFF
 96 constant FS-STAT-SIZE-OFF
 16 constant FS-DIRENT-RECLEN-OFF
 18 constant FS-DIRENT-NAMELEN-OFF
@@ -177,6 +181,18 @@ variable FS-IO-WR
 : FS-STAT-SIZE@ ( -- n )
    FS-STAT-BUF FS-STAT-SIZE-OFF + FS-U64@ ;
 
+: FS-STAT-MTIME-SEC@ ( -- n )
+   FS-STAT-BUF FS-STAT-MTIME-SEC-OFF + FS-U64@ ;
+
+: FS-STAT-MTIME-NS@ ( -- n )
+   FS-STAT-BUF FS-STAT-MTIME-NS-OFF + FS-U64@ ;
+
+: FS-STAT-CTIME-SEC@ ( -- n )
+   FS-STAT-BUF FS-STAT-CTIME-SEC-OFF + FS-U64@ ;
+
+: FS-STAT-CTIME-NS@ ( -- n )
+   FS-STAT-BUF FS-STAT-CTIME-NS-OFF + FS-U64@ ;
+
 : FS-TRY-STAT ( ptr u8 n -- bool )
    FS-PATHZ FS-STAT-BUF stat64 0 < if FS-FALSE exit then
    FS-TRUE ;
@@ -198,6 +214,13 @@ variable FS-IO-WR
    FS-TRY-STAT 0= if E-FS-STAT throw then
    FS-STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
    FS-STAT-SIZE@ ;
+
+: FILE-META ( ptr u8 n -- n n n n n )
+   FS-TRY-STAT 0= if E-FS-STAT throw then
+   FS-STAT-MODE@ S-IFMT and S-IFREG <> if E-FS-STAT throw then
+   FS-STAT-SIZE@
+   FS-STAT-MTIME-SEC@ FS-STAT-MTIME-NS@
+   FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ ;
 
 : FILE? ( ptr u8 n -- bool )
    FS-TRY-STAT-MODE dup 0 < if

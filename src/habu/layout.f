@@ -58,7 +58,7 @@ $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-$280 constant EVAL-FRAME
+$3800 constant EVAL-FRAME
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
 $8 constant EVAL-MAX-DEPTH
@@ -100,4 +100,4 @@ $27D8 constant PKG-REC-CELL
 $27E0 constant DEFER-META-CELL
 $27E8 constant DEFER-XT-CELL
 $2800 constant RSTK-OFF
-$3800 constant DATA-START
+$3A00 constant DATA-START

@@ -1,6 +1,6 @@
 \ gate-common.f - entry wrapper for native gate helpers.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test-runner.f.
 

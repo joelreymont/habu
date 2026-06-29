@@ -1,6 +1,6 @@
 \ gate-common.f - checked helpers for native gate runner slices.
 \
-\ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
+\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test-runner.f, and lib/content-key.f.
 
@@ -302,7 +302,7 @@ variable GE-ARGV-U
 GE-FILES: GE-WARM-BAKER-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-   lib/source.f lib/codesign.f lib/content-key.f tools/lint/text.f tools/lint/intern.f
+   lib/source.f lib/codesign.f tools/lint/text.f tools/lint/intern.f
    tools/lint/token.f tools/lint/lib.f tools/warm-image-lib.f
    tools/warm-image.f tools/public-signatures-core.f tools/public-signatures.f
 ;GE-FILES

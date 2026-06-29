@@ -298,6 +298,14 @@ create FS-TEST-U64
    FS-TEST-BIG-PATH FILE-SIZE FS-TEST-EXACT-CAP FS-TEST=
    FS-TEST-EMPTY-PATH FILE-SIZE 0 FS-TEST= ;
 
+: FS-TEST-FILE-META ( -- )
+   FS-TEST-BIG-PATH FILE-META {: sz:n mt:n mn:n ct:n cn:n :}
+   sz FS-TEST-EXACT-CAP FS-TEST=
+   mt 0 > FS-TEST-TRUE
+   mn 0 >= FS-TEST-TRUE
+   ct 0 > FS-TEST-TRUE
+   cn 0 >= FS-TEST-TRUE ;
+
 : FS-TEST-BASENAME ( -- )
    s" file.f" BASENAME s" file.f" FS-TEST$=
    s" src/core/checker.f" BASENAME s" checker.f" FS-TEST$=
@@ -405,6 +413,7 @@ create FS-TEST-U64
    FS-TEST-FILE-DIR
    FS-TEST-EXECUTABLE
    FS-TEST-FILE-SIZE
+   FS-TEST-FILE-META
    FS-TEST-BASENAME
    FS-TEST-JOIN
    FS-TEST-WALK
