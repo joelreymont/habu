@@ -283,3 +283,12 @@ internal / 46.32s wall with unchanged process counts (`inner-hb=55`,
 `boundary=95`, `helper-spawn=106`). Rejected early `stdlib-lint-artifacts`
 because it regressed to 43.676s internal / 46.70s wall by filling the early
 pool.
+
+Checkpoint 2026-06-29: split hb-build lint execution behind typed defer hooks.
+The public/default hb-build path still runs child CLI lints; AOT-positive loads
+`tools/hb-build-direct-lints.f` to install direct core lint hooks without baking
+`aot-lint-core`/`signature-lint-core` into the warm runner. Rejected the first
+shape after `hb-gate-warm` failed with `checker: user sigs snapshot too large`.
+Hot full gate with the accepted adapter passed at 43.261s internal / 46.29s
+wall; this removes a narrow boundary from AOT-positive but is not yet a total
+hot-gate win.

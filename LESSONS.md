@@ -109,6 +109,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `tools/aot-call-report.f` to the runner image overflowed the checker user-signature
   snapshot even though AOT phases are scheduled cold/early. Keep AOT-only report/assert
   helpers on the cold AOT paths and reserve the runner image for phases it actually runs.
+- **Direct hb-build linting is an adapter, not a runner dependency:** baking
+  `aot-lint-core`/`signature-lint-core` into `hb-gate-warm` also overflowed the
+  user-signature snapshot. Keep `hb-build-lib` defaulting to child CLI lints and
+  install direct lint hooks only in cold AOT phases that already load the cores.
 - **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
   default native gate budget to 160s hid duplicated gate work after the suite had
   already been cut near 90s. Keep the default at the current green threshold and

@@ -117,6 +117,7 @@ variable FM-NUM-L
    s" tools/seed-main.f" FM-REQ
    s" tools/seed-test.f" FM-REQ
    s" tools/hb-build-lib.f" FM-REQ
+   s" tools/hb-build-direct-lints.f" FM-REQ
    s" tools/hb-build.f" FM-REQ
    s" tools/hb-build-test.f" FM-REQ
    s" tools/imgdump.f" FM-REQ

@@ -111,6 +111,8 @@ points stay listed.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
+- `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for
+  hb-build gate callers that already loaded lint cores.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
   hb-build boundary rejections.

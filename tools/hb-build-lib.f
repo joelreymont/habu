@@ -1,5 +1,4 @@
 \ hb-build-lib.f - native AOT/REPL build CLI library.
-\
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
 \ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
@@ -311,15 +310,30 @@ variable HBB-LOCK-DEADLINE
    erru HBB-WERR-ERR
    0 rc HBB-EXIT ;
 
-: HBB-RUN-AOT-LINT ( -- )
-   HBB-REPL @ if exit then
+: HBB-RUN-AOT-LINT-CHILD ( -- )
    HBB-ADD-AOT-LINT-CMD
    HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
 
-: HBB-RUN-SIGNATURE-LINT ( -- )
-   HBB-STRICT @ 0= if exit then
+: HBB-RUN-SIGNATURE-LINT-CHILD ( -- )
    HBB-ADD-SIGNATURE-LINT-CMD
    HBB-RUN-HB-CAPTURE HBB-FINISH-TOOL ;
+
+defer HBB-AOT-LINT-HOOK ( -- )
+defer HBB-SIGNATURE-LINT-HOOK ( -- )
+
+: HBB-INSTALL-CHILD-LINTS ( -- )
+   [: HBB-RUN-AOT-LINT-CHILD ;] is HBB-AOT-LINT-HOOK
+   [: HBB-RUN-SIGNATURE-LINT-CHILD ;] is HBB-SIGNATURE-LINT-HOOK ;
+
+HBB-INSTALL-CHILD-LINTS
+
+: HBB-RUN-AOT-LINT ( -- )
+   HBB-REPL @ if exit then
+   HBB-AOT-LINT-HOOK ;
+
+: HBB-RUN-SIGNATURE-LINT ( -- )
+   HBB-STRICT @ 0= if exit then
+   HBB-SIGNATURE-LINT-HOOK ;
 
 : HBB-DIAG-ORIGIN-SOURCE ( -- )
    HBB-ADD-DIAG-ORIGIN-CMD
