@@ -7,7 +7,7 @@
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
-\ tools/warm-run.f tools/check-test.f
+\ tools/warm-run.f tools/check-core.f tools/check-test.f
 
 $4000 constant CKT-BUF-CAP
 60000 constant CKT-TIMEOUT-MS
@@ -69,7 +69,7 @@ variable CKT-LIST-U
 
 : CKT-ARGV-BASE ( -- )
    PROC-ARGV-RESET
-   s" tools/check.f" WR-TOOLS-LOAD if exit then
+   s" tools/check-core.f" s" tools/check-main.f" WR-TOOLS-LOAD2 if exit then
    s" --load"  >LEN PROC-ARGV+
    s" tools/date.f"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
@@ -152,6 +152,25 @@ variable CKT-LIST-U
    [: CKT-CORE-ACT ;] catch {: rc:n :}
    0 CHECK-ALL-ERRORS-OUT$ nip rc ;
 
+: CKT-DIRECT-START ( -- )
+   CHK-RESET-CFG
+   CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CHK-CAPTURE-BUFFERS! ;
+
+: CKT-DIRECT-END ( n -- n n n ) {: rc:n :}
+   CHK-CAPTURE-OUT$ nip
+   CHK-CAPTURE-ERR$ nip
+   rc ;
+
+: CKT-DIRECT-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   CKT-DIRECT-START
+   src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
+: CKT-DIRECT-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
+   CKT-DIRECT-START
+   CHK-MATERIALIZE-LIST-PATH
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
 
@@ -160,6 +179,16 @@ variable CKT-LIST-U
 
 : CKT-RESERVED$ ( -- ptr u8 n )
    s" variable I" ;
+
+: CKT-RUN-SOURCE-LIST-RESERVED-CORE ( -- n n n )
+   CKT-LIST$ CKT-RESERVED$ WRITE-ALL
+   RESERVED-NAME-LINT-RESET
+   CKT-ERR CKT-BUF-CAP LINT-OUT-BUFFER!
+   CKT-LIST$ s" <source-list>" RESERVED-NAME-LINT-FILE-AS
+   [: RESERVED-NAME-LINT-FINISH ;] catch {: rc:n :}
+   LINT-OUT$ nip
+   LINT-OUT-BUFFER-OFF
+   0 swap rc ;
 
 : CKT-DIE$ ( -- ptr u8 n )
    SB-RESET
@@ -203,7 +232,7 @@ variable CKT-LIST-U
    CKT-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
 : CKT-TEST-DIE ( -- )
-   CKT-DIE$ CKT-RUN 5 T=
+   CKT-DIE$ CKT-DIRECT-STDIN 5 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" bye" CONTAINS? TTRUE ;
@@ -218,14 +247,14 @@ variable CKT-LIST-U
    CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING ;
 
 : CKT-TEST-SOURCE-LIST-RESERVED ( -- )
-   CKT-RESERVED$ CKT-RUN-SOURCE-LIST 1 T=
+   CKT-RUN-SOURCE-LIST-RESERVED-CORE 1 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
    CKT-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
 : CKT-TEST-SOURCE-LIST-AUDITED-LIB ( -- )
-   s" lib/test.f" CKT-RUN-SOURCE-LIST-PATH 0 T=
+   s" lib/test.f" CKT-DIRECT-SOURCE-LIST-PATH 0 T=
    {: outu erru :}
    outu 0 T=
    erru 0 T= ;

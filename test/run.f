@@ -13,10 +13,11 @@ include test/gate-stats.f
 600000 constant TR-TIMEOUT-MS
 21 constant TR-PHASES
 $2 constant TR-CHECK-WARM-PHASES
-$D constant TR-LATE-PHASES
+$F constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
+2 constant TR-AOT-RUNNER-SLOT
 3 constant TR-RUNNER-WARM-SLOT
 
 \ Longest post-warm phases first; this keeps ARM gates inside budget without
@@ -25,7 +26,7 @@ create TR-CHECK-WARM-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
-$3 , $2 , $A , $4 , $B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
+$3 , $2 , $8 , $7 , $A , $4 , $B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -36,6 +37,9 @@ create TR-UNDER-BUF FS-PATH-CAP allot
 create TR-RUNNER-BUF FS-PATH-CAP allot
 create TR-RUNNER-TRUST-BUF FS-PATH-CAP allot
 create TR-RUNNER-STAMP-BUF FS-PATH-CAP allot
+create TR-AOT-RUNNER-BUF FS-PATH-CAP allot
+create TR-AOT-RUNNER-TRUST-BUF FS-PATH-CAP allot
+create TR-AOT-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
 create TR-UNDER-KEY-HEX 80 allot
 create TR-UNDER-CACHE-BUF FS-PATH-CAP allot
@@ -44,6 +48,8 @@ create TR-UNDER-CACHE-LOCK-BUF FS-PATH-CAP allot
 create TR-UNDER-NAME-BUF 80 allot
 create TR-RUNNER-KEY-HEX 80 allot
 create TR-RUNNER-STAMP-RD 80 allot
+create TR-AOT-RUNNER-KEY-HEX 80 allot
+create TR-AOT-RUNNER-STAMP-RD 80 allot
 
 variable TR-WARM-U
 variable TR-TOOLS-U
@@ -54,6 +60,9 @@ variable TR-UNDER-U
 variable TR-RUNNER-U
 variable TR-RUNNER-TRUST-U
 variable TR-RUNNER-STAMP-U
+variable TR-AOT-RUNNER-U
+variable TR-AOT-RUNNER-TRUST-U
+variable TR-AOT-RUNNER-STAMP-U
 variable TR-UNDER-CACHE-U
 variable TR-UNDER-CACHE-TMP-U
 variable TR-UNDER-CACHE-LOCK-U
@@ -65,6 +74,7 @@ variable TR-UNDER-READY
 variable TR-MANIFEST-EARLY
 variable TR-LIBS-EARLY
 variable TR-RUNNER-READY
+variable TR-AOT-RUNNER-READY
 variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
 
@@ -94,6 +104,15 @@ variable TR-UNDER-CACHE-RC
 
 : TR-RUNNER-STAMP$ ( -- ptr u8 n )
    TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U @ ;
+
+: TR-AOT-RUNNER$ ( -- ptr u8 n )
+   TR-AOT-RUNNER-BUF TR-AOT-RUNNER-U @ ;
+
+: TR-AOT-RUNNER-TRUST$ ( -- ptr u8 n )
+   TR-AOT-RUNNER-TRUST-BUF TR-AOT-RUNNER-TRUST-U @ ;
+
+: TR-AOT-RUNNER-STAMP$ ( -- ptr u8 n )
+   TR-AOT-RUNNER-STAMP-BUF TR-AOT-RUNNER-STAMP-U @ ;
 
 : TR-UNDER-CACHE$ ( -- ptr u8 n )
    TR-UNDER-CACHE-BUF TR-UNDER-CACHE-U @ ;
@@ -191,7 +210,8 @@ variable TR-UNDER-CACHE-RC
    0 TR-MANIFEST-EARLY !
    0 TR-LIBS-EARLY !
    0 TR-UNDER-CACHE-HIT !
-   0 TR-RUNNER-READY ! ;
+   0 TR-RUNNER-READY !
+   0 TR-AOT-RUNNER-READY ! ;
 
 : TR-UNDER-ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
@@ -337,6 +357,18 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
 ;TR-FILES
 
+TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
+   lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
+   tools/warm-run.f tools/hb-build-lib.f tools/lint/text.f tools/lint/token.f
+   tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
+   tools/aot-lint-core.f tools/signature-lint-core.f tools/hb-build-direct-lints.f
+   tools/json.f tools/gate-json-assert-core.f tools/aot-call-report.f
+   test/gate-stats.f test/gate-common-lib.f test/gate-build-common.f
+   test/gate-build-hbb.f test/gate-aot-positive-lib.f test/gate-aot-negative-lib.f
+;TR-FILES
+
 TR-FILES: TR-UNDER-SOURCE-FILES
    tools/build-fixpoint.f test/gate-common-lib.f test/gate-engine-lib.f
    test/gate-engine.f src/habu/hide.f src/core/util.f src/core/checker.f
@@ -378,6 +410,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER$ s" .trust.f" TR-RUNNER-TRUST-BUF TR-RUNNER-TRUST-U TR-SUFFIX!
    TR-RUNNER$ s" .stamp" TR-RUNNER-STAMP-BUF TR-RUNNER-STAMP-U TR-SUFFIX! ;
 
+: TR-AOT-RUNNER-PATHS ( -- )
+   TR-WARM-ROOT$ s" hb-aot-warm" TR-AOT-RUNNER-BUF JOIN-PATH TR-AOT-RUNNER-U !
+   TR-AOT-RUNNER$ s" .trust.f" TR-AOT-RUNNER-TRUST-BUF TR-AOT-RUNNER-TRUST-U TR-SUFFIX!
+   TR-AOT-RUNNER$ s" .stamp" TR-AOT-RUNNER-STAMP-BUF TR-AOT-RUNNER-STAMP-U TR-SUFFIX! ;
+
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CK-FILE+ ;
 
@@ -400,6 +437,25 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
    TR-RUNNER-KEY-SUPPORT
    TR-RUNNER-KEY-HEX CK-FINAL-HEX ;
+
+: TR-AOT-RUNNER-KEY-FILE+ ( ptr u8 n -- )
+   TR-KEY-FILE+ ;
+
+: TR-AOT-RUNNER-KEY-SUPPORT ( -- )
+   [: TR-AOT-RUNNER-KEY-FILE+ ;] TR-AOT-RUNNER-SUPPORT-FILES ;
+
+: TR-AOT-RUNNER-KEY! ( -- )
+   CK-RESET
+   s" hb-aot-runner-cache-v1" CK-TEXT+
+   s" bin/hb" TR-AOT-RUNNER-KEY-FILE+
+   s" tools/warm-image-lib.f" TR-AOT-RUNNER-KEY-FILE+
+   s" tools/warm-image.f" TR-AOT-RUNNER-KEY-FILE+
+   s" tools/public-signatures-core.f" TR-AOT-RUNNER-KEY-FILE+
+   s" tools/public-signatures.f" TR-AOT-RUNNER-KEY-FILE+
+   s" lib/content-key.f" TR-AOT-RUNNER-KEY-FILE+
+   s" test/gate-aot-runner-entry.f" TR-AOT-RUNNER-KEY-FILE+
+   TR-AOT-RUNNER-KEY-SUPPORT
+   TR-AOT-RUNNER-KEY-HEX CK-FINAL-HEX ;
 
 : TR-UNDER-SOURCE-KEY ( -- )
    [: TR-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES
@@ -498,6 +554,14 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    dup 64 <> if drop 0 0= 0= exit then
    TR-RUNNER-STAMP-RD swap TR-RUNNER-KEY-HEX 64 STR= ;
 
+: TR-AOT-RUNNER-CACHED? ( -- bool )
+   TR-AOT-RUNNER$ EXECUTABLE? 0= if 0 0= 0= exit then
+   TR-AOT-RUNNER-TRUST$ FILE? 0= if 0 0= 0= exit then
+   TR-AOT-RUNNER-STAMP$ FILE? 0= if 0 0= 0= exit then
+   TR-AOT-RUNNER-STAMP$ TR-AOT-RUNNER-STAMP-RD 80 READ-ALL
+   dup 64 <> if drop 0 0= 0= exit then
+   TR-AOT-RUNNER-STAMP-RD swap TR-AOT-RUNNER-KEY-HEX 64 STR= ;
+
 : TR-RUNNER-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" TR-ARG+
@@ -519,6 +583,27 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-RUNNER-SUPPORT-ARGV ( -- )
    [: TR-ARG+ ;] TR-RUNNER-SUPPORT-FILES ;
 
+: TR-AOT-RUNNER-TOOL-ARGV ( -- )
+   PROC-ARGV-ENV-RESET
+   s" --load" TR-ARG+
+   s" lib/errors.f" TR-ARG+
+   s" lib/string.f" TR-ARG+
+   s" lib/memory.f" TR-ARG+
+   s" lib/fs.f" TR-ARG+
+   s" lib/fs-mutate.f" TR-ARG+
+   s" lib/process.f" TR-ARG+
+   s" lib/process-argv.f" TR-ARG+
+   s" lib/process-env.f" TR-ARG+
+   s" lib/source.f" TR-ARG+
+   s" lib/codesign.f" TR-ARG+
+   s" tools/warm-image-lib.f" TR-ARG+
+   s" tools/warm-image.f" TR-ARG+
+   s" --" TR-ARG+
+   TR-AOT-RUNNER$ TR-ARG+ ;
+
+: TR-AOT-RUNNER-SUPPORT-ARGV ( -- )
+   [: TR-ARG+ ;] TR-AOT-RUNNER-SUPPORT-FILES ;
+
 : TR-RUNNER-START ( -- )
    TR-RUNNER-PATHS
    TR-RUNNER-KEY!
@@ -536,6 +621,23 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" bin/hb" s" native warm gate runner image" TR-TIMEOUT-MS
    TR-RUNNER-WARM-SLOT >IDX GT-POOL-START-SLOT ;
 
+: TR-AOT-RUNNER-START ( -- )
+   TR-AOT-RUNNER-PATHS
+   TR-AOT-RUNNER-KEY!
+   TR-AOT-RUNNER-CACHED? if s" warm-cache-hit" GS-EVENT -1 TR-AOT-RUNNER-READY ! exit then
+   s" warm-cache-miss" GS-EVENT
+   s" warm-build" GS-EVENT
+   s" gate-runner-build" GS-EVENT
+   TR-AOT-RUNNER-TOOL-ARGV
+   TR-AOT-RUNNER-SUPPORT-ARGV
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
+   TR-BUILD-CACHE-ENV
+   GS-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" s" native warm AOT gate runner image" TR-TIMEOUT-MS
+   TR-AOT-RUNNER-SLOT >IDX GT-POOL-START-SLOT ;
+
 : TR-RUNNER-EXPECT ( -- )
    TR-RUNNER$ EXECUTABLE? 0= if
       s" missing warm gate runner image" TR-FAIL
@@ -546,11 +648,32 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER-STAMP$ TR-RUNNER-KEY-HEX 64 WRITE-ALL
    -1 TR-RUNNER-READY ! ;
 
+: TR-AOT-RUNNER-EXPECT ( -- )
+   TR-AOT-RUNNER$ EXECUTABLE? 0= if
+      s" missing warm AOT gate runner image" TR-FAIL
+   then
+   TR-AOT-RUNNER-TRUST$ FILE? 0= if
+      s" missing warm AOT gate runner trust file" TR-FAIL
+   then
+   TR-AOT-RUNNER-STAMP$ TR-AOT-RUNNER-KEY-HEX 64 WRITE-ALL
+   -1 TR-AOT-RUNNER-READY ! ;
+
 : TR-RUNNER-DONE? ( -- bool )
    TR-RUNNER-READY @ 0 <> if 0 0= exit then
    TR-RUNNER-WARM-SLOT >IDX GT-POOL-DONE@ 0= if 0 0= 0= exit then
    TR-RUNNER-EXPECT
    0 0= ;
+
+: TR-AOT-RUNNER-DONE? ( -- bool )
+   TR-AOT-RUNNER-READY @ 0 <> if 0 0= exit then
+   TR-AOT-RUNNER-SLOT >IDX GT-POOL-DONE@ 0= if 0 0= 0= exit then
+   TR-AOT-RUNNER-EXPECT
+   0 0= ;
+
+: TR-DRAIN-UNTIL-AOT-RUNNER ( -- )
+   begin TR-AOT-RUNNER-DONE? 0= while
+      GT-POOL-STEP
+   repeat ;
 
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
@@ -681,7 +804,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" test/gate-aot-positive.f"  >LEN PROC-ARGV+ ;
 
 : TR-AOT-NEGATIVE-ARGS ( -- )
-   TR-BUILD-COMMON
+   TR-BUILD-LIB-COMMON
    s" test/gate-aot-negative.f"  >LEN PROC-ARGV+ ;
 
 : TR-STDLIB ( -- )
@@ -805,6 +928,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx IDX>N 4 = if s" tail" exit then
    idx IDX>N 5 = if s" repair" exit then
    idx IDX>N 6 = if s" debug" exit then
+   idx IDX>N 7 = if s" aot-pos" exit then
+   idx IDX>N 8 = if s" aot-neg" exit then
    idx IDX>N 9 = if s" fixtures" exit then
    idx IDX>N 10 = if s" diag-repair" exit then
    idx IDX>N 11 = if s" diag-undef-primary" exit then
@@ -861,6 +986,15 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx IDX>N 15 = if 0 0= 0= exit then
    0 0= ;
 
+: TR-PHASE-AOT-RUNNER? ( idx -- bool ) {: idx:idx :}
+   TR-AOT-RUNNER-READY @ 0= if 0 0= 0= exit then
+   idx IDX>N 7 = if 0 0= exit then
+   idx IDX>N 8 = ;
+
+: TR-PHASE-WARM-RUNNER? ( idx -- bool ) {: idx:idx :}
+   idx TR-PHASE-AOT-RUNNER? if 0 0= exit then
+   idx TR-PHASE-RUNNER? ;
+
 : TR-PHASE-UNDER-ENV ( idx -- ) {: idx:idx :}
    idx TR-PHASE-UNDER-ENV? if
       s" under-env" GS-EVENT
@@ -868,6 +1002,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    then ;
 
 : TR-PHASE-EXE ( idx -- ptr u8 n ) {: idx:idx :}
+   idx TR-PHASE-AOT-RUNNER? if TR-AOT-RUNNER$ exit then
    idx TR-PHASE-RUNNER? if TR-RUNNER$ exit then
    idx TR-PHASE-UNDER-EXE? if TR-UNDER$ exit then
    s" bin/hb" ;
@@ -890,6 +1025,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" --"  >LEN PROC-ARGV+
    idx TR-PHASE-RUNNER-TOKEN >LEN PROC-ARGV+ ;
 
+: TR-PHASE-ARGV-AOT-RUNNER ( idx -- ) {: idx:idx :}
+   s" --load"  >LEN PROC-ARGV+
+   s" test/gate-aot-runner-entry.f"  >LEN PROC-ARGV+
+   s" --"  >LEN PROC-ARGV+
+   idx TR-PHASE-RUNNER-TOKEN >LEN PROC-ARGV+ ;
+
 : TR-PHASE-BASE ( idx -- ) {: idx:idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
@@ -902,16 +1043,19 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    GS-ENV+
    idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
-   idx TR-PHASE-RUNNER? if
+   idx TR-PHASE-AOT-RUNNER? if
+      idx TR-PHASE-ARGV-AOT-RUNNER
+   else idx TR-PHASE-RUNNER? if
       idx TR-PHASE-ARGV-RUNNER
    else
       TR-PHASE-ARGV-COLD
-   then ;
+   then then ;
 
 : TR-PHASE-START ( idx -- ) {: idx:idx :}
    idx TR-PHASE-BASE
-   idx TR-PHASE-RUNNER? 0= if idx TR-PHASE-ARGS then
+   idx TR-PHASE-WARM-RUNNER? 0= if idx TR-PHASE-ARGS then
    s" top-phase-spawn" GS-EVENT
+   idx TR-PHASE-AOT-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
@@ -990,10 +1134,9 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-WARM-READY-RESET
    0 >IDX TR-PHASE-START
    1 >IDX TR-PHASE-START
-   TR-UNDER-READY @ 0= if 15 >IDX TR-PHASE-START then
    TR-RUNNER-START
-   7 >IDX TR-PHASE-START
-   8 >IDX TR-PHASE-START
+   TR-AOT-RUNNER-START
+   TR-UNDER-READY @ 0= if 15 >IDX TR-PHASE-START then
    TR-DRAIN-UNTIL-RUNNER
    6 >IDX TR-PHASE-START
    TR-TRY-EARLY-LINTS ;
@@ -1021,6 +1164,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-DRAIN-UNTIL-CHECK-WARM
    TR-CHECK-WARM-START
    TR-DRAIN-UNTIL-WARM
+   TR-DRAIN-UNTIL-AOT-RUNNER
    TR-WORK-DRAIN ;
 
 : TR-MAIN ( -- )

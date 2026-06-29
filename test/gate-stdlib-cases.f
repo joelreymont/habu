@@ -157,7 +157,7 @@ TEST-SUITE check-cli-boundary
    tools/typed-local-diff-lint-core.f
    tools/trust-lint-core.f
    tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
-   tools/check-test.f
+   tools/check-core.f tools/check-test.f
 ;TEST-SUITE
 
 TEST-SUITE streaming-sha256

@@ -106,7 +106,9 @@ variable FM-NUM-L
    s" src/arch/arm64/disasm.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED-BUILD ( -- )
+   s" tools/check-core.f" FM-REQ
    s" tools/check.f" FM-REQ
+   s" tools/check-main.f" FM-REQ
    s" tools/check-test.f" FM-REQ
    s" tools/sha256-file-test.f" FM-REQ
    s" lib/content-key.f" FM-REQ

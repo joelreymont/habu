@@ -315,6 +315,7 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    tools/json.f tools/json-only-core.f tools/signature-lint-core.f
    tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
    tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
+   tools/check-core.f
 ;GE-FILES
 
 : GE-WARM-PATHS ( -- )
@@ -456,7 +457,7 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    GE-HB-RESET
    s" --load" GE-ARG+
    GE-WARM-TRUST$ GE-ARG+
-   s" tools/check.f" GE-ARG+
+   s" tools/check-main.f" GE-ARG+
    s" --" GE-ARG+ ;
 
 : GE-CHECK-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}

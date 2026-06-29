@@ -103,7 +103,9 @@ points stay listed.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
 - `tools/build-fixpoint.f` — checked native stage/stdin/snapshot build driver.
-- `tools/check.f` — Habu-native checked engine runner.
+- `tools/check-core.f` — reusable Habu-native checked engine runner core.
+- `tools/check.f` — thin CLI entrypoint for the checked engine runner.
+- `tools/check-main.f` — no-include checked engine entry for warm tool images.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.

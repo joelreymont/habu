@@ -518,6 +518,16 @@ lesson — keep the specific word/code/path, cut the prose.
   `TRUSTED:`/constants/`.0`-style names are NOT extracted, so they get no row), a
   `FILEMAP.md` row, a `gate-stdlib.f` `TEST-SUITE`, and `TRUSTED.md` rows for any
   `TRUSTED:`. The doc-contract check is a curated spot-list, not per-module.
+- **Warm image entries cannot hide dependencies behind include:** a normal
+  `tools/check.f` can `include tools/check-core.f`, but warm images load entry
+  files through their baked source map and the include boundary can fail or crash.
+  Bake the core into the warm image when it fits, then load a no-include
+  `*-main.f` entry; otherwise pass core+entry explicitly with `WR-TOOLS-LOAD2`.
+- **Fixed pool slots must be reserved before dynamic starts:** starting a
+  dedicated slot after a general phase can reset an active slot, orphan the child,
+  and leave `GT-POOL-LIVE` permanently high. `GT-POOL-START-SLOT` now fails
+  closed on active-slot reuse; start fixed-slot warm runners before free-slot
+  phases that might claim their indexes.
 - **Habu's locals/loop discipline costs first-time iteration:** porting real code
   (Odin's tegrastats/netpbm parsers to `../odin-habu`) hit the same walls
   repeatedly — no local bind after `exit`, a `begin/while` condition may only add

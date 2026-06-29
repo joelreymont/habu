@@ -264,6 +264,10 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    idx GT-POOL-CLOSE-WRITES ;
 
 : GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
+   idx GT-POOL-DONE@ 0= if
+      s" gate-pool: fixed slot already active" type cr
+      E-TBL-FIELD GT-POOL-THROW
+   then
    idx GT-POOL-RESET-SLOT
    0 idx GT-POOL-DONE-PTR !
    idx GT-POOL-PIPES
