@@ -39,6 +39,11 @@ s" PTX-GOOD-MASK-SHARED {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD +." CHECK! 
 s" PTX-BAD-MASK-DISTINCT {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD +." PTX-CHECK-REJECTS
 s" PTX-GOOD-MASK-SUBDIV {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD -. s g LOAD /." CHECK! -1 T= \ typed-local-lint: allow-bare-local
 s" PTX-BAD-MASK-SUB {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD -." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
+s" PTX-BAD-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
+s" PTX-BAD-EXTENT ( span<space-global,f32,extent-r> gridctx<block-256,extent-c,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
+s" PTX-BAD-TILE-MASK ( tile<f32,block-256,mask-a> tile<f32,block-256,mask-b> -- tile<f32,block-256,mask-a> ) +." PTX-CHECK-REJECTS
+s" PTX-BAD-SPAN-SYNTAX ( span<space-global,f32,extent-n -- )" PTX-CHECK-REJECTS
+SGBAD @ TTRUE
 
 \ Clean load past this point is the positive proof: KERNEL: verified SAXPY's body
 \ against its declared parametric effect. A reject emits a diagnostic + fails load.
