@@ -1082,13 +1082,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `cuDevicePrimaryCtxRetain` + loaded module. Adding `cuModuleUnload` +
   `cuDevicePrimaryCtxRelease` before `bye` exits clean. Buffered stdout (and any
   `tr`/`tail` in the pipe) is lost on a hang — localize with fd-2 markers to a file.
-- **Do not generalize the softmax collective proof to all reductions:** current
-  one-block-per-row lowering is shared-mem + bar.sync + thread-0 sequential fold.
-  `ROW-LOAD` seeds inactive lanes with -inf, which is right for `BLOCK-MAX`; softmax
-  then gets a valid `BLOCK-SUM` only because `EXP.` maps those inactive lanes to 0.
-  Direct row-sum/backward paths need per-collective identity or first-class mask
-  carry (`habu-fix-ptx-collective-997cfcce`). Runs within 1 ULP for the current
-  softmax golden on the Orin, but that proof is not a generic reduction proof.
+- **PTX collectives need op-local inactive identity:** `lib/ptx/cg-collective.f`
+  now writes `active ? tile : identity(op)` before the shared-memory fold, so
+  `BLOCK-MAX` gets -inf and `BLOCK-SUM` gets 0 regardless of how `ROW-LOAD` seeded
+  inactive lanes. Direct row-sum/backward paths cannot rely on softmax's accidental
+  `EXP(-inf)=0` behavior.
 - **Stack-signature tokens must be TYPES, not role words:** `( got expected -- bool )`
   silently binds `got`/`expected` as fresh type vars, so a downstream `n n` op
   mismatches with a confusing `at '<='`. Use `( n n -- bool )`. Locals `{: got :}`

@@ -13,16 +13,17 @@
 \ These are PTX PRIMITIVES (TRUSTED: boundaries). The forward ops now LOWER in
 \ emit mode: each body calls its EMIT-* helper (lib/ptx/cg-collective.f), so the
 \ checked SOFTMAX-ROWS body that ptx-collective-test.f certifies also emits PTX -
-\ shared-mem + bar.sync block reduction, identity-seeded inactive lanes (proven
+\ shared-mem + bar.sync block reduction, reducer-identity inactive lanes (proven
 \ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f). BLOCK-MAX-SELECT
-\ (the BLOCK-MAX adjoint) still throws E-PTX-NOIMPL pending its AD-pass lowering.
+\ (the BLOCK-MAX adjoint) lowers through EMIT-BLOCK-MAX-SELECT.
 \
 \ BOUNDARY (named, tested). As in lib/ptx/tile.f, context producers mint fresh
 \ rigid mask tokens per call, while shared tokens prove agreement through loads,
 \ stores, and elementwise/collective users. Block-uniform-reachability of a
 \ collective under divergent control flow is the separate M5 uniformity model,
 \ not yet here.
-\ Load after lib/errors.f, lib/ptx/cg.f, and lib/ptx/cg-collective.f (EMIT-*).
+\ Load after lib/errors.f, lib/ptx/cg.f, lib/ptx/header.f, and
+\ lib/ptx/cg-collective.f (EMIT-*).
 
 TRUSTED: ROW ( -- rowidx<e> )
    EMIT-ROW ;

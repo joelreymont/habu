@@ -5,7 +5,8 @@
 \ by the checked kernel itself (tools/ptx/softmax-cg.f + ptxas -arch=sm_87), so
 \ this closes the loop: the same body the ptx-stdlib gate certifies emits PTX
 \ that runs numerically correct on hardware. Load after lib/errors.f, lib/string.f,
-\ lib/test.f, lib/float.f, lib/fmt.f, src/arch/ptx/emit.f, lib/ptx/cg.f, lib/ffi.f.
+\ lib/test.f, lib/float.f, lib/fmt.f, src/arch/ptx/emit.f, lib/ptx/cg.f,
+\ lib/ptx/header.f, lib/ptx/launch.f, lib/ffi.f.
 \ Prereq: cubin at /tmp/softmax.cubin.
 \
 \ Data: in = [[1,2,3,4],[1,1,1,1]] (2 rows, k=4). Golden softmax (f32 bits):
@@ -47,6 +48,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-FUNC P>N SL-MOD @ SL-KN P>N s" cuModuleGetFunction" SL-SYM CALL3 drop ;
 
 : SL-LAUNCH ( -- )                                    \ grid = 2 rows, block = 256
+   2 4 256 PTX-ROW-LAUNCH-CHECK
    SL-DIN P>N 32          s" cuMemAlloc_v2"   SL-SYM CALL2 drop
    SL-DOUT P>N 32         s" cuMemAlloc_v2"   SL-SYM CALL2 drop
    SL-DIN @ SL-HIN P>N 32 s" cuMemcpyHtoD_v2" SL-SYM CALL3 drop

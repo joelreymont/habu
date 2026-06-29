@@ -7,7 +7,8 @@
 \ catches it. GRADE-SM: CHECK-PASSES? -> spawn bin/hb to emit the candidate's softmax
 \ PTX -> ptxas -> run on the Orin (row [1,2,3,4]) -> compare softmax([1,2,3,4]) within
 \ tolerance. Verdict 2 GREEN / 1 TYPED-WRONG / 0 REJECTED. Load after the PTX tile +
-\ collective vocab, maki/eval.f, lib/ffi.f, and the fs/process libs.
+\ collective vocab, lib/ptx/launch.f, maki/eval.f, lib/ffi.f, and the
+\ fs/process libs.
 
 create SM-LIB 16 allot  create SM-NM 64 allot  create SM-PATH 64 allot  create SM-KN 32 allot
 create SM-IN 16 allot   create SM-OUT 16 allot   create SMG 4 cells allot
@@ -27,6 +28,7 @@ variable SM-DI variable SM-DO variable SM-KV
    1047695721 SMG 2 cells + !  1059379089 SMG 3 cells + ! ;
 
 : SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
+   1 4 256 PTX-ROW-LAUNCH-CHECK
    s" libcuda.so.1" SM-LIB >CSTR  SM-LIB RTLD-NOW DLOPEN SM-H !
    0                       s" cuInit"                   SM-SYM CALL1 drop
    SM-DEV P>N 0            s" cuDeviceGet"              SM-SYM CALL2 drop
@@ -76,7 +78,7 @@ create GSP-OUT $8000 allot  create GSP-ERR $1000 allot
    s" lib/errors.f"         >LEN PROC-ARGV+  s" lib/string.f"        >LEN PROC-ARGV+
    s" lib/float.f"          >LEN PROC-ARGV+  s" lib/fmt.f"           >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"        >LEN PROC-ARGV+
-   s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+  s" lib/ptx/header.f" >LEN PROC-ARGV+
+   s" lib/ptx/header.f" >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" /tmp/grade-sm-driver.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  GSP-OUT $8000 >LEN  GSP-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}

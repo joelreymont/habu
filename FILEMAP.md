@@ -67,6 +67,9 @@ points stay listed.
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
   toolchain spike.
+- `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
+  (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
+- `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
   `tools/jitdump.f` and `tools/imagedisasm.f`.
 - `tools/jitdump.f` — disassemble a compiled word from a source snippet; see
@@ -156,6 +159,8 @@ points stay listed.
   atomically adds 1.0 to out[0]); the scatter-add primitive reverse-mode fan-in adjoints need.
 - `tools/ptx/redadd-device-test.f` — Orin device proof that `red.global.add.f32` assembles for
   sm_87 and accumulates correctly (256 atomic adds = 256.0); closes habu-ptx-ad-verify.
+- `tools/ptx/sum-cg.f` / `tools/ptx/sum-launch.f` — checked direct row-sum
+  codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and

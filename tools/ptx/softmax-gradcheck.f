@@ -7,7 +7,8 @@
 \ Both use the SAME ex2.approx forward, so they agree to finite-diff + f32 error.
 \ Fully checked Habu via lib/ffi.f. Prereqs: /tmp/softmax.cubin, /tmp/softmax-bwd.cubin.
 \ Load after lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f
-\ src/arch/ptx/emit.f lib/ptx/cg.f lib/ffi.f maki/array.f.
+\ src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f
+\ lib/ffi.f maki/array.f.
 
 4 constant GCK
 create GC-LIB 16 allot  create GC-NM 64 allot  create GC-P1 64 allot  create GC-P2 64 allot
@@ -50,6 +51,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 \ run the forward softmax on the f64 input array `src`, write the f64 output to `dst`
 : GC-FWD-RUN ( ptr a ptr a -- ) {: src dst :}
+   1 GCK 256 PTX-ROW-LAUNCH-CHECK
    src GC-IN PACK4
    GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop 
    GC-FWD @ 256 1 1 s" cuFuncSetBlockShape" GC-SYM CALL4 drop
@@ -64,6 +66,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 \ run the AUTO-DERIVED backward: (HX, HDY) -> HDXA
 : GC-BWD-RUN ( -- )
+   1 GCK 256 PTX-ROW-LAUNCH-CHECK
    HX GC-IN PACK4   HDY GC-DYB PACK4
    GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
    GC-dDY @ GC-DYB P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop

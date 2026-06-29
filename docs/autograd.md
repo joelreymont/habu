@@ -31,8 +31,7 @@ the VJP table/reverse pass for the checked PTX words covered by
 `lib/ptx/ad-test.f`, and the checked backward fixtures exercise the stack/type
 surface. Remaining work is device finite-difference gradcheck as the hard gate,
 DAG validation hardening, algebraic simplification, save-vs-recompute policy,
-and a public typed zero-seeded row-load or per-collective identity for the current
-backward emitter path.
+and device finite-difference proof for the current backward emitter path.
 
 ## Why concatenative is the right substrate
 
@@ -207,9 +206,10 @@ shared-token construction); only then is `len(dx)=len(y)` proven rather than
 re-asserted. A gradient-buffer length mismatch is otherwise a trusted-boundary bug,
 not a compile error:
 
-The public checked surface still needs `ROW-LOAD-Z` or per-collective identities
-before this can be ordinary source; the current device proof uses the emitter-only
-`EMIT-ROW-LOAD-Z` for `dy` so inactive lanes contribute zero instead of `-inf`.
+The checked reducer applies its inactive-lane identity at the collective, so
+ordinary `ROW-LOAD` is valid here. Inactive lanes may carry poison through
+elementwise work, but `BLOCK-SUM` consumes the row mask and contributes zero for
+them.
 
 ```forth
 %BLOCK 256
@@ -220,18 +220,17 @@ KERNEL: SOFTMAX-ROWS-BWD ( y:matrix<space-global,f32,extent-r,extent-c>
    y  r ROW-SPAN {: ys :}
    dy r ROW-SPAN {: dys :}
    ys ROW-CTX {: c :}                  \ extents agree by shared token ⇒ valid for ys, dys, and dx's span
-   ys  c ROW-LOAD {: yt :}             \ y  tile   (fan-out: ⊙dy and the final ⊙)
-   dys c ROW-LOAD-Z {: dyt :}          \ target public zero-seeded dy load
-   dyt yt *. BLOCK-SUM {: s :}         \ s = Σ(dy ⊙ y); generic mask-safe sum is dotted
+   ys  c ROW-LOAD {: yt :}             \ y tile (fan-out: dy*y and the final *)
+   dys c ROW-LOAD {: dyt :}
+   dyt yt *. BLOCK-SUM {: s :}         \ s = sum(dy * y), inactive lanes add 0
    dyt s B-  yt *.                     \ (dy − s) ⊙ y  = dx
    dx r ROW-SPAN c ROW-STORE ;
 ```
 
 Locals only at the fan-out tiles (`yt`, `dyt`); the math is point-free; the mask
-token threads from row loads through `*.`/`B-` to `ROW-STORE`. Once the public
-zero-seeded load or per-collective identity lands, the gradient is checked exactly
-as the forward is; until then, the checked fixture and the emitter path are a v0
-proof, not the final public source surface.
+token threads from row loads through `*.`/`B-` to `ROW-STORE`. The checked fixture
+is now ordinary public source; remaining proof is device finite-difference
+gradcheck.
 
 ## Memory adjoints and accumulation
 

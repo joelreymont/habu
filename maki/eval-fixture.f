@@ -8,7 +8,7 @@
 \ the live-LLM generation + Triton arm (tokens-to-green, repair rounds) is external.
 \ Load after the PTX tile vocab (lib/ptx/...) and maki/eval.f:
 \   bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
-\     src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-collective.f lib/ptx/header.f \
+\     src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/cg-collective.f \
 \     lib/ptx/tile.f maki/eval.f maki/eval-fixture.f
 
 T-RESET

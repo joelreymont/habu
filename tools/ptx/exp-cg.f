@@ -4,7 +4,8 @@
 \ type-checks AND lowers to PTX. Used by tools/ptx/gradcheck.f to device-gradcheck a
 \ TRANSCENDENTAL op whose gradient is NON-CONSTANT and equals the forward value
 \ (d exp/dx = exp(x)). The unused uniform `a` keeps the shared SAXPY param layout. Load
-\ after lib/ptx/cg.f, lib/ptx/cg-collective.f, lib/ptx/tile.f, lib/ptx/collective.f; emits to stdout.
+\ after lib/ptx/cg.f, lib/ptx/header.f, lib/ptx/cg-collective.f, lib/ptx/tile.f,
+\ lib/ptx/collective.f; emits to stdout.
 
 256 %BLOCK
 

@@ -27,11 +27,10 @@ as metavariables; executable checked code must use the explicit tokens.
 | `rowidx<extent-r>` | row index proven `< R` (sound only under the launch ABI, below) |
 
 `%BLOCK B` accepts a legal CUDA block size: a **multiple of 32, `1 <= B <=
-1024`**. Current row/collective emitters are device-proofed for `block-256`
-(`SM-BLK=256`); deriving the reduction bound from `%BLOCK` is tracked by
-`habu-fix-ptx-collective-997cfcce`. The v4 load/store path exists today through
-explicit `*-V4` words, with scalar residual tails and alignment proofs still
-dotted.
+1024`**. Row/collective emitters derive their shared-memory size and reduction
+fold bound from `%BLOCK`; `WHERE extent-* <= block-N` rejects a block mismatch at
+load/emit time. The v4 load/store path exists today through explicit `*-V4`
+words, with scalar residual tails and alignment proofs still dotted.
 
 `S` maps to `space-global`, `space-shared`, `space-const`, or `space-local`.
 **v0 implements `space-global` only;** the others are reserved. `N/R/C` map to
@@ -89,9 +88,9 @@ B- B/        ( tile<T,B,M> uniform<T> -- tile<T,B,M> )      \ tile (op) uniform 
 FMA.         ( uniform<T> tile<T,B,M> tile<T,B,M> -- tile<T,B,M> )  \ a*x+y, single rounding (fma.rn)
 EXP.         ( tile<f32,B,M> -- tile<f32,B,M> )             \ ex2.approx.ftz(x*log2e); tolerance acceptance-gated
 
-BLOCK-MAX BLOCK-SUM ( tile<f32,B,M> -- uniform<f32> )       \ current straight-line block reductions (see lowering).
-                                                            \ Generic per-collective inactive-lane identities and
-                                                            \ divergent-control rejection are still dotted.
+BLOCK-MAX BLOCK-SUM ( tile<f32,B,M> -- uniform<f32> )       \ straight-line block reductions (see lowering).
+                                                            \ Each reducer applies its inactive-lane identity.
+                                                            \ Divergent-control rejection remains M5.
 
 ROW       ( -- rowidx<R> )                                   \ blockIdx.x; sound via launch ABI gridDim.x==R
 ROW-SPAN  ( matrix<S,T,R,C> rowidx<R> -- span<S,T,C> )       \ base = r*C (checked), extent C
@@ -108,8 +107,7 @@ agreement when the same token is threaded through the stack effect. Context
 constructors (`GRID-CTX`, `ROW-CTX`, and v4 variants) mint fresh rigid masks, so
 tiles loaded under independent contexts no longer type-check as having the same
 mask. `tile<T,B,M>` should not promise a defined scalar for an inactive lane;
-current emitters need the collective mask hardening dot for generic inactive-lane
-semantics.
+collectives consume the mask and substitute their own inactive-lane identity.
 
 ## Kernel: vector add `y = a*x + y`
 
@@ -146,9 +144,9 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
    in r ROW-SPAN {: xs:span<space-global,f32,extent-c> :}
    xs ROW-CTX {: c:rowctx<block-256,extent-c,mask-live> :}
    xs c ROW-LOAD {: x:tile<f32,block-256,mask-live> :}
-   x BLOCK-MAX {: m :}            \ uniform<f32>; current ROW-LOAD seeds inactive lanes -inf
+   x BLOCK-MAX {: m :}            \ uniform<f32>; inactive lanes reduce as -inf
    x m B- EXP. {: e :}            \ tile = exp(x - m)
-   e BLOCK-SUM {: s :}            \ uniform<f32>; inactive lanes are 0 here because exp(-inf-m)=0
+   e BLOCK-SUM {: s :}            \ uniform<f32>; inactive lanes reduce as 0
    e s B/  out r ROW-SPAN c ROW-STORE ;
 ```
 
@@ -166,13 +164,12 @@ KERNEL: SOFTMAX-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-
 - **Collectives use predication for row bounds:** in a kernel with collectives,
   the bounds mask is carried as a predicate; all threads reach the reduction
   barriers. A non-collective kernel (saxpy) may branch on the mask.
-- **Current collective lowering (`BLOCK-*`):** each thread writes its tile value
-  to shared memory, `bar.sync`, thread 0 sequentially folds `SM-BLK=256` shared
-  slots, writes the uniform result back to shared memory, `bar.sync`, and every
-  lane reloads the result. This is the current softmax path, not the future
-  warp-`shfl.sync` performance path. Generic mask identities for every
-  collective and checker rejection of non-block-uniform reachability are tracked
-  by `habu-fix-ptx-collective-997cfcce` / the M5 uniformity work.
+- **Current collective lowering (`BLOCK-*`):** each thread writes
+  `active ? tile : identity(op)` to shared memory, `bar.sync`, thread 0
+  sequentially folds `PTX-BLOCK@` shared slots, writes the uniform result back to
+  shared memory, `bar.sync`, and every lane reloads the result. This is the
+  current softmax path, not the future warp-`shfl.sync` performance path.
+  Checker rejection of non-block-uniform reachability is M5 uniformity work.
 
 ```ptx
 .version 8.3

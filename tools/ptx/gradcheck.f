@@ -28,8 +28,8 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    s" lib/errors.f"         >LEN PROC-ARGV+  s" lib/string.f"  >LEN PROC-ARGV+
    s" lib/float.f"          >LEN PROC-ARGV+  s" lib/fmt.f"     >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
-   s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/tile.f" >LEN PROC-ARGV+
+   s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
+   s" lib/ptx/tile.f"       >LEN PROC-ARGV+
    s" lib/ptx/collective.f" >LEN PROC-ARGV+ ;
 : GC-RUN-EMIT ( -- n )
    s" bin/hb" >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE

@@ -33,6 +33,25 @@ KERNEL: MAX-SELECT-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<spa
    mx x mx BLOCK-MAX-SELECT       \ ( ds=mx, x, mx -- dx tile )
    out r ROW-SPAN c ROW-STORE ;
 
+KERNEL: SUM-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: in:a out:b :}
+   ROW            {: r:c :}
+   in r ROW-SPAN  {: xs:d :}
+   xs ROW-CTX     {: ctx:e :}
+   xs ctx ROW-LOAD BLOCK-SUM BROADCAST
+   out r ROW-SPAN ctx ROW-STORE ;
+
+1024 %BLOCK
+SMEM-BYTES 4096 T=
+
+KERNEL: SUM-ROWS-1024 ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-1024
+   {: in:a out:b :}
+   ROW            {: r:c :}
+   in r ROW-SPAN  {: xs:d :}
+   xs ROW-CTX     {: ctx:e :}
+   xs ctx ROW-LOAD BLOCK-SUM BROADCAST
+   out r ROW-SPAN ctx ROW-STORE ;
+
 \ Clean load past this point is the positive proof: SOFTMAX-ROWS certified.
 
 T-REPORT

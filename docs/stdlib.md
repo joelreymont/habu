@@ -89,7 +89,9 @@ and `ptr u8 n` for keys.
 `docs/ptx-sketch.md`. `KERNEL:` is a compiler keyword alias for `:`; load
 `lib/errors.f lib/ptx/header.f` before kernel sources. `%BLOCK` validates legal
 CUDA block sizes (multiple of 32 and `1 <= n <= 1024`). `GRID:` and `WHERE` are
-compile-time header markers consumed before the checked kernel body.
+compile-time header markers consumed before the checked kernel body. `lib/ptx/launch.f`
+provides checked host launch guards such as `PTX-ROW-LAUNCH-CHECK ( rows cols block -- )`
+so CUDA launch code rejects invalid row dimensions before calling the driver.
 
 ## Array
 

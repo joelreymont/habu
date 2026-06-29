@@ -1,6 +1,6 @@
 ---
 title: Fix PTX collective mask and block semantics
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-06-27T15:32:50.883376+02:00"

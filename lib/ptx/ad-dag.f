@@ -7,7 +7,8 @@
 \ inputs, ACCUMULATED with +. at every fan-out (the tape replacement). It EMITS a
 \ self-contained backward by RECOMPUTING the forward (row-local, so saved primals/
 \ outputs are recomputed registers) then the cotangent ops, driving the EMIT-*
-\ helpers (lib/ptx/cg.f, lib/ptx/cg-collective.f). Load after those. Checked Habu.
+\ helpers (lib/ptx/cg.f, lib/ptx/header.f, lib/ptx/cg-collective.f). Load after
+\ those. Checked Habu.
 
 \ forward op codes the DAG understands (the softmax-rows primitive set)
 0 constant OP-LEAF      \ the input tile (node 0)

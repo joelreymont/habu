@@ -4,8 +4,9 @@
 defined class of GPU bugs left to author time: address-space mismatches,
 extent-relative access discipline, and collective protocol errors. Fresh
 per-call extent/mask identity is expressed as checker constructor templates
-(`fresh-extent-*`, `fresh-mask-*`); full collective semantics are still active
-work (`habu-fix-ptx-collective-997cfcce`). The measured
+(`fresh-extent-*`, `fresh-mask-*`). Collective lowering now applies the
+inactive-lane identity at each reducer and derives shared-memory/fold bounds
+from `%BLOCK`; divergent-control rejection remains M5 uniformity work. The measured
 claim is not "beat Triton on FLOPS"; it is that checked source gives earlier,
 more located failures for the stack-discipline class where LLMs struggle.
 
@@ -82,10 +83,10 @@ in [`ptx-sketch.md`](ptx-sketch.md):
   like Rust's `slice::from_raw_parts`.
   This is not universal memory safety; it is relational consistency between a
   span's declared length and every access to it.
-- **Typed collectives:** block/warp reductions are meant to carry per-collective
-  mask identities (max→−∞, sum→0) and reject under divergent control flow. The
-  current softmax path is device-proven, but generic collective mask/block
-  hardening is still dotted before this is a full device-proof claim.
+- **Typed collectives:** block/warp reductions apply per-collective inactive-lane
+  identities (max -> -inf, sum -> 0), derive their fold bound from `%BLOCK`, and
+  reject `WHERE ... block-N` mismatches. Divergent-control rejection remains M5
+  uniformity work.
 - **Shape tokens:** `tile<T,B,M>` / `matrix<S,T,R,C>` travel in the effect, so
   composition shape-checks by unification.
 
@@ -180,7 +181,7 @@ CUDA device proof remains Linux/Orin-specific:
    `fresh-extent-*` and `fresh-mask-*`.
 
 The remaining PTX foundation work is semantic, not bootstrap: correct generic
-collective mask/block lowering (dot `habu-fix-ptx-collective-997cfcce`), typed
+collective uniformity/barrier lowering, typed
 v4 alignment/tail proofs beyond the current `N % 4 == 0` path, int-vs-float
 arithmetic capability constraints, and durable device proof/gate hardening
 listed above.
