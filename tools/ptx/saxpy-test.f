@@ -90,6 +90,25 @@ variable PTXT-OUT-U
    PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PTXT-CAPTURE>N ;
 
+: PTXT-RUN-SUM1024-CG ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/float.f"  >LEN PROC-ARGV+
+   s" lib/fmt.f"  >LEN PROC-ARGV+
+   s" lib/test.f"  >LEN PROC-ARGV+
+   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
+   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
+   s" lib/ptx/header.f"  >LEN PROC-ARGV+
+   s" lib/ptx/cg-collective.f"  >LEN PROC-ARGV+
+   s" lib/ptx/collective.f"  >LEN PROC-ARGV+
+   s" tools/ptx/sum1024-cg.f"  >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
+   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   PTXT-CAPTURE>N ;
+
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .version 8.3" PTXT-HAS
@@ -137,10 +156,21 @@ variable PTXT-OUT-U
    s" add.f32 %f3, %f3, %f4;" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+: PTXT-SUM1024-CG-OUTPUT ( -- )
+   PTXT-RUN-SUM1024-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry SUM_ROWS_1024" PTXT-HAS
+   s" .shared .align 4 .b8 SMEM[4096];" PTXT-HAS
+   s" mov.f32 %f2, 0f00000000;" PTXT-HAS
+   s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS
+   s" setp.ge.u32 %p4, %r10, 1024;" PTXT-HAS
+   s" add.f32 %f3, %f3, %f4;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
 PTXT-SOFTMAX-CG-OUTPUT
 PTXT-SUM-CG-OUTPUT
+PTXT-SUM1024-CG-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

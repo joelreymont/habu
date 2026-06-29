@@ -161,6 +161,8 @@ points stay listed.
   sm_87 and accumulates correctly (256 atomic adds = 256.0); closes habu-ptx-ad-verify.
 - `tools/ptx/sum-cg.f` / `tools/ptx/sum-launch.f` — checked direct row-sum
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
+- `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK
+  1024` changes shared-memory size and reduction fold bounds.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
