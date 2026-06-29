@@ -5,6 +5,15 @@ $20000 constant IBT-CAP
 create IBT-BUF IBT-CAP allot
 variable IBT-LEN
 
+: IBT-IMAGE-BYTES-LOADED? ( -- bool )
+   s" M-RESET" XREF-FIND 0= 0= ;
+
+: IBT-LOAD-IMAGE-BYTES ( -- )
+   IBT-IMAGE-BYTES-LOADED? if exit then
+   s" src/os/image-bytes.f" included ;
+
+IBT-LOAD-IMAGE-BYTES
+
 TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
    DIAGXT @ >r
    0 DIAGXT !

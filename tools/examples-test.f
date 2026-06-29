@@ -1,6 +1,7 @@
 \ examples-test.f - checked fixture for examples/*.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/examples-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
+\ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+\ tools/examples-test.f
 
 65536 constant EXT-COPY-CAP
 8192 constant EXT-CAPTURE-CAP
@@ -63,6 +64,9 @@ variable EXT-ERR-A
    pa pu na nu EXT-PATH-BUF JOIN-PATH {: u :}
    EXT-PATH-BUF u ;
 
+: EXT-PURE ( -- ptr u8 n )
+   EXT-TEMP s" pure.f" EXT-JOIN$ ;
+
 : EXT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -76,6 +80,13 @@ variable EXT-ERR-A
    SB-RESET
    s" test: ok" SB-APPEND
    STR-LF SB-APPEND-C
+   SB$ ;
+
+: EXT-OK3$ ( -- ptr u8 n )
+   SB-RESET
+   s" test: ok" SB-APPEND STR-LF SB-APPEND-C
+   s" test: ok" SB-APPEND STR-LF SB-APPEND-C
+   s" test: ok" SB-APPEND STR-LF SB-APPEND-C
    SB$ ;
 
 : EXT-CLEAR-BUNDLE ( ptr u8 n -- )
@@ -129,25 +140,6 @@ variable EXT-ERR-A
    EXT-PREPARE-DIRS
    EXT-PREPARE-FILES ;
 
-: EXT-BUNDLE-ARRAY ( -- ptr u8 n )
-   EXT-TEMP s" array.f" EXT-JOIN$ {: b:ptr u :}
-   b u EXT-CLEAR-BUNDLE
-   b u s" lib/errors.f" EXT-ADD-SOURCE-LF
-   b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" lib/array.f" EXT-ADD-SOURCE-LF
-   b u s" examples/array.f" EXT-ADD-SOURCE
-   b u ;
-
-: EXT-BUNDLE-STRING-REGEX ( -- ptr u8 n )
-   EXT-TEMP s" string-regex.f" EXT-JOIN$ {: b:ptr u :}
-   b u EXT-CLEAR-BUNDLE
-   b u s" lib/errors.f" EXT-ADD-SOURCE-LF
-   b u s" lib/string.f" EXT-ADD-SOURCE-LF
-   b u s" lib/test.f" EXT-ADD-SOURCE-LF
-   b u s" lib/regex.f" EXT-ADD-SOURCE-LF
-   b u s" examples/string-regex.f" EXT-ADD-SOURCE
-   b u ;
-
 : EXT-BUNDLE-FILE-MAP ( -- ptr u8 n )
    EXT-TEMP s" file-map.f" EXT-JOIN$ {: b:ptr u :}
    b u EXT-CLEAR-BUNDLE
@@ -159,13 +151,17 @@ variable EXT-ERR-A
    b u s" examples/file-map.f" EXT-ADD-SOURCE
    b u ;
 
-: EXT-BUNDLE-PROPERTY ( -- ptr u8 n )
-   EXT-TEMP s" property-test.f" EXT-JOIN$ {: b:ptr u :}
+: EXT-BUNDLE-PURE ( -- ptr u8 n )
+   EXT-PURE {: b:ptr u:n :}
    b u EXT-CLEAR-BUNDLE
    b u s" lib/errors.f" EXT-ADD-SOURCE-LF
    b u s" lib/string.f" EXT-ADD-SOURCE-LF
    b u s" lib/test.f" EXT-ADD-SOURCE-LF
+   b u s" lib/array.f" EXT-ADD-SOURCE-LF
+   b u s" lib/regex.f" EXT-ADD-SOURCE-LF
    b u s" lib/property.f" EXT-ADD-SOURCE-LF
+   b u s" examples/array.f" EXT-ADD-SOURCE-LF
+   b u s" examples/string-regex.f" EXT-ADD-SOURCE-LF
    b u s" examples/property-test.f" EXT-ADD-SOURCE
    b u ;
 
@@ -184,7 +180,8 @@ variable EXT-ERR-A
    outu LEN>N erru LEN>N kind code ;
 
 : EXT-RUN-HB ( -- n n n n )
-   s" bin/hb"  >LEN EXT-OUT EXT-CAPTURE-CAP >LEN
+   s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN
+   EXT-OUT EXT-CAPTURE-CAP >LEN
    EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME EXT-CAPTURE>N ;
 
@@ -198,15 +195,22 @@ variable EXT-ERR-A
    s" --" EXT-ARG+ ;
 
 : EXT-ASSERT-OK ( n n n n -- )
-   {: outu erru kind code :}
+   {: outu:n erru:n kind:n code:n :}
    kind PROC-OUTCOME-EXIT T=
    code 0 T=
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK$ T$= ;
 
-: EXT-RUN-PLAIN ( ptr u8 n -- )
-   EXT-ARGV-BUNDLE
-   EXT-RUN-HB EXT-ASSERT-OK ;
+: EXT-ASSERT-OK3 ( n n n n -- )
+   {: outu:n erru:n kind:n code:n :}
+   kind PROC-OUTCOME-EXIT T=
+   code 0 T=
+   EXT-ERR erru EXT-EMPTY$ T$=
+   EXT-OUT outu EXT-OK3$ T$= ;
+
+: EXT-RUN-PURE ( -- )
+   EXT-BUNDLE-PURE EXT-ARGV-BUNDLE
+   EXT-RUN-HB EXT-ASSERT-OK3 ;
 
 : EXT-RUN-FILE-MAP ( ptr u8 n -- )
    EXT-ARGV-BUNDLE
@@ -221,17 +225,8 @@ variable EXT-ERR-A
    s" examples/array.f" EXT-ARG+
    EXT-RUN-HB EXT-ASSERT-OK ;
 
-: EXT-TEST-ARRAY ( -- )
-   EXT-BUNDLE-ARRAY EXT-RUN-PLAIN ;
-
-: EXT-TEST-STRING-REGEX ( -- )
-   EXT-BUNDLE-STRING-REGEX EXT-RUN-PLAIN ;
-
 : EXT-TEST-FILE-MAP ( -- )
    EXT-BUNDLE-FILE-MAP EXT-RUN-FILE-MAP ;
-
-: EXT-TEST-PROPERTY ( -- )
-   EXT-BUNDLE-PROPERTY EXT-RUN-PLAIN ;
 
 : EXT-TEST-BUILD-SCRIPT ( -- )
    EXT-BUNDLE-BUILD-SCRIPT EXT-RUN-BUILD-SCRIPT ;
@@ -239,10 +234,8 @@ variable EXT-ERR-A
 : EXT-MAIN ( -- )
    T-RESET
    EXT-PREPARE
-   EXT-TEST-ARRAY
-   EXT-TEST-STRING-REGEX
+   EXT-RUN-PURE
    EXT-TEST-FILE-MAP
-   EXT-TEST-PROPERTY
    EXT-TEST-BUILD-SCRIPT
    CLEANUP-RUN
    EXT-TEMP EXISTS? TFALSE

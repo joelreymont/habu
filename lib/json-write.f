@@ -29,8 +29,17 @@ variable JW-BUF-CAP
 variable JW-OUT-LEN
 variable JW-NUM-I
 
-TRUSTED: JW-BUF ( -- ptr u8 )
-   JW-BUF-A @ ;
+: JW-BUF-FIELD ( -- ptr ptr u8 )
+   JW-BUF-A 0 ptr-field ;
+
+: JW-BUF@ ( -- ptr u8 )
+   JW-BUF-FIELD @ ;
+
+: JW-BUF! ( ptr u8 -- )
+   JW-BUF-FIELD ! ;
+
+: JW-BUF ( -- ptr u8 )
+   JW-BUF@ ;
 
 : JW-CAP ( -- n )
    JW-BUF-CAP @ ;
@@ -41,7 +50,7 @@ TRUSTED: JW-BUF ( -- ptr u8 )
    >LEN ;
 
 : JW-STORE-SPAN ( ptr u8 n -- )
-   JW-BUF-CAP ! JW-BUF-A ! ;
+   JW-BUF-CAP ! JW-BUF! ;
 
 : JW-MIN-ONE ( n -- n )
    dup JW-MIN-CAP < if drop JW-MIN-CAP then ;

@@ -6,7 +6,6 @@
 
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
-$1002 constant BFT-MAP-PRIVATE-ANON
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
 
@@ -37,14 +36,17 @@ create BFT-CHECK-OFF-LINE
 10 c, 48 c, 32 c, 115 c, 101 c, 116 c, 45 c,
 99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
+: BFT-READ-FIELD ( -- ptr ptr u8 )
+   BFT-READ-A 0 ptr-field ;
+
+: BFT-READ-BUF! ( ptr u8 -- )
+   BFT-READ-FIELD ! ;
+
 : BFT-READ-BUF ( -- ptr u8 )
-   BFT-READ-A @ ;
-s" BFT-READ-BUF" s" -- ptr u8" TRUST
+   BFT-READ-FIELD @ ;
 
 : BFT-ALLOC-READ ( -- )
-   0 BFT-READ-CAP 3 BFT-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" build-fixpoint-test: read mmap failed" 76 die then
-   BFT-READ-A ! ;
+   BFT-READ-CAP MEM-ALLOC-BYTES drop BFT-READ-BUF! ;
 
 : BFT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then

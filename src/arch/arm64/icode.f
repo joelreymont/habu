@@ -3,14 +3,22 @@
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
 $80000 constant CODE-CAP-BYTES
-131071 constant CODE-CAP-WORDS
+$1FFFF constant CODE-CAP-WORDS
 $1002 constant ICODE-MAP-PRIVATE-ANON
-2048 constant ICODE-TAB-CELLS
-4 constant ICODE-TAB-COUNT
+$800 constant ICODE-TAB-CELLS
+$4 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 variable CODE-A
 variable ICODE-TAB-A
 variable ASM-CP
+variable I-SITE
+variable I-LBL
+variable I-KIND
+variable I-COND
+variable I-RD
+variable I-X
+variable I-N
+variable I-W
 
 : CODE-ALLOC ( -- n )
    0 CODE-CAP-BYTES 3 ICODE-MAP-PRIVATE-ANON -1 0 mmap
@@ -38,24 +46,35 @@ s" ICODE-TABS" s" -- ptr n" TRUST
    ICODE-TABS drop
    0 ASM-CP ! ;
 
-: CW@ ( n -- ptr u8 ) {: w :}  CODE w 4 * + ;                      \ byte addr of word w
+TRUSTED: CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
-: ASM-CP? ( n -- ) {: n :}  ASM-CP @ n + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
-\ NB: the standalone mis-reads a SECOND {: :} locals group, so these use a variable
-\ for the byte pointer instead of a 2nd local (cf. VAR-OF / BR-EMIT bugs).
+: CW@ ( n -- ptr u8 )
+   $4 * CODE swap CODE-BYTE+ ;
+
+: ASM-CP? ( n -- )
+   ASM-CP @ + CODE-CAP-WORDS > IF s" icode: code buffer overflow" 72 die THEN ;
+\ Keep stage-source words local-free: the Gforth recovery compiler must check
+\ this file before the native checker is available.
 variable EP
 : EP@ ( -- ptr u8 ) EP 0 ptr-field @ ;
 
-: EMITW ( n -- ) {: u :}  1 ASM-CP?  ASM-CP @ CW@ EP !        \ store u LE at CODE[ASM-CP], ASM-CP++
-   u 255 and EP@ c!  u 8 rshift 255 and EP@ 1 + c!
-   u 16 rshift 255 and EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c!
+: EMITW ( n -- )
+   I-W !
+   1 ASM-CP?  ASM-CP @ CW@ EP !        \ store u LE at CODE[ASM-CP], ASM-CP++
+   I-W @ $FF and EP@ c!  I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c!
+   I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c!
+   I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c!
    ASM-CP @ 1 + ASM-CP ! ;
 
-: PATCH ( n n -- ) {: u w :}  w CW@ EP !                        \ OR u into the word already at w (delta bits)
-   u 255 and EP@ c@ or EP@ c!  u 8 rshift 255 and EP@ 1 + c@ or EP@ 1 + c!
-   u 16 rshift 255 and EP@ 2 + c@ or EP@ 2 + c!  u 24 rshift 255 and EP@ 3 + c@ or EP@ 3 + c! ;
+: PATCH ( n n -- )
+   I-N ! I-W !
+   I-N @ CW@ EP !                        \ OR u into the word already at w (delta bits)
+   I-W @ $FF and EP@ c@ or EP@ c!
+   I-W @ $8 rshift $FF and EP@ 1 CODE-BYTE+ c@ or EP@ 1 CODE-BYTE+ c!
+   I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
+   I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
 \ labels: LBLP[id] = defining word pos, or -1 if pending.
-2048 constant LBL-CAP
+$800 constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
 : LBLP ( -- ptr n ) 0 ICODE-TAB ;
 variable NLBL
@@ -69,7 +88,7 @@ variable NFX
 
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
-: FX? ( -- )  NFX @ 2047 > IF s" icode: out of fixups" 72 die THEN ;
+: FX? ( -- )  NFX @ $7FF > IF s" icode: out of fixups" 72 die THEN ;
 
 : LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 
@@ -77,56 +96,64 @@ variable NFX
 
 : LABEL! ( label ptr n -- ) swap LABEL>N swap ! ;
 
-: FX+ ( n label n -- ) {: site:n lbl:label kind:n :}  FX?          \ record a forward fixup
-   site NFX @ cells FXS + !  lbl LABEL>N NFX @ cells FXL + !
-   kind NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
+: FX+ ( n label n -- )
+   I-KIND ! LABEL>N I-LBL ! I-SITE !  FX?          \ record a forward fixup
+   I-SITE @ NFX @ cells FXS + !  I-LBL @ NFX @ cells FXL + !
+   I-KIND @ NFX @ cells FXK + !  NFX @ 1 + NFX ! ;
 
 \ encode a word delta into the branch word for a kind
 : D26 ( n -- n )  $3FFFFFF and ;                               \ B/BL: bits 0..25 (26-bit field)
 
-: D19 ( n -- n )  524287 and 5 lshift ;                         \ cond/CBZ: bits 5..23
+: D19 ( n -- n )  $7FFFF and 5 lshift ;                         \ cond/CBZ: bits 5..23
 \ emit a branch (base already encoded with delta=0) to a label; resolve or defer
 variable BBASE  variable BKIND
 
-: BR-EMIT ( label -- ) {: lbl:label :}                    \ BBASE/BKIND set; emits + records if fwd
-   lbl LABEL>N cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
-     drop  ASM-CP @ lbl BKIND @ FX+  BBASE @ EMITW
+: BR-EMIT ( label -- )
+   LABEL>N I-LBL !                    \ BBASE/BKIND set; emits + records if fwd
+   I-LBL @ cells LBLP + @  dup 0 < IF              \ pos on stack (0< isn't a standalone prim)
+     drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
    ELSE  ASM-CP @ -  BKIND @ 0= IF D26 ELSE D19 THEN  BBASE @ or EMITW  THEN ;
 
-: B, ( label -- ) {: lbl:label :}  335544320  BBASE !  0 BKIND !  lbl BR-EMIT ;
+: B, ( label -- )  $14000000  BBASE !  0 BKIND !  BR-EMIT ;
 
-: BL, ( label -- ) {: lbl:label :}  2483027968 BBASE !  0 BKIND !  lbl BR-EMIT ;
+: BL, ( label -- )  $94000000 BBASE !  0 BKIND !  BR-EMIT ;
 
-: BCOND, ( n label -- ) {: cond:n lbl:label :}  1409286144 cond or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: BCOND, ( n label -- )
+   LABEL>N I-LBL ! I-COND !  $54000000 I-COND @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
-: CBZ, ( n label -- ) {: rt:n lbl:label :}  3019898880 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: CBZ, ( n label -- )
+   LABEL>N I-LBL ! I-RD !  $B4000000 I-RD @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
-: CBNZ, ( n label -- ) {: rt:n lbl:label :}  3036676096 rt or BBASE !  1 BKIND !  lbl BR-EMIT ;
+: CBNZ, ( n label -- )
+   LABEL>N I-LBL ! I-RD !  $B5000000 I-RD @ or BBASE !  1 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 \ adr rd, label: PC-relative address (kind-2 fixup when forward)
-: ADR, ( n label -- ) {: RD:n lbl:label :}
-   lbl LABEL>N cells LBLP + @ dup 0 < IF
-     drop  ASM-CP @ lbl 2 FX+  RD 0 ENC-ADR EMITW
-   ELSE  ASM-CP @ - 4 *  RD swap ENC-ADR EMITW  THEN ;
+: ADR, ( n label -- )
+   LABEL>N I-LBL ! I-RD !
+   I-LBL @ cells LBLP + @ dup 0 < IF
+     drop  ASM-CP @ I-LBL @ >LABEL 2 FX+  I-RD @ 0 ENC-ADR EMITW
+   ELSE  ASM-CP @ - $4 *  I-RD @ swap ENC-ADR EMITW  THEN ;
 \ define a label here; backpatch all pending fixups that target it
 variable LBI
 
-: LBL, ( label -- ) {: lbl:label :}  ASM-CP @ lbl LABEL>N cells LBLP + !
+: LBL, ( label -- )
+   LABEL>N I-LBL !  ASM-CP @ I-LBL @ cells LBLP + !
    0 LBI ! BEGIN LBI @ NFX @ < WHILE
-     LBI @ cells FXL + @ lbl LABEL>N = IF
+     LBI @ cells FXL + @ I-LBL @ = IF
        ASM-CP @ LBI @ cells FXS + @ -                \ delta = here - site (words)
        LBI @ cells FXK + @ 0 = IF D26 ELSE
-         LBI @ cells FXK + @ 1 = IF D19 ELSE 4 * ENC-ADRD THEN THEN
+         LBI @ cells FXK + @ 1 = IF D19 ELSE $4 * ENC-ADRD THEN THEN
        LBI @ cells FXS + @ PATCH
      THEN
      LBI @ 1 + LBI !
    REPEAT ;
 
 \ --- data layer ---
-: DCQ, ( n -- ) {: x :}  x $FFFFFFFF and EMITW  x 32 rshift EMITW ;   \ one 64-bit cell, LE
+: DCQ, ( n -- )
+   dup $FFFFFFFF and EMITW  $20 rshift EMITW ;   \ one 64-bit cell, LE
 
-: DLBL, ( label -- ) {: lbl:label :}                                  \ cell = label's byte offset
-   lbl LABEL>N cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  4 * DCQ, ;
+: DLBL, ( label -- )                                  \ cell = label's byte offset
+   LABEL>N cells LBLP + @ dup 0 < IF s" icode: DLBL forward ref" 72 die THEN  $4 * DCQ, ;
 variable BYP
 variable BYA
 variable BYU
@@ -137,15 +164,15 @@ variable BYU
    BYU !  BYA ! ;
 
 : BYTES-CAP ( -- )
-   BYU @ 3 + 4 / ASM-CP?  ASM-CP @ 4 * CODE + BYP ! ;
+   BYU @ 3 + 4 / ASM-CP?  ASM-CP @ $4 * CODE swap CODE-BYTE+ BYP ! ;
 
 : BYTES-COPY ( -- )
    0 BEGIN dup BYU @ < WHILE
-      dup BYA@ + c@  BYP@ c!  BYP@ 1 + BYP !  1 +
+      dup BYA@ swap CODE-BYTE+ c@  BYP@ c!  BYP@ 1 CODE-BYTE+ BYP !  1 +
    REPEAT drop ;
 
 : BYTES-PAD ( -- )
-   BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 + BYP !  REPEAT ;
+   BEGIN BYP@ CODE - 3 and 0 <> WHILE  0 BYP@ c!  BYP@ 1 CODE-BYTE+ BYP !  REPEAT ;
 
 : BYTES, ( ptr u8 n -- )
    BYTES-ARGS
@@ -157,40 +184,48 @@ variable BYU
 \ fixpoint depends on this exact encoding policy. ---
 variable LIT-CH  variable LFI  variable LCI
 
-: CHUNK16 ( n n -- n ) {: x n :}  x n 16 * rshift $FFFF and ;
+: CHUNK16 ( n n -- n )  $10 * rshift $FFFF and ;
 
-: NZC ( n -- n ) {: x :}  0 LIT-CH !  0 BEGIN dup 4 < WHILE
-     x over CHUNK16 0 <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
+: NZC ( n -- n )
+   I-X !  0 LIT-CH !  0 BEGIN dup 4 < WHILE
+     I-X @ over CHUNK16 0 <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
 
-: NFC ( n -- n ) {: x :}  0 LIT-CH !  0 BEGIN dup 4 < WHILE
-     x over CHUNK16 $FFFF <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
+: NFC ( n -- n )
+   I-X !  0 LIT-CH !  0 BEGIN dup 4 < WHILE
+     I-X @ over CHUNK16 $FFFF <> IF LIT-CH @ 1 + LIT-CH ! THEN  1 + REPEAT drop  LIT-CH @ ;
 
-: MAX1 ( n -- n ) {: n :}  n 1 < IF 1 ELSE n THEN ;
+: MAX1 ( n -- n )  dup 1 < IF drop 1 THEN ;
 
-: 1STNZ ( n -- n ) {: x :}  -1 LFI !  0 BEGIN dup 4 < WHILE
-     LFI @ 0 < IF x over CHUNK16 0 <> IF dup LFI ! THEN THEN  1 + REPEAT drop
+: 1STNZ ( n -- n )
+   I-X !  -1 LFI !  0 BEGIN dup 4 < WHILE
+     LFI @ 0 < IF I-X @ over CHUNK16 0 <> IF dup LFI ! THEN THEN  1 + REPEAT drop
    LFI @ 0 < IF 0 ELSE LFI @ THEN ;
 
-: 1STNF ( n -- n ) {: x :}  -1 LFI !  0 BEGIN dup 4 < WHILE
-     LFI @ 0 < IF x over CHUNK16 $FFFF <> IF dup LFI ! THEN THEN  1 + REPEAT drop
+: 1STNF ( n -- n )
+   I-X !  -1 LFI !  0 BEGIN dup 4 < WHILE
+     LFI @ 0 < IF I-X @ over CHUNK16 $FFFF <> IF dup LFI ! THEN THEN  1 + REPEAT drop
    LFI @ 0 < IF 0 ELSE LFI @ THEN ;
 
-: LITZ ( n n -- ) {: RD x :}  x 1STNZ LFI !
-   RD  x LFI @ CHUNK16  LFI @ MOVZHW EMITW
+: LITZ ( n n -- )
+   I-X ! I-RD !  I-X @ 1STNZ LFI !
+   I-RD @  I-X @ LFI @ CHUNK16  LFI @ MOVZHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
-      x LCI @ CHUNK16 LIT-CH !
-      LIT-CH @ 0 <> IF RD LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
+      I-X @ LCI @ CHUNK16 LIT-CH !
+      LIT-CH @ 0 <> IF I-RD @ LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
-: LITN ( n n -- ) {: RD x :}  x 1STNF LFI !
-   RD  x LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
+: LITN ( n n -- )
+   I-X ! I-RD !  I-X @ 1STNF LFI !
+   I-RD @  I-X @ LFI @ CHUNK16 invert $FFFF and  LFI @ MOVNHW EMITW
    0 LCI ! BEGIN LCI @ 4 < WHILE
      LCI @ LFI @ <> IF
-      x LCI @ CHUNK16 LIT-CH !
-      LIT-CH @ $FFFF <> IF RD LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
+      I-X @ LCI @ CHUNK16 LIT-CH !
+      LIT-CH @ $FFFF <> IF I-RD @ LIT-CH @ LCI @ MOVKHW EMITW THEN THEN
      LCI @ 1 + LCI ! REPEAT ;
 
-: LIT64, ( n n -- ) {: RD x :}  x NFC MAX1  x NZC MAX1  < IF RD x LITN ELSE RD x LITZ THEN ;
+: LIT64, ( n n -- )
+   I-X ! I-RD !
+   I-X @ NFC MAX1  I-X @ NZC MAX1  < IF I-RD @ I-X @ LITN ELSE I-RD @ I-X @ LITZ THEN ;
 
-: ASM-LEN ( -- n )  ASM-CP @ 4 * ;
+: ASM-LEN ( -- n )  ASM-CP @ $4 * ;

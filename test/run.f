@@ -12,15 +12,18 @@ include test/gate-stats.f
 70000 constant TR-DEFAULT-BUDGET-MS
 4 constant TR-DEFAULT-NESTED-POOL-SLOTS
 600000 constant TR-TIMEOUT-MS
-21 constant TR-PHASES
+26 constant TR-PHASES
 32 constant TR-NUM-CAP
+$82 constant TR-UNDER-STAMP-U
 $2 constant TR-CHECK-WARM-PHASES
-$F constant TR-LATE-PHASES
+$14 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
 2 constant TR-AOT-RUNNER-SLOT
 3 constant TR-RUNNER-WARM-SLOT
+0 constant TR-GROUP-SEQ
+1 constant TR-GROUP-PAR
 
 \ Longest post-warm phases first; this keeps ARM gates inside budget without
 \ dropping coverage or raising the threshold.
@@ -28,7 +31,9 @@ create TR-CHECK-WARM-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
-$3 , $2 , $8 , $7 , $A , $4 , $B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
+$3 , $2 , $16 , $17 , $18 , $19 , $8 , $7 ,
+$A , $15 , $4 , $B , $C , $13 , $11 , $5 ,
+$D , $14 , $12 , $10 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -46,10 +51,15 @@ create TR-AOT-RUNNER-TRUST-BUF FS-PATH-CAP allot
 create TR-AOT-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
 create TR-UNDER-KEY-HEX 80 allot
+create TR-UNDER-ARG-BUF FS-PATH-CAP allot
 create TR-UNDER-CACHE-BUF FS-PATH-CAP allot
 create TR-UNDER-CACHE-TMP-BUF FS-PATH-CAP allot
 create TR-UNDER-CACHE-LOCK-BUF FS-PATH-CAP allot
+create TR-UNDER-CACHE-STAMP-BUF FS-PATH-CAP allot
+create TR-UNDER-CACHE-STAMP-TMP-BUF FS-PATH-CAP allot
 create TR-UNDER-NAME-BUF 80 allot
+create TR-UNDER-STAMP-BUF TR-UNDER-STAMP-U allot
+create TR-UNDER-STAMP-RD TR-UNDER-STAMP-U allot
 create TR-RUNNER-KEY-HEX 80 allot
 create TR-RUNNER-STAMP-RD 80 allot
 create TR-AOT-RUNNER-KEY-HEX 80 allot
@@ -71,9 +81,12 @@ variable TR-RUNNER-STAMP-U
 variable TR-AOT-RUNNER-U
 variable TR-AOT-RUNNER-TRUST-U
 variable TR-AOT-RUNNER-STAMP-U
+variable TR-UNDER-ARG-U
 variable TR-UNDER-CACHE-U
 variable TR-UNDER-CACHE-TMP-U
 variable TR-UNDER-CACHE-LOCK-U
+variable TR-UNDER-CACHE-STAMP-U
+variable TR-UNDER-CACHE-STAMP-TMP-U
 variable TR-UNDER-NAME-U
 variable TR-PERSIST-U
 variable TR-GATE-START-NS
@@ -89,6 +102,7 @@ variable TR-UNDER-CACHE-RC
 variable TR-ARG-I
 variable TR-BUDGET
 variable TR-NESTED-POOL
+variable TR-TIMINGS
 variable TR-NUM-U
 
 : TR-WARM$ ( -- ptr u8 n )
@@ -108,6 +122,9 @@ variable TR-NUM-U
 
 : TR-UNDER$ ( -- ptr u8 n )
    TR-UNDER-BUF TR-UNDER-U @ ;
+
+: TR-UNDER-ARG$ ( -- ptr u8 n )
+   TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
 
 : TR-RUNNER$ ( -- ptr u8 n )
    TR-RUNNER-BUF TR-RUNNER-U @ ;
@@ -136,11 +153,17 @@ variable TR-NUM-U
 : TR-UNDER-CACHE-LOCK$ ( -- ptr u8 n )
    TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U @ ;
 
+: TR-UNDER-CACHE-STAMP$ ( -- ptr u8 n )
+   TR-UNDER-CACHE-STAMP-BUF TR-UNDER-CACHE-STAMP-U @ ;
+
+: TR-UNDER-CACHE-STAMP-TMP$ ( -- ptr u8 n )
+   TR-UNDER-CACHE-STAMP-TMP-BUF TR-UNDER-CACHE-STAMP-TMP-U @ ;
+
 : TR-UNDER-NAME$ ( -- ptr u8 n )
    TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f -- [--pool-slots N] [--nested-pool-slots N] [--budget-ms N]" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--pool-slots N] [--nested-pool-slots N] [--budget-ms N] [--timings]" TR-USAGE-RC die ;
 
 : TR-ARG$ ( -- ptr u8 n )
    TR-ARG-I @ SCRIPT-ARGV$ ;
@@ -158,7 +181,9 @@ variable TR-NUM-U
 
 : TR-ARGS-DEFAULTS ( -- )
    TR-DEFAULT-BUDGET-MS TR-BUDGET !
-   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL ! ;
+   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
+   0 TR-TIMINGS !
+   0 TR-UNDER-ARG-U ! ;
 
 : TR-POOL-OPT ( -- )
    TR-ARG-VALUE$ TR-POS-NUM GT-POOL-SLOTS!
@@ -172,13 +197,29 @@ variable TR-NUM-U
    TR-ARG-VALUE$ TR-POS-NUM TR-BUDGET !
    2 TR-ADVANCE ;
 
+: TR-TIMINGS-OPT ( -- )
+   -1 TR-TIMINGS !
+   1 TR-ADVANCE ;
+
+: TR-UNDER-ARG! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a TR-UNDER-ARG-BUF u BYTE-COPY
+   u TR-UNDER-ARG-U ! ;
+
+: TR-UNDER-OPT ( -- )
+   TR-ARG-VALUE$ TR-UNDER-ARG!
+   2 TR-ADVANCE ;
+
 : TR-PARSE-ARG ( -- )
    TR-ARG$ s" full" STR= if
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
    then
+   TR-ARG$ s" --under" STR= if TR-UNDER-OPT exit then
    TR-ARG$ s" --pool-slots" STR= if TR-POOL-OPT exit then
    TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
    TR-ARG$ s" --budget-ms" STR= if TR-BUDGET-OPT exit then
+   TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
    TR-USAGE ;
 
 : TR-CHECK-ARGS ( -- )
@@ -238,15 +279,15 @@ variable TR-NUM-U
    s" HABU_GATE_WARM_ROOT" >LEN TR-PERSIST$ >LEN PROC-ENV+ ;
 
 : TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
-   s" FAIL: native gate budget (" type
+   s" FAIL: native test suite budget (" type
    elapsed GT-U-TYPE
    s" ms > " type
    budget GT-U-TYPE
    s" ms)" type cr
-   s" native gate budget exceeded" TR-BUDGET-RC die ;
+   s" native test suite budget exceeded" TR-BUDGET-RC die ;
 
 : TR-PASS ( n n -- ) {: elapsed:n budget:n :}
-   s" PASS: native gate (fixpoint + engine suite + checked hb + repl + hb-build) (" type
+   s" PASS: native test suite (fixpoint + engine suite + checked hb + repl + hb-build) (" type
    elapsed GT-U-TYPE
    s" ms <= " type
    budget GT-U-TYPE
@@ -276,6 +317,12 @@ variable TR-NUM-U
 : TR-UNDER-ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
 
+: TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   label labelu ms GS-SPAN ;
+
+: TR-INSTALL-POOL-HOOKS ( -- )
+   [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
+
 : TR-START ( -- )
    GT-RESET
    CLEANUP-RESET
@@ -291,6 +338,7 @@ variable TR-NUM-U
    TR-PERSIST-ENSURE
    TR-PERSIST$ CK-CACHE-ROOT!
    GT-ROOT GS-ROOT!
+   TR-INSTALL-POOL-HOOKS
    TR-UNDER-PATHS ;
 
 : TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
@@ -316,7 +364,19 @@ variable TR-NUM-U
       s" Habu-under-test not produced executable" TR-FAIL
    then
    -1 TR-UNDER-READY !
+   s" candidate-ready" GS-EVENT
    TR-UNDER-LINE ;
+
+: TR-UNDER-ARG? ( -- bool )
+   TR-UNDER-ARG-U @ 0 > ;
+
+: TR-UNDER-IMPORT ( -- )
+   TR-UNDER-ARG? 0= if exit then
+   TR-UNDER-ARG$ EXECUTABLE? 0= if s" --under executable missing" TR-FAIL then
+   TR-UNDER-ARG$ TR-UNDER$ COPY-FILE-STREAM
+   TR-UNDER$ CHMOD-X
+   s" candidate-import" GS-EVENT
+   -1 TR-UNDER-READY ! ;
 
 : TR-BASE ( -- )
    PROC-ARGV-RESET
@@ -364,7 +424,7 @@ variable TR-NUM-U
 : TR-BUILD-ASSERT-LIBS ( -- )
    s" tools/json.f"  >LEN PROC-ARGV+
    s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
-   s" tools/aot-call-report.f"  >LEN PROC-ARGV+ ;
+   s" tools/aot-call-report-lib.f"  >LEN PROC-ARGV+ ;
 
 : TR-CLEAN-WARM ( -- )
    GT-ROOT s" hb-check-warm" TR-WARM-BUF JOIN-PATH TR-WARM-U !
@@ -428,15 +488,13 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    tools/warm-run.f tools/hb-build-lib.f tools/lint/text.f tools/lint/token.f
    tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
    tools/aot-lint-core.f tools/signature-lint-core.f tools/hb-build-direct-lints.f
-   tools/json.f tools/gate-json-assert-core.f tools/aot-call-report.f
+   tools/json.f tools/gate-json-assert-core.f tools/aot-call-report-lib.f
    test/gate-stats.f test/gate-common-lib.f test/gate-build-common.f
    test/gate-build-hbb.f test/gate-aot-positive-lib.f test/gate-aot-negative-lib.f
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f test/gate-pool.f test/gate-common-lib.f
-   test/gate-engine-lib.f test/gate-engine.f src/habu/hide.f
-   src/core/util.f src/core/checker.f
+   tools/build-fixpoint.f src/habu/hide.f src/core/util.f src/core/checker.f
    src/core/render.f src/core/check-hook.f src/core/roles.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
@@ -525,13 +583,35 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-RUNNER-KEY-SUPPORT ( -- )
    [: TR-RUNNER-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES ;
 
+: TR-SNAPSHOT-LINUX-KEY ( -- )
+   s" target:linux-aarch64" CK-TEXT+
+   s" src/os/linux/layout.f" TR-KEY-FILE+
+   s" src/os/linux/elf.f" TR-KEY-FILE+
+   s" src/os/linux/sign.f" TR-KEY-FILE+ ;
+
+: TR-SNAPSHOT-MACOS-KEY ( -- )
+   s" target:macos-aarch64" CK-TEXT+
+   s" src/os/macos/layout.f" TR-KEY-FILE+
+   s" src/os/macos/macho.f" TR-KEY-FILE+
+   s" src/os/macos/sign2.f" TR-KEY-FILE+ ;
+
+: TR-SNAPSHOT-TARGET-KEY ( -- )
+   HB-TARGET-LINUX? if TR-SNAPSHOT-LINUX-KEY exit then
+   HB-TARGET-MACOS? if TR-SNAPSHOT-MACOS-KEY exit then
+   s" warm runner cache unknown target" TR-FAIL ;
+
+: TR-SNAPSHOT-BUILDER-KEY ( -- )
+   s" src/os/image-bytes.f" TR-KEY-FILE+
+   TR-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap.f" TR-KEY-FILE+ ;
+
 : TR-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-gate-runner-cache-v4" CK-TEXT+
+   s" hb-gate-runner-cache-v5" CK-TEXT+
    s" bin/hb" TR-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
-   s" src/habu/snap.f" TR-RUNNER-KEY-FILE+
+   TR-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" TR-RUNNER-KEY-FILE+
    s" tools/public-signatures.f" TR-RUNNER-KEY-FILE+
    s" lib/content-key.f" TR-RUNNER-KEY-FILE+
@@ -548,11 +628,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-AOT-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-aot-runner-cache-v1" CK-TEXT+
+   s" hb-aot-runner-cache-v2" CK-TEXT+
    s" bin/hb" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-AOT-RUNNER-KEY-FILE+
-   s" src/habu/snap.f" TR-AOT-RUNNER-KEY-FILE+
+   TR-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/public-signatures.f" TR-AOT-RUNNER-KEY-FILE+
    s" lib/content-key.f" TR-AOT-RUNNER-KEY-FILE+
@@ -561,7 +641,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-AOT-RUNNER-KEY-HEX CK-FINAL-HEX ;
 
 : TR-UNDER-SOURCE-KEY ( -- )
-   [: TR-KEY-FILE+ ;] TR-RUNNER-SUPPORT-FILES
    [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
 
 : TR-UNDER-LINUX-KEY ( -- )
@@ -589,7 +668,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-UNDER-KEY! ( -- )
    CK-RESET
-   s" hb-under-test-cache-v2" CK-TEXT+
+   s" hb-under-test-cache-v3" CK-TEXT+
    s" bin/hb" TR-KEY-FILE+
    TR-UNDER-SOURCE-KEY
    TR-UNDER-TARGET-KEY
@@ -607,11 +686,47 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-PERSIST$ MAKE-DIRS
    TR-PERSIST$ TR-UNDER-NAME$ TR-UNDER-CACHE-BUF JOIN-PATH TR-UNDER-CACHE-U !
    TR-UNDER-CACHE$ s" .tmp" TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U TR-SUFFIX!
-   TR-UNDER-CACHE$ s" .lock" TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U TR-SUFFIX! ;
+   TR-UNDER-CACHE$ s" .lock" TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U TR-SUFFIX!
+   TR-UNDER-CACHE$ s" .stamp" TR-UNDER-CACHE-STAMP-BUF TR-UNDER-CACHE-STAMP-U TR-SUFFIX!
+   TR-UNDER-CACHE-STAMP$ s" .tmp" TR-UNDER-CACHE-STAMP-TMP-BUF TR-UNDER-CACHE-STAMP-TMP-U TR-SUFFIX! ;
 
 : TR-UNDER-CACHE-KEY! ( -- )
    TR-UNDER-KEY!
    TR-UNDER-CACHE-PATHS ;
+
+: TR-UNDER-STAMP$ ( -- ptr u8 n )
+   TR-UNDER-STAMP-BUF TR-UNDER-STAMP-U ;
+
+: TR-UNDER-CACHE-SHA! ( -- )
+   TR-UNDER-CACHE$ TR-UNDER-HEX SHA256-FILE-HEX 0 <> if
+      s" failed to hash cached Habu-under-test" TR-FAIL
+   then ;
+
+: TR-UNDER-STAMP! ( -- )
+   TR-UNDER-KEY-HEX TR-UNDER-STAMP-BUF 64 BYTE-COPY
+   $09 TR-UNDER-STAMP-BUF 64 + c!
+   TR-UNDER-HEX TR-UNDER-STAMP-BUF 65 + 64 BYTE-COPY
+   $0A TR-UNDER-STAMP-BUF 129 + c! ;
+
+: TR-UNDER-CACHE-STAMP-MISSING? ( -- bool )
+   TR-UNDER-CACHE-STAMP$ FILE? 0= ;
+
+: TR-UNDER-CACHE-STAMP-OK? ( -- bool )
+   TR-UNDER-CACHE-SHA!
+   TR-UNDER-STAMP!
+   TR-UNDER-CACHE-STAMP$ TR-UNDER-STAMP-RD TR-UNDER-STAMP-U READ-ALL {: got:n :}
+   got TR-UNDER-STAMP-U <> if 0 0= 0= exit then
+   TR-UNDER-STAMP-RD TR-UNDER-STAMP-U TR-UNDER-STAMP$ STR= ;
+
+: TR-UNDER-CACHE-REMOVE ( -- )
+   TR-UNDER-CACHE-TMP$ EXISTS? if TR-UNDER-CACHE-TMP$ REMOVE-FILE then
+   TR-UNDER-CACHE-STAMP-TMP$ EXISTS? if TR-UNDER-CACHE-STAMP-TMP$ REMOVE-FILE then
+   TR-UNDER-CACHE-STAMP$ EXISTS? if TR-UNDER-CACHE-STAMP$ REMOVE-FILE then
+   TR-UNDER-CACHE$ EXISTS? if TR-UNDER-CACHE$ REMOVE-FILE then ;
+
+: TR-UNDER-CACHE-CORRUPT ( -- )
+   s" candidate-cache-corrupt" GS-EVENT
+   s" Habu-under-test cache stamp mismatch" TR-FAIL ;
 
 : TR-UNDER-CACHE-LOCK? ( -- bool )
    TR-UNDER-CACHE-LOCK$ FS-PATHZ FS-MUT-MODE-PRIVATE-DIR mkdir 0= if TR-TRUE exit then
@@ -622,9 +737,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-UNDER-CACHE-LOCK$ DIR? if TR-UNDER-CACHE-LOCK$ REMOVE-DIR then ;
 
 : TR-UNDER-CACHE-RESTORE ( -- )
+   TR-UNDER-READY @ 0 <> if exit then
    TR-PERSIST? 0= if exit then
    TR-UNDER-CACHE-KEY!
    TR-UNDER-CACHE$ EXECUTABLE? 0= if s" candidate-cache-miss" GS-EVENT exit then
+   TR-UNDER-CACHE-STAMP-MISSING? if s" candidate-cache-miss" GS-EVENT exit then
+   TR-UNDER-CACHE-STAMP-OK? 0= if TR-UNDER-CACHE-CORRUPT then
    s" candidate-cache-hit" GS-EVENT
    TR-UNDER-CACHE$ TR-UNDER$ COPY-FILE-STREAM
    TR-UNDER$ CHMOD-X
@@ -632,18 +750,33 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    -1 TR-UNDER-READY ! ;
 
 : TR-UNDER-CACHE-INSTALL-LOCKED ( -- )
-   TR-UNDER-CACHE$ EXECUTABLE? if exit then
-   TR-UNDER-CACHE-TMP$ EXISTS? if TR-UNDER-CACHE-TMP$ REMOVE-FILE then
+   TR-UNDER-CACHE$ EXECUTABLE? if
+      TR-UNDER-CACHE-STAMP-MISSING? 0= if
+         TR-UNDER-CACHE-STAMP-OK? if exit then
+         TR-UNDER-CACHE-CORRUPT
+      then
+   then
+   TR-UNDER-CACHE-REMOVE
    TR-UNDER$ TR-UNDER-CACHE-TMP$ COPY-FILE-STREAM
    TR-UNDER-CACHE-TMP$ CHMOD-X
+   TR-UNDER-SHA!
+   TR-UNDER-STAMP!
    TR-UNDER-CACHE-TMP$ TR-UNDER-CACHE$ RENAME-FILE
+   TR-UNDER-CACHE-STAMP-TMP$ TR-UNDER-STAMP$ WRITE-ALL
+   TR-UNDER-CACHE-STAMP-TMP$ TR-UNDER-CACHE-STAMP$ RENAME-FILE
    s" candidate-cache-install" GS-EVENT ;
 
 : TR-UNDER-CACHE-INSTALL ( -- )
+   TR-UNDER-ARG? if exit then
    TR-PERSIST? 0= if exit then
    TR-UNDER-CACHE-HIT @ 0 <> if exit then
    TR-UNDER-CACHE-KEY!
-   TR-UNDER-CACHE$ EXECUTABLE? if exit then
+   TR-UNDER-CACHE$ EXECUTABLE? if
+      TR-UNDER-CACHE-STAMP-MISSING? 0= if
+         TR-UNDER-CACHE-STAMP-OK? if exit then
+         TR-UNDER-CACHE-CORRUPT
+      then
+   then
    TR-UNDER-CACHE-LOCK? 0= if exit then
    [: TR-UNDER-CACHE-INSTALL-LOCKED ;] catch TR-UNDER-CACHE-RC !
    TR-UNDER-CACHE-UNLOCK
@@ -873,6 +1006,9 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-ENGINE-RUNTIME-ARGS ( -- )
    s" runtime" TR-ENGINE-SLICE-ARGS ;
 
+: TR-ENGINE-VALIDATE-ARGS ( -- )
+   s" validate" TR-ENGINE-SLICE-ARGS ;
+
 : TR-DICTIONARY-ARGS ( -- )
    TR-COMMON
    s" test/gate-dictionary.f"  >LEN PROC-ARGV+ ;
@@ -957,97 +1093,125 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" native hb-build AOT negative gate phase" TR-RUN ;
 
 : TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
-   idx IDX>N 0= if s" native stdlib tools warm image" exit then
-   idx IDX>N 1 = if s" native checker warm image gate phase" exit then
-   idx IDX>N 2 = if s" native stdlib tool-boundary slice" exit then
-   idx IDX>N 3 = if s" native stdlib check-cli slice" exit then
-   idx IDX>N 4 = if s" native stdlib tail slice" exit then
-   idx IDX>N 5 = if s" native engine repair slice" exit then
-   idx IDX>N 6 = if s" native prop/debug gate phase" exit then
-   idx IDX>N 7 = if s" native hb-build AOT positive gate phase" exit then
-   idx IDX>N 8 = if s" native hb-build AOT negative gate phase" exit then
-   idx IDX>N 9 = if s" native engine fixture slice" exit then
-   idx IDX>N 10 = if s" native checker diagnostics repair slice" exit then
-   idx IDX>N 11 = if s" native checker diagnostics undef-primary slice" exit then
-   idx IDX>N 12 = if s" native checker diagnostics all-strict slice" exit then
-   idx IDX>N 13 = if s" native checker diagnostics file-unsafe slice" exit then
-   idx IDX>N 14 = if s" native dictionary/checker gate phase" exit then
-   idx IDX>N 15 = if s" native engine build slice" exit then
-   idx IDX>N 16 = if s" native engine runtime slice" exit then
-   idx IDX>N 17 = if s" native stdlib lint tools slice" exit then
-   idx IDX>N 18 = if s" native stdlib lint manifest slice" exit then
-   idx IDX>N 19 = if s" native stdlib lint artifacts slice" exit then
-   idx IDX>N 20 = if s" native stdlib lint libs slice" exit then
-   E-TBL-BOUNDS throw ;
+   idx IDX>N case
+      0 of s" native stdlib tools warm image" endof
+      1 of s" native checker warm image gate phase" endof
+      2 of s" native stdlib trust tool slice" endof
+      3 of s" native stdlib check-cli slice" endof
+      4 of s" native stdlib tail slice" endof
+      5 of s" native engine repair slice" endof
+      6 of s" native prop/debug gate phase" endof
+      7 of s" native hb-build AOT positive gate phase" endof
+      8 of s" native hb-build AOT negative gate phase" endof
+      9 of s" native engine fixture slice" endof
+      10 of s" native checker diagnostics repair slice" endof
+      11 of s" native checker diagnostics undef-primary slice" endof
+      12 of s" native checker diagnostics all-strict slice" endof
+      13 of s" native checker diagnostics file-unsafe slice" endof
+      14 of s" native dictionary/checker gate phase" endof
+      15 of s" native engine build slice" endof
+      16 of s" native engine runtime slice" endof
+      17 of s" native stdlib lint tools slice" endof
+      18 of s" native stdlib lint manifest slice" endof
+      19 of s" native stdlib lint artifacts slice" endof
+      20 of s" native stdlib lint libs slice" endof
+      21 of s" native engine candidate validation slice" endof
+      22 of s" GROUP: stdlib/tool-repair [parallel]" endof
+      23 of s" GROUP: stdlib/tool-doc [parallel]" endof
+      24 of s" GROUP: stdlib/tool-lints [parallel]" endof
+      25 of s" GROUP: stdlib/tool-typed-local [parallel]" endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 : TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx:idx :}
-   idx IDX>N 0= if s" gate-stdlib-warm" exit then
-   idx IDX>N 1 = if s" gate-check-warm" exit then
-   idx IDX>N 2 = if s" gate-stdlib-tool" exit then
-   idx IDX>N 3 = if s" gate-stdlib-check-cli" exit then
-   idx IDX>N 4 = if s" gate-stdlib-tail" exit then
-   idx IDX>N 5 = if s" gate-engine-repair" exit then
-   idx IDX>N 6 = if s" gate-debug" exit then
-   idx IDX>N 7 = if s" gate-aot-pos" exit then
-   idx IDX>N 8 = if s" gate-aot-neg" exit then
-   idx IDX>N 9 = if s" gate-engine-fixtures" exit then
-   idx IDX>N 10 = if s" gate-diag-repair" exit then
-   idx IDX>N 11 = if s" gate-diag-undef-primary" exit then
-   idx IDX>N 12 = if s" gate-diag-all-strict" exit then
-   idx IDX>N 13 = if s" gate-diag-file-unsafe" exit then
-   idx IDX>N 14 = if s" gate-dict" exit then
-   idx IDX>N 15 = if s" gate-engine-build" exit then
-   idx IDX>N 16 = if s" gate-engine-runtime" exit then
-   idx IDX>N 17 = if s" gate-stdlib-lint-tools" exit then
-   idx IDX>N 18 = if s" gate-stdlib-lint-manifest" exit then
-   idx IDX>N 19 = if s" gate-stdlib-lint-artifacts" exit then
-   idx IDX>N 20 = if s" gate-stdlib-lint-libs" exit then
-   E-TBL-BOUNDS throw ;
+   idx IDX>N case
+      0 of s" gate-stdlib-warm" endof
+      1 of s" gate-check-warm" endof
+      2 of s" gate-stdlib-tool-trust" endof
+      3 of s" gate-stdlib-check-cli" endof
+      4 of s" gate-stdlib-tail" endof
+      5 of s" gate-engine-repair" endof
+      6 of s" gate-debug" endof
+      7 of s" gate-aot-pos" endof
+      8 of s" gate-aot-neg" endof
+      9 of s" gate-engine-fixtures" endof
+      10 of s" gate-diag-repair" endof
+      11 of s" gate-diag-undef-primary" endof
+      12 of s" gate-diag-all-strict" endof
+      13 of s" gate-diag-file-unsafe" endof
+      14 of s" gate-dict" endof
+      15 of s" gate-engine-build" endof
+      16 of s" gate-engine-runtime" endof
+      17 of s" gate-stdlib-lint-tools" endof
+      18 of s" gate-stdlib-lint-manifest" endof
+      19 of s" gate-stdlib-lint-artifacts" endof
+      20 of s" gate-stdlib-lint-libs" endof
+      21 of s" gate-engine-validate" endof
+      22 of s" gate-stdlib-tool-repair" endof
+      23 of s" gate-stdlib-tool-doc" endof
+      24 of s" gate-stdlib-tool-lints" endof
+      25 of s" gate-stdlib-tool-typed" endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 : TR-PHASE-ARGS ( idx -- ) {: idx:idx :}
-   idx IDX>N 0= if TR-STDLIB-WARM-ARGS exit then
-   idx IDX>N 1 = if TR-DIAG-WARM-ARGS exit then
-   idx IDX>N 2 = if TR-STDLIB-TOOL-ARGS exit then
-   idx IDX>N 3 = if TR-STDLIB-CHECK-CLI-ARGS exit then
-   idx IDX>N 4 = if TR-STDLIB-TAIL-ARGS exit then
-   idx IDX>N 5 = if TR-ENGINE-REPAIR-ARGS exit then
-   idx IDX>N 6 = if TR-DEBUG-ARGS exit then
-   idx IDX>N 7 = if TR-AOT-POSITIVE-ARGS exit then
-   idx IDX>N 8 = if TR-AOT-NEGATIVE-ARGS exit then
-   idx IDX>N 9 = if TR-ENGINE-FIXTURES-ARGS exit then
-   idx IDX>N 10 = if TR-DIAG-REPAIR-ARGS exit then
-   idx IDX>N 11 = if TR-DIAG-UNDEF-PRIMARY-ARGS exit then
-   idx IDX>N 12 = if TR-DIAG-ALL-STRICT-ARGS exit then
-   idx IDX>N 13 = if TR-DIAG-FILE-UNSAFE-ARGS exit then
-   idx IDX>N 14 = if TR-DICTIONARY-ARGS exit then
-   idx IDX>N 15 = if TR-ENGINE-BUILD-ARGS exit then
-   idx IDX>N 16 = if TR-ENGINE-RUNTIME-ARGS exit then
-   idx IDX>N 17 = if TR-STDLIB-LINT-TOOLS-ARGS exit then
-   idx IDX>N 18 = if TR-STDLIB-LINT-MANIFEST-ARGS exit then
-   idx IDX>N 19 = if TR-STDLIB-LINT-ARTIFACTS-ARGS exit then
-   idx IDX>N 20 = if TR-STDLIB-LINT-LIBS-ARGS exit then
-   E-TBL-BOUNDS throw ;
+   idx IDX>N case
+      0 of TR-STDLIB-WARM-ARGS endof
+      1 of TR-DIAG-WARM-ARGS endof
+      2 of TR-STDLIB-TOOL-ARGS endof
+      3 of TR-STDLIB-CHECK-CLI-ARGS endof
+      4 of TR-STDLIB-TAIL-ARGS endof
+      5 of TR-ENGINE-REPAIR-ARGS endof
+      6 of TR-DEBUG-ARGS endof
+      7 of TR-AOT-POSITIVE-ARGS endof
+      8 of TR-AOT-NEGATIVE-ARGS endof
+      9 of TR-ENGINE-FIXTURES-ARGS endof
+      10 of TR-DIAG-REPAIR-ARGS endof
+      11 of TR-DIAG-UNDEF-PRIMARY-ARGS endof
+      12 of TR-DIAG-ALL-STRICT-ARGS endof
+      13 of TR-DIAG-FILE-UNSAFE-ARGS endof
+      14 of TR-DICTIONARY-ARGS endof
+      15 of TR-ENGINE-BUILD-ARGS endof
+      16 of TR-ENGINE-RUNTIME-ARGS endof
+      17 of TR-STDLIB-LINT-TOOLS-ARGS endof
+      18 of TR-STDLIB-LINT-MANIFEST-ARGS endof
+      19 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
+      20 of TR-STDLIB-LINT-LIBS-ARGS endof
+      21 of TR-ENGINE-VALIDATE-ARGS endof
+      22 of TR-STDLIB-TOOL-ARGS endof
+      23 of TR-STDLIB-TOOL-ARGS endof
+      24 of TR-STDLIB-TOOL-ARGS endof
+      25 of TR-STDLIB-TOOL-ARGS endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 : TR-PHASE-RUNNER-TOKEN ( idx -- ptr u8 n ) {: idx:idx :}
-   idx IDX>N 2 = if s" tool" exit then
-   idx IDX>N 3 = if s" check-cli" exit then
-   idx IDX>N 4 = if s" tail" exit then
-   idx IDX>N 5 = if s" repair" exit then
-   idx IDX>N 6 = if s" debug" exit then
-   idx IDX>N 7 = if s" aot-pos" exit then
-   idx IDX>N 8 = if s" aot-neg" exit then
-   idx IDX>N 9 = if s" fixtures" exit then
-   idx IDX>N 10 = if s" diag-repair" exit then
-   idx IDX>N 11 = if s" diag-undef-primary" exit then
-   idx IDX>N 12 = if s" diag-all-strict" exit then
-   idx IDX>N 13 = if s" diag-file-unsafe" exit then
-   idx IDX>N 14 = if s" dictionary" exit then
-   idx IDX>N 16 = if s" runtime" exit then
-   idx IDX>N 17 = if s" lint-tools" exit then
-   idx IDX>N 18 = if s" lint-manifest" exit then
-   idx IDX>N 19 = if s" lint-artifacts" exit then
-   idx IDX>N 20 = if s" lint-libs" exit then
-   E-TBL-BOUNDS throw ;
+   idx IDX>N case
+      2 of s" tool" endof
+      3 of s" check-cli" endof
+      4 of s" tail" endof
+      5 of s" repair" endof
+      6 of s" debug" endof
+      7 of s" aot-pos" endof
+      8 of s" aot-neg" endof
+      9 of s" fixtures" endof
+      10 of s" diag-repair" endof
+      11 of s" diag-undef-primary" endof
+      12 of s" diag-all-strict" endof
+      13 of s" diag-file-unsafe" endof
+      14 of s" dictionary" endof
+      16 of s" runtime" endof
+      17 of s" lint-tools" endof
+      18 of s" lint-manifest" endof
+      19 of s" lint-artifacts" endof
+      20 of s" lint-libs" endof
+      21 of s" validate" endof
+      22 of s" tool-repair" endof
+      23 of s" tool-doc" endof
+      24 of s" tool-lints" endof
+      25 of s" tool-typed" endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 : TR-PHASE-TMP! ( idx -- ) {: idx:idx :}
    GT-ROOT idx TR-PHASE-DIR TR-PATH-BUF JOIN-PATH TR-PATH-U !
@@ -1058,7 +1222,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx IDX>N 17 = or
    idx IDX>N 18 = or
    idx IDX>N 19 = or
-   idx IDX>N 20 = or ;
+   idx IDX>N 20 = or
+   idx IDX>N 22 = or
+   idx IDX>N 23 = or
+   idx IDX>N 24 = or
+   idx IDX>N 25 = or ;
 
 : TR-TOOLS-PHASE? ( idx -- bool ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if 0 0= exit then
@@ -1091,6 +1259,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx IDX>N 1 = if 0 0= 0= exit then
    idx IDX>N 7 = if 0 0= 0= exit then
    idx IDX>N 8 = if 0 0= 0= exit then
+   idx IDX>N 14 = if 0 0= 0= exit then
    idx IDX>N 15 = if 0 0= 0= exit then
    0 0= ;
 
@@ -1102,6 +1271,48 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-PHASE-WARM-RUNNER? ( idx -- bool ) {: idx:idx :}
    idx TR-PHASE-AOT-RUNNER? if 0 0= exit then
    idx TR-PHASE-RUNNER? ;
+
+: TR-PHASE-SUBJECT ( idx -- ptr u8 n ) {: idx:idx :}
+   idx IDX>N 0= if s" artifact" exit then
+   idx IDX>N 1 = if s" artifact" exit then
+   idx IDX>N 7 = if s" artifact" exit then
+   idx IDX>N 8 = if s" artifact" exit then
+   idx IDX>N 15 = if s" artifact" exit then
+   idx IDX>N 3 = if s" candidate-cli" exit then
+   idx IDX>N 16 = if s" candidate-cli" exit then
+   idx IDX>N 14 = if s" candidate-source" exit then
+   idx IDX>N 21 = if s" candidate-source" exit then
+   s" host-source" ;
+
+: TR-PHASE-RUNNER-KIND ( idx -- ptr u8 n ) {: idx:idx :}
+   idx TR-PHASE-AOT-RUNNER? if s" aot-runner" exit then
+   idx TR-PHASE-RUNNER? if s" gate-runner" exit then
+   idx TR-PHASE-UNDER-EXE? if s" under" exit then
+   s" bin" ;
+
+: TR-PHASE-BOUNDARY ( idx -- ptr u8 n )
+   drop s" process" ;
+
+: TR-PHASE-SHA ( idx -- ptr u8 n )
+   drop
+   TR-UNDER-READY @ 0= if s" -" exit then
+   TR-UNDER-HEX 64 ;
+
+: TR-TIMINGS-ARG+ ( -- )
+   s" --timings" TR-ARG+ ;
+
+: TR-PHASE-TIMINGS-ARGS ( idx -- ) {: idx:idx :}
+   TR-TIMINGS @ 0= if exit then
+   idx TR-PHASE-RUNNER? if TR-TIMINGS-ARG+ exit then
+   idx TR-STDLIB-SLICE? if TR-TIMINGS-ARG+ exit then ;
+
+: TR-PHASE-TEST ( idx -- ) {: idx:idx :}
+   idx TR-PHASE-LABEL
+   idx TR-PHASE-SUBJECT
+   idx TR-PHASE-RUNNER-KIND
+   idx TR-PHASE-BOUNDARY
+   idx TR-PHASE-SHA
+   GS-TEST ;
 
 : TR-PHASE-UNDER-ENV ( idx -- ) {: idx:idx :}
    idx TR-PHASE-UNDER-ENV? if
@@ -1162,11 +1373,28 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    idx TR-PHASE-BASE
    idx TR-PHASE-WARM-RUNNER? 0= if idx TR-PHASE-ARGS then
    idx TR-PHASE-POOL-ARGS
+   idx TR-PHASE-TIMINGS-ARGS
    s" top-phase-spawn" GS-EVENT
    idx TR-PHASE-AOT-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
+   idx TR-PHASE-TEST
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+
+: TR-GROUP-MODE ( idx -- n )
+   drop TR-GROUP-PAR ;
+
+: TR-GROUP-SEQ? ( idx -- bool )
+   TR-GROUP-MODE TR-GROUP-SEQ = ;
+
+: TR-GROUP-START ( idx -- ) {: idx:idx :}
+   idx TR-GROUP-SEQ? if
+      GT-POOL-DRAIN
+      idx TR-PHASE-START
+      GT-POOL-DRAIN
+      exit
+   then
+   idx TR-PHASE-START ;
 
 : TR-WARM-READY-RESET ( -- )
    0 TR-TOOLS-WARM-READY !
@@ -1245,7 +1473,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    1 >IDX TR-PHASE-START
    TR-RUNNER-START
    TR-AOT-RUNNER-START
-   TR-UNDER-READY @ 0= if 15 >IDX TR-PHASE-START then
+   TR-UNDER-READY @ 0= if
+      15 >IDX TR-PHASE-START
+   else
+      s" candidate-build-skip" GS-EVENT
+   then
    TR-DRAIN-UNTIL-RUNNER
    6 >IDX TR-PHASE-START
    TR-TRY-EARLY-LINTS ;
@@ -1253,7 +1485,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-LATE-START ( -- )
    0 begin dup TR-LATE-PHASES < while
       dup >IDX TR-LATE-ORDER@
-      dup TR-LATE-SKIP? if drop else TR-PHASE-START then
+      dup TR-LATE-SKIP? if drop else TR-GROUP-START then
       1+
    repeat drop ;
 
@@ -1282,6 +1514,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-START
    TR-CLEAN-WARM
    TR-EXPECT-HB
+   TR-UNDER-IMPORT
    TR-UNDER-CACHE-RESTORE
    TR-DAG-RUN
    GS-SUMMARY

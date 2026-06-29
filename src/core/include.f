@@ -21,6 +21,9 @@ variable INCLUDE-DEPTH
 variable INCLUDE-FD
 variable INCLUDE-U
 variable INCLUDE-RD
+variable INCLUDE-PATH-A
+variable INCLUDE-PATH-U
+variable INCLUDE-PATH-I
 
 -1 INCLUDE-FD !
 
@@ -50,18 +53,30 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    INCLUDE-CLOSE
    INCLUDE-DIE ;
 
-: INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
-   u 0 <= if s" include: missing path" INCLUDE-DIE then
-   u INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then
-   a u ;
+: INCLUDE-PATH-A-FIELD ( -- ptr ptr u8 )
+   INCLUDE-PATH-A 0 ptr-field ;
 
-: INCLUDE-PATH0 ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
-   a u INCLUDE-CHECK-PATH 2drop
-   0 begin dup u < while
-      dup a + c@ over INCLUDE-PATH + c!
-      1+
-   repeat drop
-   0 INCLUDE-PATH u + c!
+: INCLUDE-PATH-A@ ( -- ptr u8 )
+   INCLUDE-PATH-A-FIELD @ ;
+
+: INCLUDE-PATH-A! ( ptr u8 -- )
+   INCLUDE-PATH-A-FIELD ! ;
+
+: INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
+   dup 0 <= if s" include: missing path" INCLUDE-DIE then
+   dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
+
+: INCLUDE-PATH-COPY ( -- )
+   0 INCLUDE-PATH-I !
+   begin INCLUDE-PATH-I @ INCLUDE-PATH-U @ < while
+      INCLUDE-PATH-A@ INCLUDE-PATH-I @ ZBYTE@ INCLUDE-PATH INCLUDE-PATH-I @ ZBYTE!
+      INCLUDE-PATH-I @ 1 + INCLUDE-PATH-I !
+   repeat ;
+
+: INCLUDE-PATH0 ( ptr u8 n -- ptr u8 )
+   INCLUDE-CHECK-PATH INCLUDE-PATH-U ! INCLUDE-PATH-A!
+   INCLUDE-PATH-COPY
+   0 INCLUDE-PATH INCLUDE-PATH-U @ ZBYTE!
    INCLUDE-PATH ;
 
 : INCLUDE-CHECK-DEPTH ( n -- )

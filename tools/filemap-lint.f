@@ -173,6 +173,7 @@ variable FM-NUM-L
    s" tools/stdlib-manifest-test.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED-TOOLS ( -- )
+   s" tools/aot-call-report-lib.f" FM-REQ
    s" tools/aot-call-report.f" FM-REQ
    s" tools/aot-call-report-test.f" FM-REQ
    s" tools/bundle-lib-core.f" FM-REQ

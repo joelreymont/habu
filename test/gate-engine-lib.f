@@ -9,6 +9,8 @@
 2 constant GENG-FIXTURES-ID
 3 constant GENG-REPAIR-ID
 4 constant GENG-RUNTIME-ID
+5 constant GENG-VALIDATE-ID
+$40000 constant GE-MAX-CANDIDATE-BYTES
 
 create GE-SCRIPT-PATH FS-PATH-CAP allot
 create GE-CAND-PATH FS-PATH-CAP allot
@@ -32,7 +34,7 @@ create GE-CHECK-OFF-LINE
 99 c, 104 c, 101 c, 99 c, 107 c, 10 c,
 
 : GENG-USAGE ( -- )
-   s" usage: test/gate-engine.f [build|fixtures|repair|runtime] [--pool-slots N]" GENG-USAGE-RC die ;
+   s" usage: test/gate-engine.f [build|fixtures|repair|runtime|validate] [--pool-slots N]" GENG-USAGE-RC die ;
 
 : GENG-ARG$ ( -- ptr u8 n )
    GENG-ARG-I @ SCRIPT-ARGV$ ;
@@ -60,6 +62,7 @@ create GE-CHECK-OFF-LINE
    GENG-ARG$ s" fixtures" STR= if GENG-FIXTURES-ID GENG-SLICE! 0 0= exit then
    GENG-ARG$ s" repair" STR= if GENG-REPAIR-ID GENG-SLICE! 0 0= exit then
    GENG-ARG$ s" runtime" STR= if GENG-RUNTIME-ID GENG-SLICE! 0 0= exit then
+   GENG-ARG$ s" validate" STR= if GENG-VALIDATE-ID GENG-SLICE! 0 0= exit then
    0 0= 0= ;
 
 : GENG-SLICE-OPT ( -- )
@@ -211,7 +214,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    u GE-SRC-CAND-U ! ;
 
 : GE-DEFAULT-CANDIDATE! ( -- )
-   GT-ROOT s" hb-new" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
+   GT-ROOT s" hb-stdin" GE-CAND-PATH JOIN-PATH GE-CAND-U ! ;
 
 : GE-ENV-CANDIDATE? ( -- bool )
    s" HABU_UNDER_TEST" GETENV dup 0= if
@@ -236,7 +239,12 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    then ;
 
 : GE-SRC-CANDIDATE! ( -- )
-   s" hb-new" BF-A$ GE-SRC-CANDIDATE-PATH! ;
+   s" hb-stdin" BF-A$ GE-SRC-CANDIDATE-PATH! ;
+
+: GE-CANDIDATE-SIZE-CHECK ( -- )
+   GE-CANDIDATE$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
+      s" Habu-under-test candidate too large" GE-FAIL
+   then ;
 
 : GE-REMOVE-CANDIDATE ( -- )
    GE-CANDIDATE$ EXISTS? if GE-CANDIDATE$ REMOVE-FILE then ;
@@ -321,15 +329,10 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-IMG-I @ GE-IMG-BUILD-I @ >= if s" build stage2 image order" GE-FAIL then
    GE-IMG-BUILD-I @ GE-HABU1-I @ >= if s" build stage2 habu1 order" GE-FAIL then ;
 
-: GE-SNAP-SOURCE-SHAPE ( -- )
-   s" hb-snap-src" GE-READ-BUILD-TMP {: a:ptr u:n :}
-   a u s" SNAP-MAGIC" s" build snapshot source magic" GE-SHAPE-HAS ;
-
 : GE-BUILD-SOURCE-SHAPE ( -- )
    GE-STAGE2-SOURCE-SHAPE
    GE-STAGE2-ORDER-SHAPE
-   GE-STAGE2-IMAGE-SHAPE
-   GE-SNAP-SOURCE-SHAPE ;
+   GE-STAGE2-IMAGE-SHAPE ;
 
 : GE-BUILD-FIXPOINT ( -- )
    s" candidate-build" GS-EVENT
@@ -340,11 +343,11 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-STAGE2-SCRATCH-SHAPE
    BF-STAGE-FIXPOINT-FROM-SOURCE
    BF-BUILD-STDIN-FROM-STAGE
-   BF-BUILD-SNAP-FROM-STDIN
    GE-BUILD-SOURCE-SHAPE
    GE-PROMOTE-CANDIDATE
    BF-TMP-RESET
    GE-EXPECT-CANDIDATE
+   GE-CANDIDATE-SIZE-CHECK
    s" PASS: self-rebuild fixpoint" type cr ;
 
 : GE-RUN-STD-FIXTURES ( -- )
@@ -375,41 +378,41 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
 
-: GE-SNAPSHOT-HOOK-SOURCE ( -- )
+: GE-CAND-HOOK-SOURCE ( -- )
    GE-SRC-RESET
    s" data-base $1B0 + @ 0= ." GE-SRC-LINE
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" 7 SQOK ." GE-SRC-LINE ;
 
-: GE-SNAPSHOT-STDIN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+: GE-CAND-STDIN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK ;
 
-: GE-SNAPSHOT-HOOK-CHECK ( ptr u8 n -- ) {: exe:ptr exeu:n :}
+: GE-CAND-HOOK-CHECK ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    GE-HB-RESET
-   GE-SNAPSHOT-HOOK-SOURCE
-   exe exeu s" Habu-under-test refresh/check hook" GE-SNAPSHOT-STDIN
+   GE-CAND-HOOK-SOURCE
+   exe exeu s" Habu-under-test refresh/check hook" GE-CAND-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE
    s" 49" GE-OUT-LINE
    SB$ s" Habu-under-test refresh/check hook output" GE-EXPECT-OUT ;
 
-: GE-SNAPSHOT-LONG-SOURCE ( -- )
+: GE-CAND-LONG-SOURCE ( -- )
    GE-SRC-RESET
    s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
 
-: GE-SNAPSHOT-LONG-LOOKUP ( ptr u8 n -- ) {: exe:ptr exeu:n :}
+: GE-CAND-LONG-LOOKUP ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    GE-HB-RESET
-   GE-SNAPSHOT-LONG-SOURCE
-   exe exeu s" Habu-under-test long-name snapshot dictionary lookup" GE-SNAPSHOT-STDIN
+   GE-CAND-LONG-SOURCE
+   exe exeu s" Habu-under-test long-name dictionary lookup" GE-CAND-STDIN
    SB-RESET
    s" 42" GE-OUT-LINE
-   SB$ s" Habu-under-test long-name snapshot dictionary lookup output" GE-EXPECT-OUT ;
+   SB$ s" Habu-under-test long-name dictionary lookup output" GE-EXPECT-OUT ;
 
-: GE-SNAPSHOT-CANDIDATE-CHECKS ( -- )
-   GE-CANDIDATE$ GE-SNAPSHOT-HOOK-CHECK
-   GE-CANDIDATE$ GE-SNAPSHOT-LONG-LOOKUP
-   s" PASS: Habu-under-test snapshot hook/dictionary coverage" type cr ;
+: GE-CANDIDATE-HOOK-CHECKS ( -- )
+   GE-CANDIDATE$ GE-CAND-HOOK-CHECK
+   GE-CANDIDATE$ GE-CAND-LONG-LOOKUP
+   s" PASS: Habu-under-test hook/dictionary coverage" type cr ;
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
@@ -601,10 +604,22 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 
 : GENG-BUILD-SLICE ( -- )
    GE-BUILD-FIXPOINT
-   GE-ENGINE-SUITE
-   GE-SNAPSHOT-CANDIDATE-CHECKS
    GT-CLEANUP
    s" PASS: native engine build gate slice" type cr ;
+
+: GE-CANDIDATE-VALIDATE ( -- )
+   s" candidate-validate" GS-EVENT
+   GE-CANDIDATE!
+   GE-EXPECT-CANDIDATE
+   GE-CANDIDATE-SIZE-CHECK
+   GE-ENGINE-SUITE
+   GE-CANDIDATE-HOOK-CHECKS ;
+
+: GENG-VALIDATE-SLICE ( -- )
+   s" hb-gate-engine-validate" GT-START
+   GE-CANDIDATE-VALIDATE
+   GT-CLEANUP
+   s" PASS: native engine candidate validation slice" type cr ;
 
 : GENG-FIXTURES-SLICE ( -- )
    s" hb-gate-engine-fixtures" GT-START
@@ -630,10 +645,10 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GENG-SLICE @ GENG-FIXTURES-ID = if GENG-FIXTURES-SLICE exit then
    GENG-SLICE @ GENG-REPAIR-ID = if GENG-REPAIR-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-ID = if GENG-RUNTIME-SLICE exit then
+   GENG-SLICE @ GENG-VALIDATE-ID = if GENG-VALIDATE-SLICE exit then
    GE-BUILD-FIXPOINT
    GE-RUN-EXTRA-FIXTURES
-   GE-ENGINE-SUITE
-   GE-SNAPSHOT-CANDIDATE-CHECKS
+   GE-CANDIDATE-VALIDATE
    GE-RUNTIME-CHECKS
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;

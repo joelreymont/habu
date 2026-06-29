@@ -1,5 +1,5 @@
 \ aot-call-report-test.f - focused checked tests for tools/aot-call-report.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f tools/aot-call-report.f tools/aot-call-report-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f tools/aot-call-report-lib.f tools/aot-call-report-test.f
 
 $D503201F constant ACRT-NOP-INSTR
 12 constant ACRT-STENCIL-PADDING-BYTES

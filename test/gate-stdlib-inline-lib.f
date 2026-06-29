@@ -2,8 +2,84 @@
 \
 \ Load after test/gate-stdlib-lib.f in the warm gate runner.
 
-: GSI-INCLUDE ( ptr u8 n -- )
-   included ;
+variable GSI-TIMINGS
+variable GSI-PATH-A
+variable GSI-PATH-U
+variable GSI-START-NS
+variable GSI-RC
+variable GSI-SETUP
+
+0 constant GSI-GROUP-SEQ
+1 constant GSI-GROUP-PAR
+
+: GSI-PATH-A-FIELD ( -- ptr ptr u8 )
+   GSI-PATH-A 0 ptr-field ;
+
+: GSI-PATH-A@ ( -- ptr u8 )
+   GSI-PATH-A-FIELD @ ;
+
+: GSI-PATH-A! ( ptr u8 -- )
+   GSI-PATH-A-FIELD ! ;
+
+: GSI-PATH$ ( -- ptr u8 n )
+   GSI-PATH-A@ GSI-PATH-U @ ;
+
+: GSI-TIMINGS! ( -- )
+   -1 GSI-TIMINGS ! ;
+
+: GSI-TIMINGS? ( -- bool )
+   GSI-TIMINGS @ 0 <> ;
+
+: GSI-SETUP! ( -- )
+   -1 GSI-SETUP ! ;
+
+: GSI-TEST! ( -- )
+   0 GSI-SETUP ! ;
+
+: GSI-SETUP? ( -- bool )
+   GSI-SETUP @ 0 <> ;
+
+: GSI-GROUP-MODE. ( n -- ) {: mode:n :}
+   mode GSI-GROUP-SEQ = if s" sequential" type exit then
+   mode GSI-GROUP-PAR = if s" parallel" type exit then
+   E-TBL-FIELD throw ;
+
+: GSI-GROUP-HEADER ( ptr u8 n n -- ) {: name:ptr nameu:n mode:n :}
+   s" GROUP: " type name nameu type
+   s"  [" type mode GSI-GROUP-MODE. s" ]" type cr ;
+
+: GSI-PASS ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
+   GSI-SETUP? if exit then
+   GSI-TIMINGS? 0= if exit then
+   s" PASS: " type path pathu type
+   s"  (" type ms GT-U-TYPE s" ms)" type cr ;
+
+: GSI-FAIL ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
+   s" FAIL: " type
+   GSI-SETUP? if s" setup " type then
+   path pathu type
+   s"  (" type ms GT-U-TYPE s" ms)" type cr ;
+
+: GSI-SPAN ( ptr u8 n n -- ) {: path:ptr pathu:n ms:n :}
+   GSI-SETUP? if exit then
+   path pathu ms GS-SPAN ;
+
+: GSI-INCLUDE-ACT ( -- )
+   GSI-PATH$ included ;
+
+: GSI-INCLUDE-MS ( -- n )
+   mono-ns GSI-START-NS @ - PROC-NS-PER-MS / ;
+
+: GSI-INCLUDE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path GSI-PATH-A!
+   pathu GSI-PATH-U !
+   mono-ns GSI-START-NS !
+   [: GSI-INCLUDE-ACT ;] catch GSI-RC !
+   GSI-INCLUDE-MS {: ms:n :}
+   GSI-PATH$ ms GSI-SPAN
+   GSI-RC @ 0= if GSI-PATH$ ms GSI-PASS exit then
+   GSI-PATH$ ms GSI-FAIL
+   GSI-RC @ throw ;
 
 : GSI-TOOL-BASE ( -- )
    s" tools/date.f" GSI-INCLUDE
@@ -25,11 +101,99 @@
    s" tools/duplicate-definition-lint-core.f" GSI-INCLUDE
    s" tools/bundle-lib-core.f" GSI-INCLUDE ;
 
-: GSI-TOOL-LINTS ( -- )
+: GSI-TOOL-SETUP ( -- )
+   GSI-SETUP!
    GSI-TOOL-BASE
-   s" tools/repl-lint-core.f" GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-TOOL-SETUP-FILE ( ptr u8 n -- )
+   GSI-SETUP!
+   GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-TOOL-REPAIR-CHECK ( -- )
+   s" stdlib/tool-repair/check-all-errors" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/check-all-errors-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-REPAIR-PACKET ( -- )
+   s" stdlib/tool-repair/repair-packet" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/repair-packet-core.f" GSI-TOOL-SETUP-FILE
+   s" tools/repair-packet-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-DOC-PUBLIC ( -- )
+   s" stdlib/tool-doc/public-signatures" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
+   s" tools/public-signatures-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-DOC-STATUS ( -- )
+   s" stdlib/tool-doc/stale-status" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE
+   s" tools/stale-status-lint-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-DOC-SCHEMA ( -- )
+   s" stdlib/tool-doc/schema-examples" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/repair-schema-doc-test.f" GSI-INCLUDE
+   s" tools/examples-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-REPL ( -- )
    s" tools/repl-lint-test.f" GSI-INCLUDE
-   s" tools/diag-origin-test.f" GSI-INCLUDE
+   s" tools/diag-origin-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-AOT ( -- )
+   s" stdlib/tool-lints/aot-signature" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/aot-lint-test.f" GSI-INCLUDE
+   s" tools/signature-lint-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-NAMES ( -- )
+   s" stdlib/tool-lints/names" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/checked-boundary-lint-test.f" GSI-INCLUDE
+   s" tools/reserved-name-lint-test.f" GSI-INCLUDE
+   s" tools/duplicate-definition-lint-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-BUNDLE ( -- )
+   s" stdlib/tool-lints/bundle-json" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/bundle-lib-test.f" GSI-INCLUDE
+   s" tools/json-only-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-REPL-PHASE ( -- )
+   s" stdlib/tool-lints/repl" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/repl-lint-core.f" GSI-TOOL-SETUP-FILE
+   GSI-TOOL-LINT-REPL ;
+
+: GSI-TOOL-REPAIR-SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/repair-packet-core.f" GSI-TOOL-SETUP-FILE ;
+
+: GSI-TOOL-REPAIR-BODY ( -- )
+   s" tools/check-all-errors-test.f" GSI-INCLUDE
+   s" tools/repair-packet-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-DOC-SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/public-signatures-core.f" GSI-TOOL-SETUP-FILE
+   s" tools/stale-status-lint-core.f" GSI-TOOL-SETUP-FILE ;
+
+: GSI-TOOL-DOC-BODY ( -- )
+   s" tools/public-signatures-test.f" GSI-INCLUDE
+   s" tools/stale-status-lint-test.f" GSI-INCLUDE
+   s" tools/repair-schema-doc-test.f" GSI-INCLUDE
+   s" tools/examples-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-LINT-SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/repl-lint-core.f" GSI-TOOL-SETUP-FILE ;
+
+: GSI-TOOL-LINT-BODY ( -- )
+   GSI-TOOL-LINT-REPL
    s" tools/aot-lint-test.f" GSI-INCLUDE
    s" tools/signature-lint-test.f" GSI-INCLUDE
    s" tools/checked-boundary-lint-test.f" GSI-INCLUDE
@@ -38,8 +202,44 @@
    s" tools/bundle-lib-test.f" GSI-INCLUDE
    s" tools/json-only-test.f" GSI-INCLUDE ;
 
-undefine SUITE-INLINE-WORK
+: GSI-TOOL-TYPED-SETUP ( -- )
+   GSI-TOOL-SETUP
+   s" tools/typed-local-diff-lint-core.f" GSI-TOOL-SETUP-FILE ;
 
-: SUITE-INLINE-WORK ( -- )
-   SUITE-SKIP-TOOL-LINTS @ 0= if exit then
-   GSI-TOOL-LINTS ;
+: GSI-TOOL-TYPED-BODY ( -- )
+   s" tools/typed-local-diff-lint-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-REPAIR ( -- )
+   s" stdlib/tool-repair" GSI-GROUP-PAR GSI-GROUP-HEADER
+   GSI-TOOL-REPAIR-SETUP
+   GSI-TOOL-REPAIR-BODY ;
+
+: GSI-TOOL-DOC ( -- )
+   s" stdlib/tool-doc" GSI-GROUP-PAR GSI-GROUP-HEADER
+   GSI-TOOL-DOC-SETUP
+   GSI-TOOL-DOC-BODY ;
+
+: GSI-TOOL-LINT-PHASE ( -- )
+   s" stdlib/tool-lints" GSI-GROUP-PAR GSI-GROUP-HEADER
+   GSI-TOOL-LINT-SETUP
+   GSI-TOOL-LINT-BODY ;
+
+: GSI-TOOL-TYPED ( -- )
+   s" stdlib/tool-typed-local" GSI-GROUP-PAR GSI-GROUP-HEADER
+   GSI-TOOL-TYPED-SETUP
+   GSI-TOOL-TYPED-BODY ;
+
+: GSI-TOOL-SEMANTICS ( -- )
+   s" stdlib/tool-semantics" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" stdlib/tool-repair" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-REPAIR-SETUP
+   GSI-TOOL-REPAIR-BODY
+   s" stdlib/tool-doc" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-DOC-SETUP
+   GSI-TOOL-DOC-BODY
+   s" stdlib/tool-lints" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-LINT-SETUP
+   GSI-TOOL-LINT-BODY
+   s" stdlib/tool-typed-local" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-TYPED-SETUP
+   GSI-TOOL-TYPED-BODY ;

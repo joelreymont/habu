@@ -21,8 +21,20 @@ TRUSTED: ENVP-BASE ( -- ptr ptr u8 )
 : ENVP ( n -- ptr u8 )
    ENVP-BASE swap ptr-field @ ;
 
-: ZLEN ( ptr u8 -- n ) {: z:ptr :}
-   0 begin z over + c@ 0= 0= while 1 + repeat ;
+: ZBYTE@ ( ptr u8 n -- u8 )
+   + c@ ;
+s" ZBYTE@" s" ptr u8 n -- u8" TRUST
+
+: ZBYTE! ( u8 ptr u8 n -- )
+   + c! ;
+s" ZBYTE!" s" u8 ptr u8 n --" TRUST
+
+: ZPTR+ ( ptr u8 n -- ptr u8 )
+   + ;
+s" ZPTR+" s" ptr u8 n -- ptr u8" TRUST
+
+: ZLEN ( ptr u8 -- n )
+   0 begin 2dup ZBYTE@ 0= 0= while 1 + repeat swap drop ;
 s" ZLEN" s" ptr u8 -- n" TRUST
 
 : ARGV$ ( i -- a u )
@@ -33,42 +45,94 @@ s" ARGV$" s" n -- ptr u8 n" TRUST
    0 0= 0= ;
 s" ENV-FALSE" s" -- bool" TRUST
 
-: ENV=? ( ptr u8 ptr u8 n -- bool ) {: z:ptr a:ptr u :}
-   u 0 ?do z i + c@ a i + c@ = 0= if unloop 0 0= 0= exit then loop
-   z u + c@ 61 = ;
+variable ENV-Z
+variable ENV-A
+variable ENV-U
+
+: ENV-Z-FIELD ( -- ptr ptr u8 )
+   ENV-Z 0 ptr-field ;
+
+: ENV-A-FIELD ( -- ptr ptr u8 )
+   ENV-A 0 ptr-field ;
+
+: ENV-Z@ ( -- ptr u8 )
+   ENV-Z-FIELD @ ;
+
+: ENV-A@ ( -- ptr u8 )
+   ENV-A-FIELD @ ;
+
+: ENV-Z! ( ptr u8 -- )
+   ENV-Z-FIELD ! ;
+
+: ENV-A! ( ptr u8 -- )
+   ENV-A-FIELD ! ;
+
+: ENV=? ( ptr u8 ptr u8 n -- bool )
+   ENV-U ! ENV-A! ENV-Z!
+   ENV-U @ 0 ?do ENV-Z@ i ZBYTE@ ENV-A@ i ZBYTE@ = 0= if unloop ENV-FALSE exit then loop
+   ENV-Z@ ENV-U @ ZBYTE@ $3D = ;
 s" ENV=?" s" ptr u8 ptr u8 n -- bool" TRUST
 
 TRUSTED: NULL$ ( -- ptr u8 n )
    0 0 ;
 
-: GETENV ( ptr u8 n -- ptr u8 n ) {: a u :}
+variable ENV-QA
+variable ENV-QU
+
+: ENV-QA-FIELD ( -- ptr ptr u8 )
+   ENV-QA 0 ptr-field ;
+
+: ENV-QA@ ( -- ptr u8 )
+   ENV-QA-FIELD @ ;
+
+: ENV-QA! ( ptr u8 -- )
+   ENV-QA-FIELD ! ;
+
+: GETENV ( ptr u8 n -- ptr u8 n )
+   ENV-QU ! ENV-QA!
    ENVP-BASE 0= if NULL$ exit then
    0 begin dup ENVP 0= 0= while
-      dup ENVP a u ENV=? if ENVP u + 1 + dup ZLEN exit then
+      dup ENVP ENV-QA@ ENV-QU @ ENV=? if ENVP ENV-QU @ 1 + ZPTR+ dup ZLEN exit then
       1 +
    repeat
    drop NULL$ ;
 s" GETENV" s" ptr u8 n -- ptr u8 n" TRUST
 
-256 constant TMP-PATH-CAP
+$100 constant TMP-PATH-CAP
 s" TMP-PATH-CAP" s" -- n" TRUST
 create TPB TMP-PATH-CAP allot
 variable TPP
 variable TPQ
+variable TPS
+variable TPU
 
 : TPP@ ( -- ptr u8 )
    TPP @ ;
 s" TPP@" s" -- ptr u8" TRUST
 
+: TPS-FIELD ( -- ptr ptr u8 )
+   TPS 0 ptr-field ;
+
+: TPS@ ( -- ptr u8 )
+   TPS-FIELD @ ;
+
+: TPS! ( ptr u8 -- )
+   TPS-FIELD ! ;
+
 : TMP-PATH-CHECK ( n -- )
    TMP-PATH-CAP > if s" env: TMP-PATH exceeds buffer" 76 die then ;
 s" TMP-PATH-CHECK" s" n --" TRUST
 
-: TMP-PATH ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: TMP-PATH-COPY-SRC ( ptr u8 n -- )
+   0 ?do dup i ZBYTE@ TPB TPQ @ 1 + i + ZBYTE! loop drop ;
+s" TMP-PATH-COPY-SRC" s" ptr u8 n --" TRUST
+
+: TMP-PATH ( ptr u8 n -- ptr u8 n )
+   TPU ! TPS!
    s" HB_TMP" GETENV dup 0 = if drop drop s" /tmp" then TPQ ! TPP !
-   TPQ @ 1 + u + TMP-PATH-CHECK
-   TPQ @ 0 ?do TPP@ i + c@ TPB i + c! loop
-   47 TPB TPQ @ + c!
-   u 0 ?do a i + c@ TPB TPQ @ + 1 + i + c! loop
-   TPB TPQ @ 1 + u + ;
+   TPQ @ 1 + TPU @ + TMP-PATH-CHECK
+   TPQ @ 0 ?do TPP@ i ZBYTE@ TPB i ZBYTE! loop
+   $2F TPB TPQ @ ZBYTE!
+   TPS@ TPU @ TMP-PATH-COPY-SRC
+   TPB TPQ @ 1 + TPU @ + ;
 s" TMP-PATH" s" ptr u8 n -- ptr u8 n" TRUST

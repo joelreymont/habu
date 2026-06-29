@@ -8,7 +8,6 @@
 2 constant GT-POOL-FDS
 8 constant GT-PFD-SZ
 $64 constant GT-POOL-POLL-MS
-$1002 constant GT-POOL-MAP-PRIVATE-ANON
 GT-POOL-MAX GT-OUT-CAP * constant GT-POOL-OUT-BYTES
 GT-POOL-MAX GT-ERR-CAP * constant GT-POOL-ERR-BYTES
 
@@ -37,24 +36,49 @@ variable GT-POOL-RD
 variable GT-POOL-LIMIT
 variable GT-POOL-REQ
 
+: GT-POOL-NO-PASS-HOOK ( ptr u8 n n -- )
+   drop 2drop ;
+
+defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
+
+: GT-POOL-PASS-HOOK-DEFAULT! ( -- )
+   [: GT-POOL-NO-PASS-HOOK ;] is GT-POOL-PASS-HOOK ;
+
+GT-POOL-PASS-HOOK-DEFAULT!
+
+: GT-POOL-OUT-BUFS-FIELD ( -- ptr ptr u8 )
+   GT-POOL-OUT-BUFS-A 0 ptr-field ;
+
+: GT-POOL-OUT-BUFS@ ( -- ptr u8 )
+   GT-POOL-OUT-BUFS-FIELD @ ;
+
+: GT-POOL-OUT-BUFS! ( ptr u8 -- )
+   GT-POOL-OUT-BUFS-FIELD ! ;
+
 : GT-POOL-OUT-BUFS ( -- ptr u8 )
-   GT-POOL-OUT-BUFS-A @ ;
-s" GT-POOL-OUT-BUFS" s" -- ptr u8" TRUST
+   GT-POOL-OUT-BUFS@ ;
+
+: GT-POOL-ERR-BUFS-FIELD ( -- ptr ptr u8 )
+   GT-POOL-ERR-BUFS-A 0 ptr-field ;
+
+: GT-POOL-ERR-BUFS@ ( -- ptr u8 )
+   GT-POOL-ERR-BUFS-FIELD @ ;
+
+: GT-POOL-ERR-BUFS! ( ptr u8 -- )
+   GT-POOL-ERR-BUFS-FIELD ! ;
 
 : GT-POOL-ERR-BUFS ( -- ptr u8 )
-   GT-POOL-ERR-BUFS-A @ ;
-s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
+   GT-POOL-ERR-BUFS@ ;
 
-: GT-POOL-ALLOC-BYTES ( n -- n ) {: bytes :}
-   0 bytes 3 GT-POOL-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" gate-pool: mmap failed" 76 die then ;
+: GT-POOL-ALLOC-BYTES ( n -- ptr u8 )
+   MEM-ALLOC-BYTES drop ;
 
 : GT-POOL-ALLOC-BUFFERS ( -- )
-   GT-POOL-OUT-BUFS-A @ 0= if
-      GT-POOL-OUT-BYTES GT-POOL-ALLOC-BYTES GT-POOL-OUT-BUFS-A !
+   GT-POOL-OUT-BUFS@ 0= if
+      GT-POOL-OUT-BYTES GT-POOL-ALLOC-BYTES GT-POOL-OUT-BUFS!
    then
-   GT-POOL-ERR-BUFS-A @ 0= if
-      GT-POOL-ERR-BYTES GT-POOL-ALLOC-BYTES GT-POOL-ERR-BUFS-A !
+   GT-POOL-ERR-BUFS@ 0= if
+      GT-POOL-ERR-BYTES GT-POOL-ALLOC-BYTES GT-POOL-ERR-BUFS!
    then ;
 
 : GT-POOL-PID-PTR ( idx -- ptr pid )
@@ -240,7 +264,8 @@ s" GT-POOL-ERR-BUFS" s" -- ptr u8" TRUST
    idx GT-POOL-LABEL$ type
    s"  (" type
    idx GT-POOL-ELAPSED-MS GT-U-TYPE
-   s" ms)" type cr ;
+   s" ms)" type cr
+   idx GT-POOL-LABEL$ idx GT-POOL-ELAPSED-MS GT-POOL-PASS-HOOK ;
 
 : GT-POOL-WAIT-DUE? ( idx -- bool ) {: idx :}
    mono-ns idx GT-POOL-LAST-PTR @ - PROC-NS-PER-MS / GT-HEARTBEAT-MS >= ;

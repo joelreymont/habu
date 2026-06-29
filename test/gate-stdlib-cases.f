@@ -116,7 +116,7 @@ TEST-SUITE imagedisasm-tool
 
 TEST-TOOL-SUITE tool-boundary-trust
    tools/trust-lint-core.f tools/trust-lint-test.f
-   tools/aot-call-report.f tools/aot-call-report-test.f
+   tools/aot-call-report-lib.f tools/aot-call-report-test.f
 ;TEST-SUITE
 
 TEST-TOOL-SUITE tool-boundary-check-repair
@@ -297,24 +297,43 @@ TEST-SUITE compiler-dispatch-shape
    tools/compiler-dispatch-test.f
 ;TEST-SUITE
 
-TEST-SUITE stdlib-batch-fixtures
+TEST-SUITE tail-pure-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f
-   lib/json-write.f lib/fs.f lib/fs-mutate.f lib/process.f
-   lib/process-argv.f lib/process-env.f lib/test-runner.f lib/source.f
-   lib/process-command.f lib/build.f lib/json-write-test.f
-   lib/test-runner-test.f lib/memory-test.f lib/vector-test.f lib/fs-test.f
-   lib/source-test.f tools/hb-cli-contracts-test.f lib/process-test.f
-   lib/process-command-test.f lib/build-test.f
+   lib/json-write.f lib/fs.f lib/fs-mutate.f
+   lib/json-write-test.f lib/memory-test.f lib/vector-test.f lib/fs-test.f
+   tools/bootstrap-codegen-test.f tools/asm-src-test.f
+   bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
+   tools/image-bytes-test.f
 ;TEST-SUITE
 
-TEST-SUITE bootstrap-helper-fixtures
+TEST-SUITE stdlib-source-default
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+   lib/fs-mutate.f lib/source.f lib/source-test.f
+;TEST-SUITE
+
+TEST-SUITE stdlib-process-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
+   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
+   lib/source.f lib/process-command.f tools/hb-cli-contracts-test.f
+   lib/process-test.f lib/process-command-test.f
+;TEST-SUITE
+
+TEST-SUITE stdlib-runner-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/process-argv.f lib/test-runner.f
+   lib/test-runner-test.f
+;TEST-SUITE
+
+TEST-SUITE stdlib-build-fixtures
+   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
+   lib/process.f lib/build.f lib/build-test.f
+;TEST-SUITE
+
+TEST-SUITE bootstrap-warm-image-fixtures
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/source.f lib/build.f lib/codesign.f tools/build-fixpoint.f
-   tools/warm-image-lib.f tools/bootstrap-codegen-test.f
-   bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
-   tools/image-bytes-test.f
-   tools/warm-image-test.f
+   tools/warm-image-lib.f tools/warm-image-test.f
 ;TEST-SUITE
 
 TEST-SUITE build-fixpoint-fixtures
@@ -332,7 +351,6 @@ TEST-SUITE hb-build-fixtures
    lib/codesign-test.f
 ;TEST-SUITE
 
-SUITE-INLINE-WORK
 GT-POOL-DRAIN
 SUITE-CLEANUP
 s" PASS: native lint/stdlib gate phase" type cr

@@ -8,9 +8,18 @@
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
+64 constant GE-WARM-USAGE-RC
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
+0 constant GE-F-DUPFD
+10 constant GE-FD-SAVE-MIN
+1 constant GE-STDOUT-FD
+2 constant GE-STDERR-FD
+
+s" UEND" s" -- ptr n" TRUST
+s" USIGS-RESTORE-END" s" n --" TRUST
+s" UTERM!" s" --" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-SRC-A GE-SRC-MAX cells allot
@@ -31,6 +40,11 @@ variable GE-WARM-STAMP-U
 variable GE-WARM-READY
 variable GE-INFD
 variable GE-ARGV-U
+variable GE-EVAL-CP
+variable GE-EVAL-NDICT
+variable GE-EVAL-UEND
+variable GE-EVAL-OUT-SAVE
+variable GE-EVAL-ERR-SAVE
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N GT-OUTCOME-CODE !
@@ -383,11 +397,34 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
 : GE-CHECK-SUPPORT-KEY ( -- )
    [: GE-WARM-KEY-FILE+ ;] GE-CHECK-SUPPORT-FILES ;
 
+: GE-SNAPSHOT-LINUX-KEY ( -- )
+   s" target:linux-aarch64" CK-TEXT+
+   s" src/os/linux/layout.f" GE-WARM-KEY-FILE+
+   s" src/os/linux/elf.f" GE-WARM-KEY-FILE+
+   s" src/os/linux/sign.f" GE-WARM-KEY-FILE+ ;
+
+: GE-SNAPSHOT-MACOS-KEY ( -- )
+   s" target:macos-aarch64" CK-TEXT+
+   s" src/os/macos/layout.f" GE-WARM-KEY-FILE+
+   s" src/os/macos/macho.f" GE-WARM-KEY-FILE+
+   s" src/os/macos/sign2.f" GE-WARM-KEY-FILE+ ;
+
+: GE-SNAPSHOT-TARGET-KEY ( -- )
+   HB-TARGET-LINUX? if GE-SNAPSHOT-LINUX-KEY exit then
+   HB-TARGET-MACOS? if GE-SNAPSHOT-MACOS-KEY exit then
+   s" warm checker cache unknown target" GE-WARM-USAGE-RC die ;
+
+: GE-SNAPSHOT-BUILDER-KEY ( -- )
+   s" src/os/image-bytes.f" GE-WARM-KEY-FILE+
+   GE-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap.f" GE-WARM-KEY-FILE+ ;
+
 : GE-WARM-KEY! ( -- )
    CK-RESET
-   s" hb-check-warm-cache-v2" CK-TEXT+
+   s" hb-check-warm-cache-v3" CK-TEXT+
    s" bin/hb" GE-WARM-KEY-FILE+
    GE-WARM-BAKER-KEY
+   GE-SNAPSHOT-BUILDER-KEY
    GE-CHECK-SUPPORT-KEY
    GE-WARM-KEY-HEX CK-FINAL-HEX ;
 
@@ -486,6 +523,69 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    s" boundary-test" GS-EVENT
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
+   label labelu GT-PROGRESS-PASS ;
+
+: GE-EVAL-MARK ( -- )
+   cp@ GE-EVAL-CP !
+   ndict@ GE-EVAL-NDICT !
+   UEND @ GE-EVAL-UEND ! ;
+
+: GE-EVAL-FORGET ( -- )
+   GE-EVAL-NDICT @ ndict!
+   GE-EVAL-CP @ cp!
+   GE-EVAL-UEND @ USIGS-RESTORE-END
+   UTERM! ;
+
+: GE-EVAL-DUP-FD ( n -- n ) {: fd:n :}
+   fd GE-F-DUPFD GE-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;
+
+: GE-EVAL-DUP2! ( n n -- ) {: src:n dst:n :}
+   src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
+
+: GE-EVAL-REDIRECT! ( -- )
+   GE-STDOUT-FD GE-EVAL-DUP-FD GE-EVAL-OUT-SAVE !
+   GE-STDERR-FD GE-EVAL-DUP-FD GE-EVAL-ERR-SAVE !
+   PROC-OUT-W @ FD>N GE-STDOUT-FD GE-EVAL-DUP2!
+   PROC-ERR-W @ FD>N GE-STDERR-FD GE-EVAL-DUP2!
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+: GE-EVAL-RESTORE! ( -- )
+   GE-EVAL-OUT-SAVE @ GE-STDOUT-FD GE-EVAL-DUP2!
+   GE-EVAL-ERR-SAVE @ GE-STDERR-FD GE-EVAL-DUP2!
+   GE-EVAL-OUT-SAVE @ close
+   GE-EVAL-ERR-SAVE @ close
+   -1 GE-EVAL-OUT-SAVE !
+   -1 GE-EVAL-ERR-SAVE ! ;
+
+TRUSTED: GE-EVAL-SOURCE ( -- )
+   GE-SRC-BUF GE-SRC-U @ evaluate ;
+
+: GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
+   rc >RC PROC-RC !
+   PROC-OUTCOME-EXIT PROC-OUTCOME-KIND !
+   rc PROC-OUTCOME-CODE ! ;
+
+: GE-EVAL-DRAIN ( -- )
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
+
+: GE-EVAL-CAPTURE ( -- )
+   GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
+   GE-EVAL-REDIRECT!
+   [: GE-EVAL-SOURCE ;] catch {: rc:n :}
+   GE-EVAL-RESTORE!
+   GE-EVAL-DRAIN
+   PROC-CLOSE-ALL-CAPTURE-FDS
+   rc GE-EVAL-STORE-RC
+   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME ;
+
+: GE-EVAL-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu GT-PROGRESS-RUN
+   s" inprocess-eval" GS-EVENT
+   GE-EVAL-MARK
+   GE-EVAL-CAPTURE
+   GE-EVAL-FORGET
+   label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-BIN-HB? ( ptr u8 n -- bool )

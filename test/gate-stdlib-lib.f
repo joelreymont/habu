@@ -42,8 +42,12 @@ variable SUITE-WARM-CAND-TRUST-U
 variable SUITE-OWN-ROOT
 variable SUITE-SLICE
 variable SUITE-SKIP-TOOL-LINTS
+variable SUITE-SKIP-TOOL-REPAIR
+variable SUITE-SKIP-TOOL-DOC
+variable SUITE-SKIP-TOOL-TYPED
 variable SUITE-ARG-I
 variable SUITE-SLICE-SEEN
+variable SUITE-TIMINGS
 
 : SUITE-TRUE ( -- bool )
    0 0= ;
@@ -52,7 +56,7 @@ variable SUITE-SLICE-SEEN
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
 
 : SUITE-ARG$ ( -- ptr u8 n )
    SUITE-ARG-I @ SCRIPT-ARGV$ ;
@@ -74,11 +78,28 @@ variable SUITE-SLICE-SEEN
 : SUITE-SKIP-TOOL-LINTS! ( -- )
    -1 SUITE-SKIP-TOOL-LINTS ! ;
 
-: SUITE-INLINE-WORK ( -- ) ;
+: SUITE-SKIP-TOOL-REPAIR! ( -- )
+   -1 SUITE-SKIP-TOOL-REPAIR ! ;
+
+: SUITE-SKIP-TOOL-DOC! ( -- )
+   -1 SUITE-SKIP-TOOL-DOC ! ;
+
+: SUITE-SKIP-TOOL-TYPED! ( -- )
+   -1 SUITE-SKIP-TOOL-TYPED ! ;
+
+: SUITE-SKIP-TOOL-SEMANTIC! ( -- )
+   SUITE-SKIP-TOOL-LINTS!
+   SUITE-SKIP-TOOL-REPAIR!
+   SUITE-SKIP-TOOL-DOC!
+   SUITE-SKIP-TOOL-TYPED! ;
 
 : SUITE-POOL-OPT ( -- )
    SUITE-ARG-VALUE$ SUITE-POS-NUM GT-POOL-SLOTS!
    2 SUITE-ADVANCE ;
+
+: SUITE-TIMINGS-OPT ( -- )
+   -1 SUITE-TIMINGS !
+   1 SUITE-ADVANCE ;
 
 : SUITE-SLICE-ARG? ( -- bool )
    SUITE-ARG$ s" warm" STR= if SUITE-WARM-ID SUITE-SLICE! SUITE-TRUE exit then
@@ -100,11 +121,13 @@ variable SUITE-SLICE-SEEN
 
 : SUITE-PARSE-ARG ( -- )
    SUITE-ARG$ s" --pool-slots" STR= if SUITE-POOL-OPT exit then
+   SUITE-ARG$ s" --timings" STR= if SUITE-TIMINGS-OPT exit then
    SUITE-SLICE-OPT ;
 
 : SUITE-PARSE-SLICE ( -- )
    SUITE-ALL-ID SUITE-SLICE!
    0 SUITE-SLICE-SEEN !
+   0 SUITE-TIMINGS !
    0 SUITE-ARG-I !
    begin SUITE-ARG-I @ SCRIPT-ARGC < while
       SUITE-PARSE-ARG
@@ -202,6 +225,28 @@ variable SUITE-SLICE-SEEN
 : SUITE-KEY-FILE+ ( ptr u8 n -- )
    CK-FILE+ ;
 
+: SUITE-SNAPSHOT-LINUX-KEY ( -- )
+   s" target:linux-aarch64" CK-TEXT+
+   s" src/os/linux/layout.f" SUITE-KEY-FILE+
+   s" src/os/linux/elf.f" SUITE-KEY-FILE+
+   s" src/os/linux/sign.f" SUITE-KEY-FILE+ ;
+
+: SUITE-SNAPSHOT-MACOS-KEY ( -- )
+   s" target:macos-aarch64" CK-TEXT+
+   s" src/os/macos/layout.f" SUITE-KEY-FILE+
+   s" src/os/macos/macho.f" SUITE-KEY-FILE+
+   s" src/os/macos/sign2.f" SUITE-KEY-FILE+ ;
+
+: SUITE-SNAPSHOT-TARGET-KEY ( -- )
+   HB-TARGET-LINUX? if SUITE-SNAPSHOT-LINUX-KEY exit then
+   HB-TARGET-MACOS? if SUITE-SNAPSHOT-MACOS-KEY exit then
+   s" gate-stdlib warm cache unknown target" SUITE-USAGE-RC die ;
+
+: SUITE-SNAPSHOT-BUILDER-KEY ( -- )
+   s" src/os/image-bytes.f" SUITE-KEY-FILE+
+   SUITE-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap.f" SUITE-KEY-FILE+ ;
+
 \ Content key over the warm image's inputs: the compiler (bin/hb), the baker, and
 \ every baked tool source plus baker-side trust-export dependencies. KEEP THE
 \ baked-source portion IN SYNC with SUITE-WARM-SUPPORT-ARGV (a drift means a
@@ -209,11 +254,11 @@ variable SUITE-SLICE-SEEN
 \ key matches, so any input change forces a rebake.
 : SUITE-WARM-KEY! ( -- )
    CK-RESET
-   s" hb-tools-warm-cache-v3" CK-TEXT+
+   s" hb-tools-warm-cache-v4" CK-TEXT+
    s" bin/hb" SUITE-KEY-FILE+
    s" tools/warm-image-lib.f" SUITE-KEY-FILE+
    s" tools/warm-image.f" SUITE-KEY-FILE+
-   s" src/habu/snap.f" SUITE-KEY-FILE+
+   SUITE-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" SUITE-KEY-FILE+
    s" tools/public-signatures.f" SUITE-KEY-FILE+
    s" tools/date.f" SUITE-KEY-FILE+
@@ -464,13 +509,22 @@ variable SUITE-SLICE-SEEN
 : SUITE-TOOL? ( -- bool )
    SUITE-SLICE @ SUITE-TOOL-ID <> if SUITE-FALSE exit then
    s" tool-boundary-trust" SUITE-LABEL= if SUITE-TRUE exit then
-   s" tool-boundary-check-repair" SUITE-LABEL= if SUITE-TRUE exit then
-   s" tool-boundary-doc-public" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tool-boundary-check-repair" SUITE-LABEL= if
+      SUITE-SKIP-TOOL-REPAIR @ 0= if SUITE-TRUE exit then
+      SUITE-FALSE exit
+   then
+   s" tool-boundary-doc-public" SUITE-LABEL= if
+      SUITE-SKIP-TOOL-DOC @ 0= if SUITE-TRUE exit then
+      SUITE-FALSE exit
+   then
    s" tool-boundary-lints" SUITE-LABEL= if
       SUITE-SKIP-TOOL-LINTS @ 0= if SUITE-TRUE exit then
       SUITE-FALSE exit
    then
-   s" tool-boundary-typed-local" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tool-boundary-typed-local" SUITE-LABEL= if
+      SUITE-SKIP-TOOL-TYPED @ 0= if SUITE-TRUE exit then
+      SUITE-FALSE exit
+   then
    SUITE-FALSE ;
 
 : SUITE-CHECK-CLI? ( -- bool )
@@ -489,8 +543,12 @@ variable SUITE-SLICE-SEEN
    s" c-call-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
    s" signature-scan-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
    s" compiler-dispatch-shape" SUITE-LABEL= if SUITE-TRUE exit then
-   s" stdlib-batch-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" bootstrap-helper-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tail-pure-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdlib-process-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdlib-runner-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdlib-build-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" bootstrap-warm-image-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )
@@ -623,8 +681,15 @@ variable SUITE-SLICE-SEEN
    SUITE-RUN? 0= if exit then
    SUITE-LABEL$ SUITE-HB-RUN ;
 
+: SUITE-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   label labelu ms GS-SPAN ;
+
+: SUITE-INSTALL-POOL-HOOKS ( -- )
+   [: SUITE-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
+
 : GATE-STDLIB-MAIN ( -- )
    SUITE-CHECK-ARGS
    GT-RESET
    GT-POOL-RESET
+   SUITE-INSTALL-POOL-HOOKS
    SUITE-WARM-PREPARE ;

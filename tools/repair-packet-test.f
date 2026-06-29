@@ -145,13 +145,44 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    [: RPT-RUN-CHECK-ACT ;] catch {: rc:n :}
    0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
 
+: RPT-OUTCOME. ( n -- ) {: kind:n :}
+   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
+   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
+   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
+   s" unknown" type ;
+
+: RPT-DUMP-CAPTURE ( n n n n n -- )
+   {: outu:n erru:n kind:n code:n expect:n :}
+   s" repair-packet-test failure" type cr
+   s" case: " type RPT-LABEL$ type cr
+   s" source: " type RPT-SRC type cr
+   s" diag: " type RPT-DIAG type cr
+   s" packet: " type RPT-PACKET type cr
+   s" expected exit: " type expect . cr
+   s" outcome: " type kind RPT-OUTCOME.
+   s"  code: " type code . cr
+   s" stdout bytes: " type outu . s" / " type RPT-CAPTURE-CAP . cr
+   s" stderr bytes: " type erru . s" / " type RPT-CAPTURE-CAP . cr
+   s" stdout:" type cr
+   RPT-OUT outu type
+   s" stderr:" type cr
+   RPT-ERR erru type ;
+
 : RPT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT <> if outu erru kind code expect RPT-DUMP-CAPTURE then
+   code expect <> if outu erru kind code expect RPT-DUMP-CAPTURE then
+   RPT-LABEL$ T-LABEL
    kind PROC-OUTCOME-EXIT T=
+   RPT-LABEL$ T-LABEL
    code expect T=
    outu erru ;
 
 : RPT-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
+   kind PROC-OUTCOME-EXIT <> if outu erru kind code 0 RPT-DUMP-CAPTURE then
+   code 0 = if outu erru kind code -1 RPT-DUMP-CAPTURE then
+   RPT-LABEL$ T-LABEL
    kind PROC-OUTCOME-EXIT T=
+   RPT-LABEL$ T-LABEL
    code 0 T<>
    outu erru ;
 
@@ -160,8 +191,11 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 
 : RPT-EXPECT-CHECK-REJECT ( ptr u8 n -- ) {: label:ptr labelu :}
    label labelu RPT-RUN-CHECK RPT-EXPECT-EXIT-NZ {: outu erru :}
+   label labelu T-LABEL
    outu 0 T=
+   label labelu T-LABEL
    erru 0 T<>
+   label labelu T-LABEL
    RPT-ERR erru s" schema_version" CONTAINS? TTRUE
    erru RPT-WRITE-DIAG ;
 
@@ -170,10 +204,12 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 
 : RPT-MAKE-PACKET ( -- )
    RPT-PACKET$ {: a:ptr u:n :}
+   RPT-LABEL$ T-LABEL
    u 0 T<>
    RPT-PACKET a u WRITE-ALL ;
 
 : RPT-ASSERT-PACKET ( ptr u8 n -- ) {: class:ptr classu :}
+   RPT-LABEL$ T-LABEL
    RPT-PACKET class classu GJA-REPAIR-PACKET ;
 
 : RPT-CASE-PATHS ( ptr u8 n -- ) {: name:ptr nameu :}
@@ -207,6 +243,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-MAKE-PACKET
    s" remove_producer" RPT-ASSERT-PACKET
    RPT-PACKET RPT-OUT RPT-CAPTURE-CAP READ-ALL {: packetu :}
+   s" two diagnostic count" T-LABEL
    RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE ;
 
 \ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
@@ -227,8 +264,11 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-HB-CAPTURE ;
 
 : RPT-TEST-NOARGS ( -- )
+   s" noargs" RPT-LABEL!
    RPT-RUN-REPAIR-NOARGS 64 RPT-EXPECT-EXIT {: outu erru :}
+   s" noargs stdout" T-LABEL
    outu 0 T=
+   s" noargs usage" T-LABEL
    RPT-ERR erru s" usage: tools/repair-packet.f checker-jsonl.err" CONTAINS? TTRUE ;
 
 : RPT-MAIN ( -- )
@@ -238,6 +278,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-TEST-TWO-DIAGS
    RPT-TEST-NOARGS
    CLEANUP-RUN
+   s" cleanup root removed" T-LABEL
    RPT-ROOT EXISTS? TFALSE
    T-REPORT
    s" repair-packet-test: ok" type cr ;

@@ -403,6 +403,10 @@ and array shape is visible in code. Load it after `lib/memory.f`.
 that role through capacity checking and raw JSON appends.
 
 ```forth
+JW-BUF-FIELD   ( -- ptr ptr u8 )
+JW-BUF@        ( -- ptr u8 )
+JW-BUF!        ( ptr u8 -- )
+JW-BUF         ( -- ptr u8 )
 JW-LEN         ( n -- len )
 JW-CAP         ( -- n )
 JW-STORE-SPAN  ( ptr u8 n -- )

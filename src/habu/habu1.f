@@ -135,33 +135,155 @@ variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL var
 $80000 constant LINUX-O-CLOEXEC
 LINUX-F-LINUX-SPECIFIC-BASE LINUX-F-DUPFD-CLOEXEC-OFF + constant LINUX-F-DUPFD-CLOEXEC
 
-: LINUX-SPAWN-FAIL ( reg -- )
-   {: errfd :}
-   0 errfd REG>N 0 ADDI,
+variable LNX-ERR
+variable LNX-FD
+variable LNX-NEW
+variable LNX-CWD
+variable LNX-SKIP
+variable LNX-OK
+variable LNX-FAIL
+variable LNX-DONE
+variable LNX-CHILD
+variable LNX-CLOSEFAIL
+variable LNX-WAIT
+variable LNX-REAL
+variable LNX-PNEG
+variable LNX-PCALL
+variable LNX-PATH
+variable LNX-ARGV
+variable LNX-ENV
+variable LNX-IN
+variable LNX-OUT
+variable TIME-OK
+variable EVAL-DEPTH
+variable EVAL-DST
+variable EVAL-SCRATCH
+variable EVAL-OK
+variable PS-LOOP
+variable PS-DONE
+variable CMP-COND
+variable DIV-OK
+variable PRIM-DONE
+variable RSTK-REG
+variable DP-REG
+variable DP-LOW
+variable DP-HIGH
+variable SYS-OK
+variable SYS-DONE
+variable FFI-DREG
+variable FFI-OFF
+variable FFI-SKIP
+variable FFI-LOOP
+variable FFI-DONE
+variable STAT-BUF
+variable STAT-OK
+variable STAT-DONE
+variable CATCH-RES
+variable CATCH-PUSH
+variable THROW-NOH
+variable THROW-NOREC
+variable SWL-LOOP
+variable SWL-END
+variable SWL-NEXT
+variable SWL-CMP
+variable SWL-MATCH
+variable SWL-F1
+variable SWL-F2
+variable SWL-INL
+variable PARSE-NONE
+variable PARSE-DONE
+variable FP-COND
+variable FD-FRAC
+variable FD-INT
+variable FD-SIGN
+variable BCAP-OK
+variable BCAP-CP
+variable BCAP-CD
+variable TOK-SKIP
+variable TOK-HAS
+variable TOK-SCAN
+variable TOK-GOT
+variable TOK-NONE
+variable FL-DL
+variable FL-DD
+variable FL-IL
+variable FL-ID
+variable FIND-QSCAN
+variable FIND-QNONE
+variable FIND-QHAS
+variable FIND-QBAD
+variable FIND-QTAIL
+variable FIND-QTAILOK
+variable FIND-NLOOP
+variable FIND-NNEXT
+variable FIND-NCMP
+variable FIND-NMATCH
+variable FIND-NEND
+variable FIND-NINL
+variable FIND-START
+variable FIND-LOOP
+variable FIND-DONE
+variable FIND-NEXT
+variable FIND-CMP
+variable FIND-MATCH
+variable FIND-INL
+variable FIND-MISS
+variable FIND-TRYG
+variable FIND-FOUND
+variable NUM-DONE
+variable NUM-NDOLL
+variable NUM-NOHEX
+variable NUM-LOOP
+variable NUM-OK
+variable NUM-GOTD
+variable NUM-ND
+variable NUM-NUC
+variable NUM-NDOT
+variable NUM-ISFRAC
+variable NUM-LINT
+variable NUM-FPOS
+
+: LINUX-SPAWN-FAIL-N ( n -- )
+   0 swap 0 ADDI,
    15 1 MOVZ,  15 SP LINUX-SPAWN-ERR-OFF STRB,
    1 SP LINUX-SPAWN-ERR-OFF ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 127 MOVZ,  NR-EXIT-GROUP SYS, ;
+s" linux-spawn-fail-n" s" n --" TRUST
+
+: LINUX-SPAWN-FAIL ( reg -- )
+   REG>N LINUX-SPAWN-FAIL-N ;
 s" linux-spawn-fail" s" reg --" TRUST
 
+: LINUX-DUP2-ARGS ( reg fd reg -- )
+   REG>N LNX-ERR !
+   FD>N LNX-NEW !
+   REG>N LNX-FD ! ;
+
 : LINUX-DUP2-FD ( reg fd reg -- )
-   {: fdreg newfd errfd :}
-   LBL LBL {: skip ok :}
-   fdreg REG>N 0 CMPI,  C-LT skip BCOND,
-   fdreg REG>N newfd FD>N CMPI,  C-EQ skip BCOND,
-   0 fdreg REG>N 0 ADDI,  1 newfd FD>N MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
+   LINUX-DUP2-ARGS
+   LBL {: skip:label :}
+   LBL {: ok:label :}
+   LNX-FD @ 0 CMPI,  C-LT skip BCOND,
+   LNX-FD @ LNX-NEW @ CMPI,  C-EQ skip BCOND,
+   0 LNX-FD @ 0 ADDI,  1 LNX-NEW @ MOVZ,  2 0 MOVZ,  NR-DUP2 SYS,
    9 C-CS CSET,  9 ok CBZ,
-      errfd LINUX-SPAWN-FAIL
+      LNX-ERR @ LINUX-SPAWN-FAIL-N
    ok LBL,
    skip LBL, ;
 s" linux-dup2-fd" s" reg fd reg --" TRUST
 
+: LINUX-CHDIR-ARGS ( reg reg -- )
+   REG>N LNX-ERR !
+   REG>N LNX-CWD ! ;
+
 : LINUX-CHDIR-FD ( reg reg -- )
-   {: cwdreg errfd :}
-   LBL LBL {: skip ok :}
-   cwdreg REG>N 0 CMPI,  C-LT skip BCOND,
-   0 cwdreg REG>N 0 ADDI,  NR-CHDIR SYS,
+   LINUX-CHDIR-ARGS
+   LBL {: skip:label :}
+   LBL {: ok:label :}
+   LNX-CWD @ 0 CMPI,  C-LT skip BCOND,
+   0 LNX-CWD @ 0 ADDI,  NR-CHDIR SYS,
    9 C-CS CSET,  9 ok CBZ,
-      errfd LINUX-SPAWN-FAIL
+      LNX-ERR @ LINUX-SPAWN-FAIL-N
    ok LBL,
    skip LBL, ;
 s" linux-chdir-fd" s" reg reg --" TRUST
@@ -180,7 +302,8 @@ s" linux-spawn-close-w" s" --" TRUST
 s" linux-spawn-close-pipe" s" --" TRUST
 
 : LINUX-SPAWN-PREP-W ( -- )
-   LBL LBL LBL {: high fail done :}
+   LBL {: fail:label :}
+   LBL {: done:label :}
    9 0 MOVZ,
    0 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
    0 LINUX-SPAWN-MIN-ERRFD 1- CMPI,  C-GT done BCOND,
@@ -203,7 +326,9 @@ s" linux-spawn-prep-w" s" --" TRUST
 s" linux-spawn-wait-stored" s" --" TRUST
 
 : LINUX-SPAWN-PARENT ( -- )
-   LBL LBL LBL {: ok fail done :}
+   LBL {: ok:label :}
+   LBL {: fail:label :}
+   LBL {: done:label :}
    0 SP LINUX-SPAWN-PID-OFF STR,
    LINUX-SPAWN-CLOSE-W
    0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,
@@ -237,11 +362,20 @@ s" linux-spawn-parent" s" --" TRUST
 s" linux-spawn-child" s" --" TRUST
 
 : LINUX-SPAWN ( reg reg reg reg reg reg reg -- )
-   {: pathreg argvreg envreg cwdreg infd outfd errfd :}
-   LBL LBL LBL LBL {: child closefail fail done :}
+   REG>N LNX-ERR !
+   REG>N LNX-OUT !
+   REG>N LNX-IN !
+   REG>N LNX-CWD !
+   REG>N LNX-ENV !
+   REG>N LNX-ARGV !
+   REG>N LNX-PATH !
+   LBL {: child:label :}
+   LBL {: closefail:label :}
+   LBL {: fail:label :}
+   LBL {: done:label :}
    SP SP LINUX-SPAWN-FRAME SUBI,
-   pathreg REG>N SP 0 STR,  argvreg REG>N SP 8 STR,  envreg REG>N SP 16 STR,  cwdreg REG>N SP 24 STR,
-   infd REG>N SP 32 STR,  outfd REG>N SP 40 STR,  errfd REG>N SP 48 STR,
+   LNX-PATH @ SP 0 STR,  LNX-ARGV @ SP 8 STR,  LNX-ENV @ SP 16 STR,  LNX-CWD @ SP 24 STR,
+   LNX-IN @ SP 32 STR,  LNX-OUT @ SP 40 STR,  LNX-ERR @ SP 48 STR,
    0 SP LINUX-SPAWN-PIPE-R-OFF ADDI,  1 LINUX-O-CLOEXEC LIT64,  NR-PIPE SYS,
    9 C-CS CSET,  9 fail CBNZ,
    LINUX-SPAWN-PREP-W
@@ -265,7 +399,9 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
 
 : BRUNRC ( -- )                    \ ( pathz -- rc ) spawn+wait; -1 = spawn failed
    A G-POP
-   LBL LBL LBL {: spok spdn spw :}
+   LBL {: ok:label :}
+   LBL {: done:label :}
+   LBL {: waitok:label :}
    HB-TARGET-LINUX? IF
       SP SP 64 SUBI,
       9 SP 16 STR,
@@ -276,16 +412,16 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
       13 0 MOVN,
       9 >REG 10 >REG 11 >REG 13 >REG 13 >REG 13 >REG 13 >REG LINUX-SPAWN
       9 G-POP
-      9 0 CMPI,  C-LT spdn BCOND,
+      9 0 CMPI,  C-LT done BCOND,
       0 9 0 ADDI,
       1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
       NR-WAIT4 SYS,
-      10 C-CS CSET,  10 spw CBZ,
-         9 0 MOVN,  spdn B,
-      spw LBL,
+      10 C-CS CSET,  10 waitok CBZ,
+         9 0 MOVN,  done B,
+      waitok LBL,
       9 SP 8 LDRW,
       9 9 8 LSRI,  9 9 $FF ANDI,
-      spdn LBL,
+      done LBL,
       9 G-PUSH
       SP SP 64 ADDI,
       exit
@@ -300,51 +436,53 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
    3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
    NR-SPAWN SYS,
    9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
-   9 spok CBZ,                       \ either -> rc -1
-      9 0 MOVN,  spdn B,
-   spok LBL,
+   9 ok CBZ,                         \ either -> rc -1
+      9 0 MOVN,  done B,
+   ok LBL,
    0 SP 0 LDR,                       \ pid
    1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
-   9 2 CSET,  9 spw CBZ,             \ wait4 error (no child) -> rc -1
-      9 0 MOVN,  spdn B,
-   spw LBL,
+   9 2 CSET,  9 waitok CBZ,          \ wait4 error (no child) -> rc -1
+      9 0 MOVN,  done B,
+   waitok LBL,
    9 SP 8 LDRW,
    9 9 8 LSRI,  9 9 $FF ANDI,        \ WEXITSTATUS
-   spdn LBL,
+   done LBL,
    9 G-PUSH
    SP SP 64 ADDI, ;
 
 : BPIPE ( -- )                     \ ( -- rfd wfd rc ) rc=0, or -1 -1 -1
-   LBL LBL {: pok pdn :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
    HB-TARGET-LINUX? IF
       SP SP 16 SUBI,
       0 SP 0 ADDI,  1 0 MOVZ,  NR-PIPE SYS,
-      9 C-CS CSET,  9 pok CBZ,
-         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  pdn B,
-      pok LBL,
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
+      LNX-OK LABEL@ LBL,
       0 SP 0 LDRW,  1 SP 4 LDRW,
       0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
-      pdn LBL,
+      LNX-DONE LABEL@ LBL,
       SP SP 16 ADDI,
       exit
    THEN
    NR-PIPE SYS,
-   9 C-CS CSET,  9 pok CBZ,
-      9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  pdn B,
-   pok LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      9 0 MOVN,  9 G-PUSH  9 G-PUSH  9 G-PUSH  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
    0 G-PUSH  1 G-PUSH  9 0 MOVZ,  9 G-PUSH
-   pdn LBL, ;
+   LNX-DONE LABEL@ LBL, ;
 
 : BDUP2 ( -- )                     \ ( oldfd newfd -- rc ) rc=newfd or -1
    1 G-POP  0 G-POP
-   LBL LBL {: dok ddn :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
    HB-TARGET-LINUX? IF 2 0 MOVZ, THEN
    NR-DUP2 SYS,
-   9 C-CS CSET,  9 dok CBZ,
-      0 0 MOVN,  ddn B,
-   dok LBL,
-   ddn LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      0 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
+   LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
 
 13 constant LINUX-SIGPIPE
@@ -352,7 +490,8 @@ s" linux-spawn" s" reg reg reg reg reg reg reg --" TRUST
 8 constant LINUX-SIGSET-SIZE
 
 : LINUX-IGNORE-SIGPIPE ( -- )
-   LBL LBL {: ok done :}
+   LBL {: ok:label :}
+   LBL {: done:label :}
    SP SP 64 SUBI,
    9 LINUX-SIG-IGN MOVZ,  9 SP 0 STR,
    9 0 MOVZ,  9 SP 8 STR,  9 SP 16 STR,  9 SP 24 STR,
@@ -368,89 +507,97 @@ s" linux-ignore-sigpipe" s" --" TRUST
 
 : BFCNTL ( -- )                    \ ( fd cmd arg -- rc ) rc=sysret or -1
    2 G-POP  1 G-POP  0 G-POP
-   LBL LBL LBL {: fok fdn freal :}
+   LBL {: ok:label :}
+   LBL {: done:label :}
+   LBL LNX-REAL !
    HB-TARGET-LINUX? IF
-      1 73 CMPI,  C-NE freal BCOND,
+      1 73 CMPI,  C-NE LNX-REAL LABEL@ BCOND,
          LINUX-IGNORE-SIGPIPE
-         fdn B,
-      freal LBL,
+         done B,
+      LNX-REAL LABEL@ LBL,
    THEN
    NR-FCNTL SYS,
-   9 C-CS CSET,  9 fok CBZ,
-      0 0 MOVN,  fdn B,
-   fok LBL,
-   fdn LBL,
+   9 C-CS CSET,  9 ok CBZ,
+      0 0 MOVN,  done B,
+   ok LBL,
+   done LBL,
    0 G-PUSH ;
 
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
    2 G-POP  1 G-POP  0 G-POP
-   LBL LBL LBL LBL {: pok pdn pneg pcall :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
+   LBL LNX-PNEG !
+   LBL LNX-PCALL !
    HB-TARGET-LINUX? IF
       SP SP 32 SUBI,
-      2 0 CMPI,  C-LT pneg BCOND,
+      2 0 CMPI,  C-LT LNX-PNEG LABEL@ BCOND,
          5 1000 MOVZ,  6 2 5 UDIV,
          7 6 5 MUL,  7 2 7 SUB,
          5 1000 MOVZ,  7 7 5 MUL,  5 1000 MOVZ,  7 7 5 MUL,
          6 SP 0 STR,  7 SP 8 STR,
-         2 SP 0 ADDI,  pcall B,
-      pneg LBL,
+         2 SP 0 ADDI,  LNX-PCALL LABEL@ B,
+      LNX-PNEG LABEL@ LBL,
          2 0 MOVZ,
-      pcall LBL,
+      LNX-PCALL LABEL@ LBL,
       3 0 MOVZ,  4 0 MOVZ,
       NR-POLL SYS,
-      9 C-CS CSET,  9 pok CBZ,
-         0 0 MOVN,  pdn B,
-      pok LBL,
-      pdn LBL,
+      9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+         0 0 MOVN,  LNX-DONE LABEL@ B,
+      LNX-OK LABEL@ LBL,
+      LNX-DONE LABEL@ LBL,
       0 G-PUSH
       SP SP 32 ADDI,
       exit
    THEN
    NR-POLL SYS,
-   9 C-CS CSET,  9 pok CBZ,
-      0 0 MOVN,  pdn B,
-   pok LBL,
-   pdn LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      0 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
+   LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
 
 : BKILL ( -- )                     \ ( pid sig -- rc ) rc=0 or -1
    1 G-POP  0 G-POP
-   LBL LBL {: kok kdn :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
    NR-KILL SYS,
-   9 C-CS CSET,  9 kok CBZ,
-      0 0 MOVN,  kdn B,
-   kok LBL,
-   kdn LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      0 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
+   LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
 
 : BWAITRC ( -- )                   \ ( pid -- rc ) wait4; -1 = wait failed
    A G-POP
-   LBL LBL {: wok wdn :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
    SP SP 16 SUBI,
    0 9 0 ADDI,
    1 SP 0 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
-   9 C-CS CSET,  9 wok CBZ,
-      9 0 MOVN,  wdn B,
-   wok LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      9 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
    9 SP 0 LDRW,
    9 9 8 LSRI,  9 9 $FF ANDI,
-   wdn LBL,
+   LNX-DONE LABEL@ LBL,
    9 G-PUSH
    SP SP 16 ADDI, ;
 
 : BWAITSTATUS ( -- )               \ ( pid -- status ) wait4 raw status; -1 = wait failed
    A G-POP
-   LBL LBL {: wok wdn :}
+   LBL LNX-OK !
+   LBL LNX-DONE !
    SP SP 16 SUBI,
    0 9 0 ADDI,
    1 SP 0 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
-   9 C-CS CSET,  9 wok CBZ,
-      9 0 MOVN,  wdn B,
-   wok LBL,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      9 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
    9 SP 0 LDRW,
-   wdn LBL,
+   LNX-DONE LABEL@ LBL,
    9 G-PUSH
    SP SP 16 ADDI, ;
 
@@ -747,10 +894,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BNDSET ( -- ) A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
 : BEPOCHSECONDS ( -- )
-   LBL {: ok :}
+   LBL TIME-OK !
    0 DATA GTOD-SCRATCH ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-GETTIMEOFDAY SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ ok BCOND,  BRK,
-   ok LBL,
+   9 C-CS CSET,  9 9 0 ORR,  9 0 CMPI,  C-EQ TIME-OK LABEL@ BCOND,  BRK,
+   TIME-OK LABEL@ LBL,
    9 DATA GTOD-SCRATCH LDR,  9 G-PUSH ;
 
 \ Monotonic nanoseconds for benchmarks. Darwin exposes `clock_gettime` and
@@ -758,9 +905,9 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ engine. On arm64 macOS, EL0 can read CNTVCT_EL0 and CNTFRQ_EL0 directly; use
 \ quotient/remainder conversion so the tick*1e9 multiply cannot overflow.
 : BMONONS ( -- )
-   LBL {: ok :}
+   LBL TIME-OK !
    $D53BE049 EMITW  $D53BE00A EMITW         \ mrs x9,CNTVCT_EL0 ; mrs x10,CNTFRQ_EL0
-   10 ok CBNZ,  BRK,  ok LBL,
+   10 TIME-OK LABEL@ CBNZ,  BRK,  TIME-OK LABEL@ LBL,
    11 9 10 UDIV,                            \ q = ticks / freq
    12 11 10 MUL,  9 9 12 SUB,               \ r = ticks % freq
    13 $3B9ACA00 LIT64,                      \ 1_000_000_000 ns/s
@@ -773,19 +920,25 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ to the interpret loop top (its runtime addr in LMAINP-CELL — prims can't name
 \ labels). End-of-buffer (LEXIT) and an error (LUNDEF), when EVALD>0, restore the
 \ depth-indexed frame and return here. Sets EVALERR-CELL: 0 = clean, 1 = recovered from an error.
-: C-EVAL-FRAME-ADDR ( n n n -- ) {: depth dst scratch :}
-   dst EVAL-FRAME LIT64,
-   scratch depth EVAL-FRAME-SHIFT LSLI,
-   dst dst scratch ADD,
-   dst DATA dst ADD, ;
+: C-EVAL-FRAME-ARGS ( n n n -- )
+   EVAL-SCRATCH !
+   EVAL-DST !
+   EVAL-DEPTH ! ;
+
+: C-EVAL-FRAME-ADDR ( n n n -- )
+   C-EVAL-FRAME-ARGS
+   EVAL-DST @ EVAL-FRAME LIT64,
+   EVAL-SCRATCH @ EVAL-DEPTH @ EVAL-FRAME-SHIFT LSLI,
+   EVAL-DST @ EVAL-DST @ EVAL-SCRATCH @ ADD,
+   EVAL-DST @ DATA EVAL-DST @ ADD, ;
 
 : B-EVAL ( -- )
-   LBL {: ok :}
+   LBL EVAL-OK !
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    11 DATA EVALD-CELL LDR,
-   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT ok BCOND,
+   12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT EVAL-OK LABEL@ BCOND,
       BRK,
-   ok LBL,
+   EVAL-OK LABEL@ LBL,
    11 14 15 C-EVAL-FRAME-ADDR                        \ x14 = &frame[EVALD]
    11 DATA INP-CELL LDR,  11 14 0 STR,
    12 DATA INE-CELL LDR,  12 14 8 STR,
@@ -825,14 +978,15 @@ s" spawn-darwin-finish" s" label label --" TRUST
    13 32 MOVZ,  G-EMITC ;
 
 : B.S ( -- )
-   LBL LBL {: sl sd :}
+   LBL PS-LOOP !
+   LBL PS-DONE !
    9 DATA S0-CELL LDR,  9 DATA SSCR-CELL STR,
-   sl LBL,
-      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE sd BCOND,
+   PS-LOOP LABEL@ LBL,
+      9 DATA SSCR-CELL LDR,  9 XDS CMP,  C-GE PS-DONE LABEL@ BCOND,
       9 9 0 LDR,  G-PRINT9
       9 DATA SSCR-CELL LDR,  9 9 8 ADDI,  9 DATA SSCR-CELL STR,
-      sl B,
-   sd LBL, ;
+      PS-LOOP LABEL@ B,
+   PS-DONE LABEL@ LBL, ;
 
 : BDEPTH ( -- )
    A DATA S0-CELL LDR,
@@ -841,7 +995,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    A G-PUSH ;
 
 : (CMP) ( n -- )
-   {: cond :}  B G-POP  A G-POP  A B CMP,  A cond CSET,  A SP A SUB,  A G-PUSH ;
+   CMP-COND !  B G-POP  A G-POP  A B CMP,  A CMP-COND @ CSET,  A SP A SUB,  A G-PUSH ;
 
 : B= ( -- )
    C-EQ (CMP) ;
@@ -895,7 +1049,8 @@ s" spawn-darwin-finish" s" label label --" TRUST
    B G-POP A G-POP  A A B LSRV, A G-PUSH ;
 
 : BDIV0? ( -- )
-   LBL {: lok :} B lok CBNZ, BRK, lok LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
+   LBL DIV-OK !
+   B DIV-OK LABEL@ CBNZ, BRK, DIV-OK LABEL@ LBL, ;   \ SDIV by 0 silently yields 0; trap a zero divisor (B)
 
 : BDIV ( -- )
    B G-POP A G-POP  BDIV0?  A A B SDIV, A G-PUSH ;
@@ -907,13 +1062,16 @@ s" spawn-darwin-finish" s" label label --" TRUST
    B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
 
 : BABS ( -- )
-   A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
+   LBL PRIM-DONE !
+   A G-POP  A 0 CMPI,  C-GE PRIM-DONE LABEL@ BCOND,  A SP A SUB,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BMIN ( -- )
-   B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+   LBL PRIM-DONE !
+   B G-POP A G-POP  A B CMP,  C-LE PRIM-DONE LABEL@ BCOND,  A B 0 ADDI,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BMAX ( -- )
-   B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+   LBL PRIM-DONE !
+   B G-POP A G-POP  A B CMP,  C-GE PRIM-DONE LABEL@ BCOND,  A B 0 ADDI,  PRIM-DONE LABEL@ LBL,  A G-PUSH ;
 
 : BNIP ( -- )
    A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
@@ -943,7 +1101,8 @@ s" spawn-darwin-finish" s" label label --" TRUST
    EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
 : BQDUP ( -- )
-   A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
+   LBL PRIM-DONE !
+   A G-POP  A G-PUSH  A PRIM-DONE LABEL@ CBZ,  A G-PUSH  PRIM-DONE LABEL@ LBL, ;
 
 : BFETCH ( -- )
    A G-POP  A A 0 LDR,  A G-PUSH ;
@@ -990,18 +1149,18 @@ s" spawn-darwin-finish" s" label label --" TRUST
    A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
 : RSTK-PUSH ( n -- )
-   {: reg :}
+   RSTK-REG !
    14 DATA RSP-CELL LDR,
    15 14 3 LSLI,  15 DATA 15 ADD,
-   reg 15 RSTK-OFF STR,
+   RSTK-REG @ 15 RSTK-OFF STR,
    14 14 1 ADDI,  14 DATA RSP-CELL STR, ;
 
 : RSTK-POP ( n -- )
-   {: reg :}
+   RSTK-REG !
    14 DATA RSP-CELL LDR,
    14 14 1 SUBI,
    15 14 3 LSLI,  15 DATA 15 ADD,
-   reg 15 RSTK-OFF LDR,
+   RSTK-REG @ 15 RSTK-OFF LDR,
    14 DATA RSP-CELL STR, ;
 
 : B2TOR ( -- )
@@ -1017,16 +1176,17 @@ s" spawn-darwin-finish" s" label label --" TRUST
    7 DATA 0 LDR,  7 G-PUSH ;
 
 : DP-CHECK ( n -- )
-   {: reg :}
-   LBL LBL {: low-ok high-ok :}
+   DP-REG !
+   LBL DP-LOW !
+   LBL DP-HIGH !
    5 DATA-START MOVZ,  5 DATA 5 ADD,
-   reg 5 CMP,  C-GE low-ok BCOND,
+   DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       0 76 MOVZ,  NR-EXIT SYS,
-   low-ok LBL,
+   DP-LOW LABEL@ LBL,
    5 DATA-SIZE LIT64,  5 DATA 5 ADD,
-   reg 5 CMP,  C-LE high-ok BCOND,
+   DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
       0 76 MOVZ,  NR-EXIT SYS,
-   high-ok LBL, ;
+   DP-HIGH LABEL@ LBL, ;
 
 : BALLOT ( -- )
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
@@ -1045,11 +1205,12 @@ s" spawn-darwin-finish" s" label label --" TRUST
           0 7 0 ADDI,  NR-EXIT SYS, ;
 
 : SYS-PUSH ( -- )                  \ push x0, or -1 when the syscall carry is set
-   LBL LBL {: ok done :}
-   9 C-CS CSET,  9 ok CBZ,
-      0 0 MOVN,  done B,
-   ok LBL,
-   done LBL,
+   LBL SYS-OK !
+   LBL SYS-DONE !
+   9 C-CS CSET,  9 SYS-OK LABEL@ CBZ,
+      0 0 MOVN,  SYS-DONE LABEL@ B,
+   SYS-OK LABEL@ LBL,
+   SYS-DONE LABEL@ LBL,
    0 G-PUSH ;
 
 : BOPEN ( -- )
@@ -1094,8 +1255,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
    16 BLR,
    0 G-PUSH ;
 
-: BFFI-LOAD-DREG ( n n -- ) {: d:n off:n :}
-   9 17 off LDR,  d 9 FMOVXD, ;
+: BFFI-LOAD-DREG ( n n -- )
+   FFI-OFF !
+   FFI-DREG !
+   9 17 FFI-OFF @ LDR,  FFI-DREG @ 9 FMOVXD, ;
 
 : BFFI-LOAD-D0-D7 ( -- )
    0 0 BFFI-LOAD-DREG    1 $8 BFFI-LOAD-DREG
@@ -1104,19 +1267,21 @@ s" spawn-darwin-finish" s" label label --" TRUST
    6 $30 BFFI-LOAD-DREG  7 $38 BFFI-LOAD-DREG ;
 
 : BFFI-COPY-ABI-STACK ( -- )
-   LBL {: lskip:label :}  LBL {: lloop:label :}  LBL {: ldone:label :}
-   14 0 CMPI,  C-LE lskip BCOND,                      \ stackcells <= 0 -> no spill
+   LBL FFI-SKIP !
+   LBL FFI-LOOP !
+   LBL FFI-DONE !
+   14 0 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,             \ stackcells <= 0 -> no spill
    10 14 0 ADDI,                                      \ x10 = cells left
    11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,
    12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,        \ sp -= align(cells*8,16)
    12 13 0 ADDI,  13 SP 0 ADDI,                       \ x12=src, x13=dst
-   lloop LBL,
-      10 ldone CBZ,
+   FFI-LOOP LABEL@ LBL,
+      10 FFI-DONE LABEL@ CBZ,
       9 12 0 LDR,  9 13 0 STR,
       12 12 $8 ADDI,  13 13 $8 ADDI,
-      10 10 1 SUBI,  lloop B,
-   ldone LBL,
-   lskip LBL, ;
+      10 10 1 SUBI,  FFI-LOOP LABEL@ B,
+   FFI-DONE LABEL@ LBL,
+   FFI-SKIP LABEL@ LBL, ;
 
 : BFFI-CALL-ABI-CORE ( -- )
    16 G-POP                                            \ x16 = fn
@@ -1156,20 +1321,22 @@ s" spawn-darwin-finish" s" label label --" TRUST
    15 G-POP                                            \ x15 = argbuf
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
-   LBL {: lskip :}  LBL {: lloop :}  LBL {: ldone :}
-   14 8 CMPI,  C-LE lskip BCOND,                       \ nargs <= 8 -> no spill
+   LBL FFI-SKIP !
+   LBL FFI-LOOP !
+   LBL FFI-DONE !
+   14 8 CMPI,  C-LE FFI-SKIP LABEL@ BCOND,             \ nargs <= 8 -> no spill
       10 14 8 SUBI,                                    \ x10 = extra = nargs - 8
       11 10 3 LSLI,  11 11 $F ADDI,  11 11 4 LSRI,  11 11 4 LSLI,  \ salloc = (extra*8+$F)&~$F
       12 SP 0 ADDI,  12 12 11 SUB,  SP 12 0 ADDI,      \ sp -= salloc
       12 15 $40 ADDI,                                  \ x12 = src = argbuf + 8 cells
       13 SP 0 ADDI,                                    \ x13 = dst = sp
-      lloop LBL,
-      10 ldone CBZ,                                    \ extra == 0 -> done
+      FFI-LOOP LABEL@ LBL,
+      10 FFI-DONE LABEL@ CBZ,                          \ extra == 0 -> done
          9 12 0 LDR,  9 13 0 STR,                      \ [dst] = [src]
          12 12 $8 ADDI,  13 13 $8 ADDI,               \ src++, dst++
-         10 10 1 SUBI,  lloop B,                       \ extra--, loop
-      ldone LBL,
-   lskip LBL,
+         10 10 1 SUBI,  FFI-LOOP LABEL@ B,             \ extra--, loop
+      FFI-DONE LABEL@ LBL,
+   FFI-SKIP LABEL@ LBL,
    BFFI-LOAD-X0-X7
    16 BLR,
    SP 20 0 ADDI,                                       \ restore sp from x20
@@ -1234,25 +1401,26 @@ s" spawn-darwin-finish" s" label label --" TRUST
    NR-RMDIR SYS,  SYS-PUSH ;
 
 : LINUX-STAT-FIX ( n -- )
-   {: bufreg :}
-   5 bufreg 16 LDRW,  5 bufreg 4 STRW,
-   5 bufreg 48 LDR,   6 bufreg 88 LDR,   7 bufreg 96 LDR,
-   8 bufreg 104 LDR,  9 bufreg 112 LDR,
-   5 bufreg 96 STR,   6 bufreg 48 STR,   7 bufreg 56 STR,
-   8 bufreg 64 STR,   9 bufreg 72 STR, ;
+   STAT-BUF !
+   5 STAT-BUF @ 16 LDRW,  5 STAT-BUF @ 4 STRW,
+   5 STAT-BUF @ 48 LDR,   6 STAT-BUF @ 88 LDR,   7 STAT-BUF @ 96 LDR,
+   8 STAT-BUF @ 104 LDR,  9 STAT-BUF @ 112 LDR,
+   5 STAT-BUF @ 96 STR,   6 STAT-BUF @ 48 STR,   7 STAT-BUF @ 56 STR,
+   8 STAT-BUF @ 64 STR,   9 STAT-BUF @ 72 STR, ;
 s" linux-stat-fix" s" n --" TRUST
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
-   LBL LBL {: ok done :}
+   LBL STAT-OK !
+   LBL STAT-DONE !
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 0 MOVZ,
       NR-STAT64 SYS,
-      9 C-CS CSET,  9 ok CBZ,
-         0 0 MOVN,  done B,
-      ok LBL,
+      9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
+         0 0 MOVN,  STAT-DONE LABEL@ B,
+      STAT-OK LABEL@ LBL,
       2 LINUX-STAT-FIX
-      done LBL,
+      STAT-DONE LABEL@ LBL,
       0 G-PUSH
       exit
    THEN
@@ -1260,15 +1428,16 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
-   LBL LBL {: ok done :}
+   LBL STAT-OK !
+   LBL STAT-DONE !
    HB-TARGET-LINUX? IF
       2 1 0 ADDI,  1 0 0 ADDI,  0 99 MOVN,  3 AT-SYMLINK-NOFOLLOW MOVZ,
       NR-LSTAT64 SYS,
-      9 C-CS CSET,  9 ok CBZ,
-         0 0 MOVN,  done B,
-      ok LBL,
+      9 C-CS CSET,  9 STAT-OK LABEL@ CBZ,
+         0 0 MOVN,  STAT-DONE LABEL@ B,
+      STAT-OK LABEL@ LBL,
       2 LINUX-STAT-FIX
-      done LBL,
+      STAT-DONE LABEL@ LBL,
       0 G-PUSH
       exit
    THEN
@@ -1311,35 +1480,37 @@ s" linux-stat-fix" s" n --" TRUST
    19 SP 8 LDR,  30 SP 0 LDR,  SP SP 16 ADDI, ;   \ restore XDS + lr
 
 : BCATCH ( -- )
-   LBL LBL {: lres lpush :}
+   LBL CATCH-RES !
+   LBL CATCH-PUSH !
    A G-POP
    SP SP 48 SUBI,
    30 SP 32 STR,
    11 DATA 8 LDR,  11 SP 0 STR,
    19 SP 8 STR,
    13 SP 48 ADDI,  13 SP 16 STR,
-   12 lres ADR,  12 SP 24 STR,
+   12 CATCH-RES LABEL@ ADR,  12 SP 24 STR,
    14 SP 0 ADDI,  14 DATA 8 STR,
    9 BLR,
    11 SP 0 LDR,  11 DATA 8 STR,
    30 SP 32 LDR,  SP SP 48 ADDI,
-   9 0 MOVZ,  lpush B,
-   lres LBL,
-   lpush LBL,  9 G-PUSH ;
+   9 0 MOVZ,  CATCH-PUSH LABEL@ B,
+   CATCH-RES LABEL@ LBL,
+   CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
 
 : BTHROW ( -- )
-   LBL {: lnoh :}
+   LBL THROW-NOH !
    A G-POP
    11 DATA 8 LDR,
-   11 lnoh CBZ,
+   11 THROW-NOH LABEL@ CBZ,
    19 11 8 LDR,
    10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
-   lnoh LBL,
-   10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
+   THROW-NOH LABEL@ LBL,
+   LBL THROW-NOREC !
+   10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
-   lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
+   THROW-NOREC LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
 
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
@@ -1354,41 +1525,49 @@ s" linux-stat-fix" s" n --" TRUST
    A G-POP  A DATA HOOK-CELL STR, ;
 
 : BSWL ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
+   LBL SWL-LOOP !
+   LBL SWL-END !
+   LBL SWL-NEXT !
+   LBL SWL-CMP !
+   LBL SWL-MATCH !
+   LBL SWL-F1 !
+   LBL SWL-F2 !
+   LBL SWL-INL !
    2 G-POP  1 G-POP  0 G-POP
    3 $20 MOVZ,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  11 0 MOVZ,
-   wl LBL,  6 wend CBZ,
-      9 5 40 LDR,  9 2 CMP,  C-NE wnext BCOND,
-      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE wnext BCOND,
+   SWL-LOOP LABEL@ LBL,  6 SWL-END LABEL@ CBZ,
+      9 5 40 LDR,  9 2 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+      9 5 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 1 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
-      9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 winl CBZ,
+      9 5 16 LDR,  9 9 DNAME-EXT ANDI,  9 SWL-INL LABEL@ CBZ,
          16 5 24 LDR,
-      winl LBL,
+      SWL-INL LABEL@ LBL,
       7 0 MOVZ,
-      wcmp LBL,  7 1 CMP,  C-GE wmatch BCOND,
+      SWL-CMP LABEL@ LBL,  7 1 CMP,  C-GE SWL-MATCH LABEL@ BCOND,
          9 16 7 ADD,  9 9 0 LDRB,
-         9 $41 CMPI,  C-LT wf1 BCOND,  9 $5A CMPI,  C-GT wf1 BCOND,  9 9 3 ORR,
-         wf1 LBL,
+         9 $41 CMPI,  C-LT SWL-F1 LABEL@ BCOND,  9 $5A CMPI,  C-GT SWL-F1 LABEL@ BCOND,  9 9 3 ORR,
+         SWL-F1 LABEL@ LBL,
          10 0 7 ADD,  10 10 0 LDRB,
-         10 $41 CMPI,  C-LT wf2 BCOND,  10 $5A CMPI,  C-GT wf2 BCOND,  10 10 3 ORR,
-         wf2 LBL,
-         9 10 CMP,  C-NE wnext BCOND,
-         7 7 1 ADDI,  wcmp B,
-      wmatch LBL,  11 5 0 LDR,  wnext B,
-      wnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  wl B,
-   wend LBL,  11 G-PUSH ;
+         10 $41 CMPI,  C-LT SWL-F2 LABEL@ BCOND,  10 $5A CMPI,  C-GT SWL-F2 LABEL@ BCOND,  10 10 3 ORR,
+         SWL-F2 LABEL@ LBL,
+         9 10 CMP,  C-NE SWL-NEXT LABEL@ BCOND,
+         7 7 1 ADDI,  SWL-CMP LABEL@ B,
+      SWL-MATCH LABEL@ LBL,  11 5 0 LDR,  SWL-NEXT LABEL@ B,
+      SWL-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  SWL-LOOP LABEL@ B,
+   SWL-END LABEL@ LBL,  11 G-PUSH ;
 
 : BPARSE-NAME ( -- )
-   LBL LBL {: none done :}
+   LBL PARSE-NONE !
+   LBL PARSE-DONE !
    LTOK LABEL@ BL,
-   0 none CBZ,
+   0 PARSE-NONE LABEL@ CBZ,
       9 DATA TKA-CELL LDR,  9 G-PUSH
       9 DATA TKL-CELL LDR,  9 G-PUSH
-      done B,
-   none LBL,
+      PARSE-DONE LABEL@ B,
+   PARSE-NONE LABEL@ LBL,
       9 DATA INP-CELL LDR,  9 G-PUSH
       9 0 MOVZ,  9 G-PUSH
-   done LBL, ;
+   PARSE-DONE LABEL@ LBL, ;
 
 : EMIT-ARITH-PRIMS ( -- )
    s" +"    ['] B+    FPRIM-L   s" -"    ['] B-    FPRIM-L   s" *"    ['] B*    FPRIM-L
@@ -1513,8 +1692,8 @@ s" emit-prims" s" --" TRUST
    A G-POP  0 A FMOVXD,  0 0 FSQRT,  A 0 FMOVDX,  A G-PUSH ;
 
 : (FCMP) ( n -- )
-   {: cond :}  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
-   A cond CSET,  A SP A SUB,  A G-PUSH ;
+   FP-COND !  B G-POP  A G-POP  0 A FMOVXD,  1 B FMOVXD,  0 1 FCMP,
+   A FP-COND @ CSET,  A SP A SUB,  A G-PUSH ;
 
 : BF< ( -- )
    C-MI (FCMP) ;
@@ -1526,8 +1705,8 @@ s" emit-prims" s" --" TRUST
    C-EQ (FCMP) ;
 
 : (FCMP0) ( n -- )
-   {: cond :}  A G-POP  0 A FMOVXD,  0 FCMP0,
-   A cond CSET,  A SP A SUB,  A G-PUSH ;
+   FP-COND !  A G-POP  0 A FMOVXD,  0 FCMP0,
+   A FP-COND @ CSET,  A SP A SUB,  A G-PUSH ;
 
 : BF0< ( -- )
    C-MI (FCMP0) ;
@@ -1542,7 +1721,9 @@ s" emit-prims" s" --" TRUST
    A G-POP  0 A FMOVXD,  A 0 FCVTZS,  A G-PUSH ;
 
 : BFDOT ( -- )
-   LBL LBL LBL {: fl il sd :}
+   LBL FD-FRAC !
+   LBL FD-INT !
+   LBL FD-SIGN !
    A G-POP  15 A 0 ADDI,                               \ bits (sign test later)
    SP SP 48 SUBI,
    12 SP 48 ADDI,
@@ -1553,18 +1734,18 @@ s" emit-prims" s" --" TRUST
    14 $F4240 LIT64,  2 14 SCVTF,  3 3 2 FMUL,
    14 3 FCVTZS,                                        \ x14 = frac * 1e6
    10 10 MOVZ,  5 6 MOVZ,
-   fl LBL,                                             \ six zero-padded frac digits
+   FD-FRAC LABEL@ LBL,                                 \ six zero-padded frac digits
      11 14 10 SDIV,  13 11 10 MUL,  13 14 13 SUB,
      13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
-     14 11 0 ADDI,  5 5 1 SUBI,  5 fl CBNZ,
+     14 11 0 ADDI,  5 5 1 SUBI,  5 FD-FRAC LABEL@ CBNZ,
    13 46 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ '.'
-   il LBL,                                             \ int digits (do-while)
+   FD-INT LABEL@ LBL,                                  \ int digits (do-while)
      11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
      13 13 48 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
-     9 11 0 ADDI,  9 il CBNZ,
-   15 15 63 LSRI,  15 sd CBZ,
+     9 11 0 ADDI,  9 FD-INT LABEL@ CBNZ,
+   15 15 63 LSRI,  15 FD-SIGN LABEL@ CBZ,
      13 45 MOVZ,  12 12 1 SUBI,  13 12 0 STRB,         \ '-'
-   sd LBL,
+   FD-SIGN LABEL@ LBL,
    0 1 MOVZ,  1 12 0 ADDI,  2 SP 48 ADDI,  2 2 12 SUB,
    NR-WRITE SYS,
    SP SP 48 ADDI, ;
@@ -1589,37 +1770,43 @@ s" emit-fp-prims" s" --" TRUST
    LBCAP LABEL@ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS LABEL@ LBL,
-   LBL LBL LBL {: bok bcp bcd :}
+   LBL BCAP-OK !
+   LBL BCAP-CP !
+   LBL BCAP-CD !
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,
-   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE bok BCOND,
+   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE BCAP-OK LABEL@ BCOND,
       0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
       0 71 MOVZ,  NR-EXIT SYS,
-   bok LBL,
+   BCAP-OK LABEL@ LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
-   bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
-      15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  bcp B,
-   bcd LBL,  13 32 MOVZ,  13 15 0 STRB,
+   BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,
+      15 15 1 ADDI,  11 11 1 ADDI,  12 12 1 SUBI,  BCAP-CP LABEL@ B,
+   BCAP-CD LABEL@ LBL,  13 32 MOVZ,  13 15 0 STRB,
    14 14 17 ADD,  14 14 1 ADDI,  14 DATA BODYLEN-CELL STR,
    RET, ;
 
 : EMIT-TOK ( -- )
    LTOK LABEL@ LBL,
-   LBL LBL LBL LBL LBL {: tskip thas tscan tgot tnone :}
+   LBL TOK-SKIP !
+   LBL TOK-HAS !
+   LBL TOK-SCAN !
+   LBL TOK-GOT !
+   LBL TOK-NONE !
    11 DATA INP-CELL LDR,  12 DATA INE-CELL LDR,
-   tskip LBL,
-      11 12 CMP,  C-GE tnone BCOND,
-      9 11 0 LDRB,  9 32 CMPI,  C-HI thas BCOND,
-      11 11 1 ADDI,  tskip B,
-   thas LBL,  11 DATA TKA-CELL STR,
-   tscan LBL,
-      11 12 CMP,  C-GE tgot BCOND,
-      9 11 0 LDRB,  9 32 CMPI,  C-LS tgot BCOND,
-      11 11 1 ADDI,  tscan B,
-   tgot LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
+   TOK-SKIP LABEL@ LBL,
+      11 12 CMP,  C-GE TOK-NONE LABEL@ BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-HI TOK-HAS LABEL@ BCOND,
+      11 11 1 ADDI,  TOK-SKIP LABEL@ B,
+   TOK-HAS LABEL@ LBL,  11 DATA TKA-CELL STR,
+   TOK-SCAN LABEL@ LBL,
+      11 12 CMP,  C-GE TOK-GOT LABEL@ BCOND,
+      9 11 0 LDRB,  9 32 CMPI,  C-LS TOK-GOT LABEL@ BCOND,
+      11 11 1 ADDI,  TOK-SCAN LABEL@ B,
+   TOK-GOT LABEL@ LBL,  9 DATA TKA-CELL LDR,  9 11 9 SUB,  9 DATA TKL-CELL STR,
       11 DATA INP-CELL STR,  0 1 MOVZ,  RET,
-   tnone LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
+   TOK-NONE LABEL@ LBL,  11 DATA INP-CELL STR,  0 0 MOVZ,  RET, ;
 
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
@@ -1627,176 +1814,208 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,
-   LBL LBL LBL LBL {: fdl fdd fil fid :}
+   LBL FL-DL !
+   LBL FL-DD !
+   LBL FL-IL !
+   LBL FL-ID !
    9 9 6 LSRI,  9 9 6 LSLI,                                 \ align start down to the
    10 9 0 ADDI,                                             \ line, or the 64-byte
                                                             \ stride skips the last one
-   fdl LBL,  10 CP CMP,  C-GE fdd BCOND,  10 DCCVAU,  10 10 64 ADDI,  fdl B,
-   fdd LBL,  DSB-ISH,
+   FL-DL LABEL@ LBL,  10 CP CMP,  C-GE FL-DD LABEL@ BCOND,  10 DCCVAU,  10 10 64 ADDI,  FL-DL LABEL@ B,
+   FL-DD LABEL@ LBL,  DSB-ISH,
    10 9 0 ADDI,
-   fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
-   fid LBL,  DSB-ISH,  ISB,  RET, ;
+   FL-IL LABEL@ LBL,  10 CP CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
+   FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET, ;
 
 : EMIT-FIND ( -- )
    LFIND LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qbad qtail qtailok nloop nnext ncmp nmatch nend ninl
-      fstart floop fdone fnext fcmp fmatch finl fmiss ftryglobal ffound :}
+   LBL FIND-QSCAN !
+   LBL FIND-QNONE !
+   LBL FIND-QHAS !
+   LBL FIND-QBAD !
+   LBL FIND-QTAIL !
+   LBL FIND-QTAILOK !
+   LBL FIND-NLOOP !
+   LBL FIND-NNEXT !
+   LBL FIND-NCMP !
+   LBL FIND-NMATCH !
+   LBL FIND-NEND !
+   LBL FIND-NINL !
+   LBL FIND-START !
+   LBL FIND-LOOP !
+   LBL FIND-DONE !
+   LBL FIND-NEXT !
+   LBL FIND-CMP !
+   LBL FIND-MATCH !
+   LBL FIND-INL !
+   LBL FIND-MISS !
+   LBL FIND-TRYG !
+   LBL FIND-FOUND !
    13 0 MOVZ,
    17 0 MOVZ,
-   qscan LBL,
-      17 10 CMP,  C-GE qnone BCOND,
-      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
-      17 17 1 ADDI,  qscan B,
-   qnone LBL,
-      2 DATA PKG-PRI-CELL LDR,  fstart B,
-   qhas LBL,
-      17 0 CMPI,  C-EQ qnone BCOND,
-      14 17 1 ADDI,  14 10 CMP,  C-GE qnone BCOND,
+   FIND-QSCAN LABEL@ LBL,
+      17 10 CMP,  C-GE FIND-QNONE LABEL@ BCOND,
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ FIND-QHAS LABEL@ BCOND,
+      17 17 1 ADDI,  FIND-QSCAN LABEL@ B,
+   FIND-QNONE LABEL@ LBL,
+      2 DATA PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
+   FIND-QHAS LABEL@ LBL,
+      17 0 CMPI,  C-EQ FIND-QNONE LABEL@ BCOND,
+      14 17 1 ADDI,  14 10 CMP,  C-GE FIND-QNONE LABEL@ BCOND,
       14 17 1 ADDI,
-   qtail LBL,
-      14 10 CMP,  C-GE qtailok BCOND,
-      15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
-      14 14 1 ADDI,  qtail B,
-   qtailok LBL,
+   FIND-QTAIL LABEL@ LBL,
+      14 10 CMP,  C-GE FIND-QTAILOK LABEL@ BCOND,
+      15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
+      14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
+   FIND-QTAILOK LABEL@ LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   nloop LBL,
-      6 nend CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE nnext BCOND,
+   FIND-NLOOP LABEL@ LBL,
+      6 FIND-NEND LABEL@ CBZ,
+      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
       16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
          16 5 24 LDR,
-      ninl LBL,
+      FIND-NINL LABEL@ LBL,
       7 0 MOVZ,
-      ncmp LBL,
-         7 17 CMP,  C-GE nmatch BCOND,
+      FIND-NCMP LABEL@ LBL,
+         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
          15 16 7 ADD,  15 15 0 LDRB,
          3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
          4 9 7 ADD,     4 4 0 LDRB,
          3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE nnext BCOND,
-         7 7 1 ADDI,  ncmp B,
-      nmatch LBL,
+         15 4 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
+         7 7 1 ADDI,  FIND-NCMP LABEL@ B,
+      FIND-NMATCH LABEL@ LBL,
          2 5 0 LDR,
          9 9 17 ADD,  9 9 1 ADDI,
          10 10 17 SUB,  10 10 1 SUBI,
-         fstart B,
-      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
-   nend LBL,  RET,
-   qbad LBL,  RET,
-   fstart LBL,
+         FIND-START LABEL@ B,
+      FIND-NNEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-NLOOP LABEL@ B,
+   FIND-NEND LABEL@ LBL,  RET,
+   FIND-QBAD LABEL@ LBL,  RET,
+   FIND-START LABEL@ LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   floop LBL,
-      6 fdone CBZ,
-      14 5 40 LDR,  14 2 CMP,  C-NE fnext BCOND,
-      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 10 CMP,  C-NE fnext BCOND,
+   FIND-LOOP LABEL@ LBL,
+      6 FIND-DONE LABEL@ CBZ,
+      14 5 40 LDR,  14 2 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
+      14 5 16 LDR,  14 14 4 LSLI,  14 14 4 LSRI,  14 10 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
       16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 finl CBZ,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-INL LABEL@ CBZ,
          16 5 24 LDR,
-      finl LBL,
+      FIND-INL LABEL@ LBL,
       7 0 MOVZ,
-      fcmp LBL,
-         7 10 CMP,  C-GE fmatch BCOND,
+      FIND-CMP LABEL@ LBL,
+         7 10 CMP,  C-GE FIND-MATCH LABEL@ BCOND,
          15 16 7 ADD,  15 15 0 LDRB,
          3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
          4 9 7 ADD,     4 4 0 LDRB,
          3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE fnext BCOND,
-         7 7 1 ADDI,  fcmp B,
-      fmatch LBL,
+         15 4 CMP,  C-NE FIND-NEXT LABEL@ BCOND,
+         7 7 1 ADDI,  FIND-CMP LABEL@ B,
+      FIND-MATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
-         13 1 MOVZ,  13 13 14 ORR,  fnext B,
-      fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
-   fdone LBL,
-      13 ffound CBNZ,
-      14 DATA PKG-PRI-CELL LDR,  14 fmiss CBZ,
-      14 2 CMP,  C-NE ftryglobal BCOND,
-         2 DATA PKG-PUB-CELL LDR,  fstart B,
-      ftryglobal LBL,
-      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE fmiss BCOND,
-         2 0 MOVZ,  fstart B,
-      ffound LBL,
-      fmiss LBL,  RET, ;
+         13 1 MOVZ,  13 13 14 ORR,  FIND-NEXT LABEL@ B,
+      FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
+   FIND-DONE LABEL@ LBL,
+      13 FIND-FOUND LABEL@ CBNZ,
+      14 DATA PKG-PRI-CELL LDR,  14 FIND-MISS LABEL@ CBZ,
+      14 2 CMP,  C-NE FIND-TRYG LABEL@ BCOND,
+         2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
+      FIND-TRYG LABEL@ LBL,
+      14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
+         2 0 MOVZ,  FIND-START LABEL@ B,
+      FIND-FOUND LABEL@ LBL,
+      FIND-MISS LABEL@ LBL,  RET, ;
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
 
-: C-NUM-SIGN ( label label -- ) {: ldone:label ndoll:label :}
-   10 ldone CBZ,
-   15 9 0 LDRB,  15 45 CMPI,  C-NE ndoll BCOND,
+: C-NUM-SIGN ( -- )
+   10 NUM-DONE LABEL@ CBZ,
+   15 9 0 LDRB,  15 45 CMPI,  C-NE NUM-NDOLL LABEL@ BCOND,
       13 0 MOVN,  14 1 MOVZ,
-   ndoll LBL,
-   14 10 CMP,  C-GE ldone BCOND, ;
+   NUM-NDOLL LABEL@ LBL,
+   14 10 CMP,  C-GE NUM-DONE LABEL@ BCOND, ;
 
-: C-NUM-BASE ( label label -- ) {: ldone:label nohex:label :}
-   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE nohex BCOND,
+: C-NUM-BASE ( -- )
+   5 9 14 ADD,  15 5 0 LDRB,  15 36 CMPI,  C-NE NUM-NOHEX LABEL@ BCOND,
       6 16 MOVZ,  14 14 1 ADDI,
-   nohex LBL,
+   NUM-NOHEX LABEL@ LBL,
    2 0 MOVZ,                                                    \ frac mode off
-   14 10 CMP,  C-GE ldone BCOND, ;
+   14 10 CMP,  C-GE NUM-DONE LABEL@ BCOND, ;
 
-: C-NUM-DOT ( label label label -- ) {: ldone:label lloop:label ndot:label :}
-   15 46 CMPI,  C-NE ndot BCOND,                                \ '.' -> frac mode
-      6 10 CMPI,  C-NE ldone BCOND,                             \ only base 10
-      2 ldone CBNZ,                                             \ second dot -> fail
+: C-NUM-DOT ( -- )
+   15 46 CMPI,  C-NE NUM-NDOT LABEL@ BCOND,                      \ '.' -> frac mode
+      6 10 CMPI,  C-NE NUM-DONE LABEL@ BCOND,                    \ only base 10
+      2 NUM-DONE LABEL@ CBNZ,                                    \ second dot -> fail
       2 1 MOVZ,  4 0 MOVZ,  3 1 MOVZ,                           \ frac=0 scale=1
-      14 14 1 ADDI,  lloop B,
-   ndot LBL, ;
+      14 14 1 ADDI,  NUM-LOOP LABEL@ B,
+   NUM-NDOT LABEL@ LBL, ;
 
-: C-NUM-DIGIT ( label label label label -- ) {: ldone:label gotd:label nd:label nuc:label :}
-   15 48 CMPI,  C-LT ldone BCOND,
-   15 57 CMPI,  C-GT nd BCOND,
-      7 15 48 SUBI,  gotd B,
-   nd LBL,
-   6 16 CMPI,  C-NE ldone BCOND,
-   15 97 CMPI,  C-LT nuc BCOND,  15 102 CMPI,  C-GT ldone BCOND,
-      7 15 87 SUBI,  gotd B,
-   nuc LBL,
-   15 65 CMPI,  C-LT ldone BCOND,  15 70 CMPI,  C-GT ldone BCOND,
+: C-NUM-DIGIT ( -- )
+   15 48 CMPI,  C-LT NUM-DONE LABEL@ BCOND,
+   15 57 CMPI,  C-GT NUM-ND LABEL@ BCOND,
+      7 15 48 SUBI,  NUM-GOTD LABEL@ B,
+   NUM-ND LABEL@ LBL,
+   6 16 CMPI,  C-NE NUM-DONE LABEL@ BCOND,
+   15 97 CMPI,  C-LT NUM-NUC LABEL@ BCOND,  15 102 CMPI,  C-GT NUM-DONE LABEL@ BCOND,
+      7 15 87 SUBI,  NUM-GOTD LABEL@ B,
+   NUM-NUC LABEL@ LBL,
+   15 65 CMPI,  C-LT NUM-DONE LABEL@ BCOND,  15 70 CMPI,  C-GT NUM-DONE LABEL@ BCOND,
       7 15 55 SUBI, ;
 
-: C-NUM-INT-STEP ( label -- ) {: lloop:label :}
+: C-NUM-INT-STEP ( -- )
    11 11 6 MUL,  11 11 7 ADD,
-   14 14 1 ADDI,  lloop B, ;
+   14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
-: C-NUM-FRAC-STEP ( label -- ) {: lloop:label :}
+: C-NUM-FRAC-STEP ( -- )
    5 10 MOVZ,  4 4 5 MUL,  4 4 7 ADD,  3 3 5 MUL,
-   14 14 1 ADDI,  lloop B, ;
+   14 14 1 ADDI,  NUM-LOOP LABEL@ B, ;
 
-: C-NUM-FLOAT-FINISH ( label label -- ) {: ldone:label fpos:label :}
-   3 1 CMPI,  C-EQ ldone BCOND,                                 \ "1." (no frac digits) -> fail
+: C-NUM-FLOAT-FINISH ( -- )
+   3 1 CMPI,  C-EQ NUM-DONE LABEL@ BCOND,                       \ "1." (no frac digits) -> fail
    0 11 SCVTF,  1 4 SCVTF,  2 3 SCVTF,                          \ int, frac, scale
    1 1 2 FDIV,  0 0 1 FADD,
-   13 0 CMPI,  C-GE fpos BCOND,  0 0 FNEG,
-   fpos LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
+   13 0 CMPI,  C-GE NUM-FPOS LABEL@ BCOND,  0 0 FNEG,
+   NUM-FPOS LABEL@ LBL,  11 0 FMOVDX,  12 1 MOVZ,  RET, ;
 
 : C-NUM-INT-FINISH ( -- )
    11 11 13 MUL,  12 1 MOVZ, ;
 
 : EMIT-NUM ( -- )
    LNUM LABEL@ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: ldone ndoll nohex lloop lok gotd nd nuc ndot isfrac lint fpos :}
+   LBL NUM-DONE !
+   LBL NUM-NDOLL !
+   LBL NUM-NOHEX !
+   LBL NUM-LOOP !
+   LBL NUM-OK !
+   LBL NUM-GOTD !
+   LBL NUM-ND !
+   LBL NUM-NUC !
+   LBL NUM-NDOT !
+   LBL NUM-ISFRAC !
+   LBL NUM-LINT !
+   LBL NUM-FPOS !
    C-NUM-INIT-REGS
-   ldone ndoll C-NUM-SIGN
-   ldone nohex C-NUM-BASE
-   lloop LBL,
-   14 10 CMP,  C-GE lok BCOND,
+   C-NUM-SIGN
+   C-NUM-BASE
+   NUM-LOOP LABEL@ LBL,
+   14 10 CMP,  C-GE NUM-OK LABEL@ BCOND,
    5 9 14 ADD,  15 5 0 LDRB,
-   ldone lloop ndot C-NUM-DOT
-   ldone gotd nd nuc C-NUM-DIGIT
-   gotd LBL,
-   2 isfrac CBNZ,
-   lloop C-NUM-INT-STEP
-   isfrac LBL,                                                  \ frac digit: f=f*10+d, k*=10
-   lloop C-NUM-FRAC-STEP
-   lok LBL,
-   2 lint CBZ,
-   ldone fpos C-NUM-FLOAT-FINISH
-   lint LBL,  C-NUM-INT-FINISH
-   ldone LBL,  RET, ;
+   C-NUM-DOT
+   C-NUM-DIGIT
+   NUM-GOTD LABEL@ LBL,
+   2 NUM-ISFRAC LABEL@ CBNZ,
+   C-NUM-INT-STEP
+   NUM-ISFRAC LABEL@ LBL,                                      \ frac digit: f=f*10+d, k*=10
+   C-NUM-FRAC-STEP
+   NUM-OK LABEL@ LBL,
+   2 NUM-LINT LABEL@ CBZ,
+   C-NUM-FLOAT-FINISH
+   NUM-LINT LABEL@ LBL,  C-NUM-INT-FINISH
+   NUM-DONE LABEL@ LBL,  RET, ;
 
 : EMIT-DICT ( -- )
    0 BEGIN dup #PL @ < WHILE

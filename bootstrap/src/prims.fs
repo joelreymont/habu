@@ -21,7 +21,7 @@ s" R a b -- R b a b"   s" TUCK"  PRIM
 s" R -- R i64"         s" DEPTH" PRIM
 
 \ --- binary arithmetic / bitwise ( R i64 i64 -- R i64 ) ---
-s" R i64 i64 -- R i64" s" +"      PRIM
+s" R a i64 -- R a"     s" +"      PRIM
 s" R i64 i64 -- R i64" s" -"      PRIM
 s" R i64 i64 -- R i64" s" *"      PRIM
 s" R i64 i64 -- R i64" s" /"      PRIM
@@ -36,7 +36,7 @@ s" R i64 i64 -- R i64" s" RSHIFT" PRIM
 s" R i64 -- R i64" s" NEGATE" PRIM
 s" R i64 -- R i64" s" INVERT" PRIM
 s" R i64 -- R i64" s" ABS"    PRIM
-s" R i64 -- R i64" s" 1+"     PRIM
+s" R a -- R a"     s" 1+"     PRIM
 s" R i64 -- R i64" s" 1-"     PRIM
 s" R i64 -- R i64" s" 2*"     PRIM
 s" R i64 -- R i64" s" 2/"     PRIM

@@ -175,6 +175,7 @@ variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBC
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
+variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
@@ -1489,6 +1490,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWELSE @ LBL,   s" else"   BYTES,    LKWBEGIN @ LBL,  s" begin"  BYTES,
    LKWUNTIL @ LBL,  s" until"  BYTES,    LKWAGAIN @ LBL,  s" again"  BYTES,
    LKWWHILE @ LBL,  s" while"  BYTES,    LKWREPEAT @ LBL, s" repeat" BYTES,
+   LKWCASE @ LBL,   s" case"   BYTES,    LKWOF @ LBL,     s" of"     BYTES,
+   LKWENDOF @ LBL,  s" endof"  BYTES,    LKWENDCASE @ LBL, s" endcase" BYTES,
    LKWCREATE @ LBL, s" create" BYTES,    LKWVAR @ LBL,    s" variable" BYTES,
    LKWSQ @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
    LKWCQ @ LBL,     CQ-KW 2 BYTES,
@@ -1518,6 +1521,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-POPFLAG ( -- )  $D1002273 C-EMITW  $F9400269 C-EMITW ;     \ sub x19,#8 ; ldr x9,[x19]
 
+: C-POP-X16 ( -- )  $D1002273 C-EMITW  $F9400270 C-EMITW ;
+
 : C-PUSHCP ( -- )   9 CP 0 ADDI,  LCFPUSH @ BL, ;              \ push current CP
 
 : C-BBACK ( n n -- ) {: opc mask -- :}                                    \ branch opc back to x9 target
@@ -1528,6 +1533,31 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-THEN ( -- )  LCFPOP @ BL,  LPAT @ BL, ;
 
 : J-ELSE ( -- )  LCFPOP @ BL,  14 9 0 ADDI,  C-PUSHCP  $14000000 C-EMITW  9 14 0 ADDI,  LPAT @ BL, ;
+
+: J-CASE ( -- )
+   9 0 MOVZ,  LCFPUSH @ BL, ;
+
+: J-OF ( -- )
+   C-POP-X16
+   $F85F8269 C-EMITW
+   $EB10013F C-EMITW
+   $9A9F17E9 C-EMITW
+   C-PUSHCP
+   $B4000009 C-EMITW
+   $D1002273 C-EMITW ;
+
+: J-ENDOF ( -- )
+   J-ELSE ;
+
+: J-ENDCASE ( -- )
+   LBL LBL {: cloop done :} \ typed-local-lint: allow-bare-local
+   $D1002273 C-EMITW
+   cloop LBL,
+      LCFPOP @ BL,
+      9 done CBZ,
+      LPAT @ BL,
+      cloop B,
+   done LBL, ;
 
 \ BEGIN loops are register-resident: J-BEGIN snapshots the VS into registers
 \ (Lvsnap), the back edges reconcile to that snapshot (Lvrecon) and branch on
@@ -2728,7 +2758,11 @@ variable CFSK2
    lmain LKWUNTIL  5 ['] J-UNTIL ['] J-UNTILR CFBN-ENTRY
    lmain LKWAGAIN  5 ['] J-AGAIN  CFN-ENTRY
    lmain LKWWHILE  5 ['] J-WHILE ['] J-WHILER CFB-ENTRY
-   lmain LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY ;
+   lmain LKWREPEAT 6 ['] J-REPEAT CFN-ENTRY
+   lmain LKWCASE   4 ['] J-CASE   CFN-ENTRY
+   lmain LKWOF     2 ['] J-OF     CF-ENTRY
+   lmain LKWENDOF  5 ['] J-ENDOF  CF-ENTRY
+   lmain LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY ;
 
 : EMIT-COMPILE-STRING-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
@@ -2766,9 +2800,14 @@ variable CFSK2
    lmain EMIT-COMPILE-META-KEYWORDS
    lmain EMIT-COMPILE-LOOP-KEYWORDS ;
 
-: EMIT-COMPILE-LOCAL ( n -- ) {: lmain :}
-   LBL LBL {: notloc lmem :}
+: EMIT-COMPILE-LOCAL ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: notloc lmem qok :} \ typed-local-lint: allow-bare-local
    LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
+      LBCAP @ BL,
+      11 DATA QPATCH-CELL LDR,  11 qok CBZ,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 75 MOVZ,  NR-EXIT SYS,
+      qok LBL,
       LVRALLOC @ BL,  14 lmem CBZ,
       7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
       9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
@@ -2854,8 +2893,8 @@ variable CFSK2
 : EMIT-COMPILE ( n n -- ) {: lmain lundef :}
    LBL {: lnotsemi :}
    lmain lnotsemi EMIT-COMPILE-SEMI
-   lmain EMIT-COMPILE-KEYWORDS
    lmain EMIT-COMPILE-LOCAL
+   lmain EMIT-COMPILE-KEYWORDS
    lmain EMIT-COMPILE-LITERAL
    lmain EMIT-COMPILE-OPS
    lmain lundef EMIT-COMPILE-CALL ;
@@ -2964,6 +3003,7 @@ variable CFSK2
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
+   LBL LKWCASE !  LBL LKWOF !  LBL LKWENDOF !  LBL LKWENDCASE !
    LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
    LBL LKWTYPE !
    LBL LKWTICK !  LBL LKWBTICK !

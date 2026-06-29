@@ -518,8 +518,9 @@ address arithmetic at the public boundary.
   memory/struct/byte offsets, and field strides are always hex (`$FF and`,
   `$D10043FF`, `$200`, `$40`). Only genuine small decimal *counts* stay decimal:
   loop bounds, arities, shift amounts, and register indices. When in doubt,
-  prefer hex. The standalone parses `$hex` (case-insensitive, optional leading
-  `-`).
+  prefer hex. Cryptographic/format constants should follow the conventional hex
+  spelling from the spec, not decimal transcriptions. The standalone parses
+  `$hex` (case-insensitive, optional leading `-`).
 
 ## Testing (BLOCKING)
 

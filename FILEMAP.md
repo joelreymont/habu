@@ -12,7 +12,13 @@ points stay listed.
 - `LESSONS.md` — running project memory and recent implementation findings.
 - `STATUS.md` — current verification status and known gaps.
 - `TRUSTED.md` — audited `TRUST` escape-hatch manifest.
+- `skills/habu-bootstrap/SKILL.md` — current bootstrap and refresh commands.
+- `skills/habu-gate/SKILL.md` — current native gate commands and timing args.
+- `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
+- `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/gate.md` — native gate architecture, proof subjects, metrics, and
+  process-boundary rules.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
 - `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
@@ -235,7 +241,8 @@ points stay listed.
   signature scanner/capture emitters in native and recovery codegen.
 - `tools/compiler-dispatch-test.f` — source-shape coverage for factored compiler
   dispatch and code-section emitter groups in native and recovery codegen.
-- `tools/aot-call-report.f` — measures patched AOT call-stencil padding.
+- `tools/aot-call-report-lib.f` — reusable AOT call-stencil report scanner.
+- `tools/aot-call-report.f` — CLI entrypoint for AOT call-stencil reports.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.
 - `tools/bundle-lib-core.f` — reusable stdlib bundle construction core.
 - `tools/bundle-lib.f` — CLI wrapper for stdlib bundle construction.

@@ -150,7 +150,7 @@ variable GD-INC-DUP-U
 : GD-LONG-DICTIONARY ( -- )
    GE-HB-RESET
    GD-LONG-DICTIONARY-SOURCE
-   s" hb long dictionary names" GE-HB-RUN-STDIN
+   s" hb long dictionary names" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 42" GE-OUT-LINE
    s" 123" GE-OUT-LINE
@@ -177,7 +177,7 @@ variable GD-INC-DUP-U
 : GD-WORDLIST ( -- )
    GE-HB-RESET
    GD-WORDLIST-SOURCE
-   s" hb long dictionary wordlist isolation" GE-HB-RUN-STDIN
+   s" hb long dictionary wordlist isolation" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
@@ -196,7 +196,7 @@ variable GD-INC-DUP-U
 : GD-LONG-NAME ( -- )
    GE-HB-RESET
    GD-LONG-NAME-SOURCE
-   s" hb dictionary name over 255 bytes" GE-HB-RUN-STDIN
+   s" hb dictionary name over 255 bytes" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 1" GE-OUT-LINE
    s" 0" GE-OUT-LINE
@@ -213,7 +213,7 @@ variable GD-INC-DUP-U
 : GD-TRUSTED-DOES ( -- )
    GE-HB-RESET
    GD-TRUSTED-DOES-SOURCE
-   s" hb trusted CREATE...DOES> effect recording" GE-HB-RUN-STDIN
+   s" hb trusted CREATE...DOES> effect recording" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE
    s" 7" GE-OUT-LINE
@@ -239,7 +239,7 @@ variable GD-INC-DUP-U
    s" V1 ( R -- R i64 ) 5" GE-SRC-CHECK-LINE
    s" V2 ( i64 [ i64 -- i64 ] -- i64 ) execute" GE-SRC-CHECK-LINE
    s" V3 ( R -- R i64 ) 5 5" GE-SRC-CHECK-LINE
-   s" hb rows/quot sig verify" GE-HB-RUN-STDIN
+   s" hb rows/quot sig verify" GE-EVAL-RUN-STDIN
    SB-RESET s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" 0" GE-OUT-LINE
    SB$ s" hb rows/quot sig verify output" GE-EXPECT-OUT ;
 
@@ -254,7 +254,7 @@ variable GD-INC-DUP-U
    s" P6 ( i64 i64 -- i64 i64 i64 ) depth" GE-SRC-CHECK-LINE
    s" P7 ( -- n ) 0 4096 3 $1002 -1 0 mmap" GE-SRC-CHECK-LINE
    s" P8 ( ptr u8 ptr a -- ptr u8 ) swap over 0 ptr-field ! 0 ptr-field @" GE-SRC-CHECK-LINE
-   s" hb primitive checklist signatures" GE-HB-RUN-STDIN
+   s" hb primitive checklist signatures" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
@@ -268,7 +268,7 @@ variable GD-INC-DUP-U
    s" RBAD2 ( -- i64 i64 ) 2r>" GE-SRC-CHECK-LINE
    s" RPEEK ( i64 i64 -- i64 i64 i64 i64 ) 2>r 2r@ 2r>" GE-SRC-CHECK-LINE
    s" QD ( i64 -- i64 i64 ) ?dup" GE-SRC-CHECK-LINE
-   s" hb return-stack/?dup primitive verdicts" GE-HB-RUN-STDIN
+   s" hb return-stack/?dup primitive verdicts" GE-EVAL-RUN-STDIN
    SB-RESET s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" -1" GE-OUT-LINE s" 1" GE-OUT-LINE
    SB$ s" hb return-stack/?dup primitive verdicts output" GE-EXPECT-OUT ;
 
@@ -283,7 +283,7 @@ variable GD-INC-DUP-U
    s" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
    s" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
    s" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
-   s" hb combinator/iterator verdicts" GE-HB-RUN-STDIN
+   s" hb combinator/iterator verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE
@@ -293,7 +293,7 @@ variable GD-INC-DUP-U
    GE-HB-RESET
    GE-SRC-RESET
    s" QLOCAL ( i64 -- i64 ) {: x:n :} [: x ;] execute" GE-SRC-CHECK-LINE
-   s" hb rejects local capture in quotation" GE-HB-RUN-STDIN
+   s" hb rejects local capture in quotation" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE
    SB$ s" hb rejects local capture in quotation output" GE-EXPECT-OUT ;
@@ -317,7 +317,7 @@ variable GD-INC-DUP-U
    s" : LMASK ( n -- n ) $FF and ;" GE-SRC-LINE
    s" : LRD ( n n n -- n ) {: RD:n imm:n hw:n :} RD LMASK ;" GE-SRC-LINE
    s" 7 7 7 LRD ." GE-SRC-LINE
-   s" hb locals resolve before dictionary and loop words" GE-HB-RUN-STDIN
+   s" hb locals resolve before dictionary and loop words" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 7" GE-OUT-LINE
    s" 8" GE-OUT-LINE
@@ -330,7 +330,7 @@ variable GD-INC-DUP-U
    s" : 10 ( -- ) ;" GE-SRC-LINE
    s" : CALL10 ( -- n ) 10 ;" GE-SRC-LINE
    s" CALL10 ." GE-SRC-LINE
-   s" hb numeric literals before dictionary lookup" GE-HB-RUN-STDIN
+   s" hb numeric literals before dictionary lookup" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 10" GE-OUT-LINE
    SB$ s" hb numeric literal-first output" GE-EXPECT-OUT ;
@@ -408,7 +408,7 @@ variable GD-INC-DUP-U
 : GD-PACKAGE-RUNTIME ( -- )
    GE-HB-RESET
    GD-PACKAGE-SOURCE
-   s" hb package public/private/reopen" GE-HB-RUN-STDIN
+   s" hb package public/private/reopen" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 7" GE-OUT-LINE
    s" 12" GE-OUT-LINE
@@ -426,7 +426,7 @@ variable GD-INC-DUP-U
    GE-SRC-RESET
    s" : FIVE-LITS ( -- n n n n n ) 10 10 10 10 10 ;" GE-SRC-LINE
    s" FIVE-LITS + + + + ." GE-SRC-LINE
-   s" hb package cells do not overlap jit stack" GE-HB-RUN-STDIN
+   s" hb package cells do not overlap jit stack" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 50" GE-OUT-LINE
    SB$ s" hb package cells do not overlap jit stack output" GE-EXPECT-OUT ;
@@ -465,7 +465,7 @@ variable GD-INC-DUP-U
 : GD-PACKAGE-CHECK ( -- )
    GE-HB-RESET
    GD-PACKAGE-CHECK-SOURCE
-   s" hb package checker scope" GE-HB-RUN-STDIN
+   s" hb package checker scope" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE
    s" 1" GE-OUT-LINE
@@ -548,7 +548,7 @@ variable GD-INC-DUP-U
    s" : GD-RV-FIVE ( -- n ) 5 ;" GE-SRC-LINE
    s" : GD-RV-INSTALL ( -- ) [: GD-RV-FIVE ;] is GD-RV ;" GE-SRC-LINE
    s" GD-RV-INSTALL GD-RV ." GE-SRC-LINE
-   s" hb explicit undefine redefinition" GE-HB-RUN-STDIN
+   s" hb explicit undefine redefinition" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 2" GE-OUT-LINE
    s" 4" GE-OUT-LINE
@@ -586,7 +586,7 @@ variable GD-INC-DUP-U
    s" ODIN:RESET ." GE-SRC-LINE
    s" MK:RESET ." GE-SRC-LINE
    s" 3 dup + ." GE-SRC-LINE
-   s" hb package duplicate positives" GE-HB-RUN-STDIN
+   s" hb package duplicate positives" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 7" GE-OUT-LINE
    s" 1" GE-OUT-LINE
@@ -723,7 +723,7 @@ variable GD-INC-DUP-U
 : GD-STRUCTURES ( -- )
    GE-HB-RESET
    GD-STRUCTURE-SOURCE
-   s" hb structures field layout and typing" GE-HB-RUN-STDIN
+   s" hb structures field layout and typing" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 17" GE-OUT-LINE
    s" 11" GE-OUT-LINE
@@ -763,7 +763,7 @@ variable GD-INC-DUP-U
    s" end-package" GE-SRC-LINE
    s" GD-EV:CODE-A ." GE-SRC-LINE
    s" GD-EV:CODE-B ." GE-SRC-LINE
-   s" hb enums sequence and package scope" GE-HB-RUN-STDIN
+   s" hb enums sequence and package scope" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE
    s" 1" GE-OUT-LINE
@@ -798,7 +798,7 @@ variable GD-INC-DUP-U
 : GD-EXEC-VECTORS ( -- )
    GE-HB-RESET
    GD-EXEC-VECTOR-SOURCE
-   s" hb checked execution vectors" GE-HB-RUN-STDIN
+   s" hb checked execution vectors" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 5" GE-OUT-LINE
    s" 7" GE-OUT-LINE
@@ -824,7 +824,7 @@ variable GD-INC-DUP-U
    s" end-package" GE-SRC-LINE
    s" GDXV:INSTALL" GE-SRC-LINE
    s" GDXV:RUN ." GE-SRC-LINE
-   s" hb package execution vector" GE-HB-RUN-STDIN
+   s" hb package execution vector" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 5" GE-OUT-LINE
    SB$ s" hb package execution vector output" GE-EXPECT-OUT ;
@@ -882,7 +882,7 @@ variable GD-INC-DUP-U
    s" 9 3 GD-CASE-NEST ." GE-SRC-LINE
    s" 7 GD-CASE-PKG ." GE-SRC-LINE
    s" 8 GD-CASE-PKG ." GE-SRC-LINE
-   s" hb checked case control" GE-HB-RUN-STDIN
+   s" hb checked case control" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 10" GE-OUT-LINE
    s" 20" GE-OUT-LINE
@@ -918,7 +918,7 @@ variable GD-INC-DUP-U
 : GD-PARSING-RUNTIME ( -- )
    GE-HB-RESET
    GD-PARSING-RUNTIME-SOURCE
-   s" hb parsing-word runtime surface" GE-HB-RUN-STDIN
+   s" hb parsing-word runtime surface" GE-EVAL-RUN-STDIN
    SB-RESET
    s" hi" GE-OUT-LINE s" ok" GE-OUT-LINE s" bye" GE-OUT-LINE s" yo" GE-OUT-LINE
    SB$ s" hb parsing-word runtime surface output" GE-EXPECT-OUT ;
@@ -951,7 +951,7 @@ variable GD-INC-DUP-U
    GE-SRC-RESET
    s" : PSH ( R -- R i64 ) 5 ;" GE-SRC-LINE
    s" PSH ." GE-SRC-LINE
-   s" hb named-row sig run" GE-HB-RUN-STDIN
+   s" hb named-row sig run" GE-EVAL-RUN-STDIN
    SB-RESET s" 5" GE-OUT-LINE
    SB$ s" hb named-row sig run output" GE-EXPECT-OUT ;
 
@@ -960,7 +960,7 @@ variable GD-INC-DUP-U
    GE-SRC-RESET
    s" lib/test.f" GE-SRC-FILE+
    s" tools/xref-test.f" GE-SRC-FILE+
-   s" hb native xref words" GE-HB-RUN-STDIN
+   s" hb native xref words" GE-EVAL-RUN-STDIN
    s" xref-test: ok" s" hb native xref words output" GE-EXPECT-OUT-HAS ;
 
 : GD-MAIN ( -- )

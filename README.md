@@ -25,52 +25,20 @@ Core pieces:
 
 ## Quick Start
 
-If `bin/hb` is missing, recover it with Gforth once:
+Use the repo skills for current commands:
 
-```sh
-HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth-fast tools/bootstrap.sh
-```
+- [`skills/habu-bootstrap/SKILL.md`](skills/habu-bootstrap/SKILL.md) — recover
+  missing `bin/hb` with Gforth 0.7.9+, refresh the self-hosted engine, and port
+  bootstrap work to zed/Linux.
+- [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md) — run focused and
+  full native gates with explicit pool and budget arguments.
+- [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md) — build AOT
+  binaries and REPL images.
 
-After `bin/hb` exists, normal work is Habu-native:
-
-```sh
-bin/hb                                  # checked REPL, stepper, debugger
-echo ': SQ ( i64 -- i64 ) dup * ; 7 SQ .' | bin/hb
-bin/hb script.f arg...
-```
-
-Run commands from the repo root, or from a tree where the `src/`, `lib/`,
-`tools/`, and `test/` paths are available. Warm snapshot images are only
-regenerable gate/cache artifacts.
-
-Refresh the self-hosted engine:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
-  tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
-```
-
-Build an AOT binary:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f \
-  lib/codesign.f lib/content-key.f tools/build-fixpoint.f tools/warm-run.f \
-  tools/hb-build-lib.f tools/hb-build.f -- prog.f -o prog
-```
-
-Run the native gate:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f \
-  test/gate-pool.f \
-  test/run.f
-```
-
-Host policy knobs are explicit script args, for example:
-`test/run.f -- --pool-slots 8 --nested-pool-slots 4 --budget-ms 70000`.
+After `bin/hb` exists, normal work is Habu-native: the checked REPL, source
+loading, self-refresh, AOT builds, and gates all run through `bin/hb`. Run from
+the repo root, or from a tree where `src/`, `lib/`, `tools/`, and `test/` are
+available. Warm snapshot images are regenerable gate/cache artifacts.
 
 ## Checked Forth
 
@@ -118,6 +86,12 @@ See [`maki/README.md`](maki/README.md), [`PLAN.md`](PLAN.md), and the design doc
 - [`docs/forth.md`](docs/forth.md) — mandatory Forth style and checker rules.
 - [`docs/debugging.md`](docs/debugging.md) — stepper, debugger, breakpoints,
   watchpoints, image dumpers, JIT dumpers, and native fallback boundaries.
+- [`skills/habu-bootstrap/SKILL.md`](skills/habu-bootstrap/SKILL.md) — bootstrap
+  and engine refresh commands.
+- [`skills/habu-gate/SKILL.md`](skills/habu-gate/SKILL.md) — native gate
+  commands.
+- [`skills/habu-build/SKILL.md`](skills/habu-build/SKILL.md) — AOT and REPL
+  build commands.
 - [`STATUS.md`](STATUS.md) — current gate status.
 - [`LESSONS.md`](LESSONS.md) — concise project memory.
 - `.dots/` — active implementation tasks.

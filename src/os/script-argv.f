@@ -1,13 +1,13 @@
 \ script-argv.f - bin/hb source-list script argument convention.
 
-: SCRIPT-LOAD-Z? ( ptr u8 -- bool ) {: z:ptr :}
-   z c@ ENV-DASH <> if ENV-FALSE exit then
-   z 1 + c@ ENV-DASH <> if ENV-FALSE exit then
-   z 2 + c@ 108 <> if ENV-FALSE exit then
-   z 3 + c@ 111 <> if ENV-FALSE exit then
-   z 4 + c@ 97 <> if ENV-FALSE exit then
-   z 5 + c@ 100 <> if ENV-FALSE exit then
-   z 6 + c@ 0 = ;
+: SCRIPT-LOAD-Z? ( ptr u8 -- bool )
+   dup 0 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
+   dup 1 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
+   dup 2 ZBYTE@ $6C <> if drop ENV-FALSE exit then
+   dup 3 ZBYTE@ $6F <> if drop ENV-FALSE exit then
+   dup 4 ZBYTE@ $61 <> if drop ENV-FALSE exit then
+   dup 5 ZBYTE@ $64 <> if drop ENV-FALSE exit then
+   6 ZBYTE@ 0 = ;
 s" SCRIPT-LOAD-Z?" s" ptr u8 -- bool" TRUST
 
 : SCRIPT-LOAD? ( -- bool )
@@ -15,11 +15,11 @@ s" SCRIPT-LOAD-Z?" s" ptr u8 -- bool" TRUST
    1 ARGV SCRIPT-LOAD-Z? ;
 s" SCRIPT-LOAD?" s" -- bool" TRUST
 
-: SCRIPT-SEP? ( n -- bool ) {: idx :}
-   idx ARGV {: z:ptr :}
-   z c@ ENV-DASH <> if ENV-FALSE exit then
-   z 1 + c@ ENV-DASH <> if ENV-FALSE exit then
-   z 2 + c@ 0 = ;
+: SCRIPT-SEP? ( n -- bool )
+   ARGV
+   dup 0 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
+   dup 1 ZBYTE@ ENV-DASH <> if drop ENV-FALSE exit then
+   2 ZBYTE@ 0 = ;
 s" SCRIPT-SEP?" s" n -- bool" TRUST
 
 : SCRIPT-ARG-START ( -- n )

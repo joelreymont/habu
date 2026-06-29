@@ -46,30 +46,69 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 : BFR-INLINE-NAME ( ptr a -- ptr u8 )
    BFR-INLINE-OFF + BFR-A>U8 ;
 
-: BFR-NAME-A ( ptr a -- ptr u8 ) {: rec:ptr :}
-   rec BFR-EXT? if rec BFR-NAME-SLOT BFR-PTR@ exit then
-   rec BFR-INLINE-NAME ;
+: BFR-NAME-A ( ptr a -- ptr u8 )
+   dup BFR-EXT? if BFR-NAME-SLOT BFR-PTR@ exit then
+   BFR-INLINE-NAME ;
 
-: BFR-NAME$ ( ptr a -- ptr u8 n ) {: rec:ptr :}
-   rec BFR-NAME-A
-   rec BFR-NAME-LEN ;
+: BFR-NAME$ ( ptr a -- ptr u8 n )
+   dup BFR-NAME-A swap BFR-NAME-LEN ;
 
-: BFR-FOLD-C ( n -- n ) {: c:n :}
-   c $41 < if c exit then
-   c $5A > if c exit then
-   c $20 or ;
+: BFR-FOLD-C ( n -- n )
+   dup $41 < if exit then
+   dup $5A > if exit then
+   $20 or ;
 
-: BFR-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> if 0 0= 0= exit then
-   0 begin dup u < while
-      dup a + c@ BFR-FOLD-C
-      over b + c@ BFR-FOLD-C <> if drop 0 0= 0= exit then
+variable BFR-A
+variable BFR-B
+variable BFR-U
+variable BFR-V
+variable BFR-SN
+variable BFR-SU
+
+: BFR-BYTE@ ( ptr u8 n -- u8 )
+   + c@ ;
+s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
+
+: BFR-A-FIELD ( -- ptr ptr u8 )
+   BFR-A 0 ptr-field ;
+
+: BFR-B-FIELD ( -- ptr ptr u8 )
+   BFR-B 0 ptr-field ;
+
+: BFR-SN-FIELD ( -- ptr ptr u8 )
+   BFR-SN 0 ptr-field ;
+
+: BFR-A@ ( -- ptr u8 )
+   BFR-A-FIELD @ ;
+
+: BFR-B@ ( -- ptr u8 )
+   BFR-B-FIELD @ ;
+
+: BFR-SN@ ( -- ptr u8 )
+   BFR-SN-FIELD @ ;
+
+: BFR-A! ( ptr u8 -- )
+   BFR-A-FIELD ! ;
+
+: BFR-B! ( ptr u8 -- )
+   BFR-B-FIELD ! ;
+
+: BFR-SN! ( ptr u8 -- )
+   BFR-SN-FIELD ! ;
+
+: BFR-STR=CI ( ptr u8 n ptr u8 n -- bool )
+   BFR-V ! BFR-B! BFR-U ! BFR-A!
+   BFR-U @ BFR-V @ <> if 0 0= 0= exit then
+   0 begin dup BFR-U @ < while
+      dup BFR-A@ swap BFR-BYTE@ BFR-FOLD-C
+      over BFR-B@ swap BFR-BYTE@ BFR-FOLD-C <> if drop 0 0= 0= exit then
       1+
    repeat drop
    0 0= ;
 
-: BFR-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
-   rec BFR-NAME$ name u BFR-STR=CI ;
+: BFR-MATCH? ( ptr a ptr u8 n -- bool )
+   BFR-U ! BFR-A!
+   BFR-NAME$ BFR-A@ BFR-U @ BFR-STR=CI ;
 
 : BFR-USIG-TERM ( -- )
    0 BFR-USIG-END-PTR ! ;
@@ -78,9 +117,10 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
    0 BFR-UEND!
    BFR-USIG-TERM ;
 
-: BFR-FIND-FIRST-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
+: BFR-FIND-FIRST-INDEX ( ptr u8 n -- n )
+   BFR-SU ! BFR-SN!
    0 begin dup ndict@ < while
-      dup BFR-REC name u BFR-MATCH? if exit then
+      dup BFR-REC BFR-SN@ BFR-SU @ BFR-MATCH? if exit then
       1+
    repeat drop
    BFR-NOT-FOUND ;

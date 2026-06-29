@@ -24,6 +24,18 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
 : GAP-PH-FILESZ ( n -- n )
    GB-ELF-PH-OFF GB-ELF-PH-FILESZ-OFF + GB-U64-OFF ;
 
+: GAP-ELF-TEXT-SZ ( -- n )
+   0 GAP-PH-FILESZ ;
+
+: GAP-ELF-RW-VA ( -- n )
+   GB-ELF-VMBASE GAP-ELF-TEXT-SZ + ;
+
+: GAP-ELF-DLOPEN-SLOT ( -- n )
+   GAP-ELF-RW-VA GB-ELF-DLOPEN-SLOT-OFF + ;
+
+: GAP-ELF-DLSYM-SLOT ( -- n )
+   GAP-ELF-RW-VA GB-ELF-DLSYM-SLOT-OFF + ;
+
 : GAP-ASSERT-LINUX-DYNAMIC-ELF ( ptr u8 n -- ) {: label:ptr labelu:n :}
    HB-TARGET-LINUX? 0= if exit then
    GB-OUT$ GB-READ-EXEC
@@ -32,18 +44,18 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    0 GAP-PH-FLAGS GB-ELF-PF-R GB-ELF-PF-X or label labelu GAP-N=
    1 GAP-PH-TYPE GB-ELF-PT-LOAD label labelu GAP-N=
    1 GAP-PH-FLAGS GB-ELF-PF-R GB-ELF-PF-W or label labelu GAP-N=
-   1 GAP-PH-VADDR GB-ELF-RW-VA label labelu GAP-N=
+   1 GAP-PH-VADDR GAP-ELF-RW-VA label labelu GAP-N=
    1 GAP-PH-FILESZ GB-ELF-RW-SZ label labelu GAP-N=
    2 GAP-PH-TYPE GB-ELF-PT-INTERP label labelu GAP-N=
    2 GAP-PH-FILE-OFF GB-ELF-INTERP-OFF label labelu GAP-N=
    2 GAP-PH-FILESZ GB-ELF-INTERP-SZ label labelu GAP-N=
    3 GAP-PH-TYPE GB-ELF-PT-DYNAMIC label labelu GAP-N=
    3 GAP-PH-FILE-OFF 1 GAP-PH-FILE-OFF label labelu GAP-N=
-   3 GAP-PH-VADDR GB-ELF-RW-VA label labelu GAP-N=
+   3 GAP-PH-VADDR GAP-ELF-RW-VA label labelu GAP-N=
    3 GAP-PH-FILESZ GB-ELF-DYNAMIC-SZ label labelu GAP-N=
-   GB-ELF-RELA-OFF GB-U64-OFF GB-ELF-DLOPEN-SLOT label labelu GAP-N=
+   GB-ELF-RELA-OFF GB-U64-OFF GAP-ELF-DLOPEN-SLOT label labelu GAP-N=
    GB-ELF-RELA-OFF 8 + GB-U64-OFF GB-ELF-DLOPEN-RINFO label labelu GAP-N=
-   GB-ELF-RELA-OFF 24 + GB-U64-OFF GB-ELF-DLSYM-SLOT label labelu GAP-N=
+   GB-ELF-RELA-OFF 24 + GB-U64-OFF GAP-ELF-DLSYM-SLOT label labelu GAP-N=
    GB-ELF-RELA-OFF 32 + GB-U64-OFF GB-ELF-DLSYM-RINFO label labelu GAP-N= ;
 
 : GAP-SRC-DOTQ ( ptr u8 n -- ) {: a:ptr u:n :}

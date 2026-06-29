@@ -20,6 +20,8 @@ variable CAE-NUM-I
 variable CAE-RUN-A
 variable CAE-RUN-U
 variable CAE-RC
+variable CAE-CASE-A
+variable CAE-CASE-U
 
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
@@ -57,6 +59,22 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-RUN$ ( -- ptr u8 n )
    CAE-RUN-A@ CAE-RUN-U @ ;
+
+: CAE-CASE-A-FIELD ( -- ptr ptr u8 )
+   CAE-CASE-A 0 ptr-field ;
+
+: CAE-CASE-A@ ( -- ptr u8 )
+   CAE-CASE-A-FIELD @ ;
+
+: CAE-CASE-A! ( ptr u8 -- )
+   CAE-CASE-A-FIELD ! ;
+
+: CAE-CASE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CAE-CASE-A!
+   u CAE-CASE-U ! ;
+
+: CAE-CASE$ ( -- ptr u8 n )
+   CAE-CASE-A@ CAE-CASE-U @ ;
 
 : CAE-LF ( -- )
    $0a SB-APPEND-C ;
@@ -307,71 +325,133 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE CAE-CORE-CAPTURE ;
 
 : CAE-RUN-CLI ( -- n n n n )
+   CAE-IN CAE-RUN!
    CAE-IN CAE-ARGV-CHECK
    CAE-HB-CAPTURE ;
 
+: CAE-OUTCOME. ( n -- ) {: kind:n :}
+   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
+   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
+   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
+   s" unknown" type ;
+
+: CAE-DUMP-CAPTURE ( n n n n n -- )
+   {: outu:n erru:n kind:n code:n expect:n :}
+   s" check-all-errors-test failure" type cr
+   s" case: " type CAE-CASE$ type cr
+   s" source: " type CAE-RUN$ type cr
+   s" expected exit: " type expect . cr
+   s" outcome: " type kind CAE-OUTCOME.
+   s"  code: " type code . cr
+   s" stdout bytes: " type outu . s" / " type CAE-BUF-CAP . cr
+   s" stderr bytes: " type erru . s" / " type CAE-BUF-CAP . cr
+   s" stdout:" type cr
+   CAE-OUT outu type
+   s" stderr:" type cr
+   CAE-ERR erru type ;
+
 : CAE-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
+   kind PROC-OUTCOME-EXIT <> if outu erru kind code expect CAE-DUMP-CAPTURE then
+   code expect <> if outu erru kind code expect CAE-DUMP-CAPTURE then
+   CAE-CASE$ T-LABEL
    kind PROC-OUTCOME-EXIT T=
+   CAE-CASE$ T-LABEL
    code expect T=
    outu erru ;
 
 : CAE-TEST-SUPPORT-SOURCE ( -- )
+   s" support-source" CAE-CASE!
    CAE-IN CAE-SUPPORT-SOURCE$ WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" support-source stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" support-source word" T-LABEL
    CAE-ERR erru CAE-WORD-BADSUP$ CONTAINS? TTRUE
+   s" support-source support token" T-LABEL
    CAE-ERR erru CAE-TOKEN-SUPK$ CONTAINS? TFALSE
+   s" support-source diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
 : CAE-TEST-AS-ADD-TASK-LEAK ( -- )
+   s" as-add-task-leak" CAE-CASE!
    CAE-IN CAE-AS-LEAK-SOURCE$ WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" as-add-task stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" as-add-task word" T-LABEL
    CAE-ERR erru CAE-WORD-ASADD$ CONTAINS? TTRUE
+   s" as-add-task private token" T-LABEL
    CAE-ERR erru CAE-TOKEN-BMTID$ CONTAINS? TFALSE
+   s" as-add-task diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
 : CAE-TEST-MANY-DEFS-OK ( -- )
+   s" many-defs-ok" CAE-CASE!
    CAE-WRITE-MANY-DEFS-OK
    CAE-RUN-LARGE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" many-defs stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" many-defs stderr" T-LABEL
    CAE-ERR erru CAE-EMPTY$ T$= ;
 
 : CAE-TEST-MANY-SUPPORT ( -- )
+   s" many-support" CAE-CASE!
    CAE-WRITE-MANY-SUPPORT
    CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" many-support stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" many-support word" T-LABEL
    CAE-ERR erru CAE-WORD-CAPSUPBAD$ CONTAINS? TTRUE
+   s" many-support private token" T-LABEL
    CAE-ERR erru CAE-TOKEN-CAPSUP$ CONTAINS? TFALSE
+   s" many-support diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
 : CAE-TEST-UNDEFINED-JSON ( -- )
+   s" undefined-json" CAE-CASE!
    CAE-IN CAE-UNDEF-SOURCE$ WRITE-ALL
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" undefined-json stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" undefined-json code" T-LABEL
    CAE-ERR erru CAE-CODE-UNDEFINED$ CONTAINS? TTRUE
+   s" undefined-json token" T-LABEL
    CAE-ERR erru CAE-TOKEN-NOPE$ CONTAINS? TTRUE
+   s" undefined-json diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
 : CAE-TEST-CLI-SMOKE ( -- )
+   s" cli-smoke" CAE-CASE!
    CAE-IN CAE-SOURCE$ WRITE-ALL
    CAE-RUN-CLI 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" cli-smoke stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" cli-smoke bad1" T-LABEL
    CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" cli-smoke bad2" T-LABEL
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" cli-smoke diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
 
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
+   s" base-two-errors" CAE-CASE!
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" base stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
+   s" base bad1" T-LABEL
    CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" base bad2" T-LABEL
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" base diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T=
    CAE-WRITE-LARGE
+   s" large-source" CAE-CASE!
    CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: loutu lerru :}
+   s" large stdout" T-LABEL
    CAE-OUT loutu CAE-EMPTY$ T$=
+   s" large word" T-LABEL
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
    CAE-TEST-SUPPORT-SOURCE
    CAE-TEST-AS-ADD-TASK-LEAK
@@ -380,6 +460,7 @@ create CAE-LF-BYTE 10 c,
    CAE-TEST-UNDEFINED-JSON
    CAE-TEST-CLI-SMOKE
    CLEANUP-RUN
+   s" cleanup root removed" T-LABEL
    CAE-ROOT EXISTS? TFALSE
    T-REPORT
    s" check-all-errors-test: ok" type cr ;

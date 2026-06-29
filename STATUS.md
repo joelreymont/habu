@@ -1,10 +1,11 @@
 # habu — Status
 
 Last verified: 2026-06-29
-Gate: passing; 30.123s internal hot-cache gate time and 41.551s one-warm-refill
-gate time on 2026-06-29 on macOS/aarch64 with 12 online cores, per-file content-key
-warm-cache hits, manifest-hashed `hb-under-test`, warm runner hits, and AOT maker
-cache hits. The native gate uses an 8-way macOS checked DAG pool, 4-way nested
+Gate: passing; 22.832s internal hot-cache gate time and 47.755s cold candidate +
+warm-runner refill gate time on 2026-06-29 on macOS/aarch64 with 12 online cores,
+per-file content-key warm-cache hits, manifest-hashed small `hb-under-test`,
+warm runner hits, and AOT maker cache hits. The native gate uses an 8-way macOS
+checked DAG pool, 4-way nested
 stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
 in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool
@@ -34,9 +35,10 @@ only private `HB_TMP` artifacts from `bootstrap/`, then installs exactly
 `bin/hb` for macOS ARM64 or Linux AArch64 and immediately refreshes that binary
 from current source. The gate,
 daily refresh, benchmark, and verification paths remain Habu-native and run with
-Gforth absent. The installed `bin/hb` is the small stdin/TTY engine, not a warm
-snapshot; warm snapshot images are content-keyed cache artifacts rebuilt by the
-gate when needed.
+Gforth absent. The installed `bin/hb` and gate `Habu-under-test` are the small
+stdin/TTY engine, not warm snapshots; the gate rejects an oversized
+`Habu-under-test`. Warm snapshot images are content-keyed cache artifacts rebuilt
+by the gate when needed.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, and 979/0/0 after the native primitive,

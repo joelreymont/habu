@@ -133,6 +133,11 @@ lesson — keep the specific word/code/path, cut the prose.
   the runner/build harness, and every emitted engine/repl source; a persistent
   hit can unblock under-test slices immediately, while a miss still runs the
   normal fixpoint and installs the produced candidate under that key.
+- **Candidate production is not validation:** a cache hit correctly skipped the
+  fixpoint producer, but also skipped `GE-ENGINE-SUITE` and hook/dictionary
+  checks because `GENG-BUILD-SLICE` mixed build and proof. Keep the producer
+  build-only; always run a candidate validation row after the `under`
+  capability is ready, including cache and `--under PATH` imports.
 - **Persistent maker caches must be keyed by emitted maker inputs:** once
   `HABU_BUILD_CACHE` points outside the per-run temp root, `hb-aot-mk` and
   `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
@@ -143,6 +148,10 @@ lesson — keep the specific word/code/path, cut the prose.
   key. Build a tagged manifest of version strings, file names, and per-file
   digests, hash the manifest once with `lib/content-key.f`, and prove
   invalidation by changing a baked source and requiring a miss.
+- **SHA output ownership is caller-visible state:** `SHA256-FILE` writes the raw
+  digest to `SHA-DIGEST` and resets `SHA-OUT`; wrappers such as
+  `SHA256-FILE-HEX` must keep their caller output pointer separately and render
+  from `SHA-DIGEST`, not from the global `SHA-OUT`.
 - **Stdlib files have four registry points:** adding a library file requires the
   source file, `lib/std.manifest`, `FILEMAP.md`, and `tools/filemap-lint.f`.
   Miss one and the direct manifest gate is the first correct failure.
@@ -151,6 +160,14 @@ lesson — keep the specific word/code/path, cut the prose.
   60.101/56.407/53.532/54.350s internal; 8 wins. Keep Linux conservative until
   measured there, and use discoverable argv knobs:
   `test/run.f -- --pool-slots N --nested-pool-slots M`.
+- **`Habu-under-test` is the small engine, not a snapshot:** the native engine
+  gate accidentally promoted `hb-new`, whose snapshot trailer baked `$14523b4`
+  bytes of live DATA and produced 22 MB candidates that could jump into zeroed
+  dictionary code on Linux. Promote `hb-stdin`, enforce a small candidate size,
+  and leave snapshots as warm-runner/cache artifacts only.
+- **Pipe-scoped env vars are easy to lie with:** `env HB_TMP=/tmp/x printf '' |
+  bin/hb ...` sets `HB_TMP` only for `printf`; to preserve a gate temp root, put
+  the env on the Habu side: `printf '' | env HB_TMP=/tmp/x bin/hb ...`.
 - **Gate budget proofs need an uncontended Habu host:** full-gate timing is
   meaningless while another worktree is running `test/run.f`; a concurrent
   `habu-maki` gate pushed local runs from ~125s to ~154s and left active `hb`
@@ -188,6 +205,19 @@ lesson — keep the specific word/code/path, cut the prose.
   child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running
   them before spawning sibling suites serialized the slice and lost the full-DAG
   win.
+- **Do not make inline gate work a serial dumping ground:** inlining
+  check-repair/doc/typed-local semantics into the single stdlib hook made zed's
+  tool slice wait on one resident thread for ~56s. Split independent semantics
+  into first-class resident-runner rows; the hot local gate fell to 24.579s with
+  `warm-miss=0` while still running candidate validation.
+- **Stats schemas need content assertions, not just counters:** `GS-ROW` first
+  emitted `sha/boundary/runner/subject/label` despite docs promising
+  `label/subject/runner/boundary/sha`. Tests must assert representative TSV row
+  content so telemetry remains usable for scheduling RCA.
+- **Late-bound gate hooks need `defer`:** redefining `SUITE-INLINE-WORK` after
+  `GATE-STDLIB-MAIN` compiled still called the old xt. Use a checked `defer`
+  hook installed by the warm-runner entry, and execute inline work at the
+  existing pre-drain point so it overlaps sibling child suites.
 - **Gate caches must be default-on and content-keyed:** a 40s budget failed a
   cache-fill run at 71.015s even though the hot path was ~31s. Keep warm images,
   `hb-under-test`, maker, artifact, and file-digest caches under the default
@@ -1195,3 +1225,12 @@ lesson — keep the specific word/code/path, cut the prose.
   helpers shifts `TRUSTED.md` site pins and correctly fails `trust-lint`; update
   those rows after deciding the boundary still belongs. Do not hide a red
   `trust-lint` by starting a broad trust-reduction refactor in the same change.
+- **Prefer hex for machine-adjacent literals:** byte values, ASCII, masks,
+  offsets, format fields, and crypto constants should use `$hex`. Decimal is for
+  small counts and human quantities; stage/bootstrap code should not transcribe
+  spec constants into decimal just because both parse.
+- **Emitter labels must be scoped across nested helpers:** Linux `spawn-io`
+  generated a `b .` self-loop because `LINUX-SPAWN` stored branch labels in
+  shared `LNX-*` variables, then nested helpers reused `LNX-DONE`. Use typed
+  label locals for emitter control flow whenever a word calls another emitter
+  helper that can allocate labels.

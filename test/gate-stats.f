@@ -4,18 +4,27 @@
 \ and lib/process-env.f.
 
 $40000 constant GS-CAP
-$80 constant GS-LINE-CAP
+$200 constant GS-LINE-CAP
 $0A constant GS-LF
+$09 constant GS-TAB
 
 create GS-PATH-BUF FS-PATH-CAP allot
 create GS-LINE-BUF GS-LINE-CAP allot
 create GS-BUF GS-CAP allot
+create GS-SLOW-LABEL GS-LINE-CAP allot
 
 variable GS-PATH-U
 variable GS-INITED
 variable GS-U
 variable GS-I
 variable GS-START
+variable GS-LINE-U
+variable GS-J
+variable GS-SPAN-V
+variable GS-SPAN-LABEL-I
+variable GS-SPANS
+variable GS-SLOW-MS
+variable GS-SLOW-U
 
 variable GS-TOP-PHASE
 variable GS-TOP-CAPTURE
@@ -25,6 +34,7 @@ variable GS-RUNNER-PHASE
 variable GS-RUNNER-BUILD
 variable GS-INNER-HB
 variable GS-INNER-HB-STDIN
+variable GS-INPROCESS-EVAL
 variable GS-BOUNDARY
 variable GS-WARM-HIT
 variable GS-WARM-MISS
@@ -41,6 +51,11 @@ variable GS-CANDIDATE
 variable GS-CANDIDATE-HIT
 variable GS-CANDIDATE-MISS
 variable GS-CANDIDATE-INSTALL
+variable GS-CANDIDATE-IMPORT
+variable GS-CANDIDATE-READY
+variable GS-CANDIDATE-BUILD-SKIP
+variable GS-CANDIDATE-VALIDATE
+variable GS-CANDIDATE-CORRUPT
 variable GS-HELPER-SPAWN
 
 : GS-FALSE ( -- bool )
@@ -93,6 +108,60 @@ variable GS-HELPER-SPAWN
    GS-LF GS-LINE-BUF u + c!
    GS-PATH$ GS-LINE-BUF u 1 + APPEND-FILE ;
 
+: GS-LINE-RESET ( -- )
+   0 GS-LINE-U ! ;
+
+: GS-LINE-CHECK ( n -- ) {: add:n :}
+   add 0 < if E-STR-BOUNDS throw then
+   GS-LINE-U @ add + GS-LINE-CAP > if E-STR-CAPACITY throw then ;
+
+: GS-LINE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u GS-LINE-CHECK
+   a GS-LINE-BUF GS-LINE-U @ + u BYTE-COPY
+   GS-LINE-U @ u + GS-LINE-U ! ;
+
+: GS-LINE-C+ ( n -- ) {: c:n :}
+   1 GS-LINE-CHECK
+   c GS-LINE-BUF GS-LINE-U @ + c!
+   GS-LINE-U @ 1+ GS-LINE-U ! ;
+
+: GS-LINE-U+ ( n -- ) {: v:n :}
+   v 0 < if E-STR-BOUNDS throw then
+   v 10 >= if v 10 / RECURSE then
+   v 10 mod STR-ZERO + GS-LINE-C+ ;
+
+: GS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   GS-ON? 0= if exit then
+   GS-LINE-RESET
+   s" span" GS-LINE+
+   GS-TAB GS-LINE-C+
+   ms GS-LINE-U+
+   GS-TAB GS-LINE-C+
+   label labelu GS-LINE+
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
+
+: GS-TAB+ ( -- )
+   GS-TAB GS-LINE-C+ ;
+
+: GS-TEST ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: label:ptr labelu:n subj:ptr subju:n run:ptr runu:n bound:ptr boundu:n sha:ptr shau:n :}
+   GS-ON? 0= if exit then
+   GS-LINE-RESET
+   s" test" GS-LINE+
+   GS-TAB+
+   label labelu GS-LINE+
+   GS-TAB+
+   subj subju GS-LINE+
+   GS-TAB+
+   run runu GS-LINE+
+   GS-TAB+
+   bound boundu GS-LINE+
+   GS-TAB+
+   sha shau GS-LINE+
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
+
 : GS-INC ( ptr n -- ) {: p:ptr :}
    p @ 1 + p ! ;
 
@@ -105,6 +174,7 @@ variable GS-HELPER-SPAWN
    0 GS-RUNNER-BUILD !
    0 GS-INNER-HB !
    0 GS-INNER-HB-STDIN !
+   0 GS-INPROCESS-EVAL !
    0 GS-BOUNDARY !
    0 GS-WARM-HIT !
    0 GS-WARM-MISS !
@@ -121,13 +191,63 @@ variable GS-HELPER-SPAWN
    0 GS-CANDIDATE-HIT !
    0 GS-CANDIDATE-MISS !
    0 GS-CANDIDATE-INSTALL !
-   0 GS-HELPER-SPAWN ! ;
+   0 GS-CANDIDATE-IMPORT !
+   0 GS-CANDIDATE-READY !
+   0 GS-CANDIDATE-BUILD-SKIP !
+   0 GS-CANDIDATE-VALIDATE !
+   0 GS-CANDIDATE-CORRUPT !
+   0 GS-HELPER-SPAWN !
+   0 GS-SPANS !
+   0 GS-SLOW-MS !
+   0 GS-SLOW-U ! ;
+
+: GS-DIGIT? ( n -- bool ) {: c:n :}
+   c STR-ZERO >= c STR-ZERO 10 + < and ;
+
+: GS-SPAN-PREFIX? ( n n -- bool ) {: off:n u:n :}
+   u 6 < if GS-FALSE exit then
+   GS-BUF off BYTE+ 4 s" span" STR= 0= if GS-FALSE exit then
+   GS-BUF off 4 + BYTE+ c@ GS-TAB = ;
+
+: GS-SPAN-PARSE? ( n n -- bool ) {: off:n u:n :}
+   off u GS-SPAN-PREFIX? 0= if GS-FALSE exit then
+   0 GS-SPAN-V !
+   5 GS-J !
+   begin GS-J @ u < while
+      GS-BUF off GS-J @ + BYTE+ c@ {: c:n :}
+      c GS-TAB = if
+         GS-J @ 5 = if GS-FALSE exit then
+         GS-J @ 1+ GS-SPAN-LABEL-I !
+         GS-SPAN-LABEL-I @ u < if GS-TRUE exit then
+         GS-FALSE exit
+      then
+      c GS-DIGIT? 0= if GS-FALSE exit then
+      GS-SPAN-V @ 10 * c STR-ZERO - + GS-SPAN-V !
+      GS-J @ 1+ GS-J !
+   repeat
+   GS-FALSE ;
+
+: GS-SLOW! ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   labelu GS-LINE-CAP > if E-STR-CAPACITY throw then
+   ms GS-SLOW-MS !
+   label GS-SLOW-LABEL labelu BYTE-COPY
+   labelu GS-SLOW-U ! ;
+
+: GS-COUNT-SPAN ( n n -- ) {: off:n u:n :}
+   off u GS-SPAN-PARSE? 0= if exit then
+   GS-SPANS GS-INC
+   GS-SPAN-V @ GS-SLOW-MS @ > if
+      GS-BUF off GS-SPAN-LABEL-I @ + BYTE+
+      u GS-SPAN-LABEL-I @ -
+      GS-SPAN-V @ GS-SLOW!
+   then ;
 
 : GS-LINE= ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
    u keyu <> if GS-FALSE exit then
    GS-BUF off BYTE+ u key keyu STR= ;
 
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
+   off u GS-COUNT-SPAN
    off u s" top-phase-spawn" GS-LINE= if GS-TOP-PHASE GS-INC exit then
    off u s" top-capture-spawn" GS-LINE= if GS-TOP-CAPTURE GS-INC exit then
    off u s" under-phase-spawn" GS-LINE= if GS-UNDER-PHASE GS-INC exit then
@@ -136,6 +256,7 @@ variable GS-HELPER-SPAWN
    off u s" gate-runner-build" GS-LINE= if GS-RUNNER-BUILD GS-INC exit then
    off u s" inner-hb-spawn" GS-LINE= if GS-INNER-HB GS-INC exit then
    off u s" inner-hb-stdin" GS-LINE= if GS-INNER-HB-STDIN GS-INC exit then
+   off u s" inprocess-eval" GS-LINE= if GS-INPROCESS-EVAL GS-INC exit then
    off u s" boundary-test" GS-LINE= if GS-BOUNDARY GS-INC exit then
    off u s" warm-cache-hit" GS-LINE= if GS-WARM-HIT GS-INC exit then
    off u s" warm-cache-miss" GS-LINE= if GS-WARM-MISS GS-INC exit then
@@ -152,6 +273,11 @@ variable GS-HELPER-SPAWN
    off u s" candidate-cache-hit" GS-LINE= if GS-CANDIDATE-HIT GS-INC exit then
    off u s" candidate-cache-miss" GS-LINE= if GS-CANDIDATE-MISS GS-INC exit then
    off u s" candidate-cache-install" GS-LINE= if GS-CANDIDATE-INSTALL GS-INC exit then
+   off u s" candidate-import" GS-LINE= if GS-CANDIDATE-IMPORT GS-INC exit then
+   off u s" candidate-ready" GS-LINE= if GS-CANDIDATE-READY GS-INC exit then
+   off u s" candidate-build-skip" GS-LINE= if GS-CANDIDATE-BUILD-SKIP GS-INC exit then
+   off u s" candidate-validate" GS-LINE= if GS-CANDIDATE-VALIDATE GS-INC exit then
+   off u s" candidate-cache-corrupt" GS-LINE= if GS-CANDIDATE-CORRUPT GS-INC exit then
    off u s" helper-spawn" GS-LINE= if GS-HELPER-SPAWN GS-INC exit then ;
 
 : GS-SCAN ( -- )
@@ -180,7 +306,7 @@ variable GS-HELPER-SPAWN
    GS-ON? 0= if exit then
    GS-READ
    GS-SCAN
-   s" gate counts: " type
+   s" test counts: " type
    GS-TOP-PHASE @ s" top-phase" GS-ITEM.
    GS-TOP-CAPTURE @ s" top-capture" GS-ITEM.
    GS-UNDER-PHASE @ s" under-phase" GS-ITEM.
@@ -189,6 +315,7 @@ variable GS-HELPER-SPAWN
    GS-RUNNER-BUILD @ s" runner-build" GS-ITEM.
    GS-INNER-HB @ s" inner-hb" GS-ITEM.
    GS-INNER-HB-STDIN @ s" inner-hb-stdin" GS-ITEM.
+   GS-INPROCESS-EVAL @ s" inprocess-eval" GS-ITEM.
    GS-BOUNDARY @ s" boundary" GS-ITEM.
    GS-WARM-HIT @ s" warm-hit" GS-ITEM.
    GS-WARM-MISS @ s" warm-miss" GS-ITEM.
@@ -205,5 +332,15 @@ variable GS-HELPER-SPAWN
    GS-CANDIDATE-HIT @ s" candidate-hit" GS-ITEM.
    GS-CANDIDATE-MISS @ s" candidate-miss" GS-ITEM.
    GS-CANDIDATE-INSTALL @ s" candidate-install" GS-ITEM.
+   GS-CANDIDATE-IMPORT @ s" candidate-import" GS-ITEM.
+   GS-CANDIDATE-READY @ s" candidate-ready" GS-ITEM.
+   GS-CANDIDATE-BUILD-SKIP @ s" candidate-build-skip" GS-ITEM.
+   GS-CANDIDATE-VALIDATE @ s" candidate-validate" GS-ITEM.
+   GS-CANDIDATE-CORRUPT @ s" candidate-corrupt" GS-ITEM.
    GS-HELPER-SPAWN @ s" helper-spawn" GS-ITEM.
+   GS-SPANS @ s" spans" GS-ITEM.
+   GS-SPANS @ 0 > if
+      s" slowest-test-ms=" type GS-SLOW-MS @ .
+      s" slowest-test=" type GS-SLOW-LABEL GS-SLOW-U @ type
+   then
    cr ;

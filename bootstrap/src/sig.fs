@@ -287,7 +287,7 @@ s" NIP"    s" R a b -- R b"            CHART"
 s" TUCK"   s" R a b -- R b a b"        CHART"
 s" ?DUP"   s" R a -- R a a"            CHART"
 
-s" +"      s" R i64 i64 -- R i64"      CHART"
+s" +"      s" R a i64 -- R a"          CHART"
 s" -"      s" R i64 i64 -- R i64"      CHART"
 s" *"      s" R i64 i64 -- R i64"      CHART"
 s" /"      s" R i64 i64 -- R i64"      CHART"

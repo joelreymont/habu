@@ -7,4 +7,5 @@
 include test/gate-stats.f
 include lib/content-key.f
 include test/gate-stdlib-lib.f
+include test/gate-stdlib-inline-lib.f
 include test/gate-stdlib-cases.f

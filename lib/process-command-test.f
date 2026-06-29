@@ -1,8 +1,12 @@
 \ process-command-test.f - focused tests for lib/process-command.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-command.f lib/process-command-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-command.f lib/process-command-test.f
 
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
+
+5000 constant PCMDT-HB-TIMEOUT-MS
+1000 constant PCMDT-CMD-TIMEOUT-MS
+50 constant PCMDT-SHORT-TIMEOUT-MS
 
 : PCMDT-PROC-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
    path pathu >LEN timeout >MS PROC-CMD-RUN-RC RC>N ;
@@ -40,7 +44,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    s" %s:%s" >LEN PROC-CMD-ARG+
    s" left" >LEN PROC-CMD-ARG+
    s" right" >LEN PROC-CMD-ARG+
-   s" /usr/bin/printf" 1000 PCMDT-PROC-RUN-RC 0 T=
+   s" /usr/bin/printf" PCMDT-CMD-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ s" left:right" T$=
    PCMDT-ERR-LEN 0 T=
    PROC-ARGV-N @ COUNT>N 0 T=
@@ -49,7 +53,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-RUN-STDIN ( -- )
    PROC-CMD-RESET
    s" cmd-stdin" PCMDT-IN!
-   s" /bin/cat" 1000 PCMDT-PROC-RUN-RC 0 T=
+   s" /bin/cat" PCMDT-CMD-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ s" cmd-stdin" T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -58,7 +62,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
+   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENV-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -67,7 +71,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-ENV-HERMETIC
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST=entry" PCMDT-ENV-ENTRY+
-   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
+   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-ENTRY-OUT 8 T$=
    PCMDT-ERR-LEN 0 T= ;
 
@@ -75,13 +79,13 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-RESET
    s" test/process-env-child.f" >LEN PROC-CMD-ARG+
    s" HABU_PROC_ENV_TEST" s" alpha" PCMDT-ENV+
-   s" bin/hb" 1000 PCMDT-PROC-RUN-RC 0 T=
+   s" bin/hb" PCMDT-HB-TIMEOUT-MS PCMDT-PROC-RUN-RC 0 T=
    PROC-CMD-OUT$ PCMDT-INHERIT-EXPECTED$ T$= ;
 
 : PCMDT-RUN-TIMEOUT-OUTCOME ( -- )
    PROC-CMD-RESET
    s" 5" >LEN PROC-CMD-ARG+
-   s" /bin/sleep" 50 PCMDT-RUN-OUTCOME
+   s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN-OUTCOME
    SIGKILL T= PROC-OUTCOME-TIMEOUT T=
    PROC-CMD-RC@ RC>N 137 T=
    PCMDT-OUT-LEN 0 T=
@@ -89,7 +93,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 
 : PCMDT-RUN-YES-TRUNCATED ( -- )
    PROC-CMD-RESET
-   s" /usr/bin/yes" 1000 PCMDT-PROC-RUN-RC drop ;
+   s" /usr/bin/yes" PCMDT-CMD-TIMEOUT-MS PCMDT-PROC-RUN-RC drop ;
 
 : PCMDT-TOO-MANY-ARGS ( -- )
    PROC-CMD-RESET
