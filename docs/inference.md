@@ -138,8 +138,11 @@ extent must be *named* there, never guessed.
    equalities (the same token), never *invent* agreement. A lone `MK-SPAN` mints a
    fresh `extent-n` that unifies with nothing, so two independent spans are not
    assumed equal length; `MK-SPAN=` is the explicit "these share `N`" constructor.
-   Inference carries these tokens through bindings; it must not unify two fresh
-   tokens just because the values flow together.
+   Trusted constructor signatures spell this with `fresh-extent-*` /
+   `fresh-mask-*` template atoms; each call mints rigid identities, while repeated
+   templates inside one signature share one identity. Inference carries these
+   tokens through bindings; it must not unify two fresh tokens just because the
+   values flow together.
 3. **Protect the diagnostics — they are the product.** Full inference's classic
    failure is reporting a mask/extent mismatch *far* from its cause. Since "the
    checker catches the bug" is the whole pitch, a misplaced error undermines it.

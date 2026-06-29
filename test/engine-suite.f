@@ -200,9 +200,23 @@ s" COK-THROW-GUARD ( i64 -- i64 ) dup 0 < if 1 throw then 1 +" CHECK! -1 T=
 s" COK-DIE-GUARD ( i64 -- i64 ) dup 0 < if here 0 1 die then 1 +" CHECK! -1 T=
 s" T-PTX-LOAD" s" span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live>" TRUST
 s" T-PTX-ADD" s" tile<f32,block-256,mask-live> tile<f32,block-256,mask-live> -- tile<f32,block-256,mask-live>" TRUST
+s" T-PTX-GRID" s" span<space-global,f32,e> -- gridctx<block-256,e,fresh-mask-live>" TRUST
+s" T-PTX-MLOAD" s" span<space-global,f32,e> gridctx<block-256,e,m> -- tile<f32,block-256,m>" TRUST
+s" T-PTX-MADD" s" tile<f32,block-256,m> tile<f32,block-256,m> -- tile<f32,block-256,m>" TRUST
+s" T-MK-SPAN" s" n -- span<space-global,f32,fresh-extent-n>" TRUST
+s" T-MK-SPAN=" s" n -- span<space-global,f32,fresh-extent-n> span<space-global,f32,fresh-extent-n>" TRUST
+s" T-PTX-SAME-EXTENT" s" span<space-global,f32,e> span<space-global,f32,e> --" TRUST
 s" COK-PTX-LOAD ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) T-PTX-LOAD" CHECK! -1 T=
 s" COK-PTX-ID ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" CHECK! -1 T=
 s" COK-PTX-ID-CALL ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> ) COK-PTX-ID" CHECK! -1 T=
+s" COK-PTX-RIGID-SHARED ( n -- ) T-MK-SPAN= T-PTX-SAME-EXTENT" CHECK! -1 T=
+s" CBAD-PTX-RIGID-LONE ( n n -- ) T-MK-SPAN swap T-MK-SPAN T-PTX-SAME-EXTENT" T-CHECK-REJECTS
+s" COK-PTX-RET-SHARED T-MK-SPAN=" CHECK! -1 T=
+s" COK-PTX-RET-SHARED-CALL ( n -- ) COK-PTX-RET-SHARED T-PTX-SAME-EXTENT" CHECK! -1 T=
+s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" CHECK! -1 T=
+s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
+s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" CHECK! -1 T=
+s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
 s" T-NEED-I64" s" i64 --" TRUST
 s" T-NEED-U32" s" u32 --" TRUST
 s" T-NEED-U16" s" u16 --" TRUST

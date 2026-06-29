@@ -17,11 +17,11 @@
 \ correct-vs-golden on the Orin by tools/ptx/softmax-launch.f). BLOCK-MAX-SELECT
 \ (the BLOCK-MAX adjoint) still throws E-PTX-NOIMPL pending its AD-pass lowering.
 \
-\ BOUNDARY (named, tested; capability dotted). As in lib/ptx/tile.f, the checker
-\ proves token AGREEMENT but not token-identity DISTINCTNESS, so mixed-mask /
-\ independent-extent negatives are not yet rejected; fix = per-call fresh rigid
-\ token minting (dot habu-add-per-call). Block-uniform-reachability of a collective
-\ under divergent control flow is the separate M5 uniformity model, not yet here.
+\ BOUNDARY (named, tested). As in lib/ptx/tile.f, context producers mint fresh
+\ rigid mask tokens per call, while shared tokens prove agreement through loads,
+\ stores, and elementwise/collective users. Block-uniform-reachability of a
+\ collective under divergent control flow is the separate M5 uniformity model,
+\ not yet here.
 \ Load after lib/errors.f, lib/ptx/cg.f, and lib/ptx/cg-collective.f (EMIT-*).
 
 TRUSTED: ROW ( -- rowidx<e> )
@@ -30,7 +30,7 @@ TRUSTED: ROW ( -- rowidx<e> )
 TRUSTED: ROW-SPAN ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> )
    EMIT-ROW-SPAN ;
 
-TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,m> )
+TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,fresh-mask-live> )
    EMIT-ROW-CTX ;
 
 TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )

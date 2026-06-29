@@ -12,16 +12,14 @@
 \ TRUSTED.md). Bodies throw E-PTX-NOIMPL until codegen lands (M4e) - kernels are
 \ CHECKED here, not run.
 \
-\ BOUNDARY (named, tested; capability dotted). The checker proves space / extent /
-\ mask AGREEMENT by shared token, but cannot yet prove two INDEPENDENTLY derived
-\ extent or mask tokens are DISTINCT (polymorphic vars unify freely), so a
-\ mixed-mask program is not yet rejected. The fix is per-call fresh RIGID extent/
-\ mask token minting at the ctx/span producers (dot
-\ habu-add-per-call-... "fresh rigid extent-token minting"). Until then the
-\ space-wrong and missing-ctx negatives hold; the mask/extent-identity negatives
-\ do not. Load after lib/errors.f.
+\ BOUNDARY (named, tested). The checker proves space / extent / mask AGREEMENT by
+\ shared token. Context producers mint a fresh rigid mask per call, so independently
+\ derived masks are distinct unless an explicit constructor stamps the same token.
+\ Span extent freshness is the same checker mechanism for MK-SPAN-style
+\ constructors; fixed kernel-ABI spans may still assert a named extent token.
+\ Load after lib/errors.f.
 
-TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,m> )
+TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX ;
 
 TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )

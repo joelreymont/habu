@@ -67,17 +67,27 @@ create QXHA MAXQE cells allot   create QXNA MAXQE cells allot   variable QEN
 512 constant MAXATOM
 create ATOMA MAXATOM cells allot
 create ATOMU MAXATOM cells allot
+create ATOMK MAXATOM cells allot
 variable ATOMN
+variable RIGID-N
 : ATOMA-FIELD ( n -- ptr ptr u8 )
    cells ATOMA + 0 ptr-field ;
-: MK-ATOM {: a u :}
+: RIGID-RESET ( -- )
+   1 RIGID-N ! ;
+: RIGID-FRESH ( -- n )
+   RIGID-N @ dup 1+ RIGID-N ! ;
+: MK-ATOM-K ( ptr u8 n n -- n ) {: a:ptr u:n k:n :}
    ATOMN @ MAXATOM 1 - > IF s" checker: out of atom terms" 76 die THEN
    a ATOMN @ ATOMA-FIELD !
    u ATOMN @ cells ATOMU + !
+   k ATOMN @ cells ATOMK + !
    ATOMN @ 3 lshift T-ATOM or
    ATOMN @ 1 + ATOMN ! ;
+: MK-ATOM ( ptr u8 n -- n )
+   0 MK-ATOM-K ;
 : ATOM>A ( n -- ptr u8 ) PAY ATOMA-FIELD @ ;
 : ATOM>U ( n -- n ) PAY cells ATOMU + @ ;
+: ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM
 4 constant PARAM-MAX-ARGS
@@ -301,6 +311,9 @@ CT-INIT
    0 ;
 
 : ATOM-OK? {: t1 t2 :}
+   t1 ATOM>K t2 ATOM>K <> IF 0 EXIT THEN
+   t1 ATOM>K 0 < IF 0 EXIT THEN
+   t1 ATOM>K 0 = 0= IF -1 EXIT THEN
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
 : PARAM-NAME-OK? {: t1 t2 :}
@@ -404,6 +417,7 @@ variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
+   RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
@@ -593,6 +607,47 @@ create NMAP 26 cells allot
 
 : NMAP-RESET 0 BEGIN dup cells NMAP + UNBOUND swap ! 1 + dup 25 > UNTIL drop ;
 
+64 constant FAM-CAP
+create FAM-A FAM-CAP cells allot
+create FAM-U FAM-CAP cells allot
+variable FAM-N
+variable FAM-I
+variable FAM-K
+
+: FAM-RESET ( -- )
+   0 FAM-N ! ;
+
+: FAM-A-FIELD ( n -- ptr ptr u8 )
+   cells FAM-A + 0 ptr-field ;
+
+: FAM-A@ ( n -- ptr u8 )
+   FAM-A-FIELD @ ;
+
+: FAM-IDX>KEY ( n -- n )
+   1+ negate ;
+
+: FAM-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
+   idx FAM-A@ idx cells FAM-U + @ a u CORE-STR= ;
+
+: FAM-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   0 FAM-I !
+   BEGIN FAM-I @ FAM-N @ < WHILE
+      a u FAM-I @ FAM-MATCH? IF FAM-I @ -1 EXIT THEN
+      FAM-I @ 1 + FAM-I !
+   REPEAT
+   0 0 ;
+
+: FAM-ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
+   FAM-N @ FAM-CAP >= IF s" checker: fresh atom table full" 76 die THEN
+   a FAM-N @ FAM-A-FIELD !
+   u FAM-N @ cells FAM-U + !
+   FAM-N @ FAM-IDX>KEY
+   FAM-N @ 1 + FAM-N ! ;
+
+: FAM-MARK ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FAM-FIND IF FAM-IDX>KEY EXIT THEN drop
+   a u FAM-ADD ;
+
 : DIGIT? {: c :} c 47 > c 58 < and ;
 
 : LOWER? {: c :} c 96 > c 123 < and ;
@@ -670,6 +725,12 @@ variable LOCALBAD
    a u s" mask-" SIG-PREFIX? IF -1 EXIT THEN
    a u s" block-" SIG-PREFIX? IF -1 EXIT THEN
    a u s" align-" SIG-PREFIX? ;
+: FRESH-ATOM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" fresh-extent-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" fresh-mask-" SIG-PREFIX? ;
+: FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FAM-MARK FAM-K !
+   a 6 + u 6 - FAM-K @ MK-ATOM-K ;
 : PARAM-CTOR? {: a u :}
    a u s" ptr" CORE-STR= IF -1 EXIT THEN
    a u s" span" CORE-STR= IF -1 EXIT THEN
@@ -685,9 +746,10 @@ variable LOCALBAD
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
    a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
+   a u FRESH-ATOM-TOK? IF a u FRESH-ATOM>TYPE ELSE
    a u ATOM-TOK? IF a u MK-ATOM ELSE
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
-   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN ;
+   a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
 : LOCAL-TYPE {: a u :}
    a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
@@ -820,7 +882,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
 : PSIG
-   PKRESET NMAP-RESET ROWMAP-RESET  0 SGHASR !  0 RR-SHARED !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    dr PSIDE  PR-IN ! PD-IN !
    s" --" EXPECT-SIG                              \ require the top-level '--'
@@ -1088,6 +1150,8 @@ variable EC-RVN
 
 create EI-TV MAXTV cells allot
 create EI-RV MAXTV cells allot
+64 constant EI-AK-CAP
+create EI-AK EI-AK-CAP cells allot
 
 variable FEP
 variable EHIT
@@ -1106,6 +1170,12 @@ variable CHECKER-REC-SYM
    EC-RV E-MAP-RESET-ONE
    0 EC-TVN !
    0 EC-RVN ! ;
+
+: E-I-AK-RESET ( -- )
+   0 begin dup EI-AK-CAP < while
+      UNBOUND over cells EI-AK + !
+      1 +
+   repeat drop ;
 
 : E-TV-ID ( n -- n ) {: id:n :}
    id cells EC-TV + dup @ UNBOUND = if
@@ -1193,6 +1263,7 @@ variable CHECKER-REC-SYM
    x E-RES TAG T-ATOM = if
       EN-ATOM E-NODE-NEW E-OFF >r
       x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
+      x E-RES ATOM>K r@ E-PTR EN.C !
       r> exit
    then
    x E-RES TAG T-PARAM = if
@@ -1317,6 +1388,7 @@ variable CHECKER-REC-SYM
    repeat ;
 
 : E-INST-RESET ( ptr a -- ) {: h:ptr :}
+   E-I-AK-RESET
    0 begin dup h ER.TVN @ < while
       UNBOUND over cells EI-TV + !
       1 +
@@ -1334,6 +1406,16 @@ variable CHECKER-REC-SYM
 : E-I-RV ( n -- n ) {: id:n :}
    id cells EI-RV + dup @ UNBOUND = if
       FRESH MK-ROW over !
+   then @ ;
+
+: E-I-AK-IDX ( n -- n )
+   negate 1 - ;
+
+: E-I-AK ( n -- n ) {: k:n :}
+   k 0 >= if k exit then
+   k E-I-AK-IDX dup EI-AK-CAP >= if s" checker: fresh atom inst table full" 76 die then
+   cells EI-AK + dup @ UNBOUND = if
+      RIGID-FRESH over !
    then @ ;
 
 : E-I-STR ( ptr a -- ptr u8 n )
@@ -1356,7 +1438,7 @@ variable CHECKER-REC-SYM
       dup r@ EN.E @ r@ EN.F @ r@ EN.G @ r@ EN.H @ QX!
       r> drop exit
    then
-   r@ EN.TAG @ EN-ATOM = if r@ E-I-STR MK-ATOM r> drop exit then
+   r@ EN.TAG @ EN-ATOM = if r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop exit then
    r@ EN.TAG @ EN-PARAM = if
       PARAM-SCR-RESET
       r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then

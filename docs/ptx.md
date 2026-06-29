@@ -3,8 +3,9 @@
 **Thesis:** a statically-checked, concatenative GPU DSL whose type system shifts a
 defined class of GPU bugs left to author time: address-space mismatches,
 extent-relative access discipline, and collective protocol errors. Fresh
-per-call extent/mask identity and full collective semantics are still active
-work (`habu-add-per-call`, `habu-fix-ptx-collective-997cfcce`). The measured
+per-call extent/mask identity is expressed as checker constructor templates
+(`fresh-extent-*`, `fresh-mask-*`); full collective semantics are still active
+work (`habu-fix-ptx-collective-997cfcce`). The measured
 claim is not "beat Triton on FLOPS"; it is that checked source gives earlier,
 more located failures for the stack-discipline class where LLMs struggle.
 
@@ -75,9 +76,10 @@ in [`ptx-sketch.md`](ptx-sketch.md):
   shared span is untypable. Eliminates memory-space confusion.
 - **Extent-relative bounds:** a load needs a tile context *derived from the span
   it reads*, so its mask is computed against that span's declared extent `N`.
-  Current v0 proves agreement for shared tokens; independent fresh extent/mask
-  distinctness needs the rigid-token checker work. Constructing a span asserts
-  its extent — the trusted boundary, like Rust's `slice::from_raw_parts`.
+  Current v0 proves agreement for shared tokens and rejects independently minted
+  fresh extent/mask identities when constructors use `fresh-extent-*` /
+  `fresh-mask-*`. Constructing a span asserts its extent — the trusted boundary,
+  like Rust's `slice::from_raw_parts`.
   This is not universal memory safety; it is relational consistency between a
   span's declared length and every access to it.
 - **Typed collectives:** block/warp reductions are meant to carry per-collective
@@ -171,7 +173,8 @@ prerequisites. Both are now landed on the Linux/aarch64 Orin path:
 2. **Parametric checker terms:** signatures such as
    `span<space-global,f32,extent-n>` and `tile<f32,block-256,mask-live>` parse,
    render, unify field-by-field, and gate `KERNEL:` bodies. Fresh per-call rigid
-   extent/mask minting remains open (dot `habu-add-per-call`).
+   extent/mask minting is available to trusted constructors through
+   `fresh-extent-*` and `fresh-mask-*`.
 
 The remaining PTX foundation work is semantic, not bootstrap: correct generic
 collective mask/block lowering (dot `habu-fix-ptx-collective-997cfcce`), typed

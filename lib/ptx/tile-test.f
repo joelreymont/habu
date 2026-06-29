@@ -10,6 +10,12 @@ T-RESET
 
 256 %BLOCK
 
+TRUSTED: PTX-CHECK-REJECTS ( ptr u8 n -- )
+   DIAGXT @ >r
+   0 DIAGXT !
+   CHECK! 0 T=
+   r> DIAGXT ! ;
+
 KERNEL: SAXPY ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-256
    {: x y a :}
    x GRID-CTX {: g :}
@@ -21,6 +27,9 @@ KERNEL: RELU-SPAN ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
    dup GRID-CTX
    2dup LOAD RELU
    rot rot STORE ;
+
+s" PTX-GOOD-MASK-SHARED {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD +." CHECK! -1 T=
+s" PTX-BAD-MASK-DISTINCT {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD +." PTX-CHECK-REJECTS
 
 \ Clean load past this point is the positive proof: KERNEL: verified SAXPY's body
 \ against its declared parametric effect. A reject emits a diagnostic + fails load.

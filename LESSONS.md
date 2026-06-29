@@ -426,11 +426,9 @@ lesson — keep the specific word/code/path, cut the prose.
   `GRID-CTX`/`ROW-CTX`/`MK-SPAN` outputs with the fresh marker. Result: two
   independent ctxs get distinct rigid masks → a mixed-mask op rejects (a generic
   op's var requires both equal; distinct rigid atoms don't unify), while one ctx
-  bound to a local reuses its single fresh mask → SAXPY still certifies. Requires a
-  `checker.f` change + a fixpoint rebuild — do it in a focused session with a
-  recovery path (a current gforth or a known-good `bin/hb`), since a bad rebuild
-  bricks the engine and the local gforth is too old to bootstrap. Closes dot
-  `habu-add-per-call`.
+  bound to a local reuses its single fresh mask → SAXPY still certifies. The
+  checker now stores fresh atom templates and renders recorded rigid outputs back
+  as distinct templates, so wrapper words preserve equality/distinctness too.
 - **Local type inference is already built too (proven 2026-06-27).** Like M2, the
   inference.md feature ("infer bodies, annotate the edge") is operational in the
   shipped checker: untyped intermediate locals (`{: x :}`/`{: g :}`/`{: c :}`)
@@ -750,8 +748,8 @@ lesson — keep the specific word/code/path, cut the prose.
   MK-SPAN yields a fresh N that unifies with nothing"). The model split: kernel
   *signatures* use nominal atoms (`extent-r`/`extent-c`, equal-by-name, to ASSERT
   agreement), but *constructors* must mint a fresh extent per call (`MK-SPAN=` is
-  the explicit share-one-fresh-token form). Resolved design (worked through, not yet
-  built): a field **type-variable** (`span<…,e>`) does NOT work — fresh unification
+  the explicit share-one-fresh-token form). The landed design: a field
+  **type-variable** (`span<…,e>`) does NOT work — fresh unification
   vars unify freely, so two independent spans could always be unified "equal,"
   which is exactly the unsoundness to prevent. The constructor must mint a
   per-call-fresh **rigid (skolem) extent token** that unifies only with itself;
@@ -760,8 +758,9 @@ lesson — keep the specific word/code/path, cut the prose.
   passing two DISTINCT rigid skolems forces them equal and FAILS (reject), while
   two `MK-SPAN=` outputs share one skolem and pass. This is a genuine checker
   extension (per-call rigid-token minting at trusted constructors), not just word
-  signatures — it is the real M4a work. The current nominal-atom model is correct
-  for signatures but insufficient for constructors.
+  signatures. Constructor signatures now use `fresh-extent-*` / `fresh-mask-*`
+  templates; `GRID-CTX`/`ROW-CTX` mint fresh masks and the engine gate proves
+  both direct and recorded-signature reject paths.
 
 ## Linux AOT / ELF
 

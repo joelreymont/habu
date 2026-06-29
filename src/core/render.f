@@ -54,12 +54,35 @@ variable RDIAG-I
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
 create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
+64 constant RATOM-CAP
+create RATOM-KEY RATOM-CAP cells allot
+variable RATOM-N
+variable RATOM-I
 
 : SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
+: RATOM-RESET ( -- )
+   0 RATOM-N ! ;
 
 : LET-OF {: vp :}
    vp cells SEEN + @ UNBOUND = IF NLET @ vp cells SEEN + ! NLET @ 1 + NLET ! THEN
    vp cells SEEN + @ 97 + ;
+: RATOM-CHAR ( n -- n ) {: idx:n :}
+   idx 26 < IF idx 97 + ELSE 1 RQM ! 63 THEN ;
+: RATOM-FIND ( n -- n bool ) {: key:n :}
+   0 RATOM-I !
+   BEGIN RATOM-I @ RATOM-N @ < WHILE
+      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ -1 EXIT THEN
+      RATOM-I @ 1 + RATOM-I !
+   REPEAT
+   0 0 ;
+: RATOM-ADD ( n -- n ) {: key:n :}
+   RATOM-N @ RATOM-CAP >= IF 1 RQM ! 0 EXIT THEN
+   key RATOM-N @ cells RATOM-KEY + !
+   RATOM-N @
+   RATOM-N @ 1 + RATOM-N ! ;
+: RATOM-ORD ( n -- n ) {: key:n :}
+   key RATOM-FIND IF EXIT THEN drop
+   key RATOM-ADD ;
 
 : RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
@@ -70,7 +93,11 @@ create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PA
    ELSE 63 EMIT1 THEN THEN ;
 
 : ATOM-REND {: t :}
-   t ATOM>A t ATOM>U RSTR ;
+   t ATOM>K 0 = IF t ATOM>A t ATOM>U RSTR EXIT THEN
+   s" fresh-" RSTR
+   t ATOM>A t ATOM>U RSTR
+   45 EMIT1
+   t ATOM>K RATOM-ORD RATOM-CHAR EMIT1 ;
 
 : PARAM-START {: t :}
    t PARAM>NAME-A t PARAM>NAME-U RSTR  60 EMIT1 ;
@@ -179,13 +206,13 @@ create RBUF 64 cells allot   variable RBN
    REPEAT drop ;
 
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
-: RENDER  SEEN-RESET 0 NLET !  DCUR @ REND-COLLECT
+: RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 \ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
 \ inputs from the base row's instantiation (BROW), outputs from DCUR.
 : REND-SIG
-   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
+   1 RDST !  0 RSN !  0 RQM !  SEEN-RESET RATOM-RESET 0 NLET !
    BROW @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop
    45 EMIT1  45 EMIT1

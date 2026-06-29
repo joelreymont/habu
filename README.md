@@ -82,8 +82,9 @@ unless the boundary is deliberately documented and tested.
 kernel backend**. The thesis: *checked kernels + checked AD transforms* are a better
 target for LLM-authored ML — a GPU kernel DSL whose type system shifts stack,
 address-space, and mask/extent discipline bugs to author-time diagnostics. Fresh
-per-call extent/mask identity is still an open checker soundness item, tracked in
-dot `habu-add-per-call`.
+per-call extent/mask identities are now checker-level constructor templates
+(`fresh-extent-*`, `fresh-mask-*`), so independent contexts/spans do not silently
+unify.
 
 - **Habu-PTX kernel DSL** (`lib/ptx/`) — `tile<T,B,M>`/`span`/`matrix` parametric
   types; checked `KERNEL:` definitions (SAXPY, numerically-stable SOFTMAX-ROWS) that

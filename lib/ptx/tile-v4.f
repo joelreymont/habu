@@ -7,7 +7,7 @@
 \ with 4 elements per thread. PRECONDITION n%4==0 (see cg-vec.f). These are PTX
 \ PRIMITIVES (TRUSTED: boundary, like tile.f). Load after lib/ptx/cg.f + cg-vec.f.
 
-TRUSTED: GRID-CTX-V4 ( span<space-global,t,e> -- gridctx<b,e,m> )
+TRUSTED: GRID-CTX-V4 ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX-V4 ;
 
 TRUSTED: LOAD-V4 ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )

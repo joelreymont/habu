@@ -45,18 +45,19 @@ that assert the runtime length — like Rust `slice::from_raw_parts`. Wrong leng
 *here* is unchecked; everything downstream is checked relative to it.
 
 ```
-TRUSTED: MK-SPAN   ( ptr<S,T> u32 -- span<S,T,N> )          \ extent token N; rigid freshness is dotted
-TRUSTED: MK-SPAN=  ( ptr<S,T> ptr<S,U> u32 -- span<S,T,N> span<S,U,N> )  \ SHARED N: asserts equal length
+TRUSTED: MK-SPAN   ( ptr<S,T> u32 -- span<S,T,fresh-extent-n> )          \ fresh rigid extent
+TRUSTED: MK-SPAN=  ( ptr<S,T> ptr<S,U> u32 -- span<S,T,fresh-extent-n> span<S,U,fresh-extent-n> )  \ SHARED fresh extent
 TRUSTED: MK-MATRIX ( ptr<S,T> u32 u32 -- matrix<S,T,R,C> )  \ rows cols; v0 matrix is DENSE row-major (stride = C);
                                                             \ asserts R*C <= 2^32-1 elements and R*C*sizeof(T) fits u64.
                                                             \ A pitched/strided matrix<S,T,R,C,P> is a later milestone.
 ```
 
-Current checker support proves agreement for shared tokens: a context derived
-from a span must be used with the same extent token, and kernels needing equal
-extents (e.g. saxpy) take spans built by `MK-SPAN=`. The stronger rule that two
-independent `MK-SPAN` calls mint distinct rigid extents is still tracked by
-`habu-add-per-call`; do not rely on it until that dot lands.
+Constructor signatures may use `fresh-extent-*` and `fresh-mask-*` template
+atoms. The checker stores those templates in the effect graph and, at each call,
+mints rigid identities that unify only with themselves. Repeating the same fresh
+template inside one signature shares one identity (`MK-SPAN=`); independent calls
+produce distinct identities (`MK-SPAN`). Ordinary named atoms such as `extent-r`
+remain nominal constants for ABI-declared equality.
 
 ## Launch ABI (makes grid/block facts sound)
 
@@ -103,11 +104,12 @@ The current v4 path assumes `N % 4 == 0`; typed alignment proofs and scalar
 residual tails remain dotted.
 
 Elementwise/collective words require a shared mask token `M`; the checker proves
-agreement when the same token is threaded through the stack effect. Rejection of
-independently minted masks that should be distinct still needs per-call rigid
-tokens (`habu-add-per-call`). `tile<T,B,M>` should not promise a defined scalar
-for an inactive lane; current emitters need the collective mask hardening dot for
-generic inactive-lane semantics.
+agreement when the same token is threaded through the stack effect. Context
+constructors (`GRID-CTX`, `ROW-CTX`, and v4 variants) mint fresh rigid masks, so
+tiles loaded under independent contexts no longer type-check as having the same
+mask. `tile<T,B,M>` should not promise a defined scalar for an inactive lane;
+current emitters need the collective mask hardening dot for generic inactive-lane
+semantics.
 
 ## Kernel: vector add `y = a*x + y`
 
@@ -211,10 +213,10 @@ the row mask.
 without a ctx; a ctx whose extent token does not match the span token;
 mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
 
-**Intended but still dotted:** rejecting independently mixed mask/extent tokens
-needs per-call fresh rigid tokens; rejecting collectives under lane-varying
-control flow needs the uniformity/barrier model; v4 alignment and scalar-tail
-proofs sit beyond the current `N % 4 == 0` path.
+**Still dotted:** rejecting collectives under lane-varying control flow needs the
+uniformity/barrier model; v4 alignment and scalar-tail proofs sit beyond the
+current `N % 4 == 0` path. Independently mixed mask/extent tokens are rejected
+when their constructors use `fresh-mask-*` / `fresh-extent-*` templates.
 
 **Not guaranteed (honest):** the runtime extent/stride asserted at `MK-SPAN*`/
 `MK-MATRIX` (trusted); that the host passed matching `gridDim`/`blockDim` (the
@@ -229,7 +231,7 @@ not universal memory safety.
 Which criterion lands with which milestone: 1-3 (emit, assemble, device run) ->
 M3 spike. Criterion 4 splits by what each negative needs: wrong-space / missing
 ctx / explicit shared-token extent mismatch / raw-ptr-arith -> M4; independent
-mixed masks/extents -> rigid-token work (`habu-add-per-call`);
+mixed masks/extents -> fresh rigid constructor templates;
 collective-under-lane-varying / non-block-uniform-reachability -> M5;
 `C>B` / row-local-ctx-as-grid -> M6 launch/header validation. Criterion 5 (host
 launch tests) -> M1 harness. Criterion 6: `SCALE`+`+.` two-rounding -> M4;
