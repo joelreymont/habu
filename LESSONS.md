@@ -102,6 +102,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Malformed control is not uncheckable:** orphan closers and unterminated
   `if`/loop/quotation/`case` frames must set `OK=0`; `UNCK` is for missing
   checker model coverage, not syntax imbalance.
+- **Do not port relative linked-list words by habit:** SwiftForth's
+  `@REL`/`!REL`/`,REL`/link traversal words bake dictionary-relative pointer
+  arithmetic into APIs. Habu should model node layout with structures, runtime
+  collections with arrays/maps, and dispatch with checked `case` or execution
+  vectors.
 
 ## Tool & Infra
 

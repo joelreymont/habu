@@ -164,6 +164,12 @@ A-FIND-INDEX      ( ptr a len [ a -- bool ] -- n )
 A-FIND-INDEXI     ( ptr a len [ idx a -- bool ] -- n )
 ```
 
+Habu intentionally has no public SwiftForth-style relative linked-list module.
+For ordinary collections, use arrays or maps. For fixed layout nodes, use the
+structure DSL and publish checked accessors. For dispatch tables, use checked
+`case/of/endof/endcase` or checked execution vectors; do not encode dispatch as
+raw relative dictionary links.
+
 ## Table
 
 `lib/table.f` provides checked helpers for fixed-capacity cell tables. A table is

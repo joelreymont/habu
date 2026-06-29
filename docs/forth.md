@@ -244,6 +244,15 @@ drop
 package scope, duplicate-definition rejection, and case-insensitive lookup apply
 exactly as for `:`, `create`, `variable`, and `constant`.
 
+SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
+`>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode
+dictionary-relative pointer arithmetic and executable list traversal, which is
+the wrong abstraction for Habu snapshots and the checker. Use structures for
+typed node layout, arrays/maps for runtime collections, `case/of/endof/endcase`
+for selector dispatch, and checked execution vectors for late binding. Any
+future list DSL must expose typed node/link effects and forbid raw relative
+address arithmetic at the public boundary.
+
 ## Words & factoring
 
 - **Strictly typed Habu, everywhere you can (BLOCKING).** The default is not
