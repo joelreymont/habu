@@ -1212,10 +1212,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `TR-WARM-DONE?` is already true; otherwise let the late DAG overlap them with
   the long checker/tool tails.
 - **Spawn boundaries preserve errno until attribution:** Darwin `posix_spawn`
-  failure used to collapse `errno in x0` to `-1`, so full-DAG failures became
-  opaque `E-PROC-SPAWN`. Keep raw spawns returning `pid|-errno`, prove missing
-  executable as `-ENOENT`, and let gate-owned wrappers print raw code/errno
-  before converting to the public `E-PROC-SPAWN` API.
+  failure reports carry-set with `x0=errno`; using `SP` in that path produced
+  giant bogus negative pids, and collapsing to the wrapper throw left only
+  `rc 60`. Success writes a 32-bit `pid_t`, so load it with `LDRW`. Keep raw
+  spawns returning `pid|-errno`, prove missing executable as `-ENOENT`, and
+  print test/path/errno before resetting argv/env state.
 - **Small-engine tools own their non-baked layout deps:** after shrinking
   `bin/hb`, tools like `imgdump` cannot assume target executable constants such
   as `DATA-SIZE` are resident. Load target layout on demand, but keep common

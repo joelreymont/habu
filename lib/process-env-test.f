@@ -6,6 +6,7 @@
 5000 constant PET-HB-TIMEOUT-MS
 1000 constant PET-CMD-TIMEOUT-MS
 50 constant PET-SHORT-TIMEOUT-MS
+$2 constant PET-ENOENT
 
 create PET-OUT PET-CAP allot
 create PET-ERR PET-CAP allot
@@ -143,6 +144,30 @@ variable PET-I
    s" /bin/sleep" s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-STDIN-OUTCOME
    SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
 
+: PET-SPAWN-RAW-MISSING ( -- )
+   PET-RESET
+   s" /no/such/habu-process-env-test" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW PID>N {: code:n :}
+   PROC-ARGV-ENV-RESET
+   code 0 < TTRUE
+   HB-TARGET-MACOS? if code PET-ENOENT negate T= then ;
+
+: PET-SPAWN-RAW-TRUE-ONE ( -- )
+   PET-RESET
+   s" /usr/bin/true" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   PROC-ENV-PREPARE {: envp:ptr :}
+   pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+   PROC-ARGV-ENV-RESET
+   pid PID>N 0 > TTRUE
+   pid PROC-WAIT-RC RC>N 0 T= ;
+
+: PET-SPAWN-RAW-TRUE ( -- )
+   0 begin dup 16 < while
+      PET-SPAWN-RAW-TRUE-ONE
+      1+
+   repeat drop ;
+
 : PET-BAD-ENV-NAME ( -- )
    PET-RESET
    s" BAD=NAME" s" x" PET-ENV+ ;
@@ -181,6 +206,8 @@ variable PET-I
    PET-RUN-ENV-STDIN-FALSE-LARGE
    PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE
    PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT
+   PET-SPAWN-RAW-MISSING
+   PET-SPAWN-RAW-TRUE
    [: PET-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
    [: PET-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
    [: PET-BAD-ENV-EMPTY ;] E-PROC-ENV TTHROWSQ

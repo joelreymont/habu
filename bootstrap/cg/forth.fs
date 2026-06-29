@@ -224,11 +224,11 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    2 0 MOVZ,                         \ adesc = 0 (kernel API: 5 args, not libc's 6)
    3 SP 16 ADDI,  4 SP 48 ADDI,      \ argv, envp
    NR-SPAWN SYS,
-   9 2 CSET,  9 9 0 ORR,             \ error = carry set OR errno in x0
+   9 2 CSET,                         \ Darwin carry set means x0 is errno
    9 spok CBZ,                       \ either -> rc -1
       9 0 MOVN,  spdn B,
    spok LBL,
-   0 SP 0 LDR,                       \ pid
+   0 SP 0 LDRW,                      \ pid_t is 32-bit
    1 SP 8 ADDI,  2 0 MOVZ,  3 0 MOVZ,
    NR-WAIT4 SYS,
    9 2 CSET,  9 spw CBZ,             \ wait4 error (no child) -> rc -1

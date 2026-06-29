@@ -280,20 +280,47 @@ GT-POOL-PASS-HOOK-DEFAULT!
       s" ms)" type cr
    then ;
 
-: GT-POOL-SPAWN-FAIL. ( pid -- ) {: pid:pid :}
-   s" gate-pool spawn raw code: " type pid PID>N . cr
-   HB-TARGET-MACOS? if
-      s" gate-pool spawn errno: " type pid PID>N negate . cr
-   then ;
+: GT-POOL-LINE$ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n val:ptr valu:n :}
+   name nameu type s" : " type val valu type cr ;
 
-: GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx path:ptr pathu :}
+: GT-POOL-N-TYPE ( n -- ) {: val:n :}
+   val 0 < if $2D emit val negate GT-U-TYPE exit then
+   val GT-U-TYPE ;
+
+: GT-POOL-LINE-N ( ptr u8 n n -- ) {: name:ptr nameu:n val:n :}
+   name nameu type s" : " type val GT-POOL-N-TYPE cr ;
+
+: GT-POOL-LINE-FD ( ptr u8 n fd -- ) {: name:ptr nameu:n val:fd :}
+   name nameu type s" : " type val FD>N GT-POOL-N-TYPE cr ;
+
+: GT-POOL-SPAWN-ERRNO ( pid -- n )
+   PID>N negate ;
+
+: GT-POOL-SPAWN-FAIL. ( idx ptr u8 n pid -- ) {: idx:idx path:ptr pathu:n pid:pid :}
+   s" FAIL: gate-pool spawn" type cr
+   s" test" idx GT-POOL-LABEL$ GT-POOL-LINE$
+   s" path" path pathu GT-POOL-LINE$
+   s" raw" pid PID>N GT-POOL-LINE-N
+   s" errno" pid GT-POOL-SPAWN-ERRNO GT-POOL-LINE-N
+   s" argv-count" PROC-ARGV-N @ COUNT>N GT-POOL-LINE-N
+   s" env-count" PROC-ENV-N @ COUNT>N GT-POOL-LINE-N
+   s" pool-live" GT-POOL-LIVE @ GT-POOL-LINE-N
+   s" pool-limit" GT-POOL-LIMIT @ GT-POOL-LINE-N
+   s" stdout-fd" idx GT-POOL-OUT-W-PTR @ GT-POOL-LINE-FD
+   s" stderr-fd" idx GT-POOL-ERR-W-PTR @ GT-POOL-LINE-FD ;
+
+: GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
    pathz argv envp -1 >FD idx GT-POOL-OUT-W-PTR @ idx GT-POOL-ERR-W-PTR @
-   PROC-SPAWN-ARGV-ENV-RAW {: pid :}
+   PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
+   pid PID>N 0 < if
+      idx path pathu pid GT-POOL-SPAWN-FAIL.
+      PROC-ARGV-ENV-RESET
+      E-PROC-SPAWN GT-POOL-THROW
+   then
    PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if pid GT-POOL-SPAWN-FAIL. E-PROC-SPAWN GT-POOL-THROW then
    pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES ;
 

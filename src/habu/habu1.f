@@ -784,10 +784,10 @@ s" spawn-darwin-argv-default-envp" s" reg --" TRUST
 : SPAWN-DARWIN-FINISH ( label label -- )
    SFIN-FAIL !  SFIN-OK !
    NR-SPAWN SYS,
-   9 C-CS CSET,  9 9 0 ORR,  9 SFIN-OK LABEL@ CBZ,
-      9 SP 0 SUB,  SFIN-FAIL LABEL@ B,
+   9 C-CS CSET,  9 SFIN-OK LABEL@ CBZ,
+      9 0 MOVZ,  9 9 0 SUB,  SFIN-FAIL LABEL@ B,
    SFIN-OK LABEL@ LBL,
-   9 SP SPAWN-PID-OFF LDR,
+   9 SP SPAWN-PID-OFF LDRW,
    SFIN-FAIL LABEL@ LBL,
    9 G-PUSH ;
 s" spawn-darwin-finish" s" label label --" TRUST
