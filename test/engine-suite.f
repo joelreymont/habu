@@ -106,6 +106,40 @@ TRS2@ 6 T=
 \ locals (typed)
 : TLOC ( n n -- n ) {: a:n b:n :} a b + ;
 3 4 TLOC 7 T=
+: TLOC-IF ( n bool -- n )
+   if {: x:n :} x else drop 0 then ;
+7 0 0= TLOC-IF 7 T=
+7 0 0= 0= TLOC-IF 0 T=
+: TLOC-GUARD ( n -- n )
+   dup 0 < if drop 99 exit then
+   {: x:n :} x 1 + ;
+4 TLOC-GUARD 5 T=
+-1 TLOC-GUARD 99 T=
+: TLOC-DO ( -- n )
+   0 4 0 do i {: x:n :} x + loop ;
+TLOC-DO 6 T=
+: TLOC-LEAVE ( n -- n )
+   {: base:n :}
+   0 5 0 do
+      i {: x:n :}
+      x 2 = if leave then
+      x +
+   loop
+   base + ;
+10 TLOC-LEAVE 11 T=
+: TLOC-CASE ( n -- n )
+   case
+      1 of 10 {: x:n :} x 1 + endof
+      2 of 20 {: y:n :} y 1 + endof
+      30 swap
+   endcase ;
+1 TLOC-CASE 11 T=
+2 TLOC-CASE 21 T=
+3 TLOC-CASE 30 T=
+: TLOC-SHADOW ( n bool -- n )
+   if {: drop:n :} drop else drop 0 then ;
+7 0 0= TLOC-SHADOW 7 T=
+7 0 0= 0= TLOC-SHADOW 0 T=
 
 \ create/does>
 : CONST ( n -- ) create , does> ( -- n ) @ ;
@@ -275,8 +309,8 @@ s" CBAD-DARWIN-DUP2 ( reg reg -- ) SPAWN-DUP2-ACTION" T-CHECK-REJECTS
 s" CBAD-DARWIN-FINISH ( reg label -- ) SPAWN-DARWIN-FINISH" T-CHECK-REJECTS
 : ES-BYTE-FIELD ( ptr n -- ptr ptr u8 ) 0 ptr-field ;
 s" CBAD-FIELD ( ptr n n -- ) swap ES-BYTE-FIELD !" T-CHECK-REJECTS
-s" CBAD-LOCAL-IF ( i64 bool -- i64 ) if {: x:i64 :} x else drop 0 then" T-CHECK-REJECTS
-s" CBAD-LOCAL-AFTER-EXIT ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
+s" CBAD-LOCAL-SCOPE ( i64 bool -- i64 ) if {: drop:i64 :} drop else drop 0 then drop" T-CHECK-REJECTS
+s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 
 \ immediate / postpone / compile,
 : IM5 ( -- n ) 5 ; immediate

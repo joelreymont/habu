@@ -130,8 +130,8 @@ variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
-\ B2: "habu: local must be at word top, not in a loop/branch, quotation, or after exit\n" ($50 bytes)
-create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, $61 c, $6C c, $20 c, $6D c, $75 c, $73 c, $74 c, $20 c, $62 c, $65 c, $20 c, $61 c, $74 c, $20 c, $77 c, $6F c, $72 c, $64 c, $20 c, $74 c, $6F c, $70 c, $2C c, $20 c, $6E c, $6F c, $74 c, $20 c, $69 c, $6E c, $20 c, $61 c, $20 c, $6C c, $6F c, $6F c, $70 c, $2F c, $62 c, $72 c, $61 c, $6E c, $63 c, $68 c, $2C c, $20 c, $71 c, $75 c, $6F c, $74 c, $61 c, $74 c, $69 c, $6F c, $6E c, $2C c, $20 c, $6F c, $72 c, $20 c, $61 c, $66 c, $74 c, $65 c, $72 c, $20 c, $65 c, $78 c, $69 c, $74 c, $0A c,
+\ "habu: local cannot be inside quotation\n" ($27 bytes)
+create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, $61 c, $6C c, $20 c, $63 c, $61 c, $6E c, $6E c, $6F c, $74 c, $20 c, $62 c, $65 c, $20 c, $69 c, $6E c, $73 c, $69 c, $64 c, $65 c, $20 c, $71 c, $75 c, $6F c, $74 c, $61 c, $74 c, $69 c, $6F c, $6E c, $0A c,
 create ZBYTE 0 c,
 
 : ZBYTES, ( ptr u8 n -- )
@@ -590,15 +590,33 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    STDIN? @ IF C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
+: C-EMIT-DROP-X12 ( -- )
+   LBL {: done:label :}
+   12 done CBZ,
+      9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,
+   done LBL, ;
+s" c-emit-drop-x12" s" --" TRUST
+
 : EMIT-CF-HELPERS ( -- )
    LBL LBL LBL LBL LBL LBL {: pisb pdone kno kyes kchk knf :}
    LCFPUSH LABEL@ LBL,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
-      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 STR,
+      12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
+      9 12 0 STR,
+      13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,
+      13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP LABEL@ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 11 1 SUBI,  11 10 0 STR,
-      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 LDR,  RET,
+      12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
+      16 12 0 ADDI,
+      15 DATA LOCF-CELL LDR,  14 16 CF-LOCF LDR,  12 15 14 SUB,
+      C-EMIT-DROP-X12
+      13 16 CF-LOCN LDR,  13 DATA LOCN-CELL STR,
+      14 16 CF-LOCF LDR,  14 DATA LOCF-CELL STR,
+      9 16 0 LDR,
+      30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    LPAT LABEL@ LBL,
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
       5 $80000000 LIT64,  13 11 5 AND,
@@ -756,11 +774,15 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
 
 : J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-REPEAT ( -- ) LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,  14 9 0 ADDI,  LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK
+: J-REPEAT ( -- ) LVRECON LABEL@ BL,  LCFPOP LABEL@ BL,
+   SP SP 16 SUBI,  9 SP 0 STR,  14 SP 8 STR,
+   LCFPOP LABEL@ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,           \ WHILE's spilled state
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
-   9 14 0 ADDI,  LPAT LABEL@ BL, ;
+   9 SP 0 LDR,  LPAT LABEL@ BL,
+   14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
+   SP SP 16 ADDI, ;
 
 : J-FRAME ( -- )                                \ pop limit/start, push a loop frame
    3506446963 C-EMITW  4181721705 C-EMITW  3506446963 C-EMITW  4181721706 C-EMITW
@@ -771,9 +793,14 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
+   10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
+   12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
 : J-LVLEAVE ( -- )                              \ chain a B placeholder on the current level
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,
+   10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
+   14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    9 10 0 LDR,
@@ -1020,6 +1047,10 @@ s" c-call-checker-defer" s" --" TRUST
 \ the current word's entry (PEND slot.addr) — every word has the standard
 \ prologue/epilogue, so calling into the open definition is well-formed.
 : J-EXIT ( -- )
+   LBL {: qexit:label :}
+   9 DATA QPATCH-CELL LDR,  9 qexit CBNZ,
+      12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12
+   qexit LBL,
    9 DATA EXITH-CELL LDR,                              \ x9 = prev chain offset
    10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
    LCEMIT LABEL@ BL, ;
@@ -1633,21 +1664,15 @@ s" j-is" s" --" TRUST
    13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
-   1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $50 MOVZ,  NR-WRITE SYS,
+   1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $27 MOVZ,  NR-WRITE SYS,
    0 $4B MOVZ,  NR-EXIT SYS, ;
 s" c-lbrace-die" s" --" TRUST
 
 : C-LBRACE-GUARDS ( -- )
-   LBL LBL LBL {: cfok xok qlok :}
-   5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      C-LBRACE-DIE
-   cfok LBL,
+   LBL {: qlok:label :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       C-LBRACE-DIE
-   qlok LBL,
-   11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      C-LBRACE-DIE
-   xok LBL, ;
+   qlok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
@@ -2402,8 +2427,8 @@ s" em-compile-publish" s" --" TRUST
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       LVSPILL LABEL@ BL,
-      14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,
       EM-COMPILE-DROP-LOCALS
+      14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,
       EM-COMPILE-RET
       EM-COMPILE-FLUSH-PEND
       EM-COMPILE-PUBLISH

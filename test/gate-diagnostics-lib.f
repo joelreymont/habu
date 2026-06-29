@@ -346,13 +346,21 @@ variable GDX-TRUST-MAN-U
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
 
-: GDX-LOCAL-IN-LOOP ( -- )   \ B2: local in control flow gets a clear diagnostic.
+: GDX-LOCAL-IN-LOOP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" : BAD ( -- ) 3 0 do {: i:n :} i . loop ;" GE-SRC-LINE
+   s" : OKL ( -- ) 3 0 do i {: x:n :} x . loop ;" GE-SRC-LINE
+   s" OKL" GE-SRC-LINE
+   s" local in loop compiles" GE-HB-RUN-STDIN
+   SB-RESET
+   s" 0" GE-OUT-LINE  s" 1" GE-OUT-LINE  s" 2" GE-OUT-LINE
+   SB$ s" local in loop output" GE-EXPECT-OUT
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" 0 set-check : BAD ( -- n ) [: 1 {: x:n :} x ;] execute ;" GE-SRC-LINE
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   $4B s" B2 local-in-loop exits 75" GE-EXPECT-RC
-   s" must be at word top" s" B2 local-in-loop diagnostic" GE-EXPECT-ERR-HAS
+   $4B s" B2 local-in-quote exits 75" GE-EXPECT-RC
+   s" inside quotation" s" B2 local-in-quote diagnostic" GE-EXPECT-ERR-HAS
    GE-HB-RESET  GE-SRC-RESET
    s" : OKL ( n -- n ) {: a:n :} a ;" GE-SRC-LINE
    s" 5 OKL ." GE-SRC-LINE

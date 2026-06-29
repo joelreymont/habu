@@ -333,14 +333,16 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   `( cap used add -- )` are all `n`; a stray `swap` type-checks but changes the
   meaning. Bind names at the helper entry or factor role-specific helpers before
   doing capacity, offset, or decoder arithmetic.
-- **Bind locals only at a helper entry or before control flow opens.** Do not
-  introduce `{:` groups inside an active `if`, `begin`/`while`, `?do`, or after an
-  `exit` path. Factor a helper whose inputs can be bound at entry, or use owned
-  scratch cells for loop/control state. Mid-control locals can fail in raw
-  compilation at `{:` before the checked diagnostic path can explain the bug.
-- **Keep locals before live control.** A later `{:` group is valid only while the
-  definition is still on a live top-level path; factor another helper instead of
-  introducing locals inside control flow or after `exit`.
+- **Locals are block-scoped.** A `{:` group may appear on any live path, including
+  inside `if`/`else`, `case` arms, and loop bodies. The names are visible until
+  that block arm closes, then the checker and compiler restore the prior local
+  scope and frame depth. A branch-local name must not be referenced after
+  `then`/`endof`/`endcase`/`loop`/`repeat`; bind before the control word if the
+  value must survive the join.
+- **Dead code still cannot bind locals.** A later `{:` group is valid after a
+  closed early-exit guard such as `dup 0 < if exit then`, because the fall-through
+  path is live. A group immediately after an unconditional `exit`, `leave`,
+  `throw`, `die`, or `again` remains a checker error.
 - **Do not build deep locals stacks.** Habu locals are reliable for shallow
   factoring; nested helper calls from loop/callback bodies should use stack-based
   leaf helpers or explicitly separate scratch variables so inner helpers cannot
@@ -709,10 +711,9 @@ exactly as for `:`, `create`, `variable`, and `constant`.
   produces a value must leave the selector on top for `endcase` to remove, e.g.
   `30 swap endcase`. The checker requires integer keys/selectors and unifies
   every live arm plus the default to one data/return-stack effect.
-- **A local may not be bound after an `exit` has appeared on a path.** Binding
-  after a *closed* `if`/`else` with no early `exit` is fine; the blocker is
-  specifically a prior early-return guard. Put all `{:` groups ahead of the first
-  guard, or factor the post-guard work into a helper that binds at its entry.
+- **A local may be bound after a closed early-exit guard.** The checker tracks the
+  live fall-through path, so `dup 0 < if exit then {: x:n :}` is valid. A local
+  after an unconditional dead path is still rejected.
 - **`parse-name` returns a transient `( c-addr u )`** that the next
   `s"`/`."`/`refill` invalidates — `move` the bytes into your own buffer
   immediately; never hold the pointer across another parsing word.

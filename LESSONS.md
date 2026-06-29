@@ -442,6 +442,11 @@ lesson — keep the specific word/code/path, cut the prose.
   intermediates). Only the `{: x:? :}` show-inferred form (inference.md marks it
   "proposal, not implemented") is unbuilt. Two named "Habu features to land" (M2,
   local inference) were already shipped — always probe the checker before sizing.
+- **Native helper leafness is a control-flow invariant:** extending `LCFPOP` to
+  emit local-frame teardown made it call `LCEMIT`; without saving `x30`, `RET`
+  jumped back into `LCFPOP` (`pc=lr=...aa44`) and branch-local definitions hung
+  at compile time. Any helper that gains a `BL` gets a real LR frame in the same
+  change.
 - **Ground capability claims in the source, not the dot tracker + spec.** The PLAN
   review concluded "M2 (parametric checker) is a large unbuilt gate" from `dot ls`
   (no `m2` dot) + the spec calling it "large", and elevated it to CRITICAL. A

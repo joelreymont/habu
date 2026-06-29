@@ -29,7 +29,10 @@ $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 8192    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..8191 end exactly at CFSTK.
-$60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, cells[1..]=addrs
+$60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
+24      constant CF-REC
+8       constant CF-LOCN
+16      constant CF-LOCF
 $300000 constant DATA-SIZE     \ data-space mmap (always RW, separate from the RX code region)
 $100000 constant IBUFSZ        \ stdin read buffer (1 MB)
 
@@ -97,6 +100,7 @@ $568 constant RSP-CELL    \ user return-stack depth (>r r> r@)
 $570 constant EXITH-CELL  \ EXIT placeholder chain head (code offset; 0 = none)
 $578 constant LVD-CELL    \ compile-time DO nesting depth (LEAVE chains)
 $580 constant LVH-OFF     \ LEAVE chain head per nesting level — 16 levels
+$2C0 constant LVF-OFF     \ loop-entry local-frame bytes per nesting level
 $560 constant LASTC-CELL  \ last CREATEd slot addr (DOES> patches it)
 $1F0 constant DOESP-CELL  \ runtime address of LDOESPATCH (stored at startup)
 $230 constant CREATEP-CELL \ runtime address of LCREATE (prims must not name labels)
@@ -1367,17 +1371,34 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    STDIN? @ if C-SOURCE-STDIN else C-SOURCE-BAKED then ;
 
 \ ---- control-flow JIT: a CF stack (region+CFSTK-OFF) of placeholder branch
-\ addresses; THEN/ELSE/REPEAT patch the recorded branch's relative offset. ----
+\ addresses and local-frame snapshots. THEN/ELSE/REPEAT patch branches. ----
 \ Lcfpush(x9=val), Lcfpop(->x9), Lpat(x9=addr: patch CBZ/B to current CP),
 \ Lkwcmp(x0=kwaddr x1=kwlen -> x0=match? vs TKA/TKL, case-folded).
+: C-EMIT-DROP-X12 ( -- )
+   LBL {: done:label :}
+   12 done CBZ,
+      9 $910003FF LIT64,  14 12 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
+   done LBL, ;
+
 : EMIT-CF-HELPERS ( -- )
    LCFPUSH @ LBL,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,
-      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 STR,
+      12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
+      9 12 0 STR,
+      13 DATA LOCN-CELL LDR,  13 12 CF-LOCN STR,
+      13 DATA LOCF-CELL LDR,  13 12 CF-LOCF STR,
       11 11 1 ADDI,  11 10 0 STR,  RET,
    LCFPOP @ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
       5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 11 1 SUBI,  11 10 0 STR,
-      12 11 3 LSLI,  12 12 10 ADD,  12 12 8 ADDI,  9 12 0 LDR,  RET,
+      12 CF-REC MOVZ,  12 11 12 MUL,  12 12 10 ADD,  12 12 8 ADDI,
+      16 12 0 ADDI,
+      15 DATA LOCF-CELL LDR,  14 16 CF-LOCF LDR,  12 15 14 SUB,
+      C-EMIT-DROP-X12
+      13 16 CF-LOCN LDR,  13 DATA LOCN-CELL STR,
+      14 16 CF-LOCF LDR,  14 DATA LOCF-CELL STR,
+      9 16 0 LDR,
+      30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    LPAT @ LBL,                                       \ patch imm19 (CBZ) / imm26 (B)
       11 9 0 LDRW,  10 CP 9 SUB,  10 10 2 ASRI,
       5 $80000000 LIT64,  13 11 5 AND,
@@ -1496,11 +1517,15 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-WHILE ( -- ) C-POPFLAG  C-PUSHCP  $B4000009 C-EMITW ;
 
-: J-REPEAT ( -- ) LVRECON @ BL,  LCFPOP @ BL,  14 9 0 ADDI,  LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
+: J-REPEAT ( -- ) LVRECON @ BL,  LCFPOP @ BL,
+   SP SP 16 SUBI,  9 SP 0 STR,  14 SP 8 STR,
+   LCFPOP @ BL,  $14000000 $3FFFFFF C-BBACK
    12 0 MOVZ,  12 DATA VSP-CELL STR,                  \ exit path arrives from
    12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
    12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,           \ WHILE's spilled state
-   9 14 0 ADDI,  LPAT @ BL, ;
+   9 SP 0 LDR,  LPAT @ BL,
+   14 SP 8 LDR,  15 DATA LOCF-CELL LDR,  12 14 15 SUB,  C-EMIT-DROP-X12
+   SP SP 16 ADDI, ;
 
 \ DO/LOOP/I — loop index/limit live in a data-region frame stack ([x20+LOOP-STK-OFF],
 \ depth [x20+LOOPSP-CELL]) since x27/x28 are the compiler's NDICT/CP. Fixed encodings
@@ -1515,9 +1540,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
+   10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
+   12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
 : J-LVLEAVE ( -- )                      \ chain a B placeholder on the current level
+   9 DATA LVD-CELL LDR,  9 9 1 SUBI,
+   10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
+   14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    9 10 0 LDR,
@@ -1613,6 +1643,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the current word's entry (PEND slot.addr) — every word has the standard
 \ prologue/epilogue, so calling into the open definition is well-formed.
 : J-EXIT ( -- )
+   LBL {: qexit:label :}
+   9 DATA QPATCH-CELL LDR,  9 qexit CBNZ,
+      12 DATA LOCF-CELL LDR,  C-EMIT-DROP-X12
+   qexit LBL,
    9 DATA EXITH-CELL LDR,                              \ x9 = prev chain offset
    10 CP DBASE SUB,  10 DATA EXITH-CELL STR,           \ head := this placeholder
    LCEMIT @ BL, ;
@@ -2017,19 +2051,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: bk :}  13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE-GUARDS ( -- )
-   LBL LBL LBL {: cfok qlok xok :}
-   5 CFSTK-OFF LIT64,  10 DBASE 5 ADD,  11 10 0 LDR,  11 cfok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
-   cfok LBL,
+   LBL {: qlok:label :}
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT SYS,
-   qlok LBL,
-   11 DATA EXITH-CELL LDR,  11 xok CBZ,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
-   xok LBL, ;
+   qlok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL LBL {: nlok noti ncp ncd tsl tsd :}
@@ -2652,8 +2678,8 @@ variable CFSK2
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE lnotsemi BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 59 CMPI,  C-NE lnotsemi BCOND,
       LVSPILL @ BL,
-      14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
       EMIT-COMPILE-DROP-LOCALS
+      14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,
       EMIT-COMPILE-RET
       EMIT-COMPILE-FLUSH-PEND
       lmain EMIT-COMPILE-PUBLISH-HOOKED

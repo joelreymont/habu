@@ -17,6 +17,9 @@ $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 8192 constant DICT-CAP
 $60000 constant CFSTK-OFF
+24 constant CF-REC
+8 constant CF-LOCN
+16 constant CF-LOCF
 
 $100000 constant IBUFSZ
 20 constant DATA
@@ -80,6 +83,7 @@ $568 constant RSP-CELL
 $570 constant EXITH-CELL
 $578 constant LVD-CELL
 $580 constant LVH-OFF
+$2C0 constant LVF-OFF
 $560 constant LASTC-CELL
 $1F0 constant DOESP-CELL
 $230 constant CREATEP-CELL

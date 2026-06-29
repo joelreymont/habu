@@ -2403,7 +2403,7 @@ variable LCO
    0 OK !  -1 FAILSET !  -1 LOCALBAD ! ;
 
 : LOC-BEGIN ( -- )
-   #CFC @ 0 >  DEADP @ or IF LOC-REJECT ELSE
+   QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
 : LOC-REF? {: a u :}
@@ -2424,6 +2424,7 @@ variable LCO
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
 create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
 create CFRA 32 cells allot    create CFRB 32 cells allot   create CFDED 32 cells allot
+create CFLN 32 cells allot
 \ exit-accumulator save slots: a [: ;] quotation is a nested scope, so its early
 \ returns must NOT leak into the enclosing word's accumulator (CF-QUOT saves,
 \ CF-SEMIQ folds the quote's own exits then restores).
@@ -2471,6 +2472,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    #CFC @ 31 > IF -1 UNCK ! ELSE
      k #CFC @ cells CFKND + !  s0 #CFC @ cells CFSA + !  s1 #CFC @ cells CFSB + !
      r0 #CFC @ cells CFRA + !  r1 #CFC @ cells CFRB + !
+     #LOC @ #CFC @ cells CFLN + !
      #CFC @ 1 + #CFC ! THEN ;
 
 : CF@K #CFC @ 1 - cells CFKND + @ ;
@@ -2482,6 +2484,11 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@RA #CFC @ 1 - cells CFRA + @ ;
 
 : CF@RB #CFC @ 1 - cells CFRB + @ ;
+
+: CF@LN #CFC @ 1 - cells CFLN + @ ;
+
+: CF-LOC-REST ( -- )
+   CF@LN #LOC ! ;
 
 : CF-DROP #CFC @ 1 - #CFC ! ;
 
@@ -2564,6 +2571,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    CF-BELOW-CASE? 0= IF CF-FAIL ELSE CF@K 8 <> IF CF-FAIL ELSE
       CF-CASE-IDX CF-CASE-ACCUM
       CF@A CTMP !  CF@RA RTMP !
+      CF-LOC-REST
       0 DEADP !
       CF-DROP
       CTMP @ DCUR !  RTMP @ RCUR !
@@ -2578,6 +2586,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
       ELSE
          -1 DEADP !
       THEN
+      CF-LOC-REST
       CF-DROP
    THEN THEN ;
 
@@ -2589,20 +2598,21 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      2 #CFC @ 1 - cells CFKND + !
      CTMP @ #CFC @ 1 - cells CFSB + !
      RTMP @ #CFC @ 1 - cells CFRB + !
+     CF-LOC-REST
    THEN THEN ;
 
 : CF-THEN
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
         DEADP @ IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
-        ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-DROP
+        ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
         DEADP @  CF@DED                                   \ ( else-dead if-dead )
         2dup and IF 2drop -1 DEADP !                      \ both exited -> path stays dead
         ELSE over IF 2drop CF@B DCUR ! CF@RB RCUR ! 0 DEADP !  \ else exited -> take if-branch
         ELSE nip IF 0 DEADP !                             \ if exited -> keep else (in DCUR)
         ELSE CF@B SUNI CF@RB RSUNI 0 DEADP ! THEN THEN THEN
-        CF-DROP
+        CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
 : CF-EXIT                                                 \ early return: accumulate, kill path
@@ -2618,11 +2628,13 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-UNTIL
    s" bool --" PARSE-SIG
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-AGAIN                              \ unconditional loop: code after AGAIN is unreachable
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !  CF-DROP  -1 DEADP ! THEN THEN ;
+     CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
+     CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
    s" bool --" PARSE-SIG
@@ -2634,7 +2646,8 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-REPEAT
    CF-MT? IF CF-FAIL ELSE CF@K 4 <> IF CF-FAIL ELSE
-     CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !  CF-DROP THEN THEN ;
+     CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !
+     CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
@@ -2647,14 +2660,14 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
      ELSE  CF@A SUNI  CF@RA RSUNI  THEN
-     CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
+     CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-+LOOP
    s" n --" PARSE-SIG
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
      ELSE  CF@A SUNI  CF@RA RSUNI  THEN
-     CF@A DCUR !  CF@RA RCUR !  CF-DROP THEN THEN ;
+     CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
@@ -2717,6 +2730,7 @@ variable QTMP
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !
      QTMP @  CF@A  MK-PUSH DCUR !
+     CF-LOC-REST
      CF-DROP THEN THEN ;
 
 : CF-TOK? {: a u :}
