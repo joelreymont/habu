@@ -1285,61 +1285,63 @@ variable CHECKER-REC-SYM
 
 : E-COPY ( n -- n ) {: x:n :}
    x 0= if 0 exit then
-   x E-RES TAG T-CON = if
-      EN-CON E-NODE-NEW E-OFF >r
-      x E-RES PAY r@ E-PTR EN.A !
-      r> exit
-   then
-   x E-RES TAG T-VAR = if
-      EN-VAR E-NODE-NEW E-OFF >r
-      x E-RES PAY E-TV-ID r@ E-PTR EN.A !
-      r> exit
-   then
-   x E-RES TAG S-ROW = if
-      EN-ROW E-NODE-NEW E-OFF >r
-      x E-RES PAY E-RV-ID r@ E-PTR EN.A !
-      r> exit
-   then
-   x E-RES TAG T-PTR = if
-      EN-PTR E-NODE-NEW E-OFF >r
-      x E-RES PTR>INNER RECURSE r@ E-PTR EN.A !
-      r> exit
-   then
-   x E-RES TAG S-PUSH = if
-      EN-PUSH E-NODE-NEW E-OFF >r
-      x E-RES P>TYPE RECURSE r@ E-PTR EN.A !
-      x E-RES P>REST RECURSE r@ E-PTR EN.B !
-      r> exit
-   then
-   x E-RES TAG T-QUOT = if
-      EN-QUOT E-NODE-NEW E-OFF >r
-      x E-RES Q>DIN RECURSE r@ E-PTR EN.A !
-      x E-RES Q>DOUT RECURSE r@ E-PTR EN.B !
-      x E-RES Q>RIN RECURSE r@ E-PTR EN.C !
-      x E-RES Q>ROUT RECURSE r@ E-PTR EN.D !
-      x E-RES Q>XHAS r@ E-PTR EN.E !
-      x E-RES Q>XDEAD r@ E-PTR EN.F !
-      x E-RES Q>XDOUT r@ E-PTR EN.G !
-      x E-RES Q>XROUT r@ E-PTR EN.H !
-      r> exit
-   then
-   x E-RES TAG T-ATOM = if
-      EN-ATOM E-NODE-NEW E-OFF >r
-      x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
-      x E-RES ATOM>K r@ E-PTR EN.C !
-      r> exit
-   then
-   x E-RES TAG T-PARAM = if
-      EN-PARAM E-NODE-NEW E-OFF >r
-      x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
-      x E-RES PARAM>ARGC r@ E-PTR EN.C !
-      x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
-      x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
-      x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
-      x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG RECURSE r@ E-PTR EN.G ! then
-      r> exit
-   then
-   0 ;
+   x E-RES TAG case
+      T-CON of
+         EN-CON E-NODE-NEW E-OFF >r
+         x E-RES PAY r@ E-PTR EN.A !
+         r>
+      endof
+      T-VAR of
+         EN-VAR E-NODE-NEW E-OFF >r
+         x E-RES PAY E-TV-ID r@ E-PTR EN.A !
+         r>
+      endof
+      S-ROW of
+         EN-ROW E-NODE-NEW E-OFF >r
+         x E-RES PAY E-RV-ID r@ E-PTR EN.A !
+         r>
+      endof
+      T-PTR of
+         EN-PTR E-NODE-NEW E-OFF >r
+         x E-RES PTR>INNER RECURSE r@ E-PTR EN.A !
+         r>
+      endof
+      S-PUSH of
+         EN-PUSH E-NODE-NEW E-OFF >r
+         x E-RES P>TYPE RECURSE r@ E-PTR EN.A !
+         x E-RES P>REST RECURSE r@ E-PTR EN.B !
+         r>
+      endof
+      T-QUOT of
+         EN-QUOT E-NODE-NEW E-OFF >r
+         x E-RES Q>DIN RECURSE r@ E-PTR EN.A !
+         x E-RES Q>DOUT RECURSE r@ E-PTR EN.B !
+         x E-RES Q>RIN RECURSE r@ E-PTR EN.C !
+         x E-RES Q>ROUT RECURSE r@ E-PTR EN.D !
+         x E-RES Q>XHAS r@ E-PTR EN.E !
+         x E-RES Q>XDEAD r@ E-PTR EN.F !
+         x E-RES Q>XDOUT r@ E-PTR EN.G !
+         x E-RES Q>XROUT r@ E-PTR EN.H !
+         r>
+      endof
+      T-ATOM of
+         EN-ATOM E-NODE-NEW E-OFF >r
+         x E-RES ATOM>A x E-RES ATOM>U r@ E-PTR E-COPY-STR
+         x E-RES ATOM>K r@ E-PTR EN.C !
+         r>
+      endof
+      T-PARAM of
+         EN-PARAM E-NODE-NEW E-OFF >r
+         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
+         x E-RES PARAM>ARGC r@ E-PTR EN.C !
+         x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
+         x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
+         x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
+         x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG RECURSE r@ E-PTR EN.G ! then
+         r>
+      endof
+      0 swap
+   endcase ;
 
 : E-REC-HDR ( ptr a -- ptr a )
    dup @ cell+ + USIGS - UALIGN USIGS + ;
@@ -1487,31 +1489,32 @@ variable CHECKER-REC-SYM
 : E-INST ( n -- n ) {: off:n :}
    off 0= if 0 exit then
    off E-PTR >r
-   r@ EN.TAG @ EN-CON = if r@ EN.A @ MK-CON r> drop exit then
-   r@ EN.TAG @ EN-VAR = if r@ EN.A @ E-I-TV r> drop exit then
-   r@ EN.TAG @ EN-ROW = if r@ EN.A @ E-I-RV r> drop exit then
-   r@ EN.TAG @ EN-PTR = if r@ EN.A @ RECURSE MK-PTR r> drop exit then
-   r@ EN.TAG @ EN-PUSH = if r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop exit then
-   r@ EN.TAG @ EN-QUOT = if
-      r@ EN.A @ RECURSE
-      r@ EN.B @ RECURSE
-      r@ EN.C @ RECURSE
-      r@ EN.D @ RECURSE
-      MK-QUOT
-      dup r@ EN.E @ r@ EN.F @ r@ EN.G @ r@ EN.H @ QX!
-      r> drop exit
-   then
-   r@ EN.TAG @ EN-ATOM = if r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop exit then
-   r@ EN.TAG @ EN-PARAM = if
-      PARAM-SCR-RESET
-      r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
-      r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
-      r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
-      r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
-      r@ E-I-STR MK-PARAM r> drop exit
-   then
-   r> drop
-   0 ;
+   r@ EN.TAG @ case
+      EN-CON of r@ EN.A @ MK-CON r> drop endof
+      EN-VAR of r@ EN.A @ E-I-TV r> drop endof
+      EN-ROW of r@ EN.A @ E-I-RV r> drop endof
+      EN-PTR of r@ EN.A @ RECURSE MK-PTR r> drop endof
+      EN-PUSH of r@ EN.A @ RECURSE r@ EN.B @ RECURSE MK-PUSH r> drop endof
+      EN-QUOT of
+         r@ EN.A @ RECURSE
+         r@ EN.B @ RECURSE
+         r@ EN.C @ RECURSE
+         r@ EN.D @ RECURSE
+         MK-QUOT
+         dup r@ EN.E @ r@ EN.F @ r@ EN.G @ r@ EN.H @ QX!
+         r> drop
+      endof
+      EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
+      EN-PARAM of
+         PARAM-SCR-RESET
+         r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
+         r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
+         r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
+         r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
+         r@ E-I-STR MK-PARAM r> drop
+      endof
+      r> drop 0 swap
+   endcase ;
 
 : EFF-APPLY ( ptr a -- ) {: h:ptr :}
    h E-INST-RESET
