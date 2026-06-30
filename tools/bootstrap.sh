@@ -73,7 +73,6 @@ SRC_COMMON=(
   src/habu/layout.f
   src/os/env-base.f
   src/os/script-argv.f
-  src/core/structures.f
   src/core/enums.f
   src/core/exec-vector.f
   src/core/sha256.f
@@ -167,11 +166,15 @@ emit_src() {
   printf "0 set-check\n" >> "$out"
   cat src/core/util.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/structures.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/render.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/check-hook.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/structures-effects.f >> "$out"
   printf '\n' >> "$out"
   printf "' HOOK set-check\n" >> "$out"
   local f

@@ -1182,29 +1182,30 @@ variable SYM-ID
 6 constant EN-ATOM
 7 constant EN-PARAM
 
-$50 constant EFF-REC
-$48 constant EFF-NODE
+BEGIN-STRUCTURE EFF-REC
+   CELL +FIELD ER.NEXT
+   CELL +FIELD ER.ACTIVE
+   CELL +FIELD ER.DIN
+   CELL +FIELD ER.DOUT
+   CELL +FIELD ER.RIN
+   CELL +FIELD ER.ROUT
+   CELL +FIELD ER.HASR
+   CELL +FIELD ER.TVN
+   CELL +FIELD ER.RVN
+   CELL +FIELD ER.SYM
+END-STRUCTURE
 
-: ER.NEXT   ( ptr a -- ptr a ) $00 + ;
-: ER.ACTIVE ( ptr a -- ptr a ) $08 + ;
-: ER.DIN    ( ptr a -- ptr a ) $10 + ;
-: ER.DOUT   ( ptr a -- ptr a ) $18 + ;
-: ER.RIN    ( ptr a -- ptr a ) $20 + ;
-: ER.ROUT   ( ptr a -- ptr a ) $28 + ;
-: ER.HASR   ( ptr a -- ptr a ) $30 + ;
-: ER.TVN    ( ptr a -- ptr a ) $38 + ;
-: ER.RVN    ( ptr a -- ptr a ) $40 + ;
-: ER.SYM    ( ptr a -- ptr a ) $48 + ;
-
-: EN.TAG ( ptr a -- ptr a ) $00 + ;
-: EN.A   ( ptr a -- ptr a ) $08 + ;
-: EN.B   ( ptr a -- ptr a ) $10 + ;
-: EN.C   ( ptr a -- ptr a ) $18 + ;
-: EN.D   ( ptr a -- ptr a ) $20 + ;
-: EN.E   ( ptr a -- ptr a ) $28 + ;
-: EN.F   ( ptr a -- ptr a ) $30 + ;
-: EN.G   ( ptr a -- ptr a ) $38 + ;
-: EN.H   ( ptr a -- ptr a ) $40 + ;
+BEGIN-STRUCTURE EFF-NODE
+   CELL +FIELD EN.TAG
+   CELL +FIELD EN.A
+   CELL +FIELD EN.B
+   CELL +FIELD EN.C
+   CELL +FIELD EN.D
+   CELL +FIELD EN.E
+   CELL +FIELD EN.F
+   CELL +FIELD EN.G
+   CELL +FIELD EN.H
+END-STRUCTURE
 
 create EC-TV MAXTV cells allot
 create EC-RV MAXTV cells allot

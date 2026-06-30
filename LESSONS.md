@@ -107,6 +107,11 @@ lesson — keep the specific word/code/path, cut the prose.
   arithmetic into APIs. Habu should model node layout with structures, runtime
   collections with arrays/maps, and dispatch with checked `case` or execution
   vectors.
+- **Early defining words need post-checker effects:** moving structures before
+  `checker.f` let checker records use the structure DSL, but `CREATE ... DOES>`
+  cannot publish effects until `trust` exists. Load definitions early, publish
+  their checker rows from `src/core/structures-effects.f`, and make `DOES>`
+  effect publication skip only when no checker hook is installed.
 
 ## Tool & Infra
 

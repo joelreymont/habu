@@ -5,7 +5,7 @@ $4C constant STRUCT-RC
 
 variable STRUCT-ACTIVE
 
-TRUSTED: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
+: STRUCT-BYTE+ ( ptr a n -- ptr u8 )
    + ;
 
 : STRUCT-REQUIRE-CLOSED ( -- )

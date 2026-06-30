@@ -524,9 +524,11 @@ variable BF-STRIP-OFF
 
 : BF-APPEND-CHECKER-BOOT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/util.f" BF-APPEND-SOURCE
+   out outu s" src/core/structures.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
-   out outu s" src/core/check-hook.f" BF-APPEND-SOURCE ;
+   out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
+   out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CHECK-OFF ( ptr u8 n -- )
    s" 0 set-check" BF-APPEND-LINE ;
@@ -572,9 +574,6 @@ variable BF-STRIP-OFF
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/include.f" BF-APPEND-SOURCE ;
 
-: BF-APPEND-STRUCTURES ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/core/structures.f" BF-APPEND-SOURCE ;
-
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
 
@@ -589,7 +588,6 @@ variable BF-STRIP-OFF
    out outu BF-APPEND-HABU-LAYOUT
    out outu BF-APPEND-ENV-BASE
    out outu BF-APPEND-SCRIPT-ARGV
-   out outu BF-APPEND-STRUCTURES
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE

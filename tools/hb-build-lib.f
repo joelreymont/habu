@@ -403,9 +403,11 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-KEY-COMMON-SOURCES ( -- )
    s" src/habu/hide.f" HBB-KEY-FILE+
    s" src/core/util.f" HBB-KEY-FILE+
+   s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/checker.f" HBB-KEY-FILE+
    s" src/core/render.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
+   s" src/core/structures-effects.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+
    s" src/arch/arm64/asm.f" HBB-KEY-FILE+
    s" src/arch/arm64/icode.f" HBB-KEY-FILE+
@@ -413,7 +415,6 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/layout.f" HBB-KEY-FILE+
    s" src/os/env-base.f" HBB-KEY-FILE+
    s" src/os/script-argv.f" HBB-KEY-FILE+
-   s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/enums.f" HBB-KEY-FILE+
    s" src/core/exec-vector.f" HBB-KEY-FILE+
    s" src/core/sha256.f" HBB-KEY-FILE+

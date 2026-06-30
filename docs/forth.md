@@ -236,6 +236,10 @@ END-STRUCTURE
   structure. Add a gate test when introducing a new field-defining word.
 - Keep field names qualified by the structure (`POINT.X`, `POINT.FLAGS`) so the
   dictionary and xref output communicate ownership.
+- The structure definers load before `checker.f` so checker-internal records can
+  use the same DSL. Their checker effects live in
+  `src/core/structures-effects.f`; add a `TRUSTED.md` row and a dictionary gate
+  test for any new field definer.
 
 Enums are checked defining words built on `create ... does>`. Use them for named
 integer/status families instead of hand-maintained numeric drift:

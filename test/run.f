@@ -693,11 +693,13 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f src/habu/hide.f src/core/util.f src/core/checker.f
-   src/core/render.f src/core/check-hook.f src/core/roles.f
+   tools/build-fixpoint.f src/habu/hide.f src/core/util.f
+   src/core/structures.f src/core/checker.f
+   src/core/render.f src/core/check-hook.f src/core/structures-effects.f
+   src/core/roles.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
-   src/core/structures.f src/core/enums.f src/core/exec-vector.f
+   src/core/enums.f src/core/exec-vector.f
    src/core/sha256.f src/core/combinators.f src/habu/treeshake.f
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
