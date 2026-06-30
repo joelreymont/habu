@@ -4,7 +4,7 @@
 
 require lib/process-fork.f
 
-12 constant GT-POOL-MAX
+16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT
 2 constant GT-POOL-FDS
@@ -255,8 +255,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
    E-TBL-BOUNDS throw ;
 
 : GT-POOL-RUN-LINE ( idx -- ) {: idx :}
-   s" RUN: " type
-   idx GT-POOL-LABEL$ type cr ;
+   ;
 
 : GT-POOL-ELAPSED-MS ( idx -- n ) {: idx :}
    mono-ns idx GT-POOL-START-PTR @ - PROC-NS-PER-MS / ;
@@ -533,10 +532,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
    repeat drop ;
 
 : GT-POOL-WAIT-LINES ( -- )
-   0 begin dup GT-POOL-MAX < while
-      dup >IDX GT-POOL-DONE@ 0= if dup >IDX GT-POOL-WAIT-LINE then
-      1+
-   repeat drop ;
+   ;
 
 : GT-POOL-STEP ( -- )
    GT-POOL-POLL drop

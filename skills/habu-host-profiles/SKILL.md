@@ -12,7 +12,7 @@ nested pool slots, and timing budgets. Put manual overrides after
 
 Profiles:
 
-- `macos-arm64-8x2`: macOS ARM64 target, `--pool-slots 8`,
+- `macos-arm64-12x2`: macOS ARM64 target, `--pool-slots 12`,
   `--nested-pool-slots 2`, hot `--budget-ms 40000`,
   `--wall-budget-ms 45000`; cold `70000` / `70000`.
 - `jetson-orin-clocks-4x2`: Linux target on NVIDIA Jetson with CPUs `0-7`
@@ -21,27 +21,21 @@ Profiles:
 - `linux-arm64-4x2`: generic Linux ARM64 target, `--pool-slots 4`,
   `--nested-pool-slots 2`, hot `--budget-ms 120000`; cold `150000`.
 
-The runner's `--wall-budget-ms` uses its monotonic elapsed time from `TR-MAIN`;
+The runner's `--wall-budget-ms` uses its monotonic elapsed test-suite time;
 wrap the command with `/usr/bin/time -p` when exact process wall time matters.
-Top-level `--pool-slots` is capped at 8; fixed warm/AOT artifact builders own
-slots 8-11.
+Top-level `--pool-slots` is capped at 12; fixed warm/AOT artifact builders own
+slots 12-14.
 
 macOS hot profile:
 
 ```sh
-/usr/bin/time -p bin/hb --load lib/errors.f lib/string.f lib/memory.f \
-  lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f -- \
-  --under bin/hb --timings
+/usr/bin/time -p bin/hb --load test/run.f -- --under bin/hb --timings
 ```
 
 macOS cache-fill profile:
 
 ```sh
-/usr/bin/time -p bin/hb --load lib/errors.f lib/string.f lib/memory.f \
-  lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f -- \
-  --under bin/hb --cold-cache --timings
+/usr/bin/time -p bin/hb --load test/run.f -- --under bin/hb --cold-cache --timings
 ```
 
 Jetson/Orin prep:
@@ -55,23 +49,17 @@ sudo jetson_clocks
 Jetson/Orin hot profile:
 
 ```sh
-/usr/bin/time -p bin/hb --load lib/errors.f \
-  lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f \
-  test/run.f -- --under bin/hb --timings
+/usr/bin/time -p bin/hb --load test/run.f -- --under bin/hb --timings
 ```
 
 Jetson/Orin cache-fill profile:
 
 ```sh
-/usr/bin/time -p bin/hb --load lib/errors.f \
-  lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f \
-  test/run.f -- --under bin/hb --cold-cache --timings
+/usr/bin/time -p bin/hb --load test/run.f -- --under bin/hb --cold-cache --timings
 ```
 
 `--cold-cache` uses a private per-run cache root and the profile cold budget. It
 does not delete the persistent warm cache.
 
 Default persistent-cache runs also mark themselves cold if a source change
-invalidates a warm runner or `HABU_UNDER_TEST` cache artifact during setup.
+invalidates a warm image or `HABU_UNDER_TEST` cache artifact during setup.

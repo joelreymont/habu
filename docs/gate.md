@@ -5,8 +5,8 @@ candidate `bin/hb`, and that candidate passes the checker, engine, CLI, stdlib,
 PTX, and builder contracts without hiding failures behind warm-cache state.
 
 The test suite is too slow when it treats every proof as a process boundary. Warm
-images remove reparse cost, but a warm runner that only launches child `hb`
-processes is still a launcher. The durable shape is a resident checked gate
+images remove reparse cost, but a snapshot that only launches child `hb`
+processes is still a launcher. The durable shape is a resident checked test-suite
 controller with explicit proof subjects and small process-boundary sentinels.
 
 ## Proof Subjects
@@ -15,14 +15,14 @@ Every test in the suite belongs to exactly one subject.
 
 | Subject | Runner | Purpose |
 |---|---|---|
-| `host-source` | resident gate image | Source lints, semantic tool cores, JSON/schema checks, docs checks, and other host-only assertions. |
+| `host-source` | resident suite image | Source lints, semantic tool cores, JSON/schema checks, docs checks, and other host-only assertions. |
 | `candidate-cli` | exact `HABU_UNDER_TEST` executable | Public CLI behavior: startup, `--load`, stdin, argv/env/cwd, stdout/stderr, exit code, timeout, PTY/REPL. |
 | `candidate-source` | exact `HABU_UNDER_TEST` executable, batched | Source programs whose semantics depend on the built candidate, not on the warm host image. |
 | `artifact` | candidate build path plus host assertions | AOT, snapshots, image bytes, signatures, and generated build products. |
 
 The resident runner may prove host-source facts in-process. It must not prove a
-candidate fact by accident. Candidate rows print and record the candidate path
-and SHA before the row runs.
+candidate fact by accident. Candidate tests print and record the candidate path
+and SHA before the test runs.
 
 Candidate production is not candidate validation. The build test only produces
 `HABU_UNDER_TEST`; a separate candidate validation test always runs after that
@@ -32,12 +32,10 @@ or explicit `--under PATH`.
 The explicit reuse path is:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f \
-  test/gate-pool.f test/run.f -- --under bin/hb
+bin/hb --load test/run.f -- --under bin/hb
 ```
 
-`--under` copies the executable into the gate-owned temp root and marks the
+`--under` copies the executable into the suite-owned temp root and marks the
 candidate capability ready. It does not install into the content cache.
 
 ## Boundary Rule
@@ -62,12 +60,11 @@ the process.
 
 ## Test Groups
 
-The suite reports named test groups, not anonymous scheduler rows. A group name
+The suite reports named test groups, not anonymous scheduler tests. A group name
 is the report header and includes its execution policy:
 
 ```text
-RUN: GROUP: stdlib/tool-repair [parallel]
-PASS: GROUP: stdlib/tool-repair [parallel]  (12047ms)
+PASS: GROUP: stdlib/tool-repair [parallel]  (8106ms)
 ```
 
 Parallel groups enter the shared process pool. Sequential groups drain the pool
@@ -114,7 +111,7 @@ remembering slot counts or cache state:
 
 | Profile | Host proof | Slots | Nested | Hot budget | Cold budget |
 |---|---|---:|---:|---:|---:|
-| `macos-arm64-8x2` | macOS ARM64 target | 8 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
+| `macos-arm64-12x2` | macOS ARM64 target | 12 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
 | `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
 
@@ -122,7 +119,7 @@ The default profile is `auto`: the runner inspects the target and host files
 before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
 `--pool-slots`, `--nested-pool-slots`, `--budget-ms`, or `--wall-budget-ms`
 arguments override the profile when they appear after it. Top-level
-`--pool-slots` is capped at 8 because slots 8-11 are reserved for fixed warm/AOT
+`--pool-slots` is capped at 12 because slots 12-14 are reserved for fixed warm/AOT
 artifact builders.
 
 `--cold-cache` selects a private per-run cache root under the suite temp
@@ -130,21 +127,24 @@ directory, applies the profile cold budget unless the user supplied explicit
 budget arguments, and proves cache-fill behavior without deleting the persistent
 warm cache.
 
-If a default persistent-cache run discovers a missing warm runner or
+If a default persistent-cache run discovers a missing warm image or
 `HABU_UNDER_TEST` artifact after argument parsing, the runner marks the run
 `cache=cold` and applies the same profile cold budget unless explicit budget
 arguments were supplied. A source change that invalidates warm images must
 therefore be timed as a cache-fill run, not fail against the hot budget.
 
-The runner's wall budget is monotonic elapsed time from `TR-MAIN`; wrap the
+The runner's wall budget is monotonic elapsed test-suite time; wrap the
 command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
-hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
+hosts. `test/run.f` runs the suite directly in `bin/hb`; no top-level test-suite
+snapshot is built. The side-effect-free implementation lives in
+`test/run-lib.f`; invoking it directly is for focused harness debugging only.
+Current commands live in `skills/habu-host-profiles/SKILL.md`.
 
 ## Implementation Sequence
 
 1. Test timing metrics and slowest-test summary.
    Acceptance: a full test suite prints `spans=N` and `slowest-test=...`.
-   Status: implemented in `test/gate-stats.f`; pool passes emit span rows
+   Status: implemented in `test/gate-stats.f`; pool passes emit span records
    through a checked `defer` hook.
 
 2. Candidate production and validation split.
@@ -162,10 +162,11 @@ hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
 4. Split mixed tool tests.
    Acceptance: semantic tool tests run as independent resident-runner tests; CLI
    tests remain explicit boundary tests.
-   Status: implemented for repair, doc/schema, lint, and typed-local tool rows.
+   Status: implemented for repair, doc/schema, split lint, and typed-local tool tests.
    A hot local gate now reports `warm-miss=0`, `candidate-validate=1`,
-   `inner-hb=15`, `inner-hb-stdin=6`, `boundary=21`, and 28.100s internal wall
-   time.
+   `inner-hb=11`, `inner-hb-stdin=5`, `boundary=16`, 27.392s internal time, and
+   29.71s shell wall time. A private-cache fill run reports 34.818s internal
+   time and 37.20s shell wall time.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -173,9 +174,9 @@ hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Status: test-level resident execution is in place, including stdlib tail
    semantic slices, `lint-artifacts/fast`, and the `lint-libs`
    core/PTX/PTX-negative/PTX-toolchain groups. The common stdlib tool base is
-   baked into the warm runner once per content key. Remaining work is inside
-   true CLI/process tests: remove helper children only when a checked result API
-   can preserve the same public boundary proof.
+   loaded once by the resident support path. Remaining work is inside true
+   CLI/process tests: remove helper children only when a checked result API can
+   preserve the same public boundary proof.
 
 6. Add direct checker/all-errors source APIs.
    Acceptance: dictionary/checker pure negatives do not spawn candidate `hb`;

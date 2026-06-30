@@ -28,6 +28,7 @@ variable CK-CACHE-U
 variable CK-CACHE-PATH-U
 variable CK-ROW-U
 variable CK-PREFIX-U
+variable CK-CACHE-LOADED
 
 : CK-TRUE ( -- bool )
    0 0= ;
@@ -70,7 +71,8 @@ variable CK-PREFIX-U
    32 CK-BYTES+ ;
 
 : CK-CACHE-CLEAR! ( -- )
-   0 CK-CACHE-PATH-U ! ;
+   0 CK-CACHE-PATH-U !
+   0 CK-CACHE-LOADED ! ;
 
 : CK-CACHE-BUF-FIELD ( -- ptr ptr u8 )
    CK-CACHE-BUF-A 0 ptr-field ;
@@ -97,10 +99,12 @@ variable CK-PREFIX-U
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
    a CK-CACHE-PATH-BUF u BYTE-COPY
-   u CK-CACHE-PATH-U ! ;
+   u CK-CACHE-PATH-U !
+   0 CK-CACHE-LOADED ! ;
 
 : CK-CACHE-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" content-key.cache" CK-CACHE-PATH-BUF JOIN-PATH CK-CACHE-PATH-U ! ;
+   a u s" content-key.cache" CK-CACHE-PATH-BUF JOIN-PATH CK-CACHE-PATH-U !
+   0 CK-CACHE-LOADED ! ;
 
 : CK-CACHE-ENV-ROOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u GETENV dup 0= if 2drop CK-FALSE exit then
@@ -113,9 +117,11 @@ variable CK-PREFIX-U
 
 : CK-CACHE-LOAD? ( -- bool )
    CK-CACHE-AUTO? 0= if CK-FALSE exit then
+   CK-CACHE-LOADED @ 0 <> if CK-TRUE exit then
    CK-CACHE-PATH$ FILE? 0= if CK-FALSE exit then
    CK-CACHE-PATH$ FILE-SIZE CK-CACHE-CAP > if CK-FALSE exit then
    CK-CACHE-PATH$ CK-CACHE-BUF CK-CACHE-CAP READ-ALL CK-CACHE-U !
+   -1 CK-CACHE-LOADED !
    CK-TRUE ;
 
 : CK-ROW-RESET ( -- )
@@ -202,6 +208,9 @@ variable CK-PREFIX-U
    CK-CACHE-AUTO? if
       CK-ROW-DIGEST+
       CK-CACHE-PATH$ CK-ROW-BUF CK-ROW-U @ APPEND-FILE
+      CK-CACHE-LOADED @ 0 <> if
+         CK-ROW-BUF CK-ROW-U @ >LEN CK-CACHE-BUF CK-CACHE-CAP >LEN CK-CACHE-U BUF-APPEND-LEN
+      then
    then ;
 
 : CK-FILE-DIGEST! ( ptr u8 n -- ) {: a:ptr u:n :}

@@ -46,11 +46,12 @@
 38 constant GR-ID-LINT-LIBS-PTX-NEG
 39 constant GR-ID-LINT-LIBS-PTX-TOOL
 40 constant GR-ID-LINT-ARTIFACTS-FAST
+41 constant GR-ID-TAIL-PROCESS
 variable GR-START-NS
 variable GR-ARG-I
 
 : GR-USAGE ( -- )
-   s" usage: hb-gate-warm --load test/gate-runner-entry.f -- PHASE [--pool-slots N] [--timings]" GR-USAGE-RC die ;
+   s" usage: bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f -- PHASE [--pool-slots N] [--timings]" GR-USAGE-RC die ;
 
 : GR-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -137,6 +138,7 @@ variable GR-ARG-I
    s" lint-libs-ptx-neg" GR-ARG0= if GR-ID-LINT-LIBS-PTX-NEG exit then
    s" lint-libs-ptx-tool" GR-ARG0= if GR-ID-LINT-LIBS-PTX-TOOL exit then
    s" lint-artifacts-fast" GR-ARG0= if GR-ID-LINT-ARTIFACTS-FAST exit then
+   s" tail-process" GR-ARG0= if GR-ID-TAIL-PROCESS exit then
    GR-ID-UNKNOWN ;
 
 : GR-STDLIB ( -- )
@@ -148,7 +150,7 @@ variable GR-ARG-I
 
 : GR-DISPATCH-ID ( n -- )
    case
-      GR-ID-TOOL of GR-TOOL endof
+      GR-ID-TOOL of GSI-TOOL-TRUST endof
       GR-ID-TOOL-REPAIR of GSI-TOOL-REPAIR endof
       GR-ID-TOOL-REPAIR-CHECK of GSI-TOOL-REPAIR-CHECK endof
       GR-ID-TOOL-REPAIR-PACKET of GSI-TOOL-REPAIR-PACKET endof
@@ -163,10 +165,10 @@ variable GR-ARG-I
       GR-ID-TOOL-LINT-BUNDLE of GSI-TOOL-LINT-BUNDLE endof
       GR-ID-TOOL-TYPED of GSI-TOOL-TYPED endof
       GR-ID-TOOL-SEMANTICS of GSI-TOOL-SEMANTICS endof
-      GR-ID-CHECK-CLI of GR-STDLIB endof
+      GR-ID-CHECK-CLI of GSI-CHECK-CLI endof
       GR-ID-TAIL of GR-STDLIB endof
       GR-ID-LINT-TOOLS of GSI-LINT-TOOLS endof
-      GR-ID-LINT-MANIFEST of GR-STDLIB endof
+      GR-ID-LINT-MANIFEST of GSI-LINT-MANIFEST endof
       GR-ID-LINT-ARTIFACTS of GR-STDLIB endof
       GR-ID-LINT-LIBS of GR-STDLIB endof
       GR-ID-LINT-LIBS-CORE of GSI-LINT-LIBS-CORE endof
@@ -189,6 +191,7 @@ variable GR-ARG-I
       GR-ID-TAIL-RUNNER of GSI-TAIL-RUNNER endof
       GR-ID-TAIL-BUILD of GSI-TAIL-BUILD endof
       GR-ID-TAIL-WARM of GSI-TAIL-WARM endof
+      GR-ID-TAIL-PROCESS of GSI-TAIL-PROCESS endof
       GR-USAGE
    endcase ;
 
@@ -233,7 +236,9 @@ variable GR-ARG-I
       GR-ID-TOOL-LINT-BUNDLE of 0 0= endof
       GR-ID-TOOL-TYPED of 0 0= endof
       GR-ID-TOOL-SEMANTICS of 0 0= endof
+      GR-ID-CHECK-CLI of 0 0= endof
       GR-ID-LINT-TOOLS of 0 0= endof
+      GR-ID-LINT-MANIFEST of 0 0= endof
       GR-ID-LINT-LIBS-CORE of 0 0= endof
       GR-ID-LINT-LIBS-PTX of 0 0= endof
       GR-ID-LINT-LIBS-PTX-NEG of 0 0= endof
@@ -244,6 +249,7 @@ variable GR-ARG-I
       GR-ID-TAIL-RUNNER of 0 0= endof
       GR-ID-TAIL-BUILD of 0 0= endof
       GR-ID-TAIL-WARM of 0 0= endof
+      GR-ID-TAIL-PROCESS of 0 0= endof
       0 0= 0= swap
    endcase ;
 

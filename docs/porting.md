@@ -108,9 +108,7 @@ bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
   lib/process-argv.f lib/process-env.f lib/memory.f lib/codesign.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 
-bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f \
-  test/run.f
+bin/hb --load test/run.f
 ```
 
 Language-runtime and model benchmark gates are benchmark-host work, not port

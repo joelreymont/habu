@@ -1043,6 +1043,8 @@ PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a fd fd fd -- pid )
 PROC-ENV-RESET            ( -- )
 PROC-ENV-ENTRY+           ( ptr u8 len -- )
 PROC-ENV+                 ( ptr u8 len ptr u8 len -- )
+PROC-ENV-DEFAULT-RESET    ( -- )
+PROC-ENV-DEFAULT+         ( ptr u8 len ptr u8 len -- )
 PROC-ENV-PREPARE          ( -- ptr a )
 PROC-ENV-INHERIT-MISSING  ( -- )
 PROC-SPAWN-ARGV-ENV-IO         ( ptr u8 len fd fd fd -- pid )
@@ -1064,6 +1066,10 @@ entries whose names are not already present; explicit entries win and duplicate
 names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
 for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
+Resident test runners and other in-process harnesses can install inherited
+defaults with `PROC-ENV-DEFAULT+`; `PROC-ENV-INHERIT-MISSING` copies those
+defaults before host envp entries, while explicit `PROC-ENV+` entries still win.
+Use `PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
 
 `lib/process-command.f` adds a checked command-owned runner above argv/env. It
 keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then

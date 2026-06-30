@@ -50,6 +50,7 @@ variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
 variable CKT-USE-CHECK
+variable CKT-START-NS
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -282,18 +283,25 @@ variable CKT-USE-CHECK
    erru 0 T=
    outu 0 T= ;
 
+\ typed-local-lint: allow-bare-local - q is the test action quotation.
+: CKT-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns CKT-START-NS !
+   q execute
+   s" PASS: " type label labelu type
+   s"  (" type mono-ns CKT-START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-PREPARE
-   CKT-TEST-GOOD
-   CKT-TEST-FILE-LABEL
-   CKT-TEST-USAGE
-   CKT-TEST-DIE
-   CKT-TEST-UNTERM-STRING
-   CKT-TEST-DUP-ALL
-   CKT-TEST-SOURCE-LIST-RESERVED
-   CKT-TEST-SOURCE-LIST-AUDITED-LIB
-   CKT-TEST-REQUIRE-FACADE
+   s" check/good" [: CKT-TEST-GOOD ;] CKT-RUN
+   s" check/file-label-cli" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
+   s" check/usage-cli" [: CKT-TEST-USAGE ;] CKT-RUN
+   s" check/die" [: CKT-TEST-DIE ;] CKT-RUN
+   s" check/unterminated-string" [: CKT-TEST-UNTERM-STRING ;] CKT-RUN
+   s" check/duplicate-all-errors" [: CKT-TEST-DUP-ALL ;] CKT-RUN
+   s" check/source-list-reserved" [: CKT-TEST-SOURCE-LIST-RESERVED ;] CKT-RUN
+   s" check/source-list-audited-lib" [: CKT-TEST-SOURCE-LIST-AUDITED-LIB ;] CKT-RUN
+   s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

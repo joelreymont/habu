@@ -1,4 +1,4 @@
-\ gate-stdlib-inline-lib.f - in-process stdlib gate slices for warm runners.
+\ gate-stdlib-inline-lib.f - in-process stdlib gate slices for resident runners.
 \
 \ Load after test/gate-stdlib-lib.f in the warm gate runner.
 
@@ -150,6 +150,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" tools/signature-lint-core.f" GSI-REQUIRE
    s" tools/checked-boundary-lint-core.f" GSI-REQUIRE
    s" tools/reserved-name-lint-core.f" GSI-REQUIRE
+   s" tools/trust-lint-core.f" GSI-REQUIRE
    s" tools/duplicate-definition-lint-core.f" GSI-REQUIRE
    s" tools/bundle-lib-core.f" GSI-REQUIRE
    GSI-TOOL-BASE-READY! ;
@@ -168,6 +169,18 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" stdlib/tool-repair/check-all-errors" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
    s" tools/check-all-errors-test.f" GSI-INCLUDE ;
+
+: GSI-TOOL-TRUST ( -- )
+   s" stdlib/tool-trust" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/trust-lint-test.f" GSI-INCLUDE
+   s" tools/aot-call-report-test.f" GSI-INCLUDE ;
+
+: GSI-CHECK-CLI ( -- )
+   s" stdlib/check-cli" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TOOL-SETUP
+   s" tools/check-core.f" GSI-TOOL-SETUP-FILE
+   s" tools/check-test.f" GSI-INCLUDE ;
 
 : GSI-TOOL-REPAIR-PACKET ( -- )
    s" stdlib/tool-repair/repair-packet" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -373,6 +386,13 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TAIL-WARM-SETUP
    s" tools/warm-image-test.f" GSI-INCLUDE ;
 
+: GSI-TAIL-PROCESS ( -- )
+   s" stdlib/tail-process" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" tools/hb-cli-contracts-test.f" GSI-INCLUDE
+   s" lib/process-test.f" GSI-INCLUDE
+   s" lib/process-command-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-LIBS-CORE ( -- )
    s" stdlib/lint-libs/core" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
@@ -413,6 +433,10 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-MANIFEST ( -- )
+   s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" tools/stdlib-manifest-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-ARTIFACTS-FAST ( -- )
    s" stdlib/lint-artifacts/fast" GSI-GROUP-SEQ GSI-GROUP-HEADER

@@ -15,6 +15,10 @@ variable PROC-ENV-I
 variable PROC-PATH-I
 variable PROC-ENV-TABLE-A
 variable PROC-ENV-BUF-A
+variable PROC-ENV-DEF-N
+variable PROC-ENV-DEF-OFF
+variable PROC-ENV-DEF-TABLE-A
+variable PROC-ENV-DEF-BUF-A
 
 : PROC-ENV-TABLE-A-FIELD ( -- ptr ptr a )
    PROC-ENV-TABLE-A 0 ptr-field ;
@@ -46,6 +50,36 @@ variable PROC-ENV-BUF-A
    then
    PROC-ENV-BUF@ ;
 
+: PROC-ENV-DEF-TABLE-A-FIELD ( -- ptr ptr a )
+   PROC-ENV-DEF-TABLE-A 0 ptr-field ;
+
+: PROC-ENV-DEF-TABLE@ ( -- ptr a )
+   PROC-ENV-DEF-TABLE-A-FIELD @ ;
+
+: PROC-ENV-DEF-TABLE! ( ptr a -- )
+   PROC-ENV-DEF-TABLE-A-FIELD ! ;
+
+: PROC-ENV-DEF-TABLE ( -- ptr a )
+   PROC-ENV-DEF-TABLE@ 0= if
+      PROC-ENV-MAX 1 + >COUNT MEM-ALLOC-CELLS PROC-ENV-DEF-TABLE!
+   then
+   PROC-ENV-DEF-TABLE@ ;
+
+: PROC-ENV-DEF-BUF-A-FIELD ( -- ptr ptr u8 )
+   PROC-ENV-DEF-BUF-A 0 ptr-field ;
+
+: PROC-ENV-DEF-BUF@ ( -- ptr u8 )
+   PROC-ENV-DEF-BUF-A-FIELD @ ;
+
+: PROC-ENV-DEF-BUF! ( ptr u8 -- )
+   PROC-ENV-DEF-BUF-A-FIELD ! ;
+
+: PROC-ENV-DEF-BUF ( -- ptr u8 )
+   PROC-ENV-DEF-BUF@ 0= if
+      PROC-ENV-BUF-CAP MEM-ALLOC-BYTES drop PROC-ENV-DEF-BUF!
+   then
+   PROC-ENV-DEF-BUF@ ;
+
 : PROC-ENV-TRUE ( -- bool )
    0 0= ;
 
@@ -60,6 +94,10 @@ variable PROC-ENV-BUF-A
    0 >COUNT PROC-ENV-N !
    0 >OFF PROC-ENV-OFF ! ;
 
+: PROC-ENV-DEFAULT-RESET ( -- )
+   0 >COUNT PROC-ENV-DEF-N !
+   0 >OFF PROC-ENV-DEF-OFF ! ;
+
 : PROC-ENV-SLOT ( idx -- ptr a ) {: idx :}
    idx IDX>N 0 < if E-PROC-ENV throw then
    idx IDX>N PROC-ENV-MAX > if E-PROC-ENV throw then
@@ -67,6 +105,9 @@ variable PROC-ENV-BUF-A
 
 : PROC-ENV-CHECK-EXTRA ( -- )
    PROC-ENV-N @ COUNT>N PROC-ENV-MAX >= if E-PROC-ENV throw then ;
+
+: PROC-ENV-DEF-CHECK-EXTRA ( -- )
+   PROC-ENV-DEF-N @ COUNT>N PROC-ENV-MAX >= if E-PROC-ENV throw then ;
 
 : PROC-ENV-HAS-EQUAL? ( ptr u8 len -- bool ) {: a:ptr u :}
    0 begin dup u LEN>N < while
@@ -98,6 +139,15 @@ variable PROC-ENV-BUF-A
 : PROC-ENV-INSTALL-Z ( ptr u8 -- )
    PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
    PROC-ENV-N @ COUNT>N 1+ >COUNT PROC-ENV-N ! ;
+
+: PROC-ENV-DEF-SLOT ( idx -- ptr a ) {: idx:idx :}
+   idx IDX>N 0 < if E-PROC-ENV throw then
+   idx IDX>N PROC-ENV-MAX > if E-PROC-ENV throw then
+   idx IDX>N cells PROC-ENV-DEF-TABLE + ;
+
+: PROC-ENV-DEF-INSTALL-Z ( ptr u8 -- )
+   PROC-ENV-DEF-N @ COUNT>N >IDX PROC-ENV-DEF-SLOT !
+   PROC-ENV-DEF-N @ COUNT>N 1+ >COUNT PROC-ENV-DEF-N ! ;
 
 : PROC-ENV-ENTRY+ ( ptr u8 len -- ) {: a:ptr u :}
    a u PROC-ENV-CHECK-ENTRY
@@ -140,6 +190,19 @@ variable PROC-ENV-BUF-A
    PROC-ENV-BUF off OFF>N + PROC-ENV-INSTALL-Z
    off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-OFF ! ;
 
+: PROC-ENV-DEFAULT+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
+   name nameu PROC-ENV-CHECK-NAME
+   valu LEN>N 0 < if E-PROC-ENV throw then
+   PROC-ENV-DEF-CHECK-EXTRA
+   PROC-ENV-DEF-OFF @ {: off:off :}
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
+   name PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N BYTE-COPY
+   PROC-ENV-EQUAL PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + c!
+   val PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
+   0 PROC-ENV-DEF-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N + c!
+   PROC-ENV-DEF-BUF off OFF>N + PROC-ENV-DEF-INSTALL-Z
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-DEF-OFF ! ;
+
 : PROC-ENV-PREPARE ( -- ptr a )
    0 PROC-ENV-N @ COUNT>N >IDX PROC-ENV-SLOT !
    PROC-ENV-TABLE ;
@@ -150,7 +213,19 @@ variable PROC-ENV-BUF-A
    z u >LEN PROC-ENV-HAS-NAME? 0= if z u >LEN PROC-ENV-ENTRY+ then
    idx IDX>N 1+ >IDX ;
 
+: PROC-ENV-INHERIT-DEFAULT-ONE ( idx -- idx ) {: idx:idx :}
+   idx PROC-ENV-DEF-SLOT @ {: z:ptr :}
+   z z ZLEN >LEN PROC-ENV-CHECK-ENTRY
+   z z ZLEN >LEN PROC-ENV-HAS-NAME? 0= if z z ZLEN >LEN PROC-ENV-ENTRY+ then
+   idx IDX>N 1+ >IDX ;
+
+: PROC-ENV-INHERIT-DEFAULTS ( -- )
+   0 >IDX begin dup IDX>N PROC-ENV-DEF-N @ COUNT>N < while
+      PROC-ENV-INHERIT-DEFAULT-ONE
+   repeat drop ;
+
 : PROC-ENV-INHERIT-MISSING ( -- )
+   PROC-ENV-INHERIT-DEFAULTS
    0 >IDX begin dup IDX>N ENVP 0= 0= while
       PROC-ENV-INHERIT-ONE
    repeat drop ;

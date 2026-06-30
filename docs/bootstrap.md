@@ -123,9 +123,7 @@ a live `cuInit`/`cuDeviceGet` canary, so the break surfaces early at the FFI lay
 Run the gate after bootstrap or refresh:
 
 ```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f \
-  test/gate-pool.f test/run.f
+bin/hb --load test/run.f
 ```
 
 This is the native port gate. It runs as a checked bounded DAG pool with
@@ -139,9 +137,10 @@ runtimes.
 
 Checker-heavy gate fixtures bake warm images with `tools/warm-image.f` under
 the default content-keyed gate cache (`$XDG_CACHE_HOME/habu-gate`,
-`$HOME/.cache/habu-gate`, or `$TMPDIR/habu-gate-cache`). `hb-check-warm`
-supports checker/diagnostic slices. `hb-tools-warm` plus
-`hb-tools-warm.trust.f` supports tool subprocess fixtures such as
+`$HOME/.cache/habu-gate`, or `$TMPDIR/habu-gate-cache`). `test/run.f` runs
+directly in the small `bin/hb` engine; there is no top-level test-suite
+snapshot. `hb-check-warm` supports checker/diagnostic slices, and `hb-tools-warm` plus
+`hb-tools-warm.trust.f` supports remaining tool subprocess fixtures such as
 `check-all-errors` and `gate-json-assert`. These are regenerable local cache
 artifacts and must not be committed.
 

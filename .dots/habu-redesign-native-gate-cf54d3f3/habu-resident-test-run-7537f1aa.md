@@ -1,9 +1,10 @@
 ---
 title: Resident test/run phase dispatcher
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-06-30T21:26:57.674953+02:00"
+close-reason: "completed locally: test/run.f uses direct resident support loaded in bin/hb, host-source semantic phases run as forked resident workers, reports print named groups/tests with timings, stats split runner/top/helper boundaries, and macOS hot passed at 29.71s; zed proof remains separate"
 blocks:
   - habu-split-gate-runner-59bb0aaf
 ---

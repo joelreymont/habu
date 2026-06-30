@@ -1,23 +1,24 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 23.680s internal / 25.80s shell-wall hot-cache gate time and
-42.494s internal / 44.66s shell-wall persistent cache-fill time on 2026-06-30 on
-macOS/aarch64 with the auto-selected `macos-arm64-8x2` profile, per-file
-content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
-hits, and AOT maker cache hits. The native gate uses an 8-way macOS checked DAG pool,
-2-way nested stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
-in-process diagnostic JSON and AOT report assertions, batched dictionary checker
-certifications/rejections, a direct manifest phase, in-process check-tool
-semantic fixtures, batched engine fixture source-list checks, attributed pool
-outcomes, a default content-keyed gate cache, and auto-detected host-class
-timing profiles. The resident warm runner bakes the common stdlib tool setup once
-per content key, then runs tool/lint/tail semantic slices in-process with live
+Gate: passing; current tree is under active test-suite architecture work. Last
+measured hot-cache run is 27.392s internal / 29.71s shell-wall, and the
+cache-fill run is 34.818s internal / 37.20s shell-wall, on 2026-06-30 UTC on
+macOS/aarch64 with the `macos-arm64-12x2` profile, per-file content-key
+warm-cache hits, manifest-hashed small `hb-under-test`, no top test-suite
+snapshot, and AOT maker cache hits on the hot path. The native gate uses a 12-way macOS checked
+DAG pool, 2-way nested stdlib pool, split stdlib lint slices
+(tools/manifest/artifacts/libs), split resident tool-lint semantic groups,
+direct in-process diagnostic JSON and AOT report assertions, batched dictionary
+checker certifications/rejections, a direct manifest phase, in-process
+check-tool semantic fixtures, batched engine fixture source-list checks,
+attributed pool outcomes, a default content-keyed gate cache, and auto-detected
+host-class timing profiles. The resident controller loads the common stdlib tool
+setup once, then runs tool/lint/tail semantic slices in-process with live
 lint/test words called directly and CLI wrappers reserved for standalone entry
-coverage. Discovered warm-runner or
-candidate cache misses automatically switch the run to the host profile's cold
-budget; explicit `--cold-cache` still uses a private per-run cache root. Host
-timing policy is exposed as script args:
+coverage. Discovered warm-image or candidate cache misses automatically switch
+the run to the host profile's cold budget; explicit `--cold-cache` still uses a
+private per-run cache root. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
 Certified: 987  Uncheckable: 0  Rejected: 0
@@ -33,8 +34,8 @@ it. "Certified" = body inferred and (where a signature is declared) verified
 against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. Native
 `tools/build-fixpoint-main.f -- install` refreshes `bin/hb` and runs the self-check;
-`bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f` is the Habu-native
-gate. That gate runs native parity/shadow/clobber/trust/status/filemap lints,
+`bin/hb --load test/run.f` is the Habu-native
+test suite. That suite runs native parity/shadow/clobber/trust/status/filemap lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
 builder checks. No-binary recovery uses `tools/bootstrap.sh`: Gforth creates

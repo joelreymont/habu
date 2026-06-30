@@ -1,5 +1,14 @@
 \ process-env-test.f - focused tests for lib/process-env.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-env-test.f
+\ Run: bin/hb --load lib/process-env-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
 
 4096 constant PET-CAP
 131072 constant PET-EARLY-IN-CAP
@@ -18,7 +27,8 @@ variable PET-I
 
 : PET-RESET ( -- )
    PROC-ARGV-RESET
-   PROC-ENV-RESET ;
+   PROC-ENV-RESET
+   PROC-ENV-DEFAULT-RESET ;
 
 : PET-EARLY-IN! ( -- )
    0 PET-I !
@@ -104,7 +114,26 @@ variable PET-I
    s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
    PROC-ENV-INHERIT-MISSING
    s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
-   0 T= 0 T= {: outu :}
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+
+: PET-DEFAULT-ENV-CHILD ( -- )
+   PET-RESET
+   s" test/process-env-child.f"  >LEN PROC-ARGV+
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-DEFAULT+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+
+: PET-EXPLICIT-BEATS-DEFAULT ( -- )
+   PET-RESET
+   s" test/process-env-child.f"  >LEN PROC-ARGV+
+   s" HABU_PROC_ENV_TEST" >LEN s" wrong" >LEN PROC-ENV-DEFAULT+
+   s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
    PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
 
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
@@ -200,6 +229,8 @@ variable PET-I
    PET-RUN-ENV-CHILD
    PET-RUN-EMPTY-ENV-CHILD
    PET-RUN-INHERIT-ENV-CHILD
+   PET-DEFAULT-ENV-CHILD
+   PET-EXPLICIT-BEATS-DEFAULT
    PET-RUN-ENV-OUTCOME-FALSE
    PET-RUN-ENV-OUTCOME-TIMEOUT
    PET-RUN-ENV-STDIN-OUTCOME

@@ -563,25 +563,40 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-BUF@	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the env byte-storage pointer
 1	process-env	lib/process-env.f	word	PROC-ENV-BUF!	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	write the env byte-storage pointer
 1	process-env	lib/process-env.f	word	PROC-ENV-BUF	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated env byte storage
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-TABLE-A-FIELD	(-- ptr ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for default envp table storage
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-TABLE@	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the default envp table pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-TABLE!	(ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	write the default envp table pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-TABLE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated default envp pointer table
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for default env byte storage
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-BUF@	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the default env byte-storage pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-BUF!	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	write the default env byte-storage pointer
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-BUF	(-- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the lazily allocated default env byte storage
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-RAW	(ptr u8 ptr a ptr a fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-io alias captured after native primitive rebuild
 1	process-env	lib/process-env.f	word	PROC-ENV-TRUE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a true flag for env helper internals
 1	process-env	lib/process-env.f	word	PROC-ENV-FALSE	(-- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return a false flag for env helper internals
 1	process-env	lib/process-env.f	word	PROC-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	clear prepared child environment entries and backing string buffer offset
+1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	clear inherited default child environment entries
 1	process-env	lib/process-env.f	word	PROC-ENV-SLOT	(idx -- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return one checked env pointer-table slot
 1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-EXTRA	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate that one more environment entry fits
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-CHECK-EXTRA	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate that one more default environment entry fits
 1	process-env	lib/process-env.f	word	PROC-ENV-HAS-EQUAL?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether an environment entry contains NAME=VALUE separator
 1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-NAME	(ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate environment variable name bytes
 1	process-env	lib/process-env.f	word	PROC-ENV-CHECK-ENTRY	(ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	validate exact NAME=VALUE environment entry bytes
 1	process-env	lib/process-env.f	word	PROC-ENV-STORE-Z	(ptr u8 len -- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	copy one environment entry into NUL-terminated storage
 1	process-env	lib/process-env.f	word	PROC-ENV-INSTALL-Z	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	install one stored environment pointer into the envp table
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-SLOT	(idx -- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return one checked default env pointer-table slot
+1	process-env	lib/process-env.f	word	PROC-ENV-DEF-INSTALL-Z	(ptr u8 --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	install one stored default environment pointer
 1	process-env	lib/process-env.f	word	PROC-ENV-ENTRY+	(ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one exact NAME=VALUE child environment entry
 1	process-env	lib/process-env.f	word	PROC-ENV-NAME-LEN	(ptr u8 len -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the byte length before an environment entry equals sign
 1	process-env	lib/process-env.f	word	PROC-ENV-SAME-NAME?	(ptr u8 len ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	compare environment entries by variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-SLOT-NAME?	(ptr u8 len idx -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether one env table slot has a requested variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-HAS-NAME?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether prepared envp already contains a variable name
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
+1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	append one default child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-ONE	(idx -- idx)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one parent envp entry unless overridden
+1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-DEFAULT-ONE	(idx -- idx)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one default envp entry unless explicitly overridden
+1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-DEFAULTS	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit default envp entries before host envp entries
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-MISSING	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	copy parent envp entries whose names are not already present
 1	process-env	lib/process-env.f	word	PROC-ARGV-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state together
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds

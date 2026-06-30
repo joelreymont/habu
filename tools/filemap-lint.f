@@ -213,6 +213,7 @@ variable FM-NUM-L
    s" tools/signature-scan-emitter-test.f" FM-REQ
    s" tools/compiler-dispatch-test.f" FM-REQ
    s" test/gate-runner-lib.f" FM-REQ
+   s" test/gate-runner-support.f" FM-REQ
    s" test/gate-runner-entry.f" FM-REQ
    s" tools/string.f" FM-REQ
    s" lib/string-test.f" FM-REQ
@@ -226,6 +227,10 @@ variable FM-NUM-L
    s" test/process-env-child.f" FM-REQ
    s" test/gate-pool.f" FM-REQ
    s" test/gate-pool-test.f" FM-REQ
+   s" test/run-support.f" FM-REQ
+   s" test/run-resident.f" FM-REQ
+   s" test/run-files.f" FM-REQ
+   s" test/run-lib.f" FM-REQ
    s" test/run.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED ( -- )

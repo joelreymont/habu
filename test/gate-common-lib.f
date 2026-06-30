@@ -4,6 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
 \ lib/test/runner.f, and lib/content-key.f.
 
+require lib/process-fork.f
 
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
@@ -31,6 +32,8 @@ create GE-WARM-STAMP-BUF FS-PATH-CAP allot
 create GE-WARM-KEY-HEX 80 allot
 create GE-WARM-STAMP-RD 80 allot
 create GE-ARGV-BUF GE-SRC-CAP allot
+create GE-WARM-ROOT-BUF FS-PATH-CAP allot
+create GE-HB-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
 variable GE-SRC-N
@@ -41,6 +44,8 @@ variable GE-WARM-STAMP-U
 variable GE-WARM-READY
 variable GE-INFD
 variable GE-ARGV-U
+variable GE-WARM-ROOT-U
+variable GE-HB-U
 variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-UEND
@@ -319,7 +324,20 @@ variable GE-EVAL-ERR-SAVE
 : GE-WARM-TRUST$ ( -- ptr u8 n )
    GE-WARM-TRUST-BUF GE-WARM-TRUST-U @ ;
 
+: GE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
+   u 0 < if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a dst u BYTE-COPY
+   u up ! ;
+
+: GE-WARM-ROOT! ( ptr u8 n -- )
+   GE-WARM-ROOT-BUF GE-WARM-ROOT-U GE-COPY! ;
+
+: GE-HB! ( ptr u8 n -- )
+   GE-HB-BUF GE-HB-U GE-COPY! ;
+
 : GE-WARM-ROOT ( -- ptr u8 n )
+   GE-WARM-ROOT-U @ 0 > if GE-WARM-ROOT-BUF GE-WARM-ROOT-U @ exit then
    s" HABU_GATE_WARM_ROOT" GETENV dup 0= if 2drop GT-ROOT exit then ;
 
 : GE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
@@ -482,6 +500,7 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    GE-ARGV-RESET ;
 
 : GE-HB$ ( -- ptr u8 n )
+   GE-HB-U @ 0 > if GE-HB-BUF GE-HB-U @ exit then
    s" HABU_UNDER_TEST" GETENV dup 0= if
       2drop s" bin/hb" exit
    then
@@ -582,6 +601,38 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION {: rc:n :}
    rc GE-EVAL-STORE-RC
    PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME ;
+
+: GE-EVAL-FORK-EXIT ( n -- )
+   s" " rot die ;
+
+: GE-EVAL-FORK-CHILD ( -- )
+   GE-EVAL-REDIRECT!
+   [: GE-EVAL-SOURCE ;] catch {: rc:n :}
+   rc GE-EVAL-FORK-EXIT ;
+
+: GE-EVAL-FORK-SPAWN ( -- )
+   PROC-FORK-RAW {: pid:pid :}
+   pid PID>N 0 < if E-PROC-SPAWN throw then
+   pid PID>N 0= if GE-EVAL-FORK-CHILD then
+   pid PROC-PID !
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+: GE-EVAL-FORK-CAPTURE ( -- )
+   GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
+   GE-EVAL-FORK-SPAWN
+   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   PROC-RUN-CAPTURE-OUTCOME-LOOP
+   PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
+
+: GE-EVAL-FORK-BAD ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   label labelu GT-PROGRESS-RUN
+   s" fork-eval" GS-EVENT
+   GE-EVAL-FORK-CAPTURE
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS
+   label labelu GT-PROGRESS-PASS ;
 
 : GE-EVAL-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN

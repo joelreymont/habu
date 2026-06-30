@@ -536,6 +536,9 @@ variable GD-CHECK-LABEL-U
    $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" GD-CHECK-BUF-BAD ;
 
 : GD-RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
+   GE-EVAL-FORK-BAD ;
+
+: GD-RUN-BAD-CHILD ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    rc label labelu GE-EXPECT-RC
@@ -750,20 +753,20 @@ variable GD-CHECK-LABEL-U
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" P:H ." GE-SRC-LINE
-   $46 s" P:H" s" package hides private qualified word" GD-RUN-BAD-SOURCE
+   $46 s" P:H" s" package hides private qualified word" GD-RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : BAD ( -- n ) H ;" GE-SRC-LINE
-   $46 s" at 'h'" s" package rejects private checked call" GD-RUN-BAD-SOURCE
+   $46 s" at 'h'" s" package rejects private checked call" GD-RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : E ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" E ." GE-SRC-LINE
-   $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-SOURCE ;
+   $46 s" E" s" package hides public word from global lookup" GD-RUN-BAD-CHILD ;
 
 : GD-STRUCTURE-SOURCE ( -- )
    GE-SRC-RESET
@@ -1017,8 +1020,7 @@ variable GD-CHECK-LABEL-U
    GE-HB-RESET
    GE-SRC-RESET
    s" $10000000001 allot" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   76 s" data-space overflow rc" GE-EXPECT-RC ;
+   76 s" " s" data-space overflow rc" GE-EVAL-FORK-BAD ;
 
 : GD-NAMED-ROW-RUN ( -- )
    GE-HB-RESET

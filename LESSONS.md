@@ -185,6 +185,23 @@ lesson — keep the specific word/code/path, cut the prose.
   parallel-safe cohorts (`core`, `ptx`, `ptx-neg`, `ptx-toolchain`, artifact
   fast checks) so setup duplication and child `hb` launches drop without turning
   the suite single-file.
+- **Resident forks need explicit harness context:** a forked in-process test does
+  not see the `PROC-ENV+` vector prepared for spawned children, and `GETENV`
+  still reads the host env. Install Habu-side defaults for helper spawns and
+  direct warm/check overrides for in-process helpers, or resident tests rebuild
+  warm images and silently lose caches.
+- **End-to-end time includes entry compilation:** `test/run.f` can report
+  sub-30s after `TR-GATE-START!` while `/usr/bin/time` is still >40s because
+  parent load compiles resident support first. The next architecture cut must
+  remove top-level support compilation from the timed command, not just optimize
+  scheduled phases.
+- **Content-key caches must stay memory-resident during a key build:** re-reading
+  `content-key.cache` for every `CK-FILE+` made hot launchers pay repeated I/O.
+  Load the cache once per root and append new rows to the in-memory copy.
+- **Semantic tool slices should dispatch directly:** routing `tool-boundary-trust`
+  through the generic stdlib suite kept a process/test-suite boundary on the
+  critical path. Direct `GSI-*` dispatch in resident forks cuts inner `hb`
+  launches and makes the slowest slice visible.
 - **No-binary bootstrap is its own gate path:** Gforth runs `bootstrap/cg/forth.fs`,
   so Habu typed locals such as `done:label` are literal Gforth names and break
   codegen. The bootstrap data region must also fit static checker state
@@ -314,6 +331,11 @@ lesson — keep the specific word/code/path, cut the prose.
   tool slice wait on one resident thread for ~56s. Split independent semantics
   into first-class resident-runner rows; the hot local gate fell to 24.579s with
   `warm-miss=0` while still running candidate validation.
+- **Run the suite from `bin/hb`, not a top snapshot:** replacing a broad
+  top-level `hb-test-suite` image with direct `bin/hb --load test/run.f` kept
+  the small engine as the entry point, removed a generated setup artifact, and
+  still held macOS hot wall time under 30s. Cold/cache-fill remains a separate
+  profile because warm/AOT artifacts are legitimate misses.
 - **Bake repeated semantic setup into the resident runner:** the stdlib tool
   groups were still paying the same checked lint/check-all-errors setup in every
   resident process. Baking that common tool base once into `hb-gate-warm` and
