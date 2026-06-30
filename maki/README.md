@@ -37,6 +37,9 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
 - **Still strictly checked/typed Habu.** The fence excludes maki from the *trust
   manifest*, not from the *checker*. Maki definitions use real typed effects and
   are verified through maki's own `bin/hb --load` path.
+- **No host glue in `maki/`.** Maki implementation, tests, tooling, and reducers
+  are checked Habu. Do not commit `.py` or other host-language helpers under
+  `maki/`; external Python/Triton references belong in docs only.
 - **Extractable.** Treat the habu↔maki seam as an API even in-repo; extract `maki/`
   to its own repo when the Habu-PTX API stabilizes.
 

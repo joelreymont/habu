@@ -1,9 +1,9 @@
 # Maki — Status
 
 Maki is the ML framework layer on Habu + Habu-PTX. This is maki's own status doc,
-kept outside the Habu trust root and self-check (the fence). It deliberately
-quotes no self-check tallies, so the Habu stale-status lint stays satisfied until
-the maki-skip fence fix lands (dot `habu-add-maki-skip` for stale-status-lint).
+kept outside the Habu trust root and self-check. The root stale-status lint skips
+`maki/` because maki owns its own status once it is extracted from the Habu trust
+root; root Habu self-check counts still belong only in root `STATUS.md`.
 
 ## Built
 

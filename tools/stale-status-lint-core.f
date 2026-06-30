@@ -260,7 +260,9 @@ variable SS-ERR-U
    s" LESSONS.md" LINT-STR= ;
 
 : SS-SKIP-PATH? ( ptr u8 n -- bool )
-   SS-REL s" .jj-ws/" LINT-STARTS-WITH? ;
+   SS-REL
+   2dup s" .jj-ws/" LINT-STARTS-WITH? IF 2drop SS-TRUE exit THEN
+   s" maki/" LINT-STARTS-WITH? ;
 
 : SS-MD? ( ptr u8 n -- bool )
    s" .md" HAS-EXT? ;

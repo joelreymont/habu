@@ -15,6 +15,8 @@ variable SST-LESSONS-U
 variable SST-README-U
 variable SST-JJ-U
 variable SST-JJ-DIR-U
+variable SST-MAKI-DIR-U
+variable SST-MAKI-STATUS-U
 variable SST-CORE-TODAY-U
 
 create SST-ROOT-BUF FS-PATH-CAP allot
@@ -23,6 +25,8 @@ create SST-LESSONS-BUF FS-PATH-CAP allot
 create SST-README-BUF FS-PATH-CAP allot
 create SST-JJ-BUF FS-PATH-CAP allot
 create SST-JJ-DIR-BUF FS-PATH-CAP allot
+create SST-MAKI-DIR-BUF FS-PATH-CAP allot
+create SST-MAKI-STATUS-BUF FS-PATH-CAP allot
 create SST-CORE-TODAY-BUF SST-DATE-CAP allot
 create SST-OUT SST-CAP allot
 create SST-ERR SST-CAP allot
@@ -53,6 +57,12 @@ create SST-ERR SST-CAP allot
 : SST-JJ-DIR ( -- ptr u8 n )
    SST-JJ-DIR-BUF SST-JJ-DIR-U @ ;
 
+: SST-MAKI-DIR ( -- ptr u8 n )
+   SST-MAKI-DIR-BUF SST-MAKI-DIR-U @ ;
+
+: SST-MAKI-STATUS ( -- ptr u8 n )
+   SST-MAKI-STATUS-BUF SST-MAKI-STATUS-U @ ;
+
 : SST-CORE-TODAY ( -- ptr u8 n )
    SST-CORE-TODAY-BUF SST-CORE-TODAY-U @ ;
 
@@ -79,6 +89,11 @@ create SST-ERR SST-CAP allot
 : SST-README-GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" No live count here." SB-APPEND SST-LF
+   SB$ ;
+
+: SST-MAKI-STATUS$ ( -- ptr u8 n )
+   SB-RESET
+   s" Maki can say 987 certified here because it is fenced from root status lint." SB-APPEND SST-LF
    SB$ ;
 
 : SST-README-COUNT$ ( -- ptr u8 n )
@@ -153,6 +168,8 @@ create SST-ERR SST-CAP allot
    SST-ROOT s" README.md" SST-README-BUF SST-README-U SST-PATH!
    SST-ROOT s" .jj-ws/master-test" SST-JJ-DIR-BUF SST-JJ-DIR-U SST-PATH!
    SST-ROOT s" .jj-ws/master-test/STATUS.md" SST-JJ-BUF SST-JJ-U SST-PATH!
+   SST-ROOT s" maki" SST-MAKI-DIR-BUF SST-MAKI-DIR-U SST-PATH!
+   SST-ROOT s" maki/STATUS.md" SST-MAKI-STATUS-BUF SST-MAKI-STATUS-U SST-PATH!
    SST-RESET-FILES ;
 
 : SST-CORE-TODAY! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -281,6 +298,12 @@ create SST-ERR SST-CAP allot
    SST-JJ s" 890 certified" WRITE-ALL
    SST-EXPECT-CORE-OK ;
 
+: SST-TEST-SKIP-MAKI ( -- )
+   SST-RESET-FILES
+   SST-MAKI-DIR MAKE-DIRS
+   SST-MAKI-STATUS SST-MAKI-STATUS$ WRITE-ALL
+   SST-EXPECT-CORE-OK ;
+
 : SST-MAIN ( -- )
    T-RESET
    SST-PREPARE
@@ -298,6 +321,7 @@ create SST-ERR SST-CAP allot
    SST-TEST-FENCED-COUNTS
    SST-TEST-LONG-MARKDOWN
    SST-TEST-SKIP-JJ-WS
+   SST-TEST-SKIP-MAKI
    CLEANUP-RUN
    SST-ROOT EXISTS? TFALSE
    T-REPORT

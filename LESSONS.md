@@ -1300,3 +1300,7 @@ lesson — keep the specific word/code/path, cut the prose.
   is float and `c` is char, not type variables. Use tokens such as `e`/`k` for
   matrix row/column extents; otherwise diagnostics report concrete `r`/`c`
   mismatches instead of the intended parametric shape.
+- **Subtree status docs need lint fences, not wording games:** `maki/STATUS.md`
+  should be able to own maki counts without avoiding count-shaped prose. Keep root
+  self-check counts fenced to root `STATUS.md`, and explicitly skip extracted
+  application subtrees in `stale-status-lint`.
