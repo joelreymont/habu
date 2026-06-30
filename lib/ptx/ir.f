@@ -185,3 +185,37 @@ variable PTXIR-N
    0 PTXIR-N @ 0 ?do
       i PTXIR-LIVE@ if 1+ then
    loop ;
+
+: PTXIR-SEP ( -- )
+   SB$ nip 0 > if $20 SB-APPEND-C then ;
+
+: PTXIR-TOK ( ptr u8 n -- )
+   PTXIR-SEP SB-APPEND ;
+
+: PTXIR-APPEND-INPUT ( n -- )
+   case
+      0 of s" y" PTXIR-TOK endof
+      1 of s" dy" PTXIR-TOK endof
+      PTXIR-SEP s" i" SB-APPEND dup SB-U
+   endcase ;
+
+: PTXIR-APPEND-CONST ( n -- )
+   PTXIR-SEP SB-U ;
+
+: PTXIR-RENDER-NODE ( n -- ) {: id:n :}
+   id PTXIR-OP@
+   case
+      PTXIR-K-INPUT of id PTXIR-VAL@ PTXIR-APPEND-INPUT endof
+      PTXIR-K-CONST of id PTXIR-VAL@ PTXIR-APPEND-CONST endof
+      PTXIR-K-ADD   of id PTXIR-A@ recurse id PTXIR-B@ recurse s" +." PTXIR-TOK endof
+      PTXIR-K-MUL   of id PTXIR-A@ recurse id PTXIR-B@ recurse s" *." PTXIR-TOK endof
+      PTXIR-K-NEG   of id PTXIR-A@ recurse s" NEG" PTXIR-TOK endof
+      PTXIR-K-BSUM  of id PTXIR-A@ recurse s" BLOCK-SUM" PTXIR-TOK endof
+      PTXIR-K-BSUB  of id PTXIR-A@ recurse id PTXIR-B@ recurse s" PTX:B-" PTXIR-TOK endof
+      drop E-PTX-IR-UNKNOWN throw
+   endcase ;
+
+: PTXIR-RENDER ( n -- ptr u8 n )
+   SB-RESET
+   PTXIR-RENDER-NODE
+   SB$ ;
