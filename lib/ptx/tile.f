@@ -19,6 +19,15 @@
 \ constructors; fixed kernel-ABI spans may still assert a named extent token.
 \ Load after lib/errors.f.
 
+TRUSTED: MK-SPAN ( ptr<space-global,t> u32 -- span<space-global,t,fresh-extent-n> )
+   drop ;
+
+TRUSTED: MK-SPAN= ( ptr<space-global,t> ptr<space-global,u> u32 -- span<space-global,t,fresh-extent-n> span<space-global,u,fresh-extent-n> )
+   drop ;
+
+TRUSTED: MK-MATRIX ( ptr<space-global,t> u32 u32 -- matrix<space-global,t,fresh-extent-r,fresh-extent-c> )
+   drop drop ;
+
 TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX ;
 

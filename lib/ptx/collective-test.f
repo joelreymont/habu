@@ -52,6 +52,8 @@ KERNEL: SUM-ROWS-1024 ( matrix<space-global,f32,extent-r,extent-c>  matrix<space
    xs ctx ROW-LOAD BLOCK-SUM BROADCAST
    out r ROW-SPAN ctx ROW-STORE ;
 
+s" PTX-GOOD-MK-MATRIX ( ptr<space-global,f32> u32 u32 -- ) MK-MATRIX ROW ROW-SPAN drop" CHECK! -1 T=
+
 \ Clean load past this point is the positive proof: SOFTMAX-ROWS certified.
 
 T-REPORT

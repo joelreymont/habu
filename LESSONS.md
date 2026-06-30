@@ -1292,3 +1292,7 @@ lesson — keep the specific word/code/path, cut the prose.
   fetch/store, and control words are checker-owned semantics. Build their rows
   directly and reserve signature parsing for source comments and audited
   `TRUST` input.
+- **PTX extent variables avoid reserved one-letter types:** in signatures, `r`
+  is float and `c` is char, not type variables. Use tokens such as `e`/`k` for
+  matrix row/column extents; otherwise diagnostics report concrete `r`/`c`
+  mismatches instead of the intended parametric shape.

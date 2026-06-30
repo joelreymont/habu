@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 23.592s internal / 25.78s shell-wall hot-cache gate time and
+Gate: passing; 23.623s internal / 25.73s shell-wall hot-cache gate time and
 39.813s internal / 41.93s shell-wall persistent cache-fill time on 2026-06-30 on
 macOS/aarch64 with the auto-selected `macos-arm64-8x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
