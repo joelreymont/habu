@@ -162,13 +162,14 @@ hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, lint, and typed-local tool rows.
    A hot local gate now reports `warm-miss=0`, `candidate-validate=1`,
-   `inner-hb=31`, `boundary=48`, and 43.932s internal wall time.
+   `inner-hb=31`, `boundary=48`, and 34.837s internal wall time.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
    semantic tests no longer spawn a child just to reload the same support files.
    Status: test-level resident execution is in place, including stdlib tail
-   semantic slices. Remaining work is inside those tool tests: remove their
+   semantic slices. The common stdlib tool base is baked into the warm runner
+   once per content key. Remaining work is inside those tool tests: remove their
    helper children except for real CLI sentinels.
 
 6. Add direct checker/all-errors source APIs.
@@ -187,6 +188,9 @@ hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
 9. Remove fixed drains in favor of dependency-ready work.
    Acceptance: no ready phase waits behind an unrelated warm image or child
    suite; only explicit deps and isolation barriers drain the pool.
+   Status: fixed artifact builds now use non-reused pool slots, and host-source
+   warm-runner phases can overlap cold `Habu-under-test` production once their
+   warm artifacts are ready.
 
 ## Targets
 

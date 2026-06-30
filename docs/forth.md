@@ -680,12 +680,12 @@ address arithmetic at the public boundary.
   snapshot entry file. Do not replay already-baked core, target, or image files
   just to mask duplicate definitions; that hides stale process state and makes
   strict duplicate checks look like the problem.
-- **Snapshot builders reset process-local image pointers.** Restored DATA cells
-  are persistent, but mmap-backed image builder pointers and cursors (`MBUF-A`,
-  `MP`, `MLEN`, etc.) are valid only in the process that created them. Clear
-  those transient cells in a named reset word before `BUILD-SNAP-HDR` or fresh
-  image emission; never rely on source replay or variable redefinition to zero
-  them.
+- **Snapshot builders reset process-local pointers.** Restored DATA cells are
+  persistent, but mmap-backed image/include pointers and cursors (`MBUF-A`, `MP`,
+  `MLEN`, `INCLUDE-BUFS-A`, include depth/read/path cells, etc.) are valid only
+  in the process that created them. Clear those transient cells in a named reset
+  word before `BUILD-SNAP-HDR` or fresh image emission; never rely on source
+  replay or variable redefinition to zero them.
 - **Emitter punctuation is semantic.** Words such as `BL,`, `LBL,`, `ADR,`, and
   `ZBYTES,` are distinct from punctuation-less names; source-shape regressions
   should assert exact emitted tokens. Emitter stack comments describe the

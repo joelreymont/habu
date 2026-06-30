@@ -146,3 +146,11 @@ TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
 : include ( -- )
    parse-name INCLUDE-CHECK-PATH included ;
 immediate
+
+: INCLUDE-SNAPSHOT-PREPARE ( -- )
+   INCLUDE-CLOSE
+   0 INCLUDE-BUFS-A !
+   0 INCLUDE-DEPTH !
+   0 INCLUDE-U !
+   0 INCLUDE-RD !
+   0 INCLUDE-PATH-U ! ;

@@ -337,6 +337,7 @@ points stay listed.
 - `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
 - `test/gate-runner-entry.f` — tiny dispatch entry loaded by the baked warm gate runner.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for baked warm runners.
+- `test/gate-stdlib-tool-base-ready.f` — warm-runner sentinel that marks the common stdlib tool base as already baked.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
 - `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
 - `test/engine-suite.f` — native engine behavior suite.

@@ -8,6 +8,8 @@ variable GSI-PATH-U
 variable GSI-START-NS
 variable GSI-RC
 variable GSI-SETUP
+variable GSI-TEST-READY
+variable GSI-TOOL-BASE-READY
 
 $10000 constant GSI-TL-STR-CAP
 $20000 constant GSI-TL-FILE-CAP
@@ -44,6 +46,18 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-SETUP? ( -- bool )
    GSI-SETUP @ 0 <> ;
+
+: GSI-TEST-READY! ( -- )
+   -1 GSI-TEST-READY ! ;
+
+: GSI-TEST-READY? ( -- bool )
+   GSI-TEST-READY @ 0 <> ;
+
+: GSI-TOOL-BASE-READY! ( -- )
+   -1 GSI-TOOL-BASE-READY ! ;
+
+: GSI-TOOL-BASE-READY? ( -- bool )
+   GSI-TOOL-BASE-READY @ 0 <> ;
 
 : GSI-GROUP-MODE. ( n -- ) {: mode:n :}
    mode GSI-GROUP-SEQ = if s" sequential" type exit then
@@ -100,8 +114,12 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-RC @ throw ;
 
 : GSI-TOOL-BASE ( -- )
+   GSI-TOOL-BASE-READY? if exit then
    s" tools/date.f" GSI-INCLUDE
-   s" lib/test.f" GSI-INCLUDE
+   GSI-TEST-READY? 0= if
+      s" lib/test.f" GSI-INCLUDE
+      GSI-TEST-READY!
+   then
    s" tools/lint/text.f" GSI-INCLUDE
    s" tools/lint/intern.f" GSI-INCLUDE
    s" tools/lint/token.f" GSI-INCLUDE
@@ -117,7 +135,8 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" tools/checked-boundary-lint-core.f" GSI-INCLUDE
    s" tools/reserved-name-lint-core.f" GSI-INCLUDE
    s" tools/duplicate-definition-lint-core.f" GSI-INCLUDE
-   s" tools/bundle-lib-core.f" GSI-INCLUDE ;
+   s" tools/bundle-lib-core.f" GSI-INCLUDE
+   GSI-TOOL-BASE-READY! ;
 
 : GSI-TOOL-SETUP ( -- )
    GSI-SETUP!
@@ -264,13 +283,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-LINT-TOOLS-SETUP ( -- )
    GSI-SETUP!
-   s" tools/date.f" GSI-INCLUDE
-   s" lib/test.f" GSI-INCLUDE
-   s" tools/lint/text.f" GSI-INCLUDE
-   s" tools/lint/intern.f" GSI-INCLUDE
-   s" tools/lint/token.f" GSI-INCLUDE
-   s" tools/lint/lib.f" GSI-INCLUDE
-   s" tools/argv.f" GSI-INCLUDE
+   GSI-TOOL-BASE
    s" tools/repl-lint-core.f" GSI-INCLUDE
    s" tools/trust-lint-core.f" GSI-INCLUDE
    s" tools/stale-status-lint-core.f" GSI-INCLUDE
@@ -285,12 +298,15 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-TEST-SETUP ( -- )
    GSI-SETUP!
-   s" lib/test.f" GSI-INCLUDE
+   GSI-TEST-READY? 0= if
+      s" lib/test.f" GSI-INCLUDE
+      GSI-TEST-READY!
+   then
    GSI-TEST! ;
 
 : GSI-TAIL-FAST-SETUP ( -- )
    GSI-TEST-SETUP
-   s" tools/date.f" GSI-INCLUDE
+   GSI-TOOL-BASE-READY? 0= if s" tools/date.f" GSI-INCLUDE then
    s" lib/property.f" GSI-INCLUDE
    GSI-TEST! ;
 

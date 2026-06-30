@@ -1,8 +1,9 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 43.932s internal / 46.30s shell-wall hot-cache gate time and
-58.110s internal / 60.44s shell-wall cold-cache gate time on 2026-06-30 on
+Gate: passing; 34.837s internal / 37.13s shell-wall hot-cache gate time,
+51.161s internal / 53.55s shell-wall persistent cache-fill time, and
+60.935s internal / 63.26s shell-wall private cold-cache time on 2026-06-30 on
 macOS/aarch64 with the auto-selected `macos-arm64-4x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
 hits, and AOT maker cache hits. The native gate uses a 4-way checked DAG pool,
@@ -11,9 +12,10 @@ in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool
 semantic fixtures, batched engine fixture source-list checks, attributed pool
 outcomes, a default content-keyed gate cache, and auto-detected host-class
-timing profiles. The `lint-tools` and stdlib tail semantic slices run
-in-process inside the warm runner, with live lint/test words called directly and
-CLI wrappers reserved for standalone entry coverage. Discovered warm-runner or
+timing profiles. The resident warm runner bakes the common stdlib tool setup once
+per content key, then runs tool/lint/tail semantic slices in-process with live
+lint/test words called directly and CLI wrappers reserved for standalone entry
+coverage. Discovered warm-runner or
 candidate cache misses automatically switch the run to the host profile's cold
 budget; explicit `--cold-cache` still uses a private per-run cache root. Host
 timing policy is exposed as script args:

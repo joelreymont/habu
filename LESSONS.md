@@ -195,6 +195,16 @@ lesson — keep the specific word/code/path, cut the prose.
   cache hit paired mismatched artifacts and failed with `checker: duplicate
   definition: repl-file-cap`. Build into candidate image/trust paths, delete
   the old stamp before publish, rename artifacts, then write the stamp last.
+- **Warm images must clear include state before snapshot:** a support file that
+  used `include` left `INCLUDE-BUFS-A` pointing at an mmap address from the
+  baker process. Restored warm images then failed nested includes with
+  `include: read failed`. Snapshot prep must close/reset include buffers,
+  cursors, depth, and path state before `SNAPGO`.
+- **Fixed artifact slots must not be reused by the dynamic pool:** warm/check/AOT
+  artifact phases used fixed slots that the normal pool later reused before the
+  readiness flags were marked. That made `TR-DRAIN-UNTIL-WARM` wait on unrelated
+  engine/debug work and hid cold-cache overlap. Put fixed artifacts in pool
+  slots outside the dynamic slot range and let normal phases use slots `0..N-1`.
 - **Focused gate wins must survive the full DAG:** splitting
   `tool-boundary-lints` into parallel suites cut the focused tool slice from
   ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
@@ -210,6 +220,11 @@ lesson — keep the specific word/code/path, cut the prose.
   tool slice wait on one resident thread for ~56s. Split independent semantics
   into first-class resident-runner rows; the hot local gate fell to 24.579s with
   `warm-miss=0` while still running candidate validation.
+- **Bake repeated semantic setup into the resident runner:** the stdlib tool
+  groups were still paying the same checked lint/check-all-errors setup in every
+  resident process. Baking that common tool base once into `hb-gate-warm` and
+  marking setup sentinels cut macOS hot wall time from 43.932s internal to
+  34.837s without removing CLI boundary coverage.
 - **Discovered cache misses must switch the timing profile to cold:** a default
   run after changing `test/run.f` rebuilt both warm runners but still used the
   hot 55s/60s macOS budget, failing at 62s despite all tests passing. Warm-runner

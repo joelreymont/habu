@@ -18,12 +18,13 @@ include test/gate-stats.f
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 $2 constant TR-CHECK-WARM-PHASES
-$19 constant TR-LATE-PHASES
+$16 constant TR-EARLY-HOST-PHASES
+$3 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
-0 constant TR-TOOLS-WARM-SLOT
-1 constant TR-CHECK-WARM-SLOT
-2 constant TR-AOT-RUNNER-SLOT
-3 constant TR-RUNNER-WARM-SLOT
+8 constant TR-TOOLS-WARM-SLOT
+9 constant TR-CHECK-WARM-SLOT
+10 constant TR-AOT-RUNNER-SLOT
+11 constant TR-RUNNER-WARM-SLOT
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
 1 constant TR-PROFILE-MACOS-ARM64-4X2
@@ -36,9 +37,12 @@ create TR-CHECK-WARM-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
-$3 , $2 , $16 , $17 , $18 , $19 , $8 , $7 ,
-$1E , $1D , $1C , $1B , $1A , $A , $15 , $4 ,
-$B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
+$3 , $15 , $10 ,
+
+create TR-EARLY-HOST-ORDER
+$8 , $7 , $2 , $16 , $17 , $18 , $19 , $1E ,
+$1D , $1C , $1B , $1A , $A , $4 , $B , $C ,
+$13 , $11 , $5 , $D , $14 , $12 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -99,8 +103,6 @@ variable TR-GATE-START-NS
 variable TR-TOOLS-WARM-READY
 variable TR-CHECK-WARM-READY
 variable TR-UNDER-READY
-variable TR-MANIFEST-EARLY
-variable TR-LIBS-EARLY
 variable TR-RUNNER-READY
 variable TR-AOT-RUNNER-READY
 variable TR-UNDER-CACHE-HIT
@@ -487,8 +489,6 @@ variable TR-NUM-U
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
    0 TR-UNDER-READY !
-   0 TR-MANIFEST-EARLY !
-   0 TR-LIBS-EARLY !
    0 TR-UNDER-CACHE-HIT !
    0 TR-RUNNER-READY !
    0 TR-AOT-RUNNER-READY ! ;
@@ -659,6 +659,13 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
    test/gate-stdlib-inline-lib.f
+   tools/date.f lib/test.f tools/lint/text.f tools/lint/intern.f
+   tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
+   tools/lint/source-lex.f tools/argv.f tools/check-all-errors-core.f
+   tools/diag-origin-core.f tools/json-only-core.f tools/aot-lint-core.f
+   tools/signature-lint-core.f tools/checked-boundary-lint-core.f
+   tools/reserved-name-lint-core.f tools/duplicate-definition-lint-core.f
+   tools/bundle-lib-core.f test/gate-stdlib-tool-base-ready.f
 ;TR-FILES
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
@@ -787,7 +794,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-gate-runner-cache-v6" CK-TEXT+
+   s" hb-gate-runner-cache-v7" CK-TEXT+
    s" bin/hb" TR-RUNNER-KEY-FILE+
    s" test/run.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stats.f" TR-RUNNER-KEY-FILE+
@@ -801,6 +808,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" test/gate-runner-entry.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-lint-tools.f" TR-RUNNER-KEY-FILE+
+   s" src/habu/verify-source.f" TR-RUNNER-KEY-FILE+
    TR-RUNNER-KEY-SUPPORT
    TR-RUNNER-KEY-HEX CK-FINAL-HEX ;
 
@@ -1661,23 +1669,16 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
 
-: TR-MANIFEST-EARLY? ( -- bool )
-   TR-MANIFEST-EARLY @ 0 <> ;
+: TR-EARLY-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-EARLY-HOST-ORDER + @ >IDX ;
 
-: TR-LIBS-EARLY? ( -- bool )
-   TR-LIBS-EARLY @ 0 <> ;
-
-: TR-TRY-EARLY-LINTS ( -- )
-   TR-UNDER-READY @ 0= if exit then
-   TR-WARM-DONE? 0= if exit then
-   18 >IDX TR-PHASE-START
-   -1 TR-MANIFEST-EARLY !
-   20 >IDX TR-PHASE-START
-   -1 TR-LIBS-EARLY ! ;
-
-: TR-LATE-SKIP? ( idx -- bool ) {: idx:idx :}
-   idx IDX>N 18 = TR-MANIFEST-EARLY? and
-   idx IDX>N 20 = TR-LIBS-EARLY? and or ;
+: TR-EARLY-HOST-START ( -- )
+   TR-DRAIN-UNTIL-WARM
+   TR-DRAIN-UNTIL-AOT-RUNNER
+   0 begin dup TR-EARLY-HOST-PHASES < while
+      dup >IDX TR-EARLY-HOST-ORDER@ TR-PHASE-START
+      1+
+   repeat drop ;
 
 : TR-EARLY-START ( -- )
    GT-POOL-RESET
@@ -1692,13 +1693,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       s" candidate-build-skip" GS-EVENT
    then
    TR-DRAIN-UNTIL-RUNNER
-   6 >IDX TR-PHASE-START
-   TR-TRY-EARLY-LINTS ;
+   6 >IDX TR-PHASE-START ;
 
 : TR-LATE-START ( -- )
    0 begin dup TR-LATE-PHASES < while
       dup >IDX TR-LATE-ORDER@
-      dup TR-LATE-SKIP? if drop else TR-GROUP-START then
+      TR-GROUP-START
       1+
    repeat drop ;
 
@@ -1708,18 +1708,17 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       1+
    repeat drop ;
 
-: TR-WORK-DRAIN ( -- )
-   TR-LATE-START
-   GT-POOL-DRAIN ;
+: TR-CANDIDATE-WORK-START ( -- )
+   TR-DRAIN-UNTIL-CHECK-WARM
+   TR-CHECK-WARM-START
+   TR-LATE-START ;
 
 : TR-DAG-RUN ( -- )
    TR-EARLY-START
+   TR-EARLY-HOST-START
    TR-DRAIN-UNTIL-UNDER
-   TR-DRAIN-UNTIL-CHECK-WARM
-   TR-CHECK-WARM-START
-   TR-DRAIN-UNTIL-WARM
-   TR-DRAIN-UNTIL-AOT-RUNNER
-   TR-WORK-DRAIN ;
+   TR-CANDIDATE-WORK-START
+   GT-POOL-DRAIN ;
 
 : TR-MAIN ( -- )
    TR-GATE-START!
