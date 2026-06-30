@@ -9,7 +9,7 @@
 \ the body type `( tile<t,b,m> -- tile<t,b,m> )` (loop-invariant accumulator, element /
 \ block / mask threaded by unification) a CHECKED contract enforced at every call site:
 \ a body that drops, duplicates, or retypes the accumulator is REJECTED with a located
-\ checker diagnostic before any runtime (proven by lib/ptx/tile-loop-neg.f). This is the
+\ checker diagnostic before any runtime (proven by lib/ptx/tile-loop-neg-test.f). This is the
 \ typed counted loop, expressed with the EXISTING parametric-type + typed-quotation
 \ machinery - no checker.f change, no fixpoint rebuild.
 \

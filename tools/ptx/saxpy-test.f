@@ -1,7 +1,6 @@
 \ saxpy-test.f - focused tests for PTX text and checked-codegen output.
 \
-\ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/process-env.f, and src/arch/ptx/emit.f.
+\ Load after lib/ptx/test-prelude.f and lib/ptx/process-test-prelude.f.
 
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
@@ -13,9 +12,55 @@ create PTXT-OUT PTXT-CAP allot
 create PTXT-ERR PTXT-CAP allot
 
 variable PTXT-OUT-U
+variable PTXT-OUT-SAVE
+variable PTXT-ERR-SAVE
+
+0 constant PTXT-F-DUPFD
+10 constant PTXT-FD-SAVE-MIN
+1 constant PTXT-STDOUT-FD
+2 constant PTXT-STDERR-FD
 
 : PTXT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
+
+: PTXT-DUP-FD ( n -- n ) {: fd:n :}
+   fd PTXT-F-DUPFD PTXT-FD-SAVE-MIN fcntl dup 0 < if E-PROC-OUTPUT throw then ;
+
+: PTXT-DUP2! ( n n -- ) {: src:n dst:n :}
+   src dst dup2 dup 0 < if drop E-PROC-OUTPUT throw then drop ;
+
+: PTXT-REDIRECT! ( -- )
+   PTXT-STDOUT-FD PTXT-DUP-FD PTXT-OUT-SAVE !
+   PTXT-STDERR-FD PTXT-DUP-FD PTXT-ERR-SAVE !
+   PROC-OUT-W @ FD>N PTXT-STDOUT-FD PTXT-DUP2!
+   PROC-ERR-W @ FD>N PTXT-STDERR-FD PTXT-DUP2!
+   PROC-OUT-W PROC-CLOSE-CELL
+   PROC-ERR-W PROC-CLOSE-CELL ;
+
+: PTXT-RESTORE! ( -- )
+   PTXT-OUT-SAVE @ PTXT-STDOUT-FD PTXT-DUP2!
+   PTXT-ERR-SAVE @ PTXT-STDERR-FD PTXT-DUP2!
+   PTXT-OUT-SAVE @ close
+   PTXT-ERR-SAVE @ close
+   -1 PTXT-OUT-SAVE !
+   -1 PTXT-ERR-SAVE ! ;
+
+: PTXT-DRAIN ( -- )
+   PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
+
+: PTXT-STORE-RC ( n -- ) {: rc:n :}
+   rc >RC PROC-RC ! ;
+
+\ typed-local-lint: allow-bare-local - q is the action quotation under capture.
+: PTXT-CAPTURE ( [ -- ] -- n n n ) {: q :}
+   PTXT-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
+   PTXT-REDIRECT!
+   q catch {: rc:n :}
+   PTXT-RESTORE!
+   PTXT-DRAIN
+   PROC-CLOSE-ALL-CAPTURE-FDS
+   rc PTXT-STORE-RC
+   PROC-CAPTURE-RC@ PTXT-CAPTURE>N ;
 
 : PTXT-HAS ( ptr u8 n -- ) {: a:ptr u :}
    PTXT-OUT PTXT-OUT-U @ a u CONTAINS? TTRUE ;
@@ -23,148 +68,65 @@ variable PTXT-OUT-U
 : PTXT-NOT-HAS ( ptr u8 n -- ) {: a:ptr u :}
    PTXT-OUT PTXT-OUT-U @ a u CONTAINS? 0= TTRUE ;
 
+: PTXT-INCLUDE-SAXPY ( -- )
+   s" tools/ptx/saxpy.f" included ;
+
+: PTXT-INCLUDE-OPS-CG ( -- )
+   s" tools/ptx/ops-cg.f" included ;
+
+: PTXT-INCLUDE-ONCE-CG ( -- )
+   s" tools/ptx/once-cg.f" included ;
+
+: PTXT-INCLUDE-SOFTMAX-CG ( -- )
+   s" tools/ptx/softmax-cg.f" included ;
+
+: PTXT-INCLUDE-SUM-CG ( -- )
+   s" tools/ptx/sum-cg.f" included ;
+
+: PTXT-INCLUDE-SUM1024-CG ( -- )
+   s" tools/ptx/sum1024-cg.f" included ;
+
+: PTXT-INCLUDE-MATMUL-CG ( -- )
+   s" tools/ptx/matmul-cg.f" included ;
+
+: PTXT-INCLUDE-SMEM-CG ( -- )
+   s" tools/ptx/smem-cg.f" included ;
+
+: PTXT-INCLUDE-SOFTMAX-BWD-CG ( -- )
+   s" tools/ptx/softmax-bwd-cg.f" included ;
+
+: PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ( -- )
+   s" tools/ptx/softmax-bwd-opt-cg.f" included ;
+
 : PTXT-RUN-SAXPY ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" tools/ptx/saxpy.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SAXPY ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-OPS-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/float.f"  >LEN PROC-ARGV+
-   s" lib/fmt.f"  >LEN PROC-ARGV+
-   s" lib/test.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg-vec.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"  >LEN PROC-ARGV+
-   s" lib/ptx/tile.f"  >LEN PROC-ARGV+
-   s" lib/ptx/tile-v4.f"  >LEN PROC-ARGV+
-   s" tools/ptx/ops-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-OPS-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-ONCE-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/float.f"  >LEN PROC-ARGV+
-   s" lib/fmt.f"  >LEN PROC-ARGV+
-   s" lib/test.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"  >LEN PROC-ARGV+
-   s" lib/ptx/tile.f"  >LEN PROC-ARGV+
-   s" tools/ptx/once-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-ONCE-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SOFTMAX-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/float.f"  >LEN PROC-ARGV+
-   s" lib/fmt.f"  >LEN PROC-ARGV+
-   s" lib/test.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg-collective.f"  >LEN PROC-ARGV+
-   s" lib/ptx/collective.f"  >LEN PROC-ARGV+
-   s" tools/ptx/softmax-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SOFTMAX-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SUM-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/float.f"  >LEN PROC-ARGV+
-   s" lib/fmt.f"  >LEN PROC-ARGV+
-   s" lib/test.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg-collective.f"  >LEN PROC-ARGV+
-   s" lib/ptx/collective.f"  >LEN PROC-ARGV+
-   s" tools/ptx/sum-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SUM-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SUM1024-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/float.f"  >LEN PROC-ARGV+
-   s" lib/fmt.f"  >LEN PROC-ARGV+
-   s" lib/test.f"  >LEN PROC-ARGV+
-   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
-   s" lib/ptx/header.f"  >LEN PROC-ARGV+
-   s" lib/ptx/cg-collective.f"  >LEN PROC-ARGV+
-   s" lib/ptx/collective.f"  >LEN PROC-ARGV+
-   s" tools/ptx/sum1024-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SUM1024-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-MATMUL-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/ptx/matmul-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-MATMUL-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SMEM-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/ptx/smem-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SMEM-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SOFTMAX-BWD-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/ptx/softmax-bwd-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SOFTMAX-BWD-CG ;] PTXT-CAPTURE ;
 
 : PTXT-RUN-SOFTMAX-BWD-OPT-CG ( -- n n n )
-   PROC-ARGV-ENV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/ptx/softmax-bwd-opt-cg.f"  >LEN PROC-ARGV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
-   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
-   PTXT-CAPTURE>N ;
+   [: PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ;] PTXT-CAPTURE ;
 
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE

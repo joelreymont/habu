@@ -1,33 +1,16 @@
 \ tile-acc-neg-test.f - committed negative regression for the accumulator completion gate.
 \
-\ Spawns bin/hb to load lib/ptx/tile-acc-neg.f (a kernel that stores a raw acc<>) and
-\ asserts the checker REJECTED it: non-zero exit AND a diagnostic located at 'store'. This
-\ pins the "an unfinalized accumulator cannot be stored to global" soundness rule (acc<>
-\ never unifies with tile<>) as a reproducible regression. Load after lib/memory.f, the
-\ process libs (lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f), and
-\ lib/test.
+\ Checks a source-equivalent body that stores a raw acc<>, and asserts the checker
+\ REJECTED it with a diagnostic located at 'store'. This pins the "an unfinalized
+\ accumulator cannot be stored to global" soundness rule as a reproducible regression.
 
-require lib/ptx/process-test-prelude.f
-
-create TAN-OUT $2000 allot
-create TAN-ERR $4000 allot
-
-: TAN-RUN ( -- len len rc )
-   PROC-ARGV-RESET
-   s" --load"              >LEN PROC-ARGV+
-   s" lib/errors.f"        >LEN PROC-ARGV+   s" lib/string.f"           >LEN PROC-ARGV+
-   s" lib/float.f"         >LEN PROC-ARGV+   s" lib/fmt.f"              >LEN PROC-ARGV+
-   s" lib/test.f"          >LEN PROC-ARGV+   s" src/arch/ptx/emit.f"    >LEN PROC-ARGV+
-   s" lib/ptx/cg.f"        >LEN PROC-ARGV+   s" lib/ptx/header.f"       >LEN PROC-ARGV+
-   s" lib/ptx/tile.f"      >LEN PROC-ARGV+   s" lib/ptx/tile-acc.f"     >LEN PROC-ARGV+
-   s" lib/ptx/tile-acc-neg.f" >LEN PROC-ARGV+
-   s" bin/hb" >LEN  TAN-OUT $2000 >LEN  TAN-ERR $4000 >LEN  30000 >MS  RUN-ARGV-CAPTURE ;
+require lib/ptx/neg-test-lib.f
 
 : TAN-MAIN ( -- )
    T-RESET
-   TAN-RUN {: outu erru rc :}
-   rc RC>N 0 T<>                                  \ checker REJECTED -> non-zero exit
-   TAN-ERR erru LEN>N s" store" CONTAINS? TTRUE   \ diagnostic located at the store
+   256 %BLOCK
+   s" BAD-ACC ( span<space-global,f32,extent-n> -- ) {: s :} s GRID-CTX {: g :} g ACC-ZERO s g STORE"
+   s" store" s" tile-acc negative" PTXN-REJECTS
    s" NEG: raw (unfinalized) accumulator store rejected (acc<> != tile<>)" type cr
    T-REPORT ;
 

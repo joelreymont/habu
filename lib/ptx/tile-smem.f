@@ -7,7 +7,7 @@
 \ A shared span carries the address space `space-shared`, distinct from a global span's
 \ `space-global`. The two are CONCRETE address-space symbols that never unify, so the
 \ checker rejects loading a global span as if it were shared (or vice versa) - the
-\ block-staging soundness rule, enforced before runtime (proven by tile-smem-neg.f).
+\ block-staging soundness rule, enforced before runtime (proven by tile-smem-neg-test.f).
 \ This needs NO checker.f change: the existing address-space-parameterised span type
 \ (tile.f's span<space-global,t,e>) already keeps spaces distinct ("space-wrong
 \ negatives hold", tile.f).

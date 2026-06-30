@@ -28,6 +28,7 @@ variable GE-IMG-BUILD-I
 variable GE-HABU1-I
 variable GENG-ARG-I
 variable GENG-SLICE-SEEN
+variable GE-BAD-TYPED-VERDICT
 
 create GE-CHECK-OFF-LINE
 10 c, 48 c, 32 c, 115 c, 101 c, 116 c, 45 c,
@@ -378,40 +379,26 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
 
-: GE-CAND-HOOK-SOURCE ( -- )
+: GE-CAND-SMOKE-SOURCE ( -- )
    GE-SRC-RESET
    s" data-base $1B0 + @ 0= ." GE-SRC-LINE
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
-   s" 7 SQOK ." GE-SRC-LINE ;
+   s" 7 SQOK ." GE-SRC-LINE
+   s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
 
-: GE-CAND-STDIN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
-   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   label labelu GE-EXPECT-OK ;
-
-: GE-CAND-HOOK-CHECK ( ptr u8 n -- ) {: exe:ptr exeu:n :}
+: GE-CAND-SMOKE ( ptr u8 n -- ) {: exe:ptr exeu:n :}
    GE-HB-RESET
-   GE-CAND-HOOK-SOURCE
-   exe exeu s" Habu-under-test refresh/check hook" GE-CAND-STDIN
+   GE-CAND-SMOKE-SOURCE
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" Habu-under-test refresh/check/dictionary smoke" GE-EXPECT-OK
    SB-RESET
    s" 0" GE-OUT-LINE
    s" 49" GE-OUT-LINE
-   SB$ s" Habu-under-test refresh/check hook output" GE-EXPECT-OUT ;
-
-: GE-CAND-LONG-SOURCE ( -- )
-   GE-SRC-RESET
-   s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
-
-: GE-CAND-LONG-LOOKUP ( ptr u8 n -- ) {: exe:ptr exeu:n :}
-   GE-HB-RESET
-   GE-CAND-LONG-SOURCE
-   exe exeu s" Habu-under-test long-name dictionary lookup" GE-CAND-STDIN
-   SB-RESET
    s" 42" GE-OUT-LINE
-   SB$ s" Habu-under-test long-name dictionary lookup output" GE-EXPECT-OUT ;
+   SB$ s" Habu-under-test refresh/check/dictionary smoke output" GE-EXPECT-OUT ;
 
 : GE-CANDIDATE-HOOK-CHECKS ( -- )
-   GE-CANDIDATE$ GE-CAND-HOOK-CHECK
-   GE-CANDIDATE$ GE-CAND-LONG-LOOKUP
+   GE-CANDIDATE$ GE-CAND-SMOKE
    s" PASS: Habu-under-test hook/dictionary coverage" type cr ;
 
 : GE-DIV-MOD ( -- )
@@ -491,11 +478,15 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    SB$ s" hb good typed def output" GE-EXPECT-OUT ;
 
 : GE-BAD-TYPED ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" : SQBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
-   s" 7 SQBAD ." GE-SRC-LINE
-   s" hb bad typed def" GE-HB-RUN-STDIN-NZ ;
+   s" hb bad typed def" GT-PROGRESS-RUN
+   s" inprocess-check" GS-EVENT
+   [: s" SQBAD ( i64 -- i64 ) dup" CHECK-CANDIDATE! GE-BAD-TYPED-VERDICT ! ;]
+   GE-CAPTURE-ACTION 0 <> if
+      s" hb bad typed def" GE-FAIL
+   then
+   GE-BAD-TYPED-VERDICT @ 0 <> if s" hb bad typed def" GE-FAIL then
+   s" sqbad" s" hb bad typed def" GE-EXPECT-ERR-HAS
+   s" hb bad typed def" GT-PROGRESS-PASS ;
 
 : GE-DEPTH ( -- )
    GE-HB-RESET

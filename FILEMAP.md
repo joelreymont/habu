@@ -84,7 +84,9 @@ points stay listed.
 - `lib/ptx/test-prelude.f` — require-only shared setup for PTX positive entry
   tests; suites list the entry tests, not this dependency bundle.
 - `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for
-  PTX negative tests that spawn checked child snippets.
+  PTX tests that must exercise a child process boundary.
+- `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
+  rejection tests that call the checker directly and capture diagnostics.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
   (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
 - `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.

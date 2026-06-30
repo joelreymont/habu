@@ -8,7 +8,7 @@
 \ a register `tile<t,b,m>` and a `span<...>`. The distinction is the soundness payload:
 \ because STORE wants a `tile`, an `acc` CANNOT be stored to global directly - the program
 \ must finalize it through ACC-TILE first. So "accidentally storing an unfinished
-\ accumulator" is a TYPE ERROR caught before runtime (proven by tile-acc-neg.f). Adding
+\ accumulator" is a TYPE ERROR caught before runtime (proven by tile-acc-neg-test.f). Adding
 \ `acc` as a recognised constructor is a one-line, purely-additive change to the checker
 \ (src/core/checker.f PARAM-CTOR?) - shipped via a validated fixpoint rebuild.
 \

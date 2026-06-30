@@ -461,12 +461,6 @@ variable GD-CHECK-LABEL-U
    s" end-package" GE-SRC-LINE
    s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
 
-: GD-CHECK-BAD-ALL ( ptr u8 n -- )
-   GE-CHECK-ARGV
-   s" --all-errors" GE-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   70 -rot GE-EXPECT-RC ;
-
 : GD-CHECK-BUF-ACT ( -- )
    GD-CHECK-LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS-BUF ;
 
@@ -476,16 +470,30 @@ variable GD-CHECK-LABEL-U
    0 GT-OUT-U !
    CHECK-ALL-ERRORS-OUT$ nip GT-ERR-U ! ;
 
-: GD-CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )
-   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+: GD-CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    s" inprocess-check" GS-EVENT
    label labelu GD-CHECK-LABEL!
    GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= 0= CHECK-ALL-ERRORS-JSON!
-   [: GD-CHECK-BUF-ACT ;] catch GD-CHECK-BUF-STORE
+   [: GD-CHECK-BUF-ACT ;] catch GD-CHECK-BUF-STORE ;
+
+: GD-CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   label labelu GD-CHECK-BUF-RUN
    rc label labelu GE-EXPECT-RC
    needle needleu label labelu GE-EXPECT-ERR-HAS
+   label labelu GT-PROGRESS-PASS ;
+
+: GD-CHECK-BAD-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu GD-CHECK-BUF-RUN
+   70 label labelu GE-EXPECT-RC
+   label labelu GT-PROGRESS-PASS ;
+
+: GD-CHECK-BUF-GOOD ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu GD-CHECK-BUF-RUN
+   label labelu GE-EXPECT-OK
+   label labelu GE-EXPECT-SILENT
    label labelu GT-PROGRESS-PASS ;
 
 : GD-PACKAGE-NORET-GOOD-BODY ( -- )
@@ -1003,7 +1011,7 @@ variable GD-CHECK-LABEL-U
    GD-EXEC-VECTOR-PACKAGE-CHECK-BODY
    GD-CASE-BODY
    GD-PARSING-CHECK-BODY
-   s" check.f dictionary positive certification batch" GE-CHECK-RUN ;
+   s" check.f dictionary positive certification batch" GD-CHECK-BUF-GOOD ;
 
 : GD-DATA-OVERFLOW ( -- )
    GE-HB-RESET

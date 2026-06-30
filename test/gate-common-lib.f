@@ -566,13 +566,19 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 : GE-EVAL-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
 
-: GE-EVAL-CAPTURE ( -- )
+\ typed-local-lint: allow-bare-local - q is the captured action quotation.
+: GE-CAPTURE-ACTION ( [ -- ] -- n ) {: q :}
    GE-TIMEOUT-MS >MS PROC-CAPTURE-BEGIN
    GE-EVAL-REDIRECT!
-   [: GE-EVAL-SOURCE ;] catch {: rc:n :}
+   q catch {: rc:n :}
    GE-EVAL-RESTORE!
    GE-EVAL-DRAIN
    PROC-CLOSE-ALL-CAPTURE-FDS
+   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME
+   rc ;
+
+: GE-EVAL-CAPTURE ( -- )
+   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION {: rc:n :}
    rc GE-EVAL-STORE-RC
    PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME ;
 
