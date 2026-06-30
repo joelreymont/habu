@@ -145,7 +145,7 @@ variable GR-ARG-I
       GR-ID-TOOL-SEMANTICS of GSI-TOOL-SEMANTICS endof
       GR-ID-CHECK-CLI of GR-STDLIB endof
       GR-ID-TAIL of GR-STDLIB endof
-      GR-ID-LINT-TOOLS of GR-STDLIB endof
+      GR-ID-LINT-TOOLS of GSI-LINT-TOOLS endof
       GR-ID-LINT-MANIFEST of GR-STDLIB endof
       GR-ID-LINT-ARTIFACTS of GR-STDLIB endof
       GR-ID-LINT-LIBS of GR-STDLIB endof
@@ -193,6 +193,7 @@ variable GR-ARG-I
       GR-ID-TOOL-LINT-BUNDLE of 0 0= endof
       GR-ID-TOOL-TYPED of 0 0= endof
       GR-ID-TOOL-SEMANTICS of 0 0= endof
+      GR-ID-LINT-TOOLS of 0 0= endof
       0 0= 0= swap
    endcase ;
 

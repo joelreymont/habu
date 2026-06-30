@@ -4,8 +4,10 @@
 
 create GST-ROOT-BUF FS-PATH-CAP allot
 create GST-ROW-BUF GS-LINE-CAP allot
+create GST-SAVE-BUF FS-PATH-CAP allot
 variable GST-ROOT-U
 variable GST-ROW-U
+variable GST-SAVE-U
 
 : GST-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -15,6 +17,20 @@ variable GST-ROW-U
 
 : GST-ROOT$ ( -- ptr u8 n )
    GST-ROOT-BUF GST-ROOT-U @ ;
+
+: GST-SAVE$ ( -- ptr u8 n )
+   GST-SAVE-BUF GST-SAVE-U @ ;
+
+: GST-GS-SAVE ( -- )
+   GS-ENSURE
+   GS-PATH$ {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a GST-SAVE-BUF u BYTE-COPY
+   u GST-SAVE-U ! ;
+
+: GST-GS-RESTORE ( -- )
+   GST-SAVE$ GS-COPY-PATH!
+   -1 GS-INITED ! ;
 
 : GST-ROW-RESET ( -- )
    0 GST-ROW-U ! ;
@@ -132,12 +148,18 @@ variable GST-ROW-U
    GST-EXPECT-COUNTS
    GST-EXPECT-TEST ;
 
-: GST-MAIN ( -- )
+: GST-MAIN-BODY ( -- )
    T-RESET
    GST-TEST-SCAN
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT
    s" gate-stats-test: ok" type cr ;
+
+: GST-MAIN ( -- )
+   GST-GS-SAVE
+   [: GST-MAIN-BODY ;] catch {: rc:n :}
+   GST-GS-RESTORE
+   rc 0 <> if rc throw then ;
 
 GST-MAIN

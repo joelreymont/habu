@@ -1,7 +1,7 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 42.319s internal / 44.72s shell-wall hot-cache gate time and
+Gate: passing; 42.217s internal / 44.61s shell-wall hot-cache gate time and
 56.942s internal / 59.32s shell-wall cold-cache gate time on 2026-06-30 on
 macOS/aarch64 with the auto-selected `macos-arm64-4x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
@@ -11,7 +11,9 @@ in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool
 semantic fixtures, batched engine fixture source-list checks, attributed pool
 outcomes, a default content-keyed gate cache, and auto-detected host-class
-timing profiles. Host timing policy is exposed as script args:
+timing profiles. The `lint-tools` slice runs in-process inside the warm runner,
+with live lint words called directly and CLI wrappers reserved for standalone
+entry coverage. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
 Certified: 979  Uncheckable: 0  Rejected: 0

@@ -9,6 +9,12 @@ variable GSI-START-NS
 variable GSI-RC
 variable GSI-SETUP
 
+$10000 constant GSI-TL-STR-CAP
+$20000 constant GSI-TL-FILE-CAP
+
+create GSI-TL-STR-BUF GSI-TL-STR-CAP allot
+create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
+
 0 constant GSI-GROUP-SEQ
 1 constant GSI-GROUP-PAR
 
@@ -75,6 +81,18 @@ variable GSI-SETUP
    pathu GSI-PATH-U !
    mono-ns GSI-START-NS !
    [: GSI-INCLUDE-ACT ;] catch GSI-RC !
+   GSI-INCLUDE-MS {: ms:n :}
+   GSI-PATH$ ms GSI-SPAN
+   GSI-RC @ 0= if GSI-PATH$ ms GSI-PASS exit then
+   GSI-PATH$ ms GSI-FAIL
+   GSI-RC @ throw ;
+
+\ typed-local-lint: allow-bare-local - q keeps the action effect from the stack signature.
+: GSI-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   label GSI-PATH-A!
+   labelu GSI-PATH-U !
+   mono-ns GSI-START-NS !
+   q catch GSI-RC !
    GSI-INCLUDE-MS {: ms:n :}
    GSI-PATH$ ms GSI-SPAN
    GSI-RC @ 0= if GSI-PATH$ ms GSI-PASS exit then
@@ -243,3 +261,24 @@ variable GSI-SETUP
    s" stdlib/tool-typed-local" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-TYPED-SETUP
    GSI-TOOL-TYPED-BODY ;
+
+: GSI-LINT-TOOLS-SETUP ( -- )
+   GSI-SETUP!
+   s" tools/date.f" GSI-INCLUDE
+   s" lib/test.f" GSI-INCLUDE
+   s" tools/lint/text.f" GSI-INCLUDE
+   s" tools/lint/intern.f" GSI-INCLUDE
+   s" tools/lint/token.f" GSI-INCLUDE
+   s" tools/lint/lib.f" GSI-INCLUDE
+   s" tools/argv.f" GSI-INCLUDE
+   s" tools/repl-lint-core.f" GSI-INCLUDE
+   s" tools/trust-lint-core.f" GSI-INCLUDE
+   s" tools/stale-status-lint-core.f" GSI-INCLUDE
+   s" tools/dot-dep-lint-core.f" GSI-INCLUDE
+   s" tools/maki-dep-lint-core.f" GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-LINT-TOOLS ( -- )
+   s" stdlib/lint-tools" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-LINT-TOOLS-SETUP
+   s" test/gate-stdlib-lint-tools.f" included ;

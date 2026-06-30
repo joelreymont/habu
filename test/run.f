@@ -791,6 +791,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" lib/content-key.f" TR-RUNNER-KEY-FILE+
    s" test/gate-runner-entry.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
+   s" test/gate-stdlib-lint-tools.f" TR-RUNNER-KEY-FILE+
    TR-RUNNER-KEY-SUPPORT
    TR-RUNNER-KEY-HEX CK-FINAL-HEX ;
 

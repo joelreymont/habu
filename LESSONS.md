@@ -1240,3 +1240,8 @@ lesson — keep the specific word/code/path, cut the prose.
   4/2 pool policy. Let the suite auto-detect a concrete host profile, use
   `--cold-cache` for cache-fill proofs, and reserve generic budgets for local
   safety checks.
+- **In-process fixtures must restore global harness state:** `gate-stats-test`
+  set `GS-ROOT!` to a temporary file and deleted it; the next in-process test
+  then failed recording `GS-SPAN`. Any fixture that mutates shared harness roots,
+  argv/env, output buffers, or cleanup registries must save/restore them before
+  returning to a resident runner.
