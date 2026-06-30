@@ -66,7 +66,8 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
   detection — which yields exactly the sort-then-greedy result without sorting
   floats. Verified against both "iou and overlap" and the "decode + NMS of a
   synthetic raw buffer" snapshot (2 kept boxes; the lower-confidence duplicate
-  suppressed).
+  suppressed). `DETECT-F32` reads the C shim's TensorRT `float *` output directly
+  for live detector full mode.
 - `luma_hist.f` — 256-bin luminance histogram + mean/percentile luminance,
   ported from `src/low_light.zig` ImageAggregate. Pure integer; feeds off
   `netpbm.f` NP-DECODE's luma plane. Verified against hand-computed oracles.
@@ -218,10 +219,32 @@ it dlopens `/usr/local/zed/lib/libsl_zed.so`, resolves the extern-"C"
 Non-invasive (a version query, no camera).
 
 Validation observed `ZED SDK runtime version: 5 .2 .3` and stripped whitespace to
-`5.2.3`. The SDK's dlopen spawns a CUDA background thread, and hb terminates its
-main thread with `NR-EXIT` (not `exit_group`), so the process can linger after the
-version line is flushed. Engine follow-up: hb should final-exit with `exit_group`
-so FFI-spawned threads are reaped.
+`5.2.3`. The SDK's dlopen spawns a CUDA background thread; the Habu Linux final
+exit path now uses `exit_group`, so the process exits cleanly after the version
+line is flushed.
+
+### Live detector (dark-scene smoke)
+
+`odin/live-detector.f` ports the live capture/detector orchestration to Habu over
+the thin Odin C ABI shim. The Habu side owns camera acquisition pthreads,
+round-robin detector scheduling, tensor retrieval, YOLO decode/NMS, optional
+detection-row emission, optional color-save policy, and NDJSON output. Supported
+modes are `full`, `retrieve-only`, and `run-only`.
+
+Validation on the attached four-camera rig used SVGA@60 with the room dark:
+
+```text
+one camera full: Habu 61 tracker ticks, 2 inference ticks, 4 detections, 0 drops/errors
+one camera full: Zig  60 tracker ticks, 2 inference ticks, 3 detections, 0 drops/errors
+four camera full: Habu 244 tracker ticks, 8 inference ticks, 13 detections, 0 drops/errors
+four camera full: Zig  244 tracker ticks, 8 inference ticks, 14 detections, 0 drops/errors
+```
+
+Analyzer summaries were characterization-only because the scene was dark. The
+four-camera Habu run reported tracker rate mean `60.007 Hz` per camera, latency
+p95 `52.571 ms`, detector run p95 `29.173 ms`, and detector cycle p95 `49.538 ms`.
+The Zig control reported tracker rate mean `60.061 Hz` per camera, latency p95
+`53.041 ms`, detector run p95 `29.110 ms`, and detector cycle p95 `40.189 ms`.
 
 ## Conventions (learned porting tegrastats)
 

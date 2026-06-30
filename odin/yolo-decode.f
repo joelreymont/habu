@@ -97,6 +97,28 @@ private
       then
    then ;
 
+: ANCHOR-F32 ( ptr u8 n n n n r r r r r r -- ) {: raw:ptr na:n nc:n box:n ai:n ow:r oh:r sf:r xoff:r yoff:r conf:r :}
+   raw  box na * ai +  FC-F32-I@  BS F!   0 BJ !
+   1 JI !
+   begin JI @ nc < while
+      raw  box JI @ + na * ai +  FC-F32-I@  S F!
+      S F@ BS F@ f> if  S F@ BS F!  JI @ BJ !  then
+      JI @ 1+ JI !
+   repeat
+   BS F@ conf f> if
+      raw 0 na * ai + FC-F32-I@   raw 1 na * ai + FC-F32-I@
+      raw 2 na * ai + FC-F32-I@   raw 3 na * ai + FC-F32-I@
+      xoff yoff sf ow oh DECODE-BOX
+      BOX-Y1 F!  BOX-X1 F!  BOX-Y0 F!  BOX-X0 F!
+      BOX-X0 F@ BOX-X1 F@ f>  BOX-Y0 F@ BOX-Y1 F@ f>  or 0= if
+         DN @ CAP >= if E-FULL throw then
+         BOX-X0 F@ DX0 DN @ cells + F!   BOX-Y0 F@ DY0 DN @ cells + F!
+         BOX-X1 F@ DX1 DN @ cells + F!   BOX-Y1 F@ DY1 DN @ cells + F!
+         BJ @ DLBL DN @ cells + !  BS F@ DCONF DN @ cells + F!
+         DN @ 1+ DN !
+      then
+   then ;
+
 public
 : DECODE ( ptr a n n n n n n n r -- ) {: raw:ptr na:n nc:n box:n iw:n ih:n ow:n oh:n conf:r :}
    0 DN !
@@ -104,6 +126,15 @@ public
    0 SI !
    begin SI @ na < while
       raw na nc box SI @  ow s>f oh s>f  sf xoff yoff conf  ANCHOR
+      SI @ 1+ SI !
+   repeat ;
+
+: DECODE-F32 ( ptr u8 n n n n n n n r -- ) {: raw:ptr na:n nc:n box:n iw:n ih:n ow:n oh:n conf:r :}
+   0 DN !
+   iw ih ow oh LETTERBOX {: sf:r xoff:r yoff:r :}
+   0 SI !
+   begin SI @ na < while
+      raw na nc box SI @  ow s>f oh s>f  sf xoff yoff conf  ANCHOR-F32
       SI @ 1+ SI !
    repeat ;
 
@@ -159,4 +190,12 @@ public
 : K-Y1@ ( n -- r ) cells KY1 + F@ ;
 : K-LBL@ ( n -- n ) cells KLBL + @ ;
 : K-CONF@ ( n -- r ) cells KCONF + F@ ;
+: DETECT ( ptr a n n n n n n n r n -- ) {: raw:ptr na:n nc:n box:n iw:n ih:n ow:n oh:n conf:r keep:n :}
+   0.4 THRES F!  keep MAXDET !
+   raw na nc box iw ih ow oh conf DECODE
+   NMS ;
+: DETECT-F32 ( ptr u8 n n n n n n n r n -- ) {: raw:ptr na:n nc:n box:n iw:n ih:n ow:n oh:n conf:r keep:n :}
+   0.4 THRES F!  keep MAXDET !
+   raw na nc box iw ih ow oh conf DECODE-F32
+   NMS ;
 end-package

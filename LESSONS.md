@@ -1499,3 +1499,13 @@ lesson — keep the specific word/code/path, cut the prose.
   old 12-way Mac top pool made cold cache fill slower through contention. The
   measured Mac profile is 10 top slots with 2 nested slots; prove cold wall time
   against the prior clean-tree baseline before landing scheduler changes.
+- **pthread task-entry must preserve the full C callee-saved set:** Habu worker
+  xts use the Habu ABI, and the value-register pool can clobber x21-x25 and x29.
+  A pthread trampoline that only restored x19/x20/x26-x28 let register-heavy task
+  code finish correctly, then crash returning to pthread. Save/restore x19-x29
+  around the worker xt and keep a task stress test that allocates past x15.
+- **Keep pthread hot paths out of nested locals:** the live detector could run
+  YOLO decode successfully but crash while emitting detection rows because the
+  task path stacked multiple `{: :}` groups and high-arity record helpers. Store
+  per-frame detector state in explicit scratch cells, then let JSON emitters read
+  those cells instead of passing large local frames through pthread tasks.
