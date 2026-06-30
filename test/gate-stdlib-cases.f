@@ -170,6 +170,10 @@ TEST-SUITE content-key-cache
    lib/content-key.f lib/content-key-test.f
 ;TEST-SUITE
 
+TEST-SUITE tasking-primitive-smoke
+   lib/errors.f lib/memory.f test/atomics-smoke.f test/run-in-stack-smoke.f
+;TEST-SUITE
+
 TEST-SUITE string-helpers
    lib/errors.f lib/string.f lib/string-test.f
 ;TEST-SUITE
