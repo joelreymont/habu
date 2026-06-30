@@ -27,6 +27,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 222 constant NR-MMAP
 73  constant NR-POLL
 220 constant NR-SPAWN
+220 constant NR-FORK      \ clone(SIGCHLD, 0, 0, 0, 0)
 38  constant NR-RENAME
 34  constant NR-MKDIR
 35  constant NR-RMDIR

@@ -220,6 +220,7 @@ variable FM-NUM-L
    s" tools/date-test.f" FM-REQ
    s" lib/process-env.f" FM-REQ
    s" lib/process-env-test.f" FM-REQ
+   s" lib/process-fork.f" FM-REQ
    s" lib/source.f" FM-REQ
    s" lib/source-test.f" FM-REQ
    s" test/process-env-child.f" FM-REQ

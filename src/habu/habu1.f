@@ -1248,6 +1248,23 @@ s" spawn-darwin-finish" s" label label --" TRUST
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
+: BFORK ( -- )                     \ ( -- pid|-1 ) parent gets pid, child gets 0
+   HB-TARGET-LINUX? IF
+      0 17 MOVZ,  1 0 MOVZ,  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,
+      NR-FORK SYS,  SYS-PUSH
+      exit
+   THEN
+   LBL {: ok:label :}
+   LBL {: done:label :}
+   NR-FORK SYS,
+   9 C-CS CSET,  9 ok CBZ,
+      0 0 MOVN,  done B,
+   ok LBL,
+   1 done CBZ,
+      0 0 MOVZ,
+   done LBL,
+   0 G-PUSH ;
+
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
@@ -1636,6 +1653,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
    s" spawn-argv-env-cwd-io" ['] BSPAWNARGVENVCWDIO FPRIM-L
+   s" fork" ['] BFORK FPRIM-L
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 

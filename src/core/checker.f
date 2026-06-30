@@ -1834,6 +1834,7 @@ PRIM: spawn-argv-env-io
 PRIM: spawn-argv-env-cwd-io
    PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN PE-PTR-U8 PE-IN
    PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: fork          PE-N PE-OUT PRIM;
 PRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: wait-status   PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: patch32       PE-N PE-IN PE-N PE-IN PRIM;

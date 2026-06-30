@@ -6,6 +6,7 @@ $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
 
 $1   constant NR-EXIT
+$2   constant NR-FORK
 $3   constant NR-READ
 $4   constant NR-WRITE
 $21  constant NR-ACCESS

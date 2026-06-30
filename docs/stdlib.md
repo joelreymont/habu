@@ -25,6 +25,7 @@ Planned module files:
 - `lib/fs.f`
 - `lib/source.f`
 - `lib/process.f`
+- `lib/process-fork.f`
 - `lib/process-argv.f`
 - `lib/process-env.f`
 - `lib/process-command.f`
@@ -960,6 +961,22 @@ target code (`-errno` on macOS; the Linux exec-failure handshake still reports
 negative failure), while checked wrappers convert any negative pid to
 `E-PROC-SPAWN`. Application code should prefer `PROC-SPAWN-IO`,
 `PROC-WAIT-RC`, and `PROC-RUN-RC`.
+
+`lib/process-fork.f` layers fork support after native refresh because older
+engines do not have the `fork` primitive during the build prelude.
+
+```forth
+PROC-FORK-RAW ( -- pid )
+PROC-FORK     ( -- pid )
+```
+
+`PROC-FORK` forks the current image without exec; the parent receives the child
+pid and the child receives pid 0. It is intended for isolated test workers and
+other copy-on-write process boundaries where the already-loaded dictionary must
+be reused. The child must exit or die after its worker body; returning into the
+parent's control path is a bug. Parent code reaps the child with `PROC-WAIT-RC`
+or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
+`PROC-FORK` converts that to `E-PROC-SPAWN`.
 
 `lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
 It is loaded after the native engine rebuild because older seeds do not know

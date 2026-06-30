@@ -530,6 +530,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
 1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr outcome kind and code
+1	process-fork	lib/process-fork.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	checked fork wrappers layered after native primitive rebuild
+1	process-fork	lib/process-fork.f	word	PROC-FORK-RAW	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw fork alias captured after native primitive rebuild
+1	process-fork	lib/process-fork.f	word	PROC-FORK	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	fork the current process and throw on primitive failure
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for argv byte storage
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF@	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read the argv byte-storage pointer

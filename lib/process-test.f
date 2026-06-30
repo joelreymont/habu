@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/process-fork.f
 require lib/process-argv.f
 
 variable PT-R
@@ -23,6 +24,7 @@ variable PT-CAPTURE-HANG-U
 variable PT-CAPTURE-ERR-LONG-U
 variable PT-CAPTURE-FALSE-U
 variable PT-CAPTURE-HB-U
+variable PT-FORK-CELL
 create PT-BUF 32 allot
 create PT-OUT 32 allot
 create PT-ERR 32 allot
@@ -161,6 +163,35 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 0 T=
    s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-STATUS 256 T= ;
 
+: PT-FORK-EXIT ( n -- )
+   s" " rot die ;
+
+: TEST-PROC-FORK-WAIT ( -- )
+   PIPE-PAIR PT-W ! PT-R !
+   PROC-FORK PID>N {: pid:n :}
+   pid 0= if
+      PT-R @ close
+      PT-W @ s" f" write 1 <> if 2 PT-FORK-EXIT then
+      PT-W @ close
+      0 PT-FORK-EXIT
+   then
+   PT-W @ close
+   PT-R @ 1000 >MS POLL-IN COUNT>N 1 T=
+   PT-R @ PT-READ 1 T=
+   PT-BUF c@ 102 T=
+   pid >PID PROC-WAIT-RC RC>N 0 T=
+   PT-R @ close ;
+
+: TEST-PROC-FORK-COW ( -- )
+   7 PT-FORK-CELL !
+   PROC-FORK PID>N {: pid:n :}
+   pid 0= if
+      9 PT-FORK-CELL !
+      0 PT-FORK-EXIT
+   then
+   pid >PID PROC-WAIT-RC RC>N 0 T=
+   PT-FORK-CELL @ 7 T= ;
+
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
    s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
 
@@ -279,6 +310,8 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-PATHZ
    TEST-SPAWN-WAIT
    TEST-PROC-WAIT-STATUS
+   TEST-PROC-FORK-WAIT
+   TEST-PROC-FORK-COW
    TEST-PROC-WAIT-OUTCOME-EXIT
    TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
