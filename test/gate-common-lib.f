@@ -101,7 +101,7 @@ variable GE-EVAL-ERR-SAVE
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-ENV ( ptr u8 n n -- ) {: path:ptr pathu:n timeout:n :}
-   s" helper-spawn" GS-EVENT
+   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
@@ -112,7 +112,7 @@ variable GE-EVAL-ERR-SAVE
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}
-   s" helper-spawn" GS-EVENT
+   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
@@ -133,7 +133,7 @@ variable GE-EVAL-ERR-SAVE
    PROC-ERR-W PROC-CLOSE-CELL ;
 
 : GE-RUN-STDIN-FILE ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n inpath:ptr inpathu:n timeout:n :}
-   s" helper-spawn" GS-EVENT
+   path pathu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    inpath inpathu FS-PATHZ open-rd GE-INFD !
    GE-INFD @ 0 < if E-FS-OPEN throw then

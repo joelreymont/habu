@@ -125,6 +125,19 @@ variable GS-HELPER-SPAWN
    c GS-LINE-BUF GS-LINE-U @ + c!
    GS-LINE-U @ 1+ GS-LINE-U ! ;
 
+: GS-EVENT-FIELD ( ptr u8 n ptr u8 n -- )
+   {: key:ptr keyu:n val:ptr valu:n :}
+   GS-ON? 0= if exit then
+   GS-LINE-RESET
+   key keyu GS-LINE+
+   GS-TAB GS-LINE-C+
+   val valu GS-LINE+
+   GS-LF GS-LINE-C+
+   GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
+
+: GS-HELPER-EVENT ( ptr u8 n -- )
+   s" helper-spawn" 2swap GS-EVENT-FIELD ;
+
 : GS-LINE-U+ ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
    v 10 >= if v 10 / RECURSE then
@@ -246,6 +259,12 @@ variable GS-HELPER-SPAWN
    u keyu <> if GS-FALSE exit then
    GS-BUF off BYTE+ u key keyu STR= ;
 
+: GS-LINE-KEY? ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
+   u keyu < if GS-FALSE exit then
+   GS-BUF off BYTE+ keyu key keyu STR= 0= if GS-FALSE exit then
+   u keyu = if GS-TRUE exit then
+   GS-BUF off keyu + BYTE+ c@ GS-TAB = ;
+
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
    off u GS-COUNT-SPAN
    off u s" top-phase-spawn" GS-LINE= if GS-TOP-PHASE GS-INC exit then
@@ -278,7 +297,7 @@ variable GS-HELPER-SPAWN
    off u s" candidate-build-skip" GS-LINE= if GS-CANDIDATE-BUILD-SKIP GS-INC exit then
    off u s" candidate-validate" GS-LINE= if GS-CANDIDATE-VALIDATE GS-INC exit then
    off u s" candidate-cache-corrupt" GS-LINE= if GS-CANDIDATE-CORRUPT GS-INC exit then
-   off u s" helper-spawn" GS-LINE= if GS-HELPER-SPAWN GS-INC exit then ;
+   off u s" helper-spawn" GS-LINE-KEY? if GS-HELPER-SPAWN GS-INC exit then ;
 
 : GS-SCAN ( -- )
    GS-RESET-COUNTS

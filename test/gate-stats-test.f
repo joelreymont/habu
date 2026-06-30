@@ -93,6 +93,7 @@ variable GST-SAVE-U
    s" candidate-validate" GS-EVENT
    s" candidate-cache-corrupt" GS-EVENT
    s" helper-spawn" GS-EVENT
+   s" named helper" GS-HELPER-EVENT
    s" test phase" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
    s" fast phase" 12 GS-SPAN
    s" slow phase" 34 GS-SPAN ;
@@ -132,7 +133,7 @@ variable GST-SAVE-U
    GS-CANDIDATE-BUILD-SKIP @ 1 T=
    GS-CANDIDATE-VALIDATE @ 1 T=
    GS-CANDIDATE-CORRUPT @ 1 T=
-   GS-HELPER-SPAWN @ 1 T=
+   GS-HELPER-SPAWN @ 2 T=
    GS-SPANS @ 2 T=
    GS-SLOW-MS @ 34 T=
    GS-SLOW-LABEL GS-SLOW-U @ s" slow phase" T$= ;

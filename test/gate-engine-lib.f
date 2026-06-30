@@ -162,7 +162,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    s" hb baseline contracts" GE-BIN-HB-RUN ;
 
 : GE-RUN-ENV-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
-   s" helper-spawn" GS-EVENT
+   label labelu GS-HELPER-EVENT
    PROC-ENV-INHERIT-MISSING
    path pathu label labelu timeout GT-POOL-START ;
 
