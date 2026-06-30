@@ -5,7 +5,7 @@
 \ diagnostic located at 'tile-loop'. This pins the typed-counted-loop soundness as a
 \ reproducible regression - the checker must reject an accumulator-violating body before
 \ runtime. Load after lib/memory.f, the process libs (lib/fs.f, lib/process.f,
-\ lib/process-argv.f, lib/process-env.f), and lib/test.f.
+\ lib/process-argv.f, lib/process-env.f), and lib/test.
 
 require lib/ptx/process-test-prelude.f
 

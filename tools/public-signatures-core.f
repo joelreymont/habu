@@ -73,6 +73,10 @@ variable PS-OUT-U
 variable PS-ERR-A
 variable PS-ERR-CAP
 variable PS-ERR-U
+variable PS-PKG-A
+variable PS-PKG-U
+variable PS-IN-PKG
+variable PS-PKG-PUBLIC
 
 : PS-TA-FIELD ( -- ptr ptr u8 )
    PS-TA 0 ptr-field ;
@@ -98,6 +102,9 @@ variable PS-ERR-U
 : PS-ERR-A-FIELD ( -- ptr ptr u8 )
    PS-ERR-A 0 ptr-field ;
 
+: PS-PKG-A-FIELD ( -- ptr ptr u8 )
+   PS-PKG-A 0 ptr-field ;
+
 : PS-TA@ ( -- ptr u8 )
    PS-TA-FIELD @ ;
 
@@ -122,6 +129,9 @@ variable PS-ERR-U
 : PS-ERR-A@ ( -- ptr u8 )
    PS-ERR-A-FIELD @ ;
 
+: PS-PKG-A@ ( -- ptr u8 )
+   PS-PKG-A-FIELD @ ;
+
 : PS-TA! ( ptr u8 -- )
    PS-TA-FIELD ! ;
 
@@ -145,6 +155,9 @@ variable PS-ERR-U
 
 : PS-ERR-A! ( ptr u8 -- )
    PS-ERR-A-FIELD ! ;
+
+: PS-PKG-A! ( ptr u8 -- )
+   PS-PKG-A-FIELD ! ;
 
 : PS-TRUE ( -- bool )
    0 0= ;
@@ -308,8 +321,23 @@ variable PS-ERR-U
    a u PS-WORD-BUF COPY-UPPER
    PS-WORD-BUF u ;
 
+: PS-PKG-PUBLIC? ( -- bool )
+   PS-IN-PKG @ if PS-PKG-PUBLIC @ else PS-FALSE then ;
+
+: PS-QUAL-WORD$ ( -- ptr u8 n )
+   PS-PKG-U @ PS-NAME-U @ + 1+ {: u:n :}
+   u PS-WORD-CAP > IF s" public-signatures: word too long" PS-DIE THEN
+   PS-PKG-A@ PS-PKG-U @ PS-WORD-BUF COPY-UPPER
+   PS-COLON-C PS-WORD-BUF PS-PKG-U @ + c!
+   PS-NAME-A@ PS-NAME-U @ PS-WORD-BUF PS-PKG-U @ + 1+ COPY-UPPER
+   PS-WORD-BUF u ;
+
+: PS-WORD$ ( -- ptr u8 n )
+   PS-PKG-PUBLIC? if PS-QUAL-WORD$ exit then
+   PS-NAME-A@ PS-NAME-U @ PS-UPPER$ ;
+
 : PS-TRUST-ENTRY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   PS-NAME-A@ PS-NAME-U @ PS-UPPER$ PS-TRUST-Q
+   PS-WORD$ PS-TRUST-Q
    32 PS-C
    sig sigu LINT-TRIM PS-TRUST-Q
    s"  TRUST" PS-OUT
@@ -469,7 +497,7 @@ variable PS-ERR-U
 : PS-EMIT-DEF ( bool ptr u8 n -- ) {: exported?:bool file-a:ptr file-u:n :}
    PS-DEF-START
    s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
-   s" word" PS-JSON-KEY PS-NAME-A@ PS-NAME-U @ PS-UPPER$ PS-JSON-STRING PS-PAIR-COMMA
+   s" word" PS-JSON-KEY PS-WORD$ PS-JSON-STRING PS-PAIR-COMMA
    s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
    s" line" PS-JSON-KEY PS-NAME-LINE @ PS-JSON-U PS-PAIR-COMMA
    s" column" PS-JSON-KEY PS-NAME-COL @ PS-JSON-U PS-PAIR-COMMA
@@ -490,8 +518,14 @@ variable PS-ERR-U
    PS-NAME-A@ PS-NAME-U @ INTERN-FOLD? ;
 
 : PS-PUBLIC? ( -- bool )
+   PS-PKG-PUBLIC? IF PS-TRUE exit THEN
+   PS-IN-PKG @ IF PS-FALSE exit THEN
    PS-EXPORTED? IF PS-TRUE exit THEN
    PS-NAME-A@ PS-NAME-U @ PS-PROJECT-WORD? ;
+
+: PS-EXPORTED-FLAG ( -- bool )
+   PS-PKG-PUBLIC? IF PS-TRUE exit THEN
+   PS-EXPORTED? ;
 
 : PS-MAYBE-DEF ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-NEXT-TOK 0= IF exit THEN
@@ -501,7 +535,7 @@ variable PS-ERR-U
    PS-COMMENT? 0= IF exit THEN
    PS-CONTENT$ s" --" LINT-CONTAINS? 0= IF exit THEN
    PS-SAVE-SIG
-   PS-PUBLIC? IF PS-EXPORTED? file-a file-u PS-EMIT-PUBLIC THEN ;
+   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
 
 : PS-TRUST-DEFINER ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    PS-NEXT-TOK 0= IF exit THEN
@@ -516,15 +550,37 @@ variable PS-ERR-U
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
+: PS-PACKAGE-NAME! ( -- )
+   PS-NEXT-TOK 0= IF exit THEN
+   PS-WORD? 0= IF exit THEN
+   PS-TOK-A@ PS-PKG-A!
+   PS-TOK-U @ PS-PKG-U !
+   PS-TRUE PS-IN-PKG !
+   PS-FALSE PS-PKG-PUBLIC ! ;
+
+: PS-SCOPE-TOKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" package" LINT-STR=CI IF PS-PACKAGE-NAME! PS-TRUE exit THEN
+   a u s" public" LINT-STR=CI IF PS-IN-PKG @ IF PS-TRUE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
+   a u s" private" LINT-STR=CI IF PS-IN-PKG @ IF PS-FALSE PS-PKG-PUBLIC ! THEN PS-TRUE exit THEN
+   a u s" end-package" LINT-STR=CI IF PS-FALSE PS-IN-PKG ! PS-FALSE PS-PKG-PUBLIC ! PS-TRUE exit THEN
+   PS-FALSE ;
+
+: PS-RESET-SCOPE ( -- )
+   PS-FALSE PS-IN-PKG !
+   PS-FALSE PS-PKG-PUBLIC !
+   0 PS-PKG-U ! ;
+
 : PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+   PS-RESET-SCOPE
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
-         PS-TOK$ s" :" LINT-STR= IF
+         PS-TOK$ PS-SCOPE-TOKEN? IF
+         ELSE PS-TOK$ s" :" LINT-STR= IF
             file-a file-u PS-MAYBE-DEF
          ELSE
             PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
-         THEN
+         THEN THEN
       THEN
    repeat ;
 

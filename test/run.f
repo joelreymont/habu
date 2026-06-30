@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
-\ lib/test-runner.f, and test/gate-pool.f.
+\ lib/test/runner.f, and test/gate-pool.f.
 
 include lib/content-key.f
 include test/gate-stats.f
@@ -587,7 +587,7 @@ variable TR-NUM-U
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
+   s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
 : TR-SPAWN-CAPTURE ( -- )
    s" top-capture-spawn" GS-EVENT
@@ -664,8 +664,8 @@ variable TR-NUM-U
 
 TR-FILES: TR-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
-   lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f
+   lib/test.f lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
    tools/warm-run.f tools/hb-build-lib.f tools/json.f tools/gate-json-assert-core.f
    test/gate-pool.f test/gate-stats.f tools/warm-image-lib.f
    test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
@@ -682,7 +682,7 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
+   lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
    tools/warm-run.f tools/hb-build-lib.f tools/lint/text.f tools/lint/token.f
    tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
@@ -1564,7 +1564,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" lib/test-runner.f"  >LEN PROC-ARGV+ ;
+   s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
 : TR-PHASE-ARGV-RUNNER ( idx -- ) {: idx:idx :}
    s" --load"  >LEN PROC-ARGV+

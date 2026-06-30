@@ -31,7 +31,7 @@ macOS hot profile:
 ```sh
 /usr/bin/time -p bin/hb --load lib/errors.f lib/string.f lib/memory.f \
   lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f -- \
+  lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f -- \
   --under bin/hb --timings
 ```
 
@@ -40,7 +40,7 @@ macOS cache-fill profile:
 ```sh
 /usr/bin/time -p bin/hb --load lib/errors.f lib/string.f lib/memory.f \
   lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f \
-  lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f -- \
+  lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f -- \
   --under bin/hb --cold-cache --timings
 ```
 
@@ -57,7 +57,7 @@ Jetson/Orin hot profile:
 ```sh
 /usr/bin/time -p bin/hb --load lib/errors.f \
   lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f \
+  lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f \
   test/run.f -- --under bin/hb --timings
 ```
 
@@ -66,7 +66,7 @@ Jetson/Orin cache-fill profile:
 ```sh
 /usr/bin/time -p bin/hb --load lib/errors.f \
   lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f \
-  lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f \
+  lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f \
   test/run.f -- --under bin/hb --cold-cache --timings
 ```
 

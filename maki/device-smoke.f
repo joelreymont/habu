@@ -12,7 +12,7 @@
 \      tools use. If libcuda is absent (off-Orin) the device leg is reported SKIPPED and
 \      the primitive proof stands; a libcuda that loads but whose cuInit/cuDeviceGet
 \      fail is a HARD failure -> refresh bin/hb / check the driver (docs/bootstrap.md).
-\ Load after lib/ffi.f + lib/test.f. Verbatim ED-SYM idiom from maki/eval-device.f.
+\ Load after lib/ffi.f + lib/test. Verbatim ED-SYM idiom from maki/eval-device.f.
 
 create DS-LIB 16 allot   create DS-NM 32 allot
 variable DS-H   variable DS-DEV

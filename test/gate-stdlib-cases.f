@@ -1,103 +1,103 @@
 GATE-STDLIB-MAIN
 
-TEST-SUITE shadow-lint
+TEST:SUITE shadow-lint
    tools/lint/shadow-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE clobber-lint
+TEST:SUITE clobber-lint
    tools/lint/clobber-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE clobber-lint-fixtures
+TEST:SUITE clobber-lint-fixtures
    tools/lint/clobber-lint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE repl-lint
+TEST:SUITE repl-lint
    tools/repl-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE trust-lint
+TEST:SUITE trust-lint
    tools/trust-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE stale-status-lint
+TEST:SUITE stale-status-lint
    tools/stale-status-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE host-lint
+TEST:SUITE host-lint
    tools/host-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE parallel-agent-lint
+TEST:SUITE parallel-agent-lint
    tools/parallel-agent-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE filemap-lint
+TEST:SUITE filemap-lint
    tools/filemap-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE gate-stats
+TEST:SUITE gate-stats
    test/gate-stats-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE dot-dep-lint
+TEST:SUITE dot-dep-lint
    tools/dot-dep-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE dot-dep-lint-fixtures
+TEST:SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE maki-dep-lint
+TEST:SUITE maki-dep-lint
    tools/maki-dep-lint.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE maki-dep-lint-fixtures
+TEST:SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE text-foundation-fixtures
+TEST:SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE stdlib-manifest
+TEST:SUITE stdlib-manifest
    tools/stdlib-manifest-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE host-lint-fixtures
+TEST:SUITE host-lint-fixtures
    tools/host-lint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE json-file-cursor
+TEST:SUITE json-file-cursor
    tools/json-file-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE-IMGDUMP imgdump-compare
+TEST:SUITE imgdump-compare
    tools/imgdump-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE imagedisasm-tool
+TEST:SUITE imagedisasm-tool
    tools/imagedisasm-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tool-boundary-trust
+TEST:SUITE tool-boundary-trust
    tools/trust-lint-test.f
    tools/aot-call-report-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tool-boundary-check-repair
+TEST:SUITE tool-boundary-check-repair
    tools/check-all-errors-test.f
    tools/repair-packet-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tool-boundary-doc-public
+TEST:SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
    tools/stale-status-lint-test.f
    tools/repair-schema-doc-test.f
    tools/examples-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tool-boundary-lints
+TEST:SUITE tool-boundary-lints
    tools/repl-lint-test.f
    tools/diag-origin-test.f
    tools/aot-lint-test.f
@@ -107,86 +107,86 @@ TEST-SUITE tool-boundary-lints
    tools/duplicate-definition-lint-test.f
    tools/bundle-lib-test.f
    tools/json-only-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tool-boundary-typed-local
+TEST:SUITE tool-boundary-typed-local
    tools/typed-local-diff-lint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE check-cli-boundary
+TEST:SUITE check-cli-boundary
    tools/check-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE streaming-sha256
+TEST:SUITE streaming-sha256
    tools/sha256-file-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE content-key-cache
+TEST:SUITE content-key-cache
    lib/content-key-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tasking-primitive-smoke
+TEST:SUITE tasking-primitive-smoke
    test/atomics-smoke.f
    test/run-in-stack-smoke.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tasking-threads
+TEST:SUITE tasking-threads
    lib/task-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE string-helpers
+TEST:SUITE string-helpers
    lib/string-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ffi-abi
+TEST:SUITE ffi-abi
    lib/ffi-abi-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ffi-cabi
+TEST:SUITE ffi-cabi
    lib/ffi-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE float-parse
+TEST:SUITE float-parse
    lib/float-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE fmt-numbers
+TEST:SUITE fmt-numbers
    lib/fmt-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE float-sort
+TEST:SUITE float-sort
    lib/sort-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE float-stats
+TEST:SUITE float-stats
    lib/stats-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE hashmap
+TEST:SUITE hashmap
    lib/hashmap-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE prelude
+TEST:SUITE prelude
    lib/prelude-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE array-helpers
+TEST:SUITE array-helpers
    lib/array-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE table-stdlib
+TEST:SUITE table-stdlib
    lib/table-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE regex-stdlib
+TEST:SUITE regex-stdlib
    lib/regex-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE map-stdlib
+TEST:SUITE map-stdlib
    lib/map-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-stdlib
+TEST:SUITE ptx-stdlib
    lib/ptx/header-test.f
    lib/ptx/launch-test.f
    lib/ptx/tile-test.f
@@ -201,70 +201,71 @@ TEST-SUITE ptx-stdlib
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-saved-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-tile-loop-neg
+TEST:SUITE ptx-tile-loop-neg
    lib/ptx/tile-loop-neg-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-tile-smem-neg
+TEST:SUITE ptx-tile-smem-neg
    lib/ptx/tile-smem-neg-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-tile-acc-neg
+TEST:SUITE ptx-tile-acc-neg
    lib/ptx/tile-acc-neg-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-gemm-checked-neg
+TEST:SUITE ptx-gemm-checked-neg
    lib/ptx/gemm-checked-neg-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE ptx-toolchain
+TEST:SUITE ptx-toolchain
    tools/ptx/saxpy-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE-STDIN source-stdlib-stdin DATA
+TEST:SUITE-STDIN source-stdlib-stdin DATA
    lib/source-test.f -- stdin
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE argv-stdlib-mocks
+TEST:SUITE argv-stdlib-mocks
    lib/argv-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE argv-stdlib-script-args
+TEST:SUITE argv-stdlib-script-args
    lib/argv-test.f -- --json --label NAME --strict-signatures --all-errors
    --strict-boundary -o OUT -- file.f --literal
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE test-stdlib
-   lib/test-test.f
-;TEST-SUITE
+TEST:SUITE test-stdlib
+   lib/test/assert-test.f
+   lib/test/suite-test.f
+TEST:END-SUITE
 
-TEST-SUITE property-stdlib
+TEST:SUITE property-stdlib
    lib/property-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE date-helpers
+TEST:SUITE date-helpers
    tools/date-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE spawn-emitter-shape
+TEST:SUITE spawn-emitter-shape
    tools/spawn-emitter-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE c-call-emitter-shape
+TEST:SUITE c-call-emitter-shape
    tools/c-call-emitter-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE signature-scan-emitter-shape
+TEST:SUITE signature-scan-emitter-shape
    tools/signature-scan-emitter-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE compiler-dispatch-shape
+TEST:SUITE compiler-dispatch-shape
    tools/compiler-dispatch-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE tail-pure-fixtures
+TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/memory-test.f
    lib/vector-test.f
@@ -273,39 +274,38 @@ TEST-SUITE tail-pure-fixtures
    tools/asm-src-test.f
    tools/asm-checked-test.f
    tools/image-bytes-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE stdlib-source-default
+TEST:SUITE stdlib-source-default
    lib/source-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE stdlib-process-fixtures
+TEST:SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    lib/process-test.f
    lib/process-command-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE stdlib-runner-fixtures
-   lib/test-runner-test.f
-;TEST-SUITE
+TEST:SUITE stdlib-runner-fixtures
+   lib/test/runner-test.f
+TEST:END-SUITE
 
-TEST-SUITE stdlib-build-fixtures
+TEST:SUITE stdlib-build-fixtures
    lib/build-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE bootstrap-warm-image-fixtures
+TEST:SUITE bootstrap-warm-image-fixtures
    tools/warm-image-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE build-fixpoint-fixtures
+TEST:SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-TEST-SUITE hb-build-fixtures
+TEST:SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/codesign-test.f
-;TEST-SUITE
+TEST:END-SUITE
 
-GT-POOL-DRAIN
-SUITE-CLEANUP
-s" PASS: native lint/stdlib gate phase" type cr
+TEST:RUN
+s" PASS: native lint/stdlib test phase" type cr

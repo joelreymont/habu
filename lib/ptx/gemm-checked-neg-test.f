@@ -5,7 +5,7 @@
 \ located at 'loop'. This pins "the inline counted loop is genuinely checked - its body must
 \ be stack-neutral (the accumulator is loop-invariant)" as a reproducible regression. Load
 \ after the process libs (lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f)
-\ and lib/test.f.
+\ and lib/test.
 
 require lib/ptx/process-test-prelude.f
 

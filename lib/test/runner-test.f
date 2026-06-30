@@ -1,7 +1,7 @@
-\ test-runner-test.f - focused tests for lib/test-runner.f.
+\ runner-test.f - focused tests for lib/test/runner.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/test-runner.f
-\ lib/test-runner-test.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/test/runner.f
+\ lib/test/runner-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -11,7 +11,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require lib/test-runner.f
+require lib/test/runner.f
 
 create GTT-OK-PATH FS-PATH-CAP allot
 create GTT-FAIL-PATH FS-PATH-CAP allot

@@ -28,6 +28,7 @@ $7530 constant SMT-TIMEOUT-MS
 10 constant SMT-LF
 45 constant SMT-DASH
 48 constant SMT-ZERO
+47 constant SMT-SLASH
 58 constant SMT-COLON
 96 constant SMT-BEFORE-A
 123 constant SMT-AFTER-Z
@@ -257,12 +258,32 @@ variable SMT-J
    a u s" .f" LINT-ENDS-WITH? 0= IF 0 0= 0= exit THEN
    a 9 + u 11 - SMT-MODULE-NAME? ;
 
-: SMT-LIB-FILE? ( ptr u8 n -- bool ) {: a:ptr u :}
+: SMT-PATH-SEP? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   i 0 = IF 0 0= 0= exit THEN
+   i u 1- = IF 0 0= 0= exit THEN
+   a i 1- + c@ SMT-SLASH = IF 0 0= 0= exit THEN
+   0 0= ;
+
+: SMT-MODULE-PATH-CHAR? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}
+   a i + c@ {: c:n :}
+   c SMT-SLASH = IF a u i SMT-PATH-SEP? exit THEN
+   i 0 = IF c SMT-LOWER? exit THEN
+   a i 1- + c@ SMT-SLASH = IF c SMT-LOWER? exit THEN
+   c SMT-MODULE-TAIL? ;
+
+: SMT-MODULE-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF 0 0= 0= exit THEN
+   0 begin dup u < while
+      dup a u rot SMT-MODULE-PATH-CHAR? 0= IF drop 0 0= 0= exit THEN
+      1+
+   repeat drop 0 0= ;
+
+: SMT-LIB-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u SMT-CORE-FILE? IF 0 0= exit THEN
    u 7 < IF 0 0= 0= exit THEN
    a u s" lib/" LINT-STARTS-WITH? 0= IF 0 0= 0= exit THEN
    a u s" .f" LINT-ENDS-WITH? 0= IF 0 0= 0= exit THEN
-   a 4 + u 6 - SMT-MODULE-NAME? ;
+   a 4 + u 6 - SMT-MODULE-PATH? ;
 
 : SMT-KIND? ( ptr u8 n -- bool )
    2dup s" module" LINT-STR= IF 2drop 0 0= exit THEN
@@ -606,7 +627,7 @@ variable SMT-J
    SMT-FIELD-N @ SMT-FIELDS <> IF line s" expected 11 tab-separated columns" SMT-ROW-FINDING exit THEN
    a 0 SMT-FIELD$ s" 1" LINT-STR= 0= IF line s" schema_version must be 1" SMT-ROW-FINDING THEN
    a 1 SMT-FIELD$ SMT-MODULE-NAME? 0= IF line s" invalid module name " a 1 SMT-FIELD$ SMT-ROW-FINDING$ THEN
-   a 2 SMT-FIELD$ SMT-LIB-FILE? 0= IF line s" file must be a stable lib/<module>.f or src/core/<module>.f path" SMT-ROW-FINDING THEN
+   a 2 SMT-FIELD$ SMT-LIB-FILE? 0= IF line s" file must be a stable lib/*.f or src/core/*.f path" SMT-ROW-FINDING THEN
    a 3 SMT-FIELD$ SMT-KIND? 0= IF line s" kind must be module or word" SMT-ROW-FINDING THEN
    a 7 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" doc is required" SMT-ROW-FINDING THEN
    a 8 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" owner is required" SMT-ROW-FINDING THEN
@@ -648,13 +669,23 @@ variable SMT-J
    2dup s" .f" LINT-ENDS-WITH? 0= IF 2drop 0 0= 0= exit THEN
    s" -test.f" LINT-ENDS-WITH? 0= ;
 
-\ Coverage tracks only FLAT lib/<module>.f stdlib modules. Curated core prelude
-\ rows such as src/core/bytes.f are manifest-checked when listed, but not
-\ discovered by the lib walk. Nested sub-libraries (e.g. lib/ptx/) are a
-\ separate tier: trust-audited (trust-lint), type-checked via their own load
-\ paths, and unit-tested by their -test.f + the ptx-stdlib gate.
-: SMT-COLLECT-LIB-FILE ( ptr u8 n -- ) {: a:ptr u :}
-   a u SMT-LIB-SOURCE? a u SMT-LIB-FILE? and IF a u SMT-ADD-LIB-FILE THEN ;
+\ Coverage tracks stdlib modules: flat lib/<module>.f plus the TEST framework
+\ subpackage. Curated core rows and research sub-libraries such as lib/ptx/
+\ are manifest-checked when listed, but not discovered by this stdlib walk.
+: SMT-FLAT-LIB-FILE? ( ptr u8 n -- bool )
+   SMT-SLASH LINT-COUNT-CHAR 1 = ;
+
+: SMT-TEST-LIB-FILE? ( ptr u8 n -- bool )
+   s" lib/test/" LINT-STARTS-WITH? ;
+
+: SMT-STDLIB-COVERAGE-FILE? ( ptr u8 n -- bool )
+   2dup SMT-FLAT-LIB-FILE? IF 2drop 0 0= exit THEN
+   SMT-TEST-LIB-FILE? ;
+
+: SMT-COLLECT-LIB-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SMT-LIB-SOURCE? a u SMT-LIB-FILE? and a u SMT-STDLIB-COVERAGE-FILE? and IF
+      a u SMT-ADD-LIB-FILE
+   THEN ;
 
 : SMT-CHECK-LIB-COVERAGE ( -- )
    s" lib" [: SMT-COLLECT-LIB-FILE ;] WALK-FILES

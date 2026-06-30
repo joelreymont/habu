@@ -1,6 +1,6 @@
-\ gate-pool.f - checked bounded process pool for native gates.
+\ gate-pool.f - checked bounded process pool for native tests.
 \
-\ Load after lib/process-env.f and lib/test-runner.f.
+\ Load after lib/process-env.f and lib/test/runner.f.
 
 12 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
@@ -297,7 +297,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
    PID>N negate ;
 
 : GT-POOL-SPAWN-FAIL. ( idx ptr u8 n pid -- ) {: idx:idx path:ptr pathu:n pid:pid :}
-   s" FAIL: gate-pool spawn" type cr
+   s" FAIL: test pool spawn" type cr
    s" test" idx GT-POOL-LABEL$ GT-POOL-LINE$
    s" path" path pathu GT-POOL-LINE$
    s" raw" pid PID>N GT-POOL-LINE-N
@@ -326,7 +326,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
 
 : GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
    idx GT-POOL-DONE@ 0= if
-      s" gate-pool: fixed slot already active" type cr
+      s" test pool: fixed slot already active" type cr
       E-TBL-FIELD GT-POOL-THROW
    then
    idx GT-POOL-RESET-SLOT
@@ -442,7 +442,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
    idx GT-POOL-OUTCOME-LINE
    GT-POOL-KILL-ALL
    s" FAIL: " type idx GT-POOL-LABEL$ type cr
-   s" gate pool phase failed" 1 die ;
+   s" test pool phase failed" 1 die ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
    idx GT-POOL-PID@ PROC-WAIT-OUTCOME idx GT-POOL-CODE-PTR ! idx GT-POOL-KIND-PTR !
@@ -475,7 +475,7 @@ GT-POOL-PASS-HOOK-DEFAULT!
    idx GT-POOL-OUTCOME-LINE
    GT-POOL-KILL-ALL
    s" FAIL: " type idx GT-POOL-LABEL$ type cr
-   s" gate pool phase timed out" 1 die ;
+   s" test pool phase timed out" 1 die ;
 
 : GT-POOL-CHECK-TIMEOUTS ( -- )
    0 begin dup GT-POOL-MAX < while

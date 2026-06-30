@@ -1,5 +1,5 @@
-\ test-test.f - focused tests for lib/test.f.
-\ Run: bin/hb --load lib/test.f lib/test-test.f
+\ assert-test.f - focused tests for lib/test/assert.f through lib/test.f.
+\ Run: bin/hb --load lib/test.f lib/test/assert-test.f
 
 require lib/test.f
 

@@ -2,7 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and
-\ lib/test-runner.f, and lib/content-key.f.
+\ lib/test/runner.f, and lib/content-key.f.
 
 
 $40000 constant GE-SRC-CAP

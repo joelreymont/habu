@@ -1,4 +1,4 @@
-\ test-runner.f - checked native gate runner foundation.
+\ runner.f - checked native test runner foundation.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, and lib/process-argv.f.

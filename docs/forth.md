@@ -345,9 +345,9 @@ address arithmetic at the public boundary.
   checked DSL first. Giant `s"` literals, fragile escaping, and private byte
   emitters are bugs unless they are the tested boundary of that DSL.
 - **Readable DSLs execute the body they name.** Prefer forms such as
-  `[: ITEM ;] NAME-FILES` or `s" suite-name" TEST-SUITE ... ;TEST-SUITE` over
-  generic list wrappers. A generic `execute` layer needs higher-order effects the
-  checker may not model; direct row/body words keep the effect visible.
+  `[: ITEM ;] NAME-FILES` or `TEST:SUITE name ... TEST:END-SUITE` over generic
+  list wrappers. A generic `execute` layer needs higher-order effects the checker
+  may not model; direct row/body words keep the effect visible.
 - **Classification tables beat token ladders.** When a word becomes a long
   `dup`/`over` chain over token classes, move the classes into row/table data and
   factor named transition helpers. The tests should describe the table policy,
@@ -565,6 +565,54 @@ address arithmetic at the public boundary.
   each error/edge. A word without a test is unfinished.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
+- Test orchestration uses `lib/test.f`. The framework vocabulary is test
+  suite / test group / test; old gate/row wording is legacy only. Project
+  adapters provide setup/teardown, argv/env policy, filters, and process
+  execution; test files require their own dependencies. Test groups are named
+  and either parallel or sequential, and reports print the group/test name,
+  pass/fail state, and timing.
+- Put fixture helpers in a private package instead of global stems. A test file
+  may define a private package, install package-local helpers into `TEST:*`
+  hooks, define groups/tests, run once, assert counters, and close the package:
+
+```forth
+require lib/test.f
+
+package FEATURE-TEST
+
+variable RUN-N
+
+: RUNNER ( ptr u8 n -- )
+   2drop
+   1 RUN-N +! ;
+
+: INSTALL ( -- )
+   [: RUNNER ;] TEST:RUNNER! ;
+
+T-RESET
+INSTALL
+TEST:RESET
+
+TEST:GROUP-SEQUENTIAL smoke
+TEST:SUITE sample
+   feature-test.f -- arg
+TEST:END-SUITE
+TEST:END-GROUP
+
+TEST:RUN
+RUN-N @ 1 T=
+T-REPORT
+
+end-package
+```
+
+  `lib/test.f` is the public framework interface: `T*` words are assertions,
+  `TEST:SETUP!`/`TEST:TEARDOWN!`/`TEST:DRAIN!`/`TEST:ARGS-BEGIN!`/
+  `TEST:ARG+!`/`TEST:SELECT?!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
+  typed hooks, and `TEST:GROUP-PARALLEL`, `TEST:GROUP-SEQUENTIAL`,
+  `TEST:END-GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:END-SUITE`, and
+  `TEST:RUN` define and execute the suite. Do not publish helper globals like
+  `FOO-TEST-SETUP-N`; package scope is the namespace.
 - Assert the **specific** outcome: inside checked definitions use
   `[: WORD ;] TTHROWSQ` or another stack-preserving quotation `catch` and check
   the exact THROW code; top-level scripts that cannot push quotations may use

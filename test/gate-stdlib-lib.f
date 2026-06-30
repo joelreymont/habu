@@ -1,14 +1,13 @@
-\ gate-stdlib.f - checked runner for the default gate lint/stdlib phase.
+\ gate-stdlib.f - Habu-specific adapter for the native lint/stdlib test phase.
 \
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test-runner.f,
-\ test/gate-pool.f, and lib/content-key.f.
+\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test/runner.f,
+\ test/gate-pool.f, lib/test.f, and lib/content-key.f.
 
+require lib/test.f
 
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
-128 constant SUITE-NAME-CAP
-1024 constant SUITE-STDIN-CAP
 0 constant SUITE-ALL-ID
 1 constant SUITE-WARM-ID
 2 constant SUITE-LINT-ID
@@ -20,9 +19,6 @@
 8 constant SUITE-LINT-ARTIFACTS-ID
 9 constant SUITE-LINT-MANIFEST-ID
 
-variable SUITE-DONE
-create SUITE-LABEL-BUF SUITE-NAME-CAP allot
-create SUITE-STDIN-BUF SUITE-STDIN-CAP allot
 create SUITE-WARM-BUF FS-PATH-CAP allot
 create SUITE-WARM-TRUST-BUF FS-PATH-CAP allot
 create SUITE-WARM-CAND-BUF FS-PATH-CAP allot
@@ -33,8 +29,6 @@ create SUITE-WARM-STAMP-BUF FS-PATH-CAP allot
 create SUITE-KEY-HEX 80 allot
 create SUITE-STAMP-RD 80 allot
 variable SUITE-WARM-STAMP-U
-variable SUITE-LABEL-U
-variable SUITE-STDIN-U
 variable SUITE-WARM-U
 variable SUITE-WARM-TRUST-U
 variable SUITE-WARM-CAND-U
@@ -181,10 +175,6 @@ variable SUITE-TIMINGS
 
 : SUITE-ARG+ ( ptr u8 n -- )
     >LEN PROC-ARGV+ ;
-
-: SUITE-CHECK-CAP ( n n -- ) {: u:n cap:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   u cap > if E-STR-CAPACITY throw then ;
 
 : SUITE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
@@ -422,19 +412,11 @@ variable SUITE-TIMINGS
 : SUITE-CLEANUP ( -- )
    SUITE-OWN-ROOT @ if CLEANUP-RUN then ;
 
-: SUITE-PARSE-NAME ( -- ptr u8 n )
-   parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
-
-: SUITE-LABEL! ( ptr u8 n -- ) {: src:ptr u:n :}
-   u SUITE-NAME-CAP SUITE-CHECK-CAP
-   src SUITE-LABEL-BUF u BYTE-COPY
-   u SUITE-LABEL-U ! ;
-
 : SUITE-LABEL$ ( -- ptr u8 n )
-   SUITE-LABEL-BUF SUITE-LABEL-U @ ;
+   TEST:LABEL$ ;
 
 : SUITE-LABEL= ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   SUITE-LABEL$ a u STR= ;
+   a u TEST:LABEL= ;
 
 : SUITE-ALL? ( -- bool )
    SUITE-SLICE @ SUITE-ALL-ID = ;
@@ -545,34 +527,6 @@ variable SUITE-TIMINGS
    SUITE-TAIL? if SUITE-TRUE exit then
    SUITE-FALSE ;
 
-: SUITE-STDIN! ( ptr u8 n -- ) {: src:ptr u:n :}
-   u SUITE-STDIN-CAP SUITE-CHECK-CAP
-   src SUITE-STDIN-BUF u BYTE-COPY
-   u SUITE-STDIN-U ! ;
-
-: SUITE-STDIN$ ( -- ptr u8 n )
-   SUITE-STDIN-BUF SUITE-STDIN-U @ ;
-
-: SUITE-PARSE-LABEL ( -- )
-   SUITE-PARSE-NAME SUITE-LABEL! ;
-
-: SUITE-PARSE-STDIN ( -- )
-   SUITE-PARSE-NAME SUITE-STDIN! ;
-
-: SUITE-END? ( ptr u8 n -- bool )
-   s" ;TEST-SUITE" STR= ;
-
-: SUITE-PARSE-ARGS ( -- )
-   0 SUITE-DONE !
-   begin SUITE-DONE @ 0= while
-      parse-name dup 0= if 2drop E-FS-CAPACITY throw then
-      2dup SUITE-END? if
-         2drop -1 SUITE-DONE !
-      else
-         SUITE-ARG+
-      then
-   repeat ;
-
 : SUITE-TARGET-UNKNOWN ( -- )
    s" gate-stdlib: unknown target" SUITE-USAGE-RC die ;
 
@@ -611,37 +565,29 @@ variable SUITE-TIMINGS
    label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
-: TEST-SUITE ( -- )
-   SUITE-PARSE-LABEL
-   SUITE-HB
-   SUITE-PARSE-ARGS
-   SUITE-RUN? 0= if exit then
-   SUITE-LABEL$ SUITE-HB-RUN ;
-
-: TEST-SUITE-STDIN ( -- )
-   SUITE-PARSE-LABEL
-   SUITE-PARSE-STDIN
-   SUITE-HB
-   SUITE-PARSE-ARGS
-   SUITE-RUN? 0= if exit then
-   SUITE-STDIN$ SUITE-LABEL$ SUITE-HB-RUN-STDIN ;
-
-: TEST-SUITE-IMGDUMP ( -- )
-   SUITE-PARSE-LABEL
-   SUITE-HB
-   SUITE-PARSE-ARGS
-   SUITE-RUN? 0= if exit then
-   SUITE-LABEL$ SUITE-HB-RUN ;
-
 : SUITE-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    label labelu ms GS-SPAN ;
 
 : SUITE-INSTALL-POOL-HOOKS ( -- )
    [: SUITE-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
 
-: GATE-STDLIB-MAIN ( -- )
+: SUITE-SETUP ( -- )
    SUITE-CHECK-ARGS
    GT-RESET
    GT-POOL-RESET
    SUITE-INSTALL-POOL-HOOKS
    SUITE-WARM-PREPARE ;
+
+: SUITE-INSTALL-TEST-HOOKS ( -- )
+   [: SUITE-SETUP ;] TEST:SETUP!
+   [: SUITE-CLEANUP ;] TEST:TEARDOWN!
+   [: GT-POOL-DRAIN ;] TEST:DRAIN!
+   [: SUITE-HB ;] TEST:ARGS-BEGIN!
+   [: SUITE-ARG+ ;] TEST:ARG+!
+   [: SUITE-RUN? ;] TEST:SELECT?!
+   [: SUITE-HB-RUN ;] TEST:RUNNER!
+   [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
+
+: GATE-STDLIB-MAIN ( -- )
+   SUITE-INSTALL-TEST-HOOKS
+   TEST:RESET ;

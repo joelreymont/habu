@@ -31,7 +31,9 @@ Planned module files:
 - `lib/process-cwd.f`
 - `lib/argv.f`
 - `lib/test.f`
-- `lib/test-runner.f`
+- `lib/test/assert.f`
+- `lib/test/suite.f`
+- `lib/test/runner.f`
 - `lib/property.f`
 - `lib/build.f`
 - `lib/time.f`
@@ -1340,25 +1342,36 @@ BUILD-STEP-VALIDATE  ( ptr a -- )
 BUILD-STEP-RUN       ( ptr a -- n )
 ```
 
-`lib/test.f` assertions throw named test errors and keep one final report path;
+`lib/test.f` is the public checked test framework interface. It loads assertion
+words from `lib/test/assert.f` and publishes suite orchestration through package
+`TEST`. Assertion words throw named test errors and keep one final report path;
 they never mask assertion failures. `T-LABEL` attaches a bounded case label to
 the next assertion, and successful or failed assertions clear the label after
 printing details. `TTHROWSQ` takes a stack-preserving quotation plus an expected
 throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
+
+`TEST:*` defines reusable suite/group/test orchestration. Project adapters
+install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
+`TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:SELECT?!`, `TEST:RUNNER!`, and
+`TEST:STDIN-RUNNER!`; test files declare named parallel or sequential groups
+with `TEST:GROUP-PARALLEL` / `TEST:GROUP-SEQUENTIAL`, define `TEST:SUITE` or
+`TEST:SUITE-STDIN` entries, close each entry with `TEST:END-SUITE`, and execute
+once with `TEST:RUN`. Fixture helper words should live in a private package, not
+global stemmed names.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked
 source, but pure generators and shrink predicates remain checked helpers.
-`lib/test-runner.f` layers reusable gate-fixture helpers on top of `lib/fs.f`,
+`lib/test/runner.f` layers reusable process-fixture helpers on top of `lib/fs.f`,
 `lib/fs-mutate.f`, `lib/process.f`, and `lib/process-argv.f`. It creates a
 cleanup-tracked temporary root, runs prepared argv captures with bounded stdout
 and stderr buffers, classifies exit/signal/timeout outcomes, and accumulates
-named failures so gate scripts can report all local expectation failures before
+named failures so test scripts can report all local expectation failures before
 exiting. Test runner paths are counted byte strings; stdout/stderr assertions
 never truncate silently because process capture still enforces bounded output.
-Gate scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
+Test scripts should call `GT-PROGRESS-RUN` immediately before long subchecks and
 `GT-PROGRESS-PASS` after successful completion. Long poll loops should cap their
 poll timeout with `GT-PROGRESS-SLICE-MS` and call `GT-PROGRESS-WAIT` on quiet
 polls so silent children still produce regular heartbeat lines. The progress

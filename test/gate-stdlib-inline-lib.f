@@ -329,7 +329,8 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 : GSI-TAIL-FAST ( -- )
    s" stdlib/tail-fast" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TAIL-FAST-SETUP
-   s" lib/test-test.f" GSI-INCLUDE
+   s" lib/test/assert-test.f" GSI-INCLUDE
+   s" lib/test/suite-test.f" GSI-INCLUDE
    s" lib/property-test.f" GSI-INCLUDE
    s" tools/date-test.f" GSI-INCLUDE
    s" tools/spawn-emitter-test.f" GSI-INCLUDE
@@ -357,7 +358,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 : GSI-TAIL-RUNNER ( -- )
    s" stdlib/tail-runner" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP
-   s" lib/test-runner-test.f" GSI-INCLUDE ;
+   s" lib/test/runner-test.f" GSI-INCLUDE ;
 
 : GSI-TAIL-BUILD ( -- )
    s" stdlib/tail-build" GSI-GROUP-SEQ GSI-GROUP-HEADER

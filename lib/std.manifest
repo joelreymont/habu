@@ -693,84 +693,105 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	word	ARGV-POSZ	(n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument as pathz
 1	argv	lib/argv.f	word	ARGV-OUTZ	(-- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path as pathz
 1	argv	lib/argv.f	word	ARGV-INIT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	initialize argv parser defaults
-1	test	lib/test.f	module			lib/test-test.f	docs/stdlib.md	stdlib-test	active	checked assertions fixture helpers and final report policy
-1	test	lib/test.f	word	T-RESET	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	reset assertion counters
-1	test	lib/test.f	word	T-CASES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion case count
-1	test	lib/test.f	word	T-FAILURES	(-- n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return assertion failure count
-1	test	lib/test.f	word	T-NEXT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	increment assertion case count
-1	test	lib/test.f	word	T-LABEL-CLEAR	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	clear current assertion label
-1	test	lib/test.f	word	T-LABEL$	(-- ptr u8 n)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	return current assertion label bytes
-1	test	lib/test.f	word	T-LABEL	(ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	set current assertion label
-1	test	lib/test.f	word	T-LABEL.	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	print current assertion label when present
-1	test	lib/test.f	word	T-FAIL+	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	increment assertion failure count
-1	test	lib/test.f	word	T-FAIL	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure
-1	test	lib/test.f	word	T-ASSERT-DETAIL	(ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure with detail text
-1	test	lib/test.f	word	T-ASSERT	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert a Forth boolean
-1	test	lib/test.f	word	T=	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric equality
-1	test	lib/test.f	word	T<>	(n n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert numeric inequality
-1	test	lib/test.f	word	TTRUE	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert true flag
-1	test	lib/test.f	word	TFALSE	(bool --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert false flag
-1	test	lib/test.f	word	T-STR=	(ptr u8 n ptr u8 n -- bool)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	compare counted byte strings for tests
-1	test	lib/test.f	word	T$=	(ptr u8 n ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string equality
-1	test	lib/test.f	word	T$<>	(ptr u8 n ptr u8 n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string inequality
-1	test	lib/test.f	word	T-REPORT	(--)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	report assertion summary and exit on failures
-1	test	lib/test.f	word	TTHROWS	(a n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert execution token throws expected code
-1	test	lib/test.f	word	TTHROWSQ	([ -- ] n --)	lib/test-test.f	docs/stdlib.md	stdlib-test	published	assert stack-preserving quotation throws expected code
-1	test-runner	lib/test-runner.f	module			lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
-1	test-runner	lib/test-runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
-1	test-runner	lib/test-runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell
-1	test-runner	lib/test-runner.f	word	GT-FAIL-NAME$	(n -- ptr u8 n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one recorded failure name
-1	test-runner	lib/test-runner.f	word	GT-RESET	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	reset gate runner capture and failure state
-1	test-runner	lib/test-runner.f	word	GT-ROOT	(-- ptr u8 n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return current temporary gate root
-1	test-runner	lib/test-runner.f	word	GT-OUT$	(-- ptr u8 n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last captured stdout bytes
-1	test-runner	lib/test-runner.f	word	GT-ERR$	(-- ptr u8 n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last captured stderr bytes
-1	test-runner	lib/test-runner.f	word	GT-FAILURES	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return aggregate failure count
-1	test-runner	lib/test-runner.f	word	GT-EXPECT-ROOT	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	require an active temporary gate root
-1	test-runner	lib/test-runner.f	word	GT-COPY-ROOT!	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	store a checked temporary gate root path
-1	test-runner	lib/test-runner.f	word	GT-START	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	reset state and create a cleanup-tracked temporary root
-1	test-runner	lib/test-runner.f	word	GT-CLEANUP	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run cleanup for the current gate root
-1	test-runner	lib/test-runner.f	word	GT-PATH	(ptr u8 n ptr u8 -- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	join a relative fixture name under the gate root
-1	test-runner	lib/test-runner.f	word	GT-FAIL+	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record one named aggregate failure
-1	test-runner	lib/test-runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
-1	test-runner	lib/test-runner.f	word	GT-STORE-RUN	(len len n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store one captured process outcome
-1	test-runner	lib/test-runner.f	word	GT-CAPTURE-STORE	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store the current low-level process capture outcome
-1	test-runner	lib/test-runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
-1	test-runner	lib/test-runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout
-1	test-runner	lib/test-runner.f	word	GT-CAPTURE-DRAIN	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready stdout and stderr into the gate buffers
-1	test-runner	lib/test-runner.f	word	GT-LINE-FLUSH-U	(ptr u8 n -- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return bytes through the last complete newline in a buffer
-1	test-runner	lib/test-runner.f	word	GT-WRITE-FD	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	write all bytes to one file descriptor or throw
-1	test-runner	lib/test-runner.f	word	GT-FLUSH-LINES-FD	(n ptr u8 ptr a --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete lines from a mutable buffer and retain its trailing fragment
-1	test-runner	lib/test-runner.f	word	GT-FLUSH-REMAINDER-FD	(n ptr u8 ptr a --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush a mutable buffer's final trailing fragment
-1	test-runner	lib/test-runner.f	word	GT-CAPTURE-FLUSH-LINES	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete captured stdout and stderr lines to their file descriptors
-1	test-runner	lib/test-runner.f	word	GT-CAPTURE-FLUSH-FINAL	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush final captured stdout and stderr fragments to their file descriptors
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-RUN	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress start line and record its start time
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-ELAPSED-MS	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return elapsed milliseconds since the current progress start
-1	test-runner	lib/test-runner.f	word	GT-U-TYPE	(n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print an unsigned integer without a trailing newline for progress lines
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-DUE?	(-- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	test whether the progress heartbeat interval has elapsed
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-WAIT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a heartbeat wait line when a long child remains quiet
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-SLICE-MS	(-- ms)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return the next poll timeout capped to the heartbeat interval
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-TIMEOUT?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out progress capture or print a heartbeat wait line
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-TIMEOUT?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out stdin progress capture or print a heartbeat wait line
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-READY	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output and report progress
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-READY-FLUSH	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output flush lines and report progress
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-STEP?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one non-stdin heartbeat capture step
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-STEP-FLUSH?	(ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one flushing heartbeat capture step
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-READY	(ptr u8 len ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drive stdin drain ready captured output and report progress
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-STEP?	(ptr u8 len ptr u8 n -- bool)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one stdin heartbeat capture step
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop into gate buffers
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-CAPTURE-FLUSH	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop and flush child output lines
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-STDIN-CAPTURE	(ptr u8 len ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware stdin capture loop into gate buffers
-1	test-runner	lib/test-runner.f	word	GT-PROGRESS-PASS	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress pass line with elapsed milliseconds
-1	test-runner	lib/test-runner.f	word	GT-RC@	(-- n)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last outcome as shell-style rc
-1	test-runner	lib/test-runner.f	word	GT-RC=	(n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc equals an expected value
-1	test-runner	lib/test-runner.f	word	GT-RC-NONZERO	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc is nonzero
-1	test-runner	lib/test-runner.f	word	GT-TIMEOUT	(ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last outcome was timeout
-1	test-runner	lib/test-runner.f	word	GT-STDOUT=	(ptr u8 n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stdout equals expected bytes
-1	test-runner	lib/test-runner.f	word	GT-STDERR=	(ptr u8 n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr equals expected bytes
-1	test-runner	lib/test-runner.f	word	GT-STDOUT-HAS	(ptr u8 n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stdout contains expected bytes
-1	test-runner	lib/test-runner.f	word	GT-STDERR-HAS	(ptr u8 n ptr u8 n --)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr contains expected bytes
-1	test-runner	lib/test-runner.f	word	GT-REPORT-FAILS	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print aggregate failure names
-1	test-runner	lib/test-runner.f	word	GT-REPORT	(--)	lib/test-runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print gate runner summary and exit on failures
+1	test	lib/test.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertions plus TEST package suite framework and final report policy
+1	test-assert	lib/test/assert.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertion primitives loaded by the test facade
+1	test-suite	lib/test/suite.f	module			lib/test/suite-test.f	docs/stdlib.md	stdlib-test	active	TEST package suite group test framework loaded by the test facade
+1	test	lib/test/assert.f	word	T-RESET	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	reset assertion counters
+1	test	lib/test/assert.f	word	T-CASES	(-- n)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	return assertion case count
+1	test	lib/test/assert.f	word	T-FAILURES	(-- n)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	return assertion failure count
+1	test	lib/test/assert.f	word	T-NEXT	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	increment assertion case count
+1	test	lib/test/assert.f	word	T-LABEL-CLEAR	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	clear current assertion label
+1	test	lib/test/assert.f	word	T-LABEL$	(-- ptr u8 n)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	return current assertion label bytes
+1	test	lib/test/assert.f	word	T-LABEL	(ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	set current assertion label
+1	test	lib/test/assert.f	word	T-LABEL.	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	print current assertion label when present
+1	test	lib/test/assert.f	word	T-FAIL+	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	increment assertion failure count
+1	test	lib/test/assert.f	word	T-FAIL	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure
+1	test	lib/test/assert.f	word	T-ASSERT-DETAIL	(ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure with detail text
+1	test	lib/test/assert.f	word	T-ASSERT	(bool --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert a Forth boolean
+1	test	lib/test/assert.f	word	T=	(n n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert numeric equality
+1	test	lib/test/assert.f	word	T<>	(n n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert numeric inequality
+1	test	lib/test/assert.f	word	TTRUE	(bool --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert true flag
+1	test	lib/test/assert.f	word	TFALSE	(bool --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert false flag
+1	test	lib/test/assert.f	word	T-STR=	(ptr u8 n ptr u8 n -- bool)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	compare counted byte strings for tests
+1	test	lib/test/assert.f	word	T$=	(ptr u8 n ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string equality
+1	test	lib/test/assert.f	word	T$<>	(ptr u8 n ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert counted byte-string inequality
+1	test	lib/test/assert.f	word	T-REPORT	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	report assertion summary and exit on failures
+1	test	lib/test/assert.f	word	TTHROWS	(a n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert execution token throws expected code
+1	test	lib/test/assert.f	word	TTHROWSQ	([ -- ] n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert stack-preserving quotation throws expected code
+1	test	lib/test/suite.f	word	TEST:SETUP!	([ -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install suite setup hook
+1	test	lib/test/suite.f	word	TEST:TEARDOWN!	([ -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install suite teardown hook
+1	test	lib/test/suite.f	word	TEST:DRAIN!	([ -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install suite drain hook
+1	test	lib/test/suite.f	word	TEST:ARGS-BEGIN!	([ -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install per-test argv reset hook
+1	test	lib/test/suite.f	word	TEST:ARG+!	([ ptr u8 n -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install per-argument feed hook
+1	test	lib/test/suite.f	word	TEST:SELECT?!	([ -- bool ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install test selection predicate hook
+1	test	lib/test/suite.f	word	TEST:RUNNER!	([ ptr u8 n -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install file test runner hook
+1	test	lib/test/suite.f	word	TEST:STDIN-RUNNER!	([ ptr u8 n ptr u8 n -- ] --)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	install stdin test runner hook
+1	test	lib/test/suite.f	word	TEST:DEFAULTS	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	restore default no-op suite hooks
+1	test	lib/test/suite.f	word	TEST:RESET	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	clear suite definitions and restore default group
+1	test	lib/test/suite.f	word	TEST:LABEL$	(-- ptr u8 n)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	return current test label
+1	test	lib/test/suite.f	word	TEST:LABEL=	(ptr u8 n -- bool)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	compare against current test label
+1	test	lib/test/suite.f	word	TEST:GROUP-PARALLEL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named parallel test group
+1	test	lib/test/suite.f	word	TEST:GROUP-SEQUENTIAL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named sequential test group
+1	test	lib/test/suite.f	word	TEST:END-GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test group
+1	test	lib/test/suite.f	word	TEST:SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named file test
+1	test	lib/test/suite.f	word	TEST:SUITE-STDIN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named stdin file test
+1	test	lib/test/suite.f	word	TEST:END-SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
+1	test	lib/test/suite.f	word	TEST:RUN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	run configured setup tests drain and teardown
+1	test-runner	lib/test/runner.f	module			lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
+1	test-runner	lib/test/runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
+1	test-runner	lib/test/runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell
+1	test-runner	lib/test/runner.f	word	GT-FAIL-NAME$	(n -- ptr u8 n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one recorded failure name
+1	test-runner	lib/test/runner.f	word	GT-RESET	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	reset gate runner capture and failure state
+1	test-runner	lib/test/runner.f	word	GT-ROOT	(-- ptr u8 n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return current temporary gate root
+1	test-runner	lib/test/runner.f	word	GT-OUT$	(-- ptr u8 n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last captured stdout bytes
+1	test-runner	lib/test/runner.f	word	GT-ERR$	(-- ptr u8 n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last captured stderr bytes
+1	test-runner	lib/test/runner.f	word	GT-FAILURES	(-- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return aggregate failure count
+1	test-runner	lib/test/runner.f	word	GT-EXPECT-ROOT	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	require an active temporary gate root
+1	test-runner	lib/test/runner.f	word	GT-COPY-ROOT!	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	store a checked temporary gate root path
+1	test-runner	lib/test/runner.f	word	GT-START	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	reset state and create a cleanup-tracked temporary root
+1	test-runner	lib/test/runner.f	word	GT-CLEANUP	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run cleanup for the current gate root
+1	test-runner	lib/test/runner.f	word	GT-PATH	(ptr u8 n ptr u8 -- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	join a relative fixture name under the gate root
+1	test-runner	lib/test/runner.f	word	GT-FAIL+	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record one named aggregate failure
+1	test-runner	lib/test/runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
+1	test-runner	lib/test/runner.f	word	GT-STORE-RUN	(len len n n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store one captured process outcome
+1	test-runner	lib/test/runner.f	word	GT-CAPTURE-STORE	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store the current low-level process capture outcome
+1	test-runner	lib/test/runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
+1	test-runner	lib/test/runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout
+1	test-runner	lib/test/runner.f	word	GT-CAPTURE-DRAIN	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready stdout and stderr into the gate buffers
+1	test-runner	lib/test/runner.f	word	GT-LINE-FLUSH-U	(ptr u8 n -- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return bytes through the last complete newline in a buffer
+1	test-runner	lib/test/runner.f	word	GT-WRITE-FD	(n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	write all bytes to one file descriptor or throw
+1	test-runner	lib/test/runner.f	word	GT-FLUSH-LINES-FD	(n ptr u8 ptr a --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete lines from a mutable buffer and retain its trailing fragment
+1	test-runner	lib/test/runner.f	word	GT-FLUSH-REMAINDER-FD	(n ptr u8 ptr a --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush a mutable buffer's final trailing fragment
+1	test-runner	lib/test/runner.f	word	GT-CAPTURE-FLUSH-LINES	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush complete captured stdout and stderr lines to their file descriptors
+1	test-runner	lib/test/runner.f	word	GT-CAPTURE-FLUSH-FINAL	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	flush final captured stdout and stderr fragments to their file descriptors
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-RUN	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress start line and record its start time
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-ELAPSED-MS	(-- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return elapsed milliseconds since the current progress start
+1	test-runner	lib/test/runner.f	word	GT-U-TYPE	(n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print an unsigned integer without a trailing newline for progress lines
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-DUE?	(-- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	test whether the progress heartbeat interval has elapsed
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-WAIT	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a heartbeat wait line when a long child remains quiet
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-SLICE-MS	(-- ms)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	return the next poll timeout capped to the heartbeat interval
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-TIMEOUT?	(ptr u8 n -- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out progress capture or print a heartbeat wait line
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-STDIN-TIMEOUT?	(ptr u8 n -- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	reap a timed-out stdin progress capture or print a heartbeat wait line
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-READY	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output and report progress
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-READY-FLUSH	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drain ready captured output flush lines and report progress
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-STEP?	(ptr u8 n -- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one non-stdin heartbeat capture step
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-STEP-FLUSH?	(ptr u8 n -- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one flushing heartbeat capture step
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-STDIN-READY	(ptr u8 len ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	drive stdin drain ready captured output and report progress
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-STDIN-STEP?	(ptr u8 len ptr u8 n -- bool)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run one stdin heartbeat capture step
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop into gate buffers
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-CAPTURE-FLUSH	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware capture loop and flush child output lines
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-STDIN-CAPTURE	(ptr u8 len ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	run a progress-aware stdin capture loop into gate buffers
+1	test-runner	lib/test/runner.f	word	GT-PROGRESS-PASS	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print a gate progress pass line with elapsed milliseconds
+1	test-runner	lib/test/runner.f	word	GT-RC@	(-- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return last outcome as shell-style rc
+1	test-runner	lib/test/runner.f	word	GT-RC=	(n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc equals an expected value
+1	test-runner	lib/test/runner.f	word	GT-RC-NONZERO	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last rc is nonzero
+1	test-runner	lib/test/runner.f	word	GT-TIMEOUT	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last outcome was timeout
+1	test-runner	lib/test/runner.f	word	GT-STDOUT=	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stdout equals expected bytes
+1	test-runner	lib/test/runner.f	word	GT-STDERR=	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr equals expected bytes
+1	test-runner	lib/test/runner.f	word	GT-STDOUT-HAS	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stdout contains expected bytes
+1	test-runner	lib/test/runner.f	word	GT-STDERR-HAS	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr contains expected bytes
+1	test-runner	lib/test/runner.f	word	GT-REPORT-FAILS	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print aggregate failure names
+1	test-runner	lib/test/runner.f	word	GT-REPORT	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print gate runner summary and exit on failures
 1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	active	deterministic PRNG generators shrinking and audited evaluate boundary
 1	property	lib/property.f	word	PROP-CHECK-SEED	(n --)	lib/property-test.f	docs/stdlib.md	stdlib-property	published	validate a deterministic PRNG seed
 1	property	lib/property.f	word	PROP-CHECK-COUNT	(n --)	lib/property-test.f	docs/stdlib.md	stdlib-property	published	validate a property run count
@@ -1040,64 +1061,19 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	report	lib/report.f	word	TBL-CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
-1	task	lib/task.f	word	TASK-TCB-LAYOUT-CHECK	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate task control block layout constants
-1	task	lib/task.f	word	TASK-ALIGN8	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	align dictionary allocation to an 8-byte boundary
-1	task	lib/task.f	word	TASK-LIB-PATH	(-- ptr u8)	lib/task-test.f	docs/threads.md	stdlib-task	active	select libc or libSystem path for pthread symbols
-1	task	lib/task.f	word	TASK-OPEN	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	open the host C runtime for tasking symbols
-1	task	lib/task.f	word	TASK-SYM	(ptr u8 -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	resolve a required tasking symbol
-1	task	lib/task.f	word	TASK-CFUNS	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	resolve tasking C function pointers
-1	task	lib/task.f	word	TASK-RC0	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	require a zero pthread return code
-1	task	lib/task.f	word	TASK-CHECK-SIZE	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate a requested task stack size
-1	task	lib/task.f	word	TASK-STATE@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a task state cell
-1	task	lib/task.f	word	TASK-STATE!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a task state cell
-1	task	lib/task.f	word	TASK-LIVE+	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	increment live task count
-1	task	lib/task.f	word	TASK-LIVE-	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	decrement live task count
-1	task	lib/task.f	word	TASK-MUNMAP-SPAN	(ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	unmap one task-owned memory span
-1	task	lib/task.f	word	TASK-RELEASE-MEM	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	release stack and region memory for a task
-1	task	lib/task.f	word	TASK-COPY-CELL	(ptr a ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	copy one runtime cell into a task region
-1	task	lib/task.f	word	TASK-PTR-SLOT	(ptr a n -- ptr ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a pointer-valued task region slot
-1	task	lib/task.f	word	TASK-PTR!	(ptr a ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	store a pointer-valued task region slot
-1	task	lib/task.f	word	TASK-PTR@	(ptr a n -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a pointer-valued task region slot
-1	task	lib/task.f	word	TASK-REGION-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	initialize a task runtime region
-1	task	lib/task.f	word	TASK-CONSTRUCTED?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	test whether a task has allocated runtime memory
-1	task	lib/task.f	word	CONSTRUCT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
-1	task	lib/task.f	word	TASK-PTHREAD-CREATE-RC	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	call pthread_create for a prepared task
-1	task	lib/task.f	word	TASK-PTHREAD-JOIN-CALL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	join a pthread and require success
-1	task	lib/task.f	word	TASK-ENTRY-NEEDED?	(-- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	test whether the shared task trampoline is built
-1	task	lib/task.f	word	A64-LDRX	(n n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 ldr x instruction for the task trampoline
-1	task	lib/task.f	word	A64-STRX	(n n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 str x instruction for the task trampoline
-1	task	lib/task.f	word	A64-MOVZ	(n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 movz instruction for the task trampoline
-1	task	lib/task.f	word	A64-BLR	(n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 blr instruction for the task trampoline
-1	task	lib/task.f	word	TASK-PATCH	(n n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	patch one task trampoline instruction
-1	task	lib/task.f	word	TASK-ENTRY-BUILD	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	build the shared task entry trampoline
-1	task	lib/task.f	word	TASK-READY	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	ensure task symbols and trampoline are ready
-1	task	lib/task.f	word	TASK-JOIN-RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	join a completed task and release its memory
-1	task	lib/task.f	word	ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
-1	task	lib/task.f	word	TASK-SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer
-1	task	lib/task.f	word	TASK-SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer as a cell
-1	task	lib/task.f	word	TASK-RC>EXIT	(n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	normalize a worker throw code to process exit status
-1	task	lib/task.f	word	TASK-RUNNER	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	run a task XT and fail the process on uncaught throws
-1	task	lib/task.f	word	TASK-STOP@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a task stop request flag
-1	task	lib/task.f	word	TASK-STOP!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a task stop request flag
-1	task	lib/task.f	word	PAUSE	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	yield the current task and honor stop requests
-1	task	lib/task.f	word	HALT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	request that a task stop
-1	task	lib/task.f	word	TASK-KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	private implementation for TASK:KILL
-1	task	lib/task.f	word	TASK-DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	private implementation for TASK:DONE?
-1	task	lib/task.f	word	#USER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the next per-task user storage offset
-1	task	lib/task.f	word	USER-ROOM	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate per-task user storage capacity
-1	task	lib/task.f	word	HIS	(ptr a ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	translate a user variable address into another task region
-1	task	lib/task.f	word	FACILITY-OWNER	(ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a facility owner cell
-1	task	lib/task.f	word	FACILITY-MUTEX	(ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a facility pthread mutex
-1	task	lib/task.f	word	TASK-OWNER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current facility owner token
-1	task	lib/task.f	word	FACILITY-OWNER@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a facility owner token
-1	task	lib/task.f	word	FACILITY-OWNER!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a facility owner token
-1	task	lib/task.f	word	FACILITY-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	initialize a pthread mutex facility
-1	task	lib/task.f	word	GET	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	lock a facility
-1	task	lib/task.f	word	RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	unlock a facility
-1	task	lib/task.f	word	TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
-1	task	lib/task.f	word	SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer
-1	task	lib/task.f	word	SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer as a cell
-1	task	lib/task.f	word	KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	join or release a task and return it to empty state
-1	task	lib/task.f	word	DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	published	test whether a task has finished
-1	task	lib/task.f	word	+USER	(n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	define task-local user storage
-1	task	lib/task.f	word	FACILITY	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	define pthread mutex storage
+1	task	lib/task.f	word	TASK:TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
+1	task	lib/task.f	word	TASK:CONSTRUCT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
+1	task	lib/task.f	word	TASK:ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
+1	task	lib/task.f	word	TASK:SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer
+1	task	lib/task.f	word	TASK:SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer as a cell
+1	task	lib/task.f	word	TASK:PAUSE	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	yield the current task and honor stop requests
+1	task	lib/task.f	word	TASK:HALT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	request that a task stop
+1	task	lib/task.f	word	TASK:KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	join or release a task and return it to empty state
+1	task	lib/task.f	word	TASK:DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	published	test whether a task has finished
+1	task	lib/task.f	word	TASK:#USER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the next per-task user storage offset
+1	task	lib/task.f	word	TASK:+USER	(n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	define task-local user storage
+1	task	lib/task.f	word	TASK:HIS	(ptr a ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	translate a user variable address into another task region
+1	task	lib/task.f	word	TASK:FACILITY	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	define pthread mutex storage
+1	task	lib/task.f	word	TASK:FACILITY-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	initialize a pthread mutex facility
+1	task	lib/task.f	word	TASK:GET	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	lock a facility
+1	task	lib/task.f	word	TASK:RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	unlock a facility

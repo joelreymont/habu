@@ -69,7 +69,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   exact THROW code.
 
 ## 7. Run the gate
-- `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f test/gate-pool.f test/run.f` — habu-native, no gforth. Must be green.
+- `bin/hb --load lib/errors.f lib/string.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/test/runner.f test/gate-pool.f test/run.f` — habu-native, no gforth. Must be green.
 - If `bin/hb` is missing, install a trusted native seed with
   `tools/seed.sh /path/to/hb-seed`; the seed immediately rebuilds current source
   through the native build-fixpoint installer.

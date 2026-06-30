@@ -38,6 +38,9 @@ lesson — keep the specific word/code/path, cut the prose.
   public spelling should be `TASK:KILL`/`TASK:DONE?`, not global-style
   `TASK-KILL`/`TASK-DONE?`. Keep implementation helpers private and put the
   caller-facing surface in the `public` section.
+- **Test fixture state belongs in a package:** focused framework tests should use
+  a private package (`package FEATURE-TEST`) with short private names instead of
+  global stems such as `TST-*`; only the public framework API is qualified.
 - **Core byte helpers are not string-library setup:** `lib/ffi-abi.f` used
   `BYTE-COPY`, so `include lib/ffi.f` failed unless `lib/string.f` happened to
   be loaded first. Small primitive helpers used across unrelated libraries
@@ -163,6 +166,9 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Test framework and project policy are separate:** `lib/test.f` owns the
+  reusable suite/group/test mechanics and setup/teardown hooks; Habu-specific
+  warm images, filters, and process argv live in the Habu test adapter.
 - **No-binary bootstrap is its own gate path:** Gforth runs `bootstrap/cg/forth.fs`,
   so Habu typed locals such as `done:label` are literal Gforth names and break
   codegen. The bootstrap data region must also fit static checker state
@@ -636,10 +642,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
   cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
   by `tools/filemap-lint.f`, so RCA starts with existing tools.
-- **Focused lint/check reruns copy the gate load list:** lint tools have non-obvious
+- **Focused lint/check reruns copy the test load list:** lint tools have non-obvious
   deps (`tools/date.f`, `lib/memory.f`, `lib/vector.f`, `tools/lint/intern.f`).
-  Copy the `TEST-SUITE` list from `test/gate-stdlib.f` or the tool header instead
-  of reconstructing from memory.
+  Copy the `TEST:SUITE` entry list from `test/gate-stdlib-cases.f` or the tool
+  header instead of reconstructing from memory.
 - **Use the current gate command, not stale handoffs:** after the Darwin spawn
   F04 macOS validation, the old handoff gate without `test/gate-pool.f` exited at
   `GT-POOL-START`; the `docs/bootstrap.md` command with
@@ -669,7 +675,7 @@ lesson — keep the specific word/code/path, cut the prose.
   `U.0`/`F.N`). Registering a new lib = `std.manifest` rows for every public
   colon word (match `tools/public-signatures.f` output *exactly* —
   `TRUSTED:`/constants/`.0`-style names are NOT extracted, so they get no row), a
-  `FILEMAP.md` row, a `gate-stdlib.f` `TEST-SUITE`, and `TRUSTED.md` rows for any
+  `FILEMAP.md` row, a `TEST:SUITE` entry, and `TRUSTED.md` rows for any
   `TRUSTED:`. The doc-contract check is a curated spot-list, not per-module.
 - **Warm image entries cannot hide dependencies behind include:** a normal
   `tools/check.f` can `include tools/check-core.f`, but warm images load entry
@@ -836,8 +842,8 @@ lesson — keep the specific word/code/path, cut the prose.
   don't disable checking themselves; put `0 set-check` in the harness.
 - **`--load` leaves stdin as tool data:** so a post-load probe piped to fd0 doesn't
   run — put capacity probes in an explicit loaded source file when measuring
-  `here`/metadata. Gate load lists factor into `TEST-SUITE … ;TEST-SUITE` blocks
-  with short lines (long physical lines hit the reader buffer).
+  `here`/metadata. Test load lists factor into `TEST:SUITE … TEST:END-SUITE`
+  blocks with short lines (long physical lines hit the reader buffer).
 - **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output;
   drive a pty directly and poll for exit when testing prompt, raw mode, history,
   Ctrl-C/Ctrl-D, async termination.
@@ -1039,7 +1045,7 @@ lesson — keep the specific word/code/path, cut the prose.
   full normalized tokens (returning on first shared whitespace made `n --` equal
   `n -- n`).
 - **Capacity-sensitive bundles:** keep narrow source-shape/fixture DSLs in their own
-  small `TEST-SUITE` and task-specific byte/source builders in the owning
+  small `TEST:SUITE` and task-specific byte/source builders in the owning
   test/driver until multiple users prove shared surface — appending to large
   live-driver bundles surfaces as an unrelated rc 76 capacity failure. Load
   transitive deps in child bundles (`lib/build.f` needs `lib/process.f` for
@@ -1060,7 +1066,7 @@ lesson — keep the specific word/code/path, cut the prose.
   print label-only wait lines, keep child stdout/stderr for failures. Progress
   must exist at every blocking layer — a top-level `PROC-WAIT-RC` blinds the user even
   if children print heartbeats.
-- **Gate heartbeat capture has one owner:** `lib/test-runner.f` owns
+- **Gate heartbeat capture has one owner:** `lib/test/runner.f` owns
   progress-aware drain/flush/stdin capture. Gate files set up phases and
   assertions only; direct `PROC-PFD`/poll loops there recreate process debt.
 - **Habu-spawned `hb` children need explicit env:** `RUN-ARGV-CAPTURE` doesn't

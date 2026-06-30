@@ -5,7 +5,7 @@
 \ pins the "an unfinalized accumulator cannot be stored to global" soundness rule (acc<>
 \ never unifies with tile<>) as a reproducible regression. Load after lib/memory.f, the
 \ process libs (lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f), and
-\ lib/test.f.
+\ lib/test.
 
 require lib/ptx/process-test-prelude.f
 
