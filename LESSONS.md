@@ -179,6 +179,11 @@ lesson — keep the specific word/code/path, cut the prose.
   buffer on each parse, so analyzers that group across JSONL rows must copy
   serials, logical names, target ids, and other keys into stable slabs before the
   next `JSON-PARSE`/`VALIDATE-LINE`.
+- **Optional CSV ranges need absence fixtures:** `odin/perception-analyze.f`
+  initially rendered missing per-camera inference/tracker first/last timestamps
+  as `0`, because the test fixture always had ticks. Add detection-only rows for
+  renderers with optional range fields; the correct CSV cell is empty when the
+  corresponding count is zero.
 
 ## Tool & Infra
 
