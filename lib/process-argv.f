@@ -2,6 +2,9 @@
 \
 \ Load after lib/errors.f, lib/memory.f, and lib/process.f.
 
+s" lib/memory.f" required
+s" lib/process.f" required
+
 $100 constant PROC-ARGV-MAX
 32768 constant PROC-ARGV-BUF-CAP
 

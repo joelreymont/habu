@@ -231,7 +231,7 @@ create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLE
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
    MLBL LABEL@ BL,                              \ bl MAIN (resolved when MLBL is placed)
-   0 0 MOVZ,  NR-EXIT SYS, ;               \ exit(0)
+   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 : BIMM? {: w :}  w $7C000000 and $14000000 = ;
 : BCOND? {: w :}  w $FF000010 and $54000000 = ;

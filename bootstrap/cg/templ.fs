@@ -38,9 +38,9 @@ $100000 constant HEAPSZ
 : G-PROLOGUE {: n -- :}
    SP SP n LOCSZ + SUBI,  XDS SP LOCSZ ADDI,  RSP XDS 0 ADDI,  RSP RSP n ADDI, ;
 
-: G-EXIT-TOS ( -- )  0 G-POP  NR-EXIT SYS, ;     \ exit(TOS)
+: G-EXIT-TOS ( -- )  0 G-POP  NR-EXIT-GROUP SYS, ;     \ exit(TOS)
 
-: G-EXIT0    ( -- )  0 0 MOVZ,  NR-EXIT SYS, ;   \ exit(0)
+: G-EXIT0    ( -- )  0 0 MOVZ,  NR-EXIT-GROUP SYS, ;   \ exit(0)
 
 \ Spill-path primitives — ONLY the ops not handled by the register-allocated
 \ CG-VS (regstack.fs); arith/shuffle/compare/logical/shift moved there. These run

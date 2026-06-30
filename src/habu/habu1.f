@@ -894,7 +894,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : B-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
-      0 $4F MOVZ,  NR-EXIT SYS,
+      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
@@ -1189,11 +1189,11 @@ s" spawn-darwin-finish" s" label label --" TRUST
    LBL DP-HIGH !
    5 DATA-START MOVZ,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
-      0 76 MOVZ,  NR-EXIT SYS,
+      0 76 MOVZ,  NR-EXIT-GROUP SYS,
    DP-LOW LABEL@ LBL,
    5 DATA-SIZE LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-LE DP-HIGH LABEL@ BCOND,
-      0 76 MOVZ,  NR-EXIT SYS,
+      0 76 MOVZ,  NR-EXIT-GROUP SYS,
    DP-HIGH LABEL@ LBL, ;
 
 : BALLOT ( -- )
@@ -1213,7 +1213,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 
 : BDIE ( -- )
    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
-          0 7 0 ADDI,  NR-EXIT SYS, ;
+          0 7 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 : SYS-PUSH ( -- )                  \ push x0, or -1 when the syscall carry is set
    LBL SYS-OK !
@@ -1521,7 +1521,7 @@ s" linux-stat-fix" s" n --" TRUST
    LBL THROW-NOREC !
    10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
-   THROW-NOREC LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;
+   THROW-NOREC LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
@@ -1789,7 +1789,7 @@ s" emit-fp-prims" s" --" TRUST
    16 14 17 ADD,  16 16 1 ADDI,
    5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE BCAP-OK LABEL@ BCOND,
       0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
-      0 71 MOVZ,  NR-EXIT SYS,
+      0 71 MOVZ,  NR-EXIT-GROUP SYS,
    BCAP-OK LABEL@ LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    BCAP-CP LABEL@ LBL,  12 BCAP-CD LABEL@ CBZ,  13 11 0 LDRB,  13 15 0 STRB,

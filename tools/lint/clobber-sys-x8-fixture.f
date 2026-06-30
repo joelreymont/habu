@@ -2,6 +2,7 @@
 
 variable LBAD
 variable LCALL
+variable LEXITGROUP
 variable LRET
 
 : EMIT-SYS-X8-BAD ( -- )
@@ -16,4 +17,11 @@ variable LRET
    LRET @ BL,
    RET,
    LRET @ LBL,
+   RET, ;
+
+: EMIT-EXIT-GROUP-OK ( -- )
+   LEXITGROUP @ LBL,
+   16 9 0 ADDI,
+   NR-EXIT-GROUP SYS,
+   4 16 0 LDRB,
    RET, ;

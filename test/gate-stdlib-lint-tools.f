@@ -22,12 +22,12 @@
 
 : GSI-LINT-TOOLS-BODY ( -- )
    s" tools/lint/shadow-lint.f" GSI-INCLUDE
-   s" tools/lint/clobber-lint.f" GSI-INCLUDE
+   s" tools/lint/clobber-lint.f" GSI-REQUIRE
    s" tools/lint/clobber-lint-test.f" GSI-INCLUDE
    s" repl-lint" [: GSI-REPL-LINT ;] GSI-RUN
    s" trust-lint" [: GSI-TRUST-LINT ;] GSI-RUN
    s" stale-status-lint" [: GSI-STALE-STATUS-LINT ;] GSI-RUN
-   s" tools/host-lint.f" GSI-INCLUDE
+   s" tools/host-lint.f" GSI-REQUIRE
    s" tools/parallel-agent-lint.f" GSI-INCLUDE
    s" tools/filemap-lint.f" GSI-INCLUDE
    s" test/gate-stats-test.f" GSI-INCLUDE

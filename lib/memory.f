@@ -2,6 +2,8 @@
 \
 \ Load after lib/errors.f.
 
+s" lib/errors.f" required
+
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
 MEM-MAX-N MEM-64K / constant MEM-MAX-64K-BUFFERS

@@ -110,7 +110,21 @@ variable EXT-ERR-A
    src srcu EXT-COPY-BUF EXT-COPY-CAP READ-ALL {: u :}
    bundle bundleu EXT-COPY-BUF u APPEND-FILE ;
 
+: EXT-PROVIDED$ ( ptr u8 n -- ptr u8 n ) {: src:ptr srcu:n :}
+   SB-RESET
+   s" s" SB-APPEND 34 SB-APPEND-C 32 SB-APPEND-C
+   src srcu SB-APPEND
+   34 SB-APPEND-C 32 SB-APPEND-C
+   s" provided" SB-APPEND
+   STR-LF SB-APPEND-C
+   SB$ ;
+
+: EXT-ADD-PROVIDED ( ptr u8 n ptr u8 n -- )
+   {: bundle:ptr bundleu:n src:ptr srcu:n :}
+   bundle bundleu src srcu EXT-PROVIDED$ APPEND-FILE ;
+
 : EXT-ADD-SOURCE-LF ( ptr u8 n ptr u8 n -- ) {: bundle:ptr bundleu src:ptr srcu :}
+   bundle bundleu src srcu EXT-ADD-PROVIDED
    bundle bundleu src srcu EXT-ADD-SOURCE
    bundle bundleu EXT-LF$ APPEND-FILE ;
 

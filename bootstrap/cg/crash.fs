@@ -148,7 +148,7 @@ CRH-INIT
       C-CRASH-PC-4
       C-CRASH-PC0
       C-CRASH-PC+4
-      0 134 MOVZ,  NR-EXIT SYS,     \ exit(134)
+      0 134 MOVZ,  NR-EXIT-GROUP SYS,     \ exit(134)
    LHDR @ LBL,  CRH CRHL @ BYTES, ;         \ header bytes (handler exits, never reaches them)
 
 \ G-INSTALL-CRASH ( -- ) : install the handler for ILL/TRAP/BUS/SEGV. Builds a

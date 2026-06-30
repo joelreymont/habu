@@ -351,7 +351,6 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" lib/fs-test.f" GSI-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-INCLUDE
    s" tools/asm-src-test.f" GSI-INCLUDE
-   s" bootstrap/cg/asm-checked.fs" GSI-INCLUDE
    s" tools/asm-checked-test.f" GSI-INCLUDE
    s" tools/image-bytes-test.f" GSI-INCLUDE ;
 

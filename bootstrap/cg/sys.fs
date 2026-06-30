@@ -20,6 +20,7 @@ $22 constant MAP-ANON-PRIVATE
 $32 constant MAP-ANON-PRIVATE-FIXED
 
 93  constant NR-EXIT
+94  constant NR-EXIT-GROUP
 63  constant NR-READ
 64  constant NR-WRITE
 29  constant NR-IOCTL
@@ -73,6 +74,7 @@ $1002 constant MAP-ANON-PRIVATE
 $1012 constant MAP-ANON-PRIVATE-FIXED
 
 1   constant NR-EXIT
+1   constant NR-EXIT-GROUP
 3   constant NR-READ
 4   constant NR-WRITE
 54  constant NR-IOCTL

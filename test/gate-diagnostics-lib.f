@@ -511,16 +511,6 @@ variable GDX-TRUST-MAN-U
    GDX-TRUST-FIXTURE
    GE-HB-RESET
    s" --load" GDX-ARG+
-   s" tools/date.f" GDX-ARG+
-   s" lib/errors.f" GDX-ARG+
-   s" lib/string.f" GDX-ARG+
-   s" lib/memory.f" GDX-ARG+
-   s" lib/fs.f" GDX-ARG+
-   s" tools/lint/text.f" GDX-ARG+
-   s" tools/lint/token.f" GDX-ARG+
-   s" tools/lint/lib.f" GDX-ARG+
-   s" tools/trust-lint-core.f" GDX-ARG+
-   s" tools/argv.f" GDX-ARG+
    s" tools/trust-lint.f" GDX-ARG+
    s" --" GDX-ARG+
    GDX-TRUST-ROOT$ GDX-ARG+

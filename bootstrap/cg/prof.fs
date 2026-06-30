@@ -87,7 +87,7 @@ $0042 constant MACOS-SA-PROF-FLAGS
    12 DATA PROF-OTHER LDR,  12 12 1 ADDI,  12 DATA PROF-OTHER STR,
    psig LBL,
    0 4 0 ADDI,  NR-SIGRETURN SYS,     \ sigreturn(ucontext, infostyle=x1)
-   prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT SYS, ;
+   prep LBL,  LPROFDUMP @ BL,  0 99 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ prims. prof-on ( n -- ): zero counters, set limit, install handler + 1ms timer.
 : C-PROF-SIGACTION-FRAME ( -- )

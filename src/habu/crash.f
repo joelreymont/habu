@@ -145,7 +145,7 @@ s" c-crash-pc+4" s" --" TRUST
       C-CRASH-PC-4
       C-CRASH-PC0
       C-CRASH-PC+4
-      0 $86 MOVZ,  NR-EXIT SYS,
+      0 $86 MOVZ,  NR-EXIT-GROUP SYS,
    LHDR LABEL@ LBL,  CRH CRHL @ BYTES, ;
 
 : INSTALL-SIGACT ( n -- )

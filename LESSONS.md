@@ -48,6 +48,11 @@ lesson — keep the specific word/code/path, cut the prose.
   use `require` for setup, and suite declarations list only entry files plus
   script args. Shared warm setup must also use `required`, and snapshots must
   preserve the require registry so baked support is not reloaded at runtime.
+- **Tasked engines need process-wide fatal exits:** Linux `exit(93)` terminates
+  only the calling pthread, so checker/die paths can leave workers alive and
+  make process captures time out. Native and bootstrap emitters must use
+  `NR-EXIT-GROUP` for process termination; `pthread_exit` remains the task-local
+  stop boundary.
 - **Warm-image tails must not reload prefix-owned layout:** target layout files
   are part of the engine prefix. Snapshot tail tools append image emitters
   (`elf.f`/`macho.f`) only; re-appending `src/os/*/layout.f` redefines image
@@ -1365,3 +1370,7 @@ lesson — keep the specific word/code/path, cut the prose.
   should be able to own maki counts without avoiding count-shaped prose. Keep root
   self-check counts fenced to root `STATUS.md`, and explicitly skip extracted
   application subtrees in `stale-status-lint`.
+- **Concatenated source must preserve `required` identity:** any tool that
+  materializes multiple files into one source stream must emit `provided`
+  markers before each file. Otherwise dependencies owned by each test/module
+  reload already concatenated files and fail with duplicate definitions.

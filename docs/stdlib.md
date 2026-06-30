@@ -816,9 +816,12 @@ source-list transforms. It is layered after `lib/errors.f`, `lib/string.f`, and
 SOURCE-READ-PROBE              ( -- )
 READ-STDIN-ALL                 ( ptr u8 len -- len )
 SOURCE-APPEND-BYTES            ( ptr u8 len ptr u8 len ptr len -- )
+SOURCE-APPEND-C                ( n ptr u8 len ptr len -- )
 SOURCE-PATH-A@                 ( ptr a idx -- ptr u8 )
 SOURCE-PATH-U@                 ( ptr a idx -- len )
 SOURCE-APPEND-FILE             ( ptr u8 len ptr u8 len ptr len -- )
+SOURCE-APPEND-PROVIDED         ( ptr u8 len ptr u8 len ptr len -- )
+SOURCE-APPEND-SOURCE-FILE      ( ptr u8 len ptr u8 len ptr len -- )
 CONCAT-FILES                   ( ptr a ptr a count ptr u8 len -- len )
 WRITE-SOURCE-LIST              ( ptr a ptr a count ptr u8 len -- )
 SOURCE-FINAL-LINE-START        ( ptr u8 len -- off )
@@ -843,8 +846,9 @@ SOURCE-FILE-LINES              ( ptr u8 n ptr u8 n [ ptr u8 n n -- ] -- )
 ```
 
 `CONCAT-FILES` concatenates counted path entries from parallel pointer/length
-tables into a caller buffer. `WRITE-SOURCE-LIST` writes that concatenation to a
-counted output path. `INSERT-BEFORE-FINAL-LINE` inserts a counted byte string
+tables into a caller buffer. `WRITE-SOURCE-LIST` writes source-list material
+with a `provided` marker before each file so later `required` calls do not
+reload already concatenated dependencies. `INSERT-BEFORE-FINAL-LINE` inserts a counted byte string
 before the final line of another counted byte string; when the source has no
 line break, insertion happens at the beginning. `COMMENT-EXPORTS` rewrites lines
 whose first non-space byte sequence starts with `EXPORT ` by replacing leading
@@ -1097,6 +1101,35 @@ use the cwd-aware run helper with executable path, cwd path, output buffers, and
 timeout. The helpers reset argv/env state after the native spawn attempt;
 missing or invalid cwd paths throw `E-PROC-SPAWN`, while empty or over-capacity
 cwd strings throw `E-PROC-OUTPUT` before spawning.
+
+## Tasking
+
+`lib/task.f` provides pthread-backed CPU tasks on macOS/aarch64 and
+Linux/aarch64. Load it with `require lib/task.f`; the module owns its
+`errors`/`memory`/`ffi` dependencies.
+
+```forth
+TASK          ( n -- )
+CONSTRUCT     ( ptr a -- )
+ACTIVATE      ( n ptr a -- )
+PAUSE         ( -- )
+HALT          ( ptr a -- )
+TASK-KILL     ( ptr a -- )
+TASK-DONE?    ( ptr a -- bool )
+#USER         ( -- n )
++USER         ( n n -- n )
+HIS           ( ptr a ptr a -- ptr a )
+FACILITY      ( -- )
+FACILITY-INIT ( ptr a -- )
+GET           ( ptr a -- )
+RELEASE       ( ptr a -- )
+```
+
+Tasks execute precompiled XTs only. Dictionary/code mutation while tasks are
+live is fail-closed with exit code `$4F`; on Linux this uses process-wide
+`exit_group` so failed tasking programs do not leave worker threads running.
+Use `+USER` for task-local cells, ordinary aligned cells plus atomics for shared
+state, and `TASK-KILL` for teardown.
 
 ## Date And Time
 

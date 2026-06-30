@@ -189,6 +189,11 @@ TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
    2dup REQUIRE-STORE
    included ;
 
+: provided ( ptr u8 n -- )
+   INCLUDE-CHECK-PATH
+   2dup REQUIRE-KNOWN? if 2drop exit then
+   REQUIRE-STORE ;
+
 : include ( -- )
    parse-name INCLUDE-CHECK-PATH included ;
 immediate

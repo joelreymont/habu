@@ -2,6 +2,8 @@
 \
 \ Load after lib/errors.f.
 
+s" lib/errors.f" required
+
 1024 constant PROC-PATHZ-CAP
 1000000 constant PROC-NS-PER-MS
 1 constant POLLIN

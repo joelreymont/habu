@@ -185,9 +185,13 @@ variable RK
    a u s" vshuf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" vun-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then ;
 
+: SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" NR-EXIT" LINT-STR= if LINT-TRUE exit then
+   a u s" NR-EXIT-GROUP" LINT-STR= ;
+
 : SYS-EXIT?  ( n n -- bool ) {: lo hi :}
    hi lo <= if LINT-FALSE exit then
-   hi 1- TOK s" NR-EXIT" LINT-STR= ;
+   hi 1- TOK SYS-EXIT-NAME? ;
 : SYS?  ( ptr u8 n -- bool )
    s" SYS," LINT-STR= ;
 : BLR?  ( ptr u8 n -- bool )

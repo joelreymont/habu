@@ -418,7 +418,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    msg LBL,  a u BYTES,
    code LBL,
    0 2 MOVZ,  1 msg ADR,  2 u MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT SYS, ;
+   0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : BHERE ( -- )   7 DATA 0 LDR,  7 G-PUSH ;
@@ -445,7 +445,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
 \ compiler invariant violations — better a loud death than silent memory corruption.
 : BDIE ( -- )    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
-          0 7 0 ADDI,  NR-EXIT SYS, ;
+          0 7 0 ADDI,  NR-EXIT-GROUP SYS, ;
 
 : SYS-PUSH ( -- )                         \ push x0, or -1 when the syscall carry is set
    LBL LBL {: ok done :}
@@ -533,7 +533,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    lnoh LBL,
    10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,                                \ tty REPL: recover instead of dying
-   lnorec LBL,  0 9 0 ADDI,  NR-EXIT SYS, ;   \ no handler -> exit(exc)
+   lnorec LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;   \ no handler -> exit(exc)
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
@@ -741,7 +741,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    16 14 17 ADD,  16 16 1 ADDI,
    5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE bok BCOND,
       0 2 MOVZ,  1 11 0 ADDI,  2 12 0 ADDI,  NR-WRITE SYS,
-      0 71 MOVZ,  NR-EXIT SYS,
+      0 71 MOVZ,  NR-EXIT-GROUP SYS,
    bok LBL,
    15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
    bcp LBL,  12 bcd CBZ,  13 11 0 LDRB,  13 15 0 STRB,
@@ -1115,7 +1115,7 @@ create ZBYTE 0 c,
    RET,
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
    sopenerr LBL,
-   0 74 MOVZ,  NR-EXIT SYS, ;
+   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-TARGET-UNKNOWN ( -- )
    1 abort" hb: unknown target" ;
@@ -1324,9 +1324,53 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-LOAD-SCRIPT-ARGV-COLD
    SRC-FREADY @ LBL, ;
 
-: C-SOURCE-APPEND-ARG ( -- )
+: C-SOURCE-ARGV14 ( -- )
    12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
-   12 12 5 ADD,  12 12 0 LDR,
+   12 12 5 ADD,  12 12 0 LDR, ;
+
+: C-SOURCE-APPEND-X4 ( -- )
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
+   9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
+   4 9 0 STRB,  9 9 1 ADDI, ;
+
+: C-SOURCE-APPEND-CHAR ( n -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: c :}
+   4 c MOVZ,
+   C-SOURCE-APPEND-X4 ;
+
+: C-SOURCE-APPEND-Z12 ( -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: loop done :}
+   loop LBL,
+      4 12 0 LDRB,
+      4 done CBZ,
+      C-SOURCE-APPEND-X4
+      12 12 1 ADDI,
+      loop B,
+   done LBL, ;
+
+: C-SOURCE-APPEND-PROVIDED ( -- )
+   $73 C-SOURCE-APPEND-CHAR
+   $22 C-SOURCE-APPEND-CHAR
+   $20 C-SOURCE-APPEND-CHAR
+   C-SOURCE-APPEND-Z12
+   $22 C-SOURCE-APPEND-CHAR
+   $20 C-SOURCE-APPEND-CHAR
+   $70 C-SOURCE-APPEND-CHAR
+   $72 C-SOURCE-APPEND-CHAR
+   $6F C-SOURCE-APPEND-CHAR
+   $76 C-SOURCE-APPEND-CHAR
+   $69 C-SOURCE-APPEND-CHAR
+   $64 C-SOURCE-APPEND-CHAR
+   $65 C-SOURCE-APPEND-CHAR
+   $64 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR ;
+
+: C-SOURCE-APPEND-ARG ( -- )
+   C-SOURCE-ARGV14
+   C-SOURCE-APPEND-PROVIDED
+   C-SOURCE-ARGV14
    LSRCRD @ BL,
    14 14 1 ADDI, ;
 
@@ -1355,7 +1399,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    lsdone LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL @ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-SFAIL @ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-REPL @ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
@@ -1402,7 +1446,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BDONE @ LBL,
    LSHBANG @ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
-   SRC-BFAIL @ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-BFAIL @ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )
@@ -1726,7 +1770,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 LKWTRUST @ ADR,  10 5 MOVZ,  LFIND @ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWTRUST @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : C-PUSH-DREC-NAME ( -- )
@@ -1769,14 +1813,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-DIE-DOES ( -- )
    0 2 MOVZ,  1 LKWDOES @ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-   0 70 MOVZ,  NR-EXIT SYS, ;
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL {: found good :}
    9 LKWCHKDOES @ ADR,  10 11 MOVZ,  LFIND @ BL,
    13 found CBNZ,
       0 2 MOVZ,  1 LKWCHKDOES @ ADR,  2 11 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    found LBL,
    9 DATA BODYBUF-OFF ADDI,
    10 DATA DOESB-CELL LDR,
@@ -1901,7 +1945,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    dok LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
@@ -1921,7 +1965,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    9 $14000000 LIT64,  LCEMIT @ BL,               \ b-over placeholder
@@ -1935,7 +1979,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN @ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
@@ -2083,7 +2127,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 pok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    pok LBL,
    14 13 2 ANDI,  14 pnimm CBZ,
       C-CALL  pdone B,
@@ -2113,19 +2157,19 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: qlok :} \ typed-local-lint: allow-bare-local
    11 DATA QPATCH-CELL LDR,  11 qlok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    qlok LBL, ;
 
 : C-LBRACE-STORE-ONE ( -- )
    LBL LBL LBL LBL LBL LBL {: nlok noti ncp ncd tsl tsd :}
    11 DATA LOCN-CELL LDR,  11 64 CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    nlok LBL,
    13 DATA TKL-CELL LDR,  13 1 CMPI,  C-NE noti BCOND,
    13 DATA TKA-CELL LDR,  13 13 0 LDRB,  14 $20 MOVZ,  13 13 14 ORR,  13 105 CMPI,  C-NE noti BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    noti LBL,
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
@@ -2182,7 +2226,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
 : C-QUOTE-EOF ( -- )
-   0 74 MOVZ,  NR-EXIT SYS, ;
+   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-QUOTE-SCAN ( -- )
    LBL {: sl :}  LBL {: sd :}  LBL {: eof :}
@@ -2196,6 +2240,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-QUOTE-CONSUME ( -- )
    10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
+
+: C-QUOTE-LEN ( -- )
+   10 12 13 SUB, ;
+
+: C-QUOTE-CONSUME-DONE ( -- )
+   16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
 : C-QUOTE-SAVE ( -- )
    SP SP 16 SUBI,  16 SP 0 STR,  10 SP 8 STR, ;
@@ -2281,11 +2331,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-CQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
-   C-QUOTE-CONSUME
-   C-QUOTE-SAVE
+   C-QUOTE-LEN
    LBL {: capok :}  LBL {: cl :}  LBL {: cd :}
    10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: compiled counted string too long" C-EXIT76
    capok LBL,
+   C-QUOTE-CONSUME-DONE
+   C-QUOTE-SAVE
    C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS @ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
@@ -2305,7 +2356,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL {: ok :}
    C-SDQ
    9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
-   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT SYS,
+   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL,
    C-CALL ;
 
@@ -2402,7 +2453,7 @@ variable CFSK2
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
    C-EQ rvok BCOND,
-      0 78 MOVZ,  NR-EXIT SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL,
    DBASE 0 0 ADDI,
    CP DBASE 0 ADDI,  5 DICT-SIZE LIT64,  CP CP 5 ADD, ;
@@ -2430,7 +2481,7 @@ variable CFSK2
    NR-MMAP SYS,
    5 EMIT-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
-      0 78 MOVZ,  NR-EXIT SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
 : EMIT-DATA-INIT ( -- )
@@ -2521,7 +2572,7 @@ variable CFSK2
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snok B,
-   snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
+   snbad LBL,  0 79 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,
@@ -2605,7 +2656,7 @@ variable CFSK2
    LBL {: ndok :}
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 77 MOVZ,  NR-EXIT SYS,
+      0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL, ;
 
 : C-COLON-PENDING-DREC ( -- )
@@ -2818,7 +2869,7 @@ variable CFSK2
       LBCAP @ BL,
       11 DATA QPATCH-CELL LDR,  11 qok CBZ,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 75 MOVZ,  NR-EXIT SYS,
+         0 75 MOVZ,  NR-EXIT-GROUP SYS,
       qok LBL,
       LVRALLOC @ BL,  14 lmem CBZ,
       7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
@@ -2951,7 +3002,7 @@ variable CFSK2
    9 DATA REPLH-CELL LDR,  9 LRDIE @ CBZ,
    EMIT-REPL-RECOVER
    LRDIE @ LBL,
-   0 70 MOVZ,  NR-EXIT SYS, ;
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : EMIT-EVAL-CLEAN-EXIT ( -- )
    9 DATA EVALD-CELL LDR,  9 9 1 SUBI,  9 DATA EVALD-CELL STR,
@@ -2982,7 +3033,7 @@ variable CFSK2
    0 1 MOVZ,  1 LOKS @ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    lmain EMIT-REPL-READ
    LRBYE @ LBL,
-   0 0 MOVZ,  NR-EXIT SYS, ;
+   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
 : EMIT-MAIN ( -- )

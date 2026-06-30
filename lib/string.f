@@ -1,5 +1,7 @@
 \ string.f - checked byte-string helpers.
 
+s" lib/errors.f" required
+
 9 constant STR-TAB
 10 constant STR-LF
 13 constant STR-CR

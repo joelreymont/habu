@@ -1010,19 +1010,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-RUNNER-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" TR-ARG+
-   s" lib/errors.f" TR-ARG+
-   s" lib/string.f" TR-ARG+
-   s" lib/memory.f" TR-ARG+
-   s" lib/fs.f" TR-ARG+
-   s" lib/fs-mutate.f" TR-ARG+
-   s" lib/process.f" TR-ARG+
-   s" lib/process-argv.f" TR-ARG+
-   s" lib/process-env.f" TR-ARG+
-   s" lib/source.f" TR-ARG+
-   s" lib/codesign.f" TR-ARG+
-   s" test/gate-stats.f" TR-ARG+
-   s" tools/warm-image-lib.f" TR-ARG+
-   s" tools/warm-image-gate-stats.f" TR-ARG+
    s" tools/warm-image.f" TR-ARG+
    s" --" TR-ARG+
    TR-RUNNER$ TR-ARG+ ;
@@ -1033,19 +1020,6 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-AOT-RUNNER-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" TR-ARG+
-   s" lib/errors.f" TR-ARG+
-   s" lib/string.f" TR-ARG+
-   s" lib/memory.f" TR-ARG+
-   s" lib/fs.f" TR-ARG+
-   s" lib/fs-mutate.f" TR-ARG+
-   s" lib/process.f" TR-ARG+
-   s" lib/process-argv.f" TR-ARG+
-   s" lib/process-env.f" TR-ARG+
-   s" lib/source.f" TR-ARG+
-   s" lib/codesign.f" TR-ARG+
-   s" test/gate-stats.f" TR-ARG+
-   s" tools/warm-image-lib.f" TR-ARG+
-   s" tools/warm-image-gate-stats.f" TR-ARG+
    s" tools/warm-image.f" TR-ARG+
    s" --" TR-ARG+
    TR-AOT-RUNNER$ TR-ARG+ ;

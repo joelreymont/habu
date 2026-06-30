@@ -325,7 +325,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    RET,
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
    sopenerr LBL,
-   0 74 MOVZ,  NR-EXIT SYS, ;
+   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-TARGET-UNKNOWN ( -- )
    s" hb: unknown target" 76 die ;
@@ -532,9 +532,50 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-LOAD-SCRIPT-ARGV-COLD
    SRC-FREADY LABEL@ LBL, ;
 
-: C-SOURCE-APPEND-ARG ( -- )
+: C-SOURCE-ARGV14 ( -- )
    12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
-   12 12 5 ADD,  12 12 0 LDR,
+   12 12 5 ADD,  12 12 0 LDR, ;
+
+: C-SOURCE-APPEND-X4 ( -- )
+   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
+   9 2 CMP,  C-GE SRC-SFAIL LABEL@ BCOND,
+   4 9 0 STRB,  9 9 1 ADDI, ;
+
+: C-SOURCE-APPEND-CHAR ( n -- ) {: c:n :}
+   4 c MOVZ,
+   C-SOURCE-APPEND-X4 ;
+
+: C-SOURCE-APPEND-Z12 ( -- )
+   LBL LBL {: loop:label done:label :}
+   loop LBL,
+      4 12 0 LDRB,
+      4 done CBZ,
+      C-SOURCE-APPEND-X4
+      12 12 1 ADDI,
+      loop B,
+   done LBL, ;
+
+: C-SOURCE-APPEND-PROVIDED ( -- )
+   $73 C-SOURCE-APPEND-CHAR
+   $22 C-SOURCE-APPEND-CHAR
+   $20 C-SOURCE-APPEND-CHAR
+   C-SOURCE-APPEND-Z12
+   $22 C-SOURCE-APPEND-CHAR
+   $20 C-SOURCE-APPEND-CHAR
+   $70 C-SOURCE-APPEND-CHAR
+   $72 C-SOURCE-APPEND-CHAR
+   $6F C-SOURCE-APPEND-CHAR
+   $76 C-SOURCE-APPEND-CHAR
+   $69 C-SOURCE-APPEND-CHAR
+   $64 C-SOURCE-APPEND-CHAR
+   $65 C-SOURCE-APPEND-CHAR
+   $64 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR ;
+
+: C-SOURCE-APPEND-ARG ( -- )
+   C-SOURCE-ARGV14
+   C-SOURCE-APPEND-PROVIDED
+   C-SOURCE-ARGV14
    LSRCRD LABEL@ BL,
    14 14 1 ADDI, ;
 
@@ -563,7 +604,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    done LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-SFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-REPL LABEL@ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
@@ -610,7 +651,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE LABEL@ B,
-   SRC-BFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT SYS,
+   SRC-BFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;
 
 : EMIT-SOURCE ( -- )
@@ -902,14 +943,14 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
    9 LKWTRUST LABEL@ ADR,  10 5 MOVZ,  LFIND LABEL@ BL,
    13 ok CBNZ,
       0 2 MOVZ,  1 LKWTRUST LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : C-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4F MOVZ,  NR-EXIT SYS,
+      0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 s" c-task-live-guard" s" --" TRUST
 
@@ -985,7 +1026,7 @@ s" c-task-live-guard" s" --" TRUST
    SP SP 16 ADDI,
    13 ok CBNZ,
       0 2 MOVZ,  1 name LABEL@ ADR,  2 len MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 s" c-find-global" s" ptr n n --" TRUST
 
@@ -998,14 +1039,14 @@ s" c-call-checker-defer" s" --" TRUST
 
 : C-DIE-DOES ( -- )
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
-   0 70 MOVZ,  NR-EXIT SYS, ;
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-CALL-CHECK-DOES ( -- )
    LBL LBL {: found good :}
    9 LKWCHKDOES LABEL@ ADR,  10 11 MOVZ,  LFIND LABEL@ BL,
    13 found CBNZ,
       0 2 MOVZ,  1 LKWCHKDOES LABEL@ ADR,  2 11 MOVZ,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    found LBL,
    9 DATA BODYBUF-OFF ADDI,
    10 DATA DOESB-CELL LDR,
@@ -1125,7 +1166,7 @@ s" c-call-checker-defer" s" --" TRUST
 
 : C-SIG-BAD ( -- )
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT SYS, ;
+   0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-PARSE-CREATED-SIG ( -- )
    LBL LBL LBL LBL {: cpy cpd done bad :}
@@ -1151,7 +1192,7 @@ s" c-call-checker-defer" s" --" TRUST
    LBL {: dok :}
    12 DATA LOCF-CELL LDR,  12 dok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    dok LBL,
    9 DATA BODYLEN-CELL LDR,  9 DATA DOESB-CELL STR,
    C-PARSE-CREATED-SIG
@@ -1167,7 +1208,7 @@ s" c-call-checker-defer" s" --" TRUST
    LBL {: qok :}
    9 DATA QPATCH-CELL LDR,  9 qok CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    qok LBL,
    9 CP 0 ADDI,  9 DATA QPATCH-CELL STR,
    9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ b-over placeholder
@@ -1181,7 +1222,7 @@ s" c-call-checker-defer" s" --" TRUST
    LBL {: sqok :}
    9 DATA QPATCH-CELL LDR,  9 sqok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    sqok LBL,
    14 CP 0 ADDI,  9 DATA EXITH-CELL LDR,  LBCHAIN LABEL@ BL,   \ exits -> this epilogue
    9 DATA QXH-CELL LDR,  9 DATA EXITH-CELL STR,
@@ -1257,12 +1298,12 @@ s" c-call-checker-defer" s" --" TRUST
       done B,
    fail LBL,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 76 MOVZ,  NR-EXIT SYS,
+      0 76 MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
 : C-QUALIFY-FAIL ( n -- ) {: rc:n :}
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT SYS, ;
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
@@ -1273,7 +1314,7 @@ s" c-call-checker-defer" s" --" TRUST
 : C-DUP-DEF-FAIL ( -- )
    0 2 MOVZ,  1 LKWDUPDEF LABEL@ ADR,  2 22 MOVZ,  NR-WRITE SYS,
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
-   0 $4E MOVZ,  NR-EXIT SYS, ;
+   0 $4E MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-dup-def-fail" s" --" TRUST
 
 : C-REJECT-DUP-DEF ( -- )
@@ -1466,11 +1507,11 @@ s" c-store-def-name" s" --" TRUST
    2 3 MOVZ,  LPROT LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4C MOVZ,  NR-EXIT SYS,
+      0 $4C MOVZ,  NR-EXIT-GROUP SYS,
    cpok LBL,
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4D MOVZ,  NR-EXIT SYS,
+      0 $4D MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL,
    LTOK LABEL@ BL,  0 done CBZ,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -1496,7 +1537,7 @@ s" c-store-def-name" s" --" TRUST
 
 : C-DEFER-DIE-TOKEN ( n -- ) {: rc :}
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT SYS, ;
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-defer-die-token" s" n --" TRUST
 
 : C-DEFER-FIND-UNSET ( -- )
@@ -1613,7 +1654,7 @@ s" j-is" s" --" TRUST
    LTOK LABEL@ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 pok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 70 MOVZ,  NR-EXIT SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
    pok LBL,
    14 13 2 ANDI,  14 pnimm CBZ,
       C-CALL  pdone B,
@@ -1627,7 +1668,7 @@ s" j-is" s" --" TRUST
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
 : C-QUOTE-EOF ( -- )
-   0 74 MOVZ,  NR-EXIT SYS, ;
+   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-QUOTE-SCAN ( -- )
    LBL LBL LBL {: sl sd eof :}
@@ -1641,6 +1682,12 @@ s" j-is" s" --" TRUST
 
 : C-QUOTE-CONSUME ( -- )
    10 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
+
+: C-QUOTE-LEN ( -- )
+   10 12 13 SUB, ;
+
+: C-QUOTE-CONSUME-DONE ( -- )
+   16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
 
 : C-QUOTE-SAVE ( -- )
    SP SP 16 SUBI,  16 SP 0 STR,  10 SP 8 STR, ;
@@ -1670,7 +1717,7 @@ s" j-is" s" --" TRUST
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    LBL LBL LBL {: capok cl cd :}
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
    capok LBL,
    12 DATA 0 LDR,  15 12 0 ADDI,                       \ x15 = counted string base
    14 12 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
@@ -1708,7 +1755,7 @@ s" j-is" s" --" TRUST
 
 : C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
    1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $27 MOVZ,  NR-WRITE SYS,
-   0 $4B MOVZ,  NR-EXIT SYS, ;
+   0 $4B MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-lbrace-die" s" --" TRUST
 
 : C-LBRACE-GUARDS ( -- )
@@ -1721,7 +1768,7 @@ s" c-lbrace-die" s" --" TRUST
    LBL LBL LBL LBL LBL {: nlok ncp ncd tsl tsd :}
    11 DATA LOCN-CELL LDR,  11 $40 CMPI,  C-LT nlok BCOND,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4B MOVZ,  NR-EXIT SYS,
+      0 $4B MOVZ,  NR-EXIT-GROUP SYS,
    nlok LBL,
    11 DATA LOCN-CELL LDR,  12 LOC-REC MOVZ,  11 11 12 MUL,  5 LOCNAMES LIT64,  11 11 5 ADD,  11 DATA 11 ADD,
    14 0 MOVZ,  8 DATA TKL-CELL LDR,  10 DATA TKA-CELL LDR,
@@ -1806,10 +1853,11 @@ s" c-lbrace-die" s" --" TRUST
    LBL LBL LBL {: capok cl cd :}
    C-QUOTE-START
    C-QUOTE-SCAN
-   C-QUOTE-CONSUME
-   C-QUOTE-SAVE
-   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT SYS,
+   C-QUOTE-LEN
+   10 255 CMPI,  C-LE capok BCOND,  0 76 MOVZ,  NR-EXIT-GROUP SYS,
    capok LBL,
+   C-QUOTE-CONSUME-DONE
+   C-QUOTE-SAVE
    C-QUOTE-RESTORE
    11 16 0 ADDI,  12 10 1 ADDI,  LBCS LABEL@ BL,
    15 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
@@ -1829,7 +1877,7 @@ s" c-lbrace-die" s" --" TRUST
    LBL {: ok :}
    C-SDQ
    9 LKWTYPE LABEL@ ADR,  10 4 MOVZ,  LFIND LABEL@ BL,
-   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT SYS,
+   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL,
    C-CALL ;
 variable CFSK
@@ -1923,7 +1971,7 @@ variable CFSK2
    LBCAP LABEL@ BL,
    11 DATA QPATCH-CELL LDR,  11 CLOC-QOK LABEL@ CBZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 75 MOVZ,  NR-EXIT SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
    CLOC-QOK LABEL@ LBL,
    LVRALLOC LABEL@ BL,  14 CLOC-MEM LABEL@ CBZ,
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
@@ -1962,7 +2010,7 @@ s" c-local-ref" s" label label --" TRUST
    NR-MMAP SYS,
    5 RBASE-VA LIT64,  0 5 CMP,
    C-EQ rvok BCOND,
-      0 78 MOVZ,  NR-EXIT SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL, ;
 
 : EM-SEED-DICT ( -- )
@@ -1995,7 +2043,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    NR-MMAP SYS,
    5 EM-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
-      0 78 MOVZ,  NR-EXIT SYS,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL, ;
 
 : EM-DATA-INIT ( -- )
@@ -2090,7 +2138,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snok B,
-   snbad LBL,  0 79 MOVZ,  NR-EXIT SYS,
+   snbad LBL,  0 79 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
@@ -2170,11 +2218,11 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       2 3 MOVZ,  LPROT LABEL@ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 $4C MOVZ,  NR-EXIT SYS,
+         0 $4C MOVZ,  NR-EXIT-GROUP SYS,
       cpok LBL,
       9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 $4D MOVZ,  NR-EXIT SYS,
+         0 $4D MOVZ,  NR-EXIT-GROUP SYS,
       ndok LBL,
       LTOK LABEL@ BL,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -2226,7 +2274,7 @@ s" c-call-checker-end-package" s" --" TRUST
 
 : C-PACKAGE-FAIL ( n -- ) {: rc:n :}
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 rc MOVZ,  NR-EXIT SYS, ;
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
 s" c-package-fail" s" n --" TRUST
 
 : C-PACKAGE-NAME-GUARD ( -- )
@@ -2671,7 +2719,7 @@ s" em-repl-recover" s" --" TRUST
    9 DATA REPLH-CELL LDR,  9 LRDIE LABEL@ CBZ,
    EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
-   0 70 MOVZ,  NR-EXIT SYS, ;
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-undef" s" --" TRUST
 
 : EM-EVAL-CLEAN-EXIT ( -- )
@@ -2706,7 +2754,7 @@ s" em-repl-read" s" --" TRUST
    0 1 MOVZ,  1 LOKS LABEL@ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    EM-REPL-READ
    LRBYE LABEL@ LBL,
-   0 0 MOVZ,  NR-EXIT SYS, ;
+   0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-exit" s" --" TRUST
 
 : EM-COMPILE ( -- )

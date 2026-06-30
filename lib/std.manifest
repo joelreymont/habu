@@ -430,9 +430,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-READ-PROBE	(--)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	probe one extra stdin byte after a full buffer to reject truncation
 1	source	lib/source.f	word	READ-STDIN-ALL	(ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	read fd zero into a caller buffer and fail closed on overflow
 1	source	lib/source.f	word	SOURCE-APPEND-BYTES	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append bytes into a bounded destination tracked by a length cell
+1	source	lib/source.f	word	SOURCE-APPEND-C	(n ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one byte into a bounded destination tracked by a length cell
 1	source	lib/source.f	word	SOURCE-PATH-A@	(ptr a idx -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path pointer from a source-list pointer table
 1	source	lib/source.f	word	SOURCE-PATH-U@	(ptr a idx -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path length from a source-list length table
 1	source	lib/source.f	word	SOURCE-APPEND-FILE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one counted file into a bounded destination
+1	source	lib/source.f	word	SOURCE-APPEND-PROVIDED	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append a provided marker for one source-list file
+1	source	lib/source.f	word	SOURCE-APPEND-SOURCE-FILE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one source-list file with provided marker and separator newline
 1	source	lib/source.f	word	CONCAT-FILES	(ptr a ptr a count ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	concatenate counted path entries from parallel tables into a caller buffer
 1	source	lib/source.f	word	WRITE-SOURCE-LIST	(ptr a ptr a count ptr u8 len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	write concatenated source-list bytes to a counted output path
 1	source	lib/source.f	word	SOURCE-FINAL-LINE-START	(ptr u8 len -- off)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the byte offset of the final source line
@@ -908,7 +911,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
 1	ffi-abi	lib/ffi-abi.f	module			lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	checked AAPCS64 FFI calls and marshalling without dynamic loader slots
-1	ffi-abi	lib/ffi-abi.f	word	FFI-ABI-DEPS	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	load required error definitions when absent
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a scratch-buffer slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a caller-supplied scratch-buffer count
 1	ffi-abi	lib/ffi-abi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI argument slot index
@@ -945,7 +947,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
 1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
 1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked dynamic loading layer over the AAPCS64 FFI ABI
-1	ffi	lib/ffi.f	word	FFI-DEPS	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	load required error definitions before ABI setup
 1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
 1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
@@ -1039,7 +1040,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	report	lib/report.f	word	TBL-CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
-1	task	lib/task.f	word	TASK-DEPS	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	load tasking dependencies when absent
 1	task	lib/task.f	word	TASK-TCB-LAYOUT-CHECK	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate task control block layout constants
 1	task	lib/task.f	word	TASK-ALIGN8	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	align dictionary allocation to an 8-byte boundary
 1	task	lib/task.f	word	TASK-LIB-PATH	(-- ptr u8)	lib/task-test.f	docs/threads.md	stdlib-task	active	select libc or libSystem path for pthread symbols

@@ -610,7 +610,7 @@ $360 constant SNAPSTK-OFF       \ 28 x (k, p0, p1) BEGIN frames, 24 B each (to $
 : EMIT-SNAP-NEST-CHECK ( n -- ) {: snok :}
    SP SP 16 SUBI,  30 SP 0 STR,
    6 DATA SNAPSP-CELL LDR,  6 28 CMPI,  C-LT snok BCOND,
-      0 75 MOVZ,  NR-EXIT SYS,              \ BEGIN nesting past the frame area
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,              \ BEGIN nesting past the frame area
    snok LBL, ;
 
 : EMIT-SNAP-FORCE-LOOP ( n n n -- ) {: fl fd fail :}

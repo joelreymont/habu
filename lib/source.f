@@ -9,6 +9,7 @@ $20000 constant SOURCE-CAP
 10 constant SOURCE-LF
 13 constant SOURCE-CR
 32 constant SOURCE-SPACE
+34 constant SOURCE-DQ
 
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
 create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
@@ -69,6 +70,13 @@ variable SOURCE-LS-LINE#
    src dst lenp @ LEN>N + u LEN>N BYTE-COPY
    lenp @ LEN>N u LEN>N + >LEN lenp ! ;
 
+: SOURCE-APPEND-C ( n ptr u8 len ptr len -- )
+   {: c:n dst:ptr cap:len lenp:ptr :}
+   lenp @ LEN>N 0 < if E-FS-CAPACITY throw then
+   lenp @ LEN>N cap LEN>N >= if E-FS-CAPACITY throw then
+   c dst lenp @ LEN>N + c!
+   lenp @ LEN>N 1 + >LEN lenp ! ;
+
 : SOURCE-PATH-A@ ( ptr a idx -- ptr u8 ) {: table:ptr idx :}
    idx IDX>N cells table + @ ;
 
@@ -76,9 +84,26 @@ variable SOURCE-LS-LINE#
    idx IDX>N cells table + @ >LEN ;
 
 : SOURCE-APPEND-FILE ( ptr u8 len ptr u8 len ptr len -- )
-   {: path:ptr pathu dst:ptr cap lenp:ptr :}
+   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
    path pathu LEN>N dst lenp @ LEN>N + cap LEN>N lenp @ LEN>N - READ-ALL SOURCE-RD !
    lenp @ LEN>N SOURCE-RD @ + >LEN lenp ! ;
+
+: SOURCE-APPEND-PROVIDED ( ptr u8 len ptr u8 len ptr len -- )
+   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
+   s" s" >LEN dst cap lenp SOURCE-APPEND-BYTES
+   SOURCE-DQ dst cap lenp SOURCE-APPEND-C
+   SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
+   path pathu dst cap lenp SOURCE-APPEND-BYTES
+   SOURCE-DQ dst cap lenp SOURCE-APPEND-C
+   SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
+   s" provided" >LEN dst cap lenp SOURCE-APPEND-BYTES
+   SOURCE-LF dst cap lenp SOURCE-APPEND-C ;
+
+: SOURCE-APPEND-SOURCE-FILE ( ptr u8 len ptr u8 len ptr len -- )
+   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
+   path pathu dst cap lenp SOURCE-APPEND-PROVIDED
+   path pathu dst cap lenp SOURCE-APPEND-FILE
+   SOURCE-LF dst cap lenp SOURCE-APPEND-C ;
 
 : CONCAT-FILES ( ptr a ptr a count ptr u8 len -- len )
    {: paths:ptr lens:ptr count dst:ptr cap :}
@@ -94,7 +119,13 @@ variable SOURCE-LS-LINE#
 
 : WRITE-SOURCE-LIST ( ptr a ptr a count ptr u8 len -- )
    {: paths:ptr lens:ptr count out:ptr outu :}
-   paths lens count SOURCE-BUF SOURCE-CAP >LEN CONCAT-FILES SOURCE-LEN !
+   count COUNT>N 0 < if E-FS-CAPACITY throw then
+   0 >LEN SOURCE-LEN !
+   0 begin dup count COUNT>N < while
+      dup SOURCE-I !
+      paths SOURCE-I @ >IDX SOURCE-PATH-A@ lens SOURCE-I @ >IDX SOURCE-PATH-U@ SOURCE-BUF SOURCE-CAP >LEN SOURCE-LEN SOURCE-APPEND-SOURCE-FILE
+      1+
+   repeat drop
    out outu LEN>N SOURCE-BUF SOURCE-LEN @ LEN>N WRITE-ALL ;
 
 : SOURCE-FINAL-LINE-START ( ptr u8 len -- off ) {: src:ptr u :}

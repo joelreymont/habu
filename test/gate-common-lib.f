@@ -441,19 +441,6 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    PROC-ARGV-ENV-RESET
    GE-ARGV-RESET
    s" --load" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/string.f" GE-ARG+
-   s" lib/memory.f" GE-ARG+
-   s" lib/fs.f" GE-ARG+
-   s" lib/fs-mutate.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" lib/process-argv.f" GE-ARG+
-   s" lib/process-env.f" GE-ARG+
-   s" lib/source.f" GE-ARG+
-   s" lib/codesign.f" GE-ARG+
-   s" test/gate-stats.f" GE-ARG+
-   s" tools/warm-image-lib.f" GE-ARG+
-   s" tools/warm-image-gate-stats.f" GE-ARG+
    s" tools/warm-image.f" GE-ARG+
    s" --" GE-ARG+
    GE-WARM$ GE-ARG+ ;

@@ -108,6 +108,26 @@ create ST-LENS 2 cells allot
 : ST-CR ( -- )
    13 SB-APPEND-C ;
 
+: ST-PROVIDED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" s" SB-APPEND
+   34 SB-APPEND-C
+   32 SB-APPEND-C
+   path pathu SB-APPEND
+   34 SB-APPEND-C
+   32 SB-APPEND-C
+   s" provided" SB-APPEND
+   ST-LF ;
+
+: ST-SOURCE-LIST-WANT$ ( -- ptr u8 n )
+   SB-RESET
+   ST-A ST-PROVIDED
+   s" alpha" SB-APPEND
+   ST-LF
+   ST-B ST-PROVIDED
+   s" beta" SB-APPEND
+   ST-LF
+   SB$ ;
+
 : ST-SB>SRC ( -- )
    SB$ ST-SRC-BUF ST-SRC-U ST-BYTES! ;
 
@@ -165,8 +185,8 @@ create ST-LENS 2 cells allot
 
 : TEST-WRITE-SOURCE-LIST ( -- )
    ST-PATHS ST-LENS 2 ST-OUT-PATH ST-WRITE-SOURCE-LIST
-   ST-OUT-PATH ST-BUF ST-CAP READ-ALL 9 T=
-   ST-BUF 9 s" alphabeta" T$= ;
+   ST-OUT-PATH ST-BUF ST-CAP READ-ALL {: u:n :}
+   ST-BUF u ST-SOURCE-LIST-WANT$ T$= ;
 
 : TEST-INSERT-BEFORE-FINAL-LINE ( -- )
    ST-INSERT-CASE!

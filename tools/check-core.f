@@ -332,10 +332,7 @@ variable CHK-NOM-U
 
 : CHK-SRC-READ+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   path pathu CHK-SRC-BUF CHK-SRC-U @ + CHK-SRC-CAP CHK-SRC-U @ -
-   READ-ALL {: got:n :}
-   CHK-SRC-U @ got + CHK-SRC-U !
-   CHK-LF CHK-SRC-C+ ;
+   path pathu >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-SRC-U SOURCE-APPEND-SOURCE-FILE ;
 
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then

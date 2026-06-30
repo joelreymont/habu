@@ -121,7 +121,7 @@ is EMIT-CALL
    ARGV 1 0 ADDI,                         \ x22 = argv  (entry: x0=argc, x1=argv)
    LBL {: argc-ok :}
    9 ar 1 + MOVZ,  0 9 CMP,  C-GE argc-ok BCOND,
-   0 64 MOVZ,  NR-EXIT SYS,
+   0 64 MOVZ,  NR-EXIT-GROUP SYS,
    argc-ok LBL,
    512 G-PROLOGUE                         \ data + return stacks
    ar 0 ?do  9 ARGV i 1+ 8 *  LDR,  ATOI-LBL @ BL,  loop  \ push atoi(argv[1..ar])

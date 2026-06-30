@@ -1,11 +1,8 @@
 \ task.f - checked CPU tasking over pthread.
 
-: TASK-DEPS ( -- )
-   s" E-TASK-SIZE" XREF-FIND 0= if s" lib/errors.f" included then
-   s" MEM-ALLOC-64K-SPAN" XREF-FIND 0= if s" lib/memory.f" included then
-   s" DLOPEN" XREF-FIND 0= if s" lib/ffi.f" included then ;
-
-TASK-DEPS
+s" lib/errors.f" required
+s" lib/memory.f" required
+s" lib/ffi.f" required
 
 $8 constant TASK-CELL
 $10000 constant TASK-MIN-STACK

@@ -11,10 +11,7 @@
 \ plus library-owned value cells for scalar params. Do not nest CALLk or
 \ FFI-CALL* calls; finish one foreign call before preparing the next.
 
-: FFI-ABI-DEPS ( -- )
-   s" E-FFI-ARITY" XREF-FIND 0= if s" lib/errors.f" included then ;
-
-FFI-ABI-DEPS
+s" lib/errors.f" required
 
 8 constant FFI-REG-ARGS
 16 constant FFI-MAX-ARGS

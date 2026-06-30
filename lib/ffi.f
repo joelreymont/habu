@@ -1,11 +1,7 @@
 \ ffi.f - checked C-ABI foreign calls with dynamic loading.
 
-: FFI-DEPS ( -- )
-   s" E-FFI-ARITY" XREF-FIND 0= if s" lib/errors.f" included then ;
-
-FFI-DEPS
-
-include lib/ffi-abi.f
+s" lib/errors.f" required
+s" lib/ffi-abi.f" required
 
 2 constant RTLD-NOW                       \ dlopen flag: resolve all symbols now
 
