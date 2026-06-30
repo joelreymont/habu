@@ -7,7 +7,7 @@
 \ --- tiny JSON line builder ---
 package SCHEMA
 private
-$800 constant TB-CAP
+$1000 constant TB-CAP
 create TB TB-CAP allot
 variable TB-N  variable TB-CP
 : TB+C ( n -- ) TB TB-N @ + c!  TB-N @ 1+ TB-N ! ;
@@ -83,6 +83,87 @@ variable TB-N  variable TB-CP
    s" values" s" [1,2,3]" RVAL  s" units" s" mps2" SVAL  s" duplicate" s" false" RVAL
    s" stale" s" false" RVAL  s" missing" s" false" RVAL J} J$ ;
 
+: L-DETECTION ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.localization_detections.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" target_id" s" yolo-0-cam_a0-42-0" SVAL
+   s" pixel_center_x" s" 123.5" RVAL  s" pixel_center_y" s" 456.25" RVAL
+   s" detection_source" s" zed_yolo_live_detector" SVAL
+   s" confidence" s" 0.9" RVAL  s" latency_ms" s" 38.5" RVAL
+   s" queue_depth" s" 0" RVAL  s" decision_timestamp_ns" s" 1700000000161956789" RVAL
+   s" tracker_update_index" s" 7" RVAL  s" tracker_timestamp_ns" s" 1700000000162956789" RVAL J} J$ ;
+: L-DETECTION-NULL-BBOX ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.localization_detections.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" target_id" s" t0" SVAL
+   s" pixel_center_x" s" 123.5" RVAL  s" pixel_center_y" s" 456.25" RVAL
+   s" bbox" s" null" RVAL
+   s" detection_source" s" fixture" SVAL  s" confidence" s" 0.9" RVAL
+   s" latency_ms" s" 38.5" RVAL J} J$ ;
+: L-DETECTION-MISS-LAT ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.localization_detections.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" target_id" s" t0" SVAL  s" pixel_center_x" s" 123.5" RVAL  s" pixel_center_y" s" 456.25" RVAL
+   s" detection_source" s" zed_yolo_live_detector" SVAL  s" confidence" s" 0.9" RVAL J} J$ ;
+: L-DETECTION-BAD-Q ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.localization_detections.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" target_id" s" t0" SVAL  s" pixel_center_x" s" 123.5" RVAL  s" pixel_center_y" s" 456.25" RVAL
+   s" detection_source" s" zed_yolo_live_detector" SVAL  s" confidence" s" 0.9" RVAL
+   s" latency_ms" s" 38.5" RVAL  s" queue_depth" s" zero" SVAL J} J$ ;
+
+: L-PERCEPTION-TICK ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.perception_tick.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" tick_source" s" zed_yolo_live_detector" SVAL
+   s" inference_index" s" 7" RVAL  s" detections_count" s" 0" RVAL
+   s" latency_ms" s" 38.5" RVAL  s" queue_depth" s" 0" RVAL
+   s" decision_timestamp_ns" s" 1700000000161956789" RVAL
+   s" schedule_lag_ms" s" 0" RVAL  s" tensor_retrieve_ms" s" 38.214" RVAL
+   s" detector_run_ms" s" 0" RVAL  s" detector_cycle_ms" s" 38.214" RVAL
+   s" mode" s" retrieve-only" SVAL J} J$ ;
+: L-PERCEPTION-TICK-BAD-TIMING ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.perception_tick.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" tick_source" s" zed_yolo_live_detector" SVAL
+   s" inference_index" s" 7" RVAL  s" detections_count" s" 0" RVAL
+   s" latency_ms" s" 38.5" RVAL  s" detector_run_ms" s" slow" SVAL J} J$ ;
+
+: L-TRACKER-TICK ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.tracker_tick.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 10" RVAL  s" sdk_image_timestamp_ns" s" 1700000000000000000" RVAL
+   s" tracker_source" s" camera_frame_heartbeat" SVAL
+   s" tracker_update_index" s" 11" RVAL  s" tracker_timestamp_ns" s" 1700000000028000000" RVAL
+   s" latency_ms" s" 28" RVAL  s" queue_depth" s" 0" RVAL  s" tracks_active" s" 0" RVAL J} J$ ;
+: L-TRACKER-TICK-MISS-ACTIVE ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.tracker_tick.v1" SVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 10" RVAL  s" sdk_image_timestamp_ns" s" 1700000000000000000" RVAL
+   s" tracker_source" s" camera_frame_heartbeat" SVAL
+   s" tracker_update_index" s" 11" RVAL  s" tracker_timestamp_ns" s" 1700000000028000000" RVAL
+   s" latency_ms" s" 28" RVAL J} J$ ;
+: L-SPECIAL-TSUNIT ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.perception_tick.v1" SVAL
+   s" decision_timestamp_ms" s" 1" RVAL
+   s" camera_serial" s" 12345" SVAL  s" logical_name" s" cam_a0" SVAL
+   s" frame_index" s" 42" RVAL  s" sdk_image_timestamp_ns" s" 1700000000123456789" RVAL
+   s" tick_source" s" zed_yolo_live_detector" SVAL
+   s" inference_index" s" 7" RVAL  s" detections_count" s" 0" RVAL
+   s" latency_ms" s" 38.5" RVAL J} J$ ;
+: L-SPECIAL-UNSUPPORTED ( -- ptr u8 i64 ) J{
+   s" schema_version" s" odin.future_tick.v9" SVAL
+   s" camera_serial" s" 12345" SVAL J} J$ ;
+: L-SPECIAL-BAD-SCHEMA-KIND ( -- ptr u8 i64 ) J{
+   s" schema_version" s" 1" RVAL
+   s" camera_serial" s" 12345" SVAL J} J$ ;
+
 \ assert a line validates to ( rtype status )
 : V= ( ptr u8 i64 i64 i64 -- ) {: rt:i64 st:i64 :} VALIDATE-LINE {: art:i64 ast:i64 :}
    ast st T=  art rt T= ;
@@ -95,6 +176,10 @@ variable TB-N  variable TB-CP
    L-SENSOR           SENSOR V-OK V=
    L-ERROR            ERROR  V-OK V=
    L-SUMMARY          SUMMARY V-OK V=
+   L-DETECTION        DETECTION V-OK V=
+   L-DETECTION-NULL-BBOX DETECTION V-OK V=
+   L-PERCEPTION-TICK  PERCEPTION-TICK V-OK V=
+   L-TRACKER-TICK     TRACKER-TICK V-OK V=
    L-SCHEMA-V2        UNSUPPORTED-SCHEMA VST=
    L-SCHEMA-MISS      MISSING-FIELD VST=
    L-SCHEMA-BADTYPE   INVALID-FIELD-TYPE VST=
@@ -104,6 +189,13 @@ variable TB-N  variable TB-CP
    L-SUMMARY-BADENUM  UNKNOWN-ENUM VST=
    L-SUMMARY-FLOATINT INVALID-FIELD-TYPE VST=
    L-SENSOR-BADENUM   UNKNOWN-ENUM VST=
+   L-DETECTION-MISS-LAT MISSING-FIELD VST=
+   L-DETECTION-BAD-Q  INVALID-FIELD-TYPE VST=
+   L-PERCEPTION-TICK-BAD-TIMING INVALID-FIELD-TYPE VST=
+   L-TRACKER-TICK-MISS-ACTIVE MISSING-FIELD VST=
+   L-SPECIAL-TSUNIT   INVALID-TS-UNITS VST=
+   L-SPECIAL-UNSUPPORTED UNSUPPORTED-SCHEMA VST=
+   L-SPECIAL-BAD-SCHEMA-KIND INVALID-FIELD-TYPE VST=
    s" [1,2,3]"        EXPECTED-OBJECT VST=
    s" {oops"          INVALID-JSON VST= ;
 

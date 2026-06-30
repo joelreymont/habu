@@ -2,12 +2,15 @@
 \ src/capture_schema.zig validateObject/validateLine. Layered on capture-schema.f
 \ (record-type + version) and habu tools/json.f (JSON-PARSE / JSON-GET / JSON-KIND).
 \
-\ validateObject's contract (mirrored exactly, in this order):
+\ `odin.capture.v1` validateObject's contract is preserved:
 \   1. reject any key ending in a wrong timestamp unit (_timestamp_ms/_us, _monotonic_ms/_us)
 \   2. required string "type" -> parseRecordType (CS-RTYPE); unknown -> UNKNOWN-RTYPE
 \   3. required string "schema_version" -> exact match; else UNSUPPORTED-SCHEMA
 \   4. per record type: every required field present with the right JSON kind, plus
 \      the time_reference / result enum checks.
+\ Live detector records (`odin.localization_detections.v1`, `odin.perception_tick.v1`,
+\ `odin.tracker_tick.v1`) intentionally have no "type" field, so those dispatch by
+\ schema_version after the same timestamp-unit scan.
 \ First error wins (CS-FAIL records only the first), matching the .zig early returns.
 \
 \ JSON numbers are stored by json.f as text spans, so the .integer-vs-number
@@ -45,6 +48,8 @@ private
 6 constant K-NINT
 7 constant K-NNUM
 8 constant K-NBOOL
+9 constant K-OBJ
+10 constant K-NOBJ
 
 \ checked boolean literals (Habu has no true/false words; flags come from 0=)
 : true  ( -- bool ) 0 0= ;
@@ -83,12 +88,20 @@ variable FOUND      \ found-flag for the byte scan
    kind K-NINT  = if k J-NULL = if true exit then v INT? exit then
    kind K-NNUM  = if k J-NULL = k J-NUM  = or exit then
    kind K-NBOOL = if k J-NULL = k J-BOOL = or exit then
+   kind K-OBJ   = if k J-OBJ  = exit then
+   kind K-NOBJ  = if k J-NULL = k J-OBJ  = or exit then
    false ;
 
 \ --- one required field: present and right kind (mirror requireFields step) ---
 : REQ ( i64 ptr u8 i64 i64 -- ) {: root:i64 key:ptr ku:i64 kind:i64 :}
    root key ku JSON-GET {: v:i64 :}
    v -1 = if MISSING-FIELD FAIL else
+      v kind MATCH? 0= if INVALID-FIELD-TYPE FAIL then
+   then ;
+
+: OPT ( i64 ptr u8 i64 i64 -- ) {: root:i64 key:ptr ku:i64 kind:i64 :}
+   root key ku JSON-GET {: v:i64 :}
+   v -1 <> if
       v kind MATCH? 0= if INVALID-FIELD-TYPE FAIL then
    then ;
 
@@ -191,6 +204,57 @@ variable FOUND      \ found-flag for the byte scan
    root s" writer_stalls"         K-INT  REQ
    root s" result"                K-STR  REQ ;
 
+: FIELDS-DETECTION ( i64 -- ) {: root:i64 :}
+   root s" schema_version"         K-STR  REQ
+   root s" camera_serial"          K-STR  REQ
+   root s" logical_name"           K-STR  REQ
+   root s" frame_index"            K-INT  REQ
+   root s" sdk_image_timestamp_ns" K-INT  REQ
+   root s" target_id"              K-STR  REQ
+   root s" pixel_center_x"         K-NUM  REQ
+   root s" pixel_center_y"         K-NUM  REQ
+   root s" detection_source"       K-STR  REQ
+   root s" confidence"             K-NUM  REQ
+   root s" latency_ms"             K-NUM  REQ
+   root s" bbox"                   K-NOBJ OPT
+   root s" queue_depth"            K-INT  OPT
+   root s" decision_timestamp_ns"  K-INT  OPT
+   root s" tracker_update_index"   K-INT  OPT
+   root s" tracker_timestamp_ns"   K-INT  OPT ;
+
+: FIELDS-PERCEPTION-TICK ( i64 -- ) {: root:i64 :}
+   root s" schema_version"         K-STR REQ
+   root s" camera_serial"          K-STR REQ
+   root s" logical_name"           K-STR REQ
+   root s" frame_index"            K-INT REQ
+   root s" sdk_image_timestamp_ns" K-INT REQ
+   root s" tick_source"            K-STR REQ
+   root s" inference_index"        K-INT REQ
+   root s" detections_count"       K-INT REQ
+   root s" latency_ms"             K-NUM REQ
+   root s" queue_depth"            K-INT OPT
+   root s" decision_timestamp_ns"  K-INT OPT
+   root s" tracker_update_index"   K-INT OPT
+   root s" tracker_timestamp_ns"   K-INT OPT
+   root s" schedule_lag_ms"        K-NUM OPT
+   root s" tensor_retrieve_ms"     K-NUM OPT
+   root s" detector_run_ms"        K-NUM OPT
+   root s" detector_cycle_ms"      K-NUM OPT
+   root s" mode"                   K-STR OPT ;
+
+: FIELDS-TRACKER-TICK ( i64 -- ) {: root:i64 :}
+   root s" schema_version"         K-STR REQ
+   root s" camera_serial"          K-STR REQ
+   root s" logical_name"           K-STR REQ
+   root s" frame_index"            K-INT REQ
+   root s" sdk_image_timestamp_ns" K-INT REQ
+   root s" tracker_source"         K-STR REQ
+   root s" tracker_update_index"   K-INT REQ
+   root s" tracker_timestamp_ns"   K-INT REQ
+   root s" latency_ms"             K-NUM REQ
+   root s" tracks_active"          K-INT REQ
+   root s" queue_depth"            K-INT OPT ;
+
 : REQ-ENUM-TR ( i64 -- ) {: root:i64 :}
    root s" time_reference" REQ-STR {: v:i64 :}
    v -1 <> if
@@ -208,7 +272,28 @@ variable FOUND      \ found-flag for the byte scan
    rt SENSOR   = if root FIELDS-SENSOR   root REQ-ENUM-TR exit then
    rt RESOURCE = if root FIELDS-RESOURCE exit then
    rt ERROR    = if root FIELDS-ERROR    exit then
-   rt SUMMARY  = if root FIELDS-SUMMARY  root REQ-ENUM-RESULT exit then ;
+   rt SUMMARY  = if root FIELDS-SUMMARY  root REQ-ENUM-RESULT exit then
+   rt DETECTION       = if root FIELDS-DETECTION       exit then
+   rt PERCEPTION-TICK = if root FIELDS-PERCEPTION-TICK exit then
+   rt TRACKER-TICK    = if root FIELDS-TRACKER-TICK    exit then ;
+
+: TYPE-PRESENT? ( i64 -- bool ) {: root:i64 :}
+   root s" type" JSON-GET -1 <> ;
+
+: PARSE-SPECIAL ( i64 -- ) {: root:i64 :}
+   root s" schema_version" JSON-GET {: v:i64 :}
+   v -1 <> if
+      v JSON-KIND J-STR <> if
+         root TYPE-PRESENT? 0= if INVALID-FIELD-TYPE FAIL then
+      else
+         v JSON-STRING$ VERSION-RTYPE RT !
+         RT @ UNKNOWN = if
+            v JSON-STRING$ CAPTURE-VERSION? 0= if
+               root TYPE-PRESENT? 0= if UNSUPPORTED-SCHEMA FAIL then
+            then
+         then
+      then
+   then ;
 
 : PARSE-TYPE ( i64 -- ) {: root:i64 :}
    root s" type" REQ-STR {: v:i64 :}
@@ -227,8 +312,8 @@ variable FOUND      \ found-flag for the byte scan
    root JSON-KIND J-OBJ <> if -1 EXPECTED-OBJECT exit then
    V-OK ERR !  -1 RT !
    root CHECK-TS
-   root PARSE-TYPE
-   root CHECK-VERSION
+   OK? if root PARSE-SPECIAL then
+   OK? if RT @ UNKNOWN = if root PARSE-TYPE root CHECK-VERSION then then
    OK? if root RT @ DISPATCH then
    RT @ ERR @ ;
 

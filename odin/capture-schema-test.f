@@ -15,7 +15,14 @@ private
    s" bogus"    RTYPE UNKNOWN  T=
    \ schema version is exact (test "schema version is exact")
    s" odin.capture.v1" VERSION-OK? TTRUE
-   s" odin.capture.v2" VERSION-OK? TFALSE ;
+   s" odin.localization_detections.v1" VERSION-OK? TTRUE
+   s" odin.perception_tick.v1" VERSION-OK? TTRUE
+   s" odin.tracker_tick.v1" VERSION-OK? TTRUE
+   s" odin.capture.v2" VERSION-OK? TFALSE
+   s" odin.localization_detections.v1" VERSION-RTYPE DETECTION T=
+   s" odin.perception_tick.v1" VERSION-RTYPE PERCEPTION-TICK T=
+   s" odin.tracker_tick.v1" VERSION-RTYPE TRACKER-TICK T=
+   s" odin.capture.v1" VERSION-RTYPE UNKNOWN T= ;
 
 RUN
 T-REPORT

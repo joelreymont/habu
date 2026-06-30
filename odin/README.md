@@ -72,18 +72,25 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
 - `config.f` — camera-rig config validation (identity, unique serials, full
   4-camera rig, localization readiness) returning `config.zig`-style error codes.
   Ported from `src/config.zig`, verified against its rig-validation tests.
-- `capture_schema.f` — NDJSON capture record-type classification + exact
-  schema-version check, from `src/capture_schema.zig`.
+- `capture_schema.f` — NDJSON record classification + exact schema-version
+  checks, from `src/capture_schema.zig` plus Odin live detector stream schemas.
+  `odin.capture.v1` records use the capture `type` field; live detector records
+  (`odin.localization_detections.v1`, `odin.perception_tick.v1`, and
+  `odin.tracker_tick.v1`) dispatch by `schema_version` because they intentionally
+  have no capture `type`.
 - `capture_schema-json.f` — the full `validateObject`/`validateLine` contract over
   habu `tools/json.f`: wrong-timestamp-unit rejection, required `type` +
-  `schema_version`, and every record type's required fields with their JSON kind
-  (string/integer/number/bool/array + nullable variants) plus the
+  `schema_version` for capture records, schema-only dispatch for live
+  detector/tick records, and every record type's required fields with their JSON
+  kind (string/integer/number/bool/array/object + nullable variants) plus the
   `time_reference`/`result` enum checks. Returns the `capture_schema.zig`
   `ValidationError` set as `CS-*` status codes. The `.integer` vs `.number`
   distinction is a number-text shape test (no `.`/`e`/`E`), since json.f keeps
-  numbers as text spans. Verified against a 16-case oracle covering all five
-  record types and every error path. This is the JSON access layer the NDJSON
-  analyzers (timestamp/latency/fps/low-light/tracker) build on.
+  numbers as text spans. Verified against an expanded oracle covering capture
+  records, live detection/tick records, nullable detection boxes, timestamp-unit
+  rejection, unsupported live schemas, and field-type/missing-field failures.
+  This is the JSON access layer the NDJSON analyzers
+  (timestamp/latency/fps/low-light/tracker) build on.
 
 - `timestamp_metrics.f` — per-camera frame-timing kernel from
   `src/timestamp_metrics.zig` (`CameraTiming`/`updateCameraTiming`/
