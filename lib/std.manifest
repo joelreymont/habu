@@ -1075,15 +1075,29 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	task	lib/task.f	word	ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
 1	task	lib/task.f	word	TASK-SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer
 1	task	lib/task.f	word	TASK-SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer as a cell
+1	task	lib/task.f	word	TASK-RC>EXIT	(n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	normalize a worker throw code to process exit status
+1	task	lib/task.f	word	TASK-RUNNER	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	run a task XT and fail the process on uncaught throws
 1	task	lib/task.f	word	TASK-STOP@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a task stop request flag
 1	task	lib/task.f	word	TASK-STOP!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a task stop request flag
 1	task	lib/task.f	word	PAUSE	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	yield the current task and honor stop requests
 1	task	lib/task.f	word	HALT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	request that a task stop
-1	task	lib/task.f	word	TASK-KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	join or release a task and return it to empty state
-1	task	lib/task.f	word	TASK-DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	published	test whether a task has finished
+1	task	lib/task.f	word	TASK-KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	private implementation for TASK:KILL
+1	task	lib/task.f	word	TASK-DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	private implementation for TASK:DONE?
 1	task	lib/task.f	word	#USER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the next per-task user storage offset
 1	task	lib/task.f	word	USER-ROOM	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate per-task user storage capacity
 1	task	lib/task.f	word	HIS	(ptr a ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	translate a user variable address into another task region
+1	task	lib/task.f	word	FACILITY-OWNER	(ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a facility owner cell
+1	task	lib/task.f	word	FACILITY-MUTEX	(ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a facility pthread mutex
+1	task	lib/task.f	word	TASK-OWNER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current facility owner token
+1	task	lib/task.f	word	FACILITY-OWNER@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a facility owner token
+1	task	lib/task.f	word	FACILITY-OWNER!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a facility owner token
 1	task	lib/task.f	word	FACILITY-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	initialize a pthread mutex facility
 1	task	lib/task.f	word	GET	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	lock a facility
 1	task	lib/task.f	word	RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	unlock a facility
+1	task	lib/task.f	word	TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
+1	task	lib/task.f	word	SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer
+1	task	lib/task.f	word	SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer as a cell
+1	task	lib/task.f	word	KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	join or release a task and return it to empty state
+1	task	lib/task.f	word	DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	published	test whether a task has finished
+1	task	lib/task.f	word	+USER	(n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	define task-local user storage
+1	task	lib/task.f	word	FACILITY	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	define pthread mutex storage

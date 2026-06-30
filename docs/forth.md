@@ -67,20 +67,26 @@ file.
   Qualification is only a token with exactly one non-edge colon; names that
   start or end with `:` are ordinary Forth words. Do not fake namespaces with
   raw global prefixes when the runtime supports a real wordlist-qualified name.
-- **Use packages for file-level namespaces.** `package NAME` opens NAME's private
-  wordlist, `public` switches definitions to NAME's exported wordlist, `private`
-  switches back to internal definitions, and `end-package` restores the previous
-  current wordlist. Public words are called as `NAME:WORD`; private words are
-  visible only while the package is open, including reopened package blocks.
-  Keep qualifier and word case matched as above (`HB:COUNT` or `hb:count`, not
-  `hb:COUNT`).
+- **Use packages for module namespaces.** New library, tool, test-support, and
+  subsystem code belongs in `package NAME` unless it is a documented core
+  language/prelude file. `package NAME` opens NAME's private wordlist, `public`
+  switches definitions to NAME's exported wordlist, `private` switches back to
+  internal definitions, and `end-package` restores the previous current
+  wordlist. The exported API is the words defined in the `public` section and
+  called as `NAME:WORD`; private helpers are visible only while the package is
+  open, including reopened package blocks. Do not fake a namespace by prefixing
+  every public word (`TASK-KILL`, `TASK-DONE?`) when the package can export the
+  real interface (`TASK:KILL`, `TASK:DONE?`). Keep qualifier and word case
+  matched as above (`HB:COUNT` or `hb:count`, not `hb:COUNT`).
 
 ### Packages
 
-Packages are real wordlist namespaces for file/module scope. Use the lowercase
-keywords because they are language words; keep package names and project-defined
-words uppercase unless the package intentionally belongs to a lowercase
-vocabulary.
+Packages are real wordlist namespaces for file/module scope and are the default
+shape for new modules. Use the lowercase keywords because they are language
+words; keep package names and project-defined words uppercase unless the package
+intentionally belongs to a lowercase vocabulary. Define implementation helpers
+before `public` or after `private`; define the public interface only in the
+`public` section.
 
 ```forth
 package HB
@@ -107,6 +113,10 @@ end-package
 - `public` is valid only inside a package and switches new definitions to the
   package public/export wordlist. Public words are called from outside as
   `NAME:WORD`; unqualified global lookup must not find them.
+- The public section is the module boundary. Export short domain words there:
+  `TASK:KILL`, `TASK:DONE?`, `PTX:BROADCAST`, `MAP:GET`. Avoid repeating the
+  package name in the public tail unless the domain spelling itself requires it.
+  Prefix-style global APIs are legacy debt, not a pattern for new code.
 - `private` is valid only inside a package and switches new definitions back to
   the package private wordlist. Private words are visible by unqualified name
   only while that package is open; `NAME:PRIVATE-WORD` must not resolve.

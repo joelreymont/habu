@@ -90,7 +90,8 @@ variable FM-NUM-L
    s" STATUS.md" FM-REQ
    s" TRUSTED.md" FM-REQ
    s" docs/parallel-agents.md" FM-REQ
-   s" docs/seed.md" FM-REQ ;
+   s" docs/seed.md" FM-REQ
+   s" docs/swiftforth-task-api.md" FM-REQ ;
 
 : FM-CHECK-REQUIRED-CORE ( -- )
    s" src/core/bytes.f" FM-REQ

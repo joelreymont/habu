@@ -1,7 +1,7 @@
 # Habu Tasking
 
 `lib/task.f` implements native CPU tasks over `pthread` on macOS/aarch64 and
-Linux/aarch64. Load it with:
+Linux/aarch64 in package `TASK`. Load it with:
 
 ```forth
 require lib/task.f
@@ -27,29 +27,41 @@ code `$4F`, printing the rejected token. Linux fatal exits use `exit_group`
 (`94`), not thread-local `exit` (`93`), so an error in any thread terminates the
 whole process instead of leaving worker threads behind.
 
+Worker bodies run through a task wrapper. A worker `die` keeps its explicit exit
+status and message; an uncaught worker `throw` terminates the process with the
+low byte of the throw code and `task: unhandled throw` on stderr. Task failure
+is process-fatal by design until a checked result/future model exists.
+
 ## Public Words
 
 ```forth
-TASK            ( n -- )          \ define a task TCB; n is stack bytes
-CONSTRUCT       ( ptr a -- )      \ allocate task stack/region without starting
-ACTIVATE        ( n ptr a -- )    \ run xt in a pthread-backed task
-PAUSE           ( -- )            \ yield; worker exits if HALT requested
-HALT            ( ptr a -- )      \ request stop at next PAUSE
-TASK-KILL       ( ptr a -- )      \ join/release task memory
-TASK-DONE?      ( ptr a -- bool )
+TASK:TASK            ( n -- )          \ define a task TCB; n is stack bytes
+TASK:MIN-STACK       ( -- n )
+TASK:CONSTRUCT       ( ptr a -- )      \ allocate task stack/region without starting
+TASK:ACTIVATE        ( n ptr a -- )    \ run xt in a pthread-backed task
+TASK:SELF            ( -- ptr a )
+TASK:SELF-N          ( -- n )
+TASK:PAUSE           ( -- )            \ yield; worker exits if HALT requested
+TASK:HALT            ( ptr a -- )      \ request stop at next PAUSE
+TASK:KILL            ( ptr a -- )      \ join/release task memory
+TASK:DONE?           ( ptr a -- bool )
 
-#USER           ( -- n )
-+USER           ( n n -- n )      \ define task-local user variable
-HIS             ( ptr a ptr a -- ptr a )
+TASK:#USER           ( -- n )
+TASK:+USER           ( n n -- n )      \ define task-local user variable
+TASK:HIS             ( ptr a ptr a -- ptr a )
 
-FACILITY        ( -- )            \ define pthread mutex storage
-FACILITY-INIT   ( ptr a -- )
-GET             ( ptr a -- )
-RELEASE         ( ptr a -- )
+TASK:FACILITY        ( -- )            \ define pthread mutex storage
+TASK:FACILITY-INIT   ( ptr a -- )
+TASK:GET             ( ptr a -- )
+TASK:RELEASE         ( ptr a -- )
 ```
 
-Use `TASK-KILL` for teardown. A task that loops must call `PAUSE` or block in a
-host call; `HALT` is cooperative and is observed by `PAUSE`.
+Use `TASK:KILL` for teardown. A task that loops must call `TASK:PAUSE` or block
+in a host call; `TASK:HALT` is cooperative and is observed by `TASK:PAUSE`.
+
+The surface tracks the SwiftForth multitasking words captured in
+`docs/swiftforth-task-api.md`. Habu keeps the task body typed by passing an XT to
+`TASK:ACTIVATE` instead of parsing a following source body.
 
 ## Atomics
 
@@ -63,12 +75,14 @@ hardware; align dictionary cells before sharing them.
 - Tasks execute XTs only; they do not interpret source and do not compile.
 - New definitions, `create`, `variable`, `constant`, `defer`, `cp!`, `ndict!`,
   and other dictionary/code mutation paths are invalid while tasks are live.
-- Ordinary `variable` storage is shared process storage. Use `+USER` for
-  task-local state and `HIS` to inspect another task's user cell before
+- Ordinary `variable` storage is shared process storage. Use `TASK:+USER` for
+  task-local state and `TASK:HIS` to inspect another task's user cell before
   releasing that task.
 - The task trampoline preserves the shared dictionary/code registers and swaps
   the data stack and data/user base for the worker.
-- `FACILITY` is a pthread mutex, not a spin lock.
+- `TASK:FACILITY` is owner-tracked pthread mutex storage, not a spin lock.
+  `TASK:GET` is idempotent for the owning task; `TASK:RELEASE` is a no-op for a
+  non-owner or an already-free facility.
 
 ## Tests
 
@@ -80,7 +94,10 @@ bin/hb --load test/atomics-smoke.f
 bin/hb --load test/run-in-stack-smoke.f
 ```
 
-`lib/task-test.f` covers two pthread workers, mutex-protected shared updates,
-task-local `+USER` isolation via `HIS`, `TASK-SELF`, `HALT`/`TASK-KILL`, and the
-live-task compile guard. The full test suite includes these as
-`tasking-primitive-smoke` and `tasking-threads`.
+`lib/task-test.f` covers two pthread workers, facility-protected shared updates,
+task-local `TASK:+USER` isolation via `TASK:HIS`, `TASK:SELF`, `TASK:HALT` /
+`TASK:KILL`, facility owner semantics, a five-task Odin-shaped repeated
+start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
+live-task compile guard, and process-fatal worker `die`/`throw` diagnostics.
+The full test suite includes these as `tasking-primitive-smoke` and
+`tasking-threads`.

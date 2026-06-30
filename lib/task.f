@@ -4,10 +4,15 @@ s" lib/errors.f" required
 s" lib/memory.f" required
 s" lib/ffi.f" required
 
+package TASK
+
 $8 constant TASK-CELL
 $10000 constant TASK-MIN-STACK
 $10000 constant TASK-REGION-BYTES
 $80 constant TASK-MUTEX-BYTES
+0 constant TASK-FACILITY-OWNER-OFF
+$8 constant TASK-FACILITY-MUTEX-OFF
+TASK-FACILITY-MUTEX-OFF TASK-MUTEX-BYTES + constant TASK-FACILITY-BYTES
 
 0 constant TASK-EMPTY
 1 constant TASK-CONSTRUCTED
@@ -28,7 +33,8 @@ $48 constant TCB.CP-OFF
 $50 constant TCB.STATUS-OFF
 $58 constant TCB.STOP-OFF
 $60 constant TCB.RET-OFF
-$68 constant TASK-TCB-BYTES
+$68 constant TCB.USER-XT-OFF
+$70 constant TASK-TCB-BYTES
 
 BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.SIZE
@@ -44,6 +50,7 @@ BEGIN-STRUCTURE TASK-TCB-SIZE
    CELL +FIELD TCB.STATUS
    CELL +FIELD TCB.STOP
    CELL +FIELD TCB.RET
+   CELL +FIELD TCB.USER-XT
 END-STRUCTURE
 
 : TASK-TCB-LAYOUT-CHECK ( -- )
@@ -282,13 +289,27 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
    tcb TASK-RELEASE-MEM
    TASK-EMPTY tcb TASK-STATE! ;
 
+: TASK-SELF ( -- ptr a )
+   data-base TASK-TCB-CELL + @ TASK-N>PTR ;
+
+: TASK-SELF-N ( -- n )
+   data-base TASK-TCB-CELL + @ ;
+
+: TASK-RC>EXIT ( n -- n )
+   $FF and ;
+
+: TASK-RUNNER ( -- )
+   TASK-SELF TCB.USER-XT @ catch dup 0= if drop exit then
+   TASK-RC>EXIT s" task: unhandled throw" rot die ;
+
 : ACTIVATE ( n ptr a -- ) {: xt:n tcb:ptr :}
    TASK-READY
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
    tcb CONSTRUCT
-   xt tcb TCB.XT !
+   xt tcb TCB.USER-XT !
+   ['] TASK-RUNNER tcb TCB.XT !
    0 tcb TCB.STOP !
    TASK-RUNNING tcb TASK-STATE!
    TASK-LIVE+
@@ -298,12 +319,6 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
       E-TASK-THREAD throw
    then
    drop ;
-
-: TASK-SELF ( -- ptr a )
-   data-base TASK-TCB-CELL + @ TASK-N>PTR ;
-
-: TASK-SELF-N ( -- n )
-   data-base TASK-TCB-CELL + @ ;
 
 : TASK-STOP@ ( ptr a -- n )
    TCB.STOP @ ;
@@ -348,7 +363,7 @@ TRUSTED: TASK ( n -- )
    dup TASK-CHECK-SIZE
    TASK-ALIGN8
    create
-      , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
+      , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 , 0 ,
    does> ( -- ptr a ) ;
 
 : #USER ( -- n )
@@ -368,17 +383,93 @@ TRUSTED: +USER ( n n -- n )
 
 TRUSTED: FACILITY ( -- )
    TASK-ALIGN8
-   create TASK-MUTEX-BYTES allot
+   create TASK-FACILITY-BYTES allot
    does> ( -- ptr a ) ;
+
+: FACILITY-OWNER ( ptr a -- ptr a )
+   TASK-FACILITY-OWNER-OFF + ;
+
+: FACILITY-MUTEX ( ptr a -- ptr a )
+   TASK-FACILITY-MUTEX-OFF + ;
+
+: TASK-OWNER ( -- n )
+   TASK-SELF-N dup 0= if drop data-base P>N then ;
+
+: FACILITY-OWNER@ ( ptr a -- n )
+   FACILITY-OWNER atomic@ ;
+
+: FACILITY-OWNER! ( n ptr a -- )
+   FACILITY-OWNER atomic! ;
 
 : FACILITY-INIT ( ptr a -- )
    TASK-CFUNS
-   P>N 0 TASK-PTHREAD-MUTEX-INIT @ CALL2 TASK-RC0 ;
+   0 over FACILITY-OWNER!
+   FACILITY-MUTEX P>N 0 TASK-PTHREAD-MUTEX-INIT @ CALL2 TASK-RC0 ;
+
+: GET ( ptr a -- ) {: f:ptr :}
+   TASK-CFUNS
+   TASK-OWNER {: owner:n :}
+   f FACILITY-OWNER@ owner = if exit then
+   f FACILITY-MUTEX P>N TASK-PTHREAD-MUTEX-LOCK @ CALL1 TASK-RC0
+   owner f FACILITY-OWNER! ;
+
+: RELEASE ( ptr a -- ) {: f:ptr :}
+   TASK-CFUNS
+   TASK-OWNER {: owner:n :}
+   f FACILITY-OWNER@ owner <> if exit then
+   0 f FACILITY-OWNER!
+   f FACILITY-MUTEX P>N TASK-PTHREAD-MUTEX-UNLOCK @ CALL1 TASK-RC0 ;
+
+public
+
+TASK-MIN-STACK constant MIN-STACK
+
+: TASK ( n -- )
+   TASK ;
+
+: CONSTRUCT ( ptr a -- )
+   CONSTRUCT ;
+
+: ACTIVATE ( n ptr a -- )
+   ACTIVATE ;
+
+: SELF ( -- ptr a )
+   TASK-SELF ;
+
+: SELF-N ( -- n )
+   TASK-SELF-N ;
+
+: PAUSE ( -- )
+   PAUSE ;
+
+: HALT ( ptr a -- )
+   HALT ;
+
+: KILL ( ptr a -- )
+   TASK-KILL ;
+
+: DONE? ( ptr a -- bool )
+   TASK-DONE? ;
+
+: #USER ( -- n )
+   #USER ;
+
+: +USER ( n n -- n )
+   +USER ;
+
+: HIS ( ptr a ptr a -- ptr a )
+   HIS ;
+
+: FACILITY ( -- )
+   FACILITY ;
+
+: FACILITY-INIT ( ptr a -- )
+   FACILITY-INIT ;
 
 : GET ( ptr a -- )
-   TASK-CFUNS
-   P>N TASK-PTHREAD-MUTEX-LOCK @ CALL1 TASK-RC0 ;
+   GET ;
 
 : RELEASE ( ptr a -- )
-   TASK-CFUNS
-   P>N TASK-PTHREAD-MUTEX-UNLOCK @ CALL1 TASK-RC0 ;
+   RELEASE ;
+
+end-package

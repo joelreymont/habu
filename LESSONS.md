@@ -34,6 +34,10 @@ lesson — keep the specific word/code/path, cut the prose.
   resumes the same private/public wordlists and duplicate set; `--load`,
   source-list, or include still owns file dependency order. Do not include a
   file merely to share the package namespace.
+- **Package public tails are the API:** once a module has `package TASK`, the
+  public spelling should be `TASK:KILL`/`TASK:DONE?`, not global-style
+  `TASK-KILL`/`TASK-DONE?`. Keep implementation helpers private and put the
+  caller-facing surface in the `public` section.
 - **Core byte helpers are not string-library setup:** `lib/ffi-abi.f` used
   `BYTE-COPY`, so `include lib/ffi.f` failed unless `lib/string.f` happened to
   be loaded first. Small primitive helpers used across unrelated libraries
@@ -53,6 +57,10 @@ lesson — keep the specific word/code/path, cut the prose.
   make process captures time out. Native and bootstrap emitters must use
   `NR-EXIT-GROUP` for process termination; `pthread_exit` remains the task-local
   stop boundary.
+- **Task facilities need owner state above pthreads:** SwiftForth-style
+  facilities make same-owner `GET` and non-owner `RELEASE` no-ops; a raw
+  pthread mutex exposes deadlock/error behavior instead. Track an owner token in
+  the facility record and keep pthreads as the private blocking primitive.
 - **Warm-image tails must not reload prefix-owned layout:** target layout files
   are part of the engine prefix. Snapshot tail tools append image emitters
   (`elf.f`/`macho.f`) only; re-appending `src/os/*/layout.f` redefines image

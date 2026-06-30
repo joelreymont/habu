@@ -1105,31 +1105,40 @@ cwd strings throw `E-PROC-OUTPUT` before spawning.
 ## Tasking
 
 `lib/task.f` provides pthread-backed CPU tasks on macOS/aarch64 and
-Linux/aarch64. Load it with `require lib/task.f`; the module owns its
-`errors`/`memory`/`ffi` dependencies.
+Linux/aarch64 in package `TASK`. Load it with `require lib/task.f`; the module
+owns its `errors`/`memory`/`ffi` dependencies.
 
 ```forth
-TASK          ( n -- )
-CONSTRUCT     ( ptr a -- )
-ACTIVATE      ( n ptr a -- )
-PAUSE         ( -- )
-HALT          ( ptr a -- )
-TASK-KILL     ( ptr a -- )
-TASK-DONE?    ( ptr a -- bool )
-#USER         ( -- n )
-+USER         ( n n -- n )
-HIS           ( ptr a ptr a -- ptr a )
-FACILITY      ( -- )
-FACILITY-INIT ( ptr a -- )
-GET           ( ptr a -- )
-RELEASE       ( ptr a -- )
+TASK:TASK          ( n -- )
+TASK:MIN-STACK     ( -- n )
+TASK:CONSTRUCT     ( ptr a -- )
+TASK:ACTIVATE      ( n ptr a -- )
+TASK:SELF          ( -- ptr a )
+TASK:SELF-N        ( -- n )
+TASK:PAUSE         ( -- )
+TASK:HALT          ( ptr a -- )
+TASK:KILL          ( ptr a -- )
+TASK:DONE?         ( ptr a -- bool )
+TASK:#USER         ( -- n )
+TASK:+USER         ( n n -- n )
+TASK:HIS           ( ptr a ptr a -- ptr a )
+TASK:FACILITY      ( -- )
+TASK:FACILITY-INIT ( ptr a -- )
+TASK:GET           ( ptr a -- )
+TASK:RELEASE       ( ptr a -- )
 ```
 
 Tasks execute precompiled XTs only. Dictionary/code mutation while tasks are
 live is fail-closed with exit code `$4F`; on Linux this uses process-wide
 `exit_group` so failed tasking programs do not leave worker threads running.
-Use `+USER` for task-local cells, ordinary aligned cells plus atomics for shared
-state, and `TASK-KILL` for teardown.
+Use `TASK:+USER` for task-local cells, ordinary aligned cells plus atomics for
+shared state, `TASK:FACILITY` for owner-tracked mutex storage, and `TASK:KILL`
+for teardown. Worker `die` is process-fatal with the explicit code/message;
+uncaught worker `throw` is process-fatal with `task: unhandled throw`.
+
+The public tasking surface tracks the local SwiftForth manual capture in
+`docs/swiftforth-task-api.md`, with `TASK:ACTIVATE` using a checked XT instead
+of SwiftForth's source-body parsing form.
 
 ## Date And Time
 
