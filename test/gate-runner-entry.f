@@ -41,6 +41,11 @@
 33 constant GR-ID-TAIL-RUNNER
 34 constant GR-ID-TAIL-BUILD
 35 constant GR-ID-TAIL-WARM
+36 constant GR-ID-LINT-LIBS-CORE
+37 constant GR-ID-LINT-LIBS-PTX
+38 constant GR-ID-LINT-LIBS-PTX-NEG
+39 constant GR-ID-LINT-LIBS-PTX-TOOL
+40 constant GR-ID-LINT-ARTIFACTS-FAST
 variable GR-START-NS
 variable GR-ARG-I
 
@@ -127,6 +132,11 @@ variable GR-ARG-I
    s" tail-runner" GR-ARG0= if GR-ID-TAIL-RUNNER exit then
    s" tail-build" GR-ARG0= if GR-ID-TAIL-BUILD exit then
    s" tail-warm" GR-ARG0= if GR-ID-TAIL-WARM exit then
+   s" lint-libs-core" GR-ARG0= if GR-ID-LINT-LIBS-CORE exit then
+   s" lint-libs-ptx" GR-ARG0= if GR-ID-LINT-LIBS-PTX exit then
+   s" lint-libs-ptx-neg" GR-ARG0= if GR-ID-LINT-LIBS-PTX-NEG exit then
+   s" lint-libs-ptx-tool" GR-ARG0= if GR-ID-LINT-LIBS-PTX-TOOL exit then
+   s" lint-artifacts-fast" GR-ARG0= if GR-ID-LINT-ARTIFACTS-FAST exit then
    GR-ID-UNKNOWN ;
 
 : GR-STDLIB ( -- )
@@ -159,6 +169,11 @@ variable GR-ARG-I
       GR-ID-LINT-MANIFEST of GR-STDLIB endof
       GR-ID-LINT-ARTIFACTS of GR-STDLIB endof
       GR-ID-LINT-LIBS of GR-STDLIB endof
+      GR-ID-LINT-LIBS-CORE of GSI-LINT-LIBS-CORE endof
+      GR-ID-LINT-LIBS-PTX of GSI-LINT-LIBS-PTX endof
+      GR-ID-LINT-LIBS-PTX-NEG of GSI-LINT-LIBS-PTX-NEG endof
+      GR-ID-LINT-LIBS-PTX-TOOL of GSI-LINT-LIBS-PTX-TOOL endof
+      GR-ID-LINT-ARTIFACTS-FAST of GSI-LINT-ARTIFACTS-FAST endof
       GR-ID-REPAIR of GENG-REPAIR-SLICE endof
       GR-ID-FIXTURES of GENG-FIXTURES-SLICE endof
       GR-ID-RUNTIME of GENG-RUNTIME-SLICE endof
@@ -209,6 +224,11 @@ variable GR-ARG-I
       GR-ID-TOOL-TYPED of 0 0= endof
       GR-ID-TOOL-SEMANTICS of 0 0= endof
       GR-ID-LINT-TOOLS of 0 0= endof
+      GR-ID-LINT-LIBS-CORE of 0 0= endof
+      GR-ID-LINT-LIBS-PTX of 0 0= endof
+      GR-ID-LINT-LIBS-PTX-NEG of 0 0= endof
+      GR-ID-LINT-LIBS-PTX-TOOL of 0 0= endof
+      GR-ID-LINT-ARTIFACTS-FAST of 0 0= endof
       GR-ID-TAIL-FAST of 0 0= endof
       GR-ID-TAIL-PURE of 0 0= endof
       GR-ID-TAIL-RUNNER of 0 0= endof

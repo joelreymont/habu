@@ -176,6 +176,15 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Test framework and project policy are separate:** `lib/test.f` owns the
   reusable suite/group/test mechanics and setup/teardown hooks; Habu-specific
   warm images, filters, and process argv live in the Habu test adapter.
+- **In-process eval needs state rollback:** `GE-EVAL-FORGET` must restore more
+  than `cp`/`ndict`/`UEND`; current wordlist and `JSON-DIAGS` leaked across
+  resident tests until they were snapshotted. Runtime-wide profiler state is
+  not covered by that rollback, so profiler tests remain process sentinels.
+- **Resident suites must preserve parallelism:** moving all `lint-libs` into one
+  in-process runner serialized PTX and regressed time. Split resident groups by
+  parallel-safe cohorts (`core`, `ptx`, `ptx-neg`, `ptx-toolchain`, artifact
+  fast checks) so setup duplication and child `hb` launches drop without turning
+  the suite single-file.
 - **No-binary bootstrap is its own gate path:** Gforth runs `bootstrap/cg/forth.fs`,
   so Habu typed locals such as `done:label` are literal Gforth names and break
   codegen. The bootstrap data region must also fit static checker state

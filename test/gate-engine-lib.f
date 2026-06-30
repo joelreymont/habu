@@ -167,13 +167,13 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    path pathu label labelu timeout GT-POOL-START ;
 
 : GE-HB-RUN-ASYNC ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   s" inner-hb-spawn" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-EVENT
+   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
 
 : GE-BIN-HB-RUN-ASYNC ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   s" inner-hb-spawn" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-EVENT
+   label labelu GS-BOUNDARY-EVENT
    s" bin/hb" GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
 
 : GE-FS-MUTATE-RUN-ASYNC ( -- )
@@ -420,7 +420,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-HB-RESET GE-SRC-RESET s" 1 0 mod ." GE-SRC-LINE
    s" modulo by zero trap" GE-HB-RUN-STDIN-NZ
    GE-HB-RESET GE-SRC-RESET s" 7 2 / . 7 2 mod . cr" GE-SRC-LINE
-   s" nonzero div/mod" GE-HB-RUN-STDIN
+   s" nonzero div/mod" GE-EVAL-RUN-STDIN
    SB-RESET s" 3" SB-APPEND GE-SB-LF s" 1" SB-APPEND GE-SB-LF GE-SB-LF
    SB$ s" nonzero div/mod output" GE-EXPECT-OUT
    s" PASS: div/mod by zero traps (no silent 0)" type cr ;
@@ -435,14 +435,14 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-TRUST-RUN ( -- )
    GE-HB-RESET
    GE-TRUST-SOURCE
-   s" checked hb trust/run smoke" GE-HB-RUN-STDIN
+   s" checked hb trust/run smoke" GE-EVAL-RUN-STDIN
    SB-RESET s" 7" SB-APPEND GE-SB-LF s" 25" SB-APPEND GE-SB-LF
    SB$ s" checked hb trust/run smoke output" GE-EXPECT-OUT
    GE-HB-RESET
    GE-SRC-RESET
    s" HOME" GE-SRC-S"
    s"  getenv nip 0 > ." GE-SRC-LINE
-   s" getenv" GE-HB-RUN-STDIN
+   s" getenv" GE-EVAL-RUN-STDIN
    SB-RESET s" -1" SB-APPEND GE-SB-LF
    SB$ s" getenv output" GE-EXPECT-OUT ;
 
@@ -486,7 +486,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-SRC-RESET
    s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
    s" 7 SQOK ." GE-SRC-LINE
-   s" hb good typed def" GE-HB-RUN-STDIN
+   s" hb good typed def" GE-EVAL-RUN-STDIN
    SB-RESET s" 49" SB-APPEND GE-SB-LF
    SB$ s" hb good typed def output" GE-EXPECT-OUT ;
 
@@ -502,7 +502,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-SRC-RESET
    s" : GE-QDEPTH ( -- n ) depth ;" GE-SRC-LINE
    s" GE-QDEPTH ." GE-SRC-LINE
-   s" hb depth prim certify+run" GE-HB-RUN-STDIN
+   s" hb depth prim certify+run" GE-EVAL-RUN-STDIN
    SB-RESET s" 0" SB-APPEND GE-SB-LF
    SB$ s" hb depth prim certify+run output" GE-EXPECT-OUT ;
 
@@ -518,7 +518,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-TRUSTED-EFFECT ( -- )
    GE-HB-RESET
    GE-TRUSTED-SOURCE
-   s" hb TRUSTED: effect recording" GE-HB-RUN-STDIN
+   s" hb TRUSTED: effect recording" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" SB-APPEND GE-SB-LF
    s" 0" SB-APPEND GE-SB-LF
@@ -555,7 +555,7 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 : GE-ROLE-TYPES ( -- )
    GE-HB-RESET
    GE-ROLE-SOURCE
-   s" hb nominal role types" GE-HB-RUN-STDIN
+   s" hb nominal role types" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" SB-APPEND GE-SB-LF
    s" -1" SB-APPEND GE-SB-LF

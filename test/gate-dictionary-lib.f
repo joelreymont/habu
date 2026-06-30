@@ -369,11 +369,11 @@ variable GD-CHECK-LABEL-U
    s"  0 search-wl 0= ." GE-SRC-LINE
    s" GD-COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
-   s" : GE-FILES: ( -- n ) 3 ;" GE-SRC-LINE
-   s" GE-FILES: ." GE-SRC-LINE
-   s" GE-FILES:" GE-SRC-S"
+   s" : GD-EDGE: ( -- n ) 3 ;" GE-SRC-LINE
+   s" GD-EDGE: ." GE-SRC-LINE
+   s" GD-EDGE:" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
-   s" hb wordlist namespace qualification" GE-HB-RUN-STDIN
+   s" hb wordlist namespace qualification" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 1" GE-OUT-LINE
    s" 2" GE-OUT-LINE

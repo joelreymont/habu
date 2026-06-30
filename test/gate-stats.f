@@ -138,6 +138,15 @@ variable GS-HELPER-SPAWN
 : GS-HELPER-EVENT ( ptr u8 n -- )
    s" helper-spawn" 2swap GS-EVENT-FIELD ;
 
+: GS-INNER-HB-EVENT ( ptr u8 n -- )
+   s" inner-hb-spawn" 2swap GS-EVENT-FIELD ;
+
+: GS-INNER-HB-STDIN-EVENT ( ptr u8 n -- )
+   s" inner-hb-stdin" 2swap GS-EVENT-FIELD ;
+
+: GS-BOUNDARY-EVENT ( ptr u8 n -- )
+   s" boundary-test" 2swap GS-EVENT-FIELD ;
+
 : GS-LINE-U+ ( n -- ) {: v:n :}
    v 0 < if E-STR-BOUNDS throw then
    v 10 >= if v 10 / RECURSE then
@@ -273,10 +282,10 @@ variable GS-HELPER-SPAWN
    off u s" under-env" GS-LINE= if GS-UNDER-ENV GS-INC exit then
    off u s" runner-phase-spawn" GS-LINE= if GS-RUNNER-PHASE GS-INC exit then
    off u s" gate-runner-build" GS-LINE= if GS-RUNNER-BUILD GS-INC exit then
-   off u s" inner-hb-spawn" GS-LINE= if GS-INNER-HB GS-INC exit then
-   off u s" inner-hb-stdin" GS-LINE= if GS-INNER-HB-STDIN GS-INC exit then
+   off u s" inner-hb-spawn" GS-LINE-KEY? if GS-INNER-HB GS-INC exit then
+   off u s" inner-hb-stdin" GS-LINE-KEY? if GS-INNER-HB-STDIN GS-INC exit then
    off u s" inprocess-eval" GS-LINE= if GS-INPROCESS-EVAL GS-INC exit then
-   off u s" boundary-test" GS-LINE= if GS-BOUNDARY GS-INC exit then
+   off u s" boundary-test" GS-LINE-KEY? if GS-BOUNDARY GS-INC exit then
    off u s" warm-cache-hit" GS-LINE= if GS-WARM-HIT GS-INC exit then
    off u s" warm-cache-miss" GS-LINE= if GS-WARM-MISS GS-INC exit then
    off u s" warm-build" GS-LINE= if GS-WARM-BUILD GS-INC exit then

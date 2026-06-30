@@ -1,8 +1,8 @@
 \ ffi-abi-test.f - target-independent FFI ABI and marshalling tests.
 \ Run: bin/hb --load lib/ffi-abi-test.f
 
-include lib/test.f
-include lib/ffi-abi.f
+require lib/test.f
+require lib/ffi-abi.f
 
 create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot

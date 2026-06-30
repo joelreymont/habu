@@ -372,3 +372,52 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" stdlib/tail-warm-image" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TAIL-WARM-SETUP
    s" tools/warm-image-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-LIBS-CORE ( -- )
+   s" stdlib/lint-libs/core" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" lib/string-test.f" GSI-INCLUDE
+   s" lib/ffi-abi-test.f" GSI-INCLUDE
+   s" lib/array-test.f" GSI-INCLUDE
+   s" lib/table-test.f" GSI-INCLUDE
+   s" lib/regex-test.f" GSI-INCLUDE
+   s" lib/map-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-LIBS-PTX ( -- )
+   s" stdlib/lint-libs/ptx" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" lib/ptx/header-test.f" GSI-INCLUDE
+   s" lib/ptx/launch-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-loop-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-smem-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-acc-test.f" GSI-INCLUDE
+   s" lib/ptx/gemm-checked-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-v4-test.f" GSI-INCLUDE
+   s" lib/ptx/collective-test.f" GSI-INCLUDE
+   s" lib/ptx/autograd-test.f" GSI-INCLUDE
+   s" lib/ptx/ir-test.f" GSI-INCLUDE
+   s" lib/ptx/ad-test.f" GSI-INCLUDE
+   s" lib/ptx/ad-dag-test.f" GSI-INCLUDE
+   s" lib/ptx/ad-saved-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-LIBS-PTX-NEG ( -- )
+   s" stdlib/lint-libs/ptx-neg" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" lib/ptx/tile-loop-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-smem-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/tile-acc-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-LIBS-PTX-TOOL ( -- )
+   s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" tools/ptx/saxpy-test.f" GSI-INCLUDE ;
+
+: GSI-LINT-ARTIFACTS-FAST ( -- )
+   s" stdlib/lint-artifacts/fast" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" tools/lint/text-foundation-test.f" GSI-INCLUDE
+   s" tools/json-file-test.f" GSI-INCLUDE
+   s" tools/sha256-file-test.f" GSI-INCLUDE
+   s" lib/content-key-test.f" GSI-INCLUDE ;

@@ -14,12 +14,12 @@ include test/gate-stats.f
 4 constant TR-DEFAULT-NESTED-POOL-SLOTS
 8 constant TR-TOP-POOL-MAX
 600000 constant TR-TIMEOUT-MS
-31 constant TR-PHASES
+36 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 $2 constant TR-CHECK-WARM-PHASES
-$16 constant TR-EARLY-HOST-PHASES
+$1A constant TR-EARLY-HOST-PHASES
 $3 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 8 constant TR-TOOLS-WARM-SLOT
@@ -43,7 +43,7 @@ $3 , $15 , $10 ,
 create TR-EARLY-HOST-ORDER
 $8 , $7 , $2 , $16 , $17 , $18 , $19 , $1E ,
 $1D , $1C , $1B , $1A , $A , $4 , $B , $C ,
-$13 , $11 , $5 , $D , $14 , $12 ,
+$13 , $23 , $11 , $5 , $D , $1F , $20 , $21 , $22 , $12 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -1321,6 +1321,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       28 of s" GROUP: stdlib/tail-runner [inprocess]" endof
       29 of s" GROUP: stdlib/tail-build [inprocess]" endof
       30 of s" GROUP: stdlib/tail-warm-image [inprocess]" endof
+      31 of s" GROUP: stdlib/lint-libs/core [inprocess]" endof
+      32 of s" GROUP: stdlib/lint-libs/ptx [inprocess]" endof
+      33 of s" GROUP: stdlib/lint-libs/ptx-neg [inprocess]" endof
+      34 of s" GROUP: stdlib/lint-libs/ptx-toolchain [inprocess]" endof
+      35 of s" GROUP: stdlib/lint-artifacts/fast [inprocess]" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1357,6 +1362,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       28 of s" gate-stdlib-tail-runner" endof
       29 of s" gate-stdlib-tail-build" endof
       30 of s" gate-stdlib-tail-warm" endof
+      31 of s" gate-stdlib-lint-libs-core" endof
+      32 of s" gate-stdlib-lint-libs-ptx" endof
+      33 of s" gate-stdlib-lint-libs-ptx-neg" endof
+      34 of s" gate-stdlib-lint-libs-ptx-tool" endof
+      35 of s" gate-stdlib-lint-artifacts-fast" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1393,6 +1403,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       28 of TR-STDLIB-TAIL-ARGS endof
       29 of TR-STDLIB-TAIL-ARGS endof
       30 of TR-STDLIB-TAIL-ARGS endof
+      31 of TR-STDLIB-LINT-LIBS-ARGS endof
+      32 of TR-STDLIB-LINT-LIBS-ARGS endof
+      33 of TR-STDLIB-LINT-LIBS-ARGS endof
+      34 of TR-STDLIB-LINT-LIBS-ARGS endof
+      35 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1426,6 +1441,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       28 of s" tail-runner" endof
       29 of s" tail-build" endof
       30 of s" tail-warm" endof
+      31 of s" lint-libs-core" endof
+      32 of s" lint-libs-ptx" endof
+      33 of s" lint-libs-ptx-neg" endof
+      34 of s" lint-libs-ptx-tool" endof
+      35 of s" lint-artifacts-fast" endof
       E-TBL-BOUNDS throw
    endcase ;
 

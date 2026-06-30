@@ -375,7 +375,7 @@ variable GDX-TRUST-MAN-U
 : GDX-UNSAFE-CHECKS ( -- )
    GE-HB-RESET
    GDX-UNSAFE-CHECK-SOURCE
-   s" unsafe compiler words verdicts" GE-HB-RUN-STDIN
+   s" unsafe compiler words verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
    s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE s" 0" GE-OUT-LINE
@@ -400,7 +400,7 @@ variable GDX-TRUST-MAN-U
    GE-SRC-RESET
    s" : OKL ( -- ) 3 0 do i {: x:n :} x . loop ;" GE-SRC-LINE
    s" OKL" GE-SRC-LINE
-   s" local in loop compiles" GE-HB-RUN-STDIN
+   s" local in loop compiles" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 0" GE-OUT-LINE  s" 1" GE-OUT-LINE  s" 2" GE-OUT-LINE
    SB$ s" local in loop output" GE-EXPECT-OUT
@@ -413,17 +413,17 @@ variable GDX-TRUST-MAN-U
    GE-HB-RESET  GE-SRC-RESET
    s" : OKL ( n -- n ) {: a:n :} a ;" GE-SRC-LINE
    s" 5 OKL ." GE-SRC-LINE
-   s" B2 word-top local still compiles" GE-HB-RUN-STDIN
+   s" B2 word-top local still compiles" GE-EVAL-RUN-STDIN
    GE-HB-RESET
    GE-SRC-RESET
    s" GDX-SHOW ( i64 -- i64 ) {: x:? :} x" GE-SRC-CHECK-LINE
-   s" show-inferred local prints type" GE-HB-RUN-STDIN
+   s" show-inferred local prints type" GE-EVAL-RUN-STDIN
    s" inferred x: i64" s" show-inferred type output" GE-EXPECT-OUT-HAS
    s" -1" s" show-inferred verdict output" GE-EXPECT-OUT-HAS
    GE-HB-RESET
    GE-SRC-RESET
    s" GDX-SHOW-BAD ( i64 -- ) {: x:? :} x x" GE-SRC-CHECK-LINE
-   s" show-inferred downstream mismatch rejects" GE-HB-RUN-STDIN
+   s" show-inferred downstream mismatch rejects" GE-EVAL-RUN-STDIN
    s" inferred x: i64" s" show-inferred bad type output" GE-EXPECT-OUT-HAS
    s" 0" s" show-inferred bad verdict output" GE-EXPECT-OUT-HAS ;
 

@@ -443,12 +443,8 @@ variable SUITE-TIMINGS
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )
-   s" text-foundation-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" json-file-cursor" SUITE-LABEL= if SUITE-TRUE exit then
    s" imgdump-compare" SUITE-LABEL= if SUITE-TRUE exit then
    s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
-   s" streaming-sha256" SUITE-LABEL= if SUITE-TRUE exit then
-   s" content-key-cache" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-MANIFEST-LABEL? ( -- bool )
@@ -552,15 +548,15 @@ variable SUITE-TIMINGS
    2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
 
 : SUITE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   s" inner-hb-spawn" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-EVENT
+   label labelu GS-BOUNDARY-EVENT
    SUITE-HB$ SUITE-TIMEOUT-MS label labelu SUITE-RUN-ENV-ASYNC ;
 
 : SUITE-HB-RUN-STDIN ( ptr u8 n ptr u8 n -- ) {: in:ptr inu:n label:ptr labelu:n :}
    GT-POOL-DRAIN
    label labelu GT-PROGRESS-RUN
-   s" inner-hb-stdin" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-STDIN-EVENT
+   label labelu GS-BOUNDARY-EVENT
    SUITE-HB$ in inu SUITE-TIMEOUT-MS label labelu SUITE-RUN-STDIN
    label labelu SUITE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;

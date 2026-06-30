@@ -20,6 +20,7 @@ $40000 constant GE-SRC-CAP
 s" UEND" s" -- ptr n" TRUST
 s" USIGS-RESTORE-END" s" n --" TRUST
 s" UTERM!" s" --" TRUST
+s" JSON-DIAGS" s" -- ptr a" TRUST
 
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-SRC-A GE-SRC-MAX cells allot
@@ -43,6 +44,8 @@ variable GE-ARGV-U
 variable GE-EVAL-CP
 variable GE-EVAL-NDICT
 variable GE-EVAL-UEND
+variable GE-EVAL-CURRENT
+variable GE-EVAL-JSON-DIAGS
 variable GE-EVAL-OUT-SAVE
 variable GE-EVAL-ERR-SAVE
 
@@ -485,32 +488,32 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inner-hb-spawn" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-EVENT
+   label labelu GS-BOUNDARY-EVENT
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inner-hb-spawn" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-EVENT
+   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inner-hb-stdin" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-STDIN-EVENT
+   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    label labelu GT-PROGRESS-PASS ;
 
 : GE-HB-RUN-STDIN-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
-   s" inner-hb-stdin" GS-EVENT
-   s" boundary-test" GS-EVENT
+   label labelu GS-INNER-HB-STDIN-EVENT
+   label labelu GS-BOUNDARY-EVENT
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO
    label labelu GT-PROGRESS-PASS ;
@@ -518,12 +521,16 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
 : GE-EVAL-MARK ( -- )
    cp@ GE-EVAL-CP !
    ndict@ GE-EVAL-NDICT !
-   UEND @ GE-EVAL-UEND ! ;
+   UEND @ GE-EVAL-UEND !
+   get-current GE-EVAL-CURRENT !
+   JSON-DIAGS @ GE-EVAL-JSON-DIAGS ! ;
 
 : GE-EVAL-FORGET ( -- )
    GE-EVAL-NDICT @ ndict!
    GE-EVAL-CP @ cp!
    GE-EVAL-UEND @ USIGS-RESTORE-END
+   GE-EVAL-CURRENT @ set-current
+   GE-EVAL-JSON-DIAGS @ JSON-DIAGS !
    UTERM! ;
 
 : GE-EVAL-DUP-FD ( n -- n ) {: fd:n :}
