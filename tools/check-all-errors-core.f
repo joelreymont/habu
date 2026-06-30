@@ -4,7 +4,10 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, and tools/lint/source-lex.f.
 
-include src/habu/verify-source.f
+: CA-MAYBE-VERIFY-SOURCE ( -- )
+   s" VERIFY-SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" included then ;
+
+CA-MAYBE-VERIFY-SOURCE
 
 $10000 constant CA-DEFAULT-ERR-CAP
 $10000 constant CA-DEFAULT-OUT-CAP
@@ -13,6 +16,7 @@ $10000 constant CA-DEFAULT-OUT-CAP
 10 constant CA-LF
 58 constant CA-COLON-C
 123 constant CA-LBRACE
+$4E constant CA-DUP-RC
 
 create CA-LF-BUF 1 allot
 
@@ -569,6 +573,47 @@ variable CA-JSON
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
+: CA-DUP-WORD$ ( -- ptr u8 n )
+   s" duplicate-definition" ;
+
+: CA-JSON-DUP ( -- )
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-DUPLICATE-DEFINITION" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" word" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
+   s" token_index" LJW-KEY 1 LJW-U LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY 1 LJW-U LJW-COMMA
+   s" column" LJW-KEY 1 LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY 0 LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY CA-DUP-WORD$ nip LJW-U LJW-COMMA
+   s" definition_source" LJW-KEY CA-DUP-WORD$ LJW-STRING LJW-COMMA
+   s" declared_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
+   s" declared_effect_source" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
+   s" inferred_effect" LJW-KEY s" unknown" LJW-STRING LJW-COMMA
+   s" return_stack" LJW-KEY
+   LJW-OBJECT-START
+   s" expected" CA-JSON-EMPTY-FIELD LJW-COMMA
+   s" actual" CA-JSON-EMPTY-FIELD
+   LJW-OBJECT-END LJW-COMMA
+   s" suggestion" LJW-KEY s" Rename the word or undefine the old definition before redefining it." LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-PROSE-DUP ( -- )
+   s" checker: duplicate definition" CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-HANDLE-DUP ( -- )
+   CA-TRUE CA-FAILED !
+   CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
+   CA-DUP-RC CA-RAW-FAILURE ! ;
+
 : CA-JSON-LEX-UNTERM ( -- )
    LJW-RESET
    LJW-OBJECT-START
@@ -745,7 +790,9 @@ variable CA-JSON
 
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
-   CA-CHECK-FULL-SCOPE 0= IF exit THEN
+   CA-CHECK-FULL-SCOPE dup 0= IF drop exit THEN
+   dup CA-DUP-RC = IF drop CA-HANDLE-DUP exit THEN
+   drop
    CHECKER-SCOPE-START
    [: CA-RUN-DEFS-SCOPE ;] catch
    CHECKER-SCOPE-DONE

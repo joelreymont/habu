@@ -184,6 +184,13 @@ variable CKT-USE-CHECK
 : CKT-BAD$SRC ( -- ptr u8 n )
    s" : CKT-BAD-WORD ( i64 -- i64 ) dup ;" ;
 
+: CKT-DUP$SRC ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-DUP ( i64 -- i64 ) 2 + ;" SB-APPEND
+   SB$ ;
+
 : CKT-RESERVED$ ( -- ptr u8 n )
    s" variable I" ;
 
@@ -253,6 +260,13 @@ variable CKT-USE-CHECK
 : CKT-TEST-UNTERM-STRING ( -- )
    CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING ;
 
+: CKT-TEST-DUP-ALL ( -- )
+   CKT-DUP$SRC CKT-RUN-JSON-ALL $4E T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
+
 : CKT-TEST-SOURCE-LIST-RESERVED ( -- )
    CKT-RUN-SOURCE-LIST-RESERVED-CORE 1 T=
    {: outu erru :}
@@ -274,6 +288,7 @@ variable CKT-USE-CHECK
    CKT-TEST-USAGE
    CKT-TEST-DIE
    CKT-TEST-UNTERM-STRING
+   CKT-TEST-DUP-ALL
    CKT-TEST-SOURCE-LIST-RESERVED
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
    CLEANUP-RUN

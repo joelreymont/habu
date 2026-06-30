@@ -657,7 +657,7 @@ variable GD-CHECK-LABEL-U
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   $4E s" duplicate definition" s" check.f rejects package duplicate definition" GE-CHECK-RUN-BAD ;
+   $4E s" duplicate definition" s" checker rejects package duplicate definition" GD-CHECK-BUF-BAD ;
 
 : GD-RUN-LOAD-ONE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    GE-HB-RESET

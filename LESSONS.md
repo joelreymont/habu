@@ -217,9 +217,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Use checker-core buffer adapters for semantic negatives:** `CHECK-ALL-ERRORS-BUF`
   reuses `VERIFY-SOURCE-BUF` candidate scope and diagnostic-buffer rendering
   without writing a temp file or spawning `hb`. It is valid for ordinary semantic
-  rejects such as package no-return flow, but duplicate-definition still exits
-  through the fatal checker path today and remains a child `check.f` sentinel
-  until that path becomes catchable.
+  rejects such as package no-return flow and duplicate-definition. Full-source
+  failures such as duplicates must be handled before per-definition isolation,
+  or the fallback can falsely pass. Do not add `TRUST` for checker internals just
+  to name the duplicate; keep a generic diagnostic until a typed checker
+  diagnostic API exists.
 - **Warm image cache publishes must be stamp-last:** a failed warm-tools bake
   wrote a new `hb-tools-warm.trust.f` beside an old image/stamp, so the next
   cache hit paired mismatched artifacts and failed with `checker: duplicate

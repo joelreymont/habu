@@ -2145,9 +2145,7 @@ variable DFER-VALUE
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
 : CHECKER-DUP-DEFINITION ( -- )
-   $2 s" checker: duplicate definition: " write drop
-   $2 CHECKER-REC-A@ CHECKER-REC-U@ write drop
-   s" " $4E die ;
+   $4E throw ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    na nu CHECKER-REC-NAME!

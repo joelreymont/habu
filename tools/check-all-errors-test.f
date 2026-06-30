@@ -22,6 +22,8 @@ variable CAE-RUN-U
 variable CAE-RC
 variable CAE-CASE-A
 variable CAE-CASE-U
+variable CAE-BUF-SRC-A
+variable CAE-BUF-SRC-U
 
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
@@ -76,6 +78,22 @@ create CAE-LF-BYTE 10 c,
 : CAE-CASE$ ( -- ptr u8 n )
    CAE-CASE-A@ CAE-CASE-U @ ;
 
+: CAE-BUF-SRC-A-FIELD ( -- ptr ptr u8 )
+   CAE-BUF-SRC-A 0 ptr-field ;
+
+: CAE-BUF-SRC-A@ ( -- ptr u8 )
+   CAE-BUF-SRC-A-FIELD @ ;
+
+: CAE-BUF-SRC-A! ( ptr u8 -- )
+   CAE-BUF-SRC-A-FIELD ! ;
+
+: CAE-BUF-SRC! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CAE-BUF-SRC-A!
+   u CAE-BUF-SRC-U ! ;
+
+: CAE-BUF-SRC$ ( -- ptr u8 n )
+   CAE-BUF-SRC-A@ CAE-BUF-SRC-U @ ;
+
 : CAE-LF ( -- )
    $0a SB-APPEND-C ;
 
@@ -121,6 +139,12 @@ create CAE-LF-BYTE 10 c,
 : CAE-UNDEF-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" : CAE-UDEF ( i64 -- i64 ) dup NOPE ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-DUP-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" : CAE-DUP ( i64 -- i64 ) 2 + ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-AS-LEAK-SOURCE$ ( -- ptr u8 n )
@@ -278,7 +302,7 @@ create CAE-LF-BYTE 10 c,
    CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS-FILE ;
 
 : CAE-RUN-BUF-ACT ( -- )
-   CAE-RUN$ CAE-SOURCE$ CHECK-ALL-ERRORS-BUF ;
+   CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS-BUF ;
 
 : CAE-CORE-CAPTURE ( ptr u8 n -- n n n n )
    CAE-RUN!
@@ -287,7 +311,8 @@ create CAE-LF-BYTE 10 c,
    [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
    0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
 
-: CAE-BUF-CAPTURE ( -- n n n n )
+: CAE-BUF-CAPTURE ( ptr u8 n -- n n n n )
+   CAE-BUF-SRC!
    CAE-IN CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
@@ -432,7 +457,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-BUF-CORE ( -- )
    s" buffer-core" CAE-CASE!
-   CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" buffer-core stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
    s" buffer-core bad1" T-LABEL
@@ -441,6 +466,18 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
    s" buffer-core diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-TEST-DUP-BUF ( -- )
+   s" duplicate-buffer" CAE-CASE!
+   CAE-DUP-SOURCE$ CAE-BUF-CAPTURE CA-DUP-RC CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" duplicate-buffer stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" duplicate-buffer code" T-LABEL
+   CAE-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   s" duplicate-buffer text" T-LABEL
+   CAE-ERR erru s" duplicate-definition" CONTAINS? TTRUE
+   s" duplicate-buffer diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
 : CAE-TEST-CLI-SMOKE ( -- )
    s" cli-smoke" CAE-CASE!
@@ -481,6 +518,7 @@ create CAE-LF-BYTE 10 c,
    CAE-TEST-MANY-SUPPORT
    CAE-TEST-UNDEFINED-JSON
    CAE-TEST-BUF-CORE
+   CAE-TEST-DUP-BUF
    CAE-TEST-CLI-SMOKE
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
