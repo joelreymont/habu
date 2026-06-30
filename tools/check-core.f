@@ -27,9 +27,11 @@ $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
 128 constant CHK-MAX-POS
+128 constant CHK-DEP-MAX
 120000 constant CHK-TIMEOUT-MS
 
 10 constant CHK-LF
+13 constant CHK-CR
 32 constant CHK-SP
 34 constant CHK-DQ
 45 constant CHK-DASH
@@ -44,6 +46,11 @@ create CHK-SRC-PATH-BUF FS-PATH-CAP allot
 create CHK-RUN-PATH-BUF FS-PATH-CAP allot
 create CHK-POS-A CHK-MAX-POS cells allot
 create CHK-POS-U CHK-MAX-POS cells allot
+create CHK-DEP-PATHS CHK-DEP-MAX FS-PATH-CAP * allot
+create CHK-DEP-US CHK-DEP-MAX cells allot
+create CHK-DEP-STATES CHK-DEP-MAX cells allot
+create CHK-DIR-IDS CHK-DEP-MAX cells allot
+create CHK-DEP-ORDER CHK-DEP-MAX cells allot
 create CHK-ONE 1 allot
 
 variable CHK-SRC-BUF-A
@@ -51,6 +58,7 @@ variable CHK-RUN-BUF-A
 variable CHK-ORIGIN-BUF-A
 variable CHK-OUT-BUF-A
 variable CHK-ERR-BUF-A
+variable CHK-EXP-BUF-A
 
 variable CHK-ARG-I
 variable CHK-POS-N
@@ -82,6 +90,11 @@ variable CHK-CAP-OUT-U
 variable CHK-CAP-ERR-U
 variable CHK-NOM-I
 variable CHK-NOM-U
+variable CHK-EXP-U
+variable CHK-EXP-OUT-U
+variable CHK-DEP-N
+variable CHK-DIR-N
+variable CHK-DEP-ORDER-N
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -141,6 +154,10 @@ variable CHK-NOM-U
 : CHK-ERR-BUF ( -- ptr u8 )
    CHK-ERR-BUF-A @ 0= if CHK-ERR-CAP CHK-ALLOC-BUF CHK-ERR-BUF-A ! then
    CHK-ERR-BUF-A @ ;
+
+: CHK-EXP-BUF ( -- ptr u8 )
+   CHK-EXP-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-EXP-BUF-A ! then
+   CHK-EXP-BUF-A @ ;
 
 : CHK-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
    u 0= if exit then
@@ -278,7 +295,12 @@ variable CHK-NOM-U
    0 CHK-OUT-U !
    0 CHK-ERR-U !
    0 CHK-RC !
-   0 CHK-CHILD-RC ! ;
+   0 CHK-CHILD-RC !
+   0 CHK-EXP-U !
+   0 CHK-EXP-OUT-U !
+   0 CHK-DEP-N !
+   0 CHK-DIR-N !
+   0 CHK-DEP-ORDER-N ! ;
 
 : CHK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -314,6 +336,188 @@ variable CHK-NOM-U
 : CHK-SOURCE ( -- ptr u8 n )
    CHK-SRC-A CHK-PTR-U8@ CHK-SRC-U @ ;
 
+: CHK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHK-LABEL-U !
+   a CHK-LABEL-A CHK-PTR-U8! ;
+
+: CHK-SOURCE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHK-SRC-U !
+   a CHK-SRC-A CHK-PTR-U8! ;
+
+: CHK-SINGLE-FILE? ( -- bool )
+   CHK-SOURCE-LIST @ if LINT-FALSE exit then
+   CHK-POS-N @ 1 = ;
+
+: CHK-LINT-SOURCE ( -- ptr u8 n )
+   CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
+   CHK-SOURCE ;
+
+: CHK-LINT-LABEL ( -- ptr u8 n )
+   CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
+   CHK-LABEL ;
+
+: CHK-DEP-CHECK ( n -- ) {: id:n :}
+   id 0 < if E-TBL-BOUNDS throw then
+   id CHK-DEP-MAX >= if E-TBL-BOUNDS throw then ;
+
+: CHK-DEP-PATH ( n -- ptr u8 ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-PATHS id FS-PATH-CAP * + ;
+
+: CHK-DEP-U ( n -- ptr n ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-US id cells + ;
+
+: CHK-DEP-STATE ( n -- ptr n ) {: id:n :}
+   id CHK-DEP-CHECK
+   CHK-DEP-STATES id cells + ;
+
+: CHK-DEP$ ( n -- ptr u8 n ) {: id:n :}
+   id CHK-DEP-PATH
+   id CHK-DEP-U @ ;
+
+: CHK-DEP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   a u id CHK-DEP$ LINT-STR= ;
+
+: CHK-DEP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup CHK-DEP-N @ < while
+      dup a u rot CHK-DEP-MATCH? if exit then
+      1+
+   repeat drop -1 ;
+
+: CHK-DEP-NEW ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   CHK-DEP-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
+   CHK-DEP-N @ {: id:n :}
+   a id CHK-DEP-PATH u BYTE-COPY
+   u id CHK-DEP-U !
+   0 id CHK-DEP-STATE !
+   id 1+ CHK-DEP-N !
+   id ;
+
+: CHK-DEP-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u CHK-DEP-FIND dup 0 >= if exit then
+   drop a u CHK-DEP-NEW ;
+
+: CHK-DIR-PUSH ( n -- ) {: id:n :}
+   CHK-DIR-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
+   id CHK-DIR-IDS CHK-DIR-N @ cells + !
+   CHK-DIR-N @ 1+ CHK-DIR-N ! ;
+
+: CHK-DEP-ORDER-PUSH ( n -- ) {: id:n :}
+   CHK-DEP-ORDER-N @ CHK-DEP-MAX >= if E-TBL-BOUNDS throw then
+   id CHK-DEP-ORDER CHK-DEP-ORDER-N @ cells + !
+   CHK-DEP-ORDER-N @ 1+ CHK-DEP-ORDER-N ! ;
+
+: CHK-DEP-DIRECT+ ( ptr u8 n -- )
+   CHK-DEP-ID CHK-DIR-PUSH ;
+
+: CHK-LEX-WORD? ( n -- bool ) {: k:n :}
+   k 0 < if LINT-FALSE exit then
+   k L# @ >= if LINT-FALSE exit then
+   k LK@ L-WORD = ;
+
+: CHK-LEX=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK a u LINT-STR=CI ;
+
+: CHK-REQUIRE-TOK? ( n -- bool )
+   s" require" CHK-LEX=CI ;
+
+: CHK-REQUIRED-TOK? ( n -- bool )
+   s" required" CHK-LEX=CI ;
+
+: CHK-SQUOTE-TOK? ( n -- bool ) {: k:n :}
+   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK {: a:ptr u:n :}
+   u 2 <> if LINT-FALSE exit then
+   a c@ LINT-FOLD 115 <> if LINT-FALSE exit then
+   a 1 + c@ CHK-DQ = ;
+
+: CHK-WS? ( n -- bool )
+   dup CHK-SP = over 9 = or over CHK-LF = or swap CHK-CR = or ;
+
+: CHK-SQ-SKIP ( n -- n )
+   begin dup CHK-EXP-U @ < while
+      CHK-EXP-BUF over + c@ CHK-WS? if 1+ else exit then
+   repeat ;
+
+: CHK-SQ-END ( n -- n )
+   begin dup CHK-EXP-U @ < while
+      CHK-EXP-BUF over + c@ CHK-DQ = if exit then
+      1+
+   repeat ;
+
+: CHK-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
+   k CHK-SQUOTE-TOK? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   k LB@ k LEX-TOK nip + CHK-SQ-SKIP {: start:n :}
+   start CHK-SQ-END {: end:n :}
+   end CHK-EXP-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   CHK-EXP-BUF start + end start - LINT-TRUE ;
+
+: CHK-SCAN-REQUIRE ( n -- ) {: k:n :}
+   k 1+ CHK-LEX-WORD? 0= if exit then
+   k 1+ LEX-TOK CHK-DEP-DIRECT+ ;
+
+: CHK-SCAN-REQUIRED ( n -- ) {: k:n :}
+   k 0 <= if exit then
+   k 1- CHK-SQ-PATH$ if CHK-DEP-DIRECT+ else 2drop then ;
+
+: CHK-SCAN-DEPS ( -- )
+   0 begin dup L# @ < while
+      dup CHK-REQUIRE-TOK? if dup CHK-SCAN-REQUIRE then
+      dup CHK-REQUIRED-TOK? if dup CHK-SCAN-REQUIRED then
+      1+
+   repeat drop ;
+
+: CHK-EXPAND-ID ( n -- ) {: id:n :}
+   id CHK-DEP-CHECK
+   id CHK-DEP-STATE @ 2 = if exit then
+   id CHK-DEP-STATE @ 1 = if exit then
+   1 id CHK-DEP-STATE !
+   CHK-DIR-N @
+   id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   id CHK-DEP$ CHK-EXP-BUF CHK-SRC-CAP READ-ALL CHK-EXP-U !
+   CHK-EXP-BUF CHK-EXP-U @ LEX-SOURCE
+   CHK-SCAN-DEPS
+   dup CHK-DIR-N @
+   begin 2dup < while
+      over cells CHK-DIR-IDS + @ RECURSE
+      swap 1+ swap
+   repeat
+   2drop CHK-DIR-N !
+   id CHK-DEP-ORDER-PUSH
+   2 id CHK-DEP-STATE ! ;
+
+: CHK-EXPAND-PATH ( ptr u8 n -- )
+   CHK-DEP-ID CHK-EXPAND-ID ;
+
+: CHK-EXPAND-RESET ( -- )
+   0 CHK-EXP-OUT-U !
+   0 CHK-DEP-N !
+   0 CHK-DIR-N !
+   0 CHK-DEP-ORDER-N ! ;
+
+: CHK-WRITE-EXPANDED-SOURCE ( -- )
+   CHK-SRC-PATH CHK-SRC-BUF CHK-EXP-OUT-U @ LEN>N WRITE-ALL
+   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
+
+: CHK-EXP-APP ( ptr u8 n -- )
+   >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-BYTES ;
+
+: CHK-EXP-C ( n -- )
+   CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
+
+: CHK-APPEND-REQUIRED ( ptr u8 n -- )
+   s" s" CHK-EXP-APP
+   CHK-DQ CHK-EXP-C
+   CHK-SP CHK-EXP-C
+   CHK-EXP-APP
+   CHK-DQ CHK-EXP-C
+   CHK-SP CHK-EXP-C
+   s" required" CHK-EXP-APP
+   CHK-LF CHK-EXP-C ;
+
 : CHK-MATERIALIZE-STDIN ( -- )
    CHK-LABEL-STDIN
    CHK-SRC-BUF CHK-SRC-CAP >LEN READ-STDIN-ALL LEN>N CHK-SRC-U !
@@ -321,29 +525,26 @@ variable CHK-NOM-U
    CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-MATERIALIZE-FILE ( -- )
-   0 CHK-POS$ CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8!
-   CHK-SOURCE FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   CHK-LABEL-FILE ;
-
-: CHK-SRC-C+ ( n -- ) {: c:n :}
-   CHK-SRC-U @ 1+ CHK-SRC-CAP > if E-FS-CAPACITY throw then
-   c CHK-SRC-BUF CHK-SRC-U @ + c!
-   CHK-SRC-U @ 1+ CHK-SRC-U ! ;
-
-: CHK-SRC-READ+ ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   path pathu >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-SRC-U SOURCE-APPEND-SOURCE-FILE ;
+   0 CHK-POS$ CHK-LABEL!
+   CHK-LABEL FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
+   CHK-EXPAND-RESET
+   CHK-LABEL CHK-EXPAND-PATH
+   CHK-LABEL CHK-SOURCE! ;
 
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
-   s" <source-list>" CHK-LABEL-U ! CHK-LABEL-A CHK-PTR-U8!
-   0 CHK-SRC-U !
+   s" <source-list>" CHK-LABEL!
+   CHK-EXPAND-RESET
    0 begin dup CHK-POS-N @ < while
-      dup CHK-POS$ CHK-SRC-READ+
+      dup CHK-POS$ CHK-EXPAND-PATH
       1+
    repeat drop
-   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
+   0 CHK-EXP-OUT-U !
+   0 begin dup CHK-POS-N @ < while
+      dup CHK-POS$ CHK-APPEND-REQUIRED
+      1+
+   repeat drop
+   CHK-WRITE-EXPANDED-SOURCE ;
 
 : CHK-MATERIALIZE ( -- )
    s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
@@ -442,9 +643,9 @@ variable CHK-NOM-U
    name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
    name LEX-TOK CHECKER-DEFTYPE ;
 
-: CHK-RUN-NOMINAL ( -- )
-   CHK-SOURCE FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
+: CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
+   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
    CHK-SRC-BUF CHK-NOM-U @ LEX-SOURCE
    0 CHK-NOM-I !
    begin CHK-NOM-I @ L# @ < while
@@ -455,6 +656,29 @@ variable CHK-NOM-U
          CHK-NOM-I @ 1 + CHK-NOM-I !
       then
    repeat ;
+
+: CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
+   label labelu CHK-LABEL!
+   path pathu CHK-RUN-NOMINAL-FILE ;
+
+: CHK-DEP-PRELOAD? ( n -- bool ) {: id:n :}
+   id CHK-DEP$ REQUIRE-KNOWN? 0= ;
+
+: CHK-RUN-NOMINAL-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-DEP$ 2dup CHK-RUN-NOMINAL-AS ;
+
+: CHK-RUN-NOMINAL-ORDER ( -- )
+   CHK-LABEL {: old:ptr oldu:n :}
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-RUN-NOMINAL-ID
+      1+
+   repeat drop
+   old oldu CHK-LABEL! ;
+
+: CHK-RUN-NOMINAL ( -- )
+   CHK-DEP-ORDER-N @ 0 > if CHK-RUN-NOMINAL-ORDER exit then
+   CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
 : CHK-LABEL-DQ? ( -- bool )
    CHK-LABEL CHK-DQ LINT-INDEX-OF 0 >= ;
@@ -540,7 +764,7 @@ variable CHK-NOM-U
    SIGNATURE-LINT-RESET
    2 >FD SL-OUT-FD!
    CHK-JSON @ SL-JSON!
-   CHK-SOURCE CHK-LABEL SIGNATURE-LINT-FILE-AS
+   CHK-LINT-SOURCE CHK-LINT-LABEL SIGNATURE-LINT-FILE-AS
    SIGNATURE-LINT-FINISH ;
 
 : CHK-RUN-BOUNDARY ( -- )
@@ -548,14 +772,14 @@ variable CHK-NOM-U
    2 >FD UB-OUT-FD!
    CHK-JSON @ UB-JSON!
    UB-TRUE UB-STRICT-BOUNDARY!
-   CHK-SOURCE CHECKED-BOUNDARY-LINT-FILE
+   CHK-LINT-SOURCE CHECKED-BOUNDARY-LINT-FILE
    CHECKED-BOUNDARY-LINT-FINISH ;
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT-RESET
    2 >FD RNL-OUT-FD!
    CHK-JSON @ RNL-JSON!
-   CHK-SOURCE CHK-LABEL RESERVED-NAME-LINT-FILE-AS
+   CHK-LINT-SOURCE CHK-LINT-LABEL RESERVED-NAME-LINT-FILE-AS
    RESERVED-NAME-LINT-FINISH ;
 
 : CHK-TRUST-SETUP ( -- )
@@ -567,7 +791,7 @@ variable CHK-NOM-U
 
 : CHK-RUN-TRUST-SOURCE-CURRENT ( -- )
    CHK-TRUST-SETUP
-   CHK-SOURCE TRUST-LINT-SOURCE-FILE ;
+   CHK-LINT-SOURCE TRUST-LINT-SOURCE-FILE ;
 
 : CHK-RUN-TRUST-LIST-CURRENT ( -- )
    CHK-TRUST-SETUP
@@ -611,12 +835,26 @@ variable CHK-NOM-U
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
-: CHK-RUN-PREVERIFY ( -- )
-   CHK-LABEL DIAG-FILE!
+: CHK-PREVERIFY-FILE-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
+   label labelu DIAG-FILE!
    CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
-   CHK-SOURCE FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
-   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
-   CHK-SRC-BUF CHK-PRE-U @ VERIFY-SOURCE-BUF ;
+   path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
+   path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
+   CHK-SRC-BUF CHK-PRE-U @ VERIFY-SOURCE-BUF-IN-SCOPE ;
+
+: CHK-PREVERIFY-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-DEP$ 2dup CHK-PREVERIFY-FILE-AS ;
+
+: CHK-PREVERIFY-ORDER ( -- )
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-PREVERIFY-ID
+      1+
+   repeat drop ;
+
+: CHK-RUN-PREVERIFY ( -- )
+   CHK-DEP-ORDER-N @ 0 > if CHK-PREVERIFY-ORDER exit then
+   CHK-LABEL CHK-SOURCE CHK-PREVERIFY-FILE-AS ;
 
 : CHK-RUN-HB ( -- )
    CHK-RUN-PATH CHK-RUN-BUF CHK-RUN-U @ WRITE-ALL

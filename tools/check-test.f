@@ -182,6 +182,12 @@ variable CKT-USE-CHECK
    CHK-MATERIALIZE-LIST-PATH
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
+: CKT-DIRECT-PATH ( ptr u8 n -- n n n )
+   CKT-DIRECT-START
+   CHK-ADD-POS
+   CHK-MATERIALIZE
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
 
@@ -284,6 +290,12 @@ variable CKT-USE-CHECK
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-REQUIRE-FACADE ( -- )
+   s" lib/test/suite-test.f" CKT-DIRECT-PATH 0 T=
+   {: outu:n erru:n :}
+   erru 0 T=
+   CKT-OUT outu s" test: ok" CONTAINS? TTRUE ;
+
 : CKT-MAIN ( -- )
    T-RESET
    CKT-PREPARE
@@ -295,6 +307,7 @@ variable CKT-USE-CHECK
    CKT-TEST-DUP-ALL
    CKT-TEST-SOURCE-LIST-RESERVED
    CKT-TEST-SOURCE-LIST-AUDITED-LIB
+   CKT-TEST-REQUIRE-FACADE
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

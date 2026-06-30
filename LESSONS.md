@@ -41,6 +41,13 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Test fixture state belongs in a package:** focused framework tests should use
   a private package (`package FEATURE-TEST`) with short private names instead of
   global stems such as `TST-*`; only the public framework API is qualified.
+- **Self-calls use `RECURSE`:** naming the word being defined inside its own body
+  can compile the wrong target and crash at runtime. Recursive helpers must use
+  `RECURSE`, then keep the checker regression that exercises the recursive path.
+- **Checker source expansion keeps lint ownership:** `tools/check.f` flattens
+  `require`/`required` dependencies into a temp source for checker execution, but
+  trust/signature/boundary/reserved-name lints must still scan the original input
+  path so manifest sites stay stable.
 - **Core byte helpers are not string-library setup:** `lib/ffi-abi.f` used
   `BYTE-COPY`, so `include lib/ffi.f` failed unless `lib/string.f` happened to
   be loaded first. Small primitive helpers used across unrelated libraries
