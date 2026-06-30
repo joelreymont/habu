@@ -183,13 +183,21 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
 
 ## Running tests
 
-`bin/hb` is a symlink to the built engine. Each `*-test.f` carries its exact load
+`bin/hb` is a symlink to the built engine. Each `*-test.f` carries its dependency
 chain in a `\ Run:` header comment (tests reopen their own `package` and call the
-module unqualified); run that chain from the workspace root, e.g.:
+module unqualified). Prefer feeding `require` lines to Habu so shared
+dependencies are loaded once even when modules self-import their own
+requirements:
 
 ```sh
-cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f \
-    odin/tegrastats.f odin/tegrastats-test.f | bin/hb        # -> test: ok
+printf '%s\n' \
+  'require lib/errors.f' \
+  'require lib/string.f' \
+  'require lib/test.f' \
+  'require lib/float.f' \
+  'require lib/fmt.f' \
+  'require odin/tegrastats.f' \
+  'require odin/tegrastats-test.f' | bin/hb                 # -> test: ok
 ```
 
 The six byte-exact renderer comparisons were run by loading the checked Habu emit
