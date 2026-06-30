@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -321,6 +321,11 @@ lesson — keep the specific word/code/path, cut the prose.
   ~22.8s to ~18.3s, but hot full gate regressed slightly under contention and
   added top-level subprocesses. Keep the in-process semantic cuts; revert splits
   that only win in isolation.
+- **Do not split resident groups past setup amortization:** splitting combined
+  tool-doc/tool-repair residents into five single-purpose resident forks made a
+  hot macOS run regress from 29.04s/26.760s to 30.40s/28.031s. Parallelism that
+  duplicates resident setup and adds fork scheduling loses even when individual
+  subtests look independent.
 - **Inline warm-runner work must overlap child suites:** the winning
   `tool-boundary-lints` cut split tests into load-only libs, skipped the cold
   child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running

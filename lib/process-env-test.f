@@ -10,20 +10,19 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 
-4096 constant PET-CAP
-131072 constant PET-EARLY-IN-CAP
-5000 constant PET-HB-TIMEOUT-MS
-1000 constant PET-CMD-TIMEOUT-MS
-50 constant PET-SHORT-TIMEOUT-MS
+$8000 constant PET-CAP
+$20000 constant PET-EARLY-IN-CAP
+$1388 constant PET-HB-TIMEOUT-MS
+$3E8 constant PET-CMD-TIMEOUT-MS
+$32 constant PET-SHORT-TIMEOUT-MS
 $2 constant PET-ENOENT
 
 create PET-OUT PET-CAP allot
 create PET-ERR PET-CAP allot
 create PET-PATH FS-PATH-CAP allot
 create PET-EARLY-IN PET-EARLY-IN-CAP allot
-create PET-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
-create PET-EMPTY-OUT 10 c, 10 c, 10 c,
 variable PET-I
+variable PET-START-NS
 
 : PET-RESET ( -- )
    PROC-ARGV-RESET
@@ -33,9 +32,14 @@ variable PET-I
 : PET-EARLY-IN! ( -- )
    0 PET-I !
    begin PET-I @ PET-EARLY-IN-CAP < while
-      97 PET-EARLY-IN PET-I @ + c!
+      $61 PET-EARLY-IN PET-I @ + c!
       PET-I @ 1+ PET-I !
    repeat ;
+
+: PET-U-TYPE ( n -- ) {: n:n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / RECURSE then
+   n 10 mod STR-ZERO + emit ;
 
 : PET-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -81,60 +85,76 @@ variable PET-I
    {: cmd:ptr cmdu dst:ptr :}
    cmd cmdu >LEN dst RESOLVE-EXECUTABLE LEN>N ;
 
+: PET-ENV-CMD$ ( -- ptr u8 n )
+   s" /usr/bin/env" ;
+
+: PET-ALPHA-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   s" HABU_PROC_ENV_TEST=alpha" SB-APPEND
+   $0A SB-APPEND-C
+   SB$ ;
+
+\ typed-local-lint: allow-bare-local - q is the test action quotation.
+: PET-CASE ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns PET-START-NS !
+   q execute
+   s" PASS: " type label labelu type
+   s"  (" type mono-ns PET-START-NS @ - PROC-NS-PER-MS / PET-U-TYPE s" ms)" type cr ;
+
 : PET-RUN-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f"  >LEN PROC-ARGV+
    s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
-   0 T= 0 T= 8 T=
-   PET-OUT 8 PET-ENV-OUT 8 T$=
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu PET-ALPHA-LINE$ T$=
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T= ;
 
 : PET-RUN-EMPTY-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f"  >LEN PROC-ARGV+
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
-   0 T= 0 T= 3 T=
-   PET-OUT 3 PET-EMPTY-OUT 3 T$= ;
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= 0 T= ;
 
-: PET-INHERIT-EXPECTED$ ( -- ptr u8 n )
+: PET-EXPECT-INHERITED ( n ptr u8 n -- ) {: outu:n name:ptr nameu:n :}
+   name nameu GETENV {: val:ptr valu:n :}
+   valu 0= if exit then
    SB-RESET
-   s" alpha" SB-APPEND
-   10 SB-APPEND-C
-   s" HOME" GETENV SB-APPEND
-   10 SB-APPEND-C
-   s" PATH" GETENV SB-APPEND
-   10 SB-APPEND-C
-   SB$ ;
+   name nameu SB-APPEND
+   $3D SB-APPEND-C
+   val valu SB-APPEND
+   $0A SB-APPEND-C
+   PET-OUT outu SB$ CONTAINS? TTRUE ;
+
+: PET-INHERIT-ENV-OUT ( n -- ) {: outu:n :}
+   PET-OUT outu PET-ALPHA-LINE$ CONTAINS? TTRUE
+   outu s" HOME" PET-EXPECT-INHERITED
+   outu s" PATH" PET-EXPECT-INHERITED ;
 
 : PET-RUN-INHERIT-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f"  >LEN PROC-ARGV+
    s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+   outu PET-INHERIT-ENV-OUT ;
 
 : PET-DEFAULT-ENV-CHILD ( -- )
    PET-RESET
-   s" test/process-env-child.f"  >LEN PROC-ARGV+
    s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-DEFAULT+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+   outu PET-INHERIT-ENV-OUT ;
 
 : PET-EXPLICIT-BEATS-DEFAULT ( -- )
    PET-RESET
-   s" test/process-env-child.f"  >LEN PROC-ARGV+
    s" HABU_PROC_ENV_TEST" >LEN s" wrong" >LEN PROC-ENV-DEFAULT+
    s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
    PROC-ENV-INHERIT-MISSING
-   s" bin/hb" PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
    0 T= 0 T= {: outu:n :}
-   PET-OUT outu PET-INHERIT-EXPECTED$ T$= ;
+   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
+   outu PET-INHERIT-ENV-OUT ;
 
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
    PET-RESET
@@ -224,28 +244,40 @@ variable PET-I
 : PET-RESOLVE-MISSING ( -- )
    s" no-habu-process-env-test" PET-PATH PET-RESOLVE drop ;
 
+: PET-BAD-ENV-NAME-THROWS ( -- )
+   [: PET-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ ;
+
+: PET-BAD-ENV-ENTRY-THROWS ( -- )
+   [: PET-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ ;
+
+: PET-BAD-ENV-EMPTY-THROWS ( -- )
+   [: PET-BAD-ENV-EMPTY ;] E-PROC-ENV TTHROWSQ ;
+
+: PET-RESOLVE-MISSING-THROWS ( -- )
+   [: PET-RESOLVE-MISSING ;] E-PROC-PATH TTHROWSQ ;
+
 : PROCESS-ENV-TEST-MAIN ( -- )
    T-RESET
-   PET-RUN-ENV-CHILD
-   PET-RUN-EMPTY-ENV-CHILD
-   PET-RUN-INHERIT-ENV-CHILD
-   PET-DEFAULT-ENV-CHILD
-   PET-EXPLICIT-BEATS-DEFAULT
-   PET-RUN-ENV-OUTCOME-FALSE
-   PET-RUN-ENV-OUTCOME-TIMEOUT
-   PET-RUN-ENV-STDIN-OUTCOME
-   PET-RUN-ENV-STDIN-FALSE-LARGE
-   PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE
-   PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT
-   PET-SPAWN-RAW-MISSING
-   PET-SPAWN-RAW-TRUE
-   [: PET-BAD-ENV-NAME ;] E-PROC-ENV TTHROWSQ
-   [: PET-BAD-ENV-ENTRY ;] E-PROC-ENV TTHROWSQ
-   [: PET-BAD-ENV-EMPTY ;] E-PROC-ENV TTHROWSQ
-   PET-PATH-FIND-HB
-   PET-PATH-DIRECT-HB
-   PET-PATH-MISSING
-   [: PET-RESOLVE-MISSING ;] E-PROC-PATH TTHROWSQ
+   s" env-child" [: PET-RUN-ENV-CHILD ;] PET-CASE
+   s" empty-env-child" [: PET-RUN-EMPTY-ENV-CHILD ;] PET-CASE
+   s" inherit-env-child" [: PET-RUN-INHERIT-ENV-CHILD ;] PET-CASE
+   s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
+   s" explicit-beats-default" [: PET-EXPLICIT-BEATS-DEFAULT ;] PET-CASE
+   s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
+   s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
+   s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE
+   s" env-stdin-false-large" [: PET-RUN-ENV-STDIN-FALSE-LARGE ;] PET-CASE
+   s" env-stdin-outcome-false-large" [: PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ;] PET-CASE
+   s" env-stdin-outcome-timeout" [: PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ;] PET-CASE
+   s" spawn-raw-missing" [: PET-SPAWN-RAW-MISSING ;] PET-CASE
+   s" spawn-raw-true" [: PET-SPAWN-RAW-TRUE ;] PET-CASE
+   s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE
+   s" bad-env-entry" [: PET-BAD-ENV-ENTRY-THROWS ;] PET-CASE
+   s" bad-env-empty" [: PET-BAD-ENV-EMPTY-THROWS ;] PET-CASE
+   s" path-find-hb" [: PET-PATH-FIND-HB ;] PET-CASE
+   s" path-direct-hb" [: PET-PATH-DIRECT-HB ;] PET-CASE
+   s" path-missing" [: PET-PATH-MISSING ;] PET-CASE
+   s" resolve-missing" [: PET-RESOLVE-MISSING-THROWS ;] PET-CASE
    T-REPORT
    s" process-env-test: ok" type cr ;
 

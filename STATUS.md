@@ -1,12 +1,13 @@
 # habu — Status
 
-Last verified: 2026-06-30
+Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
-measured hot-cache run is 27.392s internal / 29.71s shell-wall, and the
-cache-fill run is 34.818s internal / 37.20s shell-wall, on 2026-06-30 UTC on
-macOS/aarch64 with the `macos-arm64-12x2` profile, per-file content-key
-warm-cache hits, manifest-hashed small `hb-under-test`, no top test-suite
-snapshot, and AOT maker cache hits on the hot path. The native gate uses a 12-way macOS checked
+measured hot-cache run is 27.711s internal / 30.22s shell-wall on 2026-07-01 UTC;
+the last cache-refresh run after a scheduler-key change was 28.538s internal /
+30.86s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
+`macos-arm64-12x2` profile, per-file content-key warm-cache hits,
+manifest-hashed small `hb-under-test`, no top test-suite snapshot, and AOT maker
+cache hits on the hot path. The native gate uses a 12-way macOS checked
 DAG pool, 2-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), split resident tool-lint semantic groups,
 direct in-process diagnostic JSON and AOT report assertions, batched dictionary
