@@ -12,3 +12,5 @@ EPIC (new work, untracked before review). ptx.md section 3: the self-hosted bin/
 - Dep: M2 is landed; decompose into per-pass sub-dots when picked up. ad-reverse (habu-ptx-ad-reverse-26aebee3) simplifier blocked-by this.
 
 2026-06-30 local checkpoint: first child slice landed the checked value layer in `lib/ptx/ir.f` (library path, because the optimizer is consumed by PTX/AD libraries rather than target text emission directly). It now has structure-record nodes, value numbering, constant fold, peephole canonicalization, CSE, and DCE live marking with static fixtures in `lib/ptx/ir-test.f`. Remaining parent work: lowering/rewrite integration with the AD simplifier and the softmax closed-form proof; no zed/device work was attempted.
+
+2026-06-30 local checkpoint: child `habu-ptx-ir-softmax-2d981327` added distinct input symbols plus block-algebra nodes (`PTXIR-BSUM`, `PTXIR-BSUB`) and a value fixture for `dx = y * (dy - sum(dy*y))`. Remaining parent work: connect the AD emitter/rewrite pass to this IR and lower/render optimized kernels; no zed/device work was attempted.

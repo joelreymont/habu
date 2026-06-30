@@ -9,6 +9,8 @@
 2 constant PTXIR-K-ADD
 3 constant PTXIR-K-MUL
 4 constant PTXIR-K-NEG
+5 constant PTXIR-K-BSUM
+6 constant PTXIR-K-BSUB
 -1 constant PTXIR-NONE
 
 64 constant PTXIR-MAX
@@ -100,8 +102,11 @@ variable PTXIR-N
    id 1+ PTXIR-N !
    id ;
 
+: PTXIR-INPUT# ( n -- n ) {: sym:n :}
+   PTXIR-K-INPUT PTXIR-NONE PTXIR-NONE sym PTXIR-INTERN ;
+
 : PTXIR-INPUT ( -- n )
-   PTXIR-K-INPUT PTXIR-NONE PTXIR-NONE 0 PTXIR-INTERN ;
+   0 PTXIR-INPUT# ;
 
 : PTXIR-CONST ( n -- n ) {: val:n :}
    PTXIR-K-CONST PTXIR-NONE PTXIR-NONE val PTXIR-INTERN ;
@@ -152,6 +157,16 @@ variable PTXIR-N
    id PTXIR-OP@ PTXIR-K-NEG = if id PTXIR-A@ exit then
    PTXIR-K-NEG id PTXIR-NONE 0 PTXIR-INTERN ;
 
+: PTXIR-BSUM ( n -- n ) {: id:n :}
+   PTXIR-K-BSUM id PTXIR-NONE 0 PTXIR-INTERN ;
+
+: PTXIR-BSUB-NODE ( n n -- n ) {: tile:n unif:n :}
+   PTXIR-K-BSUB tile unif 0 PTXIR-INTERN ;
+
+: PTXIR-BSUB ( n n -- n ) {: tile:n unif:n :}
+   unif 0 PTXIR-CONST= if tile exit then
+   tile unif PTXIR-BSUB-NODE ;
+
 : PTXIR-LIVE-CLEAR ( -- )
    PTXIR-N @ 0 ?do 0 0= 0= i PTXIR-LIVE! loop ;
 
@@ -160,7 +175,9 @@ variable PTXIR-N
    0 0= id PTXIR-LIVE!
    id PTXIR-OP@ PTXIR-K-ADD = if id PTXIR-A@ recurse id PTXIR-B@ recurse exit then
    id PTXIR-OP@ PTXIR-K-MUL = if id PTXIR-A@ recurse id PTXIR-B@ recurse exit then
-   id PTXIR-OP@ PTXIR-K-NEG = if id PTXIR-A@ recurse exit then ;
+   id PTXIR-OP@ PTXIR-K-NEG = if id PTXIR-A@ recurse exit then
+   id PTXIR-OP@ PTXIR-K-BSUM = if id PTXIR-A@ recurse exit then
+   id PTXIR-OP@ PTXIR-K-BSUB = if id PTXIR-A@ recurse id PTXIR-B@ recurse exit then ;
 
 : PTXIR-LIVE-COUNT ( n -- n ) {: root:n :}
    PTXIR-LIVE-CLEAR
