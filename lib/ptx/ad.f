@@ -2,10 +2,12 @@
 \
 \ Reverse-mode AD is a SYNTACTIC reversal of a concatenative program: a forward
 \ pipeline w1 w2 .. wn has gradient VJP[wn] .. VJP[w1] (docs/autograd.md). This is
-\ that pass for STRAIGHT-LINE pipelines over the LINEAR (data-free, mutual-adjoint)
-\ primitives: +. <-> DUP, BLOCK-SUM <-> BROADCAST, LOAD <-> STORE. It tokenizes a
-\ forward body, reverses the word order, and substitutes each word's adjoint -
-\ producing the backward body, which is then an ordinary checked kernel.
+\ that pass for STRAIGHT-LINE pipelines over the LINEAR/data-free adjoints:
+\ +. <-> DUP, BLOCK-SUM <-> BROADCAST, STORE -> LOAD, and
+\ LOAD -> SCATTER-ADD (the conservative default because read-once is not proven).
+\ It tokenizes a forward body, reverses the word order, and substitutes each
+\ word's adjoint - producing the backward body, which is then an ordinary checked
+\ kernel.
 \
 \ v0 SCOPE (named, dotted boundary): linear primitives only; no cotangent-saving
 \ for nonlinear ops (*./EXP./SCALE/PTX:B-/BLOCK-MAX), no DUP/fan-out cotangent
@@ -46,9 +48,9 @@
    2dup s" DUP"       STR= if 2drop s" +."        exit then
    2dup s" BLOCK-SUM" STR= if 2drop s" BROADCAST" exit then
    2dup s" BROADCAST" STR= if 2drop s" BLOCK-SUM" exit then
-   2dup s" LOAD"      STR= if 2drop s" STORE"     exit then
+   2dup s" LOAD"      STR= if 2drop s" SCATTER-ADD" exit then
    2dup s" STORE"     STR= if 2drop s" LOAD"      exit then
-   2dup s" ROW-LOAD"  STR= if 2drop s" ROW-STORE" exit then
+   2dup s" ROW-LOAD"  STR= if 2drop s" ROW-SCATTER-ADD" exit then
    2dup s" ROW-STORE" STR= if 2drop s" ROW-LOAD"  exit then
    2dup s" NEG"       STR= if 2drop s" NEG"       exit then
    E-PTX-NOVJP throw ;

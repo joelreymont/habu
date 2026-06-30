@@ -37,6 +37,9 @@ TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
 TRUSTED: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-STORE ;
 
+TRUSTED: SCATTER-ADD ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
+   EMIT-SCATTER-ADD ;
+
 TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-SCALE ;
 

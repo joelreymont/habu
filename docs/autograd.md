@@ -55,16 +55,17 @@ in the types rather than implicit in an engine:
 | `+.` | `( t t -- t )` | `DUP` | `( t -- t t )` |
 | `BLOCK-SUM` (reduce) | `( tile<f32,B,M> -- uniform<f32> )` | `BROADCAST` (fill) | `( uniform<f32> -- tile<f32,B,M> )` |
 | `BROADCAST` | `( uniform -- tile )` | `BLOCK-SUM` | `( tile -- uniform )` |
-| `LOAD` (gather) | `( span ctx -- tile )` | `STORE` / scatter-add | `( tile span ctx -- )` |
+| `LOAD` (gather) | `( span ctx -- tile )` | `SCATTER-ADD` by default | `( tile span ctx -- )` |
 | `SCALE` (a·x) | `( tile uniform -- tile )` | `( dz a x -- dx da )` | dx=a·dz, da=Σ(dz⊙x) |
 | `B-` (x − s) | `( tile uniform -- tile )` | `( dz -- dt ds )` | dt=dz, ds=−Σdz |
 | `EXP.` | `( tile -- tile )` | `( dz y -- dz⊙y )` | saves output `y` |
 | `*.` | `( tile tile -- tile )` | `( dz x y -- dz⊙y  dz⊙x )` | saves primals |
 | `BLOCK-MAX` | `( tile -- uniform )` | scatter to argmax lane | subgradient |
 
-`DUP ↔ +.`, `BLOCK-SUM ↔ BROADCAST`, and `LOAD ↔ STORE` are **mutual adjoints**
-with transposed types. `BROADCAST` is the named form of the implicit broadcast
-already inside `B-`/`B/`.
+`DUP ↔ +.` and `BLOCK-SUM ↔ BROADCAST` are **mutual adjoints** with transposed
+types. `STORE`'s adjoint is `LOAD`; `LOAD`'s conservative adjoint is
+`SCATTER-ADD` until a checked read-once witness permits plain `STORE`.
+`BROADCAST` is the named form of the implicit broadcast already inside `B-`/`B/`.
 
 Linear primitives have data-free adjoints; nonlinear ones (`*.`, `EXP.`,
 `BLOCK-MAX`) consume *saved primals or outputs*. That saved set is the tape's
@@ -136,7 +137,7 @@ for the CPU `A-ARGMAX` and does NOT carry to the GPU `BLOCK-MAX`.)
 
 | forward | adjoint | note |
 | --- | --- | --- |
-| `LOAD ( span ctx -- tile )` | `STORE` of `dt` into the input's gradient span | scatter-**add** (`red.global.add`, arch-gated) if the input is read >1× across the grid; plain store if read once |
+| `LOAD ( span ctx -- tile )` | scatter-**add** (`red.global.add`) of `dt` into the input's gradient span | conservative default; plain store only with a checked read-once witness |
 | `STORE ( tile span ctx -- )` | `LOAD` of `dt` from the output's gradient span | plain load |
 
 **Stack and structural:**

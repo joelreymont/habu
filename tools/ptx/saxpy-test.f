@@ -129,6 +129,7 @@ variable PTXT-OUT-U
    s" div.rn.f32 %f6, %f4, %f5;" PTXT-HAS
    s" fma.rn.f32" PTXT-HAS
    s" sub.rn.f32 %f10, %f2, %f6;" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
    s" div.rn.f32 %f18, %f10, %f14;" PTXT-HAS
    s" ld.global.v4.f32 {%f2, %f3, %f4, %f5}, [%rd4];" PTXT-HAS
    s" @%p3 ld.global.f32 %f2, [%rd4];" PTXT-HAS
@@ -155,6 +156,8 @@ variable PTXT-OUT-U
    s" @%p2 mov.f32 %f2, %f1;" PTXT-HAS
    s" setp.ge.u32 %p4, %r10, 256;" PTXT-HAS
    s" add.f32 %f3, %f3, %f4;" PTXT-HAS
+   s" .visible .entry SCATTER_ROWS" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-SUM1024-CG-OUTPUT ( -- )

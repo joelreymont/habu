@@ -166,6 +166,13 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
 
+\ SCATTER-ADD: conservative LOAD adjoint; cotangents accumulate at span+ctx.
+: EMIT-SCATTER-ADD ( n n n -- ) {: tilef:n spanrd:n ctxrd:n :}
+   CG-NEXT-RD {: a:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S spanrd CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
+
 \ ACC-ZERO: a fresh register accumulator = 0 (the gridctx is type-only here)
 : EMIT-ACC-ZERO ( n -- n ) {: ctxrd :}
    CG-NEXT-F {: r :}

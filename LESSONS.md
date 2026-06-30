@@ -1331,6 +1331,10 @@ lesson — keep the specific word/code/path, cut the prose.
   must reject control-flow tokens case-insensitively before VJP lookup. Letting
   `if`/`loop` fall into a generic no-VJP path hides the real unsupported
   capability and gives weaker repair packets.
+- **LOAD adjoints default to scatter-add:** without a checked read-once witness,
+  the AD pass must accumulate cotangents with `SCATTER-ADD`/`ROW-SCATTER-ADD`.
+  Plain store is an optimization gated by an affine/read-once proof, not an
+  inference from the current per-thread effect system.
 - **Subtree status docs need lint fences, not wording games:** `maki/STATUS.md`
   should be able to own maki counts without avoiding count-shaped prose. Keep root
   self-check counts fenced to root `STATUS.md`, and explicitly skip extracted

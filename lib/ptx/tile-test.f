@@ -32,6 +32,12 @@ KERNEL: RELU-SPAN ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
    2dup LOAD RELU
    rot rot STORE ;
 
+KERNEL: SCATTER-SPAN ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
+   {: x y :} \ typed-local-lint: allow-bare-local
+   x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
+   x g LOAD
+   y g SCATTER-ADD ;
+
 KERNEL: SUBDIV-SPAN ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
    {: x y :} \ typed-local-lint: allow-bare-local
    x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
@@ -51,6 +57,8 @@ s" PTX-GOOD-MASK-SUBDIV {: s :} s GRID-CTX {: g :} s g LOAD s g LOAD -. s g LOAD
 s" PTX-BAD-MASK-SUB {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 LOAD -." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-GOOD-FMA-MASK {: s a :} s GRID-CTX {: g :} a s g LOAD s g LOAD FMA." CHECK! -1 T= \ typed-local-lint: allow-bare-local
 s" PTX-BAD-FMA-MASK {: s a :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} a s g1 LOAD s g2 LOAD FMA." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
+s" PTX-GOOD-SCATTER-ADD {: s :} s GRID-CTX {: g :} s g LOAD s g SCATTER-ADD" CHECK! -1 T= \ typed-local-lint: allow-bare-local
+s" PTX-BAD-SCATTER-ADD-MASK {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 SCATTER-ADD" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-GOOD-MK-SPAN= ( ptr<space-global,f32> ptr<space-global,f32> u32 -- ) MK-SPAN= over GRID-CTX rot drop LOAD drop" CHECK! -1 T=
 s" PTX-BAD-MK-SPAN-LONE ( ptr<space-global,f32> ptr<space-global,f32> u32 u32 -- ) {: p q n m :} p n MK-SPAN {: x :} q m MK-SPAN {: y :} x GRID-CTX y swap LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-BAD-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS

@@ -41,6 +41,14 @@ KERNEL: SUM-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-glob
    xs ctx ROW-LOAD BLOCK-SUM BROADCAST
    out r ROW-SPAN ctx ROW-STORE ;
 
+KERNEL: ROW-SCATTER-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
+   {: in:a out:b :}
+   ROW            {: r:c :}
+   in r ROW-SPAN  {: xs:d :}
+   xs ROW-CTX     {: ctx:e :}
+   xs ctx ROW-LOAD
+   out r ROW-SPAN ctx ROW-SCATTER-ADD ;
+
 1024 %BLOCK
 SMEM-BYTES 4096 T=
 

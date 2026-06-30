@@ -12,7 +12,9 @@ KERNEL: TILE-OPS ( span<space-global,f32,extent-n> span<space-global,f32,extent-
    y g LOAD  /.
    y g STORE
    a x g LOAD  y g LOAD  FMA.
-   y g STORE ;
+   y g STORE
+   x g LOAD
+   y g SCATTER-ADD ;
 
 KERNEL: TILE-OPS-V4 ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-1024
    {: x y :} \ typed-local-lint: allow-bare-local

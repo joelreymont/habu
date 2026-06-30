@@ -40,6 +40,9 @@ TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
 TRUSTED: ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
    EMIT-ROW-STORE ;
 
+TRUSTED: ROW-SCATTER-ADD ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
+   EMIT-ROW-SCATTER-ADD ;
+
 TRUSTED: BLOCK-MAX ( tile<f32,b,m> -- uniform<f32> )
    EMIT-BLOCK-MAX ;
 

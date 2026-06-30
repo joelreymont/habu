@@ -47,9 +47,10 @@ AD-REVERSE ( forward-body -- backward-body ):
 A forward pipeline `w1 w2 … wn` has gradient `VJP[wn] … VJP[w1]`. The adjoint of each
 token comes from two tables:
 
-- **`VJP-ADJOINT`** — the *linear, data-free* primitives, which are **mutual adjoints**:
-  `+.`↔`DUP`, `BLOCK-SUM`↔`BROADCAST`, `LOAD`↔`STORE`, `ROW-LOAD`↔`ROW-STORE`, `NEG`↔`NEG`.
-  (Reverse of a reduce is a broadcast; reverse of a load is a store; etc.)
+- **`VJP-ADJOINT`** — the *linear, data-free* primitive adjoints:
+  `+.`↔`DUP`, `BLOCK-SUM`↔`BROADCAST`, `STORE`→`LOAD`,
+  `LOAD`→`SCATTER-ADD`, `ROW-STORE`→`ROW-LOAD`, `ROW-LOAD`→`ROW-SCATTER-ADD`, `NEG`↔`NEG`.
+  (Reverse of a reduce is a broadcast; reverse of a load conservatively accumulates.)
 - **`VJP-EXPAND`** — the *nonlinear* ops, whose adjoint is a multi-word **expansion** that
   references saved primals/outputs (`SAVED-X` / `SAVED-Y` / `SAVED-MX` / …):
   - `EXP.` → `SAVED-Y *.` (dz·y, y = saved output)

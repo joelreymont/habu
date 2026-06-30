@@ -216,3 +216,13 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    CG-NEXT-P {: p :}
    SB-RESET s" setp.lt.u32 " CG-S p CG-P s" , " CG-S rt CG-R s" , %r1;" CG-S CG-LINE
    SB-RESET s" @" CG-S p CG-P s"  st.global.f32 [" CG-S a CG-RD s" ], " CG-S tile CG-F s" ;" CG-S CG-LINE ;
+
+\ ROW-SCATTER-ADD : masked red.global.add.f32 to rowbase+coloff.
+: EMIT-ROW-SCATTER-ADD ( n n n -- ) {: tile:n span:n ctx:n :}
+   CG-NEXT-RD {: a:n :}
+   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S span CG-RD s" , " CG-S ctx CG-RD s" ;" CG-S CG-LINE
+   CG-NEXT-R {: rt:n :}
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   CG-NEXT-P {: p:n :}
+   SB-RESET s" setp.lt.u32 " CG-S p CG-P s" , " CG-S rt CG-R s" , %r1;" CG-S CG-LINE
+   SB-RESET s" @" CG-S p CG-P s"  red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tile CG-F s" ;" CG-S CG-LINE ;
