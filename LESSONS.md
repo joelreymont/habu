@@ -1276,3 +1276,12 @@ lesson — keep the specific word/code/path, cut the prose.
   drift. Use `PTR-VARIABLE` for pointer-valued global cells and `PTR-FIELD:`
   for pointer-valued structure fields; keep `TRUST` only for real pointer
   refinement boundaries such as raw `mmap` results or byte-offset arithmetic.
+- **Structured variable records must add cursor first:** when replacing
+  `cell+ len + UALIGN ...` arena math with structure sizes, compute
+  `cursor HEADER + len + UALIGN ...`; `cursor HEADER len + ...` leaves the
+  cursor underneath the computed size and can fail as an opaque source-load
+  throw. Preserve the tail base while writing later fields such as `*.SYM`.
+- **Do not reuse VM layout names for checker structures:** names like `CF-REC`
+  may already be target layout constants. Structure size words are real
+  dictionary entries, so use distinct checker-local names such as `CFS-REC`
+  instead of relying on silent shadowing.

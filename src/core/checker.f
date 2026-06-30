@@ -1076,11 +1076,15 @@ $100000 constant SYM-STR-CAP
 1 constant SYM-PRIVATE
 2 constant SYM-PUBLIC
 
-create SYM-PKG-A SYM-CAP cells allot
-create SYM-PKG-U SYM-CAP cells allot
-create SYM-NAME-A SYM-CAP cells allot
-create SYM-NAME-U SYM-CAP cells allot
-create SYM-VIS SYM-CAP cells allot
+BEGIN-STRUCTURE SYM-REC
+   PTR-FIELD: SYM.PKG-A
+   CELL +FIELD SYM.PKG-U
+   PTR-FIELD: SYM.NAME-A
+   CELL +FIELD SYM.NAME-U
+   CELL +FIELD SYM.VIS
+END-STRUCTURE
+
+create SYMS SYM-CAP SYM-REC * allot
 create SYM-STR SYM-STR-CAP allot
 variable SYM-N
 variable SYM-STR-U
@@ -1091,11 +1095,14 @@ variable SYM-ID
 1 SYM-N !
 0 SYM-STR-U !
 
-: SYM-PKG-A-FIELD ( n -- ptr ptr u8 )
-   cells SYM-PKG-A + 0 ptr-field ;
+: SYM-ROW ( n -- ptr a )
+   SYM-REC * SYMS + ;
 
-: SYM-NAME-A-FIELD ( n -- ptr ptr u8 )
-   cells SYM-NAME-A + 0 ptr-field ;
+: SYM-PKG-A-FIELD ( n -- ptr ptr a )
+   SYM-ROW SYM.PKG-A ;
+
+: SYM-NAME-A-FIELD ( n -- ptr ptr a )
+   SYM-ROW SYM.NAME-A ;
 
 : SYM-DST-FIELD ( -- ptr ptr u8 )
    SYM-DST 0 ptr-field ;
@@ -1108,11 +1115,11 @@ variable SYM-ID
 
 : SYM-PKG$ ( n -- ptr u8 n )
    dup SYM-PKG-A-FIELD @
-   swap cells SYM-PKG-U + @ ;
+   swap SYM-ROW SYM.PKG-U @ ;
 
 : SYM-NAME$ ( n -- ptr u8 n )
    dup SYM-NAME-A-FIELD @
-   swap cells SYM-NAME-U + @ ;
+   swap SYM-ROW SYM.NAME-U @ ;
 
 : SYM-STR-NEED ( n -- )
    SYM-STR-U @ + SYM-STR-CAP > IF s" checker: symbol strings full" 76 die THEN ;
@@ -1129,7 +1136,7 @@ variable SYM-ID
    SYM-DST@ u ;
 
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
-   id cells SYM-VIS + @ vis <> IF 0 EXIT THEN
+   id SYM-ROW SYM.VIS @ vis <> IF 0 EXIT THEN
    id SYM-PKG$ pkg pkgu USIG-STR=CI 0= IF 0 EXIT THEN
    id SYM-NAME$ name nameu USIG-STR=CI ;
 
@@ -1144,17 +1151,17 @@ variable SYM-ID
 : SYM-PKG! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
    a u SYM-COPY-FOLD {: dst:ptr len:n :}
    dst id SYM-PKG-A-FIELD !
-   len id cells SYM-PKG-U + ! ;
+   len id SYM-ROW SYM.PKG-U ! ;
 
 : SYM-NAME! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
    a u SYM-COPY-FOLD {: dst:ptr len:n :}
    dst id SYM-NAME-A-FIELD !
-   len id cells SYM-NAME-U + ! ;
+   len id SYM-ROW SYM.NAME-U ! ;
 
 : SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
    pkg pkgu id SYM-PKG!
    name nameu id SYM-NAME!
-   vis id cells SYM-VIS + ! ;
+   vis id SYM-ROW SYM.VIS ! ;
 
 : SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
@@ -1543,23 +1550,31 @@ variable CHECKER-REC-SYM
 
 256 constant PE-CAP
 1 constant PE-ACTIVE
-create PE-SYM PE-CAP cells allot
-create PE-EFF PE-CAP cells allot
-create PE-FLAGS PE-CAP cells allot
+
+BEGIN-STRUCTURE PE-REC
+   CELL +FIELD PE.SYM
+   CELL +FIELD PE.EFF
+   CELL +FIELD PE.FLAGS
+END-STRUCTURE
+
+create PES PE-CAP PE-REC * allot
 variable #PE
 variable PE-I
 create SDQN 2 allot   115 SDQN c!   34 SDQN 1 + c!    \ the two chars of `s"`
 create CDQN 2 allot    99 CDQN c!   34 CDQN 1 + c!    \ the two chars of `c"`
 create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 
+: PE-ROW ( n -- ptr a )
+   PE-REC * PES + ;
+
 : PE-SYM@ ( n -- n )
-   cells PE-SYM + @ ;
+   PE-ROW PE.SYM @ ;
 
 : PE-EFF@ ( n -- n )
-   cells PE-EFF + @ ;
+   PE-ROW PE.EFF @ ;
 
 : PE-FLAGS@ ( n -- n )
-   cells PE-FLAGS + @ ;
+   PE-ROW PE.FLAGS @ ;
 
 : PE-ACTIVE? ( n -- bool )
    PE-FLAGS@ PE-ACTIVE and 0 <> ;
@@ -1569,9 +1584,9 @@ create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 
 : PRIM-ADD ( n n n -- ) {: sym:n eff:n flags:n :}
    PRIM-CHECK-CAP
-   sym #PE @ cells PE-SYM + !
-   eff #PE @ cells PE-EFF + !
-   flags #PE @ cells PE-FLAGS + !
+   sym #PE @ PE-ROW PE.SYM !
+   eff #PE @ PE-ROW PE.EFF !
+   flags #PE @ PE-ROW PE.FLAGS !
    #PE @ 1 + #PE ! ;
 
 : PRIM-FIRST-SYM ( n -- n ) {: sym:n :}
@@ -1866,6 +1881,16 @@ variable CHECKER-TA
 variable CHECKER-TU
 
 $10000 constant DFER-CAP
+
+BEGIN-STRUCTURE DFER-HDR
+   CELL +FIELD DFER.LEN
+END-STRUCTURE
+
+BEGIN-STRUCTURE DFER-TAIL
+   CELL +FIELD DFER.FLAG
+   CELL +FIELD DFER.SYM
+END-STRUCTURE
+
 create DFERS DFER-CAP allot
 variable DFER-END
 variable DFER-A
@@ -2012,6 +2037,9 @@ variable DFER-FLAG-SAVE
    DFERS DFER-END @ + c!
    DFER-END @ 1+ DFER-END ! ;
 
+: DFER-CUR ( -- ptr a )
+   DFERS DFER-END @ + ;
+
 : DFER-A@ ( -- ptr u8 )
    DFER-A 0 ptr-field @ ;
 
@@ -2021,11 +2049,11 @@ variable DFER-FLAG-SAVE
    DFER-A ! ;
 
 : DFER-NEED ( -- n )
-   DFER-END @ cell+ DFER-U @ + UALIGN cell+ cell+ cell+ ;
+   DFER-END @ DFER-HDR + DFER-U @ + UALIGN DFER-TAIL + cell+ ;
 
 : DFER-LEN! ( -- )
-   DFER-U @ DFERS DFER-END @ + !
-   DFER-END @ cell+ DFER-END ! ;
+   DFER-U @ DFER-CUR DFER.LEN !
+   DFER-END @ DFER-HDR + DFER-END ! ;
 
 : DFER-COPY ( -- )
    0 DFER-I !
@@ -2036,11 +2064,14 @@ variable DFER-FLAG-SAVE
 
 : DFER-FLAG! ( -- )
    DFER-END @ UALIGN DFER-END !
-   DFER-FLAG-SAVE @ DFERS DFER-END @ + !
+   DFER-FLAG-SAVE @ DFER-CUR DFER.FLAG !
    DFER-END @ cell+ DFER-END ! ;
 
+: DFER-LAST-TAIL ( -- ptr a )
+   DFERS DFER-END @ CELL - + ;
+
 : DFER-SYM! ( -- )
-   CHECKER-REC-SYM @ DFERS DFER-END @ + !
+   CHECKER-REC-SYM @ DFER-LAST-TAIL DFER.SYM !
    DFER-END @ cell+ DFER-END ! ;
 
 : DFER-TERM ( -- )
@@ -2061,20 +2092,23 @@ variable DFER-FLAG-SAVE
 : DFER-DELETE ( ptr u8 n -- )
    0 DFER-ADD-FLAG ;
 
+: DFER-TAIL-PTR ( ptr a -- ptr a )
+   dup DFER.LEN @ DFER-HDR + UALIGN + ;
+
 : DFER-FLAG-PTR ( ptr a -- ptr a )
-   dup @ cell+ + DFERS - UALIGN DFERS + ;
+   DFER-TAIL-PTR DFER.FLAG ;
 
 : DFER-NEXT ( ptr a -- ptr a )
-   DFER-FLAG-PTR cell+ cell+ ;
+   DFER-TAIL-PTR DFER-TAIL + ;
 
 : DFER-NAME$ ( ptr a -- ptr u8 n )
-   dup cell+ swap @ ;
+   dup DFER-HDR + swap DFER.LEN @ ;
 
 : DFER-FLAG@ ( ptr a -- n )
    DFER-FLAG-PTR @ ;
 
 : DFER-SYM@ ( ptr a -- n )
-   DFER-FLAG-PTR cell+ @ ;
+   DFER-TAIL-PTR DFER.SYM @ ;
 
 : DFER-END? ( ptr a -- bool )
    @ 0= ;
@@ -2164,6 +2198,16 @@ variable DFER-VALUE
 1 constant CTL-DEAD
 2 constant CTL-THROW
 $10000 constant NORET-INIT-CAP
+
+BEGIN-STRUCTURE NORET-HDR
+   CELL +FIELD NORET.LEN
+END-STRUCTURE
+
+BEGIN-STRUCTURE NORET-TAIL
+   CELL +FIELD NORET.FLAG
+   CELL +FIELD NORET.SYM
+END-STRUCTURE
+
 create NORET-BOOT NORET-INIT-CAP allot
 variable NORET-P   variable NORET-CAP-U   variable NORET-END
 NORET-BOOT NORET-P !   NORET-INIT-CAP NORET-CAP-U !   0 NORET-END !   0 NORET-BOOT !
@@ -2221,37 +2265,43 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORETS NORET-END @ + ;
 
 : NORET-NAME$ ( ptr a -- ptr u8 n )
-   dup cell+ swap @ ;
+   dup NORET-HDR + swap NORET.LEN @ ;
+
+: NORET-TAIL-PTR ( ptr a -- ptr a )
+   dup NORET.LEN @ NORET-HDR + UALIGN + ;
+
+: NORET-LAST-TAIL ( -- ptr a )
+   NORETS NORET-END @ CELL - + ;
 
 : NORET-FLAG-PTR ( ptr a -- ptr a )
-   dup @ cell+ + NORETS - UALIGN NORETS + ;
+   NORET-TAIL-PTR NORET.FLAG ;
 
 : NORET-FLAG@ ( ptr a -- n )
    NORET-FLAG-PTR @ ;
 
 : NORET-SYM@ ( ptr a -- n )
-   NORET-FLAG-PTR cell+ @ ;
+   NORET-TAIL-PTR NORET.SYM @ ;
 
 : NORET-NEXT ( ptr a -- ptr a )
-   NORET-FLAG-PTR cell+ cell+ ;
+   NORET-TAIL-PTR NORET-TAIL + ;
 
 : NORET-END? ( ptr a -- bool )
    @ 0= ;
 
 : NORET-ADD {: a u flag :}
    a u CHECKER-RECORD-SYM NORET-SYM !
-   NORET-END @ cell+ u + UALIGN cell+ cell+ cell+ NORET-ENSURE
-   u NORETS NORET-END @ + !
-   NORET-END @ cell+ NORET-END !
+   NORET-END @ NORET-HDR + u + UALIGN NORET-TAIL + cell+ NORET-ENSURE
+   u NORET-REC NORET.LEN !
+   NORET-END @ NORET-HDR + NORET-END !
    0 BEGIN dup u < WHILE
       dup a + c@ NORETS NORET-END @ + c!
       NORET-END @ 1 + NORET-END !
       1 +
    REPEAT drop
    NORET-END @ UALIGN NORET-END !
-   flag NORETS NORET-END @ + !
+   flag NORET-REC NORET.FLAG !
    NORET-END @ cell+ NORET-END !
-   NORET-SYM @ NORETS NORET-END @ + !
+   NORET-SYM @ NORET-LAST-TAIL NORET.SYM !
    NORET-END @ cell+ NORET-END !
    NORET-TERM ;
 
@@ -2492,70 +2542,89 @@ variable LCO
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
 \ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
-create CFKND 32 cells allot   create CFSA 32 cells allot   create CFSB 32 cells allot
-create CFRA 32 cells allot    create CFRB 32 cells allot   create CFDED 32 cells allot
-create CFLN 32 cells allot
-\ exit-accumulator save slots: a [: ;] quotation is a nested scope, so its early
-\ returns must NOT leak into the enclosing word's accumulator (CF-QUOT saves,
-\ CF-SEMIQ folds the quote's own exits then restores).
-create CFXRO 32 cells allot   create CFXRR 32 cells allot
-create CFXST 32 cells allot    create CFXDP 32 cells allot
-create CFTXD 32 cells allot   create CFTXR 32 cells allot
-create CFTXS 32 cells allot
+\ exit-accumulator save fields: a [: ;] quotation is a nested scope, so its
+\ early returns must NOT leak into the enclosing word's accumulator.
+BEGIN-STRUCTURE CFS-REC
+   CELL +FIELD CF.KND
+   CELL +FIELD CF.SA
+   CELL +FIELD CF.SB
+   CELL +FIELD CF.RA
+   CELL +FIELD CF.RB
+   CELL +FIELD CF.DED
+   CELL +FIELD CF.LN
+   CELL +FIELD CF.XRO
+   CELL +FIELD CF.XRR
+   CELL +FIELD CF.XST
+   CELL +FIELD CF.XDP
+   CELL +FIELD CF.TXD
+   CELL +FIELD CF.TXR
+   CELL +FIELD CF.TXS
+END-STRUCTURE
+
+create CFS 32 CFS-REC * allot
 variable CTMP  variable RTMP  variable CFH  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
-\ CFDED[i] saves the if-branch's deadness across CF-ELSE. (leave targets the
+\ CF.DED saves the if-branch's deadness across CF-ELSE. (leave targets the
 \ enclosing DO frame's loop-exit row; unloop is a typing no-op — loop control
 \ isn't on the typed rows.)
 variable RSHAS  variable RSGIN  variable RSGOUT  variable RSGRIN  variable RSGROUT
 variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
-: CF@DED #CFC @ 1 - cells CFDED + @ ;
+
+: CF-ROW ( n -- ptr a )
+   CFS-REC * CFS + ;
+
+: CF-TOP ( -- ptr a )
+   #CFC @ 1 - CF-ROW ;
+
+: CF@DED ( -- n )
+   CF-TOP CF.DED @ ;
 
 : CF-BELOW-CASE? ( -- bool )
    #CFC @ 2 < IF 0 EXIT THEN
-   #CFC @ 2 - cells CFKND + @ 7 = ;
+   #CFC @ 2 - CF-ROW CF.KND @ 7 = ;
 
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
 : CF-CASE-HAS? ( n -- bool ) {: idx:n :}
-   idx cells CFDED + @ ;
+   idx CF-ROW CF.DED @ ;
 
 : CF-CASE-HAS! ( n -- ) {: idx:n :}
-   -1 idx cells CFDED + ! ;
+   -1 idx CF-ROW CF.DED ! ;
 
 : CF-CASE-DATA@ ( n -- n ) {: idx:n :}
-   idx cells CFSB + @ ;
+   idx CF-ROW CF.SB @ ;
 
 : CF-CASE-RET@ ( n -- n ) {: idx:n :}
-   idx cells CFRB + @ ;
+   idx CF-ROW CF.RB @ ;
 
 : CF-CASE-DATA! ( n n -- ) {: row:n idx:n :}
-   row idx cells CFSB + ! ;
+   row idx CF-ROW CF.SB ! ;
 
 : CF-CASE-RET! ( n n -- ) {: row:n idx:n :}
-   row idx cells CFRB + ! ;
+   row idx CF-ROW CF.RB ! ;
 
 : CF-PUSH {: k s0 s1 r0 r1 :}
    #CFC @ 31 > IF -1 UNCK ! ELSE
-     k #CFC @ cells CFKND + !  s0 #CFC @ cells CFSA + !  s1 #CFC @ cells CFSB + !
-     r0 #CFC @ cells CFRA + !  r1 #CFC @ cells CFRB + !
-     #LOC @ #CFC @ cells CFLN + !
+     #CFC @ CF-ROW {: rec:ptr :}
+     k rec CF.KND !  s0 rec CF.SA !  s1 rec CF.SB !
+     r0 rec CF.RA !  r1 rec CF.RB !
+     #LOC @ rec CF.LN !
      #CFC @ 1 + #CFC ! THEN ;
 
-: CF@K #CFC @ 1 - cells CFKND + @ ;
+: CF@K CF-TOP CF.KND @ ;
 
-: CF@A #CFC @ 1 - cells CFSA + @ ;
+: CF@A CF-TOP CF.SA @ ;
 
-: CF@B #CFC @ 1 - cells CFSB + @ ;
+: CF@B CF-TOP CF.SB @ ;
 
-: CF@RA #CFC @ 1 - cells CFRA + @ ;
+: CF@RA CF-TOP CF.RA @ ;
 
-: CF@RB #CFC @ 1 - cells CFRB + @ ;
+: CF@RB CF-TOP CF.RB @ ;
 
-: CF@LN #CFC @ 1 - cells CFLN + @ ;
+: CF@LN CF-TOP CF.LN @ ;
 
 : CF-LOC-REST ( -- )
    CF@LN #LOC ! ;
@@ -2614,7 +2683,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-CASE ( -- )
    7 DCUR @ 0 RCUR @ 0 CF-PUSH
-   0 #CFC @ 1 - cells CFDED + ! ;
+   0 CF-TOP CF.DED ! ;
 
 : CF-CASE-ACCUM ( n -- ) {: idx:n :}
    OK @ 0= IF EXIT THEN
@@ -2662,12 +2731,12 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-ELSE
    CF-MT? IF CF-FAIL ELSE CF@K 1 <> IF CF-FAIL ELSE
-     DEADP @ #CFC @ 1 - cells CFDED + !  0 DEADP !       \ save if-branch deadness; else runs live
+     DEADP @ CF-TOP CF.DED !  0 DEADP !                  \ save if-branch deadness; else runs live
      DCUR @ CTMP !  CF@A DCUR !
      RCUR @ RTMP !  CF@RA RCUR !
-     2 #CFC @ 1 - cells CFKND + !
-     CTMP @ #CFC @ 1 - cells CFSB + !
-     RTMP @ #CFC @ 1 - cells CFRB + !
+     2 CF-TOP CF.KND !
+     CTMP @ CF-TOP CF.SB !
+     RTMP @ CF-TOP CF.RB !
      CF-LOC-REST
    THEN THEN ;
 
@@ -2709,9 +2778,9 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-WHILE
    s" bool --" PARSE-SIG
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
-     4 #CFC @ 1 - cells CFKND + !
-     DCUR @ #CFC @ 1 - cells CFSB + !
-     RCUR @ #CFC @ 1 - cells CFRB + !
+     4 CF-TOP CF.KND !
+     DCUR @ CF-TOP CF.SB !
+     RCUR @ CF-TOP CF.RB !
    THEN THEN ;
 
 : CF-REPEAT
@@ -2741,12 +2810,12 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
-     dup cells CFKND + @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
+     dup CF-ROW CF.KND @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
    INDO @ IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
 
 : CF-J                                     \ needs two enclosing DO frames
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
-     dup cells CFKND + @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
+     dup CF-ROW CF.KND @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
    INDO @ 1 > IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
 
 variable LVDO  variable LVDN
@@ -2757,26 +2826,26 @@ variable LVDO  variable LVDN
    -1 LVDO !  0 LVDN !
    #CFC @ 1 -
    BEGIN dup 0 >= LVDN @ 0= and WHILE
-     dup cells CFKND + @ 5 = IF dup LVDO !  -1 LVDN ! THEN
-     dup cells CFKND + @ 6 = IF -1 LVDN ! THEN
+     dup CF-ROW CF.KND @ 5 = IF dup LVDO !  -1 LVDN ! THEN
+     dup CF-ROW CF.KND @ 6 = IF -1 LVDN ! THEN
      1 - REPEAT drop ;
 
 \ CF-LEAVE : early loop exit. The stack at `leave` must match the loop-exit row
-\ (= the DO-point row CFSA, since the body is stack-neutral); likewise the return
+\ (= the DO-point row CF.SA, since the body is stack-neutral); likewise the return
 \ row. Then the path to `loop` is dead (CF-LOOP revives the live loop exit).
 : CF-LEAVE
    CF-FINDDO
    LVDO @ 0< IF CF-FAIL ELSE
-     LVDO @ cells CFSA + @ SUNI
-     LVDO @ cells CFRA + @ RSUNI
+     LVDO @ CF-ROW CF.SA @ SUNI
+     LVDO @ CF-ROW CF.RA @ RSUNI
      -1 DEADP ! THEN ;
 
 : CF-QUOT   \ [: — pause the outer inference (incl. its exit state), open a nested one
    6  DCUR @  BROW @  RCUR @  RBROW @  CF-PUSH
-   XROW @ #CFC @ 1 - cells CFXRO + !  XRROW @ #CFC @ 1 - cells CFXRR + !
-   XSET @ #CFC @ 1 - cells CFXST + !  DEADP @ #CFC @ 1 - cells CFXDP + !
-   THDROW @ #CFC @ 1 - cells CFTXD + !  THRROW @ #CFC @ 1 - cells CFTXR + !
-   THSET @ #CFC @ 1 - cells CFTXS + !
+   XROW @ CF-TOP CF.XRO !  XRROW @ CF-TOP CF.XRR !
+   XSET @ CF-TOP CF.XST !  DEADP @ CF-TOP CF.XDP !
+   THDROW @ CF-TOP CF.TXD !  THRROW @ CF-TOP CF.TXR !
+   THSET @ CF-TOP CF.TXS !
    0 XSET !  0 DEADP !  0 THSET !
    QDEPTH @ 1 + QDEPTH !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -2792,10 +2861,10 @@ variable QTMP
      THEN
      BROW @  DCUR @  RBROW @  RCUR @  MK-QUOT QTMP !
      QTMP @ THSET @ DEADP @ XSET @ 0= and THDROW @ THRROW @ QX!
-     #CFC @ 1 - cells CFXRO + @ XROW !  #CFC @ 1 - cells CFXRR + @ XRROW !
-     #CFC @ 1 - cells CFXST + @ XSET !  #CFC @ 1 - cells CFXDP + @ DEADP !  \ restore outer exit state
-     #CFC @ 1 - cells CFTXD + @ THDROW !  #CFC @ 1 - cells CFTXR + @ THRROW !
-     #CFC @ 1 - cells CFTXS + @ THSET !
+     CF-TOP CF.XRO @ XROW !  CF-TOP CF.XRR @ XRROW !
+     CF-TOP CF.XST @ XSET !  CF-TOP CF.XDP @ DEADP !  \ restore outer exit state
+     CF-TOP CF.TXD @ THDROW !  CF-TOP CF.TXR @ THRROW !
+     CF-TOP CF.TXS @ THSET !
      QDEPTH @ 1 - QDEPTH !
      CF@B BROW !  CF@RB RBROW !
      CF@RA RCUR !

@@ -1,8 +1,8 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 24.383s internal / 26.81s shell-wall hot-cache gate time and
-45.493s internal / 47.86s shell-wall persistent cache-fill time on 2026-06-30 on
+Gate: passing; 25.765s internal / 28.52s shell-wall hot-cache gate time and
+47.055s internal / 49.81s shell-wall persistent cache-fill time on 2026-06-30 on
 macOS/aarch64 with the auto-selected `macos-arm64-8x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
 hits, and AOT maker cache hits. The native gate uses an 8-way macOS checked DAG pool,
