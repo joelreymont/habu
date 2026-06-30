@@ -2,8 +2,10 @@
 
 A checked definition declares its effect in the `( … )` immediately after the
 name: `: SQUARE ( i64 -- i64 ) DUP * ;`. The checker infers the body's effect and
-unifies it with the declaration; a mismatch refuses the definition. This is the
-notation, parsed by `PARSE-SIG` (`src/sigparse.fs`).
+unifies it with the declaration; a mismatch refuses the definition. Source
+comments and audited `TRUST` rows are parsed by the checker boundary adapter in
+`src/core/checker.f`; checker-owned primitive, literal, memory, and control-flow
+effects are built structurally, not reparsed from strings.
 
 ## Grammar
 

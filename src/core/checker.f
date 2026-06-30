@@ -952,11 +952,55 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    dr PSIDE  PR-OUT ! PD-OUT !
    PD-IN @ PD-OUT @ PR-IN @ PR-OUT @ ;
 
-: PARSE-SIG {: a u :}      a SB ! u SL ! 0 SI !  PSIG 2drop CHECKER-STEP ;
-
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
+
+\ Structured internal effects. Textual signatures are source-boundary input
+\ only; checker-owned token semantics construct rows directly.
+: STEP-TYPE-OUT ( n -- ) {: t:n :}
+   FRESH MK-ROW {: rest:n :}
+   rest
+   t rest MK-PUSH
+   CHECKER-STEP ;
+
+: STEP-TYPE-IN ( n -- ) {: t:n :}
+   FRESH MK-ROW {: rest:n :}
+   t rest MK-PUSH
+   rest CHECKER-STEP ;
+
+: STEP-TYPE2-IN ( n n -- ) {: a:n b:n :}
+   FRESH MK-ROW {: rest:n :}
+   a rest MK-PUSH
+   b swap MK-PUSH
+   rest CHECKER-STEP ;
+
+: STEP-N-IN ( -- )
+   CC-N MK-CON STEP-TYPE-IN ;
+
+: STEP-N-OUT ( -- )
+   CC-N MK-CON STEP-TYPE-OUT ;
+
+: STEP-R-OUT ( -- )
+   CC-R MK-CON STEP-TYPE-OUT ;
+
+: STEP-BOOL-IN ( -- )
+   CC-BOOL MK-CON STEP-TYPE-IN ;
+
+: STEP-NN-IN ( -- )
+   CC-N MK-CON CC-N MK-CON STEP-TYPE2-IN ;
+
+: STEP-FETCH ( -- )
+   FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
+   t MK-PTR rest MK-PUSH
+   t rest MK-PUSH
+   CHECKER-STEP ;
+
+: STEP-STORE ( -- )
+   FRESH MK-VAR FRESH MK-ROW {: t:n rest:n :}
+   t rest MK-PUSH
+   t MK-PTR swap MK-PUSH
+   rest CHECKER-STEP ;
 
 variable FP
 \ user sigs: certified words recorded as effect records after the structural
@@ -1788,6 +1832,29 @@ PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;
 PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: CORE-STR=      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: PATHZ          PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PRIM;
+PRIM: PATH0          PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
+PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
+PRIM: DIAG-FILE!     PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-ORIGIN!   PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-JSON!     PE-F PE-IN PRIM;
+PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: DIAG-BUFFER-OFF PRIM;
+PRIM: DIAG-BUFFER$   PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: CHECKER-SCOPE-START PRIM;
+PRIM: CHECKER-SCOPE-DONE PRIM;
+PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
+PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
+PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-PUBLIC PRIM;
+PRIM: CHECKER-PRIVATE PRIM;
+PRIM: CHECKER-END-PACKAGE PRIM;
 PRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
@@ -2264,11 +2331,6 @@ variable SV-THDROW  variable SV-THRROW  variable SV-THSET
    SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
-: TRY-SIG {: a u :}
-   TRIAL-SAVE
-   a u PARSE-SIG
-   OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN ;
-
 variable TSEEN  variable TSOK  variable TFA
 
 : TRY-EFF ( ptr a -- bool ) {: h:ptr :}
@@ -2309,12 +2371,12 @@ variable FLD  variable FLI  variable FLO  variable FLC
    SGSEEN @ 0= IF 0 EXIT THEN
    a u s" create" CORE-STR= IF -1 EXIT THEN
    a u s" variable" CORE-STR= IF -1 EXIT THEN
-   a u s" constant" CORE-STR= IF s" n --" PARSE-SIG -1 EXIT THEN
+   a u s" constant" CORE-STR= IF STEP-N-IN -1 EXIT THEN
    0 ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u ALLDIG? IF s" -- n" PARSE-SIG -1 EXIT THEN
-   a u FLODIG? IF s" -- r" PARSE-SIG -1 EXIT THEN
+   a u ALLDIG? IF STEP-N-OUT -1 EXIT THEN
+   a u FLODIG? IF STEP-R-OUT -1 EXIT THEN
    0 ;
 
 : BYTE-CON? ( t -- bool )
@@ -2328,12 +2390,12 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : CELL-FETCH-TOK ( -- )
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
-   s" ptr a -- a" PARSE-SIG
+   STEP-FETCH
    bad IF 0 OK ! THEN ;
 
 : CELL-STORE-TOK ( -- )
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
-   s" a ptr a --" PARSE-SIG
+   STEP-STORE
    bad IF 0 OK ! THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -2553,7 +2615,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
       RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
    ELSE -1 UNCK ! THEN ;
 
-: CF-IF  s" bool --" PARSE-SIG  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
+: CF-IF  STEP-BOOL-IN  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
 
 : CF-CASE ( -- )
    7 DCUR @ 0 RCUR @ 0 CF-PUSH
@@ -2573,10 +2635,10 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-OF ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
-      s" n --" PARSE-SIG
+      STEP-N-IN
       CF@A SUNI
       CF@RA RSUNI
-      s" n --" PARSE-SIG
+      STEP-N-IN
       8 CF@A 0 CF@RA 0 CF-PUSH
    THEN THEN ;
 
@@ -2592,7 +2654,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : CF-ENDCASE ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
-      DEADP @ 0= IF s" n --" PARSE-SIG THEN
+      DEADP @ 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
       CF@DED IF
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
@@ -2639,7 +2701,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
 : CF-UNTIL
-   s" bool --" PARSE-SIG
+   STEP-BOOL-IN
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
      CF-LOC-REST  CF-DROP THEN THEN ;
@@ -2650,7 +2712,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
 
 : CF-WHILE
-   s" bool --" PARSE-SIG
+   STEP-BOOL-IN
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      4 CF-TOP CF.KND !
      DCUR @ CF-TOP CF.SB !
@@ -2662,7 +2724,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      CF@A SUNI  CF@B DCUR !  CF@RA RSUNI  CF@RB RCUR !
      CF-LOC-REST  CF-DROP THEN THEN ;
 
-: CF-DO  s" n n --" PARSE-SIG  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
+: CF-DO  STEP-NN-IN  5 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
 \ At LOOP the exit is always live: ?do/do terminates, and a `leave` jumps here.
 \ If the body fall-through is dead (unconditional leave/exit), the back-edge is
@@ -2676,7 +2738,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      CF@A DCUR !  CF@RA RCUR !  CF-LOC-REST  CF-DROP THEN THEN ;
 
 : CF-+LOOP
-   s" n --" PARSE-SIG
+   STEP-N-IN
    CF-MT? IF CF-FAIL ELSE CF@K 5 <> IF CF-FAIL ELSE
      DEADP @ IF  0 DEADP !
      ELSE  CF@A SUNI  CF@RA RSUNI  THEN
@@ -2685,12 +2747,12 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF-I
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup CF-ROW CF.KND @ 5 = IF -1 INDO ! THEN  1 + REPEAT drop
-   INDO @ IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
+   INDO @ IF STEP-N-OUT ELSE CF-FAIL THEN ;
 
 : CF-J                                     \ needs two enclosing DO frames
    0 INDO !  0 BEGIN dup #CFC @ < WHILE
      dup CF-ROW CF.KND @ 5 = IF INDO @ 1 + INDO ! THEN  1 + REPEAT drop
-   INDO @ 1 > IF s" -- n" PARSE-SIG ELSE CF-FAIL THEN ;
+   INDO @ 1 > IF STEP-N-OUT ELSE CF-FAIL THEN ;
 
 variable LVDO  variable LVDN
 \ CF-FINDDO ( -- ) : LVDO = index of the nearest enclosing DO frame, or -1.

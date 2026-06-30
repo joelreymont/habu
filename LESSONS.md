@@ -1288,3 +1288,7 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Checker delete rows need a nonzero first cell:** append-only delete/clear
   rows can carry flag `0`, so fixed DFER/NORET records put `SYM` first and use
   only a zero symbol cell as the table terminator.
+- **Internal checker effects should not parse strings:** literals, cell
+  fetch/store, and control words are checker-owned semantics. Build their rows
+  directly and reserve signature parsing for source comments and audited
+  `TRUST` input.
