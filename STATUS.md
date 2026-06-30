@@ -1,18 +1,19 @@
 # habu — Status
 
-Last verified: 2026-06-29
-Gate: passing; 22.832s internal hot-cache gate time and 47.755s cold candidate +
-warm-runner refill gate time on 2026-06-29 on macOS/aarch64 with 12 online cores,
-per-file content-key warm-cache hits, manifest-hashed small `hb-under-test`,
-warm runner hits, and AOT maker cache hits. The native gate uses an 8-way macOS
-checked DAG pool, 4-way nested
-stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
+Last verified: 2026-06-30
+Gate: passing; 42.319s internal / 44.72s shell-wall hot-cache gate time and
+56.942s internal / 59.32s shell-wall cold-cache gate time on 2026-06-30 on
+macOS/aarch64 with the auto-selected `macos-arm64-4x2` profile, per-file
+content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
+hits, and AOT maker cache hits. The native gate uses a 4-way checked DAG pool,
+2-way nested stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
 in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool
 semantic fixtures, batched engine fixture source-list checks, attributed pool
-outcomes, a default content-keyed gate cache, and a 70s default budget. Host
-timing policy is exposed as script args: `--pool-slots`, `--nested-pool-slots`,
-and `--budget-ms`.
+outcomes, a default content-keyed gate cache, and auto-detected host-class
+timing profiles. Host timing policy is exposed as script args:
+`--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
+`--wall-budget-ms`, and `--cold-cache`.
 Certified: 979  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

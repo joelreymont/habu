@@ -1,6 +1,6 @@
 ---
 title: Eliminate process launchers from test suite
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-06-30T01:39:47.353637+02:00"
