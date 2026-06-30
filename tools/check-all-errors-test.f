@@ -277,11 +277,21 @@ create CAE-LF-BYTE 10 c,
 : CAE-RUN-CORE-ACT ( -- )
    CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS-FILE ;
 
+: CAE-RUN-BUF-ACT ( -- )
+   CAE-RUN$ CAE-SOURCE$ CHECK-ALL-ERRORS-BUF ;
+
 : CAE-CORE-CAPTURE ( ptr u8 n -- n n n n )
    CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
+
+: CAE-BUF-CAPTURE ( -- n n n n )
+   CAE-IN CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= CHECK-ALL-ERRORS-JSON!
+   [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
    0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
 
 : CAE-ARG+ ( ptr u8 n -- )
@@ -420,6 +430,18 @@ create CAE-LF-BYTE 10 c,
    s" undefined-json diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
 
+: CAE-TEST-BUF-CORE ( -- )
+   s" buffer-core" CAE-CASE!
+   CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" buffer-core stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" buffer-core bad1" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD1$ CONTAINS? TTRUE
+   s" buffer-core bad2" T-LABEL
+   CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
+   s" buffer-core diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
 : CAE-TEST-CLI-SMOKE ( -- )
    s" cli-smoke" CAE-CASE!
    CAE-IN CAE-SOURCE$ WRITE-ALL
@@ -458,6 +480,7 @@ create CAE-LF-BYTE 10 c,
    CAE-TEST-MANY-DEFS-OK
    CAE-TEST-MANY-SUPPORT
    CAE-TEST-UNDEFINED-JSON
+   CAE-TEST-BUF-CORE
    CAE-TEST-CLI-SMOKE
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL

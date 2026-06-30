@@ -759,14 +759,29 @@ variable CA-JSON
    path pu FILE-SIZE CA-ALLOC-SOURCE
    path pu CA-SRC-A@ CA-SRC-CAP @ READ-ALL CA-SRC-U ! ;
 
-: CHECK-ALL-ERRORS-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
-   CA-STORE-INIT
-   labelu CA-FILE-U !
-   labela CA-FILE-A!
-   patha pathu CA-READ-SOURCE
+: CA-SOURCE-BUF! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CA-SRC-CAP !
+   u CA-SRC-U !
+   a CA-SRC-A! ;
+
+: CA-RUN-SOURCE ( -- )
    CA-SRC-A@ CA-SRC-U @ LEX-SOURCE
    CA-HANDLE-LEX-UNTERM
    CA-COLLECT-DEFS
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF 70 throw THEN ;
+
+: CHECK-ALL-ERRORS-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+   CA-STORE-INIT
+   labelu CA-FILE-U !
+   labela CA-FILE-A!
+   patha pathu CA-READ-SOURCE
+   CA-RUN-SOURCE ;
+
+: CHECK-ALL-ERRORS-BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
+   CA-STORE-INIT
+   labelu CA-FILE-U !
+   labela CA-FILE-A!
+   srca srcu CA-SOURCE-BUF!
+   CA-RUN-SOURCE ;

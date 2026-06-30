@@ -209,6 +209,17 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Do not spawn assertion tools for semantic checks:** gate JSON assertions are
   checked library words in `tools/gate-json-assert-core.f`; calling them
   in-process preserved coverage and cut hot helper spawns from 151 to 123.
+- **Do not run negative compiler probes through raw `evaluate`:** positive
+  `GE-EVAL-CAPTURE` can run in-process, but rejected source can exit through
+  checker/compiler `die` before `catch` returns. Migrate semantic negative tests
+  through `CHECK-CANDIDATE!` plus diagnostic rendering; keep true CLI/die
+  boundaries as child-process sentinels.
+- **Use checker-core buffer adapters for semantic negatives:** `CHECK-ALL-ERRORS-BUF`
+  reuses `VERIFY-SOURCE-BUF` candidate scope and diagnostic-buffer rendering
+  without writing a temp file or spawning `hb`. It is valid for ordinary semantic
+  rejects such as package no-return flow, but duplicate-definition still exits
+  through the fatal checker path today and remains a child `check.f` sentinel
+  until that path becomes catchable.
 - **Warm image cache publishes must be stamp-last:** a failed warm-tools bake
   wrote a new `hb-tools-warm.trust.f` beside an old image/stamp, so the next
   cache hit paired mismatched artifacts and failed with `checker: duplicate

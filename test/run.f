@@ -669,15 +669,15 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    tools/warm-run.f tools/hb-build-lib.f tools/json.f tools/gate-json-assert-core.f
    test/gate-pool.f test/gate-stats.f tools/warm-image-lib.f
    test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
-   test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
-   test/gate-stdlib-inline-lib.f
+   test/gate-diagnostics-lib.f
    tools/date.f lib/test.f tools/lint/text.f tools/lint/intern.f
    tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
    tools/lint/source-lex.f tools/argv.f tools/check-all-errors-core.f
    tools/diag-origin-core.f tools/json-only-core.f tools/aot-lint-core.f
    tools/signature-lint-core.f tools/checked-boundary-lint-core.f
    tools/reserved-name-lint-core.f tools/duplicate-definition-lint-core.f
-   tools/bundle-lib-core.f test/gate-stdlib-tool-base-ready.f
+   tools/bundle-lib-core.f test/gate-dictionary-lib.f test/gate-debug-lib.f
+   test/gate-stdlib-inline-lib.f test/gate-stdlib-tool-base-ready.f
 ;TR-FILES
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
@@ -1226,6 +1226,13 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-DICTIONARY-ARGS ( -- )
    TR-COMMON
+   s" lib/vector.f"  >LEN PROC-ARGV+
+   s" tools/lint/text.f"  >LEN PROC-ARGV+
+   s" tools/lint/token.f"  >LEN PROC-ARGV+
+   s" tools/lint/lib.f"  >LEN PROC-ARGV+
+   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
+   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
+   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
    s" test/gate-dictionary.f"  >LEN PROC-ARGV+ ;
 
 : TR-DIAGNOSTICS-ARGS ( -- )

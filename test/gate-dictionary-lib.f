@@ -1,6 +1,6 @@
 \ gate-dictionary.f - checked runner for dictionary and checker contracts.
 \
-\ Load after test/gate-common.f.
+\ Load after test/gate-common.f and tools/check-all-errors-core.f.
 
 $41 constant GD-A
 $2E constant GD-DOT
@@ -16,6 +16,18 @@ variable GD-INC-CORE-U
 variable GD-INC-API-U
 variable GD-INC-MAIN-U
 variable GD-INC-DUP-U
+variable GD-CHECK-LABEL-A
+variable GD-CHECK-LABEL-U
+
+: GD-CHECK-LABEL-A-FIELD ( -- ptr ptr u8 )
+   GD-CHECK-LABEL-A 0 ptr-field ;
+
+: GD-CHECK-LABEL$ ( -- ptr u8 n )
+   GD-CHECK-LABEL-A-FIELD @ GD-CHECK-LABEL-U @ ;
+
+: GD-CHECK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u GD-CHECK-LABEL-U !
+   a GD-CHECK-LABEL-A-FIELD ! ;
 
 : GD-EMIT-LONG-NAME ( -- )
    GD-LONG-NAME-LEN GD-A GE-SRC-REPEAT-C ;
@@ -455,6 +467,27 @@ variable GD-INC-DUP-U
    GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    70 -rot GE-EXPECT-RC ;
 
+: GD-CHECK-BUF-ACT ( -- )
+   GD-CHECK-LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS-BUF ;
+
+: GD-CHECK-BUF-STORE ( n -- ) {: rc:n :}
+   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
+   rc GT-OUTCOME-CODE !
+   0 GT-OUT-U !
+   CHECK-ALL-ERRORS-OUT$ nip GT-ERR-U ! ;
+
+: GD-CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )
+   {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   label labelu GT-PROGRESS-RUN
+   s" inprocess-check" GS-EVENT
+   label labelu GD-CHECK-LABEL!
+   GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS-BUFFERS!
+   0 0= 0= CHECK-ALL-ERRORS-JSON!
+   [: GD-CHECK-BUF-ACT ;] catch GD-CHECK-BUF-STORE
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS
+   label labelu GT-PROGRESS-PASS ;
+
 : GD-PACKAGE-NORET-GOOD-BODY ( -- )
    s" package GD-NR" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -479,7 +512,7 @@ variable GD-INC-DUP-U
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : GD-NR-BAD ( n -- n ) dup 0 < if GD-NR:STOP 0 then 1 + ;" GE-SRC-LINE
-   $46 s" gd-nr-bad" s" check.f package no-return rejects live tail" GE-CHECK-RUN-BAD
+   $46 s" gd-nr-bad" s" checker package no-return rejects live tail" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package GD-NRA" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -492,7 +525,7 @@ variable GD-INC-DUP-U
    s" : STOP ( -- n ) 7 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : GD-NRA-BAD ( n -- n ) dup 0 < if GD-NRA:STOP 0 then 1 + ;" GE-SRC-LINE
-   $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" GE-CHECK-RUN-BAD ;
+   $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" GD-CHECK-BUF-BAD ;
 
 : GD-RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
