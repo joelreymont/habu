@@ -256,7 +256,9 @@ variable SUITE-TIMINGS
    CK-RESET
    s" hb-tools-warm-cache-v4" CK-TEXT+
    s" bin/hb" SUITE-KEY-FILE+
+   s" test/gate-stats.f" SUITE-KEY-FILE+
    s" tools/warm-image-lib.f" SUITE-KEY-FILE+
+   s" tools/warm-image-gate-stats.f" SUITE-KEY-FILE+
    s" tools/warm-image.f" SUITE-KEY-FILE+
    SUITE-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" SUITE-KEY-FILE+
@@ -322,7 +324,9 @@ variable SUITE-TIMINGS
    s" lib/process-env.f" SUITE-ARG+
    s" lib/source.f" SUITE-ARG+
    s" lib/codesign.f" SUITE-ARG+
+   s" test/gate-stats.f" SUITE-ARG+
    s" tools/warm-image-lib.f" SUITE-ARG+
+   s" tools/warm-image-gate-stats.f" SUITE-ARG+
    s" tools/warm-image.f" SUITE-ARG+
    s" --" SUITE-ARG+
    SUITE-WARM-CAND$ SUITE-ARG+ ;
@@ -536,19 +540,8 @@ variable SUITE-TIMINGS
    s" source-stdlib-stdin" SUITE-LABEL= if SUITE-TRUE exit then
    s" argv-stdlib-mocks" SUITE-LABEL= if SUITE-TRUE exit then
    s" argv-stdlib-script-args" SUITE-LABEL= if SUITE-TRUE exit then
-   s" test-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
-   s" property-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
-   s" date-helpers" SUITE-LABEL= if SUITE-TRUE exit then
-   s" spawn-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
-   s" c-call-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
-   s" signature-scan-emitter-shape" SUITE-LABEL= if SUITE-TRUE exit then
-   s" compiler-dispatch-shape" SUITE-LABEL= if SUITE-TRUE exit then
-   s" tail-pure-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-source-default" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdlib-process-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" stdlib-runner-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" stdlib-build-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" bootstrap-warm-image-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-RUN? ( -- bool )

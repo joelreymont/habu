@@ -36,6 +36,11 @@
 28 constant GR-ID-DIAG-FILE-UNSAFE
 29 constant GR-ID-DICTIONARY
 30 constant GR-ID-DEBUG
+31 constant GR-ID-TAIL-FAST
+32 constant GR-ID-TAIL-PURE
+33 constant GR-ID-TAIL-RUNNER
+34 constant GR-ID-TAIL-BUILD
+35 constant GR-ID-TAIL-WARM
 variable GR-START-NS
 variable GR-ARG-I
 
@@ -117,6 +122,11 @@ variable GR-ARG-I
    s" diag-file-unsafe" GR-ARG0= if GR-ID-DIAG-FILE-UNSAFE exit then
    s" dictionary" GR-ARG0= if GR-ID-DICTIONARY exit then
    s" debug" GR-ARG0= if GR-ID-DEBUG exit then
+   s" tail-fast" GR-ARG0= if GR-ID-TAIL-FAST exit then
+   s" tail-pure" GR-ARG0= if GR-ID-TAIL-PURE exit then
+   s" tail-runner" GR-ARG0= if GR-ID-TAIL-RUNNER exit then
+   s" tail-build" GR-ARG0= if GR-ID-TAIL-BUILD exit then
+   s" tail-warm" GR-ARG0= if GR-ID-TAIL-WARM exit then
    GR-ID-UNKNOWN ;
 
 : GR-STDLIB ( -- )
@@ -159,6 +169,11 @@ variable GR-ARG-I
       GR-ID-DIAG-FILE-UNSAFE of GDX-FILE-UNSAFE-SLICE endof
       GR-ID-DICTIONARY of GD-MAIN endof
       GR-ID-DEBUG of GDB-RUN endof
+      GR-ID-TAIL-FAST of GSI-TAIL-FAST endof
+      GR-ID-TAIL-PURE of GSI-TAIL-PURE endof
+      GR-ID-TAIL-RUNNER of GSI-TAIL-RUNNER endof
+      GR-ID-TAIL-BUILD of GSI-TAIL-BUILD endof
+      GR-ID-TAIL-WARM of GSI-TAIL-WARM endof
       GR-USAGE
    endcase ;
 
@@ -194,6 +209,11 @@ variable GR-ARG-I
       GR-ID-TOOL-TYPED of 0 0= endof
       GR-ID-TOOL-SEMANTICS of 0 0= endof
       GR-ID-LINT-TOOLS of 0 0= endof
+      GR-ID-TAIL-FAST of 0 0= endof
+      GR-ID-TAIL-PURE of 0 0= endof
+      GR-ID-TAIL-RUNNER of 0 0= endof
+      GR-ID-TAIL-BUILD of 0 0= endof
+      GR-ID-TAIL-WARM of 0 0= endof
       0 0= 0= swap
    endcase ;
 

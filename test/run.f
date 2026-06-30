@@ -13,12 +13,12 @@ include test/gate-stats.f
 70000 constant TR-DEFAULT-BUDGET-MS
 4 constant TR-DEFAULT-NESTED-POOL-SLOTS
 600000 constant TR-TIMEOUT-MS
-26 constant TR-PHASES
+31 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 $2 constant TR-CHECK-WARM-PHASES
-$14 constant TR-LATE-PHASES
+$19 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-TOOLS-WARM-SLOT
 1 constant TR-CHECK-WARM-SLOT
@@ -37,8 +37,8 @@ $9 , $E ,
 
 create TR-LATE-ORDER
 $3 , $2 , $16 , $17 , $18 , $19 , $8 , $7 ,
-$A , $15 , $4 , $B , $C , $13 , $11 , $5 ,
-$D , $14 , $12 , $10 ,
+$1E , $1D , $1C , $1B , $1A , $A , $15 , $4 ,
+$B , $C , $13 , $11 , $5 , $D , $14 , $12 , $10 ,
 
 create TR-WARM-BUF FS-PATH-CAP allot
 create TR-TOOLS-BUF FS-PATH-CAP allot
@@ -303,6 +303,11 @@ variable TR-NUM-U
    TR-COLD-CACHE @ 0 = if exit then
    TR-BUDGET-USER @ 0= if TR-COLD-BUDGET-MS TR-BUDGET ! then
    TR-WALL-BUDGET-USER @ 0= if TR-COLD-WALL-BUDGET-MS TR-WALL-BUDGET ! then ;
+
+: TR-MARK-COLD ( -- )
+   TR-COLD-CACHE @ 0 <> if exit then
+   -1 TR-COLD-CACHE !
+   TR-COLD-BUDGETS ;
 
 : TR-PERF-PROFILE-OPT ( -- )
    TR-ARG-VALUE$ TR-PROFILE-ID? TR-PROFILE-APPLY
@@ -650,7 +655,8 @@ TR-FILES: TR-RUNNER-SUPPORT-FILES
    lib/process.f lib/process-argv.f lib/process-env.f lib/test-runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
    tools/warm-run.f tools/hb-build-lib.f tools/json.f tools/gate-json-assert-core.f
-   test/gate-pool.f test/gate-stats.f test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
+   test/gate-pool.f test/gate-stats.f tools/warm-image-lib.f
+   test/gate-common-lib.f test/gate-stdlib-lib.f test/gate-engine-lib.f
    test/gate-diagnostics-lib.f test/gate-dictionary-lib.f test/gate-debug-lib.f
    test/gate-stdlib-inline-lib.f
 ;TR-FILES
@@ -781,9 +787,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-gate-runner-cache-v5" CK-TEXT+
+   s" hb-gate-runner-cache-v6" CK-TEXT+
    s" bin/hb" TR-RUNNER-KEY-FILE+
+   s" test/run.f" TR-RUNNER-KEY-FILE+
+   s" test/gate-stats.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-RUNNER-KEY-FILE+
+   s" tools/warm-image-gate-stats.f" TR-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-RUNNER-KEY-FILE+
    TR-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" TR-RUNNER-KEY-FILE+
@@ -803,9 +812,12 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-AOT-RUNNER-KEY! ( -- )
    CK-RESET
-   s" hb-aot-runner-cache-v2" CK-TEXT+
+   s" hb-aot-runner-cache-v3" CK-TEXT+
    s" bin/hb" TR-AOT-RUNNER-KEY-FILE+
+   s" test/run.f" TR-AOT-RUNNER-KEY-FILE+
+   s" test/gate-stats.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image-lib.f" TR-AOT-RUNNER-KEY-FILE+
+   s" tools/warm-image-gate-stats.f" TR-AOT-RUNNER-KEY-FILE+
    s" tools/warm-image.f" TR-AOT-RUNNER-KEY-FILE+
    TR-SNAPSHOT-BUILDER-KEY
    s" tools/public-signatures-core.f" TR-AOT-RUNNER-KEY-FILE+
@@ -915,8 +927,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-UNDER-READY @ 0 <> if exit then
    TR-PERSIST? 0= if exit then
    TR-UNDER-CACHE-KEY!
-   TR-UNDER-CACHE$ EXECUTABLE? 0= if s" candidate-cache-miss" GS-EVENT exit then
-   TR-UNDER-CACHE-STAMP-MISSING? if s" candidate-cache-miss" GS-EVENT exit then
+   TR-UNDER-CACHE$ EXECUTABLE? 0= if TR-MARK-COLD s" candidate-cache-miss" GS-EVENT exit then
+   TR-UNDER-CACHE-STAMP-MISSING? if TR-MARK-COLD s" candidate-cache-miss" GS-EVENT exit then
    TR-UNDER-CACHE-STAMP-OK? 0= if TR-UNDER-CACHE-CORRUPT then
    s" candidate-cache-hit" GS-EVENT
    TR-UNDER-CACHE$ TR-UNDER$ COPY-FILE-STREAM
@@ -986,7 +998,9 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" lib/process-env.f" TR-ARG+
    s" lib/source.f" TR-ARG+
    s" lib/codesign.f" TR-ARG+
+   s" test/gate-stats.f" TR-ARG+
    s" tools/warm-image-lib.f" TR-ARG+
+   s" tools/warm-image-gate-stats.f" TR-ARG+
    s" tools/warm-image.f" TR-ARG+
    s" --" TR-ARG+
    TR-RUNNER$ TR-ARG+ ;
@@ -1007,7 +1021,9 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" lib/process-env.f" TR-ARG+
    s" lib/source.f" TR-ARG+
    s" lib/codesign.f" TR-ARG+
+   s" test/gate-stats.f" TR-ARG+
    s" tools/warm-image-lib.f" TR-ARG+
+   s" tools/warm-image-gate-stats.f" TR-ARG+
    s" tools/warm-image.f" TR-ARG+
    s" --" TR-ARG+
    TR-AOT-RUNNER$ TR-ARG+ ;
@@ -1019,6 +1035,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-RUNNER-PATHS
    TR-RUNNER-KEY!
    TR-RUNNER-CACHED? if s" warm-cache-hit" GS-EVENT -1 TR-RUNNER-READY ! exit then
+   TR-MARK-COLD
    s" warm-cache-miss" GS-EVENT
    s" warm-build" GS-EVENT
    s" gate-runner-build" GS-EVENT
@@ -1037,6 +1054,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-AOT-RUNNER-PATHS
    TR-AOT-RUNNER-KEY!
    TR-AOT-RUNNER-CACHED? if s" warm-cache-hit" GS-EVENT -1 TR-AOT-RUNNER-READY ! exit then
+   TR-MARK-COLD
    s" warm-cache-miss" GS-EVENT
    s" warm-build" GS-EVENT
    s" gate-runner-build" GS-EVENT
@@ -1295,6 +1313,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       23 of s" GROUP: stdlib/tool-doc [parallel]" endof
       24 of s" GROUP: stdlib/tool-lints [parallel]" endof
       25 of s" GROUP: stdlib/tool-typed-local [parallel]" endof
+      26 of s" GROUP: stdlib/tail-fast [inprocess]" endof
+      27 of s" GROUP: stdlib/tail-pure [inprocess]" endof
+      28 of s" GROUP: stdlib/tail-runner [inprocess]" endof
+      29 of s" GROUP: stdlib/tail-build [inprocess]" endof
+      30 of s" GROUP: stdlib/tail-warm-image [inprocess]" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1326,6 +1349,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       23 of s" gate-stdlib-tool-doc" endof
       24 of s" gate-stdlib-tool-lints" endof
       25 of s" gate-stdlib-tool-typed" endof
+      26 of s" gate-stdlib-tail-fast" endof
+      27 of s" gate-stdlib-tail-pure" endof
+      28 of s" gate-stdlib-tail-runner" endof
+      29 of s" gate-stdlib-tail-build" endof
+      30 of s" gate-stdlib-tail-warm" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1357,6 +1385,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       23 of TR-STDLIB-TOOL-ARGS endof
       24 of TR-STDLIB-TOOL-ARGS endof
       25 of TR-STDLIB-TOOL-ARGS endof
+      26 of TR-STDLIB-TAIL-ARGS endof
+      27 of TR-STDLIB-TAIL-ARGS endof
+      28 of TR-STDLIB-TAIL-ARGS endof
+      29 of TR-STDLIB-TAIL-ARGS endof
+      30 of TR-STDLIB-TAIL-ARGS endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1385,6 +1418,11 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       23 of s" tool-doc" endof
       24 of s" tool-lints" endof
       25 of s" tool-typed" endof
+      26 of s" tail-fast" endof
+      27 of s" tail-pure" endof
+      28 of s" tail-runner" endof
+      29 of s" tail-build" endof
+      30 of s" tail-warm" endof
       E-TBL-BOUNDS throw
    endcase ;
 

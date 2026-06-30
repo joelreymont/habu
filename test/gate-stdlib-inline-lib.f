@@ -282,3 +282,61 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" stdlib/lint-tools" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-LINT-TOOLS-SETUP
    s" test/gate-stdlib-lint-tools.f" included ;
+
+: GSI-TEST-SETUP ( -- )
+   GSI-SETUP!
+   s" lib/test.f" GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-TAIL-FAST-SETUP ( -- )
+   GSI-TEST-SETUP
+   s" tools/date.f" GSI-INCLUDE
+   s" lib/property.f" GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-TAIL-FAST ( -- )
+   s" stdlib/tail-fast" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TAIL-FAST-SETUP
+   s" lib/test-test.f" GSI-INCLUDE
+   s" lib/property-test.f" GSI-INCLUDE
+   s" tools/date-test.f" GSI-INCLUDE
+   s" tools/spawn-emitter-test.f" GSI-INCLUDE
+   s" tools/c-call-emitter-test.f" GSI-INCLUDE
+   s" tools/signature-scan-emitter-test.f" GSI-INCLUDE
+   s" tools/compiler-dispatch-test.f" GSI-INCLUDE ;
+
+: GSI-TAIL-PURE-SETUP ( -- )
+   GSI-TEST-SETUP
+   s" lib/json-write.f" GSI-INCLUDE
+   GSI-TEST! ;
+
+: GSI-TAIL-PURE ( -- )
+   s" stdlib/tail-pure" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TAIL-PURE-SETUP
+   s" lib/json-write-test.f" GSI-INCLUDE
+   s" lib/memory-test.f" GSI-INCLUDE
+   s" lib/vector-test.f" GSI-INCLUDE
+   s" lib/fs-test.f" GSI-INCLUDE
+   s" tools/bootstrap-codegen-test.f" GSI-INCLUDE
+   s" tools/asm-src-test.f" GSI-INCLUDE
+   s" bootstrap/cg/asm-checked.fs" GSI-INCLUDE
+   s" tools/asm-checked-test.f" GSI-INCLUDE
+   s" tools/image-bytes-test.f" GSI-INCLUDE ;
+
+: GSI-TAIL-RUNNER ( -- )
+   s" stdlib/tail-runner" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" lib/test-runner-test.f" GSI-INCLUDE ;
+
+: GSI-TAIL-BUILD ( -- )
+   s" stdlib/tail-build" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TEST-SETUP
+   s" lib/build-test.f" GSI-INCLUDE ;
+
+: GSI-TAIL-WARM-SETUP ( -- )
+   GSI-TEST-SETUP ;
+
+: GSI-TAIL-WARM ( -- )
+   s" stdlib/tail-warm-image" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   GSI-TAIL-WARM-SETUP
+   s" tools/warm-image-test.f" GSI-INCLUDE ;

@@ -4,10 +4,8 @@
 \ lib/fs-mutate.f, lib/process.f, lib/process-argv.f, lib/process-env.f,
 \ lib/source.f, and lib/codesign.f.
 
-include test/gate-stats.f
-
 $40000 constant WI-SRC-CAP
-$40000 constant WI-CAP
+$200000 constant WI-CAP
 120000 constant WI-TIMEOUT-MS
 64 constant WI-USAGE-RC
 74 constant WI-RC
@@ -31,6 +29,16 @@ variable WI-OUT-PATH-U
 variable WI-TRUST-PATH-U
 variable WI-I
 variable WI-SRC-LEN
+
+: WI-NO-EVENT ( ptr u8 n -- )
+   2drop ;
+
+defer WI-EVENT ( ptr u8 n -- )
+
+: WI-EVENT-DEFAULT! ( -- )
+   [: WI-NO-EVENT ;] is WI-EVENT ;
+
+WI-EVENT-DEFAULT!
 
 : WI-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -156,8 +164,8 @@ variable WI-SRC-LEN
 
 : WI-APPEND-COMMENTED-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    a u WI-SRC-BUF WI-SRC-CAP READ-ALL WI-SRC-LEN !
-   WI-SRC-BUF WI-SRC-LEN @ >LEN SOURCE-BUF SOURCE-CAP >LEN COMMENT-EXPORTS SOURCE-LEN !
-   WI-SRC-PATH SOURCE-BUF SOURCE-LEN @ LEN>N APPEND-FILE
+   WI-SRC-BUF WI-SRC-LEN @ >LEN WI-OUT WI-CAP >LEN COMMENT-EXPORTS {: outu:len :}
+   WI-SRC-PATH WI-OUT outu LEN>N APPEND-FILE
    WI-SRC-PATH WI-LF-BUF 1 APPEND-FILE ;
 
 : WI-PRINT-CAPTURE ( n n -- ) {: outu erru :}
@@ -192,7 +200,7 @@ variable WI-SRC-LEN
    WI-SIG-ARGV-SUPPORTS ;
 
 : WI-RUN-SIG-EXPORT ( -- )
-   s" warm-sig-export" GS-EVENT
+   s" warm-sig-export" WI-EVENT
    WI-SIG-ARGV
    s" bin/hb" >LEN WI-OUT WI-CAP >LEN WI-ERR WI-CAP >LEN
    WI-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
@@ -261,7 +269,7 @@ variable WI-SRC-LEN
    WI-SRC-PATH WI-ARG+ ;
 
 : WI-RUN-CHILD ( -- )
-   s" warm-snapshot" GS-EVENT
+   s" warm-snapshot" WI-EVENT
    WI-CHILD-ARGV
    WI-CHILD-ENV
    s" bin/hb" >LEN WI-OUT WI-CAP >LEN WI-ERR WI-CAP >LEN

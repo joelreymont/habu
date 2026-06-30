@@ -128,6 +128,12 @@ directory, applies the profile cold budget unless the user supplied explicit
 budget arguments, and proves cache-fill behavior without deleting the persistent
 warm cache.
 
+If a default persistent-cache run discovers a missing warm runner or
+`HABU_UNDER_TEST` artifact after argument parsing, the runner marks the run
+`cache=cold` and applies the same profile cold budget unless explicit budget
+arguments were supplied. A source change that invalidates warm images must
+therefore be timed as a cache-fill run, not fail against the hot budget.
+
 The runner's wall budget is monotonic elapsed time from `TR-MAIN`; wrap the
 command with `/usr/bin/time -p` when comparing end-to-end shell wall time across
 hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
@@ -155,14 +161,15 @@ hosts. Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Acceptance: semantic tool tests run as independent resident-runner tests; CLI
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, lint, and typed-local tool rows.
-   A hot local gate now reports `warm-miss=0`, `candidate-hit=1`,
-   `candidate-validate=1`, and 24.579s internal wall time.
+   A hot local gate now reports `warm-miss=0`, `candidate-validate=1`,
+   `inner-hb=31`, `boundary=48`, and 43.932s internal wall time.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
    semantic tests no longer spawn a child just to reload the same support files.
-   Status: test-level resident execution is in place. Remaining work is inside
-   those tool tests: remove their helper children except for real CLI sentinels.
+   Status: test-level resident execution is in place, including stdlib tail
+   semantic slices. Remaining work is inside those tool tests: remove their
+   helper children except for real CLI sentinels.
 
 6. Add direct checker/all-errors source APIs.
    Acceptance: dictionary/checker pure negatives do not spawn candidate `hb`;

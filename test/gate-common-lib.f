@@ -364,8 +364,9 @@ GE-FILES: GE-WARM-BAKER-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/source.f lib/codesign.f tools/lint/text.f tools/lint/intern.f
-   tools/lint/token.f tools/lint/lib.f tools/warm-image-lib.f
-   tools/warm-image.f tools/public-signatures-core.f tools/public-signatures.f
+   tools/lint/token.f tools/lint/lib.f test/gate-stats.f
+   tools/warm-image-lib.f tools/warm-image-gate-stats.f tools/warm-image.f
+   tools/public-signatures-core.f tools/public-signatures.f
 ;GE-FILES
 
 GE-FILES: GE-CHECK-SUPPORT-FILES
@@ -450,7 +451,9 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
    s" lib/process-env.f" GE-ARG+
    s" lib/source.f" GE-ARG+
    s" lib/codesign.f" GE-ARG+
+   s" test/gate-stats.f" GE-ARG+
    s" tools/warm-image-lib.f" GE-ARG+
+   s" tools/warm-image-gate-stats.f" GE-ARG+
    s" tools/warm-image.f" GE-ARG+
    s" --" GE-ARG+
    GE-WARM$ GE-ARG+ ;

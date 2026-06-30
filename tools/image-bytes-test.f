@@ -14,6 +14,28 @@ variable IBT-LEN
 
 IBT-LOAD-IMAGE-BYTES
 
+s" MBUF" s" -- ptr u8" TRUST
+s" M-BOUNDS-RC" s" -- n" TRUST
+s" M-RESET" s" --" TRUST
+s" M-LEN" s" n -- len" TRUST
+s" M-OFF" s" n -- off" TRUST
+s" M-HERE" s" -- n" TRUST
+s" IMG-M8" s" n --" TRUST
+s" IMG-M16" s" n --" TRUST
+s" IMG-M32" s" n --" TRUST
+s" IMG-M64" s" n --" TRUST
+s" M-BYTES-LEN" s" ptr u8 len --" TRUST
+s" M-NAME16-LEN" s" ptr u8 len --" TRUST
+s" M-PAD-OFF" s" off --" TRUST
+s" M-LE32@" s" off -- n" TRUST
+s" M-LE32!" s" n off --" TRUST
+s" M-LE64!" s" n off --" TRUST
+s" M-BE-RESET" s" off --" TRUST
+s" M-BE-HERE" s" -- n" TRUST
+s" M-BE32" s" n --" TRUST
+s" M-BE64" s" n --" TRUST
+s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
+
 TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
    DIAGXT @ >r
    0 DIAGXT !

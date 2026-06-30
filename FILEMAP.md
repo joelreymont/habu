@@ -133,6 +133,9 @@ points stay listed.
 - `tools/warm-image-lib.f` — checked tool library that bakes warm snapshot images
   plus generated trust-sidecar sources from support files for fast fixture
   subprocesses.
+- `tools/warm-image-gate-stats.f` — tiny gate-only adapter that wires
+  warm-image events into `test/gate-stats.f` without making warm-image-lib depend
+  on test code.
 - `tools/warm-image.f` — CLI entrypoint for warm snapshot image baking.
 - `tools/warm-image-test.f` — checked fixture coverage for warm image baking,
   support-source availability, and warm-image checker rejection.

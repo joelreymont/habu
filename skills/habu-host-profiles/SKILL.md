@@ -70,3 +70,6 @@ Jetson/Orin cache-fill profile:
 
 `--cold-cache` uses a private per-run cache root and the profile cold budget. It
 does not delete the persistent warm cache.
+
+Default persistent-cache runs also mark themselves cold if a source change
+invalidates a warm runner or `HABU_UNDER_TEST` cache artifact during setup.

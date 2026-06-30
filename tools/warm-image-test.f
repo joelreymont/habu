@@ -119,7 +119,9 @@ create WIT-RUN-ERR WIT-CAP allot
    s" lib/process-env.f" WIT-ARG+
    s" lib/source.f" WIT-ARG+
    s" lib/codesign.f" WIT-ARG+
+   s" test/gate-stats.f" WIT-ARG+
    s" tools/warm-image-lib.f" WIT-ARG+
+   s" tools/warm-image-gate-stats.f" WIT-ARG+
    s" tools/warm-image.f" WIT-ARG+
    s" --" WIT-ARG+
    WIT-WARM WIT-ARG+

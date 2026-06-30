@@ -1,16 +1,28 @@
 \ asm-src-test.f - unchecked source ARM64 encoder regression.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f tools/asm-src-test.f
 
-: AST-ASM-LOADED? ( -- bool )
-   s" ARM64-W32" XREF-FIND 0= 0= ;
+: AST-WORD? ( ptr u8 n -- bool )
+   XREF-FIND 0= 0= ;
 
 : AST-LOAD-ASM ( -- )
-   AST-ASM-LOADED? if exit then
-   s" src/arch/arm64/asm.f" included
-   s" src/arch/arm64/icode.f" included
-   s" src/arch/arm64/mnem.f" included ;
+   s" ENC-ADD" AST-WORD? 0= if s" src/arch/arm64/asm.f" included then
+   s" LIT64," AST-WORD? 0= if s" src/arch/arm64/icode.f" included then
+   s" ADD," AST-WORD? 0= if s" src/arch/arm64/mnem.f" included then ;
 
 AST-LOAD-ASM
+
+s" MOVZHW" s" n n n -- n" TRUST
+s" ENC-ADD" s" n n n -- n" TRUST
+s" ENC-LDR" s" n n n -- n" TRUST
+s" ENC-BLR" s" n -- n" TRUST
+s" >LIMM" s" n -- n" TRUST
+s" ENC-ANDI" s" n n n -- n" TRUST
+s" CW@" s" n -- ptr u8" TRUST
+s" CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
+s" ARESET" s" --" TRUST
+s" ADD," s" n n n --" TRUST
+s" ASM-LEN" s" -- n" TRUST
+s" LIT64," s" n n --" TRUST
 
 $2000000000000000 constant AST-DNAME-EXT
 

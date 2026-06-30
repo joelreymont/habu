@@ -210,6 +210,11 @@ lesson — keep the specific word/code/path, cut the prose.
   tool slice wait on one resident thread for ~56s. Split independent semantics
   into first-class resident-runner rows; the hot local gate fell to 24.579s with
   `warm-miss=0` while still running candidate validation.
+- **Discovered cache misses must switch the timing profile to cold:** a default
+  run after changing `test/run.f` rebuilt both warm runners but still used the
+  hot 55s/60s macOS budget, failing at 62s despite all tests passing. Warm-runner
+  and candidate cache misses now mark `cache=cold` and apply the profile cold
+  budget unless the user supplied explicit budget args.
 - **Stats schemas need content assertions, not just counters:** `GS-ROW` first
   emitted `sha/boundary/runner/subject/label` despite docs promising
   `label/subject/runner/boundary/sha`. Tests must assert representative TSV row
