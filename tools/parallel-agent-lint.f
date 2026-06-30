@@ -1,6 +1,12 @@
 \ parallel-agent-lint.f - keep docs/parallel-agents.md enforceable.
 \ Load after tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
+require lib/errors.f
+require lib/string.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 $20000 constant PAL-CAP
 
 create PAL-BUF PAL-CAP allot

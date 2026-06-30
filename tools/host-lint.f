@@ -1,6 +1,13 @@
 \ host-lint.f - reject retired host-script workflow hooks.
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 $20000 constant HOST-CAP
 
 create HOST-BUF HOST-CAP allot

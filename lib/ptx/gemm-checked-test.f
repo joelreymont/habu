@@ -18,6 +18,8 @@
 \ habu-tiled-gemm-codegen. The negative (a non-stack-neutral K-loop body) is gated by
 \ lib/ptx/gemm-checked-neg-test.f. Load after lib/ptx/tile.f, tile-smem.f, and tile-acc.f.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

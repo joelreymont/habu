@@ -1,6 +1,15 @@
 \ process-test.f -- focused tests for lib/process.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+
 variable PT-R
 variable PT-W
 variable PT-IN-R

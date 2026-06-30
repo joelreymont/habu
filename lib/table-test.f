@@ -1,6 +1,11 @@
 \ table-test.f - focused tests for checked fixed-cell table helpers.
 \ Run: bin/hb --load lib/errors.f lib/test.f lib/array.f lib/table.f lib/table-test.f
 
+require lib/errors.f
+require lib/test.f
+require lib/array.f
+require lib/table.f
+
 create TBLT-TABLE 12 cells allot
 
 : TBLT-CLEAR ( -- )

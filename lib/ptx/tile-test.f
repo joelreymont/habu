@@ -6,6 +6,8 @@
 \ polymorphic operation signatures in lib/ptx/tile.f; the mask token threads from
 \ GRID-CTX through LOAD / SCALE / +. / -. / /. to STORE by unification.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

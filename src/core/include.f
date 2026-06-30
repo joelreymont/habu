@@ -6,15 +6,19 @@
 $400 constant INCLUDE-PATH-CAP
 $80000 constant INCLUDE-BUF-CAP
 $8 constant INCLUDE-MAX-DEPTH
+$100 constant REQUIRE-MAX
 $1002 constant INCLUDE-MAP-PRIVATE-ANON
 $1 constant INCLUDE-PROBE-CAP
 $4A constant INCLUDE-IO-RC
 $46 constant INCLUDE-EVAL-RC
 $37D8 constant INCLUDE-EVALERR-CELL
 INCLUDE-MAX-DEPTH INCLUDE-BUF-CAP * constant INCLUDE-BUF-TOTAL
+INCLUDE-PATH-CAP 1 + constant REQUIRE-SLOT-BYTES
 
 create INCLUDE-PATH INCLUDE-PATH-CAP 1 + allot
 create INCLUDE-PROBE INCLUDE-PROBE-CAP allot
+create REQUIRE-PATHS REQUIRE-MAX REQUIRE-SLOT-BYTES * allot
+create REQUIRE-LENS REQUIRE-MAX cells allot
 
 variable INCLUDE-BUFS-A
 variable INCLUDE-DEPTH
@@ -24,6 +28,7 @@ variable INCLUDE-RD
 variable INCLUDE-PATH-A
 variable INCLUDE-PATH-U
 variable INCLUDE-PATH-I
+variable REQUIRE-N
 
 -1 INCLUDE-FD !
 
@@ -65,6 +70,41 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
    dup INCLUDE-PATH-CAP > if s" include: path too long" INCLUDE-DIE then ;
+
+: REQUIRE-SLOT ( n -- ptr u8 )
+   REQUIRE-SLOT-BYTES * REQUIRE-PATHS + ;
+
+: REQUIRE-LEN@ ( n -- n )
+   cells REQUIRE-LENS + @ ;
+
+: REQUIRE-LEN! ( n n -- ) {: u:n idx:n :}
+   u REQUIRE-LENS idx cells + ! ;
+
+: REQUIRE-BYTE= ( ptr u8 n n -- bool ) {: a:ptr idx:n i:n :}
+   a i ZBYTE@ idx REQUIRE-SLOT i ZBYTE@ = ;
+
+: REQUIRE-PATH= ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
+   idx REQUIRE-LEN@ u <> if INCLUDE-FALSE exit then
+   0 begin dup u < while
+      dup a idx rot REQUIRE-BYTE= 0= if drop INCLUDE-FALSE exit then
+      1+
+   repeat drop INCLUDE-TRUE ;
+
+: REQUIRE-KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup REQUIRE-N @ < while
+      dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
+      1+
+   repeat drop INCLUDE-FALSE ;
+
+: REQUIRE-CHECK-ROOM ( -- )
+   REQUIRE-N @ REQUIRE-MAX >= if s" require: too many files" INCLUDE-DIE then ;
+
+: REQUIRE-STORE ( ptr u8 n -- ) {: a:ptr u:n :}
+   REQUIRE-CHECK-ROOM
+   REQUIRE-N @ {: idx:n :}
+   a idx REQUIRE-SLOT u BYTE-COPY
+   u idx REQUIRE-LEN!
+   idx 1 + REQUIRE-N ! ;
 
 : INCLUDE-PATH-COPY ( -- )
    0 INCLUDE-PATH-I !
@@ -143,8 +183,18 @@ TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )
    INCLUDE-POP
    INCLUDE-EVALERR? if s" include: evaluation failed" INCLUDE-EVAL-DIE then ;
 
+: required ( ptr u8 n -- )
+   INCLUDE-CHECK-PATH
+   2dup REQUIRE-KNOWN? if 2drop exit then
+   2dup REQUIRE-STORE
+   included ;
+
 : include ( -- )
    parse-name INCLUDE-CHECK-PATH included ;
+immediate
+
+: require ( -- )
+   parse-name INCLUDE-CHECK-PATH required ;
 immediate
 
 : INCLUDE-SNAPSHOT-PREPARE ( -- )

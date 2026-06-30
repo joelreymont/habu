@@ -1,6 +1,11 @@
 \ bootstrap-codegen-test.f - native source regression for bootstrap codegen hard cutover.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f tools/bootstrap-codegen-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+
 $20000 constant BCG-CAP
 
 create BCG-BUF BCG-CAP allot

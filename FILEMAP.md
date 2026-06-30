@@ -79,6 +79,10 @@ points stay listed.
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
   toolchain spike.
+- `lib/ptx/test-prelude.f` — require-only shared setup for PTX positive entry
+  tests; suites list the entry tests, not this dependency bundle.
+- `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for
+  PTX negative tests that spawn checked child snippets.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
   (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
 - `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.

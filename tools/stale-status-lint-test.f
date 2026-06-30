@@ -4,6 +4,19 @@
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/stale-status-lint-core.f tools/stale-status-lint-test.f
 
+require tools/date.f
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/argv.f
+require tools/stale-status-lint-core.f
+
 4096 constant SST-CAP
 32 constant SST-DATE-CAP
 1050 constant SST-LONG-LINES

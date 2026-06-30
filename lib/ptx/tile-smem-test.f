@@ -8,6 +8,8 @@
 \ is gated separately by lib/ptx/tile-smem-neg-test.f. Load after lib/ptx/tile.f and
 \ lib/ptx/tile-smem.f.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

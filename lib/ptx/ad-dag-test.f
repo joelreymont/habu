@@ -1,5 +1,7 @@
 \ ad-dag-test.f - validation tests for PTX reverse-mode DAG builder.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 AD-MAXN 1+ constant ADT-OPS-CAP

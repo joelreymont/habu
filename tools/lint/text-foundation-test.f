@@ -1,6 +1,15 @@
 \ text-foundation-test.f - focused tests for tools/lint/text.f text helpers.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/source-lex.f tools/lint/text-foundation-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/source-lex.f
+
 variable TEST-N
 : ASSERT  ( bool -- )
    IF

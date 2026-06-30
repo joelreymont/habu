@@ -1,6 +1,11 @@
 \ signature-scan-emitter-test.f - source-shape regression for signature scanners.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f tools/signature-scan-emitter-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+
 $20000 constant SSET-CAP
 
 create SSET-BUF SSET-CAP allot

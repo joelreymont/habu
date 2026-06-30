@@ -3,6 +3,16 @@
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
 \ tools/examples-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+
 65536 constant EXT-COPY-CAP
 8192 constant EXT-CAPTURE-CAP
 10000 constant EXT-TIMEOUT-MS

@@ -1,6 +1,10 @@
 \ map-test.f - focused tests for fixed-capacity map layout helpers.
 \ Run: cat lib/errors.f lib/string.f lib/map.f lib/map-test.f | bin/hb
 
+require lib/errors.f
+require lib/string.f
+require lib/map.f
+
 1 constant MT-EX-FAIL
 8 constant MT-CAP
 3 constant MT-FULL-CAP

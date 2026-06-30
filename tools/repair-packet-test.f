@@ -6,6 +6,27 @@
 \ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
 \ tools/argv.f tools/repair-packet-core.f tools/repair-packet-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require tools/warm-run.f
+require lib/vector.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/check-all-errors-core.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require tools/argv.f
+require tools/repair-packet-core.f
+
 $20000 constant RPT-CAPTURE-CAP
 10000 constant RPT-TIMEOUT-MS
 

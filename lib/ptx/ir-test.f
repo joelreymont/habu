@@ -1,5 +1,7 @@
 \ ptx-ir-test.f - static value fixtures for the PTX IR optimizer seed.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 : PTXIRT-FOLD ( -- )

@@ -1,6 +1,16 @@
 \ dot-dep-lint-test.f - checked fixtures for dot dependency lint.
 \ Load after lib/test.f and tools/dot-dep-lint-core.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/intern.f
+require tools/dot-dep-lint-core.f
+
 : DDLT-DOT-PATHS ( -- )
    s" .dots/habu-example-12345678.md" DDP-DOT-PATH? TTRUE
    s" .dots/archive/habu-example-12345678.md" DDP-DOT-PATH? TTRUE

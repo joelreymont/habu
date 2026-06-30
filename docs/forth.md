@@ -124,9 +124,10 @@ end-package
   sufficient, and `tools/check.f --source-list odin/core.f odin/api.f` is the
   checker-only form. Use include only when a source file or entry file should
   own loading its dependencies.
-- The purpose of include is source composition, not namespace sharing. User entry
-  files, tool entry files, and test files should use `include` for their own
-  dependency setup; callers should not have to know that `A.f` must be loaded
+- The purpose of include/require is source composition, not namespace sharing.
+  User entry files, tool entry files, and test files own their setup with
+  `require` for dependencies and `include` only for deliberately repeated
+  source composition. Callers should not have to know that `A.f` must be loaded
   before `B.f` just to run `B-test.f`. If many files need a small primitive
   helper, factor that helper into a narrow `src/core/*.f` prelude file loaded
   before stdlib/tool sources instead of depending on a broad library order such
@@ -164,13 +165,19 @@ end-package
 ```
 
   `include path/to/file.f` parses the next whitespace-delimited filename and
-  loads that source immediately. `s" path/to/file.f" included` is the lower-level
-  string form. Do not include a file merely so two files can see the same private
-  helpers; reopening the package provides that shared package scope after both
-  files have been loaded. Test suites should normally load one self-contained
-  test entry file per test; the test file includes its setup and assertions. Gate
-  source lists stay for explicit cross-file integration subjects and generated
-  build-stage source, not for ordinary unit-test dependency plumbing.
+  loads that source immediately every time. `s" path/to/file.f" included` is the
+  lower-level string form. `require path/to/file.f` and `s" path/to/file.f"
+  required` are include-once forms keyed by the exact path string in the current
+  image; use them for normal dependencies so a shared setup phase and a test
+  entry can both name the same support file without duplicate definitions.
+  Snapshot images preserve the `require` registry because it describes which
+  modules are already compiled into the live dictionary. Do not include a file
+  merely so two files can see the same private helpers; reopening the package
+  provides that shared package scope after both files have been loaded. Test
+  suites load self-contained test/tool entry files plus any script args only;
+  the test file requires its setup and owns its assertions. Gate source lists
+  stay for explicit cross-file integration subjects and generated build-stage
+  source, not for ordinary unit-test dependency plumbing.
 - A package public or private wordlist is a no-duplicate set. Publishing a word
   whose folded tail already exists in the active target wordlist is an error,
   including across reopened package blocks and across `:`, `create`, `variable`,

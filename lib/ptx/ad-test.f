@@ -1,5 +1,7 @@
 \ ptx-ad-test.f - runnable tests for the reverse-mode AD pass v0.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 \ VJP table: LOAD uses conservative scatter-add; STORE's adjoint is a load

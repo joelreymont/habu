@@ -5,6 +5,12 @@
 \ Run: bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/shadow-lint.f
 \ Tokenization is checked; lib.f owns the PAT scanner boundaries.
 
+require lib/errors.f
+require lib/string.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 package SHADOW-LINT-TOOL
 
 create FB 131072 allot                       \ one file at a time

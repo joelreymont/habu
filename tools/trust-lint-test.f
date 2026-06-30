@@ -4,6 +4,22 @@
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/warm-run.f tools/trust-lint-core.f tools/trust-lint-test.f
 
+require tools/date.f
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/argv.f
+require tools/warm-run.f
+require tools/trust-lint-core.f
+
 8192 constant TLT-CAP
 $10000 constant TLT-STR-CAP
 $20000 constant TLT-FILE-CAP
@@ -215,14 +231,6 @@ TLT-LF TLT-LF-BUF c!
       exit
    then
    s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    TLT-CASE  >LEN PROC-ARGV+
@@ -238,14 +246,6 @@ TLT-LF TLT-LF-BUF c!
       exit
    then
    s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" source-only"  >LEN PROC-ARGV+
@@ -264,14 +264,6 @@ TLT-LF TLT-LF-BUF c!
       exit
    then
    s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/trust-lint.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" source-list"  >LEN PROC-ARGV+

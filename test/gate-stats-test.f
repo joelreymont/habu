@@ -2,6 +2,17 @@
 \
 \ Load after lib/test.f and test/gate-stats.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require test/gate-stats.f
+
 create GST-ROOT-BUF FS-PATH-CAP allot
 create GST-ROW-BUF GS-LINE-CAP allot
 create GST-SAVE-BUF FS-PATH-CAP allot

@@ -4,6 +4,19 @@
 \ lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f
 \ tools/build-fixpoint.f tools/build-fixpoint-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/build.f
+require lib/codesign.f
+require tools/build-fixpoint.f
+
 8192 constant BFT-CAPTURE-CAP
 $80000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS

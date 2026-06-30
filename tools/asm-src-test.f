@@ -1,6 +1,10 @@
 \ asm-src-test.f - unchecked source ARM64 encoder regression.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f tools/asm-src-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+
 : AST-WORD? ( ptr u8 n -- bool )
    XREF-FIND 0= 0= ;
 

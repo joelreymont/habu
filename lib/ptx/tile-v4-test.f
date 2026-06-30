@@ -6,6 +6,8 @@
 \ elements per thread) is a pure codegen representation, not a type change. A reject
 \ would emit a checker diagnostic and fail the load.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

@@ -314,18 +314,6 @@ variable SUITE-TIMINGS
 : SUITE-WARM-TOOL-ARGV ( -- )
    PROC-ARGV-ENV-RESET
    s" --load" SUITE-ARG+
-   s" lib/errors.f" SUITE-ARG+
-   s" lib/string.f" SUITE-ARG+
-   s" lib/memory.f" SUITE-ARG+
-   s" lib/fs.f" SUITE-ARG+
-   s" lib/fs-mutate.f" SUITE-ARG+
-   s" lib/process.f" SUITE-ARG+
-   s" lib/process-argv.f" SUITE-ARG+
-   s" lib/process-env.f" SUITE-ARG+
-   s" lib/source.f" SUITE-ARG+
-   s" lib/codesign.f" SUITE-ARG+
-   s" test/gate-stats.f" SUITE-ARG+
-   s" tools/warm-image-lib.f" SUITE-ARG+
    s" tools/warm-image-gate-stats.f" SUITE-ARG+
    s" tools/warm-image.f" SUITE-ARG+
    s" --" SUITE-ARG+
@@ -641,39 +629,6 @@ variable SUITE-TIMINGS
 : TEST-SUITE-IMGDUMP ( -- )
    SUITE-PARSE-LABEL
    SUITE-HB
-   SUITE-PARSE-ARGS
-   SUITE-RUN? 0= if exit then
-   SUITE-LABEL$ SUITE-HB-RUN ;
-
-: SUITE-TOOL-BASE ( -- )
-   s" tools/date.f" SUITE-ARG+
-   s" lib/errors.f" SUITE-ARG+
-   s" lib/string.f" SUITE-ARG+
-   s" lib/test.f" SUITE-ARG+
-   s" lib/memory.f" SUITE-ARG+
-   s" lib/vector.f" SUITE-ARG+
-   s" lib/fs.f" SUITE-ARG+
-   s" lib/fs-mutate.f" SUITE-ARG+
-   s" lib/process.f" SUITE-ARG+
-   s" lib/process-argv.f" SUITE-ARG+
-   s" lib/process-env.f" SUITE-ARG+
-   s" tools/lint/text.f" SUITE-ARG+
-   s" tools/lint/intern.f" SUITE-ARG+
-   s" tools/lint/token.f" SUITE-ARG+
-   s" tools/lint/lib.f" SUITE-ARG+
-   s" tools/lint/json-writer.f" SUITE-ARG+
-   s" tools/lint/source-lex.f" SUITE-ARG+
-   s" tools/check-all-errors-core.f" SUITE-ARG+
-   s" tools/json.f" SUITE-ARG+
-   s" tools/diag-origin-core.f" SUITE-ARG+
-   s" tools/json-only-core.f" SUITE-ARG+
-   s" tools/argv.f" SUITE-ARG+
-   s" tools/warm-run.f" SUITE-ARG+ ;
-
-: TEST-TOOL-SUITE ( -- )
-   SUITE-PARSE-LABEL
-   SUITE-HB
-   SUITE-TOOL-BASE
    SUITE-PARSE-ARGS
    SUITE-RUN? 0= if exit then
    SUITE-LABEL$ SUITE-HB-RUN ;

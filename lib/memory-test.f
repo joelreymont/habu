@@ -1,5 +1,10 @@
 \ memory-test.f - focused tests for OS-backed memory buffers.
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
 32 constant MEMT-SPANS

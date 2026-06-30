@@ -89,19 +89,33 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 : GSI-INCLUDE-ACT ( -- )
    GSI-PATH$ included ;
 
+: GSI-REQUIRE-ACT ( -- )
+   GSI-PATH$ required ;
+
 : GSI-INCLUDE-MS ( -- n )
    mono-ns GSI-START-NS @ - PROC-NS-PER-MS / ;
 
-: GSI-INCLUDE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+: GSI-LOAD-START ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path GSI-PATH-A!
    pathu GSI-PATH-U !
-   mono-ns GSI-START-NS !
-   [: GSI-INCLUDE-ACT ;] catch GSI-RC !
+   mono-ns GSI-START-NS ! ;
+
+: GSI-LOAD-FINISH ( -- )
    GSI-INCLUDE-MS {: ms:n :}
    GSI-PATH$ ms GSI-SPAN
    GSI-RC @ 0= if GSI-PATH$ ms GSI-PASS exit then
    GSI-PATH$ ms GSI-FAIL
    GSI-RC @ throw ;
+
+: GSI-INCLUDE ( ptr u8 n -- )
+   GSI-LOAD-START
+   [: GSI-INCLUDE-ACT ;] catch GSI-RC !
+   GSI-LOAD-FINISH ;
+
+: GSI-REQUIRE ( ptr u8 n -- )
+   GSI-LOAD-START
+   [: GSI-REQUIRE-ACT ;] catch GSI-RC !
+   GSI-LOAD-FINISH ;
 
 \ typed-local-lint: allow-bare-local - q keeps the action effect from the stack signature.
 : GSI-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
@@ -117,27 +131,27 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-TOOL-BASE ( -- )
    GSI-TOOL-BASE-READY? if exit then
-   s" tools/date.f" GSI-INCLUDE
+   s" tools/date.f" GSI-REQUIRE
    GSI-TEST-READY? 0= if
-      s" lib/test.f" GSI-INCLUDE
+      s" lib/test.f" GSI-REQUIRE
       GSI-TEST-READY!
    then
-   s" tools/lint/text.f" GSI-INCLUDE
-   s" tools/lint/intern.f" GSI-INCLUDE
-   s" tools/lint/token.f" GSI-INCLUDE
-   s" tools/lint/lib.f" GSI-INCLUDE
-   s" tools/lint/json-writer.f" GSI-INCLUDE
-   s" tools/lint/source-lex.f" GSI-INCLUDE
-   s" tools/argv.f" GSI-INCLUDE
-   s" tools/check-all-errors-core.f" GSI-INCLUDE
-   s" tools/diag-origin-core.f" GSI-INCLUDE
-   s" tools/json-only-core.f" GSI-INCLUDE
-   s" tools/aot-lint-core.f" GSI-INCLUDE
-   s" tools/signature-lint-core.f" GSI-INCLUDE
-   s" tools/checked-boundary-lint-core.f" GSI-INCLUDE
-   s" tools/reserved-name-lint-core.f" GSI-INCLUDE
-   s" tools/duplicate-definition-lint-core.f" GSI-INCLUDE
-   s" tools/bundle-lib-core.f" GSI-INCLUDE
+   s" tools/lint/text.f" GSI-REQUIRE
+   s" tools/lint/intern.f" GSI-REQUIRE
+   s" tools/lint/token.f" GSI-REQUIRE
+   s" tools/lint/lib.f" GSI-REQUIRE
+   s" tools/lint/json-writer.f" GSI-REQUIRE
+   s" tools/lint/source-lex.f" GSI-REQUIRE
+   s" tools/argv.f" GSI-REQUIRE
+   s" tools/check-all-errors-core.f" GSI-REQUIRE
+   s" tools/diag-origin-core.f" GSI-REQUIRE
+   s" tools/json-only-core.f" GSI-REQUIRE
+   s" tools/aot-lint-core.f" GSI-REQUIRE
+   s" tools/signature-lint-core.f" GSI-REQUIRE
+   s" tools/checked-boundary-lint-core.f" GSI-REQUIRE
+   s" tools/reserved-name-lint-core.f" GSI-REQUIRE
+   s" tools/duplicate-definition-lint-core.f" GSI-REQUIRE
+   s" tools/bundle-lib-core.f" GSI-REQUIRE
    GSI-TOOL-BASE-READY! ;
 
 : GSI-TOOL-SETUP ( -- )
@@ -147,7 +161,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-TOOL-SETUP-FILE ( ptr u8 n -- )
    GSI-SETUP!
-   GSI-INCLUDE
+   GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-TOOL-REPAIR-CHECK ( -- )
@@ -286,11 +300,11 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 : GSI-LINT-TOOLS-SETUP ( -- )
    GSI-SETUP!
    GSI-TOOL-BASE
-   s" tools/repl-lint-core.f" GSI-INCLUDE
-   s" tools/trust-lint-core.f" GSI-INCLUDE
-   s" tools/stale-status-lint-core.f" GSI-INCLUDE
-   s" tools/dot-dep-lint-core.f" GSI-INCLUDE
-   s" tools/maki-dep-lint-core.f" GSI-INCLUDE
+   s" tools/repl-lint-core.f" GSI-REQUIRE
+   s" tools/trust-lint-core.f" GSI-REQUIRE
+   s" tools/stale-status-lint-core.f" GSI-REQUIRE
+   s" tools/dot-dep-lint-core.f" GSI-REQUIRE
+   s" tools/maki-dep-lint-core.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
@@ -301,15 +315,15 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 : GSI-TEST-SETUP ( -- )
    GSI-SETUP!
    GSI-TEST-READY? 0= if
-      s" lib/test.f" GSI-INCLUDE
+      s" lib/test.f" GSI-REQUIRE
       GSI-TEST-READY!
    then
    GSI-TEST! ;
 
 : GSI-TAIL-FAST-SETUP ( -- )
    GSI-TEST-SETUP
-   GSI-TOOL-BASE-READY? 0= if s" tools/date.f" GSI-INCLUDE then
-   s" lib/property.f" GSI-INCLUDE
+   GSI-TOOL-BASE-READY? 0= if s" tools/date.f" GSI-REQUIRE then
+   s" lib/property.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-TAIL-FAST ( -- )
@@ -325,7 +339,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
 
 : GSI-TAIL-PURE-SETUP ( -- )
    GSI-TEST-SETUP
-   s" lib/json-write.f" GSI-INCLUDE
+   s" lib/json-write.f" GSI-REQUIRE
    GSI-TEST! ;
 
 : GSI-TAIL-PURE ( -- )

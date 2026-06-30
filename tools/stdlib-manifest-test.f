@@ -3,6 +3,16 @@
 \ lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
 \ tools/lint/lib.f tools/stdlib-manifest-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require lib/process.f
+require lib/process-argv.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 $30000 constant SMT-MAN-CAP
 $12000 constant SMT-DOC-CAP
 $80000 constant SMT-PUB-CAP                 \ public-signatures JSON for the whole stdlib

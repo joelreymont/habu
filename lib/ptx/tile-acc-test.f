@@ -8,6 +8,8 @@
 \ negative (storing a raw, unfinalized accumulator) is gated by lib/ptx/tile-acc-neg-test.f.
 \ Load after lib/ptx/tile.f, lib/ptx/tile-loop.f, and lib/ptx/tile-acc.f.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

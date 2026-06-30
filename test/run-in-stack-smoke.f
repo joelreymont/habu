@@ -1,3 +1,6 @@
+require lib/errors.f
+require lib/memory.f
+
 variable RISSHARED
 0 RISSHARED !
 : RISWORK ( -- )

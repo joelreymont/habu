@@ -1,6 +1,11 @@
 \ float-test.f - checked STR>FLOAT coverage.
 \ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/float-test.f | bin/hb
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+
 : FL-NEAR ( r r -- bool ) f- fabs 0.000001 f< ;
 
 : T-FL ( ptr u8 n r -- ) {: want :}                 \ parse string, expect want

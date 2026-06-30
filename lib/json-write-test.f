@@ -2,6 +2,12 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/json-write.f lib/json-write-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/json-write.f
+
 create JWT-ESC-IN
    65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
 

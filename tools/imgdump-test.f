@@ -3,6 +3,16 @@
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imgdump.f
 \ tools/imgdump-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require tools/imgdump.f
+
 $4000 constant IDT-CAP
 5000 constant IDT-TIMEOUT-MS
 

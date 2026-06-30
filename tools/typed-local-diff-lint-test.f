@@ -5,6 +5,20 @@
 \ tools/lint/source-lex.f tools/typed-local-diff-lint-core.f
 \ tools/typed-local-diff-lint-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/source-lex.f
+require tools/typed-local-diff-lint-core.f
+
 4096 constant TLDT-BUF-CAP
 $10000 constant TLDT-LARGE-CAP
 1100 constant TLDT-LARGE-LINES

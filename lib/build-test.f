@@ -1,6 +1,14 @@
 \ build-test.f - focused tests for checked build helpers.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/build.f lib/build-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/build.f
+
 create BUILD-TEST-PATH FS-PATH-CAP allot
 create BUILD-TEST-STEP BUILD-STEP-CELLS cells allot
 

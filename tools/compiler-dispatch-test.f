@@ -1,6 +1,11 @@
 \ compiler-dispatch-test.f - source-shape regression for compiler dispatch factoring.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f tools/compiler-dispatch-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+
 $20000 constant CDT-CAP
 
 create CDT-BUF CDT-CAP allot

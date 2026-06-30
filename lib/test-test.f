@@ -1,6 +1,8 @@
 \ test-test.f - focused tests for lib/test.f.
 \ Run: bin/hb --load lib/test.f lib/test-test.f
 
+require lib/test.f
+
 : TT-THROW-7 ( -- )
    7 throw ;
 

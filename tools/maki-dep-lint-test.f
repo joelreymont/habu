@@ -1,6 +1,16 @@
 \ maki-dep-lint-test.f - checked fixtures for the one-way habu<-maki dependency lint.
 \ Load after lib/test.f and tools/maki-dep-lint-core.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/maki-dep-lint-core.f
+
 : MDLT-EXT ( -- )
    s" lib/ptx/cg.f"  MDL-SRC? TTRUE
    s" test/run.fs"   MDL-SRC? TTRUE

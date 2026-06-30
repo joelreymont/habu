@@ -6,6 +6,24 @@
 \ tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
 \ tools/check-all-errors-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/check-all-errors-core.f
+require tools/argv.f
+require tools/warm-run.f
+
 4096 constant CAE-BUF-CAP
 10000 constant CAE-TIMEOUT-MS
 1400 constant CAE-LARGE-LINES

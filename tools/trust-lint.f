@@ -8,6 +8,17 @@
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-only SOURCE [ROOT] [TODAY]
 \ Or:  bin/hb --load ... tools/trust-lint.f -- source-list ROOT [TODAY] SOURCE...
 
+require tools/date.f
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/trust-lint-core.f
+require tools/argv.f
+
 $10000 constant TL-ARGV-STR-CAP
 $20000 constant TL-ARGV-FILE-CAP
 

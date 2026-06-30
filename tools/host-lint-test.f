@@ -2,6 +2,8 @@
 \
 \ Load after tools/host-lint.f.
 
+require tools/host-lint.f
+
 variable HLT-N
 
 : HLT-ASSERT ( bool -- )

@@ -1,6 +1,12 @@
 \ vector-test.f - focused tests for checked growable cell vectors.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f lib/vector-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+
 create VECT-VEC VEC-HEADER-CELLS cells allot
 create VECT-PTR-VEC VEC-HEADER-CELLS cells allot
 

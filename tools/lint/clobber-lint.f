@@ -2,6 +2,12 @@
 \ Self-hosted clobber lint. Run:
 \   bin/hb --load tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/clobber-lint.f
 
+require lib/errors.f
+require lib/string.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 create FB 131072 allot
 
 : NL  ( -- )  10 emit ;

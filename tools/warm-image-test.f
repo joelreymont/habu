@@ -3,6 +3,19 @@
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
 \ lib/source.f lib/codesign.f lib/memory.f tools/warm-image-lib.f tools/warm-image-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/source.f
+require lib/codesign.f
+require tools/warm-image-lib.f
+
 65536 constant WIT-CAP
 120000 constant WIT-TIMEOUT-MS
 
@@ -12,6 +25,7 @@ variable WIT-SUP-U
 variable WIT-SUP-LIB-U
 variable WIT-GOOD-U
 variable WIT-GOOD-INC-U
+variable WIT-GOOD-REQ-U
 variable WIT-BAD-U
 variable WIT-RUN-LIB-U
 variable WIT-TRUST-U
@@ -22,6 +36,7 @@ create WIT-SUP-BUF FS-PATH-CAP allot
 create WIT-SUP-LIB-BUF FS-PATH-CAP allot
 create WIT-GOOD-BUF FS-PATH-CAP allot
 create WIT-GOOD-INC-BUF FS-PATH-CAP allot
+create WIT-GOOD-REQ-BUF FS-PATH-CAP allot
 create WIT-BAD-BUF FS-PATH-CAP allot
 create WIT-RUN-LIB-BUF FS-PATH-CAP allot
 create WIT-TRUST-BUF FS-PATH-CAP allot
@@ -55,6 +70,9 @@ create WIT-RUN-ERR WIT-CAP allot
 
 : WIT-GOOD-INC ( -- ptr u8 n )
    WIT-GOOD-INC-BUF WIT-GOOD-INC-U @ ;
+
+: WIT-GOOD-REQ ( -- ptr u8 n )
+   WIT-GOOD-REQ-BUF WIT-GOOD-REQ-U @ ;
 
 : WIT-BAD ( -- ptr u8 n )
    WIT-BAD-BUF WIT-BAD-U @ ;
@@ -104,6 +122,14 @@ create WIT-RUN-ERR WIT-CAP allot
    STR-LF SB-APPEND-C
    SB$ ;
 
+: WIT-GOOD-REQ$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND WIT-SUP SB-APPEND
+   STR-LF SB-APPEND-C
+   s" 35 WIT-FOLD . CR" SB-APPEND
+   STR-LF SB-APPEND-C
+   SB$ ;
+
 : WIT-BAD$ ( -- ptr u8 n )
    s" : WIT-BAD ( i64 -- i64 ) dup ;" ;
 
@@ -134,6 +160,7 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-ROOT s" support-lib.f" WIT-SUP-LIB-BUF WIT-SUP-LIB-U WIT-PATH!
    WIT-ROOT s" good.f" WIT-GOOD-BUF WIT-GOOD-U WIT-PATH!
    WIT-ROOT s" good-include.f" WIT-GOOD-INC-BUF WIT-GOOD-INC-U WIT-PATH!
+   WIT-ROOT s" good-require.f" WIT-GOOD-REQ-BUF WIT-GOOD-REQ-U WIT-PATH!
    WIT-ROOT s" bad.f" WIT-BAD-BUF WIT-BAD-U WIT-PATH!
    WIT-ROOT s" run-lib.f" WIT-RUN-LIB-BUF WIT-RUN-LIB-U WIT-PATH!
    WIT-WARM s" .trust.f" WIT-TRUST-BUF WIT-TRUST-U WI-SUFFIX!
@@ -141,6 +168,7 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-SUP WIT-SUP$ WRITE-ALL
    WIT-GOOD WIT-GOOD$ WRITE-ALL
    WIT-GOOD-INC WIT-GOOD-INC$ WRITE-ALL
+   WIT-GOOD-REQ WIT-GOOD-REQ$ WRITE-ALL
    WIT-RUN-LIB WIT-RUN-LIB$ WRITE-ALL
    WIT-BAD WIT-BAD$ WRITE-ALL ;
 
@@ -154,19 +182,6 @@ create WIT-RUN-ERR WIT-CAP allot
    PROC-ARGV-RESET
    PROC-ENV-RESET
    s" --load" WIT-ARG+
-   s" lib/errors.f" WIT-ARG+
-   s" lib/string.f" WIT-ARG+
-   s" lib/memory.f" WIT-ARG+
-   s" lib/fs.f" WIT-ARG+
-   s" lib/fs-mutate.f" WIT-ARG+
-   s" lib/process.f" WIT-ARG+
-   s" lib/process-argv.f" WIT-ARG+
-   s" lib/process-env.f" WIT-ARG+
-   s" lib/source.f" WIT-ARG+
-   s" lib/codesign.f" WIT-ARG+
-   s" test/gate-stats.f" WIT-ARG+
-   s" tools/warm-image-lib.f" WIT-ARG+
-   s" tools/warm-image-gate-stats.f" WIT-ARG+
    s" tools/warm-image.f" WIT-ARG+
    s" --" WIT-ARG+
    WIT-WARM WIT-ARG+
@@ -200,6 +215,15 @@ create WIT-RUN-ERR WIT-CAP allot
    s" --load" WIT-ARG+
    WIT-TRUST WIT-ARG+
    WIT-GOOD-INC WIT-ARG+
+   WIT-WARM >LEN WIT-RUN-OUT WIT-CAP >LEN WIT-RUN-ERR WIT-CAP >LEN
+   WIT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
+   WIT-CAPTURE>N ;
+
+: WIT-RUN-WARM-REQUIRE ( -- n n n )
+   PROC-ARGV-RESET
+   s" --load" WIT-ARG+
+   WIT-TRUST WIT-ARG+
+   WIT-GOOD-REQ WIT-ARG+
    WIT-WARM >LEN WIT-RUN-OUT WIT-CAP >LEN WIT-RUN-ERR WIT-CAP >LEN
    WIT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    WIT-CAPTURE>N ;
@@ -245,6 +269,13 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-RUN-ERR erru WIT-EMPTY$ T$=
    WIT-RUN-OUT outu WIT-ONE-42$ T$= ;
 
+: WIT-TEST-REQUIRE-RUN ( -- )
+   WIT-RUN-WARM-REQUIRE {: outu:n erru:n rc:n :}
+   rc 0 <> if s" warm require run rc: " type rc . cr WIT-RUN-OUT outu type WIT-RUN-ERR erru type then
+   rc 0 T=
+   WIT-RUN-ERR erru WIT-EMPTY$ T$=
+   WIT-RUN-OUT outu WIT-ONE-42$ T$= ;
+
 : WIT-TEST-CHECK-FAILS ( -- )
    WIT-RUN-WARM-BAD {: outu erru rc :}
    outu drop erru drop
@@ -284,6 +315,7 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-TEST-RUN
    WIT-TEST-NOTRUST-RUNS
    WIT-TEST-INCLUDE-RUN
+   WIT-TEST-REQUIRE-RUN
    WIT-TEST-CHECK-FAILS
    CLEANUP-RUN
    WIT-ROOT EXISTS? TFALSE

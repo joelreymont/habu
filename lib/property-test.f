@@ -1,6 +1,10 @@
 \ property-test.f - focused tests for property helper library.
 \ Run: cat lib/errors.f lib/test.f lib/property.f lib/property-test.f | bin/hb
 
+require lib/errors.f
+require lib/test.f
+require lib/property.f
+
 : PT-BAD-SEED ( -- )
    -1 1 PROP-RUN-RESET ;
 

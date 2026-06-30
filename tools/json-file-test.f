@@ -1,6 +1,15 @@
 \ json-file-test.f - focused tests for dynamic JSONL file cursor.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f tools/json.f tools/json-file.f tools/json-file-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require tools/json.f
+require tools/json-file.f
+
 5000 constant JFT-LONG-N
 5120 constant JFT-LONG-CAP
 

@@ -3,6 +3,9 @@
 \ Load after lib/errors.f, lib/string.f, lib/test.f, lib/fs.f, lib/process.f,
 \ lib/process-argv.f, lib/process-env.f, and src/arch/ptx/emit.f.
 
+require lib/ptx/test-prelude.f
+require lib/ptx/process-test-prelude.f
+
 16384 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
 

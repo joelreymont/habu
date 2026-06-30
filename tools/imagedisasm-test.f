@@ -2,6 +2,17 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/imagedisasm-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require src/arch/arm64/disasm.f
+require tools/imagedisasm.f
+
 $4000 constant IMDT-CAP
 10000 constant IMDT-TIMEOUT-MS
 30000 constant IMDT-TRUST-TIMEOUT-MS
@@ -69,16 +80,6 @@ variable IMDT-LDRB-U
 : IMDT-TRUST-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" IMDT-ARG+
-   s" tools/date.f" IMDT-ARG+
-   s" lib/errors.f" IMDT-ARG+
-   s" lib/string.f" IMDT-ARG+
-   s" lib/memory.f" IMDT-ARG+
-   s" lib/fs.f" IMDT-ARG+
-   s" tools/lint/text.f" IMDT-ARG+
-   s" tools/lint/token.f" IMDT-ARG+
-   s" tools/lint/lib.f" IMDT-ARG+
-   s" tools/trust-lint-core.f" IMDT-ARG+
-   s" tools/argv.f" IMDT-ARG+
    s" tools/trust-lint.f" IMDT-ARG+
    s" --" IMDT-ARG+
    s" source-only" IMDT-ARG+

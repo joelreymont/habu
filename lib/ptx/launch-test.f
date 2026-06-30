@@ -1,5 +1,7 @@
 \ ptx-launch-test.f - checked fixtures for PTX launch contracts.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 1 4 256 PTX-ROW-LAUNCH-CHECK

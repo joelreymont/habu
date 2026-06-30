@@ -1,6 +1,9 @@
 \ array-test.f - focused tests for checked stdlib array helpers.
 \ Run: cat lib/errors.f lib/array.f lib/array-test.f | bin/hb
 
+require lib/errors.f
+require lib/array.f
+
 1 constant AT-EX-FAIL
 
 variable AT-CASE

@@ -2,6 +2,12 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f
 \ lib/fs-mutate.f tools/sha256-file-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+
 5000 constant SFT-BIG-LEN
 
 create SFT-DG-A 32 allot

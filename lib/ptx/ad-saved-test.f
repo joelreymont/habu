@@ -3,6 +3,8 @@
 \ proof; a reject would emit a diagnostic and fail the load. Load after lib/ptx/tile.f,
 \ lib/ptx/collective.f, and lib/ptx/ad-saved.f.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

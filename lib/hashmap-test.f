@@ -1,6 +1,11 @@
 \ hashmap-test.f - coverage for HASH64 / HM-PROBE / HM-CLEAR.
 \ Load after lib/errors.f lib/string.f lib/test.f lib/hashmap.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/hashmap.f
+
 8 constant HMT-CAP
 create HMT-K HMT-CAP cells allot
 create HMT-U HMT-CAP cells allot

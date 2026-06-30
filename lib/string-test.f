@@ -1,6 +1,9 @@
 \ string-test.f - focused tests for checked stdlib string helpers.
 \ Run: cat lib/errors.f lib/string.f lib/string-test.f | bin/hb
 
+require lib/errors.f
+require lib/string.f
+
 64 constant STR-TEST-BUF-LEN
 1 constant STR-TEST-EX-FAIL
 44 constant STR-TEST-COMMA

@@ -11,6 +11,8 @@
 \ gradient's types, not that it is the correct derivative. Numeric correctness is
 \ the device finite-difference gradcheck (dot habu-ptx-ad-device), a separate gate.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

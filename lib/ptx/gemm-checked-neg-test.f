@@ -7,6 +7,8 @@
 \ after the process libs (lib/fs.f, lib/process.f, lib/process-argv.f, lib/process-env.f)
 \ and lib/test.f.
 
+require lib/ptx/process-test-prelude.f
+
 create GCN-OUT $2000 allot
 create GCN-ERR $4000 allot
 

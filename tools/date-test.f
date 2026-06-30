@@ -1,6 +1,8 @@
 \ date-test.f - focused tests for tools/date.f.
 \ Run: cat tools/date.f tools/date-test.f | bin/hb
 
+require tools/date.f
+
 variable DATE-TEST-N
 variable DATE-TEST-FAIL
 32 constant DATE-TEST-BUF-LEN

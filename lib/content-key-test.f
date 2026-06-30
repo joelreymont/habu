@@ -1,6 +1,14 @@
 \ content-key-test.f - focused tests for content-key digest caching.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/content-key.f lib/content-key-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/content-key.f
+
 $1000 constant CKT-READ-CAP
 64 constant CKT-KEY-LEN
 

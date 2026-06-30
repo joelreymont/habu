@@ -1,6 +1,14 @@
 \ source-test.f - focused tests for checked source materialization helpers.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/source.f lib/source-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/source.f
+
 2048 constant ST-CAP
 16 constant ST-LINE-CAP
 4 constant ST-SMALL-LINE-CAP

@@ -6,6 +6,8 @@
 \ through PTX:B-/EXP./BLOCK-SUM/PTX:B/ to ROW-STORE by unification. A reject would emit a
 \ diagnostic and fail the load.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

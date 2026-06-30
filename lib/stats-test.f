@@ -1,6 +1,11 @@
 \ stats-test.f - checked float-stats coverage.
 \ Run: cat lib/errors.f lib/test.f lib/sort.f lib/stats.f lib/stats-test.f | bin/hb
 
+require lib/errors.f
+require lib/test.f
+require lib/sort.f
+require lib/stats.f
+
 create SA 8 cells allot
 : SA! ( r n -- ) {: idx :} SA idx 8 * + ! ;
 : FNEAR ( r r -- bool ) f- fabs 0.000001 f< ;

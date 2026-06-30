@@ -44,9 +44,10 @@ lesson — keep the specific word/code/path, cut the prose.
   nested `include`/`evaluate` and makes definers fail as if tasks were live.
   Keep per-runtime scratch after the full frame area and before `DATA-START`.
 - **Module entry files own dependency setup:** `include lib/task.f` must work
-  without the caller knowing `errors`/`memory`/`ffi` order. Use guarded
-  `XREF-FIND` + `included` at module boundaries; keep test suites focused on
-  the test entry file, not setup plumbing.
+  without the caller knowing `errors`/`memory`/`ffi` order. Test/tool entries
+  use `require` for setup, and suite declarations list only entry files plus
+  script args. Shared warm setup must also use `required`, and snapshots must
+  preserve the require registry so baked support is not reloaded at runtime.
 - **Warm-image tails must not reload prefix-owned layout:** target layout files
   are part of the engine prefix. Snapshot tail tools append image emitters
   (`elf.f`/`macho.f`) only; re-appending `src/os/*/layout.f` redefines image

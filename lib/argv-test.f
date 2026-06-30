@@ -3,6 +3,10 @@
 \ Run script: cat lib/errors.f lib/string.f lib/argv.f lib/argv-test.f > /tmp/hb-argv-test.f
 \             bin/hb /tmp/hb-argv-test.f --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT -- file.f --literal
 
+require lib/errors.f
+require lib/string.f
+require lib/argv.f
+
 variable TEST-N
 variable TEST-FAIL
 

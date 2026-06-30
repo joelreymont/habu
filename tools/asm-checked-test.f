@@ -2,6 +2,11 @@
 \ Run after native refresh:
 \ bin/hb --load lib/errors.f lib/string.f lib/test.f bootstrap/cg/asm-checked.fs tools/asm-checked-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require bootstrap/cg/asm-checked.fs
+
 : R1 ( -- reg ) 1 >REG ;
 : R2 ( -- reg ) 2 >REG ;
 : R3 ( -- reg ) 3 >REG ;

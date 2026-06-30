@@ -2,6 +2,15 @@
 \ Load after lib/errors.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
 \ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require tools/lint/text.f
+require tools/lint/intern.f
+require tools/lint/token.f
+require tools/lint/lib.f
+
 create FM-BUF $20000 allot
 create FM-NUM 32 allot
 

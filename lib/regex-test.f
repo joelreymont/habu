@@ -1,6 +1,11 @@
 \ regex-test.f - focused tests for bounded regex scanner tokens.
 \ Run: cat lib/errors.f lib/string.f lib/test.f lib/regex.f lib/regex-test.f | bin/hb
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/regex.f
+
 1 constant RXT-EX-FAIL
 32 constant RXT-BUF-CAP
 3 constant RXT-SMALL-CAP

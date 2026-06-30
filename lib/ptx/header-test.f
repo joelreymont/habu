@@ -1,5 +1,7 @@
 \ ptx-test.f - checked PTX header vocabulary tests.
 
+require lib/ptx/test-prelude.f
+
 T-RESET
 
 256 %BLOCK

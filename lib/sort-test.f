@@ -1,6 +1,10 @@
 \ sort-test.f - checked SORT! / FSORT! coverage.
 \ Run: cat lib/errors.f lib/test.f lib/sort.f lib/sort-test.f | bin/hb
 
+require lib/errors.f
+require lib/test.f
+require lib/sort.f
+
 create ST-A 8 cells allot
 create IT-A 8 cells allot
 

@@ -1,6 +1,12 @@
 \ fmt-test.f - checked number formatting coverage.
 \ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f lib/fmt-test.f | bin/hb
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+require lib/fmt.f
+
 : T-U ( n ptr u8 n -- ) {: a:ptr u :}            \ SB-U n == a/u
    SB-RESET SB-U  SB$ a u T$= ;
 : T-INT ( n ptr u8 n -- ) {: a:ptr u :}

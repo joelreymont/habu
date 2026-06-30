@@ -9,6 +9,34 @@
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
 \ tools/warm-run.f tools/check-core.f tools/check-test.f
 
+require tools/date.f
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/source.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/json-writer.f
+require tools/lint/source-lex.f
+require tools/diag-origin-core.f
+require tools/json.f
+require tools/json-only-core.f
+require tools/signature-lint-core.f
+require tools/checked-boundary-lint-core.f
+require tools/reserved-name-lint-core.f
+require tools/trust-lint-core.f
+require tools/check-all-errors-core.f
+require tools/argv.f
+require tools/warm-run.f
+require tools/check-core.f
+
 $4000 constant CKT-BUF-CAP
 60000 constant CKT-TIMEOUT-MS
 
@@ -78,30 +106,6 @@ variable CKT-USE-CHECK
    s" tools/check-main.f" WR-CHECK-LOAD if -1 CKT-USE-CHECK ! exit then
    s" tools/check-core.f" s" tools/check-main.f" WR-TOOLS-LOAD2 if exit then
    s" --load"  >LEN PROC-ARGV+
-   s" tools/date.f"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/fs-mutate.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/diag-origin-core.f"  >LEN PROC-ARGV+
-   s" tools/json.f"  >LEN PROC-ARGV+
-   s" tools/json-only-core.f"  >LEN PROC-ARGV+
-   s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/checked-boundary-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/reserved-name-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/trust-lint-core.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
    s" tools/check.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
