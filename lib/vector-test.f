@@ -6,6 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/vector.f
+require test/checker-assert.f
 
 create VECT-VEC VEC-HEADER-CELLS cells allot
 create VECT-PTR-VEC VEC-HEADER-CELLS cells allot
@@ -19,11 +20,8 @@ variable VECT-IDX-SUM
    0 VECT-SUM !
    0 VECT-IDX-SUM ! ;
 
-TRUSTED: VECT-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+: VECT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : VECT-GROW ( -- )
    VECT-RESET

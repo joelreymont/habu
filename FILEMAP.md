@@ -339,6 +339,8 @@ points stay listed.
 
 ## Tests And Benchmarks
 
+- `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
+  negative checked-source tests.
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/run.f` — default native gate.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.

@@ -6,6 +6,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require bootstrap/cg/asm-checked.fs
+require test/checker-assert.f
 
 : R1 ( -- reg ) 1 >REG ;
 : R2 ( -- reg ) 2 >REG ;
@@ -13,11 +14,8 @@ require bootstrap/cg/asm-checked.fs
 : R7 ( -- reg ) 7 >REG ;
 : O24 ( -- off ) 24 >OFF ;
 
-TRUSTED: ACT-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+: ACT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : ACT-TEST-LAYOUTS ( -- )
    R1 R2 R3 REG>N 0 A-RRR16 $00030041 T=

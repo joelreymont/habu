@@ -1,6 +1,8 @@
 \ engine-suite.f — the behavior suite run BY THE ENGINE ITSELF (bin/hb), no
 \ gforth. A failure prints F<index>, assertion detail, and exits 1 via report.
 
+require test/checker-assert.f
+
 variable #FAIL
 variable #CASE
 
@@ -211,12 +213,9 @@ TFOLD 6 T=
 : TMAP ( -- ) IARR 3 [: 1+ ;] MAP ;
 TMAP
 TFOLD 9 T=
-TRUSTED: T-CHECK-REJECTS ( ptr u8 n -- )
+: T-CHECK-REJECTS ( ptr u8 n -- )
    2dup T-LABEL
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 TRUSTED: T-CHECK-PASSES ( ptr u8 n -- )
    2dup T-LABEL

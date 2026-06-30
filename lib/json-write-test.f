@@ -7,6 +7,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/json-write.f
+require test/checker-assert.f
 
 create JWT-ESC-IN
    65 c, JW-DQ c, JW-BACKSLASH c, JW-LF c, 1 c, 66 c,
@@ -36,11 +37,8 @@ MEM-64K 17 + constant JWT-LARGE-N
 : JWT-FALSE ( -- bool )
    JWT-TRUE 0= ;
 
-TRUSTED: JWT-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+: JWT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : JWT-EXPECTED-OBJECT$ ( -- ptr u8 n )
    SB-RESET

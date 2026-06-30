@@ -5,6 +5,7 @@ require lib/errors.f
 require lib/string.f
 require lib/test.f
 require lib/fs.f
+require test/checker-assert.f
 
 $20000 constant IBT-CAP
 create IBT-BUF IBT-CAP allot
@@ -41,11 +42,8 @@ s" M-BE32" s" n --" TRUST
 s" M-BE64" s" n --" TRUST
 s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
 
-TRUSTED: IBT-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+: IBT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : IBT-SOURCE ( -- ptr u8 n )
    IBT-BUF IBT-LEN @ ;

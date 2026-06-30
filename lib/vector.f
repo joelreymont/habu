@@ -172,4 +172,3 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec VEC-LEN@ LEN>N 0 ?do
       i VEC-IDX vec i VEC-IDX VEC@ q execute
    loop ;
-s" VEC-EACH" s" R ptr a [ R idx a -- R ] -- R" TRUST

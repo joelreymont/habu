@@ -7,16 +7,14 @@
 \ GRID-CTX through LOAD / SCALE / +. / -. / /. to STORE by unification.
 
 require lib/ptx/test-prelude.f
+require test/checker-assert.f
 
 T-RESET
 
 256 %BLOCK
 
-TRUSTED: PTX-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 T=
-   r> DIAGXT ! ;
+: PTX-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 11 22 MK-SPAN 11 T=
 11 22 MK-SPAN-ONCE 11 T=

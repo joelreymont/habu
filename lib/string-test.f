@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
+require test/checker-assert.f
 
 64 constant STR-TEST-BUF-LEN
 1 constant STR-TEST-EX-FAIL
@@ -41,11 +42,8 @@ variable STR-TEST-BUF2-LEN
 : STR-ASSERT$ ( ptr u8 n ptr u8 n -- )
    STR= STR-ASSERT ;
 
-TRUSTED: STR-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 STR-ASSERT=
-   r> DIAGXT ! ;
+: STR-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 STR-ASSERT= ;
 
 : STR-SPLIT-CHECK ( ptr u8 n n n ptr u8 n n bool -- ) {: a:ptr u sep start exp:ptr exp-u exp-next exp-ok :}
    a u sep start SPLIT-NEXT

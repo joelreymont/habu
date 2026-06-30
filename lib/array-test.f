@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/array.f
+require test/checker-assert.f
 
 1 constant AT-EX-FAIL
 
@@ -66,11 +67,8 @@ TRUSTED: }T ( R -- )
    AT-WORK cell+ !
    AT-WORK ! ;
 
-TRUSTED: AT-CHECK-REJECTS ( ptr u8 n -- )
-   DIAGXT @ >r
-   0 DIAGXT !
-   CHECK! 0 AT=
-   r> DIAGXT ! ;
+: AT-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 AT= ;
 
 : AT-CHECK-INDEX ( n n -- ) {: len ix :}
    len A-LEN ix A-IDX A-CHECK-INDEX ;
