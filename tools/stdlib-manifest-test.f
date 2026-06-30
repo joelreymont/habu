@@ -8,7 +8,7 @@ $12000 constant SMT-DOC-CAP
 $80000 constant SMT-PUB-CAP                 \ public-signatures JSON for the whole stdlib
 $4000 constant SMT-ERR-CAP
 $80000 constant SMT-STR-CAP
-1024 constant SMT-WORD-MAX
+1536 constant SMT-WORD-MAX
 64 constant SMT-MOD-MAX
 64 constant SMT-LIB-MAX
 11 constant SMT-FIELDS
@@ -241,7 +241,14 @@ variable SMT-J
       1+
    repeat drop 0 0= ;
 
+: SMT-CORE-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 11 < IF 0 0= 0= exit THEN
+   a u s" src/core/" LINT-STARTS-WITH? 0= IF 0 0= 0= exit THEN
+   a u s" .f" LINT-ENDS-WITH? 0= IF 0 0= 0= exit THEN
+   a 9 + u 11 - SMT-MODULE-NAME? ;
+
 : SMT-LIB-FILE? ( ptr u8 n -- bool ) {: a:ptr u :}
+   a u SMT-CORE-FILE? IF 0 0= exit THEN
    u 7 < IF 0 0= 0= exit THEN
    a u s" lib/" LINT-STARTS-WITH? 0= IF 0 0= 0= exit THEN
    a u s" .f" LINT-ENDS-WITH? 0= IF 0 0= 0= exit THEN
@@ -368,6 +375,8 @@ variable SMT-J
 
 : SMT-DOC-STRING-ROWS ( -- )
    s" ## LLM Surface" SMT-CHECK-DOC-ROW
+   s" ## Core Bytes" SMT-CHECK-DOC-ROW
+   s" `src/core/bytes.f`" SMT-CHECK-DOC-ROW
    s" ## String" SMT-CHECK-DOC-ROW
    s" BYTE-COPY       ( ptr u8 ptr u8 n -- )" SMT-CHECK-DOC-ROW
    s" SB-APPEND       ( ptr u8 n -- )" SMT-CHECK-DOC-ROW ;
@@ -587,7 +596,7 @@ variable SMT-J
    SMT-FIELD-N @ SMT-FIELDS <> IF line s" expected 11 tab-separated columns" SMT-ROW-FINDING exit THEN
    a 0 SMT-FIELD$ s" 1" LINT-STR= 0= IF line s" schema_version must be 1" SMT-ROW-FINDING THEN
    a 1 SMT-FIELD$ SMT-MODULE-NAME? 0= IF line s" invalid module name " a 1 SMT-FIELD$ SMT-ROW-FINDING$ THEN
-   a 2 SMT-FIELD$ SMT-LIB-FILE? 0= IF line s" file must be a stable lib/<module>.f path" SMT-ROW-FINDING THEN
+   a 2 SMT-FIELD$ SMT-LIB-FILE? 0= IF line s" file must be a stable lib/<module>.f or src/core/<module>.f path" SMT-ROW-FINDING THEN
    a 3 SMT-FIELD$ SMT-KIND? 0= IF line s" kind must be module or word" SMT-ROW-FINDING THEN
    a 7 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" doc is required" SMT-ROW-FINDING THEN
    a 8 SMT-FIELD$ SMT-NONEMPTY? 0= IF line s" owner is required" SMT-ROW-FINDING THEN
@@ -629,11 +638,11 @@ variable SMT-J
    2dup s" .f" LINT-ENDS-WITH? 0= IF 2drop 0 0= 0= exit THEN
    s" -test.f" LINT-ENDS-WITH? 0= ;
 
-\ Coverage tracks only FLAT lib/<module>.f stdlib modules - the same paths the
-\ manifest grammar (SMT-LIB-FILE?) admits. Nested sub-libraries (e.g. lib/ptx/)
-\ are a separate research tier: trust-audited (trust-lint), type-checked via
-\ their own load paths, and unit-tested by their -test.f + the ptx-stdlib gate,
-\ but not part of the curated flat-stdlib public API surface.
+\ Coverage tracks only FLAT lib/<module>.f stdlib modules. Curated core prelude
+\ rows such as src/core/bytes.f are manifest-checked when listed, but not
+\ discovered by the lib walk. Nested sub-libraries (e.g. lib/ptx/) are a
+\ separate tier: trust-audited (trust-lint), type-checked via their own load
+\ paths, and unit-tested by their -test.f + the ptx-stdlib gate.
 : SMT-COLLECT-LIB-FILE ( ptr u8 n -- ) {: a:ptr u :}
    a u SMT-LIB-SOURCE? a u SMT-LIB-FILE? and IF a u SMT-ADD-LIB-FILE THEN ;
 

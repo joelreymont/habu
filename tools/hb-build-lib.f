@@ -409,6 +409,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/structures-effects.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+
+   s" src/core/bytes.f" HBB-KEY-FILE+
    s" src/arch/arm64/asm.f" HBB-KEY-FILE+
    s" src/arch/arm64/icode.f" HBB-KEY-FILE+
    s" src/arch/arm64/mnem.f" HBB-KEY-FILE+

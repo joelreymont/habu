@@ -530,6 +530,9 @@ variable BF-STRIP-OFF
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 
+: BF-APPEND-CORE-BYTES ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" src/core/bytes.f" BF-APPEND-SOURCE ;
+
 : BF-APPEND-CHECK-OFF ( ptr u8 n -- )
    s" 0 set-check" BF-APPEND-LINE ;
 
@@ -579,6 +582,7 @@ variable BF-STRIP-OFF
 
 : BF-APPEND-COMMON ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-ROLES
+   out outu BF-APPEND-CORE-BYTES
    out outu BF-APPEND-TARGET-FLAG
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE

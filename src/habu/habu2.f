@@ -122,7 +122,8 @@ $D63F0200 constant C-CALL-BLR-X16
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
-variable LPUTIL         variable LPSTRUCTURES   variable LPCHECKER      variable LPRENDER
+variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
+variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV
 variable LPROLES
@@ -357,8 +358,11 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
+   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
@@ -390,8 +394,11 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
+   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
@@ -898,6 +905,14 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
       0 70 MOVZ,  NR-EXIT SYS,
    ok LBL, ;
 
+: C-TASK-LIVE-GUARD ( -- )
+   LBL {: ok:label :}
+   9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 $4F MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+s" c-task-live-guard" s" --" TRUST
+
 : C-PUSH-DREC-NAME ( -- )
    LBL {: pinl :}
    9 12 24 ADDI,
@@ -1392,6 +1407,7 @@ s" c-store-def-name" s" --" TRUST
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
 : C-CREATE ( -- )
+   C-TASK-LIVE-GUARD
    15 1 MOVZ,  LCREATE LABEL@ BL,
    C-CALL-TRUST-LASTC-PTR-A ;
 
@@ -1399,6 +1415,7 @@ s" c-store-def-name" s" --" TRUST
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 : C-CONSTANT ( -- )
+   C-TASK-LIVE-GUARD
    2 3 MOVZ,  LPROT LABEL@ BL,  LTOK LABEL@ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP LABEL@ BL,   \ seed "NAME " for the hook
    C-QUALIFY-DEF
@@ -1444,6 +1461,7 @@ s" c-store-def-name" s" --" TRUST
    nsig LBL, ;
 
 : C-TRUSTED ( -- )
+   C-TASK-LIVE-GUARD
    LBL LBL LBL {: cpok ndok done :}
    2 3 MOVZ,  LPROT LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
@@ -1526,6 +1544,7 @@ s" c-defer-meta-write" s" --" TRUST
 s" c-defer-room" s" --" TRUST
 
 : C-DEFER ( -- )
+   C-TASK-LIVE-GUARD
    LBL {: named :}
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-DEFER-ROOM
@@ -2147,6 +2166,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
    9 DATA TKA-CELL LDR,  9 9 0 LDRB,  9 $3A CMPI,  C-NE ktry BCOND,
    kcolon LBL,
+      C-TASK-LIVE-GUARD
       2 3 MOVZ,  LPROT LABEL@ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -2287,6 +2307,7 @@ s" c-package-existing-private" s" label --" TRUST
 s" c-package-ensure" s" --" TRUST
 
 : C-PACKAGE ( -- )
+   C-TASK-LIVE-GUARD
    LBL LBL {: inactive:label hastok:label :}
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
       $4B C-PACKAGE-FAIL
@@ -2305,6 +2326,7 @@ s" c-package-ensure" s" --" TRUST
 s" c-package" s" --" TRUST
 
 : C-PUBLIC ( -- )
+   C-TASK-LIVE-GUARD
    LBL {: active:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -2315,6 +2337,7 @@ s" c-package" s" --" TRUST
 s" c-public" s" --" TRUST
 
 : C-PRIVATE ( -- )
+   C-TASK-LIVE-GUARD
    LBL {: active:label :}
    9 DATA PKG-PRI-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -2325,6 +2348,7 @@ s" c-public" s" --" TRUST
 s" c-private" s" --" TRUST
 
 : C-END-PACKAGE ( -- )
+   C-TASK-LIVE-GUARD
    LBL {: active:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       $4B C-PACKAGE-FAIL
@@ -2748,7 +2772,8 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
-   LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
+   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
+   LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !

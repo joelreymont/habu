@@ -323,6 +323,19 @@ DLOPEN            ( ptr u8 n -- n )
 DLSYM             ( n ptr u8 -- n )
 ```
 
+## Core Bytes
+
+`src/core/bytes.f` provides small checked byte-buffer helpers that are part of
+the native prelude. They are available before stdlib and tool modules so low
+level code does not depend on broad library ordering such as loading
+`lib/string.f` before `lib/ffi.f`.
+
+```forth
+BYTE+           ( ptr u8 n -- ptr u8 )
+BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
+BYTE-COPY       ( ptr u8 ptr u8 n -- )
+```
+
 ## String
 
 `lib/string.f` provides checked byte-string helpers. Inputs are byte pointers
@@ -332,9 +345,9 @@ the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 `E-STR-BOUNDS` instead of truncating silently. `STR>NUMBER?` parses a signed
 i64 and returns `0 false` on invalid or out-of-range input.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
-roles and reject negative values. Typed variants such as `BYTE-COPY-LEN` and
-`SB-APPEND-LEN` keep already-refined lengths from being laundered through plain
-`n`. `BUFFER:` defines caller-owned byte buffers; `BUF-*` helpers reset, read,
+roles and reject negative values. Typed variants such as `SB-APPEND-LEN` keep
+already-refined lengths from being laundered through plain `n`. `BUFFER:`
+defines caller-owned byte buffers; `BUF-*` helpers reset, read,
 and append into a caller-owned `(buffer, capacity, length-cell)` triple and throw
 instead of truncating or overflowing.
 
@@ -345,9 +358,6 @@ STR-COUNT       ( n -- count )
 STR-TRUE        ( -- bool )
 STR-FALSE       ( -- bool )
 BUFFER:         ( n -- )
-BYTE+           ( ptr u8 n -- ptr u8 )
-BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
-BYTE-COPY       ( ptr u8 ptr u8 n -- )
 ASCII-LOWER     ( n -- n )
 ASCII-UPPER     ( n -- n )
 STR=            ( ptr u8 n ptr u8 n -- bool )

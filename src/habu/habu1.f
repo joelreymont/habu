@@ -890,8 +890,15 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
-: BCPSET ( -- ) A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
-: BNDSET ( -- ) A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
+
+: B-TASK-LIVE-GUARD ( -- )
+   LBL {: ok:label :}
+   9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
+      0 $4F MOVZ,  NR-EXIT SYS,
+   ok LBL, ;
+
+: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
+: BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !
@@ -934,6 +941,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 
 : B-EVAL ( -- )
    LBL EVAL-OK !
+   B-TASK-LIVE-GUARD
    B G-POP  A G-POP                                  \ x10 = u, x9 = a
    11 DATA EVALD-CELL LDR,
    12 EVAL-MAX-DEPTH MOVZ,  11 12 CMP,  C-LT EVAL-OK LABEL@ BCOND,
@@ -1189,12 +1197,15 @@ s" spawn-darwin-finish" s" label label --" TRUST
    DP-HIGH LABEL@ LBL, ;
 
 : BALLOT ( -- )
+   B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  7 7 A ADD,  7 DP-CHECK  7 DATA 0 STR, ;
 
 : BCOMMA ( -- )
+   B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 8 ADDI,  C DP-CHECK  A 7 0 STR,  C DATA 0 STR, ;
 
 : BCCOMMA ( -- )
+   B-TASK-LIVE-GUARD
    A G-POP  7 DATA 0 LDR,  C 7 1 ADDI,  C DP-CHECK  A 7 0 STRB, C DATA 0 STR, ;
 
 : BTYPE ( -- )

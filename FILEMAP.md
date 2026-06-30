@@ -33,6 +33,9 @@ points stay listed.
 ## Core Checker
 
 - `src/core/util.f` — shared subset helpers.
+- `src/core/bytes.f` — core byte-buffer helpers (`BYTE+`, `BYTE-COPY-LEN`,
+  `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
+  depend on `lib/string.f` order.
 - `src/core/checker.f` — native stack-effect checker and verifier.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
@@ -296,6 +299,10 @@ points stay listed.
 - `lib/ffi-abi-test.f` — focused coverage for portable FFI marshalling without dynamic loader slots.
 - `lib/ffi.f` — checked dynamic loading layer over the FFI ABI: dlopen/dlsym through target-provided loader slots.
 - `lib/ffi-test.f` — focused coverage for FFI dlopen/dlsym, fixed-arity calls, C-string marshalling, FP args/returns, x8, and stack spill.
+- `lib/task.f` — checked pthread-backed tasking: task TCBs, per-task region
+  re-entry, task-local user variables, halt/join teardown, and mutex facilities.
+- `lib/task-test.f` — focused coverage for two task workers, atomic shared
+  progress, mutex-protected increments, and cooperative halt/join cleanup.
 - `lib/float.f` — checked decimal string to IEEE-double parsing (STR>FLOAT) with power-of-ten scaling.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.
 - `lib/fmt.f` — checked number formatting into the string builder: unsigned/signed ints and fixed-decimal floats.

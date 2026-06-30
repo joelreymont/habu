@@ -73,6 +73,8 @@ $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
 $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
+$3C88 constant TASK-TCB-CELL
+$3C90 constant TASKS-LIVE-CELL
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL
@@ -105,4 +107,4 @@ $27D8 constant PKG-REC-CELL
 $27E0 constant DEFER-META-CELL
 $27E8 constant DEFER-XT-CELL
 $2800 constant RSTK-OFF
-$3A00 constant DATA-START
+$4000 constant DATA-START

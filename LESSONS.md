@@ -34,6 +34,23 @@ lesson — keep the specific word/code/path, cut the prose.
   resumes the same private/public wordlists and duplicate set; `--load`,
   source-list, or include still owns file dependency order. Do not include a
   file merely to share the package namespace.
+- **Core byte helpers are not string-library setup:** `lib/ffi-abi.f` used
+  `BYTE-COPY`, so `include lib/ffi.f` failed unless `lib/string.f` happened to
+  be loaded first. Small primitive helpers used across unrelated libraries
+  belong in a narrow `src/core/*.f` prelude file, and test entry files should
+  include their own setup instead of making suites encode broad library order.
+- **Runtime data slots must not overlap evaluate frames:** `EVAL-FRAME` spans
+  `$3800..$39FF`; putting task or FFI scratch cells inside that range corrupts
+  nested `include`/`evaluate` and makes definers fail as if tasks were live.
+  Keep per-runtime scratch after the full frame area and before `DATA-START`.
+- **Module entry files own dependency setup:** `include lib/task.f` must work
+  without the caller knowing `errors`/`memory`/`ffi` order. Use guarded
+  `XREF-FIND` + `included` at module boundaries; keep test suites focused on
+  the test entry file, not setup plumbing.
+- **Warm-image tails must not reload prefix-owned layout:** target layout files
+  are part of the engine prefix. Snapshot tail tools append image emitters
+  (`elf.f`/`macho.f`) only; re-appending `src/os/*/layout.f` redefines image
+  constants and breaks warm-image baking.
 - **Duplicate package definitions belong at publish time:** package namespaces
   concentrate many natural names, so same-wordlist redefinition must fail in
   both `C-QUALIFY-DEF` and the certified checker signature recorder. Explicit

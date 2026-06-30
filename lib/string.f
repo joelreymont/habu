@@ -46,18 +46,6 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : STR-FALSE ( -- bool )
    STR-TRUE 0= ;
 
-: BYTE+ ( ptr u8 n -- ptr u8 )
-   + ;
-
-: BYTE-COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u :}
-   0 begin dup u LEN>N < while
-      dup src + c@ over dst + c!
-      1+
-   repeat drop ;
-
-: BYTE-COPY ( ptr u8 ptr u8 n -- )
-   STR-LEN BYTE-COPY-LEN ;
-
 : ASCII-LOWER ( n -- n )
    dup STR-BEFORE-A > over STR-AFTER-Z < and if STR-SPACE + then ;
 

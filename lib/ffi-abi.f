@@ -11,17 +11,43 @@
 \ plus library-owned value cells for scalar params. Do not nest CALLk or
 \ FFI-CALL* calls; finish one foreign call before preparing the next.
 
+: FFI-ABI-DEPS ( -- )
+   s" E-FFI-ARITY" XREF-FIND 0= if s" lib/errors.f" included then ;
+
+FFI-ABI-DEPS
+
 8 constant FFI-REG-ARGS
 16 constant FFI-MAX-ARGS
 16 constant FFI-MAX-KPARAMS
 
-create FFI-BUF FFI-MAX-ARGS cells allot
-create FFI-FBUF FFI-REG-ARGS cells allot
-create FFI-STACK-BUF FFI-MAX-ARGS cells allot
-create FFI-KPARAM-PBUF FFI-MAX-KPARAMS cells allot
-create FFI-KPARAM-VBUF FFI-MAX-KPARAMS cells allot
+$3A00 constant FFI-BUF-OFF
+$3A80 constant FFI-FBUF-OFF
+$3AC0 constant FFI-STACK-BUF-OFF
+$3B40 constant FFI-KPARAM-PBUF-OFF
+$3BC0 constant FFI-KPARAM-VBUF-OFF
+$3C40 constant FFI-DLBUF-OFF
+$3C80 constant FFI-KPARAM#-OFF
 
-variable FFI-KPARAM#
+TRUSTED: FFI-BUF ( -- ptr a )
+   data-base FFI-BUF-OFF + ;
+
+TRUSTED: FFI-FBUF ( -- ptr r )
+   data-base FFI-FBUF-OFF + ;
+
+TRUSTED: FFI-STACK-BUF ( -- ptr a )
+   data-base FFI-STACK-BUF-OFF + ;
+
+TRUSTED: FFI-KPARAM-PBUF ( -- ptr a )
+   data-base FFI-KPARAM-PBUF-OFF + ;
+
+TRUSTED: FFI-KPARAM-VBUF ( -- ptr a )
+   data-base FFI-KPARAM-VBUF-OFF + ;
+
+TRUSTED: FFI-DLBUF ( -- ptr a )
+   data-base FFI-DLBUF-OFF + ;
+
+TRUSTED: FFI-KPARAM# ( -- ptr n )
+   data-base FFI-KPARAM#-OFF + ;
 
 \ Pointer <-> cell reinterpret. The only trusted boundary in this file: the
 \ checker cannot know a raw cell is a valid pointer, so we assert it here, once.

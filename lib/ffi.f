@@ -1,10 +1,13 @@
 \ ffi.f - checked C-ABI foreign calls with dynamic loading.
 
+: FFI-DEPS ( -- )
+   s" E-FFI-ARITY" XREF-FIND 0= if s" lib/errors.f" included then ;
+
+FFI-DEPS
+
 include lib/ffi-abi.f
 
 2 constant RTLD-NOW                       \ dlopen flag: resolve all symbols now
-
-create FFI-DLBUF 8 cells allot           \ dlopen/dlsym args, isolated from FFI-BUF
 
 \ ---- dynamic loading ------------------------------------------------------
 \ DLOPEN returns 0 on failure; DLSYM returns 0 for a missing symbol. Callers

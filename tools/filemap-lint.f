@@ -84,6 +84,7 @@ variable FM-NUM-L
    s" docs/seed.md" FM-REQ ;
 
 : FM-CHECK-REQUIRED-CORE ( -- )
+   s" src/core/bytes.f" FM-REQ
    s" src/core/checker.f" FM-REQ
    s" src/core/render.f" FM-REQ
    s" src/core/exec-vector.f" FM-REQ

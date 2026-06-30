@@ -174,16 +174,20 @@ TEST-SUITE tasking-primitive-smoke
    lib/errors.f lib/memory.f test/atomics-smoke.f test/run-in-stack-smoke.f
 ;TEST-SUITE
 
+TEST-SUITE tasking-threads
+   lib/task-test.f
+;TEST-SUITE
+
 TEST-SUITE string-helpers
    lib/errors.f lib/string.f lib/string-test.f
 ;TEST-SUITE
 
 TEST-SUITE ffi-abi
-   lib/errors.f lib/string.f lib/test.f lib/ffi-abi.f lib/ffi-abi-test.f
+   lib/ffi-abi-test.f
 ;TEST-SUITE
 
 TEST-SUITE ffi-cabi
-   lib/errors.f lib/string.f lib/test.f lib/ffi.f lib/ffi-test.f
+   lib/ffi-test.f
 ;TEST-SUITE
 
 TEST-SUITE float-parse

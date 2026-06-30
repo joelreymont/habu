@@ -97,9 +97,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-TRUE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a true flag for string helpers
 1	string	lib/string.f	word	STR-FALSE	(-- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	return a false flag for string helpers
 1	string	lib/string.f	word	BUFFER:	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	define a byte buffer whose word returns ptr u8
-1	string	lib/string.f	word	BYTE+	(ptr u8 n -- ptr u8)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	offset a checked byte pointer by a raw byte count
-1	string	lib/string.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes using an already refined length role
-1	string	lib/string.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	copy bytes between checked byte buffers
+1	core-bytes	src/core/bytes.f	module			lib/string-test.f	docs/stdlib.md	stdlib-core	active	core byte-buffer helpers loaded before stdlib modules
+1	core-bytes	src/core/bytes.f	word	BYTE-CHECK-N	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-core	active	validate a raw byte length before refinement
+1	core-bytes	src/core/bytes.f	word	BYTE+	(ptr u8 n -- ptr u8)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	offset a checked byte pointer by a raw byte count
+1	core-bytes	src/core/bytes.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	copy bytes using an already refined length role
+1	core-bytes	src/core/bytes.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase
 1	string	lib/string.f	word	ASCII-UPPER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII lowercase byte to uppercase
 1	string	lib/string.f	word	STR=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings byte-for-byte
@@ -906,6 +908,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
 1	ffi-abi	lib/ffi-abi.f	module			lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	checked AAPCS64 FFI calls and marshalling without dynamic loader slots
+1	ffi-abi	lib/ffi-abi.f	word	FFI-ABI-DEPS	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	load required error definitions when absent
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a scratch-buffer slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a caller-supplied scratch-buffer count
 1	ffi-abi	lib/ffi-abi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI argument slot index
@@ -942,6 +945,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
 1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
 1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked dynamic loading layer over the AAPCS64 FFI ABI
+1	ffi	lib/ffi.f	word	FFI-DEPS	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	load required error definitions before ABI setup
 1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
 1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
@@ -1034,3 +1038,52 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	report	lib/report.f	word	COL-CELL	(n n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	report	lib/report.f	word	TBL-CSV	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
+1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
+1	task	lib/task.f	word	TASK-DEPS	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	load tasking dependencies when absent
+1	task	lib/task.f	word	TASK-TCB-LAYOUT-CHECK	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate task control block layout constants
+1	task	lib/task.f	word	TASK-ALIGN8	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	align dictionary allocation to an 8-byte boundary
+1	task	lib/task.f	word	TASK-LIB-PATH	(-- ptr u8)	lib/task-test.f	docs/threads.md	stdlib-task	active	select libc or libSystem path for pthread symbols
+1	task	lib/task.f	word	TASK-OPEN	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	open the host C runtime for tasking symbols
+1	task	lib/task.f	word	TASK-SYM	(ptr u8 -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	resolve a required tasking symbol
+1	task	lib/task.f	word	TASK-CFUNS	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	resolve tasking C function pointers
+1	task	lib/task.f	word	TASK-RC0	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	require a zero pthread return code
+1	task	lib/task.f	word	TASK-CHECK-SIZE	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate a requested task stack size
+1	task	lib/task.f	word	TASK-STATE@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a task state cell
+1	task	lib/task.f	word	TASK-STATE!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a task state cell
+1	task	lib/task.f	word	TASK-LIVE+	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	increment live task count
+1	task	lib/task.f	word	TASK-LIVE-	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	decrement live task count
+1	task	lib/task.f	word	TASK-MUNMAP-SPAN	(ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	unmap one task-owned memory span
+1	task	lib/task.f	word	TASK-RELEASE-MEM	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	release stack and region memory for a task
+1	task	lib/task.f	word	TASK-COPY-CELL	(ptr a ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	copy one runtime cell into a task region
+1	task	lib/task.f	word	TASK-PTR-SLOT	(ptr a n -- ptr ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	address a pointer-valued task region slot
+1	task	lib/task.f	word	TASK-PTR!	(ptr a ptr a n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	store a pointer-valued task region slot
+1	task	lib/task.f	word	TASK-PTR@	(ptr a n -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a pointer-valued task region slot
+1	task	lib/task.f	word	TASK-REGION-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	initialize a task runtime region
+1	task	lib/task.f	word	TASK-CONSTRUCTED?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	test whether a task has allocated runtime memory
+1	task	lib/task.f	word	CONSTRUCT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
+1	task	lib/task.f	word	TASK-PTHREAD-CREATE-RC	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	call pthread_create for a prepared task
+1	task	lib/task.f	word	TASK-PTHREAD-JOIN-CALL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	join a pthread and require success
+1	task	lib/task.f	word	TASK-ENTRY-NEEDED?	(-- bool)	lib/task-test.f	docs/threads.md	stdlib-task	active	test whether the shared task trampoline is built
+1	task	lib/task.f	word	A64-LDRX	(n n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 ldr x instruction for the task trampoline
+1	task	lib/task.f	word	A64-STRX	(n n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 str x instruction for the task trampoline
+1	task	lib/task.f	word	A64-MOVZ	(n n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 movz instruction for the task trampoline
+1	task	lib/task.f	word	A64-BLR	(n -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	encode an ARM64 blr instruction for the task trampoline
+1	task	lib/task.f	word	TASK-PATCH	(n n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	patch one task trampoline instruction
+1	task	lib/task.f	word	TASK-ENTRY-BUILD	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	build the shared task entry trampoline
+1	task	lib/task.f	word	TASK-READY	(--)	lib/task-test.f	docs/threads.md	stdlib-task	active	ensure task symbols and trampoline are ready
+1	task	lib/task.f	word	TASK-JOIN-RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	join a completed task and release its memory
+1	task	lib/task.f	word	ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
+1	task	lib/task.f	word	TASK-SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer
+1	task	lib/task.f	word	TASK-SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	return the current task control block pointer as a cell
+1	task	lib/task.f	word	TASK-STOP@	(ptr a -- n)	lib/task-test.f	docs/threads.md	stdlib-task	active	read a task stop request flag
+1	task	lib/task.f	word	TASK-STOP!	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	active	write a task stop request flag
+1	task	lib/task.f	word	PAUSE	(--)	lib/task-test.f	docs/threads.md	stdlib-task	published	yield the current task and honor stop requests
+1	task	lib/task.f	word	HALT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	request that a task stop
+1	task	lib/task.f	word	TASK-KILL	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	join or release a task and return it to empty state
+1	task	lib/task.f	word	TASK-DONE?	(ptr a -- bool)	lib/task-test.f	docs/threads.md	stdlib-task	published	test whether a task has finished
+1	task	lib/task.f	word	#USER	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the next per-task user storage offset
+1	task	lib/task.f	word	USER-ROOM	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	active	validate per-task user storage capacity
+1	task	lib/task.f	word	HIS	(ptr a ptr a -- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	translate a user variable address into another task region
+1	task	lib/task.f	word	FACILITY-INIT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	initialize a pthread mutex facility
+1	task	lib/task.f	word	GET	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	lock a facility
+1	task	lib/task.f	word	RELEASE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	unlock a facility

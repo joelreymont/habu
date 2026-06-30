@@ -124,9 +124,15 @@ end-package
   sufficient, and `tools/check.f --source-list odin/core.f odin/api.f` is the
   checker-only form. Use include only when a source file or entry file should
   own loading its dependencies.
-- The purpose of include is source composition, not namespace sharing. Use it
-  when a file should be self-sufficient or when a top-level entry file should
-  assemble a package from submodules:
+- The purpose of include is source composition, not namespace sharing. User entry
+  files, tool entry files, and test files should use `include` for their own
+  dependency setup; callers should not have to know that `A.f` must be loaded
+  before `B.f` just to run `B-test.f`. If many files need a small primitive
+  helper, factor that helper into a narrow `src/core/*.f` prelude file loaded
+  before stdlib/tool sources instead of depending on a broad library order such
+  as `lib/string.f` before `lib/ffi.f`.
+- Use include when a file should be self-sufficient or when a top-level entry
+  file should assemble a package from submodules:
 
 ```forth
 \ odin/core.f
@@ -161,8 +167,10 @@ end-package
   loads that source immediately. `s" path/to/file.f" included` is the lower-level
   string form. Do not include a file merely so two files can see the same private
   helpers; reopening the package provides that shared package scope after both
-  files have been loaded. Prefer explicit `--load`/source-list order for gates
-  and build scripts when that order is already known by the caller.
+  files have been loaded. Test suites should normally load one self-contained
+  test entry file per test; the test file includes its setup and assertions. Gate
+  source lists stay for explicit cross-file integration subjects and generated
+  build-stage source, not for ordinary unit-test dependency plumbing.
 - A package public or private wordlist is a no-duplicate set. Publishing a word
   whose folded tail already exists in the active target wordlist is an error,
   including across reopened package blocks and across `:`, `create`, `variable`,

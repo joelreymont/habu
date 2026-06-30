@@ -1,5 +1,8 @@
 \ ffi-test.f - checked C-ABI FFI tests against libc.
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/ffi.f lib/ffi-test.f | bin/hb
+\ Run: bin/hb --load lib/ffi-test.f
+
+include lib/test.f
+include lib/ffi.f
 
 create FFI-T-LIBC   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libc.so.6"
 create FFI-T-LIBM   108 c, 105 c, 98 c, 109 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libm.so.6"

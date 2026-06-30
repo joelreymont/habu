@@ -8,6 +8,10 @@ GO-WITH-CHANGES** — see "Required invariants" below.
 
 ## Build progress
 
+- **Module loading: done.** `include lib/task.f` is the supported entry point.
+  The module guards and includes its own `lib/errors.f`, `lib/memory.f`, and
+  `lib/ffi.f` dependencies when absent; callers and test suites must not encode
+  that order.
 - **Step 0 (cell audit): done** — see classification below.
 - **Atomics (step 3): done + validated.** `atomic@` (LDAR `0xC8DFFD29`), `atomic!`
   (STLR `0xC89FFD49`), `atomic-add` (LDADDAL `0xF8E90149`, returns old), `atomic-cas`

@@ -270,9 +270,9 @@ create WIT-RUN-ERR WIT-CAP allot
    s" src/arch/arm64/mnem.f" WIT-LIB-MUST-HAVE
    s" src/core/roles.f" WIT-LIB-MUST-NOT-HAVE
    s" src/os/image-bytes.f" WIT-LIB-MUST-HAVE
-   s" src/os/macos/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/macos/layout.f" WIT-LIB-MUST-NOT-HAVE
    s" src/os/macos/macho.f" WIT-LIB-MUST-HAVE
-   s" src/os/linux/layout.f" WIT-LIB-MUST-HAVE
+   s" src/os/linux/layout.f" WIT-LIB-MUST-NOT-HAVE
    s" src/os/linux/elf.f" WIT-LIB-MUST-HAVE
    s" src/habu/driver-io.f" WIT-LIB-MUST-HAVE ;
 

@@ -113,7 +113,7 @@ $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$3A00 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack + eval frames)
+$4000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack + eval/runtime scratch)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
@@ -981,7 +981,8 @@ $28 constant INL-MAX   \ 40 bytes = 10 instructions of meat
 variable LTRAPH   variable LBPH
 variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
-variable LPUTIL         variable LPSTRUCTURES   variable LPCHECKER      variable LPRENDER
+variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
+variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPCOMBINATORS
@@ -1147,8 +1148,11 @@ create ZBYTE 0 c,
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
+   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-LOAD-ROW
+   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-LOAD-ROW
+   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-LOAD-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-LOAD-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-LOAD-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
@@ -1180,8 +1184,11 @@ create ZBYTE 0 c,
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
+   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
    PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PATH-ROW
+   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PATH-ROW
+   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PATH-ROW
    PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PATH-ROW
    PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PATH-ROW
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
@@ -3028,7 +3035,8 @@ variable CFSK2
 
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
-   LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
+   LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
+   LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !

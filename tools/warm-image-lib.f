@@ -232,13 +232,11 @@ WI-EVENT-DEFAULT!
 
 : WI-APPEND-TARGET-IMAGE ( -- )
    HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f" WI-APPEND-SOURCE
       s" src/os/linux/elf.f" WI-APPEND-SOURCE
       s" src/os/linux/sign.f" WI-APPEND-SOURCE
       exit
    then
    HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f" WI-APPEND-SOURCE
       s" src/os/macos/macho.f" WI-APPEND-SOURCE
       s" src/os/macos/sign2.f" WI-APPEND-SOURCE
       exit
