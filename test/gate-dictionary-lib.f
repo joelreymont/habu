@@ -707,17 +707,26 @@ variable GD-INC-DUP-U
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
    s" CELL +FIELD POINT.X" GE-SRC-LINE
    s" CELL +FIELD POINT.Y" GE-SRC-LINE
+   s" PTR-FIELD: POINT.NAME" GE-SRC-LINE
    s" CFIELD: POINT.FLAGS" GE-SRC-LINE
    s" END-STRUCTURE" GE-SRC-LINE
    s" POINT ." GE-SRC-LINE
    s" create GD-POINT POINT allot" GE-SRC-LINE
+   s" PTR-VARIABLE GD-PTR" GE-SRC-LINE
    s" 11 GD-POINT POINT.X !" GE-SRC-LINE
    s" 22 GD-POINT POINT.Y !" GE-SRC-LINE
+   s" create GD-NAME $67 c, $64 c," GE-SRC-LINE
+   s" GD-NAME GD-POINT POINT.NAME !" GE-SRC-LINE
+   s" GD-NAME GD-PTR !" GE-SRC-LINE
    s" 123 GD-POINT POINT.FLAGS c!" GE-SRC-LINE
    s" GD-POINT POINT.X @ ." GE-SRC-LINE
    s" GD-POINT POINT.Y @ ." GE-SRC-LINE
    s" GD-POINT POINT.FLAGS c@ ." GE-SRC-LINE
+   s" GD-POINT POINT.NAME @ 2 type cr" GE-SRC-LINE
+   s" GD-PTR @ 2 type cr" GE-SRC-LINE
    s" : GD-USE-X ( ptr a -- ptr a ) POINT.X ;" GE-SRC-LINE
+   s" : GD-USE-NAME ( ptr a -- ptr ptr u8 ) POINT.NAME ;" GE-SRC-LINE
+   s" : GD-USE-PTR ( -- ptr ptr u8 ) GD-PTR ;" GE-SRC-LINE
    s" : GD-USE-FLAGS ( ptr a -- ptr u8 ) POINT.FLAGS ;" GE-SRC-LINE ;
 
 : GD-STRUCTURES ( -- )
@@ -725,10 +734,12 @@ variable GD-INC-DUP-U
    GD-STRUCTURE-SOURCE
    s" hb structures field layout and typing" GE-EVAL-RUN-STDIN
    SB-RESET
-   s" 17" GE-OUT-LINE
+   s" 25" GE-OUT-LINE
    s" 11" GE-OUT-LINE
    s" 22" GE-OUT-LINE
    s" 123" GE-OUT-LINE
+   s" gd" GE-OUT-LINE
+   s" gd" GE-OUT-LINE
    SB$ s" hb structures output" GE-EXPECT-OUT ;
 
 : GD-STRUCTURE-MISUSE ( -- )

@@ -83,53 +83,41 @@ TRUSTED: XREF-REC+ ( ptr a n -- ptr a )
    dup $5A > if exit then
    $20 or ;
 
-variable XREF-A
-variable XREF-B
+PTR-VARIABLE XREF-A
+PTR-VARIABLE XREF-B
 variable XREF-U
 variable XREF-V
-variable XREF-SN
+PTR-VARIABLE XREF-SN
 variable XREF-SU
-variable XREF-FN
+PTR-VARIABLE XREF-FN
 variable XREF-FU
 variable XREF-WID
 variable XREF-IDX
 variable XREF-NV
 
-: XREF-A-FIELD ( -- ptr ptr u8 )
-   XREF-A 0 ptr-field ;
-
-: XREF-B-FIELD ( -- ptr ptr u8 )
-   XREF-B 0 ptr-field ;
-
-: XREF-SN-FIELD ( -- ptr ptr u8 )
-   XREF-SN 0 ptr-field ;
-
-: XREF-FN-FIELD ( -- ptr ptr u8 )
-   XREF-FN 0 ptr-field ;
-
 : XREF-A@ ( -- ptr u8 )
-   XREF-A-FIELD @ ;
+   XREF-A @ ;
 
 : XREF-B@ ( -- ptr u8 )
-   XREF-B-FIELD @ ;
+   XREF-B @ ;
 
 : XREF-SN@ ( -- ptr u8 )
-   XREF-SN-FIELD @ ;
+   XREF-SN @ ;
 
 : XREF-FN@ ( -- ptr u8 )
-   XREF-FN-FIELD @ ;
+   XREF-FN @ ;
 
 : XREF-A! ( ptr u8 -- )
-   XREF-A-FIELD ! ;
+   XREF-A ! ;
 
 : XREF-B! ( ptr u8 -- )
-   XREF-B-FIELD ! ;
+   XREF-B ! ;
 
 : XREF-SN! ( ptr u8 -- )
-   XREF-SN-FIELD ! ;
+   XREF-SN ! ;
 
 : XREF-FN! ( ptr u8 -- )
-   XREF-FN-FIELD ! ;
+   XREF-FN ! ;
 
 : XREF-STR=CI ( ptr u8 n ptr u8 n -- bool )
    XREF-V ! XREF-B! XREF-U ! XREF-A!

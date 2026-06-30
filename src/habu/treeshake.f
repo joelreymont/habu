@@ -4,33 +4,25 @@
 \ all. Gates: FPRIM/FPRIM-L (habu1.f) + keyword entries (habu2.f EM-COMPILE);
 \ armed by build.f. Load after the shared argv/env prefix, before habu1.f.
 
-variable SHAKE?   variable SHK-A   variable SHK-U
+variable SHAKE?   PTR-VARIABLE SHK-A   variable SHK-U
 variable SKP  variable STS
-variable SHK-P  variable SHK-Q  variable SHK-N  variable SHK-C
-variable KEEP-A  variable KEEP-U
+PTR-VARIABLE SHK-P  PTR-VARIABLE SHK-Q  variable SHK-N  variable SHK-C
+PTR-VARIABLE KEEP-A  variable KEEP-U
 s" SHAKE?" s" -- ptr n" TRUST
-s" SHK-A" s" -- ptr ptr u8" TRUST
 s" SHK-U" s" -- ptr n" TRUST
 s" SKP" s" -- ptr n" TRUST
 s" STS" s" -- ptr n" TRUST
-s" SHK-P" s" -- ptr ptr u8" TRUST
-s" SHK-Q" s" -- ptr ptr u8" TRUST
-s" KEEP-A" s" -- ptr ptr u8" TRUST
 s" SHK-N" s" -- ptr n" TRUST
 s" SHK-C" s" -- ptr n" TRUST
 s" KEEP-U" s" -- ptr n" TRUST
 : SHK-A@ ( -- ptr u8 )
    SHK-A @ ;
-s" SHK-A@" s" -- ptr u8" TRUST
 : SHK-P@ ( -- ptr u8 )
    SHK-P @ ;
-s" SHK-P@" s" -- ptr u8" TRUST
 : SHK-Q@ ( -- ptr u8 )
    SHK-Q @ ;
-s" SHK-Q@" s" -- ptr u8" TRUST
 : KEEP-A@ ( -- ptr u8 )
    KEEP-A @ ;
-s" KEEP-A@" s" -- ptr u8" TRUST
 
 TRUSTED: SHK-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
@@ -83,7 +75,7 @@ TRUSTED: SHK-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 create REACHBUF $10000 allot
 variable REACHN  variable TKP   variable CHG
 variable INDEF   variable XNAME variable KEEPCUR
-variable RSP     variable RTS   variable TA    variable TU
+variable RSP     variable RTS   PTR-VARIABLE TA    variable TU
 variable SCAN-MODE
 s" REACHN" s" -- ptr n" TRUST
 s" TKP" s" -- ptr n" TRUST
@@ -93,12 +85,10 @@ s" XNAME" s" -- ptr bool" TRUST
 s" KEEPCUR" s" -- ptr bool" TRUST
 s" RSP" s" -- ptr n" TRUST
 s" RTS" s" -- ptr n" TRUST
-s" TA" s" -- ptr ptr u8" TRUST
 s" TU" s" -- ptr n" TRUST
 s" SCAN-MODE" s" -- ptr n" TRUST
 : TA@ ( -- ptr u8 )
    TA @ ;
-s" TA@" s" -- ptr u8" TRUST
 
 : NMF= ( ptr u8 ptr u8 n -- bool )
    SHK-N ! SHK-Q ! SHK-P !

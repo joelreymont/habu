@@ -92,17 +92,17 @@ that source is explicitly certified; they are not stale-checked by the default
 | XREF-N>REC | `n -- ptr a` | Converts a numeric live dictionary-record address into an opaque record pointer for checked xref helpers; the record base comes from `dbase@` plus `DREC` arithmetic. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:16 | 2026-06-27 |
 | XREF-A>U8 | `ptr a -- ptr u8` | Treats the inline-name bytes inside a dictionary record as a byte string; fixed raw record byte offsets are outside pointer-role inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:17 | 2026-06-27 |
 | XREF-N>U8 | `n -- ptr u8` | Converts a numeric long-name address fetched from a dictionary record into a byte pointer; the record stores mixed numeric and pointer cells. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:18 | 2026-06-27 |
-| XREF-PATCH32 | `n ptr a --` | Explicit `undefine` retires dictionary records by patching raw wordlist/status cells inside the live dictionary; the record layout is outside checked pointer inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:230 | 2026-06-28 |
-| c-crash-entry | `--` | Target signal entry register shuffle is raw ABI-specific ARM64; it only mutates generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:73 | 2026-06-25 |
-| c-crash-mctx>r21 | `--` | Target ucontext-to-mcontext addressing is ABI-specific raw register code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:78 | 2026-06-25 |
-| c-crash-xreg>r9 | `--` | Crash dump register extraction walks target mcontext layout in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:88 | 2026-06-25 |
-| c-crash-pc>r9 | `--` | Crash dump PC extraction reads target-specific mcontext fields in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:93 | 2026-06-25 |
-| c-crash-print-regs | `--` | Crash handler emits target-specific FP/LR/SP/PC fields through raw register/syscall code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:107 | 2026-06-25 |
-| c-crash-pc-word | `n --` | Crash diagnostics bounds-check a saved-PC-relative word against the fixed code mapping before raw instruction loads. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:119 | 2026-06-25 |
-| c-crash-pc-8 | `--` | Crash diagnostics request the guarded instruction word at saved PC minus 8. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:123 | 2026-06-25 |
-| c-crash-pc-4 | `--` | Crash diagnostics request the guarded instruction word at saved PC minus 4. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:127 | 2026-06-25 |
-| c-crash-pc0 | `--` | Crash diagnostics request the guarded instruction word at the saved PC. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:131 | 2026-06-25 |
-| c-crash-pc+4 | `--` | Crash diagnostics request the guarded instruction word at saved PC plus 4. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:135 | 2026-06-25 |
+| XREF-PATCH32 | `n ptr a --` | Explicit `undefine` retires dictionary records by patching raw wordlist/status cells inside the live dictionary; the record layout is outside checked pointer inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:218 | 2026-06-30 |
+| c-crash-entry | `--` | Target signal entry register shuffle is raw ABI-specific ARM64; it only mutates generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:67 | 2026-06-30 |
+| c-crash-mctx>r21 | `--` | Target ucontext-to-mcontext addressing is ABI-specific raw register code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:72 | 2026-06-30 |
+| c-crash-xreg>r9 | `--` | Crash dump register extraction walks target mcontext layout in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:82 | 2026-06-30 |
+| c-crash-pc>r9 | `--` | Crash dump PC extraction reads target-specific mcontext fields in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:87 | 2026-06-30 |
+| c-crash-print-regs | `--` | Crash handler emits target-specific FP/LR/SP/PC fields through raw register/syscall code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:101 | 2026-06-30 |
+| c-crash-pc-word | `n --` | Crash diagnostics bounds-check a saved-PC-relative word against the fixed code mapping before raw instruction loads. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:113 | 2026-06-30 |
+| c-crash-pc-8 | `--` | Crash diagnostics request the guarded instruction word at saved PC minus 8. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:117 | 2026-06-30 |
+| c-crash-pc-4 | `--` | Crash diagnostics request the guarded instruction word at saved PC minus 4. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:121 | 2026-06-30 |
+| c-crash-pc0 | `--` | Crash diagnostics request the guarded instruction word at the saved PC. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:125 | 2026-06-30 |
+| c-crash-pc+4 | `--` | Crash diagnostics request the guarded instruction word at saved PC plus 4. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:129 | 2026-06-30 |
 | c-trap-mctx>r9 | `--` | SIGTRAP handler target ucontext-to-mcontext addressing is raw ABI-specific ARM64. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/habu2.f:144 | 2026-06-25 |
 | c-mctx-pc>r10 | `--` | SIGTRAP handler reads target-specific PC fields from mcontext in generated registers. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/habu2.f:149 | 2026-06-25 |
 | c-mctx-x19>r12 | `--` | SIGTRAP handler reads the target data-stack register from mcontext in generated registers. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/habu2.f:154 | 2026-06-25 |
@@ -199,7 +199,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | IMAGE-TEXT-TRAILER-ADJ | `-- n` | Linux trailer address adjustment for snapshot restore when the text-size field includes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:40 | 2026-06-29 |
 | DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:41 | 2026-06-29 |
 | DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:42 | 2026-06-29 |
-| MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f:27 | 2026-06-26 |
+| MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f:25 | 2026-06-30 |
 | MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `ASM-CODE BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f:13 | 2026-06-25 |
 | CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f:43 | 2026-06-29 |
 | LINUX-DLOPEN-SLOT-OFF | `-- n` | Linux dynamic ELF GOT byte offset for the `dlopen` relocation inside the computed RW segment. | `test/run.f`, `test/gate-aot-positive.f` | src/os/linux/layout.f:44 | 2026-06-29 |
@@ -249,7 +249,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | EACH | `R ptr a i64 [ R a -- R ] -- R` | Array iterator keeps the quotation across element calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:22 | 2026-06-16 |
 | MAP | `R ptr a i64 [ R a -- R a ] -- R` | Array map keeps the quotation across element calls and mutates cells in place; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:26 | 2026-06-16 |
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f:30 | 2026-06-16 |
-| VEC-EACH | `R ptr a [ R idx a -- R ] -- R` | Body checks, but TRUST pins the public higher-order callback scheme because the recorder does not persist this inferred quotation effect for later callers. | `lib/vector-test.f`, `test/run.f` | lib/vector.f:172 | 2026-06-24 |
+| VEC-EACH | `R ptr a [ R idx a -- R ] -- R` | Body checks, but TRUST pins the public higher-order callback scheme because the recorder does not persist this inferred quotation effect for later callers. | `lib/vector-test.f`, `test/run.f` | lib/vector.f:175 | 2026-06-30 |
 | INCLUDE-MMAP-PTR | `n -- ptr u8` | Refines the checked anonymous `mmap` result into the byte pointer backing include buffers after size selection and `-1` failure checking; syscall-result pointer refinement is outside checker inference. | `test/gate-dictionary.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/include.f:36 | 2026-06-28 |
 | INCLUDE-EVALUATE | `ptr u8 n --` | Source composition reads and bounds file bytes in checked code, then crosses the dynamic `evaluate` boundary that the checker intentionally rejects in ordinary checked definitions. | `test/gate-dictionary.f`, `test/run.f` | src/core/include.f:137 | 2026-06-28 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures.f:8 | 2026-06-28 |
@@ -404,23 +404,18 @@ that source is explicitly certified; they are not stale-checked by the default
 | SCRIPT-ARGV | `n -- ptr u8` | Returns one standalone bundle user argv c-string. | `tools/hb-build-test.f`, `test/run.f` | src/habu/bundle-argv.f:13 | 2026-06-28 |
 | SCRIPT-ARGV$ | `n -- ptr u8 n` | Returns one standalone bundle user argument as counted bytes. | `tools/hb-build-test.f`, `test/run.f` | src/habu/bundle-argv.f:17 | 2026-06-28 |
 | SHAKE? | `-- ptr n` | Treeshaker enable flag cell is a raw variable; checked scanner code needs its cell type pinned before using `@`/`!`. | `test/run.f` | src/habu/treeshake.f:11 | 2026-06-26 |
-| SHK-A | `-- ptr ptr u8` | Treeshaker source-buffer pointer cell is a raw variable; checked scanner code stores and reads a byte pointer through it. | `test/run.f` | src/habu/treeshake.f:12 | 2026-06-26 |
-| SHK-U | `-- ptr n` | Treeshaker source length cell is a raw variable used by checked scanner bounds tests. | `test/run.f` | src/habu/treeshake.f:13 | 2026-06-26 |
-| SKP | `-- ptr n` | Treeshaker scan cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:14 | 2026-06-26 |
-| STS | `-- ptr n` | Treeshaker token-start cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:15 | 2026-06-26 |
-| SHK-A@ | `-- ptr u8` | Reads the treeshaker source-buffer pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:24 | 2026-06-16 |
-| REACHN | `-- ptr n` | Treeshaker reachability-buffer length cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:88 | 2026-06-26 |
-| TKP | `-- ptr n` | Treeshaker tokenizer cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:89 | 2026-06-26 |
-| CHG | `-- ptr bool` | Treeshaker fixpoint-change flag cell is a raw variable used by checked reachability iteration. | `test/run.f` | src/habu/treeshake.f:90 | 2026-06-26 |
-| INDEF | `-- ptr bool` | Treeshaker in-definition flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f:91 | 2026-06-26 |
-| XNAME | `-- ptr bool` | Treeshaker expecting-definition-name flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f:92 | 2026-06-26 |
-| KEEPCUR | `-- ptr bool` | Treeshaker keep-current-definition flag cell is a raw variable used by checked reachability expansion. | `test/run.f` | src/habu/treeshake.f:93 | 2026-06-26 |
-| RSP | `-- ptr n` | Treeshaker reachability scan cursor cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:94 | 2026-06-26 |
-| RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:95 | 2026-06-26 |
-| TA | `-- ptr ptr u8` | Treeshaker current-token pointer cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f:96 | 2026-06-26 |
-| TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f:97 | 2026-06-26 |
-| TA@ | `-- ptr u8` | Reads the current treeshaker token pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:101 | 2026-06-16 |
-| MP@ | `-- ptr u8` | Reads the shared image output cursor stored in a raw variable. | `test/run.f` | src/os/image-bytes.f:30 | 2026-06-26 |
+| SHK-U | `-- ptr n` | Treeshaker source length cell is a raw variable used by checked scanner bounds tests. | `test/run.f` | src/habu/treeshake.f:12 | 2026-06-30 |
+| SKP | `-- ptr n` | Treeshaker scan cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:13 | 2026-06-30 |
+| STS | `-- ptr n` | Treeshaker token-start cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:14 | 2026-06-30 |
+| REACHN | `-- ptr n` | Treeshaker reachability-buffer length cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:80 | 2026-06-30 |
+| TKP | `-- ptr n` | Treeshaker tokenizer cursor cell is a raw variable used by checked token scanning. | `test/run.f` | src/habu/treeshake.f:81 | 2026-06-30 |
+| CHG | `-- ptr bool` | Treeshaker fixpoint-change flag cell is a raw variable used by checked reachability iteration. | `test/run.f` | src/habu/treeshake.f:82 | 2026-06-30 |
+| INDEF | `-- ptr bool` | Treeshaker in-definition flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f:83 | 2026-06-30 |
+| XNAME | `-- ptr bool` | Treeshaker expecting-definition-name flag cell is a raw variable used by checked source scanning. | `test/run.f` | src/habu/treeshake.f:84 | 2026-06-30 |
+| KEEPCUR | `-- ptr bool` | Treeshaker keep-current-definition flag cell is a raw variable used by checked reachability expansion. | `test/run.f` | src/habu/treeshake.f:85 | 2026-06-30 |
+| RSP | `-- ptr n` | Treeshaker reachability scan cursor cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:86 | 2026-06-30 |
+| RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f:87 | 2026-06-30 |
+| TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f:88 | 2026-06-30 |
 | SIGA@ | `-- ptr u8` | Reads the code-signing identifier pointer stored in a raw variable. | `test/run.f` | src/os/macos/sign2.f:8 | 2026-06-16 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f:19 | 2026-06-16 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f:22 | 2026-06-24 |
@@ -493,33 +488,19 @@ that source is explicitly certified; they are not stale-checked by the default
 | BITS>R | `n -- r` | PTX codegen f32->f64 readback: reinterpret a device-returned f32 bit pattern (widened by F32>F64) back into a Habu float - lets a GPU training loop read weights back and recompute gradients. | `lib/ptx/header-test.f` | lib/ptx/cg.f:91 | 2026-06-29 |
 | MATRIX-REG | `n -- matrix<space-global,f32,extent-r,extent-c>` | M6 codegen: from-register identity cast asserting a kernel arg register holds a row-major matrix, so the softmax emit driver runs the checked kernel checked (the codegen from_raw_parts boundary, like SPAN-REG). | `tools/ptx/softmax-launch.f` | lib/ptx/cg-collective.f:37 | 2026-06-29 |
 | CODE-BYTE+ | `ptr u8 n -- ptr u8` | Refines assembler code-buffer byte-pointer arithmetic for emitted instruction bytes and patching. | `test/run.f`, `tools/build-fixpoint-test.f`, `tools/bootstrap-codegen-test.f` | src/arch/arm64/icode.f:49 | 2026-06-29 |
-| CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:9 | 2026-06-29 |
-| CRH-A | `-- ptr ptr u8` | Crash-handler source-string pointer cell is a raw variable used while initializing the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:10 | 2026-06-29 |
-| CRH-U | `-- ptr n` | Crash-handler source-string length cell is a raw variable used while initializing the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:11 | 2026-06-29 |
-| CRH-A@ | `-- ptr u8` | Reads the crash-handler source-string pointer stored in a raw variable. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:14 | 2026-06-29 |
-| CRH-BYTE+ | `ptr u8 n -- ptr u8` | Refines crash-handler byte-pointer arithmetic while copying the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:15 | 2026-06-29 |
+| CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:8 | 2026-06-30 |
+| CRH-BYTE+ | `ptr u8 n -- ptr u8` | Refines crash-handler byte-pointer arithmetic while copying the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f:9 | 2026-06-30 |
 | linux-spawn-fail-n | `n --` | Linux child-side spawn failure reporter emits raw `write`/`exit_group` for the supplied failure-pipe fd register number. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f:251 | 2026-06-29 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f:70 | 2026-06-29 |
-| SHK-P | `-- ptr ptr u8` | Treeshaker token-left pointer cell is a raw variable used by checked token comparisons. | `test/run.f` | src/habu/treeshake.f:16 | 2026-06-29 |
-| SHK-Q | `-- ptr ptr u8` | Treeshaker token-right pointer cell is a raw variable used by checked token comparisons. | `test/run.f` | src/habu/treeshake.f:17 | 2026-06-29 |
-| KEEP-A | `-- ptr ptr u8` | Treeshaker candidate-token pointer cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f:18 | 2026-06-29 |
-| SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f:19 | 2026-06-29 |
-| SHK-C | `-- ptr n` | Treeshaker byte/delimiter scratch cell is a raw variable used by checked scanner helpers. | `test/run.f` | src/habu/treeshake.f:20 | 2026-06-29 |
-| KEEP-U | `-- ptr n` | Treeshaker candidate-token length cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f:21 | 2026-06-29 |
-| SHK-P@ | `-- ptr u8` | Reads the treeshaker left-token pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:27 | 2026-06-29 |
-| SHK-Q@ | `-- ptr u8` | Reads the treeshaker right-token pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:30 | 2026-06-29 |
-| KEEP-A@ | `-- ptr u8` | Reads the treeshaker candidate-token pointer stored in a raw variable. | `test/run.f` | src/habu/treeshake.f:33 | 2026-06-29 |
-| SHK-BYTE+ | `ptr u8 n -- ptr u8` | Refines treeshaker byte-pointer arithmetic for token scanning; the raw `+` is the typed pointer-offset boundary. | `test/run.f` | src/habu/treeshake.f:35 | 2026-06-29 |
-| SCAN-MODE | `-- ptr n` | Treeshaker reachability scan-mode cell is a raw variable used by checked source walks. | `test/run.f` | src/habu/treeshake.f:98 | 2026-06-29 |
+| SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f:15 | 2026-06-30 |
+| SHK-C | `-- ptr n` | Treeshaker byte/delimiter scratch cell is a raw variable used by checked scanner helpers. | `test/run.f` | src/habu/treeshake.f:16 | 2026-06-30 |
+| KEEP-U | `-- ptr n` | Treeshaker candidate-token length cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f:17 | 2026-06-30 |
+| SHK-BYTE+ | `ptr u8 n -- ptr u8` | Refines treeshaker byte-pointer arithmetic for token scanning; the raw `+` is the typed pointer-offset boundary. | `test/run.f` | src/habu/treeshake.f:27 | 2026-06-30 |
+| SCAN-MODE | `-- ptr n` | Treeshaker reachability scan-mode cell is a raw variable used by checked source walks. | `test/run.f` | src/habu/treeshake.f:89 | 2026-06-30 |
 | XREF-REC+ | `ptr a n -- ptr a` | Offsets an opaque dictionary-record pointer by a raw dictionary-layout displacement. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f:19 | 2026-06-29 |
 | ZBYTE@ | `ptr u8 n -- u8` | Reads one byte from argv/envp C strings through byte-offset pointer arithmetic. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f:26 | 2026-06-29 |
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f:30 | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f:34 | 2026-06-29 |
 | TMP-PATH-COPY-SRC | `ptr u8 n --` | Copies a script path suffix into the fixed target temp-path scratch using raw byte offsets. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f:128 | 2026-06-29 |
-| M-A | `-- ptr ptr u8` | Image-byte writer scratch pointer cell is raw state used for patch destinations. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:14 | 2026-06-29 |
-| M-SRC | `-- ptr ptr u8` | Image-byte writer scratch source-pointer cell is raw state used while copying byte spans. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:15 | 2026-06-29 |
-| M-A@ | `-- ptr u8` | Reads the image-byte writer patch pointer stored in a raw variable. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:33 | 2026-06-29 |
-| M-SRC@ | `-- ptr u8` | Reads the image-byte writer source pointer stored in a raw variable. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:36 | 2026-06-29 |
-| M-O@ | `-- off` | Reads the image-byte writer offset scratch cell and preserves its nominal `off` role. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:39 | 2026-06-29 |
-| M-BYTE+ | `ptr u8 n -- ptr u8` | Refines image-buffer byte-pointer arithmetic for executable image emission. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:41 | 2026-06-29 |
-| M-BYTE@ | `ptr u8 n -- n` | Reads one byte from the image buffer through the trusted byte-offset helper. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:45 | 2026-06-29 |
+| M-O@ | `-- off` | Reads the image-byte writer offset scratch cell and preserves its nominal `off` role. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:34 | 2026-06-30 |
+| M-BYTE+ | `ptr u8 n -- ptr u8` | Refines image-buffer byte-pointer arithmetic for executable image emission. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f:36 | 2026-06-30 |

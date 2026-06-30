@@ -6,13 +6,11 @@ $1002 constant M-MAP-PRIVATE-ANON
 variable MBUF-A
 variable MP
 variable MLEN
-variable M-A
-variable M-SRC
+PTR-VARIABLE M-A
+PTR-VARIABLE M-SRC
 variable M-N
 variable M-O
 s" MLEN" s" -- ptr n" TRUST
-s" M-A" s" -- ptr ptr u8" TRUST
-s" M-SRC" s" -- ptr ptr u8" TRUST
 
 : M-ALLOC-BUF ( -- n )
    0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
@@ -27,13 +25,10 @@ s" M-SRC" s" -- ptr ptr u8" TRUST
 s" MBUF" s" -- ptr u8" TRUST
 
 : MP@ ( -- ptr u8 ) MP @ ;
-s" MP@" s" -- ptr u8" TRUST
 
 : M-A@ ( -- ptr u8 ) M-A @ ;
-s" M-A@" s" -- ptr u8" TRUST
 
 : M-SRC@ ( -- ptr u8 ) M-SRC @ ;
-s" M-SRC@" s" -- ptr u8" TRUST
 
 : M-O@ ( -- off ) M-O @ ;
 s" M-O@" s" -- off" TRUST
@@ -42,7 +37,6 @@ TRUSTED: M-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : M-BYTE@ ( ptr u8 n -- n )
    M-BYTE+ c@ ;
-s" M-BYTE@" s" ptr u8 n -- n" TRUST
 
 : M-RESET ( -- )
    MBUF MP ! ;

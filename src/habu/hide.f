@@ -58,43 +58,34 @@ TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
    dup $5A > if exit then
    $20 or ;
 
-variable BFR-A
-variable BFR-B
+PTR-VARIABLE BFR-A
+PTR-VARIABLE BFR-B
 variable BFR-U
 variable BFR-V
-variable BFR-SN
+PTR-VARIABLE BFR-SN
 variable BFR-SU
 
 : BFR-BYTE@ ( ptr u8 n -- u8 )
    + c@ ;
 s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
 
-: BFR-A-FIELD ( -- ptr ptr u8 )
-   BFR-A 0 ptr-field ;
-
-: BFR-B-FIELD ( -- ptr ptr u8 )
-   BFR-B 0 ptr-field ;
-
-: BFR-SN-FIELD ( -- ptr ptr u8 )
-   BFR-SN 0 ptr-field ;
-
 : BFR-A@ ( -- ptr u8 )
-   BFR-A-FIELD @ ;
+   BFR-A @ ;
 
 : BFR-B@ ( -- ptr u8 )
-   BFR-B-FIELD @ ;
+   BFR-B @ ;
 
 : BFR-SN@ ( -- ptr u8 )
-   BFR-SN-FIELD @ ;
+   BFR-SN @ ;
 
 : BFR-A! ( ptr u8 -- )
-   BFR-A-FIELD ! ;
+   BFR-A ! ;
 
 : BFR-B! ( ptr u8 -- )
-   BFR-B-FIELD ! ;
+   BFR-B ! ;
 
 : BFR-SN! ( ptr u8 -- )
-   BFR-SN-FIELD ! ;
+   BFR-SN ! ;
 
 : BFR-STR=CI ( ptr u8 n ptr u8 n -- bool )
    BFR-V ! BFR-B! BFR-U ! BFR-A!

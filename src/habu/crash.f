@@ -3,24 +3,18 @@
 \ sig + x0..x28 + fp/lr/sp/pc as hex lines to stderr and exit(134).
 variable LCRASHH   variable LHEX   variable LHDR
 create CRH 80 allot  variable CRHL
-variable CRH-A  variable CRH-U
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER
 s" CRH" s" -- ptr u8" TRUST
-s" CRH-A" s" -- ptr ptr u8" TRUST
-s" CRH-U" s" -- ptr n" TRUST
-: CRH-A@ ( -- ptr u8 )
-   CRH-A @ ;
-s" CRH-A@" s" -- ptr u8" TRUST
 TRUSTED: CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : CRH-INIT ( -- )
-   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" CRH-U ! CRH-A !
-   0 BEGIN dup CRH-U @ < WHILE
-      dup CRH-A@ swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
+   s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a swap CRH-BYTE+ c@  over CRH swap CRH-BYTE+ c!
       1 +
    REPEAT drop
-   $A CRH CRH-U @ CRH-BYTE+ c!  CRH-U @ 1 + CRHL ! ;
+   $A CRH u CRH-BYTE+ c!  u 1 + CRHL ! ;
 CRH-INIT
 $28 constant MACOS-SA-SIGINFO
 $4 constant LINUX-SA-SIGINFO

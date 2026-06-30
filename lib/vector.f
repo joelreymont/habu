@@ -2,10 +2,13 @@
 \
 \ Load after lib/errors.f and lib/memory.f.
 
-0 constant VEC-DATA-OFF
-1 constant VEC-LEN-OFF
-2 constant VEC-CAP-OFF
-3 constant VEC-HEADER-CELLS
+BEGIN-STRUCTURE VEC-HEADER-BYTES
+   PTR-FIELD: VEC.DATA
+   CELL +FIELD VEC.LEN
+   CELL +FIELD VEC.CAP
+END-STRUCTURE
+
+VEC-HEADER-BYTES CELL / constant VEC-HEADER-CELLS
 
 2 constant VEC-GROWTH
 MEM-MAX-CELLS constant VEC-MAX-CELLS
@@ -53,7 +56,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    base off 0 ?do cell+ loop ;
 
 : VEC-DATA-FIELD ( ptr a -- ptr ptr a )
-   VEC-DATA-OFF ptr-field ;
+   VEC.DATA ;
 
 : VEC-DATA@ ( ptr a -- ptr a )
    VEC-DATA-FIELD @ ;
@@ -62,13 +65,13 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    data vec VEC-DATA-FIELD ! ;
 
 : VEC-LEN-FIELD ( ptr a -- ptr a )
-   VEC-LEN-OFF VEC-CELL-FIELD ;
+   VEC.LEN ;
 
 : VEC-LEN@ ( ptr a -- len )
    VEC-LEN-FIELD @ VEC-LEN ;
 
 : VEC-CAP-FIELD ( ptr a -- ptr a )
-   VEC-CAP-OFF VEC-CELL-FIELD ;
+   VEC.CAP ;
 
 : VEC-CAP@ ( ptr a -- count )
    VEC-CAP-FIELD @ VEC-COUNT ;

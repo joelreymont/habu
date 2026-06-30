@@ -1266,3 +1266,8 @@ lesson — keep the specific word/code/path, cut the prose.
   then failed recording `GS-SPAN`. Any fixture that mutates shared harness roots,
   argv/env, output buffers, or cleanup registries must save/restore them before
   returning to a resident runner.
+- **Pointer slots deserve typed definers:** repeated `variable FOO` plus
+  `FOO 0 ptr-field` wrappers create avoidable trust rows and noisy manifest
+  drift. Use `PTR-VARIABLE` for pointer-valued global cells and `PTR-FIELD:`
+  for pointer-valued structure fields; keep `TRUST` only for real pointer
+  refinement boundaries such as raw `mmap` results or byte-offset arithmetic.

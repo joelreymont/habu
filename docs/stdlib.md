@@ -226,11 +226,11 @@ integers before calling role-typed vector words. `VEC-CAP-COUNT` rejects zero
 because allocation and initialization require positive capacity; `VEC-COUNT`
 allows zero for requested active length.
 
-The data pointer field is checked with `ptr-field`, which constructs the typed
-`ptr ptr x` address used by normal `@` and `!`. Numeric header fields and vector
-slots use `VEC-CELL-FIELD` so indexed cell addresses remain typed as `ptr a`.
-Bounds, growth, copying, length, capacity, and iteration behavior are checked
-Forth.
+The data pointer field is checked with the structure DSL's `PTR-FIELD:`, which
+constructs the typed `ptr ptr x` address used by normal `@` and `!`. Numeric
+header fields and vector slots use `VEC-CELL-FIELD` so indexed cell addresses
+remain typed as `ptr a`. Bounds, growth, copying, length, capacity, and
+iteration behavior are checked Forth.
 
 ```forth
 VEC-COUNT           ( n -- count )

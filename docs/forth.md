@@ -213,6 +213,7 @@ size. Do not define raw offset constants by hand when this DSL fits.
 BEGIN-STRUCTURE POINT
    CELL +FIELD POINT.X
    CELL +FIELD POINT.Y
+   PTR-FIELD: POINT.NAME
    CFIELD: POINT.FLAGS
 END-STRUCTURE
 ```
@@ -221,6 +222,13 @@ END-STRUCTURE
 - `+FIELD` has defining-time effect `( ptr a n n -- ptr a n )` and creates a
   field accessor with runtime effect `( ptr a -- ptr a )`; use `@`/`!` for cell
   fields.
+- `PTR-FIELD:` has defining-time effect `( ptr a n -- ptr a n )` and creates a
+  pointer-valued cell accessor with runtime effect `( ptr a -- ptr ptr a )`; use
+  it instead of `+FIELD` when a field stores a typed pointer, then use normal
+  `@`/`!`.
+- `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
+  `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
+  for global pointer slots.
 - `CFIELD:` has defining-time effect `( ptr a n -- ptr a n )` and creates a
   field accessor with runtime effect `( ptr a -- ptr u8 )`; use `c@`/`c!` for
   byte fields. A byte field followed by cell `@` must reject under the checker.
