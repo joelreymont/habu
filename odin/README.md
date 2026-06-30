@@ -246,6 +246,28 @@ p95 `52.571 ms`, detector run p95 `29.173 ms`, and detector cycle p95 `49.538 ms
 The Zig control reported tracker rate mean `60.061 Hz` per camera, latency p95
 `53.041 ms`, detector run p95 `29.110 ms`, and detector cycle p95 `40.189 ms`.
 
+A follow-up HD1200@60 five-second stage comparison used the same dark room, the
+same four cameras, `confidence=0.50`, no color saving, no detection-row emission,
+and did not change clock or power state (`jetson_clocks --show` required root, so
+clock state was recorded as unknown). Commands wrote generated streams under
+`/tmp/odin-{habu,zig}-{full,retrieve,run}-hd1200-5s.ndjson`. The Habu and Zig
+perception analyzers rendered byte-identical CSVs for each stream after
+increasing the Habu analyzer capacity beyond one-second smoke runs.
+
+| mode | runtime | inference ticks | total rate | tracker rate mean | latency p95 | tensor p95 | run p95 | cycle p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `full` | Habu | 140 | 28.0 Hz | 59.985 Hz/cam | 55.149 ms | 26.137 ms | 30.121 ms | 52.488 ms |
+| `full` | Zig | 149 | 29.8 Hz | 60.012 Hz/cam | 55.232 ms | 15.285 ms | 28.720 ms | 41.592 ms |
+| `retrieve-only` | Habu | 298 | 59.6 Hz | 60.021 Hz/cam | 28.027 ms | 33.305 ms | 0.000 ms | 33.305 ms |
+| `retrieve-only` | Zig | 364 | 72.8 Hz | 60.012 Hz/cam | 27.947 ms | 20.024 ms | 0.000 ms | 20.024 ms |
+| `run-only` | Habu | 199 | 39.8 Hz | 60.003 Hz/cam | n/a | 0.000 ms | 30.355 ms | 30.355 ms |
+| `run-only` | Zig | 219 | 43.8 Hz | 60.010 Hz/cam | n/a | 0.000 ms | 27.481 ms | 27.481 ms |
+
+All six runs reported 0 SDK drops, 0 timestamp regressions, 0 grab errors, 0
+tensor errors, 0 run errors, and queue-depth max 0. The full-mode port is in the
+same operating band as Zig, but `retrieve-only` shows extra Habu-side loop/FFI
+overhead that remains a concrete throughput optimization target.
+
 ## Conventions (learned porting tegrastats)
 
 The Habu locals/loop discipline shapes the port (see `docs/forth.md` and the

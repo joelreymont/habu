@@ -14,8 +14,8 @@ package PERCEPTION
 private
 
 16 constant PA-CAM-MAX
-256 constant PA-SAMPLE-MAX
-64 constant PA-KEY-MAX
+8192 constant PA-SAMPLE-MAX
+8192 constant PA-KEY-MAX
 128 constant PA-TEXT-CAP
 
 -6220 constant E-PA-FULL

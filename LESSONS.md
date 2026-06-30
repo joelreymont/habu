@@ -1509,3 +1509,8 @@ lesson — keep the specific word/code/path, cut the prose.
   task path stacked multiple `{: :}` groups and high-arity record helpers. Store
   per-frame detector state in explicit scratch cells, then let JSON emitters read
   those cells instead of passing large local frames through pthread tasks.
+- **Benchmark analyzers must size for real runs, not smoke runs:** a 5 second
+  four-camera live detector comparison already emits about 1,200 tracker ticks.
+  Fixed Habu analyzer buffers sized for a one-second smoke fail before producing
+  metrics, hiding the actual port comparison. Keep the Habu perception analyzer
+  capacity aligned with 30 second `4 x 60 Hz` benchmark streams.
