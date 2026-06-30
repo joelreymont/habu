@@ -14,7 +14,34 @@
 \ after lib/errors.f and lib/string.f.
 
 \ --- VJP table: forward word -> adjoint word (linear primitives) ---
+: AD-CONTROL? ( ptr u8 n -- bool )
+   2dup s" if" STR=CI if 2drop 0 0= exit then
+   2dup s" else" STR=CI if 2drop 0 0= exit then
+   2dup s" then" STR=CI if 2drop 0 0= exit then
+   2dup s" begin" STR=CI if 2drop 0 0= exit then
+   2dup s" while" STR=CI if 2drop 0 0= exit then
+   2dup s" repeat" STR=CI if 2drop 0 0= exit then
+   2dup s" until" STR=CI if 2drop 0 0= exit then
+   2dup s" again" STR=CI if 2drop 0 0= exit then
+   2dup s" do" STR=CI if 2drop 0 0= exit then
+   2dup s" ?do" STR=CI if 2drop 0 0= exit then
+   2dup s" loop" STR=CI if 2drop 0 0= exit then
+   2dup s" +loop" STR=CI if 2drop 0 0= exit then
+   2dup s" leave" STR=CI if 2drop 0 0= exit then
+   2dup s" unloop" STR=CI if 2drop 0 0= exit then
+   2dup s" exit" STR=CI if 2drop 0 0= exit then
+   2dup s" recurse" STR=CI if 2drop 0 0= exit then
+   2dup s" case" STR=CI if 2drop 0 0= exit then
+   2dup s" of" STR=CI if 2drop 0 0= exit then
+   2dup s" endof" STR=CI if 2drop 0 0= exit then
+   2dup s" endcase" STR=CI if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-REQUIRE-STRAIGHT ( ptr u8 n -- )
+   AD-CONTROL? if E-PTX-AD-CONTROL throw then ;
+
 : VJP-ADJOINT ( ptr u8 n -- ptr u8 n )
+   2dup AD-REQUIRE-STRAIGHT
    2dup s" +."        STR= if 2drop s" DUP"       exit then
    2dup s" DUP"       STR= if 2drop s" +."        exit then
    2dup s" BLOCK-SUM" STR= if 2drop s" BROADCAST" exit then
@@ -35,6 +62,7 @@
 \ reverse-pass layer, dot habu-ad-reverse-pass) - they still route through
 \ VJP-ADJOINT and fail closed until that lands.
 : VJP-EXPAND ( ptr u8 n -- ptr u8 n )
+   2dup AD-REQUIRE-STRAIGHT
    2dup s" EXP."      STR= if 2drop s" SAVED-Y *."                       exit then
    2dup s" BLOCK-MAX" STR= if 2drop s" SAVED-X SAVED-MX BLOCK-MAX-SELECT" exit then
    \ binary nonlinear ops: 2-output adjoints, the cotangents threaded by the

@@ -1327,6 +1327,10 @@ lesson — keep the specific word/code/path, cut the prose.
   fold constants and peepholes before interning, use commutative key ordering for
   CSE, and run DCE as a root live-mark pass with static value fixtures before any
   device/lowering claim.
+- **AD straight-line boundaries need named errors:** reverse-mode source reversal
+  must reject control-flow tokens case-insensitively before VJP lookup. Letting
+  `if`/`loop` fall into a generic no-VJP path hides the real unsupported
+  capability and gives weaker repair packets.
 - **Subtree status docs need lint fences, not wording games:** `maki/STATUS.md`
   should be able to own maki counts without avoiding count-shaped prose. Keep root
   self-check counts fenced to root `STATUS.md`, and explicitly skip extracted

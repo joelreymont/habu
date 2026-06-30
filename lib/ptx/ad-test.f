@@ -27,6 +27,11 @@ s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" AD-REVERSE
 : BAD-VJP ( -- )  s" SCALE" VJP-ADJOINT 2drop ;
 ' BAD-VJP E-PTX-NOVJP TTHROWS
 
+\ control flow is a named straight-line-boundary reject, not a generic missing VJP
+: BAD-AD-CONTROL ( -- )
+   s" LOAD if STORE then" AD-REVERSE 2drop ;
+' BAD-AD-CONTROL E-PTX-AD-CONTROL TTHROWS
+
 \ save-vs-recompute: nonlinear ops save primals/outputs, linear ones save nothing
 s" EXP."      VJP-SAVES 1 T=
 s" *."        VJP-SAVES 2 T=

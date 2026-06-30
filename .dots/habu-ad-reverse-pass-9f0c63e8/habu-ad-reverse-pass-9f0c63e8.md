@@ -10,3 +10,5 @@ Decomposes ad-reverse (habu-ptx-ad-reverse-26aebee3). Steps 1-4 of autograd.md T
 - Files: new src/arch/ptx/ad.f (the pass over the typed IR from M2/the checker).
 - Verify: a straight-line softmax forward reverses; a forward with an IF is REJECTED with the named diagnostic (negative regression). 
 - Dep: BROADCAST is landed; remaining BLOCK-MAX-select primitives + the typed IR (M2).
+
+2026-06-30 local checkpoint: added a named straight-line-boundary reject in `lib/ptx/ad.f`; control-flow tokens now throw `E-PTX-AD-CONTROL` before VJP expansion with case-insensitive matching, and `lib/ptx/ad-test.f` covers lowercase `LOAD if STORE then`. Remaining parent work is deeper typed-IR/rewrite integration and cotangent/lowering proof; no zed/device validation was attempted.
