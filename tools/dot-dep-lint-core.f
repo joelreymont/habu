@@ -56,7 +56,11 @@ variable DDP-LINE
 : DDP-MD? ( ptr u8 n -- bool )
    s" .md" LINT-ENDS-WITH? ;
 
+: DDP-ARCHIVE-PATH? ( ptr u8 n -- bool )
+   s" .dots/archive/" LINT-STARTS-WITH? ;
+
 : DDP-DOT-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u DDP-ARCHIVE-PATH? IF LINT-FALSE exit THEN
    a u s" .dots/" LINT-STARTS-WITH?
    a u DDP-MD? and ;
 

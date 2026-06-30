@@ -13,7 +13,7 @@ require tools/dot-dep-lint-core.f
 
 : DDLT-DOT-PATHS ( -- )
    s" .dots/habu-example-12345678.md" DDP-DOT-PATH? TTRUE
-   s" .dots/archive/habu-example-12345678.md" DDP-DOT-PATH? TTRUE
+   s" .dots/archive/habu-example-12345678.md" DDP-DOT-PATH? TFALSE
    s" docs/habu-example-12345678.md" DDP-DOT-PATH? TFALSE
    s" .dots/config" DDP-DOT-PATH? TFALSE ;
 

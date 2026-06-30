@@ -347,6 +347,9 @@ lesson — keep the specific word/code/path, cut the prose.
   blocked on deleted/completed tasks. `tools/dot-dep-lint.f` now walks `.dots/`
   directly and fails the lint slice on any blocker that is not backed by a dot
   file.
+- **Ignored dot archive cannot satisfy active blockers:** `.dots/archive/` is not
+  tracked, so a clean host may not have the same archived files. Dot dependency
+  lint must ignore archive entries and active dots must drop completed blockers.
 - **New PTX trusted primitives need rows before merge:** local `master` had
   `RELU`/`RELU-V4` TRUSTED sites without `TRUSTED.md` rows; the full native lint
   slice caught it. Add the row and a checked kernel fixture in the same change.
