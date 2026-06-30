@@ -31,49 +31,139 @@ variable AD-OUT                         \ output node id
 create AD-VS   AD-MAXN cells allot      \ symbolic value stack (node ids)
 variable AD-VSP
 
-: AD-VPUSH ( n -- )  AD-VS AD-VSP @ cells + !  AD-VSP @ 1+ AD-VSP ! ;
-: AD-VPOP  ( -- n )  AD-VSP @ 1- AD-VSP !  AD-VS AD-VSP @ cells + @ ;
-: AD-VTOP  ( -- n )  AD-VS AD-VSP @ 1- cells + @ ;
+: AD-SLOT-CHECK ( n -- )
+   dup 0 < if E-PTX-AD-UNKNOWN throw then
+   dup AD-MAXN >= if E-PTX-AD-OVERFLOW throw then
+   drop ;
 
-: AD-OP@  ( n -- n )  cells AD-OP + @ ;
-: AD-A@   ( n -- n )  cells AD-A + @ ;
-: AD-B@   ( n -- n )  cells AD-B + @ ;
-: AD-REG@ ( n -- n )  cells AD-REG + @ ;
-: AD-REG! ( n n -- )  cells AD-REG + ! ;
-: AD-CT@  ( n -- n )  cells AD-CT + @ ;
-: AD-CT!  ( n n -- )  cells AD-CT + ! ;
+: AD-ID-CHECK ( n -- )
+   dup AD-SLOT-CHECK
+   dup AD-N @ >= if E-PTX-AD-UNKNOWN throw then
+   drop ;
+
+: AD-REF-CHECK ( n -- )
+   dup -1 = if drop exit then
+   AD-ID-CHECK ;
+
+: AD-SLOT-CELL ( ptr a n -- ptr a ) {: base:ptr idx:n :}
+   idx AD-SLOT-CHECK
+   base idx cells + ;
+
+: AD-ID-CELL ( ptr a n -- ptr a ) {: base:ptr id:n :}
+   id AD-ID-CHECK
+   base id cells + ;
+
+: AD-VROOM ( -- )
+   AD-VSP @ AD-MAXN >= if E-PTX-AD-OVERFLOW throw then ;
+
+: AD-VNEED ( -- )
+   AD-VSP @ 0 <= if E-PTX-AD-UNDERFLOW throw then ;
+
+: AD-VONE ( -- )
+   AD-VSP @ 1 <> if E-PTX-AD-OUTPUT throw then ;
+
+: AD-VPUSH ( n -- ) {: id:n :}
+   id AD-ID-CHECK
+   AD-VROOM
+   id AD-VS AD-VSP @ AD-SLOT-CELL !
+   AD-VSP @ 1+ AD-VSP ! ;
+
+: AD-VPOP  ( -- n )
+   AD-VNEED
+   AD-VSP @ 1- {: idx:n :}
+   idx AD-VSP !
+   AD-VS idx AD-SLOT-CELL @ ;
+
+: AD-VTOP  ( -- n )
+   AD-VNEED
+   AD-VSP @ 1- {: idx:n :}
+   AD-VS idx AD-SLOT-CELL @ ;
+
+: AD-OP@  ( n -- n )  AD-OP swap AD-ID-CELL @ ;
+: AD-A@   ( n -- n )  AD-A swap AD-ID-CELL @ ;
+: AD-B@   ( n -- n )  AD-B swap AD-ID-CELL @ ;
+: AD-REG@ ( n -- n )  AD-REG swap AD-ID-CELL @ ;
+: AD-REG! ( n n -- )  {: reg:n id:n :} reg AD-REG id AD-ID-CELL ! ;
+: AD-CT@  ( n -- n )  AD-CT swap AD-ID-CELL @ ;
+: AD-CT!  ( n n -- )  {: ct:n id:n :} ct AD-CT id AD-ID-CELL ! ;
+
+: AD-NODE-OP? ( n -- bool )
+   case
+      OP-LEAF of 0 0= endof
+      OP-BMAX of 0 0= endof
+      OP-BSUB of 0 0= endof
+      OP-EXP  of 0 0= endof
+      OP-BSUM of 0 0= endof
+      OP-BDIV of 0 0= endof
+      0 0= 0= swap
+   endcase ;
+
+: AD-NODE-OP-CHECK ( n -- )
+   dup AD-NODE-OP? 0= if E-PTX-AD-UNKNOWN throw then
+   drop ;
+
+: AD-NROOM ( -- )
+   AD-N @ AD-MAXN >= if E-PTX-AD-OVERFLOW throw then ;
 
 \ create a node (op a b), return its id
-: AD-NODE ( n n n -- n ) {: op a b :}
-   AD-N @ {: id :}
-   op id cells AD-OP + !  a id cells AD-A + !  b id cells AD-B + !
-   -1 id cells AD-CT + !
+: AD-NODE ( n n n -- n ) {: op:n a:n b:n :}
+   op AD-NODE-OP-CHECK
+   a AD-REF-CHECK
+   b AD-REF-CHECK
+   AD-NROOM
+   AD-N @ {: id:n :}
+   op AD-OP id AD-SLOT-CELL !
+   a AD-A id AD-SLOT-CELL !
+   b AD-B id AD-SLOT-CELL !
+   -1 AD-CT id AD-SLOT-CELL !
    id 1+ AD-N !  id ;
 
 \ --- DAG builder: symbolic-execute a forward op-code list (node 0 = input) ---
+: AD-DO-DUP ( -- )
+   AD-VTOP AD-VPUSH ;
+
+: AD-DO-UNARY ( n -- ) {: op:n :}
+   op AD-VPOP -1 AD-NODE AD-VPUSH ;
+
+: AD-DO-BINARY ( n -- ) {: op:n :}
+   AD-VPOP {: b:n :}
+   AD-VPOP {: a:n :}
+   op a b AD-NODE AD-VPUSH ;
+
 : AD-DO-OP ( n -- )
-   dup OP-DUP  = if drop  AD-VTOP AD-VPUSH                              exit then
-   dup OP-BMAX = if drop  OP-BMAX AD-VPOP -1 AD-NODE AD-VPUSH           exit then
-   dup OP-EXP  = if drop  OP-EXP  AD-VPOP -1 AD-NODE AD-VPUSH           exit then
-   dup OP-BSUM = if drop  OP-BSUM AD-VPOP -1 AD-NODE AD-VPUSH           exit then
-   dup OP-BSUB = if drop  OP-BSUB AD-VPOP AD-VPOP swap AD-NODE AD-VPUSH exit then
-   dup OP-BDIV = if drop  OP-BDIV AD-VPOP AD-VPOP swap AD-NODE AD-VPUSH exit then
+   case
+      OP-DUP  of AD-DO-DUP endof
+      OP-BMAX of OP-BMAX AD-DO-UNARY endof
+      OP-EXP  of OP-EXP  AD-DO-UNARY endof
+      OP-BSUM of OP-BSUM AD-DO-UNARY endof
+      OP-BSUB of OP-BSUB AD-DO-BINARY endof
+      OP-BDIV of OP-BDIV AD-DO-BINARY endof
+      drop E-PTX-AD-UNKNOWN throw
+   endcase ;
+
+: AD-LEN-CHECK ( n -- )
+   dup 0 < if E-PTX-AD-UNKNOWN throw then
    drop ;
 
-: AD-BUILD ( ptr a n -- ) {: ops len :}
+: AD-BUILD ( ptr a n -- ) {: ops:ptr len:n :}
+   len AD-LEN-CHECK
    0 AD-N !  0 AD-VSP !
    OP-LEAF -1 -1 AD-NODE AD-VPUSH              \ node 0 = the input tile
    len 0 ?do  ops i cells + @ AD-DO-OP  loop
+   AD-VONE
    AD-VPOP AD-OUT ! ;
 
 \ --- forward recompute emit: fill AD-REG for every node (node 0 reg given) ---
 : AD-EMIT-NODE ( n -- ) {: id :}
-   id AD-OP@ {: op :}
-   op OP-BMAX = if  id AD-A@ AD-REG@ EMIT-BLOCK-MAX        id AD-REG! exit then
-   op OP-EXP  = if  id AD-A@ AD-REG@ EMIT-EXP              id AD-REG! exit then
-   op OP-BSUM = if  id AD-A@ AD-REG@ EMIT-BLOCK-SUM        id AD-REG! exit then
-   op OP-BSUB = if  id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B-   id AD-REG! exit then
-   op OP-BDIV = if  id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B/   id AD-REG! exit then ;
+   id AD-OP@
+   case
+      OP-BMAX of id AD-A@ AD-REG@ EMIT-BLOCK-MAX              id AD-REG! endof
+      OP-EXP  of id AD-A@ AD-REG@ EMIT-EXP                    id AD-REG! endof
+      OP-BSUM of id AD-A@ AD-REG@ EMIT-BLOCK-SUM              id AD-REG! endof
+      OP-BSUB of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B-    id AD-REG! endof
+      OP-BDIV of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B/    id AD-REG! endof
+      drop E-PTX-AD-UNKNOWN throw
+   endcase ;
 
 : AD-EMIT-FWD ( n -- )                      \ node 0 reg = xreg; recompute the rest
    0 AD-REG!
@@ -105,15 +195,18 @@ variable AD-VSP
    id AD-B@ swap AD-ACC ;
 
 : AD-VJP ( n -- ) {: id :}
-   id AD-OP@ {: op :}
-   op OP-BMAX = if  id AD-VJP-BMAX exit then
-   op OP-BSUB = if  id AD-VJP-BSUB exit then
-   op OP-EXP  = if  id AD-VJP-EXP  exit then
-   op OP-BSUM = if  id AD-VJP-BSUM exit then
-   op OP-BDIV = if  id AD-VJP-BDIV exit then ;
+   id AD-OP@
+   case
+      OP-BMAX of id AD-VJP-BMAX endof
+      OP-BSUB of id AD-VJP-BSUB endof
+      OP-EXP  of id AD-VJP-EXP  endof
+      OP-BSUM of id AD-VJP-BSUM endof
+      OP-BDIV of id AD-VJP-BDIV endof
+      drop E-PTX-AD-UNKNOWN throw
+   endcase ;
 
 \ reverse pass: seed dy on the output, propagate to node 0 -> dx
-: AD-EMIT-REV ( n -- n )
+: AD-DAG-EMIT-REV ( n -- n )
    AD-OUT @ AD-CT!                             \ seed the output cotangent
    AD-N @ 1 ?do  AD-N @ i -  AD-VJP  loop      \ nodes high..1 (leaf 0 has no VJP)
    0 AD-CT@ ;                                  \ dx = input node's accumulated cotangent
@@ -122,4 +215,4 @@ variable AD-VSP
 : AD-EMIT-BWD ( ptr a n n n -- n ) {: ops len xreg dyreg :}
    ops len AD-BUILD
    xreg AD-EMIT-FWD
-   dyreg AD-EMIT-REV ;
+   dyreg AD-DAG-EMIT-REV ;

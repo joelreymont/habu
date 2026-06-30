@@ -79,6 +79,10 @@ points stay listed.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
   (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
 - `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.
+- `lib/ptx/ad-dag.f` — checked reverse-mode symbolic DAG builder for PTX row
+  kernels.
+- `lib/ptx/ad-dag-test.f` — checked validation tests for PTX AD DAG overflow,
+  underflow, unknown opcode, and non-singleton output rejection.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
   `tools/jitdump.f` and `tools/imagedisasm.f`.
 - `tools/jitdump.f` — disassemble a compiled word from a source snippet; see

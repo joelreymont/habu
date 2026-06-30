@@ -39,6 +39,10 @@ lesson — keep the specific word/code/path, cut the prose.
   both `C-QUALIFY-DEF` and the certified checker signature recorder. Explicit
   `TRUST` remains the audited override/refinement path; normal definitions must
   not silently replace earlier package public/private rows.
+- **Parallel implementations need namespaced public words:** `lib/ptx/ad.f` and
+  `lib/ptx/ad-dag.f` both used `AD-EMIT-REV`; duplicate-definition rejection
+  correctly stopped the combined PTX suite. Keep experimental and replacement
+  implementations behind distinct public names or packages until one retires.
 - **Local-first compiler dispatch still owns checker capture:** moving local
   references ahead of keyword dispatch means `C-LOCAL-REF` must call `LBCAP`
   after `LLOC-FIND`; otherwise runtime emits the local but the hook checks a
