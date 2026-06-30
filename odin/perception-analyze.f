@@ -503,6 +503,9 @@ private
 : PA-CAM-RATE ( n ptr a ptr a -- ) {: ix:n vals:ptr flags:ptr :}
    ix flags PA@ vals ix cells + PA-OPT-F ;
 
+: PA-CAM-UOPT ( n ptr a ptr a -- ) {: ix:n counts:ptr vals:ptr :}
+   ix counts PA@ 0 <> if ix vals PA@ RB# then ;
+
 public
 
 : PA-CAMERA-METRICS-CSV ( -- ptr u8 n )
@@ -513,13 +516,13 @@ public
       {: ix:n :}
       ix PA-CAM$ RB+ CM ix PA-LNA$ RB+ CM
       ix PA-CDET PA@ RB# CM ix PA-CDET-UNIQ PA@ RB# CM
-      ix PA-CDET-FIRST PA@ RB# CM ix PA-CDET-LAST PA@ RB# CM
+      ix PA-CDET PA-CDET-FIRST PA-CAM-UOPT CM ix PA-CDET PA-CDET-LAST PA-CAM-UOPT CM
       ix PA-CDET-RATE PA-CDET-RATEP PA-CAM-RATE CM
       ix PA-CINF PA@ RB# CM ix PA-CINF-UNIQ PA@ RB# CM
-      ix PA-CINF-FIRST PA@ RB# CM ix PA-CINF-LAST PA@ RB# CM
+      ix PA-CINF PA-CINF-FIRST PA-CAM-UOPT CM ix PA-CINF PA-CINF-LAST PA-CAM-UOPT CM
       ix PA-CINF-RATE PA-CINF-RATEP PA-CAM-RATE CM
       ix PA-CTRK PA@ RB# CM ix PA-CTRK-UNIQ PA@ RB# CM
-      ix PA-CTRK-FIRST PA@ RB# CM ix PA-CTRK-LAST PA@ RB# CM
+      ix PA-CTRK PA-CTRK-FIRST PA-CAM-UOPT CM ix PA-CTRK PA-CTRK-LAST PA-CAM-UOPT CM
       ix PA-CTRK-RATE PA-CTRK-RATEP PA-CAM-RATE RB-NL
    repeat
    drop

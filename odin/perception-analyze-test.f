@@ -169,6 +169,11 @@ variable PAT-IN-U
    s" a0" s" 11" s" 1016666667" s" 24.0" s" 2" s" 0.93" DET-LINE
    s" a1" s" 11" s" 1016666667" s" 41.0" s" 2" s" 0.92" DET-LINE ;
 
+: BUILD-DETECTION-ONLY ( -- )
+   ND-RESET
+   s" a0" s" 10" s" 1000000000" s" 12.0" s" 0" s" 0.95" DET-LINE
+   s" a0" s" 11" s" 1016666667" s" 24.0" s" 2" s" 0.93" DET-LINE ;
+
 : EX+ ( ptr u8 n -- ) {: a:ptr u:n :}
    EXP-N @ u + EXP-CAP > if E-PA-FULL throw then
    a EXP EXP-N @ + u BYTE-COPY
@@ -246,6 +251,12 @@ variable PAT-IN-U
    s" 309091258,cam_a1,2,2,1000000000,1016666667,60.000,2,2,1000000000,1016666667,60.000,2,2,2000000000,2016666667,60.000" EX-L
    EXP$ ;
 
+: EXPECT-DETECTION-ONLY-CAMERAS ( -- ptr u8 n )
+   0 EXP-N !
+   s" camera_serial,logical_name,detections,unique_sdk_frames,first_sdk_image_timestamp_ns,last_sdk_image_timestamp_ns,detector_output_rate_hz,inference_ticks,unique_inference_sdk_frames,first_inference_sdk_image_timestamp_ns,last_inference_sdk_image_timestamp_ns,inference_rate_hz,tracker_ticks,unique_tracker_sdk_frames,first_tracker_timestamp_ns,last_tracker_timestamp_ns,tracker_rate_hz" EX-L
+   s" 306885122,cam_a0,2,2,1000000000,1016666667,60.000,0,0,,,,0,0,,," EX-L
+   EXP$ ;
+
 : PA-ANALYZE-TEST ( -- )
    T-RESET
    PAT-PREPARE
@@ -255,6 +266,10 @@ variable PAT-IN-U
    50.0 80.0 4 50.0 PA-SET-READINESS
    PL-RENDER EXPECT-METRICS T$=
    PA-CAMERA-METRICS-CSV EXPECT-CAMERAS T$=
+   BUILD-DETECTION-ONLY
+   PAT-IN$ ND$ WRITE-ALL
+   PAT-IN$ PA-ANALYZE-FILE
+   PA-CAMERA-METRICS-CSV EXPECT-DETECTION-ONLY-CAMERAS T$=
    CLEANUP-RUN
    PAT-ROOT$ EXISTS? TFALSE
    T-REPORT ;
