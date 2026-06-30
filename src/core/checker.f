@@ -2417,7 +2417,9 @@ variable FLD  variable FLI  variable FLO  variable FLC
 \ its binding. Groups accumulate (a later group binds only its own names).
 : CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
 create LOCNB 1024 allot   create LOCLN 64 cells allot   create LOCTV 64 cells allot
+create LOCSHOW 64 cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+variable LOCSHOWXT  0 LOCSHOWXT !
 variable #CFC
 variable QDEPTH
 
@@ -2431,15 +2433,49 @@ variable LCO
 
 \ a typed local `a:n` stores the BARE name (matching the engine) and unifies
 \ the local's type var with the asserted type — a wrong use then rejects.
+: LOC-SHOW-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 = if a c@ 63 = exit then
+   0 ;
+
+: LOC-SUFFIX$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a LCO @ + 1 +  u LCO @ - 1 - ;
+
+: LOC-SHOW-OFF! ( n -- ) {: idx:n :}
+   0 idx cells LOCSHOW + ! ;
+
+: LOC-SHOW-ON! ( n -- ) {: idx:n :}
+   -1 idx cells LOCSHOW + ! ;
+
+: LOC-ANN ( ptr u8 n n -- ) {: a:ptr u:n idx:n :}
+   a u LOC-SUFFIX$ LOC-SHOW-SUFFIX? if
+      idx LOC-SHOW-ON!
+      exit
+   then
+   a u LOC-SUFFIX$ LOCAL-TYPE
+   idx cells LOCTV + @ UNIFY OK @ and OK ! ;
+
+: LOC-SHOW-ONE ( n -- ) {: idx:n :}
+   LOCSHOWXT @ 0= if exit then
+   idx cells LOCSHOW + @ 0= if exit then
+   LOCNB idx 16 * +  idx cells LOCLN + @  idx cells LOCTV + @
+   LOCSHOWXT @ execute ;
+
+: LOC-SHOW-GROUP ( -- )
+   OK @ 0= if exit then
+   LGRP @ begin dup #LOC @ < while
+      dup LOC-SHOW-ONE
+      1 +
+   repeat drop ;
+
 : LOC-ADD {: a u :}
    a u LCOLON
    #LOC @ 63 >  LCO @ 16 >  or IF -1 UNCK ! ELSE
+     #LOC @ LOC-SHOW-OFF!
      a  LOCNB #LOC @ 16 * +  LCO @ CCOPY
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      LCO @ u < IF
-      a LCO @ + 1 +  u LCO @ - 1 -  LOCAL-TYPE
-      #LOC @ cells LOCTV + @  UNIFY OK @ and OK !
+      a u #LOC @ LOC-ANN
      THEN
      #LOC @ 1 + #LOC ! THEN ;
 
@@ -2448,7 +2484,8 @@ variable LCO
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
-   LCH @  LROW @ MK-ROW  CHECKER-STEP ;
+   LCH @  LROW @ MK-ROW  CHECKER-STEP
+   LOC-SHOW-GROUP ;
 
 : LOC-TOK {: a u :}
    a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE

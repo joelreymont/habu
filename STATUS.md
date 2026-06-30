@@ -1,8 +1,8 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 23.623s internal / 25.73s shell-wall hot-cache gate time and
-39.813s internal / 41.93s shell-wall persistent cache-fill time on 2026-06-30 on
+Gate: passing; 23.615s internal / 25.73s shell-wall hot-cache gate time and
+42.494s internal / 44.66s shell-wall persistent cache-fill time on 2026-06-30 on
 macOS/aarch64 with the auto-selected `macos-arm64-8x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
 hits, and AOT maker cache hits. The native gate uses an 8-way macOS checked DAG pool,
@@ -20,7 +20,7 @@ budget; explicit `--cold-cache` still uses a private per-run cache root. Host
 timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
-Certified: 979  Uncheckable: 0  Rejected: 0
+Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
 This is the single source of truth for the self-check counts. Other docs
@@ -48,8 +48,9 @@ stdin/TTY engine, not warm snapshots; the gate rejects an oversized
 by the gate when needed.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
-890/0/0 after that model landed, and 979/0/0 after the native primitive,
-combinator, parsing-word, and stage2 utility signature gap closures. The 9 formerly-uncheckable words
+890/0/0 after that model landed, 979/0/0 after the native primitive,
+combinator, parsing-word, and stage2 utility signature gap closures, and 987/0/0
+after show-inferred local diagnostics. The 9 formerly-uncheckable words
 (`ENV=?`, `GETENV`, `TMP-PATH`, `SHK-TOK=`, `KEEP?`, `FPRIM`, `FPRIM-L`,
 `EM-INTERPRET`, `EM-COMPILE`) all hinged on early `exit`; teaching the checker a
 sound `exit`/`unloop` model certified them and their callers. See `LESSONS.md`

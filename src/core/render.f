@@ -207,6 +207,7 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
       63 EMIT1
    endcase ;
 create RBUF 64 cells allot   variable RBN
+variable RSHOW-DST
 
 : REND-COLLECT {: s :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
@@ -217,6 +218,18 @@ create RBUF 64 cells allot   variable RBN
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
 : RENDER  SEEN-RESET RATOM-RESET 0 NLET !  DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
+
+: SHOW-LOCAL-TYPE ( ptr u8 n n -- ) {: name:ptr nameu:n t:n :}
+   RDST @ RSHOW-DST !
+   0 RDST !
+   s" inferred " RSTR
+   name nameu RSTR
+   s" : " RSTR
+   SEEN-RESET RATOM-RESET 0 NLET !
+   t REND-TYPE
+   10 EMIT1
+   RSHOW-DST @ RDST ! ;
+' SHOW-LOCAL-TYPE LOCSHOWXT !
 
 \ REND-SIG ( -- a u ) : render the just-checked word's effect "in -- out" —
 \ inputs from the base row's instantiation (BROW), outputs from DCUR.

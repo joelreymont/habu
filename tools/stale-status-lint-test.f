@@ -68,7 +68,7 @@ create SST-ERR SST-CAP allot
    s" # Status" SB-APPEND SST-LF
    SST-LF
    s" Last verified: " SB-APPEND date dateu SB-APPEND SST-LF
-   s" Certified: 979  Uncheckable: 0  Rejected: 0" SB-APPEND SST-LF
+   s" Certified: 987  Uncheckable: 0  Rejected: 0" SB-APPEND SST-LF
    SB$ ;
 
 : SST-LESSONS$ ( -- ptr u8 n )

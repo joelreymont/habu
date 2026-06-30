@@ -364,7 +364,19 @@ variable GDX-TRUST-MAN-U
    GE-HB-RESET  GE-SRC-RESET
    s" : OKL ( n -- n ) {: a:n :} a ;" GE-SRC-LINE
    s" 5 OKL ." GE-SRC-LINE
-   s" B2 word-top local still compiles" GE-HB-RUN-STDIN ;
+   s" B2 word-top local still compiles" GE-HB-RUN-STDIN
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" GDX-SHOW ( i64 -- i64 ) {: x:? :} x" GE-SRC-CHECK-LINE
+   s" show-inferred local prints type" GE-HB-RUN-STDIN
+   s" inferred x: i64" s" show-inferred type output" GE-EXPECT-OUT-HAS
+   s" -1" s" show-inferred verdict output" GE-EXPECT-OUT-HAS
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" GDX-SHOW-BAD ( i64 -- ) {: x:? :} x x" GE-SRC-CHECK-LINE
+   s" show-inferred downstream mismatch rejects" GE-HB-RUN-STDIN
+   s" inferred x: i64" s" show-inferred bad type output" GE-EXPECT-OUT-HAS
+   s" 0" s" show-inferred bad verdict output" GE-EXPECT-OUT-HAS ;
 
 : GDX-LOAD-FAIL-CLOSED ( -- )
    GE-HB-RESET

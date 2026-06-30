@@ -112,6 +112,10 @@ lesson — keep the specific word/code/path, cut the prose.
   cannot publish effects until `trust` exists. Load definitions early, publish
   their checker rows from `src/core/structures-effects.f`, and make `DOES>`
   effect publication skip only when no checker hook is installed.
+- **Checker-to-render features need hooks, not load-order shortcuts:** `checker.f`
+  loads before `render.f`, so `{: x:? :}` records show-inferred locals in checker
+  state and calls `LOCSHOWXT`; `render.f` installs the printer after its type
+  renderer exists.
 
 ## Tool & Infra
 

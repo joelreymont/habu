@@ -148,9 +148,9 @@ extent must be *named* there, never guessed.
    checker catches the bug" is the whole pitch, a misplaced error undermines it.
    Two mitigations: (a) annotations double as error *anchors* — adding one back at
    a suspect point turns a global unification failure into a local "expected `X`,
-   got `Y`"; (b) a **`:type` form** — proposed `{: x:? :}` — binds `x` and prints
-   the inferred type (including its tokens), so a human or an LLM can ask "what did
-   you infer here?" mid-kernel without committing to an annotation.
+   got `Y`"; (b) the **show-inferred form** `{: x:? :}` binds `x` and prints
+   `inferred x: <type>` with the inferred type and tokens, so a human or an LLM can
+   ask "what did you infer here?" mid-kernel without committing to an annotation.
 
 ## Division of labor with an LLM author
 
@@ -170,7 +170,9 @@ it, because the strictness is what makes the model's output trustworthy.
   The checker's row-polymorphic stack-effect machinery already binds locals; the
   change this doc specifies is **dropping the required annotation on intermediates**
   and confining annotation to the signature + trusted constructors.
-- The `{: x:? :}` show-inferred form is a **proposal**, not implemented.
+- The `{: x:? :}` show-inferred form is implemented by the native checker. It is a
+  diagnostic request only: it does not add a type assertion and downstream misuse
+  still rejects normally.
 - Inference does not weaken any guarantee: every contract in
   [`ptx-sketch.md`](ptx-sketch.md) (typed spaces, extent-relative bounds, mask /
   uniformity discipline) is still checked — it is just no longer *spelled* at every
