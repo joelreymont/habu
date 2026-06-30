@@ -1018,43 +1018,19 @@ $7FFFFFFFFFFFFFFF constant USIGS-MAX-CAP
 $1002 constant USIGS-MAP-ANON
 -1 constant USIGS-ANON-FD
 0 constant USIGS-OFF-ZERO
-create USIGS-BOOT USIGS-INIT-CAP allot
 variable USIGS-P   variable USIGS-CAP-U   variable UEND
 variable USIGS-USER-OFF
 variable USIGS-GROW-CAP   variable USIGS-GROW-NEXT
 variable CHK-CAND
+PTR-VARIABLE USIGS-SNAP-P
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
-USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 0 USIGS-USER-OFF !
 0 CHK-CAND !
 
 : USIGS-COPY {: src:ptr dst:ptr n :}
    n 0 > IF n 0 DO src i + c@ dst i + c! LOOP THEN ;
-
-: USIGS-RESET ( -- )
-   USIGS-BOOT USIGS-P !
-   USIGS-INIT-CAP USIGS-CAP-U !
-   0 UEND !
-   0 USIGS-USER-OFF !
-   0 USIGS !
-   0 USIGS-GROW-CAP !
-   0 USIGS-GROW-NEXT ! ;
-
-: USIGS-BOOT? ( -- bool )
-   USIGS USIGS-BOOT = ;
-
-: USIGS-SNAPSHOT-CAP ( -- )
-   UEND @ cell+ USIGS-INIT-CAP > IF s" checker: user sigs snapshot too large" 76 die THEN ;
-
-: USIGS-SNAPSHOT-PERSIST ( -- )
-   USIGS-SNAPSHOT-CAP
-   USIGS-BOOT? 0= IF USIGS USIGS-BOOT UEND @ cell+ USIGS-COPY THEN
-   USIGS-BOOT USIGS-P !
-   USIGS-INIT-CAP USIGS-CAP-U !
-   0 USIGS-GROW-CAP !
-   0 USIGS-GROW-NEXT ! ;
 
 : USIGS-ROUND-CAP {: need :}
    need 0 <= IF s" checker: bad user sig cap" 76 die THEN
@@ -1064,6 +1040,40 @@ USIGS-BOOT USIGS-P !   USIGS-INIT-CAP USIGS-CAP-U !   0 UEND !   0 USIGS !
 : USIGS-ALLOC {: cap :}
    0 cap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
    dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
+
+: USIGS-RUNTIME-INIT ( -- )
+   USIGS-INIT-CAP USIGS-ALLOC USIGS-P !
+   USIGS-INIT-CAP USIGS-CAP-U !
+   0 UEND !
+   0 USIGS !
+   0 USIGS-GROW-CAP !
+   0 USIGS-GROW-NEXT ! ;
+
+USIGS-RUNTIME-INIT
+
+: USIGS-RESET ( -- )
+   USIGS-RUNTIME-INIT
+   0 USIGS-USER-OFF ! ;
+
+: USIGS-SNAP@ ( -- ptr u8 )
+   USIGS-SNAP-P @ ;
+
+: USIGS-SNAPSHOT-SIZE ( -- n )
+   UEND @ cell+ ;
+
+: USIGS-SNAPSHOT-ALLOC ( n -- ptr u8 ) {: n:n :}
+   here USIGS-SNAP-P !
+   n allot
+   USIGS-SNAP@ ;
+
+: USIGS-SNAPSHOT-PERSIST ( -- )
+   USIGS-SNAPSHOT-SIZE {: n:n :}
+   n USIGS-SNAPSHOT-ALLOC {: dst:ptr :}
+   USIGS dst n USIGS-COPY
+   dst USIGS-P !
+   n USIGS-CAP-U !
+   0 USIGS-GROW-CAP !
+   0 USIGS-GROW-NEXT ! ;
 
 : USIGS-GROW {: need :}
    need USIGS-ROUND-CAP USIGS-GROW-CAP !

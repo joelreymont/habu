@@ -107,6 +107,8 @@ variable FM-NUM-L
    s" src/habu/aot.f" FM-REQ
    s" src/habu/build.f" FM-REQ
    s" src/habu/maker.f" FM-REQ
+   s" src/habu/snap-lib.f" FM-REQ
+   s" src/habu/snap.f" FM-REQ
    s" src/habu/debug-watch.f" FM-REQ
    s" src/habu/stepper.f" FM-REQ
    s" src/habu/debug.f" FM-REQ

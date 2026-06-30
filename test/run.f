@@ -704,7 +704,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
    src/habu/xref.f src/habu/driver-io.f src/core/include.f
-   src/habu/stage2.f src/habu/stdin.f src/habu/snap.f src/habu/repl.f
+   src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
 ;TR-FILES
 
@@ -804,6 +804,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 : TR-SNAPSHOT-BUILDER-KEY ( -- )
    s" src/os/image-bytes.f" TR-KEY-FILE+
    TR-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap-lib.f" TR-KEY-FILE+
    s" src/habu/snap.f" TR-KEY-FILE+ ;
 
 : TR-RUNNER-KEY! ( -- )

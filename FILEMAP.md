@@ -59,7 +59,8 @@ points stay listed.
 - `src/habu/aot.f` — stripped AOT linker driver.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
 - `src/habu/maker.f` — generic maker-image build driver for `hb-build`.
-- `src/habu/snap.f` — checked image writer for warm snapshot cache images.
+- `src/habu/snap-lib.f` — checked snapshot writer definitions.
+- `src/habu/snap.f` — snapshot writer entry point.
 - `src/habu/stdin.f` — internal stdin/interactive engine builder.
 
 ## Debugging And Inspection

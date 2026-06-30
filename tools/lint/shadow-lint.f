@@ -95,7 +95,8 @@ variable BAD  variable LI
    s" src/os/linux/elf.f"   LINT-FILE   s" src/os/linux/sign.f"  LINT-FILE
    s" src/habu/habu1.f"     LINT-FILE   s" src/habu/prof.f"      LINT-FILE
    s" src/habu/regalloc.f"  LINT-FILE   s" src/habu/jit.f"       LINT-FILE
-   s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap.f"      LINT-FILE
+   s" src/habu/habu2.f"     LINT-FILE   s" src/habu/snap-lib.f"  LINT-FILE
+   s" src/habu/snap.f"      LINT-FILE
    BAD @ 0 > IF  s" shadow-lint: " type BAD @ . s"  collision(s)" type cr  1 die
    ELSE  s" shadow-lint: clean (" type PN# @ . s"  prims checked)" type cr  THEN ;
 SHADOW-LINT

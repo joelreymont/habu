@@ -421,6 +421,7 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
 : GE-SNAPSHOT-BUILDER-KEY ( -- )
    s" src/os/image-bytes.f" GE-WARM-KEY-FILE+
    GE-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap-lib.f" GE-WARM-KEY-FILE+
    s" src/habu/snap.f" GE-WARM-KEY-FILE+ ;
 
 : GE-WARM-KEY! ( -- )

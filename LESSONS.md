@@ -218,6 +218,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `hb-build-mk` cannot be fixed filenames. Hash the build library, loaded
   helper libs, build-fixpoint source, target source, common engine source, and
   selected AOT/REPL driver, then put the mode in the key.
+- **Warm snapshots must serialize used state, not reserved arenas:** hiding
+  dictionary names without rewinding `cp` leaves dead code in snapshots, and
+  static checker arenas (`create ... allot`) bake reserved capacity into every
+  image. Warm images now compact tail code and heap-allocate checker signatures,
+  copying only used signature bytes into the snapshot payload.
 - **Content keys cannot nest the global SHA context:** `SHA256-FILE` resets the
   global SHA state, so using it while an outer cache key is active collapses the
   key. Build a tagged manifest of version strings, file names, and per-file

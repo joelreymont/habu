@@ -18,6 +18,7 @@ require tools/warm-image-lib.f
 
 65536 constant WIT-CAP
 120000 constant WIT-TIMEOUT-MS
+$800000 constant WIT-MAX-SMALL-SNAPSHOT
 
 variable WIT-ROOT-U
 variable WIT-WARM-U
@@ -249,6 +250,9 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-TRUST WI-SRC-BUF WI-SRC-CAP READ-ALL {: u :}
    WI-SRC-BUF u s" WIT-FOLD" CONTAINS? TTRUE ;
 
+: WIT-TEST-COMPACT-SIZE ( -- )
+   WIT-WARM FILE-SIZE WIT-MAX-SMALL-SNAPSHOT < TTRUE ;
+
 : WIT-TEST-RUN ( -- )
    WIT-RUN-WARM-GOOD {: outu erru rc :}
    rc 0 <> if s" warm run rc: " type rc . cr WIT-RUN-OUT outu type WIT-RUN-ERR erru type then
@@ -293,9 +297,13 @@ create WIT-RUN-ERR WIT-CAP allot
 
 : WIT-TEST-SNAPSHOT-TAIL ( -- )
    s" HIDE-DEFS-FROM" WIT-LIB-MUST-HAVE
+   s" FORGET-DEFS-FROM" WIT-LIB-MUST-HAVE
    s" WI-HIDE-MARKER" WIT-LIB-MUST-HAVE
+   s" WI-SNAP-MARKER" WIT-LIB-MUST-HAVE
+   s" WI-SNAP-RUN" WIT-LIB-MUST-HAVE
    s" SNAP-OUT" WIT-LIB-MUST-NOT-HAVE
-   s" src/habu/snap.f" WIT-LIB-MUST-HAVE
+   s" src/habu/snap.f" WIT-LIB-MUST-NOT-HAVE
+   s" src/habu/snap-lib.f" WIT-LIB-MUST-HAVE
    s" src/arch/arm64/asm.f" WIT-LIB-MUST-HAVE
    s" src/arch/arm64/icode.f" WIT-LIB-MUST-HAVE
    s" src/arch/arm64/mnem.f" WIT-LIB-MUST-HAVE
@@ -312,6 +320,7 @@ create WIT-RUN-ERR WIT-CAP allot
    WIT-PREPARE
    WIT-TEST-SNAPSHOT-TAIL
    WIT-TEST-BAKE
+   WIT-TEST-COMPACT-SIZE
    WIT-TEST-RUN
    WIT-TEST-NOTRUST-RUNS
    WIT-TEST-INCLUDE-RUN

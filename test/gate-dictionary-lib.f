@@ -559,14 +559,14 @@ variable GD-CHECK-LABEL-U
    s" public" GE-SRC-LINE
    s" : GET ( -- n ) H ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   $4E s" H" s" package rejects duplicate private word across reopen" GD-RUN-BAD-SOURCE
+   $4E s" duplicate definition" s" package rejects duplicate private word across reopen" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package ODIN" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : reset ( -- n ) 2 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   $4E s" reset" s" package rejects case-variant duplicate word" GD-RUN-BAD-SOURCE
+   $4E s" duplicate definition" s" package rejects case-variant duplicate word" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" package ODIN" GE-SRC-LINE
    s" public" GE-SRC-LINE
@@ -577,7 +577,7 @@ variable GD-CHECK-LABEL-U
    GE-SRC-RESET
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
-   $4E s" RESET" s" global wordlist rejects duplicate word" GD-RUN-BAD-SOURCE
+   $4E s" duplicate definition" s" global wordlist rejects duplicate word" GD-CHECK-BUF-BAD
    GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
    $4E s" dup" s" primitive shadow attempt rejects without undefine" GD-RUN-BAD-SOURCE ;

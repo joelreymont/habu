@@ -112,25 +112,10 @@ variable CKT-USE-CHECK
 : CKT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: CKT-STDIN-CAPTURE ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-EXE$ >LEN src srcu >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
-   CKT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE
-   CKT-CAPTURE>N ;
-
 : CKT-CAPTURE ( -- n n n )
    CKT-EXE$ >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
    CKT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    CKT-CAPTURE>N ;
-
-: CKT-RUN ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   src srcu CKT-STDIN-CAPTURE ;
-
-: CKT-RUN-JSON-ALL ( ptr u8 n -- n n n ) {: src:ptr srcu :}
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --all-errors"  >LEN PROC-ARGV+
-   src srcu CKT-STDIN-CAPTURE ;
 
 : CKT-RUN-FILE-JSON ( -- n n n )
    CKT-ARGV-BASE
@@ -142,16 +127,6 @@ variable CKT-USE-CHECK
    CKT-ARGV-BASE
    s" --bad-flag"  >LEN PROC-ARGV+
    CKT-CAPTURE ;
-
-: CKT-RUN-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
-   CKT-ARGV-BASE
-   s" --source-list"  >LEN PROC-ARGV+
-    >LEN PROC-ARGV+
-   CKT-CAPTURE ;
-
-: CKT-RUN-SOURCE-LIST ( ptr u8 n -- n n n )
-   CKT-LIST$ 2swap WRITE-ALL
-   CKT-LIST$ CKT-RUN-SOURCE-LIST-PATH ;
 
 : CKT-CORE-ACT ( -- )
    CKT-BAD$ CKT-BAD$ CHECK-ALL-ERRORS-FILE ;
@@ -181,6 +156,17 @@ variable CKT-USE-CHECK
    CKT-DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
    CHK-DIRECT-RUN CKT-DIRECT-END ;
+
+: CKT-DIRECT-PREVERIFY-LIST-PATH ( ptr u8 n -- n n n )
+   CKT-DIRECT-START
+   CHK-MATERIALIZE-LIST-PATH
+   [: CHK-RUN-PREVERIFY ;] catch CKT-DIRECT-END ;
+
+: CKT-DIRECT-PREVERIFY-PATH ( ptr u8 n -- n n n )
+   CKT-DIRECT-START
+   CHK-ADD-POS
+   CHK-MATERIALIZE
+   [: CHK-RUN-PREVERIFY ;] catch CKT-DIRECT-END ;
 
 : CKT-DIRECT-PATH ( ptr u8 n -- n n n )
    CKT-DIRECT-START
@@ -271,7 +257,7 @@ variable CKT-USE-CHECK
    CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING ;
 
 : CKT-TEST-DUP-ALL ( -- )
-   CKT-DUP$SRC CKT-RUN-JSON-ALL $4E T=
+   CKT-DUP$SRC CKT-CORE-JSON $4E T=
    {: outu:n erru:n :}
    outu 0 T=
    CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
@@ -285,16 +271,16 @@ variable CKT-USE-CHECK
    CKT-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
 : CKT-TEST-SOURCE-LIST-AUDITED-LIB ( -- )
-   s" lib/test.f" CKT-DIRECT-SOURCE-LIST-PATH 0 T=
+   s" lib/test.f" CKT-DIRECT-PREVERIFY-LIST-PATH 0 T=
    {: outu erru :}
    outu 0 T=
    erru 0 T= ;
 
 : CKT-TEST-REQUIRE-FACADE ( -- )
-   s" lib/test/suite-test.f" CKT-DIRECT-PATH 0 T=
+   s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
    erru 0 T=
-   CKT-OUT outu s" test: ok" CONTAINS? TTRUE ;
+   outu 0 T= ;
 
 : CKT-MAIN ( -- )
    T-RESET

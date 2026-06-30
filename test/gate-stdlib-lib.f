@@ -235,6 +235,7 @@ variable SUITE-TIMINGS
 : SUITE-SNAPSHOT-BUILDER-KEY ( -- )
    s" src/os/image-bytes.f" SUITE-KEY-FILE+
    SUITE-SNAPSHOT-TARGET-KEY
+   s" src/habu/snap-lib.f" SUITE-KEY-FILE+
    s" src/habu/snap.f" SUITE-KEY-FILE+ ;
 
 \ Content key over the warm image's inputs: the compiler (bin/hb), the baker, and

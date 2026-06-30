@@ -157,6 +157,9 @@ WI-EVENT-DEFAULT!
    s" HIDE-DEFS-FROM" WI-SRC$
    WI-SRC-NL ;
 
+: WI-APPEND-SNAP-MARKER ( -- )
+   s" : WI-SNAP-MARKER ( -- ) ;" WI-LINE ;
+
 : WI-APPEND-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    a u WI-SRC-BUF WI-SRC-CAP READ-ALL WI-SRC-LEN !
    WI-SRC-PATH WI-SRC-BUF WI-SRC-LEN @ APPEND-FILE
@@ -251,9 +254,29 @@ WI-EVENT-DEFAULT!
    WI-APPEND-TARGET-IMAGE
    s" src/habu/driver-io.f" WI-APPEND-SOURCE ;
 
+: WI-APPEND-SNAP-LIB ( -- )
+   s" src/habu/snap-lib.f" WI-APPEND-SOURCE ;
+
+: WI-APPEND-SNAP-RUN ( -- )
+   s" : WI-SNAP-RUN ( -- )" WI-LINE
+   s"    ['] HOOK set-check" WI-LINE
+   s"    CHECKER-SNAPSHOT-PREPARE" WI-LINE
+   s"    INCLUDE-SNAPSHOT-PREPARE" WI-LINE
+   s"    SNAPGO ;" WI-LINE
+   s" ' WI-SNAP-RUN" WI-LINE
+   WI-SRC-SQUOTE
+   s" WI-SNAP-MARKER" WI-SRC$
+   WI-SRC-QUOTE
+   WI-SRC-BL
+   s" FORGET-DEFS-FROM" WI-SRC$
+   WI-SRC-NL
+   s" execute" WI-LINE ;
+
 : WI-APPEND-TAIL ( -- )
+   WI-APPEND-SNAP-MARKER
    WI-APPEND-IMAGE-SOURCE
-   s" src/habu/snap.f" WI-APPEND-SOURCE ;
+   WI-APPEND-SNAP-LIB
+   WI-APPEND-SNAP-RUN ;
 
 : WI-CHILD-ENV ( -- )
    PROC-ENV-RESET
