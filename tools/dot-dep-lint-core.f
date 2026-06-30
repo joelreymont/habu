@@ -1,6 +1,6 @@
 \ dot-dep-lint-core.f - validate dot blocker references.
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
-\ tools/lint/text.f, and tools/lint/intern.f.
+\ lib/fs-mutate.f, tools/lint/text.f, and tools/lint/intern.f.
 
 $40000 constant DDP-FILE-CAP
 32 constant DDP-NUM-CAP

@@ -52,6 +52,10 @@ lesson — keep the specific word/code/path, cut the prose.
   use `require` for setup, and suite declarations list only entry files plus
   script args. Shared warm setup must also use `required`, and snapshots must
   preserve the require registry so baked support is not reloaded at runtime.
+- **Tool entries must not borrow suite prelude:** `tools/dot-dep-lint.f` passed
+  inside the stdlib suite but failed standalone at `CLEANUP-RESET` because the
+  suite had already loaded `lib/fs-mutate.f`. Every tool entry must require the
+  exact files needed by its own top-level path.
 - **Tasked engines need process-wide fatal exits:** Linux `exit(93)` terminates
   only the calling pthread, so checker/die paths can leave workers alive and
   make process captures time out. Native and bootstrap emitters must use
