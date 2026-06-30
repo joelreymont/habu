@@ -1,4 +1,12 @@
 \ cg-matmul.f - PTX codegen: a REGISTER-BLOCKED tiled SGEMM (the compute path).
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
 \
 \ ============================ DESIGN NOTES (read me) ============================
 \
@@ -36,25 +44,47 @@
 \   - bigger micro-tiles (8x8) + bigger block tiles (128x128);
 \   - the last stretch to Triton may need its MMA/dot path (tensor-core-adjacent).
 \
-\ CHECKER BOUNDARY (honest): this is an UNCHECKED emit boundary. All THREE missing typed
-\ capabilities now exist as checked tile-DSL vocabulary: the CHECKED COUNTED LOOP
-\ (lib/ptx/tile-loop.f TILE-LOOP, (a)), the SHARED-MEMORY tile type (lib/ptx/tile-smem.f
-\ STAGE/SLOAD/SSTORE, (b) - space-shared distinct from space-global), and the REGISTER
-\ ACCUMULATOR type (lib/ptx/tile-acc.f ACC-ZERO/ACC-FMA/ACC-TILE/ACC-LOOP, (c) - acc<>
-\ distinct from tile<>, an unfinalized accumulator cannot be stored). The tiled-GEMM
-\ DATA-FLOW is now EXPRESSIBLE + TYPE-CHECKED as a checked KERNEL: body (MM-CHECKED in
-\ lib/ptx/gemm-checked-test.f: zero acc, inline checked K-loop staging A/B to shared and
-\ FMA-accumulating, finalize, store). What remains is CODEGEN: the tile-DSL op bodies throw
-\ E-PTX-NOIMPL, so MM-CHECKED type-checks but does not yet emit; lowering it to this same
-\ PTX (and a 2-D grid) is dotted habu-tiled-gemm-codegen. Until then MM here stays the
-\ raw-PTX emit path - a named, tested boundary (device-golden correct vs CPU A*B) per
-\ CLAUDE.md. When codegen lands, this raw boundary is deleted and MM IS MM-CHECKED. Load after
-\ src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
+\ CHECKED SURFACE: MM-CHECKED is a matrix-shaped `KERNEL:` body. The PTX instruction
+\ sequences remain trusted target primitives, like LOAD/STORE/FMA, but the public
+\ GEMM surface now carries the real matrix relation A[M,K] * B[K,N] -> C[M,N],
+\ a distinct mmctx phase token, and a distinct mmacc token that must pass through
+\ the K-loop before MM-STORE. This removes the old fake 1-D GEMM proof and gives
+\ zed a real checked entry that emits the existing device-proven register-blocked
+\ kernel. Load after src/arch/ptx/emit.f and lib/ptx/cg.f; emits to stdout.
 \ ==============================================================================
 
 64 constant MM-BM   64 constant MM-BN   16 constant MM-BK   4 constant MM-TM
 MM-BM MM-BK * 4 * constant MM-ASB        \ bytes in the As shared tile = 4096
 MM-BK MM-BN * 4 * constant MM-BSB        \ bytes in the Bs shared tile = 4096
+
+TRUSTED: MM-A-REG ( n -- matrix<space-global,f32,extent-m,extent-k> ) ;
+TRUSTED: MM-B-REG ( n -- matrix<space-global,f32,extent-k,extent-n> ) ;
+TRUSTED: MM-C-REG ( n -- matrix<space-global,f32,extent-m,extent-n> ) ;
+TRUSTED: MM-STATE ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> )
+   drop drop drop 0 0 ;
+
+: MM-PARAMS ( -- )
+   s" ld.param.u64 %rd1,[pA];" PTX-L  s" ld.param.u64 %rd2,[pB];" PTX-L  s" ld.param.u64 %rd3,[pC];" PTX-L
+   s" ld.param.u32 %r1,[pM];" PTX-L   s" ld.param.u32 %r2,[pN];" PTX-L   s" ld.param.u32 %r3,[pK];" PTX-L
+   s" cvta.to.global.u64 %rd1,%rd1;" PTX-L  s" cvta.to.global.u64 %rd2,%rd2;" PTX-L  s" cvta.to.global.u64 %rd3,%rd3;" PTX-L ;
+
+: MM-THREAD-SETUP ( -- )
+   s" mov.u32 %r4,%tid.x;" PTX-L  s" mov.u32 %r5,%tid.y;" PTX-L
+   s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
+   s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L
+   s" mul.lo.u32 %r9,%r7,64;" PTX-L
+   s" mul.lo.u32 %r10,%r6,64;" PTX-L
+   s" mov.u32 %r11,SH;" PTX-L ;
+
+: MM-ACC-ZERO-EMIT ( -- )
+   16 0 do
+      SB-RESET s" mov.f32 %f" SB-APPEND 10 i + SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L
+   loop ;
+
+: MM-SMEM-BASES ( -- )
+   s" shl.b32 %r12,%r5,8;" PTX-L  s" add.u32 %r12,%r11,%r12;" PTX-L
+   s" shl.b32 %r13,%r4,4;" PTX-L  s" add.u32 %r13,%r11,%r13;" PTX-L
+   SB-RESET s" add.u32 %r13,%r13," SB-APPEND MM-ASB SB-U s" ;" SB-APPEND SB$ PTX-L ;
 
 \ cooperative stage of the n-th (of 4) As+Bs element for this thread
 : MM-STAGE ( n -- ) {: n :}
@@ -99,30 +129,35 @@ MM-BK MM-BN * 4 * constant MM-BSB        \ bytes in the Bs shared tile = 4096
       loop
    loop ;
 
+: MM-BEGIN ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> )
+   MM-THREAD-SETUP
+   MM-ACC-ZERO-EMIT
+   MM-SMEM-BASES
+   MM-STATE ;
+
+: MM-K-LOOP ( mmctx<m,k,q> mmacc<f32,block-256,mask-live> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> )
+   s" mov.u32 %r14,0;" PTX-L  s" $KLOOP:" PTX-L
+   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
+   4 0 do  i MM-STAGE  loop
+   s" bar.sync 0;" PTX-L
+   MM-BK 0 do  i MM-KSTEP  loop
+   s" bar.sync 0;" PTX-L  s" add.u32 %r14,%r14,16;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+
+: MM-STORE ( mmctx<m,k,q> mmacc<f32,block-256,mask-live> -- )
+   MM-WRITE
+   2drop ;
+
+KERNEL: MM-CHECKED ( matrix<space-global,f32,extent-m,extent-k> matrix<space-global,f32,extent-k,extent-n> matrix<space-global,f32,extent-m,extent-n> -- )  GRID: tile-mn-64
+   MM-BEGIN
+   MM-K-LOOP
+   MM-STORE ;
+
 : EMIT-MATMUL ( -- )
    PTX-HEADER-SM87  PTX-NL
    s" .visible .entry MM(.param .u64 pA,.param .u64 pB,.param .u64 pC,.param .u32 pM,.param .u32 pN,.param .u32 pK)" PTX-L
    s" {" PTX-L
    s" .reg .pred %p<4>;" PTX-L  s" .reg .f32 %f<48>;" PTX-L  s" .reg .b32 %r<64>;" PTX-L  s" .reg .b64 %rd<48>;" PTX-L
    SB-RESET s" .shared .align 4 .b8 SH[" SB-APPEND MM-ASB MM-BSB + SB-U s" ];" SB-APPEND SB$ PTX-L
-   s" ld.param.u64 %rd1,[pA];" PTX-L  s" ld.param.u64 %rd2,[pB];" PTX-L  s" ld.param.u64 %rd3,[pC];" PTX-L
-   s" ld.param.u32 %r1,[pM];" PTX-L   s" ld.param.u32 %r2,[pN];" PTX-L   s" ld.param.u32 %r3,[pK];" PTX-L
-   s" cvta.to.global.u64 %rd1,%rd1;" PTX-L  s" cvta.to.global.u64 %rd2,%rd2;" PTX-L  s" cvta.to.global.u64 %rd3,%rd3;" PTX-L
-   s" mov.u32 %r4,%tid.x;" PTX-L  s" mov.u32 %r5,%tid.y;" PTX-L
-   s" mov.u32 %r6,%ctaid.x;" PTX-L  s" mov.u32 %r7,%ctaid.y;" PTX-L
-   s" mad.lo.u32 %r8,%r5,16,%r4;" PTX-L              \ tid_lin = ty*16+tx
-   s" mul.lo.u32 %r9,%r7,64;" PTX-L                  \ rowBase = by*64
-   s" mul.lo.u32 %r10,%r6,64;" PTX-L                 \ colBase = bx*64
-   s" mov.u32 %r11,SH;" PTX-L
-   16 0 do  SB-RESET s" mov.f32 %f" SB-APPEND 10 i + SB-U s" ,0f00000000;" SB-APPEND SB$ PTX-L loop   \ acc=0
-   s" shl.b32 %r12,%r5,8;" PTX-L  s" add.u32 %r12,%r11,%r12;" PTX-L     \ asBase = SH + ty*256
-   s" shl.b32 %r13,%r4,4;" PTX-L  s" add.u32 %r13,%r11,%r13;" PTX-L
-   SB-RESET s" add.u32 %r13,%r13," SB-APPEND MM-ASB SB-U s" ;" SB-APPEND SB$ PTX-L   \ bsBase = SH+4096+tx*16
-   s" mov.u32 %r14,0;" PTX-L  s" $KLOOP:" PTX-L
-   s" setp.ge.u32 %p1,%r14,%r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   4 0 do  i MM-STAGE  loop
-   s" bar.sync 0;" PTX-L
-   MM-BK 0 do  i MM-KSTEP  loop
-   s" bar.sync 0;" PTX-L  s" add.u32 %r14,%r14,16;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L
-   MM-WRITE
+   MM-PARAMS
+   1 MM-A-REG  2 MM-B-REG  3 MM-C-REG  MM-CHECKED
    s" ret;" PTX-L  s" }" PTX-L ;

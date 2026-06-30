@@ -6,7 +6,7 @@
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
 
-16384 constant PTXT-CAP
+$8000 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
 
 create PTXT-OUT PTXT-CAP allot
@@ -130,6 +130,24 @@ variable PTXT-OUT-U
    PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PTXT-CAPTURE>N ;
 
+: PTXT-RUN-MATMUL-CG ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/ptx/matmul-cg.f"  >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
+   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   PTXT-CAPTURE>N ;
+
+: PTXT-RUN-SMEM-CG ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" tools/ptx/smem-cg.f"  >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
+   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   PTXT-CAPTURE>N ;
+
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .version 8.3" PTXT-HAS
@@ -199,6 +217,31 @@ variable PTXT-OUT-U
    s" add.f32 %f3, %f3, %f4;" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+: PTXT-MATMUL-CG-OUTPUT ( -- )
+   PTXT-RUN-MATMUL-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry MM" PTXT-HAS
+   s" .shared .align 4 .b8 SH[8192];" PTXT-HAS
+   s" setp.ge.u32 %p1,%r14,%r3;" PTXT-HAS
+   s" @%p1 bra $KEND;" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" fma.rn.f32 %f10,%f26,%f30,%f10;" PTXT-HAS
+   s" st.global.f32 [%rd12],%f25;" PTXT-HAS
+   s" @%p1 bra DONE" PTXT-NOT-HAS
+   s" E-PTX-NOIMPL" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-SMEM-CG-OUTPUT ( -- )
+   PTXT-RUN-SMEM-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry SMEM_CHECKED" PTXT-HAS
+   s" .shared .align 4 .b8 SMEM[1024];" PTXT-HAS
+   s" mov.u32 %r2, %tid.x;" PTXT-HAS
+   s" st.shared.f32" PTXT-HAS
+   s" ld.shared.f32" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" @%p1 bra DONE" PTXT-NOT-HAS
+   s" E-PTX-NOIMPL" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -206,5 +249,7 @@ PTXT-ONCE-CG-OUTPUT
 PTXT-SOFTMAX-CG-OUTPUT
 PTXT-SUM-CG-OUTPUT
 PTXT-SUM1024-CG-OUTPUT
+PTXT-MATMUL-CG-OUTPUT
+PTXT-SMEM-CG-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

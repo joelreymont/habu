@@ -170,6 +170,9 @@ points stay listed.
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
   vocabulary.
+- `tools/ptx/smem-cg.f` — checked shared-memory tile body run through the PTX
+  codegen, proving `COOP-CTX`/`STAGE`/`SLOAD`/`SSTORE` emit barriers and shared
+  loads/stores.
 - `tools/ptx/ops-cg.f` — checked scalar/v4 elementwise op kernel bodies run
   through the PTX codegen vocabulary.
 - `tools/ptx/once-cg.f` — checked once-space load/store kernel body proving

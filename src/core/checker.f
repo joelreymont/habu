@@ -780,9 +780,12 @@ variable LOCALBAD
    a u s" span" CORE-STR= IF -1 EXIT THEN
    a u s" matrix" CORE-STR= IF -1 EXIT THEN
    a u s" gridctx" CORE-STR= IF -1 EXIT THEN
+   a u s" coopctx" CORE-STR= IF -1 EXIT THEN
    a u s" rowctx" CORE-STR= IF -1 EXIT THEN
    a u s" tile" CORE-STR= IF -1 EXIT THEN
    a u s" acc" CORE-STR= IF -1 EXIT THEN
+   a u s" mmctx" CORE-STR= IF -1 EXIT THEN
+   a u s" mmacc" CORE-STR= IF -1 EXIT THEN
    a u s" uniform" CORE-STR= IF -1 EXIT THEN
    a u s" rowidx" CORE-STR= ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}

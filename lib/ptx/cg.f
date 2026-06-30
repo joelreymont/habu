@@ -67,6 +67,8 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
 TRUSTED: SPAN-ONCE-REG ( n -- span<space-global-once,f32,extent-n> ) ;
+TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
+TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
 
 \ --- f64 -> f32 IEEE-754 marshalling (host side: kernel params/arrays are f32,
 \ Habu floats are 64-bit cells). R>BITS reinterprets a float as its 64-bit pattern
@@ -127,8 +129,43 @@ TRUSTED: BITS>R ( n -- r ) ;
 : EMIT-GRID-CTX-ONCE ( n -- n )
    EMIT-GRID-CTX ;
 
+: EMIT-COOP-CTX ( n -- n ) {: spanrd:n :}
+   spanrd drop
+   CG-NEXT-R {: rt:n :}
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   rt ;
+
 : EMIT-LOAD-ONCE ( n n -- n )
    EMIT-LOAD ;
+
+: EMIT-STAGE ( n n -- n ) {: spanrd:n ctxr:n :}
+   CG-NEXT-RD {: off:n :}  CG-NEXT-RD {: g:n :}  CG-NEXT-RD {: a:n :}
+   CG-NEXT-F {: t:n :}     CG-NEXT-R {: roff:n :} CG-NEXT-R {: sm:n :}  CG-NEXT-R {: sa:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S ctxr CG-R s" , 4;" CG-S CG-LINE
+   SB-RESET s" cvta.to.global.u64 " CG-S g CG-RD s" , " CG-S spanrd CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S g CG-RD s" , " CG-S off CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
+   SB-RESET s" shl.b32 " CG-S roff CG-R s" , " CG-S ctxr CG-R s" , 2;" CG-S CG-LINE
+   SB-RESET s" mov.u32 " CG-S sm CG-R s" , SMEM;" CG-S CG-LINE
+   SB-RESET s" add.s32 " CG-S sa CG-R s" , " CG-S sm CG-R s" , " CG-S roff CG-R s" ;" CG-S CG-LINE
+   SB-RESET s" st.shared.f32 [" CG-S sa CG-R s" ], " CG-S t CG-F s" ;" CG-S CG-LINE
+   SB-RESET s" bar.sync 0;" CG-S CG-LINE
+   sm ;
+
+: EMIT-SLOAD ( n n -- n ) {: shrd:n ctxrd:n :}
+   CG-NEXT-R {: roff:n :}  CG-NEXT-R {: a:n :}
+   SB-RESET s" shl.b32 " CG-S roff CG-R s" , " CG-S ctxrd CG-R s" , 2;" CG-S CG-LINE
+   SB-RESET s" add.s32 " CG-S a CG-R s" , " CG-S shrd CG-R s" , " CG-S roff CG-R s" ;" CG-S CG-LINE
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" ld.shared.f32 " CG-S r CG-F s" , [" CG-S a CG-R s" ];" CG-S CG-LINE
+   r ;
+
+: EMIT-SSTORE ( n n n -- ) {: tilef:n shrd:n ctxrd:n :}
+   CG-NEXT-R {: roff:n :}  CG-NEXT-R {: a:n :}
+   SB-RESET s" shl.b32 " CG-S roff CG-R s" , " CG-S ctxrd CG-R s" , 2;" CG-S CG-LINE
+   SB-RESET s" add.s32 " CG-S a CG-R s" , " CG-S shrd CG-R s" , " CG-S roff CG-R s" ;" CG-S CG-LINE
+   SB-RESET s" st.shared.f32 [" CG-S a CG-R s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE
+   SB-RESET s" bar.sync 0;" CG-S CG-LINE ;
 
 \ SCALE: tile * uniform -> tile (mul.rn, no contraction)
 : EMIT-SCALE ( n n -- n ) {: tilef unif :}

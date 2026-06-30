@@ -32,11 +32,6 @@
       drop s" cg: unknown reduce op" 76 die
    endcase ;
 
-\ A kernel arg is a register number; the thin from-register casts are the
-\ codegen analogue of MK-SPAN's from_raw_parts boundary (see lib/ptx/cg.f).
-TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
-TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
-
 \ --- softmax entry scaffolding (distinct from cg.f's SAXPY scaffolding) ---
 : CG-SM-RESET ( -- )  1 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
 : CG-SM-ENTRY ( -- )

@@ -74,6 +74,7 @@ s" PTX-BAD-ONCE-CTX-FROM-PLAIN ( span<space-global,f32,extent-n> -- gridctx<bloc
 s" PTX-GOOD-MK-SPAN= ( ptr<space-global,f32> ptr<space-global,f32> u32 -- ) MK-SPAN= over GRID-CTX rot drop LOAD drop" CHECK! -1 T=
 s" PTX-BAD-MK-SPAN-LONE ( ptr<space-global,f32> ptr<space-global,f32> u32 u32 -- ) {: p q n m :} p n MK-SPAN {: x :} q m MK-SPAN {: y :} x GRID-CTX y swap LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-BAD-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
+s" PTX-BAD-STAGE-GRIDCTX ( span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- span<space-shared,f32,extent-n> ) STAGE" PTX-CHECK-REJECTS
 s" PTX-BAD-EXTENT ( span<space-global,f32,extent-r> gridctx<block-256,extent-c,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS
 s" PTX-BAD-TILE-MASK ( tile<f32,block-256,mask-a> tile<f32,block-256,mask-b> -- tile<f32,block-256,mask-a> ) +." PTX-CHECK-REJECTS
 s" PTX-BAD-MISSING-CTX ( span<space-global,f32,extent-n> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS

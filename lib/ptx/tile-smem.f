@@ -16,16 +16,17 @@
 \   SLOAD  shared span -> register tile : read a tile back from .shared (neighbour data).
 \   SSTORE register tile -> shared span : write a computed tile into .shared.
 \
+\ These words consume `coopctx`, not the elementwise `gridctx`: every block lane must
+\ reach `bar.sync`, so bounds are not allowed to branch lanes out before staging.
 \ TRUSTED: because the emit lowers to PTX cp.async/ld.shared/st.shared + barriers the
-\ checker cannot infer; the declared effect is the contract (TRUSTED.md). Bodies throw
-\ E-PTX-NOIMPL until the shared-staging codegen lands (dot: re-express tiled GEMM /
-\ fused attention) - kernels are CHECKED here, not run. Load after lib/ptx/tile.f.
+\ checker cannot infer; the declared effect is the contract (TRUSTED.md). Load after
+\ lib/ptx/tile.f.
 
-TRUSTED: STAGE ( span<space-global,t,e> gridctx<b,e,m> -- span<space-shared,t,e> )
-   E-PTX-NOIMPL throw ;
+TRUSTED: STAGE ( span<space-global,t,e> coopctx<b,e,m> -- span<space-shared,t,e> )
+   EMIT-STAGE ;
 
-TRUSTED: SLOAD ( span<space-shared,t,e> gridctx<b,e,m> -- tile<t,b,m> )
-   E-PTX-NOIMPL throw ;
+TRUSTED: SLOAD ( span<space-shared,t,e> coopctx<b,e,m> -- tile<t,b,m> )
+   EMIT-SLOAD ;
 
-TRUSTED: SSTORE ( tile<t,b,m> span<space-shared,t,e> gridctx<b,e,m> -- )
-   E-PTX-NOIMPL throw ;
+TRUSTED: SSTORE ( tile<t,b,m> span<space-shared,t,e> coopctx<b,e,m> -- )
+   EMIT-SSTORE ;

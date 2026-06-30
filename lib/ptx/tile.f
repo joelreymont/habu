@@ -40,6 +40,9 @@ TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
 TRUSTED: GRID-CTX-ONCE ( span<space-global-once,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX-ONCE ;
 
+TRUSTED: COOP-CTX ( span<space-global,t,e> -- coopctx<b,e,fresh-mask-live> )
+   EMIT-COOP-CTX ;
+
 TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
    EMIT-LOAD ;
 

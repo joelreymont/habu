@@ -8,7 +8,7 @@
 256 %BLOCK
 
 KERNEL: BAD-SPACE ( span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
-   {: s :}
-   s GRID-CTX {: g :}
+   {: s :} \ typed-local-lint: allow-bare-local - generic PTX param types contain commas.
+   s COOP-CTX {: g :} \ typed-local-lint: allow-bare-local - fresh coopctx mask is inferred.
    s g SLOAD                       \ s is space-global; SLOAD wants space-shared -> REJECT
-   s g STORE ;
+   drop ;
