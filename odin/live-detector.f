@@ -7,10 +7,22 @@
 \
 \ Load:
 \   bin/hb --load src/os/linux/layout.f lib/errors.f lib/string.f lib/memory.f \
-\     lib/ffi.f lib/time.f lib/fs.f lib/fs-mutate.f lib/tasks.f \
+\     lib/ffi.f lib/time.f lib/fs.f lib/fs-mutate.f lib/task.f \
 \     lib/float.f odin/float-cell.f odin/yolo-decode.f odin/live-detector.f -- \
 \     --engine /home/user/models/drone/fp16_rect.engine \
 \     --camera <serial>:cam_a0 --mode full --output /tmp/habu-ticks.ndjson
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/ffi.f
+require lib/time.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/task.f
+require lib/float.f
+require odin/float-cell.f
+require odin/yolo-decode.f
 
 4 constant HLD-MAX-CAMERAS
 5 constant HLD-OUT-SLOTS
@@ -149,7 +161,12 @@ create HLD-DET-REND 1 cells allot
 create HLD-DET-DETS 1 cells allot
 create HLD-DET-INF 1 cells allot
 
-create HLD-TASKS HLD-OUT-SLOTS cells allot
+TASK:MIN-STACK TASK:TASK HLD-ACQ-TASK0
+TASK:MIN-STACK TASK:TASK HLD-ACQ-TASK1
+TASK:MIN-STACK TASK:TASK HLD-ACQ-TASK2
+TASK:MIN-STACK TASK:TASK HLD-ACQ-TASK3
+TASK:MIN-STACK TASK:TASK HLD-DET-TASK
+TASK:MIN-STACK TASK:TASK HLD-SELF-TASK
 variable HLD-LIB
 variable HLD-HANDLE
 variable HLD-FN-CREATE
@@ -208,7 +225,13 @@ variable HLD-WARM-CURSOR
 : HLD-DET-FRAME ( -- ptr u8 ) HLD-MAX-CAMERAS HLD-FRAME-SLOT ;
 : HLD-OUT-SLOT ( n -- ptr u8 ) HLD-OUT-CAP * HLD-OUT-BUFS + ;
 : HLD-OUT-LENP ( n -- ptr a ) cells HLD-OUT-LENS + ;
-: HLD-TASK-P ( n -- ptr a ) cells HLD-TASKS + ;
+: HLD-TASK-P ( n -- ptr a )
+   dup 0 = if drop HLD-ACQ-TASK0 exit then
+   dup 1 = if drop HLD-ACQ-TASK1 exit then
+   dup 2 = if drop HLD-ACQ-TASK2 exit then
+   dup 3 = if drop HLD-ACQ-TASK3 exit then
+   dup 4 = if drop HLD-DET-TASK exit then
+   drop E-HLD-CAMERA throw ;
 
 : HLD-CAM-P ( n n -- ptr a )
    {: cam:n off:n :}
@@ -1037,8 +1060,7 @@ variable HLD-WARM-CURSOR
 
 : HLD-START-XT ( n n -- )
    {: xt:n slot:n :}
-   xt TASK-NEW slot HLD-TASK-P !
-   slot HLD-TASK-P @ TASK-ACTIVATE ;
+   xt slot HLD-TASK-P TASK:ACTIVATE ;
 
 : HLD-START-ACQ ( n -- )
    dup 0 = if drop ['] HLD-ACQ0 0 HLD-START-XT exit then
@@ -1056,7 +1078,9 @@ variable HLD-WARM-CURSOR
 
 : HLD-JOIN-TASKS ( -- )
    0 begin dup HLD-CAMERA-N @ 1+ < while
-      dup HLD-TASK-P @ TASK-JOIN drop
+      dup HLD-TASK-P
+      begin dup TASK:DONE? 0= while TASK:PAUSE repeat
+      TASK:KILL
       1+
    repeat drop
    1 HLD-CLK-STOP HLD-CLK-P atomic! ;
@@ -1156,7 +1180,9 @@ variable HLD-WARM-CURSOR
    0 HLD-OUT-SLOT 0 HLD-OUT-LENP @ s" mode" CONTAINS? HLD-ASSERT
    0 8 1000000000 1001234567 0 1000000001 1002000001 1002000001 1002000001 2 HLD-EMIT-DET-RESULT
    HLD-CAMERA-N @ HLD-OUT-SLOT HLD-CAMERA-N @ HLD-OUT-LENP @ s" odin.perception_tick.v1" CONTAINS? HLD-ASSERT
-   ['] HLD-SELF-EMIT-TASK TASK-NEW dup TASK-ACTIVATE TASK-JOIN drop
+   ['] HLD-SELF-EMIT-TASK HLD-SELF-TASK TASK:ACTIVATE
+   begin HLD-SELF-TASK TASK:DONE? 0= while TASK:PAUSE repeat
+   HLD-SELF-TASK TASK:KILL
    s" live-detector self-test ok" type cr ;
 
 : HLD-MAIN ( -- )
