@@ -115,6 +115,8 @@
 -3406 constant E-PTX-AD-UNDERFLOW
 -3407 constant E-PTX-AD-UNKNOWN
 -3408 constant E-PTX-AD-OUTPUT
+-3409 constant E-PTX-IR-OVERFLOW
+-3410 constant E-PTX-IR-UNKNOWN
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

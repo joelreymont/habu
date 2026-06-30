@@ -1,0 +1,49 @@
+\ ptx-ir-test.f - static value fixtures for the PTX IR optimizer seed.
+
+T-RESET
+
+: PTXIRT-FOLD ( -- )
+   PTXIR-RESET
+   2 PTXIR-CONST 3 PTXIR-CONST PTXIR-ADD {: sum:n :}
+   sum PTXIR-CONST? TTRUE
+   sum PTXIR-CONST-VAL 5 T=
+   4 PTXIR-CONST 3 PTXIR-CONST PTXIR-MUL {: prod:n :}
+   prod PTXIR-CONST-VAL 12 T= ;
+
+: PTXIRT-PEEPHOLE ( -- )
+   PTXIR-RESET
+   PTXIR-INPUT {: x:n :}
+   x PTXIR-NEG PTXIR-NEG x T=
+   x 0 PTXIR-CONST PTXIR-ADD x T=
+   x 1 PTXIR-CONST PTXIR-MUL x T= ;
+
+: PTXIRT-CSE ( -- )
+   PTXIR-RESET
+   PTXIR-INPUT {: x:n :}
+   1 PTXIR-CONST {: one:n :}
+   x one PTXIR-ADD {: a:n :}
+   one x PTXIR-ADD {: b:n :}
+   a b T=
+   PTXIR-COUNT 3 T= ;
+
+: PTXIRT-DCE ( -- )
+   PTXIR-RESET
+   PTXIR-INPUT {: x:n :}
+   x 2 PTXIR-CONST PTXIR-ADD {: root:n :}
+   x 3 PTXIR-CONST PTXIR-MUL {: dead:n :}
+   root PTXIR-LIVE-COUNT 3 T=
+   root PTXIR-LIVE@ TTRUE
+   dead PTXIR-LIVE@ TFALSE ;
+
+: PTXIRT-OVERFLOW ( -- )
+   PTXIR-RESET
+   PTXIR-MAX 0 ?do i PTXIR-CONST drop loop
+   PTXIR-MAX PTXIR-CONST drop ;
+
+PTXIRT-FOLD
+PTXIRT-PEEPHOLE
+PTXIRT-CSE
+PTXIRT-DCE
+' PTXIRT-OVERFLOW E-PTX-IR-OVERFLOW TTHROWS
+
+T-REPORT

@@ -1322,6 +1322,11 @@ lesson — keep the specific word/code/path, cut the prose.
   is float and `c` is char, not type variables. Use tokens such as `e`/`k` for
   matrix row/column extents; otherwise diagnostics report concrete `r`/`c`
   mismatches instead of the intended parametric shape.
+- **PTX optimizer values should be structure records:** a value-numbered IR fits
+  checked Habu as explicit node records plus construction-time canonicalization:
+  fold constants and peepholes before interning, use commutative key ordering for
+  CSE, and run DCE as a root live-mark pass with static value fixtures before any
+  device/lowering claim.
 - **Subtree status docs need lint fences, not wording games:** `maki/STATUS.md`
   should be able to own maki counts without avoiding count-shaped prose. Keep root
   self-check counts fenced to root `STATUS.md`, and explicitly skip extracted

@@ -223,7 +223,7 @@ TEST-SUITE map-stdlib
 ;TEST-SUITE
 
 TEST-SUITE ptx-stdlib
-   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/launch.f lib/ptx/launch-test.f lib/ptx/cg-collective.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/tile-loop.f lib/ptx/tile-loop-test.f lib/ptx/tile-smem.f lib/ptx/tile-smem-test.f lib/ptx/tile-acc.f lib/ptx/tile-acc-test.f lib/ptx/gemm-checked-test.f lib/ptx/tile-v4.f lib/ptx/tile-v4-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ad.f lib/ptx/ad-test.f lib/ptx/ad-dag.f lib/ptx/ad-dag-test.f lib/ptx/ad-saved.f lib/ptx/ad-saved-test.f
+   lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/header.f lib/ptx/header-test.f lib/ptx/launch.f lib/ptx/launch-test.f lib/ptx/cg-collective.f lib/ptx/tile.f lib/ptx/tile-test.f lib/ptx/tile-loop.f lib/ptx/tile-loop-test.f lib/ptx/tile-smem.f lib/ptx/tile-smem-test.f lib/ptx/tile-acc.f lib/ptx/tile-acc-test.f lib/ptx/gemm-checked-test.f lib/ptx/tile-v4.f lib/ptx/tile-v4-test.f lib/ptx/collective.f lib/ptx/collective-test.f lib/ptx/autograd-test.f lib/ptx/ir.f lib/ptx/ir-test.f lib/ptx/ad.f lib/ptx/ad-test.f lib/ptx/ad-dag.f lib/ptx/ad-dag-test.f lib/ptx/ad-saved.f lib/ptx/ad-saved-test.f
 ;TEST-SUITE
 
 TEST-SUITE ptx-tile-loop-neg

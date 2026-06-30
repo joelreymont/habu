@@ -79,6 +79,10 @@ points stay listed.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
   (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
 - `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.
+- `lib/ptx/ir.f` — checked value-numbered PTX expression IR with constant
+  folding, peephole canonicalization, CSE, and DCE live marking.
+- `lib/ptx/ir-test.f` — checked value fixtures for PTX IR fold, peephole,
+  CSE, DCE, and overflow rejection.
 - `lib/ptx/ad-dag.f` — checked reverse-mode symbolic DAG builder for PTX row
   kernels.
 - `lib/ptx/ad-dag-test.f` — checked validation tests for PTX AD DAG overflow,
