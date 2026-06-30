@@ -114,14 +114,16 @@ remembering slot counts or cache state:
 
 | Profile | Host proof | Slots | Nested | Hot budget | Cold budget |
 |---|---|---:|---:|---:|---:|
-| `macos-arm64-4x2` | macOS ARM64 target | 4 | 2 | 55000ms / 60000ms wall | 70000ms / 70000ms wall |
+| `macos-arm64-8x2` | macOS ARM64 target | 8 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
 | `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
 
 The default profile is `auto`: the runner inspects the target and host files
 before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
 `--pool-slots`, `--nested-pool-slots`, `--budget-ms`, or `--wall-budget-ms`
-arguments override the profile when they appear after it.
+arguments override the profile when they appear after it. Top-level
+`--pool-slots` is capped at 8 because slots 8-11 are reserved for fixed warm/AOT
+artifact builders.
 
 `--cold-cache` selects a private per-run cache root under the suite temp
 directory, applies the profile cold budget unless the user supplied explicit

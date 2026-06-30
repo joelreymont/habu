@@ -1,12 +1,11 @@
 # habu — Status
 
 Last verified: 2026-06-30
-Gate: passing; 34.837s internal / 37.13s shell-wall hot-cache gate time,
-51.161s internal / 53.55s shell-wall persistent cache-fill time, and
-60.935s internal / 63.26s shell-wall private cold-cache time on 2026-06-30 on
-macOS/aarch64 with the auto-selected `macos-arm64-4x2` profile, per-file
+Gate: passing; 24.187s internal / 26.58s shell-wall hot-cache gate time and
+40.001s internal / 42.30s shell-wall persistent cache-fill time on 2026-06-30 on
+macOS/aarch64 with the auto-selected `macos-arm64-8x2` profile, per-file
 content-key warm-cache hits, manifest-hashed small `hb-under-test`, warm runner
-hits, and AOT maker cache hits. The native gate uses a 4-way checked DAG pool,
+hits, and AOT maker cache hits. The native gate uses an 8-way macOS checked DAG pool,
 2-way nested stdlib pool, split stdlib lint slices (tools/manifest/artifacts/libs), direct
 in-process diagnostic JSON and AOT report assertions, batched dictionary checker
 certifications/rejections, a direct manifest phase, in-process check-tool

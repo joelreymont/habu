@@ -156,9 +156,10 @@ lesson — keep the specific word/code/path, cut the prose.
   source file, `lib/std.manifest`, `FILEMAP.md`, and `tools/filemap-lint.f`.
   Miss one and the direct manifest gate is the first correct failure.
 - **Pool slots are host policy, not universal truth:** on this macOS/aarch64
-  12-core host, hot-cache full gates measured 6/7/8/10 slots at
-  60.101/56.407/53.532/54.350s internal; 8 wins. Keep Linux conservative until
-  measured there, and use discoverable argv knobs:
+  12-core host, hot-cache full gates run 24.187s internal / 26.58s wall with
+  8 top-level slots and 2 nested slots. Keep Linux conservative until measured
+  there, cap dynamic slots below fixed warm/AOT artifact slots, and use
+  discoverable argv knobs:
   `test/run.f -- --pool-slots N --nested-pool-slots M`.
 - **`Habu-under-test` is the small engine, not a snapshot:** the native engine
   gate accidentally promoted `hb-new`, whose snapshot trailer baked `$14523b4`

@@ -12,6 +12,7 @@ include test/gate-stats.f
 66 constant TR-PROFILE-RC
 70000 constant TR-DEFAULT-BUDGET-MS
 4 constant TR-DEFAULT-NESTED-POOL-SLOTS
+8 constant TR-TOP-POOL-MAX
 600000 constant TR-TIMEOUT-MS
 31 constant TR-PHASES
 32 constant TR-NUM-CAP
@@ -27,7 +28,7 @@ $3 constant TR-LATE-PHASES
 11 constant TR-RUNNER-WARM-SLOT
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
-1 constant TR-PROFILE-MACOS-ARM64-4X2
+1 constant TR-PROFILE-MACOS-ARM64-8X2
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
 
@@ -189,11 +190,22 @@ variable TR-NUM-U
    STR>NUMBER? 0= if drop TR-USAGE then
    dup 1 < if drop TR-USAGE then ;
 
+: TR-POOL-SLOTS-FAIL ( -- )
+   s" --pool-slots must be between 1 and 8" TR-USAGE-RC die ;
+
+: TR-TOP-POOL-CHECK ( n -- n ) {: n:n :}
+   n 1 < if TR-POOL-SLOTS-FAIL then
+   n TR-TOP-POOL-MAX > if TR-POOL-SLOTS-FAIL then
+   n ;
+
+: TR-TOP-POOL-SLOTS! ( n -- )
+   TR-TOP-POOL-CHECK GT-POOL-SLOTS! ;
+
 : TR-ADVANCE ( n -- )
    TR-ARG-I @ + TR-ARG-I ! ;
 
 : TR-POOL-OPT ( -- )
-   TR-ARG-VALUE$ TR-POS-NUM GT-POOL-SLOTS!
+   TR-ARG-VALUE$ TR-POS-NUM TR-TOP-POOL-SLOTS!
    2 TR-ADVANCE ;
 
 : TR-NESTED-POOL-OPT ( -- )
@@ -233,7 +245,7 @@ variable TR-NUM-U
    s" /sys/devices/system/cpu/online" TR-HOST-READ TRIM s" 0-7" STR= ;
 
 : TR-DETECT-PROFILE ( -- n )
-   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-4X2 exit then
+   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-8X2 exit then
    HB-TARGET-LINUX? if
       s" /proc/device-tree/model" EXISTS? if
          TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
@@ -244,7 +256,7 @@ variable TR-NUM-U
 
 : TR-PROFILE-ID? ( ptr u8 n -- n )
    2dup s" auto" STR= if 2drop TR-DETECT-PROFILE exit then
-   2dup s" macos-arm64-4x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-4X2 exit then
+   2dup s" macos-arm64-8x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-8X2 exit then
    2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
    2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
    2drop TR-USAGE ;
@@ -254,11 +266,11 @@ variable TR-NUM-U
    0 TR-BUDGET-USER !
    0 TR-WALL-BUDGET-USER !
    id case
-      TR-PROFILE-MACOS-ARM64-4X2 of
-         4 GT-POOL-SLOTS!
+      TR-PROFILE-MACOS-ARM64-8X2 of
+         8 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         55000 TR-BUDGET !
-         60000 TR-WALL-BUDGET !
+         40000 TR-BUDGET !
+         45000 TR-WALL-BUDGET !
       endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
          4 GT-POOL-SLOTS!
@@ -287,7 +299,7 @@ variable TR-NUM-U
 
 : TR-COLD-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-4X2 of 70000 endof
+      TR-PROFILE-MACOS-ARM64-8X2 of 70000 endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
       TR-BUDGET @ swap
@@ -295,7 +307,7 @@ variable TR-NUM-U
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-4X2 of 70000 endof
+      TR-PROFILE-MACOS-ARM64-8X2 of 70000 endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
       TR-WALL-BUDGET @ swap
@@ -370,7 +382,7 @@ variable TR-NUM-U
 
 : TR-PROFILE$ ( -- ptr u8 n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-4X2 of s" macos-arm64-4x2" endof
+      TR-PROFILE-MACOS-ARM64-8X2 of s" macos-arm64-8x2" endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
       TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
       s" unknown" rot
@@ -381,7 +393,7 @@ variable TR-NUM-U
    s" warm" ;
 
 : TR-CHECK-MACOS-PROFILE ( -- )
-   HB-TARGET-MACOS? 0= if s" macos-arm64-4x2 requires macOS target" TR-PROFILE-FAIL then ;
+   HB-TARGET-MACOS? 0= if s" macos-arm64-8x2 requires macOS target" TR-PROFILE-FAIL then ;
 
 : TR-CHECK-JETSON-PROFILE ( -- )
    HB-TARGET-LINUX? 0= if s" jetson-orin-clocks-4x2 requires Linux target" TR-PROFILE-FAIL then
@@ -393,7 +405,7 @@ variable TR-NUM-U
 
 : TR-CHECK-PROFILE ( -- )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-4X2 of TR-CHECK-MACOS-PROFILE endof
+      TR-PROFILE-MACOS-ARM64-8X2 of TR-CHECK-MACOS-PROFILE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
       drop s" unknown perf profile" TR-PROFILE-FAIL

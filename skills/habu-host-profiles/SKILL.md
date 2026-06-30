@@ -12,9 +12,9 @@ nested pool slots, and timing budgets. Put manual overrides after
 
 Profiles:
 
-- `macos-arm64-4x2`: macOS ARM64 target, `--pool-slots 4`,
-  `--nested-pool-slots 2`, hot `--budget-ms 55000`,
-  `--wall-budget-ms 60000`; cold `70000` / `70000`.
+- `macos-arm64-8x2`: macOS ARM64 target, `--pool-slots 8`,
+  `--nested-pool-slots 2`, hot `--budget-ms 40000`,
+  `--wall-budget-ms 45000`; cold `70000` / `70000`.
 - `jetson-orin-clocks-4x2`: Linux target on NVIDIA Jetson with CPUs `0-7`
   online, `--pool-slots 4`, `--nested-pool-slots 2`, hot
   `--budget-ms 100000`, `--wall-budget-ms 110000`; cold `150000` / `160000`.
@@ -23,6 +23,8 @@ Profiles:
 
 The runner's `--wall-budget-ms` uses its monotonic elapsed time from `TR-MAIN`;
 wrap the command with `/usr/bin/time -p` when exact process wall time matters.
+Top-level `--pool-slots` is capped at 8; fixed warm/AOT artifact builders own
+slots 8-11.
 
 macOS hot profile:
 
