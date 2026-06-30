@@ -24,6 +24,7 @@ package. The package rules live in `docs/forth.md`.
 | `LATCAL`   | latency-calibration                    | latency calibration stats |
 | `XCORR`    | latency-xcorr                          | latency cross-correlation |
 | `SCHEMA`   | capture-schema (+ -json)               | NDJSON capture schema validation |
+| `ODREC`    | live-records                           | capture/live detector JSON rows → checked record structures |
 | `CAMSYNC`  | timestamp-metrics / -phase / -render   | camera-capture timestamp sync (TM per-camera, TG frame-group, TX cross-camera) |
 | `FPS`      | fps-sweep / fps-report                 | per-camera FPS quality |
 | `TRACKER`  | tracker (+ -render)                    | multi-object tracker |
@@ -91,6 +92,15 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
   rejection, unsupported live schemas, and field-type/missing-field failures.
   This is the JSON access layer the NDJSON analyzers
   (timestamp/latency/fps/low-light/tracker) build on.
+- `live-records.f` — checked record structures and JSON loaders for the
+  validated handoff rows used by live capture/detector analysis:
+  `FRAME-REC`, `DETECTION-REC`, `PERCEPTION-TICK-REC`, and
+  `TRACKER-TICK-REC`. Pointer-valued string fields are exposed through typed
+  `ptr-field` wrappers (`FRAME.SERIAL-A`, `DET.SOURCE-A`, etc.) so analyzer
+  kernels can read rows without reverting to untyped JSON lookups or parallel
+  scratch arrays. The loader tests validate each row through `SCHEMA` first,
+  parse it with `tools/json.f`, fill the checked structures, and feed frame
+  records into `CAMSYNC:TM-ADD` to prove structure-to-analyzer wiring.
 
 - `timestamp_metrics.f` — per-camera frame-timing kernel from
   `src/timestamp_metrics.zig` (`CameraTiming`/`updateCameraTiming`/

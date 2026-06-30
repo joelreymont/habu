@@ -170,6 +170,11 @@ lesson — keep the specific word/code/path, cut the prose.
   loads before `render.f`, so `{: x:? :}` records show-inferred locals in checker
   state and calls `LOCSHOWXT`; `render.f` installs the printer after its type
   renderer exists.
+- **Typed structure fields need explicit pointer wrappers:** `CELL +FIELD`
+  accessors expose generic `ptr a`; mixed string/numeric records can unify the
+  base record to a pointer-cell role after a `ptr u8` store. Keep generated
+  field words private and publish typed wrappers with `ptr-field` for
+  pointer-valued cells and `cells +` wrappers for numeric cells.
 
 ## Tool & Infra
 
