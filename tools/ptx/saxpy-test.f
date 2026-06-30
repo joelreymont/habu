@@ -52,6 +52,24 @@ variable PTXT-OUT-U
    PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    PTXT-CAPTURE>N ;
 
+: PTXT-RUN-ONCE-CG ( -- n n n )
+   PROC-ARGV-ENV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" lib/errors.f"  >LEN PROC-ARGV+
+   s" lib/string.f"  >LEN PROC-ARGV+
+   s" lib/float.f"  >LEN PROC-ARGV+
+   s" lib/fmt.f"  >LEN PROC-ARGV+
+   s" lib/test.f"  >LEN PROC-ARGV+
+   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+
+   s" lib/ptx/cg.f"  >LEN PROC-ARGV+
+   s" lib/ptx/header.f"  >LEN PROC-ARGV+
+   s" lib/ptx/tile.f"  >LEN PROC-ARGV+
+   s" tools/ptx/once-cg.f"  >LEN PROC-ARGV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN PTXT-OUT PTXT-CAP >LEN PTXT-ERR PTXT-CAP >LEN
+   PTXT-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
+   PTXT-CAPTURE>N ;
+
 : PTXT-RUN-SOFTMAX-CG ( -- n n n )
    PROC-ARGV-ENV-RESET
    s" --load"  >LEN PROC-ARGV+
@@ -139,6 +157,14 @@ variable PTXT-OUT-U
    s" @%p21 st.global.f32 [%rd22], %f21;" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+: PTXT-ONCE-CG-OUTPUT ( -- )
+   PTXT-RUN-ONCE-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry ONCE_SPAN" PTXT-HAS
+   s" ld.global.f32" PTXT-HAS
+   s" st.global.f32" PTXT-HAS
+   s" red.global.add.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 : PTXT-SOFTMAX-CG-OUTPUT ( -- )
    PTXT-RUN-SOFTMAX-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .shared .align 4 .b8 SMEM[1024];" PTXT-HAS
@@ -173,6 +199,7 @@ variable PTXT-OUT-U
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
+PTXT-ONCE-CG-OUTPUT
 PTXT-SOFTMAX-CG-OUTPUT
 PTXT-SUM-CG-OUTPUT
 PTXT-SUM1024-CG-OUTPUT

@@ -3,8 +3,9 @@
 \ Reverse-mode AD is a SYNTACTIC reversal of a concatenative program: a forward
 \ pipeline w1 w2 .. wn has gradient VJP[wn] .. VJP[w1] (docs/autograd.md). This is
 \ that pass for STRAIGHT-LINE pipelines over the LINEAR/data-free adjoints:
-\ +. <-> DUP, BLOCK-SUM <-> BROADCAST, STORE -> LOAD, and
-\ LOAD -> SCATTER-ADD (the conservative default because read-once is not proven).
+\ +. <-> DUP, BLOCK-SUM <-> BROADCAST, STORE -> LOAD, LOAD -> SCATTER-ADD
+\ by default, and LOAD-ONCE -> STORE-ONCE when the checked once-space witness is
+\ present.
 \ It tokenizes a forward body, reverses the word order, and substitutes each
 \ word's adjoint - producing the backward body, which is then an ordinary checked
 \ kernel.
@@ -50,8 +51,12 @@
    2dup s" BROADCAST" STR= if 2drop s" BLOCK-SUM" exit then
    2dup s" LOAD"      STR= if 2drop s" SCATTER-ADD" exit then
    2dup s" STORE"     STR= if 2drop s" LOAD"      exit then
+   2dup s" LOAD-ONCE" STR= if 2drop s" STORE-ONCE" exit then
+   2dup s" STORE-ONCE" STR= if 2drop s" LOAD-ONCE" exit then
    2dup s" ROW-LOAD"  STR= if 2drop s" ROW-SCATTER-ADD" exit then
    2dup s" ROW-STORE" STR= if 2drop s" ROW-LOAD"  exit then
+   2dup s" ROW-LOAD-ONCE" STR= if 2drop s" ROW-STORE-ONCE" exit then
+   2dup s" ROW-STORE-ONCE" STR= if 2drop s" ROW-LOAD-ONCE" exit then
    2dup s" NEG"       STR= if 2drop s" NEG"       exit then
    E-PTX-NOVJP throw ;
 
@@ -141,8 +146,12 @@ variable AD-START
    2dup s" BROADCAST" STR= if 2drop 0 exit then
    2dup s" LOAD"      STR= if 2drop 0 exit then
    2dup s" STORE"     STR= if 2drop 0 exit then
+   2dup s" LOAD-ONCE" STR= if 2drop 0 exit then
+   2dup s" STORE-ONCE" STR= if 2drop 0 exit then
    2dup s" ROW-LOAD"  STR= if 2drop 0 exit then
    2dup s" ROW-STORE" STR= if 2drop 0 exit then
+   2dup s" ROW-LOAD-ONCE" STR= if 2drop 0 exit then
+   2dup s" ROW-STORE-ONCE" STR= if 2drop 0 exit then
    2dup s" NEG"       STR= if 2drop 0 exit then
    E-PTX-NOVJP throw ;
 

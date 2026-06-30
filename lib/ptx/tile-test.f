@@ -17,8 +17,10 @@ TRUSTED: PTX-CHECK-REJECTS ( ptr u8 n -- )
    r> DIAGXT ! ;
 
 11 22 MK-SPAN 11 T=
+11 22 MK-SPAN-ONCE 11 T=
 11 12 22 MK-SPAN= 12 T= 11 T=
 11 22 33 MK-MATRIX 11 T=
+11 22 33 MK-MATRIX-ONCE 11 T=
 
 KERNEL: SAXPY ( span<space-global,f32,extent-n>  span<space-global,f32,extent-n>  uniform<f32> -- )  GRID: ceil-n-256
    {: x y a :}
@@ -37,6 +39,12 @@ KERNEL: SCATTER-SPAN ( span<space-global,f32,extent-n> span<space-global,f32,ext
    x GRID-CTX {: g :} \ typed-local-lint: allow-bare-local
    x g LOAD
    y g SCATTER-ADD ;
+
+KERNEL: ONCE-SPAN ( span<space-global-once,f32,extent-n> -- )  GRID: ceil-n-256
+   {: x :} \ typed-local-lint: allow-bare-local
+   x GRID-CTX-ONCE {: g :} \ typed-local-lint: allow-bare-local
+   x g LOAD-ONCE
+   x g STORE-ONCE ;
 
 KERNEL: SUBDIV-SPAN ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> -- )  GRID: ceil-n-256
    {: x y :} \ typed-local-lint: allow-bare-local
@@ -59,6 +67,10 @@ s" PTX-GOOD-FMA-MASK {: s a :} s GRID-CTX {: g :} a s g LOAD s g LOAD FMA." CHEC
 s" PTX-BAD-FMA-MASK {: s a :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} a s g1 LOAD s g2 LOAD FMA." PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-GOOD-SCATTER-ADD {: s :} s GRID-CTX {: g :} s g LOAD s g SCATTER-ADD" CHECK! -1 T= \ typed-local-lint: allow-bare-local
 s" PTX-BAD-SCATTER-ADD-MASK {: s :} s GRID-CTX {: g1 :} s GRID-CTX {: g2 :} s g1 LOAD s g2 SCATTER-ADD" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
+s" PTX-GOOD-ONCE {: s :} s GRID-CTX-ONCE {: g :} s g LOAD-ONCE s g STORE-ONCE" CHECK! -1 T= \ typed-local-lint: allow-bare-local
+s" PTX-BAD-ONCE-FROM-PLAIN ( tile<f32,block-256,mask-live> span<space-global,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- ) STORE-ONCE" PTX-CHECK-REJECTS
+s" PTX-BAD-PLAIN-FROM-ONCE ( tile<f32,block-256,mask-live> span<space-global-once,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- ) STORE" PTX-CHECK-REJECTS
+s" PTX-BAD-ONCE-CTX-FROM-PLAIN ( span<space-global,f32,extent-n> -- gridctx<block-256,extent-n,mask-live> ) GRID-CTX-ONCE" PTX-CHECK-REJECTS
 s" PTX-GOOD-MK-SPAN= ( ptr<space-global,f32> ptr<space-global,f32> u32 -- ) MK-SPAN= over GRID-CTX rot drop LOAD drop" CHECK! -1 T=
 s" PTX-BAD-MK-SPAN-LONE ( ptr<space-global,f32> ptr<space-global,f32> u32 u32 -- ) {: p q n m :} p n MK-SPAN {: x :} q m MK-SPAN {: y :} x GRID-CTX y swap LOAD drop" PTX-CHECK-REJECTS \ typed-local-lint: allow-bare-local
 s" PTX-BAD-SPACE ( span<space-shared,f32,extent-n> gridctx<block-256,extent-n,mask-live> -- tile<f32,block-256,mask-live> ) LOAD" PTX-CHECK-REJECTS

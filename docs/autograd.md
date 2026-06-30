@@ -56,6 +56,7 @@ in the types rather than implicit in an engine:
 | `BLOCK-SUM` (reduce) | `( tile<f32,B,M> -- uniform<f32> )` | `BROADCAST` (fill) | `( uniform<f32> -- tile<f32,B,M> )` |
 | `BROADCAST` | `( uniform -- tile )` | `BLOCK-SUM` | `( tile -- uniform )` |
 | `LOAD` (gather) | `( span ctx -- tile )` | `SCATTER-ADD` by default | `( tile span ctx -- )` |
+| `LOAD-ONCE` | `( once-span ctx -- tile )` | `STORE-ONCE` | plain store only for checked once-space witnesses |
 | `SCALE` (a·x) | `( tile uniform -- tile )` | `( dz a x -- dx da )` | dx=a·dz, da=Σ(dz⊙x) |
 | `B-` (x − s) | `( tile uniform -- tile )` | `( dz -- dt ds )` | dt=dz, ds=−Σdz |
 | `EXP.` | `( tile -- tile )` | `( dz y -- dz⊙y )` | saves output `y` |
@@ -63,8 +64,10 @@ in the types rather than implicit in an engine:
 | `BLOCK-MAX` | `( tile -- uniform )` | scatter to argmax lane | subgradient |
 
 `DUP ↔ +.` and `BLOCK-SUM ↔ BROADCAST` are **mutual adjoints** with transposed
-types. `STORE`'s adjoint is `LOAD`; `LOAD`'s conservative adjoint is
-`SCATTER-ADD` until a checked read-once witness permits plain `STORE`.
+types. `STORE`'s adjoint is `LOAD`; ordinary `LOAD`'s conservative adjoint is
+`SCATTER-ADD`. Plain store uses the separate `LOAD-ONCE`/`STORE-ONCE` vocabulary
+over `space-global-once` spans, so a normal `span<space-global,...>` cannot drift
+into the optimization.
 `BROADCAST` is the named form of the implicit broadcast already inside `B-`/`B/`.
 
 Linear primitives have data-free adjoints; nonlinear ones (`*.`, `EXP.`,
@@ -245,12 +248,15 @@ store. **Correction (review 2026-06-26):** the effect system does *not* track re
 multiplicity — `docs/effects.md` has no multiplicity/linearity effect, and read
 multiplicity here is an inter-thread, *grid-global* aliasing property that a
 per-thread checker structurally cannot see. So the AD pass must **not** silently
-guess: scatter-*add* is the **conservative default** for every `LOAD` adjoint;
-plain store is an opt-in refinement only behind a *proven-read-once* witness, never
-an inference. A forward that reads an input across multiple blocks whose backward
-uses plain store must be rejected (or must lower to scatter-add). Tracking
-read-once soundly is a first-class **checker capability** (a substructural/affine
-effect over gradient buffers) — dot it; do not assume it exists.
+guess: scatter-*add* is the **conservative default** for every ordinary `LOAD`
+adjoint. Plain store is an opt-in refinement through `space-global-once` spans:
+`LOAD-ONCE` reverses to `STORE-ONCE`, and the checker rejects using `STORE-ONCE`
+with an ordinary global span or using ordinary `STORE` with a once span. The
+once-space value is minted only at an audited ABI/from-raw-parts boundary
+(`MK-SPAN-ONCE`, `MK-MATRIX-ONCE`, or codegen register equivalents); there is no
+checked word that upgrades an existing normal span to once. The remaining hard
+part is proving, at the caller/launch boundary, that the buffer really is
+single-writer/read-once; device gradcheck remains the zed-owned proof.
 
 ## Checkpointing / rematerialization
 

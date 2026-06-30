@@ -31,14 +31,26 @@ TRUSTED: ROW ( -- rowidx<e> )
 TRUSTED: ROW-SPAN ( matrix<space-global,t,e,k> rowidx<e> -- span<space-global,t,k> )
    EMIT-ROW-SPAN ;
 
+TRUSTED: ROW-SPAN-ONCE ( matrix<space-global-once,t,e,k> rowidx<e> -- span<space-global-once,t,k> )
+   EMIT-ROW-SPAN-ONCE ;
+
 TRUSTED: ROW-CTX ( span<space-global,t,k> -- rowctx<b,k,fresh-mask-live> )
    EMIT-ROW-CTX ;
+
+TRUSTED: ROW-CTX-ONCE ( span<space-global-once,t,k> -- rowctx<b,k,fresh-mask-live> )
+   EMIT-ROW-CTX-ONCE ;
 
 TRUSTED: ROW-LOAD ( span<space-global,t,k> rowctx<b,k,m> -- tile<t,b,m> )
    EMIT-ROW-LOAD ;
 
+TRUSTED: ROW-LOAD-ONCE ( span<space-global-once,t,k> rowctx<b,k,m> -- tile<t,b,m> )
+   EMIT-ROW-LOAD-ONCE ;
+
 TRUSTED: ROW-STORE ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
    EMIT-ROW-STORE ;
+
+TRUSTED: ROW-STORE-ONCE ( tile<t,b,m> span<space-global-once,t,k> rowctx<b,k,m> -- )
+   EMIT-ROW-STORE-ONCE ;
 
 TRUSTED: ROW-SCATTER-ADD ( tile<t,b,m> span<space-global,t,k> rowctx<b,k,m> -- )
    EMIT-ROW-SCATTER-ADD ;

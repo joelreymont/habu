@@ -1335,6 +1335,10 @@ lesson — keep the specific word/code/path, cut the prose.
   the AD pass must accumulate cotangents with `SCATTER-ADD`/`ROW-SCATTER-ADD`.
   Plain store is an optimization gated by an affine/read-once proof, not an
   inference from the current per-thread effect system.
+- **Read-once is a distinct PTX address-space token:** model the optimization as
+  `space-global-once` plus `LOAD-ONCE`/`STORE-ONCE`, never as a cast from ordinary
+  `span<space-global,...>`. The checker can then reject both accidental plain
+  stores from normal spans and accidental use of once spans through normal stores.
 - **PTX IR needs distinct symbolic inputs before AD algebra:** a single generic
   `INPUT` node is enough for peepholes, but softmax backward fixtures need stable
   input symbols (`y`, `dy`) plus block-algebra nodes (`BLOCK-SUM`, `B-`) so the

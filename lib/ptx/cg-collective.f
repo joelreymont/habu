@@ -35,6 +35,7 @@
 \ A kernel arg is a register number; the thin from-register casts are the
 \ codegen analogue of MK-SPAN's from_raw_parts boundary (see lib/ptx/cg.f).
 TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
+TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
 
 \ --- softmax entry scaffolding (distinct from cg.f's SAXPY scaffolding) ---
 : CG-SM-RESET ( -- )  1 CG-NF !  3 CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
@@ -84,6 +85,9 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" add.u64 " CG-S rb CG-RD s" , " CG-S g CG-RD s" , " CG-S off CG-RD s" ;" CG-S CG-LINE
    rb ;
 
+: EMIT-ROW-SPAN-ONCE ( n n -- n )
+   EMIT-ROW-SPAN ;
+
 \ ROW-CTX: per-thread column byte offset = tid*4 (span unused; bounds recomputed
 \ at load/store from %tid.x and %r1).
 : EMIT-ROW-CTX ( n -- n ) {: span :}
@@ -92,6 +96,9 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    CG-NEXT-RD {: c :}
    SB-RESET s" mul.wide.u32 " CG-S c CG-RD s" , " CG-S rt CG-R s" , 4;" CG-S CG-LINE
    c ;
+
+: EMIT-ROW-CTX-ONCE ( n -- n )
+   EMIT-ROW-CTX ;
 
 \ ROW-LOAD: masked load from rowbase+coloff; inactive lanes seed -inf.
 : EMIT-ROW-LOAD ( n n -- n ) {: span ctx :}
@@ -105,6 +112,9 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    SB-RESET s" mov.f32 " CG-S t CG-F s" , 0fFF800000;" CG-S CG-LINE
    SB-RESET s" @" CG-S p CG-P s"  ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
    t ;
+
+: EMIT-ROW-LOAD-ONCE ( n n -- n )
+   EMIT-ROW-LOAD ;
 
 \ Block reduction: smem[tid]=active?tile:identity; bar; thread0 folds
 \ 0..PTX-BLOCK@-1; bar; bcast. op: 0=max 1=add 2=min.
@@ -216,6 +226,9 @@ TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
    CG-NEXT-P {: p :}
    SB-RESET s" setp.lt.u32 " CG-S p CG-P s" , " CG-S rt CG-R s" , %r1;" CG-S CG-LINE
    SB-RESET s" @" CG-S p CG-P s"  st.global.f32 [" CG-S a CG-RD s" ], " CG-S tile CG-F s" ;" CG-S CG-LINE ;
+
+: EMIT-ROW-STORE-ONCE ( n n n -- )
+   EMIT-ROW-STORE ;
 
 \ ROW-SCATTER-ADD : masked red.global.add.f32 to rowbase+coloff.
 : EMIT-ROW-SCATTER-ADD ( n n n -- ) {: tile:n span:n ctx:n :}

@@ -66,6 +66,7 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 \ MK-SPAN's from_raw_parts boundary). CG-PARAMS sets x=%rd1, y=%rd2, a=%f1.
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
+TRUSTED: SPAN-ONCE-REG ( n -- span<space-global-once,f32,extent-n> ) ;
 
 \ --- f64 -> f32 IEEE-754 marshalling (host side: kernel params/arrays are f32,
 \ Habu floats are 64-bit cells). R>BITS reinterprets a float as its 64-bit pattern
@@ -123,6 +124,12 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
    t ;
 
+: EMIT-GRID-CTX-ONCE ( n -- n )
+   EMIT-GRID-CTX ;
+
+: EMIT-LOAD-ONCE ( n n -- n )
+   EMIT-LOAD ;
+
 \ SCALE: tile * uniform -> tile (mul.rn, no contraction)
 : EMIT-SCALE ( n n -- n ) {: tilef unif :}
    CG-NEXT-F {: r :}
@@ -165,6 +172,9 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S spanrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" st.global.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
+
+: EMIT-STORE-ONCE ( n n n -- )
+   EMIT-STORE ;
 
 \ SCATTER-ADD: conservative LOAD adjoint; cotangents accumulate at span+ctx.
 : EMIT-SCATTER-ADD ( n n n -- ) {: tilef:n spanrd:n ctxrd:n :}

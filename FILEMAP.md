@@ -163,6 +163,8 @@ points stay listed.
   vocabulary.
 - `tools/ptx/ops-cg.f` — checked scalar/v4 elementwise op kernel bodies run
   through the PTX codegen vocabulary.
+- `tools/ptx/once-cg.f` — checked once-space load/store kernel body proving
+  read-once witness stores lower to ordinary `st.global` rather than scatter-add.
 - `tools/ptx/acc-cg.f` — checked AXPY-ACC kernel (register-accumulator ops) run through
   the PTX codegen; lowers ACC-ZERO/ACC-FMA/ACC-TILE to mov/fma/identity.
 - `tools/ptx/acc-device-test.f` — committed device-correctness regression: the checked

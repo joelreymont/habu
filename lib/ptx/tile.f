@@ -22,20 +22,35 @@
 TRUSTED: MK-SPAN ( ptr<space-global,t> u32 -- span<space-global,t,fresh-extent-n> )
    drop ;
 
+TRUSTED: MK-SPAN-ONCE ( ptr<space-global,t> u32 -- span<space-global-once,t,fresh-extent-n> )
+   drop ;
+
 TRUSTED: MK-SPAN= ( ptr<space-global,t> ptr<space-global,u> u32 -- span<space-global,t,fresh-extent-n> span<space-global,u,fresh-extent-n> )
    drop ;
 
 TRUSTED: MK-MATRIX ( ptr<space-global,t> u32 u32 -- matrix<space-global,t,fresh-extent-r,fresh-extent-c> )
    drop drop ;
 
+TRUSTED: MK-MATRIX-ONCE ( ptr<space-global,t> u32 u32 -- matrix<space-global-once,t,fresh-extent-r,fresh-extent-c> )
+   drop drop ;
+
 TRUSTED: GRID-CTX ( span<space-global,t,e> -- gridctx<b,e,fresh-mask-live> )
    EMIT-GRID-CTX ;
+
+TRUSTED: GRID-CTX-ONCE ( span<space-global-once,t,e> -- gridctx<b,e,fresh-mask-live> )
+   EMIT-GRID-CTX-ONCE ;
 
 TRUSTED: LOAD ( span<space-global,t,e> gridctx<b,e,m> -- tile<t,b,m> )
    EMIT-LOAD ;
 
+TRUSTED: LOAD-ONCE ( span<space-global-once,t,e> gridctx<b,e,m> -- tile<t,b,m> )
+   EMIT-LOAD-ONCE ;
+
 TRUSTED: STORE ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-STORE ;
+
+TRUSTED: STORE-ONCE ( tile<t,b,m> span<space-global-once,t,e> gridctx<b,e,m> -- )
+   EMIT-STORE-ONCE ;
 
 TRUSTED: SCATTER-ADD ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-SCATTER-ADD ;
