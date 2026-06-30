@@ -212,6 +212,8 @@ variable FM-NUM-L
    s" tools/c-call-emitter-test.f" FM-REQ
    s" tools/signature-scan-emitter-test.f" FM-REQ
    s" tools/compiler-dispatch-test.f" FM-REQ
+   s" test/gate-runner-lib.f" FM-REQ
+   s" test/gate-runner-entry.f" FM-REQ
    s" tools/string.f" FM-REQ
    s" lib/string-test.f" FM-REQ
    s" tools/date.f" FM-REQ

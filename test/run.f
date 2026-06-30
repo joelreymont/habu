@@ -820,6 +820,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    s" tools/public-signatures-core.f" TR-RUNNER-KEY-FILE+
    s" tools/public-signatures.f" TR-RUNNER-KEY-FILE+
    s" lib/content-key.f" TR-RUNNER-KEY-FILE+
+   s" test/gate-runner-lib.f" TR-RUNNER-KEY-FILE+
    s" test/gate-runner-entry.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-cases.f" TR-RUNNER-KEY-FILE+
    s" test/gate-stdlib-lint-tools.f" TR-RUNNER-KEY-FILE+
