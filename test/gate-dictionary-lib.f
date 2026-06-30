@@ -479,7 +479,20 @@ variable GD-INC-DUP-U
    s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : GD-NR-BAD ( n -- n ) dup 0 < if GD-NR:STOP 0 then 1 + ;" GE-SRC-LINE
-   $46 s" gd-nr-bad" s" check.f package no-return rejects live tail" GE-CHECK-RUN-BAD ;
+   $46 s" gd-nr-bad" s" check.f package no-return rejects live tail" GE-CHECK-RUN-BAD
+   GE-SRC-RESET
+   s" package GD-NRA" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STOP ( -- ) 1 throw ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package GD-NRB" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : STOP ( -- ) 2 throw ;" GE-SRC-LINE
+   s" undefine STOP" GE-SRC-LINE
+   s" : STOP ( -- n ) 7 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GD-NRA-BAD ( n -- n ) dup 0 < if GD-NRA:STOP 0 then 1 + ;" GE-SRC-LINE
+   $46 s" gd-nra-bad" s" package undefine keeps other no-return symbol" GE-CHECK-RUN-BAD ;
 
 : GD-RUN-BAD-SOURCE ( n ptr u8 n ptr u8 n -- )
    {: rc:n needle:ptr needleu:n label:ptr labelu:n :}
@@ -538,10 +551,18 @@ variable GD-INC-DUP-U
    s" package GD-RPKG" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 3 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package GD-RPKG-B" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : RESET ( -- n ) 6 ;" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" package GD-RPKG" GE-SRC-LINE
+   s" public" GE-SRC-LINE
    s" undefine RESET" GE-SRC-LINE
    s" : RESET ( -- n ) 4 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" GD-RPKG:RESET ." GE-SRC-LINE
+   s" GD-RPKG-B:RESET ." GE-SRC-LINE
    s" defer GD-RV ( -- n )" GE-SRC-LINE
    s" undefine GD-RV" GE-SRC-LINE
    s" defer GD-RV ( -- n )" GE-SRC-LINE
@@ -552,6 +573,7 @@ variable GD-INC-DUP-U
    SB-RESET
    s" 2" GE-OUT-LINE
    s" 4" GE-OUT-LINE
+   s" 6" GE-OUT-LINE
    s" 5" GE-OUT-LINE
    SB$ s" hb explicit undefine redefinition output" GE-EXPECT-OUT ;
 

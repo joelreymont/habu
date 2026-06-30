@@ -1285,3 +1285,6 @@ lesson — keep the specific word/code/path, cut the prose.
   may already be target layout constants. Structure size words are real
   dictionary entries, so use distinct checker-local names such as `CFS-REC`
   instead of relying on silent shadowing.
+- **Checker delete rows need a nonzero first cell:** append-only delete/clear
+  rows can carry flag `0`, so fixed DFER/NORET records put `SYM` first and use
+  only a zero symbol cell as the table terminator.
