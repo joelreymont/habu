@@ -115,18 +115,21 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
 \ a 3rd-level quot caps at '?'). That covers every combinator sig in practice.
 
 : Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | ptr | '?'
-   r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-OUT ELSE
-   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
-   r TAG T-ATOM = IF r ATOM-REND ELSE
-   r TAG T-PARAM = IF
-     r PARAM-START
-     0 BEGIN dup r PARAM>ARGC < WHILE
-       dup 0 > IF 44 EMIT1 THEN
-       r over PARAM>ARG RECURSE
-       1 +
-     REPEAT drop 62 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN THEN THEN ;
+   r TAG case
+      T-VAR of r PAY LET-OF EMIT1 endof
+      T-CON of r PAY CON-OUT endof
+      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
+      T-ATOM of r ATOM-REND endof
+      T-PARAM of
+        r PARAM-START
+        0 BEGIN dup r PARAM>ARGC < WHILE
+          dup 0 > IF 44 EMIT1 THEN
+          r over PARAM>ARG RECURSE
+          1 +
+        REPEAT drop 62 EMIT1
+      endof
+      63 EMIT1
+   endcase ;
 
 : Q2REND-ROW {: row :}  0 Q2BN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -146,23 +149,26 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
    THEN ;
 
 : QREND-1 {: t :} t T-RES {: r :}               \ level-1 leaf: con | var | nested quot
-   r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-OUT ELSE
-   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
-   r TAG T-QUOT = IF                            \ a nested quot -> [ in -- out ... ]
-     91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
-     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW
-     r Q2RET  93 EMIT1
-   ELSE
-   r TAG T-ATOM = IF r ATOM-REND ELSE
-   r TAG T-PARAM = IF
-     r PARAM-START
-     0 BEGIN dup r PARAM>ARGC < WHILE
-       dup 0 > IF 44 EMIT1 THEN
-       r over PARAM>ARG RECURSE
-       1 +
-     REPEAT drop 62 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN THEN THEN THEN ;
+   r TAG case
+      T-VAR of r PAY LET-OF EMIT1 endof
+      T-CON of r PAY CON-OUT endof
+      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
+      T-QUOT of                            \ a nested quot -> [ in -- out ... ]
+        91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
+        45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW
+        r Q2RET  93 EMIT1
+      endof
+      T-ATOM of r ATOM-REND endof
+      T-PARAM of
+        r PARAM-START
+        0 BEGIN dup r PARAM>ARGC < WHILE
+          dup 0 > IF 44 EMIT1 THEN
+          r over PARAM>ARG RECURSE
+          1 +
+        REPEAT drop 62 EMIT1
+      endof
+      63 EMIT1
+   endcase ;
 
 : QREND-ROW {: row :}  0 QRBN !  row
    BEGIN R-RES dup TAG S-PUSH = WHILE
@@ -180,23 +186,26 @@ create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
    THEN ;
 
 : REND-TYPE {: t :} t T-RES {: r :}
-   r TAG T-VAR = IF r PAY LET-OF EMIT1 ELSE
-   r TAG T-CON = IF r PAY CON-OUT ELSE
-   r TAG T-PTR = IF s" ptr " RSTR  r PTR>INNER RECURSE ELSE
-   r TAG T-QUOT = IF                                     \ quot<effect> -> [ in -- out ... ]
-     91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
-     45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
-     r QRET  93 EMIT1
-   ELSE
-   r TAG T-ATOM = IF r ATOM-REND ELSE
-   r TAG T-PARAM = IF
-     r PARAM-START
-     0 BEGIN dup r PARAM>ARGC < WHILE
-       dup 0 > IF 44 EMIT1 THEN
-       r over PARAM>ARG RECURSE
-       1 +
-     REPEAT drop 62 EMIT1
-   ELSE 63 EMIT1 THEN THEN THEN THEN THEN THEN ;
+   r TAG case
+      T-VAR of r PAY LET-OF EMIT1 endof
+      T-CON of r PAY CON-OUT endof
+      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
+      T-QUOT of                                     \ quot<effect> -> [ in -- out ... ]
+        91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
+        45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
+        r QRET  93 EMIT1
+      endof
+      T-ATOM of r ATOM-REND endof
+      T-PARAM of
+        r PARAM-START
+        0 BEGIN dup r PARAM>ARGC < WHILE
+          dup 0 > IF 44 EMIT1 THEN
+          r over PARAM>ARG RECURSE
+          1 +
+        REPEAT drop 62 EMIT1
+      endof
+      63 EMIT1
+   endcase ;
 create RBUF 64 cells allot   variable RBN
 
 : REND-COLLECT {: s :}  0 RBN !  s
@@ -252,10 +261,14 @@ variable DSUGE  variable DSUGA
       1 - dup JNBUF + c@ EMIT1
    REPEAT drop ;
 : JCHAR {: c :}
-   c 10 = IF 92 EMIT1 110 EMIT1 EXIT THEN
-   c 13 = IF 92 EMIT1 114 EMIT1 EXIT THEN
-   c 9 = IF 92 EMIT1 116 EMIT1 EXIT THEN
-   c 34 =  c 92 = or IF 92 EMIT1 THEN  c EMIT1 ;
+   c case
+      10 of 92 EMIT1 110 EMIT1 endof
+      13 of 92 EMIT1 114 EMIT1 endof
+      9 of 92 EMIT1 116 EMIT1 endof
+      34 of 92 EMIT1 c EMIT1 endof
+      92 of 92 EMIT1 c EMIT1 endof
+      c EMIT1
+   endcase ;
 : JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
 : JKEY {: a u :}  a u JSTR  58 EMIT1 ;
 : JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
