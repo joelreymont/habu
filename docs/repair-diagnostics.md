@@ -101,6 +101,8 @@ Current checker classes:
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
+- `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
+  syntactically invalid nominal type name.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -120,6 +122,7 @@ The checker `suggestion` field is stable short text derived only from
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
+| `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-06-29
+Last updated: 2026-06-30
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -13,6 +13,11 @@ lesson — keep the specific word/code/path, cut the prose.
   source token; literal names such as `s"` then broke compilation. Primitive
   effect declarations now run top-level: `PRIM:` consumes the name token
   immediately and the `PE-IN`/`PE-OUT` constructors build the stored effect.
+- **`tools/check.f` must pre-register source-local `deftype`:** preverify parses
+  signatures before the child executes source, so valid nominal declarations
+  looked unknown and bad declarations died as raw prose. The tool now scans
+  `deftype` first inside a checker scope, registers valid names, and emits JSON
+  for invalid names.
 - **Symbol interners must consume miss sentinels:** `SYM-INTERN` initially left
   the `0` id returned by a failed `SYM-FIND` under the new id, corrupting the
   first `TRUST` during stage-source loading. For `( id bool )` finders, every

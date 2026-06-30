@@ -15,6 +15,10 @@
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
 ' CHK-CHECK-HOOK set-check
+s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
+s" CHECKER-DEFTYPE" s" ptr u8 n --" TRUST
+s" CHECKER-SCOPE-START" s" --" TRUST
+s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 $40000 constant CHK-SRC-CAP
 $50000 constant CHK-RUN-CAP
@@ -76,6 +80,8 @@ variable CHK-CAP-OUT-CAP
 variable CHK-CAP-ERR-CAP
 variable CHK-CAP-OUT-U
 variable CHK-CAP-ERR-U
+variable CHK-NOM-I
+variable CHK-NOM-U
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -367,6 +373,92 @@ variable CHK-CAP-ERR-U
    CHK-MAKE-TEMP
    CHK-MATERIALIZE-LIST ;
 
+: CHK-WORD-TOK? ( n -- bool ) {: k:n :}
+   k L# @ >= IF LINT-FALSE exit THEN
+   k LK@ L-WORD = ;
+
+: CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
+   k LEX-TOK a u LINT-STR=CI ;
+
+: CHK-TOK-END ( n -- n ) {: k:n :}
+   k LB@ k LEX-TOK nip + ;
+
+: CHK-NOM-SRC$ ( n n -- ptr u8 n ) {: def:n name:n :}
+   CHK-SRC-BUF def LB@ +
+   name CHK-TOK-END def LB@ - ;
+
+: CHK-NOM-BAD-SUG$ ( -- ptr u8 n )
+   s" Choose a unique non-reserved nominal type name." ;
+
+: CHK-NOM-JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
+   key keyu LJW-KEY val valu LJW-STRING LJW-COMMA ;
+
+: CHK-NOM-JU ( n ptr u8 n -- )
+   LJW-KEY LJW-U LJW-COMMA ;
+
+: CHK-NOM-JSON ( n n -- ) {: def:n name:n :}
+   LJW-RESET
+   LJW-OBJECT-START
+   1 s" schema_version" CHK-NOM-JU
+   s" code" s" E-BAD-NOMINAL-TYPE" CHK-NOM-JSTR
+   s" repair_class" s" fix_nominal_type" CHK-NOM-JSTR
+   s" verdict" s" rejected" CHK-NOM-JSTR
+   s" word" s" deftype" CHK-NOM-JSTR
+   s" token" LJW-KEY name LEX-TOK LJW-STRING LJW-COMMA
+   name s" token_index" CHK-NOM-JU
+   s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
+   name LL@ s" line" CHK-NOM-JU
+   name LC@ s" column" CHK-NOM-JU
+   name LB@ s" byte_start" CHK-NOM-JU
+   name CHK-TOK-END s" byte_end" CHK-NOM-JU
+   s" definition_source" LJW-KEY def name CHK-NOM-SRC$ LJW-STRING LJW-COMMA
+   s" declared_effect" s" unknown " CHK-NOM-JSTR
+   s" declared_effect_source" s" unknown" CHK-NOM-JSTR
+   s" inferred_effect" s" unknown " CHK-NOM-JSTR
+   s" return_stack" LJW-KEY
+   LJW-OBJECT-START
+   s" expected" LJW-KEY s" " LJW-STRING LJW-COMMA
+   s" actual" LJW-KEY s" " LJW-STRING
+   LJW-OBJECT-END
+   LJW-COMMA
+   s" suggestion" LJW-KEY CHK-NOM-BAD-SUG$ LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CHK-ERR
+   CHK-LF CHK-ERR-C ;
+
+: CHK-NOM-PROSE ( n -- ) {: name:n :}
+   s" check.f: bad nominal type '" CHK-ERR
+   name LEX-TOK CHK-ERR
+   39 CHK-ERR-C
+   CHK-LF CHK-ERR-C ;
+
+: CHK-NOM-FAIL ( n n -- ) {: def:n name:n :}
+   CHK-JSON @ IF def name CHK-NOM-JSON ELSE name CHK-NOM-PROSE THEN
+   CHK-E-CHECK CHK-THROW ;
+
+: CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
+   name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
+   name LEX-TOK TYPE-RESERVED? ;
+
+: CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
+   name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
+   name LEX-TOK CHECKER-DEFTYPE ;
+
+: CHK-RUN-NOMINAL ( -- )
+   CHK-SOURCE FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
+   CHK-SOURCE CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
+   CHK-SRC-BUF CHK-NOM-U @ LEX-SOURCE
+   0 CHK-NOM-I !
+   begin CHK-NOM-I @ L# @ < while
+      CHK-NOM-I @ s" deftype" CHK-TOK=CI if
+         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-NOM-REGISTER
+         CHK-NOM-I @ 2 + CHK-NOM-I !
+      else
+         CHK-NOM-I @ 1 + CHK-NOM-I !
+      then
+   repeat ;
+
 : CHK-LABEL-DQ? ( -- bool )
    CHK-LABEL CHK-DQ LINT-INDEX-OF 0 >= ;
 
@@ -556,6 +648,7 @@ variable CHK-CAP-ERR-U
    CHK-CHILD-RC @ CHK-THROW ;
 
 : CHK-RUN-CURRENT ( -- )
+   CHK-RUN-NOMINAL
    CHK-RUN-RESERVED-NAMES
    CHK-RUN-BOUNDARY
    CHK-RUN-TRUST
@@ -572,10 +665,16 @@ variable CHK-CAP-ERR-U
    rc 0 = 0= if CLEANUP-RUN then
    rc ;
 
+: CHK-RUN-SCOPED ( -- )
+   CHECKER-SCOPE-START
+   [: CHK-RUN-CURRENT ;] catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   rc 0 <> if rc throw then ;
+
 : CHK-DIRECT-RUN ( -- n )
-   [: CHK-RUN-CURRENT ;] catch CHK-DIRECT-FINISH ;
+   [: CHK-RUN-SCOPED ;] catch CHK-DIRECT-FINISH ;
 
 : CHECK-MAIN ( -- )
    CHK-PARSE
    CHK-MATERIALIZE
-   CHK-RUN-CURRENT ;
+   CHK-RUN-SCOPED ;

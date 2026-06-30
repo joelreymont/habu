@@ -180,6 +180,12 @@ variable GDX-TRUST-MAN-U
    GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
+: GDX-CHECK-JSON-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GE-CHECK-ARGV
+   s" --json-errors" GDX-ARG+
+   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   label labelu GE-EXPECT-OK ;
+
 : GDX-CHECK-JSON-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    GE-CHECK-ARGV
    s" --json-errors" GDX-ARG+
@@ -264,6 +270,49 @@ variable GDX-TRUST-MAN-U
    s" code" s" E-BARE-PTR-SIGNATURE" s" bare ptr signature code" GDX-EXPECT-ERR-JSTR
    s" repair_class" s" fix_bare_ptr_element" s" bare ptr repair class" GDX-EXPECT-ERR-JSTR
    s" suggestion" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." s" bare ptr suggestion" GDX-EXPECT-ERR-JSTR ;
+
+: GDX-MALFORMED-QUOTATION-SIGNATURE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JQUOT ( [ n -- n -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted malformed quotation signature" GDX-CHECK-JSON
+   s" code" s" E-BAD-SIGNATURE" s" malformed quotation signature code" GDX-EXPECT-ERR-JSTR
+   s" token" s" --" s" malformed quotation token" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_signature_syntax" s" malformed quotation repair class" GDX-EXPECT-ERR-JSTR
+   s" line" s" 1" s" malformed quotation line" GDX-EXPECT-ERR-JRAW
+   s" byte_start" s" 19" s" malformed quotation byte_start" GDX-EXPECT-ERR-JRAW
+   s" byte_end" s" 21" s" malformed quotation byte_end" GDX-EXPECT-ERR-JRAW ;
+
+: GDX-BAD-PARAM-SIGNATURE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : JPARAM ( span<space-global f32> -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted bad parametric signature" GDX-CHECK-JSON
+   s" code" s" E-BAD-SIGNATURE" s" bad parametric signature code" GDX-EXPECT-ERR-JSTR
+   s" token" s" f32" s" bad parametric token" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_signature_syntax" s" bad parametric repair class" GDX-EXPECT-ERR-JSTR
+   s" suggestion" s" Repair the stack-effect comment syntax, including --." s" bad parametric suggestion" GDX-EXPECT-ERR-JSTR ;
+
+: GDX-BAD-NOMINAL-DECL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" deftype ptr" GE-SRC-LINE
+   s" tools/check.f --json-errors accepted bad nominal declaration" GDX-CHECK-JSON
+   s" code" s" E-BAD-NOMINAL-TYPE" s" bad nominal type code" GDX-EXPECT-ERR-JSTR
+   s" token" s" ptr" s" bad nominal token" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_nominal_type" s" bad nominal repair class" GDX-EXPECT-ERR-JSTR
+   s" suggestion" s" Choose a unique non-reserved nominal type name." s" bad nominal suggestion" GDX-EXPECT-ERR-JSTR
+   s" line" s" 1" s" bad nominal line" GDX-EXPECT-ERR-JRAW
+   s" column" s" 9" s" bad nominal column" GDX-EXPECT-ERR-JRAW
+   s" byte_start" s" 8" s" bad nominal byte_start" GDX-EXPECT-ERR-JRAW
+   s" byte_end" s" 11" s" bad nominal byte_end" GDX-EXPECT-ERR-JRAW ;
+
+: GDX-SOURCE-LOCAL-NOMINAL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" deftype widget" GE-SRC-LINE
+   s" : JWIDGET ( widget -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f --json-errors rejected source-local nominal declaration" GDX-CHECK-JSON-OK ;
 
 : GDX-REPAIR-CLASSES ( -- )
    GE-HB-RESET
@@ -499,6 +548,8 @@ variable GDX-TRUST-MAN-U
    GDX-UNDEFINED-RECURSIVE
    GDX-PRIMARY-JSON
    GDX-UNKNOWN-SIGNATURE
+   GDX-MALFORMED-QUOTATION-SIGNATURE
+   GDX-BAD-PARAM-SIGNATURE
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 
@@ -508,6 +559,8 @@ variable GDX-TRUST-MAN-U
    GDX-SARIF
    GDX-STRICT-SIGNATURES
    GDX-BARE-PTR-SIGNATURE
+   GDX-BAD-NOMINAL-DECL
+   GDX-SOURCE-LOCAL-NOMINAL
    GDX-LOAD-FAIL-CLOSED
    GT-CLEANUP
    s" PASS: native checker diagnostics all-strict slice" type cr ;
@@ -525,6 +578,10 @@ variable GDX-TRUST-MAN-U
    GDX-PRIMARY-JSON
    GDX-UNKNOWN-SIGNATURE
    GDX-BARE-PTR-SIGNATURE
+   GDX-MALFORMED-QUOTATION-SIGNATURE
+   GDX-BAD-PARAM-SIGNATURE
+   GDX-BAD-NOMINAL-DECL
+   GDX-SOURCE-LOCAL-NOMINAL
    GDX-REPAIR-CLASSES
    GDX-FILE-ORIGIN
    GDX-STRICT-SIGNATURES
