@@ -2,6 +2,8 @@
 \
 \ Load after lib/process-env.f and lib/test/runner.f.
 
+require lib/process-fork.f
+
 12 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
 8 constant GT-POOL-MACOS-DEFAULT
@@ -324,6 +326,36 @@ GT-POOL-PASS-HOOK-DEFAULT!
    pid idx GT-POOL-PID-PTR !
    idx GT-POOL-CLOSE-WRITES ;
 
+: GT-POOL-FORK-EXIT ( n -- )
+   s" " rot die ;
+
+: GT-POOL-FORK-THROW ( n -- )
+   s" fork worker throw" rot die ;
+
+: GT-POOL-FORK-SETUP-FAIL ( -- )
+   127 GT-POOL-FORK-EXIT ;
+
+: GT-POOL-DUP2! ( fd n -- ) {: fd:fd dst:n :}
+   fd FD>N dst dup2 dup 0 < if drop GT-POOL-FORK-SETUP-FAIL then drop ;
+
+\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
+: GT-POOL-FORK-CHILD ( idx [ -- ] -- ) {: idx:idx q :}
+   idx GT-POOL-CLOSE-READS
+   idx GT-POOL-OUT-W-PTR @ 1 GT-POOL-DUP2!
+   idx GT-POOL-ERR-W-PTR @ 2 GT-POOL-DUP2!
+   idx GT-POOL-CLOSE-WRITES
+   q catch {: rc:n :}
+   rc 0= if 0 GT-POOL-FORK-EXIT then
+   rc GT-POOL-FORK-THROW ;
+
+\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
+: GT-POOL-FORK ( idx [ -- ] -- ) {: idx:idx q :}
+   PROC-FORK-RAW {: pid:pid :}
+   pid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
+   pid PID>N 0= if idx q GT-POOL-FORK-CHILD then
+   pid idx GT-POOL-PID-PTR !
+   idx GT-POOL-CLOSE-WRITES ;
+
 : GT-POOL-START-SLOT ( ptr u8 n ptr u8 n n idx -- ) {: path:ptr pathu label:ptr labelu timeout idx :}
    idx GT-POOL-DONE@ 0= if
       s" test pool: fixed slot already active" type cr
@@ -338,6 +370,23 @@ GT-POOL-PASS-HOOK-DEFAULT!
    timeout idx GT-POOL-TIMEOUT-PTR !
    idx GT-POOL-RUN-LINE
    idx path pathu GT-POOL-SPAWN
+   GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
+
+\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
+: GT-POOL-START-FORK-SLOT ( ptr u8 n n idx [ -- ] -- ) {: label:ptr labelu:n timeout:n idx:idx q :}
+   idx GT-POOL-DONE@ 0= if
+      s" test pool: fixed slot already active" type cr
+      E-TBL-FIELD GT-POOL-THROW
+   then
+   idx GT-POOL-RESET-SLOT
+   0 idx GT-POOL-DONE-PTR !
+   idx GT-POOL-PIPES
+   label labelu idx GT-POOL-LABEL!
+   mono-ns idx GT-POOL-START-PTR !
+   idx GT-POOL-START-PTR @ idx GT-POOL-LAST-PTR !
+   timeout idx GT-POOL-TIMEOUT-PTR !
+   idx GT-POOL-RUN-LINE
+   idx q GT-POOL-FORK
    GT-POOL-LIVE @ 1+ GT-POOL-LIVE ! ;
 
 : GT-POOL-PFD-SLOT ( idx -- ptr n ) {: idx :}
@@ -504,6 +553,12 @@ GT-POOL-PASS-HOOK-DEFAULT!
    GT-POOL-WAIT-FREE
    GT-POOL-FIND-FREE {: idx :}
    path pathu label labelu timeout idx GT-POOL-START-SLOT ;
+
+\ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.
+: GT-POOL-START-FORK ( ptr u8 n n [ -- ] -- ) {: label:ptr labelu:n timeout:n q :}
+   GT-POOL-WAIT-FREE
+   GT-POOL-FIND-FREE {: idx:idx :}
+   label labelu timeout idx q GT-POOL-START-FORK-SLOT ;
 
 : GT-POOL-DRAIN ( -- )
    begin GT-POOL-LIVE @ 0 > while

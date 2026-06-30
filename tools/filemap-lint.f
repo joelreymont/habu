@@ -225,6 +225,7 @@ variable FM-NUM-L
    s" lib/source-test.f" FM-REQ
    s" test/process-env-child.f" FM-REQ
    s" test/gate-pool.f" FM-REQ
+   s" test/gate-pool-test.f" FM-REQ
    s" test/run.f" FM-REQ ;
 
 : FM-CHECK-REQUIRED ( -- )
