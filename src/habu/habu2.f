@@ -339,9 +339,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    C-TARGET-UNKNOWN ;
 
 : PFX-LOAD? ( n -- bool )
-   dup PFX-COMMON = if drop 0 0= exit then
-   dup PFX-LINUX = if drop HB-TARGET-LINUX? exit then
-   PFX-MACOS = if HB-TARGET-MACOS? else 0 0= 0= then ;
+   case PFX-COMMON of 0 0= endof PFX-LINUX of HB-TARGET-LINUX? endof
+      PFX-MACOS of HB-TARGET-MACOS? endof
+      0 0= 0= swap endcase ;
 
 : PFX-LOAD-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    kind PFX-LOAD? if 12 var LABEL@ ADR,  LSRCRD LABEL@ BL, then ;

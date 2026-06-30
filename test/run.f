@@ -1451,15 +1451,20 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    TR-PATH$ MAKE-DIRS ;
 
 : TR-STDLIB-SLICE? ( idx -- bool ) {: idx:idx :}
-   idx IDX>N 2 >= idx IDX>N 4 <= and
-   idx IDX>N 17 = or
-   idx IDX>N 18 = or
-   idx IDX>N 19 = or
-   idx IDX>N 20 = or
-   idx IDX>N 22 = or
-   idx IDX>N 23 = or
-   idx IDX>N 24 = or
-   idx IDX>N 25 = or ;
+   idx IDX>N case
+      2 of TR-TRUE endof
+      3 of TR-TRUE endof
+      4 of TR-TRUE endof
+      17 of TR-TRUE endof
+      18 of TR-TRUE endof
+      19 of TR-TRUE endof
+      20 of TR-TRUE endof
+      22 of TR-TRUE endof
+      23 of TR-TRUE endof
+      24 of TR-TRUE endof
+      25 of TR-TRUE endof
+      TR-FALSE swap
+   endcase ;
 
 : TR-TOOLS-PHASE? ( idx -- bool ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if 0 0= exit then
@@ -1470,9 +1475,9 @@ TR-FILES: TR-UNDER-SOURCE-FILES
       TR-NESTED-POOL @ TR-POOL-ARG+
       exit
    then
-   idx IDX>N 9 = if
-      TR-NESTED-POOL @ TR-POOL-ARG+
-   then ;
+   idx IDX>N case
+      9 of TR-NESTED-POOL @ TR-POOL-ARG+ endof
+   endcase ;
 
 : TR-PHASE-TOOLS-ENV ( idx -- ) {: idx:idx :}
    idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then
@@ -1488,34 +1493,41 @@ TR-FILES: TR-UNDER-SOURCE-FILES
 
 : TR-PHASE-RUNNER? ( idx -- bool ) {: idx:idx :}
    TR-RUNNER-READY @ 0= if 0 0= 0= exit then
-   idx IDX>N 0= if 0 0= 0= exit then
-   idx IDX>N 1 = if 0 0= 0= exit then
-   idx IDX>N 7 = if 0 0= 0= exit then
-   idx IDX>N 8 = if 0 0= 0= exit then
-   idx IDX>N 14 = if 0 0= 0= exit then
-   idx IDX>N 15 = if 0 0= 0= exit then
-   0 0= ;
+   idx IDX>N case
+      0 of TR-FALSE endof
+      1 of TR-FALSE endof
+      7 of TR-FALSE endof
+      8 of TR-FALSE endof
+      14 of TR-FALSE endof
+      15 of TR-FALSE endof
+      TR-TRUE swap
+   endcase ;
 
 : TR-PHASE-AOT-RUNNER? ( idx -- bool ) {: idx:idx :}
    TR-AOT-RUNNER-READY @ 0= if 0 0= 0= exit then
-   idx IDX>N 7 = if 0 0= exit then
-   idx IDX>N 8 = ;
+   idx IDX>N case
+      7 of TR-TRUE endof
+      8 of TR-TRUE endof
+      TR-FALSE swap
+   endcase ;
 
 : TR-PHASE-WARM-RUNNER? ( idx -- bool ) {: idx:idx :}
    idx TR-PHASE-AOT-RUNNER? if 0 0= exit then
    idx TR-PHASE-RUNNER? ;
 
 : TR-PHASE-SUBJECT ( idx -- ptr u8 n ) {: idx:idx :}
-   idx IDX>N 0= if s" artifact" exit then
-   idx IDX>N 1 = if s" artifact" exit then
-   idx IDX>N 7 = if s" artifact" exit then
-   idx IDX>N 8 = if s" artifact" exit then
-   idx IDX>N 15 = if s" artifact" exit then
-   idx IDX>N 3 = if s" candidate-cli" exit then
-   idx IDX>N 16 = if s" candidate-cli" exit then
-   idx IDX>N 14 = if s" candidate-source" exit then
-   idx IDX>N 21 = if s" candidate-source" exit then
-   s" host-source" ;
+   idx IDX>N case
+      0 of s" artifact" endof
+      1 of s" artifact" endof
+      7 of s" artifact" endof
+      8 of s" artifact" endof
+      15 of s" artifact" endof
+      3 of s" candidate-cli" endof
+      16 of s" candidate-cli" endof
+      14 of s" candidate-source" endof
+      21 of s" candidate-source" endof
+      s" host-source" rot
+   endcase ;
 
 : TR-PHASE-RUNNER-KIND ( idx -- ptr u8 n ) {: idx:idx :}
    idx TR-PHASE-AOT-RUNNER? if s" aot-runner" exit then

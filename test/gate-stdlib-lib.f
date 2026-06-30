@@ -367,10 +367,12 @@ variable SUITE-TIMINGS
    SUITE-WARM-ERR erru type ;
 
 : SUITE-OUTCOME. ( n -- ) {: kind:n :}
-   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
-   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
-   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
-   s" unknown" type ;
+   kind case
+      PROC-OUTCOME-EXIT of s" exit" type endof
+      PROC-OUTCOME-SIGNAL of s" signal" type endof
+      PROC-OUTCOME-TIMEOUT of s" timeout" type endof
+      s" unknown" type
+   endcase ;
 
 : SUITE-WARM-OK? ( n n -- bool ) {: kind:n code:n :}
    kind PROC-OUTCOME-EXIT =
@@ -498,17 +500,19 @@ variable SUITE-TIMINGS
    SUITE-FALSE ;
 
 : SUITE-LINT? ( -- bool )
-   SUITE-SLICE @ SUITE-LINT-ID = if
-      SUITE-LINT-TOOLS-LABEL? if SUITE-TRUE exit then
-      SUITE-LINT-MANIFEST-LABEL? if SUITE-TRUE exit then
-      SUITE-LINT-ARTIFACTS-LABEL? if SUITE-TRUE exit then
-      SUITE-LINT-LIBS-LABEL? exit
-   then
-   SUITE-SLICE @ SUITE-LINT-TOOLS-ID = if SUITE-LINT-TOOLS-LABEL? exit then
-   SUITE-SLICE @ SUITE-LINT-MANIFEST-ID = if SUITE-LINT-MANIFEST-LABEL? exit then
-   SUITE-SLICE @ SUITE-LINT-ARTIFACTS-ID = if SUITE-LINT-ARTIFACTS-LABEL? exit then
-   SUITE-SLICE @ SUITE-LINT-LIBS-ID = if SUITE-LINT-LIBS-LABEL? exit then
-   SUITE-FALSE ;
+   SUITE-SLICE @ case
+      SUITE-LINT-ID of
+         SUITE-LINT-TOOLS-LABEL? if SUITE-TRUE exit then
+         SUITE-LINT-MANIFEST-LABEL? if SUITE-TRUE exit then
+         SUITE-LINT-ARTIFACTS-LABEL? if SUITE-TRUE exit then
+         SUITE-LINT-LIBS-LABEL?
+      endof
+      SUITE-LINT-TOOLS-ID of SUITE-LINT-TOOLS-LABEL? endof
+      SUITE-LINT-MANIFEST-ID of SUITE-LINT-MANIFEST-LABEL? endof
+      SUITE-LINT-ARTIFACTS-ID of SUITE-LINT-ARTIFACTS-LABEL? endof
+      SUITE-LINT-LIBS-ID of SUITE-LINT-LIBS-LABEL? endof
+      SUITE-FALSE swap
+   endcase ;
 
 : SUITE-TOOL? ( -- bool )
    SUITE-SLICE @ SUITE-TOOL-ID <> if SUITE-FALSE exit then

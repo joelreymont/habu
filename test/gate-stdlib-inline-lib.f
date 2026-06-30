@@ -60,9 +60,11 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TOOL-BASE-READY @ 0 <> ;
 
 : GSI-GROUP-MODE. ( n -- ) {: mode:n :}
-   mode GSI-GROUP-SEQ = if s" sequential" type exit then
-   mode GSI-GROUP-PAR = if s" parallel" type exit then
-   E-TBL-FIELD throw ;
+   mode case
+      GSI-GROUP-SEQ of s" sequential" type endof
+      GSI-GROUP-PAR of s" parallel" type endof
+      E-TBL-FIELD throw
+   endcase ;
 
 : GSI-GROUP-HEADER ( ptr u8 n n -- ) {: name:ptr nameu:n mode:n :}
    s" GROUP: " type name nameu type

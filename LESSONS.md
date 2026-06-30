@@ -156,7 +156,7 @@ lesson — keep the specific word/code/path, cut the prose.
   source file, `lib/std.manifest`, `FILEMAP.md`, and `tools/filemap-lint.f`.
   Miss one and the direct manifest gate is the first correct failure.
 - **Pool slots are host policy, not universal truth:** on this macOS/aarch64
-  12-core host, hot-cache full gates run 24.187s internal / 26.58s wall with
+  12-core host, hot-cache full gates run 24.109s internal / 26.49s wall with
   8 top-level slots and 2 nested slots. Keep Linux conservative until measured
   there, cap dynamic slots below fixed warm/AOT artifact slots, and use
   discoverable argv knobs:
