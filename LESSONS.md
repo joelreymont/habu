@@ -175,6 +175,10 @@ lesson — keep the specific word/code/path, cut the prose.
   base record to a pointer-cell role after a `ptr u8` store. Keep generated
   field words private and publish typed wrappers with `ptr-field` for
   pointer-valued cells and `cells +` wrappers for numeric cells.
+- **Persisted JSON strings need owned storage:** `tools/json.f` reuses its string
+  buffer on each parse, so analyzers that group across JSONL rows must copy
+  serials, logical names, target ids, and other keys into stable slabs before the
+  next `JSON-PARSE`/`VALIDATE-LINE`.
 
 ## Tool & Infra
 

@@ -29,7 +29,7 @@ package. The package rules live in `docs/forth.md`.
 | `FPS`      | fps-sweep / fps-report                 | per-camera FPS quality |
 | `TRACKER`  | tracker (+ -render)                    | multi-object tracker |
 | `LOWLIGHT` | low-light-report / -manifest           | low-light metrics + manifest |
-| `PERCEPTION`| perception-latency / -render          | perception latency metrics |
+| `PERCEPTION`| perception-latency / -render / -analyze | perception latency metrics |
 | `CAMTRACK` | camera-tracker                         | alpha-beta camera-rate tracker |
 
 **Naming rule:** single-analyzer packages naturalize their words (no module
@@ -174,6 +174,11 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
   itself — `percentileF64` was run directly under zig 0.16 on known sample sets and
   the Habu port is checked against those outputs. (Rates, queue depth, tracker
   latency, and timing summaries are the same reductions over their own samples.)
+  `perception-analyze.f` is the file-level bridge: it reads JSONL with
+  `tools/json-file.f`, validates each row through `SCHEMA:VALIDATE-LINE`, loads
+  checked `ODREC` live records, copies stable camera/target strings out of the
+  parser buffer, and populates the renderer report. Its regression fixture matches
+  the Zig `perception-latency` sample metrics CSV and camera-metrics CSV.
 
 ## Running tests
 
