@@ -1,6 +1,14 @@
 \ ptx-ir-test.f - static value fixtures for the PTX IR optimizer seed.
 
 require lib/ptx/test-prelude.f
+require lib/ptx/ad-ir.f
+
+create PTXIRT-OPS 7 cells allot
+
+: PTXIRT-SOFTMAX-OPS ( -- )
+   OP-DUP  PTXIRT-OPS 0 cells + !  OP-BMAX PTXIRT-OPS 1 cells + !  OP-BSUB PTXIRT-OPS 2 cells + !
+   OP-EXP  PTXIRT-OPS 3 cells + !  OP-DUP  PTXIRT-OPS 4 cells + !  OP-BSUM PTXIRT-OPS 5 cells + !
+   OP-BDIV PTXIRT-OPS 6 cells + ! ;
 
 T-RESET
 
@@ -58,12 +66,22 @@ T-RESET
    dx PTXIR-LIVE-COUNT 6 T=
    dx PTXIR-RENDER s" y dy y dy *. BLOCK-SUM PTX:B- *." STR= TTRUE ;
 
+: PTXIRT-ADIR-SOFTMAX-BWD ( -- )
+   PTXIRT-SOFTMAX-OPS
+   PTXIRT-OPS 7 ADIR-SOFTMAX-BWD$ s" y dy y dy *. BLOCK-SUM PTX:B- *." STR= TTRUE
+   PTXIR-COUNT 6 T= ;
+
 : PTXIRT-RENDER ( -- )
    PTXIR-RESET
    2 PTXIR-CONST 3 PTXIR-CONST PTXIR-ADD {: folded:n :}
    folded PTXIR-RENDER s" 5" STR= TTRUE
    2 PTXIR-INPUT# 1 PTXIR-CONST PTXIR-ADD
    PTXIR-RENDER s" i2 1 +." STR= TTRUE ;
+
+: PTXIRT-BAD-ADIR ( -- )
+   PTXIRT-SOFTMAX-OPS
+   OP-BSUM PTXIRT-OPS 6 cells + !
+   PTXIRT-OPS 7 ADIR-SOFTMAX-BWD-IR drop ;
 
 : PTXIRT-OVERFLOW ( -- )
    PTXIR-RESET
@@ -76,7 +94,9 @@ PTXIRT-CSE
 PTXIRT-INPUT-SYMS
 PTXIRT-DCE
 PTXIRT-SOFTMAX-BWD
+PTXIRT-ADIR-SOFTMAX-BWD
 PTXIRT-RENDER
+' PTXIRT-BAD-ADIR E-PTX-AD-UNKNOWN TTHROWS
 ' PTXIRT-OVERFLOW E-PTX-IR-OVERFLOW TTHROWS
 
 T-REPORT

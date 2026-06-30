@@ -139,8 +139,10 @@ knowledge is required:
 3. **A PTX IR + opt layer is new work, not reuse.** The self-hosted `bin/hb`
    emits machine words directly; the only IR optimizer (`bootstrap/cg/opt.fs`,
    gforth-bootstrap-only) is **peephole** (no CSE, no strength-reduction; constant
-   folding is JIT-time in `jit.fs`, not `opt.fs`). So a PTX IR with fold/DCE/peephole
-   would be built fresh — plus the stack→register pass, which does carry over.
+   folding is JIT-time in `jit.fs`, not `opt.fs`). The first PTX IR is now
+   Habu-native (`lib/ptx/ir.f`) with constant fold, value-numbering/CSE, DCE, and
+   a softmax-backward AD bridge (`lib/ptx/ad-ir.f`); general rewrite selection
+   remains open.
 4. **stack→register is what PTX wants:** Habu already lowers concatenative stack
    ops to register dataflow for ARM64; PTX is register-based SSA-ish, so the same
    pass maps ~1:1 to PTX virtual registers (`dup` → reuse a vreg; stack → small

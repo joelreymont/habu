@@ -28,10 +28,12 @@ derivative-class "verified" claim until gradcheck is the gate.
 
 Status: **v0 implemented, verification still scoped.** `lib/ptx/ad.f` implements
 the VJP table/reverse pass for the checked PTX words covered by
-`lib/ptx/ad-test.f`, and the checked backward fixtures exercise the stack/type
-surface. Remaining work is device finite-difference gradcheck as the hard gate,
-DAG validation hardening, algebraic simplification, save-vs-recompute policy,
-and device finite-difference proof for the current backward emitter path.
+`lib/ptx/ad-test.f`, `lib/ptx/ad-dag.f` emits the recompute backward, and
+`lib/ptx/ad-ir.f` recognizes the supported softmax-row op list and lowers the
+saved-output closed form through the PTX IR. Remaining work is device
+finite-difference gradcheck as the hard gate, general algebraic simplification
+beyond the softmax bridge, save-vs-recompute policy, and device finite-difference
+proof for both backward emitter paths.
 
 ## Why concatenative is the right substrate
 
@@ -183,8 +185,8 @@ save/recompute) is a separate, larger capability with its own gradcheck; dot it.
 4. **Supply saved values** to nonlinear adjoints, per the save-vs-recompute
    policy below.
 5. **Simplify** (algebraic + peephole) so the derived backward collapses to the
-   closed form rather than a literal reversal. This pass is new — see
-   [`ptx.md`](ptx.md) on the missing IR/opt layer.
+   closed form rather than a literal reversal. The softmax-row bridge is landed;
+   general rewrite rules still need numeric-equivalence tests.
 6. **Check** the result. The backward is an ordinary kernel; the v0 contracts
    (typed spaces, extent-relative bounds, mask / uniformity discipline) all apply.
 7. **Gradcheck** the result on device (finite differences vs the analytic VJP).
@@ -283,11 +285,9 @@ is a later, smaller addition.
 
 ## What is new work
 
-- **A general PTX IR + opt layer** (fold/DCE/CSE/peephole). The simplify step
-  below needs it; [`ptx.md`](ptx.md) §3 confirms only a gforth-bootstrap peephole
-  exists, so this is built fresh and is a **prerequisite** of the simplifier, not
-  part of it. (Alternatively scope AD-v0 to literal reversal and dot the
-  closed-form simplifier as a follow-on.)
+- **A general PTX IR + opt layer** (fold/DCE/CSE/peephole). The seed IR is landed
+  for scalar/tile expression nodes and the softmax-row closed form, but general
+  AD rewrite selection remains future work.
 - **Reverse pass** over the typed IR word list (steps 1–4 above), **straight-line
   only** — fail-closed reject on `IF`/loop/`RECURSE`; control-flow reversal is a
   separate dotted capability.

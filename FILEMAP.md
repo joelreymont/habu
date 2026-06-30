@@ -200,6 +200,8 @@ points stay listed.
   1024` changes shared-memory size and reduction fold bounds.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
+- `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
+  bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
   `tools/ptx/softmax-gradcheck.f` — Orin CUDA Driver proofs for launch,
   softmax, and finite-difference gradient checking.

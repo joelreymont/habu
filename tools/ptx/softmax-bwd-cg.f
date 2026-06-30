@@ -8,6 +8,18 @@
 \ after lib/ptx/cg.f, lib/ptx/header.f, lib/ptx/cg-collective.f, lib/ptx/ad-dag.f.
 \ Emits to stdout.
 
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/fmt.f
+require lib/test.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/cg-collective.f
+require lib/ptx/collective.f
+require lib/ptx/ad-dag.f
+
 create SBW-OPS 7 cells allot
 : SBW-INIT ( -- )
    OP-DUP  SBW-OPS 0 cells + !  OP-BMAX SBW-OPS 1 cells + !  OP-BSUB SBW-OPS 2 cells + !
