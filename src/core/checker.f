@@ -1773,7 +1773,8 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    SYM-DST@ u ;
 
-: SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
+: SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
+   {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
    id SYM-ROW SYM.VIS @ vis <> IF 0 EXIT THEN
    id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF 0 EXIT THEN
    id SYM-NAME$ name nameu SYM-STR=CI ;
@@ -3335,15 +3336,16 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
         CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
-: CF-EXIT                                                 \ early return: accumulate, kill path
+: CF-EXIT ( -- )
    XSET @ IF  DCUR @ XROW @ UNIFY OK @ and OK !
               RCUR @ XRROW @ UNIFY OK @ and OK !
    ELSE  DCUR @ XROW !  RCUR @ XRROW !  -1 XSET ! THEN
    -1 DEADP ! ;
 
-: CF-UNLOOP ;                                             \ loop control isn't typed -> no-op
+: CF-UNLOOP ( -- ) ;
 
-: CF-BEGIN  3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
+: CF-BEGIN ( -- )
+   3 DCUR @ 0 RCUR @ 0 CF-PUSH ;
 
 : CF-UNTIL
    STEP-BOOL-IN
@@ -3351,7 +3353,7 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
      CF-LOC-REST  CF-DROP THEN THEN ;
 
-: CF-AGAIN                              \ unconditional loop: code after AGAIN is unreachable
+: CF-AGAIN ( -- )
    CF-MT? IF CF-FAIL ELSE CF@K 3 <> IF CF-FAIL ELSE
      CF@A SUNI  CF@A DCUR !  CF@RA RSUNI  CF@RA RCUR !
      CF-LOC-REST  CF-DROP  -1 DEADP ! THEN THEN ;
