@@ -835,6 +835,7 @@ OBJ:TEXT+      ( ptr u8 n -- )
 OBJ:DATA+      ( ptr u8 n -- )
 OBJ:PACKAGE+   ( ptr u8 n ptr u8 n -- )
 OBJ:EXPORT+    ( ptr u8 n ptr u8 n -- )
+OBJ:DEF+       ( ptr u8 n n ptr u8 n -- )
 OBJ:IMPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
 OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
@@ -855,10 +856,12 @@ newlines, control bytes, and empty fields so the tab-separated format remains
 canonical. `OBJ:TEXT+` and `OBJ:DATA+` encode binary section bytes as lowercase
 hex records, and `OBJ:LOAD` rejects malformed section hex. `OBJ:BYTES$` and
 `OBJ:KEY-HEX` require source, target, checker, and compiler ABI fields before
-returning data. Row accessors expose the validated record body without the magic
-header: indexes are zero-based, fields exclude the tag, and bad row or field
-indexes throw `E-OBJ-FIELD`. `OBJ:LOAD` validates and restores a serialized
-record; `OBJ:KEY-HEX` hashes the canonical bytes through `lib/content-key.f`.
+returning data. `OBJ:DEF+` records an address-bearing text definition as
+symbol, text byte offset, and effect. Row accessors expose the validated record
+body without the magic header: indexes are zero-based, fields exclude the tag,
+and bad row or field indexes throw `E-OBJ-FIELD`. `OBJ:LOAD` validates and
+restores a serialized record; `OBJ:KEY-HEX` hashes the canonical bytes through
+`lib/content-key.f`.
 
 `lib/object-cache.f` owns the `OBJSTORE` package: a content-addressed file
 store for validated object records. It is intentionally separate from the
@@ -888,6 +891,7 @@ objects have been added.
 OBJLINK:RESET        ( -- )
 OBJLINK:EXPORT-COUNT ( -- n )
 OBJLINK:IMPORT-COUNT ( -- n )
+OBJLINK:DEF-COUNT    ( -- n )
 OBJLINK:OBJECT-COUNT ( -- n )
 OBJLINK:TEXT-SIZE    ( -- n )
 OBJLINK:DATA-SIZE    ( -- n )
@@ -897,7 +901,10 @@ OBJLINK:OBJECT-TEXT-SIZE ( n -- n )
 OBJLINK:OBJECT-DATA-SIZE ( n -- n )
 OBJLINK:EXPORT$      ( n -- ptr u8 n )
 OBJLINK:IMPORT$      ( n -- ptr u8 n )
+OBJLINK:DEF$         ( n -- ptr u8 n )
+OBJLINK:DEF-ADDR     ( n -- n )
 OBJLINK:EXPORT-FIND? ( ptr u8 n -- bool )
+OBJLINK:DEF-FIND?    ( ptr u8 n -- bool )
 OBJLINK:EXPORT+      ( ptr u8 n -- )
 OBJLINK:IMPORT+      ( ptr u8 n -- )
 OBJLINK:ADD          ( -- )
@@ -907,7 +914,9 @@ OBJLINK:CHECK        ( -- )
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
 into bounded storage so later `OBJ:LOAD` calls cannot invalidate link metadata.
 It records per-object text/data base and size rows before advancing the merged
-section totals.
+section totals. `def` rows record merged text addresses, reject duplicate
+definitions, and reject object-local definition offsets outside that object's
+text section.
 `OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports; duplicate exports
 throw during `OBJLINK:ADD`, relocation offsets outside the current object's text
 section throw `E-OBJ-SCHEMA`, and table/storage overflow throws

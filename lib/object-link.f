@@ -20,6 +20,9 @@ create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
 create IMP-OFFS MAX-SYMS cells allot
 create IMP-US MAX-SYMS cells allot
+create DEF-OFFS MAX-SYMS cells allot
+create DEF-US MAX-SYMS cells allot
+create DEF-ADDRS MAX-SYMS cells allot
 create OBJ-TEXT-BASES MAX-OBJS cells allot
 create OBJ-DATA-BASES MAX-OBJS cells allot
 create OBJ-TEXT-US MAX-OBJS cells allot
@@ -28,6 +31,7 @@ create OBJ-DATA-US MAX-OBJS cells allot
 variable SYM-U
 variable EXP-N
 variable IMP-N
+variable DEF-N
 variable OBJ-N
 variable TEXT-U
 variable DATA-U
@@ -44,6 +48,7 @@ variable CUR-DATA
    0 SYM-U !
    0 EXP-N !
    0 IMP-N !
+   0 DEF-N !
    0 OBJ-N !
    0 TEXT-U !
    0 DATA-U ! ;
@@ -67,6 +72,18 @@ variable CUR-DATA
 : IMP-U-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    IMP-US idx cells + ;
+
+: DEF-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   DEF-OFFS idx cells + ;
+
+: DEF-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   DEF-US idx cells + ;
+
+: DEF-ADDR-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   DEF-ADDRS idx cells + ;
 
 : OBJ-TEXT-BASE-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-OBJS CHECK-IDX
@@ -101,6 +118,9 @@ variable CUR-DATA
 : IMPORT-ROOM ( -- )
    IMP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
+: DEF-ROOM ( -- )
+   DEF-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
 : OBJECT-ROOM ( -- )
    OBJ-N @ MAX-OBJS >= if E-OBJ-CAPACITY throw then ;
 
@@ -112,12 +132,25 @@ variable CUR-DATA
    idx IMP-N @ CHECK-IDX
    SYM-BUF idx IMP-OFF-PTR @ + idx IMP-U-PTR @ ;
 
+: DEF-SYM$ ( n -- ptr u8 n ) {: idx:n :}
+   idx DEF-N @ CHECK-IDX
+   SYM-BUF idx DEF-OFF-PTR @ + idx DEF-U-PTR @ ;
+
 : EXP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
    idx EXP$ a u STR= ;
+
+: DEF-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
+   idx DEF-SYM$ a u STR= ;
 
 : EXP-FIND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup EXP-N @ < while
       dup a u rot EXP-MATCH? if drop TRUE exit then
+      1+
+   repeat drop FALSE ;
+
+: DEF-HAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup DEF-N @ < while
+      dup a u rot DEF-MATCH? if drop TRUE exit then
       1+
    repeat drop FALSE ;
 
@@ -136,6 +169,23 @@ variable CUR-DATA
    u IMP-N @ IMP-U-PTR !
    IMP-N @ 1+ IMP-N ! ;
 
+: DEF+ ( ptr u8 n n -- ) {: a:ptr u:n addr:n :}
+   a u DEF-HAS? if E-OBJ-SCHEMA throw then
+   DEF-ROOM
+   a u SYM+ {: off:n :}
+   off DEF-N @ DEF-OFF-PTR !
+   u DEF-N @ DEF-U-PTR !
+   addr DEF-N @ DEF-ADDR-PTR !
+   DEF-N @ 1+ DEF-N ! ;
+
+: TEXT-OFF-CHECK ( n -- ) {: off:n :}
+   off 0 < if E-OBJ-SCHEMA throw then
+   off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
+
+: ROW-OFF ( n n -- n ) {: row:n field:n :}
+   row field OBJ:ROW-FIELD$ STR>NUMBER? if exit then
+   drop E-OBJ-FIELD throw ;
+
 : ADD-ROW ( n -- ) {: row:n :}
    row OBJ:ROW-TAG$ s" export" STR= if
       row 0 OBJ:ROW-FIELD$ EXP+
@@ -143,6 +193,12 @@ variable CUR-DATA
    then
    row OBJ:ROW-TAG$ s" import" STR= if
       row 0 OBJ:ROW-FIELD$ IMP+
+      exit
+   then
+   row OBJ:ROW-TAG$ s" def" STR= if
+      row 1 ROW-OFF {: off:n :}
+      off TEXT-OFF-CHECK
+      row 0 OBJ:ROW-FIELD$ TEXT-U @ off + DEF+
       exit
    then ;
 
@@ -203,6 +259,9 @@ public
 : IMPORT-COUNT ( -- n )
    IMP-N @ ;
 
+: DEF-COUNT ( -- n )
+   DEF-N @ ;
+
 : OBJECT-COUNT ( -- n )
    OBJ-N @ ;
 
@@ -234,8 +293,18 @@ public
 : IMPORT$ ( n -- ptr u8 n )
    IMP$ ;
 
+: DEF$ ( n -- ptr u8 n )
+   DEF-SYM$ ;
+
+: DEF-ADDR ( n -- n ) {: idx:n :}
+   idx DEF-N @ CHECK-IDX
+   idx DEF-ADDR-PTR @ ;
+
 : EXPORT-FIND? ( ptr u8 n -- bool )
    EXP-FIND? ;
+
+: DEF-FIND? ( ptr u8 n -- bool )
+   DEF-HAS? ;
 
 : EXPORT+ ( ptr u8 n -- )
    EXP+ ;

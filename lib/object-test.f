@@ -41,6 +41,7 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    s" data" FIELD s" 010210" LINE
    s" package" FIELD s" OBJ" FIELD s" public" LINE
    s" export" FIELD s" SQUARE" FIELD s" n -- n" LINE
+   s" def" FIELD s" SQUARE" FIELD s" 1" FIELD s" n -- n" LINE
    s" import" FIELD s" PRINT" FIELD s" ptr u8 n --" LINE
    s" reloc" FIELD s" abs64" FIELD s" 16" FIELD s" PRINT" LINE
    s" type" FIELD s" count" FIELD s" nominal" LINE
@@ -63,6 +64,7 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    DATA-BYTES 3 OBJ:DATA+
    s" OBJ" s" public" OBJ:PACKAGE+
    s" SQUARE" s" n -- n" OBJ:EXPORT+
+   s" SQUARE" 1 s" n -- n" OBJ:DEF+
    s" PRINT" s" ptr u8 n --" OBJ:IMPORT+
    s" abs64" 16 s" PRINT" OBJ:RELOC+
    s" count" s" nominal" OBJ:TYPE+
@@ -97,7 +99,7 @@ create DATA-BYTES 1 c, 2 c, 16 c,
 
 : ROW-ACCESSORS ( -- )
    BUILD
-   OBJ:ROW-COUNT 13 T=
+   OBJ:ROW-COUNT 14 T=
    0 OBJ:ROW$ SOURCE-ROW$ T$=
    0 OBJ:ROW-TAG$ s" source" T$=
    0 OBJ:ROW-FIELD# 1 T=
@@ -106,11 +108,16 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    5 0 OBJ:ROW-FIELD$ s" 007fff" T$=
    6 OBJ:ROW-TAG$ s" data" T$=
    6 0 OBJ:ROW-FIELD$ s" 010210" T$=
-   10 OBJ:ROW-TAG$ s" reloc" T$=
-   10 OBJ:ROW-FIELD# 3 T=
-   10 0 OBJ:ROW-FIELD$ s" abs64" T$=
-   10 1 OBJ:ROW-FIELD$ s" 16" T$=
-   10 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
+   9 OBJ:ROW-TAG$ s" def" T$=
+   9 OBJ:ROW-FIELD# 3 T=
+   9 0 OBJ:ROW-FIELD$ s" SQUARE" T$=
+   9 1 OBJ:ROW-FIELD$ s" 1" T$=
+   9 2 OBJ:ROW-FIELD$ s" n -- n" T$=
+   11 OBJ:ROW-TAG$ s" reloc" T$=
+   11 OBJ:ROW-FIELD# 3 T=
+   11 0 OBJ:ROW-FIELD$ s" abs64" T$=
+   11 1 OBJ:ROW-FIELD$ s" 16" T$=
+   11 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
 
 : BAD-TAB ( -- )
    OBJ:RESET
@@ -143,6 +150,15 @@ compiler	hb-arm64-v1
 text	00x
 " OBJ:LOAD ;
 
+: BAD-DEF ( -- )
+   s" HBOBJ	1
+source	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+target	macos-aarch64
+checker	checker-effect-v1
+compiler	hb-arm64-v1
+def	WORD	nope	n -- n
+" OBJ:LOAD ;
+
 : MISSING-HEADER ( -- )
    OBJ:RESET
    HASH$ OBJ:SOURCE!
@@ -156,6 +172,7 @@ text	00x
    [: BAD-HASH ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-RELOC ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-SECTION ;] E-OBJ-FIELD TTHROWSQ
+   [: BAD-DEF ;] E-OBJ-FIELD TTHROWSQ
    [: BUILD 99 OBJ:ROW$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: BUILD 0 -1 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: BUILD 0 99 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ

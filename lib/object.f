@@ -264,6 +264,11 @@ variable LOAD-OFF
       a u PARSE-RELOC-OFF
       exit
    then
+   a u s" def" TAG? if
+      a u 3 EXPECT-TABS
+      a u PARSE-RELOC-OFF
+      exit
+   then
    E-OBJ-SCHEMA throw ;
 
 : NEXT-LINE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
@@ -338,6 +343,9 @@ public
 
 : EXPORT+ ( ptr u8 n ptr u8 n -- )
    s" export" LINE2 ;
+
+: DEF+ ( ptr u8 n n ptr u8 n -- )
+   s" def" LINE3N ;
 
 : IMPORT+ ( ptr u8 n ptr u8 n -- )
    s" import" LINE2 ;
