@@ -495,6 +495,11 @@ lesson — keep the specific word/code/path, cut the prose.
   the early engine-build slot, publish it atomically, print path+SHA, then release
   downstream phases onto `HABU_UNDER_TEST`. This preserves overlap and proves the
   rebuilt binary without serializing the whole gate behind fixpoint.
+- **Candidate-output phases need the parent artifact path:** the resident runner
+  waited forever after `native engine build slice` because phase 15 wrote
+  `hb-stdin` under its private `HB_TMP`, while `TR-DRAIN-UNTIL-UNDER` waited for
+  `GT-ROOT/hb-under-test`. Pass `HABU_UNDER_TEST` into the producer phase and make
+  the drain fail once `GT-POOL-LIVE` is zero instead of polling an empty pool.
 - **PTY fixtures should wait for events, not fixed quiet time:** `test/proc-pty.f`
   spent ~18.5s wall with <1s CPU because each interaction waited six 50ms quiet
   polls. Preserve max wait windows, but use small named poll intervals and a

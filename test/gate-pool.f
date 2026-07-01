@@ -532,7 +532,10 @@ GT-POOL-PASS-HOOK-DEFAULT!
    repeat drop ;
 
 : GT-POOL-WAIT-LINES ( -- )
-   ;
+   0 begin dup GT-POOL-MAX < while
+      dup >IDX GT-POOL-DONE@ 0= if dup >IDX GT-POOL-WAIT-LINE then
+      1+
+   repeat drop ;
 
 : GT-POOL-STEP ( -- )
    GT-POOL-POLL drop

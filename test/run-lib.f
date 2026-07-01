@@ -1169,7 +1169,11 @@ TR-INSTALL-POOL-HOOKS
       TR-FALSE swap
    endcase ;
 
+: TR-PHASE-UNDER-BUILD? ( idx -- bool ) {: idx:idx :}
+   idx IDX>N 15 = ;
+
 : TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
+   idx TR-PHASE-UNDER-BUILD? if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
    idx TR-PHASE-UNDER? ;
 
@@ -1300,8 +1304,13 @@ TR-INSTALL-POOL-HOOKS
 : TR-UNDER-DONE? ( -- bool )
    TR-UNDER$ EXECUTABLE? ;
 
+: TR-UNDER-MISSING-FAIL ( -- )
+   s" missing Habu-under-test after build pool drained: " type TR-UNDER$ type cr
+   s" Habu-under-test build artifact missing" TR-FAIL ;
+
 : TR-DRAIN-UNTIL-UNDER ( -- )
    begin TR-UNDER-DONE? 0= while
+      GT-POOL-LIVE @ 0= if TR-UNDER-MISSING-FAIL then
       GT-POOL-STEP
    repeat
    TR-EXPECT-UNDER
