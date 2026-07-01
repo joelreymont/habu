@@ -227,6 +227,19 @@ TRUSTED: VS-CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
 TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    TRUST ;
 
+: VS-FOLD-C ( n -- n )
+   dup $41 < IF EXIT THEN
+   dup $5A > IF EXIT THEN
+   $20 or ;
+
+: VS-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> IF 0 0= 0= EXIT THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@ VS-FOLD-C
+      over b + c@ VS-FOLD-C <> IF drop 0 0= 0= EXIT THEN
+      1+
+   REPEAT drop 0 0= ;
+
 : VS-TRUST-NEXT ( ptr u8 n -- ) {: sig:ptr sigu:n :}
    VS-NEXT-SCAN
    dup 0= IF s" verify-source: missing defining-word name" 74 die THEN
@@ -274,17 +287,42 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
 : VS-END-PACKAGE ( -- )
    CHECKER-END-PACKAGE ;
 
+: VS-DEFTYPE ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing deftype name" 74 die THEN
+   name nameu CHECKER-DEFTYPE ;
+
+: VS-VREC-END? ( ptr u8 n -- bool )
+   s" END-VALUE-RECORD" VS-STR=CI ;
+
+: VS-VALUE-RECORD ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
+   0 VS-L !
+   BEGIN
+      VS-NEXT-SCAN
+      dup 0= IF s" verify-source: missing END-VALUE-RECORD" 74 die THEN
+      2dup VS-VREC-END? IF
+         2drop
+         name nameu VS-BUF VS-L @ CHECKER-DEFRECORD
+         EXIT
+      THEN
+      VS-APP
+   AGAIN ;
+
 : VS-RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" package" CORE-STR= IF VS-PACKAGE 0 0= EXIT THEN
-   a u s" public" CORE-STR= IF VS-PUBLIC 0 0= EXIT THEN
-   a u s" private" CORE-STR= IF VS-PRIVATE 0 0= EXIT THEN
-   a u s" end-package" CORE-STR= IF VS-END-PACKAGE 0 0= EXIT THEN
-   a u s" constant" CORE-STR= IF s" -- a" VS-TRUST-NEXT 0 0= EXIT THEN
-   a u s" create" CORE-STR= IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
-   a u s" variable" CORE-STR= IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
-   a u s" defer" CORE-STR= IF VS-TRUST-DEFER 0 0= EXIT THEN
-   a u s" TRUSTED:" CORE-STR= IF VS-TRUSTED 0 0= EXIT THEN
-   a u s" undefine" CORE-STR= IF VS-UNDEFINE 0 0= EXIT THEN
+   a u s" package" VS-STR=CI IF VS-PACKAGE 0 0= EXIT THEN
+   a u s" public" VS-STR=CI IF VS-PUBLIC 0 0= EXIT THEN
+   a u s" private" VS-STR=CI IF VS-PRIVATE 0 0= EXIT THEN
+   a u s" end-package" VS-STR=CI IF VS-END-PACKAGE 0 0= EXIT THEN
+   a u s" deftype" VS-STR=CI IF VS-DEFTYPE 0 0= EXIT THEN
+   a u s" value-record" VS-STR=CI IF VS-VALUE-RECORD 0 0= EXIT THEN
+   a u s" constant" VS-STR=CI IF s" -- a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" create" VS-STR=CI IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" variable" VS-STR=CI IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN
+   a u s" defer" VS-STR=CI IF VS-TRUST-DEFER 0 0= EXIT THEN
+   a u s" trusted:" VS-STR=CI IF VS-TRUSTED 0 0= EXIT THEN
+   a u s" undefine" VS-STR=CI IF VS-UNDEFINE 0 0= EXIT THEN
    0 0= 0= ;
 
 : VS-VERIFY-DEF ( -- )

@@ -8,6 +8,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Core checker helpers share the loaded image:** `CK-TRUE` looked local in
+  `src/core/checker.f` but collided with `lib/content-key.f` during the full
+  suite. Use feature-owned helper prefixes and prove against the full image, not
+  only isolated checker probes.
 - **Multi-line words need useful line effects:** value-record checker work
   exposed helpers whose stack motion had to be reconstructed. Put the word
   effect on the definition line; add body-line effects only where they improve

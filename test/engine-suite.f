@@ -346,6 +346,15 @@ s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
+VALUE-RECORD point x n y n END-VALUE-RECORD
+VALUE-RECORD rect w n h n END-VALUE-RECORD
+: T->POINT ( n n -- point ) ;
+: T-POINT> ( point -- n n ) ;
+3 4 T->POINT T-POINT> 4 T= 3 T=
+s" COK-POINT-ID ( point -- point )" T-CHECK-PASSES
+s" COK-POINT-ROUNDTRIP ( n n -- n n ) T->POINT T-POINT>" T-CHECK-PASSES
+s" CBAD-POINT-RECT ( point -- rect )" T-CHECK-REJECTS
+s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

@@ -17,6 +17,7 @@
 ' CHK-CHECK-HOOK set-check
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFTYPE" s" ptr u8 n --" TRUST
+s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
@@ -595,14 +596,14 @@ variable CHK-DEP-ORDER-N
 : CHK-NOM-JU ( n ptr u8 n -- )
    LJW-KEY LJW-U LJW-COMMA ;
 
-: CHK-NOM-JSON ( n n -- ) {: def:n name:n :}
+: CHK-TYPE-JSON ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
    LJW-RESET
    LJW-OBJECT-START
    1 s" schema_version" CHK-NOM-JU
    s" code" s" E-BAD-NOMINAL-TYPE" CHK-NOM-JSTR
    s" repair_class" s" fix_nominal_type" CHK-NOM-JSTR
    s" verdict" s" rejected" CHK-NOM-JSTR
-   s" word" s" deftype" CHK-NOM-JSTR
+   s" word" word wordu CHK-NOM-JSTR
    s" token" LJW-KEY name LEX-TOK LJW-STRING LJW-COMMA
    name s" token_index" CHK-NOM-JU
    s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
@@ -631,9 +632,12 @@ variable CHK-DEP-ORDER-N
    39 CHK-ERR-C
    CHK-LF CHK-ERR-C ;
 
-: CHK-NOM-FAIL ( n n -- ) {: def:n name:n :}
-   CHK-JSON @ IF def name CHK-NOM-JSON ELSE name CHK-NOM-PROSE THEN
+: CHK-TYPE-FAIL ( n n ptr u8 n -- ) {: def:n name:n word:ptr wordu:n :}
+   CHK-JSON @ IF def name word wordu CHK-TYPE-JSON ELSE name CHK-NOM-PROSE THEN
    CHK-E-CHECK CHK-THROW ;
+
+: CHK-NOM-FAIL ( n n -- )
+   s" deftype" CHK-TYPE-FAIL ;
 
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
@@ -642,6 +646,46 @@ variable CHK-DEP-ORDER-N
 : CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
    name LEX-TOK CHECKER-DEFTYPE ;
+
+: CHK-VREC-FAIL ( n n -- )
+   s" value-record" CHK-TYPE-FAIL ;
+
+: CHK-VREC-RESET ( -- )
+   0 CHK-EXP-U ! ;
+
+: CHK-VREC-ROOM ( n -- )
+   CHK-EXP-U @ + CHK-SRC-CAP > IF E-FS-CAPACITY throw THEN ;
+
+: CHK-VREC-C ( n -- ) {: c:n :}
+   1 CHK-VREC-ROOM
+   c CHK-EXP-BUF CHK-EXP-U @ + c!
+   CHK-EXP-U @ 1+ CHK-EXP-U ! ;
+
+: CHK-VREC-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u CHK-VREC-ROOM
+   a CHK-EXP-BUF CHK-EXP-U @ + u BYTE-COPY
+   CHK-EXP-U @ u + CHK-EXP-U ! ;
+
+: CHK-VREC-TOKEN+ ( ptr u8 n -- )
+   CHK-EXP-U @ 0 > IF CHK-SP CHK-VREC-C THEN
+   CHK-VREC-APP ;
+
+: CHK-VREC-END? ( n -- bool )
+   s" END-VALUE-RECORD" CHK-TOK=CI ;
+
+: CHK-VREC-REGISTER ( n n -- n ) {: def:n name:n :}
+   name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL THEN
+   CHK-VREC-RESET
+   name 1+
+   begin dup L# @ < while
+      dup CHK-VREC-END? if
+         name LEX-TOK CHK-EXP-BUF CHK-EXP-U @ CHECKER-DEFRECORD
+         1+ exit
+      then
+      dup LEX-TOK CHK-VREC-TOKEN+
+      1+
+   repeat
+   s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
 
 : CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
@@ -652,9 +696,11 @@ variable CHK-DEP-ORDER-N
       CHK-NOM-I @ s" deftype" CHK-TOK=CI if
          CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-NOM-REGISTER
          CHK-NOM-I @ 2 + CHK-NOM-I !
+      else CHK-NOM-I @ s" VALUE-RECORD" CHK-TOK=CI if
+         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-VREC-REGISTER CHK-NOM-I !
       else
          CHK-NOM-I @ 1 + CHK-NOM-I !
-      then
+      then then
    repeat ;
 
 : CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
@@ -935,13 +981,21 @@ variable CHK-DEP-ORDER-N
    then
    CHK-CHILD-RC @ CHK-THROW ;
 
+: CHK-RUN-STATIC-LINTS ( -- )
+   CHECKER-SCOPE-START
+   [:
+      CHK-RUN-NOMINAL
+      CHK-RUN-RESERVED-NAMES
+      CHK-RUN-BOUNDARY
+      CHK-RUN-TRUST
+      CHK-RUN-STRICT
+      CHK-ALL @ if CHK-RUN-ALL then
+   ;] catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   rc 0 <> if rc throw then ;
+
 : CHK-RUN-CURRENT ( -- )
-   CHK-RUN-NOMINAL
-   CHK-RUN-RESERVED-NAMES
-   CHK-RUN-BOUNDARY
-   CHK-RUN-TRUST
-   CHK-RUN-STRICT
-   CHK-ALL @ if CHK-RUN-ALL then
+   CHK-RUN-STATIC-LINTS
    CHK-CHECK-LABEL
    CHK-RUN-DIAG
    CHK-RUN-PREVERIFY

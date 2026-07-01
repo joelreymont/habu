@@ -266,6 +266,21 @@ END-STRUCTURE
   `src/core/structures-effects.f`; add a `TRUSTED.md` row and a dictionary gate
   test for any new field definer.
 
+Value records are by-value stack records, not pointer layouts. Use
+`VALUE-RECORD name field type ... END-VALUE-RECORD` when a signature should
+carry a fixed group of stack cells as one nominal value:
+
+```forth
+VALUE-RECORD point x n y n END-VALUE-RECORD
+: >POINT ( n n -- point ) ;
+: POINT> ( point -- n n ) ;
+```
+
+The checker expands `point` to hidden field tokens (`field<point,x,n>`,
+`field<point,y,n>`). Declared outputs may construct or destructure the record at
+zero runtime cost, but hidden fields keep same-shape records distinct:
+`( point -- rect )` rejects even when both records contain two `n` fields.
+
 Enums are checked defining words built on `create ... does>`. Use them for named
 integer/status families instead of hand-maintained numeric drift:
 

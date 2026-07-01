@@ -76,3 +76,70 @@ TRUSTED: SNAP>N ( snap -- n ) ;
 
 : SNAP-DROP ( snap -- )
    SNAP>N drop ;
+
+$1000 constant VRDEF-CAP
+create VRDEF-BUF VRDEF-CAP allot
+variable VRDEF-U
+variable VRDEF-I
+
+: VRDEF-CLEAR ( -- )
+   0 VRDEF-U ! ;
+
+: VRDEF-ROOM ( n -- )
+   VRDEF-U @ + VRDEF-CAP > IF
+      s" value-record: field list too long" 70 die
+   THEN ;
+
+: VRDEF-C, ( n -- )
+   1 VRDEF-ROOM
+   VRDEF-BUF VRDEF-U @ + c!
+   VRDEF-U @ 1 + VRDEF-U ! ;
+
+: VRDEF-SPACE ( -- )
+   VRDEF-U @ 0 > IF 32 VRDEF-C, THEN ;
+
+: VRDEF-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u VRDEF-ROOM
+   0 VRDEF-I !
+   BEGIN VRDEF-I @ u < WHILE
+      a VRDEF-I @ + c@ VRDEF-C,
+      VRDEF-I @ 1 + VRDEF-I !
+   REPEAT ;
+
+: VRDEF-TOKEN+ ( ptr u8 n -- )
+   VRDEF-SPACE
+   VRDEF-APP ;
+
+: VRDEF-FOLD-C ( n -- n )
+   dup $41 < IF EXIT THEN
+   dup $5A > IF EXIT THEN
+   $20 or ;
+
+: VRDEF-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> IF 0 0= 0= EXIT THEN
+   0 BEGIN dup u < WHILE
+      dup a + c@ VRDEF-FOLD-C
+      over b + c@ VRDEF-FOLD-C <> IF drop 0 0= 0= EXIT THEN
+      1+
+   REPEAT drop 0 0= ;
+
+: VRDEF-END? ( ptr u8 n -- bool )
+   s" END-VALUE-RECORD" VRDEF-STR=CI ;
+
+: VALUE-RECORD ( -- )
+   parse-name dup 0= IF
+      s" value-record: missing name" 70 die
+   THEN
+   {: name:ptr nameu:n :}
+   VRDEF-CLEAR
+   BEGIN
+      parse-name dup 0= IF
+         s" value-record: missing END-VALUE-RECORD" 70 die
+      THEN
+      2dup VRDEF-END? IF
+         2drop
+         name nameu VRDEF-BUF VRDEF-U @ CHECKER-DEFRECORD
+         EXIT
+      THEN
+      VRDEF-TOKEN+
+   AGAIN ;

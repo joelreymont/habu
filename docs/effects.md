@@ -61,6 +61,12 @@ global, explicit, and fail-closed: it cannot reuse a built-in type, parametric
 constructor, atom prefix, or one-letter type variable. Unknown type tokens still
 reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
 
+`VALUE-RECORD name field type ... END-VALUE-RECORD` declares a by-value record
+token for signatures. The token expands to hidden field types, so
+`( n n -- point )` and `( point -- n n )` can be certified with empty runtime
+bodies, while `( point -- rect )` rejects even if both records have the same
+cell shape.
+
 ## Examples (from `src/prims.fs`)
 
 ```

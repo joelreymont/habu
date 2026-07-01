@@ -99,6 +99,13 @@ create PARAM-SCR PARAM-MAX-ARGS cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
+
+0 constant UK-EXACT
+1 constant UK-INPUT
+2 constant UK-COERCE
+variable UNIFY-KIND
+UK-EXACT UNIFY-KIND !
+
 : PARAMA-FIELD ( n -- ptr ptr u8 )
    cells PARAMA + 0 ptr-field ;
 : PARAM>NAME-A ( n -- ptr u8 ) PAY PARAMA-FIELD @ ;
@@ -143,9 +150,39 @@ create SPA MAXPUSH 16 * allot   variable SPN
 
 : ISROW TAG S-ROW = ;
 
-: T-RES BEGIN dup ISVAR IF dup PAY TV@ dup UNBOUND = IF drop 0 0= 0= ELSE nip 0 0= THEN ELSE 0 0= 0= THEN WHILE REPEAT ;
+: RES-TRUE ( -- bool )
+   0 0= ;
 
-: R-RES BEGIN dup ISROW IF dup PAY RV@ dup UNBOUND = IF drop 0 0= 0= ELSE nip 0 0= THEN ELSE 0 0= 0= THEN WHILE REPEAT ;
+: RES-FALSE ( -- bool )
+   0 0= 0= ;
+
+: TV-NEXT? ( n -- n bool )
+   dup ISVAR 0= IF RES-FALSE EXIT THEN
+   dup PAY TV@ dup UNBOUND = IF
+      drop RES-FALSE
+   ELSE
+      nip RES-TRUE
+   THEN ;
+
+: RV-NEXT? ( n -- n bool )
+   dup ISROW 0= IF RES-FALSE EXIT THEN
+   dup PAY RV@ dup UNBOUND = IF
+      drop RES-FALSE
+   ELSE
+      nip RES-TRUE
+   THEN ;
+
+: T-RES ( n -- n )
+   BEGIN
+      TV-NEXT?
+   WHILE
+   REPEAT ;
+
+: R-RES ( n -- n )
+   BEGIN
+      RV-NEXT?
+   WHILE
+   REPEAT ;
 4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot   variable USP   variable UOK
 
@@ -157,6 +194,42 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 : PAIR swap U-PUSH U-PUSH ;
 
 : UNPAIR U-POP U-POP swap ;
+
+: FIELD-PARAM? ( n -- bool ) {: t:n :}
+   t T-RES TAG T-PARAM <> IF 0 EXIT THEN
+   t T-RES PARAM>ARGC 3 <> IF 0 EXIT THEN
+   t T-RES PARAM>NAME-A t T-RES PARAM>NAME-U s" field" CORE-STR= ;
+
+: FIELD-REC ( n -- n )
+   0 PARAM>ARG ;
+
+: FIELD-NAME ( n -- n )
+   1 PARAM>ARG ;
+
+: FIELD-INNER ( n -- n )
+   2 PARAM>ARG ;
+
+: FIELD-ATOM-SAME? ( n n -- bool ) {: a:n b:n :}
+   a T-RES TAG T-ATOM <> IF 0 EXIT THEN
+   b T-RES TAG T-ATOM <> IF 0 EXIT THEN
+   a T-RES ATOM>A a T-RES ATOM>U
+   b T-RES ATOM>A b T-RES ATOM>U CORE-STR= ;
+
+: FIELD-ID-SAME? ( n n -- bool ) {: a:n b:n :}
+   a T-RES FIELD-REC b T-RES FIELD-REC FIELD-ATOM-SAME? 0= IF 0 EXIT THEN
+   a T-RES FIELD-NAME b T-RES FIELD-NAME FIELD-ATOM-SAME? ;
+
+: FIELD-PAIR? ( n n -- bool ) {: got:n want:n :}
+   got FIELD-PARAM? want FIELD-PARAM? and 0= IF 0 EXIT THEN
+   got want FIELD-ID-SAME? 0= IF 0 UOK ! -1 EXIT THEN
+   got FIELD-INNER want FIELD-INNER PAIR
+   -1 ;
+
+: FIELD-COERCE? ( n n -- bool ) {: got:n want:n :}
+   UNIFY-KIND @ UK-COERCE <> IF 0 EXIT THEN
+   got FIELD-PARAM? IF got FIELD-INNER want PAIR -1 EXIT THEN
+   want FIELD-PARAM? IF got want FIELD-INNER PAIR -1 EXIT THEN
+   0 ;
 
 \ occurs check: binding a row var to a spine containing itself would make the
 \ row cyclic — including THROUGH a quotation's effect rows (the ω-combinator
@@ -203,11 +276,6 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 2 constant CS-SIGNED
 3 constant CS-UNSIGNED
 4 constant CS-ADDR
-
-0 constant UK-EXACT
-1 constant UK-INPUT
-variable UNIFY-KIND
-UK-EXACT UNIFY-KIND !
 
 create CT-NAME-A CT-CAP cells allot
 create CT-NAME-U CT-CAP cells allot
@@ -343,13 +411,17 @@ CT-INIT
    got CT-SIGN@ CS-UNSIGNED = want CT-SIGN@ CS-SIGNED = and
    got CT-WIDTH@ want CT-WIDTH@ < and ;
 
+: UNIFY-WIDEN? ( -- bool )
+   UNIFY-KIND @ UK-INPUT = IF -1 EXIT THEN
+   UNIFY-KIND @ UK-COERCE = ;
+
 \ CON-OK? ( t1 t2 -- f ) : exact joins require the same concrete code except for
 \ generic n/int-family interaction. Input/output checks use the integer lattice:
 \ a narrower concrete int can flow into a wider one; widening never applies to
 \ nominal roles (pid/fd/rc/idx/len/...), which stay strict.
 : CON-OK? {: t1 t2 :}
    t1 PAY t2 PAY = IF -1 EXIT THEN
-   UNIFY-KIND @ UK-INPUT = IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
+   UNIFY-WIDEN? IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
    t1 PAY CC-N = t2 PAY INT-FAM? and IF -1 EXIT THEN
    t2 PAY CC-N = t1 PAY INT-FAM? and IF -1 EXIT THEN
    0 ;
@@ -426,6 +498,8 @@ variable TOCC  variable TODN  variable TOPARAM
      over PTR>INNER over PTR>INNER PAIR 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
      2dup ATOM-OK? IF 2drop ELSE 2drop 0 UOK ! THEN ELSE
+   2dup FIELD-PAIR? IF 2drop ELSE
+   2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
      2dup PARAM-PAIR-ARGS 2drop ELSE
    over ISVAR IF
@@ -434,7 +508,7 @@ variable TOCC  variable TODN  variable TOPARAM
      dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN
-   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN THEN THEN ;
+   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 : UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
    0 USP !  -1 UOK !  PAIR
@@ -449,6 +523,11 @@ variable TOCC  variable TODN  variable TOPARAM
 
 : UNIFY-IN ( n n -- bool )
    UK-INPUT UNIFY-KIND !
+   UNIFY
+   UK-EXACT UNIFY-KIND ! ;
+
+: UNIFY-COERCE ( n n -- bool )
+   UK-COERCE UNIFY-KIND !
    UNIFY
    UK-EXACT UNIFY-KIND ! ;
 variable FV
@@ -642,6 +721,327 @@ variable RSH
    0 RSH ! THEN THEN THEN THEN THEN THEN THEN THEN
    RSH @ ;
 
+0 constant VR-CON
+1 constant VR-VAR
+2 constant VR-ROW
+3 constant VR-PTR
+4 constant VR-PUSH
+5 constant VR-QUOT
+6 constant VR-ATOM
+7 constant VR-PARAM
+
+64 constant VREC-CAP
+512 constant VREC-FIELD-CAP
+$4000 constant VREC-NODE-CAP
+$10000 constant VREC-STR-CAP
+
+create VREC-NAME-A VREC-CAP cells allot
+create VREC-NAME-U VREC-CAP cells allot
+create VREC-START VREC-CAP cells allot
+create VREC-COUNT VREC-CAP cells allot
+create VREC-TVN VREC-CAP cells allot
+create VREC-RVN VREC-CAP cells allot
+create VREC-FIELDS VREC-FIELD-CAP cells allot
+create VRN-TAG VREC-NODE-CAP cells allot
+create VRN-A VREC-NODE-CAP cells allot
+create VRN-B VREC-NODE-CAP cells allot
+create VRN-C VREC-NODE-CAP cells allot
+create VRN-D VREC-NODE-CAP cells allot
+create VRN-E VREC-NODE-CAP cells allot
+create VRN-F VREC-NODE-CAP cells allot
+create VRN-G VREC-NODE-CAP cells allot
+create VRN-H VREC-NODE-CAP cells allot
+create VREC-STR VREC-STR-CAP allot
+create VRC-TV MAXTV cells allot
+create VRC-RV MAXTV cells allot
+create VRI-TV MAXTV cells allot
+create VRI-RV MAXTV cells allot
+64 constant VRI-AK-CAP
+create VRI-AK VRI-AK-CAP cells allot
+
+variable VREC-N
+variable VREC-FIELD-N
+variable VREC-NODE-N
+variable VREC-STR-U
+variable VREC-I
+variable VREC-J
+variable VRC-TVN
+variable VRC-RVN
+
+0 VREC-N !
+0 VREC-FIELD-N !
+1 VREC-NODE-N !
+0 VREC-STR-U !
+
+: VREC-CHECK ( n -- ) {: id:n :}
+   id 0 < IF s" checker: bad value-record id" 76 die THEN
+   id VREC-N @ >= IF s" checker: bad value-record id" 76 die THEN ;
+
+: VREC-NAME-A-FIELD ( n -- ptr ptr u8 )
+   dup VREC-CHECK
+   cells VREC-NAME-A + 0 ptr-field ;
+
+: VREC-NAME$ ( n -- ptr u8 n ) {: id:n :}
+   id VREC-NAME-A-FIELD @
+   id cells VREC-NAME-U + @ ;
+
+: VREC-START@ ( n -- n )
+   dup VREC-CHECK
+   cells VREC-START + @ ;
+
+: VREC-COUNT@ ( n -- n )
+   dup VREC-CHECK
+   cells VREC-COUNT + @ ;
+
+: VREC-TVN@ ( n -- n )
+   dup VREC-CHECK
+   cells VREC-TVN + @ ;
+
+: VREC-RVN@ ( n -- n )
+   dup VREC-CHECK
+   cells VREC-RVN + @ ;
+
+: VREC-STR-ROOM ( n -- )
+   VREC-STR-U @ + VREC-STR-CAP > IF s" checker: value-record strings full" 76 die THEN ;
+
+: VREC-STR-COPY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u VREC-STR-ROOM
+   VREC-STR VREC-STR-U @ + {: dst:ptr :}
+   0 VREC-I !
+   BEGIN VREC-I @ u < WHILE
+      a VREC-I @ + c@ dst VREC-I @ + c!
+      VREC-I @ 1 + VREC-I !
+   REPEAT
+   VREC-STR-U @ u + VREC-STR-U !
+   dst u ;
+
+: VREC-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id VREC-NAME$ a u CORE-STR= ;
+
+: VREC-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   0 VREC-I !
+   BEGIN VREC-I @ VREC-N @ < WHILE
+      a u VREC-I @ VREC-MATCH? IF VREC-I @ -1 EXIT THEN
+      VREC-I @ 1 + VREC-I !
+   REPEAT
+   0 0 ;
+
+: VREC-NODE-CHECK ( n -- ) {: id:n :}
+   id 0 <= IF s" checker: bad value-record node" 76 die THEN
+   id VREC-NODE-N @ >= IF s" checker: bad value-record node" 76 die THEN ;
+
+: VREC-NODE-SLOT ( n ptr a -- ptr a ) {: id:n base:ptr :}
+   id VREC-NODE-CHECK
+   base id cells + ;
+
+: VN.TAG@ ( n -- n ) VRN-TAG VREC-NODE-SLOT @ ;
+: VN.A@ ( n -- n ) VRN-A VREC-NODE-SLOT @ ;
+: VN.B@ ( n -- n ) VRN-B VREC-NODE-SLOT @ ;
+: VN.C@ ( n -- n ) VRN-C VREC-NODE-SLOT @ ;
+: VN.D@ ( n -- n ) VRN-D VREC-NODE-SLOT @ ;
+: VN.E@ ( n -- n ) VRN-E VREC-NODE-SLOT @ ;
+: VN.F@ ( n -- n ) VRN-F VREC-NODE-SLOT @ ;
+: VN.G@ ( n -- n ) VRN-G VREC-NODE-SLOT @ ;
+: VN.H@ ( n -- n ) VRN-H VREC-NODE-SLOT @ ;
+: VN.TAG! ( n n -- ) VRN-TAG VREC-NODE-SLOT ! ;
+: VN.A! ( n n -- ) VRN-A VREC-NODE-SLOT ! ;
+: VN.B! ( n n -- ) VRN-B VREC-NODE-SLOT ! ;
+: VN.C! ( n n -- ) VRN-C VREC-NODE-SLOT ! ;
+: VN.D! ( n n -- ) VRN-D VREC-NODE-SLOT ! ;
+: VN.E! ( n n -- ) VRN-E VREC-NODE-SLOT ! ;
+: VN.F! ( n n -- ) VRN-F VREC-NODE-SLOT ! ;
+: VN.G! ( n n -- ) VRN-G VREC-NODE-SLOT ! ;
+: VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
+
+: VREC-NODE-NEW ( n -- n ) {: tag:n :}
+   VREC-NODE-N @ VREC-NODE-CAP >= IF s" checker: value-record nodes full" 76 die THEN
+   VREC-NODE-N @ {: id:n :}
+   id 1 + VREC-NODE-N !
+   tag id VN.TAG!
+   0 id VN.A! 0 id VN.B! 0 id VN.C! 0 id VN.D!
+   0 id VN.E! 0 id VN.F! 0 id VN.G! 0 id VN.H!
+   id ;
+
+: VREC-FIELD@ ( n -- n ) {: idx:n :}
+   idx 0 < IF s" checker: bad value-record field" 76 die THEN
+   idx VREC-FIELD-N @ >= IF s" checker: bad value-record field" 76 die THEN
+   idx cells VREC-FIELDS + @ ;
+
+: VREC-FIELD! ( n -- ) {: node:n :}
+   VREC-FIELD-N @ VREC-FIELD-CAP >= IF s" checker: value-record fields full" 76 die THEN
+   node VREC-FIELD-N @ cells VREC-FIELDS + !
+   VREC-FIELD-N @ 1 + VREC-FIELD-N ! ;
+
+: VREC-MAP-RESET-ONE ( ptr a -- ) {: p:ptr :}
+   0 BEGIN dup MAXTV < WHILE
+      UNBOUND over cells p + !
+      1 +
+   REPEAT drop ;
+
+: VREC-COPY-RESET ( -- )
+   VRC-TV VREC-MAP-RESET-ONE
+   VRC-RV VREC-MAP-RESET-ONE
+   0 VRC-TVN !
+   0 VRC-RVN ! ;
+
+: VREC-TV-ID ( n -- n ) {: id:n :}
+   id cells VRC-TV + dup @ UNBOUND = IF
+      VRC-TVN @ over !
+      VRC-TVN @ 1 + VRC-TVN !
+   THEN @ ;
+
+: VREC-RV-ID ( n -- n ) {: id:n :}
+   id cells VRC-RV + dup @ UNBOUND = IF
+      VRC-RVN @ over !
+      VRC-RVN @ 1 + VRC-RVN !
+   THEN @ ;
+
+: VREC-COPY-STR ( ptr u8 n n -- ) {: a:ptr u:n node:n :}
+   a u VREC-STR-COPY {: dst:ptr len:n :}
+   dst node VN.A!
+   len node VN.B! ;
+
+: VREC-RES ( n -- n ) {: x:n :}
+   x TAG S-ROW = x TAG S-PUSH = or IF x R-RES ELSE x T-RES THEN ;
+
+: VREC-COPY ( n -- n ) {: x:n :}
+   x 0= IF 0 EXIT THEN
+   x VREC-RES TAG case
+      T-CON of
+         VR-CON VREC-NODE-NEW dup >r
+         x VREC-RES PAY r@ VN.A!
+         r>
+      endof
+      T-VAR of
+         VR-VAR VREC-NODE-NEW dup >r
+         x VREC-RES PAY VREC-TV-ID r@ VN.A!
+         r>
+      endof
+      S-ROW of
+         VR-ROW VREC-NODE-NEW dup >r
+         x VREC-RES PAY VREC-RV-ID r@ VN.A!
+         r>
+      endof
+      T-PTR of
+         VR-PTR VREC-NODE-NEW dup >r
+         x VREC-RES PTR>INNER RECURSE r@ VN.A!
+         r>
+      endof
+      S-PUSH of
+         VR-PUSH VREC-NODE-NEW dup >r
+         x VREC-RES P>TYPE RECURSE r@ VN.A!
+         x VREC-RES P>REST RECURSE r@ VN.B!
+         r>
+      endof
+      T-QUOT of
+         VR-QUOT VREC-NODE-NEW dup >r
+         x VREC-RES Q>DIN RECURSE r@ VN.A!
+         x VREC-RES Q>DOUT RECURSE r@ VN.B!
+         x VREC-RES Q>RIN RECURSE r@ VN.C!
+         x VREC-RES Q>ROUT RECURSE r@ VN.D!
+         x VREC-RES Q>XHAS r@ VN.E!
+         x VREC-RES Q>XDEAD r@ VN.F!
+         x VREC-RES Q>XDOUT r@ VN.G!
+         x VREC-RES Q>XROUT r@ VN.H!
+         r>
+      endof
+      T-ATOM of
+         VR-ATOM VREC-NODE-NEW dup >r
+         x VREC-RES ATOM>A x VREC-RES ATOM>U r@ VREC-COPY-STR
+         x VREC-RES ATOM>K r@ VN.C!
+         r>
+      endof
+      T-PARAM of
+         VR-PARAM VREC-NODE-NEW dup >r
+         x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U r@ VREC-COPY-STR
+         x VREC-RES PARAM>ARGC r@ VN.C!
+         x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE r@ VN.D! THEN
+         x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE r@ VN.E! THEN
+         x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE r@ VN.F! THEN
+         x VREC-RES PARAM>ARGC 3 > IF x VREC-RES 3 PARAM>ARG RECURSE r@ VN.G! THEN
+         r>
+      endof
+      0 swap
+   endcase ;
+
+: VRI-AK-RESET ( -- )
+   0 BEGIN dup VRI-AK-CAP < WHILE
+      UNBOUND over cells VRI-AK + !
+      1 +
+   REPEAT drop ;
+
+: VREC-INST-RESET ( n -- ) {: id:n :}
+   VRI-AK-RESET
+   0 BEGIN dup id VREC-TVN@ < WHILE
+      UNBOUND over cells VRI-TV + !
+      1 +
+   REPEAT drop
+   0 BEGIN dup id VREC-RVN@ < WHILE
+      UNBOUND over cells VRI-RV + !
+      1 +
+   REPEAT drop ;
+
+: VREC-I-TV ( n -- n ) {: id:n :}
+   id cells VRI-TV + dup @ UNBOUND = IF
+      FRESH MK-VAR over !
+   THEN @ ;
+
+: VREC-I-RV ( n -- n ) {: id:n :}
+   id cells VRI-RV + dup @ UNBOUND = IF
+      FRESH MK-ROW over !
+   THEN @ ;
+
+: VREC-I-AK-IDX ( n -- n )
+   negate 1 - ;
+
+: VREC-I-AK ( n -- n ) {: k:n :}
+   k 0 >= IF k EXIT THEN
+   k VREC-I-AK-IDX dup VRI-AK-CAP >= IF s" checker: value-record atom inst table full" 76 die THEN
+   cells VRI-AK + dup @ UNBOUND = IF
+      RIGID-FRESH over !
+   THEN @ ;
+
+: VREC-I-STR ( n -- ptr u8 n ) {: node:n :}
+   node VN.A@ node VN.B@ ;
+
+: VREC-INST ( n -- n ) {: node:n :}
+   node 0= IF 0 EXIT THEN
+   node VN.TAG@ case
+      VR-CON of node VN.A@ MK-CON endof
+      VR-VAR of node VN.A@ VREC-I-TV endof
+      VR-ROW of node VN.A@ VREC-I-RV endof
+      VR-PTR of node VN.A@ RECURSE MK-PTR endof
+      VR-PUSH of node VN.A@ RECURSE node VN.B@ RECURSE MK-PUSH endof
+      VR-QUOT of
+         node VN.A@ RECURSE
+         node VN.B@ RECURSE
+         node VN.C@ RECURSE
+         node VN.D@ RECURSE
+         MK-QUOT
+         dup node VN.E@ node VN.F@ node VN.G@ node VN.H@ QX!
+      endof
+      VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
+      VR-PARAM of
+         PARAM-SCR-RESET
+         node VN.C@ 0 > IF node VN.D@ RECURSE PARAM-SCR+ THEN
+         node VN.C@ 1 > IF node VN.E@ RECURSE PARAM-SCR+ THEN
+         node VN.C@ 2 > IF node VN.F@ RECURSE PARAM-SCR+ THEN
+         node VN.C@ 3 > IF node VN.G@ RECURSE PARAM-SCR+ THEN
+         node VREC-I-STR MK-PARAM
+      endof
+      0 swap
+   endcase ;
+
+: VREC-PUSH-FIELDS ( n n -- n ) {: row:n id:n :}
+   id VREC-INST-RESET
+   row
+   0 VREC-I !
+   BEGIN VREC-I @ id VREC-COUNT@ < WHILE
+      id VREC-START@ VREC-I @ + VREC-FIELD@ VREC-INST
+      swap MK-PUSH
+      VREC-I @ 1 + VREC-I !
+   REPEAT ;
+
 \ --- generic signature parser: build a step effect from a textual " in -- out "
 \ stack effect. A single lowercase letter is a polymorphic type variable (shared
 \ across in/out within one signature); `n` = int (con 1), `f` = flag (con 2).
@@ -799,6 +1199,8 @@ variable UNDEFERR
    repeat drop 0 ;
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= IF -1 EXIT THEN
+   a u VREC-FIND IF drop -1 EXIT THEN drop
+   a u s" field" CORE-STR= IF -1 EXIT THEN
    a u CT-FIND 0 <> IF -1 EXIT THEN
    a u PARAM-CTOR? IF -1 EXIT THEN
    a u ATOM-TOK? IF -1 EXIT THEN
@@ -926,7 +1328,11 @@ create ROWMAP 26 cells allot
         MK-QUOT
         swap MK-PUSH
      ELSE
-        SIG-TYPE  swap MK-PUSH
+        2dup VREC-FIND IF
+           >r 2drop r> VREC-PUSH-FIELDS
+        ELSE
+           drop SIG-TYPE swap MK-PUSH
+        THEN
      THEN
    AGAIN ;
 
@@ -959,6 +1365,66 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
 : PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
+
+: VREC-ROOM ( -- )
+   VREC-N @ VREC-CAP >= IF s" checker: value-record table full" 76 die THEN ;
+
+: VREC-BEGIN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   VREC-ROOM
+   VREC-N @ {: id:n :}
+   a u VREC-STR-COPY {: dst:ptr len:n :}
+   id 1 + VREC-N !
+   dst id VREC-NAME-A-FIELD !
+   len id cells VREC-NAME-U + !
+   VREC-FIELD-N @ id cells VREC-START + !
+   0 id cells VREC-COUNT + !
+   0 id cells VREC-TVN + !
+   0 id cells VREC-RVN + !
+   id ;
+
+: VREC-FINISH ( n -- ) {: id:n :}
+   VREC-FIELD-N @ id VREC-START@ - {: n:n :}
+   n 0 <= IF s" checker: empty value-record" 70 die THEN
+   n id cells VREC-COUNT + !
+   VRC-TVN @ id cells VREC-TVN + !
+   VRC-RVN @ id cells VREC-RVN + ! ;
+
+: VREC-FIELD-WRAP ( ptr u8 n ptr u8 n n -- n )
+   {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
+   PARAM-SCR-RESET
+   rec recu MK-ATOM PARAM-SCR+
+   fld fldu MK-ATOM PARAM-SCR+
+   typ PARAM-SCR+
+   s" field" MK-PARAM ;
+
+: VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
+   {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
+   rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
+
+: VREC-FIELD-BAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF -1 EXIT THEN
+   a u DELIM? ;
+
+: VREC-PARSE-FIELDS ( ptr u8 n ptr u8 n -- )
+   {: rec:ptr recu:n fields:ptr fieldsu:n :}
+   fields SB ! fieldsu SL ! 0 SI !
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
+   VREC-COPY-RESET
+   BEGIN
+      NEXT-SIG-TOK dup 0= IF 2drop SGBAD @ IF s" checker: bad value-record field type" 70 die THEN EXIT THEN
+      2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" 70 die THEN
+      NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" 70 die THEN
+      SIG-TYPE
+      >r rec recu 2swap r> VREC-FIELD-STORE
+      SGBAD @ IF s" checker: bad value-record field type" 70 die THEN
+   AGAIN ;
+
+: CHECKER-DEFRECORD ( ptr u8 n ptr u8 n -- )
+   {: name:ptr nameu:n fields:ptr fieldsu:n :}
+   name nameu TYPE-RESERVED? IF s" checker: bad or duplicate value-record type" 70 die THEN
+   name nameu VREC-BEGIN {: id:n :}
+   name nameu fields fieldsu VREC-PARSE-FIELDS
+   id VREC-FINISH ;
 
 \ Structured internal effects. Textual signatures are source-boundary input
 \ only; checker-owned token semantics construct rows directly.
@@ -1876,6 +2342,7 @@ PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
@@ -2644,6 +3111,11 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
    dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
    OK @ and OK ! ;
 
+: SUNI-COERCE {: s:n :}
+   DCUR @ s UNIFY-COERCE
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   OK @ and OK ! ;
+
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
 
 : RSUNI-IN {: s:n :}  RCUR @ s UNIFY-IN OK @ and OK ! ;
@@ -3162,13 +3634,13 @@ variable IS-TU
    CHECK-FOLD-EXITS
    VSIG @ SGSEEN @ and IF CHECK-NO-BORROW THEN
    VSIG @ SGSEEN @ and IF
-      SGOUT @ SUNI-IN
+      SGOUT @ SUNI-COERCE
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    VSIG @ SGSEEN @ SGHASR @ and and IF
-      RCUR @ SGROUT @ UNIFY-IN OK @ and OK !
+      RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
    CHECK-VERDICT                                      \ malformed/unsafe rejects
@@ -3195,6 +3667,10 @@ variable CAND-SYMN
 variable CAND-SYMU
 variable CAND-CTN
 variable CAND-CTU
+variable CAND-VREC-N
+variable CAND-VREC-FIELD-N
+variable CAND-VREC-NODE-N
+variable CAND-VREC-STR-U
 variable CAND-VERD
 variable CSCOPE-UEND
 variable CSCOPE-NEND
@@ -3202,6 +3678,10 @@ variable CSCOPE-SYMN
 variable CSCOPE-SYMU
 variable CSCOPE-CTN
 variable CSCOPE-CTU
+variable CSCOPE-VREC-N
+variable CSCOPE-VREC-FIELD-N
+variable CSCOPE-VREC-NODE-N
+variable CSCOPE-VREC-STR-U
 variable CSCOPE-CAND
 variable CSCOPE-VSIG
 
@@ -3212,6 +3692,10 @@ variable CSCOPE-VSIG
    SYM-STR-U @ CSCOPE-SYMU !
    CTN @ CSCOPE-CTN !
    CT-STR-U @ CSCOPE-CTU !
+   VREC-N @ CSCOPE-VREC-N !
+   VREC-FIELD-N @ CSCOPE-VREC-FIELD-N !
+   VREC-NODE-N @ CSCOPE-VREC-NODE-N !
+   VREC-STR-U @ CSCOPE-VREC-STR-U !
    CHK-CAND @ CSCOPE-CAND !
    VSIG @ CSCOPE-VSIG ! ;
 
@@ -3222,6 +3706,10 @@ variable CSCOPE-VSIG
    CSCOPE-SYMU @ SYM-STR-U !
    CSCOPE-CTN @ CTN !
    CSCOPE-CTU @ CT-STR-U !
+   CSCOPE-VREC-N @ VREC-N !
+   CSCOPE-VREC-FIELD-N @ VREC-FIELD-N !
+   CSCOPE-VREC-NODE-N @ VREC-NODE-N !
+   CSCOPE-VREC-STR-U @ VREC-STR-U !
    CSCOPE-CAND @ CHK-CAND !
    CSCOPE-VSIG @ VSIG ! ;
 
@@ -3232,6 +3720,10 @@ variable CSCOPE-VSIG
    SYM-STR-U @ CAND-SYMU !
    CTN @ CAND-CTN !
    CT-STR-U @ CAND-CTU !
+   VREC-N @ CAND-VREC-N !
+   VREC-FIELD-N @ CAND-VREC-FIELD-N !
+   VREC-NODE-N @ CAND-VREC-NODE-N !
+   VREC-STR-U @ CAND-VREC-STR-U !
    -1 CHK-CAND !
    -1 VSIG ! ;
 
@@ -3245,6 +3737,10 @@ variable CSCOPE-VSIG
    CAND-SYMU @ SYM-STR-U !
    CAND-CTN @ CTN !
    CAND-CTU @ CT-STR-U !
+   CAND-VREC-N @ VREC-N !
+   CAND-VREC-FIELD-N @ VREC-FIELD-N !
+   CAND-VREC-NODE-N @ VREC-NODE-N !
+   CAND-VREC-STR-U @ VREC-STR-U !
    CAND-VERD @ ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n )
@@ -3288,9 +3784,9 @@ variable CSCOPE-VSIG
    CHECK-SCAN
    CHECK-FOLD-EXITS
    CHECK-NO-BORROW
-   SGOUT @ SUNI-IN
+   SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
-   SGHASR @ IF RCUR @ SGROUT @ UNIFY-IN OK @ and OK ! THEN
+   SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;
