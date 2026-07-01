@@ -1,9 +1,9 @@
 # Maki optimizers
 
 `maki/optim.f`: per-element float update rules (the math an optimizer applies to each
-weight given its gradient), pure checked Habu on the float stack. The tensor-level
-apply (one update over a whole parameter tensor) lowers onto a Habu-PTX kernel; these
-are the rules themselves.
+weight given its gradient), pure checked Habu on the float stack. `maki/optim-tensor.f`
+lifts those rules over contiguous tensor buffers; `TT-ADAM!` is the checked host
+golden for the device lowering.
 
 ## Rules
 - **SGD** `(w g lr -- w')` = `w − lr·g`.
@@ -17,6 +17,8 @@ are the rules themselves.
 
 ## Design intent
 Each rule is a small, individually tested checked word (a `T{ … }T`-style scale-and-
-round assertion per rule + a full-step check). The tensor apply is an elementwise pass,
-**memory-bound** (roofline) → it fuses onto the producing kernel's epilogue rather than
-launching its own kernel (`docs/kernel-principles.md`, `maki/fusion.f`).
+round assertion per rule + a full-step check). Tensor Adam applies the same scalar
+golden per element and updates the parameter, first-moment, and second-moment buffers
+in place. The tensor apply is an elementwise pass, **memory-bound** (roofline) → it
+fuses onto the producing kernel's epilogue rather than launching its own kernel
+(`docs/kernel-principles.md`, `maki/fusion.f`).

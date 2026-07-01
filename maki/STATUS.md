@@ -16,9 +16,10 @@ root; root Habu self-check counts still belong only in root `STATUS.md`.
   v0 tensor type foundation: 2D shape arithmetic (element count, broadcast
   compatibility/result) and the sm_87 dtype set (f32 / f16 / bf16 / u32 / i32)
   with byte sizes. Pure checked Habu, runnable.
-- **Optimizers** (`maki/optim.f`, `maki/optim-test.f`) — SGD, SGD+momentum,
-  L2 weight decay, and bias-corrected Adam as float update rules (the per-weight
-  math). Runnable.
+- **Optimizers** (`maki/optim.f`, `maki/optim-test.f`, `maki/optim-tensor.f`) —
+  SGD, SGD+momentum, L2 weight decay, and bias-corrected Adam as float update
+  rules (the per-weight math), plus tensor Adam apply over parameter/gradient/
+  moment buffers. Runnable.
 - **Losses** (`maki/loss.f`, `maki/loss-test.f`) — MSE + its gradient, and L1
   (the per-element rule). Runnable.
 - **Autograd orchestration** (`maki/autograd.f`, `maki/autograd-test.f`) — tensor

@@ -829,6 +829,13 @@ lesson — keep the specific word/code/path, cut the prose.
   blobs via `refs/jj/keep` and `.jjconflict-*`. Ignore generated output by
   shape (JSON/JSONL/logs/reports), not run name, so reruns can't enter a change.
 
+## Code Quality
+
+- **Entry effects do not explain hidden stack ordering:** `maki/optim-tensor.f`
+  initially had a correct `TT-ADAM!` signature but no inline stack-state comments
+  around `ADAM` returning `(w' m' v')`. Multiline words need line-end stack-state
+  comments on every body line, especially before store chains.
+
 ## Runtime, Codegen, AOT
 
 - **Warm snapshots must not re-run the cold prefix:** restored images already

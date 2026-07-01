@@ -55,6 +55,7 @@ bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
   maki/array.f       maki/array-test.f \
   maki/tensor.f      maki/tensor-test.f \
   maki/optim.f       maki/optim-test.f \
+  maki/optim-tensor.f maki/optim-tensor-test.f \
   maki/loss.f        maki/loss-test.f \
   maki/autograd.f    maki/autograd-test.f \
   maki/fmath.f       maki/fmath-test.f \
