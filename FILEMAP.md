@@ -165,6 +165,10 @@ points stay listed.
   loaded object records.
 - `lib/object-link-test.f` — focused coverage for resolved imports, duplicate
   exports, unresolved imports, and symbol-table overflow.
+- `tools/object-image.f` — checked OBJIMG build-internal wrapper that turns
+  linked object text into a target native executable image.
+- `tools/object-image-test.f` — focused coverage for writing and running a
+  tiny executable from object text.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
