@@ -1401,18 +1401,35 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
    rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
 
+: VREC-ATOM-COPY= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
+   node VN.TAG@ VR-ATOM <> IF 0 EXIT THEN
+   node VREC-I-STR a u CORE-STR= ;
+
+: VREC-FIELD-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
+   node VN.TAG@ VR-PARAM <> IF 0 EXIT THEN
+   a u node VN.E@ VREC-ATOM-COPY= ;
+
+: VREC-FIELD-DUP? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id VREC-START@ VREC-J !
+   BEGIN VREC-J @ VREC-FIELD-N @ < WHILE
+      a u VREC-J @ VREC-FIELD@ VREC-FIELD-NAME= IF -1 EXIT THEN
+      VREC-J @ 1 + VREC-J !
+   REPEAT
+   0 ;
+
 : VREC-FIELD-BAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= IF -1 EXIT THEN
    a u DELIM? ;
 
-: VREC-PARSE-FIELDS ( ptr u8 n ptr u8 n -- )
-   {: rec:ptr recu:n fields:ptr fieldsu:n :}
+: VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
+   {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
    fields SB ! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    BEGIN
       NEXT-SIG-TOK dup 0= IF 2drop SGBAD @ IF s" checker: bad value-record field type" 70 die THEN EXIT THEN
       2dup VREC-FIELD-BAD? IF 2dup SGBAD-SYNTAX! 2drop s" checker: bad value-record field" 70 die THEN
+      2dup id VREC-FIELD-DUP? IF 2drop s" checker: duplicate value-record field" 70 die THEN
       NEXT-SIG-TOK dup 0= IF 2drop 2drop s" checker: bad value-record field type" 70 die THEN
       SIG-TYPE
       >r rec recu 2swap r> VREC-FIELD-STORE
@@ -1423,7 +1440,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    {: name:ptr nameu:n fields:ptr fieldsu:n :}
    name nameu TYPE-RESERVED? IF s" checker: bad or duplicate value-record type" 70 die THEN
    name nameu VREC-BEGIN {: id:n :}
-   name nameu fields fieldsu VREC-PARSE-FIELDS
+   id name nameu fields fieldsu VREC-PARSE-FIELDS
    id VREC-FINISH ;
 
 \ Structured internal effects. Textual signatures are source-boundary input

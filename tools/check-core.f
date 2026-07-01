@@ -673,13 +673,28 @@ variable CHK-DEP-ORDER-N
 : CHK-VREC-END? ( n -- bool )
    s" END-VALUE-RECORD" CHK-TOK=CI ;
 
+variable CHK-VREC-DEF-I
+variable CHK-VREC-NAME-I
+
+: CHK-VREC-DO-DEF ( -- )
+   CHK-VREC-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFRECORD ;
+
+: CHK-VREC-DEFRECORD ( n n -- ) {: def:n name:n :}
+   def CHK-VREC-DEF-I !
+   name CHK-VREC-NAME-I !
+   [: CHK-VREC-DO-DEF ;] catch dup 0= IF drop EXIT THEN
+   dup CHK-E-CHECK <> IF throw THEN drop
+   CHK-VREC-DEF-I @ CHK-VREC-NAME-I @ CHK-VREC-FAIL ;
+
 : CHK-VREC-REGISTER ( n n -- n ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL THEN
    CHK-VREC-RESET
    name 1+
    begin dup L# @ < while
       dup CHK-VREC-END? if
-         name LEX-TOK CHK-EXP-BUF CHK-EXP-U @ CHECKER-DEFRECORD
+         def name CHK-VREC-DEFRECORD
          1+ exit
       then
       dup LEX-TOK CHK-VREC-TOKEN+
