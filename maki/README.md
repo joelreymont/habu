@@ -194,16 +194,16 @@ the device, each verified correct-vs-CPU on the Orin:
   concatenative target genuinely beats the Triton authoring path: same speed, but the
   composition is the program and the type system proves it.
 
-- **Checker ablation (owed)** — a true no-checker ablation is not yet implemented:
-  `maki/eval-compare.f` still goes through `GRADE-CANDIDATE`, so checker-rejected
-  candidates are short-circuited rather than run through an unchecked emit/device
-  path. Dot `habu-implement-true-no-afa79f63` owns the real ablation before this
-  result should be cited.
+- **Checker ablation (measured)** — `maki/eval-compare.f` now scores each SAXPY
+  candidate twice: the checked arm rejects 5/6 bugs before GPU execution, while the
+  no-checker arm emits, assembles, and device-runs all 9 candidates. On the Orin
+  fixture, no-checker catches 0 bugs before execution; all 6 buggy candidates reach
+  the device golden and return wrong output, while the 3 correct candidates pass.
 
 The Habu-PTX-side metric machinery — checker-as-judge pass@k, device-golden
 grading (task-general), repair-rounds, tokens-to-green, GB/s, and the real-Triton
-eval matrix snapshot — has run on hardware. Durable in-tree grader and true
-no-checker ablation follow-up work remains dotted.
+eval matrix snapshot — has run on hardware. Remaining follow-up work is the durable
+in-tree device-grader cleanup and live sampled matrix expansion.
 
 ## Status
 

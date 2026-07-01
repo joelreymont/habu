@@ -5,7 +5,8 @@ pass), with pass@1 / pass@k tallying. The model-generation + repair arm is exter
 this is the correctness gate it is scored against.
 
 ## The eval matrix (vs real Triton, `docs/eval-triton.md`)
-Measured **only against real Triton on the Orin** — no unchecked/eager baseline.
+The external comparison is measured against **real Triton on the Orin**. The
+separate internal no-checker Habu ablation lives in `maki/eval-compare.f`.
 - **Error-catch timing:** both catch name/type errors before running (Habu at *author*
   time, Triton at *compile*); the **stack-discipline class** (missing store, wrong
   arity, extra op) is caught at author time by Habu's checker with zero GPU, but only
@@ -22,7 +23,11 @@ Measured **only against real Triton on the Orin** — no unchecked/eager baselin
 candidate signatures are allowed to shadow existing names during that one check, then
 the checker registries are restored so repeated `K`/`A` candidates do not poison the
 host dictionary. `maki/eval-device.f` grades `certify AND run-correct` (emit → ptxas →
-device golden); `maki/eval-compare.f` is the internal checker-ablation. The committed
+device golden); `maki/eval-compare.f` is the internal checker-ablation. That ablation
+scores every candidate through both `GRADE-CANDIDATE` and a
+throwaway `0 set-check` emit/ptxas/device path; on the SAXPY fixture, the checker
+catches 5/6 bugs before execution while the no-checker arm catches 0/6 before
+execution and all six buggy candidates fail only at the device golden. The committed
 device-correctness regressions for the GEMM/attention kernels are
 `tools/ptx/{matmul,attention}-device-test.f`.
 

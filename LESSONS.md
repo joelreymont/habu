@@ -652,6 +652,13 @@ lesson — keep the specific word/code/path, cut the prose.
   incl. a missing-store → silent 0.0) where Habu-PTX's checker rejects at author
   time. The thesis MECHANISM is now backed by real-target data; do not revive the
   superseded launch-path-gap explanation.
+- **No-checker ablation must run the whole unchecked path:** counting
+  `GRADE-CANDIDATE` rejects as "without checker" lies because the checker already
+  short-circuited them. `maki/eval-compare.f` now emits a throwaway `0 set-check`
+  driver for the no-checker arm and attempts emit -> ptxas -> device golden for all
+  9 SAXPY candidates. Measured on the Orin: checked catches 5/6 bugs before GPU;
+  no-checker catches 0/6 before execution, emits+assembles all 9, and all 6 buggy
+  candidates fail only as device-wrong.
 - **External baseline stays out of the tree (host-lint).** `host-lint` WALK-FILES the
   whole repo and `1 throw`s on any `.py` path; `.md`/`.f` content is not scanned. So
   the Triton (Python) baseline lives as fenced ```python blocks in `docs/eval-triton.md`

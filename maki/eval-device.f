@@ -55,6 +55,16 @@ variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
    s" bye" SB-APPEND  10 SB-APPEND-C
    s" /tmp/grade-driver.f" SB$ WRITE-ALL ;
 
+: GRADE-WRITE-UNCHECKED-DRIVER ( ptr u8 n -- ) {: a:ptr u:n :}
+   SB-RESET
+   s" 0 set-check" SB-APPEND  10 SB-APPEND-C
+   s" 256 %BLOCK" SB-APPEND  10 SB-APPEND-C
+   s" : " SB-APPEND  a u SB-APPEND  s"  ;" SB-APPEND  10 SB-APPEND-C
+   s" CG-RESET CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS 1 SPAN-REG 2 SPAN-REG 1 UNIFORM-REG K CG-RET CG-CLOSE"
+      SB-APPEND  10 SB-APPEND-C
+   s" bye" SB-APPEND  10 SB-APPEND-C
+   s" /tmp/grade-driver.f" SB$ WRITE-ALL ;
+
 \ ---- spawn bin/hb to emit the driver's PTX (captured stdout) -> /tmp/grade.ptx ----
 create GP-OUT $4000 allot  create GP-ERR $1000 allot
 : GRADE-EMIT ( -- n )
@@ -90,9 +100,19 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    GRADE-PTXAS 0 <> if 1 exit then                \ won't assemble
    s" /tmp/grade.cubin" DEVICE-CORRECT? if 2 else 1 then ;
 
+0 constant EVN-EMIT-FAIL
+1 constant EVN-PTXAS-FAIL
+2 constant EVN-DEVICE-WRONG
+3 constant EVN-GREEN
+
+: GRADE-NOCHECK-CANDIDATE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u GRADE-WRITE-UNCHECKED-DRIVER
+   GRADE-EMIT 0 = if EVN-EMIT-FAIL exit then
+   GRADE-PTXAS 0 <> if EVN-PTXAS-FAIL exit then
+   s" /tmp/grade.cubin" DEVICE-CORRECT? if EVN-GREEN else EVN-DEVICE-WRONG then ;
+
 \ pass@k that means certify AND device-correct
 variable EVD-PASS  variable EVD-TOTAL
 : EVD-RESET ( -- )  0 EVD-PASS !  0 EVD-TOTAL ! ;
 : EVD-SCORE ( ptr u8 n -- )
    GRADE-CANDIDATE  2 = if EVD-PASS @ 1+ EVD-PASS ! then  EVD-TOTAL @ 1+ EVD-TOTAL ! ;
-
