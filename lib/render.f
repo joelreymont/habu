@@ -33,26 +33,38 @@ variable RB-SP
 : SPACES ( n -- ) RB-SP ! begin RB-SP @ 0 > while 32 RB-C RB-SP @ 1- RB-SP ! repeat ;
 : RB-BOOL ( bool -- ) if s" true" RB+ else s" false" RB+ then ;
 \ indented "key": value emitters (no trailing comma/newline)
-: KVN ( i64 i64 ptr u8 n -- ) {: v ind ka:ptr ku :} ind SPACES ka ku QK v RB# ;        \ numeric
-: KVS ( ptr u8 n i64 ptr u8 n -- ) {: va:ptr vu ind ka:ptr ku :} ind SPACES ka ku QK va vu QSTR ;  \ string
-: KVB ( bool i64 ptr u8 n -- ) {: b ind ka:ptr ku :} ind SPACES ka ku QK b RB-BOOL ;   \ boolean
+: KVN ( i64 i64 ptr u8 n -- ) {: v:i64 ind:i64 ka:ptr ku:n :}
+   ind SPACES
+   ka ku QK
+   v RB# ;
+
+: KVS ( ptr u8 n i64 ptr u8 n -- ) {: va:ptr vu:n ind:i64 ka:ptr ku:n :}
+   ind SPACES
+   ka ku QK
+   va vu QSTR ;
+
+: KVB ( bool i64 ptr u8 n -- ) {: b:bool ind:i64 ka:ptr ku:n :}
+   ind SPACES
+   ka ku QK
+   b RB-BOOL ;
 
 \ --- fixed-3-decimal formatters (writeMilli3 / writeFixed3 in fps_sweep.zig) ---
 : RB-3 ( n -- ) {: x :}                       \ x in 0..999 as exactly 3 zero-padded digits
    x 100 / 48 + RB-C  x 100 mod 10 / 48 + RB-C  x 10 mod 48 + RB-C ;
 : RB-MILLI3 ( n -- )                          \ milli value -> "<int>.<3frac>"
    dup 1000 / RB#  46 RB-C  1000 mod RB-3 ;
-: RB-FIXED3 ( n n -- ) {: num den :}          \ num/den as a 3-decimal fixed-point ("0.000" if den=0)
+: RB-FIXED3 ( n n -- ) {: num:n den:n :}
    den 0= if s" 0.000" RB+
    else num 1000 * den /  dup 1000 / RB#  46 RB-C  1000 mod RB-3
    then ;
 
 : RB-4 ( n -- ) {: x :}                       \ x in 0..9999 as 4 zero-padded digits
    x 1000 / 48 + RB-C  x 1000 mod 100 / 48 + RB-C  x 100 mod 10 / 48 + RB-C  x 10 mod 48 + RB-C ;
-: RB-FFIX3 ( r -- )                           \ non-negative float -> 3-decimal text (round half up)
-   1000.0 f* 0.5 f+ f>s {: scaled :}
+: RB-FFIX3 ( r -- )
+   1000.0 f* 0.5 f+ f>s {: scaled:n :}
    scaled 1000 / RB#  46 RB-C  scaled 1000 mod RB-3 ;
-: RB-RATIO4 ( n n -- ) {: num den :}          \ num/den to 4 decimals, round-half-up ("0.0000" if den=0)
+
+: RB-RATIO4 ( n n -- ) {: num:n den:n :}
    den 0= if s" 0.0000" RB+
    else num 10000 *  den 2 /  +  den /  dup 10000 / RB#  46 RB-C  10000 mod RB-4
    then ;
@@ -63,8 +75,17 @@ variable RB-SP
 : RBAR ( -- ) s"  |" RB+ ;                    \ trailing " |"
 
 \ --- vertical key/value DSL: markdown bullets ("- k: v") and CSV "k,v" rows ---
-: MD-S ( ptr u8 n ptr u8 n -- ) {: la ln va vn :} s" - " RB+ la ln RB+ s" : " RB+ va vn RB+ RB-NL ;
+: MD-S ( ptr u8 n ptr u8 n -- ) {: la:ptr ln:n va:ptr vn:n :}
+   s" - " RB+ la ln RB+ s" : " RB+
+   va vn RB+
+   RB-NL ;
+
 : MD-N ( ptr u8 n n -- ) {: la ln v :} s" - " RB+ la ln RB+ s" : " RB+ v RB# RB-NL ;
-: MD-R ( ptr u8 n n n -- ) {: la ln num den :} s" - " RB+ la ln RB+ s" : " RB+ num den RB-RATIO4 RB-NL ;
+
+: MD-R ( ptr u8 n n n -- ) {: la:ptr ln:n num:n den:n :}
+   s" - " RB+ la ln RB+ s" : " RB+
+   num den RB-RATIO4
+   RB-NL ;
+
 : CVN ( ptr u8 n n -- ) {: la ln v :} la ln RB+ CM v RB# RB-NL ;
 : CVR ( ptr u8 n n n -- ) {: la ln num den :} la ln RB+ CM num den RB-RATIO4 RB-NL ;
