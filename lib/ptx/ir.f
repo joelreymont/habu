@@ -15,6 +15,8 @@
 
 64 constant PTXIR-MAX
 
+VALUE-RECORD ptxir-node op n a n b n val n live n END-VALUE-RECORD
+
 BEGIN-STRUCTURE PTXIR-REC
    CELL +FIELD PTXIR.OP
    CELL +FIELD PTXIR.A
@@ -70,37 +72,67 @@ variable PTXIR-N
    id PTXIR-ID-CHECK
    live id PTXIR-REC@ PTXIR.LIVE ! ;
 
-: PTXIR-WRITE ( n n n n n -- ) {: op:n a:n b:n val:n id:n :}
+: >PTXIR-NODE ( n n n n n -- ptxir-node ) ;
+
+: PTXIR-NODE> ( ptxir-node -- n n n n n ) ;
+
+: PTXIR-NODE-DROP ( ptxir-node -- )
+   drop drop drop drop drop ;
+
+: PTXIR-NODE-DUP-RAW ( n n n n n -- ptxir-node ptxir-node )
+   {: op:n a:n b:n val:n live:n :}
+   op a b val live >PTXIR-NODE
+   op a b val live >PTXIR-NODE ;
+
+: PTXIR-NODE-DUP ( ptxir-node -- ptxir-node ptxir-node )
+   PTXIR-NODE> PTXIR-NODE-DUP-RAW ;
+
+: PTXIR-WRITE-RAW ( n n n n n n -- ) {: op:n a:n b:n val:n live:n id:n :}
    id PTXIR-REC@ {: rec:ptr :}
    op rec PTXIR.OP !
    a rec PTXIR.A !
    b rec PTXIR.B !
    val rec PTXIR.VAL !
-   0 rec PTXIR.LIVE ! ;
+   live rec PTXIR.LIVE ! ;
 
-: PTXIR-MATCH? ( n n n n n -- bool ) {: op:n a:n b:n val:n id:n :}
+: PTXIR-WRITE ( ptxir-node n -- )
+   >r PTXIR-NODE> r> PTXIR-WRITE-RAW ;
+
+: PTXIR-MATCH-RAW? ( n n n n n n -- bool ) {: op:n a:n b:n val:n live:n id:n :}
    id PTXIR-OP@ op <> if 0 0= 0= exit then
    id PTXIR-A@ a <> if 0 0= 0= exit then
    id PTXIR-B@ b <> if 0 0= 0= exit then
    id PTXIR-VAL@ val <> if 0 0= 0= exit then
+   id PTXIR-LIVE@ if 1 else 0 then live <> if 0 0= 0= exit then
    0 0= ;
 
-: PTXIR-FIND ( n n n n -- n bool ) {: op:n a:n b:n val:n :}
+: PTXIR-MATCH? ( ptxir-node n -- bool )
+   >r PTXIR-NODE> r> PTXIR-MATCH-RAW? ;
+
+: PTXIR-FIND-RAW ( n n n n n -- n bool ) {: op:n a:n b:n val:n live:n :}
    PTXIR-N @ 0 ?do
-      op a b val i PTXIR-MATCH? if i 0 0= exit then
+      op a b val live i PTXIR-MATCH-RAW? if i 0 0= exit then
    loop
    PTXIR-NONE 0 0= 0= ;
+
+: PTXIR-FIND ( ptxir-node -- n bool )
+   PTXIR-NODE> PTXIR-FIND-RAW ;
 
 : PTXIR-ROOM ( -- )
    PTXIR-N @ PTXIR-MAX >= if E-PTX-IR-OVERFLOW throw then ;
 
-: PTXIR-INTERN ( n n n n -- n ) {: op:n a:n b:n val:n :}
-   op a b val PTXIR-FIND if exit then drop
+: PTXIR-NODE-INTERN ( ptxir-node -- n )
+   PTXIR-NODE-DUP PTXIR-FIND if
+      >r PTXIR-NODE-DROP r> exit
+   then drop
    PTXIR-ROOM
    PTXIR-N @ {: id:n :}
-   op a b val id PTXIR-WRITE
+   id PTXIR-WRITE
    id 1+ PTXIR-N !
    id ;
+
+: PTXIR-INTERN ( n n n n -- n )
+   0 >PTXIR-NODE PTXIR-NODE-INTERN ;
 
 : PTXIR-INPUT# ( n -- n ) {: sym:n :}
    PTXIR-K-INPUT PTXIR-NONE PTXIR-NONE sym PTXIR-INTERN ;

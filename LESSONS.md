@@ -15,6 +15,9 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Keep `roles.f` TRUST site rows stable:** inserting `DEFLINEAR` above the
   trusted role casts shifted every manifest site. Put new definers below the
   audited cast block unless the manifest is deliberately re-audited.
+- **Destructure value records before typed locals:** `ptxir-node` fields are
+  hidden `field<...>` tokens, so `{: op:n :}` rejects until `PTXIR-NODE>` turns
+  the record back into raw field types.
 - **Multi-line words need useful line effects:** value-record checker work
   exposed helpers whose stack motion had to be reconstructed. Put the word
   effect on the definition line; add body-line effects only where they improve
