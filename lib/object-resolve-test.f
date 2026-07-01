@@ -17,7 +17,6 @@ package OBJRES-TEST
 
 64 constant KEY-U
 
-create KEY1 80 allot
 create KEY2 80 allot
 create SRC-KEY 80 allot
 create TEXT-BYTES 1 c, 2 c, 3 c,
@@ -54,9 +53,7 @@ create TEXT-BYTES 1 c, 2 c, 3 c,
 
 : STORE-LOADS ( -- )
    SRC$ BUILD
-   OBJRES:STORE {: key:ptr keyu:n :}
-   keyu KEY-U T=
-   key KEY1 KEY-U BYTE-COPY
+   OBJRES:STORE nip KEY-U T=
    SRC$ TARGET$ CHECKER$ COMPILER$ OBJRES:LOAD TTRUE
    OBJ:SOURCE$ SRC$ T$=
    OBJ:TARGET$ TARGET$ T$=
