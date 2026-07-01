@@ -8,10 +8,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
-- **Multi-line words need line effects:** value-record checker work exposed
-  helpers whose stack motion had to be reconstructed. Put the word effect on the
-  definition line and a trailing stack-effect comment on every body line; if it
-  is hard to state, factor first.
+- **Multi-line words need useful line effects:** value-record checker work
+  exposed helpers whose stack motion had to be reconstructed. Put the word
+  effect on the definition line; add body-line effects only where they improve
+  review. Empty/no-op line comments are noise, so factor instead.
 - **Parser-word table rows must execute at top level:** `PRIM:` originally sat
   inside `PT-*` colon words, so it would compile instead of consuming the next
   source token; literal names such as `s"` then broke compilation. Primitive

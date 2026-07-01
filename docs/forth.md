@@ -354,6 +354,11 @@ address arithmetic at the public boundary.
   not reconstruct a branch ladder.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
+- **No dense single-line control words.** A one-line definition is only for a
+  trivial straight-line wrapper. Any word with `IF`, `BEGIN`, `WHILE`, `REPEAT`,
+  `UNTIL`, `case`, locals, multiple stack transitions, or more than one semantic
+  step must be split across lines. Add line stack effects only where they clarify
+  non-obvious stack motion; if formatting the word makes it look noisy, factor it.
 - **Raw compiler/emitter code is not exempt.** Unchecked words, register-level
   emitters, and bootstrap/compiler helpers still need exact stack-effect comments
   and small factored helper words. If review requires reconstructing stack state
@@ -416,12 +421,11 @@ address arithmetic at the public boundary.
 ## Stack comments
 
 - **Every definition** carries `( before -- after )`.
-- **Every multi-line definition comments every line's stack effect.** The
-  definition line carries the word effect `( before -- after )`; each body line
-  carries a trailing `\ ( before -- after )` for that line's net stack state,
-  including control-flow boundary lines. This applies to private helpers,
-  checker/compiler internals, emitters, and test support. If the comments get
-  noisy, factor the word until each line is obvious.
+- **Multi-line definitions use line effects where they clarify.** The
+  definition line carries the word effect `( before -- after )`. Add trailing
+  `\ ( before -- after )` comments only on body lines where the stack state is
+  not obvious and the comment improves review. Do not add empty/no-op stack
+  comments; if many line comments are needed, factor the word.
 - **Checked definitions use type tokens only.** The checker reads the stack
   comment as the signature, so write `( n n -- )`, `( bool -- )`, or
   `( ptr u8 n -- )`, not arbitrary role names such as `( got want -- )`. Standard
