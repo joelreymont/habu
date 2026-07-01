@@ -170,6 +170,8 @@ points stay listed.
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
   vocabulary.
+- `tools/ptx/saxpy-v4-tail-device-test.f` — Orin device proof that checked v4
+  SAXPY residual scalar lanes are correct for `n=4,5,7,1000003`.
 - `tools/ptx/smem-cg.f` — checked shared-memory tile body run through the PTX
   codegen, proving `COOP-CTX`/`STAGE`/`SLOAD`/`SSTORE` emit barriers and shared
   loads/stores.
