@@ -919,6 +919,7 @@ OBJLINK:EXPORT+      ( ptr u8 n ptr u8 n -- )
 OBJLINK:IMPORT+      ( ptr u8 n ptr u8 n -- )
 OBJLINK:ADD          ( -- )
 OBJLINK:CHECK        ( -- )
+OBJLINK:APPLY        ( -- )
 ```
 
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
@@ -935,7 +936,9 @@ resolve their target addresses from `def` rows during
 effect mismatches, or relocation targets; duplicate exports/defs throw during
 `OBJLINK:ADD`, relocation or definition offsets outside the current object's
 text section throw `E-OBJ-SCHEMA`, and table/storage overflow throws
-`E-OBJ-CAPACITY`.
+`E-OBJ-CAPACITY`. `OBJLINK:APPLY` runs `OBJLINK:CHECK`, then applies supported
+`abs64` relocations to the merged text buffer in little-endian form; unknown
+relocation kinds or patch ranges past the text buffer throw `E-OBJ-SCHEMA`.
 
 ## Source Materialization
 

@@ -16,6 +16,7 @@ package OBJLINK
 32 constant MAX-OBJS
 $4000 constant SYM-CAP
 $10000 constant MERGE-CAP
+8 constant ABS64-U
 65 constant HEX-UP-A
 71 constant HEX-UP-G
 97 constant HEX-LOW-A
@@ -458,6 +459,38 @@ variable APP-DATA
       1+
    repeat drop ;
 
+: TEXT-RANGE ( n n -- ) {: off:n u:n :}
+   off 0 < if E-OBJ-SCHEMA throw then
+   u 0 < if E-OBJ-SCHEMA throw then
+   off u + TEXT-U @ > if E-OBJ-SCHEMA throw then ;
+
+: TEXT-U8! ( n n -- ) {: val:n off:n :}
+   val STR-BYTE-MAX and TEXT-BUF off + c! ;
+
+: U64-LE! ( n n -- ) {: val:n off:n :}
+   val off TEXT-U8!
+   val 8 rshift off 1 + TEXT-U8!
+   val 16 rshift off 2 + TEXT-U8!
+   val 24 rshift off 3 + TEXT-U8!
+   val 32 rshift off 4 + TEXT-U8!
+   val 40 rshift off 5 + TEXT-U8!
+   val 48 rshift off 6 + TEXT-U8!
+   val 56 rshift off 7 + TEXT-U8! ;
+
+: APPLY-RELOC ( n -- ) {: idx:n :}
+   idx REL-KIND$ s" abs64" STR= 0= if E-OBJ-SCHEMA throw then
+   idx REL-PATCH-PTR @ {: patch:n :}
+   idx REL-TARGET-PTR @ {: target:n :}
+   target 0 < if E-OBJ-SCHEMA throw then
+   patch ABS64-U TEXT-RANGE
+   target patch U64-LE! ;
+
+: APPLY-RELOCS ( -- )
+   0 begin dup REL-N @ < while
+      dup APPLY-RELOC
+      1+
+   repeat drop ;
+
 public
 
 : RESET ( -- )
@@ -570,5 +603,9 @@ public
 : CHECK ( -- )
    CHECK-IMPORTS
    CHECK-RELOCS ;
+
+: APPLY ( -- )
+   CHECK
+   APPLY-RELOCS ;
 
 end-package
