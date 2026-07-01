@@ -9,7 +9,6 @@ require lib/process-fork.f
 $40000 constant GE-SRC-CAP
 64 constant GE-SRC-MAX
 120000 constant GE-TIMEOUT-MS
-64 constant GE-WARM-USAGE-RC
 10 constant GE-LF
 32 constant GE-SP
 34 constant GE-DQ
@@ -26,25 +25,14 @@ s" JSON-DIAGS" s" -- ptr a" TRUST
 create GE-SRC-BUF GE-SRC-CAP allot
 create GE-SRC-A GE-SRC-MAX cells allot
 create GE-SRC-LEN GE-SRC-MAX cells allot
-create GE-WARM-BUF FS-PATH-CAP allot
-create GE-WARM-TRUST-BUF FS-PATH-CAP allot
-create GE-WARM-STAMP-BUF FS-PATH-CAP allot
-create GE-WARM-KEY-HEX 80 allot
-create GE-WARM-STAMP-RD 80 allot
 create GE-ARGV-BUF GE-SRC-CAP allot
-create GE-WARM-ROOT-BUF FS-PATH-CAP allot
 create GE-HB-BUF FS-PATH-CAP allot
 
 variable GE-SRC-U
 variable GE-SRC-N
 variable GE-RD
-variable GE-WARM-U
-variable GE-WARM-TRUST-U
-variable GE-WARM-STAMP-U
-variable GE-WARM-READY
 variable GE-INFD
 variable GE-ARGV-U
-variable GE-WARM-ROOT-U
 variable GE-HB-U
 variable GE-EVAL-CP
 variable GE-EVAL-NDICT
@@ -318,34 +306,21 @@ variable GE-EVAL-ERR-SAVE
    2dup GE-ARGV+
    >LEN PROC-ARGV+ ;
 
-: GE-WARM$ ( -- ptr u8 n )
-   GE-WARM-BUF GE-WARM-U @ ;
-
-: GE-WARM-TRUST$ ( -- ptr u8 n )
-   GE-WARM-TRUST-BUF GE-WARM-TRUST-U @ ;
-
 : GE-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    u 0 < if E-FS-PATH throw then
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u up ! ;
 
-: GE-WARM-ROOT! ( ptr u8 n -- )
-   GE-WARM-ROOT-BUF GE-WARM-ROOT-U GE-COPY! ;
+\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
+: GE-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
+   p begin dup c@ 0= 0= while
+      dup 1+ over c@ q execute
+      dup c@ 1 + +
+   repeat drop ;
 
-: GE-HB! ( ptr u8 n -- )
-   GE-HB-BUF GE-HB-U GE-COPY! ;
-
-: GE-WARM-ROOT ( -- ptr u8 n )
-   GE-WARM-ROOT-U @ 0 > if GE-WARM-ROOT-BUF GE-WARM-ROOT-U @ exit then
-   s" HABU_GATE_WARM_ROOT" GETENV dup 0= if 2drop GT-ROOT exit then ;
-
-: GE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
-   u su + FS-PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   suf dst u + su BYTE-COPY
-   u su + lenp ! ;
+: GE-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
+   swap GE-FILES-WALK ;
 
 : GE-FILES-END? ( ptr u8 n -- bool )
    s" ;GE-FILES" STR= ;
@@ -366,134 +341,13 @@ variable GE-EVAL-ERR-SAVE
       GE-FILES-ITEM,
    again ;
 
-\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
-: GE-FILES-WALK ( ptr a [ ptr u8 n -- ] -- ) {: p:ptr q :}
-   p begin dup c@ 0= 0= while
-      dup 1+ over c@ q execute
-      dup c@ 1 + +
-   repeat drop ;
-
-: GE-FILES-RUN ( [ ptr u8 n -- ] ptr a -- )
-   swap GE-FILES-WALK ;
-
 : GE-FILES: ( -- )
    create GE-FILES-PARSE
    does> ( [ ptr u8 n -- ] -- )
       GE-FILES-RUN ;
 
-GE-FILES: GE-WARM-BAKER-FILES
-   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
-   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-   lib/source.f lib/codesign.f tools/lint/text.f tools/lint/intern.f
-   tools/lint/token.f tools/lint/lib.f test/gate-stats.f
-   tools/warm-image-lib.f tools/warm-image-gate-stats.f tools/warm-image.f
-   tools/public-signatures-core.f tools/public-signatures.f
-;GE-FILES
-
-GE-FILES: GE-CHECK-SUPPORT-FILES
-   tools/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f
-   lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
-   tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-   tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f
-   tools/json.f tools/json-only-core.f tools/signature-lint-core.f
-   tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
-   tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
-   tools/check-core.f
-;GE-FILES
-
-: GE-WARM-PATHS ( -- )
-   GE-WARM-ROOT 2dup MAKE-DIRS
-   s" hb-check-warm" GE-WARM-BUF JOIN-PATH GE-WARM-U !
-   GE-WARM$ s" .trust.f" GE-WARM-TRUST-BUF GE-WARM-TRUST-U GE-SUFFIX!
-   GE-WARM$ s" .stamp" GE-WARM-STAMP-BUF GE-WARM-STAMP-U GE-SUFFIX! ;
-
-: GE-WARM-STAMP$ ( -- ptr u8 n )
-   GE-WARM-STAMP-BUF GE-WARM-STAMP-U @ ;
-
-: GE-WARM-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CK-FILE+ ;
-
-: GE-WARM-BAKER-KEY ( -- )
-   [: GE-WARM-KEY-FILE+ ;] GE-WARM-BAKER-FILES ;
-
-: GE-CHECK-SUPPORT-KEY ( -- )
-   [: GE-WARM-KEY-FILE+ ;] GE-CHECK-SUPPORT-FILES ;
-
-: GE-SNAPSHOT-LINUX-KEY ( -- )
-   s" target:linux-aarch64" CK-TEXT+
-   s" src/os/linux/layout.f" GE-WARM-KEY-FILE+
-   s" src/os/linux/elf.f" GE-WARM-KEY-FILE+
-   s" src/os/linux/sign.f" GE-WARM-KEY-FILE+ ;
-
-: GE-SNAPSHOT-MACOS-KEY ( -- )
-   s" target:macos-aarch64" CK-TEXT+
-   s" src/os/macos/layout.f" GE-WARM-KEY-FILE+
-   s" src/os/macos/macho.f" GE-WARM-KEY-FILE+
-   s" src/os/macos/sign2.f" GE-WARM-KEY-FILE+ ;
-
-: GE-SNAPSHOT-TARGET-KEY ( -- )
-   HB-TARGET-LINUX? if GE-SNAPSHOT-LINUX-KEY exit then
-   HB-TARGET-MACOS? if GE-SNAPSHOT-MACOS-KEY exit then
-   s" warm checker cache unknown target" GE-WARM-USAGE-RC die ;
-
-: GE-SNAPSHOT-BUILDER-KEY ( -- )
-   s" src/os/image-bytes.f" GE-WARM-KEY-FILE+
-   GE-SNAPSHOT-TARGET-KEY
-   s" src/habu/snap-lib.f" GE-WARM-KEY-FILE+
-   s" src/habu/snap.f" GE-WARM-KEY-FILE+ ;
-
-: GE-WARM-KEY! ( -- )
-   CK-RESET
-   s" hb-check-warm-cache-v3" CK-TEXT+
-   s" bin/hb" GE-WARM-KEY-FILE+
-   GE-WARM-BAKER-KEY
-   GE-SNAPSHOT-BUILDER-KEY
-   GE-CHECK-SUPPORT-KEY
-   GE-WARM-KEY-HEX CK-FINAL-HEX ;
-
-: GE-WARM-CACHED? ( -- bool )
-   GE-WARM$ EXECUTABLE? 0= if 0 0= 0= exit then
-   GE-WARM-TRUST$ FILE? 0= if 0 0= 0= exit then
-   GE-WARM-STAMP$ FILE? 0= if 0 0= 0= exit then
-   GE-WARM-STAMP$ GE-WARM-STAMP-RD 80 READ-ALL
-   dup 64 <> if drop 0 0= 0= exit then
-   GE-WARM-STAMP-RD swap GE-WARM-KEY-HEX 64 STR= ;
-
-: GE-WARM-TOOL-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   GE-ARGV-RESET
-   s" --load" GE-ARG+
-   s" tools/warm-image.f" GE-ARG+
-   s" --" GE-ARG+
-   GE-WARM$ GE-ARG+ ;
-
-: GE-CHECK-SUPPORT-ARGV ( -- )
-   [: GE-ARG+ ;] GE-CHECK-SUPPORT-FILES ;
-
-: GE-WARM-BAKE ( -- )
-   GE-WARM-PATHS
-   GE-WARM-KEY!
-   GE-WARM-CACHED? if
-      s" warm-cache-hit" GS-EVENT
-      -1 GE-WARM-READY !
-      exit
-   then
-   s" warm-cache-miss" GS-EVENT
-   s" warm-build" GS-EVENT
-   GE-WARM-TOOL-ARGV
-   GE-CHECK-SUPPORT-ARGV
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" warm checker image" GE-EXPECT-OK
-   GE-WARM-STAMP$ GE-WARM-KEY-HEX 64 WRITE-ALL
-   -1 GE-WARM-READY ! ;
-
-: GE-CHECK-WARM ( -- )
-   GE-WARM-READY @ if exit then
-   GE-WARM-BAKE ;
-
-: GE-CHECK-EXE ( -- ptr u8 n )
-   GE-CHECK-WARM
-   GE-WARM$ ;
+: GE-HB! ( ptr u8 n -- )
+   GE-HB-BUF GE-HB-U GE-COPY! ;
 
 : GE-HB-RESET ( -- )
    PROC-ARGV-ENV-RESET
@@ -505,6 +359,36 @@ GE-FILES: GE-CHECK-SUPPORT-FILES
       2drop s" bin/hb" exit
    then
    2dup EXECUTABLE? 0= if E-FS-OPEN throw then ;
+
+: GE-CHECK-EXE ( -- ptr u8 n )
+   GE-HB$ ;
+
+: GE-CHECK-SUPPORT-ARGV ( -- )
+   s" tools/date.f" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/string.f" GE-ARG+
+   s" lib/memory.f" GE-ARG+
+   s" lib/vector.f" GE-ARG+
+   s" lib/fs.f" GE-ARG+
+   s" lib/fs-mutate.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" lib/process-argv.f" GE-ARG+
+   s" lib/source.f" GE-ARG+
+   s" tools/lint/text.f" GE-ARG+
+   s" tools/lint/token.f" GE-ARG+
+   s" tools/lint/lib.f" GE-ARG+
+   s" tools/lint/json-writer.f" GE-ARG+
+   s" tools/lint/source-lex.f" GE-ARG+
+   s" tools/diag-origin-core.f" GE-ARG+
+   s" tools/json.f" GE-ARG+
+   s" tools/json-only-core.f" GE-ARG+
+   s" tools/signature-lint-core.f" GE-ARG+
+   s" tools/checked-boundary-lint-core.f" GE-ARG+
+   s" tools/reserved-name-lint-core.f" GE-ARG+
+   s" tools/trust-lint-core.f" GE-ARG+
+   s" tools/check-all-errors-core.f" GE-ARG+
+   s" tools/argv.f" GE-ARG+
+   s" tools/check-core.f" GE-ARG+ ;
 
 : GE-BIN-HB-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
@@ -655,10 +539,9 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    s" bin" [: GE-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : GE-CHECK-ARGV ( -- )
-   GE-CHECK-WARM
    GE-HB-RESET
    s" --load" GE-ARG+
-   GE-WARM-TRUST$ GE-ARG+
+   GE-CHECK-SUPPORT-ARGV
    s" tools/check-main.f" GE-ARG+
    s" --" GE-ARG+ ;
 

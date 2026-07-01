@@ -12,3 +12,14 @@ Progress: macos-arm64-12x2 hot proof on 2026-06-30 reports split resident groups
 for tool-lint, lint-libs, lint-artifacts/fast, and tail cohorts. Keep open:
 tail-pure is 7532ms, lint-libs/core is 7502ms, lint-tools is 7663ms, and
 all-strict diagnostics is 7906ms.
+
+2026-07-01 post-warm-launcher removal proof: macos-arm64-12x2 hot full suite
+passed at 30016ms internal / 32.23s wall. Current tails: tail-pure 7063ms,
+tail-process 6014ms, tool-doc 8204ms, tool-repair 9335ms, lint-libs/core
+7490ms, lint-tools 6994ms. Keep open: acceptance is each tail/lint slice under
+5s, and tool-doc/tool-repair/lint-libs still exceed that.
+
+2026-07-01 direct-core proof: after the check-tool file-label spawn removal,
+macos-arm64-12x2 hot full suite passed at 24878ms internal / 27.22s wall.
+Remaining above-5s tails: tool-doc ~8.1s, tool-repair ~9.6s, lint-tools ~6.2s,
+lint-libs/core ~5.8s, tail-pure ~5.7s, tail-process ~6.3s. Keep open.

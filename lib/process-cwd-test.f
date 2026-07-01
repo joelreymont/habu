@@ -1,6 +1,16 @@
 \ process-cwd-test.f - focused tests for lib/process-cwd.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f lib/process-cwd-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/process-cwd.f
+
 4096 constant PCT-CAP
 6 constant PCT-OK-U
 PROC-PATHZ-CAP 1 + constant PCT-LONG-U

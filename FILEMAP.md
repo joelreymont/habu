@@ -138,7 +138,7 @@ points stay listed.
   `snap` builds warm snapshot candidates for cache/debug paths.
 - `tools/check-core.f` — reusable Habu-native checked engine runner core.
 - `tools/check.f` — thin CLI entrypoint for the checked engine runner.
-- `tools/check-main.f` — no-include checked engine entry for warm tool images.
+- `tools/check-main.f` — no-include checked engine entry for checker CLI reuse.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.
@@ -152,16 +152,15 @@ points stay listed.
 - `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
   hb-build boundary rejections.
 - `tools/warm-image-lib.f` — checked tool library that bakes warm snapshot images
-  plus generated trust-sidecar sources from support files for fast fixture
-  subprocesses.
+  plus generated trust-sidecar sources from support files for feature tests.
 - `tools/warm-image-gate-stats.f` — tiny gate-only adapter that wires
   warm-image events into `test/gate-stats.f` without making warm-image-lib depend
   on test code.
 - `tools/warm-image.f` — CLI entrypoint for warm snapshot image baking.
 - `tools/warm-image-test.f` — checked fixture coverage for warm image baking,
   support-source availability, and warm-image checker rejection.
-- `tools/warm-run.f` — checked helpers for running warm tool images from
-  subprocess fixtures.
+- `tools/warm-run.f` — checked helpers for explicitly installed warm fixture
+  subprocesses.
 - `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
@@ -363,10 +362,18 @@ points stay listed.
 - `test/run.f` — native test suite entry run directly by `bin/hb`.
 - `test/run-lib.f` — side-effect-free resident native test suite implementation.
 - `test/run-support.f` — minimal scheduler support for starting external phases before resident setup.
-- `test/run-resident.f` — late-loaded resident dispatch that installs the shared test setup.
+- `test/run-resident.f` — late-loaded resident scheduler that forks phase workers without loading every phase library.
+- `test/run-shared-stdlib.f` — parent-loaded stdlib setup inherited by forked stdlib workers.
+- `test/run-worker.f` — fork-worker dispatcher that routes a resident phase to its owned support file.
+- `test/run-worker-stdlib.f` — resident stdlib/check-cli/lint/tail phase support and dispatch.
+- `test/run-worker-engine.f` — resident engine repair/fixture/runtime/validation phase support and dispatch.
+- `test/run-worker-diag.f` — resident checker-diagnostics phase support and dispatch.
+- `test/run-worker-dict.f` — resident dictionary/checker phase support and dispatch.
+- `test/run-worker-debug.f` — resident prop/debug phase support and dispatch.
+- `test/run-worker-aot.f` — resident AOT phase support and dispatch.
 - `test/run-files.f` — file sets that key native test suite caches.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
-- `test/gate-common-lib.f` — side-effect-free native gate helper definitions for warm-runner baking.
+- `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.
 - `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
 - `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
 - `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.
@@ -384,7 +391,7 @@ points stay listed.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
 - `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
 - `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners.
-- `test/gate-runner-support.f` — side-effect-free support bundle loaded once before resident forks.
+- `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.

@@ -84,27 +84,6 @@ create GE-CHECK-OFF-LINE
       GENG-PARSE-ARG
    repeat ;
 
-GE-FILES: GE-FS-MUTATE-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f
-   lib/fs-mutate-test.f
-;GE-FILES
-
-GE-FILES: GE-PROCESS-ARGV-RUN-FILES
-   lib/errors.f lib/test.f lib/memory.f lib/process.f lib/process-argv.f
-   lib/process-argv-test.f
-;GE-FILES
-
-GE-FILES: GE-PROCESS-ENV-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/process.f
-   lib/process-argv.f lib/process-env.f lib/process-env-test.f
-;GE-FILES
-
-GE-FILES: GE-PROCESS-CWD-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
-   lib/process-cwd-test.f
-;GE-FILES
-
 GE-FILES: GE-ENGINE-STDLIB-CHECK-FILES
    lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-cwd.f
@@ -118,34 +97,9 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 ;GE-FILES
 
-GE-FILES: GE-HB-BASELINE-RUN-FILES
-   lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f
-   lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
-;GE-FILES
-
 : GE-LOAD-RESET ( -- )
    GE-HB-RESET
    s" --load" GE-ARG+ ;
-
-: GE-FS-MUTATE-RUN ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-FS-MUTATE-RUN-FILES
-   s" fs mutation stdlib" GE-HB-RUN ;
-
-: GE-PROCESS-ARGV-RUN ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-ARGV-RUN-FILES
-   s" process argv stdlib" GE-HB-RUN ;
-
-: GE-PROCESS-ENV-RUN ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-ENV-RUN-FILES
-   s" process env stdlib" GE-HB-RUN ;
-
-: GE-PROCESS-CWD-RUN ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-CWD-RUN-FILES
-   s" process cwd stdlib" GE-HB-RUN ;
 
 : GE-ENGINE-STDLIB-CHECK ( -- )
    GE-SRC-RESET
@@ -156,11 +110,6 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-LOAD-RESET
    [: GE-ARG+ ;] GE-REPAIR-HINTS-RUN-FILES
    s" repair diagnostic hints" GE-HB-RUN ;
-
-: GE-HB-BASELINE-RUN ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
-   s" hb baseline contracts" GE-BIN-HB-RUN ;
 
 : GE-RUN-ENV-ASYNC ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
    label labelu GS-HELPER-EVENT
@@ -177,30 +126,39 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    label labelu GS-BOUNDARY-EVENT
    s" bin/hb" GE-TIMEOUT-MS label labelu GE-RUN-ENV-ASYNC ;
 
-: GE-FS-MUTATE-RUN-ASYNC ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-FS-MUTATE-RUN-FILES
-   s" fs mutation stdlib" GE-HB-RUN-ASYNC ;
+: GE-FIXTURE-INCLUDE ( ptr u8 n -- )
+   s" inprocess-eval" GS-EVENT
+   included ;
 
-: GE-PROCESS-ARGV-RUN-ASYNC ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-ARGV-RUN-FILES
-   s" process argv stdlib" GE-HB-RUN-ASYNC ;
+: GE-FS-MUTATE-FIXTURE ( -- )
+   s" lib/fs-mutate-test.f" GE-FIXTURE-INCLUDE ;
 
-: GE-PROCESS-ENV-RUN-ASYNC ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-ENV-RUN-FILES
-   s" process env stdlib" GE-HB-RUN-ASYNC ;
+: GE-PROCESS-ARGV-FIXTURE ( -- )
+   s" lib/process-argv-test.f" GE-FIXTURE-INCLUDE ;
 
-: GE-PROCESS-CWD-RUN-ASYNC ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-PROCESS-CWD-RUN-FILES
-   s" process cwd stdlib" GE-HB-RUN-ASYNC ;
+: GE-PROCESS-ENV-FIXTURE ( -- )
+   s" lib/process-env-test.f" GE-FIXTURE-INCLUDE ;
 
-: GE-HB-BASELINE-RUN-ASYNC ( -- )
-   GE-LOAD-RESET
-   [: GE-ARG+ ;] GE-HB-BASELINE-RUN-FILES
-   s" hb baseline contracts" GE-BIN-HB-RUN-ASYNC ;
+: GE-PROCESS-CWD-FIXTURE ( -- )
+   s" lib/process-cwd-test.f" GE-FIXTURE-INCLUDE ;
+
+: GE-HB-BASELINE-FIXTURE ( -- )
+   s" tools/hb-baseline-contracts-test.f" GE-FIXTURE-INCLUDE ;
+
+: GE-FS-MUTATE-FIXTURE-ASYNC ( -- )
+   s" fs mutation stdlib" GE-TIMEOUT-MS [: GE-FS-MUTATE-FIXTURE ;] GT-POOL-START-FORK ;
+
+: GE-PROCESS-ARGV-FIXTURE-ASYNC ( -- )
+   s" process argv stdlib" GE-TIMEOUT-MS [: GE-PROCESS-ARGV-FIXTURE ;] GT-POOL-START-FORK ;
+
+: GE-PROCESS-ENV-FIXTURE-ASYNC ( -- )
+   s" process env stdlib" GE-TIMEOUT-MS [: GE-PROCESS-ENV-FIXTURE ;] GT-POOL-START-FORK ;
+
+: GE-PROCESS-CWD-FIXTURE-ASYNC ( -- )
+   s" process cwd stdlib" GE-TIMEOUT-MS [: GE-PROCESS-CWD-FIXTURE ;] GT-POOL-START-FORK ;
+
+: GE-HB-BASELINE-FIXTURE-ASYNC ( -- )
+   s" hb baseline contracts" GE-TIMEOUT-MS [: GE-HB-BASELINE-FIXTURE ;] GT-POOL-START-FORK ;
 
 : GE-CANDIDATE-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -224,7 +182,11 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
    GE-CANDIDATE-PATH!
    0 0= ;
 
+: GE-CANDIDATE-SET? ( -- bool )
+   GE-CAND-U @ 0 > ;
+
 : GE-CANDIDATE! ( -- )
+   GE-CANDIDATE-SET? if exit then
    GE-ENV-CANDIDATE? if exit then
    GE-DEFAULT-CANDIDATE! ;
 
@@ -353,11 +315,11 @@ GE-FILES: GE-HB-BASELINE-RUN-FILES
 
 : GE-RUN-STD-FIXTURES ( -- )
    GT-POOL-RESET
-   GE-FS-MUTATE-RUN-ASYNC
-   GE-PROCESS-ARGV-RUN-ASYNC
-   GE-PROCESS-ENV-RUN-ASYNC
-   GE-PROCESS-CWD-RUN-ASYNC
-   GE-HB-BASELINE-RUN-ASYNC
+   GE-FS-MUTATE-FIXTURE-ASYNC
+   GE-PROCESS-ARGV-FIXTURE-ASYNC
+   GE-PROCESS-ENV-FIXTURE-ASYNC
+   GE-PROCESS-CWD-FIXTURE-ASYNC
+   GE-HB-BASELINE-FIXTURE-ASYNC
    GE-ENGINE-STDLIB-CHECK
    GT-POOL-DRAIN ;
 

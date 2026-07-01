@@ -18,6 +18,7 @@ create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-DIGEST 40 allot
+create HBB-CACHE-ROOT-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-LOCK-PATH FS-PATH-CAP allot
@@ -32,6 +33,7 @@ variable HBB-SRC-U
 variable HBB-OUT-U
 variable HBB-MAKER-U
 variable HBB-MAKER-NAME-U
+variable HBB-CACHE-ROOT-U
 variable HBB-ARTIFACT-U
 variable HBB-ARTIFACT-TMP-U
 variable HBB-ARTIFACT-LOCK-U
@@ -99,6 +101,28 @@ variable HBB-JSON-FOUND
 
 : HBB-OUT$ ( -- ptr u8 n )
    HBB-OUT-PATH HBB-OUT-U @ ;
+
+: HBB-CACHE-ROOT! ( ptr u8 n -- )
+   HBB-CACHE-ROOT-BUF HBB-CACHE-ROOT-U HBB-COPY-PATH! ;
+
+: HBB-CACHE-ROOT-SET? ( -- bool )
+   HBB-CACHE-ROOT-U @ 0 > ;
+
+: HBB-CACHE-ROOT-BUF$ ( -- ptr u8 n )
+   HBB-CACHE-ROOT-BUF HBB-CACHE-ROOT-U @ ;
+
+: HBB-CACHE-ROOT? ( -- bool )
+   HBB-CACHE-ROOT-SET? if HBB-TRUE exit then
+   s" HABU_BUILD_CACHE" GETENV dup 0= if
+      2drop HBB-FALSE exit
+   then
+   2drop HBB-TRUE ;
+
+: HBB-CACHE-ROOT$ ( -- ptr u8 n )
+   HBB-CACHE-ROOT-SET? if HBB-CACHE-ROOT-BUF$ exit then
+   s" HABU_BUILD_CACHE" GETENV dup 0= if
+      2drop s" hb-build: missing build cache" HBB-BUILD-RC die
+   then ;
 
 : HBB-WERR ( ptr u8 n -- ) {: a:ptr u :}
    u 0= if exit then
@@ -227,7 +251,8 @@ variable HBB-JSON-FOUND
    s" hb-build-native" TMPDIR-MKDIR 2dup BF-TMP! CLEANUP-TREE+ ;
 
 : HBB-PREPARE-MAKER-CACHE ( -- )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if 2drop exit then
+   HBB-CACHE-ROOT? 0= if exit then
+   HBB-CACHE-ROOT$
    2dup EXISTS? if
       2dup DIR? 0= if s" hb-build: HABU_BUILD_CACHE is not a directory" HBB-USAGE-RC die then
       2drop
@@ -494,21 +519,8 @@ HBB-INSTALL-CHILD-LINTS
    HBB-MAKER-PATH HBB-MAKER-U @ ;
 
 : HBB-MAKER$ ( -- ptr u8 n )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop HBB-MAKER-TMP$ exit
-   then
-   HBB-MAKER-CACHE$ ;
-
-: HBB-CACHE-ROOT? ( -- bool )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop HBB-FALSE exit
-   then
-   2drop HBB-TRUE ;
-
-: HBB-CACHE-ROOT$ ( -- ptr u8 n )
-   s" HABU_BUILD_CACHE" GETENV dup 0= if
-      2drop s" hb-build: missing build cache" HBB-BUILD-RC die
-   then ;
+   HBB-CACHE-ROOT? 0= if HBB-MAKER-TMP$ exit then
+   HBB-CACHE-ROOT$ HBB-MAKER-CACHE$ ;
 
 : HBB-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u suf:ptr su dst:ptr up:ptr :}

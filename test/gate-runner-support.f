@@ -23,11 +23,6 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 require test/gate-pool.f
 require test/gate-stats.f
-require tools/warm-image-lib.f
-require test/gate-common-lib.f
-require test/gate-stdlib-lib.f
-require test/gate-engine-lib.f
-require test/gate-diagnostics-lib.f
 require tools/date.f
 require tools/lint/text.f
 require tools/lint/intern.f
@@ -46,6 +41,11 @@ require tools/reserved-name-lint-core.f
 require tools/trust-lint-core.f
 require tools/duplicate-definition-lint-core.f
 require tools/bundle-lib-core.f
+require tools/check-core.f
+require test/gate-common-lib.f
+require test/gate-stdlib-lib.f
+require test/gate-engine-lib.f
+require test/gate-diagnostics-lib.f
 require test/gate-dictionary-lib.f
 require test/gate-debug-lib.f
 require test/gate-stdlib-inline-lib.f

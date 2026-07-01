@@ -83,8 +83,6 @@ variable GST-SAVE-U
    s" inprocess-eval" GS-EVENT
    s" boundary-test" GS-EVENT
    s" boundary-test" GS-EVENT
-   s" warm-cache-hit" GS-EVENT
-   s" warm-cache-miss" GS-EVENT
    s" warm-build" GS-EVENT
    s" warm-sig-export" GS-EVENT
    s" warm-snapshot" GS-EVENT
@@ -124,8 +122,6 @@ variable GST-SAVE-U
    GS-INNER-HB-STDIN @ 2 T=
    GS-INPROCESS-EVAL @ 1 T=
    GS-BOUNDARY @ 2 T=
-   GS-WARM-HIT @ 1 T=
-   GS-WARM-MISS @ 1 T=
    GS-WARM-BUILD @ 1 T=
    GS-WARM-SIG @ 1 T=
    GS-WARM-SNAP @ 1 T=

@@ -235,15 +235,11 @@ variable GD-CHECK-LABEL-U
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADARR ( n -- ) create cells allot does> ( n -- ptr a ) drop ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   70 s" hb bad trusted DOES> rc" GE-EXPECT-RC
-   s" does>" s" hb bad trusted DOES> diagnostic" GE-EXPECT-ERR-HAS
+   70 s" does>" s" hb bad trusted DOES> diagnostic" GE-EVAL-FORK-BAD
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: BADDEF ( n -- ) create cells allot does> drop ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   76 s" hb trusted DOES> without created signature rc" GE-EXPECT-RC
-   s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EXPECT-ERR-HAS ;
+   76 s" does>" s" hb trusted DOES> without created signature diagnostic" GE-EVAL-FORK-BAD ;
 
 : GD-ROW-QUOT-CHECKS ( -- )
    GE-HB-RESET
@@ -315,9 +311,7 @@ variable GD-CHECK-LABEL-U
    GE-SRC-RESET
    s" 0 set-check" GE-SRC-LINE
    s" : QLOCAL {: x:n :} [: x ;] execute ;" GE-SRC-LINE
-   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   75 s" hb compiler rejects local capture in quotation rc" GE-EXPECT-RC
-   s" x" s" hb compiler rejects local capture in quotation diagnostic" GE-EXPECT-ERR-HAS ;
+   75 s" x" s" hb compiler rejects local capture in quotation diagnostic" GE-EVAL-FORK-BAD ;
 
 : GD-LOCAL-FIRST ( -- )
    GE-HB-RESET

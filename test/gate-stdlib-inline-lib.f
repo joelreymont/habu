@@ -136,6 +136,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
       s" lib/test.f" GSI-REQUIRE
       GSI-TEST-READY!
    then
+   s" lib/source.f" GSI-REQUIRE
    s" tools/lint/text.f" GSI-REQUIRE
    s" tools/lint/intern.f" GSI-REQUIRE
    s" tools/lint/token.f" GSI-REQUIRE
@@ -145,6 +146,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" tools/argv.f" GSI-REQUIRE
    s" tools/check-all-errors-core.f" GSI-REQUIRE
    s" tools/diag-origin-core.f" GSI-REQUIRE
+   s" tools/json.f" GSI-REQUIRE
    s" tools/json-only-core.f" GSI-REQUIRE
    s" tools/aot-lint-core.f" GSI-REQUIRE
    s" tools/signature-lint-core.f" GSI-REQUIRE

@@ -1,6 +1,11 @@
 \ process-argv-test.f - focused tests for lib/process-argv.f.
 \ Run: bin/hb --load lib/errors.f lib/test.f lib/process.f lib/process-argv.f lib/process-argv-test.f
 
+require lib/errors.f
+require lib/test.f
+require lib/process.f
+require lib/process-argv.f
+
 variable PAT-IN-R
 variable PAT-IN-W
 variable PAT-OUT-R

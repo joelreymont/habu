@@ -42,6 +42,7 @@ variable CAE-CASE-A
 variable CAE-CASE-U
 variable CAE-BUF-SRC-A
 variable CAE-BUF-SRC-U
+variable CAE-START-NS
 
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
@@ -130,6 +131,11 @@ create CAE-LF-BYTE 10 c,
       10 /
    repeat drop
    CAE-NUM CAE-NUM-I @ + CAE-NUM-CAP CAE-NUM-I @ - ;
+
+: CAE-U-TYPE ( n -- ) {: n:n :}
+   n 0 < if E-STR-BOUNDS throw then
+   n 10 >= if n 10 / RECURSE then
+   n 10 mod STR-ZERO + emit ;
 
 : CAE-DQ ( -- )
    $22 SB-APPEND-C ;
@@ -510,9 +516,14 @@ create CAE-LF-BYTE 10 c,
    s" cli-smoke diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
 
-: CAE-MAIN ( -- )
-   T-RESET
-   CAE-PREPARE
+\ typed-local-lint: allow-bare-local - q is the test action quotation.
+: CAE-CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns CAE-START-NS !
+   q execute
+   s" PASS: " type label labelu type
+   s"  (" type mono-ns CAE-START-NS @ - PROC-NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
+
+: CAE-TEST-BASE ( -- )
    s" base-two-errors" CAE-CASE!
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" base stdout" T-LABEL
@@ -522,22 +533,30 @@ create CAE-LF-BYTE 10 c,
    s" base bad2" T-LABEL
    CAE-ERR erru CAE-WORD-BAD2$ CONTAINS? TTRUE
    s" base diag count" T-LABEL
-   CAE-ERR erru 10 COUNT-CHAR 2 T=
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-TEST-LARGE ( -- )
    CAE-WRITE-LARGE
    s" large-source" CAE-CASE!
    CAE-RUN-LARGE 70 CAE-EXPECT-EXIT {: loutu lerru :}
    s" large stdout" T-LABEL
    CAE-OUT loutu CAE-EMPTY$ T$=
    s" large word" T-LABEL
-   CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE
-   CAE-TEST-SUPPORT-SOURCE
-   CAE-TEST-AS-ADD-TASK-LEAK
-   CAE-TEST-MANY-DEFS-OK
-   CAE-TEST-MANY-SUPPORT
-   CAE-TEST-UNDEFINED-JSON
-   CAE-TEST-BUF-CORE
-   CAE-TEST-DUP-BUF
-   CAE-TEST-CLI-SMOKE
+   CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
+
+: CAE-MAIN ( -- )
+   T-RESET
+   CAE-PREPARE
+   s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
+   s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
+   s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN
+   s" many-defs-ok" [: CAE-TEST-MANY-DEFS-OK ;] CAE-CASE-RUN
+   s" many-support" [: CAE-TEST-MANY-SUPPORT ;] CAE-CASE-RUN
+   s" undefined-json" [: CAE-TEST-UNDEFINED-JSON ;] CAE-CASE-RUN
+   s" buffer-core" [: CAE-TEST-BUF-CORE ;] CAE-CASE-RUN
+   s" duplicate-buffer" [: CAE-TEST-DUP-BUF ;] CAE-CASE-RUN
+   s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
    CAE-ROOT EXISTS? TFALSE

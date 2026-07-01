@@ -1,4 +1,4 @@
-\ check-test.f - process-boundary smoke coverage for tools/check.f.
+\ check-test.f - checked engine CLI/core smoke coverage.
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
@@ -7,7 +7,7 @@
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
 \ tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
-\ tools/warm-run.f tools/check-core.f tools/check-test.f
+\ tools/check-core.f tools/check-test.f
 
 require tools/date.f
 require lib/errors.f
@@ -34,11 +34,9 @@ require tools/reserved-name-lint-core.f
 require tools/trust-lint-core.f
 require tools/check-all-errors-core.f
 require tools/argv.f
-require tools/warm-run.f
 require tools/check-core.f
 
 $4000 constant CKT-BUF-CAP
-60000 constant CKT-TIMEOUT-MS
 
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-BAD-PATH FS-PATH-CAP allot
@@ -49,7 +47,6 @@ variable CKT-ERR-A
 variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
-variable CKT-USE-CHECK
 variable CKT-START-NS
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -93,41 +90,6 @@ variable CKT-START-NS
 : CKT-ERR ( -- ptr u8 )
    CKT-ERR-A @ 0= if CKT-ALLOC-BUF CKT-ERR-A! then
    CKT-ERR-A@ ;
-
-: CKT-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: CKT-EXE$ ( -- ptr u8 n )
-   CKT-USE-CHECK @ if WR-CHECK$ exit then
-   WR-TOOLS$ ;
-
-: CKT-ARGV-BASE ( -- )
-   PROC-ARGV-RESET
-   0 CKT-USE-CHECK !
-   s" tools/check-main.f" WR-CHECK-LOAD if -1 CKT-USE-CHECK ! exit then
-   s" tools/check-core.f" s" tools/check-main.f" WR-TOOLS-LOAD2 if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" tools/check.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
-
-: CKT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
-   outu LEN>N erru LEN>N rc RC>N ;
-
-: CKT-CAPTURE ( -- n n n )
-   CKT-EXE$ >LEN CKT-OUT CKT-BUF-CAP >LEN CKT-ERR CKT-BUF-CAP >LEN
-   CKT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
-   CKT-CAPTURE>N ;
-
-: CKT-RUN-FILE-JSON ( -- n n n )
-   CKT-ARGV-BASE
-   s" --json-errors"  >LEN PROC-ARGV+
-   CKT-BAD$  >LEN PROC-ARGV+
-   CKT-CAPTURE ;
-
-: CKT-RUN-ARGS ( -- n n n )
-   CKT-ARGV-BASE
-   s" --bad-flag"  >LEN PROC-ARGV+
-   CKT-CAPTURE ;
 
 : CKT-CORE-ACT ( -- )
    CKT-BAD$ CKT-BAD$ CHECK-ALL-ERRORS-FILE ;
@@ -174,6 +136,10 @@ variable CKT-START-NS
    CHK-ADD-POS
    CHK-MATERIALIZE
    CHK-DIRECT-RUN CKT-DIRECT-END ;
+
+: CKT-DIRECT-BAD-FLAG ( -- n n n )
+   CKT-DIRECT-START
+   [: s" --bad-flag" CHK-PARSE-ONE ;] catch CKT-DIRECT-END ;
 
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
@@ -231,13 +197,13 @@ variable CKT-START-NS
    [: CKT-GOOD$ VERIFY-SOURCE-BUF ;] catch 0 T= ;
 
 : CKT-TEST-FILE-LABEL ( -- )
-   CKT-RUN-FILE-JSON 70 T=
+   CKT-BAD$SRC CKT-CORE-JSON 70 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru CKT-BAD$ CONTAINS? TTRUE ;
 
 : CKT-TEST-USAGE ( -- )
-   CKT-RUN-ARGS 64 T=
+   CKT-DIRECT-BAD-FLAG 64 T=
    {: outu erru :}
    outu 0 T=
    CKT-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
@@ -294,8 +260,8 @@ variable CKT-START-NS
    T-RESET
    CKT-PREPARE
    s" check/good" [: CKT-TEST-GOOD ;] CKT-RUN
-   s" check/file-label-cli" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
-   s" check/usage-cli" [: CKT-TEST-USAGE ;] CKT-RUN
+   s" check/file-label" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
+   s" check/usage-direct" [: CKT-TEST-USAGE ;] CKT-RUN
    s" check/die" [: CKT-TEST-DIE ;] CKT-RUN
    s" check/unterminated-string" [: CKT-TEST-UNTERM-STRING ;] CKT-RUN
    s" check/duplicate-all-errors" [: CKT-TEST-DUP-ALL ;] CKT-RUN

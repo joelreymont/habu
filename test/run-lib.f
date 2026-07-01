@@ -16,22 +16,19 @@ require test/run-files.f
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
-$2 constant TR-CHECK-WARM-PHASES
-$1E constant TR-EARLY-HOST-PHASES
+$2 constant TR-CANDIDATE-HOST-PHASES
+$1B constant TR-EARLY-HOST-PHASES
 $3 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
-12 constant TR-TOOLS-WARM-SLOT
-13 constant TR-CHECK-WARM-SLOT
-14 constant TR-AOT-RUNNER-SLOT
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
 1 constant TR-PROFILE-MACOS-ARM64-12X2
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
 
-\ Longest post-warm phases first; this keeps ARM gates inside budget without
-\ dropping coverage or raising the threshold.
-create TR-CHECK-WARM-ORDER
+\ Longest resident/direct phases first; this keeps ARM gates inside budget
+\ without dropping coverage or raising the threshold.
+create TR-CANDIDATE-HOST-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
@@ -40,21 +37,13 @@ $3 , $15 , $10 ,
 create TR-EARLY-HOST-ORDER
 $8 , $7 , $25 , $26 , $27 , $28 , $17 , $16 ,
 $1B , $C , $11 , $24 , $1F , $23 , $B , $A ,
-$1E , $20 , $22 ,
+$20 , $22 ,
 $5 , $2 , $1C , $1D , $1A , $21 , $D , $19 ,
-$12 , $4 , $13 ,
+$12 ,
 
-create TR-WARM-BUF FS-PATH-CAP allot
-create TR-TOOLS-BUF FS-PATH-CAP allot
-create TR-TOOLS-TRUST-BUF FS-PATH-CAP allot
-create TR-CHECK-BUF FS-PATH-CAP allot
-create TR-CHECK-TRUST-BUF FS-PATH-CAP allot
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
 create TR-UNDER-BUF FS-PATH-CAP allot
-create TR-AOT-RUNNER-BUF FS-PATH-CAP allot
-create TR-AOT-RUNNER-TRUST-BUF FS-PATH-CAP allot
-create TR-AOT-RUNNER-STAMP-BUF FS-PATH-CAP allot
 create TR-UNDER-HEX 64 allot
 create TR-UNDER-KEY-HEX 80 allot
 create TR-UNDER-ARG-BUF FS-PATH-CAP allot
@@ -66,23 +55,13 @@ create TR-UNDER-CACHE-STAMP-TMP-BUF FS-PATH-CAP allot
 create TR-UNDER-NAME-BUF 80 allot
 create TR-UNDER-STAMP-BUF TR-UNDER-STAMP-U allot
 create TR-UNDER-STAMP-RD TR-UNDER-STAMP-U allot
-create TR-AOT-RUNNER-KEY-HEX 80 allot
-create TR-AOT-RUNNER-STAMP-RD 80 allot
 create TR-PERSIST-BUF FS-PATH-CAP allot
 create TR-NUM-BUF TR-NUM-CAP allot
 create TR-HOST-BUF TR-HOST-CAP allot
 
-variable TR-WARM-U
-variable TR-TOOLS-U
-variable TR-TOOLS-TRUST-U
-variable TR-CHECK-U
-variable TR-CHECK-TRUST-U
 variable TR-BUILD-CACHE-U
 variable TR-PATH-U
 variable TR-UNDER-U
-variable TR-AOT-RUNNER-U
-variable TR-AOT-RUNNER-TRUST-U
-variable TR-AOT-RUNNER-STAMP-U
 variable TR-UNDER-ARG-U
 variable TR-UNDER-CACHE-U
 variable TR-UNDER-CACHE-TMP-U
@@ -92,10 +71,7 @@ variable TR-UNDER-CACHE-STAMP-TMP-U
 variable TR-UNDER-NAME-U
 variable TR-PERSIST-U
 variable TR-GATE-START-NS
-variable TR-TOOLS-WARM-READY
-variable TR-CHECK-WARM-READY
 variable TR-UNDER-READY
-variable TR-AOT-RUNNER-READY
 variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
 variable TR-ARG-I
@@ -110,23 +86,12 @@ variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
 variable TR-PRE-TAIL
-variable TR-PRE-AOT-POS
-variable TR-PRE-AOT-NEG
 variable TR-PRE-ARTIFACTS
 variable TR-PRE-RUNTIME
 variable TR-PRE-VALIDATE
 
-: TR-WARM$ ( -- ptr u8 n )
-   TR-WARM-BUF TR-WARM-U @ ;
-
 : TR-PATH$ ( -- ptr u8 n )
    TR-PATH-BUF TR-PATH-U @ ;
-
-: TR-TOOLS$ ( -- ptr u8 n )
-   TR-TOOLS-BUF TR-TOOLS-U @ ;
-
-: TR-TOOLS-TRUST$ ( -- ptr u8 n )
-   TR-TOOLS-TRUST-BUF TR-TOOLS-TRUST-U @ ;
 
 : TR-BUILD-CACHE$ ( -- ptr u8 n )
    TR-BUILD-CACHE-BUF TR-BUILD-CACHE-U @ ;
@@ -136,15 +101,6 @@ variable TR-PRE-VALIDATE
 
 : TR-UNDER-ARG$ ( -- ptr u8 n )
    TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
-
-: TR-AOT-RUNNER$ ( -- ptr u8 n )
-   TR-AOT-RUNNER-BUF TR-AOT-RUNNER-U @ ;
-
-: TR-AOT-RUNNER-TRUST$ ( -- ptr u8 n )
-   TR-AOT-RUNNER-TRUST-BUF TR-AOT-RUNNER-TRUST-U @ ;
-
-: TR-AOT-RUNNER-STAMP$ ( -- ptr u8 n )
-   TR-AOT-RUNNER-STAMP-BUF TR-AOT-RUNNER-STAMP-U @ ;
 
 : TR-UNDER-CACHE$ ( -- ptr u8 n )
    TR-UNDER-CACHE-BUF TR-UNDER-CACHE-U @ ;
@@ -378,7 +334,7 @@ variable TR-PRE-VALIDATE
 
 : TR-CACHE-MODE$ ( -- ptr u8 n )
    TR-COLD-CACHE @ 0 <> if s" cold" exit then
-   s" warm" ;
+   s" hot" ;
 
 : TR-CHECK-MACOS-PROFILE ( -- )
    HB-TARGET-MACOS? 0= if s" macos-arm64-12x2 requires macOS target" TR-PROFILE-FAIL then ;
@@ -434,9 +390,6 @@ variable TR-PRE-VALIDATE
 : TR-PERSIST-ENSURE ( -- )
    TR-PERSIST$ MAKE-DIRS ;
 
-: TR-PERSIST-ENV+ ( -- )
-   s" HABU_GATE_WARM_ROOT" >LEN TR-PERSIST$ >LEN PROC-ENV+ ;
-
 : TR-BUDGET-FAIL ( n n -- ) {: elapsed:n budget:n :}
    s" FAIL: native test suite budget (" type
    elapsed GT-U-TYPE
@@ -491,9 +444,6 @@ variable TR-PRE-VALIDATE
 : TR-DEFAULT+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n val:ptr valu:n :}
    name nameu >LEN val valu >LEN PROC-ENV-DEFAULT+ ;
 
-: TR-PERSIST-DEFAULT+ ( -- )
-   s" HABU_GATE_WARM_ROOT" TR-PERSIST$ TR-DEFAULT+ ;
-
 : TR-TMP-DEFAULT+ ( -- )
    s" HB_TMP" GT-ROOT TR-DEFAULT+ ;
 
@@ -508,8 +458,7 @@ variable TR-PRE-VALIDATE
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
    TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
    0 TR-UNDER-READY !
-   0 TR-UNDER-CACHE-HIT !
-   0 TR-AOT-RUNNER-READY ! ;
+   0 TR-UNDER-CACHE-HIT ! ;
 
 : TR-UNDER-ENV+ ( -- )
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
@@ -581,7 +530,6 @@ TR-INSTALL-POOL-HOOKS
    PROC-ENV-RESET
    TR-PERSIST-ENSURE
    s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   TR-PERSIST-ENV+
    TR-BUILD-CACHE-ENV
    GS-ENV+
    PROC-ENV-INHERIT-MISSING
@@ -624,63 +572,12 @@ TR-INSTALL-POOL-HOOKS
    s" tools/gate-json-assert-core.f"  >LEN PROC-ARGV+
    s" tools/aot-call-report-lib.f"  >LEN PROC-ARGV+ ;
 
-: TR-CLEAN-WARM ( -- )
-   GT-ROOT s" hb-check-warm" TR-WARM-BUF JOIN-PATH TR-WARM-U !
-   TR-WARM$ FILE? if TR-WARM$ REMOVE-FILE then ;
-
 : TR-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
    {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
    u su + FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    suf dst u + su BYTE-COPY
    u su + lenp ! ;
-
-\ Tools-warm root: the content-keyed gate cache selected by TR-PERSIST-INIT.
-\ Must match gate-stdlib.f SUITE-SET-ROOT so the baked image and HABU_WARM_TOOLS
-\ resolve to the same place. Checker warm uses the same root through GE-WARM-ROOT
-\ and validates with its own content stamp.
-: TR-WARM-ROOT$ ( -- ptr u8 n )
-   TR-PERSIST$ ;
-
-: TR-TOOLS-PATHS ( -- )
-   TR-WARM-ROOT$ s" hb-tools-warm" TR-TOOLS-BUF JOIN-PATH TR-TOOLS-U !
-   TR-TOOLS$ s" .trust.f" TR-TOOLS-TRUST-BUF TR-TOOLS-TRUST-U TR-SUFFIX! ;
-
-: TR-TOOLS-ENV ( -- )
-   TR-TOOLS-PATHS
-   s" HABU_WARM_TOOLS" >LEN TR-TOOLS$ >LEN PROC-ENV+
-   s" HABU_WARM_TOOLS_TRUST" >LEN TR-TOOLS-TRUST$ >LEN PROC-ENV+ ;
-
-: TR-CHECK$ ( -- ptr u8 n )
-   TR-CHECK-BUF TR-CHECK-U @ ;
-
-: TR-CHECK-TRUST$ ( -- ptr u8 n )
-   TR-CHECK-TRUST-BUF TR-CHECK-TRUST-U @ ;
-
-: TR-CHECK-PATHS ( -- )
-   TR-WARM-ROOT$ s" hb-check-warm" TR-CHECK-BUF JOIN-PATH TR-CHECK-U !
-   TR-CHECK$ s" .trust.f" TR-CHECK-TRUST-BUF TR-CHECK-TRUST-U TR-SUFFIX! ;
-
-: TR-CHECK-ENV ( -- )
-   TR-CHECK-PATHS
-   s" HABU_WARM_CHECK" >LEN TR-CHECK$ >LEN PROC-ENV+
-   s" HABU_WARM_CHECK_TRUST" >LEN TR-CHECK-TRUST$ >LEN PROC-ENV+ ;
-
-: TR-TOOLS-DEFAULT+ ( -- )
-   TR-TOOLS-PATHS
-   TR-TOOLS$ EXECUTABLE? 0= if exit then
-   TR-TOOLS-TRUST$ FILE? 0= if exit then
-   s" HABU_WARM_TOOLS" TR-TOOLS$ TR-DEFAULT+
-   s" HABU_WARM_TOOLS_TRUST" TR-TOOLS-TRUST$ TR-DEFAULT+
-   TR-TOOLS$ TR-TOOLS-TRUST$ WR-TOOLS! ;
-
-: TR-CHECK-DEFAULT+ ( -- )
-   TR-CHECK-PATHS
-   TR-CHECK$ EXECUTABLE? 0= if exit then
-   TR-CHECK-TRUST$ FILE? 0= if exit then
-   s" HABU_WARM_CHECK" TR-CHECK$ TR-DEFAULT+
-   s" HABU_WARM_CHECK_TRUST" TR-CHECK-TRUST$ TR-DEFAULT+
-   TR-CHECK$ TR-CHECK-TRUST$ WR-CHECK! ;
 
 : TR-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -708,60 +605,8 @@ TR-INSTALL-POOL-HOOKS
    s" --pool-slots" TR-ARG+
    TR-NUM-ARG+ ;
 
-: TR-AOT-RUNNER-PATHS ( -- )
-   TR-WARM-ROOT$ s" hb-aot-warm" TR-AOT-RUNNER-BUF JOIN-PATH TR-AOT-RUNNER-U !
-   TR-AOT-RUNNER$ s" .trust.f" TR-AOT-RUNNER-TRUST-BUF TR-AOT-RUNNER-TRUST-U TR-SUFFIX!
-   TR-AOT-RUNNER$ s" .stamp" TR-AOT-RUNNER-STAMP-BUF TR-AOT-RUNNER-STAMP-U TR-SUFFIX! ;
-
 : TR-KEY-FILE+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CK-FILE+ ;
-
-: TR-SNAPSHOT-LINUX-KEY ( -- )
-   s" target:linux-aarch64" CK-TEXT+
-   s" src/os/linux/layout.f" TR-KEY-FILE+
-   s" src/os/linux/elf.f" TR-KEY-FILE+
-   s" src/os/linux/sign.f" TR-KEY-FILE+ ;
-
-: TR-SNAPSHOT-MACOS-KEY ( -- )
-   s" target:macos-aarch64" CK-TEXT+
-   s" src/os/macos/layout.f" TR-KEY-FILE+
-   s" src/os/macos/macho.f" TR-KEY-FILE+
-   s" src/os/macos/sign2.f" TR-KEY-FILE+ ;
-
-: TR-SNAPSHOT-TARGET-KEY ( -- )
-   HB-TARGET-LINUX? if TR-SNAPSHOT-LINUX-KEY exit then
-   HB-TARGET-MACOS? if TR-SNAPSHOT-MACOS-KEY exit then
-   s" warm image cache unknown target" TR-FAIL ;
-
-: TR-SNAPSHOT-BUILDER-KEY ( -- )
-   s" src/os/image-bytes.f" TR-KEY-FILE+
-   TR-SNAPSHOT-TARGET-KEY
-   s" src/habu/snap-lib.f" TR-KEY-FILE+
-   s" src/habu/snap.f" TR-KEY-FILE+ ;
-
-: TR-AOT-RUNNER-KEY-FILE+ ( ptr u8 n -- )
-   TR-KEY-FILE+ ;
-
-: TR-AOT-RUNNER-KEY-SUPPORT ( -- )
-   [: TR-AOT-RUNNER-KEY-FILE+ ;] TR-AOT-RUNNER-SUPPORT-FILES ;
-
-: TR-AOT-RUNNER-KEY! ( -- )
-   CK-RESET
-   s" hb-aot-runner-cache-v3" CK-TEXT+
-   s" bin/hb" TR-AOT-RUNNER-KEY-FILE+
-   s" test/run-lib.f" TR-AOT-RUNNER-KEY-FILE+
-   s" test/run-files.f" TR-AOT-RUNNER-KEY-FILE+
-   s" test/gate-stats.f" TR-AOT-RUNNER-KEY-FILE+
-   s" tools/warm-image-lib.f" TR-AOT-RUNNER-KEY-FILE+
-   s" tools/warm-image-gate-stats.f" TR-AOT-RUNNER-KEY-FILE+
-   s" tools/warm-image.f" TR-AOT-RUNNER-KEY-FILE+
-   TR-SNAPSHOT-BUILDER-KEY
-   s" tools/public-signatures-core.f" TR-AOT-RUNNER-KEY-FILE+
-   s" tools/public-signatures.f" TR-AOT-RUNNER-KEY-FILE+
-   s" lib/content-key.f" TR-AOT-RUNNER-KEY-FILE+
-   s" test/gate-aot-runner-entry.f" TR-AOT-RUNNER-KEY-FILE+
-   TR-AOT-RUNNER-KEY-SUPPORT
-   TR-AOT-RUNNER-KEY-HEX CK-FINAL-HEX ;
 
 : TR-UNDER-SOURCE-KEY ( -- )
    [: TR-KEY-FILE+ ;] TR-UNDER-SOURCE-FILES ;
@@ -905,64 +750,6 @@ TR-INSTALL-POOL-HOOKS
    TR-UNDER-CACHE-UNLOCK
    TR-UNDER-CACHE-RC @ 0 <> if TR-UNDER-CACHE-RC @ throw then ;
 
-: TR-AOT-RUNNER-CACHED? ( -- bool )
-   TR-AOT-RUNNER$ EXECUTABLE? 0= if 0 0= 0= exit then
-   TR-AOT-RUNNER-TRUST$ FILE? 0= if 0 0= 0= exit then
-   TR-AOT-RUNNER-STAMP$ FILE? 0= if 0 0= 0= exit then
-   TR-AOT-RUNNER-STAMP$ TR-AOT-RUNNER-STAMP-RD 80 READ-ALL
-   dup 64 <> if drop 0 0= 0= exit then
-   TR-AOT-RUNNER-STAMP-RD swap TR-AOT-RUNNER-KEY-HEX 64 STR= ;
-
-: TR-AOT-RUNNER-TOOL-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --load" TR-ARG+
-   s" tools/warm-image.f" TR-ARG+
-   s" --" TR-ARG+
-   TR-AOT-RUNNER$ TR-ARG+ ;
-
-: TR-AOT-RUNNER-SUPPORT-ARGV ( -- )
-   [: TR-ARG+ ;] TR-AOT-RUNNER-SUPPORT-FILES ;
-
-: TR-AOT-RUNNER-START ( -- )
-   TR-AOT-RUNNER-PATHS
-   TR-AOT-RUNNER-KEY!
-   TR-AOT-RUNNER-CACHED? if s" warm-cache-hit" GS-EVENT -1 TR-AOT-RUNNER-READY ! exit then
-   TR-MARK-COLD
-   s" warm-cache-miss" GS-EVENT
-   s" warm-build" GS-EVENT
-   s" gate-runner-build" GS-EVENT
-   TR-AOT-RUNNER-TOOL-ARGV
-   TR-AOT-RUNNER-SUPPORT-ARGV
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN GT-ROOT >LEN PROC-ENV+
-   TR-PERSIST-ENV+
-   TR-BUILD-CACHE-ENV
-   GS-ENV+
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" s" native warm AOT gate runner image" TR-TIMEOUT-MS
-   TR-AOT-RUNNER-SLOT >IDX GT-POOL-START-SLOT ;
-
-: TR-AOT-RUNNER-EXPECT ( -- )
-   TR-AOT-RUNNER$ EXECUTABLE? 0= if
-      s" missing warm AOT gate runner image" TR-FAIL
-   then
-   TR-AOT-RUNNER-TRUST$ FILE? 0= if
-      s" missing warm AOT gate runner trust file" TR-FAIL
-   then
-   TR-AOT-RUNNER-STAMP$ TR-AOT-RUNNER-KEY-HEX 64 WRITE-ALL
-   -1 TR-AOT-RUNNER-READY ! ;
-
-: TR-AOT-RUNNER-DONE? ( -- bool )
-   TR-AOT-RUNNER-READY @ 0 <> if 0 0= exit then
-   TR-AOT-RUNNER-SLOT >IDX GT-POOL-DONE@ 0= if 0 0= 0= exit then
-   TR-AOT-RUNNER-EXPECT
-   0 0= ;
-
-: TR-DRAIN-UNTIL-AOT-RUNNER ( -- )
-   begin TR-AOT-RUNNER-DONE? 0= while
-      GT-POOL-STEP
-   repeat ;
-
 : TR-BUILD-COMMON ( -- )
    TR-COMMON
    TR-BUILD-ASSERT-LIBS
@@ -1000,9 +787,6 @@ TR-INSTALL-POOL-HOOKS
    TR-STDLIB-ARGS
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
-
-: TR-STDLIB-WARM-ARGS ( -- )
-   s" warm" TR-STDLIB-SLICE-ARGS ;
 
 : TR-STDLIB-LINT-ARGS ( -- )
    s" lint" TR-STDLIB-SLICE-ARGS ;
@@ -1079,9 +863,6 @@ TR-INSTALL-POOL-HOOKS
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
 
-: TR-DIAG-WARM-ARGS ( -- )
-   s" warm" TR-DIAG-SLICE-ARGS ;
-
 : TR-DIAG-REPAIR-ARGS ( -- )
    s" diag-repair" TR-DIAG-SLICE-ARGS ;
 
@@ -1129,11 +910,6 @@ TR-INSTALL-POOL-HOOKS
    TR-DIAGNOSTICS-ARGS
    s" native checker diagnostics gate phase" TR-RUN ;
 
-: TR-DIAG-WARM ( -- )
-   TR-BASE
-   TR-DIAG-WARM-ARGS
-   s" native checker warm image gate phase" TR-RUN ;
-
 : TR-DEBUG ( -- )
    TR-BASE
    TR-DEBUG-ARGS
@@ -1149,10 +925,13 @@ TR-INSTALL-POOL-HOOKS
    TR-AOT-NEGATIVE-ARGS
    s" native hb-build AOT negative gate phase" TR-RUN ;
 
+: TR-UNSCHEDULED-PHASE ( -- )
+   E-TBL-BOUNDS throw ;
+
 : TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
-      0 of s" native stdlib tools warm image" endof
-      1 of s" native checker warm image gate phase" endof
+      0 of s" unused legacy phase 0" endof
+      1 of s" unused legacy phase 1" endof
       2 of s" native stdlib trust tool slice" endof
       3 of s" native stdlib check-cli slice" endof
       4 of s" native stdlib tail slice" endof
@@ -1197,8 +976,8 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
-      0 of s" gate-stdlib-warm" endof
-      1 of s" gate-check-warm" endof
+      0 of s" gate-unused-0" endof
+      1 of s" gate-unused-1" endof
       2 of s" gate-stdlib-tool-trust" endof
       3 of s" gate-stdlib-check-cli" endof
       4 of s" gate-stdlib-tail" endof
@@ -1243,8 +1022,8 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PHASE-ARGS ( idx -- ) {: idx:idx :}
    idx IDX>N case
-      0 of TR-STDLIB-WARM-ARGS endof
-      1 of TR-DIAG-WARM-ARGS endof
+      0 of TR-UNSCHEDULED-PHASE endof
+      1 of TR-UNSCHEDULED-PHASE endof
       2 of TR-STDLIB-TOOL-ARGS endof
       3 of TR-STDLIB-CHECK-CLI-ARGS endof
       4 of TR-STDLIB-TAIL-ARGS endof
@@ -1354,10 +1133,6 @@ TR-INSTALL-POOL-HOOKS
       TR-FALSE swap
    endcase ;
 
-: TR-TOOLS-PHASE? ( idx -- bool ) {: idx:idx :}
-   idx TR-STDLIB-SLICE? if 0 0= exit then
-   idx IDX>N 5 = ;
-
 : TR-PHASE-POOL-ARGS ( idx -- ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if
       TR-NESTED-POOL @ TR-POOL-ARG+
@@ -1367,9 +1142,8 @@ TR-INSTALL-POOL-HOOKS
       9 of TR-NESTED-POOL @ TR-POOL-ARG+ endof
    endcase ;
 
-: TR-PHASE-TOOLS-ENV ( idx -- ) {: idx:idx :}
-   idx TR-TOOLS-PHASE? if TR-TOOLS-ENV then
-   idx IDX>N 3 = if TR-CHECK-ENV then ;
+: TR-PHASE-TOOLS-ENV ( idx -- )
+   drop ;
 
 : TR-PHASE-UNDER? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
@@ -1399,26 +1173,11 @@ TR-INSTALL-POOL-HOOKS
       0 of TR-FALSE endof
       1 of TR-FALSE endof
       4 of TR-FALSE endof
-      7 of TR-FALSE endof
-      8 of TR-FALSE endof
       15 of TR-FALSE endof
-      16 of TR-FALSE endof
       19 of TR-FALSE endof
       20 of TR-FALSE endof
-      21 of TR-FALSE endof
       TR-TRUE swap
    endcase ;
-
-: TR-PHASE-AOT-RUNNER? ( idx -- bool ) {: idx:idx :}
-   TR-AOT-RUNNER-READY @ 0= if 0 0= 0= exit then
-   idx IDX>N case
-      7 of TR-TRUE endof
-      8 of TR-TRUE endof
-      TR-FALSE swap
-   endcase ;
-
-: TR-PHASE-WARM-RUNNER? ( idx -- bool ) {: idx:idx :}
-   idx TR-PHASE-AOT-RUNNER? ;
 
 : TR-PHASE-SUBJECT ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
@@ -1436,7 +1195,6 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PHASE-RUNNER-KIND ( idx -- ptr u8 n ) {: idx:idx :}
    idx TR-PHASE-RESIDENT? if s" resident" exit then
-   idx TR-PHASE-AOT-RUNNER? if s" aot-runner" exit then
    idx TR-PHASE-UNDER-EXE? if s" under" exit then
    s" bin" ;
 
@@ -1471,7 +1229,6 @@ TR-INSTALL-POOL-HOOKS
    then ;
 
 : TR-PHASE-EXE ( idx -- ptr u8 n ) {: idx:idx :}
-   idx TR-PHASE-AOT-RUNNER? if TR-AOT-RUNNER$ exit then
    idx TR-PHASE-UNDER-EXE? if TR-UNDER$ exit then
    s" bin/hb" ;
 
@@ -1487,47 +1244,34 @@ TR-INSTALL-POOL-HOOKS
    s" lib/process-env.f"  >LEN PROC-ARGV+
    s" lib/test/runner.f"  >LEN PROC-ARGV+ ;
 
-: TR-PHASE-ARGV-AOT-RUNNER ( idx -- ) {: idx:idx :}
-   s" --load"  >LEN PROC-ARGV+
-   s" test/gate-aot-runner-entry.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   idx TR-PHASE-RUNNER-TOKEN >LEN PROC-ARGV+ ;
-
 : TR-PHASE-BASE ( idx -- ) {: idx:idx :}
    PROC-ARGV-RESET
    PROC-ENV-RESET
    idx TR-PHASE-TMP!
    s" HB_TMP" >LEN TR-PATH$ >LEN PROC-ENV+
-   TR-PERSIST-ENV+
    idx TR-PHASE-TOOLS-ENV
    TR-BUILD-CACHE-ENV
    GS-ENV+
    idx TR-PHASE-UNDER-ENV
    PROC-ENV-INHERIT-MISSING
-   idx TR-PHASE-AOT-RUNNER? if
-      idx TR-PHASE-ARGV-AOT-RUNNER
-   else
-      TR-PHASE-ARGV-COLD
-   then ;
+   TR-PHASE-ARGV-COLD ;
 
 : TR-PHASE-START ( idx -- ) {: idx:idx :}
    idx TR-PHASE-BASE
-   idx TR-PHASE-WARM-RUNNER? 0= if idx TR-PHASE-ARGS then
+   idx TR-PHASE-ARGS
    idx TR-PHASE-POOL-ARGS
    idx TR-PHASE-TIMINGS-ARGS
    s" top-phase-spawn" GS-EVENT
-   idx TR-PHASE-AOT-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
    idx TR-PHASE-TEST
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
 
 : TR-PHASE-START-SLOT ( idx idx -- ) {: idx:idx slot:idx :}
    idx TR-PHASE-BASE
-   idx TR-PHASE-WARM-RUNNER? 0= if idx TR-PHASE-ARGS then
+   idx TR-PHASE-ARGS
    idx TR-PHASE-POOL-ARGS
    idx TR-PHASE-TIMINGS-ARGS
    s" top-phase-spawn" GS-EVENT
-   idx TR-PHASE-AOT-RUNNER? if s" runner-phase-spawn" GS-EVENT then
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
    idx TR-PHASE-TEST
    idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS slot GT-POOL-START-SLOT ;
@@ -1538,29 +1282,8 @@ TR-INSTALL-POOL-HOOKS
 : TR-GROUP-SEQ? ( idx -- bool )
    TR-GROUP-MODE TR-GROUP-SEQ = ;
 
-: TR-WARM-READY-RESET ( -- )
-   0 TR-TOOLS-WARM-READY !
-   0 TR-CHECK-WARM-READY ! ;
-
-: TR-WARM-READY-MARK ( -- )
-   TR-TOOLS-WARM-READY @ 0= if
-      TR-TOOLS-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> if -1 TR-TOOLS-WARM-READY ! then
-   then
-   TR-CHECK-WARM-READY @ 0= if
-      TR-CHECK-WARM-SLOT >IDX GT-POOL-DONE@ 0 <> if -1 TR-CHECK-WARM-READY ! then
-   then ;
-
-: TR-WARM-DONE? ( -- bool )
-   TR-WARM-READY-MARK
-   TR-TOOLS-WARM-READY @ 0 <>
-   TR-CHECK-WARM-READY @ 0 <> and ;
-
 : TR-UNDER-DONE? ( -- bool )
    TR-UNDER$ EXECUTABLE? ;
-
-: TR-CHECK-WARM-DONE? ( -- bool )
-   TR-WARM-READY-MARK
-   TR-CHECK-WARM-READY @ 0 <> ;
 
 : TR-DRAIN-UNTIL-UNDER ( -- )
    begin TR-UNDER-DONE? 0= while
@@ -1569,18 +1292,8 @@ TR-INSTALL-POOL-HOOKS
    TR-EXPECT-UNDER
    TR-UNDER-CACHE-INSTALL ;
 
-: TR-DRAIN-UNTIL-WARM ( -- )
-   begin TR-WARM-DONE? 0= while
-      GT-POOL-STEP
-   repeat ;
-
-: TR-DRAIN-UNTIL-CHECK-WARM ( -- )
-   begin TR-CHECK-WARM-DONE? 0= while
-      GT-POOL-STEP
-   repeat ;
-
-: TR-CHECK-WARM-ORDER@ ( idx -- idx ) {: idx:idx :}
-   idx IDX>N cells TR-CHECK-WARM-ORDER + @ >IDX ;
+: TR-CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
+   idx IDX>N cells TR-CANDIDATE-HOST-ORDER + @ >IDX ;
 
 : TR-LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
@@ -1590,8 +1303,6 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PRE-RESET ( -- )
    0 TR-PRE-TAIL !
-   0 TR-PRE-AOT-POS !
-   0 TR-PRE-AOT-NEG !
    0 TR-PRE-ARTIFACTS !
    0 TR-PRE-RUNTIME !
    0 TR-PRE-VALIDATE ! ;
@@ -1599,8 +1310,6 @@ TR-INSTALL-POOL-HOOKS
 : TR-PRE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       4 of TR-PRE-TAIL @ 0 <> endof
-      7 of TR-PRE-AOT-POS @ 0 <> endof
-      8 of TR-PRE-AOT-NEG @ 0 <> endof
       16 of TR-PRE-RUNTIME @ 0 <> endof
       19 of TR-PRE-ARTIFACTS @ 0 <> endof
       21 of TR-PRE-VALIDATE @ 0 <> endof
@@ -1610,8 +1319,6 @@ TR-INSTALL-POOL-HOOKS
 : TR-PRE-MARK ( idx -- ) {: idx:idx :}
    idx IDX>N case
       4 of -1 TR-PRE-TAIL ! endof
-      7 of -1 TR-PRE-AOT-POS ! endof
-      8 of -1 TR-PRE-AOT-NEG ! endof
       16 of -1 TR-PRE-RUNTIME ! endof
       19 of -1 TR-PRE-ARTIFACTS ! endof
       21 of -1 TR-PRE-VALIDATE ! endof
@@ -1621,33 +1328,14 @@ TR-INSTALL-POOL-HOOKS
    idx TR-PHASE-START
    idx TR-PRE-MARK ;
 
-: TR-TOOLS-CACHED? ( -- bool )
-   TR-TOOLS-PATHS
-   TR-TOOLS$ EXECUTABLE? 0= if TR-FALSE exit then
-   TR-TOOLS-TRUST$ FILE? ;
-
 : TR-PRE-TOOLS-START ( -- )
-   TR-TOOLS-CACHED? 0= if exit then
-   4 >IDX TR-PRE-START
-   19 >IDX TR-PRE-START ;
-
-: TR-PRE-AOT-START ( -- )
-   TR-AOT-RUNNER-READY @ 0= if exit then
-   8 >IDX TR-PRE-START
-   7 >IDX TR-PRE-START ;
+   ;
 
 : TR-PRE-CANDIDATE-START ( -- )
-   TR-UNDER-READY @ 0= if exit then
-   21 >IDX TR-PRE-START
-   16 >IDX TR-PRE-START ;
+   ;
 
 : TR-EARLY-EXTERNAL-START ( -- )
    GT-POOL-RESET
-   TR-WARM-READY-RESET
-   0 >IDX TR-TOOLS-WARM-SLOT >IDX TR-PHASE-START-SLOT
-   1 >IDX TR-CHECK-WARM-SLOT >IDX TR-PHASE-START-SLOT
-   TR-AOT-RUNNER-START
-   TR-PRE-AOT-START
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
    TR-UNDER-READY @ 0= if
@@ -1662,7 +1350,6 @@ TR-INSTALL-POOL-HOOKS
    TR-CHECK-PROFILE
    TR-START
    TR-PRE-RESET
-   TR-CLEAN-WARM
    TR-EXPECT-HB
    TR-UNDER-IMPORT
    TR-UNDER-CACHE-RESTORE ;

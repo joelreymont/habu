@@ -229,6 +229,14 @@ variable FM-NUM-L
    s" test/gate-pool-test.f" FM-REQ
    s" test/run-support.f" FM-REQ
    s" test/run-resident.f" FM-REQ
+   s" test/run-shared-stdlib.f" FM-REQ
+   s" test/run-worker.f" FM-REQ
+   s" test/run-worker-stdlib.f" FM-REQ
+   s" test/run-worker-engine.f" FM-REQ
+   s" test/run-worker-diag.f" FM-REQ
+   s" test/run-worker-dict.f" FM-REQ
+   s" test/run-worker-debug.f" FM-REQ
+   s" test/run-worker-aot.f" FM-REQ
    s" test/run-files.f" FM-REQ
    s" test/run-lib.f" FM-REQ
    s" test/run.f" FM-REQ ;

@@ -1,6 +1,12 @@
 \ fs-mutate-test.f - focused tests for lib/fs-mutate.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f lib/fs-mutate.f lib/fs-mutate-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+
 variable FMT-ROOT-U
 variable FMT-REMOVE-U
 variable FMT-RENAME-SRC-U

@@ -41,4 +41,5 @@ generated artifacts out of the commit and delete gate caches only when testing
 uncached behavior.
 
 `Habu-under-test` is the small rebuilt `hb-stdin` engine, not a snapshot. Warm
-snapshots are cache artifacts for runner/tool acceleration only.
+snapshots are covered by the warm-image feature tests; they are not native suite
+launchers.

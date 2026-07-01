@@ -1,12 +1,10 @@
-\ gate-diagnostics.f - entry wrapper for checker diagnostic contracts.
-\
-\ Load after test/gate-common.f.
+\ run-worker-diag.f - resident diagnostic phase worker.
 
-include tools/json.f
-include tools/gate-json-assert-core.f
-require tools/date.f
 require lib/vector.f
 require lib/source.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require tools/date.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
@@ -21,6 +19,16 @@ require tools/trust-lint-core.f
 require tools/check-all-errors-core.f
 require tools/argv.f
 require tools/check-core.f
-include test/gate-diagnostics-lib.f
+require test/gate-common-lib.f
+require test/gate-diagnostics-lib.f
 
-GDX-DISPATCH
+: TRWD-RUN ( -- )
+   TR-RESIDENT-ID @ case
+      10 of GDX-REPAIR-SLICE endof
+      11 of GDX-UNDEF-PRIMARY-SLICE endof
+      12 of GDX-ALL-STRICT-SLICE endof
+      13 of GDX-FILE-UNSAFE-SLICE endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+TRWD-RUN

@@ -2,6 +2,15 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/hb-baseline-contracts-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+
 $8000 constant HBT-CAP
 $5000 constant HBT-PROP-CAP
 10000 constant HBT-TIMEOUT-MS

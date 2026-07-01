@@ -2,26 +2,31 @@
 
 Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
-measured hot-cache run is 27.711s internal / 30.22s shell-wall on 2026-07-01 UTC;
-the last cache-refresh run after a scheduler-key change was 28.538s internal /
-30.86s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
-`macos-arm64-12x2` profile, per-file content-key warm-cache hits,
-manifest-hashed small `hb-under-test`, no top test-suite snapshot, and AOT maker
-cache hits on the hot path. The native gate uses a 12-way macOS checked
+measured hot content-key run after removing top warm launchers is 24.878s
+internal / 27.22s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
+`macos-arm64-12x2` profile, manifest-hashed small `hb-under-test`, no top
+test-suite snapshot, no checker/tool warm launchers, zero warm-image events,
+and AOT maker/artifact cache hits for this source revision. The native gate uses
+a 12-way macOS checked
 DAG pool, 2-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), split resident tool-lint semantic groups,
 direct in-process diagnostic JSON and AOT report assertions, batched dictionary
 checker certifications/rejections, a direct manifest phase, in-process
 check-tool semantic fixtures, batched engine fixture source-list checks,
 attributed pool outcomes, a default content-keyed gate cache, and auto-detected
-host-class timing profiles. The resident controller loads the common stdlib tool
-setup once, then runs tool/lint/tail semantic slices in-process with live
-lint/test words called directly and CLI wrappers reserved for standalone entry
-coverage. Discovered warm-image or candidate cache misses automatically switch
-the run to the host profile's cold budget; explicit `--cold-cache` still uses a
-private per-run cache root. Host timing policy is exposed as script args:
+host-class timing profiles. The resident controller loads only scheduler/common
+support first, then loads the common stdlib tool setup once as suite setup and
+forks phase-owned resident workers. Tool/lint/tail semantic slices run
+in-process with live lint/test words called directly and CLI wrappers reserved
+for standalone entry coverage. Discovered candidate cache misses automatically
+switch the run to the
+host profile's cold budget; explicit `--cold-cache` still uses a private per-run
+cache root. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
+Latest counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
+`helper-spawn=30`, `spans=146`, `slowest-test=native hb-build AOT negative gate
+phase` at 15.495s; `check-cli` is 2.397s.
 Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 
@@ -46,8 +51,8 @@ from current source. The gate,
 daily refresh, benchmark, and verification paths remain Habu-native and run with
 Gforth absent. The installed `bin/hb` and gate `Habu-under-test` are the small
 stdin/TTY engine, not warm snapshots; the gate rejects an oversized
-`Habu-under-test`. Warm snapshot images are content-keyed cache artifacts rebuilt
-by the gate when needed.
+`Habu-under-test`. Warm snapshot images are feature-test outputs rebuilt only by
+the warm-image tool tests, not native suite launchers.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, 979/0/0 after the native primitive,

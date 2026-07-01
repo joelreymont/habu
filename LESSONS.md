@@ -340,7 +340,11 @@ lesson — keep the specific word/code/path, cut the prose.
   top-level `hb-test-suite` image with direct `bin/hb --load test/run.f` kept
   the small engine as the entry point, removed a generated setup artifact, and
   still held macOS hot wall time under 30s. Cold/cache-fill remains a separate
-  profile because warm/AOT artifacts are legitimate misses.
+  profile because candidate and builder artifacts are legitimate misses.
+- **Warm launchers hide duplicated checker work:** after removing the top
+  snapshot, direct checker diagnostics exposed repeated `tools/check.f` support
+  loads. Semantic diagnostic tests should call `tools/check-core.f` in-process
+  with fd capture; only true CLI stderr/argv contracts keep a child `hb`.
 - **Bake repeated semantic setup into the resident runner:** the stdlib tool
   groups were still paying the same checked lint/check-all-errors setup in every
   resident process. Baking that common tool base once into `hb-gate-warm` and
@@ -398,9 +402,9 @@ lesson — keep the specific word/code/path, cut the prose.
   the checker child; generated converters must run it after prefix stripping so
   naturalized names become `IX`/`JX`, not bare `I`/`J`.
 - **Focused gate slices need a temp root:** direct-loading
-  `test/gate-dictionary.f` does not run `TR-START`; pass `HB_TMP` and
-  `HABU_GATE_WARM_ROOT` or use `test/run.f`, or warm images resolve to
-  `/hb-check-warm` and fail with `E-FS-OPEN`.
+  `test/gate-dictionary.f` does not run `TR-START`; use `test/run.f` or an
+  explicit suite temp/cache root, or generated artifacts resolve under `/` and
+  fail with `E-FS-OPEN`.
 - **Nested lint subprocesses need their own timeout caps:** fast tool probes can
   keep a tight timeout, but a fixture that spawns `trust-lint` or another
   repo-scale tool must use a separate cap sized for aggregate-gate contention.
@@ -1290,8 +1294,9 @@ lesson — keep the specific word/code/path, cut the prose.
   modules; nested dirs (`lib/ptx/`) stay trust-audited + `-test.f` + gate-covered
   but out of the curated public-API manifest (mirrors top-level `maki/`).
 - **Warm-image tests must use the warm form, not re-`--load` bundled libs:**
-  `repair-packet-test`'s no-args case ran `$HABU_WARM_TOOLS --load lib/... repair-packet.f`
-  — recompiling libs the warm binary already has (~3s uncontended vs ~0.5s warm
+  `repair-packet-test`'s no-args case reloaded `lib/... repair-packet.f`
+  through the warm image — recompiling libs the warm binary already has (~3s
+  uncontended vs ~0.5s warm
   form). Under ~14-way pool concurrency it blew past the 10s timeout, so the
   subprocess came back `TIMEOUT` not `EXIT`: the tell was assertions on `kind`/
   `code`/stderr failing while the `stdout==0` assertion passed. Route every warm
@@ -1325,7 +1330,7 @@ lesson — keep the specific word/code/path, cut the prose.
   token. Keep re-entrant evaluator frames above scratch and below `DATA-START`,
   with an engine-suite high-arity `evaluate` regression.
 - **Create persistent gate roots before content-key hashing:** per-file digest
-  cache uses the gate warm root's `content-key.cache`, so the gate must create
+  cache uses the gate content root's `content-key.cache`, so the gate must create
   the persistent root before any `CK-FILE+` key construction, including
   under-test cache restore.
 - **Build-fixpoint child helpers own argv state:** warm gate images reuse one
@@ -1443,3 +1448,13 @@ lesson — keep the specific word/code/path, cut the prose.
   materializes multiple files into one source stream must emit `provided`
   markers before each file. Otherwise dependencies owned by each test/module
   reload already concatenated files and fail with duplicate definitions.
+- **Resident suite setup is not a warm snapshot:** after removing top warm
+  launchers, a fully phase-owned split regressed by compiling the stdlib tool
+  base independently in many fork workers. Keep the parent scheduler small, load
+  the common stdlib tool base once as explicit setup, then fork phase workers so
+  they inherit it copy-on-write.
+- **Checker tool smokes use the core capture path:** `tools/check-test.f` spent
+  over 5s spawning `bin/hb --load tools/check.f` to prove file-label JSON even
+  though `CHECK-ALL-ERRORS-FILE` already preserves that label in-process. Keep
+  public behavior assertions on loaded checker cores; reserve child `hb` only for
+  process-exit, argv, stdin, or stderr routing contracts.

@@ -23,8 +23,7 @@ Profiles:
 
 The runner's `--wall-budget-ms` uses its monotonic elapsed test-suite time;
 wrap the command with `/usr/bin/time -p` when exact process wall time matters.
-Top-level `--pool-slots` is capped at 12; fixed warm/AOT artifact builders own
-slots 12-14.
+Top-level `--pool-slots` is capped at 12.
 
 macOS hot profile:
 
@@ -59,7 +58,7 @@ Jetson/Orin cache-fill profile:
 ```
 
 `--cold-cache` uses a private per-run cache root and the profile cold budget. It
-does not delete the persistent warm cache.
+does not delete the persistent content cache.
 
 Default persistent-cache runs also mark themselves cold if a source change
-invalidates a warm image or `HABU_UNDER_TEST` cache artifact during setup.
+invalidates `HABU_UNDER_TEST` or builder cache artifacts during setup.

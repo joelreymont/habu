@@ -18,7 +18,7 @@ variable GDX-TRUST-SRC-U
 variable GDX-TRUST-MAN-U
 
 : GDX-USAGE ( -- )
-   s" usage: test/gate-diagnostics.f [warm|diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe]" GDX-USAGE-RC die ;
+   s" usage: test/gate-diagnostics.f [diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe]" GDX-USAGE-RC die ;
 
 : GDX-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -111,6 +111,43 @@ variable GDX-TRUST-MAN-U
    GDX-PATH!
    GDX-PATH$ GDX-ARG+ ;
 
+: GDX-CHECK-DIRECT-START ( -- )
+   GE-HB-RESET
+   CHK-RESET-CFG
+   CHK-CAPTURE-OFF
+   LINT-OUT-BUFFER-OFF ;
+
+: GDX-CHECK-DIRECT-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u GE-ARGV+
+   a u CHK-PARSE-ONE ;
+
+: GDX-CHECK-DIRECT-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu GE-ARGV+
+   path pathu CHK-ADD-POS ;
+
+: GDX-CHECK-DIRECT-RUN-THROW ( -- )
+   CHK-DIRECT-RUN throw ;
+
+\ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
+: GDX-CHECK-DIRECT-CAPTURE ( [ -- ] -- ) {: q :}
+   q GE-CAPTURE-ACTION {: rc:n :}
+   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
+   rc GT-OUTCOME-CODE ! ;
+
+: GDX-CHECK-DIRECT-STDIN-ACT ( -- )
+   GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHK-MATERIALIZE-BUF-AS
+   GDX-CHECK-DIRECT-RUN-THROW ;
+
+: GDX-CHECK-DIRECT-STDIN ( -- )
+   [: GDX-CHECK-DIRECT-STDIN-ACT ;] GDX-CHECK-DIRECT-CAPTURE ;
+
+: GDX-CHECK-DIRECT-PATH-ACT ( -- )
+   CHK-MATERIALIZE
+   GDX-CHECK-DIRECT-RUN-THROW ;
+
+: GDX-CHECK-DIRECT-PATH ( -- )
+   [: GDX-CHECK-DIRECT-PATH-ACT ;] GDX-CHECK-DIRECT-CAPTURE ;
+
 : GDX-WRITE-ERR ( ptr u8 n -- )
    GDX-PATH!
    GDX-PATH$ GT-ERR$ WRITE-ALL ;
@@ -175,58 +212,61 @@ variable GDX-TRUST-MAN-U
    s" diag-contract" file fileu label labelu GDX-GJA1 ;
 
 : GDX-CHECK-JSON ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --json-errors" GDX-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GDX-CHECK-DIRECT-START
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   GDX-CHECK-DIRECT-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-JSON-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --json-errors" GDX-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GDX-CHECK-DIRECT-START
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   GDX-CHECK-DIRECT-STDIN
    label labelu GE-EXPECT-OK ;
 
 : GDX-CHECK-JSON-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --json-errors" GDX-ARG+
-   s" --all-errors" GDX-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GDX-CHECK-DIRECT-START
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   s" --all-errors" GDX-CHECK-DIRECT-OPT
+   GDX-CHECK-DIRECT-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --json-errors" GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
+   file fileu GDX-PATH!
+   GDX-CHECK-DIRECT-START
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   GDX-PATH$ GDX-CHECK-DIRECT-FILE
+   GDX-CHECK-DIRECT-PATH
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-JSON-ALL ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --json-errors" GDX-ARG+
-   s" --all-errors" GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
+   file fileu GDX-PATH!
+   GDX-CHECK-DIRECT-START
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   s" --all-errors" GDX-CHECK-DIRECT-OPT
+   GDX-PATH$ GDX-CHECK-DIRECT-FILE
+   GDX-CHECK-DIRECT-PATH
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-FILE-STRICT-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --strict-signatures" GDX-ARG+
-   s" --json-errors" GDX-ARG+
-   file fileu GDX-PATH-ARGV+
-   GE-CHECK-EXE GE-TIMEOUT-MS GE-RUN-ENV
+   file fileu GDX-PATH!
+   GDX-CHECK-DIRECT-START
+   s" --strict-signatures" GDX-CHECK-DIRECT-OPT
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   GDX-PATH$ GDX-CHECK-DIRECT-FILE
+   GDX-CHECK-DIRECT-PATH
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --strict-signatures" GDX-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GDX-CHECK-DIRECT-START
+   s" --strict-signatures" GDX-CHECK-DIRECT-OPT
+   GDX-CHECK-DIRECT-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-STRICT-JSON ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GE-CHECK-ARGV
-   s" --strict-signatures" GDX-ARG+
-   s" --json-errors" GDX-ARG+
-   GE-CHECK-EXE GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   GDX-CHECK-DIRECT-START
+   s" --strict-signatures" GDX-CHECK-DIRECT-OPT
+   s" --json-errors" GDX-CHECK-DIRECT-OPT
+   GDX-CHECK-DIRECT-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : GDX-CHECK-JSON-FIELDS ( -- )
@@ -519,12 +559,6 @@ variable GDX-TRUST-MAN-U
    s" trust-lint accepted stale audit dates" GE-EXPECT-NONZERO
    s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-OUT-HAS ;
 
-: GDX-WARM ( -- )
-   s" hb-gate-diagnostics-warm" GT-START
-   GE-CHECK-WARM
-   GT-CLEANUP
-   s" PASS: native checker warm image gate phase" type cr ;
-
 : GDX-REPAIR-SLICE ( -- )
    s" hb-gate-diagnostics-repair" GT-START
    GDX-REPAIR-CLASSES
@@ -589,7 +623,6 @@ variable GDX-TRUST-MAN-U
 : GDX-DISPATCH ( -- )
    SCRIPT-ARGC 0= if GDX-SERIAL exit then
    SCRIPT-ARGC 1 <> if GDX-USAGE then
-   s" warm" GDX-ARG0= if GDX-WARM exit then
    s" diag-repair" GDX-ARG0= if GDX-REPAIR-SLICE exit then
    s" diag-undef-primary" GDX-ARG0= if GDX-UNDEF-PRIMARY-SLICE exit then
    s" diag-all-strict" GDX-ARG0= if GDX-ALL-STRICT-SLICE exit then

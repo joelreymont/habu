@@ -106,13 +106,8 @@ variable CK-CACHE-LOADED
    a u s" content-key.cache" CK-CACHE-PATH-BUF JOIN-PATH CK-CACHE-PATH-U !
    0 CK-CACHE-LOADED ! ;
 
-: CK-CACHE-ENV-ROOT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u GETENV dup 0= if 2drop CK-FALSE exit then
-   CK-CACHE-ROOT! CK-TRUE ;
-
 : CK-CACHE-AUTO? ( -- bool )
    CK-CACHE-PATH? if CK-TRUE exit then
-   s" HABU_GATE_WARM_ROOT" CK-CACHE-ENV-ROOT? if CK-TRUE exit then
    CK-FALSE ;
 
 : CK-CACHE-LOAD? ( -- bool )

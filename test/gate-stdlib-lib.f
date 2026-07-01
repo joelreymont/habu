@@ -9,7 +9,6 @@ require lib/test.f
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 0 constant SUITE-ALL-ID
-1 constant SUITE-WARM-ID
 2 constant SUITE-LINT-ID
 3 constant SUITE-TOOL-ID
 4 constant SUITE-CHECK-CLI-ID
@@ -19,21 +18,6 @@ require lib/test.f
 8 constant SUITE-LINT-ARTIFACTS-ID
 9 constant SUITE-LINT-MANIFEST-ID
 
-create SUITE-WARM-BUF FS-PATH-CAP allot
-create SUITE-WARM-TRUST-BUF FS-PATH-CAP allot
-create SUITE-WARM-CAND-BUF FS-PATH-CAP allot
-create SUITE-WARM-CAND-TRUST-BUF FS-PATH-CAP allot
-create SUITE-WARM-OUT GT-OUT-CAP allot
-create SUITE-WARM-ERR GT-ERR-CAP allot
-create SUITE-WARM-STAMP-BUF FS-PATH-CAP allot
-create SUITE-KEY-HEX 80 allot
-create SUITE-STAMP-RD 80 allot
-variable SUITE-WARM-STAMP-U
-variable SUITE-WARM-U
-variable SUITE-WARM-TRUST-U
-variable SUITE-WARM-CAND-U
-variable SUITE-WARM-CAND-TRUST-U
-variable SUITE-OWN-ROOT
 variable SUITE-SLICE
 variable SUITE-SKIP-TOOL-LINTS
 variable SUITE-SKIP-TOOL-REPAIR
@@ -50,7 +34,7 @@ variable SUITE-TIMINGS
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [warm|lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
 
 : SUITE-ARG$ ( -- ptr u8 n )
    SUITE-ARG-I @ SCRIPT-ARGV$ ;
@@ -96,7 +80,6 @@ variable SUITE-TIMINGS
    1 SUITE-ADVANCE ;
 
 : SUITE-SLICE-ARG? ( -- bool )
-   SUITE-ARG$ s" warm" STR= if SUITE-WARM-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint" STR= if SUITE-LINT-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint-tools" STR= if SUITE-LINT-TOOLS-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint-manifest" STR= if SUITE-LINT-MANIFEST-ID SUITE-SLICE! SUITE-TRUE exit then
@@ -132,8 +115,6 @@ variable SUITE-TIMINGS
 
 : SUITE-ENV ( -- )
    PROC-ENV-RESET
-   s" HABU_WARM_TOOLS" >LEN SUITE-WARM-BUF SUITE-WARM-U @ >LEN PROC-ENV+
-   s" HABU_WARM_TOOLS_TRUST" >LEN SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U @ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING ;
 
 : SUITE-RUN-ENV ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n timeout:n label:ptr labelu:n :}
@@ -176,242 +157,8 @@ variable SUITE-TIMINGS
 : SUITE-ARG+ ( ptr u8 n -- )
     >LEN PROC-ARGV+ ;
 
-: SUITE-SUFFIX! ( ptr u8 n ptr u8 n ptr u8 ptr n -- )
-   {: a:ptr u:n suf:ptr su:n dst:ptr lenp:ptr :}
-   u su + FS-PATH-CAP > if E-FS-PATH throw then
-   a dst u BYTE-COPY
-   suf dst u + su BYTE-COPY
-   u su + lenp ! ;
-
-: SUITE-WARM$ ( -- ptr u8 n )
-   SUITE-WARM-BUF SUITE-WARM-U @ ;
-
-: SUITE-WARM-TRUST$ ( -- ptr u8 n )
-   SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U @ ;
-
-: SUITE-WARM-CAND$ ( -- ptr u8 n )
-   SUITE-WARM-CAND-BUF SUITE-WARM-CAND-U @ ;
-
-: SUITE-WARM-CAND-TRUST$ ( -- ptr u8 n )
-   SUITE-WARM-CAND-TRUST-BUF SUITE-WARM-CAND-TRUST-U @ ;
-
-\ Tools-warm root: the gate-supplied HABU_GATE_WARM_ROOT when this runs under
-\ test/run.f, else an owned temp. Must match TR-TOOLS-PATHS in run.f so the baked
-\ image and HABU_WARM_TOOLS resolve to the same place.
-: SUITE-SET-ROOT ( -- )
-   0 SUITE-OWN-ROOT !
-   s" HABU_GATE_WARM_ROOT" GETENV dup 0= 0= if GT-COPY-ROOT! exit then 2drop
-   CLEANUP-RESET
-   s" hb-stdlib-warm" TMPDIR-MKDIR GT-COPY-ROOT!
-   GT-ROOT CLEANUP-TREE+
-   -1 SUITE-OWN-ROOT ! ;
-
-: SUITE-WARM-PATHS ( -- )
-   GT-ROOT s" hb-tools-warm" SUITE-WARM-BUF JOIN-PATH SUITE-WARM-U !
-   SUITE-WARM$ s" .trust.f" SUITE-WARM-TRUST-BUF SUITE-WARM-TRUST-U SUITE-SUFFIX!
-   SUITE-WARM$ s" .new" SUITE-WARM-CAND-BUF SUITE-WARM-CAND-U SUITE-SUFFIX!
-   SUITE-WARM-CAND$ s" .trust.f" SUITE-WARM-CAND-TRUST-BUF SUITE-WARM-CAND-TRUST-U SUITE-SUFFIX! ;
-
-: SUITE-KEY-FILE+ ( ptr u8 n -- )
-   CK-FILE+ ;
-
-: SUITE-SNAPSHOT-LINUX-KEY ( -- )
-   s" target:linux-aarch64" CK-TEXT+
-   s" src/os/linux/layout.f" SUITE-KEY-FILE+
-   s" src/os/linux/elf.f" SUITE-KEY-FILE+
-   s" src/os/linux/sign.f" SUITE-KEY-FILE+ ;
-
-: SUITE-SNAPSHOT-MACOS-KEY ( -- )
-   s" target:macos-aarch64" CK-TEXT+
-   s" src/os/macos/layout.f" SUITE-KEY-FILE+
-   s" src/os/macos/macho.f" SUITE-KEY-FILE+
-   s" src/os/macos/sign2.f" SUITE-KEY-FILE+ ;
-
-: SUITE-SNAPSHOT-TARGET-KEY ( -- )
-   HB-TARGET-LINUX? if SUITE-SNAPSHOT-LINUX-KEY exit then
-   HB-TARGET-MACOS? if SUITE-SNAPSHOT-MACOS-KEY exit then
-   s" gate-stdlib warm cache unknown target" SUITE-USAGE-RC die ;
-
-: SUITE-SNAPSHOT-BUILDER-KEY ( -- )
-   s" src/os/image-bytes.f" SUITE-KEY-FILE+
-   SUITE-SNAPSHOT-TARGET-KEY
-   s" src/habu/snap-lib.f" SUITE-KEY-FILE+
-   s" src/habu/snap.f" SUITE-KEY-FILE+ ;
-
-\ Content key over the warm image's inputs: the compiler (bin/hb), the baker, and
-\ every baked tool source plus baker-side trust-export dependencies. KEEP THE
-\ baked-source portion IN SYNC with SUITE-WARM-SUPPORT-ARGV (a drift means a
-\ stale image could be reused). A persistent warm image is reused only when this
-\ key matches, so any input change forces a rebake.
-: SUITE-WARM-KEY! ( -- )
-   CK-RESET
-   s" hb-tools-warm-cache-v4" CK-TEXT+
-   s" bin/hb" SUITE-KEY-FILE+
-   s" test/gate-stats.f" SUITE-KEY-FILE+
-   s" tools/warm-image-lib.f" SUITE-KEY-FILE+
-   s" tools/warm-image-gate-stats.f" SUITE-KEY-FILE+
-   s" tools/warm-image.f" SUITE-KEY-FILE+
-   SUITE-SNAPSHOT-BUILDER-KEY
-   s" tools/public-signatures-core.f" SUITE-KEY-FILE+
-   s" tools/public-signatures.f" SUITE-KEY-FILE+
-   s" tools/date.f" SUITE-KEY-FILE+
-   s" lib/errors.f" SUITE-KEY-FILE+
-   s" lib/string.f" SUITE-KEY-FILE+
-   s" lib/memory.f" SUITE-KEY-FILE+
-   s" lib/vector.f" SUITE-KEY-FILE+
-   s" lib/fs.f" SUITE-KEY-FILE+
-   s" lib/fs-mutate.f" SUITE-KEY-FILE+
-   s" lib/process.f" SUITE-KEY-FILE+
-   s" lib/process-argv.f" SUITE-KEY-FILE+
-   s" lib/process-env.f" SUITE-KEY-FILE+
-   s" lib/source.f" SUITE-KEY-FILE+
-   s" lib/codesign.f" SUITE-KEY-FILE+
-   s" tools/lint/text.f" SUITE-KEY-FILE+
-   s" tools/lint/intern.f" SUITE-KEY-FILE+
-   s" tools/lint/token.f" SUITE-KEY-FILE+
-   s" tools/lint/lib.f" SUITE-KEY-FILE+
-   s" tools/lint/json-writer.f" SUITE-KEY-FILE+
-   s" tools/lint/source-lex.f" SUITE-KEY-FILE+
-   s" tools/argv.f" SUITE-KEY-FILE+
-   s" tools/diag-origin-core.f" SUITE-KEY-FILE+
-   s" tools/json.f" SUITE-KEY-FILE+
-   s" tools/gate-json-assert-core.f" SUITE-KEY-FILE+
-   s" tools/json-only-core.f" SUITE-KEY-FILE+
-   s" tools/aot-lint-core.f" SUITE-KEY-FILE+
-   s" tools/signature-lint-core.f" SUITE-KEY-FILE+
-   s" tools/checked-boundary-lint-core.f" SUITE-KEY-FILE+
-   s" tools/reserved-name-lint-core.f" SUITE-KEY-FILE+
-   s" tools/duplicate-definition-lint-core.f" SUITE-KEY-FILE+
-   s" tools/typed-local-diff-lint-core.f" SUITE-KEY-FILE+
-   s" tools/trust-lint-core.f" SUITE-KEY-FILE+
-   s" tools/check-all-errors-core.f" SUITE-KEY-FILE+
-   s" src/habu/verify-source.f" SUITE-KEY-FILE+
-   SUITE-KEY-HEX CK-FINAL-HEX ;
-
-: SUITE-WARM-STAMP$ ( -- ptr u8 n )
-   SUITE-WARM$ s" .stamp" SUITE-WARM-STAMP-BUF SUITE-WARM-STAMP-U SUITE-SUFFIX!
-   SUITE-WARM-STAMP-BUF SUITE-WARM-STAMP-U @ ;
-
-\ A cached warm image is valid only if image + trust exist AND the content stamp
-\ matches the current key. SUITE-WARM-KEY! must run before this check.
-: SUITE-WARM-CACHED? ( -- bool )
-   SUITE-WARM$ EXECUTABLE? 0= if SUITE-FALSE exit then
-   SUITE-WARM-TRUST$ FILE? 0= if SUITE-FALSE exit then
-   SUITE-WARM-STAMP$ FILE? 0= if SUITE-FALSE exit then
-   SUITE-WARM-STAMP$ SUITE-STAMP-RD 80 READ-ALL
-   dup 64 <> if drop SUITE-FALSE exit then
-   SUITE-STAMP-RD swap SUITE-KEY-HEX 64 STR= ;
-
-: SUITE-WARM-TOOL-ARGV ( -- )
-   PROC-ARGV-ENV-RESET
-   s" --load" SUITE-ARG+
-   s" tools/warm-image-gate-stats.f" SUITE-ARG+
-   s" tools/warm-image.f" SUITE-ARG+
-   s" --" SUITE-ARG+
-   SUITE-WARM-CAND$ SUITE-ARG+ ;
-
-: SUITE-WARM-SUPPORT-ARGV ( -- )
-   s" tools/date.f" SUITE-ARG+
-   s" lib/errors.f" SUITE-ARG+
-   s" lib/string.f" SUITE-ARG+
-   s" lib/memory.f" SUITE-ARG+
-   s" lib/vector.f" SUITE-ARG+
-   s" lib/fs.f" SUITE-ARG+
-   s" lib/fs-mutate.f" SUITE-ARG+
-   s" lib/process.f" SUITE-ARG+
-   s" lib/process-argv.f" SUITE-ARG+
-   s" lib/source.f" SUITE-ARG+
-   s" tools/lint/text.f" SUITE-ARG+
-   s" tools/lint/intern.f" SUITE-ARG+
-   s" tools/lint/token.f" SUITE-ARG+
-   s" tools/lint/lib.f" SUITE-ARG+
-   s" tools/lint/json-writer.f" SUITE-ARG+
-   s" tools/lint/source-lex.f" SUITE-ARG+
-   s" tools/argv.f" SUITE-ARG+
-   s" tools/diag-origin-core.f" SUITE-ARG+
-   s" tools/json.f" SUITE-ARG+
-   s" tools/gate-json-assert-core.f" SUITE-ARG+
-   s" tools/json-only-core.f" SUITE-ARG+
-   s" tools/aot-lint-core.f" SUITE-ARG+
-   s" tools/signature-lint-core.f" SUITE-ARG+
-   s" tools/checked-boundary-lint-core.f" SUITE-ARG+
-   s" tools/reserved-name-lint-core.f" SUITE-ARG+
-   s" tools/duplicate-definition-lint-core.f" SUITE-ARG+
-   s" tools/typed-local-diff-lint-core.f" SUITE-ARG+
-   s" tools/trust-lint-core.f" SUITE-ARG+
-   s" tools/check-all-errors-core.f" SUITE-ARG+ ;
-
-: SUITE-WARM-PRINT ( n n -- ) {: outu:n erru:n :}
-   SUITE-WARM-OUT outu type
-   SUITE-WARM-ERR erru type ;
-
-: SUITE-OUTCOME. ( n -- ) {: kind:n :}
-   kind case
-      PROC-OUTCOME-EXIT of s" exit" type endof
-      PROC-OUTCOME-SIGNAL of s" signal" type endof
-      PROC-OUTCOME-TIMEOUT of s" timeout" type endof
-      s" unknown" type
-   endcase ;
-
-: SUITE-WARM-OK? ( n n -- bool ) {: kind:n code:n :}
-   kind PROC-OUTCOME-EXIT =
-   code 0= and ;
-
-: SUITE-REMOVE-FILE? ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? if a u REMOVE-FILE then ;
-
-: SUITE-WARM-CLEAN-CANDIDATE ( -- )
-   SUITE-WARM-CAND$ SUITE-REMOVE-FILE?
-   SUITE-WARM-CAND-TRUST$ SUITE-REMOVE-FILE? ;
-
-: SUITE-WARM-DROP-STAMP ( -- )
-   SUITE-WARM-STAMP$ SUITE-REMOVE-FILE? ;
-
-: SUITE-WARM-PUBLISH ( -- )
-   SUITE-WARM-DROP-STAMP
-   SUITE-WARM-CAND-TRUST$ SUITE-WARM-TRUST$ RENAME-FILE
-   SUITE-WARM-CAND$ SUITE-WARM$ RENAME-FILE
-   SUITE-WARM-STAMP$ SUITE-KEY-HEX 64 ATOMIC-WRITE-FILE ;
-
-: SUITE-WARM-FAIL ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   s" FAIL: gate-stdlib warm tools image" type cr
-   s" outcome: " type kind SUITE-OUTCOME.
-   s"  code: " type code . cr
-   s" rc: " type kind code PROC-OUTCOME>RC RC>N . cr
-   s" stdout bytes: " type outu LEN>N . s" / " type GT-OUT-CAP . cr
-   s" stderr bytes: " type erru LEN>N . s" / " type GT-ERR-CAP . cr
-   s" stdout:" type cr
-   SUITE-WARM-OUT outu LEN>N type
-   s" stderr:" type cr
-   SUITE-WARM-ERR erru LEN>N type
-   s" gate-stdlib: warm tools image failed" 1 die ;
-
-: SUITE-WARM-RUN ( -- )
-   s" warm-build" GS-EVENT
-   SUITE-WARM-TOOL-ARGV
-   SUITE-WARM-SUPPORT-ARGV
-   PROC-ENV-RESET
-   PROC-ENV-INHERIT-MISSING
-   s" bin/hb" >LEN SUITE-WARM-OUT GT-OUT-CAP >LEN SUITE-WARM-ERR GT-ERR-CAP >LEN
-   SUITE-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE-OUTCOME
-   {: outu:len erru:len kind:n code:n :}
-   kind code SUITE-WARM-OK? 0= if
-      SUITE-WARM-CLEAN-CANDIDATE
-      outu erru kind code SUITE-WARM-FAIL
-   then ;
-
-: SUITE-WARM-PREPARE ( -- )
-   SUITE-SET-ROOT
-   SUITE-WARM-PATHS
-   SUITE-WARM-KEY!
-   SUITE-WARM-CACHED? if s" warm-cache-hit" GS-EVENT exit then
-   s" warm-cache-miss" GS-EVENT
-   SUITE-WARM-CLEAN-CANDIDATE
-   SUITE-WARM-RUN
-   SUITE-WARM-PUBLISH ;
-
 : SUITE-CLEANUP ( -- )
-   SUITE-OWN-ROOT @ if CLEANUP-RUN then ;
+   ;
 
 : SUITE-LABEL$ ( -- ptr u8 n )
    TEST:LABEL$ ;
@@ -421,9 +168,6 @@ variable SUITE-TIMINGS
 
 : SUITE-ALL? ( -- bool )
    SUITE-SLICE @ SUITE-ALL-ID = ;
-
-: SUITE-WARM? ( -- bool )
-   SUITE-SLICE @ SUITE-WARM-ID = ;
 
 : SUITE-LINT-TOOLS-LABEL? ( -- bool )
    s" shadow-lint" SUITE-LABEL= if SUITE-TRUE exit then
@@ -516,26 +260,11 @@ variable SUITE-TIMINGS
 
 : SUITE-RUN? ( -- bool )
    SUITE-ALL? if SUITE-TRUE exit then
-   SUITE-WARM? if SUITE-FALSE exit then
    SUITE-LINT? if SUITE-TRUE exit then
    SUITE-TOOL? if SUITE-TRUE exit then
    SUITE-CHECK-CLI? if SUITE-TRUE exit then
    SUITE-TAIL? if SUITE-TRUE exit then
    SUITE-FALSE ;
-
-: SUITE-TARGET-UNKNOWN ( -- )
-   s" gate-stdlib: unknown target" SUITE-USAGE-RC die ;
-
-: SUITE-ARG-TARGET-LAYOUT ( -- )
-   HB-TARGET-LINUX? if
-      s" src/os/linux/layout.f" SUITE-ARG+
-      exit
-   then
-   HB-TARGET-MACOS? if
-      s" src/os/macos/layout.f" SUITE-ARG+
-      exit
-   then
-   SUITE-TARGET-UNKNOWN ;
 
 : SUITE-HB ( -- )
    PROC-ARGV-RESET
@@ -571,8 +300,7 @@ variable SUITE-TIMINGS
    SUITE-CHECK-ARGS
    GT-RESET
    GT-POOL-RESET
-   SUITE-INSTALL-POOL-HOOKS
-   SUITE-WARM-PREPARE ;
+   SUITE-INSTALL-POOL-HOOKS ;
 
 : SUITE-INSTALL-TEST-HOOKS ( -- )
    [: SUITE-SETUP ;] TEST:SETUP!
