@@ -274,12 +274,21 @@ carry a fixed group of stack cells as one nominal value:
 VALUE-RECORD point x n y n END-VALUE-RECORD
 : >POINT ( n n -- point ) ;
 : POINT> ( point -- n n ) ;
+: POINT-DUP ( point -- point point ) over over ;
+: POINT-X ( point -- n ) drop ;
+: POINT-Y ( point -- n ) nip ;
+: POINT-X! ( n point -- point ) swap drop ;
+: POINT-Y! ( point n -- point ) >r drop r> ;
 ```
 
 The checker expands `point` to hidden field tokens (`field<point,x,n>`,
 `field<point,y,n>`). Declared outputs may construct or destructure the record at
 zero runtime cost, but hidden fields keep same-shape records distinct:
 `( point -- rect )` rejects even when both records contain two `n` fields.
+Accessors, updaters, copies, constructors, and destructors are ordinary checked
+words over the expanded stack cells; no runtime header or heap object is created.
+Fields may use any signature type, including type variables and parametric types:
+`VALUE-RECORD box value a END-VALUE-RECORD` is a polymorphic one-field record.
 
 Enums are checked defining words built on `create ... does>`. Use them for named
 integer/status families instead of hand-maintained numeric drift:

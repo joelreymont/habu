@@ -206,9 +206,25 @@ variable CKT-START-NS
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
    $0a SB-APPEND-C
+   s" VALUE-RECORD box value a END-VALUE-RECORD" SB-APPEND
+   $0a SB-APPEND-C
    s" : CKT-MAKE-POINT ( n n -- point ) ;" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-TAKE-POINT ( point -- n n ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-COPY-POINT ( point -- point point ) over over ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-POINT-X ( point -- n ) drop ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-POINT-Y ( point -- n ) nip ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-POINT-X! ( n point -- point ) swap drop ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-POINT-Y! ( point n -- point ) >r drop r> ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-MAKE-BOX ( a -- box ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-TAKE-BOX ( box -- a ) ;" SB-APPEND
    SB$ ;
 
 : CKT-VREC-BAD$ ( -- ptr u8 n )
@@ -218,6 +234,13 @@ variable CKT-START-NS
    s" VALUE-RECORD rect w n h n END-VALUE-RECORD" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-BAD-REC ( point -- rect ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-VREC-PARTIAL$ ( -- ptr u8 n )
+   SB-RESET
+   s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-BAD-PARTIAL ( n -- point ) ;" SB-APPEND
    SB$ ;
 
 : CKT-RUN-SOURCE-LIST-RESERVED-CORE ( -- n n n )
@@ -349,6 +372,13 @@ variable CKT-START-NS
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
 
+: CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
+   CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CKT-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
+
 : CKT-TEST-REQUIRE-FACADE ( -- )
    s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
@@ -379,6 +409,7 @@ variable CKT-START-NS
    s" check/source-list-preverify-diag" [: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ;] CKT-RUN
    s" check/value-record-good" [: CKT-TEST-VALUE-RECORD-GOOD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
+   s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT

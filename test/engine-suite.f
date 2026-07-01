@@ -348,13 +348,35 @@ s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
+VALUE-RECORD box value a END-VALUE-RECORD
 : T->POINT ( n n -- point ) ;
 : T-POINT> ( point -- n n ) ;
+: T-POINT-DUP ( point -- point point ) over over ;
+: T-POINT-X ( point -- n ) drop ;
+: T-POINT-Y ( point -- n ) nip ;
+: T-POINT-X! ( n point -- point ) swap drop ;
+: T-POINT-Y! ( point n -- point ) >r drop r> ;
+: T->BOX ( a -- box ) ;
+: T-BOX> ( box -- a ) ;
 3 4 T->POINT T-POINT> 4 T= 3 T=
+3 4 T->POINT T-POINT-DUP T-POINT> 4 T= 3 T= T-POINT> 4 T= 3 T=
+3 4 T->POINT T-POINT-X 3 T=
+3 4 T->POINT T-POINT-Y 4 T=
+9 3 4 T->POINT T-POINT-X! T-POINT> 4 T= 9 T=
+3 4 T->POINT 8 T-POINT-Y! T-POINT> 8 T= 3 T=
+55 T->BOX T-BOX> 55 T=
 s" COK-POINT-ID ( point -- point )" T-CHECK-PASSES
+s" COK-POINT-DUP ( point -- point point ) over over" T-CHECK-PASSES
 s" COK-POINT-ROUNDTRIP ( n n -- n n ) T->POINT T-POINT>" T-CHECK-PASSES
+s" COK-POINT-X ( point -- n ) drop" T-CHECK-PASSES
+s" COK-POINT-Y ( point -- n ) nip" T-CHECK-PASSES
+s" COK-POINT-X-SET ( n point -- point ) swap drop" T-CHECK-PASSES
+s" COK-POINT-Y-SET ( point n -- point ) >r drop r>" T-CHECK-PASSES
+s" COK-BOX-ROUNDTRIP ( n -- n ) T->BOX T-BOX>" T-CHECK-PASSES
 s" CBAD-POINT-RECT ( point -- rect )" T-CHECK-REJECTS
 s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
+s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
+s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

@@ -65,7 +65,9 @@ reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
 token for signatures. The token expands to hidden field types, so
 `( n n -- point )` and `( point -- n n )` can be certified with empty runtime
 bodies, while `( point -- rect )` rejects even if both records have the same
-cell shape.
+cell shape. Record fields may be polymorphic or parametric signature types;
+accessors, updaters, copies, and destructors are normal checked words over the
+expanded stack cells.
 
 ## Examples (from `src/prims.fs`)
 
