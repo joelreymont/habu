@@ -26,6 +26,7 @@ Planned module files:
 - `lib/source.f`
 - `lib/object.f`
 - `lib/object-cache.f`
+- `lib/object-index.f`
 - `lib/object-link.f`
 - `lib/process.f`
 - `lib/process-fork.f`
@@ -881,6 +882,27 @@ OBJSTORE:LOAD    ( ptr u8 n -- )
 `<root>/<64-hex>.hbo`. `OBJSTORE:LOAD` reads by key and validates through
 `OBJ:LOAD`; missing files throw filesystem errors, and malformed object bytes
 throw object schema errors.
+
+`lib/object-index.f` owns the `OBJIDX` package: a source+ABI index from a
+deterministic source key to the content-addressed `OBJ` key. This is the lookup
+layer that lets a later compiler integration ask whether a source object exists
+before recompiling it.
+
+```forth
+OBJIDX:ROOT!          ( ptr u8 n -- )
+OBJIDX:ROOT$          ( -- ptr u8 n )
+OBJIDX:PATH$          ( ptr u8 n -- ptr u8 n )
+OBJIDX:SOURCE-KEY-HEX ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 -- )
+OBJIDX:EXISTS?        ( ptr u8 n -- bool )
+OBJIDX:STORE          ( ptr u8 n ptr u8 n -- )
+OBJIDX:LOAD           ( ptr u8 n -- ptr u8 n bool )
+```
+
+`OBJIDX:SOURCE-KEY-HEX` hashes the 64-byte source digest plus target, checker,
+and compiler ABI strings. `OBJIDX:STORE` validates both source and object keys
+and atomically writes `<root>/<source-key>.idx`; `OBJIDX:LOAD` returns the object
+key and true for a hit, or an empty slice and false for a miss. Malformed keys or
+index files throw `E-OBJ-FIELD`.
 
 `lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
 pass for a future object linker. It copies export/import names out of the

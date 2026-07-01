@@ -153,6 +153,10 @@ points stay listed.
   validated object records.
 - `lib/object-cache-test.f` — focused coverage for OBJSTORE path, store, load,
   malformed-file, and missing-key behavior.
+- `lib/object-index.f` — checked OBJIDX source-to-object key index for build
+  cache lookup before object recompilation.
+- `lib/object-index-test.f` — focused coverage for OBJIDX source-key stability,
+  store/load, misses, and malformed-index behavior.
 - `lib/object-link.f` — checked OBJLINK export/import symbol validation over
   loaded object records.
 - `lib/object-link-test.f` — focused coverage for resolved imports, duplicate
