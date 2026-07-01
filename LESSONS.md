@@ -853,10 +853,14 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Code Quality
 
-- **Entry effects do not explain hidden stack ordering:** `maki/optim-tensor.f`
-  initially had a correct `TT-ADAM!` signature but no inline stack-state comments
-  around `ADAM` returning `(w' m' v')`. Multiline words need line-end stack-state
-  comments on every body line, especially before store chains.
+- **Line effects must earn their place:** `maki/optim-tensor.f` needed comments
+  around the non-obvious `ADAM` return order, but empty line-end stack comments
+  are noise. Prefer smaller words; add body-line effects only where they prevent
+  real stack-state reconstruction.
+- **Bare-local lint markers are per locals group:** `typed-local-diff-lint`
+  clears its allow state at each `:}`. In `bootstrap/cg/*.fs`, stock Gforth
+  forces bare locals, so every changed `{: ... :}` group needs its own
+  `typed-local-lint: allow-bare-local` marker.
 
 ## Runtime, Codegen, AOT
 
