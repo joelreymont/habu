@@ -109,9 +109,11 @@ public
    PATH-BUF PATH-U @ obj obju ATOMIC-WRITE-FILE
    KEY-BUF KEY-U ;
 
-: LOAD ( ptr u8 n -- )
-   PATH$
+: LOAD ( ptr u8 n -- ) {: key:ptr keyu:n :}
+   key keyu PATH$
    READ-BUF OBJ:MAX-BYTES READ-ALL {: u:n :}
-   READ-BUF u OBJ:LOAD ;
+   READ-BUF u OBJ:LOAD
+   KEY-BUF OBJ:KEY-HEX
+   KEY-BUF KEY-U key keyu STR= 0= if E-OBJ-SCHEMA throw then ;
 
 end-package

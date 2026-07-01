@@ -879,9 +879,10 @@ OBJSTORE:LOAD    ( ptr u8 n -- )
 
 `OBJSTORE:STORE` validates the current `OBJ` record, hashes it with
 `OBJ:KEY-HEX`, creates the root directory tree, and atomically writes
-`<root>/<64-hex>.hbo`. `OBJSTORE:LOAD` reads by key and validates through
-`OBJ:LOAD`; missing files throw filesystem errors, and malformed object bytes
-throw object schema errors.
+`<root>/<64-hex>.hbo`. `OBJSTORE:LOAD` reads by key, validates through
+`OBJ:LOAD`, and recomputes the loaded object's key. Missing files throw
+filesystem errors; malformed or wrong-key object bytes throw object schema
+errors.
 
 `lib/object-index.f` owns the `OBJIDX` package: a source+ABI index from a
 deterministic source key to the content-addressed `OBJ` key. This is the lookup
