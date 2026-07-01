@@ -84,11 +84,21 @@ variable NLBL
 : FXK ( -- ptr n ) 3 ICODE-TAB ;
 variable NFX
 
-: ASM-INIT ( -- )  ARESET  0 NLBL !  0 NFX !  0 BEGIN dup cells LBLP + -1 swap ! 1 + dup LBL-CAP 1- > UNTIL drop ;
+: ASM-INIT ( -- )
+   ARESET
+   0 NLBL !
+   0 NFX !
+   0 BEGIN
+      dup cells LBLP + -1 swap !
+      1 + dup LBL-CAP 1 - >
+   UNTIL drop ;
 
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
-: FX? ( -- )  NFX @ ICODE-TAB-CELLS 1 - > IF s" icode: out of fixups" 72 die THEN ;
+: FX? ( -- )
+   NFX @ ICODE-TAB-CELLS 1 - > IF
+      s" icode: out of fixups" 72 die
+   THEN ;
 
 : LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 

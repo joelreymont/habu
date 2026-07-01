@@ -309,7 +309,12 @@ variable DSUGE  variable DSUGA
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN ;
-: DVERDICT  UNDEFERR @ IF s" rejected" ELSE DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN THEN ;
+: DVERDICT ( -- ptr u8 n )
+   UNDEFERR @ IF
+      s" rejected"
+   ELSE
+      DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN
+   THEN ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
       RCUR @ R-RES  SGROUT @ R-RES  <>
