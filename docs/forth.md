@@ -416,6 +416,12 @@ address arithmetic at the public boundary.
 ## Stack comments
 
 - **Every definition** carries `( before -- after )`.
+- **Every multi-line definition comments every line's stack effect.** The
+  definition line carries the word effect `( before -- after )`; each body line
+  carries a trailing `\ ( before -- after )` for that line's net stack state,
+  including control-flow boundary lines. This applies to private helpers,
+  checker/compiler internals, emitters, and test support. If the comments get
+  noisy, factor the word until each line is obvious.
 - **Checked definitions use type tokens only.** The checker reads the stack
   comment as the signature, so write `( n n -- )`, `( bool -- )`, or
   `( ptr u8 n -- )`, not arbitrary role names such as `( got want -- )`. Standard
