@@ -123,9 +123,13 @@ GEMM is where we can move strictly fewer bytes than hand-fused Triton** (dotted
   regression test. (We do device-vs-CPU; the committed test harness is dotted
   `habu-committed-device-correctness`.)
 - **Benchmark/profile rows (BLOCKING for perf claims):** report the kernel label, launch
-  shape, elapsed ns, bytes, FLOPs, GB/s, GFLOP/s, and roof utilization through the
-  checked Habu profile helpers (`tools/ptx/profile.f`). A new kernel optimization is not
-  "faster" until the relevant profile row explains which roof it moved toward.
+  shape, `gpu_elapsed_ns` from CUDA events, bytes, FLOPs, GB/s, GFLOP/s, and roof
+  utilization through the checked Habu profile helpers (`tools/ptx/profile.f`) and
+  generic launch harness (`tools/ptx/bench.f`). Keep host launch timing separate
+  from device timing. A new kernel optimization is not "faster" until the relevant
+  profile row explains which roof it moved toward. Current fused-vs-unfused device
+  row: v4 SAXPY + v4 RELU as separate launches sums to 66.269 ms / 200 iters, while
+  fused v4 RELU is 39.209 ms / 200 iters (`fusion_elapsed_ratio_x1000=1690`).
 
 ## The one-line instinct (say it on every op)
 

@@ -448,6 +448,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )
    GSI-TEST-SETUP \ ( -- )
    s" tools/ptx/profile-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/bench-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE ; \ ( -- )
 
 : GSI-LINT-MANIFEST ( -- )

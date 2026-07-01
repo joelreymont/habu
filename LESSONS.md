@@ -1021,6 +1021,13 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## FFI / GPU (PTX)
 
+- **Kernel benchmarks need a generic launch layer:** a SAXPY-shaped profiler
+  hides the optimization question. Keep CUDA module/function/param/launch/timing
+  in `tools/ptx/bench.f`, keep bytes/FLOPs in the workload layer, and always print
+  fused-vs-unfused rows when claiming fusion moved memory traffic.
+- **Do not call host launch timing a GPU profile:** CUDA kernel optimization
+  evidence needs device elapsed time (`cuEventRecord`/`cuEventElapsedTime`) in a
+  `gpu_elapsed_ns` row. Keep host-loop timing separate for launch-overhead work.
 - **PTX profile runs must include `ptxas`, not just text tests:** the v4 SAXPY
   text fixture expected `%p21`/`%rd22`, but `CG-OPEN` still declared scalar-sized
   pools (`%p<8>`, `%r<16>`, `%rd<16>`). Benchmarking through checked emit →

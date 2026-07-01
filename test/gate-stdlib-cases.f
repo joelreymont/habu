@@ -221,6 +221,7 @@ TEST:END-SUITE
 
 TEST:SUITE ptx-toolchain
    tools/ptx/profile-test.f
+   tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f
 TEST:END-SUITE
 
