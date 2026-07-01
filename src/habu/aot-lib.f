@@ -60,12 +60,12 @@ s" AOT-PB@" s" -- ptr u8" TRUST
    REPEAT
    PN @ su + PN ! ;
 
-\ --- linker emit helpers.
-: W32! {: w:n a:ptr :} w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
-
 \ --- emit the image: minimal entry + compacted, relocated blobs.
 variable MLBL  variable REC2
 create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLEN MAX-CLO cells allot
+
+: AOT-W32! ( n ptr u8 -- ) {: w:n a:ptr :}
+   w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
 
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -145,10 +145,10 @@ variable BDELTA  variable TNEW
 \ replace the 4-instr `movz/movk/movk x16; blr x16` at CODE byte offset `site`
 \ with `nop; nop; nop; bl target` (target = the callee's CODE offset).
 : PATCH-BL {: site:n target:n :}
-   $D503201F CODE site +     W32!
-   $D503201F CODE site 4 + + W32!
-   $D503201F CODE site 8 + + W32!
-   site 12 + target BL32  CODE site 12 + + W32! ;
+   $D503201F CODE site +     AOT-W32!
+   $D503201F CODE site 4 + + AOT-W32!
+   $D503201F CODE site 8 + + AOT-W32!
+   site 12 + target BL32  CODE site 12 + + AOT-W32! ;
 
 variable MAPOUT  variable MAPP  variable MAPE
 : REC-NEWOFF {: r:ptr :} ( ptr a -- n )
@@ -217,10 +217,10 @@ variable DENSE-RV
          DENSE-RV @ -1 <> IF
             ASM-LEN DENSE-RV @ BL32 EMITW  CP2 @ 16 + CP2 !
          ELSE
-            r CP2 @ CP2 @ W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
+            r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
          THEN
       ELSE
-         r CP2 @ CP2 @ W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
+         r CP2 @ CP2 @ AOT-W32@ RELOC-W32 EMITW  CP2 @ 4 + CP2 !
       THEN
    REPEAT ;
 : COPY-PLANNED-BLOBS

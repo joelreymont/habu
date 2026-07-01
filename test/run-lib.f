@@ -87,8 +87,13 @@ variable TR-NUM-U
 variable TR-RESIDENT-ID
 variable TR-PRE-TAIL
 variable TR-PRE-ARTIFACTS
+variable TR-PRE-REPAIR
 variable TR-PRE-RUNTIME
 variable TR-PRE-VALIDATE
+variable TR-PRE-DIAG-GROUP
+variable TR-PRE-DIAG-REPAIR
+variable TR-PRE-DIAG-UNDEF
+variable TR-PRE-DIAG-FILE
 
 : TR-PATH$ ( -- ptr u8 n )
    TR-PATH-BUF TR-PATH-U @ ;
@@ -939,10 +944,10 @@ TR-INSTALL-POOL-HOOKS
       6 of s" native prop/debug gate phase" endof
       7 of s" native hb-build AOT positive gate phase" endof
       8 of s" native hb-build AOT negative gate phase" endof
-      9 of s" native engine fixture slice" endof
+      9 of s" native engine post-candidate group" endof
       10 of s" native checker diagnostics repair slice" endof
       11 of s" native checker diagnostics undef-primary slice" endof
-      12 of s" native checker diagnostics all-strict slice" endof
+      12 of s" native checker diagnostics group" endof
       13 of s" native checker diagnostics file-unsafe slice" endof
       14 of s" native dictionary/checker gate phase" endof
       15 of s" native engine build slice" endof
@@ -1126,6 +1131,16 @@ TR-INSTALL-POOL-HOOKS
       23 of TR-TRUE endof
       24 of TR-TRUE endof
       25 of TR-TRUE endof
+      26 of TR-TRUE endof
+      27 of TR-TRUE endof
+      28 of TR-TRUE endof
+      29 of TR-TRUE endof
+      31 of TR-TRUE endof
+      32 of TR-TRUE endof
+      33 of TR-TRUE endof
+      34 of TR-TRUE endof
+      35 of TR-TRUE endof
+      36 of TR-TRUE endof
       37 of TR-TRUE endof
       38 of TR-TRUE endof
       39 of TR-TRUE endof
@@ -1304,12 +1319,22 @@ TR-INSTALL-POOL-HOOKS
 : TR-PRE-RESET ( -- )
    0 TR-PRE-TAIL !
    0 TR-PRE-ARTIFACTS !
+   0 TR-PRE-REPAIR !
    0 TR-PRE-RUNTIME !
-   0 TR-PRE-VALIDATE ! ;
+   0 TR-PRE-VALIDATE !
+   0 TR-PRE-DIAG-GROUP !
+   0 TR-PRE-DIAG-REPAIR !
+   0 TR-PRE-DIAG-UNDEF !
+   0 TR-PRE-DIAG-FILE ! ;
 
 : TR-PRE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       4 of TR-PRE-TAIL @ 0 <> endof
+      5 of TR-PRE-REPAIR @ 0 <> endof
+      10 of TR-PRE-DIAG-REPAIR @ 0 <> endof
+      11 of TR-PRE-DIAG-UNDEF @ 0 <> endof
+      12 of TR-PRE-DIAG-GROUP @ 0 <> endof
+      13 of TR-PRE-DIAG-FILE @ 0 <> endof
       16 of TR-PRE-RUNTIME @ 0 <> endof
       19 of TR-PRE-ARTIFACTS @ 0 <> endof
       21 of TR-PRE-VALIDATE @ 0 <> endof
@@ -1319,6 +1344,9 @@ TR-INSTALL-POOL-HOOKS
 : TR-PRE-MARK ( idx -- ) {: idx:idx :}
    idx IDX>N case
       4 of -1 TR-PRE-TAIL ! endof
+      5 of -1 TR-PRE-REPAIR ! endof
+      9 of -1 TR-PRE-REPAIR ! -1 TR-PRE-RUNTIME ! -1 TR-PRE-VALIDATE ! endof
+      12 of -1 TR-PRE-DIAG-GROUP ! -1 TR-PRE-DIAG-REPAIR ! -1 TR-PRE-DIAG-UNDEF ! -1 TR-PRE-DIAG-FILE ! endof
       16 of -1 TR-PRE-RUNTIME ! endof
       19 of -1 TR-PRE-ARTIFACTS ! endof
       21 of -1 TR-PRE-VALIDATE ! endof

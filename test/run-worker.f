@@ -2,8 +2,19 @@
 \
 \ Loaded inside a forked worker after test/run-resident.f stores TR-RESIDENT-ID.
 
+variable TRW-LOAD-START-NS
+
+: TRW-LOAD-START ( -- )
+   mono-ns TRW-LOAD-START-NS ! ;
+
+: TRW-LOAD-MS ( -- n )
+   mono-ns TRW-LOAD-START-NS @ - PROC-NS-PER-MS / ;
+
 : TRW-LOAD ( ptr u8 n -- )
-   included ;
+   {: path:ptr pathu:n :}
+   TRW-LOAD-START
+   path pathu included
+   path pathu TRW-LOAD-MS GS-SPAN ;
 
 : TRW-RUN ( -- )
    TR-RESIDENT-ID @ case

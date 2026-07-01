@@ -11,14 +11,15 @@ s" AOT-DBASE@" s" -- ptr a" TRUST
 s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 
 \ --- read 32-bit words; recognize the compiled call (movz/movk/movk x16 + blr x16)
-: W32@ {: a:ptr :} a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
-: TGT {: p:ptr :} p W32@ 5 rshift $FFFF and
-   p 4 + W32@ 5 rshift $FFFF and 16 lshift or
-   p 8 + W32@ 5 rshift $FFFF and 32 lshift or ;
-: CALL? {: p:ptr :} p W32@ $FFE0001F and $D2800010 =
-   p 4 + W32@ $FFE0001F and $F2A00010 = and
-   p 8 + W32@ $FFE0001F and $F2C00010 = and
-   p 12 + W32@ $D63F0200 = and ;
+: AOT-W32@ ( ptr u8 -- n ) {: a:ptr :}
+   a c@  a 1+ c@ 8 lshift or  a 2 + c@ 16 lshift or  a 3 + c@ 24 lshift or ;
+: TGT ( ptr u8 -- n ) {: p:ptr :} p AOT-W32@ 5 rshift $FFFF and
+   p 4 + AOT-W32@ 5 rshift $FFFF and 16 lshift or
+   p 8 + AOT-W32@ 5 rshift $FFFF and 32 lshift or ;
+: CALL? ( ptr u8 -- bool ) {: p:ptr :} p AOT-W32@ $FFE0001F and $D2800010 =
+   p 4 + AOT-W32@ $FFE0001F and $F2A00010 = and
+   p 8 + AOT-W32@ $FFE0001F and $F2C00010 = and
+   p 12 + AOT-W32@ $D63F0200 = and ;
 : CALL-AT? {: p:ptr e:ptr :}  p 16 + e <= IF p CALL? ELSE 0 0= 0= THEN ;
 
 : REC {: k:n :} ( n -- ptr a )

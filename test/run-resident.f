@@ -1,10 +1,23 @@
 \ run-resident.f - late-loaded resident test suite dispatch.
 
-: TR-R-STDLIB-BASE ( -- )
+variable TR-R-SETUP-START-NS
+
+: TR-R-SETUP-START ( -- )
+   mono-ns TR-R-SETUP-START-NS ! ;
+
+: TR-R-SETUP-MS ( -- n )
+   mono-ns TR-R-SETUP-START-NS @ - PROC-NS-PER-MS / ;
+
+: TR-R-SHARED-BASE ( -- )
    s" test/run-shared-stdlib.f" included ;
 
+: TR-R-SHARED-BASE-SPAN ( -- )
+   s" setup/shared-stdlib" TR-R-SETUP-MS GS-SPAN ;
+
 : TR-R-SHARED-SETUP ( -- )
-   TR-R-STDLIB-BASE ;
+   TR-R-SETUP-START
+   TR-R-SHARED-BASE
+   TR-R-SHARED-BASE-SPAN ;
 
 : TR-PHASE-RESIDENT-SETUP ( idx -- ) {: idx:idx :}
    PROC-ENV-DEFAULT-RESET
@@ -35,7 +48,8 @@
 
 : TR-R-PHASE-START-ONCE ( idx -- ) {: idx:idx :}
    idx TR-PRE? if exit then
-   idx TR-R-PHASE-START ;
+   idx TR-R-PHASE-START
+   idx TR-PRE-MARK ;
 
 : TR-R-GROUP-START ( idx -- ) {: idx:idx :}
    idx TR-GROUP-SEQ? if
@@ -49,10 +63,37 @@
 : TR-R-READY-CANDIDATE-START ( -- )
    TR-UNDER-READY @ 0= if exit then
    3 >IDX TR-R-PHASE-START-ONCE
-   21 >IDX TR-R-PHASE-START-ONCE
-   16 >IDX TR-R-PHASE-START-ONCE
+   9 >IDX TR-R-PHASE-START-ONCE
    14 >IDX TR-R-PHASE-START-ONCE
-   9 >IDX TR-R-PHASE-START-ONCE ;
+   21 >IDX TR-R-PHASE-START-ONCE
+   16 >IDX TR-R-PHASE-START-ONCE ;
+
+: TR-R-READY-CANDIDATE-START-NON-STDLIB ( -- )
+   TR-UNDER-READY @ 0= if exit then
+   9 >IDX TR-R-PHASE-START-ONCE
+   14 >IDX TR-R-PHASE-START-ONCE
+   21 >IDX TR-R-PHASE-START-ONCE
+   16 >IDX TR-R-PHASE-START-ONCE ;
+
+: TR-R-READY-CANDIDATE-START-STDLIB ( -- )
+   TR-UNDER-READY @ 0= if exit then
+   3 >IDX TR-R-PHASE-START-ONCE ;
+
+: TR-R-EARLY-HOST-START-NON-STDLIB ( -- )
+   TR-R-READY-CANDIDATE-START-NON-STDLIB
+   0 begin dup TR-EARLY-HOST-PHASES < while
+      dup >IDX TR-EARLY-HOST-ORDER@ {: idx:idx :}
+      idx TR-STDLIB-SLICE? 0= if idx TR-R-PHASE-START-ONCE then
+      1+
+   repeat drop ;
+
+: TR-R-EARLY-HOST-START-STDLIB ( -- )
+   TR-R-READY-CANDIDATE-START-STDLIB
+   0 begin dup TR-EARLY-HOST-PHASES < while
+      dup >IDX TR-EARLY-HOST-ORDER@ {: idx:idx :}
+      idx TR-STDLIB-SLICE? if idx TR-R-PHASE-START-ONCE then
+      1+
+   repeat drop ;
 
 : TR-R-EARLY-HOST-START ( -- )
    TR-R-READY-CANDIDATE-START
@@ -81,9 +122,10 @@
    TR-R-LATE-START ;
 
 : TR-DAG-RUN-REST ( -- )
-   TR-R-SHARED-SETUP
    6 >IDX TR-R-PHASE-START
-   TR-R-EARLY-HOST-START
+   TR-R-EARLY-HOST-START-NON-STDLIB
+   TR-R-SHARED-SETUP
+   TR-R-EARLY-HOST-START-STDLIB
    TR-DRAIN-UNTIL-UNDER
    TR-R-CANDIDATE-WORK-START
    GT-POOL-DRAIN ;

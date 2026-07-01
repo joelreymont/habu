@@ -25,4 +25,41 @@ require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
-GDX-ALL-STRICT-SLICE
+variable TRWD-FORK-ID
+
+: TRWD-RUN-ID ( idx -- ) {: idx:idx :}
+   idx IDX>N TR-RESIDENT-ID !
+   idx IDX>N case
+      10 of GDX-REPAIR-SLICE endof
+      11 of GDX-UNDEF-PRIMARY-SLICE endof
+      12 of GDX-ALL-STRICT-SLICE endof
+      13 of GDX-FILE-UNSAFE-SLICE endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: TRWD-FORK-RUN ( -- )
+   TRWD-FORK-ID @ >IDX TRWD-RUN-ID ;
+
+: TRWD-CHILD-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
+   idx IDX>N case
+      10 of s" native checker diagnostics repair slice" endof
+      11 of s" native checker diagnostics undef-primary slice" endof
+      12 of s" native checker diagnostics all-strict slice" endof
+      13 of s" native checker diagnostics file-unsafe slice" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: TRWD-START-FORK ( idx -- ) {: idx:idx :}
+   idx IDX>N TRWD-FORK-ID !
+   idx TR-PHASE-TEST
+   idx TRWD-CHILD-LABEL TR-TIMEOUT-MS [: TRWD-FORK-RUN ;] GT-POOL-START-FORK ;
+
+: TRWD-ALL ( -- )
+   GT-POOL-RESET
+   12 >IDX TRWD-START-FORK
+   11 >IDX TRWD-START-FORK
+   10 >IDX TRWD-START-FORK
+   13 >IDX TRWD-START-FORK
+   GT-POOL-DRAIN ;
+
+TRWD-ALL

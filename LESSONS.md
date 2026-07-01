@@ -346,6 +346,13 @@ lesson — keep the specific word/code/path, cut the prose.
   the small engine as the entry point, removed a generated setup artifact, and
   still held macOS steady-state wall time under 30s. Cache-fill remains a separate
   profile because candidate and builder artifacts are legitimate misses.
+- **Share support at the family-worker level, not the suite root:** preloading
+  all runner support in `test/run-resident.f` removed repeated loads but serialized
+  an 18.3s `setup/shared-support` span and regressed macOS wall time to ~39s.
+  The winning shape overlaps non-stdlib phases with shared stdlib setup, classifies
+  every `run-worker-stdlib.f` phase behind that setup, and loads engine/diagnostic
+  support once inside a phase-family worker before forking child tests from that
+  image. macOS hot fell to ~19s wall; zed hot fell from ~82s to ~60s wall.
 - **Warm launchers hide duplicated checker work:** after removing the top
   snapshot, direct checker diagnostics exposed repeated `tools/check.f` support
   loads. Semantic diagnostic tests should call `tools/check-core.f` in-process
