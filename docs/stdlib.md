@@ -26,6 +26,7 @@ Planned module files:
 - `lib/source.f`
 - `lib/object.f`
 - `lib/object-cache.f`
+- `lib/object-link.f`
 - `lib/process.f`
 - `lib/process-fork.f`
 - `lib/process-argv.f`
@@ -877,6 +878,29 @@ OBJSTORE:LOAD    ( ptr u8 n -- )
 `<root>/<64-hex>.hbo`. `OBJSTORE:LOAD` reads by key and validates through
 `OBJ:LOAD`; missing files throw filesystem errors, and malformed object bytes
 throw object schema errors.
+
+`lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
+pass for a future object linker. It copies export/import names out of the
+current `OBJ` record, rejects duplicate exports, and checks imports after all
+objects have been added.
+
+```forth
+OBJLINK:RESET        ( -- )
+OBJLINK:EXPORT-COUNT ( -- n )
+OBJLINK:IMPORT-COUNT ( -- n )
+OBJLINK:EXPORT$      ( n -- ptr u8 n )
+OBJLINK:IMPORT$      ( n -- ptr u8 n )
+OBJLINK:EXPORT-FIND? ( ptr u8 n -- bool )
+OBJLINK:EXPORT+      ( ptr u8 n -- )
+OBJLINK:IMPORT+      ( ptr u8 n -- )
+OBJLINK:ADD          ( -- )
+OBJLINK:CHECK        ( -- )
+```
+
+`OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
+into bounded storage so later `OBJ:LOAD` calls cannot invalidate link metadata.
+`OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports; duplicate exports
+throw during `OBJLINK:ADD`, and table/storage overflow throws `E-OBJ-CAPACITY`.
 
 ## Source Materialization
 

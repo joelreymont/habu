@@ -153,6 +153,10 @@ points stay listed.
   validated object records.
 - `lib/object-cache-test.f` — focused coverage for OBJSTORE path, store, load,
   malformed-file, and missing-key behavior.
+- `lib/object-link.f` — checked OBJLINK export/import symbol validation over
+  loaded object records.
+- `lib/object-link-test.f` — focused coverage for resolved imports, duplicate
+  exports, unresolved imports, and symbol-table overflow.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.

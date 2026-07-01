@@ -133,6 +133,10 @@ TEST:SUITE object-cache-store
    lib/object-cache-test.f
 TEST:END-SUITE
 
+TEST:SUITE object-link-symbols
+   lib/object-link-test.f
+TEST:END-SUITE
+
 TEST:SUITE tasking-primitive-smoke
    test/atomics-smoke.f
    test/run-in-stack-smoke.f

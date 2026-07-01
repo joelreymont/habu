@@ -965,6 +965,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-cache	lib/object-cache.f	word	OBJSTORE:EXISTS?	(ptr u8 n -- bool)	lib/object-cache-test.f	docs/stdlib.md	stdlib-object	published	test whether an object cache key is present
 1	object-cache	lib/object-cache.f	word	OBJSTORE:STORE	(-- ptr u8 n)	lib/object-cache-test.f	docs/stdlib.md	stdlib-object	published	atomically store current validated OBJ record and return its key
 1	object-cache	lib/object-cache.f	word	OBJSTORE:LOAD	(ptr u8 n --)	lib/object-cache-test.f	docs/stdlib.md	stdlib-object	published	load and validate an object record by cache key
+1	object-link	lib/object-link.f	module			lib/object-link-test.f	docs/stdlib.md	stdlib-object	active	checked object export/import symbol validation for future linker
+1	object-link	lib/object-link.f	word	OBJLINK:RESET	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	clear accumulated object link symbols
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated export count
+1	object-link	lib/object-link.f	word	OBJLINK:IMPORT-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated import count
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return export symbol by index
+1	object-link	lib/object-link.f	word	OBJLINK:IMPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return import symbol by index
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-FIND?	(ptr u8 n -- bool)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	test whether an export symbol is accumulated
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT+	(ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one export symbol, rejecting duplicates
+1	object-link	lib/object-link.f	word	OBJLINK:IMPORT+	(ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one import symbol
+1	object-link	lib/object-link.f	word	OBJLINK:ADD	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add export/import rows from the current OBJ record
+1	object-link	lib/object-link.f	word	OBJLINK:CHECK	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	validate that every accumulated import has an export
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds
