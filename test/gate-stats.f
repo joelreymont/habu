@@ -36,9 +36,6 @@ variable GS-INNER-HB
 variable GS-INNER-HB-STDIN
 variable GS-INPROCESS-EVAL
 variable GS-BOUNDARY
-variable GS-WARM-BUILD
-variable GS-WARM-SIG
-variable GS-WARM-SNAP
 variable GS-MAKER-HIT
 variable GS-MAKER-MISS
 variable GS-MAKER-BUILD
@@ -196,9 +193,6 @@ variable GS-HELPER-SPAWN
    0 GS-INNER-HB-STDIN !
    0 GS-INPROCESS-EVAL !
    0 GS-BOUNDARY !
-   0 GS-WARM-BUILD !
-   0 GS-WARM-SIG !
-   0 GS-WARM-SNAP !
    0 GS-MAKER-HIT !
    0 GS-MAKER-MISS !
    0 GS-MAKER-BUILD !
@@ -282,9 +276,6 @@ variable GS-HELPER-SPAWN
    off u s" inner-hb-stdin" GS-LINE-KEY? if GS-INNER-HB-STDIN GS-INC exit then
    off u s" inprocess-eval" GS-LINE= if GS-INPROCESS-EVAL GS-INC exit then
    off u s" boundary-test" GS-LINE-KEY? if GS-BOUNDARY GS-INC exit then
-   off u s" warm-build" GS-LINE= if GS-WARM-BUILD GS-INC exit then
-   off u s" warm-sig-export" GS-LINE= if GS-WARM-SIG GS-INC exit then
-   off u s" warm-snapshot" GS-LINE= if GS-WARM-SNAP GS-INC exit then
    off u s" maker-cache-hit" GS-LINE= if GS-MAKER-HIT GS-INC exit then
    off u s" maker-cache-miss" GS-LINE= if GS-MAKER-MISS GS-INC exit then
    off u s" maker-build" GS-LINE= if GS-MAKER-BUILD GS-INC exit then
@@ -339,9 +330,6 @@ variable GS-HELPER-SPAWN
    GS-INNER-HB-STDIN @ s" inner-hb-stdin" GS-ITEM.
    GS-INPROCESS-EVAL @ s" inprocess-eval" GS-ITEM.
    GS-BOUNDARY @ s" boundary" GS-ITEM.
-   GS-WARM-BUILD @ s" warm-build" GS-ITEM.
-   GS-WARM-SIG @ s" warm-sig" GS-ITEM.
-   GS-WARM-SNAP @ s" warm-snap" GS-ITEM.
    GS-MAKER-HIT @ s" maker-hit" GS-ITEM.
    GS-MAKER-MISS @ s" maker-miss" GS-ITEM.
    GS-MAKER-BUILD @ s" maker-build" GS-ITEM.

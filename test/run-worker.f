@@ -31,7 +31,6 @@
       27 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       28 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       29 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      30 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       31 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       32 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       33 of s" test/run-worker-stdlib.f" TRW-LOAD endof

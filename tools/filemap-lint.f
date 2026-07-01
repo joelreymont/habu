@@ -137,7 +137,6 @@ variable FM-NUM-L
    s" tools/hb-build-direct-lints.f" FM-REQ
    s" tools/hb-build.f" FM-REQ
    s" tools/hb-build-test.f" FM-REQ
-   s" tools/warm-image-gate-stats.f" FM-REQ
    s" tools/imgdump.f" FM-REQ
    s" tools/imgdump-test.f" FM-REQ
    s" tools/ptx/saxpy.f" FM-REQ

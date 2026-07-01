@@ -737,7 +737,7 @@ lesson — keep the specific word/code/path, cut the prose.
   `tools/check.f` can `include tools/check-core.f`, but warm images load entry
   files through their baked source map and the include boundary can fail or crash.
   Bake the core into the warm image when it fits, then load a no-include
-  `*-main.f` entry; otherwise pass core+entry explicitly with `WR-TOOLS-LOAD2`.
+  `*-main.f` entry; otherwise pass core+entry explicitly with `CLI-TOOLS-LOAD2`.
 - **Fixed pool slots must be reserved before dynamic starts:** starting a
   dedicated slot after a general phase can reset an active slot, orphan the child,
   and leave `GT-POOL-LIVE` permanently high. `GT-POOL-START-SLOT` now fails
@@ -1304,7 +1304,7 @@ lesson — keep the specific word/code/path, cut the prose.
   form). Under ~14-way pool concurrency it blew past the 10s timeout, so the
   subprocess came back `TIMEOUT` not `EXIT`: the tell was assertions on `kind`/
   `code`/stderr failing while the `stdout==0` assertion passed. Route every warm
-  subprocess through `WR-TOOLS-LOAD`.
+  subprocess through `CLI-TOOLS-LOAD`.
 - **DATA layout overlaps can masquerade as checker hangs:** package runtime cells
   at `$268..$280` overlapped the JIT virtual-stack value array (`VVAL-OFF=$250`);
   a fifth literal `10` wrote `$270`, poisoned `PKG-PRI-CELL`, and sent lookup into

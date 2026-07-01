@@ -130,7 +130,7 @@ variable GB-LC-OFF
    s" lib/codesign.f" GB-ARGV+
    s" lib/content-key.f" GB-ARGV+
    s" tools/build-fixpoint.f" GB-ARGV+
-   s" tools/warm-run.f" GB-ARGV+
+   s" tools/cli-run.f" GB-ARGV+
    s" tools/hb-build-lib.f" GB-ARGV+
    s" tools/hb-build.f" GB-ARGV+
    s" --" GB-ARGV+ ;

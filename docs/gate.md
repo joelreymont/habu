@@ -164,13 +164,13 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Acceptance: semantic tool tests run as independent resident-runner tests; CLI
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, split lint, and typed-local tool tests.
-   Current macOS proof after removing top warm launchers, replacing the
+   Current macOS proof after removing top snapshot launchers, replacing the
    monolithic parent support load with explicit suite setup, moving the
    check-tool file-label smoke to the in-process checker core, and splitting AOT
-   closure diagnostics from the maker path: 22.273s internal / 24.49s shell wall
+   closure diagnostics from the maker path: 21.895s internal / 24.20s shell wall
    hot, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=29`;
-   `check-cli` is 2.557s, dictionary/checker is 5.451s, AOT negative is 2.034s,
-   and the slowest test is engine fixture at 13.566s.
+   `check-cli` is 2.354s, dictionary/checker is 5.380s, AOT negative is 2.279s,
+   and the slowest test is engine fixture at 13.587s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -221,6 +221,6 @@ Architecture target:
 - hot Jetson/Orin median near 30 seconds once candidate-source batching and dependency
   scheduling land.
 
-Generated stats, caches, feature-test warm images, and test logs remain local
-artifacts and are never committed. Warm images are tested by the `tail-warm`
-feature slice; they are not part of the native suite harness.
+Generated stats, caches, build images, and test logs remain local artifacts and
+are never committed. Standalone snapshot-launcher tooling is not part of the
+native suite harness.

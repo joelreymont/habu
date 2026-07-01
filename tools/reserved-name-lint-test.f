@@ -15,7 +15,7 @@ require tools/lint/lib.f
 require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/argv.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/reserved-name-lint-core.f
 
 require tools/reserved-name-lint-test-lib.f

@@ -2,7 +2,7 @@
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/warm-run.f
+\ tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/cli-run.f
 \ tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
 
 $1000 constant RNLT-BUF-CAP

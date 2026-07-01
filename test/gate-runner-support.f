@@ -17,7 +17,7 @@ require lib/build.f
 require lib/codesign.f
 require lib/content-key.f
 require tools/build-fixpoint.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/hb-build-lib.f
 require tools/json.f
 require tools/gate-json-assert-core.f

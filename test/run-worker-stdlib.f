@@ -28,7 +28,6 @@ require test/gate-stdlib-inline-lib.f
       27 of GSI-TAIL-PURE endof
       28 of GSI-TAIL-RUNNER endof
       29 of GSI-TAIL-BUILD endof
-      30 of GSI-TAIL-WARM endof
       31 of GSI-LINT-LIBS-CORE endof
       32 of GSI-LINT-LIBS-PTX endof
       33 of GSI-LINT-LIBS-PTX-NEG endof

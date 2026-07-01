@@ -9,7 +9,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require tools/argv.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/json.f
 require tools/json-only-core.f
 

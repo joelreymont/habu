@@ -3,7 +3,7 @@
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
-\ tools/check-all-errors-core.f tools/warm-run.f tools/json.f
+\ tools/check-all-errors-core.f tools/cli-run.f tools/json.f
 \ tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 
 $4000 constant CRHT-BUF-CAP
@@ -177,7 +177,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    s" check-repair-hints boundary failure" type cr
    s" case: " type CRHT-LABEL$ type cr
    s" phase: " type CRHT-PHASE$ type cr
-   s" exe: " type WR-TOOLS$ type cr
+   s" exe: " type CLI-TOOLS$ type cr
    s" source: " type CRHT-SRC type cr
    s" diag: " type CRHT-DIAG type cr
    s" expected exit: " type expect . cr

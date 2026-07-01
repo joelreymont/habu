@@ -2,13 +2,13 @@
 
 Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
-measured persistent content-key hot run after removing top warm launchers and
-splitting AOT closure diagnostics from the maker path is 22.273s internal /
-24.49s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
+measured persistent content-key hot run after removing top snapshot launchers and
+splitting AOT closure diagnostics from the maker path is 21.895s internal /
+24.20s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
 `macos-arm64-12x2` profile, manifest-hashed small `hb-under-test`, no top
-test-suite snapshot, no checker/tool warm launchers, zero warm-image events,
-and an AOT artifact cache hit for this source revision. A source-change fill run
-with one real AOT artifact build measured 29.843s internal / 32.12s shell-wall.
+test-suite snapshot, no checker/tool snapshot launchers, and an AOT artifact
+cache hit for this source revision. A source-change fill run with one real AOT
+artifact build measured 28.781s internal / 30.99s shell-wall.
 The native gate uses
 a 12-way macOS checked
 DAG pool, 2-way nested stdlib pool, split stdlib lint slices
@@ -54,9 +54,9 @@ only private `HB_TMP` artifacts from `bootstrap/`, then installs exactly
 from current source. The gate,
 daily refresh, benchmark, and verification paths remain Habu-native and run with
 Gforth absent. The installed `bin/hb` and gate `Habu-under-test` are the small
-stdin/TTY engine, not warm snapshots; the gate rejects an oversized
-`Habu-under-test`. Warm snapshot images are feature-test outputs rebuilt only by
-the warm-image tool tests, not native suite launchers.
+stdin/TTY engine, not snapshot launchers; the gate rejects an oversized
+`Habu-under-test`. Standalone snapshot-launcher tooling has been removed; snapshot
+coverage belongs to the native build/fixpoint path.
 
 History: 783/0/0 in earlier docs, then 860/0/9 before exit/unloop modeling,
 890/0/0 after that model landed, 979/0/0 after the native primitive,

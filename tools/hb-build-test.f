@@ -1,5 +1,5 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f tools/warm-run.f tools/hb-build-lib.f tools/hb-build-test.f
+\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f tools/cli-run.f tools/hb-build-lib.f tools/hb-build-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -15,7 +15,7 @@ require lib/build.f
 require lib/codesign.f
 require lib/content-key.f
 require tools/build-fixpoint.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/hb-build-lib.f
 
 65536 constant HBT-CAPTURE-CAP
@@ -183,7 +183,7 @@ create HBT-KEY-B 64 allot
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" lib/content-key.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/warm-run.f"  >LEN PROC-ARGV+
+   s" tools/cli-run.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;

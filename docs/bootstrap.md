@@ -1,7 +1,7 @@
 # Bootstrap
 
 `bin/hb` is generated and ignored. It is the only installed native build output.
-It is the small stdin/TTY engine, not a warm snapshot: core/checker/tool source
+It is the small stdin/TTY engine, not a snapshot launcher: core/checker/tool source
 is loaded from the checkout at process start, and large dictionaries/checker
 arenas live in runtime memory instead of being baked into the executable.
 A checkout without `bin/hb` uses Gforth only to create private bootstrap
@@ -136,11 +136,11 @@ benchmark fixtures or require JavaScript, Python, Rust, TypeScript, or model
 runtimes.
 
 The test suite runs directly in the small `bin/hb` engine; it does not bake a
-top-level test-suite snapshot and it does not use checker/tool warm images as
-launchers. The persistent content cache stores rebuilt `HABU_UNDER_TEST`
-candidates and builder/maker artifacts. Warm snapshots remain a feature tested
-by `tools/warm-image.f` and the `tail-warm` slice; those generated images are
-local artifacts and must not be committed.
+top-level test-suite snapshot and it does not use checker/tool snapshot images
+as launchers. The persistent content cache stores rebuilt `HABU_UNDER_TEST`
+candidates and builder/maker artifacts. Snapshot coverage belongs to the native
+build/fixpoint path; generated images are local artifacts and must not be
+committed.
 
 `bin/hb` itself must stay the small source-loading engine.
 

@@ -294,10 +294,6 @@ TEST:SUITE stdlib-build-fixtures
    lib/build-test.f
 TEST:END-SUITE
 
-TEST:SUITE bootstrap-warm-image-fixtures
-   tools/warm-image-test.f
-TEST:END-SUITE
-
 TEST:SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 TEST:END-SUITE

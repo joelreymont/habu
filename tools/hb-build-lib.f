@@ -2,7 +2,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
 \ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
-\ tools/build-fixpoint.f, and tools/warm-run.f.
+\ tools/build-fixpoint.f, and tools/cli-run.f.
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -284,21 +284,21 @@ variable HBB-JSON-FOUND
    s" tools/argv.f"  >LEN PROC-ARGV+ ;
 
 : HBB-ADD-AOT-LINT-ENTRY ( -- )
-   s" tools/aot-lint.f" WR-TOOLS-LOAD if exit then
+   s" tools/aot-lint.f" CLI-TOOLS-LOAD if exit then
    HBB-ADD-LINT-LOADS
    s" tools/aot-lint-core.f"  >LEN PROC-ARGV+
    s" tools/aot-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 
 : HBB-ADD-SIGNATURE-LINT-ENTRY ( -- )
-   s" tools/signature-lint.f" WR-TOOLS-LOAD if exit then
+   s" tools/signature-lint.f" CLI-TOOLS-LOAD if exit then
    HBB-ADD-LINT-LOADS
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint.f"  >LEN PROC-ARGV+
    HBB-LOAD-END ;
 
 : HBB-ADD-DIAG-ORIGIN-ENTRY ( -- )
-   s" tools/diag-origin.f" WR-TOOLS-LOAD if exit then
+   s" tools/diag-origin.f" CLI-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/string.f"  >LEN PROC-ARGV+
@@ -331,12 +331,12 @@ variable HBB-JSON-FOUND
    outu LEN>N erru LEN>N rc RC>N ;
 
 : HBB-RUN-HB-CAPTURE ( -- n n n )
-   WR-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   CLI-TOOLS$ >LEN HBB-OUT-BUF HBB-CAPTURE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
 : HBB-RUN-DIAG-CAPTURE ( -- n n n )
-   WR-TOOLS$ >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
+   CLI-TOOLS$ >LEN BF-SOURCE-BUF BF-SOURCE-CAP >LEN HBB-ERR-BUF HBB-CAPTURE-CAP >LEN
    HBB-TIMEOUT-MS >MS RUN-ARGV-ENV-CAPTURE
    HBB-CAPTURE>N ;
 
@@ -422,7 +422,7 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/codesign.f" HBB-KEY-FILE+
    s" lib/content-key.f" HBB-KEY-FILE+
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
-   s" tools/warm-run.f" HBB-KEY-FILE+
+   s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-COMMON-SOURCES ( -- )

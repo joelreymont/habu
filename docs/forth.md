@@ -758,8 +758,8 @@ end-package
   breakpoints, and snapshot cells. A cell inside a scratch range will be
   overwritten by ordinary compiled source; add a focused regression for the
   exact overlap class.
-- **Warm snapshots retire the baked tail instead of replaying core sources.**
-  When a warm-image entry needs to replace a baked tail word such as `SNAP-OUT`,
+- **Snapshot builders retire the baked tail instead of replaying core sources.**
+  When a snapshot entry needs to replace a baked tail word such as `SNAP-OUT`,
   use the explicit definition-lifecycle path (`undefine NAME` for one word,
   `HIDE-DEFS-FROM` only for refresh tail truncation) and append the actual
   snapshot entry file. Do not replay already-baked core, target, or image files

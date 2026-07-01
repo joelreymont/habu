@@ -1,6 +1,6 @@
 \ repair-packet-test.f - checked fixture for repair packet generation.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
 \ lib/vector.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
 \ tools/check-all-errors-core.f tools/json.f tools/gate-json-assert-core.f
@@ -14,7 +14,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require tools/warm-run.f
+require tools/cli-run.f
 require lib/vector.f
 require tools/lint/text.f
 require tools/lint/token.f
@@ -152,7 +152,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    outu LEN>N erru LEN>N kind code ;
 
 : RPT-HB-CAPTURE ( -- n n n n )
-   WR-TOOLS$  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
+   CLI-TOOLS$  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
    RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME RPT-CAPTURE>N ;
 
@@ -270,7 +270,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 \ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
 : RPT-ARGV-REPAIR-NOARGS ( -- )
    PROC-ARGV-RESET
-   s" tools/repair-packet-core.f" s" tools/repair-packet.f" WR-TOOLS-LOAD2 if exit then
+   s" tools/repair-packet-core.f" s" tools/repair-packet.f" CLI-TOOLS-LOAD2 if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+

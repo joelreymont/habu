@@ -768,7 +768,7 @@ TR-INSTALL-POOL-HOOKS
    s" tools/aot-lint-core.f"  >LEN PROC-ARGV+
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
-   s" tools/warm-run.f"  >LEN PROC-ARGV+
+   s" tools/cli-run.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build-direct-lints.f"  >LEN PROC-ARGV+ ;
 
@@ -960,7 +960,7 @@ TR-INSTALL-POOL-HOOKS
       27 of s" GROUP: stdlib/tail-pure [inprocess]" endof
       28 of s" GROUP: stdlib/tail-runner [inprocess]" endof
       29 of s" GROUP: stdlib/tail-build [inprocess]" endof
-      30 of s" GROUP: stdlib/tail-warm-image [inprocess]" endof
+      30 of s" unused retired phase 30" endof
       31 of s" GROUP: stdlib/lint-libs/core [inprocess]" endof
       32 of s" GROUP: stdlib/lint-libs/ptx [inprocess]" endof
       33 of s" GROUP: stdlib/lint-libs/ptx-neg [inprocess]" endof
@@ -1006,7 +1006,7 @@ TR-INSTALL-POOL-HOOKS
       27 of s" gate-stdlib-tail-pure" endof
       28 of s" gate-stdlib-tail-runner" endof
       29 of s" gate-stdlib-tail-build" endof
-      30 of s" gate-stdlib-tail-warm" endof
+      30 of s" gate-unused-30" endof
       31 of s" gate-stdlib-lint-libs-core" endof
       32 of s" gate-stdlib-lint-libs-ptx" endof
       33 of s" gate-stdlib-lint-libs-ptx-neg" endof
@@ -1052,7 +1052,7 @@ TR-INSTALL-POOL-HOOKS
       27 of TR-STDLIB-TAIL-ARGS endof
       28 of TR-STDLIB-TAIL-ARGS endof
       29 of TR-STDLIB-TAIL-ARGS endof
-      30 of TR-STDLIB-TAIL-ARGS endof
+      30 of TR-UNSCHEDULED-PHASE endof
       31 of TR-STDLIB-LINT-LIBS-ARGS endof
       32 of TR-STDLIB-LINT-LIBS-ARGS endof
       33 of TR-STDLIB-LINT-LIBS-ARGS endof
@@ -1095,7 +1095,7 @@ TR-INSTALL-POOL-HOOKS
       27 of s" tail-pure" endof
       28 of s" tail-runner" endof
       29 of s" tail-build" endof
-      30 of s" tail-warm" endof
+      30 of TR-UNSCHEDULED-PHASE endof
       31 of s" lint-libs-core" endof
       32 of s" lint-libs-ptx" endof
       33 of s" lint-libs-ptx-neg" endof

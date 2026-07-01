@@ -137,7 +137,7 @@ points stay listed.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
 - `tools/build-fixpoint.f` — checked native stage/stdin build driver; explicit
-  `snap` builds warm snapshot candidates for cache/debug paths.
+  `snap` builds snapshot candidates for cache/debug paths.
 - `tools/check-core.f` — reusable Habu-native checked engine runner core.
 - `tools/check.f` — thin CLI entrypoint for the checked engine runner.
 - `tools/check-main.f` — no-include checked engine entry for checker CLI reuse.
@@ -153,15 +153,7 @@ points stay listed.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
   hb-build boundary rejections.
-- `tools/warm-image-lib.f` — checked tool library that bakes warm snapshot images
-  plus generated trust-sidecar sources from support files for feature tests.
-- `tools/warm-image-gate-stats.f` — tiny gate-only adapter that wires
-  warm-image events into `test/gate-stats.f` without making warm-image-lib depend
-  on test code.
-- `tools/warm-image.f` — CLI entrypoint for warm snapshot image baking.
-- `tools/warm-image-test.f` — checked fixture coverage for warm image baking,
-  support-source availability, and warm-image checker rejection.
-- `tools/warm-run.f` — checked helpers for explicitly installed warm fixture
+- `tools/cli-run.f` — checked helpers for explicitly installed CLI fixture
   subprocesses.
 - `tools/bootstrap-codegen-test.f` — native source regression for bootstrap codegen fail-closed contracts.
 - `tools/imgdump.f` — native image dictionary dump and compare tool.

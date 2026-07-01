@@ -3,7 +3,7 @@
 Habu is a self-hosted, checked Forth for macOS ARM64 and Linux AArch64.
 `bin/hb` is the small native engine: it type-checks Forth stack effects,
 JIT-compiles words to ARM64 code, rebuilds itself to a byte-for-byte fixpoint,
-and can AOT build standalone binaries. It is not a warm snapshot; the large
+and can AOT build standalone binaries. It is not a snapshot launcher; the large
 dictionary/checker state is loaded from source into runtime memory.
 
 Core pieces:
@@ -40,7 +40,7 @@ Use the repo skills for current commands:
 After `bin/hb` exists, normal work is Habu-native: the checked REPL, source
 loading, self-refresh, AOT builds, and gates all run through `bin/hb`. Run from
 the repo root, or from a tree where `src/`, `lib/`, `tools/`, and `test/` are
-available. Warm snapshot images are regenerable gate/cache artifacts.
+available. Generated images are regenerable build artifacts.
 
 ## Checked Forth
 

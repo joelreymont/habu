@@ -8,7 +8,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/bundle-lib-core.f
 
 require tools/bundle-lib-test-lib.f

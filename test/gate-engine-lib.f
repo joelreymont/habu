@@ -93,7 +93,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    lib/errors.f lib/string.f lib/test.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f
    tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
-   tools/check-all-errors-core.f tools/warm-run.f
+   tools/check-all-errors-core.f tools/cli-run.f
    tools/json.f tools/gate-json-assert-core.f tools/check-repair-hints-test.f
 ;GE-FILES
 

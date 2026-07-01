@@ -11,6 +11,6 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/test/runner.f
 require lib/content-key.f
-require tools/warm-run.f
+require tools/cli-run.f
 require test/gate-pool.f
 require test/gate-stats.f

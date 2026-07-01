@@ -1,7 +1,7 @@
 \ json-only-test.f - checked fixtures for tools/json-only.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/argv.f tools/warm-run.f tools/json.f tools/json-only-core.f
+\ tools/argv.f tools/cli-run.f tools/json.f tools/json-only-core.f
 \ tools/json-only-test.f
 
 1024 constant JOT-BUF-CAP
@@ -127,7 +127,7 @@ variable JOT-ERR-A
 
 : JOT-ARGV-LOAD ( -- )
    PROC-ARGV-RESET
-   s" tools/json-only.f" WR-TOOLS-LOAD if exit then
+   s" tools/json-only.f" CLI-TOOLS-LOAD if exit then
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f"  >LEN PROC-ARGV+
    s" lib/memory.f"  >LEN PROC-ARGV+
@@ -141,7 +141,7 @@ variable JOT-ERR-A
 
 : JOT-RUN-NOARG ( -- n n n n )
    JOT-ARGV-LOAD
-   WR-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
+   CLI-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
    JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME JOT-CAPTURE>N ;
 
 : JOT-RUN-CORE ( ptr u8 n -- n n n n )

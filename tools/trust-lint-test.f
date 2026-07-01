@@ -2,7 +2,7 @@
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
 \ lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
-\ tools/warm-run.f tools/trust-lint-core.f tools/trust-lint-test.f
+\ tools/cli-run.f tools/trust-lint-core.f tools/trust-lint-test.f
 
 require tools/date.f
 require lib/errors.f
@@ -17,7 +17,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/argv.f
-require tools/warm-run.f
+require tools/cli-run.f
 require tools/trust-lint-core.f
 
 8192 constant TLT-CAP
@@ -225,7 +225,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
-   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+   s" tools/trust-lint.f" CLI-TOOLS-LOAD if
       TLT-CASE  >LEN PROC-ARGV+
       today todayu  >LEN PROC-ARGV+
       exit
@@ -238,7 +238,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-SOURCE-ARGV ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu today:ptr todayu :}
    PROC-ARGV-RESET
-   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+   s" tools/trust-lint.f" CLI-TOOLS-LOAD if
       s" source-only"  >LEN PROC-ARGV+
       src srcu  >LEN PROC-ARGV+
       TLT-CASE  >LEN PROC-ARGV+
@@ -255,7 +255,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-SOURCE-LIST-ARGV ( ptr u8 n -- ) {: today:ptr todayu :}
    PROC-ARGV-RESET
-   s" tools/trust-lint.f" WR-TOOLS-LOAD if
+   s" tools/trust-lint.f" CLI-TOOLS-LOAD if
       s" source-list"  >LEN PROC-ARGV+
       TLT-CASE  >LEN PROC-ARGV+
       today todayu  >LEN PROC-ARGV+
@@ -277,7 +277,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-RUN-CLI ( ptr u8 n -- n n n )
    TLT-ARGV
-   WR-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
+   CLI-TOOLS$  >LEN TLT-OUT TLT-CAP >LEN TLT-ERR TLT-CAP >LEN
    TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-TODAY>N ( ptr u8 n -- n )

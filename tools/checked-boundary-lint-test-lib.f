@@ -1,7 +1,7 @@
 \ checked-boundary-lint-test.f - checked fixtures for tools/checked-boundary-lint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
 \ lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/warm-run.f tools/checked-boundary-lint-core.f
+\ tools/cli-run.f tools/checked-boundary-lint-core.f
 \ tools/checked-boundary-lint-test.f
 
 4096 constant CBLT-BUF-CAP

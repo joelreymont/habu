@@ -380,14 +380,6 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TEST-SETUP
    s" lib/build-test.f" GSI-INCLUDE ;
 
-: GSI-TAIL-WARM-SETUP ( -- )
-   GSI-TEST-SETUP ;
-
-: GSI-TAIL-WARM ( -- )
-   s" stdlib/tail-warm-image" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TAIL-WARM-SETUP
-   s" tools/warm-image-test.f" GSI-INCLUDE ;
-
 : GSI-TAIL-PROCESS ( -- )
    s" stdlib/tail-process" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP

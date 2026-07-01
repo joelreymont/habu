@@ -40,6 +40,5 @@ Run focused tests through their owning load path before the full gate. Keep
 generated artifacts out of the commit and delete gate caches only when testing
 uncached behavior.
 
-`Habu-under-test` is the small rebuilt `hb-stdin` engine, not a snapshot. Warm
-snapshots are covered by the warm-image feature tests; they are not native suite
-launchers.
+`Habu-under-test` is the small rebuilt `hb-stdin` engine, not a snapshot
+launcher. Snapshot coverage belongs to the native build/fixpoint path.

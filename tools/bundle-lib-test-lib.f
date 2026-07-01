@@ -1,6 +1,6 @@
 \ bundle-lib-test.f - checked fixtures for tools/bundle-lib.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/warm-run.f
+\ lib/fs-mutate.f lib/process.f lib/process-argv.f tools/cli-run.f
 \ tools/bundle-lib-core.f tools/bundle-lib-test.f
 
 8192 constant BLTT-BUF-CAP
@@ -97,7 +97,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
 
 : BLTT-ARGV-TOOL ( -- )
    PROC-ARGV-RESET
-   s" tools/bundle-lib-core.f" s" tools/bundle-lib.f" WR-TOOLS-LOAD2 if exit then
+   s" tools/bundle-lib-core.f" s" tools/bundle-lib.f" CLI-TOOLS-LOAD2 if exit then
    s" --load" BLTT-ARG+
    s" lib/errors.f" BLTT-ARG+
    s" lib/string.f" BLTT-ARG+
@@ -125,7 +125,7 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
 
 : BLTT-TOOL-CAPTURE ( -- n n n n )
-   WR-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
+   CLI-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
 

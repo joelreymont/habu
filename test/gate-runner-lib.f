@@ -40,7 +40,6 @@
 32 constant GR-ID-TAIL-PURE
 33 constant GR-ID-TAIL-RUNNER
 34 constant GR-ID-TAIL-BUILD
-35 constant GR-ID-TAIL-WARM
 36 constant GR-ID-LINT-LIBS-CORE
 37 constant GR-ID-LINT-LIBS-PTX
 38 constant GR-ID-LINT-LIBS-PTX-NEG
@@ -132,7 +131,6 @@ variable GR-ARG-I
    s" tail-pure" GR-ARG0= if GR-ID-TAIL-PURE exit then
    s" tail-runner" GR-ARG0= if GR-ID-TAIL-RUNNER exit then
    s" tail-build" GR-ARG0= if GR-ID-TAIL-BUILD exit then
-   s" tail-warm" GR-ARG0= if GR-ID-TAIL-WARM exit then
    s" lint-libs-core" GR-ARG0= if GR-ID-LINT-LIBS-CORE exit then
    s" lint-libs-ptx" GR-ARG0= if GR-ID-LINT-LIBS-PTX exit then
    s" lint-libs-ptx-neg" GR-ARG0= if GR-ID-LINT-LIBS-PTX-NEG exit then
@@ -190,7 +188,6 @@ variable GR-ARG-I
       GR-ID-TAIL-PURE of GSI-TAIL-PURE endof
       GR-ID-TAIL-RUNNER of GSI-TAIL-RUNNER endof
       GR-ID-TAIL-BUILD of GSI-TAIL-BUILD endof
-      GR-ID-TAIL-WARM of GSI-TAIL-WARM endof
       GR-ID-TAIL-PROCESS of GSI-TAIL-PROCESS endof
       GR-USAGE
    endcase ;
@@ -248,7 +245,6 @@ variable GR-ARG-I
       GR-ID-TAIL-PURE of 0 0= endof
       GR-ID-TAIL-RUNNER of 0 0= endof
       GR-ID-TAIL-BUILD of 0 0= endof
-      GR-ID-TAIL-WARM of 0 0= endof
       GR-ID-TAIL-PROCESS of 0 0= endof
       0 0= 0= swap
    endcase ;
