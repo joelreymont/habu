@@ -19,6 +19,8 @@ create OBJ-A OBJ-CAP allot
 create OBJ-B OBJ-CAP allot
 create OBJ-C OBJ-CAP allot
 create NAME1 1 allot
+create TEXT-A 1 c, 2 c, 3 c,
+create DATA-B 4 c, 5 c,
 
 variable OBJ-A-U
 variable OBJ-B-U
@@ -60,11 +62,13 @@ variable OBJ-C-U
 
 : BUILD-EXPORT-A ( -- )
    BASE
+   TEXT-A 3 OBJ:TEXT+
    s" FOO" s" n -- n" OBJ:EXPORT+
    SAVE-A ;
 
 : BUILD-IMPORT-B ( -- )
    BASE
+   DATA-B 2 OBJ:DATA+
    s" FOO" s" n -- n" OBJ:IMPORT+
    SAVE-B ;
 
@@ -76,6 +80,19 @@ variable OBJ-C-U
 : BUILD-MISSING-C ( -- )
    BASE
    s" BAR" s" n -- n" OBJ:IMPORT+
+   SAVE-C ;
+
+: BUILD-RELOC-C ( -- )
+   BASE
+   TEXT-A 3 OBJ:TEXT+
+   s" FOO" s" n -- n" OBJ:IMPORT+
+   s" abs64" 1 s" FOO" OBJ:RELOC+
+   SAVE-C ;
+
+: BUILD-BAD-RELOC-C ( -- )
+   BASE
+   TEXT-A 3 OBJ:TEXT+
+   s" abs64" 9 s" FOO" OBJ:RELOC+
    SAVE-C ;
 
 : NAME$ ( n -- ptr u8 n ) {: idx:n :}
@@ -102,8 +119,26 @@ variable OBJ-C-U
    OBJLINK:CHECK
    OBJLINK:EXPORT-COUNT 1 T=
    OBJLINK:IMPORT-COUNT 1 T=
+   OBJLINK:OBJECT-COUNT 2 T=
+   OBJLINK:TEXT-SIZE 3 T=
+   OBJLINK:DATA-SIZE 2 T=
    0 OBJLINK:EXPORT$ s" FOO" T$=
    0 OBJLINK:IMPORT$ s" FOO" T$= ;
+
+: RELOC-OFFSET-PASSES ( -- )
+   BUILD-RELOC-C
+   OBJLINK:RESET
+   LOAD-A OBJLINK:ADD
+   LOAD-C OBJLINK:ADD
+   OBJLINK:CHECK
+   OBJLINK:OBJECT-COUNT 2 T=
+   OBJLINK:TEXT-SIZE 6 T= ;
+
+: RELOC-OFFSET-FAILS ( -- )
+   BUILD-BAD-RELOC-C
+   OBJLINK:RESET
+   LOAD-A OBJLINK:ADD
+   [: LOAD-C OBJLINK:ADD ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 : DUP-EXPORT-FAILS ( -- )
    OBJLINK:RESET
@@ -127,6 +162,8 @@ public
    T-RESET
    PREPARE
    RESOLVES
+   RELOC-OFFSET-PASSES
+   RELOC-OFFSET-FAILS
    DUP-EXPORT-FAILS
    MISSING-IMPORT-FAILS
    TABLE-OVERFLOW-FAILS

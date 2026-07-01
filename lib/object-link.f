@@ -23,6 +23,11 @@ create IMP-US MAX-SYMS cells allot
 variable SYM-U
 variable EXP-N
 variable IMP-N
+variable OBJ-N
+variable TEXT-U
+variable DATA-U
+variable CUR-TEXT
+variable CUR-DATA
 
 : TRUE ( -- bool )
    0 0= ;
@@ -33,7 +38,10 @@ variable IMP-N
 : CLEAR ( -- )
    0 SYM-U !
    0 EXP-N !
-   0 IMP-N ! ;
+   0 IMP-N !
+   0 OBJ-N !
+   0 TEXT-U !
+   0 DATA-U ! ;
 
 : CHECK-IDX ( n n -- ) {: idx:n cap:n :}
    idx 0 < if E-OBJ-FIELD throw then
@@ -117,6 +125,42 @@ variable IMP-N
 : IMP-RESOLVED? ( n -- bool ) {: idx:n :}
    idx IMP$ EXP-FIND? ;
 
+: ROW-TAG= ( n ptr u8 n -- bool ) {: row:n tag:ptr tagu:n :}
+   row OBJ:ROW-TAG$ tag tagu STR= ;
+
+: ROW-HEX-U ( n -- n ) {: row:n :}
+   row 0 OBJ:ROW-FIELD$ nip {: hexu:n :}
+   hexu 1 and 0 <> if E-OBJ-FIELD throw then
+   hexu 2 / ;
+
+: SIZE-ROW ( n -- ) {: row:n :}
+   row s" text" ROW-TAG= if
+      CUR-TEXT @ row ROW-HEX-U + CUR-TEXT !
+      exit
+   then
+   row s" data" ROW-TAG= if
+      CUR-DATA @ row ROW-HEX-U + CUR-DATA !
+      exit
+   then ;
+
+: SCAN-SIZES ( -- )
+   0 CUR-TEXT !
+   0 CUR-DATA !
+   0 begin dup OBJ:ROW-COUNT < while
+      dup SIZE-ROW
+      1+
+   repeat drop ;
+
+: RELOC-OFF ( n -- n ) {: row:n :}
+   row 1 OBJ:ROW-FIELD$ STR>NUMBER? if exit then
+   drop E-OBJ-FIELD throw ;
+
+: CHECK-RELOC-ROW ( n -- ) {: row:n :}
+   row s" reloc" ROW-TAG= 0= if exit then
+   row RELOC-OFF {: off:n :}
+   off 0 < if E-OBJ-SCHEMA throw then
+   off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
+
 public
 
 : RESET ( -- )
@@ -127,6 +171,15 @@ public
 
 : IMPORT-COUNT ( -- n )
    IMP-N @ ;
+
+: OBJECT-COUNT ( -- n )
+   OBJ-N @ ;
+
+: TEXT-SIZE ( -- n )
+   TEXT-U @ ;
+
+: DATA-SIZE ( -- n )
+   DATA-U @ ;
 
 : EXPORT$ ( n -- ptr u8 n )
    EXP$ ;
@@ -144,10 +197,15 @@ public
    IMP+ ;
 
 : ADD ( -- )
+   SCAN-SIZES
    0 begin dup OBJ:ROW-COUNT < while
+      dup CHECK-RELOC-ROW
       dup ADD-ROW
       1+
-   repeat drop ;
+   repeat drop
+   TEXT-U @ CUR-TEXT @ + TEXT-U !
+   DATA-U @ CUR-DATA @ + DATA-U !
+   OBJ-N @ 1+ OBJ-N ! ;
 
 : CHECK ( -- )
    0 begin dup IMP-N @ < while

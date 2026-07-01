@@ -888,6 +888,9 @@ objects have been added.
 OBJLINK:RESET        ( -- )
 OBJLINK:EXPORT-COUNT ( -- n )
 OBJLINK:IMPORT-COUNT ( -- n )
+OBJLINK:OBJECT-COUNT ( -- n )
+OBJLINK:TEXT-SIZE    ( -- n )
+OBJLINK:DATA-SIZE    ( -- n )
 OBJLINK:EXPORT$      ( n -- ptr u8 n )
 OBJLINK:IMPORT$      ( n -- ptr u8 n )
 OBJLINK:EXPORT-FIND? ( ptr u8 n -- bool )
@@ -900,7 +903,9 @@ OBJLINK:CHECK        ( -- )
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
 into bounded storage so later `OBJ:LOAD` calls cannot invalidate link metadata.
 `OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports; duplicate exports
-throw during `OBJLINK:ADD`, and table/storage overflow throws `E-OBJ-CAPACITY`.
+throw during `OBJLINK:ADD`, relocation offsets outside the current object's text
+section throw `E-OBJ-SCHEMA`, and table/storage overflow throws
+`E-OBJ-CAPACITY`.
 
 ## Source Materialization
 
