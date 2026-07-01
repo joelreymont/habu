@@ -3,6 +3,18 @@
 \ lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
 \ src/core/sha256.f lib/codesign.f tools/seed.f tools/seed-test.f
 
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require src/core/sha256.f
+require lib/codesign.f
+require tools/seed.f
+
 create SET-ROOT FS-PATH-CAP allot
 create SET-BIN FS-PATH-CAP allot
 create SET-HB FS-PATH-CAP allot
@@ -134,7 +146,6 @@ variable SET-FAIL-SCRIPT-U
    s" lib/process.f"  >LEN PROC-ARGV+
    s" lib/process-argv.f"  >LEN PROC-ARGV+
    s" lib/process-env.f"  >LEN PROC-ARGV+
-   s" src/core/sha256.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" tools/seed.f"  >LEN PROC-ARGV+
    SET-FAIL-SCRIPT$  >LEN PROC-ARGV+ ;

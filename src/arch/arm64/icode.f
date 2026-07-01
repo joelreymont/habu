@@ -5,7 +5,7 @@
 $80000 constant CODE-CAP-BYTES
 $1FFFF constant CODE-CAP-WORDS
 $1002 constant ICODE-MAP-PRIVATE-ANON
-$800 constant ICODE-TAB-CELLS
+$1000 constant ICODE-TAB-CELLS
 $4 constant ICODE-TAB-COUNT
 ICODE-TAB-CELLS ICODE-TAB-COUNT * cells constant ICODE-TAB-BYTES
 variable CODE-A
@@ -74,7 +74,7 @@ variable EP
    I-W @ $10 rshift $FF and EP@ 2 CODE-BYTE+ c@ or EP@ 2 CODE-BYTE+ c!
    I-W @ $18 rshift $FF and EP@ 3 CODE-BYTE+ c@ or EP@ 3 CODE-BYTE+ c! ;
 \ labels: LBLP[id] = defining word pos, or -1 if pending.
-$800 constant LBL-CAP
+ICODE-TAB-CELLS constant LBL-CAP
 \ Keep the historical table names as accessors so emitter code stays readable.
 : LBLP ( -- ptr n ) 0 ICODE-TAB ;
 variable NLBL
@@ -88,7 +88,7 @@ variable NFX
 
 : ?LBL ( -- )  NLBL @ LBL-CAP 1- > IF s" icode: out of labels" 72 die THEN ;
 
-: FX? ( -- )  NFX @ $7FF > IF s" icode: out of fixups" 72 die THEN ;
+: FX? ( -- )  NFX @ ICODE-TAB-CELLS 1 - > IF s" icode: out of fixups" 72 die THEN ;
 
 : LBL ( -- label )  ?LBL  NLBL @ dup 1 + NLBL !  >LABEL ;
 

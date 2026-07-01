@@ -1269,29 +1269,6 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       4 10 CMPI,  C-EQ SRC-DONE @ BCOND,
       SRC-SHLOOP @ B, ;
 
-: C-SOURCE-PIPE ( -- )
-   SRC-STDINPROG @ LBL,
-   SRC-SFAIL @ C-SOURCE-MMAP
-   11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   17 9 0 ADDI,
-   SRC-RL @ LBL,
-      0 0 MOVZ,  1 9 0 ADDI,
-      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 SRC-SFAIL @ CBZ,
-      NR-READ SYS,
-      13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
-      0 SRC-RD @ CBZ,
-      9 9 0 ADD,  SRC-RL @ B,
-   SRC-RD @ LBL,
-   LSHBANG @ BL,
-   9 17 CMP,  C-NE SRC-PIPEOK @ BCOND,
-   10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT SRC-FILE @ BCOND,
-   SRC-PIPEOK @ LBL,
-   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
-   C-SOURCE-SKIP-SHEBANG ;
-
 : C-SOURCE-FIND-SEP ( -- )
    SRC-FSCAN @ LBL,
       13 10 CMP,  C-GE SRC-FREADY @ BCOND,
@@ -1307,31 +1284,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI, ;
 
-: C-SOURCE-FILE-INIT ( -- )
-   9 11 0 ADDI,
-   10 DATA ARGC-CELL LDR,
-   14 1 MOVZ,  15 2 MOVZ,
-   C-SOURCE-ARGV1 ;
-
-: C-SOURCE-FILE-PREFIX ( -- )
-   SRC-FPLAIN @ C-ARG--LOAD?
-   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   C-SOURCE-FIND-SEP
-   SRC-FPLAIN @ LBL,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   SRC-FREADY @ LBL, ;
-
-: C-SOURCE-ARGV14 ( -- )
-   12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
-   12 12 5 ADD,  12 12 0 LDR, ;
-
 : C-SOURCE-APPEND-X4 ( -- )
-   2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,
-   9 2 CMP,  C-GE SRC-SFAIL @ BCOND,
-   4 9 0 STRB,  9 9 1 ADDI, ;
+   2 11 0 ADDI,
+   5 IBUFSZ LIT64,
+   2 2 5 ADD,
+   9 2 CMP,
+   C-GE SRC-SFAIL @ BCOND,
+   4 9 0 STRB,
+   9 9 1 ADDI, ;
 
 : C-SOURCE-APPEND-CHAR ( n -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
@@ -1366,6 +1326,83 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $65 C-SOURCE-APPEND-CHAR
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
+
+: PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- )
+   {: kind var a u :} \ typed-local-lint: allow-bare-local
+   kind PFX-LOAD? if
+      12 var @ ADR,
+      C-SOURCE-APPEND-PROVIDED
+   then ;
+
+: PFX-PROVIDE-FILES ( -- )
+   PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPSTRUCTURES   s" src/core/structures.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPCHECKER      s" src/core/checker.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
+   PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
+   PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
+   PFX-MACOS  LPMACOSTARGET  s" src/os/macos/target.f"  PFX-PROVIDE-ROW
+   PFX-LINUX  LPLINUXLAYOUT  s" src/os/linux/layout.f"  PFX-PROVIDE-ROW
+   PFX-MACOS  LPMACOSLAYOUT  s" src/os/macos/layout.f"  PFX-PROVIDE-ROW
+   PFX-COMMON LPHABULAYOUT   s" src/habu/layout.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPENVBASE      s" src/os/env-base.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
+   PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
+   PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW ;
+
+: C-SOURCE-PIPE ( -- )
+   SRC-STDINPROG @ LBL,
+   SRC-SFAIL @ C-SOURCE-MMAP
+   11 0 0 ADDI,  9 0 0 ADDI,
+   EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-PROVIDE-FILES
+   17 9 0 ADDI,
+   SRC-RL @ LBL,
+      0 0 MOVZ,  1 9 0 ADDI,
+      2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
+      2 SRC-SFAIL @ CBZ,
+      NR-READ SYS,
+      13 C-CS CSET,  13 SRC-SFAIL @ CBNZ,
+      0 SRC-RD @ CBZ,
+      9 9 0 ADD,  SRC-RL @ B,
+   SRC-RD @ LBL,
+   LSHBANG @ BL,
+   9 17 CMP,  C-NE SRC-PIPEOK @ BCOND,
+   10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-GT SRC-FILE @ BCOND,
+   SRC-PIPEOK @ LBL,
+   11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
+   C-SOURCE-SKIP-SHEBANG ;
+
+: C-SOURCE-FILE-INIT ( -- )
+   9 11 0 ADDI,
+   10 DATA ARGC-CELL LDR,
+   14 1 MOVZ,  15 2 MOVZ,
+   C-SOURCE-ARGV1 ;
+
+: C-SOURCE-FILE-PREFIX ( -- )
+   SRC-FPLAIN @ C-ARG--LOAD?
+   14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
+   EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-PROVIDE-FILES
+   C-SOURCE-FIND-SEP
+   SRC-FPLAIN @ LBL,
+   EMIT-COLD-PREFIX
+   PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-PROVIDE-FILES
+   SRC-FREADY @ LBL, ;
+
+: C-SOURCE-ARGV14 ( -- )
+   12 DATA ARGV-CELL LDR,  5 14 3 LSLI,
+   12 12 5 ADD,  12 12 0 LDR, ;
 
 : C-SOURCE-APPEND-ARG ( -- )
    C-SOURCE-ARGV14
@@ -1405,6 +1442,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 0 0 ADDI,  9 11 0 ADDI,
    EMIT-COLD-PREFIX
    PFX-LOAD-SCRIPT-ARGV-COLD
+   PFX-PROVIDE-FILES
    C-SOURCE-APPEND-LSRC
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    SRC-DONE @ B,
