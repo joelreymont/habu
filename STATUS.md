@@ -3,16 +3,17 @@
 Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
 measured persistent content-key hot run after removing top snapshot launchers,
-splitting AOT closure diagnostics from the maker path, and collapsing the
-remaining semantic diagnostic/JIT helper launches is 22.148s internal /
-24.38s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
-`macos-arm64-12x2` profile, manifest-hashed small `hb-under-test`, no top
-test-suite snapshot, no checker/tool snapshot launchers, and an AOT artifact
-cache hit for this source revision. A scratch cold-cache fill run with one real
-AOT artifact build measured 28.621s internal / 30.92s shell-wall, non-regressive
-against the prior 28.781s / 30.99s source-change fill proof.
+splitting AOT closure diagnostics from the maker path, collapsing the remaining
+semantic diagnostic/JIT helper launches, and running tail/lint groups through
+worker-local fork pools is 23.129s internal / 25.43s shell-wall on 2026-07-01
+UTC on macOS/aarch64 with the `macos-arm64-10x2` profile, manifest-hashed small
+`hb-under-test`, no top test-suite snapshot, no checker/tool snapshot launchers,
+and an AOT artifact cache hit for this source revision. A scratch cold-cache
+fill run with one real AOT artifact build measured 27.613s internal / 29.85s
+shell-wall, non-regressive against the prior 28.455s / 30.64s source-change
+fill proof.
 The native gate uses
-a 12-way macOS checked
+a 10-way macOS checked
 DAG pool, 2-way nested stdlib pool, split stdlib lint slices
 (tools/manifest/artifacts/libs), split resident tool-lint semantic groups,
 direct in-process diagnostic JSON and AOT report assertions, batched dictionary
@@ -30,10 +31,10 @@ cache root. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
 Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-`helper-spawn=25`, `spans=184`, `slowest-test=native engine fixture slice`
-at 13.068s; `check-cli` is 2.336s, dictionary/checker is 5.301s, diagnostics
-repair is 5.553s, diagnostics all-strict is 7.775s, and AOT negative is 2.168s
-with no AOT maker run.
+`helper-spawn=25`, `spans=205`, `slowest-test=native engine fixture slice`
+at 12.588s; `check-cli` is 2.177s, dictionary/checker is 4.998s, diagnostics
+repair is 4.764s, diagnostics all-strict is 6.915s, tail/lint groups are under
+4.2s, and AOT negative is 1.821s with no AOT maker run.
 Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

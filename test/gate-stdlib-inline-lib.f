@@ -13,6 +13,7 @@ variable GSI-TOOL-BASE-READY
 
 $10000 constant GSI-TL-STR-CAP
 $20000 constant GSI-TL-FILE-CAP
+600000 constant GSI-FORK-TIMEOUT-MS
 
 create GSI-TL-STR-BUF GSI-TL-STR-CAP allot
 create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
@@ -128,6 +129,20 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-RC @ 0= if GSI-PATH$ ms GSI-PASS exit then
    GSI-PATH$ ms GSI-FAIL
    GSI-RC @ throw ;
+
+: GSI-FORK-RESET ( -- )
+   GT-POOL-RESET ;
+
+: GSI-FORK-DRAIN ( -- )
+   GT-POOL-DRAIN ;
+
+: GSI-FORK-INCLUDE-ACT ( -- )
+   GSI-PATH$ GSI-INCLUDE ;
+
+: GSI-FORK-INCLUDE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path GSI-PATH-A!
+   pathu GSI-PATH-U !
+   path pathu GSI-FORK-TIMEOUT-MS [: GSI-FORK-INCLUDE-ACT ;] GT-POOL-START-FORK ;
 
 : GSI-TOOL-BASE ( -- )
    GSI-TOOL-BASE-READY? if exit then
@@ -323,7 +338,7 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TEST! ;
 
 : GSI-LINT-TOOLS ( -- )
-   s" stdlib/lint-tools" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" stdlib/lint-tools" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-LINT-TOOLS-SETUP
    s" test/gate-stdlib-lint-tools.f" included ;
 
@@ -359,16 +374,18 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TEST! ;
 
 : GSI-TAIL-PURE ( -- )
-   s" stdlib/tail-pure" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" stdlib/tail-pure" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TAIL-PURE-SETUP
-   s" lib/json-write-test.f" GSI-INCLUDE
-   s" lib/memory-test.f" GSI-INCLUDE
-   s" lib/vector-test.f" GSI-INCLUDE
-   s" lib/fs-test.f" GSI-INCLUDE
-   s" tools/bootstrap-codegen-test.f" GSI-INCLUDE
-   s" tools/asm-src-test.f" GSI-INCLUDE
-   s" tools/asm-checked-test.f" GSI-INCLUDE
-   s" tools/image-bytes-test.f" GSI-INCLUDE ;
+   GSI-FORK-RESET
+   s" lib/json-write-test.f" GSI-FORK-INCLUDE
+   s" lib/memory-test.f" GSI-FORK-INCLUDE
+   s" lib/vector-test.f" GSI-FORK-INCLUDE
+   s" lib/fs-test.f" GSI-FORK-INCLUDE
+   s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
+   s" tools/asm-src-test.f" GSI-FORK-INCLUDE
+   s" tools/asm-checked-test.f" GSI-FORK-INCLUDE
+   s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
+   GSI-FORK-DRAIN ;
 
 : GSI-TAIL-RUNNER ( -- )
    s" stdlib/tail-runner" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -381,21 +398,25 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" lib/build-test.f" GSI-INCLUDE ;
 
 : GSI-TAIL-PROCESS ( -- )
-   s" stdlib/tail-process" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" stdlib/tail-process" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TEST-SETUP
-   s" tools/hb-cli-contracts-test.f" GSI-INCLUDE
-   s" lib/process-test.f" GSI-INCLUDE
-   s" lib/process-command-test.f" GSI-INCLUDE ;
+   GSI-FORK-RESET
+   s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
+   s" lib/process-test.f" GSI-FORK-INCLUDE
+   s" lib/process-command-test.f" GSI-FORK-INCLUDE
+   GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-CORE ( -- )
-   s" stdlib/lint-libs/core" GSI-GROUP-SEQ GSI-GROUP-HEADER
+   s" stdlib/lint-libs/core" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TEST-SETUP
-   s" lib/string-test.f" GSI-INCLUDE
-   s" lib/ffi-abi-test.f" GSI-INCLUDE
-   s" lib/array-test.f" GSI-INCLUDE
-   s" lib/table-test.f" GSI-INCLUDE
-   s" lib/regex-test.f" GSI-INCLUDE
-   s" lib/map-test.f" GSI-INCLUDE ;
+   GSI-FORK-RESET
+   s" lib/string-test.f" GSI-FORK-INCLUDE
+   s" lib/ffi-abi-test.f" GSI-FORK-INCLUDE
+   s" lib/array-test.f" GSI-FORK-INCLUDE
+   s" lib/table-test.f" GSI-FORK-INCLUDE
+   s" lib/regex-test.f" GSI-FORK-INCLUDE
+   s" lib/map-test.f" GSI-FORK-INCLUDE
+   GSI-FORK-DRAIN ;
 
 : GSI-LINT-LIBS-PTX ( -- )
    s" stdlib/lint-libs/ptx" GSI-GROUP-SEQ GSI-GROUP-HEADER

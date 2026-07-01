@@ -1,9 +1,11 @@
 ---
 title: Collapse tail and lint slice bottlenecks
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "\"2026-06-30T23:24:33.490508+02:00\""
+closed-at: "2026-07-01T13:37:30.027054+02:00"
+close-reason: "Implemented worker-local fork pools for tail-pure, tail-process, lint-libs/core, and lint-tools after shared setup. Default auto Mac profile retuned to macos-arm64-10x2 to avoid oversubscription. Proof: hot auto 23129ms internal / 25.43s wall; cold auto 27613ms internal / 29.85s wall vs clean baseline 28455ms / 30.64s. Changed groups: tail-pure 2675ms, tail-process 3429ms, lint-libs/core 3038ms, lint-tools 3660ms."
 ---
 
 Problem: Mac hot test suite still spends ~7s in stdlib lint artifacts/lint tools and ~7-10s in stdlib tail slices. These are mostly host-source semantic checks and should run resident with shared setup. Fix: profile per-test spans, move pure lint/doc/tail semantics in-process, isolate only filesystem/artifact/process-contract sentinels, and ensure setup is per suite/group not per test. Acceptance: each tail/lint slice under 5s on Mac hot profile and report names every test/group with timing.

@@ -22,7 +22,7 @@ $3 constant TR-LATE-PHASES
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
-1 constant TR-PROFILE-MACOS-ARM64-12X2
+1 constant TR-PROFILE-MACOS-ARM64-10X2
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
 
@@ -189,7 +189,7 @@ variable TR-PRE-VALIDATE
    s" /sys/devices/system/cpu/online" TR-HOST-READ TRIM s" 0-7" STR= ;
 
 : TR-DETECT-PROFILE ( -- n )
-   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-12X2 exit then
+   HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-10X2 exit then
    HB-TARGET-LINUX? if
       s" /proc/device-tree/model" EXISTS? if
          TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
@@ -200,7 +200,7 @@ variable TR-PRE-VALIDATE
 
 : TR-PROFILE-ID? ( ptr u8 n -- n )
    2dup s" auto" STR= if 2drop TR-DETECT-PROFILE exit then
-   2dup s" macos-arm64-12x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-12X2 exit then
+   2dup s" macos-arm64-10x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-10X2 exit then
    2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
    2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
    2drop TR-USAGE ;
@@ -210,8 +210,8 @@ variable TR-PRE-VALIDATE
    0 TR-BUDGET-USER !
    0 TR-WALL-BUDGET-USER !
    id case
-      TR-PROFILE-MACOS-ARM64-12X2 of
-         12 TR-TOP-POOL-SLOTS!
+      TR-PROFILE-MACOS-ARM64-10X2 of
+         10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
          40000 TR-BUDGET !
          45000 TR-WALL-BUDGET !
@@ -243,7 +243,7 @@ variable TR-PRE-VALIDATE
 
 : TR-COLD-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-12X2 of 70000 endof
+      TR-PROFILE-MACOS-ARM64-10X2 of 70000 endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 150000 endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
       TR-BUDGET @ swap
@@ -251,7 +251,7 @@ variable TR-PRE-VALIDATE
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-12X2 of 70000 endof
+      TR-PROFILE-MACOS-ARM64-10X2 of 70000 endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 160000 endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
       TR-WALL-BUDGET @ swap
@@ -326,7 +326,7 @@ variable TR-PRE-VALIDATE
 
 : TR-PROFILE$ ( -- ptr u8 n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-12X2 of s" macos-arm64-12x2" endof
+      TR-PROFILE-MACOS-ARM64-10X2 of s" macos-arm64-10x2" endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
       TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
       s" unknown" rot
@@ -337,7 +337,7 @@ variable TR-PRE-VALIDATE
    s" persistent" ;
 
 : TR-CHECK-MACOS-PROFILE ( -- )
-   HB-TARGET-MACOS? 0= if s" macos-arm64-12x2 requires macOS target" TR-PROFILE-FAIL then ;
+   HB-TARGET-MACOS? 0= if s" macos-arm64-10x2 requires macOS target" TR-PROFILE-FAIL then ;
 
 : TR-CHECK-JETSON-PROFILE ( -- )
    HB-TARGET-LINUX? 0= if s" jetson-orin-clocks-4x2 requires Linux target" TR-PROFILE-FAIL then
@@ -349,7 +349,7 @@ variable TR-PRE-VALIDATE
 
 : TR-CHECK-PROFILE ( -- )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-12X2 of TR-CHECK-MACOS-PROFILE endof
+      TR-PROFILE-MACOS-ARM64-10X2 of TR-CHECK-MACOS-PROFILE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
       drop s" unknown perf profile" TR-PROFILE-FAIL

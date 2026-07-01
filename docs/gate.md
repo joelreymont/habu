@@ -113,7 +113,7 @@ remembering slot counts or cache state:
 
 | Profile | Host proof | Slots | Nested | Persistent budget | Scratch-cache budget |
 |---|---|---:|---:|---:|---:|
-| `macos-arm64-12x2` | macOS ARM64 target | 12 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
+| `macos-arm64-10x2` | macOS ARM64 target | 10 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
 | `linux-arm64-4x2` | Linux ARM64 target | 4 | 2 | 120000ms | 150000ms |
 
@@ -169,12 +169,13 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    monolithic parent support load with explicit suite setup, moving the
    check-tool file-label smoke to the in-process checker core, splitting AOT
    closure diagnostics from the maker path, and keeping SARIF/prop-test CLI
-   entries thin: 22.148s internal / 24.38s shell wall hot, `inner-hb=1`,
-   `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`; `check-cli` is 2.336s,
-   dictionary/checker is 5.301s, diagnostics all-strict is 7.775s, and the
-   slowest test is engine fixture at 13.068s. Scratch cold-cache fill is
-   28.621s internal / 30.92s shell wall, below the prior source-change fill
-   proof of 28.781s / 30.99s.
+   entries thin, and running tail/lint groups through worker-local fork pools:
+   23.129s internal / 25.43s shell wall hot, `inner-hb=1`,
+   `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`; `check-cli` is 2.177s,
+   dictionary/checker is 4.998s, diagnostics all-strict is 6.915s, tail/lint
+   groups are under 4.2s, and the slowest test is engine fixture at 12.588s.
+   Scratch cold-cache fill is 27.613s internal / 29.85s shell wall, below the
+   prior source-change fill proof of 28.455s / 30.64s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local

@@ -1473,3 +1473,8 @@ lesson — keep the specific word/code/path, cut the prose.
   Pulling SARIF into the shared diagnostics library made every diagnostic worker
   compile it; isolate heavy cores in phase-owned worker files and prove hot plus
   cold-cache timing.
+- **Nested test parallelism needs a top-level slot retune:** worker-local fork
+  pools fixed tail/lint span tails without recompiling setup, but keeping the
+  old 12-way Mac top pool made cold cache fill slower through contention. The
+  measured Mac profile is 10 top slots with 2 nested slots; prove cold wall time
+  against the prior clean-tree baseline before landing scheduler changes.
