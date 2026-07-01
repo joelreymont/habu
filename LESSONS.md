@@ -8,6 +8,10 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Giant words hide effects even with correct signatures:** a survey renderer
+  combined input scanning, row validation, aggregate mutation, and JSON emission
+  in one body. Split multi-pass work into cursor/pass/row/render helpers first;
+  line comments then document only the non-obvious transitions that remain.
 - **Core checker helpers share the loaded image:** `CK-TRUE` looked local in
   `src/core/checker.f` but collided with `lib/content-key.f` during the full
   suite. Use feature-owned helper prefixes and prove against the full image, not

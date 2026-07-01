@@ -380,6 +380,12 @@ address arithmetic at the public boundary.
   not reconstruct a branch ladder.
 - **Small, single-purpose words**, aim ≤ 5 lines. A word should read top-to-bottom
   without you tracking more than a few stack items.
+- **Multi-pass words must be split into named passes.** A word that scans input,
+  validates rows, mutates aggregate state, and renders output in one body is not
+  reviewable even if its definition-line effect is correct. Factor cursor
+  movement, row classification, validation, state updates, and render emission
+  into named checked words with their own stack effects, then compose them with
+  a small orchestration word.
 - **No dense single-line control words.** A one-line definition is only for a
   trivial straight-line wrapper. Any word with `IF`, `BEGIN`, `WHILE`, `REPEAT`,
   `UNTIL`, `case`, locals, multiple stack transitions, or more than one semantic
