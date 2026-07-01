@@ -77,6 +77,10 @@ TRUSTED: SNAP>N ( snap -- n ) ;
 : SNAP-DROP ( snap -- )
    SNAP>N drop ;
 
+: DEFLINEAR ( -- )
+   parse-name dup 0= IF s" deflinear: missing name" 70 die THEN
+   CHECKER-DEFLINEAR ;
+
 $1000 constant VRDEF-CAP
 create VRDEF-BUF VRDEF-CAP allot
 variable VRDEF-U

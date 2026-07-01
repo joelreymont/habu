@@ -292,6 +292,11 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    nameu 0= IF s" verify-source: missing deftype name" 74 die THEN
    name nameu CHECKER-DEFTYPE ;
 
+: VS-DEFLINEAR ( -- )
+   VS-NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing deflinear name" 74 die THEN
+   name nameu CHECKER-DEFLINEAR ;
+
 : VS-VREC-END? ( ptr u8 n -- bool )
    s" END-VALUE-RECORD" VS-STR=CI ;
 
@@ -316,6 +321,7 @@ TRUSTED: VS-TRUST-SIG ( ptr u8 n ptr u8 n -- )
    a u s" private" VS-STR=CI IF VS-PRIVATE 0 0= EXIT THEN
    a u s" end-package" VS-STR=CI IF VS-END-PACKAGE 0 0= EXIT THEN
    a u s" deftype" VS-STR=CI IF VS-DEFTYPE 0 0= EXIT THEN
+   a u s" deflinear" VS-STR=CI IF VS-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" VS-STR=CI IF VS-VALUE-RECORD 0 0= EXIT THEN
    a u s" constant" VS-STR=CI IF s" -- a" VS-TRUST-NEXT 0 0= EXIT THEN
    a u s" create" VS-STR=CI IF s" -- ptr a" VS-TRUST-NEXT 0 0= EXIT THEN

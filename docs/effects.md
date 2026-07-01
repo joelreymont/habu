@@ -15,7 +15,7 @@ stack  = rowvar? type*
 type   = conname | role | declared-role | tyvar | 'ptr' type | '[' stack '--' stack ']'
 conname= i64 u8 u32 cell bool char str addr
 role   = idx len count off fd rc pid ms ns tok reg label va symidx asm img snap
-declared-role = a multi-character token declared by `DEFTYPE`
+declared-role = a multi-character token declared by `DEFTYPE` or `DEFLINEAR`
 tyvar  = a..z          (same letter → same type var, per signature)
 rowvar = A..Z          (same letter → same row var; leading = the stack tail)
 ```
@@ -60,6 +60,12 @@ build phases before raw codegen.
 global, explicit, and fail-closed: it cannot reuse a built-in type, parametric
 constructor, atom prefix, or one-letter type variable. Unknown type tokens still
 reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
+
+`DEFLINEAR name` declares a nominal noncopyable cell type. Ordinary checked code
+may pass a linear value through unchanged, but generic copying, dropping, memory
+store/load, and value-record duplication reject unless a called word explicitly
+declares the linear type in its own trusted or checked effect. Use this for owner
+or lifetime tokens around arena-backed records.
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a by-value record
 token for signatures. The token expands to hidden field types, so

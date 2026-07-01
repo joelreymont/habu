@@ -270,6 +270,7 @@ create UWL MAXUWL cells allot   variable USP   variable UOK
 3 constant CT-BOOL
 4 constant CT-FLOAT
 5 constant CT-OBJ
+6 constant CT-LINEAR
 
 0 constant CS-NONE
 1 constant CS-GENERIC
@@ -381,6 +382,9 @@ CT-INIT
 
 : CT-INT? ( n -- bool )
    CT-CLASS@ CT-INT = ;
+
+: CT-LINEAR? ( n -- bool )
+   CT-CLASS@ CT-LINEAR = ;
 
 : CT-NAME$ ( n -- ptr u8 n )
    dup CT-NAME-FIELD @
@@ -605,46 +609,104 @@ variable JSON-DIAGS   0 JSON-DIAGS !
 : DIAG-JSON! ( bool -- )
    JSON-DIAGS ! ;
 
+variable LINC
+variable LINP
+variable LINBEF
+variable LINEXP
+
+: LIN-CON? ( n -- bool )
+   T-RES dup TAG T-CON <> IF drop 0 EXIT THEN
+   PAY CT-LINEAR? ;
+
+: LIN-TYPE-COUNT ( n -- n ) {: t:n :}
+   t T-RES TAG case
+      T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
+      T-PTR of 0 endof
+      T-QUOT of 0 endof
+      T-ATOM of 0 endof
+      T-PARAM of
+         t FIELD-PARAM? IF t FIELD-INNER RECURSE ELSE 0 THEN
+      endof
+      0 swap
+   endcase ;
+
+: LIN-ROW-COUNT ( n -- n ) {: row:n :}
+   0 LINC !
+   row LINP !
+   BEGIN LINP @ R-RES TAG S-PUSH = WHILE
+      LINP @ R-RES P>TYPE LIN-TYPE-COUNT LINC @ + LINC !
+      LINP @ R-RES P>REST LINP !
+   REPEAT
+   LINC @ ;
+
+: LIN-TOTAL ( n n -- n )
+   LIN-ROW-COUNT swap LIN-ROW-COUNT + ;
+
+: LIN-SNAPSHOT ( -- )
+   DCUR @ RCUR @ LIN-TOTAL LINBEF ! ;
+
+: LIN-EXPLICIT? ( n n -- bool )
+   LIN-TOTAL 0 <> ;
+
+: LIN-CHECK ( -- )
+   DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
+
 : CHECKER-STEP {: din dout :}
+   din dout LIN-EXPLICIT? LINEXP !
+   LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
    DCUR @ din UNIFY-IN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  -1 FAILSET ! THEN
-   OK @ and OK !  dout DCUR ! ;
+   OK @ and OK !
+   dout DCUR !
+   OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
 \ balance check rejects net growth or borrowing; loop joins unify RCUR too.
 : RS->R                                    \ >r : data top -> return row
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   rest DCUR !  tv RCUR @ MK-PUSH RCUR ! ;
+   rest DCUR !  tv RCUR @ MK-PUSH RCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : RSR>                                     \ r> : return top -> data row
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   rest RCUR !  tv DCUR @ MK-PUSH DCUR ! ;
+   rest RCUR !  tv DCUR @ MK-PUSH DCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : RSR@                                     \ r@ : peek return top
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    RCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
-   tv DCUR @ MK-PUSH DCUR ! ;
+   tv DCUR @ MK-PUSH DCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : RS2->R                                   \ 2>r : data pair -> return row
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    DCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
-   t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR ! ;
+   t1 RCUR @ MK-PUSH  t2 swap MK-PUSH  RCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : RS2R>                                    \ 2r> : return pair -> data row
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
    rest RCUR !
-   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR ! ;
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : RS2R@                                    \ 2r@ : peek return pair
+   LIN-SNAPSHOT
    FRESH MK-VAR FRESH MK-VAR FRESH MK-ROW {: t1 t2 rest :}
    RCUR @  t2 t1 rest MK-PUSH MK-PUSH  UNIFY OK @ and OK !
-   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR ! ;
+   t1 DCUR @ MK-PUSH  t2 swap MK-PUSH  DCUR !
+   OK @ IF LIN-CHECK THEN ;
 variable QTT  variable QD2  variable QR2
 
 : THROW-EDGE ( -- )
@@ -1210,6 +1272,10 @@ variable UNDEFERR
 : CT-ADD-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
    a u CTN @ CT-ROLE 64 CS-NONE CT-SET ;
+
+: CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
+   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET ;
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -2359,6 +2425,7 @@ PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -2762,6 +2829,9 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : CHECKER-DEFTYPE ( ptr u8 n -- )
    CT-ADD-NOMINAL ;
+
+: CHECKER-DEFLINEAR ( ptr u8 n -- )
+   CT-ADD-LINEAR ;
 
 : CTL-FLAGS-SYM {: sym:n :}
    sym 0= IF 0 EXIT THEN

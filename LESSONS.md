@@ -12,6 +12,9 @@ lesson — keep the specific word/code/path, cut the prose.
   `src/core/checker.f` but collided with `lib/content-key.f` during the full
   suite. Use feature-owned helper prefixes and prove against the full image, not
   only isolated checker probes.
+- **Keep `roles.f` TRUST site rows stable:** inserting `DEFLINEAR` above the
+  trusted role casts shifted every manifest site. Put new definers below the
+  audited cast block unless the manifest is deliberately re-audited.
 - **Multi-line words need useful line effects:** value-record checker work
   exposed helpers whose stack motion had to be reconstructed. Put the word
   effect on the definition line; add body-line effects only where they improve

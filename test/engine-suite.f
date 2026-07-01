@@ -346,9 +346,21 @@ s" COK-NODE-ROLE ( n -- n ) T->NODE T-NODE>N" T-CHECK-PASSES
 s" CBAD-NODE-LEN ( n -- len ) T->NODE" T-CHECK-REJECTS
 s" CBAD-NODE-IDX ( n -- ) >IDX T-NEED-NODE" T-CHECK-REJECTS
 s" CBAD-UNKNOWN-ROLE ( n -- track ) T->NODE" T-CHECK-REJECTS
+DEFLINEAR own
+s" T-MAKE-OWN" s" -- own" TRUST
+s" T-FREE-OWN" s" own --" TRUST
+s" COK-OWN-PASS ( own -- own )" T-CHECK-PASSES
+s" COK-OWN-MAKE ( -- own ) T-MAKE-OWN" T-CHECK-PASSES
+s" COK-OWN-FREE ( own -- ) T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-OWN-DUP ( own -- own own ) dup" T-CHECK-REJECTS
+s" CBAD-OWN-DROP ( own -- ) drop" T-CHECK-REJECTS
+s" CBAD-OWN-OVER ( own n -- own n own ) over" T-CHECK-REJECTS
+s" CBAD-OWN-FETCH ( ptr own -- own ) @" T-CHECK-REJECTS
+s" CBAD-OWN-STORE ( own ptr own -- ) !" T-CHECK-REJECTS
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
+VALUE-RECORD hdl owner own raw ptr u8 END-VALUE-RECORD
 : T->POINT ( n n -- point ) ;
 : T-POINT> ( point -- n n ) ;
 : T-POINT-DUP ( point -- point point ) over over ;
@@ -373,10 +385,12 @@ s" COK-POINT-Y ( point -- n ) nip" T-CHECK-PASSES
 s" COK-POINT-X-SET ( n point -- point ) swap drop" T-CHECK-PASSES
 s" COK-POINT-Y-SET ( point n -- point ) >r drop r>" T-CHECK-PASSES
 s" COK-BOX-ROUNDTRIP ( n -- n ) T->BOX T-BOX>" T-CHECK-PASSES
+s" COK-HDL-PASS ( hdl -- hdl )" T-CHECK-PASSES
 s" CBAD-POINT-RECT ( point -- rect )" T-CHECK-REJECTS
 s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
+s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

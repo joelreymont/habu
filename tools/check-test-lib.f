@@ -204,9 +204,15 @@ variable CKT-START-NS
 
 : CKT-VREC-GOOD$ ( -- ptr u8 n )
    SB-RESET
+   s" DEFLINEAR own" SB-APPEND
+   $0a SB-APPEND-C
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
    $0a SB-APPEND-C
    s" VALUE-RECORD box value a END-VALUE-RECORD" SB-APPEND
+   $0a SB-APPEND-C
+   s" VALUE-RECORD hdl owner own raw ptr u8 END-VALUE-RECORD" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-OWN-PASS ( own -- own ) ;" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-MAKE-POINT ( n n -- point ) ;" SB-APPEND
    $0a SB-APPEND-C
@@ -225,6 +231,15 @@ variable CKT-START-NS
    s" : CKT-MAKE-BOX ( a -- box ) ;" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-TAKE-BOX ( box -- a ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-HDL-PASS ( hdl -- hdl ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-LINEAR-BAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" DEFLINEAR own" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-BAD-OWN-DUP ( own -- own own ) dup ;" SB-APPEND
    SB$ ;
 
 : CKT-VREC-BAD$ ( -- ptr u8 n )
@@ -365,6 +380,13 @@ variable CKT-START-NS
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-LINEAR-BAD ( -- )
+   CKT-LINEAR-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-REJECTED" CONTAINS? TTRUE
+   CKT-ERR erru s" dup" CONTAINS? TTRUE ;
+
 : CKT-TEST-VALUE-RECORD-BAD ( -- )
    CKT-VREC-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -408,6 +430,7 @@ variable CKT-START-NS
    s" check/source-list-audited-lib" [: CKT-TEST-SOURCE-LIST-AUDITED-LIB ;] CKT-RUN
    s" check/source-list-preverify-diag" [: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ;] CKT-RUN
    s" check/value-record-good" [: CKT-TEST-VALUE-RECORD-GOOD ;] CKT-RUN
+   s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN

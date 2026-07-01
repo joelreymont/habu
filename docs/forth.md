@@ -466,6 +466,11 @@ address arithmetic at the public boundary.
 - **Declare new nominal roles explicitly.** Use top-level `DEFTYPE name` before a
   signature mentions a project-specific same-cell role. Unknown type tokens
   remain errors, so misspellings do not become fresh types.
+- **Use `DEFLINEAR` for owner/lifetime tokens.** A linear token is nominal and
+  noncopyable: generic `dup`/`over`/`2dup`, `drop`, `@`, `!`, and by-value record
+  duplication reject when they would duplicate, discard, load, or store it. Only
+  words whose own effect explicitly mentions the linear type may create or
+  consume it, so allocation/free boundaries stay audited.
 - **Raw role casts are not validators.** Cast words such as `>LEN`, `>IDX`,
   `>COUNT`, `>OFF`, `>ASM`, `>IMG`, and `>SNAP` are trusted identity boundaries.
   Public libraries should expose checked constructors and role-specific helpers

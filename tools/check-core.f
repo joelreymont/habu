@@ -17,6 +17,7 @@
 ' CHK-CHECK-HOOK set-check
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFTYPE" s" ptr u8 n --" TRUST
+s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
@@ -639,6 +640,9 @@ variable CHK-DEP-ORDER-N
 : CHK-NOM-FAIL ( n n -- )
    s" deftype" CHK-TYPE-FAIL ;
 
+: CHK-LIN-FAIL ( n n -- )
+   s" deflinear" CHK-TYPE-FAIL ;
+
 : CHK-NOM-NAME-BAD? ( n -- bool ) {: name:n :}
    name CHK-WORD-TOK? 0= IF LINT-TRUE exit THEN
    name LEX-TOK TYPE-RESERVED? ;
@@ -646,6 +650,10 @@ variable CHK-DEP-ORDER-N
 : CHK-NOM-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-NOM-FAIL THEN
    name LEX-TOK CHECKER-DEFTYPE ;
+
+: CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
+   name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
+   name LEX-TOK CHECKER-DEFLINEAR ;
 
 : CHK-VREC-FAIL ( n n -- )
    s" value-record" CHK-TYPE-FAIL ;
@@ -711,11 +719,14 @@ variable CHK-VREC-NAME-I
       CHK-NOM-I @ s" deftype" CHK-TOK=CI if
          CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-NOM-REGISTER
          CHK-NOM-I @ 2 + CHK-NOM-I !
+      else CHK-NOM-I @ s" deflinear" CHK-TOK=CI if
+         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-LIN-REGISTER
+         CHK-NOM-I @ 2 + CHK-NOM-I !
       else CHK-NOM-I @ s" VALUE-RECORD" CHK-TOK=CI if
          CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-VREC-REGISTER CHK-NOM-I !
       else
          CHK-NOM-I @ 1 + CHK-NOM-I !
-      then then
+      then then then
    repeat ;
 
 : CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
