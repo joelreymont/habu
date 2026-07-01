@@ -85,7 +85,7 @@ then runs a live `cuInit`/`cuDeviceGet` smoke on the Orin (SKIPPED off-device).
 ## Components (v0, all runnable + tested)
 
 `tensor` (shape/dtype) · `autograd` (VJP rules + numeric gradcheck) · `optim`
-(SGD family) · `loss` (MSE/L1) · `train` (a loop that converges) · `onnx`
+(SGD family + Adam) · `loss` (MSE/L1) · `train` (a loop that converges) · `onnx`
 (fail-closed op lowering) · `eval` (checker-as-judge + pass@k). The element/scalar
 rules lower onto the checked Habu-PTX kernels once codegen lands.
 

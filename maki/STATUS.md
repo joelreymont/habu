@@ -16,8 +16,9 @@ root; root Habu self-check counts still belong only in root `STATUS.md`.
   v0 tensor type foundation: 2D shape arithmetic (element count, broadcast
   compatibility/result) and the sm_87 dtype set (f32 / f16 / bf16 / u32 / i32)
   with byte sizes. Pure checked Habu, runnable.
-- **Optimizers** (`maki/optim.f`, `maki/optim-test.f`) — SGD, SGD+momentum, and
-  L2 weight decay as float update rules (the per-weight math). Runnable.
+- **Optimizers** (`maki/optim.f`, `maki/optim-test.f`) — SGD, SGD+momentum,
+  L2 weight decay, and bias-corrected Adam as float update rules (the per-weight
+  math). Runnable.
 - **Losses** (`maki/loss.f`, `maki/loss-test.f`) — MSE + its gradient, and L1
   (the per-element rule). Runnable.
 - **Autograd orchestration** (`maki/autograd.f`, `maki/autograd-test.f`) — tensor
@@ -68,7 +69,8 @@ future work.
 - Tensor handle over a Habu-PTX `matrix`/`span` (storage + shape + dtype together).
 - Autograd orchestration: the tensor-op VJP table lowering onto the Habu primitive
   VJP table; the user-facing define-forward → checked-backward API.
-- Optimizers (SGD/Adam) + losses; ONNX import; training/eval loop; eval harness.
+- General tensor-to-PTX lowering for optimizer/loss/autograd rules; ONNX import;
+  training/eval loop; eval harness.
 
 ## Underneath (Habu-PTX, in `lib/`)
 

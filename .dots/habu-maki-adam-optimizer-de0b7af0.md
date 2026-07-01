@@ -1,9 +1,11 @@
 ---
 title: "Maki: Adam optimizer"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-06-27T08:06:44.256951+02:00"
+closed-at: "2026-07-01T17:58:41+02:00"
+close-reason: "completed: maki/optim.f provides ADAM-M, ADAM-V, ADAM-W, and ADAM with caller-supplied bias-correction denominators; maki/optim-test.f covers moment rules, update, and full first step; proof bin/hb --load maki/optim-test.f passed"
 blocks:
   - habu-maki-optimizers-sgd-f61007d1
 ---
