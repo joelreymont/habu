@@ -157,6 +157,10 @@ points stay listed.
   cache lookup before object recompilation.
 - `lib/object-index-test.f` — focused coverage for OBJIDX source-key stability,
   store/load, misses, and malformed-index behavior.
+- `lib/object-resolve.f` — checked OBJRES source+ABI resolver over the object
+  index and content-addressed object store.
+- `lib/object-resolve-test.f` — focused coverage for OBJRES store/load,
+  misses, wrong-index, and stale-object failures.
 - `lib/object-link.f` — checked OBJLINK export/import symbol validation over
   loaded object records.
 - `lib/object-link-test.f` — focused coverage for resolved imports, duplicate

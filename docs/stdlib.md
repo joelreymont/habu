@@ -27,6 +27,7 @@ Planned module files:
 - `lib/object.f`
 - `lib/object-cache.f`
 - `lib/object-index.f`
+- `lib/object-resolve.f`
 - `lib/object-link.f`
 - `lib/process.f`
 - `lib/process-fork.f`
@@ -909,6 +910,23 @@ and compiler ABI strings. `OBJIDX:STORE` validates both source and object keys
 and atomically writes `<root>/<source-key>.idx`; `OBJIDX:LOAD` returns the object
 key and true for a hit, or an empty slice and false for a miss. Malformed keys or
 index files throw `E-OBJ-FIELD`.
+
+`lib/object-resolve.f` owns the `OBJRES` package: the checked resolver that
+combines `OBJIDX` and `OBJSTORE` for source+ABI object-cache lookups.
+
+```forth
+OBJRES:ROOT! ( ptr u8 n -- )
+OBJRES:ROOT$ ( -- ptr u8 n )
+OBJRES:STORE ( -- ptr u8 n )
+OBJRES:LOAD  ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool )
+```
+
+`OBJRES:ROOT!` sets the shared root for `.idx` and `.hbo` entries. `STORE`
+stores the current validated object and indexes it by its own source, target,
+checker, and compiler fields. `LOAD` takes source digest, target ABI, checker
+ABI, and compiler ABI. It returns false only when no source index exists; an
+index pointing at a missing, malformed, wrong-key, or wrong-ABI object fails
+closed through filesystem errors or `E-OBJ-SCHEMA`.
 
 `lib/object-link.f` owns the `OBJLINK` package: the checked symbol validation
 pass for a future object linker. It copies export/import names out of the

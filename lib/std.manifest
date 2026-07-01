@@ -978,6 +978,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-index	lib/object-index.f	word	OBJIDX:EXISTS?	(ptr u8 n -- bool)	lib/object-index-test.f	docs/stdlib.md	stdlib-object	published	test whether a source index key is present
 1	object-index	lib/object-index.f	word	OBJIDX:STORE	(ptr u8 n ptr u8 n --)	lib/object-index-test.f	docs/stdlib.md	stdlib-object	published	store source-key to object-key mapping
 1	object-index	lib/object-index.f	word	OBJIDX:LOAD	(ptr u8 n -- ptr u8 n bool)	lib/object-index-test.f	docs/stdlib.md	stdlib-object	published	load object key for a source key when present
+1	object-resolve	lib/object-resolve.f	module			lib/object-resolve-test.f	docs/stdlib.md	stdlib-object	active	checked source+ABI object cache resolver
+1	object-resolve	lib/object-resolve.f	word	OBJRES:ROOT!	(ptr u8 n --)	lib/object-resolve-test.f	docs/stdlib.md	stdlib-object	published	set shared object index and store root directory
+1	object-resolve	lib/object-resolve.f	word	OBJRES:ROOT$	(-- ptr u8 n)	lib/object-resolve-test.f	docs/stdlib.md	stdlib-object	published	return shared object resolver root directory
+1	object-resolve	lib/object-resolve.f	word	OBJRES:STORE	(-- ptr u8 n)	lib/object-resolve-test.f	docs/stdlib.md	stdlib-object	published	store current object and index it by its header source and ABI fields
+1	object-resolve	lib/object-resolve.f	word	OBJRES:LOAD	(ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- bool)	lib/object-resolve-test.f	docs/stdlib.md	stdlib-object	published	load a source+ABI object cache hit and verify the loaded object headers
 1	object-link	lib/object-link.f	module			lib/object-link-test.f	docs/stdlib.md	stdlib-object	active	checked object export/import symbol validation for future linker
 1	object-link	lib/object-link.f	word	OBJLINK:RESET	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	clear accumulated object link symbols
 1	object-link	lib/object-link.f	word	OBJLINK:PACKAGE-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated package metadata count
