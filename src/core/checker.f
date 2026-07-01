@@ -25,8 +25,11 @@ create TVT MAXTV cells allot   create RVT MAXTV cells allot
 1024 constant MAXPTR
 create PTRA MAXPTR cells allot   variable PTRN
 
-: MK-PTR PTRN @ MAXPTR 1 - > IF s" checker: out of ptr terms" 76 die THEN
-   PTRN @ cells PTRA + !  PTRN @ 3 lshift T-PTR or  PTRN @ 1 + PTRN ! ;
+: MK-PTR ( n -- n )
+   PTRN @ MAXPTR 1 - > IF s" checker: out of ptr terms" 76 die THEN
+   PTRN @ cells PTRA + !
+   PTRN @ 3 lshift T-PTR or
+   PTRN @ 1 + PTRN ! ;
 
 : PTR>INNER PAY cells PTRA + @ ;
 
@@ -139,8 +142,13 @@ UK-EXACT UNIFY-KIND !
 4096 constant MAXPUSH          \ push records (engine-sized bodies need hundreds; evaluate's recovery guards grew EM-COMPILE)
 create SPA MAXPUSH 16 * allot   variable SPN
 
-: MK-PUSH SPN @ MAXPUSH 1 - > IF s" checker: out of pushes" 76 die THEN
-   SPN @ 2 * cells SPA + {: a :} a 8 + ! a ! SPN @ 3 lshift S-PUSH or SPN @ 1 + SPN ! ;
+: MK-PUSH ( n n -- n )
+   SPN @ MAXPUSH 1 - > IF s" checker: out of pushes" 76 die THEN
+   SPN @ 2 * cells SPA + {: a:ptr :}
+   a 8 + !
+   a !
+   SPN @ 3 lshift S-PUSH or
+   SPN @ 1 + SPN ! ;
 
 : P>TYPE PAY 2 * cells SPA + @ ;
 
@@ -186,8 +194,10 @@ create SPA MAXPUSH 16 * allot   variable SPN
 4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot   variable USP   variable UOK
 
-: U-PUSH USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
-   USP @ cells UWL + ! USP @ 1 + USP ! ;
+: U-PUSH ( n -- )
+   USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
+   USP @ cells UWL + !
+   USP @ 1 + USP ! ;
 
 : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 
@@ -536,14 +546,17 @@ variable TOCC  variable TODN  variable TOPARAM
    UK-EXACT UNIFY-KIND ! ;
 variable FV
 
-: FRESH FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN  FV @ dup 1 + FV ! ;
+: FRESH ( -- n )
+   FV @ MAXTV 1 - > IF s" checker: out of typevars" 76 die THEN
+   FV @ dup 1 + FV ! ;
 variable OK   variable DCUR   variable UNCK   variable BROW
 variable RCUR   variable RBROW
 variable THDROW  variable THRROW  variable THSET
 variable XROW  variable XRROW  variable XSET  variable DEADP
 variable DEADERR  variable DEADTA  variable DEADTU
 
-: NEW -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
+: NEW ( -- )
+   -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TVINIT 0 FV ! 0 QEN ! 0 PTRN !
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -1185,7 +1198,10 @@ variable UNDEFERR
 
 \ NB: avoid a 2nd {: :} group here — `{: c :} … {: i :}` mis-reads the slot in the
 \ standalone, collapsing every var to one. Compute the slot address on the stack.
-: VAR-OF {: c :}  c 97 - cells NMAP +  dup @ UNBOUND = IF FRESH over ! THEN  @ MK-VAR ;
+: VAR-OF ( n -- n ) {: c:n :}
+   c 97 - cells NMAP +
+   dup @ UNBOUND = IF FRESH over ! THEN
+   @ MK-VAR ;
 
 \ NB: declare locals at word top, never inside IF/loop (corrupts the locals frame).
 \ concrete width types get distinct con codes; n(1)/f(1) stay the GENERIC int
@@ -1292,8 +1308,11 @@ variable UNDEFERR
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
-: PK!  PKU !  PKA !  -1 PKHAVE ! ;                   \ ( a u -- )
-: PKRESET 0 PKHAVE ! ;
+: PK! ( ptr u8 n -- )
+   PKU !  PKA !  -1 PKHAVE ! ;
+
+: PKRESET ( -- )
+   0 PKHAVE ! ;
 \ NEXT-SIG-TOK ( -- a u ) : next signature token over the SB/SL/SI cursor.
 \ Whitespace separates tokens, and `<`, `>`, `,` are single-token delimiters so
 \ parametric types can be written without spaces: `span<space-global,f32,extent-n>`.
@@ -1649,7 +1668,13 @@ USIGS-RUNTIME-INIT
 
 : UB! {: c :}  c USIGS UEND @ + c!  UEND @ 1 + UEND ! ;
 
-: UBS {: a u :}  0 BEGIN dup u < WHILE  dup a + c@ UB!  1 + REPEAT drop ;
+: UBS ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN
+      dup u <
+   WHILE
+      dup a + c@ UB!
+      1 +
+   REPEAT drop ;
 
 \ UALIGN ( n -- n )
 : UALIGN 7 + $FFFFFFFFFFFFFFF8 and ;
