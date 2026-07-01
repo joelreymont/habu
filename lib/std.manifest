@@ -951,6 +951,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:RELOC+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append relocation kind offset and symbol metadata
 1	object	lib/object.f	word	OBJ:NORET+	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append no-return symbol metadata
 1	object	lib/object.f	word	OBJ:BYTES$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated canonical object bytes
+1	object	lib/object.f	word	OBJ:SOURCE$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object source digest field
+1	object	lib/object.f	word	OBJ:TARGET$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object target ABI field
+1	object	lib/object.f	word	OBJ:CHECKER$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object checker ABI field
+1	object	lib/object.f	word	OBJ:COMPILER$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object compiler ABI field
 1	object	lib/object.f	word	OBJ:MAX-BYTES	(-- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return maximum canonical object byte capacity
 1	object	lib/object.f	word	OBJ:ROW-COUNT	(-- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object body row count excluding the magic header
 1	object	lib/object.f	word	OBJ:ROW$	(n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object body row by zero-based index

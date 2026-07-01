@@ -78,6 +78,18 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    EXPECTED$ OBJ:LOAD
    OBJ:BYTES$ EXPECTED$ T$= ;
 
+: HEADERS ( -- )
+   BUILD
+   OBJ:SOURCE$ HASH$ T$=
+   OBJ:TARGET$ s" macos-aarch64" T$=
+   OBJ:CHECKER$ s" checker-effect-v1" T$=
+   OBJ:COMPILER$ s" hb-arm64-v1" T$=
+   EXPECTED$ OBJ:LOAD
+   OBJ:SOURCE$ HASH$ T$=
+   OBJ:TARGET$ s" macos-aarch64" T$=
+   OBJ:CHECKER$ s" checker-effect-v1" T$=
+   OBJ:COMPILER$ s" hb-arm64-v1" T$= ;
+
 : KEY-STABLE ( -- )
    BUILD
    KEY1 OBJ:KEY-HEX
@@ -184,6 +196,7 @@ public
    T-RESET
    SERIALIZES
    LOAD-ROUNDTRIP
+   HEADERS
    KEY-STABLE
    KEY-CHANGES
    MAX-BYTES-PUBLISHED

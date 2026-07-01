@@ -305,6 +305,39 @@ variable LOAD-OFF
    start ROW-END {: finish:n :}
    BUF start + finish start - ;
 
+: ROW-COUNT* ( -- n )
+   READY
+   0 0 begin dup OUT-LEN @ < while
+      dup ROW-BASE >= if
+         dup BUF + c@ LF = if swap 1+ swap then
+      then
+      1+
+   repeat drop ;
+
+: ROW-TAG* ( n -- ptr u8 n )
+   ROW-SLICE 0 FIELD$ ;
+
+: ROW-FIELD#* ( n -- n )
+   ROW-SLICE TAB-COUNT ;
+
+: ROW-FIELD* ( n n -- ptr u8 n ) {: row:n field:n :}
+   field 0 < if E-OBJ-FIELD throw then
+   row ROW-FIELD#* {: total:n :}
+   field total >= if E-OBJ-FIELD throw then
+   row ROW-SLICE field 1 + FIELD$ ;
+
+: TAG-ROW? ( n ptr u8 n -- bool ) {: row:n tag:ptr tagu:n :}
+   row ROW-TAG* tag tagu STR= ;
+
+: FIND-TAG ( ptr u8 n -- n ) {: tag:ptr tagu:n :}
+   0 begin dup ROW-COUNT* < while
+      dup tag tagu TAG-ROW? if exit then
+      1+
+   repeat drop E-OBJ-SCHEMA throw ;
+
+: HEADER$ ( ptr u8 n -- ptr u8 n )
+   FIND-TAG 0 ROW-FIELD* ;
+
 public
 
 : RESET ( -- )
@@ -363,32 +396,35 @@ public
    READY
    BUF OUT-LEN @ ;
 
+: SOURCE$ ( -- ptr u8 n )
+   s" source" HEADER$ ;
+
+: TARGET$ ( -- ptr u8 n )
+   s" target" HEADER$ ;
+
+: CHECKER$ ( -- ptr u8 n )
+   s" checker" HEADER$ ;
+
+: COMPILER$ ( -- ptr u8 n )
+   s" compiler" HEADER$ ;
+
 : MAX-BYTES ( -- n )
    CAP ;
 
 : ROW-COUNT ( -- n )
-   READY
-   0 0 begin dup OUT-LEN @ < while
-      dup ROW-BASE >= if
-         dup BUF + c@ LF = if swap 1+ swap then
-      then
-      1+
-   repeat drop ;
+   ROW-COUNT* ;
 
 : ROW$ ( n -- ptr u8 n )
    ROW-SLICE ;
 
 : ROW-TAG$ ( n -- ptr u8 n )
-   ROW-SLICE 0 FIELD$ ;
+   ROW-TAG* ;
 
 : ROW-FIELD# ( n -- n )
-   ROW-SLICE TAB-COUNT ;
+   ROW-FIELD#* ;
 
-: ROW-FIELD$ ( n n -- ptr u8 n ) {: row:n field:n :}
-   field 0 < if E-OBJ-FIELD throw then
-   row ROW-FIELD# {: total:n :}
-   field total >= if E-OBJ-FIELD throw then
-   row ROW-SLICE field 1 + FIELD$ ;
+: ROW-FIELD$ ( n n -- ptr u8 n )
+   ROW-FIELD* ;
 
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    u CAP > if E-OBJ-CAPACITY throw then
