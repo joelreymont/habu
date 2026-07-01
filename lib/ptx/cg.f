@@ -47,11 +47,11 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 : CG-ENTRY ( -- )
    s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" PTX-L ;
 : CG-OPEN ( -- )
-   s" {" PTX-L
-   s" .reg .pred %p<8>;" PTX-L
-   s" .reg .f32 %f<32>;" PTX-L
-   s" .reg .b32 %r<16>;" PTX-L
-   s" .reg .b64 %rd<16>;" PTX-L ;
+   s" {" PTX-L \ ( -- )
+   s" .reg .pred %p<32>;" PTX-L \ ( -- )
+   s" .reg .f32 %f<32>;" PTX-L \ ( -- )
+   s" .reg .b32 %r<32>;" PTX-L \ ( -- )
+   s" .reg .b64 %rd<32>;" PTX-L ; \ ( -- )
 : CG-PARAMS ( -- )                      \ x=%rd1 y=%rd2 a=%f1 n=%r1
    s" ld.param.u64 %rd1, [p_x];" PTX-L
    s" ld.param.u64 %rd2, [p_y];" PTX-L

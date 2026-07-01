@@ -445,9 +445,10 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-TOOL ( -- )
-   s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   GSI-TEST-SETUP
-   s" tools/ptx/saxpy-test.f" GSI-INCLUDE ;
+   s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )
+   GSI-TEST-SETUP \ ( -- )
+   s" tools/ptx/profile-test.f" GSI-INCLUDE \ ( -- )
+   s" tools/ptx/saxpy-test.f" GSI-INCLUDE ; \ ( -- )
 
 : GSI-LINT-MANIFEST ( -- )
    s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER

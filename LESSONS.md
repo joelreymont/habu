@@ -1014,6 +1014,11 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## FFI / GPU (PTX)
 
+- **PTX profile runs must include `ptxas`, not just text tests:** the v4 SAXPY
+  text fixture expected `%p21`/`%rd22`, but `CG-OPEN` still declared scalar-sized
+  pools (`%p<8>`, `%r<16>`, `%rd<16>`). Benchmarking through checked emit →
+  `ptxas` → CUDA launch exposed the stale resource contract; keep assembly in
+  perf proof loops.
 - **FFI needs almost no new ABI machinery:** an AAPCS64 C-call is a non-leaf
   `FPRIM` (gets the x30 frame) that `G-POP`s fn + arg buffer, loads `x0..x7`,
   `BLR,`, `G-PUSH`es `x0`. `XDS` is `x19` (AAPCS64 callee-saved) so the C callee

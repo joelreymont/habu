@@ -122,6 +122,10 @@ GEMM is where we can move strictly fewer bytes than hand-fused Triton** (dotted
   with **dtype-matched tolerance** (BF16/TF32 are *not* bit-exact), and lock it with a
   regression test. (We do device-vs-CPU; the committed test harness is dotted
   `habu-committed-device-correctness`.)
+- **Benchmark/profile rows (BLOCKING for perf claims):** report the kernel label, launch
+  shape, elapsed ns, bytes, FLOPs, GB/s, GFLOP/s, and roof utilization through the
+  checked Habu profile helpers (`tools/ptx/profile.f`). A new kernel optimization is not
+  "faster" until the relevant profile row explains which roof it moved toward.
 
 ## The one-line instinct (say it on every op)
 
