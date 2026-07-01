@@ -2,10 +2,12 @@
 \ lib/hashmap.f O(1) probe, on GB-N distinct keys (all new groups - the worst
 \ case for the linear scan). Time GB-LRUN and GB-HRUN in separate processes.
 \ Names are GB- prefixed to avoid the engine's redefinition guard.
-\ Load: lib/errors.f lib/string.f lib/hashmap.f odin/grouping-bench.f
+\ Load: require lib/errors.f, lib/string.f, lib/hashmap.f, odin/grouping-bench.f
 \ Re-run: time each of
-\   cat <deps> odin/grouping-bench.f <(echo GB-LRUN) | bin/hb
-\   cat <deps> odin/grouping-bench.f <(echo GB-HRUN) | bin/hb
+\   printf '%s\n' 'require lib/errors.f' 'require lib/string.f' \
+\      'require lib/hashmap.f' 'require odin/grouping-bench.f' 'GB-LRUN' | ../habu/bin/hb
+\   printf '%s\n' 'require lib/errors.f' 'require lib/string.f' \
+\      'require lib/hashmap.f' 'require odin/grouping-bench.f' 'GB-HRUN' | ../habu/bin/hb
 
 16000 constant GB-N
 32768 constant GB-HCAP        \ pow2 > GB-N

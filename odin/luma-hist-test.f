@@ -1,5 +1,9 @@
 \ luma-hist-test.f - histogram luminance stats, hand-computed oracle.
-\ Run: cat lib/errors.f lib/test.f odin/luma-hist.f odin/luma-hist-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/luma-hist-test.f
+
+require lib/errors.f
+require lib/test.f
+require odin/luma-hist.f
 
 package LUMA
 private

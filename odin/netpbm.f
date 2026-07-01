@@ -92,4 +92,7 @@ public
    POS @ RIDX !
    b ch  w h *  EMIT-PIXELS
    SB$ 0 0= ;
+
+: WIDTH@ ( -- n ) WIDTH @ ;
+: HEIGHT@ ( -- n ) HEIGHT @ ;
 end-package

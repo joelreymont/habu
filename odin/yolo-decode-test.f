@@ -1,5 +1,12 @@
 \ yolo-decode-test.f - oracle tests against src/yolo_decode.zig "iou and overlap".
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f odin/float-cell.f odin/yolo-decode.f odin/yolo-decode-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/yolo-decode-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+require odin/float-cell.f
+require odin/yolo-decode.f
 
 package YOLO
 private

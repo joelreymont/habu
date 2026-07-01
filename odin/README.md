@@ -31,6 +31,13 @@ package. The package rules live in `docs/forth.md`.
 | `LOWLIGHT` | low-light-report / -manifest           | low-light metrics + manifest |
 | `PERCEPTION`| perception-latency / -render / -analyze | perception latency metrics |
 | `CAMTRACK` | camera-tracker                         | alpha-beta camera-rate tracker |
+| `SAVEDIMG` | saved-image-scenario                   | user-assisted saved-image scenario front end |
+| `HCAP`    | capture-backend                        | Habu CameraOne saved-image capture backend |
+| `COLAT`   | cameraone-latency                      | CameraOne image-time IMU latency analyzer |
+| `C1LAT`   | cameraone-latency-scenario             | user-assisted CameraOne latency scenario front end |
+| `SPSCIMU` | spsc-imu (+ -cli)                      | Habu BMI088 SPSC capture backend |
+| `SPMOT`   | spsc-motion                            | SPSC motion analyzer + scenario summary |
+| `SPSCEN`  | spsc-motion-scenario                   | user-assisted SPSC motion scenario front end |
 
 **Naming rule:** single-analyzer packages naturalize their words (no module
 prefix — `TEGRA:SUMMARY`, `NETPBM:DECODE`, `CAMTRACK:RESET`). Multi-sub-analyzer
@@ -164,7 +171,7 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
 - `zed_ffi.f` — **SDK reachability through `ffi-call-n`**: dlopens the real ZED SDK
   (`/usr/local/zed/lib/libsl_zed.so`), resolves the extern-"C"
   `getZEDSDKRuntimeVersion_C(int*,int*,int*)`, and calls it via `lib/ffi.f`
-  `FFI-CALLN`. Non-invasive (no camera). Validated on the standing `bin/hb` with
+  `FFI-CALLN`. Non-invasive (no camera). Validated on the standing `../habu/bin/hb` with
   SDK runtime version `5.2.3`.
 
 - `perception_latency.f` — perception latency metric core from
@@ -183,21 +190,15 @@ Shared rendering comes from `lib/render.f` / `lib/report.f` on master (not vendo
 
 ## Running tests
 
-`bin/hb` is a symlink to the built engine. Each `*-test.f` carries its dependency
-chain in a `\ Run:` header comment (tests reopen their own `package` and call the
-module unqualified). Prefer feeding `require` lines to Habu so shared
-dependencies are loaded once even when modules self-import their own
-requirements:
+`../habu/bin/hb` is the known-good rebuilt Habu engine for this workspace. Each
+`*-test.f` owns its dependencies with `require`, reopens its own `package`, and
+can be loaded directly from the workspace root. The full pure-data port suite
+uses Habu's `TEST:*` suite framework and lists only test entry files:
 
 ```sh
-printf '%s\n' \
-  'require lib/errors.f' \
-  'require lib/string.f' \
-  'require lib/test.f' \
-  'require lib/float.f' \
-  'require lib/fmt.f' \
-  'require odin/tegrastats.f' \
-  'require odin/tegrastats-test.f' | bin/hb                 # -> test: ok
+../habu/bin/hb --load test/odin-suite.f
+../habu/bin/hb --load test/odin-suite.f -- --under ../habu/bin/hb
+../habu/bin/hb --load odin/tegrastats-test.f
 ```
 
 The six byte-exact renderer comparisons were run by loading the checked Habu emit
@@ -219,7 +220,7 @@ odin/perception-render-emit.f
 
 ### SDK reachability (proven)
 
-`odin/zed-ffi.f` reaches the real ZED SDK on the **standing** `bin/hb`: load
+`odin/zed-ffi.f` reaches the real ZED SDK on the **standing** `../habu/bin/hb`: load
 `src/os/linux/layout.f` first so `DLOPEN-SLOT` / `DLSYM-SLOT` are in scope, then
 it dlopens `/usr/local/zed/lib/libsl_zed.so`, resolves the extern-"C"
 `getZEDSDKRuntimeVersion_C(int*,int*,int*)`, calls it through `lib/ffi.f` `FFI-CALLN`
@@ -275,6 +276,26 @@ All six runs reported 0 SDK drops, 0 timestamp regressions, 0 grab errors, 0
 tensor errors, 0 run errors, and queue-depth max 0. The full-mode port is in the
 same operating band as Zig, but `retrieve-only` shows extra Habu-side loop/FFI
 overhead that remains a concrete throughput optimization target.
+
+`odin/saved-image-scenario.f` owns the saved-image user-assisted scenario front
+end in Habu: option parsing, output-id/path construction, manifest file
+validation, manual-gain defaulting, and a deterministic dry-run summary.
+`odin/capture-backend.f` owns the live capture side over `libodin_zed_capture.so`:
+camera config loading, concurrent Habu task capture loops, saved grayscale P5
+frames, and `odin.capture.v1` schema/frame/summary rows.
+`odin/saved-image-analyzers.f` owns the Habu exposure, low-light, motion-blur,
+and sync analyzer entrypoints used by the saved-image scenario runner.
+`odin/cameraone-latency-scenario.f` owns the CameraOne shared visible-motion and
+IMAGE-time IMU latency scenario front end. It uses `odin/capture-backend.f` for
+capture and `odin/cameraone-latency.f` for the Habu analyzer handoff.
+`odin/spsc-imu.f` owns direct BMI088 SPSC capture: it opens the SPSC device
+read/write, maps the shared ring, decodes gyro/accelerometer samples, scales them
+to SI units, and writes `odin.external_imu.v1` NDJSON plus a markdown summary.
+`odin/spsc-motion.f` owns the SPSC motion/readiness analyzer and aggregate
+scenario summaries. `odin/spsc-motion-scenario.f` owns the four-camera
+user-assisted SPSC scenario front end; live mode starts four Habu
+`odin/spsc-imu-cli.f` child captures concurrently, waits for them, then runs the
+Habu motion analyzers and aggregate summary.
 
 ## Conventions (learned porting tegrastats)
 

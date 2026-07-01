@@ -6,9 +6,7 @@
 \ save policy, and NDJSON emission live here.
 \
 \ Load:
-\   bin/hb --load src/os/linux/layout.f lib/errors.f lib/string.f lib/memory.f \
-\     lib/ffi.f lib/time.f lib/fs.f lib/fs-mutate.f lib/task.f \
-\     lib/float.f odin/float-cell.f odin/yolo-decode.f odin/live-detector.f -- \
+\   ../habu/bin/hb --load odin/live-detector.f -- \
 \     --engine /home/user/models/drone/fp16_rect.engine \
 \     --camera <serial>:cam_a0 --mode full --output /tmp/habu-ticks.ndjson
 
@@ -253,11 +251,11 @@ variable HLD-WARM-CURSOR
    0 HLD-SAVE-GATE ! ;
 
 : HLD-USAGE ( -- )
-   s" usage: odin/live-detector.f -- --engine <engine> --camera <serial>:<name> [--camera ...] [--abi zig-out/lib/libodin_zed_yolo.so] [--output /tmp/habu-ticks.ndjson] [--mode full|retrieve-only|run-only]" type cr
+   s" usage: odin/live-detector.f -- --engine <engine> --camera <serial>:<name> [--camera ...] [--abi libodin_zed_yolo.so] [--output /tmp/habu-ticks.ndjson] [--mode full|retrieve-only|run-only]" type cr
    E-HLD-USAGE throw ;
 
 : HLD-DEFAULTS ( -- )
-   s" ../Odin/zig-out/lib/libodin_zed_yolo.so" HLD-ABI-PATH HLD-PATH-CAP HLD-ABI-U HLD-COPY-Z
+   s" libodin_zed_yolo.so" HLD-ABI-PATH HLD-PATH-CAP HLD-ABI-U HLD-COPY-Z
    s" /tmp/odin-habu-live-detector.ndjson" HLD-OUTPUT-PATH HLD-PATH-CAP HLD-OUTPUT-U HLD-COPY-Z
    s" /tmp/odin-habu-live-images" HLD-SAVE-DIR HLD-PATH-CAP HLD-SAVE-DIR-U HLD-COPY-Z
    s" HD1200" HLD-RESOLUTION HLD-CSTR-CAP HLD-RESOLUTION-U HLD-COPY-Z
@@ -421,8 +419,7 @@ variable HLD-WARM-CURSOR
    then ;
 
 : HLD-YIELD ( -- )
-   HLD-FN-SCHED-YIELD @ dup 0= if drop exit then
-   CALL0 drop ;
+   TASK:PAUSE ;
 
 : HLD-CREATE-CONTEXT ( -- )
    HLD-ENGINE-PATH P>N 0 FFI-ARG!

@@ -5,9 +5,19 @@
 \ the .zig oracle value. The integration driver reopens `package CAMSYNC` (so the
 \ TM-/TG-/TX- kernel words are unqualified) and qualifies the cross-package
 \ SCHEMA: calls. This is the wiring the per-kernel tests stub with direct feeds.
-\ Run: cat lib/errors.f lib/string.f lib/memory.f lib/float.f lib/sort.f lib/hashmap.f \
-\        lib/test.f tools/json.f odin/capture-schema.f odin/capture-schema-json.f \
-\        odin/timestamp-metrics.f odin/end-to-end-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/end-to-end-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/float.f
+require lib/sort.f
+require lib/hashmap.f
+require lib/test.f
+require tools/json.f
+require odin/capture-schema.f
+require odin/capture-schema-json.f
+require odin/timestamp-metrics.f
 
 package CAMSYNC
 private

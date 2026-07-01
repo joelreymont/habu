@@ -1,8 +1,15 @@
 \ low-light-manifest-test.f - oracle from src/low_light.zig "low-light parses
 \ scenario manifest" + "low-light rejects invalid manifests". Manifests are built
 \ programmatically (nested target_proxy object).
-\ Run: cat lib/errors.f lib/string.f lib/memory.f lib/float.f lib/test.f tools/json.f \
-\        odin/low-light-manifest.f odin/low-light-manifest-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/low-light-manifest-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/float.f
+require lib/test.f
+require tools/json.f
+require odin/low-light-manifest.f
 
 package LOWLIGHT
 private

@@ -1,6 +1,13 @@
 \ tracker-test.f - oracle from src/tracker.zig "iou and distance".
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/sort.f odin/float-cell.f \
-\        odin/tracker.f odin/tracker-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/tracker-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+require lib/sort.f
+require odin/float-cell.f
+require odin/tracker.f
 
 package TRACKER
 private

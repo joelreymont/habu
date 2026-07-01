@@ -145,7 +145,11 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `docs/forth.md`. Also scan the diff for new/changed `:`, `+:`, `CHECKED:`,
   `TRUSTED:`, `0 set-check`, and `TRUST` sites; every new or changed definition
   needs a real typed stack effect unless it is an explicitly documented
-  boundary. Every changed Forth file must be checked through its exact owning
+  boundary. Multiline words keep the whole-word stack effect on the definition
+  line and use trailing stack/state comments only when they improve
+  understanding of a non-obvious transition or invariant; do not add empty
+  comments, quota comments, or redundant standalone `\ Stack:` comments. Every
+  changed Forth file must be checked through its exact owning
   `bin/hb --load ...` path or documented as an explicit uncheckable boundary,
   and every unchecked boundary needs a focused test plus a dot for the missing
   typed capability.

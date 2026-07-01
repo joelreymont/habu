@@ -2,8 +2,14 @@
 \ has no inline tests; these use exact hand-computable values: norm(3,4,0)=5,
 \ ms->ns truncation, abs, and Pearson r=1.0 over a perfectly-correlated set
 \ (x=[10,20,30], y=[1,2,3] -> r=1, mean_x=20, mean_y=2).
-\ Run: cat lib/errors.f lib/string.f lib/float.f lib/test.f odin/float-cell.f \
-\        odin/latency-xcorr.f odin/latency-xcorr-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/latency-xcorr-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/test.f
+require odin/float-cell.f
+require odin/latency-xcorr.f
 
 package XCORR
 private

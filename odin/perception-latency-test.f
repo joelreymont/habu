@@ -2,8 +2,16 @@
 \ by running src/perception_latency.zig's percentileF64 directly (zig 0.16):
 \   [10,20,30,40,50] -> p50=30 p95=50 p99=50 max=50
 \   [1..8]           -> p50=4  p95=8  p99=8  max=8
-\ Run: cat lib/errors.f lib/string.f lib/float.f lib/sort.f lib/prelude.f lib/test.f \
-\        odin/float-cell.f odin/perception-latency.f odin/perception-latency-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/perception-latency-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/sort.f
+require lib/prelude.f
+require lib/test.f
+require odin/float-cell.f
+require odin/perception-latency.f
 
 package PERCEPTION
 private

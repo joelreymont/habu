@@ -1,7 +1,14 @@
 \ exposure-metrics-test.f - oracle checks for the exposure_metrics core (no inline
 \ tests in src/exposure_metrics.zig; exact hand-computed values).
-\ Run: cat lib/errors.f lib/string.f lib/float.f lib/test.f odin/float-cell.f \
-\        lib/render.f odin/exposure-metrics.f odin/exposure-metrics-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/exposure-metrics-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/test.f
+require odin/float-cell.f
+require lib/render.f
+require odin/exposure-metrics.f
 
 package EXPOSURE
 private

@@ -1,5 +1,10 @@
 \ capture-schema-test.f - record-type + schema-version oracle (src/capture_schema.zig).
-\ Run: cat lib/errors.f lib/string.f lib/test.f odin/capture-schema.f odin/capture-schema-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/capture-schema-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require odin/capture-schema.f
 
 package SCHEMA
 private

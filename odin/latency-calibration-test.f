@@ -1,7 +1,15 @@
 \ latency-calibration-test.f - oracle checks for the latency_calibration core.
 \ src/latency_calibration.zig has no inline tests; these use exact hand-computed
-\ values. Run: cat lib/errors.f lib/string.f lib/float.f lib/sort.f lib/test.f \
-\        odin/float-cell.f odin/latency-calibration.f odin/latency-calibration-test.f | bin/hb
+\ values.
+\ Run: ../habu/bin/hb --load odin/latency-calibration-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/sort.f
+require lib/test.f
+require odin/float-cell.f
+require odin/latency-calibration.f
 
 package LATCAL
 private

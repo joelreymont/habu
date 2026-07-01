@@ -265,10 +265,7 @@ public
    s" The acceptance metric is simultaneous per-camera FPS, not aggregate FPS." RB+ RB-NL
    s" A viable mode must keep every camera at the requested FPS with low" RB+ RB-NL
    s" per-camera spread and minimal drops." RB+ RB-NL  RB-NL
-   s" Command pattern:" RB+ RB-NL  RB-NL
-   s" ```bash" RB+ RB-NL
-   s" zig-out/bin/odin fps-sweep --run --duration-ms <ms> --settle-ms <ms> --output results/fps_sweep" RB+ RB-NL
-   s" ```" RB+ RB-NL  RB-NL
+   s" Capture-backed sweep execution is owned by the Habu runner layer; this report consumes sweep case records and renders suitability evidence." RB+ RB-NL  RB-NL
    s" ## All-Camera Suitability" RB+ RB-NL  RB-NL
    s" | mode | target FPS/camera | per-camera FPS | min FPS | max FPS | spread | cameras at target | drops | worst drop rate | verdict |" RB+ RB-NL
    s" | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |" RB+ RB-NL

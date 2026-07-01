@@ -1,5 +1,10 @@
 \ config-test.f - rig-validation oracle, ported from src/config.zig tests.
-\ Run: cat lib/errors.f lib/string.f lib/test.f odin/config.f odin/config-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/config-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require odin/config.f
 
 package CONFIG
 private

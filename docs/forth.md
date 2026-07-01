@@ -359,6 +359,13 @@ address arithmetic at the public boundary.
   and small factored helper words. If review requires reconstructing stack state
   from surrounding code or register side effects, factor first; do not rely on
   hand-tracked effects.
+- **Multiline words need body-line stack comments where stack state is not
+  obvious.** Keep the whole-word stack effect on the definition line, e.g.
+  `: WORD ( in -- out )`. For multiline bodies, put trailing comments after the
+  body line they explain when a line transforms stack state in a way a reviewer
+  must track, especially around conditionals, locals, DSL calls, status plumbing,
+  and path/buffer composition. Do not add standalone `\ Stack:` comments that
+  merely duplicate the definition-line effect.
 - **Factor when the stack gets unreadable.** If you reach for `ROT -ROT PICK
   ROLL`, stop and either factor a helper or use locals. Deep juggling is exactly
   what this project forbids in *user* code — hold our own code to it.
@@ -734,10 +741,11 @@ end-package
   sources must not depend on stale seed envp capture. Pass the temp root after
   `--`, keep all generated paths under that root, and let the build driver own
   path construction.
-- **Generated strings use byte writers for syntax.** Habu `s"` literals do not
-  escape embedded quotes. JSON, source needles, and rows with quoting should be
-  built with checked byte/field helpers or `lib/json-write.f`, not host encoders
-  or fragile escaped string literals.
+- **Use SwiftForth-style escaped literals for readable snapshots.** `S\"`,
+  `C\"`, and `.\"` accept C-style escapes (`\\`, `\"`/`\q`, `\n`, `\r`,
+  `\t`, `\xNN`, `\z`, etc.). Use them for direct JSON/source expected strings
+  when a literal is clearer than a builder. When code generates syntax from
+  fields, keep using checked byte/field helpers or `lib/json-write.f`.
 - **Generated fixtures use unique test-owned names.** Strict duplicate rejection
   is a feature, so fixture generators must publish names with a tool/test prefix
   and a unique suffix (`CAE-CAP-OK-0`, `GDX-AE-BAD1`, etc.). Do not reuse baked

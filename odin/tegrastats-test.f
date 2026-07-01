@@ -1,6 +1,13 @@
 \ tegrastats-test.f - oracle test against src/tegrastats.zig snapshots.
 \ Part of the TEGRA package: reopens `package TEGRA` and calls SUMMARY unqualified.
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f odin/tegrastats.f odin/tegrastats-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/tegrastats-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+require lib/fmt.f
+require odin/tegrastats.f
 
 package TEGRA
 private

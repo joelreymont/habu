@@ -8,9 +8,16 @@
 \   rate(count<2)=null   rate(last<=first)=null
 \   timing[10..1]               -> samples=10 p50=5 p95=10 p99=10 max=10
 \   ratesum[60,30,90]           -> min=30 max=90 sum=180 mean=60 (exact reduction)
-\ Run: cat lib/errors.f lib/string.f lib/float.f lib/sort.f lib/prelude.f \
-\        lib/test.f odin/float-cell.f odin/perception-latency.f \
-\        odin/perception-latency-rates-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/perception-latency-rates-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
+require lib/sort.f
+require lib/prelude.f
+require lib/test.f
+require odin/float-cell.f
+require odin/perception-latency.f
 
 package PERCEPTION
 private

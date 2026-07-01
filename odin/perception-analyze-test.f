@@ -1,10 +1,25 @@
 \ perception-analyze-test.f - file-level PERCEPTION analyzer regression.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
-\        lib/fs-mutate.f lib/float.f lib/sort.f lib/prelude.f lib/render.f
-\        tools/json.f tools/json-file.f odin/float-cell.f odin/capture-schema.f
-\        odin/capture-schema-json.f odin/perception-latency.f
-\        odin/perception-render.f odin/live-records.f odin/perception-analyze.f
-\        odin/perception-analyze-test.f
+\ Run: ../habu/bin/hb --load odin/perception-analyze-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/float.f
+require lib/sort.f
+require lib/prelude.f
+require lib/render.f
+require tools/json.f
+require tools/json-file.f
+require odin/float-cell.f
+require odin/capture-schema.f
+require odin/capture-schema-json.f
+require odin/perception-latency.f
+require odin/perception-render.f
+require odin/live-records.f
+require odin/perception-analyze.f
 
 package PERCEPTION
 private

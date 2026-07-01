@@ -1,8 +1,16 @@
 \ timestamp-metrics-test.f - per-camera kernel oracle, from src/timestamp_metrics.zig
 \ test "timestamp metrics collate frame periods and gaps by camera" (sample_ndjson).
 \ Frames are fed as the exact field values from that fixture.
-\ Run: cat lib/errors.f lib/string.f lib/memory.f lib/float.f lib/sort.f lib/hashmap.f lib/test.f \
-\        odin/timestamp-metrics.f odin/timestamp-metrics-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/timestamp-metrics-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/float.f
+require lib/sort.f
+require lib/hashmap.f
+require lib/test.f
+require odin/timestamp-metrics.f
 
 \ ( fps frame_index sdk_ts host_ts dropped dup regressed ) for serial A / B.
 \ Each frame folds into both the per-camera kernel and the frame-index groups.

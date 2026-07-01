@@ -1,6 +1,13 @@
 \ netpbm-test.f - oracle tests against src/netpbm.zig.
 \ Part of the NETPBM package: reopens `package NETPBM` and calls WRITE-P5/DECODE unqualified.
-\ Run: cat lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f odin/netpbm.f odin/netpbm-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/netpbm-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/float.f
+require lib/fmt.f
+require odin/netpbm.f
 
 \ writeP5: 2x2 image, step 3 (last byte of each row is padding to drop)
 package NETPBM

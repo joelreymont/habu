@@ -25,6 +25,7 @@ FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 21 constant FS-DIRENT-NAME-OFF
 19 constant FS-LINUX-DIRENT-NAME-OFF
 1 constant FS-O-WRONLY
+2 constant FS-O-RDWR
 $8 constant FS-O-APPEND
 $200 constant FS-O-CREAT
 $400 constant FS-O-TRUNC

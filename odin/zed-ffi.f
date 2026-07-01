@@ -7,7 +7,7 @@
 \ - non-invasive (no camera/driver state), so it is safe to run on the ZED Box.
 \ Output should match the installed SDK (5.2.3). This is the FFI path the capture/
 \ detector core would use through a thin C-ABI wrapper.
-\ Load: bin/hb --load src/os/linux/layout.f lib/errors.f lib/string.f lib/memory.f lib/ffi.f odin/zed-ffi.f
+\ Load: ../habu/bin/hb --load src/os/linux/layout.f lib/errors.f lib/string.f lib/memory.f lib/ffi.f odin/zed-ffi.f
 
 create ZED-PATH 64 allot                 \ NUL-terminated .so path
 create ZED-SYM  48 allot                 \ NUL-terminated symbol name

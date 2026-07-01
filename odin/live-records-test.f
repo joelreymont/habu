@@ -1,8 +1,19 @@
 \ live-records-test.f - structures are the JSON/analyzer handoff.
-\ Run: cat lib/errors.f lib/string.f lib/memory.f lib/float.f lib/sort.f \
-\        lib/hashmap.f lib/test.f tools/json.f odin/float-cell.f \
-\        odin/capture-schema.f odin/capture-schema-json.f odin/timestamp-metrics.f \
-\        odin/live-records.f odin/live-records-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/live-records-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/float.f
+require lib/sort.f
+require lib/hashmap.f
+require lib/test.f
+require tools/json.f
+require odin/float-cell.f
+require odin/capture-schema.f
+require odin/capture-schema-json.f
+require odin/timestamp-metrics.f
+require odin/live-records.f
 
 package ODREC
 private

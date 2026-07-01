@@ -3,8 +3,16 @@
 \ Expected per-camera phase rows (from the CSV oracle):
 \   cam_a0 (self): offset 0, matched 3, skews 0, same_index_p99 0
 \   cam_a1:        offset -1, matched 2, mean/p95/p99/max 333, same_index_p99 16667000
-\ Run: cat lib/errors.f lib/string.f lib/hashmap.f lib/float.f lib/sort.f lib/test.f \
-\        odin/timestamp-metrics.f odin/timestamp-phase.f odin/timestamp-phase-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/timestamp-phase-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/hashmap.f
+require lib/float.f
+require lib/sort.f
+require lib/test.f
+require odin/timestamp-metrics.f
+require odin/timestamp-phase.f
 
 package CAMSYNC
 private
@@ -73,7 +81,7 @@ private
    2 5 FP-REFFIDX@ T=  1 5 FP-CAMIDX@ T=  3 5 FP-MFIDX@ T=
    1033333667 5 FP-MSDK@ T=  333 5 FP-SKEW@ T= ;
 
-\ readiness gates (tests 1928 sync, 1755 pairing)
+\ readiness checks (tests 1928 sync, 1755 pairing)
 : SA+ ( n n n n n -- ) {: fps:n fidx:n sdk:n host:n drp:n :}
    s" 306885122" s" cam_a0" fps fidx sdk host drp 0 0 TM-ADD  fidx sdk host TG-ADD ;
 : SB+ ( n n n n n -- ) {: fps:n fidx:n sdk:n host:n drp:n :}

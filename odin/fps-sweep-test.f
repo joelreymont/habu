@@ -1,6 +1,11 @@
 \ fps-sweep-test.f - per-camera FPS quality oracle, derived from src/fps_sweep.zig
 \ achievedFpsMilli / summarizeCaseQuality / ratio comparators.
-\ Run: cat lib/errors.f lib/string.f lib/test.f odin/fps-sweep.f odin/fps-sweep-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/fps-sweep-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require odin/fps-sweep.f
 
 package FPS
 private

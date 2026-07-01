@@ -1,8 +1,15 @@
 \ capture-schema-json-test.f - validateObject/validateLine oracle.
 \ Builds NDJSON lines programmatically (s" can't hold a literal quote), mirroring
 \ habu tools/json-test.f's builder idiom. Signatures use type keywords only.
-\ Run: cat lib/errors.f lib/string.f lib/memory.f lib/test.f tools/json.f \
-\        odin/capture-schema.f odin/capture-schema-json.f odin/capture-schema-json-test.f | bin/hb
+\ Run: ../habu/bin/hb --load odin/capture-schema-json-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/test.f
+require tools/json.f
+require odin/capture-schema.f
+require odin/capture-schema-json.f
 
 \ --- tiny JSON line builder ---
 package SCHEMA
