@@ -47,6 +47,11 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    s" noret" FIELD s" DIE" LINE
    SB$ ;
 
+: SOURCE-ROW$ ( -- ptr u8 n )
+   SB-RESET
+   s" source" FIELD HASH$ SB-APPEND
+   SB$ ;
+
 : BUILD ( -- )
    OBJ:RESET
    HASH$ OBJ:SOURCE!
@@ -86,6 +91,23 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    s" hb-arm64-v1" OBJ:COMPILER!
    KEY2 OBJ:KEY-HEX
    KEY1 KEY-U KEY2 KEY-U T$<> ;
+
+: ROW-ACCESSORS ( -- )
+   BUILD
+   OBJ:ROW-COUNT 13 T=
+   0 OBJ:ROW$ SOURCE-ROW$ T$=
+   0 OBJ:ROW-TAG$ s" source" T$=
+   0 OBJ:ROW-FIELD# 1 T=
+   0 0 OBJ:ROW-FIELD$ HASH$ T$=
+   5 OBJ:ROW-TAG$ s" text" T$=
+   5 0 OBJ:ROW-FIELD$ s" 007fff" T$=
+   6 OBJ:ROW-TAG$ s" data" T$=
+   6 0 OBJ:ROW-FIELD$ s" 010210" T$=
+   10 OBJ:ROW-TAG$ s" reloc" T$=
+   10 OBJ:ROW-FIELD# 3 T=
+   10 0 OBJ:ROW-FIELD$ s" abs64" T$=
+   10 1 OBJ:ROW-FIELD$ s" 16" T$=
+   10 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
 
 : BAD-TAB ( -- )
    OBJ:RESET
@@ -131,6 +153,9 @@ text	00x
    [: BAD-HASH ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-RELOC ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-SECTION ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 99 OBJ:ROW$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 0 -1 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
+   [: BUILD 0 99 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: MISSING-HEADER ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 public
@@ -141,6 +166,7 @@ public
    LOAD-ROUNDTRIP
    KEY-STABLE
    KEY-CHANGES
+   ROW-ACCESSORS
    FAILURES
    T-REPORT ;
 

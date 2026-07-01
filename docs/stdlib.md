@@ -837,6 +837,11 @@ OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
 OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
 OBJ:NORET+     ( ptr u8 n -- )
 OBJ:BYTES$     ( -- ptr u8 n )
+OBJ:ROW-COUNT  ( -- n )
+OBJ:ROW$       ( n -- ptr u8 n )
+OBJ:ROW-TAG$   ( n -- ptr u8 n )
+OBJ:ROW-FIELD# ( n -- n )
+OBJ:ROW-FIELD$ ( n n -- ptr u8 n )
 OBJ:LOAD       ( ptr u8 n -- )
 OBJ:KEY-HEX    ( ptr u8 -- )
 ```
@@ -846,8 +851,10 @@ newlines, control bytes, and empty fields so the tab-separated format remains
 canonical. `OBJ:TEXT+` and `OBJ:DATA+` encode binary section bytes as lowercase
 hex records, and `OBJ:LOAD` rejects malformed section hex. `OBJ:BYTES$` and
 `OBJ:KEY-HEX` require source, target, checker, and compiler ABI fields before
-returning data. `OBJ:LOAD` validates and restores a serialized record;
-`OBJ:KEY-HEX` hashes the canonical bytes through `lib/content-key.f`.
+returning data. Row accessors expose the validated record body without the magic
+header: indexes are zero-based, fields exclude the tag, and bad row or field
+indexes throw `E-OBJ-FIELD`. `OBJ:LOAD` validates and restores a serialized
+record; `OBJ:KEY-HEX` hashes the canonical bytes through `lib/content-key.f`.
 
 ## Source Materialization
 

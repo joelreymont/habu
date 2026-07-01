@@ -14,6 +14,7 @@ package OBJ
 $40000 constant CAP
 $1000 constant FIELD-CAP
 64 constant HASH-U
+8 constant ROW-BASE
 9 constant TAB
 10 constant LF
 13 constant CR
@@ -275,6 +276,30 @@ variable LOAD-OFF
    u 0 <= if E-OBJ-SCHEMA throw then
    a u 1 - + c@ LF <> if E-OBJ-SCHEMA throw then ;
 
+: LF-OFF ( n -- n ) {: off:n :}
+   off begin dup OUT-LEN @ < while
+      dup BUF + c@ LF = if exit then
+      1+
+   repeat drop -1 ;
+
+: ROW-START ( n -- n ) {: idx:n :}
+   READY
+   idx 0 < if E-OBJ-FIELD throw then
+   ROW-BASE 0 begin over OUT-LEN @ < while
+      dup idx = if drop exit then
+      swap LF-OFF dup 0 < if E-OBJ-SCHEMA throw then
+      1+ swap 1+
+   repeat
+   2drop E-OBJ-FIELD throw ;
+
+: ROW-END ( n -- n ) {: start:n :}
+   start LF-OFF dup 0 < if E-OBJ-SCHEMA throw then ;
+
+: ROW-SLICE ( n -- ptr u8 n ) {: idx:n :}
+   idx ROW-START {: start:n :}
+   start ROW-END {: finish:n :}
+   BUF start + finish start - ;
+
 public
 
 : RESET ( -- )
@@ -329,6 +354,30 @@ public
 : BYTES$ ( -- ptr u8 n )
    READY
    BUF OUT-LEN @ ;
+
+: ROW-COUNT ( -- n )
+   READY
+   0 0 begin dup OUT-LEN @ < while
+      dup ROW-BASE >= if
+         dup BUF + c@ LF = if swap 1+ swap then
+      then
+      1+
+   repeat drop ;
+
+: ROW$ ( n -- ptr u8 n )
+   ROW-SLICE ;
+
+: ROW-TAG$ ( n -- ptr u8 n )
+   ROW-SLICE 0 FIELD$ ;
+
+: ROW-FIELD# ( n -- n )
+   ROW-SLICE TAB-COUNT ;
+
+: ROW-FIELD$ ( n n -- ptr u8 n ) {: row:n field:n :}
+   field 0 < if E-OBJ-FIELD throw then
+   row ROW-FIELD# {: total:n :}
+   field total >= if E-OBJ-FIELD throw then
+   row ROW-SLICE field 1 + FIELD$ ;
 
 : LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
    u CAP > if E-OBJ-CAPACITY throw then

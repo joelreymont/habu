@@ -950,6 +950,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:RELOC+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append relocation kind offset and symbol metadata
 1	object	lib/object.f	word	OBJ:NORET+	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append no-return symbol metadata
 1	object	lib/object.f	word	OBJ:BYTES$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated canonical object bytes
+1	object	lib/object.f	word	OBJ:ROW-COUNT	(-- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated object body row count excluding the magic header
+1	object	lib/object.f	word	OBJ:ROW$	(n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object body row by zero-based index
+1	object	lib/object.f	word	OBJ:ROW-TAG$	(n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object row tag
+1	object	lib/object.f	word	OBJ:ROW-FIELD#	(n -- n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object row field count excluding the tag
+1	object	lib/object.f	word	OBJ:ROW-FIELD$	(n n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object row field by row and field indexes
 1	object	lib/object.f	word	OBJ:LOAD	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	validate and restore serialized canonical object bytes
 1	object	lib/object.f	word	OBJ:KEY-HEX	(ptr u8 --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	hash validated object bytes into a content-key hex digest
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
