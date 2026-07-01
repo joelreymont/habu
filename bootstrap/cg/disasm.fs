@@ -64,7 +64,13 @@ require asm.fs
 
 : D-NOP  ( u -- )  drop ." nop" ;
 
-: D-ADR  ( u -- )  ." adr "  dup RD .REG ." ,.+"  dup 5 19 FLD 19 over 29 2 FLD swap 2 lshift or 21 SIGNX (.) ;
+: D-ADR  ( u -- )
+   ." adr "
+   dup RD .REG
+   ." ,.+"
+   dup 5 19 FLD 19
+   over 29 2 FLD swap 2 lshift or
+   21 SIGNX (.) ;
 
 : .MEM ( u scale -- )  >r  ." ,["  dup RN .REG  10 12 FLD r> lshift ?dup if ." ,#" (.) then ." ]" ;
 

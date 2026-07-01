@@ -44,7 +44,11 @@ wordlist constant CODE-TABLE
 256 constant MAX-DEPS
 create DEPS MAX-DEPS cells allot   variable #DEPS
 
-: DEP-HAS? ( pfa -- f )  #DEPS @ 0 ?do  dup DEPS i cells + @ = if drop true unloop exit then  loop drop false ;
+: DEP-HAS? ( pfa -- f )
+   #DEPS @ 0 ?do
+      dup DEPS i cells + @ = if drop true unloop exit then
+   loop
+   drop false ;
 
 : DEP-ROOM ( -- )
    #DEPS @ MAX-DEPS >= if 1 abort" cg: dependency table overflow" then ;

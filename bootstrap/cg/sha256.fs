@@ -33,7 +33,11 @@ $748f82ee , $78a5636f , $84c87814 , $8cc70208 , $90befffa , $a4506ceb , $bef9a3f
 create HH0 $6a09e667 , $bb67ae85 , $3c6ef372 , $a54ff53a , $510e527f , $9b05688c , $1f83d9ab , $5be0cd19 ,
 create H 8 cells allot   create WS 64 cells allot   create ST 8 cells allot
 
-: BE32@ ( a -- w ) dup c@ 24 lshift  over 1+ c@ 16 lshift or  over 2 + c@ 8 lshift or  swap 3 + c@ or ;
+: BE32@ ( a -- w )
+   dup c@ 24 lshift
+   over 1+ c@ 16 lshift or
+   over 2 + c@ 8 lshift or
+   swap 3 + c@ or ;
 
 : STV ( i -- w )  cells ST + @ ;
 

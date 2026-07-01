@@ -175,7 +175,11 @@ CHECKING-ON? off
 
 : ENC-STRB ( i -- )  >r $39000000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?IMM12 10 lshift or EMITW ;
 
-: ?SC4 ( off -- imm12 )  dup 0 16381 within 0=  over 3 and 0<> or  if E-IMM-RANGE throw then  2 rshift ;
+: ?SC4 ( off -- imm12 )
+   dup 0 16381 within 0=
+   over 3 and 0<> or
+   if E-IMM-RANGE throw then
+   2 rshift ;
 
 : ENC-LDRW ( i -- )  >r $B9400000 r@ IC-A or r@ IC-B 5 lshift or r> IC-C ?SC4 10 lshift or EMITW ;
 

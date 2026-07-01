@@ -58,13 +58,37 @@ $100000 constant HEAPSZ
 
 : P-ABS  T0 G-POP  T0 0 CMPI,  LBL {: l :}  C-GE l BCOND,  T0 SP T0 SUB,  l LBL,  T0 G-PUSH ;
 
-: P-MIN  T1 G-POP  T0 G-POP  T0 T1 CMP,  LBL {: l :}  C-LE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
+: P-MIN ( -- )
+   T1 G-POP
+   T0 G-POP
+   T0 T1 CMP,
+   LBL {: l :} \ typed-local-lint: allow-bare-local
+   C-LE l BCOND,
+   T0 T1 0 ADDI,
+   l LBL,
+   T0 G-PUSH ;
 
-: P-MAX  T1 G-POP  T0 G-POP  T0 T1 CMP,  LBL {: l :}  C-GE l BCOND,  T0 T1 0 ADDI,  l LBL,  T0 G-PUSH ;
+: P-MAX ( -- )
+   T1 G-POP
+   T0 G-POP
+   T0 T1 CMP,
+   LBL {: l :} \ typed-local-lint: allow-bare-local
+   C-GE l BCOND,
+   T0 T1 0 ADDI,
+   l LBL,
+   T0 G-PUSH ;
 
 : P-2/   T0 G-POP  T0 T0 1 ASRI,  T0 G-PUSH ;
 
-: P-/MOD T1 G-POP  T0 G-POP  G-DIV0?  T2 T0 T1 SDIV,  12 T2 T1 MUL,  12 T0 12 SUB,  12 G-PUSH  T2 G-PUSH ;
+: P-/MOD ( -- )
+   T1 G-POP
+   T0 G-POP
+   G-DIV0?
+   T2 T0 T1 SDIV,
+   12 T2 T1 MUL,
+   12 T0 12 SUB,
+   12 G-PUSH
+   T2 G-PUSH ;
 
 \ control-flow stack (compile-time, holds label ids)
 64 constant CF-MAX
