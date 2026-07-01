@@ -1659,7 +1659,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-THEN ( -- )  LCFPOP @ BL,  LPAT @ BL, ;
 
-: J-ELSE ( -- )  LCFPOP @ BL,  14 9 0 ADDI,  C-PUSHCP  $14000000 C-EMITW  9 14 0 ADDI,  LPAT @ BL, ;
+: J-ELSE ( -- )
+   LCFPOP @ BL,
+   14 9 0 ADDI,
+   C-PUSHCP
+   $14000000 C-EMITW
+   9 14 0 ADDI,
+   LPAT @ BL, ;
 
 : J-CASE ( -- )
    9 0 MOVZ,  LCFPUSH @ BL, ;

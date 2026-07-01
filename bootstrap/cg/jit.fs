@@ -832,7 +832,12 @@ variable FESK4
 
 : EUCMP0 ( -- )  8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL, ;
 
-: EUCSET ( n -- ) {: cond :}  8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT @ BL, ;
+: EUCSET ( n -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   {: cond :}
+   8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,
+   9 8 14 ORR,
+   LCEMIT @ BL, ;
 
 : EU0= ( -- )  EUCMP0  0 EUCSET  EUNEG ;
 

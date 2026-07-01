@@ -859,7 +859,10 @@ s" vun-entry" s" label ptr a n n n --" TRUST
 : EUCMP0 ( -- )
    8 $F100001F LIT64,  7 14 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL, ;
 
-: EUCSET ( n -- ) {: cond:n :}  8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,  9 8 14 ORR,  LCEMIT LABEL@ BL, ;
+: EUCSET ( n -- ) {: cond:n :}
+   8 $9A9F07E0 cond 1 xor 12 lshift or LIT64,
+   9 8 14 ORR,
+   LCEMIT LABEL@ BL, ;
 
 : EU0= ( -- )
    EUCMP0  0 EUCSET  EUNEG ;
