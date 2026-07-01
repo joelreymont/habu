@@ -1,10 +1,10 @@
 \ maki-dep-lint-core.f - one-way habu<-maki dependency guard.
 \
 \ Enforces the PLAN guardrail (maki/README.md): imports flow maki -> habu, NEVER
-\ habu -> maki. The Habu core (src/), libraries (lib/), and the native gate (test/)
-\ must never reference a maki/ path; maki/ is application Forth fenced outside the
-\ trust root. Until this lint, the seam was held only by review + the gate's explicit
-\ allow-lists.
+\ habu -> maki. The Habu core (src/), libraries (lib/), native gate (test/), and
+\ generic PTX tools (tools/ptx/) must never reference a maki/ path; maki/ is
+\ application Forth fenced outside the trust root. Until this lint, the seam was
+\ held only by review + the gate's explicit allow-lists.
 \
 \ Scan: each src/, lib/, test/ Forth file is TOKENIZEd (which strips `\` line comments
 \ and `( )` stack-effect comments and keeps `s"` string bodies as tokens), then every
@@ -89,6 +89,7 @@ variable MDL-NL#
    s" src/"  [: MDL-SCAN-FILE ;] WALK-FILES
    s" lib/"  [: MDL-SCAN-FILE ;] WALK-FILES
    s" test/" [: MDL-SCAN-FILE ;] WALK-FILES
+   s" tools/ptx/" [: MDL-SCAN-FILE ;] WALK-FILES
    s" maki-dep-lint: " type
    MDL-FILES @ MDL-U. s"  file(s), " type
    MDL-BAD @ MDL-U.   s"  finding(s)" type MDL-NL

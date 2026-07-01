@@ -142,6 +142,8 @@ variable FM-NUM-L
    s" tools/imgdump-test.f" FM-REQ
    s" tools/ptx/saxpy.f" FM-REQ
    s" tools/ptx/saxpy-test.f" FM-REQ
+   s" tools/ptx/device-support.f" FM-REQ
+   s" tools/ptx/device-support-test.f" FM-REQ
    s" tools/ptx/ptxas-smoke.f" FM-REQ
    s" tools/build-fixpoint.f" FM-REQ
    s" tools/build-fixpoint-main.f" FM-REQ

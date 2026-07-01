@@ -5,6 +5,10 @@ priority: 2
 issue-type: task
 created-at: "2026-06-27T17:00:28.959471+02:00"
 blocks:
+  - habu-add-ptx-target-ba119d76
+  - habu-make-ptx-device-c0eb12a3
+  - habu-add-ptx-planner-30b93e8c
+  - habu-checker-capability-typed-e0c76a02
   - habu-tiled-gemm-codegen-76075375
 ---
 

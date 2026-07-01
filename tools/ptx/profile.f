@@ -4,7 +4,7 @@ require lib/string.f
 require lib/float.f
 require lib/fmt.f
 
-package PTXPROF
+package PTX
 public
 
 63000 constant MEM-ROOF-GBS-X1000

@@ -24,18 +24,33 @@ create EMIT-OUT OUT-CAP allot
 create EMIT-ERR ERR-CAP allot
 create PTXAS-OUT ERR-CAP allot
 create PTXAS-ERR ERR-CAP allot
+create V4-ROOT FS-PATH-CAP allot
+create V4-PTX FS-PATH-CAP allot
+create V4-CUBIN FS-PATH-CAP allot
 create RB 4 allot
 
+variable V4-ROOT-U
+variable V4-PTX-U
+variable V4-CUBIN-U
 variable DX
 variable DY
 variable A
 variable NVAR
 
-: U32@ ( ptr u8 -- n )
-   dup c@
-   over 1 BYTE+ c@ 8 lshift or
-   over 2 BYTE+ c@ 16 lshift or
-   swap 3 BYTE+ c@ 24 lshift or ;
+: V4-ROOT$ ( -- ptr u8 n )
+   V4-ROOT V4-ROOT-U @ ;
+
+: V4-PTX$ ( -- ptr u8 n )
+   V4-PTX V4-PTX-U @ ;
+
+: V4-CUBIN$ ( -- ptr u8 n )
+   V4-CUBIN V4-CUBIN-U @ ;
+
+: PREPARE-PATHS ( -- )
+   CLEANUP-RESET
+   s" habu-saxpy-v4-tail" V4-ROOT V4-ROOT-U PTX:TEMP-DIR!
+   V4-ROOT$ s" saxpy-v4-tail.ptx" V4-PTX V4-PTX-U PTX:JOIN-PATH!
+   V4-ROOT$ s" saxpy-v4-tail.cubin" V4-CUBIN V4-CUBIN-U PTX:JOIN-PATH! ;
 
 : EMIT-PRELUDE ( -- )
    PROC-ARGV-RESET
@@ -62,23 +77,13 @@ variable NVAR
    EMIT-PRELUDE
    s" tools/ptx/saxpy-v4-cg.f" >LEN PROC-ARGV+
    RUN-EMIT {: outu:len erru:len rc:rc :}
-   s" /tmp/saxpy-v4-tail.ptx" EMIT-OUT outu LEN>N WRITE-ALL
+   V4-PTX$ EMIT-OUT outu LEN>N WRITE-ALL
    outu LEN>N rc RC>N ;
 
-: RUN-PTXAS ( -- len len rc )
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN
-   PTXAS-OUT ERR-CAP >LEN
-   PTXAS-ERR ERR-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE ;
-
 : PTXAS-V4-SAXPY ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+
-   s" /tmp/saxpy-v4-tail.ptx" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   s" /tmp/saxpy-v4-tail.cubin" >LEN PROC-ARGV+
-   RUN-PTXAS {: outu:len erru:len rc:rc :}
-   rc RC>N ;
+   V4-PTX$ V4-CUBIN$ PTXAS-OUT ERR-CAP PTXAS-ERR ERR-CAP PTX:PTXAS-RUN-DEFAULT
+   {: outu:n erru:n rc:n :}
+   rc ;
 
 : GRID-FOR ( n -- n )
    V4-ELEMS-PER-BLOCK 1- + V4-ELEMS-PER-BLOCK / ;
@@ -87,34 +92,34 @@ variable NVAR
    1+ 4 * ;
 
 : SETUP ( -- )
-   PTXBENCH:RESET
-   s" /tmp/saxpy-v4-tail.cubin" PTXBENCH:CUBIN!
-   s" SAXPY" PTXBENCH:KERNEL!
-   s" SAXPY-V4-TAIL" PTXBENCH:LABEL!
-   V4-BLOCK PTXBENCH:BLOCK!
-   24 PTXBENCH:PARAM-BYTES!
-   PTXBENCH:OPEN
-   PTXBENCH:LOAD ;
+   PTX:BENCH-RESET
+   V4-CUBIN$ PTX:BENCH-CUBIN!
+   s" SAXPY" PTX:BENCH-KERNEL!
+   s" SAXPY-V4-TAIL" PTX:BENCH-LABEL!
+   V4-BLOCK PTX:BENCH-BLOCK!
+   24 PTX:KERNEL-PARAM-BYTES!
+   PTX:DEVICE-OPEN
+   PTX:MODULE-LOAD ;
 
 : RELEASE ( -- )
-   PTXBENCH:UNLOAD
-   PTXBENCH:CLOSE ;
+   PTX:MODULE-UNLOAD
+   PTX:DEVICE-CLOSE ;
 
 : ALLOC-N ( n -- )
    {: n:n :}
    n BYTES-FOR {: bytes:n :}
-   bytes DX PTXBENCH:DEVICE-ALLOC
-   bytes DY PTXBENCH:DEVICE-ALLOC
-   DX @ X-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
-   DY @ SENTINEL-BITS n 1+ PTXBENCH:DEVICE-MEMSET32
-   DY @ 0 n PTXBENCH:DEVICE-MEMSET32 ;
+   bytes DX PTX:DEVICE-ALLOC
+   bytes DY PTX:DEVICE-ALLOC
+   DX @ X-BITS n 1+ PTX:DEVICE-MEMSET32
+   DY @ SENTINEL-BITS n 1+ PTX:DEVICE-MEMSET32
+   DY @ 0 n PTX:DEVICE-MEMSET32 ;
 
 : FREE-N ( -- )
    DX @ 0 <> if
-      DX @ PTXBENCH:DEVICE-FREE
+      DX @ PTX:DEVICE-FREE
    then
    DY @ 0 <> if
-      DY @ PTXBENCH:DEVICE-FREE
+      DY @ PTX:DEVICE-FREE
    then
    0 DX ! 0 DY ! ;
 
@@ -122,24 +127,24 @@ variable NVAR
    {: n:n :}
    n NVAR !
    A-BITS A !
-   n GRID-FOR PTXBENCH:GRID!
-   PTXBENCH:PREPARE-LAUNCH
-   0 DX PTXBENCH:PARAM-PTR!
-   8 DY PTXBENCH:PARAM-PTR!
-   16 A PTXBENCH:PARAM-U32!
-   20 NVAR PTXBENCH:PARAM-U32! ;
+   n GRID-FOR PTX:BENCH-GRID!
+   PTX:KERNEL-PREPARE-LAUNCH
+   0 DX PTX:KERNEL-PARAM-PTR!
+   8 DY PTX:KERNEL-PARAM-PTR!
+   16 A PTX:KERNEL-PARAM-U32!
+   20 NVAR PTX:KERNEL-PARAM-U32! ;
 
 : CHECK-ELEM ( n n -- )
    {: idx:n want:n :}
-   RB DY @ idx 4 * + 4 PTXBENCH:DTOH
-   RB U32@ want T= ;
+   RB DY @ idx 4 * + 4 PTX:DTOH
+   RB PTX:U32@ want T= ;
 
 : CHECK-N ( n -- )
    {: n:n :}
    n ALLOC-N
    n PARAMS-N
-   PTXBENCH:LAUNCH
-   PTXBENCH:SYNC
+   PTX:KERNEL-LAUNCH
+   PTX:DEVICE-SYNC
    0 Y-BITS CHECK-ELEM
    n 1- Y-BITS CHECK-ELEM
    n SENTINEL-BITS CHECK-ELEM
@@ -147,6 +152,7 @@ variable NVAR
 
 : MAIN ( -- )
    T-RESET
+   PREPARE-PATHS
    EMIT-V4-SAXPY {: outn:n erc:n :}
    erc 0 T=
    outn 0 > TTRUE
@@ -157,6 +163,7 @@ variable NVAR
    7 CHECK-N
    1000003 CHECK-N
    RELEASE
+   CLEANUP-RUN
    s" device: SAXPY-V4 scalar residual tail verified for n=4,5,7,1000003" type cr
    T-REPORT ;
 

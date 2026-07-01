@@ -4,6 +4,20 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-06-27T16:53:45.385660+02:00"
+blocks:
+  - habu-make-ptx-device-c0eb12a3
+  - habu-add-ptx-planner-30b93e8c
+  - habu-automatic-op-fusion-329aac27
+  - habu-tiled-gemm-codegen-76075375
+  - habu-ptx-m11-attention-fa7b0598
+  - habu-add-logits-domain-a1489686
 ---
 
-GAP #4: the kernels in lib/ptx/cg-matmul.f (SGEMM), cg-attention.f (fused attention), the v4 fused chains, and the bandwidth bench are device-VERIFIED only via throwaway /tmp runners + python (run_matmul.py, run_attn.py, grade_habu*.sh) - NONE is reproducible from the committed tree or covered by a gate. So a regression in the emitted PTX would not be caught. FIX: a checked-Habu device-test harness (extend maki/eval-device.f's ED-RUN pattern) that, for each kernel, emits -> ptxas -> launches on the Orin -> compares a committed CPU golden (SGEMM small known A*B; attention softmax(QK^T)V; fused relu(a*x+y) with a relu-exercising input). Add to a device gate slice (Orin-only, like tools/ptx/ptxas-smoke.f). Habu-native, no /tmp python. VERIFY: the suite re-runs from the tree and fails if any kernel's PTX regresses. Deps: relates to habu-commit-checked-habu (grader) + habu-add-device-ffi (device gate plumbing).
+File: PLAN.md:639. Gap: GEMM, attention, fusion, loss, and benchmark kernels
+need committed Orin device proofs through the generic PTX runtime, not
+throwaway `/tmp` runners or Python graders. Fix: add/rewrite checked Habu device
+tests that emit -> ptxas -> launch -> compare CPU goldens using private temp
+roots, target capability data, and generic profile rows for fused, GEMM/MMA,
+attention, and CE/loss paths. Verify: the Orin device gate reruns from the tree,
+fails on stale cubin/missing ptxas/wrong golden/device mismatch, and is listed in
+the focused PTX gate.

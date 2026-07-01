@@ -4,8 +4,9 @@ require lib/errors.f
 require lib/string.f
 require lib/ffi.f
 require tools/ptx/profile.f
+require tools/ptx/device-support.f
 
-package PTXBENCH
+package PTX
 
 128 constant PATH-CAP
 128 constant NAME-CAP
@@ -40,12 +41,10 @@ variable PARAM-BYTES-N
    u lenp ! ;
 
 : RC0 ( n -- )
-   dup 0 <> if s" ptxbench: CUDA Driver call failed" 1 die then
-   drop ;
+   CUDA-RC0 ;
 
 : NZ ( n -- )
-   dup 0= if s" ptxbench: missing CUDA handle" 1 die then
-   drop ;
+   CUDA-SYMBOL drop ;
 
 : SYM ( ptr u8 n -- n )
    SYM-BUF >CSTR
@@ -100,7 +99,7 @@ variable PARAM-BYTES-N
 
 public
 
-: RESET ( -- )
+: BENCH-RESET ( -- )
    0 PATH-U !
    0 KERNEL-U !
    0 LABEL-U !
@@ -108,71 +107,70 @@ public
    0 START-EVT ! 0 STOP-EVT ! 0 EVENT-MS !
    1 GRID-N ! 256 BLOCK-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! ;
 
-: CUBIN! ( ptr u8 n -- )
+: BENCH-CUBIN! ( ptr u8 n -- )
    PATH-BUF PATH-U COPY! ;
 
-: KERNEL! ( ptr u8 n -- )
+: BENCH-KERNEL! ( ptr u8 n -- )
    KERNEL-BUF KERNEL-U COPY! ;
 
-: LABEL! ( ptr u8 n -- )
+: BENCH-LABEL! ( ptr u8 n -- )
    LABEL-BUF LABEL-U COPY! ;
 
-: GRID! ( n -- )
+: BENCH-GRID! ( n -- )
    GRID-N ! ;
 
-: BLOCK! ( n -- )
+: BENCH-BLOCK! ( n -- )
    BLOCK-N ! ;
 
-: ITERS! ( n -- )
+: BENCH-ITERS! ( n -- )
    ITERS-N ! ;
 
-: WORK! ( n -- )
+: BENCH-WORK! ( n -- )
    WORK-N ! ;
 
-: PARAM-BYTES! ( n -- )
+: KERNEL-PARAM-BYTES! ( n -- )
    PARAM-BYTES-N ! ;
 
-: GRID@ ( -- n )
+: BENCH-GRID@ ( -- n )
    GRID-N @ ;
 
-: BLOCK@ ( -- n )
+: BENCH-BLOCK@ ( -- n )
    BLOCK-N @ ;
 
-: ITERS@ ( -- n )
+: BENCH-ITERS@ ( -- n )
    ITERS-N @ ;
 
-: WORK@ ( -- n )
+: BENCH-WORK@ ( -- n )
    WORK-N @ ;
 
-: PARAM-BYTES@ ( -- n )
+: KERNEL-PARAM-BYTES@ ( -- n )
    PARAM-BYTES-N @ ;
 
-: LABEL$ ( -- ptr u8 n )
+: BENCH-LABEL$ ( -- ptr u8 n )
    LABEL-BUF LABEL-U @ ;
 
-: OPEN ( -- )
+: DEVICE-OPEN ( -- )
    s" libcuda.so.1" LIB-BUF >CSTR
-   LIB-BUF RTLD-NOW DLOPEN H !
-   H @ NZ
+   LIB-BUF RTLD-NOW DLOPEN CUDA-LIB H !
    0 DEV ! 0 CTX !
    0 s" cuInit" SYM CALL1 RC0
    DEV P>N 0 s" cuDeviceGet" SYM CALL2 RC0
    CTX P>N DEV @ s" cuDevicePrimaryCtxRetain" SYM CALL2 RC0
    CTX @ s" cuCtxSetCurrent" SYM CALL1 RC0 ;
 
-: LOAD ( -- )
-   PATH$ nip 0= if s" ptxbench: cubin path not set" 1 die then
-   KERNEL-U @ 0= if s" ptxbench: kernel not set" 1 die then
+: MODULE-LOAD ( -- )
+   PATH$ nip 0= if E-PTX-BENCH-CUBIN throw then
+   KERNEL-U @ 0= if E-PTX-BENCH-KERNEL throw then
    PATH$ PATH-BUF >CSTR
    MOD P>N PATH-BUF P>N s" cuModuleLoad" SYM CALL2 RC0
    KERNEL-BUF KERNEL-U @ KERNEL-BUF >CSTR
    FUNC P>N MOD @ KERNEL-BUF P>N s" cuModuleGetFunction" SYM CALL3 RC0 ;
 
-: UNLOAD ( -- )
+: MODULE-UNLOAD ( -- )
    MOD @ 0 <> if MOD @ s" cuModuleUnload" SYM CALL1 RC0 then
    0 MOD ! 0 FUNC ! ;
 
-: CLOSE ( -- )
+: DEVICE-CLOSE ( -- )
    DEV @ 0 <> if DEV @ s" cuDevicePrimaryCtxRelease" SYM CALL1 RC0 then
    0 DEV ! 0 CTX ! ;
 
@@ -194,31 +192,31 @@ public
    {: a dev:n u:n :} \ typed-local-lint: allow-bare-local - host ptr u8.
    a P>N dev u s" cuMemcpyDtoH_v2" SYM CALL3 RC0 ;
 
-: PARAM! ( n ptr a n -- )
+: KERNEL-PARAM! ( n ptr a n -- )
    {: off:n addr:ptr bytes:n :}
    FUNC @ off addr P>N bytes s" cuParamSetv" SYM CALL4 RC0 ;
 
-: PARAM-PTR! ( n ptr a -- )
-   8 PARAM! ;
+: KERNEL-PARAM-PTR! ( n ptr a -- )
+   8 KERNEL-PARAM! ;
 
-: PARAM-U32! ( n ptr a -- )
-   4 PARAM! ;
+: KERNEL-PARAM-U32! ( n ptr a -- )
+   4 KERNEL-PARAM! ;
 
-: PREPARE-LAUNCH ( -- )
+: KERNEL-PREPARE-LAUNCH ( -- )
    FUNC @ BLOCK-N @ 1 1 s" cuFuncSetBlockShape" SYM CALL4 RC0
    FUNC @ PARAM-BYTES-N @ s" cuParamSetSize" SYM CALL2 RC0 ;
 
-: LAUNCH ( -- )
+: KERNEL-LAUNCH ( -- )
    FUNC @ GRID-N @ 1 s" cuLaunchGrid" SYM CALL3 RC0 ;
 
-: SYNC ( -- )
+: DEVICE-SYNC ( -- )
    0 s" cuCtxSynchronize" SYM CALL1 RC0 ;
 
 : BENCH-HOST-NS ( -- n )
-   LAUNCH SYNC
+   KERNEL-LAUNCH DEVICE-SYNC
    mono-ns {: t0:n :}
-   ITERS-N @ 0 ?do LAUNCH loop
-   SYNC
+   ITERS-N @ 0 ?do KERNEL-LAUNCH loop
+   DEVICE-SYNC
    mono-ns t0 - ;
 
 : BENCH-NS ( -- n )
@@ -226,9 +224,9 @@ public
 
 : BENCH-GPU-NS ( -- n )
    EVENTS-CREATE
-   LAUNCH SYNC
+   KERNEL-LAUNCH DEVICE-SYNC
    RECORD-START
-   ITERS-N @ 0 ?do LAUNCH loop
+   ITERS-N @ 0 ?do KERNEL-LAUNCH loop
    RECORD-STOP
    STOP-EVENT-SYNC
    EVENT-ELAPSED-NS {: ns:n :}
@@ -236,26 +234,26 @@ public
    ns ;
 
 : REPORT-HEADER ( -- )
-   s" kernel=" type LABEL$ type
+   s" kernel=" type BENCH-LABEL$ type
    s"  work_items=" type WORK-N @ U.0
    s"  grid=" type GRID-N @ U.0
    s"  block=" type BLOCK-N @ U.0
    s"  iters=" type ITERS-N @ U.0 cr
    s" param_bytes=" type PARAM-BYTES-N @ U.0 ;
 
-: REPORT-GPU ( n n n -- )
+: BENCH-REPORT-GPU ( n n n -- )
    {: by:n fl:n ns:n :}
    REPORT-HEADER
    s"  gpu_elapsed_ns=" type ns U.0 cr
-   by fl ns PTXPROF:REPORT-METRICS ;
+   by fl ns REPORT-METRICS ;
 
-: REPORT-HOST ( n n n -- )
+: BENCH-REPORT-HOST ( n n n -- )
    {: by:n fl:n ns:n :}
    REPORT-HEADER
    s"  host_elapsed_ns=" type ns U.0 cr
-   by fl ns PTXPROF:REPORT-METRICS ;
+   by fl ns REPORT-METRICS ;
 
-: REPORT ( n n n -- )
-   REPORT-GPU ;
+: BENCH-REPORT ( n n n -- )
+   BENCH-REPORT-GPU ;
 
 end-package

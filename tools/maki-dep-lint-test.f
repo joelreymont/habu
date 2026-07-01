@@ -21,7 +21,9 @@ require tools/maki-dep-lint-core.f
    \ a bare load token referencing maki/ is a finding
    s" --load maki/array.f"        MDL-COUNT 1 T=
    \ a string-literal load path (TOKENIZE keeps string bodies) is caught too
-   s" maki/eval.f maki/optim.f"    MDL-COUNT 2 T= ;
+   s" maki/eval.f maki/optim.f"    MDL-COUNT 2 T=
+   \ generic tools/ptx files use this same tokenized reject path
+   s" require maki/array.f"        MDL-COUNT 1 T= ;
 
 : MDLT-NO-FALSE-POSITIVE ( -- )
    \ `\` line comments are stripped -> mentioning maki/ in prose is NOT a finding

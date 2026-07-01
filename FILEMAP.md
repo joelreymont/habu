@@ -168,6 +168,9 @@ points stay listed.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,
   runs `ptxas`, and removes generated `.ptx`/`.cubin` artifacts.
+- `tools/ptx/device-support.f` / `tools/ptx/device-support-test.f` — shared
+  fail-closed PTX device-proof helpers for CUDA Driver errors, private temp
+  paths, and `PTXAS`/PATH assembler resolution.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
   vocabulary.
 - `tools/ptx/saxpy-v4-tail-device-test.f` — Orin device proof that checked v4

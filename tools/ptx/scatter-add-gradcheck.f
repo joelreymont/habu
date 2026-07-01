@@ -30,19 +30,34 @@ create EMIT-OUT OUT-CAP allot
 create EMIT-ERR ERR-CAP allot
 create PTXAS-OUT ERR-CAP allot
 create PTXAS-ERR ERR-CAP allot
+create SC-ROOT FS-PATH-CAP allot
+create SC-PTX FS-PATH-CAP allot
+create SC-CUBIN FS-PATH-CAP allot
 create RB 4 allot
 
+variable SC-ROOT-U
+variable SC-PTX-U
+variable SC-CUBIN-U
 variable PX
 variable POUT
 variable PDX
 variable PDZ
 variable NVAR
 
-: U32@ ( ptr u8 -- n )
-   dup c@
-   over 1 BYTE+ c@ 8 lshift or
-   over 2 BYTE+ c@ 16 lshift or
-   swap 3 BYTE+ c@ 24 lshift or ;
+: SC-ROOT$ ( -- ptr u8 n )
+   SC-ROOT SC-ROOT-U @ ;
+
+: SC-PTX$ ( -- ptr u8 n )
+   SC-PTX SC-PTX-U @ ;
+
+: SC-CUBIN$ ( -- ptr u8 n )
+   SC-CUBIN SC-CUBIN-U @ ;
+
+: PREPARE-PATHS ( -- )
+   CLEANUP-RESET
+   s" habu-scatter-add-grad" SC-ROOT SC-ROOT-U PTX:TEMP-DIR!
+   SC-ROOT$ s" scatter-add-grad.ptx" SC-PTX SC-PTX-U PTX:JOIN-PATH!
+   SC-ROOT$ s" scatter-add-grad.cubin" SC-CUBIN SC-CUBIN-U PTX:JOIN-PATH! ;
 
 : EMIT-PRELUDE ( -- )
    PROC-ARGV-RESET
@@ -66,94 +81,84 @@ variable NVAR
    EMIT-PRELUDE
    s" tools/ptx/scatter-add-grad-cg.f" >LEN PROC-ARGV+
    RUN-EMIT {: outu:len erru:len rc:rc :}
-   s" /tmp/scatter-add-grad.ptx" EMIT-OUT outu LEN>N WRITE-ALL
+   SC-PTX$ EMIT-OUT outu LEN>N WRITE-ALL
    outu LEN>N rc RC>N ;
 
-: RUN-PTXAS ( -- len len rc )
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN
-   PTXAS-OUT ERR-CAP >LEN
-   PTXAS-ERR ERR-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE ;
-
 : PTXAS-FANIN ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+
-   s" /tmp/scatter-add-grad.ptx" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   s" /tmp/scatter-add-grad.cubin" >LEN PROC-ARGV+
-   RUN-PTXAS {: outu:len erru:len rc:rc :}
-   rc RC>N ;
+   SC-PTX$ SC-CUBIN$ PTXAS-OUT ERR-CAP PTXAS-ERR ERR-CAP PTX:PTXAS-RUN-DEFAULT
+   {: outu:n erru:n rc:n :}
+   rc ;
 
 : GRID-N ( -- n )
    FANIN-N BLOCK-N 1- + BLOCK-N / ;
 
 : SETUP ( -- )
-   PTXBENCH:RESET
-   s" /tmp/scatter-add-grad.cubin" PTXBENCH:CUBIN!
-   s" SCATTER-ADD-GRADCHECK" PTXBENCH:LABEL!
-   BLOCK-N PTXBENCH:BLOCK!
-   PARAM-BYTES PTXBENCH:PARAM-BYTES!
-   GRID-N PTXBENCH:GRID!
-   PTXBENCH:OPEN
-   WORD-BYTES PX PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES POUT PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES PDX PTXBENCH:DEVICE-ALLOC
-   WORD-BYTES PDZ PTXBENCH:DEVICE-ALLOC ;
+   PTX:BENCH-RESET
+   SC-CUBIN$ PTX:BENCH-CUBIN!
+   s" SCATTER-ADD-GRADCHECK" PTX:BENCH-LABEL!
+   BLOCK-N PTX:BENCH-BLOCK!
+   PARAM-BYTES PTX:KERNEL-PARAM-BYTES!
+   GRID-N PTX:BENCH-GRID!
+   PTX:DEVICE-OPEN
+   WORD-BYTES PX PTX:DEVICE-ALLOC
+   WORD-BYTES POUT PTX:DEVICE-ALLOC
+   WORD-BYTES PDX PTX:DEVICE-ALLOC
+   WORD-BYTES PDZ PTX:DEVICE-ALLOC ;
 
 : FREE-DEV ( n -- )
    dup 0 <> if
-      PTXBENCH:DEVICE-FREE
+      PTX:DEVICE-FREE
    else
       drop
    then ;
 
 : RELEASE ( -- )
-   PTXBENCH:UNLOAD
+   PTX:MODULE-UNLOAD
    PX @ FREE-DEV
    POUT @ FREE-DEV
    PDX @ FREE-DEV
    PDZ @ FREE-DEV
    0 PX ! 0 POUT ! 0 PDX ! 0 PDZ !
-   PTXBENCH:CLOSE ;
+   PTX:DEVICE-CLOSE ;
 
 : LOAD-KERNEL ( ptr u8 n -- )
-   PTXBENCH:UNLOAD
-   PTXBENCH:KERNEL!
-   PTXBENCH:LOAD
-   PTXBENCH:PREPARE-LAUNCH ;
+   PTX:MODULE-UNLOAD
+   PTX:BENCH-KERNEL!
+   PTX:MODULE-LOAD
+   PTX:KERNEL-PREPARE-LAUNCH ;
 
 : READ-DEV ( n -- n )
-   RB swap 4 PTXBENCH:DTOH
-   RB U32@ ;
+   RB swap 4 PTX:DTOH
+   RB PTX:U32@ ;
 
 : PARAMS-FWD ( -- )
    FANIN-N NVAR !
-   0 PX PTXBENCH:PARAM-PTR!
-   8 POUT PTXBENCH:PARAM-PTR!
-   16 NVAR PTXBENCH:PARAM-U32! ;
+   0 PX PTX:KERNEL-PARAM-PTR!
+   8 POUT PTX:KERNEL-PARAM-PTR!
+   16 NVAR PTX:KERNEL-PARAM-U32! ;
 
 : PARAMS-BWD ( -- )
    FANIN-N NVAR !
-   0 PDX PTXBENCH:PARAM-PTR!
-   8 PDZ PTXBENCH:PARAM-PTR!
-   16 NVAR PTXBENCH:PARAM-U32! ;
+   0 PDX PTX:KERNEL-PARAM-PTR!
+   8 PDZ PTX:KERNEL-PARAM-PTR!
+   16 NVAR PTX:KERNEL-PARAM-U32! ;
 
 : RUN-FWD ( n -- n )
-   PX @ swap 1 PTXBENCH:DEVICE-MEMSET32
-   POUT @ 0 1 PTXBENCH:DEVICE-MEMSET32
+   PX @ swap 1 PTX:DEVICE-MEMSET32
+   POUT @ 0 1 PTX:DEVICE-MEMSET32
    s" FANIN_FWD" LOAD-KERNEL
    PARAMS-FWD
-   PTXBENCH:LAUNCH
-   PTXBENCH:SYNC
+   PTX:KERNEL-LAUNCH
+   PTX:DEVICE-SYNC
    POUT @ READ-DEV ;
 
 : RUN-BWD ( -- n )
-   PDX @ 0 1 PTXBENCH:DEVICE-MEMSET32
-   PDZ @ DZ-BITS 1 PTXBENCH:DEVICE-MEMSET32
+   PDX @ 0 1 PTX:DEVICE-MEMSET32
+   PDZ @ DZ-BITS 1 PTX:DEVICE-MEMSET32
    s" FANIN_BWD" LOAD-KERNEL
    PARAMS-BWD
-   PTXBENCH:LAUNCH
-   PTXBENCH:SYNC
+   PTX:KERNEL-LAUNCH
+   PTX:DEVICE-SYNC
    PDX @ READ-DEV ;
 
 : CENTRAL ( -- r )
@@ -169,6 +174,7 @@ variable NVAR
 
 : MAIN ( -- )
    T-RESET
+   PREPARE-PATHS
    EMIT-FANIN {: outn:n erc:n :}
    erc 0 T=
    outn 0 > TTRUE
@@ -179,6 +185,7 @@ variable NVAR
    analytic EXPECTED-BITS T=
    analytic F32>F64 num NEAR? TTRUE
    RELEASE
+   CLEANUP-RUN
    s" device gradcheck: scatter-add fan-in accumulation verified for n=1024 across 4 blocks" type cr
    T-REPORT ;
 

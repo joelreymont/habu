@@ -3,7 +3,7 @@
 require lib/test.f
 require tools/ptx/profile.f
 
-package PTXPROF
+package PTX
 
 T-RESET
 

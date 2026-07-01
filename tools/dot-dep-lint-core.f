@@ -19,6 +19,7 @@ variable DDP-BLOCK#
 variable DDP-NUM-L
 variable DDP-FM
 variable DDP-BLOCKS
+variable DDP-HAS-BLOCKER
 variable DDP-LINE
 
 : DDP-NL ( -- )
@@ -89,7 +90,8 @@ variable DDP-LINE
 
 : DDP-OPEN-FM ( -- )
    1 DDP-FM !
-   0 DDP-BLOCKS ! ;
+   0 DDP-BLOCKS !
+   0 DDP-HAS-BLOCKER ! ;
 
 : DDP-CLOSE-FM ( -- )
    2 DDP-FM !
@@ -112,9 +114,28 @@ variable DDP-LINE
    DDP-NL
    DDP-BAD+ ;
 
+: DDP-PROSE-MISSING ( ptr u8 n n -- ) {: path:ptr pathu:n line:n :}
+   s" DOT-DEP-PROSE " type
+   path pathu type
+   DDP-COLON emit
+   line DDP-U.
+   s" : prose dependency marker needs YAML blocks" type
+   DDP-NL
+   DDP-BAD+ ;
+
 : DDP-CHECK-BLOCKER ( ptr u8 n n ptr u8 n -- ) {: path:ptr pathu:n line:n id:ptr idu:n :}
    DDP-BLOCK+
+   1 DDP-HAS-BLOCKER !
    id idu INTERN? 0= IF path pathu line id idu DDP-MISSING THEN ;
+
+: DDP-PROSE-DEP-LINE? ( ptr u8 n -- bool )
+   2dup s" Deps:" LINT-CONTAINS? IF 2drop LINT-TRUE exit THEN
+   2dup s" Needs:" LINT-CONTAINS? IF 2drop LINT-TRUE exit THEN
+   s" Blocks:" LINT-CONTAINS? ;
+
+: DDP-PROSE-BAD? ( ptr u8 n -- bool )
+   DDP-PROSE-DEP-LINE? IF DDP-HAS-BLOCKER @ 0= exit THEN
+   LINT-FALSE ;
 
 : DDP-SCAN-BLOCK-LINE ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n path:ptr pathu:n line:n :}
    a u DDP-BLOCKER-LINE? IF
@@ -128,10 +149,13 @@ variable DDP-LINE
    DDP-BLOCKS @ 0= IF exit THEN
    a u path pathu line DDP-SCAN-BLOCK-LINE ;
 
+: DDP-SCAN-BODY-LINE ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n path:ptr pathu:n line:n :}
+   a u DDP-PROSE-BAD? IF path pathu line DDP-PROSE-MISSING THEN ;
+
 : DDP-SCAN-LINE ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n path:ptr pathu:n line:n :}
    a u DDP-FM-MARK? IF DDP-SEE-FM-MARK exit THEN
-   DDP-FM-OPEN? 0= IF exit THEN
-   a u path pathu line DDP-SCAN-FM-LINE ;
+   DDP-FM-OPEN? IF a u path pathu line DDP-SCAN-FM-LINE exit THEN
+   DDP-FM @ 2 = IF a u path pathu line DDP-SCAN-BODY-LINE THEN ;
 
 : DDP-COLLECT-DOT ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu DDP-DOT-PATH? 0= IF exit THEN

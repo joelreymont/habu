@@ -3,6 +3,8 @@
 \ GRADE-SM library is reusable (maki/eval-author.f). Orin-only. Load after
 \ maki/eval-device-sm.f.
 
+package MAKI
+
 T-RESET
 
 \ correct softmax -> certify AND device-correct -> GREEN(2)
@@ -15,3 +17,5 @@ s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent
 s" softmax authoring grade: correct=GREEN, B-not-B/=TYPED-WRONG (device gate), no-store=REJECTED" type cr
 
 T-REPORT
+
+end-package

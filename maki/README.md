@@ -26,8 +26,10 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
     exercise and reopen `package MAKI` for bare test calls.
   - Specialized internal vocabularies get their own package when they are a separate
     language surface. `FUSION` is the worked example; its renderer body is `private` and
-    only the driver-level API is exported. The PTX kernel vocabulary (`lib/ptx`) is the
-    canonical future internal module — a future `package PTX`.
+    only the driver-level API is exported. The PTX kernel/device tooling lives behind
+    `package PTX`: codegen vocabulary, fail-closed CUDA/ptxas helpers, generic launch
+    configuration, device timing, and profile metrics. Task-specific fixtures call
+    `PTX:...` words rather than owning raw Driver or assembler plumbing.
   - Cross-package calls use the qualified `PKG:WORD` form (or reopen the package for bare
     names). Cross-cutting error constants keep the global `E-MK-*` form.
 - **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
@@ -94,6 +96,13 @@ rules lower onto the checked Habu-PTX kernels once codegen lands.
 
 The element/scalar rules now lower onto the checked Habu-PTX kernels and run on
 the device, each verified correct-vs-CPU on the Orin:
+
+SAXPY (`y = a*x + y`) appears often here because it is the smallest useful GPU
+smoke: it exercises module load, parameter marshalling, memory copy, launch,
+synchronization, and a simple golden. It is not the abstraction boundary. The
+reusable boundary is the `PTX` package's kernel-agnostic launch/profile API; real
+coverage also includes softmax/reductions, scatter-add accumulation, v4 residual
+tails, and fused kernels.
 
 - **A maki tensor op (AXPY)** runs on the GPU (`maki/gpu.f` + `gpu-test.f`).
 - **A maki SGD step** `w -= lr·g` lowers onto the checked SAXPY kernel and matches
@@ -195,8 +204,8 @@ the device, each verified correct-vs-CPU on the Orin:
   concatenative target genuinely beats the Triton authoring path: same speed, but the
   composition is the program and the type system proves it.
 
-- **Checker ablation (measured)** — `maki/eval-compare.f` now scores each SAXPY
-  candidate twice: the checked arm rejects 5/6 bugs before GPU execution, while the
+- **Checker ablation (measured)** — `maki/eval-compare.f` scores the SAXPY smoke
+  fixture twice: the checked arm rejects 5/6 bugs before GPU execution, while the
   no-checker arm emits, assembles, and device-runs all 9 candidates. On the Orin
   fixture, no-checker catches 0 bugs before execution; all 6 buggy candidates reach
   the device golden and return wrong output, while the 3 correct candidates pass.

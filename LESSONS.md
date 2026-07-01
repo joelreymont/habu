@@ -774,6 +774,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `$`, Forth punctuation). Handoff: leave the dot open, record commit + pending
   edits + definition-of-done in the committed doc, close only after the validated
   commit; add step-level child dots for in-progress work.
+- **Patch multi-blocker dots explicitly:** this `dot` binary accepted repeated
+  `-a` flags but kept only the last blocker when creating a dot. After `dot add`,
+  inspect the front matter and patch the full `blocks:` list before relying on
+  dot-dep-lint or `dot ready`.
 - **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
   cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
   by `tools/filemap-lint.f`, so RCA starts with existing tools.
@@ -1044,6 +1048,15 @@ lesson — keep the specific word/code/path, cut the prose.
   hides the optimization question. Keep CUDA module/function/param/launch/timing
   in `tools/ptx/bench.f`, keep bytes/FLOPs in the workload layer, and always print
   fused-vs-unfused rows when claiming fusion moved memory traffic.
+- **SAXPY is a smoke fixture, not the PTX model:** it is useful because `y=a*x+y`
+  proves load/marshal/copy/launch/sync/golden with minimal kernel complexity.
+  Keep the reusable boundary in `package PTX`; cover reductions, scatter-add,
+  tails, GEMM/MMA, attention, and fusion with their own fixtures instead of
+  generalizing from SAXPY.
+- **Generic PTX APIs need leak tests:** a plan-level "generic" claim is not
+  enough while `tools/ptx/profile.f` exposes workload names, target roof values,
+  or fixed CUDA paths. Keep smoke fixtures in adapters, make target caps data,
+  and wire PTX independence/public-surface lints into the focused PTX gate.
 - **Do not call host launch timing a GPU profile:** CUDA kernel optimization
   evidence needs device elapsed time (`cuEventRecord`/`cuEventElapsedTime`) in a
   `gpu_elapsed_ns` row. Keep host-loop timing separate for launch-overhead work.

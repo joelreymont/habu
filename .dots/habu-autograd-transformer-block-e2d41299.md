@@ -4,6 +4,19 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-06-27T23:00:02.511319+02:00"
+blocks:
+  - habu-add-logits-domain-a1489686
+  - habu-ptx-m11-attention-fa7b0598
+  - habu-ad-thread-saved-36bad526
+  - habu-maki-lower-tensor-e6bbca3d
 ---
 
-Cover the ops a real MLP+attention block needs, each with forward + VJP + gradcheck: MATMUL-BWD (dA=dC.Bt, dB=At.dC - the two GEMMs), ATTENTION-BWD (flash backward: recompute scores, dV/dK/dQ), LAYERNORM fwd+bwd, GELU fwd+bwd, RESIDUAL (add - trivial), EMBEDDING (gather fwd / scatter-add bwd). Each lowers onto the checked Habu-PTX kernels (cg-matmul, cg-attention) and is device-gradchecked. Files: maki/autograd.f + lib/ptx kernels + ad.f VJP-EXPAND entries. VERIFY: each op's analytic VJP matches central finite difference within tol on the Orin. Dep: EPIC; relates habu-ad-softmax-rows, habu-ptx-ad-device, habu-re-express-tiled.
+File: PLAN.md:432. Gap: GPT-path backward needs tensor-scale VJPs for
+matmul, causal attention, LayerNorm, GELU, residual, embedding/gather, and
+logits-domain CE, with saved values keyed by op instance instead of global
+`SAVED-*` stubs. Fix: add checked VJP entries and generated backward fixtures
+that lower through the generic PTX/Maki device path, using scatter-add for
+embedding/gather accumulation and save-vs-recompute for attention/LayerNorm.
+Verify: CPU numeric gradchecks plus Orin finite-difference gradchecks for each
+lowered op, negative fixtures for unsupported control flow/shapes, two nonlinear
+op instances, and forward-mutation-before-backward aliasing.

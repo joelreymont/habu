@@ -49,7 +49,7 @@ package PTXBW
    s"  kernels=2" type
    s"  iters=" type BW-ITERS U.0 cr
    s" gpu_elapsed_ns_sum=" type ns U.0 cr
-   by fl ns PTXPROF:REPORT-METRICS ;
+   by fl ns PTX:REPORT-METRICS ;
 
 : REPORT-SPEEDUP ( n n -- )
    {: unfused:n fused:n :}

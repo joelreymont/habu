@@ -1,6 +1,8 @@
 \ maki/eval-device-test.f - device-golden autograder demo (load after maki/eval-device.f).
 \ correct SAXPY -> GREEN(2); x+y (certifies, device-wrong) -> TYPED-WRONG(1); missing-store -> REJECTED(0).
 
+package MAKI
+
 T-RESET
 
 \ correct SAXPY -> certifies AND device-correct -> GREEN(2)
@@ -21,3 +23,5 @@ EVD-PASS  @  1 T=                                   \ ONE green (device-correct)
 s" device-golden pass@k: green(certify AND device-correct)=" type EVD-PASS @ . s" / total=" type EVD-TOTAL @ . cr
 
 T-REPORT
+
+end-package

@@ -6,10 +6,19 @@ issue-type: task
 created-at: "2026-06-27T08:06:44.248329+02:00"
 blocks:
   - habu-make-ptx-device-c0eb12a3
-  - habu-fix-ptx-collective-997cfcce
+  - habu-add-ptx-planner-30b93e8c
+  - habu-automatic-op-fusion-329aac27
+  - habu-tiled-gemm-codegen-76075375
+  - habu-ptx-m11-attention-fa7b0598
+  - habu-add-logits-domain-a1489686
 ---
 
-Gap #9 (the maki deployment seam). Maki ops (optim/loss/autograd/train) run on CPU float arrays (maki/array.f); they do NOT lower onto the checked Habu-PTX kernels for GPU tensor execution. Build the maki -> Habu-PTX lowering: a maki tensor op (e.g. elementwise add, the SGD step, softmax) selects/instantiates the checked kernel, emits it, and launches it on device (via the proven FFI path tools/ptx/cuda-launch.f, _v2 symbols). Then maki training runs on the GPU.
-- Files: maki/ (a lowering + launch driver, FFI boundary), depends on the tile-IR codegen.
-- Verify: a maki tensor add runs the checked +. kernel on the GPU and matches the CPU result; then a tensor SGD step on device.
-- Dep: tile-IR codegen (gap #1) + maki tensor types (done).
+File: PLAN.md:466. Gap: Maki ops still primarily run on CPU arrays and
+`maki/gpu.f`/eval paths are not a generic device tensor/runtime over PTX plans.
+Fix: add package-scoped MAKI device tensor handles, graph lowering to PTX plans,
+private temp roots, generic kernel handles, lifetime cleanup, launch parameter
+plumbing, and graph nodes for elementwise, GEMM, attention, loss, and optimizer
+paths. Verify: a chained device-resident add -> GEMM -> softmax/attention ->
+optimizer proof runs without host round-tripping every intermediate, unsupported
+model features reject with named errors, and every new Maki test is in the CPU
+or Orin gate from `maki/README.md`.

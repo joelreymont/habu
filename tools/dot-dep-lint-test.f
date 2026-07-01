@@ -35,6 +35,17 @@ require tools/dot-dep-lint-core.f
    s" title: nope" DDP-BLOCKER-LINE? TFALSE
    s"   - habu-a-12345678" DDP-BLOCKER$ s" habu-a-12345678" T$= ;
 
+: DDLT-PROSE-DEPS ( -- )
+   s" Deps: habu-a-12345678" DDP-PROSE-DEP-LINE? TTRUE
+   s" Needs: habu-a-12345678" DDP-PROSE-DEP-LINE? TTRUE
+   s" Blocks: habu-a-12345678" DDP-PROSE-DEP-LINE? TTRUE
+   s" blocks:" DDP-PROSE-DEP-LINE? TFALSE
+   s" Dependency: prose only" DDP-PROSE-DEP-LINE? TFALSE
+   0 DDP-HAS-BLOCKER !
+   s" Deps: habu-a-12345678" DDP-PROSE-BAD? TTRUE
+   1 DDP-HAS-BLOCKER !
+   s" Deps: habu-a-12345678" DDP-PROSE-BAD? TFALSE ;
+
 : DDLT-LIVE-LINT ( -- )
    DOT-DEP-LINT ;
 
@@ -44,6 +55,7 @@ require tools/dot-dep-lint-core.f
    DDLT-DOT-IDS
    DDLT-FRONT-MATTER
    DDLT-BLOCKERS
+   DDLT-PROSE-DEPS
    DDLT-LIVE-LINT
    T-REPORT ;
 
