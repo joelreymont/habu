@@ -814,6 +814,38 @@ root directory, and `CK-CACHE-CLEAR!` clears the explicit setting. The test
 suite installs this root in-process; content-key does not read environment
 variables.
 
+## Object Records
+
+`lib/object.f` owns the `OBJ` package: a deterministic object-record codec for
+the future linkable Habu build path. It is not wired into `hb-build` yet. The
+current build caches store finished executables and maker artifacts; object
+records are the typed pre-link contract for a later compiler/linker slice.
+
+```forth
+OBJ:RESET      ( -- )
+OBJ:SOURCE!    ( ptr u8 n -- )
+OBJ:TARGET!    ( ptr u8 n -- )
+OBJ:CHECKER!   ( ptr u8 n -- )
+OBJ:COMPILER!  ( ptr u8 n -- )
+OBJ:REQUIRE+   ( ptr u8 n -- )
+OBJ:PACKAGE+   ( ptr u8 n ptr u8 n -- )
+OBJ:EXPORT+    ( ptr u8 n ptr u8 n -- )
+OBJ:IMPORT+    ( ptr u8 n ptr u8 n -- )
+OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
+OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
+OBJ:NORET+     ( ptr u8 n -- )
+OBJ:BYTES$     ( -- ptr u8 n )
+OBJ:LOAD       ( ptr u8 n -- )
+OBJ:KEY-HEX    ( ptr u8 -- )
+```
+
+`OBJ:SOURCE!` requires a 64-byte hex source digest. Field strings reject tabs,
+newlines, control bytes, and empty fields so the tab-separated format remains
+canonical. `OBJ:BYTES$` and `OBJ:KEY-HEX` require source, target, checker, and
+compiler ABI fields before returning data. `OBJ:LOAD` validates and restores a
+serialized record; `OBJ:KEY-HEX` hashes the canonical bytes through
+`lib/content-key.f`.
+
 ## Source Materialization
 
 `lib/source.f` provides checked helpers for bounded source assembly and small

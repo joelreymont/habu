@@ -461,4 +461,5 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" tools/lint/text-foundation-test.f" GSI-INCLUDE
    s" tools/json-file-test.f" GSI-INCLUDE
    s" tools/sha256-file-test.f" GSI-INCLUDE
-   s" lib/content-key-test.f" GSI-INCLUDE ;
+   s" lib/content-key-test.f" GSI-INCLUDE
+   s" lib/object-test.f" GSI-INCLUDE ;

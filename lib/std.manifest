@@ -934,6 +934,22 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	content-key	lib/content-key.f	word	CK-FILE+	(ptr u8 n --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	append a file path and its SHA-256 digest
 1	content-key	lib/content-key.f	word	CK-FINAL	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	hash the accumulated manifest into a digest buffer
 1	content-key	lib/content-key.f	word	CK-FINAL-HEX	(ptr u8 --)	lib/content-key-test.f	docs/stdlib.md	stdlib-content-key	published	hash the accumulated manifest into a hex digest buffer
+1	object	lib/object.f	module			lib/object-test.f	docs/stdlib.md	stdlib-object	active	checked OBJ package object-record codec for future linkable builds
+1	object	lib/object.f	word	OBJ:RESET	(--)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	clear the object record and emit the magic header
+1	object	lib/object.f	word	OBJ:SOURCE!	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	record the 64-byte hex source digest once
+1	object	lib/object.f	word	OBJ:TARGET!	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	record the target ABI string once
+1	object	lib/object.f	word	OBJ:CHECKER!	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	record the checker ABI string once
+1	object	lib/object.f	word	OBJ:COMPILER!	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	record the compiler ABI string once
+1	object	lib/object.f	word	OBJ:REQUIRE+	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append required source or package metadata
+1	object	lib/object.f	word	OBJ:PACKAGE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append package name and visibility metadata
+1	object	lib/object.f	word	OBJ:EXPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append exported symbol and effect metadata
+1	object	lib/object.f	word	OBJ:IMPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append imported symbol and effect metadata
+1	object	lib/object.f	word	OBJ:TYPE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append declared type metadata
+1	object	lib/object.f	word	OBJ:RELOC+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append relocation kind offset and symbol metadata
+1	object	lib/object.f	word	OBJ:NORET+	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append no-return symbol metadata
+1	object	lib/object.f	word	OBJ:BYTES$	(-- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return validated canonical object bytes
+1	object	lib/object.f	word	OBJ:LOAD	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	validate and restore serialized canonical object bytes
+1	object	lib/object.f	word	OBJ:KEY-HEX	(ptr u8 --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	hash validated object bytes into a content-key hex digest
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers
 1	time	lib/time.f	word	TIME-EPOCH-SECONDS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native UTC epoch seconds
 1	time	lib/time.f	word	TIME-MONO-NS	(-- n)	tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	checked wrapper around native monotonic nanoseconds

@@ -133,3 +133,10 @@
 -3603 constant E-TASK-THREAD
 -3604 constant E-TASK-STATE
 -3605 constant E-TASK-USER
+
+\ Object/linker records: -3700..-3799
+-3700 constant E-OBJ-FIRST
+-3799 constant E-OBJ-LAST
+-3700 constant E-OBJ-SCHEMA
+-3701 constant E-OBJ-CAPACITY
+-3702 constant E-OBJ-FIELD

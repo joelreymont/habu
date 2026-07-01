@@ -125,6 +125,10 @@ TEST:SUITE content-key-cache
    lib/content-key-test.f
 TEST:END-SUITE
 
+TEST:SUITE object-record-codec
+   lib/object-test.f
+TEST:END-SUITE
+
 TEST:SUITE tasking-primitive-smoke
    test/atomics-smoke.f
    test/run-in-stack-smoke.f
