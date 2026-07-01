@@ -18,16 +18,36 @@ variable GD-INC-MAIN-U
 variable GD-INC-DUP-U
 variable GD-CHECK-LABEL-A
 variable GD-CHECK-LABEL-U
+variable GD-CANDIDATE-A
+variable GD-CANDIDATE-U
+variable GD-CANDIDATE-VERDICT
+variable GD-START-NS
 
 : GD-CHECK-LABEL-A-FIELD ( -- ptr ptr u8 )
    GD-CHECK-LABEL-A 0 ptr-field ;
 
+: GD-CANDIDATE-A-FIELD ( -- ptr ptr u8 )
+   GD-CANDIDATE-A 0 ptr-field ;
+
 : GD-CHECK-LABEL$ ( -- ptr u8 n )
    GD-CHECK-LABEL-A-FIELD @ GD-CHECK-LABEL-U @ ;
+
+: GD-CANDIDATE$ ( -- ptr u8 n )
+   GD-CANDIDATE-A-FIELD @ GD-CANDIDATE-U @ ;
 
 : GD-CHECK-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
    u GD-CHECK-LABEL-U !
    a GD-CHECK-LABEL-A-FIELD ! ;
+
+: GD-CANDIDATE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u GD-CANDIDATE-U !
+   a GD-CANDIDATE-A-FIELD ! ;
+
+\ typed-local-lint: allow-bare-local - q is the contract action quotation.
+: GD-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns GD-START-NS !
+   q execute
+   label labelu mono-ns GD-START-NS @ - PROC-NS-PER-MS / GS-SPAN ;
 
 : GD-EMIT-LONG-NAME ( -- )
    GD-LONG-NAME-LEN GD-A GE-SRC-REPEAT-C ;
@@ -479,6 +499,36 @@ variable GD-CHECK-LABEL-U
    needle needleu label labelu GE-EXPECT-ERR-HAS
    label labelu GT-PROGRESS-PASS ;
 
+: GD-CANDIDATE-ACT ( -- )
+   GD-CANDIDATE$ CHECK-CANDIDATE! GD-CANDIDATE-VERDICT ! ;
+
+: GD-CANDIDATE-RC ( n -- n ) {: rc:n :}
+   rc 0 <> if rc exit then
+   GD-CANDIDATE-VERDICT @ 0= if $46 exit then
+   0 ;
+
+: GD-CANDIDATE-STORE ( n -- ) {: rc:n :}
+   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
+   rc GD-CANDIDATE-RC GT-OUTCOME-CODE !
+   0 GT-OUT-U !
+   DIAG-BUFFER$ nip GT-ERR-U !
+   DIAG-BUFFER-OFF ;
+
+: GD-CANDIDATE-RUN ( ptr u8 n ptr u8 n -- ) {: body:ptr bodyu:n label:ptr labelu:n :}
+   label labelu GT-PROGRESS-RUN
+   s" inprocess-candidate" GS-EVENT
+   body bodyu GD-CANDIDATE!
+   -1 GD-CANDIDATE-VERDICT !
+   GT-ERR-BUF GT-ERR-CAP DIAG-BUFFER!
+   [: GD-CANDIDATE-ACT ;] catch GD-CANDIDATE-STORE ;
+
+: GD-CANDIDATE-BAD ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: body:ptr bodyu:n rc:n needle:ptr needleu:n label:ptr labelu:n :}
+   body bodyu label labelu GD-CANDIDATE-RUN
+   rc label labelu GE-EXPECT-RC
+   needle needleu label labelu GE-EXPECT-ERR-HAS
+   label labelu GT-PROGRESS-PASS ;
+
 : GD-CHECK-BAD-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GD-CHECK-BUF-RUN
    70 label labelu GE-EXPECT-RC
@@ -802,6 +852,16 @@ variable GD-CHECK-LABEL-U
    s" gd" GE-OUT-LINE
    SB$ s" hb structures output" GE-EXPECT-OUT ;
 
+: GD-STRUCTURE-CANDIDATE-SETUP ( -- )
+   GE-EVAL-MARK
+   GE-EVAL-CAPTURE
+   s" structures byte-field checker setup" GE-EXPECT-OK
+   s" structures byte-field checker setup" GE-EXPECT-SILENT ;
+
+: GD-STRUCTURE-BAD-CANDIDATE ( -- )
+   s" GD-BAD-FLAGS ( ptr a -- n ) POINT.FLAGS @"
+   $46 s" gd-bad-flags" s" structures reject byte field cell load" GD-CANDIDATE-BAD ;
+
 : GD-STRUCTURE-MISUSE ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -815,8 +875,9 @@ variable GD-CHECK-LABEL-U
    s" BEGIN-STRUCTURE POINT" GE-SRC-LINE
    s" CFIELD: POINT.FLAGS" GE-SRC-LINE
    s" END-STRUCTURE" GE-SRC-LINE
-   s" GD-BAD-FLAGS ( ptr a -- n ) POINT.FLAGS @" GE-SRC-LINE
-   $46 s" GD-BAD-FLAGS" s" structures reject byte field cell load" GE-CHECK-RUN-BAD ;
+   GD-STRUCTURE-CANDIDATE-SETUP
+   GD-STRUCTURE-BAD-CANDIDATE
+   GE-EVAL-FORGET ;
 
 : GD-ENUMS ( -- )
    GE-HB-RESET
@@ -1035,43 +1096,43 @@ variable GD-CHECK-LABEL-U
 
 : GD-MAIN ( -- )
    s" hb-gate-dictionary" GT-START
-   GD-LONG-DICTIONARY
-   GD-WORDLIST
-   GD-LONG-NAME
-   GD-TRUSTED-DOES
-   GD-BAD-DOES
-   GD-ROW-QUOT-CHECKS
-   GD-PRIMITIVE-CHECKS
-   GD-RETURN-CHECKS
-   GD-COMBINATOR-CHECKS
-   GD-LOCAL-QUOT-CHECKS
-   GD-LOCAL-QUOT-COMPILE-FAIL
-   GD-LOCAL-FIRST
-   GD-LITERAL-FIRST
-   GD-NAMESPACE-QUALIFIED
-   GD-PACKAGE-RUNTIME
-   GD-PACKAGE-JIT-STACK-ISOLATION
-   GD-PACKAGE-CHECK
-   GD-PACKAGE-NORET
-   GD-DUPLICATE-DEFINITION-REJECTS
-   GD-EXPLICIT-REDEFINITION
-   GD-PACKAGE-SHADOW-POSITIVES
-   GD-PACKAGE-DUPLICATE-CHECK
-   GD-PACKAGE-MULTIFILE-LOAD
-   GD-PACKAGE-INCLUDE
-   GD-PACKAGE-MISUSE
-   GD-STRUCTURES
-   GD-STRUCTURE-MISUSE
-   GD-ENUMS
-   GD-EXEC-VECTORS
-   GD-EXEC-VECTOR-PACKAGE
-   GD-EXEC-VECTOR-MISUSE
-   GD-CASES
-   GD-CASE-MISUSE
-   GD-PARSING-RUNTIME
-   GD-CHECK-POSITIVE-BATCH
-   GD-DATA-OVERFLOW
-   GD-NAMED-ROW-RUN
-   GD-XREF
+   s" dictionary/long-dictionary" [: GD-LONG-DICTIONARY ;] GD-RUN
+   s" dictionary/wordlist" [: GD-WORDLIST ;] GD-RUN
+   s" dictionary/long-name" [: GD-LONG-NAME ;] GD-RUN
+   s" dictionary/trusted-does" [: GD-TRUSTED-DOES ;] GD-RUN
+   s" dictionary/bad-does" [: GD-BAD-DOES ;] GD-RUN
+   s" dictionary/row-quot" [: GD-ROW-QUOT-CHECKS ;] GD-RUN
+   s" dictionary/primitives" [: GD-PRIMITIVE-CHECKS ;] GD-RUN
+   s" dictionary/return" [: GD-RETURN-CHECKS ;] GD-RUN
+   s" dictionary/combinators" [: GD-COMBINATOR-CHECKS ;] GD-RUN
+   s" dictionary/local-quot" [: GD-LOCAL-QUOT-CHECKS ;] GD-RUN
+   s" dictionary/local-quot-compile" [: GD-LOCAL-QUOT-COMPILE-FAIL ;] GD-RUN
+   s" dictionary/local-first" [: GD-LOCAL-FIRST ;] GD-RUN
+   s" dictionary/literal-first" [: GD-LITERAL-FIRST ;] GD-RUN
+   s" dictionary/namespace" [: GD-NAMESPACE-QUALIFIED ;] GD-RUN
+   s" dictionary/package-runtime" [: GD-PACKAGE-RUNTIME ;] GD-RUN
+   s" dictionary/package-jit-stack" [: GD-PACKAGE-JIT-STACK-ISOLATION ;] GD-RUN
+   s" dictionary/package-check" [: GD-PACKAGE-CHECK ;] GD-RUN
+   s" dictionary/package-noret" [: GD-PACKAGE-NORET ;] GD-RUN
+   s" dictionary/duplicate" [: GD-DUPLICATE-DEFINITION-REJECTS ;] GD-RUN
+   s" dictionary/redefine" [: GD-EXPLICIT-REDEFINITION ;] GD-RUN
+   s" dictionary/package-shadow" [: GD-PACKAGE-SHADOW-POSITIVES ;] GD-RUN
+   s" dictionary/package-duplicate-check" [: GD-PACKAGE-DUPLICATE-CHECK ;] GD-RUN
+   s" dictionary/package-multifile" [: GD-PACKAGE-MULTIFILE-LOAD ;] GD-RUN
+   s" dictionary/package-include" [: GD-PACKAGE-INCLUDE ;] GD-RUN
+   s" dictionary/package-misuse" [: GD-PACKAGE-MISUSE ;] GD-RUN
+   s" dictionary/structures" [: GD-STRUCTURES ;] GD-RUN
+   s" dictionary/structure-misuse" [: GD-STRUCTURE-MISUSE ;] GD-RUN
+   s" dictionary/enums" [: GD-ENUMS ;] GD-RUN
+   s" dictionary/exec-vectors" [: GD-EXEC-VECTORS ;] GD-RUN
+   s" dictionary/exec-vector-package" [: GD-EXEC-VECTOR-PACKAGE ;] GD-RUN
+   s" dictionary/exec-vector-misuse" [: GD-EXEC-VECTOR-MISUSE ;] GD-RUN
+   s" dictionary/case" [: GD-CASES ;] GD-RUN
+   s" dictionary/case-misuse" [: GD-CASE-MISUSE ;] GD-RUN
+   s" dictionary/parsing-runtime" [: GD-PARSING-RUNTIME ;] GD-RUN
+   s" dictionary/check-positive-batch" [: GD-CHECK-POSITIVE-BATCH ;] GD-RUN
+   s" dictionary/data-overflow" [: GD-DATA-OVERFLOW ;] GD-RUN
+   s" dictionary/named-row" [: GD-NAMED-ROW-RUN ;] GD-RUN
+   s" dictionary/xref" [: GD-XREF ;] GD-RUN
    GT-CLEANUP
    s" PASS: native dictionary/checker gate phase" type cr ;

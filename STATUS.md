@@ -3,8 +3,8 @@
 Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
 measured persistent content-key hot run after removing top warm launchers and
-splitting AOT closure diagnostics from the maker path is 22.288s internal /
-24.59s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
+splitting AOT closure diagnostics from the maker path is 22.273s internal /
+24.49s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
 `macos-arm64-12x2` profile, manifest-hashed small `hb-under-test`, no top
 test-suite snapshot, no checker/tool warm launchers, zero warm-image events,
 and an AOT artifact cache hit for this source revision. A source-change fill run
@@ -28,9 +28,9 @@ cache root. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
 Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-`helper-spawn=30`, `spans=146`, `slowest-test=native engine fixture slice`
-at 13.874s; `check-cli` is 2.477s; AOT negative is 2.081s and no longer
-runs the AOT maker.
+`helper-spawn=29`, `spans=184`, `slowest-test=native engine fixture slice`
+at 13.566s; `check-cli` is 2.557s, dictionary/checker is 5.451s, and AOT
+negative is 2.034s with no AOT maker run.
 Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

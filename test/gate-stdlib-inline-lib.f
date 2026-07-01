@@ -1,6 +1,6 @@
 \ gate-stdlib-inline-lib.f - in-process stdlib gate slices for resident runners.
 \
-\ Load after test/gate-stdlib-lib.f in the warm gate runner.
+\ Load after test/gate-stdlib-lib.f in the resident test runner.
 
 variable GSI-TIMINGS
 variable GSI-PATH-A

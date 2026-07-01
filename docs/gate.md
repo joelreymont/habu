@@ -167,10 +167,10 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Current macOS proof after removing top warm launchers, replacing the
    monolithic parent support load with explicit suite setup, moving the
    check-tool file-label smoke to the in-process checker core, and splitting AOT
-   closure diagnostics from the maker path: 22.288s internal / 24.59s shell wall
-   hot, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=30`;
-   `check-cli` is 2.477s, AOT negative is 2.081s, and the slowest test is
-   engine fixture at 13.874s.
+   closure diagnostics from the maker path: 22.273s internal / 24.49s shell wall
+   hot, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=29`;
+   `check-cli` is 2.557s, dictionary/checker is 5.451s, AOT negative is 2.034s,
+   and the slowest test is engine fixture at 13.566s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -187,8 +187,10 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Acceptance: dictionary/checker pure negatives do not spawn candidate `hb`;
    process tests remain only for public fail-closed CLI behavior.
    Status: diagnostic JSON/all-errors checks and the engine source-list support
-   check use the direct checker core in-process. One dictionary CLI sentinel
-   remains for public fail-closed stderr behavior.
+   check use the direct checker core in-process. Structure field misuse now uses
+   a transactional resident `CHECK-CANDIDATE!` assertion instead of launching
+   `tools/check.f`. One dictionary CLI sentinel remains for public fail-closed
+   stderr behavior.
 
 7. Add a transactional evaluator/compiler result API.
    Acceptance: source-language misuse tests can assert rc/stdout/stderr
