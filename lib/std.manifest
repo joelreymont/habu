@@ -976,6 +976,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-index	lib/object-index.f	word	OBJIDX:LOAD	(ptr u8 n -- ptr u8 n bool)	lib/object-index-test.f	docs/stdlib.md	stdlib-object	published	load object key for a source key when present
 1	object-link	lib/object-link.f	module			lib/object-link-test.f	docs/stdlib.md	stdlib-object	active	checked object export/import symbol validation for future linker
 1	object-link	lib/object-link.f	word	OBJLINK:RESET	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	clear accumulated object link symbols
+1	object-link	lib/object-link.f	word	OBJLINK:PACKAGE-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated package metadata count
+1	object-link	lib/object-link.f	word	OBJLINK:REQUIRE-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated require metadata count
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated export count
 1	object-link	lib/object-link.f	word	OBJLINK:IMPORT-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated import count
 1	object-link	lib/object-link.f	word	OBJLINK:DEF-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated definition count
@@ -989,6 +991,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-DATA-BASE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return merged data base for one added object
 1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-TEXT-SIZE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return text byte size for one added object
 1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-DATA-SIZE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return data byte size for one added object
+1	object-link	lib/object-link.f	word	OBJLINK:PACKAGE$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return package name by index
+1	object-link	lib/object-link.f	word	OBJLINK:PACKAGE-VIS$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return package visibility by index
+1	object-link	lib/object-link.f	word	OBJLINK:REQUIRE$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return require metadata by index
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return export symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:IMPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return import symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:DEF$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return definition symbol by index

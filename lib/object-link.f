@@ -25,6 +25,12 @@ $10000 constant MERGE-CAP
 create SYM-BUF SYM-CAP allot
 create TEXT-BUF MERGE-CAP allot
 create DATA-BUF MERGE-CAP allot
+create PKG-OFFS MAX-SYMS cells allot
+create PKG-US MAX-SYMS cells allot
+create PKG-VIS-OFFS MAX-SYMS cells allot
+create PKG-VIS-US MAX-SYMS cells allot
+create REQ-OFFS MAX-SYMS cells allot
+create REQ-US MAX-SYMS cells allot
 create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
 create EXP-EFF-OFFS MAX-SYMS cells allot
@@ -50,6 +56,8 @@ create OBJ-TEXT-US MAX-OBJS cells allot
 create OBJ-DATA-US MAX-OBJS cells allot
 
 variable SYM-U
+variable PKG-N
+variable REQ-N
 variable EXP-N
 variable IMP-N
 variable DEF-N
@@ -70,6 +78,8 @@ variable APP-DATA
 
 : CLEAR ( -- )
    0 SYM-U !
+   0 PKG-N !
+   0 REQ-N !
    0 EXP-N !
    0 IMP-N !
    0 DEF-N !
@@ -81,6 +91,30 @@ variable APP-DATA
 : CHECK-IDX ( n n -- ) {: idx:n cap:n :}
    idx 0 < if E-OBJ-FIELD throw then
    idx cap >= if E-OBJ-FIELD throw then ;
+
+: PKG-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   PKG-OFFS idx cells + ;
+
+: PKG-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   PKG-US idx cells + ;
+
+: PKG-VIS-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   PKG-VIS-OFFS idx cells + ;
+
+: PKG-VIS-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   PKG-VIS-US idx cells + ;
+
+: REQ-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   REQ-OFFS idx cells + ;
+
+: REQ-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   REQ-US idx cells + ;
 
 : EXP-OFF-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
@@ -192,6 +226,12 @@ variable APP-DATA
 : EXPORT-ROOM ( -- )
    EXP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
+: PACKAGE-ROOM ( -- )
+   PKG-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
+: REQUIRE-ROOM ( -- )
+   REQ-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
 : IMPORT-ROOM ( -- )
    IMP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
@@ -207,6 +247,18 @@ variable APP-DATA
 : EXP$ ( n -- ptr u8 n ) {: idx:n :}
    idx EXP-N @ CHECK-IDX
    SYM-BUF idx EXP-OFF-PTR @ + idx EXP-U-PTR @ ;
+
+: PKG$ ( n -- ptr u8 n ) {: idx:n :}
+   idx PKG-N @ CHECK-IDX
+   SYM-BUF idx PKG-OFF-PTR @ + idx PKG-U-PTR @ ;
+
+: PKG-VIS$ ( n -- ptr u8 n ) {: idx:n :}
+   idx PKG-N @ CHECK-IDX
+   SYM-BUF idx PKG-VIS-OFF-PTR @ + idx PKG-VIS-U-PTR @ ;
+
+: REQ$ ( n -- ptr u8 n ) {: idx:n :}
+   idx REQ-N @ CHECK-IDX
+   SYM-BUF idx REQ-OFF-PTR @ + idx REQ-U-PTR @ ;
 
 : IMP$ ( n -- ptr u8 n ) {: idx:n :}
    idx IMP-N @ CHECK-IDX
@@ -259,6 +311,24 @@ variable APP-DATA
 
 : DEF-HAS? ( ptr u8 n -- bool )
    DEF-IDX 0 >= ;
+
+: PKG+ ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n vis:ptr visu:n :}
+   PACKAGE-ROOM
+   a u SYM+ {: off:n :}
+   vis visu SYM+ {: voff:n :}
+   off PKG-N @ PKG-OFF-PTR !
+   u PKG-N @ PKG-U-PTR !
+   voff PKG-N @ PKG-VIS-OFF-PTR !
+   visu PKG-N @ PKG-VIS-U-PTR !
+   PKG-N @ 1+ PKG-N ! ;
+
+: REQ+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   REQUIRE-ROOM
+   a u SYM+ {: off:n :}
+   off REQ-N @ REQ-OFF-PTR !
+   u REQ-N @ REQ-U-PTR !
+   REQ-N @ 1+ REQ-N ! ;
 
 : EXP+ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n eff:ptr effu:n :}
@@ -373,6 +443,14 @@ variable APP-DATA
    row OBJ:ROW-TAG$ s" data" STR= if row APPEND-DATA exit then ;
 
 : ADD-ROW ( n -- ) {: row:n :}
+   row OBJ:ROW-TAG$ s" package" STR= if
+      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ PKG+
+      exit
+   then
+   row OBJ:ROW-TAG$ s" require" STR= if
+      row 0 OBJ:ROW-FIELD$ REQ+
+      exit
+   then
    row OBJ:ROW-TAG$ s" export" STR= if
       row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ EXP+
       exit
@@ -499,6 +577,12 @@ public
 : EXPORT-COUNT ( -- n )
    EXP-N @ ;
 
+: PACKAGE-COUNT ( -- n )
+   PKG-N @ ;
+
+: REQUIRE-COUNT ( -- n )
+   REQ-N @ ;
+
 : IMPORT-COUNT ( -- n )
    IMP-N @ ;
 
@@ -541,6 +625,15 @@ public
 
 : EXPORT$ ( n -- ptr u8 n )
    EXP$ ;
+
+: PACKAGE$ ( n -- ptr u8 n )
+   PKG$ ;
+
+: PACKAGE-VIS$ ( n -- ptr u8 n )
+   PKG-VIS$ ;
+
+: REQUIRE$ ( n -- ptr u8 n )
+   REQ$ ;
 
 : IMPORT$ ( n -- ptr u8 n )
    IMP$ ;
