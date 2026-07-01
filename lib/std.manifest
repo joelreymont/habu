@@ -982,6 +982,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return export symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:IMPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return import symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:DEF$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return definition symbol by index
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-EFFECT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return export effect by index
+1	object-link	lib/object-link.f	word	OBJLINK:IMPORT-EFFECT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return import effect by index
+1	object-link	lib/object-link.f	word	OBJLINK:DEF-EFFECT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return definition effect by index
 1	object-link	lib/object-link.f	word	OBJLINK:RELOC-KIND$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return relocation kind by index
 1	object-link	lib/object-link.f	word	OBJLINK:RELOC-SYM$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return relocation target symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:DEF-ADDR	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return merged text address for a definition index
@@ -989,8 +992,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-link	lib/object-link.f	word	OBJLINK:RELOC-TARGET	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return resolved target address for a relocation index
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-FIND?	(ptr u8 n -- bool)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	test whether an export symbol is accumulated
 1	object-link	lib/object-link.f	word	OBJLINK:DEF-FIND?	(ptr u8 n -- bool)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	test whether a definition symbol is accumulated
-1	object-link	lib/object-link.f	word	OBJLINK:EXPORT+	(ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one export symbol, rejecting duplicates
-1	object-link	lib/object-link.f	word	OBJLINK:IMPORT+	(ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one import symbol
+1	object-link	lib/object-link.f	word	OBJLINK:EXPORT+	(ptr u8 n ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one export symbol/effect pair, rejecting duplicate names
+1	object-link	lib/object-link.f	word	OBJLINK:IMPORT+	(ptr u8 n ptr u8 n --)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add one import symbol/effect pair
 1	object-link	lib/object-link.f	word	OBJLINK:ADD	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	add export/import rows from the current OBJ record
 1	object-link	lib/object-link.f	word	OBJLINK:CHECK	(--)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	validate that every accumulated import has an export
 1	time	lib/time.f	module			tools/stdlib-time-test.f	docs/stdlib.md	stdlib-time	active	monotonic and wall-clock helpers

@@ -19,10 +19,16 @@ $4000 constant SYM-CAP
 create SYM-BUF SYM-CAP allot
 create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
+create EXP-EFF-OFFS MAX-SYMS cells allot
+create EXP-EFF-US MAX-SYMS cells allot
 create IMP-OFFS MAX-SYMS cells allot
 create IMP-US MAX-SYMS cells allot
+create IMP-EFF-OFFS MAX-SYMS cells allot
+create IMP-EFF-US MAX-SYMS cells allot
 create DEF-OFFS MAX-SYMS cells allot
 create DEF-US MAX-SYMS cells allot
+create DEF-EFF-OFFS MAX-SYMS cells allot
+create DEF-EFF-US MAX-SYMS cells allot
 create DEF-ADDRS MAX-SYMS cells allot
 create REL-KIND-OFFS MAX-RELOCS cells allot
 create REL-KIND-US MAX-RELOCS cells allot
@@ -74,6 +80,14 @@ variable CUR-DATA
    idx MAX-SYMS CHECK-IDX
    EXP-US idx cells + ;
 
+: EXP-EFF-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   EXP-EFF-OFFS idx cells + ;
+
+: EXP-EFF-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   EXP-EFF-US idx cells + ;
+
 : IMP-OFF-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    IMP-OFFS idx cells + ;
@@ -82,6 +96,14 @@ variable CUR-DATA
    idx MAX-SYMS CHECK-IDX
    IMP-US idx cells + ;
 
+: IMP-EFF-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   IMP-EFF-OFFS idx cells + ;
+
+: IMP-EFF-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   IMP-EFF-US idx cells + ;
+
 : DEF-OFF-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    DEF-OFFS idx cells + ;
@@ -89,6 +111,14 @@ variable CUR-DATA
 : DEF-U-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    DEF-US idx cells + ;
+
+: DEF-EFF-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   DEF-EFF-OFFS idx cells + ;
+
+: DEF-EFF-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   DEF-EFF-US idx cells + ;
 
 : DEF-ADDR-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
@@ -172,6 +202,18 @@ variable CUR-DATA
    idx DEF-N @ CHECK-IDX
    SYM-BUF idx DEF-OFF-PTR @ + idx DEF-U-PTR @ ;
 
+: EXP-EFF$ ( n -- ptr u8 n ) {: idx:n :}
+   idx EXP-N @ CHECK-IDX
+   SYM-BUF idx EXP-EFF-OFF-PTR @ + idx EXP-EFF-U-PTR @ ;
+
+: IMP-EFF$ ( n -- ptr u8 n ) {: idx:n :}
+   idx IMP-N @ CHECK-IDX
+   SYM-BUF idx IMP-EFF-OFF-PTR @ + idx IMP-EFF-U-PTR @ ;
+
+: DEF-EFF$ ( n -- ptr u8 n ) {: idx:n :}
+   idx DEF-N @ CHECK-IDX
+   SYM-BUF idx DEF-EFF-OFF-PTR @ + idx DEF-EFF-U-PTR @ ;
+
 : REL-KIND$ ( n -- ptr u8 n ) {: idx:n :}
    idx REL-N @ CHECK-IDX
    SYM-BUF idx REL-KIND-OFF-PTR @ + idx REL-KIND-U-PTR @ ;
@@ -186,11 +228,14 @@ variable CUR-DATA
 : DEF-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
    idx DEF-SYM$ a u STR= ;
 
-: EXP-FIND? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: EXP-IDX ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup EXP-N @ < while
-      dup a u rot EXP-MATCH? if drop TRUE exit then
+      dup a u rot EXP-MATCH? if exit then
       1+
-   repeat drop FALSE ;
+   repeat drop -1 ;
+
+: EXP-FIND? ( ptr u8 n -- bool )
+   EXP-IDX 0 >= ;
 
 : DEF-IDX ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup DEF-N @ < while
@@ -201,27 +246,39 @@ variable CUR-DATA
 : DEF-HAS? ( ptr u8 n -- bool )
    DEF-IDX 0 >= ;
 
-: EXP+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: EXP+ ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n eff:ptr effu:n :}
    a u EXP-FIND? if E-OBJ-SCHEMA throw then
    EXPORT-ROOM
    a u SYM+ {: off:n :}
+   eff effu SYM+ {: eoff:n :}
    off EXP-N @ EXP-OFF-PTR !
    u EXP-N @ EXP-U-PTR !
+   eoff EXP-N @ EXP-EFF-OFF-PTR !
+   effu EXP-N @ EXP-EFF-U-PTR !
    EXP-N @ 1+ EXP-N ! ;
 
-: IMP+ ( ptr u8 n -- ) {: a:ptr u:n :}
+: IMP+ ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n eff:ptr effu:n :}
    IMPORT-ROOM
    a u SYM+ {: off:n :}
+   eff effu SYM+ {: eoff:n :}
    off IMP-N @ IMP-OFF-PTR !
    u IMP-N @ IMP-U-PTR !
+   eoff IMP-N @ IMP-EFF-OFF-PTR !
+   effu IMP-N @ IMP-EFF-U-PTR !
    IMP-N @ 1+ IMP-N ! ;
 
-: DEF+ ( ptr u8 n n -- ) {: a:ptr u:n addr:n :}
+: DEF+ ( ptr u8 n ptr u8 n n -- )
+   {: a:ptr u:n eff:ptr effu:n addr:n :}
    a u DEF-HAS? if E-OBJ-SCHEMA throw then
    DEF-ROOM
    a u SYM+ {: off:n :}
+   eff effu SYM+ {: eoff:n :}
    off DEF-N @ DEF-OFF-PTR !
    u DEF-N @ DEF-U-PTR !
+   eoff DEF-N @ DEF-EFF-OFF-PTR !
+   effu DEF-N @ DEF-EFF-U-PTR !
    addr DEF-N @ DEF-ADDR-PTR !
    DEF-N @ 1+ DEF-N ! ;
 
@@ -249,7 +306,9 @@ variable CUR-DATA
 : ADD-DEF ( n -- ) {: row:n :}
    row 1 ROW-OFF {: off:n :}
    off TEXT-OFF-CHECK
-   row 0 OBJ:ROW-FIELD$ TEXT-U @ off + DEF+ ;
+   row 0 OBJ:ROW-FIELD$
+   row 2 OBJ:ROW-FIELD$
+   TEXT-U @ off + DEF+ ;
 
 : ADD-RELOC ( n -- ) {: row:n :}
    row 1 ROW-OFF {: off:n :}
@@ -260,11 +319,11 @@ variable CUR-DATA
 
 : ADD-ROW ( n -- ) {: row:n :}
    row OBJ:ROW-TAG$ s" export" STR= if
-      row 0 OBJ:ROW-FIELD$ EXP+
+      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ EXP+
       exit
    then
    row OBJ:ROW-TAG$ s" import" STR= if
-      row 0 OBJ:ROW-FIELD$ IMP+
+      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ IMP+
       exit
    then
    row OBJ:ROW-TAG$ s" def" STR= if
@@ -277,7 +336,9 @@ variable CUR-DATA
    then ;
 
 : IMP-RESOLVED? ( n -- bool ) {: idx:n :}
-   idx IMP$ EXP-FIND? ;
+   idx IMP$ EXP-IDX {: exp:n :}
+   exp 0 < if FALSE exit then
+   idx IMP-EFF$ exp EXP-EFF$ STR= ;
 
 : ROW-TAG= ( n ptr u8 n -- bool ) {: row:n tag:ptr tagu:n :}
    row OBJ:ROW-TAG$ tag tagu STR= ;
@@ -380,6 +441,15 @@ public
 : DEF$ ( n -- ptr u8 n )
    DEF-SYM$ ;
 
+: EXPORT-EFFECT$ ( n -- ptr u8 n )
+   EXP-EFF$ ;
+
+: IMPORT-EFFECT$ ( n -- ptr u8 n )
+   IMP-EFF$ ;
+
+: DEF-EFFECT$ ( n -- ptr u8 n )
+   DEF-EFF$ ;
+
 : RELOC-KIND$ ( n -- ptr u8 n )
    REL-KIND$ ;
 
@@ -404,10 +474,10 @@ public
 : DEF-FIND? ( ptr u8 n -- bool )
    DEF-HAS? ;
 
-: EXPORT+ ( ptr u8 n -- )
+: EXPORT+ ( ptr u8 n ptr u8 n -- )
    EXP+ ;
 
-: IMPORT+ ( ptr u8 n -- )
+: IMPORT+ ( ptr u8 n ptr u8 n -- )
    IMP+ ;
 
 : ADD ( -- )
