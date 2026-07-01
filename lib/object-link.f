@@ -31,6 +31,12 @@ create PKG-VIS-OFFS MAX-SYMS cells allot
 create PKG-VIS-US MAX-SYMS cells allot
 create REQ-OFFS MAX-SYMS cells allot
 create REQ-US MAX-SYMS cells allot
+create TYPE-OFFS MAX-SYMS cells allot
+create TYPE-US MAX-SYMS cells allot
+create TYPE-KIND-OFFS MAX-SYMS cells allot
+create TYPE-KIND-US MAX-SYMS cells allot
+create NORET-OFFS MAX-SYMS cells allot
+create NORET-US MAX-SYMS cells allot
 create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
 create EXP-EFF-OFFS MAX-SYMS cells allot
@@ -58,6 +64,8 @@ create OBJ-DATA-US MAX-OBJS cells allot
 variable SYM-U
 variable PKG-N
 variable REQ-N
+variable TYPE-N
+variable NORET-N
 variable EXP-N
 variable IMP-N
 variable DEF-N
@@ -80,6 +88,8 @@ variable APP-DATA
    0 SYM-U !
    0 PKG-N !
    0 REQ-N !
+   0 TYPE-N !
+   0 NORET-N !
    0 EXP-N !
    0 IMP-N !
    0 DEF-N !
@@ -115,6 +125,30 @@ variable APP-DATA
 : REQ-U-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    REQ-US idx cells + ;
+
+: TYPE-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   TYPE-OFFS idx cells + ;
+
+: TYPE-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   TYPE-US idx cells + ;
+
+: TYPE-KIND-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   TYPE-KIND-OFFS idx cells + ;
+
+: TYPE-KIND-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   TYPE-KIND-US idx cells + ;
+
+: NORET-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   NORET-OFFS idx cells + ;
+
+: NORET-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-SYMS CHECK-IDX
+   NORET-US idx cells + ;
 
 : EXP-OFF-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
@@ -232,6 +266,12 @@ variable APP-DATA
 : REQUIRE-ROOM ( -- )
    REQ-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
+: TYPE-ROOM ( -- )
+   TYPE-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
+: NORET-ROOM ( -- )
+   NORET-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
 : IMPORT-ROOM ( -- )
    IMP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
@@ -259,6 +299,18 @@ variable APP-DATA
 : REQ$ ( n -- ptr u8 n ) {: idx:n :}
    idx REQ-N @ CHECK-IDX
    SYM-BUF idx REQ-OFF-PTR @ + idx REQ-U-PTR @ ;
+
+: TYPE-SYM$ ( n -- ptr u8 n ) {: idx:n :}
+   idx TYPE-N @ CHECK-IDX
+   SYM-BUF idx TYPE-OFF-PTR @ + idx TYPE-U-PTR @ ;
+
+: TYPE-KIND-SYM$ ( n -- ptr u8 n ) {: idx:n :}
+   idx TYPE-N @ CHECK-IDX
+   SYM-BUF idx TYPE-KIND-OFF-PTR @ + idx TYPE-KIND-U-PTR @ ;
+
+: NORET-SYM$ ( n -- ptr u8 n ) {: idx:n :}
+   idx NORET-N @ CHECK-IDX
+   SYM-BUF idx NORET-OFF-PTR @ + idx NORET-U-PTR @ ;
 
 : IMP$ ( n -- ptr u8 n ) {: idx:n :}
    idx IMP-N @ CHECK-IDX
@@ -329,6 +381,24 @@ variable APP-DATA
    off REQ-N @ REQ-OFF-PTR !
    u REQ-N @ REQ-U-PTR !
    REQ-N @ 1+ REQ-N ! ;
+
+: TYPE+ ( ptr u8 n ptr u8 n -- )
+   {: a:ptr u:n kind:ptr kindu:n :}
+   TYPE-ROOM
+   a u SYM+ {: off:n :}
+   kind kindu SYM+ {: koff:n :}
+   off TYPE-N @ TYPE-OFF-PTR !
+   u TYPE-N @ TYPE-U-PTR !
+   koff TYPE-N @ TYPE-KIND-OFF-PTR !
+   kindu TYPE-N @ TYPE-KIND-U-PTR !
+   TYPE-N @ 1+ TYPE-N ! ;
+
+: NORET+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   NORET-ROOM
+   a u SYM+ {: off:n :}
+   off NORET-N @ NORET-OFF-PTR !
+   u NORET-N @ NORET-U-PTR !
+   NORET-N @ 1+ NORET-N ! ;
 
 : EXP+ ( ptr u8 n ptr u8 n -- )
    {: a:ptr u:n eff:ptr effu:n :}
@@ -449,6 +519,14 @@ variable APP-DATA
    then
    row OBJ:ROW-TAG$ s" require" STR= if
       row 0 OBJ:ROW-FIELD$ REQ+
+      exit
+   then
+   row OBJ:ROW-TAG$ s" type" STR= if
+      row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ TYPE+
+      exit
+   then
+   row OBJ:ROW-TAG$ s" noret" STR= if
+      row 0 OBJ:ROW-FIELD$ NORET+
       exit
    then
    row OBJ:ROW-TAG$ s" export" STR= if
@@ -583,6 +661,12 @@ public
 : REQUIRE-COUNT ( -- n )
    REQ-N @ ;
 
+: TYPE-COUNT ( -- n )
+   TYPE-N @ ;
+
+: NORET-COUNT ( -- n )
+   NORET-N @ ;
+
 : IMPORT-COUNT ( -- n )
    IMP-N @ ;
 
@@ -634,6 +718,15 @@ public
 
 : REQUIRE$ ( n -- ptr u8 n )
    REQ$ ;
+
+: TYPE$ ( n -- ptr u8 n )
+   TYPE-SYM$ ;
+
+: TYPE-KIND$ ( n -- ptr u8 n )
+   TYPE-KIND-SYM$ ;
+
+: NORET$ ( n -- ptr u8 n )
+   NORET-SYM$ ;
 
 : IMPORT$ ( n -- ptr u8 n )
    IMP$ ;

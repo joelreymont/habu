@@ -67,6 +67,8 @@ variable OBJ-C-U
    BASE
    s" CORE" s" public" OBJ:PACKAGE+
    s" lib/string.f" OBJ:REQUIRE+
+   s" count" s" nominal" OBJ:TYPE+
+   s" DIE" OBJ:NORET+
    TEXT-A 3 OBJ:TEXT+
    s" FOO" s" n -- n" OBJ:EXPORT+
    s" FOO" 1 s" n -- n" OBJ:DEF+
@@ -200,6 +202,22 @@ variable OBJ-C-U
    repeat drop
    SAVE-C ;
 
+: BUILD-MANY-TYPES ( -- )
+   BASE
+   0 begin dup 33 < while
+      dup NAME$ s" nominal" OBJ:TYPE+
+      1+
+   repeat drop
+   SAVE-C ;
+
+: BUILD-MANY-NORETS ( -- )
+   BASE
+   0 begin dup 33 < while
+      dup NAME$ OBJ:NORET+
+      1+
+   repeat drop
+   SAVE-C ;
+
 : PREPARE ( -- )
    BUILD-EXPORT-A
    BUILD-IMPORT-B
@@ -222,6 +240,8 @@ variable OBJ-C-U
    OBJLINK:CHECK
    OBJLINK:PACKAGE-COUNT 1 T=
    OBJLINK:REQUIRE-COUNT 1 T=
+   OBJLINK:TYPE-COUNT 1 T=
+   OBJLINK:NORET-COUNT 1 T=
    OBJLINK:EXPORT-COUNT 1 T=
    OBJLINK:IMPORT-COUNT 1 T=
    OBJLINK:DEF-COUNT 1 T=
@@ -247,6 +267,9 @@ variable OBJ-C-U
    0 OBJLINK:PACKAGE$ s" CORE" T$=
    0 OBJLINK:PACKAGE-VIS$ s" public" T$=
    0 OBJLINK:REQUIRE$ s" lib/string.f" T$=
+   0 OBJLINK:TYPE$ s" count" T$=
+   0 OBJLINK:TYPE-KIND$ s" nominal" T$=
+   0 OBJLINK:NORET$ s" DIE" T$=
    0 OBJLINK:EXPORT$ s" FOO" T$=
    0 OBJLINK:IMPORT$ s" FOO" T$=
    0 OBJLINK:DEF$ s" FOO" T$=
@@ -402,6 +425,16 @@ variable OBJ-C-U
    OBJLINK:RESET
    [: LOAD-C OBJLINK:ADD ;] E-OBJ-CAPACITY TTHROWSQ ;
 
+: TYPE-OVERFLOW-FAILS ( -- )
+   BUILD-MANY-TYPES
+   OBJLINK:RESET
+   [: LOAD-C OBJLINK:ADD ;] E-OBJ-CAPACITY TTHROWSQ ;
+
+: NORET-OVERFLOW-FAILS ( -- )
+   BUILD-MANY-NORETS
+   OBJLINK:RESET
+   [: LOAD-C OBJLINK:ADD ;] E-OBJ-CAPACITY TTHROWSQ ;
+
 : ADD-EMPTY-C ( -- )
    LOAD-C OBJLINK:ADD ;
 
@@ -440,6 +473,8 @@ public
    TABLE-OVERFLOW-FAILS
    PACKAGE-OVERFLOW-FAILS
    REQUIRE-OVERFLOW-FAILS
+   TYPE-OVERFLOW-FAILS
+   NORET-OVERFLOW-FAILS
    OBJECT-OVERFLOW-FAILS
    T-REPORT ;
 

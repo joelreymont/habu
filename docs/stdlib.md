@@ -913,6 +913,8 @@ objects have been added.
 OBJLINK:RESET        ( -- )
 OBJLINK:PACKAGE-COUNT ( -- n )
 OBJLINK:REQUIRE-COUNT ( -- n )
+OBJLINK:TYPE-COUNT  ( -- n )
+OBJLINK:NORET-COUNT ( -- n )
 OBJLINK:EXPORT-COUNT ( -- n )
 OBJLINK:IMPORT-COUNT ( -- n )
 OBJLINK:DEF-COUNT    ( -- n )
@@ -929,6 +931,9 @@ OBJLINK:OBJECT-DATA-SIZE ( n -- n )
 OBJLINK:PACKAGE$     ( n -- ptr u8 n )
 OBJLINK:PACKAGE-VIS$ ( n -- ptr u8 n )
 OBJLINK:REQUIRE$     ( n -- ptr u8 n )
+OBJLINK:TYPE$        ( n -- ptr u8 n )
+OBJLINK:TYPE-KIND$   ( n -- ptr u8 n )
+OBJLINK:NORET$       ( n -- ptr u8 n )
 OBJLINK:EXPORT$      ( n -- ptr u8 n )
 OBJLINK:IMPORT$      ( n -- ptr u8 n )
 OBJLINK:DEF$         ( n -- ptr u8 n )
@@ -950,7 +955,7 @@ OBJLINK:APPLY        ( -- )
 ```
 
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies package,
-require, symbol, and effect strings into bounded storage so later `OBJ:LOAD`
+require, type, no-return, symbol, and effect strings into bounded storage so later `OBJ:LOAD`
 calls cannot invalidate link metadata. It decodes validated `text`/`data` rows
 into bounded merged section buffers, records per-object text/data base and size
 rows before advancing the merged section totals, and exposes the merged bytes
