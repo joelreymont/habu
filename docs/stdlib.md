@@ -340,6 +340,7 @@ level code does not depend on broad library ordering such as loading
 
 ```forth
 BYTE+           ( ptr u8 n -- ptr u8 )
+BYTE@           ( ptr u8 n -- n )
 BYTE-COPY-LEN   ( ptr u8 ptr u8 len -- )
 BYTE-COPY       ( ptr u8 ptr u8 n -- )
 ```

@@ -100,6 +100,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	core-bytes	src/core/bytes.f	module			lib/string-test.f	docs/stdlib.md	stdlib-core	active	core byte-buffer helpers loaded before stdlib modules
 1	core-bytes	src/core/bytes.f	word	BYTE-CHECK-N	(n --)	lib/string-test.f	docs/stdlib.md	stdlib-core	active	validate a raw byte length before refinement
 1	core-bytes	src/core/bytes.f	word	BYTE+	(ptr u8 n -- ptr u8)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	offset a checked byte pointer by a raw byte count
+1	core-bytes	src/core/bytes.f	word	BYTE@	(ptr u8 n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	read one byte at a checked byte offset
 1	core-bytes	src/core/bytes.f	word	BYTE-COPY-LEN	(ptr u8 ptr u8 len --)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	copy bytes using an already refined length role
 1	core-bytes	src/core/bytes.f	word	BYTE-COPY	(ptr u8 ptr u8 n --)	lib/string-test.f	docs/stdlib.md	stdlib-core	published	copy bytes between checked byte buffers
 1	string	lib/string.f	word	ASCII-LOWER	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII uppercase byte to lowercase

@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 
-$20000 constant BCG-CAP
+$40000 constant BCG-CAP
 
 create BCG-BUF BCG-CAP allot
 variable BCG-LEN

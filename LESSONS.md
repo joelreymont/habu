@@ -71,6 +71,9 @@ lesson — keep the specific word/code/path, cut the prose.
   be loaded first. Small primitive helpers used across unrelated libraries
   belong in a narrow `src/core/*.f` prelude file, and test entry files should
   include their own setup instead of making suites encode broad library order.
+- **Scanner opener predicates should read source bytes:** `create`d token tables
+  are `ptr a`, not `ptr u8`; use checked byte helpers for token-shape tests
+  instead of passing dictionary data to source-string APIs.
 - **Runtime data slots must not overlap evaluate frames:** `EVAL-FRAME` spans
   `$3800..$39FF`; putting task or FFI scratch cells inside that range corrupts
   nested `include`/`evaluate` and makes definers fail as if tasks were live.
@@ -359,7 +362,7 @@ lesson — keep the specific word/code/path, cut the prose.
   through `CHECK-CANDIDATE!` plus diagnostic rendering; keep true CLI/die
   boundaries as child-process sentinels.
 - **Use checker-core buffer adapters for semantic negatives:** `CHECK-ALL-ERRORS-BUF`
-  reuses `VERIFY-SOURCE-BUF` candidate scope and diagnostic-buffer rendering
+  reuses `VERIFY:SOURCE-BUF` candidate scope and diagnostic-buffer rendering
   without writing a temp file or spawning `hb`. It is valid for ordinary semantic
   rejects such as package no-return flow and duplicate-definition. Full-source
   failures such as duplicates must be handled before per-definition isolation,
@@ -555,7 +558,7 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Semantic check-tool fixtures should not spawn the wrapper:** reserve
   `tools/check.f` subprocesses for argv/env/stdin/exit/source-label contracts.
   `tools/check-test.f` kept positive verification and unterminated-string
-  diagnostics as full wrapper subprocesses even though `VERIFY-SOURCE-BUF` and
+  diagnostics as full wrapper subprocesses even though `VERIFY:SOURCE-BUF` and
   `CHECK-ALL-ERRORS-FILE` already owned those invariants.
 - **Use checker-warm for checker CLI smokes:** when a test must keep a real
   `tools/check.f` argv/stdin boundary, run it through the checker-warm image
@@ -1588,3 +1591,12 @@ lesson — keep the specific word/code/path, cut the prose.
   old 12-way Mac top pool made cold cache fill slower through contention. The
   measured Mac profile is 10 top slots with 2 nested slots; prove cold wall time
   against the prior clean-tree baseline before landing scheduler changes.
+- **Escaped source literals belong in Habu, not test harnesses:** when snapshots
+  need embedded quotes or control bytes, implement parser words (`S\"`/`C\"`/
+  `.\"`) and teach checker/scanners the same syntax. Do not route expected JSON
+  through production renderers just to avoid literal escaping.
+- **Source-shape tests need source-sized buffers:** tests that read generated
+  sources such as `bootstrap/cg/forth.fs` must size their buffers for the current
+  generated file or allocate dynamically. A stale `$20000` cap fails as
+  `E-FS-CAPACITY` before assertions run, which hides the actual regression being
+  tested.

@@ -168,11 +168,14 @@ variable UB-OUT-FD
       UB-ADV UB-DQ = if exit then
    repeat ;
 
-: UB-STRING-OPENER? ( ptr u8 n -- bool )
-   {: a:ptr u:n :}
-   u 2 <> if UB-FALSE exit then
-   a 1+ c@ UB-DQ <> if UB-FALSE exit then
-   a c@ ASCII-LOWER dup 115 = over 46 = or swap 99 = or ;
+: UB-SKIP-ESC-STRING ( -- )
+   begin UB-END? UB-NOT while
+      UB-ADV dup UB-BSLASH = if
+         drop UB-END? UB-NOT if UB-ADV drop then
+      else
+         UB-DQ = if exit then
+      then
+   repeat ;
 
 : UB-SKIP-IGNORED ( -- )
    begin UB-END? UB-NOT while
@@ -220,7 +223,8 @@ variable UB-OUT-FD
       UB-ADV drop
       UB-TOK-U @ 1+ UB-TOK-U !
    repeat
-   UB-TOK$ UB-STRING-OPENER? if UB-SKIP-STRING then
+   UB-TOK$ LINT-ESC-STRING-OPENER? if UB-SKIP-ESC-STRING else
+   UB-TOK$ LINT-NORMAL-STRING-OPENER? if UB-SKIP-STRING then then
    UB-TRUE ;
 
 : UB-SET-CHECK-OFF? ( -- bool )

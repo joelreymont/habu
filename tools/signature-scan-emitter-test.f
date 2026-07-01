@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 
-$20000 constant SSET-CAP
+$40000 constant SSET-CAP
 
 create SSET-BUF SSET-CAP allot
 variable SSET-LEN

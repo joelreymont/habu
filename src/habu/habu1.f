@@ -82,6 +82,7 @@ variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
+variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LKWLBRACE variable LKWENDLOC variable LLOC-FIND variable LKWCONST

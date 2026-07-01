@@ -229,11 +229,14 @@ variable REPL-ROOT-U
       R-ADV DQUOTE = if exit then
    repeat ;
 
-: R-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 2 <> if LINT-FALSE exit then
-   a 1+ c@ DQUOTE <> if LINT-FALSE exit then
-   a c@ LINT-FOLD dup 115 = swap 99 = or
-   a c@ DOT = or ;
+: R-SKIP-ESC-QUOTE ( -- )
+   begin R-END? 0= while
+      R-ADV dup 92 = if
+         drop R-END? 0= if R-ADV drop then
+      else
+         DQUOTE = if exit then
+      then
+   repeat ;
 
 : R-SKIP-IGNORED ( -- )
    begin R-END? 0= while
@@ -259,7 +262,8 @@ variable REPL-ROOT-U
       R-ADV drop
    repeat
    REPL-X @ REPL-TMP @ - REPL-TOK-U !
-   REPL-TOK-A@ REPL-TOK-U @ R-STRING-OPENER? if R-SKIP-QUOTE then
+   REPL-TOK-A@ REPL-TOK-U @ LINT-ESC-STRING-OPENER? if R-SKIP-ESC-QUOTE else
+   REPL-TOK-A@ REPL-TOK-U @ LINT-NORMAL-STRING-OPENER? if R-SKIP-QUOTE then then
    LINT-TRUE ;
 
 : REPL-FINDING  ( ptr u8 n ptr u8 n n -- ) {: fa:ptr fu:n ta:ptr tu:n line:n :}

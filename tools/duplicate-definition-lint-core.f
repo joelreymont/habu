@@ -214,16 +214,18 @@ variable DDL-TOK-COL
    repeat
    DDL-SCAN-END? 0= if DDL-SCAN-ADV drop then ;
 
-: DDL-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 2 <> if LINT-FALSE exit then
-   a 1+ c@ DQUOTE <> if LINT-FALSE exit then
-   a c@ LINT-FOLD 115 = if LINT-TRUE exit then
-   a c@ DOT = if LINT-TRUE exit then
-   a c@ LINT-FOLD 99 = ;
-
 : DDL-SKIP-QUOTE ( -- )
    begin DDL-SCAN-END? 0= while
       DDL-SCAN-ADV DQUOTE = if exit then
+   repeat ;
+
+: DDL-SKIP-ESC-QUOTE ( -- )
+   begin DDL-SCAN-END? 0= while
+      DDL-SCAN-ADV dup 92 = if
+         drop DDL-SCAN-END? 0= if DDL-SCAN-ADV drop then
+      else
+         DQUOTE = if exit then
+      then
    repeat ;
 
 : DDL-MARK-WORD ( -- )
@@ -241,7 +243,8 @@ variable DDL-TOK-COL
 
 : DDL-SCAN-WORD ( -- )
    DDL-SCAN-RAW-WORD
-   DDL-TOK$ DDL-STRING-OPENER? if DDL-SKIP-QUOTE then ;
+   DDL-TOK$ LINT-ESC-STRING-OPENER? if DDL-SKIP-ESC-QUOTE else
+   DDL-TOK$ LINT-NORMAL-STRING-OPENER? if DDL-SKIP-QUOTE then then ;
 
 : DDL-SKIP-WS ( -- )
    begin DDL-SCAN-END? 0= DDL-SCAN-C@ LINT-WS? and while

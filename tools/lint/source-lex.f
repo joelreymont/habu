@@ -112,6 +112,16 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
    begin LEX-END? 0= while LEX-ADV DQUOTE = if LINT-TRUE exit then repeat
    LINT-FALSE ;
 
+: LEX-SKIP-ESC-QUOTE ( -- bool )
+   begin LEX-END? 0= while
+      LEX-ADV dup 92 = if
+         drop LEX-END? 0= if LEX-ADV drop then
+      else
+         DQUOTE = if LINT-TRUE exit then
+      then
+   repeat
+   LINT-FALSE ;
+
 : LEX-MARK-UNTERM-QUOTE ( n -- ) {: k :}
    -1 LEX-UNTERM-QUOTE !
    k LB@ LEX-UNTERM-BYTE !
@@ -120,13 +130,6 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 
 : LEX-UNTERM-QUOTE? ( -- bool )
    LEX-UNTERM-QUOTE @ ;
-
-: LEX-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
-   u 2 <> if LINT-FALSE exit then
-   a 1+ c@ DQUOTE <> if LINT-FALSE exit then
-   a c@ LINT-FOLD 115 = if LINT-TRUE exit then
-   a c@ DOT = if LINT-TRUE exit then
-   a c@ LINT-FOLD 99 = ;
 
 : LEX-LINE-COMMENT ( -- )
    begin LEX-END? 0= LEX-C@ 10 <> and while LEX-ADV drop repeat ;
@@ -149,8 +152,12 @@ create LEX-CLEN-V VEC-HEADER-CELLS cells allot
 : LEX-WORD ( -- )
    begin LEX-END? 0= LEX-C@ LINT-WS? 0= and while LEX-ADV drop repeat
    L-WORD LEX-A@ LEX-START @ + LX @ LEX-START @ - LEX-START @ LEX-START-LINE @ LEX-START-COL @ LEX-A@ 0 LEX-ADD
-   L# @ 1- dup LEX-TOK LEX-STRING-OPENER? if
-      LEX-SKIP-QUOTE 0= if dup LEX-MARK-UNTERM-QUOTE then
+   L# @ 1- dup LEX-TOK LINT-ESC-STRING-OPENER? if
+      LEX-SKIP-ESC-QUOTE 0= if dup LEX-MARK-UNTERM-QUOTE then
+   else
+      dup LEX-TOK LINT-NORMAL-STRING-OPENER? if
+         LEX-SKIP-QUOTE 0= if dup LEX-MARK-UNTERM-QUOTE then
+      then
    then drop ;
 
 : LEX-SOURCE ( ptr u8 n -- ) {: a:ptr u :}

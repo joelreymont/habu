@@ -5,7 +5,7 @@
 \ tools/lint/json-writer.f, and tools/lint/source-lex.f.
 
 : CA-MAYBE-VERIFY-SOURCE ( -- )
-   s" VERIFY-SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" included then ;
+   s" VERIFY:SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" included then ;
 
 CA-MAYBE-VERIFY-SOURCE
 
@@ -722,7 +722,7 @@ variable CA-JSON
    CA-ERR-A@ CA-ERR-CAP @ DIAG-BUFFER! ;
 
 : CA-CHECK-FULL-ACT ( -- )
-   CA-SRC-A@ CA-SRC-U @ VERIFY-SOURCE-BUF-IN-SCOPE ;
+   CA-SRC-A@ CA-SRC-U @ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CA-CHECK-FULL ( -- n )
    CA-RESET-CAPTURE
@@ -743,7 +743,7 @@ variable CA-JSON
    CA-CHECK-I @ CA-COLON-LINE@
    CA-CHECK-I @ CA-COLON-COL@
    CA-CHECK-I @ CA-COLON-BYTE@
-   VERIFY-SOURCE-BUF-AT-IN-SCOPE ;
+   VERIFY:SOURCE-BUF-AT-IN-SCOPE ;
 
 : CA-CHECK-DEF ( n -- n )
    {: k:n :}
@@ -760,7 +760,7 @@ variable CA-JSON
    k CA-SUP-START@ k CA-SUP-END@ CA-SLICE$ ;
 
 : CA-VERIFY-SUPPORT ( n -- )
-   CA-SUPPORT$ VERIFY-SOURCE-BUF-IN-SCOPE ;
+   CA-SUPPORT$ VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : CA-SUPPORT-BEFORE ( n -- )
    {: limit:n :}

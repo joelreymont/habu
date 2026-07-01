@@ -27,7 +27,8 @@ and `{: a b :}` read-only locals.
 `BEGIN` `UNTIL` `AGAIN` `WHILE` `REPEAT`, `CASE` `OF` `ENDOF` `ENDCASE`,
 `DO` `LOOP` `I`.
 
-**String / tick** — `S" …"`, `C" …"`, `." …"`, `['] NAME`.
+**String / tick** — `S" …"`, `C" …"`, `." …"`, escaped `S\" …"`,
+`C\" …"`, `.\" …"`, `['] NAME`.
 
 **Primitives** (registered in `emit-prims`, `forth.fs`):
 `+ - * / MOD`, `1+ 1-`, `AND OR XOR INVERT NEGATE LSHIFT RSHIFT`,

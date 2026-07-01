@@ -2176,9 +2176,6 @@ END-STRUCTURE
 create PES PE-CAP PE-REC * allot
 variable #PE
 variable PE-I
-create SDQN 2 allot   115 SDQN c!   34 SDQN 1 + c!    \ the two chars of `s"`
-create CDQN 2 allot    99 CDQN c!   34 CDQN 1 + c!    \ the two chars of `c"`
-create DOTQN 2 allot   46 DOTQN c!  34 DOTQN 1 + c!   \ the two chars of `."`
 
 : PE-ROW ( n -- ptr a )
    PE-REC * PES + ;
@@ -2487,6 +2484,9 @@ PRIM: f.      PE-R PE-IN PRIM;
 PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: c"     PE-PTR-U8 PE-OUT PRIM;
 PRIM: ."     PRIM;
+PRIM: s\"    PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: c\"    PE-PTR-U8 PE-OUT PRIM;
+PRIM: .\"    PRIM;
 PRIM: [']    PE-N PE-OUT PRIM;
 PRIM: char   PE-N PE-OUT PRIM;
 PRIM: [char] PE-N PE-OUT PRIM;
@@ -3522,10 +3522,29 @@ variable SKI  variable SKF
    0 FAILIX !
    -1 FAILSET ! ;
 
-: STRING-OPENER? {: a u :}
-   a u SDQN 2 CORE-STR= IF -1 EXIT THEN
-   a u CDQN 2 CORE-STR= IF -1 EXIT THEN
-   a u DOTQN 2 CORE-STR= ;
+: CHECKER-BYTE@ ( ptr u8 n -- n )
+   + c@ ;
+
+: CHECKER-SC-LEAD? ( n -- bool )
+   CHECKER-FOLD-C dup $73 = swap $63 = or ;
+
+: CHECKER-STRING-LEAD? ( n -- bool )
+   dup CHECKER-SC-LEAD? swap $2E = or ;
+
+: NORMAL-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 2 <> IF RES-FALSE EXIT THEN
+   a 1 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
+   a 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
+
+: ESCAPED-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 3 <> IF RES-FALSE EXIT THEN
+   a 1 CHECKER-BYTE@ $5C <> IF RES-FALSE EXIT THEN
+   a 2 CHECKER-BYTE@ $22 <> IF RES-FALSE EXIT THEN
+   a 0 CHECKER-BYTE@ CHECKER-STRING-LEAD? ;
+
+: STRING-OPENER? ( ptr u8 n -- bool )
+   2dup NORMAL-STRING-OPENER? IF 2drop RES-TRUE EXIT THEN
+   ESCAPED-STRING-OPENER? ;
 
 : PARSE-LIT? {: a:ptr u:n :}
    a u s" [char]" CORE-STR= IF -1 EXIT THEN
@@ -3535,6 +3554,18 @@ variable SKI  variable SKF
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
       TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+   REPEAT
+   SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
+
+: SKIP-ESCAPED-STRING-PAYLOAD ( -- )
+   TI @ SKI !  0 SKF !
+   BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
+      TBASE @ SKI @ + c@ 92 = IF
+         SKI @ 1 + SKI !
+         SKI @ TBLEN @ < IF SKI @ 1 + SKI ! THEN
+      ELSE
+         TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+      THEN
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
@@ -3686,7 +3717,8 @@ variable IS-TU
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-TOK? IF THROW-EDGE THEN THEN
    OK @ IF TKF TKFU @ DEAD-TOK? IF a u DEAD-OWNER! -1 DEADP ! THEN THEN
-   TKF TKFU @ STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN
+   TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
+   TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN

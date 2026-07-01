@@ -414,15 +414,18 @@ variable PS-PKG-PUBLIC
    PS-START-LINE @ PS-TOK-LINE !
    PS-START-COL @ PS-TOK-COL ! ;
 
-: PS-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 2 <> IF PS-FALSE exit THEN
-   a 1+ c@ PS-DQ <> IF PS-FALSE exit THEN
-   a c@ LINT-FOLD dup 115 = swap 99 = or
-   a c@ DOT = or ;
-
 : PS-SKIP-QUOTE ( -- )
    begin PS-END? 0= while
       PS-ADV PS-DQ = IF exit THEN
+   repeat ;
+
+: PS-SKIP-ESC-QUOTE ( -- )
+   begin PS-END? 0= while
+      PS-ADV dup 92 = IF
+         drop PS-END? 0= IF PS-ADV drop THEN
+      ELSE
+         PS-DQ = IF exit THEN
+      THEN
    repeat ;
 
 : PS-LEX-COMMENT ( -- )
@@ -444,7 +447,8 @@ variable PS-PKG-PUBLIC
       PS-ADV drop
    repeat
    PS-SRC-A@ PS-START @ +  PS-X @ PS-START @ -  PS-ONE 0  PS-WORD PS-SAVE-TOKEN
-   PS-TOK-A@ PS-TOK-U @ PS-STRING-OPENER? IF PS-SKIP-QUOTE THEN ;
+   PS-TOK-A@ PS-TOK-U @ LINT-ESC-STRING-OPENER? IF PS-SKIP-ESC-QUOTE ELSE
+   PS-TOK-A@ PS-TOK-U @ LINT-NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
 : PS-NEXT-TOK ( -- bool )
    PS-SKIP-WS

@@ -180,12 +180,14 @@ variable DO-OUT-BUF?
       DO-ADV DO-DQ = if exit then
    repeat ;
 
-: DO-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u :}
-   u 2 <> if DO-FALSE exit then
-   a 1+ c@ DO-DQ <> if DO-FALSE exit then
-   a c@ LINT-FOLD 115 = if DO-TRUE exit then
-   a c@ LINT-FOLD 99 = if DO-TRUE exit then
-   a c@ 46 = ;
+: DO-SKIP-ESC-QUOTE ( -- )
+   begin DO-END? 0= while
+      DO-ADV dup DO-BSLASH = if
+         drop DO-END? 0= if DO-ADV drop then
+      else
+         DO-DQ = if exit then
+      then
+   repeat ;
 
 : DO-SAVE-TOKEN ( n n n n n -- ) {: k start end line col :}
    k DO-TOK-K !
@@ -223,7 +225,8 @@ variable DO-OUT-BUF?
       DO-ADV drop
    repeat
    DO-WORD start DO-X @ line col DO-SAVE-TOKEN
-   DO-TOK-A@ DO-TOK-U @ DO-STRING-OPENER? if DO-SKIP-QUOTE then ;
+   DO-TOK-A@ DO-TOK-U @ LINT-ESC-STRING-OPENER? if DO-SKIP-ESC-QUOTE else
+   DO-TOK-A@ DO-TOK-U @ LINT-NORMAL-STRING-OPENER? if DO-SKIP-QUOTE then then ;
 
 : DO-NEXT-TOKEN ( -- bool )
    DO-SKIP-IGNORED

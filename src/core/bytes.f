@@ -9,6 +9,9 @@ $4C constant E-BYTE-RANGE
 : BYTE+ ( ptr u8 n -- ptr u8 )
    + ;
 
+: BYTE@ ( ptr u8 n -- n )
+   BYTE+ c@ ;
+
 : BYTE-COPY-LEN ( ptr u8 ptr u8 len -- ) {: src:ptr dst:ptr u:len :}
    0 begin dup u LEN>N < while
       dup src + c@ over dst + c!

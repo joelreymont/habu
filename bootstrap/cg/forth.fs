@@ -117,6 +117,9 @@ $4000 constant DATA-START \ DP initial offset (past header + loop stack + body b
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,
+create ESQ-KW  115 c, 92 c, 34 c,
+create ECQ-KW  99 c, 92 c, 34 c,
+create EDOTQ-KW 46 c, 92 c, 34 c,
 create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
@@ -177,6 +180,7 @@ variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
+variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
 variable LKWTYPE
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
@@ -1623,6 +1627,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWSQ @ LBL,     SQ-KW 2 BYTES,                         \ the 2 bytes  s "
    LKWCQ @ LBL,     CQ-KW 2 BYTES,
    LKWDOTQ @ LBL,   DOTQ-KW 2 BYTES,
+   LKWESQ @ LBL,    ESQ-KW 3 BYTES,
+   LKWECQ @ LBL,    ECQ-KW 3 BYTES,
+   LKWEDOTQ @ LBL,  EDOTQ-KW 3 BYTES,
    LKWTYPE @ LBL,   s" type" BYTES,
    LKWTICK @ LBL,   TICK-KW 1 BYTES,    LKWBTICK @ LBL,  BTICK-KW 3 BYTES,
    LKWLBRACE @ LBL, LBRACE-KW 2 BYTES,  LKWENDLOC @ LBL, ENDLOC-KW 2 BYTES,
@@ -2336,6 +2343,115 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-QUOTE-SAVED-DROP ( -- )
    SP SP 16 ADDI, ;
 
+: C-ESC-HEX-X9 ( label -- ) {: bad:label :}
+   LBL LBL LBL {: lower upper done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   9 $30 CMPI,  C-LT lower BCOND,
+   9 $39 CMPI,  C-GT lower BCOND,
+   9 9 $30 SUBI,  done B,
+   lower LBL,
+   9 $61 CMPI,  C-LT upper BCOND,
+   9 $66 CMPI,  C-GT upper BCOND,
+   9 9 $57 SUBI,  done B,
+   upper LBL,
+   9 $41 CMPI,  C-LT bad BCOND,
+   9 $46 CMPI,  C-GT bad BCOND,
+   9 9 $37 SUBI,
+   done LBL, ;
+
+: C-ESC-DECODE-BASIC ( label label -- ) {: hex:label bad:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: dq bs bel bs8 esc lf ff cr tab vt nul done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   9 $22 CMPI,  C-EQ dq BCOND,
+   9 $71 CMPI,  C-EQ dq BCOND,
+   9 $5C CMPI,  C-EQ bs BCOND,
+   9 $61 CMPI,  C-EQ bel BCOND,
+   9 $62 CMPI,  C-EQ bs8 BCOND,
+   9 $65 CMPI,  C-EQ esc BCOND,
+   9 $6C CMPI,  C-EQ lf BCOND,
+   9 $66 CMPI,  C-EQ ff BCOND,
+   9 $6E CMPI,  C-EQ lf BCOND,
+   9 $72 CMPI,  C-EQ cr BCOND,
+   9 $74 CMPI,  C-EQ tab BCOND,
+   9 $76 CMPI,  C-EQ vt BCOND,
+   9 $7A CMPI,  C-EQ nul BCOND,
+   9 $78 CMPI,  C-EQ hex BCOND,
+   9 $58 CMPI,  C-EQ hex BCOND,
+   bad B,
+   dq LBL,   9 $22 MOVZ,  done B,
+   bs LBL,   9 $5C MOVZ,  done B,
+   bel LBL,  9 $07 MOVZ,  done B,
+   bs8 LBL,  9 $08 MOVZ,  done B,
+   esc LBL,  9 $1B MOVZ,  done B,
+   lf LBL,   9 $0A MOVZ,  done B,
+   ff LBL,   9 $0C MOVZ,  done B,
+   cr LBL,   9 $0D MOVZ,  done B,
+   tab LBL,  9 $09 MOVZ,  done B,
+   vt LBL,   9 $0B MOVZ,  done B,
+   nul LBL,  9 $00 MOVZ,
+   done LBL, ;
+
+: C-ESC-QUOTE-SCAN ( -- )
+   LBL LBL LBL LBL LBL {: scan done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   10 0 MOVZ,
+   scan LBL,
+      14 DATA INE-CELL LDR,
+      12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,
+      9 $22 CMPI,  C-EQ done BCOND,
+      9 $5C CMPI,  C-EQ esc BCOND,
+      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
+   esc LBL,
+      12 12 1 ADDI,
+      12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,
+      hex bad C-ESC-DECODE-BASIC
+      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
+   hex LBL,
+      15 12 3 ADDI,
+      15 14 CMP,  C-GT bad BCOND,
+      9 12 1 LDRB,  bad C-ESC-HEX-X9
+      9 12 2 LDRB,  bad C-ESC-HEX-X9
+      12 15 0 ADDI,  10 10 1 ADDI,  scan B,
+   bad LBL,  C-QUOTE-EOF
+   done LBL, ;
+
+: C-ESC-QUOTE-CONSUME ( -- )
+   15 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
+
+: C-ESC-QUOTE-SAVE ( -- )
+   SP SP 32 SUBI,  16 SP 0 STR,  15 SP 8 STR,  10 SP 16 STR, ;
+
+: C-ESC-QUOTE-RESTORE ( -- )
+   16 SP 0 LDR,  15 SP 8 LDR,  10 SP 16 LDR, ;
+
+: C-ESC-QUOTE-SAVED-DROP ( -- )
+   SP SP 32 ADDI, ;
+
+: C-ESC-COPY-X17 ( -- )
+   LBL LBL LBL LBL LBL {: copy done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   copy LBL,
+      11 12 CMP,  C-GE done BCOND,
+      9 11 0 LDRB,
+      9 $5C CMPI,  C-EQ esc BCOND,
+      9 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  copy B,
+   esc LBL,
+      11 11 1 ADDI,
+      11 12 CMP,  C-GE bad BCOND,
+      9 11 0 LDRB,
+      hex bad C-ESC-DECODE-BASIC
+      11 11 1 ADDI,
+      9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   hex LBL,
+      15 11 3 ADDI,
+      15 12 CMP,  C-GT bad BCOND,
+      9 11 1 LDRB,  bad C-ESC-HEX-X9
+      14 9 4 LSLI,
+      9 11 2 LDRB,  bad C-ESC-HEX-X9
+      9 14 9 ORR,
+      11 15 0 ADDI,
+      9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   bad LBL,  C-QUOTE-EOF
+   done LBL, ;
+
 : C-ISDQ ( -- )
    C-QUOTE-START
    C-QUOTE-SCAN
@@ -2372,6 +2488,43 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-QUOTE-SCAN
    C-QUOTE-CONSUME
    0 1 MOVZ,  1 13 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+
+: C-EISDQ ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   C-ESC-QUOTE-CONSUME
+   11 16 0 ADDI,  12 16 15 ADD,
+   17 DATA 0 LDR,  18 17 0 ADDI,
+   14 17 10 ADD,  14 DP-CHECK
+   C-ESC-COPY-X17
+   17 DATA 0 STR,
+   18 G-PUSH  10 G-PUSH ;
+
+: C-EICQ ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   LBL {: capok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: counted string literal too long" C-EXIT76
+   capok LBL,
+   C-ESC-QUOTE-CONSUME
+   11 16 0 ADDI,  12 16 15 ADD,
+   17 DATA 0 LDR,  18 17 0 ADDI,
+   14 17 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
+   10 17 0 STRB,  17 17 1 ADDI,
+   C-ESC-COPY-X17
+   17 DATA 0 STR,
+   18 G-PUSH ;
+
+: C-EIDOTQ ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   C-ESC-QUOTE-CONSUME
+   11 16 0 ADDI,  12 16 15 ADD,
+   17 DATA 0 LDR,  18 17 0 ADDI,
+   14 17 10 ADD,  14 DP-CHECK
+   C-ESC-COPY-X17
+   17 DATA 0 STR,
+   0 1 MOVZ,  1 18 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 \ S" string" (compile mode): emit bytes in the RX code image, then push the
 \ byte address via C-ADR PC-relative addressing plus the counted length.
@@ -2435,6 +2588,57 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-DOTQ ( -- )
    LBL {: ok :}
    C-SDQ
+   9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
+   13 ok CBNZ,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL,
+   C-CALL ;
+
+: C-ESDQ ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   C-ESC-QUOTE-CONSUME
+   C-ESC-QUOTE-SAVE
+   C-ESC-QUOTE-RESTORE
+   11 16 0 ADDI,  12 15 1 ADDI,  LBCS @ BL,
+   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   13 CP 0 ADDI,
+   C-ESC-QUOTE-RESTORE
+   11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
+   C-ESC-COPY-X17
+   28 17 0 ADDI,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   12 13 0 ADDI,
+   9 18 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,
+   11 12 0 ADDI,  C-ADR
+   11 15 0 ADDI,  C-LIT
+   C-ESC-QUOTE-SAVED-DROP ;
+
+: C-ECQ ( -- )
+   C-QUOTE-START
+   C-ESC-QUOTE-SCAN
+   LBL {: capok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   10 255 CMPI,  C-LE capok BCOND,  s" bootstrap: compiled counted string too long" C-EXIT76
+   capok LBL,
+   C-ESC-QUOTE-CONSUME
+   C-ESC-QUOTE-SAVE
+   C-ESC-QUOTE-RESTORE
+   11 16 0 ADDI,  12 15 1 ADDI,  LBCS @ BL,
+   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   13 CP 0 ADDI,
+   C-ESC-QUOTE-RESTORE
+   10 28 0 STRB,  28 28 1 ADDI,
+   11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
+   C-ESC-COPY-X17
+   28 17 0 ADDI,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   12 13 0 ADDI,
+   9 18 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
+   11 12 0 ADDI,  C-ADR
+   C-ESC-QUOTE-SAVED-DROP ;
+
+: C-EDOTQ ( -- )
+   LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   C-ESDQ
    9 LKWTYPE @ ADR,  10 4 MOVZ,  LFIND @ BL,
    13 ok CBNZ,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL,
@@ -2812,6 +3016,9 @@ variable CFSK2
    lmain LKWSQ     2 ['] C-ISDQ     CF-ENTRY
    lmain LKWCQ     2 ['] C-ICQ      CF-ENTRY
    lmain LKWDOTQ   2 ['] C-IDOTQ    CF-ENTRY
+   lmain LKWESQ    3 ['] C-EISDQ    CF-ENTRY
+   lmain LKWECQ    3 ['] C-EICQ     CF-ENTRY
+   lmain LKWEDOTQ  3 ['] C-EIDOTQ   CF-ENTRY
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LNUM @ BL,
    12 lnotnum CBZ,  11 G-PUSH  lmain B,
    lnotnum LBL,
@@ -2910,7 +3117,10 @@ variable CFSK2
 : EMIT-COMPILE-STRING-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
    lmain LKWCQ     2 ['] C-CQ     CF-ENTRY
-   lmain LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY ;
+   lmain LKWDOTQ   2 ['] C-DOTQ   CF-ENTRY
+   lmain LKWESQ    3 ['] C-ESDQ   CF-ENTRY
+   lmain LKWECQ    3 ['] C-ECQ    CF-ENTRY
+   lmain LKWEDOTQ  3 ['] C-EDOTQ  CF-ENTRY ;
 
 : EMIT-COMPILE-META-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWBTICK  3 ['] C-BTICK  CF-ENTRY
@@ -3148,6 +3358,7 @@ variable CFSK2
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
    LBL LKWCASE !  LBL LKWOF !  LBL LKWENDOF !  LBL LKWENDCASE !
    LBL LKWCREATE !  LBL LKWVAR !  LBL LKWSQ !  LBL LKWCQ !  LBL LKWDOTQ !
+   LBL LKWESQ !  LBL LKWECQ !  LBL LKWEDOTQ !
    LBL LKWTYPE !
    LBL LKWTICK !  LBL LKWBTICK !
    LBL LKWLBRACE !  LBL LKWENDLOC !  LBL LLOC-FIND !  LBL LKWCONST !

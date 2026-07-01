@@ -115,6 +115,23 @@ variable LINT-OUT-ON
 : LINT-FOLD ( n -- n )
    dup 64 > over 91 < and IF 32 + THEN ;
 
+: LINT-SC-STRING-LEAD? ( n -- bool )
+   LINT-FOLD dup 115 = swap 99 = or ;
+
+: LINT-STRING-LEAD? ( n -- bool )
+   dup LINT-SC-STRING-LEAD? swap $2E = or ;
+
+: LINT-NORMAL-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 2 <> IF LINT-FALSE exit THEN
+   a 1 BYTE@ $22 <> IF LINT-FALSE exit THEN
+   a 0 BYTE@ LINT-STRING-LEAD? ;
+
+: LINT-ESC-STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 3 <> IF LINT-FALSE exit THEN
+   a 1 BYTE@ $5C <> IF LINT-FALSE exit THEN
+   a 2 BYTE@ $22 <> IF LINT-FALSE exit THEN
+   a 0 BYTE@ LINT-STRING-LEAD? ;
+
 : LINT-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> IF LINT-FALSE exit THEN
    0 begin dup u < while

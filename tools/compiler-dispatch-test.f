@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 
-$20000 constant CDT-CAP
+$40000 constant CDT-CAP
 
 create CDT-BUF CDT-CAP allot
 variable CDT-LEN

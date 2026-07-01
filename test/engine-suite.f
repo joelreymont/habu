@@ -44,6 +44,24 @@ variable T-LABEL-U
    then
    T-LABEL-CLEAR ;
 
+: T$= ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
+   #CASE @ 1 + #CASE !
+   gu wu <> if
+      T-FAIL
+      s" assert string len: expected " type wu .
+      s" got " type gu .
+      T-LABEL-CLEAR exit
+   then
+   0 begin dup gu < while
+      dup ga + c@  over wa + c@ <> if
+         drop T-FAIL
+         s" assert string byte mismatch" type cr
+         T-LABEL-CLEAR exit
+      then
+      1 +
+   repeat drop
+   T-LABEL-CLEAR ;
+
 \ arithmetic, stack, comparisons
 5 dup * 25 T=
 1 2 3 rot + + 6 T=
@@ -184,6 +202,37 @@ FIVE 5 T=
 2 A4 @ 7 T=
 here 3 over c! 65 over 1 + c! 66 over 2 + c! count 3 T= drop
 here 10 over ! 5 over +! @ 15 T=
+
+\ SwiftForth-style escaped string words
+create TESC-S-WANT
+   $41 c, $5C c, $42 c, $22 c, $0A c, $09 c, $0D c, $00 c, $41 c,
+: TESC-S-WANT$ ( -- ptr u8 n )
+   TESC-S-WANT 9 ;
+: TESC-S-COMPILED$ ( -- ptr u8 n )
+   S\" A\\B\"\n\t\r\z\x41" ;
+S\" A\\B\"\n\t\r\z\x41" TESC-S-WANT$ T$=
+TESC-S-COMPILED$ TESC-S-WANT$ T$=
+
+create TESC-S-MULTILINE-WANT
+   $7B c, $0A c, $20 c, $22 c, $6B c, $22 c, $3A c,
+   $20 c, $22 c, $76 c, $22 c, $0A c, $7D c, $0A c,
+: TESC-S-MULTILINE-WANT$ ( -- ptr u8 n )
+   TESC-S-MULTILINE-WANT 14 ;
+: TESC-S-MULTILINE$ ( -- ptr u8 n )
+   S\" {
+ \"k\": \"v\"
+}
+" ;
+TESC-S-MULTILINE$ TESC-S-MULTILINE-WANT$ T$=
+
+create TESC-C-WANT
+   $41 c, $22 c, $0A c, $42 c,
+: TESC-C-WANT$ ( -- ptr u8 n )
+   TESC-C-WANT 4 ;
+: TESC-C-COMPILED$ ( -- ptr u8 n )
+   C\" A\q\n\x42" count ;
+C\" A\q\n\x42" count TESC-C-WANT$ T$=
+TESC-C-COMPILED$ TESC-C-WANT$ T$=
 
 \ quotations + combinators
 : TQ1 ( -- n ) 5 [: 1 + ;] execute ;

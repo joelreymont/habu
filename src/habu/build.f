@@ -4,12 +4,12 @@
 \ the maker (toolchain + this driver, compiled by bin/hb), and moves
 \ /tmp/hb-build-got to the requested output.
 \ The toolchain compiling THIS driver is checker-hooked. This driver also
-\ pre-verifies user colon definitions with VERIFY-SOURCE-BUF before bundling the source.
+\ pre-verifies user colon definitions with VERIFY:SOURCE-BUF before bundling the source.
 \ It does NOT execute top-level user code at build time; the emitted bundle still
 \ recompiles/runs the full source at its own startup.
 
 \ Audited driver boundary: generated makers run this source at startup, then
-\ VERIFY-SOURCE-BUF checks user colon definitions explicitly.
+\ VERIFY:SOURCE-BUF checks user colon definitions explicitly.
 0 set-check
 
 : BLD-IN  s" hb-build-src" TMP-PATH ;
@@ -51,7 +51,7 @@ s" BLD-PB@" s" -- ptr u8" TRUST
 : GO ( -- )
    BLD-RUNTIME-ARGS
    READ-CHECK
-   BLD-PB@ PN @ VERIFY-SOURCE-BUF
+   BLD-PB@ PN @ VERIFY:SOURCE-BUF
    READ-PROG
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
