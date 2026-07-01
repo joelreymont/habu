@@ -1,5 +1,7 @@
 \ render-test.f - coverage for the render.f buffer formatters and key/value DSL.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/float.f lib/test.f lib/render.f lib/render-test.f
+
+require lib/test.f
+require lib/render.f
 
 \ expected "k,3\n" built in the SB builder (separate from the RB render buffer)
 : EXP-CVN ( -- ptr u8 n ) SB-RESET s" k,3" SB-APPEND 10 SB-APPEND-C SB$ ;

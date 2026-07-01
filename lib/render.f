@@ -3,7 +3,10 @@
 \ hand back its bytes for a byte-for-byte snapshot comparison. Separate from the
 \ lib/string.f SB builder (1 KiB) because a full multi-camera JSON report is larger.
 \ Integer text is built with the same digit recursion as lib/fmt.f SB-U.
-\ Depends on lib/errors.f lib/string.f.
+
+require lib/errors.f
+require lib/string.f
+require lib/float.f
 
 $4000 constant RB-CAP                        \ 16 KiB: ample for multi-camera JSON
 create RB-BUF RB-CAP allot

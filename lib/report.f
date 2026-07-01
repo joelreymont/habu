@@ -5,7 +5,9 @@
 \ open-coded "LBAR cell BAR cell RBAR" / "cell CM cell CM" repetition with one
 \ column declaration per table. Bespoke prose, nested JSON, and per-row sub-strings
 \ compose around these with the render.f words. Quotations are stored as xts and
-\ EXECUTEd per (row, column). Depends on odin/render.f.
+\ EXECUTEd per (row, column).
+
+require lib/render.f
 
 64 constant COL-MAX
 0 constant AL-L   1 constant AL-R           \ column alignment: left / right

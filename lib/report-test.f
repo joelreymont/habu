@@ -1,6 +1,8 @@
 \ report-test.f - coverage for the report.f declarative table engine: one column
 \ set rendered to both CSV and a Markdown table.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/float.f lib/test.f lib/render.f lib/report.f lib/report-test.f
+
+require lib/test.f
+require lib/report.f
 
 : RT-COLS ( -- ) TBL-RESET
    s" id" AL-R [: RB# ;] COL+

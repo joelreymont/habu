@@ -80,6 +80,9 @@ lesson — keep the specific word/code/path, cut the prose.
   inside the stdlib suite but failed standalone at `CLEANUP-RESET` because the
   suite had already loaded `lib/fs-mutate.f`. Every tool entry must require the
   exact files needed by its own top-level path.
+- **Run comments are not dependency setup:** `lib/render-test.f` and
+  `lib/report-test.f` had accurate command comments but failed when loaded
+  directly. Test and library entry files must `require` their own dependencies.
 - **Tasked engines need process-wide fatal exits:** Linux `exit(93)` terminates
   only the calling pthread, so checker/die paths can leave workers alive and
   make process captures time out. Native and bootstrap emitters must use
