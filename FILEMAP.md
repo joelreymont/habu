@@ -196,6 +196,9 @@ points stay listed.
   atomically adds 1.0 to out[0]); the scatter-add primitive reverse-mode fan-in adjoints need.
 - `tools/ptx/redadd-device-test.f` — Orin device proof that `red.global.add.f32` assembles for
   sm_87 and accumulates correctly (256 atomic adds = 256.0); closes habu-ptx-ad-verify.
+- `tools/ptx/scatter-add-grad-cg.f` / `tools/ptx/scatter-add-gradcheck.f` —
+  checked fan-in context kernels plus Orin device gradcheck: finite difference
+  of `sum_i x[0]` matches the analytic scatter-add backward `dx[0] = n`.
 - `tools/ptx/sum-cg.f` / `tools/ptx/sum-launch.f` — checked direct row-sum
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK

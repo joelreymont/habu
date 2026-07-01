@@ -58,6 +58,15 @@ TRUSTED: STORE-ONCE ( tile<t,b,m> span<space-global-once,t,e> gridctx<b,e,m> -- 
 TRUSTED: SCATTER-ADD ( tile<t,b,m> span<space-global,t,e> gridctx<b,e,m> -- )
    EMIT-SCATTER-ADD ;
 
+TRUSTED: FANIN-CTX ( ptr<space-global,t> -- fanctx<b,extent-n,fresh-mask-live> )
+   EMIT-FANIN-CTX ;
+
+TRUSTED: FANIN-LOAD ( ptr<space-global,t> fanctx<b,e,m> -- tile<t,b,m> )
+   EMIT-FANIN-LOAD ;
+
+TRUSTED: FANIN-SCATTER-ADD ( tile<t,b,m> ptr<space-global,t> fanctx<b,e,m> -- )
+   EMIT-FANIN-SCATTER-ADD ;
+
 TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-SCALE ;
 

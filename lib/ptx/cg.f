@@ -66,6 +66,7 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 \ MK-SPAN's from_raw_parts boundary). CG-PARAMS sets x=%rd1, y=%rd2, a=%f1.
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
+TRUSTED: PTR-REG ( n -- ptr<space-global,f32> ) ;
 TRUSTED: SPAN-ONCE-REG ( n -- span<space-global-once,f32,extent-n> ) ;
 TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
@@ -218,6 +219,34 @@ TRUSTED: BITS>R ( n -- r ) ;
    CG-NEXT-RD {: a:n :}
    SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S spanrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" add.u64 " CG-S a CG-RD s" , " CG-S a CG-RD s" , " CG-S ctxrd CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
+
+\ FANIN-CTX: active lanes are bounded by %r1, but all lanes address the scalar
+\ base pointer rather than span+lane offset.
+: EMIT-FANIN-CTX ( n -- n ) {: ptrrd:n :}
+   ptrrd drop
+   CG-NEXT-R {: rc:n :}  CG-NEXT-R {: rn:n :}  CG-NEXT-R {: rt:n :}  CG-NEXT-R {: ri:n :}
+   SB-RESET s" mov.u32 " CG-S rc CG-R s" , %ctaid.x;" CG-S CG-LINE
+   SB-RESET s" mov.u32 " CG-S rn CG-R s" , %ntid.x;" CG-S CG-LINE
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   SB-RESET s" mad.lo.u32 " CG-S ri CG-R s" , " CG-S rc CG-R s" , " CG-S rn CG-R s" , " CG-S rt CG-R s" ;" CG-S CG-LINE
+   CG-NEXT-P {: p:n :}
+   SB-RESET s" setp.ge.u32 " CG-S p CG-P s" , " CG-S ri CG-R s" , %r1;" CG-S CG-LINE
+   SB-RESET s" @" CG-S p CG-P s"  bra DONE;" CG-S CG-LINE
+   0 ;
+
+: EMIT-FANIN-LOAD ( n n -- n ) {: ptrrd:n ctx:n :}
+   ctx drop
+   CG-NEXT-RD {: a:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S ptrrd CG-RD s" ;" CG-S CG-LINE
+   CG-NEXT-F {: t:n :}
+   SB-RESET s" ld.global.f32 " CG-S t CG-F s" , [" CG-S a CG-RD s" ];" CG-S CG-LINE
+   t ;
+
+: EMIT-FANIN-SCATTER-ADD ( n n n -- ) {: tilef:n ptrrd:n ctx:n :}
+   ctx drop
+   CG-NEXT-RD {: a:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S ptrrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
 
 \ ACC-ZERO: a fresh register accumulator = 0 (the gridctx is type-only here)
