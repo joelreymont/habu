@@ -124,6 +124,7 @@ variable FM-NUM-L
    s" tools/check-core.f" FM-REQ
    s" tools/check.f" FM-REQ
    s" tools/check-main.f" FM-REQ
+   s" tools/check-test-lib.f" FM-REQ
    s" tools/check-test.f" FM-REQ
    s" tools/sha256-file-test.f" FM-REQ
    s" lib/content-key.f" FM-REQ

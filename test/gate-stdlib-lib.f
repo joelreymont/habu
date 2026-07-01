@@ -271,6 +271,8 @@ variable SUITE-TIMINGS
    s" --load" SUITE-ARG+ ;
 
 : SUITE-HB$ ( -- ptr u8 n )
+   s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
+   2drop
    s" HABU_UNDER_TEST" GETENV dup 0= if
       2drop s" bin/hb" exit
    then

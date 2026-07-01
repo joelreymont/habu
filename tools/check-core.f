@@ -736,7 +736,7 @@ variable CHK-DEP-ORDER-N
    s"  DIAG-FILE!" CHK-RUN-LN
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
    s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
-   s"    CHECK! dup -1 <> IF 70 throw THEN ;" CHK-RUN-LN
+   s"    CHECK! HOOK-REPORT-UNCHECKABLE dup -1 <> IF 70 throw THEN ;" CHK-RUN-LN
    s" ' CHECK-F-HOOK set-check" CHK-RUN-LN ;
 
 : CHK-BUILD-RUN ( -- )
@@ -839,12 +839,22 @@ variable CHK-DEP-ORDER-N
    CHK-SOURCE CHK-ORIGIN-BUF CHK-ORIGIN-CAP >LEN
    DIAG-ORIGIN>BUF LEN>N CHK-ORIGIN-U ! ;
 
+: CHK-PREVERIFY-ACT ( -- )
+   CHK-SRC-BUF CHK-PRE-U @ VERIFY-SOURCE-BUF-IN-SCOPE ;
+
+: CHK-PREVERIFY-CAPTURE ( -- n )
+   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER!
+   [: CHK-PREVERIFY-ACT ;] catch {: rc:n :}
+   DIAG-BUFFER$ CHK-ERR
+   DIAG-BUFFER-OFF
+   rc ;
+
 : CHK-PREVERIFY-FILE-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
    label labelu DIAG-FILE!
    CHK-JSON @ 0= if 0 0= 0= else 0 0= then DIAG-JSON!
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-PRE-U !
-   CHK-SRC-BUF CHK-PRE-U @ VERIFY-SOURCE-BUF-IN-SCOPE ;
+   CHK-PREVERIFY-CAPTURE dup 0 <> if throw then drop ;
 
 : CHK-PREVERIFY-ID ( n -- ) {: id:n :}
    id CHK-DEP-PRELOAD? 0= if exit then
@@ -905,6 +915,10 @@ variable CHK-DEP-ORDER-N
    2 >FD 2 >FD JSON-ONLY-FDS!
    CHK-ERR-BUF CHK-ERR-U @ JSON-ONLY-FILTER ;
 
+: CHK-HANDLE-HB-NONJSON ( -- )
+   CHK-ERR-U @ 0= if CHK-RUN-STATIC exit then
+   CHK-ERR-BUF CHK-ERR-U @ CHK-ERR ;
+
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
@@ -917,7 +931,7 @@ variable CHK-DEP-ORDER-N
       CHK-RUN-STATIC
       CHK-RUN-JSON-ONLY
    else
-      CHK-ERR-BUF CHK-ERR-U @ CHK-ERR
+      CHK-HANDLE-HB-NONJSON
    then
    CHK-CHILD-RC @ CHK-THROW ;
 

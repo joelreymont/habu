@@ -305,10 +305,11 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
+   UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN ;
-: DVERDICT  DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN ;
+: DVERDICT  UNDEFERR @ IF s" rejected" ELSE DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN THEN ;
 : RETURN-MISMATCH? ( -- f )
    SGHASR @ IF
       RCUR @ R-RES  SGROUT @ R-RES  <>
@@ -319,6 +320,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
+   UNDEFERR @ IF s" unknown_rejection" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF
       SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE s" fix_signature_syntax" THEN THEN
@@ -339,6 +341,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
+   UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF
       SGBAD-UNKNOWN? IF
@@ -384,6 +387,10 @@ variable JPOS  variable JLINE  variable JCOL
    SGBAD-BAREPTR? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT
      s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+   THEN
+   UNDEFERR @ IF
+     s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT

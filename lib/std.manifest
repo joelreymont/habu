@@ -591,6 +591,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-SAME-NAME?	(ptr u8 len ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	compare environment entries by variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-SLOT-NAME?	(ptr u8 len idx -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether one env table slot has a requested variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-HAS-NAME?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether prepared envp already contains a variable name
+1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT$?	(ptr u8 len -- ptr u8 len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the prepared default value for a child environment name when present
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	append one default child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table

@@ -13,17 +13,6 @@ require tools/jitdump-core.f
    s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
    s" PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)" type cr ;
 
-: GDB-PTY ( -- )
-   GE-HB-RESET
-   s" --load" GE-ARG+
-   s" lib/errors.f" GE-ARG+
-   s" lib/process.f" GE-ARG+
-   s" test/proc-pty.f" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" process/pty" GE-EXPECT-OK
-   s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
-   s" PASS: process/pty primitives" type cr ;
-
 : GDB-PROFILER-SOURCE ( -- )
    GE-SRC-RESET
    s" : LONG-PROFILER-BUSY-WORD ( -- ) 80000000 begin 1- dup dup * drop dup 0= until drop ;" GE-SRC-LINE
@@ -50,7 +39,6 @@ require tools/jitdump-core.f
 : GDB-RUN ( -- )
    s" hb-gate-debug" GT-START
    GDB-PROP
-   GDB-PTY
    GDB-PROFILER
    GDB-JITDUMP
    GT-CLEANUP

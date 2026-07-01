@@ -85,6 +85,9 @@ variable TR-COLD-CACHE
 variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
+variable TR-PRE-CHECK
+variable TR-PRE-POST
+variable TR-PRE-DICT
 variable TR-PRE-TAIL
 variable TR-PRE-ARTIFACTS
 variable TR-PRE-REPAIR
@@ -1326,6 +1329,9 @@ TR-INSTALL-POOL-HOOKS
    idx IDX>N cells TR-EARLY-HOST-ORDER + @ >IDX ;
 
 : TR-PRE-RESET ( -- )
+   0 TR-PRE-CHECK !
+   0 TR-PRE-POST !
+   0 TR-PRE-DICT !
    0 TR-PRE-TAIL !
    0 TR-PRE-ARTIFACTS !
    0 TR-PRE-REPAIR !
@@ -1338,12 +1344,15 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PRE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
+      3 of TR-PRE-CHECK @ 0 <> endof
       4 of TR-PRE-TAIL @ 0 <> endof
       5 of TR-PRE-REPAIR @ 0 <> endof
+      9 of TR-PRE-POST @ 0 <> endof
       10 of TR-PRE-DIAG-REPAIR @ 0 <> endof
       11 of TR-PRE-DIAG-UNDEF @ 0 <> endof
       12 of TR-PRE-DIAG-GROUP @ 0 <> endof
       13 of TR-PRE-DIAG-FILE @ 0 <> endof
+      14 of TR-PRE-DICT @ 0 <> endof
       16 of TR-PRE-RUNTIME @ 0 <> endof
       19 of TR-PRE-ARTIFACTS @ 0 <> endof
       21 of TR-PRE-VALIDATE @ 0 <> endof
@@ -1352,10 +1361,12 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PRE-MARK ( idx -- ) {: idx:idx :}
    idx IDX>N case
+      3 of -1 TR-PRE-CHECK ! endof
       4 of -1 TR-PRE-TAIL ! endof
       5 of -1 TR-PRE-REPAIR ! endof
-      9 of -1 TR-PRE-REPAIR ! -1 TR-PRE-RUNTIME ! -1 TR-PRE-VALIDATE ! endof
+      9 of -1 TR-PRE-POST ! -1 TR-PRE-REPAIR ! -1 TR-PRE-RUNTIME ! -1 TR-PRE-VALIDATE ! endof
       12 of -1 TR-PRE-DIAG-GROUP ! -1 TR-PRE-DIAG-REPAIR ! -1 TR-PRE-DIAG-UNDEF ! -1 TR-PRE-DIAG-FILE ! endof
+      14 of -1 TR-PRE-DICT ! endof
       16 of -1 TR-PRE-RUNTIME ! endof
       19 of -1 TR-PRE-ARTIFACTS ! endof
       21 of -1 TR-PRE-VALIDATE ! endof

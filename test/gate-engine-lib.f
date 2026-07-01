@@ -548,8 +548,22 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    then
    s" PASS: gate timeout outcome attribution" type cr ;
 
+: GE-PROCESS-PTY ( -- )
+   GE-HB-RESET
+   s" --load" GE-ARG+
+   s" lib/errors.f" GE-ARG+
+   s" lib/process.f" GE-ARG+
+   s" test/proc-pty.f" GE-ARG+
+   s" --" GE-ARG+
+   GE-HB$ GE-ARG+
+   GE-HB$ GE-TIMEOUT-MS GE-RUN-ENV
+   s" process/pty" GE-EXPECT-OK
+   s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
+   s" PASS: process/pty primitives" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
+   GE-PROCESS-PTY
    GE-TRUST-RUN
    GE-ARGV-MODES
    GE-TYPED-SMOKE

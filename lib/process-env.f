@@ -177,6 +177,22 @@ variable PROC-ENV-DEF-BUF-A
       1+
    repeat drop PROC-ENV-FALSE ;
 
+: PROC-ENV-DEFAULT$? ( ptr u8 len -- ptr u8 len bool ) {: a:ptr u:len :}
+   0 >IDX begin dup IDX>N PROC-ENV-DEF-N @ COUNT>N < while
+      dup PROC-ENV-I !
+      PROC-ENV-I @ PROC-ENV-DEF-SLOT @ {: z:ptr :}
+      a u z z ZLEN >LEN PROC-ENV-SAME-NAME? if
+         drop
+         z ZLEN >LEN {: zu:len :}
+         z zu PROC-ENV-NAME-LEN {: nameu:len :}
+         z nameu LEN>N + 1 + zu LEN>N nameu LEN>N - 1 - >LEN
+         PROC-ENV-TRUE
+         exit
+      then
+      IDX>N 1+ >IDX
+   repeat drop
+   s" " >LEN PROC-ENV-FALSE ;
+
 : PROC-ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu val:ptr valu :}
    name nameu PROC-ENV-CHECK-NAME
    valu LEN>N 0 < if E-PROC-ENV throw then

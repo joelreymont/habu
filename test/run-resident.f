@@ -60,6 +60,11 @@ variable TR-R-SETUP-START-NS
    then
    idx TR-R-PHASE-START ;
 
+: TR-R-GROUP-START-ONCE ( idx -- ) {: idx:idx :}
+   idx TR-PRE? if exit then
+   idx TR-R-GROUP-START
+   idx TR-PRE-MARK ;
+
 : TR-R-READY-CANDIDATE-START ( -- )
    TR-UNDER-READY @ 0= if exit then
    3 >IDX TR-R-PHASE-START-ONCE
@@ -103,17 +108,17 @@ variable TR-R-SETUP-START-NS
    repeat drop ;
 
 : TR-R-LATE-START ( -- )
-   TR-UNDER-READY @ 0 <> if exit then
+   TR-UNDER-READY @ 0= if exit then
    0 begin dup TR-LATE-PHASES < while
       dup >IDX TR-LATE-ORDER@
-      TR-R-GROUP-START
+      TR-R-GROUP-START-ONCE
       1+
    repeat drop ;
 
 : TR-R-CANDIDATE-HOST-START ( -- )
-   TR-UNDER-READY @ 0 <> if exit then
+   TR-UNDER-READY @ 0= if exit then
    0 begin dup TR-CANDIDATE-HOST-PHASES < while
-      dup >IDX TR-CANDIDATE-HOST-ORDER@ TR-R-PHASE-START
+      dup >IDX TR-CANDIDATE-HOST-ORDER@ TR-R-PHASE-START-ONCE
       1+
    repeat drop ;
 

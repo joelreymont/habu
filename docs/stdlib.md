@@ -1046,6 +1046,7 @@ PROC-ENV-ENTRY+           ( ptr u8 len -- )
 PROC-ENV+                 ( ptr u8 len ptr u8 len -- )
 PROC-ENV-DEFAULT-RESET    ( -- )
 PROC-ENV-DEFAULT+         ( ptr u8 len ptr u8 len -- )
+PROC-ENV-DEFAULT$?        ( ptr u8 len -- ptr u8 len bool )
 PROC-ENV-PREPARE          ( -- ptr a )
 PROC-ENV-INHERIT-MISSING  ( -- )
 PROC-SPAWN-ARGV-ENV-IO         ( ptr u8 len fd fd fd -- pid )
@@ -1070,7 +1071,9 @@ for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 Resident test runners and other in-process harnesses can install inherited
 defaults with `PROC-ENV-DEFAULT+`; `PROC-ENV-INHERIT-MISSING` copies those
 defaults before host envp entries, while explicit `PROC-ENV+` entries still win.
-Use `PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
+Use `PROC-ENV-DEFAULT$?` when an in-process fixture needs to read the same
+prepared default that would be passed to a child process. Use
+`PROC-ENV-DEFAULT-RESET` at harness setup boundaries.
 
 `lib/process-command.f` adds a checked command-owned runner above argv/env. It
 keeps separate command arg, env, stdin, stdout, stderr, and outcome storage, then

@@ -36,6 +36,15 @@ variable SFD
 variable PTY-U
 variable PTYNUM
 
+: HB-ARG? ( -- bool )
+   SCRIPT-ARGC 0 > ;
+
+: HB-EXE$ ( -- ptr u8 n )
+   HB-ARG? if 0 SCRIPT-ARGV$ exit then
+   s" HABU_UNDER_TEST" GETENV dup 0= if
+      2drop s" bin/hb" exit
+   then ;
+
 : RBUF-DUMP ( -- )
    s" rbuf bytes: " type RN @ . cr
    RN @ 0 > if
@@ -164,7 +173,7 @@ variable PTYNUM
    ERR-R @ >FD FD-CLOEXEC! ;
 
 : CAPTURE-START-HB ( -- )
-   s" bin/hb" >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROC-SPAWN-IO PID !
+   HB-EXE$ >LEN IN-R @ >FD OUT-W @ >FD ERR-W @ >FD PROC-SPAWN-IO PID !
    PID @ 0 > TTRUE ;
 
 : CAPTURE-CLOSE-CHILD-ENDS ( -- )
@@ -261,7 +270,7 @@ variable PTYNUM
 
 : PTY-START-HB ( -- )
    OPEN-PTY
-   s" bin/hb" >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID !
+   HB-EXE$ >LEN SFD @ >FD SFD @ >FD SFD @ >FD PROC-SPAWN-IO PID !
    PID @ 0 > TTRUE
    SFD @ close
    MFD-DRAIN ;
@@ -278,7 +287,8 @@ variable PTYNUM
 
 : PTY-UNKNOWN ( -- )
    s" frobnicate" STEP-LN
-   s" frobnicate?" EXPECT
+   s" E-UNDEFINED: frobnicate" EXPECT
+   s" ?" EXPECT
    s" habu> " EXPECT
    s"  ok" REJECT ;
 

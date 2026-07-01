@@ -41,6 +41,20 @@ variable GE-EVAL-CURRENT
 variable GE-EVAL-JSON-DIAGS
 variable GE-EVAL-OUT-SAVE
 variable GE-EVAL-ERR-SAVE
+variable GE-EVAL-STACK-A
+
+: GE-EVAL-STACK-A-FIELD ( -- ptr ptr u8 )
+   GE-EVAL-STACK-A 0 ptr-field ;
+
+: GE-EVAL-STACK@ ( -- ptr u8 )
+   GE-EVAL-STACK-A-FIELD @ ;
+
+: GE-EVAL-STACK! ( ptr u8 -- )
+   GE-EVAL-STACK-A-FIELD ! ;
+
+: GE-EVAL-STACK ( -- ptr u8 n )
+   GE-EVAL-STACK@ 0= if MEM-ALLOC-64K drop GE-EVAL-STACK! then
+   GE-EVAL-STACK@ 1 MEM-64K-BYTES ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
    rc RC>N GT-OUTCOME-CODE !
@@ -459,8 +473,19 @@ variable GE-EVAL-ERR-SAVE
    -1 GE-EVAL-OUT-SAVE !
    -1 GE-EVAL-ERR-SAVE ! ;
 
-TRUSTED: GE-EVAL-SOURCE ( -- )
+TRUSTED: GE-EVAL-SOURCE-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ evaluate ;
+
+: GE-EVAL-SOURCE-RUNSTACK ( -- )
+   ['] GE-EVAL-SOURCE-ACT GE-EVAL-STACK run-in-stack ;
+
+TRUSTED: GE-EVAL-SOURCE ( -- )
+   GE-EVAL-STACK drop
+   data-base S0-CELL + @ {: old:n :}
+   GE-EVAL-STACK@ data-base S0-CELL + !
+   [: GE-EVAL-SOURCE-RUNSTACK ;] catch {: rc:n :}
+   old data-base S0-CELL + !
+   rc 0 <> if rc throw then ;
 
 : GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
    rc >RC PROC-RC !

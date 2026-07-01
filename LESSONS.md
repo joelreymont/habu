@@ -216,6 +216,14 @@ lesson — keep the specific word/code/path, cut the prose.
   still reads the host env. Install Habu-side defaults for helper spawns and
   direct warm/check overrides for in-process helpers, or resident tests rebuild
   warm images and silently lose caches.
+- **Nested candidate fixtures need explicit argv targets:** resident defaults can
+  select the candidate for the outer test process, but a nested fixture that
+  calls `GETENV` may still fall back to stale host `bin/hb`. Pass the candidate
+  executable as a script arg for child-spawning fixtures such as `test/proc-pty.f`.
+- **In-process tool tests need injectable executable context:** `tools/check-test.f`
+  can run standalone or inside the resident suite; nested raw-`hb` sentinels must
+  use a library-level `HB!` override or `PROC-ENV-DEFAULT$?` suite default instead
+  of rereading process env from a forked worker.
 - **End-to-end time includes entry compilation:** `test/run.f` can report
   sub-30s after `TR-GATE-START!` while `/usr/bin/time` is still >40s because
   parent load compiles resident support first. The next architecture cut must

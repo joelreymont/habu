@@ -168,14 +168,17 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Current macOS proof after removing top snapshot launchers, replacing the
    monolithic parent support load with explicit suite setup, moving the
    check-tool file-label smoke to the in-process checker core, splitting AOT
-   closure diagnostics from the maker path, and keeping SARIF/prop-test CLI
-   entries thin, and running tail/lint groups through worker-local fork pools:
-   23.129s internal / 25.43s shell wall hot, `inner-hb=1`,
-   `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`; `check-cli` is 2.177s,
-   dictionary/checker is 4.998s, diagnostics all-strict is 6.915s, tail/lint
-   groups are under 4.2s, and the slowest test is engine fixture at 12.588s.
-   Scratch cold-cache fill is 27.613s internal / 29.85s shell wall, below the
-   prior source-change fill proof of 28.455s / 30.64s.
+   closure diagnostics from the maker path, keeping SARIF/prop-test CLI entries
+   thin, running tail/lint groups through worker-local fork pools, and fixing
+   post-build candidate scheduling, and moving PTY coverage to the
+   post-candidate runtime slice: 16.702s internal / 19.00s shell wall hot,
+   `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`,
+   `candidate-hit=1`, `candidate-validate=1`; `check-cli` is 3.162s,
+   dictionary/checker is 7.815s, diagnostics all-strict is 11.891s, tail/lint
+   groups are under 7.7s, and the slowest test is checker diagnostics at
+   11.806s. Scratch cold-cache fill with one real candidate build and one real
+   AOT maker build is 39.336s internal / 41.64s shell wall with
+   `candidate-miss=1`, `candidate-install=1`, and `candidate-validate=1`.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local

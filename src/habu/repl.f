@@ -3,8 +3,8 @@
 \ classic batch read-all and never sees these words run). INSTALL points
 \ REPLH-CELL at RD-LINE; the engine's LEXIT path then prints " ok", saves the
 \ line-start compile state (CP/NDICT/DP/SP), and BLRs RD-LINE for the next
-\ line. Undefined words and uncaught THROWs print "?", roll the line back, and
-\ re-read instead of exiting.
+\ line. Undefined words print `E-UNDEFINED: name`, uncaught THROWs print "?",
+\ roll the line back, and re-read instead of exiting.
 \ The editor runs the tty RAW (per line; canonical is restored while the line
 \ executes): insert/backspace at a cursor, left/right arrows, ^A/^E home/end,
 \ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line

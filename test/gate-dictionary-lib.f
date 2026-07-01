@@ -803,7 +803,7 @@ variable GD-START-NS
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" : BAD ( -- n ) H ;" GE-SRC-LINE
-   $46 s" at 'h'" s" package rejects private checked call" GD-RUN-BAD-CHILD
+   $46 s" at 'H'" s" package rejects private checked call" GD-RUN-BAD-CHILD
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" public" GE-SRC-LINE

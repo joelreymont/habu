@@ -705,6 +705,7 @@ variable SGBAD-U
 variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
+variable UNDEFERR
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -2434,7 +2435,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
    FEP @ IF FEP @ EFF-APPLY ELSE
    a u CHECKER-FIND-ACTIVE-SYM TRY-PRIMS IF EXIT THEN
    TSEEN @ IF TFA @ E-PTR EFF-APPLY ELSE
-   -1 UNCK ! THEN THEN ;
+   -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
@@ -2987,10 +2988,14 @@ variable SKI  variable SKF
    u TKFU !  -1 ;
 : FAIL-SPAN! ( -- )
    TSTART @ TBASE @ - FAILB !
-   FAILB @ TKFU @ + FAILE ! ;
-: CAP-FAIL ( -- )
+   FAILB @ FAILTU @ + FAILE ! ;
+: CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF
-      TKF FAILTK TKFU @ CCOPY  TKFU @ FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
+      {: a:ptr u:n :}
+      u TOKBUF-ENSURE
+      a FAILTK u CCOPY  u FAILTU !  TOKIX @ FAILIX !  FAIL-SPAN!
+   ELSE
+      2drop
    THEN ;
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
@@ -3078,7 +3083,7 @@ variable IS-TU
 
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
-   CAP-FAIL
+   a u CAP-FAIL
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
@@ -3112,7 +3117,7 @@ variable IS-TU
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD ! ;
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 UNDEFERR ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE

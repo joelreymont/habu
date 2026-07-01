@@ -146,6 +146,14 @@ variable PET-START-NS
    0 T= 0 T= {: outu:n :}
    outu PET-INHERIT-ENV-OUT ;
 
+: PET-DEFAULT-LOOKUP ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-DEFAULT+
+   s" HABU_PROC_ENV_TEST" >LEN PROC-ENV-DEFAULT$? TTRUE
+   LEN>N s" alpha" T$=
+   s" HABU_PROC_ENV_MISSING" >LEN PROC-ENV-DEFAULT$? TFALSE
+   2drop ;
+
 : PET-EXPLICIT-BEATS-DEFAULT ( -- )
    PET-RESET
    s" HABU_PROC_ENV_TEST" >LEN s" wrong" >LEN PROC-ENV-DEFAULT+
@@ -262,6 +270,7 @@ variable PET-START-NS
    s" empty-env-child" [: PET-RUN-EMPTY-ENV-CHILD ;] PET-CASE
    s" inherit-env-child" [: PET-RUN-INHERIT-ENV-CHILD ;] PET-CASE
    s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
+   s" default-lookup" [: PET-DEFAULT-LOOKUP ;] PET-CASE
    s" explicit-beats-default" [: PET-EXPLICIT-BEATS-DEFAULT ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE

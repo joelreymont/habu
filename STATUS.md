@@ -4,14 +4,16 @@ Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
 measured persistent content-key hot run after removing top snapshot launchers,
 splitting AOT closure diagnostics from the maker path, collapsing the remaining
-semantic diagnostic/JIT helper launches, and running tail/lint groups through
-worker-local fork pools is 23.129s internal / 25.43s shell-wall on 2026-07-01
+semantic diagnostic/JIT helper launches, running tail/lint groups through
+worker-local fork pools, fixing post-build candidate scheduling, and moving PTY
+coverage to the post-candidate runtime slice is 16.702s
+internal / 19.00s shell-wall on 2026-07-01
 UTC on macOS/aarch64 with the `macos-arm64-10x2` profile, manifest-hashed small
 `hb-under-test`, no top test-suite snapshot, no checker/tool snapshot launchers,
 and an AOT artifact cache hit for this source revision. A scratch cold-cache
-fill run with one real AOT artifact build measured 27.613s internal / 29.85s
-shell-wall, non-regressive against the prior 28.455s / 30.64s source-change
-fill proof.
+fill run with one real candidate build, one candidate-cache install, one
+candidate validation, and one real AOT maker build measured 39.336s internal /
+41.64s shell-wall under the scratch-cache budget.
 The native gate uses
 a 10-way macOS checked
 DAG pool, 2-way nested stdlib pool, split stdlib lint slices
@@ -31,10 +33,11 @@ cache root. Host timing policy is exposed as script args:
 `--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
 `--wall-budget-ms`, and `--cold-cache`.
 Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-`helper-spawn=25`, `spans=205`, `slowest-test=native engine fixture slice`
-at 12.588s; `check-cli` is 2.177s, dictionary/checker is 4.998s, diagnostics
-repair is 4.764s, diagnostics all-strict is 6.915s, tail/lint groups are under
-4.2s, and AOT negative is 1.821s with no AOT maker run.
+`helper-spawn=25`, `spans=235`, `candidate-hit=1`, `candidate-validate=1`,
+`slowest-test=native checker diagnostics group` at 11.891s; engine
+post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
+tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
+run.
 Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

@@ -200,7 +200,7 @@ create VS-BUF BODYBUF-CAP allot
    VS-TA @ VS-TU @ VS-OPN? IF VS-TA @ VS-TU @ VS-SKIP-STRING-REST THEN ;
 
 TRUSTED: VS-CHECK-BODY ( ptr u8 n -- n )
-   CHECK! ;
+   CHECK! dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and IF DIAGXT @ execute THEN ;
 
 : VS-VERIFY-BODY ( -- )
    VS-BUF VS-L @ VS-CHECK-BODY  dup -1 <> IF 70 throw THEN drop ;
