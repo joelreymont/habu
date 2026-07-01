@@ -11,7 +11,7 @@ variable GSI-SETUP
 variable GSI-TEST-READY
 variable GSI-TOOL-BASE-READY
 
-$10000 constant GSI-TL-STR-CAP
+$40000 constant GSI-TL-STR-CAP
 $20000 constant GSI-TL-FILE-CAP
 600000 constant GSI-FORK-TIMEOUT-MS
 

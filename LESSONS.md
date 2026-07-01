@@ -1482,6 +1482,10 @@ lesson — keep the specific word/code/path, cut the prose.
   helpers shifts `TRUSTED.md` site pins and correctly fails `trust-lint`; update
   those rows after deciding the boundary still belongs. Do not hide a red
   `trust-lint` by starting a broad trust-reduction refactor in the same change.
+- **Trust-lint string storage must scale with the manifest:** adding audited PTX
+  boundaries pushed `TRUSTED.md` past the old 64 KiB string arena and failed
+  before drift reporting. Keep manifest parsing backed by a generous dynamic
+  buffer so the gate remains enforceable as rows grow.
 - **Prefer hex for machine-adjacent literals:** byte values, ASCII, masks,
   offsets, format fields, and crypto constants should use `$hex`. Decimal is for
   small counts and human quantities; stage/bootstrap code should not transcribe
@@ -1543,6 +1547,10 @@ lesson — keep the specific word/code/path, cut the prose.
   `space-global-once` plus `LOAD-ONCE`/`STORE-ONCE`, never as a cast from ordinary
   `span<space-global,...>`. The checker can then reject both accidental plain
   stores from normal spans and accidental use of once spans through normal stores.
+- **Indexed PTX memory needs two extents and uniqueness as a token:** `idxctx`
+  carries both the dense index span extent and the indexed data span extent;
+  duplicate-safe updates use `INDEX-SCATTER-ADD`, while plain `INDEX-STORE`
+  requires `uniqidxctx` instead of assuming `idx[i]` is unique.
 - **PTX IR needs distinct symbolic inputs before AD algebra:** a single generic
   `INPUT` node is enough for peepholes, but softmax backward fixtures need stable
   input symbols (`y`, `dy`) plus block-algebra nodes (`BLOCK-SUM`, `B-`) so the

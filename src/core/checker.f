@@ -1260,6 +1260,8 @@ variable UNDEFERR
    a u s" matrix" CORE-STR= IF -1 EXIT THEN
    a u s" gridctx" CORE-STR= IF -1 EXIT THEN
    a u s" fanctx" CORE-STR= IF -1 EXIT THEN
+   a u s" idxctx" CORE-STR= IF -1 EXIT THEN
+   a u s" uniqidxctx" CORE-STR= IF -1 EXIT THEN
    a u s" coopctx" CORE-STR= IF -1 EXIT THEN
    a u s" rowctx" CORE-STR= IF -1 EXIT THEN
    a u s" tile" CORE-STR= IF -1 EXIT THEN

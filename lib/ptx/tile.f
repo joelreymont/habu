@@ -67,6 +67,30 @@ TRUSTED: FANIN-LOAD ( ptr<space-global,t> fanctx<b,e,m> -- tile<t,b,m> )
 TRUSTED: FANIN-SCATTER-ADD ( tile<t,b,m> ptr<space-global,t> fanctx<b,e,m> -- )
    EMIT-FANIN-SCATTER-ADD ;
 
+TRUSTED: INDEX-CTX ( span<space-global,u32,i> span<space-global,t,e> -- idxctx<b,i,e,fresh-mask-live> )
+   EMIT-INDEX-CTX ;
+
+TRUSTED: UNIQUE-INDEX-CTX ( span<space-global,u32,i> span<space-global,t,e> -- uniqidxctx<b,i,e,fresh-mask-live> )
+   EMIT-UNIQUE-INDEX-CTX ;
+
+TRUSTED: INDEX-DENSE-LOAD ( span<space-global,t,i> idxctx<b,i,e,m> -- tile<t,b,m> )
+   EMIT-INDEX-DENSE-LOAD ;
+
+TRUSTED: UNIQUE-INDEX-DENSE-LOAD ( span<space-global,t,i> uniqidxctx<b,i,e,m> -- tile<t,b,m> )
+   EMIT-UNIQUE-INDEX-DENSE-LOAD ;
+
+TRUSTED: INDEX-DENSE-STORE ( tile<t,b,m> span<space-global,t,i> idxctx<b,i,e,m> -- )
+   EMIT-INDEX-DENSE-STORE ;
+
+TRUSTED: INDEX-LOAD ( span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- tile<t,b,m> )
+   EMIT-INDEX-LOAD ;
+
+TRUSTED: INDEX-SCATTER-ADD ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> idxctx<b,i,e,m> -- )
+   EMIT-INDEX-SCATTER-ADD ;
+
+TRUSTED: INDEX-STORE ( tile<t,b,m> span<space-global,u32,i> span<space-global,t,e> uniqidxctx<b,i,e,m> -- )
+   EMIT-INDEX-STORE ;
+
 TRUSTED: SCALE ( tile<t,b,m> uniform<t> -- tile<t,b,m> )
    EMIT-SCALE ;
 

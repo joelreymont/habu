@@ -68,6 +68,9 @@ TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
 TRUSTED: PTR-REG ( n -- ptr<space-global,f32> ) ;
 TRUSTED: SPAN-ONCE-REG ( n -- span<space-global-once,f32,extent-n> ) ;
+TRUSTED: INDEX-SPAN-REG ( n -- span<space-global,u32,extent-i> ) ;
+TRUSTED: INDEX-VALUE-SPAN-REG ( n -- span<space-global,f32,extent-i> ) ;
+TRUSTED: DATA-SPAN-REG ( n -- span<space-global,f32,extent-d> ) ;
 TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
 
@@ -248,6 +251,59 @@ TRUSTED: BITS>R ( n -- r ) ;
    CG-NEXT-RD {: a:n :}
    SB-RESET s" cvta.to.global.u64 " CG-S a CG-RD s" , " CG-S ptrrd CG-RD s" ;" CG-S CG-LINE
    SB-RESET s" red.global.add.f32 [" CG-S a CG-RD s" ], " CG-S tilef CG-F s" ;" CG-S CG-LINE ;
+
+\ INDEX-CTX: active lanes are bounded by %r1. Indexed operations use the lane
+\ to load a u32 index, check it against %r2, then address data[index].
+: EMIT-INDEX-CTX ( n n -- n ) {: idxrd:n datard:n :}
+   idxrd drop
+   datard drop
+   CG-NEXT-R {: rc:n :}  CG-NEXT-R {: rn:n :}  CG-NEXT-R {: rt:n :}  CG-NEXT-R {: ri:n :}
+   SB-RESET s" mov.u32 " CG-S rc CG-R s" , %ctaid.x;" CG-S CG-LINE
+   SB-RESET s" mov.u32 " CG-S rn CG-R s" , %ntid.x;" CG-S CG-LINE
+   SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;" CG-S CG-LINE
+   SB-RESET s" mad.lo.u32 " CG-S ri CG-R s" , " CG-S rc CG-R s" , " CG-S rn CG-R s" , " CG-S rt CG-R s" ;" CG-S CG-LINE
+   CG-NEXT-P {: p:n :}
+   SB-RESET s" setp.ge.u32 " CG-S p CG-P s" , " CG-S ri CG-R s" , %r1;" CG-S CG-LINE
+   SB-RESET s" @" CG-S p CG-P s"  bra DONE;" CG-S CG-LINE
+   ri ;
+
+: EMIT-UNIQUE-INDEX-CTX ( n n -- n )
+   EMIT-INDEX-CTX ;
+
+: EMIT-INDEX-OFFSET ( n n -- n ) {: idxrd:n ctxr:n :}
+   CG-NEXT-RD {: ib:n :}  CG-NEXT-RD {: io:n :}  CG-NEXT-RD {: ia:n :}
+   CG-NEXT-R {: idx:n :}  CG-NEXT-P {: p:n :}    CG-NEXT-RD {: off:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S ib CG-RD s" , " CG-S idxrd CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" mul.wide.u32 " CG-S io CG-RD s" , " CG-S ctxr CG-R s" , 4;" CG-S CG-LINE
+   SB-RESET s" add.u64 " CG-S ia CG-RD s" , " CG-S ib CG-RD s" , " CG-S io CG-RD s" ;" CG-S CG-LINE
+   SB-RESET s" ld.global.u32 " CG-S idx CG-R s" , [" CG-S ia CG-RD s" ];" CG-S CG-LINE
+   SB-RESET s" setp.ge.u32 " CG-S p CG-P s" , " CG-S idx CG-R s" , %r2;" CG-S CG-LINE
+   SB-RESET s" @" CG-S p CG-P s"  bra DONE;" CG-S CG-LINE
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S idx CG-R s" , 4;" CG-S CG-LINE
+   off ;
+
+: EMIT-LANE-OFFSET ( n -- n ) {: ctxr:n :}
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S ctxr CG-R s" , 4;" CG-S CG-LINE
+   off ;
+
+: EMIT-INDEX-DENSE-LOAD ( n n -- n ) {: spanrd:n ctxr:n :}
+   spanrd ctxr EMIT-LANE-OFFSET EMIT-LOAD ;
+
+: EMIT-UNIQUE-INDEX-DENSE-LOAD ( n n -- n )
+   EMIT-INDEX-DENSE-LOAD ;
+
+: EMIT-INDEX-DENSE-STORE ( n n n -- ) {: tilef:n spanrd:n ctxr:n :}
+   tilef spanrd ctxr EMIT-LANE-OFFSET EMIT-STORE ;
+
+: EMIT-INDEX-LOAD ( n n n -- n ) {: idxrd:n spanrd:n ctxr:n :}
+   spanrd idxrd ctxr EMIT-INDEX-OFFSET EMIT-LOAD ;
+
+: EMIT-INDEX-SCATTER-ADD ( n n n n -- ) {: tilef:n idxrd:n spanrd:n ctxr:n :}
+   tilef spanrd idxrd ctxr EMIT-INDEX-OFFSET EMIT-SCATTER-ADD ;
+
+: EMIT-INDEX-STORE ( n n n n -- ) {: tilef:n idxrd:n spanrd:n ctxr:n :}
+   tilef spanrd idxrd ctxr EMIT-INDEX-OFFSET EMIT-STORE ;
 
 \ ACC-ZERO: a fresh register accumulator = 0 (the gridctx is type-only here)
 : EMIT-ACC-ZERO ( n -- n ) {: ctxrd :}

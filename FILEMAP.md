@@ -199,6 +199,10 @@ points stay listed.
 - `tools/ptx/scatter-add-grad-cg.f` / `tools/ptx/scatter-add-gradcheck.f` —
   checked fan-in context kernels plus Orin device gradcheck: finite difference
   of `sum_i x[0]` matches the analytic scatter-add backward `dx[0] = n`.
+- `tools/ptx/indexed-scatter-cg.f` / `tools/ptx/indexed-scatter-gradcheck.f` —
+  checked generic indexed gather/scatter kernels plus Orin device gradcheck:
+  duplicate `idx[i]` accumulation is proven by finite difference and analytic
+  `INDEX-SCATTER-ADD`.
 - `tools/ptx/sum-cg.f` / `tools/ptx/sum-launch.f` — checked direct row-sum
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK

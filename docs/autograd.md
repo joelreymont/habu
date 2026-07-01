@@ -59,6 +59,7 @@ in the types rather than implicit in an engine:
 | `BROADCAST` | `( uniform -- tile )` | `BLOCK-SUM` | `( tile -- uniform )` |
 | `LOAD` (gather) | `( span ctx -- tile )` | `SCATTER-ADD` by default | `( tile span ctx -- )` |
 | `LOAD-ONCE` | `( once-span ctx -- tile )` | `STORE-ONCE` | plain store only for checked once-space witnesses |
+| `INDEX-LOAD` | `( idx data idxctx -- tile )` | `INDEX-SCATTER-ADD` | duplicate-safe indexed accumulation |
 | `SCALE` (a·x) | `( tile uniform -- tile )` | `( dz a x -- dx da )` | dx=a·dz, da=Σ(dz⊙x) |
 | `B-` (x − s) | `( tile uniform -- tile )` | `( dz -- dt ds )` | dt=dz, ds=−Σdz |
 | `EXP.` | `( tile -- tile )` | `( dz y -- dz⊙y )` | saves output `y` |
@@ -143,6 +144,7 @@ for the CPU `A-ARGMAX` and does NOT carry to the GPU `BLOCK-MAX`.)
 | forward | adjoint | note |
 | --- | --- | --- |
 | `LOAD ( span ctx -- tile )` | scatter-**add** (`red.global.add`) of `dt` into the input's gradient span | conservative default; plain store only with a checked read-once witness |
+| `INDEX-LOAD ( idx data idxctx -- tile )` | indexed scatter-**add** of `dt` into `data[idx[i]]` | conservative default for arbitrary indices; plain `INDEX-STORE` requires `UNIQUE-INDEX-CTX` |
 | `STORE ( tile span ctx -- )` | `LOAD` of `dt` from the output's gradient span | plain load |
 
 **Stack and structural:**
@@ -245,20 +247,25 @@ cotangent into the input's gradient buffer; the reverse of a store is a load fro
 the output's gradient buffer. When a forward value is read **more than once**
 (fan-in across the grid), its cotangent contributions must **accumulate** — the
 adjoint of a gather is a scatter-*add* (`red.global.add` / `atom.global.add`,
-arch-gated on sm_87). A value read exactly once per row (softmax) needs a plain
-store. **Correction (review 2026-06-26):** the effect system does *not* track read
+arch-gated on sm_87). Indexed gather is the generic form of that rule:
+`INDEX-LOAD` reverses to `INDEX-SCATTER-ADD`, and duplicate `idx[i]` values are
+legal. A value read exactly once per row (softmax) or through proven unique
+indices can use a plain store, but only through an explicit checked witness:
+`space-global-once` for dense loads, or `UNIQUE-INDEX-CTX` for indexed stores.
+**Correction (review 2026-06-26):** the effect system does *not* track read
 multiplicity — `docs/effects.md` has no multiplicity/linearity effect, and read
 multiplicity here is an inter-thread, *grid-global* aliasing property that a
 per-thread checker structurally cannot see. So the AD pass must **not** silently
 guess: scatter-*add* is the **conservative default** for every ordinary `LOAD`
-adjoint. Plain store is an opt-in refinement through `space-global-once` spans:
-`LOAD-ONCE` reverses to `STORE-ONCE`, and the checker rejects using `STORE-ONCE`
-with an ordinary global span or using ordinary `STORE` with a once span. The
-once-space value is minted only at an audited ABI/from-raw-parts boundary
-(`MK-SPAN-ONCE`, `MK-MATRIX-ONCE`, or codegen register equivalents); there is no
-checked word that upgrades an existing normal span to once. The remaining hard
-part is proving, at the caller/launch boundary, that the buffer really is
-single-writer/read-once; device gradcheck remains the zed-owned proof.
+or `INDEX-LOAD` adjoint. Plain store is an opt-in refinement through
+`space-global-once` spans or `uniqidxctx`; the checker rejects `STORE-ONCE` on
+ordinary spans and rejects `INDEX-STORE` without a unique-index context. The
+once/unique value is minted only at an audited ABI/from-raw-parts/domain boundary
+(`MK-SPAN-ONCE`, `MK-MATRIX-ONCE`, `UNIQUE-INDEX-CTX`, or codegen register
+equivalents); there is no checked word that upgrades an existing normal span to
+once. The remaining hard part is proving, at the caller/launch boundary, that the
+buffer or index map really is single-writer/read-once; device gradcheck remains
+the zed-owned proof.
 
 ## Checkpointing / rematerialization
 

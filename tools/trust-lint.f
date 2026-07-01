@@ -19,7 +19,7 @@ require tools/lint/lib.f
 require tools/trust-lint-core.f
 require tools/argv.f
 
-$10000 constant TL-ARGV-STR-CAP
+$40000 constant TL-ARGV-STR-CAP
 $20000 constant TL-ARGV-FILE-CAP
 
 variable TL-ARGV-STR-BUF-A

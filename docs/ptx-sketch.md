@@ -25,6 +25,8 @@ as metavariables; executable checked code must use the explicit tokens.
 | `tile<f32,block-256,mask-live>` | `B`-lane tile of `T` with **active-lane mask** `M`; inactive lanes are poison |
 | `uniform<T>` | a `T` provably identical across all lanes of the block |
 | `rowidx<extent-r>` | row index proven `< R` (sound only under the launch ABI, below) |
+| `idxctx<block-256,extent-i,extent-d,mask-live>` | indexed-memory context over an index span `I` and data span `D`; lane index = dense `i`, address index = `idx[i]` |
+| `uniqidxctx<block-256,extent-i,extent-d,mask-live>` | indexed-memory context plus an audited external uniqueness witness for `idx[i]` |
 
 `%BLOCK B` accepts a legal CUDA block size: a **multiple of 32, `1 <= B <=
 1024`**. Row/collective emitters derive their shared-memory size and reduction
@@ -109,6 +111,41 @@ constructors (`GRID-CTX`, `ROW-CTX`, and v4 variants) mint fresh rigid masks, so
 tiles loaded under independent contexts no longer type-check as having the same
 mask. `tile<T,B,M>` should not promise a defined scalar for an inactive lane;
 collectives consume the mask and substitute their own inactive-lane identity.
+
+### Generic indexed memory
+
+Indexed gather/scatter uses an explicit context that carries two extents:
+`I` for the dense index/values side and `D` for the indexed data side. The
+checker proves that every `INDEX-*` word reuses the same index span, data span,
+and mask token; the emitted PTX still guards the runtime value `idx[i] < D`
+because the checker cannot know the contents of the index buffer.
+
+```
+INDEX-CTX        ( span<G,u32,I> span<G,T,D> -- idxctx<B,I,D,M> )
+UNIQUE-INDEX-CTX ( span<G,u32,I> span<G,T,D> -- uniqidxctx<B,I,D,M> )
+
+INDEX-DENSE-LOAD   ( span<G,T,I> idxctx<B,I,D,M> -- tile<T,B,M> )
+INDEX-DENSE-STORE  ( tile<T,B,M> span<G,T,I> idxctx<B,I,D,M> -- )
+
+INDEX-LOAD        ( span<G,u32,I> span<G,T,D> idxctx<B,I,D,M> -- tile<T,B,M> )
+INDEX-SCATTER-ADD ( tile<T,B,M> span<G,u32,I> span<G,T,D> idxctx<B,I,D,M> -- )
+INDEX-STORE       ( tile<T,B,M> span<G,u32,I> span<G,T,D> uniqidxctx<B,I,D,M> -- )
+```
+
+`idxctx` is the general case: duplicate index values are legal, so reverse-mode
+and accumulation use `INDEX-SCATTER-ADD`. Plain `INDEX-STORE` needs
+`uniqidxctx`, an audited boundary that says the host/domain has already proven
+`idx[i]` is duplicate-free for the active launch. The checker rejects passing
+`idxctx` to `INDEX-STORE`, rejects passing `uniqidxctx` to
+`INDEX-SCATTER-ADD`, and rejects data/index extent mismatches.
+
+```forth
+KERNEL: INDEX-SCATTER ( span<space-global,u32,extent-i> span<space-global,f32,extent-i> span<space-global,f32,extent-d> -- )  GRID: ceil-n-256
+   {: idx:a vals:b out:c :}
+   idx out INDEX-CTX {: g:d :}
+   vals g INDEX-DENSE-LOAD
+   idx out g INDEX-SCATTER-ADD ;
+```
 
 ## Kernel: vector add `y = a*x + y`
 
@@ -209,7 +246,9 @@ the row mask.
 
 **Rejected at compile time now:** a global op on a non-global span; load/store
 without a ctx; a ctx whose extent token does not match the span token;
-mismatched tile/matrix shapes; raw pointer arithmetic on a `span`.
+mismatched tile/matrix shapes; raw pointer arithmetic on a `span`; indexed
+data/index extent mismatches; duplicate-prone `idxctx` used for a plain indexed
+store.
 
 **Still dotted:** rejecting collectives under lane-varying control flow needs the
 uniformity/barrier model; v4 typed alignment proofs remain beyond the current
@@ -221,8 +260,11 @@ constructors use `fresh-mask-*` / `fresh-extent-*` templates.
 launch ABI checks this at launch, not at compile time); shared-memory race/bank
 behavior (deferred to the shared-memory milestone); occupancy/performance;
 numerical accuracy beyond each op's stated contract. The bounds property is
-*relational* — "indexing outside the declared span's extent is unrepresentable" —
-not universal memory safety.
+*relational* — "the declared span/context extents agree at every access site" —
+not universal memory safety. For indexed memory, the checker proves `I`/`D`
+token consistency and the PTX primitive guards `idx[i] < D`; it does not prove
+the index buffer values or uniqueness unless the caller explicitly enters the
+`UNIQUE-INDEX-CTX` boundary.
 
 ## Acceptance criteria (by milestone)
 
@@ -240,9 +282,11 @@ launch tests) -> M1 harness. Criterion 6: `SCALE`+`+.` two-rounding -> M4;
 3. Runs on device via the CUDA Driver API; matches a CPU golden within tol.
 4. **Negative checker tests reject** the landed cases (each a minimal program,
    at compile time): wrong-space load; missing ctx; explicit shared-token extent
-   mismatch; raw pointer arithmetic on a span. Dotted target negatives: independent
-   mixed masks/extents, row-local ctx used as grid ctx, collective under a
-   lane-varying predicate, and non-block-uniform reachability of a collective.
+   mismatch; raw pointer arithmetic on a span; indexed data/index extent
+   mismatch; plain indexed store without a uniqueness witness. Dotted target
+   negatives: independent mixed masks/extents, row-local ctx used as grid ctx,
+   collective under a lane-varying predicate, and non-block-uniform reachability
+   of a collective.
 5. **Host launch tests** (runtime, not the checker): `blockDim != B`,
    `gridDim.x != R`, `C > B`, and `gridDim.x*blockDim.x > 2³²−1` each fail the
    launch.
@@ -289,6 +333,10 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
 4. **Tile DSL v0 + negatives:** `span`/`gridctx`/`tile<T,B,M>`, `MK-SPAN=`,
    `GRID-CTX`, `LOAD/STORE`, scalar `SCALE` and elementwise `+.`/`-.`/`*.`/`/.`;
    saxpy from checked source; the non-collective negative cases.
+4a. **Generic indexed memory:** `idxctx`/`uniqidxctx`, dense companion
+    load/store, indexed gather, duplicate-safe indexed scatter-add, unique
+    indexed plain store, negative checker fixtures, and a device gradcheck for
+    duplicate-index accumulation.
 5. **Mask + uniformity + barrier model:** `uniform<T>`, the uniform/lane-varying
    effect, predicated bounds, a verified `bar.sync` phase; collective negatives.
 6. **Collectives + softmax-rows:** `BLOCK-MAX/SUM`, `rowctx`, `matrix`,
