@@ -23,3 +23,10 @@ tail-process 6014ms, tool-doc 8204ms, tool-repair 9335ms, lint-libs/core
 macos-arm64-12x2 hot full suite passed at 24878ms internal / 27.22s wall.
 Remaining above-5s tails: tool-doc ~8.1s, tool-repair ~9.6s, lint-tools ~6.2s,
 lint-libs/core ~5.8s, tail-pure ~5.7s, tail-process ~6.3s. Keep open.
+
+2026-07-01 check-all-errors cleanup proof: `tools/check-all-errors-test.f`
+removed its warm-run/process CLI smoke and tests the argv contract in-process.
+Full macos-arm64-12x2 persistent-cache suite passed at 24117ms internal /
+26.48s wall. Current above-5s tails: tool-doc 8405ms, tool-repair 7200ms,
+lint-tools 5749ms, lint-libs/core 5801ms, tail-pure 5684ms, tail-process
+5965ms. Tool-repair improved materially but remains above the 5s target.

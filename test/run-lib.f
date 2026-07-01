@@ -332,9 +332,9 @@ variable TR-PRE-VALIDATE
       s" unknown" rot
    endcase ;
 
-: TR-CACHE-MODE$ ( -- ptr u8 n )
-   TR-COLD-CACHE @ 0 <> if s" cold" exit then
-   s" hot" ;
+: TR-CACHE-ROOT$ ( -- ptr u8 n )
+   TR-COLD-CACHE @ 0 <> if s" scratch" exit then
+   s" persistent" ;
 
 : TR-CHECK-MACOS-PROFILE ( -- )
    HB-TARGET-MACOS? 0= if s" macos-arm64-12x2 requires macOS target" TR-PROFILE-FAIL then ;
@@ -415,7 +415,7 @@ variable TR-PRE-VALIDATE
 
 : TR-PERF-LINE ( -- )
    s" perf-profile: " type TR-PROFILE$ type
-   s"  cache=" type TR-CACHE-MODE$ type
+   s"  cache-root=" type TR-CACHE-ROOT$ type
    s"  pool=" type GT-POOL-LIMIT @ GT-U-TYPE
    s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
    TR-WALL-BUDGET? if

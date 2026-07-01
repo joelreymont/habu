@@ -207,7 +207,7 @@ lesson — keep the specific word/code/path, cut the prose.
   codegen. The bootstrap data region must also fit static checker state
   (`USIGS-BOOT`), and its native reload prelude must reset user signatures and
   hide from `SEQ` before reloading current source.
-- **Do not bake one-off AOT gate support into the warm runner:** adding
+- **Do not bake one-off AOT gate support into broad runner images:** adding
   `tools/aot-call-report.f` to the runner image overflowed the checker user-signature
   snapshot even though AOT phases are scheduled cold/early. Keep AOT-only report/assert
   helpers on the cold AOT paths and reserve the runner image for phases it actually runs.
@@ -218,8 +218,13 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Gate budgets are stop-line thresholds, not comfort blankets:** raising the
   default native gate budget to 160s hid duplicated gate work after the suite had
   already been cut near 90s. Keep the default at the current green threshold and
-  use `test/run.f -- --budget-ms N` as the explicit slow-host override while the
-  30s architecture work removes duplicate launches/builds.
+  make regressions explicit; use `test/run.f -- --budget-ms N` as the explicit
+  slow-host override while the 30s architecture work removes duplicate
+  launches/builds.
+- **Content-key reuse is not a warm snapshot:** the steady-state suite uses a
+  persistent content-key cache for the candidate/build artifacts, not a warm
+  snapshot harness. Reports and docs must say `cache-root=persistent`/`scratch`;
+  reserve "warm" for the explicit `tools/warm-image.f` feature tests.
 - **Cache Habu-under-test by content, not path:** the full gate's first wall was
   a fresh fixpoint build before any under-test phase could start. Hash `bin/hb`,
   the runner/build harness, and every emitted engine/repl source; a persistent
@@ -253,16 +258,16 @@ lesson — keep the specific word/code/path, cut the prose.
   source file, `lib/std.manifest`, `FILEMAP.md`, and `tools/filemap-lint.f`.
   Miss one and the direct manifest gate is the first correct failure.
 - **Pool slots are host policy, not universal truth:** on this macOS/aarch64
-  12-core host, hot-cache full gates run 24.341s internal / 26.72s wall with
+  12-core host, persistent-cache full suites run 24.341s internal / 26.72s wall with
   8 top-level slots and 2 nested slots. Keep Linux conservative until measured
-  there, cap dynamic slots below fixed warm/AOT artifact slots, and use
+  there, cap dynamic slots below reserved artifact slots, and use
   discoverable argv knobs:
   `test/run.f -- --pool-slots N --nested-pool-slots M`.
 - **`Habu-under-test` is the small engine, not a snapshot:** the native engine
   gate accidentally promoted `hb-new`, whose snapshot trailer baked `$14523b4`
   bytes of live DATA and produced 22 MB candidates that could jump into zeroed
   dictionary code on Linux. Promote `hb-stdin`, enforce a small candidate size,
-  and leave snapshots as warm-runner/cache artifacts only.
+  and leave snapshots as explicit `tools/warm-image.f` feature artifacts only.
 - **Pipe-scoped env vars are easy to lie with:** `env HB_TMP=/tmp/x printf '' |
   bin/hb ...` sets `HB_TMP` only for `printf`; to preserve a gate temp root, put
   the env on the Habu side: `printf '' | env HB_TMP=/tmp/x bin/hb ...`.
@@ -323,10 +328,10 @@ lesson — keep the specific word/code/path, cut the prose.
   that only win in isolation.
 - **Do not split resident groups past setup amortization:** splitting combined
   tool-doc/tool-repair residents into five single-purpose resident forks made a
-  hot macOS run regress from 29.04s/26.760s to 30.40s/28.031s. Parallelism that
+  steady-state macOS run regress from 29.04s/26.760s to 30.40s/28.031s. Parallelism that
   duplicates resident setup and adds fork scheduling loses even when individual
   subtests look independent.
-- **Inline warm-runner work must overlap child suites:** the winning
+- **Inline resident work must overlap child suites:** the winning
   `tool-boundary-lints` cut split tests into load-only libs, skipped the cold
   child suite, and ran inline lints immediately before `GT-POOL-DRAIN`; running
   them before spawning sibling suites serialized the slice and lost the full-DAG
@@ -334,40 +339,39 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Do not make inline gate work a serial dumping ground:** inlining
   check-repair/doc/typed-local semantics into the single stdlib hook made zed's
   tool slice wait on one resident thread for ~56s. Split independent semantics
-  into first-class resident-runner rows; the hot local gate fell to 24.579s with
-  `warm-miss=0` while still running candidate validation.
+  into first-class resident-runner rows; the steady-state local suite fell to
+  24.579s while still running candidate validation.
 - **Run the suite from `bin/hb`, not a top snapshot:** replacing a broad
   top-level `hb-test-suite` image with direct `bin/hb --load test/run.f` kept
   the small engine as the entry point, removed a generated setup artifact, and
-  still held macOS hot wall time under 30s. Cold/cache-fill remains a separate
+  still held macOS steady-state wall time under 30s. Cache-fill remains a separate
   profile because candidate and builder artifacts are legitimate misses.
 - **Warm launchers hide duplicated checker work:** after removing the top
   snapshot, direct checker diagnostics exposed repeated `tools/check.f` support
   loads. Semantic diagnostic tests should call `tools/check-core.f` in-process
   with fd capture; only true CLI stderr/argv contracts keep a child `hb`.
-- **Bake repeated semantic setup into the resident runner:** the stdlib tool
-  groups were still paying the same checked lint/check-all-errors setup in every
-  resident process. Baking that common tool base once into `hb-gate-warm` and
-  marking setup sentinels cut macOS hot wall time from 43.932s internal to
-  34.837s without removing CLI boundary coverage.
-- **Discovered cache misses must switch the timing profile to cold:** a default
-  run after changing `test/run.f` rebuilt both warm runners but still used the
-  hot 55s/60s macOS budget, failing at 62s despite all tests passing. Warm-runner
-  and candidate cache misses now mark `cache=cold` and apply the profile cold
-  budget unless the user supplied explicit budget args.
+- **Load repeated semantic setup once:** the stdlib tool groups were paying the
+  same checked lint/check-all-errors setup in every resident process. The current
+  suite loads that common tool base once as silent suite setup, then forks
+  phase-owned resident workers without removing CLI boundary coverage.
+- **Discovered content-cache misses must switch budget class:** a default run
+  after changing `test/run.f` rebuilt candidate/build artifacts but still used
+  the steady-state macOS budget, failing despite all tests passing. Candidate and
+  builder artifact misses now apply the scratch-cache budget unless the user
+  supplied explicit budget args.
 - **Stats schemas need content assertions, not just counters:** `GS-ROW` first
   emitted `sha/boundary/runner/subject/label` despite docs promising
   `label/subject/runner/boundary/sha`. Tests must assert representative TSV row
   content so telemetry remains usable for scheduling RCA.
-- **Late-bound gate hooks need `defer`:** redefining `SUITE-INLINE-WORK` after
+- **Late-bound suite hooks need `defer`:** redefining `SUITE-INLINE-WORK` after
   `GATE-STDLIB-MAIN` compiled still called the old xt. Use a checked `defer`
-  hook installed by the warm-runner entry, and execute inline work at the
+  hook installed by the resident entry, and execute inline work at the
   existing pre-drain point so it overlaps sibling child suites.
-- **Gate caches must be default-on and content-keyed:** a 40s budget failed a
-  cache-fill run at 71.015s even though the hot path was ~31s. Keep warm images,
+- **Build caches must be default-on and content-keyed:** a 40s budget failed a
+  cache-fill run at 71.015s even though the steady-state path was ~31s. Keep
   `hb-under-test`, maker, artifact, and file-digest caches under the default
-  user cache root, remove opt-in cache overrides, and let the 70s gate catch
-  real regressions.
+  user cache root, remove opt-in cache overrides, and let the budget catch real
+  regressions.
 - **Artifact caches must key content, not temp paths:** `hb-build` output caching
   first missed every run because `CK-FILE+` included the temporary source path in
   addition to the digest. Use a stable logical label plus the source digest for
@@ -737,7 +741,7 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Fixed pool slots must be reserved before dynamic starts:** starting a
   dedicated slot after a general phase can reset an active slot, orphan the child,
   and leave `GT-POOL-LIVE` permanently high. `GT-POOL-START-SLOT` now fails
-  closed on active-slot reuse; start fixed-slot warm runners before free-slot
+  closed on active-slot reuse; start fixed-slot artifact builders before free-slot
   phases that might claim their indexes.
 - **Habu's locals/loop discipline costs first-time iteration:** porting real code
   (Odin's tegrastats/netpbm parsers to `../odin-habu`) hit the same walls
@@ -1348,16 +1352,17 @@ lesson — keep the specific word/code/path, cut the prose.
   the caller never observes the prepared state. Return the prepared argc (or an
   equivalent checked summary) and assert it before `PROC-ARGV-PREPARE`; the
   build-fixpoint fixture caught an empty child invocation this way.
-- **Gate timing RCA separates cache-fill from hot architecture:** after a native
-  spawn/harness rebuild, the full gate measured 65.093s internal with warm
+- **Suite timing RCA separates cache-fill from steady state:** after a native
+  spawn/harness rebuild, the full suite measured 65.093s internal with artifact
   misses/candidate install before the early-lint scheduler fix, 41.551s internal
-  with one warm refill after the fix, then 30.123s internal hot with warm-miss=0
-  and candidate-hit=1. Treat cache-fill as budget coverage and hot-cache as the
-  harness architecture number; do not compare cache-fill to prior hot runs.
-- **Early lint phases still need warm-build quiescence:** `lint-manifest` and
+  with one artifact refill after the fix, then 30.123s internal steady-state with
+  candidate-hit=1. Treat cache-fill as budget coverage and persistent-cache runs
+  as the harness architecture number; do not compare cache-fill to prior
+  steady-state runs.
+- **Early lint phases still need build quiescence:** `lint-manifest` and
   `lint-libs` need only the under-test binary semantically, but starting their
-  nested stdlib pools while tools/check warm images are rebuilding exposed
-  intermittent `E-FS-IO` under full-DAG contention. Start them early only when
+  nested stdlib pools while artifact builders are rebuilding exposed intermittent
+  `E-FS-IO` under full-DAG contention. Start them early only when
   `TR-WARM-DONE?` is already true; otherwise let the late DAG overlap them with
   the long checker/tool tails.
 - **Spawn boundaries preserve errno until attribution:** Darwin `posix_spawn`

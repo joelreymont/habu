@@ -2,8 +2,8 @@
 
 Last verified: 2026-07-01
 Gate: passing; current tree is under active test-suite architecture work. Last
-measured hot content-key run after removing top warm launchers is 24.878s
-internal / 27.22s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
+measured persistent content-key run after removing top warm launchers is 24.117s
+internal / 26.48s shell-wall on 2026-07-01 UTC on macOS/aarch64 with the
 `macos-arm64-12x2` profile, manifest-hashed small `hb-under-test`, no top
 test-suite snapshot, no checker/tool warm launchers, zero warm-image events,
 and AOT maker/artifact cache hits for this source revision. The native gate uses
@@ -26,7 +26,7 @@ cache root. Host timing policy is exposed as script args:
 `--wall-budget-ms`, and `--cold-cache`.
 Latest counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 `helper-spawn=30`, `spans=146`, `slowest-test=native hb-build AOT negative gate
-phase` at 15.495s; `check-cli` is 2.397s.
+phase` at 15.384s; `check-cli` is 2.595s.
 Certified: 987  Uncheckable: 0  Rejected: 0
 Host-script workflow hooks: retired and gated
 

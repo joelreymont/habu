@@ -111,7 +111,7 @@ load lists are still duplicated.
 Timing regression checks are host-specific. Use named profiles instead of
 remembering slot counts or cache state:
 
-| Profile | Host proof | Slots | Nested | Hot budget | Cold budget |
+| Profile | Host proof | Slots | Nested | Persistent budget | Scratch-cache budget |
 |---|---|---:|---:|---:|---:|
 | `macos-arm64-12x2` | macOS ARM64 target | 12 | 2 | 40000ms / 45000ms wall | 70000ms / 70000ms wall |
 | `jetson-orin-clocks-4x2` | Linux target, NVIDIA Jetson model, CPUs `0-7` online | 4 | 2 | 100000ms / 110000ms wall | 150000ms / 160000ms wall |
@@ -123,14 +123,14 @@ before the suite starts. Manual `--perf-profile NAME` forces a profile. Manual
 arguments override the profile when they appear after it. Top-level
 `--pool-slots` is capped at 12.
 
-`--cold-cache` selects a private per-run cache root under the suite temp
-directory, applies the profile cold budget unless the user supplied explicit
-budget arguments, and proves cache-fill behavior without deleting the persistent
-content cache.
+`--cold-cache` selects a private per-run scratch cache root under the suite temp
+directory, applies the profile scratch-cache budget unless the user supplied
+explicit budget arguments, and proves content-cache fill behavior without
+deleting the persistent cache.
 
 If a default persistent-cache run discovers a missing `HABU_UNDER_TEST` after
-argument parsing, the runner marks the run `cache=cold` and applies the same
-profile cold budget unless explicit budget arguments were supplied. Use
+argument parsing, the runner uses the same scratch-cache budget unless explicit
+budget arguments were supplied. Use
 `--cold-cache` when explicitly measuring builder/maker artifact cache-fill
 behavior.
 
@@ -149,7 +149,7 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    through a checked `defer` hook.
 
 2. Candidate production and validation split.
-   Acceptance: hot cache or `--under PATH` prints `candidate-build=0` and
+   Acceptance: persistent cache or `--under PATH` prints `candidate-build=0` and
    `candidate-validate=1`; build misses still install a stamp-backed executable
    cache entry.
    Status: implemented in `test/run.f` and `test/gate-engine-lib.f`.
@@ -166,10 +166,10 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Status: implemented for repair, doc/schema, split lint, and typed-local tool tests.
    Current macOS proof after removing top warm launchers, replacing the
    monolithic parent support load with explicit suite setup, and moving the
-   check-tool file-label smoke to the in-process checker core: 24.878s internal /
-   27.22s shell wall, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-   `helper-spawn=30`; `check-cli` is 2.397s and the slowest test is AOT negative
-   at 15.495s.
+   check-tool file-label smoke to the in-process checker core: 24.117s internal /
+   26.48s shell wall, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
+   `helper-spawn=30`; `check-cli` is 2.595s and the slowest test is AOT negative
+   at 15.384s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local
@@ -201,12 +201,12 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
 9. Remove fixed drains in favor of dependency-ready work.
    Acceptance: no ready phase waits behind an unrelated child
    suite; only explicit deps and isolation barriers drain the pool.
-   Status: top runner snapshots and fixed warm slots are removed. Remaining
+   Status: top runner snapshots and fixed runner slots are removed. Remaining
    drains are isolation barriers or candidate readiness dependencies.
 
 ## Targets
 
-Short-term Jetson/Orin target: hot content cache, uncontended,
+Short-term Jetson/Orin target: persistent content cache, uncontended,
 `--budget-ms 70000` passes.
 
 Architecture target:

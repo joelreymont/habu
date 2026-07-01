@@ -3,7 +3,7 @@
 \ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
 \ tools/lint/json-writer.f tools/lint/source-lex.f
-\ tools/check-all-errors-core.f tools/argv.f tools/warm-run.f
+\ tools/check-all-errors-core.f tools/argv.f
 \ tools/check-all-errors-test.f
 
 require lib/errors.f
@@ -22,10 +22,8 @@ require tools/lint/json-writer.f
 require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require tools/argv.f
-require tools/warm-run.f
 
 4096 constant CAE-BUF-CAP
-10000 constant CAE-TIMEOUT-MS
 1400 constant CAE-LARGE-LINES
 530 constant CAE-MANY-DEFS
 530 constant CAE-MANY-SUPPORT
@@ -343,39 +341,21 @@ create CAE-LF-BYTE 10 c,
    [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
    0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
 
-: CAE-ARG+ ( ptr u8 n -- )
-   >LEN PROC-ARGV+ ;
-
-: CAE-ARGV-LOAD ( -- )
-   PROC-ARGV-RESET
-   s" tools/check-all-errors.f" WR-TOOLS-LOAD if exit then
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/vector.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/process.f"  >LEN PROC-ARGV+
-   s" lib/process-argv.f"  >LEN PROC-ARGV+
-   s" tools/lint/text.f"  >LEN PROC-ARGV+ s" tools/lint/token.f" >LEN PROC-ARGV+ s" tools/lint/lib.f" >LEN PROC-ARGV+
-   s" tools/lint/json-writer.f"  >LEN PROC-ARGV+
-   s" tools/lint/source-lex.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors-core.f"  >LEN PROC-ARGV+
-   s" tools/argv.f"  >LEN PROC-ARGV+
-   s" tools/check-all-errors.f"  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+ ;
-
 : CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
-   CAE-ARGV-LOAD
-   s" --json-errors"  >LEN PROC-ARGV+
-   s" --label"  >LEN PROC-ARGV+
-   file fileu  >LEN PROC-ARGV+
-   file fileu  >LEN PROC-ARGV+ ;
+   ARGV-MOCK-CLEAR
+   s" --json-errors" ARGV-MOCK+
+   s" --label" ARGV-MOCK+
+   file fileu ARGV-MOCK+
+   file fileu ARGV-MOCK+ ;
 
-: CAE-HB-CAPTURE ( -- n n n n )
-   WR-TOOLS$ >LEN CAE-OUT CAE-BUF-CAP >LEN CAE-ERR CAE-BUF-CAP >LEN
-   CAE-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   CAE-CAPTURE>N ;
+: CAE-RUN-ARGV-ACT ( -- )
+   s" tools/check-all-errors.f [--json-errors] --label name source" ARGV-USAGE!
+   ARGV-PARSE
+   ARGV-REQUIRE-LABEL
+   1 ARGV-EXPECT-POS-EXACT
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+   ARGV-JSON? CHECK-ALL-ERRORS-JSON!
+   ARGV-LABEL$ 0 ARGV-POS$ CHECK-ALL-ERRORS-FILE ;
 
 : CAE-RUN ( -- n n n n )
    CAE-IN CAE-CORE-CAPTURE ;
@@ -384,9 +364,11 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE CAE-CORE-CAPTURE ;
 
 : CAE-RUN-CLI ( -- n n n n )
-   CAE-IN CAE-RUN!
    CAE-IN CAE-ARGV-CHECK
-   CAE-HB-CAPTURE ;
+   [: CAE-RUN-ARGV-ACT ;] catch CAE-RC !
+   ARGV-USE-SCRIPT
+   ARGV-RESET
+   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
 
 : CAE-OUTCOME. ( n -- ) {: kind:n :}
    kind PROC-OUTCOME-EXIT = if s" exit" type exit then

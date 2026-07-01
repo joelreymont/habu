@@ -30,3 +30,12 @@ divide/modulo traps, profiler long dictionary names, repair diagnostic hints,
 and unsafe-evaluate publication. Remaining helper work is inventorying generic
 `bin/hb` helpers by owned test before removing or reclassifying only non-boundary
 launches.
+
+2026-07-01 check-all-errors argv smoke cleanup: `tools/check-all-errors-test.f`
+no longer loads `tools/warm-run.f` or launches a child `bin/hb` for its CLI
+smoke; it uses `ARGV-MOCK` plus `CHECK-ALL-ERRORS-FILE` and restores script argv
+after the test. Focused proof: `cli-smoke` dropped from 1876ms to 3ms. Full
+macos-arm64-12x2 persistent-cache suite passed at 24117ms internal / 26.48s
+wall with helper-spawn=30, inner-hb=1, inner-hb-stdin=4, boundary=5,
+warm-build=0, warm-sig=0, warm-snap=0. Helper-spawn remains above the <=25
+target, so keep open.
