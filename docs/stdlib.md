@@ -24,6 +24,8 @@ Planned module files:
 - `lib/ffi.f`
 - `lib/fs.f`
 - `lib/source.f`
+- `lib/object.f`
+- `lib/object-cache.f`
 - `lib/process.f`
 - `lib/process-fork.f`
 - `lib/process-argv.f`
@@ -837,6 +839,7 @@ OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
 OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
 OBJ:NORET+     ( ptr u8 n -- )
 OBJ:BYTES$     ( -- ptr u8 n )
+OBJ:MAX-BYTES  ( -- n )
 OBJ:ROW-COUNT  ( -- n )
 OBJ:ROW$       ( n -- ptr u8 n )
 OBJ:ROW-TAG$   ( n -- ptr u8 n )
@@ -855,6 +858,25 @@ returning data. Row accessors expose the validated record body without the magic
 header: indexes are zero-based, fields exclude the tag, and bad row or field
 indexes throw `E-OBJ-FIELD`. `OBJ:LOAD` validates and restores a serialized
 record; `OBJ:KEY-HEX` hashes the canonical bytes through `lib/content-key.f`.
+
+`lib/object-cache.f` owns the `OBJSTORE` package: a content-addressed file
+store for validated object records. It is intentionally separate from the
+object codec and from build/link integration.
+
+```forth
+OBJSTORE:ROOT!   ( ptr u8 n -- )
+OBJSTORE:ROOT$   ( -- ptr u8 n )
+OBJSTORE:PATH$   ( ptr u8 n -- ptr u8 n )
+OBJSTORE:EXISTS? ( ptr u8 n -- bool )
+OBJSTORE:STORE   ( -- ptr u8 n )
+OBJSTORE:LOAD    ( ptr u8 n -- )
+```
+
+`OBJSTORE:STORE` validates the current `OBJ` record, hashes it with
+`OBJ:KEY-HEX`, creates the root directory tree, and atomically writes
+`<root>/<64-hex>.hbo`. `OBJSTORE:LOAD` reads by key and validates through
+`OBJ:LOAD`; missing files throw filesystem errors, and malformed object bytes
+throw object schema errors.
 
 ## Source Materialization
 

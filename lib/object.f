@@ -355,6 +355,9 @@ public
    READY
    BUF OUT-LEN @ ;
 
+: MAX-BYTES ( -- n )
+   CAP ;
+
 : ROW-COUNT ( -- n )
    READY
    0 0 begin dup OUT-LEN @ < while
