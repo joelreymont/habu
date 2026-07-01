@@ -12,6 +12,7 @@ require lib/object.f
 package OBJLINK
 
 32 constant MAX-SYMS
+64 constant MAX-RELOCS
 32 constant MAX-OBJS
 $4000 constant SYM-CAP
 
@@ -23,6 +24,12 @@ create IMP-US MAX-SYMS cells allot
 create DEF-OFFS MAX-SYMS cells allot
 create DEF-US MAX-SYMS cells allot
 create DEF-ADDRS MAX-SYMS cells allot
+create REL-KIND-OFFS MAX-RELOCS cells allot
+create REL-KIND-US MAX-RELOCS cells allot
+create REL-SYM-OFFS MAX-RELOCS cells allot
+create REL-SYM-US MAX-RELOCS cells allot
+create REL-PATCHES MAX-RELOCS cells allot
+create REL-TARGETS MAX-RELOCS cells allot
 create OBJ-TEXT-BASES MAX-OBJS cells allot
 create OBJ-DATA-BASES MAX-OBJS cells allot
 create OBJ-TEXT-US MAX-OBJS cells allot
@@ -32,6 +39,7 @@ variable SYM-U
 variable EXP-N
 variable IMP-N
 variable DEF-N
+variable REL-N
 variable OBJ-N
 variable TEXT-U
 variable DATA-U
@@ -49,6 +57,7 @@ variable CUR-DATA
    0 EXP-N !
    0 IMP-N !
    0 DEF-N !
+   0 REL-N !
    0 OBJ-N !
    0 TEXT-U !
    0 DATA-U ! ;
@@ -84,6 +93,30 @@ variable CUR-DATA
 : DEF-ADDR-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-SYMS CHECK-IDX
    DEF-ADDRS idx cells + ;
+
+: REL-KIND-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-KIND-OFFS idx cells + ;
+
+: REL-KIND-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-KIND-US idx cells + ;
+
+: REL-SYM-OFF-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-SYM-OFFS idx cells + ;
+
+: REL-SYM-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-SYM-US idx cells + ;
+
+: REL-PATCH-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-PATCHES idx cells + ;
+
+: REL-TARGET-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-RELOCS CHECK-IDX
+   REL-TARGETS idx cells + ;
 
 : OBJ-TEXT-BASE-PTR ( n -- ptr n ) {: idx:n :}
    idx MAX-OBJS CHECK-IDX
@@ -121,6 +154,9 @@ variable CUR-DATA
 : DEF-ROOM ( -- )
    DEF-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
+: REL-ROOM ( -- )
+   REL-N @ MAX-RELOCS >= if E-OBJ-CAPACITY throw then ;
+
 : OBJECT-ROOM ( -- )
    OBJ-N @ MAX-OBJS >= if E-OBJ-CAPACITY throw then ;
 
@@ -136,6 +172,14 @@ variable CUR-DATA
    idx DEF-N @ CHECK-IDX
    SYM-BUF idx DEF-OFF-PTR @ + idx DEF-U-PTR @ ;
 
+: REL-KIND$ ( n -- ptr u8 n ) {: idx:n :}
+   idx REL-N @ CHECK-IDX
+   SYM-BUF idx REL-KIND-OFF-PTR @ + idx REL-KIND-U-PTR @ ;
+
+: REL-SYM$ ( n -- ptr u8 n ) {: idx:n :}
+   idx REL-N @ CHECK-IDX
+   SYM-BUF idx REL-SYM-OFF-PTR @ + idx REL-SYM-U-PTR @ ;
+
 : EXP-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n idx:n :}
    idx EXP$ a u STR= ;
 
@@ -148,11 +192,14 @@ variable CUR-DATA
       1+
    repeat drop FALSE ;
 
-: DEF-HAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: DEF-IDX ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup DEF-N @ < while
-      dup a u rot DEF-MATCH? if drop TRUE exit then
+      dup a u rot DEF-MATCH? if exit then
       1+
-   repeat drop FALSE ;
+   repeat drop -1 ;
+
+: DEF-HAS? ( ptr u8 n -- bool )
+   DEF-IDX 0 >= ;
 
 : EXP+ ( ptr u8 n -- ) {: a:ptr u:n :}
    a u EXP-FIND? if E-OBJ-SCHEMA throw then
@@ -178,6 +225,19 @@ variable CUR-DATA
    addr DEF-N @ DEF-ADDR-PTR !
    DEF-N @ 1+ DEF-N ! ;
 
+: REL+ ( ptr u8 n ptr u8 n n -- )
+   {: kind:ptr kindu:n sym:ptr symu:n patch:n :}
+   REL-ROOM
+   kind kindu SYM+ {: ko:n :}
+   sym symu SYM+ {: so:n :}
+   ko REL-N @ REL-KIND-OFF-PTR !
+   kindu REL-N @ REL-KIND-U-PTR !
+   so REL-N @ REL-SYM-OFF-PTR !
+   symu REL-N @ REL-SYM-U-PTR !
+   patch REL-N @ REL-PATCH-PTR !
+   -1 REL-N @ REL-TARGET-PTR !
+   REL-N @ 1+ REL-N ! ;
+
 : TEXT-OFF-CHECK ( n -- ) {: off:n :}
    off 0 < if E-OBJ-SCHEMA throw then
    off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
@@ -185,6 +245,18 @@ variable CUR-DATA
 : ROW-OFF ( n n -- n ) {: row:n field:n :}
    row field OBJ:ROW-FIELD$ STR>NUMBER? if exit then
    drop E-OBJ-FIELD throw ;
+
+: ADD-DEF ( n -- ) {: row:n :}
+   row 1 ROW-OFF {: off:n :}
+   off TEXT-OFF-CHECK
+   row 0 OBJ:ROW-FIELD$ TEXT-U @ off + DEF+ ;
+
+: ADD-RELOC ( n -- ) {: row:n :}
+   row 1 ROW-OFF {: off:n :}
+   off TEXT-OFF-CHECK
+   row 0 OBJ:ROW-FIELD$
+   row 2 OBJ:ROW-FIELD$
+   TEXT-U @ off + REL+ ;
 
 : ADD-ROW ( n -- ) {: row:n :}
    row OBJ:ROW-TAG$ s" export" STR= if
@@ -196,9 +268,11 @@ variable CUR-DATA
       exit
    then
    row OBJ:ROW-TAG$ s" def" STR= if
-      row 1 ROW-OFF {: off:n :}
-      off TEXT-OFF-CHECK
-      row 0 OBJ:ROW-FIELD$ TEXT-U @ off + DEF+
+      row ADD-DEF
+      exit
+   then
+   row OBJ:ROW-TAG$ s" reloc" STR= if
+      row ADD-RELOC
       exit
    then ;
 
@@ -231,22 +305,29 @@ variable CUR-DATA
       1+
    repeat drop ;
 
-: RELOC-OFF ( n -- n ) {: row:n :}
-   row 1 OBJ:ROW-FIELD$ STR>NUMBER? if exit then
-   drop E-OBJ-FIELD throw ;
-
-: CHECK-RELOC-ROW ( n -- ) {: row:n :}
-   row s" reloc" ROW-TAG= 0= if exit then
-   row RELOC-OFF {: off:n :}
-   off 0 < if E-OBJ-SCHEMA throw then
-   off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
-
 : RECORD-OBJECT ( -- )
    OBJECT-ROOM
    TEXT-U @ OBJ-N @ OBJ-TEXT-BASE-PTR !
    DATA-U @ OBJ-N @ OBJ-DATA-BASE-PTR !
    CUR-TEXT @ OBJ-N @ OBJ-TEXT-U-PTR !
    CUR-DATA @ OBJ-N @ OBJ-DATA-U-PTR ! ;
+
+: RESOLVE-RELOC ( n -- ) {: idx:n :}
+   idx REL-SYM$ DEF-IDX {: def:n :}
+   def 0 < if E-OBJ-SCHEMA throw then
+   def DEF-ADDR-PTR @ idx REL-TARGET-PTR ! ;
+
+: CHECK-IMPORTS ( -- )
+   0 begin dup IMP-N @ < while
+      dup IMP-RESOLVED? 0= if E-OBJ-SCHEMA throw then
+      1+
+   repeat drop ;
+
+: CHECK-RELOCS ( -- )
+   0 begin dup REL-N @ < while
+      dup RESOLVE-RELOC
+      1+
+   repeat drop ;
 
 public
 
@@ -261,6 +342,9 @@ public
 
 : DEF-COUNT ( -- n )
    DEF-N @ ;
+
+: RELOC-COUNT ( -- n )
+   REL-N @ ;
 
 : OBJECT-COUNT ( -- n )
    OBJ-N @ ;
@@ -296,9 +380,23 @@ public
 : DEF$ ( n -- ptr u8 n )
    DEF-SYM$ ;
 
+: RELOC-KIND$ ( n -- ptr u8 n )
+   REL-KIND$ ;
+
+: RELOC-SYM$ ( n -- ptr u8 n )
+   REL-SYM$ ;
+
 : DEF-ADDR ( n -- n ) {: idx:n :}
    idx DEF-N @ CHECK-IDX
    idx DEF-ADDR-PTR @ ;
+
+: RELOC-PATCH ( n -- n ) {: idx:n :}
+   idx REL-N @ CHECK-IDX
+   idx REL-PATCH-PTR @ ;
+
+: RELOC-TARGET ( n -- n ) {: idx:n :}
+   idx REL-N @ CHECK-IDX
+   idx REL-TARGET-PTR @ dup 0 < if E-OBJ-SCHEMA throw then ;
 
 : EXPORT-FIND? ( ptr u8 n -- bool )
    EXP-FIND? ;
@@ -315,7 +413,6 @@ public
 : ADD ( -- )
    SCAN-SIZES
    0 begin dup OBJ:ROW-COUNT < while
-      dup CHECK-RELOC-ROW
       dup ADD-ROW
       1+
    repeat drop
@@ -325,9 +422,7 @@ public
    OBJ-N @ 1+ OBJ-N ! ;
 
 : CHECK ( -- )
-   0 begin dup IMP-N @ < while
-      dup IMP-RESOLVED? 0= if E-OBJ-SCHEMA throw then
-      1+
-   repeat drop ;
+   CHECK-IMPORTS
+   CHECK-RELOCS ;
 
 end-package

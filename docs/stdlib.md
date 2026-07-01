@@ -892,6 +892,7 @@ OBJLINK:RESET        ( -- )
 OBJLINK:EXPORT-COUNT ( -- n )
 OBJLINK:IMPORT-COUNT ( -- n )
 OBJLINK:DEF-COUNT    ( -- n )
+OBJLINK:RELOC-COUNT  ( -- n )
 OBJLINK:OBJECT-COUNT ( -- n )
 OBJLINK:TEXT-SIZE    ( -- n )
 OBJLINK:DATA-SIZE    ( -- n )
@@ -902,7 +903,11 @@ OBJLINK:OBJECT-DATA-SIZE ( n -- n )
 OBJLINK:EXPORT$      ( n -- ptr u8 n )
 OBJLINK:IMPORT$      ( n -- ptr u8 n )
 OBJLINK:DEF$         ( n -- ptr u8 n )
+OBJLINK:RELOC-KIND$  ( n -- ptr u8 n )
+OBJLINK:RELOC-SYM$   ( n -- ptr u8 n )
 OBJLINK:DEF-ADDR     ( n -- n )
+OBJLINK:RELOC-PATCH  ( n -- n )
+OBJLINK:RELOC-TARGET ( n -- n )
 OBJLINK:EXPORT-FIND? ( ptr u8 n -- bool )
 OBJLINK:DEF-FIND?    ( ptr u8 n -- bool )
 OBJLINK:EXPORT+      ( ptr u8 n -- )
@@ -916,11 +921,13 @@ into bounded storage so later `OBJ:LOAD` calls cannot invalidate link metadata.
 It records per-object text/data base and size rows before advancing the merged
 section totals. `def` rows record merged text addresses, reject duplicate
 definitions, and reject object-local definition offsets outside that object's
-text section.
-`OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports; duplicate exports
-throw during `OBJLINK:ADD`, relocation offsets outside the current object's text
-section throw `E-OBJ-SCHEMA`, and table/storage overflow throws
-`E-OBJ-CAPACITY`.
+text section. `reloc` rows record merged patch addresses and resolve their
+target addresses from `def` rows during `OBJLINK:CHECK`; reading an unresolved
+relocation target throws `E-OBJ-SCHEMA`.
+`OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports or relocation
+targets; duplicate exports/defs throw during `OBJLINK:ADD`, relocation or
+definition offsets outside the current object's text section throw
+`E-OBJ-SCHEMA`, and table/storage overflow throws `E-OBJ-CAPACITY`.
 
 ## Source Materialization
 
