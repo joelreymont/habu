@@ -22,93 +22,93 @@ variable BW-FPE
 public
 
 : DEFAULTS ( -- )
-   PTXBENCH:RESET \ ( -- )
-   s" /tmp/saxpy.cubin" PTXBENCH:CUBIN! \ ( -- )
-   s" SAXPY" PTXBENCH:KERNEL! \ ( -- )
-   s" SAXPY" PTXBENCH:LABEL! \ ( -- )
-   BW-BLOCK PTXBENCH:BLOCK! \ ( -- )
-   BW-ITERS PTXBENCH:ITERS! \ ( -- )
-   BW-N PTXBENCH:WORK! \ ( -- )
-   12 BW-BPE ! \ ( -- )
-   2 BW-FPE ! \ ( -- )
-   1 BW-EPT ! ; \ ( -- )
+   PTXBENCH:RESET
+   s" /tmp/saxpy.cubin" PTXBENCH:CUBIN!
+   s" SAXPY" PTXBENCH:KERNEL!
+   s" SAXPY" PTXBENCH:LABEL!
+   BW-BLOCK PTXBENCH:BLOCK!
+   BW-ITERS PTXBENCH:ITERS!
+   BW-N PTXBENCH:WORK!
+   12 BW-BPE !
+   2 BW-FPE !
+   1 BW-EPT ! ;
 
 : CUBIN! ( ptr u8 n -- )
-   PTXBENCH:CUBIN! ; \ ( a u -- )
+   PTXBENCH:CUBIN! ;
 
 : KERNEL! ( ptr u8 n -- )
-   PTXBENCH:KERNEL! ; \ ( a u -- )
+   PTXBENCH:KERNEL! ;
 
 : LABEL! ( ptr u8 n -- )
-   PTXBENCH:LABEL! ; \ ( a u -- )
+   PTXBENCH:LABEL! ;
 
 : ELEMS-PER-THREAD! ( n -- )
-   BW-EPT ! ; \ ( n -- )
+   BW-EPT ! ;
 
 : BYTES-PER-ELEM! ( n -- )
-   BW-BPE ! ; \ ( n -- )
+   BW-BPE ! ;
 
 : FLOPS-PER-ELEM! ( n -- )
-   BW-FPE ! ; \ ( n -- )
+   BW-FPE ! ;
 
 private
 
 : BW-SETUP ( -- )
-   PTXBENCH:OPEN \ ( -- )
-   PTXBENCH:LOAD ; \ ( -- )
+   PTXBENCH:OPEN
+   PTXBENCH:LOAD ;
 
 : BW-ALLOC ( -- )
-   BW-N 4 * BW-DX PTXBENCH:DEVICE-ALLOC \ ( -- )
-   BW-N 4 * BW-DY PTXBENCH:DEVICE-ALLOC \ ( -- )
-   BW-DX @ 0 BW-N PTXBENCH:DEVICE-MEMSET32 \ ( -- )
-   BW-DY @ 0 BW-N PTXBENCH:DEVICE-MEMSET32 ; \ ( -- )
+   BW-N 4 * BW-DX PTXBENCH:DEVICE-ALLOC
+   BW-N 4 * BW-DY PTXBENCH:DEVICE-ALLOC
+   BW-DX @ 0 BW-N PTXBENCH:DEVICE-MEMSET32
+   BW-DY @ 0 BW-N PTXBENCH:DEVICE-MEMSET32 ;
 
 : BW-TILE-ELEMS ( -- n )
-   BW-BLOCK BW-EPT @ * ; \ ( -- n )
+   BW-BLOCK BW-EPT @ * ;
 
 : BW-GRID ( -- n )
-   BW-N BW-TILE-ELEMS 1- + BW-TILE-ELEMS / ; \ ( -- n )
+   BW-N BW-TILE-ELEMS 1- + BW-TILE-ELEMS / ;
 
 : BW-PARAMS ( -- )
-   $40000000 BW-ABITS ! \ ( -- )
-   BW-N BW-NV ! \ ( -- )
-   BW-GRID PTXBENCH:GRID! \ ( -- )
-   24 PTXBENCH:PARAM-BYTES! \ ( -- )
-   PTXBENCH:PREPARE-LAUNCH \ ( -- )
-   0 BW-DX PTXBENCH:PARAM-PTR! \ ( -- )
-   8 BW-DY PTXBENCH:PARAM-PTR! \ ( -- )
-   16 BW-ABITS PTXBENCH:PARAM-U32! \ ( -- )
-   20 BW-NV PTXBENCH:PARAM-U32! ; \ ( -- )
+   $40000000 BW-ABITS !
+   BW-N BW-NV !
+   BW-GRID PTXBENCH:GRID!
+   24 PTXBENCH:PARAM-BYTES!
+   PTXBENCH:PREPARE-LAUNCH
+   0 BW-DX PTXBENCH:PARAM-PTR!
+   8 BW-DY PTXBENCH:PARAM-PTR!
+   16 BW-ABITS PTXBENCH:PARAM-U32!
+   20 BW-NV PTXBENCH:PARAM-U32! ;
 
 : BW-RUN ( -- n )
-   PTXBENCH:BENCH-GPU-NS ; \ ( -- ns )
+   PTXBENCH:BENCH-GPU-NS ;
 
 : BW-FREE ( -- )
-   BW-DX @ 0 <> if BW-DX @ PTXBENCH:DEVICE-FREE then \ ( -- )
-   BW-DY @ 0 <> if BW-DY @ PTXBENCH:DEVICE-FREE then \ ( -- )
-   0 BW-DX ! 0 BW-DY ! ; \ ( -- )
+   BW-DX @ 0 <> if BW-DX @ PTXBENCH:DEVICE-FREE then
+   BW-DY @ 0 <> if BW-DY @ PTXBENCH:DEVICE-FREE then
+   0 BW-DX ! 0 BW-DY ! ;
 
 : BW-RELEASE ( -- )
-   BW-FREE \ ( -- )
-   PTXBENCH:UNLOAD \ ( -- )
-   PTXBENCH:CLOSE ; \ ( -- )
+   BW-FREE
+   PTXBENCH:UNLOAD
+   PTXBENCH:CLOSE ;
 
 public
 
 : MEASURE ( -- n )
-   BW-SETUP BW-ALLOC BW-PARAMS \ ( -- )
-   BW-RUN {: ns:n :} \ ( -- )
-   BW-RELEASE \ ( -- )
-   ns ; \ ( -- ns )
+   BW-SETUP BW-ALLOC BW-PARAMS
+   BW-RUN {: ns:n :}
+   BW-RELEASE
+   ns ;
 
 : REPORT-NS ( n -- )
-   {: ns:n :} \ ( ns -- )
-   BW-N BW-ITERS * BW-BPE @ * {: by:n :} \ ( -- )
-   BW-N BW-ITERS * BW-FPE @ * {: fl:n :} \ ( -- )
-   s" elems_per_thread=" type BW-EPT @ U.0 cr \ ( -- )
-   by fl ns PTXBENCH:REPORT-GPU ; \ ( -- )
+   {: ns:n :}
+   BW-N BW-ITERS * BW-BPE @ * {: by:n :}
+   BW-N BW-ITERS * BW-FPE @ * {: fl:n :}
+   s" elems_per_thread=" type BW-EPT @ U.0 cr
+   by fl ns PTXBENCH:REPORT-GPU ;
 
 : REPORT ( -- )
-   MEASURE REPORT-NS ; \ ( -- )
+   MEASURE REPORT-NS ;
 
 end-package
