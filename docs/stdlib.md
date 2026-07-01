@@ -828,6 +828,8 @@ OBJ:TARGET!    ( ptr u8 n -- )
 OBJ:CHECKER!   ( ptr u8 n -- )
 OBJ:COMPILER!  ( ptr u8 n -- )
 OBJ:REQUIRE+   ( ptr u8 n -- )
+OBJ:TEXT+      ( ptr u8 n -- )
+OBJ:DATA+      ( ptr u8 n -- )
 OBJ:PACKAGE+   ( ptr u8 n ptr u8 n -- )
 OBJ:EXPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:IMPORT+    ( ptr u8 n ptr u8 n -- )
@@ -841,10 +843,11 @@ OBJ:KEY-HEX    ( ptr u8 -- )
 
 `OBJ:SOURCE!` requires a 64-byte hex source digest. Field strings reject tabs,
 newlines, control bytes, and empty fields so the tab-separated format remains
-canonical. `OBJ:BYTES$` and `OBJ:KEY-HEX` require source, target, checker, and
-compiler ABI fields before returning data. `OBJ:LOAD` validates and restores a
-serialized record; `OBJ:KEY-HEX` hashes the canonical bytes through
-`lib/content-key.f`.
+canonical. `OBJ:TEXT+` and `OBJ:DATA+` encode binary section bytes as lowercase
+hex records, and `OBJ:LOAD` rejects malformed section hex. `OBJ:BYTES$` and
+`OBJ:KEY-HEX` require source, target, checker, and compiler ABI fields before
+returning data. `OBJ:LOAD` validates and restores a serialized record;
+`OBJ:KEY-HEX` hashes the canonical bytes through `lib/content-key.f`.
 
 ## Source Materialization
 

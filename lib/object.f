@@ -115,6 +115,14 @@ variable LOAD-OFF
    repeat drop
    a u FIELD ;
 
+: HEX-FIELD ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-OBJ-FIELD throw then
+   u 1 and 0 <> if E-OBJ-FIELD throw then
+   0 begin dup u < while
+      dup a + c@ HEX? 0= if E-OBJ-FIELD throw then
+      1+
+   repeat drop ;
+
 : TAG+ ( ptr u8 n -- )
    BYTES+
    TAB+ ;
@@ -137,6 +145,25 @@ variable LOAD-OFF
    n 10 >= if n 10 / RECURSE then
    n 10 mod STR-ZERO + C+ ;
 
+: HEX-NIB+ ( n -- ) {: n:n :}
+   n 10 < if n STR-ZERO + C+ exit then
+   n 10 - LOW-A + C+ ;
+
+: HEX-BYTE+ ( n -- ) {: b:n :}
+   b 0 < if E-OBJ-FIELD throw then
+   b STR-BYTE-MAX > if E-OBJ-FIELD throw then
+   b 4 rshift HEX-NIB+
+   b 15 and HEX-NIB+ ;
+
+: HEX-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-OBJ-FIELD throw then
+   u CAP 2 / > if E-OBJ-CAPACITY throw then
+   u 2 * ROOM
+   0 begin dup u < while
+      dup a + c@ HEX-BYTE+
+      1+
+   repeat drop ;
+
 : LINE3N ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n off:n b:ptr v:n tag:ptr tagu:n :}
    tag tagu TAG+
@@ -145,6 +172,11 @@ variable LOAD-OFF
    off U+
    TAB+
    b v FIELD
+   LF+ ;
+
+: SECTION+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n tag:ptr tagu:n :}
+   tag tagu TAG+
+   a u HEX-BYTES+
    LF+ ;
 
 : LINE-VALID ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -219,6 +251,8 @@ variable LOAD-OFF
    a u s" checker" TAG? if a u 1 EXPECT-TABS CHECKER? FLAG! exit then
    a u s" compiler" TAG? if a u 1 EXPECT-TABS COMPILER? FLAG! exit then
    a u s" require" TAG? if a u 1 EXPECT-TABS exit then
+   a u s" text" TAG? if a u 1 EXPECT-TABS a u 1 FIELD$ HEX-FIELD exit then
+   a u s" data" TAG? if a u 1 EXPECT-TABS a u 1 FIELD$ HEX-FIELD exit then
    a u s" noret" TAG? if a u 1 EXPECT-TABS exit then
    a u s" package" TAG? if a u 2 EXPECT-TABS exit then
    a u s" export" TAG? if a u 2 EXPECT-TABS exit then
@@ -267,6 +301,12 @@ public
 
 : REQUIRE+ ( ptr u8 n -- )
    s" require" LINE1 ;
+
+: TEXT+ ( ptr u8 n -- )
+   s" text" SECTION+ ;
+
+: DATA+ ( ptr u8 n -- )
+   s" data" SECTION+ ;
 
 : PACKAGE+ ( ptr u8 n ptr u8 n -- )
    s" package" LINE2 ;

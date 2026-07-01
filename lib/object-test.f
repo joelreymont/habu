@@ -15,6 +15,8 @@ package OBJ-TEST
 
 create KEY1 80 allot
 create KEY2 80 allot
+create TEXT-BYTES 0 c, 127 c, 255 c,
+create DATA-BYTES 1 c, 2 c, 16 c,
 
 : HASH$ ( -- ptr u8 n )
    s" 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ;
@@ -35,6 +37,8 @@ create KEY2 80 allot
    s" checker" FIELD s" checker-effect-v1" LINE
    s" compiler" FIELD s" hb-arm64-v1" LINE
    s" require" FIELD s" lib/string.f" LINE
+   s" text" FIELD s" 007fff" LINE
+   s" data" FIELD s" 010210" LINE
    s" package" FIELD s" OBJ" FIELD s" public" LINE
    s" export" FIELD s" SQUARE" FIELD s" n -- n" LINE
    s" import" FIELD s" PRINT" FIELD s" ptr u8 n --" LINE
@@ -50,6 +54,8 @@ create KEY2 80 allot
    s" checker-effect-v1" OBJ:CHECKER!
    s" hb-arm64-v1" OBJ:COMPILER!
    s" lib/string.f" OBJ:REQUIRE+
+   TEXT-BYTES 3 OBJ:TEXT+
+   DATA-BYTES 3 OBJ:DATA+
    s" OBJ" s" public" OBJ:PACKAGE+
    s" SQUARE" s" n -- n" OBJ:EXPORT+
    s" PRINT" s" ptr u8 n --" OBJ:IMPORT+
@@ -103,6 +109,15 @@ compiler	hb-arm64-v1
 reloc	abs64	nope	PRINT
 " OBJ:LOAD ;
 
+: BAD-SECTION ( -- )
+   s" HBOBJ	1
+source	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+target	macos-aarch64
+checker	checker-effect-v1
+compiler	hb-arm64-v1
+text	00x
+" OBJ:LOAD ;
+
 : MISSING-HEADER ( -- )
    OBJ:RESET
    HASH$ OBJ:SOURCE!
@@ -115,6 +130,7 @@ reloc	abs64	nope	PRINT
    [: DUP-SOURCE ;] E-OBJ-SCHEMA TTHROWSQ
    [: BAD-HASH ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-RELOC ;] E-OBJ-FIELD TTHROWSQ
+   [: BAD-SECTION ;] E-OBJ-FIELD TTHROWSQ
    [: MISSING-HEADER ;] E-OBJ-SCHEMA TTHROWSQ ;
 
 public
