@@ -487,6 +487,8 @@ HBB-INSTALL-CHILD-LINTS
       exit
    then
    s" maker-mode:aot" CK-TEXT+
+   s" src/habu/aot-closure.f" HBB-KEY-FILE+
+   s" src/habu/aot-lib.f" HBB-KEY-FILE+
    s" src/habu/aot.f" HBB-KEY-FILE+ ;
 
 : HBB-MAKER-KEY! ( -- )
@@ -534,6 +536,8 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-APPEND-DRIVER ( ptr u8 n -- ) {: out:ptr outu :}
    HBB-REPL @ if out outu s" src/habu/verify-source.f" BF-APPEND-SOURCE then
+   HBB-REPL @ 0= if out outu s" src/habu/aot-closure.f" BF-APPEND-SOURCE then
+   HBB-REPL @ 0= if out outu s" src/habu/aot-lib.f" BF-APPEND-SOURCE then
    out outu HBB-DRIVER$ BF-APPEND-SOURCE ;
 
 : HBB-MAKER-SOURCE ( -- )

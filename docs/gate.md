@@ -165,11 +165,12 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, split lint, and typed-local tool tests.
    Current macOS proof after removing top warm launchers, replacing the
-   monolithic parent support load with explicit suite setup, and moving the
-   check-tool file-label smoke to the in-process checker core: 24.117s internal /
-   26.48s shell wall, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-   `helper-spawn=30`; `check-cli` is 2.595s and the slowest test is AOT negative
-   at 15.384s.
+   monolithic parent support load with explicit suite setup, moving the
+   check-tool file-label smoke to the in-process checker core, and splitting AOT
+   closure diagnostics from the maker path: 22.288s internal / 24.59s shell wall
+   hot, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=30`;
+   `check-cli` is 2.477s, AOT negative is 2.081s, and the slowest test is
+   engine fixture at 13.874s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local

@@ -56,7 +56,9 @@ points stay listed.
   build drivers.
 - `src/habu/jit.f` — register JIT helpers.
 - `src/habu/regalloc.f` — virtual stack register allocator.
-- `src/habu/aot.f` — stripped AOT linker driver.
+- `src/habu/aot-closure.f` — stripped AOT closure analysis and diagnostics.
+- `src/habu/aot-lib.f` — stripped AOT linker library.
+- `src/habu/aot.f` — stripped AOT maker entry.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
 - `src/habu/maker.f` — generic maker-image build driver for `hb-build`.
 - `src/habu/snap-lib.f` — checked snapshot writer definitions.
@@ -370,7 +372,8 @@ points stay listed.
 - `test/run-worker-diag.f` — resident checker-diagnostics phase support and dispatch.
 - `test/run-worker-dict.f` — resident dictionary/checker phase support and dispatch.
 - `test/run-worker-debug.f` — resident prop/debug phase support and dispatch.
-- `test/run-worker-aot.f` — resident AOT phase support and dispatch.
+- `test/run-worker-aot.f` — resident positive AOT phase support.
+- `test/run-worker-aot-neg.f` — resident negative AOT closure phase support.
 - `test/run-files.f` — file sets that key native test suite caches.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
 - `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.

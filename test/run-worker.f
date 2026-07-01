@@ -12,7 +12,7 @@
       5 of s" test/run-worker-engine.f" TRW-LOAD endof
       6 of s" test/run-worker-debug.f" TRW-LOAD endof
       7 of s" test/run-worker-aot.f" TRW-LOAD endof
-      8 of s" test/run-worker-aot.f" TRW-LOAD endof
+      8 of s" test/run-worker-aot-neg.f" TRW-LOAD endof
       9 of s" test/run-worker-engine.f" TRW-LOAD endof
       10 of s" test/run-worker-diag.f" TRW-LOAD endof
       11 of s" test/run-worker-diag.f" TRW-LOAD endof

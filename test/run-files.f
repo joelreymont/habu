@@ -46,7 +46,8 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    tools/aot-lint-core.f tools/signature-lint-core.f tools/hb-build-direct-lints.f
    tools/json.f tools/gate-json-assert-core.f tools/aot-call-report-lib.f
    test/gate-stats.f test/gate-common-lib.f test/gate-build-common.f
-   test/gate-build-hbb.f test/gate-aot-positive-lib.f test/gate-aot-negative-lib.f
+   test/gate-build-hbb.f src/habu/aot-closure.f
+   test/gate-aot-positive-lib.f test/gate-aot-negative-lib.f
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES

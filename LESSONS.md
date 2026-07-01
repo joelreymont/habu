@@ -1463,3 +1463,8 @@ lesson — keep the specific word/code/path, cut the prose.
   though `CHECK-ALL-ERRORS-FILE` already preserves that label in-process. Keep
   public behavior assertions on loaded checker cores; reserve child `hb` only for
   process-exit, argv, stdin, or stderr routing contracts.
+- **AOT semantic diagnostics must not load maker support:** closure-limit JSON is
+  a dictionary/closure analysis invariant, not an image-emission invariant.
+  Keep `aot-closure.f` resident-testable and load `aot-lib.f` only in the maker
+  path; otherwise a small negative diagnostic test inherits seconds of builder
+  setup and looks like a cache problem.

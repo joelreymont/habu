@@ -104,6 +104,8 @@ variable FM-NUM-L
    s" src/os/image-bytes.f" FM-REQ
    s" src/os/linux/repl-term.f" FM-REQ
    s" src/os/macos/repl-term.f" FM-REQ
+   s" src/habu/aot-closure.f" FM-REQ
+   s" src/habu/aot-lib.f" FM-REQ
    s" src/habu/aot.f" FM-REQ
    s" src/habu/build.f" FM-REQ
    s" src/habu/maker.f" FM-REQ
@@ -237,6 +239,7 @@ variable FM-NUM-L
    s" test/run-worker-dict.f" FM-REQ
    s" test/run-worker-debug.f" FM-REQ
    s" test/run-worker-aot.f" FM-REQ
+   s" test/run-worker-aot-neg.f" FM-REQ
    s" test/run-files.f" FM-REQ
    s" test/run-lib.f" FM-REQ
    s" test/run.f" FM-REQ ;

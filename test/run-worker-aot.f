@@ -20,7 +20,6 @@ require test/gate-common-lib.f
 require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-positive-lib.f
-require test/gate-aot-negative-lib.f
 
 : TRWA-SETUP ( -- )
    TR-BUILD-CACHE$ HBB-CACHE-ROOT! ;
@@ -29,7 +28,6 @@ require test/gate-aot-negative-lib.f
    TRWA-SETUP
    TR-RESIDENT-ID @ case
       7 of GAP-RUN endof
-      8 of GAN-RUN endof
       E-TBL-BOUNDS throw
    endcase ;
 
