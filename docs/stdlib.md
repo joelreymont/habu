@@ -823,9 +823,11 @@ variables.
 ## Object Records
 
 `lib/object.f` owns the `OBJ` package: a deterministic object-record codec for
-the future linkable Habu build path. It is not wired into `hb-build` yet. The
-current build caches store finished executables and maker artifacts; object
-records are the typed pre-link contract for a later compiler/linker slice.
+the linkable Habu build path. `hb-build` can already consume a cache hit by
+source digest plus target/checker/compiler ABI, link the object text, and write a
+native executable. Source-to-object emission is still the remaining compiler
+producer slice; current non-object builds continue to use the executable and
+maker artifact caches.
 
 ```forth
 OBJ:RESET      ( -- )

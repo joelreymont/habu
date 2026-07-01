@@ -129,8 +129,14 @@ variable GB-LC-OFF
    s" lib/build.f" GB-ARGV+
    s" lib/codesign.f" GB-ARGV+
    s" lib/content-key.f" GB-ARGV+
+   s" lib/object.f" GB-ARGV+
+   s" lib/object-cache.f" GB-ARGV+
+   s" lib/object-index.f" GB-ARGV+
+   s" lib/object-resolve.f" GB-ARGV+
+   s" lib/object-link.f" GB-ARGV+
    s" tools/build-fixpoint.f" GB-ARGV+
    s" tools/cli-run.f" GB-ARGV+
+   s" tools/object-image.f" GB-ARGV+
    s" tools/hb-build-lib.f" GB-ARGV+
    s" tools/hb-build.f" GB-ARGV+
    s" --" GB-ARGV+ ;

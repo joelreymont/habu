@@ -768,6 +768,11 @@ TR-INSTALL-POOL-HOOKS
    s" lib/source.f"  >LEN PROC-ARGV+
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
+   s" lib/object.f"  >LEN PROC-ARGV+
+   s" lib/object-cache.f"  >LEN PROC-ARGV+
+   s" lib/object-index.f"  >LEN PROC-ARGV+
+   s" lib/object-resolve.f"  >LEN PROC-ARGV+
+   s" lib/object-link.f"  >LEN PROC-ARGV+
    s" tools/lint/text.f"  >LEN PROC-ARGV+
    s" tools/lint/token.f"  >LEN PROC-ARGV+
    s" tools/lint/lib.f"  >LEN PROC-ARGV+
@@ -777,6 +782,7 @@ TR-INSTALL-POOL-HOOKS
    s" tools/signature-lint-core.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/cli-run.f"  >LEN PROC-ARGV+
+   s" tools/object-image.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build-direct-lints.f"  >LEN PROC-ARGV+ ;
 

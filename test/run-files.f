@@ -41,7 +41,9 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
-   tools/cli-run.f tools/hb-build-lib.f tools/lint/text.f tools/lint/token.f
+   lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
+   lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
+   tools/lint/text.f tools/lint/token.f
    tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f
    tools/aot-lint-core.f tools/signature-lint-core.f tools/hb-build-direct-lints.f
    tools/json.f tools/gate-json-assert-core.f tools/aot-call-report-lib.f

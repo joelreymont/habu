@@ -2,7 +2,11 @@
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/build.f,
 \ lib/memory.f, lib/source.f, lib/codesign.f, lib/content-key.f,
-\ tools/build-fixpoint.f, and tools/cli-run.f.
+\ lib/object-resolve.f, tools/object-image.f, tools/build-fixpoint.f,
+\ and tools/cli-run.f.
+
+require lib/object-resolve.f
+require tools/object-image.f
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -18,6 +22,7 @@ create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-DIGEST 40 allot
+create HBB-SRC-HEX 80 allot
 create HBB-CACHE-ROOT-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
@@ -48,6 +53,7 @@ variable HBB-MAKER-HIT
 variable HBB-MAKER-BUILD
 variable HBB-MAKER-RUN
 variable HBB-ARTIFACT-HIT
+variable HBB-OBJECT-HIT
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
 
@@ -189,6 +195,7 @@ variable HBB-JSON-FOUND
    0 HBB-MAKER-BUILD !
    0 HBB-MAKER-RUN !
    0 HBB-ARTIFACT-HIT !
+   0 HBB-OBJECT-HIT !
    0 HBB-ARTIFACT-CACHE ! ;
 
 : HBB-STRICT-ON ( -- )
@@ -421,8 +428,14 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/build.f" HBB-KEY-FILE+
    s" lib/codesign.f" HBB-KEY-FILE+
    s" lib/content-key.f" HBB-KEY-FILE+
+   s" lib/object.f" HBB-KEY-FILE+
+   s" lib/object-cache.f" HBB-KEY-FILE+
+   s" lib/object-index.f" HBB-KEY-FILE+
+   s" lib/object-resolve.f" HBB-KEY-FILE+
+   s" lib/object-link.f" HBB-KEY-FILE+
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
+   s" tools/object-image.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-COMMON-SOURCES ( -- )
@@ -681,6 +694,20 @@ HBB-INSTALL-CHILD-LINTS
    HBB-SRC$ HBB-SRC-DIGEST SHA256-FILE dup 0 <> if throw then drop
    HBB-SRC-DIGEST CK-DIGEST+ ;
 
+: HBB-SRC-HEX! ( -- )
+   HBB-SRC$ HBB-SRC-HEX SHA256-FILE-HEX dup 0 <> if throw then drop ;
+
+: HBB-CHECKER-ABI$ ( -- ptr u8 n )
+   s" checker-effect-v1" ;
+
+: HBB-COMPILER-ABI$ ( -- ptr u8 n )
+   s" hb-arm64-v1" ;
+
+: HBB-TARGET-ABI$ ( -- ptr u8 n )
+   HB-TARGET-LINUX? if s" linux-aarch64" exit then
+   HB-TARGET-MACOS? if s" macos-aarch64" exit then
+   HBB-TARGET-UNKNOWN ;
+
 : HBB-ARTIFACT-KEY! ( -- )
    HBB-MAKER-KEY!
    CK-RESET
@@ -721,6 +748,25 @@ HBB-INSTALL-CHILD-LINTS
    HBB-ARTIFACT$ HBB-OUT$ COPY-FILE-STREAM
    HBB-OUT$ CHMOD-X
    -1 HBB-ARTIFACT-HIT !
+   HBB-TRUE ;
+
+: HBB-OBJECT-LOAD? ( -- bool )
+   HBB-CACHE-ROOT$ OBJRES:ROOT!
+   HBB-SRC-HEX!
+   HBB-SRC-HEX 64 HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
+
+: HBB-WRITE-OBJECT ( -- )
+   HBB-REMOVE-OUT
+   OBJIMG:RESET
+   OBJIMG:ADD
+   HBB-OUT$ OBJIMG:WRITE
+   -1 HBB-OBJECT-HIT ! ;
+
+: HBB-OBJECT-HIT? ( -- bool )
+   HBB-REPL @ if HBB-FALSE exit then
+   HBB-CACHE-ROOT? 0= if HBB-FALSE exit then
+   HBB-OBJECT-LOAD? 0= if HBB-FALSE exit then
+   HBB-WRITE-OBJECT
    HBB-TRUE ;
 
 : HBB-ARTIFACT-LOCK-BUSY? ( -- bool )
@@ -773,6 +819,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-RUN-AOT-LINT
    HBB-PREPARE-ARTIFACT-CACHE
    HBB-RESTORE-ARTIFACT? if HBB-SUCCESS exit then
+   HBB-OBJECT-HIT? if HBB-INSTALL-ARTIFACT HBB-SUCCESS exit then
    HBB-PREPARE-PROGRAM-SOURCE
    HBB-BUILD-MAKER
    HBB-RUN-MAKER

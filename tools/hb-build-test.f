@@ -1,5 +1,5 @@
 \ hb-build-test.f - checked fixture for tools/hb-build-lib.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f tools/cli-run.f tools/hb-build-lib.f tools/hb-build-test.f
+\ Run: bin/hb --load tools/hb-build-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -14,10 +14,17 @@ require lib/source.f
 require lib/build.f
 require lib/codesign.f
 require lib/content-key.f
+require lib/object.f
+require lib/object-cache.f
+require lib/object-index.f
+require lib/object-resolve.f
+require lib/object-link.f
 require tools/build-fixpoint.f
 require tools/cli-run.f
+require tools/object-image.f
 require tools/hb-build-lib.f
 
+64 constant HBT-KEY-U
 65536 constant HBT-CAPTURE-CAP
 120000 constant HBT-TIMEOUT-MS
 
@@ -30,6 +37,8 @@ variable HBT-REPL-SRC-U
 variable HBT-REPL-OUT-U
 variable HBT-REPL-BAD-SRC-U
 variable HBT-REPL-BAD-OUT-U
+variable HBT-AOT-SRC-U
+variable HBT-AOT-OUT-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
@@ -40,10 +49,14 @@ create HBT-REPL-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-OUT-BUF FS-PATH-CAP allot
 create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
+create HBT-AOT-SRC-BUF FS-PATH-CAP allot
+create HBT-AOT-OUT-BUF FS-PATH-CAP allot
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
 create HBT-RUN-ERR HBT-CAPTURE-CAP allot
+create HBT-AOT-HEX 80 allot
+create HBT-SRC-KEY 80 allot
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
 
@@ -87,6 +100,12 @@ create HBT-KEY-B 64 allot
 
 : HBT-REPL-BAD-OUT ( -- ptr u8 n )
    HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U @ ;
+
+: HBT-AOT-SRC ( -- ptr u8 n )
+   HBT-AOT-SRC-BUF HBT-AOT-SRC-U @ ;
+
+: HBT-AOT-OUT ( -- ptr u8 n )
+   HBT-AOT-OUT-BUF HBT-AOT-OUT-U @ ;
 
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -145,6 +164,12 @@ create HBT-KEY-B 64 allot
    HBB-LF SB-APPEND-C
    SB$ ;
 
+: HBT-AOT-SRC$ ( -- ptr u8 n )
+   s" : MAIN ( -- ) ;" ;
+
+: HBT-AOT-SRC2$ ( -- ptr u8 n )
+   s" : MAIN ( -- ) 0 drop ;" ;
+
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-hb-build" TMPDIR-MKDIR {: a:ptr u :}
@@ -159,9 +184,12 @@ create HBT-KEY-B 64 allot
    HBT-ROOT s" repl" HBT-REPL-OUT-BUF HBT-REPL-OUT-U HBT-PATH!
    HBT-ROOT s" repl-bad.f" HBT-REPL-BAD-SRC-BUF HBT-REPL-BAD-SRC-U HBT-PATH!
    HBT-ROOT s" repl-bad" HBT-REPL-BAD-OUT-BUF HBT-REPL-BAD-OUT-U HBT-PATH!
+   HBT-ROOT s" aot.f" HBT-AOT-SRC-BUF HBT-AOT-SRC-U HBT-PATH!
+   HBT-ROOT s" aot" HBT-AOT-OUT-BUF HBT-AOT-OUT-U HBT-PATH!
    HBT-BAD-SRC HBT-BAD-SRC$ WRITE-ALL
    HBT-REPL-SRC HBT-REPL-SRC$ WRITE-ALL
-   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL ;
+   HBT-REPL-BAD-SRC HBT-REPL-BAD-SRC$ WRITE-ALL
+   HBT-AOT-SRC HBT-AOT-SRC$ WRITE-ALL ;
 
 : HBT-ARGV-BASE-TMP ( ptr u8 n -- )
    PROC-ARGV-RESET
@@ -182,8 +210,14 @@ create HBT-KEY-B 64 allot
    s" lib/build.f"  >LEN PROC-ARGV+
    s" lib/codesign.f"  >LEN PROC-ARGV+
    s" lib/content-key.f"  >LEN PROC-ARGV+
+   s" lib/object.f"  >LEN PROC-ARGV+
+   s" lib/object-cache.f"  >LEN PROC-ARGV+
+   s" lib/object-index.f"  >LEN PROC-ARGV+
+   s" lib/object-resolve.f"  >LEN PROC-ARGV+
+   s" lib/object-link.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/cli-run.f"  >LEN PROC-ARGV+
+   s" tools/object-image.f"  >LEN PROC-ARGV+
    s" tools/hb-build-lib.f"  >LEN PROC-ARGV+
    s" tools/hb-build.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
@@ -202,6 +236,11 @@ create HBT-KEY-B 64 allot
 : HBT-HBB-PREPARE-REPL ( ptr u8 n ptr u8 n -- )
    HBB-RESET-OPTIONS
    HBB-REPL-ON
+   HBB-PATHS!
+   HBT-TMP BF-TMP! ;
+
+: HBT-HBB-PREPARE-AOT ( ptr u8 n ptr u8 n -- )
+   HBB-RESET-OPTIONS
    HBB-PATHS!
    HBT-TMP BF-TMP! ;
 
@@ -346,6 +385,66 @@ create HBT-KEY-B 64 allot
    HBT-NEW-TMP DIR? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
 
+: HBT-AOT-HEX! ( -- )
+   HBT-AOT-SRC HBT-AOT-HEX SHA256-FILE-HEX dup 0 <> if throw then drop ;
+
+: HBT-AOT-SOURCE-KEY! ( -- )
+   HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
+   HBT-SRC-KEY OBJIDX:SOURCE-KEY-HEX ;
+
+: HBT-BUILD-EXIT-OBJ ( ptr u8 n -- ) {: target:ptr targetu:n :}
+   HBT-AOT-HEX!
+   OBJ:RESET
+   HBT-AOT-HEX HBT-KEY-U OBJ:SOURCE!
+   target targetu OBJ:TARGET!
+   HBB-CHECKER-ABI$ OBJ:CHECKER!
+   HBB-COMPILER-ABI$ OBJ:COMPILER!
+   ASM-INIT
+   0 0 MOVZ,
+   NR-EXIT-GROUP SYS,
+   CODE ASM-LEN OBJ:TEXT+
+   s" MAIN" s" --" OBJ:EXPORT+
+   s" MAIN" 0 s" --" OBJ:DEF+ ;
+
+: HBT-STORE-AOT-OBJ ( -- )
+   HBT-TMP OBJRES:ROOT!
+   HBB-TARGET-ABI$ HBT-BUILD-EXIT-OBJ
+   OBJRES:STORE nip HBT-KEY-U T= ;
+
+: HBT-STORE-WRONG-AOT-OBJ ( -- )
+   HBT-TMP OBJRES:ROOT!
+   s" wrong-aarch64" HBT-BUILD-EXIT-OBJ
+   OBJSTORE:STORE {: key:ptr keyu:n :}
+   HBT-AOT-SOURCE-KEY!
+   HBT-SRC-KEY HBT-KEY-U key keyu OBJIDX:STORE ;
+
+: HBT-RUN-AOT ( -- )
+   HBT-AOT-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   outn 0 T=
+   errn 0 T= ;
+
+: HBT-BUILD-AOT-OBJECT-HIT ( -- )
+   HBT-TMP HBB-CACHE-ROOT!
+   HBT-STORE-AOT-OBJ
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   HBT-HBB-BUILD-OUT
+   HBB-OBJECT-HIT @ 0 <> TTRUE
+   HBB-MAKER-RUN @ 0= TTRUE
+   HBB-MAKER-BUILD @ 0= TTRUE
+   HBT-AOT-OUT FILE? TTRUE
+   HBT-RUN-AOT ;
+
+: HBT-BUILD-AOT-WRONG-OBJECT-FAILS ( -- )
+   HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
+   HBT-AOT-OUT FILE? if HBT-AOT-OUT REMOVE-FILE then
+   HBT-STORE-WRONG-AOT-OBJ
+   HBT-AOT-SRC HBT-AOT-OUT HBT-HBB-PREPARE-AOT
+   [: HBB-BUILD ;] E-OBJ-SCHEMA TTHROWSQ
+   HBB-MAKER-RUN @ 0= TTRUE
+   HBT-AOT-OUT EXISTS? TFALSE ;
+
 : HBT-MAIN ( -- )
    T-RESET
    HBT-PREPARE
@@ -357,6 +456,8 @@ create HBT-KEY-B 64 allot
    HBT-IMGDUMP-REPL
    HBT-BUILD-REPL-BAD
    HBT-BUILD-MISSING-TMP
+   HBT-BUILD-AOT-OBJECT-HIT
+   HBT-BUILD-AOT-WRONG-OBJECT-FAILS
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE
    T-REPORT
