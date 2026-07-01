@@ -12,6 +12,7 @@ require lib/object.f
 package OBJLINK
 
 32 constant MAX-SYMS
+32 constant MAX-OBJS
 $4000 constant SYM-CAP
 
 create SYM-BUF SYM-CAP allot
@@ -19,6 +20,10 @@ create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
 create IMP-OFFS MAX-SYMS cells allot
 create IMP-US MAX-SYMS cells allot
+create OBJ-TEXT-BASES MAX-OBJS cells allot
+create OBJ-DATA-BASES MAX-OBJS cells allot
+create OBJ-TEXT-US MAX-OBJS cells allot
+create OBJ-DATA-US MAX-OBJS cells allot
 
 variable SYM-U
 variable EXP-N
@@ -63,6 +68,22 @@ variable CUR-DATA
    idx MAX-SYMS CHECK-IDX
    IMP-US idx cells + ;
 
+: OBJ-TEXT-BASE-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-OBJS CHECK-IDX
+   OBJ-TEXT-BASES idx cells + ;
+
+: OBJ-DATA-BASE-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-OBJS CHECK-IDX
+   OBJ-DATA-BASES idx cells + ;
+
+: OBJ-TEXT-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-OBJS CHECK-IDX
+   OBJ-TEXT-US idx cells + ;
+
+: OBJ-DATA-U-PTR ( n -- ptr n ) {: idx:n :}
+   idx MAX-OBJS CHECK-IDX
+   OBJ-DATA-US idx cells + ;
+
 : SYM-ROOM ( n -- ) {: u:n :}
    u 0 <= if E-OBJ-FIELD throw then
    SYM-U @ u + SYM-CAP > if E-OBJ-CAPACITY throw then ;
@@ -79,6 +100,9 @@ variable CUR-DATA
 
 : IMPORT-ROOM ( -- )
    IMP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
+
+: OBJECT-ROOM ( -- )
+   OBJ-N @ MAX-OBJS >= if E-OBJ-CAPACITY throw then ;
 
 : EXP$ ( n -- ptr u8 n ) {: idx:n :}
    idx EXP-N @ CHECK-IDX
@@ -161,6 +185,13 @@ variable CUR-DATA
    off 0 < if E-OBJ-SCHEMA throw then
    off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
 
+: RECORD-OBJECT ( -- )
+   OBJECT-ROOM
+   TEXT-U @ OBJ-N @ OBJ-TEXT-BASE-PTR !
+   DATA-U @ OBJ-N @ OBJ-DATA-BASE-PTR !
+   CUR-TEXT @ OBJ-N @ OBJ-TEXT-U-PTR !
+   CUR-DATA @ OBJ-N @ OBJ-DATA-U-PTR ! ;
+
 public
 
 : RESET ( -- )
@@ -180,6 +211,22 @@ public
 
 : DATA-SIZE ( -- n )
    DATA-U @ ;
+
+: OBJECT-TEXT-BASE ( n -- n ) {: idx:n :}
+   idx OBJ-N @ CHECK-IDX
+   idx OBJ-TEXT-BASE-PTR @ ;
+
+: OBJECT-DATA-BASE ( n -- n ) {: idx:n :}
+   idx OBJ-N @ CHECK-IDX
+   idx OBJ-DATA-BASE-PTR @ ;
+
+: OBJECT-TEXT-SIZE ( n -- n ) {: idx:n :}
+   idx OBJ-N @ CHECK-IDX
+   idx OBJ-TEXT-U-PTR @ ;
+
+: OBJECT-DATA-SIZE ( n -- n ) {: idx:n :}
+   idx OBJ-N @ CHECK-IDX
+   idx OBJ-DATA-U-PTR @ ;
 
 : EXPORT$ ( n -- ptr u8 n )
    EXP$ ;
@@ -203,6 +250,7 @@ public
       dup ADD-ROW
       1+
    repeat drop
+   RECORD-OBJECT
    TEXT-U @ CUR-TEXT @ + TEXT-U !
    DATA-U @ CUR-DATA @ + DATA-U !
    OBJ-N @ 1+ OBJ-N ! ;

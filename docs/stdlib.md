@@ -891,6 +891,10 @@ OBJLINK:IMPORT-COUNT ( -- n )
 OBJLINK:OBJECT-COUNT ( -- n )
 OBJLINK:TEXT-SIZE    ( -- n )
 OBJLINK:DATA-SIZE    ( -- n )
+OBJLINK:OBJECT-TEXT-BASE ( n -- n )
+OBJLINK:OBJECT-DATA-BASE ( n -- n )
+OBJLINK:OBJECT-TEXT-SIZE ( n -- n )
+OBJLINK:OBJECT-DATA-SIZE ( n -- n )
 OBJLINK:EXPORT$      ( n -- ptr u8 n )
 OBJLINK:IMPORT$      ( n -- ptr u8 n )
 OBJLINK:EXPORT-FIND? ( ptr u8 n -- bool )
@@ -902,6 +906,8 @@ OBJLINK:CHECK        ( -- )
 
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
 into bounded storage so later `OBJ:LOAD` calls cannot invalidate link metadata.
+It records per-object text/data base and size rows before advancing the merged
+section totals.
 `OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports; duplicate exports
 throw during `OBJLINK:ADD`, relocation offsets outside the current object's text
 section throw `E-OBJ-SCHEMA`, and table/storage overflow throws

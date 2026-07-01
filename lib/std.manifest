@@ -972,6 +972,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-COUNT	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated object count
 1	object-link	lib/object-link.f	word	OBJLINK:TEXT-SIZE	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated text section byte count
 1	object-link	lib/object-link.f	word	OBJLINK:DATA-SIZE	(-- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return accumulated data section byte count
+1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-TEXT-BASE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return merged text base for one added object
+1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-DATA-BASE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return merged data base for one added object
+1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-TEXT-SIZE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return text byte size for one added object
+1	object-link	lib/object-link.f	word	OBJLINK:OBJECT-DATA-SIZE	(n -- n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return data byte size for one added object
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return export symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:IMPORT$	(n -- ptr u8 n)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	return import symbol by index
 1	object-link	lib/object-link.f	word	OBJLINK:EXPORT-FIND?	(ptr u8 n -- bool)	lib/object-link-test.f	docs/stdlib.md	stdlib-object	published	test whether an export symbol is accumulated
