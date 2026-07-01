@@ -1,9 +1,11 @@
 ---
 title: Eliminate remaining helper and inner hb launches
-status: active
+status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-06-30T23:24:33.517886+02:00\""
+created-at: "\"\\\"2026-06-30T23:24:33.517886+02:00\\\"\""
+closed-at: "2026-07-01T13:04:36.649994+02:00"
+close-reason: "completed: macos-arm64-12x2 hot full suite passed at 22148ms internal / 24.38s wall with helper-spawn=25, inner-hb=1, inner-hb-stdin=4, boundary=5; cold cache-fill stayed non-regressive at 28621ms internal / 30.92s wall"
 ---
 
 Problem: Mac hot test suite still reports helper-spawn around 69, inner-hb around 13, inner-hb-stdin around 5, boundary around 18. This keeps suite-body time high even after parent-load removal. Fix: inventory every helper spawn with test name and subject, replace non-boundary launches with resident APIs, batch exact candidate launches by subject, and keep only explicit process/PTY/CLI boundary tests. Acceptance: helper-spawn <=25, inner-hb + inner-hb-stdin <=8, boundary <=12 on Mac hot profile, with docs/gate.md updated if target changes.

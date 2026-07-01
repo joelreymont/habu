@@ -163,14 +163,18 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
 4. Split mixed tool tests.
    Acceptance: semantic tool tests run as independent resident-runner tests; CLI
    tests remain explicit boundary tests.
-   Status: implemented for repair, doc/schema, split lint, and typed-local tool tests.
+   Status: implemented for repair, doc/schema, split lint, typed-local,
+   diagnostic SARIF/public-signature/trust-lint, and JIT dump semantics.
    Current macOS proof after removing top snapshot launchers, replacing the
    monolithic parent support load with explicit suite setup, moving the
-   check-tool file-label smoke to the in-process checker core, and splitting AOT
-   closure diagnostics from the maker path: 21.895s internal / 24.20s shell wall
-   hot, `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=29`;
-   `check-cli` is 2.354s, dictionary/checker is 5.380s, AOT negative is 2.279s,
-   and the slowest test is engine fixture at 13.587s.
+   check-tool file-label smoke to the in-process checker core, splitting AOT
+   closure diagnostics from the maker path, and keeping SARIF/prop-test CLI
+   entries thin: 22.148s internal / 24.38s shell wall hot, `inner-hb=1`,
+   `inner-hb-stdin=4`, `boundary=5`, `helper-spawn=25`; `check-cli` is 2.336s,
+   dictionary/checker is 5.301s, diagnostics all-strict is 7.775s, and the
+   slowest test is engine fixture at 13.068s. Scratch cold-cache fill is
+   28.621s internal / 30.92s shell wall, below the prior source-change fill
+   proof of 28.781s / 30.99s.
 
 5. Inline host-source semantic suites into the resident runner.
    Acceptance: `tool-boundary`, `lint-tools`, doc/schema, and typed-local

@@ -16,7 +16,7 @@
       9 of s" test/run-worker-engine.f" TRW-LOAD endof
       10 of s" test/run-worker-diag.f" TRW-LOAD endof
       11 of s" test/run-worker-diag.f" TRW-LOAD endof
-      12 of s" test/run-worker-diag.f" TRW-LOAD endof
+      12 of s" test/run-worker-diag-all-strict.f" TRW-LOAD endof
       13 of s" test/run-worker-diag.f" TRW-LOAD endof
       14 of s" test/run-worker-dict.f" TRW-LOAD endof
       16 of s" test/run-worker-engine.f" TRW-LOAD endof

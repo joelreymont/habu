@@ -10,6 +10,10 @@ create GDX-TRUST-ROOT-BUF FS-PATH-CAP allot
 create GDX-TRUST-SRC-DIR-BUF FS-PATH-CAP allot
 create GDX-TRUST-SRC-BUF FS-PATH-CAP allot
 create GDX-TRUST-MAN-BUF FS-PATH-CAP allot
+$10000 constant GDX-TL-STR-CAP
+$20000 constant GDX-TL-FILE-CAP
+create GDX-TL-STR-BUF GDX-TL-STR-CAP allot
+create GDX-TL-FILE-BUF GDX-TL-FILE-CAP allot
 variable GDX-PATH-U
 variable GDX-PATH2-U
 variable GDX-TRUST-ROOT-U
@@ -513,51 +517,36 @@ variable GDX-TRUST-MAN-U
    s" habu-recursive.err" s" recursive diagnostic contract" GDX-DIAG-CONTRACT
    s" json-one-schema" s" habu-recursive.err" s" recursive schema" GDX-GJA1 ;
 
-: GDX-SARIF ( -- )
-   GE-HB-RESET
-   s" --load" GDX-ARG+
-   s" lib/errors.f" GDX-ARG+
-   s" lib/memory.f" GDX-ARG+
-   s" tools/json.f" GDX-ARG+
-   s" tools/diag-to-sarif.f" GDX-ARG+
-   s" --" GDX-ARG+
-   s" habu-all-errors.err" GDX-PATH-ARGV+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" diag-to-sarif" GE-EXPECT-OK
-   s" habu-all-errors.sarif" GDX-WRITE-OUT
-   s" sarif" s" habu-all-errors.sarif" s" sarif output" GDX-GJA1 ;
-
 : GDX-PUBLIC-SIGNATURES ( -- )
-   GE-HB-RESET
-   s" --load" GDX-ARG+
-   s" lib/errors.f" GDX-ARG+
-   s" lib/string.f" GDX-ARG+
-   s" lib/memory.f" GDX-ARG+
-   s" lib/vector.f" GDX-ARG+
-   s" tools/lint/text.f" GDX-ARG+
-   s" tools/lint/intern.f" GDX-ARG+
-   s" tools/lint/token.f" GDX-ARG+
-   s" tools/lint/lib.f" GDX-ARG+
-   s" tools/public-signatures-core.f" GDX-ARG+
-   s" tools/public-signatures.f" GDX-ARG+
-   s" --" GDX-ARG+
-   s" examples/llm/good.f" GDX-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" public-signatures" GE-EXPECT-OK
-   s" public-signatures.json" GDX-WRITE-OUT
+   GT-OUT-BUF GT-OUT-CAP PS-OUT-BUFFER!
+   GT-ERR-BUF GT-ERR-CAP PS-ERR-BUFFER!
+   0 PS-TRUST !
+   PS-JSON-DOC-START
+   s" examples/llm/good.f" PS-SCAN-FILE
+   PS-JSON-DOC-END
+   PS-ERR$ nip 0 <> if s" public-signatures stderr" GE-FAIL then
+   s" public-signatures.json" GDX-PATH!
+   GDX-PATH$ PS-OUT$ WRITE-ALL
+   PS-BUFFERS-OFF
    s" public-signatures" s" public-signatures.json" s" public signatures output" GDX-GJA1 ;
+
+: GDX-TRUST-LINT-TODAY ( -- )
+   s" 2026-10-01" PARSE-YMD 0= if s" trust-lint fixture today" GE-FAIL then
+   TRUST-LINT-TODAY! ;
+
+: GDX-TRUST-LINT-STALE-ACT ( -- )
+   GDX-TL-STR-BUF GDX-TL-STR-CAP
+   GDX-TL-FILE-BUF GDX-TL-FILE-CAP TRUST-LINT-BUFFERS!
+   TL-TRUE TL-REPORT-SUCCESS!
+   GDX-TRUST-ROOT$ TRUST-LINT-ROOT!
+   GDX-TRUST-LINT-TODAY
+   TRUST-LINT ;
 
 : GDX-TRUST-LINT-STALE ( -- )
    GDX-TRUST-FIXTURE
-   GE-HB-RESET
-   s" --load" GDX-ARG+
-   s" tools/trust-lint.f" GDX-ARG+
-   s" --" GDX-ARG+
-   GDX-TRUST-ROOT$ GDX-ARG+
-   s" 2026-10-01" GDX-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" trust-lint accepted stale audit dates" GE-EXPECT-NONZERO
-   s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-OUT-HAS ;
+   [: GDX-TRUST-LINT-STALE-ACT ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
+   TL-BAD @ 0= if s" trust-lint accepted stale audit dates" GE-FAIL then
+   s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-ERR-HAS ;
 
 : GDX-REPAIR-SLICE ( -- )
    s" hb-gate-diagnostics-repair" GT-START
@@ -577,18 +566,6 @@ variable GDX-TRUST-MAN-U
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 
-: GDX-ALL-STRICT-SLICE ( -- )
-   s" hb-gate-diagnostics-all-strict" GT-START
-   GDX-ALL-ERRORS
-   GDX-SARIF
-   GDX-STRICT-SIGNATURES
-   GDX-BARE-PTR-SIGNATURE
-   GDX-BAD-NOMINAL-DECL
-   GDX-SOURCE-LOCAL-NOMINAL
-   GDX-LOAD-FAIL-CLOSED
-   GT-CLEANUP
-   s" PASS: native checker diagnostics all-strict slice" type cr ;
-
 : GDX-FILE-UNSAFE-SLICE ( -- )
    s" hb-gate-diagnostics-file-unsafe" GT-START
    GDX-FILE-ORIGIN
@@ -596,35 +573,3 @@ variable GDX-TRUST-MAN-U
    GDX-LOCAL-IN-LOOP
    GT-CLEANUP
    s" PASS: native checker diagnostics file-unsafe slice" type cr ;
-
-: GDX-SERIAL ( -- )
-   s" hb-gate-diagnostics" GT-START
-   GDX-PRIMARY-JSON
-   GDX-UNKNOWN-SIGNATURE
-   GDX-BARE-PTR-SIGNATURE
-   GDX-MALFORMED-QUOTATION-SIGNATURE
-   GDX-BAD-PARAM-SIGNATURE
-   GDX-BAD-NOMINAL-DECL
-   GDX-SOURCE-LOCAL-NOMINAL
-   GDX-REPAIR-CLASSES
-   GDX-FILE-ORIGIN
-   GDX-STRICT-SIGNATURES
-   GDX-UNSAFE-CHECKS
-   GDX-LOCAL-IN-LOOP
-   GDX-LOAD-FAIL-CLOSED
-   GDX-ALL-ERRORS
-   GDX-UNDEFINED-RECURSIVE
-   GDX-SARIF
-   GDX-PUBLIC-SIGNATURES
-   GDX-TRUST-LINT-STALE
-   GT-CLEANUP
-   s" PASS: native checker diagnostics gate phase" type cr ;
-
-: GDX-DISPATCH ( -- )
-   SCRIPT-ARGC 0= if GDX-SERIAL exit then
-   SCRIPT-ARGC 1 <> if GDX-USAGE then
-   s" diag-repair" GDX-ARG0= if GDX-REPAIR-SLICE exit then
-   s" diag-undef-primary" GDX-ARG0= if GDX-UNDEF-PRIMARY-SLICE exit then
-   s" diag-all-strict" GDX-ARG0= if GDX-ALL-STRICT-SLICE exit then
-   s" diag-file-unsafe" GDX-ARG0= if GDX-FILE-UNSAFE-SLICE exit then
-   GDX-USAGE ;

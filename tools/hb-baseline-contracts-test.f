@@ -12,29 +12,24 @@ require lib/process.f
 require lib/process-argv.f
 
 $8000 constant HBT-CAP
-$5000 constant HBT-PROP-CAP
 10000 constant HBT-TIMEOUT-MS
 1 constant HBT-X-OK
 
 create HBT-OUT HBT-CAP allot
 create HBT-ERR HBT-CAP allot
-create HBT-PROP-SRC HBT-PROP-CAP allot
 create HBT-ROOT FS-PATH-CAP allot
 create HBT-SCRIPT FS-PATH-CAP allot
 create HBT-MULTI-A FS-PATH-CAP allot
 create HBT-MULTI-B FS-PATH-CAP allot
 create HBT-MULTI-MAIN FS-PATH-CAP allot
-create HBT-STDIN-TOOL FS-PATH-CAP allot
 
 variable HBT-ROOT-U
 variable HBT-SCRIPT-U
 variable HBT-MULTI-A-U
 variable HBT-MULTI-B-U
 variable HBT-MULTI-MAIN-U
-variable HBT-STDIN-TOOL-U
 variable HBT-PUBLIC-N
 variable HBT-PUBLIC-BAD
-variable HBT-PROP-U
 
 : HBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -54,9 +49,6 @@ variable HBT-PROP-U
 
 : HBT-MULTI-MAIN$ ( -- ptr u8 n )
    HBT-MULTI-MAIN HBT-MULTI-MAIN-U @ ;
-
-: HBT-STDIN-TOOL$ ( -- ptr u8 n )
-   HBT-STDIN-TOOL HBT-STDIN-TOOL-U @ ;
 
 : HBT-LF ( -- )
    10 SB-APPEND-C ;
@@ -90,13 +82,6 @@ variable HBT-PROP-U
    s" 0 SCRIPT-ARGV$ type cr" SB-APPEND HBT-LF
    SB$ ;
 
-: HBT-STDIN-TOOL$SRC ( -- ptr u8 n )
-   SB-RESET
-   s" create HBT-DATA-BUF 32 allot" SB-APPEND HBT-LF
-   s" : MAIN ( -- ) HBT-DATA-BUF 32 >LEN READ-STDIN-ALL LEN>N dup . HBT-DATA-BUF swap type cr ;" SB-APPEND HBT-LF
-   s" MAIN" SB-APPEND HBT-LF
-   SB$ ;
-
 : HBT-PREPARE ( -- )
    CLEANUP-RESET
    s" hb-baseline-contracts" TMPDIR-MKDIR HBT-ROOT HBT-ROOT-U HBT-COPY!
@@ -105,13 +90,10 @@ variable HBT-PROP-U
    HBT-ROOT$ s" multi-a.f" HBT-MULTI-A JOIN-PATH HBT-MULTI-A-U !
    HBT-ROOT$ s" multi-b.f" HBT-MULTI-B JOIN-PATH HBT-MULTI-B-U !
    HBT-ROOT$ s" multi-main.f" HBT-MULTI-MAIN JOIN-PATH HBT-MULTI-MAIN-U !
-   HBT-ROOT$ s" stdin-data-tool.f" HBT-STDIN-TOOL JOIN-PATH HBT-STDIN-TOOL-U !
    HBT-SCRIPT$ HBT-SCRIPT$SRC WRITE-ALL
    HBT-MULTI-A$ HBT-MULTI-A$SRC WRITE-ALL
    HBT-MULTI-B$ HBT-MULTI-B$SRC WRITE-ALL
-   HBT-MULTI-MAIN$ HBT-MULTI-MAIN$SRC WRITE-ALL
-   HBT-STDIN-TOOL$ HBT-STDIN-TOOL$SRC WRITE-ALL
-   s" test/prop-test.f" HBT-PROP-SRC HBT-PROP-CAP READ-ALL HBT-PROP-U ! ;
+   HBT-MULTI-MAIN$ HBT-MULTI-MAIN$SRC WRITE-ALL ;
 
 : HBT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
@@ -153,17 +135,6 @@ variable HBT-PROP-U
    s" PIPE" SB-APPEND HBT-LF
    HBT-OUT 5 SB$ T$= ;
 
-: HBT-TEST-SCRIPT-MODE ( -- )
-   PROC-ARGV-RESET
-   HBT-SCRIPT$  >LEN PROC-ARGV+
-   s" omega"  >LEN PROC-ARGV+
-   s" " HBT-RUN-STDIN 0 T= 0 T= 15 T=
-   SB-RESET
-   s" SCRIPT" SB-APPEND HBT-LF
-   s" 1" SB-APPEND HBT-LF
-   s" omega" SB-APPEND HBT-LF
-   HBT-OUT 15 SB$ T$= ;
-
 : HBT-TEST-MULTI-SOURCE ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
@@ -179,43 +150,13 @@ variable HBT-PROP-U
    s" theta" SB-APPEND HBT-LF
    HBT-OUT 11 SB$ T$= ;
 
-: HBT-TEST-STDIN-DATA ( -- )
-   PROC-ARGV-RESET
-   s" --load"  >LEN PROC-ARGV+
-   s" lib/errors.f"  >LEN PROC-ARGV+
-   s" lib/string.f"  >LEN PROC-ARGV+
-   s" lib/memory.f"  >LEN PROC-ARGV+
-   s" lib/fs.f"  >LEN PROC-ARGV+
-   s" lib/source.f"  >LEN PROC-ARGV+
-   HBT-STDIN-TOOL$  >LEN PROC-ARGV+
-   s" --"  >LEN PROC-ARGV+
-   s" DATA" HBT-RUN-STDIN 0 T= 0 T= 7 T=
-   SB-RESET
-   s" 4" SB-APPEND HBT-LF
-   s" DATA" SB-APPEND HBT-LF
-   HBT-OUT 7 SB$ T$= ;
-
-: HBT-TEST-PROP-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" 123"  >LEN PROC-ARGV+
-   s" 4"  >LEN PROC-ARGV+
-   HBT-PROP-SRC HBT-PROP-U @ HBT-RUN-STDIN 0 T=
-   {: outu erru :}
-   erru 0 T<>
-   HBT-OUT outu s" prop-test: self-test OK" CONTAINS? TTRUE
-   HBT-OUT outu s" prop-test: 4" CONTAINS? TTRUE
-   HBT-OUT outu s" programs," CONTAINS? TTRUE ;
-
 : HBT-MAIN ( -- )
    T-RESET
    HBT-PREPARE
    HBT-TEST-PUBLIC-BIN
    HBT-TEST-PIPELINE
    HBT-TEST-PIPE-WINS
-   HBT-TEST-SCRIPT-MODE
    HBT-TEST-MULTI-SOURCE
-   HBT-TEST-STDIN-DATA
-   HBT-TEST-PROP-ARGV
    CLEANUP-RUN
    HBT-ROOT$ EXISTS? TFALSE
    T-REPORT

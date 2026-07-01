@@ -1468,3 +1468,8 @@ lesson — keep the specific word/code/path, cut the prose.
   Keep `aot-closure.f` resident-testable and load `aot-lib.f` only in the maker
   path; otherwise a small negative diagnostic test inherits seconds of builder
   setup and looks like a cache problem.
+- **Entry/core splits must not widen worker preload:** moving a CLI tool to a
+  reusable core is only a win if the core is loaded by the worker that needs it.
+  Pulling SARIF into the shared diagnostics library made every diagnostic worker
+  compile it; isolate heavy cores in phase-owned worker files and prove hot plus
+  cold-cache timing.

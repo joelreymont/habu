@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-common.f.
 
+require tools/jitdump-core.f
+
 : GDB-PROP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -39,16 +41,11 @@
 
 : GDB-JITDUMP ( -- )
    GE-HB-RESET
-   s" --load" GE-ARG+
-   s" src/arch/arm64/disasm.f" GE-ARG+
-   s" tools/jitdump.f" GE-ARG+
-   s" --" GE-ARG+
-   s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" GE-ARG+
-   s" JITDUMP-SMOKE" GE-ARG+
-   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
-   s" jitdump direct CLI" GE-EXPECT-OK
-   s" ret" s" jitdump direct CLI output" GE-EXPECT-OUT-HAS
-   s" PASS: jitdump direct CLI" type cr ;
+   [: s" : JITDUMP-SMOKE ( -- i64 ) 7 ;" JIT-EVALUATE
+      s" JITDUMP-SMOKE" JIT-FIND JD ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
+   s" jitdump direct core" GE-EXPECT-OK
+   s" ret" s" jitdump direct core output" GE-EXPECT-OUT-HAS
+   s" PASS: jitdump direct core" type cr ;
 
 : GDB-RUN ( -- )
    s" hb-gate-debug" GT-START

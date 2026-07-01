@@ -103,6 +103,7 @@ points stay listed.
   underflow, unknown opcode, and non-singleton output rejection.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
   `tools/jitdump.f` and `tools/imagedisasm.f`.
+- `tools/jitdump-core.f` — reusable JIT code disassembly helpers.
 - `tools/jitdump.f` — disassemble a compiled word from a source snippet; see
   `docs/debugging.md` for command syntax.
 - `tools/imagedisasm.f` — disassemble a raw executable byte slice by file offset.
@@ -262,7 +263,8 @@ points stay listed.
 - `tools/checked-boundary-lint.f` — CLI wrapper for unchecked-boundary lint.
 - `tools/checked-boundary-lint-test-lib.f` — load-only unchecked-boundary lint fixture library for resident runner tests.
 - `tools/checked-boundary-lint-test.f` — checked fixture coverage for unchecked-boundary lint.
-- `tools/diag-to-sarif.f` — converts diagnostic JSONL to SARIF for CI/review UIs.
+- `tools/diag-to-sarif-core.f` — reusable diagnostic JSONL to SARIF converter core.
+- `tools/diag-to-sarif.f` — CLI entry for diagnostic JSONL to SARIF conversion.
 - `tools/public-signatures-core.f` — reusable public-signature manifest emitter core.
 - `tools/public-signatures.f` — CLI entrypoint for typed public-word manifests.
 - `tools/public-signatures-test.f` — checked fixture coverage for public-signature manifests.
@@ -362,6 +364,7 @@ points stay listed.
 - `test/run-worker-stdlib.f` — resident stdlib/check-cli/lint/tail phase support and dispatch.
 - `test/run-worker-engine.f` — resident engine repair/fixture/runtime/validation phase support and dispatch.
 - `test/run-worker-diag.f` — resident checker-diagnostics phase support and dispatch.
+- `test/run-worker-diag-all-strict.f` — resident SARIF-backed diagnostics phase.
 - `test/run-worker-dict.f` — resident dictionary/checker phase support and dispatch.
 - `test/run-worker-debug.f` — resident prop/debug phase support and dispatch.
 - `test/run-worker-aot.f` — resident positive AOT phase support.
@@ -376,6 +379,8 @@ points stay listed.
 - `test/gate-engine-lib.f` — side-effect-free engine/public-hb gate definitions.
 - `test/gate-diagnostics.f` — thin entry wrapper for checker diagnostic slices.
 - `test/gate-diagnostics-lib.f` — side-effect-free checker diagnostic gate definitions.
+- `test/gate-diagnostics-all-strict-lib.f` — SARIF-backed checker diagnostic slice.
+- `test/gate-diagnostics-entry-lib.f` — checker diagnostic CLI dispatch definitions.
 - `test/gate-dictionary.f` — thin entry wrapper for dictionary/checker contracts.
 - `test/gate-dictionary-lib.f` — side-effect-free dictionary/checker contract definitions.
 - `test/gate-debug.f` — thin entry wrapper for prop/debug checks.
@@ -391,5 +396,6 @@ points stay listed.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
-- `test/prop-test.f` — implemented property-based checker-soundness test (in-process via `evaluate`).
+- `test/prop-test-core.f` — reusable property-based checker-soundness runner.
+- `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.

@@ -42,10 +42,12 @@ require tools/trust-lint-core.f
 require tools/duplicate-definition-lint-core.f
 require tools/bundle-lib-core.f
 require tools/check-core.f
+require tools/public-signatures-core.f
 require test/gate-common-lib.f
 require test/gate-stdlib-lib.f
 require test/gate-engine-lib.f
 require test/gate-diagnostics-lib.f
+require test/gate-diagnostics-all-strict-lib.f
 require test/gate-dictionary-lib.f
 require test/gate-debug-lib.f
 require test/gate-stdlib-inline-lib.f

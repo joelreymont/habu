@@ -1,12 +1,10 @@
-\ gate-diagnostics.f - entry wrapper for checker diagnostic contracts.
-\
-\ Load after test/gate-common.f.
+\ run-worker-diag-all-strict.f - resident all-strict diagnostic worker.
 
-include tools/json.f
-include tools/gate-json-assert-core.f
-require tools/date.f
 require lib/vector.f
 require lib/source.f
+require tools/json.f
+require tools/gate-json-assert-core.f
+require tools/date.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
@@ -23,7 +21,8 @@ require tools/public-signatures-core.f
 require tools/check-all-errors-core.f
 require tools/argv.f
 require tools/check-core.f
-include test/gate-diagnostics-lib.f
-include test/gate-diagnostics-entry-lib.f
+require test/gate-common-lib.f
+require test/gate-diagnostics-lib.f
+require test/gate-diagnostics-all-strict-lib.f
 
-GDX-DISPATCH
+GDX-ALL-STRICT-SLICE

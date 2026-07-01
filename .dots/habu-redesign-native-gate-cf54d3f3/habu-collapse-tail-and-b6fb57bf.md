@@ -30,3 +30,14 @@ Full macos-arm64-12x2 persistent-cache suite passed at 24117ms internal /
 26.48s wall. Current above-5s tails: tool-doc 8405ms, tool-repair 7200ms,
 lint-tools 5749ms, lint-libs/core 5801ms, tail-pure 5684ms, tail-process
 5965ms. Tool-repair improved materially but remains above the 5s target.
+
+2026-07-01 helper-collapse proof: after in-process diagnostic SARIF,
+public-signature, trust-lint, and jitdump execution, macos-arm64-12x2 hot full
+suite passed at 22148ms internal / 24.38s wall. Current above-5s tails:
+diagnostics all-strict 7775ms, lint-tools 5574ms, lint-libs/core 5249ms,
+tail-pure 5165ms, tail-process 5969ms, prop/debug 5177ms. Focused bundle
+timings show the remaining cost is sequential bundle grouping plus full-suite
+contention, not repeated warm-image or helper-launch setup. Keep open: split
+tail-pure, tail-process, lint-libs/core, and diagnostics all-strict into smaller
+named worker groups or reduce their internal long poles without regressing cold
+cache-fill time.
