@@ -12,8 +12,9 @@ require lib/object-link.f
 
 package OBJLINK-TEST
 
-$1000 constant OBJ-CAP
+$30000 constant OBJ-CAP
 33 constant NAME-START
+$1000 constant BIG-TEXT-U
 
 create OBJ-A OBJ-CAP allot
 create OBJ-B OBJ-CAP allot
@@ -21,6 +22,7 @@ create OBJ-C OBJ-CAP allot
 create NAME1 1 allot
 create TEXT-A 1 c, 2 c, 3 c,
 create DATA-B 4 c, 5 c,
+create BIG-TEXT BIG-TEXT-U allot
 
 variable OBJ-A-U
 variable OBJ-B-U
@@ -148,6 +150,11 @@ variable OBJ-C-U
    repeat drop
    SAVE-C ;
 
+: BUILD-BIG-TEXT-C ( -- )
+   BASE
+   BIG-TEXT BIG-TEXT-U OBJ:TEXT+
+   SAVE-C ;
+
 : NAME$ ( n -- ptr u8 n ) {: idx:n :}
    NAME-START idx + NAME1 c!
    NAME1 1 ;
@@ -165,6 +172,16 @@ variable OBJ-C-U
    BUILD-IMPORT-B
    BUILD-DUP-C ;
 
+: TEXT-BYTE ( n -- n ) {: idx:n :}
+   OBJLINK:TEXT$ {: a:ptr u:n :}
+   idx u >= if E-OBJ-FIELD throw then
+   a idx + c@ ;
+
+: DATA-BYTE ( n -- n ) {: idx:n :}
+   OBJLINK:DATA$ {: a:ptr u:n :}
+   idx u >= if E-OBJ-FIELD throw then
+   a idx + c@ ;
+
 : RESOLVES ( -- )
    OBJLINK:RESET
    LOAD-A OBJLINK:ADD
@@ -177,6 +194,13 @@ variable OBJ-C-U
    OBJLINK:OBJECT-COUNT 2 T=
    OBJLINK:TEXT-SIZE 3 T=
    OBJLINK:DATA-SIZE 2 T=
+   OBJLINK:TEXT$ nip 3 T=
+   OBJLINK:DATA$ nip 2 T=
+   0 TEXT-BYTE 1 T=
+   1 TEXT-BYTE 2 T=
+   2 TEXT-BYTE 3 T=
+   0 DATA-BYTE 4 T=
+   1 DATA-BYTE 5 T=
    0 OBJLINK:OBJECT-TEXT-BASE 0 T=
    0 OBJLINK:OBJECT-DATA-BASE 0 T=
    0 OBJLINK:OBJECT-TEXT-SIZE 3 T=
@@ -219,6 +243,9 @@ variable OBJ-C-U
    0 OBJLINK:RELOC-PATCH 4 T=
    0 OBJLINK:RELOC-TARGET 1 T= ;
 
+: ADD-BIG-C ( -- )
+   LOAD-C OBJLINK:ADD ;
+
 : LOCAL-RELOC-PASSES ( -- )
    BUILD-LOCAL-RELOC-C
    OBJLINK:RESET
@@ -250,6 +277,15 @@ variable OBJ-C-U
    BUILD-MANY-RELOCS
    OBJLINK:RESET
    [: LOAD-C OBJLINK:ADD ;] E-OBJ-CAPACITY TTHROWSQ ;
+
+: SECTION-OVERFLOW-FAILS ( -- )
+   BUILD-BIG-TEXT-C
+   OBJLINK:RESET
+   0 begin dup 16 < while
+      ADD-BIG-C
+      1+
+   repeat drop
+   [: ADD-BIG-C ;] E-OBJ-CAPACITY TTHROWSQ ;
 
 : DUP-DEF-FAILS ( -- )
    BUILD-DUP-DEF-C
@@ -316,6 +352,7 @@ public
    MISSING-RELOC-FAILS
    RELOC-OFFSET-FAILS
    RELOC-OVERFLOW-FAILS
+   SECTION-OVERFLOW-FAILS
    DUP-DEF-FAILS
    DEF-ONLY-IMPORT-FAILS
    BAD-DEF-FAILS

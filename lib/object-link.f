@@ -15,8 +15,15 @@ package OBJLINK
 64 constant MAX-RELOCS
 32 constant MAX-OBJS
 $4000 constant SYM-CAP
+$10000 constant MERGE-CAP
+65 constant HEX-UP-A
+71 constant HEX-UP-G
+97 constant HEX-LOW-A
+103 constant HEX-LOW-G
 
 create SYM-BUF SYM-CAP allot
+create TEXT-BUF MERGE-CAP allot
+create DATA-BUF MERGE-CAP allot
 create EXP-OFFS MAX-SYMS cells allot
 create EXP-US MAX-SYMS cells allot
 create EXP-EFF-OFFS MAX-SYMS cells allot
@@ -51,6 +58,8 @@ variable TEXT-U
 variable DATA-U
 variable CUR-TEXT
 variable CUR-DATA
+variable APP-TEXT
+variable APP-DATA
 
 : TRUE ( -- bool )
    0 0= ;
@@ -175,6 +184,10 @@ variable CUR-DATA
    off u + SYM-U !
    off ;
 
+: MERGE-ROOM ( n n -- ) {: have:n add:n :}
+   add 0 < if E-OBJ-CAPACITY throw then
+   have add + MERGE-CAP > if E-OBJ-CAPACITY throw then ;
+
 : EXPORT-ROOM ( -- )
    EXP-N @ MAX-SYMS >= if E-OBJ-CAPACITY throw then ;
 
@@ -295,6 +308,31 @@ variable CUR-DATA
    -1 REL-N @ REL-TARGET-PTR !
    REL-N @ 1+ REL-N ! ;
 
+: HEX-NIB ( n -- n ) {: c:n :}
+   c STR-ZERO >= c STR-ZERO 10 + < and if c STR-ZERO - exit then
+   c HEX-LOW-A >= c HEX-LOW-G < and if c 87 - exit then
+   c HEX-UP-A >= c HEX-UP-G < and if c 55 - exit then
+   E-OBJ-FIELD throw ;
+
+: HEX-BYTE@ ( ptr u8 -- n ) {: a:ptr :}
+   a c@ HEX-NIB 4 lshift
+   a 1 + c@ HEX-NIB or ;
+
+: HEX-BYTE-I ( ptr u8 n -- n ) {: a:ptr idx:n :}
+   a idx 2 * + HEX-BYTE@ ;
+
+: HEX-BYTE! ( ptr u8 n ptr u8 n -- )
+   {: a:ptr idx:n dst:ptr off:n :}
+   a idx HEX-BYTE-I dst off + idx + c! ;
+
+: HEX>BUF ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n dst:ptr off:n :}
+   u 1 and 0 <> if E-OBJ-FIELD throw then
+   u 2 / {: bytes:n :}
+   0 begin dup bytes < while
+      dup a swap dst off HEX-BYTE!
+      1+
+   repeat drop ;
+
 : TEXT-OFF-CHECK ( n -- ) {: off:n :}
    off 0 < if E-OBJ-SCHEMA throw then
    off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
@@ -317,6 +355,22 @@ variable CUR-DATA
    row 2 OBJ:ROW-FIELD$
    TEXT-U @ off + REL+ ;
 
+: APPEND-TEXT ( n -- ) {: row:n :}
+   row 0 OBJ:ROW-FIELD$ {: a:ptr u:n :}
+   u 2 / {: bytes:n :}
+   a u TEXT-BUF TEXT-U @ APP-TEXT @ + HEX>BUF
+   APP-TEXT @ bytes + APP-TEXT ! ;
+
+: APPEND-DATA ( n -- ) {: row:n :}
+   row 0 OBJ:ROW-FIELD$ {: a:ptr u:n :}
+   u 2 / {: bytes:n :}
+   a u DATA-BUF DATA-U @ APP-DATA @ + HEX>BUF
+   APP-DATA @ bytes + APP-DATA ! ;
+
+: APPEND-ROW ( n -- ) {: row:n :}
+   row OBJ:ROW-TAG$ s" text" STR= if row APPEND-TEXT exit then
+   row OBJ:ROW-TAG$ s" data" STR= if row APPEND-DATA exit then ;
+
 : ADD-ROW ( n -- ) {: row:n :}
    row OBJ:ROW-TAG$ s" export" STR= if
       row 0 OBJ:ROW-FIELD$ row 1 OBJ:ROW-FIELD$ EXP+
@@ -334,6 +388,20 @@ variable CUR-DATA
       row ADD-RELOC
       exit
    then ;
+
+: SECTION-ROOM ( -- )
+   TEXT-U @ CUR-TEXT @ MERGE-ROOM
+   DATA-U @ CUR-DATA @ MERGE-ROOM ;
+
+: APPEND-SECTIONS ( -- )
+   0 APP-TEXT !
+   0 APP-DATA !
+   0 begin dup OBJ:ROW-COUNT < while
+      dup APPEND-ROW
+      1+
+   repeat drop
+   APP-TEXT @ CUR-TEXT @ <> if E-OBJ-SCHEMA throw then
+   APP-DATA @ CUR-DATA @ <> if E-OBJ-SCHEMA throw then ;
 
 : IMP-RESOLVED? ( n -- bool ) {: idx:n :}
    idx IMP$ EXP-IDX {: exp:n :}
@@ -416,6 +484,12 @@ public
 : DATA-SIZE ( -- n )
    DATA-U @ ;
 
+: TEXT$ ( -- ptr u8 n )
+   TEXT-BUF TEXT-U @ ;
+
+: DATA$ ( -- ptr u8 n )
+   DATA-BUF DATA-U @ ;
+
 : OBJECT-TEXT-BASE ( n -- n ) {: idx:n :}
    idx OBJ-N @ CHECK-IDX
    idx OBJ-TEXT-BASE-PTR @ ;
@@ -482,11 +556,13 @@ public
 
 : ADD ( -- )
    SCAN-SIZES
+   SECTION-ROOM
    0 begin dup OBJ:ROW-COUNT < while
       dup ADD-ROW
       1+
    repeat drop
    RECORD-OBJECT
+   APPEND-SECTIONS
    TEXT-U @ CUR-TEXT @ + TEXT-U !
    DATA-U @ CUR-DATA @ + DATA-U !
    OBJ-N @ 1+ OBJ-N ! ;

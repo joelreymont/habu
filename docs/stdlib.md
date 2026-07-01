@@ -896,6 +896,8 @@ OBJLINK:RELOC-COUNT  ( -- n )
 OBJLINK:OBJECT-COUNT ( -- n )
 OBJLINK:TEXT-SIZE    ( -- n )
 OBJLINK:DATA-SIZE    ( -- n )
+OBJLINK:TEXT$        ( -- ptr u8 n )
+OBJLINK:DATA$        ( -- ptr u8 n )
 OBJLINK:OBJECT-TEXT-BASE ( n -- n )
 OBJLINK:OBJECT-DATA-BASE ( n -- n )
 OBJLINK:OBJECT-TEXT-SIZE ( n -- n )
@@ -921,11 +923,13 @@ OBJLINK:CHECK        ( -- )
 
 `OBJLINK:ADD` consumes the currently loaded `OBJ` record. It copies symbol names
 and effect strings into bounded storage so later `OBJ:LOAD` calls cannot
-invalidate link metadata. It records per-object text/data base and size rows
-before advancing the merged section totals. `def` rows record merged text
-addresses, reject duplicate definitions, and reject object-local definition
-offsets outside that object's text section. `reloc` rows record merged patch
-addresses and resolve their target addresses from `def` rows during
+invalidate link metadata. It decodes validated `text`/`data` rows into bounded
+merged section buffers, records per-object text/data base and size rows before
+advancing the merged section totals, and exposes the merged bytes through
+`OBJLINK:TEXT$` and `OBJLINK:DATA$`. `def` rows record merged text addresses,
+reject duplicate definitions, and reject object-local definition offsets outside
+that object's text section. `reloc` rows record merged patch addresses and
+resolve their target addresses from `def` rows during
 `OBJLINK:CHECK`; reading an unresolved relocation target throws `E-OBJ-SCHEMA`.
 `OBJLINK:CHECK` throws `E-OBJ-SCHEMA` for unresolved imports, import/export
 effect mismatches, or relocation targets; duplicate exports/defs throw during
