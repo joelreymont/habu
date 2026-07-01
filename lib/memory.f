@@ -12,6 +12,7 @@ MEM-MAX-N MEM-CELL-BYTES / constant MEM-MAX-CELLS
 
 0 constant MEM-ADDR-ANY
 3 constant MEM-PROT-RW
+1 constant MEM-MAP-SHARED
 $1002 constant MEM-MAP-PRIVATE-ANON
 -1 constant MEM-ANON-FD
 0 constant MEM-OFF-ZERO

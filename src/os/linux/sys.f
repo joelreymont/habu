@@ -67,7 +67,7 @@ $100 constant AT-SYMLINK-NOFOLLOW
    2 6 0 ADDI, ;
 
 : OS-MMAP-FLAGS ( -- )
-   7 $12 MOVZ,  6 3 7 AND,
+   7 $13 MOVZ,  6 3 7 AND,
    LBL {: noanon :}
    7 $1000 MOVZ,  7 3 7 AND,  7 noanon CBZ,
       7 $20 MOVZ,  6 6 7 ORR,
