@@ -360,13 +360,39 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BMOD ( -- ) B G-POP A G-POP  BDIV0?  C A B SDIV,  C C B MUL,  A A C SUB,  A G-PUSH ;
 
-: BDIVMOD ( -- ) B G-POP A G-POP  BDIV0?  C A B SDIV,  DREG C B MUL,  A A DREG SUB,  A G-PUSH C G-PUSH ;
+: BDIVMOD ( -- )
+   B G-POP
+   A G-POP
+   BDIV0?
+   C A B SDIV,
+   DREG C B MUL,
+   A A DREG SUB,
+   A G-PUSH
+   C G-PUSH ;
 
 : BABS ( -- ) A G-POP  A 0 CMPI,  LBL {: done :}  C-GE done BCOND,  A SP A SUB,  done LBL,  A G-PUSH ;
 
-: BMIN ( -- ) B G-POP A G-POP  A B CMP,  LBL {: done :}  C-LE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMIN ( -- )
+   B G-POP
+   A G-POP
+   A B CMP,
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: done :}
+   C-LE done BCOND,
+   A B 0 ADDI,
+   done LBL,
+   A G-PUSH ;
 
-: BMAX ( -- ) B G-POP A G-POP  A B CMP,  LBL {: done :}  C-GE done BCOND,  A B 0 ADDI,  done LBL,  A G-PUSH ;
+: BMAX ( -- )
+   B G-POP
+   A G-POP
+   A B CMP,
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: done :}
+   C-GE done BCOND,
+   A B 0 ADDI,
+   done LBL,
+   A G-PUSH ;
 
 \ stack shuffles (memory on x19)
 : BNIP ( -- )  A G-POP  XDS XDS 8 SUBI,  A G-PUSH ;
@@ -385,7 +411,17 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : B2SWAP ( -- ) EREG G-POP DREG G-POP C G-POP A G-POP  DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
 
-: B2OVER ( -- ) EREG G-POP DREG G-POP C G-POP A G-POP  A G-PUSH C G-PUSH DREG G-PUSH EREG G-PUSH A G-PUSH C G-PUSH ;
+: B2OVER ( -- )
+   EREG G-POP
+   DREG G-POP
+   C G-POP
+   A G-POP
+   A G-PUSH
+   C G-PUSH
+   DREG G-PUSH
+   EREG G-PUSH
+   A G-PUSH
+   C G-PUSH ;
 
 : BQDUP ( -- ) A G-POP  A G-PUSH  LBL {: done :}  A done CBZ,  A G-PUSH  done LBL, ;
 
