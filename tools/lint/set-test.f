@@ -1,5 +1,10 @@
 \ set-test.f — focused tests for tools/lint/intern.f helpers.
-\ Run: bin/hb --load lib/errors.f lib/memory.f lib/vector.f tools/lint/text.f tools/lint/intern.f tools/lint/set-test.f
+
+require lib/errors.f
+require lib/memory.f
+require lib/vector.f
+require tools/lint/text.f
+require tools/lint/intern.f
 
 variable TEST-N
 : ASSERT  ( bool -- )

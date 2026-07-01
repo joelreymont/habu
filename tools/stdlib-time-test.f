@@ -1,5 +1,7 @@
 \ stdlib-time-test.f - focused tests for lib/time.f.
-\ Run: cat lib/errors.f lib/time.f tools/stdlib-time-test.f | bin/hb
+
+require lib/errors.f
+require lib/time.f
 
 variable #TIME-FAIL
 variable #TIME-CASE

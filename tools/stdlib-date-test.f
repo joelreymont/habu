@@ -1,5 +1,7 @@
 \ stdlib-date-test.f - focused tests for lib/date.f.
-\ Run: cat lib/errors.f lib/date.f tools/stdlib-date-test.f | bin/hb
+
+require lib/errors.f
+require lib/date.f
 
 variable #DATE-FAIL
 variable #DATE-CASE

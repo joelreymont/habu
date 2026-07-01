@@ -1,5 +1,7 @@
 \ text.f — checked text/file helpers for native lint tools.
 
+require lib/string.f
+
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
 \ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.

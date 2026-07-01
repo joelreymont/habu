@@ -1,9 +1,13 @@
 \ json-test.f - focused tests for tools/json.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f tools/json.f tools/json-test.f
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require tools/json.f
 
 variable TEST-N
 : ASSERT ( bool -- )
-   0= IF s" json-test failed at assertion " type TEST-N @ . cr 1 die THEN
+   0= IF s" json-test failed at assertion " type TEST-N @ . cr 1 throw THEN
    TEST-N @ 1+ TEST-N ! ;
 
 : ASSERT= ( n n -- )

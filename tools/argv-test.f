@@ -1,6 +1,7 @@
 \ argv-test.f -- focused tests for tools/argv.f.
-\ Run mocks: bin/hb --load tools/argv.f tools/argv-test.f
-\ Run script: bin/hb --load tools/argv.f tools/argv-test.f -- --json --label NAME --strict-signatures --all-errors --strict-boundary -o OUT -- file.f --literal
+
+require lib/string.f
+require tools/argv.f
 
 variable TEST-N
 variable TEST-FAIL

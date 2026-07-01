@@ -1,5 +1,6 @@
 \ stdlib-errors-test.f - focused tests for lib/errors.f.
-\ Run: cat lib/errors.f tools/stdlib-errors-test.f | bin/hb
+
+require lib/errors.f
 
 variable #FAIL
 variable #CASE
