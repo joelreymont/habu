@@ -3113,7 +3113,7 @@ BEGIN-STRUCTURE CFS-REC
 END-STRUCTURE
 
 create CFS 32 CFS-REC * allot
-variable CTMP  variable RTMP  variable CFH  variable INDO
+variable CTMP  variable RTMP  variable INDO
 \ EXIT: an early return. XROW accumulates the data row at each exit (all returns,
 \ incl. the fall-through at ';', must unify). DEADP marks the current linear path
 \ terminated by exit, so the enclosing THEN excludes it from the branch join.
@@ -3428,34 +3428,32 @@ variable QTMP
      CF-LOC-REST
      CF-DROP THEN THEN ;
 
-: CF-TOK? {: a u :}
-   -1 CFH !
-   a u s" [:" CORE-STR= IF CF-QUOT ELSE
-   a u s" ;]" CORE-STR= IF CF-SEMIQ ELSE
-   a u s" if" CORE-STR= IF CF-IF ELSE
-   a u s" else" CORE-STR= IF CF-ELSE ELSE
-   a u s" then" CORE-STR= IF CF-THEN ELSE
-   a u s" case" CORE-STR= IF CF-CASE ELSE
-   a u s" of" CORE-STR= IF CF-OF ELSE
-   a u s" endof" CORE-STR= IF CF-ENDOF ELSE
-   a u s" endcase" CORE-STR= IF CF-ENDCASE ELSE
-   a u s" begin" CORE-STR= IF CF-BEGIN ELSE
-   a u s" until" CORE-STR= IF CF-UNTIL ELSE
-   a u s" again" CORE-STR= IF CF-AGAIN ELSE
-   a u s" while" CORE-STR= IF CF-WHILE ELSE
-   a u s" repeat" CORE-STR= IF CF-REPEAT ELSE
-   a u s" do" CORE-STR= IF CF-DO ELSE
-   a u s" ?do" CORE-STR= IF CF-DO ELSE
-   a u s" loop" CORE-STR= IF CF-LOOP ELSE
-   a u s" +loop" CORE-STR= IF CF-+LOOP ELSE
-   a u s" i" CORE-STR= IF CF-I ELSE
-   a u s" j" CORE-STR= IF CF-J ELSE
-   a u s" exit" CORE-STR= IF CF-EXIT ELSE
-   a u s" leave" CORE-STR= IF CF-LEAVE ELSE
-   a u s" unloop" CORE-STR= IF CF-UNLOOP ELSE
-   a u s" recurse" CORE-STR= IF CF-RECURSE ELSE
-   0 CFH ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
-   CFH @ ;
+: CF-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [:" CORE-STR= IF CF-QUOT RES-TRUE EXIT THEN
+   a u s" ;]" CORE-STR= IF CF-SEMIQ RES-TRUE EXIT THEN
+   a u s" if" CORE-STR= IF CF-IF RES-TRUE EXIT THEN
+   a u s" else" CORE-STR= IF CF-ELSE RES-TRUE EXIT THEN
+   a u s" then" CORE-STR= IF CF-THEN RES-TRUE EXIT THEN
+   a u s" case" CORE-STR= IF CF-CASE RES-TRUE EXIT THEN
+   a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
+   a u s" endof" CORE-STR= IF CF-ENDOF RES-TRUE EXIT THEN
+   a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
+   a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
+   a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
+   a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
+   a u s" while" CORE-STR= IF CF-WHILE RES-TRUE EXIT THEN
+   a u s" repeat" CORE-STR= IF CF-REPEAT RES-TRUE EXIT THEN
+   a u s" do" CORE-STR= IF CF-DO RES-TRUE EXIT THEN
+   a u s" ?do" CORE-STR= IF CF-DO RES-TRUE EXIT THEN
+   a u s" loop" CORE-STR= IF CF-LOOP RES-TRUE EXIT THEN
+   a u s" +loop" CORE-STR= IF CF-+LOOP RES-TRUE EXIT THEN
+   a u s" i" CORE-STR= IF CF-I RES-TRUE EXIT THEN
+   a u s" j" CORE-STR= IF CF-J RES-TRUE EXIT THEN
+   a u s" exit" CORE-STR= IF CF-EXIT RES-TRUE EXIT THEN
+   a u s" leave" CORE-STR= IF CF-LEAVE RES-TRUE EXIT THEN
+   a u s" unloop" CORE-STR= IF CF-UNLOOP RES-TRUE EXIT THEN
+   a u s" recurse" CORE-STR= IF CF-RECURSE RES-TRUE EXIT THEN
+   RES-FALSE ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
 variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
