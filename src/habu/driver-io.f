@@ -46,7 +46,7 @@ variable DRV-WALL-U
 : DRV-WRITE-IMAGE-PATH ( ptr u8 n -- )
    PATH0 1537 493 open DRV-WFD !
    DRV-WFD @ 0 < IF s" driver: cannot open output" 74 die THEN
-   DRV-WFD @ MBUF MLEN @ DRV-WALL
+   DRV-WFD @ MBUF MLEN@ DRV-WALL
    DRV-WFD @ close ;
 
 : DRV-WRITE-IMAGE ( img ptr u8 n -- ) {: phase path:ptr pathu :}

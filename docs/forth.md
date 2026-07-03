@@ -825,7 +825,7 @@ end-package
   strict duplicate checks look like the problem.
 - **Snapshot builders reset process-local pointers.** Restored DATA cells are
   persistent, but mmap-backed image/include pointers and cursors (`MBUF-A`, `MP`,
-  `MLEN`, `INCLUDE-BUFS-A`, include depth/read/path cells, etc.) are valid only
+  `MLEN@`/`MLEN!`, `INCLUDE-BUFS-A`, include depth/read/path cells, etc.) are valid only
   in the process that created them. Clear those transient cells in a named reset
   word before `BUILD-SNAP-HDR` or fresh image emission; never rely on source
   replay or variable redefinition to zero them.

@@ -2184,3 +2184,9 @@ unchanged (148855). Keys for milestone 2:
   findings into the shared lint-tools output and the gate-stats fixture counted
   them as real span noise. Public lint entrypoints stay loud and fail-closed;
   in-memory fixture counters need an explicit quiet/report switch.
+- **Do not export build scratch cells as trusted API.** Image writer state such
+  as `MLEN` should be hidden behind checked accessors (`MLEN@`/`MLEN!`) and
+  typed role constructors (`M-O@` via `>OFF`) instead of manifest rows for raw
+  variables. Also keep checker boot independent of helpers loaded later in the
+  stage source; a checker self-type helper must use already-available typed
+  primitives, not `BYTE+` from `src/core/bytes.f`.

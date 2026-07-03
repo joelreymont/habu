@@ -17,7 +17,6 @@ variable M-A
 variable M-SRC
 variable M-N
 variable M-O
-s" MLEN" s" -- ptr n" TRUST
 
 : M-ALLOC-BUF ( -- n )
    0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
@@ -32,6 +31,12 @@ s" MLEN" s" -- ptr n" TRUST
 s" MBUF" s" -- ptr u8" TRUST
 
 : MP@ ( -- ptr u8 ) MP @ ;
+
+: MLEN@ ( -- n )
+   MLEN @ ;
+
+: MLEN! ( n -- )
+   MLEN ! ;
 
 : M-A-FIELD ( -- ptr ptr u8 )
    M-A 0 ptr-field ;
@@ -51,8 +56,8 @@ s" MBUF" s" -- ptr u8" TRUST
 : M-SRC! ( ptr u8 -- )
    M-SRC-FIELD ! ;
 
-: M-O@ ( -- off ) M-O @ ;
-s" M-O@" s" -- off" TRUST
+: M-O@ ( -- off )
+   M-O @ >OFF ;
 
 : M-BYTE+ ( ptr u8 n -- ptr u8 )
    + ;

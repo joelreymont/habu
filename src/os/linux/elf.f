@@ -1,5 +1,5 @@
 \ elf.f -- dynamic Linux/aarch64 ELF executable writer.
-\ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN,
+\ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN@/!,
 \ CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
 
 $7F constant ELF-MAG0
@@ -213,7 +213,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    ELF-TEXT-SIZE @ ELF-RW-AT,
-   M-HERE MLEN ! ;
+   M-HERE MLEN! ;
 
 : BUILD-IMAGE ( asm -- img )
    ASM-DROP

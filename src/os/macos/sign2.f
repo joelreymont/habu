@@ -1,7 +1,7 @@
 \ sign2.fs — ad-hoc self-signing post-pass for the FULL Mach-O builder (macho.fs):
 \ insert LC_CODE_SIGNATURE into header slack, grow
 \ __LINKEDIT, append a CSMAGIC_EMBEDDED_SIGNATURE SuperBlob with one CodeDirectory
-\ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN/LE-OFF in place.
+\ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN@/LE-OFF in place.
 \ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.
 variable SIGA  variable SIGU
 : SIGA-FIELD ( -- ptr ptr u8 )
@@ -76,7 +76,7 @@ variable EXECSEG-LIM   0 EXECSEG-LIM !   \ 0 = use TEXTSZ (snapshots override: b
 variable CSI
 
 : CODESIG2-BODY ( -- )
-   MLEN @ SIG-DOFF !
+   MLEN@ SIG-DOFF !
    ADD-CODESIG-LC  PATCH-LINKEDIT
    SIG-DOFF @ M-OFF M-BE-RESET
    CSMAGIC-EMBEDDED M-BE32   SB-SIZE M-BE32   1 M-BE32
@@ -86,6 +86,6 @@ variable CSI
    0 CSI ! begin CSI @ NCSLOTS < while
      MBUF CSI @ CS-PAGE * +  CSI @ CS-SLOT-SIZE  M-BE-PTR  SHA256  CS-HASH M-LEN M-BE-SKIP
      CSI @ 1 + CSI ! repeat
-   M-BE-HERE MLEN ! ;
+   M-BE-HERE MLEN! ;
 : CODESIG2 ( img -- img )
    CODESIG2-BODY ;

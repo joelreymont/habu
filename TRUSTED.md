@@ -211,7 +211,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | MBUF | `-- ptr u8` | Target image-builder output buffer; checked drivers write the finalized executable bytes through this audited byte span. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f | 2026-06-30 |
-| MLEN | `-- ptr n` | Target image-builder output length cell; checked drivers read the finalized executable length after `ASM-CODE BUILD-IMAGE`/`CODESIG2`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/image-bytes.f | 2026-06-25 |
 | CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | LINUX-DLOPEN-SLOT-OFF | `-- n` | Linux dynamic ELF GOT byte offset for the `dlopen` relocation inside the computed RW segment. | `test/run.f`, `test/gate-aot-positive.f` | src/os/linux/layout.f | 2026-06-29 |
 | LINUX-DLSYM-SLOT-OFF | `-- n` | Linux dynamic ELF GOT byte offset for the `dlsym` relocation inside the computed RW segment. | `test/run.f`, `test/gate-aot-positive.f` | src/os/linux/layout.f | 2026-06-29 |
@@ -545,7 +544,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | TMP-PATH-COPY-SRC | `ptr u8 n --` | Copies a script path suffix into the fixed target temp-path scratch using raw byte offsets. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
-| M-O@ | `-- off` | Reads the image-byte writer offset scratch cell and preserves its nominal `off` role. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f | 2026-06-30 |
 
 ## Ratchet baseline
 
@@ -668,7 +666,7 @@ src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
 src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
-src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
 src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9

@@ -43,7 +43,7 @@ s" SDB@" s" -- ptr u8" TRUST
    \ their own buffer before emitting a fresh ELF/snapshot header.
    0 MBUF-A !
    0 MP !
-   0 MLEN ! ;
+   0 MLEN! ;
 
 : SNAP-HDR ( -- snap )
    SNAP-RESET-IMAGE-BUFFER

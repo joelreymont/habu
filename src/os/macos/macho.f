@@ -175,7 +175,7 @@ variable NCMDS
    CODE CODELEN @ M-LEN M-BYTES-LEN
    TEXTSZ M-OFF M-PAD-OFF
    TEXTSZ TEXTSZ MACHO-EXTRA,
-   M-HERE MLEN ! ;
+   M-HERE MLEN! ;
 
 \ the target-neutral driver entry: another OS swaps in an ELF builder here
 : BUILD-IMAGE ( asm -- img )
