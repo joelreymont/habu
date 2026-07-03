@@ -15,6 +15,45 @@ The user benefit, stated as mechanism: more model iterations with less
 hand-written kernel work, because fusion/layout/schedule decisions are
 generated, gated, and measured instead of hand-maintained.
 
+## Driving workload
+
+The first real model this loop must serve is a fixed-prompt, specialized,
+PBD-style detector derived from NVIDIA LocateAnything
+(`huggingface.co/nvidia/LocateAnything-3B`), running on a Jetson Orin NX
+across multiple camera streams. The application layer around it is a
+separate project; habu/maki owns the capabilities the port demands:
+
+- Data-movement ops in the model IR and ONNX lowering (reshape, transpose,
+  slice, concat, gather) — the port's kernel order starts there, and today
+  they fail closed.
+- RMSNorm and RoPE checked kernels (row-reduction and pointwise-pair
+  families), then attention/KV-cache regions on the existing fused-attention
+  and MMA dot chain.
+- `GOLDEN` against external reference artifacts (saved reference tensor
+  dumps with recorded tolerances), not only the CPU reference.
+- GEMM bring-up policy: a library/FFI call is an acceptable first GEMM for
+  workload bring-up; the checked tensor-core path (Phase 8) is the research
+  lever, not the bring-up gate.
+
+That workload also validates the loop's design: a real port needs an
+operator/tensor ledger — shape, dtype, strides, occurrences, device time,
+bytes moved, FLOPs, arithmetic intensity, support status, candidate fusion,
+golden artifact, tolerance — which is exactly the Phase 0 report schema plus
+Phase 1 IR facts.
+
+The second driving workload is training, not porting: a small temporal
+model developed and trained **from scratch** in maki for the estimator side
+of the same system — measurement-uncertainty prediction (predicted
+variance/covariance trained with negative-log-likelihood losses),
+association support, and an optional range prior over detection and IMU
+feature streams. For maki this exercises the whole loop as a training tool:
+`MODEL:` definition, generated and gradchecked backward, GPU training step,
+loss/optimizer vocabulary, a committed convergence gate, and a profiled
+training step — not only inference optimization. Dots: `habu-maki-gaussian-nll`
+(loss family), `habu-maki-from-scratch` (end-to-end from-scratch training
+demo); they ride the existing training chain (`habu-maki-training-loop`,
+`habu-epic-maki-autograd`, `habu-autograd-tensor-batched`).
+
 ## Non-goals
 
 - A GPU-resident Forth VM.
@@ -162,8 +201,12 @@ Minimal commands and report objects, conservative implementations.
   materialization requirements, autograd metadata. Serializable.
 - Shape keys and layout keys; region extraction for fusion candidates;
   fail-closed unsupported-op diagnostics.
-- Initial op set: add, mul, scale, bias, relu, gelu(+approx), layernorm,
-  rmsnorm, softmax-row, matmul, linear, residual-add, cast.
+- Initial op set: add, mul, scale, bias, relu, gelu(+approx), silu,
+  layernorm, rmsnorm, softmax-row, matmul, linear, residual-add, cast, rope.
+- Data-movement ops (driving-workload demand): reshape/view, transpose,
+  slice, concat, gather — as IR layout facts first (transforms the planner
+  reasons about), materializing kernels only where a copy is genuinely
+  required (dot `cad-la-move-ops`).
 - Exists: kernel-level IR (`lib/ptx/ir.f`), AD DAG (`lib/ptx/ad-dag.f`),
   ONNX op table (`maki/onnx.f` — fail-closed pattern to copy).
 - New dot: `cad-1-ir`. Related: `habu-maki-lower-tensor`.
@@ -214,7 +257,9 @@ per shape/dtype/layout/target.
 `CERTIFY` (static legality, no GPU), `GOLDEN` (device vs reference),
 `GRADCHECK` (numerical derivative), optional determinism check, explicit
 tolerance policy stored with artifacts. `PROMOTE` refuses on failed gates;
-failures identify op/region/candidate.
+failures identify op/region/candidate. `GOLDEN` references are either the
+CPU implementation or an external reference artifact (e.g. saved HF tensor
+dumps for the driving workload) with the tolerance recorded per artifact.
 
 - Exists: checker-as-judge eval (`maki/eval.f`), device golden runs,
   device gradcheck (SOFTMAX-ROWS-BWD), dot
@@ -253,6 +298,9 @@ shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
   `habu-checker-capability-typed` (kernel loops/smem/accumulators),
   `lib/ptx/tile-smem.f`, `lib/ptx/tile-acc.f`. No new dot; this plan adds
   the schedule-object and gate integration requirements to those dots.
+- Bring-up policy (driving workload): a library/FFI GEMM is acceptable
+  first so the workload's end-to-end path is not gated on this phase; the
+  checked tensor-core path replaces it when it wins on profile.
 
 ### Phase 9 — Autograd and backward fusion
 
