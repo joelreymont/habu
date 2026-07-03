@@ -569,6 +569,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 \ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
 : TFAM-RBF-SNAP-RESET ( -- )
+   TF-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    TF-RBF-BOOT TF-RBF-P !
    TF-RBF-CAP-INIT TF-RBF-CAP-V !
    0 TF-RBF-DEPTH ! ;

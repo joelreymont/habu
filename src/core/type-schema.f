@@ -167,6 +167,7 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
 : SCHEMA-RBF-SNAP-RESET ( -- )
+   SCH-RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    SCH-RBF-BOOT SCH-RBF-P !
    SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
    0 SCH-RBF-DEPTH ! ;

@@ -3615,8 +3615,10 @@ variable CHECKER-QBAD-TOK
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
-\ The DFERS arena never rewinds (scopes do not restore DFER-END), so the
-\ cached flag needs no watermark; it mirrors the arena's later-wins answer.
+\ Scopes DO rewind DFER-END (item 3 made rollback restore it; the watermark below
+\ exists precisely for that), so the deferred-target cache cannot assume later-wins
+\ permanence: HIDX-DFR-SYNC / HIDX-DFR-DEP+ record the DFER-END a cached answer
+\ depends on and flush it (epoch bump) when a rollback rewinds below that mark.
 : DFER-ADD-FLAG ( ptr u8 n n -- ) {: a:ptr u:n flag:n :}
    HIDX-DFR-SYNC
    DFER-NEED DFER-ENSURE
@@ -5088,6 +5090,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 \ snapshot), so drop any grown arena buffer back to the baked boot store; the
 \ next scope re-grows lazily. Mirrors HIDX-RESET's process-local reset.
 : RBF-SNAP-RESET ( -- )
+   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
    RBF-A-BOOT RBF-A-P !
    RBF-NAME-BOOT RBF-NAME-P !
    RBF-CAP-INIT RBF-CAP-V !
@@ -5154,10 +5157,20 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : CHECK-CANDIDATE-DONE ( n -- n )
    RBF-POP ;
 
-: CHECK-CANDIDATE! ( ptr u8 n -- n )
+variable CAND-A   variable CAND-U   variable CAND-VERDICT
+: CHECK-CANDIDATE-BODY ( -- )        \ ( -- ) closure: check the stashed source, stash the verdict
+   CAND-A @ CAND-U @ CHECK CAND-VERDICT ! ;
+\ Throw-safe: a throw inside CHECK must not unwind past the candidate pop, or the
+\ rollback frame leaks (RBF-DEPTH stuck, rejected rows survive) and the next probe
+\ runs on corrupted state. Mirror CHK-RUN-SCOPED: run the body under catch, pop the
+\ frame unconditionally, re-throw the caught code, return the verdict on success.
+: CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a CAND-A !  u CAND-U !
    CHECK-CANDIDATE-START
-   CHECK
-   CHECK-CANDIDATE-DONE ;
+   [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   0 CHECK-CANDIDATE-DONE drop
+   rc 0 <> IF rc throw THEN
+   CAND-VERDICT @ ;
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;

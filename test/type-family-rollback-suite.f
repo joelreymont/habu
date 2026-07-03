@@ -34,7 +34,7 @@ variable #CASE
 variable FOUNDF   variable TC
 variable P-TFAM   variable P-SUMV   variable P-PF   variable P-LAY
 variable P-SCHN   variable P-SCHR   variable P-STRU  variable P-PKN
-variable P-SYMN   variable P-SYMU
+variable P-SYMN   variable P-SYMU   variable P-DEPTH
 variable A-TFAM   variable A-SYMN   variable B-TFAM  variable B-SYMN
 
 \ clean TFAM/SCHEMA slate (SYM/USIG/DFER/package remain live checker state).
@@ -203,6 +203,34 @@ s" RBX-CAND" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=  \ index entry retired
 \ re-add the same name after rollback: resolves to the fresh entry, no ghost row.
 s" -- n" s" RBX-CAND" CHECKER-USIG-ADD
 s" RBX-CAND" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ -1 T=
+
+\ ---------------------------------------------------------------------------
+\ 7. THROW-SAFE candidate: a REAL throw (E-TFAM-DUP) between CHECK-CANDIDATE-START
+\    and DONE must still pop the frame and roll back the candidate's earlier
+\    successful mutations. This is exactly the discipline CHECK-CANDIDATE! now
+\    follows — body under catch, DONE unconditional, re-throw the caught code.
+\    Without it the frame leaks (depth stuck) and rejected rows survive, so the
+\    next probe runs on corrupted state (cases 1-6 never threw between START/DONE).
+\ ---------------------------------------------------------------------------
+s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM TFAM-DECL drop   \ pre-seed the dup target
+RBF-DEPTH @ P-DEPTH !
+TFAM-N@ P-TFAM !
+CHECK-CANDIDATE-START
+   s" rbt" CHECKER-PACKAGE-PUBLIC s" tcand" 0 TK-ENUM TFAM-DECL drop \ succeeds inside the candidate
+   s" rbt" s" tcand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=      \ present before the throw
+   s" rbt" CHECKER-PACKAGE-PUBLIC s" dupbase" 1 TK-SUM ' TFAM-DECL catch
+      TC ! 2drop 2drop 2drop drop                                    \ real throw, caught
+0 CHECK-CANDIDATE-DONE drop                                          \ pop the frame unconditionally
+TC @ E-TFAM-DUP T=                                                   \ the throw really fired
+RBF-DEPTH @ P-DEPTH @ T=                                             \ frame popped: depth balanced
+TFAM-N@ P-TFAM @ T=                                                  \ candidate mutation rolled back
+s" rbt" s" tcand" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=          \ tcand gone
+s" rbt" s" dupbase" TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=       \ pre-seed intact
+\ direct CHECK-CANDIDATE! regression: the no-throw path returns its verdict and
+\ balances the frame depth (top-level stdin interpret yields 1 = uncheckable).
+RBF-DEPTH @ P-DEPTH !
+s" : RBT-OK ( -- n ) 0 ;" CHECK-CANDIDATE! FOUNDF !  FOUNDF @ 1 T=
+RBF-DEPTH @ P-DEPTH @ T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
