@@ -2190,3 +2190,8 @@ unchanged (148855). Keys for milestone 2:
   variables. Also keep checker boot independent of helpers loaded later in the
   stage source; a checker self-type helper must use already-available typed
   primitives, not `BYTE+` from `src/core/bytes.f`.
+- **jj worker workspaces have no `bin/hb`.** `bin/` is gitignored, so a fresh
+  `jj workspace add` tree cannot run gates or spawn-based fixtures (task tests
+  die with `E-PROC-SPAWN`). Provision each worker workspace with a *copy* of
+  `bin/hb` (never a symlink into the main tree — a workspace rebuild through a
+  symlinked `bin/` would overwrite the binary other workers are using).
