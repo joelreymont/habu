@@ -2398,11 +2398,12 @@ variable HIDX-EPOCH
 variable HIDX-EFF-HI
 variable HIDX-EFF-BASE
 variable HIDX-CTL-HI
+variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
 variable HIDX-H
 variable HIDX-I
 variable HIDX-CUR
 0 HIDX-MEM !   0 HIDX-VALID !   1 HIDX-EPOCH !
-0 HIDX-EFF-HI !   0 HIDX-EFF-BASE !   0 HIDX-CTL-HI !
+0 HIDX-EFF-HI !   0 HIDX-EFF-BASE !   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
 
 : HIDX-CELL ( n n -- ptr a ) {: slot:n tbl:n :}
    tbl SYM-CAP * slot + cells HIDX-MEM @ + ;
@@ -2458,7 +2459,8 @@ variable HIDX-CUR
 : HIDX-EPOCH+ ( -- )
    HIDX-EPOCH @ 1 + HIDX-EPOCH !
    0 HIDX-EFF-HI !
-   0 HIDX-CTL-HI ! ;
+   0 HIDX-CTL-HI !
+   0 HIDX-DFR-HI ! ;
 
 \ HIDX-EFF-SYNC ( -- ) : flush the cache when USIGS rewound below a cached
 \ dependency or the store was swapped (grow, reset, external restore).
@@ -2508,7 +2510,8 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    0 HIDX-VALID !
    0 HIDX-EFF-HI !
    0 HIDX-EFF-BASE !
-   0 HIDX-CTL-HI ! ;
+   0 HIDX-CTL-HI !
+   0 HIDX-DFR-HI ! ;
 
 : HIDX@ ( n n n -- n bool ) {: id:n vt:n et:n :}
    id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF 0 RES-FALSE EXIT THEN
@@ -2532,6 +2535,9 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 
 : HIDX-CTL-DEP+ ( n -- )
    HIDX-CTL-HI @ max HIDX-CTL-HI ! ;
+
+: HIDX-DFR-DEP+ ( n -- )
+   HIDX-DFR-HI @ max HIDX-DFR-HI ! ;
 
 : SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
    HIDX-ENSURE
@@ -3591,6 +3597,12 @@ variable CHECKER-QBAD-TOK
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
    dup IF E-PTR FEP ! -1 ELSE drop 0 THEN ;
 
+\ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
+\ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
+\ now-retired tail must be dropped before the stale answer masks the rewind.
+: HIDX-DFR-SYNC
+   DFER-END @ HIDX-DFR-HI @ < IF HIDX-EPOCH+ THEN ;
+
 : DFER-ENSURE ( n -- )
    DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
 
@@ -3606,6 +3618,7 @@ variable CHECKER-QBAD-TOK
 \ The DFERS arena never rewinds (scopes do not restore DFER-END), so the
 \ cached flag needs no watermark; it mirrors the arena's later-wins answer.
 : DFER-ADD-FLAG ( ptr u8 n n -- ) {: a:ptr u:n flag:n :}
+   HIDX-DFR-SYNC
    DFER-NEED DFER-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym DFER-CUR DFER.SYM !
@@ -3614,6 +3627,7 @@ variable CHECKER-QBAD-TOK
    DFER-TERM
    sym 0 <> HIDX-VALID @ and IF
       flag 0 <> sym HIDX-DFR!
+      DFER-END @ HIDX-DFR-DEP+
    THEN ;
 
 : DFER-ADD ( ptr u8 n -- )
@@ -3655,13 +3669,15 @@ variable DFER-POS
 : DFER-FIND-SYM ( n -- bool ) {: sym:n :}
    sym 0= IF 0 EXIT THEN
    HIDX-ENSURE
+   HIDX-DFR-SYNC
    sym HIDX-DFR@ IF EXIT THEN
    drop
    0 DFER-HIT !
    0 DFER-VALUE !
    sym DFER-SCAN-SYM
    DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 0= 0= THEN
-   dup sym HIDX-DFR! ;
+   dup sym HIDX-DFR!
+   DFER-END @ HIDX-DFR-DEP+ ;
 
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
@@ -5015,95 +5031,128 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
       THEN
    THEN ;
 
-variable CAND-UEND
-variable CAND-NEND
-variable CAND-SYMN
-variable CAND-SYMU
-variable CAND-CTN
-variable CAND-CTU
-variable CAND-LIN-NDECL
-variable CAND-VREC-N
-variable CAND-VREC-FIELD-N
-variable CAND-VREC-NODE-N
-variable CAND-VREC-STR-U
-variable CAND-VERD
-variable CSCOPE-UEND
-variable CSCOPE-NEND
-variable CSCOPE-SYMN
-variable CSCOPE-SYMU
-variable CSCOPE-CTN
-variable CSCOPE-CTU
-variable CSCOPE-LIN-NDECL
-variable CSCOPE-VREC-N
-variable CSCOPE-VREC-FIELD-N
-variable CSCOPE-VREC-NODE-N
-variable CSCOPE-VREC-STR-U
-variable CSCOPE-CAND
-variable CSCOPE-VSIG
+\ ---------------------------------------------------------------------------
+\ Transactional rollback-frame STACK. Depth-safe replacement for the old single
+\ CAND-*/CSCOPE- slots: every checker scope (CHECKER-SCOPE-START) and candidate
+\ probe (CHECK-CANDIDATE-START) pushes a frame holding every mutable high-water
+\ mark, and DONE pops it. Nested candidates/scopes (all-errors replay, preverify,
+\ CHK-RUN-STATIC-LINTS inside CHK-RUN-SCOPED) therefore cannot overwrite a
+\ parent's saved marks. Core marks live in the RBF frame; the TFAM/SUMV/SCHEMA
+\ registries hang parallel marks off the REG-EXT-RB-* hooks that type-schema.f /
+\ type-family.f install, kept in lockstep because every push pairs with one pop.
+\ ---------------------------------------------------------------------------
+variable REG-EXT-RB-SAVE-XT      0 REG-EXT-RB-SAVE-XT !
+variable REG-EXT-RB-RESTORE-XT   0 REG-EXT-RB-RESTORE-XT !
+
+BEGIN-STRUCTURE RBF-REC
+   CELL +FIELD RBF.UEND
+   CELL +FIELD RBF.NEND
+   CELL +FIELD RBF.SYMN
+   CELL +FIELD RBF.SYMU
+   CELL +FIELD RBF.CTN
+   CELL +FIELD RBF.CTU
+   CELL +FIELD RBF.LIN
+   CELL +FIELD RBF.VRECN
+   CELL +FIELD RBF.VRECF
+   CELL +FIELD RBF.VRECND
+   CELL +FIELD RBF.VRECU
+   CELL +FIELD RBF.CAND
+   CELL +FIELD RBF.VSIG
+   CELL +FIELD RBF.PKGMODE
+   CELL +FIELD RBF.PKGU
+   CELL +FIELD RBF.DFEREND
+END-STRUCTURE
+
+16 constant RBF-CAP-INIT
+variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
+create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
+variable RBF-A-P       RBF-A-BOOT RBF-A-P !
+: RBF-BASE ( -- ptr ) RBF-A-P @ ;
+create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
+variable RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
+: RBF-NAME-BASE ( -- ptr ) RBF-NAME-P @ ;
+variable RBF-DEPTH   0 RBF-DEPTH !
+
+: RBF-GROW ( -- )
+   RBF-CAP-V @ 2 * {: nc:n :}
+   RBF-A-P    RBF-CAP-V @ RBF-REC *              nc RBF-REC *              REG-GROW1
+   RBF-NAME-P RBF-CAP-V @ CHECKER-PACKAGE-CAP *  nc CHECKER-PACKAGE-CAP *  REG-GROW1
+   nc RBF-CAP-V ! ;
+: RBF-ENSURE ( -- )
+   RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
+   RBF-GROW ;
+: RBF-CUR ( -- ptr )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
+: RBF-NAME-CUR ( -- ptr )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
+
+\ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
+\ snapshot), so drop any grown arena buffer back to the baked boot store; the
+\ next scope re-grows lazily. Mirrors HIDX-RESET's process-local reset.
+: RBF-SNAP-RESET ( -- )
+   RBF-A-BOOT RBF-A-P !
+   RBF-NAME-BOOT RBF-NAME-P !
+   RBF-CAP-INIT RBF-CAP-V !
+   0 RBF-DEPTH ! ;
+
+: RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
+   RBF-ENSURE
+   RBF-CUR {: r:ptr :}
+   UEND @ r RBF.UEND !
+   NORET-END @ r RBF.NEND !
+   SYM-N @ r RBF.SYMN !
+   SYM-STR-U @ r RBF.SYMU !
+   CTN @ r RBF.CTN !
+   CT-STR-U @ r RBF.CTU !
+   LIN-NDECL @ r RBF.LIN !
+   VREC-N @ r RBF.VRECN !
+   VREC-FIELD-N @ r RBF.VRECF !
+   VREC-NODE-N @ r RBF.VRECND !
+   VREC-STR-U @ r RBF.VRECU !
+   CHK-CAND @ r RBF.CAND !
+   VSIG @ r RBF.VSIG !
+   CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
+   CHECKER-PACKAGE-U @ r RBF.PKGU !
+   DFER-END @ r RBF.DFEREND !
+   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
+   RBF-DEPTH @ 1 + RBF-DEPTH !
+   REG-EXT-RB-SAVE-XT @ ?dup IF execute THEN ;
+
+: RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
+   REG-EXT-RB-RESTORE-XT @ ?dup IF execute THEN
+   RBF-DEPTH @ 1 - RBF-DEPTH !
+   RBF-CUR {: r:ptr :}
+   r RBF.UEND @ USIGS-RESTORE-END
+   r RBF.NEND @ NORET-RESTORE-END
+   r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
+   r RBF.SYMN @ SYM-N !
+   r RBF.SYMU @ SYM-STR-U !
+   r RBF.CTN @ CTN !
+   r RBF.CTU @ CT-STR-U !
+   r RBF.LIN @ LIN-NDECL !
+   r RBF.VRECN @ VREC-N !
+   r RBF.VRECF @ VREC-FIELD-N !
+   r RBF.VRECND @ VREC-NODE-N !
+   r RBF.VRECU @ VREC-STR-U !
+   r RBF.CAND @ CHK-CAND !
+   r RBF.VSIG @ VSIG !
+   r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
+   r RBF.PKGU @ CHECKER-PACKAGE-U !
+   RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
+   r RBF.DFEREND @ DFER-END !
+   DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
 : CHECKER-SCOPE-START ( -- )
-   UEND @ CSCOPE-UEND !
-   NORET-END @ CSCOPE-NEND !
-   SYM-N @ CSCOPE-SYMN !
-   SYM-STR-U @ CSCOPE-SYMU !
-   CTN @ CSCOPE-CTN !
-   CT-STR-U @ CSCOPE-CTU !
-   LIN-NDECL @ CSCOPE-LIN-NDECL !
-   VREC-N @ CSCOPE-VREC-N !
-   VREC-FIELD-N @ CSCOPE-VREC-FIELD-N !
-   VREC-NODE-N @ CSCOPE-VREC-NODE-N !
-   VREC-STR-U @ CSCOPE-VREC-STR-U !
-   CHK-CAND @ CSCOPE-CAND !
-   VSIG @ CSCOPE-VSIG ! ;
+   RBF-PUSH ;
 
 : CHECKER-SCOPE-DONE ( -- )
-   CSCOPE-UEND @ USIGS-RESTORE-END
-   CSCOPE-NEND @ NORET-RESTORE-END
-   CSCOPE-SYMN @ HIDX-SYMS-RETIRE
-   CSCOPE-SYMN @ SYM-N !
-   CSCOPE-SYMU @ SYM-STR-U !
-   CSCOPE-CTN @ CTN !
-   CSCOPE-CTU @ CT-STR-U !
-   CSCOPE-LIN-NDECL @ LIN-NDECL !
-   CSCOPE-VREC-N @ VREC-N !
-   CSCOPE-VREC-FIELD-N @ VREC-FIELD-N !
-   CSCOPE-VREC-NODE-N @ VREC-NODE-N !
-   CSCOPE-VREC-STR-U @ VREC-STR-U !
-   CSCOPE-CAND @ CHK-CAND !
-   CSCOPE-VSIG @ VSIG ! ;
+   RBF-POP ;
 
 : CHECK-CANDIDATE-START ( -- )
-   UEND @ CAND-UEND !
-   NORET-END @ CAND-NEND !
-   SYM-N @ CAND-SYMN !
-   SYM-STR-U @ CAND-SYMU !
-   CTN @ CAND-CTN !
-   CT-STR-U @ CAND-CTU !
-   LIN-NDECL @ CAND-LIN-NDECL !
-   VREC-N @ CAND-VREC-N !
-   VREC-FIELD-N @ CAND-VREC-FIELD-N !
-   VREC-NODE-N @ CAND-VREC-NODE-N !
-   VREC-STR-U @ CAND-VREC-STR-U !
+   RBF-PUSH
    -1 CHK-CAND !
    -1 VSIG ! ;
 
 : CHECK-CANDIDATE-DONE ( n -- n )
-   CAND-VERD !
-   0 VSIG !
-   0 CHK-CAND !
-   CAND-UEND @ USIGS-RESTORE-END
-   CAND-NEND @ NORET-RESTORE-END
-   CAND-SYMN @ HIDX-SYMS-RETIRE
-   CAND-SYMN @ SYM-N !
-   CAND-SYMU @ SYM-STR-U !
-   CAND-CTN @ CTN !
-   CAND-CTU @ CT-STR-U !
-   CAND-LIN-NDECL @ LIN-NDECL !
-   CAND-VREC-N @ VREC-N !
-   CAND-VREC-FIELD-N @ VREC-FIELD-N !
-   CAND-VREC-NODE-N @ VREC-NODE-N !
-   CAND-VREC-STR-U @ VREC-STR-U !
-   CAND-VERD @ ;
+   RBF-POP ;
 
 : CHECK-CANDIDATE! ( ptr u8 n -- n )
    CHECK-CANDIDATE-START

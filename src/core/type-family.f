@@ -486,12 +486,86 @@ variable LAY-N   0 LAY-N !
    id ;
 
 \ ---------------------------------------------------------------------------
-\ base-state reset (item 3 will layer transactional high-water rollback on top).
+\ base-state reset.
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
    0 SUMV-N !   0 PF-N !   0 LAY-N ! ;
 TFAM-RESET
+
+\ ---------------------------------------------------------------------------
+\ rollback frame stack (TFAM half of the checker's transactional rollback).
+\ Each checker scope/candidate saves the family/variant/field/layout registry
+\ high-water marks plus the string-pool and param-kind pool ends; rejecting a
+\ scope/candidate pops them so a rejected family declaration leaves no family,
+\ variant, field, or layout row and no interned name behind. These registries use
+\ linear scans keyed on (package, tail) — no separate hash index — so restoring
+\ the counters IS entry retirement: TFAM-FIND-IN/SUMV-FIND/PF-FIND/LAY-FIND only
+\ scan [0,N), and re-adding under the same name interns fresh at the restored
+\ pool end. Pushed/popped in lockstep with checker.f's core frame.
+\ ---------------------------------------------------------------------------
+BEGIN-STRUCTURE TF-RBF-REC
+   CELL +FIELD TFRB.TFAMN
+   CELL +FIELD TFRB.STRU
+   CELL +FIELD TFRB.PKN
+   CELL +FIELD TFRB.SUMVN
+   CELL +FIELD TFRB.PFN
+   CELL +FIELD TFRB.LAYN
+END-STRUCTURE
+
+16 constant TF-RBF-CAP-INIT
+variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
+create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
+variable TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
+: TF-RBF-BASE ( -- ptr ) TF-RBF-P @ ;
+variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
+
+: TF-RBF-GROW ( -- )
+   TF-RBF-CAP-V @ 2 * {: nc:n :}
+   TF-RBF-P  TF-RBF-CAP-V @ TF-RBF-REC *  nc TF-RBF-REC *  REG-GROW1
+   nc TF-RBF-CAP-V ! ;
+: TF-RBF-ENSURE ( -- )
+   TF-RBF-DEPTH @ TF-RBF-CAP-V @ < IF exit THEN
+   TF-RBF-GROW ;
+: TF-RBF-CUR ( -- ptr ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
+
+: TFAM-ROLLBACK-SAVE ( -- )
+   TF-RBF-ENSURE
+   TF-RBF-CUR {: r:ptr :}
+   TFAM-N @ r TFRB.TFAMN !
+   TF-STR-U @ r TFRB.STRU !
+   TF-PK-N @ r TFRB.PKN !
+   SUMV-N @ r TFRB.SUMVN !
+   PF-N @ r TFRB.PFN !
+   LAY-N @ r TFRB.LAYN !
+   TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
+: TFAM-ROLLBACK-RESTORE ( -- )
+   TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH !
+   TF-RBF-CUR {: r:ptr :}
+   r TFRB.TFAMN @ TFAM-N !
+   r TFRB.STRU @ TF-STR-U !
+   r TFRB.PKN @ TF-PK-N !
+   r TFRB.SUMVN @ SUMV-N !
+   r TFRB.PFN @ PF-N !
+   r TFRB.LAYN @ LAY-N ! ;
+
+\ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
+\ at snapshot), so drop any grown arena back to the baked boot store.
+: TFAM-RBF-SNAP-RESET ( -- )
+   TF-RBF-BOOT TF-RBF-P !
+   TF-RBF-CAP-INIT TF-RBF-CAP-V !
+   0 TF-RBF-DEPTH ! ;
+
+\ combined registry rollback hooks: one SAVE/RESTORE pair the checker's core
+\ RBF-PUSH/POP drives, so TFAM + SCHEMA frames stay in lockstep with core marks.
+: REG-EXT-ROLLBACK-SAVE ( -- )
+   TFAM-ROLLBACK-SAVE
+   SCHEMA-ROLLBACK-SAVE ;
+: REG-EXT-ROLLBACK-RESTORE ( -- )
+   SCHEMA-ROLLBACK-RESTORE
+   TFAM-ROLLBACK-RESTORE ;
+' REG-EXT-ROLLBACK-SAVE    REG-EXT-RB-SAVE-XT !
+' REG-EXT-ROLLBACK-RESTORE REG-EXT-RB-RESTORE-XT !
 
 \ ---------------------------------------------------------------------------
 \ snapshot persist: bake grown TFAM/SUMV/field/layout/param-kind/string stores
@@ -511,5 +585,8 @@ TFAM-RESET
 \ install the friend-only registry persist hook read by CHECKER-SNAPSHOT-PREPARE.
 : REG-EXT-PERSIST ( -- )
    TFAM-SNAPSHOT-PERSIST
-   SCHEMA-SNAPSHOT-PERSIST ;
+   SCHEMA-SNAPSHOT-PERSIST
+   RBF-SNAP-RESET               \ core rollback frames are process-local
+   TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
+   SCHEMA-RBF-SNAP-RESET ;      \ SCHEMA registry rollback frames
 ' REG-EXT-PERSIST REG-EXT-PERSIST-XT !

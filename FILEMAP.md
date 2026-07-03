@@ -689,3 +689,4 @@ points stay listed.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
 - `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
+- `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.

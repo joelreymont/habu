@@ -123,6 +123,54 @@ SCHEMA-RESET
    idx cells SCH-ROOT-BASE + @ ;
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
 
+\ ---------------------------------------------------------------------------
+\ rollback frame stack (SCHEMA half of the checker's transactional rollback).
+\ Each checker scope/candidate saves the node + schema-root high-water marks;
+\ rejecting a scope/candidate pops them so a rejected family's schema nodes are
+\ retired (a later scan/new-node reuses the freed ids). Node/root fields are
+\ pointer-free, so restoring the counters fully retires the entries. Pushed/popped
+\ in lockstep with checker.f's core frame via the REG-EXT-RB-* hooks.
+\ ---------------------------------------------------------------------------
+BEGIN-STRUCTURE SCH-RBF-REC
+   CELL +FIELD SCHRB.N
+   CELL +FIELD SCHRB.ROOTN
+END-STRUCTURE
+
+16 constant SCH-RBF-CAP-INIT
+variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
+create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
+variable SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
+: SCH-RBF-BASE ( -- ptr ) SCH-RBF-P @ ;
+variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
+
+: SCH-RBF-GROW ( -- )
+   SCH-RBF-CAP-V @ 2 * {: nc:n :}
+   SCH-RBF-P  SCH-RBF-CAP-V @ SCH-RBF-REC *  nc SCH-RBF-REC *  REG-GROW1
+   nc SCH-RBF-CAP-V ! ;
+: SCH-RBF-ENSURE ( -- )
+   SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN
+   SCH-RBF-GROW ;
+: SCH-RBF-CUR ( -- ptr ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
+
+: SCHEMA-ROLLBACK-SAVE ( -- )
+   SCH-RBF-ENSURE
+   SCH-RBF-CUR {: r:ptr :}
+   SCH-N @ r SCHRB.N !
+   SCH-ROOT-N @ r SCHRB.ROOTN !
+   SCH-RBF-DEPTH @ 1 + SCH-RBF-DEPTH ! ;
+: SCHEMA-ROLLBACK-RESTORE ( -- )
+   SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH !
+   SCH-RBF-CUR {: r:ptr :}
+   r SCHRB.N @ SCH-N !
+   r SCHRB.ROOTN @ SCH-ROOT-N ! ;
+
+\ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
+\ at snapshot), so drop any grown arena back to the baked boot store.
+: SCHEMA-RBF-SNAP-RESET ( -- )
+   SCH-RBF-BOOT SCH-RBF-P !
+   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
+   0 SCH-RBF-DEPTH ! ;
+
 \ --- snapshot persist: bake any grown store into fresh image DATA. Fields hold no
 \ pointers, so nothing rebases. Called through the checker's REG-EXT-PERSIST hook.
 : SCHEMA-SNAPSHOT-PERSIST ( -- )

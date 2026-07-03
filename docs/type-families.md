@@ -1230,29 +1230,63 @@ This is rendering only. Checker correctness should not depend on renderer compac
 
 ## 21. Scope, rollback, and snapshots
 
-The new registries must participate in checker rollback and image snapshotting.
+The new registries participate in checker rollback and image snapshotting.
 
-Add to candidate/scope state:
+### 21.1 Transactional rollback-frame stack (PLAN item 3)
+
+Rollback is a depth-safe **frame stack**, not single save slots. `CHECKER-SCOPE-START`
+and `CHECK-CANDIDATE-START` push a frame; `CHECKER-SCOPE-DONE` and
+`CHECK-CANDIDATE-DONE` pop it. Both a *rejected* scoped load and a *successful*
+candidate probe roll back, so a failed family declaration cannot poison later
+checks, and nested candidates/scopes (all-errors replay, preverify,
+`CHK-RUN-STATIC-LINTS` inside `CHK-RUN-SCOPED`) never overwrite a parent frame.
+
+Each frame saves every mutable high-water mark. `checker.f` owns the core frame
+(`RBF-REC`, `RBF-PUSH`/`RBF-POP`):
 
 ```text
-TFAM-N
-TFAM-STR-U
-SUMV-N
-PRODFIELD-N
-SCHEMA-N
-LAYOUT-N
+UEND  NORET-END  SYM-N  SYM-STR-U  CTN  CT-STR-U  LIN-NDECL
+VREC-N  VREC-FIELD-N  VREC-NODE-N  VREC-STR-U  CHK-CAND  VSIG
+CHECKER-PACKAGE-MODE  CHECKER-PACKAGE-U  (+ package-name bytes)  DFER-END
 ```
 
-Add persistence helpers:
+The TFAM/SUMV/SCHEMA registries hang parallel frames off the
+`REG-EXT-RB-SAVE-XT` / `REG-EXT-RB-RESTORE-XT` hooks that `type-family.f` and
+`type-schema.f` install, pushed/popped in lockstep with the core frame:
+
+```text
+TFAM-N  TF-STR-U  TF-PK-N  SUMV-N  PF-N  LAY-N        (TFAM-ROLLBACK-SAVE/RESTORE)
+SCH-N   SCH-ROOT-N                                    (SCHEMA-ROLLBACK-SAVE/RESTORE)
+```
+
+Entry-retirement rules:
+
+- **TFAM/SUMV/PF/LAY** use linear scans keyed on `(package, tail)` — no separate
+  hash index — so restoring the counter *is* entry retirement: `*-FIND` only scans
+  `[0,N)` and re-adding under the same name interns fresh at the restored pool end.
+- **SYM** carries a hash index (`HIDX`). `RBF-POP` calls `HIDX-SYMS-RETIRE` to pop
+  the retired bucket rows *before* rewinding `SYM-N`, so a retired signature cannot
+  be found post-rollback and a reused id gets zeroed cache cells.
+- **DFER-END** rewinds and `DFER-TERM` re-terminates the scan. The deferred-target
+  cache (`HIDX-DFR`) is kept honest by `HIDX-DFR-SYNC`/`HIDX-DFR-DEP+`: a cached
+  answer records the `DFER-END` it depends on and is flushed (epoch bump) when a
+  rollback rewinds below it, mirroring the existing `HIDX-EFF`/`HIDX-CTL` sync.
+
+### 21.2 Snapshot persistence
+
+Persistence helpers bake each grown store into fresh image DATA:
 
 ```forth
 TFAM-SNAPSHOT-PERSIST
-SUMV-SNAPSHOT-PERSIST
 SCHEMA-SNAPSHOT-PERSIST
-LAYOUT-SNAPSHOT-PERSIST
 ```
 
-Call them from the same snapshot preparation path that persists concrete types, value records, symbols, user signatures, and no-return metadata.
+They run through the checker's `REG-EXT-PERSIST` hook, on the same snapshot
+preparation path that persists concrete types, value records, symbols, user
+signatures, and no-return metadata. That hook also drops the transient rollback
+frame arenas back to their baked boot stores (`RBF-SNAP-RESET`,
+`TFAM-RBF-SNAP-RESET`, `SCHEMA-RBF-SNAP-RESET`) — frames are process-local and
+always at depth 0 at snapshot time, like the `HIDX` mapping.
 
 ---
 
