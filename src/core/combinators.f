@@ -6,15 +6,16 @@
 : KEEP ( R a [ R a -- S ] -- S a )
    over >r execute r> ;
 
-\ BI/TRI and the iterators must keep quotations available across calls. Modeling
-\ that in checked code would require recursive quotation types, so these are
-\ audited TRUSTED: boundaries covered by
-\ engine-suite plus the native gate runner.
-TRUSTED: BI ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
+: BI ( R a [ R a -- R b ] [ R b a -- R b c ] -- R b c )
    >r KEEP r> execute ;
 
-TRUSTED: TRI ( R a [ R a -- R b ] [ R b a -- R b c ] [ R b c a -- R b c d ] -- R b c d )
+: TRI ( R a [ R a -- R b ] [ R b a -- R b c ] [ R b c a -- R b c d ] -- R b c d )
    >r >r KEEP r> KEEP r> execute ;
+
+\ The loop iterators re-execute a stored quotation (r@/local fetch per
+\ iteration); typing that needs the multishot-quotation capability
+\ (dot habu-multishot-quotations-typed-8832cace), so these stay audited
+\ TRUSTED: boundaries covered by engine-suite plus the native gate runner.
 
 TRUSTED: TIMES ( R i64 [ R -- R ] -- R )
    >r 0 ?do r@ execute loop r> drop ;

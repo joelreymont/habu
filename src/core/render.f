@@ -88,7 +88,7 @@ variable RATOM-I
 
 : CON-OUT {: p :}
    p 2 = IF 102 EMIT1 ELSE
-   p 0 > p CC-MAX < and IF
+   p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user deftype)
       p CT-NAME$ dup IF RSTR ELSE 2drop 63 EMIT1 THEN
    ELSE 63 EMIT1 THEN THEN ;
 
@@ -103,109 +103,67 @@ variable RATOM-I
    t PARAM>NAME-A t PARAM>NAME-U RSTR  60 EMIT1 ;
 
 \ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
-\ quotation has a non-neutral return-stack effect (two nesting levels; deeper
-\ caps at '?').
+\ quotation has a non-neutral return-stack effect. Rendering is fully recursive
+\ to a bounded nesting depth (QDEPTH-MAX levels) with a cycle guard, so a deeply
+\ nested quot (combinator over combinator, typed loop/tile combinators) renders
+\ in full instead of capping the 3rd level at '?'.
 \ Gap2/3: quot-bearing sigs now RECORD as scheme-strings and round-trip, so
 \ combinator call sites (dip, keep) are checked against them. Only a genuine '?'
 \ (an unmodeled tag, via RQM) still blocks recording — see REC-SIG below.
-create QRBUF 32 cells allot   variable QRBN     \ level-1 nested quot
-create Q2BUF 16 cells allot   variable Q2BN     \ level-2 nested quot
-
-\ A quot renders as [ in -- out ] to TWO nesting levels (one buffer per level;
-\ a 3rd-level quot caps at '?'). That covers every combinator sig in practice.
-
-: Q2REND-1 {: t :} t T-RES {: r :}              \ level-2 leaf: con | var | ptr | '?'
-   r TAG case
-      T-VAR of r PAY LET-OF EMIT1 endof
-      T-CON of r PAY CON-OUT endof
-      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
-      T-ATOM of r ATOM-REND endof
-      T-PARAM of
-        r PARAM-START
-        0 BEGIN dup r PARAM>ARGC < WHILE
-          dup 0 > IF 44 EMIT1 THEN
-          r over PARAM>ARG RECURSE
-          1 +
-        REPEAT drop 62 EMIT1
-      endof
-      63 EMIT1
-   endcase ;
-
-: Q2REND-ROW {: row :}  0 Q2BN !  row
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE Q2BN @ cells Q2BUF + !  Q2BN @ 1 + Q2BN !
-     P>REST
-   REPEAT drop
-   Q2BN @ BEGIN dup 0 > WHILE 1 - dup cells Q2BUF + @ Q2REND-1
-     dup 0 > IF 32 EMIT1 THEN REPEAT drop ;
+6 constant QDEPTH-MAX                        \ quotation nesting render budget
+create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 
 : QRET? ( q -- f ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
-: Q2RET ( q -- ) {: q :}
-   q QRET? IF
-      32 EMIT1 124 EMIT1 32 EMIT1
-      q Q>RIN Q2REND-ROW 45 EMIT1 45 EMIT1 32 EMIT1
-      q Q>ROUT Q2REND-ROW
-   THEN ;
+\ is quot node r already being rendered above depth d (a type-graph cycle)?
+: QANCESTOR? {: r:n d:n :}
+   0 BEGIN dup d < WHILE
+      dup cells QPATH + @ r = IF drop -1 EXIT THEN
+      1 +
+   REPEAT drop 0 ;
 
-: QREND-1 {: t :} t T-RES {: r :}               \ level-1 leaf: con | var | nested quot
+\ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
+\ bottom-to-top (space-separated); mode=0 renders a type. RECURSE re-enters with
+\ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
+: QREND {: x:n d:n mode:n :}
+   mode 0 > IF
+      x R-RES dup TAG S-PUSH = IF
+         dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+         P>TYPE d 0 RECURSE
+      ELSE drop THEN
+      EXIT
+   THEN
+   x T-RES {: r:n :}
    r TAG case
       T-VAR of r PAY LET-OF EMIT1 endof
       T-CON of r PAY CON-OUT endof
-      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
-      T-QUOT of                            \ a nested quot -> [ in -- out ... ]
-        91 EMIT1 32 EMIT1  r Q>DIN Q2REND-ROW
-        45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT Q2REND-ROW
-        r Q2RET  93 EMIT1
+      T-PTR of s" ptr " RSTR  r PTR>INNER d 0 RECURSE endof
+      T-QUOT of
+        d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
+           r d cells QPATH + !
+           91 EMIT1 32 EMIT1  r Q>DIN d 1+ 1 RECURSE
+           45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT d 1+ 1 RECURSE
+           r QRET? IF
+              32 EMIT1 124 EMIT1 32 EMIT1
+              r Q>RIN d 1+ 1 RECURSE 45 EMIT1 45 EMIT1 32 EMIT1
+              r Q>ROUT d 1+ 1 RECURSE
+           THEN
+           93 EMIT1
+        ELSE 63 EMIT1 THEN
       endof
       T-ATOM of r ATOM-REND endof
       T-PARAM of
         r PARAM-START
         0 BEGIN dup r PARAM>ARGC < WHILE
           dup 0 > IF 44 EMIT1 THEN
-          r over PARAM>ARG RECURSE
+          r over PARAM>ARG d 0 RECURSE
           1 +
         REPEAT drop 62 EMIT1
       endof
       63 EMIT1
    endcase ;
 
-: QREND-ROW {: row :}  0 QRBN !  row
-   BEGIN R-RES dup TAG S-PUSH = WHILE
-     dup P>TYPE QRBN @ cells QRBUF + !  QRBN @ 1 + QRBN !
-     P>REST
-   REPEAT drop
-   QRBN @ BEGIN dup 0 > WHILE 1 - dup cells QRBUF + @ QREND-1
-     dup 0 > IF 32 EMIT1 THEN REPEAT drop ;
-
-: QRET ( q -- ) {: q :}
-   q QRET? IF
-      32 EMIT1 124 EMIT1 32 EMIT1
-      q Q>RIN QREND-ROW 45 EMIT1 45 EMIT1 32 EMIT1
-      q Q>ROUT QREND-ROW
-   THEN ;
-
-: REND-TYPE {: t :} t T-RES {: r :}
-   r TAG case
-      T-VAR of r PAY LET-OF EMIT1 endof
-      T-CON of r PAY CON-OUT endof
-      T-PTR of s" ptr " RSTR  r PTR>INNER RECURSE endof
-      T-QUOT of                                     \ quot<effect> -> [ in -- out ... ]
-        91 EMIT1 32 EMIT1  r Q>DIN QREND-ROW
-        45 EMIT1 45 EMIT1 32 EMIT1  r Q>DOUT QREND-ROW
-        r QRET  93 EMIT1
-      endof
-      T-ATOM of r ATOM-REND endof
-      T-PARAM of
-        r PARAM-START
-        0 BEGIN dup r PARAM>ARGC < WHILE
-          dup 0 > IF 44 EMIT1 THEN
-          r over PARAM>ARG RECURSE
-          1 +
-        REPEAT drop 62 EMIT1
-      endof
-      63 EMIT1
-   endcase ;
+: REND-TYPE {: t:n :}  t 0 0 QREND ;
 create RBUF 64 cells allot   variable RBN
 variable RSHOW-DST
 
@@ -241,13 +199,6 @@ variable RSHOW-DST
    DCUR @ REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - 32 EMIT1 dup cells RBUF + @ REND-TYPE REPEAT drop
    0 RDST !  RSBUF RSN @ ;
-
-\ REC-SIG ( na nu -- ) : record a certified word. Refuses (conservatively, the
-\ word just stays unrecorded) on unknown tags or absurd var counts.
-: REC-SIG {: na nu :}
-   REND-SIG
-   RQM @ 0 =  NLET @ 27 <  and  IF drop drop na nu CHECKER-USIG-CERT-CURRENT ELSE drop drop THEN ;
-' REC-SIG RECXT !
 
 \ DIAG-PRINT ( -- ) : reject diagnostic, one line to stderr —
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
@@ -305,10 +256,11 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
+   QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -325,6 +277,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
+   QUALBAD @ IF s" fix_qualified_name" EXIT THEN
    UNDEFERR @ IF s" unknown_rejection" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF
@@ -346,6 +299,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
+   QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF
@@ -392,6 +346,11 @@ variable JPOS  variable JLINE  variable JCOL
    SGBAD-BAREPTR? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT
      s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+   THEN
+   QUALBAD @ IF
+     s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
+     s" ' (more than one ':')" DTXT EXIT
    THEN
    UNDEFERR @ IF
      s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
@@ -449,3 +408,39 @@ variable JPOS  variable JLINE  variable JCOL
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
+
+\ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
+\ (conservatively, the word stays unrecorded) on unknown tags or absurd var
+\ counts — and reports which word and why, since callers otherwise fail later
+\ as undefined with no hint that the producer was the problem.
+: REC-REFUSE-WHY ( -- ptr u8 n )
+   RQM @ IF s" unmodeled type tag in inferred effect"
+   ELSE s" more than 26 type variables in inferred effect" THEN ;
+
+: REC-REFUSE-PROSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+   s" habu: in " DTXT  na nu DTXT
+   s" : effect not recorded: " DTXT  wa wu DTXT ;
+
+: REC-REFUSE-JSON ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+   123 EMIT1
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" W-EFFECT-NOT-RECORDED" JSTR 44 EMIT1
+   s" word" JKEY na nu JSTR 44 EMIT1
+   s" reason" JKEY wa wu JSTR
+   125 EMIT1 ;
+
+: REC-REFUSE-EMIT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
+   1 RDST !  0 RSN !
+   na nu wa wu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+
+: REC-REFUSE-DIAG ( ptr u8 n -- )
+   REC-REFUSE-WHY REC-REFUSE-EMIT ;
+
+: REC-SIG ( ptr u8 n -- ) {: na:ptr nu:n :}
+   REND-SIG 2drop        \ rendered only to detect unmodeled tags / var count
+   RQM @ 0 =  NLET @ 27 <  and IF na nu CHECKER-USIG-CERT-CURRENT EXIT THEN
+   na nu REC-REFUSE-DIAG ;
+' REC-SIG RECXT !
