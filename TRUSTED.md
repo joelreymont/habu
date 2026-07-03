@@ -642,7 +642,10 @@ src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436 12
 src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436 8
-src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 38
+src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
+src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
+src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
+src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
 src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 95
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 9
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
@@ -725,7 +728,7 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 46
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 47
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436
@@ -756,7 +759,7 @@ src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543 
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
 tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
 test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543 2
-test/engine-suite.f:HOOK test-metaprog habu-police-set-check-850bc543
+test/engine-suite.f:HOOK test-metaprog habu-police-set-check-850bc543 2
 test/gate-aot-negative-lib.f:HOOK test-metaprog habu-police-set-check-850bc543
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543 4
 -->
