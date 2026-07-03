@@ -7,11 +7,20 @@ $40000 constant GS-CAP
 $200 constant GS-LINE-CAP
 $0A constant GS-LF
 $09 constant GS-TAB
+256 constant GS-TROW-MAX
+4 constant GS-SUBJ-N
 
 create GS-PATH-BUF FS-PATH-CAP allot
 create GS-LINE-BUF GS-LINE-CAP allot
 create GS-BUF GS-CAP allot
 create GS-SLOW-LABEL GS-LINE-CAP allot
+create GS-CHILD-BUF GS-LINE-CAP allot
+create GS-TROW-OFFS GS-TROW-MAX cells allot
+create GS-TROW-US GS-TROW-MAX cells allot
+create GS-TROW-SUBJS GS-TROW-MAX cells allot
+create GS-SUBJ-TOTALS GS-SUBJ-N cells allot
+create GS-SUBJ-MAXES GS-SUBJ-N cells allot
+create GS-SUBJ-COUNTS GS-SUBJ-N cells allot
 
 variable GS-PATH-U
 variable GS-INITED
@@ -25,6 +34,16 @@ variable GS-SPAN-LABEL-I
 variable GS-SPANS
 variable GS-SLOW-MS
 variable GS-SLOW-U
+variable GS-CHILD-U
+variable GS-TROW-N
+variable GS-LOAD-SPANS
+variable GS-LOAD-MS
+variable GS-SPAN-STRAY
+variable GS-SPAN-STRAY-EXPECTED
+variable GS-SPAN-STRAY-UNEXPECTED
+variable GS-T-I
+variable GS-T-START
+variable GS-T-K
 
 variable GS-TOP-PHASE
 variable GS-TOP-CAPTURE
@@ -147,16 +166,33 @@ variable GS-HELPER-SPAWN
    v 10 >= if v 10 / RECURSE then
    v 10 mod STR-ZERO + GS-LINE-C+ ;
 
-: GS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+: GS-CHILD-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   u GS-LINE-CAP > if E-STR-CAPACITY throw then
+   a GS-CHILD-BUF u BYTE-COPY
+   u GS-CHILD-U ! ;
+
+: GS-CHILD-OWNED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   GS-CHILD-U @ 0= if GS-FALSE exit then
+   a u GS-CHILD-BUF GS-CHILD-U @ STR= ;
+
+: GS-SPAN-EMIT ( ptr u8 n ptr u8 n n -- ) {: kind:ptr kindu:n label:ptr labelu:n ms:n :}
    GS-ON? 0= if exit then
    GS-LINE-RESET
-   s" span" GS-LINE+
+   kind kindu GS-LINE+
    GS-TAB GS-LINE-C+
    ms GS-LINE-U+
    GS-TAB GS-LINE-C+
    label labelu GS-LINE+
    GS-LF GS-LINE-C+
    GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
+
+: GS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   label labelu GS-CHILD-OWNED? if exit then
+   s" span" label labelu ms GS-SPAN-EMIT ;
+
+: GS-SPAN-LOAD ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   s" span-load" label labelu ms GS-SPAN-EMIT ;
 
 : GS-TAB+ ( -- )
    GS-TAB GS-LINE-C+ ;
@@ -181,6 +217,47 @@ variable GS-HELPER-SPAWN
 
 : GS-INC ( ptr n -- ) {: p:ptr :}
    p @ 1 + p ! ;
+
+: GS-SUBJ$ ( n -- ptr u8 n ) {: i:n :}
+   i case
+      0 of s" host-source" endof
+      1 of s" candidate-cli" endof
+      2 of s" candidate-source" endof
+      3 of s" artifact" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: GS-SUBJ-CHECK ( n -- n ) {: i:n :}
+   i 0 < if E-TBL-BOUNDS throw then
+   i GS-SUBJ-N >= if E-TBL-BOUNDS throw then
+   i ;
+
+: GS-SUBJ-TOTAL-PTR ( n -- ptr n )
+   GS-SUBJ-CHECK cells GS-SUBJ-TOTALS + ;
+
+: GS-SUBJ-MAX-PTR ( n -- ptr n )
+   GS-SUBJ-CHECK cells GS-SUBJ-MAXES + ;
+
+: GS-SUBJ-COUNT-PTR ( n -- ptr n )
+   GS-SUBJ-CHECK cells GS-SUBJ-COUNTS + ;
+
+: GS-SUBJ-ID ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup GS-SUBJ-N < while
+      dup GS-SUBJ$ a u STR= if exit then
+      1+
+   repeat drop
+   -1 ;
+
+: GS-SUBJ-RESET ( n -- ) {: i:n :}
+   0 i GS-SUBJ-TOTAL-PTR !
+   0 i GS-SUBJ-MAX-PTR !
+   0 i GS-SUBJ-COUNT-PTR ! ;
+
+: GS-SUBJS-RESET ( -- )
+   0 begin dup GS-SUBJ-N < while
+      dup GS-SUBJ-RESET
+      1+
+   repeat drop ;
 
 : GS-RESET-COUNTS ( -- )
    0 GS-TOP-PHASE !
@@ -211,24 +288,31 @@ variable GS-HELPER-SPAWN
    0 GS-HELPER-SPAWN !
    0 GS-SPANS !
    0 GS-SLOW-MS !
-   0 GS-SLOW-U ! ;
+   0 GS-SLOW-U !
+   0 GS-LOAD-SPANS !
+   0 GS-LOAD-MS !
+   0 GS-SPAN-STRAY !
+   0 GS-SPAN-STRAY-EXPECTED !
+   0 GS-SPAN-STRAY-UNEXPECTED !
+   0 GS-TROW-N !
+   GS-SUBJS-RESET ;
 
 : GS-DIGIT? ( n -- bool ) {: c:n :}
    c STR-ZERO >= c STR-ZERO 10 + < and ;
 
-: GS-SPAN-PREFIX? ( n n -- bool ) {: off:n u:n :}
-   u 6 < if GS-FALSE exit then
-   GS-BUF off BYTE+ 4 s" span" STR= 0= if GS-FALSE exit then
-   GS-BUF off 4 + BYTE+ c@ GS-TAB = ;
+: GS-KIND-PREFIX? ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
+   u keyu 2 + < if GS-FALSE exit then
+   GS-BUF off BYTE+ keyu key keyu STR= 0= if GS-FALSE exit then
+   GS-BUF off keyu + BYTE+ c@ GS-TAB = ;
 
-: GS-SPAN-PARSE? ( n n -- bool ) {: off:n u:n :}
-   off u GS-SPAN-PREFIX? 0= if GS-FALSE exit then
+: GS-KIND-SPAN-PARSE? ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
+   off u key keyu GS-KIND-PREFIX? 0= if GS-FALSE exit then
    0 GS-SPAN-V !
-   5 GS-J !
+   keyu 1+ GS-J !
    begin GS-J @ u < while
       GS-BUF off GS-J @ + BYTE+ c@ {: c:n :}
       c GS-TAB = if
-         GS-J @ 5 = if GS-FALSE exit then
+         GS-J @ keyu 1+ = if GS-FALSE exit then
          GS-J @ 1+ GS-SPAN-LABEL-I !
          GS-SPAN-LABEL-I @ u < if GS-TRUE exit then
          GS-FALSE exit
@@ -239,20 +323,129 @@ variable GS-HELPER-SPAWN
    repeat
    GS-FALSE ;
 
+: GS-SPAN-PARSE? ( n n -- bool ) {: off:n u:n :}
+   off u s" span" GS-KIND-SPAN-PARSE? ;
+
 : GS-SLOW! ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    labelu GS-LINE-CAP > if E-STR-CAPACITY throw then
    ms GS-SLOW-MS !
    label GS-SLOW-LABEL labelu BYTE-COPY
    labelu GS-SLOW-U ! ;
 
+: GS-FIELD-END ( n n n -- n ) {: off:n u:n start:n :}
+   start GS-T-K !
+   begin GS-T-K @ u < while
+      GS-BUF off GS-T-K @ + BYTE+ c@ GS-TAB = if GS-T-K @ exit then
+      GS-T-K @ 1+ GS-T-K !
+   repeat
+   u ;
+
+: GS-TROW+ ( n n n -- ) {: off:n labelu:n subj:n :}
+   GS-TROW-N @ GS-TROW-MAX >= if
+      s" gate-stats: test-row table overflow; raise GS-TROW-MAX" 1 die
+   then
+   off GS-TROW-N @ cells GS-TROW-OFFS + !
+   labelu GS-TROW-N @ cells GS-TROW-US + !
+   subj GS-TROW-N @ cells GS-TROW-SUBJS + !
+   GS-TROW-N @ 1+ GS-TROW-N ! ;
+
+: GS-INDEX-TEST-LINE ( n n -- ) {: off:n u:n :}
+   off u s" test" GS-KIND-PREFIX? 0= if exit then
+   off u 5 GS-FIELD-END {: lend:n :}
+   lend 5 <= if exit then
+   lend u >= if exit then
+   off u lend 1+ GS-FIELD-END {: send:n :}
+   GS-BUF off lend 1+ + BYTE+ send lend 1+ - GS-SUBJ-ID {: id:n :}
+   id 0 < if exit then
+   off 5 + lend 5 - id GS-TROW+ ;
+
+: GS-INDEX-TESTS ( -- )
+   0 GS-T-START !
+   0 GS-T-I !
+   begin GS-T-I @ GS-U @ < while
+      GS-BUF GS-T-I @ BYTE+ c@ GS-LF = if
+         GS-T-START @ GS-T-I @ GS-T-START @ - GS-INDEX-TEST-LINE
+         GS-T-I @ 1 + GS-T-START !
+      then
+      GS-T-I @ 1 + GS-T-I !
+   repeat
+   GS-T-START @ GS-U @ < if
+      GS-T-START @ GS-U @ GS-T-START @ - GS-INDEX-TEST-LINE
+   then ;
+
+: GS-TROW-LABEL$ ( n -- ptr u8 n ) {: i:n :}
+   GS-BUF i cells GS-TROW-OFFS + @ BYTE+ i cells GS-TROW-US + @ ;
+
+: GS-LABEL-SUBJ ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup GS-TROW-N @ < while
+      dup GS-TROW-LABEL$ a u STR= if
+         cells GS-TROW-SUBJS + @ exit
+      then
+      1+
+   repeat drop
+   -1 ;
+
+: GS-SPAN-LABEL$ ( n n -- ptr u8 n ) {: off:n u:n :}
+   GS-BUF off GS-SPAN-LABEL-I @ + BYTE+ u GS-SPAN-LABEL-I @ - ;
+
+\ Registered fixture-span prefixes: a stray (span with no matching test row) is
+\ expected drill-down detail when its label starts with one of these. Anything
+\ else is an unexpected stray worth investigating as an attribution bug.
+
+: GS-STRAY-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" lib/" STARTS-WITH? if GS-TRUE exit then
+   a u s" tools/" STARTS-WITH? if GS-TRUE exit then
+   a u s" test/" STARTS-WITH? if GS-TRUE exit then
+   GS-FALSE ;
+
+: GS-STRAY-SLICE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" dictionary/" STARTS-WITH? if GS-TRUE exit then
+   a u s" lint-tools/" STARTS-WITH? if GS-TRUE exit then
+   a u s" fork " STARTS-WITH? if GS-TRUE exit then
+   a u s" fs mutation " STARTS-WITH? if GS-TRUE exit then
+   a u s" process " STARTS-WITH? if GS-TRUE exit then
+   a u s" hb baseline " STARTS-WITH? if GS-TRUE exit then
+   GS-FALSE ;
+
+: GS-STRAY-LINT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" dot-dep-lint" STARTS-WITH? if GS-TRUE exit then
+   a u s" maki-dep-lint" STARTS-WITH? if GS-TRUE exit then
+   a u s" repl-lint" STARTS-WITH? if GS-TRUE exit then
+   a u s" stale-status-lint" STARTS-WITH? if GS-TRUE exit then
+   a u s" trust-lint" STARTS-WITH? if GS-TRUE exit then
+   GS-FALSE ;
+
+: GS-STRAY-EXPECTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u GS-STRAY-PATH? if GS-TRUE exit then
+   a u GS-STRAY-SLICE? if GS-TRUE exit then
+   a u GS-STRAY-LINT? ;
+
+: GS-STRAY+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   GS-SPAN-STRAY GS-INC
+   a u GS-STRAY-EXPECTED? if GS-SPAN-STRAY-EXPECTED GS-INC exit then
+   GS-SPAN-STRAY-UNEXPECTED GS-INC ;
+
+: GS-SUBJ+ ( ptr u8 n n n -- ) {: label:ptr labelu:n id:n ms:n :}
+   id 0 < if label labelu GS-STRAY+ exit then
+   id GS-SUBJ-TOTAL-PTR {: tp:ptr :}
+   tp @ ms + tp !
+   id GS-SUBJ-COUNT-PTR {: cp:ptr :}
+   cp @ 1 + cp !
+   id GS-SUBJ-MAX-PTR {: mp:ptr :}
+   ms mp @ > if ms mp ! then ;
+
 : GS-COUNT-SPAN ( n n -- ) {: off:n u:n :}
    off u GS-SPAN-PARSE? 0= if exit then
    GS-SPANS GS-INC
-   GS-SPAN-V @ GS-SLOW-MS @ > if
-      GS-BUF off GS-SPAN-LABEL-I @ + BYTE+
-      u GS-SPAN-LABEL-I @ -
-      GS-SPAN-V @ GS-SLOW!
-   then ;
+   GS-SPAN-V @ {: ms:n :}
+   off u GS-SPAN-LABEL$ {: la:ptr lu:n :}
+   ms GS-SLOW-MS @ > if la lu ms GS-SLOW! then
+   la lu la lu GS-LABEL-SUBJ ms GS-SUBJ+ ;
+
+: GS-COUNT-LOAD-SPAN ( n n -- ) {: off:n u:n :}
+   off u s" span-load" GS-KIND-SPAN-PARSE? 0= if exit then
+   GS-LOAD-SPANS GS-INC
+   GS-LOAD-MS @ GS-SPAN-V @ + GS-LOAD-MS ! ;
 
 : GS-LINE= ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
    u keyu <> if GS-FALSE exit then
@@ -266,6 +459,7 @@ variable GS-HELPER-SPAWN
 
 : GS-COUNT-LINE ( n n -- ) {: off:n u:n :}
    off u GS-COUNT-SPAN
+   off u GS-COUNT-LOAD-SPAN
    off u s" top-phase-spawn" GS-LINE= if GS-TOP-PHASE GS-INC exit then
    off u s" top-capture-spawn" GS-LINE= if GS-TOP-CAPTURE GS-INC exit then
    off u s" under-phase-spawn" GS-LINE= if GS-UNDER-PHASE GS-INC exit then
@@ -295,6 +489,7 @@ variable GS-HELPER-SPAWN
 
 : GS-SCAN ( -- )
    GS-RESET-COUNTS
+   GS-INDEX-TESTS
    0 GS-START !
    0 GS-I !
    begin GS-I @ GS-U @ < while
@@ -314,6 +509,18 @@ variable GS-HELPER-SPAWN
 
 : GS-ITEM. ( n ptr u8 n -- ) {: v:n a:ptr u:n :}
    a u type s" =" type v . ;
+
+: GS-SUBJ-LINE. ( n -- ) {: i:n :}
+   s" subject " type i GS-SUBJ$ type s" : " type
+   i GS-SUBJ-COUNT-PTR @ s" spans" GS-ITEM.
+   i GS-SUBJ-TOTAL-PTR @ s" total-ms" GS-ITEM.
+   i GS-SUBJ-MAX-PTR @ s" max-ms" GS-ITEM. ;
+
+: GS-SUBJ-REPORT ( -- )
+   0 begin dup GS-SUBJ-N < while
+      dup GS-SUBJ-LINE.
+      1+
+   repeat drop ;
 
 : GS-SUMMARY ( -- )
    GS-ON? 0= if exit then
@@ -347,8 +554,14 @@ variable GS-HELPER-SPAWN
    GS-CANDIDATE-CORRUPT @ s" candidate-corrupt" GS-ITEM.
    GS-HELPER-SPAWN @ s" helper-spawn" GS-ITEM.
    GS-SPANS @ s" spans" GS-ITEM.
+   GS-LOAD-SPANS @ s" load-spans" GS-ITEM.
+   GS-LOAD-MS @ s" load-ms" GS-ITEM.
+   GS-SPAN-STRAY @ s" span-stray" GS-ITEM.
+   GS-SPAN-STRAY-EXPECTED @ s" span-stray-expected" GS-ITEM.
+   GS-SPAN-STRAY-UNEXPECTED @ s" span-stray-unexpected" GS-ITEM.
    GS-SPANS @ 0 > if
       s" slowest-test-ms=" type GS-SLOW-MS @ .
       s" slowest-test=" type GS-SLOW-LABEL GS-SLOW-U @ type
    then
-   cr ;
+   cr
+   GS-SUBJ-REPORT ;

@@ -16,9 +16,11 @@ require test/gate-stats.f
 create GST-ROOT-BUF FS-PATH-CAP allot
 create GST-ROW-BUF GS-LINE-CAP allot
 create GST-SAVE-BUF FS-PATH-CAP allot
+create GST-CHILD-SAVE GS-LINE-CAP allot
 variable GST-ROOT-U
 variable GST-ROW-U
 variable GST-SAVE-U
+variable GST-CHILD-SAVE-U
 
 : GST-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -42,6 +44,15 @@ variable GST-SAVE-U
 : GST-GS-RESTORE ( -- )
    GST-SAVE$ GS-COPY-PATH!
    -1 GS-INITED ! ;
+
+: GST-CHILD-SAVE! ( -- )
+   GS-CHILD-U @ GS-LINE-CAP > if E-STR-CAPACITY throw then
+   GS-CHILD-BUF GST-CHILD-SAVE GS-CHILD-U @ BYTE-COPY
+   GS-CHILD-U @ GST-CHILD-SAVE-U ! ;
+
+: GST-CHILD-RESTORE ( -- )
+   GST-CHILD-SAVE GS-CHILD-BUF GST-CHILD-SAVE-U @ BYTE-COPY
+   GST-CHILD-SAVE-U @ GS-CHILD-U ! ;
 
 : GST-ROW-RESET ( -- )
    0 GST-ROW-U ! ;
@@ -101,8 +112,18 @@ variable GST-SAVE-U
    s" helper-spawn" GS-EVENT
    s" named helper" GS-HELPER-EVENT
    s" test phase" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
+   s" art phase" s" artifact" s" gate-runner" s" process" s" -" GS-TEST
    s" fast phase" 12 GS-SPAN
-   s" slow phase" 34 GS-SPAN ;
+   s" slow phase" 34 GS-SPAN
+   s" test phase" 20 GS-SPAN
+   s" art phase" 5 GS-SPAN
+   s" lib/demo-test.f" 7 GS-SPAN
+   s" test/run-worker-stdlib.f" 4 GS-SPAN-LOAD
+   GST-CHILD-SAVE!
+   s" owned label" GS-CHILD-LABEL!
+   s" owned label" 9 GS-SPAN
+   s" free label" 8 GS-SPAN
+   GST-CHILD-RESTORE ;
 
 : GST-SCAN ( -- )
    GS-READ
@@ -135,9 +156,30 @@ variable GST-SAVE-U
    GS-CANDIDATE-VALIDATE @ 1 T=
    GS-CANDIDATE-CORRUPT @ 1 T=
    GS-HELPER-SPAWN @ 2 T=
-   GS-SPANS @ 2 T=
+   GS-SPANS @ 6 T=
    GS-SLOW-MS @ 34 T=
    GS-SLOW-LABEL GS-SLOW-U @ s" slow phase" T$= ;
+
+: GST-EXPECT-LOAD-SPANS ( -- )
+   GS-LOAD-SPANS @ 1 T=
+   GS-LOAD-MS @ 4 T= ;
+
+: GST-EXPECT-SUBJECTS ( -- )
+   0 GS-SUBJ-COUNT-PTR @ 1 T=
+   0 GS-SUBJ-TOTAL-PTR @ 20 T=
+   0 GS-SUBJ-MAX-PTR @ 20 T=
+   3 GS-SUBJ-COUNT-PTR @ 1 T=
+   3 GS-SUBJ-TOTAL-PTR @ 5 T=
+   3 GS-SUBJ-MAX-PTR @ 5 T=
+   1 GS-SUBJ-COUNT-PTR @ 0 T=
+   2 GS-SUBJ-COUNT-PTR @ 0 T=
+   GS-SPAN-STRAY @ 4 T=
+   GS-SPAN-STRAY-EXPECTED @ 1 T=
+   GS-SPAN-STRAY-UNEXPECTED @ 3 T= ;
+
+: GST-EXPECT-DEDUPE ( -- )
+   GS-BUF GS-U @ s" owned label" CONTAINS? TFALSE
+   GS-BUF GS-U @ s" free label" CONTAINS? TTRUE ;
 
 : GST-EXPECT-TEST ( -- )
    GS-BUF GS-U @ GST-TEST-EXPECTED CONTAINS? TTRUE ;
@@ -148,6 +190,9 @@ variable GST-SAVE-U
    GST-WRITE-EVENTS
    GST-SCAN
    GST-EXPECT-COUNTS
+   GST-EXPECT-LOAD-SPANS
+   GST-EXPECT-SUBJECTS
+   GST-EXPECT-DEDUPE
    GST-EXPECT-TEST ;
 
 : GST-MAIN-BODY ( -- )

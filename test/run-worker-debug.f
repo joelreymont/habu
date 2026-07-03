@@ -3,4 +3,6 @@
 require test/gate-common-lib.f
 require test/gate-debug-lib.f
 
+TRW-LOAD-DONE
+
 GDB-RUN

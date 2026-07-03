@@ -3,6 +3,8 @@
 require test/gate-stdlib-lib.f
 require test/gate-stdlib-inline-lib.f
 
+TRW-LOAD-DONE
+
 : TRWS-SETUP ( -- )
    TR-TIMINGS @ 0 <> if GSI-TIMINGS! then ;
 
@@ -12,6 +14,12 @@ require test/gate-stdlib-inline-lib.f
 : TRWS-TOOL ( -- )
    SUITE-SKIP-TOOL-SEMANTIC!
    GSI-TOOL-TRUST ;
+
+: TRWS-TAIL-RUNNER ( -- )
+   GSI-TAIL-RUNNER
+   s" test/gate-pool-test.f" GSI-INCLUDE
+   s" test/gate-pool-orphan-test.f" GSI-INCLUDE
+   TR-INSTALL-POOL-HOOKS ;
 
 : TRWS-RUN ( -- )
    TRWS-SETUP
@@ -26,7 +34,7 @@ require test/gate-stdlib-inline-lib.f
       25 of GSI-TOOL-TYPED endof
       26 of GSI-TAIL-FAST endof
       27 of GSI-TAIL-PURE endof
-      28 of GSI-TAIL-RUNNER endof
+      28 of TRWS-TAIL-RUNNER endof
       29 of GSI-TAIL-BUILD endof
       31 of GSI-LINT-LIBS-CORE endof
       32 of GSI-LINT-LIBS-PTX endof

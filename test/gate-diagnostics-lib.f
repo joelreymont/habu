@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-common.f, tools/json.f, and tools/gate-json-assert-core.f.
 
+require test/golden.f
+
 64 constant GDX-USAGE-RC
 
 create GDX-PATH-BUF FS-PATH-CAP allot
@@ -11,7 +13,7 @@ create GDX-TRUST-SRC-DIR-BUF FS-PATH-CAP allot
 create GDX-TRUST-SRC-BUF FS-PATH-CAP allot
 create GDX-TRUST-MAN-BUF FS-PATH-CAP allot
 $40000 constant GDX-TL-STR-CAP
-$20000 constant GDX-TL-FILE-CAP
+$30000 constant GDX-TL-FILE-CAP
 create GDX-TL-STR-BUF GDX-TL-STR-CAP allot
 create GDX-TL-FILE-BUF GDX-TL-FILE-CAP allot
 variable GDX-PATH-U
@@ -37,6 +39,27 @@ variable GDX-TRUST-MAN-U
    GDX-J-DQ
    SB-APPEND
    GDX-J-DQ ;
+
+\ Byte-exact golden assertion: compare captured diagnostic text against a
+\ committed golden under test/golden/; GOLD:CHECK handles --update-golden and
+\ prints the delta on mismatch. Diagnostics with volatile temp paths must set
+\ GOLD:REDACT! to GT-ROOT before calling so paths normalize to <root>.
+: GDX-EXPECT-GOLDEN ( ptr u8 n ptr u8 n ptr u8 n -- ) {: cap:ptr capu:n name:ptr nameu:n label:ptr labelu:n :}
+   cap capu name nameu GOLD:CHECK 0= if label labelu GE-FAIL then ;
+
+: GDX-EXPECT-ERR-GOLDEN ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
+   GOLD:REDACT-CLEAR
+   GT-ERR$ name nameu label labelu GDX-EXPECT-GOLDEN ;
+
+\ File-origin diagnostics embed the temp source path; redact GT-ROOT so the
+\ golden stays stable across runs.
+: GDX-EXPECT-ERR-GOLDEN-R ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
+   GT-ROOT GOLD:REDACT!
+   GT-ERR$ name nameu label labelu GDX-EXPECT-GOLDEN ;
+
+: GDX-EXPECT-OUT-GOLDEN-R ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n label:ptr labelu:n :}
+   GT-ROOT GOLD:REDACT!
+   GT-OUT$ name nameu label labelu GDX-EXPECT-GOLDEN ;
 
 : GDX-EXPECT-ERR-JKEY ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n label:ptr labelu:n :}
    SB-RESET
@@ -294,6 +317,7 @@ variable GDX-TRUST-MAN-U
    s" : JBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
    s" tools/check.f --json-errors accepted bad def" GDX-CHECK-JSON
    s" habu-json.err" GDX-WRITE-ERR
+   s" diag-primary-json.err" s" primary json golden" GDX-EXPECT-ERR-GOLDEN
    GDX-CHECK-JSON-FIELDS ;
 
 : GDX-UNKNOWN-SIGNATURE ( -- )
@@ -371,6 +395,7 @@ variable GDX-TRUST-MAN-U
    s" dead_owner" s" throw" s" dead-code owner" GDX-EXPECT-ERR-JSTR
    s" dead_owner" s" die" s" die dead-code owner" GDX-EXPECT-ERR-JSTR
    s" habu-json-repair.err" GDX-WRITE-ERR
+   s" diag-repair-classes.err" s" repair classes golden" GDX-EXPECT-ERR-GOLDEN
    s" habu-json-repair.err" s" repair batch diagnostic contract" GDX-DIAG-CONTRACT
    s" habu-json-repair.err" s" jmiss" s" add_producer" s" missing producer class" GDX-DIAG-WORD-CLASS
    s" habu-json-repair.err" s" jtype" s" fix_type" s" type mismatch class" GDX-DIAG-WORD-CLASS
@@ -494,6 +519,7 @@ variable GDX-TRUST-MAN-U
    s" habu-all-errors.f" GDX-WRITE-SRC
    s" habu-all-errors.f" s" tools/check.f --all-errors accepted bad defs" GDX-CHECK-FILE-JSON-ALL
    s" habu-all-errors.err" GDX-WRITE-ERR
+   s" diag-all-errors.err" s" all-errors golden" GDX-EXPECT-ERR-GOLDEN-R
    s" habu-all-errors.err" s" all-errors diagnostic contract" GDX-DIAG-CONTRACT
    s" all-errors" s" habu-all-errors.err" s" all-errors diagnostics" GDX-GJA1 ;
 
@@ -503,6 +529,7 @@ variable GDX-TRUST-MAN-U
    s" : UDEF ( i64 -- i64 ) dup NOPE ;" GE-SRC-LINE
    s" tools/check.f --all-errors accepted undefined word" GDX-CHECK-JSON-ALL
    s" habu-undef.err" GDX-WRITE-ERR
+   s" diag-undefined.err" s" undefined golden" GDX-EXPECT-ERR-GOLDEN
    s" code" s" E-UNDEFINED" s" undefined diagnostic code" GDX-EXPECT-ERR-JSTR
    s" token" s" NOPE" s" undefined diagnostic token" GDX-EXPECT-ERR-JSTR
    s" habu-undef.err" s" undefined diagnostic contract" GDX-DIAG-CONTRACT

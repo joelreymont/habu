@@ -24,6 +24,8 @@ require tools/check-core.f
 require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 
+TRW-LOAD-DONE
+
 : TRWD-RUN ( -- )
    TR-RESIDENT-ID @ case
       10 of GDX-REPAIR-SLICE endof

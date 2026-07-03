@@ -3,6 +3,8 @@
 \ Load after test/gate-common.f, lib/memory.f, lib/build.f, lib/codesign.f,
 \ and tools/build-fixpoint.f.
 
+require test/gate-build-size.f
+
 64 constant GENG-USAGE-RC
 0 constant GENG-ALL-ID
 1 constant GENG-BUILD-ID
@@ -207,7 +209,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-CANDIDATE-SIZE-CHECK ( -- )
    GE-CANDIDATE$ FILE-SIZE GE-MAX-CANDIDATE-BYTES > if
       s" Habu-under-test candidate too large" GE-FAIL
-   then ;
+   then
+   GE-CANDIDATE$ GB-SIZE-RATCHET ;
 
 : GE-REMOVE-CANDIDATE ( -- )
    GE-CANDIDATE$ EXISTS? if GE-CANDIDATE$ REMOVE-FILE then ;
@@ -341,27 +344,10 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
 
-: GE-CAND-SMOKE-SOURCE ( -- )
-   GE-SRC-RESET
-   s" data-base $1B0 + @ 0= ." GE-SRC-LINE
-   s" : SQOK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
-   s" 7 SQOK ." GE-SRC-LINE
-   s" ' spawn-argv-env-cwd-io drop 42 ." GE-SRC-LINE ;
-
-: GE-CAND-SMOKE ( ptr u8 n -- ) {: exe:ptr exeu:n :}
-   GE-HB-RESET
-   GE-CAND-SMOKE-SOURCE
-   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   s" Habu-under-test refresh/check/dictionary smoke" GE-EXPECT-OK
-   SB-RESET
-   s" 0" GE-OUT-LINE
-   s" 49" GE-OUT-LINE
-   s" 42" GE-OUT-LINE
-   SB$ s" Habu-under-test refresh/check/dictionary smoke output" GE-EXPECT-OUT ;
-
-: GE-CANDIDATE-HOOK-CHECKS ( -- )
-   GE-CANDIDATE$ GE-CAND-SMOKE
-   s" PASS: Habu-under-test hook/dictionary coverage" type cr ;
+\ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
+\ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
+\ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
+\ HABU_UNDER_TEST spawn per candidate. See engine-suite.f "candidate ... smoke".
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
@@ -579,8 +565,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK
-   GE-ENGINE-SUITE
-   GE-CANDIDATE-HOOK-CHECKS ;
+   GE-ENGINE-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

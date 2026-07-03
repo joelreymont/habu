@@ -626,6 +626,12 @@ variable GD-START-NS
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    $4E s" duplicate definition" s" global wordlist rejects duplicate word" GD-CHECK-BUF-BAD
    GE-SRC-RESET
+   s" : GD-HDUP ( -- n ) 1 ;" GE-SRC-LINE
+   s" undefine GD-HDUP" GE-SRC-LINE
+   s" : GD-HDUP ( -- n ) 2 ;" GE-SRC-LINE
+   s" : GD-HDUP ( -- n ) 3 ;" GE-SRC-LINE
+   $4E s" GD-HDUP" s" hash dup-probe rejects duplicate behind a retired slot" GD-RUN-BAD-SOURCE
+   GE-SRC-RESET
    s" : dup ( n -- n n ) dup ;" GE-SRC-LINE
    $4E s" dup" s" primitive shadow attempt rejects without undefine" GD-RUN-BAD-SOURCE ;
 

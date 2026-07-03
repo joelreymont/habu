@@ -34,6 +34,7 @@ TEST:END-SUITE
 
 TEST:SUITE filemap-lint
    tools/filemap-lint.f
+   tools/filemap-lint-test.f
 TEST:END-SUITE
 
 TEST:SUITE gate-stats
@@ -265,6 +266,8 @@ TEST:END-SUITE
 TEST:SUITE test-stdlib
    lib/test/assert-test.f
    lib/test/suite-test.f
+   lib/test/snap-test.f
+   lib/test/record-test.f
 TEST:END-SUITE
 
 TEST:SUITE property-stdlib
@@ -327,6 +330,10 @@ TEST:END-SUITE
 TEST:SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/codesign-test.f
+TEST:END-SUITE
+
+TEST:SUITE gate-pool
+   test/gate-pool-test.f
 TEST:END-SUITE
 
 TEST:RUN

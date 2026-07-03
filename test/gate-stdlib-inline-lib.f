@@ -2,6 +2,8 @@
 \
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
 
+require lib/memory.f
+
 variable GSI-TIMINGS
 variable GSI-PATH-A
 variable GSI-PATH-U
@@ -11,12 +13,38 @@ variable GSI-SETUP
 variable GSI-TEST-READY
 variable GSI-TOOL-BASE-READY
 
-$40000 constant GSI-TL-STR-CAP
-$20000 constant GSI-TL-FILE-CAP
+\ Trust-lint scratch: the file buffer must hold the largest scanned source
+\ (src/core/checker.f outgrew the old $20000 cap); runtime-sized buffers are
+\ lib/memory allocations, not dictionary allot, and grow by constant only.
+\ Reads through the buffer stay fail-closed: READ-FILE dies on overflow, so
+\ outgrowing the cap is a loud gate failure, never truncation.
+$80000 constant GSI-TL-STR-CAP
+$40000 constant GSI-TL-FILE-CAP
 600000 constant GSI-FORK-TIMEOUT-MS
 
-create GSI-TL-STR-BUF GSI-TL-STR-CAP allot
-create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
+variable GSI-TL-READY
+variable GSI-TL-STR-A
+variable GSI-TL-FILE-A
+
+: GSI-TL-STR-A-FIELD ( -- ptr ptr u8 )
+   GSI-TL-STR-A 0 ptr-field ;
+
+: GSI-TL-FILE-A-FIELD ( -- ptr ptr u8 )
+   GSI-TL-FILE-A 0 ptr-field ;
+
+: GSI-TL-ALLOC ( -- )
+   GSI-TL-READY @ 0 <> if exit then
+   GSI-TL-STR-CAP MEM-ALLOC-BYTES drop GSI-TL-STR-A-FIELD !
+   GSI-TL-FILE-CAP MEM-ALLOC-BYTES drop GSI-TL-FILE-A-FIELD !
+   -1 GSI-TL-READY ! ;
+
+: GSI-TL-STR-BUF ( -- ptr u8 )
+   GSI-TL-ALLOC
+   GSI-TL-STR-A-FIELD @ ;
+
+: GSI-TL-FILE-BUF ( -- ptr u8 )
+   GSI-TL-ALLOC
+   GSI-TL-FILE-A-FIELD @ ;
 
 0 constant GSI-GROUP-SEQ
 1 constant GSI-GROUP-PAR
@@ -361,6 +389,8 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    GSI-TAIL-FAST-SETUP
    s" lib/test/assert-test.f" GSI-INCLUDE
    s" lib/test/suite-test.f" GSI-INCLUDE
+   s" lib/test/snap-test.f" GSI-INCLUDE
+   s" lib/test/record-test.f" GSI-INCLUDE
    s" lib/property-test.f" GSI-INCLUDE
    s" tools/date-test.f" GSI-INCLUDE
    s" tools/spawn-emitter-test.f" GSI-INCLUDE
@@ -462,4 +492,9 @@ create GSI-TL-FILE-BUF GSI-TL-FILE-CAP allot
    s" tools/json-file-test.f" GSI-INCLUDE
    s" tools/sha256-file-test.f" GSI-INCLUDE
    s" lib/content-key-test.f" GSI-INCLUDE
+   s" test/run-result-cache-test.f" GSI-INCLUDE
+   s" test/run-budget-cal-test.f" GSI-INCLUDE
+   s" test/run-rerun-failed-test.f" GSI-INCLUDE
+   s" test/golden-test.f" GSI-INCLUDE
+   s" tools/diagnose-hb-test.f" GSI-INCLUDE
    s" lib/object-test.f" GSI-INCLUDE ;

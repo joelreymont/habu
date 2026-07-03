@@ -10,6 +10,7 @@ require tools/diag-to-sarif-core.f
    [: GDX-PATH$ SARIF-FILE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
    s" diag-to-sarif" GE-EXPECT-OK
    s" habu-all-errors.sarif" GDX-WRITE-OUT
+   s" diag-all-errors.sarif" s" sarif golden" GDX-EXPECT-OUT-GOLDEN-R
    s" sarif" s" habu-all-errors.sarif" s" sarif output" GDX-GJA1 ;
 
 : GDX-ALL-STRICT-SLICE ( -- )

@@ -6,4 +6,6 @@ require tools/gate-json-assert-core.f
 require test/gate-common-lib.f
 require test/gate-aot-negative-lib.f
 
+TRW-LOAD-DONE
+
 GAN-RUN

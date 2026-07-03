@@ -88,8 +88,32 @@ variable GAN-REPORT-U
    s" root_word" s" MAIN" s" hb-build closure limit root word" GAN-EXPECT-ERR-STR-FIELD
    s" hb-build closure limit JSON schema" GAN-ERR-SCHEMA ;
 
+\ Kept rejection: patch32 writes the code region, which a stripped binary has
+\ no way to do (its __text is r-x and its code is at the PIE image base, not the
+\ RBASE-VA region patch32 targets). The persistent data region does NOT make this
+\ safe, so the closure walk must still reject it with E-AOT-UNSUPPORTED (exit 70).
+: GAN-UNSAFE-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GAN-REPORT!
+   70 s" E-AOT-UNSUPPORTED" label labelu GE-EVAL-FORK-BAD
+   GAN-WRITE-ERR ;
+
+: GAN-SOURCE-PATCH32 ( -- )
+   GE-SRC-RESET
+   s" -1 JSON-DIAGS !" GE-SRC-LINE
+   s" : MAIN ( -- ) 0 0 patch32 ;" GE-SRC-LINE
+   s" CLOSURE" GE-SRC-LINE ;
+
+: GAN-PATCH32 ( -- )
+   GAN-SOURCE-PATCH32
+   s" hb-build AOT patch32 reject" GAN-UNSAFE-NZ
+   s" code" s" E-AOT-UNSUPPORTED" s" hb-build AOT patch32 code" GAN-EXPECT-ERR-STR-FIELD
+   s" token" s" patch32" s" hb-build AOT patch32 token" GAN-EXPECT-ERR-STR-FIELD
+   s" word" s" MAIN" s" hb-build AOT patch32 word" GAN-EXPECT-ERR-STR-FIELD
+   s" hb-build AOT patch32 JSON schema" GAN-ERR-SCHEMA ;
+
 : GAN-RUN ( -- )
    s" hb-gate-aot-negative" GT-START
    GAN-CLOSURE-LIMIT
+   GAN-PATCH32
    GT-CLEANUP
    s" PASS: native hb-build AOT negative gate phase" type cr ;

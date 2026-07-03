@@ -7,6 +7,8 @@ require tools/build-fixpoint.f
 require test/gate-common-lib.f
 require test/gate-engine-lib.f
 
+TRW-LOAD-DONE
+
 variable TRWE-FORK-ID
 
 : TRWE-UNDER! ( -- )
@@ -44,7 +46,7 @@ variable TRWE-FORK-ID
 
 : TRWE-START-FORK ( idx -- ) {: idx:idx :}
    idx IDX>N TRWE-FORK-ID !
-   idx TR-PHASE-TEST
+   idx TRWE-CHILD-LABEL idx TRW-CHILD-TEST
    idx TRWE-CHILD-LABEL TR-TIMEOUT-MS [: TRWE-FORK-RUN ;] GT-POOL-START-FORK ;
 
 : TRWE-POST-CANDIDATE ( -- )

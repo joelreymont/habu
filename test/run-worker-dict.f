@@ -10,6 +10,8 @@ require tools/check-all-errors-core.f
 require test/gate-common-lib.f
 require test/gate-dictionary-lib.f
 
+TRW-LOAD-DONE
+
 : TRWK-UNDER! ( -- )
    TR-UNDER-READY @ 0= if exit then
    TR-UNDER$ GE-HB! ;

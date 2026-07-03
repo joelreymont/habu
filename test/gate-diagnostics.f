@@ -2,8 +2,8 @@
 \
 \ Load after test/gate-common.f.
 
-include tools/json.f
-include tools/gate-json-assert-core.f
+require tools/json.f
+require tools/gate-json-assert-core.f
 require tools/date.f
 require lib/vector.f
 require lib/source.f

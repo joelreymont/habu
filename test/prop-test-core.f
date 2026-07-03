@@ -3,6 +3,18 @@
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
 \ from its declared ( in -- out ) — a false-cert. No host scripting, no gforth, no
 \ spawning: generator, driver and measurement are all habu, run by bin/hb.
+\
+\ The default run shards the sweep across PROP-SHARD-N forked slots, each a
+\ distinct seed running DEFAULT-COUNT iterations, so a single gate phase covers
+\ N x DEFAULT-COUNT distinct-seed programs in parallel; one red shard fails the
+\ phase. The `bin/hb <seed> <count>` argv override runs one seed serially to
+\ reproduce a specific run. Fork wrappers load before the check hook so their
+\ own definitions certify under the default checker, not the throw-on-reject
+\ prop hook.
+
+require lib/errors.f
+require lib/process.f
+require lib/process-fork.f
 
 TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
@@ -15,13 +27,20 @@ variable BASE  variable MC
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict, set by the check hook
-$37D8 constant PROP-EVALERR-CELL
+\ Reads the engine's evaluate-error cell by its NAMED layout constant
+\ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
+\ layout change can't silently point this peek at the wrong cell.
 TRUSTED: ERR@  ( -- n )
-   data-base PROP-EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
+   data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 \ ---- seeded PRNG (LCG) ----
-1 constant DEFAULT-SEED
 250 constant DEFAULT-COUNT
+
+\ Default seed varies per run (mono-ns clock) so the fuzzer explores a fresh
+\ space each gate instead of a frozen 250-case regression; RUN-SEED is printed
+\ (POS.) and the `bin/hb <seed> <count>` argv override reproduces any run.
+: FRESH-SEED ( -- n )
+   mono-ns $7FFFFFFF and dup 0= if drop 1 then ;
 3 constant LOG-LIMIT
 variable SEED   1 SEED !
 : RND  ( -- n )
@@ -67,19 +86,31 @@ variable TFLAG                             \ sig element type: 0 = i64 (concrete
 
 \ ---- depth-tracked generator over the integer sublanguage ----
 variable DEP  variable NIN  variable DOUT  variable K
+variable LOCN                              \ fresh mid-body local name counter (z0, z1, ...)
 variable LOC?                              \ inputs bound as locals a/b/c at the body top?
 variable PERT?                             \ declared out perturbed away from the true depth?
 : BLET  ( n -- ) {: idx:n :}
    idx 97 + BBUF BLEN @ + c!
    BLEN @ 1+ BLEN !
    s"  " PROP-B+ ;   \ emit letter a+i then space
+\ Emit a mid-body local round-trip `{: zN :} zN` (net-0, needs DEP>=1): binds
+\ the data top to a fresh local zN then pushes it back. LOCN keeps names unique
+\ within a body (z0, z1, ...), never colliding with input locals a/b/c.
+: STEP-LOCAL  ( -- )
+   s" {: z" PROP-B+  LOCN @ BD  s"  :} z" PROP-B+  LOCN @ BD  s"  " PROP-B+
+   LOCN @ 1+ LOCN ! ;
 : PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
-      DEP @ 1 >= IF 4 ELSE 1 THEN RND% K !
+      DEP @ 1 >= IF 9 ELSE 4 THEN RND% K !     \ DEP>=1: ops 0..8; DEP=0: depth-free 0..3
       K @ 0 = IF s" 3 0 ?do loop " PROP-B+ exit THEN              \ bounded neutral loop
-      K @ 1 = IF s" dup 0= if 1+ else 1- then " PROP-B+ exit THEN \ balanced branch
-      K @ 2 = IF s" >r r> " PROP-B+ exit THEN                     \ balanced return stack
-               s" [: 1+ ;] execute " PROP-B+ exit THEN            \ quotation applied
+      K @ 1 = IF s" 3 0 ?do leave loop " PROP-B+ exit THEN        \ valid leave inside a loop
+      K @ 2 = IF S\" s\" x\" 2drop " PROP-B+ exit THEN            \ string literal, then dropped
+      K @ 3 = IF s" [: ;] execute " PROP-B+ exit THEN             \ empty row-poly quotation
+      K @ 4 = IF s" dup 0= if 1+ else 1- then " PROP-B+ exit THEN \ balanced branch
+      K @ 5 = IF s" >r r> " PROP-B+ exit THEN                     \ balanced return stack
+      K @ 6 = IF s" >r r@ drop r> " PROP-B+ exit THEN             \ return-stack copy via r@
+      K @ 7 = IF s" [: 1+ ;] execute " PROP-B+ exit THEN          \ quotation applied
+               STEP-LOCAL exit THEN                               \ mid-body local round-trip
    DEP @ 2 >= IF 15 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
    K @ 0 = IF                                                  \ push a value: a local ref, or a literal
       LOC? @ 0= 0= IF NIN @ RND% BLET ELSE 10 RND% BD s"  " PROP-B+ THEN
@@ -101,7 +132,7 @@ variable PERT?                             \ declared out perturbed away from th
 variable STEPS  variable GI
 : GEN-BODY  ( n n -- ) {: in-count:n use-flag:n :}  \ fill BBUF with a body, set NIN and the true residual DEP
    in-count 0 > if use-flag 0= if 0 else -1 then else 0 then LOC? !
-   in-count NIN !  0 BLEN !
+   in-count NIN !  0 BLEN !  0 LOCN !
    LOC? @ 0= 0= IF                          \ {: a b c :} prefix binds the NIN inputs as locals
       s" {: " PROP-B+  0 GI ! begin GI @ NIN @ < while GI @ BLET GI @ 1+ GI ! repeat  s" :} " PROP-B+  0 DEP !
    ELSE NIN @ DEP ! THEN
@@ -182,7 +213,12 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    name-ch in-arity RUN-MEAS
    LAST-TRAP @ IF  expected FC-SET-TRAP  name-ch FC-LINE
    ELSE  LAST-MEAS @ expected <> IF  expected LAST-MEAS @ FC-SET-ARITY  name-ch FC-LINE  THEN THEN ;
+\ Shards suppress the (non-fatal, capped) metamorphic inconsistency logs so N
+\ parallel children do not interleave them on the shared stdout; false-cert
+\ lines (FC-LINE) stay unconditional because a false-cert fails the phase.
+variable SWEEP-QUIET
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
+   SWEEP-QUIET @ if exit then
    s" prop-test: metamorphic " type a u type s"  inconsistency: " type POS. cr
    s" variant: " type PBUF PBUF-U @ type cr
    s" body: " type BODY. ;
@@ -281,9 +317,11 @@ variable NFC0
    THEN THEN
    FORGET                                    \ forget G (code + dict entry + recorded sig)
    COMPOSE ;                                  \ independent two-body composition probe
-: RUN  ( n n -- )
+: RUN-CORE  ( n n -- )   \ generate + measure across N programs; prints only findings
    N !  dup RUN-SEED !  SEED !  0 NCERT ! 0 PROP-NFC ! 0 NFR !  0 NSUB ! 0 NSI ! 0 NRT ! 0 NRI ! 0 NCMP ! 0 NCI !
-   0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat
+   0 RI ! begin RI @ N @ < while  ONE  RI @ 1+ RI !  repeat ;
+: RUN  ( n n -- )   \ RUN-CORE plus the per-run summary (serial repro path)
+   RUN-CORE
    s" prop-test: " type N @ . s" programs, " type
    NCERT @ . s" certified, " type  PROP-NFC @ . s" FALSE-CERT(s), " type
    NFR @ . s" false-reject(s)" type cr
@@ -338,15 +376,262 @@ variable ARG-N  variable ARG-I  variable ARG-L
    repeat  ARG-N @ 0 0= ;
 : USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
+\ ============================================================================
+\ Primitive-effect axiom differential census (dot habu-primitive-effect-axiom).
+\ The PES table in src/core/checker.f is the single, minimal typing trust root:
+\ every checked primitive's stack effect is one axiom row. This walks the LIVE
+\ table, classifies each axiom, and for every executable axiom builds a runner,
+\ executes it, and asserts the measured out-arity equals the declared dout — a
+\ per-axiom differential test. Non-executable axioms (syscalls, control, parser
+\ literals, defining words, engine/checker introspection, emitters, atomics,
+\ FFI) cannot be safely run in-process with dummy operands; their arity is
+\ pinned instead by the native self-rebuild + behavioral gate. Every PES row
+\ must be classified: an unclassified name fails the census, so a new axiom
+\ cannot land without a difftest classification. See docs/effects.md
+\ "Primitive axiom set".
+\ ============================================================================
+
+\ ---- trusted leaves: read the live PES axiom table + evaluate a runner -------
+TRUSTED: AX-COUNT ( -- n )  #PE @ ;
+TRUSTED: AX-NAME$ ( n -- ptr u8 n )  PE-SYM@ SYM-NAME$ ;
+TRUSTED: AX-STK ( n -- n )   \ node offset -> count of EN-PUSH nodes down to the base row
+   0 swap
+   begin dup E-PTR EN.TAG @ EN-PUSH = while swap 1+ swap E-PTR EN.B @ repeat drop ;
+TRUSTED: AX-ARITY ( n -- n n )   \ pe-idx -> declared ( din dout )
+   PE-EFF@ E-PTR dup ER.DIN @ AX-STK swap ER.DOUT @ AX-STK ;
+TRUSTED: AXEVAL ( -- n )  PBUF PBUF-U @ evaluate ;
+
+\ ---- category codes ----------------------------------------------------------
+0 constant AX-NOEXEC   1 constant AX-GEN   2 constant AX-MEM   3 constant AX-FLOAT
+4 constant AX-UNKNOWN
+
+\ ---- census state ------------------------------------------------------------
+variable AX-DIN-V   variable AX-DOUT-V
+variable AX-N-EXEC  variable AX-N-NOEXEC  variable AX-BAD  variable AX-UNCLASS
+variable AX-I       variable AX-LI        variable AX-TS
+64 constant AXNAME-CAP
+create AXNAME-BUF AXNAME-CAP allot   variable AXNAME-U
+64 constant AXBUF-CAP
+create AXBUF AXBUF-CAP allot
+
+\ ---- small checked string helpers -------------------------------------------
+: AX-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v <> if 0 0= 0= exit then
+   0 begin dup u < while
+      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
+      1+
+   repeat drop 0 0= ;
+
+: AX-STARTS? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   u v < if 0 0= 0= exit then
+   0 begin dup v < while
+      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
+      1+
+   repeat drop 0 0= ;
+
+: AX-HAS-QUOTE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup u < while
+      dup a + c@ 34 = if drop 0 0= exit then
+      1+
+   repeat drop 0 0= 0= ;
+
+\ whole-word membership in a space-delimited list
+: AX-LIST-HAS? ( ptr u8 n ptr u8 n -- bool ) {: na:ptr nu:n la:ptr lu:n :}
+   0 AX-LI !
+   begin AX-LI @ lu < while
+      begin AX-LI @ lu < la AX-LI @ + c@ 32 = and while AX-LI @ 1+ AX-LI ! repeat
+      AX-LI @ AX-TS !
+      begin AX-LI @ lu < la AX-LI @ + c@ 32 <> and while AX-LI @ 1+ AX-LI ! repeat
+      AX-LI @ AX-TS @ > if
+         la AX-TS @ +  AX-LI @ AX-TS @ -  na nu AX-STR= if 0 0= exit then
+      then
+   repeat 0 0= 0= ;
+
+\ ---- classification lists (folded lowercase, as stored in the symbol table) --
+: AX-GEN-LIST ( -- ptr u8 n )
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f " ;
+: AX-MEM-LIST ( -- ptr u8 n )
+   s"  @ ! ptr-field +! c@ c! count rd32 core-str= type " ;
+: AX-FLOAT-LIST ( -- ptr u8 n )
+   s"  f+ f- f* f/ fnegate fabs fsqrt f< f> f= f0< f0= f>s " ;
+: AX-NOEXEC-A ( -- ptr u8 n )
+   s"  open read ioctl mmap path0 open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close " ;
+: AX-NOEXEC-B ( -- ptr u8 n )
+   s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas " ;
+
+: AX-CAT ( ptr u8 n -- n )
+   2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
+   2dup s" spawn" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup s" checker-" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup s" diag-" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup s" ffi-" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup AX-GEN-LIST AX-LIST-HAS? if 2drop AX-GEN exit then
+   2dup AX-MEM-LIST AX-LIST-HAS? if 2drop AX-MEM exit then
+   2dup AX-FLOAT-LIST AX-LIST-HAS? if 2drop AX-FLOAT exit then
+   2dup AX-NOEXEC-A AX-LIST-HAS? if 2drop AX-NOEXEC exit then
+   2dup AX-NOEXEC-B AX-LIST-HAS? if 2drop AX-NOEXEC exit then
+   2drop AX-UNKNOWN ;
+
+\ ---- name buffer -------------------------------------------------------------
+: AX-NAME-SAVE ( ptr u8 n -- ) {: a:ptr u:n :}
+   u AXNAME-U !
+   0 begin dup u < while
+      dup a + c@ over AXNAME-BUF + c!
+      1+
+   repeat drop ;
+: AXNAME$ ( -- ptr u8 n )  AXNAME-BUF AXNAME-U @ ;
+
+\ ---- MEM operand recipes (real AXBUF; LDR/STR tolerate the buffer) -----------
+: AX-MEM-OPS ( ptr u8 n -- ptr u8 n )
+   2dup s" @" AX-STR= if 2drop s" AXBUF " exit then
+   2dup s" c@" AX-STR= if 2drop s" AXBUF " exit then
+   2dup s" count" AX-STR= if 2drop s" AXBUF " exit then
+   2dup s" rd32" AX-STR= if 2drop s" AXBUF " exit then
+   2dup s" !" AX-STR= if 2drop s" 7 AXBUF " exit then
+   2dup s" +!" AX-STR= if 2drop s" 7 AXBUF " exit then
+   2dup s" c!" AX-STR= if 2drop s" 7 AXBUF " exit then
+   2dup s" ptr-field" AX-STR= if 2drop s" AXBUF 0 " exit then
+   2dup s" type" AX-STR= if 2drop s" AXBUF 0 " exit then
+   2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
+   2drop s"  " ;
+
+\ ---- runner builders: PBUF := "depth BASE ! <ops> <name> depth BASE @ - CLEAR-MEAS"
+: AX-BUILD ( ptr u8 n ptr u8 n -- )   \ ( name-a name-u ops-a ops-u )
+   0 PBUF-U !
+   s" depth BASE ! " P+
+   P+                       \ ops (top pair)
+   s"  " P+
+   P+                       \ name (remaining pair)
+   s"  depth BASE @ - CLEAR-MEAS" P+ ;
+
+: AX-BUILD-REP ( ptr u8 n n -- )   \ ( name-a name-u din ); repeat "7 " din times
+   {: din:n :}
+   0 PBUF-U !
+   s" depth BASE ! " P+
+   0 begin dup din < while s" 7 " P+ 1+ repeat drop
+   P+                       \ name
+   s"  depth BASE @ - CLEAR-MEAS" P+ ;
+
+: AX-BUILD-FREP ( ptr u8 n n -- )   \ ( name-a name-u din ); repeat "1 s>f " din times
+   {: din:n :}
+   0 PBUF-U !
+   s" depth BASE ! " P+
+   0 begin dup din < while s" 1 s>f " P+ 1+ repeat drop
+   P+
+   s"  depth BASE @ - CLEAR-MEAS" P+ ;
+
+\ ---- measure (eval PBUF; set LAST-MEAS/LAST-TRAP) ----------------------------
+: AX-MEASURE ( -- )
+   0 LAST-TRAP !
+   AXEVAL
+   ERR@ 0 = if
+      dup 0 < if drop -1 LAST-TRAP ! else LAST-MEAS ! then
+   else drop -1 LAST-TRAP ! then ;
+
+: AX-BAD-REPORT ( -- )
+   s" prim-axiom: MISMATCH " type AXNAME$ type
+   s"  declared-dout " type AX-DOUT-V @ .
+   LAST-TRAP @ if s" measured-trap" type else s" measured " type LAST-MEAS @ . then cr ;
+
+: AX-CHECK ( -- )   \ PBUF built; run + compare measured to AX-DOUT-V; bump counters
+   AX-MEASURE
+   AX-N-EXEC @ 1+ AX-N-EXEC !
+   LAST-TRAP @ if AX-BAD-REPORT AX-BAD @ 1+ AX-BAD ! exit then
+   LAST-MEAS @ AX-DOUT-V @ <> if AX-BAD-REPORT AX-BAD @ 1+ AX-BAD ! then ;
+
+: AX-RUN-MEM ( ptr u8 n -- )
+   2dup AX-MEM-OPS AX-BUILD AX-CHECK ;
+
+: AX-DISPATCH ( ptr u8 n n -- ) {: cat:n :}
+   cat AX-GEN = if AX-DIN-V @ AX-BUILD-REP AX-CHECK exit then
+   cat AX-FLOAT = if AX-DIN-V @ AX-BUILD-FREP AX-CHECK exit then
+   cat AX-MEM = if AX-RUN-MEM exit then
+   cat AX-NOEXEC = if 2drop AX-N-NOEXEC @ 1+ AX-N-NOEXEC ! exit then
+   s" prim-axiom: UNCLASSIFIED " type type cr
+   AX-UNCLASS @ 1+ AX-UNCLASS ! ;
+
+: AX-ROW ( n -- ) {: i:n :}
+   i AX-ARITY AX-DOUT-V ! AX-DIN-V !
+   i AX-NAME$ AX-NAME-SAVE
+   AXNAME$ 2dup AX-CAT AX-DISPATCH ;
+
+: AX-CENSUS ( -- )
+   0 AX-N-EXEC ! 0 AX-N-NOEXEC ! 0 AX-BAD ! 0 AX-UNCLASS !
+   0 AX-I !
+   begin AX-I @ AX-COUNT < while AX-I @ AX-ROW AX-I @ 1+ AX-I ! repeat
+   s" prim-axiom: " type AX-COUNT . s" axioms (" type
+   AX-N-EXEC @ . s" difftested, " type AX-N-NOEXEC @ . s" noexec); " type
+   AX-UNCLASS @ . s" unclassified, " type AX-BAD @ . s" mismatch(es)" type cr
+   AX-UNCLASS @ AX-BAD @ + 0 > if s" prim-axiom: AXIOM CENSUS FAILED" 1 die then
+   s" prim-axiom: census OK (every PES axiom classified; executable axioms difftested)" type cr ;
+
+\ self-test with teeth: a fabricated wrong declared-dout must be detected
+: AX-SELFTEST ( -- )
+   1 AX-DIN-V !  5 AX-DOUT-V !  0 AX-BAD !
+   s" dup" AX-NAME-SAVE
+   AXNAME$ AX-DIN-V @ AX-BUILD-REP AX-CHECK
+   AX-BAD @ 0 = if s" prim-axiom: self-test BROKEN (lying axiom not detected)" 1 die then
+   s" prim-axiom: self-test OK (difftest detects a lying axiom)" type cr ;
+
 : PROP-RUN ( n n -- )
    SELFTEST
    SELFTEST-SHRINK
    BAITS
+   AX-SELFTEST
+   AX-CENSUS
    RUN
    FINISH ;
 
-: PROP-RUN-DEFAULT ( -- )
-   DEFAULT-SEED DEFAULT-COUNT PROP-RUN ;
+\ ---- seed-sweep: shard the sweep across PROP-SHARD-N forked slots, each a
+\ distinct seed for DEFAULT-COUNT iterations, so one gate phase covers
+\ N x DEFAULT-COUNT distinct-seed programs in parallel. Self-tests + baits run
+\ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
+\ false-cert. One red shard fails the phase. Distinct seeds come from a per-run
+\ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk. ----
+8 constant PROP-SHARD-N
+$9E3779B1 constant PROP-SHARD-STEP
+create PROP-SHARD-PIDS PROP-SHARD-N cells allot
+variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
+
+: SHARD-SEED ( n -- n ) {: i:n :}
+   SWEEP-BASE @ i PROP-SHARD-STEP * + $7FFFFFFF and dup 0= if drop 1 then ;
+: SHARD-PID! ( pid n -- ) {: p:pid i:n :}
+   p PID>N i cells PROP-SHARD-PIDS + ! ;
+: SHARD-PID@ ( n -- pid ) {: i:n :}
+   i cells PROP-SHARD-PIDS + @ >PID ;
+1 constant PROP-O-WRONLY   \ O_WRONLY (macOS/Linux)
+\ Point fd 2 at /dev/null: a shard checks hundreds of intentionally-rejected
+\ fuzz programs, and the checker's per-reject diagnostics on stderr (x N shards)
+\ would overflow the gate's bounded stderr capture. A false-cert reports on
+\ stdout (FC-LINE) and via the shard's nonzero exit, so muting stderr is safe.
+: SHARD-MUTE-STDERR ( -- )
+   s" /dev/null" >LEN PROC-PATHZ PROP-O-WRONLY 0 open {: fd:n :}
+   fd 0 < if exit then
+   fd 2 dup2 drop
+   fd close ;
+: SHARD-CHILD ( n -- )   \ never returns: run this shard's seed, then exit 0 / 1
+   SHARD-MUTE-STDERR
+   SHARD-SEED DEFAULT-COUNT RUN-CORE
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT in shard" 1 die THEN
+   s" " 0 die ;
+: SHARD-FORK ( n -- ) {: i:n :}
+   PROC-FORK-RAW {: p:pid :}
+   p PID>N 0= IF i SHARD-CHILD THEN   \ child diverges (dies), only the parent falls through
+   p i SHARD-PID! ;
+: SHARD-JOIN ( n -- ) {: i:n :}
+   i SHARD-PID@ PROC-WAIT-RC RC>N 0 <> IF -1 SWEEP-RED ! THEN ;
+: SWEEP  ( n -- )   \ base seed -> fork all shards, join all, fail on any red
+   SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
+   0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
+   0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
+   SWEEP-RED @ IF s" prop-test: sweep FALSE-CERT (a shard reported above)" 1 die THEN
+   s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
+
+: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N distinct-seed slots
+   SELFTEST
+   SELFTEST-SHRINK
+   BAITS
+   FRESH-SEED SWEEP ;
 
 : PROP-MAIN ( -- )
    ARGC 1 = IF  PROP-RUN-DEFAULT

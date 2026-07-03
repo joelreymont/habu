@@ -145,8 +145,31 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    textsz GB-U.
    s"  B)" type cr ;
 
+\ Persistent data region: a program that builds a compile-time table with
+\ create/comma, reads it in a runtime ?do/loop, and accumulates into a
+\ variable via @/!/+!. Proves the AOT entry maps DATA-VA, restores the
+\ persistent content, and sets up the return/loop stack.
+: GAP-DATA-SOURCE ( -- )
+   GE-SRC-RESET
+   s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
+   s" variable SUM" GE-SRC-LINE
+   s" : MAIN ( -- ) 0 SUM ! 3 0 ?do TABLE i 8 * + @ SUM +! loop SUM @ . ;" GE-SRC-LINE ;
+
+: GAP-DATA-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 60" GE-OUT-LINE
+   SB$ ;
+
+: GAP-DATA ( -- )
+   s" hb-aot-data.f" s" hb-aot-data" s" hb-aot-data-report.json" GAP-PATHS
+   GAP-DATA-SOURCE
+   s" hb-build AOT data region build" GAP-BUILD-STRICT
+   GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
+
 : GAP-RUN ( -- )
    s" hb-gate-aot-positive" GT-START
    GAP-BUNDLE
+   GAP-DATA
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;

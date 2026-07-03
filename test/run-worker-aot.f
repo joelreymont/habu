@@ -21,6 +21,8 @@ require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-positive-lib.f
 
+TRW-LOAD-DONE
+
 : TRWA-SETUP ( -- )
    TR-BUILD-CACHE$ HBB-CACHE-ROOT! ;
 

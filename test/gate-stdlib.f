@@ -4,7 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test/runner.f,
 \ test/gate-pool.f. Native bin/hb already carries src/core/sha256.f.
 
-include test/gate-stats.f
+require test/gate-stats.f
 include lib/content-key.f
 include test/gate-stdlib-lib.f
 include test/gate-stdlib-inline-lib.f

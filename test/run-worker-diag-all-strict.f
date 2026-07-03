@@ -25,6 +25,8 @@ require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
+TRW-LOAD-DONE
+
 variable TRWD-FORK-ID
 
 : TRWD-RUN-ID ( idx -- ) {: idx:idx :}
@@ -51,7 +53,7 @@ variable TRWD-FORK-ID
 
 : TRWD-START-FORK ( idx -- ) {: idx:idx :}
    idx IDX>N TRWD-FORK-ID !
-   idx TR-PHASE-TEST
+   idx TRWD-CHILD-LABEL idx TRW-CHILD-TEST
    idx TRWD-CHILD-LABEL TR-TIMEOUT-MS [: TRWD-FORK-RUN ;] GT-POOL-START-FORK ;
 
 : TRWD-ALL ( -- )

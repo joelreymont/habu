@@ -28,7 +28,8 @@
    s" tools/lint/shadow-lint.f" GSI-INCLUDE
    s" tools/host-lint.f" GSI-REQUIRE
    s" tools/parallel-agent-lint.f" GSI-INCLUDE
-   s" tools/filemap-lint.f" GSI-INCLUDE ;
+   s" tools/filemap-lint.f" GSI-REQUIRE
+   s" tools/filemap-lint-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-TOOLS-STATUS ( -- )
    s" repl-lint" [: GSI-REPL-LINT ;] GSI-RUN
@@ -41,7 +42,8 @@
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE
-   s" tools/host-lint-test.f" GSI-INCLUDE ;
+   s" tools/host-lint-test.f" GSI-INCLUDE
+   s" tools/trusted-inventory-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-TOOLS-BODY ( -- )
    GSI-FORK-RESET
