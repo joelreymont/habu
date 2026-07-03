@@ -727,6 +727,7 @@ variable LCOLDPFX variable LAPPPROV
    LCOLDPFX LABEL@ BL,
    C-SOURCE-APPEND-LSRC
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
+   12 1 MOVZ,  12 DATA AOT-SEED-ARM-CELL STR,     \ arm the AOT REPL seed: interactive repl only
    SRC-DONE LABEL@ B,
    SRC-DONE LABEL@ LBL, ;
 
@@ -2395,25 +2396,184 @@ s" c-local-ref" s" label label --" TRUST
 \ for the one-word milestone. LAOTCODELEN = 0 (stage/maker builds) skips it whole.
 \ Registers x13/x14/x15 still hold argc/argv/envp until EM-DATA-INIT stores them,
 \ so this pass (which runs earlier) must stay off them, exactly like EM-SEED-DICT.
-: EM-SEED-AOT ( -- )
-   LBL LBL LBL {: askip:label acopy:label adone:label :}
-   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,          \ x11 = code blob byte length
-   11 askip CBZ,                                     \ nothing baked -> skip
-   9 LAOTCODE LABEL@ ADR,  12 0 MOVZ,                \ x9 = blob src (in __text), x12 = i
+\ Copy the baked LAOTCODE blob to CP (x11 = blob byte length on entry).
+: EM-AOT-COPY-BLOB ( -- )
+   LBL LBL {: acopy:label adone:label :}
+   9 LAOTCODE LABEL@ ADR,  12 0 MOVZ,                \ x9 = blob src (__text), x12 = i
    acopy LBL,  12 11 CMP,  C-GE adone BCOND,
       3 9 12 ADD,  3 3 0 LDRB,  4 CP 12 ADD,  3 4 0 STRB,
       12 12 1 ADDI,  acopy B,
-   adone LBL,
-   10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD, \ x10 = &dict[NDICT] (next free record)
-   9 LAOTDICT LABEL@ ADR,                            \ x9 = baked record src
-   5 9 0 LDR,  7 CP 5 ADD,  7 10 0 STR,              \ [0] xt = code base + blob offset
-   6 9 8 LDR,  6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,  \ [8] = end-off - xt-off - 4
-   5 9 16 LDR,  5 10 16 STR,                         \ [16] name length / flags (inline)
-   5 9 24 LDR,  5 10 24 STR,                         \ [24] inline name bytes
-   5 9 32 LDR,  5 10 32 STR,                         \ [32] inline name bytes
-   5 9 40 LDR,  5 10 40 STR,                         \ [40] trailer
-   NDICT NDICT 1 ADDI,                               \ publish the seeded word
-   CP CP 11 ADD,                                     \ code area top now past the blob
+   adone LBL, ;
+
+\ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
+\ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
+\ EM-AOT-PATCH-SITES can resolve sibling calls by name.
+\ Each source record is a compact 8 bytes (word0 = blob-off u16 | end u16<<16;
+\ word1 = name-off u16 | flags u8<<16 | wid u8<<24); expand it to the full 48B dict
+\ record, rebasing [0] xt to CP+blob-off and reconstructing [16] flags|len, the
+\ [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded), and [40] wid
+\ -- the EXACT inverse of the build-time ACAP-COMPACT-RECS, proven byte-identical to
+\ the source-compiled record by ACAP-PROVE-RECS. x2..x7 are LHIDXADD's saved set;
+\ x9/x11/x12 survive it. Records are 8B-aligned so both words load with LDRW.
+: EM-AOT-REGISTER-RECS ( -- )
+   LBL LBL LBL LBL {: rloop:label rdone:label nloop:label ndone:label :}
+   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (8B stride), x12 = k
+   11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
+   rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
+      10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
+      3 9 0 LDRW,                                   \ x3 = word0 = blob-off | end<<16
+      5 $FFFF LIT64,  4 3 5 AND,  4 CP 4 ADD,  4 10 0 STR,  \ [0] xt = CP + blob-off (u16)
+      3 3 16 LSRI,  3 10 8 STR,                     \ [8] end = word0>>16 (u16, hi=0)
+      6 9 4 LDRW,                                   \ x6 = word1 = name-off | flags<<16 | wid<<24
+      5 $FFFF LIT64,  4 6 5 AND,                     \ x4 = name-off
+      7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
+      5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
+      7 6 16 LSRI,  3 $FF LIT64,  7 7 3 AND,        \ x7 = flags = (word1>>16)&0xFF
+      7 7 60 LSLI,  7 7 5 ORR,  7 10 16 STR,        \ [16] = flags<<60 | len
+      2 0 MOVZ,  2 10 24 STR,  2 10 32 STR,         \ zero [24..40)
+      4 4 1 ADDI,                                   \ x4 = name src (entry+1)
+      3 0 MOVZ,                                     \ x3 = i
+      nloop LBL,  3 5 CMP,  C-GE ndone BCOND,
+         2 4 3 ADD,  2 2 0 LDRB,                    \ x2 = name[i]
+         7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
+         3 3 1 ADDI,  nloop B,
+      ndone LBL,
+      6 6 24 LSRI,  3 $FF LIT64,  6 6 3 AND,  6 10 40 STR,   \ [40] wid = (word1>>24)&0xFF
+      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
+      9 9 8 ADDI,  12 12 1 ADDI,  rloop B,
+   rdone LBL, ;
+
+\ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
+\ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
+\ engine (LFIND over primitives, cold-prefix words, and the just-registered
+\ siblings) and re-encode the three movz/movk x16 immediates at CP+blob-offset to
+\ that address. A missing name is a build/seed inconsistency: fail closed. Rows are
+\ 4B-aligned so each loads with a single LDRW.
+: EM-AOT-PATCH-SITES ( -- )
+   LBL LBL LBL {: ploop:label pdone:label pnf:label :}
+   21 LAOTSITES LABEL@ ADR,                          \ x21 = row cursor (4B rows)
+   23 LAOTNSITE LABEL@ ADR,  23 23 0 LDR,            \ x23 = site count M
+   22 0 MOVZ,                                        \ x22 = site index
+   ploop LBL,  22 23 CMP,  C-GE pdone BCOND,
+      24 21 0 LDRW,                                  \ x24 = row = blob-off | name-off<<16
+      4 24 16 LSRI,                                  \ x4 = name-off (row>>16)
+      5 $FFFF LIT64,  24 24 5 AND,                   \ x24 = blob offset (row & 0xFFFF; survives LFIND)
+      5 LAOTNAMES LABEL@ ADR,  9 5 4 ADD,            \ x9 = pool entry ptr = LAOTNAMES + name-off
+      10 9 0 LDRB,                                   \ x10 = name length = pool[entry]
+      9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
+      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
+      13 pnf CBZ,
+      9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
+      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 11 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
+        14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      21 21 4 ADDI,  22 22 1 ADDI,  ploop B,
+   pnf LBL,  0 $51 MOVZ,  NR-EXIT-GROUP SYS,
+   pdone LBL, ;
+
+\ DATA-literal relocation (third relocation class): reserve the REPL's DATA span
+\ at the current DP (the region is fixed MAP_FIXED, anon-mmap => zeroed => identical
+\ to a source-compiled all-allot/variable region), then rebase every captured DATA
+\ address literal (movz/movk x9 chain) by delta = seedDP - captureD0, so create/
+\ variable buffer refs point at the seeded DATA. No name lookup; single delta.
+: EM-AOT-RELOC-DATA ( -- )
+   LBL LBL {: dloop:label drdone:label :}
+   3 DATA DP-CELL LDR,                              \ x3 = seed DP (abs) = REPL DATA base at boot
+   5 LAOTDATAD0 LABEL@ ADR,  5 5 0 LDR,             \ x5 = capture-time REPL DATA base
+   6 3 5 SUB,                                       \ x6 = delta (survives the loop)
+   5 LAOTDATASIZE LABEL@ ADR,  5 5 0 LDR,           \ x5 = REPL DATA span
+   3 3 5 ADD,  3 DATA DP-CELL STR,                  \ reserve: DP += span (zeroed by anon mmap)
+   21 LAOTDSITES LABEL@ ADR,                        \ x21 = DATA-site cursor (u16 offsets)
+   23 LAOTNDSITE LABEL@ ADR,  23 23 0 LDR,          \ x23 = DATA-site count
+   22 0 MOVZ,
+   dloop LBL,  22 23 CMP,  C-GE drdone BCOND,
+      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = blob offset (u16 LE)
+      9 CP 24 ADD,                                  \ x9 = literal addr = CP + blob offset
+      10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
+      10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
+      10 9 8 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  11 11 10 ORR,
+      10 9 12 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 48 LSLI,  11 11 10 ORR,
+      11 11 6 ADD,                                  \ x11 = value + delta
+      10 9 0 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      21 21 2 ADDI,  22 22 1 ADDI,  dloop B,
+   drdone LBL, ;
+
+\ CODE-literal relocation (fourth relocation class): rebase every captured movz/movk
+\ x9 literal whose value pointed into the capture-time code blob [B0,B1) (anonymous
+\ quotation entry addresses) by the code delta = seedCP - captureB0. The blob was
+\ copied verbatim to CP, so a single delta maps each in-blob code address to its
+\ seeded location. Runs while the region is RW (before RX), same as the call patch.
+: EM-AOT-RELOC-CODE ( -- )
+   LBL LBL {: cloop:label crdone:label :}
+   5 LAOTCODEB0 LABEL@ ADR,  5 5 0 LDR,            \ x5 = capture-time code base (B0)
+   6 CP 5 SUB,                                     \ x6 = code delta = seedCP - B0 (survives loop)
+   21 LAOTCSITES LABEL@ ADR,                       \ x21 = CODE-site cursor (u16 offsets)
+   23 LAOTNCSITE LABEL@ ADR,  23 23 0 LDR,         \ x23 = CODE-site count
+   22 0 MOVZ,
+   cloop LBL,  22 23 CMP,  C-GE crdone BCOND,
+      24 21 0 LDRB,  4 21 1 LDRB,  4 4 8 LSLI,  24 24 4 ORR,   \ x24 = blob offset (u16 LE)
+      9 CP 24 ADD,                                 \ x9 = literal addr = CP + blob offset
+      10 9 0 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  11 10 0 ADDI,
+      10 9 4 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  11 11 10 ORR,
+      10 9 8 LDRW,   10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  11 11 10 ORR,
+      10 9 12 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 48 LSLI,  11 11 10 ORR,
+      11 11 6 ADD,                                 \ x11 = value + code delta
+      10 9 0 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 0 ADDI,   5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
+      10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
+      10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
+      10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      21 21 2 ADDI,  22 22 1 ADDI,  cloop B,
+   crdone LBL, ;
+
+\ Boot-run the captured top-level entry words (INSTALL/BPW-INSTALL/S-INSTALL) once
+\ the seeded blob is RX + icache-flushed: walk the 0-terminated [len][name] list,
+\ LFIND each in the now-registered dict, and blr its xt. This replaces the embedded
+\ install-tail source -- the engine installs the REPL with zero baked source. Runs
+\ at LEX0 on every boot; the entry words self-guard on TTY? so pipe/script boots are
+\ no-ops. A missing name is a build/seed bug -> panic exit $52.
+: EM-AOT-BOOTRUN ( -- )
+   LBL LBL LBL {: bloop:label bdone:label bnf:label :}
+   21 LAOTBOOTRUN LABEL@ ADR,                        \ x21 = list cursor
+   bloop LBL,
+      10 21 0 LDRB,  10 bdone CBZ,                   \ x10 = name len; 0 -> done
+      SP SP 16 SUBI,  21 SP 0 STR,  10 SP 8 STR,     \ preserve cursor + len across the call
+      9 21 1 ADDI,                                   \ x9 = name ptr = cursor + 1
+      LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
+      13 bnf CBZ,
+      11 BLR,                                        \ call the entry word
+      21 SP 0 LDR,  10 SP 8 LDR,  SP SP 16 ADDI,
+      21 21 1 ADDI,  21 21 10 ADD,                   \ advance past [len][name]
+      bloop B,
+   bnf LBL,  0 $52 MOVZ,  NR-EXIT-GROUP SYS,
+   bdone LBL, ;
+
+\ Seed the metabuild-captured AOT words at LEXIT: copy the blob, register N dict
+\ records, name-relocate the call sites, relocate DATA-address literals, advance CP.
+\ Region is RX at LEXIT so the pass toggles RW around all region writes and flushes
+\ the icache. LAOTNREC = 0 (stage2/maker/snap: nothing captured) skips the pass.
+: EM-SEED-AOT ( -- )
+   LBL {: askip:label :}
+   11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N
+   11 askip CBZ,                                    \ nothing captured -> skip
+   2 3 MOVZ,  LPROT LABEL@ BL,                       \ region -> RW
+   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length (for the copy)
+   EM-AOT-COPY-BLOB
+   EM-AOT-REGISTER-RECS
+   EM-AOT-PATCH-SITES
+   EM-AOT-RELOC-DATA
+   EM-AOT-RELOC-CODE
+   9 CP 0 ADDI,                                     \ x9 = blob base (= CP before advance) for the flush
+   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length again
+   CP CP 11 ADD,                                    \ code area top past the blob
+   2 5 MOVZ,  LPROT LABEL@ BL,                       \ region -> RX
+   LFLUSH LABEL@ BL,                                \ flush icache over [blob base, CP)
+   EM-AOT-BOOTRUN                                   \ install the REPL (no source): LFIND+blr the entry words
    askip LBL, ;
 
 : EM-SEED-DICT ( -- )
@@ -2608,7 +2768,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    EM-RUNTIME-STACK
    EM-MMAP-CODE-REGION
    EM-SEED-DICT
-   EM-SEED-AOT
+   \ EM-SEED-AOT moved to EM-COMPILE-EXIT (LEXIT): the AOT words are seeded
+   \ post-cold-prefix so name-relocated calls (M2) can resolve cold-prefix words.
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
    EM-SNAPSHOT-RESTORE
@@ -3211,10 +3372,16 @@ s" em-eval-clean-exit" s" --" TRUST
 s" em-repl-read" s" --" TRUST
 
 : EM-COMPILE-EXIT ( -- )
+   LBL {: aoskip:label :}
    LEXIT LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LEX0 LABEL@ CBZ,
       EM-EVAL-CLEAN-EXIT
-   LEX0 LABEL@ LBL,
+   LEX0 LABEL@ LBL,                                          \ top-level source exhausted (EVALD==0), cp@ clean here
+   9 DATA AOT-SEED-DONE-CELL LDR,  9 aoskip CBNZ,            \ already seeded -> skip
+   9 DATA AOT-SEED-ARM-CELL LDR,  9 aoskip CBZ,              \ armed only on the interactive repl entry
+      EM-SEED-AOT                                            \ seed the AOT REPL once, post-cold-prefix
+      9 1 MOVZ,  9 DATA AOT-SEED-DONE-CELL STR,
+   aoskip LBL,
    9 DATA REPLH-CELL LDR,  9 LRBYE LABEL@ CBZ,
    0 1 MOVZ,  1 LOKS LABEL@ ADR,  2 4 MOVZ,  NR-WRITE SYS,
    EM-REPL-READ
@@ -3253,6 +3420,10 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
+   LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !
+   LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
+   LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
+   LBL LAOTBOOTRUN !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
@@ -3326,57 +3497,91 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-LABEL-JIT
    EMIT-LABEL-OPS ;
 
-\ ---- AOT milestone 1: bake one metabuild-compiled word into the emitted engine.
-\ The stdin driver defines the sample word (through the normal checked load path),
-\ records its region code pointer in AOT-XT and its length in AOT-PROBE-LEN, then
-\ calls AOT-CAPTURE to arm the section (copies the code into AOT-CODE-BUF, sets
-\ AOT-CODE-LEN, stashes the name). The word is defined in the driver, NOT here, so
-\ an AOT-seeded engine reloading this file to rebuild the stage never collides with
-\ the seeded copy. stage2/maker/snap never arm it, so AOT-CODE-LEN stays 0 and the
-\ emitted engine carries an empty AOT section (EM-SEED-AOT skips it).
-$8000 constant AOT-CODE-CAP
-create AOT-CODE-BUF AOT-CODE-CAP allot
-variable AOT-CODE-LEN
-variable AOT-XT
-variable AOT-PROBE-LEN
-create AOT-NAME-BUF 16 allot
-variable AOT-NAME-LEN
+\ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
+\ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
+\ words; EMIT-AOT-SEED bakes blob + N dict records + a call-site relocation table
+\ (site blob-offset -> callee dict NAME); EM-SEED-AOT copies/registers/relocates at
+\ boot. Site rows and dict records are stored as cells here for @/! access; the bake
+\ packs sites to u32 triples.
+$10000 constant AOT-BLOB-CAP
+create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
+256 constant AOT-REC-MAX
+\ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
+\   [0 .. MAX*48)          verbatim 48B dict records (capture source of truth)
+\   [MAX*48 .. +MAX*8)     compact 8B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + wid u8)
+\   [+MAX*8 .. +48)        48B scratch for the build-time expand==verbatim proof
+create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX 8 * + 48 + allot    variable AOT-REC-N
+2048 constant AOT-SITE-MAX
+create AOT-SITE-BUF AOT-SITE-MAX 4 * allot    variable AOT-SITE-N   \ packed 4B rows: blob-off u16 + name-off u16
+$4000 constant AOT-NAMES-CAP
+create AOT-NAMES-BUF AOT-NAMES-CAP allot    variable AOT-NAMES-LEN
+\ DATA-literal relocation table (third relocation class): blob offsets of the
+\ movz/movk x9 DATA-address literals (create/variable buffer refs). AOT-DATA-D0 =
+\ the capture engine's REPL-DATA base (abs); AOT-DATA-SIZE = the REPL DATA span
+\ (all allot/variable => zero content). EM-SEED-AOT reserves DATA and rebases each
+\ literal by (seed-DP - AOT-DATA-D0).
+512 constant AOT-DSITE-MAX
+create AOT-DSITE-BUF AOT-DSITE-MAX 2 * allot    variable AOT-DSITE-N   \ packed u16 blob offsets (DATA then CODE)
+variable AOT-DATA-D0    variable AOT-DATA-SIZE
+\ CODE-literal relocation table (fourth relocation class): blob offsets of the
+\ movz/movk x9 literals whose value lands in the captured code range [B0,B1) --
+\ anonymous quotation-body entry addresses (J-SEMIQUOT `C-LIT QENT`). Rebased by
+\ the code delta (seedCP - captureB0); no name (quotations are anonymous). Stored in
+\ the DATA-site buffer right after the AOT-DSITE-N DATA offsets (one fewer scratch
+\ view), and baked as its own contiguous LAOTCSITES section.
+variable AOT-CSITE-N
+variable AOT-CODE-B0
+\ boot-run name list: 0-terminated [len][name-bytes] records of the top-level entry
+\ words (INSTALL/BPW-INSTALL/S-INSTALL) the metabuild ran at the tail of the REPL
+\ source. With the source dropped, EM-SEED-AOT LFINDs + calls each after RX/flush so
+\ the seeded engine installs the REPL with no embedded source.
+$400 constant AOT-BOOTRUN-CAP
+create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
-\ Raw emitter-boundary views (same pattern as SRCA@): expose the stashed region
-\ code pointer and the two build-scratch byte buffers as `ptr u8` for the checked
-\ copy/BYTES, sites below.
-: AOT-XT@ ( -- ptr u8 ) AOT-XT @ ;
-s" AOT-XT@" s" -- ptr u8" TRUST
-: AOT-CODE-BUF@ ( -- ptr u8 ) AOT-CODE-BUF ;
-s" AOT-CODE-BUF@" s" -- ptr u8" TRUST
-: AOT-NAME-BUF@ ( -- ptr u8 ) AOT-NAME-BUF ;
-s" AOT-NAME-BUF@" s" -- ptr u8" TRUST
+\ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
+\ buffers as `ptr` for the checked copy/BYTES, sites below.
+: AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
+s" AOT-BLOB-BUF@" s" -- ptr u8" TRUST
+: AOT-REC-BUF@ ( -- ptr a ) AOT-REC-BUF ;
+s" AOT-REC-BUF@" s" -- ptr a" TRUST
+: AOT-SITE-BUF@ ( -- ptr u8 ) AOT-SITE-BUF ;
+s" AOT-SITE-BUF@" s" -- ptr u8" TRUST
+: AOT-NAMES-BUF@ ( -- ptr u8 ) AOT-NAMES-BUF ;
+s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
+: AOT-DSITE-BUF@ ( -- ptr u8 ) AOT-DSITE-BUF ;
+s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
+: AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
+s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 
-: AOT-NAME-STASH ( ptr u8 n -- )
-   dup AOT-NAME-LEN !
-   16 0 ?do 0 AOT-NAME-BUF@ i + c! loop
-   0 ?do dup i + c@ AOT-NAME-BUF@ i + c! loop drop ;
-
-: AOT-CAPTURE ( -- )
-   AOT-PROBE-LEN @ AOT-CODE-LEN !
-   AOT-CODE-LEN @ 0 ?do AOT-XT@ i + c@ AOT-CODE-BUF@ i + c! loop
-   s" AOT-PROBE" AOT-NAME-STASH ;
-
-\ Emit the AOT section: the code blob, its length, and one 48-byte dict record
-\ (xt/end as blob-relative offsets, name inline). Placed last so it never shifts
-\ engine-text offsets. LAOTCODELEN is always present for EM-SEED-AOT's ADR.
+\ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
+\ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
+\ name-off, name-len), then the name pool. Placed last so it never shifts engine
+\ offsets. LAOTNREC = 0 makes EM-SEED-AOT skip the whole pass (stage2/maker/snap).
+: EMIT-AOT-SITES ( -- )   \ packed 4B rows (blob-off u16 + name-off u16)
+   AOT-SITE-N @ 0 > IF AOT-SITE-BUF@ AOT-SITE-N @ 4 * BYTES, THEN ;
+: EMIT-AOT-DSITES ( -- )   \ packed u16 DATA-site offsets
+   AOT-DSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * BYTES, THEN ;
+: EMIT-AOT-CSITES ( -- )   \ packed u16 CODE-site offsets (after the AOT-DSITE-N DATA u16s)
+   AOT-CSITE-N @ 0 > IF AOT-DSITE-BUF@ AOT-DSITE-N @ 2 * + AOT-CSITE-N @ 2 * BYTES, THEN ;
 : EMIT-AOT-SEED ( -- )
-   LAOTCODELEN LABEL@ LBL,  AOT-CODE-LEN @ DCQ,
+   LAOTCODELEN LABEL@ LBL,  AOT-BLOB-LEN @ DCQ,
    LAOTCODE LABEL@ LBL,
-   AOT-CODE-LEN @ 0 > IF AOT-CODE-BUF@ AOT-CODE-LEN @ BYTES, THEN
-   LAOTDICT LABEL@ LBL,
-   AOT-CODE-LEN @ 0 > IF
-      0 DCQ,                              \ [0] xt offset in blob
-      AOT-CODE-LEN @ DCQ,                 \ [8] end offset in blob
-      AOT-NAME-LEN @ DCQ,                 \ [16] name length (inline, no EXT)
-      AOT-NAME-BUF@ 16 BYTES,             \ [24..40) inline name, zero-padded
-      0 DCQ,                              \ [40] trailer
-   THEN ;
+   AOT-BLOB-LEN @ 0 > IF AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, THEN
+   LAOTNREC LABEL@ LBL,  AOT-REC-N @ DCQ,
+   LAOTDICT LABEL@ LBL,                          \ compact 8B records (EM-AOT-REGISTER-RECS expands to 48B)
+   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ 8 * BYTES, THEN
+   LAOTNSITE LABEL@ LBL,  AOT-SITE-N @ DCQ,
+   LAOTSITES LABEL@ LBL,  EMIT-AOT-SITES
+   LAOTNAMES LABEL@ LBL,
+   AOT-NAMES-LEN @ 0 > IF AOT-NAMES-BUF@ AOT-NAMES-LEN @ BYTES, THEN
+   LAOTDATASIZE LABEL@ LBL,  AOT-DATA-SIZE @ DCQ,
+   LAOTDATAD0 LABEL@ LBL,  AOT-DATA-D0 @ DCQ,
+   LAOTNDSITE LABEL@ LBL,  AOT-DSITE-N @ DCQ,
+   LAOTDSITES LABEL@ LBL,  EMIT-AOT-DSITES
+   LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
+   LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
+   LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
+   LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES, ;  \ +1 = live 0 terminator
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS

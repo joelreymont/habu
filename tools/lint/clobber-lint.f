@@ -8,7 +8,8 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
-create FB 131072 allot
+$40000 constant FB-CAP   \ file buffer: >= the largest scanned emitter (habu2.f grew past $20000)
+create FB FB-CAP allot
 
 : NL  ( -- )  10 emit ;
 
@@ -355,7 +356,7 @@ variable RNEXT  variable LASTSTOP  variable RDONE  variable CUR
 
 variable WI  variable WE
 : PASS1-FILE  {: pa pu :}  ( -- )
-   pa pu FB 131072 READ-FILE  TOKENIZE
+   pa pu FB FB-CAP READ-FILE  TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if
@@ -500,7 +501,7 @@ variable TRACK-LR
       DI @ 1+ DI !
    repeat ;
 : PASS2-FILE  {: pa pu :}  ( -- )
-   pa pu FB 131072 READ-FILE  TOKENIZE
+   pa pu FB FB-CAP READ-FILE  TOKENIZE
    0 WI !
    begin WI @ TN# @ 1- < while
       WI @ TOK s" :" LINT-STR= if

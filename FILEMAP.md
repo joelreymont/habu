@@ -60,6 +60,7 @@ points stay listed.
   build drivers.
 - `src/habu/jit.f` — register JIT helpers.
 - `src/habu/regalloc.f` — virtual stack register allocator.
+- `src/habu/aot-capture.f` — host-only AOT-REPL capture: scans metabuild-compiled words for inter-word call sites and builds the seed blob/records/reloc-table.
 - `src/habu/aot-closure.f` — stripped AOT closure analysis and diagnostics.
 - `src/habu/aot-lib.f` — stripped AOT linker library.
 - `src/habu/aot.f` — stripped AOT maker entry.

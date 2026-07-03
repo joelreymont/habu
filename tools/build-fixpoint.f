@@ -697,6 +697,7 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-COMMON
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-DRIVER-IO
+   out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
 \ Snapshot source layout: the dev-engine keep surface (the same files the

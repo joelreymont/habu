@@ -200,9 +200,16 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| AOT-XT@ | `-- ptr u8` | Reads the metabuild-compiled AOT word's region code pointer from a raw variable for the build-time code capture. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
-| AOT-CODE-BUF@ | `-- ptr u8` | Views the AOT code-capture scratch buffer as bytes for the capture copy and the `BYTES,` blob emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
-| AOT-NAME-BUF@ | `-- ptr u8` | Views the AOT inline-name scratch buffer as bytes for the name stash and the `BYTES,` record emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-BLOB-BUF@ | `-- ptr u8` | Views the AOT-REPL capture code-blob scratch buffer as bytes for the blob copy and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-REC-BUF@ | `-- ptr a` | Views the AOT-REPL capture dict-record scratch buffer for the 48-byte record copy and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-SITE-BUF@ | `-- ptr u8` | Views the AOT-REPL capture call-site table scratch buffer as bytes for the packed 4B reloc rows (blob-off u16 + name-off u16) and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-NAMES-BUF@ | `-- ptr u8` | Views the AOT-REPL capture name-pool scratch buffer as bytes for the name intern and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-DSITE-BUF@ | `-- ptr u8` | Views the AOT-REPL capture DATA/CODE-literal relocation table scratch buffer as bytes for the packed u16 blob-offset tables and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-BOOTRUN-BUF@ | `-- ptr u8` | Views the AOT-REPL capture boot-run name-list scratch buffer as bytes for the `[len][name]` intern and `BYTES,` emit of the install-tail entry words. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-DBASE | `-- ptr a` | Host build-time cast of the metabuild dictionary base to a record pointer for the AOT-REPL capture reverse-lookup. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
+| AOT-A>U8 | `ptr a -- ptr u8` | Host build-time byte view of a code/dict address for the AOT-REPL capture blob and name copies. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
+| AOT-N>U8 | `n -- ptr u8` | Host build-time byte view of a code/dict address value for the AOT-REPL capture blob source and EXT-name reads. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
+| AOT-CELL@ | `ptr a -- n` | Host build-time cell read of a metabuild dict record field for the AOT-REPL capture reverse-lookup. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
 | emit-forth | `ptr u8 n --` | Top-level engine builder: consumes source bytes, allocates every forward-ref label, and emits the complete image. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | LINUX-VA>PTR | `va -- ptr n` | Linux runtime loader addresses are tagged as `va`; converting one to a host pointer for GOT/header reads is the raw image boundary. | `test/run.f`, `lib/ffi-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | IMAGE-TEXT-SIZE-OFF | `-- n` | Linux executable header offset where the snapshot writer reads the mapped text size. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
@@ -419,6 +426,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f | 2026-06-16 |
+| EVAL-HOST | `ptr u8 n --` | Compiles a REPL source buffer in the metabuild host dict for AOT capture; `evaluate`'s net effect is source-dependent so the boundary declares the balanced install-tail effect. | `test/run.f` | src/habu/stdin.f | 2026-07-03 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f | 2026-06-24 |
 | CHECK-BODY | `ptr u8 n -- n` | Shared source pre-verification recursively invokes the checker on an assembled definition body and renders the checker-owned uncheckable diagnostic before returning the verdict; recursive checker invocation and diagnostic-state access are the explicit verifier boundary. | `tools/hb-build-test.f`, `tools/check-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-01 |
 | CHECK-DOES-BODY | `ptr u8 n ptr u8 n -- n` | Shared source pre-verification routes `DOES>` bodies through the checker's dedicated `CHECK-DOES!` entrypoint; ordinary `CHECK!` cannot model the created-word data-field pointer. | `tools/check-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
@@ -641,6 +649,7 @@ owners is the rest of `habu-audit-trusted-inventory-3a950436`.
 
 <!-- trusted-inventory-classes
 src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/aot-capture.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436 2
@@ -652,7 +661,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 95
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 98
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
@@ -661,7 +670,7 @@ src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436 9
 src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436 10
 src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5

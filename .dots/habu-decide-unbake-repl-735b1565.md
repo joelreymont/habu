@@ -485,3 +485,46 @@ not a pipe). (2) N-record capture + reverse-name reloc + AOT-PATCH, proven with 
 (3) REPL bundle: move REPL files into the host bundle for capture, seed at boot,
 drop the REPL LSRC to the install-tail, lower gate-build-size baseline in the
 SAME commit. Keep the AOT-seeded self-rebuild byte-cmp regression at each stage.
+
+## PHASE 0 CERTIFICATION STATUS (2026-07-03, opus-tools)
+Mechanism (Approach 3 N-word capture+seed+name-relocate) landed + fixpoint-green
+(commits: "AOT-REPL M2: name-relocated N-word AOT seed"; phase-0 partial). The
+REPL/debugger source is NEARLY certifiable — only two miss classes found:
+- CERTIFIED: repl.f TIO-LFLAG@/! (byte-offset termios lflag read/write as a full
+  cell) via an explicit `LF>N ( ptr u8 -- ptr n )` boundary. The rest of repl.f,
+  debug-watch.f, stepper.f, debug.f already certify as-is.
+- BLOCKED (kept-source): repl.f `INSTALL` stores a raw xt (`' RD-LINE`) into the
+  REPLH-CELL DATA slot — a typed-execution-vector / raw-xt-cell pattern the
+  checker cannot express (SECOND AGENT type-habu epic). Needs typed execution
+  vectors OR a TRUSTED: boundary.
+BLOCKER for finishing certification: trust-lint `TL-MAX = 512` manifest-row cap
+(trust-lint-core.f) — the manifest is already team-wide at 506/512, so adding the
+remaining certification/kept-source boundary rows (INSTALL-as-TRUSTED + any more
+casts) exceeds it. trust-lint* is the retire-TRUSTED epic's territory. Once the
+cap is raised (or manifest usage drops), certification can complete and the
+capture/seed/relocate/drop-LSRC phases proceed.
+
+## SIZE MEASUREMENT (2026-07-03, opus-tools — standalone offline harness)
+Captured the REAL REPL+debugger (repl-term/repl/debug-watch/stepper/debug) in an
+offline harness (compile unchecked, ACAP-CAPTURE, measure — not wired into the
+shape-test-gated build). macOS/arm64:
+- words (dict records N) = 110 ; call sites (M) = 146 ; compiled blob = 21468 B
+- EXT-name words = 0 ; unresolved-call sites = 0  (EVERY word is capturable; only
+  INSTALL stays source for the CERTIFICATION/execution-vector reason, not capture)
+- distinct call/word names = 119 ; deduped name-pool = 767 B
+MINIMAL encoding (compact 12B record expanded at seed from a deduped name pool;
+reloc = u32 offset + u16 name-index = 6B):
+- records N*12 = 1320 ; reloc M*6 = 876 ; names = 767 -> AOT SECTION = 24431 B
+- minus 11.9KB LSRC dropped => PROJECTED NET = +12531 B (~+12.5 KB to __text)
+CURRENT/naive encoding (48B recs, 12B sites, no dedup) would be +17550 B; the
+minimal encoding saves ~5 KB. The net is DOMINATED by (compiled blob 21468 −
+source 11900 = +9568): compiled code is ~1.8x the source, and it is currently
+runtime-only (not baked), so baking it is the unavoidable growth. Tree-shaking the
+now-unreachable LSRC/source-read scaffolding reclaims a little more (not yet
+measured). NET ANSWER: ~+12.5 KB (bin/hb 99319 -> ~112 KB, ~115 KB page-rounded),
+i.e. closer to the ~15 KB end than ~5 KB.
+PARITY: for all 146 source call sites, reverse-lookup(target)->name then
+forward-lookup(name)->xt == the original target (146 OK / 0 bad) — boot LFIND(name)
+resolves every callee to the exact source address. Combined with the AOTF-D
+execution fixture (seeded relocated word runs correctly), the capture+name-reloc
+is proven faithful for the real REPL.

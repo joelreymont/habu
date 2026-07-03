@@ -84,6 +84,15 @@ $3C98 constant HIDXP-CELL
 \ TASK-USER-BASE up from $3D00 — so this $3CA0 slot in the $3CA0..$3D00 gap is the
 \ single free engine cell between those two library regions.
 $3CA0 constant EVALREC-CELL
+\ AOT-SEED-DONE-CELL: one-shot flag set the first time the post-cold-prefix AOT
+\ seed runs at LEXIT (EM-COMPILE-EXIT), so REPL re-entry does not re-seed. Lives
+\ in the same $3CA0..$3D00 free engine gap as EVALREC-CELL, above the task cells.
+$3CA8 constant AOT-SEED-DONE-CELL
+\ AOT-SEED-ARM-CELL: set to 1 only on the interactive repl entry (C-SOURCE SRC-REPL),
+\ so the AOT REPL seed runs solely when the engine is about to present the REPL --
+\ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
+\ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
+$3CB0 constant AOT-SEED-ARM-CELL
 $4000 constant HIDX-SLOTS
 $10000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL

@@ -67,22 +67,34 @@ s" HB@" s" -- ptr u8" TRUST
    HL @ 2 > 0= IF s" hb: repl/stepper sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 
-\ AOT milestone 1: define the sample word in THIS driver (only loaded for the stdin
-\ engine, whose metabuild host has no AOT seed), record its region code pointer and
-\ length, then arm the AOT section (habu2.f AOT-CAPTURE). EMIT-FORTH bakes the code
-\ + a dict record; the emitted bin/hb registers AOT-PROBE at boot via EM-SEED-AOT
-\ with no source parse. The baked REPL source stays on. UNDEFINE-IF-DEFINED keeps
-\ the definition idempotent if a host ever arrives with the word already present.
-s" AOT-PROBE" UNDEFINE-IF-DEFINED
-: AOT-PROBE ( -- n ) 12345 ;
-' AOT-PROBE AOT-XT !
-cp@ AOT-XT @ - AOT-PROBE-LEN !
+\ AOT-REPL M2: compile the REPL/token-stepper/breakpoint debugger IN THE METABUILD
+\ HOST and capture it (code blob + dict records + call/DATA/CODE relocation tables)
+\ so bin/hb seeds it at boot as CODE -- no re-parse, no embedded REPL source. The
+\ image writer's EMIT-DICT bakes the emit-builder #PL list (the cold prefix), NOT
+\ the host dictionary, so the host-compiled REPL words live ONLY in the AOT blob;
+\ EM-SEED-AOT copies the blob, registers the records, name-relocates calls, and
+\ relocates DATA + CODE (quotation) literals into bin/hb. The install-tail
+\ (INSTALL/BPW-INSTALL/S-INSTALL, the top-level calls at the file tails) becomes
+\ the boot-run list: EM-SEED-AOT LFINDs + calls each after the seed, so the engine
+\ installs the REPL with ZERO baked source. stage2/maker/snap use other drivers,
+\ so their AOT buffers stay empty and EM-SEED-AOT skips.
+TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
+variable REPL-B0  variable REPL-R0  variable REPL-D0
+variable REPL-B1  variable REPL-R1  variable REPL-D1
+: CAPTURE-REPL ( -- )
+   READ-REPL                                     \ REPL sources -> HB scratch buffer
+   cp@ REPL-B0 !  ndict@ REPL-R0 !  here REPL-D0 !
+   HB@ HL @ EVAL-HOST                             \ compile the REPL in the host dictionary
+   cp@ REPL-B1 !  ndict@ REPL-R1 !  here REPL-D1 !
+   REPL-B0 @ REPL-B1 @  REPL-R0 @ REPL-R1 @  REPL-D0 @ REPL-D1 @  ACAP-CAPTURE
+   s" INSTALL" ACAP-BOOTRUN+                      \ repl.f    -> REPL read hook + termios save
+   s" BPW-INSTALL" ACAP-BOOTRUN+                  \ debug-watch.f -> watch table init
+   s" S-INSTALL" ACAP-BOOTRUN+ ;                  \ stepper.f -> stepper read hook
 
 : GO ( -- )
-   AOT-CAPTURE
-   READ-REPL
+   CAPTURE-REPL
    0 0= STDIN? !
-   HB@ HL @ EMIT-FORTH
+   HB@ 0 EMIT-FORTH                               \ empty LSRC: the REPL is seeded, not re-parsed
    s" hb" STDIN-OUT DRV-EMIT-IMAGE
    DRV-EXIT-OK ;
 GO

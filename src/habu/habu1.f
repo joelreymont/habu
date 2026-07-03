@@ -77,6 +77,10 @@ s" fprim-l" s" ptr u8 n n --" TRUST
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
+variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES
+variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
+variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
+variable LAOTBOOTRUN
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
