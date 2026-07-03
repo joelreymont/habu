@@ -2013,23 +2013,23 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    rec recu fld fldu typ VREC-FIELD-WRAP VREC-COPY VREC-FIELD! ;
 
 : VREC-ATOM-COPY= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
-   node VN.TAG@ VR-ATOM <> IF 0 EXIT THEN
+   node VN.TAG@ VR-ATOM <> IF RES-FALSE EXIT THEN
    node VREC-I-STR a u CORE-STR= ;
 
 : VREC-FIELD-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
-   node VN.TAG@ VR-PARAM <> IF 0 EXIT THEN
+   node VN.TAG@ VR-PARAM <> IF RES-FALSE EXIT THEN
    a u node VN.E@ VREC-ATOM-COPY= ;
 
 : VREC-FIELD-DUP? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id VREC-START@ VREC-J !
    BEGIN VREC-J @ VREC-FIELD-N @ < WHILE
-      a u VREC-J @ VREC-FIELD@ VREC-FIELD-NAME= IF -1 EXIT THEN
+      a u VREC-J @ VREC-FIELD@ VREC-FIELD-NAME= IF RES-TRUE EXIT THEN
       VREC-J @ 1 + VREC-J !
    REPEAT
-   0 ;
+   RES-FALSE ;
 
 : VREC-FIELD-BAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF -1 EXIT THEN
+   u 0= IF RES-TRUE EXIT THEN
    a u DELIM? ;
 
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
