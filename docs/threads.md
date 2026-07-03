@@ -96,7 +96,7 @@ bin/hb --load test/run-in-stack-smoke.f
 
 `lib/task-test.f` covers two pthread workers, facility-protected shared updates,
 task-local `TASK:+USER` isolation via `TASK:HIS`, `TASK:SELF`, `TASK:HALT` /
-`TASK:KILL`, facility owner semantics, a five-task Odin-shaped repeated
+`TASK:KILL`, facility owner semantics, a five-task application-shaped repeated
 start/join soak, FFI from worker tasks, task-local FFI scratch isolation, the
 live-task compile guard, and process-fatal worker `die`/`throw` diagnostics.
 The full test suite includes these as `tasking-primitive-smoke` and

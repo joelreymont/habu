@@ -89,10 +89,10 @@ variable GD-START-NS
    GT-ROOT name nameu dst JOIN-PATH up ! ;
 
 : GD-INC-PATHS ( -- )
-   s" odin-core.f" GD-INC-CORE GD-INC-CORE-U GD-INC-PATH!
-   s" odin-api.f" GD-INC-API GD-INC-API-U GD-INC-PATH!
-   s" odin-main.f" GD-INC-MAIN GD-INC-MAIN-U GD-INC-PATH!
-   s" odin-dup.f" GD-INC-DUP GD-INC-DUP-U GD-INC-PATH! ;
+   s" app-core.f" GD-INC-CORE GD-INC-CORE-U GD-INC-PATH!
+   s" app-api.f" GD-INC-API GD-INC-API-U GD-INC-PATH!
+   s" app-main.f" GD-INC-MAIN GD-INC-MAIN-U GD-INC-PATH!
+   s" app-dup.f" GD-INC-DUP GD-INC-DUP-U GD-INC-PATH! ;
 
 : GD-SB-LINE ( ptr u8 n -- )
    SB-APPEND
@@ -112,7 +112,7 @@ variable GD-START-NS
 
 : GD-WRITE-CORE ( -- )
    SB-RESET
-   s" package ODIN" GD-SB-LINE
+   s" package APP" GD-SB-LINE
    s" : H ( -- n ) 9 ;" GD-SB-LINE
    s" public" GD-SB-LINE
    s" : CORE ( -- n ) H ;" GD-SB-LINE
@@ -120,7 +120,7 @@ variable GD-START-NS
    GD-INC-CORE$ SB$ WRITE-ALL ;
 
 : GD-WRITE-API-BODY ( -- )
-   s" package ODIN" GD-SB-LINE
+   s" package APP" GD-SB-LINE
    s" public" GD-SB-LINE
    s" : GET ( -- n ) H ;" GD-SB-LINE
    s" end-package" GD-SB-LINE ;
@@ -138,25 +138,25 @@ variable GD-START-NS
 
 : GD-WRITE-MAIN-RUN ( -- )
    SB-RESET
-   s" ODIN:GET ." GD-SB-LINE
+   s" APP:GET ." GD-SB-LINE
    GD-INC-MAIN$ SB$ WRITE-ALL ;
 
 : GD-WRITE-MAIN-INCLUDE ( -- )
    SB-RESET
    GD-INC-API$ GD-SB-INCLUDE-LINE
-   s" ODIN:GET ." GD-SB-LINE
+   s" APP:GET ." GD-SB-LINE
    GD-INC-MAIN$ SB$ WRITE-ALL ;
 
 : GD-WRITE-MAIN-INCLUDED ( -- )
    SB-RESET
    GD-INC-API$ GD-SB-S"
    s"  included" GD-SB-LINE
-   s" ODIN:GET ." GD-SB-LINE
+   s" APP:GET ." GD-SB-LINE
    GD-INC-MAIN$ SB$ WRITE-ALL ;
 
 : GD-WRITE-DUP ( -- )
    SB-RESET
-   s" package ODIN" GD-SB-LINE
+   s" package APP" GD-SB-LINE
    s" : H ( -- n ) 1 ;" GD-SB-LINE
    s" end-package" GD-SB-LINE
    GD-INC-DUP$ SB$ WRITE-ALL ;
@@ -591,31 +591,31 @@ variable GD-START-NS
 : GD-DUPLICATE-DEFINITION-REJECTS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    $4E s" RESET" s" package rejects duplicate public word" GD-RUN-BAD-SOURCE
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" : H ( -- n ) 2 ;" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : GET ( -- n ) H ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    $4E s" duplicate definition" s" package rejects duplicate private word across reopen" GD-CHECK-BUF-BAD
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : reset ( -- n ) 2 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    $4E s" duplicate definition" s" package rejects case-variant duplicate word" GD-CHECK-BUF-BAD
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" variable CELL" GE-SRC-LINE
    s" variable cell" GE-SRC-LINE
@@ -686,7 +686,7 @@ variable GD-START-NS
 : GD-PACKAGE-SHADOW-POSITIVES ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : COUNT ( -- n ) 7 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
@@ -694,12 +694,12 @@ variable GD-START-NS
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
-   s" ODIN:COUNT ." GE-SRC-LINE
-   s" ODIN:RESET ." GE-SRC-LINE
+   s" APP:COUNT ." GE-SRC-LINE
+   s" APP:RESET ." GE-SRC-LINE
    s" MK:RESET ." GE-SRC-LINE
    s" 3 dup + ." GE-SRC-LINE
    s" hb package duplicate positives" GE-EVAL-RUN-STDIN
@@ -713,7 +713,7 @@ variable GD-START-NS
 : GD-PACKAGE-DUPLICATE-CHECK ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" package ODIN" GE-SRC-LINE
+   s" package APP" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" : RESET ( -- n ) 1 ;" GE-SRC-LINE
    s" : RESET ( -- n ) 2 ;" GE-SRC-LINE
@@ -778,7 +778,7 @@ variable GD-START-NS
    GD-WRITE-DUP
    SB-RESET
    GD-INC-DUP$ GD-SB-INCLUDE-LINE
-   s" package ODIN" GD-SB-LINE
+   s" package APP" GD-SB-LINE
    s" : H ( -- n ) 2 ;" GD-SB-LINE
    s" end-package" GD-SB-LINE
    GD-INC-MAIN$ SB$ WRITE-ALL

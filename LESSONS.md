@@ -974,7 +974,7 @@ lesson — keep the specific word/code/path, cut the prose.
   closed on active-slot reuse; start fixed-slot artifact builders before free-slot
   phases that might claim their indexes.
 - **Habu's locals/loop discipline costs first-time iteration:** porting real code
-  (Odin's tegrastats/netpbm parsers to `../odin-habu`) hit the same walls
+  (a real application's tegrastats/netpbm parsers to its own Habu tree) hit the same walls
   repeatedly — no local bind after `exit`, a `begin/while` condition may only add
   a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
   words. The rules now live in `docs/forth.md`; once known, later ports needed

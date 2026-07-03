@@ -1,4 +1,4 @@
-# MISSING — Habu ergonomics: what porting Odin surfaced, and how to fix it properly
+# MISSING — Habu ergonomics: what porting a real application surfaced, and how to fix it properly
 
 Status: design proposal with partial implementation. Foundation C, Foundation
 A2, and the floating-point cleanup are landed; A1 and B remain active checker
@@ -8,7 +8,7 @@ work. Author: FFI/port agent. Audience: the agent working on Habu core
 ## Why this document exists
 
 The open language/stdlib quirks under `habu-habu-quirk-fixes-5a0d1f1e` were all
-discovered the same way: porting Odin's pure-data layer from Zig to checked Habu
+discovered the same way: porting a real application's pure-data layer from Zig to checked Habu
 kept hitting friction the checker or compiler imposed on otherwise-correct code.
 They are currently filed as a flat list of separate fixes. Treated that way, each
 fix adds one more special case to `src/core/checker.f`.
@@ -57,7 +57,7 @@ Two distinct problems live in this one place.
 ### Problem A1 — nominal integer types are not user-declarable
 
 Because the roles are an enum baked into the engine, application code cannot
-introduce its own nominal integer. The Odin port wants exactly this: a camera
+introduce its own nominal integer. The application port wants exactly this: a camera
 serial, a frame index, an exposure in microseconds, a GMSL channel — all are
 integers that should be **distinct** so the checker stops you mixing them, yet
 today you either edit the engine or fall back to bare `n` and lose the safety.
@@ -85,7 +85,7 @@ avoid: do not make `int` satisfy `pid`/`fd`/`rc`; convert explicitly or refuse.)
 
 **Why this is the prize:** Zig has no cheap nominal *integer* — to get the same
 guarantee you wrap the int in a struct and pay an ergonomic tax everywhere. A tag
-table gives the Odin domain compile-checked distinct integers at zero runtime
+table gives the application domain compile-checked distinct integers at zero runtime
 cost. This is a place Habu can be *better* than Zig, not just even with it.
 
 ### Problem A2 — narrow→wide integer widening is implemented
@@ -117,7 +117,7 @@ if both sit over `n`. This separation keeps both rules simple and keeps the
 distinctness invariant intact.
 
 **How to prove it on the port (measure, don't assume):** count the explicit
-integer conversions (`>N` / `N>` and friends) in `odin/*.f` before and after A is
+integer conversions (`>N` / `N>` and friends) in the application's `.f` sources before and after A is
 in. A correct design collapses a large fraction of that conversion noise. If the
 count barely moves, the design missed.
 

@@ -4,7 +4,7 @@
 \ optional `e`/`E` exponent: [+|-] digits [. digits] [ (e|E) [+|-] digits ].
 \ The significand is accumulated in a double and scaled by a power of ten, so it
 \ is exact for values whose significand fits in 2^53 and within double's range
-\ (every sensor/JSON float Odin emits); it is not a bit-exact arbitrary-precision
+\ (every sensor/JSON float the application emits); it is not a bit-exact arbitrary-precision
 \ parser. Depends on lib/string.f (digit predicates, STR>NUMBER?).
 \
 \ Habu locals discipline: a local may not be bound after an `exit` has appeared

@@ -130,8 +130,8 @@ end-package
   package does not load any source file by itself.
 - Multi-file packages are split by reopening the package in each file. If the
   loader already supplies every package file in dependency order, do not add an
-  include just to repeat that fact: `bin/hb --load odin/core.f odin/api.f` is
-  sufficient, and `tools/check.f --source-list odin/core.f odin/api.f` is the
+  include just to repeat that fact: `bin/hb --load app/core.f app/api.f` is
+  sufficient, and `tools/check.f --source-list app/core.f app/api.f` is the
   checker-only form. Use include only when a source file or entry file should
   own loading its dependencies.
 - The purpose of include/require is source composition, not namespace sharing.
@@ -146,8 +146,8 @@ end-package
   file should assemble a package from submodules:
 
 ```forth
-\ odin/core.f
-package ODIN
+\ app/core.f
+package APP
 
 : HELPER ( -- n )
    9 ;
@@ -161,10 +161,10 @@ end-package
 ```
 
 ```forth
-\ odin/api.f
-include odin/core.f
+\ app/api.f
+include app/core.f
 
-package ODIN
+package APP
 
 public
 
@@ -201,7 +201,7 @@ end-package
   reuse the same name. Silent last-definition-wins shadowing is always an error.
 - Shadowing an outer/global/built-in word from inside a package remains legal
   because it publishes into a different wordlist. The same tail may also appear
-  in different packages (`ODIN:RESET` and `MK:RESET`); only duplicates in the
+  in different packages (`APP:RESET` and `MK:RESET`); only duplicates in the
   same package public/private wordlist are rejected.
 - While a package is open, unqualified lookup tries the package private wordlist,
   then the package public wordlist, then the saved/global lookup path. This lets

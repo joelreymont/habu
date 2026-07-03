@@ -4,7 +4,7 @@
 \ (src/core/*.f and target/habu sources) RELATIVE TO THE CURRENT DIRECTORY
 \ (see src/habu/habu2.f PFX-LOAD-BASE-FILES and the EMIT-SOURCE-READ routine,
 \ whose open-error path does `exit(74)` with no message). Any consumer that
-\ invokes hb from another directory (odin, editors, CI) then sees an opaque
+\ invokes hb from another directory (consumer projects, editors, CI) then sees an opaque
 \ exit 74. This tool checks that prefix set against a root and names the first
 \ unresolved file plus the root it was expected under.
 \

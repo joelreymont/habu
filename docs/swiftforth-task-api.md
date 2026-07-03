@@ -45,5 +45,5 @@ tracking; it is not a copy of the manual.
 `lib/task.f` implements the full captured surface above. `lib/task-test.f`
 proves task creation, start/join/kill, cooperative halt, task-local user
 storage, `HIS`, facility owner semantics, worker FFI calls, atomics, an
-Odin-shaped five-task repeated soak, live-task compile guards, and fail-closed
+application-shaped five-task repeated soak, live-task compile guards, and fail-closed
 process termination when a task dies or throws.
