@@ -202,9 +202,12 @@ feature is allowed.
   `src/core/checker.f:3293-3303`, `src/habu/habu1.f:1730`,
   `src/habu/habu1.f:1751`, `src/habu/habu1.f:1760-1763`,
   `bootstrap/cg/forth.fs:679`.
-- Execution sinks that can compile or run protected words by xt: `src/habu/habu2.f:1809`,
-  `src/habu/habu1.f:1033`, `bootstrap/cg/forth.fs:2214`,
-  `bootstrap/cg/forth.fs:288`.
+- Execution sinks that can compile or run protected words by xt:
+  postpone/compile, sinks `src/habu/habu2.f:1809` (`C-POSTPONE`),
+  `src/habu/habu1.f:1033` (`BCOMPILE`), `bootstrap/cg/forth.fs:2214`,
+  `bootstrap/cg/forth.fs:288`; execute sinks `src/habu/habu1.f:1564`
+  (`BEXEC`), `bootstrap/cg/forth.fs:544`, checker `RSEXEC`
+  `src/core/checker.f:1103`.
 - AOT/object test entries and cache keys currently assume the normal `MAIN`
   entry unless extended: `src/habu/aot-closure.f:45-46`,
   `src/habu/aot-closure.f:110-111`, `src/habu/aot-closure.f:168-169`,
@@ -270,8 +273,10 @@ feature is allowed.
      friend flag while loading the engine's canonical baked source list (the
      `tools/srclist.f` order used by the native build, `habu1`, and the Gforth
      bootstrap mirror) and permanently seals it before any user source is
-     evaluated (`--load` files, user `--source-list` inputs, stdin, REPL,
-     `evaluate`). User `--source-list` inputs are never friend-origin. Sealed
+     evaluated (`--load` files, stdin, REPL, `evaluate`; there is no engine
+     `--source-list` flag — user-supplied source-list files reach the engine as
+     materialized loaders through `--load` and are covered by that path). No
+     user-supplied source-list file is friend-origin. Sealed
      package creation/reopen and every friend-only guard in this plan read that
      latch, and the same `package TFAM`/`package TYPE`/`package MATCH` token
      from user source rejects before mutation. Persist protected-WID metadata through AOT
@@ -332,8 +337,8 @@ feature is allowed.
      source-origin fixtures prove sealed package creation/reopen succeeds only
      through the friend path; user fixtures prove the same spelling rejects.
      Latch fixtures prove the friend flag is sealed before the first user token
-     is evaluated and cannot be re-set afterward from `--load`, user
-     `--source-list`, stdin, REPL, or `evaluate` input.
+     is evaluated and cannot be re-set afterward from `--load`, stdin, REPL,
+     `evaluate`, or materialized source-list loader input.
    - Risk: checker arena relocation bugs; every name pointer/string offset must
      rebase correctly.
    - Effort: large.
@@ -911,7 +916,10 @@ feature is allowed.
       data-stack and return-stack logical metadata, including return-stack depth
       and hidden-field layout tags, or reject layout bundles before frame
       entry/exit so evaluated source cannot split or strand hidden fields.
-      `?dup` is not a generic bundle copy. It must reject layout ADTs unless the
+      `?dup` is not a generic bundle copy. It has no checker axiom today — it
+      exists only as emitter primitive `BQDUP` (`src/habu/habu1.f:1178`,
+      `bootstrap/cg/forth.fs:432`) branching on the raw TOS cell — so this item
+      first adds its axiom, then makes it reject layout ADTs unless the
       family declares a checked truthiness/niche policy that specifies which
       physical representation is false and proves the copied bundle is valid.
       Tag 0 is a valid variant for common sums such as `option` and `result`, so
@@ -925,7 +933,9 @@ feature is allowed.
      locals, interpret-mode stack primitives, `?dup` rejection, `constant`,
      `depth`, `.s`, fallback primitive, and bootstrap recovery fixtures prove
      layout bundles cannot be split or leak on the exact native and Gforth paths
-     above. Gforth scalar inventory parity for `2>r`, `2r>`, and `2r@` is either
+     above. Gforth scalar inventory parity for `2>r`, `2r>`, and `2r@`
+     (confirmed absent from `EMIT-STACK-PRIMS`,
+     `bootstrap/cg/forth.fs:641-646`) is either
      implemented or explicitly rejected fail-closed before layout tests run.
      Codegen fixtures prove width facts reach
      lowering before emission, and negative fixtures prove hidden fields cannot
@@ -1313,7 +1323,7 @@ migration, and policies are proven.
   `lib/object.f`/`lib/object-test.f`/`src/habu/aot-lib.f` `FIELD` words; the
   source-origin friend capability is a boot latch set during the engine's
   canonical `tools/srclist.f` load and sealed before any user source runs, with
-  user `--source-list` inputs never friend-origin; the generated constructor
+  no user-supplied source-list file friend-origin; the generated constructor
   package derivation is pinned to one hyphen-escape/SHA-256 encoding shared by
   native, `habu1`, Gforth, and the spec; item 5's first checkpoint depends only
   on items 2-4, removing the formal 5<->6 cycle; item 8 constructor bodies
