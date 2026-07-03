@@ -25,9 +25,10 @@ prefix.
 Use a previous release asset or a seed copied from a trusted checkout.
 `tools/seed.f` validates optional `HABU_SEED_SHA256`, installs the seed to
 `bin/hb`, makes it executable, ensures ad-hoc code signing, runs a stdin smoke
-program, then runs `tools/build-fixpoint-main.f -- install`. The installed
-binary is therefore refreshed from current source and must pass the normal
-self-rebuild fixpoint.
+program, then runs `tools/build-fixpoint-main.f -- install --force`. The
+`--force` is deliberate: this is a proof flow, so the content-key stamp skip
+must not stand in for an actual rebuild. The installed binary is therefore
+refreshed from current source and must pass the normal self-rebuild fixpoint.
 
 After `bin/hb` exists, daily rebuilds do not need the seed:
 

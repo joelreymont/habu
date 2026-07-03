@@ -114,6 +114,31 @@ bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
 `bin/hb --load` selects the host core/checker/env source prefix from the
 running binary. Callers load only the libraries and tool source they need.
 
+The `all`/`install` refresh is content-keyed. After a successful install the
+tool writes a stamp — SHA-256 over the digests of `bin/hb` plus the exact
+emitted fixpoint and stdin stage sources, captured at the moment the build
+consumed them — to `$HABU_FIXPOINT_STAMP` if set, else
+`$XDG_CACHE_HOME/habu-fixpoint/stamp`, else `~/.cache/habu-fixpoint/stamp`.
+A repeated refresh with an unchanged engine and unchanged stage sources prints
+`fixpoint: cached <key-prefix>` and exits 0 without rebuilding (~2s instead of
+~27s). Because the stamp key includes the hash of the current `bin/hb`, a
+replaced or stale engine can never false-skip: any byte change to `bin/hb` or
+to a compiled stage source changes the key and forces the full refresh.
+Append `--force` to bypass the stamp and rebuild unconditionally; proof flows
+(`tools/seed.f`, `tools/bootstrap.sh`) always pass `--force`. `-- all` only
+writes the stamp when its product is byte-identical to `bin/hb`.
+
+## Warm Dev Snapshot
+
+For a hot edit/check loop, build a warm snapshot engine with the same command
+but `-- snap`: it writes `$HB_TMP/hb-new`, a snapshot image that boots warm
+(~0.02s vs ~0.07s) and checks user source at least as fast as `bin/hb`. The
+snapshot build retires the image-writer/compiler tail before writing, so the
+image carries only the dev surface (checker, stdlib prefix, REPL/debugger);
+the checker stays fail-closed (a bad definition exits 70). `hb-new` is a
+local dev artifact: it is never installed as `bin/hb`, never used as a gate
+or candidate launcher, and must be rebuilt after source changes.
+
 If a device tool (`maki/eval-device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
 cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
 native FFI primitive — **refresh it with the command above.** The maki gate guards this:

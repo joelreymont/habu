@@ -87,7 +87,19 @@ Counts are not enough. The stats log records event counters and timed tests:
 ```text
 inner-hb-spawn
 span<TAB>33634<TAB>native stdlib tool-boundary slice
+span-load<TAB>412<TAB>test/run-worker-stdlib.f
 ```
+
+Spans have two kinds. `span` is test-time work: a test file run or a phase
+total. `span-load` is load/setup time: worker support `require` lists and the
+shared stdlib setup. Slowest-test attribution reads only `span` rows, and
+duplicated `span-load` labels show which load lists are still repeated across
+workers.
+
+Every span label has exactly one owning emitter. The pool pass-hook owns the
+span for each pool entry (spawned or forked); a fork child records its fork
+label at fork entry and `GS-SPAN` suppresses a child emission whose label
+equals it, so fork-backed tests are not double-counted.
 
 The summary must show:
 
@@ -95,7 +107,9 @@ The summary must show:
 - cache/candidate counters;
 - child-Habu and helper-spawn counts;
 - in-process evaluation count;
-- span count and slowest span label.
+- span count and slowest span label;
+- load-span count and total load milliseconds (`load-spans`, `load-ms`);
+- spans with no matching test row (`span-stray`).
 
 Each phase also emits per-test subject metadata:
 
@@ -103,8 +117,38 @@ Each phase also emits per-test subject metadata:
 test<TAB>label<TAB>subject<TAB>runner<TAB>boundary<TAB>sha
 ```
 
-That lets the summary answer which subject owns the critical path and which
-load lists are still duplicated.
+The summary joins `span` rows to test rows by label and prints one
+critical-path line per subject:
+
+```text
+subject host-source: spans=29 total-ms=118327 max-ms=12951
+```
+
+That answers which subject owns the critical path and which load lists are
+still duplicated. File-level test spans without a phase test row stay
+drill-down detail and are counted as `span-stray`.
+
+## Failure Triage
+
+Phase failures are fail-soft. Every pool child streams stdout/stderr to
+per-entry `pool-<gen>-<seq>-out.log` / `pool-<gen>-<seq>-err.log` files under
+the suite temp root while the pool keeps a bounded in-memory tail for dumps.
+When a phase fails or times out, the pool prints the tail (prefixed by a
+`[tail truncated N bytes; full capture: <path>]` marker when the tail
+overflowed), the outcome kind/code, the `stdout-file:`/`stderr-file:` capture
+paths, and a `FAIL:` line, records the phase in the red list, and keeps
+draining scheduled work instead of killing siblings.
+
+Draining stays fail-closed. A nested suite's `GT-POOL-DRAIN` dies after the
+drain when reds exist, printing a `red phases: N` summary with one
+`RED: <label> kind=K code=C out=<path> err=<path>` line per failure. The top
+runner prints the same red list at completion, keeps the suite temp root
+(`capture root kept: <GT-ROOT>`) so the capture files survive for triage, and
+exits nonzero.
+
+Infrastructure failures are distinct from test failures: pool spawn, poll, or
+capture-open errors are a fast abort that kills all live children and throws
+instead of recording a red phase.
 
 ## Host Profiles
 

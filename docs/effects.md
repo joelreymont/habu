@@ -61,6 +61,17 @@ global, explicit, and fail-closed: it cannot reuse a built-in type, parametric
 constructor, atom prefix, or one-letter type variable. Unknown type tokens still
 reject with `E-UNKNOWN-SIGNATURE-TYPE`; Habu does not silently intern typos.
 
+A user-declared nominal gets the **same** strict treatment as the built-in roles:
+it is distinct from `n` and from every other nominal, and never widens either
+direction. `DEFTYPE` auto-derives its explicit converter pair — `>NAME
+( n -- NAME )` and `NAME>N ( NAME -- n )` — as no-op identity casts, exactly like
+`>IDX`/`IDX>N`. Those converters are the only way across the boundary; there is no
+implicit collapse to `n`. So `deftype frame-idx` immediately yields checked
+`>FRAME-IDX`/`FRAME-IDX>N`, and a mismatch renders the declared name (e.g.
+`expected: n actual: frame-idx`), not `?`. This gives application code (camera
+serials, frame indexes, exposure-µs, GMSL channels) compile-checked distinct
+integers at zero runtime cost, without an engine edit or fixpoint rebuild.
+
 `DEFLINEAR name` declares a nominal noncopyable cell type. Ordinary checked code
 may pass a linear value through unchanged, but generic copying, dropping, memory
 store/load, and value-record duplication reject unless a called word explicitly
@@ -74,6 +85,31 @@ bodies, while `( point -- rect )` rejects even if both records have the same
 cell shape. Record fields may be polymorphic or parametric signature types;
 accessors, updaters, copies, and destructors are normal checked words over the
 expanded stack cells.
+
+## Pointer types and arithmetic
+
+`ptr τ` is a typed pointer whose pointee `τ` records the element the pointer
+addresses. Pointer arithmetic is **pointee-polymorphic**: `+`, `-`, `1+`, `1-`,
+`cell+`, and `char+` step a `ptr τ` by an integer offset and preserve `τ`
+(`( ptr a n -- ptr a )`); `n + ptr a` is also `ptr a`; and `ptr a - ptr a` is the
+integer distance `n`. Adding two pointers (`ptr a + ptr a`) and scaling a pointer
+(`ptr a * n`) are rejected — neither is a modeled axiom.
+
+A **byte view** re-reads any pointer as a byte span: a plain checked identity word
+`: NAME ( ptr a -- ptr u8 ) ;` certifies, because the declared input pointee stays
+a generalized variable while the output is `ptr u8`. This is the checked
+replacement for hand-`TRUST`ed `*-BYTE+` reinterpret helpers; a `ptr u8` result
+uses `c@`/`c!`, and cell `@`/`!` on it is rejected.
+
+A pointer's pointee element type is **invariant**. The structural integer widening
+that lets a `u8` value flow into a `cell`/`u32` slot at the *top level* of a stack
+cell does **not** apply inside a `ptr`: a concrete `ptr u8` never satisfies
+`ptr cell` or `ptr u32`, and two different concrete pointees never unify
+(`ptr u8` vs `ptr cell` is a type error, in either argument order, and at any
+nesting depth). This keeps the byte-span / cell-span distinction sound — a byte
+pointer cannot be laundered into a cell pointer and then cell-loaded. The checker
+enforces this by unifying pointer pointees strictly (equality plus type-variable
+binding, no widening) while still widening top-level scalar cells.
 
 ## Examples (from `src/prims.fs`)
 
@@ -169,7 +205,8 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   `>RC RC>N`, `>PID PID>N`, `>MS MS>N`, `>NS NS>N`, `>TOK TOK>N`,
   `>REG REG>N`, `>LABEL LABEL>N`, `>VA VA>N`, and `>SYMIDX SYMIDX>N`.
   These are runtime identity casts over one cell; their only purpose is making
-  semantic role changes explicit to the checker.
+  semantic role changes explicit to the checker. A `DEFTYPE`-declared nominal gets
+  the same pair auto-derived (`>NAME NAME>N`) at declaration time.
 - Library boundaries should prefer checked refinement constructors over raw
   role casts. Examples: `A-LEN`, `A-IDX`, `A-COUNT`, `VEC-LEN`, `VEC-IDX`,
   `VEC-COUNT`, `STR-LEN`, `STR-OFF`, `STR-COUNT`, `JW-LEN`, `M-LEN`, and
@@ -197,6 +234,83 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   tested `TRUSTED:` boundary. See `src/pickroll.fs`.
 - Words the checker can't type (variadic `?DUP`, dynamic `PICK`/`ROLL`)
   must stay outside checked code or behind `TRUSTED:`.
+
+## Primitive axiom set
+
+The checker's typing rests on one explicit, minimal trust root: the **primitive
+effect table** (`PES`) in `src/core/checker.f`. Each `PRIM: name … PRIM;` row
+declares one primitive's stack effect as an axiom the checker takes on faith —
+there is no Forth body to infer from. These rows are the only place a built-in
+word's effect is asserted; everything the checked language proves is derived by
+inference from them. Overloaded primitives (`+`, `-`, `cell+`, `char+`,
+comparisons, `and`/`or`/`xor`) contribute one axiom row per pointer/integer/bool
+variant.
+
+The axiom set is audited two ways:
+
+- **Differential census** — `test/prop-test-core.f` (`AX-CENSUS`, run by the
+  prop/debug gate phase) walks the live `PES` table and classifies every row.
+  For each *executable* axiom — stack shuffles, integer/bitwise/comparison
+  arithmetic, cell/char pointer stepping, non-atomic memory access on an owned
+  buffer, engine-state reads, and floating point — it builds a runner that
+  pushes dummy operands, executes the primitive in-process, and asserts the
+  measured out-arity equals the arity the axiom *declares*. A lying axiom
+  (declared arity ≠ runtime behavior) fails the census; a self-test proves the
+  comparison has teeth by fabricating a wrong declaration. Every `PES` row must
+  be classified — an unclassified primitive name fails the census, so a new
+  axiom cannot land without a difftest classification.
+- **Non-executable axioms** — syscalls, process/control words (`throw`, `die`,
+  `fork`, `spawn-*`), parser literals (`s"`, `char`, `[']`), defining words
+  (`create`, `variable`, `constant`), engine/checker introspection (`checker-*`,
+  `diag-*`, `parse-name`), image/FFI, and atomic RMW ops cannot be run
+  in-process with dummy operands. Their declared arity is pinned instead by the
+  native self-rebuild fixpoint (the engine is rebuilt from source through these
+  primitives) and the behavioral gate (the rebuilt engine runs real programs).
+  The census records them as `noexec`.
+
+Axiom-set size is tracked separately from discharged `TRUSTED`: the census
+prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X
+noexec)`), and the trusted-inventory `prim-axiom` class (`TRUSTED.md`) counts the
+checker's axiom-model trust sites (nominal role casts, structure/record effects,
+and the census readers) apart from the general `TRUSTED`/`TRUST` ratchet.
+
+## Typed depth introspection
+
+Stack-snapshot assertions historically could not be typed: `T{ code -> expected
+}T` captures an arbitrary-length stack tail whose size is a runtime `depth`
+value, so `T{`/`->`/`}T` are trusted words with no checked contract on the
+asserted computation or its shape.
+
+The checked replacement expresses the actual and expected computations as two
+quotations that must leave the **same row shape**:
+
+```
+SNAP= ( [ R -- S ] [ R -- S ] -- )
+```
+
+The checker types this signature directly: each quotation argument carries its
+own inferred effect, and the shared output row `S` forces both to leave an
+identical stack shape. A mismatch is a `CHECK`-time type error, not a runtime
+surprise:
+
+```
+: CASES ( -- )
+   [: 1 2 + ;] [: 3 ;]  SNAP=   \ certifies: both leave one cell
+   [: 1 2 ;]   [: 3 ;]  SNAP=   \ rejected: [ -- n n ] vs [ -- n ]
+```
+
+Because a quotation is compile-only, `SNAP=` assertions live inside a checked
+test word — which is exactly what subjects the asserted code and its shape to the
+checker. At runtime `SNAP=` executes each quotation and compares the produced
+cells through the same judge path as `T{ }T`. Only the depth-marked drain of each
+quotation's output row stays trusted (one word reusing the existing `->`/`}T`
+drains), so the comparator adds no new drain primitive while making every
+asserted computation and its shape checkable.
+
+Migration: rewriting `T{ code -> expected }T` to `[: code ;] [: expected ;]
+SNAP=` inside checked test words retires the three untyped `T{`/`->`/`}T` words
+for a net trusted-count drop and upgrades every snapshot assertion from
+runtime-only to shape-checked (tracked as habu-shared-t-t-470833e6).
 
 ## Notes
 

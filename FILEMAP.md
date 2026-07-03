@@ -47,6 +47,10 @@ points stay listed.
 - `src/core/enums.f` — checked `ENUM` and `ENUM4` defining words for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
+- `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
+- `src/core/check-hook.f` — default native source checker hook installation.
+- `src/core/combinators.f` — legacy higher-order library words baked into
+  `bin/hb` (audited unchecked boundary; new higher-order words are checked).
 
 ## Native Engine And Builders
 
@@ -64,6 +68,27 @@ points stay listed.
 - `src/habu/snap-lib.f` — checked snapshot writer definitions.
 - `src/habu/snap.f` — snapshot writer entry point.
 - `src/habu/stdin.f` — internal stdin/interactive engine builder.
+- `src/habu/rt.f` — native runtime routines emitted for the engine builder
+  (stack, dictionary, and interpreter support).
+- `src/habu/repl.f` — interactive REPL baked into the stdin engine.
+- `src/habu/crash.f` — in-binary crash handler printing the register dump.
+- `src/habu/prof.f` — in-binary sampling profiler (`prof-on`/`prof-report`).
+- `src/habu/stage2.f` — fixpoint driver: the running stage1 engine rebuilds the
+  next engine from current source.
+- `src/habu/treeshake.f` — build-time primitive tree shaker for `hb-build`
+  makers.
+- `src/habu/verify-source.f` — pre-compile checked source verifier.
+- `src/habu/bundle-argv.f` — standalone bundle script argument convention.
+- `src/arch/arm64/asm.f` / `src/arch/arm64/icode.f` / `src/arch/arm64/mnem.f`
+  — standalone ARM64 instruction encoders, the minimal single-pass assembler,
+  and the icode-style mnemonic layer over the encoders.
+- `src/os/env-base.f` — shared startup argv/envp access over captured DATA
+  cells.
+- `src/os/script-argv.f` — `bin/hb` source-list script argument convention.
+- `src/os/linux/sys.f` / `src/os/macos/sys.f` — per-target OS seams: syscall
+  numbers plus the SVC emitter.
+- `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
+  target flag words.
 
 ## Debugging And Inspection
 
@@ -127,6 +152,9 @@ points stay listed.
   patch reads/writes, and signing blob cursor helpers.
 - `src/os/macos/macho.f` — Mach-O image construction.
 - `src/os/macos/sign2.f` — embedded ad-hoc signature writer.
+- `src/os/linux/elf.f` — dynamic Linux/aarch64 ELF executable writer.
+- `src/os/linux/sign.f` — Linux no-op signing seam (ELF needs no post-link
+  signature pass).
 - `docs/macho.md` — Mach-O layout notes.
 
 ## Tools And Gates
@@ -231,10 +259,58 @@ points stay listed.
   SOFTMAX-ROWS forward/backward emit drivers.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
+- `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header
+  vocabulary and its coverage.
+- `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
+  vocabulary (M4) and the checked SAXPY proof.
+- `lib/ptx/tile-loop.f` / `lib/ptx/tile-loop-test.f` /
+  `lib/ptx/tile-loop-neg-test.f` — checked counted-loop combinator for tile
+  kernels plus positive and negative regressions.
+- `lib/ptx/tile-smem.f` / `lib/ptx/tile-smem-test.f` /
+  `lib/ptx/tile-smem-neg-test.f` — checked shared-memory tile vocabulary plus
+  positive and negative regressions.
+- `lib/ptx/tile-acc.f` / `lib/ptx/tile-acc-test.f` /
+  `lib/ptx/tile-acc-neg-test.f` — checked register-accumulator vocabulary plus
+  positive and negative regressions.
+- `lib/ptx/tile-v4.f` / `lib/ptx/tile-v4-test.f` — vectorized (v4) tile-DSL
+  operations and the checked v4 SAXPY proof.
+- `lib/ptx/collective.f` / `lib/ptx/collective-test.f` — tile-DSL row and
+  collective vocabulary (M6) plus the checked stable-softmax proof.
+- `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — checked
+  tiled GEMM data-flow positive and negative regressions.
+- `lib/ptx/cg.f` / `lib/ptx/cg-vec.f` / `lib/ptx/cg-collective.f` /
+  `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
+  lowering for tile ops: scalar, vectorized v4, row/collective, the
+  register-blocked SGEMM, and the fused attention kernel.
+- `lib/ptx/ad.f` / `lib/ptx/ad-test.f` — reverse-mode autograd transform v0
+  and its runnable tests.
+- `lib/ptx/ad-saved.f` / `lib/ptx/ad-saved-test.f` — typed saved-value
+  vocabulary for auto-derived backward kernels and its checked coverage.
+- `lib/ptx/autograd-test.f` — checked verified-gradient kernel regression.
+- `tools/ptx/emit.f` — checked PTX text encoder behind the emit drivers.
+- `tools/ptx/cuda-load.f` — checked Orin proof loading an emitted SAXPY cubin
+  as a live GPU module through the Habu FFI.
+- `tools/ptx/saxpy-v4-cg.f` / `tools/ptx/relu-v4-cg.f` /
+  `tools/ptx/fused-relu-cg.f` / `tools/ptx/maxselect-cg.f` /
+  `tools/ptx/matmul-cg.f` / `tools/ptx/attention-cg.f` — checked kernel emit
+  drivers for v4 SAXPY, v4 RELU, fused RELU, max-select, tiled SGEMM, and
+  fused attention.
+- `tools/ptx/matmul-device-test.f` — committed device-correctness regression
+  for the tiled SGEMM kernel.
+- `tools/ptx/profile-test.f` / `tools/ptx/bench-test.f` — focused coverage for
+  PTX benchmark/profile math and configuration.
 - `lib/test.f` — public checked test framework interface: assertions plus
   the `TEST:*` suite/group/test package facade.
 - `lib/test/assert.f` — checked assertion primitives used by test fixtures.
 - `lib/test/assert-test.f` — focused coverage for checked assertion primitives.
+- `lib/test/record.f` — machine-readable `TFAIL` TSV failure records shared by
+  the assert, snapshot, and runner test layers.
+- `lib/test/record-test.f` — focused coverage for failure-record format and
+  capacity guards.
+- `lib/test/snap.f` — shared `T{ ... -> ... }T` stack-snapshot assertions
+  aggregated into the assert counters.
+- `lib/test/snap-test.f` — focused coverage for stack-snapshot pass, mismatch,
+  label, and capacity-guard behavior.
 - `lib/test/suite.f` — private implementation body included by `lib/test.f`
   inside package `TEST`.
 - `lib/test/suite-test.f` — focused package-scoped coverage for `TEST:*`
@@ -255,6 +331,18 @@ points stay listed.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
+- `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
+  `tools/lint/lib.f` — shared native lint foundation: checked text/file
+  helpers, the whitespace token table, the growable string interner, and the
+  scanner core.
+- `tools/lint/text-foundation-test.f` / `tools/lint/set-test.f` — focused
+  coverage for the lint text helpers and interner.
+- `tools/lint/shadow-lint.f` — rejects toolchain definitions that shadow
+  engine PRIM names.
+- `tools/lint/clobber-lint.f` / `tools/lint/clobber-lint-test.f` —
+  register-clobber analysis for BL-able emitter routines and its regressions;
+  its negative syscall-scratch fixture file is a committed filemap-lint
+  exclusion.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for resident runner tests.
@@ -288,6 +376,9 @@ points stay listed.
 - `tools/repair-schema-doc-test.f` — checked fixture coverage for repair diagnostic schema docs.
 - `tools/repair-packet-core.f` — reusable checker JSONL to repair-packet core.
 - `tools/repair-packet-test.f` — checked fixture coverage for repair packet generation.
+- `tools/diagnose-hb-core.f` — checks bin/hb's baked source-prefix set against a root; names the first unresolved file behind the opaque exit-74 outside the repo.
+- `tools/diagnose-hb-test.f` — checked fixtures for the hb-outside-repo prefix diagnostic.
+- `tools/hb-open-failure-test.f` — regression: the built engine names the first unresolved baked prefix source on stderr and exits 74 when started outside the repo.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
 - `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
@@ -320,7 +411,12 @@ points stay listed.
 - `tools/bundle-lib-test-lib.f` — load-only stdlib bundle fixture library for resident runner tests.
 - `tools/bundle-lib-test.f` — checked fixture coverage for the stdlib bundle tool.
 - `tools/examples-test.f` — checked fixture coverage for stdlib examples.
-- `tools/filemap-lint.f` — freshness lint for this file.
+- `tools/filemap-lint.f` — freshness and completeness lint for this file:
+  listed paths must exist, and every .f/.fs file under the src, tools, test,
+  and lib roots must be listed unless a committed exclusion row names it.
+- `tools/filemap-lint-test.f` — fixture coverage for the derived filemap
+  policy: unlisted policy files, stale listed paths, stale exclusions, and
+  missing required docs all fail closed.
 - `tools/repl-lint-core.f` — reusable scanner rejecting REPL-baked code that exits the interactive session.
 - `tools/repl-lint.f` — CLI wrapper for REPL exit lint.
 - `tools/repl-lint-test-lib.f` — load-only REPL exit lint fixture library for resident runner tests.
@@ -328,6 +424,8 @@ points stay listed.
 - `tools/trust-lint-core.f` — reusable `TRUSTED.md` drift scanner core.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
+- `tools/trusted-inventory.f` — TRUSTED ratchet: lexer-backed TSV inventory of `TRUSTED:`/`TRUST`/`0 set-check` sites plus baseline compare against `TRUSTED.md`.
+- `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet.
 - `tools/host-lint-test.f` — focused coverage for host-script lint policy helpers.
 - `tools/stale-status-lint-core.f` — reusable stale status/count lint core.
 - `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.
@@ -383,13 +481,69 @@ points stay listed.
 - `lib/source.f` — checked source materialization and source-list transforms.
 - `lib/source-test.f` — focused coverage for source materialization helpers.
 - `test/process-env-child.f` — child fixture used by process-env tests.
+- `tools/argv.f` / `tools/argv-test.f` — checked argv parser for tool
+  script arguments and its coverage.
+- `tools/json.f` / `tools/json-test.f` / `tools/json-file-test.f` — bounded
+  JSON/JSONL parser and compact writer plus parser and file-cursor coverage.
+- `tools/repair-packet.f` — CLI entrypoint for repair packet generation.
+- `tools/diagnose-hb.f` — CLI entry that reports why bin/hb exits 74 outside the repo.
+- `tools/bench.f` — fixed Habu-timed kernels run on `bin/hb`.
+- `tools/xref-test.f` — focused coverage for live dictionary xref words.
+- `tools/asm-src-test.f` / `tools/asm-checked-test.f` — ARM64 encoder source
+  regression and the checked encoder layout regression.
+- `tools/image-bytes-test.f` — shared executable image byte writer regression.
+- `tools/stdlib-errors-test.f` / `tools/stdlib-date-test.f` /
+  `tools/stdlib-time-test.f` — focused stdlib coverage for `lib/errors.f`,
+  `lib/date.f`, and `lib/time.f`.
+
+## Stdlib Modules
+
+- `lib/errors.f` — canonical stdlib throw codes.
+- `lib/date.f` / `lib/time.f` — checked Gregorian UTC date helpers and native
+  clock wrappers.
+- `lib/argv.f` / `lib/argv-test.f` — checked argv parser for
+  script arguments under `bin/hb` and its coverage.
+- `lib/array.f` / `lib/array-test.f` — checked cell-array helpers and their
+  coverage.
+- `lib/build.f` / `lib/build-test.f` — checked helpers for Habu build scripts
+  and their coverage.
+- `lib/codesign.f` / `lib/codesign-test.f` — checked executable promotion and
+  ad-hoc signing helpers and their coverage.
+- `lib/fs.f` / `lib/fs-test.f` — checked filesystem helpers (walks, reads,
+  stat) and their coverage.
+- `lib/fs-mutate.f` / `lib/fs-mutate-test.f` — checked filesystem mutation
+  helpers (mkdir, remove, rename, cleanup) and their coverage.
+- `lib/map.f` / `lib/map-test.f` — fixed-capacity open-addressed string-key
+  map layout and its coverage.
+- `lib/process.f` / `lib/process-test.f` — checked process helpers and their
+  coverage.
+- `lib/process-argv.f` / `lib/process-argv-test.f` — checked argv process
+  helpers and their coverage.
+- `lib/process-command.f` / `lib/process-command-test.f` — checked
+  command-owned process runner and its coverage.
+- `lib/property.f` / `lib/property-test.f` — checked property-based test
+  helpers and their coverage.
+- `lib/regex.f` / `lib/regex-test.f` — bounded capture-free regex
+  scanner/tokenizer and its coverage.
+- `lib/table.f` / `lib/table-test.f` — checked fixed-capacity cell table
+  helpers and their coverage.
 
 ## Tests And Benchmarks
 
 - `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
   negative checked-source tests.
+- `test/nf.fs` — Gforth-hosted native-Forth build/run/capture harness used by
+  the no-binary bootstrap path.
+- `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
+  smoke tests for atomics and the in-stack runner.
+- `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
+  narrow-to-wide integer widening and local shadowing of ordinary words.
+- `test/gate-build-common.f` — checked helpers shared by native hb-build gate
+  slices.
+- `test/gate-hb-build-repl.f` — checked runner for `hb-build --repl` checks.
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/gate-pool-test.f` — focused fork-backed pool worker coverage.
+- `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
 - `test/run.f` — native test suite entry run directly by `bin/hb`.
 - `test/run-lib.f` — side-effect-free resident native test suite implementation.
 - `test/run-support.f` — minimal scheduler support for starting external phases before resident setup.
@@ -421,6 +575,13 @@ points stay listed.
 - `test/gate-debug.f` — thin entry wrapper for prop/debug checks.
 - `test/gate-debug-lib.f` — side-effect-free prop/debug gate definitions.
 - `test/gate-build-hbb.f` — in-process checked hb-build helpers for positive AOT gate coverage.
+- `test/gate-build-size.f` — committed candidate binary size ratchet (per-target baselines, fail-closed on growth).
+- `test/run-result-cache.f` — per-phase content-keyed PASS-stamp store for the native gate result cache.
+- `test/run-result-cache-test.f` — fixtures for result-cache hit/miss/invalidation and red-never-cached rules.
+- `test/run-budget-cal-test.f` — fixtures for the startup spin-probe budget calibration and clamping.
+- `test/run-rerun-failed-test.f` — fixtures for --rerun-failed red-phase list persistence, parsing, and phase-skip guard.
+- `test/golden.f` — byte-exact golden-file assertions for diagnostic output, with --update-golden and temp-path redaction.
+- `test/golden-test.f` — fixtures for the golden-file update/compare/drift/redaction mechanism.
 - `test/gate-aot-positive.f` — thin entry wrapper for AOT positive checks.
 - `test/gate-aot-positive-lib.f` — side-effect-free AOT positive gate definitions.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.

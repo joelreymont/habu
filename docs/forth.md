@@ -608,8 +608,11 @@ address arithmetic at the public boundary.
 
 ## Testing (BLOCKING)
 
-- **Every word is exercised by `T{ … -> … }T`** as it's written — happy path plus
-  each error/edge. A word without a test is unfinished.
+- **Every word is exercised by a checked assertion** as it's written — happy path
+  plus each error/edge. Use the typed comparators in `lib/test/`: `T=` / `T<>` for
+  scalars, `T$=` for strings, `TTRUE` / `TFALSE` for flags, `TTHROWS` for error
+  codes, and `SNAP=` (two equal-shape quotations) for multi-value stack snapshots.
+  A word without a test is unfinished.
 - Tests live in the native gate: `test/engine-suite.f`, focused `tools/*-test.f`
   fixtures, and source-specific checks wired through `test/run.f`.
 - Test orchestration uses `lib/test.f`. The framework vocabulary is test
