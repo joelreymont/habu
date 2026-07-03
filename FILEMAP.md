@@ -45,7 +45,7 @@ points stay listed.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
 - `src/core/structures-effects.f` — checker effect rows for the early structure defining words.
-- `src/core/enums.f` — checked `ENUM` and `ENUM4` defining words for named integer families.
+- `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.

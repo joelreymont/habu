@@ -888,7 +888,7 @@ variable GD-START-NS
 : GD-ENUMS ( -- )
    GE-HB-RESET
    GE-SRC-RESET
-   s" 0 ENUM GD-E0 ENUM GD-E1 ENUM4 GD-E4 ENUM GD-E8 drop" GE-SRC-LINE
+   s" 0 ENUM+ GD-E0 ENUM+ GD-E1 ENUM4+ GD-E4 ENUM+ GD-E8 drop" GE-SRC-LINE
    s" GD-E0 ." GE-SRC-LINE
    s" GD-E1 ." GE-SRC-LINE
    s" GD-E4 ." GE-SRC-LINE
@@ -897,7 +897,7 @@ variable GD-START-NS
    s" GD-USE-E4 ." GE-SRC-LINE
    s" package GD-EV" GE-SRC-LINE
    s" public" GE-SRC-LINE
-   s" 100 ENUM CODE-A ENUM4 CODE-B drop" GE-SRC-LINE
+   s" 100 ENUM+ CODE-A ENUM4+ CODE-B drop" GE-SRC-LINE
    s" end-package" GE-SRC-LINE
    s" GD-EV:CODE-A ." GE-SRC-LINE
    s" GD-EV:CODE-B ." GE-SRC-LINE
@@ -912,7 +912,7 @@ variable GD-START-NS
    s" 101" GE-OUT-LINE
    SB$ s" hb enums output" GE-EXPECT-OUT
    GE-SRC-RESET
-   s" 0 ENUM GD-EDUP ENUM GD-EDUP drop" GE-SRC-LINE
+   s" 0 ENUM+ GD-EDUP ENUM+ GD-EDUP drop" GE-SRC-LINE
    $4E s" GD-EDUP" s" enums reject duplicate constant names" GD-RUN-BAD-SOURCE ;
 
 : GD-EXEC-VECTOR-SOURCE ( -- )

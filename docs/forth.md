@@ -292,20 +292,22 @@ words over the expanded stack cells; no runtime header or heap object is created
 Fields may use any signature type, including type variables and parametric types:
 `VALUE-RECORD box value a END-VALUE-RECORD` is a polymorphic one-field record.
 
-Enums are checked defining words built on `create ... does>`. Use them for named
-integer/status families instead of hand-maintained numeric drift:
+`ENUM+`/`ENUM4+` are checked counter-advancing defining words built on
+`create ... does>`. Use them for named integer/status families instead of
+hand-maintained numeric drift:
 
 ```forth
-0 ENUM E-OK
-  ENUM E-OPEN
-  ENUM4 E-RANGE
+0 ENUM+ E-OK
+  ENUM+ E-OPEN
+  ENUM4+ E-RANGE
 drop
 ```
 
-`ENUM` defines the next name as the current value and returns `value + 1`;
-`ENUM4` returns `value + 4`. Definitions publish through the active wordlist, so
+`ENUM+` defines the next name as the current value and returns `value + 1`;
+`ENUM4+` returns `value + 4`. Definitions publish through the active wordlist, so
 package scope, duplicate-definition rejection, and case-insensitive lookup apply
-exactly as for `:`, `create`, `variable`, and `constant`.
+exactly as for `:`, `create`, `variable`, and `constant`. The bare `ENUM` token
+is reserved for the block-style `ENUM ... END-ENUM` type family.
 
 SwiftForth-style relocatable linked-list words (`@REL`, `!REL`, `,REL`,
 `>LINK`, `<LINK`, `CALLS`) are not part of Habu's checked surface. They encode
