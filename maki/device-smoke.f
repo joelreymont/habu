@@ -15,15 +15,9 @@
 \ Verbatim ED-SYM idiom from maki/eval-device.f.
 
 require lib/test.f
-require maki/cuda-types.f
+require maki/cuda-driver.f
 
-create DS-LIB 16 allot   create DS-NM 32 allot
-variable DS-H   variable DS-DEV
-
-: DS-SYM ( ptr u8 n -- n )  DS-NM >CSTR  DS-H @ DS-NM DLSYM ;
-
-FFI: DS-CUINIT ( n -- rc ) DS-SYM cuInit FFI;
-FFI: DS-CUDEVICEGET ( ptr a idx -- rc ) DS-SYM cuDeviceGet FFI;
+variable DS-DEV
 
 : DS-RC0 ( rc -- )
    RC>N 0 T= ;
@@ -34,12 +28,11 @@ FFI: DS-CUDEVICEGET ( ptr a idx -- rc ) DS-SYM cuDeviceGet FFI;
    0 0= TTRUE
    s" device-FFI: bin/hb has the AAPCS64 FFI-ABI primitives (lib/ffi.f loaded)" type cr
    \ (b) live device leg
-   s" libcuda.so.1" DS-LIB >CSTR  DS-LIB RTLD-NOW DLOPEN  dup DS-H !
-   0= if
+   CUDA:OPEN? 0= if
       s" device-FFI: libcuda.so.1 unavailable -> device leg SKIPPED (off-device; proof stands)" type cr
    else
-      0 DS-CUINIT DS-RC0
-      DS-DEV 0 >IDX DS-CUDEVICEGET DS-RC0
+      0 CUDA:CUINIT DS-RC0
+      DS-DEV 0 >IDX CUDA:CUDEVICEGET DS-RC0
       s" device-FFI: cuInit + cuDeviceGet OK on the Orin" type cr
    then
    T-REPORT ;

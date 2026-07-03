@@ -329,6 +329,12 @@ points stay listed.
   FFI bindings.
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
   fail-closed helpers.
+- `maki/cuda-driver.f` — shared checked CUDA Driver FFI resolver and typed
+  bindings.
+- `maki/cuda-driver-test.f` — portable CUDA Driver binding and fail-closed
+  helper regressions.
+- `maki/device-artifacts.f` — private per-grade artifact root, PTX/cubin path,
+  cleanup, and `PTXAS` resolution helpers for device graders.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.
