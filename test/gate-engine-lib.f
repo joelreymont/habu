@@ -330,19 +330,32 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-RUN-STD-FIXTURES
    GE-REPAIR-HINTS-RUN ;
 
-: GE-ENGINE-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" test/engine-suite.f" GE-SRC-FILE+
+: GE-SUITE-RUN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    SB-RESET s" ok" SB-APPEND GE-SB-LF
    GT-OUT$ SB$ ENDS-WITH? 0= if label labelu GE-FAIL then
    s" PASS: " type label labelu type cr ;
 
+: GE-ENGINE-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/engine-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-FAMILY-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-family-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
 : GE-ENGINE-SUITE ( -- )
    GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
+
+: GE-TYPE-FAMILY-SUITE ( -- )
+   GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
+   s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
 
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
@@ -565,7 +578,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK
-   GE-ENGINE-SUITE ;
+   GE-ENGINE-SUITE
+   GE-TYPE-FAMILY-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START
