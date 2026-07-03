@@ -285,6 +285,7 @@ DIAGXT @ TC-DIAG !
 s" A ( n -- n n ) drop" CHECK-CANDIDATE! 0 T=
 TC-DIAG @ DIAGXT !
 s" T-CAND-THROW ( n -- n ) dup 0 < if 1 throw then" CHECK-CANDIDATE! -1 T=
+s" T-CAND-ALL-THROW ( -- ptr u8 ) 1 throw" CHECK-CANDIDATE! -1 T=
 UEND @ TC-UEND @ = -1 T=
 NORET-END @ TC-NEND @ = -1 T=
 SYM-N @ TC-SYMN @ = -1 T=
@@ -324,6 +325,24 @@ s" COK-SCOPED-IN ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! -1 T=
 CHECKER-SCOPE-DONE
 s" scoped TRUST retired with the scope" T-LABEL
 s" CUNK-SCOPED-OUT ( -- n ) T-SCOPED-W" CHECK-QUIET-CANDIDATE! 1 T=
+s" OUTERPKG" CHECKER-PACKAGE
+CHECKER-CANDIDATE-SCOPE-START
+s" INNERPKG" CHECKER-PACKAGE
+CHECKER-CANDIDATE-SCOPE-DONE
+s" candidate restores checker package mode" T-LABEL
+CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PRIVATE T=
+s" candidate restores checker package name" T-LABEL
+CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ s" outerpkg" T$=
+CHECKER-END-PACKAGE
+s" OUTERSCOPE" CHECKER-PACKAGE
+CHECKER-SCOPE-START
+s" INNERSCOPE" CHECKER-PACKAGE
+CHECKER-SCOPE-DONE
+s" scope restores checker package mode" T-LABEL
+CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PRIVATE T=
+s" scope restores checker package name" T-LABEL
+CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ s" outerscope" T$=
+CHECKER-END-PACKAGE
 \ package resolution order: private wins over public and global inside the
 \ open package; the private row never leaks as qualified or global outside.
 s" T-PRESO" s" -- n" TRUST
@@ -666,7 +685,7 @@ SYM-CAP-V @ TR-SC !  SYM-STR-CAP-V @ TR-SSC !  SYM-N @ TR-SN !  SYM-STR-U @ TR-S
 SYMS-P @ TR-SP !  SYM-STR-P @ TR-SSP !
 s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-INTERN TR-SID0 !
 SYM-N @ dup SYM-CAP-V !  TR-S-LC !       \ next intern crosses the record cap
-0 HIDX-MEM !  0 HIDX-VALID !             \ drop the full-cap index; rebuild at TR-S-LC
+HIDX-RESET
 s" syms-rehash-before-grow" T-LABEL
 s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
 s" tgpkg" SYM-GLOBAL s" SYMGROWTWO" SYM-INTERN TR-SID1 !
@@ -690,7 +709,7 @@ s" syms-persist-find" T-LABEL
 s" tgpkg" SYM-GLOBAL s" SYMGROWPROBE" SYM-FIND -1 T= TR-SID0 @ T=
 TR-SC @ SYM-CAP-V !  TR-SSC @ SYM-STR-CAP-V !  TR-SN @ SYM-N !  TR-SSU @ SYM-STR-U !
 TR-SP @ SYMS-P !  TR-SSP @ SYM-STR-P !
-0 HIDX-MEM !  0 HIDX-VALID !             \ rebuild a fresh index from the restored SYMS
+HIDX-RESET                              \ rebuild a fresh index from the restored SYMS
 \ --- unification trail: prim-overload trials (TRY-EFF) undo speculative binds by
 \ popping the trail, not by copying the whole TVT/RVT pool. Crossing the trail
 \ init cap mid-check grows it without corrupting undo; a backtracking body still

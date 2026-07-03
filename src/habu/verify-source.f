@@ -309,6 +309,18 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    nameu 0= IF s" verify-source: missing defer name" 74 die THEN
    name nameu TRUST-DEFER-SIGNATURE ;
 
+: PRIM-END? ( ptr u8 n -- bool )
+   s" PRIM;" STR=CI ;
+
+: RECORD-PRIM ( -- )
+   NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
+   2drop
+   BEGIN
+      NEXT-RAW dup 0= IF s" verify-source: missing PRIM;" 74 die THEN
+      2dup PRIM-END? IF 2drop EXIT THEN
+      2drop
+   AGAIN ;
+
 : SKIP-TRUSTED-BODY ( -- )
    BEGIN
       BODY!
@@ -355,6 +367,41 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
    s" END-VALUE-RECORD" STR=CI ;
 
+: STRUCTURE-END? ( ptr u8 n -- bool )
+   s" END-STRUCTURE" STR=CI ;
+
+: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
+   s" PTR-FIELD:" STR=CI ;
+
+: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
+   s" CFIELD:" STR=CI ;
+
+: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
+   s" +FIELD" STR=CI ;
+
+: TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
+   TRUST-SIGNATURE ;
+
+: RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing structure field name" 74 die THEN
+   name nameu sig sigu TRUST-STRUCTURE-FIELD ;
+
+: RECORD-STRUCTURE ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing structure name" 74 die THEN
+   name nameu s" -- n" TRUST-SIGNATURE
+   BEGIN
+      NEXT-SCAN
+      dup 0= IF s" verify-source: missing END-STRUCTURE" 74 die THEN
+      2dup STRUCTURE-END? IF 2drop EXIT THEN
+      2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CFIELD? IF 2drop s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2drop
+      THEN THEN THEN
+   AGAIN ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -377,11 +424,14 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" end-package" STR=CI IF RECORD-END-PACKAGE 0 0= EXIT THEN
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
+   a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
    a u s" constant" STR=CI IF s" -- a" TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
+   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
+   a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    0 0= 0= ;

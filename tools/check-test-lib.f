@@ -104,6 +104,10 @@ variable CKT-START-NS
    CKT-ERR-A @ 0= if CKT-ALLOC-BUF CKT-ERR-A! then
    CKT-ERR-A@ ;
 
+: CKT-DIAG-CONTAINS? ( n n ptr u8 n -- bool ) {: outu:n erru:n a:ptr u:n :}
+   CKT-OUT outu a u CONTAINS? if 0 0= exit then
+   CKT-ERR erru a u CONTAINS? ;
+
 : CKT-CORE-ACT ( -- )
    CKT-BAD$ CKT-BAD$ CHECK-ALL-ERRORS-FILE ;
 
@@ -165,6 +169,54 @@ variable CKT-START-NS
 
 : CKT-GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
+
+: CKT-CHAIN$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-HELP ( n -- n ) 1 + ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-USE ( n -- n ) CKT-HELP ;" SB-APPEND
+   SB$ ;
+
+: CKT-PRIM-SQUOTE$ ( -- ptr u8 n )
+   SB-RESET
+   s" PRIM: s" SB-APPEND  $22 SB-APPEND-C
+   s"      PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-STR ( -- ptr u8 n ) s" SB-APPEND  $22 SB-APPEND-C
+   $20 SB-APPEND-C
+   s" checker: package name too long" SB-APPEND  $22 SB-APPEND-C
+   s"  ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-STR-USE ( -- ptr u8 n ) CKT-STR ;" SB-APPEND
+   SB$ ;
+
+: CKT-IS-MISSING$ ( -- ptr u8 n )
+   s" : CKT-IS-MISSING ( -- ) is ;" ;
+
+: CKT-STRUCTURE$ ( -- ptr u8 n )
+   SB-RESET
+   s" BEGIN-STRUCTURE CKT-REC" SB-APPEND
+   $0a SB-APPEND-C
+   s"    PTR-FIELD: CKT.PTR" SB-APPEND
+   $0a SB-APPEND-C
+   s"    CELL +FIELD CKT.N" SB-APPEND
+   $0a SB-APPEND-C
+   s"    CFIELD: CKT.B" SB-APPEND
+   $0a SB-APPEND-C
+   s" END-STRUCTURE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-REC-SIZE ( -- n ) CKT-REC ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-REC-PTR ( ptr a -- ptr ptr a ) CKT.PTR ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-REC-N ( ptr a -- ptr a ) CKT.N ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-REC-B ( ptr a -- ptr u8 ) CKT.B ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" PTR-VARIABLE CKT-PTR-SLOT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-PTR-SLOT@ ( -- ptr u8 ) CKT-PTR-SLOT @ ;" SB-APPEND
+   SB$ ;
 
 : CKT-BAD$SRC ( -- ptr u8 n )
    s" : CKT-BAD-WORD ( i64 -- i64 ) dup ;" ;
@@ -258,6 +310,32 @@ variable CKT-START-NS
    s" : CKT-BAD-PARTIAL ( n -- point ) ;" SB-APPEND
    SB$ ;
 
+: CKT-RESULT-GOOD$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-ROK ( n -- result<n,n> ) RESULT:OK ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RERR ( n -- result<n,n> ) RESULT:ERR ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RCASE ( result<n,n> -- n ) [: 1 + ;] [: 1 - ;] RESULT:CASE ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RMMAP-B ( n -- result<ptr u8,n> ) RESULT:MMAP>BYTES ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RMMAP-C ( n -- result<ptr a,n> ) RESULT:MMAP>CELLS ;" SB-APPEND
+   SB$ ;
+
+: CKT-RESULT-PTR-USE$ ( -- ptr u8 n )
+   s" : CKT-BAD-RESULT-PTR ( result<ptr u8,n> -- u8 ) c@ ;" ;
+
+: CKT-RESULT-MISSING-BRANCH$ ( -- ptr u8 n )
+   s" : CKT-BAD-RESULT-CASE ( result<n,n> -- n ) [: 1 + ;] RESULT:CASE ;" ;
+
+: CKT-RESULT-WRONG-PAYLOAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-BAD-RESULT-ERR ( result<ptr u8,n> -- n )" SB-APPEND
+   $0a SB-APPEND-C
+   s"    [: c@ ;] [: c@ ;] RESULT:CASE ;" SB-APPEND
+   SB$ ;
+
 : CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
    s" : DEFTYPE ( -- ) ;" SB-APPEND
@@ -311,6 +389,22 @@ variable CKT-START-NS
 
 : CKT-TEST-GOOD ( -- )
    [: CKT-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
+
+: CKT-TEST-CHAIN ( -- )
+   [: CKT-CHAIN$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
+
+: CKT-TEST-PRIM-SQUOTE ( -- )
+   [: CKT-PRIM-SQUOTE$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
+
+: CKT-TEST-IS-MISSING ( -- )
+   CKT-IS-MISSING$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-REJECTED" CONTAINS? TTRUE
+   CKT-ERR erru s" is" CONTAINS? TTRUE ;
+
+: CKT-TEST-STRUCTURE ( -- )
+   [: CKT-STRUCTURE$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
 
 : CKT-TEST-FILE-LABEL ( -- )
    CKT-BAD$SRC CKT-CORE-JSON 70 T=
@@ -416,6 +510,30 @@ variable CKT-START-NS
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
+: CKT-TEST-RESULT-GOOD ( -- )
+   CKT-RESULT-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-RESULT-PTR-USE ( -- )
+   CKT-RESULT-PTR-USE$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu erru s" E-MISMATCH" CKT-DIAG-CONTAINS? TTRUE
+   outu erru s" result<ptr u8,n>" CKT-DIAG-CONTAINS? TTRUE ;
+
+: CKT-TEST-RESULT-MISSING-BRANCH ( -- )
+   CKT-RESULT-MISSING-BRANCH$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu erru s" E-REJECTED" CKT-DIAG-CONTAINS? TTRUE
+   outu erru s" RESULT:CASE" CKT-DIAG-CONTAINS? TTRUE ;
+
+: CKT-TEST-RESULT-WRONG-PAYLOAD ( -- )
+   CKT-RESULT-WRONG-PAYLOAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu erru s" E-MISMATCH" CKT-DIAG-CONTAINS? TTRUE
+   outu erru s" RESULT:CASE" CKT-DIAG-CONTAINS? TTRUE ;
+
 : CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ( -- )
    CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
    CKT-SCAN-NOMINAL 0 T= ;
@@ -437,6 +555,10 @@ variable CKT-START-NS
    T-RESET
    CKT-PREPARE
    s" check/good" [: CKT-TEST-GOOD ;] CKT-RUN
+   s" check/source-local-chain" [: CKT-TEST-CHAIN ;] CKT-RUN
+   s" check/source-prim-squote" [: CKT-TEST-PRIM-SQUOTE ;] CKT-RUN
+   s" check/is-missing-target" [: CKT-TEST-IS-MISSING ;] CKT-RUN
+   s" check/structure-definers" [: CKT-TEST-STRUCTURE ;] CKT-RUN
    s" check/file-label" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
    s" check/usage-direct" [: CKT-TEST-USAGE ;] CKT-RUN
    s" check/die" [: CKT-TEST-DIE ;] CKT-RUN
@@ -452,6 +574,10 @@ variable CKT-START-NS
    s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
+   s" check/result-good" [: CKT-TEST-RESULT-GOOD ;] CKT-RUN
+   s" check/result-ptr-use" [: CKT-TEST-RESULT-PTR-USE ;] CKT-RUN
+   s" check/result-missing-branch" [: CKT-TEST-RESULT-MISSING-BRANCH ;] CKT-RUN
+   s" check/result-wrong-payload" [: CKT-TEST-RESULT-WRONG-PAYLOAD ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    CLEANUP-RUN

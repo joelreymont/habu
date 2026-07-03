@@ -70,6 +70,7 @@ variable SL-DRIVER-U
    SL-TARGET-LAYOUT-SYS
    s" src/core/exec-vector.f src/core/sha256.f src/core/combinators.f " type
    s" src/habu/layout.f src/habu/treeshake.f src/habu/rt.f src/habu/crash.f " type
+   s" src/core/result.f " type
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
    s" src/habu/jit.f src/habu/habu2.f src/habu/xref.f " type

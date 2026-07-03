@@ -217,7 +217,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | IMAGE-TEXT-TRAILER-ADJ | `-- n` | Linux trailer address adjustment for snapshot restore when the text-size field includes the code offset. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | DATA-VA | `-- ptr a` | Linux fixed DATA virtual address used by snapshot and AOT startup writers as both cell-address and byte-span base. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | DATA-SIZE | `-- n` | Linux fixed DATA mapping size used by snapshot validation and image inspection. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
-| MBUF-RC>PTR | `n -- ptr u8` | Narrows the raw anonymous-mmap return cell for the target image-builder output buffer into the typed byte span used by checked image writers. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f | 2026-07-03 |
 | CODE-OFF | `-- n` | Linux executable code offset used by checked snapshot streaming code. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/linux/layout.f | 2026-06-29 |
 | LINUX-DLOPEN-SLOT-OFF | `-- n` | Linux dynamic ELF GOT byte offset for the `dlopen` relocation inside the computed RW segment. | `test/run.f`, `test/gate-aot-positive.f` | src/os/linux/layout.f | 2026-06-29 |
 | LINUX-DLSYM-SLOT-OFF | `-- n` | Linux dynamic ELF GOT byte offset for the `dlsym` relocation inside the computed RW segment. | `test/run.f`, `test/gate-aot-positive.f` | src/os/linux/layout.f | 2026-06-29 |
@@ -264,12 +263,21 @@ that source is explicitly certified; they are not stale-checked by the default
 | EACH | `R ptr a i64 [ R a -- R ] -- R` | Array iterator keeps the quotation across element calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 |
 | MAP | `R ptr a i64 [ R a -- R a ] -- R` | Array map keeps the quotation across element calls and mutates cells in place; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 |
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 |
-| INCLUDE-MMAP-PTR | `n -- ptr u8` | Refines the checked anonymous `mmap` result into the byte pointer backing include buffers after size selection and `-1` failure checking; syscall-result pointer refinement is outside checker inference. | `test/gate-dictionary.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
+| MAP-ARENA | `-- ptr a` | `RESULT` owns a private mmap-backed record arena so result construction does not allot into the dictionary or move `here`; the raw mmap address is refined once at arena creation. | `tools/check-test.f`, `lib/memory-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
+| OK | `a -- result<a,b>` | `RESULT:OK` core constructor mints the opaque runtime result cell; the checker models the sum type but not the allocation representation. | `tools/check-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
+| ERR | `b -- result<a,b>` | `RESULT:ERR` core constructor mints the opaque runtime result cell; the checker models the sum type but not the allocation representation. | `tools/check-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
+| CASE | `R result<a,b> [ R a -- S ] [ R b -- S ] -- S` | `RESULT:CASE` opens exactly the ok/err payload branch quotation; higher-order branch refinement is the audited core sum boundary. | `tools/check-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
+| MMAP>BYTES | `n -- result<ptr u8,n>` | Converts a raw `mmap` return cell into a checked result, with the successful payload refined to a byte pointer and failure kept as the numeric errno cell. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
+| MMAP>CELLS | `n -- result<ptr a,n>` | Converts a raw `mmap` return cell into a checked result, with the successful payload refined to a cell pointer and failure kept as the numeric errno cell. | `tools/check-test.f`, `test/run.f` | src/core/result.f | 2026-07-03 |
 | INCLUDE-EVALUATE | `ptr u8 n --` | Source composition reads and bounds file bytes in checked code, then crosses the dynamic `evaluate` boundary that the checker intentionally rejects in ordinary checked definitions. | `test/gate-dictionary.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
 | ARENA-RC>PTR | `n -- ptr a` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's cell arena pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| HIDX-MEM-NULL | `-- ptr a` | Constructs the null value for the process-local symbol-index table pointer cell; ordinary numeric zero must not be stored through a typed pointer slot. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| SYM-PKG-A@ | `n -- ptr u8` | Refines the symbol-table package-name pointer field from generic pointer storage to the byte-string pointer consumed by checked string comparison. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| SYM-NAME-A@ | `n -- ptr u8` | Refines the symbol-table word-name pointer field from generic pointer storage to the byte-string pointer consumed by checked string comparison. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | CELL | `-- n` | Structure layouts load before the checker so checker records can use them; this row publishes the already-defined cell-size constant to checked users. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | BEGIN-STRUCTURE | `-- ptr a n` | Structure defining words use `CREATE`/`DOES>` and parse definition names, so the checker needs declared effects for the top-level layout DSL. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -382,11 +390,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | ADD, | `n n n --` | ARM64 source test republishes the raw instruction emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ASM-LEN | `-- n` | ARM64 source test republishes the assembler buffer length accessor effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | LIT64, | `n n --` | ARM64 source test republishes the literal-emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
-| MEM-ALLOC-PTR | `n -- ptr u8` | Refines a raw anonymous `mmap` result into a typed byte pointer after size validation and `-1` failure checking; the checker cannot express this syscall-result refinement yet. | `lib/memory-test.f`, `test/run.f` | lib/memory.f | 2026-06-21 |
 | IMG-MMAP-PTR | `n -- ptr u8` | Refines a raw file-backed `mmap` result into a typed byte pointer after checking the `-1` failure result; the checker cannot express syscall-result refinement yet. | `tools/imgdump-test.f`, `test/run.f` | tools/imgdump.f | 2026-06-25 |
 | CODE | `-- ptr u8` | Lazily maps the assembler output buffer outside DATA and refines the raw mmap result to the byte pointer used by `EMITW`, `BYTES,`, and image writers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 |
 | ICODE-TABS | `-- ptr n` | Lazily maps the assembler label/fixup table block outside DATA and refines the raw mmap result to the numeric-cell pointer used by `LBLP`/`FXS`/`FXL`/`FXK`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 |
-| ENV-DATA | `-- ptr n` | Returns the fixed engine data-region header pointer used for argc/argv/envp cells. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-28 |
 | ENV-DASH | `-- n` | Shared ASCII dash byte constant used by argv parsing helpers. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-28 |
 | ARGC | `-- n` | Reads the process argc value captured by the native startup entry. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-28 |
 | ARGV-BASE | `-- ptr ptr u8` | Refines the raw argv vector pointer read from the engine startup byte-offset cell. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-28 |
@@ -425,7 +431,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | RSP | `-- ptr n` | Treeshaker reachability scan cursor cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f | 2026-06-16 |
 | EVAL-HOST | `ptr u8 n --` | Compiles a REPL source buffer in the metabuild host dict for AOT capture; `evaluate`'s net effect is source-dependent so the boundary declares the balanced install-tail effect. | `test/run.f` | src/habu/stdin.f | 2026-07-03 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f | 2026-06-24 |
 | CHECK-BODY | `ptr u8 n -- n` | Shared source pre-verification recursively invokes the checker on an assembled definition body and renders the checker-owned uncheckable diagnostic before returning the verdict; recursive checker invocation and diagnostic-state access are the explicit verifier boundary. | `tools/hb-build-test.f`, `tools/check-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-01 |
@@ -448,7 +453,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | SND-QUARANTINE@ | `n -- n` | Reads one quarantined dangling-pointer offset from the create table for scratch zeroing. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | S2-PATH-CAP | `-- n` | Fixed path-buffer capacity for the stage2 fixpoint driver. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
 | S2-PATH-BUF | `-- ptr u8` | Stage2 fixpoint path scratch buffer used while building private artifact paths. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
-| SBUF@ | `-- ptr u8` | Reads the stage2 source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stage2.f | 2026-06-26 |
 | IMGD-MMAP-PTR | `n -- ptr u8` | Converts the raw image mmap result into a typed byte pointer after checking mmap failure; OS mapping pointers are outside checker inference. | `tools/imagedisasm-test.f`, `test/run.f` | tools/imagedisasm.f | 2026-06-25 |
 | MK-SPAN | `ptr<space-global,t> u32 -- span<space-global,t,fresh-extent-n>` | PTX from-raw-parts boundary: consumes a runtime extent assertion and retypes the base pointer as a span with a fresh rigid extent token. The checker cannot validate allocation length. | `lib/ptx/tile-test.f`, `test/run.f` | lib/ptx/tile.f | 2026-06-30 |
 | MK-SPAN-ONCE | `ptr<space-global,t> u32 -- span<space-global-once,t,fresh-extent-n>` | PTX from-raw-parts boundary for an externally proven read-once/affine gradient buffer; it mints a distinct `space-global-once` span, not a cast from an ordinary span. | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-30 |
@@ -592,24 +596,16 @@ mergeable line) with no shared count to bump, so parallel branches that each add
 one site merge with zero baseline edits. Discharging a covered site lowers that
 row's count in the same change; the ratchet stays fail-closed both ways.
 
-### Build-time-generated trust (explicit exemption)
+### Build-time-generated trust
 
-The inventory counts checked-in sources only. `tools/build-fixpoint.f` also
-emits trust sites as string literals into *generated* stage2/fixpoint source,
-which the lexer correctly skips in the emitter itself:
-
-- `BF-APPEND-IMAGE-TRUSTS` emits five TRUST rows for the raw image emitters:
-  `ASM-CODE` (`-- asm`), `BUILD-IMAGE` (`asm -- img`), `BUILD-SNAP-HDR`
-  (`n -- snap n`), `SET-SIGID` (`ptr u8 n --`), and `CODESIG2` (`img -- img`).
-- `BF-APPEND-CHECK-OFF` emits the generated `0 set-check` span opener and
-  `BF-APPEND-FRESH-CHECK-HOOK` emits the `' HOOK set-check` reinstall.
-
-These generated sites are exempt from the ratchet by design: they exist only in
-`HB_TMP` build artifacts, and they are pinned instead by the build-fixpoint
-source-shape regressions (`tools/build-fixpoint-test.f` asserts the emitted
-span cut and hook reinstall) and the native self-rebuild gate. Growing this
-generated set requires updating those shape tests, which is the review point.
-One related edge: a TRUST row written with escaped-string literals
+The inventory counts checked-in sources only. The former generated image-writer
+trust exemption is retired: `tools/build-fixpoint.f` now loads
+`src/os/image-bytes.f` and the target image writer with the checker hook still
+installed, so `ASM-CODE`, `BUILD-IMAGE`, `BUILD-SNAP-HDR`, `SET-SIGID`, and
+`CODESIG2` are certified by the stage source instead of injected with generated
+`TRUST` rows. Growing a generated trust or `set-check` span again requires a new
+audited manifest note and a build-fixpoint source-shape regression. One related
+edge: a TRUST row written with escaped-string literals
 (`s\" name"`) is not the plain two-literal shape, so the inventory counts it as
 `TRUST-BARE` rather than `TRUST` — never silently.
 
@@ -669,13 +665,12 @@ src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436 9
 src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436 10
 src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
-src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
-src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
 src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9
@@ -684,11 +679,16 @@ src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436 7
 tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436 1
-src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
+src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 1
+src/core/result.f prim-axiom habu-checked-result-type-280ad871 6
 src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:SYM-PKG-A@ discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:SYM-NAME-A@ discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
@@ -730,7 +730,6 @@ src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-role-typed-ffi-08f99d18
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
-lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
 lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 6
 lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4

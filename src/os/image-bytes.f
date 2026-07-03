@@ -8,7 +8,12 @@
 \ binding constraint - an M-BOUNDS-RC throw here means a writer bug, not a
 \ program-size limit. $120000 exceeds the derived $110000 minimum with margin.
 $120000 constant MSIZE
+$0 constant M-MAP-ADDR-ANY
+$3 constant M-MAP-PROT-RW
 $1002 constant M-MAP-PRIVATE-ANON
+-$1 constant M-MAP-ANON-FD
+$0 constant M-MAP-OFF-ZERO
+74 constant M-MMAP-RC
 75 constant M-BOUNDS-RC
 variable MBUF-A
 variable MP
@@ -18,11 +23,10 @@ variable M-SRC
 variable M-N
 variable M-O
 
-: M-ALLOC-BUF ( -- n )
-   0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
-   dup 0 < if s" image-bytes: mmap failed" 74 die then ;
-
-TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
+: M-ALLOC-BUF ( -- result<ptr u8,n> )
+   M-MAP-ADDR-ANY MSIZE M-MAP-PROT-RW M-MAP-PRIVATE-ANON
+   M-MAP-ANON-FD M-MAP-OFF-ZERO mmap
+   RESULT:MMAP>BYTES ;
 
 : MBUF-A-FIELD ( -- ptr ptr u8 )
    MBUF-A 0 ptr-field ;
@@ -33,8 +37,14 @@ TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
 : MBUF-A! ( ptr u8 -- )
    MBUF-A-FIELD ! ;
 
+: M-MMAP-ERR ( n -- )
+   drop s" image-bytes: mmap failed" M-MMAP-RC die ;
+
 : M-ENSURE-BUF ( -- )
-   MBUF-A@ 0= if M-ALLOC-BUF MBUF-RC>PTR MBUF-A! then ;
+   MBUF-A@ 0= if
+      M-ALLOC-BUF
+      [: MBUF-A! ;] [: M-MMAP-ERR ;] RESULT:CASE
+   then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF

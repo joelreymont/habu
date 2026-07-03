@@ -220,6 +220,10 @@ lesson — keep the specific word/code/path, cut the prose.
   exposed pointer and boolean state cells that looked like plain `n` cells. The
   durable rule belongs in `docs/forth.md`; the lesson is that removing unchecked
   file scopes quickly finds these hidden contracts.
+- **Source preverify must record definer-created words:** `PTR-VARIABLE SHK-A`
+  loaded fine at runtime, but generated stage source certification saw `SHK-A@`
+  before the checker knew `SHK-A`; every checked top-level definer needs a
+  preverify recorder for the runtime effect of the word it publishes.
 - **Try a checked factor before new trust:** `FS-BYTE-OFFSET` looked like it
   needed a primitive, but `: BYTE+ ( ptr u8 n -- ptr u8 ) + ;` certified against
   existing pointer arithmetic and let the trust row disappear.
@@ -281,6 +285,11 @@ lesson — keep the specific word/code/path, cut the prose.
   used bare `B-`/`B/` certified as rejected. External generated code must call
   exported package words as `PTX:B-`/`PTX:B/`; reopened-package bare names are only
   for code loaded inside that package.
+- **Result constructors must not allot in the dictionary:** `RESULT:OK`/`ERR`
+  initially used `here ,` and made `MEM-ALLOC-*` move `here`, breaking the memory
+  invariant that mmap-backed allocation leaves DATA unchanged. Opaque runtime
+  result records belong in a private mmap arena; checked callers branch through
+  `RESULT:CASE`.
 
 ## Tool & Infra
 

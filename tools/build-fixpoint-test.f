@@ -389,7 +389,7 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" include src/core/checker-registry.f" CONTAINS? TFALSE
    BFT-READ-BUF u s" checker-registry.f - typed checker effect store" CONTAINS? TTRUE
    BFT-READ-BUF u s" src/core/include.f" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" RESULT:MMAP>BYTES" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : include ( -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" BFR-USIGS-RESET" CONTAINS? TTRUE
@@ -431,7 +431,7 @@ create BFT-CHECK-OFF-LINE
    BF-SNAP-SOURCE
    BFT-SNAP BFT-READ {: u :}
    BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
-   BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
+   BFT-READ-BUF u s" RESULT:MMAP>BYTES" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : included ( ptr u8 n -- )" CONTAINS? TTRUE

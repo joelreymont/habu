@@ -3,6 +3,7 @@
 \ Load after lib/errors.f.
 
 s" lib/errors.f" required
+s" src/core/result.f" required
 
 $10000 constant MEM-64K
 $7FFFFFFFFFFFFFFF constant MEM-MAX-N
@@ -50,15 +51,26 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
-TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
-   MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
+: MEM-MMAP-BYTES ( n -- result<ptr u8,n> )
+   MEM-MMAP-RC RESULT:MMAP>BYTES ;
+
+: MEM-MMAP-CELLS ( count -- result<ptr a,n> )
+   MEM-CELLS>BYTES MEM-MMAP-RC RESULT:MMAP>CELLS ;
+
+: MEM-MAP-ERR ( n -- )
+   drop E-MEM-MAP throw ;
+
+: MEM-ALLOC-PTR ( n -- ptr u8 )
+   MEM-MMAP-BYTES
+   [: ;] [: MEM-MAP-ERR ;] RESULT:CASE ;
 
 : MEM-ALLOC-BYTES ( n -- ptr u8 n ) {: bytes :}
    bytes MEM-CHECK-SIZE
    bytes MEM-ALLOC-PTR bytes ;
 
 : MEM-ALLOC-CELLS ( count -- ptr a )
-   MEM-CELLS>BYTES MEM-ALLOC-PTR ;
+   MEM-MMAP-CELLS
+   [: ;] [: MEM-MAP-ERR ;] RESULT:CASE ;
 
 : MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
    MEM-64K-BYTES MEM-ALLOC-BYTES ;

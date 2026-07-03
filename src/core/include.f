@@ -38,8 +38,6 @@ variable REQUIRE-N
 : INCLUDE-TRUE ( -- bool )
    0 0= ;
 
-TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
-
 : INCLUDE-DIE ( ptr u8 n -- )
    INCLUDE-IO-RC die ;
 
@@ -66,6 +64,15 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
 
 : INCLUDE-PATH-A! ( ptr u8 -- )
    INCLUDE-PATH-A-FIELD ! ;
+
+: INCLUDE-BUFS-A-FIELD ( -- ptr ptr u8 )
+   INCLUDE-BUFS-A 0 ptr-field ;
+
+: INCLUDE-BUFS@ ( -- ptr u8 )
+   INCLUDE-BUFS-A-FIELD @ ;
+
+: INCLUDE-BUFS! ( ptr u8 -- )
+   INCLUDE-BUFS-A-FIELD ! ;
 
 : INCLUDE-CHECK-PATH ( ptr u8 n -- ptr u8 n )
    dup 0 <= if s" include: missing path" INCLUDE-DIE then
@@ -131,14 +138,17 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    INCLUDE-DEPTH @ 1 - dup INCLUDE-CHECK-DEPTH
    INCLUDE-DEPTH ! ;
 
-: INCLUDE-BUFS@ ( -- ptr u8 )
-   INCLUDE-BUFS-A @ INCLUDE-MMAP-PTR ;
+: INCLUDE-MMAP-BUFS ( -- result<ptr u8,n> )
+   0 INCLUDE-BUF-TOTAL 3 INCLUDE-MAP-PRIVATE-ANON -1 0 mmap
+   RESULT:MMAP>BYTES ;
+
+: INCLUDE-MMAP-ERR ( n -- )
+   drop s" include: buffer mmap failed" INCLUDE-DIE ;
 
 : INCLUDE-ALLOC-BUFS ( -- )
-   INCLUDE-BUFS-A @ 0= if
-      0 INCLUDE-BUF-TOTAL 3 INCLUDE-MAP-PRIVATE-ANON -1 0 mmap
-      dup 0 < if s" include: buffer mmap failed" INCLUDE-DIE then
-      INCLUDE-BUFS-A !
+   INCLUDE-BUFS@ 0= if
+      INCLUDE-MMAP-BUFS
+      [: INCLUDE-BUFS! ;] [: INCLUDE-MMAP-ERR ;] RESULT:CASE
    then ;
 
 : INCLUDE-SLOT ( -- ptr u8 )

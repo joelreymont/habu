@@ -630,9 +630,9 @@ or many 64K scratch buffers. Do not split tools merely to avoid DATA pressure:
 allocation is for runtime-sized storage backed by anonymous `mmap`.
 
 The raw `mmap` primitive remains a boundary because it can return `-1`. The
-published allocation words validate sizes, convert successful mappings to typed
-`ptr u8` storage through the audited internal `MEM-ALLOC-PTR` boundary, and
-throw `E-MEM-SIZE` or `E-MEM-MAP` on failure.
+published allocation words validate sizes, convert the raw return through
+`result<ptr u8,n>`, and use exhaustive `RESULT:CASE` handling before returning
+typed storage or throwing `E-MEM-SIZE` / `E-MEM-MAP`.
 
 ```forth
 MEM-CHECK-SIZE        ( n -- )
@@ -643,6 +643,10 @@ MEM-64K-COUNT-FOR     ( n -- n )
 MEM-64K-SPAN-BYTES    ( n -- n )
 MEM-CELLS>BYTES       ( count -- n )
 MEM-MMAP-RC           ( n -- n )
+MEM-MMAP-BYTES        ( n -- result<ptr u8,n> )
+MEM-MMAP-CELLS        ( count -- result<ptr a,n> )
+MEM-MAP-ERR           ( n -- )
+MEM-ALLOC-PTR         ( n -- ptr u8 )
 MEM-ALLOC-BYTES       ( n -- ptr u8 n )
 MEM-ALLOC-CELLS       ( count -- ptr a )
 MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )

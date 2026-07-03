@@ -15,8 +15,15 @@
 : DBG-SRC ( -- ptr u8 n )  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
-: HB@ ( -- ptr u8 ) HB @ ;
-s" HB@" s" -- ptr u8" TRUST
+
+: HB-FIELD ( -- ptr ptr u8 )
+   HB 0 ptr-field ;
+
+: HB@ ( -- ptr u8 )
+   HB-FIELD @ ;
+
+: HB! ( ptr u8 -- )
+   HB-FIELD ! ;
 
 : H+ ( ptr u8 n -- ) {: a:ptr u :}
    HL @ u + HMAX > IF s" hb: repl sources exceed buffer" 74 die THEN
@@ -58,7 +65,7 @@ s" HB@" s" -- ptr u8" TRUST
    THEN ;
 
 : READ-REPL ( -- )
-   here HB !  HMAX allot  0 HL !
+   here 0 STRUCT-BYTE+ HB!  HMAX allot  0 HL !
    READ-REPL-TARGET
    REPL-SRC PATH0 RD-1
    WATCH-SRC PATH0 RD-1
