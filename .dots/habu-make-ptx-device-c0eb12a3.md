@@ -1,9 +1,16 @@
 ---
 title: Make PTX device proofs fail closed
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-06-27T15:32:50.869667+02:00"
+created-at: "\"2026-06-27T15:32:50.869667+02:00\""
 ---
 
 Deep-review finding 2026-06-27: tools/ptx/cuda-launch.f, cuda-load.f, bandwidth.f, softmax-gradcheck.f and maki/eval-device*.f drop CUDA Driver rc values, reuse output buffers, use fixed /tmp grader paths, and sometimes print NO then exit success. Correct fix: add shared checked CUDA symbol/rc wrappers with named errors; reset per-run state; initialize readback sentinels; check every DLOPEN/DLSYM/CALL rc; free device allocations with cuMemFree_v2; use private TMPDIR/HB_TMP roots for grader driver/PTX/cubin; resolve PTXAS from env; check nonuniform multi-element goldens; wire a hardware/device gate distinct from CPU-only maki checks. Verify stale/missing cubin, missing symbol, failed ptxas, failed launch, failed readback, and wrong candidate each fail in the correct class.
+
+2026-07-03 increment: `maki/cuda-types.f` now owns shared fail-closed
+`CUDA-HANDLE0` / `CUDA-RC0`; `maki/gpu.f`, `maki/eval-device.f`, and
+`maki/eval-device-sm.f` check `DLOPEN` and every CUDA rc through those wrappers,
+and free device allocations with typed `cuMemFree_v2` bindings before unloading
+modules/releasing primary contexts. Remaining: private temp roots/PTXAS env,
+sentinel readbacks, zed hardware failure-class tests, and nonuniform goldens.
