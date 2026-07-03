@@ -12,7 +12,7 @@
 \ Load after test/gate-common.f.
 
 99319 constant GB-SIZE-BASELINE-MACOS
-0 constant GB-SIZE-BASELINE-LINUX
+90304 constant GB-SIZE-BASELINE-LINUX
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN

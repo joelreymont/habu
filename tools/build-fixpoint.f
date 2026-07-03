@@ -30,6 +30,7 @@ create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
+create BF-INSTALL-TMP-BUF FS-PATH-CAP allot
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -66,6 +67,7 @@ variable BF-STAMP-U
 variable BF-REC-STAGE?
 variable BF-REC-STDIN?
 variable BF-ENGINE-U
+variable BF-INSTALL-TMP-U
 variable BF-FORCE
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
@@ -897,9 +899,33 @@ variable BF-FORCE
    BF-BUILD-ALL
    BF-BUILD-SNAP-FROM-STDIN ;
 
+: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-ENGINE-BUF u BYTE-COPY
+   u BF-ENGINE-U ! ;
+
+: BF-ENGINE-RESET ( -- )
+   0 BF-ENGINE-U ! ;
+
+: BF-ENGINE$ ( -- ptr u8 n )
+   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
+   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
+   s" bin/hb" ;
+
+: BF-INSTALL-TMP$ ( -- ptr u8 n )
+   BF-ENGINE$ s" .tmp" BF-INSTALL-TMP-BUF FS-MUT-SUFFIX-PATH BF-INSTALL-TMP-U !
+   BF-INSTALL-TMP-BUF BF-INSTALL-TMP-U @ ;
+
+: BF-INSTALL-CLEAN-TMP ( -- )
+   BF-INSTALL-TMP$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
+
 : BF-INSTALL-HB ( -- )
-   s" hb-stdin" BF-A$ s" bin/hb" RENAME-FILE
-   s" bin/hb" CHMOD-X ;
+   BF-INSTALL-CLEAN-TMP
+   s" hb-stdin" BF-A$ BF-INSTALL-TMP$ COPY-FILE-STREAM
+   BF-INSTALL-TMP$ CHMOD-X
+   BF-INSTALL-TMP$ BF-ENGINE$ RENAME-FILE
+   s" hb-stdin" BF-REMOVE-TMP ;
 
 : BF-BIN-HB? ( ptr u8 n -- bool )
    s" bin/hb" STR= ;
@@ -917,20 +943,6 @@ variable BF-FORCE
    BF-INSTALL-HB
    BF-CLEAN-BIN
    s" bin/hb ready (small checked engine, tty REPL + stdin)" type cr ;
-
-: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 <= if E-BUILD-PATH throw then
-   u FS-PATH-CAP > if E-BUILD-PATH throw then
-   a BF-ENGINE-BUF u BYTE-COPY
-   u BF-ENGINE-U ! ;
-
-: BF-ENGINE-RESET ( -- )
-   0 BF-ENGINE-U ! ;
-
-: BF-ENGINE$ ( -- ptr u8 n )
-   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
-   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
-   s" bin/hb" ;
 
 : BF-STAMP-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-BUILD-PATH throw then

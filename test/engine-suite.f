@@ -1186,6 +1186,26 @@ cp@ ES-CPX-CP !
 6 ES-CPX-GOOD-EXTENDED-NAME 8 T=
 s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 
+\ Hash-index rollback churn must terminate. A rejected/evaluated candidate can
+\ roll NDICT and CP back while leaving stale HIDX slots. Inserts must reuse
+\ those stale slots instead of probing forever once the fixed table fills.
+variable ES-HIDX-ND
+variable ES-HIDX-CP
+: ES-HIDX-SRC$ ( -- ptr u8 n )
+   s" : ES-HIDX-CHURNED 1 ;" ;
+0 set-check
+ndict@ ES-HIDX-ND !  cp@ ES-HIDX-CP !
+: ES-HIDX-ROLLBACK-CHURN ( -- )
+   20000 0 ?do
+      ES-HIDX-SRC$ evaluate
+      ES-HIDX-ND @ ndict!
+      ES-HIDX-CP @ cp!
+   loop ;
+ES-HIDX-ROLLBACK-CHURN
+' HOOK set-check
+s" hidx rollback churn terminates" T-LABEL
+7 7 T=
+
 \ Candidate dictionary/hook smoke, folded from the former standalone GE-CAND-SMOKE
 \ candidate launch into this engine-suite run so the batch shares one HABU_UNDER_TEST
 \ spawn instead of two. Each check is an independent T= probe (no entangled stdout

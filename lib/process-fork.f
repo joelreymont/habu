@@ -128,16 +128,19 @@ create PROC-REAP-PFD 16 allot   \ two pollfd cells (8 bytes each)
 \ this reaper is a single-fork direct child the pool kills+waits by the returned
 \ pid on slot cleanup - no double-fork or worker-alive pipe is needed.
 \
-\ The spawned child leads its own process group; the reaper joins that group with
-\ setpgid(0,cpid) and ONLY then may signal. If the join fails (child already
-\ gone, or a setpgid race) the reaper exits WITHOUT killing, so it can never
-\ signal the arming parent's own group. After a successful join it closes every
-\ inherited fd but the pool-death read end and blocks; when the pool parent is
-\ SIGKILLed the write end EOFs and the reaper SIGKILLs the child's group.
+\ The spawn primitive makes the child lead its own process group before exec.
+\ The reaper joins that group with setpgid(0,cpid) and ONLY then may signal. If
+\ the join fails because the child is already gone, the reaper exits WITHOUT
+\ killing, so it can never signal the arming parent's own group. After a
+\ successful join it closes every inherited fd but the pool-death read end and
+\ blocks; when the pool parent is SIGKILLed the write end EOFs and the reaper
+\ SIGKILLs the child's group.
 : PROC-SPAWN-REAPER ( fd pid -- pid ) {: pd:fd cpid:pid :}
    PROC-FORK-RAW {: rpid:pid :}
    rpid PID>N 0= if
-      0 >PID cpid PROC-SETPGID RC>N 0 < if s" " 0 die then
+      0 >PID cpid PROC-SETPGID RC>N 0 < if
+         s" " 0 die
+      then
       pd pd PROC-CLOSE-EXCEPT2
       pd PROC-REAP-WATCH1
       s" " 0 die

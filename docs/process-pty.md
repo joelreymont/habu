@@ -21,14 +21,19 @@ The full port gate loads this slice through `test/run.f`.
 Checked code should use `PROC-SPAWN-IO`, `PROC-WAIT-RC`, `PROC-RUN-RC`, and capture helpers;
 they accept counted paths and throw named process errors for primitive failures.
 
-`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )` is target-specific:
+`spawn-io ( pathz stdinfd stdoutfd stderrfd -- pid|-errno )` is target-specific
+and creates each spawned child as its own process-group leader before the child
+execs. The test-pool timeout/reaper path depends on this invariant; parent-side
+`setpgid(child, child)` is racy and must not be used as the proof.
 
 - macOS wraps syscall 244, `posix_spawn(pid*, path, adesc, argv, envp)`. The
-  descriptor folds file actions and attributes; Habu emits only dup2 actions.
+  descriptor folds file actions and attributes; Habu emits dup2/chdir actions
+  and a `POSIX_SPAWN_SETPGROUP` attribute with pgroup 0.
   Failures preserve the kernel errno as a negative pid code.
 - Linux uses a close-on-exec exec-failure pipe around `clone`/`execve`. The
-  parent returns a pid only after the child has either successfully exec'd
-  (pipe EOF) or reported setup failure.
+  child calls `setpgid(0,0)` before `chdir`, `dup2`, and `execve`; the parent
+  returns a pid only after the child has either successfully exec'd (pipe EOF)
+  or reported setup failure.
 
 Pass a negative fd to leave that stream unchanged. Parent-only pipe and PTY fds
 must be marked close-on-exec before spawning, or children can inherit writers and

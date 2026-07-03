@@ -29,8 +29,24 @@ variable MDL-PATHU
 variable MDL-BAD
 variable MDL-FILES
 variable MDL-NL#
+variable MDL-REPORT?
 
 : MDL-NL ( -- ) MDL-LF emit ;
+
+: MDL-TRUE ( -- bool )
+   0 0= ;
+
+: MDL-FALSE ( -- bool )
+   0 0= 0= ;
+
+: MDL-REPORT! ( bool -- )
+   MDL-REPORT? ! ;
+
+: MDL-REPORT-ON ( -- )
+   MDL-TRUE MDL-REPORT! ;
+
+: MDL-REPORT-OFF ( -- )
+   MDL-FALSE MDL-REPORT! ;
 
 : MDL-U. ( n -- )
    0 MDL-NL# !
@@ -53,11 +69,13 @@ variable MDL-NL#
    a MDL-PATH u LINT-BMOVE  u MDL-PATHU ! ;
 
 : MDL-HIT ( ptr u8 n -- ) {: t:ptr tu :}
-   s" MAKI-DEP " type
-   MDL-PATH MDL-PATHU @ type
-   s" : forbidden maki/ reference in token '" type
-   t tu type
-   s" '" type MDL-NL
+   MDL-REPORT? @ if
+      s" MAKI-DEP " type
+      MDL-PATH MDL-PATHU @ type
+      s" : forbidden maki/ reference in token '" type
+      t tu type
+      s" '" type MDL-NL
+   then
    MDL-BAD+ ;
 
 : MDL-SCAN-TOKENS ( -- )
@@ -74,8 +92,11 @@ variable MDL-NL#
 
 \ findings produced by scanning one string in isolation (reset -> scan -> count)
 : MDL-COUNT ( ptr u8 n -- n )
+   MDL-REPORT? @ {: report:bool :}
+   MDL-REPORT-OFF
    0 MDL-BAD !
    MDL-SCAN-STR
+   report MDL-REPORT!
    MDL-BAD @ ;
 
 : MDL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u :}
@@ -85,6 +106,7 @@ variable MDL-NL#
    a u MDL-BUF MDL-CAP READ-FILE MDL-SCAN-STR ;
 
 : MAKI-DEP-LINT ( -- )
+   MDL-REPORT-ON
    0 MDL-BAD !  0 MDL-FILES !
    s" src/"  [: MDL-SCAN-FILE ;] WALK-FILES
    s" lib/"  [: MDL-SCAN-FILE ;] WALK-FILES

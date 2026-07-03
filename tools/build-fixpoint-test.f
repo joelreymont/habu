@@ -18,7 +18,7 @@ require lib/codesign.f
 require tools/build-fixpoint.f
 
 8192 constant BFT-CAPTURE-CAP
-$80000 constant BFT-READ-CAP
+$100000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
 
@@ -468,26 +468,34 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT [: BFT-CHECK-BUILD-FILE ;] WALK-FILES
    BFT-BUILD-FILES @ 0 T= ;
 
+\ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
+: BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
+   a u T-LABEL
+   q catch {: rc:n :}
+   rc 0= if exit then
+   a u type s" : throw " type rc . cr
+   s" build-fixpoint-test: subtest threw" T-EX-FAIL die ;
+
 : BFT-MAIN ( -- )
    T-RESET
    BFT-PREPARE
-   BFT-TEST-TMP-OVERRIDE
-   BFT-TEST-STAGE-ARGV-RESET
-   BFT-TEST-STAMP-SEED
-   BFT-TEST-BUILD
-   BFT-TEST-CACHED-SKIP
-   BFT-TEST-BUILD-FAIL-NO-STAMP
-   BFT-TEST-STAMP-SOURCE-KEY
-   BFT-TEST-STAMP-CORRUPT
-   BFT-TEST-STAMP-ENGINE
-   BFT-TEST-ALL-STAMP-GUARD
-   BFT-TEST-STAMP-NESTED
-   BFT-TEST-NO-BUILD-SHIMS
-   BFT-TEST-STAGE2-SOURCE
-   BFT-TEST-NO-STAGE2-RUN-SOURCE
-   BFT-TEST-CHECKED-TARGET-IMAGE
-   BFT-TEST-CHECKED-REGALLOC
-   BFT-TEST-SNAP-SOURCE
+   s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
+   s" stage argv reset" [: BFT-TEST-STAGE-ARGV-RESET ;] BFT-STEP
+   s" stamp seed" [: BFT-TEST-STAMP-SEED ;] BFT-STEP
+   s" build" [: BFT-TEST-BUILD ;] BFT-STEP
+   s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
+   s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
+   s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
+   s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
+   s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
+   s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
+   s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
+   s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
+   s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
+   s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
+   s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
+   s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
+   s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT

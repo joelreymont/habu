@@ -39,6 +39,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | linux-spawn-fail | `reg --` | Linux child-side spawn failure reporter: consumes the target register holding the exec-error pipe, emits raw `write`, and exits the child without returning to Forth. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-dup2-fd | `reg fd reg --` | Linux child-side raw syscall emitter for conditional `dup2`: source fd register, destination fd immediate, and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
 | linux-chdir-fd | `reg reg --` | Linux child-side raw syscall emitter for optional `chdir`: cwd pointer register and exec-error-pipe register are role-typed; raw label/syscall code remains the boundary. | `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
+| linux-setpgid-self | `reg --` | Linux child-side raw syscall emitter for fail-closed `setpgid(0,0)` before cwd/stdio/exec setup; the exec-error-pipe register is passed through the failure reporter boundary. | `lib/process-test.f`, `lib/process-env-test.f`, `test/gate-pool-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
 | linux-spawn-close-r | `--` | Linux spawn emitter helper that closes the parent/child error-pipe read fd from the raw stack frame. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
 | linux-spawn-close-w | `--` | Linux spawn emitter helper that closes the parent/child error-pipe write fd from the raw stack frame. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
 | linux-spawn-close-pipe | `--` | Linux spawn emitter helper that closes both error-pipe fds on parent-side setup failure. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-24 |
@@ -57,9 +58,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | spawn-darwin-actions-reset | `count --` | Build-side helper that initializes the XNU file-action blob header at x13 for the requested action count and zero used-count. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
 | spawn-darwin-stdio-actions | `--` | Build-side helper that appends the three conditional stdio `PSFA_DUP2` actions through the audited dup2 action emitter. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
 | spawn-darwin-zero-adesc | `--` | Build-side helper that emits zeroing stores for the Darwin spawn descriptor area; raw descriptor layout is outside Forth inference. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-fill-adesc | `--` | Build-side helper that emits the XNU spawn descriptor file-action size and pointer fields from the runtime action count. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
-| spawn-darwin-nullable-adesc | `label --` | Build-side helper that emits the XNU empty-action rule and binds the caller label used after a non-null descriptor decision. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
-| spawn-darwin-use-adesc | `--` | Build-side helper that emits the non-null descriptor pointer for cwd spawn, whose `PSFA_CHDIR` action is mandatory. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-25 |
+| spawn-darwin-zero-attr | `--` | Build-side helper that emits zeroing stores for the Darwin `posix_spawn` attribute area; the XNU-private layout is outside Forth inference. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
+| spawn-darwin-attr-defaults | `--` | Build-side helper that emits `POSIX_SPAWN_SETPGROUP` plus XNU default attribute fields so each spawned child becomes its own process-group leader before exec. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/gate-pool-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
+| spawn-darwin-fill-adesc | `--` | Build-side helper that emits the XNU spawn descriptor attribute pointer/size and, when present, file-action pointer/size from the runtime action count. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
+| spawn-darwin-use-adesc | `--` | Build-side helper that emits the non-null descriptor pointer for every Darwin spawn so process-group attributes are applied even when no file actions are needed. | `tools/spawn-emitter-test.f`, `lib/process-cwd-test.f`, `lib/process-env-test.f`, `test/run.f` | src/habu/habu1.f | 2026-07-03 |
 | spawn-darwin-pid-path | `reg --` | Build-side helper that emits common `posix_spawn` pid-out and path register setup. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
 | spawn-darwin-argv-envp | `reg reg --` | Build-side helper that emits common argv/envp register setup when both vectors are runtime input registers. | `tools/spawn-emitter-test.f`, `lib/process-env-test.f`, `test/run.f`, `test/engine-suite.f` | src/habu/habu1.f | 2026-06-26 |
 | spawn-darwin-default-argv-envp | `reg --` | Build-side helper that emits the default argv/envp runtime stack vectors for path-only spawn. | `tools/spawn-emitter-test.f`, `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-26 |
@@ -571,10 +573,10 @@ the same change.
 
 <!-- trusted-inventory-baseline
 TRUSTED 216
-TRUST 348
-SETCHECK 10
+TRUST 350
+SETCHECK 11
 TRUST-BARE 1
-HOOK-INSTALL 12
+HOOK-INSTALL 13
 -->
 
 ### Build-time-generated trust (explicit exemption)

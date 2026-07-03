@@ -291,6 +291,15 @@ s" linux-dup2-fd" s" reg fd reg --" TRUST
    skip LBL, ;
 s" linux-chdir-fd" s" reg reg --" TRUST
 
+: LINUX-SETPGID-SELF ( reg -- )
+   REG>N LNX-ERR !
+   LBL {: ok:label :}
+   0 0 MOVZ,  1 0 MOVZ,  NR-SETPGID SYS,
+   9 C-CS CSET,  9 ok CBZ,
+      LNX-ERR @ LINUX-SPAWN-FAIL-N
+   ok LBL, ;
+s" linux-setpgid-self" s" reg --" TRUST
+
 : LINUX-SPAWN-CLOSE-R ( -- )
    0 SP LINUX-SPAWN-PIPE-R-OFF LDRW,  NR-CLOSE SYS, ;
 s" linux-spawn-close-r" s" --" TRUST
@@ -350,6 +359,8 @@ s" linux-spawn-parent" s" --" TRUST
 
 : LINUX-SPAWN-CHILD ( -- )
    LINUX-SPAWN-CLOSE-R
+   14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
+   14 >REG LINUX-SETPGID-SELF
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
    9 SP 24 LDR,  9 >REG 14 >REG LINUX-CHDIR-FD
    14 SP LINUX-SPAWN-PIPE-W-OFF LDRW,
@@ -619,12 +630,27 @@ s" linux-ignore-sigpipe" s" --" TRUST
 3584 constant SPAWN-FRAME3
 2048 constant SPAWN-FRAME4-A
 2048 constant SPAWN-FRAME4-B
-256 constant SPAWN-FRAME4-C
+512 constant SPAWN-FRAME4-C
 0 constant SPAWN-PID-OFF
 16 constant SPAWN-ARGV-OFF
 24 constant SPAWN-ARGV-END-OFF
 32 constant SPAWN-ENVP-OFF
-176 constant SPAWN-ACTIONS-OFF
+48 constant SPAWN-ADESC-OFF
+48 constant SPAWN-ADESC-ATTR-SIZE-OFF
+56 constant SPAWN-ADESC-ATTR-PTR-OFF
+64 constant SPAWN-ADESC-FA-SIZE-OFF
+72 constant SPAWN-ADESC-FA-PTR-OFF
+128 constant SPAWN-ADESC-SIZE
+176 constant SPAWN-ATTR-OFF
+184 constant SPAWN-ATTR-SIZE
+0 constant SPAWN-ATTR-FLAGS-OFF
+56 constant SPAWN-ATTR-RESERVED-OFF
+68 constant SPAWN-ATTR-PRIORITY-OFF
+72 constant SPAWN-ATTR-MEMLIMIT-ACTIVE-OFF
+76 constant SPAWN-ATTR-MEMLIMIT-INACTIVE-OFF
+112 constant SPAWN-ATTR-SUBCPU-OFF
+2 constant POSIX-SPAWN-SETPGROUP
+368 constant SPAWN-ACTIONS-OFF
 0 constant SPAWN-FA-CAP-OFF
 4 constant SPAWN-FA-COUNT-OFF
 8 constant SPAWN-FA-ACTS-OFF
@@ -632,10 +658,6 @@ s" linux-ignore-sigpipe" s" --" TRUST
 5 constant PSFA-CHDIR
 8 constant SPAWN-CHDIR-PATH-OFF
 SPAWN-ACTION-SIZE SPAWN-CHDIR-PATH-OFF - constant SPAWN-CHDIR-PATH-CAP
-48 constant SPAWN-ADESC-OFF
-64 constant SPAWN-ADESC-FA-SIZE-OFF
-72 constant SPAWN-ADESC-FA-PTR-OFF
-128 constant SPAWN-ADESC-SIZE
 
 variable SDA-FD  variable SDA-NEW  variable SDA-SKIP
 variable SCA-CWD  variable SCA-FAIL
@@ -737,23 +759,46 @@ s" spawn-darwin-stdio-actions" s" --" TRUST
    REPEAT ;
 s" spawn-darwin-zero-adesc" s" --" TRUST
 
+: SPAWN-DARWIN-ZERO-ATTR ( -- )
+   14 0 MOVZ,
+   0 SZA-I !
+   BEGIN SZA-I @ SPAWN-ATTR-SIZE < WHILE
+      14 SP SPAWN-ATTR-OFF SZA-I @ + STR,
+      SZA-I @ 8 + SZA-I !
+   REPEAT ;
+s" spawn-darwin-zero-attr" s" --" TRUST
+
+: SPAWN-DARWIN-ATTR-DEFAULTS ( -- )
+   14 POSIX-SPAWN-SETPGROUP MOVZ,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-FLAGS-OFF + STRW,
+   14 1 MOVZ,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-RESERVED-OFF + STR,
+   14 0 MOVN,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-PRIORITY-OFF + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-MEMLIMIT-ACTIVE-OFF + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-MEMLIMIT-INACTIVE-OFF + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 4 + + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 8 + + STRW,
+   14 SP SPAWN-ATTR-OFF SPAWN-ATTR-SUBCPU-OFF 12 + + STRW, ;
+s" spawn-darwin-attr-defaults" s" --" TRUST
+
 : SPAWN-DARWIN-FILL-ADESC ( -- )
+   LBL {: done:label :}
+   SPAWN-DARWIN-ATTR-DEFAULTS
+   14 SPAWN-ATTR-SIZE MOVZ,
+   14 SP SPAWN-ADESC-ATTR-SIZE-OFF STR,
+   14 SP SPAWN-ATTR-OFF ADDI,
+   14 SP SPAWN-ADESC-ATTR-PTR-OFF STR,
    14 13 SPAWN-FA-COUNT-OFF LDRW,
+   14 done CBZ,
    15 SPAWN-ACTION-SIZE MOVZ,
    14 14 15 MUL,
    14 14 SPAWN-FA-ACTS-OFF ADDI,
    14 SP SPAWN-ADESC-FA-SIZE-OFF STR,
-   13 SP SPAWN-ADESC-FA-PTR-OFF STR, ;
+   13 SP SPAWN-ADESC-FA-PTR-OFF STR,
+   done LBL, ;
 s" spawn-darwin-fill-adesc" s" --" TRUST
-
-: SPAWN-DARWIN-NULLABLE-ADESC ( label -- )
-   SAD-HAS !
-   14 13 SPAWN-FA-COUNT-OFF LDRW,
-   2 SP SPAWN-ADESC-OFF ADDI,
-   14 SAD-HAS LABEL@ CBNZ,
-      2 0 MOVZ,
-   SAD-HAS LABEL@ LBL, ;
-s" spawn-darwin-nullable-adesc" s" label --" TRUST
 
 : SPAWN-DARWIN-USE-ADESC ( -- )
    2 SP SPAWN-ADESC-OFF ADDI, ;
@@ -831,9 +876,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
    3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-ZERO-ATTR
    SPAWN-DARWIN-FILL-ADESC
    9 >REG SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
+   SPAWN-DARWIN-USE-ADESC
    SPAWN-DARWIN-USE-DEFAULT-ARGV-ENVP
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
@@ -855,9 +901,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
    3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-ZERO-ATTR
    SPAWN-DARWIN-FILL-ADESC
    8 >REG SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
+   SPAWN-DARWIN-USE-ADESC
    9 >REG SPAWN-DARWIN-ARGV-DEFAULT-ENVP
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
@@ -874,9 +921,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
    3 >COUNT SPAWN-DARWIN-ACTIONS-RESET
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-ZERO-ATTR
    SPAWN-DARWIN-FILL-ADESC
    8 >REG SPAWN-DARWIN-PID-PATH
-   BSP-SAD @ >LABEL SPAWN-DARWIN-NULLABLE-ADESC
+   SPAWN-DARWIN-USE-ADESC
    9 >REG 7 >REG SPAWN-DARWIN-ARGV-ENVP
    BSP-OK @ >LABEL BSP-DN @ >LABEL SPAWN-DARWIN-FINISH
    SPAWN-DARWIN-FRAME3-LEAVE ;
@@ -893,6 +941,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    6 >REG BSP-DN @ >LABEL SPAWN-CHDIR-ACTION
    SPAWN-DARWIN-STDIO-ACTIONS
    SPAWN-DARWIN-ZERO-ADESC
+   SPAWN-DARWIN-ZERO-ATTR
    SPAWN-DARWIN-FILL-ADESC
    8 >REG SPAWN-DARWIN-PID-PATH
    SPAWN-DARWIN-USE-ADESC
@@ -1905,10 +1954,12 @@ variable LHIDXBUILD
 
 \ Emit: insert record index x3 into table x14. The dictionary rejects
 \ duplicate definitions, so the table is insert-once: probe to the first
-\ empty slot and store index+1 (no dedupe pass). Clobbers x2 x4 x5 x6 x7
-\ x15 x16 x17.
+\ empty slot or stale rolled-back slot and store index+1 (no dedupe pass). If
+\ every slot has been consumed by live/stale entries, disable HIDX; linear FIND
+\ and duplicate checks remain authoritative. Clobbers x2 x4 x5 x6 x7 x8 x15
+\ x16 x17.
 : C-HIDX-INS ( -- )
-   LBL LBL LBL {: iloop:label idone:label rinl:label :}
+   LBL LBL LBL LBL LBL LBL {: iloop:label inext:label ifull:label idone:label iret:label rinl:label :}
    5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
    2 5 40 LDR,
    16 5 24 ADDI,
@@ -1918,12 +1969,19 @@ variable LHIDXBUILD
    rinl LBL,
    16 15 6 4 5 7 C-HIDX-HASH
    6 6 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,
+   8 HIDX-SLOTS MOVZ,
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
       4 idone CBZ,
+      4 4 1 SUBI,  4 NDICT CMP,  C-GE idone BCOND,
+   inext LBL,
+      8 8 1 SUBI,  8 ifull CBZ,
       6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  iloop B,
+   ifull LBL,
+      4 0 MOVZ,  4 DATA HIDXP-CELL STR,  iret B,
    idone LBL,
-      4 3 1 ADDI,  4 17 0 STRW, ;
+      4 3 1 ADDI,  4 17 0 STRW,
+   iret LBL, ;
 
 \ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
 \ live record with this definition's wordlist (DEF-WL-CELL) and folded name
@@ -1937,6 +1995,7 @@ variable LHIDXBUILD
    16 15 3 4 5 7 C-HIDX-HASH
    4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 $3FFF LIT64,  6 6 5 AND,
    13 0 MOVZ,
+   8 HIDX-SLOTS MOVZ,
    dloop LBL,
       4 6 2 LSLI,  4 14 4 ADD,  3 4 0 LDRW,                  \ x3 = slot value
       3 dret CBZ,                                            \ empty slot -> no dup
@@ -1957,7 +2016,9 @@ variable LHIDXBUILD
          3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
          15 4 CMP,  C-NE dnext BCOND,
          7 7 1 ADDI,  dcmp B,
-      dnext LBL,  6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  dloop B,
+      dnext LBL,
+         8 8 1 SUBI,  8 dret CBZ,
+         6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  dloop B,
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
@@ -1971,12 +2032,14 @@ variable LHIDXBUILD
       SP SP 96 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
       6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
+      8 SP 88 STR,
       14 DATA HIDXP-CELL LDR,  14 aret CBZ,
       3 NDICT 0 ADDI,  3 3 1 SUBI,
       C-HIDX-INS
       aret LBL,
       30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
       6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
+      8 SP 88 LDR,
       SP SP 96 ADDI,  RET,
    LHIDXBUILD LABEL@ LBL,
       \ startup runs this by BL between source setup and the interpret
@@ -2090,6 +2153,7 @@ variable FIND-HMATCH
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
       9 10 15 4 16 7 C-HIDX-HASH
       6 15 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+      8 HIDX-SLOTS MOVZ,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
       3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss
@@ -2114,7 +2178,9 @@ variable FIND-HMATCH
          11 5 0 LDR,  12 5 8 LDR,
          14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
          13 1 MOVZ,  13 13 14 ORR,  RET,
-      FIND-HNEXT LABEL@ LBL,  6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
+      FIND-HNEXT LABEL@ LBL,
+         8 8 1 SUBI,  8 FIND-LINEAR LABEL@ CBZ,
+         6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
    FIND-LINEAR LABEL@ LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    FIND-LOOP LABEL@ LBL,

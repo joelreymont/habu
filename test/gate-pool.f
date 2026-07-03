@@ -502,20 +502,18 @@ GT-POOL-ABORT-KILL!
    s" stdout-fd" idx GT-POOL-OUT-W-PTR @ GT-POOL-LINE-FD
    s" stderr-fd" idx GT-POOL-ERR-W-PTR @ GT-POOL-LINE-FD ;
 
-\ Put a spawned child in its own process group (pgid == its pid) so a timeout
-\ kill signals the whole subtree. Best effort: an ESRCH from a child that has
-\ already exited is benign, and GT-POOL-KILL-SLOT also kills the pid directly.
-: GT-POOL-SETPGID-CHILD ( idx -- ) {: idx:idx :}
-   idx GT-POOL-PID@ dup PROC-SETPGID drop ;
-
-\ Arm a co-located reaper for the just-spawned child (now its own group leader):
-\ fork a reaper that joins the child's group and watches the pool-death read end,
-\ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Best effort - a failed
-\ reaper fork stores a negative pid the cleanup guard skips, leaving the slot
-\ running without orphan protection rather than failing a working spawn.
+\ Arm a co-located reaper for the just-spawned child. The spawn primitive makes
+\ every child its own process-group leader before exec, so timeout and
+\ parent-death cleanup can signal the whole subtree without a parent-side
+\ setpgid race.
+\
+\ Fork a reaper that joins the child's group and watches the pool-death read end,
+\ then track its pid so GT-POOL-REAP/KILL-SLOT reap it. Reaper fork failure is
+\ also fail-closed; otherwise a spawned subtree could survive a killed pool.
 : GT-POOL-ARM-SPAWN-REAPER ( idx -- ) {: idx:idx :}
-   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-SPAWN-REAPER
-   idx GT-POOL-REAPER-PID-PTR ! ;
+   GT-POOL-DEATH-RD@ idx GT-POOL-PID@ PROC-SPAWN-REAPER {: rpid:pid :}
+   rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
+   rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
 : GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
    path pathu >LEN PROC-ARGV-CHECK-PATH
@@ -530,7 +528,6 @@ GT-POOL-ABORT-KILL!
    then
    PROC-ARGV-ENV-RESET
    pid idx GT-POOL-PID-PTR !
-   idx GT-POOL-SETPGID-CHILD
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 

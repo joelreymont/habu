@@ -2141,3 +2141,23 @@ unchanged (148855). Keys for milestone 2:
 - **New emitter label locals need `:label` typing** (`{: x:label :}`) or
   typed-local-diff-lint flags the new group even though older emitter groups
   are untyped (lint only sees the diff).
+- **Open-address dictionary indexes must reclaim stale rollback slots on
+  insert, not only skip them on lookup.** `ndict!`/`cp!` rollback can leave
+  probe-chain entries whose record index is no longer live. Duplicate lookup
+  must keep probing past them, but insertion must reuse the first stale or
+  empty slot; otherwise repeated checked/evaluated candidates eventually fill
+  the fixed table with dead entries and spin.
+- **Process-pool orphan protection is fail-closed.** A spawned child whose
+  process group or parent-death reaper cannot be armed must fail the test
+  immediately through the pool cleanup path. Running the test anyway silently
+  drops the only proof that timeout/parent-death cleanup reaches grandchildren.
+- **Bootstrap writer caps are temporary-stage caps, not final-binary budgets.**
+  The Gforth recovery stage embeds current source in its generated executable;
+  when source grows, the bootstrap-only `MPAGE`/`MSIZE` guards must grow
+  together or no-binary recovery fails before native fixpoint can produce the
+  small `bin/hb`. Final-size ratchets belong in `test/gate-build-size.f`.
+- **Diagnostic lint fixtures must mute expected findings.** `MDL-COUNT` was
+  correctly counting synthetic `maki/` tokens, but it printed those expected
+  findings into the shared lint-tools output and the gate-stats fixture counted
+  them as real span noise. Public lint entrypoints stay loud and fail-closed;
+  in-memory fixture counters need an explicit quiet/report switch.
