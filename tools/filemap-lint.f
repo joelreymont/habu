@@ -1,6 +1,6 @@
 \ filemap-lint.f - keep FILEMAP.md useful as an agent navigation index.
 \ Policy is derived, not transcribed: every .f/.fs source file under the
-\ walked roots (src/, tools/, test/, lib/) must appear in FILEMAP.md unless a
+\ walked roots (src/, tools/, test/, lib/, bootstrap/) must appear in FILEMAP.md unless a
 \ committed exclusion row names it. Listed paths must exist (staleness),
 \ exclusion rows must exist (no stale exclusions), and the contract docs must
 \ stay listed.
@@ -210,7 +210,8 @@ variable FM-EXC#
    s" src" FM-ROOT+
    s" tools" FM-ROOT+
    s" test" FM-ROOT+
-   s" lib" FM-ROOT+ ;
+   s" lib" FM-ROOT+
+   s" bootstrap" FM-ROOT+ ;
 
 \ Committed exclusions: policy files deliberately kept out of the index.
 \ Every row must still exist on disk; stale rows fail the lint.
@@ -226,7 +227,8 @@ variable FM-EXC#
    s" TRUSTED.md" FM-REQ
    s" docs/parallel-agents.md" FM-REQ
    s" docs/seed.md" FM-REQ
-   s" docs/swiftforth-task-api.md" FM-REQ ;
+   s" docs/swiftforth-task-api.md" FM-REQ
+   s" docs/type-families.md" FM-REQ ;
 
 : FILEMAP-LINT ( -- )
    FM-LINT-RESET

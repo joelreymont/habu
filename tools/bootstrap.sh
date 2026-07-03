@@ -199,6 +199,10 @@ emit_src() {
   fi
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"
+  if [[ "$driver" == "src/habu/stdin.f" ]]; then
+    cat src/habu/aot-capture.f >> "$out"
+    printf '\n' >> "$out"
+  fi
   cat "$driver" >> "$out"
   printf '\n' >> "$out"
 }

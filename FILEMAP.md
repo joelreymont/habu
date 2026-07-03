@@ -19,6 +19,7 @@ points stay listed.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/type-families.md` — generic lowercase type-family/ADT design plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
@@ -90,6 +91,71 @@ points stay listed.
   numbers plus the SVC emitter.
 - `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
   target flag words.
+
+## Gforth Bootstrap Recovery
+
+- `bootstrap/habu.fs` — top-level Gforth no-binary recovery driver.
+- `bootstrap/habu-lib.fs` — shared Gforth bootstrap library bundle.
+- `bootstrap/habu-cg.fs` — Gforth codegen bootstrap bundle.
+- `bootstrap/habu-repl.fs` — Gforth REPL bootstrap entry.
+- `bootstrap/habu-tui.fs` — Gforth TUI bootstrap entry.
+- `bootstrap/examples.fs` — bootstrap example source.
+- `bootstrap/src/arena.fs` — bootstrap arena allocator.
+- `bootstrap/src/capture.fs` — bootstrap source capture.
+- `bootstrap/src/checker.fs` — bootstrap checker entry.
+- `bootstrap/src/colon.fs` — bootstrap colon-definition parser.
+- `bootstrap/src/config.fs` — bootstrap configuration constants.
+- `bootstrap/src/control.fs` — bootstrap control-flow checker.
+- `bootstrap/src/db.fs` — bootstrap dictionary storage.
+- `bootstrap/src/defining.fs` — bootstrap defining words.
+- `bootstrap/src/diag-state.fs` — bootstrap diagnostic state.
+- `bootstrap/src/diag.fs` — bootstrap diagnostic rendering.
+- `bootstrap/src/effects-repr.fs` — bootstrap effect representation.
+- `bootstrap/src/forward.fs` — bootstrap forward-declaration handling.
+- `bootstrap/src/habu.fs` — bootstrap engine assembly.
+- `bootstrap/src/locals.fs` — bootstrap locals checker.
+- `bootstrap/src/parsing.fs` — bootstrap parser helpers.
+- `bootstrap/src/pickroll.fs` — bootstrap stack primitive helpers.
+- `bootstrap/src/prims.fs` — bootstrap primitive signatures.
+- `bootstrap/src/quots.fs` — bootstrap quotation support.
+- `bootstrap/src/render.fs` — bootstrap effect renderer.
+- `bootstrap/src/repl.fs` — bootstrap REPL support.
+- `bootstrap/src/rows.fs` — bootstrap row operations.
+- `bootstrap/src/runtime.fs` — bootstrap runtime support.
+- `bootstrap/src/sig.fs` — bootstrap signature model.
+- `bootstrap/src/sigparse.fs` — bootstrap signature parser.
+- `bootstrap/src/tui.fs` — bootstrap terminal UI support.
+- `bootstrap/src/types.fs` — bootstrap type model.
+- `bootstrap/src/unify.fs` — bootstrap unifier.
+- `bootstrap/cg/asm.fs` — Gforth ARM64 assembler helpers.
+- `bootstrap/cg/asm-checked.fs` — Gforth checked assembler surface.
+- `bootstrap/cg/cglocals.fs` — Gforth locals codegen.
+- `bootstrap/cg/cgloop.fs` — Gforth loop codegen.
+- `bootstrap/cg/cgquot.fs` — Gforth quotation codegen.
+- `bootstrap/cg/crash.fs` — Gforth crash handler codegen.
+- `bootstrap/cg/disasm-core.fs` — Gforth disassembler core.
+- `bootstrap/cg/disasm.fs` — Gforth disassembler entry.
+- `bootstrap/cg/elf.fs` — Gforth ELF image writer.
+- `bootstrap/cg/exec.fs` — Gforth executable emitter.
+- `bootstrap/cg/forth.fs` — Gforth stage0 engine code generator.
+- `bootstrap/cg/icode.fs` — Gforth instruction-code layer.
+- `bootstrap/cg/image.fs` — Gforth image layout writer.
+- `bootstrap/cg/inspect.fs` — Gforth inspection tools.
+- `bootstrap/cg/install.fs` — Gforth install helpers.
+- `bootstrap/cg/jit.fs` — Gforth JIT emitter mirror.
+- `bootstrap/cg/link.fs` — Gforth link helpers.
+- `bootstrap/cg/macho.fs` — Gforth Mach-O image writer.
+- `bootstrap/cg/opt.fs` — Gforth peephole optimizer.
+- `bootstrap/cg/prof.fs` — Gforth profiler support.
+- `bootstrap/cg/regalloc.fs` — Gforth register allocator mirror.
+- `bootstrap/cg/regstack.fs` — Gforth virtual stack register model.
+- `bootstrap/cg/rt.fs` — Gforth runtime emitter.
+- `bootstrap/cg/sha256.fs` — Gforth SHA-256 helper.
+- `bootstrap/cg/sign.fs` — Gforth signing helper.
+- `bootstrap/cg/stepper.fs` — Gforth stepper support.
+- `bootstrap/cg/sys.fs` — Gforth OS syscall helpers.
+- `bootstrap/cg/templ.fs` — Gforth template emitter.
+- `bootstrap/cg/walk.fs` — Gforth source walker.
 
 ## Debugging And Inspection
 
