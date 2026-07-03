@@ -14,3 +14,12 @@ Deep-review finding 2026-06-27: tools/ptx/cuda-launch.f, cuda-load.f, bandwidth.
 and free device allocations with typed `cuMemFree_v2` bindings before unloading
 modules/releasing primary contexts. Remaining: private temp roots/PTXAS env,
 sentinel readbacks, zed hardware failure-class tests, and nonuniform goldens.
+
+2026-07-03 increment: grader artifact paths no longer use shared
+`/tmp/grade*` names. `maki/device-artifacts.f` owns per-grade `TMPDIR` roots,
+driver/PTX/cubin paths, cleanup, and `PTXAS` env resolution with the existing
+CUDA default fallback. `maki/eval-device.f` and `maki/eval-device-sm.f` now
+require their own stdlib/PTX dependencies and use those artifact paths; focused
+artifact tests and the full native suite pass. Remaining: sentinel readbacks,
+zed hardware failure-class tests, nonuniform goldens, and migration of older
+`tools/ptx/*device*` hardcoded ptxas/tmp paths.
