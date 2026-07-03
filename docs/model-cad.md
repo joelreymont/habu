@@ -265,7 +265,7 @@ dumps for the driving workload) with the tolerance recorded per artifact.
 - Exists: checker-as-judge eval (`maki/eval.f`), device golden runs,
   device gradcheck (SOFTMAX-ROWS-BWD), dot
   `habu-committed-device-correctness`. Gate wiring lands inside
-  `cad-0-words`/`cad-7-optimize`; no separate new dot.
+  `cad-0b`/`cad-7-optimize`; no separate new dot.
 
 ### Phase 6 — Profiling and roofline report
 
@@ -296,7 +296,7 @@ One hard-coded TF32 GEMM path first (sm_87, f32 in, tf32 MMA, f32 accum,
 shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
 
 - Exists: dots `habu-tensor-core-mma`, `habu-re-express-tiled`,
-  `habu-checker-capability-typed` (kernel loops/smem/accumulators),
+  `habu-checker-capability-typed-e0c76a02` (kernel loops/smem/accumulators),
   `lib/ptx/tile-smem.f`, `lib/ptx/tile-acc.f`. No new dot; this plan adds
   the schedule-object and gate integration requirements to those dots.
 - Bring-up policy (driving workload): a library/FFI GEMM is acceptable

@@ -51,23 +51,47 @@ MODEL: definition          concatenative composition of model ops
 
 Each arrow produces an inspectable artifact with a REPL word (`LOWER`, `FUSE`,
 `MEMORY`, `TILE`, `CERTIFY`, `GOLDEN`, `GRADCHECK`, `PROFILE`) and a
-machine-readable report row (`maki/report.f` schema). `OPTIMIZE` runs the
-chain; `PROMOTE` caches the artifact with its evidence; `EXPLAIN` renders any
-failure as a repair packet.
+machine-readable report row (the `maki/report.f` schema, built by `cad-0a`).
+`OPTIMIZE` runs the chain; `PROMOTE` caches the artifact with its evidence;
+`EXPLAIN` renders any failure as a repair packet.
+
+**Execution environments.** The stages split across three environments, and
+the split is part of the design: planning, static checking, plan/code
+coherence, and host golden references run anywhere `bin/hb` runs (including a
+CUDA-less macOS host); PTX assembly and resource capture require the CUDA
+toolkit (`ptxas`, resolved via `lib/ptx/toolchain.f`); device golden,
+profiling, tuning, and GPU training require the Orin. Native `bin/hb` plus
+CUDA toolkit plus a reachable device on the Orin is an explicit precondition
+before the first device milestone (tuning), and every report row states which
+environment produced it.
 
 ## 3. Model capture: plan mode
 
 `MODEL:` does not introduce a graph syntax. A model word is ordinary checked
 Forth executed against a *planning vocabulary*: the same `LINEAR GELU LINEAR`
-text runs with tensor *descriptors* on the stack instead of tensors, and each
-model op appends an IR node instead of computing. Consequences:
+source text runs with tensor *descriptors* on the stack instead of tensors,
+and each model op appends an IR node instead of computing.
+
+This requires one prerequisite the current code does not have: a **unified
+single-slot tensor value**. Today's eager maki ops pass a tensor as several
+stack cells (`maki/linear.f`: `LINEAR ( ptr a ptr a ptr a ptr a n n n -- )`;
+shape, dtype, and data travel separately), so they cannot be re-typed onto
+descriptors as-is. Phase 1 therefore introduces a tensor value type (a value
+struct — authorized compiler work if the checker needs it) carrying
+data/shape/dtype/layout in one stack slot, and the model-op vocabulary is
+defined over it. Dispatch is lexical, not dynamic: `MODEL:` capture opens the
+planning package, so the ops that compile into a model body are the
+descriptor-typed planning words; the eager tensor path keeps its own words
+and migrates onto the tensor value module-by-module. The model *source text*
+is mode-independent; the two vocabularies are kept in sync by the op
+registry (§4.2), not by textual duplication.
+
+Consequences:
 
 - The checker checks model words as ordinary words over descriptor types —
   arity and kind discipline at author time, before any planning.
 - Factoring works: a model block is a word; blocks compose into models by
   concatenation, exactly like the rest of Habu.
-- Eager execution (maki's existing tensor path) and plan mode share one
-  definition; there is no second model language to keep in sync.
 
 Nodes are content-hashed (op, attributes, input hashes, shape/dtype/layout
 keys) at append time; the hash is the unit of incremental replanning (§13).
@@ -89,9 +113,15 @@ broadcast    none | scalar | per-row | per-column
 tail         extent mod vector-width facts per dimension
 ```
 
-Alignment class is a fact, not an assumption: it comes from the allocator
-(maki arrays are 16B-aligned by construction) or from the binding of external
-buffers, and it keys vectorization and the schedule cache (§7.4).
+Alignment and element width are *recorded* facts, never assumptions. Today's
+host maki arrays are contiguous float-**cell** buffers (8-byte doubles,
+`maki/array.f`), not packed f32; device buffers come from `cuMemAlloc`, whose
+alignment guarantee is recorded into the descriptor at allocation time, and
+externally-bound buffers record the alignment their binding declares. Packed
+f32 host buffers arrive with the unified tensor value (§3). Vectorization
+(§6.2) and the schedule-cache alignment class (§7.4) key off the recorded
+facts; a descriptor with no recorded alignment gets the conservative class,
+never a guess.
 
 ### 4.2 Op registry
 
@@ -311,12 +341,20 @@ drop-in later.
   denominator — one model, three consumers, falsifiable against measured GB/s.
 - **Occupancy:** registers/thread (class table) and smem/block (family) →
   blocks/SM → occupancy. Floors prune schedules; estimates are replaced by
-  `ptxas -v` actuals after every assembly, and the class table is corrected
-  persistently when actuals diverge — the model self-calibrates.
-- **Roofs:** per target, measured once by microbenchmark (streaming GB/s,
-  f32 FLOPs, tf32 tensor FLOPs) and cached with the target key. Profile rows
-  classify regions memory-/compute-/launch-bound by arithmetic intensity
-  against measured roofs and state % of roof.
+  assembled actuals, and the class table is corrected persistently when
+  actuals diverge — the model self-calibrates. The capture itself is new
+  work: today `lib/ptx/toolchain.f` runs `ptxas` without `-v` and nothing
+  queries `cuFuncGetAttribute`; parsing `ptxas -v` (toolchain-side) and/or
+  reading function attributes (device-side) lands with the schedule work
+  (`cad-4`/`cad-6-tune`).
+- **Roofs:** per target, measured once by microbenchmark and cached with the
+  target key. The streaming-bandwidth microbench exists
+  (`tools/ptx/bandwidth.f`); the f32 and tf32-tensor FLOP-roof microbenches
+  are new work owned by `cad-6-tune`, and together they replace the
+  hardcoded constants in `tools/ptx/profile.f` (`MEM-ROOF-GBS-X1000`,
+  `FP32-ROOF-GFLOPS-X1000`) — the one place the current code violates design
+  rule 4. Profile rows classify regions memory-/compute-/launch-bound by
+  arithmetic intensity against measured roofs and state % of roof.
 - **Next move:** a fixed advice table keyed by classification: memory-bound →
   fuse producer / improve coalescing; compute-bound → tensor cores / tiling;
   launch-bound → fuse launches; low occupancy → reduce registers or tile.
@@ -339,8 +377,10 @@ paths come from the plan. Two enforcement points:
 ## 11. Gates and evidence
 
 ```text
-CERTIFY     static: checker pass, plan/code coherence, resource bounds,
-            barrier/uniformity legality. No GPU.
+CERTIFY     static: checker pass, plan/code coherence, barrier/uniformity
+            legality — runs anywhere. The resource-bound leg (assembled
+            registers/smem vs plan) needs the CUDA toolkit (ptxas), not a
+            device: no kernel executes, but it is not host-portable.
 GOLDEN      device output vs reference: the op-registry scalar reference
             composed over the region, or an external reference artifact
             (saved tensor dumps) with per-artifact tolerance.
@@ -386,8 +426,13 @@ regions by node-hash sets; plans and schedules by the §7.4 key. A model edit
 re-hashes only the downstream cone — upstream regions keep their plans and
 artifacts, so the edit→report loop stays interactive. The artifact cache is
 the single store for kernels, evidence, measurement history, profitability
-facts, and calibration tables (`habu-kernel-artifact-export` is the
-externalization of the same store).
+facts, and calibration tables. This store is **new**: the only content-keyed
+cache in the repo today is the AOT build-image cache
+(`tools/hb-build-lib.f`, `lib/content-key.f`), which is keyed by source
+digest, not by region/shape/dtype/layout/target — the CAD store gets its own
+on-disk layout and owning dot (`cad-5-store`), and
+`habu-kernel-artifact-export` is the externalization of *this* store once it
+exists.
 
 ## 14. EXPLAIN and repair packets
 
