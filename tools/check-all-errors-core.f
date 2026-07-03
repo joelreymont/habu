@@ -5,7 +5,7 @@
 \ tools/lint/json-writer.f, and tools/lint/source-lex.f.
 
 : CA-MAYBE-VERIFY-SOURCE ( -- )
-   s" VERIFY:SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" included then ;
+   s" VERIFY:SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" required then ;
 
 CA-MAYBE-VERIFY-SOURCE
 

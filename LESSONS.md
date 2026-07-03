@@ -115,6 +115,11 @@ lesson — keep the specific word/code/path, cut the prose.
   resumes the same private/public wordlists and duplicate set; `--load`,
   source-list, or include still owns file dependency order. Do not include a
   file merely to share the package namespace.
+- **Optional dependency loaders use `required`, not `included`:** `tools/check-all-errors-core.f`
+  re-included `src/habu/verify-source.f` after `tools/build-fixpoint.f` had
+  required it, so resident engine workers hit duplicate `SOURCE-A`. When a tool
+  conditionally loads shared support, keep the XREF guard if useful but use the
+  require registry for the actual load.
 - **Package public tails are the API:** once a module has `package TASK`, the
   public spelling should be `TASK:KILL`/`TASK:DONE?`, not global-style
   `TASK-KILL`/`TASK-DONE?`. Keep implementation helpers private and put the

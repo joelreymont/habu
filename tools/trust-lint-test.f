@@ -26,6 +26,7 @@ $30000 constant TLT-FILE-CAP
 10000 constant TLT-TIMEOUT-MS
 10 constant TLT-LF
 48 constant TLT-ZERO
+520 constant TLT-GROW-ROWS
 
 variable TLT-ROOT-U
 variable TLT-CASE-U
@@ -39,6 +40,7 @@ variable TLT-BENCH-U
 variable TLT-BENCH-TRUST-U
 variable TLT-CORE-SRC-A
 variable TLT-CORE-SRC-U
+variable TLT-I
 
 create TLT-ROOT-BUF FS-PATH-CAP allot
 create TLT-CASE-BUF FS-PATH-CAP allot
@@ -161,6 +163,14 @@ TLT-LF TLT-LF-BUF c!
    s"   here ;" SB-APPEND TLT-LF+
    SB$ ;
 
+: TLT-GROW-ROW$ ( n -- ptr u8 n ) {: i:n :}
+   SB-RESET
+   s" | ROW-" SB-APPEND i TLT-U+
+   s"  | `--` | fixture | `test/t-fixture.fs` | bench/row-" SB-APPEND
+   i TLT-U+
+   s" .f | 2026-06-13 |" SB-APPEND
+   SB$ ;
+
 : TLT-OK$ ( n n -- ptr u8 n ) {: sites rows :}
    SB-RESET
    s" trust-lint: " SB-APPEND sites TLT-U+
@@ -219,6 +229,13 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-ADD-GOOD-BENCH-ROW ( -- )
    s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f | 2026-06-13 |" TLT-APPEND-MAN ;
+
+: TLT-APPEND-GROW-ROWS ( n -- ) {: rows:n :}
+   0 TLT-I !
+   begin TLT-I @ rows < while
+      TLT-I @ TLT-GROW-ROW$ TLT-APPEND-MAN
+      TLT-I @ 1 + TLT-I !
+   repeat ;
 
 : TLT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -481,6 +498,12 @@ TLT-LF TLT-LF-BUF c!
    TLT-BASE-ROW$ TLT-APPEND-MAN
    s" DUPLICATE-ROW" TLT-EXPECT-BAD ;
 
+: TLT-TEST-GROW-MANIFEST ( -- )
+   s" grow-manifest" TLT-CASE!
+   TLT-WRITE-MAN-HEADER
+   TLT-GROW-ROWS TLT-APPEND-GROW-ROWS
+   0 TLT-GROW-ROWS TLT-EXPECT-OK ;
+
 : TLT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-trust-lint" TMPDIR-MKDIR {: a:ptr u :}
@@ -512,6 +535,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-STALE-AUDIT
    TLT-TEST-STALE-ROW
    TLT-TEST-DUP-ROW
+   TLT-TEST-GROW-MANIFEST
    CLEANUP-RUN
    TLT-ROOT EXISTS? TFALSE
    T-REPORT

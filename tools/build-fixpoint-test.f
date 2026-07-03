@@ -34,6 +34,7 @@ variable BFT-NEST-U
 variable BFT-NOTDIR-U
 variable BFT-ENG-A-U
 variable BFT-ENG-B-U
+variable BFT-CERT-U
 variable BFT-BUILD-FILES
 variable BFT-READ-A
 variable BFT-PROF-I
@@ -55,6 +56,7 @@ create BFT-NEST-BUF FS-PATH-CAP allot
 create BFT-NOTDIR-BUF FS-PATH-CAP allot
 create BFT-ENG-A-BUF FS-PATH-CAP allot
 create BFT-ENG-B-BUF FS-PATH-CAP allot
+create BFT-CERT-BUF FS-PATH-CAP allot
 create BFT-KEY1 64 allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
@@ -118,6 +120,9 @@ create BFT-CHECK-OFF-LINE
 : BFT-ENG-B ( -- ptr u8 n )
    BFT-ENG-B-BUF BFT-ENG-B-U @ ;
 
+: BFT-CERT ( -- ptr u8 n )
+   BFT-CERT-BUF BFT-CERT-U @ ;
+
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -148,6 +153,7 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT s" not-a-dir" BFT-NOTDIR-BUF BFT-NOTDIR-U BFT-PATH!
    BFT-ROOT s" engine-a" BFT-ENG-A-BUF BFT-ENG-A-U BFT-PATH!
    BFT-ROOT s" engine-b" BFT-ENG-B-BUF BFT-ENG-B-U BFT-PATH!
+   BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
    BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
 
 : BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
@@ -468,6 +474,18 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT [: BFT-CHECK-BUILD-FILE ;] WALK-FILES
    BFT-BUILD-FILES @ 0 T= ;
 
+: BFT-CERT-WRITE ( ptr u8 n -- )
+   BFT-CERT 2swap WRITE-ALL ;
+
+: BFT-TEST-CERTIFY-GOOD ( -- )
+   s" : BFT-CERT-GOOD ( n -- n ) 1 + ;" BFT-CERT-WRITE
+   s" cert-good" BFT-CERT BF-CERTIFY-RC 0 T= ;
+
+: BFT-TEST-CERTIFY-BAD ( -- )
+   s" : BFT-CERT-BAD ( n -- n ) drop ;" BFT-CERT-WRITE
+   s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
+   BF-CERT-DIAG-U @ 0 > TTRUE ;
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -491,6 +509,8 @@ create BFT-CHECK-OFF-LINE
    s" all stamp guard" [: BFT-TEST-ALL-STAMP-GUARD ;] BFT-STEP
    s" stamp nested" [: BFT-TEST-STAMP-NESTED ;] BFT-STEP
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
+   s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
+   s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP

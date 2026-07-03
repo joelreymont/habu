@@ -4,8 +4,11 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
+require src/habu/verify-source.f
+
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
+$10000 constant BF-CERT-DIAG-CAP
 4 constant BF-MAX-GENS
 10 constant BF-LF
 64 constant BF-USAGE-RC
@@ -25,6 +28,7 @@ create BF-STAMP-OLD 80 allot
 create BF-STAMP-DG 40 allot
 create BF-REC-STAGE-DG 40 allot
 create BF-REC-STDIN-DG 40 allot
+create BF-CERT-DIAG BF-CERT-DIAG-CAP allot
 create BF-STAMP-BUF BF-STAMP-CAP allot
 create BF-STAMP-PATH-BUF FS-PATH-CAP allot
 create BF-STAMP-DIR-BUF FS-PATH-CAP allot
@@ -69,15 +73,39 @@ variable BF-REC-STDIN?
 variable BF-ENGINE-U
 variable BF-INSTALL-TMP-U
 variable BF-FORCE
+variable BF-CERT-RC
+variable BF-CERT-DIAG-U
+variable BF-CERT-LAB-A
+variable BF-CERT-LAB-U
+variable BF-CERT-PATH-A
+variable BF-CERT-PATH-U
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
    BF-TMP-A 0 ptr-field ;
+
+: BF-CERT-LAB-A-FIELD ( -- ptr ptr u8 )
+   BF-CERT-LAB-A 0 ptr-field ;
+
+: BF-CERT-PATH-A-FIELD ( -- ptr ptr u8 )
+   BF-CERT-PATH-A 0 ptr-field ;
 
 : BF-TMP-A@ ( -- ptr u8 )
    BF-TMP-A-FIELD @ ;
 
 : BF-TMP-A! ( ptr u8 -- )
    BF-TMP-A-FIELD ! ;
+
+: BF-CERT-LAB-A@ ( -- ptr u8 )
+   BF-CERT-LAB-A-FIELD @ ;
+
+: BF-CERT-LAB-A! ( ptr u8 -- )
+   BF-CERT-LAB-A-FIELD ! ;
+
+: BF-CERT-PATH-A@ ( -- ptr u8 )
+   BF-CERT-PATH-A-FIELD @ ;
+
+: BF-CERT-PATH-A! ( ptr u8 -- )
+   BF-CERT-PATH-A-FIELD ! ;
 
 : BF-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -795,6 +823,52 @@ variable BF-FORCE
 : BF-SNAP-SOURCE ( -- )
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;
 
+: BF-CERT-LABEL$ ( -- ptr u8 n )
+   BF-CERT-LAB-A@ BF-CERT-LAB-U @ ;
+
+: BF-CERT-PATH$ ( -- ptr u8 n )
+   BF-CERT-PATH-A@ BF-CERT-PATH-U @ ;
+
+: BF-CERTIFY-INPUT! ( ptr u8 n ptr u8 n -- )
+   BF-CERT-PATH-U !
+   BF-CERT-PATH-A!
+   BF-CERT-LAB-U !
+   BF-CERT-LAB-A! ;
+
+: BF-CERTIFY-ACT ( -- )
+   BF-CERT-LABEL$ DIAG-FILE!
+   BF-FALSE DIAG-JSON!
+   BF-CERT-DIAG BF-CERT-DIAG-CAP DIAG-BUFFER!
+   BF-CERT-PATH$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   BF-CERT-PATH$ buf cap READ-ALL {: u:n :}
+   buf u VERIFY:SOURCE-BUF ;
+
+: BF-CERTIFY-RC ( ptr u8 n ptr u8 n -- n )
+   BF-CERTIFY-INPUT!
+   0 BF-CERT-DIAG-U !
+   [: BF-CERTIFY-ACT ;] catch BF-CERT-RC !
+   DIAG-BUFFER$ nip BF-CERT-DIAG-U !
+   DIAG-BUFFER-OFF
+   BF-CERT-RC @ ;
+
+: BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
+   s" certify: " type lab labu type
+   s"  rejected rc " type BF-CERT-RC @ . s" (non-blocking)" type cr
+   BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
+
+: BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
+   BF-CERTIFY-RC 0= IF exit THEN
+   BF-CERT-LABEL$ BF-CERTIFY-REPORT ;
+
+: BF-CERTIFY-STAGE2 ( -- )
+   s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
+
+: BF-CERTIFY-STDIN ( -- )
+   s" stdin-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
+
+: BF-CERTIFY-SNAP ( -- )
+   s" hb-snap-src" s" hb-snap-src" BF-A$ BF-CERTIFY-GENERATED ;
+
 : BF-STAGE2-DIGEST ( ptr u8 -- ) {: dg:ptr :}
    s" stage2-src" BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
 
@@ -854,11 +928,13 @@ variable BF-FORCE
 : BF-STAGE-FIXPOINT ( -- )
    BF-PREFLIGHT
    BF-STAGE2-SOURCE
+   BF-CERTIFY-STAGE2
    BF-RECORD-STAGE
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 
 : BF-BUILD-STDIN-FROM-STAGE ( -- )
    BF-STDIN-SOURCE
+   BF-CERTIFY-STDIN
    BF-RECORD-STDIN
    BF-RUN-STAGE
    s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP
@@ -880,6 +956,7 @@ variable BF-FORCE
 
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
+   BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-new" BF-REMOVE-TMP
    s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0

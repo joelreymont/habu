@@ -260,6 +260,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | FOLD | `R ptr a i64 b [ R b a -- R b ] -- R b` | Array fold keeps the quotation across accumulator calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 |
 | INCLUDE-MMAP-PTR | `n -- ptr u8` | Refines the checked anonymous `mmap` result into the byte pointer backing include buffers after size selection and `-1` failure checking; syscall-result pointer refinement is outside checker inference. | `test/gate-dictionary.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
 | INCLUDE-EVALUATE | `ptr u8 n --` | Source composition reads and bounds file bytes in checked code, then crosses the dynamic `evaluate` boundary that the checker intentionally rejects in ordinary checked definitions. | `test/gate-dictionary.f`, `test/run.f` | src/core/include.f | 2026-06-28 |
+| ARENA-RC>PTR | `n -- ptr a` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's cell arena pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | CELL | `-- n` | Structure layouts load before the checker so checker records can use them; this row publishes the already-defined cell-size constant to checked users. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | BEGIN-STRUCTURE | `-- ptr a n` | Structure defining words use `CREATE`/`DOES>` and parse definition names, so the checker needs declared effects for the top-level layout DSL. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -677,6 +681,10 @@ tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
+src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176

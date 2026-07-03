@@ -3,13 +3,11 @@
 \ tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 90 constant TL-MAX-AUDIT-AGE
-512 constant TL-MAX
+512 constant TL-INIT-CAP
 32 constant TL-NUM-CAP
 16 constant TL-CELL-MAX
 7 constant TL-S-TABLES
 10 constant TL-M-TABLES
-TL-S-TABLES TL-MAX * constant TL-S-CELLS
-TL-M-TABLES TL-MAX * constant TL-M-CELLS
 
 10 constant TL-LF
 45 constant TL-DASH
@@ -32,6 +30,7 @@ variable TL-M-TAB-A
 variable TL-END
 variable TL-S#
 variable TL-M#
+variable TL-CAP
 variable TL-BAD
 variable TL-NUM-L
 variable TL-CIX
@@ -63,6 +62,8 @@ variable TL-NA
 variable TL-NU
 variable TL-NB
 variable TL-NV
+variable TL-COPY-I
+variable TL-COPY-T
 
 : TL-S-TAB-A-FIELD ( -- ptr ptr a ) TL-S-TAB-A 0 ptr-field ;
 : TL-M-TAB-A-FIELD ( -- ptr ptr a ) TL-M-TAB-A 0 ptr-field ;
@@ -94,12 +95,50 @@ variable TL-NV
 : TL-NA! ( ptr u8 -- ) TL-NA-FIELD ! ;
 : TL-NB! ( ptr u8 -- ) TL-NB-FIELD ! ;
 
+: TL-CAP-INIT ( -- )
+   TL-CAP @ 0= IF TL-INIT-CAP TL-CAP ! THEN ;
+
+: TL-S-CELLS ( n -- count )
+   TL-S-TABLES * >COUNT ;
+
+: TL-M-CELLS ( n -- count )
+   TL-M-TABLES * >COUNT ;
+
+: TL-ALLOC-S-TAB ( n -- ptr a )
+   TL-S-CELLS MEM-ALLOC-CELLS ;
+
+: TL-ALLOC-M-TAB ( n -- ptr a )
+   TL-M-CELLS MEM-ALLOC-CELLS ;
+
 : TL-ALLOC-TABLES ( -- )
-   TL-S-TAB-A @ 0= if TL-S-CELLS >COUNT MEM-ALLOC-CELLS TL-S-TAB-A! then
-   TL-M-TAB-A @ 0= if TL-M-CELLS >COUNT MEM-ALLOC-CELLS TL-M-TAB-A! then ;
+   TL-CAP-INIT
+   TL-S-TAB-A @ 0= if
+      TL-CAP @ TL-ALLOC-S-TAB TL-S-TAB-A!
+   then
+   TL-M-TAB-A @ 0= if
+      TL-CAP @ TL-ALLOC-M-TAB TL-M-TAB-A!
+   then ;
 
 : TL-TABLE-OFF ( n -- n )
-   TL-MAX * cells ;
+   TL-CAP @ * cells ;
+
+: TL-TAB-SLOT ( ptr a n n n -- ptr a ) {: base:ptr tab:n idx:n cap:n :}
+   tab cap * idx + cells base + ;
+
+: TL-COPY-TABLE ( ptr a ptr a n n n -- ) {: old:ptr new:ptr tab:n oldcap:n newcap:n :}
+   0 TL-COPY-I !
+   begin TL-COPY-I @ oldcap < while
+      old tab TL-COPY-I @ oldcap TL-TAB-SLOT @
+      new tab TL-COPY-I @ newcap TL-TAB-SLOT !
+      TL-COPY-I @ 1 + TL-COPY-I !
+   repeat ;
+
+: TL-COPY-TABLES ( ptr a ptr a n n n -- ) {: old:ptr new:ptr tables:n oldcap:n newcap:n :}
+   0 TL-COPY-T !
+   begin TL-COPY-T @ tables < while
+      old new TL-COPY-T @ oldcap newcap TL-COPY-TABLE
+      TL-COPY-T @ 1 + TL-COPY-T !
+   repeat ;
 
 : TL-S-TABLE ( n -- ptr a )
    TL-S-TAB-A@ swap TL-TABLE-OFF + ;
@@ -125,6 +164,32 @@ variable TL-NV
 : TL-M-SL ( -- ptr a ) 7 TL-M-TABLE ;
 : TL-M-AO ( -- ptr a ) 8 TL-M-TABLE ;
 : TL-M-AL ( -- ptr a ) 9 TL-M-TABLE ;
+
+: TL-NEXT-CAP ( n -- n ) {: need:n :}
+   TL-CAP-INIT
+   TL-CAP @
+   begin
+      dup need <=
+   while
+      2 *
+   repeat ;
+
+: TL-GROW-TABLES ( n -- ) {: need:n :}
+   TL-ALLOC-TABLES
+   TL-CAP @ {: oldcap:n :}
+   need TL-NEXT-CAP {: newcap:n :}
+   newcap TL-ALLOC-S-TAB {: news:ptr :}
+   newcap TL-ALLOC-M-TAB {: newm:ptr :}
+   TL-S-TAB-A@ news TL-S-TABLES oldcap newcap TL-COPY-TABLES
+   TL-M-TAB-A@ newm TL-M-TABLES oldcap newcap TL-COPY-TABLES
+   news TL-S-TAB-A!
+   newm TL-M-TAB-A!
+   newcap TL-CAP ! ;
+
+: TL-ENSURE-ROW ( n -- )
+   TL-ALLOC-TABLES
+   dup TL-CAP @ < IF drop exit THEN
+   1 + TL-GROW-TABLES ;
 
 : TL-C! ( n -- ) TL-ONE c! ;
 
@@ -306,7 +371,7 @@ variable TL-NV
 
 : TL-ADD-SITE ( -- )
    P1A@ P1U @ TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-FIND-SITE-IN-PATH dup 0 >= IF TL-DUP-SITE ELSE drop THEN
-   TL-S# @ TL-MAX >= IF s" trust-lint: too many TRUST sites" TL-FAIL THEN
+   TL-S# @ TL-ENSURE-ROW
    P1A@ P1U @ TL-STORE$ TL-S-NL TL-S# @ TL-A! TL-S-NO TL-S# @ TL-A!
    P2A@ P2U @ TL-STORE$ TL-S-EL TL-S# @ TL-A! TL-S-EO TL-S# @ TL-A!
    TL-CUR-PATH-A@ TL-CUR-PATH-U @ TL-STORE$ TL-S-PL TL-S# @ TL-A! TL-S-PO TL-S# @ TL-A!
@@ -440,7 +505,7 @@ variable TL-NV
 
 : TL-ADD-MAN ( -- )
    TL-CHECK-DUP-MAN
-   TL-M# @ TL-MAX >= IF s" trust-lint: too many manifest rows" TL-FAIL THEN
+   TL-M# @ TL-ENSURE-ROW
    TL-STORE-MAN-NAME
    TL-STORE-MAN-EFF
    TL-STORE-MAN-TEST

@@ -16,9 +16,14 @@ $1002 constant ARENA-MAP-ANON
 0 constant ARENA-OFF-ZERO
 variable ARENA-CP-I   variable ARENA-UB-I
 
-: ARENA-ALLOC ( n -- ptr a ) {: bytes:n :}
-   0 bytes ARENA-PROT-RW ARENA-MAP-ANON ARENA-ANON-FD ARENA-OFF-ZERO mmap
+: ARENA-MMAP-RC ( n -- n )
+   0 swap ARENA-PROT-RW ARENA-MAP-ANON ARENA-ANON-FD ARENA-OFF-ZERO mmap
    dup 0 < IF s" checker: arena mmap failed" 76 die THEN ;
+
+TRUSTED: ARENA-RC>PTR ( n -- ptr a ) ;
+
+: ARENA-ALLOC ( n -- ptr a )
+   ARENA-MMAP-RC ARENA-RC>PTR ;
 
 : ARENA-COPY ( ptr a ptr a n -- ) {: src:ptr dst:ptr n:n :}   \ n bytes, src->dst
    0 ARENA-CP-I !
@@ -162,7 +167,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    BEGIN TRAIL-N @ mark > WHILE
       TRAIL-N @ 1 - TRAIL-N !
       TRAIL-N @ cells TRAIL + @ {: e:n :}
-      e 1 and IF UNBOUND e 2 / cells RVT + ! ELSE UNBOUND e 2 / cells TVT + ! THEN
+      e 1 and 0= 0= IF UNBOUND e 2 / cells RVT + ! ELSE UNBOUND e 2 / cells TVT + ! THEN
    REPEAT ;
 
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
@@ -934,9 +939,15 @@ TOKBUF-INIT-CAP TOKBUF-CAP-U !
    need 0 <= IF s" checker: bad token buffer cap" 76 die THEN
    need TOKBUF-MAX-CAP TOKBUF-GRAIN - > IF s" checker: token buffer too large" 76 die THEN
    need 1 - TOKBUF-GRAIN / 1 + TOKBUF-GRAIN * ;
-: TOKBUF-ALLOC {: cap :}
-   0 cap TOKBUF-PROT-RW TOKBUF-MAP-ANON TOKBUF-ANON-FD TOKBUF-OFF-ZERO mmap
+: TOKBUF-MMAP-RC ( n -- n )
+   0 swap TOKBUF-PROT-RW TOKBUF-MAP-ANON TOKBUF-ANON-FD TOKBUF-OFF-ZERO mmap
    dup 0 < IF s" checker: token buffer mmap failed" 76 die THEN ;
+
+TRUSTED: TOKBUF-RC>PTR ( n -- ptr u8 ) ;
+
+: TOKBUF-ALLOC ( n -- ptr u8 )
+   TOKBUF-MMAP-RC TOKBUF-RC>PTR ;
+
 : TOKBUF-GROW {: need :}
    need TOKBUF-ROUND-CAP {: cap :}
    cap TOKBUF-ALLOC FAILTK!
@@ -1186,8 +1197,8 @@ variable VREC-NODE-CAP-V   VREC-NODE-INIT VREC-NODE-CAP-V !
 variable VREC-STR-CAP-V   VREC-STR-INIT VREC-STR-CAP-V !
 : VREC-STR-CAP ( -- n ) VREC-STR-CAP-V @ ;
 
-\ Boot buffers + P pointers; VREC-NAME-A and the VR-ATOM/VR-PARAM node VN.A cells
-\ hold pointers into VREC-STR, rebased on a VREC-STR relocation.
+\ Boot buffers + P pointers; VREC-NAME-A holds pointers into VREC-STR and is
+\ rebased on relocation. VR-ATOM/VR-PARAM node VN.A cells store string offsets.
 create VREC-NAME-A-BOOT VREC-CAP-INIT cells allot
 create VREC-NAME-U-BOOT VREC-CAP-INIT cells allot
 create VREC-START-BOOT VREC-CAP-INIT cells allot
@@ -1366,22 +1377,13 @@ variable VRC-RVN
 : VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
 
 variable VREC-RB-I
-\ VREC-STR-REBASE ( delta -- ) : a VREC-STR relocation moved the pool by delta;
-\ add it to every stored VREC-STR pointer — record names [0,VREC-N) and the VN.A
-\ string cell of each VR-ATOM/VR-PARAM node [1,VREC-NODE-N).
+\ VREC-STR-REBASE ( n -- ) : a VREC-STR relocation moved the pool by delta; add
+\ it to every stored record-name pointer. Node strings store offsets, not ptrs.
 : VREC-STR-REBASE ( n -- ) {: delta:n :}
    0 VREC-RB-I !
    BEGIN VREC-RB-I @ VREC-N @ < WHILE
       VREC-RB-I @ VREC-NAME-A-FIELD {: fld:ptr :}
       fld @ delta + fld !
-      VREC-RB-I @ 1 + VREC-RB-I !
-   REPEAT
-   1 VREC-RB-I !
-   BEGIN VREC-RB-I @ VREC-NODE-N @ < WHILE
-      VREC-RB-I @ VN.TAG@ dup VR-ATOM = swap VR-PARAM = or IF
-         VREC-RB-I @ VRN-A VREC-NODE-SLOT {: slot:ptr :}
-         slot @ delta + slot !
-      THEN
       VREC-RB-I @ 1 + VREC-RB-I !
    REPEAT ;
 : VREC-STR-GROW ( n -- ) {: need:n :}
@@ -1448,9 +1450,10 @@ variable VREC-RB-I
    THEN @ ;
 
 : VREC-COPY-STR ( ptr u8 n n -- ) {: a:ptr u:n node:n :}
-   a u VREC-STR-COPY {: dst:ptr len:n :}
-   dst node VN.A!
-   len node VN.B! ;
+   VREC-STR-U @ {: off:n :}
+   a u VREC-STR-COPY 2drop
+   off node VN.A!
+   u node VN.B! ;
 
 : VREC-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or IF x R-RES ELSE x T-RES THEN ;
@@ -1459,58 +1462,58 @@ variable VREC-RB-I
    x 0= IF 0 EXIT THEN
    x VREC-RES TAG case
       T-CON of
-         VR-CON VREC-NODE-NEW dup >r
-         x VREC-RES PAY r@ VN.A!
-         r>
+         VR-CON VREC-NODE-NEW {: node:n :}
+         x VREC-RES PAY node VN.A!
+         node
       endof
       T-VAR of
-         VR-VAR VREC-NODE-NEW dup >r
-         x VREC-RES PAY VREC-TV-ID r@ VN.A!
-         r>
+         VR-VAR VREC-NODE-NEW {: node:n :}
+         x VREC-RES PAY VREC-TV-ID node VN.A!
+         node
       endof
       S-ROW of
-         VR-ROW VREC-NODE-NEW dup >r
-         x VREC-RES PAY VREC-RV-ID r@ VN.A!
-         r>
+         VR-ROW VREC-NODE-NEW {: node:n :}
+         x VREC-RES PAY VREC-RV-ID node VN.A!
+         node
       endof
       T-PTR of
-         VR-PTR VREC-NODE-NEW dup >r
-         x VREC-RES PTR>INNER RECURSE r@ VN.A!
-         r>
+         VR-PTR VREC-NODE-NEW {: node:n :}
+         x VREC-RES PTR>INNER RECURSE node VN.A!
+         node
       endof
       S-PUSH of
-         VR-PUSH VREC-NODE-NEW dup >r
-         x VREC-RES P>TYPE RECURSE r@ VN.A!
-         x VREC-RES P>REST RECURSE r@ VN.B!
-         r>
+         VR-PUSH VREC-NODE-NEW {: node:n :}
+         x VREC-RES P>TYPE RECURSE node VN.A!
+         x VREC-RES P>REST RECURSE node VN.B!
+         node
       endof
       T-QUOT of
-         VR-QUOT VREC-NODE-NEW dup >r
-         x VREC-RES Q>DIN RECURSE r@ VN.A!
-         x VREC-RES Q>DOUT RECURSE r@ VN.B!
-         x VREC-RES Q>RIN RECURSE r@ VN.C!
-         x VREC-RES Q>ROUT RECURSE r@ VN.D!
-         x VREC-RES Q>XHAS r@ VN.E!
-         x VREC-RES Q>XDEAD r@ VN.F!
-         x VREC-RES Q>XDOUT r@ VN.G!
-         x VREC-RES Q>XROUT r@ VN.H!
-         r>
+         VR-QUOT VREC-NODE-NEW {: node:n :}
+         x VREC-RES Q>DIN RECURSE node VN.A!
+         x VREC-RES Q>DOUT RECURSE node VN.B!
+         x VREC-RES Q>RIN RECURSE node VN.C!
+         x VREC-RES Q>ROUT RECURSE node VN.D!
+         x VREC-RES Q>XHAS node VN.E!
+         x VREC-RES Q>XDEAD node VN.F!
+         x VREC-RES Q>XDOUT node VN.G!
+         x VREC-RES Q>XROUT node VN.H!
+         node
       endof
       T-ATOM of
-         VR-ATOM VREC-NODE-NEW dup >r
-         x VREC-RES ATOM>A x VREC-RES ATOM>U r@ VREC-COPY-STR
-         x VREC-RES ATOM>K r@ VN.C!
-         r>
+         VR-ATOM VREC-NODE-NEW {: node:n :}
+         x VREC-RES ATOM>A x VREC-RES ATOM>U node VREC-COPY-STR
+         x VREC-RES ATOM>K node VN.C!
+         node
       endof
       T-PARAM of
-         VR-PARAM VREC-NODE-NEW dup >r
-         x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U r@ VREC-COPY-STR
-         x VREC-RES PARAM>ARGC r@ VN.C!
-         x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE r@ VN.D! THEN
-         x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE r@ VN.E! THEN
-         x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE r@ VN.F! THEN
-         x VREC-RES PARAM>ARGC 3 > IF x VREC-RES 3 PARAM>ARG RECURSE r@ VN.G! THEN
-         r>
+         VR-PARAM VREC-NODE-NEW {: node:n :}
+         x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U node VREC-COPY-STR
+         x VREC-RES PARAM>ARGC node VN.C!
+         x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE node VN.D! THEN
+         x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE node VN.E! THEN
+         x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE node VN.F! THEN
+         x VREC-RES PARAM>ARGC 3 > IF x VREC-RES 3 PARAM>ARG RECURSE node VN.G! THEN
+         node
       endof
       0 swap
    endcase ;
@@ -1556,7 +1559,7 @@ variable VREC-RB-I
    THEN @ ;
 
 : VREC-I-STR ( n -- ptr u8 n ) {: node:n :}
-   node VN.A@ node VN.B@ ;
+   VREC-STR node VN.A@ + node VN.B@ ;
 
 : VREC-INST ( n -- n ) {: node:n :}
    node 0= IF 0 EXIT THEN
@@ -1716,57 +1719,57 @@ variable QUALBAD
 : SGBAD-BAREPTR? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
 
-: BAD-SIG-TYPE ( ptr u8 n -- type )
+: BAD-SIG-TYPE ( ptr u8 n -- n )
    SGBAD-UNKNOWN!
    1 MK-CON ;
-: SIG-PREFIX? {: a u p v :}
-   u v < IF 0 EXIT THEN
+: SIG-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n p:ptr v:n :}
+   u v < IF RES-FALSE EXIT THEN
    a v p v CORE-STR= ;
-: ATOM-TOK? {: a u :}
-   a u s" space-" SIG-PREFIX? IF -1 EXIT THEN
-   a u s" extent-" SIG-PREFIX? IF -1 EXIT THEN
-   a u s" mask-" SIG-PREFIX? IF -1 EXIT THEN
-   a u s" block-" SIG-PREFIX? IF -1 EXIT THEN
+: ATOM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" space-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   a u s" extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   a u s" mask-" SIG-PREFIX? IF RES-TRUE EXIT THEN
+   a u s" block-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" align-" SIG-PREFIX? ;
 : FRESH-ATOM-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" fresh-extent-" SIG-PREFIX? IF -1 EXIT THEN
+   a u s" fresh-extent-" SIG-PREFIX? IF RES-TRUE EXIT THEN
    a u s" fresh-mask-" SIG-PREFIX? ;
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
-: PARAM-CTOR? {: a u :}
-   a u s" ptr" CORE-STR= IF -1 EXIT THEN
-   a u s" span" CORE-STR= IF -1 EXIT THEN
-   a u s" matrix" CORE-STR= IF -1 EXIT THEN
-   a u s" gridctx" CORE-STR= IF -1 EXIT THEN
-   a u s" fanctx" CORE-STR= IF -1 EXIT THEN
-   a u s" idxctx" CORE-STR= IF -1 EXIT THEN
-   a u s" uniqidxctx" CORE-STR= IF -1 EXIT THEN
-   a u s" coopctx" CORE-STR= IF -1 EXIT THEN
-   a u s" rowctx" CORE-STR= IF -1 EXIT THEN
-   a u s" tile" CORE-STR= IF -1 EXIT THEN
-   a u s" acc" CORE-STR= IF -1 EXIT THEN
-   a u s" mmctx" CORE-STR= IF -1 EXIT THEN
-   a u s" mmacc" CORE-STR= IF -1 EXIT THEN
-   a u s" uniform" CORE-STR= IF -1 EXIT THEN
+: PARAM-CTOR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ptr" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" span" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" matrix" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" gridctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" fanctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" idxctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" uniqidxctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" coopctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" rowctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" tile" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" acc" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" mmctx" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" mmacc" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" uniform" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" rowidx" CORE-STR= ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
-   0 ;
+   RES-FALSE ;
 : TYPE-BAD-CHAR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 begin dup u < while
-      a over + c@ dup 60 = swap dup 62 = swap 44 = or or IF drop -1 EXIT THEN
+      a over + c@ dup 60 = swap dup 62 = swap 44 = or or IF drop RES-TRUE EXIT THEN
       1+
-   repeat drop 0 ;
+   repeat drop RES-FALSE ;
 : TYPE-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF -1 EXIT THEN
-   a u VREC-FIND IF drop -1 EXIT THEN drop
-   a u s" field" CORE-STR= IF -1 EXIT THEN
-   a u CT-FIND 0 <> IF -1 EXIT THEN
-   a u PARAM-CTOR? IF -1 EXIT THEN
-   a u ATOM-TOK? IF -1 EXIT THEN
-   a u FRESH-ATOM-TOK? IF -1 EXIT THEN
-   a u TYPE-VAR-TOK? IF -1 EXIT THEN
+   u 0= IF RES-TRUE EXIT THEN
+   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
+   a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
+   a u PARAM-CTOR? IF RES-TRUE EXIT THEN
+   a u ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-BAD-CHAR? ;
 : CT-ADD-NOMINAL ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
@@ -1776,24 +1779,53 @@ variable QUALBAD
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
    a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
    LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
-: TOK-TYPE {: a u :}  a c@ {: c :}
+: TOK-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}  a c@ {: c:n :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
    u 1 = c 114 = and IF 3 MK-CON ELSE          \ 'r' -> real/float (con 3)
-   a u CON-OF dup IF MK-CON ELSE drop          \ i64/u8/u32/cell/char/str/addr/bool
+   a u CON-OF dup 0 <> IF MK-CON ELSE drop     \ i64/u8/u32/cell/char/str/addr/bool
    a u FRESH-ATOM-TOK? IF a u FRESH-ATOM>TYPE ELSE
    a u ATOM-TOK? IF a u MK-ATOM ELSE
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
-: LOCAL-TYPE {: a u :}
+: LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
 
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 
+: SB-FIELD ( -- ptr ptr u8 )
+   SB 0 ptr-field ;
+
+: SS-FIELD ( -- ptr ptr u8 )
+   SS 0 ptr-field ;
+
+: PKA-FIELD ( -- ptr ptr u8 )
+   PKA 0 ptr-field ;
+
+: SB@ ( -- ptr u8 )
+   SB-FIELD @ ;
+
+: SB! ( ptr u8 -- )
+   SB-FIELD ! ;
+
+: SS@ ( -- ptr u8 )
+   SS-FIELD @ ;
+
+: SS! ( ptr u8 -- )
+   SS-FIELD ! ;
+
+: PKA@ ( -- ptr u8 )
+   PKA-FIELD @ ;
+
+: PKA! ( ptr u8 -- )
+   PKA-FIELD ! ;
+
 : PK! ( ptr u8 n -- )
-   PKU !  PKA !  -1 PKHAVE ! ;
+   PKU !
+   PKA!
+   -1 PKHAVE ! ;
 
 : PKRESET ( -- )
    0 PKHAVE ! ;
@@ -1801,29 +1833,32 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
 \ Whitespace separates tokens, and `<`, `>`, `,` are single-token delimiters so
 \ parametric types can be written without spaces: `span<space-global,f32,extent-n>`.
 \ ( a 0 ) at end. Honors one pushed-back token.
-: SIG-DELIM-CHAR? {: c :}
-   c 60 = IF -1 EXIT THEN
-   c 62 = IF -1 EXIT THEN
+: SIG-DELIM-CHAR? ( n -- bool ) {: c:n :}
+   c 60 = IF RES-TRUE EXIT THEN
+   c 62 = IF RES-TRUE EXIT THEN
    c 44 = ;
-: NEXT-SIG-TOK
-   PKHAVE @ IF 0 PKHAVE ! PKA @ PKU @ EXIT THEN
-   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
-   SI @ SL @ < 0= IF SB @ 0 EXIT THEN
-   SB @ SI @ + SS !
-   SB @ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS @ 1 EXIT THEN
-   BEGIN SI @ SL @ < SB @ SI @ + c@ 32 <> and
-      SB @ SI @ + c@ SIG-DELIM-CHAR? 0= and WHILE SI @ 1 + SI ! REPEAT
-   SS @ SB @ SI @ + SS @ - ;
+: NEXT-SIG-TOK ( -- ptr u8 n )
+   PKHAVE @ IF 0 PKHAVE ! PKA@ PKU @ EXIT THEN
+   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 = and WHILE SI @ 1 + SI ! REPEAT
+   SI @ SL @ < 0= IF SB@ 0 EXIT THEN
+   SB@ SI @ + SS!
+   SB@ SI @ + c@ SIG-DELIM-CHAR? IF SI @ 1 + SI ! SS@ 1 EXIT THEN
+   BEGIN SI @ SL @ < SB@ SI @ + c@ 32 <> and
+      SB@ SI @ + c@ SIG-DELIM-CHAR? 0= and WHILE SI @ 1 + SI ! REPEAT
+   SS@ SB@ SI @ + SS@ - ;
 
-: UPPER? {: c :} c 64 > c 91 < and ;
-: ROW-LEAD? {: a u :} u 1 = a c@ UPPER? and ;        \ a single upper letter leads a row
-: DELIM? {: a u :}                                   \ stack terminator
-   u 0 = IF -1 EXIT THEN
-   a u s" --" CORE-STR= IF -1 EXIT THEN
-   a u s" ]"  CORE-STR= IF -1 EXIT THEN
+: UPPER? ( n -- bool ) {: c:n :} c 64 > c 91 < and ;
+: ROW-LEAD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 <> IF RES-FALSE EXIT THEN
+   a c@ UPPER? ;
+: DELIM? ( ptr u8 n -- bool )                       \ stack terminator
+   {: a:ptr u:n :}
+   u 0 = IF RES-TRUE EXIT THEN
+   a u s" --" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
-: SIG-TYPE {: a u :}
+: SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u PARAM-CTOR? IF
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
          2drop PARAM-SCR-RESET
@@ -1933,7 +1968,11 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ PARSE-SIG-RAW ( a u -- din dout rin rout ) : the declared effect as four rows
 \ (no CHECKER-STEP), for verifying a definition's body against its own ( in -- out ).
-: PARSE-SIG-RAW {: a u :}  a SB ! u SL ! 0 SI !  PSIG ;
+: PARSE-SIG-RAW ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
+   a SB!
+   u SL !
+   0 SI !
+   PSIG ;
 
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
@@ -1992,7 +2031,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : VREC-PARSE-FIELDS ( n ptr u8 n ptr u8 n -- )
    {: id:n rec:ptr recu:n fields:ptr fieldsu:n :}
-   fields SB ! fieldsu SL ! 0 SI !
+   fields SB! fieldsu SL ! 0 SI !
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET SGBAD-CLEAR
    VREC-COPY-RESET
    BEGIN
@@ -2102,9 +2141,14 @@ variable UCP-I
    need USIGS-MAX-CAP USIGS-GRAIN - > IF s" checker: user sigs too large" 76 die THEN
    need 1 - USIGS-GRAIN / 1 + USIGS-GRAIN * ;
 
-: USIGS-ALLOC {: cap :}
-   0 cap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
+: USIGS-MMAP-RC ( n -- n )
+   0 swap USIGS-PROT-RW USIGS-MAP-ANON USIGS-ANON-FD USIGS-OFF-ZERO mmap
    dup 0 < IF s" checker: user sigs mmap failed" 76 die THEN ;
+
+TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
+
+: USIGS-ALLOC ( n -- ptr u8 )
+   USIGS-MMAP-RC USIGS-RC>PTR ;
 
 : USIGS-CLEAR ( -- )
    0 UEND !
@@ -2422,11 +2466,18 @@ variable HIDX-CUR
       USIGS-P @ HIDX-EFF-BASE !
    THEN ;
 
-: HIDX-ALLOC ( -- )
+: HIDX-MMAP-RC ( -- n )
    0 SYM-CAP HIDX-TABLES * cells USIGS-PROT-RW USIGS-MAP-ANON
    USIGS-ANON-FD USIGS-OFF-ZERO mmap
-   dup 0 < IF s" checker: symbol index mmap failed" 76 die THEN
-   HIDX-MEM ! ;
+   dup 0 < IF s" checker: symbol index mmap failed" 76 die THEN ;
+
+TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
+
+: HIDX-ALLOC-PTR ( -- ptr n )
+   HIDX-MMAP-RC HIDX-RC>PTR ;
+
+: HIDX-ALLOC ( -- )
+   HIDX-ALLOC-PTR HIDX-MEM ! ;
 
 : HIDX-BKT-CLEAR ( -- )
    0 begin dup SYM-CAP < while
