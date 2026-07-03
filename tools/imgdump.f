@@ -6,6 +6,8 @@
 \ Loads the target executable layout on demand; common dictionary layout is
 \ already present in the native cold prefix.
 
+s" src/core/result.f" required
+
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
 
@@ -48,8 +50,15 @@ create A-LEN DICT-CAP cells allot
 : IB! ( ptr u8 -- )
    IB-FIELD ! ;
 
-TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
-   dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
+: IMG-MMAP-RESULT ( -- result<ptr u8,n> )
+   0 ISZ @ 1 2 IFD @ 0 mmap RESULT:MMAP>BYTES ;
+
+: IMG-MMAP-ERR ( n -- )
+   drop IFD @ close s" imgdump: mmap failed" 74 die ;
+
+: IMG-MMAP ( -- ptr u8 )
+   IMG-MMAP-RESULT
+   [: ;] [: IMG-MMAP-ERR ;] RESULT:CASE ;
 
 : IMG-USAGE ( -- )
    s" usage: bin/hb --load tools/imgdump.f -- image [image2] | --pc image pc" 64 die ;
@@ -70,8 +79,7 @@ TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    ISZ @ 0 > 0= IF s" imgdump: empty image" 74 die THEN
    IPATH 0 0 open IFD !
    IFD @ 0 < IF s" imgdump: open failed" 74 die THEN
-   0 ISZ @ 1 2 IFD @ 0 mmap
-   IMG-MMAP-PTR IB!
+   IMG-MMAP IB!
    IFD @ close
    ISZ @ IL ! ;
 

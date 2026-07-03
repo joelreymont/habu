@@ -1,6 +1,8 @@
 \ imagedisasm.f - disassemble a raw executable slice with Habu's ARM64 decoder.
 \ Run: bin/hb --load lib/errors.f lib/string.f src/arch/arm64/disasm.f tools/imagedisasm.f -- image offset count
 
+s" src/core/result.f" required
+
 1024 constant IMGD-PATH-CAP
 144 constant IMGD-STAT-U
 $7FFFFFFFFFFFFFF constant IMGD-HEX-MAX-PRE
@@ -42,8 +44,15 @@ variable IMGD-LOWER
    REPEAT drop
    0 IMGD-PATH u + c! ;
 
-TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
-   dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN ;
+: IMGD-MMAP-RESULT ( -- result<ptr u8,n> )
+   0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap RESULT:MMAP>BYTES ;
+
+: IMGD-MMAP-ERR ( n -- )
+   drop IMGD-FD @ close s" imagedisasm: mmap failed" 74 die ;
+
+: IMGD-MMAP ( -- ptr u8 )
+   IMGD-MMAP-RESULT
+   [: ;] [: IMGD-MMAP-ERR ;] RESULT:CASE ;
 
 : IMGD-READ ( ptr u8 n -- )
    IMGD-ZPATH
@@ -52,7 +61,7 @@ TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
    IMGD-LEN @ 0 > 0= IF s" imagedisasm: empty image" 74 die THEN
    IMGD-PATH 0 0 open IMGD-FD !
    IMGD-FD @ 0 < IF s" imagedisasm: open failed" 74 die THEN
-   0 IMGD-LEN @ 1 2 IMGD-FD @ 0 mmap IMGD-MMAP-PTR IMGD-IMG!
+   IMGD-MMAP IMGD-IMG!
    IMGD-FD @ close ;
 
 : IMGD-HEX-DIGIT ( n -- n bool )
