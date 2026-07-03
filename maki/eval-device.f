@@ -17,6 +17,12 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/ffi.f
+require lib/float.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/tile.f
 require maki/eval.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f

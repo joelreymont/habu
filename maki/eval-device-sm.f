@@ -11,12 +11,20 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/float.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/ffi.f
 require maki/eval.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+require lib/ptx/header.f
+require lib/ptx/cg-collective.f
+require lib/ptx/launch.f
+require lib/ptx/collective.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
 

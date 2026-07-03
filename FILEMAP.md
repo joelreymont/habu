@@ -335,6 +335,8 @@ points stay listed.
   helper regressions.
 - `maki/device-artifacts.f` — private per-grade artifact root, PTX/cubin path,
   cleanup, and `PTXAS` resolution helpers for device graders.
+- `maki/device-artifacts-test.f` — focused coverage for grader artifact
+  uniqueness and cleanup.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.
