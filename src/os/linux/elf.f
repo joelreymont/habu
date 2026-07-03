@@ -49,9 +49,18 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 1 constant DT-NEEDED
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
-$80000 constant MPAGE
+$100000 constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
+
+\ Fail closed at load time: the image buffer must fit the largest emittable
+\ image (text at MPAGE + the RW tail) so the loud MPAGE code-window guard
+\ stays the binding constraint, never a silent M-BOUNDS-RC throw from the
+\ byte cursor.
+: ELF-MSIZE-CHECK ( -- )
+   MPAGE ELF-RW-SZ + MSIZE >
+   IF s" elf: MSIZE below max image" 73 die THEN ;
+ELF-MSIZE-CHECK
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;
@@ -196,6 +205,7 @@ s" SNAP-EXTRA-SIZE" s" -- n" TRUST
 
 : BUILD-ELF ( -- )
    ASM-CODELEN!  M-RESET
+   CODELEN @  MPAGE CODE-OFF -  > IF s" elf: code exceeds text window" 73 die THEN
    TEXTSZ ELF-TEXT-SIZE !
    ELF-HDR,
    ELF-PHDRS,

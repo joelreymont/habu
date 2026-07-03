@@ -1,6 +1,13 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
 
-$90000 constant MSIZE
+\ MSIZE must cover the largest image any writer can emit: __text up to MPAGE
+\ ($100000, both targets' loud 73-die code-window guard) plus the largest
+\ non-text tail (Mach-O: DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + the ad-hoc
+\ signature; ELF: ELF-RW-SZ). The writers assert this bound at load time
+\ (MACHO-MSIZE-CHECK / ELF-MSIZE-CHECK) so the code-window guard is always the
+\ binding constraint - an M-BOUNDS-RC throw here means a writer bug, not a
+\ program-size limit. $120000 exceeds the derived $110000 minimum with margin.
+$120000 constant MSIZE
 $1002 constant M-MAP-PRIVATE-ANON
 75 constant M-BOUNDS-RC
 variable MBUF-A
@@ -44,8 +51,16 @@ TRUSTED: M-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 : M-HERE ( -- n )
    MP@ MBUF - ;
 
-: M-FAIL ( ptr u8 n -- )
-   2drop
+create M-FAIL-NL 1 allot
+
+\ Report before throwing: the stage/maker drivers exit with the raw throw
+\ code, so a swallowed message here becomes a silent build failure (proven:
+\ the 104-byte MSIZE overrun exited 75 with no output). The write rc has
+\ nowhere further to report on this diagnostic path.
+: M-FAIL ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop
+   10 M-FAIL-NL c!
+   2 M-FAIL-NL 1 write drop
    M-BOUNDS-RC throw ;
 
 : M-CHECK-N ( n -- )

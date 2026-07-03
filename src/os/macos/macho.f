@@ -18,14 +18,27 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $100000000 constant VMBASE
-$80000    constant MPAGE             \ maximum generated code window for builder images
+$100000   constant MPAGE             \ maximum generated code window for builder images
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 104       constant MACHO-FIXUPS-SIZE
+\ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF: SuperBlob +
+\ CodeDirectory + 32 B per 4 KB page of a full-MPAGE image is ~8.6 KB; $6000
+\ leaves slack for the id string and header growth.
+$6000     constant MACHO-SIG-MAX
 $10       constant SG-READ-ONLY
 $6        constant S-NON-LAZY-SYMBOL-POINTERS
 6         constant DYLD-CHAINED-PTR-64-OFFSET
 variable CODELEN
+
+\ Fail closed at load time: the image buffer must fit the largest emittable
+\ image (__text at MPAGE + __DATA_CONST + chained fixups + signature) so the
+\ loud MPAGE code-window guard stays the binding constraint, never a silent
+\ M-BOUNDS-RC throw from the byte cursor.
+: MACHO-MSIZE-CHECK ( -- )
+   MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + MACHO-SIG-MAX + MSIZE >
+   IF s" macho: MSIZE below max image" 73 die THEN ;
+MACHO-MSIZE-CHECK
 
 : ASM-CODELEN! ( -- )
    ASM-LEN CODELEN ! ;  \ code already assembled in icode's CODE
