@@ -208,7 +208,7 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 \ encode a compact PC-relative BL. The AOT __text is small today, but range
 \ checking makes linker corruption fail at build time if that ever changes.
 variable BDELTA  variable TNEW
-: FIELD {: w:n lo:n width:n :}  w lo rshift  1 width lshift 1 - and ;
+: BITS {: w:n lo:n width:n :}  w lo rshift  1 width lshift 1 - and ;
 : SX {: f:n width:n :}  f 1 width 1 - lshift xor  1 width 1 - lshift - ;
 : REL26 {: site:n target:n :}
    target site - BDELTA !
@@ -273,13 +273,13 @@ variable MAPOUT  variable MAPP  variable MAPE
    r t MAP-TARGET TNEW !
    TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
 : BTGT26 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 0 26 FIELD 26 SX 4 * + ;
+   p  w 0 26 BITS 26 SX 4 * + ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 19 FIELD 19 SX 4 * + ;
+   p  w 5 19 BITS 19 SX 4 * + ;
 : BTGT14 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 14 FIELD 14 SX 4 * + ;
+   p  w 5 14 BITS 14 SX 4 * + ;
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 19 FIELD 2 lshift  w 29 2 FIELD or 21 SX + ;
+   p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
 : RELOC-W32 {: r:ptr p:ptr w:n :} ( ptr a ptr u8 n -- n )
    w BIMM? IF
       r p w BTGT26 MAP-TARGET!
