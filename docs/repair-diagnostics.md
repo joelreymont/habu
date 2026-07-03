@@ -98,9 +98,13 @@ Current checker classes:
   control opens.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
+- `fix_qualified_name`: a call used a malformed qualified name with more than one
+  `:`; use a single `:` qualifier such as `PKG:WORD`.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
+- `fix_bare_ptr_element`: a signature named `ptr` with no element type; give it an
+  element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
@@ -120,8 +124,10 @@ The checker `suggestion` field is stable short text derived only from
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
+| `fix_qualified_name` | `Use one ':' qualifier, e.g. PKG:WORD.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
+| `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
