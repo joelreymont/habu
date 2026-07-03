@@ -11,8 +11,8 @@
 \ Push an op chain with OP!, then DRIVER writes a driver that defines the fused kernel K
 \ and emits it; running bin/hb on it, the kernel CERTIFYING is the proof the fusion is
 \ correct (or it fails closed). Benchmark target: hand-fused Triton (parity at the memory
-\ ceiling); there is NO unfused baseline. Checked Habu; load after the PTX v4 vocab +
-\ maki/eval.f (SB-* string builder) + lib/fs-mutate.f.
+\ ceiling); there is NO unfused baseline. The emitted driver is loaded with the PTX v4
+\ vocab by the device benchmark; this module itself needs only strings and file writes.
 \
 \ Fusion is an INTERNAL maki building-block module, so it lives in its own `package FUSION`
 \ (not the public `MAKI` interface). The package supplies the namespace, so the words drop
@@ -21,6 +21,9 @@
 \ lib/errors.f's E-*); the package body reaches it via global fallback.
 
 -5002 constant E-FUSE  \ unfusible / unknown op, or chain overflow (fail-closed)
+
+require lib/string.f
+require lib/fs.f
 
 package FUSION
 public

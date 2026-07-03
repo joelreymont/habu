@@ -8,7 +8,10 @@
 \ repair round per rejection and summing tokens until green. repair-rounds = the
 \ number of checker-guided fixes; tokens-to-green = total kernel-source tokens
 \ authored until certification. (This is the Habu-PTX side; the Triton comparison
-\ is the external arm.) Load after the PTX tile vocab and maki/eval.f.
+\ is the external arm.)
+
+require lib/ptx/test-prelude.f
+require maki/eval.f
 
 variable ER-NTOK  variable ER-ST
 \ count whitespace-separated tokens in a kernel source string

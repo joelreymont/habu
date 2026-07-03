@@ -143,9 +143,10 @@ or candidate launcher, and must be rebuilt after source changes.
 
 If a device tool (`maki/eval-device.f`, `maki/gpu.f`, `tools/ptx/*`) errors with a
 cryptic missing-primitive name such as `ffi-call-abi`, the running `bin/hb` predates a
-native FFI primitive — **refresh it with the command above.** The maki gate guards this:
-it loads `lib/ffi.f` (which fails closed on a stale engine) and runs `maki/device-smoke.f`,
-a live `cuInit`/`cuDeviceGet` canary, so the break surfaces early at the FFI layer.
+native FFI primitive — **refresh it with the command above.** The maki test suite
+guards this with `maki/device-smoke.f`: it requires `lib/ffi.f` (which fails closed
+on a stale engine) and then runs a live `cuInit`/`cuDeviceGet` canary, so the break
+surfaces early at the FFI layer.
 
 Run the gate after bootstrap or refresh:
 

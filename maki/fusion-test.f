@@ -4,6 +4,9 @@
 \ test is part of the module); the harness words (T-*) and E-FUSE resolve via the package
 \ global fallback.
 
+require lib/test.f
+require maki/fusion.f
+
 package FUSION
 
 T-RESET

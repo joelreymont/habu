@@ -1,5 +1,8 @@
 \ maki/eval-test.f - the checker-as-judge scores candidate kernels.
 
+require lib/test.f
+require maki/eval.f
+
 T-RESET
 
 \ the judge: a well-typed candidate certifies, an ill-typed one is rejected

@@ -42,43 +42,17 @@ It is built **on** Habu and its checked PTX kernel backend. See the root
 - **Extractable.** Treat the habu↔maki seam as an API even in-repo; extract `maki/`
   to its own repo when the Habu-PTX API stabilizes.
 
-## Maki gate (its own, outside the Habu trust root)
+## Maki Test Suite (outside the Habu trust root)
 
-Maki runs through its own `bin/hb --load` path — the Habu libraries it needs, then
-the maki components and their tests (each test runs on load, printing `test: ok`):
+Maki runs through its own checked test-suite entry point. The suite lists only
+test files; each test declares its own `require` dependencies. The runner prints
+the group, test name, pass/fail status, and elapsed time:
 
 ```
-bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
-  lib/fs.f lib/fs-mutate.f lib/ffi.f \
-  src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/cg-vec.f lib/ptx/header.f \
-  lib/ptx/launch.f lib/ptx/cg-collective.f lib/ptx/tile.f lib/ptx/tile-v4.f lib/ptx/collective.f \
-  maki/array.f       maki/array-test.f \
-  maki/tensor.f      maki/tensor-test.f \
-  maki/optim.f       maki/optim-test.f \
-  maki/optim-tensor.f maki/optim-tensor-test.f \
-  maki/loss.f        maki/loss-test.f \
-  maki/autograd.f    maki/autograd-test.f \
-  maki/fmath.f       maki/fmath-test.f \
-  maki/softmax.f     maki/softmax-test.f \
-  maki/celoss.f      maki/celoss-test.f \
-  maki/matmul.f      maki/matmul-test.f \
-  maki/linear.f      maki/linear-test.f \
-  maki/autograd-tensor.f maki/autograd-tensor-test.f \
-  maki/loss-tensor.f maki/loss-tensor-test.f \
-  maki/layernorm.f   maki/layernorm-test.f \
-  maki/gelu.f        maki/gelu-test.f \
-  maki/embedding.f   maki/embedding-test.f \
-  maki/attention.f   maki/attention-test.f \
-  maki/mlp.f         maki/mlp-test.f \
-  maki/train.f       maki/train-test.f \
-  maki/onnx.f        maki/onnx-test.f \
-  maki/eval.f        maki/eval-test.f \
-  maki/fusion.f      maki/fusion-test.f \
-  maki/eval-fixture.f maki/eval-repair.f \
-  maki/device-smoke.f
+bin/hb --load maki/test.f
 ```
 
-The leading `lib/ffi.f` is the device-FFI canary: a stale `bin/hb` (predating the
+`maki/device-smoke.f` is the device-FFI canary: a stale `bin/hb` (predating the
 AAPCS64 FFI-ABI primitives) fails to load it, so the gate stops early at the FFI
 layer instead of erroring cryptically deep in a device tool. `maki/device-smoke.f`
 then runs a live `cuInit`/`cuDeviceGet` smoke on the Orin (SKIPPED off-device).

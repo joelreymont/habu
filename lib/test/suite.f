@@ -41,6 +41,8 @@ variable ARG-SCAN
 variable DEF-ID
 variable LAST-GROUP
 variable CUR-LABEL-U
+variable RUN-I
+variable RUN-N
 
 defer SETUP ( -- )
 defer TEARDOWN ( -- )
@@ -270,7 +272,12 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 
 : RUN-BODY ( -- )
    -1 LAST-GROUP !
-   ITEM-N @ 0 ?do i ITEM-RUN loop
+   ITEM-N @ RUN-N !
+   0 RUN-I !
+   begin RUN-I @ RUN-N @ < while
+      RUN-I @ ITEM-RUN
+      RUN-I @ 1+ RUN-I !
+   repeat
    DRAIN ;
 
 : RUN-ACT ( -- )

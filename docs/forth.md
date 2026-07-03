@@ -624,6 +624,10 @@ address arithmetic at the public boundary.
   execution; test files require their own dependencies. Test groups are named
   and either parallel or sequential, and reports print the group/test name,
   pass/fail state, and timing.
+- Test-suite runners must not keep suite iteration state on the return stack
+  while executing a test. Tests may use `catch`/`throw` for negative assertions;
+  runner loops need explicit index/count cells so a caught throw inside one test
+  cannot truncate the remaining suite.
 - Put fixture helpers in a private package instead of global stems. A test file
   may define a private package, install package-local helpers into `TEST:*`
   hooks, define groups/tests, run once, assert counters, and close the package:

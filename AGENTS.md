@@ -125,7 +125,7 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `master` bookmark to a commit whose gates are not proven green. Do feature work on
   your OWN branch/bookmark (e.g. `maki-<topic>`), commit+push THERE freely, and only
   fast-forward `master` to it AFTER running the full owning gates and confirming they
-  pass: the maki gate (`maki/README.md` command), the ptx-stdlib + any touched native
+  pass: the maki test suite (`bin/hb --load maki/test.f`), the ptx-stdlib + any touched native
   gate slice, and `host-lint` + `filemap-lint` — all green, on the exact rebased tree
   you intend to merge. If any gate is red, skipped, or unrun, the merge does not
   happen; fix or dot the blocker first. A red master is a stop-the-line incident, not

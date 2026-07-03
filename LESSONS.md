@@ -146,6 +146,10 @@ lesson — keep the specific word/code/path, cut the prose.
   inside the stdlib suite but failed standalone at `CLEANUP-RESET` because the
   suite had already loaded `lib/fs-mutate.f`. Every tool entry must require the
   exact files needed by its own top-level path.
+- **Test runners must not keep loop state across test execution:** an included
+  maki fixture using caught throws (`TTHROWS`) truncated the remaining suite when
+  `lib/test/suite.f RUN-BODY` used `?do`; explicit index/count cells keep suite
+  iteration outside the return-stack state that tests may legitimately unwind.
 - **Run comments are not dependency setup:** `lib/render-test.f` and
   `lib/report-test.f` had accurate command comments but failed when loaded
   directly. Test and library entry files must `require` their own dependencies.

@@ -14,6 +14,8 @@ variable ARG-N
 variable ARGS-BEGIN-N
 variable ALPHA-N
 variable BETA-N
+variable THROW-N
+variable THROW-LATE-N
 variable STDIN-LABEL-N
 variable SELECT-SKIP-N
 
@@ -27,6 +29,8 @@ variable SELECT-SKIP-N
    0 ARGS-BEGIN-N !
    0 ALPHA-N !
    0 BETA-N !
+   0 THROW-N !
+   0 THROW-LATE-N !
    0 STDIN-LABEL-N !
    0 SELECT-SKIP-N ! ;
 
@@ -59,6 +63,23 @@ variable SELECT-SKIP-N
    label labelu s" alpha" STR= if 1 ALPHA-N +! exit then
    label labelu s" beta" STR= if 1 BETA-N +! exit then ;
 
+: THROWER ( -- )
+   E-STR-BOUNDS throw ;
+
+: THROW-CAUGHT ( -- )
+   [: THROWER ;] E-STR-BOUNDS TTHROWSQ ;
+
+: THROW-RUNNER ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   label labelu s" throw-caught" STR= if
+      THROW-CAUGHT
+      1 THROW-N +!
+      exit
+   then
+   label labelu s" throw-late" STR= if
+      1 THROW-LATE-N +!
+      exit
+   then ;
+
 : STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    {: in:ptr inu:n label:ptr labelu:n :}
    1 STDIN-N +!
@@ -73,6 +94,9 @@ variable SELECT-SKIP-N
    [: SELECT? ;] TEST:SELECT?!
    [: RUNNER ;] TEST:RUNNER!
    [: STDIN-RUNNER ;] TEST:STDIN-RUNNER! ;
+
+: INSTALL-THROW ( -- )
+   [: THROW-RUNNER ;] TEST:RUNNER! ;
 
 T-RESET
 RESET-COUNTS
@@ -110,6 +134,21 @@ SELECT-SKIP-N @ 1 T=
 ARG-N @ 8 T=
 ARGS-BEGIN-N @ 3 T=
 DRAIN-N @ 6 T=
+
+INSTALL-THROW
+TEST:RESET
+TEST:GROUP-SEQUENTIAL throw-loop
+TEST:SUITE throw-caught
+   throw-caught.f
+TEST:END-SUITE
+TEST:SUITE throw-late
+   throw-late.f
+TEST:END-SUITE
+TEST:END-GROUP
+TEST:RUN
+
+THROW-N @ 1 T=
+THROW-LATE-N @ 1 T=
 T-REPORT
 
 end-package
