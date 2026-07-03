@@ -94,6 +94,8 @@ TEST:SUITE maki/eval-test.f
 TEST:END-SUITE
 TEST:SUITE maki/fusion-test.f
 TEST:END-SUITE
+TEST:SUITE maki/cuda-types-test.f
+TEST:END-SUITE
 TEST:SUITE maki/eval-fixture.f
 TEST:END-SUITE
 TEST:SUITE maki/eval-repair.f
