@@ -108,11 +108,18 @@ s" pkga" CHECKER-PACKAGE-PRIVATE s" opt" 1 TK-SUM ' TFAM-DECL catch
 \ ---------------------------------------------------------------------------
 s" result"  TF-CANON? -1 T=
 s" opt-2"   TF-CANON? -1 T=
+s" a-b-c"   TF-CANON? -1 T=       \ internal single hyphens are fine
 s" Result"  TF-CANON? 0 T=
 s" reSult"  TF-CANON? 0 T=
 s" RESULT"  TF-CANON? 0 T=
 s" 123"     TF-CANON? 0 T=
 s" @x"      TF-CANON? 0 T=
+\ internal-only single hyphens: leading / trailing / doubled '-' reject
+\ (item 8's '-'->'--' constructor-package escaping depends on this canon).
+s" -a"      TF-CANON? 0 T=
+s" a-"      TF-CANON? 0 T=
+s" a--b"    TF-CANON? 0 T=
+s" -"       TF-CANON? 0 T=
 s" pkga" CHECKER-PACKAGE-PRIVATE s" Result" 0 TK-SUM ' TFAM-DECL catch
    TC ! 2drop 2drop 2drop drop  TC @ E-TFAM-CASE T=
 s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
@@ -233,6 +240,28 @@ PTID @ s" x" PF-FIND FOUNDF ! FX @ T= FOUNDF @ -1 T=
 FID @ LAY-FIND FOUNDF ! LAY-SIZE@ 16 T= FOUNDF @ -1 T=
 R1 @ SCHEMA-ROOT@ SCHEMA-TAG@ SCH-PARAM T=
 NA @ SCHEMA-TAG@ SCH-APP T=
+
+\ ---------------------------------------------------------------------------
+\ 15. ambiguous unqualified public resolution: two OTHER-package publics sharing
+\    a tail throw E-TFAM-AMBIG; an own-package match still wins without ambiguity;
+\    qualified (exact-package) access resolves both distinctly. (dot 2a)
+\ ---------------------------------------------------------------------------
+variable AX  variable AY
+s" pkgx" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AX !
+s" pkgy" CHECKER-PACKAGE-PUBLIC s" amb" 1 TK-SUM TFAM-DECL AY !
+\ unqualified resolve from a third package: two publics tie -> throw
+s" pkgz" s" amb" ' TFAM-RESOLVE catch  TC ! 2drop 2drop  TC @ E-TFAM-AMBIG T=
+\ bare cross-package public lookup throws on the same tie
+s" amb" ' TFAM-FIND-PUBLIC catch  TC ! 2drop  TC @ E-TFAM-AMBIG T=
+\ own-package family wins without ambiguity (each resolves to its own amb)
+s" pkgx" s" amb" TFAM-RESOLVE FOUNDF !  AX @ T=  FOUNDF @ -1 T=
+s" pkgy" s" amb" TFAM-RESOLVE FOUNDF !  AY @ T=  FOUNDF @ -1 T=
+\ qualified (exact-package) access still resolves both distinctly, no throw
+s" pkgx" s" amb" TFAM-FIND-IN FOUNDF !  AX @ T=  FOUNDF @ -1 T=
+s" pkgy" s" amb" TFAM-FIND-IN FOUNDF !  AY @ T=  FOUNDF @ -1 T=
+\ a single public tail (no tie) still resolves cleanly through FIND-PUBLIC
+s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TFAM-DECL drop
+s" solo" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

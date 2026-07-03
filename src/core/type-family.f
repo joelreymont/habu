@@ -43,10 +43,12 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 \ --- named reject codes (thrown, caught by parser/CHECK path or unit `catch`).
 7101 constant E-TFAM-CASE     \ uppercase/mixed-case or non-canonical tail token
 7102 constant E-TFAM-DUP      \ duplicate tail within the same package
+7106 constant E-TFAM-AMBIG    \ two other-package public families tie on a tail (7103 = E-SCHEMA-BAD)
 7104 constant E-TFAM-ARITY    \ negative arity
 7105 constant E-TFAM-KIND     \ unknown kind
 
 variable TF-I                 \ private scan/copy index
+variable TF-PUB               \ private first-public-match accumulator (-1 = none)
 
 \ ---------------------------------------------------------------------------
 \ shared string pool. Names are interned as byte offsets; offsets stay valid
@@ -94,11 +96,18 @@ variable TF-STR-U   0 TF-STR-U !
 : TF-HIDDEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ compaction-hidden field name
    u 0= IF RES-FALSE EXIT THEN
    a c@ 64 = ;                                              \ leading '@'
-: TF-CANON? ( ptr u8 n -- bool ) {: a:ptr u:n :}    \ all tail bytes + >=1 letter
+: TF-HYPHEN-BAD? ( a u i -- bool ) {: a:ptr u:n i:n :}   \ '-' at an edge or doubled
+   i 0 = IF RES-TRUE EXIT THEN                      \ leading '-a'
+   i u 1 - = IF RES-TRUE EXIT THEN                  \ trailing 'a-'
+   a i + 1 - c@ 45 = ;                              \ previous byte also '-' -> 'a--b'
+: TF-CANON? ( ptr u8 n -- bool ) {: a:ptr u:n :}    \ tailbytes + internal single '-' + >=1 letter
    u 0= IF RES-FALSE EXIT THEN
    0 TF-I !
    BEGIN TF-I @ u < WHILE
       a TF-I @ + c@ TF-TAILBYTE? 0= IF RES-FALSE EXIT THEN
+      a TF-I @ + c@ 45 = IF
+         a u TF-I @ TF-HYPHEN-BAD? IF RES-FALSE EXIT THEN
+      THEN
       TF-I @ 1 + TF-I !
    REPEAT
    0 TF-I !
@@ -245,19 +254,27 @@ variable TFAM-N   0 TFAM-N !
    REPEAT
    0 RES-FALSE ;
 
-\ first PUBLIC family with this tail in any package (cross-package visibility).
+\ PUBLIC family with this tail across packages. A (package,tail) pair is unique
+\ (TFAM-DECL rejects DUP), so two public matches are always different packages:
+\ that is a genuine unqualified ambiguity and throws E-TFAM-AMBIG rather than
+\ silently picking the lowest id. Exactly one public match resolves; none is false.
 : TFAM-FIND-PUBLIC ( name-a name-u -- id true | false ) {: na:ptr nu:n :}
+   -1 TF-PUB !
    0 TF-I !
    BEGIN TF-I @ TFAM-N @ < WHILE
       TF-I @ TFAM-PUBLIC? IF
-         na nu TF-I @ TFAM-NAME-MATCH? IF TF-I @ RES-TRUE EXIT THEN
+         na nu TF-I @ TFAM-NAME-MATCH? IF
+            TF-PUB @ 0< IF TF-I @ TF-PUB !
+            ELSE E-TFAM-AMBIG throw THEN
+         THEN
       THEN
       TF-I @ 1 + TF-I !
    REPEAT
-   0 RES-FALSE ;
+   TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
 \ unqualified resolution from the active package: own package (private+public)
-\ first, else any public family. Compaction-hidden `@name` tokens never resolve.
+\ first, else the unique public family (E-TFAM-AMBIG if two other packages tie).
+\ Compaction-hidden `@name` tokens never resolve.
 : TFAM-RESOLVE ( pkg-a pkg-u name-a name-u -- id true | false )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
