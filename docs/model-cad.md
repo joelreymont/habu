@@ -193,7 +193,7 @@ Minimal commands and report objects, conservative implementations.
 - Acceptance: a toy model block defines; every command returns a structured
   report; unsupported input fails closed with a named reason.
 - Exists: eval-harness report discipline (`maki/eval.f`), PTX launch/profile
-  tools (`tools/ptx/`). New dots: `cad-0-report`, `cad-0-words`.
+  tools (`tools/ptx/`). New dots: `cad-0a` (report schema), `cad-0b` (commands).
 
 ### Phase 1 — Model IR and shape/layout facts
 
@@ -206,7 +206,7 @@ Minimal commands and report objects, conservative implementations.
 - Data-movement ops (driving-workload demand): reshape/view, transpose,
   slice, concat, gather — as IR layout facts first (transforms the planner
   reasons about), materializing kernels only where a copy is genuinely
-  required (dot `cad-la-move-ops`).
+  required (dot `habu-cad-la-data`).
 - Exists: kernel-level IR (`lib/ptx/ir.f`), AD DAG (`lib/ptx/ad-dag.f`),
   ONNX op table (`maki/onnx.f` — fail-closed pattern to copy).
 - New dot: `cad-1-ir`. Related: `habu-maki-lower-tensor`.
@@ -311,6 +311,29 @@ save-vs-recompute is a reported decision; gradcheck gates promotion.
   model), device gradcheck, epic `habu-epic-maki-autograd` and its dot
   chain. No new dot.
 
+### Phase 9b — Training from scratch
+
+Maki is a training tool, not only an inference optimizer: a model defined
+with `MODEL:` must be trainable from random init through the same loop.
+
+- Loss family beyond MSE/L1: Gaussian NLL with predicted log-variance,
+  Mahalanobis, Huber — each with analytic gradient plus numeric gradcheck,
+  tensor-scale apply, VJP registration, fail-closed on non-positive
+  variance (`habu-maki-gaussian-nll`).
+- The training step is a first-class region for the loop: forward + backward
+  + optimizer step planned, fused where legal, and profiled as one unit;
+  `PROFILE` reports the step, not only inference kernels.
+- Convergence is a gate: seeded synthetic data and a loss threshold
+  committed as a test, so training regressions fail like correctness
+  regressions.
+- Flagship: a small temporal model (windowed MLP/TCN over feature-sequence
+  windows → prediction + log-variance) trained from scratch on GPU with the
+  NLL loss (`habu-maki-from-scratch`).
+- Exists: converging training loop at tensor scale (`maki/train.f`), GPU
+  SGD demo (`maki/gpu-train.f`), optimizers incl. Adam
+  (`maki/optim-tensor.f`), gradchecked autograd orchestration, and the
+  batched-VJP epic chain (`habu-autograd-tensor-batched` onward).
+
 ### Phase 10 — Agent loop
 
 Agents propose model variants, fusion rewrites, layout/schedule candidates,
@@ -364,18 +387,27 @@ gate per `CLAUDE.md`.
 ## Milestone order
 
 1. README + positioning + this plan (done, this change).
-2. `cad-0-report` — report schema v1.
-3. `cad-0-words` — REPL command skeleton, conservative reports.
-4. `cad-1-ir` — model IR with shape/layout facts.
-5. `cad-2-fusion-regions` — elementwise region discovery + traffic estimate.
-6. `cad-3-memory-report` — coalescing report.
-7. `cad-4-schedule` — schedule object + cache key.
-8. `cad-6-tune` — TUNE over schedule objects via the m9 autotuner.
-9. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
-10. Golden/gradcheck promotion gates in `cad-7-optimize`.
-11. Profile/roofline rows in `cad-7-optimize`.
-12. `cad-demo-ffn` — end-to-end FFN demo, no tensor-core parity claim.
-13. Tensor-core path (existing MMA/typed-kernel dots).
-14. Backward fusion + save/recompute reporting (existing AD dots).
-15. `cad-adt-swap` — typed backbone lands as TFAM phases land.
-16. Agent proposal loop over `OPTIMIZE` reports.
+2. `cad-0a` — report schema v1.
+3. `cad-0b` — REPL command skeleton, conservative reports.
+4. `habu-maki-gaussian-nll` — NLL/covariance loss family (independent;
+   unblocks the training flagship).
+5. `cad-1` — model IR with shape/layout facts.
+6. `habu-cad-la-data` — data-movement ops as IR facts.
+7. `cad-2` — elementwise region discovery + traffic estimate.
+8. `cad-3` — coalescing report.
+9. `cad-4` — schedule object + cache key.
+10. `cad-6-tune` — TUNE over schedule objects via the m9 autotuner.
+11. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
+12. Golden/gradcheck promotion gates in `cad-7-optimize`, including
+    external reference artifacts.
+13. Profile/roofline rows in `cad-7-optimize`.
+14. `habu-ptx-kernels-rmsnorm` — RMSNorm + RoPE checked kernels.
+15. `cad-demo-ffn` — end-to-end FFN demo, no tensor-core parity claim.
+16. `habu-maki-from-scratch` — from-scratch temporal model trained on GPU
+    (training flagship, Phase 9b).
+17. Tensor-core path (existing MMA/typed-kernel dots); library-FFI GEMM
+    acceptable for workload bring-up meanwhile.
+18. Backward fusion + save/recompute reporting (existing AD dots) and the
+    fused, profiled training step.
+19. `cad-adt-swap` — typed backbone lands as TFAM phases land.
+20. Agent proposal loop over `OPTIMIZE` reports.
