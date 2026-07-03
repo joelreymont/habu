@@ -23,3 +23,14 @@ require their own stdlib/PTX dependencies and use those artifact paths; focused
 artifact tests and the full native suite pass. Remaining: sentinel readbacks,
 zed hardware failure-class tests, nonuniform goldens, and migration of older
 `tools/ptx/*device*` hardcoded ptxas/tmp paths.
+
+2026-07-03 increment: `lib/ptx/toolchain.f` now owns private PTX/cubin
+artifact roots for reusable PTX device tools plus `PTXAS` env/default
+resolution and the checked assembler runner. `tools/ptx/acc-device-test.f`,
+`redadd-device-test.f`, `matmul-device-test.f`, `gradcheck.f`,
+`indexed-scatter-gradcheck.f`, `scatter-add-gradcheck.f`, and
+`saxpy-v4-tail-device-test.f` use that helper instead of fixed
+`/tmp/*.ptx`/`/tmp/*.cubin` paths or hardcoded ptxas argv. Mac proof: native
+suite green and `maki/test.f` green. Remaining: sentinel readbacks, zed
+hardware failure-class tests, nonuniform goldens, and older prebuilt-cubin
+consumer tools (`cuda-load`, `cuda-launch`, bandwidth/fusion/softmax launchers).
