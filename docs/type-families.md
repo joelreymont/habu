@@ -671,9 +671,14 @@ COLOR:BLUE  ( -- color )
 Constructor packages are keyed by the defining `family-id`, not by a bare
 uppercase tail. A top-level `SUMTYPE result` may publish `RESULT:OK` and
 `RESULT:ERR`. A `result` family declared inside another package must publish into
-a distinct constructor package derived from stable source identity: the
-canonical package path plus family tail, encoded with length-coded escaped
-segments or a content hash of those stable names when needed. It must not
+a distinct constructor package derived from stable source identity by one
+pinned algorithm shared byte-identically by native `habu2`, `habu1`, and the
+Gforth bootstrap mirror: uppercase each canonical package path segment and the
+family tail, escape every literal `-` inside a segment as `--`, and join
+segments plus tail with single `-` separators; if the escaped spelling exceeds
+the engine dictionary name-length limit, the spelling is `T` plus the first 16
+lowercase hex digits of SHA-256 over the length-prefixed unescaped segment
+list, then `-` plus the uppercase family tail. It must not
 collide with the top-level `RESULT` package. The spelling must be a legal
 one-colon package call, injective, and stable across unrelated earlier
 package/family declarations; it must not use allocation-order numeric
@@ -1149,8 +1154,8 @@ Later syntax:
 ```forth
 SUMTYPE option 1
   PARAM a layout
-  VARIANT none
-  VARIANT some a
+  VARIANT none   END-VARIANT
+  VARIANT some a END-VARIANT
 END-SUMTYPE
 ```
 
@@ -1282,8 +1287,8 @@ Later:
 
 ```forth
 SUMTYPE option 1 POLICY niche-null
-  VARIANT none
-  VARIANT some nonnull-ptr<a>
+  VARIANT none   END-VARIANT
+  VARIANT some nonnull-ptr<a> END-VARIANT
 END-SUMTYPE
 ```
 
@@ -1303,8 +1308,8 @@ Later:
 
 ```forth
 SUMTYPE tree 1 POLICY boxed
-  VARIANT leaf a
-  VARIANT node ptr tree<a> ptr tree<a>
+  VARIANT leaf a END-VARIANT
+  VARIANT node ptr tree<a> ptr tree<a> END-VARIANT
 END-SUMTYPE
 ```
 
