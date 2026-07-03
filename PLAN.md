@@ -132,6 +132,11 @@ feature is allowed.
 
 ## Current Grounding
 
+Line numbers in this plan are anchored to the round-1 baseline commit recorded
+in the Review Log and drift as items land. Word/symbol names and file paths are
+the authoritative anchors; `docs/census-tfam-*.md` carry per-item `file:line`
+maps refreshed by scouts. Do not treat drifted numbers as plan errors.
+
 - Spec: `docs/type-families.md:9-1744`.
 - Parametric terms: `src/core/checker.f:1-3`,
   `src/core/checker.f:341-369`, `src/core/checker.f:793-857`,
@@ -1076,6 +1081,14 @@ feature is allowed.
    - Effort: large.
    - Depends on: items 9-15.
    - Goal mapping: completes the design beyond the default unboxed stack layout.
+   - Follow-on consumer capability (dotted, outside this campaign's items):
+     checked buffer store/load for layout-family values plus a typed
+     array-of-ADT container over the packed ABI descriptor —
+     `habu-checker-capability-typed-a480c423`. First consumers are maki
+     Model CAD report tables, schedule measurement history, and
+     artifact-cache rows (`docs/model-cad.md`, fable branch). Boxed policy
+     remains the maki recursive-IR unlock; packed-tag is this dot's
+     prerequisite.
 
 17. **Gate, bootstrap, size, cache, and trust proof**
     - Paths: `test/engine-suite.f:1-260`, `test/gate-dictionary-lib.f:823-915`,
