@@ -582,11 +582,36 @@ variable BF-CERT-PATH-U
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
-   out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/result.f" BF-APPEND-SOURCE ;
+   out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-BYTES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/bytes.f" BF-APPEND-SOURCE ;
+
+: BF-APPEND-CHECK-OFF ( ptr u8 n -- )
+   s" 0 set-check" BF-APPEND-LINE ;
+
+: BF-APPEND-FRESH-CHECK-HOOK ( ptr u8 n -- )
+   s" ' HOOK set-check" BF-APPEND-LINE ;
+
+: BF-APPEND-SQUOTE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
+   out outu s" s" BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C
+   out outu BF-SP BF-APPEND-C
+   out outu a u BF-APPEND-BYTES
+   out outu BF-DQ BF-APPEND-C ;
+
+: BF-APPEND-TRUST ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n sig:ptr sigu:n :}
+   out outu name nameu BF-APPEND-SQUOTE
+   out outu BF-SP BF-APPEND-C
+   out outu sig sigu BF-APPEND-SQUOTE
+   out outu s"  TRUST" BF-APPEND-LINE ;
+
+: BF-APPEND-IMAGE-TRUSTS ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu s" ASM-CODE" s" -- asm" BF-APPEND-TRUST
+   out outu s" BUILD-IMAGE" s" asm -- img" BF-APPEND-TRUST
+   out outu s" BUILD-SNAP-HDR" s" n -- snap n" BF-APPEND-TRUST
+   out outu s" SET-SIGID" s" ptr u8 n --" BF-APPEND-TRUST
+   out outu s" CODESIG2" s" img -- img" BF-APPEND-TRUST ;
 
 : BF-APPEND-HABU-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE ;
@@ -629,7 +654,10 @@ variable BF-CERT-PATH-U
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
+   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
+   out outu BF-APPEND-FRESH-CHECK-HOOK
+   out outu BF-APPEND-IMAGE-TRUSTS
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
@@ -723,7 +751,10 @@ variable BF-CERT-PATH-U
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
+   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
+   out outu BF-APPEND-FRESH-CHECK-HOOK
+   out outu BF-APPEND-IMAGE-TRUSTS
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE

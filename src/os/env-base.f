@@ -1,10 +1,9 @@
 \ env-base.f - shared startup argv/envp access over captured DATA cells.
 
+data-base constant ENV-DATA
 $2D constant ENV-DASH
+s" ENV-DATA" s" -- ptr n" TRUST
 s" ENV-DASH" s" -- n" TRUST
-
-: ENV-DATA ( -- ptr n )
-   data-base ;
 
 : ARGC ( -- n )
    ENV-DATA ARGC-CELL + @ ;

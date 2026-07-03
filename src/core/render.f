@@ -17,43 +17,16 @@ variable RDIAG-CAP
 variable RDIAG-U
 variable RDIAG-I
 
-: RDIAG-A-FIELD ( -- ptr ptr u8 )
-   RDIAG-A 0 ptr-field ;
-
-: RDIAG-A@ ( -- ptr u8 )
-   RDIAG-A-FIELD @ ;
-
-: RDIAG-A! ( ptr u8 -- )
-   RDIAG-A-FIELD ! ;
-
-: RDST? ( -- bool )
-   RDST @ 0 <> ;
-
-: RDIAG-ON? ( -- bool )
-   RDIAG-ON @ 0 <> ;
-
-: RQM? ( -- bool )
-   RQM @ 0 <> ;
-
-: DEADERR? ( -- bool )
-   DEADERR @ 0 <> ;
-
-: QUALBAD? ( -- bool )
-   QUALBAD @ 0 <> ;
-
-: UNDEFERR? ( -- bool )
-   UNDEFERR @ 0 <> ;
-
 : EMIT1 {: c :}
    c 63 = IF 1 RQM ! THEN
-   RDST? IF
+   RDST @ IF
      RSN @ RSBUF-CAP 2 - > IF s" render: sig buffer full" 76 die THEN
      c RSBUF RSN @ + c!  RSN @ 1 + RSN !
    ELSE c ECH c! ECH 1 type THEN ;
 
 : DIAG-BUFFER! ( ptr u8 n -- )
    {: a:ptr cap:n :}
-   a RDIAG-A!
+   a RDIAG-A !
    cap RDIAG-CAP !
    0 RDIAG-U !
    -1 RDIAG-ON ! ;
@@ -63,20 +36,20 @@ variable RDIAG-I
    0 RDIAG-U ! ;
 
 : DIAG-BUFFER$ ( -- ptr u8 n )
-   RDIAG-A@ RDIAG-U @ ;
+   RDIAG-A @ RDIAG-U @ ;
 
 : RDIAG-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 RDIAG-I !
    BEGIN RDIAG-I @ u < WHILE
       a RDIAG-I @ + c@
-      RDIAG-A@ RDIAG-U @ + RDIAG-I @ + c!
+      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
 : RDIAG-APPEND ( ptr u8 n -- )
    {: a:ptr u:n :}
-   RDIAG-ON? 0= IF 2 a u write drop EXIT THEN
+   RDIAG-ON @ 0= IF 2 a u write drop EXIT THEN
    RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
@@ -98,10 +71,10 @@ variable RATOM-I
 : RATOM-FIND ( n -- n bool ) {: key:n :}
    0 RATOM-I !
    BEGIN RATOM-I @ RATOM-N @ < WHILE
-      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ RES-TRUE EXIT THEN
+      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ -1 EXIT THEN
       RATOM-I @ 1 + RATOM-I !
    REPEAT
-   0 RES-FALSE ;
+   0 0 ;
 : RATOM-ADD ( n -- n ) {: key:n :}
    RATOM-N @ RATOM-CAP >= IF 1 RQM ! 0 EXIT THEN
    key RATOM-N @ cells RATOM-KEY + !
@@ -111,22 +84,13 @@ variable RATOM-I
    key RATOM-FIND IF EXIT THEN drop
    key RATOM-ADD ;
 
-: RSTR ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: CON-KNOWN? ( n -- bool )
-   {: p:n :}
-   p 0 > IF p CTN @ < EXIT THEN
-   RES-FALSE ;
-
-: CON-NAME-OUT ( n -- )
-   CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN ;
-
-: CON-OUT ( n -- )
-   {: p:n :}
-   p 2 = IF 102 EMIT1 EXIT THEN
-   p CON-KNOWN? IF p CON-NAME-OUT ELSE 63 EMIT1 THEN ;
+: CON-OUT {: p :}
+   p 2 = IF 102 EMIT1 ELSE
+   p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user deftype)
+      p CT-NAME$ dup IF RSTR ELSE 2drop 63 EMIT1 THEN
+   ELSE 63 EMIT1 THEN THEN ;
 
 : ATOM-REND {: t :}
    t ATOM>K 0 = IF t ATOM>A t ATOM>U RSTR EXIT THEN
@@ -149,23 +113,19 @@ variable RATOM-I
 6 constant QDEPTH-MAX                        \ quotation nesting render budget
 create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render path, by depth
 
-: QRET? ( n -- bool )
-   {: q:n :}
-   q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
+: QRET? ( q -- f ) {: q :}  q Q>RIN R-RES  q Q>ROUT R-RES  <> ;
 
 \ is quot node r already being rendered above depth d (a type-graph cycle)?
-: QANCESTOR? ( n n -- bool )
-   {: r:n d:n :}
+: QANCESTOR? {: r:n d:n :}
    0 BEGIN dup d < WHILE
-      dup cells QPATH + @ r = IF drop RES-TRUE EXIT THEN
+      dup cells QPATH + @ r = IF drop -1 EXIT THEN
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop 0 ;
 
 \ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
 \ bottom-to-top (space-separated); mode=0 renders a type. RECURSE re-enters with
 \ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
-: QREND ( n n n -- )
-   {: x:n d:n mode:n :}
+: QREND {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF
          dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
@@ -244,13 +204,9 @@ variable RSHOW-DST
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
 \ only appear when the failing unify was captured (STEP/SUNI).
-: DTXT ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: DTXT {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: DROW ( n -- )
-   {: s:n :}
-   s REND-COLLECT
+: DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
 
 \ structured diagnostics: `JSON-DIAGS ON` emits one JSON object per reject or
@@ -277,74 +233,54 @@ variable DSUGE  variable DSUGA
       92 of 92 EMIT1 c EMIT1 endof
       c EMIT1
    endcase ;
-: JSTR ( ptr u8 n -- )
-   {: a:ptr u:n :}
-   34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
-
-: JKEY ( ptr u8 n -- )
-   JSTR  58 EMIT1 ;
-
-: JROW ( n -- )
-   34 EMIT1  DROW  34 EMIT1 ;
-
-: SIG-WS? ( n -- bool )
-   {: c:n :}
-   c 32 = IF RES-TRUE EXIT THEN
-   c 9 = IF RES-TRUE EXIT THEN
-   c 10 = IF RES-TRUE EXIT THEN
-   c 13 = ;
-
-: SIG-LTRIM ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JKEY {: a u :}  a u JSTR  58 EMIT1 ;
+: JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
+: SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
+: SIG-LTRIM {: a u :}
    0 BEGIN dup u < WHILE
       dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
       1 +
    REPEAT drop a 0 ;
-
-: SIG-RTRIM ( ptr u8 n -- ptr u8 n )
-   {: a:ptr u:n :}
+: SIG-RTRIM {: a u :}
    u BEGIN dup 0 > WHILE
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
-
-: SIG-TRIM ( ptr u8 n -- ptr u8 n )
-   SIG-LTRIM SIG-RTRIM ;
-
-: JEFFECT ( n n n n bool -- )
-   {: din:n dout:n rin:n rout:n hasr:bool :}
+: SIG-TRIM ( a u -- a u )  SIG-LTRIM SIG-RTRIM ;
+: JEFFECT {: din dout rin rout hasr :}
    34 EMIT1
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    34 EMIT1 ;
 : DCODE
-   UNSAFE? IF s" E-UNSAFE" ELSE
-   LOCALBAD? IF s" E-BAD-LOCAL-SHAPE" ELSE
-   DEADERR? IF s" E-DEAD-CODE" ELSE
-   QUALBAD? IF s" E-BAD-QUALIFIED" ELSE
-   UNDEFERR? IF s" E-UNDEFINED" ELSE
+   UNSAFE @ IF s" E-UNSAFE" ELSE
+   LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
+   DEADERR @ IF s" E-DEAD-CODE" ELSE
+   QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
+   UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD? IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
+   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
-   UNDEFERR? IF
+   UNDEFERR @ IF
       s" rejected"
    ELSE
       DVERD @ 1 = IF s" uncheckable" ELSE s" rejected" THEN
    THEN ;
 : RETURN-MISMATCH? ( -- f )
-   SGHASR? IF
+   SGHASR @ IF
       RCUR @ R-RES  SGROUT @ R-RES  <>
    ELSE
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
 : REPAIR-CLASS ( -- a u )
-   UNSAFE? IF s" trusted_boundary_required" EXIT THEN
-   LOCALBAD? IF s" factor_local_shape" EXIT THEN
-   DEADERR? IF s" remove_dead_code" EXIT THEN
-   QUALBAD? IF s" fix_qualified_name" EXIT THEN
-   UNDEFERR? IF s" unknown_rejection" EXIT THEN
+   UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
+   LOCALBAD @ IF s" factor_local_shape" EXIT THEN
+   DEADERR @ IF s" remove_dead_code" EXIT THEN
+   QUALBAD @ IF s" fix_qualified_name" EXIT THEN
+   UNDEFERR @ IF s" unknown_rejection" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
-   SGBAD? IF
+   SGBAD @ IF
       SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE s" fix_signature_syntax" THEN THEN
       EXIT
    THEN
@@ -360,13 +296,13 @@ variable DSUGE  variable DSUGA
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
-   UNSAFE? IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
-   LOCALBAD? IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
-   DEADERR? IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
-   QUALBAD? IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
-   UNDEFERR? IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
+   UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
+   LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
+   DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
+   QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
+   UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
-   SGBAD? IF
+   SGBAD @ IF
       SGBAD-UNKNOWN? IF
          s" Use a known stack-signature type or a single-letter type variable."
       ELSE SGBAD-BAREPTR? IF
@@ -387,15 +323,10 @@ variable DSUGE  variable DSUGA
    ELSE  s" Change the body so produced types match the signature."
    THEN THEN ;
 variable JPOS  variable JLINE  variable JCOL
-
-: JPOS-IN-RANGE? ( -- bool )
-   JPOS @ FAILB @ >= IF RES-FALSE EXIT THEN
-   JPOS @ TBLEN @ < ;
-
 : JLOC-CALC
    1 JLINE !  1 JCOL !  0 JPOS !
-   BEGIN JPOS-IN-RANGE? WHILE
-      JPOS @ TADDR c@ 10 = IF
+   BEGIN JPOS @ FAILB @ <  JPOS @ TBLEN @ <  and WHILE
+      TBASE @ JPOS @ + c@ 10 = IF
          JLINE @ 1 + JLINE !  1 JCOL !
       ELSE
          JCOL @ 1 + JCOL !
@@ -416,18 +347,18 @@ variable JPOS  variable JLINE  variable JCOL
      s" habu: in " DTXT  NMA @ NMU @ DTXT
      s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
    THEN
-   QUALBAD? IF
+   QUALBAD @ IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
      s" ' (more than one ':')" DTXT EXIT
    THEN
-   UNDEFERR? IF
+   UNDEFERR @ IF
      s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
-   DEADERR? IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
+   DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN ;
@@ -440,29 +371,29 @@ variable JPOS  variable JLINE  variable JCOL
    s" verdict" JKEY DVERDICT JSTR  44 EMIT1
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
-   DEADERR? IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
+   DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
    s" line" JKEY  JABS-LINE JNUM  44 EMIT1
    s" column" JKEY  JABS-COL JNUM  44 EMIT1
    s" byte_start" JKEY  JABS-BSTART JNUM  44 EMIT1
    s" byte_end" JKEY  JABS-BEND JNUM  44 EMIT1
-   s" definition_source" JKEY  TBASE@ TBLEN @ JSTR  44 EMIT1
-   SGSEEN? IF
+   s" definition_source" JKEY  TBASE @ TBLEN @ JSTR  44 EMIT1
+   SGSEEN @ IF
      s" declared_effect" JKEY
-     SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR? JEFFECT  44 EMIT1
+     SGIN @ SGOUT @ SGRIN @ SGROUT @ SGHASR @ JEFFECT  44 EMIT1
      s" declared_effect_source" JKEY
      SGA @ SGU @ SIG-TRIM JSTR  44 EMIT1
    THEN
    s" inferred_effect" JKEY
-   SGSEEN? IF SGIN @ ELSE BROW @ THEN
+   SGSEEN @ IF SGIN @ ELSE BROW @ THEN
    DCUR @
-   SGHASR? IF SGRIN @ ELSE RBROW @ THEN
+   SGHASR @ IF SGRIN @ ELSE RBROW @ THEN
    RCUR @
-   SGHASR? JEFFECT  44 EMIT1
+   SGHASR @ JEFFECT  44 EMIT1
    s" return_stack" JKEY
    123 EMIT1
-   s" expected" JKEY  SGHASR? IF SGROUT @ ELSE RBROW @ THEN JROW  44 EMIT1
+   s" expected" JKEY  SGHASR @ IF SGROUT @ ELSE RBROW @ THEN JROW  44 EMIT1
    s" actual" JKEY    RCUR @ JROW
    125 EMIT1
    DEXP @ 0 <> IF
@@ -472,7 +403,7 @@ variable JPOS  variable JLINE  variable JCOL
    125 EMIT1 ;                                            \ }
 : DIAG-PRINT
    1 RDST !  0 RSN !  0 RQM !  SEEN-RESET 0 NLET !
-   JSON-DIAGS? IF DIAG-JSON ELSE DIAG-PROSE THEN
+   JSON-DIAGS @ IF DIAG-JSON ELSE DIAG-PROSE THEN
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
@@ -483,7 +414,7 @@ variable JPOS  variable JLINE  variable JCOL
 \ counts — and reports which word and why, since callers otherwise fail later
 \ as undefined with no hint that the producer was the problem.
 : REC-REFUSE-WHY ( -- ptr u8 n )
-   RQM? IF s" unmodeled type tag in inferred effect"
+   RQM @ IF s" unmodeled type tag in inferred effect"
    ELSE s" more than 26 type variables in inferred effect" THEN ;
 
 : REC-REFUSE-PROSE ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
@@ -500,7 +431,7 @@ variable JPOS  variable JLINE  variable JCOL
 
 : REC-REFUSE-EMIT ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n wa:ptr wu:n :}
    1 RDST !  0 RSN !
-   na nu wa wu JSON-DIAGS? IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
+   na nu wa wu JSON-DIAGS @ IF REC-REFUSE-JSON ELSE REC-REFUSE-PROSE THEN
    10 EMIT1
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;

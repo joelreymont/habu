@@ -38,8 +38,7 @@ require lib/string.f
       TR-FILES-RUN ;
 
 TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
-   lib/errors.f lib/string.f src/core/result.f lib/memory.f lib/vector.f
-   lib/fs.f lib/fs-mutate.f
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/record.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
@@ -63,8 +62,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 TR-FILES: TR-GATE-HARNESS-FILES
    test/run.f test/run-support.f test/run-lib.f test/run-files.f
    test/run-result-cache.f test/run-resident.f test/run-worker.f
-   lib/errors.f lib/string.f src/core/result.f lib/memory.f lib/vector.f
-   lib/fs.f
+   lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/content-key.f tools/cli-run.f
    test/gate-pool.f test/gate-stats.f
@@ -94,7 +92,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    tools/build-fixpoint.f src/habu/hide.f src/core/util.f
    src/core/structures.f src/core/checker.f
    src/core/render.f src/core/check-hook.f src/core/structures-effects.f
-   src/core/result.f src/core/roles.f src/core/bytes.f
+   src/core/roles.f src/core/bytes.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
    src/core/enums.f src/core/exec-vector.f

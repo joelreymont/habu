@@ -292,15 +292,6 @@ words over the expanded stack cells; no runtime header or heap object is created
 Fields may use any signature type, including type variables and parametric types:
 `VALUE-RECORD box value a END-VALUE-RECORD` is a polymorphic one-field record.
 
-Use `result<a,b>` for checked fallible values whose success and failure payloads
-must be separated before use. The public API is the `RESULT` package:
-`RESULT:OK ( a -- result<a,b> )`, `RESULT:ERR ( b -- result<a,b> )`, and
-`RESULT:CASE ( R result<a,b> [ R a -- S ] [ R b -- S ] -- S )`. Always handle
-both branches; the checker rejects treating a result as its ok payload, rejects a
-missing branch quotation, and checks each branch with the refined payload type.
-Syscall wrappers should convert raw return cells once, at the boundary, into
-`result<ptr ...,n>` and keep caller code checked through `RESULT:CASE`.
-
 Enums are checked defining words built on `create ... does>`. Use them for named
 integer/status families instead of hand-maintained numeric drift:
 

@@ -176,8 +176,6 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/structures-effects.f >> "$out"
   printf '\n' >> "$out"
-  cat src/core/result.f >> "$out"
-  printf '\n' >> "$out"
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do

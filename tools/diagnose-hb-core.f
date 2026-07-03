@@ -72,7 +72,6 @@ variable CHECKED
    s" src/core/render.f" PREFIX-FILE
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/structures-effects.f" PREFIX-FILE
-   s" src/core/result.f" PREFIX-FILE
    s" src/core/roles.f" PREFIX-FILE
    s" src/core/bytes.f" PREFIX-FILE
    s" src/habu/layout.f" PREFIX-FILE

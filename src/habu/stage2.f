@@ -31,33 +31,14 @@ s" S2-PATH-BUF" s" -- ptr u8" TRUST
    s" stage2-got" S2-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
 $A0000 constant S2-SOURCE-CAP
-$0 constant S2-MAP-ADDR-ANY
-$3 constant S2-MAP-PROT-RW
 $1002 constant S2-MAP-PRIVATE-ANON
--$1 constant S2-MAP-ANON-FD
-$0 constant S2-MAP-OFF-ZERO
-74 constant S2-MMAP-RC
-
-: SBUF-FIELD ( -- ptr ptr u8 )
-   SBUF 0 ptr-field ;
-
-: SBUF@ ( -- ptr u8 )
-   SBUF-FIELD @ ;
-
-: SBUF! ( ptr u8 -- )
-   SBUF-FIELD ! ;
-
-: S2-MMAP-SOURCE ( -- result<ptr u8,n> )
-   S2-MAP-ADDR-ANY S2-SOURCE-CAP S2-MAP-PROT-RW S2-MAP-PRIVATE-ANON
-   S2-MAP-ANON-FD S2-MAP-OFF-ZERO mmap
-   RESULT:MMAP>BYTES ;
-
-: S2-MMAP-ERR ( n -- )
-   drop s" stage2: source mmap failed" S2-MMAP-RC die ;
+: SBUF@ SBUF @ ;
+s" SBUF@" s" -- ptr u8" TRUST
 
 : S2-ALLOC-SOURCE ( -- )
-   S2-MMAP-SOURCE
-   [: SBUF! ;] [: S2-MMAP-ERR ;] RESULT:CASE ;
+   0 S2-SOURCE-CAP 3 S2-MAP-PRIVATE-ANON -1 0 mmap
+   dup 0 < if s" stage2: source mmap failed" 74 die then
+   SBUF ! ;
 
 : READ-SRC ( -- )
    S2-IN PATH0 0 0 open SFD !

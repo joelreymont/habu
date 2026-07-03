@@ -126,8 +126,7 @@ variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
-variable LPHOOK         variable LPSTRUCTEFF    variable LPRESULT       variable LPHABULAYOUT   variable LPENVBASE
-variable LPINCLUDE
+variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV
 variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPCOMBINATORS
@@ -454,7 +453,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPRESULT       s" src/core/result.f"      PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-LOAD-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-LOAD-ROW
@@ -491,7 +489,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPRESULT       s" src/core/result.f"      PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PATH-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PATH-ROW
@@ -632,7 +629,6 @@ variable LCOLDPFX variable LAPPPROV
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPRESULT       s" src/core/result.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPBYTES        s" src/core/bytes.f"       PFX-PROVIDE-ROW
    PFX-LINUX  LPLINUXTARGET  s" src/os/linux/target.f"  PFX-PROVIDE-ROW
@@ -3468,7 +3464,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPSTRUCTEFF !  LBL LPRESULT !  LBL LPHABULAYOUT !
+   LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !
    LBL LPCOMBINATORS !  LBL LPXREF ! ;

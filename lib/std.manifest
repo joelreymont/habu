@@ -286,10 +286,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	memory	lib/memory.f	word	MEM-64K-SPAN-BYTES	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	round a positive byte need up to a 64K byte span
 1	memory	lib/memory.f	word	MEM-CELLS>BYTES	(count -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	return bytes needed for a count of cells
 1	memory	lib/memory.f	word	MEM-MMAP-RC	(n -- n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	raw anonymous mmap result after size validation
-1	memory	lib/memory.f	word	MEM-MMAP-BYTES	(n -- result<ptr u8,n>)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	return a checked byte-pointer result for an anonymous mmap
-1	memory	lib/memory.f	word	MEM-MMAP-CELLS	(count -- result<ptr a,n>)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	return a checked cell-pointer result for an anonymous mmap
-1	memory	lib/memory.f	word	MEM-MAP-ERR	(n --)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	throw E-MEM-MAP for a failed mmap result branch
-1	memory	lib/memory.f	word	MEM-ALLOC-PTR	(n -- ptr u8)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a typed byte pointer or throw on mmap failure
 1	memory	lib/memory.f	word	MEM-ALLOC-BYTES	(n -- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a byte buffer and return pointer plus capacity
 1	memory	lib/memory.f	word	MEM-ALLOC-CELLS	(count -- ptr a)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a checked cell span and return a typed cell pointer
 1	memory	lib/memory.f	word	MEM-ALLOC-64K-BUFFERS	(n -- ptr u8 n)	lib/memory-test.f	docs/stdlib.md	stdlib-memory	published	allocate a contiguous span sized for n 64K buffers
