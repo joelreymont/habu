@@ -123,6 +123,8 @@
 -3500 constant E-FFI-FIRST
 -3599 constant E-FFI-LAST
 -3500 constant E-FFI-ARITY
+-3501 constant E-FFI-SYNTAX
+-3502 constant E-FFI-DLSYM
 
 \ Tasking/threads: -3600..-3699
 -3600 constant E-TASK-FIRST

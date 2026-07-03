@@ -263,6 +263,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CFIELD: | `ptr a n -- ptr a n` | Byte field definer preserves the layout cursor while creating a byte-pointer accessor; `CREATE`/`DOES>` keeps this as a trusted defining boundary. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | END-STRUCTURE | `ptr a n --` | Sealing a structure consumes the layout cursor and writes the final byte size into the created size word. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | DTC-EVAL | `--` | Audited `evaluate` wrapper for `deftype`: compiles the constructed `TRUSTED: >NAME ( n -- NAME ) ;` / `NAME>N` converter shapes so a user-declared nominal integer gets its explicit no-op identity casts. `evaluate` cannot be checker-typed; each generated converter is a proven identity, so this single boundary covers every deftype-derived pair. | `test/engine-suite.f`, `test/run.f` | src/core/roles.f | 2026-07-03 |
+| FDEF-EVAL | `--` | Audited `evaluate` wrapper for `FFI:`: compiles one generated checked wrapper from an explicit typed effect, resolver word, and C symbol. The generated body performs only role erasure/pointer erasure at the ABI edge, fail-closed `dlsym`, `FFI-ARG!`, `FFI-CALLABI`, and declared result refinement. | `lib/ffi-test.f`, `maki/test.f`, `test/run.f` | lib/ffi.f | 2026-07-03 |
 | >IDX | `n -- idx` | Runtime identity cast from a generic cell to the nominal index role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | IDX>N | `idx -- n` | Runtime identity cast from the nominal index role back to a generic cell; the checker cannot infer nominal role erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | >LEN | `n -- len` | Runtime identity cast from a generic cell to the nominal length role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
@@ -708,6 +709,7 @@ src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
 tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
+lib/ffi.f:FDEF-EVAL stdlib-boundary habu-role-typed-ffi-08f99d18
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1

@@ -11,37 +11,61 @@
 \ Load after the PTX tile vocab, maki/eval.f, lib/ffi.f, and the fs/process libs:
 \   lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f.
 
+require maki/cuda-types.f
+
 \ ---- device gate: run a SAXPY cubin and compare the task golden ----
 create ED-LIB 16 allot  create ED-NM 64 allot  create ED-PATH 64 allot  create ED-KN 32 allot
 variable ED-H variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
 variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
 : ED-SYM ( ptr u8 n -- n )  ED-NM >CSTR  ED-H @ ED-NM DLSYM ;
+
+FFI: ED-CUINIT ( n -- rc ) ED-SYM cuInit FFI;
+FFI: ED-CUDEVICEGET ( ptr a idx -- rc ) ED-SYM cuDeviceGet FFI;
+FFI: ED-CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) ED-SYM cuDevicePrimaryCtxRetain FFI;
+FFI: ED-CUCTXSETCURRENT ( cuda-ctx -- rc ) ED-SYM cuCtxSetCurrent FFI;
+FFI: ED-CUMODULELOAD ( ptr a ptr u8 -- rc ) ED-SYM cuModuleLoad FFI;
+FFI: ED-CUMODULEGETFUNCTION ( ptr a cuda-mod ptr u8 -- rc ) ED-SYM cuModuleGetFunction FFI;
+FFI: ED-CUMEMALLOC ( ptr a len -- rc ) ED-SYM cuMemAlloc_v2 FFI;
+FFI: ED-CUMEMSETD32 ( cuda-devptr n count -- rc ) ED-SYM cuMemsetD32_v2 FFI;
+FFI: ED-CUMEMCPYDTOH ( ptr u8 cuda-devptr len -- rc ) ED-SYM cuMemcpyDtoH_v2 FFI;
+FFI: ED-CUFUNCSETBLOCKSHAPE ( cuda-fn n n n -- rc ) ED-SYM cuFuncSetBlockShape FFI;
+FFI: ED-CUPARAMSETSIZE ( cuda-fn len -- rc ) ED-SYM cuParamSetSize FFI;
+FFI: ED-CUPARAMSETV ( cuda-fn idx ptr u8 len -- rc ) ED-SYM cuParamSetv FFI;
+FFI: ED-CULAUNCHGRID ( cuda-fn n n -- rc ) ED-SYM cuLaunchGrid FFI;
+FFI: ED-CUCTXSYNCHRONIZE ( -- rc ) ED-SYM cuCtxSynchronize FFI;
+FFI: ED-CUMODULEUNLOAD ( cuda-mod -- rc ) ED-SYM cuModuleUnload FFI;
+FFI: ED-CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc ) ED-SYM cuDevicePrimaryCtxRelease FFI;
+
+: ED-CUDA0 ( rc -- )
+   RC>N dup 0 <> if E-MK-GPU throw then
+   drop ;
+
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
    s" libcuda.so.1" ED-LIB >CSTR  ED-LIB RTLD-NOW DLOPEN ED-H !
-   0                       s" cuInit"                   ED-SYM CALL1 drop
-   ED-DEV P>N 0            s" cuDeviceGet"              ED-SYM CALL2 drop
-   ED-CTX P>N ED-DEV @     s" cuDevicePrimaryCtxRetain" ED-SYM CALL2 drop
-   ED-CTX @               s" cuCtxSetCurrent"          ED-SYM CALL1 drop
+   0 ED-CUINIT ED-CUDA0
+   ED-DEV 0 >IDX ED-CUDEVICEGET ED-CUDA0
+   ED-CTX ED-DEV @ >CUDA-DEV ED-CUDEVICEPRIMARYCTXRETAIN ED-CUDA0
+   ED-CTX @ >CUDA-CTX ED-CUCTXSETCURRENT ED-CUDA0
    pa pu ED-PATH >CSTR
-   ED-MOD P>N ED-PATH P>N s" cuModuleLoad"             ED-SYM CALL2 drop
+   ED-MOD ED-PATH ED-CUMODULELOAD ED-CUDA0
    s" SAXPY" ED-KN >CSTR
-   ED-FUNC P>N ED-MOD @ ED-KN P>N s" cuModuleGetFunction" ED-SYM CALL3 drop
-   ED-DX P>N 16           s" cuMemAlloc_v2"   ED-SYM CALL2 drop
-   ED-DY P>N 16           s" cuMemAlloc_v2"   ED-SYM CALL2 drop
-   ED-DX @ $40000000 4    s" cuMemsetD32_v2"  ED-SYM CALL3 drop      \ x = 2.0
-   ED-DY @ 0 4            s" cuMemsetD32_v2"  ED-SYM CALL3 drop      \ y = 0
+   ED-FUNC ED-MOD @ >CUDA-MOD ED-KN ED-CUMODULEGETFUNCTION ED-CUDA0
+   ED-DX 16 >LEN ED-CUMEMALLOC ED-CUDA0
+   ED-DY 16 >LEN ED-CUMEMALLOC ED-CUDA0
+   ED-DX @ >CUDA-DEVPTR $40000000 4 >COUNT ED-CUMEMSETD32 ED-CUDA0      \ x = 2.0
+   ED-DY @ >CUDA-DEVPTR 0 4 >COUNT ED-CUMEMSETD32 ED-CUDA0              \ y = 0
    $40400000 ED-AB !  4 ED-NV !                                      \ a = 3.0, n = 4
-   ED-FUNC @ 256 1 1      s" cuFuncSetBlockShape" ED-SYM CALL4 drop
-   ED-FUNC @ 24           s" cuParamSetSize"  ED-SYM CALL2 drop
-   ED-FUNC @ 0  ED-DX P>N 8  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 8  ED-DY P>N 8  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 16 ED-AB P>N 4  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 20 ED-NV P>N 4  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 1 1          s" cuLaunchGrid"    ED-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" ED-SYM CALL1 drop
-   ED-RBUF P>N ED-DY @ 4  s" cuMemcpyDtoH_v2" ED-SYM CALL3 drop
-   ED-MOD @  s" cuModuleUnload"            ED-SYM CALL1 drop
-   ED-DEV @  s" cuDevicePrimaryCtxRelease" ED-SYM CALL1 drop
+   ED-FUNC @ >CUDA-FN 256 1 1 ED-CUFUNCSETBLOCKSHAPE ED-CUDA0
+   ED-FUNC @ >CUDA-FN 24 >LEN ED-CUPARAMSETSIZE ED-CUDA0
+   ED-FUNC @ >CUDA-FN 0 >IDX  ED-DX 8 >LEN ED-CUPARAMSETV ED-CUDA0
+   ED-FUNC @ >CUDA-FN 8 >IDX  ED-DY 8 >LEN ED-CUPARAMSETV ED-CUDA0
+   ED-FUNC @ >CUDA-FN 16 >IDX ED-AB 4 >LEN ED-CUPARAMSETV ED-CUDA0
+   ED-FUNC @ >CUDA-FN 20 >IDX ED-NV 4 >LEN ED-CUPARAMSETV ED-CUDA0
+   ED-FUNC @ >CUDA-FN 1 1 ED-CULAUNCHGRID ED-CUDA0
+   ED-CUCTXSYNCHRONIZE ED-CUDA0
+   ED-RBUF ED-DY @ >CUDA-DEVPTR 4 >LEN ED-CUMEMCPYDTOH ED-CUDA0
+   ED-MOD @ >CUDA-MOD ED-CUMODULEUNLOAD ED-CUDA0
+   ED-DEV @ >CUDA-DEV ED-CUDEVICEPRIMARYCTXRELEASE ED-CUDA0
    ED-RBUF @ $FFFFFFFF and ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0
 

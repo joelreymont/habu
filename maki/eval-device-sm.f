@@ -10,6 +10,8 @@
 \ collective vocab, lib/ptx/launch.f, maki/eval.f, lib/ffi.f, and the
 \ fs/process libs.
 
+require maki/cuda-types.f
+
 create SM-LIB 16 allot  create SM-NM 64 allot  create SM-PATH 64 allot  create SM-KN 32 allot
 create SM-IN 16 allot   create SM-OUT 16 allot   create SMG 4 cells allot
 variable SM-H variable SM-DEV variable SM-CTX variable SM-MOD variable SM-FUNC
@@ -21,6 +23,27 @@ variable SM-DI variable SM-DO variable SM-KV
    SM-OUT o + c@  SM-OUT o 1 + + c@ 8 lshift or  SM-OUT o 2 + + c@ 16 lshift or  SM-OUT o 3 + + c@ 24 lshift or ;
 : SM-SYM ( ptr u8 n -- n )  SM-NM >CSTR  SM-H @ SM-NM DLSYM ;
 
+FFI: SM-CUINIT ( n -- rc ) SM-SYM cuInit FFI;
+FFI: SM-CUDEVICEGET ( ptr a idx -- rc ) SM-SYM cuDeviceGet FFI;
+FFI: SM-CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) SM-SYM cuDevicePrimaryCtxRetain FFI;
+FFI: SM-CUCTXSETCURRENT ( cuda-ctx -- rc ) SM-SYM cuCtxSetCurrent FFI;
+FFI: SM-CUMODULELOAD ( ptr a ptr u8 -- rc ) SM-SYM cuModuleLoad FFI;
+FFI: SM-CUMODULEGETFUNCTION ( ptr a cuda-mod ptr u8 -- rc ) SM-SYM cuModuleGetFunction FFI;
+FFI: SM-CUMEMALLOC ( ptr a len -- rc ) SM-SYM cuMemAlloc_v2 FFI;
+FFI: SM-CUMEMCPYHTOD ( cuda-devptr ptr u8 len -- rc ) SM-SYM cuMemcpyHtoD_v2 FFI;
+FFI: SM-CUMEMCPYDTOH ( ptr u8 cuda-devptr len -- rc ) SM-SYM cuMemcpyDtoH_v2 FFI;
+FFI: SM-CUFUNCSETBLOCKSHAPE ( cuda-fn n n n -- rc ) SM-SYM cuFuncSetBlockShape FFI;
+FFI: SM-CUPARAMSETSIZE ( cuda-fn len -- rc ) SM-SYM cuParamSetSize FFI;
+FFI: SM-CUPARAMSETV ( cuda-fn idx ptr u8 len -- rc ) SM-SYM cuParamSetv FFI;
+FFI: SM-CULAUNCHGRID ( cuda-fn n n -- rc ) SM-SYM cuLaunchGrid FFI;
+FFI: SM-CUCTXSYNCHRONIZE ( -- rc ) SM-SYM cuCtxSynchronize FFI;
+FFI: SM-CUMODULEUNLOAD ( cuda-mod -- rc ) SM-SYM cuModuleUnload FFI;
+FFI: SM-CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc ) SM-SYM cuDevicePrimaryCtxRelease FFI;
+
+: SM-CUDA0 ( rc -- )
+   RC>N dup 0 <> if E-MK-GPU throw then
+   drop ;
+
 : SM-INIT ( -- )                                   \ input [1,2,3,4] + golden softmax bits
    1.0 F64>F32 SM-IN 0 SM-F32!  2.0 F64>F32 SM-IN 1 SM-F32!
    3.0 F64>F32 SM-IN 2 SM-F32!  4.0 F64>F32 SM-IN 3 SM-F32!
@@ -30,28 +53,28 @@ variable SM-DI variable SM-DO variable SM-KV
 : SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
    1 4 256 PTX-ROW-LAUNCH-CHECK
    s" libcuda.so.1" SM-LIB >CSTR  SM-LIB RTLD-NOW DLOPEN SM-H !
-   0                       s" cuInit"                   SM-SYM CALL1 drop
-   SM-DEV P>N 0            s" cuDeviceGet"              SM-SYM CALL2 drop
-   SM-CTX P>N SM-DEV @     s" cuDevicePrimaryCtxRetain" SM-SYM CALL2 drop
-   SM-CTX @               s" cuCtxSetCurrent"          SM-SYM CALL1 drop
+   0 SM-CUINIT SM-CUDA0
+   SM-DEV 0 >IDX SM-CUDEVICEGET SM-CUDA0
+   SM-CTX SM-DEV @ >CUDA-DEV SM-CUDEVICEPRIMARYCTXRETAIN SM-CUDA0
+   SM-CTX @ >CUDA-CTX SM-CUCTXSETCURRENT SM-CUDA0
    pa pu SM-PATH >CSTR
-   SM-MOD P>N SM-PATH P>N s" cuModuleLoad"             SM-SYM CALL2 drop
+   SM-MOD SM-PATH SM-CUMODULELOAD SM-CUDA0
    s" SOFTMAX_ROWS" SM-KN >CSTR
-   SM-FUNC P>N SM-MOD @ SM-KN P>N s" cuModuleGetFunction" SM-SYM CALL3 drop
-   SM-DI P>N 16           s" cuMemAlloc_v2"   SM-SYM CALL2 drop
-   SM-DO P>N 16           s" cuMemAlloc_v2"   SM-SYM CALL2 drop
-   SM-DI @ SM-IN P>N 16   s" cuMemcpyHtoD_v2" SM-SYM CALL3 drop
+   SM-FUNC SM-MOD @ >CUDA-MOD SM-KN SM-CUMODULEGETFUNCTION SM-CUDA0
+   SM-DI 16 >LEN SM-CUMEMALLOC SM-CUDA0
+   SM-DO 16 >LEN SM-CUMEMALLOC SM-CUDA0
+   SM-DI @ >CUDA-DEVPTR SM-IN 16 >LEN SM-CUMEMCPYHTOD SM-CUDA0
    4 SM-KV !
-   SM-FUNC @ 256 1 1      s" cuFuncSetBlockShape" SM-SYM CALL4 drop
-   SM-FUNC @ 20           s" cuParamSetSize"  SM-SYM CALL2 drop
-   SM-FUNC @ 0  SM-DI P>N 8  s" cuParamSetv"  SM-SYM CALL4 drop
-   SM-FUNC @ 8  SM-DO P>N 8  s" cuParamSetv"  SM-SYM CALL4 drop
-   SM-FUNC @ 16 SM-KV P>N 4  s" cuParamSetv"  SM-SYM CALL4 drop
-   SM-FUNC @ 1 1          s" cuLaunchGrid"    SM-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" SM-SYM CALL1 drop
-   SM-OUT P>N SM-DO @ 16  s" cuMemcpyDtoH_v2" SM-SYM CALL3 drop
-   SM-MOD @  s" cuModuleUnload"            SM-SYM CALL1 drop
-   SM-DEV @  s" cuDevicePrimaryCtxRelease" SM-SYM CALL1 drop ;
+   SM-FUNC @ >CUDA-FN 256 1 1 SM-CUFUNCSETBLOCKSHAPE SM-CUDA0
+   SM-FUNC @ >CUDA-FN 20 >LEN SM-CUPARAMSETSIZE SM-CUDA0
+   SM-FUNC @ >CUDA-FN 0 >IDX  SM-DI 8 >LEN SM-CUPARAMSETV SM-CUDA0
+   SM-FUNC @ >CUDA-FN 8 >IDX  SM-DO 8 >LEN SM-CUPARAMSETV SM-CUDA0
+   SM-FUNC @ >CUDA-FN 16 >IDX SM-KV 4 >LEN SM-CUPARAMSETV SM-CUDA0
+   SM-FUNC @ >CUDA-FN 1 1 SM-CULAUNCHGRID SM-CUDA0
+   SM-CUCTXSYNCHRONIZE SM-CUDA0
+   SM-OUT SM-DO @ >CUDA-DEVPTR 16 >LEN SM-CUMEMCPYDTOH SM-CUDA0
+   SM-MOD @ >CUDA-MOD SM-CUMODULEUNLOAD SM-CUDA0
+   SM-DEV @ >CUDA-DEV SM-CUDEVICEPRIMARYCTXRELEASE SM-CUDA0 ;
 
 : SM-NEAR? ( n n -- bool )  - abs 8 <= ;            \ within 8 ULP (ex2.approx)
 : DEVICE-CORRECT-SM? ( ptr u8 n -- bool )

@@ -325,6 +325,8 @@ points stay listed.
   and fused-vs-unfused kernel comparison for the Habu-PTX column.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
+- `maki/cuda-types.f` — shared nominal CUDA Driver handle roles used by typed
+  FFI bindings.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.

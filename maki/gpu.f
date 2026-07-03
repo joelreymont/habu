@@ -6,6 +6,12 @@
 \ the checked FFI (lib/ffi.f) + F64>F32 (lib/ptx/cg.f). maki -> habu only.
 \ Prereq: cubin at /tmp/saxpy.cubin (tools/ptx/saxpy-cg.f + ptxas).
 
+require maki/cuda-types.f
+require lib/float.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/cg.f
+
 4 constant GN                       \ vector length (demo)
 create GLIB 16 allot
 create GSYM 64 allot
@@ -33,16 +39,37 @@ variable GDX variable GDY variable GABITS variable GNVAR
 : GFFI-OPEN ( -- )  s" libcuda.so.1" GLIB >CSTR  GLIB RTLD-NOW DLOPEN GH ! ;
 : GSY ( ptr u8 n -- n )  GSYM >CSTR  GH @ GSYM DLSYM ;
 
+FFI: CUINIT ( n -- rc ) GSY cuInit FFI;
+FFI: CUDEVICEGET ( ptr a idx -- rc ) GSY cuDeviceGet FFI;
+FFI: CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) GSY cuDevicePrimaryCtxRetain FFI;
+FFI: CUCTXSETCURRENT ( cuda-ctx -- rc ) GSY cuCtxSetCurrent FFI;
+FFI: CUMODULELOAD ( ptr a ptr u8 -- rc ) GSY cuModuleLoad FFI;
+FFI: CUMODULEGETFUNCTION ( ptr a cuda-mod ptr u8 -- rc ) GSY cuModuleGetFunction FFI;
+FFI: CUMEMALLOC ( ptr a len -- rc ) GSY cuMemAlloc_v2 FFI;
+FFI: CUMEMCPYHTOD ( cuda-devptr ptr u8 len -- rc ) GSY cuMemcpyHtoD_v2 FFI;
+FFI: CUMEMCPYDTOH ( ptr u8 cuda-devptr len -- rc ) GSY cuMemcpyDtoH_v2 FFI;
+FFI: CUFUNCSETBLOCKSHAPE ( cuda-fn n n n -- rc ) GSY cuFuncSetBlockShape FFI;
+FFI: CUPARAMSETSIZE ( cuda-fn len -- rc ) GSY cuParamSetSize FFI;
+FFI: CUPARAMSETV ( cuda-fn idx ptr u8 len -- rc ) GSY cuParamSetv FFI;
+FFI: CULAUNCHGRID ( cuda-fn n n -- rc ) GSY cuLaunchGrid FFI;
+FFI: CUCTXSYNCHRONIZE ( -- rc ) GSY cuCtxSynchronize FFI;
+FFI: CUMODULEUNLOAD ( cuda-mod -- rc ) GSY cuModuleUnload FFI;
+FFI: CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc ) GSY cuDevicePrimaryCtxRelease FFI;
+
+: G-CUDA0 ( rc -- )
+   RC>N dup 0 <> if E-MK-GPU throw then
+   drop ;
+
 : G-SETUP ( -- )
    GFFI-OPEN
-   0                    s" cuInit"                   GSY CALL1 drop
-   GDEV P>N 0           s" cuDeviceGet"              GSY CALL2 drop
-   GCTX P>N GDEV @      s" cuDevicePrimaryCtxRetain" GSY CALL2 drop
-   GCTX @              s" cuCtxSetCurrent"           GSY CALL1 drop
+   0 CUINIT G-CUDA0
+   GDEV 0 >IDX CUDEVICEGET G-CUDA0
+   GCTX GDEV @ >CUDA-DEV CUDEVICEPRIMARYCTXRETAIN G-CUDA0
+   GCTX @ >CUDA-CTX CUCTXSETCURRENT G-CUDA0
    s" /tmp/saxpy.cubin" GPATH >CSTR
-   GMOD P>N GPATH P>N   s" cuModuleLoad"             GSY CALL2 drop
+   GMOD GPATH CUMODULELOAD G-CUDA0
    s" SAXPY" GKN >CSTR
-   GFUNC P>N GMOD @ GKN P>N s" cuModuleGetFunction"  GSY CALL3 drop ;
+   GFUNC GMOD @ >CUDA-MOD GKN CUMODULEGETFUNCTION G-CUDA0 ;
 
 \ load element i of x and y from Habu floats into the host f32 buffers
 : G-PUT ( r r n -- ) {: xv yv ix :}
@@ -51,24 +78,24 @@ variable GDX variable GDY variable GABITS variable GNVAR
 
 : G-LAUNCH ( r -- )  {: a :}                          \ a = scalar; x,y already in GHX/GHY
    GN 4 *  {: bytes :}
-   GDX P>N bytes        s" cuMemAlloc_v2"   GSY CALL2 drop
-   GDY P>N bytes        s" cuMemAlloc_v2"   GSY CALL2 drop
-   GDX @ GHX P>N bytes  s" cuMemcpyHtoD_v2" GSY CALL3 drop
-   GDY @ GHY P>N bytes  s" cuMemcpyHtoD_v2" GSY CALL3 drop
+   GDX bytes >LEN CUMEMALLOC G-CUDA0
+   GDY bytes >LEN CUMEMALLOC G-CUDA0
+   GDX @ >CUDA-DEVPTR GHX bytes >LEN CUMEMCPYHTOD G-CUDA0
+   GDY @ >CUDA-DEVPTR GHY bytes >LEN CUMEMCPYHTOD G-CUDA0
    a F64>F32 GABITS !  GN GNVAR !
-   GFUNC @ 256 1 1      s" cuFuncSetBlockShape" GSY CALL4 drop
-   GFUNC @ 24           s" cuParamSetSize"  GSY CALL2 drop
-   GFUNC @ 0  GDX P>N 8    s" cuParamSetv"  GSY CALL4 drop
-   GFUNC @ 8  GDY P>N 8    s" cuParamSetv"  GSY CALL4 drop
-   GFUNC @ 16 GABITS P>N 4 s" cuParamSetv"  GSY CALL4 drop
-   GFUNC @ 20 GNVAR P>N 4  s" cuParamSetv"  GSY CALL4 drop
-   GFUNC @ 1 1          s" cuLaunchGrid"    GSY CALL3 drop
-   0                    s" cuCtxSynchronize" GSY CALL1 drop
-   GHY P>N GDY @ bytes  s" cuMemcpyDtoH_v2" GSY CALL3 drop ;  \ ( dstHost srcDevice n )
+   GFUNC @ >CUDA-FN 256 1 1 CUFUNCSETBLOCKSHAPE G-CUDA0
+   GFUNC @ >CUDA-FN 24 >LEN CUPARAMSETSIZE G-CUDA0
+   GFUNC @ >CUDA-FN 0 >IDX  GDX 8 >LEN CUPARAMSETV G-CUDA0
+   GFUNC @ >CUDA-FN 8 >IDX  GDY 8 >LEN CUPARAMSETV G-CUDA0
+   GFUNC @ >CUDA-FN 16 >IDX GABITS 4 >LEN CUPARAMSETV G-CUDA0
+   GFUNC @ >CUDA-FN 20 >IDX GNVAR 4 >LEN CUPARAMSETV G-CUDA0
+   GFUNC @ >CUDA-FN 1 1 CULAUNCHGRID G-CUDA0
+   CUCTXSYNCHRONIZE G-CUDA0
+   GHY GDY @ >CUDA-DEVPTR bytes >LEN CUMEMCPYDTOH G-CUDA0 ;
 
 : G-RELEASE ( -- )
-   GMOD @  s" cuModuleUnload"            GSY CALL1 drop
-   GDEV @  s" cuDevicePrimaryCtxRelease" GSY CALL1 drop ;
+   GMOD @ >CUDA-MOD CUMODULEUNLOAD G-CUDA0
+   GDEV @ >CUDA-DEV CUDEVICEPRIMARYCTXRELEASE G-CUDA0 ;
 
 \ result element i (f32 bits) after the launch
 : G-RESULT ( n -- n )  GHY swap F32@ ;

@@ -302,6 +302,21 @@ calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 `_dlopen` and `_dlsym`; the same checked `DLOPEN`/`DLSYM` words read those
 resolved slots.
 
+Prefer `FFI:` for named bindings. It generates a checked wrapper from a declared
+stack effect, erases nominal roles/pointers only at the C ABI edge, resolves the
+symbol once through a caller-owned resolver word, and throws on a missing symbol.
+Syntax:
+
+```forth
+FFI: WORD ( typed args -- typed result ) RESOLVER c_symbol FFI;
+```
+
+`RESOLVER` has effect `( ptr u8 n -- n )`; it receives the symbol text and
+returns the function pointer. A CUDA binding can therefore say
+`FFI: CUDEVICEGET ( ptr a idx -- rc ) CUDA-SYM cuDeviceGet FFI;`, and a caller
+must pass an `idx`, not an arbitrary `n`. `FFI:DEFINE` is the qualified package
+entry; `FFI:` is the global syntax alias used by source files.
+
 ```forth
 FFI-ARG!          ( n n -- )
 FFI-PTR-ARG!      ( ptr a n -- )
@@ -331,6 +346,8 @@ FFI-CALLABI-R     ( n n -- r )
 RTLD-NOW          ( -- n )
 DLOPEN            ( ptr u8 n -- n )
 DLSYM             ( n ptr u8 -- n )
+FFI:DEFINE        ( -- )
+FFI:              ( -- )
 ```
 
 ## Core Bytes

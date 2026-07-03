@@ -78,6 +78,10 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Keep `roles.f` TRUST site rows stable:** inserting `DEFLINEAR` above the
   trusted role casts shifted every manifest site. Put new definers below the
   audited cast block unless the manifest is deliberately re-audited.
+- **Typed FFI bindings need a resolver word, not a global handle:** `FFI:` can
+  generate checked wrappers while CUDA/libc/tasking each keep their own
+  `DLSYM` policy. The wrapper should cache the resolved symbol, throw on zero,
+  erase roles only at `FFI-ARG!`, and refine the returned cell to `rc`/nominal.
 - **Destructure value records before typed locals:** `ptxir-node` fields are
   hidden `field<...>` tokens, so `{: op:n :}` rejects until `PTXIR-NODE>` turns
   the record back into raw field types.

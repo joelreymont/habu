@@ -3,6 +3,7 @@
 
 require lib/test.f
 require lib/ffi.f
+require test/checker-assert.f
 
 create FFI-T-LIBC   108 c, 105 c, 98 c, 99 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libc.so.6"
 create FFI-T-LIBM   108 c, 105 c, 98 c, 109 c, 46 c, 115 c, 111 c, 46 c, 54 c, 0 c, \ "libm.so.6"
@@ -19,6 +20,7 @@ create FFI-T-HELP   104 c, 101 c, 108 c, 112 c, 0 c,                            
 create FFI-T-CSTR-SRC 119 c, 111 c, 114 c, 108 c, 100 c,                           \ "world" (no NUL)
 create FFI-T-CSTR-DST 8 allot
 create FFI-T-X8-OUT 1 cells allot
+create FFI-T-SYM-BUF 64 allot
 
 variable FFI-T-LIB
 variable FFI-T-MATH
@@ -31,8 +33,25 @@ variable FFI-T-MATH
    FFI-T-LIBM ;
 : FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH RTLD-NOW DLOPEN ;
 : FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name DLSYM ;
+: FFI-T-SYM$ ( ptr u8 n -- n ) {: name:ptr nameu:n :}
+   name nameu FFI-T-SYM-BUF >CSTR
+   FFI-T-LIB @ FFI-T-SYM-BUF DLSYM ;
 : FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH RTLD-NOW DLOPEN ;
 : FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name DLSYM ;
+
+deftype ffi-dev
+deftype ffi-ctx
+
+FFI: FFI-T-STRLEN$ ( ptr u8 -- n ) FFI-T-SYM$ strlen FFI;
+FFI: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n ) FFI-T-SYM$ strncmp FFI;
+FFI: FFI-T-GETPID$ ( -- n ) FFI-T-SYM$ getpid FFI;
+FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
+
+: FFI-T-CHECK-PASSES ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! -1 T= ;
+
+: FFI-T-CHECK-REJECTS ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's
 \ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
@@ -70,14 +89,22 @@ variable FFI-T-MATH
    FFI-T-STRLEN FFI-T-SYM 0 T<>                   \ dlsym resolved strlen
    FFI-T-SQRT FFI-T-MSYM 0 T<>
    FFI-T-HELLO P>N  FFI-T-STRLEN FFI-T-SYM CALL1   5 T=   \ strlen("hello") == 5
+   FFI-T-HELLO FFI-T-STRLEN$ 5 T=                 \ generated typed wrapper
 
    FFI-T-HELLO P>N FFI-T-HELP P>N 3  FFI-T-STRNCMP FFI-T-SYM CALL3  0 T=  \ strncmp("hello","help",3)==0
    FFI-T-HELLO P>N FFI-T-HELP P>N 4  FFI-T-STRNCMP FFI-T-SYM CALL3  0 T<> \ first 4 differ ('l' vs 'p')
+   FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
+   FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
 
    FFI-T-GETPID FFI-T-SYM CALL0  0 T<>            \ getpid() > 0 (non-zero)
+   FFI-T-GETPID$ 0 T<>
 
    FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST >CSTR          \ build "world\0" then strlen==5
    FFI-T-CSTR-DST P>N  FFI-T-STRLEN FFI-T-SYM CALL1  5 T=
+   FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
+
+   s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
+   s" FFI-T-ROLE-BAD ( ffi-dev -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-REJECTS
 
    \ FFI-CALLN with INTERLEAVED resolve: fill the arg, THEN resolve via DLSYM.
    \ DLSYM uses its own FFI-DLBUF, so slot 0 survives -> strlen("hello")==5.
