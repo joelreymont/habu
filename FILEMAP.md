@@ -320,6 +320,12 @@ points stay listed.
   inside package `TEST`.
 - `lib/test/suite-test.f` — focused package-scoped coverage for `TEST:*`
   setup/teardown hooks, groups, tests, stdin tests, filters, and argument feeds.
+- `lib/test/src-shape.f` — shared `package SHAPE` source-shape assertions: LOAD
+  auto-sizes an OS-backed buffer to a whole source file (fail-closed CHECK-FIT
+  diagnostic above the ceiling), then HAS?/MUST-HAVE/MUST-LACK/COUNT=/COUNT
+  assert its shape. Removes the divergent per-test CAP/BUF/READ-ALL machinery.
+- `lib/test/src-shape-test.f` — focused coverage for the source-shape helper:
+  fail-closed CHECK-FIT, auto-sized LOAD roundtrip, and HAS?/COUNT assertions.
 - `tools/ptx/cuda-launch.f`, `tools/ptx/softmax-launch.f`, and
   `tools/ptx/softmax-gradcheck.f` — Orin CUDA Driver proofs for launch,
   softmax, and finite-difference gradient checking.

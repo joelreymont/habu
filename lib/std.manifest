@@ -739,6 +739,15 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertions plus TEST package suite framework and final report policy
 1	test-assert	lib/test/assert.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertion primitives loaded by the test facade
 1	test-suite	lib/test/suite.f	module			lib/test/suite-test.f	docs/stdlib.md	stdlib-test	active	TEST package suite group test framework loaded by the test facade
+1	test-src-shape	lib/test/src-shape.f	module			lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	shared source-shape assertions that auto-size a whole-file buffer and assert its shape
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:CHECK-FIT	(ptr u8 n n n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	fail closed with a file/size diagnostic when a source would exceed the buffer cap
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:LOAD	(ptr u8 n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	read a whole source file into an auto-sized OS-backed buffer
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:TEXT	(-- ptr u8 n)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	return the currently loaded source bytes
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:HAS?	(ptr u8 n -- bool)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	true when the loaded source contains the needle
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:COUNT	(ptr u8 n -- n)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	count needle occurrences in the loaded source
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:MUST-HAVE	(ptr u8 n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	assert the loaded source contains the needle
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:MUST-LACK	(ptr u8 n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	assert the loaded source lacks the needle
+1	test-src-shape	lib/test/src-shape.f	word	SHAPE:COUNT=	(ptr u8 n n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	assert needle occurrence count in the loaded source
 1	test	lib/test/assert.f	word	T-RESET	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	reset assertion counters
 1	test	lib/test/assert.f	word	T-CASES	(-- n)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	return assertion case count
 1	test	lib/test/assert.f	word	T-FAILURES	(-- n)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	return assertion failure count

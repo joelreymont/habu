@@ -269,6 +269,7 @@ TEST:SUITE test-stdlib
    lib/test/suite-test.f
    lib/test/snap-test.f
    lib/test/record-test.f
+   lib/test/src-shape-test.f
 TEST:END-SUITE
 
 TEST:SUITE property-stdlib
