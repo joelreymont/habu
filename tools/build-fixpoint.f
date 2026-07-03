@@ -703,13 +703,11 @@ variable BF-FORCE
    BF-TARGET-UNKNOWN ;
 
 : BF-APPEND-SNAP-REPL ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-REPL-TERM
    out outu s" src/habu/repl.f" BF-APPEND-SOURCE
    out outu s" src/habu/debug-watch.f" BF-APPEND-SOURCE
    out outu s" src/habu/stepper.f" BF-APPEND-SOURCE
-   out outu s" src/habu/debug.f" BF-APPEND-SOURCE
-   out outu BF-APPEND-FRESH-CHECK-HOOK ;
+   out outu s" src/habu/debug.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-SNAP-MARK ( ptr u8 n -- )
    s" : SNAP-TAIL-MARK ( -- ) ;" BF-APPEND-LINE ;

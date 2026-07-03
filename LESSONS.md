@@ -210,6 +210,11 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Try a checked factor before new trust:** `FS-BYTE-OFFSET` looked like it
   needed a primitive, but `: BYTE+ ( ptr u8 n -- ptr u8 ) + ;` certified against
   existing pointer arithmetic and let the trust row disappear.
+- **Removing a `TRUST` site also removes its inventory class row:** typing
+  `src/habu/repl.f`'s `DATAB` and deleting the `0 set-check` REPL append wrapper
+  left a stale `trusted-inventory-classes` row, so the full suite failed only in
+  `native stdlib lint tools`. Run `tools/trusted-inventory-test.f` whenever a
+  trusted boundary disappears.
 - **Split generated unchecked spans by evidence:** `build-fixpoint` could keep
   `rt.f`, `crash.f`, `image-bytes.f`, and `regalloc.f` checked; only target
   image/sign, `habu1/prof`, and `jit/habu2` still need the raw emitter boundary.

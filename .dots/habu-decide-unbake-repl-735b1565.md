@@ -431,9 +431,13 @@ unsafe:
   (write [xt=cp+off][end][namelen|flags][name] at DBASE+NDICT*DREC, then
   `NDICT +1 ; LHIDXADD` PER record — the SAME incremental path runtime `:` uses,
   habu2.f:1541 — so no full LHIDXBUILD needed), advance CP, set seed-done, then
-  point INP/INE at a tiny baked install-tail source (` 0 set-check BPW-INSTALL
-  INSTALL S-INSTALL ' HOOK set-check `) and fall back into LMAIN so the top-level
-  REPL installs run and find the seeded words. Runs AFTER EM-DATA-INIT, so
+  point INP/INE at the tiny checked install-tail source (` BPW-INSTALL INSTALL
+  S-INSTALL `) and fall back into LMAIN so the top-level REPL installs run and
+  find the seeded words. Do not wrap this tail in `0 set-check` or add a hook
+  manifest row: `repl.f` now uses a typed `defer REPL-READ ( -- ptr u8 n )`,
+  installs the fixed `REPLH-CELL` bridge through `[: REPL-READ ;] REPLH!`, and
+  `INSTALL`/`S-INSTALL` retarget that vector with checked `is` assignments.
+  `BPW-INSTALL` is checked fixed-cell setup. Runs AFTER EM-DATA-INIT, so
   x13/x14/x15 (argc/argv/envp) are already stored -> the M1 register ban is
   relaxed here (still avoid x18/x19/x20 DATA base). One-time flag = a DATA cell.
 

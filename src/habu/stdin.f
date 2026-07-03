@@ -59,13 +59,11 @@ s" HB@" s" -- ptr u8" TRUST
 
 : READ-REPL ( -- )
    here HB !  HMAX allot  0 HL !
-   s" 0 set-check" HLINE
    READ-REPL-TARGET
    REPL-SRC PATH0 RD-1
    WATCH-SRC PATH0 RD-1
    STEP-SRC PATH0 RD-1
    DBG-SRC PATH0 RD-1
-   s" ' HOOK set-check" HLINE
    HL @ 2 > 0= IF s" hb: repl/stepper sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 

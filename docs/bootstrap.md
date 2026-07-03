@@ -107,7 +107,9 @@ After `bin/hb` exists, do not use Gforth for normal work:
 
 ```sh
 bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
-  lib/process.f lib/process-argv.f lib/process-env.f lib/codesign.f \
+  lib/vector.f lib/process.f lib/process-argv.f lib/process-env.f \
+  lib/process-fork.f lib/source.f lib/build.f lib/codesign.f \
+  lib/content-key.f tools/date.f \
   tools/build-fixpoint.f tools/build-fixpoint-main.f -- install
 ```
 

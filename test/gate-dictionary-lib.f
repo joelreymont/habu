@@ -933,6 +933,12 @@ variable GD-START-NS
    s" : GD-XV-INSTALL-FIVE ( -- ) [: GD-XV-FIVE ;] is GD-XV-ACTION ;" GE-SRC-LINE
    s" : GD-XV-CALL ( -- i64 ) GD-XV-INSTALL-FIVE GD-XV-ACTION ;" GE-SRC-LINE ;
 
+: GD-EXEC-VECTOR-READER-CHECK-BODY ( -- )
+   s" defer GD-XV-READER ( -- ptr u8 n )" GE-SRC-LINE
+   s" : GD-XV-LINE ( -- ptr u8 n ) 0 script-argv$ ;" GE-SRC-LINE
+   s" : GD-XV-ENABLE ( -- ) [: GD-XV-LINE ;] is GD-XV-READER ;" GE-SRC-LINE
+   s" : GD-XV-READ ( -- ptr u8 n ) GD-XV-ENABLE GD-XV-READER ;" GE-SRC-LINE ;
+
 : GD-EXEC-VECTORS ( -- )
    GE-HB-RESET
    GD-EXEC-VECTOR-SOURCE
@@ -981,10 +987,13 @@ variable GD-START-NS
    s" : GD-XV-BAD-TICK-B ( -- ) ['] GD-XV-FIVE-B is GD-XV-ACTION-B ;" GE-SRC-LINE
    s" : GD-XV-NOT-DEFER-C ( -- ) ;" GE-SRC-LINE
    s" : GD-XV-BAD-TARGET-C ( -- ) [: ;] is GD-XV-NOT-DEFER-C ;" GE-SRC-LINE
+   s" defer GD-XV-READER-D ( -- ptr u8 n )" GE-SRC-LINE
+   s" : GD-XV-BAD-READER-D ( -- ) [: 1 ;] is GD-XV-READER-D ;" GE-SRC-LINE
    s" check.f rejects execution vector misuse batch" GD-CHECK-BAD-ALL
    s" gd-xv-bad-a" s" check.f rejects effect-mismatched execution vector assignment" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-tick-b" s" check.f rejects raw xt execution vector assignment" GE-EXPECT-ERR-HAS
    s" gd-xv-bad-target-c" s" check.f rejects non-defer execution vector target" GE-EXPECT-ERR-HAS
+   s" gd-xv-bad-reader-d" s" check.f rejects reader-shaped effect mismatch" GE-EXPECT-ERR-HAS
    GE-SRC-RESET
    s" : GD-XV-NOT-DEFER ( -- ) ;" GE-SRC-LINE
    s" : GD-XV-BAD-TARGET ( -- ) [: ;] is GD-XV-NOT-DEFER ;" GE-SRC-LINE
@@ -1072,6 +1081,7 @@ variable GD-START-NS
    GD-PACKAGE-NORET-GOOD-BODY
    GD-EXPLICIT-REDEF-CHECK-BODY
    GD-EXEC-VECTOR-CHECK-BODY
+   GD-EXEC-VECTOR-READER-CHECK-BODY
    GD-EXEC-VECTOR-PACKAGE-CHECK-BODY
    GD-CASE-BODY
    GD-PARSING-CHECK-BODY

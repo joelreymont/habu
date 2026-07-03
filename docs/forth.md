@@ -556,8 +556,11 @@ address arithmetic at the public boundary.
   effect exactly matches the deferred word's declared effect. Do not write
   `variable ACTION`/`@ execute` dispatch tables or `['] IMPL is ACTION`; raw xt
   storage loses the effect. Calling an unset deferred word fails closed with the
-  execution-vector error. `@EXECUTE` is not a general replacement for `defer`
-  until its zero no-op behavior has a checked stack-effect model.
+  execution-vector error. If native engine state needs one fixed callback cell,
+  store a checked vector bridge there once (`[: ACTION ;] CELL !`) and change the
+  implementation only through `[: IMPL ;] is ACTION`; do not store raw
+  implementations into the engine cell. `@EXECUTE` is not a general replacement
+  for `defer` until its zero no-op behavior has a checked stack-effect model.
 - **New type tokens need a checker-only bootstrap stage.** Old `bin/hb` rejects
   unknown stack-comment tokens before checked source can use them. Add parser,
   renderer, and `CC-*` checker support, refresh the native binary, then use the

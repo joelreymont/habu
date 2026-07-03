@@ -10,8 +10,8 @@
 \ ^K kill-to-end, ^C cancel line, ^D on an empty line = EOF, and a 16-line
 \ history ring on up/down.
 
-data-base constant DATAB        \ the DATA region's fixed VA
-s" DATAB" s" -- ptr a" TRUST
+: DATAB ( -- ptr a )
+   data-base ;
 
 create TIOB0 80 allot           \ original (canonical) termios, saved at INSTALL
 create TIOB 80 allot            \ working termios
@@ -22,6 +22,8 @@ variable LLEN  variable LPOS    \ line length, cursor
 variable HN  variable HV        \ history count, browse index
 variable HS                     \ history slot scratch
 variable DONE                   \ 0 editing, 1 accepted, 2 eof
+
+defer REPL-READ ( -- ptr u8 n )
 
 : HS-FIELD ( -- ptr ptr u8 )
    HS 0 ptr-field ;
@@ -43,12 +45,18 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
    x 16 rshift $FF and a 2 + c!
    x 24 rshift $FF and a 3 + c! ;
 
+: TIO-LFLAG-U8 ( -- ptr u8 )
+   TIOB HBR-LFLAG-OFF + ;
+
+: TIO-LFLAG-CELL ( -- ptr a )
+   TIOB HBR-LFLAG-OFF + ;
+
 : TIO-LFLAG@ ( -- n )
-   TIOB HBR-LFLAG-OFF + HBR-LFLAG-32? IF TIO32@ ELSE @ THEN ;
+   HBR-LFLAG-32? IF TIO-LFLAG-U8 TIO32@ ELSE TIO-LFLAG-CELL @ THEN ;
 
 : TIO-LFLAG! ( n -- ) {: x :}
-   HBR-LFLAG-32? IF x TIOB HBR-LFLAG-OFF + TIO32! exit THEN
-   x TIOB HBR-LFLAG-OFF + ! ;
+   HBR-LFLAG-32? IF x TIO-LFLAG-U8 TIO32! exit THEN
+   x TIO-LFLAG-CELL ! ;
 
 : TTY? ( -- bool )  0 HBR-TIO-GET TIOB ioctl 0 = ;
 
@@ -141,8 +149,18 @@ variable DONE                   \ 0 editing, 1 accepted, 2 eof
    RAW-OFF
    DONE @ 2 = IF NULL$ ELSE HSAVE  LBUF LLEN @ THEN ;
 
+: REPLH-PTR ( -- ptr a )
+   DATAB REPLH-CELL + ;
+
+: REPLH! ( [ -- ptr u8 n ] -- )
+   REPLH-PTR ! ;
+
+: REPL-ENABLE ( -- )
+   [: REPL-READ ;] REPLH! ;
+
 : INSTALL ( -- )
    TTY? IF
       0 HBR-TIO-GET TIOB0 ioctl drop
-      ['] RD-LINE DATAB REPLH-CELL + ! THEN ;
+      [: RD-LINE ;] is REPL-READ
+      REPL-ENABLE THEN ;
 INSTALL

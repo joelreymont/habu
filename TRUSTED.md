@@ -72,7 +72,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | linux-stat-fix | `n --` | Linux stat syscall layout shim copies the kernel `mode` and `size` fields into the engine's portable `stat64` offsets; raw field writes are outside checker inference. | `lib/fs-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-27 |
 | emit-prims | `--` | Emits the engine's whole primitive table as raw ARM64. | `test/run.f` | src/habu/habu1.f | 2026-06-27 |
 | emit-fp-prims | `--` | Emits the floating-point prim table as raw asm via FPRIM-L. | `test/run.f` | src/habu/habu1.f | 2026-06-27 |
-| DATAB | `-- ptr a` | Baked REPL/debug support needs the live DATA base before checked layout accessors are loaded; fixed header access is a native engine boundary. | `test/proc-pty.f`, `test/run.f` | src/habu/repl.f | 2026-06-25 |
 | BPW-TAB | `-- ptr ptr n` | Watch-table storage is dictionary data whose cells hold watched DATA pointers; the checker cannot infer this created table's pointee role. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
 | BPW-PRINT-ADDR | `ptr n --` | Debug watch printer intentionally displays a raw cell address; formatting a pointer through `.` is a REPL/debug boundary. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
 | BPW-DATA-CELL | `n -- ptr n` | Converts a fixed DATA cell offset to a typed numeric-cell address for watch registration. | `test/proc-pty.f`, `test/gate-debug.f`, `test/run.f` | src/habu/debug-watch.f | 2026-06-25 |
@@ -652,7 +651,6 @@ src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436 9
-src/habu/repl.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436 10
 src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3

@@ -69,8 +69,10 @@ Use checked deferred words for late-bound callbacks and backend hooks:
 `defer ACTION ( effect )` declares the stable call surface, and checked code
 installs an implementation with `[: IMPL ;] is ACTION`. Do not model dispatch as
 `variable`/`@ execute` or raw `[']` storage; the checker cannot prove those xt
-cells preserve the declared effect. An unset deferred word exits with the
-execution-vector error instead of silently jumping through zero.
+cells preserve the declared effect. For a fixed native callback cell, store one
+checked vector bridge in the cell and retarget the vector with `is`. An unset
+deferred word exits with the execution-vector error instead of silently jumping
+through zero.
 
 ## Handle Representation
 
