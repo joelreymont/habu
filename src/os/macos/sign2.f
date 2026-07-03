@@ -4,10 +4,18 @@
 \ (v0x20400, adhoc, SHA-256 page hashes). Operates on MBUF/MLEN/LE-OFF in place.
 \ Needs sha256.fs + macho.fs. Signature ints BIG-endian; header patches LE.
 variable SIGA  variable SIGU
-: SIGA@ ( -- ptr u8 ) SIGA @ ;
-s" SIGA@" s" -- ptr u8" TRUST
+: SIGA-FIELD ( -- ptr ptr u8 )
+   SIGA 0 ptr-field ;
 
-: SET-SIGID ( ptr u8 n -- ) {: a:ptr u :}  a SIGA !  u SIGU ! ;
+: SIGA@ ( -- ptr u8 )
+   SIGA-FIELD @ ;
+
+: SIGA! ( ptr u8 -- )
+   SIGA-FIELD ! ;
+
+: SET-SIGID ( ptr u8 n -- ) {: a:ptr u:n :}
+   a SIGA!
+   u SIGU ! ;
 
 : SIG-IDLEN ( -- n )  SIGU @ 1 + ;
 $1D       constant LC-CODE-SIG

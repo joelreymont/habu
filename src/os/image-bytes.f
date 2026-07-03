@@ -13,8 +13,8 @@ $1002 constant M-MAP-PRIVATE-ANON
 variable MBUF-A
 variable MP
 variable MLEN
-PTR-VARIABLE M-A
-PTR-VARIABLE M-SRC
+variable M-A
+variable M-SRC
 variable M-N
 variable M-O
 s" MLEN" s" -- ptr n" TRUST
@@ -33,14 +33,29 @@ s" MBUF" s" -- ptr u8" TRUST
 
 : MP@ ( -- ptr u8 ) MP @ ;
 
-: M-A@ ( -- ptr u8 ) M-A @ ;
+: M-A-FIELD ( -- ptr ptr u8 )
+   M-A 0 ptr-field ;
 
-: M-SRC@ ( -- ptr u8 ) M-SRC @ ;
+: M-SRC-FIELD ( -- ptr ptr u8 )
+   M-SRC 0 ptr-field ;
+
+: M-A@ ( -- ptr u8 )
+   M-A-FIELD @ ;
+
+: M-SRC@ ( -- ptr u8 )
+   M-SRC-FIELD @ ;
+
+: M-A! ( ptr u8 -- )
+   M-A-FIELD ! ;
+
+: M-SRC! ( ptr u8 -- )
+   M-SRC-FIELD ! ;
 
 : M-O@ ( -- off ) M-O @ ;
 s" M-O@" s" -- off" TRUST
 
-TRUSTED: M-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: M-BYTE+ ( ptr u8 n -- ptr u8 )
+   + ;
 
 : M-BYTE@ ( ptr u8 n -- n )
    M-BYTE+ c@ ;
@@ -108,7 +123,7 @@ create M-FAIL-NL 1 allot
 
 : M-BYTES-LEN ( ptr u8 len -- )
    dup M-CHECK-ROOM
-   LEN>N M-N ! M-SRC !
+   LEN>N M-N ! M-SRC!
    0 begin dup M-N @ < while
       dup M-SRC@ swap M-BYTE+ c@ IMG-M8
       1 +
@@ -142,7 +157,7 @@ create M-FAIL-NL 1 allot
    swap 3 M-BYTE@ 24 lshift or ;
 
 : M-LE32! ( n off -- )
-   M-ADDR M-A ! M-N !
+   M-ADDR M-A! M-N !
    M-N @ $FF and M-A@ c!
    M-N @ 8 rshift $FF and M-A@ 1 M-BYTE+ c!
    M-N @ 16 rshift $FF and M-A@ 2 M-BYTE+ c!
@@ -182,7 +197,7 @@ variable MBC
    $FFFFFFFF and M-BE32 ;
 
 : M-BE-BYTES-LEN ( ptr u8 len -- )
-   LEN>N M-N ! M-SRC !
+   LEN>N M-N ! M-SRC!
    0 begin dup M-N @ < while
       dup M-SRC@ swap M-BYTE+ c@ M-BE8
       1 +

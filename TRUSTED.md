@@ -419,7 +419,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | RSP | `-- ptr n` | Treeshaker reachability scan cursor cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | RTS | `-- ptr n` | Treeshaker reachability-token-start cell is a raw variable used by checked reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | TU | `-- ptr n` | Treeshaker current-token length cell is a raw variable used by checked scanner code. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| SIGA@ | `-- ptr u8` | Reads the code-signing identifier pointer stored in a raw variable. | `test/run.f` | src/os/macos/sign2.f | 2026-06-16 |
 | HB@ | `-- ptr u8` | Reads the stdin-engine baked-source buffer pointer stored in a raw variable. | `test/run.f` | src/habu/stdin.f | 2026-06-16 |
 | BLD-PB@ | `-- ptr u8` | Reads the standalone-build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/build.f | 2026-06-24 |
 | CHECK-BODY | `ptr u8 n -- n` | Shared source pre-verification recursively invokes the checker on an assembled definition body and renders the checker-owned uncheckable diagnostic before returning the verdict; recursive checker invocation and diagnostic-state access are the explicit verifier boundary. | `tools/hb-build-test.f`, `tools/check-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-01 |
@@ -547,7 +546,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | TMP-PATH-COPY-SRC | `ptr u8 n --` | Copies a script path suffix into the fixed target temp-path scratch using raw byte offsets. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | M-O@ | `-- off` | Reads the image-byte writer offset scratch cell and preserves its nominal `off` role. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f | 2026-06-30 |
-| M-BYTE+ | `ptr u8 n -- ptr u8` | Refines image-buffer byte-pointer arithmetic for executable image emission. | `tools/image-bytes-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/os/image-bytes.f | 2026-06-30 |
 
 ## Ratchet baseline
 
@@ -670,12 +668,11 @@ src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
 src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
 src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
-src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 4
+src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
 src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9
 src/os/macos/macho.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/os/macos/sign2.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436 7
 tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
