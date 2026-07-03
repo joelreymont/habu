@@ -69,22 +69,22 @@ variable BFR-SU
    + c@ ;
 s" BFR-BYTE@" s" ptr u8 n -- u8" TRUST
 
-: BFR-A@ ( -- ptr u8 )
+TRUSTED: BFR-A@ ( -- ptr u8 )
    BFR-A @ ;
 
-: BFR-B@ ( -- ptr u8 )
+TRUSTED: BFR-B@ ( -- ptr u8 )
    BFR-B @ ;
 
-: BFR-SN@ ( -- ptr u8 )
+TRUSTED: BFR-SN@ ( -- ptr u8 )
    BFR-SN @ ;
 
-: BFR-A! ( ptr u8 -- )
+TRUSTED: BFR-A! ( ptr u8 -- )
    BFR-A ! ;
 
-: BFR-B! ( ptr u8 -- )
+TRUSTED: BFR-B! ( ptr u8 -- )
    BFR-B ! ;
 
-: BFR-SN! ( ptr u8 -- )
+TRUSTED: BFR-SN! ( ptr u8 -- )
    BFR-SN ! ;
 
 : BFR-STR=CI ( ptr u8 n ptr u8 n -- bool )

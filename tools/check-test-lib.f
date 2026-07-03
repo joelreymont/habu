@@ -258,6 +258,21 @@ variable CKT-START-NS
    s" : CKT-BAD-PARTIAL ( n -- point ) ;" SB-APPEND
    SB$ ;
 
+: CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
+   SB-RESET
+   s" : DEFTYPE ( -- ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-NOM-BODY ( -- ) DEFTYPE ( -- ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" TRUSTED: CKT-NOM-TRUSTED ( -- ) DEFLINEAR ( -- ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-SCAN-NOMINAL ( -- n )
+   CHECKER-SCOPE-START
+   [: CKT-LIST$ CHK-RUN-NOMINAL-FILE ;] catch {: rc:n :}
+   CHECKER-SCOPE-DONE
+   rc ;
+
 : CKT-RUN-SOURCE-LIST-RESERVED-CORE ( -- n n n )
    CKT-LIST$ CKT-RESERVED$ WRITE-ALL
    RESERVED-NAME-LINT-RESET
@@ -401,6 +416,10 @@ variable CKT-START-NS
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
+: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ( -- )
+   CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
+   CKT-SCAN-NOMINAL 0 T= ;
+
 : CKT-TEST-REQUIRE-FACADE ( -- )
    s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
@@ -433,6 +452,7 @@ variable CKT-START-NS
    s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
+   s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT

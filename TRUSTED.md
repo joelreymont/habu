@@ -90,6 +90,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | BFR-UEND! | `n --` | Refresh prelude resets the checker signature cursor before reloading the current checker model; the cursor cell is checker-internal raw state. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-28 |
 | BFR-NDICT! | `n --` | Refresh prelude mutates the live dictionary cursor after locating the reload marker; dictionary truncation is the explicit refresh boundary. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-28 |
 | BFR-CHECK-OFF | `--` | Refresh prelude disables the currently baked checker before reloading the current checker source; the raw `set-check` token is unsafe once strict checking is active. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-28 |
+| BFR-A@ | `-- ptr u8` | Refresh prelude reads a byte-string scratch pointer from a generic pointer cell while matching dictionary names. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
+| BFR-B@ | `-- ptr u8` | Refresh prelude reads a second byte-string scratch pointer from a generic pointer cell while matching dictionary names. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
+| BFR-SN@ | `-- ptr u8` | Refresh prelude reads the searched-name byte pointer from a generic pointer cell while finding the reload marker. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
+| BFR-A! | `ptr u8 --` | Refresh prelude stores a byte-string scratch pointer into a generic pointer cell while matching dictionary names. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
+| BFR-B! | `ptr u8 --` | Refresh prelude stores a second byte-string scratch pointer into a generic pointer cell while matching dictionary names. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
+| BFR-SN! | `ptr u8 --` | Refresh prelude stores the searched-name byte pointer into a generic pointer cell while finding the reload marker. | `tools/build-fixpoint-test.f`, `tools/check-test.f`, `test/run.f` | src/habu/hide.f | 2026-07-03 |
 | XREF-N>REC | `n -- ptr a` | Converts a numeric live dictionary-record address into an opaque record pointer for checked xref helpers; the record base comes from `dbase@` plus `DREC` arithmetic. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-A>U8 | `ptr a -- ptr u8` | Treats the inline-name bytes inside a dictionary record as a byte string; fixed raw record byte offsets are outside pointer-role inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-N>U8 | `n -- ptr u8` | Converts a numeric long-name address fetched from a dictionary record into a byte pointer; the record stores mixed numeric and pointer cells. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
@@ -647,7 +653,7 @@ src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
 src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 95
-src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 9
+src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2

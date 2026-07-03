@@ -22,9 +22,9 @@ s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
-$40000 constant CHK-SRC-CAP
-$50000 constant CHK-RUN-CAP
-$50000 constant CHK-ORIGIN-CAP
+$100000 constant CHK-SRC-CAP
+$120000 constant CHK-RUN-CAP
+$100000 constant CHK-ORIGIN-CAP
 $8000 constant CHK-OUT-CAP
 $20000 constant CHK-ERR-CAP
 32 constant CHK-NUM-CAP
@@ -710,23 +710,41 @@ variable CHK-VREC-NAME-I
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
 
+: CHK-TOK-SEMI? ( n -- bool )
+   s" ;" CHK-TOK=CI ;
+
+: CHK-DEF-OPENER? ( n -- bool ) {: k:n :}
+   k s" :" CHK-TOK=CI IF LINT-TRUE exit THEN
+   k s" TRUSTED:" CHK-TOK=CI ;
+
+: CHK-SKIP-DEF ( n -- n )
+   begin dup L# @ < while
+      dup CHK-TOK-SEMI? if 1+ exit then
+      1+
+   repeat ;
+
+: CHK-NOM-STEP ( n -- n ) {: k:n :}
+   k CHK-DEF-OPENER? if k 1+ CHK-SKIP-DEF exit then
+   k s" deftype" CHK-TOK=CI if
+      k k 1+ CHK-NOM-REGISTER
+      k 2 + exit
+   then
+   k s" deflinear" CHK-TOK=CI if
+      k k 1+ CHK-LIN-REGISTER
+      k 2 + exit
+   then
+   k s" VALUE-RECORD" CHK-TOK=CI if
+      k k 1+ CHK-VREC-REGISTER exit
+   then
+   k 1 + ;
+
 : CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
    CHK-SRC-BUF CHK-NOM-U @ LEX-SOURCE
    0 CHK-NOM-I !
    begin CHK-NOM-I @ L# @ < while
-      CHK-NOM-I @ s" deftype" CHK-TOK=CI if
-         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-NOM-REGISTER
-         CHK-NOM-I @ 2 + CHK-NOM-I !
-      else CHK-NOM-I @ s" deflinear" CHK-TOK=CI if
-         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-LIN-REGISTER
-         CHK-NOM-I @ 2 + CHK-NOM-I !
-      else CHK-NOM-I @ s" VALUE-RECORD" CHK-TOK=CI if
-         CHK-NOM-I @ CHK-NOM-I @ 1+ CHK-VREC-REGISTER CHK-NOM-I !
-      else
-         CHK-NOM-I @ 1 + CHK-NOM-I !
-      then then then
+      CHK-NOM-I @ CHK-NOM-STEP CHK-NOM-I !
    repeat ;
 
 : CHK-RUN-NOMINAL-AS ( ptr u8 n ptr u8 n -- ) {: label:ptr labelu:n path:ptr pathu:n :}
