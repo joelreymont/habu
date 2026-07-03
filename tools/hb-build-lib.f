@@ -455,6 +455,8 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/util.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/checker.f" HBB-KEY-FILE+
+   s" src/core/type-schema.f" HBB-KEY-FILE+
+   s" src/core/type-family.f" HBB-KEY-FILE+
    s" src/core/render.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/structures-effects.f" HBB-KEY-FILE+

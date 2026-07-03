@@ -40,6 +40,8 @@ points stay listed.
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.
 - `src/core/checker.f` — native stack-effect checker and verifier.
+- `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
+- `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`.
@@ -686,3 +688,4 @@ points stay listed.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
+- `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.

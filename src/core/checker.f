@@ -3854,6 +3854,13 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ SYM-STR-REBASE
    THEN ;
 
+\ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
+\ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
+\ so they cannot be named here. They install their combined persist word into
+\ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
+\ shape the checker already uses for the source-check hook (`set-check`).
+variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
+
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
    HIDX-RESET
@@ -3863,7 +3870,8 @@ variable REG-PERSIST-DELTA
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
-   NORET-SNAPSHOT-PERSIST ;
+   NORET-SNAPSHOT-PERSIST
+   REG-EXT-PERSIST-XT @ ?dup if execute then ;
 
 : NORET-REC ( -- ptr a )
    NORETS NORET-END @ + ;

@@ -69,6 +69,8 @@ variable CHECKED
    s" src/core/util.f" PREFIX-FILE
    s" src/core/structures.f" PREFIX-FILE
    s" src/core/checker.f" PREFIX-FILE
+   s" src/core/type-schema.f" PREFIX-FILE
+   s" src/core/type-family.f" PREFIX-FILE
    s" src/core/render.f" PREFIX-FILE
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/structures-effects.f" PREFIX-FILE
