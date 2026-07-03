@@ -96,6 +96,8 @@ TEST:SUITE maki/fusion-test.f
 TEST:END-SUITE
 TEST:SUITE maki/report-test.f
 TEST:END-SUITE
+TEST:SUITE maki/cad-test.f
+TEST:END-SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cuda-driver-test.f
