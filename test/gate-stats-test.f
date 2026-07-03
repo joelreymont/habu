@@ -175,7 +175,8 @@ variable GST-CHILD-SAVE-U
    2 GS-SUBJ-COUNT-PTR @ 0 T=
    GS-SPAN-STRAY @ 4 T=
    GS-SPAN-STRAY-EXPECTED @ 1 T=
-   GS-SPAN-STRAY-UNEXPECTED @ 3 T= ;
+   GS-SPAN-STRAY-UNEXPECTED @ 3 T=
+   GS-LABEL-DUP @ 0 T= ;
 
 : GST-EXPECT-DEDUPE ( -- )
    GS-BUF GS-U @ s" owned label" CONTAINS? TFALSE
@@ -183,6 +184,36 @@ variable GST-CHILD-SAVE-U
 
 : GST-EXPECT-TEST ( -- )
    GS-BUF GS-U @ GST-TEST-EXPECTED CONTAINS? TTRUE ;
+
+\ Two test rows share the label "dup label" but name DIFFERENT subjects
+\ (host-source vs artifact); a span carries that label. Under raw string equality
+\ GS-LABEL-SUBJ silently joined the span to whichever row indexed first
+\ (host-source), inflating its total - the attribution miscount this dot fixes.
+: GST-WRITE-DUP-EVENTS ( -- )
+   s" dup label" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
+   s" dup label" s" artifact" s" gate-runner" s" process" s" -" GS-TEST
+   s" uniq label" s" candidate-cli" s" gate-runner" s" process" s" -" GS-TEST
+   s" dup label" 10 GS-SPAN
+   s" uniq label" 7 GS-SPAN ;
+
+: GST-EXPECT-LABEL-DUP ( -- )
+   GS-LABEL-DUP @ 1 T=
+   \ the ambiguous span is NOT mis-attributed to either colliding subject
+   0 GS-SUBJ-COUNT-PTR @ 0 T=
+   0 GS-SUBJ-TOTAL-PTR @ 0 T=
+   3 GS-SUBJ-COUNT-PTR @ 0 T=
+   \ it surfaces as an unexpected stray, and the unique-label span still attributes
+   1 GS-SUBJ-COUNT-PTR @ 1 T=
+   1 GS-SUBJ-TOTAL-PTR @ 7 T=
+   GS-SPANS @ 2 T=
+   GS-SPAN-STRAY @ 1 T=
+   GS-SPAN-STRAY-UNEXPECTED @ 1 T= ;
+
+: GST-TEST-LABEL-DUP ( -- )
+   GST-ROOT$ GS-ROOT!
+   GST-WRITE-DUP-EVENTS
+   GST-SCAN
+   GST-EXPECT-LABEL-DUP ;
 
 : GST-TEST-SCAN ( -- )
    GST-PREPARE
@@ -198,6 +229,7 @@ variable GST-CHILD-SAVE-U
 : GST-MAIN-BODY ( -- )
    T-RESET
    GST-TEST-SCAN
+   GST-TEST-LABEL-DUP
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT

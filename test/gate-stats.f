@@ -9,6 +9,7 @@ $0A constant GS-LF
 $09 constant GS-TAB
 256 constant GS-TROW-MAX
 4 constant GS-SUBJ-N
+-2 constant GS-SUBJ-AMBIG
 
 create GS-PATH-BUF FS-PATH-CAP allot
 create GS-LINE-BUF GS-LINE-CAP allot
@@ -44,6 +45,11 @@ variable GS-SPAN-STRAY-UNEXPECTED
 variable GS-T-I
 variable GS-T-START
 variable GS-T-K
+variable GS-LABEL-DUP
+variable GS-LS-I
+variable GS-LS-FOUND
+variable GS-LD-I
+variable GS-LD-J
 
 variable GS-TOP-PHASE
 variable GS-TOP-CAPTURE
@@ -172,6 +178,11 @@ variable GS-HELPER-SPAWN
    a GS-CHILD-BUF u BYTE-COPY
    u GS-CHILD-U ! ;
 
+\ A fork child suppresses re-emitting the span for its own pool label because the
+\ parent emits the authoritative one. The match is by label bytes, so it is only
+\ sound while labels are unique subject keys; a label reused across subjects would
+\ suppress a span the pool does not own. That precondition is now witnessed by the
+\ GS-LABEL-DUP scan below (nonzero = a collision to fix at the label source).
 : GS-CHILD-OWNED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    GS-CHILD-U @ 0= if GS-FALSE exit then
    a u GS-CHILD-BUF GS-CHILD-U @ STR= ;
@@ -294,6 +305,7 @@ variable GS-HELPER-SPAWN
    0 GS-SPAN-STRAY !
    0 GS-SPAN-STRAY-EXPECTED !
    0 GS-SPAN-STRAY-UNEXPECTED !
+   0 GS-LABEL-DUP !
    0 GS-TROW-N !
    GS-SUBJS-RESET ;
 
@@ -376,14 +388,51 @@ variable GS-HELPER-SPAWN
 : GS-TROW-LABEL$ ( n -- ptr u8 n ) {: i:n :}
    GS-BUF i cells GS-TROW-OFFS + @ BYTE+ i cells GS-TROW-US + @ ;
 
+\ Resolve a span label to its subject by matching indexed test rows. A label is
+\ an IDENTITY key here, so two test rows sharing the label text but naming
+\ DIFFERENT subjects make it ambiguous: string equality alone would silently join
+\ the span to whichever row indexed first (an attribution bug). Return the subject
+\ only when every matching row agrees; return GS-SUBJ-AMBIG when they conflict, or
+\ -1 when nothing matches. Rows repeating one label under the SAME subject (re-run)
+\ still resolve, not conflict.
 : GS-LABEL-SUBJ ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 begin dup GS-TROW-N @ < while
-      dup GS-TROW-LABEL$ a u STR= if
-         cells GS-TROW-SUBJS + @ exit
+   -1 GS-LS-FOUND !
+   0 GS-LS-I !
+   begin GS-LS-I @ GS-TROW-N @ < while
+      GS-LS-I @ GS-TROW-LABEL$ a u STR= if
+         GS-LS-I @ cells GS-TROW-SUBJS + @ {: s:n :}
+         GS-LS-FOUND @ 0 < if
+            s GS-LS-FOUND !
+         else
+            s GS-LS-FOUND @ <> if GS-SUBJ-AMBIG exit then
+         then
       then
-      1+
-   repeat drop
-   -1 ;
+      GS-LS-I @ 1+ GS-LS-I !
+   repeat
+   GS-LS-FOUND @ ;
+
+\ A test row is a label collision when an earlier row carries the same label but
+\ a different subject; that is the exact condition that breaks both attribution
+\ (GS-LABEL-SUBJ) and fork-child span suppression (GS-CHILD-OWNED?), which both
+\ key on raw label bytes. GS-LABEL-DUP counts these so the collision is visible in
+\ the gate-stats RCA output instead of silently miscounting.
+: GS-ROW-LABEL-DUP? ( n -- bool ) {: i:n :}
+   0 GS-LD-J !
+   begin GS-LD-J @ i < while
+      GS-LD-J @ GS-TROW-LABEL$ i GS-TROW-LABEL$ STR= if
+         GS-LD-J @ cells GS-TROW-SUBJS + @  i cells GS-TROW-SUBJS + @  <> if
+            GS-TRUE exit
+         then
+      then
+      GS-LD-J @ 1+ GS-LD-J !
+   repeat GS-FALSE ;
+
+: GS-CHECK-LABEL-DUPS ( -- )
+   0 GS-LD-I !
+   begin GS-LD-I @ GS-TROW-N @ < while
+      GS-LD-I @ GS-ROW-LABEL-DUP? if GS-LABEL-DUP GS-INC then
+      GS-LD-I @ 1+ GS-LD-I !
+   repeat ;
 
 : GS-SPAN-LABEL$ ( n n -- ptr u8 n ) {: off:n u:n :}
    GS-BUF off GS-SPAN-LABEL-I @ + BYTE+ u GS-SPAN-LABEL-I @ - ;
@@ -426,6 +475,9 @@ variable GS-HELPER-SPAWN
    GS-SPAN-STRAY-UNEXPECTED GS-INC ;
 
 : GS-SUBJ+ ( ptr u8 n n n -- ) {: label:ptr labelu:n id:n ms:n :}
+   id GS-SUBJ-AMBIG = if
+      GS-SPAN-STRAY GS-INC GS-SPAN-STRAY-UNEXPECTED GS-INC exit
+   then
    id 0 < if label labelu GS-STRAY+ exit then
    id GS-SUBJ-TOTAL-PTR {: tp:ptr :}
    tp @ ms + tp !
@@ -490,6 +542,7 @@ variable GS-HELPER-SPAWN
 : GS-SCAN ( -- )
    GS-RESET-COUNTS
    GS-INDEX-TESTS
+   GS-CHECK-LABEL-DUPS
    0 GS-START !
    0 GS-I !
    begin GS-I @ GS-U @ < while
@@ -559,6 +612,7 @@ variable GS-HELPER-SPAWN
    GS-SPAN-STRAY @ s" span-stray" GS-ITEM.
    GS-SPAN-STRAY-EXPECTED @ s" span-stray-expected" GS-ITEM.
    GS-SPAN-STRAY-UNEXPECTED @ s" span-stray-unexpected" GS-ITEM.
+   GS-LABEL-DUP @ s" label-dup" GS-ITEM.
    GS-SPANS @ 0 > if
       s" slowest-test-ms=" type GS-SLOW-MS @ .
       s" slowest-test=" type GS-SLOW-LABEL GS-SLOW-U @ type
