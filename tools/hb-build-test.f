@@ -39,6 +39,7 @@ variable HBT-REPL-BAD-SRC-U
 variable HBT-REPL-BAD-OUT-U
 variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
+variable HBT-ENG-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
 create HBT-TMP-BUF FS-PATH-CAP allot
@@ -51,6 +52,8 @@ create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-AOT-SRC-BUF FS-PATH-CAP allot
 create HBT-AOT-OUT-BUF FS-PATH-CAP allot
+create HBT-ENG-BUF FS-PATH-CAP allot
+create HBT-ABI-ALT 96 allot
 create HBT-OUT HBT-CAPTURE-CAP allot
 create HBT-ERR HBT-CAPTURE-CAP allot
 create HBT-RUN-OUT HBT-CAPTURE-CAP allot
@@ -118,7 +121,7 @@ create HBT-KEY-B 64 allot
    2drop 0 0= ;
 
 : HBT-BAD-SRC$ ( -- ptr u8 n )
-   s" : MAIN ( -- ) here drop ;" ;
+   s" : MAIN ( -- ) 0 0 patch32 ;" ;
 
 : HBT-REPL-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -407,11 +410,13 @@ create HBT-KEY-B 64 allot
    s" MAIN" 0 s" --" OBJ:DEF+ ;
 
 : HBT-STORE-AOT-OBJ ( -- )
+   HBB-RESET-OPTIONS
    HBT-TMP OBJRES:ROOT!
    HBB-TARGET-ABI$ HBT-BUILD-EXIT-OBJ
    OBJRES:STORE nip HBT-KEY-U T= ;
 
 : HBT-STORE-WRONG-AOT-OBJ ( -- )
+   HBB-RESET-OPTIONS
    HBT-TMP OBJRES:ROOT!
    s" wrong-aarch64" HBT-BUILD-EXIT-OBJ
    OBJSTORE:STORE {: key:ptr keyu:n :}
@@ -436,6 +441,54 @@ create HBT-KEY-B 64 allot
    HBT-AOT-OUT FILE? TTRUE
    HBT-RUN-AOT ;
 
+: HBT-ENG ( -- ptr u8 n )
+   HBT-ENG-BUF HBT-ENG-U @ ;
+
+: HBT-WRITE-ENG ( -- )
+   HBT-ROOT s" engine-alt" HBT-ENG-BUF HBT-ENG-U HBT-PATH!
+   HBT-ENG s" not-the-real-engine" WRITE-ALL ;
+
+: HBT-OBJ-LOAD? ( -- bool )
+   HBB-RESET-OPTIONS
+   HBT-TMP OBJRES:ROOT!
+   HBT-AOT-HEX!
+   HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
+
+: HBT-ABI-MAKER-SUFFIX ( -- )
+   HBB-CHECKER-ABI$ {: a:ptr u:n :}
+   a u HBT-KEY-U - BYTE+ HBT-KEY-U HBB-MAKER-KEY-HEX HBT-KEY-U STR= TTRUE ;
+
+: HBT-ABI-MAKER-QUALIFIED ( -- )
+   HBB-RESET-OPTIONS
+   HBB-CHECKER-ABI$ s" checker-effect-v1+" STARTS-WITH? TTRUE
+   HBB-COMPILER-ABI$ s" hb-arm64-v1+" STARTS-WITH? TTRUE
+   HBB-CHECKER-ABI$ nip 82 T=
+   HBB-COMPILER-ABI$ nip 76 T=
+   HBT-ABI-MAKER-SUFFIX ;
+
+: HBT-ENGINE-KEY-FLIP ( -- )
+   HBT-ABI-MAKER-QUALIFIED
+   HBT-WRITE-ENG
+   HBT-OBJ-LOAD? TTRUE
+   HBT-ENG BF-ENGINE!
+   HBT-OBJ-LOAD? TFALSE
+   BF-ENGINE-RESET
+   HBT-OBJ-LOAD? TTRUE ;
+
+: HBT-ALT-CHECKER$ ( -- ptr u8 n )
+   HBB-CHECKER-ABI$ {: a:ptr u:n :}
+   a HBT-ABI-ALT u BYTE-COPY
+   HBT-ABI-ALT u 1 - + c@ STR-ZERO = if STR-ZERO 1 + else STR-ZERO then
+   HBT-ABI-ALT u 1 - + c!
+   HBT-ABI-ALT u ;
+
+: HBT-PRODUCER-KEY-MISS ( -- )
+   HBB-RESET-OPTIONS
+   HBT-TMP OBJRES:ROOT!
+   HBT-AOT-HEX!
+   HBT-ALT-CHECKER$ {: alt:ptr altu:n :}
+   HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ alt altu HBB-COMPILER-ABI$ OBJRES:LOAD TFALSE ;
+
 : HBT-BUILD-AOT-WRONG-OBJECT-FAILS ( -- )
    HBT-AOT-SRC HBT-AOT-SRC2$ WRITE-ALL
    HBT-AOT-OUT FILE? if HBT-AOT-OUT REMOVE-FILE then
@@ -445,8 +498,15 @@ create HBT-KEY-B 64 allot
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-AOT-OUT EXISTS? TFALSE ;
 
+\ Maker-build failures must be attributable even when the child is silent:
+\ the die message carries the child rc.
+: HBT-MAKER-DIE-MSG ( -- )
+   7 HBB-MAKER-DIE$ s" hb-build: native maker build failed, rc 7" T$=
+   75 HBB-MAKER-DIE$ s" rc 75" CONTAINS? TTRUE ;
+
 : HBT-MAIN ( -- )
    T-RESET
+   HBT-MAKER-DIE-MSG
    HBT-PREPARE
    HBT-BUILD-REPL
    HBT-REBUILD-REPL-CACHE
@@ -457,6 +517,8 @@ create HBT-KEY-B 64 allot
    HBT-BUILD-REPL-BAD
    HBT-BUILD-MISSING-TMP
    HBT-BUILD-AOT-OBJECT-HIT
+   HBT-ENGINE-KEY-FLIP
+   HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS
    CLEANUP-RUN
    HBT-ROOT EXISTS? TFALSE

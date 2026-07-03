@@ -43,7 +43,7 @@ create ALT-OUT ALT-BUF-CAP allot
 
 : ALT-BAD$ ( -- ptr u8 n )
    SB-RESET
-   s" : MAIN ( -- ) here . CR ;" SB-APPEND ALT-LF
+   s" : MAIN ( -- ) 0 0 patch32 ;" SB-APPEND ALT-LF
    SB$ ;
 
 : ALT-EMPTY$ ( -- ptr u8 n )
@@ -76,13 +76,13 @@ create ALT-OUT ALT-BUF-CAP allot
    SB$ ;
 
 : ALT-JSON-TOKEN$ ( -- ptr u8 n )
-   s" token" s" here" ALT-JSON-STR-FIELD$ ;
+   s" token" s" patch32" ALT-JSON-STR-FIELD$ ;
 
 : ALT-JSON-WORD$ ( -- ptr u8 n )
    s" word" s" MAIN" ALT-JSON-STR-FIELD$ ;
 
 : ALT-JSON-REASON$ ( -- ptr u8 n )
-   s" reason" s" stripped AOT has no persistent data region" ALT-JSON-STR-FIELD$ ;
+   s" reason" s" stripped AOT has no runtime compiler or writable code" ALT-JSON-STR-FIELD$ ;
 
 : ALT-PREPARE ( -- )
    CLEANUP-RESET

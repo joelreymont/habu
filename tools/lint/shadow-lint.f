@@ -13,7 +13,8 @@ require tools/lint/lib.f
 
 package SHADOW-LINT-TOOL
 
-create FB 131072 allot                       \ one file at a time
+$30000 constant SL-FB-CAP                    \ largest linted source + headroom
+create FB SL-FB-CAP allot                    \ one file at a time
 
 \ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----
 create PNAMES 8192 allot   variable PEND
@@ -62,7 +63,7 @@ variable BAD  variable LI
    ELSE 2drop THEN ;
 
 : LINT-FILE  ( ptr u8 n -- ) {: pa:ptr pu :}
-   pa pu FB 131072 READ-FILE  TOKENIZE
+   pa pu FB SL-FB-CAP READ-FILE  TOKENIZE
    0 LI !
    begin LI @ TN# @ < while
       pa pu LI @ LINT-DEFINITION
@@ -72,7 +73,7 @@ variable BAD  variable LI
 \ prims live in habu1.f; lint every snap-toolchain file against them.
 : SHADOW-LINT
    0 BAD !
-   s" src/habu/habu1.f" FB 131072 READ-FILE  TOKENIZE  SCAN-PRIMS
+   s" src/habu/habu1.f" FB SL-FB-CAP READ-FILE  TOKENIZE  SCAN-PRIMS
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/checker.f"   LINT-FILE

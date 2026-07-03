@@ -5,7 +5,7 @@
 \ tools/stale-status-lint-core.f provides SS-MAIN; tools/stale-status-lint.f is
 \ the CLI entrypoint.
 
-$20000 constant SS-FILE-CAP
+$30000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP
 
 10 constant SS-LF

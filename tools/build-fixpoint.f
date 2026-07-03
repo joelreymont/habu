@@ -2,6 +2,7 @@
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
+\ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -11,9 +12,24 @@
 74 constant BF-BUILD-RC
 32 constant BF-SP
 34 constant BF-DQ
+$2F constant BF-SLASH
+64 constant BF-STAMP-HEX-U
+12 constant BF-STAMP-PREFIX-U
+32 constant BF-STAMP-DG-U
+256 constant BF-STAMP-CAP
 
 create BF-LF-BUF 1 allot
 create BF-CHAR-BUF 1 allot
+create BF-STAMP-KEY 80 allot
+create BF-STAMP-OLD 80 allot
+create BF-STAMP-DG 40 allot
+create BF-REC-STAGE-DG 40 allot
+create BF-REC-STDIN-DG 40 allot
+create BF-STAMP-BUF BF-STAMP-CAP allot
+create BF-STAMP-PATH-BUF FS-PATH-CAP allot
+create BF-STAMP-DIR-BUF FS-PATH-CAP allot
+create BF-STAMP-DEF-BUF FS-PATH-CAP allot
+create BF-ENGINE-BUF FS-PATH-CAP allot
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -43,6 +59,14 @@ variable BF-TMP-U
 variable BF-STRIP-R
 variable BF-STRIP-W
 variable BF-STRIP-OFF
+variable BF-STAMP-PATH-U
+variable BF-STAMP-DIR-U
+variable BF-STAMP-DEF-U
+variable BF-STAMP-U
+variable BF-REC-STAGE?
+variable BF-REC-STDIN?
+variable BF-ENGINE-U
+variable BF-FORCE
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
    BF-TMP-A 0 ptr-field ;
@@ -645,6 +669,78 @@ variable BF-STRIP-OFF
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
+\ Snapshot source layout: the dev-engine keep surface (the same files the
+\ plain engine bakes as its startup prefix, plus the baked REPL sources)
+\ loads FIRST, then SNAP-TAIL-MARK opens the builder-only tail. snap.f
+\ retires everything from the marker before SNAPGO, so the persisted image
+\ carries only the keep surface.
+: BF-APPEND-SNAP-KEEP ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-APPEND-ROLES
+   out outu BF-APPEND-CORE-BYTES
+   out outu BF-APPEND-TARGET-FLAG
+   out outu BF-APPEND-TARGET-LAYOUT
+   out outu BF-APPEND-HABU-LAYOUT
+   out outu BF-APPEND-ENV-BASE
+   out outu BF-APPEND-INCLUDE
+   out outu BF-APPEND-ENUMS
+   out outu BF-APPEND-EXEC-VECTOR
+   out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-COMBINATORS
+   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-SCRIPT-ARGV ;
+
+: BF-APPEND-TARGET-REPL-TERM ( ptr u8 n -- ) {: out:ptr outu:n :}
+   HB-TARGET-LINUX? if
+      out outu s" src/os/linux/repl-term.f" BF-APPEND-SOURCE
+      exit
+   then
+   HB-TARGET-MACOS? if
+      out outu s" src/os/macos/repl-term.f" BF-APPEND-SOURCE
+      exit
+   then
+   BF-TARGET-UNKNOWN ;
+
+: BF-APPEND-SNAP-REPL ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-APPEND-CHECK-OFF
+   out outu BF-APPEND-TARGET-REPL-TERM
+   out outu s" src/habu/repl.f" BF-APPEND-SOURCE
+   out outu s" src/habu/debug-watch.f" BF-APPEND-SOURCE
+   out outu s" src/habu/stepper.f" BF-APPEND-SOURCE
+   out outu s" src/habu/debug.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-FRESH-CHECK-HOOK ;
+
+: BF-APPEND-SNAP-MARK ( ptr u8 n -- )
+   s" : SNAP-TAIL-MARK ( -- ) ;" BF-APPEND-LINE ;
+
+: BF-APPEND-SNAP-BUILD ( ptr u8 n -- ) {: out:ptr outu:n :}
+   out outu BF-APPEND-SNAP-MARK
+   out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
+   out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
+   out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-TARGET-SYS
+   out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
+   out outu s" src/habu/rt.f" BF-APPEND-SOURCE
+   out outu s" src/habu/crash.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-IMAGE-BYTES
+   out outu BF-APPEND-CHECK-OFF
+   out outu BF-APPEND-TARGET-IMAGE
+   out outu BF-APPEND-FRESH-CHECK-HOOK
+   out outu BF-APPEND-IMAGE-TRUSTS
+   out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
+   out outu s" src/habu/prof.f" BF-APPEND-SOURCE
+   out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
+   out outu s" src/habu/jit.f" BF-APPEND-SOURCE
+   out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
+   out outu BF-APPEND-DRIVER-IO ;
+
+: BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
+   out outu BF-RESET-OUT
+   out outu BF-APPEND-STDIN-RUN-PRELUDE
+   out outu BF-APPEND-SNAP-KEEP
+   out outu BF-APPEND-SNAP-REPL
+   out outu BF-APPEND-SNAP-BUILD
+   out outu driver driveru BF-APPEND-SOURCE ;
+
 : BF-CLOSE-CMP ( -- )
    BF-FDA @ dup 0 >= if close else drop then
    BF-FDB @ dup 0 >= if close else drop then
@@ -697,7 +793,22 @@ variable BF-STRIP-OFF
    s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
-   s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-STDIN-RUN-SOURCE ;
+   s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;
+
+: BF-STAGE2-DIGEST ( ptr u8 -- ) {: dg:ptr :}
+   s" stage2-src" BF-A$ dg SHA256-FILE dup 0 <> if throw then drop ;
+
+: BF-RECORD-RESET ( -- )
+   0 BF-REC-STAGE? !
+   0 BF-REC-STDIN? ! ;
+
+: BF-RECORD-STAGE ( -- )
+   BF-REC-STAGE-DG BF-STAGE2-DIGEST
+   -1 BF-REC-STAGE? ! ;
+
+: BF-RECORD-STDIN ( -- )
+   BF-REC-STDIN-DG BF-STAGE2-DIGEST
+   -1 BF-REC-STDIN? ! ;
 
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
@@ -743,10 +854,12 @@ variable BF-STRIP-OFF
 : BF-STAGE-FIXPOINT ( -- )
    BF-PREFLIGHT
    BF-STAGE2-SOURCE
+   BF-RECORD-STAGE
    BF-STAGE-FIXPOINT-FROM-SOURCE ;
 
 : BF-BUILD-STDIN-FROM-STAGE ( -- )
    BF-STDIN-SOURCE
+   BF-RECORD-STDIN
    BF-RUN-STAGE
    s" stage2-got" s" hb-stdin-mk" BF-RENAME-TMP
    s" hb-stdin-mk" BF-CHMOD-X-TMP
@@ -805,17 +918,193 @@ variable BF-STRIP-OFF
    BF-CLEAN-BIN
    s" bin/hb ready (small checked engine, tty REPL + stdin)" type cr ;
 
+: BF-ENGINE! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-ENGINE-BUF u BYTE-COPY
+   u BF-ENGINE-U ! ;
+
+: BF-ENGINE-RESET ( -- )
+   0 BF-ENGINE-U ! ;
+
+: BF-ENGINE$ ( -- ptr u8 n )
+   BF-ENGINE-U @ 0 > if BF-ENGINE-BUF BF-ENGINE-U @ exit then
+   s" HABU_FIXPOINT_ENGINE" GETENV dup 0 > if exit then drop drop
+   s" bin/hb" ;
+
+: BF-STAMP-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u FS-PATH-CAP > if E-BUILD-PATH throw then
+   a BF-STAMP-PATH-BUF u BYTE-COPY
+   u BF-STAMP-PATH-U ! ;
+
+: BF-STAMP-PATH-RESET ( -- )
+   0 BF-STAMP-PATH-U ! ;
+
+: BF-STAMP-DIR-XDG? ( -- bool )
+   s" XDG_CACHE_HOME" GETENV dup 0= if drop drop BF-FALSE exit then
+   s" habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
+   BF-TRUE ;
+
+: BF-STAMP-DIR-HOME? ( -- bool )
+   s" HOME" GETENV dup 0= if drop drop BF-FALSE exit then
+   s" .cache/habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U !
+   BF-TRUE ;
+
+: BF-STAMP-DIR-TMP ( -- )
+   s" TMPDIR" GETENV dup 0= if drop drop s" /tmp" then
+   s" habu-fixpoint" BF-STAMP-DIR-BUF JOIN-PATH BF-STAMP-DIR-U ! ;
+
+: BF-STAMP-DIR$ ( -- ptr u8 n )
+   BF-STAMP-DIR-XDG? if BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ exit then
+   BF-STAMP-DIR-HOME? if BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ exit then
+   BF-STAMP-DIR-TMP
+   BF-STAMP-DIR-BUF BF-STAMP-DIR-U @ ;
+
+: BF-STAMP-DEFAULT? ( -- bool )
+   BF-STAMP-PATH-U @ 0 > if BF-FALSE exit then
+   s" HABU_FIXPOINT_STAMP" GETENV nip 0= ;
+
+: BF-STAMP-PATH$ ( -- ptr u8 n )
+   BF-STAMP-PATH-U @ 0 > if BF-STAMP-PATH-BUF BF-STAMP-PATH-U @ exit then
+   s" HABU_FIXPOINT_STAMP" GETENV dup 0 > if exit then drop drop
+   BF-STAMP-DIR$ s" stamp" BF-STAMP-DEF-BUF JOIN-PATH BF-STAMP-DEF-U !
+   BF-STAMP-DEF-BUF BF-STAMP-DEF-U @ ;
+
+: BF-PARENT-U ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u begin dup 0 > while
+      1 -
+      a over + c@ BF-SLASH = if exit then
+   repeat ;
+
+: BF-STAMP-ENSURE-DIR ( -- )
+   BF-STAMP-DEFAULT? if BF-STAMP-DIR$ MAKE-DIRS exit then
+   BF-STAMP-PATH$ {: a:ptr u:n :}
+   a u BF-PARENT-U {: pu:n :}
+   pu 0 > if a pu MAKE-DIRS then ;
+
+: BF-STAMP-BYTES+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   BF-STAMP-U @ u + BF-STAMP-CAP > if E-STR-CAPACITY throw then
+   a BF-STAMP-BUF BF-STAMP-U @ + u BYTE-COPY
+   BF-STAMP-U @ u + BF-STAMP-U ! ;
+
+: BF-STAMP-C+ ( n -- ) {: c:n :}
+   BF-STAMP-U @ 1 + BF-STAMP-CAP > if E-STR-CAPACITY throw then
+   c BF-STAMP-BUF BF-STAMP-U @ + c!
+   BF-STAMP-U @ 1 + BF-STAMP-U ! ;
+
+: BF-STAMP-FRAG+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-STR-BOUNDS throw then
+   u STR-BYTE-MAX > if E-STR-BOUNDS throw then
+   u BF-STAMP-C+
+   a u BF-STAMP-BYTES+ ;
+
+: BF-STAMP-DG+ ( ptr u8 n ptr u8 -- ) {: tag:ptr tagu:n dg:ptr :}
+   tag tagu BF-STAMP-FRAG+
+   dg BF-STAMP-DG-U BF-STAMP-FRAG+ ;
+
+: BF-STAMP-ENGINE+ ( -- )
+   BF-ENGINE$ BF-STAMP-DG SHA256-FILE dup 0 <> if throw then drop
+   s" engine" BF-STAMP-DG BF-STAMP-DG+ ;
+
+: BF-STAMP-KEY-BEGIN ( -- )
+   0 BF-STAMP-U !
+   s" build-fixpoint-stamp-v1" BF-STAMP-FRAG+
+   BF-STAMP-ENGINE+ ;
+
+: BF-STAMP-STAGE-KEY+ ( -- )
+   BF-STAMP-DG BF-STAGE2-DIGEST
+   s" stage2-src" BF-STAMP-DG BF-STAMP-DG+ ;
+
+: BF-STAMP-STDIN-KEY+ ( -- )
+   BF-STAMP-DG BF-STAGE2-DIGEST
+   s" stdin-src" BF-STAMP-DG BF-STAMP-DG+ ;
+
+: BF-STAMP-KEY-END ( -- )
+   BF-STAMP-BUF BF-STAMP-U @ BF-STAMP-DG SHA256
+   BF-STAMP-DG BF-STAMP-KEY SHA256>HEX ;
+
+: BF-STAMP-KEY! ( -- )
+   BF-STAMP-KEY-BEGIN
+   BF-STAGE2-SOURCE
+   BF-STAMP-STAGE-KEY+
+   BF-STDIN-SOURCE
+   BF-STAMP-STDIN-KEY+
+   BF-STAMP-KEY-END ;
+
+: BF-STAMP-RECORDED-KEY! ( -- )
+   BF-REC-STAGE? @ 0= if E-BUILD-STATUS throw then
+   BF-REC-STDIN? @ 0= if E-BUILD-STATUS throw then
+   BF-STAMP-KEY-BEGIN
+   s" stage2-src" BF-REC-STAGE-DG BF-STAMP-DG+
+   s" stdin-src" BF-REC-STDIN-DG BF-STAMP-DG+
+   BF-STAMP-KEY-END ;
+
+: BF-STAMP-READ? ( -- bool )
+   BF-STAMP-PATH$ FILE? 0= if BF-FALSE exit then
+   BF-STAMP-PATH$ FILE-SIZE BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
+   BF-STAMP-PATH$ BF-STAMP-OLD BF-STAMP-HEX-U 1 + READ-ALL BF-STAMP-HEX-U 1 + <> if BF-FALSE exit then
+   BF-STAMP-OLD BF-STAMP-HEX-U + c@ BF-LF <> if BF-FALSE exit then
+   BF-TRUE ;
+
+: BF-STAMP-MATCH? ( -- bool )
+   BF-FORCE @ 0 <> if BF-FALSE exit then
+   BF-STAMP-READ? 0= if BF-FALSE exit then
+   BF-STAMP-KEY!
+   BF-STAMP-OLD BF-STAMP-HEX-U BF-STAMP-KEY BF-STAMP-HEX-U STR= ;
+
+: BF-STAMP-WRITE ( -- )
+   BF-STAMP-ENSURE-DIR
+   BF-STAMP-RECORDED-KEY!
+   BF-LF BF-STAMP-KEY BF-STAMP-HEX-U + c!
+   BF-STAMP-PATH$ BF-STAMP-KEY BF-STAMP-HEX-U 1 + ATOMIC-WRITE-FILE ;
+
+: BF-STAMP-CACHED ( -- )
+   s" fixpoint: cached " type
+   BF-STAMP-KEY BF-STAMP-PREFIX-U type cr ;
+
+: BF-STDIN-HB= ( -- bool )
+   s" hb-stdin" BF-A$ BF-ENGINE$ BF-FILE= ;
+
+: BF-ALL-STAMP ( -- )
+   BF-STDIN-HB= if BF-STAMP-WRITE then ;
+
+: BF-BUILD-ALL-CACHED ( -- )
+   BF-STAMP-MATCH? if BF-STAMP-CACHED exit then
+   BF-RECORD-RESET
+   BF-BUILD-ALL
+   BF-ALL-STAMP ;
+
+: BF-INSTALL-CACHED ( -- )
+   BF-STAMP-MATCH? if BF-STAMP-CACHED exit then
+   BF-RECORD-RESET
+   BF-INSTALL
+   BF-STAMP-WRITE ;
+
 : BF-USAGE ( -- )
-   s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap]" BF-USAGE-RC die ;
+   s" usage: tools/build-fixpoint.f [all|install|stage|stdin|snap] [--force]" BF-USAGE-RC die ;
 
 : BF-ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
 
+: BF-ARGN= ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
+   idx SCRIPT-ARGV$ a u STR= ;
+
+: BF-PARSE-FORCE ( -- n )
+   0 BF-FORCE !
+   SCRIPT-ARGC 0= if 0 exit then
+   SCRIPT-ARGC 1 - s" --force" BF-ARGN= if
+      -1 BF-FORCE !
+      SCRIPT-ARGC 1 - exit
+   then
+   SCRIPT-ARGC ;
+
 : BF-MAIN ( -- )
-   SCRIPT-ARGC 0= if BF-BUILD-ALL exit then
-   SCRIPT-ARGC 1 <> if BF-USAGE then
-   s" all" BF-ARG0= if BF-BUILD-ALL exit then
-   s" install" BF-ARG0= if BF-INSTALL exit then
+   BF-PARSE-FORCE {: argn:n :}
+   argn 0= if BF-BUILD-ALL-CACHED exit then
+   argn 1 <> if BF-USAGE then
+   s" all" BF-ARG0= if BF-BUILD-ALL-CACHED exit then
+   s" install" BF-ARG0= if BF-INSTALL-CACHED exit then
    s" stage" BF-ARG0= if BF-STAGE-FIXPOINT exit then
    s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then

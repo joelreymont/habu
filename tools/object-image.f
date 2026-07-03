@@ -73,8 +73,6 @@ public
    OBJLINK:APPLY
    NONEMPTY-TEXT
    TEXT>ASM
-   ASM-CODE BUILD-IMAGE
-   s" hb-obj" SET-SIGID CODESIG2
-   path pathu DRV-WRITE-IMAGE ;
+   s" hb-obj" path pathu DRV-EMIT-IMAGE ;
 
 end-package

@@ -76,16 +76,13 @@ variable AL-CURRENT-U
    a AL-CURRENT-A!
    u AL-CURRENT-U ! ;
 
+\ Static token lint: it cannot tell a compile-time buffer definition
+\ (`create FOO 8 allot`) from a runtime call, so it only flags tokens that are
+\ never a legitimate compile-time form and always unsupported by stripped AOT.
+\ Data-space words (@ ! c@ c! here allot , c, create) are now handled: the AOT
+\ entry maps a persistent DATA region (aot-lib.f), and runtime create is caught
+\ precisely by the closure check (aot-closure.f AOT-UNSAFE?).
 : AL-UNSAFE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" @" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" !" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" c@" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" c!" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" here" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" allot" LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" ," LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" c," LINT-STR=CI IF LINT-TRUE exit THEN
-   a u s" create" LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" compile," LINT-STR=CI IF LINT-TRUE exit THEN
    a u s" patch32" LINT-STR=CI ;
 
@@ -108,9 +105,9 @@ variable AL-CURRENT-U
    s" byte_end" LJW-KEY k AL-TOK-END LJW-U LJW-COMMA
    s" word" LJW-KEY AL-CURRENT-A@ AL-CURRENT-U @ LJW-STRING LJW-COMMA
    s" token" LJW-KEY k LEX-TOK LJW-STRING LJW-COMMA
-   s" reason" LJW-KEY s" stripped AOT has no persistent data region" LJW-STRING LJW-COMMA
+   s" reason" LJW-KEY s" stripped AOT has no runtime compiler or writable code" LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY
-   s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" LJW-STRING
+   s" stripped AOT cannot run compile,/patch32 at runtime; use --repl or remove the word" LJW-STRING
    LJW-OBJECT-END
    LJW$ AL-OUT AL-NL ;
 

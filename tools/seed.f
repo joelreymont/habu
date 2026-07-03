@@ -165,7 +165,8 @@ variable SEED-LAST
    s" tools/build-fixpoint.f"  >LEN PROC-ARGV+
    s" tools/build-fixpoint-main.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
-   s" install"  >LEN PROC-ARGV+ ;
+   s" install"  >LEN PROC-ARGV+
+   s" --force"  >LEN PROC-ARGV+ ;
 
 : SEED-RUN-BUILD-FIXPOINT ( ptr u8 n -- ) {: hb:ptr hbu :}
    SEED-PREPARE-BUILD-ARGV

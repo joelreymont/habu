@@ -175,6 +175,8 @@ variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
+\ escape decoder/scan/copy routines, emitted once, BL-called (mirrors src/habu/habu2.f)
+variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
@@ -2343,7 +2345,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-QUOTE-SAVED-DROP ( -- )
    SP SP 16 ADDI, ;
 
-: C-ESC-HEX-X9 ( label -- ) {: bad:label :}
+: C-ESC-HEX-X9 ( label -- ) {: bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
    LBL LBL LBL {: lower upper done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
    9 $30 CMPI,  C-LT lower BCOND,
    9 $39 CMPI,  C-GT lower BCOND,
@@ -2358,7 +2360,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 9 $37 SUBI,
    done LBL, ;
 
-: C-ESC-DECODE-BASIC ( label label -- ) {: hex:label bad:label :}
+: C-ESC-DECODE-BASIC ( label label -- ) {: hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL {: dq bs bel bs8 esc lf ff cr tab vt nul done :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
    9 $22 CMPI,  C-EQ dq BCOND,
    9 $71 CMPI,  C-EQ dq BCOND,
@@ -2389,30 +2391,68 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    nul LBL,  9 $00 MOVZ,
    done LBL, ;
 
-: C-ESC-QUOTE-SCAN ( -- )
+\ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
+\ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
+\ x9 byte, x10 0=ok 1=hex 2=bad. LESCHEX: x9 hex digit -> x9 nibble, x10 0=ok 2=bad.
+\ Mirrors src/habu/habu2.f EMIT-ESC-DECODE.
+: EMIT-ESC-DECODE ( -- )
+   LBL LBL LBL {: hex bad hbad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LESCDEC @ LBL,  hex bad C-ESC-DECODE-BASIC  10 0 MOVZ,  RET,
+   hex LBL,  10 1 MOVZ,  RET,
+   bad LBL,  10 2 MOVZ,  RET,
+   LESCHEX @ LBL,  hbad C-ESC-HEX-X9  10 0 MOVZ,  RET,
+   hbad LBL,  10 2 MOVZ,  RET, ;
+
+\ Escaped-literal scan, emitted once, BL-called (x12 cursor in/out, x10 count
+\ out, x11/x14/x15 scratch; saves LR around the inner decoder BLs).
+\ Mirrors src/habu/habu2.f EMIT-ESC-SCAN.
+: EMIT-ESC-SCAN ( -- )
    LBL LBL LBL LBL LBL {: scan done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
-   10 0 MOVZ,
-   scan LBL,
-      14 DATA INE-CELL LDR,
-      12 14 CMP,  C-GE bad BCOND,
-      9 12 0 LDRB,
-      9 $22 CMPI,  C-EQ done BCOND,
+   LESCSCAN @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   11 0 MOVZ,
+   scan LBL,  14 DATA INE-CELL LDR,  12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,  9 $22 CMPI,  C-EQ done BCOND,
       9 $5C CMPI,  C-EQ esc BCOND,
-      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
-   esc LBL,
-      12 12 1 ADDI,
-      12 14 CMP,  C-GE bad BCOND,
-      9 12 0 LDRB,
-      hex bad C-ESC-DECODE-BASIC
-      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
+      12 12 1 ADDI,  11 11 1 ADDI,  scan B,
+   esc LBL,  12 12 1 ADDI,  12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,  LESCDEC @ BL,
+      10 1 CMPI,  C-EQ hex BCOND,  C-GT bad BCOND,
+      12 12 1 ADDI,  11 11 1 ADDI,  scan B,
    hex LBL,
-      15 12 3 ADDI,
-      15 14 CMP,  C-GT bad BCOND,
-      9 12 1 LDRB,  bad C-ESC-HEX-X9
-      9 12 2 LDRB,  bad C-ESC-HEX-X9
-      12 15 0 ADDI,  10 10 1 ADDI,  scan B,
+      15 12 3 ADDI,  15 14 CMP,  C-GT bad BCOND,
+      9 12 1 LDRB,  LESCHEX @ BL,  10 bad CBNZ,
+      9 12 2 LDRB,  LESCHEX @ BL,  10 bad CBNZ,
+      12 15 0 ADDI,  11 11 1 ADDI,  scan B,
    bad LBL,  C-QUOTE-EOF
-   done LBL, ;
+   done LBL,  10 11 0 ADDI,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ Escaped-literal copy, emitted once, BL-called (x11 src, x12 end, x17 dst
+\ in/out; incoming x10 decoded count preserved; saves LR).
+\ Mirrors src/habu/habu2.f EMIT-ESC-COPY.
+: EMIT-ESC-COPY ( -- )
+   LBL LBL LBL LBL LBL {: copy done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
+   LESCCOPY @ LBL,
+   SP SP 16 SUBI,  10 SP 0 STR,  30 SP 8 STR,
+   copy LBL,  11 12 CMP,  C-GE done BCOND,
+      9 11 0 LDRB,  9 $5C CMPI,  C-EQ esc BCOND,
+      9 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  copy B,
+   esc LBL,
+      11 11 1 ADDI,  11 12 CMP,  C-GE bad BCOND,
+      9 11 0 LDRB,  LESCDEC @ BL,
+      10 1 CMPI,  C-EQ hex BCOND,  C-GT bad BCOND,
+      11 11 1 ADDI,  9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   hex LBL,
+      15 11 3 ADDI,  15 12 CMP,  C-GT bad BCOND,
+      9 11 1 LDRB,  LESCHEX @ BL,  10 bad CBNZ,  14 9 4 LSLI,
+      9 11 2 LDRB,  LESCHEX @ BL,  10 bad CBNZ,  9 14 9 ORR,
+      11 15 0 ADDI,  9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   bad LBL,  C-QUOTE-EOF
+   done LBL,  10 SP 0 LDR,  30 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
+
+: C-ESC-QUOTE-SCAN ( -- )
+   LESCSCAN @ BL, ;
 
 : C-ESC-QUOTE-CONSUME ( -- )
    15 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
@@ -2427,30 +2467,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SP SP 32 ADDI, ;
 
 : C-ESC-COPY-X17 ( -- )
-   LBL LBL LBL LBL LBL {: copy done esc hex bad :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu local type suffixes.
-   copy LBL,
-      11 12 CMP,  C-GE done BCOND,
-      9 11 0 LDRB,
-      9 $5C CMPI,  C-EQ esc BCOND,
-      9 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  copy B,
-   esc LBL,
-      11 11 1 ADDI,
-      11 12 CMP,  C-GE bad BCOND,
-      9 11 0 LDRB,
-      hex bad C-ESC-DECODE-BASIC
-      11 11 1 ADDI,
-      9 17 0 STRB,  17 17 1 ADDI,  copy B,
-   hex LBL,
-      15 11 3 ADDI,
-      15 12 CMP,  C-GT bad BCOND,
-      9 11 1 LDRB,  bad C-ESC-HEX-X9
-      14 9 4 LSLI,
-      9 11 2 LDRB,  bad C-ESC-HEX-X9
-      9 14 9 ORR,
-      11 15 0 ADDI,
-      9 17 0 STRB,  17 17 1 ADDI,  copy B,
-   bad LBL,  C-QUOTE-EOF
-   done LBL, ;
+   LESCCOPY @ BL, ;
 
 : C-ISDQ ( -- )
    C-QUOTE-START
@@ -2494,11 +2511,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
-   17 DATA 0 STR,
-   18 G-PUSH  10 G-PUSH ;
+   17 DATA 0 STR,  11 17 10 SUB,
+   11 G-PUSH  10 G-PUSH ;
 
 : C-EICQ ( -- )
    C-QUOTE-START
@@ -2508,23 +2525,23 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    capok LBL,
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
    10 17 0 STRB,  17 17 1 ADDI,
    C-ESC-COPY-X17
-   17 DATA 0 STR,
-   18 G-PUSH ;
+   17 DATA 0 STR,  11 17 10 SUB,  11 11 1 SUBI,
+   11 G-PUSH ;
 
 : C-EIDOTQ ( -- )
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,
-   0 1 MOVZ,  1 18 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+   0 1 MOVZ,  1 17 10 SUB,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 \ S" string" (compile mode): emit bytes in the RX code image, then push the
 \ byte address via C-ADR PC-relative addressing plus the counted length.
@@ -2600,7 +2617,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS @ BL,
-   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   9 $14000000 LIT64,  LCEMIT @ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
@@ -2608,7 +2625,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    28 17 0 ADDI,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    12 13 0 ADDI,
-   9 18 0 ADDI,  15 10 0 ADDI,  LPAT @ BL,
+   9 13 4 SUBI,  15 10 0 ADDI,  LPAT @ BL,
    11 12 0 ADDI,  C-ADR
    11 15 0 ADDI,  C-LIT
    C-ESC-QUOTE-SAVED-DROP ;
@@ -2623,7 +2640,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS @ BL,
-   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT @ BL,
+   9 $14000000 LIT64,  LCEMIT @ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
    10 28 0 STRB,  28 28 1 ADDI,
@@ -2632,7 +2649,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    28 17 0 ADDI,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    12 13 0 ADDI,
-   9 18 0 ADDI,  15 10 1 ADDI,  LPAT @ BL,
+   9 13 4 SUBI,  15 10 1 ADDI,  LPAT @ BL,
    11 12 0 ADDI,  C-ADR
    C-ESC-QUOTE-SAVED-DROP ;
 
@@ -3345,7 +3362,7 @@ variable CFSK2
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
-   LBL LBCAP !  LBL LBCS !
+   LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
@@ -3428,7 +3445,7 @@ variable CFSK2
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    EMIT-DOESPATCH
-   EMIT-CF-HELPERS
+   EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EMIT-LOC-FIND
    EMIT-KWDATA
    EMIT-FOLDKW

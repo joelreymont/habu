@@ -1,7 +1,7 @@
 \ token.f - checked whitespace token table for native lint tools.
 \ Load after tools/lint/text.f.
 
-$6000 constant TMAX
+$8000 constant TMAX             \ largest linted source (src/core/checker.f) + headroom
 77 constant E-LINT-TOKEN-CAP
 
 create TOFF TMAX cells allot

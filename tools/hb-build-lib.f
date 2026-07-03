@@ -13,6 +13,9 @@ require tools/object-image.f
 74 constant HBB-BUILD-RC
 34 constant HBB-DQ
 10 constant HBB-LF
+$2B constant HBB-PLUS
+64 constant HBB-HEX-U
+96 constant HBB-ABI-CAP
 120000 constant HBB-TIMEOUT-MS
 65536 constant HBB-CAPTURE-CAP
 
@@ -23,6 +26,8 @@ create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
 create HBB-SRC-DIGEST 40 allot
 create HBB-SRC-HEX 80 allot
+create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
+create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-CACHE-ROOT-BUF FS-PATH-CAP allot
 create HBB-ARTIFACT-PATH FS-PATH-CAP allot
 create HBB-ARTIFACT-TMP-PATH FS-PATH-CAP allot
@@ -36,6 +41,8 @@ variable HBB-OUT-BUF-A
 variable HBB-ERR-BUF-A
 variable HBB-SRC-U
 variable HBB-OUT-U
+variable HBB-CHECKER-ABI-U
+variable HBB-COMPILER-ABI-U
 variable HBB-MAKER-U
 variable HBB-MAKER-NAME-U
 variable HBB-CACHE-ROOT-U
@@ -507,7 +514,7 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-MAKER-KEY! ( -- )
    CK-RESET
    s" hb-build-maker-cache-v2" CK-TEXT+
-   s" bin/hb" HBB-KEY-FILE+
+   BF-ENGINE$ HBB-KEY-FILE+
    HBB-KEY-LOAD-FILES
    HBB-KEY-COMMON-SOURCES
    HBB-KEY-TARGET-SOURCES
@@ -574,16 +581,26 @@ HBB-INSTALL-CHILD-LINTS
    s" stage2-got" BF-A$ HBB-MAKER$ RENAME-FILE
    HBB-MAKER$ CHMOD-X ;
 
+\ Attributable maker-build failure: the child engine's diagnostics stream to
+\ the inherited stderr, but a silent child (e.g. an uncaught throw) must still
+\ be identifiable, so the die message carries the child's exit code.
+: HBB-MAKER-DIE$ ( n -- ptr u8 n ) {: rc:n :}
+   SB-RESET
+   s" hb-build: native maker build failed, rc " SB-APPEND
+   rc 0 < if 45 SB-APPEND-C then
+   rc 0 < if 0 rc - else rc then FS-MUT-SB-U
+   SB$ ;
+
 : HBB-BUILD-MAKER-FRESH ( -- )
    HBB-MAKER-READY? if exit then
    HBB-MAKER-SOURCE
    HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE
-   dup 0 <> if
-      s" hb-build: native maker build failed" HBB-BUILD-RC die
-   then drop
+   BF-ENGINE$ s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE {: rc:n :}
+   rc 0 <> if
+      rc HBB-MAKER-DIE$ HBB-BUILD-RC die
+   then
    s" stage2-got" BF-EXPECT
    HBB-INSTALL-MAKER ;
 
@@ -697,11 +714,21 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-SRC-HEX! ( -- )
    HBB-SRC$ HBB-SRC-HEX SHA256-FILE-HEX dup 0 <> if throw then drop ;
 
+: HBB-ABI! ( ptr u8 n ptr u8 ptr n -- ) {: sem:ptr semu:n dst:ptr up:ptr :}
+   semu HBB-HEX-U + 1 + HBB-ABI-CAP > if E-STR-CAPACITY throw then
+   HBB-MAKER-KEY!
+   sem dst semu BYTE-COPY
+   HBB-PLUS dst semu + c!
+   HBB-MAKER-KEY-HEX dst semu 1 + + HBB-HEX-U BYTE-COPY
+   semu HBB-HEX-U + 1 + up ! ;
+
 : HBB-CHECKER-ABI$ ( -- ptr u8 n )
-   s" checker-effect-v1" ;
+   s" checker-effect-v1" HBB-CHECKER-ABI-BUF HBB-CHECKER-ABI-U HBB-ABI!
+   HBB-CHECKER-ABI-BUF HBB-CHECKER-ABI-U @ ;
 
 : HBB-COMPILER-ABI$ ( -- ptr u8 n )
-   s" hb-arm64-v1" ;
+   s" hb-arm64-v1" HBB-COMPILER-ABI-BUF HBB-COMPILER-ABI-U HBB-ABI!
+   HBB-COMPILER-ABI-BUF HBB-COMPILER-ABI-U @ ;
 
 : HBB-TARGET-ABI$ ( -- ptr u8 n )
    HB-TARGET-LINUX? if s" linux-aarch64" exit then

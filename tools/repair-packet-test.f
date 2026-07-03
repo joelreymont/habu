@@ -26,6 +26,7 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 require tools/argv.f
 require tools/repair-packet-core.f
+require test/golden.f
 
 $20000 constant RPT-CAPTURE-CAP
 10000 constant RPT-TIMEOUT-MS
@@ -233,6 +234,21 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-LABEL$ T-LABEL
    RPT-PACKET class classu GJA-REPAIR-PACKET ;
 
+: RPT-GOLDEN-NAME$ ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
+   SB-RESET
+   s" repair-" SB-APPEND
+   name nameu SB-APPEND
+   s" .packet" SB-APPEND
+   SB$ ;
+
+\ Byte-exact golden of the generated packet; the temp root inside the embedded
+\ diagnostic is redacted to <root> so the golden stays stable across runs.
+: RPT-EXPECT-GOLDEN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   RPT-ROOT GOLD:REDACT!
+   RPT-PACKET RPT-OUT RPT-CAPTURE-CAP READ-ALL {: pu:n :}
+   RPT-LABEL$ T-LABEL
+   RPT-OUT pu name nameu RPT-GOLDEN-NAME$ GOLD:CHECK TTRUE ;
+
 : RPT-CASE-PATHS ( ptr u8 n -- ) {: name:ptr nameu :}
    name nameu RPT-SRC!
    name nameu RPT-DIAG!
@@ -243,7 +259,8 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    src srcu RPT-WRITE-SOURCE
    name nameu RPT-EXPECT-CHECK-REJECT
    RPT-MAKE-PACKET
-   class classu RPT-ASSERT-PACKET ;
+   class classu RPT-ASSERT-PACKET
+   name nameu RPT-EXPECT-GOLDEN ;
 
 : RPT-TWO-SOURCE$ ( -- ptr u8 n )
    SB-RESET
@@ -265,7 +282,8 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" remove_producer" RPT-ASSERT-PACKET
    RPT-PACKET RPT-OUT RPT-CAPTURE-CAP READ-ALL {: packetu :}
    s" two diagnostic count" T-LABEL
-   RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE ;
+   RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE
+   s" two" RPT-EXPECT-GOLDEN ;
 
 \ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
 : RPT-ARGV-REPAIR-NOARGS ( -- )
@@ -294,6 +312,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 
 : RPT-MAIN ( -- )
    T-RESET
+   GOLD:INIT
    RPT-PREPARE
    RPT-TEST-REPAIR-CLASSES
    RPT-TEST-TWO-DIAGS

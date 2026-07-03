@@ -41,6 +41,7 @@ s" M-BE-HERE" s" -- n" TRUST
 s" M-BE32" s" n --" TRUST
 s" M-BE64" s" n --" TRUST
 s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
+s" MSIZE" s" -- n" TRUST
 
 : IBT-CHECK-REJECTS ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -115,11 +116,20 @@ s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
    M-RESET
    s" 12345678901234567" M-LEN M-NAME16-LEN ;
 
+\ Regression for the silent maker-build failure: an image cursor past MSIZE
+\ must throw M-BOUNDS-RC (and M-FAIL now reports the site to stderr instead
+\ of swallowing its message).
+: IBT-CURSOR-OVER ( -- )
+   M-RESET
+   MSIZE M-OFF M-PAD-OFF
+   1 IMG-M8 ;
+
 : IBT-TEST-REFINE-ERRORS ( -- )
    [: IBT-LEN-NEG ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-OFF-NEG ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-PAD-BACK ;] M-BOUNDS-RC TTHROWSQ
    [: IBT-NAME-LONG ;] M-BOUNDS-RC TTHROWSQ
+   [: IBT-CURSOR-OVER ;] M-BOUNDS-RC TTHROWSQ
    s" BAD-M-LE32 ( len -- n ) M-LE32@" IBT-CHECK-REJECTS
    s" BAD-M-PAD ( len -- ) M-PAD-OFF" IBT-CHECK-REJECTS ;
 
@@ -135,12 +145,14 @@ s" M-BE-BYTES-LEN" s" ptr u8 len --" TRUST
    s" create MBUF MSIZE allot" IBT-MUST-LACK
    s" variable MP" IBT-MUST-LACK
    s" : IMG-M8" IBT-MUST-LACK
+   s" elf: MSIZE below max image" IBT-MUST-HAVE
    s" src/os/macos/macho.f" IBT-LOAD
    s" create MBUF MSIZE allot" IBT-MUST-LACK
    s" variable MP" IBT-MUST-LACK
    s" : IMG-M8" IBT-MUST-LACK
    s" variable PHP" IBT-MUST-LACK
    s" : PL!" IBT-MUST-LACK
+   s" macho: MSIZE below max image" IBT-MUST-HAVE
    s" src/os/macos/sign2.f" IBT-LOAD
    s" variable HLP" IBT-MUST-LACK
    s" : HL@" IBT-MUST-LACK

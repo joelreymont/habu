@@ -18,9 +18,9 @@ TL-M-TABLES TL-MAX * constant TL-M-CELLS
 92 constant TL-BSLASH
 96 constant TL-BTICK
 124 constant TL-PIPE
+57 constant TL-NINE
 
 create TL-PATH-BUF FS-PATH-CAP allot
-create TL-SITE-BUF FS-PATH-CAP allot
 create TL-NUM-BUF TL-NUM-CAP allot
 create TL-ONE 1 allot
 
@@ -34,10 +34,9 @@ variable TL-S#
 variable TL-M#
 variable TL-BAD
 variable TL-NUM-L
-variable TL-SITE-U
+variable TL-CIX
 variable TL-LINE
 variable TL-I
-variable TL-J
 variable TL-K
 variable TL-C#
 variable TL-START
@@ -232,6 +231,28 @@ variable TL-NV
 : TL-M-SITE$ ( n -- ptr u8 n ) {: k :} TL-M-SO k TL-A@ TL-M-SL k TL-A@ TL-O$ ;
 : TL-M-AUDIT$ ( n -- ptr u8 n ) {: k :} TL-M-AO k TL-A@ TL-M-AL k TL-A@ TL-O$ ;
 
+\ The manifest key is (name, file). The Site cell may carry a trailing `:line`
+\ suffix, kept only as informational context - never a match or failure input.
+\ TL-STRIP-LINE$ returns the file part by dropping a final `:` + digit run.
+: TL-ALL-DIGITS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF TL-FALSE exit THEN
+   0 begin dup u < while
+      a over + c@ dup TL-ZERO < swap TL-NINE > or IF drop TL-FALSE exit THEN
+      1+
+   repeat drop TL-TRUE ;
+
+: TL-STRIP-LINE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   -1 TL-CIX !
+   0 begin dup u < while
+      a over + c@ TL-COLON = IF dup TL-CIX ! THEN
+      1+
+   repeat drop
+   TL-CIX @ 0 < IF a u exit THEN
+   a TL-CIX @ 1+ +  u TL-CIX @ 1+ -  TL-ALL-DIGITS? 0= IF a u exit THEN
+   a TL-CIX @ ;
+
+: TL-M-KEY-PATH$ ( n -- ptr u8 n ) TL-M-SITE$ TL-STRIP-LINE$ ;
+
 : TL-FIND-SITE ( ptr u8 n -- n ) {: a:ptr u :}
    0 begin dup TL-S# @ < while
       dup TL-S-NAME$ a u LINT-STR= IF exit THEN
@@ -252,25 +273,13 @@ variable TL-NV
       1+
    repeat drop -1 ;
 
-: TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu:n site:ptr siteu:n :}
+: TL-FIND-MAN-SITE ( ptr u8 n ptr u8 n -- n ) {: name:ptr nameu:n path:ptr pathu:n :}
    0 begin dup TL-M# @ < while
       dup TL-M-NAME$ name nameu LINT-STR= if
-         dup TL-M-SITE$ site siteu LINT-STR= if exit then
+         dup TL-M-KEY-PATH$ path pathu LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
-
-: TL-FIND-UNIQUE-MAN ( ptr u8 n -- n ) {: name:ptr nameu:n :}
-   -1 TL-J !
-   0 TL-I !
-   begin TL-I @ TL-M# @ < while
-      TL-I @ TL-M-NAME$ name nameu LINT-STR= if
-         TL-J @ 0 >= if -2 exit then
-         TL-I @ TL-J !
-      then
-      TL-I @ 1+ TL-I !
-   repeat
-   TL-J @ ;
 
 : TL-PRINT-SITE ( n -- )
    dup TL-S-PATH$ TL-OUT
@@ -279,43 +288,13 @@ variable TL-NV
 
 : TL-BAD+ ( -- ) TL-BAD @ 1+ TL-BAD ! ;
 
-: TL-SITE+ ( ptr u8 n -- ) {: a:ptr u :}
-   TL-SITE-U @ u + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
-   a TL-SITE-BUF TL-SITE-U @ + u LINT-BMOVE
-   TL-SITE-U @ u + TL-SITE-U ! ;
-
-: TL-SITE-C ( n -- ) {: c :}
-   TL-SITE-U @ 1 + FS-PATH-CAP > IF s" trust-lint: site path too long" TL-FAIL THEN
-   c TL-SITE-BUF TL-SITE-U @ + c!
-   TL-SITE-U @ 1 + TL-SITE-U ! ;
-
-: TL-SITE-U+ ( n -- ) {: n :}
-   n 0 < IF s" trust-lint: negative line" TL-FAIL THEN
-   n 10 >= IF n 10 / RECURSE THEN
-   n 10 mod TL-ZERO + TL-SITE-C ;
-
-: TL-SCAN-SITE$ ( n -- ptr u8 n ) {: sk :}
-   0 TL-SITE-U !
-   sk TL-S-PATH$ TL-SITE+
-   TL-COLON TL-SITE-C
-   TL-S-LINE sk TL-A@ TL-SITE-U+
-   TL-SITE-BUF TL-SITE-U @ ;
-
 : TL-FIND-SITE-FOR-MAN ( n -- n ) {: mk :}
    0 begin dup TL-S# @ < while
       dup TL-S-NAME$ mk TL-M-NAME$ LINT-STR= if
-         dup TL-SCAN-SITE$ mk TL-M-SITE$ LINT-STR= if exit then
+         dup TL-S-PATH$ mk TL-M-KEY-PATH$ LINT-STR= if exit then
       then
       1+
    repeat drop -1 ;
-
-: TL-SITE-DRIFT ( n n -- ) {: sk mk :}
-   s" SITE-DRIFT " TL-OUT sk TL-PRINT-SITE
-   s" : `" TL-OUT sk TL-S-NAME$ TL-OUT
-   s" ` manifest site `" TL-OUT mk TL-M-SITE$ TL-OUT
-   s" ` does not match scanned site `" TL-OUT sk TL-SCAN-SITE$ TL-OUT
-   s" `" TL-OUT TL-NL
-   TL-BAD+ ;
 
 : TL-DUP-SITE ( n -- )
    s" DUPLICATE-TRUST " TL-OUT
@@ -438,7 +417,7 @@ variable TL-NV
    TL-MAN-NAME-CELL$ TL-SEPARATOR? ;
 
 : TL-CHECK-DUP-MAN ( -- )
-   TL-MAN-NAME-CELL$ TL-MAN-SITE-CELL$ TL-FIND-MAN-SITE dup 0 >= IF
+   TL-MAN-NAME-CELL$ TL-MAN-SITE-CELL$ TL-STRIP-LINE$ TL-FIND-MAN-SITE dup 0 >= IF
       TL-MAN-NAME-CELL$ TL-DUP-ROW
    ELSE
       drop
@@ -544,14 +523,9 @@ variable TL-NV
    TL-BAD+ ;
 
 : TL-FIND-MANIFEST-SITE ( n -- bool ) {: sk :}
-   sk TL-S-NAME$ sk TL-SCAN-SITE$ TL-FIND-MAN-SITE dup 0 < IF
+   sk TL-S-NAME$ sk TL-S-PATH$ TL-FIND-MAN-SITE dup 0 < IF
       drop
-      sk TL-S-NAME$ TL-FIND-UNIQUE-MAN dup 0 < IF
-         drop
-         sk TL-UNMANIFESTED-SITE
-      ELSE
-         sk swap TL-SITE-DRIFT
-      THEN
+      sk TL-UNMANIFESTED-SITE
       TL-FALSE exit
    THEN
    TL-K !
@@ -564,11 +538,6 @@ variable TL-NV
       s" ` code effect `" TL-OUT sk TL-S-EFF$ TL-OUT
       s" ` != TRUSTED.md `" TL-OUT TL-K @ TL-M-EFF$ TL-OUT s" `" TL-OUT TL-NL
       TL-BAD+
-   THEN ;
-
-: TL-CHECK-SITE-DRIFT ( n -- ) {: sk :}
-   sk TL-SCAN-SITE$ TL-K @ TL-M-SITE$ LINT-STR= 0= IF
-      sk TL-K @ TL-SITE-DRIFT
    THEN ;
 
 : TL-CHECK-TEST-CELL ( n -- ) {: sk :}
@@ -615,7 +584,6 @@ variable TL-NV
 : TL-CHECK-SITE ( n -- ) {: sk :}
    sk TL-FIND-MANIFEST-SITE 0= IF exit THEN
    sk TL-CHECK-EFFECT-DRIFT
-   sk TL-CHECK-SITE-DRIFT
    sk TL-CHECK-TEST-CELL
    sk TL-CHECK-AUDIT-DATE ;
 
@@ -624,9 +592,9 @@ variable TL-NV
    s" lib/" LINT-STARTS-WITH? ;
 
 : TL-CHECK-STALE-ROW ( n -- ) {: mk :}
-   mk TL-M-SITE$ TL-SCANNED-SITE? TL-NOT IF exit THEN
+   mk TL-M-KEY-PATH$ TL-SCANNED-SITE? TL-NOT IF exit THEN
    mk TL-FIND-SITE-FOR-MAN 0 < IF
-      s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-SITE$ TL-OUT
+      s" STALE-ROW TRUSTED.md " TL-OUT mk TL-M-KEY-PATH$ TL-OUT
       s" : `" TL-OUT mk TL-M-NAME$ TL-OUT
       s" ` has a row but no TRUST site in src/ or lib/ scanned roots" TL-OUT TL-NL
       TL-BAD+

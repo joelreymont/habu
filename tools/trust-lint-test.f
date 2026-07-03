@@ -22,7 +22,7 @@ require tools/trust-lint-core.f
 
 8192 constant TLT-CAP
 $10000 constant TLT-STR-CAP
-$20000 constant TLT-FILE-CAP
+$30000 constant TLT-FILE-CAP
 10000 constant TLT-TIMEOUT-MS
 10 constant TLT-LF
 48 constant TLT-ZERO
@@ -133,7 +133,7 @@ TLT-LF TLT-LF-BUF c!
    SB$ ;
 
 : TLT-BASE-ROW$ ( -- ptr u8 n )
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-13 |" ;
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-13 |" ;
 
 : TLT-BASE-SRC$ ( -- ptr u8 n )
    SB-RESET
@@ -210,15 +210,15 @@ TLT-LF TLT-LF-BUF c!
    TLT-LIB-DEF TLT-LIB-DEF$ WRITE-ALL ;
 
 : TLT-ADD-GOOD-LIB-ROWS ( -- )
-   s" | lib-foo | `-- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
-   s" | lib-trusted | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trusted-def.f:1 | 2026-06-13 |" TLT-APPEND-MAN ;
+   s" | lib-foo | `-- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f | 2026-06-13 |" TLT-APPEND-MAN
+   s" | lib-trusted | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trusted-def.f | 2026-06-13 |" TLT-APPEND-MAN ;
 
 : TLT-ADD-BENCH-TRUST ( -- )
    TLT-BENCH MAKE-DIRS
    TLT-BENCH-TRUST TLT-BENCH-TRUST$ WRITE-ALL ;
 
 : TLT-ADD-GOOD-BENCH-ROW ( -- )
-   s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN ;
+   s" | bench-trusted | `-- ptr u8` | fixture | `test/t-bench-fixture.fs` | bench/trust.f | 2026-06-13 |" TLT-APPEND-MAN ;
 
 : TLT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -382,27 +382,29 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-STALE-LIB-ROW ( -- )
    s" stale-lib-row" TLT-MAKE-BASE
-   s" | lib-gone | `--` | fixture | `test/t-lib-fixture.fs` | lib/missing.f:1 | 2026-06-13 |" TLT-APPEND-MAN
-   s" STALE-ROW" s" lib/missing.f:1" TLT-EXPECT-BAD-CONTAINS ;
+   s" | lib-gone | `--` | fixture | `test/t-lib-fixture.fs` | lib/missing.f | 2026-06-13 |" TLT-APPEND-MAN
+   s" STALE-ROW" s" lib/missing.f" TLT-EXPECT-BAD-CONTAINS ;
 
-: TLT-TEST-DUP-SRC-LIB ( -- )
-   s" duplicate-src-lib" TLT-MAKE-BASE
+\ Same name TRUSTed in a second file with no row of its own: the file key
+\ (foo, lib/trust.f) has no manifest row, so the lib site is UNMANIFESTED.
+: TLT-TEST-SAME-NAME-UNMANIFESTED ( -- )
+   s" same-name-unmanifested" TLT-MAKE-BASE
    TLT-LIB MAKE-DIRS
    TLT-LIB-TRUST TLT-BASE-SRC$ WRITE-ALL
-   s" SITE-DRIFT" s" lib/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
+   s" UNMANIFESTED" s" lib/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
 
 : TLT-TEST-MULTISITE-TRUST ( -- )
    s" multisite-trust" TLT-MAKE-BASE
    TLT-LIB MAKE-DIRS
    TLT-LIB-TRUST TLT-BASE-SRC$ WRITE-ALL
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | lib/trust.f | 2026-06-13 |" TLT-APPEND-MAN
    2 2 TLT-EXPECT-OK
    2 2 TLT-EXPECT-SOURCE-LIST-OK ;
 
 : TLT-TEST-DUP-NAME-SITES ( -- )
    s" duplicate-name-sites" TLT-MAKE-BASE
    TLT-ADD-LIB-SAME-TRUST
-   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/trust.f | 2026-06-13 |" TLT-APPEND-MAN
    2 2 TLT-EXPECT-OK
    2 2 TLT-EXPECT-SOURCE-LIST-OK ;
 
@@ -411,8 +413,8 @@ TLT-LF TLT-LF-BUF c!
    TLT-SRC MAKE-DIR
    TLT-SRC-TRUST TLT-BASE-SRC$ WRITE-ALL
    TLT-WRITE-MAN-HEADER
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f:1 | 2026-06-13 |" TLT-APPEND-MAN
-   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/other.f:1 | 2026-06-13 |" TLT-APPEND-MAN
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f | 2026-06-13 |" TLT-APPEND-MAN
+   s" | foo | `n -- n` | fixture | `test/t-lib-fixture.fs` | lib/other.f | 2026-06-13 |" TLT-APPEND-MAN
    s" UNMANIFESTED" s" src/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
 
 : TLT-TEST-DUP-TRUST ( -- )
@@ -422,32 +424,38 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-EFFECT-DRIFT ( -- )
    s" effect-drift" TLT-MAKE-BASE
-   s" | foo | `n --` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   s" | foo | `n --` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-13 |" TLT-WRITE-MAN-ROW
    s" EFFECT-DRIFT" TLT-EXPECT-BAD ;
 
-: TLT-TEST-SITE-DRIFT-PATH ( -- )
-   s" site-drift-path" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
-   s" SITE-DRIFT" s" src/other.f:1" TLT-EXPECT-BAD-CONTAINS ;
+\ A row keyed on the wrong file matches no scanned site: the source site is
+\ UNMANIFESTED and the mislocated row is STALE-ROW - the file-key replacement
+\ for the deleted SITE-DRIFT class.
+: TLT-TEST-WRONG-FILE-ROW ( -- )
+   s" wrong-file-row" TLT-MAKE-BASE
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/other.f | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   s" UNMANIFESTED" s" src/trust.f:1" TLT-EXPECT-BAD-CONTAINS ;
 
-: TLT-TEST-SITE-DRIFT-LINE ( -- )
-   s" site-drift-line" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:2 | 2026-06-13 |" TLT-WRITE-MAN-ROW
-   s" SITE-DRIFT" s" src/trust.f:2" TLT-EXPECT-BAD-CONTAINS ;
+\ The line suffix is informational only: a row pinned to the wrong line still
+\ matches by file key, so a 1-line (or 100-line) shift stays green with zero
+\ row edits. This is the core anti-toil guarantee of the file-key manifest.
+: TLT-TEST-LINE-INFORMATIONAL ( -- )
+   s" line-informational" TLT-MAKE-BASE
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:99 | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   1 1 TLT-EXPECT-OK ;
 
 : TLT-TEST-UNTESTED ( -- )
    s" untested" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | | src/trust.f:1 | 2026-06-13 |" TLT-WRITE-MAN-ROW
+   s" | foo | `n -- n` | fixture | | src/trust.f | 2026-06-13 |" TLT-WRITE-MAN-ROW
    s" UNTESTED" TLT-EXPECT-BAD ;
 
 : TLT-TEST-BAD-AUDIT ( -- )
    s" bad-audit" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | nope |" TLT-WRITE-MAN-ROW
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | nope |" TLT-WRITE-MAN-ROW
    s" BAD-AUDIT-DATE" TLT-EXPECT-BAD ;
 
 : TLT-TEST-BAD-CALENDAR-AUDIT ( -- )
    s" bad-calendar-audit" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-02-29 |" TLT-WRITE-MAN-ROW
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-02-29 |" TLT-WRITE-MAN-ROW
    s" BAD-AUDIT-DATE" TLT-EXPECT-BAD ;
 
 : TLT-TEST-BAD-TODAY ( -- )
@@ -456,7 +464,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-FUTURE-AUDIT ( -- )
    s" future-audit" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f:1 | 2026-06-17 |" TLT-WRITE-MAN-ROW
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-17 |" TLT-WRITE-MAN-ROW
    s" FUTURE-AUDIT" TLT-EXPECT-BAD ;
 
 : TLT-TEST-STALE-AUDIT ( -- )
@@ -465,7 +473,7 @@ TLT-LF TLT-LF-BUF c!
 
 : TLT-TEST-STALE-ROW ( -- )
    s" stale-row" TLT-MAKE-BASE
-   s" | bar | `--` | fixture | `test/t-fixture.fs` | src/trust.f:2 | 2026-06-13 |" TLT-APPEND-MAN
+   s" | bar | `--` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-13 |" TLT-APPEND-MAN
    s" STALE-ROW" TLT-EXPECT-BAD ;
 
 : TLT-TEST-DUP-ROW ( -- )
@@ -488,14 +496,14 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-UNMANIFESTED-LIB
    TLT-TEST-UNMANIFESTED-TRUSTED
    TLT-TEST-STALE-LIB-ROW
-   TLT-TEST-DUP-SRC-LIB
+   TLT-TEST-SAME-NAME-UNMANIFESTED
    TLT-TEST-MULTISITE-TRUST
    TLT-TEST-DUP-NAME-SITES
    TLT-TEST-DUP-NAME-MISSING-SITE
    TLT-TEST-DUP-TRUST
    TLT-TEST-EFFECT-DRIFT
-   TLT-TEST-SITE-DRIFT-PATH
-   TLT-TEST-SITE-DRIFT-LINE
+   TLT-TEST-WRONG-FILE-ROW
+   TLT-TEST-LINE-INFORMATIONAL
    TLT-TEST-UNTESTED
    TLT-TEST-BAD-AUDIT
    TLT-TEST-BAD-CALENDAR-AUDIT

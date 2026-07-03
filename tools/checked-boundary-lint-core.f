@@ -32,6 +32,8 @@ variable UB-TOK-LINE
 variable UB-TOK-COL
 variable UB-PREV-A
 variable UB-PREV-U
+variable UB-PREV2-A
+variable UB-PREV2-U
 variable UB-BAD
 variable UB-CHECK-OFF
 variable UB-NUM-I
@@ -53,6 +55,9 @@ variable UB-OUT-FD
 : UB-PREV-A-FIELD ( -- ptr ptr u8 )
    UB-PREV-A 0 ptr-field ;
 
+: UB-PREV2-A-FIELD ( -- ptr ptr u8 )
+   UB-PREV2-A 0 ptr-field ;
+
 : UB-FILE-A@ ( -- ptr u8 )
    UB-FILE-A-FIELD @ ;
 
@@ -65,6 +70,9 @@ variable UB-OUT-FD
 : UB-PREV-A@ ( -- ptr u8 )
    UB-PREV-A-FIELD @ ;
 
+: UB-PREV2-A@ ( -- ptr u8 )
+   UB-PREV2-A-FIELD @ ;
+
 : UB-FILE-A! ( ptr u8 -- )
    UB-FILE-A-FIELD ! ;
 
@@ -76,6 +84,9 @@ variable UB-OUT-FD
 
 : UB-PREV-A! ( ptr u8 -- )
    UB-PREV-A-FIELD ! ;
+
+: UB-PREV2-A! ( ptr u8 -- )
+   UB-PREV2-A-FIELD ! ;
 
 : UB-TRUE ( -- bool )
    0 0= ;
@@ -191,6 +202,9 @@ variable UB-OUT-FD
 : UB-PREV$ ( -- ptr u8 n )
    UB-PREV-A@ UB-PREV-U @ ;
 
+: UB-PREV2$ ( -- ptr u8 n )
+   UB-PREV2-A@ UB-PREV2-U @ ;
+
 : UB-TOK= ( ptr u8 n -- bool )
    {: a:ptr u:n :}
    UB-TOK$ a u LINT-STR= ;
@@ -207,7 +221,13 @@ variable UB-OUT-FD
    {: a:ptr u:n :}
    UB-PREV$ a u LINT-STR=CI ;
 
+: UB-PREV2= ( ptr u8 n -- bool )
+   {: a:ptr u:n :}
+   UB-PREV2$ a u LINT-STR= ;
+
 : UB-SAVE-PREV ( -- )
+   UB-PREV-A@ UB-PREV2-A!
+   UB-PREV-U @ UB-PREV2-U !
    UB-TOK-A@ UB-PREV-A!
    UB-TOK-U @ UB-PREV-U ! ;
 
@@ -232,6 +252,28 @@ variable UB-OUT-FD
 
 : UB-SET-CHECK-ON? ( -- bool )
    s" set-check" UB-TOK=CI s" 0" UB-PREV=CI UB-NOT and ;
+
+\ A hook install is `' NAME set-check` / `['] NAME set-check`: current token
+\ `set-check`, two-back token the tick, one-back token the installed hook name.
+\ Requiring the tick two-back also excludes the `' set-check` name reference
+\ (there the tick is one-back and the name slot is `set-check` itself).
+: UB-TICK-PREV2? ( -- bool )
+   s" '" UB-PREV2= s" [']" UB-PREV2= or ;
+
+: UB-SET-CHECK-INSTALL? ( -- bool )
+   s" set-check" UB-TOK=CI UB-TICK-PREV2? and ;
+
+\ Audited checker hooks: the names installed at the ratcheted HOOK-INSTALL sites
+\ (TRUSTED.md trusted-inventory baseline). Any other installed name neuters
+\ verification and is a finding.
+: UB-HOOK-ALLOWED? ( -- bool )
+   s" HOOK" UB-PREV=CI
+   s" USER-HOOK" UB-PREV=CI or
+   s" SNAP-CHECK-HOOK" UB-PREV=CI or
+   s" CHK-CHECK-HOOK" UB-PREV=CI or
+   s" LINT-CHECK-HOOK" UB-PREV=CI or
+   s" ES-VERDICT-HOOK" UB-PREV=CI or
+   s" PROP-CHECK-HOOK" UB-PREV=CI or ;
 
 : UB-CHECKER-MUTATION? ( -- bool )
    s" set-check" UB-TOK=CI ;
@@ -288,6 +330,12 @@ variable UB-OUT-FD
    UB-JSON-ORIGIN
    s" checker hook remains installed" s" set-check" UB-JSON-FINISH ;
 
+: UB-JSON-ROGUE-HOOK ( -- )
+   s" E-UNAUDITED-HOOK" UB-JSON-BASE
+   s" word" LJW-KEY UB-PREV$ LJW-STRING LJW-COMMA
+   UB-JSON-ORIGIN
+   s" audited checker hook" UB-PREV$ UB-JSON-FINISH ;
+
 : UB-REPORT-DEFINITION ( ptr u8 n -- )
    {: name:ptr nu:n :}
    UB-BAD @ 1+ UB-BAD !
@@ -309,6 +357,21 @@ variable UB-OUT-FD
    s" : `" UB-OUT UB-TOK$ UB-OUT
    s" ` mutates checker state in strict boundary mode" UB-OUT UB-NL ;
 
+: UB-REPORT-ROGUE-HOOK ( -- )
+   UB-BAD @ 1+ UB-BAD !
+   UB-JSON @ if UB-JSON-ROGUE-HOOK exit then
+   s" UNAUDITED-HOOK " UB-OUT
+   UB-FILE-A@ UB-FILE-U @ UB-OUT
+   UB-COLON-C UB-C UB-TOK-LINE @ UB-U$ UB-OUT
+   UB-COLON-C UB-C UB-TOK-COL @ UB-U$ UB-OUT
+   s" : `" UB-OUT UB-PREV$ UB-OUT
+   s" ` is not an audited checker hook" UB-OUT UB-NL ;
+
+: UB-HANDLE-INSTALL ( -- )
+   UB-SET-CHECK-INSTALL? UB-NOT if exit then
+   UB-HOOK-ALLOWED? if exit then
+   UB-REPORT-ROGUE-HOOK ;
+
 : UB-HANDLE-COLON ( -- )
    UB-CHECK-OFF @ UB-NOT if exit then
    UB-NEXT-TOK UB-NOT if exit then
@@ -317,6 +380,7 @@ variable UB-OUT-FD
 
 : UB-RESET-FILE-SCAN ( -- )
    UB-NUM UB-PREV-A! 0 UB-PREV-U !
+   UB-NUM UB-PREV2-A! 0 UB-PREV2-U !
    0 UB-I ! 1 UB-LINE ! 1 UB-COL !
    UB-CARRY-OFF @ UB-CHECK-OFF !
    UB-FALSE UB-TRUSTED ! ;
@@ -331,6 +395,7 @@ variable UB-OUT-FD
       UB-SET-CHECK-OFF? if UB-TRUE UB-CHECK-OFF! then
       UB-COLON? if UB-HANDLE-COLON then
       UB-SET-CHECK-ON? if UB-FALSE UB-CHECK-OFF! then
+      UB-HANDLE-INSTALL
       UB-SEMI? if UB-FALSE UB-TRUSTED ! then
       UB-SAVE-PREV
    repeat ;

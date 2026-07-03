@@ -24,6 +24,7 @@ create HCT-ROOT-BUF FS-PATH-CAP allot
 create HCT-CHILD-BUF FS-PATH-CAP allot
 create HCT-OUT HCT-CAP allot
 create HCT-ERR HCT-CAP allot
+create HCT-EMPTY 1 allot   \ zero-length stdin
 
 : HCT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -83,10 +84,52 @@ create HCT-ERR HCT-CAP allot
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
 
+: HCT-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
+   kind HCT-KIND !  code HCT-RC !
+   erru LEN>N HCT-ERR-U !  outu LEN>N HCT-OUT-U ! ;
+
+\ printf '' | hb --loadx  ->  rc 64, stderr echoes the flag and lists --load.
+: HCT-EXPECT-UNKNOWN-FLAG ( -- )
+   PROC-ARGV-RESET
+   s" --loadx"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   s" unknown flag exits 64" T-LABEL
+   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 64 T=
+   s" stderr echoes the offending flag" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" --loadx" CONTAINS? TTRUE
+   s" usage names the known --load flag" T-LABEL
+   HCT-ERR HCT-ERR-U @ s" --load" CONTAINS? TTRUE ;
+
+\ printf '1 2 + . cr' | hb --nonsense  ->  rc 64: the flag is rejected before the
+\ piped program can run (the old fail-open path silently ran stdin and printed 3).
+: HCT-EXPECT-FLAG-BEFORE-STDIN ( -- )
+   PROC-ARGV-RESET
+   s" --nonsense"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   s" unknown flag rejected even with a piped program" T-LABEL
+   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 64 T=
+   s" the piped stdin program did not run" T-LABEL
+   HCT-OUT-U @ 0 T= ;
+
+\ printf '' | hb --load /dev/null  ->  rc 0: a known flag with an empty file loads.
+: HCT-EXPECT-LOAD-EMPTY-FILE ( -- )
+   PROC-ARGV-RESET
+   s" --load"  >LEN PROC-ARGV+
+   s" /dev/null"  >LEN PROC-ARGV+
+   s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   s" --load of an empty file exits 0" T-LABEL
+   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 0 T= ;
+
 : HCT-MAIN ( -- )
    T-RESET
    HCT-PREPARE
    HCT-EXPECT-LOAD-STDIN
+   HCT-EXPECT-UNKNOWN-FLAG
+   HCT-EXPECT-FLAG-BEFORE-STDIN
+   HCT-EXPECT-LOAD-EMPTY-FILE
    CLEANUP-RUN
    HCT-ROOT EXISTS? TFALSE
    T-REPORT
