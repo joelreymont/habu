@@ -6,7 +6,7 @@ require lib/string.f
 require lib/test.f
 require lib/fs.f
 
-$20000 constant CCET-CAP
+$40000 constant CCET-CAP   \ must exceed all of habu2.f; matches the other habu2.f readers (signature-scan/compiler-dispatch tests)
 
 create CCET-BUF CCET-CAP allot
 variable CCET-LEN
