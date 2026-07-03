@@ -242,7 +242,7 @@ plan and the traffic delta; non-coalesced access is reported early.
 
 Schedule = checked object: region, target, shape/dtype/layout keys, block
 size, vector width, tile M/N/K, warps, stages, smem layout, fragment shape,
-epilogue, save/recompute policy, measurement history. Candidates printed
+epilogue, measurement history. Candidates printed
 before emission; all candidates recorded; replayable by key; winner cached
 per shape/dtype/layout/target.
 
@@ -320,12 +320,13 @@ save-vs-recompute is a reported decision; gradcheck gates promotion.
 
 - Exists at the kernel level only: `lib/ptx/ad-dag.f` (kernel-IR reverse
   pass over the softmax-rows primitive set; `lib/ptx/ad.f` is its v0 token
-  version whose `VJP-SAVES` records a save count, not a decision), device
+  version; `VJP-SAVES` is a count, and the kernel-level `AD-RECOMPUTE?`
+  comparator is not wired to the shared §9 cost model), device
   gradcheck, epic `habu-epic-maki-autograd` and its dot chain.
 - New dot: `cad-9-backward` — the model-op adjoint registry plus the
   model-IR reverse transform emitting backward regions as IR nodes, and the
   save-vs-recompute decision under the shared cost model (CAD-PLAN §12).
-  GRADCHECK (milestone 13) and the training flagship depend on it.
+  GRADCHECK (milestone 14) and the training flagship depend on it.
 
 ### Phase 9b — Training from scratch
 
@@ -408,7 +409,7 @@ gate per `CLAUDE.md`.
 3. `cad-0b` — REPL command skeleton, conservative reports.
 4. `habu-maki-gaussian-nll` — NLL/covariance loss family (independent;
    unblocks the training flagship).
-5. `habu-maki-tensor-value` — unified single-slot tensor value + planning
+5. `habu-maki-unified-single` — unified single-slot tensor value + planning
    vocabulary base (the §3 prerequisite; CAD-PLAN).
 6. `cad-1` — model IR with shape/layout facts + the op registry (costs,
    numeric class, scalar references; membership gated on the reference
@@ -422,7 +423,8 @@ gate per `CLAUDE.md`.
 12. `cad-6-tune` — TUNE enumeration/measurement/selection over
     `tools/ptx/bench.f`; roof microbenches replace `profile.f` constants.
 13. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
-14. Golden/gradcheck promotion gates in `cad-7-optimize`, including the
+14. Golden gate + gradcheck gate wiring in `cad-7-optimize` (GRADCHECK
+    enforcement inert until `cad-9-backward`, item 18), including the
     host model-IR reference executor and external reference artifacts.
 15. Profile/roofline rows in `cad-7-optimize`.
 16. `habu-ptx-kernels-rmsnorm` — RMSNorm + RoPE checked kernels.

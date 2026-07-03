@@ -87,7 +87,7 @@ and migrates onto the tensor value module-by-module. The model *source text*
 is mode-independent; the two vocabularies are kept in sync by the op
 registry (§4.2), not by textual duplication.
 
-The tensor value is owned by its own dot (`habu-maki-tensor-value`), a
+The tensor value is owned by its own dot (`habu-maki-unified-single`), a
 Phase-1 predecessor. Until it lands, Phase 0's `MODEL:` (as built by
 `cad-0b`) parses op *tokens* against a fail-closed table — the model body is
 not yet composed of checked words. The §3 checked capture replaces that
@@ -188,9 +188,10 @@ with an in-block barrier — that is exactly `softmax-row-v1`. Full-tensor
 reductions split into partials + final (v1).
 
 The matrix deliberately omits two classes: `full-reduce` regions are always
-two kernels in v1 (the prose rule above), and `decode` appears only as a
-producer because nothing consumes a decode result inside a region in v1 —
-decode chains end at materialized outputs.
+two kernels in v1 (the prose rule above), and `decode` is never a *consumer*
+— no op feeds into a decode within a region in v1, so it has no matrix
+column; the decode→elementwise `fuse (chain)` row stands, and decode chains
+end at materialized outputs.
 
 Matmul fuses loads-side prologues (dequant/scale) and epilogues (bias,
 activation, residual add, norm scale) only. Matmul→matmul fusion is out of
@@ -493,11 +494,12 @@ minimal repro      smallest region that reproduces
 ```
 
 This is the same packet discipline the checker's repair tooling uses
-(`tools/repair-packet-core.f`, the `habu_repair_packet` shape: word/site,
-expected, actual, repair class, suggestion) — site maps to region/op/tensor
-id, repair family to `repair_class`, and the blocking fact and minimal repro
-are the two fields EXPLAIN adds on top. `maki/eval-repair.f` is unrelated
-accounting (repair rounds and tokens-to-green for the eval matrix).
+(`tools/repair-packet-core.f`, the `habu_repair_packet` shape) — the field
+mapping: site → `word`/`file`/`line`, expected/actual → same names, failure
+class → `reason`, repair family → `repair_class`, suggestion ↔ the repair
+family's canonical move; EXPLAIN adds blocking fact and minimal repro on
+top. `maki/eval-repair.f` is unrelated accounting (repair rounds and
+tokens-to-green for the eval matrix).
 
 ## 15. Typed backbone hooks
 

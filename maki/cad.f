@@ -15,7 +15,7 @@
 \ PROMOTE refuses with a named throw (E-CAD-GATE) unless every gate passes.
 \ OPTIMIZE composes the whole loop into one aggregate report and records the
 \ promotion decision as a warning instead of throwing. EXPLAIN renders the
-\ eval-repair-shaped failure packets (maki/eval-repair.f is the shape).
+\ repair-packet-discipline failure packets (tools/repair-packet-core.f discipline).
 \
 \ Commands return the report handle ( -- report ) so they compose and are
 \ testable; CAD-SHOW renders one to stdout for interactive use. maki -> habu only;
@@ -208,7 +208,7 @@ public
 \ OPTIMIZE composes lower -> fuse -> memory -> tile -> gates -> promote decision.
 : OPTIMIZE ( -- report )  FULL-REPORT OPTIMIZE-PROMOTE ;
 
-\ EXPLAIN emits eval-repair-shaped failure packets for every non-pass gate.
+\ EXPLAIN emits repair-packet-discipline failure lines for every non-pass gate.
 : EXPLAIN ( -- ptr u8 n )  FULL-REPORT RPT-RENDER-PACKETS ;
 
 \ CAD-SHOW renders a report's machine view to stdout (interactive convenience).

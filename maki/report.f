@@ -288,7 +288,7 @@ create G-RL  G-N cells allot
       s"   - " OUT+  L-WARN 2 i 0 SL-SLOT @ L-WARN 2 i 1 SL-SLOT @ ARENA-GET OUT+ OUT-NL
    loop ;
 
-\ ---- failure-packet helpers (eval-repair-shaped; docs/model-cad.md Phase 7) ---
+\ ---- failure-packet helpers (repair-packet-core.f discipline; model-cad Phase 7) ---
 : P-CLASS ( n -- ptr u8 n )                    \ gate-id -> failure class
    cells G-TAG + @ V-FAIL = if s" contract-violation" else s" not-run" then ;
 
@@ -505,7 +505,7 @@ public
    H-WARN
    OUT$ ;
 
-\ Packet render: one eval-repair-shaped line per gate that did not pass, so an
+\ Packet render: one repair-packet-discipline line per gate that did not pass, so an
 \ agent (or EXPLAIN) can read failure class / reason / repair family / repro.
 : RPT-RENDER-PACKETS ( report -- ptr u8 n )
    RPT-DROP  OUT-RESET
