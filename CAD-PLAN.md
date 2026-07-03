@@ -52,8 +52,9 @@ MODEL: definition          concatenative composition of model ops
 Each arrow produces an inspectable artifact with a REPL word (`LOWER`, `FUSE`,
 `MEMORY`, `TILE`, `CERTIFY`, `GOLDEN`, `GRADCHECK`, `PROFILE`) and a
 machine-readable report row (the `maki/report.f` schema, built by `cad-0a`).
-`OPTIMIZE` runs the chain; `PROMOTE` caches the artifact with its evidence;
-`EXPLAIN` renders any failure as a repair packet.
+`OPTIMIZE` runs the chain and *records* the promotion decision in its report
+(it never throws); standalone `PROMOTE` refuses with a named throw unless the
+required gates pass. `EXPLAIN` renders any failure as a repair packet.
 
 **Execution environments.** The stages split across three environments, and
 the split is part of the design: planning, static checking, plan/code
@@ -85,6 +86,12 @@ descriptor-typed planning words; the eager tensor path keeps its own words
 and migrates onto the tensor value module-by-module. The model *source text*
 is mode-independent; the two vocabularies are kept in sync by the op
 registry (§4.2), not by textual duplication.
+
+The tensor value is owned by its own dot (`habu-maki-tensor-value`), a
+Phase-1 predecessor. Until it lands, Phase 0's `MODEL:` (as built by
+`cad-0b`) parses op *tokens* against a fail-closed table — the model body is
+not yet composed of checked words. The §3 checked capture replaces that
+parser in `cad-1` when the tensor value and planning vocabulary exist.
 
 Consequences:
 
@@ -133,18 +140,25 @@ class          elementwise | row-reduce | full-reduce | matmul | movement | deco
 flops/elem     8
 bytes fn       derived from class (elementwise: in+out; matmul: tiles model)
 accum dtype    f32 for reductions/matmul regardless of input dtype
-vjp            VJP id in lib/ptx/ad.f table (or none + reject on GRADCHECK)
+vjp            model-op adjoint id (§12 registry; or none + reject on GRADCHECK)
 numeric        exact | ulp(n) | rel-tol class (drives GOLDEN tolerance, §11)
 attrs          axis, eps, approx-variant, ... (typed per op)
 reference      scalar CPU word (the golden oracle at op granularity)
 ```
 
 The registry is the single extension point: adding an op means one entry, one
-scalar reference, one VJP. Planners never learn op names.
+scalar reference, one VJP. Planners never learn op names. The registry —
+including the cost fields, numeric class, and reference binding — is a
+`cad-1` deliverable alongside the node table. **Membership is gated:** an op
+enters the op set only when its scalar reference exists; `GOLDEN` fails
+closed (named reason, never a skip) on any region containing an op without a
+reference. Today that means silu, rmsnorm, and rope need host scalar
+references written as `cad-1` sub-tasks before they are usable ops, and
+rope's device kernel arrives later with `habu-ptx-kernels-rmsnorm`.
 
 Movement ops (reshape/view, transpose, slice, concat, gather) carry no
 compute; they are layout rewrites the planner either dissolves into index
-arithmetic or converts into explicit materialization (§6.5).
+arithmetic or converts into explicit materialization (§6.3).
 
 ## 5. Fusion planner
 
@@ -172,6 +186,11 @@ keeps the row resident (block-per-rows, §7.2); otherwise split with reason
 `barrier-boundary`. Two sequential same-row reductions (max then sum) fuse
 with an in-block barrier — that is exactly `softmax-row-v1`. Full-tensor
 reductions split into partials + final (v1).
+
+The matrix deliberately omits two classes: `full-reduce` regions are always
+two kernels in v1 (the prose rule above), and `decode` appears only as a
+producer because nothing consumes a decode result inside a region in v1 —
+decode chains end at materialized outputs.
 
 Matmul fuses loads-side prologues (dequant/scale) and epilogues (bias,
 activation, residual add, norm scale) only. Matmul→matmul fusion is out of
@@ -240,10 +259,10 @@ access.
    once per block), never re-read per lane.
 4. **Shared memory.** Stage when the region contains a transpose, when lanes
    reuse each other's loads (matmul tiles, row reductions wider than a
-   warp), or when a layout conversion pays (§6.2.1). Bank-conflict rule:
+   warp), or when a layout conversion pays (the global-minimum criterion in step 1, materialized per §6.3). Bank-conflict rule:
    pad the staged row stride by one element when
    `(row-stride · esize) mod 128 == 0`.
-5. **Emit plan rows** (§6.6) — codegen consumes them verbatim.
+5. **Emit plan rows** (§6.4) — codegen consumes them verbatim.
 
 ### 6.3 Movement-op dissolution
 
@@ -324,14 +343,20 @@ silently trusting a distant winner.
 
 ## 8. Tuner
 
-`TUNE` enumerates the family space (≤ ~36 points per family by construction),
-measures each on device with the same harness `PROFILE` uses, records *every*
+`TUNE` enumerates the family's *searched* space — the epilogue is fixed by
+the fusion plan, never searched, so the searched spaces are: elementwise ≤
+18, row-reduce ≤ 36, softmax-row ≤ 72 (the online-softmax bit doubles it),
+gemm-tf32 ≤ 32 (BM,BN × BK × warps × stages), decode ≤ 8. The bound "≤ ~100
+points per family" keeps exhaustive search cheap. `TUNE` measures each
+candidate on device with the same harness `PROFILE` uses, records *every*
 candidate (never only the winner) into measurement history, selects by median
 device time, and caches the winner by key (§7.4). Replay by key reproduces a
 recorded run. A new measurement that regresses against the cached baseline
 flags the report and keeps the baseline until re-promoted. Search stays
 exhaustive in v1; the bounded spaces make that cheap, and smarter search is a
-drop-in later.
+drop-in later. The measurement/enumeration machinery is built by
+`cad-6-tune` over the CUDA-event timing harness (`tools/ptx/bench.f`); no
+autotuner exists today to reuse.
 
 ## 9. Cost model and calibration
 
@@ -388,8 +413,18 @@ GRADCHECK   central finite difference vs generated backward, per VJP and per
             fused backward region.
 DETERMINISM optional repeated-run check; schedules using atomics are marked
             nondeterministic and are opt-in.
-PROFILE     device timing + roofline row + baseline comparison.
+PROFILE     device timing + roofline row + baseline comparison. Mandatory to
+            run before promotion, but non-blocking: a regression flags the
+            report and keeps the cached baseline; it does not veto.
 ```
+
+`GOLDEN`'s reference machinery is owned explicitly: composing per-op scalar
+references over a region requires a **host model-IR reference executor** (a
+topo-order walk of the node table calling each op's reference on host
+tensors) — a `cad-7-optimize` deliverable; the **external reference artifact
+loader** and its on-disk format (tensor dump + recorded tolerance per
+artifact) are part of the same dot, driven by the LocateAnything-port
+workload.
 
 Tolerance policy is a function, not a vibe: `|a−b| ≤ atol + rtol·|b|` with
 per-dtype defaults (f32: atol 1e-6, rtol 1e-5; f16/bf16: atol 1e-3, rtol
@@ -404,10 +439,17 @@ rows, tolerances — keyed as §7.4, and refuses unless CERTIFY + GOLDEN
 
 ## 12. Autograd and training
 
-Backward is the existing reverse transform (`lib/ptx/ad.f`): VJP substitution
-over the region IR. Backward nodes are ordinary IR nodes and enter the same
-planners — backward elementwise chains fuse, backward reductions schedule as
-row-reduce, epilogue gradients fuse into backward matmuls.
+Model-level backward is **new work** (`cad-9-backward`), designed as VJP
+substitution over the model IR: a model-op adjoint registry (the §4.2 `vjp`
+field points here) plus a reverse transform that emits backward regions *as
+model-IR nodes*, so backward elementwise chains fuse, backward reductions
+schedule as row-reduce, and epilogue gradients fuse into backward matmuls
+through the same planners. What exists today operates one level down and is
+reused as substrate, not mistaken for the model-level pass: `lib/ptx/ad-dag.f`
+is the kernel-IR reverse pass over the softmax-rows primitive set, and
+`lib/ptx/ad.f` is its v0 token-substitution predecessor whose `VJP-SAVES`
+records only a save *count* — the save-vs-recompute *decision* is part of
+`cad-9-backward`.
 
 - **Save vs recompute** is a fusion-planner decision under the §9 bytes/FLOPs
   model (saving = a write + a read; recompute = FLOPs + upstream reads),
@@ -450,8 +492,12 @@ repair family      fixed table: layout-conflict → transpose materialization or
 minimal repro      smallest region that reproduces
 ```
 
-This is the same packet shape the eval harness uses (`maki/eval-repair.f`),
-so agents consume planner failures and gate failures identically.
+This is the same packet discipline the checker's repair tooling uses
+(`tools/repair-packet-core.f`, the `habu_repair_packet` shape: word/site,
+expected, actual, repair class, suggestion) — site maps to region/op/tensor
+id, repair family to `repair_class`, and the blocking fact and minimal repro
+are the two fields EXPLAIN adds on top. `maki/eval-repair.f` is unrelated
+accounting (repair rounds and tokens-to-green for the eval matrix).
 
 ## 15. Typed backbone hooks
 

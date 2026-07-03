@@ -246,12 +246,17 @@ epilogue, save/recompute policy, measurement history. Candidates printed
 before emission; all candidates recorded; replayable by key; winner cached
 per shape/dtype/layout/target.
 
-- Families: elementwise-v1, row-reduction-v1, softmax-row-v1, gemm-tf32-v1.
-- Exists: dot `habu-ptx-m9-bench` (bench + autotuner). New dots:
-  `cad-4-schedule` (the object + cache key; depends on derive dot for keys
-  or hand-written compare until it lands) and `cad-6-tune` (the glue:
-  `TUNE` drives the m9 autotuner over schedule objects, records every
-  candidate measurement into history, caches the winner by key).
+- Families: elementwise-v1, row-reduce-v1, softmax-row-v1, gemm-tf32-v1,
+  decode-v1 (PBD-style chains — the driving workload's family; its ops and
+  references arrive with the LA-port dots). The schedule object does not
+  carry save/recompute policy — that is a fusion-plan field (CAD-PLAN §12).
+- Exists: dot `habu-ptx-m9-bench` (bench harness; no autotuner exists yet).
+  New dots: `cad-4-schedule` (the object + cache key; depends on derive dot
+  for keys or hand-written compare until it lands), `cad-5-store` (the
+  artifact store: on-disk layout + schema for kernels, evidence, measurement
+  history, profitability facts, calibration tables), and `cad-6-tune`
+  (candidate enumeration + measurement + selection built over
+  `tools/ptx/bench.f`, every measurement recorded, winner cached by key).
 
 ### Phase 5 — Correctness gates
 
@@ -265,7 +270,11 @@ dumps for the driving workload) with the tolerance recorded per artifact.
 - Exists: checker-as-judge eval (`maki/eval.f`), device golden runs,
   device gradcheck (SOFTMAX-ROWS-BWD), dot
   `habu-committed-device-correctness`. Gate wiring lands inside
-  `cad-0b`/`cad-7-optimize`; no separate new dot.
+  `cad-0b`/`cad-7-optimize`; `cad-7-optimize` also owns the two GOLDEN
+  deliverables: the host model-IR reference executor (topo walk calling each
+  op's scalar reference) and the external reference-artifact loader + format
+  (tensor dump + per-artifact tolerance). PROFILE is mandatory to run but
+  non-blocking for promotion (CAD-PLAN §11).
 
 ### Phase 6 — Profiling and roofline report
 
@@ -281,13 +290,14 @@ cached baseline, next-move recommendation.
 ### Phase 7 — One-REPL integration
 
 `OPTIMIZE` composes lower → fuse → memory → tile → certify → golden →
-gradcheck → profile → promote, with `EXPLAIN` producing failure packets
-(failure class, location, expected/actual contract, suggested repair family,
-minimal repro — same shape as the eval-repair packets). Every command has a
+gradcheck → profile → promote-decision (recorded, never thrown; standalone
+`PROMOTE` throws), with `EXPLAIN` producing failure packets (failure class,
+location, expected/actual contract, suggested repair family, minimal repro —
+the `tools/repair-packet-core.f` packet discipline). Every command has a
 structured output mode an agent can parse.
 
 - New dot: `cad-7-optimize`. Related: `habu-kernel-artifact-export`
-  (artifact/cache), eval-repair packets (`maki/eval-repair.f`).
+  (artifact/cache), repair packets (`tools/repair-packet-core.f`).
 
 ### Phase 8 — Tensor-core backend
 
@@ -308,9 +318,14 @@ shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
 Backward regions participate in the same fusion/memory/tiling/gate loop;
 save-vs-recompute is a reported decision; gradcheck gates promotion.
 
-- Exists: `lib/ptx/ad.f` (VJP table, reverse pass, save-vs-recompute cost
-  model), device gradcheck, epic `habu-epic-maki-autograd` and its dot
-  chain. No new dot.
+- Exists at the kernel level only: `lib/ptx/ad-dag.f` (kernel-IR reverse
+  pass over the softmax-rows primitive set; `lib/ptx/ad.f` is its v0 token
+  version whose `VJP-SAVES` records a save count, not a decision), device
+  gradcheck, epic `habu-epic-maki-autograd` and its dot chain.
+- New dot: `cad-9-backward` — the model-op adjoint registry plus the
+  model-IR reverse transform emitting backward regions as IR nodes, and the
+  save-vs-recompute decision under the shared cost model (CAD-PLAN §12).
+  GRADCHECK (milestone 13) and the training flagship depend on it.
 
 ### Phase 9b — Training from scratch
 
@@ -338,14 +353,15 @@ with `MODEL:` must be trainable from random init through the same loop.
 ### Phase 10 — Agent loop
 
 Agents propose model variants, fusion rewrites, layout/schedule candidates,
-approximation choices. Agents cannot bypass CERTIFY/GOLDEN/GRADCHECK/
-PROFILE/PROMOTE. Failures return repair packets. Bench: proposals rejected
-before GPU, golden/gradcheck pass rates, best speedup, cost per accepted
-improvement.
+approximation choices. Agents cannot bypass CERTIFY/GOLDEN/GRADCHECK or the
+PROMOTE rules; PROFILE is mandatory to run, non-blocking (CAD-PLAN §11).
+Failures return repair packets. Bench: proposals rejected before GPU,
+golden/gradcheck pass rates, best speedup, cost per accepted improvement.
 
 - Exists: eval harness + pass@k (`maki/eval.f`), repair packets
-  (`maki/eval-repair.f`), dot `habu-eval-matrix-live`. New dot deferred
-  until Phase 7 lands (the loop needs `OPTIMIZE` reports to judge).
+  (`tools/repair-packet-core.f`; `maki/eval-repair.f` is rounds/tokens
+  accounting), dot `habu-eval-matrix-live`. New dot deferred until Phase 7
+  lands (the loop needs `OPTIMIZE` reports to judge).
 
 ## Flagship demo
 
@@ -392,23 +408,32 @@ gate per `CLAUDE.md`.
 3. `cad-0b` — REPL command skeleton, conservative reports.
 4. `habu-maki-gaussian-nll` — NLL/covariance loss family (independent;
    unblocks the training flagship).
-5. `cad-1` — model IR with shape/layout facts.
-6. `habu-cad-la-data` — data-movement ops as IR facts.
-7. `cad-2` — elementwise region discovery + traffic estimate.
-8. `cad-3` — coalescing report.
-9. `cad-4` — schedule object + cache key.
-10. `cad-6-tune` — TUNE over schedule objects via the m9 autotuner.
-11. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
-12. Golden/gradcheck promotion gates in `cad-7-optimize`, including
-    external reference artifacts.
-13. Profile/roofline rows in `cad-7-optimize`.
-14. `habu-ptx-kernels-rmsnorm` — RMSNorm + RoPE checked kernels.
-15. `cad-demo-ffn` — end-to-end FFN demo, no tensor-core parity claim.
-16. `habu-maki-from-scratch` — from-scratch temporal model trained on GPU
-    (training flagship, Phase 9b).
-17. Tensor-core path (existing MMA/typed-kernel dots); library-FFI GEMM
+5. `habu-maki-tensor-value` — unified single-slot tensor value + planning
+   vocabulary base (the §3 prerequisite; CAD-PLAN).
+6. `cad-1` — model IR with shape/layout facts + the op registry (costs,
+   numeric class, scalar references; membership gated on the reference
+   existing — silu/rmsnorm/rope references are explicit sub-tasks).
+7. `habu-cad-la-data` — data-movement ops as IR facts.
+8. `cad-2` — elementwise region discovery + traffic estimate (traffic-only
+   splits until the Phase-4/6 resource tables exist).
+9. `cad-3` — coalescing report.
+10. `cad-4` — schedule object + cache key.
+11. `cad-5-store` — artifact store: on-disk layout + schema.
+12. `cad-6-tune` — TUNE enumeration/measurement/selection over
+    `tools/ptx/bench.f`; roof microbenches replace `profile.f` constants.
+13. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
+14. Golden/gradcheck promotion gates in `cad-7-optimize`, including the
+    host model-IR reference executor and external reference artifacts.
+15. Profile/roofline rows in `cad-7-optimize`.
+16. `habu-ptx-kernels-rmsnorm` — RMSNorm + RoPE checked kernels.
+17. `cad-demo-ffn` — end-to-end FFN demo, no tensor-core parity claim.
+18. `cad-9-backward` — model-op adjoint registry + model-IR reverse
+    transform + save/recompute decision (CAD-PLAN §12).
+19. `habu-maki-from-scratch` — from-scratch temporal model trained on GPU
+    (training flagship, Phase 9b; depends on 18).
+20. Tensor-core path (existing MMA/typed-kernel dots); library-FFI GEMM
     acceptable for workload bring-up meanwhile.
-18. Backward fusion + save/recompute reporting (existing AD dots) and the
-    fused, profiled training step.
-19. `cad-adt-swap` — typed backbone lands as TFAM phases land.
-20. Agent proposal loop over `OPTIMIZE` reports.
+21. Backward fusion + save/recompute reporting (over 18) and the fused,
+    profiled training step.
+22. `cad-adt-swap` — typed backbone lands as TFAM phases land.
+23. Agent proposal loop over `OPTIMIZE` reports.
