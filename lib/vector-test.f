@@ -10,6 +10,9 @@ require test/checker-assert.f
 
 create VECT-VEC VEC-HEADER-CELLS cells allot
 create VECT-PTR-VEC VEC-HEADER-CELLS cells allot
+create VECT-BIG-VEC VEC-HEADER-CELLS cells allot
+
+141000 constant VECT-BIG-N
 
 variable VECT-SUM
 variable VECT-IDX-SUM
@@ -93,6 +96,16 @@ variable VECT-IDX-SUM
    VECT-SUM @ 18 T=
    VECT-IDX-SUM @ 3 T= ;
 
+\ Large fill stays within the suite budget only while slot access is O(1);
+\ an O(index) VEC-CELL-FIELD regression makes this fill take minutes.
+: VECT-BIG-FILL ( -- )
+   VECT-BIG-VEC 2 VEC-CAP-COUNT VEC-INIT
+   VECT-BIG-N 0 ?do i VECT-BIG-VEC VEC-PUSH-N drop loop
+   VECT-BIG-VEC VEC-LEN@ LEN>N VECT-BIG-N T=
+   VECT-BIG-VEC 0 VEC-IDX VEC-N@ 0 T=
+   VECT-BIG-VEC VECT-BIG-N 2 / VEC-IDX VEC-N@ VECT-BIG-N 2 / T=
+   VECT-BIG-VEC VECT-BIG-N 1 - VEC-IDX VEC-N@ VECT-BIG-N 1 - T= ;
+
 : VECT-BAD-CAP-ZERO ( -- )
    0 VEC-CAP-COUNT drop ;
 
@@ -132,6 +145,7 @@ variable VECT-IDX-SUM
    VECT-CLEAR
    VECT-POINTER
    VECT-EACH-TEST
+   VECT-BIG-FILL
    [: VECT-RESIZE-SHRINK-BAD ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-BAD-CAP-ZERO ;] E-VEC-CAPACITY TTHROWSQ
    [: VECT-BAD-CAP-NEG ;] E-VEC-CAPACITY TTHROWSQ

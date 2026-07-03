@@ -1,5 +1,9 @@
 \ assert.f - checked stdlib test assertions.
 
+require lib/errors.f
+require lib/string.f
+require lib/test/record.f
+
 1 constant T-EX-FAIL
 
 variable T-CASE#
@@ -44,10 +48,14 @@ variable T-LABEL-U
 : T-FAIL+ ( -- )
    T-FAIL# @ 1+ T-FAIL# ! ;
 
-: T-FAIL ( -- )
+: T-FAIL-AS ( ptr u8 n -- ) {: la:ptr lu:n :}
    [char] F emit T-CASE# @ .
    T-LABEL.
+   la lu T-CASE# @ T-LABEL$ TREC-FAIL
    T-FAIL+ ;
+
+: T-FAIL ( -- )
+   s" assert" T-FAIL-AS ;
 
 : T-ASSERT-DETAIL ( ptr u8 n -- ) {: msg:ptr msgu:n :}
    T-FAIL

@@ -17,10 +17,12 @@ create GTT-OK-PATH FS-PATH-CAP allot
 create GTT-FAIL-PATH FS-PATH-CAP allot
 create GTT-HANG-PATH FS-PATH-CAP allot
 create GTT-LINE-PATH FS-PATH-CAP allot
+create GTT-REC-PATH FS-PATH-CAP allot
 128 constant GTT-LINE-CAP
 5000 constant GTT-HB-TIMEOUT-MS
 1000 constant GTT-CMD-TIMEOUT-MS
 50 constant GTT-SHORT-TIMEOUT-MS
+4 constant GTT-OVERFLOW-EXTRA
 create GTT-LINE-BUF GTT-LINE-CAP allot
 create GTT-READ-BUF GTT-LINE-CAP allot
 
@@ -28,8 +30,10 @@ variable GTT-OK-U
 variable GTT-FAIL-U
 variable GTT-HANG-U
 variable GTT-LINE-U
+variable GTT-REC-U
 variable GTT-LINE-LEN
 variable GTT-LINE-FD
+variable GTT-OFI
 
 : GTT-OK$ ( -- ptr u8 n )
    GTT-OK-PATH GTT-OK-U @ ;
@@ -42,6 +46,9 @@ variable GTT-LINE-FD
 
 : GTT-LINE$ ( -- ptr u8 n )
    GTT-LINE-PATH GTT-LINE-U @ ;
+
+: GTT-REC$ ( -- ptr u8 n )
+   GTT-REC-PATH GTT-REC-U @ ;
 
 : GTT-LF ( -- )
    10 SB-APPEND-C ;
@@ -79,6 +86,17 @@ variable GTT-LINE-FD
 
 : GTT-HANG-SRC$ ( -- ptr u8 n )
    s" : HANG ( -- ) begin again ; HANG" ;
+
+: GTT-REC-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/test.f" SB-APPEND GTT-LF
+   s" T-RESET" SB-APPEND GTT-LF
+   S\" s\q record-case\q T-LABEL" SB-APPEND GTT-LF
+   s" 1 2 T=" SB-APPEND GTT-LF
+   SB$ ;
+
+: GTT-REC-LINE$ ( -- ptr u8 n )
+   S\" TFAIL\tassert\t1\trecord-case" ;
 
 : GTT-OK-OUT$ ( -- ptr u8 n )
    SB-RESET
@@ -127,7 +145,8 @@ variable GTT-LINE-FD
    s" ok.f" GTT-OK-PATH GT-PATH GTT-OK-U !
    s" fail.f" GTT-FAIL-PATH GT-PATH GTT-FAIL-U !
    s" hang.f" GTT-HANG-PATH GT-PATH GTT-HANG-U !
-   s" lines.txt" GTT-LINE-PATH GT-PATH GTT-LINE-U ! ;
+   s" lines.txt" GTT-LINE-PATH GT-PATH GTT-LINE-U !
+   s" record.f" GTT-REC-PATH GT-PATH GTT-REC-U ! ;
 
 : GTT-WRITE ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu src:ptr srcu :}
    path pathu src srcu WRITE-ALL ;
@@ -137,7 +156,8 @@ variable GTT-LINE-FD
    GTT-PATHS!
    GTT-OK$ GTT-OK-SRC$ GTT-WRITE
    GTT-FAIL$ GTT-FAIL-SRC$ GTT-WRITE
-   GTT-HANG$ GTT-HANG-SRC$ GTT-WRITE ;
+   GTT-HANG$ GTT-HANG-SRC$ GTT-WRITE
+   GTT-REC$ GTT-REC-SRC$ GTT-WRITE ;
 
 : GTT-RUN-HB ( ptr u8 n n -- ) {: script:ptr scriptu timeout :}
    PROC-ARGV-RESET
@@ -230,6 +250,33 @@ variable GTT-LINE-FD
    GT-RESET
    GT-FAILURES 0 T= ;
 
+: GTT-RUN-REC ( -- )
+   GTT-REC$ GTT-HB-TIMEOUT-MS GTT-RUN-HB ;
+
+: GTT-TEST-FAIL-RECORD ( -- )
+   GTT-RUN-REC
+   0 s" record rc" GT-RC=
+   GTT-REC-LINE$ s" record tsv line" GT-STDOUT-HAS
+   GT-FAILURES 0 T= ;
+
+: GTT-FILL-FAILS ( -- )
+   GT-RESET
+   0 GTT-OFI !
+   begin GTT-OFI @ GT-FAIL-MAX GTT-OVERFLOW-EXTRA + < while
+      s" overflow-case" GT-FAIL+
+      GTT-OFI @ 1+ GTT-OFI !
+   repeat ;
+
+: GTT-TEST-FAIL-OVERFLOW ( -- )
+   GTT-FILL-FAILS
+   GT-FAILURES GT-FAIL-MAX GTT-OVERFLOW-EXTRA + T=
+   GT-FAIL-STORED GT-FAIL-MAX T=
+   0 GT-FAIL-NAME$ s" overflow-case" T$=
+   GT-FAIL-MAX 1- GT-FAIL-NAME$ s" overflow-case" T$=
+   GT-RESET
+   GT-FAILURES 0 T=
+   GT-FAIL-STORED 0 T= ;
+
 : GTT-TEST-LINE-FLUSH-U ( -- )
    s" abc" GT-LINE-FLUSH-U 0 T=
    GTT-LINES-PARTIAL$ GT-LINE-FLUSH-U 6 T=
@@ -279,6 +326,8 @@ variable GTT-LINE-FD
    GTT-TEST-FAILING-COMMAND
    GTT-TEST-TIMEOUT
    GTT-TEST-AGGREGATE-FAILURES
+   GTT-TEST-FAIL-RECORD
+   GTT-TEST-FAIL-OVERFLOW
    GTT-TEST-LINE-FLUSH-U
    GTT-TEST-LINE-FLUSH-FD
    GTT-TEST-PROGRESS

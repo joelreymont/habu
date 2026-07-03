@@ -32,6 +32,15 @@ create FFI-T-KP-CELL 1 cells allot
    FFI-KPARAM-RESET
    [: 17 0 do i FFI-KPARAM-N+ loop ;] E-FFI-ARITY TTHROWSQ ;
 
+\ Regression: the evaluate throw-unwind cell (EVALREC-CELL, src/habu/layout.f) must
+\ live outside this file's FFI buffer block [FFI-BUF-OFF, FFI-KPARAM#-OFF+cell). An
+\ FFI call fills that block, so an overlap silently clobbers the branch target and a
+\ throw crossing an evaluate boundary (any FFI-using program run under include) jumps
+\ to a data address. Assert the two regions are disjoint at build time.
+: FFI-T-EVALREC-DISJOINT ( -- )
+   EVALREC-CELL FFI-BUF-OFF <
+   EVALREC-CELL FFI-KPARAM#-OFF CELL + >= or TTRUE ;
+
 : FFI-T-KPARAMS ( -- )
    FFI-KPARAM-RESET
    13 FFI-KPARAM-N+
@@ -45,6 +54,7 @@ create FFI-T-KP-CELL 1 cells allot
 
 : FFI-ABI-RUN ( -- )
    T-RESET
+   FFI-T-EVALREC-DISJOINT
    FFI-T-OUT-PARAM
    FFI-T-KPARAMS
    T-REPORT ;

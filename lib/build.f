@@ -191,10 +191,19 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    q execute {: rc :}
    rc 0 <> if E-BUILD-STATUS throw then ;
 
+\ A build command is an artifact producer; it must never inherit the caller's
+\ stdin. If it did (e.g. a gate pool worker's open, never-EOF pipe), a `bin/hb`
+\ command script that falls into the stdin REPL after its body would block the
+\ whole build. Give every build child /dev/null so the REPL sees immediate EOF.
+: BUILD-DEV-NULL-RD ( -- fd )
+   s" /dev/null" FS-PATHZ open-rd dup 0 < if drop E-FS-OPEN throw then >FD ;
+
 : BUILD-RUN ( ptr u8 n ptr u8 n -- n ) {: cmd:ptr cmdu artifact:ptr artifactu :}
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FILE? 0= if E-BUILD-COMMAND throw then
-   cmd cmdu >LEN PROC-RUN-RC RC>N {: rc :}
+   BUILD-DEV-NULL-RD {: nullfd:fd :}
+   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC RC>N {: rc:n :}
+   nullfd FD>N close
    rc 0 <> if E-BUILD-STATUS throw then
    artifact artifactu BUILD-EXPECT
    rc ;

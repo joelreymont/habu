@@ -534,6 +534,18 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-fork	lib/process-fork.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	checked fork wrappers layered after native primitive rebuild
 1	process-fork	lib/process-fork.f	word	PROC-FORK-RAW	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw fork alias captured after native primitive rebuild
 1	process-fork	lib/process-fork.f	word	PROC-FORK	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	fork the current process and throw on primitive failure
+1	process-fork	lib/process-fork.f	word	PROC-SETPGID	(pid pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	place a process into a process group; 0 0 makes the caller its own group leader
+1	process-fork	lib/process-fork.f	word	PROC-KILL-GROUP	(pid n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	signal the process group led by pid so a timeout reaches its grandchildren
+1	process-fork	lib/process-fork.f	word	PROC-DEATH-PIPE	(-- fd fd)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	open a close-on-exec parent-death pipe; parent keeps the write end, reapers keep the read end
+1	process-fork	lib/process-fork.f	word	PROC-CLOSE-EXCEPT2	(fd fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	close every inherited fd except the two read ends the reaper watches
+1	process-fork	lib/process-fork.f	word	PROC-REAP-KILL-GROUP	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	SIGKILL the reaper's own process group to reap an orphaned worker subtree
+1	process-fork	lib/process-fork.f	word	PROC-REAP-PFD-SLOT	(idx -- ptr a)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	address of one reaper pollfd cell
+1	process-fork	lib/process-fork.f	word	PROC-REAP-PFD!	(fd n idx --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	pack an fd and poll events into a reaper pollfd cell
+1	process-fork	lib/process-fork.f	word	PROC-REAP-REVENTS	(idx -- n)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	read the revents field of a reaper pollfd cell
+1	process-fork	lib/process-fork.f	word	PROC-REAP-WATCH2	(fd fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	block until the parent-death or worker-alive read end EOFs; kill the group on parent death
+1	process-fork	lib/process-fork.f	word	PROC-FORK-REAPER	(fd fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	double-fork a reparented parent-death reaper watching the death and worker-alive pipes
+1	process-fork	lib/process-fork.f	word	PROC-REAP-WATCH1	(fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	block until the single parent-death read end EOFs; kill the reaper's group on parent death
+1	process-fork	lib/process-fork.f	word	PROC-SPAWN-REAPER	(fd pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	fork a co-located reaper that joins a spawned child's group and kills it on pool-parent death; returns the reaper pid
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for argv byte storage
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF@	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read the argv byte-storage pointer
@@ -713,6 +725,17 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	argv	lib/argv.f	word	ARGV-POSZ	(n -- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return positional argument as pathz
 1	argv	lib/argv.f	word	ARGV-OUTZ	(-- ptr u8)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	return output path as pathz
 1	argv	lib/argv.f	word	ARGV-INIT	(--)	lib/argv-test.f	docs/stdlib.md	stdlib-argv	published	initialize argv parser defaults
+1	test-record	lib/test/record.f	module			lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	machine-readable TFAIL TSV failure records shared by assert snap and runner layers
+1	test-record	lib/test/record.f	word	TREC-RESET	(--)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	reset the record scratch buffer
+1	test-record	lib/test/record.f	word	TREC-C+	(n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	append one byte to the record buffer
+1	test-record	lib/test/record.f	word	TREC-PAYLOAD-C	(n -- n)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	sanitize a payload byte: tab/CR/LF degrade to space
+1	test-record	lib/test/record.f	word	TREC-$+	(ptr u8 n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	append counted bytes to the record buffer
+1	test-record	lib/test/record.f	word	TREC-DIGITS+	(n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	append the decimal digits of a nonnegative number
+1	test-record	lib/test/record.f	word	TREC-N+	(n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	append a signed decimal number
+1	test-record	lib/test/record.f	word	TREC$	(-- ptr u8 n)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	return the current record buffer bytes
+1	test-record	lib/test/record.f	word	TREC-N.	(n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	print a signed number without a trailing newline
+1	test-record	lib/test/record.f	word	TREC-FAIL$	(ptr u8 n n ptr u8 n -- ptr u8 n)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	build one TFAIL layer id label record into scratch
+1	test-record	lib/test/record.f	word	TREC-FAIL	(ptr u8 n n ptr u8 n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	print one TFAIL failure record line
 1	test	lib/test.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertions plus TEST package suite framework and final report policy
 1	test-assert	lib/test/assert.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertion primitives loaded by the test facade
 1	test-suite	lib/test/suite.f	module			lib/test/suite-test.f	docs/stdlib.md	stdlib-test	active	TEST package suite group test framework loaded by the test facade
@@ -725,6 +748,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test/assert.f	word	T-LABEL	(ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	set current assertion label
 1	test	lib/test/assert.f	word	T-LABEL.	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	print current assertion label when present
 1	test	lib/test/assert.f	word	T-FAIL+	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	increment assertion failure count
+1	test	lib/test/assert.f	word	T-FAIL-AS	(ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	record one labeled failure for a named layer with a TFAIL record
 1	test	lib/test/assert.f	word	T-FAIL	(--)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure
 1	test	lib/test/assert.f	word	T-ASSERT-DETAIL	(ptr u8 n --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	record one assertion failure with detail text
 1	test	lib/test/assert.f	word	T-ASSERT	(bool --)	lib/test/assert-test.f	docs/stdlib.md	stdlib-test	published	assert a Forth boolean
@@ -757,6 +781,20 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test/suite.f	word	TEST:SUITE-STDIN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named stdin file test
 1	test	lib/test/suite.f	word	TEST:END-SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
 1	test	lib/test/suite.f	word	TEST:RUN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	run configured setup tests drain and teardown
+1	test-snap	lib/test/snap.f	module			lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	typed SNAP= stack snapshot comparator aggregated into the assert counters
+1	test-snap	lib/test/snap.f	word	TS-CELL	(ptr a n -- ptr a)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	return one bounded snapshot scratch cell address
+1	test-snap	lib/test/snap.f	word	TS-N-CHECK	(n -- n)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	validate a snapshot cell count against capacity
+1	test-snap	lib/test/snap.f	word	TS-ACTUAL-N!	(n --)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	store the validated actual snapshot cell count
+1	test-snap	lib/test/snap.f	word	TS-EXPECT-N!	(n --)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	store the validated expected snapshot cell count
+1	test-snap	lib/test/snap.f	word	TS-ACTUAL!	(a n --)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	store one drained actual cell at an index
+1	test-snap	lib/test/snap.f	word	TS-EXPECT!	(a n --)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	store one drained expected cell at an index
+1	test-snap	lib/test/snap.f	word	TS-CELL=	(n -- bool)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	compare expected and actual cells at one index
+1	test-snap	lib/test/snap.f	word	TS-CELLS=	(-- bool)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	compare all recorded expected cells against actual cells
+1	test-snap	lib/test/snap.f	word	TS-MATCH?	(-- bool)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	test whether counts and cells of a snapshot match
+1	test-snap	lib/test/snap.f	word	TS-CELLS.	(ptr a n --)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	print recorded snapshot cells in source order
+1	test-snap	lib/test/snap.f	word	TS-EXPECT.	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	print the recorded expected snapshot cells
+1	test-snap	lib/test/snap.f	word	TS-ACTUAL.	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	print the recorded actual snapshot cells
+1	test-snap	lib/test/snap.f	word	TS-JUDGE	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	record one snapshot case and report a mismatch
 1	test-runner	lib/test/runner.f	module			lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
 1	test-runner	lib/test/runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
 1	test-runner	lib/test/runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell
@@ -771,6 +809,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test/runner.f	word	GT-START	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	reset state and create a cleanup-tracked temporary root
 1	test-runner	lib/test/runner.f	word	GT-CLEANUP	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run cleanup for the current gate root
 1	test-runner	lib/test/runner.f	word	GT-PATH	(ptr u8 n ptr u8 -- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	join a relative fixture name under the gate root
+1	test-runner	lib/test/runner.f	word	GT-FAIL-STORED	(-- n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return the count of failure names retained under the cap
+1	test-runner	lib/test/runner.f	word	GT-FAIL-NAME!	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store a failure name when a slot remains under the cap
 1	test-runner	lib/test/runner.f	word	GT-FAIL+	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record one named aggregate failure
 1	test-runner	lib/test/runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
 1	test-runner	lib/test/runner.f	word	GT-STORE-RUN	(len len n n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store one captured process outcome
@@ -810,6 +850,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test/runner.f	word	GT-STDERR=	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr equals expected bytes
 1	test-runner	lib/test/runner.f	word	GT-STDOUT-HAS	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stdout contains expected bytes
 1	test-runner	lib/test/runner.f	word	GT-STDERR-HAS	(ptr u8 n ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	assert last stderr contains expected bytes
+1	test-runner	lib/test/runner.f	word	GT-REPORT-OVERFLOW	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	print a labeled line for failures beyond the name cap
 1	test-runner	lib/test/runner.f	word	GT-REPORT-FAILS	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print aggregate failure names
 1	test-runner	lib/test/runner.f	word	GT-REPORT	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	print gate runner summary and exit on failures
 1	property	lib/property.f	module			lib/property-test.f	docs/stdlib.md	stdlib-property	active	deterministic PRNG generators shrinking and audited evaluate boundary
@@ -839,6 +880,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	build	lib/build.f	word	BUILD-CHECK	(ptr u8 n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	validate and certify checked definitions in a counted source path
 1	build	lib/build.f	word	BUILD-CHECK-NEXT	(n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	scan and certify the next colon definition in the build source buffer
 1	build	lib/build.f	word	BUILD-CHECK-ONE	(n n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	certify one source-buffer definition range with CHECK!
+1	build	lib/build.f	word	BUILD-DEV-NULL-RD	(-- fd)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	open /dev/null read-only so a build child never inherits caller stdin
 1	build	lib/build.f	word	BUILD-EXPECT	(ptr u8 n --)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	require that a counted artifact path names a file
 1	build	lib/build.f	word	BUILD-FALSE	(-- bool)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	return a false flag for build helpers
 1	build	lib/build.f	word	BUILD-FIND-CHAR	(n n -- n)	lib/build-test.f	docs/stdlib.md	stdlib-build	published	find one byte in the build source buffer or return -1
@@ -1043,6 +1085,13 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp
 1	ffi-abi	lib/ffi-abi.f	module			lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	checked AAPCS64 FFI calls and marshalling without dynamic loader slots
+1	ffi-abi	lib/ffi-abi.f	word	FFI-BUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	integer-argument scratch buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FBUF	(-- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	float-argument scratch buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-BUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stack-argument scratch buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-PBUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	kernel-parameter pointer buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-VBUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	kernel-parameter value buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-DLBUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	dynamic-loader scratch buffer base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM#	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	kernel-parameter count cell
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a scratch-buffer slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a caller-supplied scratch-buffer count
 1	ffi-abi	lib/ffi-abi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI argument slot index

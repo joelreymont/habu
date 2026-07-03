@@ -25,25 +25,25 @@ $3BC0 constant FFI-KPARAM-VBUF-OFF
 $3C40 constant FFI-DLBUF-OFF
 $3C80 constant FFI-KPARAM#-OFF
 
-TRUSTED: FFI-BUF ( -- ptr a )
+: FFI-BUF ( -- ptr a )
    data-base FFI-BUF-OFF + ;
 
-TRUSTED: FFI-FBUF ( -- ptr r )
+: FFI-FBUF ( -- ptr r )
    data-base FFI-FBUF-OFF + ;
 
-TRUSTED: FFI-STACK-BUF ( -- ptr a )
+: FFI-STACK-BUF ( -- ptr a )
    data-base FFI-STACK-BUF-OFF + ;
 
-TRUSTED: FFI-KPARAM-PBUF ( -- ptr a )
+: FFI-KPARAM-PBUF ( -- ptr a )
    data-base FFI-KPARAM-PBUF-OFF + ;
 
-TRUSTED: FFI-KPARAM-VBUF ( -- ptr a )
+: FFI-KPARAM-VBUF ( -- ptr a )
    data-base FFI-KPARAM-VBUF-OFF + ;
 
-TRUSTED: FFI-DLBUF ( -- ptr a )
+: FFI-DLBUF ( -- ptr a )
    data-base FFI-DLBUF-OFF + ;
 
-TRUSTED: FFI-KPARAM# ( -- ptr n )
+: FFI-KPARAM# ( -- ptr n )
    data-base FFI-KPARAM#-OFF + ;
 
 \ Pointer <-> cell reinterpret. The only trusted boundary in this file: the

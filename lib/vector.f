@@ -53,7 +53,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
 
 : VEC-CELL-FIELD ( ptr a n -- ptr a ) {: base:ptr off :}
    off 0 < if E-VEC-BOUNDS throw then
-   base off 0 ?do cell+ loop ;
+   base off cells + ;
 
 : VEC-DATA-FIELD ( ptr a -- ptr ptr a )
    VEC.DATA ;

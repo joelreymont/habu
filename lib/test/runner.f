@@ -3,8 +3,10 @@
 \ Load after lib/errors.f, lib/string.f, lib/fs.f, lib/fs-mutate.f,
 \ lib/process.f, and lib/process-argv.f.
 
+require lib/test/record.f
+
 2 constant GT-EX-FAIL
-64 constant GT-FAIL-MAX
+256 constant GT-FAIL-MAX
 128 constant GT-FAIL-NAME-CAP
 32768 constant GT-OUT-CAP
 32768 constant GT-ERR-CAP
@@ -86,13 +88,21 @@ variable GT-TAIL-U
    GT-EXPECT-ROOT
    GT-ROOT name nameu dst JOIN-PATH ;
 
-: GT-FAIL+ ( ptr u8 n -- ) {: name:ptr nameu :}
-   GT-FAIL# @ GT-FAIL-MAX >= if E-TBL-BOUNDS throw then
+: GT-FAIL-STORED ( -- n )
+   GT-FAIL# @ GT-FAIL-MAX > if GT-FAIL-MAX exit then
+   GT-FAIL# @ ;
+
+: GT-FAIL-NAME! ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   GT-FAIL# @ GT-FAIL-MAX >= if exit then
+   name GT-FAIL# @ GT-FAIL-SLOT nameu BYTE-COPY
+   nameu GT-FAIL# @ GT-FAIL-U-PTR ! ;
+
+: GT-FAIL+ ( ptr u8 n -- ) {: name:ptr nameu:n :}
    nameu 0 < if E-TBL-FIELD throw then
    nameu GT-FAIL-NAME-CAP > if E-TBL-FIELD throw then
-   name GT-FAIL# @ GT-FAIL-SLOT nameu BYTE-COPY
-   nameu GT-FAIL# @ GT-FAIL-U-PTR !
-   GT-FAIL# @ 1+ GT-FAIL# ! ;
+   name nameu GT-FAIL-NAME!
+   GT-FAIL# @ 1+ GT-FAIL# !
+   s" runner" GT-FAIL# @ name nameu TREC-FAIL ;
 
 : GT-CHECK ( bool ptr u8 n -- ) {: ok name:ptr nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
@@ -305,12 +315,22 @@ variable GT-TAIL-U
 : GT-STDERR-HAS ( ptr u8 n ptr u8 n -- ) {: needle:ptr needleu name:ptr nameu :}
    GT-ERR$ needle needleu CONTAINS? name nameu GT-CHECK ;
 
+: GT-REPORT-OVERFLOW ( -- )
+   GT-FAIL# @ GT-FAIL-MAX > if
+      s" FAIL: " type
+      GT-FAIL# @ GT-FAIL-MAX - GT-U-TYPE
+      s"  more failure(s) beyond the " type
+      GT-FAIL-MAX GT-U-TYPE
+      s" -name cap; see TFAIL records" type cr
+   then ;
+
 : GT-REPORT-FAILS ( -- )
-   0 begin dup GT-FAIL# @ < while
+   0 begin dup GT-FAIL-STORED < while
       s" FAIL: " type
       dup GT-FAIL-NAME$ type cr
       1+
-   repeat drop ;
+   repeat drop
+   GT-REPORT-OVERFLOW ;
 
 : GT-REPORT ( -- )
    GT-FAIL# @ 0= if
