@@ -132,110 +132,73 @@ feature is allowed.
 
 ## Current Grounding
 
-Line numbers in this plan are anchored to the round-1 baseline commit recorded
-in the Review Log and drift as items land. Word/symbol names and file paths are
-the authoritative anchors; `docs/census-tfam-*.md` carry per-item `file:line`
-maps refreshed by scouts. Do not treat drifted numbers as plan errors.
+This plan cites files and word/symbol names, not line numbers; per-item
+`file:line` maps live in `docs/census-tfam-*.md`, refreshed by scouts.
 
-- Spec: `docs/type-families.md:9-1744`.
-- Parametric terms: `src/core/checker.f:1-3`,
-  `src/core/checker.f:341-369`, `src/core/checker.f:793-857`,
-  `src/core/checker.f:1743-1938`.
+- Spec: `docs/type-families.md`.
+- Parametric terms: `src/core/checker.f`.
 - Current parametric terms store constructor spelling and compare names at
-  `src/core/checker.f:357-368`, `src/core/checker.f:790-800`; registered
-  type-family terms must carry resolved `family-id`, with source spelling kept
-  only for diagnostics.
+  `src/core/checker.f`; registered type-family terms must carry resolved
+  `family-id`, with source spelling kept only for diagnostics.
 - Param/effect replay still rebuilds terms from strings at
-  `src/core/checker.f:1508`, `src/core/checker.f:1584`,
-  `src/core/checker.f:2760`, `src/core/checker.f:2937`; those copy/instantiate
-  paths must preserve `family-id` too.
-- Hard-coded family whitelist to remove: `src/core/checker.f:1743-1773`.
-- Value-record registry and expansion: `src/core/checker.f:1180-1610`,
-  `src/core/checker.f:1938-2047`, `src/core/roles.f:172-188`,
-  `test/engine-suite.f:614-660`, `test/engine-suite.f:899-980`,
-  `lib/ptx/ir.f:18-80`.
-- Candidate/scope rollback: `src/core/checker.f:5010-5095`.
-- Source preverify: `src/habu/verify-source.f:330-387`,
-  `tools/check-core.f:18-23`, `tools/check-core.f:426-472`,
-  `tools/check-core.f:720-739`.
+  `src/core/checker.f`; those copy/instantiate paths must preserve `family-id`
+  too.
+- Hard-coded family whitelist to remove: `src/core/checker.f`.
+- Value-record registry and expansion: `src/core/checker.f`,
+  `src/core/roles.f`, `test/engine-suite.f`, `lib/ptx/ir.f`.
+- Candidate/scope rollback: `src/core/checker.f`.
+- Source preverify: `src/habu/verify-source.f`, `tools/check-core.f`.
 - Package/defer state is also mutable during preverify and all-errors replay:
-  `src/habu/verify-source.f:303-343`, `tools/check-all-errors-core.f:427-438`.
-- Control-flow checker frames: `src/core/checker.f:4211-4289`,
-  `src/core/checker.f:4366-4585`.
-- Compiler keyword/control lowering: `src/habu/habu2.f:903-917`,
-  `src/habu/habu2.f:961-979`, `src/habu/habu2.f:2259-2324`,
-  `src/habu/habu2.f:2993-3166`, `src/habu/habu2.f:3429-3606`.
+  `src/habu/verify-source.f`, `tools/check-all-errors-core.f`.
+- Control-flow checker frames: `src/core/checker.f`.
+- Compiler keyword/control lowering: `src/habu/habu2.f`.
 - Top-level definers and stack introspection can consume or expose physical
-  cells: `src/core/checker.f:4048-4052`, `src/core/checker.f:3269-3271`,
-  `src/habu/habu2.f:1415-1417`, `src/habu/habu2.f:1615-1622`,
-  `src/habu/habu1.f:1055-1069`, `bootstrap/cg/forth.fs:306-321`,
-  `bootstrap/cg/forth.fs:2109-2110`, `bootstrap/cg/forth.fs:2187-2194`.
-- Gforth bootstrap mirror and shape tests: `bootstrap/cg/forth.fs:1679-1698`,
-  `bootstrap/cg/forth.fs:3129-3145`, `tools/compiler-dispatch-test.f:119-129`,
-  `tools/bootstrap-codegen-test.f:231-234`.
-- Structures/enums surface: `src/core/structures.f:1-41`,
-  `src/core/structures-effects.f:1-10`, `src/core/enums.f:1-7`,
-  `test/gate-dictionary-lib.f:823-915`.
-- Diagnostics/rendering/API manifests: `src/core/render.f:125-178`,
-  `src/core/render.f:250-324`, `tools/repair-schema-doc-test.f:139-161`,
-  `tools/repair-schema-doc-test.f:219-239`,
-  `tools/repair-packet-core.f:171-199`,
-  `tools/gate-json-assert-core.f:349-374`,
-  `tools/public-signatures-core.f:509-566`.
-- Trust and policy tools: `TRUSTED.md:1-34`, `TRUSTED.md:558-569`,
-  `tools/trusted-inventory.f:1`, `tools/checked-boundary-lint-core.f`,
-  `tools/trust-lint-core.f:398-423`, `tools/trust-lint-core.f:702-717`.
-- Build cache/source lists: `tools/hb-build-lib.f:453-510`,
-  `tools/hb-build-lib.f:730-734`.
-- Gate result-cache/source-list roots: `test/run-files.f:55-59`,
-  `test/run-files.f:91-105`, `tools/srclist.f:66-83`.
-- Redefinition/undefine protection: `src/habu/xref.f:161-187`,
-  `src/habu/xref.f:204-208`, `src/habu/xref.f:239-243`,
-  `src/core/checker.f:3904-3908`.
-- Raw wordlist and package mutation: `src/core/checker.f:3330-3355`,
-  `src/core/checker.f:3455-3465`, `src/habu/xref.f:50-60`,
-  `src/habu/xref.f:251-269`, `src/habu/habu2.f:1529-1550`,
-  `src/habu/habu2.f:1803-1807`, `src/habu/habu2.f:2884-2894`,
-  `src/habu/habu1.f:1626-1665`, `src/habu/habu1.f:1702-1707`,
-  `bootstrap/cg/forth.fs:583-613`, `bootstrap/cg/forth.fs:2204-2210`.
+  cells: `src/core/checker.f`, `src/habu/habu2.f`, `src/habu/habu1.f`,
+  `bootstrap/cg/forth.fs`.
+- Gforth bootstrap mirror and shape tests: `bootstrap/cg/forth.fs`,
+  `tools/compiler-dispatch-test.f`, `tools/bootstrap-codegen-test.f`.
+- Structures/enums surface: `src/core/structures.f`,
+  `src/core/structures-effects.f`, `src/core/enums.f`,
+  `test/gate-dictionary-lib.f`.
+- Diagnostics/rendering/API manifests: `src/core/render.f`,
+  `tools/repair-schema-doc-test.f`, `tools/repair-packet-core.f`,
+  `tools/gate-json-assert-core.f`, `tools/public-signatures-core.f`.
+- Trust and policy tools: `TRUSTED.md`, `tools/trusted-inventory.f`,
+  `tools/checked-boundary-lint-core.f`, `tools/trust-lint-core.f`.
+- Build cache/source lists: `tools/hb-build-lib.f`.
+- Gate result-cache/source-list roots: `test/run-files.f`, `tools/srclist.f`.
+- Redefinition/undefine protection: `src/habu/xref.f`, `src/core/checker.f`.
+- Raw wordlist and package mutation: `src/core/checker.f`, `src/habu/xref.f`,
+  `src/habu/habu2.f`, `src/habu/habu1.f`, `bootstrap/cg/forth.fs`.
 - AOT restore and wordlist allocation can reuse raw WIDs if not advanced after
-  replay: `src/habu/habu2.f:2441`, `src/habu/habu2.f:2744`,
-  `src/habu/habu1.f:1623`, `src/habu/habu2.f:2878`,
-  `src/habu/aot-capture.f:133-160`.
+  replay: `src/habu/habu2.f` (`EM-AOT-REGISTER-RECS`,
+  `EM-STARTUP-RUNTIME-STATE`, `C-PACKAGE-ALLOC-WIDS`), `src/habu/habu1.f`
+  (`BWORDLIST`), `src/habu/aot-capture.f`.
 - Syscall/FFI writer boundaries can mutate through pointers outside ordinary
-  store words: `src/core/checker.f:3283`, `src/core/checker.f:3365`,
-  `src/core/checker.f:3293-3303`, `src/habu/habu1.f:1730`,
-  `src/habu/habu1.f:1751`, `src/habu/habu1.f:1760-1763`,
-  `bootstrap/cg/forth.fs:679`.
+  store words: `src/core/checker.f`, `src/habu/habu1.f`,
+  `bootstrap/cg/forth.fs`.
 - Execution sinks that can compile or run protected words by xt:
-  postpone/compile, sinks `src/habu/habu2.f:1809` (`C-POSTPONE`),
-  `src/habu/habu1.f:1033` (`BCOMPILE`), `bootstrap/cg/forth.fs:2214`,
-  `bootstrap/cg/forth.fs:288`; execute sinks `src/habu/habu1.f:1564`
-  (`BEXEC`), `bootstrap/cg/forth.fs:544`, checker `RSEXEC`
-  `src/core/checker.f:1103`.
+  postpone/compile, sinks `src/habu/habu2.f` (`C-POSTPONE`),
+  `src/habu/habu1.f` (`BCOMPILE`), `bootstrap/cg/forth.fs`; execute sinks
+  `src/habu/habu1.f` (`BEXEC`), `bootstrap/cg/forth.fs`, checker `RSEXEC`
+  `src/core/checker.f`.
 - AOT/object test entries and cache keys currently assume the normal `MAIN`
-  entry unless extended: `src/habu/aot-closure.f:45-46`,
-  `src/habu/aot-closure.f:110-111`, `src/habu/aot-closure.f:168-169`,
-  `src/habu/aot-lib.f:159-166`, `src/habu/aot-lib.f:320`,
-  `tools/hb-build-lib.f:785-789`, `tools/hb-build-lib.f:796-804`,
-  `tools/hb-build-lib.f:743-753`, `tools/hb-build-lib.f:821-832`,
-  `tools/hb-build-lib.f:883-885`, `lib/object.f:243-272`,
-  `lib/object.f:377-381`, `lib/object-resolve.f:27-67`,
-  `lib/object-index.f:96-105`, `lib/object-cache.f`,
-  `lib/object-link.f:343-365`, `lib/object-link.f:752-768`,
-  `tools/object-image.f:72-76`.
+  entry unless extended: `src/habu/aot-closure.f`, `src/habu/aot-lib.f`,
+  `tools/hb-build-lib.f`, `lib/object.f`, `lib/object-resolve.f`,
+  `lib/object-index.f`, `lib/object-cache.f`, `lib/object-link.f`,
+  `tools/object-image.f`.
 
 ## Implementation Items
 
 1. **Install the spec and retire the discarded branch**
-   - Paths: `docs/type-families.md:1-1744`, `PLAN.md:1-960`.
+   - Paths: `docs/type-families.md`, `PLAN.md`.
    - Work: keep the moved design doc as the normative input and ensure the
      reverted result-type work leaves no source, doc, filemap, or trust rows
      except this generic design. Update `docs/type-families.md` examples and
      test snippets to use lowercase type names (`result<...>`) and package
      constructor words (`RESULT:OK`/`RESULT:ERR`) instead of dotted constructor
      names. Pin the generated constructor package derivation at
-     `docs/type-families.md:675-676` to the exact escape/hash encoding in
+     `docs/type-families.md` to the exact escape/hash encoding in
      Package Shape, and normalize every `VARIANT` example to the terminated
      `VARIANT ... END-VARIANT` form so the spec grammar is uniform.
      Add `docs/type-families.md` to `FILEMAP.md` so the normative spec is
@@ -257,12 +220,7 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      type-family implementation.
 
 2. **Add package-scoped `TFAM`, `SUMV`, `SCHEMA`, and layout registries**
-   - Paths: `src/core/checker.f:1180-1610`,
-     `src/core/checker.f:1743-1938`, `src/core/checker.f:3540-3555`,
-     `src/core/checker.f:3320`,
-     `src/habu/habu2.f:2418`, `src/habu/habu2.f:2540`,
-     `src/habu/habu2.f:2685`,
-     `docs/type-families.md:261-405`, `docs/type-families.md:1204-1231`.
+   - Paths: `src/core/checker.f`, `src/habu/habu2.f`, `docs/type-families.md`.
    - Work: add growable checker-owned registries for families, variants,
      product fields, logical layouts, and persistent type schemas. Records store
      package id, public/private visibility, canonical lowercase tail name,
@@ -352,11 +310,9 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      metadata.
 
 3. **Make registry rollback transactional and reentrant**
-   - Paths: `src/core/checker.f:5010-5095`,
-     `src/habu/verify-source.f:303-343`,
-     `tools/check-all-errors-core.f:733-798`,
-     `tools/check-all-errors-core.f:427-438`,
-     `docs/type-families.md:1204-1231`, `test/engine-suite.f:614-660`.
+   - Paths: `src/core/checker.f`, `src/habu/verify-source.f`,
+     `tools/check-all-errors-core.f`, `docs/type-families.md`,
+     `test/engine-suite.f`.
    - Work: add `TFAM`, `SUMV`, `SCHEMA`, product-field, layout, and string-pool
      high-water marks to a rollback-frame stack used by
      `CHECKER-SCOPE-START/DONE` and `CHECK-CANDIDATE-START/DONE`. Roll back both
@@ -381,11 +337,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      source-list preverification.
 
 4. **Replace `PARAM-CTOR?` and repair nested param parsing**
-   - Paths: `src/core/checker.f:313-369`,
-     `src/core/checker.f:793-857`, `src/core/checker.f:1743-1938`,
-     `src/core/render.f:102-103`, `src/core/render.f:125-178`,
-     `docs/type-families.md:406-460`,
-     `lib/ptx/*.f`, `docs/census-tfam-4.md`.
+   - Paths: `src/core/checker.f`, `src/core/render.f`,
+     `docs/type-families.md`, `lib/ptx/*.f`, `docs/census-tfam-4.md`.
    - Work: parse `family<...>` and zero-arity bare family tokens only through
      package-aware internal TFAM lookup; bare `color` must resolve to a family
      id before
@@ -423,24 +376,11 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: establishes generic parametric type families before ADTs.
 
 5. **Update source preverify, check tools, and policy lints**
-   - Paths: `src/habu/verify-source.f:330-387`,
-     `tools/check-core.f:18-23`, `tools/check-core.f:720-739`,
-     `tools/check-all-errors-core.f:427-438`,
-      `tools/check-all-errors-core.f:740-770`,
-      `tools/reserved-name-lint-core.f:107-161`,
-      `tools/public-signatures-core.f:509-566`,
-     `tools/public-signatures-core.f:476`,
-     `tools/public-signatures-core.f:524`,
-     `tools/public-signatures-test.f:68`,
-     `src/core/include.f:180`,
-     `src/habu/habu2.f:3021-3024`,
-     `lib/source.f:91`,
-     `lib/source-test.f:111`,
-     `src/habu/verify-source.f:381`,
-     `tools/check-all-errors-core.f:437`,
-     `tools/public-signatures-core.f:552`,
-     `test/run-result-cache-test.f:104`,
-     `test/run-result-cache-test.f:181`.
+   - Paths: `src/habu/verify-source.f`, `tools/check-core.f`,
+     `tools/check-all-errors-core.f`, `tools/reserved-name-lint-core.f`,
+     `tools/public-signatures-core.f`, `tools/public-signatures-test.f`,
+     `src/core/include.f`, `src/habu/habu2.f`, `lib/source.f`,
+     `lib/source-test.f`, `test/run-result-cache-test.f`.
    - Work: first implement the generic ordered event log, restricted discovery
      pass, source-span capture, replay engine, and existing support-form parity
      without requiring ADT declarations. After item 6 and item 8 land, plug
@@ -497,10 +437,10 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      `ENUM`/`END-ENUM`; item 15 reserves `PRODUCT`/`FIELD`/`END-PRODUCT`; item
      16 reserves `POLICY`. Do not reserve `ENUM` before the legacy enum surface
      is retired or migrated. Likewise, do not reserve `construct` before item 9
-     migrates the pre-existing `CONSTRUCT` words (`lib/task.f:210`,
-     `lib/task.f:430`, and their call sites), nor `FIELD` before item 15
-     migrates the pre-existing `FIELD` words (`lib/object.f:97`,
-     `lib/object-test.f:28`, `src/habu/aot-lib.f:211`); dictionary lookup is
+     migrates the pre-existing `CONSTRUCT` words (`lib/task.f`, and their call
+     sites), nor `FIELD` before item 15 migrates the pre-existing `FIELD` words
+     (`lib/object.f`, `lib/object-test.f`, `src/habu/aot-lib.f`); dictionary
+     lookup is
      case-folded, so lower/upper spellings collide.
      Public-signature output is
      synthesized from TFAM/SUMV metadata for generated constructors; it does not
@@ -567,9 +507,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: keeps CLI/checker paths fail-closed and aligned with runtime.
 
 6. **Implement `TYPEFAMILY` and `SUMTYPE` declaration grammar**
-   - Paths: `src/core/checker.f:1938-2047`,
-     `src/core/roles.f:172-188`, `src/habu/habu2.f:2993-3004`,
-     `docs/type-families.md:461-499`, `docs/type-families.md:1301-1354`.
+   - Paths: `src/core/checker.f`, `src/core/roles.f`, `src/habu/habu2.f`,
+     `docs/type-families.md`.
    - Work: add package-aware public defining words for cell families and sum
      families. Each `VARIANT` block terminates with `END-VARIANT` and each sum
      block with `END-SUMTYPE`, matching the normalized spec grammar. Constructor
@@ -605,9 +544,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      legacy enum/product surface yet.
 
 7. **Add hidden physical fields and logical row expansion**
-   - Paths: `src/core/checker.f:490-523`,
-     `src/core/checker.f:1864-1938`, `src/core/render.f:125-178`,
-     `docs/type-families.md:537-627`.
+   - Paths: `src/core/checker.f`, `src/core/render.f`,
+     `docs/type-families.md`.
    - Work: replace direct `SIG-TYPE MK-PUSH` with `PUSH-LOGICAL`. Cell families
      push one logical cell. Layout families expand to hidden physical field
      terms (`@family.slotN<...>`, `@family.tag<...>`), with the tag as the
@@ -631,10 +569,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: makes logical ADTs sound over Habu's physical cell stack.
 
 8. **Generate constructors without emitted trust**
-   - Paths: `src/core/checker.f:1938-2047`,
-     `src/habu/habu2.f:2993-3004`, `docs/type-families.md:628-759`,
-     `tools/trust-lint-core.f:398-423`, `tools/trust-lint-core.f:702-717`,
-     `TRUSTED.md:1-34`.
+   - Paths: `src/core/checker.f`, `src/habu/habu2.f`, `docs/type-families.md`,
+     `tools/trust-lint-core.f`, `TRUSTED.md`.
    - Work: generate checked constructor effects and runtime words from SUMV
      metadata. Constructors push payload cells, zero padding for absent variant
      slots, then tag. Generated ADT code must not emit `TRUST`, `TRUSTED:`, or
@@ -708,12 +644,9 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: provides ADT introduction forms without per-type trust rows.
 
 9. **Add checker-owned `MATCH` token protocol and control semantics**
-   - Paths: `src/core/checker.f:4211-4289`,
-     `src/core/checker.f:4366-4585`, `src/core/checker.f:4716-4730`,
-     `src/core/checker.f:4854-4869`, `lib/task.f:210`, `lib/task.f:310`,
-     `lib/task.f:430`, `docs/type-families.md:760-880`.
+   - Paths: `src/core/checker.f`, `lib/task.f`, `docs/type-families.md`.
    - Work: before reserving `construct`, migrate the pre-existing task API
-     words `CONSTRUCT` (`lib/task.f:210`, `lib/task.f:430`) and their call
+     words `CONSTRUCT` (`lib/task.f`) and their call
      sites to a non-colliding name; dictionary lookup is case-folded, so the
      lowercase reservation collides with the uppercase definitions.
      Then define a token protocol where private construction uses
@@ -755,34 +688,13 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: implements checked elimination, refinement, and exhaustiveness.
 
 10. **Lower constructors and `MATCH` in native and bootstrap compilers**
-   - Paths: `src/habu/habu1.f:84-101`,
-     `src/habu/habu2.f:903-917`, `src/habu/habu2.f:961-979`,
-     `src/habu/habu2.f:2259-2324`, `src/habu/habu2.f:3119-3166`,
-     `src/habu/aot-lib.f:159-166`,
-     `src/habu/aot-lib.f:320`,
-     `src/habu/aot-closure.f:45-46`,
-     `src/habu/aot-closure.f:110-111`,
-     `src/habu/aot-closure.f:168-169`,
-     `tools/hb-build-lib.f:785-789`,
-     `tools/hb-build-lib.f:796-804`,
-     `tools/hb-build-lib.f:821-832`,
-     `tools/hb-build-lib.f:743-753`, `tools/hb-build-lib.f:883-885`,
-     `lib/object.f:243-272`, `lib/object.f:377-381`,
-     `lib/object-cache.f`, `lib/object-index.f:96-105`,
-     `lib/object-link.f:343-365`, `lib/object-link.f:752-768`,
-     `lib/object-resolve.f:27-67`,
-     `tools/object-image.f:72-76`,
-     `src/habu/macho.f:88-89`, `src/habu/macho.f:157`,
-     `src/habu/elf.f:206-221`, `src/habu/driver-io.f:62-65`,
-     `src/habu/habu2.f:3431-3434`, `src/habu/habu2.f:3494`,
-     `docs/census-tfam-10.md`,
-     `bootstrap/cg/forth.fs:181`,
-     `bootstrap/cg/forth.fs:1620`,
-     `bootstrap/cg/forth.fs:1679-1698`, `bootstrap/cg/forth.fs:3129-3145`,
-     `bootstrap/cg/forth.fs:3373`,
-     `tools/compiler-dispatch-test.f:119-129`,
-     `tools/bootstrap-codegen-test.f:231-234`,
-     `docs/type-families.md:881-1013`.
+   - Paths: `src/habu/habu1.f`, `src/habu/habu2.f`, `src/habu/aot-lib.f`,
+     `src/habu/aot-closure.f`, `tools/hb-build-lib.f`, `lib/object.f`,
+     `lib/object-cache.f`, `lib/object-index.f`, `lib/object-link.f`,
+     `lib/object-resolve.f`, `tools/object-image.f`, `src/habu/macho.f`,
+     `src/habu/elf.f`, `src/habu/driver-io.f`, `docs/census-tfam-10.md`,
+     `bootstrap/cg/forth.fs`, `tools/compiler-dispatch-test.f`,
+     `tools/bootstrap-codegen-test.f`, `docs/type-families.md`.
    - Work: add keyword data, label variables, label assignment, `EMIT-KWDATA`
      rows, and lowering for `MATCH`/`OF`/`ENDOF`/`ENDMATCH`, family/variant token
      consumption, constructor tag pushes, tag compare/branch chains, and
@@ -828,9 +740,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: makes ADTs executable and fail-closed at runtime and recovery.
 
 11. **Add linear/resource semantics for layout values**
-    - Paths: `src/core/checker.f:997-1019`,
-      `src/core/checker.f:3192-3225`, `test/engine-suite.f:859-980`,
-      `docs/type-families.md:1141-1172`.
+    - Paths: `src/core/checker.f`, `test/engine-suite.f`,
+      `docs/type-families.md`.
     - Work: add `LAYOUT-LINEAR?` and `LAYOUT-LINEAR-COUNT` over expanded layout
       fields so any layout value containing a linear payload is linear. Reject
       raw `drop`, copying, branch loss, and unconsumed linear ADTs just as for
@@ -847,42 +758,9 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: preserves checker soundness for resource-bearing ADTs.
 
 12. **Make all checked stack operations layout-aware**
-   - Paths: `src/core/checker.f:835-864`,
-      `src/core/checker.f:1043-1084`,
-      `src/core/checker.f:3192-3264`, `src/core/checker.f:3372-3386`,
-      `src/core/checker.f:851`, `src/core/checker.f:1103`,
-      `src/core/checker.f:1137-1148`,
-      `src/core/checker.f:4302-4319`,
-      `src/core/checker.f:4172-4200`,
-      `src/core/combinators.f:1-80`,
-      `src/habu/jit.f:335-365`, `src/habu/jit.f:406-416`,
-      `src/habu/jit.f:595-603`,
-      `src/habu/jit.f:773-830`, `src/habu/habu2.f:3203-3244`,
-      `src/habu/habu2.f:3156-3158`, `src/habu/habu2.f:1261-1280`,
-      `src/habu/habu2.f:2117-2137`, `src/habu/habu2.f:2340-2360`,
-      `src/habu/habu1.f:1009-1027`, `src/habu/habu1.f:1567-1614`,
-      `src/habu/habu2.f:3307-3313`,
-      `src/habu/habu2.f:3021-3024`,
-      `src/habu/regalloc.f`, `src/habu/habu1.f:1151-1205`,
-      `src/habu/habu1.f:1236-1248`, `src/habu/habu1.f:1695-1700`,
-      `bootstrap/cg/forth.fs:404-470`, `bootstrap/cg/forth.fs:432-646`,
-      `bootstrap/cg/forth.fs:642-646`, `bootstrap/cg/forth.fs:1821-1845`,
-      `bootstrap/cg/forth.fs:2109-2110`,
-      `bootstrap/cg/forth.fs:2187-2194`,
-      `bootstrap/cg/forth.fs:2287-2305`,
-      `bootstrap/cg/forth.fs:3173-3190`,
-      `bootstrap/cg/forth.fs:3212-3217`,
-      `bootstrap/cg/forth.fs:3042-3044`,
-      `bootstrap/cg/forth.fs:3204-3246`,
-      `bootstrap/cg/forth.fs:266-283`, `bootstrap/cg/forth.fs:546-574`,
-      `bootstrap/cg/forth.fs:3314-3320`,
-      `src/core/checker.f:4048-4052`, `src/core/checker.f:3269-3271`,
-      `src/habu/habu2.f:1415-1417`, `src/habu/habu2.f:1615-1622`,
-      `src/habu/habu1.f:1055-1069`, `bootstrap/cg/forth.fs:306-321`,
-      `bootstrap/cg/jit.fs:339-365`, `bootstrap/cg/jit.fs:399-406`,
-      `bootstrap/cg/jit.fs:588-596`,
-      `bootstrap/cg/jit.fs:132-134`, `bootstrap/cg/jit.fs:767-785`,
-      `docs/type-families.md:1014-1140`, `docs/type-families.md:1558-1578`.
+   - Paths: `src/core/checker.f`, `src/core/combinators.f`, `src/habu/jit.f`,
+      `src/habu/habu2.f`, `src/habu/habu1.f`, `src/habu/regalloc.f`,
+      `bootstrap/cg/forth.fs`, `bootstrap/cg/jit.fs`, `docs/type-families.md`.
     - Work: track logical widths and make every stack primitive that can touch
       layout bundles operate on logical values: `dup`, `drop`, `swap`, `over`,
       `nip`, `rot`, `-rot`, `tuck`, `2dup`, `2drop`, `2swap`, `2over`,
@@ -927,8 +805,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
       and hidden-field layout tags, or reject layout bundles before frame
       entry/exit so evaluated source cannot split or strand hidden fields.
       `?dup` is not a generic bundle copy. It has no checker axiom today — it
-      exists only as emitter primitive `BQDUP` (`src/habu/habu1.f:1178`,
-      `bootstrap/cg/forth.fs:432`) branching on the raw TOS cell — so this item
+      exists only as emitter primitive `BQDUP` (`src/habu/habu1.f`,
+      `bootstrap/cg/forth.fs`) branching on the raw TOS cell — so this item
       first adds its axiom, then makes it reject layout ADTs unless the
       family declares a checked truthiness/niche policy that specifies which
       physical representation is false and proves the copied bundle is valid.
@@ -945,7 +823,7 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      layout bundles cannot be split or leak on the exact native and Gforth paths
      above. Gforth scalar inventory parity for `2>r`, `2r>`, and `2r@`
      (confirmed absent from `EMIT-STACK-PRIMS`,
-     `bootstrap/cg/forth.fs:641-646`) is either
+     `bootstrap/cg/forth.fs`) is either
      implemented or explicitly rejected fail-closed before layout tests run.
      Codegen fixtures prove width facts reach
      lowering before emission, and negative fixtures prove hidden fields cannot
@@ -966,18 +844,10 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: prevents hidden physical layout from leaking into user code.
 
 13. **Compact diagnostics, repair packets, and public signatures**
-    - Paths: `src/core/render.f:125-178`, `src/core/render.f:250-324`,
-      `docs/repair-diagnostics.md:16-40`,
-      `tools/repair-schema-doc-test.f:139-161`,
-      `tools/repair-schema-doc-test.f:219-239`,
-      `tools/repair-packet-core.f:171-199`,
-      `tools/gate-json-assert-core.f:349-374`,
-      `tools/gate-json-assert-core.f:306-331`,
-      `tools/gate-json-assert-core.f:381-395`,
-      `tools/public-signatures-core.f:509-566`,
-      `tools/public-signatures-core.f:453-457`,
-      `tools/trusted-inventory.f:322-327`,
-      `docs/type-families.md:1173-1203`, `docs/type-families.md:1392-1433`.
+    - Paths: `src/core/render.f`, `docs/repair-diagnostics.md`,
+      `tools/repair-schema-doc-test.f`, `tools/repair-packet-core.f`,
+      `tools/gate-json-assert-core.f`, `tools/public-signatures-core.f`,
+      `tools/trusted-inventory.f`, `docs/type-families.md`.
     - Work: make row collection bounded/growable, then render hidden-field runs
       as registered lowercase logical
       `family<args>` values, extend SGBAD/diagnostic state for expected/got
@@ -1021,9 +891,8 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: preserves LLM-facing error quality.
 
 14. **Implement enum families and migrate legacy enums**
-    - Paths: `src/core/enums.f:1-7`,
-      `test/gate-dictionary-lib.f:888-915`,
-      `docs/type-families.md:500-521`, `docs/type-families.md:1355-1391`.
+    - Paths: `src/core/enums.f`, `test/gate-dictionary-lib.f`,
+      `docs/type-families.md`.
     - Work: replace or retire the current numeric `ENUM`/`ENUM4` chain before
       publishing block-style enum families. If compatibility is needed, move the
       old surface behind an explicit legacy name and update all call sites.
@@ -1039,13 +908,11 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      semantics.
 
 15. **Implement product families and migrate value records**
-    - Paths: `src/core/structures.f:1-41`, `src/core/roles.f:172-188`,
-      `lib/ptx/ir.f:18-80`, `test/engine-suite.f:899-980`,
-      `lib/object.f:97`, `lib/object-test.f:28`, `src/habu/aot-lib.f:211`,
-      `docs/effects.md:126-245`, `docs/type-families.md:522-536`,
-      `docs/type-families.md:1699-1710`.
+    - Paths: `src/core/structures.f`, `src/core/roles.f`, `lib/ptx/ir.f`,
+      `test/engine-suite.f`, `lib/object.f`, `lib/object-test.f`,
+      `src/habu/aot-lib.f`, `docs/effects.md`, `docs/type-families.md`.
     - Work: before reserving `FIELD`, migrate the pre-existing `FIELD` words
-      (`lib/object.f:97`, `lib/object-test.f:28`, `src/habu/aot-lib.f:211`)
+      (`lib/object.f`, `lib/object-test.f`, `src/habu/aot-lib.f`)
       and their call sites to non-colliding names; dictionary lookup is
       case-folded. Then implement `PRODUCT ... END-PRODUCT` after layout-aware
       stack operations are proven. Decide by evidence whether `VALUE-RECORD` becomes
@@ -1065,9 +932,7 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
    - Goal mapping: folds existing by-value records into the generic family design.
 
 16. **Implement layout policies**
-    - Paths: `docs/type-families.md:1232-1300`,
-      `docs/type-families.md:1328-1354`, `docs/type-families.md:1711-1725`,
-      `src/core/checker.f:1743-2047`.
+    - Paths: `docs/type-families.md`, `src/core/checker.f`.
     - Work: parse and validate `POLICY`. Ship `stack-cell-tag` as the required
       default and implement explicit diagnostics for invalid or unsupported
       policies. Then add packed-tag, niche-null, and boxed policies as separate
@@ -1091,23 +956,15 @@ maps refreshed by scouts. Do not treat drifted numbers as plan errors.
      prerequisite.
 
 17. **Gate, bootstrap, size, cache, and trust proof**
-    - Paths: `test/engine-suite.f:1-260`, `test/gate-dictionary-lib.f:823-915`,
+    - Paths: `test/engine-suite.f`, `test/gate-dictionary-lib.f`,
       `tools/check-test-lib.f`, `tools/trust-lint-test.f`,
       `tools/trusted-inventory.f`, `tools/checked-boundary-lint-core.f`,
-      `tools/filemap-lint.f`, `tools/host-lint.f`,
-      `test/gate-build-size.f:1-80`, `test/run-files.f:55-59`,
-      `test/run-files.f:91-105`, `tools/srclist.f:66-83`,
-      `tools/hb-build-lib.f:453-510`, `tools/hb-build-lib.f:730-734`,
-      `test/run-result-cache-test.f:104`,
-      `test/run-result-cache-test.f:181`,
-      `tools/build-fixpoint.f:694`, `tools/bootstrap.sh:200`,
-      `src/habu/aot-capture.f`,
-      `src/core/roles.f:28`, `lib/ffi.f:244`,
-      `tools/trust-lint-core.f:387-398`,
-      `tools/checked-boundary-lint-core.f:246-388`,
-      `tools/build-fixpoint.f`, `FILEMAP.md:1-40`, `docs/bootstrap.md`,
-      `bootstrap/cg/*.fs`, `bootstrap/src/*.fs`, `bootstrap/*.fs`,
-      `TRUSTED.md:1-34`.
+      `tools/filemap-lint.f`, `tools/host-lint.f`, `test/gate-build-size.f`,
+      `test/run-files.f`, `tools/srclist.f`, `tools/hb-build-lib.f`,
+      `test/run-result-cache-test.f`, `tools/build-fixpoint.f`,
+      `tools/bootstrap.sh`, `src/habu/aot-capture.f`, `src/core/roles.f`,
+      `lib/ffi.f`, `tools/trust-lint-core.f`, `FILEMAP.md`, `docs/bootstrap.md`,
+      `bootstrap/cg/*.fs`, `bootstrap/src/*.fs`, `bootstrap/*.fs`, `TRUSTED.md`.
     - Work: this is not a last-only cleanup phase. For every item 2-16, add TDD
       fixtures before implementation, rebuild `bin/hb`,
       prove native self-refresh/fixpoint, run focused checker and engine suites,
