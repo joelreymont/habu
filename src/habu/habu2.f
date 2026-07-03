@@ -2415,23 +2415,26 @@ s" c-local-ref" s" label label --" TRUST
 \ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
 \ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
 \ EM-AOT-PATCH-SITES can resolve sibling calls by name.
-\ Each source record is a compact 8 bytes (word0 = blob-off u16 | end u16<<16;
-\ word1 = name-off u16 | flags u8<<16 | wid u8<<24); expand it to the full 48B dict
-\ record, rebasing [0] xt to CP+blob-off and reconstructing [16] flags|len, the
-\ [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded), and [40] wid
-\ -- the EXACT inverse of the build-time ACAP-COMPACT-RECS, proven byte-identical to
-\ the source-compiled record by ACAP-PROVE-RECS. x2..x7 are LHIDXADD's saved set;
-\ x9/x11/x12 survive it. Records are 8B-aligned so both words load with LDRW.
+\ Each source record is a compact 12 bytes (word0 = blob-off u16 | end u16<<16;
+\ word1 = name-off u16 | flags u8<<16 | pad u8<<24; word2 = wid u32); expand it to
+\ the full 48B dict record, rebasing [0] xt to CP+blob-off and reconstructing [16]
+\ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
+\ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
+\ the build-time ACAP-COMPACT-RECS, proven byte-identical to the source-compiled
+\ record by ACAP-PROVE-RECS. As each record is registered WIDN is advanced above its
+\ wid, so a post-seed wordlist allocation cannot collide with a restored wordlist.
+\ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
+\ each 32-bit word loads with LDRW.
 : EM-AOT-REGISTER-RECS ( -- )
-   LBL LBL LBL LBL {: rloop:label rdone:label nloop:label ndone:label :}
-   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (8B stride), x12 = k
+   LBL LBL LBL LBL LBL {: rloop:label rdone:label nloop:label ndone:label widok:label :}
+   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (12B stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
       3 9 0 LDRW,                                   \ x3 = word0 = blob-off | end<<16
       5 $FFFF LIT64,  4 3 5 AND,  4 CP 4 ADD,  4 10 0 STR,  \ [0] xt = CP + blob-off (u16)
       3 3 16 LSRI,  3 10 8 STR,                     \ [8] end = word0>>16 (u16, hi=0)
-      6 9 4 LDRW,                                   \ x6 = word1 = name-off | flags<<16 | wid<<24
+      6 9 4 LDRW,                                   \ x6 = word1 = name-off | flags<<16 | pad<<24
       5 $FFFF LIT64,  4 6 5 AND,                     \ x4 = name-off
       7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
       5 4 0 LDRB,                                   \ x5 = name length = pool[entry]
@@ -2445,9 +2448,12 @@ s" c-local-ref" s" label label --" TRUST
          7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
          3 3 1 ADDI,  nloop B,
       ndone LBL,
-      6 6 24 LSRI,  3 $FF LIT64,  6 6 3 AND,  6 10 40 STR,   \ [40] wid = (word1>>24)&0xFF
+      6 9 8 LDRW,  6 10 40 STR,                     \ [40] wid = word2 (full u32, hi=0)
+      4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
+         4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
+      widok LBL,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
-      9 9 8 ADDI,  12 12 1 ADDI,  rloop B,
+      9 9 12 ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL, ;
 
 \ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
@@ -3516,9 +3522,9 @@ create AOT-BLOB-BUF AOT-BLOB-CAP allot    variable AOT-BLOB-LEN
 256 constant AOT-REC-MAX
 \ AOT-REC-BUF holds three regions (all viewed via AOT-REC-BUF@, no extra TRUST):
 \   [0 .. MAX*48)          verbatim 48B dict records (capture source of truth)
-\   [MAX*48 .. +MAX*8)     compact 8B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + wid u8)
-\   [+MAX*8 .. +48)        48B scratch for the build-time expand==verbatim proof
-create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX 8 * + 48 + allot    variable AOT-REC-N
+\   [MAX*48 .. +MAX*12)    compact 12B records (baked; blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8 + wid u32)
+\   [+MAX*12 .. +48)       48B scratch for the build-time expand==verbatim proof
+create AOT-REC-BUF AOT-REC-MAX 48 * AOT-REC-MAX 12 * + 48 + allot    variable AOT-REC-N
 2048 constant AOT-SITE-MAX
 create AOT-SITE-BUF AOT-SITE-MAX 4 * allot    variable AOT-SITE-N   \ packed 4B rows: blob-off u16 + name-off u16
 $4000 constant AOT-NAMES-CAP
@@ -3576,8 +3582,8 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
    LAOTCODE LABEL@ LBL,
    AOT-BLOB-LEN @ 0 > IF AOT-BLOB-BUF@ AOT-BLOB-LEN @ BYTES, THEN
    LAOTNREC LABEL@ LBL,  AOT-REC-N @ DCQ,
-   LAOTDICT LABEL@ LBL,                          \ compact 8B records (EM-AOT-REGISTER-RECS expands to 48B)
-   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ 8 * BYTES, THEN
+   LAOTDICT LABEL@ LBL,                          \ compact 12B records (EM-AOT-REGISTER-RECS expands to 48B)
+   AOT-REC-N @ 0 > IF AOT-REC-BUF@ AOT-REC-MAX 48 * + AOT-REC-N @ 12 * BYTES, THEN
    LAOTNSITE LABEL@ LBL,  AOT-SITE-N @ DCQ,
    LAOTSITES LABEL@ LBL,  EMIT-AOT-SITES
    LAOTNAMES LABEL@ LBL,
