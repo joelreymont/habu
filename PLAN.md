@@ -378,8 +378,9 @@ feature is allowed.
 4. **Replace `PARAM-CTOR?` and repair nested param parsing**
    - Paths: `src/core/checker.f:313-369`,
      `src/core/checker.f:793-857`, `src/core/checker.f:1743-1938`,
-     `src/core/render.f:125-178`, `docs/type-families.md:406-460`,
-     `lib/ptx/*.f`.
+     `src/core/render.f:102-103`, `src/core/render.f:125-178`,
+     `docs/type-families.md:406-460`,
+     `lib/ptx/*.f`, `docs/census-tfam-4.md`.
    - Work: parse `family<...>` and zero-arity bare family tokens only through
      package-aware internal TFAM lookup; bare `color` must resolve to a family
      id before
