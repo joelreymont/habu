@@ -1558,8 +1558,11 @@ variable VREC-RB-I
       RIGID-FRESH over !
    THEN @ ;
 
+: VREC-BYTE+ ( ptr u8 n -- ptr u8 )
+   + ;
+
 : VREC-I-STR ( n -- ptr u8 n ) {: node:n :}
-   VREC-STR node VN.A@ + node VN.B@ ;
+   VREC-STR node VN.A@ VREC-BYTE+ node VN.B@ ;
 
 : VREC-INST ( n -- n ) {: node:n :}
    node 0= IF 0 EXIT THEN
@@ -1898,7 +1901,7 @@ create ROWMAP 26 cells allot
 \ tail is used. Types fold bottom->top; '[' in -- out [ '|' rin -- rout ] ']'
 \ is a quot<effect> (RECURSE for nested stacks; no '|' means rin=rout).
 \ tail is a LOCAL so it survives RECURSE; the data stack holds only the row.
-: PSTACK {: tail :}
+: PSTACK ( n -- n ) {: tail:n :}
    NEXT-SIG-TOK 2dup ROW-LEAD? IF
       drop c@ RVAR-OF                                 \ row = named var
    ELSE PK! tail THEN                                 \ push back token; row = tail
@@ -1944,21 +1947,21 @@ variable SGHASR                          \ a return-stack clause ( ... | rin -- 
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
 variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
-: RRTAIL ( -- rrow )                     \ the shared return row (allocate once, on demand)
+: RRTAIL ( -- n )                        \ shared return row (allocate once, on demand)
    RR-SHARED @ dup 0= IF drop FRESH MK-ROW dup RR-SHARED ! THEN ;
 
 \ PSIDE ( dtail -- drow rrow ) : one side = data stack [ '|' return stack ]. No
 \ '|' -> rrow = the shared return row so far (0 if no clause anywhere) — CHECK
 \ ignores it. The return row is allocated only when a '|' actually appears, so
 \ ordinary sigs cost no extra typevars.
-: PSIDE {: dtail :}
+: PSIDE ( n -- n n ) {: dtail:n :}
    dtail PSTACK                                   \ data part (stops at | -- ])
    NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
       2drop  -1 SGHASR !  RRTAIL PSTACK           \ ( drow rrow ) explicit return
    ELSE PK! RR-SHARED @ THEN ;                    \ no | here -> shared tail (untouched)
 
 \ PSIG ( -- din dout rin rout ) : data + return rows over the cursor.
-: PSIG
+: PSIG ( -- n n n n )
    PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET  0 SGHASR !  0 RR-SHARED !
    FRESH MK-ROW dup PD-BASE ! {: dr :}
    dr PSIDE  PR-IN ! PD-IN !
