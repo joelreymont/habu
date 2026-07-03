@@ -22,13 +22,23 @@ variable M-O
    0 MSIZE 3 M-MAP-PRIVATE-ANON -1 0 mmap
    dup 0 < if s" image-bytes: mmap failed" 74 die then ;
 
+TRUSTED: MBUF-RC>PTR ( n -- ptr u8 ) ;
+
+: MBUF-A-FIELD ( -- ptr ptr u8 )
+   MBUF-A 0 ptr-field ;
+
+: MBUF-A@ ( -- ptr u8 )
+   MBUF-A-FIELD @ ;
+
+: MBUF-A! ( ptr u8 -- )
+   MBUF-A-FIELD ! ;
+
 : M-ENSURE-BUF ( -- )
-   MBUF-A @ 0= if M-ALLOC-BUF MBUF-A ! then ;
+   MBUF-A@ 0= if M-ALLOC-BUF MBUF-RC>PTR MBUF-A! then ;
 
 : MBUF ( -- ptr u8 )
    M-ENSURE-BUF
-   MBUF-A @ ;
-s" MBUF" s" -- ptr u8" TRUST
+   MBUF-A@ ;
 
 : MP@ ( -- ptr u8 ) MP @ ;
 
