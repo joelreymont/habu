@@ -6,13 +6,18 @@
 \ installs (HOOK-INSTALL, named by the installed hook), and the fail-closed
 \ TRUST-BARE catch-all, then
 \ prints a deterministic TSV report (kind TAB file TAB line TAB name TAB effect
-\ TAB class TAB dot, sorted by file then line) plus a summary footer. Class and
-\ owning dot come from the committed classification block in TRUSTED.md; strict
-\ mode fails on unclassified sites, on owning dots that do not exist in
-\ .dots/, and on dead (unmatched) or duplicate mapping rows.
-\ Ratchet mode compares current kind counts
-\ against the committed baseline block in TRUSTED.md and fails if any kind grew
-\ or the baseline is stale.
+\ TAB class TAB dot, sorted by file then line) plus a summary footer. Class, owning
+\ dot, and coverage count come from the committed classification block in
+\ TRUSTED.md; strict mode fails on unclassified sites, on owning dots that do not
+\ exist in .dots/, and on dead (unmatched) or duplicate mapping rows.
+\ Ratchet mode derives the ceiling from the classification block itself, so there
+\ is no separate hand-edited count that conflicts on every parallel merge. Each
+\ `file:name` row covers exactly one site; each `file class dot N` file-level row
+\ carries its own site count N. The ratchet fails if any site is uncovered (a new
+\ trust site added without an audited row), if a file-level row's committed count
+\ grew or shrank against the live tree, if a file-level row is missing its count,
+\ or if a mapping key is duplicated. Adding an audited site is a new named row (a
+\ distinct, mergeable line) with no shared count to bump.
 \ Run: bin/hb --load tools/trusted-inventory.f                        (report)
 \ Or:  bin/hb --load tools/trusted-inventory.f -- strict              (report, fail on unclassified)
 \ Or:  bin/hb --load tools/trusted-inventory.f -- baseline TRUSTED.md (ratchet)
@@ -45,7 +50,8 @@ private
 8192 constant ROW-MAX
 9 constant TAB#
 512 constant CMAX
-8 constant CTAB#
+10 constant CTAB#
+-1 constant COUNT-UNSET
 $40000 constant FILE-CAP
 $40000 constant STR-CAP
 $10000 constant CSTR-CAP
@@ -66,19 +72,17 @@ variable ROW#
 variable ARENA-END
 variable CUR-PATH-O
 variable CUR-PATH-U
-variable BASE-TRUSTED
-variable BASE-TRUST
-variable BASE-SETCHECK
-variable BASE-BARE
-variable BASE-HOOK
 variable NUM-L
 variable SI
 variable CC-I
 variable CC-N
 variable SR-I
 variable RI
-variable PB-M
-variable PB-E
+variable RT-K
+variable RT-R
+variable RD-I
+variable RD-BAD
+variable RD-STALE
 variable CTAB-A
 variable CARENA-A
 variable CM#
@@ -244,6 +248,8 @@ create DOTP-BUF DOTP-CAP allot
 : K-CU ( -- ptr a ) 5 CTAB ;
 : K-DO ( -- ptr a ) 6 CTAB ;
 : K-DU ( -- ptr a ) 7 CTAB ;
+: K-CNT ( -- ptr a ) 8 CTAB ;
+: K-MATCHED ( -- ptr a ) 9 CTAB ;
 
 : STORE$ ( ptr u8 n -- n n ) {: a:ptr u:n :}
    ARENA-A @ 0= if s" trusted-inventory: not initialised" 1 die then
@@ -550,12 +556,6 @@ create DOTP-BUF DOTP-CAP allot
       CC-I @ 1+ CC-I !
    repeat CC-N @ ;
 
-: GREW ( n n -- n ) {: base:n cur:n :}
-   cur base > if 1 else 0 then ;
-
-: SHRUNK ( n n -- n ) {: base:n cur:n :}
-   cur base < if 1 else 0 then ;
-
 public
 
 : INIT ( -- )
@@ -656,14 +656,22 @@ private
 : CMAP-NAMED? ( n -- bool )
    K-NU swap TAB@ 0 > ;
 
-: CMAP+ ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
-   {: fa:ptr fu:n na:ptr nu:n ca:ptr cu:n da:ptr du:n :}
+: CMAP+ ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- )
+   {: fa:ptr fu:n na:ptr nu:n ca:ptr cu:n da:ptr du:n cnt:n :}
    CM# @ CMAX >= if s" trusted-inventory: classification overflow" 1 die then
    fa fu CSTORE$ K-FU CM# @ TAB! K-FO CM# @ TAB!
    na nu CSTORE$ K-NU CM# @ TAB! K-NO CM# @ TAB!
    ca cu CSTORE$ K-CU CM# @ TAB! K-CO CM# @ TAB!
    da du CSTORE$ K-DU CM# @ TAB! K-DO CM# @ TAB!
+   cnt K-CNT CM# @ TAB!
+   0 K-MATCHED CM# @ TAB!
    CM# @ 1+ CM# ! ;
+
+: CMAP-COUNT@ ( n -- n )
+   K-CNT swap TAB@ ;
+
+: CMAP-MATCHED@ ( n -- n )
+   K-MATCHED swap TAB@ ;
 
 \ Split a mapping key into file plus optional site name after the first colon.
 : KEY-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
@@ -678,14 +686,33 @@ private
    a u s" prim-axiom" LINT-STR= if LINT-TRUE exit then
    a u s" discharge-candidate" LINT-STR= ;
 
+: PARSE-COUNT ( ptr u8 n -- n bool )
+   STR>NUMBER? 0= if drop 0 LINT-FALSE exit then
+   dup 1 < if drop 0 LINT-FALSE exit then
+   LINT-TRUE ;
+
+\ One classification row `key class dot [count]`. `key` is `file:name` (names the
+\ site(s) called `name` in `file`) or bare `file` (a file-level row covering the
+\ sites no named row owns). The count is the derived ratchet ceiling for the row:
+\ a three-token named row defaults to 1 (override with an explicit count when a
+\ name appears at more than one trust site, e.g. a definition plus its install);
+\ a three-token file-level row is COUNT-UNSET so the block still loads while the
+\ ratchet reports the missing count fail-closed. A bad count rejects.
 : CROW-PARSE ( ptr u8 n -- bool )
    SPLIT-WHITESPACE
    SN# @ 0= if LINT-TRUE exit then
-   SN# @ 3 <> if LINT-FALSE exit then
-   1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
    0 S@ KEY-SPLIT {: fa:ptr fu:n na:ptr nu:n :}
-   fa fu na nu 1 S@ 2 S@ CMAP+
-   LINT-TRUE ;
+   SN# @ 3 = if
+      1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
+      nu 0 > if 1 else COUNT-UNSET then {: cnt:n :}
+      fa fu na nu 1 S@ 2 S@ cnt CMAP+ LINT-TRUE exit
+   then
+   SN# @ 4 = if
+      1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
+      3 S@ PARSE-COUNT 0= if drop LINT-FALSE exit then {: cnt:n :}
+      fa fu na nu 1 S@ 2 S@ cnt CMAP+ LINT-TRUE exit
+   then
+   LINT-FALSE ;
 
 : CLASSES-LINES ( ptr u8 n -- bool ) {: a:ptr u:n :}
    LINT-TRUE CP-OK !
@@ -938,23 +965,6 @@ private
    s"  total " OUT ROWS OUT-U
    s"  unclassified " OUT UNCLASSIFIED# OUT-U OUT-NL ;
 
-: PARSE-U ( ptr u8 n -- n bool )
-   STR>NUMBER? 0= if drop 0 LINT-FALSE exit then
-   dup 0 < if drop 0 LINT-FALSE exit then
-   LINT-TRUE ;
-
-: CLASS-LINE. ( ptr u8 n n n -- ) {: na:ptr nu:n base:n cur:n :}
-   s" trusted-inventory: " OUT na nu OUT
-   s"  baseline " OUT base OUT-U
-   s"  current " OUT cur OUT-U
-   cur base > if s"  GREW +" OUT cur base - OUT-U OUT-NL exit then
-   cur base < if
-      s"  STALE baseline (current " OUT cur OUT-U
-      s"  < baseline " OUT base OUT-U
-      s" )" OUT OUT-NL exit
-   then
-   s"  ok" OUT OUT-NL ;
-
 \ ---- per-file per-class classification summary (strict mode) ----------------
 variable PF-BE  variable PF-SB  variable PF-TM  variable PF-PA  variable PF-DC  variable PF-UN
 variable PF-K
@@ -1025,80 +1035,125 @@ public
    repeat
    FOOTER ;
 
-: BASELINE! ( n n n n n -- ) {: nt:n nr:n ns:n nb:n nh:n :}
-   nt BASE-TRUSTED !
-   nr BASE-TRUST !
-   ns BASE-SETCHECK !
-   nb BASE-BARE !
-   nh BASE-HOOK ! ;
+\ ---- derived ratchet: the classification block is the ceiling ----------------
+\ Each `file:name` row covers exactly one site; each `file class dot N`
+\ file-level row covers the sites in its file that no named row owns, bounded by
+\ its committed count N. RATCHET-TALLY resolves every scanned site to its winning
+\ row (CLASS-FIND) and tallies the per-row matched count, so the ratchet compares
+\ committed vs live per row -- no separate global count block to hand-edit and
+\ conflict on every parallel merge. A file-level row with no committed count is
+\ COUNT-UNSET and fails fail-closed.
+: RATCHET-TALLY ( -- )
+   0 RT-K !
+   begin RT-K @ CM# @ < while
+      0 K-MATCHED RT-K @ TAB!
+      RT-K @ 1+ RT-K !
+   repeat
+   0 RT-R !
+   begin RT-R @ ROW# @ < while
+      RT-R @ CLASS-FIND {: mk:n :}
+      mk 0 >= if mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB! then
+      RT-R @ 1+ RT-R !
+   repeat ;
 
-: BASELINE@ ( -- n n n n n )
-   BASE-TRUSTED @ BASE-TRUST @ BASE-SETCHECK @ BASE-BARE @ BASE-HOOK @ ;
+: ROW-UNSET? ( n -- bool )
+   CMAP-COUNT@ COUNT-UNSET = ;
 
-\ Parse the machine-readable block:
-\ <!-- trusted-inventory-baseline
-\      TRUSTED n TRUST n SETCHECK n TRUST-BARE n HOOK-INSTALL n -->
-\ A block without every kind rejects (fail-closed), as does a second marker
-\ occurrence so a shadowed block cannot win silently.
-: PARSE-BASELINE$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" trusted-inventory-baseline" LINT-FIND-SUB PB-M !
-   PB-M @ 0 < if LINT-FALSE exit then
-   a PB-M @ 1+ +  u PB-M @ 1+ -  s" trusted-inventory-baseline" LINT-FIND-SUB 0 >= if LINT-FALSE exit then
-   a PB-M @ + u PB-M @ - s" -->" LINT-FIND-SUB PB-E !
-   PB-E @ 0 < if LINT-FALSE exit then
-   a PB-M @ + PB-E @ SPLIT-WHITESPACE
-   SN# @ 11 <> if LINT-FALSE exit then
-   1 S@ s" TRUSTED" LINT-STR= 0= if LINT-FALSE exit then
-   3 S@ s" TRUST" LINT-STR= 0= if LINT-FALSE exit then
-   5 S@ s" SETCHECK" LINT-STR= 0= if LINT-FALSE exit then
-   7 S@ s" TRUST-BARE" LINT-STR= 0= if LINT-FALSE exit then
-   9 S@ s" HOOK-INSTALL" LINT-STR= 0= if LINT-FALSE exit then
-   2 S@ PARSE-U 0= if drop LINT-FALSE exit then BASE-TRUSTED !
-   4 S@ PARSE-U 0= if drop LINT-FALSE exit then BASE-TRUST !
-   6 S@ PARSE-U 0= if drop LINT-FALSE exit then BASE-SETCHECK !
-   8 S@ PARSE-U 0= if drop LINT-FALSE exit then BASE-BARE !
-   10 S@ PARSE-U 0= if drop LINT-FALSE exit then BASE-HOOK !
-   LINT-TRUE ;
+: ROW-GREW? ( n -- bool ) {: k:n :}
+   k ROW-UNSET? if LINT-FALSE exit then
+   k CMAP-MATCHED@ k CMAP-COUNT@ > ;
 
-: BASELINE-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u FILE? 0= if
-      s" trusted-inventory: baseline file not found: " OUT a u OUT OUT-NL
-      E-TINV-BASELINE throw
-   then
-   a u FILE-BUF FILE-CAP READ-FILE PARSE-BASELINE$ 0= if
-      s" trusted-inventory: no baseline block in " OUT a u OUT OUT-NL
-      E-TINV-BASELINE throw
-   then ;
+: ROW-STALE? ( n -- bool ) {: k:n :}
+   k ROW-UNSET? if LINT-FALSE exit then
+   k CMAP-MATCHED@ k CMAP-COUNT@ < ;
 
-: RATCHET-BAD# ( -- n )
-   BASE-TRUSTED @ TRUSTED# GREW
-   BASE-TRUST @ TRUST# GREW +
-   BASE-SETCHECK @ SETCHECK# GREW +
-   BASE-BARE @ BARE# GREW +
-   BASE-HOOK @ HOOK# GREW + ;
+: RATCHET-UNSET# ( -- n )
+   0 RD-BAD !
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ ROW-UNSET? if RD-BAD @ 1+ RD-BAD ! then
+      RD-I @ 1+ RD-I !
+   repeat RD-BAD @ ;
+
+: RATCHET-GREW# ( -- n )
+   0 RD-BAD !
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ ROW-GREW? if RD-BAD @ 1+ RD-BAD ! then
+      RD-I @ 1+ RD-I !
+   repeat RD-BAD @ ;
 
 : RATCHET-STALE# ( -- n )
-   BASE-TRUSTED @ TRUSTED# SHRUNK
-   BASE-TRUST @ TRUST# SHRUNK +
-   BASE-SETCHECK @ SETCHECK# SHRUNK +
-   BASE-BARE @ BARE# SHRUNK +
-   BASE-HOOK @ HOOK# SHRUNK + ;
+   0 RD-STALE !
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ ROW-STALE? if RD-STALE @ 1+ RD-STALE ! then
+      RD-I @ 1+ RD-I !
+   repeat RD-STALE @ ;
+
+\ A ratchet failure (fail) is an uncovered site (a new trust site with no row),
+\ a file-level row that grew, or a file-level row missing its count. A stale is a
+\ file-level row (or dead named row) whose sites shrank below the committed count.
+: RATCHET-BAD# ( -- n )
+   UNCLASSIFIED# RATCHET-UNSET# + RATCHET-GREW# + ;
+
+: RATCHET-ROW. ( n -- ) {: k:n :}
+   s" trusted-inventory: " OUT
+   k CMAP-FILE$ OUT
+   k CMAP-NAMED? if s" :" OUT k CMAP-NAME$ OUT then
+   k ROW-UNSET? if
+      s"  missing count (set to " OUT k CMAP-MATCHED@ OUT-U s" )" OUT OUT-NL exit
+   then
+   s"  expected " OUT k CMAP-COUNT@ OUT-U
+   s"  got " OUT k CMAP-MATCHED@ OUT-U
+   k ROW-GREW? if s"  GREW" OUT OUT-NL exit then
+   s"  STALE" OUT OUT-NL ;
+
+: RATCHET-DETAIL ( -- )
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ ROW-UNSET? RD-I @ ROW-GREW? or RD-I @ ROW-STALE? or if
+         RD-I @ RATCHET-ROW.
+      then
+      RD-I @ 1+ RD-I !
+   repeat ;
+
+: RATCHET-UNCOVERED. ( -- )
+   0 RD-I !
+   begin RD-I @ ROW# @ < while
+      RD-I @ CLASS-FIND 0 < if
+         s" trusted-inventory: uncovered site " OUT
+         RD-I @ ROW-PATH$ OUT s" :" OUT RD-I @ ROW-LINE OUT-U
+         s"  " OUT RD-I @ ROW-NAME$ OUT
+         s"  (add a classification row to TRUSTED.md)" OUT OUT-NL
+      then
+      RD-I @ 1+ RD-I !
+   repeat ;
 
 : RATCHET-REPORT ( -- )
-   s" TRUSTED" BASE-TRUSTED @ TRUSTED# CLASS-LINE.
-   s" TRUST" BASE-TRUST @ TRUST# CLASS-LINE.
-   s" SETCHECK" BASE-SETCHECK @ SETCHECK# CLASS-LINE.
-   s" TRUST-BARE" BASE-BARE @ BARE# CLASS-LINE.
-   s" HOOK-INSTALL" BASE-HOOK @ HOOK# CLASS-LINE.
+   RATCHET-TALLY
+   RATCHET-UNCOVERED.
+   RATCHET-DETAIL
    RATCHET-BAD# 0 > if
-      s" trusted-inventory: ratchet FAILED - class count grew over baseline" OUT OUT-NL
+      s" trusted-inventory: ratchet FAILED - trust site(s) added without an audited classification row/count" OUT OUT-NL
       E-TINV-RATCHET throw
    then
    RATCHET-STALE# 0 > if
-      s" trusted-inventory: ratchet STALE - lower the baseline to the current counts" OUT OUT-NL
+      s" trusted-inventory: ratchet STALE - lower the file-level count(s) to the current sites" OUT OUT-NL
       E-TINV-RATCHET throw
    then
    s" trusted-inventory: ratchet ok" OUT OUT-NL ;
+
+: RATCHET-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? 0= if
+      s" trusted-inventory: classification file not found: " OUT a u OUT OUT-NL
+      E-TINV-BASELINE throw
+   then
+   a u CLASSES-FROM
+   CLASSES# 0= if
+      s" trusted-inventory: no classification block in " OUT a u OUT OUT-NL
+      E-TINV-BASELINE throw
+   then ;
 
 : RATCHET-ARGS? ( -- bool )
    ARGV-POS# 2 = 0= if LINT-FALSE exit then
@@ -1147,7 +1202,7 @@ public
    STRICT-ARGS? if MAIN-STRICT exit then
    RATCHET-ARGS? 0= if s" expected no arguments, strict, or: baseline PATH" ARGV-FAIL then
    SCAN-REPO SORT-ROWS
-   1 ARGV-POS$ BASELINE-LOAD
+   1 ARGV-POS$ RATCHET-LOAD
    RATCHET-REPORT ;
 
 MAIN

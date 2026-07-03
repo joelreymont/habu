@@ -2,8 +2,8 @@
 \ Run: printf '' | bin/hb --load tools/trusted-inventory-test.f
 \ Requiring the tool executes its CLI main: with no script args it scans the
 \ repo and prints the TSV report. The capture buffer below records that live
-\ run so its rows, ordering, and the committed TRUSTED.md ratchet baseline are
-\ asserted before the in-memory classifier fixtures reuse the row tables.
+\ run so its rows, ordering, and the committed TRUSTED.md derived ratchet ceiling
+\ are asserted before the in-memory classifier fixtures reuse the row tables.
 
 require lib/errors.f
 require lib/string.f
@@ -73,9 +73,12 @@ variable SORT-I
    LINT-OUT$ s" trusted-inventory: TRUSTED " CONTAINS? TTRUE
    LINT-OUT$ s" tools/lint/text.f" CONTAINS? TTRUE ;
 
-\ The committed TRUSTED.md baseline must parse and hold for the live tree.
+\ The committed TRUSTED.md classification block is the derived ratchet ceiling:
+\ it must parse and, tallied against the live scanned rows, show no grown, stale,
+\ uncovered, or count-unset row.
 : LIVE-BASELINE ( -- )
-   s" TRUSTED.md" MD-BUF MD-CAP READ-FILE TINV:PARSE-BASELINE$ TTRUE
+   s" TRUSTED.md" MD-BUF MD-CAP READ-FILE TINV:PARSE-CLASSES$ TTRUE
+   TINV:RATCHET-TALLY
    TINV:RATCHET-BAD# 0 T=
    TINV:RATCHET-STALE# 0 T= ;
 
@@ -246,21 +249,56 @@ variable SORT-I
    0 TINV:IX-ROW TINV:ROW-PATH$ s" a.f" T$=
    1 TINV:IX-ROW TINV:ROW-PATH$ s" z.f" T$= ;
 
-\ ---- ratchet comparison ------------------------------------------------------
+\ ---- derived ratchet: per-row committed count vs live tally --------------------
+\ RATCHET-TALLY resolves every scanned site to its winning classification row and
+\ tallies the matched count, so the ratchet is per row: a file-level row's count
+\ N is the ceiling for the sites no named row owns, a named row implies 1 (or an
+\ explicit count for a name at several sites). Reloading a classes block and
+\ re-tallying against the same scanned rows exercises ok/grew/stale/unset.
+: RT-SCAN ( -- )
+   TINV:RESET
+   s" fixture.f" S\" TRUSTED: TIF-A ( -- )\nTRUSTED: TIF-B ( -- )\nTRUSTED: TIF-C ( -- )\ns\q TIF-W\q s\q -- \q TRUST" TINV:SCAN-SOURCE ;
+
+: RT-CLASSES ( ptr u8 n -- )
+   TINV:PARSE-CLASSES$ TTRUE TINV:RATCHET-TALLY ;
+
 : FIX-RATCHET ( -- )
-   S\" TRUSTED: TIF-R ( -- )\n0 set-check\nTIF-N$ TIF-E$ TRUST\n' TIF-H set-check" FIX-SCAN
+   \ file-level count 3 covers the 3 TRUSTED: sites; TIF-W named row covers 1: ok
+   RT-SCAN
    TINV:ROWS 4 T=
-   \ current: TRUSTED 1, TRUST 0, SETCHECK 1, TRUST-BARE 1, HOOK-INSTALL 1
-   1 0 1 1 1 TINV:BASELINE! TINV:RATCHET-BAD# 0 T=
-   1 0 1 1 1 TINV:BASELINE! TINV:RATCHET-STALE# 0 T=
-   2 5 9 4 3 TINV:BASELINE! TINV:RATCHET-BAD# 0 T=
-   2 5 9 4 3 TINV:BASELINE! TINV:RATCHET-STALE# 5 T=
-   0 0 1 1 1 TINV:BASELINE! TINV:RATCHET-BAD# 1 T=
-   0 0 0 0 0 TINV:BASELINE! TINV:RATCHET-BAD# 4 T=
-   1 0 1 0 1 TINV:BASELINE! TINV:RATCHET-BAD# 1 T=
-   1 0 1 1 0 TINV:BASELINE! TINV:RATCHET-BAD# 1 T=
-   2 0 1 1 2 TINV:BASELINE! TINV:RATCHET-STALE# 2 T=
-   2 0 1 1 2 TINV:BASELINE! TINV:RATCHET-BAD# 0 T= ;
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 3\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
+   TINV:RATCHET-BAD# 0 T=
+   TINV:RATCHET-STALE# 0 T=
+   \ file-level count 2 but 3 sites: GREW, so BAD counts the one grown row
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 2\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
+   TINV:RATCHET-GREW# 1 T=
+   TINV:RATCHET-BAD# 1 T=
+   TINV:RATCHET-STALE# 0 T=
+   \ file-level count 4 but 3 sites: STALE (discharge lower the count)
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 4\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
+   TINV:RATCHET-STALE# 1 T=
+   TINV:RATCHET-BAD# 0 T=
+   \ file-level row with no committed count is UNSET and fails fail-closed
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
+   TINV:RATCHET-UNSET# 1 T=
+   TINV:RATCHET-BAD# 1 T=
+   \ an uncovered scanned site (no row for its file) is unclassified and fails
+   RT-SCAN
+   s" ghost.f" s" 0 set-check" TINV:SCAN-SOURCE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 3\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
+   TINV:UNCLASSIFIED# 1 T=
+   TINV:RATCHET-BAD# 1 T=
+   \ a name at two sites (definition + install) needs an explicit count: 2 ok, 1 GREW
+   TINV:RESET
+   s" fixture.f" S\" TRUSTED: DUP ( -- )\n' DUP set-check" TINV:SCAN-SOURCE
+   TINV:ROWS 2 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f:DUP prim-axiom dot 2\n-->" RT-CLASSES
+   TINV:RATCHET-BAD# 0 T=
+   TINV:RATCHET-STALE# 0 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f:DUP prim-axiom dot\n-->" RT-CLASSES
+   TINV:RATCHET-GREW# 1 T=
+   TINV:RATCHET-BAD# 1 T=
+   TINV:CLASSES-RESET ;
 
 : FIX-EFFECTS ( -- )
    s" TRUSTED: TIF-A ( n -- n ) dup ;" FIX-SCAN
@@ -341,17 +379,20 @@ variable SORT-I
    LINT-OUT$ s" by-file beta.f test-metaprog 1 prim-axiom 1" CONTAINS? TTRUE
    TINV:CLASSES-RESET ;
 
-: FIX-BASELINE-PARSE ( -- )
-   S\" x\n<!-- trusted-inventory-baseline\nTRUSTED 12\nTRUST 34\nSETCHECK 5\nTRUST-BARE 2\nHOOK-INSTALL 7\n-->\ny" TINV:PARSE-BASELINE$ TTRUE
-   TINV:BASELINE@ 7 T= 2 T= 5 T= 34 T= 12 T=
-   s" no block here" TINV:PARSE-BASELINE$ TFALSE
-   \ a block without HOOK-INSTALL (the pre-hook format) rejects fail-closed
-   S\" <!-- trusted-inventory-baseline\nTRUSTED 12\nTRUST 34\nSETCHECK 5\nTRUST-BARE 2\n-->" TINV:PARSE-BASELINE$ TFALSE
-   S\" <!-- trusted-inventory-baseline\nTRUSTED x\nTRUST 1\nSETCHECK 2\nTRUST-BARE 0\nHOOK-INSTALL 1\n-->" TINV:PARSE-BASELINE$ TFALSE
-   S\" <!-- trusted-inventory-baseline\nTRUSTED 1\nTRUST 2\nSETCHECK 3\nHOOK-INSTALL 1\n-->" TINV:PARSE-BASELINE$ TFALSE
-   S\" <!-- trusted-inventory-baseline\nTRUSTED 1\nTRUST 2\nSETCHECK 3\nTRUST-BARE 0\nHOOK-INSTALL 1" TINV:PARSE-BASELINE$ TFALSE
-   S\" <!-- trusted-inventory-baseline\nTRUSTED -1\nTRUST 2\nSETCHECK 3\nTRUST-BARE 0\nHOOK-INSTALL 1\n-->" TINV:PARSE-BASELINE$ TFALSE
-   S\" <!-- trusted-inventory-baseline\nTRUSTED 1\nTRUST 2\nSETCHECK 3\nTRUST-BARE 0\nHOOK-INSTALL 1\n-->\n<!-- trusted-inventory-baseline\nTRUSTED 9\nTRUST 9\nSETCHECK 9\nTRUST-BARE 9\nHOOK-INSTALL 9\n-->" TINV:PARSE-BASELINE$ TFALSE ;
+\ The classification block carries the ratchet count in the fourth token: a
+\ file-level row needs an explicit positive count; a named row may omit it
+\ (implies 1) or carry one; a zero, negative, non-numeric, or extra token rejects
+\ the whole block fail-closed.
+: FIX-COUNT-PARSE ( -- )
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 7\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TINV:CLASSES# 1 T=
+   S\" <!-- trusted-inventory-classes\nfixture.f:N prim-axiom dot\n-->" TINV:PARSE-CLASSES$ TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f:N prim-axiom dot 2\n-->" TINV:PARSE-CLASSES$ TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 0\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot x\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot -1\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 1 extra\n-->" TINV:PARSE-CLASSES$ TFALSE
+   TINV:CLASSES-RESET ;
 
 : TIT-MAIN ( -- )
    T-RESET
@@ -384,7 +425,7 @@ variable SORT-I
    FIX-CMAP-DEAD-DUP
    FIX-BY-FILE
    FIX-RATCHET
-   FIX-BASELINE-PARSE
+   FIX-COUNT-PARSE
    T-REPORT ;
 
 TIT-MAIN

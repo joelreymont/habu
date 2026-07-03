@@ -557,27 +557,26 @@ Hook identity is statically policed: `tools/checked-boundary-lint.f`
 install against the audited hook list (`HOOK`, `USER-HOOK`, `SNAP-CHECK-HOOK`,
 `CHK-CHECK-HOOK`, `LINT-CHECK-HOOK`, `ES-VERDICT-HOOK`, `PROP-CHECK-HOOK`) and
 rejects any other installed name with an `E-UNAUDITED-HOOK` finding, so
-`' EVIL-HOOK set-check` now fails that lint. The ratcheted `HOOK-INSTALL` kind
-remains the count guard against new install sites; identity policing is the
-lint-level guard against rogue names at those sites.
+`' EVIL-HOOK set-check` now fails that lint. Each `HOOK-INSTALL` site is covered
+by a `file:name` classification row (below), so the derived ratchet counts every
+install site individually; identity policing is the lint-level guard against
+rogue names at those sites.
 Sites are detected through the shared source lexer, so comment and string
 mentions never count.
 
-The block below is the committed ratchet baseline. Verify it with
+The ratchet has no separate hand-edited count block; that shared line conflicted
+on every parallel merge. Its ceiling is *derived* from the classification block
+below: a `file:name` row covers exactly one site (override with an explicit
+trailing count when a name appears at more than one trust site), and a
+`file class dot N` file-level row carries its own site count `N`. Verify it with
 `bin/hb --load tools/trusted-inventory.f -- baseline TRUSTED.md`: the ratchet
-fails GREW if any kind count rises above its baseline, and fails STALE if any
-current count drops below it. Lower the baseline in the same change as a
-discharge so the ratchet tightens instead of leaving regrow headroom; raising
-a count requires an audited new boundary (with its manifest row and tests) in
-the same change.
-
-<!-- trusted-inventory-baseline
-TRUSTED 216
-TRUST 350
-SETCHECK 11
-TRUST-BARE 1
-HOOK-INSTALL 13
--->
+fails if any scanned site is uncovered (a new trust site added without an audited
+row), if a file-level or multi-site row's committed count grew or shrank against
+the live tree, if a file-level row is missing its count, or if a mapping key is
+duplicated. Adding an audited trust site is a new `file:name` row (a distinct,
+mergeable line) with no shared count to bump, so parallel branches that each add
+one site merge with zero baseline edits. Discharging a covered site lowers that
+row's count in the same change; the ratchet stays fail-closed both ways.
 
 ### Build-time-generated trust (explicit exemption)
 
@@ -602,10 +601,14 @@ One related edge: a TRUST row written with escaped-string literals
 
 ## Inventory classification
 
-Every trust site carries a class and an owning dot in the inventory TSV. The
-mapping is the committed block below: one `file[:name] class dot` row per line,
-where `file` classifies every site in that file and `file:name` overrides the
-file row for one site. Valid classes: `builder-emit` (engine/image/build
+Every trust site carries a class and an owning dot in the inventory TSV, and this
+block is also the single source of truth for the ratchet ceiling (there is no
+separate count block). Each row is `file[:name] class dot [count]`: a bare `file`
+row classifies every site in that file no named row owns and carries an explicit
+site count `N`; a `file:name` row overrides the file row for the site(s) called
+`name` and implies count 1 unless it carries an explicit count (a name that
+appears at more than one trust site, e.g. a definition plus its install). Valid
+classes: `builder-emit` (engine/image/build
 emitters and raw layout boundaries), `stdlib-boundary` (library-level trusted
 boundaries), `test-metaprog` (test-owned fixtures and metaprogramming
 harnesses), `prim-axiom` (nominal identity casts and primitive models the
@@ -617,108 +620,114 @@ also fails for every owning dot referenced below that does not exist in
 cannot linger in the mapping. `strict` also prints a `by-file` line per source
 with its non-zero per-class site counts, so classification drift is visible per
 file, not just as a repo total.
-The big files are being refined from file granularity to `file:name` row
-granularity: `src/core/roles.f` (all 34 nominal-cast axioms) and
-`test/prop-test-core.f` (test-metaprog fixtures) now carry per-site rows, though
+The block is being refined from file granularity to `file:name` row granularity
+and reassigned from the `habu-audit-trusted-inventory-3a950436` placeholder to
+each site's real capability/discharge owner: `src/core/roles.f` (all 34
+nominal-cast axioms) and `test/prop-test-core.f` (test-metaprog fixtures) carry
+per-site rows, and the whole `prim-axiom` class — the nominal-cast axioms plus
+the engine-primitive TRUST rows in `src/core/structures-effects.f`,
+`tools/check-core.f`, and `src/core/include.f` — is now owned by its real owner
+`habu-primitive-effect-axiom-1119f176` (the audited axiom table).
 `test/prop-test-core.f` keeps a file-level row because its `0 set-check`
-boundaries have no nameable key. Refining the remaining file rows and
-reassigning owners is `habu-audit-trusted-inventory-3a950436`.
+boundaries have no nameable key. Reassigning the remaining `builder-emit`,
+`stdlib-boundary`, `test-metaprog`, and `discharge-candidate` rows to their real
+owners is the rest of `habu-audit-trusted-inventory-3a950436`.
 
 <!-- trusted-inventory-classes
-src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/repl.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/macos/macho.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/macos/sign2.f builder-emit habu-audit-trusted-inventory-3a950436
-src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436
-tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436
-tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436
-tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436
-src/core/include.f prim-axiom habu-audit-trusted-inventory-3a950436
+src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436 4
+src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436 12
+src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436 8
+src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 38
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 95
+src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 9
+src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
+src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436 9
+src/habu/repl.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436 10
+src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
+src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
+src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
+src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
+src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 4
+src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
+src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9
+src/os/macos/macho.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/os/macos/sign2.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436 7
+tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
+tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
+tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436 1
+src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
 src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
-src/core/roles.f:>IDX prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:IDX>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>LEN prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:LEN>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>COUNT prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:COUNT>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>OFF prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:OFF>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>FD prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:FD>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>RC prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:RC>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>PID prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:PID>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>MS prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:MS>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>NS prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:NS>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>TOK prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:TOK>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>REG prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:REG>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>LABEL prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:LABEL>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>VA prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:VA>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>SYMIDX prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:SYMIDX>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>ASM prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:ASM>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>IMG prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:IMG>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:>SNAP prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/roles.f:SNAP>N prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/structures-effects.f prim-axiom habu-audit-trusted-inventory-3a950436
-tools/check-core.f prim-axiom habu-audit-trusted-inventory-3a950436
-src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436
-lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526
-lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ptx/tile-acc.f stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-loop.f stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-smem.f stdlib-boundary habu-checker-capability-typed-e0c76a02
-lib/ptx/tile-v4.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436
-tools/lint/text.f stdlib-boundary habu-audit-trusted-inventory-3a950436
+src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>LEN prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:LEN>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>COUNT prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:COUNT>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>OFF prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:OFF>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>FD prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:FD>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>RC prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:RC>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>PID prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:PID>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>MS prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:MS>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>NS prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:NS>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>TOK prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:TOK>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>REG prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:REG>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>LABEL prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:LABEL>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>VA prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:VA>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>SYMIDX prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:SYMIDX>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>ASM prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:ASM>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>IMG prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:IMG>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
+tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
+src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
+lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
+lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
+lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 6
+lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
+lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
+lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18
+lib/ptx/tile-acc.f stdlib-boundary habu-checker-capability-typed-e0c76a02 4
+lib/ptx/tile-loop.f stdlib-boundary habu-checker-capability-typed-e0c76a02 1
+lib/ptx/tile-smem.f stdlib-boundary habu-checker-capability-typed-e0c76a02 3
+lib/ptx/tile-v4.f stdlib-boundary habu-audit-trusted-inventory-3a950436 9
+lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436 31
+tools/lint/text.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
-lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436
-maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436
-test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436
-test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436
-test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436
+lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 46
+test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
+test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:ERR@ test-metaprog habu-audit-trusted-inventory-3a950436
@@ -739,15 +748,15 @@ test/prop-test-core.f:AX-NAME$ prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-STK prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-ARITY prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AXEVAL prim-axiom habu-primitive-effect-axiom-1119f176
-tools/asm-src-test.f test-metaprog habu-audit-trusted-inventory-3a950436
-tools/image-bytes-test.f test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f test-metaprog habu-audit-trusted-inventory-3a950436 12
+tools/image-bytes-test.f test-metaprog habu-audit-trusted-inventory-3a950436 22
 src/core/check-hook.f:HOOK stdlib-boundary habu-police-set-check-850bc543
 src/habu/aot.f:USER-HOOK builder-emit habu-police-set-check-850bc543
-src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543
+src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
 tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
-test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543
+test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543 2
 test/engine-suite.f:HOOK test-metaprog habu-police-set-check-850bc543
 test/gate-aot-negative-lib.f:HOOK test-metaprog habu-police-set-check-850bc543
-test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543
+test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543 4
 -->
