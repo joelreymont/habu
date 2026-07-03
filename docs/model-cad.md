@@ -203,9 +203,11 @@ before emission; all candidates recorded; replayable by key; winner cached
 per shape/dtype/layout/target.
 
 - Families: elementwise-v1, row-reduction-v1, softmax-row-v1, gemm-tf32-v1.
-- Exists: dot `habu-ptx-m9-bench` (bench + autotuner). New dot:
+- Exists: dot `habu-ptx-m9-bench` (bench + autotuner). New dots:
   `cad-4-schedule` (the object + cache key; depends on derive dot for keys
-  or hand-written compare until it lands).
+  or hand-written compare until it lands) and `cad-6-tune` (the glue:
+  `TUNE` drives the m9 autotuner over schedule objects, records every
+  candidate measurement into history, caches the winner by key).
 
 ### Phase 5 — Correctness gates
 
@@ -226,8 +228,9 @@ arithmetic intensity, roofline class, limiting-resource guess, comparison to
 cached baseline, next-move recommendation.
 
 - Exists: `tools/ptx/` launch/profile path, bench harness, measured Orin
-  numbers in `docs/eval-triton.md`. Folded into `cad-4-schedule` +
-  `cad-7-optimize`; regression detection needs the artifact cache.
+  numbers in `docs/eval-triton.md`. Measurement/search glue is owned by
+  `cad-6-tune`; report integration and regression detection by
+  `cad-7-optimize` (regression detection needs the artifact cache).
 
 ### Phase 7 — One-REPL integration
 
@@ -319,7 +322,7 @@ gate per `CLAUDE.md`.
 5. `cad-2-fusion-regions` — elementwise region discovery + traffic estimate.
 6. `cad-3-memory-report` — coalescing report.
 7. `cad-4-schedule` — schedule object + cache key.
-8. Elementwise autotuning (existing bench dot, schedule-keyed).
+8. `cad-6-tune` — TUNE over schedule objects via the m9 autotuner.
 9. Softmax/reduction fusion boundaries (existing fusion dots over cad IR).
 10. Golden/gradcheck promotion gates in `cad-7-optimize`.
 11. Profile/roofline rows in `cad-7-optimize`.
