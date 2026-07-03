@@ -23,9 +23,24 @@ tools/trusted-inventory.f strict mode now emits a `by-file` line per source with
 its non-zero per-class site counts (CLASS-BY-FILE-REPORT), covered by FIX-BY-FILE
 in tools/trusted-inventory-test.f. Ratchet counts are unchanged.
 
-Dot stays OPEN: it is still the owning dot of the remaining file-level rows and of
-the roles.f/prop-test-core.f rows above, so archiving it would turn
-`trusted-inventory.f -- strict` red (DOT-EXISTS?). Its own done-criterion ("no
-row's owner is this dot") is not met until every remaining row is reassigned to a
-real discharge/capability owner, which is out of this worker's scope. Remaining
-work: refine the other file-level rows and reassign owners.
+Increment (prim-axiom class fully re-owned): all 37 `prim-axiom` rows that sat on
+this placeholder — the 34 `src/core/roles.f` nominal-cast converters plus the
+engine-primitive TRUST rows in `src/core/structures-effects.f` (CELL/+FIELD/…),
+`tools/check-core.f` (CHECKER-DEFTYPE/SCOPE/…), and `src/core/include.f`
+(INCLUDE-MMAP-PTR, INCLUDE-EVALUATE) — are reassigned to their real owner
+`habu-primitive-effect-axiom-1119f176` (the audited axiom table whose mandate is
+exactly this class; the 5 prop-test-core AX-* rows already lived there). The
+whole `prim-axiom` class (42 rows) is now off the placeholder. Evidence: each
+reassigned site is an engine-primitive TRUST row / nominal identity cast the
+checker treats as an axiom, i.e. axiom-table scope, not a discharge candidate.
+`strict`, the derived ratchet, and the full gate stay green.
+
+Dot stays OPEN: 68 placeholder rows remain (`builder-emit` 34, `test-metaprog`
+23, `stdlib-boundary` 10, `discharge-candidate` 1). Its done-criterion ("no row's
+owner is this dot") is not met until each is reassigned to a real owner, which
+needs per-site domain judgment and, for several classes, a correctly-scoped
+capability/discharge owner (builder emitters vs raw-layout axioms differ;
+`habu-builder-trust-rows-c5d41af6` owns the dischargeable builder emit effects,
+`habu-checker-capability-typed-e0c76a02` the ptx tile sites,
+`habu-typed-depth-introspection-18f0efda` the depth-capture test-metaprog class).
+Do these as further bounded, evidenced increments — do not bulk-guess owners.
