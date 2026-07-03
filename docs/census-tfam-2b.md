@@ -72,7 +72,7 @@ internal `LFIND` routine (`habu1.f:2079`, `forth.fs:836`) plus `search-wl`.
 | xref.f:59 | `XREF-WORDLIST` | WID of a record — enumerates sealed WIDs. |
 | xref.f:71/74/78 | `XREF-INLINE-NAME` / `XREF-NAME-A` / `XREF-NAME$` | raw name pointer/bytes. |
 | xref.f:136-204 | `XREF-FIND-WL(-INDEX)`, `XREF-QUAL-INDEX`, `XREF-FIND-QUALIFIED(-INDEX)`, `XREF-FIND(-INDEX)`, `XREF-FIND-CURRENT-INDEX`, `XREF-FIND-TARGET-INDEX` | qualified + unqualified lookups over any WID; `XREF-FIND-CURRENT-INDEX` calls `get-current` (xref.f:202). |
-| xref.f:286/288/291/298 | `XREF-WORDLIST` (word), `XREF`, `SEE`, `WORDS` | user-facing enumerators that walk all records. |
+| xref.f:286, 288, 291, 298 | `XREF-WORDLIST` (word), `XREF`, `SEE`, `WORDS` | user-facing enumerators that walk all records. |
 
 ---
 
@@ -129,8 +129,8 @@ internal `LFIND` routine (`habu1.f:2079`, `forth.fs:836`) plus `search-wl`.
 | 3262 | `atomic!` | 3319 | `patch32` |
 | 3263 | `atomic-add` | 3320 | `snap-rebase` |
 | 3264 | `atomic-cas` | 3328 | `rbase` |
-| 3272 | `here` | 3329/3330 | `cp@` / `cp!` |
-| 3331 | `dbase@` | 3332/3333 | `ndict@` / `ndict!` |
+| 3272 | `here` | 3329, 3330 | `cp@` / `cp!` |
+| 3331 | `dbase@` | 3332, 3333 | `ndict@` / `ndict!` |
 | 3334 | `data-base` | | |
 
 `data-base`/`dbase@`/`cp@`/`rbase` are pointer/base **leaks** (provenance
@@ -146,7 +146,7 @@ are the **write sinks** those leaked pointers flow into.
 | 1203 | `BATSTORE` (`atomic!`) | 1548 | `BPATCH32` (`patch32`, RW-flip write) |
 | 1205 | `BATADD` (`atomic-add`) | 956 | `BCPFETCH` (`cp@`) |
 | 1207 | `BATCAS` (`atomic-cas`) | 967 | `BCPSET` (`cp!`, has `B-TASK-LIVE-GUARD`) |
-| 1250 | `BHERE` (`here`) | 957/968 | `BNDICTFETCH`/`BNDSET` (`ndict@`/`ndict!`, guard) |
+| 1250 | `BHERE` (`here`) | 957, 968 | `BNDICTFETCH`/`BNDSET` (`ndict@`/`ndict!`, guard) |
 | 958 | `BDBASEFETCH` (`dbase@`) | 959 | `BDATAFETCH` (`data-base`) |
 | 1561 | `BRBASE` (`rbase`) | habu2.f:2688 | `BSNAPREBASE` (`snap-rebase`) |
 
@@ -157,8 +157,8 @@ are the **write sinks** those leaked pointers flow into.
 | 441 | `BPLUSSTORE` | 481 | `BCOMMA` |
 | 445 | `BCSTORE` | 483 | `BCCOMMA` |
 | 466 | `BHERE` | 530 | `BPATCH32` |
-| 248/252 | `BCPFETCH`/`BCPSET` | 249/253 | `BNDICTFETCH`/`BNDSET` |
-| 250/251 | `BDBASEFETCH`/`BDATAFETCH` | 542 | `BRBASE` |
+| 248, 252 | `BCPFETCH`/`BCPSET` | 249, 253 | `BNDICTFETCH`/`BNDSET` |
+| 250, 251 | `BDBASEFETCH`/`BDATAFETCH` | 542 | `BRBASE` |
 
 **Absent in gforth:** `atomic!`/`atomic-add`/`atomic-cas`, `snap-rebase` — no
 lowering, no registration.
@@ -268,7 +268,7 @@ one of these is the qualified-definition path that can publish into an arbitrary
 | habu2.f:513 `EMIT-COLD-PREFIX` / 508 `EMIT-HOST-LOAD-PREFIX` / 449 `PFX-LOAD-BASE-FILES` / 481 `PFX-LOAD-FILES` | base files actually `included` at cold boot (layout, env-base, include, enums, exec-vector, sha256, combinators, xref). | friend flag should be live across this block; sealed after it. |
 | habu2.f:625 `PFX-PROVIDE-FILES` / 619 `PFX-PROVIDE-ROW` | files only **marked** provided (util, structures, **checker**, render, check-hook, structures-effects, roles, bytes, targets, layouts, include, script-argv, enums, exec-vector, sha256, combinators, xref). | these are baked into the dict via AOT; `provided` just registers paths so user `require` is a no-op. |
 | habu2.f:802 `EMIT-SOURCE` | dispatch: `STDIN? @ ? EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN : C-SOURCE-BAKED`. | the fork between stdin-mode and baked-mode source. |
-| forth.fs:1249 `EMIT-COLD-PREFIX` (+1210 argv-cold, 1435/1440 stdin/file, 1517 baked) | gforth-mirror equivalents. | stage0 mirror has the same cold-prefix shape. |
+| forth.fs:1249 `EMIT-COLD-PREFIX` (+1210 argv-cold, 1435, 1440 stdin/file, 1517 baked) | gforth-mirror equivalents. | stage0 mirror has the same cold-prefix shape. |
 | include.f:192 `provided` / 186 `required` / 180 `included` / 197 `include` / 201 `require` / 177 `INCLUDE-EVALUATE` | the loader words. | `provided` (192) registers a path as already-loaded WITHOUT evaluating; `included`/`required` actually `evaluate` the file. The seal point sits between the last engine `included` and the first user token. |
 
 ### 7c. User-source entry points (where the latch must already be SEALED)

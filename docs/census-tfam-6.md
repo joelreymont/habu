@@ -201,7 +201,7 @@ name. It consults, in order, these classes (all in `src/core/checker.f`):
    (seeded by `CT-INIT` at `:691`, invoked `:723`): `n f r i64 u8 u32 cell char
    str addr bool idx len count off fd rc pid ms ns tok reg label va symidx asm
    img snap f32 u16` (:692-721) — PLUS every user `deftype`/`deflinear` nominal
-   (added via CT-ADD-NOMINAL/CT-ADD-LINEAR :1777/1781). So `CT-FIND` alone
+   (added via CT-ADD-NOMINAL/CT-ADD-LINEAR :1777, 1781). So `CT-FIND` alone
    enumerates builtins + user nominal/linear types. `CON-OF` (:1697) is just a
    thin alias `a u CT-FIND`.
 5. Parametric constructor keywords — `:1772` `PARAM-CTOR?` (`:1743`):

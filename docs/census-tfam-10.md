@@ -247,7 +247,7 @@ emits the unconditional die.
 - `LRDIE` runtime-die tail `EM-COMPILE-UNDEF` (`3345-3348`): `… LRDIE LABEL@ CBZ,
   … LRDIE LABEL@ LBL,  0 70 MOVZ, NR-EXIT-GROUP SYS,`.
 - Other die sites (same idiom, different rc): `786`(71), `1160`(74), `1862`(70),
-  `2037/2057/2071`(75), `2219`(70), `427`(76, unknown target).
+  `2037, 2057, 2071`(75), `2219`(70), `427`(76, unknown target).
 - Range/stack guard scaffolding: `C-BP-STACK-RANGE` (`199-203`) sets the VS range
   regs used by the VS-bounds guards.
 
@@ -314,9 +314,9 @@ object record → emit the selected helper identity instead of `s" MAIN"`.
    3118-3130, 3431-3434) + Gforth 5 parts (181-188, 1620-1627, 1679-1702,
    3122-3132, 3373-3379) + 2 shape tests (compiler-dispatch-test.f 119-139,
    bootstrap-codegen-test.f 231-237).
-5. Die paths — native 6 idiom sites (1197-1199, 1201-1217, 3345-3348, +786/1160/
-   1862/2037/2219) + Gforth 6 (1903-1905, 1907-1922, 3309-3312, 2609/2660, +463/
-   578/786/1160/3179).
+5. Die paths — native 6 idiom sites (1197-1199, 1201-1217, 3345-3348, +786, 1160/
+   1862, 2037, 2219) + Gforth 6 (1903-1905, 1907-1922, 3309-3312, 2609, 2660, +463/
+   578, 786, 1160, 3179).
 6. Same-name hazards — 4 hazard sites (aot-closure.f 45-46, 110-111;
    object-link.f 343-362; hb-build-lib.f 803-804) + 1 identity-safe (108-109).
 
