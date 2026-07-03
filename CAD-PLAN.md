@@ -1,0 +1,444 @@
+# CAD-PLAN — Habu Model CAD Design
+
+**Status:** design, 2026-07-04. This is the *how*; the campaign (phases, dots,
+milestones) is `docs/model-cad.md`. Substrate: `PLAN.md` (Maki + Habu-PTX),
+`docs/type-families.md` (ADTs), `docs/ptx.md` / `docs/ptx-sketch.md` (kernel
+DSL), `lib/ptx/` (tile/collective/AD vocabulary), `maki/` (framework).
+
+## 1. Stance
+
+The user designs models. The compiler owns kernel performance.
+
+Habu/maki must do the heavy work itself — fusion boundaries, memory layout,
+coalescing, vector widths, tail handling, shared-memory staging, tile sizes,
+warp counts, pipeline stages, epilogues, backward paths, tuning — and the user
+supplies only the model, the shapes, and the target. Every knob has a derived
+default; a user-set knob is an override that the reports must display.
+
+Five design rules govern everything below:
+
+1. **Facts → plans → code → evidence.** Planners derive typed plans from
+   typed facts. Codegen executes plans mechanically. Gates verify. The tuner
+   replaces estimates with measurements. No stage guesses, and no stage
+   re-derives another stage's decision.
+2. **Classes, not op names.** Planners reason over op *classes* (elementwise,
+   row-reduction, matmul, movement, decode). A new op is a registry entry —
+   class, cost, VJP, reference — and every planner handles it with no planner
+   edits.
+3. **One cost model.** The same bytes/FLOPs/occupancy model produces fusion
+   profitability, schedule legality, roofline classification, and next-move
+   advice. Estimates are calibrated against `ptxas -v` output and device
+   measurement, persistently — estimates never rot.
+4. **Measured, not assumed.** Device roofs come from microbenchmarks per
+   target, cached. Fusion wins are confirmed by profile or rolled back.
+   No hardcoded peak numbers, no "should be faster".
+5. **Fail closed, explain always.** Anything the system cannot fuse, coalesce,
+   or tile optimally is reported with the blocking fact in one line. Unknown
+   ops, shapes, or layouts reject with a named reason.
+
+## 2. Pipeline
+
+```text
+MODEL: definition          concatenative composition of model ops
+  → model IR               typed node table: op, shape, dtype, layout facts
+  → region graph           fusion plan: regions, materialization points, splits
+  → layout plan            per-tensor: layout, vector width, tails, staging
+  → schedule               per-region: family + parameters (typed template)
+  → kernel words           existing lib/ptx tile/collective vocabulary, checked
+  → PTX → cubin → launch   ptxas per target, CUDA driver FFI
+  → evidence               certify/golden/gradcheck/profile rows on the artifact
+```
+
+Each arrow produces an inspectable artifact with a REPL word (`LOWER`, `FUSE`,
+`MEMORY`, `TILE`, `CERTIFY`, `GOLDEN`, `GRADCHECK`, `PROFILE`) and a
+machine-readable report row (`maki/report.f` schema). `OPTIMIZE` runs the
+chain; `PROMOTE` caches the artifact with its evidence; `EXPLAIN` renders any
+failure as a repair packet.
+
+## 3. Model capture: plan mode
+
+`MODEL:` does not introduce a graph syntax. A model word is ordinary checked
+Forth executed against a *planning vocabulary*: the same `LINEAR GELU LINEAR`
+text runs with tensor *descriptors* on the stack instead of tensors, and each
+model op appends an IR node instead of computing. Consequences:
+
+- The checker checks model words as ordinary words over descriptor types —
+  arity and kind discipline at author time, before any planning.
+- Factoring works: a model block is a word; blocks compose into models by
+  concatenation, exactly like the rest of Habu.
+- Eager execution (maki's existing tensor path) and plan mode share one
+  definition; there is no second model language to keep in sync.
+
+Nodes are content-hashed (op, attributes, input hashes, shape/dtype/layout
+keys) at append time; the hash is the unit of incremental replanning (§13).
+
+## 4. Facts
+
+### 4.1 Tensor descriptor
+
+```text
+shape        dims + extents
+dtype        f32 f16 bf16 u32 i32 (u8 for decode/quant paths)
+layout       dimension order + strides + contiguity flags
+alignment    base alignment class (16B / 8B / 4B) + row pitch
+addr-space   global | shared | register | param
+producer     node id (or input slot)
+consumers    count + node ids
+liveness     single-use | multi-use | external (model output)
+broadcast    none | scalar | per-row | per-column
+tail         extent mod vector-width facts per dimension
+```
+
+Alignment class is a fact, not an assumption: it comes from the allocator
+(maki arrays are 16B-aligned by construction) or from the binding of external
+buffers, and it keys vectorization and the schedule cache (§7.4).
+
+### 4.2 Op registry
+
+Each op declares:
+
+```text
+name           gelu
+class          elementwise | row-reduce | full-reduce | matmul | movement | decode
+flops/elem     8
+bytes fn       derived from class (elementwise: in+out; matmul: tiles model)
+accum dtype    f32 for reductions/matmul regardless of input dtype
+vjp            VJP id in lib/ptx/ad.f table (or none + reject on GRADCHECK)
+numeric        exact | ulp(n) | rel-tol class (drives GOLDEN tolerance, §11)
+attrs          axis, eps, approx-variant, ... (typed per op)
+reference      scalar CPU word (the golden oracle at op granularity)
+```
+
+The registry is the single extension point: adding an op means one entry, one
+scalar reference, one VJP. Planners never learn op names.
+
+Movement ops (reshape/view, transpose, slice, concat, gather) carry no
+compute; they are layout rewrites the planner either dissolves into index
+arithmetic or converts into explicit materialization (§6.5).
+
+## 5. Fusion planner
+
+### 5.1 Regions and iteration space
+
+A region is a set of nodes executed as one kernel. Every region has a
+canonical iteration space: the index space of its output tensor. A producer
+may join a region only if its output is expressible per-lane as an affine
+function of that space (identity, broadcast, stride rewrite, slice offset).
+
+### 5.2 Legality matrix
+
+```text
+producer ↓ consumer →   elementwise   row-reduce      matmul          movement
+elementwise             fuse          fuse (prologue) fuse (prologue) dissolve/mat
+row-reduce              fuse (epi.*)  split (barrier) split           split
+matmul                  fuse (epi.)   split           split (v1)      split
+movement                dissolve/mat  dissolve/mat    dissolve/mat    dissolve
+decode                  fuse (chain)  split           split           split
+```
+
+`*` a row-reduction's scalar result may feed elementwise consumers over the
+same rows inside the region (softmax normalize pattern) when the schedule
+keeps the row resident (block-per-rows, §7.2); otherwise split with reason
+`barrier-boundary`. Two sequential same-row reductions (max then sum) fuse
+with an in-block barrier — that is exactly `softmax-row-v1`. Full-tensor
+reductions split into partials + final (v1).
+
+Matmul fuses loads-side prologues (dequant/scale) and epilogues (bias,
+activation, residual add, norm scale) only. Matmul→matmul fusion is out of
+scope for v1 (`matmul-boundary`).
+
+### 5.3 Multi-use producers
+
+A multi-use tensor is either materialized once (default) or recomputed into
+each consumer region when `recompute-flops * flop-cost ≤ bytes-saved *
+byte-cost` under the calibrated cost model. The decision is per-edge,
+reported, and revisited by measurement like any fusion decision.
+
+### 5.4 Resource bounds
+
+At plan time, per region: `Σ register-estimate(op)` per class table,
+shared-memory bytes from the schedule family, occupancy floor (≥ 25% v1).
+Exceeding a bound splits the region at the cheapest cut — the edge whose
+materialization adds the fewest estimated bytes. After assembly, `ptxas -v`
+actuals replace the estimates (§9); a region whose actuals violate the plan
+fails CERTIFY rather than silently running worse.
+
+### 5.5 Algorithm
+
+Greedy region growth over the DAG in topological order, guarded by §5.2
+legality and §5.4 bounds, objective = minimize estimated global bytes moved,
+tie-break on launch count. Deterministic: same IR, same plan. `FUSE` reports
+ops before/after, regions, per-split reason, estimated bytes before/after.
+
+### 5.6 Split reasons (typed, exhaustive)
+
+```text
+barrier-boundary | register-pressure | smem-pressure | occupancy |
+multi-use-materialize | layout-conflict | matmul-boundary | numeric-policy |
+user-pin | measured-regression
+```
+
+### 5.7 Profitability memory
+
+Measurement closes the loop: if a fused region profiles slower than its
+unfused baseline (both cached), a negative profitability fact keyed by
+(region signature, shape class, target) is stored in the artifact cache, and
+the planner splits that region next time with reason `measured-regression`.
+Learning is data in the cache, not code changes.
+
+## 6. Memory and layout planner
+
+### 6.1 The coalescing contract
+
+Adjacent lanes access adjacent addresses on the innermost varying dimension.
+Every global access in a generated kernel either satisfies the contract, is
+staged through shared memory to satisfy it, or is reported as
+`strided(k)`/`gathered` with the blocking fact. There is no silent scattered
+access.
+
+### 6.2 Decision procedure (per region)
+
+1. **Iteration mapping.** Innermost lane dimension = the contiguous dimension
+   of the byte-majority of hot tensors. If producers and consumers disagree,
+   compare layout-conversion cost (one staged pass) against the strided
+   penalty (effective-bandwidth divisor table, calibrated) and pick the
+   global minimum; a conversion becomes an explicit materialization node.
+2. **Vector width.** Largest w ∈ {4,2,1} with `alignment ≥ w·esize`,
+   unit stride, and `extent ≥ w`. Tail = `extent mod w` → masked tail path
+   (the existing `tile-v4` pattern). Alignment below 4B → w=1 + warning.
+3. **Broadcasts.** Scalar and per-row broadcasts hoist to registers (load
+   once per block), never re-read per lane.
+4. **Shared memory.** Stage when the region contains a transpose, when lanes
+   reuse each other's loads (matmul tiles, row reductions wider than a
+   warp), or when a layout conversion pays (§6.2.1). Bank-conflict rule:
+   pad the staged row stride by one element when
+   `(row-stride · esize) mod 128 == 0`.
+5. **Emit plan rows** (§6.6) — codegen consumes them verbatim.
+
+### 6.3 Movement-op dissolution
+
+```text
+reshape/view   free when contiguity permits (stride rewrite); else materialize
+transpose      dissolve into lane mapping inside a staged region; else materialize
+slice          offset + stride rewrite; masked tail if unaligned
+concat         v1: materialize (lane-range dispatch is a later extension)
+gather         prologue-only indexed read; downstream access reported gathered
+```
+
+Every materialization is a report row with a reason; the count of
+materialized movement bytes is part of the traffic delta `MEMORY` shows.
+
+### 6.4 Memory plan rows
+
+```text
+tensor  access                     detail
+x       coalesced-v4 global load   16B aligned, tail masked N mod 4
+w       staged shared              bank-pad +1, reused 8x per tile
+bias    broadcast register         hoisted, per-block
+y       coalesced-v4 global store  16B aligned
+traffic before → after             bytes, per region and total
+warnings                           strided(k)/gathered/unaligned facts
+```
+
+## 7. Tiling and schedules
+
+### 7.1 Schedule = typed template instance
+
+A schedule never free-forms: it instantiates a *family* with a bounded,
+enumerable parameter space. This is what makes tuning tractable and replay
+exact.
+
+```text
+schedule fields:
+  region id, family id, target (sm_87 ...), shape class, dtype key,
+  layout key, family parameters, expected registers, expected smem,
+  measurement history (appended by TUNE/PROFILE)
+```
+
+### 7.2 Families (v1) and parameter spaces
+
+```text
+elementwise-v1    block ∈ {128,256,512} × vec ∈ {1,2,4} × grid-stride ∈ {y,n}
+row-reduce-v1     lanes/row ∈ {32,64,128,256} × rows/block ∈ {1,2,4} × vec
+softmax-row-v1    row-reduce-v1 × online-softmax ∈ {y,n}
+gemm-tf32-v1      BM,BN ∈ {64,128} × BK ∈ {32,64} × warps ∈ {4,8} ×
+                  stages ∈ {1,2} × epilogue ∈ {none,bias,bias+act}
+decode-v1         block/row × ballot-compaction (PBD-style chains)
+```
+
+Default selection is closed-form, before any tuning:
+
+- elementwise: 256 threads, max legal vec, grid-stride on.
+- row-reduce: lanes/row = min(256, next-pow2(rowlen/8)); rows/block fills a
+  warp multiple; two-pass unless the family supports online accumulation.
+- gemm: smallest tile with `blocks/SM ≥ 2` by the occupancy model, then
+  largest BK that fits smem for the stage count.
+
+The defaults must land within ~25% of tuned on the benchmark classes in
+`docs/model-cad.md`; if they don't, the default formula is the bug to fix —
+users get good performance before the tuner ever runs.
+
+### 7.3 Legality pruning
+
+Candidates violating smem capacity, register bounds, or occupancy floor are
+pruned by the cost model before emission; pruning reasons are recorded so
+`TILE` can show why a candidate is absent, not just which survived.
+
+### 7.4 Keys and shape classes
+
+Cache and replay key: `(region signature, shape class, dtype key, layout key,
+alignment class, target, engine hash, ptxas version)`. Shape class: exact
+extents ≤ 64, else power-of-two bucket + tail flag. A query outside every
+measured band reports "unmeasured shape class — using defaults" rather than
+silently trusting a distant winner.
+
+## 8. Tuner
+
+`TUNE` enumerates the family space (≤ ~36 points per family by construction),
+measures each on device with the same harness `PROFILE` uses, records *every*
+candidate (never only the winner) into measurement history, selects by median
+device time, and caches the winner by key (§7.4). Replay by key reproduces a
+recorded run. A new measurement that regresses against the cached baseline
+flags the report and keeps the baseline until re-promoted. Search stays
+exhaustive in v1; the bounded spaces make that cheap, and smarter search is a
+drop-in later.
+
+## 9. Cost model and calibration
+
+- **Bytes:** per region, unique global reads + writes after fusion, with
+  broadcast discount and recompute duplication. This same number is the
+  fusion objective, the `MEMORY` traffic report, and the roofline
+  denominator — one model, three consumers, falsifiable against measured GB/s.
+- **Occupancy:** registers/thread (class table) and smem/block (family) →
+  blocks/SM → occupancy. Floors prune schedules; estimates are replaced by
+  `ptxas -v` actuals after every assembly, and the class table is corrected
+  persistently when actuals diverge — the model self-calibrates.
+- **Roofs:** per target, measured once by microbenchmark (streaming GB/s,
+  f32 FLOPs, tf32 tensor FLOPs) and cached with the target key. Profile rows
+  classify regions memory-/compute-/launch-bound by arithmetic intensity
+  against measured roofs and state % of roof.
+- **Next move:** a fixed advice table keyed by classification: memory-bound →
+  fuse producer / improve coalescing; compute-bound → tensor cores / tiling;
+  launch-bound → fuse launches; low occupancy → reduce registers or tile.
+
+## 10. Codegen contract
+
+Plans are law. The kernel emitter lowers a region + layout plan + schedule to
+checked kernel words (the existing `KERNEL:`/tile/collective vocabulary) and
+may not re-decide anything: vector widths, staging, tile shapes, and tail
+paths come from the plan. Two enforcement points:
+
+1. Generated kernels are *checked words* — the emitter's output must pass the
+   checker (address spaces, extents, masks, uniformity) before any device
+   step. Codegen that emits unverifiable code is a bug that fails loudly.
+2. CERTIFY includes plan/code coherence: emitted access patterns are compared
+   against the memory plan rows, and `ptxas -v` resources against the
+   schedule's expectations. Divergence fails certification; it never ships as
+   a silent performance surprise.
+
+## 11. Gates and evidence
+
+```text
+CERTIFY     static: checker pass, plan/code coherence, resource bounds,
+            barrier/uniformity legality. No GPU.
+GOLDEN      device output vs reference: the op-registry scalar reference
+            composed over the region, or an external reference artifact
+            (saved tensor dumps) with per-artifact tolerance.
+GRADCHECK   central finite difference vs generated backward, per VJP and per
+            fused backward region.
+DETERMINISM optional repeated-run check; schedules using atomics are marked
+            nondeterministic and are opt-in.
+PROFILE     device timing + roofline row + baseline comparison.
+```
+
+Tolerance policy is a function, not a vibe: `|a−b| ≤ atol + rtol·|b|` with
+per-dtype defaults (f32: atol 1e-6, rtol 1e-5; f16/bf16: atol 1e-3, rtol
+1e-2), tightened to exact for movement ops and loosened only by an op's
+declared numeric class (e.g. `gelu-approx` under an explicit tolerance
+attribute). Reductions and matmul accumulate f32 regardless of input dtype;
+fusion never changes accumulation dtype (`numeric-policy` split otherwise).
+
+`PROMOTE` writes the artifact — PTX, cubin hash, plan, schedule, evidence
+rows, tolerances — keyed as §7.4, and refuses unless CERTIFY + GOLDEN
+(+ GRADCHECK when a backward exists) all pass. There is no force flag.
+
+## 12. Autograd and training
+
+Backward is the existing reverse transform (`lib/ptx/ad.f`): VJP substitution
+over the region IR. Backward nodes are ordinary IR nodes and enter the same
+planners — backward elementwise chains fuse, backward reductions schedule as
+row-reduce, epilogue gradients fuse into backward matmuls.
+
+- **Save vs recompute** is a fusion-planner decision under the §9 bytes/FLOPs
+  model (saving = a write + a read; recompute = FLOPs + upstream reads),
+  reported per tensor.
+- **The training step is one plan unit:** forward + backward + optimizer
+  update planned together; the optimizer update (elementwise class) fuses
+  into the final backward region when legal. `PROFILE` reports the step.
+- **Convergence is a gate:** seeded data + loss threshold committed as tests
+  (`maki/train.f` pattern), so a planner change that breaks training fails CI
+  like a wrong answer would.
+
+## 13. Incremental replanning and caching
+
+Everything is content-addressed: IR nodes by (op, attrs, input hashes, keys);
+regions by node-hash sets; plans and schedules by the §7.4 key. A model edit
+re-hashes only the downstream cone — upstream regions keep their plans and
+artifacts, so the edit→report loop stays interactive. The artifact cache is
+the single store for kernels, evidence, measurement history, profitability
+facts, and calibration tables (`habu-kernel-artifact-export` is the
+externalization of the same store).
+
+## 14. EXPLAIN and repair packets
+
+Every failure — legality, gate, resource, unmeasured shape — renders as:
+
+```text
+failure class      (typed enum, one of the §5.6 reasons or gate failures)
+site               region / op / tensor id + source location of the model word
+expected           the contract (typed)
+actual             the observed fact (typed)
+blocking fact      the single fact that fired the rule
+repair family      fixed table: layout-conflict → transpose materialization or
+                   producer layout change; register-pressure → split point or
+                   smaller tile; tolerance → approx off / dtype up; ...
+minimal repro      smallest region that reproduces
+```
+
+This is the same packet shape the eval harness uses (`maki/eval-repair.f`),
+so agents consume planner failures and gate failures identically.
+
+## 15. Typed backbone hooks
+
+When the type-families campaign lands (`docs/type-families.md`,
+`docs/model-cad.md` §TFAM map): op classes and split reasons become enum
+families; gate verdicts and fusion decisions become sum families eliminated
+by `MATCH`; descriptors, plan rows, and schedules become product families;
+and evidence becomes *evidence families* — `certified<region>`,
+`golden<artifact>` — so `PROMOTE`'s signature can require evidence values and
+a gate bypass becomes untypeable, not just forbidden. Until then the same
+data lives in checked records behind accessor words whose signatures will
+not change (`cad-adt-swap`).
+
+## 16. Extension playbook
+
+- **New op:** registry entry (class, cost, numeric class, attrs) + scalar
+  reference + VJP entry + `T{ }T` tests. No planner changes.
+- **New schedule family:** template + parameter space + default formula +
+  legality bounds + emitter case. Tuner and cache pick it up from the family
+  registry.
+- **New target:** run the roof microbenchmarks, record resource caps
+  (smem/block, registers, warp size), add the ptxas arch flag. Plans and
+  tuning re-key automatically.
+
+## 17. v1 scope
+
+In: elementwise and row-reduction mega-fusion with prologue/epilogue matmul
+fusion; coalescing/vectorization/tail planning; the five §7.2 families on
+sm_87; golden/gradcheck/profile gates; exhaustive tuning; artifact cache;
+incremental replanning; training-step planning for the from-scratch flagship.
+
+Out (explicitly, with the §5.6/§6.3 reasons reported when hit): matmul→matmul
+fusion, cross-block softmax single-kernel, concat lane-dispatch fusion,
+CUDA graphs, persistent kernels, multi-GPU, autotuned search beyond
+exhaustive, non-NVIDIA targets.

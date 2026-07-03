@@ -352,8 +352,10 @@ skills/           operational recipes for agents and humans
 
 ## Docs
 
-- [`docs/model-cad.md`](docs/model-cad.md) — the Model CAD loop and
-  implementation plan.
+- [`CAD-PLAN.md`](CAD-PLAN.md) — the Model CAD design: planners, cost model,
+  schedules, gates.
+- [`docs/model-cad.md`](docs/model-cad.md) — the Model CAD campaign:
+  phases, dots, milestones.
 - [`docs/positioning.md`](docs/positioning.md) — product positioning and copy.
 - [`docs/eval-triton.md`](docs/eval-triton.md) — measured Habu-PTX vs Triton
   evaluation on the Orin.

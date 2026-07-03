@@ -1,6 +1,7 @@
 # Habu Model CAD — Implementation Plan
 
 **Status:** reviewed plan (2026-07-04), supersedes the imported HabuCAD draft.
+**Design:** `CAD-PLAN.md` (planners, cost model, schedules, gates — the *how*).
 **Positioning:** `docs/positioning.md`. **Type system:** `docs/type-families.md`
 (TFAM campaign, in flight on `maki-type-families`). **Framework substrate:**
 `PLAN.md` (Maki + Habu-PTX), `maki/STATUS.md`.
