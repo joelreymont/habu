@@ -11,6 +11,7 @@ require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
+require lib/ptx/toolchain.f
 require tools/ptx/bench.f
 
 package PTXSCATTERGRAD
@@ -66,30 +67,21 @@ variable NVAR
    EMIT-PRELUDE
    s" tools/ptx/scatter-add-grad-cg.f" >LEN PROC-ARGV+
    RUN-EMIT {: outu:len erru:len rc:rc :}
-   s" /tmp/scatter-add-grad.ptx" EMIT-OUT outu LEN>N WRITE-ALL
+   PTXTC:PTX$ EMIT-OUT outu LEN>N WRITE-ALL
    outu LEN>N rc RC>N ;
 
-: RUN-PTXAS ( -- len len rc )
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN
-   PTXAS-OUT ERR-CAP >LEN
-   PTXAS-ERR ERR-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE ;
+: RUN-PTXAS ( -- n )
+   PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;
 
 : PTXAS-FANIN ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+
-   s" /tmp/scatter-add-grad.ptx" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   s" /tmp/scatter-add-grad.cubin" >LEN PROC-ARGV+
-   RUN-PTXAS {: outu:len erru:len rc:rc :}
-   rc RC>N ;
+   RUN-PTXAS ;
 
 : GRID-N ( -- n )
    FANIN-N BLOCK-N 1- + BLOCK-N / ;
 
 : SETUP ( -- )
    PTXBENCH:RESET
-   s" /tmp/scatter-add-grad.cubin" PTXBENCH:CUBIN!
+   PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" SCATTER-ADD-GRADCHECK" PTXBENCH:LABEL!
    BLOCK-N PTXBENCH:BLOCK!
    PARAM-BYTES PTXBENCH:PARAM-BYTES!
@@ -169,6 +161,7 @@ variable NVAR
 
 : MAIN ( -- )
    T-RESET
+   s" habu-ptx-scatter" PTXTC:PREPARE
    EMIT-FANIN {: outn:n erc:n :}
    erc 0 T=
    outn 0 > TTRUE
@@ -179,6 +172,7 @@ variable NVAR
    analytic EXPECTED-BITS T=
    analytic F32>F64 num NEAR? TTRUE
    RELEASE
+   PTXTC:CLEAN
    s" device gradcheck: scatter-add fan-in accumulation verified for n=1024 across 4 blocks" type cr
    T-REPORT ;
 

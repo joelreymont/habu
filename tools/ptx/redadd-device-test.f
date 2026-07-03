@@ -1,9 +1,11 @@
 \ redadd-device-test.f - device verification of red.global.add.f32 on sm_87 (closes
 \ habu-ptx-ad-verify): the atomic float add scatter-add needs for fan-in adjoints. Spawns
-\ bin/hb to emit tools/ptx/redadd-cg.f -> /tmp/redadd.ptx, ptxas-assembles, then launches 256
+\ bin/hb to emit tools/ptx/redadd-cg.f to a private PTX, ptxas-assembles, then launches 256
 \ threads each atomically adding 1.0 to out[0] and asserts out[0] = 256.0 (FP32 exact). Orin-only.
 \ Releases the primary context before exit (or bin/hb hangs at teardown). Load after lib/test.f,
 \ lib/ffi.f, and the fs/process libs.
+
+require lib/ptx/toolchain.f
 
 create RA-LIB 16 allot  create RA-NM 64 allot  create RA-PATH 64 allot  create RA-KN 32 allot
 variable RA-H variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
@@ -18,14 +20,10 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    s" lib/errors.f" >LEN PROC-ARGV+  s" lib/string.f" >LEN PROC-ARGV+
    s" src/arch/ptx/emit.f" >LEN PROC-ARGV+  s" tools/ptx/redadd-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  RA-O $4000 >LEN  RA-E $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
-   {: ou:len eu:len rc:rc :}  s" /tmp/redadd.ptx" RA-O ou LEN>N WRITE-ALL  ou LEN>N ;
+   {: ou:len eu:len rc:rc :}  PTXTC:PTX$ RA-O ou LEN>N WRITE-ALL  ou LEN>N ;
 
 : RA-PTXAS ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+  s" /tmp/redadd.ptx" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+  s" /tmp/redadd.cubin" >LEN PROC-ARGV+
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN  RA-QO $1000 >LEN  RA-QE $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: ou:len eu:len rc:rc :}  rc RC>N ;
+   RA-QO $1000 >LEN RA-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : RA-RUN ( -- n )   \ launch 256 threads, out=0 -> out[0] f32 bits (= 256.0)
    s" libcuda.so.1" RA-LIB >CSTR  RA-LIB RTLD-NOW DLOPEN RA-H !
@@ -33,7 +31,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    RA-DEV P>N 0           s" cuDeviceGet"               RA-SYM CALL2 drop
    RA-CTX P>N RA-DEV @    s" cuDevicePrimaryCtxRetain"  RA-SYM CALL2 drop
    RA-CTX @              s" cuCtxSetCurrent"           RA-SYM CALL1 drop
-   s" /tmp/redadd.cubin" RA-PATH >CSTR
+   PTXTC:CUBIN$ RA-PATH >CSTR
    RA-MOD P>N RA-PATH P>N s" cuModuleLoad"              RA-SYM CALL2 drop
    s" REDADD" RA-KN >CSTR
    RA-FUNC P>N RA-MOD @ RA-KN P>N s" cuModuleGetFunction" RA-SYM CALL3 drop
@@ -53,9 +51,11 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
 
 : REDADD-MAIN ( -- )
    T-RESET
+   s" habu-ptx-redadd" PTXTC:PREPARE
    RA-EMIT drop
    RA-PTXAS 0 T=
    RA-RUN $43800000 T=                  \ 256 atomic adds of 1.0 = 256.0
+   PTXTC:CLEAN
    s" device: red.global.add.f32 verified on sm_87 - 256 atomic adds = 256.0 (scatter-add primitive OK)" type cr
    T-REPORT ;
 

@@ -1,10 +1,12 @@
 \ acc-device-test.f - committed device-correctness regression for the register-accumulator
 \ codegen. Self-contained: spawns bin/hb to emit the CHECKED AXPY-ACC kernel (tools/ptx/
-\ acc-cg.f, which lowers ACC-ZERO/ACC-FMA/ACC-TILE via lib/ptx/cg.f) to /tmp/acc.ptx,
+\ acc-cg.f, which lowers ACC-ZERO/ACC-FMA/ACC-TILE via lib/ptx/cg.f) to a private PTX,
 \ ptxas-assembles, then launches on the Orin with x=2.0, y=3.0, n=4 and asserts the result
 \ y[0] = x*y = 6.0 (FP32 exact). Proves the (c) accumulator path is not just type-checked
 \ but device-correct. Orin-only (FFI device launch). Load after lib/test.f, lib/ffi.f, and
 \ the fs/process libs.
+
+require lib/ptx/toolchain.f
 
 create AD-LIB 16 allot  create AD-NM 64 allot  create AD-PATH 64 allot  create AD-KN 32 allot
 variable AD-H variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
@@ -14,7 +16,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
 : AD-SYM ( ptr u8 n -- n )  AD-NM >CSTR  AD-H @ AD-NM DLSYM ;
 
-\ spawn bin/hb to emit AXPY-ACC -> /tmp/acc.ptx; return captured bytes
+\ spawn bin/hb to emit AXPY-ACC; return captured bytes
 : AD-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"               >LEN PROC-ARGV+
@@ -25,15 +27,10 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    s" lib/ptx/tile-acc.f"   >LEN PROC-ARGV+  s" tools/ptx/acc-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  AD-OUT $4000 >LEN  AD-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   s" /tmp/acc.ptx" AD-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   PTXTC:PTX$ AD-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
-\ assemble /tmp/acc.ptx -> /tmp/acc.cubin; return rc
 : AD-PTXAS ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87"  >LEN PROC-ARGV+  s" /tmp/acc.ptx" >LEN PROC-ARGV+
-   s" -o"           >LEN PROC-ARGV+  s" /tmp/acc.cubin" >LEN PROC-ARGV+
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN  AD-QOUT $1000 >LEN  AD-QERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}  rc RC>N ;
+   AD-QOUT $1000 >LEN AD-QERR $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ launch x=2.0 y=3.0 n=4 -> y[0] f32 bits
 : AD-RUN ( -- n )
@@ -42,7 +39,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    AD-DEV P>N 0            s" cuDeviceGet"               AD-SYM CALL2 drop
    AD-CTX P>N AD-DEV @     s" cuDevicePrimaryCtxRetain"  AD-SYM CALL2 drop
    AD-CTX @               s" cuCtxSetCurrent"           AD-SYM CALL1 drop
-   s" /tmp/acc.cubin" AD-PATH >CSTR
+   PTXTC:CUBIN$ AD-PATH >CSTR
    AD-MOD P>N AD-PATH P>N s" cuModuleLoad"              AD-SYM CALL2 drop
    s" SAXPY" AD-KN >CSTR
    AD-FUNC P>N AD-MOD @ AD-KN P>N s" cuModuleGetFunction" AD-SYM CALL3 drop
@@ -66,9 +63,11 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
 : ACC-DEV-MAIN ( -- )
    T-RESET
+   s" habu-ptx-acc" PTXTC:PREPARE
    AD-EMIT drop
    AD-PTXAS 0 T=
    AD-RUN $40C00000 T=                  \ x*y = 2.0 * 3.0 = 6.0 (FP32 exact)
+   PTXTC:CLEAN
    s" device: checked AXPY-ACC (ACC-ZERO/ACC-FMA/ACC-TILE) computes x*y=6.0 on the Orin" type cr
    T-REPORT ;
 

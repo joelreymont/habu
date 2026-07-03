@@ -477,6 +477,7 @@ variable GSI-TL-FILE-A
 : GSI-LINT-LIBS-PTX-TOOL ( -- )
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )
    GSI-TEST-SETUP \ ( -- )
+   s" lib/ptx/toolchain-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/profile-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/bench-test.f" GSI-INCLUDE \ ( -- )
    s" tools/ptx/saxpy-test.f" GSI-INCLUDE ; \ ( -- )

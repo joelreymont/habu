@@ -13,6 +13,8 @@
 \ habu-rca-device-gradcheck). Self-contained, Orin-only. Load after lib/test.f, lib/ffi.f,
 \ lib/ptx/cg.f (F32>F64/F64>F32), and the fs/process libs.
 
+require lib/ptx/toolchain.f
+
 create GC-LIB 16 allot  create GC-NM 64 allot  create GC-PATH 64 allot  create GC-KN 32 allot
 variable GC-H variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
 variable GC-DX variable GC-DY variable GC-AB variable GC-NV variable GC-RBUF
@@ -21,7 +23,6 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 
 : GC-SYM ( ptr u8 n -- n )  GC-NM >CSTR  GC-H @ GC-NM DLSYM ;
 
-\ --- emit: spawn bin/hb on a kernel driver -> /tmp/gc.ptx ---
 : GC-PRELUDE ( -- )
    PROC-ARGV-RESET
    s" --load"               >LEN PROC-ARGV+
@@ -34,20 +35,15 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 : GC-RUN-EMIT ( -- n )
    s" bin/hb" >LEN  GC-OUT $4000 >LEN  GC-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   s" /tmp/gc.ptx" GC-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   PTXTC:PTX$ GC-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 : GC-EMIT-SAXPY ( -- n )  GC-PRELUDE  s" tools/ptx/saxpy-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-RELU  ( -- n )  GC-PRELUDE  s" tools/ptx/relu-cg.f"  >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-EXP   ( -- n )  GC-PRELUDE  s" tools/ptx/exp-cg.f"   >LEN PROC-ARGV+  GC-RUN-EMIT ;
 : GC-EMIT-EXPBWD ( -- n ) GC-PRELUDE  s" tools/ptx/expbwd-cg.f" >LEN PROC-ARGV+  GC-RUN-EMIT ;
 
 : GC-PTXAS ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87"  >LEN PROC-ARGV+  s" /tmp/gc.ptx" >LEN PROC-ARGV+
-   s" -o"           >LEN PROC-ARGV+  s" /tmp/gc.cubin" >LEN PROC-ARGV+
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN  GC-QOUT $1000 >LEN  GC-QERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}  rc RC>N ;
+   GC-QOUT $1000 >LEN GC-QERR $1000 >LEN PTXTC:ASSEMBLE ;
 
-\ --- device context (retain once) + per-cubin module load/unload ---
 : GC-CTX-INIT ( -- )
    s" libcuda.so.1" GC-LIB >CSTR  GC-LIB RTLD-NOW DLOPEN GC-H !
    0                      s" cuInit"                    GC-SYM CALL1 drop
@@ -56,8 +52,8 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    GC-CTX @              s" cuCtxSetCurrent"           GC-SYM CALL1 drop
    GC-DX P>N 16          s" cuMemAlloc_v2"   GC-SYM CALL2 drop
    GC-DY P>N 16          s" cuMemAlloc_v2"   GC-SYM CALL2 drop ;
-: GC-LOAD ( -- )                                    \ load /tmp/gc.cubin, bind entry SAXPY
-   s" /tmp/gc.cubin" GC-PATH >CSTR
+: GC-LOAD ( -- )
+   PTXTC:CUBIN$ GC-PATH >CSTR
    GC-MOD P>N GC-PATH P>N s" cuModuleLoad"              GC-SYM CALL2 drop
    s" SAXPY" GC-KN >CSTR
    GC-FUNC P>N GC-MOD @ GC-KN P>N s" cuModuleGetFunction" GC-SYM CALL3 drop ;
@@ -106,6 +102,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 
 : GRADCHECK-MAIN ( -- )
    T-RESET
+   s" habu-ptx-gradcheck" PTXTC:PREPARE
    GC-CTX-INIT
    \ --- SAXPY (linear): d(a*x)/dx = a = 3.0 ---
    GC-EMIT-SAXPY drop  GC-PTXAS 0 T=  GC-LOAD
@@ -126,6 +123,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    $3F800000 ey F64>F32 GC-AT-2IN F32>F64 {: gb :}     \ backward(dz=1.0, savedy=exp(1)) = exp(1)
    GC-UNLOAD
    GC-CTX-FINI                                         \ release BEFORE exit
+   PTXTC:CLEAN
    gs 3.0 GC-NEAR? TTRUE                               \ SAXPY: correct dx=a=3 -> PASS
    gs 2.0 GC-NEAR? TFALSE                              \ SAXPY: wrong dx=2 -> REJECTED
    gp 1.0 GC-NEAR? TTRUE                               \ RELU x>0: dx=1 -> PASS

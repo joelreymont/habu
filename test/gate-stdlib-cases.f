@@ -245,6 +245,7 @@ TEST:SUITE ptx-gemm-checked-neg
 TEST:END-SUITE
 
 TEST:SUITE ptx-toolchain
+   lib/ptx/toolchain-test.f
    tools/ptx/profile-test.f
    tools/ptx/bench-test.f
    tools/ptx/saxpy-test.f

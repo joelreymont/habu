@@ -7,6 +7,7 @@
 require lib/test.f
 require lib/fs.f
 require lib/process-argv.f
+require lib/ptx/toolchain.f
 require tools/ptx/bench.f
 
 package PTXV4TAIL
@@ -62,23 +63,14 @@ variable NVAR
    EMIT-PRELUDE
    s" tools/ptx/saxpy-v4-cg.f" >LEN PROC-ARGV+
    RUN-EMIT {: outu:len erru:len rc:rc :}
-   s" /tmp/saxpy-v4-tail.ptx" EMIT-OUT outu LEN>N WRITE-ALL
+   PTXTC:PTX$ EMIT-OUT outu LEN>N WRITE-ALL
    outu LEN>N rc RC>N ;
 
-: RUN-PTXAS ( -- len len rc )
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN
-   PTXAS-OUT ERR-CAP >LEN
-   PTXAS-ERR ERR-CAP >LEN
-   10000 >MS RUN-ARGV-CAPTURE ;
+: RUN-PTXAS ( -- n )
+   PTXAS-OUT ERR-CAP >LEN PTXAS-ERR ERR-CAP >LEN PTXTC:ASSEMBLE ;
 
 : PTXAS-V4-SAXPY ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87" >LEN PROC-ARGV+
-   s" /tmp/saxpy-v4-tail.ptx" >LEN PROC-ARGV+
-   s" -o" >LEN PROC-ARGV+
-   s" /tmp/saxpy-v4-tail.cubin" >LEN PROC-ARGV+
-   RUN-PTXAS {: outu:len erru:len rc:rc :}
-   rc RC>N ;
+   RUN-PTXAS ;
 
 : GRID-FOR ( n -- n )
    V4-ELEMS-PER-BLOCK 1- + V4-ELEMS-PER-BLOCK / ;
@@ -88,7 +80,7 @@ variable NVAR
 
 : SETUP ( -- )
    PTXBENCH:RESET
-   s" /tmp/saxpy-v4-tail.cubin" PTXBENCH:CUBIN!
+   PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" SAXPY" PTXBENCH:KERNEL!
    s" SAXPY-V4-TAIL" PTXBENCH:LABEL!
    V4-BLOCK PTXBENCH:BLOCK!
@@ -147,6 +139,7 @@ variable NVAR
 
 : MAIN ( -- )
    T-RESET
+   s" habu-ptx-v4-tail" PTXTC:PREPARE
    EMIT-V4-SAXPY {: outn:n erc:n :}
    erc 0 T=
    outn 0 > TTRUE
@@ -157,6 +150,7 @@ variable NVAR
    7 CHECK-N
    1000003 CHECK-N
    RELEASE
+   PTXTC:CLEAN
    s" device: SAXPY-V4 scalar residual tail verified for n=4,5,7,1000003" type cr
    T-REPORT ;
 

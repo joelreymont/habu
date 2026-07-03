@@ -113,6 +113,10 @@ points stay listed.
   tests; suites list the entry tests, not this dependency bundle.
 - `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for
   PTX tests that must exercise a child process boundary.
+- `lib/ptx/toolchain.f` — checked PTX private artifact root plus `PTXAS`
+  resolution and assembler runner for device tests.
+- `lib/ptx/toolchain-test.f` — checked fixture coverage for PTX artifact
+  uniqueness, cleanup, and assembler path resolution.
 - `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
   rejection tests that call the checker directly and capture diagnostics.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels

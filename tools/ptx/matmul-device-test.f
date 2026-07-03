@@ -1,16 +1,18 @@
 \ matmul-device-test.f - committed device-correctness regression for the tiled SGEMM
 \ (lib/ptx/cg-matmul.f). Self-contained from the tree (retires the /tmp-only check the
-\ goal flags): spawns bin/hb to emit MM -> /tmp/mm.ptx, ptxas-assembles, then launches
+\ goal flags): spawns bin/hb to emit MM to a private PTX, ptxas-assembles, then launches
 \ 64x64x64 with A=B=all-ones on the Orin and asserts C[0][0] = K = 64.0 (FP32 exact).
 \ Orin-only (FFI device launch). Load after maki/eval.f + maki/eval-device.f (reuses
 \ ED-SYM / CALL* / ED-* + the dlopen) and the fs/process libs. Closes (for the GEMM)
 \ habu-committed-device-correctness.
 
+require lib/ptx/toolchain.f
+
 create MMT-OUT $8000 allot  create MMT-ERR $1000 allot
 create MQ-OUT  $1000 allot   create MQ-ERR  $1000 allot
 variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
 
-\ spawn bin/hb to emit MM (cg-matmul.f) to /tmp/mm.ptx; return captured bytes
+\ spawn bin/hb to emit MM (cg-matmul.f); return captured bytes
 : MMT-EMIT ( -- n )
    PROC-ARGV-RESET
    s" --load"               >LEN PROC-ARGV+
@@ -20,15 +22,10 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
    s" lib/ptx/cg-matmul.f"  >LEN PROC-ARGV+  s" tools/ptx/matmul-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  MMT-OUT $8000 >LEN  MMT-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu erru rc :}
-   s" /tmp/mm.ptx" MMT-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+   PTXTC:PTX$ MMT-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
-\ assemble /tmp/mm.ptx -> /tmp/mm.cubin; return rc
 : MMT-PTXAS ( -- n )
-   PROC-ARGV-RESET
-   s" -arch=sm_87"  >LEN PROC-ARGV+  s" /tmp/mm.ptx" >LEN PROC-ARGV+
-   s" -o"           >LEN PROC-ARGV+  s" /tmp/mm.cubin" >LEN PROC-ARGV+
-   s" /usr/local/cuda-12.6/bin/ptxas" >LEN  MQ-OUT $1000 >LEN  MQ-ERR $1000 >LEN  10000 >MS  RUN-ARGV-CAPTURE
-   {: outu erru rc :}  rc RC>N ;
+   MQ-OUT $1000 >LEN MQ-ERR $1000 >LEN PTXTC:ASSEMBLE ;
 
 \ launch MM 64x64x64 with A=B=1.0 (one 64x64 block); return C[0][0] f32 bits
 : MM-DEV ( -- n )
@@ -37,7 +34,7 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
    ED-DEV P>N 0            s" cuDeviceGet"               ED-SYM CALL2 drop
    ED-CTX P>N ED-DEV @     s" cuDevicePrimaryCtxRetain"  ED-SYM CALL2 drop
    ED-CTX @               s" cuCtxSetCurrent"           ED-SYM CALL1 drop
-   s" /tmp/mm.cubin" ED-PATH >CSTR
+   PTXTC:CUBIN$ ED-PATH >CSTR
    ED-MOD P>N ED-PATH P>N s" cuModuleLoad"              ED-SYM CALL2 drop
    s" MM" ED-KN >CSTR
    ED-FUNC P>N ED-MOD @ ED-KN P>N s" cuModuleGetFunction" ED-SYM CALL3 drop
@@ -64,9 +61,11 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
    MM-RB @ $FFFFFFFF and ;
 
 T-RESET
+s" habu-ptx-mm" PTXTC:PREPARE
 MMT-EMIT 0 >  TTRUE                 \ emit produced PTX
 MMT-PTXAS 0 = TTRUE                 \ ptxas assembled
 MM-DEV $42800000 T=                 \ C[0][0] = K = 64.0 (FP32 exact)
+PTXTC:CLEAN
 s" matmul device test: 64^3 A=B=ones -> C=64.0 OK" type cr
 T-REPORT
 bye
