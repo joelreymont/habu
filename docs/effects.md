@@ -96,16 +96,32 @@ acquires a linear frame and forgets to release it fails the definition's output
 balance (the frame leaks onto the declared-empty stack), and releasing twice
 underflows. A resource can neither be silently dropped nor duplicated.
 
-Boundary (fail-open, tracked by `habu-linear-kind-inference-c31475b8`):
-count-conservation is defeated by *polymorphic laundering* — a value duplicated
-or dropped while its type is still a polymorphic variable that is only later
-unified with a linear con. Two shapes slip today: `[: FREE ;] KEEP` (KEEP's `over`
-copies a polymorphic `a` inside its already-certified body; the call-site effect
-is count-neutral) and `[: dup FREE ;] execute` (the `dup` copies the quotation's
-polymorphic input before `FREE` binds it to the linear). Closing these needs a
-linear/affine kind discipline (polarity-aware multiplicity at application plus
-deferred taint within a body); until then, do not rely on `KEEP`/`BI`/`TRI` or
-self-duplicating quotations to uphold linearity.
+Conservation alone only sees linear *cons* on the stack, so it is blind to
+*polymorphic laundering* — a value duplicated or dropped while its type is still
+a polymorphic variable that only later unifies with a linear con. The **linear
+kind discipline** (`src/core/checker.f`, gated on any `DEFLINEAR` being declared)
+tracks linearity through type variables and closes that gap on two fronts:
+
+- **Polarity-aware multiplicity at effect application.** When applying a word or
+  primitive, any type variable in its effect that binds to a linear con must
+  occur equally on the input and output sides across the *whole* effect,
+  **including quotation sub-effects** (a quotation argument's rows flip polarity:
+  the word supplies the quotation's inputs and receives its outputs). A move is
+  1-in / 1-out (`swap`, `DIP`, `>r`/`r>`, a passthrough `( own -- own )`); a copy
+  or drop is not. So `[: FREE ;] KEEP` rejects — `KEEP ( R a [R a -- S] -- S a )`
+  feeds `a` to the consumer quotation *and* returns it (1-in / 2-out) — and so do
+  `BI`/`TRI`, which fan `a` into several quotations.
+- **Deferred taint within one body.** A variable copied or dropped while still
+  polymorphic is tainted; if it later unifies with a linear con, the linear was
+  laundered and the definition is rejected. This catches `[: dup FREE ;] execute`
+  and `[: over FREE ;] execute`, where the copy happens before `FREE` binds the
+  variable to the linear.
+
+Both are additive rejections layered on concrete-count conservation, and both
+are inert unless a `DEFLINEAR` type is in scope, so non-linear polymorphic code
+(`[: dup ;] execute` on a plain value, `KEEP`/`DIP` over non-linear data) is
+unaffected. `KEEP`/`BI`/`TRI` and self-duplicating quotations may again be
+trusted to uphold linearity (tracked by `habu-linear-kind-inference-c31475b8`).
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a by-value record
 token for signatures. The token expands to hidden field types, so

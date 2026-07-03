@@ -165,6 +165,43 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
       e 1 and IF UNBOUND e 2 / cells RVT + ! ELSE UNBOUND e 2 / cells TVT + ! THEN
    REPEAT ;
 
+\ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
+\ Concrete-count conservation only sees linear CONS on the stack. It is defeated
+\ by polymorphic laundering: a value copied/dropped while its type is still a VAR
+\ that only later unifies with a linear con (KEEP's `over`, an intra-quot
+\ `dup FREE`). The kind discipline tracks linearity THROUGH type vars:
+\   (a) polarity-aware multiplicity at effect application (LIN-EFF-PASS): a var
+\       in an applied effect that binds to a linear con must occur equally on the
+\       input and output sides across the whole effect INCL quotation sub-effects
+\       (KEEP: a is 1-in / 2-out -> reject; DIP/swap: 1-in / 1-out -> ok);
+\   (b) deferred taint (LIN-TAINT / LIN-TAINT-SCAN): a var copied/dropped while
+\       still polymorphic is tainted; if it LATER resolves to a linear con the
+\       linear was laundered -> reject (catches `[: dup FREE ;]`).
+\ The whole discipline is gated on any DEFLINEAR type being declared, so
+\ non-linear code (the entire self-build) pays nothing and the hot path is clean.
+variable LIN-NDECL   0 LIN-NDECL !     \ count of declared DEFLINEAR types (in scope)
+: LIN-ANY? ( -- bool ) LIN-NDECL @ 0 <> ;
+
+\ Taint list: canonical var ids duplicated/dropped while still polymorphic. Only
+\ appended on a COMMITTED step (LIN-EFF-PASS runs at OK true), so no failed prim
+\ trial ever taints a rolled-back id — trial rollback can never reuse a tainted
+\ id. Reset per definition (NEW). Scanned after each token (LIN-TAINT-SCAN).
+4096 constant LTNT-INIT
+create LTNT-BOOT LTNT-INIT cells allot
+variable LTNT-P   variable LTNT-CAP   variable LTNT-N
+LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
+: LTNT ( -- ptr a ) LTNT-P @ ;
+: LIN-TAINT-RESET ( -- ) 0 LTNT-N ! ;
+: LTNT-ENSURE ( n -- ) {: need:n :}
+   need LTNT-CAP @ <= IF exit THEN
+   need LTNT-CAP @ 2 * max {: nc:n :}
+   LTNT-P @ LTNT-CAP @ cells nc cells ARENA-BYTES-GROW LTNT-P !
+   nc LTNT-CAP ! ;
+: LIN-TAINT ( id -- )
+   LTNT-N @ 1 + LTNT-ENSURE
+   LTNT-N @ cells LTNT + !
+   LTNT-N @ 1 + LTNT-N ! ;
+
 \ TRIAL-DEPTH counts open prim-overload trials (TRY-EFF). T-RES/R-RES compress var
 \ chains ONLY at depth 0, where every binding is permanent, so a compression write
 \ needs no undo (it is a direct TVT/RVT store, not routed through the trail). During
@@ -867,7 +904,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
-   TRAIL-RESET   0 TRIAL-DEPTH !
+   TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
    FRESH MK-ROW dup BROW ! DCUR !
@@ -941,6 +978,19 @@ variable LINEXP
 : LIN-CON? ( n -- bool )
    T-RES dup TAG T-CON <> IF drop 0 EXIT THEN
    PAY CT-LINEAR? ;
+
+\ Deferred taint scan (part of the linear kind discipline; storage/gate declared
+\ before NEW). Reject if any var tainted by a polymorphic copy/drop (LIN-TAINT)
+\ now resolves to a linear con — the linear was laundered (`[: dup FREE ;]`).
+variable LTNT-I
+: LIN-TAINT-SCAN ( -- )
+   LIN-ANY? 0= IF exit THEN
+   OK @ 0= IF exit THEN
+   0 LTNT-I !
+   BEGIN LTNT-I @ LTNT-N @ < WHILE
+      LTNT-I @ cells LTNT + @ MK-VAR LIN-CON? IF 0 OK ! THEN
+      LTNT-I @ 1 + LTNT-I !
+   REPEAT ;
 
 : LIN-TYPE-COUNT ( n -- n ) {: t:n :}
    t T-RES TAG case
@@ -1733,7 +1783,8 @@ variable QUALBAD
 
 : CT-ADD-LINEAR ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TYPE-RESERVED? IF s" checker: bad or duplicate signature type" 70 die THEN
-   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET ;
+   a u CTN @ CT-LINEAR 64 CS-NONE CT-SET
+   LIN-NDECL @ 1 + LIN-NDECL ! ;   \ un-gate the linear kind discipline
 : TOK-TYPE {: a u :}  a c@ {: c :}
    u 1 = c 110 = and IF 1 MK-CON ELSE          \ 'n' -> generic int (con 1)
    u 1 = c 102 = and IF CC-BOOL MK-CON ELSE     \ 'f' -> bool (a comparison result is a flag, not an int)
@@ -2849,6 +2900,85 @@ variable FMEND
       r> drop 0 swap
    endcase ;
 
+\ --- linear kind: polarity-aware multiplicity of an applied effect ------------
+\ EN-MULT tallies occurrences of canonical var LMV in the stored effect subgraph
+\ at offset `off`, split by polarity into LMNEG (input side) / LMPOS (output
+\ side). A quotation ARGUMENT's rows flip polarity — the word must SUPPLY the
+\ quotation's inputs (output side) and RECEIVES its outputs (input side) — so
+\ passing a linear into a consumer quotation counts as one output-side use, and
+\ KEEP (which also returns it) exceeds one. Mirrors E-INST's node walk.
+variable LMNEG  variable LMPOS  variable LMV
+: EN-MULT ( off pol -- ) {: off:n pol:n :}
+   off 0= IF exit THEN
+   off E-PTR >r
+   r@ EN.TAG @ case
+      EN-VAR of
+         r@ EN.A @ LMV @ = IF
+            pol IF LMPOS @ 1 + LMPOS ! ELSE LMNEG @ 1 + LMNEG ! THEN
+         THEN
+         r> drop
+      endof
+      EN-PUSH of
+         r@ EN.A @ pol RECURSE
+         r@ EN.B @ pol RECURSE
+         r> drop
+      endof
+      EN-PTR of
+         r@ EN.A @ pol RECURSE
+         r> drop
+      endof
+      EN-QUOT of
+         r@ EN.A @ pol 0= RECURSE          \ Din: flipped polarity
+         r@ EN.B @ pol RECURSE             \ Dout: kept
+         r@ EN.C @ pol 0= RECURSE          \ Rin: flipped
+         r@ EN.D @ pol RECURSE             \ Rout: kept
+         r> drop
+      endof
+      EN-PARAM of
+         r@ EN.C @ 0 > IF r@ EN.D @ pol RECURSE THEN
+         r@ EN.C @ 1 > IF r@ EN.E @ pol RECURSE THEN
+         r@ EN.C @ 2 > IF r@ EN.F @ pol RECURSE THEN
+         r@ EN.C @ 3 > IF r@ EN.G @ pol RECURSE THEN
+         r> drop
+      endof
+      r> drop
+   endcase ;
+
+: LIN-VAR-MULT ( h v -- neg pos ) {: h:ptr v:n :}
+   v LMV !  0 LMNEG !  0 LMPOS !
+   h ER.DIN @ 0 EN-MULT
+   h ER.DOUT @ 1 EN-MULT
+   h ER.HASR @ IF
+      h ER.RIN @ 0 EN-MULT
+      h ER.ROUT @ 1 EN-MULT
+   THEN
+   LMNEG @ LMPOS @ ;
+
+\ After an effect is applied and its input vars are bound, examine each canonical
+\ effect var: if it resolved to a linear con with unequal input/output
+\ multiplicity, the linear was copied/dropped/laundered by this effect -> reject
+\ (a). If it is still an unbound var but this effect used it non-linearly (copy
+\ or drop), taint it for the deferred scan (b).
+variable LMI
+: LIN-EFF-PASS ( h -- ) {: h:ptr :}
+   LIN-ANY? 0= IF exit THEN
+   OK @ 0= IF exit THEN
+   0 LMI !
+   BEGIN LMI @ h ER.TVN @ < WHILE
+      LMI @ cells EI-TV + @ {: r:n :}
+      r UNBOUND <> IF
+         r T-RES {: rr:n :}
+         rr LIN-CON? IF
+            h LMI @ LIN-VAR-MULT <> IF 0 OK ! THEN
+         ELSE
+            rr TAG T-VAR = IF
+               h LMI @ LIN-VAR-MULT <> IF rr PAY LIN-TAINT THEN
+            THEN
+         THEN
+      THEN
+      LMI @ 1 + LMI !
+   REPEAT ;
+
 : EFF-APPLY ( ptr a -- ) {: h:ptr :}
    h E-INST-RESET
    h ER.DIN @ E-INST
@@ -2857,7 +2987,8 @@ variable FMEND
    h ER.HASR @ if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
-   then ;
+   then
+   h LIN-EFF-PASS ;
 
 : EFF-QUOT ( ptr a -- n ) {: h:ptr :}
    h E-INST-RESET
@@ -4180,7 +4311,8 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    h ER.DOUT @ E-INST RDOUT !
    RHAS @ IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
    RDIN @ SUNI-IN  RDOUT @ DCUR !
-   RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN ;
+   RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
+   h LIN-EFF-PASS ;
 
 : CF-RECURSE
    VSIG @ SGSEEN @ and RECEFF-ON @ and IF RECEFF @ E-PTR CF-RECURSE-EFF
@@ -4696,6 +4828,7 @@ variable IS-TU
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
    THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    TOKIX @ 1 + TOKIX ! ;
@@ -4835,6 +4968,7 @@ variable CAND-SYMN
 variable CAND-SYMU
 variable CAND-CTN
 variable CAND-CTU
+variable CAND-LIN-NDECL
 variable CAND-VREC-N
 variable CAND-VREC-FIELD-N
 variable CAND-VREC-NODE-N
@@ -4846,6 +4980,7 @@ variable CSCOPE-SYMN
 variable CSCOPE-SYMU
 variable CSCOPE-CTN
 variable CSCOPE-CTU
+variable CSCOPE-LIN-NDECL
 variable CSCOPE-VREC-N
 variable CSCOPE-VREC-FIELD-N
 variable CSCOPE-VREC-NODE-N
@@ -4860,6 +4995,7 @@ variable CSCOPE-VSIG
    SYM-STR-U @ CSCOPE-SYMU !
    CTN @ CSCOPE-CTN !
    CT-STR-U @ CSCOPE-CTU !
+   LIN-NDECL @ CSCOPE-LIN-NDECL !
    VREC-N @ CSCOPE-VREC-N !
    VREC-FIELD-N @ CSCOPE-VREC-FIELD-N !
    VREC-NODE-N @ CSCOPE-VREC-NODE-N !
@@ -4875,6 +5011,7 @@ variable CSCOPE-VSIG
    CSCOPE-SYMU @ SYM-STR-U !
    CSCOPE-CTN @ CTN !
    CSCOPE-CTU @ CT-STR-U !
+   CSCOPE-LIN-NDECL @ LIN-NDECL !
    CSCOPE-VREC-N @ VREC-N !
    CSCOPE-VREC-FIELD-N @ VREC-FIELD-N !
    CSCOPE-VREC-NODE-N @ VREC-NODE-N !
@@ -4889,6 +5026,7 @@ variable CSCOPE-VSIG
    SYM-STR-U @ CAND-SYMU !
    CTN @ CAND-CTN !
    CT-STR-U @ CAND-CTU !
+   LIN-NDECL @ CAND-LIN-NDECL !
    VREC-N @ CAND-VREC-N !
    VREC-FIELD-N @ CAND-VREC-FIELD-N !
    VREC-NODE-N @ CAND-VREC-NODE-N !
@@ -4907,6 +5045,7 @@ variable CSCOPE-VSIG
    CAND-SYMU @ SYM-STR-U !
    CAND-CTN @ CTN !
    CAND-CTU @ CT-STR-U !
+   CAND-LIN-NDECL @ LIN-NDECL !
    CAND-VREC-N @ VREC-N !
    CAND-VREC-FIELD-N @ VREC-FIELD-N !
    CAND-VREC-NODE-N @ VREC-NODE-N !

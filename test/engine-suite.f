@@ -882,6 +882,20 @@ s" CBAD-OWN-EXEC-NEST ( own -- own own ) [: [: dup ;] execute ;] execute" T-CHEC
 s" COK-OWN-FRAME-WORK ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN" T-CHECK-PASSES
 s" CBAD-OWN-FRAME-LEAK ( -- ) T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
 s" CBAD-OWN-FRAME-DOUBLE ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
+\ Polymorphic linear laundering (habu-linear-kind-inference): a linear copied or
+\ dropped while its type is still a polymorphic var — through KEEP/BI's `over` or
+\ an intra-quotation `dup`/`over`, before it binds linear — is rejected by the
+\ linear kind discipline, even though concrete-count conservation stays neutral
+\ at the call site. KEEP/BI copy `a` into a consumer quotation and also return it;
+\ the intra-quot cases copy the var, then FREE binds it linear (deferred taint).
+s" CBAD-OWN-KEEP-LAUNDER ( own -- own ) [: T-FREE-OWN ;] KEEP" T-CHECK-REJECTS
+s" CBAD-OWN-BI-LAUNDER ( own -- own ) [: ;] [: T-FREE-OWN ;] BI" T-CHECK-REJECTS
+s" CBAD-OWN-QUOT-DUP-FREE ( own -- own ) [: dup T-FREE-OWN ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-QUOT-OVER-FREE ( own n -- own n ) [: over T-FREE-OWN ;] execute" T-CHECK-REJECTS
+\ Positives the discipline must not touch: KEEP over non-linear data still
+\ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
+s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
+s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
