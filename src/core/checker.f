@@ -197,7 +197,7 @@ LTNT-BOOT LTNT-P !   LTNT-INIT LTNT-CAP !   0 LTNT-N !
    need LTNT-CAP @ 2 * max {: nc:n :}
    LTNT-P @ LTNT-CAP @ cells nc cells ARENA-BYTES-GROW LTNT-P !
    nc LTNT-CAP ! ;
-: LIN-TAINT ( id -- )
+: LIN-TAINT ( n -- )
    LTNT-N @ 1 + LTNT-ENSURE
    LTNT-N @ cells LTNT + !
    LTNT-N @ 1 + LTNT-N ! ;
@@ -346,7 +346,7 @@ UK-EXACT UNIFY-KIND !
 : PARAM-SCR-RESET ( -- ) 0 PARAM-SCR-N ! ;
 : PARAM-SCR-FULL? ( -- bool )
    PARAM-SCR-N @ PARAM-MAX-ARGS >= ;
-: PARAM-SCR+ ( t -- )
+: PARAM-SCR+ ( n -- )
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
 : MK-PARAM {: a u :}
@@ -416,7 +416,7 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    BEGIN TV-NEXT? WHILE REPEAT ;
 
 : T-BOUND-VAR? ( n -- bool ) {: v:n :}   \ a bound type var (has a chain link)?
-   v ISVAR 0= IF 0 EXIT THEN
+   v ISVAR 0= IF RES-FALSE EXIT THEN
    v PAY TV@ UNBOUND <> ;
 
 \ T-COMPRESS ( start root -- ) : point every bound var on start..root directly at
@@ -439,7 +439,7 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    BEGIN RV-NEXT? WHILE REPEAT ;
 
 : R-BOUND-VAR? ( n -- bool ) {: v:n :}
-   v ISROW 0= IF 0 EXIT THEN
+   v ISROW 0= IF RES-FALSE EXIT THEN
    v PAY RV@ UNBOUND <> ;
 
 : R-COMPRESS ( n n -- ) {: root:n :}
@@ -470,21 +470,21 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 
 : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 
-: PAIR ( t1 t2 -- )    \ inherit the enclosing pair's strictness
+: PAIR ( n n -- )    \ inherit the enclosing pair's strictness
    CUR-STRICT @ USP @ cells UWL-STR + !
    swap U-PUSH U-PUSH ;
 
-: PAIR-STRICT ( t1 t2 -- )    \ force a strict (no-widen) subterm unification
+: PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
    -1 USP @ cells UWL-STR + !
    swap U-PUSH U-PUSH ;
 
-: UNPAIR ( -- t1 t2 )    \ pop a pair and restore its strictness into CUR-STRICT
+: UNPAIR ( -- n n )    \ pop a pair and restore its strictness into CUR-STRICT
    U-POP U-POP swap
    USP @ cells UWL-STR + @ CUR-STRICT ! ;
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
-   t T-RES TAG T-PARAM <> IF 0 EXIT THEN
-   t T-RES PARAM>ARGC 3 <> IF 0 EXIT THEN
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>ARGC 3 <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>NAME-A t T-RES PARAM>NAME-U s" field" CORE-STR= ;
 
 : FIELD-REC ( n -- n )
@@ -497,34 +497,34 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
    2 PARAM>ARG ;
 
 : FIELD-ATOM-SAME? ( n n -- bool ) {: a:n b:n :}
-   a T-RES TAG T-ATOM <> IF 0 EXIT THEN
-   b T-RES TAG T-ATOM <> IF 0 EXIT THEN
+   a T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
+   b T-RES TAG T-ATOM <> IF RES-FALSE EXIT THEN
    a T-RES ATOM>A a T-RES ATOM>U
    b T-RES ATOM>A b T-RES ATOM>U CORE-STR= ;
 
 : FIELD-ID-SAME? ( n n -- bool ) {: a:n b:n :}
-   a T-RES FIELD-REC b T-RES FIELD-REC FIELD-ATOM-SAME? 0= IF 0 EXIT THEN
+   a T-RES FIELD-REC b T-RES FIELD-REC FIELD-ATOM-SAME? 0= IF RES-FALSE EXIT THEN
    a T-RES FIELD-NAME b T-RES FIELD-NAME FIELD-ATOM-SAME? ;
 
 : FIELD-PAIR? ( n n -- bool ) {: got:n want:n :}
-   got FIELD-PARAM? want FIELD-PARAM? and 0= IF 0 EXIT THEN
-   got want FIELD-ID-SAME? 0= IF 0 UOK ! -1 EXIT THEN
+   got FIELD-PARAM? want FIELD-PARAM? and 0= IF RES-FALSE EXIT THEN
+   got want FIELD-ID-SAME? 0= IF RES-FALSE UOK ! RES-TRUE EXIT THEN
    got FIELD-INNER want FIELD-INNER PAIR
-   -1 ;
+   RES-TRUE ;
 
 : FIELD-COERCE? ( n n -- bool ) {: got:n want:n :}
-   UNIFY-KIND @ UK-COERCE <> IF 0 EXIT THEN
-   got FIELD-PARAM? IF got FIELD-INNER want PAIR -1 EXIT THEN
-   want FIELD-PARAM? IF got want FIELD-INNER PAIR -1 EXIT THEN
-   0 ;
+   UNIFY-KIND @ UK-COERCE <> IF RES-FALSE EXIT THEN
+   got FIELD-PARAM? IF got FIELD-INNER want PAIR RES-TRUE EXIT THEN
+   want FIELD-PARAM? IF got want FIELD-INNER PAIR RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 \ occurs check: binding a row var to a spine containing itself would make the
 \ row cyclic — including THROUGH a quotation's effect rows (the ω-combinator
 \ must reject, never loop). Recursion depth is bounded by term size; the
 \ accumulator rides the stack (a shared variable would be clobbered by the
 \ recursive calls).
-: ROW-OCC? {: r s :}
-   0  s                                  \ ( acc cur )
+: ROW-OCC? ( n n -- bool ) {: r:n s:n :}
+   RES-FALSE s                           \ ( acc cur )
    BEGIN R-RES dup TAG S-PUSH = WHILE
      dup P>TYPE T-RES
      BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
@@ -746,48 +746,48 @@ CT-INIT
       CT-I @ 1 + CT-I !
    repeat 0 ;
 
-: INT-FAM? {: code :}
+: INT-FAM? ( n -- bool ) {: code:n :}
    code CT-INT? ;
 
-: INT-WIDENS? {: got:n want:n :}
-   got want = IF -1 EXIT THEN
-   got INT-FAM? want INT-FAM? and 0= IF 0 EXIT THEN
-   got CC-N = IF -1 EXIT THEN
-   want CC-N = IF -1 EXIT THEN
-   got CT-WIDTH@ want CT-WIDTH@ <= 0= IF 0 EXIT THEN
-   got CT-SIGN@ CS-GENERIC = IF -1 EXIT THEN
-   want CT-SIGN@ CS-GENERIC = IF -1 EXIT THEN
-   got CT-SIGN@ want CT-SIGN@ = IF -1 EXIT THEN
+: INT-WIDENS? ( n n -- bool ) {: got:n want:n :}
+   got want = IF RES-TRUE EXIT THEN
+   got INT-FAM? want INT-FAM? and 0= IF RES-FALSE EXIT THEN
+   got CC-N = IF RES-TRUE EXIT THEN
+   want CC-N = IF RES-TRUE EXIT THEN
+   got CT-WIDTH@ want CT-WIDTH@ <= 0= IF RES-FALSE EXIT THEN
+   got CT-SIGN@ CS-GENERIC = IF RES-TRUE EXIT THEN
+   want CT-SIGN@ CS-GENERIC = IF RES-TRUE EXIT THEN
+   got CT-SIGN@ want CT-SIGN@ = IF RES-TRUE EXIT THEN
    got CT-SIGN@ CS-UNSIGNED = want CT-SIGN@ CS-SIGNED = and
    got CT-WIDTH@ want CT-WIDTH@ < and ;
 
 : UNIFY-WIDEN? ( -- bool )
-   UNIFY-KIND @ UK-INPUT = IF -1 EXIT THEN
+   UNIFY-KIND @ UK-INPUT = IF RES-TRUE EXIT THEN
    UNIFY-KIND @ UK-COERCE = ;
 
 \ CON-OK? ( t1 t2 -- f ) : exact joins require the same concrete code except for
 \ generic n/int-family interaction. Input/output checks use the integer lattice:
 \ a narrower concrete int can flow into a wider one; widening never applies to
 \ nominal roles (pid/fd/rc/idx/len/...), which stay strict.
-: CON-OK? {: t1 t2 :}
-   t1 PAY t2 PAY = IF -1 EXIT THEN
+: CON-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 PAY t2 PAY = IF RES-TRUE EXIT THEN
    UNIFY-WIDEN? CUR-STRICT @ 0= and IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
-   t1 PAY CC-N = t2 PAY INT-FAM? and IF -1 EXIT THEN
-   t2 PAY CC-N = t1 PAY INT-FAM? and IF -1 EXIT THEN
-   0 ;
+   t1 PAY CC-N = t2 PAY INT-FAM? and IF RES-TRUE EXIT THEN
+   t2 PAY CC-N = t1 PAY INT-FAM? and IF RES-TRUE EXIT THEN
+   RES-FALSE ;
 
-: ATOM-OK? {: t1 t2 :}
-   t1 ATOM>K t2 ATOM>K <> IF 0 EXIT THEN
-   t1 ATOM>K 0 < IF 0 EXIT THEN
-   t1 ATOM>K 0 = 0= IF -1 EXIT THEN
+: ATOM-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 ATOM>K t2 ATOM>K <> IF RES-FALSE EXIT THEN
+   t1 ATOM>K 0 < IF RES-FALSE EXIT THEN
+   t1 ATOM>K 0 = 0= IF RES-TRUE EXIT THEN
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
-: PARAM-NAME-OK? {: t1 t2 :}
+: PARAM-NAME-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U CORE-STR= ;
 
-: PARAM-PAIR-ARGS {: t1 t2 :}
-   t1 PARAM>ARGC t2 PARAM>ARGC <> IF 0 UOK ! EXIT THEN
-   t1 t2 PARAM-NAME-OK? 0= IF 0 UOK ! EXIT THEN
+: PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
+   t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
+   t1 t2 PARAM-NAME-OK? 0= IF RES-FALSE UOK ! EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
       t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
@@ -795,46 +795,37 @@ CT-INIT
    REPEAT ;
 
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
-   over ISROW IF 2dup ROW-OCC? IF 2drop 0 UOK ! ELSE swap PAY RV! THEN ELSE
-   dup ISROW IF 2dup swap ROW-OCC? IF 2drop 0 UOK ! ELSE PAY RV! THEN ELSE
+   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
+   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
    2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 
-variable TOCC  variable TODN  variable TOPARAM
-
-\ TY-OCC? ( v t -- f ) : does tyvar v occur in t, descending through quot
-\ effect rows? One worklist holds both terms and rows (disjoint tag spaces);
-\ TODN counts pending items, the items ride the data stack.
-: TY-OCC? {: v t :}
-   0 TOCC !  1 TODN !  t
-   BEGIN TODN @ 0 > WHILE
-     TODN @ 1 - TODN !
-     dup TAG S-ROW =  over TAG S-PUSH =  or IF
-       R-RES dup TAG S-PUSH = IF
-         dup P>TYPE swap P>REST
-         TODN @ 2 + TODN !
-       ELSE drop THEN
-     ELSE
-      T-RES
-      dup TAG T-VAR = IF PAY v = IF -1 TOCC ! THEN ELSE
-      dup TAG T-PTR = IF
-        PTR>INNER
-        TODN @ 1 + TODN !
-      ELSE
-      dup TAG T-QUOT = IF
-        dup Q>DIN swap  dup Q>DOUT swap  dup Q>RIN swap  Q>ROUT
-        TODN @ 4 + TODN !
-      ELSE
-      dup TAG T-PARAM = IF
-        dup TOPARAM !  drop
-        TOPARAM @ 0 PARAM-ARG-OR-DUMMY
-        TOPARAM @ 1 PARAM-ARG-OR-DUMMY
-        TOPARAM @ 2 PARAM-ARG-OR-DUMMY
-        TOPARAM @ 3 PARAM-ARG-OR-DUMMY
-        TODN @ PARAM-MAX-ARGS + TODN !
-      ELSE drop THEN THEN THEN THEN
-     THEN
-   REPEAT
-   TOCC @ ;
+\ TY-OCC? ( n n -- bool ) : does tyvar v occur in type/row t, descending
+\ through quotation effect rows and parameter arguments.
+: TY-OCC? ( n n -- bool ) {: v:n t:n :}
+   t R-RES dup TAG S-PUSH = IF
+      BEGIN dup TAG S-PUSH = WHILE
+         dup P>TYPE v swap RECURSE IF drop RES-TRUE EXIT THEN
+         P>REST R-RES
+      REPEAT drop RES-FALSE EXIT
+   THEN drop
+   t T-RES {: x:n :}
+   x TAG T-VAR = IF x PAY v = EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER RECURSE EXIT THEN
+   x TAG T-QUOT = IF
+      v x Q>DIN RECURSE IF RES-TRUE EXIT THEN
+      v x Q>DOUT RECURSE IF RES-TRUE EXIT THEN
+      v x Q>RIN RECURSE IF RES-TRUE EXIT THEN
+      v x Q>ROUT RECURSE
+      EXIT
+   THEN
+   x TAG T-PARAM = IF
+      v x 0 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
+      v x 1 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
+      v x 2 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
+      v x 3 PARAM-ARG-OR-DUMMY RECURSE
+      EXIT
+   THEN
+   RES-FALSE ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -847,22 +838,22 @@ variable TOCC  variable TODN  variable TOPARAM
    over TAG T-PTR =  over TAG T-PTR =  and IF
      over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
-     2dup ATOM-OK? IF 2drop ELSE 2drop 0 UOK ! THEN ELSE
+     2dup ATOM-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN ELSE
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
      2dup PARAM-PAIR-ARGS 2drop ELSE
    over ISVAR IF
-     over PAY over TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
+     over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
-     dup PAY  rot  tuck TY-OCC? IF 2drop 0 UOK ! ELSE swap PAY TV! THEN ELSE
+     dup PAY  rot  tuck TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
-     2dup CON-OK? IF 2drop ELSE 2drop 0 UOK ! THEN
-   ELSE 2drop 0 UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+     2dup CON-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN
+   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
-: UNIFY   \ ( s1 s2 -- ok ) worklist-driven; rows and types interleave
-   0 USP !  -1 UOK !  0 CUR-STRICT !  PAIR
-   BEGIN USP @ UOK @ and WHILE
+: UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
+   0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  PAIR
+   BEGIN USP @ 0 > UOK @ and WHILE
      UNPAIR  over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN
    REPEAT
    UOK @ ;
@@ -976,7 +967,7 @@ variable LINBEF
 variable LINEXP
 
 : LIN-CON? ( n -- bool )
-   T-RES dup TAG T-CON <> IF drop 0 EXIT THEN
+   T-RES dup TAG T-CON <> IF drop RES-FALSE EXIT THEN
    PAY CT-LINEAR? ;
 
 \ Deferred taint scan (part of the linear kind discipline; storage/gate declared
@@ -1092,7 +1083,7 @@ variable QTT  variable QD2  variable QR2
 \ intended, so skip conservation — exactly as CHECKER-STEP skips a step whose
 \ declared effect names a linear. A polymorphic quotation (linear only bound by
 \ unification at apply time) is NOT explicit and must conserve.
-: RSEXEC-LIN-EXPLICIT? ( q -- bool ) {: q:n :}
+: RSEXEC-LIN-EXPLICIT? ( n -- bool ) {: q:n :}
    q Q>DIN q Q>DOUT LIN-TOTAL
    q Q>RIN q Q>ROUT LIN-TOTAL + 0 <> ;
 
@@ -1342,10 +1333,10 @@ variable VRC-RVN
 : VREC-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    0 VREC-I !
    BEGIN VREC-I @ VREC-N @ < WHILE
-      a u VREC-I @ VREC-MATCH? IF VREC-I @ -1 EXIT THEN
+      a u VREC-I @ VREC-MATCH? IF VREC-I @ RES-TRUE EXIT THEN
       VREC-I @ 1 + VREC-I !
    REPEAT
-   0 0 ;
+   0 RES-FALSE ;
 
 : VREC-NODE-CHECK ( n -- ) {: id:n :}
    id 0 <= IF s" checker: bad value-record node" 76 die THEN
@@ -1639,10 +1630,10 @@ variable FAM-K
 : FAM-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    0 FAM-I !
    BEGIN FAM-I @ FAM-N @ < WHILE
-      a u FAM-I @ FAM-MATCH? IF FAM-I @ -1 EXIT THEN
+      a u FAM-I @ FAM-MATCH? IF FAM-I @ RES-TRUE EXIT THEN
       FAM-I @ 1 + FAM-I !
    REPEAT
-   0 0 ;
+   0 RES-FALSE ;
 
 : FAM-ADD ( ptr u8 n -- n ) {: a:ptr u:n :}
    FAM-N @ FAM-CAP >= IF s" checker: fresh atom table full" 76 die THEN
@@ -2466,8 +2457,8 @@ variable HIDX-CUR
    0 HIDX-CTL-HI ! ;
 
 : HIDX@ ( n n n -- n bool ) {: id:n vt:n et:n :}
-   id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF 0 0 EXIT THEN
-   id vt HIDX-CELL @ -1 ;
+   id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF 0 RES-FALSE EXIT THEN
+   id vt HIDX-CELL @ RES-TRUE ;
 
 : HIDX! ( n n n n -- ) {: v:n id:n vt:n et:n :}
    v id vt HIDX-CELL !
@@ -2492,10 +2483,10 @@ variable HIDX-CUR
    HIDX-ENSURE
    pkg pkgu vis name nameu HIDX-HASH HIDX-BKT @ HIDX-CUR !
    begin HIDX-CUR @ 0 <> while
-      pkg pkgu vis name nameu HIDX-CUR @ SYM-MATCH? IF HIDX-CUR @ -1 EXIT THEN
+      pkg pkgu vis name nameu HIDX-CUR @ SYM-MATCH? IF HIDX-CUR @ RES-TRUE EXIT THEN
       HIDX-CUR @ HT-NEXT HIDX-CELL @ HIDX-CUR !
    repeat
-   0 0 ;
+   0 RES-FALSE ;
 
 : SYM-PKG! ( ptr u8 n n -- ) {: a:ptr u:n id:n :}
    a u SYM-COPY-FOLD {: dst:ptr len:n :}
@@ -2809,13 +2800,13 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    rec USIG-SYM@ sym = ;
 
 : USIG-FIND-OFF-SYM ( n -- n bool ) {: sym:n :}
-   sym 0= if 0 0 exit then
+   sym 0= if 0 RES-FALSE exit then
    USIGS-USER FP !
    begin FP @ USIG-END? 0= while
-      FP @ sym USIG-MATCH-SYM? if FP @ USIG-OFF -1 exit then
+      FP @ sym USIG-MATCH-SYM? if FP @ USIG-OFF RES-TRUE exit then
       FP @ USIG-NEXT FP !
    repeat
-   0 0 ;
+   0 RES-FALSE ;
 
 variable FMEND
 
@@ -4012,13 +4003,13 @@ variable FLD  variable FLI  variable FLO  variable FLC
    a u FLODIG? IF STEP-R-OUT -1 EXIT THEN
    0 ;
 
-: BYTE-CON? ( t -- bool )
+: BYTE-CON? ( n -- bool )
    T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop 0 ;
 
-: BYTE-PTR? ( t -- bool )
+: BYTE-PTR? ( n -- bool )
    T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop 0 ;
 
-: ROW-TOP-BYTE-PTR? ( row -- bool )
+: ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop 0 ;
 
 : CELL-FETCH-TOK ( -- )
@@ -4273,10 +4264,10 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : RSUNI-IN {: s:n :}  RCUR @ s UNIFY-IN OK @ and OK ! ;
 
-: ROW-OPEN? ( row -- bool )
+: ROW-OPEN? ( n -- bool )
    R-RES TAG S-ROW = ;
 
-: CHECK-ROW-NOT-BORROWED ( row -- )
+: CHECK-ROW-NOT-BORROWED ( n -- )
    dup 0= if drop exit then
    ROW-OPEN? 0= if 0 OK ! then ;
 
@@ -4771,17 +4762,17 @@ variable IS-TU
 
 : IS-NEXT-TOKEN ( -- ptr u8 n bool )
    IS-SKIP-WS
-   TI @ TBLEN @ >= IF 0 0 0 0 EXIT THEN
+   TI @ TBLEN @ >= IF 0 0 RES-FALSE EXIT THEN
    TBASE @ TI @ + IS-TA !
    0 IS-TU !
    BEGIN TI @ TBLEN @ < WHILE
       TBASE @ TI @ + c@ IS-WS? IF
-         IS-TA @ IS-TU @ -1 EXIT
+         IS-TA @ IS-TU @ RES-TRUE EXIT
       THEN
       IS-TU @ 1 + IS-TU !
       TI @ 1 + TI !
    REPEAT
-   IS-TA @ IS-TU @ -1 ;
+   IS-TA @ IS-TU @ RES-TRUE ;
 
 : IS-FAIL ( -- )
    0 OK !
@@ -5067,7 +5058,7 @@ variable CSCOPE-VSIG
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
 : CHECK! {: a u :}  -1 VSIG !  a u CHECK  0 VSIG ! ;
 
-: DOES-DIN ( row -- row' )
+: DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
 : RAW-SIG! ( din dout rin rout -- )
