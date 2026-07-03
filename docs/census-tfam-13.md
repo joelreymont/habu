@@ -76,7 +76,16 @@ PLAN.md item 13 (lines 958-1011). Work required, condensed:
 - `render.f:298-324` — `SUGGEST-TEXT`: parallel human hint.
 - `render.f:341-364` — `DIAG-PROSE`: non-JSON prose path; must gain matching ADT prose so `JSON-DIAGS OFF` stays informative.
 
-**FINDING:** `fix_nominal_type` class already exists in `docs/repair-diagnostics.md:104` and `gate-json-assert-core.f:325`, but is NOT emitted by `render.f` REPAIR-CLASS/SUGGEST-TEXT and NOT in `repair-schema-doc-test.f:163-173` RSD-TEST-DOC-CLASSES. The class list is already inconsistent across the three sites — the new ADT classes must be added to ALL of: render.f REPAIR-CLASS + SUGGEST-TEXT, GJA-SUGGEST-FOR, docs table, RSD-TEST-DOC-CLASSES.
+**FINDING (RESOLVED by habu-repair-class-list-4478c480):** the original premise
+here was incomplete — `fix_nominal_type` IS emitted, by `tools/check-core.f`
+(`CHK-TYPE-JSON`, code `E-BAD-NOMINAL-TYPE`), a second emitter this census
+missed. The actually-drifted classes were `fix_qualified_name` and
+`fix_bare_ptr_element` (emitted by render.f, absent from GJA-SUGGEST-FOR/docs —
+a live GJA `die`). Fixed: all four sites now agree on the 14-class canonical
+list, and `RSD-NEED-CLASS` in `tools/repair-schema-doc-test.f` fails on any
+future drift (emitters = render.f OR check-core.f). New ADT classes must be
+added to render.f (or their emitter), GJA-SUGGEST-FOR, the docs table, AND the
+canonical list in repair-schema-doc-test.f — the gate enforces this.
 
 ---
 

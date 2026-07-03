@@ -84,6 +84,7 @@ variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
    MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
 
 \ ---- spawn bin/hb to emit the driver's PTX (captured stdout) ----
+\ FIXME: Why do we need to spawn hb here?
 create GP-OUT $4000 allot  create GP-ERR $1000 allot
 : GRADE-EMIT ( -- n )
    PROC-ARGV-RESET
