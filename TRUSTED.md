@@ -390,6 +390,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | ADD, | `n n n --` | ARM64 source test republishes the raw instruction emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | ASM-LEN | `-- n` | ARM64 source test republishes the assembler buffer length accessor effect for fixture assertions. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
 | LIT64, | `n n --` | ARM64 source test republishes the literal-emitter effect for fixture setup. | `tools/asm-src-test.f`, `test/run.f` | tools/asm-src-test.f | 2026-06-30 |
+| IMG-MMAP-PTR | `n -- ptr u8` | Refines a raw file-backed `mmap` result into a typed byte pointer after checking the `-1` failure result; the checker cannot express syscall-result refinement yet. | `tools/imgdump-test.f`, `test/run.f` | tools/imgdump.f | 2026-06-25 |
 | CODE | `-- ptr u8` | Lazily maps the assembler output buffer outside DATA and refines the raw mmap result to the byte pointer used by `EMITW`, `BYTES,`, and image writers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 |
 | ICODE-TABS | `-- ptr n` | Lazily maps the assembler label/fixup table block outside DATA and refines the raw mmap result to the numeric-cell pointer used by `LBLP`/`FXS`/`FXL`/`FXK`. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 |
 | ENV-DASH | `-- n` | Shared ASCII dash byte constant used by argv parsing helpers. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-28 |
@@ -452,6 +453,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | SND-QUARANTINE@ | `n -- n` | Reads one quarantined dangling-pointer offset from the create table for scratch zeroing. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 |
 | S2-PATH-CAP | `-- n` | Fixed path-buffer capacity for the stage2 fixpoint driver. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
 | S2-PATH-BUF | `-- ptr u8` | Stage2 fixpoint path scratch buffer used while building private artifact paths. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/stage2.f | 2026-06-26 |
+| IMGD-MMAP-PTR | `n -- ptr u8` | Converts the raw image mmap result into a typed byte pointer after checking mmap failure; OS mapping pointers are outside checker inference. | `tools/imagedisasm-test.f`, `test/run.f` | tools/imagedisasm.f | 2026-06-25 |
 | MK-SPAN | `ptr<space-global,t> u32 -- span<space-global,t,fresh-extent-n>` | PTX from-raw-parts boundary: consumes a runtime extent assertion and retypes the base pointer as a span with a fresh rigid extent token. The checker cannot validate allocation length. | `lib/ptx/tile-test.f`, `test/run.f` | lib/ptx/tile.f | 2026-06-30 |
 | MK-SPAN-ONCE | `ptr<space-global,t> u32 -- span<space-global-once,t,fresh-extent-n>` | PTX from-raw-parts boundary for an externally proven read-once/affine gradient buffer; it mints a distinct `space-global-once` span, not a cast from an ordinary span. | `lib/ptx/tile-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/tile.f | 2026-06-30 |
 | MK-SPAN= | `ptr<space-global,t> ptr<space-global,u> u32 -- span<space-global,t,fresh-extent-n> span<space-global,u,fresh-extent-n>` | PTX from-raw-parts boundary for two buffers sharing one asserted runtime extent; the repeated fresh template stamps both output spans with the same rigid extent token. | `lib/ptx/tile-test.f`, `test/run.f` | lib/ptx/tile.f | 2026-06-30 |
@@ -674,6 +676,8 @@ src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
 src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9
 src/os/macos/macho.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436 7
+tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
+tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
 tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 1
 src/core/result.f prim-axiom habu-checked-result-type-280ad871 6

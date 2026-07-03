@@ -71,8 +71,7 @@ $1002 constant SNC-MAP-ANON
 variable SNC-N
 
 \ Scratch region view: raw anonymous mmap address held as a cell; the
-\ typed view is the one audited reinterpret; normal file-backed mmap users now
-\ cross through RESULT:MMAP>BYTES instead.
+\ typed view is the one audited reinterpret (same class as IMGD-MMAP-PTR).
 TRUSTED: SNC-PTR ( -- ptr u8 ) SNC-N @ ;
 TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 
