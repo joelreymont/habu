@@ -53,5 +53,59 @@ variable DRV-WALL-U
    phase IMG-DROP
    path pathu DRV-WRITE-IMAGE-PATH ;
 
+\ The single high-level image-emission tail: assemble the current CODE into the
+\ target image, sign it with the caller's sigid, and write it to path. Every
+\ engine driver (stage2/build/stdin/maker/aot-lib) and the object image writer
+\ (tools/object-image.f OBJIMG:WRITE) route through this one word, so exactly one
+\ BUILD-IMAGE+sign+write implementation exists. Loads after the target image
+\ writer (macho/elf + sign) in every context that includes driver-io.f.
+: DRV-EMIT-IMAGE ( ptr u8 n ptr u8 n -- ) {: sig:ptr sigu:n path:ptr pathu:n :}
+   ASM-CODE BUILD-IMAGE
+   sig sigu SET-SIGID CODESIG2
+   path pathu DRV-WRITE-IMAGE ;
+
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;
+
+\ Uncaught-throw boundary reporting. BTHROW's no-handler path exits with the
+\ raw throw code and NO message, so a driver that lets a throw escape produces
+\ a silent nonzero build (proven: an image-buffer overrun exited 75 with no
+\ output). Driver runners catch at top level and report here; the exit code
+\ stays the raw throw code so existing rc contracts hold (check reject 70,
+\ image-bytes bounds 75).
+create DRV-FC 1 allot
+create DRV-FB 24 allot
+variable DRV-FV
+variable DRV-FN
+
+\ Diagnostic-path writes: a failed stderr write has nowhere further to report.
+: DRV-W2 ( ptr u8 n -- ) {: a:ptr u:n :}
+   2 a u write drop ;
+
+: DRV-B2 ( n -- ) {: c:n :}
+   c DRV-FC c!
+   DRV-FC 1 DRV-W2 ;
+
+: DRV-FAIL-DIGITS ( -- )
+   0 DRV-FN !
+   DRV-FV @ 0 = IF 48 DRV-B2 EXIT THEN
+   BEGIN DRV-FV @ 0 > WHILE
+      DRV-FV @ 10 mod 48 +  DRV-FB DRV-FN @ + c!
+      DRV-FN @ 1 + DRV-FN !
+      DRV-FV @ 10 / DRV-FV !
+   REPEAT
+   BEGIN DRV-FN @ 0 > WHILE
+      DRV-FN @ 1 - DRV-FN !
+      DRV-FB DRV-FN @ + 1 DRV-W2
+   REPEAT ;
+
+: DRV-FAIL-CODE ( n -- ) {: rc:n :}
+   rc 0 < IF 45 DRV-B2 THEN
+   rc 0 < IF 0 rc - ELSE rc THEN DRV-FV !
+   DRV-FAIL-DIGITS ;
+
+: DRV-FAIL ( n -- ) {: rc:n :}
+   s" driver: uncaught throw code " DRV-W2
+   rc DRV-FAIL-CODE
+   10 DRV-B2
+   s" " rc die ;

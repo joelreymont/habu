@@ -18,7 +18,7 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-$80000 constant MK-SOURCE-CAP
+$A0000 constant MK-SOURCE-CAP
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;
@@ -43,8 +43,13 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
    MK-READ-SRC
    DRV-RETIRE-RELOADS
    MK-SBUF@ MK-SLEN @ EMIT-FORTH
-   ASM-CODE BUILD-IMAGE
-   s" hb" SET-SIGID CODESIG2
-   MK-OUT DRV-WRITE-IMAGE ;
+   s" hb" MK-OUT DRV-EMIT-IMAGE ;
 
-MK-GO
+\ Process boundary: report uncaught throws instead of exiting silently with
+\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+: MK-RUN ( -- )
+   [: MK-GO ;] catch
+   dup 0 = IF drop EXIT THEN
+   DRV-FAIL ;
+
+MK-RUN

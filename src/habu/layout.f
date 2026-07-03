@@ -75,6 +75,17 @@ $37D8 constant EVALERR-CELL
 $37E0 constant LMAINP-CELL
 $3C88 constant TASK-TCB-CELL
 $3C90 constant TASKS-LIVE-CELL
+$3C98 constant HIDXP-CELL
+\ EVALREC-CELL: runtime address of the eval-frame throw-unwind entry (LEVALREC,
+\ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
+\ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no
+\ compiled source ever writes: $3A00..$3C88 is the lib/ffi-abi.f FFI buffer block
+\ (FFI-BUF-OFF etc.), $3C88..$3CA0 is the task cells above, and lib/task.f grows
+\ TASK-USER-BASE up from $3D00 — so this $3CA0 slot in the $3CA0..$3D00 gap is the
+\ single free engine cell between those two library regions.
+$3CA0 constant EVALREC-CELL
+$4000 constant HIDX-SLOTS
+$10000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL

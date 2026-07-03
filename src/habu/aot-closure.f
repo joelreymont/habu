@@ -44,15 +44,14 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
    ELSE 0 0= 0= THEN ;
 : MAIN? {: r:ptr :} ( ptr a -- bool )
    r s" MAIN" REC-NAME= ;
+\ Data-space words (@ ! c@ c! here allot , c,) are now supported: the AOT entry
+\ maps the fixed DATA region and restores the program's persistent data (see
+\ aot-lib.f). Only words that need machinery the stripped binary does not carry
+\ stay rejected — the closure walk distinguishes runtime use from compile-time
+\ definition, so `create` here means runtime dictionary creation (no dictionary),
+\ `compile,` means runtime compilation (no compiler), `patch32` writes the code
+\ region (stripped __text is r-x and not at RBASE-VA).
 : AOT-UNSAFE? {: r:ptr :} ( ptr a -- bool )
-   r s" @" REC-NAME= IF 0 0= EXIT THEN
-   r s" !" REC-NAME= IF 0 0= EXIT THEN
-   r s" c@" REC-NAME= IF 0 0= EXIT THEN
-   r s" c!" REC-NAME= IF 0 0= EXIT THEN
-   r s" here" REC-NAME= IF 0 0= EXIT THEN
-   r s" allot" REC-NAME= IF 0 0= EXIT THEN
-   r s" ," REC-NAME= IF 0 0= EXIT THEN
-   r s" c," REC-NAME= IF 0 0= EXIT THEN
    r s" create" REC-NAME= IF 0 0= EXIT THEN
    r s" compile," REC-NAME= IF 0 0= EXIT THEN
    r s" patch32" REC-NAME= IF 0 0= EXIT THEN
@@ -91,9 +90,9 @@ create AENB 20 allot  variable AENV  variable AENN
    s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
    s" word" AEJKEY caller REC-NAME@ AEJSTR 44 AE1
    s" token" AEJKEY callee REC-NAME@ AEJSTR 44 AE1
-   s" reason" AEJKEY s" stripped AOT has no persistent data region" AEJSTR 44 AE1
+   s" reason" AEJKEY s" stripped AOT has no runtime compiler, dictionary, or writable code" AEJSTR 44 AE1
    s" suggestion" AEJKEY
-   s" stripped AOT has no persistent data region; use --repl/snapshot for data-space words or remove the runtime data access" AEJSTR
+   s" stripped AOT cannot run create/compile,/patch32 at runtime; use --repl or remove the word from the runtime path" AEJSTR
    125 AE1 10 AE1 ;
 : AOT-UNSAFE-PROSE {: caller:ptr callee:ptr :} ( ptr a ptr a -- )
    s" hb-build: stripped AOT unsupported word '" AETXT
@@ -115,7 +114,7 @@ variable FX
 \ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
 \ closed at the cap so a large closure can never write past the tables.
 1024 constant MAX-CLO
-create CLO MAX-CLO cells allot   variable NCLO  variable CX
+create CLO MAX-CLO cells allot   variable NCLO  variable CLO-CX
 variable ROOTREC
 variable CLO-LIMIT
 : CLO-LIMIT! {: n:n :}
@@ -124,7 +123,7 @@ variable CLO-LIMIT
    n CLO-LIMIT ! ;
 MAX-CLO CLO-LIMIT!
 : IN-CLO? {: r:ptr :} ( ptr a -- bool )
-   0 CX ! BEGIN CX @ NCLO @ < WHILE CX @ cells CLO + @ r = IF 0 0= exit THEN CX @ 1+ CX ! REPEAT 0 0= 0= ;
+   0 CLO-CX ! BEGIN CLO-CX @ NCLO @ < WHILE CLO-CX @ cells CLO + @ r = IF 0 0= exit THEN CLO-CX @ 1+ CLO-CX ! REPEAT 0 0= 0= ;
 : CALL-IN-CLO? {: p:ptr :} ( ptr u8 -- bool )
    p TGT FINDADDR dup 0= 0= IF IN-CLO? ELSE drop 0 0= 0= THEN ;
 : CLO-OVERFLOW-JSON {: r:ptr :} ( ptr a -- )

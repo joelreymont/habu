@@ -67,10 +67,87 @@ create OLDA MAX-CLO cells allot   create NEWOFF MAX-CLO cells allot   create BLE
 : AOT-W32! ( n ptr u8 -- ) {: w:n a:ptr :}
    w a c!  w 8 rshift a 1+ c!  w 16 rshift a 2 + c!  w 24 rshift a 3 + c! ;
 
+\ --- persistent data region: the program's compile-time create/variable/allot/
+\ ,/s" data lives contiguously in the maker's fixed DATA region at
+\ [PB+PMAX, here) (the source buffer occupies [PB,PB+PMAX)); the assembler CODE
+\ buffer is a separate mmap so AOT-LINK never allots into DATA. We emit that span
+\ into __text and the entry maps DATA-VA and copies it back to the SAME absolute
+\ VA (DATA-VA is a fixed MAP_FIXED VA, so those addresses are load-stable). All
+\ other runtime cells stay zero from the fresh anonymous mmap; only x20, S0-CELL,
+\ and DP-CELL need explicit init.
+variable BLOB-SRC  variable BLOB-END  variable BLOB-LEN  variable BLOB-LBL
+variable DSCAN
+$F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB range
+
+: AOT-DATA-SPAN ( -- )
+   PB @ PMAX +  BLOB-SRC !
+   here  BLOB-END !
+   BLOB-END @ BLOB-SRC @ - dup 0 < IF s" aot: negative data span" 74 die THEN BLOB-LEN ! ;
+
+: CELL-TEXTPTR? ( n -- bool )               \ true if a code/dict pointer (RBASE-VA window)
+   dup RBASE-VA >=  swap RBASE-VA REGION + < and ;
+: AOT-DATA-TEXTPTR? ( -- bool )
+   BLOB-SRC @ DSCAN !
+   BEGIN DSCAN @ 8 + BLOB-END @ <= WHILE
+      DSCAN @ @ CELL-TEXTPTR? IF 0 0= EXIT THEN
+      DSCAN @ 8 + DSCAN !
+   REPEAT  0 0= 0= ;
+: AOT-DATA-TEXTPTR-JSON ( -- )
+   123 AE1
+   s" schema_version" AEJKEY 1 AEJNUM 44 AE1
+   s" code" AEJKEY s" E-AOT-UNSUPPORTED" AEJSTR 44 AE1
+   s" verdict" AEJKEY s" rejected" AEJSTR 44 AE1
+   s" reason" AEJKEY s" stripped AOT persistent data holds a code/dict pointer" AEJSTR 44 AE1
+   s" suggestion" AEJKEY
+   s" stripped AOT cannot rebase code/dict pointers in data (defer or ' word ,); use --repl or remove the code pointer from data" AEJSTR
+   125 AE1 10 AE1 ;
+: AOT-DATA-TEXTPTR-DIE ( -- )
+   JSON-DIAGS @ IF AOT-DATA-TEXTPTR-JSON ELSE
+      s" hb-build: stripped AOT persistent data holds a code/dict pointer (defer or ' word ,)" AETXT 10 AE1
+   THEN
+   s" hb-build: AOT unsupported persistent data" 70 die ;
+
+: EMIT-DATA-REGION-MAP ( -- )
+   LBL {: dvok:label :}
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   NR-MMAP SYS,
+   5 DATA-VA LIT64,  0 5 CMP,
+   C-EQ dvok BCOND,
+      0 78 MOVZ,  NR-EXIT-GROUP SYS,
+   dvok LBL,
+   DATA 0 0 ADDI,                                \ x20 = DATA-VA (mmap result, verified)
+   XDS DATA S0-CELL STR, ;                        \ S0-CELL = value-stack base
+
+: EMIT-DATA-COPY ( -- )
+   BLOB-LEN @ 0= IF
+      7 BLOB-END @ LIT64,  7 DATA DP-CELL STR,  exit         \ DP = data base (no user data)
+   THEN
+   9 BLOB-LBL LABEL@ ADR,                         \ x9 = blob src in __text
+   10 BLOB-SRC @ LIT64,                           \ x10 = dst (absolute stable VA)
+   11 BLOB-LEN @ LIT64,                           \ x11 = byte count
+   12 0 MOVZ,                                     \ x12 = i
+   LBL LBL {: cp:label cpd:label :}
+   cp LBL,
+      12 11 CMP,  C-GE cpd BCOND,
+      13 9 12 ADD,  13 13 0 LDRB,
+      14 10 12 ADD,  13 14 0 STRB,
+      12 12 1 ADDI,  cp B,
+   cpd LBL,
+   7 BLOB-END @ LIT64,  7 DATA DP-CELL STR, ;      \ DP = user-end (runtime here/allot base)
+
+: EMIT-DATA-BLOB ( -- )                            \ place the blob after all code
+   BLOB-LEN @ 0= IF exit THEN
+   ASM-LEN AOT-DATA-BLOB-MAX > IF
+      s" aot: data blob too far for ADR (program too large); split program" 74 die THEN
+   BLOB-LBL LABEL@ LBL,
+   BLOB-SRC @ BLOB-LEN @ BYTES, ;
+
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
+   EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
+   EMIT-DATA-COPY                                \ restore persistent data + DP
    MLBL LABEL@ BL,                              \ bl MAIN (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
@@ -110,10 +187,10 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 \ (arm64 macOS requires it), so absolute call targets would be wrong under the
 \ ASLR slide — instead we rewrite each abs call to a PC-RELATIVE bl, whose offset
 \ within __text is slide-independent. No runtime relocation needed.
-: CLO-OFF {: t:ptr :}  0 CX !
-   BEGIN CX @ NCLO @ < WHILE
-      OLDA CX @ cells + @ t = IF  NEWOFF CX @ cells + @  exit THEN
-      CX @ 1+ CX ! REPEAT  -1 ;
+: CLO-OFF {: t:ptr :}  0 CLO-CX !
+   BEGIN CLO-CX @ NCLO @ < WHILE
+      OLDA CLO-CX @ cells + @ t = IF  NEWOFF CLO-CX @ cells + @  exit THEN
+      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 \ encode a compact PC-relative BL. The AOT __text is small today, but range
 \ checking makes linker corruption fail at build time if that ever changes.
 variable BDELTA  variable TNEW
@@ -152,10 +229,10 @@ variable BDELTA  variable TNEW
 
 variable MAPOUT  variable MAPP  variable MAPE
 : REC-NEWOFF {: r:ptr :} ( ptr a -- n )
-   0 CX !
-   BEGIN CX @ NCLO @ < WHILE
-      CX @ cells CLO + @ r = IF NEWOFF CX @ cells + @ EXIT THEN
-      CX @ 1+ CX ! REPEAT  -1 ;
+   0 CLO-CX !
+   BEGIN CLO-CX @ NCLO @ < WHILE
+      CLO-CX @ cells CLO + @ r = IF NEWOFF CLO-CX @ cells + @ EXIT THEN
+      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 : MAP-IN-BLOB {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
    t r @ < IF -1 EXIT THEN
    t r REC-END > IF -1 EXIT THEN
@@ -172,10 +249,10 @@ variable MAPOUT  variable MAPP  variable MAPE
    REPEAT
    t MAPE @ = IF r REC-NEWOFF MAPOUT @ + ELSE -1 THEN ;
 : OLD>NEW {: t:ptr :} ( ptr u8 -- n )
-   0 CX !
-   BEGIN CX @ NCLO @ < WHILE
-      CX @ cells CLO + @ t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop
-      CX @ 1+ CX ! REPEAT  -1 ;
+   0 CLO-CX !
+   BEGIN CLO-CX @ NCLO @ < WHILE
+      CLO-CX @ cells CLO + @ t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop
+      CLO-CX @ 1+ CLO-CX ! REPEAT  -1 ;
 : MAP-TARGET {: r:ptr t:ptr :} ( ptr a ptr u8 -- n )
    r t MAP-IN-BLOB dup -1 <> IF EXIT THEN drop  t OLD>NEW ;
 : MAP-TARGET! {: r:ptr t:ptr :} ( ptr a ptr u8 -- )
@@ -245,7 +322,8 @@ variable RP  variable RE  variable RV
       WI @ 1+ WI ! REPEAT ;
 
 : AOT-LINK
-   CLOSURE  ASM-INIT  LBL MLBL !
-   EMIT-ENTRY  COPY-BLOBS  RELOCATE
-   ASM-CODE  BUILD-IMAGE  s" hb-prog" SET-SIGID  CODESIG2
-   AOT-OUT DRV-WRITE-IMAGE ;
+   AOT-DATA-SPAN
+   AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
+   CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
+   EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DATA-BLOB
+   s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;

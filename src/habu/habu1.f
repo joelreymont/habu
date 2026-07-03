@@ -76,6 +76,7 @@ s" fprim-l" s" ptr u8 n n --" TRUST
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
+variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -183,6 +184,7 @@ variable CATCH-RES
 variable CATCH-PUSH
 variable THROW-NOH
 variable THROW-NOREC
+variable THROW-EVAL
 variable SWL-LOOP
 variable SWL-END
 variable SWL-NEXT
@@ -569,6 +571,17 @@ s" linux-ignore-sigpipe" s" --" TRUST
    LNX-DONE LABEL@ LBL,
    0 G-PUSH ;
 
+: BSETPGID ( -- )                  \ ( pid pgid -- rc ) rc=0 or -1
+   1 G-POP  0 G-POP
+   LBL LNX-OK !
+   LBL LNX-DONE !
+   NR-SETPGID SYS,
+   9 C-CS CSET,  9 LNX-OK LABEL@ CBZ,
+      0 0 MOVN,  LNX-DONE LABEL@ B,
+   LNX-OK LABEL@ LBL,
+   LNX-DONE LABEL@ LBL,
+   0 G-PUSH ;
+
 : BWAITRC ( -- )                   \ ( pid -- rc ) wait4; -1 = wait failed
    A G-POP
    LBL LNX-OK !
@@ -666,14 +679,14 @@ s" spawn-dup2-action" s" reg fd --" TRUST
    15 PSFA-CHDIR MOVZ,  15 14 0 STRW,
    16 SCA-CWD @ 0 ADDI,
    17 14 SPAWN-CHDIR-PATH-OFF ADDI,
-   18 SPAWN-CHDIR-PATH-CAP MOVZ,
+   5 SPAWN-CHDIR-PATH-CAP MOVZ,
    SCA-COPY LABEL@ LBL,
-      18 0 CMPI,  C-EQ SCA-OVER LABEL@ BCOND,
+      5 0 CMPI,  C-EQ SCA-OVER LABEL@ BCOND,
       15 16 0 LDRB,
       15 17 0 STRB,
       16 16 1 ADDI,
       17 17 1 ADDI,
-      18 18 1 SUBI,
+      5 5 1 SUBI,
       15 SCA-COPY LABEL@ CBNZ,
    14 13 SPAWN-FA-COUNT-OFF LDRW,  14 14 1 ADDI,  14 13 SPAWN-FA-COUNT-OFF STRW,
    SCA-DONE LABEL@ B,
@@ -1526,15 +1539,28 @@ s" linux-stat-fix" s" n --" TRUST
    CATCH-RES LABEL@ LBL,
    CATCH-PUSH LABEL@ LBL,  9 G-PUSH ;
 
+\ throw ( code -- ) : unwind to the nearest catch handler (ANS semantics). When
+\ EVALD>0 the throw may cross one or more active `evaluate` boundaries before it
+\ reaches its handler; the loop in LEVALREC (habu2.f, reached via EVALREC-CELL since
+\ a leaf prim cannot name a habu2.f label) rolls back each escaped eval frame first
+\ so the handler resumes with clean compile/dictionary/input state. A checker/compile
+\ error inside `evaluate` therefore stays a normal propagating throw — catchable
+\ in-process without a process exit — while a catch INSIDE the evaluated source still
+\ handles its own throws, and a throw with no eval frame active behaves exactly as
+\ before.
 : BTHROW ( -- )
-   LBL THROW-NOH !
-   A G-POP
-   11 DATA 8 LDR,
+   LBL THROW-NOH !  LBL THROW-EVAL !
+   A G-POP  15 9 0 ADDI,                               \ x15 = code
+   12 DATA EVALD-CELL LDR,  12 THROW-EVAL LABEL@ CBNZ, \ inside evaluate → LEVALREC cleans frames first
+   11 DATA 8 LDR,                                      \ x11 = nearest handler (HND-CELL)
+   9 15 0 ADDI,                                        \ x9 = code
    11 THROW-NOH LABEL@ CBZ,
    19 11 8 LDR,
    10 11 0 LDR,  10 DATA 8 STR,
    30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
    SP 13 0 ADDI,  12 BR,
+   THROW-EVAL LABEL@ LBL,
+   10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
    LBL THROW-NOREC !
    10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,
@@ -1650,6 +1676,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" pipe" ['] BPIPE FPRIM-L   s" dup2" ['] BDUP2 FPRIM-L
    s" fcntl" ['] BFCNTL FPRIM-L   s" poll" ['] BPOLL FPRIM-L
    s" kill" ['] BKILL FPRIM-L
+   s" setpgid" ['] BSETPGID FPRIM-L
    s" spawn-io" ['] BSPAWNIO FPRIM-L
    s" spawn-argv-io" ['] BSPAWNARGVIO FPRIM-L
    s" spawn-argv-env-io" ['] BSPAWNARGVENVIO FPRIM-L
@@ -1857,6 +1884,130 @@ s" emit-fp-prims" s" --" TRUST
    FL-IL LABEL@ LBL,  10 CP CMP,  C-GE FL-ID LABEL@ BCOND,  10 ICIVAU,  10 10 64 ADDI,  FL-IL LABEL@ B,
    FL-ID LABEL@ LBL,  DSB-ISH,  ISB,  RET, ;
 
+variable LHIDXADD
+variable LHIDXBUILD
+
+\ Emit the FNV-1a fold+hash of the name at reg `nr` (ptr), length `lr`,
+\ into reg `hr`; clobbers c3 c4 (byte/fold scratch) and c7 (cursor). The
+\ fold is the same A-Z|0x20 idiom the FIND compare uses.
+: C-HIDX-HASH ( n n n n n n -- ) {: nr:n lr:n hr:n c3:n c4:n c7:n :}
+   LBL LBL {: hl:label hd:label :}
+   hr $CBF29CE484222325 LIT64,
+   c7 0 MOVZ,
+   hl LBL,  c7 lr CMP,  C-GE hd BCOND,
+      c4 nr c7 ADD,  c4 c4 0 LDRB,
+      c3 c4 $41 SUBI,  c3 $1A CMPI,  c3 C-CC CSET,  c3 c3 5 LSLI,  c4 c4 c3 ORR,
+      hr hr c4 EOR,
+      c3 $100000001B3 LIT64,
+      hr hr c3 MUL,
+      c7 c7 1 ADDI,  hl B,
+   hd LBL, ;
+
+\ Emit: insert record index x3 into table x14. The dictionary rejects
+\ duplicate definitions, so the table is insert-once: probe to the first
+\ empty slot and store index+1 (no dedupe pass). Clobbers x2 x4 x5 x6 x7
+\ x15 x16 x17.
+: C-HIDX-INS ( -- )
+   LBL LBL LBL {: iloop:label idone:label rinl:label :}
+   5 DREC MOVZ,  5 3 5 MUL,  5 DBASE 5 ADD,
+   2 5 40 LDR,
+   16 5 24 ADDI,
+   15 5 16 LDR,  15 15 4 LSLI,  15 15 4 LSRI,
+   4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 rinl CBZ,
+      16 5 24 LDR,
+   rinl LBL,
+   16 15 6 4 5 7 C-HIDX-HASH
+   6 6 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,
+   iloop LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
+      4 idone CBZ,
+      6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  iloop B,
+   idone LBL,
+      4 3 1 ADDI,  4 17 0 STRW, ;
+
+\ C-HIDX-DUP?: x14 = live table ptr (caller ensures != 0). Sets x13 = 1 when a
+\ live record with this definition's wordlist (DEF-WL-CELL) and folded name
+\ (TKA/TKL) is already in the hash table, else 0, then falls through. The
+\ dictionary is insert-once so at most one live match exists per chain; retired
+\ records carry wid -2 and are skipped by the wid check. Same fold/compare as the
+\ linear C-REJECT-DUP-DEF, so the two agree on every candidate.
+: C-HIDX-DUP? ( -- )
+   LBL LBL LBL LBL LBL LBL {: dloop:label dnext:label dinl:label dcmp:label dfound:label dret:label :}
+   16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
+   16 15 3 4 5 7 C-HIDX-HASH
+   4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 $3FFF LIT64,  6 6 5 AND,
+   13 0 MOVZ,
+   dloop LBL,
+      4 6 2 LSLI,  4 14 4 ADD,  3 4 0 LDRW,                  \ x3 = slot value
+      3 dret CBZ,                                            \ empty slot -> no dup
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE dnext BCOND,           \ stale index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,               \ x5 = record ptr
+      4 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,          \ wid mismatch
+      4 5 16 LDR,  4 4 4 LSLI,  4 4 4 LSRI,  15 DATA TKL-CELL LDR,  4 15 CMP,  C-NE dnext BCOND,  \ len mismatch
+      16 5 24 ADDI,
+      4 5 16 LDR,  4 4 DNAME-EXT ANDI,  4 dinl CBZ,
+         16 5 24 LDR,
+      dinl LBL,
+      7 0 MOVZ,
+      dcmp LBL,
+         15 DATA TKL-CELL LDR,  7 15 CMP,  C-GE dfound BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 DATA TKA-CELL LDR,  4 4 7 ADD,  4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE dnext BCOND,
+         7 7 1 ADDI,  dcmp B,
+      dnext LBL,  6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  dloop B,
+   dfound LBL,  13 1 MOVZ,
+   dret LBL, ;
+
+\ LHIDXADD: insert the just-published record (index NDICT-1). Called
+\ mid-publish, so it saves its whole clobber set. LHIDXBUILD: fresh
+\ zeroed mmap (anonymous pages are zero), then add every record
+\ [0,NDICT); a failed mmap is a startup failure, not a degraded mode.
+: EMIT-HIDX ( -- )
+   LBL LBL LBL LBL {: aret:label bloop:label bdone:label bfail:label :}
+   LHIDXADD LABEL@ LBL,
+      SP SP 96 SUBI,
+      30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
+      6 SP 40 STR,  7 SP 48 STR,  14 SP 56 STR,  15 SP 64 STR,  16 SP 72 STR,  17 SP 80 STR,
+      14 DATA HIDXP-CELL LDR,  14 aret CBZ,
+      3 NDICT 0 ADDI,  3 3 1 SUBI,
+      C-HIDX-INS
+      aret LBL,
+      30 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,  5 SP 32 LDR,
+      6 SP 40 LDR,  7 SP 48 LDR,  14 SP 56 LDR,  15 SP 64 LDR,  16 SP 72 LDR,  17 SP 80 LDR,
+      SP SP 96 ADDI,  RET,
+   LHIDXBUILD LABEL@ LBL,
+      \ startup runs this by BL between source setup and the interpret
+      \ loop, so it must be register-transparent: save everything it or
+      \ the mmap syscall can touch.
+      SP SP 160 SUBI,
+      30 SP 0 STR,   0 SP 8 STR,   1 SP 16 STR,  2 SP 24 STR,  3 SP 32 STR,
+      4 SP 40 STR,   5 SP 48 STR,  6 SP 56 STR,  7 SP 64 STR,  8 SP 72 STR,
+      13 SP 80 STR,  14 SP 88 STR, 15 SP 96 STR, 16 SP 104 STR, 17 SP 112 STR,
+      0 0 MOVZ,  1 HIDX-BYTES LIT64,  2 3 MOVZ,
+      3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,  NR-MMAP SYS,
+      4 C-CS CSET,  4 bfail CBNZ,
+      14 0 0 ADDI,  14 DATA HIDXP-CELL STR,
+      13 0 MOVZ,
+      bloop LBL,  13 NDICT CMP,  C-GE bdone BCOND,
+         3 13 0 ADDI,  C-HIDX-INS
+         13 13 1 ADDI,  bloop B,
+      bdone LBL,
+      30 SP 0 LDR,   0 SP 8 LDR,   1 SP 16 LDR,  2 SP 24 LDR,  3 SP 32 LDR,
+      4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
+      13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
+      SP SP 160 ADDI,  RET,
+      bfail LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+variable FIND-LINEAR
+variable FIND-HLOOP
+variable FIND-HNEXT
+variable FIND-HINL
+variable FIND-HCMP
+variable FIND-HMATCH
+
 : EMIT-FIND ( -- )
    LFIND LABEL@ LBL,
    LBL FIND-QSCAN !
@@ -1881,6 +2032,12 @@ s" emit-fp-prims" s" --" TRUST
    LBL FIND-MISS !
    LBL FIND-TRYG !
    LBL FIND-FOUND !
+   LBL FIND-LINEAR !
+   LBL FIND-HLOOP !
+   LBL FIND-HNEXT !
+   LBL FIND-HINL !
+   LBL FIND-HCMP !
+   LBL FIND-HMATCH !
    13 0 MOVZ,
    17 0 MOVZ,
    FIND-QSCAN LABEL@ LBL,
@@ -1925,6 +2082,40 @@ s" emit-fp-prims" s" --" TRUST
    FIND-NEND LABEL@ LBL,  RET,
    FIND-QBAD LABEL@ LBL,  RET,
    FIND-START LABEL@ LBL,
+      \ hash probe (fast path): fold+hash the name once, walk the open-addressed
+      \ chain for (name XOR wid). A validated slot (index<NDICT, wid==x2, name
+      \ equal) returns immediately; an empty slot is a probe miss and falls
+      \ through to the linear scan, which stays the authoritative fallback. x2
+      \ (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
+      14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
+      9 10 15 4 16 7 C-HIDX-HASH
+      6 15 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+   FIND-HLOOP LABEL@ LBL,
+      17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
+      3 FIND-LINEAR LABEL@ CBZ,                               \ empty slot -> probe miss
+      4 3 1 SUBI,  4 NDICT CMP,  C-GE FIND-HNEXT LABEL@ BCOND, \ stale (truncated) index
+      5 DREC MOVZ,  5 4 5 MUL,  5 DBASE 5 ADD,                \ x5 = record ptr
+      16 5 40 LDR,  16 2 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ wid mismatch (retired=-2 / other wl)
+      16 5 16 LDR,  16 16 4 LSLI,  16 16 4 LSRI,  16 10 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,  \ name-len mismatch
+      16 5 24 ADDI,
+      3 5 16 LDR,  3 3 DNAME-EXT ANDI,  3 FIND-HINL LABEL@ CBZ,
+         16 5 24 LDR,
+      FIND-HINL LABEL@ LBL,
+      7 0 MOVZ,
+      FIND-HCMP LABEL@ LBL,
+         7 10 CMP,  C-GE FIND-HMATCH LABEL@ BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE FIND-HNEXT LABEL@ BCOND,
+         7 7 1 ADDI,  FIND-HCMP LABEL@ B,
+      FIND-HMATCH LABEL@ LBL,
+         11 5 0 LDR,  12 5 8 LDR,
+         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
+         13 1 MOVZ,  13 13 14 ORR,  RET,
+      FIND-HNEXT LABEL@ LBL,  6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
+   FIND-LINEAR LABEL@ LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    FIND-LOOP LABEL@ LBL,
       6 FIND-DONE LABEL@ CBZ,

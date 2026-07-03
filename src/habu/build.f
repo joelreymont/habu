@@ -56,7 +56,13 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
    BLD-PB@ PN @ EMIT-FORTH
-   ASM-CODE BUILD-IMAGE
-   s" hb-prog" SET-SIGID  CODESIG2
-   BLD-OUT DRV-WRITE-IMAGE ;
-GO
+   s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
+
+\ Process boundary: report uncaught throws instead of exiting silently with
+\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+: BLD-RUN ( -- )
+   [: GO ;] catch
+   dup 0 = IF drop EXIT THEN
+   DRV-FAIL ;
+
+BLD-RUN

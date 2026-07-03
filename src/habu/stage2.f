@@ -30,7 +30,7 @@ s" S2-PATH-BUF" s" -- ptr u8" TRUST
 : S2-OUT ( -- ptr u8 n )
    s" stage2-got" S2-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
-$80000 constant S2-SOURCE-CAP
+$A0000 constant S2-SOURCE-CAP
 $1002 constant S2-MAP-PRIVATE-ANON
 : SBUF@ SBUF @ ;
 s" SBUF@" s" -- ptr u8" TRUST
@@ -57,8 +57,13 @@ s" SBUF@" s" -- ptr u8" TRUST
    READ-SRC
    DRV-RETIRE-RELOADS
    SBUF@ SLEN @ EMIT-FORTH
-   ASM-CODE BUILD-IMAGE
-   s" hb" SET-SIGID  CODESIG2
-   S2-OUT DRV-WRITE-IMAGE
-   DRV-EXIT-OK ;
-GO
+   s" hb" S2-OUT DRV-EMIT-IMAGE ;
+
+\ Process boundary: report uncaught throws instead of exiting silently with
+\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+: S2-RUN ( -- )
+   [: GO ;] catch
+   dup 0 = IF drop DRV-EXIT-OK THEN
+   DRV-FAIL ;
+
+S2-RUN

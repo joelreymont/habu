@@ -120,7 +120,9 @@ $D63F0200 constant C-CALL-BLR-X16
 
 \ ---- source setup: baked LSRC or stdin ----
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
-variable LSRCRD   variable LSHBANG
+variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
+variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
+variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
@@ -135,6 +137,16 @@ create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 11
 \ "habu: local cannot be inside quotation\n" ($27 bytes)
 create BADLOC-KW $68 c, $61 c, $62 c, $75 c, $3A c, $20 c, $6C c, $6F c, $63 c, $61 c, $6C c, $20 c, $63 c, $61 c, $6E c, $6E c, $6F c, $74 c, $20 c, $62 c, $65 c, $20 c, $69 c, $6E c, $73 c, $69 c, $64 c, $65 c, $20 c, $71 c, $75 c, $6F c, $74 c, $61 c, $74 c, $69 c, $6F c, $6E c, $0A c,
 create ZBYTE 0 c,
+create NL-KW 10 c,   \ single newline for the open-failure diagnostic
+
+\ ---- CLI flag table: one source of truth for the matcher and the usage line ----
+1 constant MODE-LOAD   2 constant MODE-SEP   3 constant MODE-FILE   4 constant MODE-UNKNOWN
+create FLAGTAB-DATA                        \ record = len, mode, name-bytes; 0-len terminator
+   6 c, MODE-LOAD c,  45 c, 45 c, 108 c, 111 c, 97 c, 100 c,   \ "--load" -> MODE-LOAD
+   2 c, MODE-SEP  c,  45 c, 45 c,                              \ "--"     -> MODE-SEP
+   0 c,                                                        \ terminator
+13 constant FLAGTAB-LEN
+create ONESP 32 c,   \ one space, written between usage flag names
 
 : ZBYTES, ( ptr u8 n -- )
    BYTES, ZBYTE 1 BYTES, ;
@@ -187,7 +199,7 @@ s" c-bp-print-hit" s" --" TRUST
 : C-BP-STACK-RANGE ( -- )
    17 DATA S0-CELL LDR,
    9 SP 24 LDR,  C-MCTX-X19>R12
-   18 12 0 ADDI, ;
+   12 SP 56 STR, ;
 s" c-bp-stack-range" s" --" TRUST
 
 : C-BP-WATCH-HEAD ( -- )
@@ -231,9 +243,9 @@ s" c-bp-scan" s" label label label label --" TRUST
 : C-BP-STACK-DUMP ( label label -- )
    {: sdump:label sdone:label :}
    sdump LBL,
-      17 18 CMP,  C-GE sdone BCOND,
-      9 17 0 LDR,  17 SP 48 STR,  18 SP 56 STR,  LHEX LABEL@ BL,
-      17 SP 48 LDR,  18 SP 56 LDR,  17 17 8 ADDI,  sdump B,
+      14 SP 56 LDR,  17 14 CMP,  C-GE sdone BCOND,
+      9 17 0 LDR,  17 SP 48 STR,  LHEX LABEL@ BL,
+      17 SP 48 LDR,  17 17 8 ADDI,  sdump B,
    sdone LBL, ;
 s" c-bp-stack-dump" s" label label --" TRUST
 
@@ -282,7 +294,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LBPH LABEL@ LBL,  BPH-KW 9 BYTES,
    LBPSH LABEL@ LBL, BPS-KW 15 BYTES,
    LBPWH LABEL@ LBL, BPW-KW 15 BYTES,
-   LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES, ;
+   LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES,
+   LOPENERR LABEL@ LBL, s" hb: cannot open " BYTES,
+   LOPENNL LABEL@ LBL, NL-KW 1 BYTES, ;
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -305,6 +319,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : EMIT-SOURCE-READ ( -- )
    LSRCRD LABEL@ LBL,
    LBL LBL LBL LBL {: srl sdone sreaderr sopenerr :}
+   LBL LBL {: sscan:label sscandone:label :}
    12 OS-OPEN-RD
    13 C-CS CSET,  13 sopenerr CBNZ,
    12 0 0 ADDI,
@@ -324,8 +339,89 @@ s" c-bp-watch-dump" s" label label --" TRUST
    30 SP 0 LDR,  SP SP 16 ADDI,
    RET,
    sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
-   sopenerr LBL,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,                 \ read error: x12 is the fd, no path to name
+   sopenerr LBL,                                  \ x12 = NUL-terminated source path (untouched since open)
+   1 LOPENERR LABEL@ ADR,  0 2 MOVZ,  2 16 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: cannot open ",16)
+   13 12 0 ADDI,                                  \ cursor := path
+   sscan LBL,
+      14 13 0 LDRB,  14 sscandone CBZ,             \ stop at the NUL terminator
+      13 13 1 ADDI,  sscan B,
+   sscandone LBL,
+   2 13 12 SUB,  1 12 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,           \ write(2, path, len)
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,     \ write(2,"\n",1)
    0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ ---- CLI flag classifier ----------------------------------------------------
+\ LFLAGMATCH: BL-callable, register-transparent (SP-frames x1..x7, only x0 set).
+\ Input x12 = argv c-string. Output x0 = MODE-LOAD/MODE-SEP/MODE-FILE/MODE-UNKNOWN.
+\ Walks FLAGTAB-DATA with a full-string compare (len + bytes + trailing NUL); a
+\ leading '-' that matches no row is MODE-UNKNOWN, no leading '-' is MODE-FILE.
+: EMIT-FLAG-MATCH ( -- )
+   LFLAGMATCH LABEL@ LBL,
+   LBL LBL LBL LBL LBL LBL LBL {: isfile:label recloop:label cmploop:label checknul:label nextrec:label unknown:label done:label :}
+   SP SP 64 SUBI,                                  \ save x1..x7 (register-transparent)
+   1 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,
+   5 SP 32 STR,  6 SP 40 STR,  7 SP 48 STR,
+   1 12 0 LDRB,  1 $2D CMPI,  C-NE isfile BCOND,   \ no leading '-' -> file argument
+   3 LFLAGTAB LABEL@ ADR,                          \ x3 = record cursor
+   recloop LBL,
+      4 3 0 LDRB,  4 unknown CBZ,                  \ len==0 terminator -> unknown flag
+      5 3 1 LDRB,                                  \ x5 = mode
+      6 3 2 ADDI,                                  \ x6 = name ptr (record+2)
+      7 12 0 ADDI,                                 \ x7 = argv cursor
+      cmploop LBL,
+         4 checknul CBZ,                           \ all name bytes matched -> check NUL
+         1 7 0 LDRB,  2 6 0 LDRB,  1 2 CMP,  C-NE nextrec BCOND,
+         7 7 1 ADDI,  6 6 1 ADDI,  4 4 1 SUBI,  cmploop B,
+      checknul LBL,
+         1 7 0 LDRB,  1 nextrec CBNZ,              \ argv longer than flag -> mismatch
+         0 5 0 ADDI,  done B,                      \ full match: x0 = mode
+      nextrec LBL,
+         1 3 0 LDRB,  3 3 1 ADD,  3 3 2 ADDI,  recloop B,   \ cursor += 2 + len
+   isfile LBL,   0 MODE-FILE MOVZ,   done B,
+   unknown LBL,  0 MODE-UNKNOWN MOVZ,
+   done LBL,
+   1 SP 0 LDR,  2 SP 8 LDR,  3 SP 16 LDR,  4 SP 24 LDR,
+   5 SP 32 LDR,  6 SP 40 LDR,  7 SP 48 LDR,
+   SP SP 64 ADDI,
+   RET, ;
+
+\ LSRCBADFLAG: reached with x12 = offending argv; the handler exits so it may
+\ freely clobber callee-saved x21/x22 (both survive the write syscalls). Writes
+\ the offending flag then a usage line built by iterating FLAGTAB-DATA, exit 64.
+: EMIT-FLAG-REJECT ( -- )
+   LSRCBADFLAG LABEL@ LBL,
+   LBL LBL LBL LBL {: bscan:label bdone:label uloop:label udone:label :}
+   21 12 0 ADDI,                                   \ x21 = offending arg
+   1 LBADFLAG LABEL@ ADR,  0 2 MOVZ,  2 18 MOVZ,  NR-WRITE SYS,   \ "hb: unknown flag: "
+   22 21 0 ADDI,                                   \ x22 = strlen cursor
+   bscan LBL,  14 22 0 LDRB,  14 bdone CBZ,  22 22 1 ADDI,  bscan B,
+   bdone LBL,  2 22 21 SUB,  1 21 0 ADDI,  0 2 MOVZ,  NR-WRITE SYS,   \ write(2, arg, len)
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ "\n"
+   1 LUSAGE1 LABEL@ ADR,  0 2 MOVZ,  2 13 MOVZ,  NR-WRITE SYS,        \ "usage: bin/hb"
+   22 LFLAGTAB LABEL@ ADR,                         \ x22 = table cursor
+   uloop LBL,
+      14 22 0 LDRB,  14 udone CBZ,                 \ len==0 terminator -> usage tail
+      1 LSPC LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ " "
+      1 22 2 ADDI,  2 22 0 LDRB,  0 2 MOVZ,  NR-WRITE SYS,            \ write(2, name, len)
+      14 22 0 LDRB,  22 22 14 ADD,  22 22 2 ADDI,  uloop B,           \ cursor += 2 + len
+   udone LBL,
+   1 LUSAGE2 LABEL@ ADR,  0 2 MOVZ,  2 28 MOVZ,  NR-WRITE SYS,        \ " [file.f]  (source on stdin)"
+   1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,         \ "\n"
+   0 64 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ Flag byte table (read only via ADR) plus the reject message strings.
+: EMIT-FLAG-TABLE ( -- )
+   LBADFLAG LABEL@ LBL,  s" hb: unknown flag: " BYTES,
+   LUSAGE1 LABEL@ LBL,   s" usage: bin/hb" BYTES,
+   LUSAGE2 LABEL@ LBL,   s"  [file.f]  (source on stdin)" BYTES,
+   LSPC LABEL@ LBL,      ONESP 1 BYTES,
+   LFLAGTAB LABEL@ LBL,  FLAGTAB-DATA FLAGTAB-LEN BYTES, ;
+
+: EMIT-FLAGS ( -- )
+   EMIT-FLAG-MATCH
+   EMIT-FLAG-REJECT
+   EMIT-FLAG-TABLE ;
 
 : C-TARGET-UNKNOWN ( -- )
    s" hb: unknown target" 76 die ;
@@ -436,6 +532,7 @@ variable SRC-REPL variable SRC-DONE  variable SRC-FSCAN
 variable SRC-FNEXT variable SRC-FREADY variable SRC-FPLAIN
 variable SRC-FLOOP variable SRC-SHLOOP variable SRC-STDINPROG
 variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
+variable LCOLDPFX variable LAPPPROV
 
 : C-SOURCE-LABELS ( -- )
    LBL SRC-TTY !   LBL SRC-FILE !  LBL SRC-SFAIL !
@@ -443,27 +540,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBL SRC-REPL !  LBL SRC-DONE !  LBL SRC-FSCAN !
    LBL SRC-FNEXT ! LBL SRC-FREADY ! LBL SRC-FPLAIN !
    LBL SRC-FLOOP ! LBL SRC-SHLOOP ! LBL SRC-STDINPROG !
-   LBL SRC-BLOOP ! LBL SRC-BDONE ! LBL SRC-BFAIL ! ;
+   LBL SRC-BLOOP ! LBL SRC-BDONE ! LBL SRC-BFAIL !
+   LBL LCOLDPFX !  LBL LAPPPROV ! ;
 
 : C-SOURCE-MMAP ( label -- ) {: fail:label :}
    0 0 MOVZ,  1 IBUFSZ LIT64,  2 3 MOVZ,
    3 MAP-ANON-PRIVATE LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
    13 C-CS CSET,  13 fail CBNZ, ;
-
-: C-ARG--LOAD? ( label -- ) {: notload:label :}
-   4 12 0 LDRB,  4 $2D CMPI,  C-NE notload BCOND,
-   4 12 1 LDRB,  4 $2D CMPI,  C-NE notload BCOND,
-   4 12 2 LDRB,  4 108 CMPI,  C-NE notload BCOND,
-   4 12 3 LDRB,  4 111 CMPI,  C-NE notload BCOND,
-   4 12 4 LDRB,  4 97 CMPI,   C-NE notload BCOND,
-   4 12 5 LDRB,  4 100 CMPI,  C-NE notload BCOND,
-   4 12 6 LDRB,  4 0 CMPI,    C-NE notload BCOND, ;
-
-: C-ARG-SEP? ( label -- ) {: notsep:label :}
-   4 12 0 LDRB,  4 $2D CMPI,  C-NE notsep BCOND,
-   4 12 1 LDRB,  4 $2D CMPI,  C-NE notsep BCOND,
-   4 12 2 LDRB,  4 0 CMPI,    C-NE notsep BCOND, ;
 
 : C-SOURCE-SKIP-SHEBANG ( -- )
    12 9 11 SUB,  12 2 CMPI,  C-LT SRC-DONE LABEL@ BCOND,
@@ -481,7 +565,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-FSCAN LABEL@ LBL,
       13 10 CMP,  C-GE SRC-FREADY LABEL@ BCOND,
       12 DATA ARGV-CELL LDR,  5 13 3 LSLI,  12 12 5 ADD,  12 12 0 LDR,
-      SRC-FNEXT @ C-ARG-SEP?
+      LFLAGMATCH LABEL@ BL,  0 MODE-SEP CMPI,  C-NE SRC-FNEXT LABEL@ BCOND,
       15 13 0 ADDI,  SRC-FREADY LABEL@ B,
    SRC-FNEXT LABEL@ LBL,  13 13 1 ADDI,  SRC-FSCAN LABEL@ B, ;
 
@@ -535,7 +619,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- ) {: kind:n var:ptr a:ptr u:n :}
    kind PFX-LOAD? if
       12 var LABEL@ ADR,
-      C-SOURCE-APPEND-PROVIDED
+      LAPPPROV LABEL@ BL,
    then ;
 
 : PFX-PROVIDE-FILES ( -- )
@@ -565,9 +649,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-STDINPROG LABEL@ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   PFX-PROVIDE-FILES
+   LCOLDPFX LABEL@ BL,
    17 9 0 ADDI,
    SRC-RL LABEL@ LBL,
       0 0 MOVZ,  1 9 0 ADDI,
@@ -592,16 +674,14 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    C-SOURCE-ARGV1 ;
 
 : C-SOURCE-FILE-PREFIX ( -- )
-   SRC-FPLAIN @ C-ARG--LOAD?
+   LFLAGMATCH LABEL@ BL,                                   \ x12 = argv[1] -> x0 = mode
+   0 MODE-UNKNOWN CMPI,  C-EQ LSRCBADFLAG LABEL@ BCOND,    \ unknown flag -> reject rc 64
+   0 MODE-LOAD CMPI,     C-NE SRC-FPLAIN LABEL@ BCOND,     \ SEP/FILE -> plain single file
    14 2 MOVZ,  15 10 0 ADDI,  13 2 MOVZ,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   PFX-PROVIDE-FILES
+   LCOLDPFX LABEL@ BL,
    C-SOURCE-FIND-SEP
    SRC-FPLAIN LABEL@ LBL,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   PFX-PROVIDE-FILES
+   LCOLDPFX LABEL@ BL,
    SRC-FREADY LABEL@ LBL, ;
 
 : C-SOURCE-ARGV14 ( -- )
@@ -610,7 +690,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-SOURCE-APPEND-ARG ( -- )
    C-SOURCE-ARGV14
-   C-SOURCE-APPEND-PROVIDED
+   LAPPPROV LABEL@ BL,
    C-SOURCE-ARGV14
    LSRCRD LABEL@ BL,
    14 14 1 ADDI, ;
@@ -644,9 +724,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-REPL LABEL@ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
-   EMIT-COLD-PREFIX
-   PFX-LOAD-SCRIPT-ARGV-COLD
-   PFX-PROVIDE-FILES
+   LCOLDPFX LABEL@ BL,
    C-SOURCE-APPEND-LSRC
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,
    SRC-DONE LABEL@ B,
@@ -667,9 +745,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    0 SRC-TTY LABEL@ CBZ,
    10 DATA ARGC-CELL LDR,  10 1 CMPI,  C-LE SRC-STDINPROG LABEL@ BCOND,
    C-SOURCE-ARGV1
-   SRC-STDINPROG @ C-ARG--LOAD?
-   SRC-TTY LABEL@ B,
-   C-SOURCE-PIPE
+   LFLAGMATCH LABEL@ BL,                                   \ x12 = argv[1] -> x0 = mode
+   0 MODE-UNKNOWN CMPI,  C-EQ LSRCBADFLAG LABEL@ BCOND,    \ unknown flag -> reject rc 64
+   0 MODE-LOAD CMPI,     C-EQ SRC-TTY LABEL@ BCOND,        \ --load -> file-list path
+   C-SOURCE-PIPE                                           \ SEP/FILE -> read stdin as program
    SRC-TTY LABEL@ LBL,
    C-SOURCE-FILE-LIST ;
 
@@ -691,9 +770,37 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;
 
+\ Shared cold-prefix routines: the stdin engine builds the checker/stdlib
+\ provided-files prefix at four source-entry points (pipe, --load file
+\ MODE-LOAD, --load file plain, repl/tty). Two routines, emitted once each and
+\ branched over so the fall-through startup path skips their bodies:
+\
+\ LAPPPROV ( x12 = string ptr, x9 = cursor -> appends `s" <str>" provided\n`,
+\ x9 advanced ). Leaf: the append sequence uses only STRB/branch (no BL), so no
+\ x30 frame. Replaces the ~552-byte per-row inline C-SOURCE-APPEND-PROVIDED,
+\ which was emitted ~19 times in PFX-PROVIDE-FILES plus once in the argv loop.
+\
+\ LCOLDPFX ( x9 = cursor, x11 = buffer base -> loads base files + appends the
+\ provided list, x9 advanced, x11 preserved ). x2/x4/x5/x12/x16 scratch
+\ (identical to the former inline code); x30 saved/restored across its internal
+\ LSRCRD/LAPPPROV calls. Only emitted in the STDIN branch; C-SOURCE-BAKED keeps
+\ its lone EMIT-COLD-PREFIX.
+: EMIT-COLD-PREFIX-SHARED ( -- )
+   LBL {: skip:label :}
+   skip B,
+   LAPPPROV LABEL@ LBL,
+      C-SOURCE-APPEND-PROVIDED  RET,
+   LCOLDPFX LABEL@ LBL,
+      SP SP 16 SUBI,  30 SP 0 STR,
+      EMIT-COLD-PREFIX
+      PFX-LOAD-SCRIPT-ARGV-COLD
+      PFX-PROVIDE-FILES
+      30 SP 0 LDR,  SP SP 16 ADDI,  RET,
+   skip LBL, ;
+
 : EMIT-SOURCE ( -- )
    C-SOURCE-LABELS
-   STDIN? @ IF C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
+   STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
 : C-EMIT-DROP-X12 ( -- )
@@ -1367,8 +1474,8 @@ s" c-call-checker-defer" s" --" TRUST
 s" c-dup-def-fail" s" --" TRUST
 
 : C-REJECT-DUP-DEF ( -- )
-   LBL LBL LBL LBL LBL LBL LBL {: nloop nnext ncmp nmatch nend ninl done :}
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   LBL LBL LBL LBL LBL LBL LBL LBL {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label done:label nlin:label :}
+   14 DATA HIDXP-CELL LDR,  14 nlin CBZ,  C-HIDX-DUP?  13 nmatch CBNZ,  done B,  nlin LBL,  5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    nloop LBL,
       6 nend CBZ,
       14 5 40 LDR,  15 DATA DEF-WL-CELL LDR,  14 15 CMP,  C-NE nnext BCOND,
@@ -1453,7 +1560,7 @@ s" c-reject-dup-def" s" --" TRUST
       14 DATA DEF-WL-CELL LDR,  14 9 0 STR,
       15 0 MOVZ,  15 9 8 STR,
       15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,
+      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    qapply LBL,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
@@ -1489,7 +1596,7 @@ s" c-store-def-name" s" --" TRUST
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    15 SP 8 LDR,  15 nokind CBZ,
    LKWCREATE 6 C-DEFHOOK
@@ -1518,7 +1625,7 @@ s" c-store-def-name" s" --" TRUST
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    10 9 0 LDR,  10 CP 10 SUB,  10 10 4 SUBI,  10 9 8 STR,
    9 DATA LASTC-CELL STR,
-   NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
    C-CALL-TRUST-LASTC-A ;
@@ -1654,7 +1761,7 @@ s" c-defer-room" s" --" TRUST
    9 DATA PEND-CELL LDR,
    10 9 0 LDR,  10 CP 10 SUB,  10 9 8 STR,
    C-DEFER-META-WRITE
-   NDICT NDICT 1 ADDI,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    9 DATA PEND-CELL LDR,  9 9 0 LDR,
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    C-CALL-TRUST-PEND
@@ -1795,30 +1902,68 @@ s" j-is" s" --" TRUST
    nul LBL,  9 $00 MOVZ,
    done LBL, ;
 
-: C-ESC-QUOTE-SCAN ( -- )
+variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
+variable LSNAPRBD  variable LSNAPRBC
+
+\ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
+\ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
+\ x9 byte, x10 0=ok 1=hex 2=bad. LESCHEX: x9 hex digit -> x9 nibble, x10 0=ok 2=bad.
+: EMIT-ESC-DECODE ( -- )
+   LBL LBL LBL {: hex:label bad:label hbad:label :}
+   LESCDEC LABEL@ LBL,  hex bad C-ESC-DECODE-BASIC  10 0 MOVZ,  RET,
+   hex LBL,  10 1 MOVZ,  RET,
+   bad LBL,  10 2 MOVZ,  RET,
+   LESCHEX LABEL@ LBL,  hbad C-ESC-HEX-X9  10 0 MOVZ,  RET,
+   hbad LBL,  10 2 MOVZ,  RET, ;
+
+\ Escaped-literal scan, emitted once, BL-called (x12 cursor in/out, x10 count
+\ out, x11/x14/x15 scratch; saves LR around the inner decoder BLs).
+: EMIT-ESC-SCAN ( -- )
    LBL LBL LBL LBL LBL {: scan:label done:label esc:label hex:label bad:label :}
-   10 0 MOVZ,
-   scan LBL,
-      14 DATA INE-CELL LDR,
-      12 14 CMP,  C-GE bad BCOND,
-      9 12 0 LDRB,
-      9 $22 CMPI,  C-EQ done BCOND,
+   LESCSCAN LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   11 0 MOVZ,
+   scan LBL,  14 DATA INE-CELL LDR,  12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,  9 $22 CMPI,  C-EQ done BCOND,
       9 $5C CMPI,  C-EQ esc BCOND,
-      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
-   esc LBL,
-      12 12 1 ADDI,
-      12 14 CMP,  C-GE bad BCOND,
-      9 12 0 LDRB,
-      hex bad C-ESC-DECODE-BASIC
-      12 12 1 ADDI,  10 10 1 ADDI,  scan B,
+      12 12 1 ADDI,  11 11 1 ADDI,  scan B,
+   esc LBL,  12 12 1 ADDI,  12 14 CMP,  C-GE bad BCOND,
+      9 12 0 LDRB,  LESCDEC LABEL@ BL,
+      10 1 CMPI,  C-EQ hex BCOND,  C-GT bad BCOND,
+      12 12 1 ADDI,  11 11 1 ADDI,  scan B,
    hex LBL,
-      15 12 3 ADDI,
-      15 14 CMP,  C-GT bad BCOND,
-      9 12 1 LDRB,  bad C-ESC-HEX-X9
-      9 12 2 LDRB,  bad C-ESC-HEX-X9
-      12 15 0 ADDI,  10 10 1 ADDI,  scan B,
+      15 12 3 ADDI,  15 14 CMP,  C-GT bad BCOND,
+      9 12 1 LDRB,  LESCHEX LABEL@ BL,  10 bad CBNZ,
+      9 12 2 LDRB,  LESCHEX LABEL@ BL,  10 bad CBNZ,
+      12 15 0 ADDI,  11 11 1 ADDI,  scan B,
    bad LBL,  C-QUOTE-EOF
-   done LBL, ;
+   done LBL,  10 11 0 ADDI,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ Escaped-literal copy, emitted once, BL-called (x11 src, x12 end, x17 dst
+\ in/out; incoming x10 decoded count preserved; saves LR).
+: EMIT-ESC-COPY ( -- )
+   LBL LBL LBL LBL LBL {: copy:label done:label esc:label hex:label bad:label :}
+   LESCCOPY LABEL@ LBL,
+   SP SP 16 SUBI,  10 SP 0 STR,  30 SP 8 STR,
+   copy LBL,  11 12 CMP,  C-GE done BCOND,
+      9 11 0 LDRB,  9 $5C CMPI,  C-EQ esc BCOND,
+      9 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  copy B,
+   esc LBL,
+      11 11 1 ADDI,  11 12 CMP,  C-GE bad BCOND,
+      9 11 0 LDRB,  LESCDEC LABEL@ BL,
+      10 1 CMPI,  C-EQ hex BCOND,  C-GT bad BCOND,
+      11 11 1 ADDI,  9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   hex LBL,
+      15 11 3 ADDI,  15 12 CMP,  C-GT bad BCOND,
+      9 11 1 LDRB,  LESCHEX LABEL@ BL,  10 bad CBNZ,  14 9 4 LSLI,
+      9 11 2 LDRB,  LESCHEX LABEL@ BL,  10 bad CBNZ,  9 14 9 ORR,
+      11 15 0 ADDI,  9 17 0 STRB,  17 17 1 ADDI,  copy B,
+   bad LBL,  C-QUOTE-EOF
+   done LBL,  10 SP 0 LDR,  30 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
+
+: C-ESC-QUOTE-SCAN ( -- )
+   LESCSCAN LABEL@ BL, ;
 
 : C-ESC-QUOTE-CONSUME ( -- )
    15 12 13 SUB,  16 13 0 ADDI,  12 12 1 ADDI,  12 DATA INP-CELL STR, ;
@@ -1833,30 +1978,7 @@ s" j-is" s" --" TRUST
    SP SP 32 ADDI, ;
 
 : C-ESC-COPY-X17 ( -- )
-   LBL LBL LBL LBL LBL {: copy:label done:label esc:label hex:label bad:label :}
-   copy LBL,
-      11 12 CMP,  C-GE done BCOND,
-      9 11 0 LDRB,
-      9 $5C CMPI,  C-EQ esc BCOND,
-      9 17 0 STRB,  17 17 1 ADDI,  11 11 1 ADDI,  copy B,
-   esc LBL,
-      11 11 1 ADDI,
-      11 12 CMP,  C-GE bad BCOND,
-      9 11 0 LDRB,
-      hex bad C-ESC-DECODE-BASIC
-      11 11 1 ADDI,
-      9 17 0 STRB,  17 17 1 ADDI,  copy B,
-   hex LBL,
-      15 11 3 ADDI,
-      15 12 CMP,  C-GT bad BCOND,
-      9 11 1 LDRB,  bad C-ESC-HEX-X9
-      14 9 4 LSLI,
-      9 11 2 LDRB,  bad C-ESC-HEX-X9
-      9 14 9 ORR,
-      11 15 0 ADDI,
-      9 17 0 STRB,  17 17 1 ADDI,  copy B,
-   bad LBL,  C-QUOTE-EOF
-   done LBL, ;
+   LESCCOPY LABEL@ BL, ;
 
 : C-ISDQ ( -- )
    C-QUOTE-START
@@ -1900,11 +2022,11 @@ s" j-is" s" --" TRUST
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
-   17 DATA 0 STR,
-   18 G-PUSH  10 G-PUSH ;
+   17 DATA 0 STR,  11 17 10 SUB,
+   11 G-PUSH  10 G-PUSH ;
 
 : C-EICQ ( -- )
    LBL {: capok:label :}
@@ -1914,23 +2036,23 @@ s" j-is" s" --" TRUST
    capok LBL,
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 14 1 ADDI,  14 DP-CHECK
    10 17 0 STRB,  17 17 1 ADDI,
    C-ESC-COPY-X17
-   17 DATA 0 STR,
-   18 G-PUSH ;
+   17 DATA 0 STR,  11 17 10 SUB,  11 11 1 SUBI,
+   11 G-PUSH ;
 
 : C-EIDOTQ ( -- )
    C-QUOTE-START
    C-ESC-QUOTE-SCAN
    C-ESC-QUOTE-CONSUME
    11 16 0 ADDI,  12 16 15 ADD,
-   17 DATA 0 LDR,  18 17 0 ADDI,
+   17 DATA 0 LDR,
    14 17 10 ADD,  14 DP-CHECK
    C-ESC-COPY-X17
    17 DATA 0 STR,
-   0 1 MOVZ,  1 18 0 ADDI,  2 10 0 ADDI,  NR-WRITE SYS, ;
+   0 1 MOVZ,  1 17 10 SUB,  2 10 0 ADDI,  NR-WRITE SYS, ;
 
 : C-CHAR ( -- )
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
@@ -2085,7 +2207,7 @@ s" c-lbrace-die" s" --" TRUST
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL,
-   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
+   9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 16 15 ADD,  17 28 0 ADDI,
@@ -2093,7 +2215,7 @@ s" c-lbrace-die" s" --" TRUST
    28 17 0 ADDI,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    12 13 0 ADDI,
-   9 18 0 ADDI,  15 10 0 ADDI,  LPAT LABEL@ BL,
+   9 13 4 SUBI,  15 10 0 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR
    11 15 0 ADDI,  C-LIT
    C-ESC-QUOTE-SAVED-DROP ;
@@ -2108,7 +2230,7 @@ s" c-lbrace-die" s" --" TRUST
    C-ESC-QUOTE-SAVE
    C-ESC-QUOTE-RESTORE
    11 16 0 ADDI,  12 15 1 ADDI,  LBCS LABEL@ BL,
-   18 CP 0 ADDI,  9 $14000000 LIT64,  LCEMIT LABEL@ BL,
+   9 $14000000 LIT64,  LCEMIT LABEL@ BL,
    13 CP 0 ADDI,
    C-ESC-QUOTE-RESTORE
    10 28 0 STRB,  28 28 1 ADDI,
@@ -2117,7 +2239,7 @@ s" c-lbrace-die" s" --" TRUST
    28 17 0 ADDI,
    28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
    12 13 0 ADDI,
-   9 18 0 ADDI,  15 10 1 ADDI,  LPAT LABEL@ BL,
+   9 13 4 SUBI,  15 10 1 ADDI,  LPAT LABEL@ BL,
    11 12 0 ADDI,  C-ADR
    C-ESC-QUOTE-SAVED-DROP ;
 
@@ -2152,6 +2274,8 @@ TRUSTED: EM-HXT-EXECUTE ( n -- )
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
+variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
+variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
 variable CLOC-MAIN  variable CLOC-NOT
 variable CLOC-MEM   variable CLOC-QOK
 variable CFSK2
@@ -2261,6 +2385,37 @@ s" c-local-ref" s" label label --" TRUST
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    rvok LBL, ;
 
+\ ---- AOT seed: register the metabuild-compiled words baked in the LAOTCODE
+\ blob + LAOTDICT records. Runs after EM-SEED-DICT (region mapped, DBASE/NDICT/CP
+\ live) and before the DATA region is mapped, so it only touches the code region
+\ and the pinned registers. The blob is copied to CP (the current code-area top),
+\ each record's [0]/[8] (text-blob-relative offsets) are rebased against that base,
+\ and NDICT/CP are advanced so the cold-prefix compile lands after the blob. Words
+\ with no external calls are position-independent, so no call relocation is needed
+\ for the one-word milestone. LAOTCODELEN = 0 (stage/maker builds) skips it whole.
+\ Registers x13/x14/x15 still hold argc/argv/envp until EM-DATA-INIT stores them,
+\ so this pass (which runs earlier) must stay off them, exactly like EM-SEED-DICT.
+: EM-SEED-AOT ( -- )
+   LBL LBL LBL {: askip:label acopy:label adone:label :}
+   11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,          \ x11 = code blob byte length
+   11 askip CBZ,                                     \ nothing baked -> skip
+   9 LAOTCODE LABEL@ ADR,  12 0 MOVZ,                \ x9 = blob src (in __text), x12 = i
+   acopy LBL,  12 11 CMP,  C-GE adone BCOND,
+      3 9 12 ADD,  3 3 0 LDRB,  4 CP 12 ADD,  3 4 0 STRB,
+      12 12 1 ADDI,  acopy B,
+   adone LBL,
+   10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD, \ x10 = &dict[NDICT] (next free record)
+   9 LAOTDICT LABEL@ ADR,                            \ x9 = baked record src
+   5 9 0 LDR,  7 CP 5 ADD,  7 10 0 STR,              \ [0] xt = code base + blob offset
+   6 9 8 LDR,  6 6 5 SUB,  6 6 4 SUBI,  6 10 8 STR,  \ [8] = end-off - xt-off - 4
+   5 9 16 LDR,  5 10 16 STR,                         \ [16] name length / flags (inline)
+   5 9 24 LDR,  5 10 24 STR,                         \ [24] inline name bytes
+   5 9 32 LDR,  5 10 32 STR,                         \ [32] inline name bytes
+   5 9 40 LDR,  5 10 40 STR,                         \ [40] trailer
+   NDICT NDICT 1 ADDI,                               \ publish the seeded word
+   CP CP 11 ADD,                                     \ code area top now past the blob
+   askip LBL, ;
+
 : EM-SEED-DICT ( -- )
    LBL LBL {: scopy scdone :}
    DBASE 0 0 ADDI,
@@ -2317,10 +2472,15 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       14 14 1 ADDI,  sc2 B,
    sc2d LBL, ;
 
+\ Region walks are BL-callable and parameterized so the loader (live
+\ region) and the snapshot writer (scratch copy) share ONE implementation:
+\ x8 = region base, x15 = record count, x16 = region code end,
+\ x21 = detect base, x22 = detect len, x25 = rebase target base (value - x21 + x25).
 : EM-SNAPSHOT-REBASE-DICT ( -- )
    LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
-   9 DBASE 0 ADDI,  10 0 MOVZ,
-   sdl2 LBL,  10 NDICT CMP,  C-GE sdn2 BCOND,
+   LSNAPRBD LABEL@ LBL,
+   9 8 0 ADDI,  10 0 MOVZ,
+   sdl2 LBL,  10 15 CMP,  C-GE sdn2 BCOND,
       13 9 0 LDR,
       13 21 CMP,  C-LT sds2 BCOND,
       14 21 22 ADD,  13 14 CMP,  C-GE sds2 BCOND,
@@ -2332,12 +2492,13 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
       13 13 21 SUB,  13 13 25 ADD,  13 9 24 STR,
       srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
-   sdn2 LBL, ;
+   sdn2 LBL,  RET, ;
 
 : EM-SNAPSHOT-REBASE-CALLS ( -- )
    LBL LBL LBL {: srl srn srx :}
-   9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
-   srl LBL,  9 CP CMP,  C-GE srx BCOND,
+   LSNAPRBC LABEL@ LBL,
+   9 8 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
+   srl LBL,  9 16 CMP,  C-GE srx BCOND,
       10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
       5 $D2800010 LIT64,  10 5 CMP,  C-NE srn BCOND,
       10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
@@ -2359,7 +2520,15 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
         14 13 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       9 9 12 ADDI,
    srn LBL,  9 9 4 ADDI,  srl B,
-   srx LBL, ;
+   srx LBL,  RET, ;
+
+\ snap-rebase ( base end count dbase dlen newbase -- ): run both relocation
+\ walks over an arbitrary region copy. Pool registers are spilled before
+\ any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here.
+: BSNAPREBASE ( -- )
+   25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
+   LSNAPRBD LABEL@ BL,
+   LSNAPRBC LABEL@ BL, ;
 
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -2398,8 +2567,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
-   EM-SNAPSHOT-REBASE-DICT
-   EM-SNAPSHOT-REBASE-CALLS
+   8 DBASE 0 ADDI,  16 CP 0 ADDI,
+   LSNAPRBD LABEL@ BL,
+   LSNAPRBC LABEL@ BL,
    EM-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
@@ -2422,7 +2592,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 LCREATE LABEL@ ADR,  9 DATA CREATEP-CELL STR,
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
    9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
-   LVRINIT LABEL@ BL,                                     \ fill VRTAB/VRITAB from VRPACK
+   9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
+   LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,             \ VRTAB/VRITAB fill + dict hash table (data mapped, NDICT final)
    EMIT-SOURCE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
@@ -2437,6 +2608,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    EM-RUNTIME-STACK
    EM-MMAP-CODE-REGION
    EM-SEED-DICT
+   EM-SEED-AOT
    EM-MMAP-DATA-REGION
    EM-DATA-INIT
    EM-SNAPSHOT-RESTORE
@@ -2557,7 +2729,7 @@ s" c-package-alloc-wids" s" --" TRUST
    12 11 1 ADDI,
    11 9 0 STR,  12 9 8 STR,
    15 0 MOVN,  15 9 40 STR,
-   NDICT NDICT 1 ADDI,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    5 9 0 ADDI, ;
 s" c-package-new-record" s" --" TRUST
 
@@ -2738,25 +2910,25 @@ s" em-compile-flush-pend" s" --" TRUST
       C-CALL-CHECK-DOES
    ndchk LBL,
    C-CALL-TRUST-PEND
-   NDICT NDICT 1 ADDI,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    LMAIN LABEL@ B, ;
 s" em-compile-publish-trusted" s" --" TRUST
 
 : EM-COMPILE-PUBLISH-HOOKED ( -- )
-   LBL LBL {: nohook rejected :}
+   LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
       10 G-POP  10 rejected CBZ,
-   nohook LBL,
-      NDICT NDICT 1 ADDI,
-   rejected LBL,
-   C-CLEAR-TRUSTED-STATE
-   9 0 MOVZ,  9 DATA PEND-CELL STR,
-   LMAIN LABEL@ B, ;
+   nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  done B,
+   rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
+      CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
+   inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
+   done LBL,  C-CLEAR-TRUSTED-STATE
+   9 0 MOVZ,  9 DATA PEND-CELL STR,  LMAIN LABEL@ B, ;
 s" em-compile-publish-hooked" s" --" TRUST
 
 : EM-COMPILE-PUBLISH ( -- )
@@ -2952,6 +3124,45 @@ s" em-reset-compile-state" s" --" TRUST
    9 14 16 LDR,  9 BR, ;
 s" em-eval-undef-rollback" s" --" TRUST
 
+\ A throw whose nearest handler lies beyond one or more active evaluate boundaries
+\ lands here (BTHROW branch via EVALREC-CELL), x15 = throw code. Each escaped eval
+\ frame is rolled back — input cursor, dictionary top (CP/NDICT), data-stack base
+\ (XDS), data pointer (DP), and compile state — and EVALERR-CELL records the code,
+\ so the handler resumes with clean state. Popping stops as soon as EVALD reaches 0
+\ or the nearest handler (x11, read once because EM-RESET-COMPILE-STATE zeroes the
+\ HND-CELL copy) is inside the current eval frame; then the throw is delivered to
+\ that handler / REPL / process exit exactly as the non-evaluate path does.
+: EM-EVAL-THROW-RECOVER ( -- )
+   LEVALREC LABEL@ LBL,
+   LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
+   11 DATA 8 LDR,                                     \ x11 = nearest handler (read once)
+   LEVLL LABEL@ LBL,
+      12 DATA EVALD-CELL LDR,  12 LEVLD LABEL@ CBZ,   \ no eval frame left → unwind to handler
+      12 12 1 SUBI,  12 13 14 C-EVAL-FRAME-ADDR       \ x13 = &frame[EVALD-1]
+      14 13 24 LDR,                                   \ x14 = eval-entry SP (boundary); x13 stays &frame
+      11 LEVLP LABEL@ CBZ,                            \ no handler → pop (escape)
+      11 14 CMP,  C-LS LEVLD LABEL@ BCOND,            \ handler inside this frame → unwind to it
+   LEVLP LABEL@ LBL,
+      12 13 0 LDR,   12 DATA INP-CELL STR,
+      12 13 8 LDR,   12 DATA INE-CELL STR,
+      CP 13 40 LDR,  NDICT 13 48 LDR,  XDS 13 32 LDR,
+      12 13 56 LDR,  12 DATA DP-CELL STR,
+      15 DATA EVALERR-CELL STR,                       \ EVALERR = code
+      12 DATA EVALD-CELL LDR,  12 12 1 SUBI,  12 DATA EVALD-CELL STR,
+      EM-RESET-COMPILE-STATE                          \ clobbers x9 only; x11,x15 preserved
+      LEVLL LABEL@ B,
+   LEVLD LABEL@ LBL,
+   9 15 0 ADDI,                                       \ x9 = code
+   11 LEVLN LABEL@ CBZ,
+   19 11 8 LDR,  10 11 0 LDR,  10 DATA 8 STR,
+   30 11 32 LDR,  12 11 24 LDR,  13 11 16 LDR,
+   SP 13 0 ADDI,  12 BR,
+   LEVLN LABEL@ LBL,
+   10 DATA REPLH-CELL LDR,  10 LEVLR LABEL@ CBZ,
+   10 DATA RRECP-CELL LDR,  10 BR,
+   LEVLR LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;
+s" em-eval-throw-recover" s" --" TRUST
+
 : EM-REPL-RECOVER ( -- )
    LRREC LABEL@ LBL,
    0 2 MOVZ,  1 LQNL LABEL@ ADR,  2 2 MOVZ,  NR-WRITE SYS,
@@ -3021,7 +3232,8 @@ s" em-compile-exit" s" --" TRUST
    EM-COMPILE-OPS
    EM-COMPILE-CALL
    EM-COMPILE-UNDEF
-   EM-COMPILE-EXIT ;
+   EM-COMPILE-EXIT
+   EM-EVAL-THROW-RECOVER ;    \ branch-target only (reached via EVALREC-CELL); ends by branching
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN ( -- )
@@ -3040,7 +3252,9 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LFLUSH !  LBL LNCOUNT !
-   LBL LBCAP !  LBL LBCS !
+   LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
+   LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
+   LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
 : EMIT-LABEL-CONTROL ( -- )
@@ -3069,9 +3283,11 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
-   LBL LEX0 !  LBL LUN0 !
+   LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
-   LBL LSRCRD !  LBL LSHBANG ! ;
+   LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
+   LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
+   LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
@@ -3110,8 +3326,61 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-LABEL-JIT
    EMIT-LABEL-OPS ;
 
+\ ---- AOT milestone 1: bake one metabuild-compiled word into the emitted engine.
+\ The stdin driver defines the sample word (through the normal checked load path),
+\ records its region code pointer in AOT-XT and its length in AOT-PROBE-LEN, then
+\ calls AOT-CAPTURE to arm the section (copies the code into AOT-CODE-BUF, sets
+\ AOT-CODE-LEN, stashes the name). The word is defined in the driver, NOT here, so
+\ an AOT-seeded engine reloading this file to rebuild the stage never collides with
+\ the seeded copy. stage2/maker/snap never arm it, so AOT-CODE-LEN stays 0 and the
+\ emitted engine carries an empty AOT section (EM-SEED-AOT skips it).
+$8000 constant AOT-CODE-CAP
+create AOT-CODE-BUF AOT-CODE-CAP allot
+variable AOT-CODE-LEN
+variable AOT-XT
+variable AOT-PROBE-LEN
+create AOT-NAME-BUF 16 allot
+variable AOT-NAME-LEN
+
+\ Raw emitter-boundary views (same pattern as SRCA@): expose the stashed region
+\ code pointer and the two build-scratch byte buffers as `ptr u8` for the checked
+\ copy/BYTES, sites below.
+: AOT-XT@ ( -- ptr u8 ) AOT-XT @ ;
+s" AOT-XT@" s" -- ptr u8" TRUST
+: AOT-CODE-BUF@ ( -- ptr u8 ) AOT-CODE-BUF ;
+s" AOT-CODE-BUF@" s" -- ptr u8" TRUST
+: AOT-NAME-BUF@ ( -- ptr u8 ) AOT-NAME-BUF ;
+s" AOT-NAME-BUF@" s" -- ptr u8" TRUST
+
+: AOT-NAME-STASH ( ptr u8 n -- )
+   dup AOT-NAME-LEN !
+   16 0 ?do 0 AOT-NAME-BUF@ i + c! loop
+   0 ?do dup i + c@ AOT-NAME-BUF@ i + c! loop drop ;
+
+: AOT-CAPTURE ( -- )
+   AOT-PROBE-LEN @ AOT-CODE-LEN !
+   AOT-CODE-LEN @ 0 ?do AOT-XT@ i + c@ AOT-CODE-BUF@ i + c! loop
+   s" AOT-PROBE" AOT-NAME-STASH ;
+
+\ Emit the AOT section: the code blob, its length, and one 48-byte dict record
+\ (xt/end as blob-relative offsets, name inline). Placed last so it never shifts
+\ engine-text offsets. LAOTCODELEN is always present for EM-SEED-AOT's ADR.
+: EMIT-AOT-SEED ( -- )
+   LAOTCODELEN LABEL@ LBL,  AOT-CODE-LEN @ DCQ,
+   LAOTCODE LABEL@ LBL,
+   AOT-CODE-LEN @ 0 > IF AOT-CODE-BUF@ AOT-CODE-LEN @ BYTES, THEN
+   LAOTDICT LABEL@ LBL,
+   AOT-CODE-LEN @ 0 > IF
+      0 DCQ,                              \ [0] xt offset in blob
+      AOT-CODE-LEN @ DCQ,                 \ [8] end offset in blob
+      AOT-NAME-LEN @ DCQ,                 \ [16] name length (inline, no EXT)
+      AOT-NAME-BUF@ 16 BYTES,             \ [24..40) inline name, zero-padded
+      0 DCQ,                              \ [40] trailer
+   THEN ;
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
+   s" snap-rebase" ['] BSNAPREBASE FPRIM
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS
    EMIT-CEMIT
@@ -3120,12 +3389,14 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-PROT
    EMIT-FLUSH
    EMIT-FIND
+   EMIT-HIDX
    EMIT-NUM ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    EMIT-DOESPATCH
-   EMIT-CF-HELPERS
+   EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
+   EM-SNAPSHOT-REBASE-DICT  EM-SNAPSHOT-REBASE-CALLS
    EMIT-LOC-FIND
    EMIT-KWDATA
    EMIT-FOLDKW
@@ -3141,6 +3412,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-PROF
    EMIT-SHEBANG-COMMENT
    EMIT-SOURCE-READ
+   EMIT-FLAGS
    EMIT-JIT ;
 
 : EMIT-CODE-SECTIONS ( -- )
@@ -3148,7 +3420,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-PRIMITIVE-SECTIONS
    EMIT-DICTIONARY-SECTIONS
    EMIT-RUNTIME-SECTIONS
-   EMIT-DICT ;
+   EMIT-DICT
+   EMIT-AOT-SEED ;
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;

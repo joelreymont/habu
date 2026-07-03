@@ -69,12 +69,22 @@ s" HB@" s" -- ptr u8" TRUST
    HL @ 2 > 0= IF s" hb: repl/stepper sources missing" 74 die THEN
    HL @ HMAX = IF s" hb: sources exceed buffer" 74 die THEN ;
 
+\ AOT milestone 1: define the sample word in THIS driver (only loaded for the stdin
+\ engine, whose metabuild host has no AOT seed), record its region code pointer and
+\ length, then arm the AOT section (habu2.f AOT-CAPTURE). EMIT-FORTH bakes the code
+\ + a dict record; the emitted bin/hb registers AOT-PROBE at boot via EM-SEED-AOT
+\ with no source parse. The baked REPL source stays on. UNDEFINE-IF-DEFINED keeps
+\ the definition idempotent if a host ever arrives with the word already present.
+s" AOT-PROBE" UNDEFINE-IF-DEFINED
+: AOT-PROBE ( -- n ) 12345 ;
+' AOT-PROBE AOT-XT !
+cp@ AOT-XT @ - AOT-PROBE-LEN !
+
 : GO ( -- )
+   AOT-CAPTURE
    READ-REPL
    0 0= STDIN? !
    HB@ HL @ EMIT-FORTH
-   ASM-CODE BUILD-IMAGE
-   s" hb" SET-SIGID  CODESIG2
-   STDIN-OUT DRV-WRITE-IMAGE
+   s" hb" STDIN-OUT DRV-EMIT-IMAGE
    DRV-EXIT-OK ;
 GO
