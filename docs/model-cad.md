@@ -88,17 +88,25 @@ report or IR plumbing.
 
 ### Type-system review verdict (2026-07-04)
 
-The TFAM campaign as dotted covers Model CAD's needs; no new checker gaps
-require dotting today. The two levers that matter most to Model CAD, both
-already tracked: **boxed policy priority** inside TFAM 16 (recursive IR,
-autograd tape, ONNX graph by value) and **derive eq/order/hash** for
-shape/dtype/layout/target cache keys, which Phase 4 needs the moment schedule
-caching lands — without it every key comparison is hand-written. Packed
-memory ABI for arrays of ADTs (report tables, artifact-cache rows on disk) is
-covered by TFAM 16 `packed-tag` (`docs/type-families.md` §22.2). If
-implementation uncovers a gap outside these, the rule from `CLAUDE.md`
-applies: dot the missing capability; no local workarounds, no checker edits
-on this branch (checker files are owned by the TFAM campaign).
+The TFAM campaign as dotted covers Model CAD's stack-level needs. The two
+levers that matter most, both already tracked: **boxed policy priority**
+inside TFAM 16 (recursive IR, autograd tape, ONNX graph by value) and
+**derive eq/order/hash** for shape/dtype/layout/target cache keys, which
+Phase 4 needs the moment schedule caching lands — without it every key
+comparison is hand-written (accepted until the derive dot lands, since it
+depends on TFAM 15/16).
+
+One gap was found and dotted
+(`habu-checker-capability-typed-a480c423`): TFAM 16 ships the packed memory
+ABI *descriptor* (`docs/type-families.md` §22.2), but no TFAM item
+implements the consumer capability — checked buffer store/load for
+layout-family values and a typed array-of-ADT container. Report tables,
+schedule measurement history, and artifact-cache rows need it; until it
+lands they stay parallel-column records per the staging rule.
+
+If implementation uncovers further gaps, the rule from `CLAUDE.md` applies:
+dot the missing capability; no local workarounds, no checker edits on this
+branch (checker files are owned by the TFAM campaign).
 
 ## Product language rules
 
