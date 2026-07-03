@@ -16,11 +16,13 @@
 
 variable PB  variable PN  variable PFD  variable PRD
 variable AOT-SI
+10 constant AOT-LF
 $40000 constant PMAX
 : AOT-PB@ PB @ ;
 s" AOT-PB@" s" -- ptr u8" TRUST
 : AOT-IN   s" hb-aot-src" TMP-PATH ;
 : AOT-OUT  s" hb-aot-got" TMP-PATH ;
+: AOT-OBJ ( -- ptr u8 n )  s" hb-aot-obj" TMP-PATH ;
 
 : AOT-FALSE ( -- bool ) 0 0= 0= ;
 : AOT-JSON-ARG? ( -- bool )
@@ -51,7 +53,13 @@ s" AOT-PB@" s" -- ptr u8" TRUST
 : SENT-ROOM ( n -- )
    PN @ + PMAX > IF s" aot: source exceeds buffer" 74 die THEN ;
 
-: SENTSET  s"  AOT-LINK " {: sa:ptr su:n :}
+: SENTLF ( -- )
+   1 SENT-ROOM
+   AOT-LF AOT-PB@ PN @ + c!
+   PN @ 1 + PN ! ;
+
+: SENTSET ( -- )  s"  AOT-LINK " {: sa:ptr su:n :}
+   SENTLF
    su SENT-ROOM
    0 AOT-SI !
    BEGIN AOT-SI @ su < WHILE
@@ -141,6 +149,12 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
       s" aot: data blob too far for ADR (program too large); split program" 74 die THEN
    BLOB-LBL LABEL@ LBL,
    BLOB-SRC @ BLOB-LEN @ BYTES, ;
+
+: AOT-WRITE-OBJ ( -- )
+   AOT-OBJ PATH0 1537 493 open DRV-WFD !
+   DRV-WFD @ 0 < IF s" aot: cannot open object output" 74 die THEN
+   DRV-WFD @ CODE ASM-LEN DRV-WALL
+   DRV-WFD @ close ;
 
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
@@ -321,9 +335,10 @@ variable RP  variable RE  variable RV
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 
-: AOT-LINK
+: AOT-LINK ( -- )
    AOT-DATA-SPAN
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DATA-BLOB
+   AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;

@@ -1871,6 +1871,11 @@ lesson — keep the specific word/code/path, cut the prose.
   f(engine, checker/codegen sources); a source-level codegen change with a
   stale engine still hit. Qualify the key with the exact producer key
   (`HBB-MAKER-KEY-HEX`) so key and producer share one identity by construction.
+- **AOT-LINK must start on a fresh line:** appending ` AOT-LINK ` directly after
+  source bytes lets a final `\` comment without a newline swallow the sentinel,
+  so the maker exits 0 without `hb-aot-got`. Emit an LF before the sentinel and
+  keep an hb-build fixture whose AOT source ends in a backslash comment with no
+  newline.
 - **Proof flows must force past caches:** `tools/seed.f` and
   `tools/bootstrap.sh` exist to prove a rebuild, so they pass
   `install --force`; a matching stamp must never stand in for the proof.
