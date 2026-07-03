@@ -72,11 +72,40 @@ implicit collapse to `n`. So `deftype frame-idx` immediately yields checked
 serials, frame indexes, exposure-µs, GMSL channels) compile-checked distinct
 integers at zero runtime cost, without an engine edit or fixpoint rebuild.
 
-`DEFLINEAR name` declares a nominal noncopyable cell type. Ordinary checked code
-may pass a linear value through unchanged, but generic copying, dropping, memory
-store/load, and value-record duplication reject unless a called word explicitly
-declares the linear type in its own trusted or checked effect. Use this for owner
-or lifetime tokens around arena-backed records.
+`DEFLINEAR name` declares a nominal noncopyable cell type — a **linear-once**
+resource that must be used (consumed or passed on) exactly once. Use it for owner
+or lifetime tokens around arena-backed records, and for acquire/release framing
+(evaluate/include frames, mmap slots, snapshot phases).
+
+The checker enforces this by **conservation**: at every step whose declared
+effect does *not* itself name a linear type, the number of live linear values on
+the combined data+return stack may not change. So a generic word that would
+duplicate a linear (`dup`, `over`, `tuck`, `2dup`, a `PICK`/`ROLL` copy), drop it
+(`drop`, `nip`), or move it through untyped memory (`@`/`!`/`c@`/`c!`) or a
+value-record copy is rejected, because the linear count would rise or fall. Only a
+word (or quotation) whose declared effect *explicitly* names the linear type is an
+audited producer/consumer and may change the count. Conservation holds across
+control flow (both `IF` arms and stack-neutral loop bodies must agree) and across
+**quotation application** — `[: dup ;] execute` and `[: drop ;] execute` are
+rejected on a linear exactly as the bare `dup`/`drop` are, including nested
+`execute`. Passing a linear through unchanged (`( own -- own )`, a `swap`/`rot`
+reorder, `>r`/`r>`) is fine — that is a move, not a copy.
+
+Acquire/release pairing is therefore proven, not conventional: a word that
+acquires a linear frame and forgets to release it fails the definition's output
+balance (the frame leaks onto the declared-empty stack), and releasing twice
+underflows. A resource can neither be silently dropped nor duplicated.
+
+Boundary (fail-open, tracked by `habu-linear-kind-inference-c31475b8`):
+count-conservation is defeated by *polymorphic laundering* — a value duplicated
+or dropped while its type is still a polymorphic variable that is only later
+unified with a linear con. Two shapes slip today: `[: FREE ;] KEEP` (KEEP's `over`
+copies a polymorphic `a` inside its already-certified body; the call-site effect
+is count-neutral) and `[: dup FREE ;] execute` (the `dup` copies the quotation's
+polymorphic input before `FREE` binds it to the linear). Closing these needs a
+linear/affine kind discipline (polarity-aware multiplicity at application plus
+deferred taint within a body); until then, do not rely on `KEEP`/`BI`/`TRI` or
+self-duplicating quotations to uphold linearity.
 
 `VALUE-RECORD name field type ... END-VALUE-RECORD` declares a by-value record
 token for signatures. The token expands to hidden field types, so

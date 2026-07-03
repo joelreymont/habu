@@ -867,6 +867,21 @@ s" CBAD-OWN-DROP ( own -- ) drop" T-CHECK-REJECTS
 s" CBAD-OWN-OVER ( own n -- own n own ) over" T-CHECK-REJECTS
 s" CBAD-OWN-FETCH ( ptr own -- own ) @" T-CHECK-REJECTS
 s" CBAD-OWN-STORE ( own ptr own -- ) !" T-CHECK-REJECTS
+\ execute (quotation application) enforces the same linear conservation as a
+\ direct step: a polymorphic quotation applied to a linear that copies or drops
+\ it is rejected; an explicit linear consumer/producer and a passthrough certify.
+s" COK-OWN-EXEC-FREE ( own -- ) [: T-FREE-OWN ;] execute" T-CHECK-PASSES
+s" COK-OWN-EXEC-ID ( own -- own ) [: ;] execute" T-CHECK-PASSES
+s" COK-OWN-EXEC-MAKE ( -- own ) [: T-MAKE-OWN ;] execute" T-CHECK-PASSES
+s" COK-N-EXEC-DUP ( n -- n n ) [: dup ;] execute" T-CHECK-PASSES
+s" CBAD-OWN-EXEC-DUP ( own -- own own ) [: dup ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-EXEC-DROP ( own -- ) [: drop ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-EXEC-NEST ( own -- own own ) [: [: dup ;] execute ;] execute" T-CHECK-REJECTS
+\ acquire/release pairing proven through a work quotation: balanced certifies;
+\ leak (missing release) and double release are rejected.
+s" COK-OWN-FRAME-WORK ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN" T-CHECK-PASSES
+s" CBAD-OWN-FRAME-LEAK ( -- ) T-MAKE-OWN [: ;] execute" T-CHECK-REJECTS
+s" CBAD-OWN-FRAME-DOUBLE ( -- ) T-MAKE-OWN [: ;] execute T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD

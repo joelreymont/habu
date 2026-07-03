@@ -1037,12 +1037,27 @@ variable QTT  variable QD2  variable QR2
    THSET @ 0= IF DCUR @ THDROW !  RCUR @ THRROW ! THEN
    -1 THSET ! ;
 
+\ A quotation whose declared rows name a concrete linear con is an explicit
+\ linear consumer/producer (checked when it was built): its net count change is
+\ intended, so skip conservation — exactly as CHECKER-STEP skips a step whose
+\ declared effect names a linear. A polymorphic quotation (linear only bound by
+\ unification at apply time) is NOT explicit and must conserve.
+: RSEXEC-LIN-EXPLICIT? ( q -- bool ) {: q:n :}
+   q Q>DIN q Q>DOUT LIN-TOTAL
+   q Q>RIN q Q>ROUT LIN-TOTAL + 0 <> ;
+
+variable RSEXEC-EXP    \ quot explicitly names a linear? (captured before unify binds vars)
+
 : RSEXEC   \ execute: pop the xt; apply its quot effect (or bind a var to one)
    FRESH MK-VAR FRESH MK-ROW {: tv rest :}
    DCUR @  tv rest MK-PUSH  UNIFY OK @ and OK !
    rest DCUR !
+   LIN-SNAPSHOT                          \ linears on the post-pop stack (pre-apply)
    tv T-RES QTT !
    QTT @ TAG T-QUOT = IF
+     \ Capture explicitness BEFORE UNIFY-IN: once the quot's fresh vars unify
+     \ with the stack they resolve to linears and would look falsely explicit.
+     QTT @ RSEXEC-LIN-EXPLICIT? RSEXEC-EXP !
      DCUR @ QTT @ Q>DIN  UNIFY-IN OK @ and OK !
      RCUR @ QTT @ Q>RIN  UNIFY-IN OK @ and OK !
      QTT @ Q>XHAS IF
@@ -1052,6 +1067,7 @@ variable QTT  variable QD2  variable QR2
         -1 DEADP !
      ELSE
         QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+        OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR = IF
      \ unknown xt: bind it to a RETURN-PURE quot over the current state (a
