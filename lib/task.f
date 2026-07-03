@@ -207,7 +207,7 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
 : TASK-CONSTRUCTED? ( ptr a -- bool )
    TASK-STATE@ TASK-EMPTY <> ;
 
-: CONSTRUCT ( ptr a -- ) {: tcb:ptr :}
+: PREPARE ( ptr a -- ) {: tcb:ptr :}
    TASK-CFUNS
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
@@ -307,7 +307,7 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
    tcb TASK-STATE@ TASK-RUNNING = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-HALT-REQ = if E-TASK-STATE throw then
    tcb TASK-STATE@ TASK-DONE = if tcb TASK-JOIN-RELEASE then
-   tcb CONSTRUCT
+   tcb PREPARE
    xt tcb TCB.USER-XT !
    ['] TASK-RUNNER tcb TCB.XT !
    0 tcb TCB.STOP !
@@ -427,8 +427,8 @@ TASK-MIN-STACK constant MIN-STACK
 : TASK ( n -- )
    TASK ;
 
-: CONSTRUCT ( ptr a -- )
-   CONSTRUCT ;
+: PREPARE ( ptr a -- )
+   PREPARE ;
 
 : ACTIVATE ( n ptr a -- )
    ACTIVATE ;

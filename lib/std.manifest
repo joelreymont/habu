@@ -1233,7 +1233,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
 1	task	lib/task.f	word	TASK:TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
-1	task	lib/task.f	word	TASK:CONSTRUCT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
+1	task	lib/task.f	word	TASK:PREPARE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
 1	task	lib/task.f	word	TASK:ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
 1	task	lib/task.f	word	TASK:SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer
 1	task	lib/task.f	word	TASK:SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer as a cell

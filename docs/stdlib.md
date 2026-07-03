@@ -1349,7 +1349,7 @@ owns its `errors`/`memory`/`ffi` dependencies.
 ```forth
 TASK:TASK          ( n -- )
 TASK:MIN-STACK     ( -- n )
-TASK:CONSTRUCT     ( ptr a -- )
+TASK:PREPARE       ( ptr a -- )
 TASK:ACTIVATE      ( n ptr a -- )
 TASK:SELF          ( -- ptr a )
 TASK:SELF-N        ( -- n )

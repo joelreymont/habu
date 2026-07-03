@@ -10,7 +10,7 @@ tracking; it is not a copy of the manual.
 | SwiftForth | SwiftForth effect | Habu public word | Habu effect |
 | --- | --- | --- | --- |
 | `TASK <name>` | `u --` | `TASK:TASK` | `n --` |
-| `CONSTRUCT` | `addr --` | `TASK:CONSTRUCT` | `ptr a --` |
+| `CONSTRUCT` | `addr --` | `TASK:PREPARE` | `ptr a --` |
 | `ACTIVATE` | `addr --` plus following source body | `TASK:ACTIVATE` | `n ptr a --` |
 | `PAUSE` | `--` | `TASK:PAUSE` | `--` |
 | `HALT` | `addr --` | `TASK:HALT` | `ptr a --` |
@@ -34,6 +34,11 @@ tracking; it is not a copy of the manual.
   the next offset. This keeps user-storage layout explicit and checked while
   preserving the SwiftForth model that a user word resolves through the current
   task's data base.
+- Habu spells SwiftForth's `CONSTRUCT` as `TASK:PREPARE`. The bare token
+  `construct` is reserved as a type-families language keyword (dictionary lookup
+  is case-folded, so `CONSTRUCT` would collide), so the task word that allocates
+  and initializes a TCB without starting it uses the role-accurate name
+  `TASK:PREPARE`.
 - Habu facilities track the owning task token around the underlying pthread
   mutex. `TASK:GET` is a no-op when the current task already owns the facility;
   `TASK:RELEASE` is a no-op when the current task does not own it. That matches
