@@ -1,9 +1,11 @@
 ---
 title: Checked Result type with exhaustive branches
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-03T18:46:32.513750+02:00\""
+created-at: "\"\\\"2026-07-03T18:46:32.513750+02:00\\\"\""
+closed-at: "2026-07-03T20:13:53.863410+02:00"
+close-reason: implemented result<a,b> checker/runtime, migrated memory/include/stage/image mmap users, retired S2/MBUF/INCLUDE/MEM/IMG/IMGD trusted pointer casts, and proved check-test, image tests, trust inventory, build-fixpoint, and full native suite; checker-internal RC>PTR remains tracked under checker self-typing because checker.f cannot depend on result.f in the current bootstrap order
 ---
 
 Problem: mmap and other syscalls return a raw cell that is either negative errno/-1 or a valid pointer/value. The checker cannot refine after failure checks, so TRUSTED rows like S2-SOURCE-RC>PTR, MBUF-RC>PTR, INCLUDE-MMAP-PTR, ARENA-RC>PTR, TOKBUF-RC>PTR, USIGS-RC>PTR, HIDX-RC>PTR, MEM-ALLOC-PTR, IMG-MMAP-PTR, IMGD-MMAP-PTR remain. Fix: add checked algebraic sum support centered on result<ok,err>: canonical type nodes/effect parser support, OK/ERR constructors, an exhaustive eliminator such as RESULT-CASE that consumes result<a,e> plus ok/err quotations and checks each branch with refined payload type, no partial unwrap unless the caller effect models failure, and diagnostics for non-exhaustive or wrong-branch payload use. Then wrap raw ABI primitives (mmap/read/open/etc as appropriate) in typed result APIs, migrate mmap byte/cell/object allocators first, and delete the RC>PTR TRUSTED family. Files: src/core/checker.f, src/core/render.f, src/core/roles.f or new result prelude, lib/memory.f, src/core/include.f, src/os/image-bytes.f, src/habu/stage2.f, tools/imgdump.f, tools/imagedisasm.f, tests/docs/TRUSTED.md. Acceptance: negative checked fixtures reject treating result as ok without RESULT-CASE, reject missing err/ok branch, reject wrong branch payload type, and reject pointer use on err; positive fixtures type OK/ERR and RESULT-CASE with row-polymorphic branch outputs; migrated mmap wrappers remove at least S2-SOURCE-RC>PTR/MBUF-RC>PTR/INCLUDE-MMAP-PTR/MEM-ALLOC-PTR from TRUSTED.md; build-fixpoint source certification still passes; focused checker/engine/memory/include/image tests and native suite pass. Estimate: L, 1-2 weeks. Rungs: 1-2d design syntax/representation and diagnostics; 2-3d checker algebra/parser/render/unification; 2-3d runtime words + fixtures; 2-4d migrate mmap/syscall wrappers and retire TRUSTED rows; 1-2d fixpoint/gate/mac+zed proof. Depends/overlaps: typed-defining-words for broader provenance mints is related but result can start independently; single-pass checking not required.
