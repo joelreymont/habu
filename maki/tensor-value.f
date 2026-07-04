@@ -61,6 +61,8 @@ public
 4 constant AL-16               \ measured: 16-byte aligned
 5 constant AL-N                \ range bound
 
+: AL-VALID? ( n -- bool ) {: al:n :}  al 0 < 0=  al AL-N <  and ;
+
 \ Model op kinds (OP-LINEAR / OP-GELU / OP-N) come from the shared op registry
 \ maki/op-kind.f (CAD-PLAN section 4.2); PLINEAR/PGELU record them below.
 

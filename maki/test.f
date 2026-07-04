@@ -100,6 +100,8 @@ TEST:SUITE maki/fusion-plan-test.f
 TEST:END-SUITE
 TEST:SUITE maki/traffic-test.f
 TEST:END-SUITE
+TEST:SUITE maki/mem-plan-test.f
+TEST:END-SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:END-SUITE
 TEST:SUITE maki/attention-test.f

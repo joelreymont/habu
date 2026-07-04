@@ -11,12 +11,16 @@
 \ Operand refs are tagged: a node ref is the node index (>= 0); a model-input ref
 \ is -(slot+1) (< 0). Input slots carry their own descriptor facts so the render
 \ and shape keys are self-contained (they survive TV-RESET; the IR denormalizes
-\ the facts rather than holding tensor handles).
+\ the facts rather than holding tensor handles). A slot also records its base
+\ alignment CLASS (tensor-value AL-*), defaulting to AL-UNKNOWN until a bound
+\ buffer records a measured one (MIR-SLOT-AL!); the memory planner (maki/mem-plan.f)
+\ keys vectorization off it, so an unrecorded input reports "unknown -> scalar".
 \
-\ Fail closed: unknown op-kind, bad operand ref, out-of-range node/slot index, and
-\ every capacity are named throws. The record layout never leaks - callers pass
-\ or receive primitive facts only, so the store can swap to an ADT family later
-\ (cad-adt-swap) without touching a caller. maki -> habu only; owns -5055..-5061.
+\ Fail closed: unknown op-kind, bad operand ref, out-of-range node/slot index, bad
+\ alignment class, and every capacity are named throws. The record layout never
+\ leaks - callers pass or receive primitive facts only, so the store can swap to an
+\ ADT family later (cad-adt-swap) without touching a caller. maki -> habu only;
+\ owns -5055..-5062.
 
 require maki/op-kind.f
 require maki/op-registry.f
@@ -34,6 +38,7 @@ require lib/fmt.f
 -5059 constant E-MIR-REF      \ operand ref names an uncommitted node / bad input slot
 -5060 constant E-MIR-INSLOT   \ input-slot index / capacity out of range
 -5061 constant E-MIR-STATE    \ node builder used out of order
+-5062 constant E-MIR-ALIGN    \ input-slot alignment class out of range
 
 package MAKI
 public
@@ -71,6 +76,7 @@ create MI-IS-ROWS MIR-IN-CAP cells allot
 create MI-IS-COLS MIR-IN-CAP cells allot
 create MI-IS-DT   MIR-IN-CAP cells allot
 create MI-IS-LAY  MIR-IN-CAP cells allot
+create MI-IS-AL   MIR-IN-CAP cells allot     \ base alignment class (AL-*); AL-UNKNOWN default
 variable MIR-IS-N
 
 \ pending-node staging (any-arity records with the fixed-arity ref pool)
@@ -119,6 +125,7 @@ public
    cols s cells MI-IS-COLS + !
    dt   s cells MI-IS-DT   + !
    lay  s cells MI-IS-LAY  + !
+   AL-UNKNOWN s cells MI-IS-AL + !               \ no recorded pointer yet -> conservative
    s 1+ MIR-IS-N !
    s ;
 
@@ -126,6 +133,13 @@ public
 : MIR-SLOT-COLS@ ( n -- n )  MIR-IS-CK cells MI-IS-COLS + @ ;
 : MIR-SLOT-DT@   ( n -- n )  MIR-IS-CK cells MI-IS-DT   + @ ;
 : MIR-SLOT-LAY@  ( n -- n )  MIR-IS-CK cells MI-IS-LAY  + @ ;
+: MIR-SLOT-AL@   ( n -- n )  MIR-IS-CK cells MI-IS-AL   + @ ;
+
+\ record a measured base alignment class onto an input slot (bound-buffer path)
+: MIR-SLOT-AL! ( n n -- ) {: s:n al:n :}         \ slot align --
+   al AL-VALID? 0= if E-MIR-ALIGN throw then
+   s MIR-IS-CK drop
+   al s cells MI-IS-AL + ! ;
 
 \ ---- node builder (BEGIN op ; IN+ ref ... ; OP+ facts -> node) --------------
 : MIR-OP-BEGIN ( n -- ) {: op:n :}

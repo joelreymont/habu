@@ -48,12 +48,15 @@ public
 2 constant RC-COMPUTE
 3 constant RC-N
 
-\ ---- per-tensor coalescing status ----
+\ ---- per-tensor coalescing status (CAD-PLAN 6.4 access vocabulary) ----
 0 constant CO-UNKNOWN
-1 constant CO-COALESCED
-2 constant CO-STRIDED
-3 constant CO-UNALIGNED
-4 constant CO-N
+1 constant CO-COALESCED         \ w=1 contiguous unit-stride global access
+2 constant CO-STRIDED           \ non-unit innermost stride (column-major read)
+3 constant CO-UNALIGNED         \ base alignment below element width -> scalar fallback
+4 constant CO-COALESCED-V4      \ w=4 vectorized contiguous access (tile-v4)
+5 constant CO-BROADCAST         \ 1-row/1-col input hoisted to a register (6.2.3)
+6 constant CO-GATHERED          \ indexed read downstream of a gather
+7 constant CO-N
 
 \ ---- gate ids (index into the fixed 4-gate array) ----
 0 constant G-CERTIFY
@@ -174,10 +177,13 @@ create G-RL  G-N cells allot
 
 : CO-NAME ( n -- ptr u8 n )
    case
-      CO-UNKNOWN   of s" unknown"    endof
-      CO-COALESCED of s" coalesced"  endof
-      CO-STRIDED   of s" strided"    endof
-      CO-UNALIGNED of s" unaligned"  endof
+      CO-UNKNOWN      of s" unknown"      endof
+      CO-COALESCED    of s" coalesced"    endof
+      CO-STRIDED      of s" strided"      endof
+      CO-UNALIGNED    of s" unaligned"    endof
+      CO-COALESCED-V4 of s" coalesced-v4" endof
+      CO-BROADCAST    of s" broadcast"    endof
+      CO-GATHERED     of s" gathered"     endof
       E-RPT-COAL throw
    endcase ;
 
