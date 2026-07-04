@@ -415,6 +415,7 @@ variable GSI-TL-FILE-A
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
    s" tools/asm-checked-test.f" GSI-FORK-INCLUDE
    s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
+   s" tools/include-events-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-TAIL-RUNNER ( -- )
