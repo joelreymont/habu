@@ -1,61 +1,145 @@
-\ cuda-launch.f - CHECKED on-device proof: LAUNCH a checked-emitted SAXPY kernel
-\ on the Orin GPU and verify the result against the CPU golden.
-\
-\ Fully checked Habu via lib/ffi.f (NO 0 set-check; only P>N/N>P trusted). The
-\ deprecated <=8-arg launch API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid)
-\ avoids cuLaunchKernel's 11 args; the real driver memory entry points are the
-\ _v2 symbols (the earlier INVALID_CONTEXT was symbol versioning). Load after
-\ lib/errors.f, lib/string.f, lib/ffi.f. Prereq: cubin at /tmp/saxpy.cubin.
-\ Data: x=2.0, y=0, a=3.0, n=4  =>  y' = a*x+y = 6.0 (f32 0x40C00000).
+\ cuda-launch.f - fail-closed CUDA launch proof for a checked SAXPY cubin.
 
-create LL-LIB  16 allot
-create LL-NM   64 allot          \ symbol-name scratch
-create LL-PATH 64 allot
-create LL-KN   32 allot          \ kernel name (separate from LL-NM)
-variable LL-H  variable LL-DEV  variable LL-CTX  variable LL-MOD  variable LL-FUNC
-variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
+require lib/ptx/cuda-driver.f
 
-: LL-OPEN ( -- )  s" libcuda.so.1" LL-LIB >CSTR  LL-LIB RTLD-NOW DLOPEN LL-H ! ;
-: LL-SYM ( ptr u8 n -- n )  LL-NM >CSTR  LL-H @ LL-NM DLSYM ;
+package CUDALAUNCH
 
-: LL-SETUP ( -- )                                 \ ctx + module + function
-   LL-OPEN
-   0                       s" cuInit"                   LL-SYM CALL1 drop
-   LL-DEV P>N 0            s" cuDeviceGet"              LL-SYM CALL2 drop
-   LL-CTX P>N LL-DEV @     s" cuDevicePrimaryCtxRetain" LL-SYM CALL2 drop
-   LL-CTX @               s" cuCtxSetCurrent"          LL-SYM CALL1 drop
-   s" /tmp/saxpy.cubin" LL-PATH >CSTR
-   LL-MOD P>N LL-PATH P>N s" cuModuleLoad"             LL-SYM CALL2 drop
-   s" SAXPY" LL-KN >CSTR
-   LL-FUNC P>N LL-MOD @ LL-KN P>N s" cuModuleGetFunction" LL-SYM CALL3 drop ;
+$3F800000 constant X0-BITS
+$40000000 constant X1-BITS
+$40400000 constant X2-BITS
+$40800000 constant X3-BITS
+$41200000 constant Y0-BITS
+$41A00000 constant Y1-BITS
+$41F00000 constant Y2-BITS
+$42200000 constant Y3-BITS
+$40400000 constant A-BITS
+$41500000 constant GOLD0-BITS
+$41D00000 constant GOLD1-BITS
+$421C0000 constant GOLD2-BITS
+$42500000 constant GOLD3-BITS
+$DEADBEEF constant READ-SENTINEL
 
-: LL-LAUNCH ( -- )                                \ alloc, set params, launch, sync, copy back
-   LL-DX P>N 16           s" cuMemAlloc_v2"   LL-SYM CALL2 drop
-   LL-DY P>N 16           s" cuMemAlloc_v2"   LL-SYM CALL2 drop
-   LL-DX @ $40000000 4    s" cuMemsetD32_v2"  LL-SYM CALL3 drop   \ x = 2.0
-   LL-DY @ 0 4            s" cuMemsetD32_v2"  LL-SYM CALL3 drop   \ y = 0
-   $40400000 LL-ABITS !  4 LL-NV !                                \ a = 3.0, n = 4
-   LL-FUNC @ 256 1 1      s" cuFuncSetBlockShape" LL-SYM CALL4 drop
-   LL-FUNC @ 24           s" cuParamSetSize"  LL-SYM CALL2 drop
-   LL-FUNC @ 0  LL-DX P>N 8    s" cuParamSetv" LL-SYM CALL4 drop  \ p_x
-   LL-FUNC @ 8  LL-DY P>N 8    s" cuParamSetv" LL-SYM CALL4 drop  \ p_y
-   LL-FUNC @ 16 LL-ABITS P>N 4 s" cuParamSetv" LL-SYM CALL4 drop  \ p_a
-   LL-FUNC @ 20 LL-NV P>N 4    s" cuParamSetv" LL-SYM CALL4 drop  \ p_n
-   LL-FUNC @ 1 1          s" cuLaunchGrid"    LL-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" LL-SYM CALL1 drop
-   LL-RBUF P>N LL-DY @ 4  s" cuMemcpyDtoH_v2" LL-SYM CALL3 drop ;
+create X-BUF 16 allot
+create Y-BUF 16 allot
+create R-BUF 16 allot
 
-: LL-RELEASE ( -- )
-   LL-MOD @  s" cuModuleUnload"          LL-SYM CALL1 drop
-   LL-DEV @  s" cuDevicePrimaryCtxRelease" LL-SYM CALL1 drop ;
+variable DEV
+variable CTX
+variable MOD
+variable FUNC
+variable DX
+variable DY
+variable ABITS
+variable NV
 
-: SAXPY-GPU-BITS ( -- n )  LL-RBUF @ $FFFFFFFF and ;   \ read-back f32 bits
+: U32! ( n ptr u8 n -- )
+   {: value:n buf:ptr idx:n :}
+   idx 4 * {: off:n :}
+   value $FF and buf off + c!
+   value 8 rshift $FF and buf off 1 + + c!
+   value 16 rshift $FF and buf off 2 + + c!
+   value 24 rshift $FF and buf off 3 + + c! ;
 
-: LAUNCH-SAXPY ( -- )
-   LL-SETUP LL-LAUNCH LL-RELEASE
-   s" SAXPY on GPU: y=a*x+y=3*2+0 -> f32 bits " type SAXPY-GPU-BITS . cr
-   s" expected 0x40C00000 ; PASS? " type
-   SAXPY-GPU-BITS $40C00000 = if s" yes" else s" NO" then type cr ;
+: U32@ ( ptr u8 n -- n )
+   {: buf:ptr idx:n :}
+   idx 4 * {: off:n :}
+   buf off + c@
+   buf off 1 + + c@ 8 lshift or
+   buf off 2 + + c@ 16 lshift or
+   buf off 3 + + c@ 24 lshift or ;
 
-LAUNCH-SAXPY
-bye
+: RESET ( -- )
+   0 DEV !
+   0 CTX !
+   0 MOD !
+   0 FUNC !
+   0 DX !
+   0 DY ! ;
+
+: INPUTS! ( -- )
+   X0-BITS X-BUF 0 U32!
+   X1-BITS X-BUF 1 U32!
+   X2-BITS X-BUF 2 U32!
+   X3-BITS X-BUF 3 U32!
+   Y0-BITS Y-BUF 0 U32!
+   Y1-BITS Y-BUF 1 U32!
+   Y2-BITS Y-BUF 2 U32!
+   Y3-BITS Y-BUF 3 U32!
+   READ-SENTINEL R-BUF 0 U32!
+   READ-SENTINEL R-BUF 1 U32!
+   READ-SENTINEL R-BUF 2 U32!
+   READ-SENTINEL R-BUF 3 U32! ;
+
+: SETUP ( -- )
+   CUDA:RESET
+   CUDA:INIT
+   DEV CUDA:DEVICE-GET
+   CTX DEV @ CUDA:PRIMARY-CTX-RETAIN
+   CTX @ CUDA:CTX-CURRENT! ;
+
+: LOAD-SAXPY ( -- )
+   s" /tmp/saxpy.cubin" MOD CUDA:LOAD-MODULE
+   MOD @ s" SAXPY" FUNC CUDA:MODULE-FUNCTION ;
+
+: ALLOC ( -- )
+   16 DX CUDA:DEVICE-ALLOC
+   16 DY CUDA:DEVICE-ALLOC
+   DX @ X-BUF 16 CUDA:HTOD
+   DY @ Y-BUF 16 CUDA:HTOD ;
+
+: PARAMS ( -- )
+   A-BITS ABITS !
+   4 NV !
+   FUNC @ 256 1 1 CUDA:BLOCK-SHAPE
+   FUNC @ 24 CUDA:PARAM-SIZE
+   FUNC @ 0 DX CUDA:PARAM-PTR!
+   FUNC @ 8 DY CUDA:PARAM-PTR!
+   FUNC @ 16 ABITS CUDA:PARAM-U32!
+   FUNC @ 20 NV CUDA:PARAM-U32! ;
+
+: LAUNCH ( -- )
+   FUNC @ 1 1 CUDA:LAUNCH-GRID
+   CUDA:SYNC
+   R-BUF DY @ 16 CUDA:DTOH ;
+
+: FREE ( -- )
+   DX @ CUDA:DEVICE-FREE
+   DY @ CUDA:DEVICE-FREE
+   0 DX !
+   0 DY ! ;
+
+: RELEASE ( -- )
+   FREE
+   MOD @ CUDA:UNLOAD-MODULE
+   CTX @ 0 <> if DEV @ CUDA:PRIMARY-CTX-RELEASE then
+   RESET ;
+
+: CHECK-ELEM ( n n -- )
+   {: idx:n want:n :}
+   R-BUF idx U32@ want CUDA:EXPECT-GOLDEN ;
+
+: CHECK-OUTPUT ( -- )
+   0 GOLD0-BITS CHECK-ELEM
+   1 GOLD1-BITS CHECK-ELEM
+   2 GOLD2-BITS CHECK-ELEM
+   3 GOLD3-BITS CHECK-ELEM ;
+
+: BODY ( -- )
+   INPUTS!
+   SETUP
+   LOAD-SAXPY
+   ALLOC
+   PARAMS
+   LAUNCH ;
+
+: RUN ( -- )
+   RESET
+   [: BODY ;] catch {: rc:n :}
+   RELEASE
+   rc 0 <> if rc throw then
+   CHECK-OUTPUT
+   s" SAXPY on GPU: nonuniform 4-lane golden verified" type cr ;
+
+RUN
+
+end-package

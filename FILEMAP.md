@@ -90,6 +90,15 @@ points stay listed.
   PTX tests that must exercise a child process boundary.
 - `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
   rejection tests that call the checker directly and capture diagnostics.
+- `lib/ptx/cuda-driver.f` — checked CUDA Driver FFI helper package for PTX
+  device proofs; maps dynamic-loader, symbol, driver rc, cubin, and golden
+  failures to named PTX throw codes.
+- `lib/ptx/cuda-driver-test.f` — focused non-GPU tests for the CUDA Driver
+  helper's fail-closed error classes.
+- `lib/ptx/toolchain.f` — checked PTX device-proof helpers for private temp
+  roots, environment-resolved `ptxas`, assembler rc checks, and cubin presence.
+- `lib/ptx/toolchain-test.f` — focused tests for PTX toolchain helper fallback,
+  temp-root creation, and named assembler failure.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
   (`rows > 0`, `cols > 0`, legal block, and `cols <= block`).
 - `lib/ptx/launch-test.f` — checked fixtures for PTX launch-contract rejection.
