@@ -130,6 +130,17 @@ create FP-CAP-ROW  CLASS-N cells allot
    1 CLASS-EW lshift                                 CLASS-DECODE      FP-CAP! ;
 FP-CAP-INIT
 
+\ ---- fusion ON/OFF ablation toggle (docs/ablation.md; the paper's fusion ON/OFF row) --------
+\ OFF ablates the fusion CAPABILITY, not the plan's soundness: every compute pair becomes
+\ non-emittable (zeroed FP-CAP-ROW) AND movements stop dissolving (FP-MV-FUSE? off), so FP-JOIN?
+\ refuses every edge and each node lands in its own region - "same per-node kernels, regions split"
+\ (the paper's fusion ablation baseline; each singleton region is still lowerable-by-construction).
+\ ON restores the default capability table + the movement folds. The state is PERSISTENT across
+\ FP-BUILD (a build never resets it); FP-RESET restores ON as a fail-safe.
+variable FP-MV-FUSE?                          \ movements dissolve/fuse? (default on)
+-1 FP-MV-FUSE? !
+: FP-CAP-ZERO ( -- )  CLASS-N 0 ?do  0 i FP-CAP!  loop ;   \ no compute pair emittable
+
 \ can the backend EMIT a fused cp->ck edge?  ( cP cK -- bool )
 : FP-BACKEND-EMITS? ( n n -- bool ) {: cp:n ck:n :}
    cp cells FP-CAP-ROW + @  ck rshift  1 and  0<> ;
@@ -149,8 +160,11 @@ FP-CAP-INIT
 : FP-JOIN? ( n n -- bool ) {: k:n p:n :}
    p 0 < if false exit then
    p FP-REF-USES 1 > if false exit then       \ multi-use producer is materialized
-   k MIR-MOVE? if k NODE-DISSOLVE? exit then  \ movement K: join iff free/staged (verdict)
+   k MIR-MOVE? if
+      FP-MV-FUSE? @ 0= if false exit then     \ OFF: a movement never dissolves -> its own region
+      k NODE-DISSOLVE? exit then              \ movement K: join iff free/staged (verdict)
    p NODE-MAT-VD? if false exit then          \ materialized movement producer is a boundary
+   p MIR-MOVE? FP-MV-FUSE? @ 0= and if false exit then   \ OFF: a movement producer is a boundary too
    p FP-CLASS k FP-CLASS FP-BASE-FUSE? 0= if false exit then
    p MIR-MOVE? 0= if                          \ backend-capability gate: compute producers only
       p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= if false exit then
@@ -235,8 +249,13 @@ FP-CAP-INIT
 
 public
 
-: FP-RESET ( -- )                            \ drop any prior plan (facts unusable)
-   0 FP-RN !  0 FP-SP-N !  0 FP-BUILT? ! ;
+\ ---- fusion ON/OFF toggle (persistent across FP-BUILD; FP-RESET restores ON) -----------------
+: FP-FUSE-ON! ( -- )   FP-CAP-INIT  -1 FP-MV-FUSE? ! ;   \ default capability table + movement folds
+: FP-FUSE-OFF! ( -- )  FP-CAP-ZERO   0 FP-MV-FUSE? ! ;   \ ablate fusion: every node its own region
+: FP-FUSED? ( -- bool )  FP-MV-FUSE? @ 0<> ;             \ true when fusion is ON
+
+: FP-RESET ( -- )                            \ drop any prior plan (facts unusable); restore fusion ON
+   FP-FUSE-ON!  0 FP-RN !  0 FP-SP-N !  0 FP-BUILT? ! ;
 
 : FP-BUILD ( -- )                            \ plan regions over the current IR
    FP-ASSIGN  FP-MARK  FP-SPLITS  -1 FP-BUILT? ! ;

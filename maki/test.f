@@ -148,6 +148,8 @@ TEST:SUITE maki/eval-test.f
 TEST:END-SUITE
 TEST:SUITE maki/fusion-test.f
 TEST:END-SUITE
+TEST:SUITE maki/ablate-fusion-test.f
+TEST:END-SUITE
 TEST:SUITE maki/report-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cad-test.f
