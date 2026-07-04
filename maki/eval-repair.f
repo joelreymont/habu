@@ -13,6 +13,8 @@
 require lib/ptx/test-prelude.f
 require maki/eval.f
 
+package MAKI
+
 variable ER-NTOK  variable ER-ST
 \ count whitespace-separated tokens in a kernel source string
 : COUNT-TOKS ( ptr u8 n -- n ) {: a u :}
@@ -55,3 +57,5 @@ ER-ROUNDS@  1 T=
 s" 1-fix authoring:  repair-rounds=" type ER-ROUNDS@ . s"  tokens-to-green=" type ER-TOKENS@ . cr
 
 T-REPORT
+
+end-package

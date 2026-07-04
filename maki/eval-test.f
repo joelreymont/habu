@@ -3,6 +3,8 @@
 require lib/test.f
 require maki/eval.f
 
+package MAKI
+
 T-RESET
 
 \ the judge: a well-typed candidate certifies, an ill-typed one is rejected
@@ -30,3 +32,5 @@ EV-PASS  @  0 T=
 EV-PASS@1?  TFALSE
 
 T-REPORT
+
+end-package

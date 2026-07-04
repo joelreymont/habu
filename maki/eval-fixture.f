@@ -9,6 +9,8 @@
 require lib/ptx/test-prelude.f
 require maki/eval.f
 
+package MAKI
+
 T-RESET
 
 \ --- the judge discriminates each candidate (correct certifies, each error rejects) ---
@@ -39,3 +41,5 @@ EV-PASS@1?  TTRUE
 s" Habu-PTX SAXPY checker-as-judge eval: pass=" type EV-PASS @ . s" / total=" type EV-TOTAL @ . s"  pass@1=yes" type cr
 
 T-REPORT
+
+end-package

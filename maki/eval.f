@@ -10,6 +10,13 @@
 \ CHECK-PASSES? is a metaprogramming boundary (it drives the checker over a source
 \ string and reads the verdict) - hence TRUSTED:, like lib/array-test.f's harness.
 \ It lives in maki/ (outside the trust root), so it needs no TRUSTED.md row.
+\
+\ Wrapped in `package MAKI`: the harness exports as MAKI:CHECK-PASSES? / MAKI:EV-SCORE
+\ / MAKI:EV-RESET / MAKI:EV-PASS@1? etc., so a bare reference does not resolve from
+\ global/habu (docs/forth.md "Packages"). maki-internal callers reopen `package MAKI`.
+
+package MAKI
+public
 
 TRUSTED: CHECK-PASSES? ( ptr u8 n -- bool )
    DIAGXT @ >r  0 DIAGXT !          \ silence reject diagnostics during scoring
@@ -29,3 +36,5 @@ variable EV-TOTAL
 
 \ score one candidate and tally it
 : EV-SCORE ( ptr u8 n -- )  CHECK-PASSES? EV-RECORD ;
+
+end-package
