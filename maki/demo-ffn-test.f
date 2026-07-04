@@ -124,12 +124,12 @@ dup RPT-CAND-COUNT 32 T=
 dup RPT-SELECT@ 0 T=
 dup 0 RPT-CAND@  s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"   T$=
 dup 31 RPT-CAND@ s" gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" T$=
-\ full section-7.4 cache key: fixed fields, then the real bin/hb content key in place
-\ (lib/engine-id.f; binary-dependent, so asserted by containment not literal)
-dup RPT-CACHE$ DM-SAVE
-s" 3C09A0D86344114A|4x16|f32|row|al?|sm_87|" DM-IN
-ENGINE-KEY$ DM-IN
-s" |unprobed" DM-IN
+\ full section-7.4 cache key, exact: the report arena copy is stable, so build the
+\ expected key in SB with the binary-dependent engine field spliced in, then compare.
+dup RPT-CACHE$
+SB-RESET s" 3C09A0D86344114A|4x16|f32|row|al?|sm_87|" SB-APPEND
+ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
+STR= TTRUE
 drop
 
 \ ==== 6. CERTIFY: model-level static legality passes ========================

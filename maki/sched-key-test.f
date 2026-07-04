@@ -9,13 +9,9 @@ require maki/sched-key.f   \ transitively brings fusion-plan + model-ir (float b
 
 package MAKI
 
-\ ---- containment helper (key substring checks) -----------------------------
-variable KT-A  variable KT-U
-: KT-SAVE ( ptr u8 n -- )  KT-U ! KT-A ! ;
-: KT-IN    ( ptr u8 n -- )  KT-A @ KT-U @ 2swap CONTAINS? TTRUE ;
-
 \ stable copy (the shared SB builder is overwritten by the next render) ---------
-create KT-BUF 64 allot  variable KT-BU
+256 constant KT-CAP                       \ holds a full section-7.4 key (~120 bytes)
+create KT-BUF KT-CAP allot  variable KT-BU
 : KT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}  a KT-BUF u BYTE-COPY  u KT-BU ! ;
 : KT-BUF$ ( -- ptr u8 n )  KT-BUF KT-BU @ ;
 
@@ -52,11 +48,13 @@ SK-PTXAS$  s" unprobed"  T$=
 \ ---- full section 7.4 key over a built region ------------------------------
 2 100 BUILD  0 AL-16 MIR-SLOT-AL!  FP-BUILD
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
-0 SK-KEY$ KT-SAVE
-s" 431E24867468A764|" KT-IN                          \ leads with the region signature
-s" |2xp128+t|f32|row|al16|sm_87|" KT-IN              \ fixed fields through the target
-SK-ENGINE$ KT-IN                                     \ the real engine content key, in place
-s" |unprobed" KT-IN                                  \ ptxas field suffix
+\ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
+\ builder), then splice the binary-dependent engine key into the expected string.
+0 SK-KEY$ KT-COPY
+SB-RESET
+s" 431E24867468A764|2xp128+t|f32|row|al16|sm_87|" SB-APPEND
+ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
+KT-BUF$ SB$ STR= TTRUE
 0 SK-ALIGN$ s" al16" T$=
 
 \ ---- alignment class falls back to al? for an unrecorded input --------------

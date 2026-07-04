@@ -113,10 +113,12 @@ TILE
 dup RPT-CAND-COUNT 32 T=
 dup RPT-SELECT@ 0 T=
 dup 0 RPT-CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
-dup RPT-CACHE$ CT-SAVE                               \ full section 7.4 cache key
-s" CDFF1E0D197DD30A|2x4|f32|row|al?|sm_87|" CT-IN    \ fixed fields through the target
-ENGINE-KEY$ CT-IN                                    \ real bin/hb content key, in place
-s" |unprobed" CT-IN                                  \ ptxas field suffix
+\ full section-7.4 cache key, exact: the report arena copy is stable, so build the
+\ expected key in SB with the binary-dependent engine field spliced in, then compare.
+dup RPT-CACHE$
+SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|sm_87|" SB-APPEND
+ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
+STR= TTRUE
 dup RPT-RENDER CT-SAVE
 s" schedule.candidate.0: gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"    CT-IN
 s" schedule.candidate.31: gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" CT-IN
