@@ -47,6 +47,7 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
 $28 constant CUR-CELL
 $30 constant WIDN-CELL
 $38 constant HOOK-CELL

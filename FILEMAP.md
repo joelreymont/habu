@@ -649,6 +649,12 @@ points stay listed.
   `PROT-GUARD`/`EMIT-SEAL-FRIEND` seal machinery so a mirrored guard cannot be
   silently deleted. In-memory self-proofs cover the reject, guard-escape, and
   comment-only cases.
+- `test/seal-package.f` — sealed system-package regressions (TFAM 2b-ii): child
+  forges prove post-seal user source cannot open/reopen `package TFAM`/`TYPE`/
+  `MATCH` nor define a qualified word into one (`: TFAM:tail ...`),
+  case-insensitively, fail-closed with exit `E-SEAL-PACKAGE`; ordinary packages
+  and qualified defs still compile, and a trailing-colon ordinary name is never
+  treated as qualified. Covers both `--load` and stdin cold-prefix entry paths.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate

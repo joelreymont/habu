@@ -159,6 +159,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-existing-private | `label --` | Package reopen helper branches to the caller's done label after ensuring an existing namespace has a private wordlist id. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-ensure | `--` | Package keyword dictionary lookup/creation scans namespace records, reuses public wordlists, creates missing private wordlists, and leaves package ids in generated registers. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package | `--` | Interpreter `package` keyword consumes the following token, rejects nested/malformed packages, opens private scope, syncs checker package state, and saves the parent current wordlist. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| c-seal-package-fail | `--` | Sealed-system-package failure emitter prints the offending token from the fixed token cells and exits `E-SEAL-PACKAGE`; raw process exit is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-seal-match | `--` | Sealed-system-package matcher scans the native reserved-name table (`RESTAB`) in generated registers, case-folds the candidate token `TKA[0,x24)`, and calls the seal failure emitter on a match. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-qualify-seal-guard | `--` | Definition-time seal guard: when the friend latch is closed and the pending token is a non-edge `NAME:tail`, matches the prefix against the reserved-name table and fails closed; raw latch/register scan is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-package-seal-guard | `--` | `package` keyword seal guard: when the friend latch is closed, matches the pending package name against the reserved-name table and fails closed before wordlist allocation. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-public | `--` | Interpreter `public` keyword switches the active package's current wordlist to the exported public wordlist and syncs checker public mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-private | `--` | Interpreter `private` keyword switches the active package's current wordlist back to the private wordlist and syncs checker private mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-end-package | `--` | Interpreter `end-package` keyword restores the saved parent current wordlist and clears both runtime and checker package frames. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -661,7 +665,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 98
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 102
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3

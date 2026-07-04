@@ -918,6 +918,20 @@ create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
+variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
+\ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
+\ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
+\ This ONE native table is the reserved-name set: the guards fold each candidate
+\ byte and compare against it. It lives in the compiler (habu1/habu2 CHECK-OFF
+\ region) rather than the checker because the guards must resolve it during the
+\ sealed self-hosting stage build and checker-boot recompile, where a checker
+\ word is neither reachably kept nor safely callable from mid C-QUALIFY-DEF.
+create RESTAB-BUF
+   4 c, $74 c, $66 c, $61 c, $6D c,               \ "tfam"
+   4 c, $74 c, $79 c, $70 c, $65 c,               \ "type"
+   5 c, $6D c, $61 c, $74 c, $63 c, $68 c,        \ "match"
+   0 c,                                           \ terminator
+17 constant RESTAB-LEN
 
 : EMIT-KWDATA ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
@@ -950,7 +964,7 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1521,9 +1535,66 @@ s" c-dup-def-fail" s" --" TRUST
    done LBL, ;
 s" c-reject-dup-def" s" --" TRUST
 
+\ TFAM 2b-ii: sealed system-package guard. The offending token sits in
+\ TKA/TKL when either emitter runs, so the shared fail writes it and exits with
+\ the distinct named code E-SEAL-PACKAGE. Both guards read the REAL friend latch
+\ (FRIEND-LATCH-CELL) natively: latch 0 = engine cold load (friend) allows the
+\ reserved name; sealed = user source rejects fail-closed. The reserved-name set
+\ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
+\ resolve during the sealed self-hosting stage build and checker-boot recompile,
+\ where a checker word is neither reachably kept nor safely callable.
+: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit E-SEAL-PACKAGE
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
+s" c-seal-package-fail" s" --" TRUST
+
+: C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit E-SEAL-PACKAGE
+   LBL LBL LBL LBL LBL {: tabloop:label cmploop:label matched:label tabnext:label done:label :}
+   13 LRESTAB LABEL@ ADR,                               \ x13 = reserved-name table cursor
+   tabloop LBL,
+      14 13 0 LDRB,                                     \ x14 = entry length
+      14 done CBZ,                                      \ 0 terminator -> no match
+      14 24 CMP,  C-NE tabnext BCOND,                   \ length mismatch -> next entry
+      15 0 MOVZ,                                        \ x15 = byte index
+      cmploop LBL,
+         15 24 CMP,  C-GE matched BCOND,                \ all bytes matched -> reserved
+         16 DATA TKA-CELL LDR,  16 16 15 ADD,  16 16 0 LDRB,   \ x16 = candidate byte TKA[x15]
+         3 16 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  16 16 3 ORR,   \ fold A-Z -> a-z
+         17 13 15 ADD,  17 17 1 ADDI,  17 17 0 LDRB,    \ x17 = entry byte [1+x15]
+         16 17 CMP,  C-NE tabnext BCOND,                \ byte mismatch -> next entry
+         15 15 1 ADDI,  cmploop B,
+      matched LBL,
+         C-SEAL-PACKAGE-FAIL
+   tabnext LBL,
+      13 13 14 ADD,  13 13 1 ADDI,                      \ advance past [len][bytes]
+      tabloop B,
+   done LBL, ;
+s" c-seal-match" s" --" TRUST
+
+: C-QUALIFY-SEAL-GUARD ( -- )   \ reject `NAME:tail` defs into a sealed system package
+   LBL LBL LBL {: scan:label have:label ok:label :}
+   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> no guard
+   \ Only a NAME:tail token (first ':' not at an edge, matching CHECKER-QUALIFIED?)
+   \ can name a package; a leading/trailing ':' (e.g. `PRIM:`) is an ordinary name.
+   \ The whole check is native (RESTAB + fold), so it is safe during the sealed
+   \ self-hosting stage build and checker-boot recompile of the engine's own defs.
+   25 DATA TKL-CELL LDR,  24 0 MOVZ,
+   scan LBL,
+      24 25 CMP,  C-GE ok BCOND,                        \ no ':' -> ordinary -> skip
+      9 DATA TKA-CELL LDR,  9 9 24 ADD,  9 9 0 LDRB,
+      9 $3A CMPI,  C-EQ have BCOND,                      \ first ':' at index x24
+      24 24 1 ADDI,  scan B,
+   have LBL,
+      24 ok CBZ,                                         \ leading ':' -> ordinary -> skip
+      9 24 1 ADDI,  9 25 CMP,  C-GE ok BCOND,            \ trailing ':' -> ordinary -> skip
+      C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
+   ok LBL, ;
+s" c-qualify-seal-guard" s" --" TRUST
+
 : C-QUALIFY-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
+   C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -2961,6 +3032,13 @@ s" c-package-existing-private" s" label --" TRUST
    done LBL, ;
 s" c-package-ensure" s" --" TRUST
 
+: C-PACKAGE-SEAL-GUARD ( -- )   \ reject `package NAME` open/reopen of a sealed system package
+   LBL {: ok:label :}
+   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> allow (engine cold load)
+   24 DATA TKL-CELL LDR,  C-SEAL-MATCH                  \ candidate len = TKL; fail if reserved
+   ok LBL, ;
+s" c-package-seal-guard" s" --" TRUST
+
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL {: inactive:label hastok:label :}
@@ -2971,6 +3049,7 @@ s" c-package-ensure" s" --" TRUST
       $4A C-PACKAGE-FAIL
    hastok LBL,
    C-CALL-CHECKER-PACKAGE
+   C-PACKAGE-SEAL-GUARD
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -3473,7 +3552,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWENDPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !
+   LBL LCHKDEFER !  LBL LRESTAB !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA ! ;
 
