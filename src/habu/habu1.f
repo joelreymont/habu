@@ -998,8 +998,17 @@ s" spawn-darwin-finish" s" label label --" TRUST
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
-: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
-: BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
+\ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
+\ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both carry
+\ PROT-GUARD on the address the sink redirects a write to, so a post-seal value
+\ landing in either sealed band fails closed at the sink (E-SEAL-VIOLATION), exactly
+\ like the raw-store guards — not via the incidental word-creation bounds check.
+\ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
+\ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
+: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A PROT-GUARD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+: BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  B PROT-GUARD                  \ x10 = next-record addr DBASE+n*DREC
+   NDICT A 0 ADDI, ;
 
 : BEPOCHSECONDS ( -- )
    LBL TIME-OK !

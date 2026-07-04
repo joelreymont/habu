@@ -128,8 +128,9 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ (habu1.f) gates the sealed-WID guards. u32 entries so wordlist IDs above 255 fit.
 \ The band [PROT-REG-OFF, +PROT-REG-LEN) fills $3CB8..$3D00 (below TASK-USER-BASE) and
 \ is a SECOND range checked by PROT-GUARD, rejecting user data stores into the count
-\ cell or table. Code-emit sinks (cp!/ndict!) are not yet range-guarded; closing that
-\ bypass for both bands is dot habu-range-reject-cp-e2eed7e4. ---
+\ cell or table. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET) ARE
+\ range-guarded too: each PROT-GUARDs the address it redirects a write to, so a
+\ post-seal cp!/ndict! into either band fails closed at the sink. ---
 $3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32 in a full cell)
 $3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32 entries)
 16 constant PROT-WID-MAX                \ table capacity (16 u32 = $40 -> fills the gap to $3D00)

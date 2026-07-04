@@ -179,6 +179,24 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-HOLE + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
+: SLV-PAST-BAND2-FORGE$ ( -- ptr u8 n )     \ ! at $3D00 (one past band 2) stays writable
+   SB-RESET
+   s" $3D00 constant SLF-PAST" SB-APPEND SLV-LF
+   s" data-base SLF-PAST + 99 swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+\ Legit FORGET marks live in the code region (>= DATA-START, in the DBASE region),
+\ so the cp!/ndict! guards must leave a real save-mark/roll-back/redefine intact.
+: SLV-FORGET-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : SLF-A ( -- n ) 1 ;" SB-APPEND SLV-LF
+   s" cp@ ndict@" SB-APPEND SLV-LF                 \ save code/dict marks
+   s" : SLF-B ( -- n ) 2 ;" SB-APPEND SLV-LF       \ define past the marks
+   s" ndict! cp!" SB-APPEND SLV-LF                 \ FORGET: roll both back
+   s" : SLF-C ( -- n ) SLF-A 3 + ;" SB-APPEND SLV-LF
+   s" SLF-C . cr" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $3D00). A raw
 \ store to the count cell ($3CB8) or the u32 table ($3CC0) must trap, so user source
 \ can neither zero the count (un-protecting every sealed WID) nor overflow the table.
@@ -192,6 +210,34 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB-RESET
    s" $3CC0 constant SLF-PWIDT" SB-APPEND SLV-LF
    s" data-base SLF-PWIDT + 9 swap c!" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-PWIDT-END-FORGE$ ( -- ptr u8 n )      \ ! at the band-2 last byte (PROT-REG-OFF+PROT-REG-LEN-1 = $3CFF)
+   SB-RESET
+   s" $3CFF constant SLF-PWEND" SB-APPEND SLV-LF
+   s" data-base SLF-PWEND + 0 swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+\ Code-emit sinks (habu-range-reject-cp-e2eed7e4): cp! sets the JIT code pointer;
+\ a post-seal cp! that redirects emission into either protected band must trap
+\ E-SEAL-VIOLATION AT THE SINK, not silently corrupt the band nor die via the
+\ incidental word-creation bounds check. One forge per band proves cp!'s own guard
+\ wiring. ndict! (the paired FORGET count sink) writes records into the disjoint
+\ dict-record region (DBASE, not data-base), bounded < DICT-CAP by the room check,
+\ so it cannot land in a data-base band; the legit round-trip forge below proves
+\ its guard leaves normal FORGET intact.
+: SLV-CPSET-B2-FORGE$ ( -- ptr u8 n )       \ cp! CP into the registry band ($3CB8), then emit
+   SB-RESET
+   s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
+   s" data-base SLF-PWIDN + cp!" SB-APPEND SLV-LF
+   s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-CPSET-B1-FORGE$ ( -- ptr u8 n )       \ cp! CP into the crown-jewel band ($20), then emit
+   SB-RESET
+   s" $20 constant SLF-LATCH" SB-APPEND SLV-LF
+   s" data-base SLF-LATCH + cp!" SB-APPEND SLV-LF
+   s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 
 \ Post-seal language exercise: define words, a package + qualified word, a
@@ -278,7 +324,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" ! into the protected-WID registry count traps (band 2)" T-LABEL
    SLV-PWIDN-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" c! into the protected-WID registry table traps (band 2)" T-LABEL
-   SLV-PWIDT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   SLV-PWIDT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ! at the band-2 upper boundary (PROT-REG-OFF+PROT-REG-LEN-1) traps" T-LABEL
+   SLV-PWIDT-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" cp! redirecting emission into band 2 traps at the sink" T-LABEL
+   SLV-CPSET-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
+   SLV-CPSET-B1-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
 \ One forge per remaining guarded sink — each sink hand-wires its own PROT-GUARD
 \ register, so testing one proves nothing about another's wiring.
@@ -307,6 +359,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" store one past band 2 ($3D00) stays writable" T-LABEL
+   SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
+   SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" post-seal define/package/trusted/defer still work" T-LABEL
    SLV-LANG-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
 
