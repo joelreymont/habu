@@ -1,8 +1,10 @@
-\ maki/backward-test.f - checked tests for the model-IR reverse transform (cad-9b).
+\ maki/backward-test.f - checked tests for the model-IR reverse transform (cad-9b/9e).
 \ Backward nodes appended as ordinary IR: elementwise *-bwd emission, fan-out
 \ cotangent summation via OP-ADD, matmul transpose+matmul adjoints, add copy-through,
 \ the seeded output cotangent, per-input gradient reporting, that a backward
-\ elementwise chain fuses under FP-BUILD, and every fail-closed path.
+\ elementwise chain fuses under FP-BUILD, and every fail-closed path. cad-9e adds the
+\ reduce/scatter adjoint emission (bias/linear/slice/gather/scale) with shape asserts
+\ and the scale partial-broadcast fail-closed boundary.
 
 require lib/test.f
 require lib/string.f
@@ -21,10 +23,16 @@ variable BT-VA  variable BT-VU
 : BT-MK1 ( n -- )  {: op:n :}                            \ single op over one 2x2 input
    MIR-RESET  2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
    op MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+: BT-MK-SCALE ( n n -- ) {: sr:n sc:n :}                 \ SCALE(x:2x3, s:sr x sc)
+   MIR-RESET
+   2 3 DT-F32 LAY-ROW MIR-INPUT+ drop                     \ x = 2x3 (slot 0)
+   sr sc DT-F32 LAY-ROW MIR-INPUT+ drop                   \ s = sr x sc (slot 1)
+   OP-SCALE MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
+   2 3 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
 : BT-TRY-STATE ( -- )  BW-FWD-N@ drop ;                  \ accessor before build
 : BT-TRY-EMPTY ( -- )  MIR-RESET BW-BUILD ;              \ empty IR
-: BT-TRY-SLICE ( -- )  OP-SLICE BT-MK1 BW-BUILD ;           \ unsupported adjoint
-: BT-TRY-CAST  ( -- )  OP-CAST  BT-MK1 BW-BUILD ;           \ no adjoint
+: BT-TRY-CAST  ( -- )  OP-CAST  BT-MK1 BW-BUILD ;           \ no adjoint (non-differentiable)
+: BT-TRY-SCALE-BC ( -- )  1 3 BT-MK-SCALE BW-BUILD ;        \ s=1x3: partial broadcast (v1)
 
 T-RESET
 
@@ -113,14 +121,65 @@ s" backward.seed: input 1" BT-IN
 s" backward.nodes: fwd=1 bwd=1" BT-IN
 s" backward.grad: input 0 <- node 1" BT-IN
 
-\ ---- fail closed: unsupported / no-adjoint / empty --------------------------
-' BT-TRY-SLICE E-BW-UNSUP TTHROWS
-' BT-TRY-CAST  E-BW-NOADJ TTHROWS
-' BT-TRY-EMPTY E-BW-EMPTY TTHROWS
-\ BW-CAN? classifies the slice model as not-transformable, first bad op named
-MODEL: SLM2 ( x:4x4 -- y ) SLICE:0..2 ;
-BW-CAN? TFALSE
-BW-FIRST-BAD OP-SLICE T=
+\ ---- cad-9e: bias adjoint (dx = cotangent copy + d-bias = OP-ROWSUM-BWD) -----
+MODEL: BIASM ( x:2x3 b:1x3 -- y ) BIAS ;
+BW-BUILD
+BW-BWD-COUNT 1 T=
+1 MIR-OP@ OP-ROWSUM-BWD T=
+1 MIR-ROWS@ 1 T=  1 MIR-COLS@ 3 T=              \ d-bias is 1x3
+0 BW-SLOT-GRAD@ 2 MIR-IN-REF T=                 \ dx = the seed cotangent (input slot 2)
+1 BW-SLOT-GRAD@ 1 T=                            \ d-bias = the row-reduce node
+
+\ ---- cad-9e: linear adjoint (matmul adjoints + d-bias = OP-ROWSUM-BWD) -------
+MODEL: LINM ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
+BW-BUILD
+BW-BWD-COUNT 5 T=                               \ 2 transpose + 2 matmul + 1 rowsum
+0 BW-SLOT-GRAD@ MIR-ROWS@ 2 T=  0 BW-SLOT-GRAD@ MIR-COLS@ 3 T=   \ d-x 2x3
+1 BW-SLOT-GRAD@ MIR-ROWS@ 3 T=  1 BW-SLOT-GRAD@ MIR-COLS@ 4 T=   \ d-w 3x4
+2 BW-SLOT-GRAD@ MIR-OP@ OP-ROWSUM-BWD T=
+2 BW-SLOT-GRAD@ MIR-ROWS@ 1 T=  2 BW-SLOT-GRAD@ MIR-COLS@ 4 T=   \ d-b 1x4
+
+\ ---- cad-9e: slice adjoint (OP-PAD-SCATTER at the forward slice offset) ------
+MODEL: SLM ( x:4x4 -- y ) SLICE:1..3 ;
+BW-CAN? TTRUE
+BW-BUILD
+BW-BWD-COUNT 1 T=
+1 MIR-OP@ OP-PAD-SCATTER T=
+1 MIR-ROWS@ 4 T=  1 MIR-COLS@ 4 T=              \ padded back to the input shape
+1 MIR-ATTR@ MV-PA@ 1 T=  1 MIR-ATTR@ MV-PB@ 3 T=   \ r0=1, r1=3 from the forward slice
+0 BW-SLOT-GRAD@ 1 T=
+
+\ ---- cad-9e: gather adjoint (OP-SCATTER-ADD at the gathered indices) ---------
+MODEL: GAM ( x:4x2 idx:3x1 -- y ) GATHER ;
+BW-BUILD
+BW-BWD-COUNT 1 T=
+1 MIR-OP@ OP-SCATTER-ADD T=
+1 MIR-ROWS@ 4 T=  1 MIR-COLS@ 2 T=              \ scattered back to the input shape
+1 MIR-IN-COUNT@ 2 T=                            \ cotangent + index operand
+1 1 MIR-IN@ 1 MIR-IN-REF T=                     \ operand 1 = the index input (slot 1)
+0 BW-SLOT-GRAD@ 1 T=                            \ x receives the scatter-add node
+1 BW-HAS-GRAD? TFALSE                           \ the index operand gets no gradient
+
+\ ---- cad-9e: scale adjoint, same-shape operand (elementwise product rule) ----
+MODEL: SCM ( x:2x3 s:2x3 -- z ) SCALE ;
+BW-BUILD
+BW-BWD-COUNT 2 T=
+1 MIR-OP@ OP-MUL T=  2 MIR-OP@ OP-MUL T=
+0 BW-HAS-GRAD? TTRUE  1 BW-HAS-GRAD? TTRUE
+
+\ ---- cad-9e: scale adjoint, 1x1 scalar operand (broadcast-scale + full-reduce dot) --
+MODEL: SCS ( x:2x3 s:1x1 -- z ) SCALE ;
+BW-BUILD
+BW-BWD-COUNT 2 T=
+1 MIR-OP@ OP-SCALE T=                           \ dx = broadcast scale(ct, s)
+2 MIR-OP@ OP-FULLSUM-DOT-BWD T=                 \ d-scale = full-reduce dot -> 1x1
+2 MIR-ROWS@ 1 T=  2 MIR-COLS@ 1 T=
+0 BW-SLOT-GRAD@ 1 T=  1 BW-SLOT-GRAD@ 2 T=
+
+\ ---- fail closed: no-adjoint (cast), empty IR, scale partial broadcast -------
+' BT-TRY-CAST     E-BW-NOADJ     TTHROWS
+' BT-TRY-EMPTY    E-BW-EMPTY     TTHROWS
+' BT-TRY-SCALE-BC E-BW-BROADCAST TTHROWS
 
 T-REPORT
 

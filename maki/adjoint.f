@@ -10,14 +10,19 @@
 \ reshape->reshape); the rest name a dedicated backward op-kind (OP-*-BWD) whose
 \ scalar reference is the existing *-BWD word.
 \
-\ v1 boundary (fail-closed, named reason - NEVER a silent partial gradient):
-\   cast          no adjoint (non-differentiable) -> reject on GRADCHECK
-\   slice/gather  adjoints (pad-scatter / scatter-add) unimplemented
-\   scale/bias    param-grad needs a reduce backward op not in the op set yet
-\   linear        bias-grad needs a row-reduce backward op not in the op set yet
-\ These carry a real adjoint id + mask (the facts are honest) but ADJ-SUP? is false,
-\ so backward.f refuses them by name; the missing reduce/scatter backward ops are a
-\ tracked follow-up capability. maki -> habu only; adjoint owns -5100..-5104.
+\ cad-9e unlocked the reduce/scatter adjoints: bias/linear bias-grad is OP-ROWSUM-BWD,
+\ scale-grad is OP-FULLSUM-DOT-BWD, the slice input-grad is OP-PAD-SCATTER, the gather
+\ input-grad is OP-SCATTER-ADD (maki/reduce-bwd.f, maki/scatter.f). So scale/bias/linear/
+\ slice/gather now carry ADJ-SUP? = 1 and backward.f emits them.
+\
+\ v1 boundary that remains (fail-closed, named reason - NEVER a silent partial gradient):
+\   cast   no adjoint (non-differentiable) -> reject on GRADCHECK / backward
+\   scale  the INPUT gradient dx = ct*s is a broadcast-multiply; v1 emits it as an
+\          elementwise OP-MUL when the scale operand matches the cotangent shape and
+\          as OP-SCALE (broadcast-by-1x1) when the operand is a 1x1 scalar, but fails
+\          closed (E-BW-BROADCAST, backward.f) on a partial broadcast (1xC / Rx1) that
+\          needs a broadcast-reduce not in the op set yet. The scale FACTOR gradient
+\          (OP-FULLSUM-DOT-BWD) is always emittable. maki -> habu only; owns -5100..-5104.
 
 require maki/op-kind.f
 require maki/op-registry.f
@@ -53,10 +58,12 @@ public
 11 constant ADJ-ROPE          \ OP-ROPE-BWD (rotate by -angle; reads cos/sin)
 12 constant ADJ-RESHAPE       \ reshape the cotangent back to the input shape
 13 constant ADJ-TRANSPOSE     \ transpose the cotangent
-14 constant ADJ-SLICE         \ pad-scatter the cotangent (v1: unsupported)
+14 constant ADJ-SLICE         \ OP-PAD-SCATTER the cotangent into a zero buffer at r0
 15 constant ADJ-CONCAT        \ split the cotangent into a slice per input
-16 constant ADJ-GATHER        \ scatter-add the cotangent (v1: unsupported)
-17 constant ADJ-N             \ range bound
+16 constant ADJ-GATHER        \ OP-SCATTER-ADD the cotangent rows at the gathered indices
+17 constant ADJ-BIAS          \ dx = cotangent copy ; d-bias = OP-ROWSUM-BWD (row reduce)
+18 constant ADJ-SCALE         \ dx = ct*s (mul/scale) ; d-scale = OP-FULLSUM-DOT-BWD
+19 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -114,14 +121,11 @@ public
 
 \ ---- v1-boundary reason (why an op with an adjoint is not yet emittable) -----
 \ Fail closed on a supported op (there is no reason) or a differentiable-op query.
+\ Only cast remains v1-unsupported (non-differentiable); scale/bias/linear/slice/gather
+\ became emittable in cad-9e. A supported op has no reason and fails closed here.
 : ADJ-UNSUP$ ( n -- ptr u8 n )
    case
-      OP-CAST   of s" cast has no adjoint (non-differentiable)"          endof
-      OP-SCALE  of s" scale param-grad needs a full-reduce backward op (v1)" endof
-      OP-BIAS   of s" bias param-grad needs a row-reduce backward op (v1)"   endof
-      OP-LINEAR of s" linear bias-grad needs a row-reduce backward op (v1)"  endof
-      OP-SLICE  of s" slice adjoint (pad-scatter) unimplemented (v1)"    endof
-      OP-GATHER of s" gather adjoint (scatter-add) unimplemented (v1)"   endof
+      OP-CAST   of s" cast has no adjoint (non-differentiable)" endof
       E-ADJ-UNSUP throw
    endcase ;
 
@@ -154,12 +158,16 @@ private
    ADJ-RESHAPE   SAVE-NONE 1  1 -1 OP-RESHAPE   ADJ!
    ADJ-TRANSPOSE SAVE-NONE 1  1 -1 OP-TRANSPOSE ADJ!
    ADJ-CONCAT    SAVE-NONE 3 1 -1 OP-CONCAT    ADJ!
-   \ ---- v1 boundary: differentiable but not emittable yet (ADJ-SUP? = 0) ----
-   ADJ-MUL     SAVE-INPUT 3  0 -1 OP-SCALE  ADJ!
-   ADJ-COPY    SAVE-NONE  3  0 -1 OP-BIAS   ADJ!
-   ADJ-LINEAR  SAVE-INPUT 7 0 -1 OP-LINEAR ADJ!
-   ADJ-SLICE   SAVE-NONE  1   0 -1 OP-SLICE  ADJ!
-   ADJ-GATHER  SAVE-NONE  1   0 -1 OP-GATHER ADJ! ;
+   \ ---- reduce / scatter adjoints (cad-9e: now emittable, ADJ-SUP? = 1) ------
+   \ scale: dx = ct*s, d-scale = OP-FULLSUM-DOT-BWD (both operands saved).
+   ADJ-SCALE   SAVE-INPUT 3  1 -1 OP-SCALE  ADJ!
+   \ bias: dx = ct copy, d-bias = OP-ROWSUM-BWD(ct) (nothing saved from forward).
+   ADJ-BIAS    SAVE-NONE  3  1 -1 OP-BIAS   ADJ!
+   \ linear: matmul adjoints (x, w saved) + d-bias = OP-ROWSUM-BWD(ct).
+   ADJ-LINEAR  SAVE-INPUT 7  1 -1 OP-LINEAR ADJ!
+   \ slice/gather: input-grad is a scatter into a zero buffer (static params/index).
+   ADJ-SLICE   SAVE-NONE  1  1 -1 OP-SLICE  ADJ!
+   ADJ-GATHER  SAVE-NONE  1  1 -1 OP-GATHER ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 : ADJ-WIRE-VJP ( -- )  OP-N 0 ?do  i i ADJ-ID OPR-VJP!  loop ;

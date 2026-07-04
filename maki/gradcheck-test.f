@@ -49,9 +49,11 @@ s" host-unsupported:matmul" GCT-REASON-IN
 MODEL: GC-CAST ( x:2x2 -- y ) CAST ;
 GC-RUN V-NOTRUN T=
 s" no-adjoint:cast" GCT-REASON-IN
+\ cad-9e: slice now HAS a supported adjoint, but the movement op is not host-executable
+\ (the reduce/scatter host executor is the cad-7 full-tensor path) -> honest host-unsupported.
 MODEL: GC-SL ( x:4x4 -- y ) SLICE:0..2 ;
 GC-RUN V-NOTRUN T=
-s" unsupported-adjoint:slice" GCT-REASON-IN
+s" host-unsupported:slice" GCT-REASON-IN
 
 \ ---- gate wiring: GRADCHECK-INTO produces a real verdict --------------------
 RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-NOTRUN T=   \ (GC-SL still active)

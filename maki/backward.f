@@ -16,10 +16,14 @@
 \ concat->slice pair) and a dedicated OP-*-BWD op elsewhere (gelu/silu/relu/norms/rope,
 \ scalar reference = the existing *-BWD word bound in the op registry).
 \
-\ Fail closed (NEVER a silent partial gradient): an op with no adjoint (cast) or a
-\ v1-unsupported adjoint (slice/gather/bias/scale/linear, maki/adjoint.f ADJ-SUP?) is a
-\ named throw BEFORE any node is appended; an empty IR and an accessor used before
-\ BW-BUILD are named throws. maki -> habu only; backward owns -5105..-5109.
+\ cad-9e adds the reduce/scatter adjoints: bias/linear bias-grad -> OP-ROWSUM-BWD, scale
+\ factor-grad -> OP-FULLSUM-DOT-BWD, slice input-grad -> OP-PAD-SCATTER, gather input-grad
+\ -> OP-SCATTER-ADD.
+\
+\ Fail closed (NEVER a silent partial gradient): an op with no adjoint (cast) is a named
+\ throw BEFORE any node is appended; the scale INPUT gradient fails closed (E-BW-BROADCAST)
+\ on a partial broadcast (1xC / Rx1) needing a broadcast-reduce not in the op set; an empty
+\ IR and an accessor used before BW-BUILD are named throws. maki -> habu; owns -5105..-5110.
 
 require lib/prelude.f
 require lib/string.f
@@ -37,6 +41,7 @@ require maki/report.f
 -5107 constant E-BW-UNSUP   \ a forward op's adjoint is v1-unsupported (named reason)
 -5108 constant E-BW-STATE   \ accessor / report used before BW-BUILD
 -5109 constant E-BW-CAP     \ forward node / input-slot count exceeds the cotangent tables
+-5110 constant E-BW-BROADCAST \ scale input-grad needs a broadcast-reduce (partial broadcast, v1)
 
 package MAKI
 private
@@ -104,6 +109,32 @@ variable BW-BUILT?
    OP-SLICE MIR-OP-BEGIN  ct MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
 
+\ row-reduce the cotangent over its rows -> 1 x C (the bias / linear-bias gradient);
+\ output cols/dtype/layout come from the bias reference tensor (1xC).
+: BW-ROWSUM ( n n -- n ) {: ct:n bref:n :}
+   OP-ROWSUM-BWD MIR-OP-BEGIN  ct MIR-IN+
+   1 bref REF-COLS  bref REF-DT  bref REF-LAY  0  1  MIR-OP+ ;
+
+\ full-reduce dot of the cotangent with the saved input -> 1 x 1 (the scale gradient);
+\ output dtype/layout come from the scalar (scale-factor) reference tensor.
+: BW-FULLSUM ( n n n -- n ) {: ct:n x:n sref:n :}
+   OP-FULLSUM-DOT-BWD MIR-OP-BEGIN  ct MIR-IN+  x MIR-IN+
+   1 1  sref REF-DT  sref REF-LAY  0  1  MIR-OP+ ;
+
+\ pad-scatter the cotangent into a zero R x C buffer at row r0 (the slice input-grad);
+\ output extents from the slice's forward input, r0/r1 packed like the forward slice.
+: BW-PS ( n n n n -- n ) {: ct:n r0:n r1:n dref:n :}
+   MV-SLICE MVV-MATERIALIZE r0 r1 MV-PACK {: attr:n :}
+   OP-PAD-SCATTER MIR-OP-BEGIN  ct MIR-IN+
+   dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
+
+\ scatter-add the cotangent rows into a zero R x C buffer at the gathered indices (the
+\ gather input-grad); reads the index operand, output extents from the gather's input.
+: BW-SA ( n n n -- n ) {: ct:n idx:n dref:n :}
+   MV-GATHER MVV-MATERIALIZE 0 0 MV-PACK {: attr:n :}
+   OP-SCATTER-ADD MIR-OP-BEGIN  ct MIR-IN+  idx MIR-IN+
+   dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
+
 \ ---- accumulate a new cotangent ref into a target operand (fan-out -> OP-ADD sum) --
 : BW-ACCUM ( n n -- ) {: nc:n ref:n :}
    ref BW-GET {: cur:n :}
@@ -161,6 +192,47 @@ variable BW-BUILT?
    ct 0 ra a BW-SL  a BW-ACCUM
    ct ra  ra rb +  b BW-SL  b BW-ACCUM ;
 
+\ bias adjoint: dx = ct (copy) ; d-bias = row-reduce of ct over its broadcast rows -> 1xC
+: BW-STEP-BIAS ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: b:n :}
+   ct x BW-ACCUM                              \ dx = cotangent copy
+   ct b BW-ROWSUM  b BW-ACCUM ;               \ d-bias = rowsum(ct) -> 1 x C
+
+\ scale adjoint: dx = ct*s, d-scale depends on the scale-operand shape. A same-shape
+\ operand is the elementwise product rule (OP-MUL both); a 1x1 scalar is broadcast-scale
+\ (dx = OP-SCALE(ct,s), d-scale = OP-FULLSUM-DOT-BWD(ct,x) -> 1x1); a partial broadcast
+\ (1xC / Rx1) needs a broadcast-reduce not in v1 -> fail closed (E-BW-BROADCAST).
+: BW-STEP-SCALE ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: s:n :}
+   s REF-ROWS x REF-ROWS =  s REF-COLS x REF-COLS =  and if
+      ct s OP-MUL x BW-OP2  x BW-ACCUM        \ dx = ct*s (elementwise)
+      ct x OP-MUL s BW-OP2  s BW-ACCUM        \ d-scale = ct*x (elementwise)
+      exit
+   then
+   s REF-ROWS 1 =  s REF-COLS 1 =  and 0= if E-BW-BROADCAST throw then
+   ct s OP-SCALE x BW-OP2  x BW-ACCUM         \ dx = scale(ct, s) (broadcast-by-1x1)
+   ct x s BW-FULLSUM  s BW-ACCUM ;            \ d-scale = fullsum-dot(ct, x) -> 1x1
+
+\ linear adjoint: the matmul adjoints for x and w plus the bias row-reduce.
+\ dX = ct @ Wt, dW = Xt @ ct, dB = rowsum(ct)
+: BW-STEP-LINEAR ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: w:n :}  fn 2 MIR-IN@ {: b:n :}
+   ct  w BW-TR  BW-MM  x BW-ACCUM             \ dX = ct @ Wt
+   x BW-TR  ct  BW-MM  w BW-ACCUM             \ dW = Xt @ ct
+   ct b BW-ROWSUM  b BW-ACCUM ;               \ dB = rowsum(ct) -> 1 x N
+
+\ slice adjoint: pad-scatter the cotangent into a zero buffer at the forward slice offset
+\ (r0/r1 read back from the forward node's packed attrs).
+: BW-STEP-SLICE ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: x:n :}  fn MIR-ATTR@ {: attr:n :}
+   ct  attr MV-PA@  attr MV-PB@  x  BW-PS  x BW-ACCUM ;
+
+\ gather adjoint: scatter-add the cotangent rows back to the gathered indices (operand 1);
+\ duplicates accumulate. The index operand carries no gradient (mask bit 1 = 0).
+: BW-STEP-GATHER ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: idx:n :}
+   ct idx x  BW-SA  x BW-ACCUM ;
+
 \ ---- one forward node's reverse step ---------------------------------------
 : BW-STEP ( n -- ) {: fn:n :}
    fn cells BW-CT + @ {: ct:n :}
@@ -179,6 +251,11 @@ variable BW-BUILT?
       ADJ-RESHAPE   of BW-STEP-RESHAPE   endof
       ADJ-TRANSPOSE of BW-STEP-TRANSPOSE endof
       ADJ-CONCAT    of BW-STEP-CONCAT    endof
+      ADJ-BIAS      of BW-STEP-BIAS      endof
+      ADJ-SCALE     of BW-STEP-SCALE     endof
+      ADJ-LINEAR    of BW-STEP-LINEAR    endof
+      ADJ-SLICE     of BW-STEP-SLICE     endof
+      ADJ-GATHER    of BW-STEP-GATHER    endof
       2drop E-BW-UNSUP throw
    endcase ;
 

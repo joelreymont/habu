@@ -64,6 +64,25 @@ MODEL: ADDM ( x:2x2 y:2x2 -- z ) ADD ;
 RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
 s" backward.saved" SVT-VA @ SVT-VU @ 2swap CONTAINS? TFALSE   \ no save rows at all
 
+\ ---- cad-9e: LINEAR saves every operand (matmul policy floor) ------------------
+\ the linear adjoint reads x (dW) and w (dX); the bias-grad reads only the cotangent,
+\ so b is over-saved by the matmul floor - conservative-correct (saving is always safe).
+MODEL: LINM ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
+RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+s" backward.saved: i0 (matmul operand; policy floor)" SVT-IN
+s" backward.saved: i2 (matmul operand; policy floor)" SVT-IN
+
+\ ---- cad-9e: BIAS saves nothing (d-bias = OP-ROWSUM-BWD reads only the cotangent) --
+MODEL: BIASM ( x:2x3 b:1x3 -- y ) BIAS ;
+RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+s" backward.saved" SVT-VA @ SVT-VU @ 2swap CONTAINS? TFALSE   \ SAVE-NONE: no save rows
+
+\ ---- cad-9e: SCALE saves both operands (the 1x1 factor + the input) ------------
+MODEL: SCS ( x:2x3 s:1x1 -- z ) SCALE ;
+RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+s" backward.saved: i0 (model input; not recomputable)" SVT-IN
+s" backward.saved: i1 (model input; not recomputable)" SVT-IN
+
 \ ---- fail closed: a non-numeric calibration value ------------------------------
 ' SVT-TRY-CALIB E-SV-CALIB TTHROWS
 

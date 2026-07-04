@@ -29,12 +29,20 @@ OP-ROPE        ADJ-ID ADJ-ROPE     T=
 OP-RESHAPE     ADJ-ID ADJ-RESHAPE  T=
 OP-CONCAT      ADJ-ID ADJ-CONCAT   T=
 OP-CAST        ADJ-ID ADJ-NONE     T=
+\ cad-9e reduce/scatter adjoint ids
+OP-BIAS        ADJ-ID ADJ-BIAS     T=
+OP-SCALE       ADJ-ID ADJ-SCALE    T=
+OP-LINEAR      ADJ-ID ADJ-LINEAR   T=
+OP-SLICE       ADJ-ID ADJ-SLICE    T=
+OP-GATHER      ADJ-ID ADJ-GATHER   T=
 
 \ ---- differentiability (cast has no adjoint; the backward ops have none too) --
 OP-GELU        ADJ-HAS? TTRUE
 OP-CAST        ADJ-HAS? TFALSE
 OP-GELU-BWD    ADJ-HAS? TFALSE            \ no second-order in v1
 OP-SOFTMAX-ROW-BWD ADJ-HAS? TFALSE
+OP-ROWSUM-BWD  ADJ-HAS? TFALSE           \ reduce/scatter backward ops: no second-order
+OP-PAD-SCATTER ADJ-HAS? TFALSE
 
 \ ---- save-need: gelu needs the INPUT, softmax the OUTPUT, add neither ---------
 OP-GELU        ADJ-SAVE SAVE-INPUT  T=
@@ -44,6 +52,10 @@ OP-SOFTMAX-ROW ADJ-SAVE SAVE-OUTPUT T=
 OP-ADD         ADJ-SAVE SAVE-NONE   T=
 OP-ROPE        ADJ-SAVE SAVE-NONE   T=
 OP-RESHAPE     ADJ-SAVE SAVE-NONE   T=
+\ cad-9e: scale/linear save inputs; bias needs nothing saved (rowsum reads only ct)
+OP-SCALE       ADJ-SAVE SAVE-INPUT  T=
+OP-LINEAR      ADJ-SAVE SAVE-INPUT  T=
+OP-BIAS        ADJ-SAVE SAVE-NONE   T=
 OP-SOFTMAX-ROW ADJ-SAVE ADJ-SAVE-NAME s" output" T$=
 OP-GELU        ADJ-SAVE ADJ-SAVE-NAME s" input"  T$=
 
@@ -58,18 +70,25 @@ OP-MATMUL 1 ADJ-GRAD-IN? TTRUE
 OP-ROPE   0 ADJ-GRAD-IN? TTRUE
 OP-ROPE   1 ADJ-GRAD-IN? TFALSE
 OP-ROPE   2 ADJ-GRAD-IN? TFALSE
+\ cad-9e: bias/linear grad every operand; slice input-0 only; gather's index no grad
+OP-BIAS   0 ADJ-GRAD-IN? TTRUE
+OP-BIAS   1 ADJ-GRAD-IN? TTRUE
+OP-LINEAR 2 ADJ-GRAD-IN? TTRUE
+OP-SLICE  0 ADJ-GRAD-IN? TTRUE
+OP-GATHER 0 ADJ-GRAD-IN? TTRUE
+OP-GATHER 1 ADJ-GRAD-IN? TFALSE
 
-\ ---- v1 supported flag: emittable adjoints vs fail-closed boundary -----------
+\ ---- v1 supported flag: cad-9e unlocked the reduce/scatter adjoints ----------
 OP-GELU    ADJ-SUP? TTRUE
 OP-MATMUL  ADJ-SUP? TTRUE
 OP-CONCAT  ADJ-SUP? TTRUE
 OP-RESHAPE ADJ-SUP? TTRUE
-OP-SLICE   ADJ-SUP? TFALSE
-OP-GATHER  ADJ-SUP? TFALSE
-OP-BIAS    ADJ-SUP? TFALSE
-OP-SCALE   ADJ-SUP? TFALSE
-OP-LINEAR  ADJ-SUP? TFALSE
-OP-CAST    ADJ-SUP? TFALSE
+OP-SLICE   ADJ-SUP? TTRUE
+OP-GATHER  ADJ-SUP? TTRUE
+OP-BIAS    ADJ-SUP? TTRUE
+OP-SCALE   ADJ-SUP? TTRUE
+OP-LINEAR  ADJ-SUP? TTRUE
+OP-CAST    ADJ-SUP? TFALSE          \ only cast stays non-differentiable
 
 \ ---- dedicated backward op-kind mapping -------------------------------------
 OP-GELU        ADJ-BOP OP-GELU-BWD        T=
@@ -90,9 +109,7 @@ OP-SOFTMAX-ROW OPR-VJP ADJ-SOFTMAX T=
 OP-MATMUL      OPR-VJP ADJ-MATMUL  T=
 OP-CAST        OPR-VJP ADJ-NONE    T=       \ non-differentiable stays 0
 
-\ ---- v1-boundary reason text (named, never silent) --------------------------
-OP-SLICE  ADJ-UNSUP$ s" slice adjoint (pad-scatter) unimplemented (v1)" T$=
-OP-GATHER ADJ-UNSUP$ s" gather adjoint (scatter-add) unimplemented (v1)" T$=
+\ ---- v1-boundary reason text: only cast remains unsupported (named, never silent) --
 OP-CAST   ADJ-UNSUP$ s" cast has no adjoint (non-differentiable)" T$=
 
 \ ---- fail closed ------------------------------------------------------------
