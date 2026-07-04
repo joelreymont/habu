@@ -83,10 +83,21 @@ s" node.0.in: i0 i1 i2" CT-IN
 s" node.1.in: n0"     CT-IN
 s" node.2.in: n1 i3 i4" CT-IN
 
-\ ---- FUSE: one region per node, named split reason -------------------------
+\ ---- FUSE: real region plan + traffic estimate -----------------------------
+\ FFN = LINEAR GELU LINEAR: gelu fuses as the first matmul's epilogue; the second
+\ matmul splits (one contraction per region) -> 2 regions, matmul-boundary at node 2.
 FUSE
-dup RPT-SPLIT-COUNT 1 T=
-dup RPT-RENDER CT-SAVE  s" fusion.split.0:" CT-IN
+dup RPT-OPS-BEFORE@   3 T=
+dup RPT-OPS-AFTER@     2 T=
+dup RPT-REGIONS@       2 T=
+dup RPT-MATERIALIZED@  2 T=
+dup RPT-SPLIT-COUNT    1 T=
+dup 0 RPT-SPLIT@ s" matmul-boundary at node 2" T$=
+\ traffic bytes computable (all FFN shapes bound); fusion removes the interior write
+dup RPT-BYTES-KNOWN? TTRUE
+dup RPT-BYTES-BEFORE@ 356 T=
+dup RPT-BYTES-AFTER@  292 T=
+dup RPT-RENDER CT-SAVE  s" fusion.split.0: matmul-boundary at node 2" CT-IN
 drop
 
 \ ---- MEMORY: bytes unknown (shapes not yet bound for a cost model) ----------

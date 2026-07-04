@@ -18,8 +18,9 @@
 \ Fail closed: unknown op token -> E-CAD-OP; empty body -> E-CAD-EMPTY; malformed
 \ signature/shape -> E-CAD-SYNTAX; an op with no data or too few declared inputs ->
 \ E-CAD-ARITY; too many inputs -> E-CAD-INPUTS. LOWER reports REAL node facts (op
-\ count + shape/dtype/layout keys from the IR); FUSE/MEMORY/TILE stay conservative
-\ (cad-2/3/4) but read the real node count. GOLDEN/GRADCHECK/PROFILE stay honest
+\ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
+\ (maki/fusion-plan.f, maki/traffic.f); MEMORY/TILE stay conservative (cad-3/4) but
+\ read the real node count. GOLDEN/GRADCHECK/PROFILE stay honest
 \ not-run on a host without a GPU. PROMOTE refuses (E-CAD-GATE) unless all gates
 \ pass. maki -> habu only; cad owns -5020..-5029.
 
@@ -31,6 +32,8 @@ require maki/move-facts.f
 require maki/tensor-value.f
 require maki/plan-ops.f
 require maki/model-ir.f
+require maki/fusion-plan.f
+require maki/traffic.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -273,9 +276,16 @@ private
    LOWER-KEYS
    s" lowering: model-IR node table (cad-1)" RPT-WARN+ ;
 
+\ FUSE plans regions (maki/fusion-plan.f) then estimates traffic (maki/traffic.f):
+\ ops before (nodes) / after (regions), the typed split rows, the materialized count
+\ from the updated IR flags, and estimated bytes before/after when the shapes bind.
 : FUSE-INTO ( report -- report )
-   s" fusion: no planner yet; one region per node (cad-2)" RPT-SPLIT+
-   s" fusion: no regions merged this phase" RPT-WARN+ ;
+   FP-BUILD
+   MODEL-K FP-REGION-COUNT RPT-OPS!
+   FP-REGION-COUNT RPT-REGIONS!
+   MIR-MAT-COUNT RPT-MATERIALIZED!
+   FP-REPORT+
+   TRF-INTO ;
 
 \ ---- movement materialization rows (MEMORY reads the IR facts) --------------
 : MOVE-WARN$ ( n -- ptr u8 n ) {: node:n :}     \ one movement node's traffic-cost row
