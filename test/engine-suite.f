@@ -976,6 +976,37 @@ s" CBAD-OWN-QUOT-OVER-FREE ( own n -- own n ) [: over T-FREE-OWN ;] execute" T-C
 \ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
 s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
+\ Linear values may not launder through {: :} locals (dot
+\ habu-checker-linear-values-a5745699). A local reference re-pushes its binding
+\ outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so binding a linear into a
+\ local hid double-reference (duplication), an unreferenced local (leak), and a
+\ referenced-then-freed-twice double-consume. Binding a value that concretely
+\ resolves linear is rejected outright with E-LINEAR-LOCAL; the value must stay on
+\ the stack and be factored. Direct-stack linear discipline (COK-OWN-*/CBAD-OWN-*
+\ above) is unchanged, and non-linear locals are untouched.
+s" CBAD-OWN-LOCAL-DUP ( own -- own own ) {: x:own :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-LEAK ( own -- ) {: x:own :}" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-DOUBLE-FREE ( own -- ) {: x:own :} x T-FREE-OWN x T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-UNTYPED ( own -- own own ) {: x :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-BRANCH ( bool own -- ) {: x:own :} if x T-FREE-OWN then" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+\ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
+\ that only later resolves linear, must reject through the taint discipline.
+s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
+\ Positive controls: the linear kept on the stack still certifies, a non-linear
+\ local still binds/references (single AND duplicate), and a poly local that never
+\ resolves linear is untouched.
+s" COK-OWN-STACK-KEEP ( own -- ) T-FREE-OWN" T-CHECK-PASSES
+s" COK-N-LOCAL-DUP ( n -- n n ) {: x:n :} x x" T-CHECK-PASSES
+s" COK-POLY-LOCAL-DUP ( a -- a a ) {: x :} x x" T-CHECK-PASSES
+\ The reject carries the dedicated E-LINEAR-LOCAL code and factor_linear_local class.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
+s" CBAD-OWN-LOCAL-DIAG ( own -- own own ) {: x:own :} x x" CHECK-CANDIDATE! 0 T=
+s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
+DIAG-BUFFER$ s" E-LINEAR-LOCAL" T-HAS? -1 T=
+DIAG-BUFFER-OFF
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD

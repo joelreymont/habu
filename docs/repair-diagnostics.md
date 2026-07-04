@@ -18,7 +18,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -96,6 +96,9 @@ Current checker classes:
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
+- `factor_linear_local`: a linear-counting value (a `deflinear` type) was bound to
+  a `{: :}` local, where a reference could duplicate it and an unreferenced local
+  could drop it; keep the linear value on the stack and factor instead.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
 - `fix_qualified_name`: a call used a malformed qualified name with more than one
@@ -125,6 +128,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
+| `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
 | `fix_qualified_name` | `Use one ':' qualifier, e.g. PKG:WORD.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |

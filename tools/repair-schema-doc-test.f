@@ -200,7 +200,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    a u RSD-NEED-EMITTER
    a u GJA-SUGGEST-FOR RSD-NEED-DOC ;
 
-\ Canonical repair-class enumeration (14). This is the single source of truth;
+\ Canonical repair-class enumeration (15). This is the single source of truth;
 \ RSD-NEED-CLASS proves every downstream site carries each one. Reverse drift (a
 \ class an emitter grows but this list omits) is caught at commit time by the
 \ Forth gate, which re-runs this fixture after any emitter edit; a source-parsing
@@ -212,6 +212,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    s" fix_return_stack" RSD-NEED-CLASS
    s" trusted_boundary_required" RSD-NEED-CLASS
    s" factor_local_shape" RSD-NEED-CLASS
+   s" factor_linear_local" RSD-NEED-CLASS
    s" remove_dead_code" RSD-NEED-CLASS
    s" fix_qualified_name" RSD-NEED-CLASS
    s" fix_signature_syntax" RSD-NEED-CLASS

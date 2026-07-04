@@ -2251,3 +2251,21 @@ unchanged (148855). Keys for milestone 2:
   --budget-ms 240000` and re-run the failing fixture in isolation `</dev/null`
   before treating it as a regression. (`bin/hb file.f` also drops to a stdin REPL
   after the file, so test file-mode with `</dev/null`.)
+- **Linear values laundered through `{: :}` locals — locals bypass `LIN-CHECK`.**
+  `LOC-REF?` re-pushes a local's tv straight onto `DCUR` with no CHECKER-STEP, and
+  `LOC-BIND` of a *typed* linear local is an explicit step (`LINEXP=1`) that skips
+  snapshot/check — so `{: x:own :} x x` (dup), `{: x:own :}` (leak) and
+  `x FREE x FREE` (double-consume) all certified while the stack `dup` correctly
+  rejected. Fix (option b, a real static discipline, not a guard): reject binding
+  any value that resolves linear into a local outright (`LIN-LOCAL-BIND-CHECK` in
+  `LOC-BIND`, new `LINLOCBAD` flag → `E-LINEAR-LOCAL`/`factor_linear_local`); plus
+  taint every poly local reference (`LIN-LOCAL-REF-TAINT` in `LOC-REF?`) so the
+  deferred case `( a -- ) {: x :} x x FREE FREE` (poly local that only later binds
+  linear) is caught by `LIN-TAINT-SCAN`. Both are gated on `LIN-ANY?`, so the whole
+  no-`deflinear` self-build/stdlib pays nothing and non-linear locals are untouched.
+  Full path-sensitive consume-exactly-once (referenced once per live branch instead
+  of blanket-reject) needs per-local live state snapshotted on the CF frames —
+  deferred to item-12 locals width-awareness, dotted separately. Lesson: an
+  explicit-effect step and a bare tv re-push are the two ways a discipline that
+  only watches `DCUR`/`RCUR` counts can be blindsided; a new value sink (locals,
+  fields, a store) must be checked at its own bind/ref site, not assumed covered.

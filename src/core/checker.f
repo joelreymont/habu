@@ -1790,6 +1790,7 @@ variable SGBAD-U
 variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
+variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable QUALBAD
 
@@ -4397,13 +4398,38 @@ variable LCO
      THEN
      #LOC @ 1 + #LOC ! THEN ;
 
+\ Linear values may not launder through locals. A local reference re-pushes its
+\ binding without a LIN-SNAPSHOT/LIN-CHECK-covered step, so the concrete-count
+\ conservation discipline never sees the copy (two references duplicate) or the
+\ drop (an unreferenced local leaks). Binding a linear con into a local — where
+\ the value CONCRETELY resolves linear at bind time — is therefore rejected
+\ outright with a dedicated E-LINEAR-LOCAL diagnostic (keep the linear on the
+\ stack and factor). Path-sensitive per-reference accounting (consume-exactly-
+\ once across every branch) is a separate capability tracked by dot.
+: LIN-LOCAL-REJECT ( -- )  0 OK !  -1 FAILSET !  -1 LINLOCBAD ! ;
+
+: LIN-LOCAL-BIND-CHECK ( -- )       \ reject if any just-bound local resolves linear
+   LIN-ANY? 0= IF exit THEN
+   LGRP @ BEGIN dup #LOC @ < WHILE
+     dup cells LOCTV + @ LIN-CON? IF LIN-LOCAL-REJECT THEN
+     1 + REPEAT drop ;
+
+\ A local bound to a still-polymorphic var that only LATER resolves to a linear
+\ con (deferred laundering, e.g. `( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN`)
+\ escapes the bind-time check. Taint each such reference's var like a stack copy;
+\ LIN-TAINT-SCAN then rejects it once the var binds linear.
+: LIN-LOCAL-REF-TAINT ( n -- )
+   LIN-ANY? 0= IF drop exit THEN
+   T-RES dup TAG T-VAR = IF PAY LIN-TAINT ELSE drop THEN ;
+
 : LOC-BIND
    FRESH dup LROW !  MK-ROW LCH !
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
    LCH @  LROW @ MK-ROW  CHECKER-STEP
-   LOC-SHOW-GROUP ;
+   LOC-SHOW-GROUP
+   LIN-LOCAL-BIND-CHECK ;
 
 : LOC-TOK {: a u :}
    a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
@@ -4425,7 +4451,7 @@ variable LCO
        QDEPTH @ 0 > IF
           LOC-REJECT
        ELSE
-          LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !
+          LI @ cells LOCTV + @  dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
        THEN
        -1 LRF ! THEN
    REPEAT  LRF @ ;
@@ -5150,7 +5176,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 UNDEFERR !  0 QUALBAD !
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )
@@ -5192,7 +5218,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    THEN ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
