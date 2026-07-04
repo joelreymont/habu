@@ -1,7 +1,11 @@
 \ cuda-types-test.f - CUDA role helper regressions.
+\ Reopens `package CUDA` to white-box the private handle-check helpers by bare name
+\ (docs/forth.md "Qualify only across package boundaries").
 
 require lib/test.f
 require maki/cuda-types.f
+
+package CUDA
 
 : CUDA-HANDLE-OK ( -- )
    5 CUDA-HANDLE0 5 T= ;
@@ -24,3 +28,5 @@ require maki/cuda-types.f
    T-REPORT ;
 
 CUDA-TYPES-TEST
+
+end-package
