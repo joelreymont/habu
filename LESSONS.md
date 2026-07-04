@@ -2190,3 +2190,14 @@ unchanged (148855). Keys for milestone 2:
   variables. Also keep checker boot independent of helpers loaded later in the
   stage source; a checker self-type helper must use already-available typed
   primitives, not `BYTE+` from `src/core/bytes.f`.
+- **Assert durable formats exactly; splice runtime fields at test time.** When a
+  committed string (cache key, report row) gains a runtime-dependent field (the
+  bin/hb content key), do not weaken the test to substring containment - three
+  fragment checks prove neither order nor adjacency nor absence of junk. Build
+  the expected string by splicing the runtime field between committed literals
+  and compare whole with STR=/T$=. If the actual lives in the shared SB builder
+  (SK-KEY$), copy it out before building the expected string in SB.
+- **Pipe-delimited keys are a tracked ADT seam, not a design.** Stringly keys
+  make semantically distinct fields (dtype vs layout) indistinguishable bytes;
+  the typed-record swap is specced in habu-cad-adt-swap (blocked on TFAM 14/15).
+  Keep string rendering at the durable-store boundary only.
