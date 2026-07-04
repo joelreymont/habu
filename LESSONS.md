@@ -2195,3 +2195,39 @@ unchanged (148855). Keys for milestone 2:
   die with `E-PROC-SPAWN`). Provision each worker workspace with a *copy* of
   `bin/hb` (never a symlink into the main tree — a workspace rebuild through a
   symlinked `bin/` would overwrite the binary other workers are using).
+- **Friend-arena write seal (TFAM 2b-i).** The sound way to make checker/wordlist
+  state unforgeable from user source is a runtime range guard at every raw write
+  *sink*, not name-hiding or type-provenance: only the sink sees the real target
+  address, and `data-base <off> + !` computes it with no engine-word name. Layout:
+  relocate the crown-jewel cells into ONE contiguous DATA band placed BELOW
+  `DATA-START` (so `allot`/`,`/`c,`/DP, bounded ≥ DATA-START by DP-CHECK, cannot
+  reach it by construction — no guard needed there). The latch cell IS the band
+  base (0 = open, band-len = sealed); the guard reads it, so post-seal any write
+  into the band — including the latch — traps: one-way self-sealing. Guard shape
+  `sub;subi;ldr latch;cmp;b.cs ok` (exit E-SEAL-VIOLATION), mirroring
+  `B-TASK-LIVE-GUARD`/`DP-CHECK`; the branch makes the leaf body non-inlinable so
+  it compiles to an out-of-line call (correct, ~size-neutral). Seal is emitted by
+  the cold-prefix generator (after `PFX-PROVIDE-FILES` in `LCOLDPFX` and in
+  `C-SOURCE-BAKED`) so it fires before the first user token on every entry
+  (--load / stdin / evaluate / REPL / baked). Engine writes to the same cells use
+  dedicated `DATA <CELL> STR,` prims (BSETCUR/BWORDLIST/BSETCHECK/…), never `!`,
+  so word-definition/packages/TRUSTED:/DEFER keep working while raw `!` traps.
+- **Emitter words in habu1.f/habu2.f are checked.** `: FOO ( areg -- )` is a typed
+  stack effect, not a comment — `areg` is an unknown type. A word taking a register
+  number is `( n -- )` (like `DP-CHECK`). And definition ORDER matters: a guard used
+  by an early prim (e.g. `BPOLL` ~line 543) must be defined before it, or the build
+  dies `E-UNDEFINED` — habu1.f words ARE visible in habu2.f (DP-CHECK is used there),
+  so a cross-file E-UNDEFINED is really an earlier same-file forward-reference.
+- **Worker workspace path discipline.** Edit/Read the worker workspace absolute
+  path (`.jj-ws/<ws>/…`), never the main-tree path — a `cd` in Bash does not change
+  where Edit/Read resolve. Editing `/Users/.../habu/src/...` while Bash builds in
+  `/Users/.../habu/.jj-ws/<ws>/src/...` silently edits the wrong tree (the build
+  never sees your change; the main tree gets polluted). Commit each proven-green
+  slice immediately — uncommitted worker edits can be clobbered.
+- **Gate timeouts under concurrent-agent load are false.** A gate RED of
+  `hb script argv mode`/`process-test` with `outcome: timeout code 9 / rc 137` or
+  `fork worker throw -2502` at ~2min wall / <30% CPU is fork/spawn exhaustion, not
+  a real break. Re-run `test/run.f -- --pool-slots 2 --nested-pool-slots 1
+  --budget-ms 240000` and re-run the failing fixture in isolation `</dev/null`
+  before treating it as a regression. (`bin/hb file.f` also drops to a stdin REPL
+  after the file, so test file-mode with `</dev/null`.)
