@@ -7,6 +7,7 @@
 
 require lib/object-resolve.f
 require tools/object-image.f
+require tools/event-closure-lib.f
 
 64 constant HBB-USAGE-RC
 66 constant HBB-NOINPUT-RC
@@ -24,8 +25,7 @@ create HBB-OUT-PATH FS-PATH-CAP allot
 create HBB-MAKER-PATH FS-PATH-CAP allot
 create HBB-MAKER-NAME-BUF 128 allot
 create HBB-MAKER-KEY-HEX 80 allot
-create HBB-SRC-DIGEST 40 allot
-create HBB-SRC-HEX 80 allot
+create HBB-SRC-CLOSURE-HEX 80 allot
 create HBB-CHECKER-ABI-BUF HBB-ABI-CAP allot
 create HBB-COMPILER-ABI-BUF HBB-ABI-CAP allot
 create HBB-CACHE-ROOT-BUF FS-PATH-CAP allot
@@ -53,6 +53,7 @@ variable HBB-ARTIFACT-NAME-U
 variable HBB-ARTIFACT-RC
 variable HBB-ARTIFACT-CACHE
 variable HBB-I
+variable HBB-KEY-I
 variable HBB-REPL
 variable HBB-JSON
 variable HBB-STRICT
@@ -448,6 +449,8 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/object-image.f" HBB-KEY-FILE+
+   s" tools/source-discovery.f" HBB-KEY-FILE+
+   s" tools/event-closure-lib.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
 
 : HBB-KEY-COMMON-SOURCES ( -- )
@@ -713,13 +716,30 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-OPTION-TEXT+ ( ptr u8 n bool -- )
    if CK-TEXT+ else 2drop then ;
 
-: HBB-SRC-DIGEST+ ( -- )
-   s" user-source" CK-TEXT+
-   HBB-SRC$ HBB-SRC-DIGEST SHA256-FILE dup 0 <> if throw then drop
-   HBB-SRC-DIGEST CK-DIGEST+ ;
+\ The user program's behaviour depends on every file its require/include closure
+\ actually loads, so the cache keys fold the whole ordered closure content, not
+\ only the top-level source. Discovery rejects fail-closed, so a closure that
+\ cannot be reproduced cannot be keyed.
+: HBB-CLOSURE-CK+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u EC:BUILD
+   0 HBB-KEY-I !
+   begin HBB-KEY-I @ EC:COUNT < while
+      HBB-KEY-I @ EC:PATH$ CK-FILE+
+      HBB-KEY-I @ 1+ HBB-KEY-I !
+   repeat ;
 
-: HBB-SRC-HEX! ( -- )
-   HBB-SRC$ HBB-SRC-HEX SHA256-FILE-HEX dup 0 <> if throw then drop ;
+: HBB-SRC-CLOSURE+ ( -- )
+   s" user-source-closure-v1" CK-TEXT+
+   HBB-SRC$ HBB-CLOSURE-CK+ ;
+
+: HBB-CLOSURE-HEX! ( ptr u8 n ptr u8 -- ) {: a:ptr u:n dst:ptr :}
+   CK-RESET
+   s" user-source-closure-v1" CK-TEXT+
+   a u HBB-CLOSURE-CK+
+   dst CK-FINAL-HEX ;
+
+: HBB-SRC-CLOSURE-HEX! ( -- )
+   HBB-SRC$ HBB-SRC-CLOSURE-HEX HBB-CLOSURE-HEX! ;
 
 : HBB-ABI! ( ptr u8 n ptr u8 ptr n -- ) {: sem:ptr semu:n dst:ptr up:ptr :}
    semu HBB-HEX-U + 1 + HBB-ABI-CAP > if E-STR-CAPACITY throw then
@@ -745,13 +765,13 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-ARTIFACT-KEY! ( -- )
    HBB-MAKER-KEY!
    CK-RESET
-   s" hb-build-artifact-cache-v1" CK-TEXT+
+   s" hb-build-artifact-cache-v2" CK-TEXT+
    HBB-MAKER-KEY-HEX 64 CK-TEXT+
    s" strict" HBB-STRICT @ 0 <> HBB-OPTION-TEXT+
    s" json" HBB-JSON @ 0 <> HBB-OPTION-TEXT+
    s" tools/diag-origin-core.f" HBB-KEY-FILE+
    s" tools/diag-origin.f" HBB-KEY-FILE+
-   HBB-SRC-DIGEST+
+   HBB-SRC-CLOSURE+
    HBB-ARTIFACT-KEY-HEX CK-FINAL-HEX ;
 
 : HBB-ARTIFACT-NAME! ( -- )
@@ -786,8 +806,8 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-OBJECT-LOAD? ( -- bool )
    HBB-CACHE-ROOT$ OBJRES:ROOT!
-   HBB-SRC-HEX!
-   HBB-SRC-HEX 64 HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
+   HBB-SRC-CLOSURE-HEX!
+   HBB-SRC-CLOSURE-HEX 64 HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$ OBJRES:LOAD ;
 
 : HBB-OBJ$ ( -- ptr u8 n )
    HBB-OBJ-NAME$ BF-A$ ;
@@ -797,7 +817,7 @@ HBB-INSTALL-CHILD-LINTS
 
 : HBB-BUILD-OBJECT-RECORD ( n -- ) {: textu:n :}
    OBJ:RESET
-   HBB-SRC-HEX 64 OBJ:SOURCE!
+   HBB-SRC-CLOSURE-HEX 64 OBJ:SOURCE!
    HBB-TARGET-ABI$ OBJ:TARGET!
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
@@ -814,7 +834,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-REPL @ if exit then
    HBB-CACHE-ROOT? 0= if exit then
    HBB-CACHE-ROOT$ OBJRES:ROOT!
-   HBB-SRC-HEX!
+   HBB-SRC-CLOSURE-HEX!
    HBB-READ-OBJECT-TEXT HBB-BUILD-OBJECT-RECORD
    HBB-VALIDATE-OBJECT
    OBJRES:STORE 2drop
