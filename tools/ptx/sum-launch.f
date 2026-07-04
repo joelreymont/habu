@@ -1,13 +1,18 @@
 \ sum-launch.f - Orin device proof for the checked SUM-ROWS kernel.
 \
-\ Fully checked Habu via lib/ffi.f. Prereq: /tmp/sum.cubin produced from
-\ tools/ptx/sum-cg.f and ptxas -arch=sm_87. Load after lib/test.f,
-\ lib/ptx/header.f, lib/ptx/launch.f, lib/ffi.f, and f32 marshalling helpers.
+\ Fully checked Habu via lib/ffi.f. Self-contained: spawns bin/hb to emit the
+\ checked SUM-ROWS kernel (tools/ptx/sum-cg.f) to a PRIVATE PTX under a per-run
+\ toolchain root, ptxas-assembles it, then launches on the Orin - no shared
+\ /tmp/sum.cubin. Load after lib/test.f, lib/ptx/header.f, lib/ptx/launch.f,
+\ lib/ffi.f, and f32 marshalling helpers.
 
+require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 
 create RS-LIB 16 allot  create RS-NM 64 allot  create RS-PATH 64 allot  create RS-KN 32 allot
 create RS-HIN 32 allot  create RS-HOUT 32 allot
+create RS-OUT $4000 allot  create RS-ERR $1000 allot
+create RS-QO  $1000 allot  create RS-QE  $1000 allot
 variable RS-H variable RS-DEV variable RS-CTX variable RS-MOD variable RS-FUNC
 variable RS-DIN variable RS-DOUT variable RS-KV
 
@@ -27,6 +32,22 @@ variable RS-DIN variable RS-DOUT variable RS-KV
 : RS-SYM ( ptr u8 n -- n )
    RS-NM >CSTR  RS-H @ RS-NM DLSYM ;
 
+\ spawn bin/hb to emit the checked SUM-ROWS kernel to the private PTX
+: RS-EMIT ( -- n )
+   PROC-ARGV-RESET
+   s" --load"               >LEN PROC-ARGV+
+   s" lib/errors.f"         >LEN PROC-ARGV+  s" lib/string.f"        >LEN PROC-ARGV+
+   s" lib/float.f"          >LEN PROC-ARGV+  s" lib/fmt.f"           >LEN PROC-ARGV+
+   s" src/arch/ptx/emit.f"  >LEN PROC-ARGV+  s" lib/ptx/cg.f"        >LEN PROC-ARGV+
+   s" lib/ptx/header.f"     >LEN PROC-ARGV+  s" lib/ptx/cg-collective.f" >LEN PROC-ARGV+
+   s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/sum-cg.f" >LEN PROC-ARGV+
+   s" bin/hb" >LEN  RS-OUT $4000 >LEN  RS-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   {: outu:len erru:len rc:rc :}
+   PTXTC:PTX$ RS-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
+
+: RS-PTXAS ( -- n )
+   RS-QO $1000 >LEN RS-QE $1000 >LEN PTXTC:ASSEMBLE ;
+
 : RS-PUT ( -- )
    1.0 F64>F32 RS-HIN 0 RS-F32!  2.0 F64>F32 RS-HIN 1 RS-F32!
    3.0 F64>F32 RS-HIN 2 RS-F32!  4.0 F64>F32 RS-HIN 3 RS-F32!
@@ -39,7 +60,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    RS-DEV P>N 0            s" cuDeviceGet"              RS-SYM CALL2 drop
    RS-CTX P>N RS-DEV @     s" cuDevicePrimaryCtxRetain" RS-SYM CALL2 drop
    RS-CTX @               s" cuCtxSetCurrent"          RS-SYM CALL1 drop
-   s" /tmp/sum.cubin" RS-PATH >CSTR
+   PTXTC:CUBIN$ RS-PATH >CSTR
    RS-MOD P>N RS-PATH P>N s" cuModuleLoad"             RS-SYM CALL2 drop
    s" SUM_ROWS" RS-KN >CSTR
    RS-FUNC P>N RS-MOD @ RS-KN P>N s" cuModuleGetFunction" RS-SYM CALL3 drop ;
@@ -64,16 +85,22 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    RS-MOD @  s" cuModuleUnload"            RS-SYM CALL1 drop
    RS-DEV @  s" cuDevicePrimaryCtxRelease" RS-SYM CALL1 drop ;
 
-RS-PUT RS-SETUP RS-LAUNCH RS-RELEASE
+: SUM-MAIN ( -- )
+   T-RESET
+   s" habu-ptx-sum" PTXTC:PREPARE
+   RS-EMIT drop
+   RS-PTXAS 0 T=
+   RS-PUT RS-SETUP RS-LAUNCH RS-RELEASE
+   PTXTC:CLEAN
+   0 RS-F32@ PTXSENT:GUARD $41200000 T=
+   1 RS-F32@ PTXSENT:GUARD $41200000 T=
+   2 RS-F32@ PTXSENT:GUARD $41200000 T=
+   3 RS-F32@ PTXSENT:GUARD $41200000 T=
+   4 RS-F32@ PTXSENT:GUARD $40800000 T=
+   5 RS-F32@ PTXSENT:GUARD $40800000 T=
+   6 RS-F32@ PTXSENT:GUARD $40800000 T=
+   7 RS-F32@ PTXSENT:GUARD $40800000 T=
+   T-REPORT ;
 
-T-RESET
-0 RS-F32@ PTXSENT:GUARD $41200000 T=
-1 RS-F32@ PTXSENT:GUARD $41200000 T=
-2 RS-F32@ PTXSENT:GUARD $41200000 T=
-3 RS-F32@ PTXSENT:GUARD $41200000 T=
-4 RS-F32@ PTXSENT:GUARD $40800000 T=
-5 RS-F32@ PTXSENT:GUARD $40800000 T=
-6 RS-F32@ PTXSENT:GUARD $40800000 T=
-7 RS-F32@ PTXSENT:GUARD $40800000 T=
-T-REPORT
+SUM-MAIN
 bye

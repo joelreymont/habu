@@ -299,8 +299,6 @@ points stay listed.
   vocabulary for auto-derived backward kernels and its checked coverage.
 - `lib/ptx/autograd-test.f` — checked verified-gradient kernel regression.
 - `tools/ptx/emit.f` — checked PTX text encoder behind the emit drivers.
-- `tools/ptx/cuda-load.f` — checked Orin proof loading an emitted SAXPY cubin
-  as a live GPU module through the Habu FFI.
 - `tools/ptx/saxpy-v4-cg.f` / `tools/ptx/relu-v4-cg.f` /
   `tools/ptx/fused-relu-cg.f` / `tools/ptx/maxselect-cg.f` /
   `tools/ptx/matmul-cg.f` / `tools/ptx/attention-cg.f` — checked kernel emit
