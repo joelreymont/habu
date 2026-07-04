@@ -76,6 +76,7 @@ TR-FILES: TR-GATE-COMMON-FILES
    tools/json-only-core.f tools/signature-lint-core.f
    tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
    tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
+   tools/dynamic-tail-manifest.f tools/source-discovery.f
    tools/check-core.f tools/check-main.f src/habu/verify-source.f
 ;TR-FILES
 
