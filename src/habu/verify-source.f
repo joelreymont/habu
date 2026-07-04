@@ -430,6 +430,58 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN ;
 
+: PRIM-END? ( ptr u8 n -- bool )
+   s" PRIM;" STR=CI ;
+
+\ A PRIM: block declares a native primitive whose checker effect is baked into
+\ the live prim table; verify only needs to consume name..PRIM; so the effect
+\ tokens are not scanned as ordinary words.
+: RECORD-PRIM ( -- )
+   NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
+   2drop
+   BEGIN
+      NEXT-RAW dup 0= IF s" verify-source: missing PRIM;" 74 die THEN
+      2dup PRIM-END? IF 2drop EXIT THEN
+      2drop
+   AGAIN ;
+
+: STRUCTURE-END? ( ptr u8 n -- bool )
+   s" END-STRUCTURE" STR=CI ;
+
+: STRUCTURE-PTR-FIELD? ( ptr u8 n -- bool )
+   s" PTR-FIELD:" STR=CI ;
+
+: STRUCTURE-CFIELD? ( ptr u8 n -- bool )
+   s" CFIELD:" STR=CI ;
+
+: STRUCTURE-CELL-FIELD? ( ptr u8 n -- bool )
+   s" +FIELD" STR=CI ;
+
+: TRUST-STRUCTURE-FIELD ( ptr u8 n ptr u8 n -- )
+   TRUST-SIGNATURE ;
+
+: RECORD-STRUCTURE-FIELD ( ptr u8 n -- ) {: sig:ptr sigu:n :}
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing structure field name" 74 die THEN
+   name nameu sig sigu TRUST-STRUCTURE-FIELD ;
+
+\ Record the size word (`-- n`) then each field accessor with its runtime effect
+\ so BEGIN-STRUCTURE layouts self-certify their field uses.
+: RECORD-STRUCTURE ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing structure name" 74 die THEN
+   name nameu s" -- n" TRUST-SIGNATURE
+   BEGIN
+      NEXT-SCAN
+      dup 0= IF s" verify-source: missing END-STRUCTURE" 74 die THEN
+      2dup STRUCTURE-END? IF 2drop EXIT THEN
+      2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CFIELD? IF 2drop s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
+      2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
+      2drop
+      THEN THEN THEN
+   AGAIN ;
+
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
@@ -438,6 +490,7 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
+   a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" typefamily" STR=CI IF RECORD-TYPEFAMILY 0 0= EXIT THEN
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
@@ -449,7 +502,9 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" constant" STR=CI IF s" -- a" TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
+   a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
+   a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
