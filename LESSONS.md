@@ -2269,16 +2269,43 @@ unchanged (148855). Keys for milestone 2:
   explicit-effect step and a bare tv re-push are the two ways a discipline that
   only watches `DCUR`/`RCUR` counts can be blindsided; a new value sink (locals,
   fields, a store) must be checked at its own bind/ref site, not assumed covered.
-- **DISCOVER (record-only event log) cannot replace check-core's whole-file dep
-  scan.** `tools/source-discovery.f` skips every colon body, so it never sees the
+- **DISCOVER (record-only event log) could not replace check-core's whole-file
+  dep scan until its walker scanned colon bodies.** The original
+  `tools/source-discovery.f` skipped every colon body, so it never saw the
   dominant real idiom — a `s" path" required`/`included` guarded inside a
   colon-defined helper then bare-called at top level (e.g.
-  `tools/check-all-errors-core.f` `CA-MAYBE-VERIFY-SOURCE`). `CHK-SCAN-DEPS`
-  lexes the WHOLE token stream incl. bodies, so it catches these. Swapping to
-  DISCOVER would make the checker see fewer deps than the runtime = soundness
-  regression. The plan's "events recorded after evaluation" needs a real
-  instrumented load, which is circular before preverify. Verify a discovery
-  source against the colon-wrapped-include idiom before trusting it as a closure.
+  `tools/check-all-errors-core.f` `CA-MAYBE-VERIFY-SOURCE`) — and EC:BUILD keys
+  built on it could return stale hits. RESOLVED (TFAM 5 redrive,
+  docs/design-tfam-5-redrive.md): the walker now lexes the ENTIRE token stream,
+  records guarded loaders unconditionally (superset of the runtime closure —
+  safe for keys, and sound for preverify under the repo's monotone
+  load-if-absent guards), and rejects fail-closed on dynamic paths, loader
+  shadow/undefine, `UNDEFINE-IF-DEFINED` retirement, and bad openers unless the
+  file is a declared boundary in `tools/dynamic-tail-manifest.f` (path+reason
+  table; entries skip the offending form, never record it). Verify any future
+  closure source against the colon-wrapped idiom before trusting it.
+- **A scratch-capacity limit must fail only the consumer that needs the value,
+  not the whole scan.** Discovery's loader-path scratch (`SD-PATH`, $400) threw
+  `E-DISC-CAPACITY` while merely *consuming* any >1KB string literal, falsely
+  rejecting `src/core/checker.f` from whole-file scanning. Runtime loader paths
+  are capped at `INCLUDE-PATH-CAP` anyway, so oversized strings are legal data:
+  set an overflow flag during the string scan and reject only if that string
+  reaches a loader word.
+- **`SB-CAP` is 1024 — build >1KB test fixtures with `APPEND-FILE` loops, not
+  the string builder.** An SB overflow inside a fixture builder exits the whole
+  suite with a bare masked rc (e.g. -3804 -> exit 36) and no output; if a test
+  run dies silently with a small rc, suspect an uncaught throw in fixture
+  *construction* before T-REPORT.
+- **`--all-errors --source-list` was a proven no-op (D4) — the redrive checks
+  original files with cross-file support.** The materialized temp is only
+  `"path" required` lines (zero defs), so all-errors scanned nothing and only
+  preverify's FIRST error surfaced. Now `CHK-RUN-ALL` in list mode walks
+  `CHK-DEP-ORDER`, runs `CHECK-ALL-ERRORS-FILE` per original file, and
+  registers each clean file through `CHECK-ALL-ERRORS-SUPPORT+` so later files
+  see real prefix state (support replayed after every `CHECKER-SCOPE-START`,
+  failures annotated and rethrown, never swallowed). Failed files are NOT
+  registered as support: replaying a broken file would raw-fail every
+  successor; missing-def diagnostics downstream are the honest cascade.
 - **all-errors support replay funnels through verify-source.** `CA-COLLECT-SUPPORT`
   only collects byte ranges; the actual replay is `VERIFY:SOURCE-BUF-IN-SCOPE`.
   So an all-errors support gap has two halves: all-errors must COLLECT the form
