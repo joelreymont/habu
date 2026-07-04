@@ -268,6 +268,9 @@ points stay listed.
   1024` changes shared-memory size and reduction fold bounds.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
+- `tools/ptx/softmax-fb-cg.f` — combined driver emitting ONE PTX module with both
+  the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD entries under a single
+  header, so softmax-gradcheck loads a single cubin and pulls both handles from it.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header

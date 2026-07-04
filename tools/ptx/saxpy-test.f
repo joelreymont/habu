@@ -139,6 +139,16 @@ variable PTXT-ERR-SAVE
 : PTXT-RUN-SOFTMAX-BWD-OPT-CG ( -- n n n )
    [: PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ;] PTXT-CAPTURE ;
 
+\ The combined fwd+bwd driver INCLUDES softmax-cg.f, which redefines SOFTMAX-ROWS;
+\ that collides with this suite's own PTXT-SOFTMAX-CG-OUTPUT include. So emit it in a
+\ CHILD process (fresh dictionary) - the same self-emit path softmax-gradcheck uses.
+: PTXT-RUN-SOFTMAX-FB-SPAWN ( -- n n n )
+   PROC-ARGV-RESET
+   s" --load"                    >LEN PROC-ARGV+
+   s" tools/ptx/softmax-fb-cg.f" >LEN PROC-ARGV+
+   s" bin/hb" >LEN  PTXT-OUT PTXT-CAP >LEN  PTXT-ERR PTXT-CAP >LEN  PTXT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
+   PTXT-CAPTURE>N ;
+
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .version 8.3" PTXT-HAS
@@ -256,6 +266,17 @@ variable PTXT-ERR-SAVE
    s" E-PTX-NOIMPL" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ the combined fwd+bwd module softmax-gradcheck self-emits: ONE .version header for
+\ BOTH the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD entries (the doubled-
+\ header regression the Mac gate must catch, since macOS has no ptxas to reject it).
+: PTXT-SOFTMAX-FB-CG-OUTPUT ( -- )
+   PTXT-RUN-SOFTMAX-FB-SPAWN 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry SOFTMAX_ROWS" PTXT-HAS
+   s" .visible .entry SOFTMAX_BWD" PTXT-HAS
+   s" .version" PTXT-COUNT 1 T=             \ EXACTLY one module header for both entries
+   s" .visible .entry" PTXT-COUNT 2 T=      \ fwd + bwd share that one module
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -267,5 +288,6 @@ PTXT-MATMUL-CG-OUTPUT
 PTXT-SMEM-CG-OUTPUT
 PTXT-SOFTMAX-BWD-CG-OUTPUT
 PTXT-SOFTMAX-BWD-OPT-CG-OUTPUT
+PTXT-SOFTMAX-FB-CG-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr
