@@ -132,7 +132,8 @@ GOLDEN
 dup G-GOLDEN RPT-GATE-TAG@ V-NOTRUN T=
 dup G-GOLDEN RPT-GATE-REASON@ s" no-device" T$=
 drop
-GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-NOTRUN T= drop
+\ cad-7a: FFN (LINEAR GELU LINEAR) is reference-complete + host-executable -> V-PASS.
+GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T= drop
 PROFILE
 dup G-PROFILE RPT-GATE-TAG@ V-NOTRUN T=
 dup RPT-ROOFLINE@ RC-UNKNOWN T=
@@ -184,10 +185,12 @@ s" certify=pass|golden=pass|gradcheck=pass|profile=pass" T$=
 STORE-RESET
 
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
+\ cad-7a: gradcheck now passes on host, so it emits NO packet; golden/profile remain.
 EXPLAIN CT-SAVE
 s" packet.certify"                 CT-NOTIN
+s" packet.gradcheck"               CT-NOTIN
 s" packet.golden: class=not-run"   CT-IN
-s" repair=run-device-gradcheck"    CT-IN
+s" repair=run-device-golden"       CT-IN
 s" repro=model:FFN"                CT-IN
 
 \ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------

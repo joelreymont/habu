@@ -3,9 +3,9 @@
 \ The flagship LINEAR GELU LINEAR model builds a full backward IR (matmul adjoints +
 \ gelu-bwd + the two bias row-reduces), with every parameter-gradient SHAPE asserted -
 \ this is the capability habu-maki-from-scratch depends on (an MLP needs the linear
-\ adjoint). Gradcheck returns an HONEST verdict: not-run, because LINEAR is not host-
-\ executable (the reduce/scatter/matmul host executor is the cad-7 full-tensor path) -
-\ NEVER a false pass. The other reduce/scatter models are likewise honest not-run.
+\ adjoint). Gradcheck now RUNS on host (cad-7a full-tensor executor): the MLP and the
+\ bias/scale/gather models all gradcheck V-PASS (analytic backward == finite diff),
+\ NEVER a false pass. Only a non-differentiable op (cast) stays honest not-run.
 
 require lib/test.f
 require lib/string.f
@@ -45,20 +45,20 @@ BW-BUILD
 4 BW-SLOT-GRAD@ MIR-OP@   OP-ROWSUM-BWD T=
 4 BW-SLOT-GRAD@ MIR-ROWS@ 1 T=  4 BW-SLOT-GRAD@ MIR-COLS@ 2 T=
 
-\ ---- gradcheck is HONEST not-run: linear is not host-executable (cad-7 path) --
+\ ---- gradcheck now RUNS on host: linear is host-executable (cad-7a executor) --
 MODEL: MLP2 ( x:2x3 w1:3x4 b1:1x4 w2:4x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
-GC-RUN V-NOTRUN T=
-s" host-unsupported:linear" MLPT-REASON-IN
-\ the gate wiring agrees: never a false pass
-RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-NOTRUN T=
+GC-RUN V-PASS T=
+s" host: 5 input(s) gradchecked" MLPT-REASON-IN
+\ the gate wiring agrees: a real host pass
+RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
 
-\ ---- the other reduce/scatter models are likewise honest not-run ------------
+\ ---- the other reduce/scatter models gradcheck V-PASS on host too -----------
 MODEL: MB ( x:2x3 b:1x3 -- y ) BIAS ;
-GC-RUN V-NOTRUN T=  s" host-unsupported:bias" MLPT-REASON-IN
+GC-RUN V-PASS T=
 MODEL: MSC ( x:2x3 s:1x1 -- z ) SCALE ;
-GC-RUN V-NOTRUN T=  s" host-unsupported:scale" MLPT-REASON-IN
+GC-RUN V-PASS T=
 MODEL: MG ( x:4x2 idx:3x1 -- y ) GATHER ;
-GC-RUN V-NOTRUN T=  s" host-unsupported:gather" MLPT-REASON-IN
+GC-RUN V-PASS T=
 
 T-REPORT
 
