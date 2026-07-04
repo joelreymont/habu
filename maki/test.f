@@ -112,6 +112,8 @@ TEST:SUITE maki/lower-mm-test.f
 TEST:END-SUITE
 TEST:SUITE maki/lower-mv-test.f
 TEST:END-SUITE
+TEST:SUITE maki/lower-model-test.f
+TEST:END-SUITE
 TEST:SUITE maki/backward-test.f
 TEST:END-SUITE
 TEST:SUITE maki/mlp-bwd-test.f

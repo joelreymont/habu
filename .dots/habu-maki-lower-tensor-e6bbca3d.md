@@ -85,3 +85,34 @@ catches an identity kernel; strengthen via dot habu-maki-strengthen-gather). Tes
 maki/lower-mv-test.f (capture text + fail-closed, wired into maki/test.f = 65),
 maki/lower-mv-device-test.f (Orin, not gated). NEXT: slice 5 OPTIMIZE wiring +
 the four dots above.
+
+SLICE 5 LANDED 2026-07-04 (fable): whole-model device execution + the device golden
+into the CAD gate. LOWER-MODEL-RUN (maki/lower-launch.f) executes EVERY region of the
+forward IR on device in topo (materialized-node) order: each region's output stays in a
+context-scoped device buffer (MDL-BUF, keyed by node) and a downstream region whose input
+names that producer node BINDS the buffer instead of uploading, removing the slots-only cap
+for the whole model (E-LLA-INPUT stays as the single-region LOWER-GOLDEN guard). Context is
+opened once; per-region REGION_<rid> cubins register via MDL-CUBIN! and modules load/unload
+per region (devptrs are context-scoped, so buffers persist across module loads). LOWER-MODEL-
+GOLDEN (maki/lower-golden.f) compares the FINAL model output vs the host executor under a
+COMPOSED tolerance: the device carries f32 at every region boundary while the host stays f64
+and narrows once, so per-region class rtols/atols are SUMMED (first-order error propagation,
+a sound upper bound - maxing would understate a deep chain) = 2*matmul + 1*row-reduce for the
+FFN. The materialized movement copy now accepts a cross-region producer node (maki/lower-move.f
+LMV-REF-ROWS/COLS; E-LMV-INPUT repurposed to reject an un-materialized interior node), which
+CLOSES habu-maki-cross-region. Gate: maki/cad.f GOLDEN-GATE-INTO precedence external-artifact >
+DEVICE model golden (present + cubins registered + lowerable) > host self-consistency; golden.f
+stays device-free; PROFILE stays honest not-run; PROMOTE evidence records golden=device-pass
+(maki/store.f EVID-PUT-G). MDL-CUBINS-READY?/MDL-LOWERABLE? make an on-device OPTIMIZE without
+cubins (or a non-lowerable model) fall back to host self, so the 66-suite gate is green ON the
+Orin too. Device-proven on the Orin (verbatim): FFN LINEAR GELU LINEAR RMSNORM 4x8 whole-model
+golden V-PASS 32/32 over 3 cross-region regions; OPTIMIZE golden device-pass + PROMOTE evidence
+certify=pass|golden=device-pass|gradcheck=pass|profile=not-run; GELU CONCAT cross-region movement
+V-PASS 64/64. Tests: maki/lower-model-test.f (host, wired into maki/test.f = 66),
+maki/lower-model-device-test.f (Orin, not gated). Still fail-closed + dotted/invariant: broadcast
+operands (E-LEW-BCAST) and multi-output regions (E-LEW-MULTIOUT) remain slice-5-out-of-scope caps;
+E-MVW-SRC stays a CORRECT invariant (a dissolved movement's source must be a model input slot - a
+node source is either a non-foldable same-region interior register value or belongs to a copy
+region, so it is never a base-offset fold; not a gap). NEXT: SAXPY retirement (the last hardcoded
+kernel path) + CAD-PLAN 8.1 register-blocked GEMM (habu-tiled-gemm-codegen), plus the two movement
+planner dots habu-maki-fusion-plan + habu-maki-fold-staged (NOT touched by slice 5).

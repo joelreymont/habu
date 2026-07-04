@@ -24,11 +24,17 @@
 \ All name the kernel REGION_<rid> and read back rows*cols f32 elements. The golden
 \ (maki/lower-golden.f) reads the staged out-node + element count.
 \
-\ v1 restriction (documented): every region input must be a model INPUT SLOT - a region fed
-\ by a materialized producer in another region needs cross-region buffer orchestration that
-\ arrives with the OPTIMIZE wiring slice; such an input fails closed (E-LLA-INPUT). rows*cols
-\ above the launch arena fails closed (E-LLA-CAP). Fully checked Habu via the typed CUDA
-\ bindings (maki/cuda-driver.f). maki -> habu only; lower-launch owns -5180..-5181.
+\ Single-region restriction (LOWER-GOLDEN path): a region run in isolation uploads every input
+\ from its host synthetic buffer, so each input must be a model INPUT SLOT; a region fed by a
+\ materialized producer in another region fails closed there (E-LLA-INPUT). That slots-only cap
+\ is SUPERSEDED for the whole model by LOWER-MODEL-RUN (slice 5): it executes every region in
+\ topo (materialized-node) order, keeps each region's output in a device buffer (MDL-BUF, keyed by
+\ node), and BINDS that buffer for a downstream region whose input names the producer node instead
+\ of uploading - so cross-region compute (LINEAR->GELU->LINEAR->RMSNORM) and a materialized movement
+\ copy reading a producer buffer both run without the slots-only cap. Per-region cubins are
+\ registered by MDL-CUBIN! (the device tool assembles REGION_<rid> per region). rows*cols above the
+\ launch arena fails closed (E-LLA-CAP). Fully checked Habu via the typed CUDA bindings
+\ (maki/cuda-driver.f). maki -> habu only; lower-launch owns -5180..-5184.
 
 require lib/errors.f
 require lib/string.f
@@ -48,8 +54,11 @@ require maki/lower-red.f
 require maki/lower-mm.f
 require maki/lower-move.f
 
--5180 constant E-LLA-INPUT   \ a region input is not a model input slot (v1: slots only)
+-5180 constant E-LLA-INPUT   \ a region input is not a model input slot (single-region path: slots only)
 -5181 constant E-LLA-CAP     \ region element count exceeds the launch arena capacity
+-5182 constant E-MDL-UNRESOLVED \ a region input names a producer node with no device buffer yet
+-5183 constant E-MDL-NOOUT      \ the final model output node has no materialized device buffer
+-5184 constant E-MDL-CUBIN      \ a region's cubin path was not registered before LOWER-MODEL-RUN
 
 package MAKI
 
@@ -120,15 +129,22 @@ private
 : LLA-FNAME ( n -- ) {: rid:n :}                 \ build the REGION_<rid> cstring
    SB-RESET s" REGION_" SB-APPEND rid SB-INT  SB$ LLA-FN >CSTR ;
 
-: LLA-SETUP ( -- )
+\ context lifecycle is split from module lifecycle: the whole-model run (LOWER-MODEL-RUN)
+\ opens the context ONCE and loads/unloads a module PER region (device buffers are
+\ context-scoped, so they persist across module loads); the single-region path composes both.
+: LLA-CTX-OPEN ( -- )
    CUDA:OPEN
    0 CUDA:CUINIT CUDA:RC0
    LLA-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
    LLA-CTX LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
-   LLA-CTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0
-   LLA-CUBIN$ LLA-PATH >CSTR
+   LLA-CTX @ >CUDA-CTX CUDA:CUCTXSETCURRENT CUDA:RC0 ;
+: LLA-MOD-OPEN ( ptr u8 n -- )   \ load a cubin at the path; get the REGION_<...> fn (LLA-FN preset)
+   LLA-PATH >CSTR
    LLA-MOD LLA-PATH CUDA:CUMODULELOAD CUDA:RC0
    LLA-FUNC LLA-MOD @ >CUDA-MOD LLA-FN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
+: LLA-MOD-CLOSE ( -- )  LLA-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0 ;
+: LLA-CTX-CLOSE ( -- )  LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
+: LLA-SETUP ( -- )  LLA-CTX-OPEN  LLA-CUBIN$ LLA-MOD-OPEN ;
 
 : LLA-ALLOC-UPLOAD ( n -- ) {: obytes:n :}       \ per-input alloc + copy, then output alloc
    LLA-NIN @ 0 ?do
@@ -163,8 +179,7 @@ private
 : LLA-RELEASE ( -- )
    LLA-NIN @ 0 ?do  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  loop
    LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
-   LLA-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
-   LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
+   LLA-MOD-CLOSE  LLA-CTX-CLOSE ;
 
 \ ---- shared execute over the staged region (upload + launch grid + readback) ----
 : LLA-EXEC ( n n -- ) {: rid:n grid:n :}
@@ -263,49 +278,235 @@ private
    grid obytes LLA-LAUNCH-MV
    LLA-RELEASE ;
 
+\ ---- grid + u32 kernel-param computation per shape (staging already ran) --------
+\ each sets the shape's u32 param (LLA-NVAR = p_n or p_k; matmul uses LLA-PM/PN/PK) and
+\ returns the launch grid; shared by the single-region RUN words and the whole-model exec.
+: LLA-GRID-EW ( -- n )
+   LLA-ELEMS @ {: n:n :}
+   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
+   n LLA-NVAR !
+   n LLA-BLOCK + 1 - LLA-BLOCK / ;
+: LLA-GRID-RED ( -- n )
+   LRED-ROWS@ {: rows:n :}  LRED-COLS@ {: cols:n :}
+   rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
+   cols LLA-NVAR !
+   rows ;
+: LLA-GRID-MM ( -- n n )
+   LLA-PM @ PTX-LAUNCH-POSITIVE  LLA-PN @ PTX-LAUNCH-POSITIVE  LLA-PK @ PTX-LAUNCH-POSITIVE
+   LLA-PN @ LLA-MM-TILE + 1 - LLA-MM-TILE /                 \ ceil(N/16)
+   LLA-PM @ LLA-MM-TILE + 1 - LLA-MM-TILE / ;               \ ceil(M/16)
+: LLA-GRID-MV ( -- n )
+   LLA-ELEMS @ {: n:n :}
+   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
+   n LLA-NVAR !
+   n LLA-BLOCK + 1 - LLA-BLOCK / ;
+
+public
+
+\ ---- region class dispatch (a region never mixes contraction/reduction; the golden reuses
+\ these). A materialized-movement region is a single movement node with MIR-MAT@ set. -------
+: LLA-REGION-MATMUL? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
+: LLA-REGION-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
+: LLA-REGION-MOVE? ( n -- bool ) {: rid:n :}
+   MIR-N@ 0 ?do
+      i FP-RID@ rid =  i MIR-MOVE?  and  i MIR-MAT@  and if unloop true exit then
+   loop false ;
+
+private
+
+\ ======================= whole-model device execution (slice 5) =================
+\ LOWER-MODEL-RUN executes every region of the current forward IR on device in topo
+\ (materialized-node) order. Each region's materialized output stays in a context-scoped
+\ device buffer (MDL-BUF, keyed by node index); a downstream region whose input names that
+\ producer node BINDS the buffer instead of uploading, so cross-region compute and a
+\ materialized movement copy reading a producer buffer run without the slots-only cap.
+
+128 constant MDL-CAP                              \ mirrors MIR-CAP / fusion-plan FP-CAP
+create MDL-CUBINS    MDL-CAP FS-PATH-CAP * allot   \ per-region REGION_<rid> cubin path text
+create MDL-CUBIN-LEN MDL-CAP cells allot            \ per-region cubin path length (0 = unset)
+create MDL-BUF       MDL-CAP cells allot            \ per-node device buffer (devptr int; 0 = none)
+create MDL-OWN       LLA-MAX-IN cells allot         \ per-input "uploaded (owned)" flag, current region
+variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variable MDL-NR
+variable MDL-PROBE-RID                             \ rid carried into the lowerability probe (catch wants a ( -- ) body)
+
+: MDL-CUBIN$ ( n -- ptr u8 n ) {: rid:n :}
+   rid cells MDL-CUBIN-LEN + @ {: u:n :}
+   u 0= if E-MDL-CUBIN throw then
+   MDL-CUBINS rid FS-PATH-CAP * +  u ;
+: MDL-DEVPTR@ ( n -- n )  cells MDL-BUF + @ ;
+: MDL-DEVPTR! ( n n -- ) {: dp:n nd:n :}  dp nd cells MDL-BUF + ! ;
+: MDL-BUF-RESET ( -- )  MDL-CAP 0 ?do  0 i cells MDL-BUF + !  loop ;
+
+\ per-input buffer provision: upload a model slot, or bind an already-produced node buffer
+: MDL-UP-SLOT ( n -- ) {: i:n :}
+   i LLA-PACK-INPUT                                 \ pack slot synthetic into LLA-HIN[i]
+   i LLA-IN-ELEMS-I 4 * {: ib:n :}
+   i LLA-DBUF-I ib >LEN CUDA:CUMEMALLOC CUDA:RC0
+   i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
+   1 i cells MDL-OWN + ! ;
+: MDL-BIND-NODE ( n -- ) {: i:n :}
+   LLA-IN-REF i cells + @ {: nd:n :}               \ a producer node ref (>=0)
+   nd MDL-DEVPTR@ {: dp:n :}
+   dp 0= if E-MDL-UNRESOLVED throw then             \ topo order must have produced it
+   dp i LLA-DBUF-I !                                \ reuse the producer's device buffer
+   0 i cells MDL-OWN + ! ;
+: MDL-PROVIDE-INPUTS ( -- )
+   LLA-NIN @ 0 ?do
+      LLA-IN-REF i cells + @ MIR-REF-INPUT? if i MDL-UP-SLOT else i MDL-BIND-NODE then
+   loop ;
+: MDL-ALLOC-OUT ( -- )                             \ region output buffer; record it under its node
+   LLA-ELEMS @ 4 * {: ob:n :}
+   LLA-NIN @ LLA-DBUF-I ob >LEN CUDA:CUMEMALLOC CUDA:RC0
+   LLA-NIN @ LLA-DBUF-I @  LLA-OUT-NODE @ MDL-DEVPTR! ;
+: MDL-FREE-OWNED ( -- )                            \ free only the per-region uploaded inputs
+   LLA-NIN @ 0 ?do
+      i cells MDL-OWN + @ if  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  then
+   loop ;
+: MDL-CHECK-CAPS ( -- )
+   LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
+   LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop ;
+
+: MDL-LAUNCH-1D ( n -- ) {: grid:n :}
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
+   CUDA:CUCTXSYNCHRONIZE CUDA:RC0 ;
+: MDL-LAUNCH-2D ( n n -- ) {: gx:n gy:n :}
+   LLA-FUNC @ >CUDA-FN gx gy CUDA:CULAUNCHGRID CUDA:RC0
+   CUDA:CUCTXSYNCHRONIZE CUDA:RC0 ;
+
+\ stage a region by class (analysis + per-input operand resolution into launch staging)
+: MDL-STAGE ( n -- ) {: rid:n :}
+   rid LLA-REGION-MOVE?   if rid LLA-STAGE-MV  exit then
+   rid LLA-REGION-MATMUL? if rid LLA-STAGE-MM  exit then
+   rid LLA-REGION-REDUCE? if rid LLA-STAGE-RED exit then
+   rid LLA-STAGE-EW ;
+
+\ grid + param bind + launch by class (LLA-DBUF already holds inputs + output devptrs)
+: MDL-DISPATCH ( n -- ) {: rid:n :}
+   rid LLA-REGION-MOVE? if
+      LLA-GRID-MV {: g0:n :}  LLA-BIND-PARAMS-MV  g0 MDL-LAUNCH-1D  exit then
+   rid LLA-REGION-MATMUL? if
+      LLA-GRID-MM {: gx:n gy:n :}  LLA-BIND-PARAMS-MM  gx gy MDL-LAUNCH-2D  exit then
+   rid LLA-REGION-REDUCE? if
+      LLA-GRID-RED {: g1:n :}  LLA-BIND-PARAMS  g1 MDL-LAUNCH-1D  exit then
+   LLA-GRID-EW {: g2:n :}  LLA-BIND-PARAMS  g2 MDL-LAUNCH-1D ;
+
+: MDL-EXEC-REGION ( n -- ) {: rid:n :}
+   rid MDL-STAGE
+   MDL-CHECK-CAPS
+   rid LLA-FNAME                                   \ LLA-FN = REGION_<rid>
+   rid MDL-CUBIN$ LLA-MOD-OPEN
+   MDL-PROVIDE-INPUTS
+   MDL-ALLOC-OUT
+   rid MDL-DISPATCH
+   MDL-FREE-OWNED
+   LLA-MOD-CLOSE ;
+
+\ read the final model output node's device buffer back into LLA-HOUT (guarded), and point
+\ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE reads the model output.
+: MDL-READBACK ( -- )
+   MIR-N@ 1- {: out:n :}
+   out MIR-ROWS@ out MIR-COLS@ * {: e:n :}
+   out MDL-DEVPTR@ {: dp:n :}
+   dp 0= if E-MDL-NOOUT throw then
+   e 4 * {: ob:n :}
+   LLA-HRB ob PTXSENT:FILL
+   LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
+   e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
+   out LLA-OUT-NODE !  e LLA-ELEMS ! ;
+: MDL-FREE-ALL ( -- )
+   MIR-N@ 0 ?do
+      i MDL-DEVPTR@ {: dp:n :}
+      dp 0= 0= if  dp >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  0 i MDL-DEVPTR!  then
+   loop ;
+
+public
+
+\ ---- per-region cubin registry (device tool assembles REGION_<rid>, one cubin per region) --
+: MDL-CUBIN! ( ptr u8 n n -- ) {: a:ptr u:n rid:n :}
+   rid 0 < rid MDL-CAP >= or if E-MDL-CUBIN throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
+   a  MDL-CUBINS rid FS-PATH-CAP * +  u BYTE-COPY
+   u rid cells MDL-CUBIN-LEN + ! ;
+: MDL-CUBINS-RESET ( -- )  MDL-CAP 0 ?do  0 i cells MDL-CUBIN-LEN + !  loop ;
+
+\ every materialized-node region has a registered cubin (the device golden gate needs assembled
+\ kernels; without them the gate must fall back to the host leg rather than throw E-MDL-CUBIN).
+: MDL-CUBINS-READY? ( -- bool )
+   MIR-N@ 0 ?do
+      i MIR-MAT@ if  i FP-RID@ cells MDL-CUBIN-LEN + @ 0= if  false unloop exit  then  then
+   loop  true ;
+
+\ ---- per-class region tally over the materialized nodes (tolerance composition inputs) ----
+: MDL-COUNT-REGIONS ( -- )
+   0 MDL-NEW !  0 MDL-NRED !  0 MDL-NMM !  0 MDL-NMV !  0 MDL-NR !
+   MIR-N@ 0 ?do
+      i MIR-MAT@ if
+         i FP-RID@ {: rid:n :}
+         MDL-NR @ 1+ MDL-NR !
+         rid LLA-REGION-MOVE? if     MDL-NMV  @ 1+ MDL-NMV !
+         else rid LLA-REGION-MATMUL? if MDL-NMM @ 1+ MDL-NMM !
+         else rid LLA-REGION-REDUCE? if MDL-NRED @ 1+ MDL-NRED !
+         else MDL-NEW @ 1+ MDL-NEW ! then then then
+      then
+   loop ;
+: MDL-N-EW@      ( -- n )  MDL-NEW @ ;
+: MDL-N-RED@     ( -- n )  MDL-NRED @ ;
+: MDL-N-MM@      ( -- n )  MDL-NMM @ ;
+: MDL-N-MV@      ( -- n )  MDL-NMV @ ;
+: MDL-N-REGIONS@ ( -- n )  MDL-NR @ ;
+
+\ device-lowerability probe: every materialized region must analyze (its class staging must
+\ not fail closed) AND every op must be host-executable (the golden runs the host reference).
+\ The analyzers' rejection throws ARE the "not device-lowerable" signal, so they are probed
+\ under catch here (a capability check, not error masking); a real device error is not caught.
+: MDL-LOWERABLE? ( -- bool )
+   GA-SUPPORTED? 0= if false exit then
+   MIR-N@ 0 ?do
+      i MIR-MAT@ if
+         i FP-RID@ MDL-PROBE-RID !
+         [: MDL-PROBE-RID @ MDL-STAGE ;] catch 0<> if  false unloop exit  then
+      then
+   loop  true ;
+
+\ LOWER-MODEL-RUN executes the whole forward IR on device, region by region. Requires the
+\ fusion plan built (FP-BUILD), synthetic inputs bound (GA-BIND-SYNTH), and each region's
+\ cubin registered (MDL-CUBIN!). Leaves LLA-HOUT = the final model output (f64), LLA-OUT-NODE
+\ / LLA-ELEMS pointing at it for the golden compare.
+: LOWER-MODEL-RUN ( -- )
+   LLA-CTX-OPEN
+   MDL-BUF-RESET
+   MIR-N@ 0 ?do
+      i MIR-MAT@ if  i FP-RID@ MDL-EXEC-REGION  then
+   loop
+   MDL-READBACK
+   MDL-FREE-ALL
+   LLA-CTX-CLOSE ;
+
 public
 
 \ LLA-RUN analyzes elementwise region rid, uploads its synthetic inputs, launches the
 \ REGION_<rid> flat kernel (grid = ceil(N/256)) from LLA-CUBIN$, and unpacks the device
 \ output into LLA-HOUT. GA-BIND-SYNTH must have run so GA-IN-PTR holds the inputs.
 : LLA-RUN ( n -- ) {: rid:n :}
-   rid LLA-STAGE-EW
-   LLA-ELEMS @ {: n:n :}
-   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
-   n LLA-NVAR !                                    \ flat u32 param p_n = N
-   n LLA-BLOCK + 1 - LLA-BLOCK / {: grid:n :}
-   rid grid LLA-EXEC ;
+   rid LLA-STAGE-EW  LLA-GRID-EW {: grid:n :}  rid grid LLA-EXEC ;
 
 \ LRED-RUN analyzes row-reduce region rid and launches its REGION_<rid> block-per-row
 \ kernel (grid = rows, p_k = cols). Same synthetic-input upload + guarded readback.
 : LRED-RUN ( n -- ) {: rid:n :}
-   rid LLA-STAGE-RED
-   LRED-ROWS@ {: rows:n :}  LRED-COLS@ {: cols:n :}
-   rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
-   cols LLA-NVAR !                                 \ row u32 param p_k = cols
-   rid rows LLA-EXEC ;
+   rid LLA-STAGE-RED  LLA-GRID-RED {: grid:n :}  rid grid LLA-EXEC ;
 
 \ LMM-RUN analyzes matmul/linear region rid and launches its REGION_<rid> tiled-GEMM
 \ kernel (2D grid ceil(N/16) x ceil(M/16), block 16x16, params M/N/K). Contraction
 \ operands (A, B, [bias]) upload at their own sizes; same guarded readback into LLA-HOUT.
 : LMM-RUN ( n -- ) {: rid:n :}
-   rid LLA-STAGE-MM
-   LLA-PM @ PTX-LAUNCH-POSITIVE  LLA-PN @ PTX-LAUNCH-POSITIVE  LLA-PK @ PTX-LAUNCH-POSITIVE
-   LLA-PN @ LLA-MM-TILE + 1 - LLA-MM-TILE / {: gx:n :}      \ ceil(N/16)
-   LLA-PM @ LLA-MM-TILE + 1 - LLA-MM-TILE / {: gy:n :}      \ ceil(M/16)
-   rid gx gy LLA-EXEC-MM ;
+   rid LLA-STAGE-MM  LLA-GRID-MM {: gx:n gy:n :}  rid gx gy LLA-EXEC-MM ;
 
 \ LMV-RUN analyzes a materialized movement region (maki/lower-move.f) and launches its
 \ REGION_<rid> copy kernel (grid = ceil(N/256), one elem/thread, p_a/p_b/p_n u32). Buffer
 \ operands upload at their own sizes (concat A/B, gather source+index differ). Same guarded
 \ readback into LLA-HOUT.
 : LMV-RUN ( n -- ) {: rid:n :}
-   rid LLA-STAGE-MV
-   LLA-ELEMS @ {: n:n :}
-   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
-   n LLA-NVAR !                                    \ copy u32 param p_n = N
-   n LLA-BLOCK + 1 - LLA-BLOCK / {: grid:n :}
-   rid grid LLA-EXEC-MV ;
+   rid LLA-STAGE-MV  LLA-GRID-MV {: grid:n :}  rid grid LLA-EXEC-MV ;
 
 \ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN / LMM-RUN
 : LLA-OUT@ ( n -- r )  LLA-HOUT swap T-GET ;

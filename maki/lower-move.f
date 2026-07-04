@@ -22,8 +22,9 @@
 \ Fail closed BEFORE any PTX (a rejected region emits nothing): a region that is not exactly one
 \ materialized movement node (E-LMV-MULTI), a movement op outside the v1 copy set (E-LMV-OP), a
 \ movement whose output the planner left un-materialized (E-LMV-NOOUT, the fusion-plan gap for a
-\ free/staged movement that is a model output), a movement operand that is not a model input slot
-\ (E-LMV-INPUT, v1: no cross-region source), and an operand/output above the launch arena
+\ free/staged movement that is a model output), a movement operand that is an un-materialized
+\ interior node with no device buffer (E-LMV-INPUT; a slot or a cross-region MATERIALIZED producer
+\ is fine - the whole-model run binds the producer buffer), and an operand/output above the launch arena
 \ (E-LMV-DIMS) are named throws. maki -> habu only; lower-move owns -5205..-5212. Load after the
 \ cg emit stack (see requires).
 
@@ -42,7 +43,7 @@ require maki/move-facts.f
 -5205 constant E-LMV-NOTMOVE  \ region is not a materialized movement region
 -5206 constant E-LMV-MULTI    \ region is not exactly one movement node (v1 cap)
 -5207 constant E-LMV-OP       \ movement op is not in the v1 copy set
--5208 constant E-LMV-INPUT    \ a movement operand is not a model input slot (v1)
+-5208 constant E-LMV-INPUT    \ a movement operand is an un-materialized interior node (no device buffer)
 -5209 constant E-LMV-DIMS     \ operand/output extent exceeds the launch arena cap
 -5210 constant E-LMV-NOOUT    \ movement output left un-materialized (fusion-plan gap)
 -5211 constant E-LMV-REG      \ input index out of range
@@ -66,11 +67,16 @@ variable LMV-BUILT?
 : LMV-COPY-OP? ( n -- bool ) {: op:n :}
    op OP-TRANSPOSE = op OP-SLICE = or op OP-CONCAT = or op OP-GATHER = or ;
 
-\ ---- operand-ref shape (v1: every movement operand is a model input slot) ----
+\ ---- operand-ref shape: a model input slot, or a MATERIALIZED producer node in another region
+\ (slice 5 cross-region handoff - the whole-model run binds that producer's device buffer). A copy
+\ region is exactly one movement node, so an operand can only be a slot or a cross-region node; an
+\ un-materialized (interior) node would have no device buffer and fails closed (E-LMV-INPUT).
 : LMV-REF-ROWS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? 0= if E-LMV-INPUT throw then  ref MIR-REF-SLOT MIR-SLOT-ROWS@ ;
+   ref MIR-REF-INPUT? if  ref MIR-REF-SLOT MIR-SLOT-ROWS@  exit then
+   ref MIR-MAT@ 0= if E-LMV-INPUT throw then  ref MIR-ROWS@ ;
 : LMV-REF-COLS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? 0= if E-LMV-INPUT throw then  ref MIR-REF-SLOT MIR-SLOT-COLS@ ;
+   ref MIR-REF-INPUT? if  ref MIR-REF-SLOT MIR-SLOT-COLS@  exit then
+   ref MIR-MAT@ 0= if E-LMV-INPUT throw then  ref MIR-COLS@ ;
 : LMV-REF-ELEMS ( n -- n ) {: ref:n :}  ref LMV-REF-ROWS  ref LMV-REF-COLS * ;
 
 \ ---- find the single materialized movement node ----------------------------

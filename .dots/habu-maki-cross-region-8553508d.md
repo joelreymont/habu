@@ -1,9 +1,11 @@
 ---
 title: "Maki: cross-region + chained movement source (movement OPTIMIZE wiring)"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-04T21:50:31.323925+02:00"
 ---
 
 SLICE 4 v1 restricts both the dissolved fold and the copy kernel to movement whose SOURCE is a model INPUT SLOT: maki/move-view.f MVW-SRC-REF throws E-MVW-SRC and maki/lower-move.f LMV-REF-ROWS throws E-LMV-INPUT when a movement operand is an interior/other-region node. So a movement fed BY a compute region (e.g. GELU then CONCAT: concat's A operand is the gelu node) or a CHAINED movement (SLICE then TRANSPOSE) cannot lower yet. This is the same cross-region device-buffer handoff the slice-5 OPTIMIZE wiring removes for E-LLA-INPUT (maki/lower-launch.f). Fix with slice 5: once cross-region buffers exist, MVW-RESOLVE-SRC/LLA-STAGE-IN can point a folded/copy input at a materialized producer's device buffer, and a chained movement resolves through the chain. Repro: MODEL: GC ( x:4x8 b:4x8 -- y ) GELU CONCAT ; FP-BUILD 1 LMV-ANALYZE -> E-LMV-INPUT (maki/lower-mv-test.f).
+
+CLOSED 2026-07-04 (slice 5). The materialized movement copy now reads a cross-region producer's device buffer: maki/lower-move.f LMV-REF-ROWS/COLS accept a MATERIALIZED node operand (E-LMV-INPUT repurposed to reject only an un-materialized interior node, defense-in-depth), and maki/lower-launch.f LOWER-MODEL-RUN binds that producer's MDL-BUF device buffer for the copy kernel. The concrete repro now analyzes and runs: GELU CONCAT lowers to a 2-region model (region 0 gelu EW, region 1 concat copy reading gelu's buffer) - device-proven on the Orin V-PASS 64/64 (maki/lower-model-device-test.f), host analysis asserted in maki/lower-mv-test.f (GC) + maki/lower-model-test.f (MGC). This is the same buffer-handoff that also covers "chained" materialized movement (a second copy region reads the first's buffer). E-MVW-SRC was NOT lifted because it is a CORRECT invariant, not a gap: a DISSOLVED movement fold bakes a base-pointer OFFSET, which is only meaningful over a real buffer (a model slot). Its source node is either same-region interior (a register value, not foldable) or a materialized cross-region producer (which the planner routes through a copy region, not a fold). So a dissolved fold's source must be a slot - E-MVW-SRC correctly rejects the rest.

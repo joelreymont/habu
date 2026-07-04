@@ -93,15 +93,13 @@ variable LG-BADI                                \ first mismatched element index
 \ region class -> launch shape + tolerance. A matmul bit routes to the tiled-GEMM kernel;
 \ a reduction bit routes to the row kernel; otherwise the flat elementwise kernel. A region
 \ never mixes a contraction with a reduction (maki/fusion-plan.f), so the order is disjoint.
-: LG-MATMUL? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
-: LG-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
+\ region class routing is owned by lower-launch (LOWER-MODEL-RUN reuses it); alias here.
+: LG-MATMUL? ( n -- bool )  LLA-REGION-MATMUL? ;
+: LG-REDUCE? ( n -- bool )  LLA-REGION-REDUCE? ;
 
 \ a MATERIALIZED movement region (the region's output node is a movement copy, not a fold)
 \ routes to the copy-kernel launch; a dissolved-fold region keeps its EW/RED/MM class route.
-: LG-MOVE? ( n -- bool ) {: rid:n :}
-   MIR-N@ 0 ?do
-      i FP-RID@ rid =  i MIR-MOVE?  and  i MIR-MAT@  and if unloop true exit then
-   loop false ;
+: LG-MOVE? ( n -- bool )  LLA-REGION-MOVE? ;
 
 public
 \ LOWER-GOLDEN ( rid -- verdict ). Requires the region's cubin already assembled and its
@@ -119,5 +117,64 @@ public
       rid LG-REDUCE? if  rid LRED-RUN  LG-RTOL-RED  else  rid LLA-RUN  LG-RTOL-EW  then
    then then {: re:n :}
    LG-ATOL-EXP re LG-COMPARE if rid LG-PASS-REASON V-PASS else rid LG-FAIL-REASON V-FAIL then ;
+
+private
+
+\ ======================= whole-model device-vs-host golden (slice 5) =============
+\ LOWER-MODEL-GOLDEN runs the WHOLE forward IR on both legs on the same synthetic inputs -
+\ the host executor (EX-RUN-N, f64) and the device (LOWER-MODEL-RUN, region-by-region f32
+\ with cross-region device buffers) - and compares the FINAL model output element-wise.
+\
+\ Tolerance composition (accumulate across regions). The device carries f32 at EVERY region
+\ boundary (each materialized producer is rounded to f32 before the next region reads it),
+\ while the host stays f64 and narrows to the f32 grid ONCE at the end. So the device
+\ accumulates a per-region rounding the single-region golden never sees. First-order error
+\ propagation gives final relative error ~ SUM of the per-region class rtols and an absolute
+\ floor ~ SUM of the per-region atols; SUMMING is the sound upper bound (maxing would
+\ understate a deep chain). Per class: EW 1e-5, ROW-REDUCE 1e-4, MATMUL 1e-4, MOVEMENT 1e-6
+\ (the same slice 1-4 per-class bounds), atol 1e-6 each.
+: MDL-ATOL ( -- r )  MDL-N-REGIONS@ s>f  LG-ATOL-EXP POW10  f* ;
+: MDL-RTOL ( -- r )
+   MDL-N-EW@  s>f LG-RTOL-EW  POW10 f*
+   MDL-N-RED@ s>f LG-RTOL-RED POW10 f* f+
+   MDL-N-MM@  s>f LG-RTOL-MM  POW10 f* f+
+   MDL-N-MV@  s>f LG-RTOL-MV  POW10 f* f+ ;
+
+\ linear-tolerance compare (the composed tol is a SUM, not a single power of ten)
+: LG-WITHIN-LIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
+   atol  rtol host fabs f*  f+ {: tol:r :}
+   dev host f- fabs {: d:r :}
+   tol d f< 0= ;
+: LG-COMPARE-LIN ( r r -- bool ) {: atol:r rtol:r :}
+   LLA-OUT-NODE@ EX-OUT@ {: hp:ptr :}
+   LLA-ELEMS@ {: n:n :}
+   -1 LG-BADI !
+   n 0 ?do
+      i LLA-OUT@  hp i T-GET LG-NARROW  atol rtol LG-WITHIN-LIN? 0= if
+         i LG-BADI !  false unloop exit
+      then
+   loop
+   LG-BADI @ 0 < ;
+
+: MDL-PASS-REASON ( -- )
+   LG-RE-RESET
+   s" lower-model-golden: device==host within composed f32 tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT
+   s"  elems, " LG-RE+ MDL-N-REGIONS@ LG-RE-INT s"  regions)" LG-RE+ ;
+: MDL-FAIL-REASON ( -- )
+   LG-RE-RESET
+   s" lower-model-golden: mismatch beyond composed f32 tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
+
+public
+\ LOWER-MODEL-GOLDEN ( -- verdict ). Requires FP-BUILD + each region's cubin registered
+\ (MDL-CUBIN!). Off-device -> V-NOTRUN (reason in LOWER-GOLDEN-REASON$).
+: LOWER-MODEL-GOLDEN ( -- n )
+   CUDA:OPEN? 0= if
+      LG-RE-RESET s" lower-model-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
+   GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
+   MIR-N@ EX-RUN-N                              \ host reference (whole model, f64)
+   MDL-COUNT-REGIONS                            \ tally region classes for the composed tolerance
+   LOWER-MODEL-RUN                              \ device (fills LLA-HOUT = final node, f32 -> f64)
+   MDL-ATOL MDL-RTOL LG-COMPARE-LIN
+   if MDL-PASS-REASON V-PASS else MDL-FAIL-REASON V-FAIL then ;
 
 end-package

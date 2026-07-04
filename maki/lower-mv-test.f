@@ -171,11 +171,23 @@ MODEL: GT ( x:4x8 -- y ) GELU TRANSPOSE ;
 FP-BUILD  -1 1 MIR-MAT!
 ' LMVT-TRY-MV E-LMV-MULTI TTHROWS
 
-\ ---- a materialized movement whose operand is an INTERIOR node (not a slot) fails closed ----
-\ GELU then CONCAT: gelu is region 0, concat materializes as region 1; concat's A operand is
-\ the interior gelu node, so lowering region 1 (the concat) fails closed on the v1 slots-only rule.
+\ ---- cross-region (slice 5): a materialized movement reading a producer NODE now lowers -------
+\ GELU then CONCAT: gelu is region 0, concat materializes as region 1; concat's A operand is the
+\ interior gelu node (materialized, so it has a device buffer). LMV-ANALYZE succeeds and stages
+\ operand 0 as the gelu node (a cross-region producer) and operand 1 as the declared b input slot;
+\ the whole-model run binds gelu's device buffer for the copy kernel (dot habu-maki-cross-region).
 MODEL: GC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
 FP-BUILD
+LMVT-TRY-MV1                                  \ 1 LMV-ANALYZE: no longer throws
+0 LMV-IN-REF@ MIR-REF-INPUT? TFALSE           \ operand 0 is a node (the gelu producer), not a slot
+0 LMV-IN-REF@ 0 T=                            \ specifically node 0 (gelu)
+1 LMV-IN-REF@ MIR-REF-INPUT? TTRUE            \ operand 1 is the declared b input slot
+
+\ ---- an UN-materialized node operand still fails closed (no device buffer to bind) -----------
+\ Force the gelu producer mat=0 (a corrupted plan): the concat's A operand is now an interior
+\ node with no device buffer, so the copy region rejects it (defense-in-depth, E-LMV-INPUT).
+MODEL: GC2 ( x:4x8 b:4x8 -- y ) GELU CONCAT ;
+FP-BUILD  0 0 MIR-MAT!
 ' LMVT-TRY-MV1 E-LMV-INPUT TTHROWS
 
 T-REPORT
