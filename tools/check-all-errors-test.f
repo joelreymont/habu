@@ -585,6 +585,61 @@ create CAE-LF-BYTE 10 c,
    s" value-record-support" CAE-CASE!
    CAE-VREC-SOURCE$ s" cae-vr-use" s" cae-vr-bad" CAE-CHECK-SUPPORT-PARITY ;
 
+\ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
+\ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
+\ through verify-source before later definitions. verify-source's RECORD-DEFINER?
+\ must dispatch that TRUST so a definition using the trusted word passes. A clean
+\ fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
+
+: CAE-SQ-LIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   115 SB-APPEND-C
+   CAE-DQ
+   32 SB-APPEND-C
+   a u SB-APPEND
+   CAE-DQ
+   32 SB-APPEND-C ;
+
+: CAE-TRUST-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" CAE-TRO-HELP" CAE-SQ-LIT
+   s" i64 -- i64" CAE-SQ-LIT
+   s" TRUST" SB-APPEND CAE-LF
+   s" : CAE-TRO-USE ( i64 -- i64 ) CAE-TRO-HELP ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-IMMEDIATE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-IM ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" immediate" SB-APPEND CAE-LF
+   s" : CAE-IM-USE ( i64 -- i64 ) CAE-IM ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-EXPORT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-EX ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" EXPORT CAE-EX" SB-APPEND CAE-LF
+   s" : CAE-EX-USE ( i64 -- i64 ) CAE-EX ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-CHECK-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru CAE-EMPTY$ T$= ;
+
+: CAE-TEST-TRUST-SUPPORT ( -- )
+   s" trust-support" CAE-CASE!
+   CAE-TRUST-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-IMMEDIATE-SUPPORT ( -- )
+   s" immediate-support" CAE-CASE!
+   CAE-IMMEDIATE-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-EXPORT-SUPPORT ( -- )
+   s" export-support" CAE-CASE!
+   CAE-EXPORT-SOURCE$ CAE-CHECK-CLEAN ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
@@ -592,6 +647,9 @@ create CAE-LF-BYTE 10 c,
    s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
+   s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
+   s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
+   s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
    s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN

@@ -24,6 +24,10 @@ variable BASE-COL
 variable BASE-BYTE
 variable BACKSLASHES
 variable ESCAPED-STRING
+variable STR-PREV-A
+variable STR-PREV-U
+variable STR-LAST-A
+variable STR-LAST-U
 
 create BODY-BUF BODYBUF-CAP allot
 
@@ -99,6 +103,25 @@ create BODY-BUF BODYBUF-CAP allot
       THEN
    REPEAT ;
 
+\ Skipped top-level string literals feed a two-slot ring so a bare top-level
+\ `s" NAME" s" SIG" TRUST` (strings the scanner would otherwise discard) can be
+\ replayed as a trust. The ring resets per NEXT-SCAN call, so at a TRUST token it
+\ holds exactly the two preceding literals from the same statement.
+: STR-RING-RESET ( -- )
+   0 STR-PREV-A !  0 STR-PREV-U !
+   0 STR-LAST-A !  0 STR-LAST-U ! ;
+
+: STR-RING-PUSH ( ptr u8 n -- ) {: a:ptr u:n :}
+   STR-LAST-A @ STR-PREV-A !
+   STR-LAST-U @ STR-PREV-U !
+   a STR-LAST-A !
+   u STR-LAST-U ! ;
+
+: RECORD-SKIPPED-STRING ( n -- ) {: pfx:n :}
+   SCAN-I @ TOKEN-START @ - pfx - 1 - {: vlen:n :}
+   vlen 0 < IF EXIT THEN
+   SOURCE@ TOKEN-START @ + pfx + vlen STR-RING-PUSH ;
+
 : NEXT ( -- ptr u8 n )
    BEGIN
       NEXT-RAW
@@ -106,14 +129,15 @@ create BODY-BUF BODYBUF-CAP allot
       2dup 1 = swap c@ 92 = and IF 2drop 10 SKIP-PAST ELSE
       2dup 1 = swap c@ 40 = and IF 2drop 41 SKIP-PAST ELSE
       SKIP-STRINGS @ 0= 0= IF
-         2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE ELSE
-         2dup NORMAL-STRING-OPENER? IF 2drop 34 SKIP-PAST ELSE EXIT THEN THEN
+         2dup ESCAPED-STRING-OPENER? IF 2drop SKIP-ESCAPED-QUOTE 4 RECORD-SKIPPED-STRING ELSE
+         2dup NORMAL-STRING-OPENER? IF 2drop 34 SKIP-PAST 3 RECORD-SKIPPED-STRING ELSE EXIT THEN THEN
       ELSE EXIT THEN
       THEN THEN
    AGAIN ;
 
 : NEXT-SCAN ( -- ptr u8 n )
    -1 SKIP-STRINGS !
+   STR-RING-RESET
    NEXT ;
 
 : NEXT-BODY ( -- ptr u8 n )
@@ -370,6 +394,17 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
       BODY-APPEND
    AGAIN ;
 
+: RECORD-TRUST ( -- )
+   STR-LAST-U @ 0= IF s" verify-source: TRUST missing signature string" 74 die THEN
+   STR-PREV-U @ 0= IF s" verify-source: TRUST missing name string" 74 die THEN
+   STR-PREV-A @ STR-PREV-U @
+   STR-LAST-A @ STR-LAST-U @
+   TRUST-SIGNATURE ;
+
+: RECORD-EXPORT ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN ;
+
 : RECORD-DEFINER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" package" STR=CI IF RECORD-PACKAGE 0 0= EXIT THEN
    a u s" public" STR=CI IF RECORD-PUBLIC 0 0= EXIT THEN
@@ -384,6 +419,9 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
+   a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN
+   a u s" immediate" STR=CI IF 0 0= EXIT THEN
+   a u s" export" STR=CI IF RECORD-EXPORT 0 0= EXIT THEN
    0 0= 0= ;
 
 : VERIFY-DEFINITION ( -- )
