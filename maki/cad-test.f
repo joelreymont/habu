@@ -127,12 +127,13 @@ drop
 \ ---- CERTIFY: model-level static legality passes ---------------------------
 CERTIFY dup G-CERTIFY RPT-GATE-TAG@ V-PASS T= drop
 
-\ ---- device gates: honest not-run on host ----------------------------------
+\ ---- host gates now real; profile still needs a device -----------------------
+\ cad-7a: FFN (LINEAR GELU LINEAR) is reference-complete + host-executable, so GOLDEN
+\ (self-consistency) and GRADCHECK both pass on host; only PROFILE needs a device.
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-NOTRUN T=
-dup G-GOLDEN RPT-GATE-REASON@ s" no-device" T$=
+dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
+dup G-GOLDEN RPT-GATE-REASON@ CT-SAVE  s" host self-consistent" CT-IN
 drop
-\ cad-7a: FFN (LINEAR GELU LINEAR) is reference-complete + host-executable -> V-PASS.
 GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T= drop
 PROFILE
 dup G-PROFILE RPT-GATE-TAG@ V-NOTRUN T=
@@ -145,13 +146,13 @@ dup RPT-CAND-COUNT 32 T=
 dup RPT-RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
 drop
 
-\ ---- OPTIMIZE: aggregate report, promotion refused (not thrown) ------------
+\ ---- OPTIMIZE: aggregate report, promotion refused (profile still needs device) --
 OPTIMIZE
-dup G-CERTIFY RPT-GATE-TAG@ V-PASS   T=
-dup G-GOLDEN  RPT-GATE-TAG@ V-NOTRUN T=
+dup G-CERTIFY RPT-GATE-TAG@ V-PASS T=
+dup G-GOLDEN  RPT-GATE-TAG@ V-PASS T=
 dup RPT-RENDER CT-SAVE
 s" gate.certify.verdict: pass"    CT-IN
-s" gate.golden.verdict: not-run"  CT-IN
+s" gate.golden.verdict: pass"     CT-IN
 s" promote: refused"              CT-IN
 drop
 
@@ -185,12 +186,14 @@ s" certify=pass|golden=pass|gradcheck=pass|profile=pass" T$=
 STORE-RESET
 
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
-\ cad-7a: gradcheck now passes on host, so it emits NO packet; golden/profile remain.
+\ cad-7a: certify + golden + gradcheck all pass on host, so only PROFILE (device) emits
+\ a packet.
 EXPLAIN CT-SAVE
 s" packet.certify"                 CT-NOTIN
 s" packet.gradcheck"               CT-NOTIN
-s" packet.golden: class=not-run"   CT-IN
-s" repair=run-device-golden"       CT-IN
+s" packet.golden"                  CT-NOTIN
+s" packet.profile: class=not-run"  CT-IN
+s" repair=run-device-profile"      CT-IN
 s" repro=model:FFN"                CT-IN
 
 \ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------

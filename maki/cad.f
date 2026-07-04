@@ -39,6 +39,7 @@ require maki/mem-plan.f
 require maki/schedule.f
 require maki/sched-key.f
 require maki/store.f
+require maki/golden.f
 require maki/gradcheck.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
@@ -361,8 +362,11 @@ private
    s" " V-PASS G-CERTIFY RPT-GATE!
    s" certify: model-level legality only; kernel legality in cad-5" RPT-WARN+ ;
 
-: GOLDEN-INTO ( report -- report )
-   s" no-device" V-NOTRUN G-GOLDEN RPT-GATE! ;
+\ GOLDEN is REAL on the host now (maki/golden.f): a self-consistency oracle that runs
+\ the composed forward chain and re-executes each node from its inputs. Reference-
+\ complete + host-executable models pass; a cast/decode op stays honest not-run. The
+\ real device-vs-host comparison lands with the device leg. GOLDEN-INTO is provided by
+\ maki/golden.f.
 
 \ GRADCHECK is REAL on the host now (maki/gradcheck.f): a numeric model-level
 \ gradcheck for reference-complete, host-executable (elementwise) models; models with
