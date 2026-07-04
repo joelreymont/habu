@@ -2275,6 +2275,7 @@ TRUSTED: EM-HXT-EXECUTE ( n -- )
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
 variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
+variable LARITY               \ pre-exec arity guard for deref/execute prims (interpret-find BL -> EMIT-ARITY-GUARD)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
@@ -3026,7 +3027,8 @@ s" em-interpret-number" s" label --" TRUST
 : EM-INTERPRET-FIND ( -- )
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
-   11 BLR,  LMAIN LABEL@ B, ;
+   LARITY LABEL@ BL,          \ pre-exec arity guard: deref/execute prims fault on a shallow
+   11 BLR,  LMAIN LABEL@ B, ; \ stack before the LMAIN depth-floor guard sees it; diverts to LUNDERFLOW
 s" em-interpret-find" s" --" TRUST
 
 : EM-INTERPRET-WORDS ( -- )
@@ -3428,9 +3430,38 @@ s" em-interpret-underflow" s" --" TRUST
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE  EM-INTERPRET-UNDERFLOW ;
 s" emit-main" s" --" TRUST
+
+\ Pre-execution arity guard (LARITY). A deref/execute primitive (@ ! +! c@ c!
+\ atomic@ atomic! atomic-add atomic-cas count type execute run-in-stack) as the
+\ LITERAL FIRST top-level token faults inside the primitive body (SIGSEGV, crash
+\ handler exit 134) BEFORE the post-token LMAIN depth-floor guard (EM-COMMENT /
+\ EM-INTERPRET-UNDERFLOW) can observe XDS < S0. The interpret-find dispatch BLs here
+\ after a successful dictionary find: x11 = the resolved xt, x10 is loaded with the current
+\ data-stack depth in cells, and each guarded prim's baked entry-label address is
+\ compared against x11. If x11 matches and depth < the prim's minimum input count,
+\ we divert to LUNDERFLOW (TKA/TKL still name the token) for a clean E-UNDERFLOW
+\ instead of a signal; otherwise LARITY returns and the interpret BLR proceeds
+\ unchanged. Every non-guarded word runs the compare chain and falls through
+\ (effective min-in 0): no behavior change. The prim entry labels are resolved by
+\ EMIT-ARITY-GUARD after EMIT-PRIMS, so this routine is emitted post-prims.
+: ARITY-EMIT ( n n -- )               \ ( prim-entry-label min ) : x10=depth cells, x11=xt
+   LBL {: glbl:n min:n nxt:label :}
+   14 glbl >LABEL ADR,  11 14 CMP,  C-NE nxt BCOND,   \ x11 != this prim's xt -> skip
+      10 min CMPI,  C-LT LUNDERFLOW LABEL@ BCOND,     \ depth < min-in -> underflow diagnostic
+      RET,                                            \ matched, depth ok -> proceed to BLR
+   nxt LBL, ;
+
+: EMIT-ARITY-GUARD ( -- )             \ bake LARITY: depth into x10, then a compare row per guarded prim
+   LARITY LABEL@ LBL,
+   9 DATA S0-CELL LDR,  10 XDS 9 SUB,  10 10 3 ASRI,   \ x10 = (XDS - S0) / 8 = depth in cells
+   0 BEGIN dup GDR-N @ < WHILE
+      dup cells GDR-LBL + @  over cells GDR-MIN + @  ARITY-EMIT
+      1+
+   REPEAT drop
+   RET, ;
 variable SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
@@ -3609,6 +3640,7 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
+   EMIT-ARITY-GUARD             \ bake LARITY after prims so guarded entry labels resolve
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    EMIT-PROF-PRIMS
    EMIT-FP-PRIMS

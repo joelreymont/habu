@@ -561,12 +561,36 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" E-UNDERFLOW" s" hb top-level underflow diagnostic" GE-EXPECT-ERR-HAS
    s" drop" s" hb top-level underflow token" GE-EXPECT-ERR-HAS ;
 
+: GE-DEREF-1 ( ptr u8 n -- ) {: tok:ptr toku:n :}
+   \ Run one deref/execute primitive as the LITERAL FIRST top-level token on an
+   \ empty stack: the pre-exec arity guard must name E-UNDERFLOW + exit 70, never a
+   \ signal (crash handler exit 134). Before the guard this faulted inside the prim.
+   GE-HB-RESET
+   GE-SRC-RESET
+   tok toku GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb deref-first arity rc" GE-EXPECT-RC
+   s" E-UNDERFLOW" s" hb deref-first arity diagnostic" GE-EXPECT-ERR-HAS
+   tok toku s" hb deref-first arity token" GE-EXPECT-ERR-HAS ;
+
+: GE-DEREF-ARITY-DIAG ( -- )
+   s" @" GE-DEREF-1
+   s" !" GE-DEREF-1
+   s" execute" GE-DEREF-1
+   \ positive control: a valid store satisfies min-in -> succeeds rc 0 (no false guard).
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" variable GAV 5 GAV !" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb valid deref store succeeds" GE-EXPECT-OK ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN
    GE-ARGV-MODES
    GE-UNDERFLOW-DIAG
+   GE-DEREF-ARITY-DIAG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
 

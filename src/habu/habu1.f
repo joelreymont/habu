@@ -73,6 +73,33 @@ s" fprim" s" ptr u8 n n --" TRUST
    FP-REG
    FPL LABEL@ LBL,  FP-XT @ execute  RET,  FPE LABEL@ LBL, ;
 s" fprim-l" s" ptr u8 n n --" TRUST
+
+\ --- deref/execute arity-guard table (for the interpret-boundary guard) ---
+\ A deref/execute prim (@ ! +! c@ c! atomic@ atomic! atomic-add atomic-cas count
+\ type execute run-in-stack) faults inside its own body on a shallow stack, before
+\ the post-token LMAIN depth-floor guard can see it. GDEREF-L / GDEREF-F register
+\ such a prim like FPRIM-L / FPRIM and, when the prim is kept, record its entry
+\ label + minimum input depth so EMIT-ARITY-GUARD can bake a pre-BLR depth check
+\ keyed by the runtime xt (= entry-label address). Every other word stays min-in 0.
+32 constant GDR-CAP
+create GDR-LBL GDR-CAP cells allot   create GDR-MIN GDR-CAP cells allot
+variable GDR-N
+variable GD-MIN
+
+: GUARD-ADD ( n n -- )                \ ( entry-label min-in ) append one guard-table row
+   GDR-N @ GDR-CAP >= IF s" arity guard table full" 76 die THEN
+   GDR-N @ cells GDR-MIN + !
+   GDR-N @ cells GDR-LBL + !
+   GDR-N @ 1+ GDR-N ! ;
+
+: GD-RECORD ( -- )                    \ record ( FPL, GD-MIN ) iff the just-registered prim was kept
+   FP-KEEP? IF FPL @ GD-MIN @ GUARD-ADD THEN ;
+
+: GDEREF-L ( ptr u8 n n n -- )        \ leaf deref prim: name xt min-in
+   GD-MIN !  FPRIM-L  GD-RECORD ;
+
+: GDEREF-F ( ptr u8 n n n -- )        \ framed deref prim: name xt min-in
+   GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
 variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
@@ -1700,25 +1727,25 @@ s" linux-stat-fix" s" n --" TRUST
    s" 2>r" ['] B2TOR FPRIM-L  s" 2r>" ['] B2RFROM FPRIM-L  s" 2r@" ['] B2RFETCH FPRIM-L ;
 
 : EMIT-MEMORY-PRIMS ( -- )
-   s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
-   s" +!" ['] BPLUSSTORE FPRIM-L
-   s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
-   s" atomic@" ['] BATFETCH FPRIM-L  s" atomic!" ['] BATSTORE FPRIM-L
-   s" atomic-add" ['] BATADD FPRIM-L  s" atomic-cas" ['] BATCAS FPRIM-L  s" fence" ['] BFENCE FPRIM-L
+   s" @"    ['] BFETCH 1 GDEREF-L   s" !"    ['] BSTORE 2 GDEREF-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" +!" ['] BPLUSSTORE 2 GDEREF-L
+   s" c@"   ['] BCFETCH 1 GDEREF-L  s" c!"   ['] BCSTORE 2 GDEREF-L
+   s" atomic@" ['] BATFETCH 1 GDEREF-L  s" atomic!" ['] BATSTORE 2 GDEREF-L
+   s" atomic-add" ['] BATADD 2 GDEREF-L  s" atomic-cas" ['] BATCAS 3 GDEREF-L  s" fence" ['] BFENCE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L
-   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT FPRIM-L ;
+   s" chars" ['] BCHARS FPRIM-L  s" char+" ['] BCHARPLUS FPRIM-L  s" count" ['] BCOUNT 1 GDEREF-L ;
 
 : EMIT-OUTPUT-PRIMS ( -- )
    s" ."    ['] BDOT  FPRIM-L   s" .s"   ['] B.S   FPRIM-L   s" depth" ['] BDEPTH FPRIM-L
    s" u."   ['] BU.   FPRIM-L   s" emit" ['] BEMIT FPRIM-L
    s" cr"   ['] BCR   FPRIM-L   s" space" ['] BSPACE FPRIM-L
-   s" type" ['] BTYPE  FPRIM-L ;
+   s" type" ['] BTYPE  2 GDEREF-L ;
 
 : EMIT-DICT-PRIMS ( -- )
    s" here" ['] BHERE  FPRIM-L   s" allot" ['] BALLOT FPRIM-L
    s" ,"    ['] BCOMMA FPRIM-L   s" c,"   ['] BCCOMMA FPRIM-L
-   s" execute" ['] BEXEC FPRIM
-   s" run-in-stack" ['] BRUNSTACK FPRIM
+   s" execute" ['] BEXEC 1 GDEREF-F
+   s" run-in-stack" ['] BRUNSTACK 3 GDEREF-F
    s" compile," ['] BCOMPILE FPRIM
    s" create" ['] BCREATE FPRIM
    s" parse-name" ['] BPARSE-NAME FPRIM

@@ -165,7 +165,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-interpret-define-keywords | `--` | Emits interpreter-mode defining-word dispatch cases grouped separately from literal and lookup fallback. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-string-keywords | `--` | Emits interpreter-mode string parsing-word dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-number | `label --` | Emits interpreter-mode number parsing and branches to the caller's not-number label on failure. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
-| em-interpret-find | `--` | Emits interpreter-mode dictionary lookup, undefined routing, and execute dispatch. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| em-interpret-find | `--` | Emits interpreter-mode dictionary lookup, undefined routing, the pre-exec deref/execute arity guard call (LARITY), and execute dispatch. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | em-interpret-words | `--` | Chains the factored interpreter-mode defining, string, number, and lookup dispatch emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret | `--` | Chains the factored interpreter-mode colon and word-dispatch emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-drop-locals | `--` | Emits optional locals-frame teardown before a compiled definition returns. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -199,7 +199,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-underflow | `--` | Emits the top-level data-stack underflow diagnostic (named E-UNDERFLOW + offending word) and evaluate/REPL/batch recovery routing for the LMAIN depth-floor guard. | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| emit-main | `--` | Allocates main-loop labels (incl. LARITY) and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | AOT-BLOB-BUF@ | `-- ptr u8` | Views the AOT-REPL capture code-blob scratch buffer as bytes for the blob copy and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | AOT-REC-BUF@ | `-- ptr a` | Views the AOT-REPL capture dict-record scratch buffer for the 48-byte record copy and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
