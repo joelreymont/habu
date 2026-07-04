@@ -357,6 +357,16 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
    s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
 
+: GE-TYPE-DECL-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-decl-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-DECL-SUITE ( -- )
+   GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON
+   s" bin/hb" s" type-decl suite on bin/hb" GE-TYPE-DECL-SUITE-ON ;
+
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
@@ -579,7 +589,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK
    GE-ENGINE-SUITE
-   GE-TYPE-FAMILY-SUITE ;
+   GE-TYPE-FAMILY-SUITE
+   GE-TYPE-DECL-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

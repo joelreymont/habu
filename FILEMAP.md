@@ -43,6 +43,7 @@ points stay listed.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
 - `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
+- `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
@@ -717,5 +718,6 @@ points stay listed.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
+- `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
 - `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
 - `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.

@@ -463,6 +463,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/type-schema.f" HBB-KEY-FILE+
    s" src/core/type-family.f" HBB-KEY-FILE+
    s" src/core/render.f" HBB-KEY-FILE+
+   s" src/core/sumtype.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/structures-effects.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+

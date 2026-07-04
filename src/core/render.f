@@ -425,6 +425,41 @@ variable JPOS  variable JLINE  variable JCOL
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
 
+\ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
+\ TYPEFAMILY/SUMTYPE reports a declaration-shaped packet: decl kind, family,
+\ offending token, and reason — with NO invented definition fields (no
+\ declared_effect, definition_source, or return_stack; docs/type-families.md
+\ §24). Source-span fields wait on the declaration origin plumbing (item 13).
+: TDECL-SUGGEST$ ( -- ptr u8 n )
+   s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
+: TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-DECLARATION" JSTR 44 EMIT1
+   s" repair_class" JKEY s" fix_family_declaration" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" decl" JKEY ka ku JSTR 44 EMIT1
+   s" family" JKEY fa fu JSTR 44 EMIT1
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" reason" JKEY wa wu JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY TDECL-SUGGEST$ JSTR
+   125 EMIT1 ;                                            \ }
+: TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   s" habu: bad " DTXT  ka ku DTXT  s"  declaration '" DTXT  fa fu DTXT
+   s" ': " DTXT  wa wu DTXT
+   tu 0 > IF s"  at '" DTXT  ta tu DTXT  s" '" DTXT THEN ;
+: TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   1 RDST !  0 RSN !
+   ka ku fa fu ta tu wa wu
+   JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+
 \ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
 \ (conservatively, the word stays unrecorded) on unknown tags or absurd var
 \ counts — and reports which word and why, since callers otherwise fail later

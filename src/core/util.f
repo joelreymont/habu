@@ -11,6 +11,21 @@ variable SEQ
 	   ELSE 0 SEQ ! THEN
 	   SEQ @ 0 <> ;
 
+\ ASCII case fold + case-insensitive equality (declaration keyword matching).
+: CORE-FOLD-C ( n -- n ) {: c:n :}
+   c $41 < IF c EXIT THEN
+   c $5A > IF c EXIT THEN
+   c $20 or ;
+
+: CORE-STR=CI {: a:ptr u:n b:ptr v:n :}   \ ( ptr u8 n ptr u8 n -- bool ) folded equality
+   u v = IF
+     -1 SEQ !
+     0 BEGIN dup u < WHILE
+       dup a + c@ CORE-FOLD-C  over b + c@ CORE-FOLD-C  <> IF 0 SEQ ! THEN
+       1 + REPEAT drop
+	   ELSE 0 SEQ ! THEN
+	   SEQ @ 0 <> ;
+
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
 256 constant PATH-CAP
 : PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )

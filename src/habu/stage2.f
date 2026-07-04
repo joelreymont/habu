@@ -30,7 +30,7 @@ s" S2-PATH-BUF" s" -- ptr u8" TRUST
 : S2-OUT ( -- ptr u8 n )
    s" stage2-got" S2-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
-$A0000 constant S2-SOURCE-CAP
+$C0000 constant S2-SOURCE-CAP   \ mmap'd source cap; prefix grew past $A0000 with sumtype.f
 $1002 constant S2-MAP-PRIVATE-ANON
 : SBUF@ SBUF @ ;
 s" SBUF@" s" -- ptr u8" TRUST

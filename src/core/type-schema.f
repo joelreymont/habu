@@ -15,7 +15,8 @@
 2 constant SCH-CON        \ A = concrete con code
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
 4 constant SCH-QUOT       \ A = hasr flag, B = row-root start, C = row count (SCH-QUOT-ROWS)
-4 constant SCH-KIND-MAX   \ highest valid creatable tag
+5 constant SCH-PTR        \ A = pointee schema node (docs §8 SC-PTR)
+5 constant SCH-KIND-MAX   \ highest valid creatable tag
 
 \ A quotation payload is four effect-row schema roots stored contiguously in the
 \ schema-root pool: din, dout, rin, rout (in that order). B indexes the first; the
@@ -155,6 +156,14 @@ SCHEMA-RESET
 : SCHEMA-QUOT-DOUT@ ( node -- rownode ) 1 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-RIN@ ( node -- rownode ) 2 SCHEMA-QUOT-ROW@ ;
 : SCHEMA-QUOT-ROUT@ ( node -- rownode ) 3 SCHEMA-QUOT-ROW@ ;
+
+\ --- SCH-PTR pointer payload node (docs §8 SC-PTR): a `ptr T` variant payload
+\ element. A malformed child (nil / out-of-range) throws E-SCHEMA-BAD so the
+\ declaration parser and unit tests can trap it with `catch`.
+: SCHEMA-PTR ( child -- node )
+   dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
+   SCH-PTR swap 0 0 SCHEMA-NEW ;
+: SCHEMA-PTR? ( node -- bool ) SCHEMA-TAG@ SCH-PTR = ;
 
 \ ---------------------------------------------------------------------------
 \ rollback frame stack (SCHEMA half of the checker's transactional rollback).

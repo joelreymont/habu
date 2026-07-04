@@ -35,6 +35,7 @@ variable TC     variable FOUNDF
 variable FID    variable PID    variable AID    variable PTID   variable CLID
 variable VOK    variable VERR   variable FX     variable NP     variable NC
 variable NA     variable R1     variable L0     variable NQ
+variable NPTR
 
 \ clean slate (nothing declares families during prefix load, but be explicit).
 TFAM-RESET
@@ -207,6 +208,17 @@ NC @ NC @ NC @ NC @ 0 SCHEMA-QUOT SCHEMA-QUOT-HASR@ 0 T=   \ hasr normalizes to 
 NP @ NC @ NA @ 0 -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
 \ malformed row = out-of-range node rejected
 NP @ NC @ NA @ 99999 -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+
+\ SC-PTR pointer payload node (PLAN item 6, docs §8 SC-PTR): child round-trip,
+\ nesting, predicate discrimination, and malformed-child rejection.
+NC @ SCHEMA-PTR NPTR !
+NPTR @ SCHEMA-TAG@ SCH-PTR T=   NPTR @ SCHEMA-PTR? -1 T=
+NPTR @ SCHEMA-CON? 0 T=         NPTR @ SCHEMA-A@ NC @ T=
+NPTR @ SCHEMA-PTR SCHEMA-A@ NPTR @ T=       \ ptr ptr X nests
+NC @ SCHEMA-PTR? 0 T=
+\ malformed child = nil node (0) / out-of-range node rejected (1 cell before catch)
+0 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
+99999 ' SCHEMA-PTR catch   TC ! drop  TC @ E-SCHEMA-BAD T=
 
 \ ---------------------------------------------------------------------------
 \ 10. SUMV variants: add, per-family key, dup rejection, cross-family reuse.

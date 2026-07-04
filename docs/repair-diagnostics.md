@@ -43,6 +43,15 @@ The current checker JSON intentionally uses `definition_source` rather than
 `source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
 copy or normalize these fields instead of requiring the checker to emit aliases.
 
+Top-level type-family declaration failures (`TYPEFAMILY`/`SUMTYPE`) emit a
+declaration-shaped object instead of the definition shape above: code
+`E-BAD-DECLARATION`, repair class `fix_family_declaration`, `verdict`
+`rejected`, plus `decl` (declaration kind), `family` (family name token),
+`token` (offending token), `reason` (short cause), `file`, and `suggestion`.
+Declaration packets never fabricate definition-only fields such as `word`,
+`declared_effect`, `definition_source`, or `return_stack`; source-span fields
+land with the declaration origin plumbing (PLAN item 13).
+
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
@@ -112,6 +121,9 @@ Current checker classes:
   element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
+- `fix_family_declaration`: a `TYPEFAMILY` or `SUMTYPE` declaration used a
+  reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
+  an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -136,6 +148,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
+| `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

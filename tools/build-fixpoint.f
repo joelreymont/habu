@@ -584,6 +584,7 @@ variable BF-CERT-PATH-U
    out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
+   out outu s" src/core/sumtype.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 

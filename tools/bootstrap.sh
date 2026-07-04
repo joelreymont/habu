@@ -176,6 +176,8 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/render.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/sumtype.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/check-hook.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/structures-effects.f >> "$out"

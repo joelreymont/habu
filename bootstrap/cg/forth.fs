@@ -1054,7 +1054,7 @@ variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
-variable LPTYPESCHEMA   variable LPTYPEFAM
+variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPCOMBINATORS
@@ -1219,6 +1219,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-LOAD-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-LOAD-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
+   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
@@ -1257,6 +1258,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PATH-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PATH-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
+   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
@@ -1417,6 +1419,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPTYPESCHEMA   s" src/core/type-schema.f" PFX-PROVIDE-ROW
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PROVIDE-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
@@ -3434,7 +3437,7 @@ variable CFSK2
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !
+   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !
