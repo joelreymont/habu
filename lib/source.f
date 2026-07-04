@@ -10,6 +10,7 @@ $20000 constant SOURCE-CAP
 13 constant SOURCE-CR
 32 constant SOURCE-SPACE
 34 constant SOURCE-DQ
+92 constant SOURCE-BACKSLASH
 
 create SOURCE-PROBE SOURCE-PROBE-CAP allot
 create SOURCE-LS-READ-BUF SOURCE-LS-READ-CAP allot
@@ -77,6 +78,34 @@ variable SOURCE-LS-LINE#
    c dst lenp @ LEN>N + c!
    lenp @ LEN>N 1 + >LEN lenp ! ;
 
+\ One shared checked path-string emitter. Path bytes that would change source
+\ structure (`"`, `\`, LF, CR) are rejected fail-closed so materialized loader
+\ lines and diagnostic prefix labels cannot be broken or injected by a path.
+: SOURCE-PATH-BYTE-SAFE? ( n -- bool ) {: c:n :}
+   c SOURCE-DQ = if STR-FALSE exit then
+   c SOURCE-BACKSLASH = if STR-FALSE exit then
+   c SOURCE-LF = if STR-FALSE exit then
+   c SOURCE-CR = if STR-FALSE exit then
+   STR-TRUE ;
+
+: SOURCE-PATH-SAFE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup u < while
+      a over + c@ SOURCE-PATH-BYTE-SAFE? 0= if drop STR-FALSE exit then
+      1+
+   repeat drop STR-TRUE ;
+
+: SOURCE-QPATH-CHECK ( ptr u8 n -- )
+   SOURCE-PATH-SAFE? 0= if E-FS-PATH-UNSAFE throw then ;
+
+: SOURCE-APPEND-QPATH ( ptr u8 len ptr u8 len ptr len -- )
+   {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
+   path pathu LEN>N SOURCE-QPATH-CHECK
+   s" s" >LEN dst cap lenp SOURCE-APPEND-BYTES
+   SOURCE-DQ dst cap lenp SOURCE-APPEND-C
+   SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
+   path pathu dst cap lenp SOURCE-APPEND-BYTES
+   SOURCE-DQ dst cap lenp SOURCE-APPEND-C ;
+
 : SOURCE-PATH-A@ ( ptr a idx -- ptr u8 ) {: table:ptr idx :}
    idx IDX>N cells table + @ ;
 
@@ -90,11 +119,7 @@ variable SOURCE-LS-LINE#
 
 : SOURCE-APPEND-PROVIDED ( ptr u8 len ptr u8 len ptr len -- )
    {: path:ptr pathu:len dst:ptr cap:len lenp:ptr :}
-   s" s" >LEN dst cap lenp SOURCE-APPEND-BYTES
-   SOURCE-DQ dst cap lenp SOURCE-APPEND-C
-   SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
-   path pathu dst cap lenp SOURCE-APPEND-BYTES
-   SOURCE-DQ dst cap lenp SOURCE-APPEND-C
+   path pathu dst cap lenp SOURCE-APPEND-QPATH
    SOURCE-SPACE dst cap lenp SOURCE-APPEND-C
    s" provided" >LEN dst cap lenp SOURCE-APPEND-BYTES
    SOURCE-LF dst cap lenp SOURCE-APPEND-C ;

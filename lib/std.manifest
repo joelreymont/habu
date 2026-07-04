@@ -432,6 +432,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	READ-STDIN-ALL	(ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	read fd zero into a caller buffer and fail closed on overflow
 1	source	lib/source.f	word	SOURCE-APPEND-BYTES	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append bytes into a bounded destination tracked by a length cell
 1	source	lib/source.f	word	SOURCE-APPEND-C	(n ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one byte into a bounded destination tracked by a length cell
+1	source	lib/source.f	word	SOURCE-PATH-BYTE-SAFE?	(n -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	reject one path byte that would change materialized source structure
+1	source	lib/source.f	word	SOURCE-PATH-SAFE?	(ptr u8 n -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	true when a path has no quote backslash or newline bytes
+1	source	lib/source.f	word	SOURCE-QPATH-CHECK	(ptr u8 n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fail closed when a path is unsafe to materialize as a quoted token
+1	source	lib/source.f	word	SOURCE-APPEND-QPATH	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one quoted path token with a shared fail-closed structure check
 1	source	lib/source.f	word	SOURCE-PATH-A@	(ptr a idx -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path pointer from a source-list pointer table
 1	source	lib/source.f	word	SOURCE-PATH-U@	(ptr a idx -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path length from a source-list length table
 1	source	lib/source.f	word	SOURCE-APPEND-FILE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one counted file into a bounded destination

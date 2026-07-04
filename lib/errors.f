@@ -19,6 +19,7 @@
 -2104 constant E-FS-DEPTH
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
+-2107 constant E-FS-PATH-UNSAFE
 
 \ Strings: -2200..-2299
 -2200 constant E-STR-FIRST
