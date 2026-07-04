@@ -78,6 +78,24 @@ s" node.0.in: i0 i1"   MT-IN
 s" node.1.in: n0"      MT-IN
 s" input.2.shape: ?x?" MT-IN
 
+\ ---- movement node: attrs carry the verdict; render shows it ----------------
+variable MT-MV
+MIR-RESET
+4 8 DT-F32 LAY-ROW MIR-INPUT+ drop                     \ slot 0 = x (4x8)
+OP-RESHAPE MIR-OP-BEGIN
+   0 MIR-IN-REF MIR-IN+
+8 4 DT-F32 LAY-ROW  MV-RESHAPE MVV-FREE 8 4 MV-PACK  0  MIR-OP+ MT-MV !
+
+MT-MV @ MIR-MOVE?          TTRUE
+MT-MV @ MIR-OP@ OP-RESHAPE T=
+MT-MV @ MIR-MOVE-VERDICT@  MVV-FREE T=
+MT-MV @ MIR-SHAPE-KEY s" 8x4" T$=
+MT-MV @ MIR-MAT@           TFALSE                       \ free -> not materialized
+
+MIR-RENDER MT-SAVE
+s" node.0.op: reshape"    MT-IN
+s" node.0.verdict: free"  MT-IN
+
 \ ---- fail-closed probes -----------------------------------------------------
 : TRY-MIR-IDX     ( -- )  MIR-N@ MIR-OP@ drop ;
 : TRY-MIR-OPKIND  ( -- )  MIR-RESET OP-N MIR-OP-BEGIN ;
@@ -90,6 +108,12 @@ s" input.2.shape: ?x?" MT-IN
 : TRY-MIR-SLOTCAP ( -- )
    MIR-RESET  MIR-IN-CAP 1+ 0 ?do  1 1 DT-F32 LAY-ROW MIR-INPUT+ drop  loop ;
 
+\ a verdict requested from a non-movement (gelu) node fails closed
+: TRY-MIR-NOTMOVE ( -- )
+   MIR-RESET  0 0 DT-F32 LAY-ROW MIR-INPUT+ drop
+   OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+
+   0 0 DT-F32 LAY-ROW 0 1 MIR-OP+  MIR-MOVE-VERDICT@ drop ;
+
 ' TRY-MIR-IDX     E-MIR-IDX     TTHROWS
 ' TRY-MIR-OPKIND  E-MIR-OPKIND  TTHROWS
 ' TRY-MIR-REF     E-MIR-REF     TTHROWS
@@ -98,6 +122,7 @@ s" input.2.shape: ?x?" MT-IN
 ' TRY-MIR-INSLOT  E-MIR-INSLOT  TTHROWS
 ' TRY-MIR-CAP     E-MIR-CAP     TTHROWS
 ' TRY-MIR-SLOTCAP E-MIR-INSLOT  TTHROWS
+' TRY-MIR-NOTMOVE E-MV-NOTMOVE  TTHROWS
 
 T-REPORT
 

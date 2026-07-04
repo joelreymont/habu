@@ -20,6 +20,7 @@
 
 require maki/op-kind.f
 require maki/op-registry.f
+require maki/move-facts.f
 require maki/tensor.f
 require maki/tensor-value.f
 require lib/string.f
@@ -181,6 +182,14 @@ public
 : MIR-MAT-COUNT ( -- n )                \ materialized node count (LOWER uses this)
    0 MIR-N @ 0 ?do  i MIR-MAT@ if 1+ then  loop ;
 
+\ ---- movement facts (attrs interpreted per maki/move-facts.f) ---------------
+: MIR-MOVE? ( n -- bool )  MIR-OP@ OPR-CLASS CLASS-MOVEMENT = ;
+
+\ the node's dissolution verdict; fail closed on a non-movement node
+: MIR-MOVE-VERDICT@ ( n -- n ) {: node:n :}
+   node MIR-MOVE? 0= if E-MV-NOTMOVE throw then
+   node MIR-ATTR@ MV-VD@ ;
+
 private
 
 \ ---- dtype / layout key text (fail closed) ---------------------------------
@@ -249,12 +258,19 @@ variable MO-U
    s" node" node MO-KEY.IDX  s" .in:" MO+
    node MIR-IN-COUNT@ 0 ?do  $20 MO-C  node i MIR-IN@ MO-REF  loop  MO-NL ;
 
+\ movement nodes also render their dissolution verdict (free/staged/...)
+: R-NODE-MOVE ( n -- ) {: node:n :}
+   node MIR-MOVE? 0= if exit then
+   s" node" node MO-KEY.IDX  s" .verdict: " MO+
+   node MIR-MOVE-VERDICT@ MV-VD-NAME MO+ MO-NL ;
+
 : R-NODE ( n -- ) {: node:n :}
    s" node" node MO-KEY.IDX  s" .op: "     MO+ node MIR-OP@ OPR-NAME MO+ MO-NL
    s" node" node MO-KEY.IDX  s" .shape: "  MO+ node MIR-SHAPE-KEY  MO+ MO-NL
    s" node" node MO-KEY.IDX  s" .dtype: "  MO+ node MIR-DTYPE-KEY  MO+ MO-NL
    s" node" node MO-KEY.IDX  s" .layout: " MO+ node MIR-LAYOUT-KEY MO+ MO-NL
    s" node" node MO-KEY.IDX  s" .mat: "    MO+ node MIR-MAT@ if 1 else 0 then MO-INT MO-NL
+   node R-NODE-MOVE
    node R-NODE-INS ;
 
 public

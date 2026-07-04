@@ -90,6 +90,8 @@ TEST:SUITE maki/rope-test.f
 TEST:END-SUITE
 TEST:SUITE maki/move-test.f
 TEST:END-SUITE
+TEST:SUITE maki/move-facts-test.f
+TEST:END-SUITE
 TEST:SUITE maki/op-registry-test.f
 TEST:END-SUITE
 TEST:SUITE maki/model-ir-test.f
