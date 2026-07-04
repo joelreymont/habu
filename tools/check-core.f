@@ -7,6 +7,11 @@
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
 \ tools/reserved-name-lint-core.f, tools/trust-lint-core.f,
 \ tools/check-all-errors-core.f (which loads verify-source.f), and tools/argv.f.
+\ The dependency-closure producer (whole-file ordered loader events) and its
+\ dynamic-tail manifest are required below.
+
+require tools/dynamic-tail-manifest.f
+require tools/source-discovery.f
 
 \ Audited hook-install boundary: this tool must install its checker hook before
 \ validating generated source snippets with CHECK!.
@@ -97,6 +102,7 @@ variable CHK-EXP-OUT-U
 variable CHK-DEP-N
 variable CHK-DIR-N
 variable CHK-DEP-ORDER-N
+variable CHK-DISC-ID
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -414,61 +420,43 @@ variable CHK-DEP-ORDER-N
 : CHK-DEP-DIRECT+ ( ptr u8 n -- )
    CHK-DEP-ID CHK-DIR-PUSH ;
 
-: CHK-LEX-WORD? ( n -- bool ) {: k:n :}
-   k 0 < if LINT-FALSE exit then
-   k L# @ >= if LINT-FALSE exit then
-   k LK@ L-WORD = ;
+\ Dependency closure: the shared whole-file ordered-event producer
+\ (tools/source-discovery.f) scans every token of a file - colon bodies
+\ included - and records one event per literal loader form
+\ (include/included/require/required/provided). Every event path is a direct
+\ dep, so the closure is a superset of the runtime load set; dynamic or
+\ retired loader forms reject fail-closed unless manifested.
 
-: CHK-LEX=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
-   k LEX-TOK a u LINT-STR=CI ;
+: CHK-DISC-RC? ( n -- bool ) {: rc:n :}
+   rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
 
-: CHK-REQUIRE-TOK? ( n -- bool )
-   s" require" CHK-LEX=CI ;
+: CHK-DISC-MSG$ ( n -- ptr u8 n ) {: rc:n :}
+   rc E-DISC-SHADOW = if s" check.f: discovery rejected: loader word shadowed or undefined" exit then
+   rc E-DISC-DYNAMIC = if s" check.f: discovery rejected: dynamic (non-literal) loader path" exit then
+   rc E-DISC-OPENER = if s" check.f: discovery rejected: unsupported string opener before a loader word" exit then
+   rc E-DISC-RETIRE = if s" check.f: discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" exit then
+   rc E-DISC-UNTERM = if s" check.f: discovery rejected: unterminated string" exit then
+   s" check.f: discovery rejected: capacity exceeded" ;
 
-: CHK-REQUIRED-TOK? ( n -- bool )
-   s" required" CHK-LEX=CI ;
+: CHK-DISC-FAIL ( n -- )
+   CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
 
-: CHK-SQUOTE-TOK? ( n -- bool ) {: k:n :}
-   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
-   k LEX-TOK {: a:ptr u:n :}
-   u 2 <> if LINT-FALSE exit then
-   a c@ LINT-FOLD 115 <> if LINT-FALSE exit then
-   a 1 + c@ CHK-DQ = ;
+: CHK-DISCOVER-ACT ( -- )
+   CHK-DISC-ID @ CHK-DEP$ DISCOVER:RUN ;
 
-: CHK-WS? ( n -- bool )
-   dup CHK-SP = over 9 = or over CHK-LF = or swap CHK-CR = or ;
+: CHK-EXPAND-SCAN ( n -- ) {: id:n :}
+   id CHK-DISC-ID !
+   [: CHK-DISCOVER-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
+   rc throw ;
 
-: CHK-SQ-SKIP ( n -- n )
-   begin dup CHK-EXP-U @ < while
-      CHK-EXP-BUF over + c@ CHK-WS? if 1+ else exit then
-   repeat ;
+: CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
+   ix EVENT-PATH@ CHK-DEP-DIRECT+ ;
 
-: CHK-SQ-END ( n -- n )
-   begin dup CHK-EXP-U @ < while
-      CHK-EXP-BUF over + c@ CHK-DQ = if exit then
-      1+
-   repeat ;
-
-: CHK-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
-   k CHK-SQUOTE-TOK? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
-   k LB@ k LEX-TOK nip + CHK-SQ-SKIP {: start:n :}
-   start CHK-SQ-END {: end:n :}
-   end CHK-EXP-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
-   CHK-EXP-BUF start + end start - LINT-TRUE ;
-
-: CHK-SCAN-REQUIRE ( n -- ) {: k:n :}
-   k 1+ CHK-LEX-WORD? 0= if exit then
-   k 1+ LEX-TOK CHK-DEP-DIRECT+ ;
-
-: CHK-SCAN-REQUIRED ( n -- ) {: k:n :}
-   k 0 <= if exit then
-   k 1- CHK-SQ-PATH$ if CHK-DEP-DIRECT+ else 2drop then ;
-
-: CHK-SCAN-DEPS ( -- )
-   0 begin dup L# @ < while
-      dup CHK-REQUIRE-TOK? if dup CHK-SCAN-REQUIRE then
-      dup CHK-REQUIRED-TOK? if dup CHK-SCAN-REQUIRED then
+: CHK-EVENTS>DEPS ( -- )
+   0 begin dup EVENT-COUNT < while
+      dup CHK-EVENT-DEP+
       1+
    repeat drop ;
 
@@ -479,9 +467,8 @@ variable CHK-DEP-ORDER-N
    1 id CHK-DEP-STATE !
    CHK-DIR-N @
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   id CHK-DEP$ CHK-EXP-BUF CHK-SRC-CAP READ-ALL CHK-EXP-U !
-   CHK-EXP-BUF CHK-EXP-U @ LEX-SOURCE
-   CHK-SCAN-DEPS
+   id CHK-EXPAND-SCAN
+   CHK-EVENTS>DEPS
    dup CHK-DIR-N @
    begin 2dup < while
       over cells CHK-DIR-IDS + @ RECURSE

@@ -43,6 +43,8 @@ $4000 constant CKT-BUF-CAP
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-BAD-PATH FS-PATH-CAP allot
 create CKT-LIST-PATH FS-PATH-CAP allot
+create CKT-INC-DEP-PATH FS-PATH-CAP allot
+create CKT-INC-ENTRY-PATH FS-PATH-CAP allot
 create CKT-HB-BUF FS-PATH-CAP allot
 
 variable CKT-OUT-A
@@ -50,8 +52,11 @@ variable CKT-ERR-A
 variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
+variable CKT-INC-DEP-U
+variable CKT-INC-ENTRY-U
 variable CKT-HB-U
 variable CKT-START-NS
+variable CKT-PAR-U
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -65,6 +70,12 @@ variable CKT-START-NS
 
 : CKT-LIST$ ( -- ptr u8 n )
    CKT-LIST-PATH CKT-LIST-U @ ;
+
+: CKT-INC-DEP$ ( -- ptr u8 n )
+   CKT-INC-DEP-PATH CKT-INC-DEP-U @ ;
+
+: CKT-INC-ENTRY$ ( -- ptr u8 n )
+   CKT-INC-ENTRY-PATH CKT-INC-ENTRY-U @ ;
 
 : CKT-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -307,6 +318,8 @@ variable CKT-START-NS
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" bad.f" CKT-BAD-PATH JOIN-PATH CKT-BAD-U !
    CKT-ROOT$ s" local-test.f" CKT-LIST-PATH JOIN-PATH CKT-LIST-U !
+   CKT-ROOT$ s" inc-dep.f" CKT-INC-DEP-PATH JOIN-PATH CKT-INC-DEP-U !
+   CKT-ROOT$ s" inc-entry.f" CKT-INC-ENTRY-PATH JOIN-PATH CKT-INC-ENTRY-U !
    CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
 
 : CKT-TEST-GOOD ( -- )
@@ -426,6 +439,107 @@ variable CKT-START-NS
    erru 0 T=
    outu 0 T= ;
 
+\ A dep loaded through a literal `s" path" included` is part of the closure:
+\ the entry's use of the dep's word preverifies (the pre-producer scan captured
+\ require/required only and rejected this good program).
+: CKT-INC-ENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
+   CKT-INC-DEP$ SB-APPEND
+   $22 SB-APPEND-C
+   s"  included" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-USE-EIGHT ( -- n ) CKT-EIGHT ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: CKT-TEST-INCLUDED-DEP ( -- )
+   CKT-INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
+   CKT-INC-ENTRY$ CKT-INC-ENTRY-SRC$ WRITE-ALL
+   CKT-INC-ENTRY$ CKT-DIRECT-PREVERIFY-PATH 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+\ Closure parity oracle: the retired token-level require/required scan
+\ (the pre-producer CHK-SCAN-DEPS semantics) re-expressed here as an
+\ independent check that the producer-backed closure is a superset of the old
+\ closure on every entry file the gate exercises.
+: CKT-PAR-WORD? ( n -- bool ) {: k:n :}
+   k 0 < if LINT-FALSE exit then
+   k L# @ >= if LINT-FALSE exit then
+   k LK@ L-WORD = ;
+
+: CKT-PAR=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK a u LINT-STR=CI ;
+
+: CKT-PAR-SQUOTE? ( n -- bool ) {: k:n :}
+   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK {: a:ptr u:n :}
+   u 2 <> if LINT-FALSE exit then
+   a c@ LINT-FOLD $73 <> if LINT-FALSE exit then
+   a 1 + c@ $22 = ;
+
+: CKT-PAR-WS? ( n -- bool )
+   dup $20 = over 9 = or over $0A = or swap $0D = or ;
+
+: CKT-PAR-SQ-SKIP ( n -- n )
+   begin dup CKT-PAR-U @ < while
+      CHK-EXP-BUF over + c@ CKT-PAR-WS? if 1+ else exit then
+   repeat ;
+
+: CKT-PAR-SQ-END ( n -- n )
+   begin dup CKT-PAR-U @ < while
+      CHK-EXP-BUF over + c@ $22 = if exit then
+      1+
+   repeat ;
+
+: CKT-PAR-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
+   k CKT-PAR-SQUOTE? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   k LB@ k LEX-TOK nip + CKT-PAR-SQ-SKIP {: start:n :}
+   start CKT-PAR-SQ-END {: end:n :}
+   end CKT-PAR-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   CHK-EXP-BUF start + end start - LINT-TRUE ;
+
+: CKT-PAR-IN-CLOSURE ( ptr u8 n -- )
+   CHK-DEP-FIND 0 >= TTRUE ;
+
+: CKT-PAR-REQUIRE ( n -- ) {: k:n :}
+   k 1+ CKT-PAR-WORD? 0= if exit then
+   k 1+ LEX-TOK CKT-PAR-IN-CLOSURE ;
+
+: CKT-PAR-REQUIRED ( n -- ) {: k:n :}
+   k 0 <= if exit then
+   k 1- CKT-PAR-SQ-PATH$ if CKT-PAR-IN-CLOSURE else 2drop then ;
+
+: CKT-PAR-ORACLE-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHK-EXP-BUF CHK-SRC-CAP READ-ALL CKT-PAR-U !
+   CHK-EXP-BUF CKT-PAR-U @ LEX-SOURCE
+   0 begin dup L# @ < while
+      dup s" require" CKT-PAR=CI if dup CKT-PAR-REQUIRE then
+      dup s" required" CKT-PAR=CI if dup CKT-PAR-REQUIRED then
+      1+
+   repeat drop ;
+
+: CKT-PAR-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHK-EXPAND-RESET
+   a u CHK-EXPAND-PATH
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-DEP$ CKT-PAR-ORACLE-FILE
+      1+
+   repeat drop ;
+
+: CKT-TEST-CLOSURE-PARITY ( -- )
+   s" lib/errors.f" CKT-PAR-ENTRY
+   s" lib/string.f" CKT-PAR-ENTRY
+   s" lib/memory.f" CKT-PAR-ENTRY
+   s" lib/fs.f" CKT-PAR-ENTRY
+   s" lib/fs-mutate.f" CKT-PAR-ENTRY
+   s" lib/process.f" CKT-PAR-ENTRY
+   s" lib/process-argv.f" CKT-PAR-ENTRY
+   s" lib/process-env.f" CKT-PAR-ENTRY
+   s" lib/process-cwd.f" CKT-PAR-ENTRY
+   s" lib/test/suite-test.f" CKT-PAR-ENTRY ;
+
 \ typed-local-lint: allow-bare-local - q is the test action quotation.
 : CKT-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns CKT-START-NS !
@@ -454,6 +568,8 @@ variable CKT-START-NS
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
+   s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
+   s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;
