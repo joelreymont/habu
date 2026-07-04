@@ -17,6 +17,8 @@
 require lib/test.f
 require maki/cuda-driver.f
 
+package MAKI
+
 variable DS-DEV
 
 : DS-RC0 ( rc -- )
@@ -38,3 +40,5 @@ variable DS-DEV
    T-REPORT ;
 
 DEVICE-SMOKE
+
+end-package
