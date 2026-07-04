@@ -47,6 +47,7 @@ variable LMVT-VA  variable LMVT-VU
 : LMVT-TRY-EW  ( -- )  0 LEW-ANALYZE ;
 : LMVT-TRY-RED ( -- )  0 LRED-ANALYZE ;
 : LMVT-TRY-MM  ( -- )  0 LMM-ANALYZE ;
+: LMVT-TRY-MM1 ( -- )  1 LMM-ANALYZE ;
 
 T-RESET
 
@@ -154,10 +155,15 @@ MODEL: TM ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
 FP-BUILD
 ' LMVT-TRY-MM E-MVW-STAGED TTHROWS
 
-\ ---- a non-movement EW op feeding the contraction is still a rejected prologue (slice 3) ---
+\ ---- a non-movement EW op feeding the contraction is a rejected prologue (hand-forced) -----
+\ The backend-capability gate (maki/fusion-plan.f, dot cad-matmul-prologue) now refuses
+\ EW->MATMUL, so GELU stays its own region 0 and never fuses into the matmul region (region 1).
+\ Forcing GELU (node 0) into the matmul region simulates the bad prologue-fused plan the matmul
+\ analyzer must still reject (defense-in-depth, now unreachable by checked planning).
 MODEL: GM ( x:8x8 w:8x8 -- y ) GELU MATMUL ;
 FP-BUILD
-' LMVT-TRY-MM E-LMM-PROLOGUE TTHROWS
+1 0 cells FP-RID + !                          \ poke GELU (node 0) into the matmul region (region 1)
+' LMVT-TRY-MM1 E-LMM-PROLOGUE TTHROWS
 
 \ ---- a free/staged movement the planner left un-materialized has no copy output (the gap) ---
 MODEL: TU ( x:4x8 -- y ) TRANSPOSE ;

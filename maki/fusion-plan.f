@@ -2,11 +2,14 @@
 \
 \ CAD-PLAN section 5. Deterministic greedy region growth over the model-IR node
 \ table (maki/model-ir.f) in node order, guarded by the section 5.2 legality matrix
+\ AND a backend-capability gate (FP-BACKEND-EMITS?) so every planned region is
+\ lowerable-by-construction: FP-JOIN? refuses a legal-but-not-yet-emittable fusion
+\ (an EW prologue into a matmul today) instead of minting an unlowerable region.
 \ RESTRICTED to what is computable before the layout/schedule phases: class-pair
-\ legality, single-use producers, movement dissolution verdicts, one contraction
-\ per region (matmul boundary), and the two-row-reduce softmax budget. The section
-\ 5.4 resource bounds (registers / smem / occupancy) land with the schedule work
-\ (cad-4/cad-6), so this planner emits only the splits derivable today.
+\ legality, backend capability, single-use producers, movement dissolution verdicts,
+\ one contraction per region (matmul boundary), and the two-row-reduce softmax budget.
+\ The section 5.4 resource bounds (registers / smem / occupancy) land with the schedule
+\ work (cad-4/cad-6), so this planner emits only the splits derivable today.
 \
 \ It SUPERSEDES maki/regions.f: region membership is a per-node region-id array, not
 \ an adjacent span, so params and dissolved movement do not break a chain. Output:
@@ -38,7 +41,8 @@ public
 1 constant SR-MATMUL        \ a second contraction cannot share the region
 2 constant SR-LAYOUT        \ movement verdict materialize/gathered breaks fusion
 3 constant SR-BARRIER       \ reduction barrier / row-reduce budget exhausted
-4 constant SR-N
+4 constant SR-BACKEND       \ base-legal, but the lowering backend cannot emit this fusion (yet)
+5 constant SR-N
 
 private
 
@@ -95,6 +99,40 @@ variable FP-BUILT?
    cp CLASS-DECODE = if ck CLASS-EW = exit then
    false ;
 
+\ ---- backend-capability gate (CAD-PLAN 5.2) --------------------------------
+\ FP-BASE-FUSE? says what is LEGAL to want; this table says what the lowering backend
+\ can actually EMIT, per (producer-class -> consumer-class). Every emittable pair is a
+\ subset of the legal ones; a legal pair the backend cannot yet emit is cleared so the
+\ planner never mints an unlowerable region (plan is lowerable-by-construction). Keeping
+\ the two matrices separate preserves the desired-fusion knowledge (CAD-PLAN 8.1 prologue
+\ lever) while matching the backend today: when the backend gains a capability, flip one
+\ bit here + add its regression, and the planner fuses it again with no legality edit.
+\
+\ DATA: FP-CAP-ROW[cp] is a bitmask of emittable consumer classes (bit ck set = yes).
+\   EW         -> EW, ROW-REDUCE           (NOT MATMUL: lower-mm cannot pre-transform A/B,
+\                                            i.e. no prologue fusion -> E-LMM-PROLOGUE; the fix)
+\   ROW-REDUCE -> EW, ROW-REDUCE           (softmax max+sum budget, backend-proven)
+\   MATMUL     -> EW                        (fused epilogue)
+\   MOVEMENT   -> (unused)                  verdict-governed in FP-JOIN?, never consulted here:
+\                                            a dissolved FREE movement folds into index math;
+\                                            STAGED (transpose) still fuses at plan time but is
+\                                            lower-rejected (E-MVW-STAGED) pending habu-maki-fold-
+\                                            staged; materialize/gathered are boundaries.
+\   DECODE     -> EW                        (fused epilogue)
+create FP-CAP-ROW  CLASS-N cells allot
+: FP-CAP! ( n n -- )  cells FP-CAP-ROW + ! ;      \ ( mask cls -- ) store row cls's emit-mask
+: FP-CAP-INIT ( -- )
+   1 CLASS-EW lshift  1 CLASS-ROW-REDUCE lshift or   CLASS-EW          FP-CAP!
+   1 CLASS-EW lshift  1 CLASS-ROW-REDUCE lshift or   CLASS-ROW-REDUCE  FP-CAP!
+   1 CLASS-EW lshift                                 CLASS-MATMUL      FP-CAP!
+   0                                                 CLASS-MOVEMENT    FP-CAP!
+   1 CLASS-EW lshift                                 CLASS-DECODE      FP-CAP! ;
+FP-CAP-INIT
+
+\ can the backend EMIT a fused cp->ck edge?  ( cP cK -- bool )
+: FP-BACKEND-EMITS? ( n n -- bool ) {: cp:n ck:n :}
+   cp cells FP-CAP-ROW + @  ck rshift  1 and  0<> ;
+
 \ per-region capacity ( r cK -- bool ): one contraction per region; at most two
 \ same-row reductions (softmax max+sum) and never mixed with a contraction.
 : FP-CAP-OK? ( n n -- bool ) {: r:n ck:n :}
@@ -110,9 +148,12 @@ variable FP-BUILT?
 : FP-JOIN? ( n n -- bool ) {: k:n p:n :}
    p 0 < if false exit then
    p FP-REF-USES 1 > if false exit then       \ multi-use producer is materialized
-   k MIR-MOVE? if k NODE-DISSOLVE? exit then  \ movement K: join iff free/staged
-   p NODE-MAT-VD? if false exit then          \ materialized movement is a boundary
+   k MIR-MOVE? if k NODE-DISSOLVE? exit then  \ movement K: join iff free/staged (verdict)
+   p NODE-MAT-VD? if false exit then          \ materialized movement producer is a boundary
    p FP-CLASS k FP-CLASS FP-BASE-FUSE? 0= if false exit then
+   p MIR-MOVE? 0= if                          \ backend-capability gate: compute producers only
+      p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= if false exit then
+   then                                       \ (dissolved movement folds are verdict-governed above)
    p FP-RID-RAW k FP-CLASS FP-CAP-OK? ;
 
 \ ---- region assignment -----------------------------------------------------
@@ -164,6 +205,9 @@ variable FP-BUILT?
    p NODE-MAT-VD? if SR-LAYOUT exit then
    p FP-CLASS CLASS-MATMUL = k FP-CLASS CLASS-MATMUL = and if SR-MATMUL exit then
    k FP-CLASS CLASS-MATMUL = p FP-RID-RAW cells FP-MMC + @ 0 > and if SR-MATMUL exit then
+   p MIR-MOVE? 0=                                       \ compute edge, base-legal, but the
+   p FP-CLASS k FP-CLASS FP-BASE-FUSE?      and         \ backend cannot emit it (e.g. EW prologue
+   p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= and if SR-BACKEND exit then  \ into a matmul)
    SR-BARRIER ;
 
 : FP-SPLIT+ ( n n -- ) {: k:n tag:n :}
@@ -216,6 +260,7 @@ public
       SR-MATMUL    of s" matmul-boundary"       endof
       SR-LAYOUT    of s" layout-conflict"       endof
       SR-BARRIER   of s" barrier-boundary"      endof
+      SR-BACKEND   of s" backend-capability"    endof
       E-FP-IDX throw
    endcase ;
 

@@ -35,7 +35,8 @@ variable LMMT-VA  variable LMMT-VU
 
 \ ---- fail-closed probes (each acts on the current model / plan) --------------
 : LMMT-TRY-EMIT ( -- )  0 LMM-EMIT ;      \ non-matmul region -> reject before emit
-: LMMT-TRY      ( -- )  0 LMM-ANALYZE ;   \ analysis-only fail-closed checks
+: LMMT-TRY      ( -- )  0 LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 0)
+: LMMT-TRY1     ( -- )  1 LMM-ANALYZE ;   \ analysis-only fail-closed checks (region 1)
 
 T-RESET
 
@@ -104,10 +105,16 @@ MODEL: MC ( x:8x8 w:8x8 -- y ) MATMUL CAST ;
 FP-BUILD
 ' LMMT-TRY E-LMM-OP TTHROWS
 
-\ ---- fail closed: an EW op that feeds INTO the contraction (prologue fusion) -------
+\ ---- fail closed: an EW op fused as a contraction PROLOGUE (hand-forced, defense-in-depth) ---
+\ The backend-capability gate (maki/fusion-plan.f FP-BACKEND-EMITS?, dot cad-matmul-prologue)
+\ now refuses EW->MATMUL, so GELU stays its own region 0 and never enters the matmul region
+\ (region 1) via checked planning. Forcing GELU (node 0) into the matmul region simulates the
+\ bad prologue-fused plan LMM-ANALYZE must still reject - the guard is now unreachable by
+\ construction, so this hand-built plan proves the defense-in-depth guard directly.
 MODEL: GM ( x:8x8 w:8x8 -- y ) GELU MATMUL ;
 FP-BUILD
-' LMMT-TRY E-LMM-PROLOGUE TTHROWS
+1 0 cells FP-RID + !                       \ poke GELU (node 0) into the matmul region (region 1)
+' LMMT-TRY1 E-LMM-PROLOGUE TTHROWS
 
 \ ---- fail closed: the contraction inner dim K exceeds the v1 accumulation cap ------
 MODEL: WK ( x:8x512 w:512x8 -- y ) MATMUL ;

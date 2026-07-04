@@ -52,13 +52,26 @@ FP-SPLIT-COUNT 1 T=
 RPT-NEW FP-REPORT+ RPT-RENDER FT-SAVE
 s" matmul-boundary at node 2" FT-IN
 
-\ ---- MIX GELU SILU MATMUL RELU: prologue (gelu,silu) + matmul + epilogue relu -
-\ all fold into one region (a single contraction) -> no split.
+\ ---- MIX GELU SILU MATMUL RELU: an EW prologue (gelu,silu) CANNOT fuse into the matmul -
+\ the backend-capability gate (FP-BACKEND-EMITS?, dot cad-matmul-prologue) clears EW->MATMUL
+\ because lower-mm.f cannot pre-transform A/B (would be E-LMM-PROLOGUE). So the prologue is
+\ its own region {gelu,silu}, and matmul+relu epilogue is a second region {matmul,relu}; the
+\ split is a backend-capability boundary at the matmul. The prologue's tail (silu) now
+\ MATERIALIZES as a region output - the honest traffic cost of not fusing the prologue.
 MODEL: MIX ( x:2x2 w:2x2 -- y ) GELU SILU MATMUL RELU ;
 FP-BUILD
-FP-REGION-COUNT     1 T=
-0 FP-REGION-MEMBERS 4 T=
-FP-SPLIT-COUNT      0 T=
+FP-REGION-COUNT     2 T=
+0 FP-REGION-MEMBERS 2 T=
+1 FP-REGION-MEMBERS 2 T=
+0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 1 T=  3 FP-RID@ 1 T=
+FP-SPLIT-COUNT      1 T=
+0 FP-SPLIT-REASON@  SR-BACKEND T=
+0 FP-SPLIT-NODE@    2 T=
+\ prologue interior (gelu) cleared; prologue output (silu) materialized; matmul interior;
+\ model output (relu) materialized.
+0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TFALSE  3 MIR-MAT@ TTRUE
+RPT-NEW FP-REPORT+ RPT-RENDER FT-SAVE
+s" backend-capability at node 2" FT-IN
 
 \ ---- a free reshape dissolves and does NOT break the chain ------------------
 \ GELU RESHAPE:8x4 RELU: reshape is MVV-FREE -> one region, reshape not materialized.
