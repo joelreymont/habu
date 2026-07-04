@@ -81,6 +81,7 @@ variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
+variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -113,14 +114,25 @@ variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL var
 \ guarded sink compiles to an out-of-line call, exactly like B-TASK-LIVE-GUARD /
 \ DP-CHECK. Defined here (before any sink, incl. the early BPOLL) so every
 \ writer can reach it.
+\ Two guarded bands (TFAM 2b-v): band 1 = crown-jewel friend arena
+\ [FRIEND-ARENA, +FRIEND-ARENA-LEN); band 2 = protected-WID registry
+\ [PROT-REG-OFF, +PROT-REG-LEN). Both are inert while the latch is 0 (engine cold
+\ load) and fail-closed once sealed. x12 holds target-DATA across both checks; x13
+\ is per-check scratch.
 : PROT-GUARD ( n -- )                   \ n = register number holding the target address
-   LBL {: ok:label :}
-   DREG swap DATA SUB,                  \ x12 = target - DATA
-   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA (wraps huge when below arena)
-   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
-   DREG EREG CMP,
-   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
-      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   LBL LBL {: ok:label trap:label :}
+   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 = friend/open)
+   EREG ok CBZ,                         \ open -> no guard (engine cold load)
+   DREG swap DATA SUB,                  \ x12 = target - DATA (region-relative offset)
+   EREG DREG FRIEND-ARENA SUBI,         \ x13 = offset - FRIEND-ARENA
+   EREG FRIEND-ARENA-LEN CMPI,          \ x13 <u FRIEND-ARENA-LEN -> in crown-jewel band
+   C-CC trap BCOND,
+   EREG PROT-REG-OFF MOVZ,              \ x13 = PROT-REG-OFF (> imm12: materialize)
+   EREG DREG EREG SUB,                  \ x13 = offset - PROT-REG-OFF
+   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in registry band
+   C-CC trap BCOND,
+   ok B,
+   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
@@ -1949,6 +1961,28 @@ s" emit-fp-prims" s" --" TRUST
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
+
+variable LPROTWIDQ
+
+\ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
+\ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
+\ u32 PROT-WID-OFF table, both inside the sealed friend arena), else 0. Linear
+\ scan — the registry is tiny (sealed system + generated constructor package WIDs
+\ only). Clobbers x5 x6 x7 x14; x9 is preserved. Called by the sealed-WID guards
+\ (record publish, AOT relocation/bootrun, snap-rebase) and the AOT registry
+\ restore's dedup.
+: EMIT-PROTWID ( -- )
+   LBL LBL LBL {: qloop:label qnext:label qdone:label :}
+   LPROTWIDQ LABEL@ LBL,
+   13 0 MOVZ,                                   \ result = 0 (not protected)
+   6 DATA PROT-WID-N-CELL LDR,                  \ x6 = registry count
+   7 0 MOVZ,                                    \ x7 = i
+   5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,          \ x5 = &table[0] (offset > imm12: materialize + add)
+   qloop LBL,  7 6 CMP,  C-GE qdone BCOND,
+      14 5 0 LDRW,  14 9 CMP,  C-NE qnext BCOND, \ table[i] == wid?
+         13 1 MOVZ,  qdone B,                    \ found -> protected
+      qnext LBL,  5 5 4 ADDI,  7 7 1 ADDI,  qloop B,
+   qdone LBL,  RET, ;
 
 : EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,

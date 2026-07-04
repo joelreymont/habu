@@ -270,12 +270,40 @@ variable ACAP-P
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
+\ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
+\ registry (PROT-WID-N-CELL count + PROT-WID-OFF u32 table) into AOT-PWID-BUF so
+\ EMIT-AOT-SEED bakes it and EM-AOT-REGISTER-PROT-WIDS restores it at boot. Each
+\ WID is a full u32, so wordlist IDs above 255 round-trip with no u8 truncation.
+\ In the current metabuild no producer populates the registry (item 8 will), so the
+\ live count is 0 and the capture is a clean no-op; ACAP-PWID-SELFTEST proves the
+\ u32 serialize/deserialize round-trip independently, exactly as ACAP-WID-SELFTEST
+\ proves the record path. ---
+: ACAP-PWID-SLOT ( n -- ptr u8 ) 4 * AOT-PWID-BUF@ + ;         \ slot index -> u32 byte addr
+: ACAP-PWID-PUT ( n n -- ) {: v:n ix:n :}                      \ v=wid ix=slot: store as u32
+   v  ix ACAP-PWID-SLOT  AOT-P32! ;
+: ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
+: ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
+   AOT-DBASE PROT-WID-N-CELL + AOT-CELL@ {: n:n :}
+   n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
+   n AOT-PWID-N !
+   n 0 ?do
+      AOT-DBASE PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@       \ live table[i] (u32)
+      i ACAP-PWID-PUT
+   loop ;
+variable ACAP-PWID-MX                                          \ max-WID accumulator
+: ACAP-PWID-MAXWID ( -- n )                                    \ largest WID in AOT-PWID-BUF (0 if empty)
+   0 ACAP-PWID-MX !
+   AOT-PWID-N @ 0 ?do
+      i ACAP-PWID-GET dup ACAP-PWID-MX @ > if ACAP-PWID-MX ! else drop then
+   loop
+   ACAP-PWID-MX @ ;
+
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-PWID-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 : ACAP-CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET
@@ -285,7 +313,8 @@ variable ACAP-P
    d0 d1 ACAP-SCAN-DATA
    bstart bend ACAP-SCAN-CODE
    ACAP-COMPACT-RECS                            \ build 12B compact records + add record names to pool
-   ACAP-PROVE-RECS ;                            \ fail-closed: expand(compact)==verbatim 48B, field-for-field
+   ACAP-PROVE-RECS                              \ fail-closed: expand(compact)==verbatim 48B, field-for-field
+   ACAP-PWID-CAPTURE ;                          \ serialize the protected-WID registry (TFAM 2b-v)
 
 \ --- host validation dump (bring-up only) ---
 : ACAP-. ( -- )
@@ -324,3 +353,23 @@ variable ACAP-P
       s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
    0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
 ACAP-WID-SELFTEST
+
+\ --- build-time regression (TFAM 2b-v): a protected-WID registry entry above 255
+\ must round-trip through the u32 AOT serialize/deserialize with no truncation, and
+\ the max-WID (used at boot to advance WIDN past every restored WID) must be exact.
+\ Runs in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE, and clears
+\ AOT-PWID-N so the real (empty) capture is unaffected. Fail-closed via die:
+\ ACAP-PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
+\ u32 read EM-AOT-REGISTER-PROT-WIDS runs at boot, so this guards both directions. ---
+: ACAP-PWID-SELFTEST ( -- )
+   0 AOT-PWID-N !
+   42   0 ACAP-PWID-PUT                              \ entry 0 = 42
+   1000 1 ACAP-PWID-PUT                              \ entry 1 = 1000  ( > 255 )
+   300  2 ACAP-PWID-PUT                              \ entry 2 = 300   ( > 255 )
+   3 AOT-PWID-N !
+   0 ACAP-PWID-GET 42   <> if s" aot-capture: pwid self-test: entry 0 corrupted" 74 die then
+   1 ACAP-PWID-GET 1000 <> if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
+   2 ACAP-PWID-GET 300  <> if s" aot-capture: pwid self-test: wid 300 (>255) truncated" 74 die then
+   ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
+   0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
+ACAP-PWID-SELFTEST

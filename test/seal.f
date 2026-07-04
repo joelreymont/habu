@@ -179,6 +179,21 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-HOLE + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
+\ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $3D00). A raw
+\ store to the count cell ($3CB8) or the u32 table ($3CC0) must trap, so user source
+\ can neither zero the count (un-protecting every sealed WID) nor overflow the table.
+: SLV-PWIDN-FORGE$ ( -- ptr u8 n )          \ ! into the registry count cell ($3CB8)
+   SB-RESET
+   s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
+   s" data-base SLF-PWIDN + 0 swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-PWIDT-FORGE$ ( -- ptr u8 n )          \ c! into the registry table ($3CC0)
+   SB-RESET
+   s" $3CC0 constant SLF-PWIDT" SB-APPEND SLV-LF
+   s" data-base SLF-PWIDT + 9 swap c!" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Post-seal language exercise: define words, a package + qualified word, a
 \ TRUSTED: word, and a DEFER + IS target, then use them. Each updates a protected
 \ cell (CUR/WIDN/DEF-WL/TSIG/PKG-*/DEFER-*) through engine primitives, not raw
@@ -259,7 +274,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" atomic! into the band traps" T-LABEL
    SLV-ATOMIC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" read buffer starting in the band traps" T-LABEL
-   SLV-READ-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   SLV-READ-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ! into the protected-WID registry count traps (band 2)" T-LABEL
+   SLV-PWIDN-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" c! into the protected-WID registry table traps (band 2)" T-LABEL
+   SLV-PWIDT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
 \ One forge per remaining guarded sink — each sink hand-wires its own PROT-GUARD
 \ register, so testing one proves nothing about another's wiring.

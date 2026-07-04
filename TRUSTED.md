@@ -210,6 +210,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | AOT-NAMES-BUF@ | `-- ptr u8` | Views the AOT-REPL capture name-pool scratch buffer as bytes for the name intern and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | AOT-DSITE-BUF@ | `-- ptr u8` | Views the AOT-REPL capture DATA/CODE-literal relocation table scratch buffer as bytes for the packed u16 blob-offset tables and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | AOT-BOOTRUN-BUF@ | `-- ptr u8` | Views the AOT-REPL capture boot-run name-list scratch buffer as bytes for the `[len][name]` intern and `BYTES,` emit of the install-tail entry words. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-PWID-BUF@ | `-- ptr u8` | Views the protected-WID registry AOT capture scratch buffer as bytes for the u32-WID serialize (ACAP-PWID-*) and `BYTES,` emit (TFAM 2b-v). | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | AOT-DBASE | `-- ptr a` | Host build-time cast of the metabuild dictionary base to a record pointer for the AOT-REPL capture reverse-lookup. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
 | AOT-A>U8 | `ptr a -- ptr u8` | Host build-time byte view of a code/dict address for the AOT-REPL capture blob and name copies. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
 | AOT-N>U8 | `n -- ptr u8` | Host build-time byte view of a code/dict address value for the AOT-REPL capture blob source and EXT-name reads. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |

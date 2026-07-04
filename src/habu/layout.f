@@ -42,7 +42,8 @@ $3000 constant LOCNAMES
 \ heap (bounded >= DATA-START by DP-CHECK) can never reach it; only sinks that
 \ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
 \ write buffers) carry the runtime range check. The old scattered slots ($1A0,
-\ $260, $2780.., $27C0..) are now free holes. ---
+\ $260, $2780.., $27C0..) are now free holes. A SECOND guarded band (the
+\ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD. ---
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
 $88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
@@ -119,6 +120,21 @@ $3CA8 constant AOT-SEED-DONE-CELL
 \ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
 \ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
 $3CB0 constant AOT-SEED-ARM-CELL
+\ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Placed in the same
+\ proven-safe $3CA0..$3D00 engine gap as EVALREC/AOT-SEED-* (slots no compiled source
+\ ever writes) -- NOT in the low friend arena, whose $A8+ tail is transient checker
+\ scratch during stage-engine source evaluation. Records the WIDs of sealed system /
+\ generated constructor packages created in the friend window; PROT-WID? membership
+\ (habu1.f) gates the sealed-WID guards. u32 entries so wordlist IDs above 255 fit.
+\ The band [PROT-REG-OFF, +PROT-REG-LEN) fills $3CB8..$3D00 (below TASK-USER-BASE) and
+\ is a SECOND range checked by PROT-GUARD, rejecting user data stores into the count
+\ cell or table. Code-emit sinks (cp!/ndict!) are not yet range-guarded; closing that
+\ bypass for both bands is dot habu-range-reject-cp-e2eed7e4. ---
+$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32 in a full cell)
+$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32 entries)
+16 constant PROT-WID-MAX                \ table capacity (16 u32 = $40 -> fills the gap to $3D00)
+PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
+PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $48: count + table
 $4000 constant HIDX-SLOTS
 $10000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL

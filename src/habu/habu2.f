@@ -1666,7 +1666,22 @@ s" c-qualify-seal-guard" s" --" TRUST
    done LBL, ;
 s" c-qualify-def" s" --" TRUST
 
+\ Publish guard (TFAM 2b-v): a new record's WID is DEF-WL-CELL (from CUR-CELL, which
+\ a user can redirect with `set-current`, or a resolved package WID). Reject
+\ publishing into a protected WID once the friend latch is sealed -- so user source
+\ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
+\ system / generated constructor package. Friend/cold-load (latch 0) is exempt.
+\ x9 (the record pointer, live for the [40] store below) is preserved across the
+\ LPROTWIDQ call; x30 is already caller-saved on this publish path.
 : C-STORE-DEF-NAME ( -- )
+   LBL {: pgok:label :}
+   14 DATA FRIEND-LATCH-CELL LDR,  14 pgok CBZ,          \ open -> no guard
+   SP SP 16 SUBI,  9 SP 0 STR,                           \ save record ptr
+   9 DATA DEF-WL-CELL LDR,  LPROTWIDQ LABEL@ BL,         \ x9 = target wid; x13 = protected?
+   9 SP 0 LDR,  SP SP 16 ADDI,                           \ restore record ptr
+   13 pgok CBZ,                                          \ not protected -> allow
+      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,         \ protected + sealed -> fail-closed
+   pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
@@ -2542,6 +2557,29 @@ s" c-local-ref" s" label label --" TRUST
       9 9 12 ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL, ;
 
+\ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
+\ WIDs into the friend-arena registry table (direct STR into the sealed band, same
+\ as the WIDN advance below -- the AOT seed pass is trusted boot machinery), sets
+\ PROT-WID-N-CELL to the restored count, and advances WIDN past each restored WID so
+\ a post-restore wordlist/package allocation cannot reuse a protected WID. Full u32
+\ per entry: a WID above 255 restores without truncation. N (bounded by PROT-WID-MAX
+\ at capture) needs no runtime cap check. Runs after EM-AOT-REGISTER-RECS.
+: EM-AOT-REGISTER-PROT-WIDS ( -- )
+   LBL LBL LBL {: ploop:label pdone:label pwok:label :}
+   9 LAOTPWID LABEL@ ADR,                           \ x9 = baked u32 WID src
+   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,           \ x11 = restored count N
+   11 DATA PROT-WID-N-CELL STR,                     \ registry count := N
+   10 PROT-WID-OFF MOVZ,  10 DATA 10 ADD,           \ x10 = &registry[0] (offset > imm12: materialize + add)
+   12 0 MOVZ,                                       \ x12 = i
+   ploop LBL,  12 11 CMP,  C-GE pdone BCOND,
+      3 9 0 LDRW,                                   \ x3 = baked wid (full u32)
+      3 10 0 STRW,                                  \ registry[i] = wid
+      4 3 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE pwok BCOND,   \ WIDN = max(WIDN, wid+1)
+         4 DATA WIDN-CELL STR,
+      pwok LBL,
+      9 9 4 ADDI,  10 10 4 ADDI,  12 12 1 ADDI,  ploop B,
+   pdone LBL, ;
+
 \ For each baked call site (packed 4B row = blob-off u16 | name-off u16<<16 into the
 \ deduped [len][bytes] name pool at LAOTNAMES) resolve the callee by NAME in THIS
 \ engine (LFIND over primitives, cold-prefix words, and the just-registered
@@ -2664,6 +2702,7 @@ s" c-local-ref" s" label label --" TRUST
    11 LAOTCODELEN LABEL@ ADR,  11 11 0 LDR,         \ x11 = blob length (for the copy)
    EM-AOT-COPY-BLOB
    EM-AOT-REGISTER-RECS
+   EM-AOT-REGISTER-PROT-WIDS
    EM-AOT-PATCH-SITES
    EM-AOT-RELOC-DATA
    EM-AOT-RELOC-CODE
@@ -2844,6 +2883,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 1 MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
+   9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,          \ protected-WID registry starts empty (TFAM 2b-v)
    cwok LBL,  9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
    G-INSTALL-CRASH
@@ -3532,6 +3572,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTNDSITE !  LBL LAOTDSITES !  LBL LAOTDATAD0 !  LBL LAOTDATASIZE !
    LBL LAOTNCSITE !  LBL LAOTCSITES !  LBL LAOTCODEB0 !
    LBL LAOTBOOTRUN !
+   LBL LAOTNPWID !  LBL LAOTPWID !  LBL LPROTWIDQ !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
@@ -3647,6 +3688,16 @@ variable AOT-CODE-B0
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
+\ protected-WID registry AOT image (TFAM 2b-v): the u32 WIDs of sealed system /
+\ generated constructor packages, captured from the live friend-arena registry and
+\ baked so EM-AOT-REGISTER-PROT-WIDS can restore them at boot -- advancing WIDN past
+\ each so a post-restore wordlist alloc cannot collide with a restored protected WID.
+\ u32 entries (matching the registry's checked u32 domain) so wordlist IDs above 255
+\ round-trip through the seed with no u8 truncation. Capacity = PROT-WID-MAX so a full
+\ registry always fits.
+PROT-WID-MAX constant AOT-PWID-MAX
+create AOT-PWID-BUF AOT-PWID-MAX 4 * allot    variable AOT-PWID-N
+
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
 \ buffers as `ptr` for the checked copy/BYTES, sites below.
 : AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
@@ -3661,6 +3712,8 @@ s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
 s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
 s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
+: AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
+s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
 \ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
 \ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
@@ -3690,7 +3743,10 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
    LAOTCODEB0 LABEL@ LBL,  AOT-CODE-B0 @ DCQ,
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
-   LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES, ;  \ +1 = live 0 terminator
+   LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
+   LAOTNPWID LABEL@ LBL,  AOT-PWID-N @ DCQ,                                  \ protected-WID registry: count
+   LAOTPWID LABEL@ LBL,                                                      \ then N u32 WIDs (TFAM 2b-v)
+   AOT-PWID-N @ 0 > IF AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, THEN ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
@@ -3701,6 +3757,7 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
    EMIT-BCAP
    EMIT-TOK
    EMIT-PROT
+   EMIT-PROTWID
    EMIT-FLUSH
    EMIT-FIND
    EMIT-HIDX
