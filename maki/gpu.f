@@ -12,6 +12,13 @@ require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 
+\ Wrapped in `package MAKI`: the device-lowering ops export as MAKI:G-SETUP / MAKI:G-PUT
+\ / MAKI:G-LAUNCH / MAKI:G-RELEASE / MAKI:G-RESULT / MAKI:G-SGD; the demo state cells and
+\ the f32 marshalling helpers (F32!/F32@) stay private. CUDA driver calls stay CUDA:-
+\ qualified (the CUDA subsystem package). maki -> habu only.
+
+package MAKI
+
 4 constant GN                       \ vector length (demo)
 create GPATH 64 allot
 create GKN  32 allot
@@ -33,6 +40,8 @@ variable GDX variable GDY variable GABITS variable GNVAR
    buf o 1 + + c@  8  lshift or
    buf o 2 + + c@  16 lshift or
    buf o 3 + + c@  24 lshift or ;
+
+public
 
 : G-SETUP ( -- )
    CUDA:OPEN
@@ -81,3 +90,5 @@ variable GDX variable GDY variable GABITS variable GNVAR
 \ as y via G-PUT, then G-SGD; G-RESULT i is the updated weight. Matches maki/array.f
 \ T-SGD! on the f32-marshalled inputs - the optimizer step runs on device.
 : G-SGD ( r -- )  fnegate G-LAUNCH ;
+
+end-package

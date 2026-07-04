@@ -27,6 +27,14 @@ require maki/eval.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
 
+\ Wrapped in `package MAKI`: the autograder exports as MAKI:GRADE-CANDIDATE /
+\ MAKI:GRADE-NOCHECK-CANDIDATE / MAKI:EVD-SCORE etc. CUDA driver + MAKI-GRADE artifact
+\ helpers stay qualified (CUDA:/MAKI-GRADE:, their own subsystem packages). The EVN-*
+\ verdict codes are maki-internal, so they live inside the package (not global).
+
+package MAKI
+public
+
 \ ---- device gate: run a SAXPY cubin and compare the task golden ----
 create ED-PATH 64 allot  create ED-KN 32 allot
 variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
@@ -144,3 +152,5 @@ variable EVD-PASS  variable EVD-TOTAL
 : EVD-RESET ( -- )  0 EVD-PASS !  0 EVD-TOTAL ! ;
 : EVD-SCORE ( ptr u8 n -- )
    GRADE-CANDIDATE  2 = if EVD-PASS @ 1+ EVD-PASS ! then  EVD-TOTAL @ 1+ EVD-TOTAL ! ;
+
+end-package

@@ -28,6 +28,12 @@ require lib/ptx/collective.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
 
+\ Wrapped in `package MAKI`: the softmax autograder exports as MAKI:GRADE-SM; all the
+\ SM-* / GRADE-SM-* scaffolding stays private. CUDA driver + MAKI-GRADE artifact helpers
+\ stay qualified (their own subsystem packages).
+
+package MAKI
+
 create SM-PATH 64 allot  create SM-KN 32 allot
 create SM-IN 16 allot   create SM-OUT 16 allot   create SMG 4 cells allot
 variable SM-DEV variable SM-CTX variable SM-MOD variable SM-FUNC
@@ -115,6 +121,8 @@ create GSQ-OUT $1000 allot  create GSQ-ERR $1000 allot
 : GRADE-SM-DEVICE-VERDICT ( -- n )
    MAKI-GRADE:CUBIN$ DEVICE-CORRECT-SM? if 2 else 1 then ;
 
+public
+
 : GRADE-SM ( ptr u8 n -- n ) {: a u :}
    a u CHECK-PASSES? 0= if 0 exit then
    s" habu-grade-softmax" MAKI-GRADE:PREPARE
@@ -130,3 +138,5 @@ SM-INIT
 \ This file is now the GRADE-SM LIBRARY (mirrors maki/eval-device.f). The device-golden
 \ test candidates moved to maki/eval-device-sm-test.f so the grader can be reused by
 \ maki/eval-author.f without a trailing `bye`.
+
+end-package

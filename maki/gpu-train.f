@@ -6,8 +6,16 @@
 \ SAXPY kernel: a=-lr, x=grad, y=weight). Here x=t=1 so grad=2*(w-1) and every
 \ weight converges to 1, with the exact halving trajectory w' = 0.5*w + 0.5.
 \ Load after maki/gpu.f and maki/array.f.
+\
+\ Wrapped in `package MAKI`: the training-loop steps export as MAKI:G-INIT-W /
+\ MAKI:G-LOSS / MAKI:G-EPOCH / MAKI:G-WBITS; the weight buffer stays private. It
+\ reopens MAKI, so maki/gpu.f (G-*) and maki/array.f (T-*) resolve by bare name.
+
+package MAKI
 
 create WBUF 4 cells allot                          \ host weights (Habu f64 floats)
+
+public
 
 : G-INIT-W ( -- )
    2.0 WBUF 0 T-SET  4.0 WBUF 1 T-SET  6.0 WBUF 2 T-SET  8.0 WBUF 3 T-SET ;
@@ -24,3 +32,5 @@ create WBUF 4 cells allot                          \ host weights (Habu f64 floa
    4 0 ?do  i G-RESULT F32>F64  WBUF i T-SET  loop ;     \ read weights back
 
 : G-WBITS ( n -- n )  WBUF swap T-GET F64>F32 ;    \ weight i as f32 bits (for assertions)
+
+end-package

@@ -6,6 +6,9 @@
 \   epoch1 [1.5,2.5,3.5,4.5]  epoch2 [1.25,1.75,2.25,2.75]  epoch3 [1.125,1.375,1.625,1.875]
 \ Loss sum_i (w[i]-1)^2 falls 84 -> 1.3125 (training reduces the loss). Load after
 \ maki/gpu.f, maki/array.f, maki/gpu-train.f. Prereq: cubin at /tmp/saxpy.cubin.
+\ Reopens `package MAKI` so maki/gpu.f + maki/gpu-train.f words resolve by bare name.
+
+package MAKI
 
 variable LOSS0
 
@@ -28,3 +31,5 @@ G-RELEASE
 G-LOSS LOSS0 @ f< TTRUE
 
 T-REPORT
+
+end-package

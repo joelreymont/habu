@@ -1,4 +1,7 @@
 \ maki/gpu-test.f - a maki tensor op (AXPY) runs on the Orin GPU, matches the CPU.
+\ Reopens `package MAKI` so maki/gpu.f's G-* resolve by bare name.
+
+package MAKI
 
 T-RESET
 
@@ -19,3 +22,5 @@ G-RELEASE
 3 G-RESULT  48.0 F64>F32 T=
 
 T-REPORT
+
+end-package

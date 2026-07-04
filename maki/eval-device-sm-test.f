@@ -2,6 +2,9 @@
 \ The candidates that used to live at the tail of maki/eval-device-sm.f; split out so the
 \ GRADE-SM library is reusable (maki/eval-author.f). Orin-only. Load after
 \ maki/eval-device-sm.f.
+\ Reopens `package MAKI` so maki/eval-device-sm.f's GRADE-SM resolves by bare name.
+
+package MAKI
 
 T-RESET
 
@@ -15,3 +18,5 @@ s" K ( matrix<space-global,f32,extent-r,extent-c> matrix<space-global,f32,extent
 s" softmax authoring grade: correct=GREEN, B-not-B/=TYPED-WRONG (device gate), no-store=REJECTED" type cr
 
 T-REPORT
+
+end-package

@@ -4,6 +4,9 @@
 \ checked SAXPY kernel: a=-lr, x=grad, y=weight => a*x+y = w - lr*g. Put grad as x
 \ and weight as y, then G-SGD lr. Values chosen f32-exact so the device result
 \ equals the CPU golden bit-for-bit. Load after maki/gpu.f.
+\ Reopens `package MAKI` so maki/gpu.f's G-* resolve by bare name.
+
+package MAKI
 
 T-RESET
 
@@ -24,3 +27,5 @@ G-RELEASE
 3 G-RESULT  7.5 F64>F32 T=
 
 T-REPORT
+
+end-package
