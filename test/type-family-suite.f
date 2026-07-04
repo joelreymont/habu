@@ -157,8 +157,10 @@ s" pkga" CHECKER-PACKAGE-PRIVATE s" MiXeD" 0 TK-SUM ' TFAM-DECL catch
 \ 7. no hidden-field ('@name') lookup from public signatures.
 \ ---------------------------------------------------------------------------
 s" @opt.slot0" TF-HIDDEN? -1 T=
+s" @res.tag"   TF-HIDDEN? -1 T=       \ item-7 tag row shape is hidden too
 s" opt"        TF-HIDDEN? 0 T=
 s" pkga" s" @opt.slot0" TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
+s" pkgb" s" @res.tag"   TFAM-RESOLVE FOUNDF ! drop  FOUNDF @ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ 8. field setters / getters (record stores layout/slots/ranges/tagw/span/pk).

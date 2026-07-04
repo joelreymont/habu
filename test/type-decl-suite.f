@@ -199,6 +199,35 @@ TDOK @ -1 T=
 TDF @ TFAM-SLOTS@ 3 T=
 
 \ ---------------------------------------------------------------------------
+\ item 7 (habu-tfam-7): a sum/enum layout family stays ONE logical T-PARAM cell
+\ in a signature (reject-only, no expansion until item 12). A layout value may
+\ FLOW (identity), but an ordinary one-cell primitive that touches it fails
+\ closed; cell families are unaffected, and hidden '@' field names never resolve
+\ in a public signature. See docs/type-families.md §10-11.
+\ ---------------------------------------------------------------------------
+\ a layout value flows through untouched (identity is fine).
+s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-ENUM-ID ( tdlight -- tdlight )" CHECK-QUIET-CANDIDATE! -1 T=
+\ ordinary one-cell primitives touching a sum layout value reject fail-closed.
+s" TD7-DROP ( tdres<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-DUP ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-SWAP ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-OVER ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> ) over" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-NIP ( tdres<n,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-TOR ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+\ an enum (zero-payload) layout value is still one logical cell: touching rejects.
+s" TD7-ENUM-DROP ( tdlight -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ a layout value cannot be captured into a local: the bind unifies a var with
+\ the layout cell, so it fails closed until item 12 makes locals layout-aware.
+s" TD7-LOCAL ( tdres<n,n> -- n ) {: x :} x drop 0" CHECK-QUIET-CANDIDATE! 0 T=
+\ cell families are unaffected: a one-cell tdfoo value is dropped/duped normally.
+s" TD7-CELL-DROP ( tdfoo<n,n> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-CELL-DUP ( tdfoo<n,n> -- tdfoo<n,n> tdfoo<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+\ hidden physical field names never resolve in a public signature (item-7 shapes).
+s" TD7-HID-SLOT ( @tdres.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD7-HID-TAG ( @tdopt.tag<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.
 \ ---------------------------------------------------------------------------

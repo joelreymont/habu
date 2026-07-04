@@ -368,6 +368,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 \ The TFAM-RESOLVE*/TFAM-ARITY* wrappers live just below RES-FALSE (which they use).
 variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
+variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -472,6 +473,8 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    TFAM-RESOLVE-XT @ dup 0= IF drop 2drop 2drop 0 RES-FALSE ELSE execute THEN ;
 : TFAM-ARITY* ( n -- n )
    TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
+: TFAM-LAYOUT?* ( n -- bool )      \ 0 hook (registry not yet loaded) -> not a layout
+   TFAM-LAYOUT?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
 
 : TV-NEXT? ( n -- n bool )
    dup ISVAR 0= IF RES-FALSE EXIT THEN
@@ -924,6 +927,22 @@ variable TWALK-D
    RES-FALSE ;
 : TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
 
+\ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
+\ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
+\ expanded to hidden physical fields until item 12's width-aware lowering can
+\ preserve whole bundles across generic stack ops. Until then an ordinary
+\ one-cell primitive (dup/drop/swap/over/nip/>r/...) that would bind or consume
+\ the logical layout cell fails closed in U-TYPE. Layout identity is the resolved
+\ family-id, so a layout cell unifying with the SAME family (the PARAM-PAIR-ARGS
+\ arm) flows fine; only a var/con/ptr/atom pairing reaches this guard.
+: LAYOUT-PARAM? ( n -- bool ) {: t:n :}
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   TFAM-LAYOUT?* ;
+: LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
+   t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
+   t2 LAYOUT-PARAM? ;
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
@@ -940,13 +959,14 @@ variable TWALK-D
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
      2dup PARAM-PAIR-ARGS 2drop ELSE
+   2dup LAYOUT-EITHER? IF 2drop RES-FALSE UOK ! ELSE   \ item 7: no one-cell touch of a layout value
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN
-   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  PAIR
@@ -2080,6 +2100,16 @@ create ROWMAP 26 cells allot
 : EXPECT-SIG {: ea eu :}
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
 
+\ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
+\ row — the single seam for logical-vs-physical layout (docs/type-families.md
+\ §11, PLAN item 7). Every ordinary type and cell family pushes one logical cell
+\ (== MK-PUSH). A sum/enum/product layout family ALSO stays ONE logical T-PARAM
+\ cell here (reject-only): a layout value is not expanded to hidden physical
+\ fields until item 12's width-aware lowering can preserve whole bundles across
+\ generic stack ops. Until then an ordinary one-cell primitive that touches a
+\ layout cell fails closed in U-TYPE (LAYOUT-EITHER?).
+: PUSH-LOGICAL ( n n -- n ) MK-PUSH ;
+
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
 \ tail is used. Types fold bottom->top; '[' in -- out [ '|' rin -- rout ] ']'
@@ -2122,7 +2152,7 @@ create ROWMAP 26 cells allot
         2dup VREC-FIND IF
            >r 2drop r> VREC-PUSH-FIELDS
         ELSE
-           drop SIG-TYPE swap MK-PUSH
+           drop SIG-TYPE swap PUSH-LOGICAL
         THEN
      THEN
    AGAIN ;

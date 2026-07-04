@@ -715,3 +715,4 @@ variable TFQ-COLON
 \ resolves families / reads arities during signature parsing through these cells.
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
 ' TFAM-ARITY@  TFAM-ARITY-XT !
+' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard

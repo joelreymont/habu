@@ -640,6 +640,22 @@ For ordinary one-cell types, behavior is unchanged.
 
 For sum/product/enum families, `LAYOUT-PUSH-FIELDS` expands to hidden physical fields.
 
+**Implementation status (PLAN item 7, reject-only).** `PUSH-LOGICAL` is installed
+as the signature-parse seam (replacing `SIG-TYPE MK-PUSH`), but the
+`LAYOUT-PUSH-FIELDS` expansion branch is deliberately **not enabled yet**: a
+sum/enum/product family in a signature stays ONE logical `T-PARAM` cell carrying
+its resolved `family-id` plus the slot/tag metadata (`TFAM-SLOTS@`, SUMV
+paycells) that items 8/9/12/16 will consume. Physical expansion waits for item
+12's width-aware generic stack operations, which alone can preserve whole
+bundles across `dup`/`drop`/`swap`/… (§17). Until then item 7 makes the logical
+cell **fail closed** rather than one-cell-touchable: a layout cell may flow
+through (identity — the same `family-id` unifies), but any ordinary one-cell
+primitive that would bind or consume it (`dup`/`drop`/`swap`/`over`/`nip`/`>r`,
+or capture into a local) is rejected in the checker's unifier
+(`LAYOUT-PARAM?`/`LAYOUT-EITHER?` in `U-TYPE`). Cell families are unaffected, and
+the public parser keeps rejecting hidden `@family.slotN`/`@family.tag` names, so
+no hidden field is ever expanded, rendered, or exposed at this stage.
+
 ---
 
 ## 12. Constructors

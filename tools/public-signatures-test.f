@@ -35,6 +35,7 @@ create PST-CONST-BUF FS-PATH-CAP allot
 create PST-NOPEN-BUF FS-PATH-CAP allot
 create PST-NMID-BUF FS-PATH-CAP allot
 create PST-NENTRY-BUF FS-PATH-CAP allot
+create PST-SUM-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
@@ -45,6 +46,7 @@ variable PST-CONST-U
 variable PST-NOPEN-U
 variable PST-NMID-U
 variable PST-NENTRY-U
+variable PST-SUM-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -376,6 +378,36 @@ variable PST-NENTRY-U
    PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TTRUE
    PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
 
+: PST-SUM ( -- ptr u8 n )    PST-SUM-BUF PST-SUM-U @ ;
+
+\ TFAM 7 (habu-tfam-7-hidden): a sum layout family in a passing (identity)
+\ signature renders as the LOGICAL type in public-signatures output — the family
+\ tail with its args, never the hidden `@family.slotN`/`@family.tag` physical
+\ fields (PLAN item 7 acceptance: public signatures without hidden fields). It is
+\ also not narrowed to one bare cell nor to a multi-cell shape: one logical
+\ T-PARAM cell in, one out. Item 12 (habu-tfam-12-layout) owns physical layout
+\ exposure; this locks that item 7 keeps the surface logical-only.
+: PST-SUM-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" SUMTYPE ps-res 2 VARIANT ok a ;VARIANT VARIANT err b ;VARIANT ;SUMTYPE" SB-APPEND PST-LF
+   s" : PS-SUM-ID ( ps-res<n,n> -- ps-res<n,n> ) ;" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-SUM ( -- )
+   PST-ROOT s" ps-sum-layout.f" PST-SUM-BUF JOIN-PATH PST-SUM-U !
+   PST-SUM CLEANUP+
+   PST-SUM PST-SUM-SRC$ WRITE-ALL ;
+
+: PST-TEST-SUM-LAYOUT ( -- )
+   PST-PREPARE-SUM
+   PST-SUM PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" PS-SUM-ID" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (ps-res<n,n> -- ps-res<n,n>)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" @ps-res" CONTAINS? TFALSE       \ no hidden physical field leaks
+   PST-OUT outu s" .slot0" CONTAINS? TFALSE
+   PST-OUT outu s" .tag" CONTAINS? TFALSE ;
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
@@ -387,6 +419,7 @@ variable PST-NENTRY-U
    PST-TEST-CLOSURE-GUARDED-PKG
    PST-TEST-CLOSURE-NESTED
    PST-TEST-CONST-LAYOUT
+   PST-TEST-SUM-LAYOUT
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
    T-REPORT
