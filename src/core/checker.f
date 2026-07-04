@@ -305,34 +305,47 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM-INIT      \ param terms (grows on demand)
-4 constant PARAM-MAX-ARGS
 create PARAMA-BOOT MAXPARAM-INIT cells allot
 create PARAMU-BOOT MAXPARAM-INIT cells allot
 create PARAMC-BOOT MAXPARAM-INIT cells allot
 create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
-create PARAMARGS-BOOT MAXPARAM-INIT PARAM-MAX-ARGS * cells allot
+create PARAMOFF-BOOT MAXPARAM-INIT cells allot   \ arg-run start index into the flat PARGP pool
+\ PARGP is the flat per-param arg pool: each param term stores its arg terms as a
+\ contiguous run [PARAMOFF[p], PARAMOFF[p]+argc) here, so a family of ANY arity is
+\ stored without a fixed row cap. Cells hold term codes (pointer-free), so a grow
+\ is a plain byte copy and it resets in NEW alongside PARAMN. This replaces the old
+\ fixed PARAM-MAX-ARGS-strided PARAMARGS row.
+2048 constant PARG-INIT
+create PARGP-BOOT PARG-INIT cells allot
 \ PARAM-SCR is the reentrant parse/replay scratch: it holds the arg terms pushed
 \ across ALL currently-open nesting levels, so its depth is a nesting-peak, not a
 \ per-param arg count. It grows on demand (a nested family whose args land at a
-\ non-zero base must not overflow); the per-param arg count stays PARAM-MAX-ARGS-
-\ capped by the SoA arg row and by SIG-TYPE's argc guard.
+\ non-zero base must not overflow); per-param arity is uncapped (PARGP grows).
 32 constant PARAM-SCR-INIT
 create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
 variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
-variable PARAMARGS-P   variable PARAM-SCR-P
+variable PARAMOFF-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
+variable PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-PARAMFAM-BOOT PARAMFAM-P !
-PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !
+PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   0 PARG-N !
+MAXPARAM-INIT PARAM-CAP !
 PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 : PARAMA ( -- ptr a ) PARAMA-P @ ;
 : PARAMU ( -- ptr a ) PARAMU-P @ ;
 : PARAMC ( -- ptr a ) PARAMC-P @ ;
 : PARAMFAM ( -- ptr a ) PARAMFAM-P @ ;
-: PARAMARGS ( -- ptr a ) PARAMARGS-P @ ;
+: PARAMOFF ( -- ptr a ) PARAMOFF-P @ ;
+: PARGP ( -- ptr a ) PARGP-P @ ;
+: PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
+   PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
+   PARG-N @ need + PARG-CAP-V @ 2 * max {: nc:n :}
+   PARGP-P @ PARG-CAP-V @ cells nc cells ARENA-BYTES-GROW PARGP-P !
+   nc PARG-CAP-V ! ;
 : PARAM-SCR ( -- ptr a ) PARAM-SCR-P @ ;
 : PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
    PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
@@ -346,8 +359,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
    PARAMU-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMU-P !
    PARAMC-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMC-P !
    PARAMFAM-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMFAM-P !
-   PARAMARGS-P @ PARAM-CAP @ PARAM-MAX-ARGS * cells
-      nc PARAM-MAX-ARGS * cells ARENA-BYTES-GROW PARAMARGS-P !
+   PARAMOFF-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMOFF-P !
    nc PARAM-CAP ! ;
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
@@ -370,13 +382,10 @@ UK-EXACT UNIFY-KIND !
 : PARAM>NAME-U ( n -- n ) PAY cells PARAMU + @ ;
 : PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
 : PARAM>FAM ( n -- n ) PAY cells PARAMFAM + @ ;   \ resolved family-id (identity)
+: PARAM>OFF ( n -- n ) PAY cells PARAMOFF + @ ;   \ arg-run start index into PARGP
 : PARAM-ARG-IDX ( n n -- ptr n ) {: p idx :}
-   p PAY PARAM-MAX-ARGS * idx + cells PARAMARGS + ;
+   p PARAM>OFF idx + cells PARGP + ;
 : PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
-: PARAM-ARG-OR-DUMMY ( n n -- n ) {: p idx :}
-   idx p PARAM>ARGC < IF p idx PARAM>ARG ELSE 1 MK-CON THEN ;
-: PARAM-ARGC-FULL? ( n -- bool )   \ base scratch mark; param already holds PARAM-MAX-ARGS args (SoA row cap)
-   PARAM-SCR-N @ swap - PARAM-MAX-ARGS >= ;
 : PARAM-SCR+ ( n -- )
    PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
@@ -385,20 +394,24 @@ UK-EXACT UNIFY-KIND !
 \ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
 \ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
 \ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
+\ The argc args are copied into a fresh contiguous run in the flat PARGP pool
+\ (uncapped arity); the run start is recorded in PARAMOFF.
 : MK-PARAM {: base:n a:ptr u:n fam:n :}
-   PARAM-SCR-N @ base - PARAM-MAX-ARGS > IF
-      s" checker: param arity exceeds SoA row width" 76 die THEN
    PARAMN @ 1 + PARAM-ENSURE
+   PARAM-SCR-N @ base - {: argc:n :}
+   argc PARG-ENSURE
+   PARG-N @ {: start:n :}
    a PARAMN @ PARAMA-FIELD !
    u PARAMN @ cells PARAMU + !
    fam PARAMN @ cells PARAMFAM + !
-   PARAM-SCR-N @ base - PARAMN @ cells PARAMC + !
-   base PARAM-I !
-   BEGIN PARAM-I @ PARAM-SCR-N @ < WHILE
-      PARAM-I @ cells PARAM-SCR + @
-      PARAMN @ PARAM-MAX-ARGS * PARAM-I @ base - + cells PARAMARGS + !
-      PARAM-I @ 1 + PARAM-I !
-   REPEAT
+   argc PARAMN @ cells PARAMC + !
+   start PARAMN @ cells PARAMOFF + !
+   0 BEGIN dup argc < WHILE          \ data-stack index (RECURSE-safe; ?do clobbers locals)
+      dup base + cells PARAM-SCR + @
+      over start + cells PARGP + !
+      1 +
+   REPEAT drop
+   argc PARG-N @ + PARG-N !
    base PARAM-SCR-N !
    PARAMN @ 3 lshift T-PARAM or
    PARAMN @ 1 + PARAMN ! ;
@@ -887,11 +900,12 @@ variable TWALK-D
       EXIT
    THEN
    x TAG T-PARAM = IF
-      v x 0 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x 1 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x 2 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x 3 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER
-      EXIT
+      0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
+         x over PARAM>ARG                    \ ( i arg )
+         v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      RES-FALSE EXIT
    THEN
    RES-FALSE ;
 : TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
@@ -966,7 +980,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
-   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
+   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
@@ -1325,6 +1339,25 @@ create VRI-AK-BOOT VRI-AK-INIT cells allot
 variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 : VRI-AK ( -- ptr a ) VRI-AK-P @ ;
 
+\ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
+\ A VR-PARAM node stores argc in VN.C, the arg-run start (into VNARG) in VN.D, and
+\ the family-id in VN.H; the argc child node ids live at [start,start+argc). Cells
+\ hold node ids (pointer-free), so REG-GROW1 relocation and snapshot bake verbatim.
+\ VNARG-N never rewinds (persisted nodes are permanent, like VREC-NODE-N).
+$4000 constant VNARG-INIT
+create VNARG-BOOT VNARG-INIT cells allot
+variable VNARG-P   VNARG-BOOT VNARG-P !
+variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
+variable VNARG-N   0 VNARG-N !
+: VNARG ( -- ptr a ) VNARG-P @ ;
+: VNARG-GROW ( n -- ) {: need:n :}
+   need VNARG-CAP-V @ 2 * max {: nc:n :}
+   VNARG-P VNARG-CAP-V @ cells nc cells REG-GROW1
+   nc VNARG-CAP-V ! ;
+: VNARG-ENSURE ( n -- ) {: need:n :}      \ room for `need` more cells past VNARG-N
+   VNARG-N @ need + VNARG-CAP-V @ <= IF exit THEN
+   VNARG-N @ need + VNARG-GROW ;
+
 variable VREC-N
 variable VREC-FIELD-N
 variable VREC-NODE-N
@@ -1446,6 +1479,10 @@ variable VRC-RVN
 : VN.F! ( n n -- ) VRN-F VREC-NODE-SLOT ! ;
 : VN.G! ( n n -- ) VRN-G VREC-NODE-SLOT ! ;
 : VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
+\ VN>ARG ( node i -- childnode ) : the i-th arg node of a persisted VR-PARAM node,
+\ read from the flat VNARG pool at [VN.D@, VN.D@+argc). (VN.C@ holds argc.)
+: VN>ARG ( n n -- n ) {: node:n i:n :}
+   node VN.D@ i + cells VNARG + @ ;
 
 variable VREC-RB-I
 \ VREC-STR-REBASE ( n -- ) : a VREC-STR relocation moved the pool by delta; add
@@ -1579,12 +1616,21 @@ variable VREC-RB-I
       T-PARAM of
          VR-PARAM VREC-NODE-NEW {: node:n :}
          x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U node VREC-COPY-STR
-         x VREC-RES PARAM>ARGC node VN.C!
+         x VREC-RES PARAM>ARGC {: argc:n :}
+         argc node VN.C!
          x VREC-RES PARAM>FAM node VN.H!            \ resolved family-id (identity)
-         x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE node VN.D! THEN
-         x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE node VN.E! THEN
-         x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE node VN.F! THEN
-         x VREC-RES PARAM>ARGC 3 > IF x VREC-RES 3 PARAM>ARG RECURSE node VN.G! THEN
+         \ reserve an argc-cell run in VNARG, then copy children into it. Children
+         \ (nested params) allocate their own runs after this one; the run start
+         \ index is stable across REG-GROW1 relocation, so re-fetch VNARG per store.
+         VNARG-N @ {: start:n :}
+         argc VNARG-ENSURE
+         start node VN.D!
+         argc VNARG-N @ + VNARG-N !
+         0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
+            x VREC-RES over PARAM>ARG RECURSE   \ ( i childid )
+            over start + cells VNARG + !        \ ( i )
+            1 +
+         REPEAT drop
          node
       endof
       0 swap
@@ -1654,11 +1700,13 @@ variable VREC-RB-I
       endof
       VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
       VR-PARAM of
+         node VN.C@ {: argc:n :}
+         node VN.D@ {: start:n :}
          PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
-         node VN.C@ 0 > IF node VN.D@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 1 > IF node VN.E@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 2 > IF node VN.F@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 3 > IF node VN.G@ RECURSE PARAM-SCR+ THEN
+         0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
+            dup start + cells VNARG + @ RECURSE PARAM-SCR+
+            1 +
+         REPEAT drop
          node VREC-I-STR node VN.H@ MK-PARAM        \ ( base a u fam -- t )
       endof
       0 swap
@@ -1958,7 +2006,6 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            base PARAM-ARGC-FULL? IF a u SGBAD-ARITY! base a u fam MK-PARAM EXIT THEN
             RECURSE PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
@@ -2109,7 +2156,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : VREC-FIELD-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
    node VN.TAG@ VR-PARAM <> IF RES-FALSE EXIT THEN
-   a u node VN.E@ VREC-ATOM-COPY= ;
+   a u node 1 VN>ARG VREC-ATOM-COPY= ;   \ field name is arg[1] of field<rec,name,type>
 
 : VREC-FIELD-DUP? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id VREC-START@ VREC-J !
@@ -2797,6 +2844,15 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-NODE-OFF ( n -- n )
    E-NODE-NEW E-OFF ;
 
+\ E-ARGS-RESERVE ( n -- n ) : reserve a contiguous argc-cell run in USIGS
+\ for a persisted EN-PARAM node's arg offsets (uncapped arity). The run is a byte
+\ offset (E-OFF-relative), stable across USIGS relocation. Children copied after
+\ the reserve allocate past this run, so their offsets never overlap it.
+: E-ARGS-RESERVE ( n -- n ) {: argc:n :}
+   UEND @ argc cells + cell+ USIGS-ENSURE
+   UEND @
+   dup argc cells + UEND ! ;
+
 : E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
    UEND @ p EN.A !
    u p EN.B !
@@ -2855,15 +2911,21 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          r>
       endof
       T-PARAM of
-         EN-PARAM E-NODE-NEW E-OFF >r
-         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
-         x E-RES PARAM>ARGC r@ E-PTR EN.C !
-         x E-RES PARAM>FAM r@ E-PTR EN.H !          \ resolved family-id (identity)
-         x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D ! then
-         x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.E ! then
-         x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.F ! then
-         x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.G ! then
-         r>
+         EN-PARAM E-NODE-NEW E-OFF {: noff:n :}      \ node offset (stable across USIGS grow)
+         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U noff E-PTR E-COPY-STR
+         x E-RES PARAM>ARGC {: argc:n :}
+         argc noff E-PTR EN.C !
+         x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
+         argc 0 > IF
+            argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
+            run noff E-PTR EN.D !
+            0 BEGIN dup argc < WHILE                 \ data-stack index (RECURSE-safe)
+               x E-RES over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
+               over cells run + E-PTR !                                     \ ( i )
+               1 +
+            REPEAT drop
+         THEN
+         noff
       endof
       0 swap
    endcase ;
@@ -3034,12 +3096,15 @@ variable FMEND
       endof
       EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
       EN-PARAM of
+         r@ {: np:ptr :}                           \ node ptr (parked value)
+         np EN.C @ {: argc:n :}
+         np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
          PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
-         r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
-         r@ E-I-STR r@ EN.H @ MK-PARAM              \ ( base a u fam -- t )
+         0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
+            dup cells run + E-PTR @ RECURSE PARAM-SCR+
+            1 +
+         REPEAT drop
+         np E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
          r> drop
       endof
       r> drop 0 swap
@@ -3080,10 +3145,11 @@ variable LMNEG  variable LMPOS  variable LMV
          r> drop
       endof
       EN-PARAM of
-         r@ EN.C @ 0 > IF r@ EN.D @ pol RECURSE THEN
-         r@ EN.C @ 1 > IF r@ EN.E @ pol RECURSE THEN
-         r@ EN.C @ 2 > IF r@ EN.F @ pol RECURSE THEN
-         r@ EN.C @ 3 > IF r@ EN.G @ pol RECURSE THEN
+         r@ {: np:ptr :}                   \ node ptr (parked value)
+         0 BEGIN dup np EN.C @ < WHILE      \ data-stack index (RECURSE-safe)
+            dup cells np EN.D @ + E-PTR @ pol RECURSE
+            1 +
+         REPEAT drop
          r> drop
       endof
       r> drop
@@ -3901,8 +3967,8 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
    PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-   PARAMFAM-BOOT PARAMFAM-P !
-   PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   MAXPARAM-INIT PARAM-CAP !
+   PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
    PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
    TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET ; \ unification trail
@@ -3956,6 +4022,7 @@ variable REG-PERSIST-DELTA
    VRN-F-P VRN-F-BOOT nb REG-PERSIST-BUF drop
    VRN-G-P VRN-G-BOOT nb REG-PERSIST-BUF drop
    VRN-H-P VRN-H-BOOT nb REG-PERSIST-BUF drop
+   VNARG-P VNARG-BOOT VNARG-CAP-V @ cells REG-PERSIST-BUF drop
    VREC-STR-P VREC-STR-BOOT VREC-STR-U @ REG-PERSIST-BUF IF
       VREC-STR-U @ VREC-STR-CAP-V !
       REG-PERSIST-DELTA @ VREC-STR-REBASE

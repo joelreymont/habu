@@ -854,6 +854,18 @@ s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop"
 s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
 s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-BAREPTR? -1 T=
 s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
+\ Uncapped per-param arity (dot habu-tfam-4-remainder): a family with arity > 4
+\ (old PARAM-MAX-ARGS SoA-row cap) parses, checks, persists, instantiates through
+\ the flat PARGP/VNARG/EN arg pools, and renders. Register a test-only arity-6
+\ family, then prove: bare parse; a STORED-sig reference (E-COPY + E-INST round
+\ trip); a nested arity-6 arg; a value-record field of the arity-6 family (VNARG
+\ pool); and wrong-arity rejection (5 and 7 args) with the arity diagnostic.
+s" tfam6r-big" 6 TFAM-REG-CELL
+s" COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> )" T-CHECK-PASSES
+s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
+s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
+s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
@@ -963,6 +975,14 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
+\ Value-record with an arity-6 family field type (dot habu-tfam-4-remainder):
+\ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
+\ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
+VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+: T->BIG6VR ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-vr ) ;
+: T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
+s" COK-BIG6VR-ID ( tfam6r-vr -- tfam6r-vr )" T-CHECK-PASSES
+s" COK-BIG6VR-ROUNDTRIP ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) T->BIG6VR T-BIG6VR>" T-CHECK-PASSES
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
