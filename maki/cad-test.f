@@ -149,48 +149,42 @@ dup RPT-CAND-COUNT 32 T=
 dup RPT-RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
 drop
 
-\ ---- OPTIMIZE: aggregate report, promotion refused (profile still needs device) --
+\ ---- OPTIMIZE: aggregate report; CAD 7c gate set PROMOTES on host -----------
+\ FFN (LINEAR GELU LINEAR) is reference-complete + host-executable, so CERTIFY,
+\ GOLDEN, and GRADCHECK all pass; PROFILE stays not-run but is non-blocking. The
+\ CAD 7c gate set therefore clears and OPTIMIZE records the promote decision.
 OPTIMIZE
 dup G-CERTIFY RPT-GATE-TAG@ V-PASS T=
 dup G-GOLDEN  RPT-GATE-TAG@ V-PASS T=
 dup RPT-RENDER CT-SAVE
-s" gate.certify.verdict: pass"    CT-IN
-s" gate.golden.verdict: pass"     CT-IN
-s" promote: refused"              CT-IN
+s" gate.certify.verdict: pass"           CT-IN
+s" gate.golden.verdict: pass"            CT-IN
+s" promote: gates pass; artifact cached" CT-IN
 drop
 
-\ ---- PROMOTE: refuses via named throw while gates are not all pass ---------
-' TRY-PROMOTE E-CAD-GATE TTHROWS
-
-\ ---- promotion gate logic --------------------------------------------------
-FULL-REPORT PROMOTE-OK? TFALSE drop
-ALL-PASS    PROMOTE-OK? TTRUE  drop
+\ ---- promotion gate logic (CAD 7c: certify+golden pass, gradcheck != fail) ---
+\ FFN clears the gate set on host now (PROFILE not-run is recorded, non-blocking).
+FULL-REPORT PROMOTE-OK? TTRUE drop
+ALL-PASS    PROMOTE-OK? TTRUE drop
 
 \ ---- promote success path caches the artifact key --------------------------
 ALL-PASS PROMOTE-REPORT
 dup RPT-CACHE$ s" FFN" T$=
 drop
 
-\ ---- refused PROMOTE writes NO rows (no partial artifact) -------------------
-\ off-device, PROMOTE-REPORT throws before PROMOTE-EVIDENCE, so the store stays empty.
-STORE-RESET
-' TRY-PROMOTE E-CAD-GATE TTHROWS
-0 SK-KEY$ SCHED-GET nip TFALSE
-0 SK-KEY$ EVID-GET  nip TFALSE
-
 \ ---- a passing PROMOTE writes the schedules + evidence rows -----------------
-\ real PROMOTE refuses off-device, so drive the writer directly with an all-pass
-\ report over FFN's built region 0 to prove the row shapes without a device.
+\ FFN now promotes on host: drive the REAL PROMOTE and read its rows back, keyed by
+\ region 0's section-7.4 key. STORE-RESET brackets keep the store leak-free. The
+\ evidence row records profile=not-run (mandatory-to-run, non-blocking off-device).
 STORE-RESET
-ALL-PASS PROMOTE-EVIDENCE drop
-0 SK-KEY$ SCHED-GET TTRUE -1 T=                    \ selection row (ALL-PASS leaves sel unset = -1)
+PROMOTE dup RPT-CACHE$ s" FFN" T$= drop
+0 SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
 0 SK-KEY$ EVID-GET TTRUE
-s" certify=pass|golden=pass|gradcheck=pass|profile=pass" T$=
+s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
 STORE-RESET
 
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
-\ cad-7a: certify + golden + gradcheck all pass on host, so only PROFILE (device) emits
-\ a packet.
+\ certify + golden + gradcheck all pass on host, so only PROFILE (device) emits a packet.
 EXPLAIN CT-SAVE
 s" packet.certify"                 CT-NOTIN
 s" packet.gradcheck"               CT-NOTIN
@@ -198,6 +192,19 @@ s" packet.golden"                  CT-NOTIN
 s" packet.profile: class=not-run"  CT-IN
 s" repair=run-device-profile"      CT-IN
 s" repro=model:FFN"                CT-IN
+
+\ ---- refusal fixture: a CAST model whose GOLDEN is not-run -> PROMOTE refuses -
+\ CAST has no host oracle (incomplete op), so GOLDEN is not-run: it never reaches
+\ pass, so the CAD 7c gate set refuses (E-CAD-GATE) and PROMOTE-REPORT throws before
+\ any row lands - proving the gate still fails closed on a non-promotable model.
+MODEL: MCAST ( x:2x4 -- y ) CAST ;
+GOLDEN dup G-GOLDEN RPT-GATE-TAG@ V-NOTRUN T= drop
+FULL-REPORT PROMOTE-OK? TFALSE drop
+STORE-RESET
+' TRY-PROMOTE E-CAD-GATE TTHROWS
+0 SK-KEY$ SCHED-GET nip TFALSE
+0 SK-KEY$ EVID-GET  nip TFALSE
+STORE-RESET
 
 \ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------
 \ concat materializes (v1); an aligned row-slice dissolves (free) - no traffic.

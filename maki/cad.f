@@ -21,9 +21,10 @@
 \ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
 \ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
 \ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE stays conservative (cad-4).
-\ GOLDEN/GRADCHECK/PROFILE stay honest
-\ not-run on a host without a GPU. PROMOTE refuses (E-CAD-GATE) unless all gates
-\ pass. maki -> habu only; cad owns -5020..-5029.
+\ GOLDEN/GRADCHECK are REAL on the host now; PROFILE stays honest not-run without a
+\ GPU. PROMOTE (CAD 7c gate set) refuses (E-CAD-GATE) unless CERTIFY passes, GOLDEN
+\ passes, and GRADCHECK did not FAIL (not-run clears it); PROFILE is mandatory-to-run
+\ but never blocks. maki -> habu only; cad owns -5020..-5029.
 
 require lib/string.f
 require maki/report.f
@@ -511,15 +512,26 @@ private
    RPT-NEW LOWER-INTO FUSE-INTO MEMORY-INTO TILE-INTO
    CERTIFY-INTO GOLDEN-INTO GRADCHECK-INTO PROFILE-INTO ;
 
-\ ---- promotion gate --------------------------------------------------------
+\ ---- promotion gate (CAD 7c gate-set alignment) ----------------------------
 : GATE-PASS? ( report n -- report bool )
    over swap RPT-GATE-TAG@ V-PASS = ;
+: GATE-NOT-FAIL? ( report n -- report bool )   \ pass or not-run, but not a real fail
+   over swap RPT-GATE-TAG@ V-FAIL <> ;
+: GATE-RECORDED? ( report n -- report bool )   \ a recorded verdict (any legal tag)
+   over swap RPT-GATE-TAG@ dup 0 >= swap V-N < and ;
 
-: PROMOTE-OK? ( report -- report bool )        \ all four gates pass
-   G-CERTIFY   GATE-PASS? >r
-   G-GOLDEN    GATE-PASS? r> and >r
-   G-GRADCHECK GATE-PASS? r> and >r
-   G-PROFILE   GATE-PASS? r> and ;
+\ PROMOTE gate set (docs/model-cad.md Phase 7 / CAD-PLAN, cad-7 UPDATE fold):
+\ a model promotes when CERTIFY passes AND GOLDEN passes AND GRADCHECK did not
+\ FAIL. GRADCHECK not-run (the model has no host-differentiable backward - cast /
+\ decode) clears the gate exactly like a pass; only a real gradient mismatch
+\ (V-FAIL) blocks. PROFILE is mandatory-to-run but NON-blocking: FULL-REPORT
+\ always runs PROFILE-INTO so a verdict is recorded, yet its value (not-run
+\ off-device, or a device roofline tag on Orin) never gates promotion.
+: PROMOTE-OK? ( report -- report bool )
+   G-CERTIFY   GATE-PASS?      >r
+   G-GOLDEN    GATE-PASS?      r> and >r
+   G-GRADCHECK GATE-NOT-FAIL?  r> and >r
+   G-PROFILE   GATE-RECORDED?  r> and ;
 
 : CACHE-KEY-INTO ( report -- report )          \ artifact key (model-scoped in phase 1)
    MODEL-NAME$ RPT-CACHE! ;
@@ -545,7 +557,7 @@ private
    PROMOTE-OK? if
       CACHE-KEY-INTO  s" promote: gates pass; artifact cached" RPT-WARN+
    else
-      s" promote: refused; required device gates not run on host" RPT-WARN+
+      s" promote: refused; certify/golden/gradcheck gate not satisfied" RPT-WARN+
    then ;
 
 public
