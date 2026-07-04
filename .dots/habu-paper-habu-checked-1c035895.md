@@ -13,3 +13,29 @@ performance results are in - blocked on the CAD-PLAN 8.1 sequence (on-device
 PROFILE/roofline, measured GEMM-vs-Triton baseline, cp.async stages,
 tensor-core MMA, cad-6-tune, end-to-end model latency). Revisit when those
 numbers exist; scope above stands.
+
+REQUIREMENT (user, 2026-07-04): the paper is incomplete without PROOF that
+each invention actually does good - an effectiveness/ablation matrix, every
+row a committed reproducible experiment, not narrative:
+- Checker (typed effects): author-time error battery vs Triton (extend
+  eval-triton battery: k candidates x task classes; bugs caught static vs
+  runtime) + authoring pass@k (eval harness exists).
+- Fusion planner + byte accounting: (a) predicted-vs-measured traffic (the
+  byte model is falsifiable against measured GB/s - roofline denominator);
+  (b) fusion ON/OFF latency ablation per model (same kernels, regions split).
+- Device-vs-host GOLDEN: seeded-fault injection - wrong index / dropped mask
+  / transposed operand / stale kernel - each class caught by the gate;
+  uniform-vs-nonuniform golden sensitivity (sum-launch precedent).
+- Sentinels: dropped-copy-back injection caught (vs silent pass without).
+- Verified gradient: wrong-adjoint detection fixture (exists) + from-scratch
+  convergence gate as the end-to-end proof.
+- Persistent content-keyed tuning: time-to-first-correct-inference vs
+  Triton JIT autotune warmup on the same device; replay determinism across
+  process restarts.
+- EXPLAIN packets: measurable via the agent-repair loop (eval-repair
+  repair-rounds / tokens-to-green with vs without packets).
+- Schedule machinery: tuned-vs-closed-form-default deltas per family
+  (cad-6 output).
+Each row lands as a gate/tool in-tree so reviewers can rerun it; rows that
+already exist are cited by path, missing ones become dots when the paper
+unblocks.
