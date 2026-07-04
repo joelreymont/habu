@@ -375,6 +375,37 @@ tensor-core MMA, persistent-vs-JIT autotune warmup, end-to-end model
 latency vs torch.compile. Insert measurement tables; no prose without
 numbers.}
 
+\subsection{Discussion: What Is and Is Not Provable}\label{sec:theory}
+We claim no theoretical dominance over Triton's per-kernel scheduling.
+Its block-level dataflow analyses (coalescing, swizzling, pre-fetching,
+vectorization, tensor-core selection, shared-memory allocation and
+synchronization, asynchronous copy scheduling) and our explicit emitters
+plus measured schedule selection target the same hardware roofs, and both
+paradigms can reach them; our SAXPY history is the demonstration in
+miniature (a 42.5\,GB/s scalar kernel, a byte model that said
+memory-bound, and a v4 candidate that closed to the same 63\,GB/s roof
+Triton occupies). The difference is failure mode and recourse: heuristics
+miss silently---Triton's own evaluation concedes the split-$K$ regime,
+and low-priority targets inherit generic configs---and the author's
+recourse is rewriting; here schedules are data, and the recourse is a
+searched candidate, selected by measurement on the deployed device and
+replayed by content key with zero warmup.
+
+One bounded structural argument does hold, and we state it as such. For
+memory-bound composites, end-to-end time is bounded below by unique bytes
+moved divided by achievable bandwidth. A per-kernel compiler must
+materialize every kernel boundary it is handed; a whole-model planner
+whose objective \emph{is} unique bytes can eliminate boundaries and
+therefore attains a bound the per-kernel view cannot, whenever fusion
+removes traffic---and our byte model makes the gap exact and falsifiable
+per model. The honest opponent of that argument is the per-kernel
+paradigm, not Triton-plus-Inductor: an automatic-fusion layer above
+Triton occupies the same scope, and against it our residual claims are
+exactness (a falsifiable cost model), verification (gated artifacts),
+and persistence (offline-amortized tuning). Whether those structural
+advantages outweigh maturer per-kernel codegen on real workloads is an
+empirical question---precisely the one the pending measurements answer.
+
 \section{Effectiveness of Each Mechanism}\label{sec:ablation}
 \todo{The ablation matrix: one committed experiment per invention
 (checker battery; byte-model predicted-vs-measured; fusion ON/OFF;
