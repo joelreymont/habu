@@ -288,6 +288,8 @@ points stay listed.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
 - `tools/source-discovery.f` — restricted source-composition discovery pass that replays a file's loader/definition-header forms against a fresh require registry and emits the ordered event artifact.
 - `tools/source-discovery-test.f` — checked fixtures for the restricted discovery pass (ordering, multiplicity, dedup, fresh registry, shared emitter, fail-closed rejection).
+- `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
+- `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion) and closure key sensitivity.
 - `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,

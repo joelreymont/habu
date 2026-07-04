@@ -417,6 +417,7 @@ variable GSI-TL-FILE-A
    s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
    s" tools/include-events-test.f" GSI-FORK-INCLUDE
    s" tools/source-discovery-test.f" GSI-FORK-INCLUDE
+   s" tools/event-closure-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-TAIL-RUNNER ( -- )
