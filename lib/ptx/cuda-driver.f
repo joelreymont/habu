@@ -25,6 +25,7 @@ deftype cuda-ctx
 deftype cuda-mod
 deftype cuda-fn
 deftype cuda-devptr
+deftype cuda-event
 
 \ Fail-closed guards, global so historical maki call sites (CUDA-HANDLE0 /
 \ CUDA-RC0) resolve unqualified.
@@ -93,6 +94,13 @@ FFI: CU-LAUNCH-GRID ( cuda-fn n n -- rc ) SYMBOL cuLaunchGrid FFI;
 FFI: CU-CTX-SYNCHRONIZE ( -- rc ) SYMBOL cuCtxSynchronize FFI;
 FFI: CU-MODULE-UNLOAD ( cuda-mod -- rc ) SYMBOL cuModuleUnload FFI;
 FFI: CU-DEVICE-PRIMARY-CTX-RELEASE ( cuda-dev -- rc ) SYMBOL cuDevicePrimaryCtxRelease FFI;
+
+\ ---- events (GPU-side elapsed-time measurement) ----------------------------
+FFI: CU-EVENT-CREATE ( ptr a n -- rc ) SYMBOL cuEventCreate FFI;
+FFI: CU-EVENT-DESTROY ( cuda-event -- rc ) SYMBOL cuEventDestroy_v2 FFI;
+FFI: CU-EVENT-RECORD ( cuda-event n -- rc ) SYMBOL cuEventRecord FFI;
+FFI: CU-EVENT-SYNCHRONIZE ( cuda-event -- rc ) SYMBOL cuEventSynchronize FFI;
+FFI: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc ) SYMBOL cuEventElapsedTime FFI;
 
 \ ---- typed convenience helpers (named throws via HANDLE0 / RC0) -------------
 

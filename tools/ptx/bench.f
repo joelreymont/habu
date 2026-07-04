@@ -3,6 +3,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/ffi.f
+require lib/ptx/cuda-driver.f
 require tools/ptx/profile.f
 
 package PTXBENCH
@@ -10,8 +11,6 @@ package PTXBENCH
 128 constant PATH-CAP
 128 constant NAME-CAP
 
-create LIB-BUF 16 allot
-create SYM-BUF NAME-CAP allot
 create PATH-BUF PATH-CAP allot
 create KERNEL-BUF NAME-CAP allot
 create LABEL-BUF NAME-CAP allot
@@ -19,7 +18,6 @@ create LABEL-BUF NAME-CAP allot
 variable PATH-U
 variable KERNEL-U
 variable LABEL-U
-variable H
 variable DEV
 variable CTX
 variable MOD
@@ -38,18 +36,6 @@ variable PARAM-BYTES-N
    u PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
-
-: RC0 ( n -- )
-   dup 0 <> if s" ptxbench: CUDA Driver call failed" 1 die then
-   drop ;
-
-: NZ ( n -- )
-   dup 0= if s" ptxbench: missing CUDA handle" 1 die then
-   drop ;
-
-: SYM ( ptr u8 n -- n )
-   SYM-BUF >CSTR
-   H @ SYM-BUF DLSYM dup NZ ;
 
 : PATH$ ( -- ptr u8 n )
    PATH-BUF PATH-U @ ;
@@ -71,31 +57,31 @@ variable PARAM-BYTES-N
 
 : EVENTS-CREATE ( -- )
    0 START-EVT ! 0 STOP-EVT !
-   START-EVT P>N 0 s" cuEventCreate" SYM CALL2 RC0
-   STOP-EVT P>N 0 s" cuEventCreate" SYM CALL2 RC0 ;
+   START-EVT 0 CUDA:CU-EVENT-CREATE CUDA:RC0
+   STOP-EVT 0 CUDA:CU-EVENT-CREATE CUDA:RC0 ;
 
 : EVENTS-DESTROY ( -- )
-   START-EVT @ 0 <> if START-EVT @ s" cuEventDestroy_v2" SYM CALL1 RC0 then
-   STOP-EVT @ 0 <> if STOP-EVT @ s" cuEventDestroy_v2" SYM CALL1 RC0 then
+   START-EVT @ 0 <> if START-EVT @ >CUDA-EVENT CUDA:CU-EVENT-DESTROY CUDA:RC0 then
+   STOP-EVT @ 0 <> if STOP-EVT @ >CUDA-EVENT CUDA:CU-EVENT-DESTROY CUDA:RC0 then
    0 START-EVT ! 0 STOP-EVT ! ;
 
 : RECORD-START ( -- )
-   START-EVT @ 0 s" cuEventRecord" SYM CALL2 RC0 ;
+   START-EVT @ >CUDA-EVENT 0 CUDA:CU-EVENT-RECORD CUDA:RC0 ;
 
 : RECORD-STOP ( -- )
-   STOP-EVT @ 0 s" cuEventRecord" SYM CALL2 RC0 ;
+   STOP-EVT @ >CUDA-EVENT 0 CUDA:CU-EVENT-RECORD CUDA:RC0 ;
 
 : STOP-EVENT-SYNC ( -- )
-   STOP-EVT @ s" cuEventSynchronize" SYM CALL1 RC0 ;
+   STOP-EVT @ >CUDA-EVENT CUDA:CU-EVENT-SYNCHRONIZE CUDA:RC0 ;
 
 : EVENT-ELAPSED-US ( -- n )
    0 EVENT-MS !
-   EVENT-MS P>N START-EVT @ STOP-EVT @ s" cuEventElapsedTime" SYM CALL3 RC0
+   EVENT-MS START-EVT @ >CUDA-EVENT STOP-EVT @ >CUDA-EVENT CUDA:CU-EVENT-ELAPSED-TIME CUDA:RC0
    EVENT-MS @ $FFFFFFFF and F32-MS>US ;
 
 : EVENT-ELAPSED-NS ( -- n )
    0 EVENT-MS !
-   EVENT-MS P>N START-EVT @ STOP-EVT @ s" cuEventElapsedTime" SYM CALL3 RC0
+   EVENT-MS START-EVT @ >CUDA-EVENT STOP-EVT @ >CUDA-EVENT CUDA:CU-EVENT-ELAPSED-TIME CUDA:RC0
    EVENT-MS @ $FFFFFFFF and F32-MS>NS ;
 
 public
@@ -104,7 +90,7 @@ public
    0 PATH-U !
    0 KERNEL-U !
    0 LABEL-U !
-   0 H ! 0 DEV ! 0 CTX ! 0 MOD ! 0 FUNC !
+   0 DEV ! 0 CTX ! 0 MOD ! 0 FUNC !
    0 START-EVT ! 0 STOP-EVT ! 0 EVENT-MS !
    1 GRID-N ! 256 BLOCK-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! ;
 
@@ -151,52 +137,51 @@ public
    LABEL-BUF LABEL-U @ ;
 
 : OPEN ( -- )
-   s" libcuda.so.1" LIB-BUF >CSTR
-   LIB-BUF RTLD-NOW DLOPEN H !
-   H @ NZ
+   CUDA:OPEN
    0 DEV ! 0 CTX !
-   0 s" cuInit" SYM CALL1 RC0
-   DEV P>N 0 s" cuDeviceGet" SYM CALL2 RC0
-   CTX P>N DEV @ s" cuDevicePrimaryCtxRetain" SYM CALL2 RC0
-   CTX @ s" cuCtxSetCurrent" SYM CALL1 RC0 ;
+   0 CUDA:CU-INIT CUDA:RC0
+   DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   CTX DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0 ;
 
 : LOAD ( -- )
    PATH$ nip 0= if s" ptxbench: cubin path not set" 1 die then
    KERNEL-U @ 0= if s" ptxbench: kernel not set" 1 die then
    PATH$ PATH-BUF >CSTR
-   MOD P>N PATH-BUF P>N s" cuModuleLoad" SYM CALL2 RC0
+   MOD PATH-BUF CUDA:CU-MODULE-LOAD CUDA:RC0
    KERNEL-BUF KERNEL-U @ KERNEL-BUF >CSTR
-   FUNC P>N MOD @ KERNEL-BUF P>N s" cuModuleGetFunction" SYM CALL3 RC0 ;
+   FUNC MOD @ >CUDA-MOD KERNEL-BUF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : UNLOAD ( -- )
-   MOD @ 0 <> if MOD @ s" cuModuleUnload" SYM CALL1 RC0 then
+   MOD @ 0 <> if MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0 then
    0 MOD ! 0 FUNC ! ;
 
 : CLOSE ( -- )
-   DEV @ 0 <> if DEV @ s" cuDevicePrimaryCtxRelease" SYM CALL1 RC0 then
+   DEV @ 0 <> if DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 then
    0 DEV ! 0 CTX ! ;
 
 : DEVICE-ALLOC ( n ptr a -- )
    {: bytes:n out:ptr :}
-   out P>N bytes s" cuMemAlloc_v2" SYM CALL2 RC0 ;
+   out bytes >LEN CUDA:CU-MEM-ALLOC CUDA:RC0 ;
 
 : DEVICE-MEMSET32 ( n n n -- )
-   s" cuMemsetD32_v2" SYM CALL3 RC0 ;
+   {: dev:n val:n cnt:n :}
+   dev >CUDA-DEVPTR val cnt >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0 ;
 
 : DEVICE-FREE ( n -- )
-   s" cuMemFree_v2" SYM CALL1 RC0 ;
+   >CUDA-DEVPTR CUDA:CU-MEM-FREE CUDA:RC0 ;
 
 : HTOD ( n ptr u8 n -- )
-   {: dev:n a u:n :} \ typed-local-lint: allow-bare-local - host ptr u8.
-   dev a P>N u s" cuMemcpyHtoD_v2" SYM CALL3 RC0 ;
+   {: dev:n a:ptr u:n :}
+   dev >CUDA-DEVPTR a u >LEN CUDA:HTOD ;
 
 : DTOH ( ptr u8 n n -- )
-   {: a dev:n u:n :} \ typed-local-lint: allow-bare-local - host ptr u8.
-   a P>N dev u s" cuMemcpyDtoH_v2" SYM CALL3 RC0 ;
+   {: a:ptr dev:n u:n :}
+   a dev >CUDA-DEVPTR u >LEN CUDA:DTOH ;
 
 : PARAM! ( n ptr a n -- )
    {: off:n addr:ptr bytes:n :}
-   FUNC @ off addr P>N bytes s" cuParamSetv" SYM CALL4 RC0 ;
+   FUNC @ >CUDA-FN off >IDX addr bytes >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : PARAM-PTR! ( n ptr a -- )
    8 PARAM! ;
@@ -205,14 +190,14 @@ public
    4 PARAM! ;
 
 : PREPARE-LAUNCH ( -- )
-   FUNC @ BLOCK-N @ 1 1 s" cuFuncSetBlockShape" SYM CALL4 RC0
-   FUNC @ PARAM-BYTES-N @ s" cuParamSetSize" SYM CALL2 RC0 ;
+   FUNC @ >CUDA-FN BLOCK-N @ 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   FUNC @ >CUDA-FN PARAM-BYTES-N @ >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0 ;
 
 : LAUNCH ( -- )
-   FUNC @ GRID-N @ 1 s" cuLaunchGrid" SYM CALL3 RC0 ;
+   FUNC @ >CUDA-FN GRID-N @ 1 CUDA:CU-LAUNCH-GRID CUDA:RC0 ;
 
 : SYNC ( -- )
-   0 s" cuCtxSynchronize" SYM CALL1 RC0 ;
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0 ;
 
 : BENCH-HOST-NS ( -- n )
    LAUNCH SYNC
