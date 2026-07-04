@@ -8,7 +8,6 @@ blocks:
   - habu-ad-reverse-pass-9f0c63e8
   - habu-ad-vjp-primitive-8c829764
   - habu-ptx-ir-opt-b90390f0
-  - habu-ptx-ad-device-2b511851
 ---
 
 Capstone of ad-reverse. Build SOFTMAX-ROWS-BWD (autograd.md Worked-example) deriving dx = y*(dy - sum(dy*y)) via reverse pass + simplifier; it must pass BOTH the checker AND the device gradcheck (not merely type-check). Gradient-buffer spans MUST share the primal extent token (mint via MK-SPAN=) so len(dx)=len(y) is proven, not re-asserted at the trusted boundary (autograd.md caveat).
