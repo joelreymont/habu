@@ -1,9 +1,10 @@
 ---
 title: "TFAM 5: event-driven redrive blocked by DISCOVER colon-body blindness"
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-04T10:44:09.593692+02:00"
+created-at: "\"2026-07-04T10:44:09.593692+02:00\""
+closed-at: "2026-07-04T18:44:14.677858+02:00"
 ---
 
 Follow-up to habu-tfam-5-preverify-23fac8cb (support parity done: gap4 all-errors deftype/deflinear/value-record/immediate/EXPORT collection landed in tools/check-all-errors-core.f CA-COLLECT-SUPPORT; gap5 verify-source top-level TRUST+immediate+EXPORT dispatch landed in src/habu/verify-source.f RECORD-DEFINER? via a two-slot skipped-string ring; both red-first tested in tools/check-all-errors-test.f; engine fixpoint proven). REMAINING, NOT LANDED because it regresses master (BLOCKING):
@@ -15,3 +16,5 @@ D4 - '--all-errors --source-list' redrive of ORIGINAL files. Today source-list a
 CROSS-CONSUMER NOTE (merge review): tools/event-closure-lib.f (hb-build cache keys + public-signatures pre-scan, landed with habu-tfam-5-public-3a692040) builds its closure from DISCOVER:RUN and therefore inherits the same colon-body blindness: a loader call guarded inside a colon helper is invisible to the closure, so hb-build keys miss conditional deps (still strictly better than the old entry-only key) and PS pre-scan misses conditionally-opened package scope. Whatever design (a/b/c) resolves D3 must also migrate EC:BUILD so all event-log consumers share one sound closure source.
 
 DESIGN DECIDED (docs/design-tfam-5-redrive.md): static whole-file ordered-event producer (body-scanning lexer, superset-sound via the monotone load-if-absent guard argument) shared by preverify/EC:BUILD/hb-build-keys/public-signatures, plus a fail-closed manifest ONLY for the dynamic tail (run-worker.f path-variable included; driver-io.f loader retirement). Candidates (a)/(b) refuted by probe: undefined words through included/evaluate hard-fault uncatchably, so harvest-on-failure cannot work. NEW GAP the implementation must close: s" require" UNDEFINE-IF-DEFINED (driver-io.f:11-14) is invisible to DISCOVER (colon body) and to reserved-name-lint (which only flags loader-named definitions, not undefines) - the producer must treat loader-word retirement as a fail-closed manifest trigger. Implementation blocked until habu-tfam-5-const-b89c90f0 worker releases check-all-errors-core.f/public-signatures-core.f.
+
+RESOLVED (TFAM 5 redrive, commits 5f47a8f0..2f8e3ff0): tools/source-discovery.f is now the whole-file producer (colon bodies scanned; UNDEFINE-IF-DEFINED retirement rejects E-DISC-RETIRE; dynamic/opener/shadow reject unless the entry is in tools/dynamic-tail-manifest.f, seeded with test/run-worker.f, src/habu/driver-io.f, tools/source-discovery.f). EC:BUILD / hb-build keys / public-signatures pre-scan share it transparently (red-first fixtures: event-closure-test colon-wrapped closure + key-edit sensitivity; public-signatures-test guarded package qualify). D3: check-core CHK-SCAN-DEPS replaced by producer events (CHK-EXPAND-SCAN / CHK-EVENTS>DEPS), widened to include/included/provided; CKT-TEST-CLOSURE-PARITY asserts the producer closure is a superset of the retired require/required scan on every gate entry file. D4: CHK-RUN-ALL source-list mode redrives CHK-DEP-ORDER per ORIGINAL file with CHECK-ALL-ERRORS-SUPPORT+ cross-file replay (red-first: probe showed 1 of 2 bad defs reported, by preverify only; now both report via all-errors against the original path). Event-store peak on a full repo scan: 53 events / 1073 pool bytes vs caps 256 / 32768 - no growth needed. Out-of-scope follow-up tracked by habu-tfam-5-add-7730ca3e (hb-build-lib.f key list).
