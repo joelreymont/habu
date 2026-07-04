@@ -321,6 +321,14 @@ points stay listed.
   transcendental op gradcheck.f gates (d exp/dx = exp(x), non-constant gradient).
 - `tools/ptx/expbwd-cg.f` — checked EXP backward kernel (dx=dz*savedy, the SAVED-Y→real-load
   resolution); gradcheck.f runs it on device and checks its output = the numeric gradient.
+- `tools/zed-run-lib.f` — checked remote device-run harness (`package ZED`): argv-spawned
+  ssh/scp/rsync via lib/process-command.f, private scratch-dir lifecycle, remote command
+  capture (stdout/stderr/rc), failures mapped to named E-ZED-* throw codes, and the HABU_ZED
+  availability/skip policy. No shell scripts, no interpolated remote test input.
+- `tools/zed-run.f` — CLI probe over the harness: joins script argv into one remote command,
+  runs it on the ZED host, echoes captured output, and exits fail-closed on failure.
+- `tools/zed-run-test.f` — checked unit tests (availability policy, command construction,
+  outcome classification) plus HABU_ZED-gated device smokes (`true` rc0, `false` fail-closed).
 - `tools/ptx/redadd-cg.f` — raw-PTX emit driver for a `red.global.add.f32` kernel (each thread
   atomically adds 1.0 to out[0]); the scatter-add primitive reverse-mode fan-in adjoints need.
 - `tools/ptx/redadd-device-test.f` — Orin device proof that `red.global.add.f32` assembles for

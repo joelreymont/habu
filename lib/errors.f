@@ -159,3 +159,15 @@
 -3999 constant E-SUITE-LAST
 -3900 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
 -3901 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword
+
+\ Remote device harness (ssh zed): -4000..-4099
+-4000 constant E-ZED-FIRST
+-4099 constant E-ZED-LAST
+-4000 constant E-ZED-UNREACH     \ ssh could not reach the host (connect/auth)
+-4001 constant E-ZED-RC          \ remote command exited nonzero
+-4002 constant E-ZED-PUT         \ scp/rsync artifact transfer failed
+-4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
+-4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
+-4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
+-4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
+-4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
