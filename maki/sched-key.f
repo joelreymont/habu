@@ -118,7 +118,10 @@ public
 
 \ ---- key field placeholders -------------------------------------------------
 : SK-TARGET$ ( -- ptr u8 n )  s" sm_87" ;         \ single supported target (v1)
-: SK-ENGINE$ ( -- ptr u8 n )  s" engine-unbound" ; \ cad-5 seam: real engine content key
+\ cad-5 evaluated the real engine content key (content-key of bin/hb) and DEFERRED it:
+\ no robust engine self-path + hot-path dep weight; see maki/store-replay.f header +
+\ its capability dot. Honest placeholder until that lands.
+: SK-ENGINE$ ( -- ptr u8 n )  s" engine-unbound" ;
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
 \ representative (output) node of a region - the default-context source (rowlen/dtype)

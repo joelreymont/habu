@@ -108,6 +108,8 @@ TEST:SUITE maki/sched-key-test.f
 TEST:END-SUITE
 TEST:SUITE maki/store-test.f
 TEST:END-SUITE
+TEST:SUITE maki/store-replay-test.f
+TEST:END-SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:END-SUITE
 TEST:SUITE maki/attention-test.f
