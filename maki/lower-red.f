@@ -50,6 +50,7 @@ require maki/op-kind.f
 require maki/op-registry.f
 require maki/model-ir.f
 require maki/fusion-plan.f
+require maki/move-view.f
 require maki/layernorm.f
 require maki/rmsnorm.f
 
@@ -80,11 +81,13 @@ variable LRED-RID                              \ region id being lowered
 \ ---- region membership + class ---------------------------------------------
 : LRED-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
 
-\ class mix must contain the ROW-REDUCE bit and nothing outside {EW, ROW-REDUCE}
+\ class mix must contain the ROW-REDUCE bit and nothing outside {EW, ROW-REDUCE, MOVEMENT};
+\ a dissolved free-movement prologue (maki/move-view.f) folds into the row-span base offset.
 : LRED-CLASS-OK? ( n -- bool ) {: rid:n :}
    rid FP-REGION-CLASSMIX {: mix:n :}
    mix 1 CLASS-ROW-REDUCE lshift and 0= if false exit then
-   mix  1 CLASS-EW lshift  1 CLASS-ROW-REDUCE lshift or  invert and 0= ;
+   mix  1 CLASS-EW lshift  1 CLASS-ROW-REDUCE lshift or  1 CLASS-MOVEMENT lshift or
+      invert and 0= ;
 
 \ ---- supported op sets -----------------------------------------------------
 : LRED-RED-OP? ( n -- bool ) {: op:n :}          \ a supported row reduction
@@ -96,11 +99,16 @@ variable LRED-RID                              \ region id being lowered
 : LRED-RED-COUNT ( n -- n ) {: rid:n :}          \ reduction nodes in the region
    0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-OP@ LRED-RED-OP? and if 1+ then  loop ;
 
+\ compute members must be a reduction or v1 EW op; movement members must be v1-foldable
+\ dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LRED-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
       i rid LRED-IN-REGION? if
-         i MIR-OP@ {: op:n :}
-         op LRED-RED-OP? op LRED-EW-OP? or 0= if E-LRED-OP throw then
+         i MIR-MOVE? if i MVW-CHECK
+         else
+            i MIR-OP@ {: op:n :}
+            op LRED-RED-OP? op LRED-EW-OP? or 0= if E-LRED-OP throw then
+         then
       then
    loop
    rid LRED-RED-COUNT 1 <> if E-LRED-MULTIRED throw then ;
@@ -108,6 +116,7 @@ variable LRED-RID                              \ region id being lowered
 \ ---- external-input collection (first-appearance order, capped) -------------
 : LRED-REF-EXTERNAL? ( n n -- bool ) {: rid:n ref:n :}
    ref MIR-REF-INPUT? if true exit then
+   ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
    ref FP-RID@ rid <> ;
 : LRED-INS-IDX ( n -- n ) {: ref:n :}            \ index in LRED-INS, or -1
    LRED-NIN @ 0 ?do  ref LRED-INS i cells + @ = if i unloop exit then  loop  -1 ;
@@ -120,9 +129,11 @@ variable LRED-RID                              \ region id being lowered
       nd i MIR-IN@ {: ref:n :}
       rid ref LRED-REF-EXTERNAL? if ref LRED-INS-ADD then
    loop ;
+\ only COMPUTE members contribute inputs; a movement member reaches the kernel as the
+\ virtual movement-node input its consumer scans, not as a direct input.
 : LRED-COLLECT-INS ( n -- ) {: rid:n :}
    0 LRED-NIN !
-   MIR-N@ 0 ?do  i rid LRED-IN-REGION? if rid i LRED-SCAN-INS then  loop ;
+   MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MOVE? 0= and if rid i LRED-SCAN-INS then  loop ;
 
 \ ---- single materialized output --------------------------------------------
 : LRED-MAT-COUNT ( n -- n ) {: rid:n :}
@@ -234,8 +245,19 @@ private
       E-LRED-OP throw
    endcase
    nd LRED-NR! ;
-: LRED-CHAIN ( -- )
-   MIR-N@ 0 ?do  i LRED-RID @ LRED-IN-REGION? if i LRED-EMIT-NODE then  loop ;
+: LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)
+   MIR-N@ 0 ?do  i LRED-RID @ LRED-IN-REGION? i MIR-MOVE? 0= and if i LRED-EMIT-NODE then  loop ;
+
+\ fold each dissolved movement input into a base-pointer offset (reshape 0 / slice r0*cols*4):
+\ the generic operand pointer is advanced before EMIT-ROW-SPAN cvta's it, so each block reads
+\ the movement's source row window with no other change (maki/move-view.f).
+: LRED-APPLY-VIEWS ( -- )
+   LRED-NIN @ 0 ?do
+      LRED-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
+      off 0 > if
+         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+      then
+   loop ;
 
 \ ---- entry / regs / params scaffolding (K inputs + output + k) --------------
 : LRED-KNAME ( -- )  s" REGION_" CG-S LRED-RID @ SB-U ;
@@ -283,6 +305,7 @@ public
    LRED-BLOCK %BLOCK                             \ block-per-row reduction schedule (matches launch)
    PTX-MODULE{
       LRED-ENTRY  LRED-OPEN  LRED-PARAMS  LRED-RESET-REGS
+      LRED-APPLY-VIEWS
       LRED-BODY
       s" ret;" PTX-L
       s" }" PTX-L

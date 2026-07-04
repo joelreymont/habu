@@ -55,6 +55,7 @@ require maki/op-kind.f
 require maki/op-registry.f
 require maki/model-ir.f
 require maki/fusion-plan.f
+require maki/move-view.f
 
 -5193 constant E-LMM-NOTMM     \ region class mix is not a supported matmul region
 -5194 constant E-LMM-OP        \ a region op is neither the contraction nor a v1 unary EW epilogue
@@ -85,11 +86,13 @@ variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 \ ---- region membership + class ---------------------------------------------
 : LMM-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
 
-\ class mix must contain the MATMUL bit and nothing outside {EW, MATMUL}
+\ class mix must contain the MATMUL bit and nothing outside {EW, MATMUL, MOVEMENT};
+\ a dissolved free-movement operand (maki/move-view.f) folds into the K-loop's A base offset.
 : LMM-CLASS-OK? ( n -- bool ) {: rid:n :}
    rid FP-REGION-CLASSMIX {: mix:n :}
    mix 1 CLASS-MATMUL lshift and 0= if false exit then
-   mix  1 CLASS-EW lshift  1 CLASS-MATMUL lshift or  invert and 0= ;
+   mix  1 CLASS-EW lshift  1 CLASS-MATMUL lshift or  1 CLASS-MOVEMENT lshift or
+      invert and 0= ;
 
 \ ---- supported op sets -----------------------------------------------------
 : LMM-MM-OP?  ( n -- bool ) {: op:n :}  op OP-MATMUL = op OP-LINEAR = or ;      \ the contraction
@@ -98,11 +101,16 @@ variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 : LMM-MM-COUNT ( n -- n ) {: rid:n :}          \ contraction nodes in the region
    0 MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-OP@ LMM-MM-OP? and if 1+ then  loop ;
 
+\ compute members must be the contraction or a v1 unary EW epilogue; movement members must
+\ be v1-foldable dissolved movements (MVW-CHECK fails closed on staged / mat / non-slot source).
 : LMM-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
       i rid LMM-IN-REGION? if
-         i MIR-OP@ {: op:n :}
-         op LMM-MM-OP? op LMM-EPI-OP? or 0= if E-LMM-OP throw then
+         i MIR-MOVE? if i MVW-CHECK
+         else
+            i MIR-OP@ {: op:n :}
+            op LMM-MM-OP? op LMM-EPI-OP? or 0= if E-LMM-OP throw then
+         then
       then
    loop
    rid LMM-MM-COUNT 1 <> if E-LMM-MULTIMM throw then ;
@@ -114,12 +122,15 @@ variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 \ ---- prologue guard: the contraction's operands must all be external ---------
 \ An EW region-member whose output is a contraction operand is a fused PROLOGUE; the
 \ epilogue-only v1 kernel cannot pre-transform A/B/bias, so such a region fails closed.
+\ A dissolved FREE movement operand folds into the A-base K-loop offset (maki/move-view.f);
+\ a NON-movement interior producer is a compute prologue the epilogue-only v1 kernel cannot run.
 : LMM-CHECK-PROLOGUE ( -- )
    LMM-MMNODE @ {: mm:n :}  LMM-RID @ {: rid:n :}
    mm MIR-IN-COUNT@ 0 ?do
       mm i MIR-IN@ {: ref:n :}
       ref MIR-REF-INPUT? 0= if
-         ref FP-RID@ rid = if E-LMM-PROLOGUE throw then     \ region-interior producer -> prologue
+         ref MVW-DISSOLVED? if ref MVW-CHECK            \ folded free-movement operand: allowed
+         else ref FP-RID@ rid = if E-LMM-PROLOGUE throw then then
       then
    loop ;
 
@@ -215,9 +226,20 @@ private
       E-LMM-OP throw
    endcase
    nd LMM-NR! ;
-: LMM-EPI-CHAIN ( -- )                           \ apply epilogue nodes in topo (index) order
+: LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)
    MIR-N@ 0 ?do
-      i LMM-RID @ LMM-IN-REGION?  i LMM-MMNODE @ <>  and if i LMM-EPI-NODE then
+      i LMM-RID @ LMM-IN-REGION?  i LMM-MMNODE @ <>  and  i MIR-MOVE? 0= and if i LMM-EPI-NODE then
+   loop ;
+
+\ fold each dissolved free-movement contraction operand into a base-pointer offset (reshape 0 /
+\ slice r0*K*4): the operand's global pointer is advanced after LMM-PARAMS cvta's it, so the
+\ K-loop reads the movement's source window with no other change (maki/move-view.f).
+: LMM-APPLY-VIEWS ( -- )
+   LMM-NIN @ 0 ?do
+      LMM-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
+      off 0 > if
+         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+      then
    loop ;
 
 \ ---- entry / regs / params (K inputs + output + M,N,K) ----------------------
@@ -313,7 +335,7 @@ public
 : LMM-EMIT ( n -- )
    LMM-ANALYZE
    PTX-MODULE{
-      LMM-ENTRY  LMM-OPEN  LMM-PARAMS
+      LMM-ENTRY  LMM-OPEN  LMM-PARAMS  LMM-APPLY-VIEWS
       LMM-BODY
       s" DONE:" PTX-L
       s" ret;" PTX-L

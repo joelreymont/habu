@@ -38,6 +38,7 @@ require maki/op-kind.f
 require maki/op-registry.f
 require maki/model-ir.f
 require maki/fusion-plan.f
+require maki/move-view.f
 
 -5170 constant E-LEW-NOTEW    \ region class is not pure elementwise
 -5171 constant E-LEW-OP       \ op in the region chain is not a v1-supported elementwise op
@@ -62,16 +63,24 @@ variable LEW-RID                            \ region id being lowered
 
 \ ---- region membership + class ---------------------------------------------
 : LEW-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;        \ node rid -- in-region?
-: LEW-EW-ONLY? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-EW lshift  = ;
+\ class mix must contain the EW bit and nothing outside {EW, MOVEMENT}: a dissolved
+\ free-movement prologue (maki/move-view.f) folds into the flat kernel's load offset.
+: LEW-EW-ONLY? ( n -- bool ) {: rid:n :}
+   rid FP-REGION-CLASSMIX {: mix:n :}
+   mix 1 CLASS-EW lshift and 0= if false exit then
+   mix  1 CLASS-EW lshift  1 CLASS-MOVEMENT lshift or  invert and 0= ;
 
 \ ---- supported op set (v1 elementwise chain) -------------------------------
 : LEW-OP-OK? ( n -- bool ) {: op:n :}
    op OP-RELU = op OP-GELU = or op OP-SILU = or
    op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or ;
+\ compute members must be v1 EW ops; movement members must be v1-foldable dissolved
+\ movements (MVW-CHECK fails closed on staged / mat / non-slot source before any emit).
 : LEW-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
       i rid LEW-IN-REGION? if
-         i MIR-OP@ LEW-OP-OK? 0= if E-LEW-OP throw then
+         i MIR-MOVE? if i MVW-CHECK
+         else i MIR-OP@ LEW-OP-OK? 0= if E-LEW-OP throw then then
       then
    loop ;
 
@@ -81,6 +90,7 @@ variable LEW-RID                            \ region id being lowered
 \ producers are register values, never kernel inputs.
 : LEW-REF-EXTERNAL? ( n n -- bool ) {: rid:n ref:n :}
    ref MIR-REF-INPUT? if true exit then
+   ref MVW-DISSOLVED? if true exit then       \ a folded movement node is a virtual input
    ref FP-RID@ rid <> ;
 : LEW-INS-IDX ( n -- n ) {: ref:n :}           \ index in LEW-INS, or -1
    LEW-NIN @ 0 ?do  ref LEW-INS i cells + @ = if i unloop exit then  loop  -1 ;
@@ -93,9 +103,11 @@ variable LEW-RID                            \ region id being lowered
       nd i MIR-IN@ {: ref:n :}
       rid ref LEW-REF-EXTERNAL? if ref LEW-INS-ADD then
    loop ;
+\ only COMPUTE members contribute inputs; a movement member's source reaches the kernel
+\ as the virtual movement-node input its consumer scans, not as a direct input.
 : LEW-COLLECT-INS ( n -- ) {: rid:n :}
    0 LEW-NIN !
-   MIR-N@ 0 ?do  i rid LEW-IN-REGION? if rid i LEW-SCAN-INS then  loop ;
+   MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MOVE? 0= and if rid i LEW-SCAN-INS then  loop ;
 
 \ ---- single materialized output --------------------------------------------
 : LEW-MAT-COUNT ( n -- n ) {: rid:n :}
@@ -188,8 +200,19 @@ private
       E-LEW-OP throw
    endcase
    nd LEW-NR! ;
-: LEW-CHAIN ( -- )
-   MIR-N@ 0 ?do  i LEW-RID @ LEW-IN-REGION? if i LEW-EMIT-NODE then  loop ;
+: LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
+   MIR-N@ 0 ?do  i LEW-RID @ LEW-IN-REGION? i MIR-MOVE? 0= and if i LEW-EMIT-NODE then  loop ;
+
+\ fold each dissolved movement input into a base-pointer offset (reshape 0 / slice r0*cols*4):
+\ the generic operand pointer is advanced before EMIT-LOAD cvta's it, so the flat kernel's
+\ load index reads the movement's source window with no other change (maki/move-view.f).
+: LEW-APPLY-VIEWS ( -- )
+   LEW-NIN @ 0 ?do
+      LEW-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
+      off 0 > if
+         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+      then
+   loop ;
 : LEW-BODY ( -- )
    1 EMIT-GRID-CTX {: off:n :}                    \ span base ignored; off = index*4, bounds vs %r1
    off LEW-LOADS
@@ -203,6 +226,7 @@ public
    LEW-ANALYZE
    PTX-MODULE{
       LEW-ENTRY  LEW-OPEN  LEW-PARAMS  LEW-RESET-REGS
+      LEW-APPLY-VIEWS
       LEW-BODY
       CG-RET  CG-CLOSE
    }PTX-MODULE ;
