@@ -143,3 +143,12 @@
 -3700 constant E-OBJ-SCHEMA
 -3701 constant E-OBJ-CAPACITY
 -3702 constant E-OBJ-FIELD
+
+\ Source-composition discovery: -3800..-3899
+-3800 constant E-DISC-FIRST
+-3899 constant E-DISC-LAST
+-3800 constant E-DISC-SHADOW
+-3801 constant E-DISC-DYNAMIC
+-3802 constant E-DISC-OPENER
+-3803 constant E-DISC-UNTERM
+-3804 constant E-DISC-CAPACITY

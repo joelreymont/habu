@@ -44,7 +44,7 @@ points stay listed.
 - `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
-- `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state for the discovery pass.
+- `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
 - `src/core/structures-effects.f` — checker effect rows for the early structure defining words.
 - `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
@@ -286,6 +286,8 @@ points stay listed.
 - `tools/imagedisasm.f` — native raw image slice disassembler.
 - `tools/imagedisasm-test.f` — checked fixture coverage for raw image disassembly.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
+- `tools/source-discovery.f` — restricted source-composition discovery pass that replays a file's loader/definition-header forms against a fresh require registry and emits the ordered event artifact.
+- `tools/source-discovery-test.f` — checked fixtures for the restricted discovery pass (ordering, multiplicity, dedup, fresh registry, shared emitter, fail-closed rejection).
 - `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,

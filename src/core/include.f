@@ -29,6 +29,9 @@ variable INCLUDE-PATH-A
 variable INCLUDE-PATH-U
 variable INCLUDE-PATH-I
 variable REQUIRE-N
+variable REQUIRE-BASE
+variable REQUIRE-SAVE-N
+variable REQUIRE-SAVE-BASE
 
 -1 INCLUDE-FD !
 
@@ -91,7 +94,7 @@ TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
    repeat drop INCLUDE-TRUE ;
 
 : REQUIRE-KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup REQUIRE-N @ < while
+   REQUIRE-BASE @ begin dup REQUIRE-N @ < while
       dup a u rot REQUIRE-PATH= if drop INCLUDE-TRUE exit then
       1+
    repeat drop INCLUDE-FALSE ;
@@ -305,10 +308,31 @@ immediate
    parse-name INCLUDE-CHECK-PATH required ;
 immediate
 
+\ ---- Fresh discovery registry (TFAM 5, item 5) --------------------------
+\ A restricted discovery pass must see a fresh require/provided registry so a
+\ tool's own preloaded paths cannot dedup-hide a later user require/provided.
+\ Raising REQUIRE-BASE to the current count makes REQUIRE-KNOWN? ignore the
+\ tool's entries while discovery records into slots above the base; RESTORE
+\ drops the discovery entries and reinstates the tool's registry unchanged, so
+\ warm-snapshot serialization of the registry stays intact.
+
+: REQUIRE-SNAPSHOT ( -- )
+   REQUIRE-N @ REQUIRE-SAVE-N !
+   REQUIRE-BASE @ REQUIRE-SAVE-BASE !
+   REQUIRE-N @ REQUIRE-BASE ! ;
+
+: REQUIRE-RESTORE ( -- )
+   REQUIRE-SAVE-BASE @ REQUIRE-BASE !
+   REQUIRE-SAVE-N @ REQUIRE-N ! ;
+
 : INCLUDE-SNAPSHOT-PREPARE ( -- )
    INCLUDE-CLOSE
    0 INCLUDE-BUFS-A !
    0 INCLUDE-DEPTH !
    0 INCLUDE-U !
    0 INCLUDE-RD !
-   0 INCLUDE-PATH-U ! ;
+   0 INCLUDE-PATH-U !
+   0 REQUIRE-BASE !
+   EVENT-OFF
+   DISCOVERY-OFF
+   EVENTS-RESET ;
