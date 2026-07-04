@@ -59,10 +59,10 @@ variable TDM-SCH    variable TDM-ROOT
    TDK-A @ TDK-U @  TDN-A @ TDN-U @  TDT-A @ TDT-U @  TDW-A @ TDW-U @
    TDECL-DIAG ;
 
-\ TDECL-RUN ( xt -- ) : run one declaration body transactionally. On any throw
-\ the registries roll back and the failure is reported; a multi-error load
-\ counts the reject and continues, otherwise the named code propagates.
-: TDECL-RUN ( n -- )
+\ TDECL-RUN ( [ -- ] -- ) : run one declaration body quotation transactionally. On
+\ any throw the registries roll back and the failure is reported; a multi-error
+\ load counts the reject and continues, otherwise the named code propagates.
+: TDECL-RUN ( [ -- ] -- )
    TDECL-MARK
    catch {: rc:n :}
    rc 0= IF EXIT THEN
@@ -275,7 +275,7 @@ variable TDV-NA    variable TDV-NU
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
    s" sumtype" na nu ba bu TDECL-CTX!
-   ['] CHECKER-DEFSUM-BODY TDECL-RUN ;
+   [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
@@ -285,7 +285,7 @@ variable TDV-NA    variable TDV-NU
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- )   \ name, arity token
    {: na:ptr nu:n aa:ptr au:n :}
    s" typefamily" na nu aa au TDECL-CTX!
-   ['] CHECKER-DEFFAMILY-BODY TDECL-RUN ;
+   [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
@@ -329,6 +329,6 @@ variable TDECL-I
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
       s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-      ['] TDECL-NOEND-BODY TDECL-RUN EXIT
+      [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM ;
