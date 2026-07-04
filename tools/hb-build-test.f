@@ -584,9 +584,24 @@ create HBT-KEY-B 64 allot
    7 HBB-MAKER-DIE$ s" hb-build: native maker build failed, rc 7" T$=
    75 HBB-MAKER-DIE$ s" rc 75" CONTAINS? TTRUE ;
 
+\ tools/dynamic-tail-manifest.f is a behaviour-bearing dependency of the
+\ discovery producer (tools/source-discovery.f requires it, and its rows steer
+\ closure computation), so its content must fold into the maker cache key. The
+\ key preimage records each tool source through CK-FILE+, which appends the path
+\ fragment and then the file's content digest with no earlier return, so the
+\ presence of the manifest path in CK-BUF proves its content participates in the
+\ key. If the manifest is missing from HBB-KEY-LOAD-FILES a manifest edit
+\ silently reuses a stale hb-build maker artifact.
+: HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
+   CK-CACHE-CLEAR!
+   CK-RESET
+   HBB-KEY-LOAD-FILES
+   CK-BUF CK-U @ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE ;
+
 : HBT-MAIN ( -- )
    T-RESET
    HBT-MAKER-DIE-MSG
+   HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    HBT-BUILD-REPL
    HBT-REBUILD-REPL-CACHE

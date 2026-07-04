@@ -450,6 +450,7 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/stdin-closure-lib.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/object-image.f" HBB-KEY-FILE+
+   s" tools/dynamic-tail-manifest.f" HBB-KEY-FILE+
    s" tools/source-discovery.f" HBB-KEY-FILE+
    s" tools/event-closure-lib.f" HBB-KEY-FILE+
    s" tools/hb-build-lib.f" HBB-KEY-FILE+ ;
