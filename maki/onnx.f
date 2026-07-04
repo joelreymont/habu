@@ -13,6 +13,7 @@
 \ reaches it via the package's global-fallback lookup.
 
 require lib/string.f
+require maki/op-kind.f
 
 -5001 constant E-MK-ONNX   \ unsupported ONNX op (fail-closed import)
 
@@ -27,5 +28,15 @@ public
    2dup s" Softmax" STR= if 2drop s" SOFTMAX-ROWS" exit then
    2dup s" Gemm"    STR= if 2drop s" SAXPY"        exit then   \ affine y = a*x + b
    E-MK-ONNX throw ;
+
+\ Movement ONNX ops carry no kernel; they lower to a maki movement op-kind
+\ (the IR layout FACT the planner reasons over). Fail closed on any other op.
+: ONNX-MOVE-KIND ( ptr u8 n -- n )
+   2dup s" Reshape"   STR= if 2drop OP-RESHAPE   exit then
+   2dup s" Transpose" STR= if 2drop OP-TRANSPOSE exit then
+   2dup s" Slice"     STR= if 2drop OP-SLICE     exit then
+   2dup s" Concat"    STR= if 2drop OP-CONCAT    exit then
+   2dup s" Gather"    STR= if 2drop OP-GATHER    exit then
+   2drop E-MK-ONNX throw ;
 
 end-package

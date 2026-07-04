@@ -21,6 +21,19 @@ s" Gemm"    ONNX-LOWER s" SAXPY"        STR= TTRUE
 : BAD-ONNX ( -- )  s" Conv" ONNX-LOWER 2drop ;
 ' BAD-ONNX E-MK-ONNX TTHROWS
 
+\ movement ops lower to their maki op-kind FACT (no kernel entry)
+s" Reshape"   ONNX-MOVE-KIND OP-RESHAPE   T=
+s" Transpose" ONNX-MOVE-KIND OP-TRANSPOSE T=
+s" Slice"     ONNX-MOVE-KIND OP-SLICE     T=
+s" Concat"    ONNX-MOVE-KIND OP-CONCAT    T=
+s" Gather"    ONNX-MOVE-KIND OP-GATHER    T=
+
+\ a non-movement / unknown op is rejected by the movement lowering too
+: BAD-MOVE ( -- )  s" Add"  ONNX-MOVE-KIND drop ;
+: BAD-MOVE2 ( -- ) s" Conv" ONNX-MOVE-KIND drop ;
+' BAD-MOVE  E-MK-ONNX TTHROWS
+' BAD-MOVE2 E-MK-ONNX TTHROWS
+
 T-REPORT
 
 end-package

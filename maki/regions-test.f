@@ -42,6 +42,12 @@ RGN-COUNT     1 T=
 0 RGN-END@    1 T=
 0 RGN-LEN@    2 T=
 
+\ ---- a movement node BREAKS an elementwise chain ---------------------------
+\ GELU (node0) RESHAPE (node1, movement) RELU (node2): no chain spans the break.
+MODEL: MVB ( x:4x8 -- y ) GELU RESHAPE:8x4 RELU ;
+RGN-BUILD
+RGN-COUNT 0 T=
+
 \ ---- single-use gate: a multi-use producer blocks the chain ----------------
 \ node0 = GELU(i0) ; node1 = ADD(n0, n0) -> n0 used twice -> not single-use.
 MIR-RESET

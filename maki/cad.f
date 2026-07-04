@@ -27,6 +27,7 @@ require lib/string.f
 require maki/report.f
 require maki/op-kind.f
 require maki/op-registry.f
+require maki/move-facts.f
 require maki/tensor-value.f
 require maki/plan-ops.f
 require maki/model-ir.f
@@ -71,6 +72,11 @@ public
    2dup s" RESIDUAL-ADD" STR= if 2drop OP-RESIDUAL-ADD exit then
    2dup s" CAST"         STR= if 2drop OP-CAST         exit then
    2dup s" ROPE"         STR= if 2drop OP-ROPE         exit then
+   2dup s" RESHAPE"      STR= if 2drop OP-RESHAPE      exit then
+   2dup s" TRANSPOSE"    STR= if 2drop OP-TRANSPOSE    exit then
+   2dup s" SLICE"        STR= if 2drop OP-SLICE        exit then
+   2dup s" CONCAT"       STR= if 2drop OP-CONCAT       exit then
+   2dup s" GATHER"       STR= if 2drop OP-GATHER       exit then
    2drop E-CAD-OP throw ;
 
 private
@@ -121,16 +127,43 @@ private
    then then then
    ar 1- CAP-IP @ + CAP-IP ! ;
 
+\ ---- movement capture (layout rewrites; scalar params come from the token) ---
+\ arity-1 rewrites consume only the running value; concat/gather also consume one
+\ declared input as their second operand (like other binary ops).
+: CAP-TRANSPOSE ( -- )
+   0 CAP-NEED  CAP-CUR@ PLAN-TRANSPOSE CAP-CUR! ;
+
+: CAP-RESHAPE ( n n -- ) {: tr:n tc:n :}
+   0 CAP-NEED  CAP-CUR@ tr tc PLAN-RESHAPE CAP-CUR! ;
+
+: CAP-SLICE ( n n -- ) {: r0:n r1:n :}
+   0 CAP-NEED  CAP-CUR@ r0 r1 PLAN-SLICE CAP-CUR! ;
+
+: CAP-CONCAT ( -- )
+   1 CAP-NEED  CAP-CUR@ CAP-P1 PLAN-CONCAT CAP-CUR!  CAP-IP @ 1+ CAP-IP ! ;
+
+: CAP-GATHER ( -- )
+   1 CAP-NEED  CAP-CUR@ CAP-P1 PLAN-GATHER CAP-CUR!  CAP-IP @ 1+ CAP-IP ! ;
+
 \ ---- bridge the captured plan into the model-IR node table -----------------
 : PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
    tensor>N {: h:n :}
    h CAP-IN-N @ < if h MIR-IN-REF else h CAP-IN-N @ - then ;
 
+\ movement nodes materialize only on a materialize/gathered verdict; compute nodes
+\ stay materialized (the conservative cad-1 default until the fusion planner lands).
+: BRIDGE-MAT ( n n -- n ) {: op:n attr:n :}     \ op-kind attr -> materialization flag
+   op OPR-CLASS CLASS-MOVEMENT = if
+      attr MV-VD@ MV-VD-REPORTS? if 1 else 0 then
+   else 1 then ;
+
 : BRIDGE-NODE ( n -- ) {: j:n :}
-   j PLAN-OP@ MIR-OP-BEGIN
+   j PLAN-OP@ {: op:n :}
+   op MIR-OP-BEGIN
    j PLAN-IN-COUNT@ 0 ?do  j i PLAN-IN@ PLAN-REF MIR-IN+  loop
    j PLAN-OUT@ {: y:tensor :}
-   y TV-ROWS@ y TV-COLS@ y TV-DTYPE@ y TV-LAYOUT@  0 1  MIR-OP+ drop ;
+   j PLAN-ATTR@ {: attr:n :}
+   y TV-ROWS@ y TV-COLS@ y TV-DTYPE@ y TV-LAYOUT@  attr  op attr BRIDGE-MAT  MIR-OP+ drop ;
 
 : BRIDGE-PLAN ( -- )  PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
@@ -167,11 +200,41 @@ private
       PARSE-SHAPE CAP-INPUT
    again ;
 
+: PARSE-RANGE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "R0..R1" -> r0 r1
+   a u $2E INDEX-OF {: di:n :}                       \ first '.'
+   di 0< di 1+ u >= or if E-CAD-SYNTAX throw then
+   a di 1+ + c@ $2E <> if E-CAD-SYNTAX throw then     \ require the second '.'
+   a di            PARSE-INT                          \ r0
+   a di 2 + +  u di 2 + -  PARSE-INT ;                \ r1
+
+\ movement token carrying colon params: RESHAPE:RxC | SLICE:R0..R1
+: CAP-MOVE-PARAM ( n ptr u8 n -- ) {: op:n a:ptr u:n :}
+   op OP-RESHAPE = if a u PARSE-SHAPE CAP-RESHAPE exit then
+   op OP-SLICE   = if a u PARSE-RANGE CAP-SLICE   exit then
+   E-CAD-SYNTAX throw ;                               \ others take no colon params
+
+\ param-less movement token: TRANSPOSE | CONCAT | GATHER
+: CAP-MOVE0 ( n -- ) {: op:n :}
+   op OP-TRANSPOSE = if CAP-TRANSPOSE exit then
+   op OP-CONCAT    = if CAP-CONCAT    exit then
+   op OP-GATHER    = if CAP-GATHER    exit then
+   E-CAD-SYNTAX throw ;                               \ reshape/slice require params
+
+\ one body token: compute op, param-less movement, or "MOVE:params"
+: CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u $3A INDEX-OF {: ci:n :}
+   ci 0< if
+      a u OP-KIND {: op:n :}
+      op OPR-CLASS CLASS-MOVEMENT = if op CAP-MOVE0 else op CAP-OP then
+      exit
+   then
+   a ci OP-KIND  a ci 1+ +  u ci 1+ -  CAP-MOVE-PARAM ;
+
 : PARSE-BODY ( -- )                             \ op tokens up to ';'
    begin
       parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
       2dup s" ;" STR= if 2drop CAP-END exit then
-      OP-KIND CAP-OP
+      CAP-TOKEN
    again ;
 
 public
@@ -214,8 +277,26 @@ private
    s" fusion: no planner yet; one region per node (cad-2)" RPT-SPLIT+
    s" fusion: no regions merged this phase" RPT-WARN+ ;
 
+\ ---- movement materialization rows (MEMORY reads the IR facts) --------------
+: MOVE-WARN$ ( n -- ptr u8 n ) {: node:n :}     \ one movement node's traffic-cost row
+   SB-RESET
+   s" memory.move: node " SB-APPEND  node SB-INT
+   $20 SB-APPEND-C  node MIR-OP@ OPR-NAME SB-APPEND
+   s"  verdict=" SB-APPEND  node MIR-MOVE-VERDICT@ MV-VD-NAME SB-APPEND
+   s"  reason="  SB-APPEND  node MIR-OP@ MV-REASON$ SB-APPEND
+   SB$ ;
+
+: MEM-MOVE-ROW+ ( report n -- report ) {: node:n :}
+   node MIR-MOVE? 0= if exit then                          \ compute nodes carry no row
+   node MIR-MOVE-VERDICT@ MV-VD-REPORTS? 0= if exit then   \ free/staged: no traffic cost
+   node MOVE-WARN$ RPT-WARN+ ;
+
+: MEM-MOVE-ROWS ( report -- report )
+   MIR-N@ 0 ?do  i MEM-MOVE-ROW+  loop ;
+
 : MEMORY-INTO ( report -- report )
-   s" memory: byte + coalescing estimates need shapes bound (cad-3)" RPT-WARN+ ;
+   s" memory: byte + coalescing estimates need shapes bound (cad-3)" RPT-WARN+
+   MEM-MOVE-ROWS ;
 
 : TILE-INTO ( report -- report )
    s" host-reference-v0" RPT-CAND+  0 RPT-SELECT!

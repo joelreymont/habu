@@ -175,12 +175,14 @@ create P-KIND  PLAN-CAP cells allot     \ op-kind (OP-*)
 create P-OUT   PLAN-CAP cells allot     \ output tensor
 create P-INOFF PLAN-CAP cells allot     \ input window start in P-INS
 create P-INCNT PLAN-CAP cells allot     \ input window length
+create P-ATTR  PLAN-CAP cells allot     \ movement attrs (packed; 0 for compute ops)
 variable P-N                            \ committed op count
 create P-INS   PLAN-INCAP cells allot   \ flat input-tensor pool
 variable P-INS-U
 variable PEND-KIND                      \ pending record staging
 variable PEND-OFF
 variable PEND-CNT
+variable PEND-ATTR                       \ pending attrs (0 unless a movement appender sets it)
 variable PEND-ON                        \ 1 while a record is being staged
 
 : PLAN-IX ( n -- n ) {: idx:n :}               \ validate a committed-op index
@@ -197,7 +199,7 @@ public
 : PLAN-OP-BEGIN ( n -- ) {: k:n :}             \ open a record with op-kind k
    PEND-ON @ if E-TV-PLAN-STATE throw then
    k 0 < k OP-N >= or if E-TV-OPKIND throw then
-   k PEND-KIND !  P-INS-U @ PEND-OFF !  0 PEND-CNT !  1 PEND-ON ! ;
+   k PEND-KIND !  P-INS-U @ PEND-OFF !  0 PEND-CNT !  0 PEND-ATTR !  1 PEND-ON ! ;
 
 : PLAN-IN+ ( tensor -- ) {: t:tensor :}        \ stage one input for the open record
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
@@ -205,6 +207,10 @@ public
    t P-INS P-INS-U @ cells + !
    P-INS-U @ 1+ P-INS-U !
    PEND-CNT @ 1+ PEND-CNT ! ;
+
+: PLAN-ATTR! ( n -- ) {: attr:n :}             \ stage the movement attrs for the open record
+   PEND-ON @ 0= if E-TV-PLAN-STATE throw then
+   attr PEND-ATTR ! ;
 
 : PLAN-OP+ ( tensor -- ) {: out:tensor :}      \ commit the open record with its output
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
@@ -214,11 +220,13 @@ public
    out          P-OUT   idx cells + !
    PEND-OFF @   P-INOFF idx cells + !
    PEND-CNT @   P-INCNT idx cells + !
+   PEND-ATTR @  P-ATTR  idx cells + !
    idx 1+ P-N !
    0 PEND-ON ! ;
 
 : PLAN-OP@ ( n -- n )        PLAN-IX cells P-KIND  + @ ;
 : PLAN-OUT@ ( n -- tensor )  PLAN-IX cells P-OUT   + @ ;
+: PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR  + @ ;
 : PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT + @ ;
 
 : PLAN-IN@ ( n n -- tensor ) {: idx:n k:n :}   \ k-th input tensor of op idx

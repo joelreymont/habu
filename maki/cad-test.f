@@ -148,6 +148,56 @@ s" packet.golden: class=not-run"   CT-IN
 s" repair=run-device-gradcheck"    CT-IN
 s" repro=model:FFN"                CT-IN
 
+\ ---- movement ops: capture grammar, IR facts, verdicts, MEMORY rows ---------
+\ concat materializes (v1); an aligned row-slice dissolves (free) - no traffic.
+MODEL: MCAT ( x:2x4 b:2x4 -- y ) CONCAT SLICE:0..2 ;
+MODEL-K 2 T=
+MIR-RENDER CT-SAVE
+s" node.0.op: concat"            CT-IN
+s" node.0.shape: 4x4"           CT-IN
+s" node.0.verdict: materialize" CT-IN
+s" node.1.op: slice"            CT-IN
+s" node.1.shape: 2x4"           CT-IN
+s" node.1.verdict: free"        CT-IN
+\ MEMORY flags the concat's materialization, not the free slice
+MEMORY RPT-RENDER CT-SAVE
+s" memory.move: node 0 concat verdict=materialize" CT-IN
+s" memory.move: node 1"                            CT-NOTIN
+
+\ transpose dissolves inside a staged region; gather is prologue-only (gathered).
+MODEL: MGAT ( x:4x8 idx:3x1 -- y ) TRANSPOSE GATHER ;
+MODEL-K 2 T=
+MIR-RENDER CT-SAVE
+s" node.0.op: transpose"        CT-IN
+s" node.0.shape: 8x4"           CT-IN
+s" node.0.verdict: staged"      CT-IN
+s" node.1.op: gather"           CT-IN
+s" node.1.shape: 3x4"           CT-IN
+s" node.1.verdict: gathered"    CT-IN
+\ MEMORY flags the gathered read, not the staged transpose
+MEMORY RPT-RENDER CT-SAVE
+s" memory.move: node 1 gather verdict=gathered" CT-IN
+s" memory.move: node 0"                         CT-NOTIN
+
+\ contiguous reshape dissolves to free (no materialization row)
+MODEL: MRE ( x:4x8 -- y ) RESHAPE:8x4 ;
+MODEL-K 1 T=
+MIR-RENDER CT-SAVE
+s" node.0.op: reshape"          CT-IN
+s" node.0.shape: 8x4"           CT-IN
+s" node.0.verdict: free"        CT-IN
+MEMORY RPT-RENDER CT-SAVE
+s" memory.move:"                CT-NOTIN
+
+\ ---- movement fail-closed paths --------------------------------------------
+: TRY-MV-RANGE   ( -- )  s" 12" PARSE-RANGE 2drop ;          \ no ".." separator
+: TRY-MV-NOPARAM ( -- )  OP-RESHAPE CAP-MOVE0 ;              \ reshape needs params
+: TRY-MV-RESHAPE ( -- )                                       \ element count mismatch
+   TV-RESET PLAN-RESET  2 3 DT-F32 LAY-ROW TV-DESC 2 2 PLAN-RESHAPE drop ;
+' TRY-MV-RANGE   E-CAD-SYNTAX TTHROWS
+' TRY-MV-NOPARAM E-CAD-SYNTAX TTHROWS
+' TRY-MV-RESHAPE E-TV-SHAPE   TTHROWS
+
 T-REPORT
 
 end-package
