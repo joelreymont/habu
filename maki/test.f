@@ -54,6 +54,8 @@ TEST:SUITE maki/array-test.f
 TEST:END-SUITE
 TEST:SUITE maki/tensor-test.f
 TEST:END-SUITE
+TEST:SUITE maki/tensor-value-test.f
+TEST:END-SUITE
 TEST:SUITE maki/optim-test.f
 TEST:END-SUITE
 TEST:SUITE maki/optim-tensor-test.f

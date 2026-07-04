@@ -23,6 +23,7 @@
 
 require lib/string.f
 require maki/report.f
+require maki/op-kind.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: composition
@@ -30,25 +31,9 @@ require maki/report.f
 -5023 constant E-CAD-GATE      \ PROMOTE refused: required gates did not pass
 -5024 constant E-CAD-SYNTAX    \ malformed MODEL: (unterminated / over-long)
 
+\ Phase-1 op set now lives in maki/op-kind.f (the shared op registry).
+
 package MAKI
-public
-
-\ ---- Phase-1 op set (docs/model-cad.md) ------------------------------------
-0  constant OP-ADD
-1  constant OP-MUL
-2  constant OP-SCALE
-3  constant OP-BIAS
-4  constant OP-RELU
-5  constant OP-GELU
-6  constant OP-LAYERNORM
-7  constant OP-RMSNORM
-8  constant OP-SOFTMAX-ROW
-9  constant OP-MATMUL
-10 constant OP-LINEAR
-11 constant OP-RESIDUAL-ADD
-12 constant OP-CAST
-13 constant OP-N
-
 private
 
 64 constant MODEL-NAME-CAP
