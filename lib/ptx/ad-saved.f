@@ -21,6 +21,11 @@ TRUSTED: SAVED-X ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;
 TRUSTED: SAVED-Y ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;
 TRUSTED: SAVED-Z ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;
 
-\ saved block-uniform scalars (BLOCK-MAX's max; B/'s divisor)
+\ saved block-uniform scalars (BLOCK-MAX's max; B/'s divisor; SCALE/FMA.'s factor)
 TRUSTED: SAVED-MX ( -- uniform<f32> )  E-PTX-NOIMPL throw ;
 TRUSTED: SAVED-S  ( -- uniform<f32> )  E-PTX-NOIMPL throw ;
+TRUSTED: SAVED-A  ( -- uniform<f32> )  E-PTX-NOIMPL throw ;
+
+\ DROP's adjoint: a zero of the dropped value's type (docs/autograd.md table).
+\ Tile-flavored default; type-directed uniform zero is reverse-pass work.
+TRUSTED: ZERO. ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;

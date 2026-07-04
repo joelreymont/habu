@@ -242,6 +242,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-saved-test.f
+   src/arch/ptx/vjp-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-tile-loop-neg

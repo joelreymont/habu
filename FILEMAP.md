@@ -180,6 +180,10 @@ points stay listed.
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
   toolchain spike.
+- `src/arch/ptx/vjp.f` / `src/arch/ptx/vjp-test.f` — the `VJP:` paired-word
+  table for the M6 forward primitives (adjoint expansion + saves count per
+  entry, consumed by lib/ptx/ad.f) plus per-entry unit tests including the
+  review-corrected OVER fan-out-sum and DROP typed-zero direction facts.
 - `lib/ptx/test-prelude.f` — require-only shared setup for PTX positive entry
   tests; suites list the entry tests, not this dependency bundle.
 - `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for

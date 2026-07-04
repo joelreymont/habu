@@ -34,8 +34,12 @@ s" ROW-LOAD-ONCE ROW-STORE-ONCE" AD-REVERSE
    s" ROW-LOAD-ONCE ROW-STORE-ONCE" STR= TTRUE
 
 \ a forward word with no registered adjoint fails closed
-: BAD-VJP ( -- )  s" SCALE" VJP-ADJOINT 2drop ;
+: BAD-VJP ( -- )  s" NO-SUCH-OP" VJP-ADJOINT 2drop ;
 ' BAD-VJP E-PTX-NOVJP TTHROWS
+
+\ SCALE and -. resolve from the vjp.f table (they had no v0 ladder entry)
+s" SCALE" VJP-ADJOINT s" DUP SAVED-A SCALE SWAP SAVED-X *. BLOCK-SUM" STR= TTRUE
+s" -." VJP-ADJOINT s" DUP NEG" STR= TTRUE
 
 \ control flow is a named straight-line-boundary reject, not a generic missing VJP
 : BAD-AD-CONTROL ( -- )

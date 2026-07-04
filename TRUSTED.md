@@ -529,6 +529,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | SAVED-Z | `-- tile<f32,b,m>` | PTX tile-DSL AD saved-value: `PTX:B/`'s saved output tile z (ds = -Sum(dz*z)/s); body throws E-PTX-NOIMPL pending buffer reload. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
 | SAVED-MX | `-- uniform<f32>` | PTX tile-DSL AD saved-value: BLOCK-MAX's saved block-uniform max (arg-max select); body throws E-PTX-NOIMPL pending buffer reload. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
 | SAVED-S | `-- uniform<f32>` | PTX tile-DSL AD saved-value: `PTX:B/`'s saved block-uniform divisor s; body throws E-PTX-NOIMPL pending buffer reload. | `lib/ptx/ad-saved-test.f` | lib/ptx/ad-saved.f | 2026-06-27 |
+| SAVED-A | `-- uniform<f32>` | PTX tile-DSL AD saved-value: SCALE/FMA.'s saved block-uniform factor a (vjp.f table expansions); body throws E-PTX-NOIMPL pending buffer reload. | `src/arch/ptx/vjp-test.f` | lib/ptx/ad-saved.f | 2026-07-04 |
+| ZERO. | `-- tile<f32,b,m>` | PTX tile-DSL AD: DROP's adjoint - a typed zero tile (docs/autograd.md table); body throws E-PTX-NOIMPL pending the zero lowering; type-directed uniform zero is reverse-pass work. | `src/arch/ptx/vjp-test.f` | lib/ptx/ad-saved.f | 2026-07-04 |
 | SPAN-REG | `n -- span<space-global,f32,extent-n>` | PTX codegen: from-register identity cast - a kernel arg is a PTX register number, this asserts its span type so the emit driver runs the checked kernel checked (the codegen from_raw_parts boundary). | `tools/ptx/saxpy-cg.f` | lib/ptx/cg.f | 2026-06-29 |
 | UNIFORM-REG | `n -- uniform<f32>` | PTX codegen: from-register identity cast asserting a register holds a uniform scalar param; thin boundary so the emit driver stays checked. | `tools/ptx/saxpy-cg.f` | lib/ptx/cg.f | 2026-06-29 |
 | PTR-REG | `n -- ptr<space-global,f32>` | PTX codegen: from-register identity cast asserting a kernel arg register holds a scalar global f32 pointer for checked fan-in emit drivers. | `tools/ptx/scatter-add-grad-cg.f`, `tools/ptx/scatter-add-gradcheck.f` | lib/ptx/cg.f | 2026-07-01 |
@@ -741,7 +743,7 @@ lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
-lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 6
+lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 8
 lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
 lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
 lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18
