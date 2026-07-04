@@ -30,3 +30,15 @@ wiring: cross-region device-buffer handoff (removes E-LLA-INPUT slots-only
 cap), broadcast/SCALE/BIAS operands (removes E-LEW-BCAST), multi-output
 regions (removes E-LEW-MULTIOUT), LOWER-GOLDEN into the cad.f gate set +
 artifact store.
+
+SLICE 2 LANDED 2026-07-04 (fable): row-reduce regions lower to block-per-row
+kernels (maki/lower-red.f; RMS/LN/SM bodies mirror host references via the
+cg-collective emitters, unforked; prologue AND epilogue EW fusion supported;
+one reduction per region, k<=256 v1). Launch plumbing refactored to shared
+staging (LLA-EXEC; LRED-RUN grid=rows). LOWER-GOLDEN dispatches on the region
+class bit and applies per-class tolerance (EW rtol 1e-5; reduction rtol 1e-4,
+justified from k*2^-24 accumulation + ex2.approx ULP). Device-proven on the
+Orin from the pushed tree: RMSNORM/LAYERNORM/SOFTMAX-ROW/GELU->RMSNORM 4x8
+all V-PASS 32/32. NEXT: slice 3 matmul (2D tile grid + K-loop via a cg-matmul
+emitter, prologue/epilogue fusion, third launch shape in the staging), then
+movement, then OPTIMIZE wiring.
