@@ -76,21 +76,47 @@ TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> 
 
 \ --- f64 -> f32 IEEE-754 marshalling (host side: kernel params/arrays are f32,
 \ Habu floats are 64-bit cells). R>BITS reinterprets a float as its 64-bit pattern
-\ (the one thin trusted cast). F64>F32 repacks to 32-bit (truncating mantissa,
-\ flush-to-zero on under/overflow; normal range is exact; denormals/NaN are a
-\ documented boundary). ---
+\ (the one thin trusted cast). F64>F32 narrows to the 32-bit pattern with correct
+\ round-to-nearest-even and every IEEE special: signed zero, gradual underflow
+\ (f32 subnormals), overflow -> +/-inf, and NaN preserved as a quiet NaN (payload
+\ kept). Normal values within f32 range are exact when representable. ---
 TRUSTED: R>BITS ( r -- n ) ;
 
-: F64>F32 ( r -- n ) {: r :}
-   r R>BITS {: b :}
-   b 63 rshift 1 and {: sgn :}
-   b 52 rshift $7FF and {: e64 :}
-   b $FFFFFFFFFFFFF and 29 rshift {: m32 :}        \ top 23 mantissa bits
-   e64 896 - {: e32 :}                              \ rebias 1023 -> 127 (bound before control flow)
-   e64 0= if 0 exit then                            \ +/-0 and flushed denormals
-   e32 1 < if 0 exit then                           \ underflow -> 0
-   e32 254 > if  sgn 31 lshift $7F800000 or  exit then   \ overflow -> +/-inf
-   sgn 31 lshift  e32 23 lshift or  m32 or ;
+\ round a 53-bit significand right by sh bits (sh>=30) into a subnormal / min-normal
+\ f32 magnitude, round-to-nearest-even, then OR the pre-shifted sign s. sh>53 is
+\ below half a ULP of the smallest subnormal -> signed zero. A round-up that carries
+\ out of 23 bits lands on 0x00800000, the smallest normal, which is correct.
+: SUBN>F32 ( n n n -- n ) {: sig:n sh:n s:n :}
+   sh 53 > if s exit then                            \ too small -> signed zero
+   sig sh rshift {: kept:n :}
+   sig sh 1 - rshift 1 and {: g:n :}                 \ round (guard) bit
+   1 sh 1 - lshift 1 - sig and {: sticky:n :}        \ bits below the guard
+   g 0= if s kept or exit then                       \ guard 0 -> round down
+   sticky 0= 0= if s kept 1 + or exit then           \ guard 1 + sticky -> round up
+   kept 1 and 0= if s kept or exit then              \ exact tie, even -> down
+   s kept 1 + or ;                                   \ exact tie, odd -> up
+
+: F64>F32 ( r -- n ) {: fr:r :}
+   fr R>BITS {: b:n :}
+   b 63 rshift 1 and 31 lshift {: s:n :}             \ sign, already at bit 31
+   b 52 rshift $7FF and {: e:n :}                     \ f64 biased exponent
+   b $FFFFFFFFFFFFF and {: m:n :}                     \ 52-bit mantissa
+   e 896 - {: x:n :}                                  \ target f32 biased exponent
+   e $7FF = if                                        \ inf / NaN
+      m 0= if s $7F800000 or exit then                \ +/-inf
+      s $7F800000 or  m 29 rshift or  $400000 or exit \ quiet NaN (payload kept)
+   then
+   e 0= if s exit then                                \ +/-0 / f64-subnormal -> signed 0
+   x 1 < if  1 52 lshift m or  30 x -  s  SUBN>F32  exit  then   \ f32 subnormal
+   x 254 > if s $7F800000 or exit then                \ overflow -> +/-inf
+   m 29 rshift {: mt:n :}                             \ top 23 mantissa bits
+   m $1FFFFFFF and {: rem:n :}                        \ the 29 dropped bits
+   rem $10000000 > if 1 else
+      rem $10000000 = if mt 1 and else 0 then
+   then {: inc:n :}                                   \ round-to-nearest-even increment
+   x 23 lshift mt or inc + {: v:n :}                  \ carry from mantissa bumps exponent
+   v $7F7FFFFF > if s $7F800000 or exit then          \ carry overflowed to inf
+   s v or ;
 
 \ inverse: read a device-returned f32 bit pattern back into a Habu f64 float (the
 \ readback marshalling; BITS>R is the one thin trusted reinterpret). +/-0 and inf
@@ -105,6 +131,25 @@ TRUSTED: BITS>R ( n -- r ) ;
    e32 0= if hi BITS>R exit then                    \ +/-0 (denormals flush to 0)
    e32 $FF = if hi $7FF 52 lshift or BITS>R exit then   \ +/-inf
    hi  e32 896 + 52 lshift or  m32 29 lshift or  BITS>R ;
+
+\ --- f32 array (de)packing: marshal a contiguous f64-cell buffer to/from a packed
+\ little-endian f32 array for device upload/readback. SF-ST/SF-LD are the raw
+\ 4-byte little-endian store/load; F32-PACK narrows each cell (F64>F32), F32-UNPACK
+\ widens each word (F32>F64). ---
+: SF-ST ( n ptr u8 -- ) {: v:n p:ptr :}            \ store low 32 bits of v LE at p
+   v           $FF and  p     c!
+   v 8 rshift  $FF and  p 1 + c!
+   v 16 rshift $FF and  p 2 + c!
+   v 24 rshift $FF and  p 3 + c! ;
+: SF-LD ( ptr u8 -- n ) {: p:ptr :}                \ load a LE 32-bit word at p
+   p     c@
+   p 1 + c@ 8  lshift or
+   p 2 + c@ 16 lshift or
+   p 3 + c@ 24 lshift or ;
+: F32-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f32
+   cnt 0 ?do  src i cells + @ F64>F32  dst i 4 * +  SF-ST  loop ;
+: F32-UNPACK ( ptr u8 n ptr a -- ) {: src:ptr cnt:n dst:ptr :} \ f32 -> n f64 cells
+   cnt 0 ?do  src i 4 * +  SF-LD  F32>F64  dst i cells + !  loop ;
 
 \ --- per-op emitters (operate on register numbers) ---
 \ GRID-CTX: global flat index + bounds predicate; returns the byte-offset rd reg.
