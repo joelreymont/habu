@@ -12,8 +12,8 @@ in the tree.
 ## Procedure
 
 1. `rg -n 'FIXME' --type-add 'src:*.{f,fs,md}' -tsrc` over the current
-   workspace. Notes in ANOTHER workspace's dirty tree are out of scope: answer
-   them in the reply but do not edit trees you do not own.
+   workspace AND the main worktree (~/Work/habu) — the user drops notes in
+   whichever tree they are reading.
 2. Classify each note:
    - **Question** — answer it in the reply, citing file:line evidence
      (docs/forth.md, src/, existing dots). If the answer is durable context the
