@@ -408,6 +408,7 @@ variable GSI-TL-FILE-A
    GSI-TAIL-PURE-SETUP
    GSI-FORK-RESET
    s" lib/json-write-test.f" GSI-FORK-INCLUDE
+   s" lib/json-read-test.f" GSI-FORK-INCLUDE
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE

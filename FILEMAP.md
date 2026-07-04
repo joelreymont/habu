@@ -470,6 +470,8 @@ points stay listed.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
+- `lib/json-read.f` — checked zero-allocation JSON pull/cursor parser complementing the writer.
+- `lib/json-read-test.f` — focused coverage for JSON parser tokens, escapes, structure, errors, and round-trip.
 - `lib/memory.f` — checked OS-backed byte buffer allocation helpers.
 - `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.

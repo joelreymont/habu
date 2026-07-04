@@ -149,3 +149,18 @@
 -3899 constant E-ENGINE-LAST
 -3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
 -3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
+
+\ JSON reader: -3900..-3999
+-3900 constant E-JR-FIRST
+-3999 constant E-JR-LAST
+-3900 constant E-JR-MALFORMED   \ value expected but got a bare word / bad char / trailing comma
+-3901 constant E-JR-STRING      \ unterminated string or unescaped control byte in a string
+-3902 constant E-JR-ESCAPE      \ invalid backslash or \uXXXX escape sequence
+-3903 constant E-JR-SURROGATE   \ lone or mismatched UTF-16 surrogate in a \u escape
+-3904 constant E-JR-DEPTH       \ container nesting exceeds JR-MAX-DEPTH
+-3905 constant E-JR-TRAILING    \ non-whitespace after the top-level value
+-3906 constant E-JR-NUMBER      \ malformed number token or integer overflow
+-3907 constant E-JR-EOF         \ input ended while a value/container/key was expected
+-3908 constant E-JR-COLON       \ missing ':' after an object key
+-3909 constant E-JR-COMMA       \ expected ',' or the matching container close
+-3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small

@@ -303,6 +303,7 @@ TEST:END-SUITE
 
 TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
+   lib/json-read-test.f
    lib/memory-test.f
    lib/vector-test.f
    lib/fs-test.f

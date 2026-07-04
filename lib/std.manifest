@@ -176,6 +176,78 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	json-write	lib/json-write.f	word	JW-FIELD-BOOL	(ptr u8 n bool --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with boolean value
 1	json-write	lib/json-write.f	word	JW-FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
 1	json-write	lib/json-write.f	word	JW$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
+1	json-read	lib/json-read.f	module			lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	active	checked zero-allocation JSON pull/cursor parser complementing json-write
+1	json-read	lib/json-read.f	word	JR-TRUE	(-- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the canonical true flag
+1	json-read	lib/json-read.f	word	JR-FALSE	(-- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the canonical false flag
+1	json-read	lib/json-read.f	word	JR-SRC-FIELD	(-- ptr ptr u8)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the typed source-pointer field slot
+1	json-read	lib/json-read.f	word	JR-SRC@	(-- ptr u8)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read the parser source buffer pointer
+1	json-read	lib/json-read.f	word	JR-SRC!	(ptr u8 --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	write the parser source buffer pointer
+1	json-read	lib/json-read.f	word	JR-AT	(n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	fetch the source byte at an absolute index
+1	json-read	lib/json-read.f	word	JR-EOF?	(-- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether the cursor reached end of source
+1	json-read	lib/json-read.f	word	JR-PEEK	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	fetch the source byte at the current cursor
+1	json-read	lib/json-read.f	word	JR-ADVANCE	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance the read cursor by one byte
+1	json-read	lib/json-read.f	word	JR-INIT	(ptr u8 n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	point the parser at a source buffer and reset state
+1	json-read	lib/json-read.f	word	JR-TOKEN	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token kind
+1	json-read	lib/json-read.f	word	JR-SPAN$	(-- ptr u8 n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token raw span, escapes still encoded
+1	json-read	lib/json-read.f	word	JR-WS?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether a byte is JSON whitespace
+1	json-read	lib/json-read.f	word	JR-SKIP-WS	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance past a whitespace run
+1	json-read	lib/json-read.f	word	JR-PUSH	(n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	push a container kind onto the depth stack with cap check
+1	json-read	lib/json-read.f	word	JR-POP	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	pop the current container off the depth stack
+1	json-read	lib/json-read.f	word	JR-CUR-CTX	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current container kind byte
+1	json-read	lib/json-read.f	word	JR-AFTER-VALUE	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	set the post-value expectation from the depth
+1	json-read	lib/json-read.f	word	JR-SCAN-ESC	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	step the cursor past one string escape
+1	json-read	lib/json-read.f	word	JR-SCAN-STRING	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	scan a string token span and pass the closing quote
+1	json-read	lib/json-read.f	word	JR-NUM-CHAR?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether a byte can appear in a number run
+1	json-read	lib/json-read.f	word	JR-SCAN-NUMBER	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	scan the number token run into the current span
+1	json-read	lib/json-read.f	word	JR-NV-DIGIT?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether the validator cursor is on a digit
+1	json-read	lib/json-read.f	word	JR-NV-SKIP-DIGITS	(ptr u8 n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance the validator cursor over a digit run
+1	json-read	lib/json-read.f	word	JR-NV-INT?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	validate the JSON integer part with leading-zero rule
+1	json-read	lib/json-read.f	word	JR-NV-FRAC?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	validate an optional JSON fraction part
+1	json-read	lib/json-read.f	word	JR-NV-EXP?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	validate an optional JSON exponent part
+1	json-read	lib/json-read.f	word	JR-JSON-NUMBER?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	validate a span against the strict JSON number grammar
+1	json-read	lib/json-read.f	word	JR-SPAN-HAS?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether the current span contains a byte
+1	json-read	lib/json-read.f	word	JR-NUM-FLOATY?	(-- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether the number span is a float
+1	json-read	lib/json-read.f	word	JR-MATCH-LIT?	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	match literal bytes at the current cursor
+1	json-read	lib/json-read.f	word	JR-READ-LIT	(ptr u8 n n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read a keyword literal token and set post-value state
+1	json-read	lib/json-read.f	word	JR-READ-TRUE	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read the true literal token
+1	json-read	lib/json-read.f	word	JR-READ-FALSE	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read the false literal token
+1	json-read	lib/json-read.f	word	JR-READ-NULL	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read the null literal token
+1	json-read	lib/json-read.f	word	JR-OPEN-OBJ	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	open an object and expect a key
+1	json-read	lib/json-read.f	word	JR-OPEN-ARR	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	open an array and expect an element
+1	json-read	lib/json-read.f	word	JR-CLOSE-OBJ	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	close an object and set post-value state
+1	json-read	lib/json-read.f	word	JR-CLOSE-ARR	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	close an array and set post-value state
+1	json-read	lib/json-read.f	word	JR-READ-STRING	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read a string value token
+1	json-read	lib/json-read.f	word	JR-READ-KEY	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read an object key token and consume its colon
+1	json-read	lib/json-read.f	word	JR-READ-NUMBER	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read and classify a number token
+1	json-read	lib/json-read.f	word	JR-READ-VALUE	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	dispatch a value-position token by lead byte
+1	json-read	lib/json-read.f	word	JR-DO-VALUE	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	handle the value-expected state
+1	json-read	lib/json-read.f	word	JR-DO-ELEM	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	handle the array element-or-close state
+1	json-read	lib/json-read.f	word	JR-DO-KEY	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	handle the object key-or-close state
+1	json-read	lib/json-read.f	word	JR-DO-MEMBER	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	handle the object key-after-comma state
+1	json-read	lib/json-read.f	word	JR-DO-SEP	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	handle the separator-or-close state
+1	json-read	lib/json-read.f	word	JR-STEP	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read one token attempt, possibly signalling retry
+1	json-read	lib/json-read.f	word	JR-NEXT	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance to and return the next typed token
+1	json-read	lib/json-read.f	word	JR-INT	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current integer token, fail closed on overflow
+1	json-read	lib/json-read.f	word	JR-FLOAT	(-- r)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current number token as a double
+1	json-read	lib/json-read.f	word	JR-UDST-FIELD	(-- ptr ptr u8)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the typed unescape destination field slot
+1	json-read	lib/json-read.f	word	JR-UDST@	(-- ptr u8)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read the unescape destination pointer
+1	json-read	lib/json-read.f	word	JR-UDST!	(ptr u8 --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	write the unescape destination pointer
+1	json-read	lib/json-read.f	word	JR-SPAN-AT	(n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	fetch a span-relative byte of the current token
+1	json-read	lib/json-read.f	word	JR-UNESC-CHAR	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	fetch the unescape input byte at the cursor
+1	json-read	lib/json-read.f	word	JR-EMIT	(n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	append one decoded byte with capacity check
+1	json-read	lib/json-read.f	word	JR-HEX-VAL	(n -- n bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	convert one hex byte to its value
+1	json-read	lib/json-read.f	word	JR-HEX-NEXT	(n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	fold one hex digit into an accumulator
+1	json-read	lib/json-read.f	word	JR-READ-HEX4	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	read a four-digit hex escape codepoint
+1	json-read	lib/json-read.f	word	JR-EMIT-UTF8	(n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	emit a codepoint as UTF-8 bytes
+1	json-read	lib/json-read.f	word	JR-UNI	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	decode a unicode escape including surrogate pairs
+1	json-read	lib/json-read.f	word	JR-ESC-BYTE	(n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	decode one simple backslash escape
+1	json-read	lib/json-read.f	word	JR-UNESC-STEP	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	decode one input unit into the destination buffer
+1	json-read	lib/json-read.f	word	JR-STR	(ptr u8 n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	unescape the current string token into a caller buffer
+1	json-read	lib/json-read.f	word	JR-SCALAR?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether a kind is a scalar value
+1	json-read	lib/json-read.f	word	JR-OPENER?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether a kind opens a container
+1	json-read	lib/json-read.f	word	JR-CLOSER?	(n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	report whether a kind closes a container
+1	json-read	lib/json-read.f	word	JR-SKIP-VALUE	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	skip the current value including nested containers
+1	json-read	lib/json-read.f	word	JR-FIND-KEY	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	scan the current object for a key and stop on its value
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 len storage buffers, never unchecked addr dereference
 1	regex	lib/regex.f	word	RX-BYTE-IN?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte appears in a counted byte table
 1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped
