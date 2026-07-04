@@ -26,22 +26,22 @@
 \ maki/tensor.f's set; a descriptor with no buffer records AL-UNKNOWN, never a
 \ guess. Fail closed: bad dtype/layout tag, bad handle, missing data, shape
 \ mismatch, plan-builder misuse and every capacity are named throws, never
-\ defaulted. maki owns -5000..-5099; tensor-value uses -5030..-5039.
+\ defaulted. maki owns -5000..-5099; tensor-value uses -5040..-5049 (loss.f owns -5030..-5039).
 
 require maki/tensor.f
 require maki/linear.f
 require maki/op-kind.f
 require lib/ffi-abi.f
 
--5030 constant E-TV-FULL        \ tensor store capacity exceeded
--5031 constant E-TV-HANDLE      \ handle slot index out of range
--5032 constant E-TV-LAYOUT      \ layout tag out of range
--5033 constant E-TV-NODATA      \ data requested from a descriptor (no buffer)
--5034 constant E-TV-SHAPE       \ shape mismatch (eager linear inner dim)
--5035 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
--5036 constant E-TV-PLAN-IDX    \ plan index out of range
--5037 constant E-TV-PLAN-STATE  \ plan builder used out of order
--5038 constant E-TV-OPKIND      \ op-kind out of range
+-5040 constant E-TV-FULL        \ tensor store capacity exceeded
+-5041 constant E-TV-HANDLE      \ handle slot index out of range
+-5042 constant E-TV-LAYOUT      \ layout tag out of range
+-5043 constant E-TV-NODATA      \ data requested from a descriptor (no buffer)
+-5044 constant E-TV-SHAPE       \ shape mismatch (eager linear inner dim)
+-5045 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
+-5046 constant E-TV-PLAN-IDX    \ plan index out of range
+-5047 constant E-TV-PLAN-STATE  \ plan builder used out of order
+-5048 constant E-TV-OPKIND      \ op-kind out of range
 
 DEFTYPE tensor                  \ opaque single-cell handle; internals swap to an ADT later
 
