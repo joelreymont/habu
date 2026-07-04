@@ -954,10 +954,34 @@ variable TWALK-D
 \ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) still
 \ fails closed exactly as in item 7.
 variable LAYOUT-XPORT
+
+\ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
+\ layout whose family args contain a linear con — or an arg still unresolved,
+\ which may LATER bind linear — must not transport. The linear discipline
+\ counts concrete linear cons on the rows; a layout T-PARAM hides its payload
+\ from that count, so dup/over/tuck/2dup would duplicate the payload resource,
+\ drop/nip/2drop would lose it, and locals capture launders the reference
+\ count. Fail closed on both proven and possible linears; TFAM 11 replaces
+\ this with whole-bundle linear counting.
+: LAYOUT-ARG-LINEARISH? ( n -- bool ) {: t:n :}   \ arg term: linear con or unresolved var
+   t T-RES {: r:n :}
+   r ISVAR IF RES-TRUE EXIT THEN
+   r TAG T-CON <> IF RES-FALSE EXIT THEN
+   r PAY CT-LINEAR? ;
+: LAYOUT-MAYBE-LINEAR? ( n -- bool ) {: p:n :}    \ resolved layout T-PARAM term
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
-   a LAYOUT-PARAM? IF b ISVAR EXIT THEN         \ var <-> layout-param bind: absorb the bundle
-   b LAYOUT-PARAM? IF a ISVAR EXIT THEN
+   a LAYOUT-PARAM? IF                           \ var <-> layout-param bind: absorb the bundle
+      a T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      b ISVAR EXIT THEN
+   b LAYOUT-PARAM? IF
+      b T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
@@ -5383,6 +5407,14 @@ variable IS-TU
 \ value, because a logical layout value moves as one unit. ?dup is excluded on
 \ purpose — it branches on the top (tag) cell, width-breaking for a sum whose
 \ tag 0 is a valid variant.
+\ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs
+\ before prims, so a user word spelled dup/swap/... can bind a layout through
+\ its polymorphic effect. This is sound because the name implies a builtin or
+\ a checked/audited definition: a CHECKED shadow's effect is verified against
+\ its body, which can only move the (one-cell) value it binds; a TRUSTED
+\ shadow is already an audited manifest boundary (TRUSTED.md row) whose
+\ declared effect is the audit's responsibility. Either way the bind is a
+\ genuine whole-value move at the current one-cell stage.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN

@@ -265,6 +265,33 @@ s" TD12-EXEC ( tdres<n,n> -- ) execute" CHECK-QUIET-CANDIDATE! 0 T=
 \ memory store/fetch is a field coercion outside constructors/MATCH: reject.
 s" TD12-STORE ( tdres<n,n> ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ --- item 12: possibly-linear layout transports reject until TFAM 11 ---------
+\ A layout family whose args carry a linear con — or an arg still unresolved,
+\ which may later bind linear — must not transport: the linear discipline
+\ counts concrete linear cons, so a layout bundle would let a copy duplicate
+\ (or a drop lose) the hidden payload resource. Identity flow stays legal, and
+\ the same family with non-linear args transports freely.
+DEFLINEAR tdown
+SUMTYPE tdlin 1
+  VARIANT hold a ;VARIANT
+;SUMTYPE
+s" TDLIN-DUP ( tdlin<tdown> -- tdlin<tdown> tdlin<tdown> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-DROP ( tdlin<tdown> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-2DROP ( tdlin<tdown> n -- ) 2drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLIN-LOCAL ( tdlin<tdown> -- ) {: x :} x drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ even a count-preserving move fails closed until TFAM 11 counts bundles.
+s" TDLIN-TOR ( tdlin<tdown> -- tdlin<tdown> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+\ identity needs no transport bind: the linear-carrying layout still flows.
+s" TDLIN-ID ( tdlin<tdown> -- tdlin<tdown> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ the same family with a non-linear arg keeps full transport.
+s" TDLIN-N-DUP ( tdlin<n> -- tdlin<n> tdlin<n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLIN-N-DROP ( tdlin<n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ an unresolved arg may later bind linear: fail closed.
+s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ the bare linear itself still rejects a raw drop (baseline discipline).
+s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
 \ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.
