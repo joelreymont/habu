@@ -5,21 +5,27 @@
 \ forms the numerical gradient by central differences: perturb each x[j] by +-eps,
 \ re-run the forward SOFTMAX-ROWS, and accumulate sum_i dy[i]*(y+[i]-y-[i])/(2eps).
 \ Both use the SAME ex2.approx forward, so they agree to finite-diff + f32 error.
-\ Fully checked Habu via lib/ffi.f. Prereqs: /tmp/softmax.cubin, /tmp/softmax-bwd.cubin.
-\ Load after lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f
-\ src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f
-\ lib/ffi.f maki/array.f.
+\ Fully checked Habu via lib/ffi.f. Self-contained: spawns bin/hb to emit ONE PTX
+\ module holding BOTH the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD kernels
+\ (tools/ptx/softmax-fb-cg.f), ptxas-assembles it to a PRIVATE per-run cubin under a
+\ toolchain root, loads that SINGLE cubin, and pulls BOTH function handles from it -
+\ no shared /tmp/softmax.cubin + /tmp/softmax-bwd.cubin pair. Load after lib/errors.f
+\ lib/string.f lib/test.f lib/float.f lib/fmt.f src/arch/ptx/emit.f lib/ptx/cg.f
+\ lib/ptx/header.f lib/ptx/launch.f lib/ffi.f maki/array.f.
 
+require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 
 4 constant GCK
-create GC-LIB 16 allot  create GC-NM 64 allot  create GC-P1 64 allot  create GC-P2 64 allot
+create GC-LIB 16 allot  create GC-NM 64 allot  create GC-P1 64 allot
 create GC-KF 32 allot   create GC-KB 32 allot
 create GC-IN 16 allot   create GC-OUT 16 allot   create GC-DYB 16 allot    \ f32 device-side packs
+create GC-EOUT $8000 allot  create GC-EERR $1000 allot                     \ child emit capture
+create GC-QO $1000 allot    create GC-QE $1000 allot                       \ ptxas capture
 create HX 4 cells allot create HDY 4 cells allot  create HDXA 4 cells allot \ host f64
 create HDXN 4 cells allot
 create HYP 4 cells allot create HYM 4 cells allot
-variable GC-H variable GC-DEV variable GC-CTX variable GC-MF variable GC-MB
+variable GC-H variable GC-DEV variable GC-CTX variable GC-MF
 variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO variable GC-KV
 
 : F32! ( n ptr u8 n -- ) {: v buf idx :} idx 4 * {: o :}
@@ -33,20 +39,35 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 : GC-SYM ( ptr u8 n -- n )  GC-NM >CSTR  GC-H @ GC-NM DLSYM ;
 
+\ libcuda handle (0 iff off-device); a 0 handle means Mac/CI, so the gradcheck skips
+: GC-DEVICE? ( -- n )
+   s" libcuda.so.1" GC-LIB >CSTR  GC-LIB RTLD-NOW DLOPEN dup GC-H ! ;
+
+\ spawn bin/hb to emit the combined fwd+bwd module (softmax-fb-cg.f) to the private PTX
+: GC-EMIT ( -- n )
+   PROC-ARGV-RESET
+   s" --load"                    >LEN PROC-ARGV+
+   s" tools/ptx/softmax-fb-cg.f" >LEN PROC-ARGV+
+   s" bin/hb" >LEN  GC-EOUT $8000 >LEN  GC-EERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
+   {: outu:len erru:len rc:rc :}
+   GC-EERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
+   PTXTC:PTX$ GC-EOUT outu LEN>N WRITE-ALL  outu LEN>N ;
+
+: GC-PTXAS ( -- n )
+   GC-QO $1000 >LEN GC-QE $1000 >LEN PTXTC:ASSEMBLE ;
+
+\ load the ONE combined cubin and pull BOTH function handles from the SAME module
 : GC-SETUP ( -- )
-   s" libcuda.so.1" GC-LIB >CSTR  GC-LIB RTLD-NOW DLOPEN GC-H !
    0 s" cuInit" GC-SYM CALL1 drop
    GC-DEV P>N 0 s" cuDeviceGet" GC-SYM CALL2 drop
    GC-CTX P>N GC-DEV @ s" cuDevicePrimaryCtxRetain" GC-SYM CALL2 drop
    GC-CTX @ s" cuCtxSetCurrent" GC-SYM CALL1 drop
-   s" /tmp/softmax.cubin" GC-P1 >CSTR
+   PTXTC:CUBIN$ GC-P1 >CSTR
    GC-MF P>N GC-P1 P>N s" cuModuleLoad" GC-SYM CALL2 drop
    s" SOFTMAX_ROWS" GC-KF >CSTR
    GC-FWD P>N GC-MF @ GC-KF P>N s" cuModuleGetFunction" GC-SYM CALL3 drop
-   s" /tmp/softmax-bwd.cubin" GC-P2 >CSTR
-   GC-MB P>N GC-P2 P>N s" cuModuleLoad" GC-SYM CALL2 drop
    s" SOFTMAX_BWD" GC-KB >CSTR
-   GC-BWD P>N GC-MB @ GC-KB P>N s" cuModuleGetFunction" GC-SYM CALL3 drop
+   GC-BWD P>N GC-MF @ GC-KB P>N s" cuModuleGetFunction" GC-SYM CALL3 drop  \ same module, second entry
    GC-dX P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
    GC-dDY P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
    GC-dO P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
@@ -57,7 +78,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    src GC-IN PACK4
-   GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop 
+   GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
    GC-FWD @ 256 1 1 s" cuFuncSetBlockShape" GC-SYM CALL4 drop
    GC-FWD @ 20 s" cuParamSetSize" GC-SYM CALL2 drop
    GC-FWD @ 0  GC-dX P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
@@ -90,7 +111,6 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 : GC-RELEASE ( -- )
    GC-MF @ s" cuModuleUnload" GC-SYM CALL1 drop
-   GC-MB @ s" cuModuleUnload" GC-SYM CALL1 drop
    GC-DEV @ s" cuDevicePrimaryCtxRelease" GC-SYM CALL1 drop ;
 
 \ numerical dx[j] = sum_i dy[i]*(y+[i]-y-[i]) / (2 eps)
@@ -113,6 +133,16 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-RELEASE
    GCK 0 ?do  HDXN i T-GET  HDXA i T-GET  f-  fabs  1.0 100.0 f/ f<  TTRUE  loop ;
 
-T-RESET
-GC-RUN
-T-REPORT
+\ self-emit the combined module, assemble to one private cubin, gradcheck, clean up.
+\ Off-device (no libcuda) the gradcheck skips fail-closed with an empty report.
+: SOFTMAX-GRADCHECK-MAIN ( -- )
+   T-RESET
+   GC-DEVICE? 0= if T-REPORT exit then
+   s" habu-ptx-softmax-fb" PTXTC:PREPARE
+   GC-EMIT drop
+   GC-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert
+   GC-RUN
+   PTXTC:CLEAN
+   T-REPORT ;
+
+SOFTMAX-GRADCHECK-MAIN
