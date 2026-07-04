@@ -58,3 +58,30 @@ CAD-PLAN 8.1; this slice is the correctness substrate. NEXT: slice 4 movement
 (index-remap dissolution into existing kernel bodies), slice 5 OPTIMIZE wiring
 (cross-region buffers removing E-LLA-INPUT, broadcast operands, multi-output,
 LOWER-GOLDEN into cad.f gates + store).
+
+SLICE 4 LANDED 2026-07-04 (fable): movement lowering, both legs of CAD-PLAN 6.3,
+device-proven on the Orin (6/6 LOWER-GOLDEN V-PASS, verbatim). (A) DISSOLVED
+MVV-FREE movement folds into the reading kernel's index math: a new pure resolver
+(maki/move-view.f, owns -5201..-5204) turns a dissolved movement operand into a
+source slot + constant element offset, and lower-ew/red/mm each bake ONE
+`add.u64 %rdN, %rdN, r0*cols*4` (reshape=0, slice=r0*cols) on the operand base
+before the UNCHANGED op body (LEW/LRED/LMM-APPLY-VIEWS); the launch uploads the
+source buffer and unifies on per-input element sizing (maki/lower-launch.f
+LLA-STAGE-IN). Device V-PASS: SLICE:0..2 GELU (EW 16/16), SLICE:1..3 RMSNORM
+(RED 16/16), SLICE:2..6 MATMUL 8x8@8x16 (MM 64/64). (B) a MATERIALIZED movement
+region lowers to a copy kernel (maki/lower-move.f, owns -5205..-5212): transpose =
+div/rem row remap (coalesced write, strided read), slice = offset copy, concat =
+two-source branch, gather = f32-index round (add.f32 +0.5 / cvt.rzi, mirrors
+EX-BUILD-IDX) + indexed rows; LMV-RUN launch (1-2 buffers, p_a/p_b/p_n, 1D grid,
+LG-MOVE? routes it, exact tolerance). Device V-PASS: TRANSPOSE 4x8 (32/32),
+SLICE:1..3 of 4x6 (12/12), GATHER 8x8 (32/32). FAIL CLOSED + dotted: staged
+transpose folded into a compute region (E-MVW-STAGED, dot habu-maki-fold-staged);
+a movement model-output the planner leaves un-materialized (E-LMV-NOOUT, a
+fusion-plan.f gap, dot habu-maki-fusion-plan - tests force mat=1 or use a
+multi-use fan-out); a movement whose source is a cross-region/interior node
+(E-MVW-SRC / E-LMV-INPUT, dot habu-maki-cross-region, the slice-5 buffer handoff).
+Note: GA-FILL zeroes gather indices so the gather golden gathers row 0 only (still
+catches an identity kernel; strengthen via dot habu-maki-strengthen-gather). Tests:
+maki/lower-mv-test.f (capture text + fail-closed, wired into maki/test.f = 65),
+maki/lower-mv-device-test.f (Orin, not gated). NEXT: slice 5 OPTIMIZE wiring +
+the four dots above.
