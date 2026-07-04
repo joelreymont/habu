@@ -291,3 +291,175 @@ and grading wrapper scripts lived under `/tmp`. Treat the table as a recorded
 snapshot until dot `habu-commit-checked-habu-a8ab5f56` lands the checked Habu
 grader in-tree and dot `habu-re-run-habu-20318fcf` reruns softmax with the
 corrected `ROW-STORE` prompt.
+
+## GEMM: the FIRST measured compute-bound column (2026-07-04)
+
+CAD-PLAN 8.1 step 1. The compute-bound contest starts here: square fp32 GEMMs
+C = A·B at 512, 1024, and 2048, all three columns measured **in the same session
+on the same Orin** (JetPack 6.2.1, sm_87, torch 2.9.1+cu126 / triton 3.5.1 per
+the install recipe above).
+
+Protocol (identical timing on both sides): per shape, one warmup launch, then
+ITERS launches timed with **CUDA events** (start/stop event record +
+elapsed-time), GFLOP/s = 2·S³·ITERS / elapsed. ITERS = 200, 80, and 30 for
+512, 1024, and 2048 respectively. A = B = 1.0, C = 0 (values are immaterial to
+timing). No L2 clearing between iterations on either side (see the do_bench
+note below), so cache warmth is symmetric.
+
+- **Habu columns:** `tools/ptx/gemm-bench.f` (in-tree, checked; run
+  `bin/hb --load tools/ptx/gemm-bench.f` on the device). It emits + ptxas-assembles
+  both in-tree kernels and times them via `tools/ptx/bench.f`:
+  `MMN` = naive one-element/thread global-K-loop (`lib/ptx/cg-matmul-naive.f`,
+  the same algorithm the `maki/lower-mm.f` naive fallback tile emits);
+  `MM` = register-blocked 64×64 tile, shared As/Bs staging, 4×4
+  accumulators/thread (`lib/ptx/cg-matmul.f`, the algorithm the `maki/lower-mm.f`
+  blocked path emits).
+- **Triton column:** the official-tutorial matmul (`tl.dot`, grouped ordering,
+  8 autotune configs over BLOCK_M/N/K × stages × warps), fp32 in/out, on-device
+  JIT for sm_87. One wheel caveat: the stock autotuner clears L2 via torch's
+  `zero_()` ATen kernel, which this generic SBSA wheel lacks for sm_87
+  (`cudaErrorNoKernelImageForDevice`), so the script passes a CUDA-event
+  `do_bench` without the cache clear — same warm-cache conditions as the Habu
+  loop. Script: `/tmp/triton_matmul.py` (verbatim below, out-of-tree per this
+  doc's convention). Correctness of every timed Triton run was checked against a
+  CPU torch f32 reference (max rel_err ~7.8e-4 — TF32-level, see below).
+
+### Results (recorded on the Orin, 2026-07-04)
+
+```
+== MMN naive (1 elem/thread, global K-loop) ==
+GEMM 512x512x512    iters=200  gpu_elapsed_ns=976077270   GFLOP/s_x1000=55002
+GEMM 1024x1024x1024 iters=80   gpu_elapsed_ns=3110794677  GFLOP/s_x1000=55226
+GEMM 2048x2048x2048 iters=30   gpu_elapsed_ns=9436062500  GFLOP/s_x1000=54619
+== MM register-blocked 64x64 (4x4 micro-tile/thread, shared staging) ==
+GEMM 512x512x512    iters=200  gpu_elapsed_ns=150557434   GFLOP/s_x1000=356588
+GEMM 1024x1024x1024 iters=80   gpu_elapsed_ns=458149383   GFLOP/s_x1000=374984
+GEMM 2048x2048x2048 iters=30   gpu_elapsed_ns=1354517944  GFLOP/s_x1000=380501
+
+torch 2.9.1+cu126 | triton 3.5.1 | cuda True | dev (8, 7)
+Triton GEMM 512x512x512    iters=200 time_ms=32.8  GFLOP/s=1636.1 max_abs_err=8.43e-02 rel_err=7.47e-04
+Triton GEMM 1024x1024x1024 iters=80  time_ms=97.9  GFLOP/s=1755.4 max_abs_err=1.21e-01 rel_err=7.87e-04
+Triton GEMM 2048x2048x2048 iters=30  time_ms=272.6 GFLOP/s=1890.5 max_abs_err=1.96e-01 rel_err=7.80e-04
+  best_config (all shapes): BLOCK_M=128 BLOCK_N=128 BLOCK_K=32 GROUP_M=8 warps=4 stages=4
+```
+
+| GFLOP/s (fp32 C=A·B)    | 512³   | 1024³  | 2048³  |
+|-------------------------|-------:|-------:|-------:|
+| Habu naive (MMN)        |   55.0 |   55.2 |   54.6 |
+| Habu blocked 64×64 (MM) |  356.6 |  375.0 |  380.5 |
+| Triton (autotuned)      | 1636.1 | 1755.4 | 1890.5 |
+| blocked / naive         |   6.5× |   6.8× |   7.0× |
+| Triton / blocked        |   4.6× |   4.7× |   5.0× |
+
+### What the data earns (and what it does not)
+
+- **Register blocking is the single biggest lever, measured:** 6.5–7.0× over the
+  naive tile, and the blocked GFLOP/s *climbs* with problem size (356.6 → 380.5)
+  where the naive kernel is flat (~55) — the tiled-GEMM dot's "GFLOP/s climbs
+  with tile size" verification, now measured with in-tree tools.
+- **This is our v1 register-blocked tile vs their autotuned kernel — honest gap
+  4.6–5.0×.** The Habu side has NO tensor-core MMA and NO cp.async multi-stage
+  pipelining yet (the CAD-PLAN 8.1 steps that follow this baseline): bk=16
+  staging, scalar `ld.shared`, single stage. The Triton side autotunes 8 configs
+  and its `tl.dot` lowers to **TF32 tensor cores** on sm_87 — the measured
+  `rel_err ~7.8e-4` against a CPU f32 reference is TF32-level precision (a pure
+  f32 FMA kernel measures ~1e-6 rel here, as our device goldens do), so the two
+  columns also differ in arithmetic: full-f32 fma.rn (ours, golden-gated at
+  rtol 1e-4) vs TF32 dot (theirs, silently licensed).
+- These absolute numbers supersede the older 15 W notes in `lib/ptx/cg-matmul.f`
+  (~77 naive / ~283 blocked / ~1474 Triton): this session's device power state is
+  higher; all three columns above are same-session, same-protocol.
+- Next levers, in CAD-PLAN 8.1 order: `cp.async` multi-stage staging (the
+  schedule family already carries `stages`), wider bk (family floor 32 vs the
+  reused kernel's 16), vectorized `ld.shared.v4`, then the `mma.sync` TF32 family
+  itself — with the precision *licensed* by the golden gate rather than assumed.
+
+### Reproduction script (`/tmp/triton_matmul.py`, verbatim)
+
+```python
+import torch, triton, triton.language as tl
+
+def get_autotune_config():
+    return [
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3, num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4, num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5, num_warps=2),
+    ]
+
+# stock autotuner do_bench clears L2 via torch zero_() (no sm_87 image in this wheel);
+# time candidates with CUDA events instead - warm-cache, symmetric with the Habu loop.
+def event_do_bench(fn, quantiles=None, **kwargs):
+    fn(); torch.cuda.synchronize()
+    start = torch.cuda.Event(enable_timing=True); stop = torch.cuda.Event(enable_timing=True)
+    reps = 10
+    start.record()
+    for _ in range(reps): fn()
+    stop.record(); torch.cuda.synchronize()
+    ms = start.elapsed_time(stop) / reps
+    return [ms] * len(quantiles) if quantiles is not None else ms
+
+@triton.autotune(configs=get_autotune_config(), key=['M', 'N', 'K'], do_bench=event_do_bench)
+@triton.jit
+def matmul_kernel(a_ptr, b_ptr, c_ptr, M, N, K,
+                  stride_am, stride_ak, stride_bk, stride_bn, stride_cm, stride_cn,
+                  BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
+                  BLOCK_SIZE_K: tl.constexpr, GROUP_SIZE_M: tl.constexpr):
+    pid = tl.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M); num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    a_ptrs = a_ptr + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+        acc = tl.dot(a, b, acc)
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, acc, mask=c_mask)
+
+def matmul(a, b, c):
+    M, K = a.shape; _, N = b.shape
+    grid = lambda META: (triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),)
+    matmul_kernel[grid](a, b, c, M, N, K,
+                        a.stride(0), a.stride(1), b.stride(0), b.stride(1),
+                        c.stride(0), c.stride(1))
+
+print(f"torch {torch.__version__} | triton {triton.__version__} | cuda {torch.cuda.is_available()} "
+      f"| dev {torch.cuda.get_device_capability()}")
+for S, iters in [(512, 200), (1024, 80), (2048, 30)]:
+    a = torch.randn(S, S, dtype=torch.float32)   # CPU RNG (no sm_87 ATen kernels in this wheel)
+    b = torch.randn(S, S, dtype=torch.float32)
+    ref = a @ b                                   # CPU f32 reference
+    ad, bd = a.to('cuda'), b.to('cuda')
+    cd = torch.zeros(S, S, dtype=torch.float32).to('cuda')
+    matmul(ad, bd, cd); torch.cuda.synchronize() # warmup: JIT + autotune
+    err = (cd.cpu() - ref).abs().max().item()
+    rel = err / ref.abs().max().item()
+    start = torch.cuda.Event(enable_timing=True); stop = torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(iters): matmul(ad, bd, cd)
+    stop.record(); torch.cuda.synchronize()
+    ms = start.elapsed_time(stop)
+    gflops = (2 * S ** 3 * iters) / (ms * 1e-3) / 1e9
+    print(f"Triton GEMM {S}x{S}x{S} iters={iters} time_ms={ms:.1f} GFLOP/s={gflops:.1f} "
+          f"max_abs_err={err:.2e} rel_err={rel:.2e}")
+    print(f"  best_config: {getattr(matmul_kernel, 'best_config', None)}")
+```

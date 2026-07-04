@@ -26,7 +26,9 @@ variable START-EVT
 variable STOP-EVT
 variable EVENT-MS
 variable GRID-N
+variable GRIDY-N
 variable BLOCK-N
+variable BLOCKY-N
 variable ITERS-N
 variable WORK-N
 variable PARAM-BYTES-N
@@ -92,7 +94,7 @@ public
    0 LABEL-U !
    0 DEV ! 0 CTX ! 0 MOD ! 0 FUNC !
    0 START-EVT ! 0 STOP-EVT ! 0 EVENT-MS !
-   1 GRID-N ! 256 BLOCK-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! ;
+   1 GRID-N ! 1 GRIDY-N ! 256 BLOCK-N ! 1 BLOCKY-N ! 1 ITERS-N ! 0 WORK-N ! 0 PARAM-BYTES-N ! ;
 
 : CUBIN! ( ptr u8 n -- )
    PATH-BUF PATH-U COPY! ;
@@ -108,6 +110,12 @@ public
 
 : BLOCK! ( n -- )
    BLOCK-N ! ;
+
+: GRIDY! ( n -- )       \ 2D grid Y extent (default 1 = 1D grid); the 2D-tiled GEMM needs it
+   GRIDY-N ! ;
+
+: BLOCKY! ( n -- )      \ 2D block Y extent (default 1 = 1D block); GEMM uses 16x16 = 256 threads
+   BLOCKY-N ! ;
 
 : ITERS! ( n -- )
    ITERS-N ! ;
@@ -190,11 +198,11 @@ public
    4 PARAM! ;
 
 : PREPARE-LAUNCH ( -- )
-   FUNC @ >CUDA-FN BLOCK-N @ 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   FUNC @ >CUDA-FN BLOCK-N @ BLOCKY-N @ 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
    FUNC @ >CUDA-FN PARAM-BYTES-N @ >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0 ;
 
 : LAUNCH ( -- )
-   FUNC @ >CUDA-FN GRID-N @ 1 CUDA:CU-LAUNCH-GRID CUDA:RC0 ;
+   FUNC @ >CUDA-FN GRID-N @ GRIDY-N @ CUDA:CU-LAUNCH-GRID CUDA:RC0 ;
 
 : SYNC ( -- )
    CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0 ;

@@ -2273,3 +2273,21 @@ unchanged (148855). Keys for milestone 2:
   `maki/eval-device.f`; when eval-device migrated to the checked bindings those
   DLSYM words vanished and matmul was left uncheckable (nothing gated it). Prefer
   a shared library (`lib/ptx/cuda-driver.f`) over reaching into a peer's cells.
+- **Opaque habu exit codes are `throw-code mod 256` - decode before guessing.**
+  A device test dying with exit 56 / exit 211 and no diagnostics was
+  `E-PROC-TRUNCATED` (-2504) / `E-GA-CAP` (-5165): add multiples of 256 until a
+  known error constant appears, then grep `lib/errors.f` and the owning package.
+  Two real hits in one session: the blocked-tile PTX (~28 KB) overflowing a
+  `$4000` child-capture buffer, and 3 blocked-GEMM inputs (8256 cells)
+  overflowing the `$2000` golden input arena. Size capture/arena buffers to the
+  cap the admitting path enforces (launch caps: 4 inputs x 4096 elems), not to
+  the first example that fits.
+- **The generic SBSA torch wheel has no sm_87 ATen kernels - only Triton's own
+  JIT output runs.** Anything that calls a torch GPU kernel fails with
+  `cudaErrorNoKernelImageForDevice`, including the HIDDEN one inside Triton's
+  autotuner (`do_bench` clears L2 via `tensor.zero_()`). Pass a custom
+  CUDA-event `do_bench=` to `@triton.autotune` and keep torch to alloc + memcpy.
+- **Triton `tl.dot` on fp32 silently runs TF32 tensor cores on sm_87** - a
+  measured `rel_err ~8e-4` vs a CPU f32 reference is the fingerprint (pure f32
+  FMA gives ~1e-6). Record the arithmetic class next to any GEMM number; a
+  Triton-vs-f32-FMA comparison is cross-precision and must say so.

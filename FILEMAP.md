@@ -303,6 +303,8 @@ points stay listed.
   `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
   lowering for tile ops: scalar, vectorized v4, row/collective, the
   register-blocked SGEMM, and the fused attention kernel.
+- `lib/ptx/cg-matmul-naive.f` — the naive one-element-per-thread SGEMM baseline
+  kernel (MMN) that the GEMM benchmark measures the register-blocked tile against.
 - `lib/ptx/cg-activation.f` — PTX codegen for the gelu/silu elementwise
   activations, mirroring the maki host references op-for-op for f32 golden parity.
 - `lib/ptx/ad.f` / `lib/ptx/ad-test.f` — reverse-mode autograd transform v0
@@ -350,6 +352,9 @@ points stay listed.
   `tools/ptx/fusion-compare.f` — reusable Orin kernel profile metrics, generic
   CUDA Driver launch plus CUDA-event device timing, scalar/v4 SAXPY bandwidth,
   and fused-vs-unfused kernel comparison for the Habu-PTX column.
+- `tools/ptx/gemm-bench.f` — CUDA-event GEMM benchmark: times the naive (MMN)
+  and register-blocked (MM) SGEMM kernels on square shapes for the
+  GEMM-vs-Triton baseline recorded in `docs/eval-triton.md`.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the

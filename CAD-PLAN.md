@@ -397,13 +397,17 @@ compute-bound plan, in dependency order:
 6. **Roofline-directed search**: PROFILE's classification (§9) spends tuner
    candidates only on regions actually under the compute roof.
 
-Sequencing: slice-3 GEMM -> on-device PROFILE/roofline + the FIRST measured
-GEMM-vs-Triton baseline -> cp.async stages -> MMA family -> cad-6 tune ->
-attention megafusion -> end-to-end model latency vs torch.compile on the
-detector-class workload. Honest finish line: parity on the pure compute roof
-(tensor cores are tensor cores), win on everything around it — fusion depth,
-zero-warmup replay, layout ownership, launch count — which is where
-end-to-end latency lives.
+Sequencing: slice-3 GEMM -> register-blocked GEMM tile + the FIRST measured
+GEMM-vs-Triton baseline [LANDED 2026-07-04: lower-mm.f blocked 64x64 tile,
+device-golden green; fp32 GFLOP/s at 512..2048 square = ours naive ~55 flat,
+ours blocked 357 rising to 381 (6.5-7.0x), Triton autotuned TF32-dot 1636
+rising to 1891 (4.6-5.0x over our blocked) — docs/eval-triton.md "GEMM: the
+FIRST measured compute-bound column"] -> on-device PROFILE/roofline ->
+cp.async stages -> MMA family -> cad-6 tune -> attention megafusion ->
+end-to-end model latency vs torch.compile on the detector-class workload. Honest finish line: parity on
+the pure compute roof (tensor cores are tensor cores), win on everything
+around it — fusion depth, zero-warmup replay, layout ownership, launch count —
+which is where end-to-end latency lives.
 
 ## 9. Cost model and calibration
 
