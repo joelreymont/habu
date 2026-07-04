@@ -79,17 +79,17 @@ Multi-value `-- <vals> bool` (25 total):
   option<(off,len)> (radius 8)
 - `lib/process-env.f:180 PROC-ENV-DEFAULT$?` → option<str>
 - `lib/float.f:51 FL-STRIP-SIGN`
-- tools: `json-file.f:96/101/107/120/128` (JSONLF-* row parsers),
-  `json.f:914/:921 JSONL-PARSE-ROW ( -- i64 i64 i64 bool )`,
-  `check-all-errors-core.f:348/613/624`, `imgdump.f:263 HEX-BODY`,
+- tools: `json-file.f:96,101,107,120,128` (JSONLF-* row parsers),
+  `json.f:914,921 JSONL-PARSE-ROW ( -- i64 i64 i64 bool )`,
+  `check-all-errors-core.f:348,613,624`, `imgdump.f:263 HEX-BODY`,
   `imagedisasm.f:84`, `gate-json-assert-core.f:86 GJA-SUGGEST-ROW`,
   `check-test-lib.f:573`.
 
 Single-value `-- <one> bool` (65 total; biggest option<scalar> class):
 - Parsers → option<n>: `lib/string.f:214 STR-PARSE-POS`, `:222 STR-PARSE-NEG`,
   `:230 STR>NUMBER?` (radius **16**); `lib/date.f:125 DATE-N`, `:134
-  PARSE-YMD`; `tools/date.f:126/135`; `tools/imgdump.f:268/280/292`,
-  `tools/imagedisasm.f:70/96`, `tools/trusted-inventory.f:689 PARSE-COUNT`,
+  PARSE-YMD`; `tools/date.f:126,135`; `tools/imgdump.f:268,280,292`,
+  `tools/imagedisasm.f:70,96`, `tools/trusted-inventory.f:689 PARSE-COUNT`,
   `tools/gate-json-assert-core.f:124 GJA-U?`,
   `tools/stdlib-manifest-test.f:786`.
 - Floats → option<r>: `lib/float.f:41 FL-DIGITS>F`, `:63 FL-SIG`,
