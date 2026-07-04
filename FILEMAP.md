@@ -359,16 +359,20 @@ points stay listed.
   (E-PTX-BLOCK); the same header.f/launch.f contracts the device goldens launch under.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
-- `tools/ptx/ad-entry-lib.f` — per-VJP-entry AD_FWD/AD_BWD kernel emitters for
-  the device gradcheck gate: minimal op-lists isolating each ad-dag VJP entry
-  (EXP, x-max, x/sum, full softmax) plus the deliberate wrong-VJP fixture that
-  drops the DUP fan-out cotangent; text shape asserted in saxpy-test.f.
+- `tools/ptx/ad-entry-lib.f` — per-VJP-entry kernel emitters for the device
+  gradcheck gate: DAG op-lists isolating each ad-dag entry (EXP, x-max, x/sum,
+  full softmax) plus the vjp.f table fixtures - two-input elementwise
+  (+./-./*.//. via AD2_FWD/AD2_BWD), scalar-factor SCALE/FMA. (ADS_*/ADF_*),
+  the OVER fan-out composite and DROP composite - and the deliberate wrong
+  variants (fan-out dropped, OVER-as-permutation, DROP cotangent leak); text
+  shape asserted in saxpy-test.f.
 - `tools/ptx/ad-gradcheck-launch.f` — Orin-side per-VJP gradcheck launcher:
-  central differences over the emitted forward vs the analytic AD backward,
-  per-element rtol+atol, tie and saturated fixtures, poisoned readbacks, every
-  CUDA rc checked; the wrong-VJP and cross-paired backwards must mismatch.
+  central differences over each emitted forward (both inputs and the scalar
+  factor) vs the analytic backward, per-element rtol+atol, tie and saturated
+  fixtures, poisoned readbacks, every CUDA rc checked; the wrong variants
+  (fan-out dropped, OVER-as-permutation, DROP leak, cross-pair) must mismatch.
 - `tools/ptx/zed-gradcheck-suite.f` — Mac orchestrator for the per-VJP device
-  gradcheck gate: emits the nine kernels, ships/assembles via the ssh harness,
+  gradcheck gate: emits all entry kernels, ships/assembles via the ssh harness,
   proves malformed-PTX and missing-cubin failure classes red, then runs the
   launcher on the Orin. HABU_ZED-gated.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR

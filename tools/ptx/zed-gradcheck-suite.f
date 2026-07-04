@@ -89,6 +89,18 @@ variable AGS-PTX-U
    s" softmax-fwd" AGS-KERNEL  s" softmax-bwd" AGS-KERNEL
    s" xdivsum-bwd-wrong" AGS-KERNEL ;
 
+: AGS-VJP-KERNELS ( -- )   \ the vjp.f table entries' device fixtures
+   s" add2-fwd" AGS-KERNEL     s" add2-bwd" AGS-KERNEL
+   s" sub2-fwd" AGS-KERNEL     s" sub2-bwd" AGS-KERNEL
+   s" mul2-fwd" AGS-KERNEL     s" mul2-bwd" AGS-KERNEL
+   s" div2-fwd" AGS-KERNEL     s" div2-bwd" AGS-KERNEL
+   s" overk-fwd" AGS-KERNEL    s" overk-bwd" AGS-KERNEL
+   s" overk-bwd-wrong" AGS-KERNEL
+   s" dropk-fwd" AGS-KERNEL    s" dropk-bwd" AGS-KERNEL
+   s" dropk-bwd-wrong" AGS-KERNEL
+   s" scale-fwd" AGS-KERNEL    s" scale-bwd" AGS-KERNEL
+   s" fma-fwd" AGS-KERNEL      s" fma-bwd" AGS-KERNEL ;
+
 \ ---- device failure classes (red first) ---------------------------------------
 
 : AGS-BAD-ASSEMBLE ( -- )   \ malformed PTX through the same assemble path
@@ -132,6 +144,7 @@ variable AGS-PTX-U
    AGS-PREPARE
    SCRATCH-MK
    AGS-KERNELS
+   AGS-VJP-KERNELS
    s" tools/ptx/ad-gradcheck-launch.f" PUT-FILE
    AGS-PTXAS-RED
    AGS-MISSING-CUBIN-RED

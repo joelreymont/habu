@@ -298,6 +298,60 @@ variable PTXT-ERR-SAVE
    s" neg.f32" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ --- vjp.f table entry kernels: two-input elementwise + composites ---
+
+: PTXT-ADE2-ELEM-OUTPUT ( -- )
+   [: ADE-ADD2-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD2_FWD" PTXT-HAS
+   s" add.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SUB2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD2_BWD" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-MUL2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" mul.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DIV2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ OVER fan-out: the correct backward SUMS the copy's cotangents (add.rn.f32);
+\ the OVER-as-permutation bug drops the sum. DROP: the correct backward writes
+\ the typed zero (0f00000000); the cotangent leak has no zero.
+: PTXT-ADE2-STRUCT-OUTPUT ( -- )
+   [: ADE-OVERK-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" add.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-OVERK-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" add.rn.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DROPK-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" 0f00000000" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DROPK-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" 0f00000000" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE2-SCALAR-OUTPUT ( -- )
+   [: ADE-SCALE-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADS_FWD" PTXT-HAS
+   s" ld.param.f32 %f1, [p_a];" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SCALE-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADS_BWD" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-FMA-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADF_FWD" PTXT-HAS
+   s" fma.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-FMA-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADF_BWD" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -314,5 +368,8 @@ PTXT-ADE-XMSUB-OUTPUT
 PTXT-ADE-XDIVSUM-OUTPUT
 PTXT-ADE-SOFTMAX-OUTPUT
 PTXT-ADE-WRONG-OUTPUT
+PTXT-ADE2-ELEM-OUTPUT
+PTXT-ADE2-STRUCT-OUTPUT
+PTXT-ADE2-SCALAR-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr
