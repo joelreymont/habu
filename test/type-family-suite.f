@@ -193,6 +193,21 @@ NC @ SCHEMA-ROOT+ drop   NA @ SCHEMA-ROOT+ drop
 NP @ SCHEMA-ROOT+ drop   NC @ SCHEMA-ROOT+ drop
 SCHEMA-ROOT-N@ 5 T=
 
+\ SC-QUOT quotation payload node (dot habu-tfam-4-remainder): four row roots
+\ (din,dout,rin,rout) + hasr flag, round-trip read-back, hasr normalization, and
+\ malformed-row rejection (a child that is not a live schema node).
+NP @ NC @ NA @ NP @ -1 SCHEMA-QUOT L0 !
+L0 @ SCHEMA-TAG@ SCH-QUOT T=   L0 @ SCHEMA-QUOT? -1 T=
+L0 @ SCHEMA-PARAM? 0 T=        L0 @ SCHEMA-C@ SCH-QUOT-ROWS T=
+L0 @ SCHEMA-QUOT-HASR@ -1 T=
+L0 @ SCHEMA-QUOT-DIN@  NP @ T=   L0 @ SCHEMA-QUOT-DOUT@ NC @ T=
+L0 @ SCHEMA-QUOT-RIN@  NA @ T=   L0 @ SCHEMA-QUOT-ROUT@ NP @ T=
+NC @ NC @ NC @ NC @ 0 SCHEMA-QUOT SCHEMA-QUOT-HASR@ 0 T=   \ hasr normalizes to 0
+\ malformed row = nil node (0) rejected (5 args before catch: din dout rin rout hasr)
+NP @ NC @ NA @ 0 -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+\ malformed row = out-of-range node rejected
+NP @ NC @ NA @ 99999 -1 ' SCHEMA-QUOT catch   TC ! 2drop 2drop drop  TC @ E-SCHEMA-BAD T=
+
 \ ---------------------------------------------------------------------------
 \ 10. SUMV variants: add, per-family key, dup rejection, cross-family reuse.
 \    SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )

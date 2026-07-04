@@ -14,7 +14,13 @@
 1 constant SCH-PARAM      \ A = parameter index (>= 0)
 2 constant SCH-CON        \ A = concrete con code
 3 constant SCH-APP        \ A = family-id, B = arg-root start, C = arg count
-3 constant SCH-KIND-MAX   \ highest valid creatable tag
+4 constant SCH-QUOT       \ A = hasr flag, B = row-root start, C = row count (SCH-QUOT-ROWS)
+4 constant SCH-KIND-MAX   \ highest valid creatable tag
+
+\ A quotation payload is four effect-row schema roots stored contiguously in the
+\ schema-root pool: din, dout, rin, rout (in that order). B indexes the first; the
+\ hasr flag (A) records whether the return-stack rows carry a non-neutral effect.
+4 constant SCH-QUOT-ROWS
 
 \ --- named reject code. Thrown (not `die`d) so the parser/CHECK path and unit
 \ tests can trap a malformed schema node with `catch` instead of aborting.
@@ -122,6 +128,33 @@ SCHEMA-RESET
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
 : SCHEMA-ROOT-N@ ( -- n ) SCH-ROOT-N @ ;
+
+\ --- SCH-QUOT quotation payload node. Mirrors the checker's VR-QUOT/EN-QUOT/MK-QUOT
+\ rows (din, dout, rin, rout) as four schema roots plus a hasr flag, so a family or
+\ product schema can carry a quotation-typed argument without collapsing it to a
+\ string. Malformed rows (a child that is not a live schema node) throw
+\ E-SCHEMA-BAD so parse/CHECK and unit tests can trap them with `catch`.
+: SCHEMA-NODE-OK? ( node -- bool ) {: node:n :}
+   node 0 > node SCH-N @ < and ;
+: SCHEMA-QUOT ( din dout rin rout hasr -- node )
+   {: din:n dout:n rin:n rout:n hasr:n :}
+   din SCHEMA-NODE-OK? dout SCHEMA-NODE-OK? and
+   rin SCHEMA-NODE-OK? and rout SCHEMA-NODE-OK? and 0= IF E-SCHEMA-BAD throw THEN
+   din SCHEMA-ROOT+ {: start:n :}          \ first row root; dout/rin/rout follow contiguously
+   dout SCHEMA-ROOT+ drop
+   rin SCHEMA-ROOT+ drop
+   rout SCHEMA-ROOT+ drop
+   SCH-QUOT hasr 0= 0= start SCH-QUOT-ROWS SCHEMA-NEW ;
+
+: SCHEMA-QUOT? ( node -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
+: SCHEMA-QUOT-HASR@ ( node -- bool ) SCHEMA-A@ ;
+: SCHEMA-QUOT-ROW@ ( node i -- rownode ) {: node:n i:n :}
+   i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot row index" 76 die THEN
+   node SCHEMA-B@ i + SCHEMA-ROOT@ ;
+: SCHEMA-QUOT-DIN@ ( node -- rownode ) 0 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-DOUT@ ( node -- rownode ) 1 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-RIN@ ( node -- rownode ) 2 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-ROUT@ ( node -- rownode ) 3 SCHEMA-QUOT-ROW@ ;
 
 \ ---------------------------------------------------------------------------
 \ rollback frame stack (SCHEMA half of the checker's transactional rollback).
