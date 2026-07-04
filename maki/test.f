@@ -82,6 +82,14 @@ TEST:SUITE maki/layernorm-test.f
 TEST:END-SUITE
 TEST:SUITE maki/gelu-test.f
 TEST:END-SUITE
+TEST:SUITE maki/silu-test.f
+TEST:END-SUITE
+TEST:SUITE maki/rmsnorm-test.f
+TEST:END-SUITE
+TEST:SUITE maki/rope-test.f
+TEST:END-SUITE
+TEST:SUITE maki/op-registry-test.f
+TEST:END-SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:END-SUITE
 TEST:SUITE maki/attention-test.f

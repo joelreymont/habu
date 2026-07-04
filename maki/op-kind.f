@@ -23,6 +23,8 @@ public
 10 constant OP-LINEAR
 11 constant OP-RESIDUAL-ADD
 12 constant OP-CAST
-13 constant OP-N               \ op-kind range bound
+13 constant OP-SILU            \ x * sigmoid(x) (reference: maki/silu.f)
+14 constant OP-ROPE            \ rotary pair rotation (reference: maki/rope.f)
+15 constant OP-N               \ op-kind range bound
 
 end-package
