@@ -189,6 +189,11 @@ unchecked (and can silently get the fused math wrong). Same speed; the differenc
 that in Habu the **composition is the program** and the type system proves it. This,
 not raw single-kernel speed, is the performance argument for the checked target.
 
+The plan to contest the compute-bound column (tensor-core MMA, cp.async
+stages, persistent content-keyed autotuning vs Triton's per-process JIT tuning,
+fusion depth, PROMOTE-owned layout, launch amortization, gate-licensed
+precision) is CAD-PLAN 8.1; this doc stays the measured record.
+
 **Earned claim:** in this measured SAXPY/softmax slice, a checked stack-effect
 target **shifts the stack-discipline error class left to author time** — caught
 statically, with a located diagnostic and zero GPU — where Triton finds it only at

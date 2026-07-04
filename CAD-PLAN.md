@@ -359,6 +359,52 @@ drop-in later. The measurement/enumeration machinery is built by
 `cad-6-tune` over the CUDA-event timing harness (`tools/ptx/bench.f`); no
 autotuner exists today to reuse.
 
+### 8.1 Compute-bound strategy (the beat-Triton plan)
+
+Measured reality first (docs/eval-triton.md, real Triton 3.5.1 on this Orin):
+memory-bound kernels are PARITY at the streaming ceiling (~63 GB/s both) —
+nobody beats DRAM — and no GEMM comparison has been measured yet. The
+compute-bound plan, in dependency order:
+
+1. **Tensor-core MMA emission** (`habu-tensor-core-mma`): checked emitters for
+   `mma.sync.aligned` TF32 first (the family is already named gemm-tf32), then
+   fp16/bf16 with f32 accumulate. We emit PTX text directly — no LLVM between
+   the schedule decision and the instruction. Without this lever there is no
+   compute-roof contest at all.
+2. **`cp.async` + multi-stage SMEM pipelining**: the schedule family already
+   parameterizes `stages`; the emitter honors it with double/triple-buffered
+   `cp.async` staging. Pure emitter work on existing machinery.
+3. **Persistent autotuning beats JIT autotuning** (`cad-6-tune` + the §13
+   store): Triton tunes at JIT time, in-process, per deployment, with generic
+   configs on sm_87. We tune once on the real device, key by §7.4, store the
+   winner with evidence, and replay with zero warmup — so we can also afford
+   larger search spaces, paid offline.
+4. **Fusion depth is the real Orin lever**: this target is memory-starved, so
+   most "compute-bound" work is composites whose intermediates spill. The
+   planner owns the whole IR with exact bytes: GEMM with prologue
+   dequant/epilogue bias+activation in one kernel (slice 3), and the
+   attention megafusion (QK^T -> softmax -> V, SMEM-resident;
+   `habu-re-express-fused`, `habu-ptx-m11-attention`). End-to-end model
+   latency is the honest metric, and fewer launches moving fewer bytes wins
+   it even at equal per-kernel FLOPs.
+5. **Whole-model decisions a kernel DSL cannot make**: weight layout owned at
+   PROMOTE time (pre-transpose/pre-swizzle into the artifact —
+   `habu-cad-weight-layout`); launch amortization on Jetson-class overheads
+   (persistent kernels / a graph-style driver loop —
+   `habu-cad-launch-amortize`); precision policy LICENSED by the gates —
+   TF32/FP16 applied only where GOLDEN + gradcheck prove it safe
+   (`habu-cad-precision-policy`).
+6. **Roofline-directed search**: PROFILE's classification (§9) spends tuner
+   candidates only on regions actually under the compute roof.
+
+Sequencing: slice-3 GEMM -> on-device PROFILE/roofline + the FIRST measured
+GEMM-vs-Triton baseline -> cp.async stages -> MMA family -> cad-6 tune ->
+attention megafusion -> end-to-end model latency vs torch.compile on the
+detector-class workload. Honest finish line: parity on the pure compute roof
+(tensor cores are tensor cores), win on everything around it — fusion depth,
+zero-warmup replay, layout ownership, launch count — which is where
+end-to-end latency lives.
+
 ## 9. Cost model and calibration
 
 - **Bytes:** per region, unique global reads + writes after fusion, with

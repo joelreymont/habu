@@ -378,6 +378,12 @@ reduction, not beating mature GEMM libraries.
 
 ## Benchmark strategy
 
+The compute-bound plan (MMA emission, cp.async stages, persistent autotune,
+fusion depth, PROMOTE-owned weight layout, launch amortization, gate-licensed
+precision, roofline-directed search, and the honest finish line) is specced in
+CAD-PLAN 8.1 with its owning dots (habu-tensor-core-mma, cad-6-tune,
+habu-cad-weight-layout, habu-cad-launch-amortization, habu-cad-gate-licensed).
+
 - Memory-bound fusion class: SAXPY variants, bias+activation, residual+norm,
   softmax pieces, dequant/requant chains — measure bytes removed, launches
   removed, GB/s, roof %, speedup vs unfused.
