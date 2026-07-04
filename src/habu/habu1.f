@@ -102,6 +102,27 @@ variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL var
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
+\ Friend-arena write guard (TFAM 2b-i). Emits a range check that traps
+\ fail-closed (exit E-SEAL-VIOLATION) when the runtime target address held in
+\ `n` (a register number) lands inside the sealed friend arena
+\ [DATA+FRIEND-ARENA, DATA+FRIEND-ARENA+latch). The latch (FRIEND-LATCH-CELL) is
+\ 0 while the engine loads its own canonical source, so the guard is inert during
+\ boot and becomes active once the cold prefix seals it. x12/x13 are scratch
+\ (free at every sink; stack values live in the XDS memory stack, never in
+\ registers across a prim). The BCOND makes the host body non-inlinable, so a
+\ guarded sink compiles to an out-of-line call, exactly like B-TASK-LIVE-GUARD /
+\ DP-CHECK. Defined here (before any sink, incl. the early BPOLL) so every
+\ writer can reach it.
+: PROT-GUARD ( n -- )                   \ n = register number holding the target address
+   LBL {: ok:label :}
+   DREG swap DATA SUB,                  \ x12 = target - DATA
+   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA (wraps huge when below arena)
+   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
+   DREG EREG CMP,
+   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
+      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : B+ ( -- )
    B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
@@ -543,6 +564,7 @@ s" linux-ignore-sigpipe" s" --" TRUST
 
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
    2 G-POP  1 G-POP  0 G-POP
+   0 PROT-GUARD                              \ x0 = pollfd array (revents written)
    LBL LNX-OK !
    LBL LNX-DONE !
    LBL LNX-PNEG !
@@ -964,25 +986,6 @@ s" spawn-darwin-finish" s" label label --" TRUST
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
-\ Friend-arena write guard (TFAM 2b-i). Emits a range check that traps
-\ fail-closed (exit E-SEAL-VIOLATION) when the runtime target address held in
-\ `areg` lands inside the sealed friend arena [DATA+FRIEND-ARENA,
-\ DATA+FRIEND-ARENA+latch). The latch (FRIEND-LATCH-CELL) is 0 while the engine
-\ loads its own canonical source, so the guard is inert during boot and becomes
-\ active once the cold prefix seals it (latch := FRIEND-ARENA-LEN). x12/x13 are
-\ scratch (free at every sink; stack values live in the XDS memory stack, never
-\ in registers across a prim). The BCOND makes the host body non-inlinable, so a
-\ guarded sink compiles to an out-of-line call, exactly like B-TASK-LIVE-GUARD /
-\ DP-CHECK already do.
-: PROT-GUARD ( n -- )                   \ n = register number holding the target address
-   LBL {: ok:label :}
-   DREG swap DATA SUB,                  \ x12 = target - DATA
-   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA (wraps huge when below arena)
-   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
-   DREG EREG CMP,
-   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
-      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
 
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
@@ -1325,13 +1328,14 @@ s" spawn-darwin-finish" s" label label --" TRUST
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
 : BREAD ( -- )
-   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  1 PROT-GUARD  NR-READ SYS,  SYS-PUSH ;   \ x1 = kernel-written buffer
 
 : BIOCTL ( -- )
-   2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  SYS-PUSH ;
+   2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  SYS-PUSH ;  \ x2 = driver arg (may be written)
 
 : BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   0 PROT-GUARD                              \ MAP_FIXED must not remap the sealed arena
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
@@ -1497,6 +1501,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
+   2 PROT-GUARD                              \ x2 = kernel-written link buffer
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
@@ -1526,6 +1531,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
+   1 PROT-GUARD                              \ x1 = kernel-written statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1543,6 +1549,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
+   1 PROT-GUARD                              \ x1 = kernel-written statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1560,6 +1567,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   1 PROT-GUARD  3 PROT-GUARD                \ x1 = dirent buffer, x3 = basep (both written)
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )

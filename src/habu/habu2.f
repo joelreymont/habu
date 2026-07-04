@@ -2712,6 +2712,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 \ any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here.
 : BSNAPREBASE ( -- )
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
+   8 PROT-GUARD  16 PROT-GUARD             \ never rewrite the sealed friend arena as code
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL, ;
 
