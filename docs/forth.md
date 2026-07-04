@@ -20,6 +20,14 @@ file.
 - **Conventional suffixes/prefixes**: predicates end `?` (`TYVAR?`); conversions
   `>X` (`TERM>TAG`, `S>NUMBER?`); fetch/store `X@` / `X!` (`TV@` / `TV!`);
   allocate/reset `X-ALLOC` / `X-RESET`.
+- **Scope pairs are `FOO` … `;FOO`** (decision 2026-07-04). Every word pair that
+  opens and closes a scope/region uses the opener's name with a `;` prefix as
+  the closer: `STRUCTURE … ;STRUCTURE`, `package … ;package`. New scope words
+  follow this from birth (type families, kernels, suites). `BEGIN-`/`END-` and
+  `X`/`END-X` pairs are legacy shapes being renamed (dots
+  `habu-convention-scope-pairs`, `habu-core-structures-dsl`). The bare `;`
+  (definition closer) and non-scope `;`-words are unaffected — only paired
+  scope delimiters follow the rule.
 - Short names per the global naming rules: abbreviate common terms (`buf`, `ctx`,
   `idx`, `nv`, `ki`, `ko`); single letters are fine in tight scope only when
   they remain readable. Locals are lexical and local-first: a declared local
