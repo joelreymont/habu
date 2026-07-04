@@ -1,9 +1,9 @@
 ---
 title: "FFI: f64->f32 narrowing for kernel float params"
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-06-27T08:06:44.260144+02:00"
+created-at: "\"2026-06-27T08:06:44.260144+02:00\""
 blocks:
   - habu-m1d-cuda-driver-ea2e2bba
 ---
