@@ -259,7 +259,7 @@ variable DSUGE  variable DSUGA
    QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
+   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
    DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
@@ -281,7 +281,7 @@ variable DSUGE  variable DSUGA
    UNDEFERR @ IF s" unknown_rejection" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF
-      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE s" fix_signature_syntax" THEN THEN
+      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE SGBAD-ARITY? IF s" fix_signature_arity" ELSE s" fix_signature_syntax" THEN THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
@@ -307,9 +307,11 @@ variable DSUGE  variable DSUGA
          s" Use a known stack-signature type or a single-letter type variable."
       ELSE SGBAD-BAREPTR? IF
          s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
+      ELSE SGBAD-ARITY? IF
+         s" Give the type family its exact declared number of arguments."
       ELSE
          s" Repair the stack-effect comment syntax, including --."
-      THEN THEN
+      THEN THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
@@ -346,6 +348,10 @@ variable JPOS  variable JLINE  variable JCOL
    SGBAD-BAREPTR? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT
      s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
+   THEN
+   SGBAD-ARITY? IF
+     s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : wrong arity for type family '" DTXT
+     FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
    QUALBAD @ IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT

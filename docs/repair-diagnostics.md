@@ -103,6 +103,8 @@ Current checker classes:
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
+- `fix_signature_arity`: a registered type family was applied to the wrong number
+  of arguments; give it its exact declared arity.
 - `fix_bare_ptr_element`: a signature named `ptr` with no element type; give it an
   element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
@@ -127,6 +129,7 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_qualified_name` | `Use one ':' qualifier, e.g. PKG:WORD.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
+| `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
 | `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |

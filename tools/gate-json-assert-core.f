@@ -324,6 +324,8 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_signature_type" s" Use a known stack-signature type or a single-letter type variable."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_signature_arity" s" Give the type family its exact declared number of arguments."
+   GJA-SUGGEST-ROW IF exit THEN
    s" fix_bare_ptr_element" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_nominal_type" s" Choose a unique non-reserved nominal type name."

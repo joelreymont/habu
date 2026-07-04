@@ -821,6 +821,23 @@ s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" T-CHECK-PASSES
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
+\ --- parametric type-family (TFAM) signature parsing (PLAN item 4) -----------
+\ Registry-driven `family<...>` parsing replacing the old PARAM-CTOR? whitelist:
+\ correct arity, reentrant nested parse, dual `ptr`, and family-id identity.
+s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
+s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
+s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
+s" COK-TFAM-NEST ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> )" T-CHECK-PASSES
+s" COK-TFAM-NEST4 ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> )" T-CHECK-PASSES
+s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
+\ NOTE: a regression that REFERENCES a stored nested-param sig (e.g.
+\ `... ( acc<t,tile<t,b,m>,b> -- ... ) COK-TFAM-NEST`) currently crashes the
+\ checker under accumulated suite state — a latent nested-param replay bug that
+\ this dot enables but no existing code triggers. Tracked by
+\ dot habu-tfam-nested-param-09fa2004; re-add the reference regression once fixed.
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )

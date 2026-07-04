@@ -309,28 +309,54 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 create PARAMA-BOOT MAXPARAM-INIT cells allot
 create PARAMU-BOOT MAXPARAM-INIT cells allot
 create PARAMC-BOOT MAXPARAM-INIT cells allot
+create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
 create PARAMARGS-BOOT MAXPARAM-INIT PARAM-MAX-ARGS * cells allot
-create PARAM-SCR PARAM-MAX-ARGS cells allot
+\ PARAM-SCR is the reentrant parse/replay scratch: it holds the arg terms pushed
+\ across ALL currently-open nesting levels, so its depth is a nesting-peak, not a
+\ per-param arg count. It grows on demand (a nested family whose args land at a
+\ non-zero base must not overflow); the per-param arg count stays PARAM-MAX-ARGS-
+\ capped by the SoA arg row and by SIG-TYPE's argc guard.
+32 constant PARAM-SCR-INIT
+create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
-variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMARGS-P
-variable PARAM-CAP
+variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
+variable PARAMARGS-P   variable PARAM-SCR-P
+variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
+PARAMFAM-BOOT PARAMFAM-P !
 PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 : PARAMA ( -- ptr a ) PARAMA-P @ ;
 : PARAMU ( -- ptr a ) PARAMU-P @ ;
 : PARAMC ( -- ptr a ) PARAMC-P @ ;
+: PARAMFAM ( -- ptr a ) PARAMFAM-P @ ;
 : PARAMARGS ( -- ptr a ) PARAMARGS-P @ ;
+: PARAM-SCR ( -- ptr a ) PARAM-SCR-P @ ;
+: PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
+   PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
+   PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max {: nc:n :}
+   PARAM-SCR-P @ PARAM-SCR-CAP-V @ cells nc cells ARENA-BYTES-GROW PARAM-SCR-P !
+   nc PARAM-SCR-CAP-V ! ;
 : PARAM-ENSURE ( n -- ) {: need:n :}
    need PARAM-CAP @ <= IF exit THEN
    need PARAM-CAP @ 2 * max {: nc:n :}
    PARAMA-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMA-P !
    PARAMU-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMU-P !
    PARAMC-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMC-P !
+   PARAMFAM-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMFAM-P !
    PARAMARGS-P @ PARAM-CAP @ PARAM-MAX-ARGS * cells
       nc PARAM-MAX-ARGS * cells ARENA-BYTES-GROW PARAMARGS-P !
    nc PARAM-CAP ! ;
+
+\ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
+\ lives in src/core/type-family.f, loaded AFTER checker.f, so its query words are
+\ reached through friend xt hooks installed at prefix load (0 = not yet loaded).
+\ The TFAM-RESOLVE*/TFAM-ARITY* wrappers live just below RES-FALSE (which they use).
+variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
+variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
+variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -343,28 +369,35 @@ UK-EXACT UNIFY-KIND !
 : PARAM>NAME-A ( n -- ptr u8 ) PAY PARAMA-FIELD @ ;
 : PARAM>NAME-U ( n -- n ) PAY cells PARAMU + @ ;
 : PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
+: PARAM>FAM ( n -- n ) PAY cells PARAMFAM + @ ;   \ resolved family-id (identity)
 : PARAM-ARG-IDX ( n n -- ptr n ) {: p idx :}
    p PAY PARAM-MAX-ARGS * idx + cells PARAMARGS + ;
 : PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
 : PARAM-ARG-OR-DUMMY ( n n -- n ) {: p idx :}
    idx p PARAM>ARGC < IF p idx PARAM>ARG ELSE 1 MK-CON THEN ;
-: PARAM-SCR-RESET ( -- ) 0 PARAM-SCR-N ! ;
-: PARAM-SCR-FULL? ( -- bool )
-   PARAM-SCR-N @ PARAM-MAX-ARGS >= ;
+: PARAM-ARGC-FULL? ( base -- bool )   \ this param already holds PARAM-MAX-ARGS args (SoA row cap)
+   PARAM-SCR-N @ swap - PARAM-MAX-ARGS >= ;
 : PARAM-SCR+ ( n -- )
+   PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
-: MK-PARAM {: a u :}
+\ MK-PARAM ( base a u fam -- t ) : build a T-PARAM from the scratch args pushed at
+\ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
+\ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
+\ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
+: MK-PARAM {: base:n a:ptr u:n fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
    a PARAMN @ PARAMA-FIELD !
    u PARAMN @ cells PARAMU + !
-   PARAM-SCR-N @ PARAMN @ cells PARAMC + !
-   0 PARAM-I !
+   fam PARAMN @ cells PARAMFAM + !
+   PARAM-SCR-N @ base - PARAMN @ cells PARAMC + !
+   base PARAM-I !
    BEGIN PARAM-I @ PARAM-SCR-N @ < WHILE
       PARAM-I @ cells PARAM-SCR + @
-      PARAMN @ PARAM-MAX-ARGS * PARAM-I @ + cells PARAMARGS + !
+      PARAMN @ PARAM-MAX-ARGS * PARAM-I @ base - + cells PARAMARGS + !
       PARAM-I @ 1 + PARAM-I !
    REPEAT
+   base PARAM-SCR-N !
    PARAMN @ 3 lshift T-PARAM or
    PARAMN @ 1 + PARAMN ! ;
 
@@ -400,6 +433,16 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 
 : RES-FALSE ( -- bool )
    0 0= 0= ;
+
+\ friend xt wrappers over the TFAM registry query surface (installed by
+\ type-family.f at prefix load); a 0 hook resolves nothing / arity 0. Both hooks
+\ always return a fixed row (id-or-0 + flag, arity int), never a variable arity.
+\ The xt sits ABOVE its data args, so we must not `?dup` it before `execute` (that
+\ would leave a stray xt under the args and misalign the call) — branch on a dup.
+: TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool )
+   TFAM-RESOLVE-XT @ dup 0= IF drop 2drop 2drop 0 RES-FALSE ELSE execute THEN ;
+: TFAM-ARITY* ( n -- n )
+   TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
 
 : TV-NEXT? ( n -- n bool )
    dup ISVAR 0= IF RES-FALSE EXIT THEN
@@ -489,8 +532,7 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>ARGC 3 <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>NAME-A t T-RES PARAM>NAME-U s" field" CORE-STR= ;
+   t T-RES PARAM>FAM FIELD-FAM @ = ;   \ identity by reserved family-id, not spelling
 
 : FIELD-REC ( n -- n )
    0 PARAM>ARG ;
@@ -787,12 +829,12 @@ CT-INIT
    t1 ATOM>K 0 = 0= IF RES-TRUE EXIT THEN
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
-: PARAM-NAME-OK? ( n n -- bool ) {: t1:n t2:n :}
-   t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U CORE-STR= ;
+: PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
    t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
-   t1 t2 PARAM-NAME-OK? 0= IF RES-FALSE UOK ! EXIT THEN
+   t1 t2 PARAM-FAM-OK? 0= IF RES-FALSE UOK ! EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
       t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
@@ -1509,6 +1551,7 @@ variable VREC-RB-I
          VR-PARAM VREC-NODE-NEW {: node:n :}
          x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U node VREC-COPY-STR
          x VREC-RES PARAM>ARGC node VN.C!
+         x VREC-RES PARAM>FAM node VN.H!            \ resolved family-id (identity)
          x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE node VN.D! THEN
          x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE node VN.E! THEN
          x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE node VN.F! THEN
@@ -1582,12 +1625,12 @@ variable VREC-RB-I
       endof
       VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
       VR-PARAM of
-         PARAM-SCR-RESET
+         PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
          node VN.C@ 0 > IF node VN.D@ RECURSE PARAM-SCR+ THEN
          node VN.C@ 1 > IF node VN.E@ RECURSE PARAM-SCR+ THEN
          node VN.C@ 2 > IF node VN.F@ RECURSE PARAM-SCR+ THEN
          node VN.C@ 3 > IF node VN.G@ RECURSE PARAM-SCR+ THEN
-         node VREC-I-STR MK-PARAM
+         node VREC-I-STR node VN.H@ MK-PARAM        \ ( base a u fam -- t )
       endof
       0 swap
    endcase ;
@@ -1659,6 +1702,7 @@ variable NRES  variable NDI  variable NDH
 0 constant SGBAD-SYNTAX-KIND
 1 constant SGBAD-UNKNOWN-KIND
 2 constant SGBAD-BAREPTR-KIND
+3 constant SGBAD-ARITY-KIND
 variable SGBAD
 variable SGBAD-A
 variable SGBAD-U
@@ -1721,6 +1765,10 @@ variable QUALBAD
    SGBAD-BAREPTR-KIND SGBAD-SET ;
 : SGBAD-BAREPTR? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
+: SGBAD-ARITY! ( ptr u8 n -- )      \ family applied to the wrong number of args
+   SGBAD-ARITY-KIND SGBAD-SET ;
+: SGBAD-ARITY? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
 
 : BAD-SIG-TYPE ( ptr u8 n -- n )
    SGBAD-UNKNOWN!
@@ -1740,22 +1788,18 @@ variable QUALBAD
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
-: PARAM-CTOR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" span" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" matrix" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" gridctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" fanctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" idxctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" uniqidxctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" coopctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" rowctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" tile" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" acc" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" mmctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" mmacc" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" uniform" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" rowidx" CORE-STR= ;
+\ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a bare family token through the TFAM
+\ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
+\ (0 false) — always two items, so every caller drops the id on the false path.
+\ `ptr` is NOT registered (it stays MK-PTR special-cased below), and the internal
+\ `field` family is registered private in a reserved package so it never resolves
+\ here. Resolution uses the global scope (empty package): every built-in cell
+\ family is public/global, so this finds all of them. Package-local resolution
+\ waits on the TYPEFAMILY declaration grammar (PLAN item 6); the checker
+\ package-state accessors are defined further down this file, so they cannot be
+\ named here without reordering the package block.
+: SIG-FAM? ( ptr u8 n -- n bool )
+   s" " 2swap TFAM-RESOLVE* ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
@@ -1769,7 +1813,7 @@ variable QUALBAD
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
    a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u PARAM-CTOR? IF RES-TRUE EXIT THEN
+   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
@@ -1861,26 +1905,44 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
+\ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
+\ (family-specific arity diagnostic) when the arg count differs from the family's
+\ declared arity, then build the T-PARAM (MK-PARAM rewinds scratch to `base`).
+: SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
+   PARAM-SCR-N @ base - fam TFAM-ARITY* <> IF a u SGBAD-ARITY! THEN
+   base a u fam MK-PARAM ;
+
+\ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
+\ `family<arg,...>`; each arg RECURSEs. `base` marks the shared scratch depth on
+\ entry so nested params are reentrant (a nested family's MK-PARAM rewinds to its
+\ own base, leaving the parent's already-pushed args intact). A bare family token
+\ (no `<`) builds a zero-arg application whose arity check rejects arity>0 families.
+\ `ptr` is dual: `ptr<space,elem>` resolves as a family here (a T-PARAM), while
+\ `ptr elem` (no `<`) must ALWAYS reach the MK-PTR special case below — even when
+\ `ptr` is not a live family (e.g. a suite that TFAM-RESETs the registry). So the
+\ family branch only builds a real `family<...>`; every no-`<` path (and the
+\ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u PARAM-CTOR? IF
+   a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
-         2drop PARAM-SCR-RESET
+         2drop PARAM-SCR-N @ {: base:n :}
          BEGIN
-            NEXT-SIG-TOK 2dup s" >" CORE-STR= IF
-               2drop a u MK-PARAM EXIT
-            THEN
-            2dup DELIM? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
-            PARAM-SCR-FULL? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
+            NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
+            2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
+            base PARAM-ARGC-FULL? IF a u SGBAD-ARITY! base a u fam MK-PARAM EXIT THEN
             RECURSE PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
-            2dup s" >" CORE-STR= IF 2drop a u MK-PARAM EXIT ELSE
-               SGBAD-SYNTAX! a u MK-PARAM EXIT
+            2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
+               SGBAD-SYNTAX! base a u fam MK-PARAM EXIT
             THEN THEN
          AGAIN
       ELSE
-         PK!
+         PK!                                          \ push back the non-'<' token
+         a u s" ptr" CORE-STR= 0= IF                  \ non-ptr family, no '<' -> 0-arg (arity reject)
+            PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
+         THEN                                         \ `ptr` (no '<') -> MK-PTR fall-through below
       THEN
-   THEN
+   ELSE drop THEN                                     \ not a family: drop the 0 family-id
    a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
@@ -2002,11 +2064,11 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : VREC-FIELD-WRAP ( ptr u8 n ptr u8 n n -- n )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
-   PARAM-SCR-RESET
+   PARAM-SCR-N @ {: base:n :}
    rec recu MK-ATOM PARAM-SCR+
    fld fldu MK-ATOM PARAM-SCR+
    typ PARAM-SCR+
-   s" field" MK-PARAM ;
+   base s" field" FIELD-FAM @ MK-PARAM ;   \ base a u fam -> field<rec,name,inner>
 
 : VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
@@ -2767,6 +2829,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          EN-PARAM E-NODE-NEW E-OFF >r
          x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
          x E-RES PARAM>ARGC r@ E-PTR EN.C !
+         x E-RES PARAM>FAM r@ E-PTR EN.H !          \ resolved family-id (identity)
          x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
          x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
          x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
@@ -2941,12 +3004,13 @@ variable FMEND
       endof
       EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
       EN-PARAM of
-         PARAM-SCR-RESET
+         PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
          r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
          r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
          r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
          r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
-         r@ E-I-STR MK-PARAM r> drop
+         r@ E-I-STR r@ EN.H @ MK-PARAM              \ ( base a u fam -- t )
+         r> drop
       endof
       r> drop 0 swap
    endcase ;
@@ -3807,7 +3871,9 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
    PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
+   PARAMFAM-BOOT PARAMFAM-P !
    PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+   PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
    TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET ; \ unification trail
 

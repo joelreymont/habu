@@ -295,7 +295,7 @@ variable TFAM-N   0 TFAM-N !
    na nu TF-REQUIRE-CANON
    arity 0 < IF E-TFAM-ARITY throw THEN
    kind TFAM-KIND-VALID? 0= IF E-TFAM-KIND throw THEN
-   pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN
+   pa pu na nu TFAM-FIND-IN IF drop E-TFAM-DUP throw THEN drop   \ FIND returns (id-or-0 flag); drop the id
    TF-ENSURE
    TFAM-N @ {: id:n :}
    pa pu TF-INTERN {: poff:n :}
@@ -375,7 +375,7 @@ variable SUMV-N   0 SUMV-N !
 : SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
    na nu TF-REQUIRE-CANON
-   fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN
+   fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    SUMV-ENSURE
    SUMV-N @ {: id:n :}
    na nu TF-INTERN {: noff:n :}
@@ -436,7 +436,7 @@ variable PF-N   0 PF-N !
    0 RES-FALSE ;
 : PF-ADD ( fam name-a name-u sch slot -- id ) {: fam:n na:ptr nu:n sch:n slot:n :}
    na nu TF-REQUIRE-CANON
-   fam na nu PF-FIND IF drop E-TFAM-DUP throw THEN
+   fam na nu PF-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    PF-ENSURE
    PF-N @ {: id:n :}
    na nu TF-INTERN {: noff:n :}
@@ -493,7 +493,7 @@ variable LAY-N   0 LAY-N !
    0 RES-FALSE ;
 : LAY-ADD ( fam policy size align tagw -- id ) {: fam:n p:n sz:n al:n tw:n :}
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
-   fam LAY-FIND IF drop E-TFAM-DUP throw THEN
+   fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
    LAY-N @ {: id:n :}
    id 1 + LAY-N !
@@ -608,3 +608,45 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TFAM-RBF-SNAP-RESET          \ TFAM registry rollback frames
    SCHEMA-RBF-SNAP-RESET ;      \ SCHEMA registry rollback frames
 ' REG-EXT-PERSIST REG-EXT-PERSIST-XT !
+
+\ ---------------------------------------------------------------------------
+\ Built-in parametric cell families — the checker parser's parametric type
+\ constructors, replacing checker.f's old hard-coded PARAM-CTOR? whitelist. Every
+\ family is PUBLIC and global (empty package) so a bare `span<...>` resolves via
+\ TFAM-RESOLVE from any scope. `ptr` is dual (see its line comment): registered
+\ arity-2 for `ptr<space,elem>`, while bare `ptr elem` keeps the MK-PTR special
+\ case in checker.f. Registration runs at prefix load in every
+\ context (preverify parent + runtime child), so both see identical families.
+\ ---------------------------------------------------------------------------
+: TFAM-REG-CELL ( name-a name-u arity -- )   \ public global TK-CELL family
+   {: na:ptr nu:n ar:n :}
+   s" " CHECKER-PACKAGE-PUBLIC na nu ar TK-CELL TFAM-DECL drop ;
+
+\ `ptr` is dual: `ptr<space,elem>` is a parametric pointer (T-PARAM, resolved
+\ here), while `ptr elem` (no `<`) stays the MK-PTR plain-pointer special case in
+\ checker.f SIG-TYPE. Registered arity 2 matches every `ptr<...>` in the tree.
+s" ptr"        2 TFAM-REG-CELL
+s" span"       3 TFAM-REG-CELL
+s" matrix"     4 TFAM-REG-CELL
+s" gridctx"    3 TFAM-REG-CELL
+s" fanctx"     3 TFAM-REG-CELL
+s" idxctx"     4 TFAM-REG-CELL
+s" uniqidxctx" 4 TFAM-REG-CELL
+s" coopctx"    3 TFAM-REG-CELL
+s" rowctx"     3 TFAM-REG-CELL
+s" tile"       3 TFAM-REG-CELL
+s" acc"        3 TFAM-REG-CELL
+s" mmctx"      3 TFAM-REG-CELL
+s" mmacc"      3 TFAM-REG-CELL
+s" uniform"    1 TFAM-REG-CELL
+s" rowidx"     1 TFAM-REG-CELL
+
+\ Internal VREC field constructor: arity 3, PRIVATE in reserved package "@" (not a
+\ spellable user package) so it never resolves from user signatures, while every
+\ field<...> term still carries this reserved family-id for identity comparison.
+s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM !
+
+\ Install the checker's friend xt hooks: checker.f loads before this file, so it
+\ resolves families / reads arities during signature parsing through these cells.
+' TFAM-RESOLVE TFAM-RESOLVE-XT !
+' TFAM-ARITY@  TFAM-ARITY-XT !

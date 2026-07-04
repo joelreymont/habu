@@ -216,6 +216,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    s" fix_qualified_name" RSD-NEED-CLASS
    s" fix_signature_syntax" RSD-NEED-CLASS
    s" fix_signature_type" RSD-NEED-CLASS
+   s" fix_signature_arity" RSD-NEED-CLASS
    s" fix_bare_ptr_element" RSD-NEED-CLASS
    s" fix_nominal_type" RSD-NEED-CLASS
    s" rewrite_uncheckable" RSD-NEED-CLASS
