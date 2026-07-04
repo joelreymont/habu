@@ -20,7 +20,13 @@
 \ alignment class, and every capacity are named throws. The record layout never
 \ leaks - callers pass or receive primitive facts only, so the store can swap to an
 \ ADT family later (cad-adt-swap) without touching a caller. maki -> habu only;
-\ owns -5055..-5062.
+\ owns -5055..-5063.
+\
+\ The IR also carries the MODEL NAME (MIR-NAME!/MIR-NAME$), so downstream consumers
+\ below the cad.f REPL layer (the golden reference-artifact store) can key a file by
+\ model without a load-order cycle back into cad.f. OPTIMIZE-time shape binding
+\ (maki/cad.f BIND-SHAPES) rewrites slot extents (MIR-SLOT-SHAPE!) then re-propagates
+\ node extents (MIR-SHAPE!) and movement verdicts (MIR-ATTR!) in place.
 
 require maki/op-kind.f
 require maki/op-registry.f
@@ -39,6 +45,7 @@ require lib/fmt.f
 -5060 constant E-MIR-INSLOT   \ input-slot index / capacity out of range
 -5061 constant E-MIR-STATE    \ node builder used out of order
 -5062 constant E-MIR-ALIGN    \ input-slot alignment class out of range
+-5063 constant E-MIR-NAME     \ model name longer than the name buffer
 
 package MAKI
 public
@@ -79,6 +86,11 @@ create MI-IS-LAY  MIR-IN-CAP cells allot
 create MI-IS-AL   MIR-IN-CAP cells allot     \ base alignment class (AL-*); AL-UNKNOWN default
 variable MIR-IS-N
 
+\ model name (denormalized into the IR so the golden artifact store can key a file
+\ by model below the cad.f layer without a load-order cycle). Reset with the table.
+64  constant MIR-NAME-CAP
+create MI-NAME MIR-NAME-CAP allot   variable MI-NAME-U
+
 \ pending-node staging (any-arity records with the fixed-arity ref pool)
 variable MIR-PEND-KIND
 variable MIR-PEND-OFF
@@ -110,10 +122,16 @@ public
 
 \ ---- lifecycle -------------------------------------------------------------
 : MIR-RESET ( -- )
-   0 MIR-N !  0 MIR-INS-U !  0 MIR-IS-N !  0 MIR-PEND-ON ! ;
+   0 MIR-N !  0 MIR-INS-U !  0 MIR-IS-N !  0 MIR-PEND-ON !  0 MI-NAME-U ! ;
 
 : MIR-N@ ( -- n )         MIR-N @ ;
 : MIR-IN-SLOTS@ ( -- n )  MIR-IS-N @ ;
+
+\ ---- model name (single source; cad.f MODEL: sets it, golden artifacts read it) ----
+: MIR-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u MIR-NAME-CAP > if E-MIR-NAME throw then
+   a MI-NAME u BYTE-COPY  u MI-NAME-U ! ;
+: MIR-NAME$ ( -- ptr u8 n )  MI-NAME MI-NAME-U @ ;
 
 \ ---- checkpoint / restore (transient IR growth, e.g. the cad-9 backward pass) ----
 \ MIR-MARK captures the table high-water marks; MIR-RELEASE truncates back to them
@@ -148,6 +166,12 @@ public
    al AL-VALID? 0= if E-MIR-ALIGN throw then
    s MIR-IS-CK drop
    al s cells MI-IS-AL + ! ;
+
+\ rebind an input slot's extents (OPTIMIZE-time shape binding, maki/cad.f)
+: MIR-SLOT-SHAPE! ( n n n -- ) {: rows:n cols:n s:n :}   \ rows cols slot --
+   s MIR-IS-CK drop
+   rows s cells MI-IS-ROWS + !
+   cols s cells MI-IS-COLS + ! ;
 
 \ ---- node builder (BEGIN op ; IN+ ref ... ; OP+ facts -> node) --------------
 : MIR-OP-BEGIN ( n -- ) {: op:n :}
@@ -193,6 +217,15 @@ public
 : MIR-MAT@  ( n -- bool )  MIR-CK cells MI-MAT   + @ 0= 0= ;
 
 : MIR-MAT! ( bool n -- )   MIR-CK cells MI-MAT + ! ;
+
+\ re-propagated node output extents + rewritten attrs (OPTIMIZE-time re-inference)
+: MIR-SHAPE! ( n n n -- ) {: rows:n cols:n node:n :}     \ rows cols node --
+   node MIR-CK drop
+   rows node cells MI-ROWS + !
+   cols node cells MI-COLS + ! ;
+: MIR-ATTR! ( n n -- ) {: attr:n node:n :}               \ attr node -- (movement re-verdict)
+   node MIR-CK drop
+   attr node cells MI-ATTR + ! ;
 
 : MIR-IN-COUNT@ ( n -- n )  MIR-CK cells MI-INCNT + @ ;
 

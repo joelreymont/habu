@@ -142,6 +142,8 @@ TEST:SUITE maki/report-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cad-test.f
 TEST:END-SUITE
+TEST:SUITE maki/cad-bind-test.f
+TEST:END-SUITE
 TEST:SUITE maki/golden-test.f
 TEST:END-SUITE
 TEST:SUITE maki/gradcheck-test.f

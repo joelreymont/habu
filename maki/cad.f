@@ -49,13 +49,16 @@ require maki/gradcheck.f
 -5024 constant E-CAD-SYNTAX    \ malformed MODEL: (bad signature / shape / terminator)
 -5025 constant E-CAD-ARITY     \ op missing its data input or declared parameters
 -5026 constant E-CAD-INPUTS    \ more model inputs than the capture pool holds
+\ OPTIMIZE-time shape binding (BIND-SHAPES) uses the free -5160..-5162 slice.
+-5160 constant E-CAD-BIND-COUNT    \ BIND-SHAPES spec count != model input slots
+-5161 constant E-CAD-BIND-CONFLICT \ a spec contradicts an already-bound (nonzero) extent
+-5162 constant E-CAD-BIND-SHAPE    \ malformed/zero spec dim or illegal re-propagated shape
 
 package MAKI
 private
 
-64 constant MODEL-NAME-CAP
-create MODEL-NAME MODEL-NAME-CAP allot   variable MODEL-NAME-U
 variable MODEL-SET?                        \ 0 until a MODEL: succeeds
+                                           \ model NAME lives in the IR (MIR-NAME$)
 
 64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
 create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n)
@@ -91,12 +94,6 @@ public
 
 private
 
-: MODEL-NAME! ( ptr u8 n -- )                  \ copy the transient parse-name token
-   {: a:ptr u:n :}
-   u MODEL-NAME-CAP > if E-CAD-SYNTAX throw then
-   0 begin dup u < while  dup a + c@  over MODEL-NAME + c!  1+  repeat drop
-   u MODEL-NAME-U ! ;
-
 \ ---- capture engine --------------------------------------------------------
 : CAP-IN@   ( n -- tensor )  cells CAP-INS + @ >tensor ;
 : CAP-CUR@  ( -- tensor )    CAP-CUR @ >tensor ;
@@ -105,7 +102,7 @@ private
 : CAP-BEGIN ( -- )
    TV-RESET  PLAN-RESET  MIR-RESET
    0 CAP-IN-N !  1 CAP-IP !  -1 CAP-CUR !
-   0 MODEL-NAME-U !  0 MODEL-SET? ! ;
+   0 MODEL-SET? ! ;
 
 : CAP-INPUT ( n n -- ) {: rows:n cols:n :}      \ declare one model input (f32/row)
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
@@ -252,14 +249,147 @@ public
 \ MODEL: NAME ( inputs -- outputs ) OP OP ... ;   (single line)
 : MODEL: ( -- )
    CAP-BEGIN
-   parse-name dup 0= if 2drop E-CAD-EMPTY throw then MODEL-NAME!
+   parse-name dup 0= if 2drop E-CAD-EMPTY throw then MIR-NAME!
    PARSE-SIG
    PARSE-BODY ;
 
 : MODEL-CLEAR ( -- )  CAP-BEGIN ;
 : MODEL-DEFINED? ( -- bool )  MODEL-SET? @ 0= 0= ;
-: MODEL-NAME$ ( -- ptr u8 n )  MODEL-NAME MODEL-NAME-U @ ;
+: MODEL-NAME$ ( -- ptr u8 n )  MIR-NAME$ ;
 : MODEL-K ( -- n )  MIR-N@ ;
+
+private
+
+\ ---- OPTIMIZE-time shape re-propagation over the committed IR node table -----
+\ Each node's output extents are a pure function of its operands' CURRENT extents
+\ and its op class - the plan-ops.f inference rules re-expressed over IR nodes so a
+\ rebind updates the whole downstream cone (CAD-PLAN section 13). Elementwise and
+\ row-reduce forward ops keep the data operand's shape; matmul/linear take rows from
+\ the data operand and cols from the weight (inner dim must agree); each movement op
+\ recomputes its extents from its attrs and re-derives its dissolution verdict.
+: RB-REF-ROWS ( n -- n ) {: r:n :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
+: RB-REF-COLS ( n -- n ) {: r:n :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
+: RB-REF-LAY ( n -- n ) {: r:n :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@ else r MIR-LAY@ then ;
+
+\ elementwise / row-reduce forward: output = data operand (operand 0) shape
+: RB-DATA ( n -- n n ) {: nd:n :}  nd 0 MIR-IN@ {: r:n :}  r RB-REF-ROWS  r RB-REF-COLS ;
+
+\ contraction: rows from data operand, cols from weight; inner dim must agree
+: RB-MM ( n -- n n ) {: nd:n :}
+   nd 0 MIR-IN@ {: xr:n :}  nd 1 MIR-IN@ {: wr:n :}
+   xr RB-REF-COLS wr RB-REF-ROWS <> if E-CAD-BIND-SHAPE throw then
+   xr RB-REF-ROWS  wr RB-REF-COLS ;
+
+\ movement extents per op (attrs carry reshape target / slice range; the rest come
+\ from operand extents). Each binds its locals at entry (no branch-local rebinds).
+: RB-RESHAPE ( n -- n n ) {: nd:n :}
+   nd MIR-ATTR@ {: attr:n :}  nd 0 MIR-IN@ {: r0:n :}
+   attr MV-PA@ {: tr:n :}  attr MV-PB@ {: tc:n :}
+   r0 RB-REF-ROWS r0 RB-REF-COLS *  tr tc *  <> if E-CAD-BIND-SHAPE throw then
+   tr tc ;
+: RB-TRANSPOSE ( n -- n n ) {: nd:n :}
+   nd 0 MIR-IN@ {: r0:n :}  r0 RB-REF-COLS  r0 RB-REF-ROWS ;
+: RB-SLICE ( n -- n n ) {: nd:n :}
+   nd MIR-ATTR@ {: attr:n :}  nd 0 MIR-IN@ {: r0:n :}
+   attr MV-PA@ {: a:n :}  attr MV-PB@ {: b:n :}
+   a 0 < b r0 RB-REF-ROWS > or  a b > or if E-CAD-BIND-SHAPE throw then
+   b a -  r0 RB-REF-COLS ;
+: RB-CONCAT ( n -- n n ) {: nd:n :}
+   nd 0 MIR-IN@ {: r0:n :}  nd 1 MIR-IN@ {: r1:n :}
+   r0 RB-REF-COLS r1 RB-REF-COLS <> if E-CAD-BIND-SHAPE throw then
+   r0 RB-REF-ROWS r1 RB-REF-ROWS +  r0 RB-REF-COLS ;
+: RB-GATHER ( n -- n n ) {: nd:n :}
+   nd 0 MIR-IN@ {: r0:n :}  nd 1 MIR-IN@ {: r1:n :}
+   r1 RB-REF-ROWS r1 RB-REF-COLS *  r0 RB-REF-COLS ;
+
+: RB-MOVE-SHAPE ( n -- n n ) {: nd:n :}
+   nd MIR-OP@ {: op:n :}
+   op OP-RESHAPE   = if nd RB-RESHAPE   exit then
+   op OP-TRANSPOSE = if nd RB-TRANSPOSE exit then
+   op OP-SLICE     = if nd RB-SLICE     exit then
+   op OP-CONCAT    = if nd RB-CONCAT    exit then
+   op OP-GATHER    = if nd RB-GATHER    exit then
+   E-CAD-BIND-SHAPE throw ;
+
+\ movement dissolution verdict re-derived from the new extents (slice re-checks its
+\ offset/col alignment; the rest are layout- or constant-determined).
+: RB-VD-RESHAPE ( n -- n ) {: nd:n :}  nd 0 MIR-IN@ RB-REF-LAY MV-RESHAPE-VERDICT ;
+: RB-VD-SLICE ( n n -- n ) {: nd:n cols:n :}
+   nd 0 MIR-IN@ RB-REF-LAY  nd MIR-ATTR@ MV-PA@  cols  MV-SLICE-VERDICT ;
+: RB-MOVE-VD ( n n -- n ) {: nd:n cols:n :}
+   nd MIR-OP@ {: op:n :}
+   op OP-RESHAPE   = if nd RB-VD-RESHAPE     exit then
+   op OP-TRANSPOSE = if MV-TRANSPOSE-VERDICT exit then
+   op OP-SLICE     = if nd cols RB-VD-SLICE  exit then
+   op OP-CONCAT    = if MV-CONCAT-VERDICT    exit then
+   op OP-GATHER    = if MV-GATHER-VERDICT    exit then
+   E-CAD-BIND-SHAPE throw ;
+
+: REPROP-MOVE ( n -- ) {: nd:n :}
+   nd RB-MOVE-SHAPE {: rows:n cols:n :}
+   nd MIR-ATTR@ {: attr:n :}
+   attr MV-TF@  nd cols RB-MOVE-VD  attr MV-PA@  attr MV-PB@  MV-PACK  nd MIR-ATTR!
+   rows cols nd MIR-SHAPE! ;
+
+: REPROP-NODE ( n -- ) {: nd:n :}
+   nd MIR-OP@ OPR-CLASS {: cls:n :}
+   cls CLASS-MOVEMENT = if nd REPROP-MOVE exit then
+   cls CLASS-MATMUL   = if nd RB-MM nd MIR-SHAPE! exit then
+   nd RB-DATA nd MIR-SHAPE! ;
+
+: REPROP-ALL ( -- )  MIR-N@ 0 ?do  i REPROP-NODE  loop ;
+
+\ ---- BIND-SHAPES parse: positional "[name:]RxC" specs, one per input slot ------
+64 constant BS-CAP
+create BS-ROWS BS-CAP cells allot
+create BS-COLS BS-CAP cells allot
+variable BS-N
+
+: BS-RESET ( -- )  0 BS-N ! ;
+: BS-PUSH ( n n -- ) {: rows:n cols:n :}
+   BS-N @ BS-CAP >= if E-CAD-BIND-COUNT throw then
+   rows 0 <= cols 0 <= or if E-CAD-BIND-SHAPE throw then     \ a bind spec is concrete
+   rows BS-ROWS BS-N @ cells + !
+   cols BS-COLS BS-N @ cells + !
+   BS-N @ 1+ BS-N ! ;
+: BS-SPEC ( ptr u8 n -- )  PARSE-SHAPE BS-PUSH ;
+: BS-PARSE ( -- )
+   BS-RESET
+   begin
+      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      2dup s" ;" STR= if 2drop exit then
+      BS-SPEC
+   again ;
+
+\ merge one extent: unbound (0) takes the spec; a bound extent must equal the spec.
+: BS-DIM ( n n -- n ) {: cur:n new:n :}
+   cur 0= if new exit then
+   cur new <> if E-CAD-BIND-CONFLICT throw then
+   cur ;
+: BS-APPLY ( n -- ) {: s:n :}
+   s MIR-SLOT-ROWS@  BS-ROWS s cells + @  BS-DIM
+   s MIR-SLOT-COLS@  BS-COLS s cells + @  BS-DIM
+   s MIR-SLOT-SHAPE! ;
+: BS-BIND ( -- )
+   BS-N @ MIR-IN-SLOTS@ <> if E-CAD-BIND-COUNT throw then
+   MIR-IN-SLOTS@ 0 ?do  i BS-APPLY  loop
+   REPROP-ALL
+   FP-RESET ;
+
+public
+
+\ BIND-SHAPES rebinds declared input extents AFTER MODEL:, positional in signature
+\ order (PARSE-SIG keeps no names): the i-th "[name:]RxC" spec binds input slot i,
+\ filling an unbound (0) MODEL: extent or restating a bound one. A differing bound
+\ extent, a wrong spec count, a malformed/zero spec, or an illegal re-propagated
+\ downstream shape all fail closed. On success node extents re-propagate over the IR
+\ and the fusion plan is dropped (FP-RESET) so FUSE/MEMORY/TILE re-plan.
+: BIND-SHAPES ( -- )
+   MODEL-SET? @ 0= if E-CAD-NOMODEL throw then
+   BS-PARSE  BS-BIND ;
 
 private
 
