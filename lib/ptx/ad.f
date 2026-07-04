@@ -143,3 +143,22 @@ variable AD-START
       else  SB-SEP  dup a swap TOK-STR SB-APPEND  1+  then
    repeat drop
    SB$ ;
+
+\ --- the composed pass: forward body -> simplified backward body ---
+\ AD-REVERSE and AD-SIMPLIFY both render into SB, so the reversal is copied to
+\ a private buffer before simplification (never simplify SB$ in place).
+1024 constant AD-BWD-CAP
+create AD-BWD-BUF AD-BWD-CAP allot
+variable AD-BWD-U
+
+: AD-BWD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   u AD-BWD-CAP > if E-PTX-ADCAP throw then
+   a AD-BWD-BUF u BYTE-COPY
+   u AD-BWD-U ! ;
+
+\ The result is returned from the private buffer (not SB$), so it stays valid
+\ while the caller's kernel scaffold reuses SB for emit lines.
+: AD-BACKWARD$ ( ptr u8 n -- ptr u8 n )
+   AD-REVERSE AD-BWD-COPY
+   AD-BWD-BUF AD-BWD-U @ AD-SIMPLIFY AD-BWD-COPY
+   AD-BWD-BUF AD-BWD-U @ ;

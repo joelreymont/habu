@@ -375,6 +375,13 @@ points stay listed.
   gradcheck gate: emits all entry kernels, ships/assembles via the ssh harness,
   proves malformed-PTX and missing-cubin failure classes red, then runs the
   launcher on the Orin. HABU_ZED-gated.
+- `lib/ptx/ad-gen.f` / `lib/ptx/ad-gen-test.f` — lowering of a GENERATED
+  straight-line body (the reverse pass output, AD-BACKWARD$) to PTX kernel
+  compute: token-driven EMIT dispatch over an emit-time register stack;
+  fail-closed v0 contract (one load, one final store/scatter, no saved-value
+  tokens yet, unknown tokens and unbalanced bodies reject) plus the composed
+  pass tests (generated XSUBSUM backward text, NEG NEG collapse, control-flow
+  rejects across token classes).
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header

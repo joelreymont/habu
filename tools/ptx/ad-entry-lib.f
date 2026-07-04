@@ -28,6 +28,8 @@ require lib/ptx/header.f
 require lib/ptx/cg-collective.f
 require lib/ptx/collective.f
 require lib/ptx/ad-dag.f
+require lib/ptx/ad.f
+require lib/ptx/ad-gen.f
 
 256 %BLOCK
 
@@ -378,3 +380,39 @@ variable ADE2-DZ
    dz x EMIT-MUL EMIT-BLOCK-SUM EMIT-BROADCAST
    5 r EMIT-ROW-SPAN c EMIT-ROW-STORE
    CG-SM-RET CG-SM-CLOSE ;
+
+\ ==== GENERATED backward via the reverse pass (habu-ad-reverse-pass) ============
+\ XSUBSUM: z = x - Sum(x), a LINEAR forward whose backward the reverse pass
+\ GENERATES from the vjp.f table (AD-BACKWARD$) and ad-gen.f lowers to a kernel:
+\ dx = dz + BROADCAST(-Sum(dz)). Deliberately different from the hand-written
+\ softmax path: the emitted backward text comes from the pass, not from a
+\ human. Both kernels lower through the same ADG dispatcher, so the forward the
+\ central difference probes is exactly the body the reverse pass consumed.
+
+: ADE-XSUBSUM-FWD$ ( -- ptr u8 n )
+   s" ROW-LOAD DUP BLOCK-SUM PTX:B- ROW-STORE" ;
+
+: ADE-GEN-FWD ( ptr u8 n -- ) {: a:ptr u:n :}   \ lower a 1-in/1-out forward as AD_FWD
+   CG-SM-RESET  CG-HEADER ADE-FWD-ENTRY CG-SM-OPEN CG-SM-PARAMS
+   EMIT-ROW              {: r:n :}
+   1 r EMIT-ROW-SPAN     {: xsp:n :}
+   xsp EMIT-ROW-CTX      {: c:n :}
+   2 r EMIT-ROW-SPAN     {: osp:n :}
+   a u xsp osp c ADG-LOWER
+   CG-SM-RET CG-SM-CLOSE ;
+
+: ADE-GEN-BWD ( ptr u8 n -- ) {: a:ptr u:n :}   \ lower a generated backward as AD_BWD
+   CG-BW-RESET  CG-HEADER ADE-BWD-ENTRY CG-SM-OPEN CG-BW-PARAMS
+   EMIT-ROW              {: r:n :}
+   1 r EMIT-ROW-SPAN     {: xsp:n :}   \ x span: linear backwards leave it unread
+   xsp EMIT-ROW-CTX      {: c:n :}
+   2 r EMIT-ROW-SPAN     {: dzsp:n :}
+   3 r EMIT-ROW-SPAN     {: osp:n :}
+   a u dzsp osp c ADG-LOWER
+   CG-SM-RET CG-SM-CLOSE ;
+
+: ADE-XSUBSUM-FWD ( -- )
+   ADE-XSUBSUM-FWD$ ADE-GEN-FWD ;
+
+: ADE-XSUBSUM-BWD ( -- )
+   ADE-XSUBSUM-FWD$ AD-BACKWARD$ ADE-GEN-BWD ;

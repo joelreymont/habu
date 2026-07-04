@@ -352,6 +352,29 @@ variable PTXT-ERR-SAVE
    s" bar.sync 0;" PTXT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ --- the GENERATED backward (reverse pass over the vjp.f table, ad-gen lowering) ---
+\ XSUBSUM fwd z = x - Sum(x); the generated backward ends in the conservative
+\ ROW-SCATTER-ADD (red.global.add). The emitting lowering rejects are asserted
+\ under capture: a second load and a dangling value both fail closed.
+
+: PTXT-ADG-XSUBSUM-OUTPUT ( -- )
+   [: ADE-XSUBSUM-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" sub.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XSUBSUM-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" add.rn.f32" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADG-REJECTS ( -- )
+   [: s" ROW-LOAD ROW-LOAD +. ROW-STORE" 1 2 3 ADG-LOWER ;] PTXT-CAPTURE
+   E-PTX-NOIMPL T= 2drop
+   [: s" ROW-LOAD DUP ROW-STORE" 1 2 3 ADG-LOWER ;] PTXT-CAPTURE
+   E-PTX-AD-OUTPUT T= 2drop ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -371,5 +394,7 @@ PTXT-ADE-WRONG-OUTPUT
 PTXT-ADE2-ELEM-OUTPUT
 PTXT-ADE2-STRUCT-OUTPUT
 PTXT-ADE2-SCALAR-OUTPUT
+PTXT-ADG-XSUBSUM-OUTPUT
+PTXT-ADG-REJECTS
 T-REPORT
 s" saxpy-test: ok" type cr
