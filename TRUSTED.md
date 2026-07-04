@@ -746,7 +746,7 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 47
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 49
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436

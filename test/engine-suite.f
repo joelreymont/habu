@@ -877,8 +877,30 @@ s" COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> )" T-CHECK-PASSE
 s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
 s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
 s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
-s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" T-CHECK-REJECTS
-s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" T-CHECK-REJECTS
+\ Malformed-row first causes are asserted by KIND (destruction review): a missing
+\ '--' hits SIG-PARSE-QUOT's EXPECT-SIG -> SGBAD-SYNTAX; a missing ']' after the
+\ data rows is first seen as the stray ',' by SIG-TYPE -> SGBAD-UNKNOWN (the ']'
+\ EXPECT never runs); the extra '--' after a full return clause is the fixture
+\ that genuinely reaches the return-branch s" ]" EXPECT-SIG -> SGBAD-SYNTAX.
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? -1 T=
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+\ Render acceptance (destruction review): a mismatch diagnostic must render the
+\ full parametric type — all six args of an arity-6 application, and an SC-QUOT
+\ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
+s" T-BIG6-MK" s" -- tfam6r-big<n,f32,u8,u16,i64,bool>" TRUST
+s" T-SCQ-MK" s" -- scq-fam<[ n -- n | a -- a ],f32>" TRUST
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" arity-6 mismatch diagnostic rejects" T-LABEL
+s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
+s" arity-6 diagnostic renders all six args" T-LABEL
+DIAG-BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" T-HAS? -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" SC-QUOT mismatch diagnostic rejects" T-LABEL
+s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
+s" SC-QUOT diagnostic renders quot rows and return clause" T-LABEL
+DIAG-BUFFER$ s" scq-fam<[ n-- n | a-- a],f32>" T-HAS? -1 T=
+DIAG-BUFFER-OFF
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
@@ -1003,6 +1025,33 @@ VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
 : T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
 s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
 s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
+\ VNARG rollback parity (destruction review): a VALUE-RECORD defined inside a
+\ rolled-back scope allocates VR-PARAM nodes AND their VNARG runs; RBF-POP must
+\ rewind VNARG-N in lockstep with VREC-NODE-N, and a record defined BEFORE the
+\ scope must still instantiate from its (surviving, below-the-mark) VNARG run.
+variable TR-VNARG-RB   variable TR-VNODE-RB
+VNARG-N @ TR-VNARG-RB !   VREC-NODE-N @ TR-VNODE-RB !
+CHECKER-SCOPE-START
+VALUE-RECORD tfam6r-rb q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+s" vnarg-scope-grew" T-LABEL   VNARG-N @ TR-VNARG-RB @ > -1 T=
+s" vrec-node-scope-grew" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ > -1 T=
+CHECKER-SCOPE-DONE
+s" vnarg-rollback-rewinds" T-LABEL   VNARG-N @ TR-VNARG-RB @ T=
+s" vrec-node-rollback-parity" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ T=
+s" surviving record instantiates after rollback" T-LABEL
+s" COK-BIG6VR-POSTRB ( tfam6r-vr -- tfam6r-vr )" CHECK-QUIET-CANDIDATE! -1 T=
+\ VNARG persist read-back (destruction review): force the arg pool onto a grown
+\ mmap store, bake it with VREC-SNAPSHOT-PERSIST, and prove a real >4-arg run
+\ still instantiates from the persisted buffer (VNARG-N stable across the bake).
+variable TR-VNARG-P0
+VNARG-N @ VNARG-CAP-V !          \ next reserve crosses the cap -> VNARG grows to mmap
+VALUE-RECORD tfam6r-vrp q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+VNARG-N @ TR-VNARG-P0 !
+s" vnarg-grow" T-LABEL   VNARG-P @ VNARG-BOOT = 0 T=   \ pool left the boot buffer -> persist is a real copy
+VREC-SNAPSHOT-PERSIST
+s" vnarg-persist-stable" T-LABEL   VNARG-N @ TR-VNARG-P0 @ T=
+s" vnarg-persist-readback" T-LABEL
+s" COK-BIG6VRP-RT ( tfam6r-vrp -- tfam6r-vrp )" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

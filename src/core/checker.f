@@ -1343,7 +1343,11 @@ variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 \ A VR-PARAM node stores argc in VN.C, the arg-run start (into VNARG) in VN.D, and
 \ the family-id in VN.H; the argc child node ids live at [start,start+argc). Cells
 \ hold node ids (pointer-free), so REG-GROW1 relocation and snapshot bake verbatim.
-\ VNARG-N never rewinds (persisted nodes are permanent, like VREC-NODE-N).
+\ VNARG-N rewinds through the rollback frame (RBF.VNARGN) in lockstep with
+\ VREC-NODE-N: a VR-PARAM node and its arg run are allocated together inside one
+\ VREC-COPY (never across a frame boundary), so at every RBF-PUSH/POP point all
+\ nodes below the VREC-NODE-N mark have runs entirely below the VNARG-N mark —
+\ rewinding both retires a rejected scope's runs without dangling a survivor.
 $4000 constant VNARG-INIT
 create VNARG-BOOT VNARG-INIT cells allot
 variable VNARG-P   VNARG-BOOT VNARG-P !
@@ -1832,6 +1836,8 @@ variable QUALBAD
 
 : SGBAD-SYNTAX! ( ptr u8 n -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
+: SGBAD-SYNTAX? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-SYNTAX-KIND = and ;
 
 : SGBAD-UNKNOWN! ( ptr u8 n -- )
    SGBAD-UNKNOWN-KIND SGBAD-SET ;
@@ -5253,6 +5259,7 @@ BEGIN-STRUCTURE RBF-REC
    CELL +FIELD RBF.VRECN
    CELL +FIELD RBF.VRECF
    CELL +FIELD RBF.VRECND
+   CELL +FIELD RBF.VNARGN
    CELL +FIELD RBF.VRECU
    CELL +FIELD RBF.CAND
    CELL +FIELD RBF.VSIG
@@ -5305,6 +5312,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    VREC-N @ r RBF.VRECN !
    VREC-FIELD-N @ r RBF.VRECF !
    VREC-NODE-N @ r RBF.VRECND !
+   VNARG-N @ r RBF.VNARGN !
    VREC-STR-U @ r RBF.VRECU !
    CHK-CAND @ r RBF.CAND !
    VSIG @ r RBF.VSIG !
@@ -5330,6 +5338,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.VRECN @ VREC-N !
    r RBF.VRECF @ VREC-FIELD-N !
    r RBF.VRECND @ VREC-NODE-N !
+   r RBF.VNARGN @ VNARG-N !
    r RBF.VRECU @ VREC-STR-U !
    r RBF.CAND @ CHK-CAND !
    r RBF.VSIG @ VSIG !
