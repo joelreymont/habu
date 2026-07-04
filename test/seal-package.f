@@ -1,4 +1,4 @@
-\ seal-package.f - sealed system-package regressions (TFAM 2b-ii).
+\ seal-package.f - sealed system-package regressions (TFAM 2b-ii, 2b-iii).
 \
 \ Proves that once the friend latch is sealed (every user-source entry), the
 \ compiler rejects opening or reopening a reserved system package
@@ -6,6 +6,15 @@
 \ (`: TFAM:tail ...`), case-insensitively, fail-closed with exit E-SEAL-PACKAGE.
 \ Ordinary (non-reserved) packages and qualified definitions still compile, and a
 \ trailing-colon ordinary name (`PRIM:`-shaped) is never treated as qualified.
+\
+\ TFAM 2b-iii extends the same reserved-name seal (C-QUALIFY-SEAL-GUARD) to the
+\ token sinks that resolve a qualified name without defining it: `'` (tick),
+\ `[']` (bracket-tick), and `postpone`. A user `' TFAM:tail`, `['] TYPE:tail`, or
+\ `postpone MATCH:tail` rejects fail-closed (E-SEAL-PACKAGE) exactly like the
+\ define path, case-insensitively, on both cold-prefix entry paths, while
+\ non-reserved, non-qualified, trailing-colon, and reserved-prefix-but-longer
+\ names resolve normally. `[']`/`postpone` are checker-rejected in checked code
+\ independently of the seal, so their inert positives run under `0 set-check`.
 \
 \ Each program is a standalone forge run in a fresh child engine, so it cannot
 \ include layout.f; the reserved names are written literally in the forge source
@@ -108,6 +117,61 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" end-package" SPK-LINE
    SB$ ;
 
+\ --- tick / bracket-tick / postpone reserved-name forges (TFAM 2b-iii) ---
+
+: SPK-TICK-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `' <NAME>:X drop` at top level (tick is checker-legal)
+   SB-RESET
+   s" ' " SB-APPEND SB-APPEND s" :X drop" SB-APPEND SPK-LF
+   SB$ ;
+
+: SPK-BTICK-FORGE$ ( ptr u8 n -- ptr u8 n )  \ `: F ( -- ) ['] <NAME>:X drop ;` (seal fires before the checker reject)
+   SB-RESET
+   s" : F ( -- ) ['] " SB-APPEND SB-APPEND s" :X drop ;" SB-APPEND SPK-LF
+   SB$ ;
+
+: SPK-POST-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `: F ( -- ) postpone <NAME>:X ;` (seal fires before the checker reject)
+   SB-RESET
+   s" : F ( -- ) postpone " SB-APPEND SB-APPEND s" :X ;" SB-APPEND SPK-LF
+   SB$ ;
+
+: SPK-OK-TICK-BARE-FORGE$ ( -- ptr u8 n )    \ non-qualified tick still works
+   SB-RESET
+   s" ' dup drop" SPK-LINE
+   SB$ ;
+
+: SPK-OK-TICK-QUAL-FORGE$ ( -- ptr u8 n )    \ non-reserved qualified tick still works
+   SB-RESET
+   s" : MYPKG:W ( -- n ) 5 ;" SPK-LINE
+   s" ' MYPKG:W drop" SPK-LINE
+   SB$ ;
+
+: SPK-OK-TICK-EDGE-FORGE$ ( -- ptr u8 n )    \ trailing-colon ordinary name is not qualified (tick)
+   SB-RESET
+   s" : TFAM: ( -- n ) 7 ;" SPK-LINE
+   s" ' TFAM: drop" SPK-LINE
+   SB$ ;
+
+: SPK-OK-TICK-PREFIX-FORGE$ ( -- ptr u8 n )  \ reserved-prefix-but-longer qualifier ticks fine
+   SB-RESET
+   s" : TFAMX:W ( -- n ) 9 ;" SPK-LINE
+   s" ' TFAMX:W drop" SPK-LINE
+   SB$ ;
+
+: SPK-OK-BTICK-FORGE$ ( -- ptr u8 n )        \ unchecked ['] on a non-reserved name is inert
+   SB-RESET
+   s" 0 set-check" SPK-LINE
+   s" : G ( -- ) ['] dup drop ;" SPK-LINE
+   s" G" SPK-LINE
+   SB$ ;
+
+: SPK-OK-POST-FORGE$ ( -- ptr u8 n )         \ unchecked postpone of a non-reserved name is inert
+   SB-RESET
+   s" 0 set-check" SPK-LINE
+   s" : MYW ( -- n ) 3 ;" SPK-LINE
+   s" : F ( -- n ) postpone MYW ;" SPK-LINE
+   s" F drop" SPK-LINE
+   SB$ ;
+
 \ --- child spawn + outcome capture ---
 
 : SPK-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
@@ -188,12 +252,52 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" reserved-prefix-but-longer package name allowed" T-LABEL
    SPK-OK-PREFIX-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK ;
 
+\ --- TFAM 2b-iii: tick / bracket-tick / postpone token sinks ---
+
+: SPK-TICK-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SPK-TICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   a u SPK-TICK-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+
+: SPK-NEGATIVES-TICK ( -- )
+   s" ' TFAM:tail (canonical) traps" T-LABEL      s" TFAM"  SPK-TICK-NEG
+   s" ' tfam:tail (lower alias) traps" T-LABEL    s" tfam"  SPK-TICK-NEG
+   s" ' Tfam:tail (mixed alias) traps" T-LABEL    s" Tfam"  SPK-TICK-NEG
+   s" ' TYPE:tail traps" T-LABEL                  s" TYPE"  SPK-TICK-NEG
+   s" ' MATCH:tail traps" T-LABEL                 s" MATCH" SPK-TICK-NEG ;
+
+: SPK-NEGATIVES-BTICK-POST ( -- )
+   s" ['] TFAM:tail traps (--load)" T-LABEL
+   s" TFAM" SPK-BTICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" ['] match:tail (alias) traps (stdin)" T-LABEL
+   s" match" SPK-BTICK-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL
+   s" postpone TFAM:tail traps (--load)" T-LABEL
+   s" TFAM" SPK-POST-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" postpone type:tail (alias) traps (stdin)" T-LABEL
+   s" type" SPK-POST-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL ;
+
+: SPK-POSITIVES-TICK ( -- )
+   s" non-qualified tick still works" T-LABEL
+   SPK-OK-TICK-BARE-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   s" non-reserved qualified tick still works" T-LABEL
+   SPK-OK-TICK-QUAL-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   s" trailing-colon ordinary name is not qualified (tick)" T-LABEL
+   SPK-OK-TICK-EDGE-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   s" reserved-prefix-but-longer qualifier ticks fine" T-LABEL
+   SPK-OK-TICK-PREFIX-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   s" unchecked ['] on a non-reserved name is inert" T-LABEL
+   SPK-OK-BTICK-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK
+   s" unchecked postpone of a non-reserved name is inert" T-LABEL
+   SPK-OK-POST-FORGE$ SPK-RUN-LOAD SPK-ASSERT-OK ;
+
 : SPK-MAIN ( -- )
    T-RESET
    SPK-PREPARE
    SPK-NEGATIVES
    SPK-NEGATIVES-QUAL
+   SPK-NEGATIVES-TICK
+   SPK-NEGATIVES-BTICK-POST
    SPK-POSITIVES
+   SPK-POSITIVES-TICK
    SPK-CLEANUP
    T-REPORT
    s" seal-package-test: ok" type cr ;

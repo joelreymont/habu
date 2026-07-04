@@ -1916,7 +1916,8 @@ s" j-is" s" --" TRUST
 
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
-   LTOK LABEL@ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 pok CBNZ,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
@@ -2174,12 +2175,14 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 
 : C-TICK ( -- )
    LBL {: tk :}
-   LTOK LABEL@ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 tk CBZ,  11 G-PUSH  tk LBL, ;
 
 : C-BTICK ( -- )
    LBL {: bk :}
-   LTOK LABEL@ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-LIT  bk LBL, ;
 
 : C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
