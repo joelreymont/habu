@@ -636,6 +636,15 @@ lesson — keep the specific word/code/path, cut the prose.
   asserts (`LABEL@ B,` vs `@ B ;`; `SZA-I @ +` vs `over +`) that no checker can
   express. Prove the replacement with a negative fixture (emitter underflow ->
   `BF-CERTIFY-RC` 70), not by trusting the compile.
+- **Re-emitting the same source across build stages is a boot-reload TOCTOU:**
+  `build-fixpoint` re-reads the boot-prefix files for the stage2, stdin, and snap
+  emissions and the stamp-key re-emit; a mid-build source edit would let stage N
+  build from one revision and N+1 from another, silently entering the installed
+  image. `BF-PIN` pins each emitted path's content digest (keyed by SHA-256 of
+  the path) on first read via the single `BF-APPEND-SOURCE` choke point and
+  re-verifies on every reload, so there is no separate manifest to drift and a
+  mismatch throws `E-BUILD-BOOT-DRIFT`. Baking the digest for boot-*time* reload
+  verification is a separate engine change (dot habu-boot-pin-bake).
 - **Focused gate slices need a temp root:** direct-loading
   `test/gate-dictionary.f` does not run `TR-START`; use `test/run.f` or an
   explicit suite temp/cache root, or generated artifacts resolve under `/` and

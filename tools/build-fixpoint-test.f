@@ -496,6 +496,23 @@ create BFT-CHECK-OFF-LINE
    s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Hash-pin mismatch: pin a sandbox boot-prefix file, reload unchanged (no
+\ throw), then mutate it mid-sequence - the reload must fail closed with
+\ E-BUILD-BOOT-DRIFT rather than silently entering the image.
+: BFT-PIN-RELOAD ( -- )
+   BFT-CERT BF-PIN-FILE ;
+
+: BFT-TEST-BOOT-PIN ( -- )
+   BF-PIN-RESET
+   BF-PIN-ON!
+   s" \ boot prefix v1" BFT-CERT-WRITE
+   BFT-CERT BF-PIN-FILE
+   BFT-CERT BF-PIN-FILE
+   BFT-CERT s" \ mid-build edit" APPEND-FILE
+   [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
+   BF-PIN-OFF!
+   BF-PIN-RESET ;
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -522,6 +539,7 @@ create BFT-CHECK-OFF-LINE
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
+   s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
