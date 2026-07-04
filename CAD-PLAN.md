@@ -477,6 +477,19 @@ on-disk layout and owning dot (`cad-5-store`), and
 `habu-kernel-artifact-export` is the externalization of *this* store once it
 exists.
 
+**Backend decision (2026-07-04).** The store is line-oriented append rows
+while it remains a private, per-workspace, regenerable cache (KB–MB scale;
+exact-key GET/PUT + full-scan load; single writer): keys are opaque
+identities matched whole, never field-parsed on read, so the row format is a
+serialization boundary, not a data model — the data model is the typed SKEY
+record (`habu-cad-adt-swap`). The seam is `STORE-QUERY`/`STORE-PUT`: when the
+store becomes shared, concurrently written, or queried (the cad-6 device
+measurement corpus is the expected trigger), swap the backend behind that
+seam — `OBJSTORE` (`lib/object-cache.f`, content-addressed files, in-tree) or
+SQLite via FFI (dlopen precedent: `libcuda`) — without touching callers. JSON
+stays an export format only (`lib/json-write.f` is emit-only; a store would
+need a checked parser that buys nothing for same-program data).
+
 ## 14. EXPLAIN and repair packets
 
 Every failure — legality, gate, resource, unmeasured shape — renders as:
