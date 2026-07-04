@@ -629,10 +629,14 @@ points stay listed.
   the no-binary bootstrap path.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
-- `test/seal.f` — friend-arena seal regressions: post-seal raw writes (`!`/`c!`/
-  `+!`/`atomic!`) and read-syscall buffers into the crown-jewel band trap with
-  exit `E-SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
+- `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
+  PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
+  `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`
+  syscall buffers, each exercising its own guard register) traps with exit
+  `E-SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
   post-seal language features still update protected cells via engine primitives.
+  `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
+  the file).
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate

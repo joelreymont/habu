@@ -109,6 +109,70 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" 0 data-base SLF-CUR + 8 read drop" SB-APPEND SLV-LF
    SB$ ;
 
+\ Each remaining sink hand-wires a DIFFERENT register into PROT-GUARD, so one
+\ forge per sink proves that sink's own wiring. Register noted per forge.
+
+: SLV-ATADD-FORGE$ ( -- ptr u8 n )          \ atomic-add addr (x10=B) into the band ($28)
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 99 data-base SLF-CUR + atomic-add drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-ATCAS-FORGE$ ( -- ptr u8 n )          \ atomic-cas addr (x11=C, the only C guard) into band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 0 data-base SLF-CUR + atomic-cas drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-IOCTL-FORGE$ ( -- ptr u8 n )          \ ioctl arg (x2) into the band; bogus fd, guard fires first
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 0 data-base SLF-CUR + ioctl drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-POLL-FORGE$ ( -- ptr u8 n )           \ poll pollfd array (x0) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" data-base SLF-CUR + 1 0 poll drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-READLINK-FORGE$ ( -- ptr u8 n )       \ readlink link buffer (x2) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 data-base SLF-CUR + $40 readlink drop" SB-APPEND SLV-LF   \ NULL path: guard fires before the syscall
+   SB$ ;
+
+: SLV-STAT-FORGE$ ( -- ptr u8 n )           \ stat64 statbuf (x1) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 data-base SLF-CUR + stat64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-LSTAT-FORGE$ ( -- ptr u8 n )          \ lstat64 statbuf (x1) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 data-base SLF-CUR + lstat64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-DENTS-BUF-FORGE$ ( -- ptr u8 n )      \ getdirentries64 dirent buffer (x1) into the band
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" 0 data-base SLF-CUR + $40 0 getdirentries64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-DENTS-BASEP-FORGE$ ( -- ptr u8 n )    \ getdirentries64 basep (x3) into the band; buffer in a free hole
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" $1A0 constant SLF-HOLE" SB-APPEND SLV-LF
+   s" 0 data-base SLF-HOLE + $40 data-base SLF-CUR + getdirentries64 drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-MMAP-FORGE$ ( -- ptr u8 n )           \ mmap addr (x0) into the band (MAP_FIXED-class remap guard)
+   SB-RESET
+   s" $28 constant SLF-CUR" SB-APPEND SLV-LF
+   s" data-base SLF-CUR + $1000 3 $1002 -1 0 mmap drop" SB-APPEND SLV-LF
+   SB$ ;
+
 : SLV-HOLE-FORGE$ ( -- ptr u8 n )           \ ! into a free hole below the band ($1A0)
    SB-RESET
    s" $1A0 constant SLF-HOLE" SB-APPEND SLV-LF
@@ -197,6 +261,30 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" read buffer starting in the band traps" T-LABEL
    SLV-READ-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
+\ One forge per remaining guarded sink — each sink hand-wires its own PROT-GUARD
+\ register, so testing one proves nothing about another's wiring.
+: SLV-NEGATIVES-SINKS ( -- )
+   s" atomic-add addr (x10) into the band traps" T-LABEL
+   SLV-ATADD-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" atomic-cas addr (x11, only C guard) into the band traps" T-LABEL
+   SLV-ATCAS-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ioctl arg (x2) into the band traps" T-LABEL
+   SLV-IOCTL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" poll pollfd array (x0) into the band traps" T-LABEL
+   SLV-POLL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" readlink link buffer (x2) into the band traps" T-LABEL
+   SLV-READLINK-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" stat64 statbuf (x1) into the band traps" T-LABEL
+   SLV-STAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" lstat64 statbuf (x1) into the band traps" T-LABEL
+   SLV-LSTAT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" getdirentries64 dirent buffer (x1) into the band traps" T-LABEL
+   SLV-DENTS-BUF-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" getdirentries64 basep (x3) into the band traps" T-LABEL
+   SLV-DENTS-BASEP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" mmap addr (x0) into the band traps" T-LABEL
+   SLV-MMAP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
@@ -207,9 +295,26 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    T-RESET
    SLV-PREPARE
    SLV-NEGATIVES
+   SLV-NEGATIVES-SINKS
    SLV-POSITIVES
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;
 
 SLV-MAIN
+
+\ --- Prove-absence: guarded sinks NOT covered by an automated forge above ---
+\ The 16 PROT-GUARD sinks: BSTORE/BPLUSSTORE/BCSTORE/BATSTORE/BATADD (x10=B),
+\ BATCAS (x11=C), BREAD/BSTAT64/BLSTAT64 (x1), BIOCTL/BREADLINK (x2), BPOLL/BMMAP
+\ (x0), BGETDIRENTRIES64 (x1 dirent buf + x3 basep) — all covered above. The two
+\ remaining sinks are compiler-internal and are covered by hand-review only:
+\   1. patch32 (BPATCH32, x10=B): the JIT engine-text patcher. Forging it would
+\      run a real mprotect RW->store->RX + i-cache invalidation on a live page,
+\      which is unsafe to exercise, so no automated forge. Its guard uses the B
+\      register, which IS proven by the BSTORE/BPLUSSTORE/BCSTORE/BATSTORE/
+\      atomic-add forges above; only patch32's own guard line is hand-reviewed.
+\   2. snap-rebase (BSNAPREBASE, src/habu/habu2.f: 8 PROT-GUARD 16 PROT-GUARD):
+\      the snapshot relocation primitive, driven only by the snapshot builder.
+\      Forging it would run dictionary-relative relocation rewrites, unsafe to
+\      exercise. Its x8/x16 guard registers are unique to this sink and are not
+\      exercised by any other forge, so they remain hand-review only.
