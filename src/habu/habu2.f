@@ -2013,6 +2013,7 @@ s" j-is" s" --" TRUST
 
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LSNAPRBD  variable LSNAPRBC
+variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
 \ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
@@ -2600,6 +2601,7 @@ s" c-local-ref" s" label label --" TRUST
       9 9 1 ADDI,                                    \ x9 = name ptr = entry + 1
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
       13 pnf CBZ,
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject reloc into a protected WID (x24 survives)
       9 CP 24 ADD,                                   \ x9 = site addr = CP + blob offset
       10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
         14 11 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
@@ -2683,6 +2685,7 @@ s" c-local-ref" s" label label --" TRUST
       9 21 1 ADDI,                                   \ x9 = name ptr = cursor + 1
       LFIND LABEL@ BL,                               \ x11 = xt, x13 = found?
       13 bnf CBZ,
+      LAOTWIDGATE LABEL@ BL,                         \ TFAM 2b-v: reject bootrun into a protected WID
       11 BLR,                                        \ call the entry word
       21 SP 0 LDR,  10 SP 8 LDR,  SP SP 16 ADDI,
       21 21 1 ADDI,  21 21 10 ADD,                   \ advance past [len][name]
@@ -2792,6 +2795,29 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       srn LBL,  9 9 DREC ADDI,  10 10 1 ADDI,  sdl2 B,
    sdn2 LBL,  RET, ;
 
+\ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
+\ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
+\ the protected-WID registry, fail-closed (exit E-SEAL-PACKAGE) -- so a captured
+\ relocation callee or boot-run entry name that resolves into a sealed system /
+\ generated constructor package is rejected before the call immediate is rewritten
+\ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
+\ for the nested LPROTWIDQ. A not-found xt (no record) skips the guard.
+: EM-AOTWIDGATE ( -- )
+   LBL LBL LBL {: wscan:label wfound:label wdone:label :}
+   LAOTWIDGATE LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,  11 SP 8 STR,           \ save return + xt
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   wscan LBL,  6 wdone CBZ,
+      14 5 0 LDR,  14 11 CMP,  C-EQ wfound BCOND,        \ record[0] == xt ?
+      5 5 DREC ADDI,  6 6 1 SUBI,  wscan B,
+   wfound LBL,
+      9 5 40 LDR,                                        \ x9 = record WID
+      LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
+      13 wdone CBZ,
+         0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,      \ protected WID -> fail-closed
+   wdone LBL,
+      30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
+
 : EM-SNAPSHOT-REBASE-CALLS ( -- )
    LBL LBL LBL {: srl srn srx :}
    LSNAPRBC LABEL@ LBL,
@@ -2821,11 +2847,18 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    srx LBL,  RET, ;
 
 \ snap-rebase ( base end count dbase dlen newbase -- ): run both relocation
-\ walks over an arbitrary region copy. Pool registers are spilled before
-\ any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here.
+\ walks over an arbitrary region copy [base,end). Pool registers are spilled before
+\ any prim call, so clobbering x8/x15/x16/x21/x22/x25 is safe here. x8=base,
+\ x16=end are the write-region endpoints; guarding BOTH endpoints range-rejects a
+\ rebase that starts or ends in either sealed band -- the crown-jewel friend arena
+\ AND (TFAM 2b-v) the protected-WID registry -- since PROT-GUARD now checks both
+\ bands. Range-reject, not friend-only: the legitimate snapshot builder runs
+\ snap-rebase from sealed user origin on a high scratch mmap copy that lands in
+\ neither band, so it stays allowed. (A region straddling below a band and ending
+\ above it is a residual dotted case; the legit builder never straddles.)
 : BSNAPREBASE ( -- )
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
-   8 PROT-GUARD  16 PROT-GUARD             \ never rewrite the sealed friend arena as code
+   8 PROT-GUARD  16 PROT-GUARD             \ base + end must miss both sealed bands
    LSNAPRBD LABEL@ BL,
    LSNAPRBC LABEL@ BL, ;
 
@@ -3575,6 +3608,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LPROTWIDQ !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
 : EMIT-LABEL-CONTROL ( -- )
@@ -3767,7 +3801,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-CREATE
    EMIT-DOESPATCH
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
-   EM-SNAPSHOT-REBASE-DICT  EM-SNAPSHOT-REBASE-CALLS
+   EM-SNAPSHOT-REBASE-DICT  EM-SNAPSHOT-REBASE-CALLS  EM-AOTWIDGATE
    EMIT-LOC-FIND
    EMIT-KWDATA
    EMIT-FOLDKW
