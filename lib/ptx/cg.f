@@ -44,6 +44,15 @@ variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
 
 \ --- module / entry scaffolding ---
 : CG-HEADER ( -- )  PTX-HEADER-SM87  PTX-NL ;
+
+\ A PTX MODULE is exactly ONE .version/.target/.address_size header followed by N
+\ `.visible .entry` kernels; ptxas rejects a second header in one stream. PTX-MODULE{
+\ emits that header once, then each kernel emitted before }PTX-MODULE must append only
+\ its entry+body (NO header of its own). A lone kernel that inlines CG-HEADER is the
+\ degenerate N=1 module and stays valid, so single-kernel emitters are unchanged.
+: PTX-MODULE{ ( -- )  CG-HEADER ;
+: }PTX-MODULE ( -- ) ;                 \ documented module terminator (PTX has no footer)
+
 : CG-ENTRY ( -- )
    s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" PTX-L ;
 : CG-OPEN ( -- )

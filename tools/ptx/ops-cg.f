@@ -1,5 +1,7 @@
 \ ops-cg.f - emit checked scalar and v4 elementwise PTX op coverage.
 \
+\ Emits ONE PTX module (PTX-MODULE{) with a single header and two distinctly
+\ named entries (SAXPY scalar + SAXPY_V4 vector), so the stream is a legal module.
 \ Load after lib/ptx/cg.f, lib/ptx/cg-vec.f, lib/ptx/header.f, lib/ptx/tile.f,
 \ and lib/ptx/tile-v4.f; emits to stdout.
 
@@ -23,15 +25,20 @@ KERNEL: TILE-OPS-V4 ( span<space-global,f32,extent-n> span<space-global,f32,exte
    y g LOAD-V4  DIV-V4
    y g STORE-V4 ;
 
-: EMIT-TILE-OPS ( -- )
-   CG-RESET  CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS
+: CG-ENTRY-V4 ( -- )                 \ distinct entry so both kernels share one module
+   s" .visible .entry SAXPY_V4(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" PTX-L ;
+
+: EMIT-TILE-OPS ( -- )               \ SAXPY entry+body (module header emitted by caller)
+   CG-RESET  CG-ENTRY CG-OPEN CG-PARAMS
    1 SPAN-REG  2 SPAN-REG  1 UNIFORM-REG  TILE-OPS
    CG-RET CG-CLOSE ;
 
-: EMIT-TILE-OPS-V4 ( -- )
-   CG-RESET  CG-HEADER CG-ENTRY CG-OPEN CG-PARAMS
+: EMIT-TILE-OPS-V4 ( -- )            \ SAXPY_V4 entry+body (module header emitted by caller)
+   CG-RESET  CG-ENTRY-V4 CG-OPEN CG-PARAMS
    1 SPAN-REG  2 SPAN-REG  TILE-OPS-V4
    CG-RET CG-CLOSE ;
 
-EMIT-TILE-OPS
-EMIT-TILE-OPS-V4
+PTX-MODULE{
+   EMIT-TILE-OPS
+   EMIT-TILE-OPS-V4
+}PTX-MODULE
