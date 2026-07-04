@@ -42,13 +42,13 @@ variable SCH-CAP-V   SCH-CAP-INIT SCH-CAP-V !
 : SCH-CAP ( -- n ) SCH-CAP-V @ ;
 create SCH-A-BOOT   SCH-CAP-INIT SCH-REC * allot
 variable SCH-A-P    SCH-A-BOOT SCH-A-P !
-: SCH-BASE ( -- ptr ) SCH-A-P @ ;
+: SCH-BASE ( -- ptr a ) SCH-A-P @ ;
 
 variable SCH-ROOT-CAP-V   SCH-ROOT-INIT SCH-ROOT-CAP-V !
 : SCH-ROOT-CAP ( -- n ) SCH-ROOT-CAP-V @ ;
 create SCH-ROOT-BOOT   SCH-ROOT-INIT cells allot
 variable SCH-ROOT-P   SCH-ROOT-BOOT SCH-ROOT-P !
-: SCH-ROOT-BASE ( -- ptr ) SCH-ROOT-P @ ;
+: SCH-ROOT-BASE ( -- ptr a ) SCH-ROOT-P @ ;
 
 variable SCH-N        \ next node id; 1 leaves node 0 as the nil sentinel
 variable SCH-ROOT-N   \ next schema-root index
@@ -77,7 +77,7 @@ SCHEMA-RESET
    SCH-ROOT-N @ SCH-ROOT-CAP-V @ < IF exit THEN
    SCH-ROOT-N @ 1 + SCH-ROOT-GROW ;
 
-: SCH-REC@ ( n -- ptr ) {: id:n :}       \ address of node `id` (nil/oob is a bug)
+: SCH-REC@ ( n -- ptr a ) {: id:n :}     \ address of node `id` (nil/oob is a bug)
    id 0 <= IF s" tfam: bad schema node" 76 die THEN
    id SCH-N @ >= IF s" tfam: bad schema node" 76 die THEN
    id SCH-REC * SCH-BASE + ;
@@ -85,7 +85,7 @@ SCHEMA-RESET
 : SCHEMA-KIND? ( n -- bool ) {: tag:n :}   \ tag is a creatable node kind
    tag SCH-PARAM >= tag SCH-KIND-MAX <= and ;
 
-: SCHEMA-NEW ( tag a b c -- node ) {: tag:n a:n b:n c:n :}
+: SCHEMA-NEW ( n n n n -- n ) {: tag:n a:n b:n c:n :}
    tag SCHEMA-KIND? 0= IF E-SCHEMA-BAD throw THEN
    SCH-ENSURE
    SCH-N @ {: id:n :}
@@ -94,29 +94,29 @@ SCHEMA-RESET
    tag r SCH.TAG !   a r SCH.A !   b r SCH.B !   c r SCH.C !
    id ;
 
-: SCHEMA-PARAM ( param-idx -- node )       \ paramref schema node
+: SCHEMA-PARAM ( n -- n )                  \ paramref schema node
    dup 0 < IF drop E-SCHEMA-BAD throw THEN
    SCH-PARAM swap 0 0 SCHEMA-NEW ;
-: SCHEMA-CON ( con-code -- node )          \ concrete-type schema node
+: SCHEMA-CON ( n -- n )                    \ concrete-type schema node
    SCH-CON swap 0 0 SCHEMA-NEW ;
-: SCHEMA-APP ( family-id arg-start arg-count -- node )   \ family application node
+: SCHEMA-APP ( n n n -- n )                \ family application node
    {: fam:n start:n count:n :}
    count 0 < IF E-SCHEMA-BAD throw THEN
    SCH-APP fam start count SCHEMA-NEW ;
 
-: SCHEMA-TAG@ ( node -- tag ) SCH-REC@ SCH.TAG @ ;
-: SCHEMA-A@ ( node -- n ) SCH-REC@ SCH.A @ ;
-: SCHEMA-B@ ( node -- n ) SCH-REC@ SCH.B @ ;
-: SCHEMA-C@ ( node -- n ) SCH-REC@ SCH.C @ ;
+: SCHEMA-TAG@ ( n -- n ) SCH-REC@ SCH.TAG @ ;
+: SCHEMA-A@ ( n -- n ) SCH-REC@ SCH.A @ ;
+: SCHEMA-B@ ( n -- n ) SCH-REC@ SCH.B @ ;
+: SCHEMA-C@ ( n -- n ) SCH-REC@ SCH.C @ ;
 : SCHEMA-N@ ( -- n ) SCH-N @ ;             \ node high-water (for rollback/tests)
 
-: SCHEMA-PARAM? ( node -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
-: SCHEMA-CON? ( node -- bool ) SCHEMA-TAG@ SCH-CON = ;
-: SCHEMA-APP? ( node -- bool ) SCHEMA-TAG@ SCH-APP = ;
+: SCHEMA-PARAM? ( n -- bool ) SCHEMA-TAG@ SCH-PARAM = ;
+: SCHEMA-CON? ( n -- bool ) SCHEMA-TAG@ SCH-CON = ;
+: SCHEMA-APP? ( n -- bool ) SCHEMA-TAG@ SCH-APP = ;
 
 \ --- schema-root pool: a flat, growable list of node ids that SUMV variants and
 \ product fields reference as contiguous [start,start+count) ranges.
-: SCHEMA-ROOT+ ( node -- idx ) {: node:n :}
+: SCHEMA-ROOT+ ( n -- n ) {: node:n :}
    node 0 <= IF s" tfam: bad schema root" 76 die THEN
    node SCH-N @ >= IF s" tfam: bad schema root" 76 die THEN
    SCH-ROOT-ENSURE
@@ -124,7 +124,7 @@ SCHEMA-RESET
    node idx cells SCH-ROOT-BASE + !
    idx 1 + SCH-ROOT-N !
    idx ;
-: SCHEMA-ROOT@ ( idx -- node ) {: idx:n :}
+: SCHEMA-ROOT@ ( n -- n ) {: idx:n :}
    idx 0 < IF s" tfam: bad schema root index" 76 die THEN
    idx SCH-ROOT-N @ >= IF s" tfam: bad schema root index" 76 die THEN
    idx cells SCH-ROOT-BASE + @ ;
@@ -135,9 +135,11 @@ SCHEMA-RESET
 \ product schema can carry a quotation-typed argument without collapsing it to a
 \ string. Malformed rows (a child that is not a live schema node) throw
 \ E-SCHEMA-BAD so parse/CHECK and unit tests can trap them with `catch`.
-: SCHEMA-NODE-OK? ( node -- bool ) {: node:n :}
+: SCHEMA-NODE-OK? ( n -- bool ) {: node:n :}
    node 0 > node SCH-N @ < and ;
-: SCHEMA-QUOT ( din dout rin rout hasr -- node )
+: SCH-FLAG ( n -- n )                       \ canonical 0/-1 flag as a plain cell (any nonzero -> -1)
+   0= IF 0 ELSE -1 THEN ;
+: SCHEMA-QUOT ( n n n n n -- n )
    {: din:n dout:n rin:n rout:n hasr:n :}
    din SCHEMA-NODE-OK? dout SCHEMA-NODE-OK? and
    rin SCHEMA-NODE-OK? and rout SCHEMA-NODE-OK? and 0= IF E-SCHEMA-BAD throw THEN
@@ -145,25 +147,25 @@ SCHEMA-RESET
    dout SCHEMA-ROOT+ drop
    rin SCHEMA-ROOT+ drop
    rout SCHEMA-ROOT+ drop
-   SCH-QUOT hasr 0= 0= start SCH-QUOT-ROWS SCHEMA-NEW ;
+   SCH-QUOT hasr SCH-FLAG start SCH-QUOT-ROWS SCHEMA-NEW ;
 
-: SCHEMA-QUOT? ( node -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
-: SCHEMA-QUOT-HASR@ ( node -- bool ) SCHEMA-A@ ;
-: SCHEMA-QUOT-ROW@ ( node i -- rownode ) {: node:n i:n :}
+: SCHEMA-QUOT? ( n -- bool ) SCHEMA-TAG@ SCH-QUOT = ;
+: SCHEMA-QUOT-HASR@ ( n -- n ) SCHEMA-A@ ;
+: SCHEMA-QUOT-ROW@ ( n n -- n ) {: node:n i:n :}
    i 0 < i SCH-QUOT-ROWS >= or IF s" tfam: bad quot row index" 76 die THEN
    node SCHEMA-B@ i + SCHEMA-ROOT@ ;
-: SCHEMA-QUOT-DIN@ ( node -- rownode ) 0 SCHEMA-QUOT-ROW@ ;
-: SCHEMA-QUOT-DOUT@ ( node -- rownode ) 1 SCHEMA-QUOT-ROW@ ;
-: SCHEMA-QUOT-RIN@ ( node -- rownode ) 2 SCHEMA-QUOT-ROW@ ;
-: SCHEMA-QUOT-ROUT@ ( node -- rownode ) 3 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-DIN@ ( n -- n ) 0 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-DOUT@ ( n -- n ) 1 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-RIN@ ( n -- n ) 2 SCHEMA-QUOT-ROW@ ;
+: SCHEMA-QUOT-ROUT@ ( n -- n ) 3 SCHEMA-QUOT-ROW@ ;
 
 \ --- SCH-PTR pointer payload node (docs §8 SC-PTR): a `ptr T` variant payload
 \ element. A malformed child (nil / out-of-range) throws E-SCHEMA-BAD so the
 \ declaration parser and unit tests can trap it with `catch`.
-: SCHEMA-PTR ( child -- node )
+: SCHEMA-PTR ( n -- n )
    dup SCHEMA-NODE-OK? 0= IF drop E-SCHEMA-BAD throw THEN
    SCH-PTR swap 0 0 SCHEMA-NEW ;
-: SCHEMA-PTR? ( node -- bool ) SCHEMA-TAG@ SCH-PTR = ;
+: SCHEMA-PTR? ( n -- bool ) SCHEMA-TAG@ SCH-PTR = ;
 
 \ ---------------------------------------------------------------------------
 \ rollback frame stack (SCHEMA half of the checker's transactional rollback).
@@ -182,7 +184,7 @@ END-STRUCTURE
 variable SCH-RBF-CAP-V   SCH-RBF-CAP-INIT SCH-RBF-CAP-V !
 create SCH-RBF-BOOT   SCH-RBF-CAP-INIT SCH-RBF-REC * allot
 variable SCH-RBF-P    SCH-RBF-BOOT SCH-RBF-P !
-: SCH-RBF-BASE ( -- ptr ) SCH-RBF-P @ ;
+: SCH-RBF-BASE ( -- ptr a ) SCH-RBF-P @ ;
 variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 
 : SCH-RBF-GROW ( -- )
@@ -192,7 +194,7 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
 : SCH-RBF-ENSURE ( -- )
    SCH-RBF-DEPTH @ SCH-RBF-CAP-V @ < IF exit THEN
    SCH-RBF-GROW ;
-: SCH-RBF-CUR ( -- ptr ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
+: SCH-RBF-CUR ( -- ptr a ) SCH-RBF-DEPTH @ SCH-RBF-REC * SCH-RBF-BASE + ;
 
 : SCHEMA-ROLLBACK-SAVE ( -- )
    SCH-RBF-ENSURE
