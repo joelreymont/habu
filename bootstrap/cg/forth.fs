@@ -442,15 +442,34 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ memory access (absolute addresses on the stack)
 : BFETCH ( -- )  A G-POP  A A 0 LDR,  A G-PUSH ;
 
-: BSTORE ( -- )  B G-POP A G-POP  A B 0 STR, ;               \ ( val addr -- )
+\ Friend-arena write guard (TFAM 2b-i) — stage0 mirror of src/habu/habu1.f
+\ PROT-GUARD. Traps fail-closed (exit E-SEAL-VIOLATION) when the target address
+\ in `n` (a register number) is inside the sealed friend arena. Inert while the
+\ latch is 0 (engine load); active after the cold prefix seals it. gforth stage0
+\ has no atomics / snap-rebase / extended-syscall sinks, so only the raw stores
+\ and read/ioctl/mmap carry the guard (parity = prove-absence for the rest).
+: PROT-GUARD ( n -- )
+   LBL {: ok :} \ typed-local-lint: allow-bare-local
+   DREG swap DATA SUB,                  \ x12 = target - DATA
+   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA
+   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
+   DREG EREG CMP,
+   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
+      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+: EMIT-SEAL-FRIEND ( -- )               \ latch := FRIEND-ARENA-LEN (x5 scratch; x9/x11 live)
+   5 FRIEND-ARENA-LEN MOVZ,  5 DATA FRIEND-LATCH-CELL STR, ;
+
+: BSTORE ( -- )  B G-POP A G-POP  B PROT-GUARD  A B 0 STR, ;               \ ( val addr -- )
 
 : BPTRFIELD ( -- )  B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
-: BPLUSSTORE ( -- ) B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+: BPLUSSTORE ( -- ) B G-POP A G-POP  B PROT-GUARD  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- ) A G-POP  A A 0 LDRB, A G-PUSH ;
 
-: BCSTORE ( -- ) B G-POP A G-POP  A B 0 STRB, ;
+: BCSTORE ( -- ) B G-POP A G-POP  B PROT-GUARD  A B 0 STRB, ;
 
 : BCELLS ( -- )  A G-POP  A A 3 LSLI, A G-PUSH ;             \ n*8
 
@@ -523,12 +542,13 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BWRITE ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
-: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  NR-READ SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
+: BREAD ( -- )   2 G-POP  1 G-POP  0 G-POP  1 PROT-GUARD  NR-READ SYS,  0 G-PUSH ;   \ ( fd buf len -- n )
 
-: BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
+: BIOCTL ( -- )  2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  0 G-PUSH ;  \ ( fd req buf -- rc )
 
 : BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
+   0 PROT-GUARD                              \ MAP_FIXED must not remap the sealed arena
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
@@ -537,6 +557,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BPATCH32 ( -- )                       \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
+   B PROT-GUARD                  \ but never into the sealed friend arena
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
    2 3 MOVZ,  LPROT @ BL,
@@ -1412,7 +1433,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW ;
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
+   EMIT-SEAL-FRIEND ;                    \ seal before user source (all stdin/file/repl paths)
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG @ LBL,
@@ -1530,6 +1552,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX
+   EMIT-SEAL-FRIEND                       \ seal before the baked LSRC user program
    17 9 0 ADDI,
    12 LSRC @ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP @ LBL,
