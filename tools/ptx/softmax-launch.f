@@ -16,12 +16,13 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
-create SL-LIB 16 allot  create SL-NM 64 allot  create SL-PATH 64 allot  create SL-KN 32 allot
+create SL-PATH 64 allot  create SL-KN 32 allot
 create SL-HIN 32 allot  create SL-HOUT 32 allot
 create SL-OUT $8000 allot  create SL-ERR $1000 allot
 create SL-QO  $1000 allot  create SL-QE  $1000 allot
-variable SL-H variable SL-DEV variable SL-CTX variable SL-MOD variable SL-FUNC
+variable SL-DEV variable SL-CTX variable SL-MOD variable SL-FUNC
 variable SL-DIN variable SL-DOUT variable SL-KV
 
 : SL-F32! ( n ptr u8 n -- ) {: v buf idx :}
@@ -32,9 +33,6 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    idx 4 * {: o :}
    SL-HOUT o + c@  SL-HOUT o 1 + + c@ 8 lshift or
    SL-HOUT o 2 + + c@ 16 lshift or  SL-HOUT o 3 + + c@ 24 lshift or ;
-
-: SL-OPEN ( -- )  s" libcuda.so.1" SL-LIB >CSTR  SL-LIB RTLD-NOW DLOPEN SL-H ! ;
-: SL-SYM ( ptr u8 n -- n )  SL-NM >CSTR  SL-H @ SL-NM DLSYM ;
 
 \ spawn bin/hb to emit the checked SOFTMAX-ROWS kernel to the private PTX
 : SL-EMIT ( -- n )
@@ -60,35 +58,35 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    1.0 F64>F32 SL-HIN 6 SL-F32!  1.0 F64>F32 SL-HIN 7 SL-F32! ;
 
 : SL-SETUP ( -- )
-   SL-OPEN
-   0                       s" cuInit"                   SL-SYM CALL1 drop
-   SL-DEV P>N 0            s" cuDeviceGet"              SL-SYM CALL2 drop
-   SL-CTX P>N SL-DEV @     s" cuDevicePrimaryCtxRetain" SL-SYM CALL2 drop
-   SL-CTX @               s" cuCtxSetCurrent"          SL-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   SL-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   SL-CTX SL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   SL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ SL-PATH >CSTR
-   SL-MOD P>N SL-PATH P>N s" cuModuleLoad"             SL-SYM CALL2 drop
+   SL-MOD SL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" SOFTMAX_ROWS" SL-KN >CSTR
-   SL-FUNC P>N SL-MOD @ SL-KN P>N s" cuModuleGetFunction" SL-SYM CALL3 drop ;
+   SL-FUNC SL-MOD @ >CUDA-MOD SL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : SL-LAUNCH ( -- )                                    \ grid = 2 rows, block = 256
    SL-HOUT 32 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    2 4 256 PTX-ROW-LAUNCH-CHECK
-   SL-DIN P>N 32          s" cuMemAlloc_v2"   SL-SYM CALL2 drop
-   SL-DOUT P>N 32         s" cuMemAlloc_v2"   SL-SYM CALL2 drop
-   SL-DIN @ SL-HIN P>N 32 s" cuMemcpyHtoD_v2" SL-SYM CALL3 drop
+   SL-DIN 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   SL-DOUT 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   SL-DIN @ >CUDA-DEVPTR SL-HIN 32 >LEN CUDA:HTOD
    4 SL-KV !
-   SL-FUNC @ 256 1 1      s" cuFuncSetBlockShape" SL-SYM CALL4 drop
-   SL-FUNC @ 20           s" cuParamSetSize"  SL-SYM CALL2 drop
-   SL-FUNC @ 0  SL-DIN P>N 8   s" cuParamSetv" SL-SYM CALL4 drop
-   SL-FUNC @ 8  SL-DOUT P>N 8  s" cuParamSetv" SL-SYM CALL4 drop
-   SL-FUNC @ 16 SL-KV P>N 4    s" cuParamSetv" SL-SYM CALL4 drop
-   SL-FUNC @ 2 1          s" cuLaunchGrid"    SL-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" SL-SYM CALL1 drop
-   SL-HOUT P>N SL-DOUT @ 32 s" cuMemcpyDtoH_v2" SL-SYM CALL3 drop ;
+   SL-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   SL-FUNC @ >CUDA-FN 20 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   SL-FUNC @ >CUDA-FN 0 >IDX  SL-DIN 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SL-FUNC @ >CUDA-FN 8 >IDX  SL-DOUT 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SL-FUNC @ >CUDA-FN 16 >IDX SL-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   SL-FUNC @ >CUDA-FN 2 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   SL-HOUT SL-DOUT @ >CUDA-DEVPTR 32 >LEN CUDA:DTOH ;
 
 : SL-RELEASE ( -- )
-   SL-MOD @  s" cuModuleUnload"            SL-SYM CALL1 drop
-   SL-DEV @  s" cuDevicePrimaryCtxRelease" SL-SYM CALL1 drop ;
+   SL-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   SL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
 
 \ within 2 ULP of golden (ex2.approx introduces <= 1 ULP on the exp path)
 : SL-NEAR? ( n n -- bool )  - abs 2 <= ;

@@ -8,14 +8,13 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
-create AD-LIB 16 allot  create AD-NM 64 allot  create AD-PATH 64 allot  create AD-KN 32 allot
-variable AD-H variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
+create AD-PATH 64 allot  create AD-KN 32 allot
+variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
 variable AD-DX variable AD-DY variable AD-AB variable AD-NV variable AD-RBUF
 create AD-OUT $4000 allot  create AD-ERR $1000 allot
 create AD-QOUT $1000 allot create AD-QERR $1000 allot
-
-: AD-SYM ( ptr u8 n -- n )  AD-NM >CSTR  AD-H @ AD-NM DLSYM ;
 
 \ spawn bin/hb to emit AXPY-ACC; return captured bytes
 : AD-EMIT ( -- n )
@@ -36,31 +35,31 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 \ launch x=2.0 y=3.0 n=4 -> y[0] f32 bits
 : AD-RUN ( -- n )
    AD-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   s" libcuda.so.1" AD-LIB >CSTR  AD-LIB RTLD-NOW DLOPEN AD-H !
-   0                       s" cuInit"                    AD-SYM CALL1 drop
-   AD-DEV P>N 0            s" cuDeviceGet"               AD-SYM CALL2 drop
-   AD-CTX P>N AD-DEV @     s" cuDevicePrimaryCtxRetain"  AD-SYM CALL2 drop
-   AD-CTX @               s" cuCtxSetCurrent"           AD-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   AD-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   AD-CTX AD-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   AD-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ AD-PATH >CSTR
-   AD-MOD P>N AD-PATH P>N s" cuModuleLoad"              AD-SYM CALL2 drop
+   AD-MOD AD-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" SAXPY" AD-KN >CSTR
-   AD-FUNC P>N AD-MOD @ AD-KN P>N s" cuModuleGetFunction" AD-SYM CALL3 drop
-   AD-DX P>N 16           s" cuMemAlloc_v2"   AD-SYM CALL2 drop
-   AD-DY P>N 16           s" cuMemAlloc_v2"   AD-SYM CALL2 drop
-   AD-DX @ $40000000 4    s" cuMemsetD32_v2"  AD-SYM CALL3 drop      \ x = 2.0
-   AD-DY @ $40400000 4    s" cuMemsetD32_v2"  AD-SYM CALL3 drop      \ y = 3.0
+   AD-FUNC AD-MOD @ >CUDA-MOD AD-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
+   AD-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   AD-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   AD-DX @ >CUDA-DEVPTR $40000000 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ x = 2.0
+   AD-DY @ >CUDA-DEVPTR $40400000 4 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ y = 3.0
    0 AD-AB !  4 AD-NV !                                              \ a unused, n = 4
-   AD-FUNC @ 256 1 1      s" cuFuncSetBlockShape" AD-SYM CALL4 drop
-   AD-FUNC @ 24           s" cuParamSetSize"  AD-SYM CALL2 drop
-   AD-FUNC @ 0  AD-DX P>N 8  s" cuParamSetv"  AD-SYM CALL4 drop
-   AD-FUNC @ 8  AD-DY P>N 8  s" cuParamSetv"  AD-SYM CALL4 drop
-   AD-FUNC @ 16 AD-AB P>N 4  s" cuParamSetv"  AD-SYM CALL4 drop
-   AD-FUNC @ 20 AD-NV P>N 4  s" cuParamSetv"  AD-SYM CALL4 drop
-   AD-FUNC @ 1 1          s" cuLaunchGrid"    AD-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" AD-SYM CALL1 drop
-   AD-RBUF P>N AD-DY @ 4  s" cuMemcpyDtoH_v2" AD-SYM CALL3 drop
-   AD-MOD @  s" cuModuleUnload"            AD-SYM CALL1 drop
-   AD-DEV @  s" cuDevicePrimaryCtxRelease" AD-SYM CALL1 drop
+   AD-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   AD-FUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   AD-FUNC @ >CUDA-FN 0 >IDX  AD-DX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   AD-FUNC @ >CUDA-FN 8 >IDX  AD-DY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   AD-FUNC @ >CUDA-FN 16 >IDX AD-AB 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   AD-FUNC @ >CUDA-FN 20 >IDX AD-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   AD-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   AD-RBUF AD-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
+   AD-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   AD-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0
    AD-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : ACC-DEV-MAIN ( -- )

@@ -8,12 +8,13 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
-create RS-LIB 16 allot  create RS-NM 64 allot  create RS-PATH 64 allot  create RS-KN 32 allot
+create RS-PATH 64 allot  create RS-KN 32 allot
 create RS-HIN 32 allot  create RS-HOUT 32 allot
 create RS-OUT $4000 allot  create RS-ERR $1000 allot
 create RS-QO  $1000 allot  create RS-QE  $1000 allot
-variable RS-H variable RS-DEV variable RS-CTX variable RS-MOD variable RS-FUNC
+variable RS-DEV variable RS-CTX variable RS-MOD variable RS-FUNC
 variable RS-DIN variable RS-DOUT variable RS-KV
 
 : RS-F32! ( n ptr u8 n -- ) {: v:n buf:ptr idx:n :}
@@ -25,12 +26,6 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    idx 4 * {: o:n :}
    RS-HOUT o + c@  RS-HOUT o 1 + + c@ 8 lshift or
    RS-HOUT o 2 + + c@ 16 lshift or  RS-HOUT o 3 + + c@ 24 lshift or ;
-
-: RS-OPEN ( -- )
-   s" libcuda.so.1" RS-LIB >CSTR  RS-LIB RTLD-NOW DLOPEN RS-H ! ;
-
-: RS-SYM ( ptr u8 n -- n )
-   RS-NM >CSTR  RS-H @ RS-NM DLSYM ;
 
 \ spawn bin/hb to emit the checked SUM-ROWS kernel to the private PTX
 : RS-EMIT ( -- n )
@@ -59,35 +54,35 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    4.0 F64>F32 RS-HIN 6 RS-F32!  5.0 F64>F32 RS-HIN 7 RS-F32! ;
 
 : RS-SETUP ( -- )
-   RS-OPEN
-   0                       s" cuInit"                   RS-SYM CALL1 drop
-   RS-DEV P>N 0            s" cuDeviceGet"              RS-SYM CALL2 drop
-   RS-CTX P>N RS-DEV @     s" cuDevicePrimaryCtxRetain" RS-SYM CALL2 drop
-   RS-CTX @               s" cuCtxSetCurrent"          RS-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   RS-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   RS-CTX RS-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   RS-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ RS-PATH >CSTR
-   RS-MOD P>N RS-PATH P>N s" cuModuleLoad"             RS-SYM CALL2 drop
+   RS-MOD RS-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" SUM_ROWS" RS-KN >CSTR
-   RS-FUNC P>N RS-MOD @ RS-KN P>N s" cuModuleGetFunction" RS-SYM CALL3 drop ;
+   RS-FUNC RS-MOD @ >CUDA-MOD RS-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : RS-LAUNCH ( -- )
    RS-HOUT 32 PTXSENT:FILL                        \ poison readback: dropped copy-back fails closed
    2 4 256 PTX-ROW-LAUNCH-CHECK
-   RS-DIN P>N 32           s" cuMemAlloc_v2"   RS-SYM CALL2 drop
-   RS-DOUT P>N 32          s" cuMemAlloc_v2"   RS-SYM CALL2 drop
-   RS-DIN @ RS-HIN P>N 32  s" cuMemcpyHtoD_v2" RS-SYM CALL3 drop
+   RS-DIN 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RS-DOUT 32 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RS-DIN @ >CUDA-DEVPTR RS-HIN 32 >LEN CUDA:HTOD
    4 RS-KV !
-   RS-FUNC @ 256 1 1       s" cuFuncSetBlockShape" RS-SYM CALL4 drop
-   RS-FUNC @ 20            s" cuParamSetSize"  RS-SYM CALL2 drop
-   RS-FUNC @ 0  RS-DIN P>N 8   s" cuParamSetv" RS-SYM CALL4 drop
-   RS-FUNC @ 8  RS-DOUT P>N 8  s" cuParamSetv" RS-SYM CALL4 drop
-   RS-FUNC @ 16 RS-KV P>N 4    s" cuParamSetv" RS-SYM CALL4 drop
-   RS-FUNC @ 2 1           s" cuLaunchGrid"    RS-SYM CALL3 drop
-   0                       s" cuCtxSynchronize" RS-SYM CALL1 drop
-   RS-HOUT P>N RS-DOUT @ 32 s" cuMemcpyDtoH_v2" RS-SYM CALL3 drop ;
+   RS-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   RS-FUNC @ >CUDA-FN 20 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   RS-FUNC @ >CUDA-FN 0 >IDX  RS-DIN 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   RS-FUNC @ >CUDA-FN 8 >IDX  RS-DOUT 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   RS-FUNC @ >CUDA-FN 16 >IDX RS-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   RS-FUNC @ >CUDA-FN 2 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   RS-HOUT RS-DOUT @ >CUDA-DEVPTR 32 >LEN CUDA:DTOH ;
 
 : RS-RELEASE ( -- )
-   RS-MOD @  s" cuModuleUnload"            RS-SYM CALL1 drop
-   RS-DEV @  s" cuDevicePrimaryCtxRelease" RS-SYM CALL1 drop ;
+   RS-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   RS-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
 
 : SUM-MAIN ( -- )
    T-RESET

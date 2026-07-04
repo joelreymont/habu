@@ -7,13 +7,12 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
-create RA-LIB 16 allot  create RA-NM 64 allot  create RA-PATH 64 allot  create RA-KN 32 allot
-variable RA-H variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
+create RA-PATH 64 allot  create RA-KN 32 allot
+variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
 variable RA-OUT variable RA-NV variable RA-RBUF
 create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot create RA-QE $1000 allot
-
-: RA-SYM ( ptr u8 n -- n )  RA-NM >CSTR  RA-H @ RA-NM DLSYM ;
 
 : RA-EMIT ( -- n )
    PROC-ARGV-RESET
@@ -28,27 +27,27 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
 
 : RA-RUN ( -- n )   \ launch 256 threads, out=0 -> out[0] f32 bits (= 256.0)
    RA-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   s" libcuda.so.1" RA-LIB >CSTR  RA-LIB RTLD-NOW DLOPEN RA-H !
-   0                      s" cuInit"                    RA-SYM CALL1 drop
-   RA-DEV P>N 0           s" cuDeviceGet"               RA-SYM CALL2 drop
-   RA-CTX P>N RA-DEV @    s" cuDevicePrimaryCtxRetain"  RA-SYM CALL2 drop
-   RA-CTX @              s" cuCtxSetCurrent"           RA-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   RA-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   RA-CTX RA-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   RA-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ RA-PATH >CSTR
-   RA-MOD P>N RA-PATH P>N s" cuModuleLoad"              RA-SYM CALL2 drop
+   RA-MOD RA-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" REDADD" RA-KN >CSTR
-   RA-FUNC P>N RA-MOD @ RA-KN P>N s" cuModuleGetFunction" RA-SYM CALL3 drop
-   RA-OUT P>N 16          s" cuMemAlloc_v2"   RA-SYM CALL2 drop
-   RA-OUT @ 0 1           s" cuMemsetD32_v2"  RA-SYM CALL3 drop      \ out = 0
+   RA-FUNC RA-MOD @ >CUDA-MOD RA-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
+   RA-OUT 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   RA-OUT @ >CUDA-DEVPTR 0 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0      \ out = 0
    256 RA-NV !
-   RA-FUNC @ 256 1 1      s" cuFuncSetBlockShape" RA-SYM CALL4 drop
-   RA-FUNC @ 12           s" cuParamSetSize"  RA-SYM CALL2 drop
-   RA-FUNC @ 0  RA-OUT P>N 8  s" cuParamSetv"  RA-SYM CALL4 drop
-   RA-FUNC @ 8  RA-NV P>N 4   s" cuParamSetv"  RA-SYM CALL4 drop
-   RA-FUNC @ 1 1          s" cuLaunchGrid"    RA-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" RA-SYM CALL1 drop
-   RA-RBUF P>N RA-OUT @ 4 s" cuMemcpyDtoH_v2" RA-SYM CALL3 drop
-   RA-MOD @  s" cuModuleUnload"            RA-SYM CALL1 drop
-   RA-DEV @  s" cuDevicePrimaryCtxRelease" RA-SYM CALL1 drop      \ release or bin/hb hangs at exit
+   RA-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   RA-FUNC @ >CUDA-FN 12 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   RA-FUNC @ >CUDA-FN 0 >IDX  RA-OUT 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   RA-FUNC @ >CUDA-FN 8 >IDX  RA-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   RA-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   RA-RBUF RA-OUT @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
+   RA-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   RA-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0    \ release or bin/hb hangs at exit
    RA-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : REDADD-MAIN ( -- )
