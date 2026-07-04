@@ -45,6 +45,8 @@ create CKT-BAD-PATH FS-PATH-CAP allot
 create CKT-LIST-PATH FS-PATH-CAP allot
 create CKT-INC-DEP-PATH FS-PATH-CAP allot
 create CKT-INC-ENTRY-PATH FS-PATH-CAP allot
+create CKT-SUP-PATH FS-PATH-CAP allot
+create CKT-USE-PATH FS-PATH-CAP allot
 create CKT-HB-BUF FS-PATH-CAP allot
 
 variable CKT-OUT-A
@@ -54,6 +56,8 @@ variable CKT-BAD-U
 variable CKT-LIST-U
 variable CKT-INC-DEP-U
 variable CKT-INC-ENTRY-U
+variable CKT-SUP-U
+variable CKT-USE-U
 variable CKT-HB-U
 variable CKT-START-NS
 variable CKT-PAR-U
@@ -76,6 +80,12 @@ variable CKT-PAR-U
 
 : CKT-INC-ENTRY$ ( -- ptr u8 n )
    CKT-INC-ENTRY-PATH CKT-INC-ENTRY-U @ ;
+
+: CKT-SUP$ ( -- ptr u8 n )
+   CKT-SUP-PATH CKT-SUP-U @ ;
+
+: CKT-USE$ ( -- ptr u8 n )
+   CKT-USE-PATH CKT-USE-U @ ;
 
 : CKT-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -148,6 +158,17 @@ variable CKT-PAR-U
 : CKT-DIRECT-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
    CKT-DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
+: CKT-DIRECT-ALL-LIST ( ptr u8 n ptr u8 n -- n n n ) {: aa:ptr au:n ba:ptr bu:n :}
+   CKT-DIRECT-START
+   -1 CHK-JSON !
+   -1 CHK-ALL !
+   -1 CHK-SOURCE-LIST !
+   aa au CHK-ADD-POS
+   ba bu CHK-ADD-POS
+   CHK-MAKE-TEMP
+   CHK-MATERIALIZE-LIST
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
 : CKT-DIRECT-PREVERIFY-LIST-PATH ( ptr u8 n -- n n n )
@@ -320,6 +341,8 @@ variable CKT-PAR-U
    CKT-ROOT$ s" local-test.f" CKT-LIST-PATH JOIN-PATH CKT-LIST-U !
    CKT-ROOT$ s" inc-dep.f" CKT-INC-DEP-PATH JOIN-PATH CKT-INC-DEP-U !
    CKT-ROOT$ s" inc-entry.f" CKT-INC-ENTRY-PATH JOIN-PATH CKT-INC-ENTRY-U !
+   CKT-ROOT$ s" list-sup.f" CKT-SUP-PATH JOIN-PATH CKT-SUP-U !
+   CKT-ROOT$ s" list-use.f" CKT-USE-PATH JOIN-PATH CKT-USE-U !
    CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
 
 : CKT-TEST-GOOD ( -- )
@@ -459,6 +482,23 @@ variable CKT-PAR-U
    outu 0 T=
    erru 0 T= ;
 
+\ `--all-errors --source-list a b` runs all-errors per ORIGINAL file with
+\ prior entries replayed as support: both bad defs in b report against b's
+\ path (the pre-redrive materialized temp had zero defs, so all-errors was a
+\ no-op and only preverify's first error surfaced).
+: CKT-TEST-SOURCE-LIST-ALL-ERRORS ( -- )
+   CKT-SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
+   CKT-USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
+   CKT-SUP$ CKT-USE$ CKT-DIRECT-ALL-LIST 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru CKT-USE$ CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-bad-one" CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-bad-two" CONTAINS? TTRUE
+   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
+   CKT-ERR erru s" ckt-good-use" CONTAINS? TFALSE
+   CKT-ERR erru s" preverify" CONTAINS? TFALSE ;
+
 \ Closure parity oracle: the retired token-level require/required scan
 \ (the pre-producer CHK-SCAN-DEPS semantics) re-expressed here as an
 \ independent check that the producer-backed closure is a superset of the old
@@ -570,6 +610,7 @@ variable CKT-PAR-U
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
    s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
+   s" check/source-list-all-errors" [: CKT-TEST-SOURCE-LIST-ALL-ERRORS ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

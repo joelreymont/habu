@@ -103,6 +103,8 @@ variable CHK-DEP-N
 variable CHK-DIR-N
 variable CHK-DEP-ORDER-N
 variable CHK-DISC-ID
+variable CHK-ALL-ID
+variable CHK-ALL-RC
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -887,9 +889,42 @@ variable CHK-VREC-NAME-I
    CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
    CHK-RUN-TRUST-SOURCE ;
 
+\ Source-list all-errors redrive: run all-errors per ORIGINAL file in
+\ dependency order, registering each verified file as cross-file support so
+\ later files check against real prefix state. Per-file check failures
+\ (70/duplicate) are collected so every file reports; any other throw aborts.
+
+: CHK-ALL-ID-ACT ( -- )
+   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS-FILE ;
+
+: CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
+   CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
+
+: CHK-ALL-SUPPORT+ ( n -- ) {: id:n :}
+   id CHK-DEP$ CHECK-ALL-ERRORS-SUPPORT+ ;
+
+: CHK-RUN-ALL-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-ALL-ID !
+   [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
+   rc 0= if id CHK-ALL-SUPPORT+ exit then
+   rc CHK-E-CHECK = rc CA-DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
+   rc throw ;
+
+: CHK-RUN-ALL-LIST-CURRENT ( -- )
+   CHECK-ALL-ERRORS-SUPPORT-RESET
+   0 CHK-ALL-RC !
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
+      1+
+   repeat drop
+   CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
+
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS-BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS-JSON!
+   CHK-SOURCE-LIST @ if CHK-RUN-ALL-LIST-CURRENT exit then
+   CHECK-ALL-ERRORS-SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS-FILE ;
 
 : CHK-RUN-ALL-FLUSH ( -- )

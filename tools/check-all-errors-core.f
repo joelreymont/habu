@@ -247,6 +247,76 @@ variable CA-JSON
    CA-LF CA-LF-BUF c!
    CA-LF-BUF 1 ;
 
+\ ---- Cross-file support (source-list redrive) ----------------------------
+\ A caller checking an ordered file list registers each already-verified file
+\ here; every checker scope opened for the current file first replays the
+\ registered files with VERIFY:SOURCE-BUF-IN-SCOPE, so cross-file prefix state
+\ (types, packages, definitions) is in scope exactly as at runtime. A support
+\ replay failure is annotated and rethrown - never swallowed.
+
+$80 constant CA-XSUP-MAX
+
+create CA-XSUP-PATHS CA-XSUP-MAX FS-PATH-CAP * allot
+create CA-XSUP-US CA-XSUP-MAX cells allot
+variable CA-XSUP-N
+variable CA-XSUP-I
+variable CA-XSUP-RC
+variable CA-XSUP-BUF-A
+variable CA-XSUP-BUF-CAP
+
+: CA-XSUP-BUF-A-FIELD ( -- ptr ptr u8 )
+   CA-XSUP-BUF-A 0 ptr-field ;
+
+: CA-XSUP-BUF-A@ ( -- ptr u8 )
+   CA-XSUP-BUF-A-FIELD @ ;
+
+: CA-XSUP-BUF-A! ( ptr u8 -- )
+   CA-XSUP-BUF-A-FIELD ! ;
+
+: CA-XSUP$ ( n -- ptr u8 n ) {: i:n :}
+   CA-XSUP-PATHS i FS-PATH-CAP * +
+   CA-XSUP-US i cells + @ ;
+
+: CHECK-ALL-ERRORS-SUPPORT-RESET ( -- )
+   0 CA-XSUP-N ! ;
+
+: CHECK-ALL-ERRORS-SUPPORT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   CA-XSUP-N @ CA-XSUP-MAX >= IF E-TBL-BOUNDS throw THEN
+   u FS-PATH-CAP > IF E-FS-CAPACITY throw THEN
+   a CA-XSUP-PATHS CA-XSUP-N @ FS-PATH-CAP * + u BYTE-COPY
+   u CA-XSUP-US CA-XSUP-N @ cells + !
+   CA-XSUP-N @ 1+ CA-XSUP-N ! ;
+
+: CA-XSUP-BUF ( n -- ptr u8 n ) {: need:n :}
+   need CA-XSUP-BUF-CAP @ > IF
+      need MEM-ALLOC-64K-SPAN CA-XSUP-BUF-CAP ! CA-XSUP-BUF-A!
+   THEN
+   CA-XSUP-BUF-A@ CA-XSUP-BUF-CAP @ ;
+
+: CA-XSUP-REPLAY-ONE ( n -- ) {: i:n :}
+   i CA-XSUP$ {: pa:ptr pu:n :}
+   pa pu FILE-SIZE CA-XSUP-BUF {: buf:ptr cap:n :}
+   pa pu buf cap READ-ALL {: u:n :}
+   buf u VERIFY:SOURCE-BUF-IN-SCOPE ;
+
+: CA-XSUP-NOTE ( n n -- ) {: i:n rc:n :}
+   rc 0= IF exit THEN
+   rc CA-XSUP-RC !
+   s" all-errors: support replay failed: " CA-ERR
+   i CA-XSUP$ CA-ERR
+   CA-LF$ CA-ERR
+   rc throw ;
+
+: CA-XSUP-REPLAY-CUR ( -- )
+   CA-XSUP-I @ CA-XSUP-REPLAY-ONE ;
+
+: CA-XSUP-REPLAY ( -- )
+   0 CA-XSUP-I !
+   begin CA-XSUP-I @ CA-XSUP-N @ < while
+      [: CA-XSUP-REPLAY-CUR ;] catch CA-XSUP-I @ swap CA-XSUP-NOTE
+      CA-XSUP-I @ 1+ CA-XSUP-I !
+   repeat ;
+
 : CA-TOK-WORD? ( n -- bool ) {: k:n :}
    k L# @ >= IF CA-FALSE exit THEN
    k LK@ L-WORD = ;
@@ -760,7 +830,7 @@ variable CA-JSON
 : CA-CHECK-FULL-SCOPE ( -- n )
    0 CA-FULL-R !
    CHECKER-SCOPE-START
-   [: CA-CHECK-FULL CA-FULL-R ! ;] catch
+   [: CA-XSUP-REPLAY CA-CHECK-FULL CA-FULL-R ! ;] catch
    CHECKER-SCOPE-DONE
    dup 0= IF drop CA-FULL-R @ exit THEN ;
 
@@ -817,11 +887,13 @@ variable CA-JSON
 
 : CA-RUN-DEFS ( -- )
    CA-RESET-RESULTS
-   CA-CHECK-FULL-SCOPE dup 0= IF drop exit THEN
+   CA-CHECK-FULL-SCOPE
+   CA-XSUP-RC @ 0 <> IF drop CA-XSUP-RC @ throw THEN
+   dup 0= IF drop exit THEN
    dup CA-DUP-RC = IF drop CA-HANDLE-DUP exit THEN
    drop
    CHECKER-SCOPE-START
-   [: CA-RUN-DEFS-SCOPE ;] catch
+   [: CA-XSUP-REPLAY CA-RUN-DEFS-SCOPE ;] catch
    CHECKER-SCOPE-DONE
    dup 0= IF drop exit THEN
    throw ;
@@ -848,6 +920,7 @@ variable CA-JSON
 
 : CHECK-ALL-ERRORS-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
    CA-STORE-INIT
+   0 CA-XSUP-RC !
    labelu CA-FILE-U !
    labela CA-FILE-A!
    patha pathu CA-READ-SOURCE
@@ -855,6 +928,7 @@ variable CA-JSON
 
 : CHECK-ALL-ERRORS-BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
    CA-STORE-INIT
+   0 CA-XSUP-RC !
    labelu CA-FILE-U !
    labela CA-FILE-A!
    srca srcu CA-SOURCE-BUF!

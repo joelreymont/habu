@@ -32,6 +32,7 @@ require tools/argv.f
 variable CAE-ROOT-U
 variable CAE-IN-U
 variable CAE-LARGE-U
+variable CAE-XSUP-PATH-U
 variable CAE-NUM-I
 variable CAE-RUN-A
 variable CAE-RUN-U
@@ -45,6 +46,7 @@ variable CAE-START-NS
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
 create CAE-LARGE-BUF FS-PATH-CAP allot
+create CAE-XSUP-PATH-BUF FS-PATH-CAP allot
 create CAE-OUT CAE-BUF-CAP allot
 create CAE-ERR CAE-BUF-CAP allot
 create CAE-NUM CAE-NUM-CAP allot
@@ -62,6 +64,9 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-LARGE ( -- ptr u8 n )
    CAE-LARGE-BUF CAE-LARGE-U @ ;
+
+: CAE-XSUP ( -- ptr u8 n )
+   CAE-XSUP-PATH-BUF CAE-XSUP-PATH-U @ ;
 
 : CAE-RUN-A-FIELD ( -- ptr ptr u8 )
    CAE-RUN-A 0 ptr-field ;
@@ -281,8 +286,10 @@ create CAE-LF-BYTE 10 c,
    CAE-ROOT CLEANUP-DIR+
    CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !
    CAE-ROOT s" large.f" CAE-LARGE-BUF JOIN-PATH CAE-LARGE-U !
+   CAE-ROOT s" xsup-a.f" CAE-XSUP-PATH-BUF JOIN-PATH CAE-XSUP-PATH-U !
    CAE-IN CLEANUP+
    CAE-LARGE CLEANUP+
+   CAE-XSUP CLEANUP+
    CAE-IN CAE-SOURCE$ WRITE-ALL ;
 
 : CAE-APPEND-LF ( ptr u8 n -- )
@@ -671,6 +678,36 @@ create CAE-LF-BYTE 10 c,
    s" export-support" CAE-CASE!
    CAE-EXPORT-SOURCE$ CAE-CHECK-CLEAN ;
 
+\ Cross-file support: a prior source-list file's type and word are in scope
+\ for the checked buffer only when its path is registered through
+\ CHECK-ALL-ERRORS-SUPPORT+; the same buffer without registration fail-closed
+\ rejects. This is the hook the check source-list redrive drives per file.
+: CAE-XSUP-SUP$ ( -- ptr u8 n )
+   SB-RESET
+   s" deftype cae-xt" SB-APPEND CAE-LF
+   s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-XSUP-USE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-XT-USE ( cae-xt -- cae-xt ) CAE-XT-ID ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-TEST-XSUP-REPLAY ( -- )
+   s" xsup-replay" CAE-CASE!
+   CAE-XSUP CAE-XSUP-SUP$ WRITE-ALL
+   CHECK-ALL-ERRORS-SUPPORT-RESET
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-xt-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-XSUP CHECK-ALL-ERRORS-SUPPORT+
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu2:n erru2:n :}
+   CAE-CASE$ T-LABEL
+   outu2 0 T=
+   CAE-CASE$ T-LABEL
+   erru2 0 T=
+   CHECK-ALL-ERRORS-SUPPORT-RESET ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
@@ -682,6 +719,7 @@ create CAE-LF-BYTE 10 c,
    s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
    s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
+   s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
    s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN
