@@ -8,8 +8,9 @@
 \ Membership is gated (CAD-PLAN 4.2): a row is COMPLETE only once its reference xt
 \ is bound. OPR-REF fails closed (E-OPR-INCOMPLETE) on an op without one, so GOLDEN
 \ downstream cannot silently skip. silu/rmsnorm/rope references (maki/silu.f,
-\ rmsnorm.f, rope.f) are bound here so those ops are complete; matmul/linear/cast
-\ stay incomplete until their op-granularity references land (host executor cad-7).
+\ rmsnorm.f, rope.f) are bound here so those ops are complete; matmul/linear are
+\ bound to their buffer references (maki/matmul.f MATMUL, maki/linear.f LINEAR;
+\ cad-7a host executor) so only cast now stays incomplete (non-executable decode).
 \
 \ Storing an xt in a cell and reading it back is the checked pattern used by
 \ src/core/render.f (`' WORD ADDR !`); cad-1 only stores/queries it, execution is
@@ -26,6 +27,8 @@ require maki/rope.f
 require maki/move.f
 require maki/reduce-bwd.f
 require maki/scatter.f
+require maki/matmul.f
+require maki/linear.f
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -256,7 +259,12 @@ OPR-BUILD
 ' MOVE-SLICE     OP-SLICE     cells R-REF + !
 ' MOVE-CONCAT    OP-CONCAT    cells R-REF + !
 ' MOVE-GATHER    OP-GATHER    cells R-REF + !
-\ matmul / linear / cast stay incomplete: no op-granularity scalar oracle yet.
+\ matmul / linear buffer references (cad-7a): the row-major f32-cell contraction +
+\ the affine linear layer (maki/matmul.f, maki/linear.f). Binding completes their
+\ op rows so OPR-COMPLETE? is true and the host executor (maki/executor.f) runs them.
+' MATMUL        OP-MATMUL     cells R-REF + !
+' LINEAR        OP-LINEAR     cells R-REF + !
+\ cast stays incomplete: a decode/cast has no host-executable numeric oracle.
 \ backward op-kinds (cad-9): bind the existing scalar/buffer VJP references so the
 \ synthesized backward nodes are COMPLETE ops (GOLDEN never fails closed on them).
 ' RELU-BWD  OP-RELU-BWD        cells R-REF + !

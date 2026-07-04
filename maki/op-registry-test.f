@@ -9,7 +9,7 @@ package MAKI
 
 \ ---- fail-closed probes (top level cannot push quotations) ------------------
 : TRY-OPR-KIND       ( -- )  OP-N OPR-CLASS drop ;
-: TRY-OPR-INCOMPLETE ( -- )  OP-MATMUL OPR-REF drop ;
+: TRY-OPR-INCOMPLETE ( -- )  OP-CAST OPR-REF drop ;   \ cast is the only incomplete op
 : TRY-OPR-NAME-BAD   ( -- )  -1 OPR-NAME 2drop ;
 
 T-RESET
@@ -47,13 +47,14 @@ OP-MATMUL      OPR-BYTES-MODEL BYM-TILES    T=
 OP-RESHAPE     OPR-BYTES-MODEL BYM-MOVE     T=
 OP-GATHER      OPR-BYTES-MODEL BYM-MOVE     T=
 
-\ ---- membership gating: silu/rmsnorm/rope complete; matmul/linear/cast not --
+\ ---- membership gating: silu/rmsnorm/rope/matmul/linear complete; only cast not --
 OP-SILU        OPR-COMPLETE?  TTRUE
 OP-RMSNORM     OPR-COMPLETE?  TTRUE
 OP-ROPE        OPR-COMPLETE?  TTRUE
 OP-GELU        OPR-COMPLETE?  TTRUE
-OP-MATMUL      OPR-COMPLETE?  TFALSE
-OP-LINEAR      OPR-COMPLETE?  TFALSE
+\ cad-7a: matmul/linear now complete (buffer references bound: MATMUL, LINEAR)
+OP-MATMUL      OPR-COMPLETE?  TTRUE
+OP-LINEAR      OPR-COMPLETE?  TTRUE
 OP-CAST        OPR-COMPLETE?  TFALSE
 \ movement ops are complete: their buffer references (maki/move.f) are bound
 OP-RESHAPE     OPR-COMPLETE?  TTRUE
@@ -63,6 +64,8 @@ OP-GATHER      OPR-COMPLETE?  TTRUE
 \ a complete op yields a non-zero reference xt
 OP-GELU        OPR-REF 0 T<>
 OP-SILU        OPR-REF 0 T<>
+OP-MATMUL      OPR-REF 0 T<>
+OP-LINEAR      OPR-REF 0 T<>
 
 \ ---- elementwise predicate (used by region extraction) ---------------------
 OP-GELU        OPR-ELEMENTWISE? TTRUE
