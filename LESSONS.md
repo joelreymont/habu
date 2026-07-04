@@ -2269,3 +2269,31 @@ unchanged (148855). Keys for milestone 2:
   explicit-effect step and a bare tv re-push are the two ways a discipline that
   only watches `DCUR`/`RCUR` counts can be blindsided; a new value sink (locals,
   fields, a store) must be checked at its own bind/ref site, not assumed covered.
+- **DISCOVER (record-only event log) cannot replace check-core's whole-file dep
+  scan.** `tools/source-discovery.f` skips every colon body, so it never sees the
+  dominant real idiom — a `s" path" required`/`included` guarded inside a
+  colon-defined helper then bare-called at top level (e.g.
+  `tools/check-all-errors-core.f` `CA-MAYBE-VERIFY-SOURCE`). `CHK-SCAN-DEPS`
+  lexes the WHOLE token stream incl. bodies, so it catches these. Swapping to
+  DISCOVER would make the checker see fewer deps than the runtime = soundness
+  regression. The plan's "events recorded after evaluation" needs a real
+  instrumented load, which is circular before preverify. Verify a discovery
+  source against the colon-wrapped-include idiom before trusting it as a closure.
+- **all-errors support replay funnels through verify-source.** `CA-COLLECT-SUPPORT`
+  only collects byte ranges; the actual replay is `VERIFY:SOURCE-BUF-IN-SCOPE`.
+  So an all-errors support gap has two halves: all-errors must COLLECT the form
+  (deftype/deflinear/value-record/immediate/EXPORT were missing) AND verify-source
+  `RECORD-DEFINER?` must DISPATCH it (top-level `TRUST` was ignored). A collected
+  form verify-source ignores is a silent no-op. Fix both ends for parity.
+- **verify-source drops top-level strings; recover them with a skip ring.** The
+  main scanner uses `NEXT-SCAN` (SKIP-STRINGS set) which discards `s" ..."`
+  literals, so a bare `s" NAME" s" SIG" TRUST` loses its args. Record the last two
+  skipped top-level literals into a 2-slot ring reset per `NEXT-SCAN` call; at the
+  `TRUST` token the ring holds exactly that statement's NAME/SIG (both skipped in
+  the same call). Value = literal minus opener+space prefix (3 for `s"`, 4 for
+  `S\"`) minus the closing quote.
+- **`certify: stage2-src rejected rc 70 (non-blocking) / sig-type: at 'EXIT'` is
+  pre-existing.** The build's `BF-CERTIFY-ACT` runs `VERIFY:SOURCE-BUF` over the
+  whole engine source; it rejects non-blocking with the original verify-source too
+  (proven by rebuilding both ways). Not a signal that an engine edit broke
+  verify-source — reproduce with the unmodified tree before attributing it.
