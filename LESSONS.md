@@ -1,5 +1,7 @@
 # Lessons
 
+# FIXME: Rewrite this to be concise without losing precision
+
 Last updated: 2026-07-04
 
 Concise findings only: what worked, what failed, why. Coding standards live in
@@ -310,11 +312,11 @@ lesson — keep the specific word/code/path, cut the prose.
   sharing `DRV-EMIT-IMAGE ( sig$ path$ -- )` in `src/habu/driver-io.f` (loaded after
   macho/sign in every context) across all six emitters — stage2/build/maker/stdin/
   aot-lib and OBJIMG:WRITE — instead of physically merging the engine as an object.
-  The OBJIMG `TEXT>ASM` re-load (`ASM-INIT ; <bytes> BYTES,`) is a byte-identity:
+  The OBJIMG `TEXT>ASM`re-load (`ASM-INIT ; <bytes> BYTES,`) is a byte-identity:
   `BUILD-MACHO`/`CODESIG2` read only `CODE`+`CODELEN` (= `ASM-LEN`, always 4-aligned);
   `ASM-INIT` clears only label/fixup state that `BUILD-IMAGE` never reads. Build
   drivers are NOT baked into the final REPL `bin/hb`, so refactoring their emission
-  tails leaves `bin/hb` byte-stable — only `hb-stage`/`hb-stdin-mk` intermediates
+  tails leaves`bin/hb` byte-stable — only `hb-stage`/`hb-stdin-mk` intermediates
   change, and the `stage` fixpoint still proves self-rebuild identity.
 - **Single-file CLI tools stay testable through the lint sink:** when file
   ownership forbids a core+wrapper split, route all output through
@@ -1061,7 +1063,7 @@ lesson — keep the specific word/code/path, cut the prose.
   wanted feature on an unmeasured delta.
 - **The 35% `__text` elephant was a 4x-inlined cold-prefix, not features.**
   `EMIT-SOURCE` emitted the checker/stdlib provided-files prefix (`EMIT-COLD-PREFIX`
-  + `PFX-LOAD-SCRIPT-ARGV-COLD` + `PFX-PROVIDE-FILES`) inline at four source-entry
+  - `PFX-LOAD-SCRIPT-ARGV-COLD` + `PFX-PROVIDE-FILES`) inline at four source-entry
   points (~9.6 KB each = 39568 B). `PFX-PROVIDE-FILES` also built `s" <path>"
   provided\n` for ~19 files CHARACTER-BY-CHARACTER (~36 B/char). Fix, same as the
   escape-decoder BL precedent: factor the trio behind `LCOLDPFX` (one BL, save x30
@@ -1086,11 +1088,11 @@ lesson — keep the specific word/code/path, cut the prose.
   engine (region = [cold-prefix][REPL] at bin/hb's offsets) via a dump→rebake
   build pass; then only __text ASLR rebase is needed. Two SMALL engines are
   offset-stable across LSRC edits (verified: 100% identical engine code). Detail
-  + evidence in dot habu-decide-unbake-repl-735b1565.md "M2 BLOCKED".
+  - evidence in dot habu-decide-unbake-repl-735b1565.md "M2 BLOCKED".
 - **`evaluate` is a transactional throw boundary now (Design-Y):** a throw whose
   handler is beyond an active `evaluate` boundary (default `HOOK` `throw`s 70 on a
   checker-rejected `:`) rolls back each escaped eval frame (INP/INE/CP/NDICT/XDS/DP
-  + compile-state, `EVALERR-CELL`=code, `EVALD`--) then reaches the handler.
+  - compile-state, `EVALERR-CELL`=code, `EVALD`--) then reaches the handler.
   `BTHROW` branches via `EVALREC-CELL` to `LEVALREC` when `EVALD>0`. Preserve ANS:
   throws still reach an outer `catch`; do NOT make `evaluate` swallow throws
   (Design-X) — the `TTHROWSQ`/`catch` harness relies on a throw crossing
@@ -1337,7 +1339,7 @@ lesson — keep the specific word/code/path, cut the prose.
   self-host fixpoint, not just `BUILD-ELF`, is the acceptance test.
 - **no-crt dlopen works:** glibc ld.so initializes libc.so enough that a
   no-startfiles binary (own `_start`, no `__libc_start_main`) can `dlopen` libcuda
-  + call `cuInit` (proven on the Orin with `gcc -no-pie -nostartfiles`).
+  - call `cuInit` (proven on the Orin with `gcc -no-pie -nostartfiles`).
 - **`cp@` is only stable inside a compiled word:** to emit a runtime stub (a C-ABI
   leaf for `ffi-call`), write at `cp@` via `patch32` and call from inside `: WORD ;`.
   The interpreter compiles each top-level line into a transient buffer at `cp@`, so
@@ -2019,8 +2021,8 @@ lesson — keep the specific word/code/path, cut the prose.
   matches the whole token `maki/` (not in `\` or `( )` comments) and red the
   gate. Register only prefixes that actually occur; speculative `maki/ bench/
   src/ ...` were both dead and lint-forbidden. Real stray roots on a green gate:
-  `lib/ tools/ test/ dictionary/ lint-tools/`, `fork ` / `fs mutation ` /
-  `process ` / `hb baseline ` fixtures, and `*-lint` names -> expected=167,
+  `lib/ tools/ test/ dictionary/ lint-tools/`, `fork` / `fs mutation` /
+  `process` / `hb baseline` fixtures, and `*-lint` names -> expected=167,
   unexpected=0 baseline so a new unrowed span is visible, not drowned.
 - **The test pool legitimately reuses one label across entries** (battery starts
   12x `soft overflow`), so "reject duplicate pool labels at GT-POOL-START*" is
@@ -2051,9 +2053,11 @@ lesson — keep the specific word/code/path, cut the prose.
   not this hang's cause.
 
 ## Dict-hash stage 1 landed: dormant table + LHIDXBUILD (2026-07-03)
+
 Third attempt, evidence-first, is green through stage 1 (table infra +
 startup build, no consumers): install --force byte-fixpoint holds, gate
 PASS, trust-lint 0, typed-local-diff-lint 0, `-- snap` builds. Keys:
+
 - Recovered the verbatim attempt-2 step-2 code from `jj op log` (the
   revert op `jj restore src/habu/{habu1,habu2,layout,snap-lib}.f TRUSTED.md`;
   its hidden pre-image is the working code). Reapply from history, don't
@@ -2079,7 +2083,9 @@ PASS, trust-lint 0, typed-local-diff-lint 0, `-- snap` builds. Keys:
   Always run the new smoke on the baseline binary before trusting it.
 
 ## Dict-hash landed end-to-end (FIND + dup-check probes) (2026-07-03)
+
 Attempt 3 completed all 5 stages, each byte-fixpoint + gate green:
+
 - **First-match-stops is safe because the engine rejects duplicates.** Proved
   with `: R ; : R ;` -> exit 78. So each (wid, folded-name) key is in the table
   at most once; the probe stops at the first VALIDATED slot (idx<NDICT, wid==x2,
@@ -2115,8 +2121,10 @@ Attempt 3 completed all 5 stages, each byte-fixpoint + gate green:
   linear remainder.
 
 ## Design-before-evidence caused two emitter reverts (2026-07-03)
+
 Two dict-hash implementation attempts were reverted for preventable
 reasons, all research/design failures, none coding failures:
+
 - Designed around an ASSUMED runtime semantic (newest-wins redefinition)
   that a one-line stdin experiment against bin/hb would have falsified
   (`: R 1 ; : R 2 ;` -> engine REJECTS duplicates, exit 78). Verify every
@@ -2169,11 +2177,13 @@ so "which path exited" is one breakpoint away.
   the exit code; hb-build's maker die message carries the child rc.
 
 ## AOT-REPL milestone 1: one-word seed baked into bin/hb (2026-07-03)
+
 Proved the EM-SEED-DICT-style AOT seed end to end: a metabuild-compiled word
 (`AOT-PROBE`) is emitted into bin/hb as a dict record + code blob and is
 callable at boot with no source parse (EM-SEED-AOT in habu2.f, armed by the
 stdin driver's AOT-CAPTURE). Fixpoint byte-identical, gate green, size
 unchanged (148855). Keys for milestone 2:
+
 - **x13/x14/x15 carry argc/argv/envp until EM-DATA-INIT stores them.** Any
   boot emitter that runs BEFORE EM-DATA-INIT (EM-SEED-DICT, EM-SEED-AOT) must
   not use x13-x15 — a copy-loop counter in x14 clobbered argv and SIGSEGV'd in
@@ -2365,3 +2375,13 @@ unchanged (148855). Keys for milestone 2:
   mirror, tools/bootstrap.sh, tools/build-fixpoint.f, tools/diagnose-hb-core.f,
   tools/hb-build-lib.f key list, test/run-files.f) plus a rebuild, and the first
   ceiling it trips is stage2's `S2-SOURCE-CAP` ("stage2: source exceeds buffer").
+- **A seed `bin/hb` older than the engine prefix crashes the refresh AND the
+  gate with `E-UNDEFINED: <new-word>` + SIGABRT (rc 134) + a crash-reg hex
+  dump — and `install --force` still exited 0, leaving the stale binary.**
+  After merging an engine-prefix change (new checker word, new prefix file),
+  refresh the main tree's `bin/hb` immediately and reseed every live worker
+  workspace from it; a worker whose gate dies at load line 1 with
+  `E-UNDEFINED` on a freshly-merged word has a stale seed, not a code bug.
+  Recovery: copy a current workspace engine over the stale seed, rerun the
+  install, rerun the gate. The exit-0-on-crashed-refresh fail-open is dotted
+  (habu-install-force-exits-09c3c981).
