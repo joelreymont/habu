@@ -2385,3 +2385,10 @@ unchanged (148855). Keys for milestone 2:
   Recovery: copy a current workspace engine over the stale seed, rerun the
   install, rerun the gate. The exit-0-on-crashed-refresh fail-open is dotted
   (habu-install-force-exits-09c3c981).
+- **Closing a dot (`dot off`) edits the dot graph, so the archive commit itself
+  must pass `dot-dep-lint` before pushing.** Archiving
+  habu-fix-ptx-collective-997cfcce left five dots whose `blocks:` lists named
+  the now-deleted id; the pushed head went red at gate phase 17 while every
+  gate I ran had targeted the pre-archive tree. When closing a dot, `rg` its id
+  across `.dots/` and drop it from every `blocks:` list (delete an emptied
+  `blocks:` key entirely) in the same commit, then gate that exact tree.

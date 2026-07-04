@@ -5,7 +5,6 @@ priority: 3
 issue-type: task
 created-at: "2026-06-26T23:18:42.445886+02:00"
 blocks:
-  - habu-fix-ptx-collective-997cfcce
   - habu-ptx-ad-device-2b511851
 ---
 
