@@ -355,6 +355,10 @@ points stay listed.
   (E-PTX-BLOCK); the same header.f/launch.f contracts the device goldens launch under.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
+- `tools/ptx/ad-entry-lib.f` — per-VJP-entry AD_FWD/AD_BWD kernel emitters for
+  the device gradcheck gate: minimal op-lists isolating each ad-dag VJP entry
+  (EXP, x-max, x/sum, full softmax) plus the deliberate wrong-VJP fixture that
+  drops the DUP fan-out cotangent; text shape asserted in saxpy-test.f.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header

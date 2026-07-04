@@ -4,6 +4,7 @@
 
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
+require tools/ptx/ad-entry-lib.f
 
 $8000 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
@@ -241,6 +242,62 @@ variable PTXT-ERR-SAVE
    s" E-PTX-NOIMPL" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ --- per-VJP-entry AD kernels (tools/ptx/ad-entry-lib.f): emitted text shape ---
+
+: PTXT-ADE-COMMON ( n n n -- )
+   0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE ;
+
+: PTXT-ADE-EXP-OUTPUT ( -- )
+   [: ADE-EXP-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-EXP-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" mul.rn.f32 %f4, %f2, %f3;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-XMSUB-OUTPUT ( -- )
+   [: ADE-XMSUB-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS
+   s" sub.f32 %f6, %f1, %f5;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XMSUB-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" setp.eq.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-XDIVSUM-OUTPUT ( -- )
+   [: ADE-XDIVSUM-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" mov.f32 %f2, 0f00000000;" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XDIVSUM-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-SOFTMAX-OUTPUT ( -- )
+   [: ADE-SOFTMAX-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SOFTMAX-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ the deliberate wrong VJP keeps dy/s and DROPS the fan-out term: no neg.f32
+: PTXT-ADE-WRONG-OUTPUT ( -- )
+   [: ADE-XDIVSUM-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -252,5 +309,10 @@ PTXT-MATMUL-CG-OUTPUT
 PTXT-SMEM-CG-OUTPUT
 PTXT-SOFTMAX-BWD-CG-OUTPUT
 PTXT-SOFTMAX-BWD-OPT-CG-OUTPUT
+PTXT-ADE-EXP-OUTPUT
+PTXT-ADE-XMSUB-OUTPUT
+PTXT-ADE-XDIVSUM-OUTPUT
+PTXT-ADE-SOFTMAX-OUTPUT
+PTXT-ADE-WRONG-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr
