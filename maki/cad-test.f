@@ -209,6 +209,33 @@ s" memory.move:"                CT-NOTIN
 ' TRY-MV-NOPARAM E-CAD-SYNTAX TTHROWS
 ' TRY-MV-RESHAPE E-TV-SHAPE   TTHROWS
 
+\ ---- MEMORY: per-hot coalescing rows (cad-3) -------------------------------
+\ MODEL: capture builds descriptors without buffers, so every model input reads
+\ AL-UNKNOWN and reports "unaligned -> scalar" honestly; compiler-allocated output
+\ writes are 16B-aligned by construction -> coalesced-v4.
+MODEL: EWV ( x:2x4 -- y ) GELU RELU ;
+MEMORY RPT-RENDER CT-SAVE
+s" coalesce.tensor.0: i0"                             CT-IN
+s" coalesce.status.0: unaligned"                      CT-IN
+s" memory.align: input 0 unknown alignment -> scalar" CT-IN
+s" coalesce.status.1: coalesced-v4"                   CT-IN
+
+\ a materialized output with extent not a multiple of 4 shows a masked-tail row
+MODEL: EWT ( x:2x5 -- y ) GELU RELU ;
+MEMORY RPT-RENDER CT-SAVE
+s" memory.tail: n1 5 mod 4 = 1" CT-IN
+
+\ a 1xC bias into a compute op reports broadcast-register
+MODEL: EWB ( x:2x4 b:1x4 -- y ) BIAS ;
+MEMORY RPT-RENDER CT-SAVE
+s" coalesce.status.1: broadcast" CT-IN
+
+\ a gather's data read reports gathered (per-hot status + the movement row)
+MODEL: GAT ( x:4x8 idx:3x1 -- y ) GATHER ;
+MEMORY RPT-RENDER CT-SAVE
+s" coalesce.status.0: gathered"                 CT-IN
+s" memory.move: node 0 gather verdict=gathered" CT-IN
+
 T-REPORT
 
 end-package

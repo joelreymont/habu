@@ -19,8 +19,9 @@
 \ signature/shape -> E-CAD-SYNTAX; an op with no data or too few declared inputs ->
 \ E-CAD-ARITY; too many inputs -> E-CAD-INPUTS. LOWER reports REAL node facts (op
 \ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
-\ (maki/fusion-plan.f, maki/traffic.f); MEMORY/TILE stay conservative (cad-3/4) but
-\ read the real node count. GOLDEN/GRADCHECK/PROFILE stay honest
+\ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
+\ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE stays conservative (cad-4).
+\ GOLDEN/GRADCHECK/PROFILE stay honest
 \ not-run on a host without a GPU. PROMOTE refuses (E-CAD-GATE) unless all gates
 \ pass. maki -> habu only; cad owns -5020..-5029.
 
@@ -34,6 +35,7 @@ require maki/plan-ops.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/traffic.f
+require maki/mem-plan.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -305,8 +307,9 @@ private
    MIR-N@ 0 ?do  i MEM-MOVE-ROW+  loop ;
 
 : MEMORY-INTO ( report -- report )
-   s" memory: byte + coalescing estimates need shapes bound (cad-3)" RPT-WARN+
-   MEM-MOVE-ROWS ;
+   FP-BUILD                                          \ region + materialization flags (6.x)
+   MEM-PLAN-INTO                                     \ per-hot coalescing status + tail/align rows
+   MEM-MOVE-ROWS ;                                   \ movement materialization rows (landed)
 
 : TILE-INTO ( report -- report )
    s" host-reference-v0" RPT-CAND+  0 RPT-SELECT!
