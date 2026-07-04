@@ -78,8 +78,16 @@ MODEL: A5 ( a:2x4 b:2x4 c:2x4 d:2x4 e:2x4 -- y ) ADD ADD ADD ADD ;
 FP-BUILD
 ' LEWT-TRY-INPUTS E-LEW-INPUTS TTHROWS
 
-\ ---- fail closed: a 1-row bias operand is a broadcast, unsupported in v1 -----
-MODEL: BC ( x:4x8 b:1x8 -- y ) ADD ;
+\ ---- fail closed: a 1-row broadcast operand, unsupported in v1 ---------------
+\ Capture-time shape legality (E-CAD-PARAM-SHAPE) now rejects a mismatched ADD at
+\ MODEL:, so a broadcast region cannot be built through checked capture - the IR is
+\ hand-built (backward-test pattern) to keep the analyzer's own guard tested as
+\ defense-in-depth (LEW-ANALYZE must not trust its caller).
+MIR-RESET
+4 8 DT-F32 LAY-ROW MIR-INPUT+ drop
+1 8 DT-F32 LAY-ROW MIR-INPUT+ drop
+OP-ADD MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
+   4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
 ' LEWT-TRY-BCAST E-LEW-BCAST TTHROWS
 
