@@ -107,4 +107,3 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    T-REPORT ;
 
 SUM-MAIN
-bye
