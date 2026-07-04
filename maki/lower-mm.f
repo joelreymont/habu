@@ -21,7 +21,7 @@
 \     As[64][32]+Bs[32][64] to .shared, bar.sync, then each thread does its 4x4
 \     outer-product accumulate (register blocking is the win - 16 FMAs reuse the 4 A
 \     scalar + 1 B ld.shared.v4 loads). REUSES the cg-matmul.f vocabulary verbatim
-\     (MM-THREAD-SETUP / MM-ACC-ZERO-EMIT / MM-SMEM-BASES / MM-STAGE / MM-KSTEP); the ONLY
+\     (MM-THREAD-SETUP / MM-ACC-ZERO-EMIT / MM-PIPE-KLOOP / MM-KSTEP); the ONLY
 \     re-expression is the fused epilogue write (LMM-BLK-WRITE), which folds bias[col] and the
 \     activation chain into each of the 16 micro-tile stores under lower-mm's fusion ABI (out
 \     at %rd<OUT-BASE>, bias at %rd3), where cg-matmul's bare MM-WRITE stored a single C.
@@ -357,21 +357,17 @@ private
    LMM-STORE ;
 
 \ ---- blocked (register-tiled 64x64) body: reuse the cg-matmul.f staging/compute vocabulary --
-\ MM-THREAD-SETUP (r4..r11), MM-ACC-ZERO-EMIT (%f10..%f25 = 0), MM-SMEM-BASES (r12/r13), and
-\ MM-STAGE / MM-KSTEP (%f26..%f33 loads + 4x4 FMAs) are emitted verbatim; A=%rd1, B=%rd2 match
+\ MM-THREAD-SETUP (r4..r11), MM-ACC-ZERO-EMIT (%f10..%f25 = 0), and the cp.async double-buffered
+\ MM-PIPE-KLOOP (per-buffer r12/r13 bases + %f26..%f33 loads + 4x4 FMAs) are emitted verbatim; A=%rd1, B=%rd2 match
 \ this ABI. Only the K-loop scaffold and the epilogue write are re-expressed for fusion here.
-: LMM-BLK-SHARED ( -- )                            \ .shared As[64][32] + Bs[32][64] (SH symbol, v4-aligned)
-   SB-RESET s" .shared .align 16 .b8 SH[" CG-S MM-ASB MM-BSB + SB-U s" ];" CG-S CG-LINE ;
+: LMM-BLK-SHARED ( -- )                            \ 2x .shared As[64][32]+Bs[32][64] (cp.async double-buffer)
+   SB-RESET s" .shared .align 16 .b8 SH[" CG-S MM-SMEM SB-U s" ];" CG-S CG-LINE ;
 
-\ MM-K-LOOP body with a ( -- ) effect (cg-matmul's is typed on mmctx/mmacc, which this
-\ non-KERNEL lowering does not thread); the staged As/Bs + 4x4 accumulate are MM-STAGE/MM-KSTEP.
-: LMM-BLK-KLOOP ( -- )
-   s" mov.u32 %r14, 0;" PTX-L  s" $KLOOP:" PTX-L
-   s" setp.ge.u32 %p1, %r14, %r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   MM-NSTG 0 ?do  i MM-STAGE  loop
-   s" bar.sync 0;" PTX-L
-   MM-BK 0 ?do  i MM-KSTEP  loop
-   s" bar.sync 0;" PTX-L  s" add.u32 %r14, %r14, 32;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+\ The cp.async double-buffered K-loop is cg-matmul.f MM-PIPE-KLOOP verbatim (a ( -- ) emitter;
+\ cg-matmul's MM-K-LOOP wraps the same word with the mmctx/mmacc token passthrough this
+\ non-KERNEL lowering does not thread). Sharing it keeps the device goldens validating the
+\ exact kernel gemm-bench times.
+: LMM-BLK-KLOOP ( -- )  MM-PIPE-KLOOP ;
 
 : LMM-BLK-CBASE ( -- )                             \ %r40 = rowBase + ty*4 ; %r41 = colBase + tx*4
    s" shl.b32 %r40, %r5, 2;" PTX-L  s" add.u32 %r40, %r9, %r40;" PTX-L
@@ -407,8 +403,7 @@ private
 : LMM-BLK-BODY ( -- )
    MM-THREAD-SETUP
    MM-ACC-ZERO-EMIT
-   MM-SMEM-BASES
-   LMM-BLK-KLOOP
+   LMM-BLK-KLOOP                                   \ MM-PIPE-KLOOP sets the per-buffer As/Bs bases itself
    LMM-BLK-WRITE ;
 
 public

@@ -403,10 +403,13 @@ device-golden green; fp32 GFLOP/s at 512..2048 square = ours naive ~55 flat,
 ours blocked 357 rising to 381 (6.5-7.0x), Triton autotuned TF32-dot 1636
 rising to 1891 (4.6-5.0x over our blocked) — docs/eval-triton.md "GEMM: the
 FIRST measured compute-bound column"] -> pipeline the blocked GEMM (step 2)
-[2A LANDED 2026-07-05: bk=16->32 family floor + ld.shared.v4 B load, blocked
-379, 397, 403 GFLOP/s at 512, 1024, 2048 (+6% over the bk16 baseline), goldens
-green, 48 regs and 16 KB smem] -> on-device PROFILE/roofline ->
-cp.async stages (step 2B) -> MMA family -> cad-6 tune -> attention megafusion ->
+[LANDED 2026-07-05, pure f32, goldens green: 2A = bk=16->32 family floor +
+ld.shared.v4 B load (blocked 379, 397, 403 GFLOP/s at 512, 1024, 2048; 48 regs
+and 16 KB smem); 2B = cp.async.cg double-buffered staging, stages=2 (416, 437,
+442 GFLOP/s; 56 regs and 32 KB smem) = +16-17% over the bk16 baseline, Triton
+gap 4.6-5.0x down to 3.9-4.3x; emitter shaped for family stages 3-4] ->
+on-device PROFILE/roofline -> MMA family (step 3, the higher compute roof) ->
+cad-6 tune -> attention megafusion ->
 end-to-end model latency vs torch.compile on the detector-class workload. Honest finish line: parity on
 the pure compute roof (tensor cores are tensor cores), win on everything
 around it — fusion depth, zero-warmup replay, layout ownership, launch count —

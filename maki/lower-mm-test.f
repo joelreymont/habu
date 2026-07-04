@@ -104,15 +104,18 @@ LMM-BLOCKED?                    TTRUE       \ shape selects the register-blocked
 LMM-OUT-TILE@ 64                T=          \ launch grid tiles the 64x64 output (not 16)
 s" .version 8.3"                LMMT-ONCE
 s" .visible .entry REGION_0"    LMMT-ONCE
-s" .shared .align 16 .b8 SH["   LMMT-IN     \ As/Bs shared staging, 16B-aligned for the v4 B load
-s" bar.sync 0;"                 LMMT-IN     \ cooperative stage barrier
+s" .shared .align 16 .b8 SH["   LMMT-IN     \ 2x As/Bs staging, 16B-aligned (cp.async + v4)
+s" bar.sync 0;"                 LMMT-IN     \ pipeline barrier
+s" cp.async.cg.shared.global"   LMMT-IN     \ direct global->shared staging (no register round-trip)
+s" cp.async.commit_group;"      LMMT-IN     \ double-buffer group commit
+s" cp.async.wait_group 1;"      LMMT-IN     \ overlap: keep the prefetch group in flight
 s" ld.shared.f32 %f26"          LMMT-IN     \ scalar A micro-tile loads (column-strided As)
 s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33}"  LMMT-IN  \ vectorized B load (4 contiguous cols)
-s" st.shared.f32"               LMMT-IN
 s" $KLOOP:"                     LMMT-IN
 s" fma.rn.f32"                  LMMT-IN     \ 4x4 outer-product accumulate
 s" mov.f32 %f25,"               LMMT-IN     \ 16th accumulator (4x4 micro-tile = %f10..%f25)
 s" st.global.f32"               LMMT-IN
+s" st.shared.f32"               LMMT-ABSENT \ cp.async stages direct; no shared store
 s" .param .u64 p_in2"           LMMT-ABSENT \ matmul: no bias
 s" add.rn.f32"                  LMMT-ABSENT \ no bias, no epilogue add
 s" ex2.approx"                  LMMT-ABSENT \ no gelu

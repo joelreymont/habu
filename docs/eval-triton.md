@@ -486,6 +486,16 @@ within the f32 matmul tolerance, unchanged.
   transposing A to vectorize them would break the contiguous global→shared
   `cp.async` copy that +B needs. Net per k-step: 5 shared-load instructions drive
   16 FMAs (was 8 → 16).
+- **+B `cp.async` double-buffer (stages=2):** replace the scalar
+  global→register→`st.shared` staging with `cp.async.cg.shared.global` — a direct
+  16 B (4-float) global→shared copy, no register round-trip. Two SH buffers
+  (`SH[32768]`, parity toggle); tile t+1 is prefetched into the *other* buffer
+  while tile t computes from the current one, ordered by `commit_group` /
+  `wait_group 1` (the tail iteration drains with `wait_group 0`), so the
+  global-load latency overlaps the accumulate. The emitter honors the family
+  `stages` parameter (2 now; 3–4 is more parity slots + a deeper `wait_group N`,
+  same loop shape). This directly attacks the two stalls the baseline notes call
+  out (scalar load-into-smem + the load/compute `bar.sync`).
 
 ### Results (recorded on the Orin, 2026-07-05)
 
@@ -494,17 +504,33 @@ within the f32 matmul tolerance, unchanged.
 GEMM 512x512x512    iters=200  GFLOP/s_x1000=378584 (379549 on a 2nd run)
 GEMM 1024x1024x1024 iters=80   GFLOP/s_x1000=397206
 GEMM 2048x2048x2048 iters=30   GFLOP/s_x1000=402526
+== MM register-blocked 64x64, +B (cp.async double-buffered, stages=2) ==
+GEMM 512x512x512    iters=200  GFLOP/s_x1000=416684 (416931 on a 2nd run)
+GEMM 1024x1024x1024 iters=80   GFLOP/s_x1000=436774
+GEMM 2048x2048x2048 iters=30   GFLOP/s_x1000=441801
 ```
 
 | GFLOP/s (fp32 C=A·B)          | 512³   | 1024³  | 2048³  | ptxas       |
 |-------------------------------|-------:|-------:|-------:|-------------|
 | Habu blocked baseline (bk=16) |  356.6 |  375.0 |  380.5 | 48 reg / 8 KB  |
 | +A bk=32 + v4 B               |  378.6 |  397.2 |  402.5 | 48 reg / 16 KB |
+| +B cp.async double-buffer     |  416.7 |  436.8 |  441.8 | 56 reg / 32 KB |
 | Triton (autotuned TF32)       | 1636.1 | 1755.4 | 1890.5 | —           |
 
 - **+A over baseline: +6.2% / +5.9% / +5.8%.** No register change (48), no
   spills; smem doubles (8→16 KB) for the wider K-tile. The lift comes from the
   fewer shared-load instructions (v4 B) and fewer K-loop iterations / barriers
-  (bk 16→32). Triton gap narrows to 4.3–4.7×; the remaining structural stalls
-  (scalar global→register→smem staging + the load/compute `bar.sync`) are what
-  +B (`cp.async` double-buffering) targets.
+  (bk 16→32).
+- **+B over +A: +10.1% / +10.0% / +9.8% (+16.9% / +16.5% / +16.1% over the
+  baseline).** cp.async adds 8 registers (48→56, still 0 spills) and doubles smem
+  again (16→32 KB, the second buffer); the overlap of the global-load latency
+  with the accumulate is the win. All three shapes stay compute-bound (util rises
+  with size, as the tile intends).
+- **Gap to Triton: 3.9× / 4.0× / 4.3×** (was 4.6–5.0× at baseline). Both columns
+  are still honest-different in arithmetic: our full-f32 `fma.rn` (golden-gated at
+  rtol 1e-4) vs Triton's TF32 `tl.dot` on the tensor cores. Closing the rest of
+  the gap needs the higher compute roof — `mma.sync` TF32 (step 3), not more SIMT
+  pipelining. Every increment above kept the device goldens
+  (`lower-mm-device-test` 64×64 blocked MATMUL + LINEAR→GELU,
+  `lower-model-device-test`) green, device == host within the f32 matmul
+  tolerance — the correctness harness the whole exercise is built on.
