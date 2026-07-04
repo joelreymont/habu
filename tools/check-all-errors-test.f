@@ -554,6 +554,24 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
+\ ---- TFAM 5 const-b89c90f0: layout-constant one-cell narrowing parity --------
+\ `constant` bakes exactly one physical cell, so a value of a multi-cell layout
+\ family (here the 2-field `cae-cv`) is narrowed to the one-cell `-- a` model in
+\ EVERY replay path (native C-CONSTANT, verify-source RECORD-DEFINER?, this
+\ all-errors funnel, and public-signatures). No path invents a multi-cell shape.
+\ The checker-backed paths then fail-closed on any layout USE of the constant,
+\ proving the narrowing is observable and not silently widened. Sound rejection /
+\ shape-carrying at the constant itself is width-aware interpret-mode work owned
+\ by TFAM 12 (habu-tfam-12-layout: `constant/depth/.s`, interpret mode); when it
+\ lands this fixture flips from "layout USE rejected" to accepted/shape-carried.
+: CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-CV-MK ( -- cae-cv ) 0 ;" SB-APPEND CAE-LF
+   s" CAE-CV-MK constant CAE-CV-K" SB-APPEND CAE-LF
+   s" : CAE-CV-USE ( -- cae-cv ) CAE-CV-K ;" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-WORD-JSON$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
@@ -584,6 +602,19 @@ create CAE-LF-BYTE 10 c,
 : CAE-TEST-VREC-SUPPORT ( -- )
    s" value-record-support" CAE-CASE!
    CAE-VREC-SOURCE$ s" cae-vr-use" s" cae-vr-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+\ The layout constant is narrowed to one-cell `-- a`, so `CAE-CV-USE` (which
+\ declares the 2-field `cae-cv` layout) is fail-closed rejected: the inferred
+\ effect is `-- a`, the declared effect is `-- field<cae-cv,x,i64> ...`.
+: CAE-TEST-CONST-LAYOUT ( -- )
+   s" const-layout-narrow" CAE-CASE!
+   CAE-CONST-LAYOUT-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
 
 \ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
 \ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
@@ -647,6 +678,7 @@ create CAE-LF-BYTE 10 c,
    s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
+   s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN
    s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
    s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN

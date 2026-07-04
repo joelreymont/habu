@@ -354,6 +354,11 @@ variable CA-JSON
    CA-ADD-SUPPORT
    k 1+ CA-I ! ;
 
+\ Captures the whole `<value> constant NAME` line segment so replay defines the
+\ constant; the replay funnels through verify-source, whose one-cell `-- a`
+\ model narrows a multi-cell layout-family value (layout USE then fails
+\ downstream). Sound rejection / shape-carrying at the constant is owned by
+\ TFAM 12 (habu-tfam-12-layout); parity locked by the const-layout fixture.
 : CA-ADD-SUPPORT-CONSTANT ( n -- ) {: k:n :}
    k 1+ L# @ >= IF exit THEN
    k CA-LINE-SEG-START

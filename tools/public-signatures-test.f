@@ -29,10 +29,12 @@ create PST-ROOT-BUF FS-PATH-CAP allot
 create PST-FIX-BUF FS-PATH-CAP allot
 create PST-DEP-BUF FS-PATH-CAP allot
 create PST-ENTRY-BUF FS-PATH-CAP allot
+create PST-CONST-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
 variable PST-ENTRY-U
+variable PST-CONST-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -252,6 +254,40 @@ variable PST-ENTRY-U
    PST-OUT outu s" FOO:BAR" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE ;
 
+: PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
+
+\ TFAM 5 const-b89c90f0: `constant` bakes one physical cell, so a value of the
+\ 2-field `cae-cv` layout family is narrowed to the one-cell `-- a` trust here —
+\ identical to the verify-source / all-errors / native C-CONSTANT model. This
+\ locks that public-signatures does NOT invent a multi-cell shape (nor drop the
+\ constant); sound rejection / shape-carrying at the constant is owned by
+\ TFAM 12 (habu-tfam-12-layout), which flips this expectation when it lands.
+: PST-CONST-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND PST-LF
+   s" TRUSTED: CAE-CV-MK ( -- cae-cv ) 0 ;" SB-APPEND PST-LF
+   s" CAE-CV-MK constant CAE-CV-K" SB-APPEND PST-LF
+   s" : CAE-CV-USE ( -- cae-cv ) CAE-CV-K ;" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-CONST ( -- )
+   PST-ROOT s" ps-const-layout.f" PST-CONST-BUF JOIN-PATH PST-CONST-U !
+   PST-CONST CLEANUP+
+   PST-CONST PST-CONST-SRC$ WRITE-ALL ;
+
+: PST-CONST-K-TRUST$ ( -- ptr u8 n )
+   s" CAE-CV-K" s" -- a" PST-TRUST$ ;
+
+: PST-CONST-USE-TRUST$ ( -- ptr u8 n )
+   s" CAE-CV-USE" s" -- cae-cv" PST-TRUST$ ;
+
+: PST-TEST-CONST-LAYOUT ( -- )
+   PST-PREPARE-CONST
+   PST-CONST PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TTRUE
+   PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
@@ -260,6 +296,7 @@ variable PST-ENTRY-U
    PST-TEST-TRUST
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
+   PST-TEST-CONST-LAYOUT
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
    T-REPORT

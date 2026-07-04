@@ -554,6 +554,11 @@ variable PS-PKG-PUBLIC
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
+   \ `constant` bakes one physical cell: the emitted trust is the one-cell `-- a`
+   \ model, matching native C-CONSTANT / verify-source / all-errors. A multi-cell
+   \ layout-family value is narrowed to `-- a` here too (no invented shape). Sound
+   \ rejection / shape-carrying at the constant is owned by TFAM 12
+   \ (habu-tfam-12-layout); parity locked by public-signatures-test const-layout.
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
