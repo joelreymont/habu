@@ -12,7 +12,9 @@
 \ Load after test/gate-common.f.
 
 115831 constant GB-SIZE-BASELINE-MACOS
-90304 constant GB-SIZE-BASELINE-LINUX
+102592 constant GB-SIZE-BASELINE-LINUX   \ re-measured on the Orin 2026-07-04 (zed phase;
+                                         \ dot habu-re-measure-set): fable tree incl. the
+                                         \ engine-id, underflow/arity-guard, and boot-pin work
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN
