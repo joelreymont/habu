@@ -647,7 +647,69 @@ s" rowidx"     1 TFAM-REG-CELL
 \ field<...> term still carries this reserved family-id for identity comparison.
 s" @" CHECKER-PACKAGE-PRIVATE s" field" 3 TK-CELL TFAM-DECL FIELD-FAM !
 
+\ ---------------------------------------------------------------------------
+\ signature-token resolution (the checker's TFAM-RESOLVE-XT target). On top of
+\ TFAM-RESOLVE's package-scope rules this adds the signature-surface concerns:
+\ qualified `PKG:tail` references (fold the qualifier — package names are
+\ stored case-folded — require a canonical lowercase tail, resolve public rows
+\ plus the active package's own private rows), and unqualified ambiguity
+\ (E-TFAM-AMBIG) mapped to an unresolved token so the signature rejects with a
+\ diagnostic instead of aborting the load.
+\ ---------------------------------------------------------------------------
+$100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
+create TFQ-BUF TFQ-CAP allot
+variable TFQ-U
+variable TFQ-TA   variable TFQ-TU     \ qualified tail token
+variable TFQ-COLON
+
+: TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}   \ folded qualifier -> TFQ-BUF
+   u TFQ-CAP > IF s" tfam: qualifier too long" 76 die THEN
+   0 TF-I !
+   BEGIN TF-I @ u < WHILE
+      a TF-I @ + c@ CORE-FOLD-C  TFQ-BUF TF-I @ + c!
+      TF-I @ 1 + TF-I !
+   REPEAT
+   u TFQ-U ! ;
+
+\ TFQ-SPLIT? ( ptr u8 n -- bool ) : one non-edge ':' splits qualifier/tail
+\ (engine FIND parity); edge or repeated colons never split (and never resolve).
+: TFQ-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   -1 TFQ-COLON !
+   0 TF-I !
+   BEGIN TF-I @ u < WHILE
+      a TF-I @ + c@ 58 = IF
+         TFQ-COLON @ 0 < 0= IF RES-FALSE EXIT THEN   \ second ':' -> malformed
+         TF-I @ TFQ-COLON !
+      THEN
+      TF-I @ 1 + TF-I !
+   REPEAT
+   TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
+   TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
+   TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
+   a TFQ-COLON @ TFQ-FOLD-COPY
+   a TFQ-COLON @ + 1 + TFQ-TA !
+   u TFQ-COLON @ - 1 - TFQ-TU !
+   RES-TRUE ;
+
+: TFAM-QUAL-RESOLVE ( pkg-a pkg-u -- id true | false ) {: pa:ptr pu:n :}
+   TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
+   TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
+   TFQ-BUF TFQ-U @ pa pu CORE-STR= IF id RES-TRUE EXIT THEN   \ own private rows
+   0 RES-FALSE ;
+
+: TFAM-SIG-RESOLVE ( pkg-a pkg-u name-a name-u -- id true | false )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
+   na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
+   pa pu na nu ['] TFAM-RESOLVE catch {: rc:n :}
+   rc 0= IF EXIT THEN                         \ ( id flag ) from the resolver
+   2drop 2drop                                \ catch reset the pre-call depth
+   rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
+   rc throw ;
+
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.
-' TFAM-RESOLVE TFAM-RESOLVE-XT !
+' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
 ' TFAM-ARITY@  TFAM-ARITY-XT !

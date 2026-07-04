@@ -370,6 +370,20 @@ variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
+\ --- checker package scope state. Declared here (not with the package words
+\ further down) so signature parsing (SIG-FAM?) can resolve family tokens
+\ through the ACTIVE package scope. The mutators stay in the package block.
+0 constant CHECKER-PACKAGE-NONE
+1 constant CHECKER-PACKAGE-PRIVATE
+2 constant CHECKER-PACKAGE-PUBLIC
+$100 constant CHECKER-PACKAGE-CAP
+create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
+variable CHECKER-PACKAGE-U
+variable CHECKER-PACKAGE-MODE
+
+: CHECKER-PACKAGE-ACTIVE? ( -- bool )
+   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
+
 0 constant UK-EXACT
 1 constant UK-INPUT
 2 constant UK-COERCE
@@ -1872,18 +1886,19 @@ variable QUALBAD
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
-\ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a bare family token through the TFAM
+\ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
 \ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
 \ (0 false) — always two items, so every caller drops the id on the false path.
-\ `ptr` is NOT registered (it stays MK-PTR special-cased below), and the internal
-\ `field` family is registered private in a reserved package so it never resolves
-\ here. Resolution uses the global scope (empty package): every built-in cell
-\ family is public/global, so this finds all of them. Package-local resolution
-\ waits on the TYPEFAMILY declaration grammar (PLAN item 6); the checker
-\ package-state accessors are defined further down this file, so they cannot be
-\ named here without reordering the package block.
-: SIG-FAM? ( ptr u8 n -- n bool )
-   s" " 2swap TFAM-RESOLVE* ;
+\ Resolution is package-scoped (PLAN item 6): an active package resolves its own
+\ (private+public) families first, then the unique public tail; top level uses
+\ the global scope, where every built-in cell family lives public. Qualified
+\ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
+\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
+: SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   CHECKER-PACKAGE-ACTIVE? IF
+      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-RESOLVE* EXIT
+   THEN
+   s" " a u TFAM-RESOLVE* ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
@@ -3045,15 +3060,41 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-: E-PARSE-ADD ( ptr u8 n -- ) {: sa:ptr su:n :}
+\ --- stored-signature intake. USIG-ADD parses a declared/trusted signature
+\ into an effect row. A signature that does not parse is a hard stop on the
+\ ordinary load path (a baked or TRUSTed effect must never be silently wrong).
+\ In a MULTI-ERROR load it must not abort the run and must not store a row: a
+\ rejected DEFINITION was already diagnosed and counted by CHECK (the native
+\ re-records every published definition's declared sig through TRUST), so its
+\ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
+\ reject and reports through BADSIG-XT (render.f). Either way no row exists,
+\ so later callers reject as undefined instead of trusting a malformed effect.
+variable NMA  variable NMU              \ current definition name (set by DO-TOK1)
+variable MULTI-ERR      \ multi-error load mode active?
+variable MULTI-ERR-N    \ rejected definitions recorded this load
+0 MULTI-ERR !   0 MULTI-ERR-N !
+variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
+
+: MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
+
+: USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
+   NMA @ NMU @ CORE-STR= 0= ;
+
+: USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   MULTI-ERR? 0= IF
+      2 sa su write drop                 \ name the offending stored sig text
+      s" : checker: bad stored signature" 76 die
+   THEN
+   na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
+   1 MULTI-ERR-N +!
+   sa su na nu BADSIG-XT @ dup 0= IF drop 2drop 2drop ELSE execute THEN ;
+
+: USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW
-   SGBAD @ if s" checker: bad stored signature" 76 die then
+   SGBAD @ if 2drop 2drop sa su na nu USIG-ADD-BAD exit then
    SGHASR @ E-ADD-EFFECT ;
-
-: USIG-ADD ( ptr u8 n ptr u8 n -- )
-   2drop E-PARSE-ADD ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -3621,13 +3662,6 @@ PRIM: constant PE-A PE-OUT PRIM;
 
 PTABLE-END
 
-0 constant CHECKER-PACKAGE-NONE
-1 constant CHECKER-PACKAGE-PRIVATE
-2 constant CHECKER-PACKAGE-PUBLIC
-$100 constant CHECKER-PACKAGE-CAP
-create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
-variable CHECKER-PACKAGE-U
-variable CHECKER-PACKAGE-MODE
 variable CHECKER-COLON-N
 variable CHECKER-COLON-I
 variable CHECKER-REC-A
@@ -3653,9 +3687,6 @@ variable DFER-END
    c $41 < IF c EXIT THEN
    c $5A > IF c EXIT THEN
    c $20 or ;
-
-: CHECKER-PACKAGE-ACTIVE? ( -- bool )
-   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
@@ -4849,7 +4880,7 @@ variable QTMP
    RES-FALSE ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
-variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
+variable TOK0  variable RECXT  0 RECXT !
 variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f installs)
 variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
@@ -5147,13 +5178,11 @@ variable IS-TU
 \ Off by default so the ordinary load path (fixpoint build, gate) keeps the
 \ fail-on-first-reject HOOK behavior. When on, a rejected definition still
 \ trusts its DECLARED signature (so later definitions check against a known
-\ effect instead of cascading undefined-word errors) and the reject is counted
-\ so the driver can exit nonzero at end of load — one diagnostic per reject in
-\ a single process run instead of one reject per process.
-variable MULTI-ERR      \ multi-error load mode active?
-variable MULTI-ERR-N    \ rejected definitions recorded this load
-0 MULTI-ERR !   0 MULTI-ERR-N !
-
+\ effect instead of cascading undefined-word errors) — unless that signature
+\ itself failed to parse (SGBAD), in which case no row is stored and callers
+\ reject as undefined (USIG-ADD-BAD) — and the reject is counted so the
+\ driver can exit nonzero at end of load. The mode cells and MULTI-ERR? live
+\ above USIG-ADD, which shares them.
 \ File-relative diagnostic origin for a MULTI-ERR load. The driver evaluates a
 \ whole source buffer in one run; per rejected definition the checker re-points
 \ DIAG-ORIGIN! to that def's FILE position so JSON positions are file-relative
@@ -5167,7 +5196,6 @@ variable MEO-NAMEC    \ absolute addr of the compiler's def name-token cell
 variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
 0 MEO-ON !
 
-: MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 : MULTI-ERR-BEGIN ( -- ) -1 MULTI-ERR !  0 MULTI-ERR-N !  0 MEO-ON ! ;
 : MULTI-ERR-END ( -- n ) MULTI-ERR-N @  0 MULTI-ERR !  0 MEO-ON ! ;   \ reject count; clears mode
 : MULTI-ERR-ORIGIN! {: base:ptr namec:n bl:n bc:n bb:n :}
@@ -5266,9 +5294,9 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      VSIG @ SGSEEN @ and IF                            \ trust the declared sig so later
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking
-      THEN
+      VSIG @ SGSEEN @ and SGBAD @ 0= and IF             \ trust the declared sig so later
+         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
+      THEN                                              \ unless the sig itself was bad
    THEN ;
 
 \ ---------------------------------------------------------------------------

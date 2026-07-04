@@ -425,6 +425,41 @@ variable JPOS  variable JLINE  variable JCOL
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
 
+\ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
+\ SGBAD state from the failed parse is still live, so class + suggestion mirror
+\ REPAIR-CLASS's signature arm (same stable strings).
+: BADSIG-CLASS ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
+   SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
+   SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
+   s" fix_signature_syntax" ;
+: BADSIG-SUGGEST ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
+   SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
+   SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
+   s" Repair the stack-effect comment syntax, including --." ;
+: BADSIG-JSON ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
+   s" repair_class" JKEY BADSIG-CLASS JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" word" JKEY na nu JSTR 44 EMIT1
+   s" declared_effect_source" JKEY sa su SIG-TRIM JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY BADSIG-SUGGEST JSTR
+   125 EMIT1 ;                                            \ }
+: BADSIG-PROSE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
+   sa su SIG-TRIM DTXT  s" '" DTXT ;
+: BADSIG-DIAG ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   1 RDST !  0 RSN !
+   sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+' BADSIG-DIAG BADSIG-XT !
+
 \ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
 \ TYPEFAMILY/SUMTYPE reports a declaration-shaped packet: decl kind, family,
 \ offending token, and reason — with NO invented definition fields (no

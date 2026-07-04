@@ -227,6 +227,41 @@ TDOK @ -1 T=
 TDF @ TDX @ <> -1 T=
 
 \ ---------------------------------------------------------------------------
+\ package-scoped SIG resolution (habu-tfam-4-remainder part 3): unqualified
+\ family tokens resolve through the ACTIVE package before the unique public
+\ tail; qualified PKG:tail folds the qualifier, requires a lowercase tail, and
+\ resolves public rows only (plus the active package's own private rows).
+\ ---------------------------------------------------------------------------
+package tdpa
+s" TPOK-LOCAL ( tres<n> -- tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPOK-PRIV ( tpriv<n> -- tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPOK-QSELF ( tdpa:tpriv<n> -- tdpa:tpriv<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+end-package
+\ cross-package: a private family never resolves, qualified or not...
+s" TXBAD-PRIV ( tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXBAD-QPRIV ( tdpa:tpriv<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ ...two public same-tail families are ambiguous unqualified...
+s" TXBAD-AMBIG ( tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ ...and qualified references resolve each package distinctly.
+s" TQOK-A ( tdpa:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TQOK-B ( tdpb:tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TQOK-FOLD ( TDPA:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TQBAD-CASE ( TDPA:Tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ same tail, different package: no unification at the SIG-parse level.
+s" TQBAD-XUNIFY ( tdpa:tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-XUNIFY2 ( tdpb:tres<n> -- tdpa:tres<n> )" CHECK-QUIET-CANDIDATE! 0 T=
+\ inside tdpb, unqualified tres is tdpb's own — never tdpa's same tail.
+package tdpb
+s" TPOK-OWN ( tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPBAD-OTHER ( tres<n> -- tdpa:tres<n> ) " CHECK-QUIET-CANDIDATE! 0 T=
+end-package
+\ unknown qualifiers and malformed multi-colon tokens reject as unknown types.
+s" TQBAD-NOPKG ( nopkg:tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ hidden physical names never resolve in public signatures.
+s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
 \ negative declarations: named throw code + full registry rollback each time.
 \ ---------------------------------------------------------------------------
 \ uppercase/mixed-case family names reject before storage.
@@ -333,6 +368,21 @@ s" " s" tdok9" TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=
 \ a bad declaration does not poison later checks after the mode ends.
 s" TDOK-AFTER ( tdfoo<n,n> -- tdfoo<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ unknown-family and wrong-arity SIGNATURES in multi-error mode: reported,
+\ counted, and the load continues — but the invalid declared signature must
+\ NOT be stored as a cert row (later checks stay sound).
+MULTI-ERR-BEGIN
+s" : TDSME1 ( nope<n> -- nope<n> ) ; : TDSME2 ( tdfoo<n> -- tdfoo<n> ) ; : TDSME3 ( n -- n ) ;" evaluate
+MULTI-ERR-END 2 T=
+s" TDSME1" CHECKER-FIND-USIG 0 T=
+s" TDSME2" CHECKER-FIND-USIG 0 T=
+s" TDSME3" CHECKER-FIND-USIG -1 T=
+\ a raw TRUST row with an unparseable signature: counted + reported, no row.
+MULTI-ERR-BEGIN
+s\" s\" TDTBAD\" s\" nope<n> -- n\" TRUST : TDTOK ( n -- n ) ;" evaluate
+MULTI-ERR-END 1 T=
+s" TDTBAD" CHECKER-FIND-USIG 0 T=
+s" TDTOK" CHECKER-FIND-USIG -1 T=
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
