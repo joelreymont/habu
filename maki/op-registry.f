@@ -24,6 +24,8 @@ require maki/rmsnorm.f
 require maki/softmax.f
 require maki/rope.f
 require maki/move.f
+require maki/reduce-bwd.f
+require maki/scatter.f
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -153,6 +155,10 @@ public
       OP-RMSNORM-BWD     of s" rmsnorm-bwd"     endof
       OP-SOFTMAX-ROW-BWD of s" softmax-row-bwd" endof
       OP-ROPE-BWD        of s" rope-bwd"        endof
+      OP-ROWSUM-BWD      of s" rowsum-bwd"      endof
+      OP-FULLSUM-DOT-BWD of s" fullsum-dot-bwd" endof
+      OP-PAD-SCATTER     of s" pad-scatter"     endof
+      OP-SCATTER-ADD     of s" scatter-add"     endof
       E-OPR-KIND throw
    endcase ;
 
@@ -215,7 +221,17 @@ private
    CLASS-ROW-REDUCE 8 ACC-F32  NUM-RELTOL 2 OP-LAYERNORM-BWD   OPR!
    CLASS-ROW-REDUCE 6 ACC-F32  NUM-RELTOL 2 OP-RMSNORM-BWD     OPR!
    CLASS-ROW-REDUCE 4 ACC-F32  NUM-RELTOL 2 OP-SOFTMAX-ROW-BWD OPR!
-   CLASS-EW         6 ACC-SAME NUM-RELTOL 3 OP-ROPE-BWD        OPR! ;
+   CLASS-EW         6 ACC-SAME NUM-RELTOL 3 OP-ROPE-BWD        OPR!
+   \ reduce/scatter backward op-kinds (cad-9e). No CLASS-FULL-REDUCE in v1: the
+   \ full-reduce dot is classified CLASS-ROW-REDUCE (the nearest reduction class;
+   \ its bytes/accum model - read a row, f32-accumulate - is the row-reduce model).
+   \ The scatters are exact placements into a zero buffer -> CLASS-MOVEMENT (the
+   \ gather/slice forward ops they invert are movement too); scatter-add accumulates
+   \ duplicates so it f32-accumulates.
+   CLASS-ROW-REDUCE 1 ACC-F32  NUM-RELTOL 1 OP-ROWSUM-BWD      OPR!
+   CLASS-ROW-REDUCE 2 ACC-F32  NUM-RELTOL 2 OP-FULLSUM-DOT-BWD OPR!
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-PAD-SCATTER     OPR!
+   CLASS-MOVEMENT   0 ACC-F32  NUM-RELTOL 2 OP-SCATTER-ADD     OPR! ;
 
 OPR-BUILD
 
@@ -250,5 +266,12 @@ OPR-BUILD
 ' RMS-BWD   OP-RMSNORM-BWD     cells R-REF + !
 ' SM-BWD    OP-SOFTMAX-ROW-BWD cells R-REF + !
 ' ROPE-BWD  OP-ROPE-BWD        cells R-REF + !
+\ reduce/scatter backward references are BUFFER-granularity (maki/reduce-bwd.f,
+\ maki/scatter.f) - like the movement references, the exact rewrite/reduction the
+\ planner must reproduce on materialization; binding completes their op rows.
+' ROWSUM-BWD      OP-ROWSUM-BWD       cells R-REF + !
+' FULLSUM-DOT-BWD OP-FULLSUM-DOT-BWD  cells R-REF + !
+' PAD-SCATTER     OP-PAD-SCATTER      cells R-REF + !
+' SCATTER-ADD     OP-SCATTER-ADD      cells R-REF + !
 
 end-package

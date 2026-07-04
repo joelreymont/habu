@@ -46,6 +46,15 @@ public
 24 constant OP-RMSNORM-BWD       \ row-coupled rmsnorm VJP          (ref: RMS-BWD)
 25 constant OP-SOFTMAX-ROW-BWD   \ softmax VJP over the OUTPUT row  (ref: SM-BWD)
 26 constant OP-ROPE-BWD          \ rotate cotangent by -angle       (ref: ROPE-BWD)
-27 constant OP-N               \ op-kind range bound
+\ ---- reduce / scatter backward op-kinds (cad-9e: reduce/scatter adjoints) ------
+\ These synthesize the param/movement adjoints the elementwise/reduction *-BWD ops
+\ cannot: bias/linear bias-grad is a reduce over rows; scale-grad a full-reduce dot;
+\ the slice/gather input-grads are scatters into a zero buffer. Buffer-granularity
+\ references (maki/reduce-bwd.f, maki/scatter.f), never MODEL:-parseable.
+27 constant OP-ROWSUM-BWD        \ sum cotangent rows -> 1xC     (bias grad; ref: ROWSUM-BWD)
+28 constant OP-FULLSUM-DOT-BWD   \ sum(ct (.) x) -> 1x1          (scale grad; ref: FULLSUM-DOT-BWD)
+29 constant OP-PAD-SCATTER       \ place (r1-r0)xC ct into zero RxC at r0 (slice adj; ref: PAD-SCATTER)
+30 constant OP-SCATTER-ADD       \ add ct rows into zero RxC at gathered idx (gather adj; ref: SCATTER-ADD)
+31 constant OP-N               \ op-kind range bound
 
 end-package

@@ -90,6 +90,10 @@ TEST:SUITE maki/rope-test.f
 TEST:END-SUITE
 TEST:SUITE maki/move-test.f
 TEST:END-SUITE
+TEST:SUITE maki/reduce-bwd-test.f
+TEST:END-SUITE
+TEST:SUITE maki/scatter-test.f
+TEST:END-SUITE
 TEST:SUITE maki/move-facts-test.f
 TEST:END-SUITE
 TEST:SUITE maki/op-registry-test.f

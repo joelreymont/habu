@@ -106,10 +106,13 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 \ materialization reason per movement op-kind (naming the cause in the report)
 : MV-REASON$ ( n -- ptr u8 n )
    case
-      OP-RESHAPE   of s" reshape on non-contiguous layout"       endof
-      OP-SLICE     of s" slice offset unaligned (masked tail)"   endof
-      OP-CONCAT    of s" concat materialized (v1)"               endof
-      OP-GATHER    of s" gather prologue; downstream gathered"   endof
+      OP-RESHAPE     of s" reshape on non-contiguous layout"          endof
+      OP-SLICE       of s" slice offset unaligned (masked tail)"      endof
+      OP-CONCAT      of s" concat materialized (v1)"                  endof
+      OP-GATHER      of s" gather prologue; downstream gathered"      endof
+      \ backward scatters (cad-9e): also CLASS-MOVEMENT, also materialize a buffer
+      OP-PAD-SCATTER of s" pad-scatter (slice adjoint) materialized"  endof
+      OP-SCATTER-ADD of s" scatter-add (gather adjoint) materialized" endof
       E-MV-TF throw
    endcase ;
 
