@@ -225,15 +225,24 @@ create LEW-DRV LEW-DRV-CAP allot  variable LEW-DRV-U
 : LEW-D-INT ( n -- )  SB-RESET SB-INT SB$ LEW-D+ ;
 
 public
-: LEW-WRITE-DRIVER ( ptr u8 n n ptr u8 n -- ) {: ma:ptr mu:n rid:n pa:ptr pu:n :}
+\ Write a child driver that requires cad.f + `reqa/requ` (the owning lowering file),
+\ defines the model `ma/mu`, builds the fusion plan, then runs `<rid> <emita/emitu>`
+\ inside package MAKI (MODEL:/FP-BUILD/*-EMIT are MAKI publics), to the path `pa/pu`.
+\ Both the elementwise (LEW-EMIT) and the row-reduce (LRED-EMIT) device legs spawn a
+\ fresh bin/hb through this one writer.
+: LOWER-DRIVER! ( ptr u8 n ptr u8 n ptr u8 n n ptr u8 n -- )
+   {: ma:ptr mu:n reqa:ptr requ:n emita:ptr emitu:n rid:n pa:ptr pu:n :}
    LEW-D-RESET
-   s" require maki/cad.f"       LEW-D+ LEW-D-NL
-   s" require maki/lower-ew.f"  LEW-D+ LEW-D-NL
-   s" package MAKI"             LEW-D+ LEW-D-NL      \ MODEL:/FP-BUILD/LEW-EMIT are MAKI publics
-   ma mu                        LEW-D+ LEW-D-NL
-   s" FP-BUILD"                 LEW-D+ LEW-D-NL
-   rid LEW-D-INT  s"  LEW-EMIT" LEW-D+ LEW-D-NL
-   s" end-package"              LEW-D+ LEW-D-NL
+   s" require maki/cad.f"  LEW-D+ LEW-D-NL
+   reqa requ               LEW-D+ LEW-D-NL
+   s" package MAKI"        LEW-D+ LEW-D-NL
+   ma mu                   LEW-D+ LEW-D-NL
+   s" FP-BUILD"            LEW-D+ LEW-D-NL
+   rid LEW-D-INT  s"  "    LEW-D+  emita emitu LEW-D+ LEW-D-NL
+   s" end-package"         LEW-D+ LEW-D-NL
    pa pu  LEW-DRV LEW-DRV-U @  WRITE-ALL ;
+
+: LEW-WRITE-DRIVER ( ptr u8 n n ptr u8 n -- ) {: ma:ptr mu:n rid:n pa:ptr pu:n :}
+   ma mu  s" require maki/lower-ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
 end-package

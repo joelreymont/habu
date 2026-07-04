@@ -1,20 +1,28 @@
-\ maki/lower-launch.f - upload/launch/readback for one lowered elementwise region.
+\ maki/lower-launch.f - upload/launch/readback for one lowered fusion region.
 \
-\ CAD-PLAN section 2 (PTX -> cubin -> launch), device leg slice 1. Given a region
-\ already analyzed by maki/lower-ew.f (LEW-ANALYZE) and a cubin assembled from its
-\ REGION_<rid> kernel, LLA-RUN drives the launch: pack each region input's synthetic
-\ host buffer (GA-IN-PTR, the executor's bound buffer after GA-BIND-SYNTH) f64->f32,
-\ cuMemcpyHtoD, sentinel-fill the readback, launch (grid = ceil(n/256), block 256),
-\ cuMemcpyDtoH, and F32->F64 unpack the device output into LLA-HOUT. Every readback
-\ cell is poisoned before the copy-back and GUARD-checked after, so a dropped copy
-\ fails closed (E-PTX-READBACK) rather than passing a golden on stale data.
+\ CAD-PLAN section 2 (PTX -> cubin -> launch), device legs slice 1 (elementwise) and
+\ slice 2 (row-reduce). Given a region already analyzed by its owning lowering pass and
+\ a cubin assembled from its REGION_<rid> kernel, the RUN word drives the launch: pack
+\ each region input's synthetic host buffer (GA-IN-PTR, the executor's bound buffer after
+\ GA-BIND-SYNTH) f64->f32, cuMemcpyHtoD, sentinel-fill the readback, launch, cuMemcpyDtoH,
+\ and F32->F64 unpack the device output into LLA-HOUT. Every readback cell is poisoned
+\ before the copy-back and GUARD-checked after, so a dropped copy fails closed
+\ (E-PTX-READBACK) rather than passing a golden on stale data.
 \
-\ v1 restriction (documented): every region input must be a model INPUT SLOT - a
-\ region fed by a materialized producer in another region needs cross-region buffer
-\ orchestration that arrives with the OPTIMIZE wiring slice; such an input fails
-\ closed (E-LLA-INPUT). N above the launch arena fails closed (E-LLA-CAP). Fully
-\ checked Habu via the typed CUDA bindings (maki/cuda-driver.f). maki -> habu only;
-\ lower-launch owns -5180..-5181.
+\ The two kernel SHAPES differ only in the launch grid + the u32 kernel param, so the
+\ CUDA plumbing (setup / alloc+upload / bind / launch+readback / release) is factored
+\ over launch-local STAGING (LLA-NIN / LLA-ELEMS / LLA-OUT-NODE / LLA-IN-REF), populated
+\ by the shape's analyzer before the shared core runs:
+\   LLA-RUN  (elementwise, maki/lower-ew.f):  grid = ceil(N/256), p_n = N = rows*cols.
+\   LRED-RUN (row-reduce,  maki/lower-red.f):  grid = rows,        p_k = cols (one block/row).
+\ Both name the kernel REGION_<rid>, upload/read back rows*cols f32 elements, and launch
+\ block 256. The golden (maki/lower-golden.f) reads the staged out-node + element count.
+\
+\ v1 restriction (documented): every region input must be a model INPUT SLOT - a region fed
+\ by a materialized producer in another region needs cross-region buffer orchestration that
+\ arrives with the OPTIMIZE wiring slice; such an input fails closed (E-LLA-INPUT). rows*cols
+\ above the launch arena fails closed (E-LLA-CAP). Fully checked Habu via the typed CUDA
+\ bindings (maki/cuda-driver.f). maki -> habu only; lower-launch owns -5180..-5181.
 
 require lib/errors.f
 require lib/string.f
@@ -29,31 +37,42 @@ require maki/array.f
 require maki/cuda-driver.f
 require maki/golden-artifact.f
 require maki/lower-ew.f
+require maki/lower-red.f
 
 -5180 constant E-LLA-INPUT   \ a region input is not a model input slot (v1: slots only)
 -5181 constant E-LLA-CAP     \ region element count exceeds the launch arena capacity
 
 package MAKI
 
-4    constant LLA-MAX-IN     \ mirrors lower-ew LEW-MAX-IN
+4    constant LLA-MAX-IN     \ mirrors lower-ew LEW-MAX-IN / lower-red LRED-MAX-IN
 4096 constant LLA-NCAP       \ max elements per buffer (16 KB f32)
-256  constant LLA-BLOCK      \ launch block size
+256  constant LLA-BLOCK      \ launch block size (both shapes)
 
 create LLA-HIN  LLA-MAX-IN LLA-NCAP * 4 * allot   \ K packed-f32 input buffers (bytes)
 create LLA-HRB  LLA-NCAP 4 * allot                 \ device readback (packed f32 bytes)
 create LLA-HOUT LLA-NCAP cells allot               \ unpacked device output (f64 cells)
 create LLA-DBUF LLA-MAX-IN 1 + cells allot         \ devptr store: K inputs then output
-variable LLA-NVAR                                   \ n as a u32 param cell
+variable LLA-NVAR                                   \ the u32 kernel param cell (N or cols)
 create LLA-FN   40 allot                            \ "REGION_<rid>" cstring
 create LLA-PATH FS-PATH-CAP allot                   \ cubin path cstring
 create LLA-CUBIN FS-PATH-CAP allot  variable LLA-CUBIN-U   \ cubin path (set by the tool)
 variable LLA-DEV variable LLA-CTX variable LLA-MOD variable LLA-FUNC
+
+\ ---- launch-local staging (populated per shape; the shared core reads only these) ----
+variable LLA-NIN                                    \ region input count
+variable LLA-ELEMS                                  \ output element count (rows*cols)
+variable LLA-OUT-NODE                               \ the region's materialized output node
+create LLA-IN-REF LLA-MAX-IN cells allot            \ per-input operand ref (must be an input slot)
 
 \ ---- cubin path (the device tool assembles then hands the path here) --------
 : LLA-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a LLA-CUBIN u BYTE-COPY  u LLA-CUBIN-U ! ;
 : LLA-CUBIN$ ( -- ptr u8 n )  LLA-CUBIN LLA-CUBIN-U @ ;
+
+\ ---- staged accessors (the golden reads these regardless of shape) ----------
+: LLA-OUT-NODE@ ( -- n )  LLA-OUT-NODE @ ;
+: LLA-ELEMS@ ( -- n )     LLA-ELEMS @ ;
 
 private
 
@@ -62,13 +81,13 @@ private
 
 \ region input i -> its model-input slot (fail closed on a non-slot input)
 : LLA-SLOT ( n -- n ) {: i:n :}
-   i LEW-IN-REF@ {: ref:n :}
+   LLA-IN-REF i cells + @ {: ref:n :}
    ref MIR-REF-INPUT? 0= if E-LLA-INPUT throw then
    ref MIR-REF-SLOT ;
 
 \ pack slot i's synthetic host f64 buffer (executor-bound) into LLA-HIN[i] as f32
 : LLA-PACK-INPUT ( n -- ) {: i:n :}
-   i LLA-SLOT GA-IN-PTR  LEW-ELEMS  i LLA-HIN-I  F32-PACK ;
+   i LLA-SLOT GA-IN-PTR  LLA-ELEMS @  i LLA-HIN-I  F32-PACK ;
 
 : LLA-FNAME ( n -- ) {: rid:n :}                 \ build the REGION_<rid> cstring
    SB-RESET s" REGION_" SB-APPEND rid SB-INT  SB$ LLA-FN >CSTR ;
@@ -84,56 +103,80 @@ private
    LLA-FUNC LLA-MOD @ >CUDA-MOD LLA-FN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 : LLA-ALLOC-UPLOAD ( n -- ) {: obytes:n :}       \ alloc + copy inputs, alloc output
-   LEW-NIN@ 0 ?do
+   LLA-NIN @ 0 ?do
       i LLA-DBUF-I obytes >LEN CUDA:CUMEMALLOC CUDA:RC0
       i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  obytes >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
    loop
-   LEW-NIN@ LLA-DBUF-I obytes >LEN CUDA:CUMEMALLOC CUDA:RC0 ;
+   LLA-NIN @ LLA-DBUF-I obytes >LEN CUDA:CUMEMALLOC CUDA:RC0 ;
 
-: LLA-BIND-PARAMS ( -- )                          \ K input ptrs, output ptr, then n (u32)
+: LLA-BIND-PARAMS ( -- )                          \ K input ptrs, output ptr, then the u32 param
    LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   LLA-FUNC @ >CUDA-FN LEW-NIN@ 8 * 12 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
-   LEW-NIN@ 0 ?do
+   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 12 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
+   LLA-NIN @ 0 ?do
       LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
    loop
-   LLA-FUNC @ >CUDA-FN  LEW-NIN@ 8 * >IDX      LEW-NIN@ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LEW-NIN@ 8 * 8 + >IDX  LLA-NVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX      LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8 + >IDX  LLA-NVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
 
-: LLA-READBACK ( n n -- ) {: n:n obytes:n :}      \ launch, copy back, unpack (guarded)
-   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK   \ reuse the launch-contract checks
-   n LLA-NVAR !
-   n LLA-BLOCK + 1 - LLA-BLOCK / {: grid:n :}
+: LLA-LAUNCH ( n n -- ) {: grid:n obytes:n :}     \ launch the staged grid, copy back, unpack (guarded)
    LLA-BIND-PARAMS
    LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
    LLA-HRB obytes PTXSENT:FILL
-   LLA-HRB  LEW-NIN@ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
-   n 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
+   LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
+   LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
 
 : LLA-RELEASE ( -- )
-   LEW-NIN@ 0 ?do  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  loop
-   LEW-NIN@ LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
+   LLA-NIN @ 0 ?do  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  loop
+   LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
    LLA-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
    LLA-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
 
-public
-
-\ LLA-RUN analyzes region rid, uploads its synthetic inputs, launches REGION_<rid>
-\ from the cubin at LLA-CUBIN$, and unpacks the device output into LLA-HOUT.
-\ GA-BIND-SYNTH must have run so GA-IN-PTR holds the (executor-bound) inputs.
-: LLA-RUN ( n -- ) {: rid:n :}
-   rid LEW-ANALYZE
-   LEW-ELEMS {: n:n :}
-   n LLA-NCAP > if E-LLA-CAP throw then
-   n 4 * {: obytes:n :}
-   LEW-NIN@ 0 ?do i LLA-PACK-INPUT loop
+\ ---- shared execute over the staged region (upload + launch grid + readback) ----
+: LLA-EXEC ( n n -- ) {: rid:n grid:n :}
+   LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
+   LLA-ELEMS @ 4 * {: obytes:n :}
+   LLA-NIN @ 0 ?do i LLA-PACK-INPUT loop
    rid LLA-FNAME
    LLA-SETUP
    obytes LLA-ALLOC-UPLOAD
-   n obytes LLA-READBACK
+   grid obytes LLA-LAUNCH
    LLA-RELEASE ;
 
-\ device output element (f64 = the widened device f32) after LLA-RUN
+\ ---- per-shape staging (copy the analyzer's facts into launch-local state) ----
+: LLA-STAGE-EW ( n -- ) {: rid:n :}
+   rid LEW-ANALYZE
+   LEW-NIN@ LLA-NIN !  LEW-ELEMS LLA-ELEMS !  LEW-OUT-NODE@ LLA-OUT-NODE !
+   LEW-NIN@ 0 ?do  i LEW-IN-REF@  LLA-IN-REF i cells + !  loop ;
+
+: LLA-STAGE-RED ( n -- ) {: rid:n :}
+   rid LRED-ANALYZE
+   LRED-NIN@ LLA-NIN !  LRED-ELEMS LLA-ELEMS !  LRED-OUT-NODE@ LLA-OUT-NODE !
+   LRED-NIN@ 0 ?do  i LRED-IN-REF@  LLA-IN-REF i cells + !  loop ;
+
+public
+
+\ LLA-RUN analyzes elementwise region rid, uploads its synthetic inputs, launches the
+\ REGION_<rid> flat kernel (grid = ceil(N/256)) from LLA-CUBIN$, and unpacks the device
+\ output into LLA-HOUT. GA-BIND-SYNTH must have run so GA-IN-PTR holds the inputs.
+: LLA-RUN ( n -- ) {: rid:n :}
+   rid LLA-STAGE-EW
+   LLA-ELEMS @ {: n:n :}
+   n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK
+   n LLA-NVAR !                                    \ flat u32 param p_n = N
+   n LLA-BLOCK + 1 - LLA-BLOCK / {: grid:n :}
+   rid grid LLA-EXEC ;
+
+\ LRED-RUN analyzes row-reduce region rid and launches its REGION_<rid> block-per-row
+\ kernel (grid = rows, p_k = cols). Same synthetic-input upload + guarded readback.
+: LRED-RUN ( n -- ) {: rid:n :}
+   rid LLA-STAGE-RED
+   LRED-ROWS@ {: rows:n :}  LRED-COLS@ {: cols:n :}
+   rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
+   cols LLA-NVAR !                                 \ row u32 param p_k = cols
+   rid rows LLA-EXEC ;
+
+\ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN
 : LLA-OUT@ ( n -- r )  LLA-HOUT swap T-GET ;
 
 end-package
