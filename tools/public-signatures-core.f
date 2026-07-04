@@ -30,6 +30,7 @@ $10000 constant PS-FILE-CAP
 create PS-FILE-BUF PS-FILE-CAP allot
 create PS-CLOSURE-BUF PS-FILE-CAP allot
 create PS-WORD-BUF PS-WORD-CAP allot
+create PS-PKG-BUF PS-WORD-CAP allot
 create PS-SIG-BUF PS-SIG-CAP allot
 create PS-NUM-BUF PS-NUM-CAP allot
 create PS-ONE 1 allot
@@ -564,10 +565,17 @@ variable PS-PKG-PUBLIC
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
+\ Copy the package name into a stable buffer: the token bytes live in the
+\ transient PS-CLOSURE-BUF / PS-FILE-BUF, which the next dep read or the entry
+\ scan overwrites. Storing a raw pointer there dangles once the opener is not the
+\ last file processed - which is exactly the nested-unclosed-package case under
+\ true load order. PS-PKG-BUF is owned bytes, so the residual name survives.
 : PS-PACKAGE-NAME! ( -- )
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
-   PS-TOK-A@ PS-PKG-A!
+   PS-TOK-U @ PS-WORD-CAP > IF s" public-signatures: package name too long" PS-DIE THEN
+   PS-TOK-A@ PS-PKG-BUF PS-TOK-U @ LINT-BMOVE
+   PS-PKG-BUF PS-PKG-A!
    PS-TOK-U @ PS-PKG-U !
    PS-TRUE PS-IN-PKG !
    PS-FALSE PS-PKG-PUBLIC ! ;
@@ -613,11 +621,17 @@ variable PS-PKG-PUBLIC
       PS-WORD? IF PS-TOK$ PS-SCOPE-TOKEN? drop THEN
    repeat ;
 
+\ Replay residual scope in true load order (EC:LOAD-ORDER is depth-first,
+\ post-order), threading package open/public/private/end-package state
+\ file-by-file exactly where each dep's content would load. A package left
+\ UNCLOSED across transitively-nested deps then settles to the same residual the
+\ real loader would leave. The entry file is always the last ordered element, so
+\ its deps are indices 0..ORDER-COUNT-2; it is scanned separately by the caller.
 : PS-PRESCAN-CLOSURE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
-   file-a file-u EC:BUILD
-   1 PS-CLOSURE-I !
-   begin PS-CLOSURE-I @ EC:COUNT < while
-      PS-CLOSURE-I @ EC:PATH$ PS-PRESCAN-DEP
+   file-a file-u EC:LOAD-ORDER
+   0 PS-CLOSURE-I !
+   begin PS-CLOSURE-I @ EC:ORDER-COUNT 1- < while
+      PS-CLOSURE-I @ EC:ORDER-PATH$ PS-PRESCAN-DEP
       PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
    repeat ;
 

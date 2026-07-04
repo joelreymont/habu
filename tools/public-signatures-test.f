@@ -32,6 +32,9 @@ create PST-ENTRY-BUF FS-PATH-CAP allot
 create PST-GDEP-BUF FS-PATH-CAP allot
 create PST-GENTRY-BUF FS-PATH-CAP allot
 create PST-CONST-BUF FS-PATH-CAP allot
+create PST-NOPEN-BUF FS-PATH-CAP allot
+create PST-NMID-BUF FS-PATH-CAP allot
+create PST-NENTRY-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
@@ -39,6 +42,9 @@ variable PST-ENTRY-U
 variable PST-GDEP-U
 variable PST-GENTRY-U
 variable PST-CONST-U
+variable PST-NOPEN-U
+variable PST-NMID-U
+variable PST-NENTRY-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -291,6 +297,51 @@ variable PST-CONST-U
    PST-OUT outu s" GFOO:GBAR" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE ;
 
+: PST-NOPEN ( -- ptr u8 n )   PST-NOPEN-BUF PST-NOPEN-U @ ;
+: PST-NMID ( -- ptr u8 n )    PST-NMID-BUF PST-NMID-U @ ;
+: PST-NENTRY ( -- ptr u8 n )  PST-NENTRY-BUF PST-NENTRY-U @ ;
+
+\ A package opened+public in dep-open, continued unclosed through dep-mid where
+\ it switches to `private`, closed in the entry file. Load order replays
+\ dep-open then dep-mid, so the residual scope before the entry's own defs is
+\ FOO/private: NESTED is a private word (not emitted) and only SHOWN (defined
+\ after the entry re-enters `public`) renders as FOO:SHOWN. BFS closure order
+\ replays dep-mid before dep-open, so its `private` is a no-op over the not-yet
+\ -open package and the residual wrongly stays FOO/public, emitting FOO:NESTED.
+: PST-NMID-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND PST-NOPEN SB-APPEND PST-LF
+   s" private" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-NENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND PST-NMID SB-APPEND PST-LF
+   s" : NESTED ( -- ) ;" SB-APPEND PST-LF
+   s" public" SB-APPEND PST-LF
+   s" : SHOWN ( -- ) ;" SB-APPEND PST-LF
+   s" end-package" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-NESTED ( -- )
+   PST-ROOT s" ps-nest-open.f" PST-NOPEN-BUF JOIN-PATH PST-NOPEN-U !
+   PST-ROOT s" ps-nest-mid.f" PST-NMID-BUF JOIN-PATH PST-NMID-U !
+   PST-ROOT s" ps-nest-entry.f" PST-NENTRY-BUF JOIN-PATH PST-NENTRY-U !
+   PST-NOPEN CLEANUP+
+   PST-NMID CLEANUP+
+   PST-NENTRY CLEANUP+
+   PST-NOPEN s\" package FOO\npublic\n" WRITE-ALL
+   PST-NMID PST-NMID-SRC$ WRITE-ALL
+   PST-NENTRY PST-NENTRY-SRC$ WRITE-ALL ;
+
+: PST-TEST-CLOSURE-NESTED ( -- )
+   PST-PREPARE-NESTED
+   PST-NENTRY PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" FOO:SHOWN" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE
+   PST-OUT outu s" FOO:NESTED" PST-WORD$ CONTAINS? TFALSE ;
+
 : PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
 
 \ TFAM 5 const-b89c90f0: `constant` bakes one physical cell, so a value of the
@@ -334,6 +385,7 @@ variable PST-CONST-U
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
    PST-TEST-CLOSURE-GUARDED-PKG
+   PST-TEST-CLOSURE-NESTED
    PST-TEST-CONST-LAYOUT
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
