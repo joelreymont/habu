@@ -408,6 +408,30 @@ recourse is rewriting; here schedules are data, and the recourse is a
 searched candidate, selected by measurement on the deployed device and
 replayed by content key with zero warmup.
 
+\paragraph{Why no block-level dataflow analysis.} Readers comparing
+against Triton and PyTorch will ask where our equivalent of block-level
+dataflow analysis lives. The answer: that analysis exists to
+\emph{rediscover} structure in an arbitrary, human-authored tile
+program---propagate layouts through its def-use graph, infer where
+shared-memory staging pays, place barriers by hazard fixed points. Our
+kernel programs are \emph{generated from the plan}, so the generator
+already possesses everything the analysis would infer: the schedule is
+explicit data (a family candidate), coalescing follows from the emitted
+access pattern by construction, barriers sit where the collective
+algorithm requires them, and the result is then \emph{proven} by the
+device golden rather than trusted to an analysis. There is nothing to
+rediscover in a program you just generated. Our dataflow analysis
+operates one level up, where the status quo has none with these
+properties: the fusion planner's def-use analysis over the model graph
+(region formation, materialization, exact bytes, gradient fan-out) ---
+the level PyTorch's Inductor occupies heuristically and without
+verification. The honest scaling caveat: as generated kernels grow
+toward tensor-core fragments and multi-stage asynchronous pipelines,
+pass-like machinery (register-pressure estimation, an IR optimization
+layer, liveness-packed shared memory) re-enters \emph{at the point the
+generator needs it}; Triton's published analyses are directly reusable
+designs for that moment, and our roadmap tracks it explicitly.
+
 One bounded structural argument does hold, and we state it as such. For
 memory-bound composites, end-to-end time is bounded below by unique bytes
 moved divided by achievable bandwidth. A per-kernel compiler must
