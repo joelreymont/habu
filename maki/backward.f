@@ -230,6 +230,7 @@ public
 : BW-SEED-SLOT@ ( -- n )      BW-CK BW-SEED @ ;
 : BW-NODE-CT@   ( n -- n )    BW-CK  dup 0 < over BW-FWD-N @ >= or if E-BW-STATE throw then  cells BW-CT + @ ;
 : BW-SLOT-GRAD@ ( n -- n )    BW-CK  MIR-IS-CK-OK  cells BW-ISG + @ ;
+: BW-HAS-GRAD?  ( n -- bool )  BW-SLOT-GRAD@ BW-NONE <> ;   \ input slot received a gradient
 
 \ ---- report: the seed, the backward node count, and each model input's gradient --
 : BW-SEED-ROW$ ( -- ptr u8 n )

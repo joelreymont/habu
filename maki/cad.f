@@ -39,6 +39,7 @@ require maki/mem-plan.f
 require maki/schedule.f
 require maki/sched-key.f
 require maki/store.f
+require maki/gradcheck.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -363,8 +364,10 @@ private
 : GOLDEN-INTO ( report -- report )
    s" no-device" V-NOTRUN G-GOLDEN RPT-GATE! ;
 
-: GRADCHECK-INTO ( report -- report )
-   s" no-device" V-NOTRUN G-GRADCHECK RPT-GATE! ;
+\ GRADCHECK is REAL on the host now (maki/gradcheck.f): a numeric model-level
+\ gradcheck for reference-complete, host-executable (elementwise) models; models with
+\ a reduction/matmul/rope op or a missing adjoint stay honestly not-run (named reason).
+\ GRADCHECK-INTO is provided by maki/gradcheck.f.
 
 : PROFILE-INTO ( report -- report )
    s" no-device" V-NOTRUN G-PROFILE RPT-GATE! ;

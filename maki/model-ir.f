@@ -115,6 +115,14 @@ public
 : MIR-N@ ( -- n )         MIR-N @ ;
 : MIR-IN-SLOTS@ ( -- n )  MIR-IS-N @ ;
 
+\ ---- checkpoint / restore (transient IR growth, e.g. the cad-9 backward pass) ----
+\ MIR-MARK captures the table high-water marks; MIR-RELEASE truncates back to them
+\ and clears any pending builder. A caller that appends nodes/slots and wants the IR
+\ restored (gradcheck builds a throwaway backward pass) brackets its work with these.
+: MIR-MARK    ( -- n n n )    MIR-N @  MIR-IS-N @  MIR-INS-U @ ;
+: MIR-RELEASE ( n n n -- ) {: nn:n sn:n iu:n :}
+   nn MIR-N !  sn MIR-IS-N !  iu MIR-INS-U !  0 MIR-PEND-ON ! ;
+
 \ ---- model-input slots -----------------------------------------------------
 : MIR-INPUT+ ( n n n n -- n )           \ rows cols dtype layout -- slot
    {: rows:n cols:n dt:n lay:n :}
