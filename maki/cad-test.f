@@ -1,4 +1,6 @@
-\ maki/cad-test.f - checked tests for the Model CAD REPL command skeleton (cad-0b).
+\ maki/cad-test.f - checked tests for Model CAD commands + checked MODEL: capture.
+\ Capture runs the body through the planning vocabulary into the model-IR node
+\ table; LOWER reports real node facts; every fail-closed probe stays green.
 
 require lib/test.f
 require lib/string.f
@@ -17,6 +19,11 @@ variable CT-VA  variable CT-VU
 : TRY-NOMODEL ( -- )  MODEL-CLEAR LOWER drop ;
 : TRY-BADOP   ( -- )  s" BOGUS" OP-KIND drop ;
 : TRY-PROMOTE ( -- )  PROMOTE drop ;
+: TRY-EMPTY   ( -- )  CAP-BEGIN CAP-END ;
+: TRY-NODATA  ( -- )  CAP-BEGIN OP-GELU CAP-OP ;
+: TRY-ARITY   ( -- )  CAP-BEGIN 2 2 CAP-INPUT OP-LINEAR CAP-OP ;
+: TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do 1 1 CAP-INPUT loop ;
+: TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
@@ -35,31 +42,54 @@ MODEL-DEFINED? TFALSE
 \ ---- unknown op token fails closed -----------------------------------------
 ' TRY-BADOP E-CAD-OP TTHROWS
 
-\ known op tokens map (spot-check the fail-closed table's happy path)
+\ known op tokens map (spot-check the fail-closed table, incl. new silu/rope) --
 s" LINEAR"      OP-KIND OP-LINEAR      T=
 s" GELU"        OP-KIND OP-GELU        T=
+s" SILU"        OP-KIND OP-SILU        T=
+s" ROPE"        OP-KIND OP-ROPE        T=
 s" SOFTMAX-ROW" OP-KIND OP-SOFTMAX-ROW T=
 
-\ ---- define a toy composition ----------------------------------------------
-MODEL: FFN ( x w1 b1 w2 b2 -- y ) LINEAR GELU LINEAR ;
-MODEL-DEFINED? TTRUE
+\ ---- capture engine fail-closed paths --------------------------------------
+' TRY-EMPTY   E-CAD-EMPTY  TTHROWS
+' TRY-NODATA  E-CAD-ARITY  TTHROWS
+' TRY-ARITY   E-CAD-ARITY  TTHROWS
+' TRY-INPUTS  E-CAD-INPUTS TTHROWS
+' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
 
-\ ---- LOWER: conservative no-fusion plan (K ops) ----------------------------
+\ ---- capture a toy FFN by running the body through the planning vocabulary --
+MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
+MODEL-DEFINED? TTRUE
+MODEL-K 3 T=
+
+\ ---- LOWER: real node facts (op count + output shape/dtype/layout keys) -----
 LOWER
 dup RPT-OPS-BEFORE@   3 T=
 dup RPT-OPS-AFTER@    3 T=
 dup RPT-REGIONS@      3 T=
 dup RPT-MATERIALIZED@ 3 T=
+dup RPT-SHAPE$  s" 2x5" T$=
+dup RPT-DTYPE$  s" f32" T$=
+dup RPT-LAYOUT$ s" row" T$=
 dup RPT-RENDER CT-SAVE  s" report.model: FFN" CT-IN
 drop
 
-\ ---- FUSE: one region per op, named split reason ---------------------------
+\ ---- the captured IR: op sequence + operand connectivity -------------------
+MIR-RENDER CT-SAVE
+s" ir.nodes: 3"       CT-IN
+s" node.0.op: linear" CT-IN
+s" node.1.op: gelu"   CT-IN
+s" node.2.op: linear" CT-IN
+s" node.0.in: i0 i1 i2" CT-IN
+s" node.1.in: n0"     CT-IN
+s" node.2.in: n1 i3 i4" CT-IN
+
+\ ---- FUSE: one region per node, named split reason -------------------------
 FUSE
 dup RPT-SPLIT-COUNT 1 T=
 dup RPT-RENDER CT-SAVE  s" fusion.split.0:" CT-IN
 drop
 
-\ ---- MEMORY: bytes unknown (need shapes) -----------------------------------
+\ ---- MEMORY: bytes unknown (shapes not yet bound for a cost model) ----------
 MEMORY
 dup RPT-BYTES-KNOWN? TFALSE
 dup RPT-RENDER CT-SAVE  s" memory.bytes-before: unknown" CT-IN
@@ -111,7 +141,7 @@ ALL-PASS PROMOTE-REPORT
 dup RPT-CACHE$ s" FFN" T$=
 drop
 
-\ ---- EXPLAIN: eval-repair packets for the non-pass gates -------------------
+\ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
 EXPLAIN CT-SAVE
 s" packet.certify"                 CT-NOTIN
 s" packet.golden: class=not-run"   CT-IN

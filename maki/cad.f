@@ -1,46 +1,58 @@
-\ maki/cad.f - Model CAD REPL command skeleton (dot cad-0b).
+\ maki/cad.f - Model CAD REPL commands + checked MODEL: capture (dot cad-1).
 \
-\ The REPL surface for docs/model-cad.md Phase 0. `MODEL:` defines a named toy
-\ composition over the Phase-1 op set; every inspection command returns a
-\ structured cad-0a report (maki/report.f) that honestly states what is not yet
-\ computed -- conservative truth, never fabricated numbers:
+\ MODEL: no longer parses op TOKENS against an inert table (the cad-0b phase-0
+\ design). It now CAPTURES by running the model body against the descriptor-mode
+\ planning vocabulary (maki/plan-ops.f: PLAN-UNARY / PLAN-BIN-EW / PLAN-MATMUL /
+\ PLAN-LINEAR / PLAN-TERN-EW over maki/tensor-value.f descriptors), so every op is
+\ a checked `tensor`-typed word, and the captured plan is bridged into the model-IR
+\ node table (maki/model-ir.f). The op registry (maki/op-registry.f) supplies each
+\ op's arity and class, so capture pulls the right operands and dispatches with no
+\ per-op branches beyond arity/class.
 \
-\   * fusion plan = one region per op, no fusion (the planner is cad-2);
-\   * byte/coalescing estimates = unknown (they need shapes, cad-3);
-\   * schedule = a single host-reference candidate (the autotuner is cad-4);
-\   * CERTIFY = model-level static legality only (kernel legality is cad-1/cad-5);
-\   * GOLDEN / GRADCHECK / PROFILE = not-run on a host without a GPU -- a named
-\     not-run verdict, never a fake pass and never an error mask.
+\ Surface (single line):  MODEL: NAME ( x:RxC w:RxC ... -- y ) OP OP ... ;
+\ Inputs are declared with shapes; the first is the running "current" tensor and
+\ each op consumes it plus (arity-1) further declared inputs as parameters. Shapes
+\ bind now (the OPTIMIZE-time shape binding of docs/model-cad.md is a later dot);
+\ an unbound extent may be written 0 and renders "?".
 \
-\ PROMOTE refuses with a named throw (E-CAD-GATE) unless every gate passes.
-\ OPTIMIZE composes the whole loop into one aggregate report and records the
-\ promotion decision as a warning instead of throwing. EXPLAIN renders the
-\ repair-packet-discipline failure packets (tools/repair-packet-core.f discipline).
-\
-\ Commands return the report handle ( -- report ) so they compose and are
-\ testable; CAD-SHOW renders one to stdout for interactive use. maki -> habu only;
-\ cad owns the error range -5020..-5029.
+\ Fail closed: unknown op token -> E-CAD-OP; empty body -> E-CAD-EMPTY; malformed
+\ signature/shape -> E-CAD-SYNTAX; an op with no data or too few declared inputs ->
+\ E-CAD-ARITY; too many inputs -> E-CAD-INPUTS. LOWER reports REAL node facts (op
+\ count + shape/dtype/layout keys from the IR); FUSE/MEMORY/TILE stay conservative
+\ (cad-2/3/4) but read the real node count. GOLDEN/GRADCHECK/PROFILE stay honest
+\ not-run on a host without a GPU. PROMOTE refuses (E-CAD-GATE) unless all gates
+\ pass. maki -> habu only; cad owns -5020..-5029.
 
 require lib/string.f
 require maki/report.f
 require maki/op-kind.f
+require maki/op-registry.f
+require maki/tensor-value.f
+require maki/plan-ops.f
+require maki/model-ir.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
--5021 constant E-CAD-OP        \ unknown op token in a MODEL: composition
+-5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
 -5022 constant E-CAD-EMPTY     \ MODEL: with no name or no ops
 -5023 constant E-CAD-GATE      \ PROMOTE refused: required gates did not pass
--5024 constant E-CAD-SYNTAX    \ malformed MODEL: (unterminated / over-long)
-
-\ Phase-1 op set now lives in maki/op-kind.f (the shared op registry).
+-5024 constant E-CAD-SYNTAX    \ malformed MODEL: (bad signature / shape / terminator)
+-5025 constant E-CAD-ARITY     \ op missing its data input or declared parameters
+-5026 constant E-CAD-INPUTS    \ more model inputs than the capture pool holds
 
 package MAKI
 private
 
 64 constant MODEL-NAME-CAP
 create MODEL-NAME MODEL-NAME-CAP allot   variable MODEL-NAME-U
-32 constant MODEL-MAX-OPS
-create MODEL-OPS MODEL-MAX-OPS cells allot   variable MODEL-NOPS
 variable MODEL-SET?                        \ 0 until a MODEL: succeeds
+
+64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
+create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n)
+variable CAP-IN-N
+variable CAP-CUR                           \ running "current" tensor handle (n; -1 = none)
+variable CAP-IP                            \ next unconsumed parameter-input index
+
+public
 
 \ ---- op-name -> op-kind (fail closed: unknown op is rejected, never guessed) -
 : OP-KIND ( ptr u8 n -- n )
@@ -50,6 +62,7 @@ variable MODEL-SET?                        \ 0 until a MODEL: succeeds
    2dup s" BIAS"         STR= if 2drop OP-BIAS         exit then
    2dup s" RELU"         STR= if 2drop OP-RELU         exit then
    2dup s" GELU"         STR= if 2drop OP-GELU         exit then
+   2dup s" SILU"         STR= if 2drop OP-SILU         exit then
    2dup s" LAYERNORM"    STR= if 2drop OP-LAYERNORM    exit then
    2dup s" RMSNORM"      STR= if 2drop OP-RMSNORM      exit then
    2dup s" SOFTMAX-ROW"  STR= if 2drop OP-SOFTMAX-ROW  exit then
@@ -57,10 +70,10 @@ variable MODEL-SET?                        \ 0 until a MODEL: succeeds
    2dup s" LINEAR"       STR= if 2drop OP-LINEAR       exit then
    2dup s" RESIDUAL-ADD" STR= if 2drop OP-RESIDUAL-ADD exit then
    2dup s" CAST"         STR= if 2drop OP-CAST         exit then
+   2dup s" ROPE"         STR= if 2drop OP-ROPE         exit then
    2drop E-CAD-OP throw ;
 
-\ ---- model store -----------------------------------------------------------
-: MODEL-RESET ( -- )  0 MODEL-NOPS !  0 MODEL-NAME-U !  0 MODEL-SET? ! ;
+private
 
 : MODEL-NAME! ( ptr u8 n -- )                  \ copy the transient parse-name token
    {: a:ptr u:n :}
@@ -68,61 +81,141 @@ variable MODEL-SET?                        \ 0 until a MODEL: succeeds
    0 begin dup u < while  dup a + c@  over MODEL-NAME + c!  1+  repeat drop
    u MODEL-NAME-U ! ;
 
-: MODEL-OP+ ( n -- )
-   {: op:n :}
-   MODEL-NOPS @ MODEL-MAX-OPS >= if E-CAD-SYNTAX throw then
-   op MODEL-NOPS @ cells MODEL-OPS + !
-   MODEL-NOPS @ 1+ MODEL-NOPS ! ;
+\ ---- capture engine --------------------------------------------------------
+: CAP-IN@   ( n -- tensor )  cells CAP-INS + @ >tensor ;
+: CAP-CUR@  ( -- tensor )    CAP-CUR @ >tensor ;
+: CAP-CUR!  ( tensor -- )    tensor>N CAP-CUR ! ;
 
-: MODEL-NAME$ ( -- ptr u8 n )  MODEL-NAME MODEL-NAME-U @ ;
-: MODEL-K ( -- n )  MODEL-NOPS @ ;
+: CAP-BEGIN ( -- )
+   TV-RESET  PLAN-RESET  MIR-RESET
+   0 CAP-IN-N !  1 CAP-IP !  -1 CAP-CUR !
+   0 MODEL-NAME-U !  0 MODEL-SET? ! ;
 
-\ skip an optional `( ... )` stack-effect comment inside a MODEL: line
-: SKIP-PAREN ( -- )
+: CAP-INPUT ( n n -- ) {: rows:n cols:n :}      \ declare one model input (f32/row)
+   CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
+   rows cols DT-F32 LAY-ROW TV-DESC {: t:tensor :}
+   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop
+   t tensor>N  CAP-INS CAP-IN-N @ cells + !
+   CAP-IN-N @ 0= if t CAP-CUR! then               \ first input is the running value
+   CAP-IN-N @ 1+ CAP-IN-N ! ;
+
+: CAP-NEED ( n -- ) {: params:n :}              \ data + params must be available
+   CAP-CUR @ 0< if E-CAD-ARITY throw then
+   CAP-IP @ params + CAP-IN-N @ > if E-CAD-ARITY throw then ;
+
+: CAP-P1 ( -- tensor )  CAP-IP @    CAP-IN@ ;
+: CAP-P2 ( -- tensor )  CAP-IP @ 1+ CAP-IN@ ;
+
+: CAP-OP ( n -- ) {: op:n :}                    \ apply one op-kind to the current value
+   op OPR-ARITY {: ar:n :}
+   ar 1- CAP-NEED
+   op OPR-CLASS CLASS-MATMUL = {: mm:bool :}
+   ar 1 = if
+      CAP-CUR@ op PLAN-UNARY CAP-CUR!
+   else ar 2 = if
+      mm if CAP-CUR@ CAP-P1 op PLAN-MATMUL else CAP-CUR@ CAP-P1 op PLAN-BIN-EW then CAP-CUR!
+   else ar 3 = if
+      mm if CAP-CUR@ CAP-P1 CAP-P2 op PLAN-LINEAR else CAP-CUR@ CAP-P1 CAP-P2 op PLAN-TERN-EW then CAP-CUR!
+   else
+      E-CAD-ARITY throw
+   then then then
+   ar 1- CAP-IP @ + CAP-IP ! ;
+
+\ ---- bridge the captured plan into the model-IR node table -----------------
+: PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
+   tensor>N {: h:n :}
+   h CAP-IN-N @ < if h MIR-IN-REF else h CAP-IN-N @ - then ;
+
+: BRIDGE-NODE ( n -- ) {: j:n :}
+   j PLAN-OP@ MIR-OP-BEGIN
+   j PLAN-IN-COUNT@ 0 ?do  j i PLAN-IN@ PLAN-REF MIR-IN+  loop
+   j PLAN-OUT@ {: y:tensor :}
+   y TV-ROWS@ y TV-COLS@ y TV-DTYPE@ y TV-LAYOUT@  0 1  MIR-OP+ drop ;
+
+: BRIDGE-PLAN ( -- )  PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
+
+: CAP-END ( -- )
+   PLAN-N@ 0= if E-CAD-EMPTY throw then
+   BRIDGE-PLAN
+   -1 MODEL-SET? ! ;
+
+\ ---- MODEL: signature + body parser ----------------------------------------
+: PARSE-INT ( ptr u8 n -- n )
+   STR>NUMBER? 0= if E-CAD-SYNTAX throw then ;
+
+: PARSE-SHAPE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "name:RxC" or "RxC" -> rows cols
+   a u $3A INDEX-OF {: ci:n :}
+   ci 0< if 0 else ci 1+ then {: off:n :}       \ shape span starts past any "name:"
+   a off +  u off -  $78 INDEX-OF {: xi:n :}     \ 'x' index within the shape span
+   xi 0< if E-CAD-SYNTAX throw then
+   a off +          xi           PARSE-INT       \ rows
+   a off + xi 1+ +  u off - xi 1+ -  PARSE-INT ; \ cols
+
+: SKIP-TO-RPAREN ( -- )                         \ swallow output names up to ')'
    begin
       parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
-      2dup s" )" STR= if 2drop exit then
-      2drop
+      s" )" STR= if exit then
+   again ;
+
+: PARSE-SIG ( -- )                              \ '(' input-specs [ -- names ] ')'
+   parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+   s" (" STR= 0= if E-CAD-SYNTAX throw then
+   begin
+      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      2dup s" --" STR= if 2drop SKIP-TO-RPAREN exit then
+      2dup s" )"  STR= if 2drop exit then
+      PARSE-SHAPE CAP-INPUT
+   again ;
+
+: PARSE-BODY ( -- )                             \ op tokens up to ';'
+   begin
+      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
+      2dup s" ;" STR= if 2drop CAP-END exit then
+      OP-KIND CAP-OP
    again ;
 
 public
 
-\ MODEL: NAME [ ( ... ) ] OP OP ... ;   (single line; multi-line refill is cad-1)
+\ MODEL: NAME ( inputs -- outputs ) OP OP ... ;   (single line)
 : MODEL: ( -- )
-   MODEL-RESET
-   parse-name dup 0= if 2drop E-CAD-EMPTY throw then
-   MODEL-NAME!
-   begin
-      parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
-      2dup s" ;" STR= if
-         2drop  MODEL-NOPS @ 0= if E-CAD-EMPTY throw then  -1 MODEL-SET? !  exit
-      then
-      2dup s" (" STR= if 2drop SKIP-PAREN else OP-KIND MODEL-OP+ then
-   again ;
+   CAP-BEGIN
+   parse-name dup 0= if 2drop E-CAD-EMPTY throw then MODEL-NAME!
+   PARSE-SIG
+   PARSE-BODY ;
 
-: MODEL-CLEAR ( -- )  MODEL-RESET ;
+: MODEL-CLEAR ( -- )  CAP-BEGIN ;
 : MODEL-DEFINED? ( -- bool )  MODEL-SET? @ 0= 0= ;
+: MODEL-NAME$ ( -- ptr u8 n )  MODEL-NAME MODEL-NAME-U @ ;
+: MODEL-K ( -- n )  MIR-N@ ;
 
 private
 
-\ ---- conservative section builders (read model state, write the report) -----
-: CAD-BASE ( report -- report )                \ model name + no-fusion plan (K ops)
+\ ---- report builders (read model-IR facts, write the report) ---------------
+: CAD-BASE ( report -- report )                \ model name + real node counts
    MODEL-SET? @ 0= if E-CAD-NOMODEL throw then
    MODEL-NAME$ RPT-MODEL!
    MODEL-K MODEL-K RPT-OPS!
    MODEL-K RPT-REGIONS!
-   MODEL-K RPT-MATERIALIZED! ;
+   MIR-MAT-COUNT RPT-MATERIALIZED! ;
+
+: LOWER-KEYS ( report -- report )              \ shape/dtype/layout of the model output
+   MIR-N@ 0= if exit then
+   MIR-N@ 1- {: out:n :}
+   out MIR-SHAPE-KEY  RPT-SHAPE!
+   out MIR-DTYPE-KEY  RPT-DTYPE!
+   out MIR-LAYOUT-KEY RPT-LAYOUT! ;
 
 : LOWER-INTO ( report -- report )
    CAD-BASE
-   s" lowering: conservative op-per-node; typed IR lands in cad-1-ir" RPT-WARN+ ;
+   LOWER-KEYS
+   s" lowering: model-IR node table (cad-1)" RPT-WARN+ ;
 
 : FUSE-INTO ( report -- report )
-   s" phase0: no fusion planner; one region per op (cad-2)" RPT-SPLIT+
+   s" fusion: no planner yet; one region per node (cad-2)" RPT-SPLIT+
    s" fusion: no regions merged this phase" RPT-WARN+ ;
 
 : MEMORY-INTO ( report -- report )
-   s" memory: byte + coalescing estimates need shapes (cad-3)" RPT-WARN+ ;
+   s" memory: byte + coalescing estimates need shapes bound (cad-3)" RPT-WARN+ ;
 
 : TILE-INTO ( report -- report )
    s" host-reference-v0" RPT-CAND+  0 RPT-SELECT!
@@ -134,7 +227,7 @@ private
 
 : CERTIFY-INTO ( report -- report )            \ static, no GPU: model-level legality
    s" " V-PASS G-CERTIFY RPT-GATE!
-   s" certify: model-level legality only; kernel legality in cad-1/cad-5" RPT-WARN+ ;
+   s" certify: model-level legality only; kernel legality in cad-5" RPT-WARN+ ;
 
 : GOLDEN-INTO ( report -- report )
    s" no-device" V-NOTRUN G-GOLDEN RPT-GATE! ;
@@ -160,7 +253,7 @@ private
    G-GRADCHECK GATE-PASS? r> and >r
    G-PROFILE   GATE-PASS? r> and ;
 
-: CACHE-KEY-INTO ( report -- report )          \ artifact key (model-scoped in phase 0)
+: CACHE-KEY-INTO ( report -- report )          \ artifact key (model-scoped in phase 1)
    MODEL-NAME$ RPT-CACHE! ;
 
 : PROMOTE-REPORT ( report -- report )
