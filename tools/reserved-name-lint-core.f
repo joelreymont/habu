@@ -160,10 +160,18 @@ variable RNL-NUM-I
    a u s" end-package" LINT-STR=CI if LINT-TRUE exit then
    a u s" undefine" LINT-STR=CI ;
 
+: RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" include" LINT-STR=CI if LINT-TRUE exit then
+   a u s" included" LINT-STR=CI if LINT-TRUE exit then
+   a u s" require" LINT-STR=CI if LINT-TRUE exit then
+   a u s" required" LINT-STR=CI if LINT-TRUE exit then
+   a u s" provided" LINT-STR=CI ;
+
 : RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then
    a u RNL-RESERVED-PARSER? if LINT-TRUE exit then
-   a u RNL-RESERVED-DEFINER? ;
+   a u RNL-RESERVED-DEFINER? if LINT-TRUE exit then
+   a u RNL-RESERVED-LOADER? ;
 
 : RNL-JSON-FINDING ( n -- ) {: k :}
    LJW-RESET
