@@ -109,6 +109,17 @@ convention: one header, many entries), a worked fused-kernel listing
 mirroring docs/eval-triton.md, and the checker-miss RCA discipline. Source
 material: docs/forth.md, lib/ptx/*, docs/eval-triton.md.}
 
+\subsection{Type Families}\label{sec:tfam}
+\todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15) and
+the cad-adt-swap adoption. When landed, write: checker-enforced algebraic
+data types in a self-hosted Forth (sum types with MATCH dispatch and bad-tag
+proofs, enum and product families, packed ABI vs boxed policy); then the
+adoption evidence per the ablation rule --- the CAD internals (schedule key
+as a product record with enum fields, gate verdicts as sums) where the
+checker turns field-swap and tag-confusion bugs into compile errors; cite
+the negative regressions. Do not write this section from design docs alone;
+it requires the merged implementation and its gates.}
+
 \section{Model CAD}\label{sec:cad}
 \todo{Expand from CAD-PLAN.md and docs/model-cad.md: capture
 (\code{MODEL:} with named value references and true skip connections),

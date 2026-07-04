@@ -19,6 +19,12 @@ consistent with README.md + docs/positioning.md.
    gate, error battery - just cite paths). Report as one table with
    per-row gate paths.
 
+9. Section 4.1 (Type Families): BLOCKED until the maki-type-families branch
+   merges and cad-adt-swap lands. Then write from the merged implementation
+   + its negative regressions (bad-tag proofs, field-swap rejection), never
+   from design docs alone. Evidence rule applies: the adt-swap IS the
+   type-families ablation row.
+
 ## Writable now (source material exists; expand the TODO sections)
 3. Section 4 (Checked Kernel Target): docs/forth.md (type system),
    docs/eval-triton.md (worked fused kernel listing K ... ;), lib/ptx
