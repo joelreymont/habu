@@ -25,6 +25,12 @@ public
 12 constant OP-CAST
 13 constant OP-SILU            \ x * sigmoid(x) (reference: maki/silu.f)
 14 constant OP-ROPE            \ rotary pair rotation (reference: maki/rope.f)
-15 constant OP-N               \ op-kind range bound
+\ ---- movement ops (CLASS-MOVEMENT: exact layout rewrites, no compute; 6.3) ---
+15 constant OP-RESHAPE         \ same elements, new RxC   (reference: maki/move.f)
+16 constant OP-TRANSPOSE       \ RxC -> CxR
+17 constant OP-SLICE           \ row-range copy
+18 constant OP-CONCAT          \ row-wise append
+19 constant OP-GATHER          \ row indexed select
+20 constant OP-N               \ op-kind range bound
 
 end-package

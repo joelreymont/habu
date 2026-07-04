@@ -23,6 +23,7 @@ require maki/layernorm.f
 require maki/rmsnorm.f
 require maki/softmax.f
 require maki/rope.f
+require maki/move.f
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -135,6 +136,11 @@ public
       OP-CAST         of s" cast"         endof
       OP-SILU         of s" silu"         endof
       OP-ROPE         of s" rope"         endof
+      OP-RESHAPE      of s" reshape"      endof
+      OP-TRANSPOSE    of s" transpose"    endof
+      OP-SLICE        of s" slice"        endof
+      OP-CONCAT       of s" concat"       endof
+      OP-GATHER       of s" gather"       endof
       E-OPR-KIND throw
    endcase ;
 
@@ -181,7 +187,13 @@ private
    CLASS-EW         1 ACC-SAME NUM-ULP    2 OP-RESIDUAL-ADD OPR!
    CLASS-EW         0 ACC-SAME NUM-EXACT  1 OP-CAST         OPR!
    CLASS-EW         5 ACC-SAME NUM-RELTOL 1 OP-SILU         OPR!
-   CLASS-EW         6 ACC-SAME NUM-RELTOL 3 OP-ROPE         OPR! ;
+   CLASS-EW         6 ACC-SAME NUM-RELTOL 3 OP-ROPE         OPR!
+   \ movement ops: no compute (flops 0), exact rewrites (NUM-EXACT).
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-RESHAPE      OPR!
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-TRANSPOSE    OPR!
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-SLICE        OPR!
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  2 OP-CONCAT       OPR!
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  2 OP-GATHER       OPR! ;
 
 OPR-BUILD
 
@@ -199,6 +211,13 @@ OPR-BUILD
 ' ADD-F     OP-RESIDUAL-ADD cells R-REF + !
 ' SILU-F    OP-SILU         cells R-REF + !
 ' ROPE-PAIR OP-ROPE         cells R-REF + !
+\ movement references are BUFFER-granularity (maki/move.f), the exact rewrite the
+\ planner must reproduce on materialization; they complete their op rows too.
+' MOVE-RESHAPE   OP-RESHAPE   cells R-REF + !
+' MOVE-TRANSPOSE OP-TRANSPOSE cells R-REF + !
+' MOVE-SLICE     OP-SLICE     cells R-REF + !
+' MOVE-CONCAT    OP-CONCAT    cells R-REF + !
+' MOVE-GATHER    OP-GATHER    cells R-REF + !
 \ matmul / linear / cast stay incomplete: no op-granularity scalar oracle yet.
 
 end-package
