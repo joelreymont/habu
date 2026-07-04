@@ -220,6 +220,14 @@ variable TFAM-N   0 TFAM-N !
 : TFAM-LAYOUT? ( n -- bool ) {: id:n :}   \ true when the family occupies an ADT layout
    id TFAM-PRODUCT? id TFAM-SUM? or id TFAM-ENUM? or ;
 
+\ logical width in stack cells (docs/type-families.md §18 WIDTH function):
+\ sum = max payload slots + one tag cell; enum = tag only (slots 0); product =
+\ field cells, no tag; cell/evidence families are one cell.
+: TFAM-WIDTH@ ( n -- n ) {: id:n :}
+   id TFAM-SUM? id TFAM-ENUM? or IF id TFAM-SLOTS@ 1 + EXIT THEN
+   id TFAM-PRODUCT? IF id TFAM-SLOTS@ EXIT THEN
+   1 ;
+
 \ --- friend-only field mutators (populated by later declaration passes / tests).
 : TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
@@ -725,3 +733,4 @@ variable TFSR-ID   variable TFSR-FLAG
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
 ' TFAM-ARITY@  TFAM-ARITY-XT !
 ' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
+' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface

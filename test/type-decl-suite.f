@@ -292,6 +292,98 @@ s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0
 \ the bare linear itself still rejects a raw drop (baseline discipline).
 s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ --- item 12 slice-2: interpret-mode + frame-metadata boundaries (docs §17).
+\ A layout value is one logical cell, so introspection and frame-crossing words
+\ either see it whole or fail closed — pinned here as regressions.
+\ depth/.s do not touch the value: logical shape == physical shape today.
+s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! -1 T=
+\ constant pops one n cell: a layout value rejects (whole-bundle store or
+\ reject is the item-12 contract; the native top-level pop is the slice-3 site).
+s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-CONST-N ( n -- ) constant" CHECK-QUIET-CANDIDATE! -1 T=
+\ catch/frame words: a layout value FLOWS through a stack-preserving quotation
+\ (whole-row absorption) but cannot bind a quotation's polymorphic operand.
+s" TD12-CATCH ( tdres<n,n> -- tdres<n,n> n ) [: ;] catch" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-CATCH-TOUCH ( tdres<n,n> -- n ) [: drop ;] catch" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-EXEC-Q ( tdres<n,n> [ a -- a ] -- a ) execute" CHECK-QUIET-CANDIDATE! 0 T=
+\ nested evaluate is rejected in checked bodies outright (unsafe boundary).
+s" TD12-EVAL ( tdres<n,n> ptr u8 n -- tdres<n,n> ) evaluate" CHECK-QUIET-CANDIDATE! 0 T=
+\ run-in-stack consumes its three frame args; a layout value below them flows,
+\ a layout value in a consumed arg position rejects.
+s" TD12-RIS ( tdres<n,n> n ptr u8 n -- tdres<n,n> ) run-in-stack" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-RIS-BAD ( n ptr u8 tdres<n,n> -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 0 T=
+\ throw takes an n code: a layout value is not a throw code.
+s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).
+s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-WIDTH@ 2 T=
+s" " s" tdlight" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-WIDTH@ 1 T=
+s" " s" tdmix" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-WIDTH@ 4 T=
+s" " s" tdfoo" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-WIDTH@ 1 T=
+
+\ --- item 12 slice-2: per-token width facts (the emitter fact surface). One
+\ row per LAYOUT operand of a transport op / locals capture: (body token index,
+\ operand position 0=top, family-id, registry logical width). Absence = every
+\ operand one cell. Token 0 is the definition name; body tokens start at 1.
+\ The table is per-CHECK scratch, read here right after each verdict.
+s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+s" " s" tdmix" TFAM-FIND-IN TDOK ! TDX !
+TDOK @ -1 T=
+s" WF1 ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=
+0 WF-TOKIX@ 1 T=
+0 WF-POS@ 1 T=
+0 WF-FAM@ TDF @ T=
+0 WF-WIDTH@ 2 T=
+\ no layout operands -> no facts.
+s" WF2 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 0 T=
+\ two layout operands at one op -> one fact per operand, top position first.
+s" WF3 ( tdres<n,n> tdmix<n,n> -- tdmix<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 2 T=
+0 WF-POS@ 0 T=
+0 WF-FAM@ TDX @ T=
+0 WF-WIDTH@ 4 T=
+1 WF-POS@ 1 T=
+1 WF-FAM@ TDF @ T=
+1 WF-WIDTH@ 2 T=
+\ return-stack transfers record from the row each op consumes (>r data, r> return).
+s" WF4 ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 2 T=
+0 WF-TOKIX@ 1 T=
+1 WF-TOKIX@ 2 T=
+0 WF-WIDTH@ 2 T=
+1 WF-WIDTH@ 2 T=
+\ locals capture records the whole group at the :} token.
+s" WF5 ( tdres<n,n> n -- n ) {: x y:n :} y" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=
+0 WF-TOKIX@ 4 T=
+0 WF-POS@ 1 T=
+0 WF-FAM@ TDF @ T=
+0 WF-WIDTH@ 2 T=
+\ facts are per-CHECK scratch: a rejected def may still record rows for tokens
+\ past the reject (never consumed — emitters read facts only for certified
+\ defs); the NEXT check resets the table, so no stale row can leak forward.
+s" WF6 ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
+WF-N@ 1 T=
+s" WF7 ( n -- n )" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 0 T=
+\ the fact surface is checker-modeled: checked consumers (slice-3 emit helpers)
+\ certify against the PRIM rows.
+s" TDWF-CHK ( -- n ) WF-N@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDWF-CHK2 ( n -- n ) WF-WIDTH@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDWF-CHK3 ( n -- n ) TFAM-WIDTH@" CHECK-QUIET-CANDIDATE! -1 T=
+
 \ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
 \ active visibility mode. Plain user packages — no reserved package is opened.

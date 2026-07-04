@@ -1125,6 +1125,53 @@ Top-level value-consuming definers and stack introspection need the same rule.
 pop only the tag cell. `depth` and `.s` must report logical stack shape or reject
 rows containing hidden fields; they must not expose raw hidden physical cells.
 
+**Implementation status (PLAN item 12, slices 1–2).** Checked generic stack ops
+now treat a layout value as one whole logical bundle. The transport set —
+`dup drop swap over nip rot -rot tuck 2dup 2drop 2swap 2over`, the return-stack
+transfers `>r r> r@ 2>r 2r> 2r@`, and `{: :}` locals capture — may bind a
+layout `T-PARAM` cell to its fresh effect var (`LAYOUT-XPORT` mode set per
+token in `DO-TOK1`/`LOC-BIND`, consumed by `LAYOUT-BLOCK?` in `U-TYPE`). Every
+other touch keeps item 7's fail-closed reject: `?dup` (branches on the tag
+cell; sticky `QDUPBAD` verdict), scalar control predicates, arithmetic/compare
+/unary, memory ops, `execute`/`catch`/defer quotation operands, `constant`'s
+value pop, `throw`, and hidden `@family.*` names in public signatures. A
+stack-preserving quotation still passes a layout value through untouched
+(whole-row absorption), and `evaluate` stays rejected in checked bodies.
+Acceptance is sound at this stage because a layout value is still ONE physical
+cell: `LAYOUT-PUSH-FIELDS` expansion is not enabled and no constructors are
+published, so a wider-than-one-cell layout value is not constructible; runtime
+behavior is unchanged. Transport mode keys on the folded token name, and user
+signatures resolve before prims — sound because the name then denotes a checked
+definition (its effect is verified against its body, which can only move the
+one-cell value) or an audited `TRUSTED` boundary. A layout family whose args
+contain a linear con — or an arg still unresolved, which may later bind linear —
+must not transport at all (copies would duplicate and drops would lose the
+hidden payload resource; locals capture launders the count): the transport bind
+rejects until TFAM 11 teaches the linear discipline whole-bundle counting.
+Identity flow of such a value stays legal.
+
+**Width facts for emitters (slice 2).** The checker computes logical widths per
+§18 — `TFAM-WIDTH@ ( id -- n )` in the registry (sum: slots+tag, enum: tag,
+product: field cells, cell/evidence: 1) and `T-WIDTH ( type -- n )` on resolved
+type terms — and records, per checked definition, a width-fact table: one row
+per LAYOUT operand of each transport op and locals capture, holding (body token
+index, operand position 0=top, family-id, registry logical width). Absence of a
+row means every operand is one cell. Query surface (checker-modeled, callable
+from checked code): `WF-N@`, `WF-TOKIX@`, `WF-POS@`, `WF-FAM@`, `WF-WIDTH@`.
+The table is per-`CHECK` scratch: valid from a definition's verdict until the
+next `CHECK`, never persisted, never rolled back.
+
+**Emission-ordering requirement (slice 3+).** The native compiler emits code
+token-by-token during parse and runs the checker hook at publish time
+(`C-DEFHOOK`, `EM-COMPILE-PUBLISH-HOOKED`) — after the body is compiled. Width-
+aware lowering needs each op's operand widths BEFORE emitting it, so the colon
+pipeline for layout-touching bodies must become check-first: capture body, run
+`CHECK` (fills the width facts), then emit consuming the facts by body token
+index. The Gforth bootstrap mirror follows the same contract. Emitters must not
+lower from these facts until `LAYOUT-PUSH-FIELDS` expansion lands in the same
+slice — the facts carry the registry logical width, which only then equals the
+physical width.
+
 ---
 
 ## 18. Width and parameter kinds

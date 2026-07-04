@@ -29,6 +29,18 @@ lesson — keep the specific word/code/path, cut the prose.
   `QDUP-STEP?` to REJECT `?dup` on a layout value (it branches on the tag cell);
   the scalar union effect (`x -- x x | x`) is still unmodeled and dotted
   (`habu-model-dup-checked`).
+- **A layout param hides its payload from the linear count:** the linear
+  discipline counts concrete linear CONS on rows, so `tdlin<own>` (one opaque
+  `T-PARAM` cell) dup/dropped freely while bare `own drop` rejected — the
+  destruction review caught it. Transport binds now reject any layout whose
+  family args resolve linear OR are still unbound vars (may later bind linear),
+  fail-closed until TFAM 11 counts whole bundles; identity flow stays legal.
+- **A copied `bin/hb` is not a frozen baseline:** the small engine LOADS
+  `src/core/*.f` from the working tree at boot (`hb: cannot open src/core/util.f`
+  when run outside the repo), so an old binary run in an edited tree exhibits
+  the EDITED checker — red/green comparisons must pin the source tree state,
+  not the binary. Chasing "engine words not in any tracked source" wasted a
+  session hour before one out-of-tree run exposed the boot-time load.
 - **Growable registries that own a string pool must rebase on relocation:** CT/
   VREC/SYMS records hold ABSOLUTE pointers into their `*-STR` pool; growing the
   pool (mmap relocate) or persisting it to fresh DATA dangles them. `*-STR-REBASE`

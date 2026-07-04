@@ -369,6 +369,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
+variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -475,6 +476,8 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
 : TFAM-LAYOUT?* ( n -- bool )      \ 0 hook (registry not yet loaded) -> not a layout
    TFAM-LAYOUT?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
+: TFAM-WIDTH@* ( n -- n )          \ 0 hook (registry not yet loaded) -> one cell
+   TFAM-WIDTH-XT @ dup 0= IF 2drop 1 ELSE execute THEN ;
 
 : TV-NEXT? ( n -- n bool )
    dup ISVAR 0= IF RES-FALSE EXIT THEN
@@ -942,6 +945,17 @@ variable TWALK-D
 : LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
+
+\ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
+\ (docs §18 WIDTH function). Every non-layout term is one cell; a layout-family
+\ T-PARAM asks the registry (sum: slots+tag, enum: tag, product: field cells).
+\ This is the type-level fact the WF- width-fact surface records for emitters.
+: T-WIDTH ( n -- n ) {: t:n :}
+   t T-RES TAG T-PARAM <> IF 1 EXIT THEN
+   t T-RES PARAM>FAM {: fam:n :}
+   fam 0 < IF 1 EXIT THEN
+   fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
+   fam TFAM-WIDTH@* ;
 
 \ --- item 12 (docs/type-families.md §17): a logical layout value is still ONE
 \ physical T-PARAM cell at this stage (item 7 kept it one cell; no LAYOUT-PUSH-
@@ -3787,6 +3801,12 @@ PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PR
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
+PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-N@ PE-N PE-OUT PRIM;
+PRIM: WF-TOKIX@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-N@ PE-N PE-OUT PRIM;
 PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
 PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
@@ -4563,6 +4583,82 @@ variable FLD  variable FLI  variable FLO  variable FLC
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
 
+\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
+\ Per checked definition the checker records, for every whole-bundle transport
+\ op and locals capture whose logical operands include a layout value, one row
+\ per layout operand: (body token index, operand position 0=top, family-id,
+\ logical width from the registry). An absent row means every operand is one
+\ cell, so today's one-cell lowering stands. Native+Gforth emitters consume the
+\ table keyed by token index BEFORE emitting the op; the width is the REGISTRY
+\ logical width (sum: slots+tag), which becomes the physical width when item
+\ 12's LAYOUT-PUSH-FIELDS expansion lands with the width-aware lowering slice —
+\ emitters must not lower from these facts before that slice. The table is
+\ per-CHECK scratch (reset in CHECK-RESET, valid until the next CHECK), like
+\ the FAILTK diagnostics.
+BEGIN-STRUCTURE WF-REC
+   CELL +FIELD WF.TOK
+   CELL +FIELD WF.POS
+   CELL +FIELD WF.FAM
+   CELL +FIELD WF.W
+END-STRUCTURE
+128 constant WF-CAP
+create WFS WF-CAP WF-REC * allot
+variable WF-N
+variable WF-CURROW   variable WF-POS-I
+
+: WF-ROW@ ( n -- ptr a ) {: i:n :}
+   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
+   i WF-REC * WFS + ;
+: WF-N@ ( -- n ) WF-N @ ;
+: WF-TOKIX@ ( n -- n ) WF-ROW@ WF.TOK @ ;
+: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
+: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
+: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
+
+: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}   \ append one fact at the current token
+   WF-N @ WF-CAP >= IF s" checker: width-fact table full" 76 die THEN
+   WF-N @ WF-REC * WFS + {: r:ptr :}
+   TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
+   WF-N @ 1 + WF-N ! ;
+
+: WF-POS-RECORD ( n -- )           \ one S-PUSH node: record a fact when its type is a layout
+   P>TYPE T-RES {: t:n :}
+   t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN ;
+
+: WF-ROW-SCAN ( n n -- ) {: row:n k:n :}   \ record facts for the top-k logical positions of row
+   row WF-CURROW !  0 WF-POS-I !
+   BEGIN WF-POS-I @ k <  WF-CURROW @ R-RES TAG S-PUSH =  and WHILE
+      WF-CURROW @ R-RES dup WF-POS-RECORD P>REST WF-CURROW !
+      WF-POS-I @ 1 + WF-POS-I !
+   REPEAT ;
+
+\ operand count each transport op moves as logical values, and the row it reads
+\ (r>/r@/2r>/2r@ consume from the return row; everything else the data row).
+: WF-XPORT-K ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" rot"   CORE-STR= IF 3 EXIT THEN
+   a u s" -rot"  CORE-STR= IF 3 EXIT THEN
+   a u s" 2swap" CORE-STR= IF 4 EXIT THEN
+   a u s" 2over" CORE-STR= IF 4 EXIT THEN
+   a u s" swap"  CORE-STR= IF 2 EXIT THEN
+   a u s" over"  CORE-STR= IF 2 EXIT THEN
+   a u s" nip"   CORE-STR= IF 2 EXIT THEN
+   a u s" tuck"  CORE-STR= IF 2 EXIT THEN
+   a u s" 2dup"  CORE-STR= IF 2 EXIT THEN
+   a u s" 2drop" CORE-STR= IF 2 EXIT THEN
+   a u s" 2>r"   CORE-STR= IF 2 EXIT THEN
+   a u s" 2r>"   CORE-STR= IF 2 EXIT THEN
+   a u s" 2r@"   CORE-STR= IF 2 EXIT THEN
+   1 ;
+: WF-XPORT-RROW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" r>"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r@"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r>" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@" CORE-STR= IF RES-TRUE EXIT THEN
+   RES-FALSE ;
+: WF-XPORT-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  WF-ROW-SCAN ;
+
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
@@ -4671,6 +4767,7 @@ variable LCO
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
+   DCUR @  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
    1 LAYOUT-XPORT !                    \ capturing a local moves the value as one bundle
    LCH @  LROW @ MK-ROW  CHECKER-STEP
    0 LAYOUT-XPORT !
@@ -5463,6 +5560,7 @@ variable IS-TU
    TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ QDUP-STEP? 0= IF
+   LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
    TKF TKFU @ RS-TOK? 0= IF
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
@@ -5518,6 +5616,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
+   0 WF-N !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )
