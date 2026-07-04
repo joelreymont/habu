@@ -124,7 +124,12 @@ dup RPT-CAND-COUNT 32 T=
 dup RPT-SELECT@ 0 T=
 dup 0 RPT-CAND@  s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"   T$=
 dup 31 RPT-CAND@ s" gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" T$=
-dup RPT-CACHE$ s" 3C09A0D86344114A|4x16|f32|row|al?|sm_87|engine-unbound|unprobed" T$=
+\ full section-7.4 cache key: fixed fields, then the real bin/hb content key in place
+\ (lib/engine-id.f; binary-dependent, so asserted by containment not literal)
+dup RPT-CACHE$ DM-SAVE
+s" 3C09A0D86344114A|4x16|f32|row|al?|sm_87|" DM-IN
+ENGINE-KEY$ DM-IN
+s" |unprobed" DM-IN
 drop
 
 \ ==== 6. CERTIFY: model-level static legality passes ========================
