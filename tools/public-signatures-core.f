@@ -2,6 +2,8 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
 \ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
 
+require tools/event-closure-lib.f
+
 $10000 constant PS-FILE-CAP
 256 constant PS-WORD-CAP
 1024 constant PS-SIG-CAP
@@ -26,12 +28,15 @@ $10000 constant PS-FILE-CAP
 2 constant PS-COMMENT
 
 create PS-FILE-BUF PS-FILE-CAP allot
+create PS-CLOSURE-BUF PS-FILE-CAP allot
 create PS-WORD-BUF PS-WORD-CAP allot
 create PS-SIG-BUF PS-SIG-CAP allot
 create PS-NUM-BUF PS-NUM-CAP allot
 create PS-ONE 1 allot
 
 variable PS-I
+variable PS-CLOSURE-TU
+variable PS-CLOSURE-I
 variable PS-NUM-I
 variable PS-FIRST?
 variable PS-TA
@@ -574,8 +579,7 @@ variable PS-PKG-PUBLIC
    PS-FALSE PS-PKG-PUBLIC !
    0 PS-PKG-U ! ;
 
-: PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
-   PS-RESET-SCOPE
+: PS-SCAN-DEFS-BODY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
@@ -588,10 +592,36 @@ variable PS-PKG-PUBLIC
       THEN
    repeat ;
 
+: PS-SCAN-DEFS ( ptr u8 n -- )
+   PS-RESET-SCOPE
+   PS-SCAN-DEFS-BODY ;
+
+\ Load the package scope its required/included closure leaves open before the
+\ entry file's own rows are rendered, so a file that continues a package opened
+\ in a dependency qualifies its public words correctly. Only scope tokens are
+\ replayed; balanced packages leave no residual and self-contained files see an
+\ empty closure, so their output is unchanged.
+: PS-PRESCAN-DEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u PS-CLOSURE-BUF PS-FILE-CAP READ-FILE nip PS-CLOSURE-TU !
+   PS-CLOSURE-BUF PS-CLOSURE-TU @ PS-LEX-START
+   begin PS-NEXT-TOK while
+      PS-WORD? IF PS-TOK$ PS-SCOPE-TOKEN? drop THEN
+   repeat ;
+
+: PS-PRESCAN-CLOSURE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+   file-a file-u EC:BUILD
+   1 PS-CLOSURE-I !
+   begin PS-CLOSURE-I @ EC:COUNT < while
+      PS-CLOSURE-I @ EC:PATH$ PS-PRESCAN-DEP
+      PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
+   repeat ;
+
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    file-a file-u PS-FILE-BUF PS-FILE-CAP READ-FILE nip PS-TU !
    PS-COLLECT-EXPORTS
-   file-a file-u PS-SCAN-DEFS ;
+   PS-RESET-SCOPE
+   file-a file-u PS-PRESCAN-CLOSURE
+   file-a file-u PS-SCAN-DEFS-BODY ;
 
 : PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !

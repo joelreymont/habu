@@ -27,8 +27,12 @@ variable PST-RUN-U
 
 create PST-ROOT-BUF FS-PATH-CAP allot
 create PST-FIX-BUF FS-PATH-CAP allot
+create PST-DEP-BUF FS-PATH-CAP allot
+create PST-ENTRY-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
+variable PST-DEP-U
+variable PST-ENTRY-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -219,6 +223,35 @@ create PST-ERR PST-BUF-CAP allot
    PST-OUT outu PST-EMPTY$ T$=
    PST-ERR erru PST-USAGE$ CONTAINS? TTRUE ;
 
+: PST-DEP ( -- ptr u8 n )    PST-DEP-BUF PST-DEP-U @ ;
+: PST-ENTRY ( -- ptr u8 n )  PST-ENTRY-BUF PST-ENTRY-U @ ;
+
+\ A dependency opens a package the entry file continues; the closure pre-scan
+\ must load that package scope so the entry's public word is rendered qualified.
+: PST-ENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND
+   PST-DEP SB-APPEND
+   PST-LF
+   s" public" SB-APPEND PST-LF
+   s" : BAR ( -- ) ;" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-CLOSURE ( -- )
+   PST-ROOT s" ps-dep-pkg.f" PST-DEP-BUF JOIN-PATH PST-DEP-U !
+   PST-ROOT s" ps-entry-pkg.f" PST-ENTRY-BUF JOIN-PATH PST-ENTRY-U !
+   PST-DEP CLEANUP+
+   PST-ENTRY CLEANUP+
+   PST-DEP s\" package FOO\n" WRITE-ALL
+   PST-ENTRY PST-ENTRY-SRC$ WRITE-ALL ;
+
+: PST-TEST-CLOSURE-PKG ( -- )
+   PST-PREPARE-CLOSURE
+   PST-ENTRY PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" FOO:BAR" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE ;
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
@@ -226,6 +259,7 @@ create PST-ERR PST-BUF-CAP allot
    PST-TEST-FIXTURE
    PST-TEST-TRUST
    PST-TEST-NOARG
+   PST-TEST-CLOSURE-PKG
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE
    T-REPORT
