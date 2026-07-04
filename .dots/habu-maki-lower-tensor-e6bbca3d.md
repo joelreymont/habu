@@ -116,3 +116,16 @@ node source is either a non-foldable same-region interior register value or belo
 region, so it is never a base-offset fold; not a gap). NEXT: SAXPY retirement (the last hardcoded
 kernel path) + CAD-PLAN 8.1 register-blocked GEMM (habu-tiled-gemm-codegen), plus the two movement
 planner dots habu-maki-fusion-plan + habu-maki-fold-staged (NOT touched by slice 5).
+
+SLICE 5 LANDED 2026-07-04 (fable 2f6ae593): whole-model device execution -
+LOWER-MODEL-RUN walks regions in topo order, cross-region buffers stay on
+device (node->devptr table; slot inputs upload, producer inputs bind);
+LOWER-MODEL-GOLDEN compares the final output under SUMMED per-region-class
+tolerances (justified first-order). Device golden wired into the cad gate:
+artifact > device model golden > host self; PROMOTE evidence records
+golden=device-pass. Orin-proven from the pushed tree: FFN 3-region
+whole-model 32/32, GELU CONCAT movement handoff 64/64, on-device OPTIMIZE +
+PROMOTE evidence row, full 66-suite maki gate green ON DEVICE. Closes
+habu-maki-cross-region. E-MVW-SRC kept (correct invariant, documented).
+NEXT: 8.1 perf GEMM (habu-tiled-gemm-codegen, validated unchanged by
+LOWER-MODEL-GOLDEN) -> then SAXPY retirement.
