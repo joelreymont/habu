@@ -2255,3 +2255,21 @@ unchanged (148855). Keys for milestone 2:
   that NEEDED an illegal model). Regate the merged tree, CHECK the result, and
   only then move bookmarks - separate commands, or `&&` from the gate onward.
   Cross-lane semantic conflicts do not show up as rebase conflicts.
+- **`tools/typed-local-diff-lint.f` returns to the REPL - feed it `</dev/null`.**
+  It ends with a plain `throw`-on-findings, not `bye`; a bare
+  `bin/hb tools/typed-local-diff-lint.f diff.patch` then blocks reading stdin and
+  looks like a multi-minute hang/timeout (rc 124). Redirect `</dev/null` and it
+  exits fast (rc 0 clean, rc 1 on findings). Same shape for any tool that does
+  not exit at end-of-load.
+- **`tools/check.f <file>` preverifies in isolation - not for require-dependent
+  files.** It does not process the file's `require` chain or FFI/`deftype`
+  metaprogramming, so it reports `E-UNDEFINED` on lib words (`>CSTR`,
+  FFI-generated bindings) even for green files. Typecheck a device tool the way
+  it actually loads: `bin/hb --load <full prelude> <file>` with the trailing
+  `MAIN` run line stripped (`sed '/^MAIN$/d'`) so a clean typecheck exits 0
+  instead of throwing at the off-device `CUDA:OPEN`.
+- **A launcher that reuses another file's internals rots silently.**
+  `tools/ptx/matmul-device-test.f` borrowed `ED-SYM`/`ED-LIB`/`ED-H` from
+  `maki/eval-device.f`; when eval-device migrated to the checked bindings those
+  DLSYM words vanished and matmul was left uncheckable (nothing gated it). Prefer
+  a shared library (`lib/ptx/cuda-driver.f`) over reaching into a peer's cells.
