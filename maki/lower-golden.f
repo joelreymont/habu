@@ -44,9 +44,10 @@ require maki/lower-launch.f
 
 package MAKI
 
--6 constant LG-ATOL-EXP        \ atol = 10^-6 (both classes, CAD-PLAN section 11 f32)
+-6 constant LG-ATOL-EXP        \ atol = 10^-6 (all classes, CAD-PLAN section 11 f32)
 -5 constant LG-RTOL-EW         \ elementwise/activation class rtol = 10^-5 (slice 1)
 -4 constant LG-RTOL-RED        \ row-reduce class rtol = 10^-4 (f32 accumulation + ex2.approx)
+-4 constant LG-RTOL-MM         \ matmul class rtol = 10^-4 (f32 ACC over K<=256; ~K*2^-24 ~= 1.5e-5, ~6x headroom)
 
 \ ---- reason buffer ---------------------------------------------------------
 128 constant LG-RE-CAP
@@ -88,7 +89,10 @@ variable LG-BADI                                \ first mismatched element index
    s" lower-golden: REGION_" LG-RE+ rid LG-RE-INT
    s"  mismatch beyond f32 tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
 
-\ region class -> launch shape + tolerance (a reduction bit routes to the row kernel)
+\ region class -> launch shape + tolerance. A matmul bit routes to the tiled-GEMM kernel;
+\ a reduction bit routes to the row kernel; otherwise the flat elementwise kernel. A region
+\ never mixes a contraction with a reduction (maki/fusion-plan.f), so the order is disjoint.
+: LG-MATMUL? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
 : LG-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
 
 public
@@ -99,7 +103,11 @@ public
       LG-RE-RESET s" lower-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
    MIR-N@ EX-RUN-N                              \ host reference
-   rid LG-REDUCE? if  rid LRED-RUN  LG-RTOL-RED  else  rid LLA-RUN  LG-RTOL-EW  then {: re:n :}
+   rid LG-MATMUL? if
+      rid LMM-RUN  LG-RTOL-MM
+   else
+      rid LG-REDUCE? if  rid LRED-RUN  LG-RTOL-RED  else  rid LLA-RUN  LG-RTOL-EW  then
+   then {: re:n :}
    LG-ATOL-EXP re LG-COMPARE if rid LG-PASS-REASON V-PASS else rid LG-FAIL-REASON V-FAIL then ;
 
 end-package

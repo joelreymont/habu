@@ -1,7 +1,7 @@
 \ maki/lower-launch.f - upload/launch/readback for one lowered fusion region.
 \
-\ CAD-PLAN section 2 (PTX -> cubin -> launch), device legs slice 1 (elementwise) and
-\ slice 2 (row-reduce). Given a region already analyzed by its owning lowering pass and
+\ CAD-PLAN section 2 (PTX -> cubin -> launch), device legs slice 1 (elementwise),
+\ slice 2 (row-reduce), and slice 3 (matmul/linear). Given a region already analyzed by its owning lowering pass and
 \ a cubin assembled from its REGION_<rid> kernel, the RUN word drives the launch: pack
 \ each region input's synthetic host buffer (GA-IN-PTR, the executor's bound buffer after
 \ GA-BIND-SYNTH) f64->f32, cuMemcpyHtoD, sentinel-fill the readback, launch, cuMemcpyDtoH,
@@ -9,14 +9,20 @@
 \ before the copy-back and GUARD-checked after, so a dropped copy fails closed
 \ (E-PTX-READBACK) rather than passing a golden on stale data.
 \
-\ The two kernel SHAPES differ only in the launch grid + the u32 kernel param, so the
-\ CUDA plumbing (setup / alloc+upload / bind / launch+readback / release) is factored
-\ over launch-local STAGING (LLA-NIN / LLA-ELEMS / LLA-OUT-NODE / LLA-IN-REF), populated
-\ by the shape's analyzer before the shared core runs:
+\ The kernel SHAPES differ in the launch grid, the u32 kernel params, and (matmul only)
+\ per-input buffer sizes, so the CUDA plumbing (setup / alloc+upload / bind /
+\ launch+readback / release) is factored over launch-local STAGING (LLA-NIN / LLA-ELEMS /
+\ LLA-OUT-NODE / LLA-IN-REF), populated by the shape's analyzer before the shared core
+\ runs; the guarded readback (LLA-READBACK) is shared by every shape:
 \   LLA-RUN  (elementwise, maki/lower-ew.f):  grid = ceil(N/256), p_n = N = rows*cols.
 \   LRED-RUN (row-reduce,  maki/lower-red.f):  grid = rows,        p_k = cols (one block/row).
-\ Both name the kernel REGION_<rid>, upload/read back rows*cols f32 elements, and launch
-\ block 256. The golden (maki/lower-golden.f) reads the staged out-node + element count.
+\   LMM-RUN  (matmul,      maki/lower-mm.f):   2D grid = (ceil(N/16),ceil(M/16)), block
+\            16x16, params p_m/p_n/p_k = M/N/K. The contraction operands (A MxK, B KxN,
+\            optional bias 1xN) have DIFFERENT element counts, so the matmul upload path
+\            sizes each device buffer from LLA-IN-ELEMS instead of the uniform obytes the
+\            elementwise/row-reduce shapes share.
+\ All name the kernel REGION_<rid> and read back rows*cols f32 elements. The golden
+\ (maki/lower-golden.f) reads the staged out-node + element count.
 \
 \ v1 restriction (documented): every region input must be a model INPUT SLOT - a region fed
 \ by a materialized producer in another region needs cross-region buffer orchestration that
@@ -38,6 +44,7 @@ require maki/cuda-driver.f
 require maki/golden-artifact.f
 require maki/lower-ew.f
 require maki/lower-red.f
+require maki/lower-mm.f
 
 -5180 constant E-LLA-INPUT   \ a region input is not a model input slot (v1: slots only)
 -5181 constant E-LLA-CAP     \ region element count exceeds the launch arena capacity
@@ -58,11 +65,15 @@ create LLA-PATH FS-PATH-CAP allot                   \ cubin path cstring
 create LLA-CUBIN FS-PATH-CAP allot  variable LLA-CUBIN-U   \ cubin path (set by the tool)
 variable LLA-DEV variable LLA-CTX variable LLA-MOD variable LLA-FUNC
 
+16   constant LLA-MM-TILE                           \ matmul 16x16 output tile (block 256)
+
 \ ---- launch-local staging (populated per shape; the shared core reads only these) ----
 variable LLA-NIN                                    \ region input count
 variable LLA-ELEMS                                  \ output element count (rows*cols)
 variable LLA-OUT-NODE                               \ the region's materialized output node
 create LLA-IN-REF LLA-MAX-IN cells allot            \ per-input operand ref (must be an input slot)
+create LLA-IN-ELEMS LLA-MAX-IN cells allot          \ per-input element count (matmul heterogeneous buffers)
+variable LLA-PM  variable LLA-PN  variable LLA-PK   \ matmul u32 kernel params (M, N, K)
 
 \ ---- cubin path (the device tool assembles then hands the path here) --------
 : LLA-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -88,6 +99,11 @@ private
 \ pack slot i's synthetic host f64 buffer (executor-bound) into LLA-HIN[i] as f32
 : LLA-PACK-INPUT ( n -- ) {: i:n :}
    i LLA-SLOT GA-IN-PTR  LLA-ELEMS @  i LLA-HIN-I  F32-PACK ;
+
+\ matmul input i has its OWN element count (A MxK, B KxN, bias 1xN differ)
+: LLA-IN-ELEMS-I ( n -- n )  cells LLA-IN-ELEMS + @ ;
+: LLA-PACK-INPUT-MM ( n -- ) {: i:n :}
+   i LLA-SLOT GA-IN-PTR  i LLA-IN-ELEMS-I  i LLA-HIN-I  F32-PACK ;
 
 : LLA-FNAME ( n -- ) {: rid:n :}                 \ build the REGION_<rid> cstring
    SB-RESET s" REGION_" SB-APPEND rid SB-INT  SB$ LLA-FN >CSTR ;
@@ -118,13 +134,18 @@ private
    LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX      LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
    LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8 + >IDX  LLA-NVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
 
+\ sentinel-poison the readback, copy the output back, GUARD every cell, unpack to f64.
+\ Shared by all shapes (the launch grid + param binding is the only per-shape difference).
+: LLA-READBACK ( n -- ) {: obytes:n :}
+   LLA-HRB obytes PTXSENT:FILL
+   LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
+   LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
+
 : LLA-LAUNCH ( n n -- ) {: grid:n obytes:n :}     \ launch the staged grid, copy back, unpack (guarded)
    LLA-BIND-PARAMS
    LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
-   LLA-HRB obytes PTXSENT:FILL
-   LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
-   LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
+   obytes LLA-READBACK ;
 
 : LLA-RELEASE ( -- )
    LLA-NIN @ 0 ?do  i LLA-DBUF-I @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0  loop
@@ -154,6 +175,52 @@ private
    LRED-NIN@ LLA-NIN !  LRED-ELEMS LLA-ELEMS !  LRED-OUT-NODE@ LLA-OUT-NODE !
    LRED-NIN@ 0 ?do  i LRED-IN-REF@  LLA-IN-REF i cells + !  loop ;
 
+: LLA-STAGE-MM ( n -- ) {: rid:n :}
+   rid LMM-ANALYZE
+   LMM-NIN@ LLA-NIN !  LMM-ELEMS LLA-ELEMS !  LMM-OUT-NODE@ LLA-OUT-NODE !
+   LMM-NIN@ 0 ?do
+      i LMM-IN-REF@    LLA-IN-REF i cells + !
+      i LMM-IN-ELEMS@  LLA-IN-ELEMS i cells + !
+   loop
+   LMM-M@ LLA-PM !  LMM-N@ LLA-PN !  LMM-K@ LLA-PK ! ;
+
+\ ---- matmul upload/bind/launch (heterogeneous input buffers + 3 u32 params + 2D grid) --
+: LLA-ALLOC-UPLOAD-MM ( n -- ) {: obytes:n :}    \ per-input sizes from LLA-IN-ELEMS, then output
+   LLA-NIN @ 0 ?do
+      i LLA-IN-ELEMS-I 4 * {: ib:n :}
+      i LLA-DBUF-I ib >LEN CUDA:CUMEMALLOC CUDA:RC0
+      i LLA-DBUF-I @ >CUDA-DEVPTR  i LLA-HIN-I  ib >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
+   loop
+   LLA-NIN @ LLA-DBUF-I obytes >LEN CUDA:CUMEMALLOC CUDA:RC0 ;
+
+: LLA-BIND-PARAMS-MM ( -- )                       \ K input ptrs, output ptr, then M,N,K as u32
+   LLA-FUNC @ >CUDA-FN LLA-MM-TILE LLA-MM-TILE 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 20 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
+   LLA-NIN @ 0 ?do
+      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+   loop
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX       LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8  + >IDX  LLA-PM 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 12 + >IDX  LLA-PN 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 16 + >IDX  LLA-PK 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
+
+: LLA-LAUNCH-MM ( n n n -- ) {: gx:n gy:n obytes:n :}   \ 2D launch, copy back, unpack (guarded)
+   LLA-BIND-PARAMS-MM
+   LLA-FUNC @ >CUDA-FN gx gy CUDA:CULAUNCHGRID CUDA:RC0
+   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   obytes LLA-READBACK ;
+
+: LLA-EXEC-MM ( n n n -- ) {: rid:n gx:n gy:n :}
+   LLA-ELEMS @ LLA-NCAP > if E-LLA-CAP throw then
+   LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop
+   LLA-ELEMS @ 4 * {: obytes:n :}
+   LLA-NIN @ 0 ?do i LLA-PACK-INPUT-MM loop
+   rid LLA-FNAME
+   LLA-SETUP
+   obytes LLA-ALLOC-UPLOAD-MM
+   gx gy obytes LLA-LAUNCH-MM
+   LLA-RELEASE ;
+
 public
 
 \ LLA-RUN analyzes elementwise region rid, uploads its synthetic inputs, launches the
@@ -176,7 +243,17 @@ public
    cols LLA-NVAR !                                 \ row u32 param p_k = cols
    rid rows LLA-EXEC ;
 
-\ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN
+\ LMM-RUN analyzes matmul/linear region rid and launches its REGION_<rid> tiled-GEMM
+\ kernel (2D grid ceil(N/16) x ceil(M/16), block 16x16, params M/N/K). Contraction
+\ operands (A, B, [bias]) upload at their own sizes; same guarded readback into LLA-HOUT.
+: LMM-RUN ( n -- ) {: rid:n :}
+   rid LLA-STAGE-MM
+   LLA-PM @ PTX-LAUNCH-POSITIVE  LLA-PN @ PTX-LAUNCH-POSITIVE  LLA-PK @ PTX-LAUNCH-POSITIVE
+   LLA-PN @ LLA-MM-TILE + 1 - LLA-MM-TILE / {: gx:n :}      \ ceil(N/16)
+   LLA-PM @ LLA-MM-TILE + 1 - LLA-MM-TILE / {: gy:n :}      \ ceil(M/16)
+   rid gx gy LLA-EXEC-MM ;
+
+\ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN / LMM-RUN
 : LLA-OUT@ ( n -- r )  LLA-HOUT swap T-GET ;
 
 end-package
