@@ -2299,6 +2299,16 @@ PTR-VARIABLE USIGS-SNAP-P
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
+\ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
+\ value the checker metadata writes with `!`. USIGS-CELL-AT refines a cell-aligned
+\ offset into that byte store to a cell pointer so the head/metadata stores stay
+\ typed while the byte-copy paths keep ptr u8.
+TRUSTED: USIGS-CELL-AT ( n -- ptr a )
+   USIGS swap + ;
+
+: USIGS-HEAD ( -- ptr a )
+   0 USIGS-CELL-AT ;
+
 0 USIGS-USER-OFF !
 0 CHK-CAND !
 
@@ -2333,7 +2343,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
 
 : USIGS-CLEAR ( -- )
    0 UEND !
-   0 USIGS !
+   0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
    0 USIGS-GROW-NEXT ! ;
 

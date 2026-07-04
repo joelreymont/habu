@@ -366,7 +366,7 @@ s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
 \ pointer's pointee element type is invariant: the u8->cell/u32 integer widening
 \ that applies to top-level scalar cells must NOT apply inside a ptr, so a
 \ concrete ptr u8 never satisfies ptr cell/ptr u32 and cross-pointee unification
-\ is rejected. ptr+ptr and cell-@ on a byte span stay rejected.
+\ is rejected. ptr+ptr and cell @/! on a byte span stay rejected.
 s" COK-PTR-ADD ( ptr a n -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-ADD-REV ( n ptr a -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-SUB ( ptr a n -- ptr a ) -" T-CHECK-PASSES
@@ -384,6 +384,15 @@ s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
+\ Cell store `!` on a byte span is rejected exactly like cell load `@`. This is
+\ the miss class the fixpoint certify caught in checker.f USIGS-CLEAR (dot
+\ habu-fix-0-usigs): a head accessor declared ( -- ptr u8 ) whose caller stores a
+\ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
+s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
+s" COK-PTR-CELL-STORE ( ptr a -- ) 0 swap !" T-CHECK-PASSES
+variable ESB-BYTE-P
+: ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
+s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
 512 constant RSD-CAP
 create RSD-BUF RSD-CAP allot

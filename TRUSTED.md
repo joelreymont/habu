@@ -273,6 +273,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | ARENA-RC>PTR | `n -- ptr a` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's cell arena pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers (e.g. the USIGS-CLEAR head cell) while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | CELL | `-- n` | Structure layouts load before the checker so checker records can use them; this row publishes the already-defined cell-size constant to checked users. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -692,6 +693,7 @@ src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
 src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
