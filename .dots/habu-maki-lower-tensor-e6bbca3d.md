@@ -1,9 +1,9 @@
 ---
 title: "Maki: lower tensor ops onto Habu-PTX GPU kernels"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-06-27T08:06:44.248329+02:00"
+created-at: "\"2026-06-27T08:06:44.248329+02:00\""
 blocks:
   - habu-make-ptx-device-c0eb12a3
   - habu-fix-ptx-collective-997cfcce

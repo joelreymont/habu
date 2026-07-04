@@ -62,3 +62,12 @@ A=B=all-ones golden cannot catch a transpose; `softmax-launch.f` row1 stays
 uniform (its ex2.approx softmax bits need device measurement, not hand
 computation - row0 `[1,2,3,4]` already gives index discrimination);
 `cuda-launch.f` deferred to the f32-marshaling lane.
+
+2026-07-04 zed-WIP disposition: the rescued branch zed-wip-cuda-driver
+(a0f31639, 13 files, written Jul 1 on-device against this dot) was analyzed
+against fable post-completion: 100% superseded/dead/conflicting (untyped
+CALLn-RC driver loses to maki/cuda-driver.f typed FFI: bindings; its PTXTOOL
+loses to PTXTC; its error codes collide with E-PTX-EMIT -3412; cuda-load.f
+target deleted). Zero commits salvaged; the one sound idea became dot
+habu-ptx-promote-checked (promote typed bindings to lib/ptx). Branch is
+retire-recommended (kept on origin pending user nod to delete).
