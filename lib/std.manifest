@@ -1015,6 +1015,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:ROW-FIELD$	(n n -- ptr u8 n)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	return one validated object row field by row and field indexes
 1	object	lib/object.f	word	OBJ:LOAD	(ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	validate and restore serialized canonical object bytes
 1	object	lib/object.f	word	OBJ:KEY-HEX	(ptr u8 --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	hash validated object bytes into a content-key hex digest
+1	engine-id	lib/engine-id.f	module			lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	engine self-identity kernel-resolved own executable path and lazy SHA-256 content key over bin/hb
+1	engine-id	lib/engine-id.f	word	EID-EXE-PREFIX$	(-- ptr u8 n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	the macOS apple[] executable_path field key prefix
+1	engine-id	lib/engine-id.f	word	ENGINE-SELF-PATH	(-- n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	active	resolve the running engine self executable path for the current target into the path buffer
+1	engine-id	lib/engine-id.f	word	ENGINE-PATH$	(-- ptr u8 n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	published	return the running engine own executable path resolved once and cached
+1	engine-id	lib/engine-id.f	word	ENGINE-KEY$	(-- ptr u8 n)	lib/engine-id-test.f	docs/stdlib.md	stdlib-engine-id	published	return the SHA-256 hex content key over the running engine binary
 1	object-cache	lib/object-cache.f	module			lib/object-cache-test.f	docs/stdlib.md	stdlib-object	active	checked content-addressed file store for OBJ records
 1	object-cache	lib/object-cache.f	word	OBJSTORE:ROOT!	(ptr u8 n --)	lib/object-cache-test.f	docs/stdlib.md	stdlib-object	published	set object cache root directory
 1	object-cache	lib/object-cache.f	word	OBJSTORE:ROOT$	(-- ptr u8 n)	lib/object-cache-test.f	docs/stdlib.md	stdlib-object	published	return object cache root directory

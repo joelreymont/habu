@@ -126,6 +126,10 @@ TEST:SUITE content-key-cache
    lib/content-key-test.f
 TEST:END-SUITE
 
+TEST:SUITE engine-identity
+   lib/engine-id-test.f
+TEST:END-SUITE
+
 TEST:SUITE object-record-codec
    lib/object-test.f
 TEST:END-SUITE

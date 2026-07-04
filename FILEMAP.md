@@ -180,6 +180,8 @@ points stay listed.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.
 - `lib/content-key-test.f` — checked fixture coverage for content-key stability and invalidation.
+- `lib/engine-id.f` — checked engine self-identity: kernel-resolved own executable path + lazy SHA-256 content key over bin/hb.
+- `lib/engine-id-test.f` — checked fixture coverage for the engine self-path and content-key words.
 - `lib/object.f` — checked OBJ package object-record codec for future linkable builds.
 - `lib/object-test.f` — focused coverage for object-record serialization, loading, and keys.
 - `lib/object-cache.f` — checked OBJSTORE content-addressed file store for

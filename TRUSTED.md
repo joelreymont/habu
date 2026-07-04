@@ -553,6 +553,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | TMP-PATH-COPY-SRC | `ptr u8 n --` | Copies a script path suffix into the fixed target temp-path scratch using raw byte offsets. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
+| ENGINE-SELF-MACOS | `-- n` | Resolves the running engine's own executable path from the macOS `apple[]` `executable_path` entry (contiguous after envp on the startup stack); the NUL-terminated pointer walk and NULL tests are outside checker inference. | `lib/engine-id-test.f`, `test/run.f` | lib/engine-id.f | 2026-07-04 |
+| ENGINE-SELF-LINUX | `-- n` | Resolves the running engine's own executable path via `readlink("/proc/self/exe")` into a raw byte buffer; the raw path-buffer pointer view is outside checker inference. | `lib/engine-id-test.f`, `test/run.f` | lib/engine-id.f | 2026-07-04 |
 
 ## Ratchet baseline
 
@@ -730,6 +732,7 @@ tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-role-typed-ffi-08f99d18
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+lib/engine-id.f stdlib-boundary habu-engine-identity-stable-766edc08 2
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6

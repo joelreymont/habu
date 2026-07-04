@@ -142,3 +142,9 @@
 -3700 constant E-OBJ-SCHEMA
 -3701 constant E-OBJ-CAPACITY
 -3702 constant E-OBJ-FIELD
+
+\ Engine self-identity: -3800..-3899
+-3800 constant E-ENGINE-FIRST
+-3899 constant E-ENGINE-LAST
+-3800 constant E-ENGINE-PATH    \ own executable path cannot be resolved
+-3801 constant E-ENGINE-KEY     \ own binary cannot be content-hashed
