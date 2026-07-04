@@ -1,7 +1,12 @@
 \ maki/array-test.f - the optimizer runs at TENSOR scale (over real arrays).
+\ Reopens `package MAKI` (this test is part of the maki package), so the maki tensor
+\ ops resolve by bare name - no MAKI: qualifier inside the package (docs/forth.md
+\ "Qualify only across package boundaries").
 
 require lib/test.f
 require maki/array.f
+
+package MAKI
 
 T-RESET
 
@@ -23,3 +28,5 @@ TW TG 4 T-ADD!
 TW 4 T-SUM  0.5 f+ f>s  8 T=
 
 T-REPORT
+
+end-package
