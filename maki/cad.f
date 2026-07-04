@@ -38,6 +38,7 @@ require maki/traffic.f
 require maki/mem-plan.f
 require maki/schedule.f
 require maki/sched-key.f
+require maki/store.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -390,6 +391,19 @@ private
    PROMOTE-OK? 0= if E-CAD-GATE throw then
    CACHE-KEY-INTO ;
 
+\ On a passing PROMOTE, write the artifact record to the CAD store (maki/store.f):
+\ an evidence row (the four gate verdicts) and a schedules row (region-0 selection),
+\ both keyed by the section 7.4 key of region 0 (the same key TILE/OPTIMIZE cache). A
+\ refused promote throws in PROMOTE-REPORT before this runs, so no partial rows land.
+: PROMOTE-EVIDENCE ( report -- report )
+   dup G-CERTIFY   RPT-GATE-TAG@ {: c:n :}
+   dup G-GOLDEN    RPT-GATE-TAG@ {: g:n :}
+   dup G-GRADCHECK RPT-GATE-TAG@ {: gc:n :}
+   dup G-PROFILE   RPT-GATE-TAG@ {: p:n :}
+   dup RPT-SELECT@ {: sel:n :}
+   0 SK-KEY$ c g gc p EVID-PUT
+   0 SK-KEY$ sel SCHED-PUT ;
+
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
    PROMOTE-OK? if
       CACHE-KEY-INTO  s" promote: gates pass; artifact cached" RPT-WARN+
@@ -410,8 +424,9 @@ public
 : PROFILE ( -- report )    RPT-NEW LOWER-INTO PROFILE-INTO ;
 : TUNE ( -- report )       RPT-NEW LOWER-INTO TUNE-INTO ;
 
-\ PROMOTE refuses (named throw) unless every gate passes; on success caches.
-: PROMOTE ( -- report )  FULL-REPORT PROMOTE-REPORT ;
+\ PROMOTE refuses (named throw) unless every gate passes; on success caches the key
+\ and writes the artifact + evidence rows to the CAD store.
+: PROMOTE ( -- report )  FULL-REPORT PROMOTE-REPORT PROMOTE-EVIDENCE ;
 
 \ OPTIMIZE composes lower -> fuse -> memory -> tile -> gates -> promote decision.
 : OPTIMIZE ( -- report )  FULL-REPORT OPTIMIZE-PROMOTE ;

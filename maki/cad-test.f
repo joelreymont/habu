@@ -166,6 +166,23 @@ ALL-PASS PROMOTE-REPORT
 dup RPT-CACHE$ s" FFN" T$=
 drop
 
+\ ---- refused PROMOTE writes NO rows (no partial artifact) -------------------
+\ off-device, PROMOTE-REPORT throws before PROMOTE-EVIDENCE, so the store stays empty.
+STORE-RESET
+' TRY-PROMOTE E-CAD-GATE TTHROWS
+0 SK-KEY$ SCHED-GET nip TFALSE
+0 SK-KEY$ EVID-GET  nip TFALSE
+
+\ ---- a passing PROMOTE writes the schedules + evidence rows -----------------
+\ real PROMOTE refuses off-device, so drive the writer directly with an all-pass
+\ report over FFN's built region 0 to prove the row shapes without a device.
+STORE-RESET
+ALL-PASS PROMOTE-EVIDENCE drop
+0 SK-KEY$ SCHED-GET TTRUE -1 T=                    \ selection row (ALL-PASS leaves sel unset = -1)
+0 SK-KEY$ EVID-GET TTRUE
+s" certify=pass|golden=pass|gradcheck=pass|profile=pass" T$=
+STORE-RESET
+
 \ ---- EXPLAIN: repair packets for the non-pass gates ------------------------
 EXPLAIN CT-SAVE
 s" packet.certify"                 CT-NOTIN
