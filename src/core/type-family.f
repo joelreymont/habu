@@ -59,7 +59,7 @@ variable TF-STR-CAP-V   TF-STR-INIT TF-STR-CAP-V !
 : TF-STR-CAP ( -- n ) TF-STR-CAP-V @ ;
 create TF-STR-BOOT   TF-STR-INIT allot
 variable TF-STR-P   TF-STR-BOOT TF-STR-P !
-: TF-STR ( -- ptr ) TF-STR-P @ ;
+: TF-STR ( -- ptr u8 ) TF-STR-P @ ;
 variable TF-STR-U   0 TF-STR-U !
 
 : TF-STR-GROW ( n -- ) {: need:n :}
@@ -69,7 +69,7 @@ variable TF-STR-U   0 TF-STR-U !
 : TF-STR-ENSURE ( n -- ) {: add:n :}      \ room for `add` more bytes
    TF-STR-U @ add + TF-STR-CAP-V @ <= IF exit THEN
    TF-STR-U @ add + TF-STR-GROW ;
-: TF-INTERN ( ptr u8 n -- off ) {: a:ptr u:n :}   \ copy bytes into the pool -> offset
+: TF-INTERN ( ptr u8 n -- n ) {: a:ptr u:n :}   \ copy bytes into the pool -> offset
    u TF-STR-ENSURE                        \ grow first, then cache a stable base
    TF-STR-U @ {: off:n :}
    0 TF-I !
@@ -79,24 +79,24 @@ variable TF-STR-U   0 TF-STR-U !
    REPEAT
    TF-STR-U @ u + TF-STR-U !
    off ;
-: TF-OFF$ ( off u -- ptr u8 n ) {: off:n u:n :}   \ interned (offset,len) -> string
+: TF-OFF$ ( n n -- ptr u8 n ) {: off:n u:n :}   \ interned (offset,len) -> string
    TF-STR off + u ;
 
 \ ---------------------------------------------------------------------------
 \ canonical tail validation. Declarations accept only lowercase tokens; the
 \ registry never folds case, so an uppercase/mixed-case token is rejected here.
 \ ---------------------------------------------------------------------------
-: TF-LOWER? ( c -- bool ) {: c:n :} c 97 >= c 122 <= and ;   \ a-z
-: TF-DIGIT? ( c -- bool ) {: c:n :} c 48 >= c 57 <= and ;    \ 0-9
-: TF-UPPER? ( c -- bool ) {: c:n :} c 65 >= c 90 <= and ;    \ A-Z
-: TF-TAILBYTE? ( c -- bool ) {: c:n :}   \ lowercase, digit, or internal hyphen
+: TF-LOWER? ( n -- bool ) {: c:n :} c 97 >= c 122 <= and ;   \ a-z
+: TF-DIGIT? ( n -- bool ) {: c:n :} c 48 >= c 57 <= and ;    \ 0-9
+: TF-UPPER? ( n -- bool ) {: c:n :} c 65 >= c 90 <= and ;    \ A-Z
+: TF-TAILBYTE? ( n -- bool ) {: c:n :}   \ lowercase, digit, or internal hyphen
    c TF-LOWER? IF RES-TRUE EXIT THEN
    c TF-DIGIT? IF RES-TRUE EXIT THEN
    c 45 = ;                                                  \ '-'
 : TF-HIDDEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ compaction-hidden field name
    u 0= IF RES-FALSE EXIT THEN
    a c@ 64 = ;                                              \ leading '@'
-: TF-HYPHEN-BAD? ( a u i -- bool ) {: a:ptr u:n i:n :}   \ '-' at an edge or doubled
+: TF-HYPHEN-BAD? ( ptr u8 n n -- bool ) {: a:ptr u:n i:n :}   \ '-' at an edge or doubled
    i 0 = IF RES-TRUE EXIT THEN                      \ leading '-a'
    i u 1 - = IF RES-TRUE EXIT THEN                  \ trailing 'a-'
    a i + 1 - c@ 45 = ;                              \ previous byte also '-' -> 'a--b'
@@ -127,7 +127,7 @@ variable TF-PK-CAP-V   TF-PK-INIT TF-PK-CAP-V !
 : TF-PK-CAP ( -- n ) TF-PK-CAP-V @ ;
 create TF-PK-BOOT   TF-PK-INIT cells allot
 variable TF-PK-P   TF-PK-BOOT TF-PK-P !
-: TF-PK-BASE ( -- ptr ) TF-PK-P @ ;
+: TF-PK-BASE ( -- ptr a ) TF-PK-P @ ;
 variable TF-PK-N   0 TF-PK-N !
 
 : TF-PK-GROW ( n -- ) {: need:n :}
@@ -137,7 +137,7 @@ variable TF-PK-N   0 TF-PK-N !
 : TF-PK-ENSURE ( -- )
    TF-PK-N @ TF-PK-CAP-V @ < IF exit THEN
    TF-PK-N @ 1 + TF-PK-GROW ;
-: TF-PK+ ( kind -- ) {: k:n :}          \ append one param-kind slot
+: TF-PK+ ( n -- ) {: k:n :}             \ append one param-kind slot
    TF-PK-ENSURE
    k TF-PK-N @ cells TF-PK-BASE + !
    TF-PK-N @ 1 + TF-PK-N ! ;
@@ -171,7 +171,7 @@ variable TF-CAP-V   TF-CAP-INIT TF-CAP-V !
 : TF-CAP ( -- n ) TF-CAP-V @ ;
 create TF-A-BOOT   TF-CAP-INIT TF-REC * allot
 variable TF-A-P   TF-A-BOOT TF-A-P !
-: TF-BASE ( -- ptr ) TF-A-P @ ;
+: TF-BASE ( -- ptr a ) TF-A-P @ ;
 variable TFAM-N   0 TFAM-N !
 
 : TF-GROW ( n -- ) {: need:n :}
@@ -181,7 +181,7 @@ variable TFAM-N   0 TFAM-N !
 : TF-ENSURE ( -- )
    TFAM-N @ TF-CAP-V @ < IF exit THEN
    TFAM-N @ 1 + TF-GROW ;
-: TF-REC@ ( id -- ptr ) {: id:n :}       \ address of family record `id`
+: TF-REC@ ( n -- ptr a ) {: id:n :}      \ address of family record `id`
    id 0 < IF s" tfam: bad family id" 76 die THEN
    id TFAM-N @ >= IF s" tfam: bad family id" 76 die THEN
    id TF-REC * TF-BASE + ;
@@ -191,61 +191,61 @@ variable TFAM-N   0 TFAM-N !
 : TF-PK-N@ ( -- n ) TF-PK-N @ ;          \ param-kind pool high-water
 
 \ --- read-only queries.
-: TFAM-PKG$ ( id -- ptr u8 n ) {: id:n :}
+: TFAM-PKG$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.PKG-OFF @ r TF.PKG-U @ TF-OFF$ ;
-: TFAM-NAME$ ( id -- ptr u8 n ) {: id:n :}
+: TFAM-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.NAME-OFF @ r TF.NAME-U @ TF-OFF$ ;
-: TFAM-VIS@ ( id -- vis ) TF-REC@ TF.VIS @ ;
-: TFAM-ARITY@ ( id -- n ) TF-REC@ TF.ARITY @ ;
-: TFAM-KIND@ ( id -- kind ) TF-REC@ TF.KIND @ ;
-: TFAM-LAYOUT-POLICY@ ( id -- policy ) TF-REC@ TF.LAYOUT @ ;
-: TFAM-SLOTS@ ( id -- n ) TF-REC@ TF.SLOTS @ ;
-: TFAM-VAR-START@ ( id -- n ) TF-REC@ TF.VAR-START @ ;
-: TFAM-VAR-COUNT@ ( id -- n ) TF-REC@ TF.VAR-COUNT @ ;
-: TFAM-FLD-START@ ( id -- n ) TF-REC@ TF.FLD-START @ ;
-: TFAM-FLD-COUNT@ ( id -- n ) TF-REC@ TF.FLD-COUNT @ ;
-: TFAM-TAGW@ ( id -- n ) TF-REC@ TF.TAGW @ ;
-: TFAM-SCHEMA-ROOT@ ( id -- n ) TF-REC@ TF.SCHEMA-ROOT @ ;
-: TFAM-SPAN@ ( id -- off u ) {: id:n :}
+: TFAM-VIS@ ( n -- n ) TF-REC@ TF.VIS @ ;
+: TFAM-ARITY@ ( n -- n ) TF-REC@ TF.ARITY @ ;
+: TFAM-KIND@ ( n -- n ) TF-REC@ TF.KIND @ ;
+: TFAM-LAYOUT-POLICY@ ( n -- n ) TF-REC@ TF.LAYOUT @ ;
+: TFAM-SLOTS@ ( n -- n ) TF-REC@ TF.SLOTS @ ;
+: TFAM-VAR-START@ ( n -- n ) TF-REC@ TF.VAR-START @ ;
+: TFAM-VAR-COUNT@ ( n -- n ) TF-REC@ TF.VAR-COUNT @ ;
+: TFAM-FLD-START@ ( n -- n ) TF-REC@ TF.FLD-START @ ;
+: TFAM-FLD-COUNT@ ( n -- n ) TF-REC@ TF.FLD-COUNT @ ;
+: TFAM-TAGW@ ( n -- n ) TF-REC@ TF.TAGW @ ;
+: TFAM-SCHEMA-ROOT@ ( n -- n ) TF-REC@ TF.SCHEMA-ROOT @ ;
+: TFAM-SPAN@ ( n -- n n ) {: id:n :}
    id TF-REC@ {: r:ptr :}  r TF.SPAN-OFF @ r TF.SPAN-U @ ;
-: TFAM-PK@ ( id i -- kind ) {: id:n i:n :}
+: TFAM-PK@ ( n n -- n ) {: id:n i:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + @ ;
 
-: TFAM-PUBLIC? ( id -- bool ) TFAM-VIS@ CHECKER-PACKAGE-PUBLIC = ;
-: TFAM-CELL? ( id -- bool ) TFAM-KIND@ TK-CELL = ;
-: TFAM-PRODUCT? ( id -- bool ) TFAM-KIND@ TK-PRODUCT = ;
-: TFAM-SUM? ( id -- bool ) TFAM-KIND@ TK-SUM = ;
-: TFAM-ENUM? ( id -- bool ) TFAM-KIND@ TK-ENUM = ;
-: TFAM-LAYOUT? ( id -- bool ) {: id:n :}   \ true when the family occupies an ADT layout
+: TFAM-PUBLIC? ( n -- bool ) TFAM-VIS@ CHECKER-PACKAGE-PUBLIC = ;
+: TFAM-CELL? ( n -- bool ) TFAM-KIND@ TK-CELL = ;
+: TFAM-PRODUCT? ( n -- bool ) TFAM-KIND@ TK-PRODUCT = ;
+: TFAM-SUM? ( n -- bool ) TFAM-KIND@ TK-SUM = ;
+: TFAM-ENUM? ( n -- bool ) TFAM-KIND@ TK-ENUM = ;
+: TFAM-LAYOUT? ( n -- bool ) {: id:n :}   \ true when the family occupies an ADT layout
    id TFAM-PRODUCT? id TFAM-SUM? or id TFAM-ENUM? or ;
 
 \ --- friend-only field mutators (populated by later declaration passes / tests).
-: TFAM-LAYOUT! ( id policy -- ) {: id:n p:n :}
+: TFAM-LAYOUT! ( n n -- ) {: id:n p:n :}
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
    p id TF-REC@ TF.LAYOUT ! ;
-: TFAM-SLOTS! ( id n -- ) swap TF-REC@ TF.SLOTS ! ;
-: TFAM-VAR-RANGE! ( id start count -- ) {: id:n s:n c:n :}
+: TFAM-SLOTS! ( n n -- ) swap TF-REC@ TF.SLOTS ! ;
+: TFAM-VAR-RANGE! ( n n n -- ) {: id:n s:n c:n :}
    s id TF-REC@ TF.VAR-START !  c id TF-REC@ TF.VAR-COUNT ! ;
-: TFAM-FLD-RANGE! ( id start count -- ) {: id:n s:n c:n :}
+: TFAM-FLD-RANGE! ( n n n -- ) {: id:n s:n c:n :}
    s id TF-REC@ TF.FLD-START !  c id TF-REC@ TF.FLD-COUNT ! ;
-: TFAM-TAGW! ( id w -- ) swap TF-REC@ TF.TAGW ! ;
-: TFAM-SCHEMA-ROOT! ( id root -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
-: TFAM-SPAN! ( id off u -- ) {: id:n off:n u:n :}
+: TFAM-TAGW! ( n n -- ) swap TF-REC@ TF.TAGW ! ;
+: TFAM-SCHEMA-ROOT! ( n n -- ) swap TF-REC@ TF.SCHEMA-ROOT ! ;
+: TFAM-SPAN! ( n n n -- ) {: id:n off:n u:n :}
    off id TF-REC@ TF.SPAN-OFF !  u id TF-REC@ TF.SPAN-U ! ;
-: TFAM-PK! ( id i kind -- ) {: id:n i:n k:n :}
+: TFAM-PK! ( n n n -- ) {: id:n i:n k:n :}
    i 0 < i id TFAM-ARITY@ >= or IF s" tfam: bad param index" 76 die THEN
    k 0 < k PK-MAX > or IF E-TFAM-KIND throw THEN
    k id TF-REC@ TF.PK-START @ i + cells TF-PK-BASE + ! ;
 
 \ --- matching and lookup.
-: TFAM-PKG-MATCH? ( ptr u8 n id -- bool ) {: pa:ptr pu:n id:n :}
+: TFAM-PKG-MATCH? ( ptr u8 n n -- bool ) {: pa:ptr pu:n id:n :}
    id TFAM-PKG$ pa pu CORE-STR= ;
-: TFAM-NAME-MATCH? ( ptr u8 n id -- bool ) {: na:ptr nu:n id:n :}
+: TFAM-NAME-MATCH? ( ptr u8 n n -- bool ) {: na:ptr nu:n id:n :}
    id TFAM-NAME$ na nu CORE-STR= ;
 
 \ exact (package,tail) — the qualified-lookup and duplicate-detection primitive.
-: TFAM-FIND-IN ( pkg-a pkg-u name-a name-u -- id true | false )
+: TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ TFAM-N @ < WHILE
@@ -260,7 +260,7 @@ variable TFAM-N   0 TFAM-N !
 \ (TFAM-DECL rejects DUP), so two public matches are always different packages:
 \ that is a genuine unqualified ambiguity and throws E-TFAM-AMBIG rather than
 \ silently picking the lowest id. Exactly one public match resolves; none is false.
-: TFAM-FIND-PUBLIC ( name-a name-u -- id true | false ) {: na:ptr nu:n :}
+: TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
    -1 TF-PUB !
    0 TF-I !
    BEGIN TF-I @ TFAM-N @ < WHILE
@@ -277,7 +277,7 @@ variable TFAM-N   0 TFAM-N !
 \ unqualified resolution from the active package: own package (private+public)
 \ first, else the unique public family (E-TFAM-AMBIG if two other packages tie).
 \ Compaction-hidden `@name` tokens never resolve.
-: TFAM-RESOLVE ( pkg-a pkg-u name-a name-u -- id true | false )
+: TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
@@ -285,14 +285,14 @@ variable TFAM-N   0 TFAM-N !
    na nu TFAM-FIND-PUBLIC ;
 
 \ --- declaration. Storage only ever sees canonical lowercase tails.
-: TFAM-KIND-VALID? ( kind -- bool ) {: k:n :} k 0 >= k TK-MAX <= and ;
-: TFAM-PK-RESERVE ( arity -- ) {: k:n :}    \ default every parameter to PK-CELL
+: TFAM-KIND-VALID? ( n -- bool ) {: k:n :} k 0 >= k TK-MAX <= and ;
+: TFAM-PK-RESERVE ( n -- ) {: k:n :}        \ default every parameter to PK-CELL
    0 TF-I !
    BEGIN TF-I @ k < WHILE
       PK-CELL TF-PK+
       TF-I @ 1 + TF-I !
    REPEAT ;
-: TFAM-DECL ( pkg-a pkg-u vis name-a name-u arity kind -- id )
+: TFAM-DECL ( ptr u8 n n ptr u8 n n n -- n )
    {: pa:ptr pu:n vis:n na:ptr nu:n arity:n kind:n :}
    na nu TF-REQUIRE-CANON
    arity 0 < IF E-TFAM-ARITY throw THEN
@@ -340,7 +340,7 @@ variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !
 : SUMV-CAP ( -- n ) SUMV-CAP-V @ ;
 create SUMV-A-BOOT   SUMV-CAP-INIT SUMV-REC * allot
 variable SUMV-A-P   SUMV-A-BOOT SUMV-A-P !
-: SUMV-BASE ( -- ptr ) SUMV-A-P @ ;
+: SUMV-BASE ( -- ptr a ) SUMV-A-P @ ;
 variable SUMV-N   0 SUMV-N !
 
 : SUMV-GROW ( n -- ) {: need:n :}
@@ -350,31 +350,31 @@ variable SUMV-N   0 SUMV-N !
 : SUMV-ENSURE ( -- )
    SUMV-N @ SUMV-CAP-V @ < IF exit THEN
    SUMV-N @ 1 + SUMV-GROW ;
-: SUMV-REC@ ( id -- ptr ) {: id:n :}
+: SUMV-REC@ ( n -- ptr a ) {: id:n :}
    id 0 < IF s" tfam: bad variant id" 76 die THEN
    id SUMV-N @ >= IF s" tfam: bad variant id" 76 die THEN
    id SUMV-REC * SUMV-BASE + ;
 
-: SUMV-FAM@ ( id -- fam ) SUMV-REC@ SV.FAM @ ;
-: SUMV-NAME$ ( id -- ptr u8 n ) {: id:n :}
+: SUMV-FAM@ ( n -- n ) SUMV-REC@ SV.FAM @ ;
+: SUMV-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id SUMV-REC@ {: r:ptr :}  r SV.NAME-OFF @ r SV.NAME-U @ TF-OFF$ ;
-: SUMV-TAG@ ( id -- tag ) SUMV-REC@ SV.TAG @ ;
-: SUMV-SCH-START@ ( id -- n ) SUMV-REC@ SV.SCH-START @ ;
-: SUMV-SCH-COUNT@ ( id -- n ) SUMV-REC@ SV.SCH-COUNT @ ;
-: SUMV-PAYCELLS@ ( id -- n ) SUMV-REC@ SV.PAYCELLS @ ;
+: SUMV-TAG@ ( n -- n ) SUMV-REC@ SV.TAG @ ;
+: SUMV-SCH-START@ ( n -- n ) SUMV-REC@ SV.SCH-START @ ;
+: SUMV-SCH-COUNT@ ( n -- n ) SUMV-REC@ SV.SCH-COUNT @ ;
+: SUMV-PAYCELLS@ ( n -- n ) SUMV-REC@ SV.PAYCELLS @ ;
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
-: SUMV-MATCH? ( fam name-a name-u id -- bool ) {: fam:n na:ptr nu:n id:n :}
+: SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
    id SUMV-NAME$ na nu CORE-STR= ;
-: SUMV-FIND ( fam name-a name-u -- id true | false ) {: fam:n na:ptr nu:n :}
+: SUMV-FIND ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ SUMV-N @ < WHILE
       fam na nu TF-I @ SUMV-MATCH? IF TF-I @ RES-TRUE EXIT THEN
       TF-I @ 1 + TF-I !
    REPEAT
    0 RES-FALSE ;
-: SUMV-ADD ( fam name-a name-u tag sch-start sch-count paycells -- id )
+: SUMV-ADD ( n ptr u8 n n n n n -- n )
    {: fam:n na:ptr nu:n tag:n ss:n sc:n pc:n :}
    na nu TF-REQUIRE-CANON
    fam na nu SUMV-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
@@ -404,7 +404,7 @@ variable PF-CAP-V   PF-CAP-INIT PF-CAP-V !
 : PF-CAP ( -- n ) PF-CAP-V @ ;
 create PF-A-BOOT   PF-CAP-INIT PF-REC * allot
 variable PF-A-P   PF-A-BOOT PF-A-P !
-: PF-BASE ( -- ptr ) PF-A-P @ ;
+: PF-BASE ( -- ptr a ) PF-A-P @ ;
 variable PF-N   0 PF-N !
 
 : PF-GROW ( n -- ) {: need:n :}
@@ -414,29 +414,29 @@ variable PF-N   0 PF-N !
 : PF-ENSURE ( -- )
    PF-N @ PF-CAP-V @ < IF exit THEN
    PF-N @ 1 + PF-GROW ;
-: PF-REC@ ( id -- ptr ) {: id:n :}
+: PF-REC@ ( n -- ptr a ) {: id:n :}
    id 0 < IF s" tfam: bad field id" 76 die THEN
    id PF-N @ >= IF s" tfam: bad field id" 76 die THEN
    id PF-REC * PF-BASE + ;
 
-: PF-FAM@ ( id -- fam ) PF-REC@ PF.FAM @ ;
-: PF-NAME$ ( id -- ptr u8 n ) {: id:n :}
+: PF-FAM@ ( n -- n ) PF-REC@ PF.FAM @ ;
+: PF-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id PF-REC@ {: r:ptr :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
-: PF-SCH@ ( id -- node ) PF-REC@ PF.SCH @ ;
-: PF-SLOT@ ( id -- n ) PF-REC@ PF.SLOT @ ;
+: PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
+: PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-N@ ( -- n ) PF-N @ ;
 
-: PF-MATCH? ( fam name-a name-u id -- bool ) {: fam:n na:ptr nu:n id:n :}
+: PF-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id PF-FAM@ fam = 0= IF RES-FALSE EXIT THEN
    id PF-NAME$ na nu CORE-STR= ;
-: PF-FIND ( fam name-a name-u -- id true | false ) {: fam:n na:ptr nu:n :}
+: PF-FIND ( n ptr u8 n -- n bool ) {: fam:n na:ptr nu:n :}
    0 TF-I !
    BEGIN TF-I @ PF-N @ < WHILE
       fam na nu TF-I @ PF-MATCH? IF TF-I @ RES-TRUE EXIT THEN
       TF-I @ 1 + TF-I !
    REPEAT
    0 RES-FALSE ;
-: PF-ADD ( fam name-a name-u sch slot -- id ) {: fam:n na:ptr nu:n sch:n slot:n :}
+: PF-ADD ( n ptr u8 n n n -- n ) {: fam:n na:ptr nu:n sch:n slot:n :}
    na nu TF-REQUIRE-CANON
    fam na nu PF-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    PF-ENSURE
@@ -464,7 +464,7 @@ variable LAY-CAP-V   LAY-CAP-INIT LAY-CAP-V !
 : LAY-CAP ( -- n ) LAY-CAP-V @ ;
 create LAY-A-BOOT   LAY-CAP-INIT LAY-REC * allot
 variable LAY-A-P   LAY-A-BOOT LAY-A-P !
-: LAY-BASE ( -- ptr ) LAY-A-P @ ;
+: LAY-BASE ( -- ptr a ) LAY-A-P @ ;
 variable LAY-N   0 LAY-N !
 
 : LAY-GROW ( n -- ) {: need:n :}
@@ -474,26 +474,26 @@ variable LAY-N   0 LAY-N !
 : LAY-ENSURE ( -- )
    LAY-N @ LAY-CAP-V @ < IF exit THEN
    LAY-N @ 1 + LAY-GROW ;
-: LAY-REC@ ( id -- ptr ) {: id:n :}
+: LAY-REC@ ( n -- ptr a ) {: id:n :}
    id 0 < IF s" tfam: bad layout id" 76 die THEN
    id LAY-N @ >= IF s" tfam: bad layout id" 76 die THEN
    id LAY-REC * LAY-BASE + ;
 
-: LAY-FAM@ ( id -- fam ) LAY-REC@ LAY.FAM @ ;
-: LAY-POLICY@ ( id -- policy ) LAY-REC@ LAY.POLICY @ ;
-: LAY-SIZE@ ( id -- n ) LAY-REC@ LAY.SIZE @ ;
-: LAY-ALIGN@ ( id -- n ) LAY-REC@ LAY.ALIGN @ ;
-: LAY-TAGW@ ( id -- n ) LAY-REC@ LAY.TAGW @ ;
+: LAY-FAM@ ( n -- n ) LAY-REC@ LAY.FAM @ ;
+: LAY-POLICY@ ( n -- n ) LAY-REC@ LAY.POLICY @ ;
+: LAY-SIZE@ ( n -- n ) LAY-REC@ LAY.SIZE @ ;
+: LAY-ALIGN@ ( n -- n ) LAY-REC@ LAY.ALIGN @ ;
+: LAY-TAGW@ ( n -- n ) LAY-REC@ LAY.TAGW @ ;
 : LAY-N@ ( -- n ) LAY-N @ ;
 
-: LAY-FIND ( fam -- id true | false ) {: fam:n :}
+: LAY-FIND ( n -- n bool ) {: fam:n :}
    0 TF-I !
    BEGIN TF-I @ LAY-N @ < WHILE
       TF-I @ LAY-FAM@ fam = IF TF-I @ RES-TRUE EXIT THEN
       TF-I @ 1 + TF-I !
    REPEAT
    0 RES-FALSE ;
-: LAY-ADD ( fam policy size align tagw -- id ) {: fam:n p:n sz:n al:n tw:n :}
+: LAY-ADD ( n n n n n -- n ) {: fam:n p:n sz:n al:n tw:n :}
    p 0 < p TL-MAX > or IF E-TFAM-KIND throw THEN
    fam LAY-FIND IF drop E-TFAM-DUP throw THEN drop   \ drop the id from FIND's (id-or-0 flag)
    LAY-ENSURE
@@ -537,7 +537,7 @@ END-STRUCTURE
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
 create TF-RBF-BOOT   TF-RBF-CAP-INIT TF-RBF-REC * allot
 variable TF-RBF-P    TF-RBF-BOOT TF-RBF-P !
-: TF-RBF-BASE ( -- ptr ) TF-RBF-P @ ;
+: TF-RBF-BASE ( -- ptr a ) TF-RBF-P @ ;
 variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 
 : TF-RBF-GROW ( -- )
@@ -547,7 +547,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 : TF-RBF-ENSURE ( -- )
    TF-RBF-DEPTH @ TF-RBF-CAP-V @ < IF exit THEN
    TF-RBF-GROW ;
-: TF-RBF-CUR ( -- ptr ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
+: TF-RBF-CUR ( -- ptr a ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
 
 : TFAM-ROLLBACK-SAVE ( -- )
    TF-RBF-ENSURE
@@ -621,7 +621,7 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 \ case in checker.f. Registration runs at prefix load in every
 \ context (preverify parent + runtime child), so both see identical families.
 \ ---------------------------------------------------------------------------
-: TFAM-REG-CELL ( name-a name-u arity -- )   \ public global TK-CELL family
+: TFAM-REG-CELL ( ptr u8 n n -- )   \ public global TK-CELL family
    {: na:ptr nu:n ar:n :}
    s" " CHECKER-PACKAGE-PUBLIC na nu ar TK-CELL TFAM-DECL drop ;
 
@@ -693,7 +693,7 @@ variable TFQ-COLON
    u TFQ-COLON @ - 1 - TFQ-TU !
    RES-TRUE ;
 
-: TFAM-QUAL-RESOLVE ( pkg-a pkg-u -- id true | false ) {: pa:ptr pu:n :}
+: TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}
    TFQ-TA @ TFQ-TU @ TF-CANON? 0= IF 0 RES-FALSE EXIT THEN
    TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -701,13 +701,22 @@ variable TFQ-COLON
    TFQ-BUF TFQ-U @ pa pu CORE-STR= IF id RES-TRUE EXIT THEN   \ own private rows
    0 RES-FALSE ;
 
-: TFAM-SIG-RESOLVE ( pkg-a pkg-u name-a name-u -- id true | false )
+\ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
+\ quotation that cannot read locals, so buffer the (pkg,name) args and the
+\ (id,flag) result through cells and run the resolve as a `( -- )` quotation.
+variable TFSR-PA   variable TFSR-PU   variable TFSR-NA   variable TFSR-NU
+variable TFSR-ID   variable TFSR-FLAG
+: TFSR-RUN ( -- )
+   TFSR-PA @ TFSR-PU @ TFSR-NA @ TFSR-NU @ TFAM-RESOLVE
+   TFSR-FLAG !  TFSR-ID ! ;
+
+: TFAM-SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    na nu TFQ-SPLIT? IF pa pu TFAM-QUAL-RESOLVE EXIT THEN
-   pa pu na nu ['] TFAM-RESOLVE catch {: rc:n :}
-   rc 0= IF EXIT THEN                         \ ( id flag ) from the resolver
-   2drop 2drop                                \ catch reset the pre-call depth
+   pa TFSR-PA !  pu TFSR-PU !  na TFSR-NA !  nu TFSR-NU !
+   [: TFSR-RUN ;] catch {: rc:n :}
+   rc 0= IF TFSR-ID @ TFSR-FLAG @ EXIT THEN   \ ( id flag ) from the resolver
    rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
    rc throw ;
 
