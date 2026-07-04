@@ -153,12 +153,15 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
       endof
       T-ATOM of r ATOM-REND endof
       T-PARAM of
-        r PARAM-START
-        0 BEGIN dup r PARAM>ARGC < WHILE
-          dup 0 > IF 44 EMIT1 THEN
-          r over PARAM>ARG d 0 RECURSE
-          1 +
-        REPEAT drop 62 EMIT1
+        d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
+           r d cells QPATH + !
+           r PARAM-START
+           0 BEGIN dup r PARAM>ARGC < WHILE
+             dup 0 > IF 44 EMIT1 THEN
+             r over PARAM>ARG d 1+ 0 RECURSE
+             1 +
+           REPEAT drop 62 EMIT1
+        ELSE 63 EMIT1 THEN
       endof
       63 EMIT1
    endcase ;

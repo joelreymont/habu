@@ -833,11 +833,27 @@ s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
 s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
-\ NOTE: a regression that REFERENCES a stored nested-param sig (e.g.
-\ `... ( acc<t,tile<t,b,m>,b> -- ... ) COK-TFAM-NEST`) currently crashes the
-\ checker under accumulated suite state — a latent nested-param replay bug that
-\ this dot enables but no existing code triggers. Tracked by
-\ dot habu-tfam-nested-param-09fa2004; re-add the reference regression once fixed.
+\ Referencing a STORED nested-param sig used to crash the checker (native stack
+\ overflow) once enough arena state accumulated: LIN-TYPE-COUNT descended a bound
+\ VAR through FIELD-INNER without resolving it, reading an unrelated param-arena
+\ slot that pointed back at the var. Fixed by resolving before the field descent
+\ (src/core/checker.f LIN-TYPE-COUNT); dot habu-tfam-nested-param-09fa2004.
+s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
+s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
+\ Family-specific arity diagnostics (PLAN item 4 acceptance): assert the verdict
+\ AND the diagnostic KIND (SGBAD-ARITY?), not merely rejection, so a regression
+\ swapping the arity reason for a generic syntax error is caught. These read a
+\ checker-internal predicate, so they run at top level (not inside a `:` body).
+s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+\ `ptr` duality: proper `ptr<space,elem>` resolves as a family (incl. nested in
+\ another family's args); over-arity rejects via the arity diagnostic; a bare
+\ `ptr` with no element rejects via the bare-ptr diagnostic; a bare `ptr` inside
+\ another family's args also rejects.
+s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
+s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-BAREPTR? -1 T=
+s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )

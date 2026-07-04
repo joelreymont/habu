@@ -507,7 +507,8 @@ variable LAY-N   0 LAY-N !
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
    0 TFAM-N !   0 TF-STR-U !   0 TF-PK-N !
-   0 SUMV-N !   0 PF-N !   0 LAY-N ! ;
+   0 SUMV-N !   0 PF-N !   0 LAY-N !
+   -1 FIELD-FAM ! ;   \ field family is de-registered until re-declared, so its id can't dangle
 TFAM-RESET
 
 \ ---------------------------------------------------------------------------

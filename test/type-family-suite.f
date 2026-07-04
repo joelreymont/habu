@@ -40,6 +40,33 @@ variable NA     variable R1     variable L0
 TFAM-RESET
 SCHEMA-RESET
 
+\ F4 (dot habu-tfam-nested-param-09fa2004): TFAM-RESET must de-register the
+\ internal `field` family, else its reserved id (normally 15 — the 16th family)
+\ dangles and a later family that lands on id 15 is misclassified as a record
+\ field. After reset FIELD-FAM is -1; declaring 16 fresh families puts the 16th
+\ on id 15, yet field stays de-registered, so no misclassification is possible.
+FIELD-FAM @ -1 T=
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a0" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a1" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a2" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a3" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a4" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a5" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a6" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a7" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a8" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" a9" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" aa" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ab" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ac" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ad" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" ae" 1 TK-CELL TFAM-DECL drop
+s" pkgf4" CHECKER-PACKAGE-PUBLIC s" af" 1 TK-CELL TFAM-DECL VOK !
+VOK @ 15 T=              \ the 16th fresh family occupies the field family's normal id
+FIELD-FAM @ -1 T=        \ yet field stays de-registered — id 15 is not a field param
+TFAM-RESET               \ restore the clean slate for the rest of the suite
+SCHEMA-RESET
+
 \ ---------------------------------------------------------------------------
 \ 1. add / find / arity / kind / visibility / name / package readback.
 \ ---------------------------------------------------------------------------

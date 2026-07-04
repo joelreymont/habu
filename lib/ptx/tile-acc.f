@@ -8,9 +8,9 @@
 \ a register `tile<t,b,m>` and a `span<...>`. The distinction is the soundness payload:
 \ because STORE wants a `tile`, an `acc` CANNOT be stored to global directly - the program
 \ must finalize it through ACC-TILE first. So "accidentally storing an unfinished
-\ accumulator" is a TYPE ERROR caught before runtime (proven by tile-acc-neg-test.f). Adding
-\ `acc` as a recognised constructor is a one-line, purely-additive change to the checker
-\ (src/core/checker.f PARAM-CTOR?) - shipped via a validated fixpoint rebuild.
+\ accumulator" is a TYPE ERROR caught before runtime (proven by tile-acc-neg-test.f). `acc`
+\ is a recognised type family via the checker's TFAM registry (src/core/type-family.f,
+\ `s" acc" 3 TFAM-REG-CELL`) - a purely-additive row shipped via a validated fixpoint rebuild.
 \
 \   ACC-ZERO  gridctx -> acc            : a fresh zeroed register accumulator.
 \   ACC-FMA   acc tile tile -> acc      : fused multiply-add of two operand tiles into acc

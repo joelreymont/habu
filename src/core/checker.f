@@ -375,7 +375,7 @@ UK-EXACT UNIFY-KIND !
 : PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
 : PARAM-ARG-OR-DUMMY ( n n -- n ) {: p idx :}
    idx p PARAM>ARGC < IF p idx PARAM>ARG ELSE 1 MK-CON THEN ;
-: PARAM-ARGC-FULL? ( base -- bool )   \ this param already holds PARAM-MAX-ARGS args (SoA row cap)
+: PARAM-ARGC-FULL? ( n -- bool )   \ base scratch mark; param already holds PARAM-MAX-ARGS args (SoA row cap)
    PARAM-SCR-N @ swap - PARAM-MAX-ARGS >= ;
 : PARAM-SCR+ ( n -- )
    PARAM-SCR-ENSURE
@@ -386,6 +386,8 @@ UK-EXACT UNIFY-KIND !
 \ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
 \ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
 : MK-PARAM {: base:n a:ptr u:n fam:n :}
+   PARAM-SCR-N @ base - PARAM-MAX-ARGS > IF
+      s" checker: param arity exceeds SoA row width" 76 die THEN
    PARAMN @ 1 + PARAM-ENSURE
    a PARAMN @ PARAMA-FIELD !
    u PARAMN @ cells PARAMU + !
@@ -531,6 +533,7 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
    USP @ cells UWL-STR + @ CUR-STRICT ! ;
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
+   FIELD-FAM @ 0 < IF RES-FALSE EXIT THEN   \ field family not registered (e.g. after TFAM-RESET)
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>FAM FIELD-FAM @ = ;   \ identity by reserved family-id, not spelling
 
@@ -846,33 +849,52 @@ CT-INIT
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
    2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 
+\ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
+\ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
+\ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
+\ real walk never nears TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
+\ descends without bound; the guard trips far below the native stack limit and
+\ dies with a named diagnostic instead of overflowing the stack (SIGSEGV). A
+\ call-count budget cannot help: the native stack blows at ~80k frames, so the
+\ bound must track DEPTH, not total steps. TWALK-DEEPER/TWALK-SHALLOWER bracket
+\ each RECURSE (charge on descent, release when the child returns — exit-safe
+\ however the child returns); each public wrapper resets depth before descending.
+$2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native stack limit
+variable TWALK-D
+: TWALK-RESET ( -- ) 0 TWALK-D ! ;
+: TWALK-DEEPER ( -- )
+   TWALK-D @ 1 + dup TWALK-D !
+   TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
+: TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
+
 \ TY-OCC? ( n n -- bool ) : does tyvar v occur in type/row t, descending
 \ through quotation effect rows and parameter arguments.
-: TY-OCC? ( n n -- bool ) {: v:n t:n :}
+: TY-OCC?* ( n n -- bool ) {: v:n t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE v swap RECURSE IF drop RES-TRUE EXIT THEN
+         dup P>TYPE v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT drop RES-FALSE EXIT
    THEN drop
    t T-RES {: x:n :}
    x TAG T-VAR = IF x PAY v = EXIT THEN
-   x TAG T-PTR = IF v x PTR>INNER RECURSE EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      v x Q>DIN RECURSE IF RES-TRUE EXIT THEN
-      v x Q>DOUT RECURSE IF RES-TRUE EXIT THEN
-      v x Q>RIN RECURSE IF RES-TRUE EXIT THEN
-      v x Q>ROUT RECURSE
+      v x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
-      v x 0 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 1 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 2 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 3 PARAM-ARG-OR-DUMMY RECURSE
+      v x 0 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x 1 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x 2 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x 3 PARAM-ARG-OR-DUMMY TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    RES-FALSE ;
+: TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -1036,17 +1058,24 @@ variable LTNT-I
       LTNT-I @ 1 + LTNT-I !
    REPEAT ;
 
-: LIN-TYPE-COUNT ( n -- n ) {: t:n :}
+\ FIELD-INNER (and every PARAM>ARG accessor) requires a RESOLVED param term:
+\ it indexes the param arena by the term's payload. `t` here is a stack type
+\ that is usually a bound var whose payload is a VAR id, not a param index —
+\ so the inner descent must go through `t T-RES`, matching the FIELD-PARAM?
+\ guard just before it. Descending on the raw var reads an unrelated arena slot
+\ and, under accumulated arena state, can point back at `t` (infinite recursion).
+: LIN-TYPE-COUNT* ( n -- n ) {: t:n :}
    t T-RES TAG case
       T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
       T-PTR of 0 endof
       T-QUOT of 0 endof
       T-ATOM of 0 endof
       T-PARAM of
-         t FIELD-PARAM? IF t FIELD-INNER RECURSE ELSE 0 THEN
+         t FIELD-PARAM? IF t T-RES FIELD-INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE 0 THEN
       endof
       0 swap
    endcase ;
+: LIN-TYPE-COUNT ( n -- n ) TWALK-RESET LIN-TYPE-COUNT* ;
 
 : LIN-ROW-COUNT ( n -- n ) {: row:n :}
    0 LINC !
@@ -2778,7 +2807,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
-: E-COPY ( n -- n ) {: x:n :}
+: E-COPY* ( n -- n ) {: x:n :}
    x 0= if 0 exit then
    x E-RES TAG case
       T-CON of
@@ -2798,21 +2827,21 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       endof
       T-PTR of
          EN-PTR E-NODE-NEW E-OFF >r
-         x E-RES PTR>INNER RECURSE r@ E-PTR EN.A !
+         x E-RES PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
          r>
       endof
       S-PUSH of
          EN-PUSH E-NODE-NEW E-OFF >r
-         x E-RES P>TYPE RECURSE r@ E-PTR EN.A !
-         x E-RES P>REST RECURSE r@ E-PTR EN.B !
+         x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
          r>
       endof
       T-QUOT of
          EN-QUOT E-NODE-NEW E-OFF >r
-         x E-RES Q>DIN RECURSE r@ E-PTR EN.A !
-         x E-RES Q>DOUT RECURSE r@ E-PTR EN.B !
-         x E-RES Q>RIN RECURSE r@ E-PTR EN.C !
-         x E-RES Q>ROUT RECURSE r@ E-PTR EN.D !
+         x E-RES Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
+         x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
          x E-RES Q>XHAS r@ E-PTR EN.E !
          x E-RES Q>XDEAD r@ E-PTR EN.F !
          x E-RES Q>XDOUT r@ E-PTR EN.G !
@@ -2830,14 +2859,15 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
          x E-RES PARAM>ARGC r@ E-PTR EN.C !
          x E-RES PARAM>FAM r@ E-PTR EN.H !          \ resolved family-id (identity)
-         x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
-         x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
-         x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
-         x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG RECURSE r@ E-PTR EN.G ! then
+         x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D ! then
+         x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.E ! then
+         x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.F ! then
+         x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.G ! then
          r>
       endof
       0 swap
    endcase ;
+: E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
 : USIG-NEXT ( ptr a -- ptr a )
    ER.NEXT @ E-PTR ;
