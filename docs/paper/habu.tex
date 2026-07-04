@@ -395,14 +395,20 @@ GFLOP/s & $512^3$ & $1024^3$ & $2048^3$\\
 \midrule
 generated naive tile (1 elem/thread) & 55.0 & 55.2 & 54.6\\
 generated blocked $64{\times}64$ tile & 356.6 & 375.0 & 380.5\\
+\quad + $bk{=}32$, vectorized shared loads & 378.6 & 397.2 & 402.5\\
+\quad + \code{cp.async} double-buffered staging & 416.7 & 436.8 & 441.8\\
 Triton, autotuned \code{tl.dot} & 1636.1 & 1755.4 & 1890.5\\
 \bottomrule
 \end{tabular}\end{center}
 
 The blocked schedule (shared-memory staged tiles, $4{\times}4$ register
-micro-tiles) delivers $6.5$--$7.0\times$ over the naive tile and scales
-with size; both generated kernels pass the same device golden that
-verifies every region. The remaining $\approx\!4.6$--$5.0\times$ to
+micro-tiles) delivers $6.5$--$7.0\times$ over the naive tile; widening
+the $K$-tile with vectorized shared loads adds ${\sim}6\%$, and
+asynchronous double-buffered staging another ${\sim}10\%$ (${+}16\%$
+cumulative)---every variant passing the same device golden unchanged,
+which is the harness doing its job: schedule work is free to iterate
+because correctness is re-proven per step. The remaining
+$\approx\!3.9$--$4.3\times$ to
 Triton is \emph{arithmetic, not scheduling}: its \code{tl.dot} executes
 TF32 tensor-core instructions (measured relative error ${\sim}8{\times}
 10^{-4}$ against an f32 reference, versus ${\sim}10^{-6}$ for our f32 FMA
