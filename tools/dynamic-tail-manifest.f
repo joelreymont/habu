@@ -17,16 +17,18 @@ package DTM
 
 public
 
-2 constant COUNT
+3 constant COUNT
 
 : PATH$ ( n -- ptr u8 n ) {: i:n :}
    i 0 = if s" test/run-worker.f" exit then
    i 1 = if s" src/habu/driver-io.f" exit then
+   i 2 = if s" tools/source-discovery.f" exit then
    E-TBL-BOUNDS throw ;
 
 : REASON$ ( n -- ptr u8 n ) {: i:n :}
    i 0 = if s" resident worker dispatch: TRW-RUN selects the phase file at run time (path pathu included)" exit then
    i 1 = if s" DRV-RETIRE-RELOADS retires the loader words by name so built driver images cannot re-enter source composition" exit then
+   i 2 = if s" the discovery walker itself drives loader words with scanned path strings in record-only mode (SD-CALL-LOADER)" exit then
    E-TBL-BOUNDS throw ;
 
 : KNOWN? ( ptr u8 n -- bool ) {: a:ptr u:n :}

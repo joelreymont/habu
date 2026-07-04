@@ -52,6 +52,7 @@ variable SD-BUF-A
 variable SD-U
 variable SD-I
 variable SD-PATH-U
+variable SD-PATH-OVF
 variable SD-PEND
 variable SD-LENIENT
 variable SD-EMIT-LEN
@@ -116,8 +117,10 @@ variable SD-EMIT-LEN
    then
    0 ;
 
+\ An oversized string literal is fine as data (the runtime loader path cap is
+\ INCLUDE-PATH-CAP anyway); it only rejects when it reaches a loader word.
 : SD-PATH-APPEND ( u8 -- ) {: c:n :}
-   SD-PATH-U @ SD-PATH-CAP >= if E-DISC-CAPACITY throw then
+   SD-PATH-U @ SD-PATH-CAP >= if 1 SD-PATH-OVF ! exit then
    c SD-PATH-U @ SD-PATH-AT c!
    SD-PATH-U @ 1+ SD-PATH-U ! ;
 
@@ -135,6 +138,7 @@ variable SD-EMIT-LEN
 : SD-SCAN-STRING ( bool -- ) {: escaped:bool :}
    SD-I @ SD-AT? if SD-I @ SD-BYTE SD-SP = if SD-I @ 1+ SD-I ! then then
    0 SD-PATH-U !
+   0 SD-PATH-OVF !
    begin SD-I @ SD-AT? while
       SD-I @ SD-BYTE SD-BACKSLASH = escaped and if
          SD-SCAN-ESC
@@ -145,7 +149,6 @@ variable SD-EMIT-LEN
    E-DISC-UNTERM throw ;
 
 : SD-COPY-PATH ( n n -- ) {: off:n len:n :}
-   len SD-PATH-CAP > if E-DISC-CAPACITY throw then
    off SD-BUF + 0 SD-PATH-AT len BYTE-COPY
    len SD-PATH-U ! ;
 
@@ -175,6 +178,7 @@ variable SD-EMIT-LEN
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
    pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
    pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
+   SD-PATH-OVF @ 0= 0= if E-DISC-CAPACITY SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
 
 : SD-CHECK-NAME ( -- )
@@ -191,6 +195,7 @@ variable SD-EMIT-LEN
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    SD-RAW {: poff:n plen:n :}
    plen 0= if E-DISC-DYNAMIC SD-REJECT exit then
+   plen SD-PATH-CAP > if E-DISC-CAPACITY SD-REJECT exit then
    poff plen SD-COPY-PATH
    toff tlen kind SD-CALL-LOADER ;
 

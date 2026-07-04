@@ -173,6 +173,27 @@ variable SDT-SRC-U
    SDT-DISCOVER
    EVENT-COUNT 0 T= ;
 
+\ --- oversized string literals: data tolerated, loader path rejected ---------
+
+: SDT-X16$ ( -- ptr u8 n )
+   s" xxxxxxxxxxxxxxxx" ;
+
+\ writes name = `s" <1280 x bytes>` + tail (tail supplies the closing quote)
+: SDT-WRITE-BIG ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n tail:ptr tailu:n :}
+   SDT-ROOT$ name nameu SDT-ENTRY JOIN-PATH SDT-ENTRY-U !
+   SDT-ENTRY$ S\" s\" " WRITE-ALL
+   $50 0 ?do SDT-ENTRY$ SDT-X16$ APPEND-FILE loop
+   SDT-ENTRY$ tail tailu APPEND-FILE ;
+
+: SDT-TEST-BIG-STRING-DATA ( -- )
+   s" big-ok.f" S\" \" 2drop\n" SDT-WRITE-BIG
+   SDT-DISCOVER
+   EVENT-COUNT 0 T= ;
+
+: SDT-TEST-BIG-STRING-LOADER ( -- )
+   s" big-bad.f" S\" \" required\n" SDT-WRITE-BIG
+   [: SDT-RUN-ENTRY ;] E-DISC-CAPACITY TTHROWSQ ;
+
 \ --- dynamic-tail manifest: seeded repo files tolerated, path-keyed ----------
 
 : SDT-TEST-MANIFEST-WORKER ( -- )
@@ -210,6 +231,8 @@ variable SDT-SRC-U
    SDT-TEST-RETIRE
    SDT-TEST-RETIRE-DYNAMIC
    SDT-TEST-RETIRE-OTHER
+   SDT-TEST-BIG-STRING-DATA
+   SDT-TEST-BIG-STRING-LOADER
    SDT-TEST-MANIFEST-WORKER
    SDT-TEST-MANIFEST-DRIVER
    SDT-TEST-EMIT-CAP
