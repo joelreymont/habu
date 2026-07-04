@@ -486,6 +486,16 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Self-certification guard: the checker's own source and the pre-compile source
+\ verifier must certify clean via the same VERIFY:SOURCE-BUF path the fixpoint
+\ install uses, so any future de-typing of checker.f/verify-source.f turns this
+\ suite red immediately. The broader whole-stage2/stdin RC-0 assertion is
+\ deferred to dot habu-certify-clean-the-209e16fe (the TFAM registry prefix
+\ files must certify clean first).
+: BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
+   s" checker-self" s" src/core/checker.f" BF-CERTIFY-RC 0 T=
+   s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T= ;
+
 \ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
 \ stage-input path (hb-stage reads that name), so BF-CERTIFY-STAGE2 and
 \ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
@@ -527,6 +537,7 @@ create BFT-CHECK-OFF-LINE
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
+   s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
