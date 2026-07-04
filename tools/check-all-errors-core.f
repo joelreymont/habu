@@ -384,6 +384,23 @@ variable CA-JSON
    k CA-TOK-END-BYTE
    CA-ADD-SUPPORT ;
 
+: CA-ADD-SUPPORT-TOKEN ( n -- ) {: k:n :}
+   k LB@ k CA-TOK-END-BYTE CA-ADD-SUPPORT ;
+
+: CA-VREC-END ( n -- n ) {: k:n :}
+   k 1+ CA-J !
+   begin CA-J @ L# @ < while
+      CA-J @ s" END-VALUE-RECORD" CA-TOK-CI= IF CA-J @ exit THEN
+      CA-J @ 1+ CA-J !
+   repeat
+   L# @ ;
+
+: CA-ADD-SUPPORT-VREC ( n -- ) {: k:n :}
+   k CA-VREC-END {: endk:n :}
+   endk L# @ >= IF exit THEN
+   k LB@ endk CA-TOK-END-BYTE CA-ADD-SUPPORT
+   endk CA-I ! ;
+
 : CA-ORIGIN! ( n n -- ) {: src:n dst:n :}
    src 1+ CA-TOK-WORD? IF
       src 1+ LL@ dst CA-LINE!
@@ -435,7 +452,12 @@ variable CA-JSON
    k s" create" CA-TOK-CI= IF k CA-COLLECT-CREATE exit THEN
    k s" variable" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
    k s" constant" CA-TOK-CI= IF k CA-ADD-SUPPORT-CONSTANT exit THEN
-   k s" TRUST" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUST exit THEN ;
+   k s" TRUST" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRUST exit THEN
+   k s" deftype" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
+   k s" deflinear" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
+   k s" value-record" CA-TOK-CI= IF k CA-ADD-SUPPORT-VREC exit THEN
+   k s" immediate" CA-TOK-CI= IF k CA-ADD-SUPPORT-TOKEN exit THEN
+   k s" EXPORT" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN ;
 
 : CA-COLLECT-ONE ( -- )
    CA-I @ s" :" CA-TOK= IF

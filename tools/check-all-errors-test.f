@@ -526,10 +526,72 @@ create CAE-LF-BYTE 10 c,
    s" large word" T-LABEL
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
+\ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
+\ verify-source's full re-drive replays deftype/deflinear/value-record before
+\ later definitions; per-def all-errors redrive must collect the same support
+\ or a good definition whose signature references the declared type is spuriously
+\ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
+\ the bad def forces per-def mode; before the fix the good def is ALSO reported.
+
+: CAE-DEFTYPE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" deftype cae-dt" SB-APPEND CAE-LF
+   s" : CAE-DT-USE ( cae-dt -- cae-dt ) ;" SB-APPEND CAE-LF
+   s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-DEFLINEAR-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" deflinear cae-lin" SB-APPEND CAE-LF
+   s" : CAE-LIN-USE ( cae-lin -- cae-lin ) ;" SB-APPEND CAE-LF
+   s" : CAE-LIN-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-VREC-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-vr x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" : CAE-VR-USE ( cae-vr -- cae-vr ) ;" SB-APPEND CAE-LF
+   s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-WORD-JSON$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ a u SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CHECK-SUPPORT-PARITY ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n good:ptr goodu:n bad:ptr badu:n :}
+   src srcu CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru bad badu CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru good goodu CAE-WORD-JSON$ CONTAINS? TFALSE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-DEFTYPE-SUPPORT ( -- )
+   s" deftype-support" CAE-CASE!
+   CAE-DEFTYPE-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-DEFLINEAR-SUPPORT ( -- )
+   s" deflinear-support" CAE-CASE!
+   CAE-DEFLINEAR-SOURCE$ s" cae-lin-use" s" cae-lin-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-VREC-SUPPORT ( -- )
+   s" value-record-support" CAE-CASE!
+   CAE-VREC-SOURCE$ s" cae-vr-use" s" cae-vr-bad" CAE-CHECK-SUPPORT-PARITY ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
+   s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
+   s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
    s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN
