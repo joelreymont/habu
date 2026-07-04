@@ -1369,6 +1369,31 @@ lesson — keep the specific word/code/path, cut the prose.
   templates; `GRID-CTX`/`ROW-CTX` mint fresh masks and the engine gate proves
   both direct and recorded-signature reject paths.
 
+- **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not
+  the raw f64 (proven 2026-07-04, `maki/lower-golden.f`).** The host executor runs
+  f64, the device kernel f32; comparing device bits to the raw host f64 folds the
+  dtype step into the error budget and blows the CAD-PLAN §11 tol (atol 1e-6, rtol
+  1e-5). Round the host elem onto the f32 grid first (`F64>F32 F32>F64`), then
+  `|dev - host_f32| <= atol + rtol*|host_f32|` measures REAL kernel error (f32
+  rounding along the chain + `ex2.approx`), not representation. First real
+  device-golden of the CAD plan: a GELU→RELU region matched to 6 decimals on Orin.
+- **Generated multi-input elementwise kernels reset the CG counters from the input
+  count, not `CG-RESET` (`maki/lower-ew.f`).** `CG-RESET` presets the SAXPY ABI
+  (2 spans, `%rd3` free). A region kernel has K input spans + 1 output span, so
+  after the param loads set `CG-NRD = K+2`, `CG-NF = 1` (no uniform param), `CG-NR
+  = 2` (`%r1` = n, the bound `EMIT-GRID-CTX` branches on). Pass any span reg to
+  `EMIT-GRID-CTX` (it ignores the base; the index is from `%tid`), share the one
+  returned offset across every `EMIT-LOAD`/`EMIT-STORE`.
+- **In-process PTX text tests need a `PTX-L` sink hook, not a subprocess
+  (`src/arch/ptx/emit.f`).** The cg emitters flush each line through `PTX-L`, so a
+  host test can't inspect their output without capture. A one-variable redirect
+  (`PTX-CAPTURE-ON`/`$`/`-OFF`) routes lines into a buffer (fail closed on
+  overflow), default stdout unchanged — lets `maki/lower-ew-test.f` assert
+  "exactly one `.version`, one entry, `ex2.approx`/`max.f32` present" off-device
+  with no `bin/hb` spawn. `.f` emit-driver signatures must use checker type tokens
+  (`n`/`ptr`/`bool`), never descriptive names (`node`/`rid`) — those parse as
+  unknown types.
+
 ## Linux AOT / ELF
 
 - **Linux AOT gates parse ELF structure:** inspect ELF64 program headers and
