@@ -58,7 +58,8 @@ package MAKI
 private
 
 64    constant GA-SCAP         \ input slots (mirrors model-ir MIR-IN-CAP)
-$2000 constant GA-ARENA-CELLS   \ synthetic / loaded input-buffer arena (float cells)
+$4000 constant GA-ARENA-CELLS   \ synthetic / loaded input-buffer arena (float cells); sized to the
+                                \ launch caps (lower-launch LLA-MAX-IN * LLA-NCAP = 4 x 4096 elems)
 $1000 constant GA-EXP-CELLS     \ loaded expected-output buffer (float cells)
 $8000 constant GA-TEXT-CAP      \ artifact text build / read buffer (bytes)
 96    constant GA-FILE-CAP      \ "<NAME>.artifact" filename buffer

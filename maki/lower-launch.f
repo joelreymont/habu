@@ -291,10 +291,14 @@ private
    rows cols LLA-BLOCK PTX-ROW-LAUNCH-CHECK
    cols LLA-NVAR !
    rows ;
+\ grid tiles the OUTPUT by the emitted kernel's tile edge (LMM-OUT-TILE@ = 64 register-blocked
+\ / 16 naive); the block shape stays 16x16 = 256 threads for both (LLA-MM-TILE). LLA-STAGE-MM
+\ (LMM-ANALYZE) fixed the blocked/naive choice before this runs, so the divisor matches the emit.
 : LLA-GRID-MM ( -- n n )
    LLA-PM @ PTX-LAUNCH-POSITIVE  LLA-PN @ PTX-LAUNCH-POSITIVE  LLA-PK @ PTX-LAUNCH-POSITIVE
-   LLA-PN @ LLA-MM-TILE + 1 - LLA-MM-TILE /                 \ ceil(N/16)
-   LLA-PM @ LLA-MM-TILE + 1 - LLA-MM-TILE / ;               \ ceil(M/16)
+   LMM-OUT-TILE@ {: tile:n :}                               \ 64 (register-blocked) or 16 (naive)
+   LLA-PN @ tile + 1 - tile /                               \ ceil(N/tile)
+   LLA-PM @ tile + 1 - tile / ;                             \ ceil(M/tile)
 : LLA-GRID-MV ( -- n )
    LLA-ELEMS @ {: n:n :}
    n PTX-LAUNCH-POSITIVE  LLA-BLOCK PTX-BLOCK-CHECK

@@ -13,14 +13,28 @@
 \           (fma.rn.f32). LINEAR folds a 1xN bias add after the K-loop; the epilogue EW
 \           chain (relu/gelu/silu) then applies to the accumulator BEFORE the store.
 \
-\ v1 kernel = a straightforward CORRECTNESS-FIRST naive tile (one element/thread, bounds
-\ masked) so any small M/N/K matches the host reference; it reuses the param/thread/K-loop
-\ idioms of lib/ptx/cg-matmul.f (the register-blocked 64x64 perf kernel) but NOT its body,
-\ because that kernel assumes M/N/K are padded 64/16 multiples and cannot run the tiny
-\ golden shapes. The schedule default (maki/schedule.f GEMM-DEFAULT = gemm-tf32-v1
-\ 64x64x32/4warps/1stage) names the FAMILY the autotuner (cad-6, not built here) will
-\ search; v1 lowering hardcodes the single 16x16 correctness tile. Register blocking /
-\ shared staging / bigger tiles are the perf path (matmul-cg.f, dot habu-tiled-gemm-codegen).
+\ TWO kernels, dispatched on shape (LMM-BLOCKED?):
+\   BLOCKED (perf) - a register-blocked 64x64 SGEMM when M,N are multiples of 64 and K a
+\     multiple of 16. One 64x64 output tile per block; block = 16x16 = 256 threads; each
+\     thread owns a 4x4 register accumulator micro-tile (%f10..%f25). K swept in BK=16
+\     tiles: the 256 threads cooperatively stage As[64][16]+Bs[16][64] to .shared, bar.sync,
+\     then each thread does its 4x4 outer-product accumulate (register blocking is the win -
+\     16 FMAs reuse 8 shared loads). REUSES the cg-matmul.f vocabulary verbatim
+\     (MM-THREAD-SETUP / MM-ACC-ZERO-EMIT / MM-SMEM-BASES / MM-STAGE / MM-KSTEP); the ONLY
+\     re-expression is the fused epilogue write (LMM-BLK-WRITE), which folds bias[col] and the
+\     activation chain into each of the 16 micro-tile stores under lower-mm's fusion ABI (out
+\     at %rd<OUT-BASE>, bias at %rd3), where cg-matmul's bare MM-WRITE stored a single C.
+\   NAIVE (fallback) - the correctness-first one-element-per-thread 16x16 tile for any other
+\     (small / unpadded) shape, bounds-masked so tiny golden shapes match the host reference.
+\ The block SHAPE is 16x16 = 256 threads for BOTH; only the OUTPUT-tile granularity differs
+\ (LMM-OUT-TILE@ = 64 blocked / 16 naive), which is the launch-grid divisor lower-launch reads.
+\
+\ Schedule-family mapping (maki/schedule.f gemm-tf32-v1 = bm{64,128} bn{64,128} bk{32,64}
+\ warps{4,8} stages{1,2}): the blocked tile is bm=64 bn=64 warps=8 stages=1 - a candidate of
+\ that family (GEMM-DECODE index 2 on those four axes). bk=16 is BELOW the family floor of 32
+\ (reused from the device-proven cg-matmul.f kernel); widening the staging to the family's
+\ bk=32/64 and cp.async multi-stage + MMA are the next 8.1 steps that the cad-6 autotuner will
+\ search. This step lands the FIRST register-blocked GEMM + measured Triton baseline.
 \
 \ Emit-mode discipline mirrors lower-red.f: the fixed GEMM prologue/K-loop/store use
 \ explicit registers (%f1 = accumulator, %r/%rd address math); the epilogue reuses the
@@ -51,6 +65,7 @@ require lib/ptx/header.f
 require lib/ptx/cg.f
 require lib/ptx/cg-collective.f
 require lib/ptx/cg-activation.f
+require lib/ptx/cg-matmul.f
 require maki/op-kind.f
 require maki/op-registry.f
 require maki/model-ir.f
@@ -82,6 +97,7 @@ variable LMM-MMNODE                           \ the single contraction node (mat
 variable LMM-OUTNODE                          \ the single materialized region-output node
 variable LMM-RID                              \ region id being lowered
 variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
+variable LMM-BLK                               \ 1 = shape fits the register-blocked 64x64 tile
 
 \ ---- region membership + class ---------------------------------------------
 : LMM-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
@@ -181,6 +197,14 @@ variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
    LMM-M @ LMM-K @ * LMM-ARENA > if E-LMM-DIMS throw then     \ input A(MxK)
    LMM-K @ LMM-N @ * LMM-ARENA > if E-LMM-DIMS throw then ;   \ input B(KxN)
 
+\ shape fits the register-blocked tile iff M,N are multiples of the 64x64 output tile and K a
+\ multiple of the BK=16 K-step (cg-matmul.f MM-BM/MM-BN/MM-BK); otherwise the naive tile runs.
+: LMM-SET-BLK ( -- )
+   LMM-M @ MM-BM mod
+   LMM-N @ MM-BN mod or
+   LMM-K @ MM-BK mod or                            \ 0 iff all three are exact multiples
+   0= if 1 else 0 then LMM-BLK ! ;
+
 public
 : LMM-ANALYZE ( n -- ) {: rid:n :}
    rid FP-REGION-MEMBERS drop                    \ validates FP-BUILD ran + rid range
@@ -193,7 +217,8 @@ public
    rid LMM-FIND-OUT
    LMM-SET-DIMS
    LMM-CHECK-SHAPES
-   LMM-CHECK-DIMS ;
+   LMM-CHECK-DIMS
+   LMM-SET-BLK ;
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LMM-NIN@ ( -- n )       LMM-NIN @ ;
@@ -207,6 +232,8 @@ public
 : LMM-K@ ( -- n )         LMM-K @ ;
 : LMM-ELEMS ( -- n )      LMM-M @ LMM-N @ * ;
 : LMM-RID@ ( -- n )       LMM-RID @ ;
+: LMM-BLOCKED? ( -- bool ) LMM-BLK @ 0= 0= ;    \ register-blocked tile chosen for this shape?
+: LMM-OUT-TILE@ ( -- n )  LMM-BLK @ if MM-BM else LMM-TILE then ;  \ launch-grid output-tile edge
 
 private
 
@@ -329,14 +356,71 @@ private
    LMM-EPI-CHAIN
    LMM-STORE ;
 
+\ ---- blocked (register-tiled 64x64) body: reuse the cg-matmul.f staging/compute vocabulary --
+\ MM-THREAD-SETUP (r4..r11), MM-ACC-ZERO-EMIT (%f10..%f25 = 0), MM-SMEM-BASES (r12/r13), and
+\ MM-STAGE / MM-KSTEP (%f26..%f33 loads + 4x4 FMAs) are emitted verbatim; A=%rd1, B=%rd2 match
+\ this ABI. Only the K-loop scaffold and the epilogue write are re-expressed for fusion here.
+: LMM-BLK-SHARED ( -- )                            \ .shared As[64][16] + Bs[16][64] (SH symbol)
+   SB-RESET s" .shared .align 4 .b8 SH[" CG-S MM-ASB MM-BSB + SB-U s" ];" CG-S CG-LINE ;
+
+\ MM-K-LOOP body with a ( -- ) effect (cg-matmul's is typed on mmctx/mmacc, which this
+\ non-KERNEL lowering does not thread); the staged As/Bs + 4x4 accumulate are MM-STAGE/MM-KSTEP.
+: LMM-BLK-KLOOP ( -- )
+   s" mov.u32 %r14, 0;" PTX-L  s" $KLOOP:" PTX-L
+   s" setp.ge.u32 %p1, %r14, %r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
+   4 0 ?do  i MM-STAGE  loop
+   s" bar.sync 0;" PTX-L
+   MM-BK 0 ?do  i MM-KSTEP  loop
+   s" bar.sync 0;" PTX-L  s" add.u32 %r14, %r14, 16;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+
+: LMM-BLK-CBASE ( -- )                             \ %r40 = rowBase + ty*4 ; %r41 = colBase + tx*4
+   s" shl.b32 %r40, %r5, 2;" PTX-L  s" add.u32 %r40, %r9, %r40;" PTX-L
+   s" shl.b32 %r41, %r4, 2;" PTX-L  s" add.u32 %r41, %r10, %r41;" PTX-L ;
+
+\ one micro-tile element (tile-row j, tile-col i): acc %f(10+j*4+i) -> fold bias[cCol] (LINEAR)
+\ -> activation chain -> store to out[cRow*N + cCol]. The epilogue reuses LMM-EPI-CHAIN by
+\ pointing the contraction node's register at this element and reading the output node's result.
+: LMM-BLK-ELEM ( n n -- ) {: j:n i:n :}
+   SB-RESET s" add.u32 %r42, %r40, " CG-S j SB-U s" ;" CG-S CG-LINE       \ cRow = cRow0 + j
+   SB-RESET s" add.u32 %r43, %r41, " CG-S i SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
+   s" mad.lo.u32 %r44, %r42, %r2, %r43;" PTX-L                            \ gidx = cRow*N + cCol
+   10 j 4 * + i + {: accf:n :}                                           \ accumulator %f(10+j*4+i)
+   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[cCol]
+      s" mul.wide.u32 %rd10, %r43, 4;" PTX-L
+      s" add.u64 %rd11, %rd3, %rd10;" PTX-L
+      s" ld.global.f32 %f4, [%rd11];" PTX-L
+      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf SB-U s" , %f4;" CG-S CG-LINE
+      5
+   else accf then {: srcf:n :}
+   40 CG-NF !                                                            \ epilogue temps above tile/staging regs
+   srcf LMM-MMNODE @ LMM-NR!
+   LMM-EPI-CHAIN
+   LMM-OUTNODE @ LMM-NR@ {: outf:n :}
+   s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
+   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
+   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
+
+: LMM-BLK-WRITE ( -- )                             \ fused epilogue over the thread's 4x4 micro-tile
+   LMM-BLK-CBASE
+   MM-TM 0 ?do  MM-TM 0 ?do  j i LMM-BLK-ELEM  loop  loop ;
+
+: LMM-BLK-BODY ( -- )
+   MM-THREAD-SETUP
+   MM-ACC-ZERO-EMIT
+   MM-SMEM-BASES
+   LMM-BLK-KLOOP
+   LMM-BLK-WRITE ;
+
 public
 \ LMM-EMIT prints the region's PTX module to the current PTX sink (stdout, or the
 \ in-process capture buffer). Analysis first, so a rejected region emits nothing.
 : LMM-EMIT ( n -- )
    LMM-ANALYZE
    PTX-MODULE{
-      LMM-ENTRY  LMM-OPEN  LMM-PARAMS  LMM-APPLY-VIEWS
-      LMM-BODY
+      LMM-ENTRY  LMM-OPEN
+      LMM-BLK @ if LMM-BLK-SHARED then
+      LMM-PARAMS  LMM-APPLY-VIEWS
+      LMM-BLK @ if LMM-BLK-BODY else LMM-BODY then
       s" DONE:" PTX-L
       s" ret;" PTX-L
       s" }" PTX-L

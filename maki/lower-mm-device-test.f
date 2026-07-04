@@ -29,7 +29,7 @@ require maki/lower-golden.f
 
 package MAKI
 
-create LMD-OUT $4000 allot  create LMD-ERR $1000 allot
+create LMD-OUT $10000 allot  create LMD-ERR $1000 allot   \ blocked-tile PTX is ~28 KB (64 KB headroom)
 create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
 
 \ ---- spawn bin/hb to emit region 0's PTX into PTXTC:PTX$ (child re-builds the IR) --
@@ -38,7 +38,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    PROC-ARGV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  LMD-OUT $4000 >LEN  LMD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   s" bin/hb" >LEN  LMD-OUT $10000 >LEN  LMD-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
    LMD-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
    PTXTC:PTX$ LMD-OUT outu LEN>N WRITE-ALL ;
@@ -65,6 +65,29 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    0 LOWER-GOLDEN {: v:n :}
    LOWER-GOLDEN-REASON$ type cr
    LMD-EVIDENCE
+   v V-PASS T= ;
+
+\ ---- capped evidence (first k + last k) for the large blocked shapes (4096 elems) ----------
+: LMD-EVIDENCE-ROW ( n -- )  {: i:n :}
+   s"   " type i SB-RESET SB-INT SB$ type s"    " type
+   i LLA-OUT@ LMD-FP  s"    " type  i LMD-HOST@ LMD-FP  cr ;
+: LMD-EVIDENCE-CAP ( n -- ) {: k:n :}
+   s" elem   device        host_f32" type cr
+   LLA-ELEMS@ {: e:n :}
+   e 2 k * <= if  e 0 ?do i LMD-EVIDENCE-ROW loop  exit then    \ small enough: full dump
+   k 0 ?do i LMD-EVIDENCE-ROW loop
+   s"   ... (" type e 2 k * - SB-RESET SB-INT SB$ type s"  elems elided) ..." type cr
+   e e k - ?do i LMD-EVIDENCE-ROW loop ;
+
+\ like LMD-GOLD1 but with capped per-element evidence (the 64x64 tile has 4096 elements)
+: LMD-GOLD1-BIG ( ptr u8 n -- ) {: sa:ptr su:n :}
+   CUDA:OPEN? 0= if exit then
+   sa su LMD-EMIT
+   LMD-PTXAS PTXTC:ASM-REPORT 0 T=
+   PTXTC:CUBIN$ LLA-CUBIN!
+   0 LOWER-GOLDEN {: v:n :}
+   LOWER-GOLDEN-REASON$ type cr
+   8 LMD-EVIDENCE-CAP
    v V-PASS T= ;
 
 : LMD-BEGIN ( -- )
@@ -96,6 +119,15 @@ s" MODEL: LN ( x:4x8 w:8x16 b:1x16 -- y ) LINEAR ;" LMD-GOLD1
 s" == LINEAR GELU 4x8@8x16 (epilogue fusion) ==" type cr
 MODEL: LG ( x:4x8 w:8x16 b:1x16 -- y ) LINEAR GELU ;  FP-BUILD
 s" MODEL: LG ( x:4x8 w:8x16 b:1x16 -- y ) LINEAR GELU ;" LMD-GOLD1
+
+\ ---- large shapes exercise the REGISTER-BLOCKED tile (64x64 output, shared staging, 4x4 acc) --
+s" == BLOCKED MATMUL 64x64@64x64 (register-blocked tile) ==" type cr
+MODEL: MB ( x:64x64 w:64x64 -- y ) MATMUL ;  FP-BUILD
+s" MODEL: MB ( x:64x64 w:64x64 -- y ) MATMUL ;" LMD-GOLD1-BIG
+
+s" == BLOCKED LINEAR GELU 64x64@64x64 (bias + gelu fused into the blocked write) ==" type cr
+MODEL: LGB ( x:64x64 w:64x64 b:1x64 -- y ) LINEAR GELU ;  FP-BUILD
+s" MODEL: LGB ( x:64x64 w:64x64 b:1x64 -- y ) LINEAR GELU ;" LMD-GOLD1-BIG
 
 LMD-END
 end-package

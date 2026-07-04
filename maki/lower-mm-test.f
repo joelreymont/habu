@@ -95,6 +95,40 @@ s" max.f32"                     LMMT-IN     \ relu epilogue
 s" add.rn.f32"                  LMMT-ABSENT \ no bias (matmul, not linear)
 s" ex2.approx"                  LMMT-ABSENT
 
+\ ---- BLOCKED 64x64x64 MATMUL: register-blocked tile (shared staging, 4x4 accumulators) -----
+\ M,N multiples of 64 and K a multiple of 16 select the perf tile; the block is still 16x16.
+MODEL: MB ( x:64x64 w:64x64 -- y ) MATMUL ;
+FP-BUILD
+LMMT-CAP0
+LMM-BLOCKED?                    TTRUE       \ shape selects the register-blocked tile
+LMM-OUT-TILE@ 64                T=          \ launch grid tiles the 64x64 output (not 16)
+s" .version 8.3"                LMMT-ONCE
+s" .visible .entry REGION_0"    LMMT-ONCE
+s" .shared .align 4 .b8 SH["    LMMT-IN     \ As/Bs shared staging (the naive tile has none)
+s" bar.sync 0;"                 LMMT-IN     \ cooperative stage barrier
+s" ld.shared.f32"               LMMT-IN     \ register-blocked shared loads
+s" st.shared.f32"               LMMT-IN
+s" $KLOOP:"                     LMMT-IN
+s" fma.rn.f32"                  LMMT-IN     \ 4x4 outer-product accumulate
+s" mov.f32 %f25,"               LMMT-IN     \ 16th accumulator (4x4 micro-tile = %f10..%f25)
+s" st.global.f32"               LMMT-IN
+s" .param .u64 p_in2"           LMMT-ABSENT \ matmul: no bias
+s" add.rn.f32"                  LMMT-ABSENT \ no bias, no epilogue add
+s" ex2.approx"                  LMMT-ABSENT \ no gelu
+
+\ ---- BLOCKED 64x64x64 LINEAR GELU: bias + gelu fused into each micro-tile store ------------
+MODEL: LGB ( x:64x64 w:64x64 b:1x64 -- y ) LINEAR GELU ;
+FP-BUILD
+LMMT-CAP0
+LMM-BLOCKED?                    TTRUE
+LMM-OUT-TILE@ 64                T=
+s" .shared .align 4 .b8 SH["    LMMT-IN
+s" .param .u64 p_in2"           LMMT-IN     \ the bias operand
+s" ld.shared.f32"               LMMT-IN
+s" add.rn.f32"                  LMMT-IN     \ acc += bias[col] per micro-tile element
+s" ex2.approx.f32"              LMMT-IN     \ gelu epilogue on each element
+s" st.global.f32"               LMMT-IN
+
 \ ---- fail closed: a pure row-reduce region is not a matmul region ----------------
 MODEL: NR ( x:4x8 -- y ) RMSNORM ;
 FP-BUILD
