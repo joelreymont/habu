@@ -1,9 +1,20 @@
 \ gate-stdlib.f - entry wrapper for the default gate lint/stdlib phase.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, lib/fs-mutate.f,
-\ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test/runner.f,
-\ test/gate-pool.f. Native bin/hb already carries src/core/sha256.f.
+\ Standalone entry: it requires its own dependency prefix so
+\ `bin/hb --load test/gate-stdlib.f -- <slice>` loads without a caller-supplied
+\ prelude. The resident test/run.f path already has these loaded, so the
+\ requires are idempotent there. Native bin/hb already carries src/core/sha256.f.
 
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/fs.f
+require lib/fs-mutate.f
+require lib/process.f
+require lib/process-argv.f
+require lib/process-env.f
+require lib/test/runner.f
+require test/gate-pool.f
 require test/gate-stats.f
 include lib/content-key.f
 include test/gate-stdlib-lib.f
