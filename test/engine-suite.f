@@ -866,6 +866,19 @@ s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6
 s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
 s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
 s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+\ SC-QUOT: a quotation as a family argument (dot habu-tfam-4-remainder). SIG-TYPE
+\ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
+\ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
+\ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
+\ an explicit return-stack clause; a quotation nested inside the quot arg's stack;
+\ and malformed effect rows (missing '--' or ']') reject.
+s" scq-fam" 2 TFAM-REG-CELL
+s" COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> )" T-CHECK-PASSES
+s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
+s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
+s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" T-CHECK-REJECTS
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" T-CHECK-REJECTS
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
@@ -983,6 +996,13 @@ VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
 : T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
 s" COK-BIG6VR-ID ( tfam6r-vr -- tfam6r-vr )" T-CHECK-PASSES
 s" COK-BIG6VR-ROUNDTRIP ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) T->BIG6VR T-BIG6VR>" T-CHECK-PASSES
+\ Value-record with a quotation-family (SC-QUOT) field type: VREC-COPY persists the
+\ field's T-QUOT arg subtree (VR-QUOT node) and VREC-INST reads it back on roundtrip.
+VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
+: T->SCQVR ( scq-fam<[ n -- n ],f32> -- scq-vr ) ;
+: T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
+s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
+s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS

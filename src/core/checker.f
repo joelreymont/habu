@@ -1982,6 +1982,12 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
+\ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
+\ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is reached
+\ through a friend xt installed just after PSTACK (same late-binding shape as
+\ TFAM-RESOLVE-XT). 0 = not yet installed (never reached before install).
+variable SIG-QUOT-XT   0 SIG-QUOT-XT !
+
 \ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
 \ (family-specific arity diagnostic) when the arg count differs from the family's
 \ declared arity, then build the T-PARAM (MK-PARAM rewinds scratch to `base`).
@@ -2006,7 +2012,8 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
          BEGIN
             NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
             2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
-            RECURSE PARAM-SCR+
+            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT @ execute ELSE RECURSE THEN  \ quotation arg (SC-QUOT) or nested type
+            PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
             2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
                SGBAD-SYNTAX! base a u fam MK-PARAM EXIT
@@ -2080,6 +2087,32 @@ create ROWMAP 26 cells allot
         THEN
      THEN
    AGAIN ;
+
+\ SIG-PARSE-QUOT ( -- n ) : parse a quotation as a family argument (SC-QUOT),
+\ with the opening '[' already consumed: "in -- out [ '|' rin -- rout ] ]". Each
+\ sub-stack is a full PSTACK; in/out share one fresh data base row and rin/rout
+\ share one fresh return base row (row-polymorphic tails). No '|' means the return
+\ effect is neutral (rin = rout = the empty return base). Malformed rows (a missing
+\ '--' or ']') set SGBAD-SYNTAX! through EXPECT-SIG so the whole signature rejects.
+\ Installed into SIG-QUOT-XT so SIG-TYPE (defined above PSTACK) can reach it.
+: SIG-PARSE-QUOT ( -- n )
+   FRESH MK-ROW {: qdbase:n :}
+   FRESH MK-ROW {: qrbase:n :}
+   qdbase PSTACK {: qin:n :}                 \ data-in row (stops at '--')
+   s" --" EXPECT-SIG
+   qdbase PSTACK {: qout:n :}                \ data-out row (same base tail)
+   NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
+      2drop
+      qrbase PSTACK {: qrin:n :}
+      s" --" EXPECT-SIG
+      qrbase PSTACK {: qrout:n :}
+      s" ]" EXPECT-SIG
+      qin qout qrin qrout MK-QUOT
+   ELSE
+      2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
+   THEN ;
+' SIG-PARSE-QUOT SIG-QUOT-XT !
 
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
