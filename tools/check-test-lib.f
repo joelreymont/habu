@@ -274,6 +274,30 @@ variable CKT-PAR-U
    s" : CKT-BAD-OWN-DUP ( own -- own own ) dup ;" SB-APPEND
    SB$ ;
 
+: CKT-TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
+   SB-RESET
+   s" TYPEFAMILY tfck 1" SB-APPEND
+   $0a SB-APPEND-C
+   s" SUMTYPE rsck 2" SB-APPEND
+   $0a SB-APPEND-C
+   s"   VARIANT ok  a ;VARIANT" SB-APPEND
+   $0a SB-APPEND-C
+   s"   VARIANT err b ;VARIANT" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-TF-PASS ( tfck<n> -- tfck<n> ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RS-PASS ( rsck<n,f> -- rsck<n,f> ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-TFAM-BAD$ ( -- ptr u8 n )    \ duplicate variant rejects fail-closed
+   SB-RESET
+   s" SUMTYPE rsbad 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
 : CKT-VREC-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
@@ -445,6 +469,19 @@ variable CKT-PAR-U
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
 
+: CKT-TEST-TYPEFAMILY-GOOD ( -- )
+   CKT-TFAM-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-SUMTYPE-BAD ( -- )
+   CKT-TFAM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
 : CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
    CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -606,6 +643,8 @@ variable CKT-PAR-U
    s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
+   s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
+   s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN

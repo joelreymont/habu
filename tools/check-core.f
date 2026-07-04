@@ -695,6 +695,63 @@ variable CHK-VREC-NAME-I
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
 
+: CHK-SUM-END? ( n -- bool )
+   s" ;SUMTYPE" CHK-TOK=CI ;
+
+variable CHK-TFAM-NAME-I
+
+: CHK-TFAM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ 1+ LEX-TOK
+   CHECKER-DEFFAMILY ;
+
+: CHK-SUM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFSUM ;
+
+\ A failed TYPEFAMILY/SUMTYPE declaration already reported through the
+\ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
+\ capture that packet into the check error stream (the preverify pattern) and
+\ map the registration throw to the check rc without a second packet.
+: CHK-DECL-CAPTURE ( -- )
+   CHK-JSON @ DIAG-JSON!
+   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
+
+: CHK-DECL-FLUSH ( -- )
+   DIAG-BUFFER$ CHK-ERR
+   DIAG-BUFFER-OFF ;
+
+: CHK-DECL-FAIL ( n -- )
+   dup 0= IF drop EXIT THEN
+   drop CHK-E-CHECK CHK-THROW ;
+
+: CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'typefamily'; next scan index
+   k 2 + L# @ >= IF s" check.f: missing typefamily arity" CHK-E-CHECK CHK-THROW THEN
+   k 1+ CHK-TFAM-NAME-I !
+   CHK-DECL-CAPTURE
+   [: CHK-TFAM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   k 3 + ;
+
+: CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
+   k 1+ CHK-TFAM-NAME-I !
+   CHK-VREC-RESET
+   k 2 +
+   begin dup L# @ < while
+      dup CHK-SUM-END? if
+         CHK-DECL-CAPTURE
+         [: CHK-SUM-DO-DEF ;] catch
+         CHK-DECL-FLUSH
+         CHK-DECL-FAIL
+         1+ exit
+      then
+      dup LEX-TOK CHK-VREC-TOKEN+
+      1+
+   repeat
+   s" check.f: missing ;SUMTYPE" CHK-E-CHECK CHK-THROW ;
+
 : CHK-TOK-SEMI? ( n -- bool )
    s" ;" CHK-TOK=CI ;
 
@@ -720,6 +777,12 @@ variable CHK-VREC-NAME-I
    then
    k s" VALUE-RECORD" CHK-TOK=CI if
       k k 1+ CHK-VREC-REGISTER exit
+   then
+   k s" TYPEFAMILY" CHK-TOK=CI if
+      k CHK-TFAM-REGISTER exit
+   then
+   k s" SUMTYPE" CHK-TOK=CI if
+      k CHK-SUM-REGISTER exit
    then
    k 1 + ;
 

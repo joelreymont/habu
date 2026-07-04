@@ -462,6 +462,27 @@ variable CA-XSUP-BUF-CAP
 : CA-ADD-SUPPORT-TOKEN ( n -- ) {: k:n :}
    k LB@ k CA-TOK-END-BYTE CA-ADD-SUPPORT ;
 
+: CA-ADD-SUPPORT-TRIPLE ( n -- ) {: k:n :}   \ definer + name + arity tokens
+   k 2 + L# @ >= IF exit THEN
+   k LB@
+   k 2 + CA-TOK-END-BYTE
+   CA-ADD-SUPPORT
+   k 2 + CA-I ! ;
+
+: CA-SUM-END ( n -- n ) {: k:n :}
+   k 1+ CA-J !
+   begin CA-J @ L# @ < while
+      CA-J @ s" ;SUMTYPE" CA-TOK-CI= IF CA-J @ exit THEN
+      CA-J @ 1+ CA-J !
+   repeat
+   L# @ ;
+
+: CA-ADD-SUPPORT-SUM ( n -- ) {: k:n :}
+   k CA-SUM-END {: endk:n :}
+   endk L# @ >= IF exit THEN
+   k LB@ endk CA-TOK-END-BYTE CA-ADD-SUPPORT
+   endk CA-I ! ;
+
 : CA-VREC-END ( n -- n ) {: k:n :}
    k 1+ CA-J !
    begin CA-J @ L# @ < while
@@ -531,6 +552,8 @@ variable CA-XSUP-BUF-CAP
    k s" deftype" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
    k s" deflinear" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN
    k s" value-record" CA-TOK-CI= IF k CA-ADD-SUPPORT-VREC exit THEN
+   k s" typefamily" CA-TOK-CI= IF k CA-ADD-SUPPORT-TRIPLE exit THEN
+   k s" sumtype" CA-TOK-CI= IF k CA-ADD-SUPPORT-SUM exit THEN
    k s" immediate" CA-TOK-CI= IF k CA-ADD-SUPPORT-TOKEN exit THEN
    k s" EXPORT" CA-TOK-CI= IF k CA-ADD-SUPPORT-PAIR exit THEN ;
 

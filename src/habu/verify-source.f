@@ -379,6 +379,31 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : VALUE-RECORD-END? ( ptr u8 n -- bool )
    s" END-VALUE-RECORD" STR=CI ;
 
+: SUMTYPE-END? ( ptr u8 n -- bool )
+   s" ;SUMTYPE" STR=CI ;
+
+: RECORD-TYPEFAMILY ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing typefamily name" 74 die THEN
+   NEXT-SCAN {: ar:ptr aru:n :}
+   aru 0= IF s" verify-source: missing typefamily arity" 74 die THEN
+   name nameu ar aru CHECKER-DEFFAMILY ;
+
+: RECORD-SUMTYPE ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing sumtype name" 74 die THEN
+   0 BODY-U !
+   BEGIN
+      NEXT-SCAN
+      dup 0= IF s" verify-source: missing ;SUMTYPE" 74 die THEN
+      2dup SUMTYPE-END? IF
+         2drop
+         name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM
+         EXIT
+      THEN
+      BODY-APPEND
+   AGAIN ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -413,6 +438,8 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" deftype" STR=CI IF RECORD-DEFTYPE 0 0= EXIT THEN
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
+   a u s" typefamily" STR=CI IF RECORD-TYPEFAMILY 0 0= EXIT THEN
+   a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. A multi-cell layout-family value is thus narrowed to

@@ -579,6 +579,17 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-CV-USE ( -- cae-cv ) CAE-CV-K ;" SB-APPEND CAE-LF
    SB$ ;
 
+: CAE-TFAM-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" TYPEFAMILY cae-tf 1" SB-APPEND CAE-LF
+   s" SUMTYPE cae-rs 2" SB-APPEND CAE-LF
+   s"   VARIANT ok  a ;VARIANT" SB-APPEND CAE-LF
+   s"   VARIANT err b ;VARIANT" SB-APPEND CAE-LF
+   s" ;SUMTYPE" SB-APPEND CAE-LF
+   s" : CAE-TF-USE ( cae-tf<n> cae-rs<n,f> -- cae-tf<n> cae-rs<n,f> ) ;" SB-APPEND CAE-LF
+   s" : CAE-TF-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-WORD-JSON$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    CAE-DQ s" word" SB-APPEND CAE-DQ
@@ -622,6 +633,10 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TTRUE
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
+
+: CAE-TEST-TFAM-SUPPORT ( -- )
+   s" type-family-support" CAE-CASE!
+   CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;
 
 \ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
 \ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
@@ -716,6 +731,7 @@ create CAE-LF-BYTE 10 c,
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
    s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN
+   s" type-family-support" [: CAE-TEST-TFAM-SUPPORT ;] CAE-CASE-RUN
    s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
    s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
