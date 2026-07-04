@@ -120,6 +120,7 @@
 -3410 constant E-PTX-IR-UNKNOWN
 -3411 constant E-PTX-AD-CONTROL
 -3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
+-3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST

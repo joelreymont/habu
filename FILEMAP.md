@@ -293,6 +293,8 @@ points stay listed.
   `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
   lowering for tile ops: scalar, vectorized v4, row/collective, the
   register-blocked SGEMM, and the fused attention kernel.
+- `lib/ptx/cg-activation.f` — PTX codegen for the gelu/silu elementwise
+  activations, mirroring the maki host references op-for-op for f32 golden parity.
 - `lib/ptx/ad.f` / `lib/ptx/ad-test.f` — reverse-mode autograd transform v0
   and its runnable tests.
 - `lib/ptx/ad-saved.f` / `lib/ptx/ad-saved-test.f` — typed saved-value

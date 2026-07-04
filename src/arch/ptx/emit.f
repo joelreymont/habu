@@ -1,12 +1,33 @@
 \ emit.f - checked PTX text encoder.
 \
 \ Load after lib/errors.f and lib/string.f.
+\
+\ PTX-L is the single line sink. By default it types the line to stdout (the emit
+\ drivers run under `bin/hb ... > kernel.ptx`). A capture mode routes each line into
+\ an in-process buffer instead, so a host-side test can inspect the generated PTX
+\ text without spawning a child or shelling out to a file (fail closed on overflow).
+
+$8000 constant PTX-CAP-CAP
+create PTX-CAP-BUF PTX-CAP-CAP allot
+variable PTX-CAP-U
+variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into PTX-CAP-BUF
+
+: PTX-CAP+ ( ptr u8 n -- ) {: a:ptr u:n :}   \ append one line + newline, bounds-checked
+   PTX-CAP-U @ u + 1 + PTX-CAP-CAP > if E-PTX-CAP throw then
+   a  PTX-CAP-BUF PTX-CAP-U @ +  u BYTE-COPY
+   PTX-CAP-U @ u + PTX-CAP-U !
+   $0A PTX-CAP-BUF PTX-CAP-U @ + c!
+   PTX-CAP-U @ 1+ PTX-CAP-U ! ;
 
 : PTX-L ( ptr u8 n -- )
-   type cr ;
+   PTX-CAPTURE? @ if PTX-CAP+ else type cr then ;
+
+: PTX-CAPTURE-ON ( -- )   0 PTX-CAP-U !  -1 PTX-CAPTURE? ! ;
+: PTX-CAPTURE-OFF ( -- )  0 PTX-CAPTURE? ! ;
+: PTX-CAPTURE$ ( -- ptr u8 n )  PTX-CAP-BUF PTX-CAP-U @ ;
 
 : PTX-NL ( -- )
-   cr ;
+   PTX-CAPTURE? @ if s" " PTX-CAP+ else cr then ;
 
 : PTX-HEADER-SM87 ( -- )
    s" .version 8.3" PTX-L
