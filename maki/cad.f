@@ -15,9 +15,26 @@
 \ bind now (the OPTIMIZE-time shape binding of docs/model-cad.md is a later dot);
 \ an unbound extent may be written 0 and renders "?".
 \
-\ Fail closed: unknown op token -> E-CAD-OP; empty body -> E-CAD-EMPTY; malformed
-\ signature/shape -> E-CAD-SYNTAX; an op with no data or too few declared inputs ->
-\ E-CAD-ARITY; too many inputs -> E-CAD-INPUTS. LOWER reports REAL node facts (op
+\ Named value references (v1 DAG seam) - a body may NAME a value and reference it as
+\ a later op's operand, so an op reads an EARLIER intermediate or a declared input
+\ instead of the next positional input (true residual / skip connections, fan-out):
+\   - a signature input name (the "x" in "x:RxC") binds to that input's value;
+\   - ">V NAME" binds NAME to the CURRENT value (the last op's output);
+\   - a bare NAME token pushes that value as the NEXT op's parameter operand (FIFO
+\     across a multi-operand op), instead of consuming the next declared input.
+\ So "LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM" adds the ORIGINAL input x back (a
+\ real skip), and ">V H1 ... H1 RESIDUAL-ADD" fans a named intermediate out to two
+\ consumers. This named-value capture is the v1 seam for the full CAD-PLAN section 3
+\ vision (compile the whole body as one checker-verified composition over descriptors);
+\ until that lands, capture runs the body through the checked planning vocabulary and
+\ the name table resolves references at capture time.
+\
+\ Fail closed: unknown op / unbound reference token -> E-CAD-OP; empty body ->
+\ E-CAD-EMPTY; malformed signature/shape -> E-CAD-SYNTAX; an op with no data or too
+\ few declared inputs -> E-CAD-ARITY; too many inputs -> E-CAD-INPUTS; a bad named
+\ value (duplicate, op-shadow, oversized, table full) -> E-CAD-NAME; ">V" with no
+\ current value -> E-CAD-NOVALUE; a reference the following op cannot accept ->
+\ E-CAD-REF. LOWER reports REAL node facts (op
 \ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
 \ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
 \ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE stays conservative (cad-4).
@@ -50,6 +67,9 @@ require maki/gradcheck.f
 -5024 constant E-CAD-SYNTAX    \ malformed MODEL: (bad signature / shape / terminator)
 -5025 constant E-CAD-ARITY     \ op missing its data input or declared parameters
 -5026 constant E-CAD-INPUTS    \ more model inputs than the capture pool holds
+-5027 constant E-CAD-NAME      \ bad named value: duplicate, op-shadow, oversized, or table full
+-5028 constant E-CAD-NOVALUE   \ ">V" naming with no current value to name
+-5029 constant E-CAD-REF       \ a named reference the following op cannot accept
 \ OPTIMIZE-time shape binding (BIND-SHAPES) uses the free -5160..-5162 slice.
 -5160 constant E-CAD-BIND-COUNT    \ BIND-SHAPES spec count != model input slots
 -5161 constant E-CAD-BIND-CONFLICT \ a spec contradicts an already-bound (nonzero) extent
@@ -67,33 +87,86 @@ variable CAP-IN-N
 variable CAP-CUR                           \ running "current" tensor handle (n; -1 = none)
 variable CAP-IP                            \ next unconsumed parameter-input index
 
+\ named value table: name -> value handle (signature input names + ">V" intermediates)
+32 constant NT-CAP                         \ max named values per model
+16 constant NT-NAME-CAP                    \ max bytes per name
+create NT-NAMES NT-CAP NT-NAME-CAP * allot \ fixed-width name text slots
+create NT-LENS  NT-CAP cells allot         \ name lengths
+create NT-VALS  NT-CAP cells allot         \ value handles (tensor as n)
+variable NT-N
+
+\ pending named-operand queue: refs drained (FIFO) by the next op's parameter slots
+4 constant CAP-PEND-CAP                    \ max pending named operands before one op
+create CAP-PEND CAP-PEND-CAP cells allot   \ pending operand handles (as n)
+variable CAP-PEND-N                        \ tail (push index)
+variable CAP-PEND-HD                       \ head (dequeue index)
+
 public
 
 \ ---- op-name -> op-kind (fail closed: unknown op is rejected, never guessed) -
+\ OP-LOOKUP is the non-throwing table (op valid only when the flag is true); OP-KIND
+\ wraps it and throws E-CAD-OP on an unknown token. The non-throwing form lets the
+\ name table reject a value name that would shadow a reserved op token.
+: OP-LOOKUP ( ptr u8 n -- n bool )
+   2dup s" ADD"          STR= if 2drop OP-ADD          true exit then
+   2dup s" MUL"          STR= if 2drop OP-MUL          true exit then
+   2dup s" SCALE"        STR= if 2drop OP-SCALE        true exit then
+   2dup s" BIAS"         STR= if 2drop OP-BIAS         true exit then
+   2dup s" RELU"         STR= if 2drop OP-RELU         true exit then
+   2dup s" GELU"         STR= if 2drop OP-GELU         true exit then
+   2dup s" SILU"         STR= if 2drop OP-SILU         true exit then
+   2dup s" LAYERNORM"    STR= if 2drop OP-LAYERNORM    true exit then
+   2dup s" RMSNORM"      STR= if 2drop OP-RMSNORM      true exit then
+   2dup s" SOFTMAX-ROW"  STR= if 2drop OP-SOFTMAX-ROW  true exit then
+   2dup s" MATMUL"       STR= if 2drop OP-MATMUL       true exit then
+   2dup s" LINEAR"       STR= if 2drop OP-LINEAR       true exit then
+   2dup s" RESIDUAL-ADD" STR= if 2drop OP-RESIDUAL-ADD true exit then
+   2dup s" CAST"         STR= if 2drop OP-CAST         true exit then
+   2dup s" ROPE"         STR= if 2drop OP-ROPE         true exit then
+   2dup s" RESHAPE"      STR= if 2drop OP-RESHAPE      true exit then
+   2dup s" TRANSPOSE"    STR= if 2drop OP-TRANSPOSE    true exit then
+   2dup s" SLICE"        STR= if 2drop OP-SLICE        true exit then
+   2dup s" CONCAT"       STR= if 2drop OP-CONCAT       true exit then
+   2dup s" GATHER"       STR= if 2drop OP-GATHER       true exit then
+   2drop 0 false ;
+
 : OP-KIND ( ptr u8 n -- n )
-   2dup s" ADD"          STR= if 2drop OP-ADD          exit then
-   2dup s" MUL"          STR= if 2drop OP-MUL          exit then
-   2dup s" SCALE"        STR= if 2drop OP-SCALE        exit then
-   2dup s" BIAS"         STR= if 2drop OP-BIAS         exit then
-   2dup s" RELU"         STR= if 2drop OP-RELU         exit then
-   2dup s" GELU"         STR= if 2drop OP-GELU         exit then
-   2dup s" SILU"         STR= if 2drop OP-SILU         exit then
-   2dup s" LAYERNORM"    STR= if 2drop OP-LAYERNORM    exit then
-   2dup s" RMSNORM"      STR= if 2drop OP-RMSNORM      exit then
-   2dup s" SOFTMAX-ROW"  STR= if 2drop OP-SOFTMAX-ROW  exit then
-   2dup s" MATMUL"       STR= if 2drop OP-MATMUL       exit then
-   2dup s" LINEAR"       STR= if 2drop OP-LINEAR       exit then
-   2dup s" RESIDUAL-ADD" STR= if 2drop OP-RESIDUAL-ADD exit then
-   2dup s" CAST"         STR= if 2drop OP-CAST         exit then
-   2dup s" ROPE"         STR= if 2drop OP-ROPE         exit then
-   2dup s" RESHAPE"      STR= if 2drop OP-RESHAPE      exit then
-   2dup s" TRANSPOSE"    STR= if 2drop OP-TRANSPOSE    exit then
-   2dup s" SLICE"        STR= if 2drop OP-SLICE        exit then
-   2dup s" CONCAT"       STR= if 2drop OP-CONCAT       exit then
-   2dup s" GATHER"       STR= if 2drop OP-GATHER       exit then
-   2drop E-CAD-OP throw ;
+   OP-LOOKUP 0= if E-CAD-OP throw then ;
 
 private
+
+\ ---- pending named-operand queue (FIFO; the next op drains it into its params) --
+: CAP-PEND-RESET ( -- )  0 CAP-PEND-N !  0 CAP-PEND-HD ! ;
+: CAP-PEND-CNT ( -- n )  CAP-PEND-N @ CAP-PEND-HD @ - ;      \ remaining pending refs
+: CAP-PEND-PUSH ( n -- )
+   CAP-PEND-N @ CAP-PEND-CAP >= if E-CAD-REF throw then
+   CAP-PEND-N @ cells CAP-PEND + !  CAP-PEND-N @ 1+ CAP-PEND-N ! ;
+: CAP-PEND-DEQ ( -- n )
+   CAP-PEND-HD @ cells CAP-PEND + @  CAP-PEND-HD @ 1+ CAP-PEND-HD ! ;
+
+\ ---- named value table (name -> value handle) ------------------------------
+: NT-RESET ( -- )  0 NT-N ! ;
+: NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES + ;
+: NT-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ handle valid only when true
+   NT-N @ 0 ?do
+      a u  i NT-SLOT  i cells NT-LENS + @  STR= if
+         i cells NT-VALS + @  true  unloop exit
+      then
+   loop  0 false ;
+: NT-BIND ( ptr u8 n n -- ) {: a:ptr u:n h:n :}    \ bind name -> value handle
+   u NT-NAME-CAP > if E-CAD-NAME throw then                 \ name too long
+   a u OP-LOOKUP nip if E-CAD-NAME throw then               \ a name may not shadow an op token
+   a u NT-FIND   nip if E-CAD-NAME throw then               \ no duplicate name
+   NT-N @ NT-CAP >= if E-CAD-NAME throw then                \ table full
+   NT-N @ {: i:n :}
+   a  i NT-SLOT  u  BYTE-COPY
+   u  i cells NT-LENS + !
+   h  i cells NT-VALS + !
+   i 1+ NT-N ! ;
+: NT-BIND-CUR ( ptr u8 n -- ) {: a:ptr u:n :}      \ ">V": name the current value
+   CAP-CUR @ 0< if E-CAD-NOVALUE throw then
+   CAP-PEND-CNT 0 > if E-CAD-REF throw then                  \ a ref must be consumed before naming
+   a u CAP-CUR @ NT-BIND ;
 
 \ ---- capture engine --------------------------------------------------------
 : CAP-IN@   ( n -- tensor )  cells CAP-INS + @ >tensor ;
@@ -103,6 +176,7 @@ private
 : CAP-BEGIN ( -- )
    TV-RESET  PLAN-RESET  MIR-RESET
    0 CAP-IN-N !  1 CAP-IP !  -1 CAP-CUR !
+   NT-RESET  CAP-PEND-RESET
    0 MODEL-SET? ! ;
 
 : CAP-INPUT ( n n -- ) {: rows:n cols:n :}      \ declare one model input (f32/row)
@@ -113,12 +187,21 @@ private
    CAP-IN-N @ 0= if t CAP-CUR! then               \ first input is the running value
    CAP-IN-N @ 1+ CAP-IN-N ! ;
 
+\ declare one model input and (when named) bind its name to the input's value handle
+: CAP-INPUT-NAMED ( ptr u8 n n n -- ) {: a:ptr u:n rows:n cols:n :}
+   rows cols CAP-INPUT
+   u 0 > if  a u  CAP-IN-N @ 1- cells CAP-INS + @  NT-BIND  then ;
+
 : CAP-NEED ( n -- ) {: params:n :}              \ data + params must be available
    CAP-CUR @ 0< if E-CAD-ARITY throw then
-   CAP-IP @ params + CAP-IN-N @ > if E-CAD-ARITY throw then ;
+   CAP-PEND-CNT params > if E-CAD-REF throw then            \ more refs than the op accepts
+   params CAP-PEND-CNT - {: decl:n :}                       \ declared inputs still needed
+   CAP-IP @ decl + CAP-IN-N @ > if E-CAD-ARITY throw then ;
 
-: CAP-P1 ( -- tensor )  CAP-IP @    CAP-IN@ ;
-: CAP-P2 ( -- tensor )  CAP-IP @ 1+ CAP-IN@ ;
+\ next op parameter: a pending named ref (FIFO), else the next declared input (advances)
+: CAP-PARAM ( -- tensor )
+   CAP-PEND-CNT 0 > if CAP-PEND-DEQ >tensor
+   else CAP-IP @ CAP-IN@  CAP-IP @ 1+ CAP-IP !  then ;
 
 : CAP-OP ( n -- ) {: op:n :}                    \ apply one op-kind to the current value
    op OPR-ARITY {: ar:n :}
@@ -127,13 +210,15 @@ private
    ar 1 = if
       CAP-CUR@ op PLAN-UNARY CAP-CUR!
    else ar 2 = if
-      mm if CAP-CUR@ CAP-P1 op PLAN-MATMUL else CAP-CUR@ CAP-P1 op PLAN-BIN-EW then CAP-CUR!
+      CAP-CUR@ {: x:tensor :}  CAP-PARAM {: p:tensor :}
+      mm if x p op PLAN-MATMUL else x p op PLAN-BIN-EW then CAP-CUR!
    else ar 3 = if
-      mm if CAP-CUR@ CAP-P1 CAP-P2 op PLAN-LINEAR else CAP-CUR@ CAP-P1 CAP-P2 op PLAN-TERN-EW then CAP-CUR!
+      CAP-CUR@ {: x3:tensor :}  CAP-PARAM {: p1:tensor :}  CAP-PARAM {: p2:tensor :}
+      mm if x3 p1 p2 op PLAN-LINEAR else x3 p1 p2 op PLAN-TERN-EW then CAP-CUR!
    else
       E-CAD-ARITY throw
    then then then
-   ar 1- CAP-IP @ + CAP-IP ! ;
+   CAP-PEND-RESET ;
 
 \ ---- movement capture (layout rewrites; scalar params come from the token) ---
 \ arity-1 rewrites consume only the running value; concat/gather also consume one
@@ -148,10 +233,10 @@ private
    0 CAP-NEED  CAP-CUR@ r0 r1 PLAN-SLICE CAP-CUR! ;
 
 : CAP-CONCAT ( -- )
-   1 CAP-NEED  CAP-CUR@ CAP-P1 PLAN-CONCAT CAP-CUR!  CAP-IP @ 1+ CAP-IP ! ;
+   1 CAP-NEED  CAP-CUR@ CAP-PARAM PLAN-CONCAT CAP-CUR!  CAP-PEND-RESET ;
 
 : CAP-GATHER ( -- )
-   1 CAP-NEED  CAP-CUR@ CAP-P1 PLAN-GATHER CAP-CUR!  CAP-IP @ 1+ CAP-IP ! ;
+   1 CAP-NEED  CAP-CUR@ CAP-PARAM PLAN-GATHER CAP-CUR!  CAP-PEND-RESET ;
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
 : PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
@@ -176,6 +261,7 @@ private
 : BRIDGE-PLAN ( -- )  PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
 : CAP-END ( -- )
+   CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a named ref left unconsumed by any op
    PLAN-N@ 0= if E-CAD-EMPTY throw then
    BRIDGE-PLAN
    -1 MODEL-SET? ! ;
@@ -198,6 +284,15 @@ private
       s" )" STR= if exit then
    again ;
 
+\ the name span of a "name:RxC" spec (empty when the spec is a bare "RxC")
+: SPEC-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u $3A INDEX-OF {: ci:n :}
+   ci 0< if a 0 else a ci then ;
+
+\ one "[name:]RxC" spec: declare the input and (when named) bind its reference
+: SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SPEC-NAME  a u PARSE-SHAPE  CAP-INPUT-NAMED ;
+
 : PARSE-SIG ( -- )                              \ '(' input-specs [ -- names ] ')'
    parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
    s" (" STR= 0= if E-CAD-SYNTAX throw then
@@ -205,7 +300,7 @@ private
       parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
       2dup s" --" STR= if 2drop SKIP-TO-RPAREN exit then
       2dup s" )"  STR= if 2drop exit then
-      PARSE-SHAPE CAP-INPUT
+      SIG-INPUT
    again ;
 
 : PARSE-RANGE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "R0..R1" -> r0 r1
@@ -228,8 +323,9 @@ private
    op OP-GATHER    = if CAP-GATHER    exit then
    E-CAD-SYNTAX throw ;                               \ reshape/slice require params
 
-\ one body token: compute op, param-less movement, or "MOVE:params"
+\ one body token: named-value reference, compute op, param-less movement, or "MOVE:params"
 : CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NT-FIND if  CAP-PEND-PUSH  exit  then  drop   \ known name -> pending operand ref
    a u $3A INDEX-OF {: ci:n :}
    ci 0< if
       a u OP-KIND {: op:n :}
@@ -238,11 +334,15 @@ private
    then
    a ci OP-KIND  a ci 1+ +  u ci 1+ -  CAP-MOVE-PARAM ;
 
-: PARSE-BODY ( -- )                             \ op tokens up to ';'
+\ ">V NAME": bind NAME to the current value (read the name token from the body)
+: PARSE-NAMED ( -- )
+   parse-name dup 0= if 2drop E-CAD-SYNTAX throw then  NT-BIND-CUR ;
+
+: PARSE-BODY ( -- )                             \ op / ">V NAME" / reference tokens up to ';'
    begin
       parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
-      2dup s" ;" STR= if 2drop CAP-END exit then
-      CAP-TOKEN
+      2dup s" ;"  STR= if 2drop CAP-END exit then
+      2dup s" >V" STR= if 2drop PARSE-NAMED else CAP-TOKEN then
    again ;
 
 public
