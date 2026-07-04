@@ -623,6 +623,19 @@ lesson — keep the specific word/code/path, cut the prose.
   are compiler loop-control tokens. `tools/reserved-name-lint.f` now runs before
   the checker child; generated converters must run it after prefix stripping so
   naturalized names become `IX`/`JX`, not bare `I`/`J`.
+- **The emitted stage prefix has two check regions - retire preflight asserts
+  only for the checked one:** in the generated stage source the checker-boot
+  (util/structures/checker/render) plus asm/icode/mnem load inside the
+  `BFR-CHECK-OFF .. ' HOOK set-check` window (unchecked), while
+  habu1/prof/regalloc/jit/habu2 load with `HOOK` on (blocking-checked). So a
+  stack-effect regression in a habu1/habu2 `:` emitter fails the stage compile
+  outright, but icode's does not - only the non-blocking `BF-CERTIFY` static scan
+  covers icode. When retiring the `BF-PREFLIGHT` textual asserts, drop the
+  habu1/habu2 typed-shape guards (real blocking check now covers them) but keep
+  icode's until `BF-CERTIFY` flips blocking, and keep the same-type codegen-role
+  asserts (`LABEL@ B,` vs `@ B ;`; `SZA-I @ +` vs `over +`) that no checker can
+  express. Prove the replacement with a negative fixture (emitter underflow ->
+  `BF-CERTIFY-RC` 70), not by trusting the compile.
 - **Focused gate slices need a temp root:** direct-loading
   `test/gate-dictionary.f` does not run `TR-START`; use `test/run.f` or an
   explicit suite temp/cache root, or generated artifacts resolve under `/` and

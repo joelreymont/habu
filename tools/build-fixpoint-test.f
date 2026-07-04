@@ -486,6 +486,16 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Preflight-retirement regression: the retired habu1/habu2 typed-shape asserts
+\ guarded emitter words against stack-effect regressions; their replacement is
+\ the checker itself (habu1/habu2 are emitted checked). Prove the real check
+\ rejects the guarded corruption - an emitter body underflowing its declared
+\ inputs (the spawn-descriptor-underflow class the asserts were added for).
+: BFT-TEST-RETIRE-REGRESSION ( -- )
+   s" : SPAWN-DUP2-ACTION ( n n -- ) drop drop drop ;" BFT-CERT-WRITE
+   s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
+   BF-CERT-DIAG-U @ 0 > TTRUE ;
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -511,6 +521,7 @@ create BFT-CHECK-OFF-LINE
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
+   s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP

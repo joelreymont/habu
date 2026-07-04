@@ -458,19 +458,25 @@ variable BF-CERT-PATH-U
 : BF-SOURCE-MUST-LACK ( ptr u8 n -- )
    BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
 
+\ habu2.f is emitted after `' HOOK set-check`, so every `:` emitter word here is
+\ compiled checked; a stack-effect regression in C-LOCAL-REF-*, EMIT-RESET-BUILDER,
+\ etc. fails the stage compile (blocking). Those typed-shape/bare-locals asserts
+\ were therefore retired in favor of that real check. Kept below: a same-type
+\ codegen role the checker cannot express (label-relative branch `LABEL@ B,` vs
+\ raw fetch-branch `@ B ;`; both stack-neutral). A dedicated codegen/role check is
+\ tracked by dot habu-preflight-codegen-role.
 : BF-PREFLIGHT-HABU2 ( -- )
    s" src/habu/habu2.f" BF-READ-SOURCE
-   s" variable CLOC-MAIN  variable CLOC-NOT" BF-SOURCE-MUST-HAVE
-   s" variable CLOC-MEM   variable CLOC-QOK" BF-SOURCE-MUST-HAVE
-   s" : C-LOCAL-REF-ARGS ( label label -- )" BF-SOURCE-MUST-HAVE
-   s" : C-LOCAL-REF-LABELS ( -- )" BF-SOURCE-MUST-HAVE
-   s" : EMIT-RESET-BUILDER ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
-   s" {: lmainlbl notloc :}" BF-SOURCE-MUST-LACK
-   s" LBL LBL {: lmem qlrefok :}" BF-SOURCE-MUST-LACK
-   s" {: a:ptr u :}" BF-SOURCE-MUST-LACK
    s" CLOC-MAIN LABEL@ B," BF-SOURCE-MUST-HAVE
    s" CLOC-MAIN @ B ;" BF-SOURCE-MUST-LACK ;
 
+\ icode.f is emitted inside the check-off window (BFR-CHECK-OFF .. `' HOOK
+\ set-check`), so the stage compile does NOT check it. Only the non-blocking
+\ BF-CERTIFY static scan covers icode's typed shape today. Every assert below is
+\ therefore KEPT until BF-CERTIFY flips blocking (blocked by checker self-typing,
+\ dot habu-checker-self-typing); retiring them now would be a net loss of the
+\ only enforcement. The mmap-error and static-allot asserts additionally guard
+\ fail-closed / executable-memory invariants the checker cannot express.
 : BF-PREFLIGHT-ICODE ( -- )
    s" src/arch/arm64/icode.f" BF-READ-SOURCE
    s" variable CODE-A" BF-SOURCE-MUST-HAVE
@@ -491,30 +497,18 @@ variable BF-CERT-PATH-U
    s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK
    s" {: a:ptr u :}" BF-SOURCE-MUST-LACK ;
 
+\ habu1.f is emitted after `' HOOK set-check`, so REG-PRIM/FPRIM/FPRIM-L/
+\ SPAWN-DUP2-ACTION/SPAWN-CHDIR-ACTION and friends are all compiled checked; a
+\ stack-effect regression (e.g. the historic spawn-descriptor underflow) fails
+\ the stage compile (blocking). Those typed-shape/bare-locals asserts were
+\ retired in favor of that real check. Kept below: the same-type codegen role the
+\ checker cannot express — the exact spawn descriptor-slot address computation
+\ (`SZA-I @ +` vs `over +`; both stack-neutral). Dedicated codegen/role check is
+\ tracked by dot habu-preflight-codegen-role.
 : BF-PREFLIGHT-HABU1 ( -- )
    s" src/habu/habu1.f" BF-READ-SOURCE
-   s" variable PR-A  variable PR-U  variable PR-L  variable PR-E" BF-SOURCE-MUST-HAVE
-   s" variable FP-A  variable FP-U  variable FP-XT" BF-SOURCE-MUST-HAVE
-   s" variable SDA-FD  variable SDA-NEW  variable SDA-SKIP" BF-SOURCE-MUST-HAVE
-   s" variable BSP-OK  variable BSP-DN  variable BSP-SAD" BF-SOURCE-MUST-HAVE
-   s" variable SZA-I" BF-SOURCE-MUST-HAVE
-   s" : REG-PRIM ( ptr u8 n n n -- )" BF-SOURCE-MUST-HAVE
-   s" : FPRIM ( ptr u8 n n -- )" BF-SOURCE-MUST-HAVE
-   s" : FPRIM-L ( ptr u8 n n -- )" BF-SOURCE-MUST-HAVE
-   s" : PR-COPY-NAME ( -- )" BF-SOURCE-MUST-HAVE
-   s" : BSP-LABELS3 ( -- )" BF-SOURCE-MUST-HAVE
-   s" : FPRIM {: na:ptr nu xt :}" BF-SOURCE-MUST-LACK
-   s" : FPRIM-L {: na:ptr nu xt :}" BF-SOURCE-MUST-LACK
-   s" : REG-PRIM {: na:ptr nu lbl elbl :}" BF-SOURCE-MUST-LACK
-   s" : ?PRIM-SPACE {: na:ptr nu :}" BF-SOURCE-MUST-LACK
-   s" : SPAWN-DUP2-ACTION ( reg fd -- )" BF-SOURCE-MUST-HAVE
-   s" : SPAWN-CHDIR-ACTION ( reg label -- )" BF-SOURCE-MUST-HAVE
-   s" : SPAWN-DUP2-ACTION ( n n -- ) {: fdreg newfd :}" BF-SOURCE-MUST-LACK
-   s" : SPAWN-CHDIR-ACTION ( n n -- ) {: cwdreg fail :}" BF-SOURCE-MUST-LACK
    s" 14 SP SPAWN-ADESC-OFF SZA-I @ + STR," BF-SOURCE-MUST-HAVE
-   s" 14 SP SPAWN-ADESC-OFF + over + STR," BF-SOURCE-MUST-LACK
-   s" LBL LBL LBL {: spok spdn sad :}" BF-SOURCE-MUST-LACK
-   s" LBL LBL {: spok spdn :}" BF-SOURCE-MUST-LACK ;
+   s" 14 SP SPAWN-ADESC-OFF + over + STR," BF-SOURCE-MUST-LACK ;
 
 : BF-PREFLIGHT ( -- )
    BF-PREFLIGHT-HABU2
