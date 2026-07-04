@@ -18,7 +18,7 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-$A0000 constant MK-SOURCE-CAP
+$C0000 constant MK-SOURCE-CAP   \ engine source cap; prefix grew past $A0000 with sumtype.f
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;

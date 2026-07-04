@@ -49,25 +49,28 @@ variable TDC-I
    repeat 0 0= 0= ;
 
 \ evaluate a declaration string, returning its throw code (0 = accepted).
-\ TRUSTED: `evaluate` is the test boundary here, like CHECK-QUIET-CANDIDATE!.
-TRUSTED: TDT-EVAL-CATCH ( ptr u8 n -- n )
-   ['] evaluate catch
-   dup 0= if exit then
-   nip nip ;
+\ Checked: the dynamic-evaluate boundary is the existing audited
+\ INCLUDE-EVALUATE; the throw code crosses the eval frame into this compiled
+\ catch (a TOP-LEVEL catch around evaluate loses the code — see LESSONS.md).
+variable TDTE-A   variable TDTE-U
+: TDT-EVAL-GO ( -- )
+   TDTE-A @ TDTE-U @ INCLUDE-EVALUATE ;
+: TDT-EVAL-CATCH ( ptr u8 n -- n )
+   TDTE-U ! TDTE-A !
+   [: TDT-EVAL-GO ;] catch ;
 
 \ registry high-water baseline: every rejected declaration must restore it.
-\ TRUSTED: registry counters are checker-internal prefix words with no public
-\ signatures (same boundary the top-level lines in type-family-suite.f use).
+\ Checked through the PRIM-modeled read-only registry queries.
 variable TDB-TFAM   variable TDB-SUMV   variable TDB-SCH
 variable TDB-ROOT   variable TDB-STR    variable TDB-PK
-TRUSTED: TDT-BASE! ( -- )
+: TDT-BASE! ( -- )
    TFAM-N@ TDB-TFAM !   SUMV-N@ TDB-SUMV !
    SCHEMA-N@ TDB-SCH !  SCHEMA-ROOT-N@ TDB-ROOT !
-   TF-STR-U @ TDB-STR ! TF-PK-N @ TDB-PK ! ;
-TRUSTED: TDT-BASE= ( -- )
+   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK ! ;
+: TDT-BASE= ( -- )
    TFAM-N@ TDB-TFAM @ T=   SUMV-N@ TDB-SUMV @ T=
    SCHEMA-N@ TDB-SCH @ T=  SCHEMA-ROOT-N@ TDB-ROOT @ T=
-   TF-STR-U @ TDB-STR @ T= TF-PK-N @ TDB-PK @ T= ;
+   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T= ;
 : TDT-NEG ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    TDT-BASE!
    a u TDT-EVAL-CATCH code T=

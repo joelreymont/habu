@@ -187,6 +187,8 @@ variable TFAM-N   0 TFAM-N !
    id TF-REC * TF-BASE + ;
 
 : TFAM-N@ ( -- n ) TFAM-N @ ;            \ family high-water (rollback/tests)
+: TF-STR-U@ ( -- n ) TF-STR-U @ ;        \ interned string-pool high-water
+: TF-PK-N@ ( -- n ) TF-PK-N @ ;          \ param-kind pool high-water
 
 \ --- read-only queries.
 : TFAM-PKG$ ( id -- ptr u8 n ) {: id:n :}

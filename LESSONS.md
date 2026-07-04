@@ -2343,3 +2343,25 @@ unchanged (148855). Keys for milestone 2:
   into one place leaves the other silently green — add it to BOTH (GSI body +
   TEST:SUITE row + label allowlist) and prove each path red with a transient
   drift before trusting it (proven for tools/stdin-closure-lint.f).
+- **The native publish path re-records every signed definition through `TRUST`.**
+  `EM-COMPILE-PUBLISH` routes any colon definition WITH a `( ... )` sig through
+  `EM-COMPILE-PUBLISH-TRUSTED` → `C-CALL-TRUST-PEND`, i.e. after the hook returns
+  the engine calls checker `TRUST(name, declared-sig)` → `USIG-ADD`. Any
+  "reject but continue" checker mode must survive that re-parse: before TFAM 6 a
+  definition with an unparseable sig under `MULTI-ERR` killed the whole load with
+  `checker: bad stored signature` (rc 76) from this second path, not from CHECK.
+  `USIG-ADD` now skips the row in multi-error mode (own-name = already counted;
+  foreign name = raw TRUST row, counted + reported via `BADSIG-XT`).
+- **Top-level `['] evaluate catch` in the stdin interpret loop loses the throw
+  code (rc 0).** The same catch executed from *compiled* code receives the real
+  code, and an uncaught declaration throw still aborts a file/stdin load with a
+  nonzero exit — so loads stay fail-closed. In stdin suites, route eval-catch
+  probes through a compiled helper (`TDT-NEG` in test/type-decl-suite.f), never
+  call the trusted eval-catch word directly at top level.
+- **`bin/hb` loads its checker prefix from source paths at boot.** Edits to an
+  already-listed prefix file (checker.f, type-family.f, sumtype.f...) take
+  effect on the next `bin/hb` run without a rebuild — but a NEW prefix file
+  needs all six manifests (habu2.f PFX rows + label init, bootstrap/cg/forth.fs
+  mirror, tools/bootstrap.sh, tools/build-fixpoint.f, tools/diagnose-hb-core.f,
+  tools/hb-build-lib.f key list, test/run-files.f) plus a rebuild, and the first
+  ceiling it trips is stage2's `S2-SOURCE-CAP` ("stage2: source exceeds buffer").
