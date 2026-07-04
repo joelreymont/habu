@@ -2,7 +2,7 @@
 
 PLAN.md item 6 (lines 563-599): add package-aware public defining words for cell
 families (`TYPEFAMILY`) and sum families (`SUMTYPE`), each `VARIANT` block closed
-by `END-VARIANT`, each sum block by `END-SUMTYPE`. Token grammar must reject
+by `;VARIANT`, each sum block by `;SUMTYPE`. Token grammar must reject
 delimiters, control words, illegal qualified names, empty sums, upper/mixed-case
 family names, reserved signature/type tokens (`a`..`z`, `n`/`f`/`r`, `ptr`,
 `field`, atom prefixes, existing CT/VREC/type names), unknown payloads, injection
@@ -95,7 +95,7 @@ existing rollback primitive to extend for family records.
   (:14), clears `STRUCT-ACTIVE`, back-patches size (`swap !`).
 - `:22 +FIELD`, `:26 PTR-FIELD:`, `:34 CFIELD:` — mid-block field words guarded by
   `STRUCT-REQUIRE-OPEN`. Template for the open/closed state discipline
-  `TYPEFAMILY`/`VARIANT`/`END-VARIANT` nesting needs (nested-open must reject:
+  `TYPEFAMILY`/`VARIANT`/`;VARIANT` nesting needs (nested-open must reject:
   `STRUCT-REQUIRE-CLOSED` :12 dies on "nested begin").
 
 Best template to mirror: VALUE-RECORD (roles.f:172) for the block token loop +
@@ -117,8 +117,8 @@ words on one path but explicit keyword-dispatch entries on the other.
   CF-ENTRY THEN`. Existing entries (:2993-3004): `package`->`C-PACKAGE`,
   `public`->`C-PUBLIC`, `private`->`C-PRIVATE`, `end-package`->`C-END-PACKAGE`,
   `trusted:`, `defer`, `create`, `variable`, `constant`, `'`, `char`,
-  `immediate`. THIS is where `TYPEFAMILY`/`SUMTYPE`/`VARIANT`/`END-VARIANT`/
-  `END-SUMTYPE` add native `KEEP?`-gated `CF-ENTRY` rows (need new `LKW*`
+  `immediate`. THIS is where `TYPEFAMILY`/`SUMTYPE`/`VARIANT`/`;VARIANT`/
+  `;SUMTYPE` add native `KEEP?`-gated `CF-ENTRY` rows (need new `LKW*`
   labels + `C-*` handler words like C-PACKAGE).
 - `habu2.f:2941-2965` `C-PUBLIC` and `:2937?`..`C-PACKAGE`, `:2968` `C-PRIVATE`,
   `:2979` `C-END-PACKAGE` — the handler-word template: `C-TASK-LIVE-GUARD`, guard
@@ -144,7 +144,7 @@ words on one path but explicit keyword-dispatch entries on the other.
 - `verify-source.f:358` `RECORD-VALUE-RECORD` — mirrors roles.f:172 as a
   verify-source handler: `NEXT-SCAN` name, `BEGIN NEXT-SCAN ... VALUE-RECORD-END?
   ... CHECKER-DEFRECORD ... AGAIN`. Direct template for RECORD-TYPEFAMILY /
-  RECORD-SUMTYPE with `END-SUMTYPE`/`END-VARIANT` terminators.
+  RECORD-SUMTYPE with `;SUMTYPE`/`;VARIANT` terminators.
 - `verify-source.f:345-353` `RECORD-DEFTYPE`/`RECORD-DEFLINEAR` — single-name
   handler template (`NEXT-SCAN` + missing-name die + `CHECKER-DEFTYPE`).
 - `verify-source.f:404` `VERIFY-SOURCE` — top loop: `:`->VERIFY-DEFINITION else
@@ -174,7 +174,7 @@ words on one path but explicit keyword-dispatch entries on the other.
   trust/kernel:/check-does!.
 - `:153` `RNL-RESERVED-DEFINER?` — definers: create/variable/constant/**package/
   public/private/end-package**/undefine. THIS is where item 6's five tokens
-  (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `END-VARIANT`, `END-SUMTYPE`) are added,
+  (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `;VARIANT`, `;SUMTYPE`) are added,
   by the same `a u s" tok" LINT-STR=CI if LINT-TRUE exit then` pattern.
 - `:163` `RNL-RESERVED?` — the aggregator (control OR parser OR definer). Callers
   hit this to reject user words that shadow a reserved token.
@@ -317,4 +317,4 @@ Verify-source path wrappers — `src/habu/verify-source.f:331-343`:
   verify-source.f as the "mirror" site.
 - `docs/type-families.md` line ranges (461-499, 1301-1354) cited but not read in
   this census (grammar spec, out of scope for the code census) — verify they
-  exist and match the normalized `VARIANT ... END-VARIANT` grammar before coding.
+  exist and match the normalized `VARIANT ... ;VARIANT` grammar before coding.

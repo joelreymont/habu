@@ -21,7 +21,7 @@ chain routes `... 6 -> 17f -> 7 -> 17g -> 12 -> 17h -> 8` (`PLAN.md:1031`).
 - Open dots (`o` = open): `habu-tfam-5-ordered`, `habu-tfam-6-typefamily`,
   `habu-tfam-7-hidden`, `habu-tfam-12-layout`, **`habu-tfam-8-generated`**,
   `habu-tfam-4-remainder` (SC-QUOT/uncapped arity/package-aware SIG still open).
-- Grammar words `SUMTYPE / TYPEFAMILY / VARIANT / END-VARIANT / END-SUMTYPE`
+- Grammar words `SUMTYPE / TYPEFAMILY / VARIANT / ;VARIANT / ;SUMTYPE`
   and `PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero definitions** anywhere in
   `src/ lib/ tools/` (`rg '^: SUMTYPE|^: VARIANT|^: TYPEFAMILY|PUSH-LOGICAL'` =
   0 hits). Confirmed at `src/core/checker.f:1826-1827`: "Package-local
@@ -195,21 +195,21 @@ family `F` is: keep `p` inputs, push `(M - p)` literal `0`s, push literal
 `SV.TAG@`. Examples pinned at `docs/type-families.md:721-777`
 (`RESULT:OK` → `a 0`, `OPTION:NONE` → `0 0`, `OPTION:SOME` → `a 1`).
 
-### 2d. Where END-VARIANT lands per the spec
+### 2d. Where ;VARIANT lands per the spec
 
-`END-VARIANT` terminates each variant block; `END-SUMTYPE` terminates the sum
+`;VARIANT` terminates each variant block; `;SUMTYPE` terminates the sum
 (`docs/type-families.md:499-516`, §9.2):
 ```
 SUMTYPE result 2
-  VARIANT ok  a END-VARIANT     \ :500
-  VARIANT err b END-VARIANT     \ :501
-END-SUMTYPE                     \ :502
+  VARIANT ok  a ;VARIANT     \ :500
+  VARIANT err b ;VARIANT     \ :501
+;SUMTYPE                     \ :502
 ```
 Enum is a zero-payload sum with the same terminated form
 (`docs/type-families.md:530-538`). Item 6 (open) owns installing these tokens;
 item 8 only consumes the SUMV rows they produce. PLAN reserves the tokens at
 item 6: `PLAN.md:434-435` "item 6 reserves `TYPEFAMILY`, `SUMTYPE`, `VARIANT`,
-`END-VARIANT`, `END-SUMTYPE`".
+`;VARIANT`, `;SUMTYPE`".
 
 ---
 
@@ -293,7 +293,7 @@ artifacts they consume:
 - **Private constructor metadata only; `construct` token is item 9.**
   `PLAN.md:594-596`: "This item records private constructor metadata only; item
   9 introduces the source-level `construct family variant` token protocol."
-  Spec §12 `docs/type-families.md:691-704`. `construct`/`MATCH`/`ENDMATCH`
+  Spec §12 `docs/type-families.md:691-704`. `construct`/`MATCH`/`;MATCH`
   reserved at item 9 (`PLAN.md:436`); item 9 must first rename pre-existing
   `CONSTRUCT` in `lib/task.f` (`PLAN.md:648-651`).
 - **Constructor package name derivation is pinned and shared byte-identically**

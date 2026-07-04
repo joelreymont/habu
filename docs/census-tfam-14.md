@@ -21,11 +21,11 @@ the chain (`... 13 -> 17m -> 14 -> 17n`, `PLAN.md:1031`). **None of the ADT
 grammar/elimination/lowering machinery items 6-13 build is landed in this tree.**
 Evidence:
 
-- Grammar/eliminator words `SUMTYPE / TYPEFAMILY / VARIANT / END-VARIANT /
-  END-SUMTYPE / ENUM(block) / END-ENUM / MATCH / OF / ENDOF / ENDMATCH /
+- Grammar/eliminator words `SUMTYPE / TYPEFAMILY / VARIANT / ;VARIANT /
+  ;SUMTYPE / ENUM(block) / ;ENUM / MATCH / OF / ENDOF / ;MATCH /
   construct` and the expander `PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero
   definitions** anywhere in `src/ lib/ tools/`
-  (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: VARIANT|^: ENUM |^: MATCH |^: ENDMATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
+  (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: VARIANT|^: ENUM |^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
   = 0 hits).
 - `dot list` (2026-07): items **6,7,8,10,11,12** are open (`o`); item **9**
   (`habu-tfam-9-construct-2dd4f2d3`), item **13** (`habu-tfaam-13-adt-5d3288f0`),
@@ -35,7 +35,7 @@ Evidence:
   census`); no ADT surface source exists yet.
 - **Probe (grammar unbuilt, fail-closed):**
   ```
-  $ printf 'ENUM color red green blue END-ENUM\n." got here" cr\n' | bin/hb   # from repo root
+  $ printf 'ENUM color red green blue ;ENUM\n." got here" cr\n' | bin/hb   # from repo root
   E-UNDEFINED: ENUM        # exit 70 — the block ENUM word does not exist; undefined-word reject
   ```
   So the block-style ENUM path is fail-closed today: an undefined `ENUM` token
@@ -44,7 +44,7 @@ Evidence:
 
 Consequence for the census: item 14 has two clearly separable halves —
 **(A) legacy numeric `ENUM+`/`ENUM4+` migration/retirement** (dependency-free,
-buildable today), and **(B) block-style `ENUM color … END-ENUM` enum families**
+buildable today), and **(B) block-style `ENUM color … ;ENUM` enum families**
 (pure sugar over item-6 `SUMTYPE _ 0`, gated on 6-13). This census maps both.
 
 ---
@@ -57,7 +57,7 @@ buildable today), and **(B) block-style `ENUM color … END-ENUM` enum families*
 ```
 \ ENUM+/ENUM4+ thread a running counter: each defines the next name as the
 \ current value and returns value+1 / value+4. The bare ENUM token is reserved
-\ for the block-style ENUM ... END-ENUM type family (PLAN.md item 14).
+\ for the block-style ENUM ... ;ENUM type family (PLAN.md item 14).
 ```
 `enums.f:6-7`:
 ```
@@ -71,7 +71,7 @@ buildable today), and **(B) block-style `ENUM color … END-ENUM` enum families*
 ```
 
 These are the **only** enum-defining words in the tree. There is NO bare block
-`ENUM`/`END-ENUM`, NO `ENUM4` (non-`+`) word (`rg '\bENUM4[^+]'` = 0 hits), and
+`ENUM`/`;ENUM`, NO `ENUM4` (non-`+`) word (`rg '\bENUM4[^+]'` = 0 hits), and
 NO `deftype`/`roles.f` enum path.
 
 ### 1b. How enum values are typed TODAY — **bare `n`, not nominal**
@@ -105,7 +105,7 @@ Tree-wide word-boundary sweep `rg -rn '\bENUM4?\+' .` (excluding `.jj-ws/`,
 - **Documentation:** `docs/forth.md:295-310` documents the surface (the
   error-code idiom `0 ENUM+ E-OK / ENUM+ E-OPEN / ENUM4+ E-RANGE / drop`,
   `:300-304`) and states `:309-310` "The bare `ENUM` token is reserved for the
-  block-style `ENUM ... END-ENUM` type family." `FILEMAP.md:50` describes the
+  block-style `ENUM ... ;ENUM` type family." `FILEMAP.md:50` describes the
   file.
 
 **Finding: `ENUM+`/`ENUM4+` have ZERO production consumers** (nothing under
@@ -120,7 +120,7 @@ lockstep edits here:
 - Gforth mirror: `bootstrap/cg/forth.fs` `PFX-COMMON LPENUMS s" src/core/enums.f"
   PFX-LOAD-ROW / PFX-PATH-ROW / PFX-PROVIDE-ROW`.
 - Fixpoint builder: `tools/build-fixpoint.f:636-637`
-  `: BF-APPEND-ENUMS ( ptr u8 n -- ) … s" src/core/enums.f" BF-APPEND-SOURCE ;`,
+  `: BF-APP;ENUMS ( ptr u8 n -- ) … s" src/core/enums.f" BF-APPEND-SOURCE ;`,
   invoked in `BF-APPEND-COMMON` (`:651`) between `BF-APPEND-SCRIPT-ARGV` and
   `BF-APPEND-EXEC-VECTOR`.
 - Build cache key: `tools/hb-build-lib.f` `s" src/core/enums.f" HBB-KEY-FILE+`.
@@ -192,7 +192,7 @@ So an enum variant is a **zero-payload** SUMV row: `SV.PAYCELLS=0`,
 `TFAM-SLOTS! 0` (M=0) and `TFAM-VAR-RANGE!`.
 
 ### 2c. What an enum family provides that legacy `ENUM+` lacks
-| Capability | Legacy `ENUM+`/`ENUM4+` | Block `ENUM color … END-ENUM` |
+| Capability | Legacy `ENUM+`/`ENUM4+` | Block `ENUM color … ;ENUM` |
 |---|---|---|
 | Value type | bare `n` (`enums.f:7`) | **nominal `color`** (`TK-ENUM` `T-PARAM`, family-id identity) |
 | `n`↔enum confusion | freely mixed (§1b probe) | **rejected** — spec §23 `docs/type-families.md:1444-1449` "`: BAD-COLOR ( -- color ) 0 ;` … because `n` is not `color`" |
@@ -233,23 +233,23 @@ staged**: the source uses `ENUM+`/`ENUM4+` (with `+`), explicitly reserving bare
 forced** — `ENUM+`/`ENUM4+` are already "the explicit legacy name" and bare
 `ENUM` is free for the block word. Two valid migrated forms:
 1. **Coexist (lowest risk):** keep `enums.f` `ENUM+`/`ENUM4+` verbatim; add block
-   `ENUM`/`END-ENUM` in a new file (e.g. `src/core/enum-family.f`) that reuses
+   `ENUM`/`;ENUM` in a new file (e.g. `src/core/enum-family.f`) that reuses
    item-6 `SUMTYPE _ 0`. Legacy stays a counter definer; block is the type family.
 2. **Retire:** delete `enums.f`, migrate `GD-ENUMS` off `ENUM+` (or convert its
    fixture to block enums), and drop all §1d build-closure rows. Higher churn;
    only justified if `ENUM+` has no remaining users (§1c confirms none in prod).
 
-### 3b. Block `ENUM color … END-ENUM` migrated form
+### 3b. Block `ENUM color … ;ENUM` migrated form
 Per spec §9.3 (`docs/type-families.md:517-537`) the block form desugars to:
 ```
 SUMTYPE color 0
-  VARIANT red   END-VARIANT
-  VARIANT green END-VARIANT
-  VARIANT blue  END-VARIANT
-END-SUMTYPE
+  VARIANT red   ;VARIANT
+  VARIANT green ;VARIANT
+  VARIANT blue  ;VARIANT
+;SUMTYPE
 ```
 i.e. **`ENUM` is thin sugar over item-6 `SUMTYPE` with arity 0 and zero-payload
-variants** — item 14 owns only the `ENUM`/`END-ENUM` token pair + the arity-0 /
+variants** — item 14 owns only the `ENUM`/`;ENUM` token pair + the arity-0 /
 `paycells=0` wiring; item 6 owns `SUMTYPE`/`VARIANT`/registry, item 8 owns the
 constructors (`COLOR:RED`…), item 9 owns `MATCH`. Constructor spelling follows
 Package Shape (`PLAN.md:89-102`): uppercase package+tail, so `color` → `COLOR:RED`.
@@ -291,9 +291,9 @@ Item 14 `Depends on: items 9-13` (`PLAN.md:906`); transitively 6/7/8/11/12.
 Per-item artifacts (all UNBUILT, §0):
 
 - **Item 6 (`PLAN.md:509-544`):** the `SUMTYPE`/`TYPEFAMILY` defining-word grammar
-  + token reservation. Item 14's `ENUM`/`END-ENUM` is sugar that calls item 6's
-  `SUMTYPE color 0 … END-SUMTYPE` machinery (spec §9.3 `:529-537`). Item 6
-  reserves the block tokens (`PLAN.md:434-435`), leaving `ENUM`/`END-ENUM` for
+  + token reservation. Item 14's `ENUM`/`;ENUM` is sugar that calls item 6's
+  `SUMTYPE color 0 … ;SUMTYPE` machinery (spec §9.3 `:529-537`). Item 6
+  reserves the block tokens (`PLAN.md:434-435`), leaving `ENUM`/`;ENUM` for
   item 14 to reserve at its phase (spec §26 Phase-3 `:1712-1713` "Do not reserve
   or replace `ENUM` in this phase; legacy `ENUM` is migrated in the later
   enum-family phase").
@@ -324,7 +324,7 @@ Per-item artifacts (all UNBUILT, §0):
 - Reserving the naming convention (already done, `enums.f:3-4`).
 - Docs alignment (`docs/forth.md:295-310`, `docs/type-families.md` enum sections).
 
-**Waits on 6-13:** the block `ENUM color … END-ENUM` defining word,
+**Waits on 6-13:** the block `ENUM color … ;ENUM` defining word,
 `COLOR:*` constructors, `MATCH color` exhaustiveness, bad-tag death, and every
 negative fixture that needs a real declared enum (spec §25.2/§25.4, §24 codes).
 
@@ -362,8 +362,8 @@ From `PLAN.md:899-902`. Paths declared (`PLAN.md:894-895`): `src/core/enums.f`,
    or are migrated"** → `test/gate-dictionary-lib.f:888-916` `GD-ENUMS` must
    either stay green on `ENUM+`/`ENUM4+` (legacy kept, `src/core/enums.f:6,9`
    unchanged) OR be migrated to block enums. Decision = §3a.
-2. **"block-style `ENUM color … END-ENUM` defines checked constructors"** → new
-   `ENUM`/`END-ENUM` defining words (owner: new `src/core/enum-family.f` or
+2. **"block-style `ENUM color … ;ENUM` defines checked constructors"** → new
+   `ENUM`/`;ENUM` defining words (owner: new `src/core/enum-family.f` or
    `src/core/enums.f`) driving `TFAM-DECL … TK-ENUM` (`type-family.f:293,18`),
    `SUMV-ADD … paycells=0` (`:375`), `TFAM-SLOTS! 0` (`:225`),
    `TFAM-VAR-RANGE!` (`:226`); constructors via item-8 generator (`COLOR:RED`,
@@ -427,7 +427,7 @@ From `PLAN.md:899-902`. Paths declared (`PLAN.md:894-895`): `src/core/enums.f`,
    (`100 ENUM+ … ENUM4+ …`) numeric outputs (`:906-913`) against any proposed
    block migration — they differ, so those families must NOT be block-migrated.
 6. **R6 — Build-closure drift on retire (§1d).** Retiring `enums.f` touches 7+
-   wiring sites. *Probe:* `rg -rn 'enums\.f|LPENUMS|BF-APPEND-ENUMS' src/ tools/
+   wiring sites. *Probe:* `rg -rn 'enums\.f|LPENUMS|BF-APP;ENUMS' src/ tools/
    bootstrap/ test/` — every hit must be edited in the same commit or native and
    Gforth prefixes diverge (gate 17n stdin-manifest, `PLAN.md:973-978`).
 

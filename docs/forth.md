@@ -12,6 +12,15 @@ file.
 - **Our words UPPER-CASE; built-in Forth words as-is.** Words we define
   (`RESOLVE`, `MK-CON`, `APPLY-EFFECT`) are UPPER-CASE; core Forth words stay
   lower-case (`and`, `cells`, `allot`, `: ;`, `?do`). Never upper-case a built-in.
+- **Block constructs are `FOO … ;FOO`.** Every project-defined block/definer
+  pair opens with `FOO` and closes with `;FOO`: `STRUCTURE … ;STRUCTURE`,
+  `SUMTYPE … ;SUMTYPE`, `VARIANT … ;VARIANT`, `ENUM … ;ENUM`,
+  `PRODUCT … ;PRODUCT`, `MATCH … ;MATCH`, `package … ;package` (keyword case
+  follows the opener). Never `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO`
+  pairs. ANS core control words (`begin … until`, `case … endcase`,
+  `do … loop`, `of … endof`) stay as-is. Legacy pairs
+  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `end-package`, suite DSL
+  `END-GROUP`/`END-SUITE`) are being renamed under dots; do not add new uses.
 - **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
   `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
   `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores

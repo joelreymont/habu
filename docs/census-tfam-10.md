@@ -173,11 +173,11 @@ serves a stale artifact.
 
 ## Category 4 — keyword / control lowering seeds (the pattern MATCH mirrors)
 
-No `MATCH`/`ENDMATCH`/`J-MATCH` lowering exists yet (the `LFLAGMATCH` symbols in
+No `MATCH`/`;MATCH`/`J-MATCH` lowering exists yet (the `LFLAGMATCH` symbols in
 habu2.f are an unrelated CLI-flag matcher). CASE/OF/ENDOF/ENDCASE is the exact
 template. A keyword needs **five parts** in each compiler; MATCH adds a parallel
-set (`LKWMATCH`/`LKWENDMATCH`, reuse or add match `OF`/`ENDOF`, `J-MATCH`/`J-OF`
-family+variant token consumption + tag compare/branch chain / `J-ENDMATCH` +
+set (`LKWMATCH`/`LKWSEMIMATCH`, reuse or add match `OF`/`ENDOF`, `J-MATCH`/`J-OF`
+family+variant token consumption + tag compare/branch chain / `J-SEMIMATCH` +
 invalid-tag die).
 
 ### Native (`src/habu/habu2.f`)
@@ -200,11 +200,11 @@ invalid-tag die).
    `3127`, OF `3128`, ENDOF `3129`, ENDCASE `3130`. A new `EM-COMPILE-MATCH-KEYWORDS`
    mirrors this and is invoked from `EM-COMPILE-KEYWORDS` (`3169`).
 5. **Label vars + assignment**: LKW* variables declared/assigned in habu2.f (native
-   analog of the Gforth `EMIT-LABEL-CONTROL`); MATCH adds `LKWMATCH`/`LKWENDMATCH`.
+   analog of the Gforth `EMIT-LABEL-CONTROL`); MATCH adds `LKWMATCH`/`LKWSEMIMATCH`.
 
 ### Gforth mirror (`bootstrap/cg/forth.fs`)
 1. **Label variable decls** (`181-188`): `variable LKWCASE LKWOF LKWENDOF LKWENDCASE`
-   … Add `LKWMATCH`/`LKWENDMATCH` here.
+   … Add `LKWMATCH`/`LKWSEMIMATCH` here.
 2. **KWDATA rows** `EMIT-KWDATA` (`1620-1627`): `LKWCASE @ LBL, s" case" …
    LKWOF @ LBL, s" of" … LKWENDOF @ LBL, s" endof"` (note `@ LBL,` vs native
    `LABEL@ LBL,`).
@@ -215,7 +215,7 @@ invalid-tag die).
    ['] J-CASE CFN-ENTRY`, `lmain LKWOF 2 ['] J-OF CF-ENTRY`, ENDOF `3131`, ENDCASE
    `3132`. No `KEEP?` guard in bootstrap (no DCE); passes `lmain` as a local.
 5. **Label assignment** `EMIT-LABEL-CONTROL` (`3373-3379`): `LBL LKWCASE ! LBL LKWOF !
-   LBL LKWENDOF ! LBL LKWENDCASE !`. Add `LBL LKWMATCH !`/`LBL LKWENDMATCH !`.
+   LBL LKWENDOF ! LBL LKWENDCASE !`. Add `LBL LKWMATCH !`/`LBL LKWSEMIMATCH !`.
 
 ### Shape tests (must be extended, and prove CASE unchanged)
 - `tools/compiler-dispatch-test.f:119-139` — `CDT-TEST-BOOTSTRAP-COMPILE`:
@@ -363,8 +363,8 @@ the plan's native path list**:
    list.** The Gforth mirror lists `forth.fs:181` (decls) and `forth.fs:3373`
    (`EMIT-LABEL-CONTROL`), but the native analogs — the `variable LKW*` block and
    `EMIT-LABEL-CONTROL` at **`src/habu/habu2.f:3431-3434`** (called at 3494) — are
-   not cited for native. `LKWMATCH`/`LKWENDMATCH` must be declared and assigned
+   not cited for native. `LKWMATCH`/`LKWSEMIMATCH` must be declared and assigned
    there too, or the native keyword table will not resolve the new labels.
-4. No `MATCH`/`ENDMATCH`/`J-MATCH` lowering exists anywhere yet (confirmed: the
+4. No `MATCH`/`;MATCH`/`J-MATCH` lowering exists anywhere yet (confirmed: the
    `LFLAGMATCH` symbols in habu2.f are an unrelated CLI-flag matcher). The entire
    keyword set is net-new, mirroring CASE.

@@ -421,7 +421,7 @@ manifest rows.)
   `result<ptr u8,own>` linearity comes from the *instantiated* arg, not the
   declaration (`SCH-PARAM`, `type-schema.f:90-92`). Without item 8's schema
   instantiation, `LAYOUT-LINEAR?` cannot see it. *Probe:* declare
-  `SUMTYPE r<a> ... VARIANT some a END-VARIANT`, instantiate `r<own>` vs `r<n>`,
+  `SUMTYPE r<a> ... VARIANT some a ;VARIANT`, instantiate `r<own>` vs `r<n>`,
   assert `LAYOUT-LINEAR?` true vs false respectively.
 - **R4 — SCALAR linear laundering through typed locals is UNCAUGHT today
   (Contradiction C1).** Reproduced on the current `bin/hb` (2026-07-04) via

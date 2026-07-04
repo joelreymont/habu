@@ -74,8 +74,8 @@ feature is allowed.
   WIDs without u8 truncation, and advance `WIDN` above every restored protected
   WID before any user `wordlist` or `package` allocation can run.
 - `package TYPE`: user-facing definers that are ordinary language words only at
-  the parser boundary (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `END-VARIANT`,
-  `END-SUMTYPE`, later `ENUM`/`PRODUCT`). Parser keywords may be global/reserved, but their
+  the parser boundary (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `;VARIANT`,
+  `;SUMTYPE`, later `ENUM`/`PRODUCT`). Parser keywords may be global/reserved, but their
   implementations call TFAM through the sealed system/friend capability rather
   than user-callable package words or direct arena access.
 - `package MATCH`: checker/compiler support for `MATCH` frames and variant
@@ -200,7 +200,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
      names. Pin the generated constructor package derivation at
      `docs/type-families.md` to the exact escape/hash encoding in
      Package Shape, and normalize every `VARIANT` example to the terminated
-     `VARIANT ... END-VARIANT` form so the spec grammar is uniform.
+     `VARIANT ... ;VARIANT` form so the spec grammar is uniform.
      Add `docs/type-families.md` to `FILEMAP.md` so the normative spec is
      discoverable and protected by filemap-lint. Rebuild/refresh `bin/hb` on
      this line so its baked source list no longer references discarded
@@ -432,9 +432,9 @@ This plan cites files and word/symbol names, not line numbers; per-item
      family types are collected as diagnostic units, not treated as unguarded
      support replay. Reserve every new definer/control token at the item that
      introduces it: item 6 reserves `TYPEFAMILY`, `SUMTYPE`, `VARIANT`,
-     `END-VARIANT`, `END-SUMTYPE`; item 9 reserves `construct`, `MATCH`,
-     `ENDMATCH`, plus branch tokens used by `MATCH`; item 14 reserves/migrates
-     `ENUM`/`END-ENUM`; item 15 reserves `PRODUCT`/`FIELD`/`END-PRODUCT`; item
+     `;VARIANT`, `;SUMTYPE`; item 9 reserves `construct`, `MATCH`,
+     `;MATCH`, plus branch tokens used by `MATCH`; item 14 reserves/migrates
+     `ENUM`/`;ENUM`; item 15 reserves `PRODUCT`/`FIELD`/`;PRODUCT`; item
      16 reserves `POLICY`. Do not reserve `ENUM` before the legacy enum surface
      is retired or migrated. Likewise, do not reserve `construct` before item 9
      migrates the pre-existing `CONSTRUCT` words (`lib/task.f`, and their call
@@ -510,8 +510,8 @@ This plan cites files and word/symbol names, not line numbers; per-item
    - Paths: `src/core/checker.f`, `src/core/roles.f`, `src/habu/habu2.f`,
      `docs/type-families.md`.
    - Work: add package-aware public defining words for cell families and sum
-     families. Each `VARIANT` block terminates with `END-VARIANT` and each sum
-     block with `END-SUMTYPE`, matching the normalized spec grammar. Constructor
+     families. Each `VARIANT` block terminates with `;VARIANT` and each sum
+     block with `;SUMTYPE`, matching the normalized spec grammar. Constructor
      and variant names are installed from lexed tokens and
      interned metadata, not interpolated source strings. Token grammar rejects
      delimiters, control words, qualified names in illegal positions, empty sums,
@@ -696,7 +696,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
      `bootstrap/cg/forth.fs`, `tools/compiler-dispatch-test.f`,
      `tools/bootstrap-codegen-test.f`, `docs/type-families.md`.
    - Work: add keyword data, label variables, label assignment, `EMIT-KWDATA`
-     rows, and lowering for `MATCH`/`OF`/`ENDOF`/`ENDMATCH`, family/variant token
+     rows, and lowering for `MATCH`/`OF`/`ENDOF`/`;MATCH`, family/variant token
      consumption, constructor tag pushes, tag compare/branch chains, and
      invalid-tag die paths with no normal continuation in both native `habu2.f`
      and the Gforth bootstrap codegen. Add match-mode token capture before the
@@ -897,7 +897,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
       publishing block-style enum families. If compatibility is needed, move the
       old surface behind an explicit legacy name and update all call sites.
    - Acceptance: existing enum fixtures either pass through the deliberate
-     legacy spelling or are migrated; block-style `ENUM color ... END-ENUM`
+     legacy spelling or are migrated; block-style `ENUM color ... ;ENUM`
      defines checked constructors and exhaustive `MATCH`; duplicate/missing/bad
      enum variants reject.
    - Risk: reusing `ENUM` without a transition will break existing dictionary
@@ -914,7 +914,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
     - Work: before reserving `FIELD`, migrate the pre-existing `FIELD` words
       (`lib/object.f`, `lib/object-test.f`, `src/habu/aot-lib.f`)
       and their call sites to non-colliding names; dictionary lookup is
-      case-folded. Then implement `PRODUCT ... END-PRODUCT` after layout-aware
+      case-folded. Then implement `PRODUCT ... ;PRODUCT` after layout-aware
       stack operations are proven. Decide by evidence whether `VALUE-RECORD` becomes
       product-family sugar or remains a typed compatibility layer over the same
       registry. Migrate production users such as PTX IR only after fixtures prove
@@ -1203,6 +1203,6 @@ migration, and policies are proven.
   native, `habu1`, Gforth, and the spec; item 5's first checkpoint depends only
   on items 2-4, removing the formal 5<->6 cycle; item 8 constructor bodies
   lower through existing checked paths with Gforth parity proven at item 10;
-  `END-VARIANT` joins the definer inventory, item 6 grammar, and normalized
+  `;VARIANT` joins the definer inventory, item 6 grammar, and normalized
   spec examples; item 13 declares its item 8 dependency; the stale Round 2
   `TFAM:*` log entry is marked superseded.

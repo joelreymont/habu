@@ -35,9 +35,9 @@ Recommended public defining words:
 
 ```forth
 TYPEFAMILY span 3
-PRODUCT pair 2 ... END-PRODUCT
-SUMTYPE result 2 ... END-SUMTYPE
-ENUM color ... END-ENUM
+PRODUCT pair 2 ... ;PRODUCT
+SUMTYPE result 2 ... ;SUMTYPE
+ENUM color ... ;ENUM
 ```
 
 Recommended internal registry prefix:
@@ -106,7 +106,7 @@ For `result`:
 logical:   result<a,b>
 physical:  @result.slot0<a,b> @result.tag<a,b>
 intro:     RESULT:OK, RESULT:ERR
-elim:      MATCH result ... ENDMATCH
+elim:      MATCH result ... ;MATCH
 ```
 
 The `@result...` names are diagnostic renderings. Internal hidden physical
@@ -125,7 +125,7 @@ For `option`:
 logical:   option<a>
 physical:  @option.slot0<a> @option.tag<a>
 intro:     OPTION:NONE, OPTION:SOME
-elim:      MATCH option ... ENDMATCH
+elim:      MATCH option ... ;MATCH
 ```
 
 For an enum:
@@ -134,7 +134,7 @@ For an enum:
 logical:   color
 physical:  @color.tag
 intro:     COLOR:RED, COLOR:GREEN, COLOR:BLUE
-elim:      MATCH color ... ENDMATCH
+elim:      MATCH color ... ;MATCH
 ```
 
 ---
@@ -187,9 +187,9 @@ Examples:
 
 ```forth
 SUMTYPE result 2
-  VARIANT ok  a END-VARIANT
-  VARIANT err b END-VARIANT
-END-SUMTYPE
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
 ```
 
 Physical layout:
@@ -200,9 +200,9 @@ slot0 tag
 
 ```forth
 SUMTYPE option 1
-  VARIANT none   END-VARIANT
-  VARIANT some a END-VARIANT
-END-SUMTYPE
+  VARIANT none   ;VARIANT
+  VARIANT some a ;VARIANT
+;SUMTYPE
 ```
 
 Physical layout:
@@ -218,7 +218,7 @@ ENUM color
   red
   green
   blue
-END-ENUM
+;ENUM
 ```
 
 Physical layout:
@@ -363,9 +363,9 @@ For:
 
 ```forth
 SUMTYPE result 2
-  VARIANT ok  a END-VARIANT
-  VARIANT err b END-VARIANT
-END-SUMTYPE
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
 ```
 
 The registry contains:
@@ -393,7 +393,7 @@ ENUM color
   red
   green
   blue
-END-ENUM
+;ENUM
 ```
 
 The registry contains:
@@ -450,9 +450,9 @@ For:
 
 ```forth
 SUMTYPE parse-result 1
-  VARIANT ok  a END-VARIANT
-  VARIANT err ptr u8 n END-VARIANT
-END-SUMTYPE
+  VARIANT ok  a ;VARIANT
+  VARIANT err ptr u8 n ;VARIANT
+;SUMTYPE
 ```
 
 The `err` payload schema is:
@@ -497,9 +497,9 @@ Syntax:
 
 ```forth
 SUMTYPE result 2
-  VARIANT ok  a END-VARIANT
-  VARIANT err b END-VARIANT
-END-SUMTYPE
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
 ```
 
 Parameter names are positional:
@@ -523,17 +523,17 @@ ENUM color
   red
   green
   blue
-END-ENUM
+;ENUM
 ```
 
 Equivalent to a zero-payload sum:
 
 ```forth
 SUMTYPE color 0
-  VARIANT red   END-VARIANT
-  VARIANT green END-VARIANT
-  VARIANT blue  END-VARIANT
-END-SUMTYPE
+  VARIANT red   ;VARIANT
+  VARIANT green ;VARIANT
+  VARIANT blue  ;VARIANT
+;SUMTYPE
 ```
 
 ### 9.4 `PRODUCT`
@@ -544,7 +544,7 @@ Syntax:
 PRODUCT pair 2
   FIELD fst a
   FIELD snd b
-END-PRODUCT
+;PRODUCT
 ```
 
 This should eventually generalize or subsume `VALUE-RECORD`.
@@ -799,7 +799,7 @@ Preferred syntax:
     err OF
       \ err payload n is already on stack
     ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Inside the `ok` branch, the checker knows the payload is `ptr u8`.
@@ -875,14 +875,14 @@ checker steps:
 
 ```text
 1. If branch has normal continuation, accumulate DCUR/RCUR into match output.
-2. Mark current path dead until next variant or ENDMATCH.
+2. Mark current path dead until next variant or ;MATCH.
 3. Emit jump-to-join metadata for compiler.
 ```
 
 At:
 
 ```forth
-ENDMATCH
+;MATCH
 ```
 
 checker steps:
@@ -901,7 +901,7 @@ V1 has no default branch syntax. Every variant must be named explicitly. A
 default branch would need its own reserved token, replay support, diagnostics,
 and runtime lowering proof, so it is a later extension.
 
-Branch outputs still need to unify because the code after `ENDMATCH` has one continuation. This is not a user-facing contortion; it is the same kind of coherence Rust requires for `match` expressions and Habu already requires for structured control flow.
+Branch outputs still need to unify because the code after `;MATCH` has one continuation. This is not a user-facing contortion; it is the same kind of coherence Rust requires for `match` expressions and Habu already requires for structured control flow.
 
 ---
 
@@ -917,7 +917,7 @@ Runtime lowering for:
 MATCH result
   ok OF ... ENDOF
   err OF ... ENDOF
-ENDMATCH
+;MATCH
 ```
 
 should be equivalent to:
@@ -1154,9 +1154,9 @@ Later syntax:
 ```forth
 SUMTYPE option 1
   PARAM a layout
-  VARIANT none   END-VARIANT
-  VARIANT some a END-VARIANT
-END-SUMTYPE
+  VARIANT none   ;VARIANT
+  VARIANT some a ;VARIANT
+;SUMTYPE
 ```
 
 could allow layout-polymorphic parameters.
@@ -1321,9 +1321,9 @@ Later:
 
 ```forth
 SUMTYPE option 1 POLICY niche-null
-  VARIANT none   END-VARIANT
-  VARIANT some nonnull-ptr<a> END-VARIANT
-END-SUMTYPE
+  VARIANT none   ;VARIANT
+  VARIANT some nonnull-ptr<a> ;VARIANT
+;SUMTYPE
 ```
 
 Representation:
@@ -1342,9 +1342,9 @@ Later:
 
 ```forth
 SUMTYPE tree 1 POLICY boxed
-  VARIANT leaf a END-VARIANT
-  VARIANT node ptr tree<a> ptr tree<a> END-VARIANT
-END-SUMTYPE
+  VARIANT leaf a ;VARIANT
+  VARIANT node ptr tree<a> ptr tree<a> ;VARIANT
+;SUMTYPE
 ```
 
 Stack representation:
@@ -1365,9 +1365,9 @@ Do not start with boxed layout.
 
 ```forth
 SUMTYPE result 2
-  VARIANT ok  a END-VARIANT
-  VARIANT err b END-VARIANT
-END-SUMTYPE
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
 
 : OK-PTR ( ptr u8 -- result<ptr u8,n> )
   RESULT:OK ;
@@ -1383,16 +1383,16 @@ END-SUMTYPE
     err OF
       drop false
     ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 ### Option
 
 ```forth
 SUMTYPE option 1
-  VARIANT none   END-VARIANT
-  VARIANT some a END-VARIANT
-END-SUMTYPE
+  VARIANT none   ;VARIANT
+  VARIANT some a ;VARIANT
+;SUMTYPE
 
 : FIND ( n -- option<ptr u8> )
   dup 0 = IF
@@ -1410,7 +1410,7 @@ END-SUMTYPE
       \ ptr u8
       drop 1
     ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 ### Enum
@@ -1420,7 +1420,7 @@ ENUM color
   red
   green
   blue
-END-ENUM
+;ENUM
 
 : PICK-COLOR ( n -- color )
   drop COLOR:GREEN ;
@@ -1436,7 +1436,7 @@ END-ENUM
     blue OF
       2
     ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Rejected:
@@ -1484,7 +1484,7 @@ definition-only fields such as `definition_source`, `source_excerpt`,
 Example:
 
 ```text
-habu: in RESULT>CODE: at ENDMATCH
+habu: in RESULT>CODE: at ;MATCH
   branch output mismatch
   ok branch leaves:  ptr u8
   err branch leaves: n
@@ -1554,7 +1554,7 @@ Accepted exhaustive match:
   MATCH result
     ok OF ENDOF
     err OF ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Rejected non-exhaustive match:
@@ -1563,7 +1563,7 @@ Rejected non-exhaustive match:
 : T ( result<n,n> -- n )
   MATCH result
     ok OF ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Accepted generic third-family match:
@@ -1573,7 +1573,7 @@ Accepted generic third-family match:
   MATCH packet
     data OF drop 1 ENDOF
     code OF ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Rejected duplicate branch:
@@ -1584,7 +1584,7 @@ Rejected duplicate branch:
     ok OF ENDOF
     ok OF ENDOF
     err OF ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 Rejected branch join:
@@ -1594,7 +1594,7 @@ Rejected branch join:
   MATCH result
     ok OF ENDOF
     err OF ENDOF
-  ENDMATCH ;
+  ;MATCH ;
 ```
 
 ### 25.5 Runtime invalid-tag test
@@ -1691,8 +1691,8 @@ Implement:
 ```forth
 SUMTYPE
 VARIANT
-END-VARIANT
-END-SUMTYPE
+;VARIANT
+;SUMTYPE
 ```
 
 Add:
@@ -1737,7 +1737,7 @@ CF-MATCH
 MATCH
 OF
 ENDOF
-ENDMATCH
+;MATCH
 ```
 
 Implement:
@@ -1771,7 +1771,7 @@ Implement:
 ```forth
 PRODUCT
 FIELD
-END-PRODUCT
+;PRODUCT
 ```
 
 Then decide whether existing `VALUE-RECORD` becomes sugar over `PRODUCT` or remains as a compatibility feature.

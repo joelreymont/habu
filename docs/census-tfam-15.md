@@ -17,11 +17,11 @@ VR-PTR 3 VR-PUSH 4 VR-QUOT 5 VR-ATOM 6 VR-PARAM 7` (`checker.f:1249-1256`).
 
 ## 0. State of the world (what item 15 builds ON / against)
 
-- **No `PRODUCT`/`FIELD`/`END-PRODUCT` grammar exists.** Probe (read-only,
+- **No `PRODUCT`/`FIELD`/`;PRODUCT` grammar exists.** Probe (read-only,
   `/private/tmp`): `printf ': P1 ( -- ) ;\nPRODUCT\n' | bin/hb --load …` →
-  `E-UNDEFINED: PRODUCT`. `rg '^: PRODUCT|END-PRODUCT|: FIELD\b'` over
+  `E-UNDEFINED: PRODUCT`. `rg '^: PRODUCT|;PRODUCT|: FIELD\b'` over
   `src/ lib/ tools/` = 0 defining words. PLAN reserves the tokens *at this item*:
-  "item 15 reserves `PRODUCT`/`FIELD`/`END-PRODUCT`" (`PLAN.md:437`).
+  "item 15 reserves `PRODUCT`/`FIELD`/`;PRODUCT`" (`PLAN.md:437`).
 - **Prerequisites 6/7/8/12 are UNBUILT** (confirmed by `docs/census-tfam-7.md` §0
   and `docs/census-tfam-8.md` §0; tree is at TFAM item 4). No
   `SUMTYPE`/`TYPEFAMILY` grammar, no `PUSH-LOGICAL`/`LAYOUT-PUSH-FIELDS`, no
@@ -46,7 +46,7 @@ VR-PTR 3 VR-PUSH 4 VR-QUOT 5 VR-ATOM 6 VR-PARAM 7` (`checker.f:1249-1256`).
   `PF-ADD` (`type-family-suite.f:76,215-222,244`). No grammar populates them.
   Item 15 is the item that first drives real products through this substrate.
 
-So item 15 = (a) a `PRODUCT`/`FIELD`/`END-PRODUCT` grammar over the *existing*
+So item 15 = (a) a `PRODUCT`/`FIELD`/`;PRODUCT` grammar over the *existing*
 TK-PRODUCT/PF registry; (b) a decision on whether `VALUE-RECORD` folds into it or
 stays a compat layer; (c) migrating the two real VREC producers (PTX IR + engine
 records) and renaming pre-existing `FIELD*` words. The registry substrate is
@@ -240,9 +240,9 @@ verify-source.f, check-core.f):
   (`PLAN.md:921,928`).
 
 ### 2c. What "PRODUCT-unified value records and PTX IR" requires (per PLAN/goal)
-1. `PRODUCT name arity … FIELD f τ … END-PRODUCT` grammar populating
+1. `PRODUCT name arity … FIELD f τ … ;PRODUCT` grammar populating
    `TFAM(TK-PRODUCT)` + `PF-ADD` rows + SCHEMA field schemas, reserving
-   `PRODUCT`/`FIELD`/`END-PRODUCT` (`PLAN.md:437`, `type-families.md:539-551`).
+   `PRODUCT`/`FIELD`/`;PRODUCT` (`PLAN.md:437`, `type-families.md:539-551`).
    Grammar needed in **all three** parsers (§1f-g) + any Gforth mirror.
 2. By-value construction/destructure proven **without size regression**
    (`PLAN.md:920-921`) — for `ptxir-node` this is `>PTXIR-NODE`/`PTXIR-NODE>` and
@@ -312,7 +312,7 @@ ABI/source keys (`PLAN.md:970-978`) must be re-keyed if a record moves registrie
   shuffle is width-aware. This is why `Depends on: item 12` (`PLAN.md:931`).
 
 ### 3e. Reserved-name `FIELD` migration
-Reserving `FIELD` (and `PRODUCT`/`END-PRODUCT`). Pre-existing `FIELD*` words to
+Reserving `FIELD` (and `PRODUCT`/`;PRODUCT`). Pre-existing `FIELD*` words to
 rename (`PLAN.md:914-916`): `lib/object.f` `FIELD-CAP` (`:15`), `FIELD-BYTE`
 (`:90`), `FIELD+` (`:97`), `HASH-FIELD` (`:111`), `HEX-FIELD` (`:119`), `FIELD$`
 (`:226`), plus `OBJ:ROW-FIELD#`/`OBJ:ROW-FIELD$`; `lib/object-test.f` `FIELD+`
@@ -329,7 +329,7 @@ distinct tokens, not renamed by this criterion but the file where a product
 - **Item 6 (grammar/reservation, UNBUILT):** the `SUMTYPE`/`TYPEFAMILY` defining
   machinery + token reservation this item mirrors for `PRODUCT`; item 6 also
   reserves the sibling tokens (`PLAN.md:434`). Item 15 reserves
-  `PRODUCT`/`FIELD`/`END-PRODUCT` itself (`:437`).
+  `PRODUCT`/`FIELD`/`;PRODUCT` itself (`:437`).
 - **Item 7 (hidden fields / `PUSH-LOGICAL` / `LAYOUT-PUSH-FIELDS`, UNBUILT):**
   the layout expansion + hidden-field kind + fail-closed binding a product's
   fields ride (`PLAN.md:549-556`). Item 15's product fields ARE the "product"
@@ -438,7 +438,7 @@ From `PLAN.md:922-927`:
   array path (`:20-49`) is untouched (storage is separate from the bundle type).
 - **R3 — Parametric field `box value a` round-trips through SCHEMA.** VREC stores
   `a` as a fresh VR-VAR; a product needs `SC-PARAMREF`. *Probe:* declare
-  `PRODUCT box 1 FIELD value a END-PRODUCT`, check `T->BOX ( a -- box )` /
+  `PRODUCT box 1 FIELD value a ;PRODUCT`, check `T->BOX ( a -- box )` /
   `T-BOX> ( box -- a )` (mirror `engine-suite.f:943-944,959`).
 - **R4 — Linear product `hdl owner own`.** *Probe:* declare the product form,
   assert `COK-HDL-PASS ( hdl -- hdl )` passes and `over over` rejects; gated on

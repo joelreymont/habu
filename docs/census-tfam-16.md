@@ -31,9 +31,9 @@ Item 16 declares `Depends on: items 9-15` (`PLAN.md:947`) and is the **terminal
 code item** (`16 -> 17p`, `PLAN.md:1031`). **None of the ADT grammar/lowering
 chain (items 5-15) is landed.** Evidence:
 
-- Grammar/lowering words `SUMTYPE / TYPEFAMILY / PRODUCT / END-PRODUCT / MATCH /
-  ENDMATCH / PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero definitions** in
-  `src/ lib/ tools/` (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: PRODUCT|^: END-PRODUCT|^: MATCH |^: ENDMATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
+- Grammar/lowering words `SUMTYPE / TYPEFAMILY / PRODUCT / ;PRODUCT / MATCH /
+  ;MATCH / PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero definitions** in
+  `src/ lib/ tools/` (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: PRODUCT|^: ;PRODUCT|^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
   = 0 hits).
 - `dot list` (2026-07): items **5,6,7,8,10,11,12,13,16** open (`o`); items
   **9,14,15** staged (`>`). Item 16 itself

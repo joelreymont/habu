@@ -27,7 +27,7 @@ Term encoding (from census-tfam-4, re-verified): 3-bit tag `TAG = x and 7`
   gone; `SIG-FAM?` (`checker.f:1830`) resolves any registered family:
   `: SIG-FAM? ( ptr u8 n -- n bool )  s" " 2swap TFAM-RESOLVE* ;`.
 - **Item 6 (`TYPEFAMILY`/`SUMTYPE` grammar): NOT DONE.** Tree-wide search for
-  `SUMTYPE`/`TYPEFAMILY`/`END-SUMTYPE`/`VARIANT` defining words returns only the
+  `SUMTYPE`/`TYPEFAMILY`/`;SUMTYPE`/`VARIANT` defining words returns only the
   spec, PLAN, and one comment line (`checker.f` "waits on the … declaration
   grammar (PLAN item 6)"). The mutators `SUMV-ADD`, `TFAM-SLOTS!`,
   `TFAM-VAR-RANGE!`, `LAY-ADD` are **defined but never called** outside
@@ -397,7 +397,7 @@ new *unchecked boundary* introduced either.)
   tree (§0). The registry mutators (`SUMV-ADD`, `TFAM-SLOTS!`, `LAY-ADD`) are
   defined but uncalled. Item 7 is therefore only *testable* via friend-only
   `TFAM-DECL`/`TFAM-SLOTS!` synthetic registrations until item 6 lands; its gate
-  17g "full" proof cannot use real `SUMTYPE result … END-SUMTYPE` fixtures yet.
+  17g "full" proof cannot use real `SUMTYPE result … ;SUMTYPE` fixtures yet.
   Not silently resolved — flagged for the orchestrator: either build item 6 first
   (matches the stated order) or accept synthetic-registration fixtures for the
   reject-only slice.

@@ -10,7 +10,7 @@ lowering). Every claim is `file:line` + a quoted snippet. **Symbol names are
 authoritative; line numbers drift — anchor to the symbol.** Repo root
 `/Users/joel/Work/habu`; paths relative here for density, absolute in the summary.
 
-Spelling note (see Contradictions C2): the spec/PLAN token is **`ENDMATCH`**
+Spelling note (see Contradictions C2): the spec/PLAN token is **`;MATCH`**
 (`docs/type-families.md:802,885`; `PLAN.md:436`), not `END-MATCH`.
 
 ---
@@ -23,9 +23,9 @@ routes `... 7 -> 17g -> 12 -> 17h -> 8 -> 17i -> 9` (`PLAN.md:1031`). **None of
 commit is `TFAM 4: registry-driven params + family-id terms`; open dots
 `habu-tfam-5/6/7/8/12`). Direct evidence:
 
-- No `SUMTYPE`/`TYPEFAMILY`/`VARIANT`/`END-SUMTYPE` defining word exists
+- No `SUMTYPE`/`TYPEFAMILY`/`VARIANT`/`;SUMTYPE` defining word exists
   (`rg '^: SUMTYPE|^: VARIANT|^: TYPEFAMILY'` = 0) — item 6 grammar absent.
-- `MATCH`/`ENDMATCH`/`construct` are **undefined and definable** today (probes
+- `MATCH`/`;MATCH`/`construct` are **undefined and definable** today (probes
   below): the checker rejects *usage* fail-closed, but nothing *reserves* the
   spellings and no `CF-MATCH` frame or capture exists.
 - No `src/core/match.f`/`src/core/sumtype.f` (`ls` = "No such file"); Package
@@ -35,7 +35,7 @@ commit is `TFAM 4: registry-driven params + family-id terms`; open dots
 /dev/stdin`, `bin/hb` = 115831 bytes, mtime Jul 4):
 
 ```
-: RC ( n -- n ) MATCH result ok OF drop 0 ENDOF ENDMATCH ;   -> exit 70, "E-UNDEFINED: MATCH"
+: RC ( n -- n ) MATCH result ok OF drop 0 ENDOF ;MATCH ;   -> exit 70, "E-UNDEFINED: MATCH"
 : MK ( a -- n ) construct result ok ;                        -> exit 70, "E-UNDEFINED: construct"
 : U  ( result<n,n> -- n ) drop 0 ;                           -> exit 70, "unknown type 'result' in signature"
 : construct ( -- ) ;                                         -> exit 0   (definable — NOT reserved)
@@ -77,7 +77,7 @@ must be inserted **before `LOC-REF?` (`checker.f:4988`)** — locals are resolve
 (`PLAN.md:655`). Capturing at `CF-TOK?` (4989) alone is too late: a variant
 token spelled like a local would already have bound at 4988.
 
-### 1b. `CF-TOK?` — the control-keyword recognizer where MATCH/ENDMATCH/OF land
+### 1b. `CF-TOK?` — the control-keyword recognizer where MATCH/;MATCH/OF land
 
 `checker.f:4682 : CF-TOK? ( ptr u8 n -- bool )` string-matches every control word
 and calls its checker model:
@@ -129,7 +129,7 @@ Models: `CF-IF` (`4488`), `CF-CASE` (`4490`, pushes kind 7, `CF.DED`=per-index
 join accumulator `CF-CASE-ACCUM` (`4494`) which unifies each live arm's DCUR/RCUR
 via `SUNI`/`RSUNI`. **`CF-MATCH` is a new multi-arm kind (9+)** modeled on
 kind-7 CASE: `CF-CASE` opens the frame, each `variant OF` opens an arm and
-refines the payload, `ENDOF` accumulates, `ENDMATCH` unifies live arms and checks
+refines the payload, `ENDOF` accumulates, `;MATCH` unifies live arms and checks
 coverage. The CASE machinery (`CF-CASE-HAS?`/`CF-CASE-HAS!`/`CF-CASE-DATA!`,
 `checker.f:4375-4391`) is the direct template for the seen-set + per-arm output
 rows the spec's match frame lists (`docs/type-families.md:835-847`).
@@ -253,7 +253,7 @@ source-level `construct family variant` token protocol" (`PLAN.md:594-596`).
 Item 9 is **checker-only** (spec §14 is all checker steps; codegen is §16).
 Concretely, item 9 hands item 10:
 
-1. **Reserved tokens** `construct`, `MATCH`, `ENDMATCH` (+ the shared `of`/`endof`
+1. **Reserved tokens** `construct`, `MATCH`, `;MATCH` (+ the shared `of`/`endof`
    branch surface) — `PLAN.md:436` reserves them at item 9;
    `tools/reserved-name-lint-core.f:107-129 RNL-RESERVED-CONTROL?` is where they
    register (currently absent — §6 R1).
@@ -270,7 +270,7 @@ Concretely, item 9 hands item 10:
 
 ### 3c. What item 10 owns (NOT item 9)
 
-Native + Gforth lowering: `EMIT-KWDATA` rows, label vars, `J-MATCH`/`J-ENDMATCH`,
+Native + Gforth lowering: `EMIT-KWDATA` rows, label vars, `J-MATCH`/`J-SEMIMATCH`,
 tag compare/branch chains, invalid-tag die-with-no-continuation, and the
 **compiler-side** match-mode token capture "before the normal
 local/keyword/literal/call/undefined path in both compilers"
@@ -285,7 +285,7 @@ item 10 adds the `J-MATCH` analogues there.
 ## 4. Dependencies consumed + friend-only buildable slice
 
 - **Consumes item 6** (`SUMTYPE`/`TYPEFAMILY` grammar, unbuilt): real
-  `SUMTYPE result … END-SUMTYPE` fixtures and the `TFAM-VAR-RANGE!` call that
+  `SUMTYPE result … ;SUMTYPE` fixtures and the `TFAM-VAR-RANGE!` call that
   populates the variant range item 9 enumerates (§2a).
 - **Consumes item 7** (hidden physical fields, unbuilt): spec §14 steps 3-6
   (`docs/type-families.md:828-831`) — `MATCH` "verifies physical top cells match
@@ -334,7 +334,7 @@ an all-errors candidate must leave the CF stack clean, which `CHECK-RESET`
 
 ### 5b. Trial / unification machinery the arm join composes with
 
-Branch-output unification at `ENDMATCH` (spec §14 step 4,
+Branch-output unification at `;MATCH` (spec §14 step 4,
 `docs/type-families.md:894`) uses the same primitives as CASE's join:
 `SUNI` (`checker.f:4424`) / `RSUNI` (`4439`) wrap `UNIFY`, exactly as
 `CF-CASE-ACCUM` (`4494`) folds live arms. The speculative-binding trail
@@ -377,7 +377,7 @@ From `PLAN.md:673-683`:
    (`4939`) + `SUMV-FIND` (`type-family.f:368`) scoped by `CHECKER-PACKAGE-*`
    (`checker.f:3555` region); private = `TFAM-VIS@` (`type-family.f:196`)
    `CHECKER-PACKAGE-PRIVATE`.
-2. **Exhaustive matches certify.** → `CF-MATCH` `ENDMATCH` walks
+2. **Exhaustive matches certify.** → `CF-MATCH` `;MATCH` walks
    `TFAM-VAR-START@`/`TFAM-VAR-COUNT@` (`type-family.f:201-202`) vs the seen
    bitset (spec §14 step 1-3, `docs/type-families.md:891-893`).
 3. **Non-exhaustive / duplicate-variant / wrong-family / missing family token /
@@ -409,7 +409,7 @@ From `PLAN.md:673-683`:
 - New core file `src/core/match.f` ⇒ update `tools/srclist.f`, `FILEMAP.md`,
   `test/run-files.f` result-cache keys, `tools/hb-build-lib.f` ABI/source keys
   (`PLAN.md:968-978`) — none present today (§6 R2).
-- Reserved-name fixtures for `construct`/`MATCH`/`ENDMATCH` in source-list files
+- Reserved-name fixtures for `construct`/`MATCH`/`;MATCH` in source-list files
   (`PLAN.md:434-436,500-501`); `filemap`/`host`/`public-signature` lints;
   candidate size vs `test/gate-build-size.f`.
 
@@ -464,9 +464,9 @@ From `PLAN.md:673-683`:
   implementer must not spend effort "migrating" a non-existent word. Flag for the
   orchestrator: either the PLAN references a since-removed word or an anticipated
   one. Not silently resolved.
-- **C2 — Task prompt says `END-MATCH`; spec/PLAN/code use `ENDMATCH`.**
+- **C2 — Task prompt says `END-MATCH`; spec/PLAN/code use `;MATCH`.**
   `docs/type-families.md:802,885` and `PLAN.md:436` spell the terminator
-  `ENDMATCH` (matching `ENDOF`/`ENDCASE`). Use `ENDMATCH`.
+  `;MATCH` (matching `ENDOF`/`ENDCASE`). Use `;MATCH`.
 - **C3 — Item 9 Paths omit `src/core/match.f`, `tools/srclist.f`, `FILEMAP.md`,
   reserved-name-lint, cache keys.** Paths = `checker.f, lib/task.f,
   docs/type-families.md` (`PLAN.md:647`), yet Package Shape wants
