@@ -637,6 +637,13 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/seal-absence.f` — Gforth stage0 absence-parity fixture: scans
+  `bootstrap/cg/forth.fs` and fails closed if any pinned guard-bypass surface
+  (atomics, snap-rebase, extended syscalls, `CHECKER-*` mutators, package
+  intrinsic) appears on a code line without a `PROT-GUARD`, and pins the present
+  `PROT-GUARD`/`EMIT-SEAL-FRIEND` seal machinery so a mirrored guard cannot be
+  silently deleted. In-memory self-proofs cover the reject, guard-escape, and
+  comment-only cases.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate
