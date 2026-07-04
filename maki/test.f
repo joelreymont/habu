@@ -148,6 +148,8 @@ TEST:SUITE maki/gradcheck-test.f
 TEST:END-SUITE
 TEST:SUITE maki/scratch-model-test.f
 TEST:END-SUITE
+TEST:SUITE maki/scratch-train-test.f
+TEST:END-SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cuda-driver-test.f
