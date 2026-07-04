@@ -122,6 +122,13 @@ points stay listed.
   `GUARD` fail-closed) so a dropped copy-back cannot masquerade as a passing golden.
 - `lib/ptx/sentinel-test.f` — checked coverage for the readback sentinel fill,
   pass-through, and fail-closed throw.
+- `lib/ptx/cuda-driver.f` — canonical checked CUDA Driver API (package CUDA):
+  nominal cuda-dev/ctx/mod/fn/devptr handle roles, hyphenated FFI bindings
+  (`CU-INIT`, `CU-DEVICE-GET`, ...), fail-closed `CUDA-HANDLE0`/`CUDA-RC0`
+  guards (`E-CUDA`), and typed helpers (`LOAD-MODULE`, `GET-FUNCTION`,
+  `DEVICE-ALLOC`, `HTOD`, `DTOH`). maki and tools/ptx share this one resolver.
+- `lib/ptx/cuda-driver-test.f` — portable CUDA Driver binding and fail-closed
+  guard regressions (null handle and nonzero CUresult throw `E-CUDA`).
 - `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
   rejection tests that call the checker directly and capture diagnostics.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels
@@ -345,12 +352,13 @@ points stay listed.
   and fused-vs-unfused kernel comparison for the Habu-PTX column.
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
-- `maki/cuda-types.f` — shared nominal CUDA Driver handle roles used by typed
-  FFI bindings.
+- `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
+  historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
   fail-closed helpers.
-- `maki/cuda-driver.f` — shared checked CUDA Driver FFI resolver and typed
-  bindings.
+- `maki/cuda-driver.f` — thin re-export of `lib/ptx/cuda-driver.f` aliasing the
+  legacy binding spellings (`CUDA:CUINIT` ... `CUDA:CUDEVICEPRIMARYCTXRELEASE`)
+  over the hyphenated lib bindings so existing consumers keep working unchanged.
 - `maki/cuda-driver-test.f` — portable CUDA Driver binding and fail-closed
   helper regressions.
 - `maki/device-artifacts.f` — private per-grade artifact root, PTX/cubin path,

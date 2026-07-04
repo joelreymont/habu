@@ -231,6 +231,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-saved-test.f
    lib/ptx/sentinel-test.f
+   lib/ptx/cuda-driver-test.f
 TEST:END-SUITE
 
 TEST:SUITE ptx-tile-loop-neg
