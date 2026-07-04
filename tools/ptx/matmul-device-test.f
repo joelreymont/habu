@@ -7,6 +7,7 @@
 \ habu-committed-device-correctness.
 
 require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
 
 create MMT-OUT $8000 allot  create MMT-ERR $1000 allot
 create MQ-OUT  $1000 allot   create MQ-ERR  $1000 allot
@@ -29,6 +30,7 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
 
 \ launch MM 64x64x64 with A=B=1.0 (one 64x64 block); return C[0][0] f32 bits
 : MM-DEV ( -- n )
+   MM-RB 4 PTXSENT:FILL                                              \ poison readback: dropped copy-back fails closed
    s" libcuda.so.1" ED-LIB >CSTR  ED-LIB RTLD-NOW DLOPEN ED-H !
    0                       s" cuInit"                    ED-SYM CALL1 drop
    ED-DEV P>N 0            s" cuDeviceGet"               ED-SYM CALL2 drop
@@ -58,7 +60,7 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
    MM-RB P>N MM-DC @ 4    s" cuMemcpyDtoH_v2" ED-SYM CALL3 drop
    ED-MOD @  s" cuModuleUnload"            ED-SYM CALL1 drop
    ED-DEV @  s" cuDevicePrimaryCtxRelease" ED-SYM CALL1 drop
-   MM-RB @ $FFFFFFFF and ;
+   MM-RB @ $FFFFFFFF and PTXSENT:GUARD ;
 
 T-RESET
 s" habu-ptx-mm" PTXTC:PREPARE

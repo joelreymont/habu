@@ -4,6 +4,8 @@
 \ tools/ptx/sum-cg.f and ptxas -arch=sm_87. Load after lib/test.f,
 \ lib/ptx/header.f, lib/ptx/launch.f, lib/ffi.f, and f32 marshalling helpers.
 
+require lib/ptx/sentinel.f
+
 create RS-LIB 16 allot  create RS-NM 64 allot  create RS-PATH 64 allot  create RS-KN 32 allot
 create RS-HIN 32 allot  create RS-HOUT 32 allot
 variable RS-H variable RS-DEV variable RS-CTX variable RS-MOD variable RS-FUNC
@@ -43,6 +45,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    RS-FUNC P>N RS-MOD @ RS-KN P>N s" cuModuleGetFunction" RS-SYM CALL3 drop ;
 
 : RS-LAUNCH ( -- )
+   RS-HOUT 32 PTXSENT:FILL                        \ poison readback: dropped copy-back fails closed
    2 4 256 PTX-ROW-LAUNCH-CHECK
    RS-DIN P>N 32           s" cuMemAlloc_v2"   RS-SYM CALL2 drop
    RS-DOUT P>N 32          s" cuMemAlloc_v2"   RS-SYM CALL2 drop
@@ -64,13 +67,13 @@ variable RS-DIN variable RS-DOUT variable RS-KV
 RS-PUT RS-SETUP RS-LAUNCH RS-RELEASE
 
 T-RESET
-0 RS-F32@ $41200000 T=
-1 RS-F32@ $41200000 T=
-2 RS-F32@ $41200000 T=
-3 RS-F32@ $41200000 T=
-4 RS-F32@ $40800000 T=
-5 RS-F32@ $40800000 T=
-6 RS-F32@ $40800000 T=
-7 RS-F32@ $40800000 T=
+0 RS-F32@ PTXSENT:GUARD $41200000 T=
+1 RS-F32@ PTXSENT:GUARD $41200000 T=
+2 RS-F32@ PTXSENT:GUARD $41200000 T=
+3 RS-F32@ PTXSENT:GUARD $41200000 T=
+4 RS-F32@ PTXSENT:GUARD $40800000 T=
+5 RS-F32@ PTXSENT:GUARD $40800000 T=
+6 RS-F32@ PTXSENT:GUARD $40800000 T=
+7 RS-F32@ PTXSENT:GUARD $40800000 T=
 T-REPORT
 bye

@@ -118,6 +118,10 @@ points stay listed.
   resolution and assembler runner for device tests.
 - `lib/ptx/toolchain-test.f` — checked fixture coverage for PTX artifact
   uniqueness, cleanup, and assembler path resolution.
+- `lib/ptx/sentinel.f` — device-readback poison sentinel (`FILL` pre-launch,
+  `GUARD` fail-closed) so a dropped copy-back cannot masquerade as a passing golden.
+- `lib/ptx/sentinel-test.f` — checked coverage for the readback sentinel fill,
+  pass-through, and fail-closed throw.
 - `lib/ptx/neg-test-lib.f` — require-only in-process helper for PTX semantic
   rejection tests that call the checker directly and capture diagnostics.
 - `lib/ptx/launch.f` — checked PTX launch-contract helpers for row kernels

@@ -230,6 +230,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-saved-test.f
+   lib/ptx/sentinel-test.f
 TEST:END-SUITE
 
 TEST:SUITE ptx-tile-loop-neg

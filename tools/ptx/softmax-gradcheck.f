@@ -10,6 +10,8 @@
 \ src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f
 \ lib/ffi.f maki/array.f.
 
+require lib/ptx/sentinel.f
+
 4 constant GCK
 create GC-LIB 16 allot  create GC-NM 64 allot  create GC-P1 64 allot  create GC-P2 64 allot
 create GC-KF 32 allot   create GC-KB 32 allot
@@ -27,6 +29,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
 : PACK4   ( ptr a ptr u8 -- ) {: src dst :}  GCK 0 ?do  src i T-GET F64>F32  dst i F32!  loop ;
 : UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  GCK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
+: GC-OUT-GUARD ( -- )  GCK 0 ?do  GC-OUT i F32@ PTXSENT:GUARD drop  loop ;  \ fail closed if the copy-back was dropped
 
 : GC-SYM ( ptr u8 n -- n )  GC-NM >CSTR  GC-H @ GC-NM DLSYM ;
 
@@ -51,6 +54,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 \ run the forward softmax on the f64 input array `src`, write the f64 output to `dst`
 : GC-FWD-RUN ( ptr a ptr a -- ) {: src dst :}
+   GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    src GC-IN PACK4
    GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop 
@@ -62,10 +66,12 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-FWD @ 1 1 s" cuLaunchGrid" GC-SYM CALL3 drop
    0 s" cuCtxSynchronize" GC-SYM CALL1 drop
    GC-OUT P>N GC-dO @ 16 s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
+   GC-OUT-GUARD
    GC-OUT dst UNPACK4 ;
 
 \ run the AUTO-DERIVED backward: (HX, HDY) -> HDXA
 : GC-BWD-RUN ( -- )
+   GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    HX GC-IN PACK4   HDY GC-DYB PACK4
    GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
@@ -79,6 +85,7 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-BWD @ 1 1 s" cuLaunchGrid" GC-SYM CALL3 drop
    0 s" cuCtxSynchronize" GC-SYM CALL1 drop
    GC-OUT P>N GC-dO @ 16 s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
+   GC-OUT-GUARD
    GC-OUT HDXA UNPACK4 ;
 
 : GC-RELEASE ( -- )

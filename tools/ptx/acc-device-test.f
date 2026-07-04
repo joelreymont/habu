@@ -7,6 +7,7 @@
 \ the fs/process libs.
 
 require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
 
 create AD-LIB 16 allot  create AD-NM 64 allot  create AD-PATH 64 allot  create AD-KN 32 allot
 variable AD-H variable AD-DEV variable AD-CTX variable AD-MOD variable AD-FUNC
@@ -34,6 +35,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
 
 \ launch x=2.0 y=3.0 n=4 -> y[0] f32 bits
 : AD-RUN ( -- n )
+   AD-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
    s" libcuda.so.1" AD-LIB >CSTR  AD-LIB RTLD-NOW DLOPEN AD-H !
    0                       s" cuInit"                    AD-SYM CALL1 drop
    AD-DEV P>N 0            s" cuDeviceGet"               AD-SYM CALL2 drop
@@ -59,7 +61,7 @@ create AD-QOUT $1000 allot create AD-QERR $1000 allot
    AD-RBUF P>N AD-DY @ 4  s" cuMemcpyDtoH_v2" AD-SYM CALL3 drop
    AD-MOD @  s" cuModuleUnload"            AD-SYM CALL1 drop
    AD-DEV @  s" cuDevicePrimaryCtxRelease" AD-SYM CALL1 drop
-   AD-RBUF @ $FFFFFFFF and ;
+   AD-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : ACC-DEV-MAIN ( -- )
    T-RESET

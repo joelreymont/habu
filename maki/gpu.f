@@ -11,6 +11,7 @@ require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
+require lib/ptx/sentinel.f
 
 4 constant GN                       \ vector length (demo)
 create GPATH 64 allot
@@ -65,6 +66,7 @@ variable GDX variable GDY variable GABITS variable GNVAR
    GFUNC @ >CUDA-FN 20 >IDX GNVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
    GFUNC @ >CUDA-FN 1 1 CUDA:CULAUNCHGRID CUDA:RC0
    CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   GHY bytes PTXSENT:FILL                                \ poison before copy-back (y already on device)
    GHY GDY @ >CUDA-DEVPTR bytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0 ;
 
 : G-RELEASE ( -- )
@@ -74,7 +76,7 @@ variable GDX variable GDY variable GABITS variable GNVAR
    GDEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
 
 \ result element i (f32 bits) after the launch
-: G-RESULT ( n -- n )  GHY swap F32@ ;
+: G-RESULT ( n -- n )  GHY swap F32@ PTXSENT:GUARD ;
 
 \ tensor SGD step on the GPU: w[i] -= lr*g[i], lowered onto the SAXPY kernel
 \ (a = -lr, x = grad, y = weight, so a*x+y = w - lr*g). Put grad as x and weight

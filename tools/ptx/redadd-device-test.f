@@ -6,6 +6,7 @@
 \ lib/ffi.f, and the fs/process libs.
 
 require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
 
 create RA-LIB 16 allot  create RA-NM 64 allot  create RA-PATH 64 allot  create RA-KN 32 allot
 variable RA-H variable RA-DEV variable RA-CTX variable RA-MOD variable RA-FUNC
@@ -26,6 +27,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    RA-QO $1000 >LEN RA-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : RA-RUN ( -- n )   \ launch 256 threads, out=0 -> out[0] f32 bits (= 256.0)
+   RA-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
    s" libcuda.so.1" RA-LIB >CSTR  RA-LIB RTLD-NOW DLOPEN RA-H !
    0                      s" cuInit"                    RA-SYM CALL1 drop
    RA-DEV P>N 0           s" cuDeviceGet"               RA-SYM CALL2 drop
@@ -47,7 +49,7 @@ create RA-O $4000 allot  create RA-E $1000 allot  create RA-QO $1000 allot creat
    RA-RBUF P>N RA-OUT @ 4 s" cuMemcpyDtoH_v2" RA-SYM CALL3 drop
    RA-MOD @  s" cuModuleUnload"            RA-SYM CALL1 drop
    RA-DEV @  s" cuDevicePrimaryCtxRelease" RA-SYM CALL1 drop      \ release or bin/hb hangs at exit
-   RA-RBUF @ $FFFFFFFF and ;
+   RA-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 : REDADD-MAIN ( -- )
    T-RESET

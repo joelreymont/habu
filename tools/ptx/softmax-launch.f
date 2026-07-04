@@ -13,6 +13,8 @@
 \   row0 = 1023627234 1035106489 1047695721 1059379089   (~1 ULP, ex2.approx)
 \   row1 = 1048576000 x4 = 0x3E800000 = 0.25 exactly.
 
+require lib/ptx/sentinel.f
+
 create SL-LIB 16 allot  create SL-NM 64 allot  create SL-PATH 64 allot  create SL-KN 32 allot
 create SL-HIN 32 allot  create SL-HOUT 32 allot
 variable SL-H variable SL-DEV variable SL-CTX variable SL-MOD variable SL-FUNC
@@ -48,6 +50,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-FUNC P>N SL-MOD @ SL-KN P>N s" cuModuleGetFunction" SL-SYM CALL3 drop ;
 
 : SL-LAUNCH ( -- )                                    \ grid = 2 rows, block = 256
+   SL-HOUT 32 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    2 4 256 PTX-ROW-LAUNCH-CHECK
    SL-DIN P>N 32          s" cuMemAlloc_v2"   SL-SYM CALL2 drop
    SL-DOUT P>N 32         s" cuMemAlloc_v2"   SL-SYM CALL2 drop
@@ -73,13 +76,13 @@ SL-PUT SL-SETUP SL-LAUNCH SL-RELEASE
 
 T-RESET
 \ row0 = softmax([1,2,3,4]) within 2 ULP of the CPU golden
-0 SL-F32@ 1023627234 SL-NEAR? TTRUE
-1 SL-F32@ 1035106489 SL-NEAR? TTRUE
-2 SL-F32@ 1047695721 SL-NEAR? TTRUE
-3 SL-F32@ 1059379089 SL-NEAR? TTRUE
+0 SL-F32@ PTXSENT:GUARD 1023627234 SL-NEAR? TTRUE
+1 SL-F32@ PTXSENT:GUARD 1035106489 SL-NEAR? TTRUE
+2 SL-F32@ PTXSENT:GUARD 1047695721 SL-NEAR? TTRUE
+3 SL-F32@ PTXSENT:GUARD 1059379089 SL-NEAR? TTRUE
 \ row1 = softmax([1,1,1,1]) = [0.25,0.25,0.25,0.25] = 0x3E800000 exactly
-4 SL-F32@ 1048576000 T=
-5 SL-F32@ 1048576000 T=
-6 SL-F32@ 1048576000 T=
-7 SL-F32@ 1048576000 T=
+4 SL-F32@ PTXSENT:GUARD 1048576000 T=
+5 SL-F32@ PTXSENT:GUARD 1048576000 T=
+6 SL-F32@ PTXSENT:GUARD 1048576000 T=
+7 SL-F32@ PTXSENT:GUARD 1048576000 T=
 T-REPORT

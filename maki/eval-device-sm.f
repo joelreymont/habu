@@ -27,6 +27,7 @@ require lib/ptx/launch.f
 require lib/ptx/collective.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
+require lib/ptx/sentinel.f
 
 create SM-PATH 64 allot  create SM-KN 32 allot
 create SM-IN 16 allot   create SM-OUT 16 allot   create SMG 4 cells allot
@@ -44,6 +45,7 @@ variable SM-DI variable SM-DO variable SM-KV
    1047695721 SMG 2 cells + !  1059379089 SMG 3 cells + ! ;
 
 : SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
+   SM-OUT 16 PTXSENT:FILL                          \ poison readback: a dropped copy-back fails closed
    1 4 256 PTX-ROW-LAUNCH-CHECK
    CUDA:OPEN
    0 CUDA:CUINIT CUDA:RC0
@@ -74,10 +76,10 @@ variable SM-DI variable SM-DO variable SM-KV
 : SM-NEAR? ( n n -- bool )  - abs 8 <= ;            \ within 8 ULP (ex2.approx)
 : DEVICE-CORRECT-SM? ( ptr u8 n -- bool )
    SM-RUN
-   0 SM-F32@ SMG 0 cells + @ SM-NEAR?
-   1 SM-F32@ SMG 1 cells + @ SM-NEAR? and
-   2 SM-F32@ SMG 2 cells + @ SM-NEAR? and
-   3 SM-F32@ SMG 3 cells + @ SM-NEAR? and ;
+   0 SM-F32@ PTXSENT:GUARD SMG 0 cells + @ SM-NEAR?
+   1 SM-F32@ PTXSENT:GUARD SMG 1 cells + @ SM-NEAR? and
+   2 SM-F32@ PTXSENT:GUARD SMG 2 cells + @ SM-NEAR? and
+   3 SM-F32@ PTXSENT:GUARD SMG 3 cells + @ SM-NEAR? and ;
 
 \ ---- write a softmax driver that defines K and emits it (CG-SM-* scaffolding) ----
 : GRADE-SM-WRITE-DRIVER ( ptr u8 n -- ) {: a u :}

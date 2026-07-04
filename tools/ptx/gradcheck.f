@@ -14,6 +14,7 @@
 \ lib/ptx/cg.f (F32>F64/F64>F32), and the fs/process libs.
 
 require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
 
 create GC-LIB 16 allot  create GC-NM 64 allot  create GC-PATH 64 allot  create GC-KN 32 allot
 variable GC-H variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
@@ -62,6 +63,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 
 \ launch the loaded kernel at x = xbits (a=3.0, y=0, n=1) -> z[0] f32 bits
 : GC-AT ( n -- n ) {: xbits :}
+   GC-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
    GC-DX @ xbits 1        s" cuMemsetD32_v2"  GC-SYM CALL3 drop
    GC-DY @ 0 1            s" cuMemsetD32_v2"  GC-SYM CALL3 drop
    $40400000 GC-AB !  1 GC-NV !
@@ -74,10 +76,11 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    GC-FUNC @ 1 1          s" cuLaunchGrid"    GC-SYM CALL3 drop
    0                      s" cuCtxSynchronize" GC-SYM CALL1 drop
    GC-RBUF P>N GC-DY @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
-   GC-RBUF @ $FFFFFFFF and ;
+   GC-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 \ launch a 2-input backward kernel: x=dz, y=savedy (n=1) -> result in x[0] f32 bits
 : GC-AT-2IN ( n n -- n ) {: dzbits sybits :}
+   GC-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
    GC-DX @ dzbits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ dz
    GC-DY @ sybits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ savedy
    $40400000 GC-AB !  1 GC-NV !
@@ -90,7 +93,7 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    GC-FUNC @ 1 1          s" cuLaunchGrid"    GC-SYM CALL3 drop
    0                      s" cuCtxSynchronize" GC-SYM CALL1 drop
    GC-RBUF P>N GC-DX @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop      \ backward output in dz (x)
-   GC-RBUF @ $FFFFFFFF and ;
+   GC-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 \ central difference of the loaded kernel w.r.t. x at x0, step h -> a Habu float
 : GC-CENTRAL ( r r -- r ) {: x0 h :}

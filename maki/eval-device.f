@@ -26,6 +26,7 @@ require lib/ptx/tile.f
 require maki/eval.f
 require maki/cuda-driver.f
 require maki/device-artifacts.f
+require lib/ptx/sentinel.f
 
 \ ---- device gate: run a SAXPY cubin and compare the task golden ----
 create ED-PATH 64 allot  create ED-KN 32 allot
@@ -33,6 +34,7 @@ variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
 variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
 
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
+   ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
    CUDA:OPEN
    0 CUDA:CUINIT CUDA:RC0
    ED-DEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
@@ -60,7 +62,7 @@ variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
    ED-DY @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
    ED-MOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
    ED-DEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0
-   ED-RBUF @ $FFFFFFFF and ;
+   ED-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0
 
 \ ---- write a driver that defines the candidate kernel K and emits it to stdout ----

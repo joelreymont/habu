@@ -8,6 +8,7 @@ require lib/test.f
 require lib/fs.f
 require lib/process-argv.f
 require lib/ptx/toolchain.f
+require lib/ptx/sentinel.f
 require tools/ptx/bench.f
 
 package PTXV4TAIL
@@ -123,8 +124,9 @@ variable NVAR
 
 : CHECK-ELEM ( n n -- )
    {: idx:n want:n :}
+   RB 4 PTXSENT:FILL                              \ poison readback: dropped copy-back fails closed
    RB DY @ idx 4 * + 4 PTXBENCH:DTOH
-   RB U32@ want T= ;
+   RB U32@ PTXSENT:GUARD want T= ;
 
 : CHECK-N ( n -- )
    {: n:n :}
