@@ -286,10 +286,11 @@ points stay listed.
 - `tools/imagedisasm.f` — native raw image slice disassembler.
 - `tools/imagedisasm-test.f` — checked fixture coverage for raw image disassembly.
 - `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
-- `tools/source-discovery.f` — restricted source-composition discovery pass that replays a file's loader/definition-header forms against a fresh require registry and emits the ordered event artifact.
-- `tools/source-discovery-test.f` — checked fixtures for the restricted discovery pass (ordering, multiplicity, dedup, fresh registry, shared emitter, fail-closed rejection).
+- `tools/source-discovery.f` — whole-file source-composition discovery pass that lexes the entire token stream (colon bodies included), replays every literal loader form against a fresh require registry, and emits the ordered event artifact; dynamic paths, loader shadow/undefine/retirement, and unsupported openers reject fail-closed unless the entry is a declared dynamic-tail boundary.
+- `tools/source-discovery-test.f` — checked fixtures for the whole-file discovery pass (ordering, multiplicity, dedup, fresh registry, colon-body capture, byte-exact spans, shared emitter, fail-closed rejection, dynamic-tail manifest boundary).
+- `tools/dynamic-tail-manifest.f` — declared dynamic-tail boundary table (path + reason) consumed by the discovery pass; a listed file's dynamic/retired loader forms are tolerated instead of rejected.
 - `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
-- `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion) and closure key sensitivity.
+- `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion, colon-wrapped deps) and closure key sensitivity.
 - `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,

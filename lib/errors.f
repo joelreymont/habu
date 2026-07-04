@@ -152,3 +152,4 @@
 -3802 constant E-DISC-OPENER
 -3803 constant E-DISC-UNTERM
 -3804 constant E-DISC-CAPACITY
+-3805 constant E-DISC-RETIRE

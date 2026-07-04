@@ -1,27 +1,35 @@
-\ source-discovery.f - restricted source-composition discovery pass.
+\ source-discovery.f - whole-file ordered source-composition discovery pass.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f
-\ lib/source.f tools/source-discovery.f
+\ lib/source.f tools/dynamic-tail-manifest.f tools/source-discovery.f
 \
-\ DISCOVER:RUN reads an entry file and replays ONLY its source-composition and
-\ definition-header forms against a fresh require/provided registry, driving the
-\ instrumented core loader words (included/required/provided) in record-only
-\ discovery mode so the ordered event log (src/core/include.f) captures include
-\ multiplicity and require/provided exact-string registry state without loading
-\ or compiling anything. Colon bodies and comments are skipped. Redefining or
-\ undefining a loader word, a dynamic (non-literal) loader path, and an
-\ unsupported string opener (C\" / .\") before a loader word each reject
-\ fail-closed. Recorded loader-token spans are entry-file byte offsets.
+\ DISCOVER:RUN lexes an entry file's ENTIRE token stream - colon bodies
+\ included - and replays every literal source-composition form against a fresh
+\ require/provided registry, driving the instrumented core loader words
+\ (included/required/provided) in record-only discovery mode so the ordered
+\ event log (src/core/include.f) captures include multiplicity and
+\ require/provided exact-string registry state without loading or compiling
+\ anything. A guarded loader inside a colon body is recorded unconditionally,
+\ so the event closure over-approximates (superset of the runtime closure)
+\ and can never under-approximate a statically-visible loader call.
+\ Redefining or undefining a loader word, retiring one through
+\ UNDEFINE-IF-DEFINED, a dynamic (non-literal) loader path, and an unsupported
+\ string opener (C\" / .\") before a loader word each reject fail-closed -
+\ unless the entry file is a declared dynamic-tail boundary in
+\ tools/dynamic-tail-manifest.f, in which case exactly those forms are
+\ tolerated (skipped, never recorded) and only the statically-visible loader
+\ events are produced. Recorded loader-token spans are entry-file byte offsets.
 
 require lib/errors.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f
 require lib/source.f
+require tools/dynamic-tail-manifest.f
 
 package DISCOVER
 
-$40000 constant SD-SRC-CAP
+$80000 constant SD-SRC-CAP
 $400 constant SD-PATH-CAP
 
 $5C constant SD-BACKSLASH
@@ -45,6 +53,7 @@ variable SD-U
 variable SD-I
 variable SD-PATH-U
 variable SD-PEND
+variable SD-LENIENT
 variable SD-EMIT-LEN
 
 : SD-BUF ( -- ptr u8 )
@@ -56,6 +65,14 @@ variable SD-EMIT-LEN
 : SD-PATH-AT ( n -- ptr u8 )  SD-PATH + ;
 : SD-PATH$ ( -- ptr u8 n )  0 SD-PATH-AT SD-PATH-U @ ;
 : SD-TOK$ ( n n -- ptr u8 n ) {: off:n len:n :}  off SD-BUF + len ;
+
+: SD-LENIENT? ( -- bool )   SD-LENIENT @ 0= 0= ;
+
+\ Fail-closed guard trip: throw, unless the entry file is a declared
+\ dynamic-tail boundary - then the offending form is tolerated (skipped).
+: SD-REJECT ( n -- )
+   SD-LENIENT? if drop exit then
+   throw ;
 
 : SD-SKIP-WS ( -- )
    begin SD-I @ SD-AT? while
@@ -139,14 +156,15 @@ variable SD-EMIT-LEN
    a u s" provided" STR=CI if SD-K-PROVIDED exit then
    0 ;
 
-: SD-RESERVED? ( n n -- bool )
-   SD-TOK$ {: a:ptr u:n :}
+: SD-RESERVED$? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" include" STR=CI if STR-TRUE exit then
    a u s" included" STR=CI if STR-TRUE exit then
    a u s" require" STR=CI if STR-TRUE exit then
    a u s" required" STR=CI if STR-TRUE exit then
-   a u s" provided" STR=CI if STR-TRUE exit then
-   STR-FALSE ;
+   a u s" provided" STR=CI ;
+
+: SD-RESERVED? ( n n -- bool )
+   SD-TOK$ SD-RESERVED$? ;
 
 : SD-CALL-LOADER ( n n n -- ) {: off:n len:n kind:n :}
    off len DISC-TOK!
@@ -155,34 +173,24 @@ variable SD-EMIT-LEN
    SD-PATH$ provided ;
 
 : SD-DISPATCH-LOADER ( n n n n -- ) {: off:n len:n kind:n pend:n :}
-   pend SD-PEND-OTHER = if E-DISC-OPENER throw then
-   pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC throw then
+   pend SD-PEND-OTHER = if E-DISC-OPENER SD-REJECT exit then
+   pend SD-PEND-PATH = 0= if E-DISC-DYNAMIC SD-REJECT exit then
    off len kind SD-CALL-LOADER ;
-
-: SD-BODY-DONE? ( n n -- bool ) {: off:n len:n :}
-   len 1 = off SD-BYTE SD-BACKSLASH = and if SD-SKIP-LINE STR-FALSE exit then
-   len 1 = off SD-BYTE SD-LPAREN = and if SD-SKIP-PAREN STR-FALSE exit then
-   off len SD-OPENER-KIND 0= 0= if len 3 = SD-SCAN-STRING STR-FALSE exit then
-   off len SD-TOK$ s" ;" STR= ;
-
-: SD-SKIP-BODY ( -- )
-   begin
-      SD-RAW {: off:n len:n :}
-      len 0= if E-DISC-UNTERM throw then
-      off len SD-BODY-DONE? if exit then
-   again ;
 
 : SD-CHECK-NAME ( -- )
    SD-RAW {: off:n len:n :}
    len 0= if E-DISC-UNTERM throw then
-   off len SD-RESERVED? if E-DISC-SHADOW throw then ;
+   off len SD-RESERVED? if E-DISC-SHADOW SD-REJECT then ;
 
-: SD-COLON ( -- )   SD-CHECK-NAME SD-SKIP-BODY ;
-: SD-UNDEFINE ( -- )  SD-CHECK-NAME ;
+\ UNDEFINE-IF-DEFINED retiring a loader word (or fed a non-literal name that
+\ cannot be proven safe) breaks loader identity for the rest of the file.
+: SD-RETIRE ( n -- ) {: pend:n :}
+   pend SD-PEND-PATH = 0= if E-DISC-RETIRE SD-REJECT exit then
+   SD-PATH$ SD-RESERVED$? if E-DISC-RETIRE SD-REJECT then ;
 
 : SD-LOADER-IMM ( n n n -- ) {: toff:n tlen:n kind:n :}
    SD-RAW {: poff:n plen:n :}
-   plen 0= if E-DISC-DYNAMIC throw then
+   plen 0= if E-DISC-DYNAMIC SD-REJECT exit then
    poff plen SD-COPY-PATH
    toff tlen kind SD-CALL-LOADER ;
 
@@ -195,8 +203,9 @@ variable SD-EMIT-LEN
    opener 0= 0= if len 3 = SD-SCAN-STRING opener SD-PEND ! exit then
    off len SD-LOADER-KIND {: lkind:n :}
    lkind 0= 0= if off len lkind pend SD-DISPATCH-LOADER exit then
-   off len SD-TOK$ s" :" STR= if SD-COLON exit then
-   off len SD-TOK$ s" undefine" STR=CI if SD-UNDEFINE exit then
+   off len SD-TOK$ s" :" STR= if SD-CHECK-NAME exit then
+   off len SD-TOK$ s" undefine" STR=CI if SD-CHECK-NAME exit then
+   off len SD-TOK$ s" UNDEFINE-IF-DEFINED" STR=CI if pend SD-RETIRE exit then
    off len SD-TOK$ s" include" STR=CI if off len SD-K-INCLUDED SD-LOADER-IMM exit then
    off len SD-TOK$ s" require" STR=CI if off len SD-K-REQUIRED SD-LOADER-IMM exit then ;
 
@@ -227,8 +236,9 @@ variable SD-EMIT-LEN
 
 public
 
-: RUN ( ptr u8 n -- )
-   SD-READ-ENTRY
+: RUN ( ptr u8 n -- ) {: pa:ptr pu:n :}
+   pa pu SD-READ-ENTRY
+   pa pu DTM:KNOWN? SD-LENIENT !
    REQUIRE-SNAPSHOT
    EVENTS-RESET EVENT-ON DISCOVERY-ON
    [: SD-WALK ;] catch {: rc:n :}
