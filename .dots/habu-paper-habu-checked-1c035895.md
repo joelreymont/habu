@@ -39,3 +39,12 @@ row a committed reproducible experiment, not narrative:
 Each row lands as a gate/tool in-tree so reviewers can rerun it; rows that
 already exist are cited by path, missing ones become dots when the paper
 unblocks.
+
+ABLATION ROWS LANDED 2026-07-05 (fable eecca5cb): golden fault injection (4
+corruption classes each caught V-FAIL on Orin), sentinel dropped-copy-back
+(E-PTX-READBACK), fusion ON/OFF toggle + measured traffic deltas (FFN +25.3%,
+MIX +35.6%, slice-gelu +40% unfused). Full 16-row matrix with citations:
+docs/ablation.md. Pending rows tracked there: on-device traffic/latency
+(bench harness), persistent-tune warmup (cad-6), EXPLAIN A/B arm,
+tuned-vs-default deltas. (The interim ablation work-dot was lost to the
+minted-on-orphaned-commit gotcha; this entry is the durable record.)

@@ -470,11 +470,36 @@ advantages outweigh maturer per-kernel codegen on real workloads is an
 empirical question---precisely the one the pending measurements answer.
 
 \section{Effectiveness of Each Mechanism}\label{sec:ablation}
-\todo{The ablation matrix: one committed experiment per invention
-(checker battery; byte-model predicted-vs-measured; fusion ON/OFF;
-golden fault-injection; sentinel fault-injection; wrong-adjoint detection
-[exists]; persistent-tune warmup; EXPLAIN-packet repair-loop metrics;
-tuned-vs-default deltas). Each row cites its in-tree gate.}
+Each mechanism is paired with a committed, rerunnable experiment
+(\code{docs/ablation.md} carries the full 16-row matrix with per-row
+file citations). Highlights, all measured on the Orin:
+
+\emph{Golden fault injection.} Four seeded kernel corruptions---wrong
+index arithmetic, a mis-addressed operand ($x\cdot x$ for $x\cdot y$), a
+dropped predication mask leaking inactive-lane $\infty$ into a block
+reduction, and a stale kernel registered for the wrong model---were each
+injected post-emit into otherwise-correct PTX; the golden gate caught
+every one (\code{V-FAIL}, first offending element named), and none
+crashed or triggered the sentinel: exactly the silent-wrong-answer class
+that ships in unverified pipelines.
+
+\emph{Sentinel.} A launch with the copy-back deliberately omitted throws
+the named readback error instead of grading stale poison as a pass.
+
+\emph{Fusion on/off.} Disabling the planner (every node its own region)
+on the flagship models: FFN $2272\to3040$ bytes ($+25.3\%$ traffic,
+3\,vs\,5 regions); a linear-gelu-residual-norm block $928\to1440$
+($+35.6\%$); a slice-into-gelu chain $192\to320$ ($+40\%$, proving
+movement dissolution participates). The off-column equals the analytic
+per-node baseline in every row---the byte model and the planner agree by
+construction, and the deltas are the fusion mechanism's measured value.
+
+\emph{Pre-existing rows} are cited rather than rebuilt: the wrong-adjoint
+detection fixture, the seeded convergence gate, the Triton error battery,
+and the agent-repair-loop metrics. \todo{Pending rows: on-device
+predicted-vs-measured traffic and fused-vs-unfused latency (needs the
+bench harness); persistent-tune warmup vs Triton JIT (needs cad-6);
+EXPLAIN packet on/off A/B arm; tuned-vs-default schedule deltas.}
 
 \subsection{Type Families}\label{sec:tfam}
 \todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15)
