@@ -1,7 +1,7 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f
-\ lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f
+\ lib/process-argv.f lib/process-env.f lib/process-cwd.f lib/build.f lib/codesign.f
 \ tools/build-fixpoint.f tools/build-fixpoint-test.f
 
 require lib/errors.f
@@ -13,11 +13,13 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 
 8192 constant BFT-CAPTURE-CAP
+$40000 constant BFT-BIG-CAP
 $100000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
@@ -35,6 +37,14 @@ variable BFT-NOTDIR-U
 variable BFT-ENG-A-U
 variable BFT-ENG-B-U
 variable BFT-CERT-U
+variable BFT-STALE-U
+variable BFT-STALE-HB-U
+variable BFT-STALE-TMP-U
+variable BFT-STALE-STAMP-U
+variable BFT-STALE-HIDE-U
+variable BFT-CP-U
+variable BFT-BIG-OUT-A
+variable BFT-BIG-ERR-A
 variable BFT-BUILD-FILES
 variable BFT-READ-A
 variable BFT-PROF-I
@@ -57,6 +67,13 @@ create BFT-NOTDIR-BUF FS-PATH-CAP allot
 create BFT-ENG-A-BUF FS-PATH-CAP allot
 create BFT-ENG-B-BUF FS-PATH-CAP allot
 create BFT-CERT-BUF FS-PATH-CAP allot
+create BFT-STALE-BUF FS-PATH-CAP allot
+create BFT-STALE-HB-BUF FS-PATH-CAP allot
+create BFT-STALE-TMP-BUF FS-PATH-CAP allot
+create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
+create BFT-STALE-HIDE-BUF FS-PATH-CAP allot
+create BFT-CP-BUF FS-PATH-CAP allot
+create BFT-NL 10 c,
 create BFT-KEY1 64 allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
@@ -123,6 +140,37 @@ create BFT-CHECK-OFF-LINE
 : BFT-CERT ( -- ptr u8 n )
    BFT-CERT-BUF BFT-CERT-U @ ;
 
+: BFT-STALE ( -- ptr u8 n )
+   BFT-STALE-BUF BFT-STALE-U @ ;
+
+: BFT-STALE-HB ( -- ptr u8 n )
+   BFT-STALE-HB-BUF BFT-STALE-HB-U @ ;
+
+: BFT-STALE-TMP ( -- ptr u8 n )
+   BFT-STALE-TMP-BUF BFT-STALE-TMP-U @ ;
+
+: BFT-STALE-STAMP ( -- ptr u8 n )
+   BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U @ ;
+
+: BFT-STALE-HIDE ( -- ptr u8 n )
+   BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U @ ;
+
+: BFT-BIG-OUT-FIELD ( -- ptr ptr u8 )
+   BFT-BIG-OUT-A 0 ptr-field ;
+
+: BFT-BIG-ERR-FIELD ( -- ptr ptr u8 )
+   BFT-BIG-ERR-A 0 ptr-field ;
+
+: BFT-BIG-OUT ( -- ptr u8 )
+   BFT-BIG-OUT-FIELD @ ;
+
+: BFT-BIG-ERR ( -- ptr u8 )
+   BFT-BIG-ERR-FIELD @ ;
+
+: BFT-ALLOC-BIG ( -- )
+   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-OUT-FIELD !
+   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-ERR-FIELD ! ;
+
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -156,12 +204,7 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
    BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
 
-: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+: BFT-ARGV-LOAD-FILES ( -- )
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" BFT-ARG+
    s" lib/string.f" BFT-ARG+
@@ -174,7 +217,15 @@ create BFT-CHECK-OFF-LINE
    s" lib/build.f" BFT-ARG+
    s" lib/codesign.f" BFT-ARG+
    s" tools/build-fixpoint.f" BFT-ARG+
-   s" tools/build-fixpoint-main.f" BFT-ARG+
+   s" tools/build-fixpoint-main.f" BFT-ARG+ ;
+
+: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+   BFT-ARGV-LOAD-FILES
    PROC-ARGV-N @ COUNT>N ;
 
 : BFT-ARGV-BUILD ( -- n )
@@ -275,7 +326,8 @@ create BFT-CHECK-OFF-LINE
    BFT-ARGV-FAIL BFT-BUILD-ARGV# T=
    BFT-ARGV-ALL-FORCE
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
-   rcn 0 T<>
+   rcn BF-BUILD-RC T=
+   BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-STAMP2 FILE? TFALSE ;
 
 : BFT-STAGE-MUTATED-KEY! ( -- )
@@ -366,6 +418,86 @@ create BFT-CHECK-OFF-LINE
 
 : BFT-READ ( ptr u8 n -- n )
    BFT-READ-BUF BFT-READ-CAP READ-ALL ;
+
+\ Stale-seed install regression: a refresh child that dies (here: a crash baked
+\ into the fixture's src/habu/hide.f, the first stage2 prefix file, so the
+\ bootstrap child aborts with SIGABRT rc 134 exactly like a seed that cannot
+\ load the current engine prefix) must fail the install loudly: deterministic
+\ BF-BUILD-RC exit, a named stderr diagnostic, the engine binary byte-unchanged,
+\ and no stamp. Before the BF-CLI boundary the E-BUILD-STATUS throw escaped to
+\ BTHROW's no-handler exit: silent, exit code masked to the low 8 bits.
+: BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   BFT-STALE a u BFT-CP-BUF JOIN-PATH BFT-CP-U !
+   BFT-CP-BUF BFT-CP-U @ ;
+
+: BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BFT-STALE-DST {: d:ptr du:n :}
+   d du BF-PARENT-U {: pu:n :}
+   pu 0 > if d pu MAKE-DIRS then
+   a u d du COPY-FILE-STREAM ;
+
+: BFT-STALE-COPY-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? if a u BFT-STALE-COPY-FILE then ;
+
+: BFT-STALE-COPY-TREE ( ptr u8 n -- )
+   [: BFT-STALE-COPY-ENTRY ;] WALK-FILES ;
+
+: BFT-STALE-SABOTAGE ( -- )
+   s" src/habu/hide.f" BFT-READ {: u:n :}
+   BFT-STALE-HIDE s" 0 set-check : BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
+   BFT-STALE-HIDE BFT-NL 1 APPEND-FILE
+   BFT-STALE-HIDE BFT-READ-BUF u APPEND-FILE ;
+
+: BFT-STALE-PATHS! ( -- )
+   s" habu-bft-stale" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
+   BFT-STALE CLEANUP-TREE+
+   BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
+   BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
+   BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
+   BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH! ;
+
+: BFT-STALE-PREPARE ( -- )
+   BFT-STALE-PATHS!
+   BFT-ALLOC-BIG
+   BFT-STALE-TMP MAKE-DIRS
+   s" src" BFT-STALE-COPY-TREE
+   s" lib" BFT-STALE-COPY-TREE
+   s" tools/build-fixpoint.f" BFT-STALE-COPY-FILE
+   s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
+   s" tools/stdin-closure-lib.f" BFT-STALE-COPY-FILE
+   s" bin/hb" BFT-STALE-COPY-FILE
+   BFT-STALE-HB CHMOD-X
+   BFT-STALE-SABOTAGE ;
+
+: BFT-STALE-ARGV ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
+   s" HABU_FIXPOINT_STAMP" >LEN BFT-STALE-STAMP >LEN PROC-ENV+
+   BFT-ARGV-LOAD-FILES
+   s" --" BFT-ARG+
+   s" install" BFT-ARG+
+   s" --force" BFT-ARG+ ;
+
+: BFT-STALE-SPAWN ( -- n n n )
+   BFT-STALE-HB >LEN BFT-STALE >LEN
+   BFT-BIG-OUT BFT-BIG-CAP >LEN
+   BFT-BIG-ERR BFT-BIG-CAP >LEN
+   BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CWD-CAPTURE
+   BFT-CAPTURE>N ;
+
+: BFT-TEST-STALE-INSTALL ( -- )
+   BFT-STALE-PREPARE
+   BFT-STALE-ARGV
+   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" E-BUILD-STATUS" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" habu-crash regs" CONTAINS? TTRUE
+   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-STAMP FILE? TFALSE ;
 
 : BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u start needle:ptr nu :}
    start 0 < if -1 exit then
@@ -529,6 +661,7 @@ create BFT-CHECK-OFF-LINE
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
+   s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
    s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP

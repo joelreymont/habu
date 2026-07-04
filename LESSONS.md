@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -286,6 +286,18 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Uncaught top-level throws exit silently with `code & 0xFF`:** BTHROW's
+  no-handler path passes the raw throw code to `NR-EXIT-GROUP` with no
+  diagnostic — `-2802 throw` exits 14 silently and `-2816 throw` (a multiple of
+  256) exits 0 — so a CLI tool relying on throw propagation for its exit status
+  is fail-open. The fixpoint install proved it: a crashed refresh child's
+  `E-BUILD-STATUS` escaped `BF-MAIN` and the install looked successful under a
+  stale seed. CLI entry points must catch at main and `die` with a named stderr
+  diagnostic plus a deterministic nonzero rc (`BF-CLI` pattern); the engine
+  boundary fix is habu-engine-bthrow-no-02c6b017.
+- **`wait-rc` is WEXITSTATUS-only:** a signal-killed child (SIGABRT = rc 134)
+  reports rc 0 through `wait-rc`/`PROC-WAIT-RAW`. Use `PROC-WAIT-RC`
+  (`wait-status` + 128+sig mapping); primitive fix is habu-wait-rc-masks-9ae37cd0.
 - **Path materialization must share one fail-closed emitter:** `s" <path>"`
   loader/prefix lines were hand-rolled with zero escaping in `lib/source.f`
   (`SOURCE-APPEND-PROVIDED`) and `tools/check-core.f` (`CHK-APPEND-REQUIRED`,

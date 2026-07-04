@@ -1208,3 +1208,62 @@ variable BF-CERT-PATH-U
    s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
+
+\ Fail-closed CLI boundary. BTHROW's no-handler path exits with the raw throw
+\ code masked to 8 bits and NO diagnostic (a code that is a multiple of 256
+\ exits 0), so a crashed refresh child whose BF-RC0 E-BUILD-STATUS throw
+\ escaped BF-MAIN used to fail silently with an arbitrary exit code. BF-CLI
+\ catches every escaped throw, names it on stderr, and dies with the
+\ deterministic build rc so any failure anywhere in the refresh chain is loud
+\ and nonzero under every seed.
+$80 constant BF-FAIL-CAP
+$18 constant BF-FAIL-DG-CAP
+create BF-FAIL-BUF BF-FAIL-CAP allot
+create BF-FAIL-DG BF-FAIL-DG-CAP allot
+variable BF-FAIL-U
+variable BF-FAIL-V
+variable BF-FAIL-N
+
+: BF-FAIL-C+ ( n -- ) {: c:n :}
+   BF-FAIL-U @ 1 + BF-FAIL-CAP > if s" build-fixpoint: fail message overflow" BF-BUILD-RC die then
+   c BF-FAIL-BUF BF-FAIL-U @ + c!
+   BF-FAIL-U @ 1 + BF-FAIL-U ! ;
+
+: BF-FAIL+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   BF-FAIL-U @ u + BF-FAIL-CAP > if s" build-fixpoint: fail message overflow" BF-BUILD-RC die then
+   a BF-FAIL-BUF BF-FAIL-U @ + u BYTE-COPY
+   BF-FAIL-U @ u + BF-FAIL-U ! ;
+
+: BF-FAIL-DIGITS+ ( -- )
+   0 BF-FAIL-N !
+   BF-FAIL-V @ 0 = if $30 BF-FAIL-C+ exit then
+   begin BF-FAIL-V @ 0 > while
+      BF-FAIL-V @ 10 mod $30 +  BF-FAIL-DG BF-FAIL-N @ + c!
+      BF-FAIL-N @ 1 + BF-FAIL-N !
+      BF-FAIL-V @ 10 / BF-FAIL-V !
+   repeat
+   begin BF-FAIL-N @ 0 > while
+      BF-FAIL-N @ 1 - BF-FAIL-N !
+      BF-FAIL-DG BF-FAIL-N @ + c@ BF-FAIL-C+
+   repeat ;
+
+: BF-FAIL-CODE+ ( n -- ) {: rc:n :}
+   rc 0 < if $2D BF-FAIL-C+ then
+   rc 0 < if 0 rc - else rc then BF-FAIL-V !
+   BF-FAIL-DIGITS+ ;
+
+: BF-FAIL-NAME+ ( n -- ) {: rc:n :}
+   rc E-BUILD-STATUS = if s"  (E-BUILD-STATUS: refresh child failed)" BF-FAIL+ exit then
+   rc E-BUILD-PATH = if s"  (E-BUILD-PATH: build artifact missing)" BF-FAIL+ exit then ;
+
+: BF-FAIL-DIE ( n -- ) {: rc:n :}
+   0 BF-FAIL-U !
+   s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
+   rc BF-FAIL-CODE+
+   rc BF-FAIL-NAME+
+   BF-LF BF-FAIL-C+
+   BF-FAIL-BUF BF-FAIL-U @ BF-BUILD-RC die ;
+
+: BF-CLI ( -- )
+   [: BF-MAIN ;] catch {: rc:n :}
+   rc 0 <> if rc BF-FAIL-DIE then ;
