@@ -1,19 +1,23 @@
-\ maki/golden.f - the host GOLDEN self-consistency oracle (dot cad-7a, part D).
+\ maki/golden.f - the host GOLDEN verdict: external artifact OR self-consistency.
 \
-\ GOLDEN on host for reference-complete models (CAD-PLAN section 11): the executor
-\ (maki/executor.f) IS the composition oracle, so GOLDEN executes the captured forward
-\ IR as ONE composed chain and then, per node, RE-EXECUTES that node from its (already
-\ composed) input buffers and checks the output is unchanged - a self-consistency v1
-\ that proves the composed walk and the per-node dispatch agree and that the executor
-\ is deterministic and non-aliasing over the arena. It is NOT yet the real device-vs-
-\ host comparison: that lands when the device leg exists (the reason/warn text says so
-\ honestly). Verdict: PASS when every op is reference-complete + host-executable AND the
-\ composed chain is self-consistent; NOT-RUN with a named reason when an op is incomplete
-\ or not host-executable (cast / decode); FAIL only if a node's re-execution disagrees.
+\ GOLDEN-INTO now has TWO legs (CAD-PLAN section 11). When an external reference
+\ artifact exists for the current model (maki/golden-artifact.f), GOLDEN is a REAL
+\ output-vs-reference comparison under the artifact's per-dtype tolerance (GA-CHECK).
+\ Otherwise it falls back to the self-consistency v1 oracle this file owns: it runs the
+\ captured forward IR as ONE composed chain (maki/executor.f) and, per node, RE-EXECUTES
+\ that node from its (already composed) input buffers and checks the output is unchanged
+\ - proving the composed walk and the per-node dispatch agree and that the executor is
+\ deterministic and non-aliasing over the arena. Neither leg is yet the device-vs-host
+\ comparison (that lands with the device leg; the reason/warn text says so honestly).
 \
-\ Inputs are synthesized deterministically and bound through EX-BIND (index operands of a
-\ gather are filled with valid row-0 indices). One concern: the golden self-consistency
-\ verdict - it owns no planning, no gradients. maki -> habu only; golden owns -5140..-5142.
+\ Verdict: PASS when every op is reference-complete + host-executable AND the composed
+\ chain is self-consistent (or the artifact matches); NOT-RUN with a named reason when an
+\ op is incomplete or not host-executable (cast / decode); FAIL only on a real mismatch.
+\
+\ The synthetic input binding and the host-executability membership predicate live one
+\ file down in maki/golden-artifact.f (GA-BIND-SYNTH / GA-SUPPORTED? / GA-FIRST-BAD), so
+\ the artifact reader and this oracle share them without a load-order cycle. One concern
+\ here: the self-consistency verdict + the golden gate dispatch. maki -> habu; owns -5140.
 
 require lib/prelude.f
 require lib/string.f
@@ -24,69 +28,20 @@ require maki/op-registry.f
 require maki/model-ir.f
 require maki/executor.f
 require maki/report.f
+require maki/golden-artifact.f
 
--5140 constant E-GOLD-CAP     \ golden input / snapshot arena capacity exceeded
+-5140 constant E-GOLD-CAP     \ golden per-node snapshot arena capacity exceeded
 
 package MAKI
 private
 
-64    constant GO-SCAP        \ input slots (mirrors model-ir MIR-IN-CAP)
-$2000 constant GO-ARENA-CELLS  \ synthetic input-buffer arena (float cells)
 $1000 constant GO-SNAP-CELLS   \ per-node composed-output snapshot scratch
-
-create GO-ARENA  GO-ARENA-CELLS cells allot
-create GO-IN-OFF GO-SCAP cells allot
-variable GO-BUMP
 create GO-SNAP   GO-SNAP-CELLS cells allot
 
-: GO-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
-: GO-IN-PTR ( n -- ptr a )  cells GO-IN-OFF + @ {: off:n :}  GO-ARENA off T-AT ;
-
-\ ---- synthetic input fill (index operands get valid row-0 indices) ----------
-: GO-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
-   nd MIR-OP@ OP-GATHER <> if false exit then
-   nd 1 MIR-IN@ {: r:n :}
-   r MIR-REF-INPUT? 0= if false exit then
-   r MIR-REF-SLOT s = ;
-
-: GO-INDEX-SLOT? ( n -- bool ) {: s:n :}
-   MIR-N@ 0 ?do  i s GO-NODE-IDX? if unloop true exit then  loop  false ;
-
-: GO-FILL-VAL ( n n -- r ) {: s:n e:n :}
-   s GO-INDEX-SLOT? if 0.0 exit then
-   s 5 * e +  13 mod  s>f  0.17 f*  0.4 f+ ;
-
-: GO-FILL-SLOT ( n -- ) {: s:n :}
-   s GO-IN-PTR {: p:ptr :}
-   s GO-SLOT-ELEMS 0 ?do  s i GO-FILL-VAL  p i T-SET  loop ;
-
-: GO-BIND-INPUTS ( -- )
-   EX-RESET
-   0 GO-BUMP !
-   MIR-IN-SLOTS@ 0 ?do
-      i GO-SLOT-ELEMS {: e:n :}
-      GO-BUMP @ {: off:n :}
-      off e + GO-ARENA-CELLS > if E-GOLD-CAP throw then
-      off i cells GO-IN-OFF + !
-      off e + GO-BUMP !
-      i GO-IN-PTR i EX-BIND
-      i GO-FILL-SLOT
-   loop ;
-
-\ ---- membership gate: every node's op is reference-complete + host-executable -
 public
-: GO-SUPPORTED? ( -- bool )
-   MIR-N@ 0 ?do
-      i MIR-OP@ {: op:n :}
-      op OPR-COMPLETE? 0=  op EX-OP-OK? 0= or  if false unloop exit then
-   loop  true ;
+\ host-executability membership is owned by golden-artifact.f; expose the golden name.
+: GO-SUPPORTED? ( -- bool )  GA-SUPPORTED? ;
 private
-
-: GO-FIRST-BAD ( -- n )        \ first node whose op blocks golden, or -1
-   MIR-N@ 0 ?do
-      i MIR-OP@ {: op:n :}
-      op OPR-COMPLETE? 0=  op EX-OP-OK? 0= or  if i unloop drop op exit then
-   loop  -1 ;
 
 \ ---- per-node self-consistency: composed output == re-exec from its inputs ---
 : GO-DIFF? ( r r -- bool ) {: a:r b:r :}  a b f- fabs  0.000001  f< 0= ;
@@ -126,20 +81,27 @@ private
 
 public
 
-\ ---- the host golden verdict: V-PASS / V-FAIL / V-NOTRUN + reason in GO-RE$ ---
+\ ---- the host self-consistency verdict: V-PASS / V-FAIL / V-NOTRUN + reason ----
 : GO-RUN ( -- n )
    MIR-N@ 0= if GO-RE-RESET s" golden: empty model" GO-RE+ V-NOTRUN exit then
-   GO-FIRST-BAD {: bad:n :}
+   GA-FIRST-BAD {: bad:n :}
    bad 0< 0= if bad GO-REASON-BAD V-NOTRUN exit then
-   GO-BIND-INPUTS
+   GA-BIND-SYNTH
    MIR-N@ EX-RUN-N                                   \ composed forward chain
    GO-SELF? 0= if GO-RE-RESET s" golden: composed chain not self-consistent" GO-RE+ V-FAIL exit then
    GO-PASS-REASON  V-PASS ;
 
-\ ---- cad.f gate wiring ------------------------------------------------------
-: GOLDEN-INTO ( report -- report )
-   GO-RUN {: v:n :}
-   GO-RE$ v G-GOLDEN RPT-GATE!
+private
+\ ---- cad.f gate wiring: prefer an external reference artifact, else self-consistency --
+: GO-GATE-ARTIFACT ( report -- report )
+   GA-CHECK {: v:n :}  GA-RE$ v G-GOLDEN RPT-GATE!
+   s" golden: external reference artifact comparison (per-artifact tolerance)" RPT-WARN+ ;
+: GO-GATE-SELF ( report -- report )
+   GO-RUN {: v:n :}  GO-RE$ v G-GOLDEN RPT-GATE!
    s" golden: host self-consistency (v1); device-vs-host lands with the device leg" RPT-WARN+ ;
+
+public
+: GOLDEN-INTO ( report -- report )
+   GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;
 
 end-package

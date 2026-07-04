@@ -146,6 +146,8 @@ TEST:SUITE maki/cad-bind-test.f
 TEST:END-SUITE
 TEST:SUITE maki/golden-test.f
 TEST:END-SUITE
+TEST:SUITE maki/golden-artifact-test.f
+TEST:END-SUITE
 TEST:SUITE maki/gradcheck-test.f
 TEST:END-SUITE
 TEST:SUITE maki/from-scratch-model-test.f
