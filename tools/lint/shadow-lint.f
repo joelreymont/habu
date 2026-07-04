@@ -13,7 +13,7 @@ require tools/lint/lib.f
 
 package SHADOW-LINT-TOOL
 
-$30000 constant SL-FB-CAP                    \ largest linted source + headroom
+$40000 constant SL-FB-CAP                    \ largest linted source + headroom (checker.f grew past $30000)
 create FB SL-FB-CAP allot                    \ one file at a time
 
 \ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----

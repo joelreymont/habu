@@ -1061,6 +1061,23 @@ variable FAILB  variable FAILE
 variable TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
+\ TBASE holds the checked source base pointer (ptr u8); read it through a
+\ cell-indexed ptr-field view so byte access keeps its ptr u8 role.
+: TBASE-FIELD ( -- ptr ptr u8 )
+   TBASE 0 ptr-field ;
+
+: TBASE@ ( -- ptr u8 )
+   TBASE-FIELD @ ;
+
+: TBASE! ( ptr u8 -- )
+   TBASE-FIELD ! ;
+
+: TADDR ( n -- ptr u8 )
+   TBASE@ swap + ;
+
+: TBYTE@ ( n -- n )
+   TADDR c@ ;
+
 : DIAG-JSON! ( bool -- )
    JSON-DIAGS ! ;
 
@@ -2385,7 +2402,7 @@ USIGS-RUNTIME-INIT
    USIGS-SNAP-P @ ;
 
 : USIGS-SNAPSHOT-SIZE ( -- n )
-   UEND @ cell+ ;
+   UEND @ CELL + ;
 
 : USIGS-SNAPSHOT-ALLOC ( n -- ptr u8 ) {: n:n :}
    here USIGS-SNAP-P !
@@ -2414,7 +2431,7 @@ USIGS-RUNTIME-INIT
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ cell+ USIGS-COPY
+   USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
    USIGS-GROW-NEXT @ USIGS-P !
    USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
@@ -2438,10 +2455,12 @@ USIGS-RUNTIME-INIT
 \ UALIGN! ( -- )
 : UALIGN! UEND @ UALIGN UEND ! ;
 
-: U!+ {: x :}  x USIGS UEND @ + !  UEND @ cell+ UEND ! ;
+: U!+ ( n -- ) {: x:n :}
+   x UEND @ USIGS-CELL-AT !
+   UEND @ CELL + UEND ! ;
 
 \ UTERM! ( -- )
-: UTERM! 0 USIGS UEND @ + ! ;
+: UTERM! 0 UEND @ USIGS-CELL-AT ! ;
 
 : USIGS-RESTORE-END ( n -- )
    UEND !
@@ -2456,13 +2475,13 @@ USIGS-RUNTIME-INIT
    c $20 or ;
 
 : SYM-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> if 0 exit then
+   u v <> if RES-FALSE exit then
    0 begin dup u < while
       dup a + c@ SYM-FOLD-C
-      over b + c@ SYM-FOLD-C <> if drop 0 exit then
+      over b + c@ SYM-FOLD-C <> if drop RES-FALSE exit then
       1+
    repeat drop
-   0 0= ;
+   RES-TRUE ;
 
 \ SYM-CAP is a live power-of-2 cap (HIDX masks by SYM-CAP 1 -). It grows
 \ geometrically; the HIDX table (sized/masked by SYM-CAP) is rebuilt — rehashed —
@@ -2563,10 +2582,11 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    SYM-DST@ u ;
 
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
-   {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
-   id SYM-ROW SYM.VIS @ vis <> IF 0 EXIT THEN
-   id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF 0 EXIT THEN
+   {: pkg pkgu:n vis:n name nameu:n id:n :}
+   id SYM-ROW SYM.VIS @ vis <> IF RES-FALSE EXIT THEN
+   id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF RES-FALSE EXIT THEN
    id SYM-NAME$ name nameu SYM-STR=CI ;
 
 \ --- symbol hash index + current-state cache. SYMS and the USIGS/NORETS/
@@ -2605,11 +2625,47 @@ variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollbac
 variable HIDX-H
 variable HIDX-I
 variable HIDX-CUR
-0 HIDX-MEM !   0 HIDX-VALID !   1 HIDX-EPOCH !
-0 HIDX-EFF-HI !   0 HIDX-EFF-BASE !   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
+
+\ HIDX-MEM/HIDX-EFF-BASE hold typed pointers into the mmap cache and USIGS store.
+\ A plain variable @ yields a bare cell value, so the store base is read through a
+\ cell-indexed ptr-field view (ptr ptr a) to preserve the nested pointer role.
+: HIDX-MEM-FIELD ( -- ptr ptr a )
+   HIDX-MEM 0 ptr-field ;
+
+: HIDX-MEM@ ( -- ptr a )
+   HIDX-MEM-FIELD @ ;
+
+: HIDX-MEM! ( ptr a -- )
+   HIDX-MEM-FIELD ! ;
+
+\ HIDX-MEM-NULL: the unallocated-cache sentinel is a null pointer; the checker
+\ cannot type a literal 0 as ptr a, so this one-line refinement asserts it.
+TRUSTED: HIDX-MEM-NULL ( -- ptr a )
+   0 ;
+
+: HIDX-MEM-CLEAR ( -- )
+   HIDX-MEM-NULL HIDX-MEM! ;
+
+: HIDX-MEM-READY? ( -- bool )
+   HIDX-MEM@ 0= 0= ;
+
+: HIDX-EFF-BASE-FIELD ( -- ptr ptr u8 )
+   HIDX-EFF-BASE 0 ptr-field ;
+
+: HIDX-EFF-BASE@ ( -- ptr u8 )
+   HIDX-EFF-BASE-FIELD @ ;
+
+: HIDX-EFF-BASE! ( ptr u8 -- )
+   HIDX-EFF-BASE-FIELD ! ;
+
+: HIDX-EFF-BASE-CLEAR ( -- )
+   USIGS HIDX-EFF-BASE! ;
+
+HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
+0 HIDX-EFF-HI !   HIDX-EFF-BASE-CLEAR   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
 
 : HIDX-CELL ( n n -- ptr a ) {: slot:n tbl:n :}
-   tbl SYM-CAP * slot + cells HIDX-MEM @ + ;
+   tbl SYM-CAP * slot + cells HIDX-MEM@ + ;
 
 : HIDX-H+ ( n -- )
    SYM-FOLD-C HIDX-H @ xor HIDX-FNV-PRIME * HIDX-H ! ;
@@ -2620,7 +2676,8 @@ variable HIDX-CUR
       1 +
    repeat drop ;
 
-: HIDX-HASH ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: HIDX-HASH ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-FNV-BASIS HIDX-H !
    pkg pkgu HIDX-H$
    vis HIDX-H+
@@ -2669,9 +2726,9 @@ variable HIDX-CUR
 \ dependency or the store was swapped (grow, reset, external restore).
 : HIDX-EFF-SYNC
    UEND @ HIDX-EFF-HI @ <
-   USIGS-P @ HIDX-EFF-BASE @ <> or IF
+   USIGS HIDX-EFF-BASE@ <> or IF
       HIDX-EPOCH+
-      USIGS-P @ HIDX-EFF-BASE !
+      USIGS HIDX-EFF-BASE!
    THEN ;
 
 : HIDX-MMAP-RC ( -- n )
@@ -2685,7 +2742,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    HIDX-MMAP-RC HIDX-RC>PTR ;
 
 : HIDX-ALLOC ( -- )
-   HIDX-ALLOC-PTR HIDX-MEM ! ;
+   HIDX-ALLOC-PTR HIDX-MEM! ;
 
 : HIDX-BKT-CLEAR ( -- )
    0 begin dup SYM-CAP < while
@@ -2694,7 +2751,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    repeat drop ;
 
 : HIDX-BUILD ( -- )
-   HIDX-MEM @ 0 = IF HIDX-ALLOC THEN
+   HIDX-MEM-READY? 0= IF HIDX-ALLOC THEN
    HIDX-BKT-CLEAR
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
@@ -2709,10 +2766,10 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 
 \ HIDX-RESET ( -- ) : snapshot prepare — the mapping is process-local.
 : HIDX-RESET
-   0 HIDX-MEM !
+   HIDX-MEM-CLEAR
    0 HIDX-VALID !
    0 HIDX-EFF-HI !
-   0 HIDX-EFF-BASE !
+   HIDX-EFF-BASE-CLEAR
    0 HIDX-CTL-HI !
    0 HIDX-DFR-HI ! ;
 
@@ -2724,12 +2781,22 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    v id vt HIDX-CELL !
    HIDX-EPOCH @ id et HIDX-CELL ! ;
 
+\ HIDX-B@/HIDX-B! store a boolean payload (the defer-active flag) so the cached
+\ value keeps its bool role instead of a bare cell.
+: HIDX-B@ ( n n n -- bool bool ) {: id:n vt:n et:n :}
+   id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF RES-FALSE RES-FALSE EXIT THEN
+   id vt HIDX-CELL @ 0 <> RES-TRUE ;
+
+: HIDX-B! ( bool n n n -- ) {: v:bool id:n vt:n et:n :}
+   v id vt HIDX-CELL !
+   HIDX-EPOCH @ id et HIDX-CELL ! ;
+
 : HIDX-EFF@ ( n -- n bool ) HT-EFF-V HT-EFF-E HIDX@ ;
 : HIDX-EFF! ( n n -- ) HT-EFF-V HT-EFF-E HIDX! ;
 : HIDX-CTL@ ( n -- n bool ) HT-CTL-V HT-CTL-E HIDX@ ;
 : HIDX-CTL! ( n n -- ) HT-CTL-V HT-CTL-E HIDX! ;
-: HIDX-DFR@ ( n -- n bool ) HT-DFR-V HT-DFR-E HIDX@ ;
-: HIDX-DFR! ( n n -- ) HT-DFR-V HT-DFR-E HIDX! ;
+: HIDX-DFR@ ( n -- bool bool ) HT-DFR-V HT-DFR-E HIDX-B@ ;
+: HIDX-DFR! ( bool n -- ) HT-DFR-V HT-DFR-E HIDX-B! ;
 : HIDX-PRM@ ( n -- n bool ) HT-PRM-V HT-PRM-E HIDX@ ;
 : HIDX-PRM! ( n n -- ) HT-PRM-V HT-PRM-E HIDX! ;
 
@@ -2742,7 +2809,8 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : HIDX-DFR-DEP+ ( n -- )
    HIDX-DFR-HI @ max HIDX-DFR-HI ! ;
 
-: SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-ENSURE
    pkg pkgu vis name nameu HIDX-HASH HIDX-BKT @ HIDX-CUR !
    begin HIDX-CUR @ 0 <> while
@@ -2761,7 +2829,8 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    dst id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
-: SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg pkgu:n vis:n name nameu:n id:n :}
    pkg pkgu id SYM-PKG!
    name nameu id SYM-NAME!
    vis id SYM-ROW SYM.VIS ! ;
@@ -2775,14 +2844,15 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    need SYM-CAP-NEXT {: nc:n :}
    SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW SYMS-P !
    nc SYM-CAP-V !
-   0 HIDX-MEM !   0 HIDX-VALID !
+   HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
 
 : SYM-ENSURE ( -- )             \ ensure room for the next id (SYM-N)
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
 
-: SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
    pkgu nameu + SYM-STR-ENSURE   \ reserve the whole record's strings up front so
@@ -2844,6 +2914,7 @@ variable EC-RVN
 create EI-AK EI-AK-CAP cells allot
 
 variable FEP
+variable FEP-OFF
 variable CHECKER-REC-SYM
 0 CHECKER-REC-SYM !
 
@@ -2895,16 +2966,20 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    USIGS + ;
 
 : E-ENSURE-NODE ( -- )
-   UEND @ EFF-NODE + cell+ USIGS-ENSURE ;
+   UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
+
+\ typed-local-lint: allow-bare-local - p preserves ptr a field-owner role.
+: E-NODE-INIT ( n ptr a -- ) {: tag:n p :}
+   tag p EN.TAG !
+   0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
+   0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H ! ;
 
 : E-NODE-NEW ( n -- ptr a ) {: tag:n :}
    E-ENSURE-NODE
-   USIGS UEND @ + >r
-   tag r@ EN.TAG !
-   0 r@ EN.A !  0 r@ EN.B !  0 r@ EN.C !  0 r@ EN.D !
-   0 r@ EN.E !  0 r@ EN.F !  0 r@ EN.G !  0 r@ EN.H !
+   USIGS UEND @ + {: p:ptr :}
+   tag p E-NODE-INIT
    UEND @ EFF-NODE + UEND !
-   r> ;
+   p ;
 
 : E-NODE-OFF ( n -- n )
    E-NODE-NEW E-OFF ;
@@ -2914,14 +2989,14 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 \ offset (E-OFF-relative), stable across USIGS relocation. Children copied after
 \ the reserve allocate past this run, so their offsets never overlap it.
 : E-ARGS-RESERVE ( n -- n ) {: argc:n :}
-   UEND @ argc cells + cell+ USIGS-ENSURE
+   UEND @ argc cells + CELL + USIGS-ENSURE
    UEND @
    dup argc cells + UEND ! ;
 
 : E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
    UEND @ p EN.A !
    u p EN.B !
-   UEND @ u + UALIGN cell+ USIGS-ENSURE
+   UEND @ u + UALIGN CELL + USIGS-ENSURE
    a u UBS
    UALIGN! ;
 
@@ -3002,6 +3077,21 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 : USIG-OFF ( ptr a -- n )
    E-OFF ;
 
+\ FEP holds the found active effect record; FEP-OFF stores its USIGS offset+1 so
+\ 0 means "no active record" even when a real record lives at offset 0.
+: FEP-CLEAR ( -- )
+   0 FEP-OFF ! ;
+
+: FEP-SET ( ptr a -- )
+   dup FEP !
+   USIG-OFF 1 + FEP-OFF ! ;
+
+: FEP-OFF@ ( -- n )
+   FEP-OFF @ ;
+
+: FEP-HIT? ( -- bool )
+   FEP-OFF@ 0 <> ;
+
 : USIG-END? ( ptr a -- bool )
    @ 0= ;
 
@@ -3009,22 +3099,26 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
 \ read-time-only check could be masked by rewind-then-regrow.
+\ typed-local-lint: allow-bare-local - p preserves ptr a record-owner role.
+: E-REC-INIT ( ptr a -- ) {: p :}
+   0 p ER.NEXT !  0 p ER.ACTIVE !
+   0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
+   0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !
+   CHECKER-REC-SYM @ p ER.SYM ! ;
+
 : E-REC-START ( -- ptr a )
    HIDX-EFF-SYNC
-   UEND @ EFF-REC + cell+ USIGS-ENSURE
-   USIGS UEND @ + >r
-   0 r@ ER.NEXT !  0 r@ ER.ACTIVE !
-   0 r@ ER.DIN !   0 r@ ER.DOUT !  0 r@ ER.RIN !  0 r@ ER.ROUT !
-   0 r@ ER.HASR !  0 r@ ER.TVN !   0 r@ ER.RVN !
-   CHECKER-REC-SYM @ r@ ER.SYM !
-   r@ EFF-REC + USIGS - UEND !
-   r> ;
+   UEND @ EFF-REC + CELL + USIGS-ENSURE
+   USIGS UEND @ + {: p:ptr :}
+   p E-REC-INIT
+   p EFF-REC + USIGS - UEND !
+   p ;
 
 : E-REC-FINISH ( ptr a -- )
    UEND @ swap ER.NEXT !
    UTERM! ;
 
-: E-BUILD-EFFECT ( n n n n n -- n ) {: din:n dout:n rin:n rout:n hasr:n :}
+: E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    E-REC-START E-OFF >r
    E-COPY-MAPS-RESET
    EFF-ACTIVE r@ E-PTR ER.ACTIVE !
@@ -3044,7 +3138,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
-: E-ADD-EFFECT ( n n n n n -- )
+: E-ADD-EFFECT ( n n n n bool -- )
    E-BUILD-EFFECT {: off:n :}
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
@@ -3120,13 +3214,13 @@ variable FMEND
 \ deleted); FMEND = end offset of the last matching record of ANY state — the
 \ cache dependency: a rewind below it can change the answer.
 : SCAN-USIGS-SYM {: sym:n :}
-   0 FEP !
+   FEP-CLEAR
    0 FMEND !
    USIGS-USER FP !
    begin FP @ USIG-END? 0= while
       FP @ sym USIG-MATCH-SYM? if
          FP @ ER.NEXT @ FMEND !
-         FP @ dup ER.ACTIVE @ if FEP ! else drop 0 FEP ! then
+         FP @ dup ER.ACTIVE @ if FEP-SET else drop FEP-CLEAR then
       then
       FP @ USIG-NEXT FP !
    repeat ;
@@ -3209,7 +3303,7 @@ variable FMEND
 \ passing a linear into a consumer quotation counts as one output-side use, and
 \ KEEP (which also returns it) exceeds one. Mirrors E-INST's node walk.
 variable LMNEG  variable LMPOS  variable LMV
-: EN-MULT ( off pol -- ) {: off:n pol:n :}
+: EN-MULT ( n bool -- ) {: off:n pol:bool :}
    off 0= IF exit THEN
    off E-PTR >r
    r@ EN.TAG @ case
@@ -3246,13 +3340,13 @@ variable LMNEG  variable LMPOS  variable LMV
       r> drop
    endcase ;
 
-: LIN-VAR-MULT ( h v -- neg pos ) {: h:ptr v:n :}
+: LIN-VAR-MULT ( ptr a n -- n n ) {: h:ptr v:n :}
    v LMV !  0 LMNEG !  0 LMPOS !
-   h ER.DIN @ 0 EN-MULT
-   h ER.DOUT @ 1 EN-MULT
-   h ER.HASR @ IF
-      h ER.RIN @ 0 EN-MULT
-      h ER.ROUT @ 1 EN-MULT
+   h ER.DIN @ RES-FALSE EN-MULT
+   h ER.DOUT @ RES-TRUE EN-MULT
+   h ER.HASR @ 0 <> IF
+      h ER.RIN @ RES-FALSE EN-MULT
+      h ER.ROUT @ RES-TRUE EN-MULT
    THEN
    LMNEG @ LMPOS @ ;
 
@@ -3286,7 +3380,7 @@ variable LMI
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
    CHECKER-STEP
-   h ER.HASR @ if
+   h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
    then
@@ -3294,7 +3388,7 @@ variable LMI
 
 : EFF-QUOT ( ptr a -- n ) {: h:ptr :}
    h E-INST-RESET
-   h ER.HASR @ if
+   h ER.HASR @ 0 <> if
       h ER.DIN @ E-INST
       h ER.DOUT @ E-INST
       h ER.RIN @ E-INST
@@ -3758,15 +3852,15 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
    a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0= IF 0 EXIT THEN
-   CHECKER-COLON-I @ 0= IF 0 EXIT THEN
-   CHECKER-COLON-I @ u 1 - = IF 0 EXIT THEN
-   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! 0 EXIT THEN
+   CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
+   CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
+   CHECKER-COLON-I @ u 1 - = IF RES-FALSE EXIT THEN
+   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a CHECKER-QA!
    CHECKER-COLON-I @ CHECKER-QU !
    a CHECKER-COLON-I @ + 1 + CHECKER-TA!
    u CHECKER-COLON-I @ - 1 - CHECKER-TU !
-   -1 ;
+   RES-TRUE ;
 
 : CHECKER-QPKG$ ( -- ptr u8 n )
    CHECKER-QA@ CHECKER-QU @ ;
@@ -3774,25 +3868,32 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
 
-: CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
-: CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-INTERN ;
 
-: CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-INTERN ;
 
-: CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PACKAGE-ACTIVE? IF
@@ -3812,19 +3913,19 @@ variable CHECKER-QBAD-TOK
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
 \ arena scan and memoizes both the answer and its watermark dependency.
-: CHECKER-FIND-USIG-SYM {: sym:n :}
-   sym 0= IF 0 EXIT THEN
+: CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
    HIDX-ENSURE
    HIDX-EFF-SYNC
-   sym HIDX-EFF@ IF
-      dup IF 1 - E-PTR FEP ! ELSE drop 0 FEP ! THEN
+   sym HIDX-EFF@ {: cached:n hit:bool :}
+   hit IF
+      cached 0 <> IF cached 1 - E-PTR FEP-SET ELSE FEP-CLEAR THEN
    ELSE
-      drop
       sym SCAN-USIGS-SYM
-      FEP @ IF FEP @ USIG-OFF 1 + ELSE 0 THEN sym HIDX-EFF!
+      FEP-OFF@ sym HIDX-EFF!
       FMEND @ HIDX-EFF-DEP+
    THEN
-   FEP @ 0 <> ;
+   FEP-HIT? ;
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
@@ -3837,14 +3938,14 @@ variable CHECKER-QBAD-TOK
    UTERM! ;
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 FEP !
+   FEP-CLEAR
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
 
 : FIND-SIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SIG
-   FEP @ IF -1 EXIT THEN
+   FEP-HIT? IF RES-TRUE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
-   dup IF E-PTR FEP ! -1 ELSE drop 0 THEN ;
+   dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
 
 \ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
 \ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
@@ -3859,7 +3960,7 @@ variable CHECKER-QBAD-TOK
    DFERS DFER-END @ + ;
 
 : DFER-NEED ( -- n )
-   DFER-END @ DFER-REC + cell+ ;
+   DFER-END @ DFER-REC + CELL + ;
 
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
@@ -3868,7 +3969,7 @@ variable CHECKER-QBAD-TOK
 \ exists precisely for that), so the deferred-target cache cannot assume later-wins
 \ permanence: HIDX-DFR-SYNC / HIDX-DFR-DEP+ record the DFER-END a cached answer
 \ depends on and flush it (epoch bump) when a rollback rewinds below that mark.
-: DFER-ADD-FLAG ( ptr u8 n n -- ) {: a:ptr u:n flag:n :}
+: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
    HIDX-DFR-SYNC
    DFER-NEED DFER-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
@@ -3877,21 +3978,21 @@ variable CHECKER-QBAD-TOK
    DFER-END @ DFER-REC + DFER-END !
    DFER-TERM
    sym 0 <> HIDX-VALID @ and IF
-      flag 0 <> sym HIDX-DFR!
+      flag sym HIDX-DFR!
       DFER-END @ HIDX-DFR-DEP+
    THEN ;
 
 : DFER-ADD ( ptr u8 n -- )
-   1 DFER-ADD-FLAG ;
+   RES-TRUE DFER-ADD-FLAG ;
 
 : DFER-DELETE ( ptr u8 n -- )
-   0 DFER-ADD-FLAG ;
+   RES-FALSE DFER-ADD-FLAG ;
 
 : DFER-NEXT ( ptr a -- ptr a )
    DFER-REC + ;
 
-: DFER-FLAG@ ( ptr a -- n )
-   DFER.FLAG @ ;
+: DFER-FLAG@ ( ptr a -- bool )
+   DFER.FLAG @ 0 <> ;
 
 : DFER-SYM@ ( ptr a -- n )
    DFER.SYM @ ;
@@ -3911,22 +4012,22 @@ variable DFER-POS
    0 DFER-POS !
    begin DFERS DFER-POS @ + DFER-END? 0= while
       DFERS DFER-POS @ + sym DFER-MATCH-SYM? IF
-         -1 DFER-HIT !
+         RES-TRUE DFER-HIT !
          DFERS DFER-POS @ + DFER-FLAG@ DFER-VALUE !
       THEN
       DFER-POS @ DFER-REC + DFER-POS !
    repeat ;
 
 : DFER-FIND-SYM ( n -- bool ) {: sym:n :}
-   sym 0= IF 0 EXIT THEN
+   sym 0= IF RES-FALSE EXIT THEN
    HIDX-ENSURE
    HIDX-DFR-SYNC
-   sym HIDX-DFR@ IF EXIT THEN
-   drop
-   0 DFER-HIT !
-   0 DFER-VALUE !
+   sym HIDX-DFR@ {: cached:bool hit:bool :}
+   hit IF cached EXIT THEN
+   RES-FALSE DFER-HIT !
+   RES-FALSE DFER-VALUE !
    sym DFER-SCAN-SYM
-   DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 0= 0= THEN
+   DFER-HIT @ IF DFER-VALUE @ ELSE RES-FALSE THEN
    dup sym HIDX-DFR!
    DFER-END @ HIDX-DFR-DEP+ ;
 
@@ -3953,7 +4054,7 @@ variable DFER-POS
    CHECKER-REC-U @ ;
 
 : CHECKER-CERT-DUP? ( -- bool )
-   CHK-CAND @ IF 0 EXIT THEN
+   CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
 : CHECKER-DUP-DEFINITION ( -- )
@@ -3967,7 +4068,7 @@ variable DFER-POS
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   BROW @ DCUR @ 0 0 0 E-ADD-EFFECT ;
+   BROW @ DCUR @ 0 0 RES-FALSE E-ADD-EFFECT ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -3989,8 +4090,12 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
 
+: NORET-CELL ( n -- ptr a ) {: off:n :}
+   off 7 and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
+   NORETS off + ;
+
 : NORET-TERM ( -- )
-   0 NORETS NORET-END @ + ! ;
+   0 NORET-END @ NORET-CELL ! ;
 
 : NORET-RESTORE-END ( n -- )
    NORET-END !
@@ -4000,7 +4105,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-END !
-   0 NORET-BOOT !
+   0 0 NORET-CELL !
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -4008,11 +4113,11 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORETS NORET-BOOT = ;
 
 : NORET-SNAPSHOT-CAP ( -- )
-   NORET-END @ cell+ NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
+   NORET-END @ CELL + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
 
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ cell+ USIGS-COPY THEN
+   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + USIGS-COPY THEN
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-GROW-CAP !
@@ -4021,7 +4126,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
    NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ cell+ USIGS-COPY
+   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + USIGS-COPY
    NORET-GROW-NEXT @ NORET-P !
    NORET-GROW-CAP @ NORET-CAP-U ! ;
 
@@ -4070,15 +4175,24 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 \ hold pointers into their string pool; the string pool is persisted last and its
 \ relocation delta rebases those pointers in the just-persisted arrays.
 variable REG-PERSIST-DELTA
-: REG-PERSIST-BUF ( ptr ptr n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar @ boot = IF 0 EXIT THEN            \ not grown: boot buffer is baked DATA
-   pvar @ {: old:ptr :}
+
+\ REG-PVAR@/REG-PVAR! read/write a persisted pointer slot through a cell-indexed
+\ ptr-field view so the stored pointer keeps its nested ptr role.
+: REG-PVAR@ ( ptr a -- ptr a )
+   0 ptr-field @ ;
+
+: REG-PVAR! ( ptr a ptr a -- )
+   0 ptr-field ! ;
+
+: REG-PERSIST-BUF ( ptr a ptr a n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
+   pvar REG-PVAR@ boot = IF RES-FALSE EXIT THEN            \ not grown: boot buffer is baked DATA
+   pvar REG-PVAR@ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
    old dst bytes USIGS-COPY
-   dst pvar !
+   dst pvar REG-PVAR!
    dst old - REG-PERSIST-DELTA !
-   -1 ;
+   RES-TRUE ;
 
 : CT-SNAPSHOT-PERSIST ( -- )
    CT-CAP-V @ cells {: ab:n :}
@@ -4141,10 +4255,10 @@ variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
    NORET-SNAPSHOT-PERSIST
-   REG-EXT-PERSIST-XT @ ?dup if execute then ;
+   REG-EXT-PERSIST-XT @ dup 0= if drop else execute then ;
 
 : NORET-REC ( -- ptr a )
-   NORETS NORET-END @ + ;
+   NORET-END @ NORET-CELL ;
 
 : NORET-FLAG@ ( ptr a -- n )
    NORET.FLAG @ ;
@@ -4168,7 +4282,7 @@ variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
 \ before the new entry masks the rewind.
 : NORET-ADD {: a:ptr u:n flag:n :}
    HIDX-CTL-SYNC
-   NORET-END @ NORET-ENTRY + cell+ NORET-ENSURE
+   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym NORET-REC NORET.SYM !
    flag NORET-REC NORET.FLAG !
@@ -4230,13 +4344,13 @@ variable CURSYM
 : CTL-FLAGS-CUR ( -- n )
    CURSYM @ CTL-FLAGS-SYM ;
 
-: DEAD-CUR? {: a:ptr u:n :}
-   a u s" die" CORE-STR= IF -1 EXIT THEN
-   a u s" throw" CORE-STR= IF -1 EXIT THEN
+: DEAD-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" die" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-DEAD and 0 <> ;
 
-: THROW-CUR? {: a:ptr u:n :}
-   a u s" throw" CORE-STR= IF -1 EXIT THEN
+: THROW-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -4288,14 +4402,14 @@ variable TSEEN  variable TSOK  variable TFA
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
    TRIAL-SAVE
    h EFF-APPLY
-   OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN
+   OK @ SGBAD @ 0= and IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;     \ (stack-neutral; the bool stays on top)
 
 \ TRY-PRIMS ( n -- bool ) : try each prim overload for sym until one unifies.
 \ Starts at the cached first slot and stops at the first success.
-: TRY-PRIMS {: sym:n :}
+: TRY-PRIMS ( n -- bool ) {: sym:n :}
    0 TSEEN !  0 TSOK !  0 TFA !
-   sym PRIM-FIRST-IDX dup 0 = IF drop 0 EXIT THEN
+   sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
    1 - PE-I !
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
       PE-I @ PE-ACTIVE? IF
@@ -4307,10 +4421,10 @@ variable TSEEN  variable TSOK  variable TFA
       THEN
       PE-I @ 1 + PE-I !
    repeat
-   TSOK @ ;
+   TSOK @ 0 <> ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
-: FLODIG? {: a u :}                        \ -?d+.d+ (one interior dot) -> float literal
+: FLODIG? ( ptr u8 n -- bool ) {: a:ptr u:n :}     \ -?d+.d+ (one interior dot) -> float literal
    0 FLD !  0 FLI !  -1 FLO !
    u 3 < IF 0 FLO ! THEN
    a c@ 45 = IF 1 FLI ! THEN
@@ -4319,30 +4433,30 @@ variable FLD  variable FLI  variable FLO  variable FLC
      FLC @ 46 = IF FLD @ 0 > IF 0 FLO ! THEN FLD @ 1 + FLD !
      ELSE FLC @ 47 > FLC @ 58 < and 0= IF 0 FLO ! THEN THEN
      1 + REPEAT drop
-   FLD @ 1 = FLO @ and
-   u 0 > IF a u 1 - + c@ 46 = IF drop 0 THEN THEN
-   a FLI @ + c@ 46 = IF drop 0 THEN ;
+   FLD @ 1 = FLO @ 0 <> and
+   u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN
+   a FLI @ + c@ 46 = IF drop RES-FALSE THEN ;
 
-: DEFINER-TOK {: a u :}
-   SGSEEN @ 0= IF 0 EXIT THEN
-   a u s" create" CORE-STR= IF -1 EXIT THEN
-   a u s" variable" CORE-STR= IF -1 EXIT THEN
-   a u s" constant" CORE-STR= IF STEP-N-IN -1 EXIT THEN
-   0 ;
+: DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SGSEEN @ 0= IF RES-FALSE EXIT THEN
+   a u s" create" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" variable" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" constant" CORE-STR= IF STEP-N-IN RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u ALLDIG? IF STEP-N-OUT -1 EXIT THEN
-   a u FLODIG? IF STEP-R-OUT -1 EXIT THEN
-   0 ;
+   a u ALLDIG? IF STEP-N-OUT RES-TRUE EXIT THEN
+   a u FLODIG? IF STEP-R-OUT RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : BYTE-CON? ( n -- bool )
-   T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop 0 ;
+   T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop RES-FALSE ;
 
 : BYTE-PTR? ( n -- bool )
-   T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop 0 ;
+   T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop RES-FALSE ;
 
 : ROW-TOP-BYTE-PTR? ( n -- bool )
-   R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop 0 ;
+   R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
 : CELL-FETCH-TOK ( -- )
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
@@ -4355,27 +4469,32 @@ variable FLD  variable FLI  variable FLO  variable FLC
    bad IF 0 OK ! THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" @" CORE-STR= IF CELL-FETCH-TOK -1 EXIT THEN
-   a u s" !" CORE-STR= IF CELL-STORE-TOK -1 EXIT THEN
-   0 ;
+   a u s" @" CORE-STR= IF CELL-FETCH-TOK RES-TRUE EXIT THEN
+   a u s" !" CORE-STR= IF CELL-STORE-TOK RES-TRUE EXIT THEN
+   RES-FALSE ;
 
-: DO-TOK {: a u :}
+: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
    a u CELL-MEMORY-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
-   0 FEP !
+   FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   FEP @ IF FEP @ EFF-APPLY ELSE
+   FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ IF TFA @ E-PTR EFF-APPLY ELSE
-   CHECKER-QBAD-TOK @ IF -1 QUALBAD ! THEN
+   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
+   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
-: CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
 64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
 16 constant LOC-NAME-W         \ max local-name bytes (matches compiler LOCN-CELL)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
@@ -4387,7 +4506,7 @@ variable QDEPTH
 
 variable LCO
 
-: LCOLON {: a u :}   \ ( a u -- ) LCO = index of the first ':' in a/u, or u
+: LCOLON ( ptr u8 n -- ) {: a:ptr u:n :}   \ LCO = index of the first ':' in a/u, or u
    u LCO !
    0 BEGIN  dup u <  LCO @ u =  and WHILE
      dup a + c@ 58 = IF dup LCO ! THEN
@@ -4397,7 +4516,7 @@ variable LCO
 \ the local's type var with the asserted type — a wrong use then rejects.
 : LOC-SHOW-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = if a c@ 63 = exit then
-   0 ;
+   RES-FALSE ;
 
 : LOC-SUFFIX$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a LCO @ + 1 +  u LCO @ - 1 - ;
@@ -4546,15 +4665,24 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@DED ( -- n )
    CF-TOP CF.DED @ ;
 
+: CF@DED? ( -- bool )
+   CF@DED 0 <> ;
+
+: DEADP? ( -- bool )
+   DEADP @ 0 <> ;
+
+: XSET? ( -- bool )
+   XSET @ 0 <> ;
+
 : CF-BELOW-CASE? ( -- bool )
-   #CFC @ 2 < IF 0 EXIT THEN
+   #CFC @ 2 < IF RES-FALSE EXIT THEN
    #CFC @ 2 - CF-ROW CF.KND @ 7 = ;
 
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
 : CF-CASE-HAS? ( n -- bool ) {: idx:n :}
-   idx CF-ROW CF.DED @ ;
+   idx CF-ROW CF.DED @ 0 <> ;
 
 : CF-CASE-HAS! ( n -- ) {: idx:n :}
    -1 idx CF-ROW CF.DED ! ;
@@ -4634,6 +4762,20 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SYM
 
+: RECEFF-ON? ( -- bool )
+   RECEFF-ON @ 0 <> ;
+
+: VSIG-ON? ( -- bool )
+   VSIG @ 0 <> ;
+
+: SGSEEN? ( -- bool )
+   SGSEEN @ 0 <> ;
+
+: RECURSE-CACHE? ( -- bool )
+   VSIG-ON? 0= IF RES-FALSE EXIT THEN
+   SGSEEN? 0= IF RES-FALSE EXIT THEN
+   RECEFF-ON? ;
+
 \ SIG-EFF-CACHE! ( -- ) : cache the parsed declared sig as an arena effect record
 \ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
 \ The record carries sym 0 so signature lookup never sees it.
@@ -4648,7 +4790,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 
 \ SIG-EFF-DROP ( -- ) : truncate the recurse cache record once the body scan is done.
 : SIG-EFF-DROP
-   RECEFF-ON @ 0= IF EXIT THEN
+   RECEFF-ON? 0= IF EXIT THEN
    RECEFF-UEND @ USIGS-RESTORE-END
    0 RECEFF-ON ! ;
 
@@ -4657,13 +4799,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    h ER.HASR @ RHAS !
    h ER.DIN @ E-INST RDIN !
    h ER.DOUT @ E-INST RDOUT !
-   RHAS @ IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
+   RHAS @ 0 <> IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
    RDIN @ SUNI-IN  RDOUT @ DCUR !
-   RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
+   RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
    h LIN-EFF-PASS ;
 
 : CF-RECURSE
-   VSIG @ SGSEEN @ and RECEFF-ON @ and IF RECEFF @ E-PTR CF-RECURSE-EFF
+   RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
    ELSE -1 UNCK ! THEN ;
 
 : CF-IF  STEP-BOOL-IN  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
@@ -4707,7 +4849,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
       DEADP @ 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
-      CF@DED IF
+      CF@DED 0 <> IF
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
       ELSE
          -1 DEADP !
@@ -4727,17 +4869,30 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      CF-LOC-REST
    THEN THEN ;
 
+: CF-THEN-ELSE-MERGE ( -- )
+   DEADP? {: else-dead:bool :}
+   CF@DED? {: if-dead:bool :}
+   else-dead IF
+      if-dead IF
+         -1 DEADP !
+      ELSE
+         CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+      THEN
+   ELSE
+      if-dead IF
+         0 DEADP !
+      ELSE
+         CF@B SUNI  CF@RB RSUNI  0 DEADP !
+      THEN
+   THEN ;
+
 : CF-THEN
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
-        DEADP @ IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
+        DEADP? IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
         ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
-        DEADP @  CF@DED                                   \ ( else-dead if-dead )
-        2dup and IF 2drop -1 DEADP !                      \ both exited -> path stays dead
-        ELSE over IF 2drop CF@B DCUR ! CF@RB RCUR ! 0 DEADP !  \ else exited -> take if-branch
-        ELSE nip IF 0 DEADP !                             \ if exited -> keep else (in DCUR)
-        ELSE CF@B SUNI CF@RB RSUNI 0 DEADP ! THEN THEN THEN
+        CF-THEN-ELSE-MERGE
         CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
@@ -4897,10 +5052,10 @@ variable TKFU
 variable SKI  variable SKF
 
 : SGBAD-IN-SOURCE? ( -- bool )
-   SGBAD-U @ 0= IF 0 EXIT THEN
-   SGBAD-A @ TBASE @ < IF 0 EXIT THEN
-   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF 0 EXIT THEN
-   -1 ;
+   SGBAD-U @ 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ TBASE @ < IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF RES-FALSE EXIT THEN
+   RES-TRUE ;
 
 : SGBAD-COPY-TOKEN ( -- )
    SGBAD-U @ TOKBUF-ENSURE
@@ -4948,14 +5103,14 @@ variable SKI  variable SKF
    2dup NORMAL-STRING-OPENER? IF 2drop RES-TRUE EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
-: PARSE-LIT? {: a:ptr u:n :}
-   a u s" [char]" CORE-STR= IF -1 EXIT THEN
+: PARSE-LIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [char]" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" char" CORE-STR= ;
 
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
-      TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+      SKI @ TBYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
@@ -4975,7 +5130,7 @@ variable SKI  variable SKF
    c $78 = c $58 = or ;
 
 : SKIP-ESC-BYTE@ ( -- n )
-   TBASE @ SKI @ + c@ ;
+   SKI @ TBYTE@ ;
 
 \ SKIP-ESC-BAD ( -- ) : invalid escape — spend the rest of the payload so the
 \ tail branch rejects the definition exactly like an unterminated string.
@@ -4984,8 +5139,8 @@ variable SKI  variable SKF
 
 : SKIP-ESC-HEX ( -- )   \ SKI at 'x'/'X': require two hex digits, then continue
    SKI @ 2 + TBLEN @ >= IF SKIP-ESC-BAD EXIT THEN
-   TBASE @ SKI @ + 1 + c@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
-   TBASE @ SKI @ + 2 + c@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
+   SKI @ 1 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
+   SKI @ 2 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
    SKI @ 3 + SKI ! ;
 
 : SKIP-ESC-SEQ ( -- )   \ SKI at '\'
@@ -5005,11 +5160,11 @@ variable SKI  variable SKF
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
 : SKIP-PARSE-LIT-PAYLOAD ( -- )
-   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 <= ELSE 0 0= 0= THEN WHILE
+   BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 <= ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT
    TI @ TBLEN @ >= IF 0 OK ! exit THEN
-   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
+   BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 > ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT ;
 
@@ -5017,30 +5172,30 @@ variable SKI  variable SKF
    DEADTU !  DEADTA ! ;
 
 : DEAD-CLOSE? {: a u :}
-   a u s" else"   CORE-STR= IF -1 EXIT THEN
-   a u s" then"   CORE-STR= IF -1 EXIT THEN
-   a u s" loop"   CORE-STR= IF -1 EXIT THEN
-   a u s" +loop"  CORE-STR= IF -1 EXIT THEN
-   a u s" endof"  CORE-STR= IF -1 EXIT THEN
-   a u s" endcase" CORE-STR= IF -1 EXIT THEN
-   a u s" repeat" CORE-STR= IF -1 EXIT THEN
-   a u s" again"  CORE-STR= IF -1 EXIT THEN
-   a u s" ;]"     CORE-STR= IF -1 EXIT THEN
-   0 ;
+   a u s" else"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" then"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" loop"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" +loop"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" endof"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" endcase" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" repeat" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" again"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" ;]"     CORE-STR= IF RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : LIVE-TOKEN? {: a u :}
-   DEADP @ 0= IF -1 EXIT THEN
+   DEADP @ 0= IF RES-TRUE EXIT THEN
    a u DEAD-CLOSE? ;
 
-: TOKFOLD {: a u :}
+: TOKFOLD ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u TOKBUF-ENSURE
    0 BEGIN dup u < WHILE
      dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
      over TKF + c!  1 +
    REPEAT drop
-   u TKFU !  -1 ;
+   u TKFU !  RES-TRUE ;
 : FAIL-SPAN! ( -- )
-   TSTART @ TBASE @ - FAILB !
+   TSTART @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF
@@ -5052,7 +5207,7 @@ variable SKI  variable SKF
    THEN ;
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
-: DIAG-FILE! {: a u :}
+: DIAG-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > IF s" diag: file path too long" 76 die THEN
    0 BEGIN dup u < WHILE
       dup a + c@  over DIAGFB + c!
@@ -5092,13 +5247,13 @@ s" <input>" DIAG-FILE!
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
-   a u s" evaluate" CORE-STR= IF -1 EXIT THEN
-   a u s" trust" CORE-STR= IF -1 EXIT THEN
-   a u s" set-check" CORE-STR= IF -1 EXIT THEN
-   a u s" postpone" CORE-STR= IF -1 EXIT THEN
-   a u s" compile," CORE-STR= IF -1 EXIT THEN
-   a u s" immediate" CORE-STR= IF -1 EXIT THEN
-   a u s" [" CORE-STR= IF -1 EXIT THEN
+   a u s" evaluate" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" trust" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" set-check" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" postpone" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" compile," CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" immediate" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR= ;
 
 : REJECT-UNSAFE ( -- )
@@ -5108,28 +5263,39 @@ variable ISQ
 variable IS-TA
 variable IS-TU
 
+\ IS-TA holds a token-start pointer (ptr u8); read/write it through a ptr-field
+\ view so the emitted token span keeps its ptr u8 role.
+: IS-TA-FIELD ( -- ptr ptr u8 )
+   IS-TA 0 ptr-field ;
+
+: IS-TA@ ( -- ptr u8 )
+   IS-TA-FIELD @ ;
+
+: IS-TA! ( ptr u8 -- )
+   IS-TA-FIELD ! ;
+
 : IS-WS? ( n -- bool )
    32 <= ;
 
 : IS-SKIP-WS ( -- )
    BEGIN TI @ TBLEN @ < WHILE
-      TBASE @ TI @ + c@ IS-WS? 0= IF exit THEN
+      TI @ TBYTE@ IS-WS? 0= IF exit THEN
       TI @ 1 + TI !
    REPEAT ;
 
 : IS-NEXT-TOKEN ( -- ptr u8 n bool )
    IS-SKIP-WS
-   TI @ TBLEN @ >= IF 0 0 RES-FALSE EXIT THEN
-   TBASE @ TI @ + IS-TA !
+   TI @ TBLEN @ >= IF TBASE@ 0 RES-FALSE EXIT THEN
+   TI @ TADDR IS-TA!
    0 IS-TU !
    BEGIN TI @ TBLEN @ < WHILE
-      TBASE @ TI @ + c@ IS-WS? IF
-         IS-TA @ IS-TU @ RES-TRUE EXIT
+      TI @ TBYTE@ IS-WS? IF
+         IS-TA@ IS-TU @ RES-TRUE EXIT
       THEN
       IS-TU @ 1 + IS-TU !
       TI @ 1 + TI !
    REPEAT
-   IS-TA @ IS-TU @ RES-TRUE ;
+   IS-TA@ IS-TU @ RES-TRUE ;
 
 : IS-FAIL ( -- )
    0 OK !
@@ -5146,12 +5312,16 @@ variable IS-TU
    DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR ! ;
 
-: IS-TOK ( -- )
-   IS-NEXT-TOKEN 0= IF IS-FAIL EXIT THEN
+: IS-TARGET-TOK? ( -- bool )
+   IS-NEXT-TOKEN 0= IF 2drop RES-FALSE EXIT THEN
    TOKFOLD drop
+   RES-TRUE ;
+
+: IS-TOK ( -- )
+   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-DEFER 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
-   FEP @ 0= IF IS-FAIL EXIT THEN
+   FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
 
 : DO-TOK1 {: a u :}
@@ -5227,17 +5397,17 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
-     BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
+     BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TBASE @ TI @ + c@ 40 =  TBASE @ TI @ + 1 + c@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
+       TI @ TBYTE@ 40 =  TI @ 1 + TBYTE@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
-         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          \ only the '( ... )' right after the name is the sig; once it is seen
          \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
          \ parity) and must not touch any signature state.
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
-           TBASE @ TSTART @ + SGA !  TI @ TSTART @ - SGU !
-           TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
+           TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
            SGBAD-FAIL!
            PD-BASE @ SGDBASE !
            RR-SHARED @ SGRBASE !
@@ -5250,9 +5420,9 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
-         TBASE @ TI @ + TSTART !
-         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-         TSTART @  TBASE @ TI @ +  TSTART @ -  DO-TOK1
+         TI @ TSTART !
+         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
        THEN
      THEN
    REPEAT ;
@@ -5263,22 +5433,32 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
      ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
    THEN ;
 
+: SGHASR? ( -- bool )
+   SGHASR @ 0 <> ;
+
+: CHECK-SIG? ( -- bool )
+   VSIG-ON? SGSEEN? and ;
+
+: CHECK-RET-SIG? ( -- bool )
+   CHECK-SIG? SGHASR? and ;
+
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or 0 <> IF 0 ELSE
+   UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
-   VSIG @ SGSEEN @ and IF CHECK-NO-BORROW THEN
-   VSIG @ SGSEEN @ and IF
+   CHECK-SIG? IF CHECK-NO-BORROW THEN
+   CHECK-SIG? IF
       SGOUT @ SUNI-COERCE
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
-   VSIG @ SGSEEN @ SGHASR @ and and IF
+   CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
@@ -5294,7 +5474,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
       NMA @ NMU @ CTL-FLAGS CTLNEW @ <> IF
          NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
-      VSIG @ SGSEEN @ and IF
+      CHECK-SIG? IF
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
       ELSE
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
@@ -5302,7 +5482,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      VSIG @ SGSEEN @ and SGBAD @ 0= and IF             \ trust the declared sig so later
+      CHECK-SIG? SGBAD @ 0= and IF                      \ trust the declared sig so later
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
       THEN                                              \ unless the sig itself was bad
    THEN ;
@@ -5344,10 +5524,10 @@ END-STRUCTURE
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
 create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
 variable RBF-A-P       RBF-A-BOOT RBF-A-P !
-: RBF-BASE ( -- ptr ) RBF-A-P @ ;
+: RBF-BASE ( -- ptr a ) RBF-A-P @ ;
 create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
 variable RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
-: RBF-NAME-BASE ( -- ptr ) RBF-NAME-P @ ;
+: RBF-NAME-BASE ( -- ptr a ) RBF-NAME-P @ ;
 variable RBF-DEPTH   0 RBF-DEPTH !
 
 : RBF-GROW ( -- )
@@ -5358,8 +5538,8 @@ variable RBF-DEPTH   0 RBF-DEPTH !
 : RBF-ENSURE ( -- )
    RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
    RBF-GROW ;
-: RBF-CUR ( -- ptr )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
-: RBF-NAME-CUR ( -- ptr )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
+: RBF-CUR ( -- ptr a )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
+: RBF-NAME-CUR ( -- ptr a )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
 
 \ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
 \ snapshot), so drop any grown arena buffer back to the baked boot store; the
@@ -5393,10 +5573,10 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    DFER-END @ r RBF.DFEREND !
    CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
    RBF-DEPTH @ 1 + RBF-DEPTH !
-   REG-EXT-RB-SAVE-XT @ ?dup IF execute THEN ;
+   REG-EXT-RB-SAVE-XT @ dup 0= IF drop ELSE execute THEN ;
 
 : RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
-   REG-EXT-RB-RESTORE-XT @ ?dup IF execute THEN
+   REG-EXT-RB-RESTORE-XT @ dup 0= IF drop ELSE execute THEN
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-CUR {: r:ptr :}
    r RBF.UEND @ USIGS-RESTORE-END
@@ -5462,7 +5642,7 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
-: RAW-SIG! ( din dout rin rout -- )
+: RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
    RR-SHARED @ SGRBASE !
    SGHASR @ IF
