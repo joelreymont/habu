@@ -92,6 +92,8 @@ TEST:SUITE maki/op-registry-test.f
 TEST:END-SUITE
 TEST:SUITE maki/model-ir-test.f
 TEST:END-SUITE
+TEST:SUITE maki/regions-test.f
+TEST:END-SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:END-SUITE
 TEST:SUITE maki/attention-test.f
