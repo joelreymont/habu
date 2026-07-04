@@ -43,6 +43,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/sum-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  RS-OUT $4000 >LEN  RS-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
+   RS-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ RS-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
 : RS-PTXAS ( -- n )
@@ -92,7 +93,7 @@ variable RS-DIN variable RS-DOUT variable RS-KV
    T-RESET
    s" habu-ptx-sum" PTXTC:PREPARE
    RS-EMIT drop
-   RS-PTXAS 0 T=
+   RS-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert
    RS-PUT RS-SETUP RS-LAUNCH RS-RELEASE
    PTXTC:CLEAN
    0 RS-F32@ PTXSENT:GUARD $41200000 T=            \ row0 sum = 10.0

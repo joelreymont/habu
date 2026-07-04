@@ -47,6 +47,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    s" lib/ptx/collective.f" >LEN PROC-ARGV+  s" tools/ptx/softmax-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  SL-OUT $8000 >LEN  SL-ERR $1000 >LEN  20000 >MS  RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
+   SL-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ nonzero emit rc -> surface stderr, throw
    PTXTC:PTX$ SL-OUT outu LEN>N WRITE-ALL  outu LEN>N ;
 
 : SL-PTXAS ( -- n )
@@ -96,7 +97,7 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    T-RESET
    s" habu-ptx-softmax" PTXTC:PREPARE
    SL-EMIT drop
-   SL-PTXAS 0 T=
+   SL-PTXAS PTXTC:ASM-REPORT 0 T=                  \ surface ptxas stderr before the assert
    SL-PUT SL-SETUP SL-LAUNCH SL-RELEASE
    PTXTC:CLEAN
    \ row0 = softmax([1,2,3,4]) within 2 ULP of the CPU golden

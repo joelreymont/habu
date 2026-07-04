@@ -18,6 +18,9 @@ variable ROOT-U
 variable PTX-U
 variable CUBIN-U
 
+variable ERR-P            \ last ASSEMBLE stderr buffer + byte count, for diagnostics
+variable ERR-U
+
 : COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
@@ -65,6 +68,20 @@ public
    CUBIN$ >LEN PROC-ARGV+
    PTXAS$ >LEN out outcap err errcap ASM-TIMEOUT-MS >MS RUN-ARGV-CAPTURE
    {: outu:len erru:len rc:rc :}
+   err ERR-P !  erru LEN>N ERR-U !
    rc RC>N ;
+
+\ stderr from the last ASSEMBLE, so a failing assemble can be diagnosed not masked
+: ERR$ ( -- ptr u8 n )  ERR-P @  ERR-U @ ;
+
+\ surface a nonzero ptxas rc: type its captured stderr, pass rc through to the assert
+: ASM-REPORT ( n -- n )
+   dup 0= 0= if ERR$ type cr then ;
+
+\ surface a spawned kernel-emit failure: nonzero child rc -> type its stderr, named throw
+: EMIT-GUARD ( ptr u8 n n -- ) {: err:ptr erru:n rc:n :}
+   rc 0= if exit then
+   err erru type cr
+   E-PTX-EMIT throw ;
 
 end-package
