@@ -68,7 +68,8 @@ public
 private
 
 16 constant RPT-LCAP           \ max items per growable list
-$2000 constant RPT-ARENA-CAP   \ interned-string byte arena
+128 constant RPT-CAND-CAP      \ schedule candidates: a whole family space (cad-4, <= 72)
+$4000 constant RPT-ARENA-CAP   \ interned-string byte arena (headroom for a full candidate set)
 $4000 constant RPT-OUT-CAP     \ render output buffer
 
 \ interned-string arena (all report strings live here; reset by RPT-NEW)
@@ -101,7 +102,7 @@ variable K-CACHE-O   variable K-CACHE-L
 \ growable string lists: (offset,length) pairs, stride 2
 create L-SPLIT RPT-LCAP 2 * cells allot   variable N-SPLIT
 create L-WARN  RPT-LCAP 2 * cells allot   variable N-WARN
-create L-CAND  RPT-LCAP 2 * cells allot   variable N-CAND
+create L-CAND  RPT-CAND-CAP 2 * cells allot   variable N-CAND
 
 \ hot tensors: (name-offset,name-length,coalesce-status) triples, stride 3
 create L-HOT  RPT-LCAP 3 * cells allot    variable N-HOT
@@ -412,7 +413,7 @@ public
 
 \ ---- schedule candidates + selection ---------------------------------------
 : RPT-CAND+ ( report ptr u8 n -- report )
-   N-CAND @ RPT-LCAP >= if E-RPT-FULL throw then
+   N-CAND @ RPT-CAND-CAP >= if E-RPT-FULL throw then
    ARENA-PUT {: off:n len:n :}
    off L-CAND 2 N-CAND @ 0 SL-SLOT !
    len L-CAND 2 N-CAND @ 1 SL-SLOT !

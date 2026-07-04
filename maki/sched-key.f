@@ -121,6 +121,9 @@ public
 : SK-ENGINE$ ( -- ptr u8 n )  s" engine-unbound" ; \ cad-5 seam: real engine content key
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
+\ representative (output) node of a region - the default-context source (rowlen/dtype)
+: SK-REGION-REP ( n -- n )  SK-REGION-CK REGION-REP ;
+
 \ ---- individual key fields (standalone renders, for inspection + tests) ------
 : SK-RSIG$ ( n -- ptr u8 n )  SK-REGION-CK RSIG SB-RESET SK-HEX+ SB$ ;
 : SK-SHAPE-CLASS$ ( n n -- ptr u8 n )  SB-RESET SHAPE-CLASS+ SB$ ;   \ rows cols -> class

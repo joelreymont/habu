@@ -36,6 +36,8 @@ require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/traffic.f
 require maki/mem-plan.f
+require maki/schedule.f
+require maki/sched-key.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
 -5021 constant E-CAD-OP        \ unknown op token in a MODEL: body
@@ -311,13 +313,47 @@ private
    MEM-PLAN-INTO                                     \ per-hot coalescing status + tail/align rows
    MEM-MOVE-ROWS ;                                   \ movement materialization rows (landed)
 
+\ ---- schedule (cad-4): family selection + all candidates + closed-form default -
+\ TILE picks the schedule family from region 0's class mix (v1 first-region only),
+\ prints every candidate of that family, selects the deterministic default, renders
+\ the section 7.4 cache key, and reports the replay miss ("using defaults"), since
+\ cad-4 has no measurements (those land in cad-5/cad-6).
+: REGION-HAS-SOFTMAX? ( n -- bool ) {: r:n :}   \ region carries a softmax-row op (two reductions)
+   MIR-N@ 0 ?do
+      i FP-RID@ r =  i MIR-OP@ OP-SOFTMAX-ROW =  and if unloop true exit then
+   loop false ;
+
+: REGION-FAM ( n -- n ) {: r:n :}               \ region -> schedule family id
+   r FP-REGION-CLASSMIX  r REGION-HAS-SOFTMAX?  FAM-SELECT ;
+
+\ max legal vector width for the region output's compiler-allocated (AL-16) write;
+\ this is the elementwise default's "max legal vec" (else scalar for a strided write).
+: REGION-MAXVEC ( n -- n ) {: rep:n :}
+   rep MIR-LAY@ LAY-ROW <> if 1 exit then
+   AL-16  rep MIR-DT@ DT-SIZE  rep MIR-COLS@  MP-W ;
+
+: TILE-CANDS+ ( report n -- report ) {: fam:n :}   \ emit every candidate row of a family
+   fam FAM-SPACE 0 ?do  fam i CAND$ RPT-CAND+  loop ;
+
+\ replay lookup is the cad-5 store seam: a miss means the shape class is unmeasured.
+: TILE-REPLAY-NOTE ( report n -- report ) {: r:n :}
+   r SK-KEY$ SK-GET nip if exit then
+   s" schedule: unmeasured shape class -> using defaults" RPT-WARN+ ;
+
 : TILE-INTO ( report -- report )
-   s" host-reference-v0" RPT-CAND+  0 RPT-SELECT!
-   s" schedule: single host-reference candidate; autotuner in cad-4" RPT-WARN+ ;
+   FP-BUILD
+   0 REGION-FAM {: fam:n :}
+   0 SK-REGION-REP {: rep:n :}
+   fam TILE-CANDS+
+   fam  rep MIR-COLS@  rep REGION-MAXVEC  FAM-DEFAULT  RPT-SELECT!
+   0 SK-KEY$ RPT-CACHE!
+   0 TILE-REPLAY-NOTE
+   s" schedule: defaults (unmeasured shape class - cad-6 tunes)" RPT-WARN+
+   s" schedule: family from region 0 only (v1 limitation)" RPT-WARN+ ;
 
 : TUNE-INTO ( report -- report )
    TILE-INTO
-   s" tune: no measurement history yet (cad-4)" RPT-WARN+ ;
+   s" tune: measurement needs device (cad-6)" RPT-WARN+ ;
 
 : CERTIFY-INTO ( report -- report )            \ static, no GPU: model-level legality
    s" " V-PASS G-CERTIFY RPT-GATE!

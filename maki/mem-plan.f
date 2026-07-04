@@ -23,7 +23,7 @@
 \ is strided; the data read of a gather is gathered (6.3).
 \
 \ Fail closed: an out-of-range alignment class or a name overflow is a named throw.
-\ maki -> habu only; mem-plan owns -5076..-5089.
+\ maki -> habu only; mem-plan owns -5076..-5079 (schedule/sched-key own -5080..-5089).
 
 require lib/string.f
 require lib/fmt.f

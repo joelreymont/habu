@@ -106,11 +106,22 @@ dup RPT-BYTES-KNOWN? TFALSE
 dup RPT-RENDER CT-SAVE  s" memory.bytes-before: unknown" CT-IN
 drop
 
-\ ---- TILE: single host-reference candidate, selected -----------------------
+\ ---- TILE: region 0 = linear+gelu epilogue -> gemm family, all 32 candidates --
+\ candidates printed before emission; the closed-form default (smallest tile) is
+\ selected; the section 7.4 cache key renders; the replay miss says "using defaults".
 TILE
-dup RPT-CAND-COUNT 1 T=
+dup RPT-CAND-COUNT 32 T=
 dup RPT-SELECT@ 0 T=
-dup RPT-RENDER CT-SAVE  s" schedule.candidate.0: host-reference-v0" CT-IN
+dup 0 RPT-CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
+dup RPT-CACHE$ s" CDFF1E0D197DD30A|2x4|f32|row|al?|sm_87|engine-unbound|unprobed" T$=
+dup RPT-RENDER CT-SAVE
+s" schedule.candidate.0: gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"    CT-IN
+s" schedule.candidate.31: gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" CT-IN
+s" schedule.selected: 0"                                        CT-IN
+s" cache.key: CDFF1E0D197DD30A|2x4|f32|row|al?"                 CT-IN
+s" schedule: unmeasured shape class -> using defaults"          CT-IN
+s" schedule: defaults (unmeasured shape class - cad-6 tunes)"   CT-IN
+s" schedule: family from region 0 only (v1 limitation)"        CT-IN
 drop
 
 \ ---- CERTIFY: model-level static legality passes ---------------------------
@@ -127,8 +138,11 @@ dup G-PROFILE RPT-GATE-TAG@ V-NOTRUN T=
 dup RPT-ROOFLINE@ RC-UNKNOWN T=
 drop
 
-\ ---- TUNE: schedule candidate present --------------------------------------
-TUNE dup RPT-CAND-COUNT 1 T= drop
+\ ---- TUNE: TILE plus the honest "measurement needs device" note ------------
+TUNE
+dup RPT-CAND-COUNT 32 T=
+dup RPT-RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
+drop
 
 \ ---- OPTIMIZE: aggregate report, promotion refused (not thrown) ------------
 OPTIMIZE
@@ -235,6 +249,34 @@ MODEL: GAT ( x:4x8 idx:3x1 -- y ) GATHER ;
 MEMORY RPT-RENDER CT-SAVE
 s" coalesce.status.0: gathered"                 CT-IN
 s" memory.move: node 0 gather verdict=gathered" CT-IN
+
+\ ---- TILE family selection from region 0's class mix (cad-4) ----------------
+\ elementwise chain -> elementwise-v1; default block 256, max legal vec 4, grid-stride.
+MODEL: EWS ( x:2x4 -- y ) GELU RELU ;
+TILE
+dup RPT-CAND-COUNT 18 T=
+dup RPT-SELECT@ 11 T=
+dup 11 RPT-CAND@ s" elementwise-v1 block=256 vec=4 grid-stride=y" T$=
+dup RPT-RENDER CT-SAVE  s" schedule.candidate.17: elementwise-v1 block=512 vec=4 grid-stride=y" CT-IN
+drop
+
+\ a bare row-reduction (layernorm) -> row-reduce-v1 (not softmax); default two-pass.
+MODEL: RRS ( x:4x128 -- y ) LAYERNORM ;
+TILE
+dup RPT-CAND-COUNT 36 T=
+dup RPT-SELECT@ 0 T=
+dup 0 RPT-CAND@ s" row-reduce-v1 lanes=32 rows=1 vec=1" T$=
+drop
+
+\ a softmax-row region -> softmax-row-v1; its 72-candidate space records in full,
+\ proving the report holds a whole family (RPT-CAND-CAP), not the old 16-item cap.
+MODEL: SMS ( x:4x128 -- y ) SOFTMAX-ROW ;
+TILE
+dup RPT-CAND-COUNT 72 T=
+dup RPT-SELECT@ 0 T=
+dup 0 RPT-CAND@ s" softmax-row-v1 lanes=32 rows=1 vec=1 online=n" T$=
+dup 71 RPT-CAND@ s" softmax-row-v1 lanes=256 rows=4 vec=4 online=y" T$=
+drop
 
 T-REPORT
 
