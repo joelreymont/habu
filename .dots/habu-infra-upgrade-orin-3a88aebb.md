@@ -32,3 +32,8 @@ rsync to Mac; then payload-gen in amd64 container, scp, nv_ota_start.sh,
 2 reboots, verify r39.2 + ptxas sm_87 + zedx drivers, rebuild bin/hb fixpoint,
 full native gate + maki + device tools. Recovery if bricked: physical x86 host
 + USB recovery-mode reflash (user is local to the device).
+
+DECISION 2026-07-04 (user): DEFER confirmed. No upgrade until Stereolabs ships
+JP7.2 zedx drivers. Watch the forum thread + Stereolabs docs; when the driver
+release appears, re-run the pre-upgrade checklist above and request user
+approval for Phase 2.
