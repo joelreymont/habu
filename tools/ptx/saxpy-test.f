@@ -68,6 +68,17 @@ variable PTXT-ERR-SAVE
 : PTXT-NOT-HAS ( ptr u8 n -- ) {: a:ptr u :}
    PTXT-OUT PTXT-OUT-U @ a u CONTAINS? 0= TTRUE ;
 
+\ non-overlapping occurrences of b/v in a/u (the text-count the .version-once
+\ regression needs; CONTAINS? only proves presence, not multiplicity).
+: PTXT-SUB-COUNT ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
+   a u b v FIND-SUB {: i:n :}
+   i 0 < if 0 exit then
+   i v + {: adv:n :}
+   a adv + u adv - b v RECURSE 1+ ;
+
+: PTXT-COUNT ( ptr u8 n -- n ) {: b:ptr v:n :}   \ occurrences of b/v in the captured stream
+   PTXT-OUT PTXT-OUT-U @ b v PTXT-SUB-COUNT ;
+
 : PTXT-INCLUDE-SAXPY ( -- )
    s" tools/ptx/saxpy.f" included ;
 
@@ -156,6 +167,8 @@ variable PTXT-ERR-SAVE
    s" st.global.v4.f32 [%rd19], {%f18, %f19, %f20, %f21};" PTXT-HAS
    s" @%p18 st.global.f32 [%rd19], %f18;" PTXT-HAS
    s" @%p21 st.global.f32 [%rd22], %f21;" PTXT-HAS
+   s" .version" PTXT-COUNT 1 T=             \ one module header for both scalar + v4 entries
+   s" .visible .entry" PTXT-COUNT 2 T=
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-ONCE-CG-OUTPUT ( -- )
@@ -185,6 +198,8 @@ variable PTXT-ERR-SAVE
    s" add.f32 %f3, %f3, %f4;" PTXT-HAS
    s" .visible .entry SCATTER_ROWS" PTXT-HAS
    s" red.global.add.f32" PTXT-HAS
+   s" .version" PTXT-COUNT 1 T=             \ EXACTLY one module header (the doubled-header regression)
+   s" .visible .entry" PTXT-COUNT 2 T=      \ both kernels share that one module
    s" ERROR" PTXT-NOT-HAS ;
 
 : PTXT-SUM1024-CG-OUTPUT ( -- )
