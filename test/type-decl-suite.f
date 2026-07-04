@@ -285,13 +285,34 @@ s" TYPEFAMILY field 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY str 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY space-x 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY fresh-mask-x 1" E-TDECL-NAME TDT-NEG
-\ redeclaring a global family at top level is a same-scope duplicate...
+\ redeclaring a global family at top level is a same-scope duplicate (the
+\ top-level declaring scope IS the global scope, so the collision is a real
+\ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
 s" TYPEFAMILY ptr 0" E-TFAM-DUP TDT-NEG
 s" TYPEFAMILY span 3" E-TFAM-DUP TDT-NEG
 \ ...while shadowing a global family from inside a package is reserved.
 package tshad
 s" TYPEFAMILY span 3" E-TDECL-NAME TDT-NEG
 end-package
+\ variant names may not collide with any family the declaring scope resolves,
+\ in ANY scope: builtin tails, prior user families, and (inside a package)
+\ the package's own tails all reject; the verdict matches across scopes.
+s" SUMTYPE tdvres 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+TYPEFAMILY tduserfam 1
+s" SUMTYPE tdvres2 1 VARIANT tduserfam a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+package tvshad
+s" SUMTYPE tdvres3 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+TYPEFAMILY tvloc 1
+s" SUMTYPE tdvres4 1 VARIANT tvloc a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+end-package
+\ ...and an unreserved variant name in the same shape still accepts.
+SUMTYPE tdvok 1
+  VARIANT fine a ;VARIANT
+;SUMTYPE
+s" " s" tdvok" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-VAR-COUNT@ 1 T=
+TDF @ TFAM-VAR-START@ SUMV-NAME$ s" fine" T$=
 \ control words and grammar keywords are not names.
 s" TYPEFAMILY if 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY repeat 1" E-TDECL-NAME TDT-NEG

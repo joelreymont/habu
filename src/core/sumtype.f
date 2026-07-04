@@ -117,11 +117,16 @@ variable TDM-SCH    variable TDM-ROOT
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TDECL-CONTROL? IF RES-TRUE EXIT THEN
-   a u TDECL-KEYWORD? IF RES-TRUE EXIT THEN
-   \ a package-local declaration may not shadow a global family (ptr, span,
-   \ ...); a same-scope collision falls through to TFAM-DECL's E-TFAM-DUP.
+   a u TDECL-KEYWORD? ;
+
+\ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the
+\ declaring scope can already resolve — the global scope always, plus the
+\ active package's own rows when one is open. Scope-independent by design:
+\ the top-level and in-package verdicts for the same token agree.
+: TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
    CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   s" " a u TFAM-FIND-IN nip ;
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-FIND-IN nip ;
 
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing name" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -129,6 +134,23 @@ variable TDM-SCH    variable TDM-ROOT
       a u s" name must be a lowercase family tail" E-TFAM-CASE TDECL-THROW
    THEN
    a u TDECL-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
+
+\ A FAMILY name may not shadow a family from another scope; the same-scope
+\ collision (incl. a global tail redeclared at top level, where the declaring
+\ scope IS the global scope) falls through to TFAM-DECL's E-TFAM-DUP so the
+\ diagnostic says "duplicate family". Both scopes consult the registry.
+: TDECL-REQUIRE-FAMILY-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TDECL-REQUIRE-NAME
+   CHECKER-PACKAGE-ACTIVE? 0= IF EXIT THEN
+   s" " a u TFAM-FIND-IN nip 0= IF EXIT THEN
+   a u s" shadows a global family" E-TDECL-NAME TDECL-THROW ;
+
+\ A VARIANT name lives in no scope of its own: any collision with a family
+\ the declaring scope resolves is a reserved name, in every scope.
+: TDECL-REQUIRE-VARIANT-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TDECL-REQUIRE-NAME
+   a u TDECL-FAM-TAKEN? 0= IF EXIT THEN
+   a u s" collides with a type family" E-TDECL-NAME TDECL-THROW ;
 
 \ --- arity token: small decimal, capped by the positional letter params.
 variable TDA-I
@@ -204,7 +226,7 @@ variable TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-NAME ( -- )
    TDECL-NEXT {: a:ptr u:n :}
-   a u TDECL-REQUIRE-NAME
+   a u TDECL-REQUIRE-VARIANT-NAME
    a TDV-NA !  u TDV-NU ! ;
 
 : TDECL-VARIANT-CLOSE ( n -- ) {: fam:n :}
@@ -238,7 +260,7 @@ variable TDV-NA    variable TDV-NU
 
 \ --- registration entry points (verify-source and the definers below).
 : CHECKER-DEFSUM-BODY ( -- )
-   TDN-A @ TDN-U @ TDECL-REQUIRE-NAME
+   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
    TDECL-NEXT TDECL-ARITY {: ar:n :}
    ar TDECL-FAM-ARITY !
@@ -256,7 +278,7 @@ variable TDV-NA    variable TDV-NU
    ['] CHECKER-DEFSUM-BODY TDECL-RUN ;
 
 : CHECKER-DEFFAMILY-BODY ( -- )
-   TDN-A @ TDN-U @ TDECL-REQUIRE-NAME
+   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-ARITY
    TK-CELL TDECL-FAMILY drop ;
 
