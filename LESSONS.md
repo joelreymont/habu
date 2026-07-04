@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -283,6 +283,26 @@ lesson — keep the specific word/code/path, cut the prose.
   for code loaded inside that package.
 
 ## Tool & Infra
+
+- **Path materialization must share one fail-closed emitter:** `s" <path>"`
+  loader/prefix lines were hand-rolled with zero escaping in `lib/source.f`
+  (`SOURCE-APPEND-PROVIDED`) and `tools/check-core.f` (`CHK-APPEND-REQUIRED`,
+  `CHK-BUILD-PREFIX` DIAG-FILE! label). A `"`/newline in a path silently broke
+  source structure. One `SOURCE-APPEND-QPATH` (validates via `SOURCE-PATH-SAFE?`,
+  throws `E-FS-PATH-UNSAFE` on `"`/`\`/LF/CR) now owns all three sites; output is
+  byte-identical for safe paths. Reject fail-closed, do not quote-escape.
+- **`required`/`included`/`provided` take stack strings only:** the result-cache
+  closure lint (`test/run-result-cache-test.f`) looked like it "missed" them, but
+  those words only appear as `s" path" required` — already covered by
+  `LINT-SQUOTES` scanning every `s" X.f"`. Only `require`/`include` are the
+  parse-name immediate forms (`LINT-REQUIRE`). No standalone gap there; real
+  event-log cross-check is the item-5 rewrite.
+- **reserved-name-lint runs only over user source, never core:** it fires only
+  inside `tools/check.f` (`CHK-RUN-RESERVED-NAMES`) on the checked source, and the
+  repo lint slice runs clobber/shadow/host/filemap/trust — not reserved-name over
+  `src/`. So reserving loader words (`include`/`included`/`require`/`required`/
+  `provided`) is gate-safe even though `src/core/include.f` defines them; core is
+  self-checked by the compiler hook, a different path.
 
 - **One image-writing tail; the engine cannot route through OBJLINK:** the ~585 KB
   engine `__text` overflows OBJLINK `MERGE-CAP` ($10000/64 KB), and baking
