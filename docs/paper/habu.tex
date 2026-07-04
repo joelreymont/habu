@@ -15,180 +15,407 @@
 
 \begin{abstract}
 Writing custom GPU kernels remains an expert activity in which most errors
-surface only at runtime. We present Habu, a self-hosted checked Forth whose
-compiler types kernel compositions statically, and Maki, a model-development
-layer built on it that treats GPU compilation as computer-aided design:
-models are captured into an IR, fused by a planner with exact byte
-accounting and typed legality rules, lowered to generated PTX kernels, and
-\emph{verified} --- every generated kernel is proven against a checked host
-reference on the target device before its artifact is promoted. The same IR
-that executes also differentiates: adjoints are generated, gradient-checked,
-and used to train a model from scratch through the identical pipeline. The
-toolchain is a single self-hosted binary under 128\,KB. On a Jetson Orin NX
-we measure parity with hand-written Triton at the streaming-memory roof and
-show that the checked target shifts the stack-discipline error class from
-runtime to author time. \todo{Revise abstract once compute-bound results
-land (\S\ref{sec:perf}).}
+surface only at runtime, and the artifacts of machine-learning compilation
+are emitted rather than proven. We present Habu, a self-hosted checked
+Forth whose compiler verifies a typed, row-polymorphic stack effect for
+every word, and Maki, a model-development layer that treats GPU compilation
+as computer-aided design: models are captured into an IR, fused by a
+planner under typed legality rules with exact byte accounting, lowered to
+generated PTX kernels---one per fusion region, for elementwise, row-reduce,
+matmul, and movement region classes---and \emph{verified}: every generated
+kernel, and the whole multi-region model, is proven element-wise against a
+checked host reference on the target device before its artifact is
+promoted with a recorded evidence trail. The same IR differentiates:
+adjoints are generated, gradient-checked against finite differences, and
+used to train a model from scratch through the identical pipeline, with a
+seeded convergence gate committed as a test. The entire toolchain is a
+single self-hosted binary under 128\,KB. On a Jetson Orin NX we measure
+parity with hand-written Triton at the streaming-memory roof and show that
+the checked target shifts the stack-discipline error class from runtime to
+author time. \todo{Extend with compute-bound results when measured
+(\S\ref{sec:perf}).}
 \end{abstract}
 
 \section{Introduction}
 The deep learning compilation landscape divides labor in a familiar way:
-vendor libraries cover common operations; kernel DSLs such as Triton
-\cite{triton} let experts write the rest; graph compilers fuse and schedule
-above them. Two costs are accepted as normal. First, kernel authorship is
-unchecked: a Triton author who mis-tracks a mask or an offset discovers it
-at runtime, if at all. Second, the artifacts of compilation are
-\emph{emitted, not proven}: nothing in the toolchain certifies that the
-fused kernel computes what the unfused graph did.
+vendor libraries cover common operations; kernel DSLs such as
+Triton~\cite{triton} let experts write the rest; graph compilers fuse and
+schedule above them. Two costs are accepted as normal. First, kernel
+authorship is unchecked: a Triton author who mis-tracks a mask or an
+offset discovers it at runtime, if at all. Second, the artifacts of
+compilation are \emph{emitted, not proven}: nothing in the toolchain
+certifies that the fused kernel computes what the unfused graph did, that
+a copy-back actually happened, or that a generated gradient is the
+gradient.
 
 Habu rejects both costs. It is a Forth in the lineage of Chuck Moore's
-OKAD~\cite{okad}: a small, self-hosted system (the complete engine,
-compiler, and checker fit in a binary under 128\,KB) in which programs are
-compositions of words, and---the departure from tradition---every word
+OKAD~\cite{okad}: a small, self-hosted system---engine, compiler, and
+checker fit in one binary under 128\,KB---in which programs are
+compositions of words. The departure from tradition is that every word
 carries a typed, row-polymorphic stack effect that the self-hosted checker
-verifies. Kernels for the GPU are written (or generated) in the same
+verifies; kernels for the GPU are written, or generated, in the same
 checked language and emitted as PTX text.
 
-Maki, the model layer, treats the remaining pipeline as computer-aided
-design rather than black-box compilation. A model is captured into an IR by
-a checked definition (\code{MODEL:}); a fusion planner groups nodes into
-regions under typed legality rules, reporting exact traffic in bytes; a
-memory planner reports coalescing classes; a schedule layer names candidate
-kernels per region family; and a lowering layer generates one PTX kernel
-per region. At every stage the system emits facts a person (or an agent)
-can audit, and the final artifact is admitted only through gates:
-\begin{itemize}
-\item \textbf{CERTIFY} --- static legality of the whole plan;
-\item \textbf{GOLDEN} --- the generated device kernels reproduce a checked
-  host executor's results on the target hardware, element-wise under
-  per-class tolerances (or match an external reference artifact);
-\item \textbf{GRADCHECK} --- generated adjoints agree with central
-  finite differences;
-\item \textbf{PROFILE} --- measured occupancy and roofline placement
-  (mandatory to run, non-blocking).
-\end{itemize}
-Only a model that passes is \emph{promoted}: its schedule selection and
-evidence are recorded in a content-addressed store keyed by region
-signature, shape class, dtype, layout, alignment, target, and engine build.
+Maki, the model layer, treats the pipeline above kernels as
+computer-aided design rather than black-box compilation. A model is
+captured into an IR by a checked definition (\code{MODEL:}); a fusion
+planner groups nodes into regions under typed legality rules, reporting
+exact traffic in bytes; a memory planner reports coalescing classes; a
+schedule layer names candidate kernels per region family under a
+content-addressed key; and a lowering layer generates one PTX kernel per
+region. At every stage the system emits facts that a person---or an
+agent---can audit, and the final artifact is admitted only through gates
+(\S\ref{sec:gates}). Only a model that passes is \emph{promoted}: its
+schedule selection and evidence are recorded in a content-addressed store.
 
-This paper contributes: (1) the design of a checked concatenative kernel
-target and the measurement that it shifts a whole error class to author
-time (\S\ref{sec:errors}); (2) Model CAD --- a verification-first
-compilation pipeline whose every generated kernel is device-proven against
-a checked reference (\S\ref{sec:cad}); (3) a verified-gradient facility in
-which the training IR and the gradchecked IR are the same object,
-demonstrated by training a model from scratch through the pipeline
-(\S\ref{sec:train}); and (4) measurements on Jetson Orin NX
-(\S\ref{sec:results}). \todo{Add contribution (5): compute-bound
-performance results, once measured.}
+This paper contributes:
+\begin{enumerate}
+\item the design of a checked concatenative kernel target, and the
+  measurement that it shifts a whole error class to author time
+  (\S\ref{sec:errors});
+\item Model CAD: a verification-first compilation pipeline whose every
+  generated kernel---and whole multi-region models---are device-proven
+  against a checked reference (\S\ref{sec:cad});
+\item a verified-gradient facility in which the training IR and the
+  gradchecked IR are the same object, demonstrated by training a model
+  from scratch through the pipeline (\S\ref{sec:train});
+\item measurements on Jetson Orin NX (\S\ref{sec:results}).
+  \todo{contribution (5): compute-bound performance, once measured.}
+\end{enumerate}
 
-\section{Background and Related Work}\label{sec:related}
-Tillet et al.'s Triton paper~\cite{triton} classifies prior systems as
-tensor-level IRs (XLA, Glow: pattern-matched templates), polyhedral
-compilers (Tensor Comprehensions, Diesel: affine loop nests), and loop
-synthesizers (Halide, TVM: user-specified schedules), positioning Triton as
-tile-level operations inside a traditional pipeline with
-compiler-owned parallelization. Habu shares Triton's durable insight ---
-the author writes a scalar-looking program over tiles; the compiler owns
-intra-tile concurrency --- but differs on three axes. First, the
-composition is \emph{typed}: fused chains are checked words whose stack
-effects the compiler verifies, so a malformed composition fails to compile
-rather than misbehaving on device. Second, fusion is a \emph{planner
-decision with an audit trail} (regions, split reasons, byte deltas), not an
-authoring convention. Third, artifacts are \emph{gated}: device-vs-host
-verification is part of compilation, not an external test the author may
-skip. Modern Triton (Python DSL on MLIR) retains per-kernel horizons and
-per-process JIT autotuning; Habu's tuning is persistent and content-keyed.
-\todo{1--2 paragraphs comparing against torch.compile/Inductor as the
-automatic-fusion baseline, with citations.}
+\section{Related Work}\label{sec:related}
+Tillet et al.~\cite{triton} classify prior systems as tensor-level IRs
+(XLA~\cite{xla}, Glow: pattern-matched templates), polyhedral compilers
+(Tensor Comprehensions~\cite{tc}, Diesel: affine loop nests), and loop
+synthesizers (Halide~\cite{halide}, TVM~\cite{tvm}: user-specified
+schedules), positioning Triton as tile-level operations inside a
+traditional pipeline with compiler-owned parallelization. Habu shares
+Triton's durable insight---the author writes a scalar-looking program over
+tiles while the compiler owns intra-tile concurrency---but differs on
+three axes. First, the composition is \emph{typed}: fused chains are
+checked words whose stack effects the compiler verifies, so a malformed
+composition fails to compile rather than misbehaving on device. Second,
+fusion is a \emph{planner decision with an audit trail} (regions, typed
+split reasons, byte deltas), not an authoring convention. Third, artifacts
+are \emph{gated}: device-vs-host verification is part of compilation, not
+an external test the author may skip.
 
-\section{The Checked Kernel Target}\label{sec:lang}
-\todo{Expand: Habu's type system (row-polymorphic stack effects, nominal
-roles), the PTX emit vocabulary (tile words, collective words, module
-convention: one header, many entries), a worked fused-kernel listing
-mirroring docs/eval-triton.md, and the checker-miss RCA discipline. Source
-material: docs/forth.md, lib/ptx/*, docs/eval-triton.md.}
+Automatic fusion above kernel DSLs is the province of graph compilers such
+as \code{torch.compile}/Inductor~\cite{pytorch2}, which fuse and emit
+Triton kernels. Inductor decides fusion but neither types the result nor
+accounts for it in falsifiable units, and its artifacts carry no
+verification evidence; Habu's planner reports exact bytes (the same number
+serves as fusion objective, traffic report, and roofline denominator) and
+its artifacts are admitted by proof. Modern Triton (a Python DSL on MLIR)
+retains per-kernel horizons and per-process JIT autotuning; Habu's tuning
+is persistent and content-keyed, which matters on embedded targets where
+warmup is a deployment cost. A separate lineage---translation validation
+and proof-carrying artifacts---informs the gate design: not a formal
+semantics proof, but a machine-checked, reproducible equivalence test on
+the target device, recorded per artifact.
 
-\subsection{Type Families}\label{sec:tfam}
-\todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15) and
-the cad-adt-swap adoption. When landed, write: checker-enforced algebraic
-data types in a self-hosted Forth (sum types with MATCH dispatch and bad-tag
-proofs, enum and product families, packed ABI vs boxed policy); then the
-adoption evidence per the ablation rule --- the CAD internals (schedule key
-as a product record with enum fields, gate verdicts as sums) where the
-checker turns field-swap and tag-confusion bugs into compile errors; cite
-the negative regressions. Do not write this section from design docs alone;
-it requires the merged implementation and its gates.}
+\section{Habu: The Checked Language}\label{sec:lang}
+Habu is a concatenative language: a program is a sequence of words, each
+transforming an implicit stack. The engine is self-hosted---the compiler,
+checker, and PTX emitters are themselves Habu programs---and rebuilds
+itself to a byte-for-byte fixpoint as its release gate; a hash pin over the
+boot prefix makes mid-build source drift a build failure rather than a
+silent inconsistency.
+
+\paragraph{Typed stack effects.} Every definition carries a signature that
+is \emph{parsed and enforced}, not a comment:
+\begin{verbatim}
+: BW-ACCUM ( n n -- ) {: nc:n ref:n :}
+   ref BW-GET {: cur:n :}
+   cur BW-NONE = if nc ref BW-SET exit then
+   cur nc OP-ADD ref BW-OP2  ref BW-SET ;
+\end{verbatim}
+The \code{( n n -- )} clause is a type signature over stack rows; the
+checker verifies that the body's net effect matches, that branch joins
+agree, and that locals (\code{\{: nc:n ref:n :\}}) are used at their
+declared types. Effects are row-polymorphic, so words compose over
+arbitrary stack prefixes. Beyond base shapes (\code{n}, floats,
+pointers, quotations), the system uses \emph{nominal roles}: byte-lengths,
+return codes, and---in the GPU driver---distinct handle types for device,
+context, module, function, and device pointer, so a context is not
+passable where a module handle is expected even though both are
+cell-sized.
+
+\paragraph{Fail-closed discipline.} Fallible words return error unions or
+throw \emph{named} codes from documented per-subsystem ranges; silent
+fallbacks and error masking are prohibited by convention and enforced by
+lint gates. Where the checker cannot yet express a boundary (a raw
+syscall pointer walk, an FFI cast), the boundary is a named
+\code{TRUSTED:} word with a manifest row and a ratchet: the count of
+trusted sites may only decrease without explicit review.
+
+\paragraph{Scale.} The measured binary is 115{,}831 bytes on macOS/ARM64
+and 102{,}592 bytes on Linux/AArch64---both committed size-ratchet
+baselines; growing either requires a deliberate same-commit bump. The
+full native gate (fixpoint rebuild, engine suite, checker, REPL, AOT
+build) runs in about seven seconds on a laptop and eleven on the Jetson,
+which makes ``prove everything on every commit'' a practical policy.
+
+\section{The Checked Kernel Target}\label{sec:target}
+GPU kernels are Habu words that \emph{emit} PTX. Each per-operation
+emitter appends PTX lines and returns the register holding its result, so
+a fused chain is ordinary composition: the checker types the emitter
+sequence, and intermediates are register-resident by construction. A
+complete fused kernel from the evaluation suite:
+\begin{verbatim}
+K ( span<...,extent-n> span<...,extent-n> uniform<f32> -- )
+  {: x y a :} x GRID-CTX-V4 {: g :}
+  x g LOAD-V4  a SCALE-V4  y g LOAD-V4  ADD-V4  RELU-V4
+  y g STORE-V4 ;
+\end{verbatim}
+Two loads, one store, no global round-trips; the type system proves the
+composition or rejects it with a located diagnostic before any GPU is
+involved.
+
+\paragraph{Modules.} A PTX module is exactly one
+\code{.version/.target/.address\_size} header followed by $N$ entries.
+The emitter enforces this with an explicit pair
+(\code{PTX-MODULE\{}~\dots~\code{\}PTX-MODULE}); a text regression
+asserts \emph{exactly one} \code{.version} per emitted stream, because
+the bug it guards---two concatenated headers---assembles nowhere yet is
+invisible to presence-only pattern tests. We found exactly this bug on
+device; the host gate could not see it because macOS has no
+\code{ptxas}.
+
+\paragraph{Fail-closed device proofs.} Every host buffer that receives a
+device copy-back is pre-poisoned with a sentinel pattern and guarded on
+read, so a silently dropped copy cannot masquerade as a passing golden.
+Kernel emission is spawned into a child engine whose exit status and
+stderr are checked and surfaced---a candidate kernel under evaluation is
+untrusted source, and a crashing candidate must be a graded failure, not
+a harness casualty. The CUDA driver binding is a typed library layer
+(nominal handle roles, named-throw return-code guards); no tool in the
+tree resolves driver symbols by hand.
 
 \section{Model CAD}\label{sec:cad}
-\todo{Expand from CAD-PLAN.md and docs/model-cad.md: capture
-(\code{MODEL:} with named value references and true skip connections),
-typed shape legality at capture, fusion planner + exact byte accounting
-(FFN example: 3040$\to$2272 bytes, 1.33$\times$), memory planning,
-schedule families and the \S7.4 content key, the four lowering classes
-(elementwise, row-reduce, matmul, movement) each generating PTX from the
-region, and the gate set with promote semantics. Include the generated
-REGION kernel PTX excerpt for a fused GELU$\to$RELU region.}
+Maki treats model compilation as computer-aided design: every stage
+produces inspectable facts, every decision has a reason, and the artifact
+is admitted by proof.
+
+\paragraph{Capture.} \code{MODEL:} parses a signature of named, shaped
+inputs and a body of operation words into an IR node table:
+\begin{verbatim}
+MODEL: FFN-SKIP ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 -- y )
+  LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM ;
+\end{verbatim}
+Shapes like \code{4x8} are load-time facts validated by capture-time
+legality: a binary elementwise parameter must equal its data operand's
+shape or one of the op's documented broadcast classes (bias
+$1{\times}C$; scale $1{\times}1$ or same-shape---exactly the classes the
+generated adjoints assume); matmul inner dimensions and linear bias
+widths are checked; violations throw named errors at load time. Bodies
+support \emph{named value references}: a signature name or a
+\code{>V}-bound intermediate can be pushed as a later operand, so true
+skip connections and fan-out DAGs are expressible---in the listing above,
+\code{x RESIDUAL-ADD} reads input~0, and the backward pass will sum both
+cotangent paths through \code{x}. Unbound dimensions defer to
+\code{BIND-SHAPES}, which re-propagates shapes through the IR and
+re-validates every rule.
+
+\paragraph{Fusion.} The planner groups nodes into regions under typed
+legality---elementwise chains fuse; a contraction admits an elementwise
+epilogue; a row-reduction admits prologue and epilogue; one contraction
+per region; reductions are barriers---and, crucially, consults a
+\emph{backend-capability table}: a join is legal only if the lowering
+backend can emit it, so plans are lowerable by construction and each
+future backend capability flips one table row plus its regression. Every
+refusal is a typed split reason in the report
+(\code{matmul-boundary at node 2}, \code{barrier-boundary at node 4}).
+Traffic is accounted exactly---unique global reads plus writes after
+fusion, with broadcast discounting. For the flagship FFN block the report
+commits to 3{,}040 bytes unfused versus 2{,}272 fused, a $1.33\times$
+reduction computed from the model rather than asserted; the same byte
+number is the fusion objective, the \code{MEMORY} report, and the
+roofline denominator, making the cost model falsifiable against measured
+bandwidth.
+
+\paragraph{Schedules and keys.} Each region class has a schedule family
+(for GEMM: block tile, $K$-step, warps, stages) with a closed-form
+default and a bounded searched space. Selections and evidence live in a
+file-backed store under a content key: region signature, shape class,
+dtype, layout, alignment class, target architecture, \emph{engine build}
+(the SHA-256 of the running toolchain binary, resolved by the engine
+itself from its process image), and assembler version. A schedule
+measured by one engine build is never silently replayed under another.
+
+\paragraph{Lowering.} Each region compiles to one generated PTX kernel
+named \code{REGION\_$k$}. Four class emitters exist: flat elementwise
+kernels (one element per thread, masked); block-per-row reduction kernels
+whose layernorm, rmsnorm, and softmax bodies mirror the checked host
+references op-for-op through shared collective emitters; tiled GEMM with
+the linear bias and elementwise epilogue applied to the accumulator; and
+movement kernels (transpose, slice, concat, gather as index-remapped
+copies), with free-verdict movement dissolved into the neighboring
+kernel's address arithmetic instead of materializing. Analysis precedes
+emission and fails closed: an unsupported region emits nothing.
+
+\paragraph{Whole-model execution.} A multi-region model executes on
+device region-by-region in topological order; each materialized output
+stays resident in device memory and downstream regions bind producer
+buffers directly---model inputs are the only host uploads. The final
+output is compared against the host executor under a composed tolerance:
+summed per-region class bounds (elementwise $10^{-5}$ relative;
+reductions and matmul $10^{-4}$, justified from $K\cdot2^{-24}$ f32
+accumulation plus the \code{ex2.approx} unit-of-last-place cost), with
+the host value first rounded to the f32 grid so the tolerance measures
+kernel error rather than representation.
+
+\subsection{Gates and Promotion}\label{sec:gates}
+\begin{itemize}
+\item \textbf{CERTIFY}: static legality of the whole plan.
+\item \textbf{GOLDEN}, with precedence: an external reference artifact
+  (saved input/output tensors with per-dtype tolerances---the seam for
+  porting existing models) if one exists; else the \emph{device} model
+  golden; else a host self-consistency oracle. Generated kernels are
+  proven, not trusted.
+\item \textbf{GRADCHECK}: generated adjoints against central finite
+  differences at tensor granularity (\S\ref{sec:train}).
+\item \textbf{PROFILE}: measured occupancy and roofline placement;
+  mandatory to run, non-blocking. \todo{populate when the roofline
+  microbenches land.}
+\end{itemize}
+\code{PROMOTE} admits an artifact only when certify and golden pass and
+gradcheck did not fail; the evidence row records exactly what ran---on
+the Jetson, a promoted FFN records
+\code{certify=pass|golden=device-pass|gradcheck=pass|profile=not-run}.
+Failures render as \emph{repair packets}: a typed failure class, the
+offending node or region, a reproduction pointer, and a suggested next
+action---designed so an agent or a person can act on the report without
+reading the compiler.
 
 \section{Verified Gradients and Training}\label{sec:train}
-\todo{Expand: adjoint registry, reverse transform with fan-out summation,
-save-vs-recompute, tensor-granularity gradcheck against the host executor,
-and the from-scratch flagship: seeded windowed-MLP regression trained
-60 SGD steps, batch NLL 0.130$\to$$-$0.647, bit-deterministic, the same IR
-gradchecked before training. Source: maki/from-scratch-*.f,
-maki/backward.f, maki/gradcheck.f.}
+Differentiation is a transform on the same IR. An adjoint registry maps
+each op to its VJP: elementwise ops to dedicated backward ops whose
+scalar references are the checked host words; matmul to transposed
+matmuls; bias and scale parameter-gradients to generated row-reduce and
+full-reduce nodes; slice and gather input-gradients to pad-scatter and
+scatter-add. The reverse transform walks the IR backwards, seeds the
+output cotangent, and \emph{sums} fan-out contributions---a value
+consumed twice receives an \code{OP-ADD} of both cotangent paths, so a
+skip connection's gradient is a visible node in the IR, not a runtime
+convention. Save-versus-recompute decisions are recorded per node with
+their reasons.
+
+Gradcheck runs at tensor granularity against the host executor: a loss
+$L=\sum_k s_k\,y_k$ with a varied seed (so a softmax row's gradient is
+not identically zero), analytic gradients read directly from
+backward-node buffers, central differences over perturbed inputs, and
+sampled corners plus midpoint per input for bounded runtime. A
+deliberately wrong adjoint (relu's substituted for gelu's) is caught; the
+detection fixture is part of the suite. Ops with no host reference report
+honestly as \emph{not run}: there are no false passes by construction.
+
+The end-to-end proof is a committed training run: a windowed MLP
+(\code{LINEAR GELU LINEAR}, 146 parameters) on a seeded synthetic
+regression task, Gaussian negative-log-likelihood loss over $\mu$ and
+$\log\sigma^2$ heads, gradients through the generated backward IR, plain
+SGD. From seeded initialization the batch NLL falls from $0.130$ to
+$-0.647$ in 60 steps; the run is bit-deterministic---asserted with exact
+float equality across re-runs---and the very IR that trains is
+gradchecked before training. The convergence thresholds are committed as
+a regression: a planner or numeric change that breaks learning fails the
+gate like any wrong answer.
 
 \section{Error-Class Measurement}\label{sec:errors}
-On identical tasks against real Triton 3.5.1 on the same device, a
-six-candidate error battery shows the checked target catching
-stack-discipline and composition errors at author time with located
-diagnostics and zero GPU involvement, where Triton surfaces them at runtime
-or not at all; authoring studies (pass@1 = 3/3 both targets on a fused
-chain) show reachability is comparable, so the difference is \emph{where
-bugs are caught}, not what experts can express.
-\todo{Import the full battery table and pass@k protocol from
-docs/eval-triton.md; extend candidates and task classes per the ablation
-matrix in the paper dot.}
+Against real Triton~3.5.1 on the same device, a six-candidate error
+battery (a correct kernel plus seeded authoring mistakes) shows the
+checked target catching the stack-discipline and composition classes at
+author time---located diagnostic, zero GPU---where Triton surfaces them
+at runtime or not at all. Authoring studies with independent generators
+show pass@1 $=3/3$ on both targets for a fused chain: reachability is
+comparable; \emph{where bugs are caught} is the difference. The earned
+claim is deliberately narrow: the checker types stack discipline and
+roles, not semantics---numeric correctness is the golden gate's job, and
+that division of labor is by design.
+\todo{Import the full battery table; extend candidates per the ablation
+matrix.}
 
-\section{Performance}\label{sec:perf}
-\textbf{Measured today.} Memory-bound: SAXPY streaming at 63\,GB/s equals
-hand-written Triton (63.0/63.4\,GB/s) at this Orin NX's achievable
-read/read/write bandwidth; the fused \code{relu(a$\cdot$x+y)} chain reaches
-the same roof, produced automatically from checked words. Generated-kernel
-correctness: 22 models device-golden across the four region classes.
-\todo{The compute-bound section is intentionally empty until measured
-(CAD-PLAN \S8.1): on-device roofline; GEMM vs Triton baseline; cp.async
-stages; tensor-core MMA; persistent autotune vs JIT warmup;
-end-to-end model latency vs torch.compile. Do not write prose here ---
-insert the measurement tables when they exist.}
+\section{Performance}\label{sec:perf}\label{sec:results}
+\textbf{Measured today (Jetson Orin NX, sm\_87, CUDA 12.6).}
+Memory-bound: SAXPY streaming at 63\,GB/s equals hand-written Triton
+(63.0 vs.\ 63.4\,GB/s) at this device's achievable read/read/write
+bandwidth---after a vectorization fix guided by exactly the byte model
+above (the scalar kernel measured 42.5\,GB/s; the model said
+memory-bound; v4 loads closed the gap). The fused
+\code{relu($a{\cdot}x{+}y$)} chain reaches the same roof, produced
+automatically from checked words. Correctness at scale: 30 models
+device-golden across the four region classes and whole-model execution,
+including a three-region FFN with device-resident intermediate buffers.
+
+\todo{Compute-bound results (CAD-PLAN \S8.1, in progress): register-blocked
+GEMM vs Triton autotuned baseline at 512/1024/2048; then cp.async stages,
+tensor-core MMA, persistent-vs-JIT autotune warmup, end-to-end model
+latency vs torch.compile. Insert measurement tables; no prose without
+numbers.}
 
 \section{Effectiveness of Each Mechanism}\label{sec:ablation}
-\todo{The ablation matrix (one committed experiment per invention) from
-dot habu-paper-habu-checked: checker error battery; byte-model
-predicted-vs-measured; fusion ON/OFF; golden fault-injection;
-sentinel fault-injection; wrong-adjoint detection; persistent-tune
-warmup comparison; EXPLAIN-packet repair-loop metrics; tuned-vs-default
-deltas. Each row cites its in-tree gate. Run on device; report tables.}
+\todo{The ablation matrix: one committed experiment per invention
+(checker battery; byte-model predicted-vs-measured; fusion ON/OFF;
+golden fault-injection; sentinel fault-injection; wrong-adjoint detection
+[exists]; persistent-tune warmup; EXPLAIN-packet repair-loop metrics;
+tuned-vs-default deltas). Each row cites its in-tree gate.}
+
+\subsection{Type Families}\label{sec:tfam}
+\todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15)
+and the cad-adt-swap adoption: checker-enforced algebraic data types
+(sums with MATCH and bad-tag proofs, enum and product families); adoption
+evidence = the CAD internals (schedule key as a product record, verdicts
+as sums) where the checker turns field-swap and tag-confusion into
+compile errors. Write from the merged implementation and its negative
+regressions only.}
 
 \section{Limitations}
 V1 caps are explicit and fail closed: one contraction per region;
-$K\le 256$; elementwise prologues into contractions are planned but not yet
-lowered; broadcast operands and multi-output regions are staged for the
-OPTIMIZE wiring; PROFILE's roofs await device microbenchmarks. The checker
-types stack discipline and roles, not semantics --- numeric correctness is
-the golden gate's job, by design. \todo{Refresh against the dot state at
-submission time.}
+$K\le256$ and correctness-first tiles in the current GEMM (the
+performance tile is in progress); elementwise prologues into contractions
+are planned but not lowered---the backend-capability table keeps such
+plans unformed until the backend earns the row; broadcast operands and
+multi-output regions are staged behind the same mechanism; staged
+(transpose) movement folds materialize as copies rather than fusing.
+PROFILE's roofs await device microbenchmarks. The checker's scope is
+stack discipline and nominal roles, not program semantics. All numbers
+come from one device class; breadth is future work.
 
 \section{Conclusion}
-\todo{Write last.}
+Habu demonstrates that a kernel target can be \emph{checked} and a
+compilation pipeline can be \emph{accountable}: typed compositions
+instead of unchecked authorship, exact byte accounting instead of
+folklore, device-proven artifacts with recorded evidence instead of
+emitted hope, and gradients that are generated, checked, and then trusted
+to train. The system is small enough to read---one self-hosted binary
+under 128\,KB---and every claim above is a running test in its
+repository. What remains, deliberately unclaimed until measured, is the
+compute-bound contest; the machinery to run it honestly is what this
+paper described.
 
 \begin{thebibliography}{9}
 \bibitem{triton} P.~Tillet, H.~T.~Kung, D.~Cox. Triton: An Intermediate
-Language and Compiler for Tiled Neural Network Computations. MAPL 2019.
-\bibitem{okad} C.~Moore. OKAD: VLSI design tools in colorForth.
-\todo{proper citation}
-\todo{Add: Halide, TVM, PlaidML, Tensor Comprehensions, XLA, roofline,
-torch.compile/Inductor.}
+Language and Compiler for Tiled Neural Network Computations. MAPL, 2019.
+doi:10.1145/3315508.3329973.
+\bibitem{okad} C.~H.~Moore. OKAD: chip design tools in colorForth (the
+VLSI design system behind the GreenArrays GA144). \todo{settle citable
+source.}
+\bibitem{halide} J.~Ragan-Kelley et al. Halide: A Language and Compiler
+for Optimizing Parallelism, Locality, and Recomputation in Image
+Processing Pipelines. PLDI, 2013.
+\bibitem{tvm} T.~Chen et al. TVM: An Automated End-to-End Optimizing
+Compiler for Deep Learning. OSDI, 2018.
+\bibitem{tc} N.~Vasilache et al. Tensor Comprehensions:
+Framework-Agnostic High-Performance Machine Learning Abstractions.
+arXiv:1802.04730, 2018.
+\bibitem{xla} XLA: Optimizing Compiler for Machine Learning.
+\todo{cite properly.}
+\bibitem{pytorch2} J.~Ansel et al. PyTorch 2: Faster Machine Learning
+Through Dynamic Python Bytecode Transformation and Graph Compilation.
+ASPLOS, 2024.
+\bibitem{roofline} S.~Williams, A.~Waterman, D.~Patterson. Roofline: An
+Insightful Visual Performance Model for Multicore Architectures.
+CACM 52(4), 2009.
 \end{thebibliography}
 
 \end{document}
