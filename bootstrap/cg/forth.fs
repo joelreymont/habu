@@ -51,9 +51,17 @@ require crash.fs           \ in-binary crash handler (register dump on signal)
 16  constant LOCN-CELL   24 constant LOCF-CELL
 $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 24  constant LOC-REC      \ bytes per local name record (len + 16 name)
-$1A0 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
-$1A8 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
-$1B0 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
+\ Friend arena (TFAM 2b-i): contiguous write-protected band mirroring
+\ src/habu/layout.f. Latch cell == arena base (0 open / FRIEND-ARENA-LEN sealed).
+\ gforth stage0 has no package/defer system, so DEF-WL/PKG-*/DEFER-* are absent
+\ here; the CUR/WIDN/HOOK/TSIG/TCSIG/CRSIG jewels are relocated to match native.
+$20 constant FRIEND-ARENA               \ arena base offset within the DATA region
+$88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
+FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+$28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
+$30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
+$38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
 $1B8 constant BODYLEN-CELL \ length of the captured body of the def in progress
 $1C0 constant RBASE-CELL  \ saved __TEXT load base (RBASE) for the self-rebuild
 $1C8 constant LOOPSP-CELL \ DO/LOOP frame stack depth
@@ -84,12 +92,12 @@ $3800 constant EVAL-FRAME \ re-entrant evaluate save frames, 8 cells each:
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
 $8 constant EVAL-MAX-DEPTH
-$2780 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer
-$2788 constant TSIG-U-CELL
-$2790 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
-$2798 constant TCSIG-U-CELL
-$27A0 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
-$27A8 constant CRSIG-U-CELL
+$48 constant TSIG-A-CELL  \ TRUSTED: pending word effect source pointer (friend arena)
+$50 constant TSIG-U-CELL
+$58 constant TCSIG-A-CELL \ TRUSTED: pending created-word effect pointer
+$60 constant TCSIG-U-CELL
+$68 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
+$70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)

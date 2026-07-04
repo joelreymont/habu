@@ -30,9 +30,39 @@ $100000 constant IBUFSZ
 24 constant LOCF-CELL
 $3000 constant LOCNAMES
 24 constant LOC-REC
-$1A0 constant CUR-CELL
-$1A8 constant WIDN-CELL
-$1B0 constant HOOK-CELL
+\ --- Friend arena (TFAM 2b-i): one contiguous write-protected band
+\ [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch plus
+\ every checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
+\ TSIG/TCSIG/CRSIG signature cells, the package PKG-* cells, and the DEFER-*
+\ cells). The latch cell IS the arena base: it holds 0 while the engine loads its
+\ own canonical source (range guard inert) and FRIEND-ARENA-LEN once SEAL-FRIEND
+\ runs at the end of the cold prefix. Self-sealing: post-seal any raw write into
+\ the band — including the latch itself — is trapped fail-closed, so the seal is
+\ a one-way monotonic latch. The band sits BELOW DATA-START, so allot/,/c,/the DP
+\ heap (bounded >= DATA-START by DP-CHECK) can never reach it; only sinks that
+\ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
+\ write buffers) carry the runtime range check. The old scattered slots ($1A0,
+\ $260, $2780.., $27C0..) are now free holes. ---
+$20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
+$88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
+FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+$28 constant CUR-CELL
+$30 constant WIDN-CELL
+$38 constant HOOK-CELL
+$40 constant DEF-WL-CELL
+$48 constant TSIG-A-CELL
+$50 constant TSIG-U-CELL
+$58 constant TCSIG-A-CELL
+$60 constant TCSIG-U-CELL
+$68 constant CRSIG-A-CELL
+$70 constant CRSIG-U-CELL
+$78 constant PKG-PUB-CELL
+$80 constant PKG-PRI-CELL
+$88 constant PKG-PARENT-CELL
+$90 constant PKG-REC-CELL
+$98 constant DEFER-META-CELL
+$A0 constant DEFER-XT-CELL
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
@@ -62,12 +92,7 @@ $3800 constant EVAL-FRAME
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
 $8 constant EVAL-MAX-DEPTH
-$2780 constant TSIG-A-CELL
-$2788 constant TSIG-U-CELL
-$2790 constant TCSIG-A-CELL
-$2798 constant TCSIG-U-CELL
-$27A0 constant CRSIG-A-CELL
-$27A8 constant CRSIG-U-CELL
+\ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -119,12 +144,7 @@ $240 constant QENT-CELL
 $248 constant QXH-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-$260 constant DEF-WL-CELL
-$27C0 constant PKG-PUB-CELL
-$27C8 constant PKG-PRI-CELL
-$27D0 constant PKG-PARENT-CELL
-$27D8 constant PKG-REC-CELL
-$27E0 constant DEFER-META-CELL
-$27E8 constant DEFER-XT-CELL
+\ DEF-WL ($260), PKG-* ($27C0..$27D8) and DEFER-* ($27E0..$27E8) relocated into
+\ the friend arena above; those low/high slots are now free holes.
 $2800 constant RSTK-OFF
 $4000 constant DATA-START
