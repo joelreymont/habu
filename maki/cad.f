@@ -61,6 +61,7 @@ require maki/schedule.f
 require maki/sched-key.f
 require maki/store.f
 require maki/golden.f
+require maki/lower-golden.f
 require maki/gradcheck.f
 
 -5020 constant E-CAD-NOMODEL   \ command issued with no model defined
@@ -648,11 +649,12 @@ private
    s" " V-PASS G-CERTIFY RPT-GATE!
    s" certify: model-level legality only; kernel legality in cad-5" RPT-WARN+ ;
 
-\ GOLDEN is REAL on the host now (maki/golden.f): a self-consistency oracle that runs
-\ the composed forward chain and re-executes each node from its inputs. Reference-
-\ complete + host-executable models pass; a cast/decode op stays honest not-run. The
-\ real device-vs-host comparison lands with the device leg. GOLDEN-INTO is provided by
-\ maki/golden.f.
+\ GOLDEN is REAL (maki/golden.f + maki/lower-golden.f). Precedence: an external reference
+\ artifact wins; else, when a device is present and the model is device-lowerable, the DEVICE
+\ model golden runs the whole forward IR on the GPU (cross-region device buffers) and compares
+\ the final output vs the host executor under a composed f32 tolerance (LOWER-MODEL-GOLDEN,
+\ installed via golden.f's device hook); else the host self-consistency oracle runs. Off-device
+\ the device leg is inert, so the host legs are unchanged. GOLDEN-INTO is provided by maki/golden.f.
 
 \ GRADCHECK is REAL on the host now (maki/gradcheck.f): a numeric model-level
 \ gradcheck for reference-complete, host-executable (elementwise) models; models with
@@ -662,10 +664,30 @@ private
 : PROFILE-INTO ( report -- report )
    s" no-device" V-NOTRUN G-PROFILE RPT-GATE! ;
 
+\ ---- device golden leg (cad.f owns the device dependency; golden.f stays device-free) ---------
+\ GOLDEN precedence: external artifact > DEVICE model golden > host self-consistency. The device
+\ leg runs when a GPU is present, every region's cubin is registered (MDL-CUBIN!), and the model is
+\ device-lowerable; LOWER-MODEL-GOLDEN executes the whole forward IR on the GPU with cross-region
+\ device buffers and compares the final output vs the host executor under a composed f32 tolerance.
+\ Off-device (or without cubins / a non-lowerable model) GOLDEN-GATE-INTO is exactly GOLDEN-INTO,
+\ so the host gates are unchanged.
+: GOLDEN-GATE-DEVICE ( report -- report )
+   LOWER-MODEL-GOLDEN {: v:n :}
+   -1 GOLDEN-DEV!                                  \ evidence: the device leg produced this verdict
+   LOWER-GOLDEN-REASON$ v G-GOLDEN RPT-GATE!
+   s" golden: device model golden (cross-region f32 vs host, composed tolerance)" RPT-WARN+ ;
+: GOLDEN-GATE-INTO ( report -- report )
+   GA-EXISTS? if GOLDEN-INTO exit then             \ external artifact wins (GOLDEN-INTO selects it)
+   CUDA:OPEN? if
+      FP-BUILD                                     \ the device legs read the region plan
+      MDL-CUBINS-READY? if MDL-LOWERABLE? if GOLDEN-GATE-DEVICE exit then then
+   then
+   GOLDEN-INTO ;                                   \ host self-consistency (device flag cleared there)
+
 \ full conservative report over every phase (PROMOTE / OPTIMIZE / EXPLAIN)
 : FULL-REPORT ( -- report )
    RPT-NEW LOWER-INTO FUSE-INTO MEMORY-INTO TILE-INTO
-   CERTIFY-INTO GOLDEN-INTO GRADCHECK-INTO PROFILE-INTO ;
+   CERTIFY-INTO GOLDEN-GATE-INTO GRADCHECK-INTO PROFILE-INTO ;
 
 \ ---- promotion gate (CAD 7c gate-set alignment) ----------------------------
 : GATE-PASS? ( report n -- report bool )
@@ -705,7 +727,7 @@ private
    dup G-GRADCHECK RPT-GATE-TAG@ {: gc:n :}
    dup G-PROFILE   RPT-GATE-TAG@ {: p:n :}
    dup RPT-SELECT@ {: sel:n :}
-   0 SK-KEY$ c g gc p EVID-PUT
+   0 SK-KEY$ c g gc p GOLDEN-DEV? EVID-PUT-G       \ golden=device-<v> when the device leg ran
    0 SK-KEY$ sel SCHED-PUT ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
@@ -723,7 +745,7 @@ public
 : MEMORY ( -- report )     RPT-NEW LOWER-INTO MEMORY-INTO ;
 : TILE ( -- report )       RPT-NEW LOWER-INTO TILE-INTO ;
 : CERTIFY ( -- report )    RPT-NEW LOWER-INTO CERTIFY-INTO ;
-: GOLDEN ( -- report )     RPT-NEW LOWER-INTO GOLDEN-INTO ;
+: GOLDEN ( -- report )     RPT-NEW LOWER-INTO GOLDEN-GATE-INTO ;
 : GRADCHECK ( -- report )  RPT-NEW LOWER-INTO GRADCHECK-INTO ;
 : PROFILE ( -- report )    RPT-NEW LOWER-INTO PROFILE-INTO ;
 : TUNE ( -- report )       RPT-NEW LOWER-INTO TUNE-INTO ;

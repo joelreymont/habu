@@ -91,17 +91,29 @@ public
    GO-SELF? 0= if GO-RE-RESET s" golden: composed chain not self-consistent" GO-RE+ V-FAIL exit then
    GO-PASS-REASON  V-PASS ;
 
+\ ---- golden leg marker (which leg produced the verdict) --------------------
+\ GOLDEN-INTO here is the HOST gate: external reference artifact, else self-consistency. The
+\ DEVICE model-golden leg is composed one layer up in maki/cad.f (GOLDEN-GATE-INTO), which owns
+\ the device dependency; golden.f stays device-free. GOLDEN-DEV-FLAG records whether the device
+\ leg produced the verdict so PROMOTE's evidence row can read golden=device-pass; the host legs
+\ here clear it.
+variable GOLDEN-DEV-FLAG           \ -1 once the device golden leg produced the verdict, else 0
+public
+: GOLDEN-DEV! ( n -- )  GOLDEN-DEV-FLAG ! ;
+: GOLDEN-DEV? ( -- bool )  GOLDEN-DEV-FLAG @ 0= 0= ;
 private
+
 \ ---- cad.f gate wiring: prefer an external reference artifact, else self-consistency --
 : GO-GATE-ARTIFACT ( report -- report )
    GA-CHECK {: v:n :}  GA-RE$ v G-GOLDEN RPT-GATE!
    s" golden: external reference artifact comparison (per-artifact tolerance)" RPT-WARN+ ;
 : GO-GATE-SELF ( report -- report )
    GO-RUN {: v:n :}  GO-RE$ v G-GOLDEN RPT-GATE!
-   s" golden: host self-consistency (v1); device-vs-host lands with the device leg" RPT-WARN+ ;
+   s" golden: host self-consistency (v1); device-vs-host is the cad.f device leg" RPT-WARN+ ;
 
 public
-: GOLDEN-INTO ( report -- report )
+: GOLDEN-INTO ( report -- report )              \ host golden gate (device leg is cad.f's GOLDEN-GATE-INTO)
+   0 GOLDEN-DEV-FLAG !
    GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;
 
 end-package

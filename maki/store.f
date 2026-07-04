@@ -309,16 +309,25 @@ public
    ca cu STORE-PARSE-INT  ma mu STORE-PARSE-INT  true ;
 
 \ ---- evidence (per-gate verdicts) ------------------------------------------
-: EVID-PUT ( ptr u8 n n n n n -- ) {: ka:ptr ku:n c:n g:n gc:n p:n :}
+\ the golden field records WHICH leg produced the verdict: a device model golden (slice 5)
+\ that ran writes "golden=device-<v>" so a promoted artifact carries proof the device leg ran;
+\ the host self-consistency / artifact legs write the plain "golden=<v>".
+: EVID-GOLDEN+ ( n bool -- ) {: g:n gdev?:bool :}
+   s" golden=" SROW+
+   gdev? if s" device-" SROW+ then
+   g STORE-V$ SROW+ ;
+: EVID-PUT-G ( ptr u8 n n n n n bool -- ) {: ka:ptr ku:n c:n g:n gc:n p:n gdev?:bool :}
    ka ku STORE-CK-KEY
    SROW-RESET
    ka ku SROW+  SROW-PIPE
    s" certify="   SROW+  c  STORE-V$ SROW+  SROW-PIPE
-   s" golden="    SROW+  g  STORE-V$ SROW+  SROW-PIPE
+   g gdev? EVID-GOLDEN+  SROW-PIPE
    s" gradcheck=" SROW+  gc STORE-V$ SROW+  SROW-PIPE
    s" profile="   SROW+  p  STORE-V$ SROW+
    SROW-NL
    CLS-EVID STORE-APPEND ;
+: EVID-PUT ( ptr u8 n n n n n -- ) {: ka:ptr ku:n c:n g:n gc:n p:n :}
+   ka ku c g gc p false EVID-PUT-G ;
 
 : EVID-GET ( ptr u8 n -- ptr u8 n bool ) {: ka:ptr ku:n :}
    CLS-EVID ka ku STORE-QUERY ;
