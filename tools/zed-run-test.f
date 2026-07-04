@@ -19,7 +19,10 @@ package ZED
 : CLASSIFY-TESTS ( -- )
    [: 0 >RC RUN-OK ;] 0 TTHROWSQ                    \ success: no throw
    [: 1 >RC RUN-OK ;] E-ZED-RC TTHROWSQ             \ nonzero rc: fail-closed
-   [: 255 >RC RUN-OK ;] E-ZED-UNREACH TTHROWSQ ;    \ ssh 255: unreachable
+   [: 255 >RC RUN-OK ;] E-ZED-RC TTHROWSQ           \ tools may exit 255 (ptxas)
+   [: 0 >RC UNREACH-OK ;] 0 TTHROWSQ                \ ping success: no throw
+   [: 255 >RC UNREACH-OK ;] E-ZED-UNREACH TTHROWSQ  \ ping nonzero: transport
+   [: 1 >RC UNREACH-OK ;] E-ZED-UNREACH TTHROWSQ ;
 
 \ ---- remote command construction --------------------------------------------
 

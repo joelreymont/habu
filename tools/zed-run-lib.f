@@ -154,12 +154,17 @@ public
 
 \ ---- outcome classification --------------------------------------------------
 
+\ Remote tools may legitimately exit 255 (ptxas does), so a general command rc
+\ cannot distinguish transport failure from tool failure. PING owns the
+\ transport class: running `true`, ANY nonzero rc is unreachability. RUN-OK
+\ classifies every nonzero rc of an ordinary command as a remote failure.
+: UNREACH-OK ( rc -- )
+   TIMED-OUT? if drop E-ZED-TIMEOUT throw then
+   RC>N 0 <> if E-ZED-UNREACH throw then ;
+
 : RUN-OK ( rc -- )
    TIMED-OUT? if drop E-ZED-TIMEOUT throw then
-   RC>N {: rc:n :}
-   rc 0= if exit then
-   rc 255 = if E-ZED-UNREACH throw then
-   E-ZED-RC throw ;
+   RC>N 0 <> if E-ZED-RC throw then ;
 
 : OUT$ ( -- ptr u8 n )
    PROC-CMD-OUT$ ;
@@ -181,7 +186,7 @@ public
    CMD$ SSH-EXEC ;
 
 : PING ( -- )   \ reachability probe: throws E-ZED-UNREACH if the host is down
-   s" true" RUN RUN-OK ;
+   s" true" RUN UNREACH-OK ;
 
 : SCRATCH$ ( -- ptr u8 n )
    SCRATCH-BUF SCRATCH-U @ ;

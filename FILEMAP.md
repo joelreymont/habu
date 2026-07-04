@@ -359,6 +359,14 @@ points stay listed.
   the device gradcheck gate: minimal op-lists isolating each ad-dag VJP entry
   (EXP, x-max, x/sum, full softmax) plus the deliberate wrong-VJP fixture that
   drops the DUP fan-out cotangent; text shape asserted in saxpy-test.f.
+- `tools/ptx/ad-gradcheck-launch.f` — Orin-side per-VJP gradcheck launcher:
+  central differences over the emitted forward vs the analytic AD backward,
+  per-element rtol+atol, tie and saturated fixtures, poisoned readbacks, every
+  CUDA rc checked; the wrong-VJP and cross-paired backwards must mismatch.
+- `tools/ptx/zed-gradcheck-suite.f` — Mac orchestrator for the per-VJP device
+  gradcheck gate: emits the nine kernels, ships/assembles via the ssh harness,
+  proves malformed-PTX and missing-cubin failure classes red, then runs the
+  launcher on the Orin. HABU_ZED-gated.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header
