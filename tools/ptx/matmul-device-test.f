@@ -2,12 +2,13 @@
 \ (lib/ptx/cg-matmul.f). Self-contained from the tree (retires the /tmp-only check the
 \ goal flags): spawns bin/hb to emit MM to a private PTX, ptxas-assembles, then launches
 \ 64x64x64 with A=B=all-ones on the Orin and asserts C[0][0] = K = 64.0 (FP32 exact).
-\ Orin-only (FFI device launch). Load after maki/eval.f + maki/eval-device.f (reuses
-\ ED-SYM / CALL* / ED-* + the dlopen) and the fs/process libs. Closes (for the GEMM)
-\ habu-committed-device-correctness.
+\ Orin-only (FFI device launch). Uses the checked lib/ptx/cuda-driver.f (CUDA:CU-*);
+\ load after maki/eval.f + maki/eval-device.f (reuses the ED-* handle cells) and the
+\ fs/process libs. Closes (for the GEMM) habu-committed-device-correctness.
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
 create MMT-OUT $8000 allot  create MMT-ERR $1000 allot
 create MQ-OUT  $1000 allot   create MQ-ERR  $1000 allot
@@ -31,35 +32,35 @@ variable MM-DA  variable MM-DB  variable MM-DC  variable MM-RB
 \ launch MM 64x64x64 with A=B=1.0 (one 64x64 block); return C[0][0] f32 bits
 : MM-DEV ( -- n )
    MM-RB 4 PTXSENT:FILL                                              \ poison readback: dropped copy-back fails closed
-   s" libcuda.so.1" ED-LIB >CSTR  ED-LIB RTLD-NOW DLOPEN ED-H !
-   0                       s" cuInit"                    ED-SYM CALL1 drop
-   ED-DEV P>N 0            s" cuDeviceGet"               ED-SYM CALL2 drop
-   ED-CTX P>N ED-DEV @     s" cuDevicePrimaryCtxRetain"  ED-SYM CALL2 drop
-   ED-CTX @               s" cuCtxSetCurrent"           ED-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   ED-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   ED-CTX ED-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   ED-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ ED-PATH >CSTR
-   ED-MOD P>N ED-PATH P>N s" cuModuleLoad"              ED-SYM CALL2 drop
+   ED-MOD ED-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" MM" ED-KN >CSTR
-   ED-FUNC P>N ED-MOD @ ED-KN P>N s" cuModuleGetFunction" ED-SYM CALL3 drop
-   MM-DA P>N 16384        s" cuMemAlloc_v2"   ED-SYM CALL2 drop
-   MM-DB P>N 16384        s" cuMemAlloc_v2"   ED-SYM CALL2 drop
-   MM-DC P>N 16384        s" cuMemAlloc_v2"   ED-SYM CALL2 drop
-   MM-DA @ $3F800000 4096 s" cuMemsetD32_v2"  ED-SYM CALL3 drop      \ A = 1.0
-   MM-DB @ $3F800000 4096 s" cuMemsetD32_v2"  ED-SYM CALL3 drop      \ B = 1.0
-   MM-DC @ 0 4096         s" cuMemsetD32_v2"  ED-SYM CALL3 drop      \ C = 0
+   ED-FUNC ED-MOD @ >CUDA-MOD ED-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
+   MM-DA 16384 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   MM-DB 16384 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   MM-DC 16384 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   MM-DA @ >CUDA-DEVPTR $3F800000 4096 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ A = 1.0
+   MM-DB @ >CUDA-DEVPTR $3F800000 4096 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0   \ B = 1.0
+   MM-DC @ >CUDA-DEVPTR 0 4096 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0           \ C = 0
    64 ED-NV !                                                        \ M=N=K=64 (reuse ED-NV)
-   ED-FUNC @ 16 16 1      s" cuFuncSetBlockShape" ED-SYM CALL4 drop
-   ED-FUNC @ 36           s" cuParamSetSize"  ED-SYM CALL2 drop
-   ED-FUNC @ 0  MM-DA P>N 8  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 8  MM-DB P>N 8  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 16 MM-DC P>N 8  s" cuParamSetv"  ED-SYM CALL4 drop
-   ED-FUNC @ 24 ED-NV P>N 4  s" cuParamSetv"  ED-SYM CALL4 drop      \ M
-   ED-FUNC @ 28 ED-NV P>N 4  s" cuParamSetv"  ED-SYM CALL4 drop      \ N
-   ED-FUNC @ 32 ED-NV P>N 4  s" cuParamSetv"  ED-SYM CALL4 drop      \ K
-   ED-FUNC @ 1 1          s" cuLaunchGrid"    ED-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" ED-SYM CALL1 drop
-   MM-RB P>N MM-DC @ 4    s" cuMemcpyDtoH_v2" ED-SYM CALL3 drop
-   ED-MOD @  s" cuModuleUnload"            ED-SYM CALL1 drop
-   ED-DEV @  s" cuDevicePrimaryCtxRelease" ED-SYM CALL1 drop
+   ED-FUNC @ >CUDA-FN 16 16 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   ED-FUNC @ >CUDA-FN 36 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   ED-FUNC @ >CUDA-FN 0 >IDX  MM-DA 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 8 >IDX  MM-DB 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 16 >IDX MM-DC 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   ED-FUNC @ >CUDA-FN 24 >IDX ED-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0     \ M
+   ED-FUNC @ >CUDA-FN 28 >IDX ED-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0     \ N
+   ED-FUNC @ >CUDA-FN 32 >IDX ED-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0     \ K
+   ED-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   MM-RB MM-DC @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
+   ED-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   ED-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0
    MM-RB @ $FFFFFFFF and PTXSENT:GUARD ;
 
 T-RESET

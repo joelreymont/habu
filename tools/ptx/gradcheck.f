@@ -15,14 +15,13 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
-create GC-LIB 16 allot  create GC-NM 64 allot  create GC-PATH 64 allot  create GC-KN 32 allot
-variable GC-H variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
+create GC-PATH 64 allot  create GC-KN 32 allot
+variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
 variable GC-DX variable GC-DY variable GC-AB variable GC-NV variable GC-RBUF
 create GC-OUT $4000 allot  create GC-ERR $1000 allot
 create GC-QOUT $1000 allot create GC-QERR $1000 allot
-
-: GC-SYM ( ptr u8 n -- n )  GC-NM >CSTR  GC-H @ GC-NM DLSYM ;
 
 : GC-PRELUDE ( -- )
    PROC-ARGV-RESET
@@ -46,53 +45,53 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    GC-QOUT $1000 >LEN GC-QERR $1000 >LEN PTXTC:ASSEMBLE ;
 
 : GC-CTX-INIT ( -- )
-   s" libcuda.so.1" GC-LIB >CSTR  GC-LIB RTLD-NOW DLOPEN GC-H !
-   0                      s" cuInit"                    GC-SYM CALL1 drop
-   GC-DEV P>N 0           s" cuDeviceGet"               GC-SYM CALL2 drop
-   GC-CTX P>N GC-DEV @    s" cuDevicePrimaryCtxRetain"  GC-SYM CALL2 drop
-   GC-CTX @              s" cuCtxSetCurrent"           GC-SYM CALL1 drop
-   GC-DX P>N 16          s" cuMemAlloc_v2"   GC-SYM CALL2 drop
-   GC-DY P>N 16          s" cuMemAlloc_v2"   GC-SYM CALL2 drop ;
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   GC-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   GC-CTX GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   GC-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
+   GC-DX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   GC-DY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0 ;
 : GC-LOAD ( -- )
    PTXTC:CUBIN$ GC-PATH >CSTR
-   GC-MOD P>N GC-PATH P>N s" cuModuleLoad"              GC-SYM CALL2 drop
+   GC-MOD GC-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    s" SAXPY" GC-KN >CSTR
-   GC-FUNC P>N GC-MOD @ GC-KN P>N s" cuModuleGetFunction" GC-SYM CALL3 drop ;
-: GC-UNLOAD ( -- )  GC-MOD @ s" cuModuleUnload" GC-SYM CALL1 drop ;
-: GC-CTX-FINI ( -- )  GC-DEV @ s" cuDevicePrimaryCtxRelease" GC-SYM CALL1 drop ;
+   GC-FUNC GC-MOD @ >CUDA-MOD GC-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
+: GC-UNLOAD ( -- )  GC-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0 ;
+: GC-CTX-FINI ( -- )  GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
 
 \ launch the loaded kernel at x = xbits (a=3.0, y=0, n=1) -> z[0] f32 bits
 : GC-AT ( n -- n ) {: xbits :}
    GC-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   GC-DX @ xbits 1        s" cuMemsetD32_v2"  GC-SYM CALL3 drop
-   GC-DY @ 0 1            s" cuMemsetD32_v2"  GC-SYM CALL3 drop
+   GC-DX @ >CUDA-DEVPTR xbits 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0
+   GC-DY @ >CUDA-DEVPTR 0 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0
    $40400000 GC-AB !  1 GC-NV !
-   GC-FUNC @ 256 1 1      s" cuFuncSetBlockShape" GC-SYM CALL4 drop
-   GC-FUNC @ 24           s" cuParamSetSize"  GC-SYM CALL2 drop
-   GC-FUNC @ 0  GC-DX P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 8  GC-DY P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 16 GC-AB P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 20 GC-NV P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 1 1          s" cuLaunchGrid"    GC-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" GC-SYM CALL1 drop
-   GC-RBUF P>N GC-DY @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
+   GC-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   GC-FUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   GC-FUNC @ >CUDA-FN 0 >IDX  GC-DX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 8 >IDX  GC-DY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 16 >IDX GC-AB 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 20 >IDX GC-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   GC-RBUF GC-DY @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH
    GC-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 \ launch a 2-input backward kernel: x=dz, y=savedy (n=1) -> result in x[0] f32 bits
 : GC-AT-2IN ( n n -- n ) {: dzbits sybits :}
    GC-RBUF 4 PTXSENT:FILL                                            \ poison readback: dropped copy-back fails closed
-   GC-DX @ dzbits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ dz
-   GC-DY @ sybits 1       s" cuMemsetD32_v2"  GC-SYM CALL3 drop      \ savedy
+   GC-DX @ >CUDA-DEVPTR dzbits 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0  \ dz
+   GC-DY @ >CUDA-DEVPTR sybits 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0  \ savedy
    $40400000 GC-AB !  1 GC-NV !
-   GC-FUNC @ 256 1 1      s" cuFuncSetBlockShape" GC-SYM CALL4 drop
-   GC-FUNC @ 24           s" cuParamSetSize"  GC-SYM CALL2 drop
-   GC-FUNC @ 0  GC-DX P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 8  GC-DY P>N 8  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 16 GC-AB P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 20 GC-NV P>N 4  s" cuParamSetv"  GC-SYM CALL4 drop
-   GC-FUNC @ 1 1          s" cuLaunchGrid"    GC-SYM CALL3 drop
-   0                      s" cuCtxSynchronize" GC-SYM CALL1 drop
-   GC-RBUF P>N GC-DX @ 4  s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop      \ backward output in dz (x)
+   GC-FUNC @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   GC-FUNC @ >CUDA-FN 24 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   GC-FUNC @ >CUDA-FN 0 >IDX  GC-DX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 8 >IDX  GC-DY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 16 >IDX GC-AB 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 20 >IDX GC-NV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FUNC @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   GC-RBUF GC-DX @ >CUDA-DEVPTR 4 >LEN CUDA:DTOH                      \ backward output in dz (x)
    GC-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 
 \ central difference of the loaded kernel w.r.t. x at x0, step h -> a Habu float

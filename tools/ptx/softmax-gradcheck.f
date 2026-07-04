@@ -15,9 +15,10 @@
 
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
+require lib/ptx/cuda-driver.f
 
 4 constant GCK
-create GC-LIB 16 allot  create GC-NM 64 allot  create GC-P1 64 allot
+create GC-P1 64 allot
 create GC-KF 32 allot   create GC-KB 32 allot
 create GC-IN 16 allot   create GC-OUT 16 allot   create GC-DYB 16 allot    \ f32 device-side packs
 create GC-EOUT $8000 allot  create GC-EERR $1000 allot                     \ child emit capture
@@ -25,7 +26,7 @@ create GC-QO $1000 allot    create GC-QE $1000 allot                       \ ptx
 create HX 4 cells allot create HDY 4 cells allot  create HDXA 4 cells allot \ host f64
 create HDXN 4 cells allot
 create HYP 4 cells allot create HYM 4 cells allot
-variable GC-H variable GC-DEV variable GC-CTX variable GC-MF
+variable GC-DEV variable GC-CTX variable GC-MF
 variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO variable GC-KV
 
 : F32! ( n ptr u8 n -- ) {: v buf idx :} idx 4 * {: o :}
@@ -37,11 +38,9 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 : UNPACK4 ( ptr u8 ptr a -- ) {: src dst :}  GCK 0 ?do  src i F32@ F32>F64  dst i T-SET  loop ;
 : GC-OUT-GUARD ( -- )  GCK 0 ?do  GC-OUT i F32@ PTXSENT:GUARD drop  loop ;  \ fail closed if the copy-back was dropped
 
-: GC-SYM ( ptr u8 n -- n )  GC-NM >CSTR  GC-H @ GC-NM DLSYM ;
-
-\ libcuda handle (0 iff off-device); a 0 handle means Mac/CI, so the gradcheck skips
-: GC-DEVICE? ( -- n )
-   s" libcuda.so.1" GC-LIB >CSTR  GC-LIB RTLD-NOW DLOPEN dup GC-H ! ;
+\ device availability (false iff off-device); false means Mac/CI, so the gradcheck skips
+: GC-DEVICE? ( -- bool )
+   CUDA:OPEN? ;
 
 \ spawn bin/hb to emit the combined fwd+bwd module (softmax-fb-cg.f) to the private PTX
 : GC-EMIT ( -- n )
@@ -58,19 +57,20 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 \ load the ONE combined cubin and pull BOTH function handles from the SAME module
 : GC-SETUP ( -- )
-   0 s" cuInit" GC-SYM CALL1 drop
-   GC-DEV P>N 0 s" cuDeviceGet" GC-SYM CALL2 drop
-   GC-CTX P>N GC-DEV @ s" cuDevicePrimaryCtxRetain" GC-SYM CALL2 drop
-   GC-CTX @ s" cuCtxSetCurrent" GC-SYM CALL1 drop
+   CUDA:OPEN
+   0 CUDA:CU-INIT CUDA:RC0
+   GC-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
+   GC-CTX GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
+   GC-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
    PTXTC:CUBIN$ GC-P1 >CSTR
-   GC-MF P>N GC-P1 P>N s" cuModuleLoad" GC-SYM CALL2 drop
+   GC-MF GC-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    s" SOFTMAX_ROWS" GC-KF >CSTR
-   GC-FWD P>N GC-MF @ GC-KF P>N s" cuModuleGetFunction" GC-SYM CALL3 drop
+   GC-FWD GC-MF @ >CUDA-MOD GC-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    s" SOFTMAX_BWD" GC-KB >CSTR
-   GC-BWD P>N GC-MF @ GC-KB P>N s" cuModuleGetFunction" GC-SYM CALL3 drop  \ same module, second entry
-   GC-dX P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
-   GC-dDY P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
-   GC-dO P>N 16 s" cuMemAlloc_v2" GC-SYM CALL2 drop
+   GC-BWD GC-MF @ >CUDA-MOD GC-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0      \ same module, second entry
+   GC-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   GC-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
+   GC-dO 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
    GCK GC-KV ! ;
 
 \ run the forward softmax on the f64 input array `src`, write the f64 output to `dst`
@@ -78,15 +78,15 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    src GC-IN PACK4
-   GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
-   GC-FWD @ 256 1 1 s" cuFuncSetBlockShape" GC-SYM CALL4 drop
-   GC-FWD @ 20 s" cuParamSetSize" GC-SYM CALL2 drop
-   GC-FWD @ 0  GC-dX P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-FWD @ 8  GC-dO P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-FWD @ 16 GC-KV P>N 4 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-FWD @ 1 1 s" cuLaunchGrid" GC-SYM CALL3 drop
-   0 s" cuCtxSynchronize" GC-SYM CALL1 drop
-   GC-OUT P>N GC-dO @ 16 s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
+   GC-dX @ >CUDA-DEVPTR GC-IN 16 >LEN CUDA:HTOD
+   GC-FWD @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   GC-FWD @ >CUDA-FN 20 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   GC-FWD @ >CUDA-FN 0 >IDX  GC-dX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FWD @ >CUDA-FN 8 >IDX  GC-dO 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FWD @ >CUDA-FN 16 >IDX GC-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-FWD @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   GC-OUT GC-dO @ >CUDA-DEVPTR 16 >LEN CUDA:DTOH
    GC-OUT-GUARD
    GC-OUT dst UNPACK4 ;
 
@@ -95,23 +95,23 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    GC-OUT 16 PTXSENT:FILL                            \ poison readback: dropped copy-back fails closed
    1 GCK 256 PTX-ROW-LAUNCH-CHECK
    HX GC-IN PACK4   HDY GC-DYB PACK4
-   GC-dX @ GC-IN P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
-   GC-dDY @ GC-DYB P>N 16 s" cuMemcpyHtoD_v2" GC-SYM CALL3 drop
-   GC-BWD @ 256 1 1 s" cuFuncSetBlockShape" GC-SYM CALL4 drop
-   GC-BWD @ 28 s" cuParamSetSize" GC-SYM CALL2 drop
-   GC-BWD @ 0  GC-dX P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-BWD @ 8  GC-dDY P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-BWD @ 16 GC-dO P>N 8 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-BWD @ 24 GC-KV P>N 4 s" cuParamSetv" GC-SYM CALL4 drop
-   GC-BWD @ 1 1 s" cuLaunchGrid" GC-SYM CALL3 drop
-   0 s" cuCtxSynchronize" GC-SYM CALL1 drop
-   GC-OUT P>N GC-dO @ 16 s" cuMemcpyDtoH_v2" GC-SYM CALL3 drop
+   GC-dX @ >CUDA-DEVPTR GC-IN 16 >LEN CUDA:HTOD
+   GC-dDY @ >CUDA-DEVPTR GC-DYB 16 >LEN CUDA:HTOD
+   GC-BWD @ >CUDA-FN 256 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   GC-BWD @ >CUDA-FN 28 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   GC-BWD @ >CUDA-FN 0 >IDX  GC-dX 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-BWD @ >CUDA-FN 8 >IDX  GC-dDY 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-BWD @ >CUDA-FN 16 >IDX GC-dO 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-BWD @ >CUDA-FN 24 >IDX GC-KV 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   GC-BWD @ >CUDA-FN 1 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
+   GC-OUT GC-dO @ >CUDA-DEVPTR 16 >LEN CUDA:DTOH
    GC-OUT-GUARD
    GC-OUT HDXA UNPACK4 ;
 
 : GC-RELEASE ( -- )
-   GC-MF @ s" cuModuleUnload" GC-SYM CALL1 drop
-   GC-DEV @ s" cuDevicePrimaryCtxRelease" GC-SYM CALL1 drop ;
+   GC-MF @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0
+   GC-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RELEASE CUDA:RC0 ;
 
 \ numerical dx[j] = sum_i dy[i]*(y+[i]-y-[i]) / (2 eps)
 : GC-EPS ( -- r )  1.0 4096.0 f/ ;                  \ 2^-12, exact f32
