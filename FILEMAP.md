@@ -344,6 +344,15 @@ points stay listed.
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK
   1024` changes shared-memory size and reduction fold bounds.
+- `tools/ptx/sum-device-cg.f` — single-kernel SUM_ROWS emit (one module header)
+  so ptxas assembles it for the Orin sum device golden; same body as sum-cg.f.
+- `tools/ptx/zed-device-suite.f` — Orin device proof of the collective fix:
+  emits SUM_ROWS / softmax forward / softmax backward PTX with the branch engine,
+  ships via the ssh harness, remote ptxas-assembles, and launches the committed
+  launchers on the Orin comparing the CPU reference. HABU_ZED-gated.
+- `tools/ptx/launch-neg-test.f` — fail-closed regressions for the launch/emit
+  contracts: malformed WHERE (E-PTX-SYNTAX), block mismatch and k > block
+  (E-PTX-BLOCK); the same header.f/launch.f contracts the device goldens launch under.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
