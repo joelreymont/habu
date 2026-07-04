@@ -14,26 +14,25 @@
 \ place per key) rather than resetting - the caller SK-TAB-RESETs first for a clean
 \ durable->memory rebuild.
 \
-\ Engine-hash decision (section 7.4 engine field; cad-5 seam).
-\ The engine field distinguishes schedules produced by different bin/hb engine
-\ versions so a schedules.rows written by engine v1 is not replayed under engine v2.
-\ Computing it as the content key of bin/hb via lib/content-key.f was evaluated for
-\ cad-5 and DEFERRED; SK-ENGINE$ keeps the honest "engine-unbound" placeholder. Why:
-\   1. No robust self-path. A --loaded script has no portable way to learn bin/hb's own
-\      absolute path: "bin/hb" resolves only from the workspace-root cwd, and argv[0]
-\      is caller-controlled (a bare PATH name need not resolve from a test cwd). A key
-\      that silently degrades to a placeholder when the path fails would fragment the
-\      store (one engine -> two keys) - a silent fallback, forbidden. A sometimes-real,
-\      sometimes-placeholder key is worse than one honest placeholder.
-\   2. Hot-path weight. lib/content-key.f drags SHA256 + memory + fs machinery into the
-\      interactive MODEL:/TILE key-render path (maki/sched-key.f) for a field that only
-\      matters to cross-process durability.
-\   3. Bounded risk. schedules.rows lives under tmp/ (regenerable, per-workspace, never
-\      committed), so a stale-engine replay is local and self-healing (STORE-RESET / a
-\      tmp wipe clears it), not a shipped soundness hole.
-\ Correct fix (needs a dot): a first-class engine-identity capability - a stable
-\ self-path fact plus a content key computed once at load and cached - then SK-ENGINE$
-\ returns that key and the store keys by real engine identity.
+\ Engine-hash decision (section 7.4 engine field).
+\ The engine field distinguishes schedules produced by different bin/hb engine builds
+\ so a schedules.rows written by one engine is not replayed under another. It is now
+\ the real content key of bin/hb, supplied by the first-class engine-identity
+\ capability in lib/engine-id.f: the engine resolves its OWN executable path from the
+\ kernel-provided process image (macOS apple[] executable_path - the source
+\ _NSGetExecutablePath reads; Linux /proc/self/exe), not from a script guessing
+\ "bin/hb" against the cwd or the caller-controlled argv[0], and SHA-256s that binary
+\ once on first request, cached thereafter. SK-ENGINE$ returns that key, so the store
+\ keys by real engine identity. The two properties that once forced the
+\ "engine-unbound" placeholder now hold:
+\   - Robust self-path: an engine-side fact from the process image, resolved once and
+\     cached; ENGINE-KEY$ fails closed with a named throw if it cannot be resolved or
+\     hashed, never a silent degrade to a placeholder (which would fragment the store,
+\     one engine -> two keys).
+\   - No hot-path weight: the SHA-256 is lazy + cached, run only when a durable key is
+\     first rendered, so it never weighs on the interactive MODEL:/TILE key render.
+\ schedules.rows still lives under tmp/ (regenerable, per-workspace, never committed),
+\ so replay stays local and self-healing.
 \
 \ maki -> habu only.
 

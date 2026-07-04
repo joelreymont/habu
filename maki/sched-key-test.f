@@ -43,17 +43,20 @@ T-RESET
 200 300 SK-SHAPE-CLASS$ s" p256+txp512+t" T$=
 0   65  SK-SHAPE-CLASS$ s" ?xp128+t"      T$=
 
-\ ---- key-field placeholders (honest v1 constants / cad-5 seam) --------------
-SK-TARGET$ s" sm_87"          T$=
-SK-ENGINE$ s" engine-unbound" T$=
-SK-PTXAS$  s" unprobed"        T$=
+\ ---- key fields: honest v1 constants + the real engine content key -----------
+SK-TARGET$ s" sm_87"    T$=
+SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
+SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder
+SK-PTXAS$  s" unprobed"  T$=
 
 \ ---- full section 7.4 key over a built region ------------------------------
 2 100 BUILD  0 AL-16 MIR-SLOT-AL!  FP-BUILD
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
 0 SK-KEY$ KT-SAVE
 s" 431E24867468A764|" KT-IN                          \ leads with the region signature
-s" |2xp128+t|f32|row|al16|sm_87|engine-unbound|unprobed" KT-IN
+s" |2xp128+t|f32|row|al16|sm_87|" KT-IN              \ fixed fields through the target
+SK-ENGINE$ KT-IN                                     \ the real engine content key, in place
+s" |unprobed" KT-IN                                  \ ptxas field suffix
 0 SK-ALIGN$ s" al16" T$=
 
 \ ---- alignment class falls back to al? for an unrecorded input --------------

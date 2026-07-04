@@ -11,8 +11,9 @@
 \ lib/content-key.f's SHA256 keys are a file-content cache (fs paths, mtime, mmap)
 \ that is not loadable as an in-memory region hash here, and lib/map.f's hash is a
 \ tag-newtype-wrapped map internal; a small documented FNV-1a over the region's node
-\ facts is the self-contained content hash, and swaps to SHA256 when cad-5 wires the
-\ engine content key.
+\ facts is the self-contained content hash. (The separate engine field carries the
+\ real SHA-256 content key over bin/hb via lib/engine-id.f; the region signature
+\ itself stays an in-memory FNV-1a.)
 \
 \ Shape class (section 7.4): each extent <= 64 is rendered exactly; a larger extent
 \ becomes a power-of-two bucket plus a tail flag ("p128+t" when it is not itself a
@@ -20,9 +21,10 @@
 \
 \ Alignment class: the most conservative model-input alignment the region reads
 \ (AL-16 when it reads no model input - compiler-allocated buffers are aligned by
-\ construction). Target is the "sm_87" v1 constant; the engine hash is a documented
-\ placeholder until cad-5 supplies the real engine content key; ptxas version is the
-\ honest "unprobed" placeholder (no ptxas is probed on a host without a device).
+\ construction). Target is the "sm_87" v1 constant; the engine hash is the real
+\ SHA-256 content key over bin/hb (lib/engine-id.f, resolved engine-side, lazy +
+\ cached); ptxas version is the honest "unprobed" placeholder (no ptxas is probed
+\ on a host without a device).
 \
 \ Replay: a bounded in-memory key->selection table with GET/PUT. This is the cad-5
 \ store SEAM - a query that misses returns (-1 false) so the caller falls back to the
@@ -36,6 +38,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
+require lib/engine-id.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/schedule.f
@@ -118,10 +121,12 @@ public
 
 \ ---- key field placeholders -------------------------------------------------
 : SK-TARGET$ ( -- ptr u8 n )  s" sm_87" ;         \ single supported target (v1)
-\ cad-5 evaluated the real engine content key (content-key of bin/hb) and DEFERRED it:
-\ no robust engine self-path + hot-path dep weight; see maki/store-replay.f header +
-\ its capability dot. Honest placeholder until that lands.
-: SK-ENGINE$ ( -- ptr u8 n )  s" engine-unbound" ;
+\ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
+\ kernel-provided self-path and hashed once on first request, then cached
+\ (lib/engine-id.f). It distinguishes schedules produced by different engine builds
+\ so a schedules.rows written by one engine is never replayed under another; the
+\ lazy+cached hash keeps it off the interactive key-render hot path.
+: SK-ENGINE$ ( -- ptr u8 n )  ENGINE-KEY$ ;
 : SK-PTXAS$  ( -- ptr u8 n )  s" unprobed" ;       \ no ptxas probed off-device
 
 \ representative (output) node of a region - the default-context source (rowlen/dtype)
