@@ -77,6 +77,13 @@ MODEL: RBC ( x:2x3 -- y ) RELU ;
 ' TRY-BIND-CONFLICT E-CAD-BIND-CONFLICT TTHROWS
 ' TRY-BIND-ZERO     E-CAD-BIND-SHAPE    TTHROWS
 
+\ ---- reprop enforces param-shape legality once the deferred (0) extent binds -----
+\ RBM's residual param r:2x4 is legal only if the data batch row binds to 2; binding
+\ it to 3 makes the residual data 3x4 vs the 2x4 param -> reprop throws E-CAD-PARAM-SHAPE.
+MODEL: RBM ( x:0x4 r:2x4 -- y ) RELU RESIDUAL-ADD ;
+: TRY-BIND-EWSHAPE ( -- )  BS-RESET  3 4 BS-PUSH  2 4 BS-PUSH  BS-BIND ;
+' TRY-BIND-EWSHAPE E-CAD-PARAM-SHAPE TTHROWS
+
 T-REPORT
 
 end-package

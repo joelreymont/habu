@@ -34,7 +34,10 @@
 \ few declared inputs -> E-CAD-ARITY; too many inputs -> E-CAD-INPUTS; a bad named
 \ value (duplicate, op-shadow, oversized, table full) -> E-CAD-NAME; ">V" with no
 \ current value -> E-CAD-NOVALUE; a reference the following op cannot accept ->
-\ E-CAD-REF. LOWER reports REAL node facts (op
+\ E-CAD-REF; a param operand whose shape is illegal for the op's broadcast class
+\ (add/mul/residual-add need same-shape, bias 1xC, scale 1x1 or same-shape, linear
+\ bias 1xN) -> E-CAD-PARAM-SHAPE (an unbound 0 extent defers to BIND-SHAPES reprop).
+\ LOWER reports REAL node facts (op
 \ count + shape/dtype/layout keys from the IR); FUSE plans real regions + traffic
 \ (maki/fusion-plan.f, maki/traffic.f); MEMORY plans per-hot coalescing status +
 \ vector-width/tail facts (maki/mem-plan.f, cad-3); TILE stays conservative (cad-4).
@@ -74,6 +77,8 @@ require maki/gradcheck.f
 -5160 constant E-CAD-BIND-COUNT    \ BIND-SHAPES spec count != model input slots
 -5161 constant E-CAD-BIND-CONFLICT \ a spec contradicts an already-bound (nonzero) extent
 -5162 constant E-CAD-BIND-SHAPE    \ malformed/zero spec dim or illegal re-propagated shape
+\ Capture-time param-operand shape legality uses -5163 (the -502x capture decade is full).
+-5163 constant E-CAD-PARAM-SHAPE   \ elementwise/linear param operand shape illegal for the op's broadcast class
 
 package MAKI
 private
@@ -203,6 +208,39 @@ private
    CAP-PEND-CNT 0 > if CAP-PEND-DEQ >tensor
    else CAP-IP @ CAP-IN@  CAP-IP @ 1+ CAP-IP !  then ;
 
+\ ---- param-operand shape legality (shared by capture + BIND-SHAPES reprop) ------
+\ A binary elementwise op's parameter must broadcast-match its data operand under the
+\ op's documented class (the same classes maki/backward.f adjoints assume):
+\   ADD / MUL / RESIDUAL-ADD : param EQUALS data
+\   BIAS                     : param is 1 x (data cols)      (row broadcast)
+\   SCALE                    : param EQUALS data OR is 1 x 1  (scalar broadcast)
+\ LINEAR routes its bias through the BIAS class against the OUTPUT cols. An unbound
+\ (0) extent defers: capture passes and BIND-SHAPES re-propagation re-checks once
+\ bound. Ops with no documented class (rope / synthesized backward ops) are unconstrained.
+: SHP-BOUND? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}   \ all four extents bound (nonzero)
+   dr 0<> dc 0<> and  pr 0<> and  pc 0<> and ;
+: SHP-SAME? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}    \ param EQUALS data
+   pr dr =  pc dc =  and ;
+: SHP-ROW? ( n n n -- bool ) {: dc:n pr:n pc:n :}            \ param is 1 x dc
+   pr 1 =  pc dc =  and ;
+: SHP-SCALAR? ( n n -- bool ) {: pr:n pc:n :}                \ param is 1 x 1
+   pr 1 =  pc 1 =  and ;
+: SHP-LEGAL? ( n n n n n -- bool ) {: dr:n dc:n pr:n pc:n op:n :}
+   dr dc pr pc SHP-BOUND? 0= if true exit then             \ unbound -> defer to reprop
+   op OP-BIAS = if dc pr pc SHP-ROW? exit then
+   op OP-SCALE = if dr dc pr pc SHP-SAME?  pr pc SHP-SCALAR? or exit then
+   op OP-ADD = op OP-MUL = or op OP-RESIDUAL-ADD = or if
+      dr dc pr pc SHP-SAME? exit then
+   true ;                                                  \ op has no documented class
+: SHP-CHECK ( n n n n n -- )
+   SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
+
+\ capture entry points: elementwise param vs its data operand; linear bias vs output cols
+: EW-SHAPE-CHECK ( tensor tensor n -- ) {: x:tensor p:tensor op:n :}
+   x TV-ROWS@ x TV-COLS@  p TV-ROWS@ p TV-COLS@  op  SHP-CHECK ;
+: LIN-BIAS-CHECK ( tensor tensor tensor -- ) {: x:tensor w:tensor b:tensor :}
+   x TV-ROWS@ w TV-COLS@  b TV-ROWS@ b TV-COLS@  OP-BIAS  SHP-CHECK ;
+
 : CAP-OP ( n -- ) {: op:n :}                    \ apply one op-kind to the current value
    op OPR-ARITY {: ar:n :}
    ar 1- CAP-NEED
@@ -211,10 +249,12 @@ private
       CAP-CUR@ op PLAN-UNARY CAP-CUR!
    else ar 2 = if
       CAP-CUR@ {: x:tensor :}  CAP-PARAM {: p:tensor :}
-      mm if x p op PLAN-MATMUL else x p op PLAN-BIN-EW then CAP-CUR!
+      mm if x p op PLAN-MATMUL
+      else x p op EW-SHAPE-CHECK  x p op PLAN-BIN-EW then CAP-CUR!
    else ar 3 = if
       CAP-CUR@ {: x3:tensor :}  CAP-PARAM {: p1:tensor :}  CAP-PARAM {: p2:tensor :}
-      mm if x3 p1 p2 op PLAN-LINEAR else x3 p1 p2 op PLAN-TERN-EW then CAP-CUR!
+      mm if x3 p1 p2 LIN-BIAS-CHECK  x3 p1 p2 op PLAN-LINEAR
+      else x3 p1 p2 op PLAN-TERN-EW then CAP-CUR!
    else
       E-CAD-ARITY throw
    then then then
@@ -435,11 +475,26 @@ private
    attr MV-TF@  nd cols RB-MOVE-VD  attr MV-PA@  attr MV-PB@  MV-PACK  nd MIR-ATTR!
    rows cols nd MIR-SHAPE! ;
 
+\ param-operand legality re-check over IR operands (mirrors the capture SHP-CHECK):
+\ operand 1 must broadcast-match operand 0 under the node op's class. Unary elementwise
+\ and row-reduce ops have no param operand (count < 2) and skip.
+: RB-EW-PARAM ( n -- ) {: nd:n :}
+   nd MIR-IN-COUNT@ 2 < if exit then
+   nd 0 MIR-IN@ {: d:n :}  nd 1 MIR-IN@ {: p:n :}
+   d RB-REF-ROWS d RB-REF-COLS  p RB-REF-ROWS p RB-REF-COLS  nd MIR-OP@  SHP-CHECK ;
+
+\ contraction re-check: the linear bias (operand 2) must be 1 x (output cols); matmul
+\ (no bias operand) skips. Inner-dim agreement stays in RB-MM.
+: RB-MM-BIAS ( n -- ) {: nd:n :}
+   nd MIR-IN-COUNT@ 3 < if exit then
+   nd 0 MIR-IN@ {: x:n :}  nd 1 MIR-IN@ {: w:n :}  nd 2 MIR-IN@ {: b:n :}
+   x RB-REF-ROWS w RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  OP-BIAS  SHP-CHECK ;
+
 : REPROP-NODE ( n -- ) {: nd:n :}
    nd MIR-OP@ OPR-CLASS {: cls:n :}
    cls CLASS-MOVEMENT = if nd REPROP-MOVE exit then
-   cls CLASS-MATMUL   = if nd RB-MM nd MIR-SHAPE! exit then
-   nd RB-DATA nd MIR-SHAPE! ;
+   cls CLASS-MATMUL   = if nd RB-MM-BIAS nd RB-MM nd MIR-SHAPE! exit then
+   nd RB-EW-PARAM  nd RB-DATA nd MIR-SHAPE! ;
 
 : REPROP-ALL ( -- )  MIR-N@ 0 ?do  i REPROP-NODE  loop ;
 

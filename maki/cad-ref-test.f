@@ -27,6 +27,9 @@ variable CR-VA  variable CR-VU
 : CR-TRY-REF-DANGLE ( -- )                                            \ a ref left unconsumed at ";"
    CAP-BEGIN 2 2 CAP-INPUT  OP-GELU CAP-OP  0 CAP-PEND-PUSH  CAP-END ;
 : CR-TRY-UNBOUND   ( -- )  s" H9" OP-KIND drop ;                      \ unbound reference = unknown token
+: CR-TRY-REF-BADSHAPE ( -- )                                         \ a named residual ref whose shape != the current value
+   CAP-BEGIN 4 8 CAP-INPUT  2 3 CAP-INPUT       \ input0 4x8 (current), input1 2x3
+   1 CAP-PEND-PUSH  OP-RESIDUAL-ADD CAP-OP ;    \ residual reads the 2x3 ref against 4x8 data
 
 T-RESET
 
@@ -37,6 +40,7 @@ T-RESET
 ' CR-TRY-REF-UNARY  E-CAD-REF     TTHROWS
 ' CR-TRY-REF-DANGLE E-CAD-REF     TTHROWS
 ' CR-TRY-UNBOUND    E-CAD-OP      TTHROWS
+' CR-TRY-REF-BADSHAPE E-CAD-PARAM-SHAPE TTHROWS
 
 \ ---- residual to a declared INPUT (true skip): "x RESIDUAL-ADD" reads input 0 --
 \ the residual's second operand is x (i0), NOT the next positional declared input.

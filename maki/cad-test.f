@@ -24,6 +24,13 @@ variable CT-VA  variable CT-VU
 : TRY-ARITY   ( -- )  CAP-BEGIN 2 2 CAP-INPUT OP-LINEAR CAP-OP ;
 : TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do 1 1 CAP-INPUT loop ;
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
+\ ---- capture-time param-shape legality probes (positional operands) ----------
+: TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
+   CAP-BEGIN 4 8 CAP-INPUT  2 3 CAP-INPUT  OP-RESIDUAL-ADD CAP-OP ;
+: TRY-BIAS-BADCOL ( -- )                              \ bias cols != data cols (not 1xC)
+   CAP-BEGIN 2 4 CAP-INPUT  1 3 CAP-INPUT  OP-BIAS CAP-OP ;
+: TRY-SCALE-BAD   ( -- )                              \ scale param neither same-shape nor 1x1
+   CAP-BEGIN 2 4 CAP-INPUT  1 4 CAP-INPUT  OP-SCALE CAP-OP ;
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
@@ -55,6 +62,16 @@ s" SOFTMAX-ROW" OP-KIND OP-SOFTMAX-ROW T=
 ' TRY-ARITY   E-CAD-ARITY  TTHROWS
 ' TRY-INPUTS  E-CAD-INPUTS TTHROWS
 ' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
+
+\ ---- param-operand shape legality: broadcast classes pass, mismatches fail closed -
+\ residual/add/mul need same-shape; bias is 1xC; scale is 1x1 or same-shape. Legal
+\ broadcast operands still capture; an illegal param shape throws E-CAD-PARAM-SHAPE.
+MODEL: SCB ( x:2x4 s:1x1 -- y ) SCALE ;   MODEL-K 1 T=      \ 1x1 scale broadcast
+MODEL: SCE ( x:2x4 s:2x4 -- y ) SCALE ;   MODEL-K 1 T=      \ same-shape scale
+MODEL: BIB ( x:2x4 b:1x4 -- y ) BIAS ;    MODEL-K 1 T=      \ 1xC bias broadcast
+' TRY-EW-MISMATCH E-CAD-PARAM-SHAPE TTHROWS
+' TRY-BIAS-BADCOL E-CAD-PARAM-SHAPE TTHROWS
+' TRY-SCALE-BAD   E-CAD-PARAM-SHAPE TTHROWS
 
 \ ---- capture a toy FFN by running the body through the planning vocabulary --
 MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
