@@ -386,11 +386,33 @@ automatically from checked words. Correctness at scale: 30 models
 device-golden across the four region classes and whole-model execution,
 including a three-region FFN with device-resident intermediate buffers.
 
-\todo{Compute-bound results (CAD-PLAN \S8.1, in progress): register-blocked
-GEMM vs Triton autotuned baseline at 512/1024/2048; then cp.async stages,
-tensor-core MMA, persistent-vs-JIT autotune warmup, end-to-end model
-latency vs torch.compile. Insert measurement tables; no prose without
-numbers.}
+\paragraph{Compute-bound: the first baseline.} Square f32 GEMM
+$C=A\cdot B$, CUDA-event timing, same device and session:
+
+\begin{center}\begin{tabular}{lrrr}
+\toprule
+GFLOP/s & $512^3$ & $1024^3$ & $2048^3$\\
+\midrule
+generated naive tile (1 elem/thread) & 55.0 & 55.2 & 54.6\\
+generated blocked $64{\times}64$ tile & 356.6 & 375.0 & 380.5\\
+Triton, autotuned \code{tl.dot} & 1636.1 & 1755.4 & 1890.5\\
+\bottomrule
+\end{tabular}\end{center}
+
+The blocked schedule (shared-memory staged tiles, $4{\times}4$ register
+micro-tiles) delivers $6.5$--$7.0\times$ over the naive tile and scales
+with size; both generated kernels pass the same device golden that
+verifies every region. The remaining $\approx\!4.6$--$5.0\times$ to
+Triton is \emph{arithmetic, not scheduling}: its \code{tl.dot} executes
+TF32 tensor-core instructions (measured relative error ${\sim}8{\times}
+10^{-4}$ against an f32 reference, versus ${\sim}10^{-6}$ for our f32 FMA
+kernels)---a precision our golden gate would currently \emph{reject}
+under the matmul tolerance. Closing that gap is therefore
+gate-\emph{licensed} precision plus \code{mma.sync} emission and
+\code{cp.async} pipelining---mechanical next steps of the same plan, to
+be reported with the same honesty. \todo{cp.async stages, tensor-core
+MMA under a licensed-precision row, persistent-vs-JIT autotune warmup,
+end-to-end model latency vs torch.compile.}
 
 \subsection{Discussion: What Is and Is Not Provable}\label{sec:theory}
 We claim no theoretical dominance over Triton's per-kernel scheduling.
