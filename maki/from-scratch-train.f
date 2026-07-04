@@ -1,9 +1,9 @@
-\ maki/scratch-train.f - one host-side training step for the from-scratch flagship
+\ maki/from-scratch-train.f - one host-side training step for the from-scratch flagship
 \ and the loop that drives it to convergence (dot habu-maki-from-scratch;
 \ docs/model-cad.md Phase 9b; CAD-PLAN section 12 "the training step is one plan
 \ unit").
 \
-\ Composes the LANDED machinery over the windowed MLP (maki/scratch-model.f):
+\ Composes the LANDED machinery over the windowed MLP (maki/from-scratch-model.f):
 \   * BW-BUILD (maki/backward.f) builds forward+backward ONCE into the shared IR
 \     and keeps it - the IR is static for the whole session, no MIR-MARK rollback;
 \   * EX-BIND / EX-RUN(-N) / EX-OUT@ (maki/executor.f) bind the parameter + input +
@@ -33,7 +33,7 @@
 \ each independent run (e.g. the determinism check re-runs from a fresh capture).
 \ maki -> habu only; owns -5150..-5159.
 
-require maki/scratch-model.f
+require maki/from-scratch-model.f
 require maki/backward.f
 require maki/executor.f
 require maki/loss.f
@@ -144,7 +144,7 @@ public
 : SC-INITIAL@ ( -- r )  SC-CK SC-INIT-L @ ;
 : SC-FINAL@   ( -- r )  SC-CK SC-FINAL-L @ ;
 
-\ ---- convergence gate parameters (committed; asserted by maki/scratch-test.f) --
+\ ---- convergence gate parameters (committed; asserted by maki/from-scratch-test.f) --
 : SC-CONV-RATIO  ( -- r )  0.5 ;    \ require final < initial * ratio (loss halved)
 : SC-CONV-THRESH ( -- r )  0.0 ;    \ require final NLL < 0 (confident fit; init is +0.13)
 

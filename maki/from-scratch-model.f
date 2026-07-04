@@ -1,4 +1,4 @@
-\ maki/scratch-model.f - the from-scratch training flagship: a windowed MLP over
+\ maki/from-scratch-model.f - the from-scratch training flagship: a windowed MLP over
 \ feature-sequence windows plus its committed seeded synthetic dataset (dot
 \ habu-maki-from-scratch; docs/model-cad.md Phase 9b; CAD-PLAN section 12).
 \
@@ -15,7 +15,7 @@
 \ same data - no runtime randomness. Parameters init from a SEPARATELY-seeded LCG
 \ stream to small non-zero values (breaks the all-zero symmetry, keeps early
 \ logits small). One concern: the model + its data; the training loop lives in
-\ maki/scratch-train.f. maki -> habu only.
+\ maki/from-scratch-train.f. maki -> habu only.
 
 require maki/cad.f
 require maki/array.f

@@ -1,4 +1,4 @@
-\ maki/scratch-test.f - the seeded convergence gate for the from-scratch flagship.
+\ maki/from-scratch-test.f - the seeded convergence gate for the from-scratch flagship.
 \
 \ End-to-end, deterministic: gradcheck the model once (the same IR trains and
 \ gradchecks), then train SCT-N steps from random init on the committed seeded
@@ -7,12 +7,12 @@
 \ or numeric regression fails this gate like a wrong answer. Determinism is exact:
 \ the whole pipeline is single-threaded float arithmetic in a fixed order, so the
 \ same seed reproduces the final loss bit-for-bit (asserted with f=). Wired into
-\ maki/test.f AFTER maki/scratch-train-test.f (which relies on SC-RUN not having
+\ maki/test.f AFTER maki/from-scratch-train-test.f (which relies on SC-RUN not having
 \ run yet for its fail-closed accessor tests).
 
 require lib/test.f
 require lib/float.f
-require maki/scratch-train.f
+require maki/from-scratch-train.f
 require maki/gradcheck.f
 
 package MAKI

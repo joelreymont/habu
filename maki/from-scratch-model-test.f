@@ -1,4 +1,4 @@
-\ maki/scratch-model-test.f - the windowed MLP capture + committed seeded data.
+\ maki/from-scratch-model-test.f - the windowed MLP capture + committed seeded data.
 \
 \ Asserts the MODEL: capture (3 nodes, 8x2 output, f32/row), the deterministic
 \ dataset (same seed -> exact same features and targets, independent of the
@@ -8,7 +8,7 @@
 
 require lib/test.f
 require lib/float.f
-require maki/scratch-model.f
+require maki/from-scratch-model.f
 
 package MAKI
 

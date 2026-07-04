@@ -1,4 +1,4 @@
-\ maki/scratch-train-test.f - one training step over the executor.
+\ maki/from-scratch-train-test.f - one training step over the executor.
 \
 \ Drives the landed machinery (BW-BUILD / EX-BIND / EX-RUN / T-SGD!) through
 \ SC-SETUP + SC-STEP and proves: the exact IR that trains also gradchecks
@@ -7,11 +7,11 @@
 \ buffers; a step is bit-deterministic from a fresh capture; and the accessor
 \ fail-closed guard before any run (E-SC-RUN). This file NEVER calls SC-RUN, so
 \ the run flag stays clear for the throw tests - it must be wired BEFORE
-\ maki/scratch-test.f (the first file that runs SC-RUN) in maki/test.f.
+\ maki/from-scratch-test.f (the first file that runs SC-RUN) in maki/test.f.
 
 require lib/test.f
 require lib/float.f
-require maki/scratch-train.f
+require maki/from-scratch-train.f
 require maki/gradcheck.f
 
 package MAKI

@@ -146,11 +146,11 @@ TEST:SUITE maki/golden-test.f
 TEST:END-SUITE
 TEST:SUITE maki/gradcheck-test.f
 TEST:END-SUITE
-TEST:SUITE maki/scratch-model-test.f
+TEST:SUITE maki/from-scratch-model-test.f
 TEST:END-SUITE
-TEST:SUITE maki/scratch-train-test.f
+TEST:SUITE maki/from-scratch-train-test.f
 TEST:END-SUITE
-TEST:SUITE maki/scratch-test.f
+TEST:SUITE maki/from-scratch-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:END-SUITE
