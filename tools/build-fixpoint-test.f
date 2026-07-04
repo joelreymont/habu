@@ -486,6 +486,22 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
+\ stage-input path (hb-stage reads that name), so BF-CERTIFY-STAGE2 and
+\ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
+\ exists in each phase and that the stdin phase OVERWRITES it with distinct
+\ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.
+: BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
+   BFT-ROOT BF-TMP!
+   BF-STAGE2-SOURCE
+   BFT-STAGE2 FILE? TTRUE
+   BF-RECORD-STAGE
+   BF-STDIN-SOURCE
+   BFT-STAGE2 FILE? TTRUE
+   BF-RECORD-STDIN
+   BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
+   BF-TMP-RESET ;
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -511,6 +527,7 @@ create BFT-CHECK-OFF-LINE
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
+   s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP

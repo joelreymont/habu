@@ -864,6 +864,13 @@ variable BF-CERT-PATH-U
    BF-CERTIFY-RC 0= IF exit THEN
    BF-CERT-LABEL$ BF-CERTIFY-REPORT ;
 
+\ The stage engine reads its source from the fixed `stage2-src` name in the temp
+\ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
+\ both build phases emit into that one path. BF-STAGE2-SOURCE writes the stage2
+\ source, then BF-STDIN-SOURCE OVERWRITES the same path with the stdin driver
+\ source before BF-CERTIFY-STDIN runs. Each certify therefore reads the same
+\ physical path but its own phase's distinct content — the `stage2-src`/`stdin-src`
+\ argument is the diagnostic label for the phase, not a second file name.
 : BF-CERTIFY-STAGE2 ( -- )
    s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
 
