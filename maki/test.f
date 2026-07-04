@@ -49,64 +49,64 @@ variable START-NS
 INSTALL
 TEST:RESET
 
-TEST:GROUP-SEQUENTIAL maki
+TEST:GROUP SEQ maki
 TEST:SUITE maki/array-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/optim-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/optim-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/loss-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/autograd-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fmath-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/softmax-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/celoss-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/matmul-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/linear-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/autograd-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/loss-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/layernorm-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/gelu-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/embedding-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/attention-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/mlp-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/train-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/onnx-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/device-artifacts-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-fixture.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-repair.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 
 end-package
 

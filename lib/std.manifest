@@ -787,12 +787,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test/suite.f	word	TEST:RESET	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	clear suite definitions and restore default group
 1	test	lib/test/suite.f	word	TEST:LABEL$	(-- ptr u8 n)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	return current test label
 1	test	lib/test/suite.f	word	TEST:LABEL=	(ptr u8 n -- bool)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	compare against current test label
-1	test	lib/test/suite.f	word	TEST:GROUP-PARALLEL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named parallel test group
-1	test	lib/test/suite.f	word	TEST:GROUP-SEQUENTIAL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named sequential test group
-1	test	lib/test/suite.f	word	TEST:END-GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test group
+1	test	lib/test/suite.f	word	TEST:GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	open a named test group with SEQ or PARA mode
+1	test	lib/test/suite.f	word	TEST:;GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test group
 1	test	lib/test/suite.f	word	TEST:SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named file test
 1	test	lib/test/suite.f	word	TEST:SUITE-STDIN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named stdin file test
-1	test	lib/test/suite.f	word	TEST:END-SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
+1	test	lib/test/suite.f	word	TEST:;SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
 1	test	lib/test/suite.f	word	TEST:RUN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	run configured setup tests drain and teardown
 1	test-snap	lib/test/snap.f	module			lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	typed SNAP= stack snapshot comparator aggregated into the assert counters
 1	test-snap	lib/test/snap.f	word	TS-CELL	(ptr a n -- ptr a)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	return one bounded snapshot scratch cell address

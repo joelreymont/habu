@@ -1592,11 +1592,12 @@ quotation syntax is unavailable.
 `TEST:*` defines reusable suite/group/test orchestration. Project adapters
 install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
 `TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:SELECT?!`, `TEST:RUNNER!`, and
-`TEST:STDIN-RUNNER!`; test files declare named parallel or sequential groups
-with `TEST:GROUP-PARALLEL` / `TEST:GROUP-SEQUENTIAL`, define `TEST:SUITE` or
-`TEST:SUITE-STDIN` entries, close each entry with `TEST:END-SUITE`, and execute
-once with `TEST:RUN`. Fixture helper words should live in a private package, not
-global stemmed names.
+`TEST:STDIN-RUNNER!`; test files declare named groups with
+`TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
+mandatory positional token before the group name), define `TEST:SUITE` or
+`TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
+with `TEST:;GROUP`, and execute once with `TEST:RUN`. Fixture helper words should
+live in a private package, not global stemmed names.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked

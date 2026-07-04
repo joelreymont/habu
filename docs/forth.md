@@ -19,8 +19,8 @@ file.
   follows the opener). Never `BEGIN-FOO`/`END-FOO`, `FOO-END`, or `ENDFOO`
   pairs. ANS core control words (`begin … until`, `case … endcase`,
   `do … loop`, `of … endof`) stay as-is. Legacy pairs
-  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `end-package`, suite DSL
-  `END-GROUP`/`END-SUITE`) are being renamed under dots; do not add new uses.
+  (`BEGIN-STRUCTURE`/`END-STRUCTURE`, `end-package`) are being renamed under
+  dots; do not add new uses.
 - **Hyphens, never underscores — in word names *and* file names.** `T-CON`,
   `TV-RESET`, `MAX-TV` — not `T_CON`. Source files too: `camera-tracker.f`,
   `latency-xcorr.f`, `timestamp-metrics.f` — not `camera_tracker.f`. Underscores
@@ -382,7 +382,7 @@ address arithmetic at the public boundary.
   checked DSL first. Giant `s"` literals, fragile escaping, and private byte
   emitters are bugs unless they are the tested boundary of that DSL.
 - **Readable DSLs execute the body they name.** Prefer forms such as
-  `[: ITEM ;] NAME-FILES` or `TEST:SUITE name ... TEST:END-SUITE` over generic
+  `[: ITEM ;] NAME-FILES` or `TEST:SUITE name ... TEST:;SUITE` over generic
   list wrappers. A generic `execute` layer needs higher-order effects the checker
   may not model; direct row/body words keep the effect visible.
 - **Classification tables beat token ladders.** When a word becomes a long
@@ -661,11 +661,11 @@ T-RESET
 INSTALL
 TEST:RESET
 
-TEST:GROUP-SEQUENTIAL smoke
+TEST:GROUP SEQ smoke
 TEST:SUITE sample
    feature-test.f -- arg
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 
 TEST:RUN
 RUN-N @ 1 T=
@@ -677,8 +677,9 @@ end-package
   `lib/test.f` is the public framework interface: `T*` words are assertions,
   `TEST:SETUP!`/`TEST:TEARDOWN!`/`TEST:DRAIN!`/`TEST:ARGS-BEGIN!`/
   `TEST:ARG+!`/`TEST:SELECT?!`/`TEST:RUNNER!`/`TEST:STDIN-RUNNER!` install
-  typed hooks, and `TEST:GROUP-PARALLEL`, `TEST:GROUP-SEQUENTIAL`,
-  `TEST:END-GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:END-SUITE`, and
+  typed hooks, `TEST:GROUP SEQ|PARA name` opens a named group (mode is a
+  mandatory positional token — `SEQ` sequential, `PARA` parallel — before the
+  name), and `TEST:;GROUP`, `TEST:SUITE`, `TEST:SUITE-STDIN`, `TEST:;SUITE`, and
   `TEST:RUN` define and execute the suite. Do not publish helper globals like
   `FOO-TEST-SETUP-N`; package scope is the namespace.
 - Assert the **specific** outcome: inside checked definitions use

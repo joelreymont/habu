@@ -1228,6 +1228,17 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Runtime And REPL
 
+- **A word that `parse-name`s twice hangs under `bin/hb file.f`, not `--load`:**
+  the new `TEST:GROUP SEQ|PARA name` opener reads two tokens; single-script mode
+  loops on the second `parse-name`, but `--load`/`included` (how the gate runs)
+  are fine. Test DSL parsing words through `--load`, and drive rejection paths by
+  calling the factored string validators (`MODE-OF`/`CHECK-NAME`) on `s"` literals
+  under `TTHROWS`, not by feeding tokens to the parser at top level.
+- **DSL keyword names collide case-insensitively:** `TEST:GROUP` rejects a group
+  literally named `seq`/`SEQ` (and `PARA`, `GROUP`, `SUITE`, …) with `E-SUITE-NAME`
+  because names are matched `STR=CI` against the reserved set. The suite-test group
+  `seq` became `seq-grp` after the rename. Pick group labels outside the reserved
+  keyword set.
 - **Process capture lifecycle has one owner:** keep fd setup, nonblocking
   probe/drain, stdin write, timeout poll, cleanup, and finish in `lib/process.f`;
   argv/env/cwd layers prepare state only. Duplication made every capture variant
@@ -1245,7 +1256,7 @@ lesson — keep the specific word/code/path, cut the prose.
   don't disable checking themselves; put `0 set-check` in the harness.
 - **`--load` leaves stdin as tool data:** so a post-load probe piped to fd0 doesn't
   run — put capacity probes in an explicit loaded source file when measuring
-  `here`/metadata. Test load lists factor into `TEST:SUITE … TEST:END-SUITE`
+  `here`/metadata. Test load lists factor into `TEST:SUITE … TEST:;SUITE`
   blocks with short lines (long physical lines hit the reader buffer).
 - **PTY behavior needs a real pty harness:** `script(1)` interleaves echo/output;
   drive a pty directly and poll for exit when testing prompt, raw mode, history,

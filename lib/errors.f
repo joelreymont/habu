@@ -153,3 +153,9 @@
 -3803 constant E-DISC-UNTERM
 -3804 constant E-DISC-CAPACITY
 -3805 constant E-DISC-RETIRE
+
+\ Test-suite DSL: -3900..-3999
+-3900 constant E-SUITE-FIRST
+-3999 constant E-SUITE-LAST
+-3900 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
+-3901 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword
