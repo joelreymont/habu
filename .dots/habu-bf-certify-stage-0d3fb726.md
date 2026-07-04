@@ -17,3 +17,14 @@ PSTACK at RECURSE. Blocking flip, preflight retirement, boot-prefix hash pin,
 and stdin set-check retirement remain.
 The only new checker.f trust sites are thin mmap result refinements
 (`*-RC>PTR`); mmap invocation and failure checks remain checked.
+
+Progress 2026-07-04: preflight retirement + boot-prefix hash pin LANDED on
+fable. The habu1/habu2 typed-shape/bare-locals asserts retired (covered by the
+blocking HOOK compile - proven by a negative fixture: emitter underflow ->
+BF-CERTIFY-RC 70); icode asserts KEPT (check-off window; gated on the blocking
+flip); the two same-type codegen-role asserts KEPT (dot
+habu-preflight-codegen-role). BF-PIN closes the mid-build boot-reload TOCTOU at
+the BF-APPEND-SOURCE choke point (per-file SHA-256 map, E-BUILD-BOOT-DRIFT
+-2804 on drift, regression in build-fixpoint-test). Boot-TIME pin bake = dot
+habu-boot-pin-bake. REMAINING here: the blocking flip (habu-checker-self-typing)
+and stdin.f REPL set-check retirement.
