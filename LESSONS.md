@@ -10,6 +10,25 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Layout transport is a per-token mode, not a per-var flag:** generic stack
+  prims share polymorphic effect vars (`dup` and `0=` both use `PE-A`), so you
+  cannot mark a var "layout-transportable". Item 12 sets `LAYOUT-XPORT` in
+  `DO-TOK1`/`LOC-BIND` only for the whole-bundle ops (dup/drop/swap/over/nip/
+  rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@/2>r/2r>/2r@, locals) and lets
+  `U-TYPE`'s `LAYOUT-BLOCK?` allow a var↔layout-param bind only in that mode;
+  every other touch (inspecting prims, control preds, execute/catch, con/ptr/
+  atom) still fails closed exactly as item 7. Accepting is sound because a
+  layout value is still ONE physical cell (item 7 kept it one `T-PARAM` cell, no
+  `LAYOUT-PUSH-FIELDS` yet, no published constructors → wider values aren't even
+  constructible). The mode MUST be reset (`0 LAYOUT-XPORT !`) after `CHECK-SCAN`
+  before boundary `SUNI-COERCE`, else a generic output var wrongly absorbs a
+  layout when the last body token happened to be a transport op.
+- **`?dup` was UNCK, not reject:** `?dup` is unmodeled (not a `PRIM:`, not in
+  `CF-TOK?`/`RS-TOK?`) so it falls to the undefined path and marks `UNCK=1` —
+  any checked word using it is "uncheckable", an escape hatch. Item 12 added
+  `QDUP-STEP?` to REJECT `?dup` on a layout value (it branches on the tag cell);
+  the scalar union effect (`x -- x x | x`) is still unmodeled and dotted
+  (`habu-model-dup-checked`).
 - **Growable registries that own a string pool must rebase on relocation:** CT/
   VREC/SYMS records hold ABSOLUTE pointers into their `*-STR` pool; growing the
   pool (mmap relocate) or persisting it to fresh DATA dangles them. `*-STR-REBASE`

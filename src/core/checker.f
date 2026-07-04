@@ -943,6 +943,26 @@ variable TWALK-D
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
 
+\ --- item 12 (docs/type-families.md §17): a logical layout value is still ONE
+\ physical T-PARAM cell at this stage (item 7 kept it one cell; no LAYOUT-PUSH-
+\ FIELDS expansion, no published constructors, so a wider-than-one-cell layout
+\ value is not even constructible at runtime). A whole-bundle transport op
+\ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
+\ friends, and locals capture) moves the value as one logical unit, so its fresh
+\ transport var may bind the layout cell. LAYOUT-XPORT is set by DO-TOK1/LOC-BIND
+\ only while checking such an op. Every OTHER touch (value-inspecting prims,
+\ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) still
+\ fails closed exactly as in item 7.
+variable LAYOUT-XPORT
+: LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
+   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
+   a LAYOUT-PARAM? IF b ISVAR EXIT THEN         \ var <-> layout-param bind: absorb the bundle
+   b LAYOUT-PARAM? IF a ISVAR EXIT THEN
+   RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
+: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
+   a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
+   a b LAYOUT-XPORT-ALLOW? 0= ;
+
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
    2dup = IF 2drop ELSE
@@ -959,7 +979,7 @@ variable TWALK-D
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
      2dup PARAM-PAIR-ARGS 2drop ELSE
-   2dup LAYOUT-EITHER? IF 2drop RES-FALSE UOK ! ELSE   \ item 7: no one-cell touch of a layout value
+   2dup LAYOUT-BLOCK? IF 2drop RES-FALSE UOK ! ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
@@ -1012,6 +1032,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
+   0 LAYOUT-XPORT !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
@@ -1844,6 +1865,7 @@ variable LOCALBAD
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable QUALBAD
+variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -4625,7 +4647,9 @@ variable LCO
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
+   1 LAYOUT-XPORT !                    \ capturing a local moves the value as one bundle
    LCH @  LROW @ MK-ROW  CHECKER-STEP
+   0 LAYOUT-XPORT !
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
@@ -5354,9 +5378,47 @@ variable IS-TU
    FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
 
+\ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
+\ Whole-bundle transport tokens: their effect var may absorb a one-cell layout
+\ value, because a logical layout value moves as one unit. ?dup is excluded on
+\ purpose — it branches on the top (tag) cell, width-breaking for a sum whose
+\ tag 0 is a valid variant.
+: LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" swap"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" over"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" nip"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" tuck"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" rot"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" -rot"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2dup"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2drop" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2swap" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2over" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" >r"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r>"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r@"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2>r"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r>"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@"   CORE-STR= ;
+
+: DCUR-TOP-LAYOUT? ( -- bool )     \ resolved top of the data row is a layout param?
+   DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
+
+: QDUP-STEP? ( ptr u8 n -- bool )  \ ?dup: reject on a layout value; scalar stays unmodeled
+   s" ?dup" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   DCUR-TOP-LAYOUT? IF
+      0 OK !  -1 FAILSET !  -1 QDUPBAD !         \ width-breaking touch of a layout value
+   ELSE
+      -1 UNDEFERR !  -1 UNCK !                   \ scalar ?dup unmodeled (pre-existing gap; dotted)
+   THEN
+   RES-TRUE ;
+
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    a u CAP-FAIL
+   TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
@@ -5368,6 +5430,7 @@ variable IS-TU
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
+   TKF TKFU @ QDUP-STEP? 0= IF
    TKF TKFU @ RS-TOK? 0= IF
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
@@ -5375,7 +5438,7 @@ variable IS-TU
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -5422,7 +5485,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )
@@ -5473,12 +5536,13 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
+   0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
    CHECK-SIG? IF CHECK-NO-BORROW THEN

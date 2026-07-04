@@ -199,33 +199,71 @@ TDOK @ -1 T=
 TDF @ TFAM-SLOTS@ 3 T=
 
 \ ---------------------------------------------------------------------------
-\ item 7 (habu-tfam-7): a sum/enum layout family stays ONE logical T-PARAM cell
-\ in a signature (reject-only, no expansion until item 12). A layout value may
-\ FLOW (identity), but an ordinary one-cell primitive that touches it fails
-\ closed; cell families are unaffected, and hidden '@' field names never resolve
-\ in a public signature. See docs/type-families.md §10-11.
+\ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
+\ sum/enum/product layout value is still ONE physical T-PARAM cell at this stage
+\ (item 7 kept it one cell; no LAYOUT-PUSH-FIELDS expansion, no published
+\ constructors, so a wider-than-one-cell layout value is not even constructible
+\ yet). A WHOLE-BUNDLE transport op moves the value as one logical unit and is
+\ now accepted: dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over,
+\ >r/r>/r@/2>r/2r>/2r@, and locals capture. Every OTHER touch still fails
+\ closed: ?dup (branches on the tag cell), control predicates, higher-order
+\ apply, arithmetic/compare/store, and hidden '@' field names in a public
+\ signature. See docs/type-families.md §17.
 \ ---------------------------------------------------------------------------
 \ a layout value flows through untouched (identity is fine).
 s" TD7-OPT-ID ( tdopt<n> -- tdopt<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD7-ENUM-ID ( tdlight -- tdlight )" CHECK-QUIET-CANDIDATE! -1 T=
-\ ordinary one-cell primitives touching a sum layout value reject fail-closed.
-s" TD7-DROP ( tdres<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-DUP ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-SWAP ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-OVER ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> ) over" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-NIP ( tdres<n,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD7-TOR ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
-\ an enum (zero-payload) layout value is still one logical cell: touching rejects.
-s" TD7-ENUM-DROP ( tdlight -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ a layout value cannot be captured into a local: the bind unifies a var with
-\ the layout cell, so it fails closed until item 12 makes locals layout-aware.
-s" TD7-LOCAL ( tdres<n,n> -- n ) {: x :} x drop 0" CHECK-QUIET-CANDIDATE! 0 T=
+\ whole-bundle transport ops move a sum layout value as one logical unit.
+s" TD7-DROP ( tdres<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-DUP ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-SWAP ( tdres<n,n> n -- n tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-OVER ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> ) over" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-NIP ( tdres<n,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD7-TOR ( tdres<n,n> -- tdres<n,n> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+\ an enum (zero-payload) layout value is one logical cell and transports too.
+s" TD7-ENUM-DROP ( tdlight -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ a layout value now captures into a local as one whole bundle.
+s" TD7-LOCAL ( tdres<n,n> -- n ) {: x :} x drop 0" CHECK-QUIET-CANDIDATE! -1 T=
 \ cell families are unaffected: a one-cell tdfoo value is dropped/duped normally.
 s" TD7-CELL-DROP ( tdfoo<n,n> -- n ) drop 0" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD7-CELL-DUP ( tdfoo<n,n> -- tdfoo<n,n> tdfoo<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
-\ hidden physical field names never resolve in a public signature (item-7 shapes).
+\ hidden physical field names never resolve in a public signature.
 s" TD7-HID-SLOT ( @tdres.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD7-HID-TAG ( @tdopt.tag<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ --- item 12 slice-1: the full generic stack-op surface transports a bundle ---
+\ every prim in the dot's list, on a width-1 sum, a wider (slots=3) sum, and an
+\ enum, with a cell above/below to prove only the layout bundle moves as a unit.
+s" TD12-ROT ( tdres<n,n> n n -- n n tdres<n,n> ) rot" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-MROT ( n n tdres<n,n> -- tdres<n,n> n n ) -rot" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-TUCK ( n tdres<n,n> -- tdres<n,n> n tdres<n,n> ) tuck" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2DUP ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2DROP ( tdres<n,n> n -- ) 2drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2SWAP ( tdres<n,n> n n n -- n n tdres<n,n> n ) 2swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2OVER ( tdres<n,n> n n n -- tdres<n,n> n n n tdres<n,n> n ) 2over" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-RAT ( tdres<n,n> -- tdres<n,n> tdres<n,n> ) >r r@ r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2TOR ( tdres<n,n> n -- tdres<n,n> n ) 2>r 2r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-2RAT ( tdres<n,n> n -- tdres<n,n> n tdres<n,n> n ) 2>r 2r@ 2r>" CHECK-QUIET-CANDIDATE! -1 T=
+\ a wider sum (tdmix: slots=3) still moves as ONE logical cell at this stage.
+s" TD12-WIDE-DUP ( tdmix<n,n> -- tdmix<n,n> tdmix<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+\ transport never lets a layout value satisfy a cell slot: swap keeps the bundle
+\ whole, so a signature that splits it (claims a bare n out) still rejects.
+s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ --- item 12 slice-1 negatives: non-transport touches still fail closed --------
+\ ?dup branches on the tag cell: width-breaking, so it rejects a layout value.
+s" TD12-QDUP ( tdres<n,n> -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-QDUP-ENUM ( tdlight -- ) ?dup drop drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ control predicates read the top cell: a layout value is not a flag.
+s" TD12-IF ( tdres<n,n> -- ) if then" CHECK-QUIET-CANDIDATE! 0 T=
+\ arithmetic/compare/unary inspect the cell: reject a layout value.
+s" TD12-ZEQ ( tdres<n,n> -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-ADD ( tdres<n,n> n -- n ) +" CHECK-QUIET-CANDIDATE! 0 T=
+\ higher-order apply (execute) must not consume a layout value as an xt/cell.
+s" TD12-EXEC ( tdres<n,n> -- ) execute" CHECK-QUIET-CANDIDATE! 0 T=
+\ memory store/fetch is a field coercion outside constructors/MATCH: reject.
+s" TD12-STORE ( tdres<n,n> ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
 \ package-scoped declarations: family rows carry the active package and the
