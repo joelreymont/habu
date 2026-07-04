@@ -522,6 +522,16 @@ s" c-bp-watch-dump" s" label label --" TRUST
    EMIT-HOST-LOAD-PREFIX
    done LBL, ;
 
+\ Seal the friend arena (TFAM 2b-i): latch := FRIEND-ARENA-LEN. Emitted at the
+\ END of the cold prefix — after the engine's own canonical source is loaded and
+\ before ANY user token (--load file, stdin pipe, baked LSRC, or REPL) is
+\ evaluated — so every raw write into the arena from user source is trapped
+\ fail-closed. Self-sealing: once the latch is set, clearing it is a protected
+\ write and traps, so the seal is one-way. Uses x5 (a cold-prefix scratch reg);
+\ x9=cursor and x11=buffer base are live across this point and preserved.
+: EMIT-SEAL-FRIEND ( -- )
+   5 FRIEND-ARENA-LEN MOVZ,  5 DATA FRIEND-LATCH-CELL STR, ;
+
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
    HB-TARGET-LINUX? if 1 $5401 LIT64, else
@@ -764,6 +774,7 @@ variable LCOLDPFX variable LAPPPROV
    SRC-BFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 0 0 ADDI,
    EMIT-COLD-PREFIX
+   EMIT-SEAL-FRIEND                                \ seal before the baked LSRC user program
    17 9 0 ADDI,
    12 LSRC LABEL@ ADR,  5 SRCN @ LIT64,  13 12 5 ADD,
    SRC-BLOOP LABEL@ LBL,
@@ -803,6 +814,7 @@ variable LCOLDPFX variable LAPPPROV
       EMIT-COLD-PREFIX
       PFX-LOAD-SCRIPT-ARGV-COLD
       PFX-PROVIDE-FILES
+      EMIT-SEAL-FRIEND                             \ seal before any appended user source
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    skip LBL, ;
 

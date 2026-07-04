@@ -964,6 +964,26 @@ s" spawn-darwin-finish" s" label label --" TRUST
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+\ Friend-arena write guard (TFAM 2b-i). Emits a range check that traps
+\ fail-closed (exit E-SEAL-VIOLATION) when the runtime target address held in
+\ `areg` lands inside the sealed friend arena [DATA+FRIEND-ARENA,
+\ DATA+FRIEND-ARENA+latch). The latch (FRIEND-LATCH-CELL) is 0 while the engine
+\ loads its own canonical source, so the guard is inert during boot and becomes
+\ active once the cold prefix seals it (latch := FRIEND-ARENA-LEN). x12/x13 are
+\ scratch (free at every sink; stack values live in the XDS memory stack, never
+\ in registers across a prim). The BCOND makes the host body non-inlinable, so a
+\ guarded sink compiles to an out-of-line call, exactly like B-TASK-LIVE-GUARD /
+\ DP-CHECK already do.
+: PROT-GUARD ( n -- )                   \ n = register number holding the target address
+   LBL {: ok:label :}
+   DREG swap DATA SUB,                  \ x12 = target - DATA
+   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA (wraps huge when below arena)
+   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
+   DREG EREG CMP,
+   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
+      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 
@@ -1183,29 +1203,29 @@ s" spawn-darwin-finish" s" label label --" TRUST
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE ( -- )
-   B G-POP A G-POP  A B 0 STR, ;
+   B G-POP A G-POP  B PROT-GUARD  A B 0 STR, ;
 
 : BPTRFIELD ( -- )
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
 : BPLUSSTORE ( -- )
-   B G-POP A G-POP  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+   B G-POP A G-POP  B PROT-GUARD  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- )
    A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE ( -- )
-   B G-POP A G-POP  A B 0 STRB, ;
+   B G-POP A G-POP  B PROT-GUARD  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   B G-POP A G-POP  $C89FFD49 EMITW ;
+   B G-POP A G-POP  B PROT-GUARD  $C89FFD49 EMITW ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   B G-POP A G-POP  $F8E90149 EMITW  A G-PUSH ;
+   B G-POP A G-POP  B PROT-GUARD  $F8E90149 EMITW  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
-   C G-POP B G-POP A G-POP  $C8E9FD6A EMITW  A G-PUSH ;
+   C G-POP B G-POP A G-POP  C PROT-GUARD  $C8E9FD6A EMITW  A G-PUSH ;
 : BFENCE ( -- )     \ fence ( -- ) : DMB ISH
    $D5033BBF EMITW ;
 
@@ -1547,6 +1567,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
+   B PROT-GUARD                  \ but never into the sealed friend arena
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
    2 3 MOVZ,  LPROT LABEL@ BL,
