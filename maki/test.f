@@ -104,6 +104,8 @@ TEST:SUITE maki/mem-plan-test.f
 TEST:END-SUITE
 TEST:SUITE maki/schedule-test.f
 TEST:END-SUITE
+TEST:SUITE maki/sched-key-test.f
+TEST:END-SUITE
 TEST:SUITE maki/embedding-test.f
 TEST:END-SUITE
 TEST:SUITE maki/attention-test.f
