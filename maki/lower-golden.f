@@ -48,6 +48,7 @@ package MAKI
 -5 constant LG-RTOL-EW         \ elementwise/activation class rtol = 10^-5 (slice 1)
 -4 constant LG-RTOL-RED        \ row-reduce class rtol = 10^-4 (f32 accumulation + ex2.approx)
 -4 constant LG-RTOL-MM         \ matmul class rtol = 10^-4 (f32 ACC over K<=256; ~K*2^-24 ~= 1.5e-5, ~6x headroom)
+-6 constant LG-RTOL-MV         \ movement copy class rtol = 10^-6 (NUM-EXACT: a device f32 copy equals F64>F32(host))
 
 \ ---- reason buffer ---------------------------------------------------------
 128 constant LG-RE-CAP
@@ -95,6 +96,13 @@ variable LG-BADI                                \ first mismatched element index
 : LG-MATMUL? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-MATMUL     lshift  and  0= 0= ;
 : LG-REDUCE? ( n -- bool )  FP-REGION-CLASSMIX  1 CLASS-ROW-REDUCE lshift  and  0= 0= ;
 
+\ a MATERIALIZED movement region (the region's output node is a movement copy, not a fold)
+\ routes to the copy-kernel launch; a dissolved-fold region keeps its EW/RED/MM class route.
+: LG-MOVE? ( n -- bool ) {: rid:n :}
+   MIR-N@ 0 ?do
+      i FP-RID@ rid =  i MIR-MOVE?  and  i MIR-MAT@  and if unloop true exit then
+   loop false ;
+
 public
 \ LOWER-GOLDEN ( rid -- verdict ). Requires the region's cubin already assembled and its
 \ path set via LLA-CUBIN! (the device tool does emit+ptxas first).
@@ -103,11 +111,13 @@ public
       LG-RE-RESET s" lower-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
    MIR-N@ EX-RUN-N                              \ host reference
-   rid LG-MATMUL? if
+   rid LG-MOVE? if
+      rid LMV-RUN  LG-RTOL-MV
+   else rid LG-MATMUL? if
       rid LMM-RUN  LG-RTOL-MM
    else
       rid LG-REDUCE? if  rid LRED-RUN  LG-RTOL-RED  else  rid LLA-RUN  LG-RTOL-EW  then
-   then {: re:n :}
+   then then {: re:n :}
    LG-ATOL-EXP re LG-COMPARE if rid LG-PASS-REASON V-PASS else rid LG-FAIL-REASON V-FAIL then ;
 
 end-package
