@@ -2248,3 +2248,10 @@ unchanged (148855). Keys for milestone 2:
   make semantically distinct fields (dtype vs layout) indistinguishable bytes;
   the typed-record swap is specced in habu-cad-adt-swap (blocked on TFAM 14/15).
   Keep string rendering at the durable-store boundary only.
+- **A gate only gates if it guards the push.** Chaining `gate; ...; bookmark set
+  && push` runs the push even when the gate failed (the `;` discards the gate's
+  exit). fable was briefly pushed red when a clean rebase hid a semantic
+  cross-lane conflict (capture-time shape legality vs a lowering test fixture
+  that NEEDED an illegal model). Regate the merged tree, CHECK the result, and
+  only then move bookmarks - separate commands, or `&&` from the gate onward.
+  Cross-lane semantic conflicts do not show up as rebase conflicts.
