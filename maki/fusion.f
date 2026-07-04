@@ -25,6 +25,7 @@
 require lib/string.f
 require lib/fs.f
 
+\ maki-ns-lint: boundary FUSION - internal op-fusion building-block package (docs/forth.md § Packages)
 package FUSION
 public
 

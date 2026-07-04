@@ -5,6 +5,7 @@
 require lib/test.f
 require maki/cuda-types.f
 
+\ maki-ns-lint: boundary CUDA - CUDA subsystem white-box test (reopens package CUDA)
 package CUDA
 
 : CUDA-HANDLE-OK ( -- )

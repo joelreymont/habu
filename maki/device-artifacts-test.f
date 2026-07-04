@@ -3,6 +3,7 @@
 require lib/test.f
 require maki/device-artifacts.f
 
+\ maki-ns-lint: boundary MAKI-GRADE-TEST - grader-artifact subsystem test package
 package MAKI-GRADE-TEST
 
 create PATH-A FS-PATH-CAP allot

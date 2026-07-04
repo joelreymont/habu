@@ -61,6 +61,14 @@ TEST:SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
 TEST:;SUITE
 
+TEST:SUITE maki-ns-lint
+   tools/maki-ns-lint.f
+TEST:;SUITE
+
+TEST:SUITE maki-ns-lint-fixtures
+   tools/maki-ns-lint-test.f
+TEST:;SUITE
+
 TEST:SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 TEST:;SUITE

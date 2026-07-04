@@ -185,6 +185,8 @@ variable SUITE-TIMINGS
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" maki-ns-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" maki-ns-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 

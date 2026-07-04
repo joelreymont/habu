@@ -2,6 +2,7 @@
 
 require maki/cuda-types.f
 
+\ maki-ns-lint: boundary CUDA - CUDA driver FFI subsystem package (docs/forth.md § Packages)
 package CUDA
 
 create CD-LIB 16 allot

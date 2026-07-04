@@ -5,6 +5,7 @@ require lib/test.f
 require lib/float.f
 require lib/fmt.f
 
+\ maki-ns-lint: boundary MAKI-TEST - maki test-suite harness package
 package MAKI-TEST
 
 1000000 constant NS-PER-MS

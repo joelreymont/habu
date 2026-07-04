@@ -16,6 +16,7 @@ deftype cuda-mod
 deftype cuda-fn
 deftype cuda-devptr
 
+\ maki-ns-lint: boundary CUDA - CUDA driver FFI subsystem package (docs/forth.md § Packages)
 package CUDA
 
 : CUDA-HANDLE0 ( n -- n )

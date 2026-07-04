@@ -5,6 +5,7 @@ require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 
+\ maki-ns-lint: boundary MAKI-GRADE - grader-artifact subsystem package (docs/forth.md § Packages)
 package MAKI-GRADE
 
 create ROOT-BUF FS-PATH-CAP allot

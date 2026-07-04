@@ -3,6 +3,7 @@
 require lib/test.f
 require maki/cuda-driver.f
 
+\ maki-ns-lint: boundary CUDA-TEST - CUDA subsystem test package
 package CUDA-TEST
 
 : OPEN-SMOKE ( -- )

@@ -43,6 +43,8 @@
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE
+   s" maki-ns-lint" [: MAKI-NS-LINT ;] GSI-RUN
+   s" tools/maki-ns-lint-test.f" GSI-INCLUDE
    s" tools/host-lint-test.f" GSI-INCLUDE
    s" tools/trusted-inventory-test.f" GSI-INCLUDE ;
 

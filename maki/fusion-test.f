@@ -7,6 +7,7 @@
 require lib/test.f
 require maki/fusion.f
 
+\ maki-ns-lint: boundary FUSION - op-fusion subsystem test (reopens package FUSION)
 package FUSION
 
 T-RESET
