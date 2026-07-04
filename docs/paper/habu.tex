@@ -85,7 +85,7 @@ This paper contributes:
 
 \section{Related Work}\label{sec:related}
 Tillet et al.~\cite{triton} classify prior systems as tensor-level IRs
-(XLA~\cite{xla}, Glow: pattern-matched templates), polyhedral compilers
+(XLA~\cite{xla}, Glow~\cite{glow}: pattern-matched templates), polyhedral compilers
 (Tensor Comprehensions~\cite{tc}, Diesel: affine loop nests), and loop
 synthesizers (Halide~\cite{halide}, TVM~\cite{tvm}: user-specified
 schedules), positioning Triton as tile-level operations inside a
@@ -397,9 +397,14 @@ paper described.
 \bibitem{triton} P.~Tillet, H.~T.~Kung, D.~Cox. Triton: An Intermediate
 Language and Compiler for Tiled Neural Network Computations. MAPL, 2019.
 doi:10.1145/3315508.3329973.
-\bibitem{okad} C.~H.~Moore. OKAD: chip design tools in colorForth (the
-VLSI design system behind the GreenArrays GA144). \todo{settle citable
-source.}
+\bibitem{okad} C.~H.~Moore. OKAD/OKAD~II: custom VLSI design tools
+written in (and scripting the genesis of) colorForth, used to design the
+MuP21, F21, c18, and GreenArrays GA144 chips.
+See \url{https://colorforth.github.io/} and GreenArrays, Inc.,
+\emph{GA144 chip documentation}, \url{https://www.greenarraychips.com};
+historical account in E.~D.~Rather, D.~R.~Colburn, C.~H.~Moore, ``The
+Evolution of Forth,'' \emph{History of Programming Languages---II},
+ACM Press, 1996, pp.~625--670.
 \bibitem{halide} J.~Ragan-Kelley et al. Halide: A Language and Compiler
 for Optimizing Parallelism, Locality, and Recomputation in Image
 Processing Pipelines. PLDI, 2013.
@@ -408,11 +413,14 @@ Compiler for Deep Learning. OSDI, 2018.
 \bibitem{tc} N.~Vasilache et al. Tensor Comprehensions:
 Framework-Agnostic High-Performance Machine Learning Abstractions.
 arXiv:1802.04730, 2018.
-\bibitem{xla} XLA: Optimizing Compiler for Machine Learning.
-\todo{cite properly.}
+\bibitem{xla} A.~Sabne. XLA: Compiling Machine Learning for Peak
+Performance. Google, 2020. See also OpenXLA,
+\url{https://openxla.org}.
 \bibitem{pytorch2} J.~Ansel et al. PyTorch 2: Faster Machine Learning
 Through Dynamic Python Bytecode Transformation and Graph Compilation.
 ASPLOS, 2024.
+\bibitem{glow} N.~Rotem et al. Glow: Graph Lowering Compiler Techniques
+for Neural Networks. arXiv:1805.00907, 2018.
 \bibitem{roofline} S.~Williams, A.~Waterman, D.~Patterson. Roofline: An
 Insightful Visual Performance Model for Multicore Architectures.
 CACM 52(4), 2009.
