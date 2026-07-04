@@ -41,6 +41,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/record.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
+   tools/stdin-closure-lib.f
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
    lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
    tools/lint/text.f tools/lint/token.f
@@ -89,7 +90,7 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f src/habu/hide.f src/core/util.f
+   tools/build-fixpoint.f tools/stdin-closure-lib.f src/habu/hide.f src/core/util.f
    src/core/structures.f src/core/checker.f
    src/core/type-schema.f src/core/type-family.f
    src/core/render.f src/core/check-hook.f src/core/structures-effects.f
@@ -100,7 +101,7 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/core/sha256.f src/core/combinators.f src/habu/treeshake.f
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
-   src/habu/xref.f src/habu/driver-io.f src/core/include.f
+   src/habu/xref.f src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
    src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
 ;TR-FILES

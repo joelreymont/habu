@@ -37,6 +37,10 @@ TEST:SUITE filemap-lint
    tools/filemap-lint-test.f
 TEST:END-SUITE
 
+TEST:SUITE stdin-closure-lint
+   tools/stdin-closure-lint.f
+TEST:END-SUITE
+
 TEST:SUITE gate-stats
    test/gate-stats-test.f
 TEST:END-SUITE

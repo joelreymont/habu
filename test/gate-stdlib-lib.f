@@ -179,6 +179,7 @@ variable SUITE-TIMINGS
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" parallel-agent-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" filemap-lint" SUITE-LABEL= if SUITE-TRUE exit then
+   s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then

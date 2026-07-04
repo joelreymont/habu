@@ -447,6 +447,7 @@ HBB-INSTALL-CHILD-LINTS
    s" lib/object-resolve.f" HBB-KEY-FILE+
    s" lib/object-link.f" HBB-KEY-FILE+
    s" tools/build-fixpoint.f" HBB-KEY-FILE+
+   s" tools/stdin-closure-lib.f" HBB-KEY-FILE+
    s" tools/cli-run.f" HBB-KEY-FILE+
    s" tools/object-image.f" HBB-KEY-FILE+
    s" tools/source-discovery.f" HBB-KEY-FILE+

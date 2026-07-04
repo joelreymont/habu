@@ -2297,3 +2297,11 @@ unchanged (148855). Keys for milestone 2:
   whole engine source; it rejects non-blocking with the original verify-source too
   (proven by rebuilding both ways). Not a signal that an engine edit broke
   verify-source — reproduce with the unmodified tree before attributing it.
+- **`test/gate-stdlib.f -- lint-tools` standalone and the gate's phase 17 are
+  DIFFERENT code paths.** The standalone slice runs only the `TEST:SUITE` cases
+  in `test/gate-stdlib-cases.f` admitted by `SUITE-LINT-TOOLS-LABEL?`; it never
+  loads `test/gate-stdlib-lint-tools.f`. The full gate's resident phase 17
+  (`TRWS-RUN` -> `GSI-LINT-TOOLS`) loads only that GSI body. Wiring a new lint
+  into one place leaves the other silently green — add it to BOTH (GSI body +
+  TEST:SUITE row + label allowlist) and prove each path red with a transient
+  drift before trusting it (proven for tools/stdin-closure-lint.f).

@@ -5,6 +5,7 @@
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 require src/habu/verify-source.f
+require tools/stdin-closure-lib.f
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -631,7 +632,7 @@ variable BF-CERT-PATH-U
    out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/core/include.f" BF-APPEND-SOURCE ;
+   out outu SDC-INCLUDE$ BF-APPEND-SOURCE ;
 
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
@@ -699,7 +700,7 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-COMMON
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-DRIVER-IO
-   out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
+   out outu SDC-AOT$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
 \ Snapshot source layout: the dev-engine keep surface (the same files the
@@ -821,7 +822,7 @@ variable BF-CERT-PATH-U
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
 : BF-STDIN-SOURCE ( -- )
-   s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
+   s" stage2-src" SDC-DRIVER$ BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;

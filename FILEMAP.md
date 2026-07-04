@@ -424,6 +424,8 @@ points stay listed.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.
+- `tools/stdin-closure-lib.f` — canonical stdin driver closure manifest (single source of truth for gate 17e).
+- `tools/stdin-closure-lint.f` — fail-closed drift gate proving stdin-closure consumers stay reconciled with the manifest.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.

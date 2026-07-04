@@ -1,5 +1,7 @@
 \ srclist.f - emit canonical compiler source order.
 
+require tools/stdin-closure-lib.f
+
 64 constant SL-USAGE-RC
 
 variable SL-DRIVER-A
@@ -74,13 +76,27 @@ variable SL-DRIVER-U
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
    s" src/habu/jit.f src/habu/habu2.f src/habu/xref.f " type
    s" src/os/script-argv.f " type
-   s" src/habu/driver-io.f src/habu/" type ;
+   s" src/habu/driver-io.f " type ;
+
+: SL-STDIN? ( -- bool )
+   SL-DRIVER-A @ SL-DRIVER-U @ s" stdin" SL-STR= ;
+
+\ stdin metabuild-host closure file(s) sit between driver-io.f and the driver;
+\ manifest-sourced so this canonical order cannot drift from the real build.
+: SL-CLOSURE-EXTRA ( -- )
+   SL-STDIN? if SDC-AOT$ type space then ;
+
+: SL-DRIVER-PATH ( -- )
+   SL-STDIN? if SDC-DRIVER$ type exit then
+   s" src/habu/" type
+   SL-DRIVER-A @ SL-DRIVER-U @ type
+   s" .f" type ;
 
 : SRCLIST-MAIN ( -- )
    SL-DRIVER$ SL-DRIVER!
    SL-PREFIX
-   SL-DRIVER-A @ SL-DRIVER-U @ type
-   s" .f" type
+   SL-CLOSURE-EXTRA
+   SL-DRIVER-PATH
    cr ;
 
 SRCLIST-MAIN
