@@ -2352,7 +2352,23 @@ unchanged (148855). Keys for milestone 2:
   (`TRWS-RUN` -> `GSI-LINT-TOOLS`) loads only that GSI body. Wiring a new lint
   into one place leaves the other silently green — add it to BOTH (GSI body +
   TEST:SUITE row + label allowlist) and prove each path red with a transient
-  drift before trusting it (proven for tools/stdin-closure-lint.f).
+  drift before trusting it (proven for tools/stdin-closure-lint.f and, later,
+  tools/trusted-inventory-test.f which lived only in the GSI body until it was
+  added to the `trusted-inventory` TEST:SUITE row + allowlist). The standalone
+  entry also assumed a caller prelude and died E-UNDEFINED: FS-PATH-CAP at load
+  (gate-stats.f uses lib/fs.f without requiring it); an entry file must require
+  its own deps so `--load` works standalone.
+- **A bundled gate fork hides which sub-suite failed; split one fork per
+  sub-suite.** The old `lint-tools/dot-maki` fork ran dot/maki/maki-ns/host/
+  trusted-inventory sequentially, so `GT-POOL-FAIL` printed only
+  `FAIL: lint-tools/dot-maki`. Worse, a test file's `T-REPORT` `die` exits the
+  fork and BYPASSES `GSI-INCLUDE`'s catch/per-file FAIL line, so a
+  trusted-inventory ratchet drift left no sub-suite name at all — it was
+  mis-blamed on dot-graph churn three times. Fix = one `GT-POOL-START-FORK` per
+  sub-suite (`lint-tools/dot|maki|maki-ns|host|trusted-inventory`); each fork's
+  exit maps to its own label. Setup is loaded once in the parent and inherited
+  copy-on-write, so the split adds no setup cost; captured assert detail is
+  preserved above the per-fork FAIL line.
 - **The native publish path re-records every signed definition through `TRUST`.**
   `EM-COMPILE-PUBLISH` routes any colon definition WITH a `( ... )` sig through
   `EM-COMPILE-PUBLISH-TRUSTED` → `C-CALL-TRUST-PEND`, i.e. after the hook returns

@@ -188,6 +188,7 @@ variable SUITE-TIMINGS
    s" maki-ns-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-ns-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
+   s" trusted-inventory" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )

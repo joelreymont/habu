@@ -81,6 +81,10 @@ TEST:SUITE host-lint-fixtures
    tools/host-lint-test.f
 TEST:;SUITE
 
+TEST:SUITE trusted-inventory
+   tools/trusted-inventory-test.f
+TEST:;SUITE
+
 TEST:SUITE json-file-cursor
    tools/json-file-test.f
 TEST:;SUITE
