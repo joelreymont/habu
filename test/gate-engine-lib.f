@@ -547,11 +547,26 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" PASS: process/pty primitives" s" process/pty output" GE-EXPECT-OUT-HAS
    s" PASS: process/pty primitives" type cr ;
 
+: GE-UNDERFLOW-DIAG ( -- )
+   \ A top-level interpreted line that consumes more cells than the data stack
+   \ holds must fail closed: a named E-UNDERFLOW diagnostic (with the offending
+   \ word) + exit 70, never a crash/signal. `drop @ .` is the worker's shape - the
+   \ underflow (drop below S0) is caught at the interpret-loop boundary BEFORE the
+   \ `@` deref that used to fault the garbage cell (crash handler exit 134).
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" drop @ ." GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb top-level underflow rc" GE-EXPECT-RC
+   s" E-UNDERFLOW" s" hb top-level underflow diagnostic" GE-EXPECT-ERR-HAS
+   s" drop" s" hb top-level underflow token" GE-EXPECT-ERR-HAS ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN
    GE-ARGV-MODES
+   GE-UNDERFLOW-DIAG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
 

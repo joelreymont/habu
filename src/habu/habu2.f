@@ -2274,6 +2274,7 @@ TRUSTED: EM-HXT-EXECUTE ( n -- )
    CFSK LABEL@ LBL, ;
 \ ---- MAIN, split into emission-ordered phases sharing label variables ----
 variable LMAIN  variable LEXIT  variable LCOMPILE  variable LUNDEF
+variable LUNDERFLOW           \ top-level data-stack underflow diagnostic entry (guard at LMAIN boundary)
 variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuations of LEXIT / LUNDEF
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
@@ -2778,6 +2779,10 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 : EM-COMMENT ( -- )
    LBL LBL LBL {: notcom skln skpar :}
    LMAIN LABEL@ LBL,
+      \ depth-floor guard: the just-interpreted top-level word must never leave
+      \ the data stack below its base (S0). XDS < S0 is a proven underflow — name
+      \ the offending word and fail closed instead of running on garbage / a signal.
+      9 DATA S0-CELL LDR,  XDS 9 CMP,  C-LT LUNDERFLOW LABEL@ BCOND,
       LTOK LABEL@ BL,  0 LEXIT LABEL@ CBZ,
       9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE notcom BCOND,
       9 DATA TKA-CELL LDR,  9 9 0 LDRB,
@@ -3389,6 +3394,25 @@ s" em-repl-read" s" --" TRUST
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-exit" s" --" TRUST
 
+\ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
+\ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
+\ `E-UNDERFLOW: <word>` naming the offending token (TKA/TKL still hold it, LTOK has
+\ not overwritten them this iteration), then recover exactly like the undefined-word
+\ path: roll back one evaluate frame if inside EVALUATE, else recover + re-read in
+\ the REPL, else fail closed with exit 70 in a batch/--load load. Never a signal.
+: EM-INTERPRET-UNDERFLOW ( -- )
+   LBL LBL {: uf0:label ufdie:label :}
+   LUNDERFLOW LABEL@ LBL,
+   SP SP 16 SUBI,  9 $465245444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A574F4C LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   9 DATA EVALD-CELL LDR,  9 uf0 CBZ,
+      EM-EVAL-UNDEF-ROLLBACK
+   uf0 LBL,
+   9 DATA REPLH-CELL LDR,  9 ufdie CBZ,
+   LRREC LABEL@ B,
+   ufdie LBL,
+   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+s" em-interpret-underflow" s" --" TRUST
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
@@ -3404,8 +3428,8 @@ s" em-compile-exit" s" --" TRUST
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN ( -- )
-   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !
-   EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE ;
+   LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !
+   EM-STARTUP  EM-COMMENT  EM-INTERPRET  EM-COMPILE  EM-INTERPRET-UNDERFLOW ;
 s" emit-main" s" --" TRUST
 variable SRCA
 : SRCA@ ( -- ptr u8 )
