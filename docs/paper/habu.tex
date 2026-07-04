@@ -134,12 +134,34 @@ The \code{( n n -- )} clause is a type signature over stack rows; the
 checker verifies that the body's net effect matches, that branch joins
 agree, and that locals (\code{\{: nc:n ref:n :\}}) are used at their
 declared types. Effects are row-polymorphic, so words compose over
-arbitrary stack prefixes. Beyond base shapes (\code{n}, floats,
+arbitrary stack prefixes: a word with effect
+$(\rho\;\alpha_1\ldots\alpha_m \to \rho\;\beta_1\ldots\beta_n)$
+is typable against any stack whose suffix matches
+$\alpha_1\ldots\alpha_m$, with the row variable $\rho$ binding the
+untouched prefix. Composition is sequencing---the output row of one word
+unifies with the input row of the next---and a conditional's arms must
+yield \emph{unifiable} effects at the join, so a branch that leaks or
+eats an extra cell is a compile error at the \code{then}. Quotations
+carry their effect as a first-class type, so higher-order words
+(\code{?do}, combinators, test harnesses) type their bodies. Beyond base
+shapes (\code{n}, floats,
 pointers, quotations), the system uses \emph{nominal roles}: byte-lengths,
 return codes, and---in the GPU driver---distinct handle types for device,
 context, module, function, and device pointer, so a context is not
 passable where a module handle is expected even though both are
 cell-sized.
+
+\paragraph{Scope and soundness.} We claim engineering-grade checking,
+not a proven-sound calculus: the judgment is enforced by a self-hosted
+checker that is itself under progressive self-typing, and its residual
+trust surface is the enumerated \code{TRUSTED:} set. Typed stack
+languages are prior art---Cat~\cite{cat} and Kitten explored typed
+concatenative calculi, and Factor ships a stack-effect checker---but to
+our knowledge none types \emph{code-generating kernel compositions}
+where the checked property is the legality of the emitted GPU program's
+construction. A formal treatment, together with the algebraic data
+types now being added to the checker, is future work we intend to
+report separately.
 
 \paragraph{Fail-closed discipline.} Fallible words return error unions or
 throw \emph{named} codes from documented per-subsystem ranges; silent
@@ -421,6 +443,9 @@ Through Dynamic Python Bytecode Transformation and Graph Compilation.
 ASPLOS, 2024.
 \bibitem{glow} N.~Rotem et al. Glow: Graph Lowering Compiler Techniques
 for Neural Networks. arXiv:1805.00907, 2018.
+\bibitem{cat} C.~Diggins. The Cat Programming Language: a statically
+typed functional stack-based language. 2007--2008,
+\url{https://github.com/cdiggins/cat-language}.
 \bibitem{roofline} S.~Williams, A.~Waterman, D.~Patterson. Roofline: An
 Insightful Visual Performance Model for Multicore Architectures.
 CACM 52(4), 2009.
