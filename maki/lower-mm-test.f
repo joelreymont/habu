@@ -96,7 +96,7 @@ s" add.rn.f32"                  LMMT-ABSENT \ no bias (matmul, not linear)
 s" ex2.approx"                  LMMT-ABSENT
 
 \ ---- BLOCKED 64x64x64 MATMUL: register-blocked tile (shared staging, 4x4 accumulators) -----
-\ M,N multiples of 64 and K a multiple of 16 select the perf tile; the block is still 16x16.
+\ M,N multiples of 64 and K a multiple of 32 (family floor) select the perf tile; block is 16x16.
 MODEL: MB ( x:64x64 w:64x64 -- y ) MATMUL ;
 FP-BUILD
 LMMT-CAP0
@@ -104,9 +104,10 @@ LMM-BLOCKED?                    TTRUE       \ shape selects the register-blocked
 LMM-OUT-TILE@ 64                T=          \ launch grid tiles the 64x64 output (not 16)
 s" .version 8.3"                LMMT-ONCE
 s" .visible .entry REGION_0"    LMMT-ONCE
-s" .shared .align 4 .b8 SH["    LMMT-IN     \ As/Bs shared staging (the naive tile has none)
+s" .shared .align 16 .b8 SH["   LMMT-IN     \ As/Bs shared staging, 16B-aligned for the v4 B load
 s" bar.sync 0;"                 LMMT-IN     \ cooperative stage barrier
-s" ld.shared.f32"               LMMT-IN     \ register-blocked shared loads
+s" ld.shared.f32 %f26"          LMMT-IN     \ scalar A micro-tile loads (column-strided As)
+s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33}"  LMMT-IN  \ vectorized B load (4 contiguous cols)
 s" st.shared.f32"               LMMT-IN
 s" $KLOOP:"                     LMMT-IN
 s" fma.rn.f32"                  LMMT-IN     \ 4x4 outer-product accumulate
@@ -122,9 +123,9 @@ FP-BUILD
 LMMT-CAP0
 LMM-BLOCKED?                    TTRUE
 LMM-OUT-TILE@ 64                T=
-s" .shared .align 4 .b8 SH["    LMMT-IN
+s" .shared .align 16 .b8 SH["   LMMT-IN
 s" .param .u64 p_in2"           LMMT-IN     \ the bias operand
-s" ld.shared.f32"               LMMT-IN
+s" ld.shared.v4.f32"            LMMT-IN     \ vectorized B load in the blocked epilogue path
 s" add.rn.f32"                  LMMT-IN     \ acc += bias[col] per micro-tile element
 s" ex2.approx.f32"              LMMT-IN     \ gelu epilogue on each element
 s" st.global.f32"               LMMT-IN

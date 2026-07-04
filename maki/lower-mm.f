@@ -16,10 +16,11 @@
 \ TWO kernels, dispatched on shape (LMM-BLOCKED?):
 \   BLOCKED (perf) - a register-blocked 64x64 SGEMM when M,N are multiples of 64 and K a
 \     multiple of 16. One 64x64 output tile per block; block = 16x16 = 256 threads; each
-\     thread owns a 4x4 register accumulator micro-tile (%f10..%f25). K swept in BK=16
-\     tiles: the 256 threads cooperatively stage As[64][16]+Bs[16][64] to .shared, bar.sync,
-\     then each thread does its 4x4 outer-product accumulate (register blocking is the win -
-\     16 FMAs reuse 8 shared loads). REUSES the cg-matmul.f vocabulary verbatim
+\     thread owns a 4x4 register accumulator micro-tile (%f10..%f25). K swept in BK=32
+\     tiles (the gemm-tf32-v1 family floor): the 256 threads cooperatively stage
+\     As[64][32]+Bs[32][64] to .shared, bar.sync, then each thread does its 4x4
+\     outer-product accumulate (register blocking is the win - 16 FMAs reuse the 4 A
+\     scalar + 1 B ld.shared.v4 loads). REUSES the cg-matmul.f vocabulary verbatim
 \     (MM-THREAD-SETUP / MM-ACC-ZERO-EMIT / MM-SMEM-BASES / MM-STAGE / MM-KSTEP); the ONLY
 \     re-expression is the fused epilogue write (LMM-BLK-WRITE), which folds bias[col] and the
 \     activation chain into each of the 16 micro-tile stores under lower-mm's fusion ABI (out
@@ -31,10 +32,9 @@
 \
 \ Schedule-family mapping (maki/schedule.f gemm-tf32-v1 = bm{64,128} bn{64,128} bk{32,64}
 \ warps{4,8} stages{1,2}): the blocked tile is bm=64 bn=64 warps=8 stages=1 - a candidate of
-\ that family (GEMM-DECODE index 2 on those four axes). bk=16 is BELOW the family floor of 32
-\ (reused from the device-proven cg-matmul.f kernel); widening the staging to the family's
-\ bk=32/64 and cp.async multi-stage + MMA are the next 8.1 steps that the cad-6 autotuner will
-\ search. This step lands the FIRST register-blocked GEMM + measured Triton baseline.
+\ that family (GEMM-DECODE index 2 on those four axes). bk=32 is the family floor (8.1 step 2A,
+\ with a vectorized ld.shared.v4 B load); cp.async multi-stage (family `stages`, step 2B) + MMA
+\ are the next 8.1 steps that the cad-6 autotuner will search.
 \
 \ Emit-mode discipline mirrors lower-red.f: the fixed GEMM prologue/K-loop/store use
 \ explicit registers (%f1 = accumulator, %r/%rd address math); the epilogue reuses the
@@ -198,7 +198,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    LMM-K @ LMM-N @ * LMM-ARENA > if E-LMM-DIMS throw then ;   \ input B(KxN)
 
 \ shape fits the register-blocked tile iff M,N are multiples of the 64x64 output tile and K a
-\ multiple of the BK=16 K-step (cg-matmul.f MM-BM/MM-BN/MM-BK); otherwise the naive tile runs.
+\ multiple of the BK=32 K-step (cg-matmul.f MM-BM/MM-BN/MM-BK); otherwise the naive tile runs.
 : LMM-SET-BLK ( -- )
    LMM-M @ MM-BM mod
    LMM-N @ MM-BN mod or
@@ -360,18 +360,18 @@ private
 \ MM-THREAD-SETUP (r4..r11), MM-ACC-ZERO-EMIT (%f10..%f25 = 0), MM-SMEM-BASES (r12/r13), and
 \ MM-STAGE / MM-KSTEP (%f26..%f33 loads + 4x4 FMAs) are emitted verbatim; A=%rd1, B=%rd2 match
 \ this ABI. Only the K-loop scaffold and the epilogue write are re-expressed for fusion here.
-: LMM-BLK-SHARED ( -- )                            \ .shared As[64][16] + Bs[16][64] (SH symbol)
-   SB-RESET s" .shared .align 4 .b8 SH[" CG-S MM-ASB MM-BSB + SB-U s" ];" CG-S CG-LINE ;
+: LMM-BLK-SHARED ( -- )                            \ .shared As[64][32] + Bs[32][64] (SH symbol, v4-aligned)
+   SB-RESET s" .shared .align 16 .b8 SH[" CG-S MM-ASB MM-BSB + SB-U s" ];" CG-S CG-LINE ;
 
 \ MM-K-LOOP body with a ( -- ) effect (cg-matmul's is typed on mmctx/mmacc, which this
 \ non-KERNEL lowering does not thread); the staged As/Bs + 4x4 accumulate are MM-STAGE/MM-KSTEP.
 : LMM-BLK-KLOOP ( -- )
    s" mov.u32 %r14, 0;" PTX-L  s" $KLOOP:" PTX-L
    s" setp.ge.u32 %p1, %r14, %r3;" PTX-L  s" @%p1 bra $KEND;" PTX-L
-   4 0 ?do  i MM-STAGE  loop
+   MM-NSTG 0 ?do  i MM-STAGE  loop
    s" bar.sync 0;" PTX-L
    MM-BK 0 ?do  i MM-KSTEP  loop
-   s" bar.sync 0;" PTX-L  s" add.u32 %r14, %r14, 16;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+   s" bar.sync 0;" PTX-L  s" add.u32 %r14, %r14, 32;" PTX-L  s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
 
 : LMM-BLK-CBASE ( -- )                             \ %r40 = rowBase + ty*4 ; %r41 = colBase + tx*4
    s" shl.b32 %r40, %r5, 2;" PTX-L  s" add.u32 %r40, %r9, %r40;" PTX-L

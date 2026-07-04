@@ -7,7 +7,9 @@
 \ an in-process buffer instead, so a host-side test can inspect the generated PTX
 \ text without spawning a child or shelling out to a file (fail closed on overflow).
 
-$8000 constant PTX-CAP-CAP
+$10000 constant PTX-CAP-CAP     \ 64 KB: bk=32 register-blocked kernels with a fused epilogue
+                                \ (e.g. LINEAR->GELU 64x64) emit ~40 KB of PTX; matches the
+                                \ device-side LMD-OUT capture used for the same kernels.
 create PTX-CAP-BUF PTX-CAP-CAP allot
 variable PTX-CAP-U
 variable PTX-CAPTURE?                       \ 0 = stdout ; nonzero = append into PTX-CAP-BUF

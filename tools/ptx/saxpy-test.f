@@ -225,10 +225,11 @@ variable PTXT-ERR-SAVE
 : PTXT-MATMUL-CG-OUTPUT ( -- )
    PTXT-RUN-MATMUL-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
    s" .visible .entry MM" PTXT-HAS
-   s" .shared .align 4 .b8 SH[8192];" PTXT-HAS
+   s" .shared .align 16 .b8 SH[16384];" PTXT-HAS   \ bk=32 tiles As[64][32]+Bs[32][64], 16B-aligned
    s" setp.ge.u32 %p1,%r14,%r3;" PTXT-HAS
    s" @%p1 bra $KEND;" PTXT-HAS
    s" bar.sync 0;" PTXT-HAS
+   s" ld.shared.v4.f32 {%f30,%f31,%f32,%f33}," PTXT-HAS   \ vectorized 4-column B load
    s" fma.rn.f32 %f10,%f26,%f30,%f10;" PTXT-HAS
    s" st.global.f32 [%rd12],%f25;" PTXT-HAS
    s" @%p1 bra DONE" PTXT-NOT-HAS

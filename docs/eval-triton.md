@@ -463,3 +463,48 @@ for S, iters in [(512, 200), (1024, 80), (2048, 30)]:
           f"max_abs_err={err:.2e} rel_err={rel:.2e}")
     print(f"  best_config: {getattr(matmul_kernel, 'best_config', None)}")
 ```
+
+## GEMM step 2: pipelining the blocked tile (2026-07-05)
+
+CAD-PLAN 8.1 step 2. Same device, same protocol, same shapes as the step-1
+baseline above (fp32 `C = A·B`, CUDA-event timing, one warmup, ITERS 200, 80,
+30 at 512, 1024, 2048, A = B = 1.0). Pure f32 throughout — **no precision
+change** (the device goldens still gate `fma.rn.f32` at rtol 1e-4; TF32/MMA is
+step 3). Each
+increment re-emits + ptxas-assembles the same in-tree `MM` kernel
+(`lib/ptx/cg-matmul.f`, also the algorithm the `maki/lower-mm.f` blocked path
+emits) and re-runs `tools/ptx/gemm-bench.f` on the Orin. Every increment keeps
+the `maki/lower-mm-device-test.f` and `maki/lower-model-device-test.f` goldens
+green (incl. the 64×64 blocked MATMUL and LINEAR→GELU cases) — device == host
+within the f32 matmul tolerance, unchanged.
+
+- **+A `bk=32` + `ld.shared.v4` B load:** widen the K-tile from 16 to the
+  gemm-tf32-v1 family floor (32), and replace the 4 scalar `ld.shared.f32` B
+  operands with one `ld.shared.v4.f32` (the 4 micro-tile columns are contiguous
+  in the row-major `Bs[32][64]` tile; `SH` is now `.align 16`). The 4 A operands
+  stay scalar — they are column-strided in the row-major `As[64][32]` tile, and
+  transposing A to vectorize them would break the contiguous global→shared
+  `cp.async` copy that +B needs. Net per k-step: 5 shared-load instructions drive
+  16 FMAs (was 8 → 16).
+
+### Results (recorded on the Orin, 2026-07-05)
+
+```
+== MM register-blocked 64x64, +A (bk=32 + ld.shared.v4 B) ==
+GEMM 512x512x512    iters=200  GFLOP/s_x1000=378584 (379549 on a 2nd run)
+GEMM 1024x1024x1024 iters=80   GFLOP/s_x1000=397206
+GEMM 2048x2048x2048 iters=30   GFLOP/s_x1000=402526
+```
+
+| GFLOP/s (fp32 C=A·B)          | 512³   | 1024³  | 2048³  | ptxas       |
+|-------------------------------|-------:|-------:|-------:|-------------|
+| Habu blocked baseline (bk=16) |  356.6 |  375.0 |  380.5 | 48 reg / 8 KB  |
+| +A bk=32 + v4 B               |  378.6 |  397.2 |  402.5 | 48 reg / 16 KB |
+| Triton (autotuned TF32)       | 1636.1 | 1755.4 | 1890.5 | —           |
+
+- **+A over baseline: +6.2% / +5.9% / +5.8%.** No register change (48), no
+  spills; smem doubles (8→16 KB) for the wider K-tile. The lift comes from the
+  fewer shared-load instructions (v4 B) and fewer K-loop iterations / barriers
+  (bk 16→32). Triton gap narrows to 4.3–4.7×; the remaining structural stalls
+  (scalar global→register→smem staging + the load/compute `bar.sync`) are what
+  +B (`cp.async` double-buffering) targets.
