@@ -106,6 +106,8 @@ TEST:SUITE maki/fusion-plan-test.f
 TEST:END-SUITE
 TEST:SUITE maki/backward-test.f
 TEST:END-SUITE
+TEST:SUITE maki/mlp-bwd-test.f
+TEST:END-SUITE
 TEST:SUITE maki/saved-test.f
 TEST:END-SUITE
 TEST:SUITE maki/traffic-test.f
