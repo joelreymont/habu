@@ -103,10 +103,20 @@ variable SAB-NAMES-LEN
    s" end-package" SAB-NAME,  s" C-PACKAGE" SAB-NAME,  s" C-PUBLIC" SAB-NAME,
    s" C-PRIVATE" SAB-NAME,  s" C-END-PACKAGE" SAB-NAME, ;
 
+\ TFAM 2b-v: the protected-WID registry (records the WIDs of sealed system /
+\ generated constructor PACKAGES, and gates the sealed-WID guards) is a native-only
+\ mechanism. Its precondition -- the package system -- is already pinned absent
+\ above, so the registry cannot exist in stage0; pin its cells/routines too so a
+\ registry cannot silently appear in the mirror without a conscious re-pin.
+: SAB-ADD-PROTWID ( -- )
+   s" PROT-WID-N-CELL" SAB-NAME,  s" PROT-WID-OFF" SAB-NAME,
+   s" LPROTWIDQ" SAB-NAME,  s" LAOTWIDGATE" SAB-NAME,
+   s" EM-AOT-REGISTER-PROT-WIDS" SAB-NAME, ;
+
 : SAB-INIT-NAMES ( -- )
    0 SAB-NAMES-LEN !
    SAB-ADD-ATOMICS  SAB-ADD-SNAP  SAB-ADD-SYSCALLS
-   SAB-ADD-CHECKER  SAB-ADD-PACKAGE ;
+   SAB-ADD-CHECKER  SAB-ADD-PACKAGE  SAB-ADD-PROTWID ;
 
 \ --- comment stripping + substring scan ---
 
