@@ -17,14 +17,16 @@
 \      conceptual ops). Our LINEAR op FOLDS the affine bias (weight + bias operands),
 \      so "linear -> bias" is a single IR node. The 6 conceptual ops therefore capture
 \      as 5 IR nodes: LINEAR, GELU, LINEAR, RESIDUAL-ADD, RMSNORM.
-\   2. A true residual/skip connection adds the block's ORIGINAL input x back in. But
-\      the single-line MODEL: capture consumes the NEXT declared input as RESIDUAL-ADD's
-\      second operand - here that is the declared residual input r (input 5), NOT x
-\      (input 0); node.3.in is "n2 i5". So this demo builds the closest expressible
-\      6-op model and says so: a real x-referencing skip connection needs the
-\      named-reference model definer (a dotted compiler capability), not the positional
-\      next-input capture. The pipeline, gates, traffic, and promote loop are otherwise
-\      the full flagship.
+\   2. A true residual/skip connection adds the block's ORIGINAL input x back in. Two
+\      models here show both forms. FFN-DEMO keeps the POSITIONAL capture: RESIDUAL-ADD
+\      consumes the next declared input r (input 5), NOT x (input 0), so node.3.in is
+\      "n2 i5". FFN-SKIP (section 12) uses the NAMED-REFERENCE capture that landed: a
+\      bare "x" token in the body pushes the ORIGINAL input as RESIDUAL-ADD's second
+\      operand, so node.3.in is "n2 i0" and the separate r input is gone - a real skip.
+\      Named-value capture is the v1 seam; compiling the whole body as ONE checker-
+\      verified composition (CAD-PLAN section 3 full static compilation) is still
+\      pending. The pipeline, gates, traffic, and promote loop are the full flagship for
+\      both, and FFN-SKIP's backward makes x's gradient SUM two paths (fan-out).
 \
 \ The store (GA-SAVE artifact + PROMOTE evidence/schedule rows) is bracketed by
 \ STORE-RESET so the test leaks nothing. maki -> habu only.
@@ -35,6 +37,7 @@ require lib/float.f
 require lib/fmt.f
 require maki/report.f
 require maki/cad.f
+require maki/backward.f
 require maki/golden-artifact.f
 
 package MAKI
@@ -181,6 +184,68 @@ s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
 \ byte fields (not a hardcoded literal), locked as "demo: traffic 1.33x reduced".
 FUSE dup RPT-BYTES-BEFORE@ swap RPT-BYTES-AFTER@ DM-RATIO$
 s" demo: traffic 1.33x reduced" T$=
+
+\ ==== 12. FFN-SKIP: the TRUE skip connection via a named reference ===========
+\ Same flagship block, but the residual adds back the ORIGINAL input x. The body
+\ names it by writing a bare "x" (the signature input) before RESIDUAL-ADD, so the
+\ residual's second operand is input 0 (node.3.in "n2 i0"), and the separate r input
+\ is GONE - 5 inputs, not 6. The 5-node IR, fusion/traffic win, gates, and PROMOTE are
+\ the full flagship; the traffic is IDENTICAL to the r-input version (x and r are both
+\ 4x8 and each is read once by the residual), so the skip changes wiring, not bytes.
+STORE-RESET
+MODEL: FFN-SKIP ( x:4x8 w1:8x16 b1:1x16 w2:16x8 b2:1x8 -- y ) LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM ;
+MODEL-DEFINED? TTRUE
+MODEL-K 5 T=
+MODEL-NAME$ s" FFN-SKIP" T$=
+
+\ the captured IR: residual reads x=i0 (the true skip); there is no declared r input
+MIR-RENDER DM-SAVE
+s" ir.nodes: 5"             DM-IN
+s" ir.inputs: 5"            DM-IN
+s" node.0.op: linear"       DM-IN
+s" node.0.in: i0 i1 i2"     DM-IN
+s" node.2.op: linear"       DM-IN
+s" node.2.in: n1 i3 i4"     DM-IN
+s" node.3.op: residual-add" DM-IN
+s" node.3.in: n2 i0"        DM-IN
+s" node.4.op: rmsnorm"      DM-IN
+
+\ LOWER + FUSE: same output shape and the same fusion/traffic win as FFN-DEMO
+LOWER dup RPT-SHAPE$ s" 4x8" T$= drop
+FUSE
+dup RPT-OPS-AFTER@    3 T=
+dup RPT-REGIONS@      3 T=
+dup RPT-MATERIALIZED@ 3 T=
+dup RPT-SPLIT-COUNT   2 T=
+dup 0 RPT-SPLIT@ s" matmul-boundary at node 2"  T$=
+dup 1 RPT-SPLIT@ s" barrier-boundary at node 4" T$=
+dup RPT-BYTES-BEFORE@ 3040 T=
+dup RPT-BYTES-AFTER@  2272 T=
+drop
+
+\ gates + promote end-to-end: host self-consistent + gradcheck pass, PROFILE non-blocking
+CERTIFY dup G-CERTIFY RPT-GATE-TAG@ V-PASS T= drop
+GOLDEN
+dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
+dup G-GOLDEN RPT-GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
+drop
+GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T= drop
+OPTIMIZE
+dup G-CERTIFY   RPT-GATE-TAG@ V-PASS T=
+dup G-GOLDEN    RPT-GATE-TAG@ V-PASS T=
+dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
+dup RPT-RENDER DM-SAVE  s" promote: gates pass; artifact cached" DM-IN
+drop
+PROMOTE dup RPT-CACHE$ s" FFN-SKIP" T$= drop
+
+\ backward: x fans out (the first LINEAR reads it AND the residual skip re-reads it),
+\ so its cotangent SUMS the two paths -> the input-0 gradient node is an OP-ADD. The
+\ r-input FFN-DEMO had NO fan-out on x (x fed only the first linear -> a matmul grad).
+BW-BUILD
+0 BW-HAS-GRAD? TTRUE
+0 BW-SLOT-GRAD@ MIR-OP@   OP-ADD T=
+0 BW-SLOT-GRAD@ MIR-ROWS@ 4 T=
+0 BW-SLOT-GRAD@ MIR-COLS@ 8 T=
 
 STORE-RESET                                        \ leave the store as we found it
 T-REPORT
