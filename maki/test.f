@@ -106,6 +106,8 @@ TEST:SUITE maki/fusion-plan-test.f
 TEST:END-SUITE
 TEST:SUITE maki/lower-ew-test.f
 TEST:END-SUITE
+TEST:SUITE maki/lower-red-test.f
+TEST:END-SUITE
 TEST:SUITE maki/backward-test.f
 TEST:END-SUITE
 TEST:SUITE maki/mlp-bwd-test.f
