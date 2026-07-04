@@ -6,6 +6,13 @@
 \ extension point (planners never learn op names). Adding an op is one entry
 \ here plus its scalar reference + VJP in the op registry (cad-1). maki -> habu
 \ only; needs no library beyond core (named constants, no runtime logic).
+\
+\ Backward op-kinds (OP-*-BWD, cad-9) extend the SAME enum: the model-IR reverse
+\ transform (maki/backward.f) emits them as ordinary nodes so they enter the same
+\ fusion/traffic/memory planners. They are SYNTHESIZED only - never parseable in a
+\ MODEL: body (the maki/cad.f OP-KIND token map does not name them); matmul/movement
+\ adjoints reuse the existing ops (transpose+matmul, reshape/transpose/slice), so
+\ only the elementwise/reduction adjoints that are genuinely new ops appear here.
 
 package MAKI
 public
@@ -31,6 +38,14 @@ public
 17 constant OP-SLICE           \ row-range copy
 18 constant OP-CONCAT          \ row-wise append
 19 constant OP-GATHER          \ row indexed select
-20 constant OP-N               \ op-kind range bound
+\ ---- backward op-kinds (cad-9: synthesized by maki/backward.f, not MODEL:-typed) --
+20 constant OP-RELU-BWD          \ dz gated by sign(x)              (ref: RELU-BWD)
+21 constant OP-GELU-BWD          \ dz * gelu'(x)                    (ref: GELU-BWD)
+22 constant OP-SILU-BWD          \ dz * silu'(x)                    (ref: SILU-BWD)
+23 constant OP-LAYERNORM-BWD     \ row-coupled layernorm VJP        (ref: LN-BWD)
+24 constant OP-RMSNORM-BWD       \ row-coupled rmsnorm VJP          (ref: RMS-BWD)
+25 constant OP-SOFTMAX-ROW-BWD   \ softmax VJP over the OUTPUT row  (ref: SM-BWD)
+26 constant OP-ROPE-BWD          \ rotate cotangent by -angle       (ref: ROPE-BWD)
+27 constant OP-N               \ op-kind range bound
 
 end-package

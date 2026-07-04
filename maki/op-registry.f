@@ -98,6 +98,11 @@ public
 : OPR-ARITY   ( n -- n )  OPR-CK cells R-ARITY + @ ;
 : OPR-VJP     ( n -- n )  OPR-CK cells R-VJP   + @ ;
 
+\ load-time setter: the adjoint registry (maki/adjoint.f) writes each op's model-op
+\ adjoint id here (the cad-9 wiring; 0 stays "no adjoint"). Kept out of OPR! so the
+\ adjoint-id constants live in adjoint.f without a load-order cycle back into this row.
+: OPR-VJP! ( n n -- ) {: op:n vjp:n :}  op OPR-CK drop  vjp op cells R-VJP + ! ;
+
 : OPR-COMPLETE? ( n -- bool )  OPR-CK cells R-REF + @ 0= 0= ;
 
 \ the scalar reference xt; fail closed when the row has no oracle yet
@@ -141,6 +146,13 @@ public
       OP-SLICE        of s" slice"        endof
       OP-CONCAT       of s" concat"       endof
       OP-GATHER       of s" gather"       endof
+      OP-RELU-BWD        of s" relu-bwd"        endof
+      OP-GELU-BWD        of s" gelu-bwd"        endof
+      OP-SILU-BWD        of s" silu-bwd"        endof
+      OP-LAYERNORM-BWD   of s" layernorm-bwd"   endof
+      OP-RMSNORM-BWD     of s" rmsnorm-bwd"     endof
+      OP-SOFTMAX-ROW-BWD of s" softmax-row-bwd" endof
+      OP-ROPE-BWD        of s" rope-bwd"        endof
       E-OPR-KIND throw
    endcase ;
 
@@ -193,7 +205,17 @@ private
    CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-TRANSPOSE    OPR!
    CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-SLICE        OPR!
    CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  2 OP-CONCAT       OPR!
-   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  2 OP-GATHER       OPR! ;
+   CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  2 OP-GATHER       OPR!
+   \ backward op-kinds (cad-9): arity = cotangent + the saved tensors the VJP reads.
+   \ elementwise *-bwd read (dz, saved-input); reductions read (dz, saved-row); the
+   \ softmax adjoint reads the saved OUTPUT row; rope-bwd reads (dz, cos, sin).
+   CLASS-EW         1 ACC-SAME NUM-EXACT  2 OP-RELU-BWD        OPR!
+   CLASS-EW        10 ACC-SAME NUM-RELTOL 2 OP-GELU-BWD        OPR!
+   CLASS-EW         7 ACC-SAME NUM-RELTOL 2 OP-SILU-BWD        OPR!
+   CLASS-ROW-REDUCE 8 ACC-F32  NUM-RELTOL 2 OP-LAYERNORM-BWD   OPR!
+   CLASS-ROW-REDUCE 6 ACC-F32  NUM-RELTOL 2 OP-RMSNORM-BWD     OPR!
+   CLASS-ROW-REDUCE 4 ACC-F32  NUM-RELTOL 2 OP-SOFTMAX-ROW-BWD OPR!
+   CLASS-EW         6 ACC-SAME NUM-RELTOL 3 OP-ROPE-BWD        OPR! ;
 
 OPR-BUILD
 
@@ -219,5 +241,14 @@ OPR-BUILD
 ' MOVE-CONCAT    OP-CONCAT    cells R-REF + !
 ' MOVE-GATHER    OP-GATHER    cells R-REF + !
 \ matmul / linear / cast stay incomplete: no op-granularity scalar oracle yet.
+\ backward op-kinds (cad-9): bind the existing scalar/buffer VJP references so the
+\ synthesized backward nodes are COMPLETE ops (GOLDEN never fails closed on them).
+' RELU-BWD  OP-RELU-BWD        cells R-REF + !
+' GELU-BWD  OP-GELU-BWD        cells R-REF + !
+' SILU-BWD  OP-SILU-BWD        cells R-REF + !
+' LN-BWD    OP-LAYERNORM-BWD   cells R-REF + !
+' RMS-BWD   OP-RMSNORM-BWD     cells R-REF + !
+' SM-BWD    OP-SOFTMAX-ROW-BWD cells R-REF + !
+' ROPE-BWD  OP-ROPE-BWD        cells R-REF + !
 
 end-package
