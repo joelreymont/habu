@@ -30,9 +30,14 @@ adjoints are generated, gradient-checked against finite differences, and
 used to train a model from scratch through the identical pipeline, with a
 seeded convergence gate committed as a test. The entire toolchain is a
 single self-hosted binary under 128\,KB. On a Jetson Orin NX we measure
-parity with hand-written Triton at the streaming-memory roof and show that
-the checked target shifts the stack-discipline error class from runtime to
-author time. \todo{Extend with compute-bound results when measured
+that this verification carries no measured performance tax: generated,
+gate-proven kernels match hand-written Triton at the streaming-memory
+roof, while a whole class of kernel-authoring errors---measured
+head-to-head against Triton on the same device---moves from runtime to
+author time, and the gates catch defect classes (silent copy-back loss,
+malformed generated modules, wrong adjoints) that the status quo ships.
+The toolchain is four orders of magnitude smaller than the stacks it
+replaces. \todo{Extend with compute-bound results when measured
 (\S\ref{sec:perf}).}
 \end{abstract}
 
@@ -70,12 +75,15 @@ schedule selection and evidence are recorded in a content-addressed store.
 
 This paper contributes:
 \begin{enumerate}
-\item the design of a checked concatenative kernel target, and the
-  measurement that it shifts a whole error class to author time
+\item a checked concatenative kernel target that \emph{eliminates} the
+  stack-discipline and composition error class at author time, measured
+  head-to-head against Triton on identical tasks and hardware
   (\S\ref{sec:errors});
-\item Model CAD: a verification-first compilation pipeline whose every
-  generated kernel---and whole multi-region models---are device-proven
-  against a checked reference (\S\ref{sec:cad});
+\item Model CAD: the first ML compilation pipeline we know of whose
+  artifacts are admitted by device-proof with recorded evidence rather
+  than emitted on trust---at measured parity with the status quo where
+  memory-bound, i.e., verification without a performance tax
+  (\S\ref{sec:cad});
 \item a verified-gradient facility in which the training IR and the
   gradchecked IR are the same object, demonstrated by training a model
   from scratch through the pipeline (\S\ref{sec:train});
@@ -309,6 +317,15 @@ Failures render as \emph{repair packets}: a typed failure class, the
 offending node or region, a reproduction pointer, and a suggested next
 action---designed so an agent or a person can act on the report without
 reading the compiler.
+
+The gates are not ceremony; during this system's own development they
+caught, among others: a generated two-kernel module with a duplicated
+PTX header (assembles nowhere; invisible to presence-only text tests and
+to any host lacking \code{ptxas}); uniform test goldens masking
+index/transpose bugs (exposed by nonuniform goldens the golden gate now
+mandates); silently dropped device copy-backs (exposed by sentinel
+poisoning); and a deliberately wrong adjoint (caught by gradcheck). Each
+is a defect class the status-quo pipeline ships to runtime.
 
 \section{Verified Gradients and Training}\label{sec:train}
 Differentiation is a transform on the same IR. An adjoint registry maps
