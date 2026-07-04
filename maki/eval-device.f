@@ -86,6 +86,11 @@ variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
    MAKI-GRADE:DRIVER$ SB$ WRITE-ALL ;
 
 \ ---- spawn bin/hb to emit the driver's PTX (captured stdout) ----
+\ A child process, not in-process compilation, because the driver embeds the
+\ CANDIDATE kernel under eval - untrusted generated source. In-process it would
+\ mutate this grader's dictionary, and a crashing or hanging candidate would
+\ kill the grader; the child gives rc + captured stderr + a timeout, so a bad
+\ candidate is a graded failure, never a grader casualty.
 create GP-OUT $4000 allot  create GP-ERR $1000 allot
 : GRADE-EMIT ( -- n )
    PROC-ARGV-RESET
