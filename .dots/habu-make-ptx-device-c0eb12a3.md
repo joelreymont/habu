@@ -34,3 +34,31 @@ resolution and the checked assembler runner. `tools/ptx/acc-device-test.f`,
 suite green and `maki/test.f` green. Remaining: sentinel readbacks, zed
 hardware failure-class tests, nonuniform goldens, and older prebuilt-cubin
 consumer tools (`cuda-load`, `cuda-launch`, bandwidth/fusion/softmax launchers).
+
+2026-07-04 increment: sentinel readbacks landed. New `lib/ptx/sentinel.f`
+(`PTXSENT`) owns the committed poison pattern (`$DEADBEEF`), `FILL` (pre-launch),
+and `GUARD` (throws `E-PTX-READBACK` = -5003 when a readback cell is still the
+sentinel), with `lib/ptx/sentinel-test.f` in the `ptx-stdlib` gate. Every
+golden-readback host buffer is now poisoned before launch and guarded on read:
+`maki/gpu.f` (GHY), `maki/eval-device.f` (ED-RBUF), `maki/eval-device-sm.f`
+(SM-OUT), and `tools/ptx/{acc,matmul,redadd,saxpy-v4-tail,gradcheck}-device*`,
+`sum-launch`, `softmax-launch`, `softmax-gradcheck`. A dropped copy-back now fails
+with a named class instead of comparing poison as a wrong answer. Migration:
+`tools/ptx/cuda-load.f` deleted (dead legacy - superseded by `acc-device-test.f`
+and `saxpy-v4-tail-device-test.f`, which load AND launch AND assert SAXPY);
+`sum-launch.f` and `softmax-launch.f` migrated to self-contained per-run `PTXTC`
+emit+assemble (no shared `/tmp/{sum,softmax}.cubin`). Goldens: `sum-launch.f`
+row1 changed from uniform `[1,1,1,1]->4.0` to nonuniform `[2,3,4,5]->14.0`
+(0x41600000, hand-verified `14.0 F64>F32 = $41600000`) so an index/broadcast bug
+cannot pass on all-equal data. Proof: `maki/test.f` 60/60, full native gate green
+(incl. `ptx-stdlib`, host-lint, filemap-lint), touched device files checker-clean
+(device-blocked off-device). Remaining (device-blocked / dotted): zed hardware
+failure-class tests; multi-cubin consumer migration + toolchain named-artifact
+capability (`softmax-gradcheck.f` keeps fwd+bwd loaded simultaneously); bench
+harness self-emit for `fusion-compare.f`/`bandwidth-lib.f` (PTXBENCH has no emit
+path); `maki/gpu.f` `/tmp/saxpy.cubin` self-emit; `matmul-device-test.f`
+references undefined `ED-LIB`/`ED-H`/`ED-SYM` (pre-existing, cannot load) and its
+A=B=all-ones golden cannot catch a transpose; `softmax-launch.f` row1 stays
+uniform (its ex2.approx softmax bits need device measurement, not hand
+computation - row0 `[1,2,3,4]` already gives index discrimination);
+`cuda-launch.f` deferred to the f32-marshaling lane.
