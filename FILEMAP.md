@@ -629,6 +629,10 @@ points stay listed.
   the no-binary bootstrap path.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
+- `test/seal.f` — friend-arena seal regressions: post-seal raw writes (`!`/`c!`/
+  `+!`/`atomic!`) and read-syscall buffers into the crown-jewel band trap with
+  exit `E-SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
+  post-seal language features still update protected cells via engine primitives.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate

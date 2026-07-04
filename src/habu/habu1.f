@@ -986,7 +986,6 @@ s" spawn-darwin-finish" s" label label --" TRUST
       0 $4F MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
-
 : BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  CP A 0 ADDI, ;         \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  NDICT A 0 ADDI, ;      \ ( n -- ) set NDICT — forget dict entries past a mark
 

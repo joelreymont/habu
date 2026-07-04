@@ -317,6 +317,10 @@ TEST:SUITE stdlib-process-fixtures
    lib/process-command-test.f
 TEST:END-SUITE
 
+TEST:SUITE friend-arena-seal
+   test/seal.f
+TEST:END-SUITE
+
 TEST:SUITE stdlib-runner-fixtures
    lib/test/runner-test.f
 TEST:END-SUITE

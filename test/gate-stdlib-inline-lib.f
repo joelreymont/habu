@@ -432,6 +432,7 @@ variable GSI-TL-FILE-A
    GSI-TEST-SETUP
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
+   s" test/seal.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
