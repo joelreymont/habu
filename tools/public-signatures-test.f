@@ -29,11 +29,15 @@ create PST-ROOT-BUF FS-PATH-CAP allot
 create PST-FIX-BUF FS-PATH-CAP allot
 create PST-DEP-BUF FS-PATH-CAP allot
 create PST-ENTRY-BUF FS-PATH-CAP allot
+create PST-GDEP-BUF FS-PATH-CAP allot
+create PST-GENTRY-BUF FS-PATH-CAP allot
 create PST-CONST-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
 variable PST-DEP-U
 variable PST-ENTRY-U
+variable PST-GDEP-U
+variable PST-GENTRY-U
 variable PST-CONST-U
 
 : PST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
@@ -254,6 +258,39 @@ variable PST-CONST-U
    PST-OUT outu s" FOO:BAR" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE ;
 
+: PST-GDEP ( -- ptr u8 n )    PST-GDEP-BUF PST-GDEP-U @ ;
+: PST-GENTRY ( -- ptr u8 n )  PST-GENTRY-BUF PST-GENTRY-U @ ;
+
+\ The dependency is loaded only through a colon-wrapped `s" ..." required`
+\ helper; the whole-file closure producer must still hand its package scope to
+\ the pre-scan, so the entry's public word renders qualified.
+: PST-GENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : PST-DEP-LOAD ( -- ) " SB-APPEND
+   $73 SB-APPEND-C PST-DQ $20 SB-APPEND-C
+   PST-GDEP SB-APPEND
+   PST-DQ $20 SB-APPEND-C
+   s" required ;" SB-APPEND PST-LF
+   s" PST-DEP-LOAD" SB-APPEND PST-LF
+   s" public" SB-APPEND PST-LF
+   s" : GBAR ( -- ) ;" SB-APPEND PST-LF
+   SB$ ;
+
+: PST-PREPARE-GUARDED ( -- )
+   PST-ROOT s" ps-dep-guard.f" PST-GDEP-BUF JOIN-PATH PST-GDEP-U !
+   PST-ROOT s" ps-entry-guard.f" PST-GENTRY-BUF JOIN-PATH PST-GENTRY-U !
+   PST-GDEP CLEANUP+
+   PST-GENTRY CLEANUP+
+   PST-GDEP s\" package GFOO\n" WRITE-ALL
+   PST-GENTRY PST-GENTRY-SRC$ WRITE-ALL ;
+
+: PST-TEST-CLOSURE-GUARDED-PKG ( -- )
+   PST-PREPARE-GUARDED
+   PST-GENTRY PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu s" GFOO:GBAR" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu PST-EXPORTED-TRUE$ CONTAINS? TTRUE ;
+
 : PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
 
 \ TFAM 5 const-b89c90f0: `constant` bakes one physical cell, so a value of the
@@ -296,6 +333,7 @@ variable PST-CONST-U
    PST-TEST-TRUST
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
+   PST-TEST-CLOSURE-GUARDED-PKG
    PST-TEST-CONST-LAYOUT
    CLEANUP-RUN
    PST-ROOT EXISTS? TFALSE

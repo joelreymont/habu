@@ -162,6 +162,36 @@ variable ECT-I
    ECT-KEY-B ECT-CLOSURE-KEY
    ECT-KEY-A 64 ECT-KEY-B 64 STR= TTRUE ;
 
+\ --- colon-wrapped required joins the closure (whole-file producer) -----------
+: ECT-GUARDED-ENTRY$ ( -- ptr u8 n )
+   SB-RESET
+   s" : ECT-LOAD ( -- ) " SB-APPEND
+   $73 SB-APPEND-C ECT-DQ ECT-SP
+   ECT-DA$ SB-APPEND
+   ECT-DQ ECT-SP
+   s" required ;" SB-APPEND
+   ECT-LF
+   s" ECT-LOAD" SB-APPEND
+   ECT-LF
+   SB$ ;
+
+: ECT-TEST-COLON-WRAPPED ( -- )
+   ECT-DA$ s\" \\ a guarded\n" ECT-WRITE
+   ECT-ENTRY$ ECT-GUARDED-ENTRY$ ECT-WRITE
+   ECT-ENTRY$ EC:BUILD
+   EC:COUNT 2 T=
+   0 EC:PATH$ ECT-ENTRY$ T$=
+   1 EC:PATH$ ECT-DA$ T$= ;
+
+\ --- key sensitivity for a dep reachable only through a colon body ------------
+: ECT-TEST-KEY-COLON-DEP-EDIT ( -- )
+   ECT-DA$ s\" \\ a guarded v1\n" ECT-WRITE
+   ECT-ENTRY$ ECT-GUARDED-ENTRY$ ECT-WRITE
+   ECT-KEY-A ECT-CLOSURE-KEY
+   ECT-DA$ s\" \\ a guarded v2\n" APPEND-FILE
+   ECT-KEY-B ECT-CLOSURE-KEY
+   ECT-KEY-A 64 ECT-KEY-B 64 STR= TFALSE ;
+
 : ECT-MAIN ( -- )
    T-RESET
    ECT-PREP
@@ -172,6 +202,8 @@ variable ECT-I
    ECT-TEST-KEY-CLOSURE-EDIT
    ECT-TEST-KEY-STABLE
    ECT-TEST-KEY-NONCLOSURE-EDIT
+   ECT-TEST-COLON-WRAPPED
+   ECT-TEST-KEY-COLON-DEP-EDIT
    EC:RESET
    CLEANUP-RUN
    T-REPORT
