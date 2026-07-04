@@ -150,6 +150,8 @@ TEST:SUITE maki/golden-artifact-test.f
 TEST:END-SUITE
 TEST:SUITE maki/gradcheck-test.f
 TEST:END-SUITE
+TEST:SUITE maki/demo-ffn-test.f
+TEST:END-SUITE
 TEST:SUITE maki/from-scratch-model-test.f
 TEST:END-SUITE
 TEST:SUITE maki/from-scratch-train-test.f
