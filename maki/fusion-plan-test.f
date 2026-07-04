@@ -125,6 +125,19 @@ FP-SPLIT-COUNT     1 T=
 0 FP-SPLIT-NODE@   0 T=                    \ reported at the materialized producer
 0 MIR-MAT@ TTRUE                            \ multi-use producer is materialized
 
+\ ---- a trailing movement that IS the model output materializes (mat-flag fix) ----------
+\ Slice-4 gap (dot maki-fusion-plan): FP-MAT-FLAG left a free/staged movement model-output at
+\ mat=0, so its region had zero materialized outputs and the copy kernel failed E-LMV-NOOUT.
+\ A movement model-output must materialize exactly like a compute model-output.
+MODEL: MVT ( x:4x8 -- y ) TRANSPOSE ;             \ staged verdict, standalone model output
+FP-BUILD
+FP-REGION-COUNT 1 T=
+0 MIR-MAT@ TTRUE
+MODEL: MVS ( x:4x8 -- y ) SLICE:0..2 ;            \ free verdict (r0=0 aligned), model output
+FP-BUILD
+FP-REGION-COUNT 1 T=
+0 MIR-MAT@ TTRUE
+
 \ ---- fail-closed accessor paths (after a valid build) ----------------------
 ' TRY-RID    E-FP-IDX TTHROWS
 ' TRY-RGN    E-FP-IDX TTHROWS

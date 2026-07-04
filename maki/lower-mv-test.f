@@ -53,10 +53,11 @@ T-RESET
 
 \ ================= (B) materialized movement copy kernels =====================
 
-\ ---- TRANSPOSE 4x8: the planner leaves a staged output un-materialized (fusion-plan gap),
-\ so force mat=1 to exercise the copy kernel - div/rem row remap, one buffer, no shared mem.
+\ ---- TRANSPOSE 4x8 as the model output: FP-MAT-FLAG now materializes it (dot maki-fusion-plan),
+\ so the copy kernel runs without forcing - div/rem row remap, one buffer, no shared mem.
 MODEL: TP ( x:4x8 -- y ) TRANSPOSE ;
-FP-BUILD  -1 0 MIR-MAT!
+FP-BUILD
+0 MIR-MAT@ TTRUE                             \ mat-flag fix: the trailing movement output materializes
 LMVT-CAP-MV
 s" .visible .entry REGION_0"    LMVT-ONCE
 s" .param .u64 p_in0"           LMVT-IN
@@ -165,16 +166,21 @@ FP-BUILD
 1 0 cells FP-RID + !                          \ poke GELU (node 0) into the matmul region (region 1)
 ' LMVT-TRY-MM1 E-LMM-PROLOGUE TTHROWS
 
-\ ---- a free/staged movement the planner left un-materialized has no copy output (the gap) ---
+\ ---- an un-materialized movement copy region has no output (hand-forced, defense-in-depth) --
+\ FP-MAT-FLAG now materializes a trailing movement model-output (dot maki-fusion-plan), so a
+\ standalone TRANSPOSE lowers without forcing. Forcing its mat flag back to 0 simulates the old
+\ un-materialized plan the copy analyzer must still reject (E-LMV-NOOUT is now unreachable by
+\ checked planning, so this hand-built plan proves the guard directly).
 MODEL: TU ( x:4x8 -- y ) TRANSPOSE ;
-FP-BUILD
+FP-BUILD  0 0 MIR-MAT!
 ' LMVT-TRY-MV E-LMV-NOOUT TTHROWS
 
-\ ---- a copy region must be exactly one movement node (hand-forced two-node region) ----------
-\ GELU then TRANSPOSE fuse (staged) into one region, both mat=0; forcing the transpose mat=1
-\ simulates a materialized output the analyzer must still reject as multi-node.
+\ ---- a copy region must be exactly one movement node -------------------------------------
+\ GELU then TRANSPOSE fuse (staged) into one region; the transpose is the model output, so
+\ FP-MAT-FLAG materializes it (mat-flag fix), but LMV-ANALYZE rejects the two-node region as
+\ multi-node (E-LMV-MULTI) before any output check - a copy region is exactly one movement node.
 MODEL: GT ( x:4x8 -- y ) GELU TRANSPOSE ;
-FP-BUILD  -1 1 MIR-MAT!
+FP-BUILD
 ' LMVT-TRY-MV E-LMV-MULTI TTHROWS
 
 \ ---- cross-region (slice 5): a materialized movement reading a producer NODE now lowers -------

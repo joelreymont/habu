@@ -15,8 +15,9 @@
 \ an adjacent span, so params and dissolved movement do not break a chain. Output:
 \ per-node region id, per-region facts (member count, class bitmask), the typed
 \ split list (reason + node), and the materialization flags written back into the IR
-\ (interior compute nodes cleared; region outputs, model outputs, multi-use, and
-\ materialize/gathered movement set). Traffic bytes are maki/traffic.f's concern.
+\ (interior compute nodes cleared; region outputs, model outputs - compute OR a trailing
+\ movement node, multi-use, and materialize/gathered movement set). Traffic bytes are
+\ maki/traffic.f's concern.
 \
 \ Fail closed: node/region/split index out of range and an accessor used before
 \ FP-BUILD are named throws. maki -> habu only; fusion-plan owns -5072..-5074.
@@ -188,10 +189,13 @@ FP-CAP-INIT
    loop false ;
 
 : FP-MAT-FLAG ( n -- bool ) {: nd:n :}
-   \ movement: materialize/gathered verdict, or a free/staged rewrite that still
-   \ crosses a region boundary (it could not dissolve into the consumer).
+   \ A model output (no consumer) always materializes - whether it is a compute node
+   \ or a trailing movement node (a standalone/trailing TRANSPOSE/SLICE that IS the model
+   \ output; without this its region has zero materialized outputs -> lower E-LMV-NOOUT).
+   nd FP-REF-USES 0= if true exit then        \ model output (compute or movement)
+   \ movement (non-output): materialize/gathered verdict, or a free/staged rewrite that
+   \ still crosses a region boundary (it could not dissolve into the consumer).
    nd MIR-MOVE? if  nd NODE-MAT-VD?  nd FP-REGION-OUT?  or  exit then
-   nd FP-REF-USES 0= if true exit then        \ model output
    nd FP-REF-USES 1 > if true exit then       \ multi-use producer
    nd FP-REGION-OUT? ;                          \ region output
 
