@@ -20,6 +20,7 @@ points stay listed.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
 - `docs/type-families.md` — generic lowercase type-family/ADT design plan.
+- `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
