@@ -116,6 +116,90 @@ MP-M MP-N * constant MP-CE          \ C elems = 128
    MP-LOAD-A  MP-LOAD-B  MP-MMA  MP-STORE-D
    s" ret;" PTX-L  s" }" PTX-L ;
 
+\ ============================ ldmatrix FRAGMENT-LOAD variant ==================
+\ Same m16n8k8 tf32 tile, but the A(16x8) fragment is loaded from .shared with ONE
+\ ldmatrix.sync.aligned.m8n8.x4.shared.b16 (the cg-mma.f rung-1 target) and B(8x8)
+\ with raw ld.shared.b32. Isolation proof that the ldmatrix lane->fragment mapping is
+\ element-exact BEFORE the K-looping kernel uses it.
+\
+\ tf32 via ldmatrix.b16: a tf32 value is 32 bits = 2 adjacent b16 halves, so an
+\ 8-row x 4-tf32-col tile IS one 8x8 b16 tile; the 16x8 A fragment = 4 such tiles =
+\ one ldmatrix.x4, whose result regs map to {a0,a1,a2,a3} = {A[gid][t],A[gid+8][t],
+\ A[gid][t+4],A[gid+8][t+4]} exactly. No cvt: the raw f32 bits land in the .b32 reg
+\ and mma.sync.tf32 reads the top 19 bits (round-toward-zero). Integer operands are
+\ exact in tf32's 10-bit mantissa, so element-exactness holds identically to MP-ALL;
+\ this is the committed correctness check for the ldmatrix load mechanism.
+768 constant MP-LDM-SHB           \ shared bytes: A 16x8 f32 (512) + B 8x8 f32 (256)
+512 constant MP-LDM-BOFF          \ B tile byte offset within SHM
+
+: MP-LDM-HEAD ( -- )
+   s" .visible .entry MMALDM(.param .u64 pA, .param .u64 pB, .param .u64 pC)" PTX-L
+   s" {" PTX-L
+   s" .reg .f32 %f<32>;" PTX-L
+   s" .reg .b32 %r<48>;" PTX-L
+   s" .reg .b64 %rd<16>;" PTX-L
+   SB-RESET s" .shared .align 16 .b8 SHM[" SB-APPEND MP-LDM-SHB SB-U s" ];" SB-APPEND SB$ PTX-L ;
+
+\ cooperative global->shared staging (single warp): A 4 elems/lane, B 2/lane, raw b32 copy.
+: MP-LDM-STAGE ( -- )
+   s" mov.u32 %r1, %tid.x;" PTX-L
+   s" mov.u32 %r7, SHM;" PTX-L
+   4 0 do                                        \ A[c], c = lane + m*32
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" mul.wide.u32 %rd10, %r20, 4;" PTX-L  s" add.u64 %rd11, %rd1, %rd10;" PTX-L
+      s" ld.global.b32 %r21, [%rd11];" PTX-L
+      s" shl.b32 %r22, %r20, 2;" PTX-L  s" add.u32 %r22, %r7, %r22;" PTX-L
+      s" st.shared.b32 [%r22], %r21;" PTX-L
+   loop
+   2 0 do                                        \ B[c], c = lane + m*32
+      SB-RESET s" add.u32 %r20, %r1, " SB-APPEND i 32 * SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" mul.wide.u32 %rd10, %r20, 4;" PTX-L  s" add.u64 %rd11, %rd2, %rd10;" PTX-L
+      s" ld.global.b32 %r21, [%rd11];" PTX-L
+      s" shl.b32 %r22, %r20, 2;" PTX-L
+      SB-RESET s" add.u32 %r22, %r22, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+      s" add.u32 %r22, %r7, %r22;" PTX-L
+      s" st.shared.b32 [%r22], %r21;" PTX-L
+   loop
+   s" bar.sync 0;" PTX-L ;
+
+\ ldmatrix.x4 A: lane provides row addr of tile (lane>>3) row (lane&7); each lane then
+\ receives {a0,a1,a2,a3}. row = (tsel&1)*8 + rt, kcol = (tsel>>1)*4 (SH_A row stride 8f=32B).
+: MP-LDM-LOAD-A ( -- )
+   s" mov.u32 %r1, %tid.x;" PTX-L
+   s" and.b32 %r2, %r1, 7;" PTX-L                \ rt   = lane&7
+   s" shr.u32 %r3, %r1, 3;" PTX-L                \ tsel = lane>>3
+   s" and.b32 %r4, %r3, 1;" PTX-L  s" shl.b32 %r4, %r4, 3;" PTX-L   \ (tsel&1)*8
+   s" add.u32 %r5, %r4, %r2;" PTX-L              \ row
+   s" mul.lo.u32 %r5, %r5, 32;" PTX-L            \ row*32 (row byte base)
+   s" shr.u32 %r6, %r3, 1;" PTX-L  s" shl.b32 %r6, %r6, 4;" PTX-L   \ (tsel>>1)*16 (kcol bytes)
+   s" add.u32 %r5, %r5, %r6;" PTX-L
+   s" mov.u32 %r7, SHM;" PTX-L  s" add.u32 %r5, %r7, %r5;" PTX-L
+   s" ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%r10,%r11,%r12,%r13}, [%r5];" PTX-L ;
+
+\ raw b32 B fragment: b0=B[t][gid], b1=B[t+4][gid] (no cvt; mma truncates f32->tf32)
+: MP-LDM-LOAD-B ( -- )
+   s" mov.u32 %r1, %tid.x;" PTX-L
+   s" shr.u32 %r2, %r1, 2;" PTX-L                \ gid = lane>>2
+   s" and.b32 %r3, %r1, 3;" PTX-L                \ t   = lane&3
+   s" mov.u32 %r7, SHM;" PTX-L
+   s" mul.lo.u32 %r4, %r3, 8;" PTX-L  s" add.u32 %r4, %r4, %r2;" PTX-L  \ t*8+gid
+   s" shl.b32 %r4, %r4, 2;" PTX-L
+   SB-RESET s" add.u32 %r4, %r4, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r4, %r7, %r4;" PTX-L
+   s" ld.shared.b32 %r14, [%r4];" PTX-L
+   s" add.u32 %r5, %r3, 4;" PTX-L  s" mul.lo.u32 %r5, %r5, 8;" PTX-L  s" add.u32 %r5, %r5, %r2;" PTX-L  \ (t+4)*8+gid
+   s" shl.b32 %r5, %r5, 2;" PTX-L
+   SB-RESET s" add.u32 %r5, %r5, " SB-APPEND MP-LDM-BOFF SB-U s" ;" SB-APPEND SB$ PTX-L
+   s" add.u32 %r5, %r7, %r5;" PTX-L
+   s" ld.shared.b32 %r15, [%r5];" PTX-L ;
+
+: EMIT-MMA-LDM-PROBE ( -- )
+   PTX-HEADER-SM87  PTX-NL
+   MP-LDM-HEAD  MP-PARAMS  MP-LDM-STAGE
+   MP-LDM-LOAD-A  MP-LDM-LOAD-B                   \ operands -> %r10..15
+   MP-LANE  MP-MMA  MP-STORE-D                    \ MP-LANE re-derives the D-store geometry (%r4,%r5,%r8)
+   s" ret;" PTX-L  s" }" PTX-L ;
+
 \ ============================ HOST reference + device run =====================
 create MP-HA MP-AE cells allot      \ host A (f64 cells)
 create MP-HB MP-BE cells allot      \ host B
@@ -150,10 +234,10 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
    MP-QO $1000 >LEN MP-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" mma-probe: ptxas failed" 1 die then ;
 
-: MP-RUN-DEVICE ( -- )
+: MP-RUN-DEVICE ( ptr u8 n -- ) {: ka:ptr ku:n :}
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
-   s" MMAPROBE" PTXBENCH:KERNEL!  s" MMAPROBE" PTXBENCH:LABEL!
+   ka ku PTXBENCH:KERNEL!  ka ku PTXBENCH:LABEL!
    PTXBENCH:OPEN  PTXBENCH:LOAD
    MP-AE 4 * MP-DA PTXBENCH:DEVICE-ALLOC
    MP-BE 4 * MP-DB PTXBENCH:DEVICE-ALLOC
@@ -188,7 +272,6 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
    loop ;
 
 : MP-REPORT ( n -- ) {: bad:n :}
-   s" == MMA fragment-isolation probe: m16n8k8 tf32, single warp ==" type cr
    s" C[0][0]="   type MP-HC 0 T-GET f>s . s"  ref=" type MP-HREF 0 T-GET f>s . cr
    s" C[15][7]="  type MP-HC MP-CE 1- T-GET f>s . s"  ref=" type MP-HREF MP-CE 1- T-GET f>s . cr
    s" C[8][3]="   type MP-HC 8 MP-N * 3 + T-GET f>s . s"  ref=" type MP-HREF 8 MP-N * 3 + T-GET f>s . cr
@@ -197,17 +280,31 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
    else s" RESULT: FAIL first-bad-elem=" type MP-BADI @ . s"  maxerr=" type MP-MAXERR @ f>s . cr then ;
 
 public
-: MP-EMIT ( -- )  EMIT-MMA-PROBE ;      \ dump the probe PTX to stdout (inspection)
+: MP-EMIT ( -- )  EMIT-MMA-PROBE ;          \ dump the scalar probe PTX to stdout (inspection)
+: MP-LDM-EMIT ( -- )  EMIT-MMA-LDM-PROBE ;  \ dump the ldmatrix probe PTX to stdout (inspection)
 : MP-ALL ( -- )
    CUDA:OPEN? 0= if s" mma-probe: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    s" habu-mma-probe" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MMA-PROBE  PTX-CAPTURE-OFF
    MP-ASSEMBLE
    MP-FILL-HOST  MP-REF
-   MP-RUN-DEVICE
+   s" MMAPROBE" MP-RUN-DEVICE
+   s" == MMA fragment-isolation probe: m16n8k8 tf32, single warp (scalar+cvt) ==" type cr
+   MP-COMPARE MP-REPORT
+   PTXTC:CLEAN ;
+
+: MP-LDM-ALL ( -- )
+   CUDA:OPEN? 0= if s" mma-probe: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   s" habu-mma-ldm-probe" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MMA-LDM-PROBE  PTX-CAPTURE-OFF
+   MP-ASSEMBLE
+   MP-FILL-HOST  MP-REF
+   s" MMALDM" MP-RUN-DEVICE
+   s" == MMA fragment-isolation probe: m16n8k8 tf32, single warp (ldmatrix.x4 A + raw b32 B) ==" type cr
    MP-COMPARE MP-REPORT
    PTXTC:CLEAN ;
 
 end-package
 
 MMAPROBE:MP-ALL
+MMAPROBE:MP-LDM-ALL
