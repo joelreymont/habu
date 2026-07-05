@@ -79,14 +79,24 @@ n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
 - This is device-correct and on the tensor-core roof, but at THIS rung it does
   **not yet beat** the tuned FP32 cp.async tile (442) and is ~21% of Triton
   (1636–1890): the roofline-predicted "feeding the tensor cores, not saturating
-  them" — MMM uses *fewer* registers (38 vs 56), so it is load/ALU-bound, not
-  register-bound. The feed is 4+8 scalar `ld.shared.f32` fragment loads/substep
-  (bank conflicts) + 48 `cvt.rna.tf32`/tile.
-- Remaining rungs (dotted `habu-tensor-core-mma`, cad-6 search): **`ldmatrix`**
-  fragment loads (kill scalar-load bank conflicts, pack 4 tf32/`.b32` → halve the
-  `cvt`), a **16×64 warp tile** (4-warp / 128-thread staging → 8× A-reuse),
-  **larger BK**, and **bank-conflict-free swizzled shared**. Reuse → stage →
-  pipeline is the predicted order; step 3 landed the tile + the license.
+  them" — MMM uses *fewer* registers (38 vs 56), so it is not register-bound.
+- **`ldmatrix` rung MEASURED — NEGATIVE (2026-07-05, eval-triton step 3c).** The
+  fragment-feed hypothesis (scalar-load bank conflicts + 48 `cvt`/tile starve the
+  MMA) was **falsified by a 3-mode ablation** in `lib/ptx/cg-mma.f` (`MMA-LMODE`):
+  dropping every `cvt` (raw `ld.shared.b32`, mma truncates f32→tf32) is FLAT, and
+  ONE `ldmatrix.x4` for the A fragment is ~1.2% *slower* (43 vs 38 reg, 0 spill;
+  370.0/388.9/394.3 vs 376.1/393.5/398.5 GFLOP/s). All modes element-exact
+  (`mma-probe` MP-LDM-ALL + `mma-gemm-check` 64³/128³); default stays the exact-RNE
+  scalar+cvt feed. **Lesson: this rung is issue/dependency-bound, not
+  fragment-feed-bound** — throughput is invariant to load flavor, so the limiter
+  is the per-warp mma dependency chain (A reused only 4×, each mma waiting on the
+  B loads just before it) and the BK=32 `bar.sync` cadence.
+- Remaining rungs (dotted `habu-tensor-core-mma`, cad-6 search), reordered by the
+  step-3c evidence: a **16×64 warp tile** (4-warp / 128-thread staging → 8×
+  A-reuse, more independent mma per fragment) and **larger BK + swizzled shared**
+  (fewer syncs; a transposed/swizzled Bs also unlocks B-side `ldmatrix`, where the
+  proven mechanism amortizes). cad-6 should search warp-tile shape and BK — not
+  fragment-load flavor — on this axis.
 
 ## The five things that govern speed (check all five)
 

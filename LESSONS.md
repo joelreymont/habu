@@ -2323,3 +2323,18 @@ unchanged (148855). Keys for milestone 2:
   measured `rel_err ~8e-4` vs a CPU f32 reference is the fingerprint (pure f32
   FMA gives ~1e-6). Record the arithmetic class next to any GEMM number; a
   Triton-vs-f32-FMA comparison is cross-precision and must say so.
+- **A perf hypothesis is only worth its ablation - "load/ALU-bound" was wrong.**
+  The MMA rung-1 diagnosis (scalar fragment loads + 48 cvt/tile starve the
+  tensor cores) predicted ldmatrix as the biggest jump; a 3-mode single-variable
+  ablation (`cg-mma.f MMA-LMODE`) falsified it: dropping every cvt is FLAT and
+  ldmatrix.x4 is ~1.2% SLOWER (43 vs 38 reg). When throughput is invariant to a
+  mechanism swap, the bottleneck is what the swap holds constant (here the mma
+  dependency chain + bar.sync cadence). Build the cheap ablation BEFORE the big
+  rewrite; a negative measured result that redirects two dots is a deliverable.
+- **tf32 fragments ride ldmatrix.b16 as half-pairs - no tf32 ldmatrix needed.**
+  A tf32 value is 2 adjacent b16 halves, so an 8-row x 4-tf32-col tile IS one
+  8x8 b16 ldmatrix tile and the 16x8 A fragment = one ldmatrix.x4 whose 4 result
+  regs map exactly to the mma.sync A layout. And mma.sync.tf32 reads the top
+  bits of the raw f32 register, so `ld.shared.b32` with NO cvt is a valid tf32
+  feed (truncation vs cvt.rna RNE: <1 ulp tf32, inside the licensed rtol 2e-3;
+  keep cvt.rna where the golden must stay bit-identical).

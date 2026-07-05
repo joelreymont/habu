@@ -117,14 +117,23 @@ variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 
    s" MM" GB-KERNEL
    PTXTC:CLEAN ;
 
-: GB-MMM ( -- )                        \ TF32 tensor-core column (mma.sync, higher roof)
-   s" == MMM tensor-core TF32 mma.sync 64x64 (8 warps, cp.async double-buffer) ==" type cr
+: GB-MMM-MODE ( n -- ) {: mode:n :}    \ TF32 tensor-core column for one fragment-load mode
+   mode MMA-LMODE !
+   s" == MMM tensor-core TF32 mma.sync 64x64, fragment mode " type mode .
+   mode 0= if s" (scalar+cvt baseline) ==" type then
+   mode 1 = if s" (scalar raw, no cvt) ==" type then
+   mode 2 = if s" (ldmatrix.x4 A + raw B, no cvt) ==" type then
+   cr
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    GB-ASSEMBLE
    64 GB-OT !
    s" MMM" GB-KERNEL
    PTXTC:CLEAN ;
+
+: GB-MMM ( -- )                        \ sweep the 3 fragment-load modes (ablation); restore baseline default
+   0 GB-MMM-MODE  1 GB-MMM-MODE  2 GB-MMM-MODE
+   0 MMA-LMODE ! ;
 
 public
 

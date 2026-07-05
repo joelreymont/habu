@@ -596,3 +596,61 @@ kernel green under the f32 row.
   `bar.sync`, more compute/sync); and a swizzled bank-conflict-free shared layout.
   Reuse → stage → pipeline is the predicted order; step 3 landed the tile + the
   license, and each remaining rung is dotted on `habu-tensor-core-mma`.
+
+### Step 3c: `ldmatrix` fragment-load ablation — NEGATIVE (measured 2026-07-05)
+
+Dot `habu-mma-ldmatrix-fragment`. The step-3 diagnosis ("load/ALU-bound: scalar
+shared fragment loads + cvt overhead") predicted `ldmatrix` as the biggest MMA
+jump. We built it, proved it element-exact, measured it — and **falsified the
+diagnosis**. Same device / protocol / shapes as steps 1–3.
+
+`lib/ptx/cg-mma.f` now emits the fragment feed in one of three modes
+(`MMA-LMODE`, fixed at emit time), an honest single-variable ablation:
+
+- **mode 0** — rung-1 baseline: scalar `ld.shared.f32` + `cvt.rna.tf32.f32`
+  (4 A + 8 B loads, 48 cvt per staged tile);
+- **mode 1** — cvt-drop: scalar `ld.shared.b32`, **no cvt** (`mma.sync` reads the
+  top bits of the raw f32 as tf32 — truncation instead of RNE, a <1-ulp tf32
+  difference inside the licensed rtol 2e-3);
+- **mode 2** — `ldmatrix.sync.aligned.m8n8.x4.shared.b16` for the 16×8 A fragment
+  (a tf32 = 2 adjacent b16 halves, so the fragment is exactly 4 congruous 8×8 b16
+  tiles = ONE ldmatrix.x4 replacing the 4 scalar A loads) + raw `ld.shared.b32`
+  B, no cvt. B keeps scalar loads: a B-side ldmatrix needs a transposed/swizzled
+  `Bs` (the `habu-mma-larger-bk` rung's layout change).
+
+**Fragment-first proof, then kernel:** `tools/ptx/mma-probe.f` `MP-LDM-ALL` runs
+the single-warp isolation tile with ldmatrix-staged A — **element-exact, 0/128
+mismatches** (committed alongside the scalar probe). `tools/ptx/mma-gemm-check.f`
+then sweeps ALL THREE modes through the full K-looping `MMM` — **element-exact at
+64³ (4096 cells) and 128³ (16384 cells) in every mode**. The licensed golden
+(`maki/precision-device-test.f`) stays green: tf32 license passes, the seeded
+0.5% store fault still fails, PREC-RESET re-emits f32 green.
+
+**Results (Orin, 2026-07-05, `tools/ptx/gemm-bench.f`, two full runs, ±0.1%):**
+
+| GFLOP/s (C=A·B)                        | 512³  | 1024³ | 2048³ | ptxas             |
+|----------------------------------------|------:|------:|------:|-------------------|
+| MMM mode 0: scalar+cvt (rung-1)        | 376.1 | 393.5 | 398.5 | 38 reg / 0 spill  |
+| MMM mode 1: scalar raw, no cvt         | 375.7 | 394.5 | 400.4 | 40 reg / 0 spill  |
+| MMM mode 2: ldmatrix A + raw B, no cvt | 370.0 | 388.9 | 394.3 | 43 reg / 0 spill  |
+| MM cp.async blocked (fp32, reference)  | 416.9 | 436.8 | 441.8 | 56 reg / 0 spill  |
+| Triton (autotuned TF32, step-1 record) | 1636.1| 1755.4| 1890.5| —                 |
+
+- **Killing all 48 `cvt`/tile is FLAT** (mode 1 vs 0: −0.1% / +0.3% / +0.5%) —
+  the cvt ALU work was fully hidden.
+- **Replacing the 4 scalar A loads with ONE `ldmatrix.x4` is ~1.2% SLOWER**
+  (mode 2 vs 0), with MORE registers (43 vs 38) and fewer instructions (326 vs
+  390 PTX lines). The scalar-load bank conflicts were also hidden.
+- **Conclusion: at this rung the tensor cores are NOT fragment-feed-bound.** The
+  throughput is invariant to the fragment-load mechanism, so the limiter is what
+  the ablation holds constant: the per-warp `mma.sync` dependency structure (A
+  reused only 4×; each n-tile's mma waits on the 2 B loads issued immediately
+  before it) and the staging/`bar.sync` cadence at BK=32. That redirects the
+  effort exactly where the remaining dots point — `habu-mma-16x64-warp` (8×
+  A-reuse, more independent mma per A fragment) and `habu-mma-larger-bk`
+  (fewer syncs + swizzled Bs enabling a B-side ldmatrix) — and tells the cad-6
+  autotuner to search warp-tile shape and BK, not load flavor, on this axis.
+- The kernel default stays **mode 0** (measured-best-tied AND exact-RNE, so the
+  licensed tf32 golden row is bit-identical to rung 1). The ldmatrix mechanism
+  stays committed, device-proven, and selectable for the higher-reuse rung where
+  the per-fragment cost amortizes 8× and Bs can be swizzled.
