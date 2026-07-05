@@ -10,6 +10,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
+require lib/fs-mutate.f
 require lib/sort.f
 require tools/lint/text.f
 require tools/argv.f
@@ -334,25 +335,96 @@ variable SORT-I
    S\" <!-- trusted-inventory-classes\na.f test-metaprog d\n-->\n<!-- trusted-inventory-classes\nb.f test-metaprog d\n-->" TINV:PARSE-CLASSES$ TFALSE
    TINV:CLASSES-RESET ;
 
-\ Strict validates that every owning dot referenced by the mapping exists in
-\ .dots/ (plain <id>.md or parent-dot <id>/<id>.md); each distinct missing dot
-\ is reported once.
+\ ---- scratch owning-dot fixture tree (no dependence on live .dots/) ----------
+\ FIX-DOTS builds a private temp tree with one plain-layout dot (<id>.md) and one
+\ parent-layout dot (<id>/<id>.md), points TINV's dots root at it, asserts the
+\ two exist and a never-created id is missing, then resets the root and removes
+\ the tree. Obviously-fake ids keep these fixtures from being mistaken for real
+\ dots, and nothing here reads the live .dots/ tree.
+$400 constant DF-CAP
+create DF-BASE DF-CAP allot
+create DF-ROOT DF-CAP allot
+create DF-DIR  DF-CAP allot
+create DF-FILE DF-CAP allot
+variable DF-BASE-U
+variable DF-ROOT-U
+variable DF-DIR-U
+variable DF-FILE-U
+
+: DF-PLAIN-ID ( -- ptr u8 n )   s" tinv-fix-plain-00000001" ;
+: DF-PARENT-ID ( -- ptr u8 n )  s" tinv-fix-parent-00000002" ;
+: DF-MISSING-ID ( -- ptr u8 n ) s" tinv-fix-missing-00000003" ;
+
+: DF-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: DF-BASE$ ( -- ptr u8 n ) DF-BASE DF-BASE-U @ ;
+: DF-ROOT$ ( -- ptr u8 n ) DF-ROOT DF-ROOT-U @ ;
+: DF-DIR$  ( -- ptr u8 n ) DF-DIR  DF-DIR-U  @ ;
+: DF-FILE$ ( -- ptr u8 n ) DF-FILE DF-FILE-U @ ;
+
+\ Build "<dir>/<id>.md" into DF-FILE for the given dir and dot id.
+: DF-FILE-PATH! ( ptr u8 n ptr u8 n -- ) {: da:ptr du:n ia:ptr iu:n :}
+   SB-RESET
+   da du SB-APPEND FS-MUT-SLASH SB-APPEND-C ia iu SB-APPEND
+   s" .md" SB-APPEND
+   SB$ DF-FILE DF-FILE-U DF-COPY! ;
+
+: DF-MK-BASE ( -- )
+   s" tinv-fix-dots" TMPDIR-MKDIR DF-BASE DF-BASE-U DF-COPY! ;
+
+\ The root passed to TINV:DOTS-ROOT! ends in '/' like the default .dots/.
+: DF-MK-ROOT ( -- )
+   SB-RESET
+   DF-BASE$ SB-APPEND FS-MUT-SLASH SB-APPEND-C
+   SB$ DF-ROOT DF-ROOT-U DF-COPY! ;
+
+: DF-MK-PLAIN ( -- )
+   DF-BASE$ DF-PLAIN-ID DF-FILE-PATH!
+   DF-FILE$ s" plain fixture dot" WRITE-ALL ;
+
+: DF-MK-PARENT ( -- )
+   SB-RESET
+   DF-BASE$ SB-APPEND FS-MUT-SLASH SB-APPEND-C DF-PARENT-ID SB-APPEND
+   SB$ DF-DIR DF-DIR-U DF-COPY!
+   DF-DIR$ MAKE-DIR
+   DF-DIR$ DF-PARENT-ID DF-FILE-PATH!
+   DF-FILE$ s" parent fixture dot" WRITE-ALL ;
+
+: DF-SETUP ( -- )
+   DF-MK-BASE
+   DF-MK-ROOT
+   DF-MK-PLAIN
+   DF-MK-PARENT
+   DF-ROOT$ TINV:DOTS-ROOT! ;
+
+: DF-TEARDOWN ( -- )
+   TINV:DOTS-ROOT-RESET
+   DF-BASE$ REMOVE-TREE ;
+
+\ Strict validates that every owning dot referenced by the mapping exists under
+\ the dots root (plain <id>.md or parent-dot <id>/<id>.md); each distinct missing
+\ dot is reported once. The root points at the scratch tree for this fixture.
 : FIX-DOTS ( -- )
-   s" habu-audit-trusted-inventory-3a950436" TINV:DOT-EXISTS? TTRUE
-   s" habu-police-set-check-850bc543" TINV:DOT-EXISTS? TTRUE
-   s" habu-ad-reverse-pass-9f0c63e8" TINV:DOT-EXISTS? TTRUE
-   s" habu-no-such-dot-00000000" TINV:DOT-EXISTS? TFALSE
-   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog habu-audit-trusted-inventory-3a950436\nother.f test-metaprog habu-no-such-dot-00000000\nthird.f test-metaprog habu-no-such-dot-00000000\n-->" TINV:PARSE-CLASSES$ TTRUE
+   DF-SETUP
+   DF-PLAIN-ID TINV:DOT-EXISTS? TTRUE
+   DF-PARENT-ID TINV:DOT-EXISTS? TTRUE
+   DF-MISSING-ID TINV:DOT-EXISTS? TFALSE
+   \ Plain id resolves in the scratch tree; the missing id (referenced twice) is
+   \ reported once, so DOTS-MISSING# dedupes to 1.
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-plain-00000001\nother.f test-metaprog tinv-fix-missing-00000003\nthird.f test-metaprog tinv-fix-missing-00000003\n-->" TINV:PARSE-CLASSES$ TTRUE
    TIT-BUF TIT-CAP LINT-OUT-BUFFER!
    TINV:DOTS-MISSING# 1 T=
    LINT-OUT-BUFFER-OFF
-   LINT-OUT$ s" missing owning dot habu-no-such-dot-00000000" CONTAINS? TTRUE
-   TINV:CLASSES-RESET ;
+   LINT-OUT$ s" missing owning dot tinv-fix-missing-00000003" CONTAINS? TTRUE
+   TINV:CLASSES-RESET
+   DF-TEARDOWN ;
 
 \ Strict reports mapping rows no scanned site matches (dead) and repeated
 \ file[:name] keys (duplicates, name compare case-insensitive).
 : FIX-CMAP-DEAD-DUP ( -- )
-   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog habu-audit-trusted-inventory-3a950436\nfixture.f:TIF-W prim-axiom habu-audit-trusted-inventory-3a950436\ngone.f test-metaprog habu-audit-trusted-inventory-3a950436\nfixture.f:GONE-NAME test-metaprog habu-audit-trusted-inventory-3a950436\nfixture.f test-metaprog habu-audit-trusted-inventory-3a950436\nfixture.f:tif-w prim-axiom habu-audit-trusted-inventory-3a950436\n-->" TINV:PARSE-CLASSES$ TTRUE
+   S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog tinv-fix-dot-00000000\nfixture.f:TIF-W prim-axiom tinv-fix-dot-00000000\ngone.f test-metaprog tinv-fix-dot-00000000\nfixture.f:GONE-NAME test-metaprog tinv-fix-dot-00000000\nfixture.f test-metaprog tinv-fix-dot-00000000\nfixture.f:tif-w prim-axiom tinv-fix-dot-00000000\n-->" TINV:PARSE-CLASSES$ TTRUE
    TINV:CLASSES# 6 T=
    S\" TRUSTED: TIF-A ( -- )\ns\q TIF-W\q s\q -- \q TRUST" FIX-SCAN
    TIT-BUF TIT-CAP LINT-OUT-BUFFER!
@@ -367,7 +439,7 @@ variable SORT-I
 \ Strict emits a by-file line per source listing its non-zero per-class counts;
 \ file-level and file:name rows resolve independently within one file.
 : FIX-BY-FILE ( -- )
-   S\" <!-- trusted-inventory-classes\nalpha.f prim-axiom habu-audit-trusted-inventory-3a950436\nbeta.f test-metaprog habu-audit-trusted-inventory-3a950436\nbeta.f:BX prim-axiom habu-audit-trusted-inventory-3a950436\n-->" TINV:PARSE-CLASSES$ TTRUE
+   S\" <!-- trusted-inventory-classes\nalpha.f prim-axiom tinv-fix-dot-00000000\nbeta.f test-metaprog tinv-fix-dot-00000000\nbeta.f:BX prim-axiom tinv-fix-dot-00000000\n-->" TINV:PARSE-CLASSES$ TTRUE
    TINV:RESET
    s" alpha.f" S\" TRUSTED: AX ( -- )\nTRUSTED: AY ( -- )" TINV:SCAN-SOURCE
    s" beta.f" S\" TRUSTED: BW ( -- )\nTRUSTED: BX ( -- )" TINV:SCAN-SOURCE

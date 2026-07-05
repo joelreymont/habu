@@ -151,6 +151,13 @@ create NUM-BUF NUM-CAP allot
 1024 constant DOTP-CAP
 create DOTP-BUF DOTP-CAP allot
 
+\ Injectable dots root (default s" .dots/"). Production leaves the default so
+\ output/behaviour is unchanged; tests point it at a scratch fixture tree so the
+\ suite never depends on mutable live .dots/ task state.
+512 constant DOTS-ROOT-CAP
+create DOTS-ROOT-BUF DOTS-ROOT-CAP allot
+variable DOTS-ROOT-U
+
 : TAB-A-FIELD ( -- ptr ptr a )
    TAB-A 0 ptr-field ;
 
@@ -810,17 +817,33 @@ private
 : DOTP$ ( -- ptr u8 n )
    DOTP-BUF DOTP-U @ ;
 
+: DOTS-ROOT$ ( -- ptr u8 n )
+   DOTS-ROOT-BUF DOTS-ROOT-U @ ;
+
 public
 
-\ An owning dot exists as .dots/<id>.md or, for a parent dot with children,
-\ .dots/<id>/<id>.md. Closed dots move to the ignored .dots/archive/, so a
-\ mapping row referencing a closed or never-minted dot fails here.
+\ Point the owning-dot lookup at a different dots root (must end in '/'); tests
+\ set a scratch fixture tree here and DOTS-ROOT-RESET back to the default.
+: DOTS-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u DOTS-ROOT-CAP > if s" trusted-inventory: dots root overflow" 1 die then
+   a DOTS-ROOT-BUF u LINT-BMOVE
+   u DOTS-ROOT-U ! ;
+
+: DOTS-ROOT-RESET ( -- )
+   s" .dots/" DOTS-ROOT! ;
+
+DOTS-ROOT-RESET
+
+\ An owning dot exists as <root><id>.md or, for a parent dot with children,
+\ <root><id>/<id>.md, where <root> defaults to .dots/ (DOTS-ROOT!/-RESET). Closed
+\ dots move to the ignored .dots/archive/, so a mapping row referencing a closed
+\ or never-minted dot fails here.
 : DOT-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 DOTP-U !
-   s" .dots/" DOTP-APPEND a u DOTP-APPEND s" .md" DOTP-APPEND
+   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" .md" DOTP-APPEND
    DOTP$ FILE? if LINT-TRUE exit then
    0 DOTP-U !
-   s" .dots/" DOTP-APPEND a u DOTP-APPEND s" /" DOTP-APPEND
+   DOTS-ROOT$ DOTP-APPEND a u DOTP-APPEND s" /" DOTP-APPEND
    a u DOTP-APPEND s" .md" DOTP-APPEND
    DOTP$ FILE? ;
 
