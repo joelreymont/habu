@@ -116,10 +116,14 @@ create MGC-MAXERR 1 cells allot
       s"  maxerr=" type MGC-MAXERR @ f>s . cr
    then ;
 
-public
-: MGC-ALL ( -- )
-   CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
-   s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
+\ one fragment-load mode: set MMA-LMODE, re-emit + re-assemble + re-load MMM, check 64^3 + 128^3.
+: MGC-MODE ( n -- ) {: mode:n :}
+   mode MMA-LMODE !
+   s" -- MMM fragment-load mode " type mode .
+   mode 0= if s" (scalar+cvt baseline)" type then
+   mode 1 = if s" (scalar raw, no cvt)" type then
+   mode 2 = if s" (ldmatrix.x4 A + raw B, no cvt)" type then
+   cr
    s" habu-mma-gemm-check" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    MGC-ASSEMBLE
@@ -131,6 +135,13 @@ public
    128 MGC-ONE
    PTXBENCH:UNLOAD  PTXBENCH:CLOSE
    PTXTC:CLEAN ;
+
+public
+: MGC-ALL ( -- )
+   CUDA:OPEN? 0= if s" mma-gemm-check: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
+   s" == TF32 mma.sync GEMM device-correctness (element-exact vs host) ==" type cr
+   0 MGC-MODE  1 MGC-MODE  2 MGC-MODE
+   0 MMA-LMODE ! ;                                     \ restore the committed default (baseline scalar+cvt)
 
 end-package
 
