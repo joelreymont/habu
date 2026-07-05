@@ -45,14 +45,17 @@ $3000 constant LOCNAMES
 \ $260, $2780.., $27C0..) are now free holes. A SECOND guarded band (the
 \ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
-\ 2b-iii): EMIT-SEAL-FRIEND captures NDICT (x27) into it as it sets the latch, and
-\ the dictionary-truncation words (HIDE-DEFS-FROM/FORGET-DEFS-FROM, xref.f) reject
+\ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
+\ checker/xref/stdlib source is even evaluated), so the watermark is captured
+\ later by SEAL-CAPTURE (habu1.f BSEALCAP) at the end of that engine source
+\ (xref.f), once ndict is the full engine boundary and no user record exists yet.
+\ The dictionary-truncation words (HIDE-DEFS-FROM/FORGET-DEFS-FROM, xref.f) reject
 \ a post-seal FORGET below it. It lives inside the sealed band so user source
 \ cannot lower the watermark to bypass the guard. ---
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
-$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-FRIEND
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
 84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
 $28 constant CUR-CELL

@@ -56,8 +56,9 @@ $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 \ gforth stage0 has no package/defer system, so DEF-WL/PKG-*/DEFER-* are absent
 \ here; the CUR/WIDN/HOOK/TSIG/TCSIG/CRSIG jewels are relocated to match native.
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region
-$88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
+$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
 \ Second guarded band (TFAM 2b-v): the native protected-WID registry occupies
 \ [$3CB8,$3D00) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN).
@@ -645,6 +646,12 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BSETCHECK ( -- )  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
 
+\ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark at
+\ the end of the engine's own source (xref.f). The friend latch is already sealed
+\ by then, so a raw ! would trap; this direct STR from NDICT is the sanctioned
+\ bypass, mirroring native src/habu/habu1.f BSEALCAP.
+: BSEALCAP ( -- )   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
+
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : BSWL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
@@ -732,6 +739,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" data-base" ['] BDATAFETCH FPRIM-L
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
+   s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
