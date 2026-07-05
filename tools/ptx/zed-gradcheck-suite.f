@@ -99,7 +99,8 @@ variable AGS-PTX-U
    s" dropk-fwd" AGS-KERNEL    s" dropk-bwd" AGS-KERNEL
    s" dropk-bwd-wrong" AGS-KERNEL
    s" scale-fwd" AGS-KERNEL    s" scale-bwd" AGS-KERNEL
-   s" fma-fwd" AGS-KERNEL      s" fma-bwd" AGS-KERNEL ;
+   s" fma-fwd" AGS-KERNEL      s" fma-bwd" AGS-KERNEL
+   s" xsubsum-fwd" AGS-KERNEL  s" xsubsum-bwd" AGS-KERNEL ;
 
 \ ---- device failure classes (red first) ---------------------------------------
 
