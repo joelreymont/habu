@@ -398,6 +398,7 @@ generated naive tile (1 elem/thread) & 55.0 & 55.2 & 54.6\\
 generated blocked $64{\times}64$ tile & 356.6 & 375.0 & 380.5\\
 \quad + $bk{=}32$, vectorized shared loads & 378.6 & 397.2 & 402.5\\
 \quad + \code{cp.async} double-buffered staging & 416.7 & 436.8 & 441.8\\
+generated \code{mma.sync} TF32, gate-licensed & 375.6 & 393.5 & 398.5\\
 Triton, autotuned \code{tl.dot} & 1636.1 & 1755.4 & 1890.5\\
 \bottomrule
 \end{tabular}\end{center}
@@ -414,10 +415,15 @@ Triton is \emph{arithmetic, not scheduling}: its \code{tl.dot} executes
 TF32 tensor-core instructions (measured relative error ${\sim}8{\times}
 10^{-4}$ against an f32 reference, versus ${\sim}10^{-6}$ for our f32 FMA
 kernels)---a precision our golden gate would currently \emph{reject}
-under the matmul tolerance. Closing that gap is therefore
-gate-\emph{licensed} precision plus \code{mma.sync} emission and
-\code{cp.async} pipelining---mechanical next steps of the same plan, to
-be reported with the same honesty. \todo{cp.async stages, tensor-core
+under the matmul tolerance. The first \code{mma.sync} rung is landed and reported with the same
+honesty: fragment layout proven element-exact in isolation before tiling,
+the kernel admitted under a gate-\emph{licensed} TF32 tolerance (evidence
+row \code{golden=device-pass:tf32}; an injected $0.5\%$ fault still
+fails), but at 398\,GFLOP/s it does not yet beat the tuned f32 tile:
+\code{ptxas} shows 38 registers and no spills, so it is starved by scalar
+shared-memory fragment loads and conversion overhead, not compute---the
+next rungs (\code{ldmatrix} fragment loads, wider A-reuse warp shapes,
+autotuned staging) are exactly what the persistent tuner will search. \todo{cp.async stages, tensor-core
 MMA under a licensed-precision row, persistent-vs-JIT autotune warmup,
 end-to-end model latency vs torch.compile.}
 
