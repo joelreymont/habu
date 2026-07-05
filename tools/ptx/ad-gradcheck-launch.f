@@ -304,6 +304,16 @@ variable AG-MISS#
    0.7305 -1.4141 1.9023 -0.3672 AG-X4!  s" GENERATED backward: XSUBSUM (dx=dz-Sum(dz))" AG-CASE
    AG-PAIR-CLOSE ;
 
+\ EXPGEN z = exp(x): the generated backward with a RESOLVED saved value - the
+\ AD_BWD kernel recomputes y = exp(x) from the primal span (habu-ad-thread-saved)
+\ and multiplies it into dz. The numeric d exp/dx = exp(x) must agree.
+: AG-EXPGEN-ENTRY ( -- )
+   s" expgen-fwd.cubin" s" expgen-bwd.cubin" AG-PAIR!
+   AG-DY-RND
+   0.7305 -1.4141 1.9023 -0.3672 AG-X4!  s" GENERATED backward: EXPGEN (SAVED-Y recomputed)" AG-CASE
+   8.0 -8.0 0.0 3.0 AG-X4!               s" GENERATED backward: EXPGEN saturated" AG-CASE
+   AG-PAIR-CLOSE ;
+
 \ ==== two-input entries (+. -. *. /. via AD2, OVER/DROP composites) ==============
 
 : AG-Y4! ( r r r r -- )
@@ -569,6 +579,7 @@ variable AG-MISS#
    AG-WRONG-VJP
    AG-CROSS-PAIR
    AG-XSUBSUM-ENTRY
+   AG-EXPGEN-ENTRY
    AG-ADD2-ENTRY
    AG-SUB2-ENTRY
    AG-MUL2-ENTRY
