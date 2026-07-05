@@ -253,19 +253,35 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
+\ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the friend latch is
+\ sealed (SEAL-FRIEND, end of cold prefix), a dictionary FORGET/HIDE that lowers
+\ ndict below the seal-time watermark would retire engine definitions and (FORGET)
+\ rewind CP into engine code. Reject it fail-closed with E-SEAL-VIOLATION. The
+\ latch and watermark live in the sealed friend band; friend/cold-load (latch 0)
+\ and post-seal user marks (index >= watermark) pass unchanged.
+TRUSTED: SEAL-LATCH@ ( -- n ) data-base FRIEND-LATCH-CELL + @ ;
+TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
+
+: SEAL-DICT-GUARD ( n -- n )
+   SEAL-LATCH@ 0= if exit then
+   dup SEAL-NDICT@ < if
+      s" seal: cannot FORGET/HIDE sealed engine definitions" E-SEAL-VIOLATION die
+   then ;
+
 : HIDE-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX ndict! ;
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   idx ndict! ;
 
 variable XREF-FORGET-CP
 
 : FORGET-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX
-   dup XREF-REC XREF-START XREF-FORGET-CP !
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM
-   ndict!
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   idx XREF-REC XREF-START XREF-FORGET-CP !
+   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   idx ndict!
    XREF-FORGET-CP @ cp! ;
 
 : XREF-NAME. ( ptr a -- )
@@ -300,3 +316,9 @@ variable XREF-FORGET-CP
       dup XREF-REC dup XREF-RETIRED? if drop else XREF-NAME. space then
       1+
    repeat drop cr ;
+
+\ TFAM 2b-iii: freeze the dictionary-truncation watermark. xref.f is the last
+\ engine source file, so at this point ndict is the full engine boundary and no
+\ user record exists yet. SEAL-CAPTURE stores it into the sealed friend band; the
+\ FORGET/HIDE guards above reject any post-seal truncation below it.
+SEAL-CAPTURE

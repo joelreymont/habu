@@ -531,6 +531,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ fail-closed. Self-sealing: once the latch is set, clearing it is a protected
 \ write and traps, so the seal is one-way. Uses x5 (a cold-prefix scratch reg);
 \ x9=cursor and x11=buffer base are live across this point and preserved.
+\ The latch is set BEFORE the engine's own checker/xref/stdlib source is
+\ evaluated (that source runs post-latch via guard-bypassing DATA stores), so the
+\ seal-time ndict is NOT the engine boundary; the truncation watermark is instead
+\ captured by SEAL-CAPTURE (habu1.f) at the end of that engine source (xref.f).
 : EMIT-SEAL-FRIEND ( -- )
    5 FRIEND-ARENA-LEN MOVZ,  5 DATA FRIEND-LATCH-CELL STR, ;
 

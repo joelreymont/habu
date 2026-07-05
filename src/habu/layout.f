@@ -43,10 +43,16 @@ $3000 constant LOCNAMES
 \ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
 \ write buffers) carry the runtime range check. The old scattered slots ($1A0,
 \ $260, $2780.., $27C0..) are now free holes. A SECOND guarded band (the
-\ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD. ---
+\ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
+\ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
+\ 2b-iii): EMIT-SEAL-FRIEND captures NDICT (x27) into it as it sets the latch, and
+\ the dictionary-truncation words (HIDE-DEFS-FROM/FORGET-DEFS-FROM, xref.f) reject
+\ a post-seal FORGET below it. It lives inside the sealed band so user source
+\ cannot lower the watermark to bypass the guard. ---
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
-$88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
+$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-FRIEND
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
 84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
 $28 constant CUR-CELL

@@ -20,7 +20,7 @@ require tools/trust-lint-core.f
 require tools/argv.f
 
 $40000 constant TL-ARGV-STR-CAP
-$30000 constant TL-ARGV-FILE-CAP
+$40000 constant TL-ARGV-FILE-CAP        \ src/core/checker.f grew past $30000; largest-source watermark
 
 variable TL-ARGV-STR-BUF-A
 variable TL-ARGV-FILE-BUF-A

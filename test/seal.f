@@ -197,6 +197,49 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" SLF-C . cr" SB-APPEND SLV-LF
    SB$ ;
 
+\ Sealed-dictionary truncation guard (TFAM 2b-iii). FORGET-DEFS-FROM /
+\ HIDE-DEFS-FROM resolve a name to a dict index and truncate ndict (FORGET also
+\ rewinds CP) to it; a name resolving to an ENGINE record (index below the
+\ seal-time watermark SEAL-NDICT-CELL, captured by SEAL-CAPTURE at the end of the
+\ engine source) would retire engine definitions and rewind CP into engine code.
+\ Post-seal user source must be rejected fail-closed (E-SEAL-VIOLATION). `WORDS`
+\ is an engine word defined in xref.f, well below the watermark.
+: SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )       \ FORGET an engine definition
+   SB-RESET
+   S\" s\" WORDS\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-HIDE-ENGINE-FORGE$ ( -- ptr u8 n )         \ HIDE an engine definition
+   SB-RESET
+   S\" s\" WORDS\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
+\ Direct checker signature-registry truncation (bypasses the FORGET/HIDE index
+\ guard, but forgets an engine word's checker signature so it can be redefined =
+\ spoof). The public CHECKER-USIGS-TRUNCATE-FROM rejects any post-seal call.
+: SLV-USIG-TRUNC-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   S\" s\" WORDS\" CHECKER-USIGS-TRUNCATE-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
+\ Positive: a user mark defined AFTER the seal is above the watermark, so
+\ FORGET/HIDE of it stays a working round-trip (retire user tail, redefine).
+: SLV-FORGET-USER-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
+   s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
+   S\" s\" SLF-UMARK\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   s" : SLF-UB ( -- n ) 2 ;" SB-APPEND SLV-LF
+   s" SLF-UB . cr" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-HIDE-USER-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : SLF-UMARK ( -- ) ;" SB-APPEND SLV-LF
+   s" : SLF-UA ( -- n ) 1 ;" SB-APPEND SLV-LF
+   S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $3D00). A raw
 \ store to the count cell ($3CB8) or the u32 table ($3CC0) must trap, so user source
 \ can neither zero the count (un-protecting every sealed WID) nor overflow the table.
@@ -380,6 +423,23 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" FFI live pointer arg into band 2 traps before the call" T-LABEL
    SLV-FFI-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
+\ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
+\ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
+\ must trap E-SEAL-VIOLATION on both cold-prefix entry paths.
+: SLV-NEGATIVES-TRUNCATE ( -- )
+   s" FORGET-DEFS-FROM of an engine def traps via --load" T-LABEL
+   SLV-FORGET-ENGINE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" FORGET-DEFS-FROM of an engine def traps via stdin pipe" T-LABEL
+   SLV-FORGET-ENGINE-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of an engine def traps via --load" T-LABEL
+   SLV-HIDE-ENGINE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of an engine def traps via stdin pipe" T-LABEL
+   SLV-HIDE-ENGINE-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
+   s" direct CHECKER-USIGS-TRUNCATE-FROM traps via --load" T-LABEL
+   SLV-USIG-TRUNC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" direct CHECKER-USIGS-TRUNCATE-FROM traps via stdin pipe" T-LABEL
+   SLV-USIG-TRUNC-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL ;
+
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
@@ -387,6 +447,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" FORGET-DEFS-FROM of a post-seal user mark still works" T-LABEL
+   SLV-FORGET-USER-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" HIDE-DEFS-FROM of a post-seal user mark still works" T-LABEL
+   SLV-HIDE-USER-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" post-seal define/package/trusted/defer still work" T-LABEL
    SLV-LANG-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
 
@@ -395,6 +459,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-PREPARE
    SLV-NEGATIVES
    SLV-NEGATIVES-SINKS
+   SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
    SLV-CLEANUP
    T-REPORT

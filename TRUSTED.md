@@ -100,6 +100,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | XREF-A>U8 | `ptr a -- ptr u8` | Treats the inline-name bytes inside a dictionary record as a byte string; fixed raw record byte offsets are outside pointer-role inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-N>U8 | `n -- ptr u8` | Converts a numeric long-name address fetched from a dictionary record into a byte pointer; the record stores mixed numeric and pointer cells. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-PATCH32 | `n ptr a --` | Explicit `undefine` retires dictionary records by patching raw wordlist/status cells inside the live dictionary; the record layout is outside checked pointer inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-30 |
+| SEAL-LATCH@ | `-- n` | Reads the friend-arena seal latch from the sealed DATA band by raw `data-base` offset; a raw state cell (0 open / sealed) outside checked pointer/role inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 |
+| SEAL-NDICT@ | `-- n` | Reads the seal-time ndict truncation watermark from the sealed DATA band by raw `data-base` offset; a raw state cell outside checked inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 |
 | c-crash-entry | `--` | Target signal entry register shuffle is raw ABI-specific ARM64; it only mutates generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | c-crash-mctx>r21 | `--` | Target ucontext-to-mcontext addressing is ABI-specific raw register code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | c-crash-xreg>r9 | `--` | Crash dump register extraction walks target mcontext layout in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
@@ -680,7 +682,7 @@ src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
 src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
+src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 7
 src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
 src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2

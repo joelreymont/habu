@@ -3772,6 +3772,7 @@ PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
+PRIM: SEAL-CAPTURE   PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
@@ -3794,6 +3795,7 @@ PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -4026,12 +4028,27 @@ variable CHECKER-QBAD-TOK
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
 
-: CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHECKER-USIGS-TRUNCATE-FROM-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM USIG-FIND-OFF-SYM 0= IF
       s" checker: missing signature truncation mark" 76 die
    THEN
    UEND !
    UTERM! ;
+
+\ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
+\ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
+\ friend/engine load path (latch 0) and the guarded FORGET/HIDE wrappers (which
+\ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
+\ checker.f loads before layout.f, so the friend-arena latch offset and the seal
+\ exit code are mirrored here as named constants (both are foundational and stable).
+$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
+83 constant CK-E-SEAL-VIOLATION         \ = layout.f E-SEAL-VIOLATION
+
+: CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
+   data-base CK-SEAL-LATCH-OFF + @ 0= 0= IF
+      2drop s" seal: cannot truncate sealed checker signatures" CK-E-SEAL-VIOLATION die
+   THEN
+   CHECKER-USIGS-TRUNCATE-FROM-RAW ;
 
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
    FEP-CLEAR
