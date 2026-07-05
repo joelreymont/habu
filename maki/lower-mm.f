@@ -66,8 +66,10 @@ require lib/ptx/cg.f
 require lib/ptx/cg-collective.f
 require lib/ptx/cg-activation.f
 require lib/ptx/cg-matmul.f
+require lib/ptx/cg-mma.f
 require maki/op-kind.f
 require maki/op-registry.f
+require maki/precision.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/move-view.f
@@ -406,6 +408,54 @@ private
    LMM-BLK-KLOOP                                   \ MM-PIPE-KLOOP sets the per-buffer As/Bs bases itself
    LMM-BLK-WRITE ;
 
+\ ---- TF32 tensor-core (mma.sync) blocked body: reuse cg-mma.f's warp-tiled MMA compute --
+\ Same 64x64 block / cp.async double-buffer as LMM-BLK-BODY (MM-THREAD-SETUP / MM-ACC-ZERO /
+\ MM-PIPE-KLOOP-WITH), but the compute quotation is cg-mma.f MMA-KTILE (warp-level MMA tiles)
+\ instead of the 4x4 fma, and the epilogue write folds bias+activation per MMA D-fragment
+\ element. Chosen only when the matmul class is LICENSED at TF32 (LMM-MMA?), so the f32 path
+\ (and its f32-tolerance goldens) is unchanged; the MMA path is judged under the tf32 row.
+: LMM-MMA? ( -- bool )  LMM-BLK @ 0<>  CLASS-MATMUL PREC@ PREC-TF32 =  and ;
+
+\ one MMA D-fragment element: row reg %r<rr>, col reg %r<cr>, accumulator %f<accf> -> fold
+\ bias[col] (LINEAR) -> activation chain -> store to out[row*N+col]. Mirrors LMM-BLK-ELEM but
+\ over the mma.sync (gRow0/gRow1, col0/col1) output mapping instead of the contiguous 4x4 tile.
+: LMM-MMA-ELEM ( n n n -- ) {: rr:n cr:n accf:n :}
+   SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr SB-U s" , %r2, %r" CG-S cr SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
+   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[col]
+      SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr SB-U s" , 4;" CG-S CG-LINE
+      s" add.u64 %rd11, %rd3, %rd10;" PTX-L
+      s" ld.global.f32 %f4, [%rd11];" PTX-L
+      SB-RESET s" add.rn.f32 %f5, %f" CG-S accf SB-U s" , %f4;" CG-S CG-LINE
+      5
+   else accf then {: srcf:n :}
+   40 CG-NF !                                                            \ epilogue temps above tile/staging regs
+   srcf LMM-MMNODE @ LMM-NR!
+   LMM-EPI-CHAIN
+   LMM-OUTNODE @ LMM-NR@ {: outf:n :}
+   s" mul.wide.u32 %rd10, %r44, 4;" PTX-L
+   SB-RESET s" add.u64 %rd11, %rd" CG-S LMM-OUT-BASE SB-U s" , %rd10;" CG-S CG-LINE
+   SB-RESET s" st.global.f32 [%rd11], %f" CG-S outf SB-U s" ;" CG-S CG-LINE ;
+
+\ one warp n-tile j (cols warp_col*32 + j*8): compute col0/col1 registers, then the 4 D
+\ elements. %r32=gRow0 %r33=gRow1 %r34=gCol0 come from cg-mma.f MMA-SETUP (survive the K-loop).
+: LMM-MMA-NTILE ( n -- ) {: j:n :}
+   SB-RESET s" add.u32 %r40, %r34, " CG-S j 8 * SB-U s" ;" CG-S CG-LINE   \ col0 = gCol0 + j*8
+   s" add.u32 %r41, %r40, 1;" PTX-L                                       \ col1 = col0 + 1
+   10 j 4 * + {: a0:n :}                                                  \ tile-j accumulators %f(10+4j)..
+   32 40 a0     LMM-MMA-ELEM                                              \ d0 = D[gRow0][col0]
+   32 41 a0 1+  LMM-MMA-ELEM                                              \ d1 = D[gRow0][col1]
+   33 40 a0 2 + LMM-MMA-ELEM                                              \ d2 = D[gRow1][col0]
+   33 41 a0 3 + LMM-MMA-ELEM ;                                            \ d3 = D[gRow1][col1]
+
+: LMM-MMA-WRITE ( -- )  4 0 ?do  i LMM-MMA-NTILE  loop ;                  \ 4 n-tiles / warp
+
+: LMM-MMA-BODY ( -- )
+   MM-THREAD-SETUP
+   MM-ACC-ZERO-EMIT
+   MMA-SETUP
+   [: MMA-KTILE ;] MM-PIPE-KLOOP-WITH
+   LMM-MMA-WRITE ;
+
 public
 \ LMM-EMIT prints the region's PTX module to the current PTX sink (stdout, or the
 \ in-process capture buffer). Analysis first, so a rejected region emits nothing.
@@ -415,7 +465,9 @@ public
       LMM-ENTRY  LMM-OPEN
       LMM-BLK @ if LMM-BLK-SHARED then
       LMM-PARAMS  LMM-APPLY-VIEWS
-      LMM-BLK @ if LMM-BLK-BODY else LMM-BODY then
+      LMM-MMA? if LMM-MMA-BODY else
+         LMM-BLK @ if LMM-BLK-BODY else LMM-BODY then
+      then
       s" DONE:" PTX-L
       s" ret;" PTX-L
       s" }" PTX-L

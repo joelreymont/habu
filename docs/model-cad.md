@@ -309,6 +309,13 @@ shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
   `habu-checker-capability-typed-e0c76a02` (kernel loops/smem/accumulators),
   `lib/ptx/tile-smem.f`, `lib/ptx/tile-acc.f`. No new dot; this plan adds
   the schedule-object and gate integration requirements to those dots.
+- CAD-PLAN 8.1 step 3 LANDED (2026-07-05): the hard-coded TF32 GEMM path is
+  `lib/ptx/cg-mma.f` (`mma.sync.aligned.m16n8k8`, f32 accum, 64×64 CTA), emitted
+  by `maki/lower-mm.f` LMM-MMA? when the matmul class is licensed at TF32.
+  Device-correct (element-exact isolation + K-looping proofs, tf32 LOWER-GOLDEN
+  license). Measured 375–398 GFLOP/s (docs/eval-triton.md GEMM step 3) — on the
+  tensor-core roof but under the tuned f32 tile; the ldmatrix / bigger-warp-tile /
+  bank-swizzle rungs are the cad-6 search that follows.
 - Bring-up policy (driving workload): a library/FFI GEMM is acceptable
   first so the workload's end-to-end path is not gated on this phase; the
   checked tensor-core path replaces it when it wins on profile.

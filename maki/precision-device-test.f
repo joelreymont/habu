@@ -4,18 +4,22 @@
 \ Precision is a per-region-class licensed fact, never a global flag: requesting
 \ PREC-TF32 for the matmul class (maki/precision.f PREC!) makes the golden judge
 \ under the tf32 tolerance row (atol 1e-6, rtol 2e-3) and the LICENSE is the passing
-\ verdict itself. No TF32 kernel exists yet (the MMA lane emits it), so this test
-\ proves the MECHANISM with the existing f32 blocked GEMM:
-\   (1) request tf32 for CLASS-MATMUL -> LOWER-GOLDEN V-PASS (an f32 kernel is
-\       trivially inside the tf32 band) AND the reason + LG-PREC-USED@ name tf32;
+\ verdict itself. The REAL TF32 tensor-core kernel now exists (lib/ptx/cg-mma.f
+\ mma.sync m16n8k8, dispatched by maki/lower-mm.f LMM-MMA? when the matmul class is
+\ licensed at TF32), so this test licenses THAT kernel, not the f32 one under the band:
+\   (1) request tf32 for CLASS-MATMUL -> LMM-EMIT emits the mma.sync kernel ->
+\       LOWER-GOLDEN V-PASS under the tf32 row AND the reason + LG-PREC-USED@ name tf32
+\       (the passing verdict is the running license for the tensor-core path);
 \   (2) the cad.f gate path on the same model: PROMOTE's evidence row reads
 \       golden=device-pass:tf32 (the recorded license);
 \   (3) the INVERSE guard: a seeded PTX fault (maki/ablate-ptx.f ABL-MUTATE scales
-\       the first micro-tile store by 1.005 = 0.5% relative error - in-bounds,
+\       the first output store by 1.005 = 0.5% relative error - in-bounds,
 \       every output cell still written) must FAIL even under the tf32 band
 \       (0.5% > rtol 0.2%), proving tf32 licensing is a tolerance, not a bypass;
-\   (4) PREC-RESET restores f32: the correct kernel passes again under the f32 row
-\       and the reason names f32.
+\   (4) PREC-RESET restores f32: LMM-EMIT re-emits the f32 blocked kernel and it
+\       passes again under the f32 row and the reason names f32.
+\ The kernel is emitted IN-PROCESS per precision request (PTX-CAPTURE + LMM-EMIT), so
+\ the dispatch sees the parent's PREC! - no child re-build that would drop the request.
 \
 \ Off the Orin (no libcuda) every leg is SKIPPED and the host build still loads.
 \ NOT part of the maki gate (needs CUDA toolkit + device). Run on the Orin: scp to
@@ -29,8 +33,10 @@ require lib/fs-mutate.f
 require lib/float.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
+require src/arch/ptx/emit.f
 require maki/device-artifacts.f
 require maki/cad.f
+require maki/lower-mm.f
 require maki/lower-golden.f
 require maki/precision.f
 require maki/ablate-ptx.f
@@ -47,16 +53,13 @@ variable PDT-PTX-U                                         \ correct-module text
 : PDT-TGT$ ( -- ptr u8 n )  s" st.global.f32 [%rd11], %f10;" ;
 : PDT-REP$ ( -- ptr u8 n )  s" mul.f32 %f10, %f10, 0f3F80A3D7; st.global.f32 [%rd11], %f10;" ;
 
-\ ---- spawn bin/hb to emit region 0's blocked-GEMM PTX (child re-builds the IR) --------
-: PDT-EMIT ( ptr u8 n -- ) {: sa:ptr su:n :}
-   sa su  s" require maki/lower-mm.f"  s" LMM-EMIT"  0  MAKI-GRADE:DRIVER$  LOWER-DRIVER!
-   PROC-ARGV-RESET
-   s" --load"           >LEN PROC-ARGV+
-   MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   s" bin/hb" >LEN  PDT-OUT $10000 >LEN  PDT-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
-   {: outu:len erru:len rc:rc :}
-   PDT-ERR erru LEN>N  rc RC>N  PTXTC:EMIT-GUARD           \ surface stderr + throw on a nonzero child
-   outu LEN>N PDT-PTX-U ! ;
+\ ---- emit region 0's kernel IN-PROCESS under the CURRENTLY-requested precision ----------
+\ In-process (not a spawned child) so LMM-EMIT's LMM-MMA? dispatch sees the parent's PREC!
+\ request: tf32 -> the mma.sync kernel, f32 -> the blocked fma kernel. Captured to PDT-OUT.
+: PDT-EMIT-INPROC ( -- )
+   PTX-CAPTURE-ON  0 LMM-EMIT  PTX-CAPTURE-OFF
+   PTX-CAPTURE$ {: ca:ptr cu:n :}
+   ca PDT-OUT cu BYTE-COPY  cu PDT-PTX-U ! ;
 : PDT-PTX$ ( -- ptr u8 n )  PDT-OUT PDT-PTX-U @ ;
 
 \ ---- write a PTX module -> ptxas -> register the cubin for the golden launch ----------
@@ -72,15 +75,12 @@ variable PDT-PTX-U                                         \ correct-module text
    v want T=
    LG-PREC-USED@ prec T= ;
 
-: PDT-BUILD ( ptr u8 n -- ) {: ma:ptr mu:n :}    \ emit the CORRECT module once (kept in PDT-OUT)
-   CUDA:OPEN? 0= if exit then
-   ma mu PDT-EMIT ;
-
-\ ============ (1) request tf32 -> the f32 kernel passes AND the verdict names tf32 =====
+\ ============ (1) request tf32 -> LMM emits the mma.sync kernel; golden passes as tf32 ====
 : PDT-TF32-PASS ( -- )
    CUDA:OPEN? 0= if exit then
-   s"  (1) tf32 requested for CLASS-MATMUL: f32 blocked GEMM inside the tf32 band" type cr
+   s"  (1) tf32 requested for CLASS-MATMUL: mma.sync tensor-core kernel judged tf32" type cr
    PREC-TF32 CLASS-MATMUL PREC!
+   PDT-EMIT-INPROC                                 \ LMM-MMA? true -> the mma.sync kernel
    PDT-PTX$ PDT-ASSEMBLE
    V-PASS PREC-TF32 PDT-GOLDEN
    LOWER-GOLDEN-REASON$ s" within tf32 tol" CONTAINS? TTRUE ;
@@ -110,9 +110,10 @@ variable PDT-PTX-U                                         \ correct-module text
 \ ============ (4) PREC-RESET restores the f32 row + naming =============================
 : PDT-RESET ( -- )
    CUDA:OPEN? 0= if exit then
-   s"  (4) PREC-RESET: the correct kernel passes again under the f32 row" type cr
+   s"  (4) PREC-RESET: the f32 blocked kernel re-emits and passes under the f32 row" type cr
    PREC-RESET
    CLASS-MATMUL PREC@ PREC-F32 T=
+   PDT-EMIT-INPROC                                 \ LMM-MMA? false -> the f32 blocked kernel
    PDT-PTX$ PDT-ASSEMBLE
    V-PASS PREC-F32 PDT-GOLDEN
    LOWER-GOLDEN-REASON$ s" within f32 tol" CONTAINS? TTRUE ;
@@ -136,9 +137,8 @@ end-package
 package MAKI
 PDT-BEGIN
 
-s" == GATE-LICENSED PRECISION: blocked MATMUL 64x64 (tf32 request over the f32 kernel) ==" type cr
+s" == GATE-LICENSED PRECISION: blocked MATMUL 64x64 (tf32 licenses the mma.sync kernel) ==" type cr
 MODEL: PMB ( x:64x64 w:64x64 -- y ) MATMUL ;  FP-BUILD
-s" MODEL: PMB ( x:64x64 w:64x64 -- y ) MATMUL ;" PDT-BUILD
 
 PDT-TF32-PASS
 PDT-EVIDENCE

@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-03
+Last updated: 2026-07-05
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -1299,6 +1299,38 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## FFI / GPU (PTX)
 
+- **TF32 mma.sync: prove the fragment layout element-EXACT in isolation FIRST.**
+  The PTX-ISA m16n8k8 tf32 layout (gid=lane>>2, t=lane&3: A a0=A[gid][t]
+  a1=A[gid+8][t] a2=A[gid][t+4] a3=A[gid+8][t+4]; B b0=B[t][gid] b1=B[t+4][gid];
+  D d0=D[gid][2t] d1=D[gid][2t+1] d2=D[gid+8][2t] d3=D[gid+8][2t+1]) is the course's
+  #1 "correct in NumPy, garbage on device" bug source. Make it verifiable: feed
+  small INTEGER operands (exact in tf32's 10-bit mantissa, sums < 2^24 exact in the
+  f32 accumulator) so a correct kernel is BIT-EXACT vs a host matmul — any
+  permutation mismatches. `tools/ptx/mma-probe.f` (one tile) then
+  `tools/ptx/mma-gemm-check.f` (full K-loop) caught nothing only because the layout
+  was right; the point is they COULD.
+- **A correct mma.sync tile does not mean a fast GEMM.** The step-3 MMA kernel
+  (`lib/ptx/cg-mma.f`, 8 warps / 16×32 warp tile / manual scalar `ld.shared`
+  fragment loads, reusing the f32 path's cp.async double-buffer) is device-correct
+  and on the tensor-core roof but measured 375–398 GFLOP/s — UNDER the tuned f32
+  cp.async tile (442) and ~21% of Triton. ptxas said 38 reg / 0 spill (vs f32's 56),
+  i.e. it is load/ALU-bound (bank-conflicting scalar fragment loads + 48 `cvt.rna.
+  tf32`/tile starving the MMA units), not register-bound. Reuse→stage→pipeline: the
+  landed rung is the tile+license; ldmatrix / 16×64 warp tile / bigger BK / bank
+  swizzle are the measured rungs that follow (dotted).
+- **Emit the kernel IN-PROCESS when a runtime request must reach the emitter.**
+  `maki/precision-device-test.f` used to spawn a child `bin/hb` to emit the kernel;
+  a child re-builds the IR fresh and DROPS the parent's `PREC!` request, so the
+  dispatch (`LMM-MMA?` reads `CLASS-MATMUL PREC@`) never saw tf32. In-process
+  `PTX-CAPTURE-ON 0 LMM-EMIT PTX-CAPTURE-OFF` (like `gemm-bench.f`) sees the request
+  and emits the mma.sync kernel — the passing tf32 golden is the running license.
+- **Share the cp.async pipeline scaffold via a compute QUOTATION, not a copy.**
+  `MM-PIPE-KLOOP-WITH ( [ -- ] -- )` emits the double-buffer staging once and
+  `execute`s the per-tile compute quotation in the compute slot; the f32 4×4 fma
+  (`[: MM-KSTEP-TILE ;]`) and the tf32 MMA tile (`[: MMA-KTILE ;]`) both pass their
+  compute through it, so both validate the exact same staging. The quotation stays
+  on the stack under the stack-neutral emit words and is consumed at the slot — no
+  bare-local needed. Signature type is `[ in -- out ]`, caller is `[: … ;]`.
 - **Kernel benchmarks need a generic launch layer:** a SAXPY-shaped profiler
   hides the optimization question. Keep CUDA module/function/param/launch/timing
   in `tools/ptx/bench.f`, keep bytes/FLOPs in the workload layer, and always print

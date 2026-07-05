@@ -63,24 +63,30 @@ element layout (gid = lane>>2, t = lane&3) — getting this wrong is the course'
 - **B** (8×8), 2 tf32/lane: b0=B[t][gid], b1=B[t+4][gid]. (cvt.rna.tf32.f32 each operand.)
 - **C/D** (16×8), 4 f32/lane: d0=C[gid][2t], d1=C[gid][2t+1], d2=C[gid+8][2t], d3=C[gid+8][2t+1].
 
-Isolated 16×8×8 tile verified vs CPU to max|err| 3.4e-3 (= TF32 ~10-bit mantissa).
-A K-looping GEMM from it is device-correct (max|err| 0.03 at 512³).
+Fragment layout is proven **element-exact** in isolation FIRST (integer operands
+exact in tf32 → the mma tile reproduces the integer matmul bit-exact):
+`tools/ptx/mma-probe.f` (one 16×8×8 tile, 128 cells, 0 mismatches), then
+`tools/ptx/mma-gemm-check.f` for the full K-looping kernel at 64³/128³ (0
+mismatches). The kernel is `lib/ptx/cg-mma.f` (`MMM`); `maki/lower-mm.f` emits it
+when the matmul class is licensed at TF32, and `maki/precision-device-test.f`
+LOWER-GOLDEN passes device==host within the tf32 row (the running license).
 
-**Roofline-guided optimization ladder (measured, the methodology working):**
-- naive MMA (1 tile/warp, global fragment loads, no reuse): **105 GFLOP/s** — *slower*
-  than FP32 reg-block 283, because it's **global-memory-starved** (tensor cores don't
-  help until you feed them).
-- + register reuse (warp computes 16×64 = 8 MMA cols, A fragment reused 8×): **336
-  GFLOP/s** (512³, 245 at 1024³) — above the FP32 path, on the tensor-core roof.
-- + **shared-mem A/B staging** (64×64 block, 4 warps, cooperative stage + bar.sync):
-  **371 GFLOP/s** (512³ 350, 1024³ 371 — staging fixed the 1024³ global-thrash). All
-  device-correct (max|err| 0.03 = TF32).
-- We are at ~25% of Triton (1474) / ~39% of the FP32 roof. The remaining rungs (dotted
-  `habu-tensor-core-mma`) are the standard high-perf suite, each a roofline/5-levers
-  move: **larger BK** (fewer bar.syncs, more compute/sync), **double-buffering**
-  (`num_stages` — hide the global-load latency the bar.sync currently exposes),
-  **bank-conflict-free shared** (pad/swizzle), and **`ldmatrix`** for fragment loads.
-  Reuse → stage → pipeline is the roofline-predicted order; each rung measured.
+**Measured ladder (in-tree, 2026-07-05, docs/eval-triton.md GEMM step 3):** the
+`mma.sync` tile reuses the FP32 path's 64×64 block + cp.async double-buffered
+staging and swaps only the compute inner (8 warps, 16×32 warp tile = 4 MMA
+n-tiles, A fragment reused 4×). Landed **375.6 / 393.5 / 398.5 GFLOP/s** at
+512³/1024³/2048³ (ptxas: 38 reg, 32 KB smem, 0 spill).
+- This is device-correct and on the tensor-core roof, but at THIS rung it does
+  **not yet beat** the tuned FP32 cp.async tile (442) and is ~21% of Triton
+  (1636–1890): the roofline-predicted "feeding the tensor cores, not saturating
+  them" — MMM uses *fewer* registers (38 vs 56), so it is load/ALU-bound, not
+  register-bound. The feed is 4+8 scalar `ld.shared.f32` fragment loads/substep
+  (bank conflicts) + 48 `cvt.rna.tf32`/tile.
+- Remaining rungs (dotted `habu-tensor-core-mma`, cad-6 search): **`ldmatrix`**
+  fragment loads (kill scalar-load bank conflicts, pack 4 tf32/`.b32` → halve the
+  `cvt`), a **16×64 warp tile** (4-warp / 128-thread staging → 8× A-reuse),
+  **larger BK**, and **bank-conflict-free swizzled shared**. Reuse → stage →
+  pipeline is the predicted order; step 3 landed the tile + the license.
 
 ## The five things that govern speed (check all five)
 

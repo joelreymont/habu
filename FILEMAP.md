@@ -305,6 +305,10 @@ points stay listed.
   register-blocked SGEMM, and the fused attention kernel.
 - `lib/ptx/cg-matmul-naive.f` — the naive one-element-per-thread SGEMM baseline
   kernel (MMN) that the GEMM benchmark measures the register-blocked tile against.
+- `lib/ptx/cg-mma.f` — TF32 tensor-core (mma.sync.aligned.m16n8k8) tiled GEMM
+  (MMM): same 64x64 block and cp.async double-buffered staging as the register-
+  blocked SGEMM, the 4x4 fma micro-tile swapped for warp-level MMA tiles (the
+  compute-roof beat-Triton lever).
 - `lib/ptx/cg-activation.f` — PTX codegen for the gelu/silu elementwise
   activations, mirroring the maki host references op-for-op for f32 golden parity.
 - `lib/ptx/ad.f` / `lib/ptx/ad-test.f` — reverse-mode autograd transform v0
@@ -358,6 +362,9 @@ points stay listed.
 - `tools/ptx/mma-probe.f` — single-warp TF32 `mma.sync.aligned.m16n8k8` fragment-
   layout isolation proof: verifies ONE MMA element-exact vs a host matmul before
   any tiling (the course's #1 "correct in NumPy, garbage on device" guard).
+- `tools/ptx/mma-gemm-check.f` — device-correctness of the full K-looping TF32
+  mma.sync GEMM kernel (MMM) element-exact vs a host matmul at 64^3 and 128^3
+  (staging + accumulation + the warp/D-fragment store mapping).
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the

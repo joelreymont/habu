@@ -167,7 +167,12 @@ TRUSTED: MM-STATE ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> ma
 \ wait_group 1 keeps the newest (prefetch) group in flight; the tail iteration drains with
 \ wait_group 0. The emitter is structured for the family `stages` parameter (2 now); adding
 \ 3-4 buffers is more parity slots + a deeper wait_group N, same loop shape.
-: MM-PIPE-KLOOP ( -- )
+\
+\ MM-PIPE-KLOOP-WITH takes the per-tile COMPUTE as a quotation (executed once at emit time in
+\ the compute slot, reading the current buffer base %r16): the FMA 4x4 micro-tile (MM-KSTEP-TILE
+\ below) and the tensor-core MMA tile (lib/ptx/cg-mma.f) share this exact cp.async scaffold, so
+\ both paths validate the same double-buffered staging and gemm-bench times the same loop shape.
+: MM-PIPE-KLOOP-WITH ( [ -- ] -- )   \ q = compute for one staged K-tile from buffer base %r16
    s" mov.u32 %r14,0;" PTX-L                                       \ kt = 0
    s" mov.u32 %r15,0;" PTX-L                                       \ buffer parity = 0
    11 14 MM-CP-STAGE                                              \ prologue: tile 0 -> buffer 0 (%r11=SH)
@@ -190,12 +195,14 @@ TRUSTED: MM-STATE ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> ma
    s" cp.async.wait_group 0;" PTX-L                               \ tail: drain the last tile
    s" $PFDONE:" PTX-L
    s" bar.sync 0;" PTX-L                                          \ all threads' cp.async for tile t visible
-   MM-CUR-BASES
-   MM-BK 0 do  i MM-KSTEP  loop
+   execute                                                       \ per-tile compute from %r16
    s" bar.sync 0;" PTX-L                                          \ compute done before buffer reuse
    s" add.u32 %r14,%r14,32;" PTX-L                                 \ kt += bk
    s" xor.b32 %r15,%r15,1;" PTX-L                                 \ flip buffer
    s" bra $KLOOP;" PTX-L  s" $KEND:" PTX-L ;
+
+: MM-KSTEP-TILE ( -- )   MM-CUR-BASES  MM-BK 0 do  i MM-KSTEP  loop ;   \ FMA 4x4 compute
+: MM-PIPE-KLOOP ( -- )   [: MM-KSTEP-TILE ;] MM-PIPE-KLOOP-WITH ;
 
 : MM-BEGIN ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live> )
    MM-THREAD-SETUP
