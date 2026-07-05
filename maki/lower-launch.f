@@ -406,7 +406,7 @@ variable MDL-PROBE-RID                             \ rid carried into the lowera
    LLA-MOD-CLOSE ;
 
 \ read the final model output node's device buffer back into LLA-HOUT (guarded), and point
-\ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE reads the model output.
+\ the golden accessors (LLA-OUT-NODE / LLA-ELEMS) at it so LG-COMPARE-LIN reads the model output.
 : MDL-READBACK ( -- )
    MIR-N@ 1- {: out:n :}
    out MIR-ROWS@ out MIR-COLS@ * {: e:n :}

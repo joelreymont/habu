@@ -8,8 +8,8 @@
 \
 \ For an ELEMENTWISE and a REDUCTION region it emits the CORRECT kernel PTX in-process
 \ (src/arch/ptx/emit.f PTX-CAPTURE, no emitter edit), applies ONE post-emit corruption over
-\ the captured text (ABL-MUTATE: a fail-closed first-occurrence replace; the target substring
-\ MUST exist), assembles the poked PTX with ptxas, registers the cubin, and asserts
+\ the captured text (maki/ablate-ptx.f ABL-MUTATE: a fail-closed first-occurrence replace;
+\ the target substring MUST exist), assembles the poked PTX with ptxas, registers the cubin, and asserts
 \ LOWER-GOLDEN returns V-FAIL (never V-PASS). Injection mechanisms (each stays IN-BOUNDS and
 \ writes every output cell, so the fault surfaces as a value mismatch V-FAIL, not a launch
 \ crash or a sentinel-poisoned readback):
@@ -37,26 +37,11 @@ require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/cad.f
 require maki/lower-golden.f
-
--5210 constant E-ABL-NOSUB        \ ablate: PTX mutation target substring not found (fail closed)
--5211 constant E-ABL-CAP          \ ablate: mutated PTX exceeds the scratch buffer
+require maki/ablate-ptx.f
 
 package MAKI
 
-$8000 constant ABL-PTX-CAP
-create ABL-PTX ABL-PTX-CAP allot  variable ABL-PTX-U
 create ABL-QO  $1000 allot  create ABL-QE $2000 allot
-
-\ ---- PTX text mutator: copy captured PTX, replace the FIRST tgt with rep (fail closed) --------
-: ABL-MUTATE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n ra:ptr ru:n :}
-   su ru + tu - ABL-PTX-CAP > if E-ABL-CAP throw then
-   sa su ta tu FIND-SUB {: pos:n :}
-   pos 0 < if E-ABL-NOSUB throw then
-   sa ABL-PTX pos BYTE-COPY                        \ prefix [0,pos)
-   ra ABL-PTX pos + ru BYTE-COPY                   \ replacement
-   sa pos + tu +  ABL-PTX pos + ru +  su pos - tu -  BYTE-COPY   \ suffix (past the target)
-   pos ru + su pos - tu - + ABL-PTX-U ! ;
-: ABL-PTX$ ( -- ptr u8 n )  ABL-PTX ABL-PTX-U @ ;
 
 \ ---- correct-kernel capture (in-process; no child spawn, no emitter edit) ---------------------
 : ABL-CAP-EW  ( n -- ptr u8 n ) {: rid:n :}  PTX-CAPTURE-ON rid LEW-EMIT  PTX-CAPTURE-OFF PTX-CAPTURE$ ;

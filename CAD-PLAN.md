@@ -393,7 +393,15 @@ compute-bound plan, in dependency order:
    (persistent kernels / a graph-style driver loop —
    `habu-cad-launch-amortize`); precision policy LICENSED by the gates —
    TF32/FP16 applied only where GOLDEN + gradcheck prove it safe
-   (`habu-cad-precision-policy`).
+   (`habu-cad-precision-policy`) [LANDED 2026-07-05 (step 3a, the MMA
+   prerequisite): per-class precision registry `maki/precision.f` — PREC-F32
+   default everywhere, PREC-TF32 licensed for the matmul class only (atol 1e-6,
+   rtol 2e-3 from the measured ~7.9e-4 TF32 GEMM error, ~2.5x headroom); golden
+   verdicts judged under each class's ACTIVE precision row and named in the
+   reason; PROMOTE evidence records `golden=device-pass:<prec>`; the inverse
+   guard (a seeded 0.5% fault fails even under tf32) is proven on-device by
+   `maki/precision-device-test.f`. The MMA lane runs licensed via
+   `PREC-TF32 CLASS-MATMUL PREC!` — the passing golden IS the license].
 6. **Roofline-directed search**: PROFILE's classification (§9) spends tuner
    candidates only on regions actually under the compute roof.
 
@@ -408,7 +416,8 @@ ld.shared.v4 B load (blocked 379, 397, 403 GFLOP/s at 512, 1024, 2048; 48 regs
 and 16 KB smem); 2B = cp.async.cg double-buffered staging, stages=2 (416, 437,
 442 GFLOP/s; 56 regs and 32 KB smem) = +16-17% over the bk16 baseline, Triton
 gap 4.6-5.0x down to 3.9-4.3x; emitter shaped for family stages 3-4] ->
-on-device PROFILE/roofline -> MMA family (step 3, the higher compute roof) ->
+on-device PROFILE/roofline -> MMA family (step 3, the higher compute roof;
+step 3a gate-licensed precision LANDED 2026-07-05, see lever 5) ->
 cad-6 tune -> attention megafusion ->
 end-to-end model latency vs torch.compile on the detector-class workload. Honest finish line: parity on
 the pure compute roof (tensor cores are tensor cores), win on everything
@@ -489,6 +498,12 @@ per-dtype defaults (f32: atol 1e-6, rtol 1e-5; f16/bf16: atol 1e-3, rtol
 declared numeric class (e.g. `gelu-approx` under an explicit tolerance
 attribute). Reductions and matmul accumulate f32 regardless of input dtype;
 fusion never changes accumulation dtype (`numeric-policy` split otherwise).
+The per-class (atol, rtol) rows are owned by `maki/precision.f` on a
+precision axis (f32 rows everywhere; tf32 licensed for the matmul class,
+atol 1e-6 / rtol 2e-3, derived from the measured TF32 GEMM error in
+docs/eval-triton.md): a demoted precision is REQUESTED per region class
+(`PREC!`), the golden judges under that row, and the passing verdict is the
+license — recorded in the evidence row as `golden=device-pass:<prec>`.
 
 `PROMOTE` writes the artifact — PTX, cubin hash, plan, schedule, evidence
 rows, tolerances — keyed as §7.4, and refuses unless CERTIFY + GOLDEN

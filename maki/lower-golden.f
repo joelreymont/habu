@@ -13,16 +13,13 @@
 \ host to f32 first removes the double-vs-single representation gap so the tolerance measures
 \ real kernel error, not the dtype step.
 \
-\ Tolerance policy (per-class, CAD-PLAN section 11 + the op-registry NUM-* rows). atol is
-\ 1e-6 for both. rtol is chosen by op CLASS, because the registry marks activations AND
-\ reductions NUM-RELTOL but the reduction class also carries ACC-F32 accumulation over up
-\ to k=256 lanes plus (softmax) an ex2.approx step, so its relative error is deeper:
-\   elementwise/activation class: rtol = 1e-5 (slice 1; proven for the gelu ex2.approx path).
-\   row-reduce class:             rtol = 1e-4. Worst case f32 sum error over k<=256 terms is
-\                                 ~ k * 2^-24 ~= 1.5e-5, and ex2.approx adds ~1 ULP on the
-\                                 softmax exp; 1e-4 keeps ~6x headroom over that bound.
-\ The registry rows imply this: NUM-EXACT would be atol-only, NUM-ULP a few ULP; NUM-RELTOL
-\ is a relative band that must scale with the op class's accumulation depth (the ACC-F32 rows).
+\ Tolerance policy: the per-class rows are OWNED BY maki/precision.f (CAD-PLAN
+\ section 11 + 8.1 lever 5). Each region class carries an ACTIVE precision
+\ (default PREC-F32; PREC! requests a demotion such as PREC-TF32 for the matmul
+\ class) and the golden judges under that precision's (atol, rtol) row - the
+\ passing verdict IS the license for running that class at that precision. The
+\ verdict reason names the judged precision ("within tf32 tol") and
+\ LG-PREC-USED@ exposes it for the PROMOTE evidence row.
 \
 \ Verdict: V-PASS (all within tolerance), V-FAIL (first offending element named), or
 \ V-NOTRUN (off-device: no libcuda). LOWER-GOLDEN-REASON$ carries the one-line reason.
@@ -36,6 +33,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require maki/report.f
 require maki/op-registry.f
+require maki/precision.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/executor.f
@@ -43,12 +41,6 @@ require maki/golden-artifact.f
 require maki/lower-launch.f
 
 package MAKI
-
--6 constant LG-ATOL-EXP        \ atol = 10^-6 (all classes, CAD-PLAN section 11 f32)
--5 constant LG-RTOL-EW         \ elementwise/activation class rtol = 10^-5 (slice 1)
--4 constant LG-RTOL-RED        \ row-reduce class rtol = 10^-4 (f32 accumulation + ex2.approx)
--4 constant LG-RTOL-MM         \ matmul class rtol = 10^-4 (f32 ACC over K<=256; ~K*2^-24 ~= 1.5e-5, ~6x headroom)
--6 constant LG-RTOL-MV         \ movement copy class rtol = 10^-6 (NUM-EXACT: a device f32 copy equals F64>F32(host))
 
 \ ---- reason buffer ---------------------------------------------------------
 128 constant LG-RE-CAP
@@ -62,20 +54,27 @@ public
 : LOWER-GOLDEN-REASON$ ( -- ptr u8 n )  LG-RE LG-RE-U @ ;
 private
 
+\ ---- judged precision (the verdict's licensed-precision fact) ----------------
+variable LG-PREC-V                              \ precision id the last verdict was judged under
+: LG-PREC$ ( -- ptr u8 n )  LG-PREC-V @ PREC-NAME ;
+public
+: LG-PREC-USED@ ( -- n )  LG-PREC-V @ ;
+private
+
 \ ---- tolerance comparison (device f32 vs host rounded to the f32 grid) -------
 : LG-NARROW ( r -- r )  F64>F32 F32>F64 ;      \ round a host f64 onto the f32 grid
-: LG-WITHIN? ( r r n n -- bool ) {: dev:r host:r ae:n re:n :}
-   ae POW10  re POW10 host fabs f* f+ {: tol:r :}
-   dev host f- fabs {: d:r :}
-   tol d f< 0= ;                                \ pass iff |dev-host| <= tol
 
 variable LG-BADI                                \ first mismatched element index (-1 = none)
-: LG-COMPARE ( n n -- bool ) {: ae:n re:n :}
+: LG-WITHIN-LIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
+   atol  rtol host fabs f*  f+ {: tol:r :}
+   dev host f- fabs {: d:r :}
+   tol d f< 0= ;                                \ pass iff |dev-host| <= tol
+: LG-COMPARE-LIN ( r r -- bool ) {: atol:r rtol:r :}
    LLA-OUT-NODE@ EX-OUT@ {: hp:ptr :}
    LLA-ELEMS@ {: n:n :}
    -1 LG-BADI !
    n 0 ?do
-      i LLA-OUT@  hp i T-GET LG-NARROW  ae re LG-WITHIN? 0= if
+      i LLA-OUT@  hp i T-GET LG-NARROW  atol rtol LG-WITHIN-LIN? 0= if
          i LG-BADI !  false unloop exit
       then
    loop
@@ -84,11 +83,13 @@ variable LG-BADI                                \ first mismatched element index
 : LG-PASS-REASON ( n -- ) {: rid:n :}
    LG-RE-RESET
    s" lower-golden: REGION_" LG-RE+ rid LG-RE-INT
-   s"  device==host within f32 tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT s"  elems)" LG-RE+ ;
+   s"  device==host within " LG-RE+ LG-PREC$ LG-RE+
+   s"  tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT s"  elems)" LG-RE+ ;
 : LG-FAIL-REASON ( n -- ) {: rid:n :}
    LG-RE-RESET
    s" lower-golden: REGION_" LG-RE+ rid LG-RE-INT
-   s"  mismatch beyond f32 tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
+   s"  mismatch beyond " LG-RE+ LG-PREC$ LG-RE+
+   s"  tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
 
 \ region class -> launch shape + tolerance. A matmul bit routes to the tiled-GEMM kernel;
 \ a reduction bit routes to the row kernel; otherwise the flat elementwise kernel. A region
@@ -101,22 +102,34 @@ variable LG-BADI                                \ first mismatched element index
 \ routes to the copy-kernel launch; a dissolved-fold region keeps its EW/RED/MM class route.
 : LG-MOVE? ( n -- bool )  LLA-REGION-MOVE? ;
 
+\ region -> op-registry class id (the tolerance row + precision axis)
+: LG-CLASS ( n -- n ) {: rid:n :}
+   rid LG-MOVE?   if CLASS-MOVEMENT   exit then
+   rid LG-MATMUL? if CLASS-MATMUL     exit then
+   rid LG-REDUCE? if CLASS-ROW-REDUCE exit then
+   CLASS-EW ;
+
+: LG-RUN ( n n -- ) {: rid:n cls:n :}           \ launch the region on its class route
+   cls CLASS-MOVEMENT   = if rid LMV-RUN  exit then
+   cls CLASS-MATMUL     = if rid LMM-RUN  exit then
+   cls CLASS-ROW-REDUCE = if rid LRED-RUN exit then
+   rid LLA-RUN ;
+
 public
 \ LOWER-GOLDEN ( rid -- verdict ). Requires the region's cubin already assembled and its
-\ path set via LLA-CUBIN! (the device tool does emit+ptxas first).
+\ path set via LLA-CUBIN! (the device tool does emit+ptxas first). The tolerance is the
+\ region class's ACTIVE precision row (maki/precision.f); the verdict names it.
 : LOWER-GOLDEN ( n -- n ) {: rid:n :}
+   PREC-F32 LG-PREC-V !
    CUDA:OPEN? 0= if
       LG-RE-RESET s" lower-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
    MIR-N@ EX-RUN-N                              \ host reference
-   rid LG-MOVE? if
-      rid LMV-RUN  LG-RTOL-MV
-   else rid LG-MATMUL? if
-      rid LMM-RUN  LG-RTOL-MM
-   else
-      rid LG-REDUCE? if  rid LRED-RUN  LG-RTOL-RED  else  rid LLA-RUN  LG-RTOL-EW  then
-   then then {: re:n :}
-   LG-ATOL-EXP re LG-COMPARE if rid LG-PASS-REASON V-PASS else rid LG-FAIL-REASON V-FAIL then ;
+   rid LG-CLASS {: cls:n :}
+   cls PREC@ LG-PREC-V !                        \ the precision this verdict is judged under
+   rid cls LG-RUN
+   cls PREC-ATOL cls PREC-RTOL LG-COMPARE-LIN
+   if rid LG-PASS-REASON V-PASS else rid LG-FAIL-REASON V-FAIL then ;
 
 private
 
@@ -131,48 +144,49 @@ private
 \ accumulates a per-region rounding the single-region golden never sees. First-order error
 \ propagation gives final relative error ~ SUM of the per-region class rtols and an absolute
 \ floor ~ SUM of the per-region atols; SUMMING is the sound upper bound (maxing would
-\ understate a deep chain). Per class: EW 1e-5, ROW-REDUCE 1e-4, MATMUL 1e-4, MOVEMENT 1e-6
-\ (the same slice 1-4 per-class bounds), atol 1e-6 each.
-: MDL-ATOL ( -- r )  MDL-N-REGIONS@ s>f  LG-ATOL-EXP POW10  f* ;
+\ understate a deep chain). Each class contributes its ACTIVE precision row
+\ (maki/precision.f), so a licensed tf32 matmul class widens only its own terms.
+: MDL-ATOL ( -- r )
+   MDL-N-EW@  s>f CLASS-EW         PREC-ATOL f*
+   MDL-N-RED@ s>f CLASS-ROW-REDUCE PREC-ATOL f* f+
+   MDL-N-MM@  s>f CLASS-MATMUL     PREC-ATOL f* f+
+   MDL-N-MV@  s>f CLASS-MOVEMENT   PREC-ATOL f* f+ ;
 : MDL-RTOL ( -- r )
-   MDL-N-EW@  s>f LG-RTOL-EW  POW10 f*
-   MDL-N-RED@ s>f LG-RTOL-RED POW10 f* f+
-   MDL-N-MM@  s>f LG-RTOL-MM  POW10 f* f+
-   MDL-N-MV@  s>f LG-RTOL-MV  POW10 f* f+ ;
+   MDL-N-EW@  s>f CLASS-EW         PREC-RTOL f*
+   MDL-N-RED@ s>f CLASS-ROW-REDUCE PREC-RTOL f* f+
+   MDL-N-MM@  s>f CLASS-MATMUL     PREC-RTOL f* f+
+   MDL-N-MV@  s>f CLASS-MOVEMENT   PREC-RTOL f* f+ ;
 
-\ linear-tolerance compare (the composed tol is a SUM, not a single power of ten)
-: LG-WITHIN-LIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
-   atol  rtol host fabs f*  f+ {: tol:r :}
-   dev host f- fabs {: d:r :}
-   tol d f< 0= ;
-: LG-COMPARE-LIN ( r r -- bool ) {: atol:r rtol:r :}
-   LLA-OUT-NODE@ EX-OUT@ {: hp:ptr :}
-   LLA-ELEMS@ {: n:n :}
-   -1 LG-BADI !
-   n 0 ?do
-      i LLA-OUT@  hp i T-GET LG-NARROW  atol rtol LG-WITHIN-LIN? 0= if
-         i LG-BADI !  false unloop exit
-      then
-   loop
-   LG-BADI @ 0 < ;
+\ the model verdict's precision = the strongest demotion among the PRESENT classes
+\ (v1: only the matmul class can be non-default, so this names the tf32 license).
+: MDL-PREC ( -- n )
+   PREC-F32
+   MDL-N-EW@  0 > if CLASS-EW         PREC@ PREC-MAX then
+   MDL-N-RED@ 0 > if CLASS-ROW-REDUCE PREC@ PREC-MAX then
+   MDL-N-MM@  0 > if CLASS-MATMUL     PREC@ PREC-MAX then
+   MDL-N-MV@  0 > if CLASS-MOVEMENT   PREC@ PREC-MAX then ;
 
 : MDL-PASS-REASON ( -- )
    LG-RE-RESET
-   s" lower-model-golden: device==host within composed f32 tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT
+   s" lower-model-golden: device==host within composed " LG-RE+ LG-PREC$ LG-RE+
+   s"  tol (" LG-RE+ LLA-ELEMS@ LG-RE-INT
    s"  elems, " LG-RE+ MDL-N-REGIONS@ LG-RE-INT s"  regions)" LG-RE+ ;
 : MDL-FAIL-REASON ( -- )
    LG-RE-RESET
-   s" lower-model-golden: mismatch beyond composed f32 tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
+   s" lower-model-golden: mismatch beyond composed " LG-RE+ LG-PREC$ LG-RE+
+   s"  tol at elem " LG-RE+ LG-BADI @ LG-RE-INT ;
 
 public
 \ LOWER-MODEL-GOLDEN ( -- verdict ). Requires FP-BUILD + each region's cubin registered
 \ (MDL-CUBIN!). Off-device -> V-NOTRUN (reason in LOWER-GOLDEN-REASON$).
 : LOWER-MODEL-GOLDEN ( -- n )
+   PREC-F32 LG-PREC-V !
    CUDA:OPEN? 0= if
       LG-RE-RESET s" lower-model-golden: off-device (libcuda unavailable)" LG-RE+  V-NOTRUN exit then
    GA-BIND-SYNTH                                \ bind + fill synthetic inputs (host + device share them)
    MIR-N@ EX-RUN-N                              \ host reference (whole model, f64)
    MDL-COUNT-REGIONS                            \ tally region classes for the composed tolerance
+   MDL-PREC LG-PREC-V !                         \ the composed verdict's judged precision
    LOWER-MODEL-RUN                              \ device (fills LLA-HOUT = final node, f32 -> f64)
    MDL-ATOL MDL-RTOL LG-COMPARE-LIN
    if MDL-PASS-REASON V-PASS else MDL-FAIL-REASON V-FAIL then ;

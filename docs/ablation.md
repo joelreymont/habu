@@ -28,6 +28,7 @@ Status legend: **impl** = landed by this dot (`habu-ablation-fault-injection`); 
 | 7 | EXPLAIN packets | repair-rounds / tokens-to-green | pre | `maki/eval-repair.f:47` (`repair-rounds` + `tokens-to-green`, checker-guided loop) | `bin/hb --load maki/test.f` |
 | 7 | EXPLAIN packets | **with-vs-without-packet** A/B ablation | pending | `eval-repair.f` measures the repair-loop metric but not yet the packet on/off arm — **pending** an eval-repair ablation arm | — |
 | 8 | Schedule machinery | tuned-vs-closed-form-default deltas per family | pending | **pending cad-6** (tuner output) | — |
+| 9 | Gate-licensed precision | tf32 request licensed by a passing golden (reason + evidence name tf32) AND the inverse guard: a seeded 0.5% fault fails even under the tf32 band | impl | registry `maki/precision.f`; device proof `maki/precision-device-test.f` (legs 1-4); host rows `maki/precision-test.f` | `bin/hb --load maki/precision-device-test.f` (on the Orin); host: in the maki gate |
 
 ## Fusion ON/OFF ablation numbers (row 2b, measured)
 

@@ -29,7 +29,9 @@
 \
 \   schedules.rows      <key>|<selected-candidate-index>
 \   measurements.rows   <key>|<candidate-index>|<median-ns>
-\   evidence.rows       <key>|certify=<v>|golden=<v>|gradcheck=<v>|profile=<v>
+\   evidence.rows       <key>|certify=<v>|golden=[device-]<v>[:<prec>]|gradcheck=<v>|profile=<v>
+\                       (a device golden leg carries the licensed precision it was judged
+\                       under, e.g. golden=device-pass:tf32; host legs stay plain golden=<v>)
 \   profitability.rows  <key>|<region-sig>|<verdict>|<reason>
 \   calibration.rows    <table>|<op-or-family>|<field>|<value>
 \
@@ -55,6 +57,7 @@ require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
 require maki/report.f
+require maki/precision.f
 
 -5090 constant E-STORE-KEY      \ empty key or key contains a newline
 -5091 constant E-STORE-FIELD    \ a field / row contains a framing newline
@@ -63,6 +66,7 @@ require maki/report.f
 -5094 constant E-STORE-CLASS    \ record-class id out of range
 -5095 constant E-STORE-ROW      \ malformed stored row on parse (non-numeric / missing pipe)
 -5096 constant E-STORE-ROOT     \ resolved store root path empty or over the path cap
+-5097 constant E-STORE-PREC     \ precision tag out of range for a device golden leg
 
 package MAKI
 public
@@ -123,6 +127,14 @@ variable STORE-Q-FOUND                                                   \ -1 on
       PF-PROFITABLE of s" profitable" endof
       PF-REGRESSION of s" regression" endof
       E-STORE-VERDICT throw
+   endcase ;
+
+\ precision -> on-disk text (the store owns its wire encoding; ids from maki/precision.f)
+: STORE-P$ ( n -- ptr u8 n )
+   case
+      PREC-F32  of s" f32"  endof
+      PREC-TF32 of s" tf32" endof
+      E-STORE-PREC throw
    endcase ;
 
 \ ---- store root (HABU_CAD_STORE or tmp/cad-store) + class file path ---------
@@ -309,25 +321,28 @@ public
    ca cu STORE-PARSE-INT  ma mu STORE-PARSE-INT  true ;
 
 \ ---- evidence (per-gate verdicts) ------------------------------------------
-\ the golden field records WHICH leg produced the verdict: a device model golden (slice 5)
-\ that ran writes "golden=device-<v>" so a promoted artifact carries proof the device leg ran;
-\ the host self-consistency / artifact legs write the plain "golden=<v>".
-: EVID-GOLDEN+ ( n bool -- ) {: g:n gdev?:bool :}
+\ the golden field records WHICH leg produced the verdict AND, for a device leg, the
+\ LICENSED PRECISION it was judged under (CAD-PLAN 8.1 lever 5): a device model golden
+\ (slice 5) writes "golden=device-<v>:<prec>" so a promoted artifact carries both the
+\ proof the device leg ran and the precision row that licensed it; the host
+\ self-consistency / artifact legs write the plain "golden=<v>" (no precision axis).
+: EVID-GOLDEN+ ( n bool n -- ) {: g:n gdev?:bool prec:n :}
    s" golden=" SROW+
    gdev? if s" device-" SROW+ then
-   g STORE-V$ SROW+ ;
-: EVID-PUT-G ( ptr u8 n n n n n bool -- ) {: ka:ptr ku:n c:n g:n gc:n p:n gdev?:bool :}
+   g STORE-V$ SROW+
+   gdev? if $3A SROW-C+ prec STORE-P$ SROW+ then ;   \ ":" + licensed precision
+: EVID-PUT-G ( ptr u8 n n n n n bool n -- ) {: ka:ptr ku:n c:n g:n gc:n p:n gdev?:bool prec:n :}
    ka ku STORE-CK-KEY
    SROW-RESET
    ka ku SROW+  SROW-PIPE
    s" certify="   SROW+  c  STORE-V$ SROW+  SROW-PIPE
-   g gdev? EVID-GOLDEN+  SROW-PIPE
+   g gdev? prec EVID-GOLDEN+  SROW-PIPE
    s" gradcheck=" SROW+  gc STORE-V$ SROW+  SROW-PIPE
    s" profile="   SROW+  p  STORE-V$ SROW+
    SROW-NL
    CLS-EVID STORE-APPEND ;
 : EVID-PUT ( ptr u8 n n n n n -- ) {: ka:ptr ku:n c:n g:n gc:n p:n :}
-   ka ku c g gc p false EVID-PUT-G ;
+   ka ku c g gc p false PREC-F32 EVID-PUT-G ;
 
 : EVID-GET ( ptr u8 n -- ptr u8 n bool ) {: ka:ptr ku:n :}
    CLS-EVID ka ku STORE-QUERY ;

@@ -12,7 +12,7 @@
 \ matmul, row-reduce) where region 1 reads region 0's device buffer and region 2 reads region 1's;
 \ (B) cross-region MOVEMENT GELU CONCAT - region 1 (a materialized copy) reads region 0's (gelu)
 \ device buffer. Then the cad.f gate path on the FFN model: OPTIMIZE records golden device-pass and
-\ PROMOTE writes an evidence row with golden=device-pass.
+\ PROMOTE writes an evidence row with golden=device-pass:f32 (the default licensed precision).
 \
 \ Off the Orin (no libcuda) the device legs are SKIPPED and the host build still loads. Not part of
 \ the maki gate (maki/test.f) - it needs the CUDA toolkit + a device. Run on the Orin: scp to
@@ -118,7 +118,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    0 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                          \ verbatim evidence row
-   ra ru s" golden=device-pass" CONTAINS? TTRUE
+   ra ru s" golden=device-pass:f32" CONTAINS? TTRUE      \ device leg + its licensed precision
    STORE-RESET ;
 
 : LMDM-BEGIN ( -- )

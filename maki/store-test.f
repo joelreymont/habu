@@ -7,6 +7,7 @@
 
 require lib/test.f
 require lib/string.f
+require maki/precision.f
 require maki/store.f
 
 package MAKI
@@ -27,6 +28,7 @@ FILL-BIGV
 : TRY-NLFIELD    ( -- )  s" k" s" op" s" f" NL$ CALIB-PUT ;
 : TRY-BADCLASS   ( -- )  CLS-N STORE-CLASS-PATH 2drop ;
 : TRY-BADVERDICT ( -- )  s" ek" V-N V-PASS V-PASS V-PASS EVID-PUT ;
+: TRY-BADPREC    ( -- )  s" ek" V-PASS V-PASS V-PASS V-PASS true PREC-N EVID-PUT-G ;
 : TRY-BADPF      ( -- )  s" pk" s" sig" PF-N s" r" PROFIT-PUT ;
 : TRY-CAP        ( -- )  s" tbl" s" op" s" fld" BIGV BIGV-U CALIB-PUT ;
 
@@ -66,6 +68,14 @@ s" ek" EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=not-run|profile=not-run" T$=
 s" noev" EVID-GET nip TFALSE
 
+\ a device golden leg records the licensed precision it was judged under (8.1 lever 5)
+s" ekd" V-PASS V-PASS V-NOTRUN V-NOTRUN true PREC-F32 EVID-PUT-G
+s" ekd" EVID-GET TTRUE
+s" certify=pass|golden=device-pass:f32|gradcheck=not-run|profile=not-run" T$=
+s" ekt" V-PASS V-FAIL V-NOTRUN V-NOTRUN true PREC-TF32 EVID-PUT-G
+s" ekt" EVID-GET TTRUE
+s" certify=pass|golden=device-fail:tf32|gradcheck=not-run|profile=not-run" T$=
+
 \ ---- profitability facts (section 5.7) -------------------------------------
 s" pk" s" 431E24867468A764" PF-REGRESSION s" measured-regression" PROFIT-PUT
 s" pk" PROFIT-GET TTRUE
@@ -87,6 +97,7 @@ s" occupancy" s" gemm-tf32" s" no-field" CALIB-GET nip TFALSE
 ' TRY-NLFIELD    E-STORE-FIELD   TTHROWS
 ' TRY-BADCLASS   E-STORE-CLASS   TTHROWS
 ' TRY-BADVERDICT E-STORE-VERDICT TTHROWS
+' TRY-BADPREC    E-STORE-PREC    TTHROWS
 ' TRY-BADPF      E-STORE-VERDICT TTHROWS
 ' TRY-CAP        E-STORE-FULL    TTHROWS
 

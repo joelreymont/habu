@@ -25,6 +25,7 @@ require lib/float.f
 require lib/fmt.f
 require maki/op-kind.f
 require maki/op-registry.f
+require maki/precision.f
 require maki/model-ir.f
 require maki/executor.f
 require maki/report.f
@@ -95,12 +96,16 @@ public
 \ GOLDEN-INTO here is the HOST gate: external reference artifact, else self-consistency. The
 \ DEVICE model-golden leg is composed one layer up in maki/cad.f (GOLDEN-GATE-INTO), which owns
 \ the device dependency; golden.f stays device-free. GOLDEN-DEV-FLAG records whether the device
-\ leg produced the verdict so PROMOTE's evidence row can read golden=device-pass; the host legs
-\ here clear it.
+\ leg produced the verdict so PROMOTE's evidence row can read golden=device-pass:<prec>, and
+\ GOLDEN-PREC-V records the precision the device verdict was judged under (maki/precision.f);
+\ the host legs here clear both (host legs carry no precision suffix).
 variable GOLDEN-DEV-FLAG           \ -1 once the device golden leg produced the verdict, else 0
+variable GOLDEN-PREC-V             \ precision id of the device golden verdict (PREC-F32 default)
 public
 : GOLDEN-DEV! ( n -- )  GOLDEN-DEV-FLAG ! ;
 : GOLDEN-DEV? ( -- bool )  GOLDEN-DEV-FLAG @ 0= 0= ;
+: GOLDEN-PREC! ( n -- )  GOLDEN-PREC-V ! ;
+: GOLDEN-PREC@ ( -- n )  GOLDEN-PREC-V @ ;
 private
 
 \ ---- cad.f gate wiring: prefer an external reference artifact, else self-consistency --
@@ -114,6 +119,7 @@ private
 public
 : GOLDEN-INTO ( report -- report )              \ host golden gate (device leg is cad.f's GOLDEN-GATE-INTO)
    0 GOLDEN-DEV-FLAG !
+   PREC-F32 GOLDEN-PREC-V !
    GA-EXISTS? if GO-GATE-ARTIFACT else GO-GATE-SELF then ;
 
 end-package

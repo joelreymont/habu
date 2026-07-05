@@ -668,14 +668,16 @@ private
 \ GOLDEN precedence: external artifact > DEVICE model golden > host self-consistency. The device
 \ leg runs when a GPU is present, every region's cubin is registered (MDL-CUBIN!), and the model is
 \ device-lowerable; LOWER-MODEL-GOLDEN executes the whole forward IR on the GPU with cross-region
-\ device buffers and compares the final output vs the host executor under a composed f32 tolerance.
+\ device buffers and compares the final output vs the host executor under the composed tolerance
+\ of each region class's ACTIVE precision (maki/precision.f - the licensed-precision rows).
 \ Off-device (or without cubins / a non-lowerable model) GOLDEN-GATE-INTO is exactly GOLDEN-INTO,
 \ so the host gates are unchanged.
 : GOLDEN-GATE-DEVICE ( report -- report )
    LOWER-MODEL-GOLDEN {: v:n :}
    -1 GOLDEN-DEV!                                  \ evidence: the device leg produced this verdict
+   LG-PREC-USED@ GOLDEN-PREC!                      \ evidence: the precision it was judged under
    LOWER-GOLDEN-REASON$ v G-GOLDEN RPT-GATE!
-   s" golden: device model golden (cross-region f32 vs host, composed tolerance)" RPT-WARN+ ;
+   s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" RPT-WARN+ ;
 : GOLDEN-GATE-INTO ( report -- report )
    GA-EXISTS? if GOLDEN-INTO exit then             \ external artifact wins (GOLDEN-INTO selects it)
    CUDA:OPEN? if
@@ -727,7 +729,7 @@ private
    dup G-GRADCHECK RPT-GATE-TAG@ {: gc:n :}
    dup G-PROFILE   RPT-GATE-TAG@ {: p:n :}
    dup RPT-SELECT@ {: sel:n :}
-   0 SK-KEY$ c g gc p GOLDEN-DEV? EVID-PUT-G       \ golden=device-<v> when the device leg ran
+   0 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
    0 SK-KEY$ sel SCHED-PUT ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw

@@ -312,7 +312,8 @@ kernel error rather than representation.
 \code{PROMOTE} admits an artifact only when certify and golden pass and
 gradcheck did not fail; the evidence row records exactly what ran---on
 the Jetson, a promoted FFN records
-\code{certify=pass|golden=device-pass|gradcheck=pass|profile=not-run}.
+\code{certify=pass|golden=device-pass:f32|gradcheck=pass|profile=not-run}
+(the golden leg's suffix names the licensed precision it was judged under).
 Failures render as \emph{repair packets}: a typed failure class, the
 offending node or region, a reproduction pointer, and a suggested next
 action---designed so an agent or a person can act on the report without
