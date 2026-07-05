@@ -23,6 +23,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/cg-matmul.f
 require lib/ptx/cg-matmul-naive.f
+require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
 require tools/ptx/profile.f
 require tools/ptx/bench.f
@@ -107,7 +108,7 @@ variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 
    s" MMN" GB-KERNEL
    PTXTC:CLEAN ;
 
-: GB-MM ( -- )                         \ register-blocked column
+: GB-MM ( -- )                         \ register-blocked column (FP32 CUDA-core roof)
    s" == MM register-blocked 64x64 (4x4 micro-tile/thread, shared staging) ==" type cr
    s" habu-gemm-bench" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL  PTX-CAPTURE-OFF
@@ -116,12 +117,22 @@ variable GB-OT                         \ output-tile edge: 64 (MM blocked) / 16 
    s" MM" GB-KERNEL
    PTXTC:CLEAN ;
 
+: GB-MMM ( -- )                        \ TF32 tensor-core column (mma.sync, higher roof)
+   s" == MMM tensor-core TF32 mma.sync 64x64 (8 warps, cp.async double-buffer) ==" type cr
+   s" habu-gemm-bench" PTXTC:PREPARE
+   PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
+   GB-ASSEMBLE
+   64 GB-OT !
+   s" MMM" GB-KERNEL
+   PTXTC:CLEAN ;
+
 public
 
 : GB-ALL ( -- )
    CUDA:OPEN? 0= if s" gemm-bench: libcuda unavailable -> SKIPPED (off-device)" type cr exit then
    GB-MMN
-   GB-MM ;
+   GB-MM
+   GB-MMM ;
 
 end-package
 

@@ -534,3 +534,65 @@ GEMM 2048x2048x2048 iters=30   GFLOP/s_x1000=441801
   (`lower-mm-device-test` 64×64 blocked MATMUL + LINEAR→GELU,
   `lower-model-device-test`) green, device == host within the f32 matmul
   tolerance — the correctness harness the whole exercise is built on.
+
+## GEMM step 3: TF32 tensor-core `mma.sync` micro-tile (2026-07-05)
+
+CAD-PLAN 8.1 step 3. The FP32 CUDA-core roof (~940 GFLOP/s) caps the `fma.rn.f32`
+tile (step 2 topped at 442); TF32 tensor cores sit on a *higher* roof, so the
+step-3 lever is `mma.sync`, not more SIMT tiling. Same device / protocol / shapes.
+
+The new `MMM` kernel (`lib/ptx/cg-mma.f`) keeps step 2's 64×64 block and cp.async
+double-buffered `As[64][32]`/`Bs[32][64]` staging *verbatim* (shared
+`MM-PIPE-KLOOP-WITH` scaffold) and swaps ONLY the compute inner: the 4×4
+`fma.rn.f32` micro-tile becomes warp-level
+`mma.sync.aligned.m16n8k8.row.col.f32.tf32.tf32.f32` tiles. 8 warps tile the
+64×64 output as warp_row=warpid>>1 (0..3) × warp_col=warpid&1 (0..1); each warp
+owns 16×32 = 4 MMA n-tiles, loading one 16×8 A fragment per MMA-K substep and
+reusing it across the 4 n-tiles (16 f32 accumulators/lane). Operands are
+`cvt.rna.tf32.f32`; the accumulator stays f32.
+
+**Fragment layout was proven in isolation FIRST** (the course's #1 "correct in
+NumPy, garbage on device"): `tools/ptx/mma-probe.f` runs ONE mma tile with
+committed integer operands and checks it **element-exact** vs a host matmul (128
+cells, 0 mismatches). Then `tools/ptx/mma-gemm-check.f` proves the full
+K-looping kernel (staging + accumulation + the warp/D-fragment store mapping)
+**element-exact** at 64³ (4096 cells) and 128³ (16384 cells). Licensed: with
+`PREC-TF32` requested for the matmul class, `maki/lower-mm.f` emits this kernel
+and `maki/precision-device-test.f` LOWER-GOLDEN passes **device==host within the
+tf32 row (rtol 2e-3, 4096 elems)** — the passing verdict IS the running license;
+a seeded 0.5% store fault still FAILS under tf32, and PREC-RESET re-emits the f32
+kernel green under the f32 row.
+
+### Results (recorded on the Orin, 2026-07-05)
+
+```
+== MMN naive (1 elem/thread)                       ==  55.0 / 55.2 / 54.6
+== MM  register-blocked 64x64, cp.async (fp32)     == 416.2 / 436.8 / 441.8
+== MMM tensor-core TF32 mma.sync 64x64, cp.async   == 375.6 / 393.5 / 398.5
+```
+
+| GFLOP/s (C=A·B)                     | 512³   | 1024³  | 2048³  | ptxas          | arith |
+|-------------------------------------|-------:|-------:|-------:|----------------|-------|
+| MMN naive (fp32)                    |   55.0 |   55.2 |   54.6 | —              | f32   |
+| MM cp.async blocked (fp32)          |  416.2 |  436.8 |  441.8 | 56 reg / 32 KB | f32   |
+| **MMM `mma.sync` TF32**             |  375.6 |  393.5 |  398.5 | 38 reg / 32 KB | tf32  |
+| Triton (autotuned TF32)             | 1636.1 | 1755.4 | 1890.5 | —              | tf32  |
+
+- **The MMA kernel is device-correct and on the tensor-core path, but at THIS rung
+  it does not yet beat the tuned f32 blocked tile** (398 vs 442 at 2048³, ~90%),
+  and is ~21% of Triton. This is the honest, roofline-predicted result: the doc's
+  reuse→stage ladder for staged MMA on this device lands ~371–398, well under the
+  940 FP32 roof — feeding the tensor cores, not saturating them.
+- **Why it's starved, from the evidence:** MMM uses only **38 registers** (vs MM's
+  56) and 0 spills — it is *not* register-bound. The bottleneck is the fragment
+  feed: 4 scalar `ld.shared.f32` A + 8 scalar B loads per substep hit shared-bank
+  conflicts, and 48 `cvt.rna.tf32` per staged tile add ALU overhead, so the MMA
+  units wait. A fragment is reused only 4× (16×32 warp tile), below the 8× a
+  16×64 warp tile gives.
+- **What cad-6 tuning should search next (the standard high-perf suite, each a
+  roofline move):** `ldmatrix` for the fragment loads (kills the scalar-load bank
+  conflicts and packs 4 tf32/`.b32`, halving the `cvt` count); a 16×64 warp tile
+  (4-warp / 128-thread cooperative staging → 8× A-reuse); larger BK (fewer
+  `bar.sync`, more compute/sync); and a swizzled bank-conflict-free shared layout.
+  Reuse → stage → pipeline is the predicted order; step 3 landed the tile + the
+  license, and each remaining rung is dotted on `habu-tensor-core-mma`.
