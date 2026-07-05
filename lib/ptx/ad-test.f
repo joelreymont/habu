@@ -58,6 +58,22 @@ s" +."   VJP-NONLINEAR? TFALSE
 10 3  AD-RECOMPUTE? TTRUE      \ recompute(3) < save(10)
 3 10  AD-RECOMPUTE? TFALSE     \ recompute(10) !< save(3)
 
+\ the EXPLICIT cost model (docs/autograd.md "Checkpointing"): unit = 1/8 of a
+\ global-memory transaction per element. MEM 8, ALU 1, COLLECTIVE 32; stores
+\ and register moves cost 0 in a recomputed slice (the store is dropped).
+s" ROW-LOAD EXP. ROW-STORE" AD-SLICE-COST 9 T=
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" AD-SLICE-COST 75 T=
+0 0= AD-SAVE-COST 8 T=            \ materialized forward output: reload only
+0 0= 0= AD-SAVE-COST 16 T=        \ unmaterialized value: store + reload
+\ softmax picks SAVE for its small per-row state: y is the materialized output
+\ and recomputing it costs two block collectives
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TTRUE
+\ the fused elementwise path picks RECOMPUTE: cheap FLOPs beat the round trip
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
+\ costing an unknown token fails closed
+: BAD-COST ( -- )  s" ROW-LOAD FROB ROW-STORE" AD-SLICE-COST drop ;
+' BAD-COST E-PTX-AD-UNKNOWN TTHROWS
+
 \ nonlinear automation: a unary nonlinear op auto-derives its adjoint EXPANSION
 \ (with saved-value references) inside the reversed backward
 s" LOAD EXP. STORE" AD-REVERSE  s" LOAD SAVED-Y *. SCATTER-ADD" STR= TTRUE

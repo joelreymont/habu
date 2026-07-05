@@ -144,6 +144,70 @@ variable AD-START
    repeat drop
    SB$ ;
 
+\ --- the EXPLICIT save-vs-recompute cost model (docs/autograd.md) ---
+\ Unit: 1/8 of a global-memory transaction per element (integer arithmetic).
+\ The target class is bandwidth-bound: elementwise math is near-free next to a
+\ DRAM round trip, and a block collective pays shared-memory traffic plus two
+\ barriers. Stores and register moves cost 0 inside a RECOMPUTED slice - the
+\ lowering drops the slice's store and DUP/SWAP/ROT are register renames.
+8 constant AD-COST-MEM           \ one global load or store, per element
+1 constant AD-COST-ALU           \ one elementwise f32 op
+32 constant AD-COST-COLLECTIVE   \ one block reduce/broadcast (SMEM + 2 barriers)
+
+variable AD-COST-SUM
+
+: AD-TOK-COLLECTIVE? ( ptr u8 n -- bool )
+   2dup s" BLOCK-SUM" STR= if 2drop 0 0= exit then
+   2dup s" BLOCK-MAX" STR= if 2drop 0 0= exit then
+   2dup s" BROADCAST" STR= if 2drop 0 0= exit then
+   2dup s" BLOCK-MAX-SELECT" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-LOAD? ( ptr u8 n -- bool )
+   2dup s" ROW-LOAD" STR= if 2drop 0 0= exit then
+   2dup s" LOAD" STR= if 2drop 0 0= exit then
+   2dup s" ROW-LOAD-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" LOAD-ONCE" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-FREE? ( ptr u8 n -- bool )   \ dropped stores and register renames
+   2dup s" ROW-STORE" STR= if 2drop 0 0= exit then
+   2dup s" STORE" STR= if 2drop 0 0= exit then
+   2dup s" ROW-STORE-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" STORE-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" ROW-SCATTER-ADD" STR= if 2drop 0 0= exit then
+   2dup s" SCATTER-ADD" STR= if 2drop 0 0= exit then
+   2dup s" DUP" STR= if 2drop 0 0= exit then
+   2dup s" SWAP" STR= if 2drop 0 0= exit then
+   2dup s" ROT" STR= if 2drop 0 0= exit then
+   2dup s" OVER" STR= if 2drop 0 0= exit then
+   2dup s" DROP" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-COST ( ptr u8 n -- n )   \ recompute cost of one forward token
+   2dup AD-TOK-COLLECTIVE? if 2drop AD-COST-COLLECTIVE exit then
+   2dup AD-TOK-LOAD? if 2drop AD-COST-MEM exit then
+   2dup AD-TOK-FREE? if 2drop 0 exit then
+   VJP-FIND 0 < if E-PTX-AD-UNKNOWN throw then
+   AD-COST-ALU ;
+
+: AD-SLICE-COST ( ptr u8 n -- n ) {: a:ptr u:n :}   \ cost of recomputing a forward slice
+   a u AD-TOKENIZE
+   0 AD-COST-SUM !
+   AD-TOK-N @ 0 ?do
+      a i TOK-STR AD-TOK-COST AD-COST-SUM @ + AD-COST-SUM !
+   loop
+   AD-COST-SUM @ ;
+
+: AD-SAVE-COST ( bool -- n )   \ materialized forward output reloads; others round-trip
+   if AD-COST-MEM else AD-COST-MEM 2 * then ;
+
+\ the per-value policy: SAVE when the recompute slice is not strictly cheaper
+: AD-SAVE? ( ptr u8 n bool -- bool )
+   AD-SAVE-COST {: sc:n :}
+   AD-SLICE-COST {: rc:n :}
+   sc rc AD-RECOMPUTE? 0= ;
+
 \ --- the composed pass: forward body -> simplified backward body ---
 \ AD-REVERSE and AD-SIMPLIFY both render into SB, so the reversal is copied to
 \ a private buffer before simplification (never simplify SB$ in place).

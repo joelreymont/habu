@@ -61,4 +61,14 @@ s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" ADG-SAVES-
    1 2 3 4 ADG-LOWER-BWD ;
 ' ADGT-MULTI-SAVES E-PTX-NOIMPL TTHROWS
 
+\ the lowering consults the cost model (AD-SAVE?): a collective-heavy slice
+\ whose saved value the model chooses to SAVE fail-closes BEFORE any emit -
+\ the save lowering is the materialized-output/closed-form route
+\ (SOFTMAX_BWD_ROWS), not the generated-kernel recompute.
+: ADGT-SAVE-CHOSEN ( -- )
+   s" ROW-LOAD DUP BLOCK-MAX PTX:B- ROW-STORE"
+   s" ROW-LOAD DUP BLOCK-SUM NEG SAVED-X SAVED-MX BLOCK-MAX-SELECT +. ROW-SCATTER-ADD"
+   1 2 3 4 ADG-LOWER-BWD ;
+' ADGT-SAVE-CHOSEN E-PTX-NOIMPL TTHROWS
+
 T-REPORT

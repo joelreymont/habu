@@ -278,8 +278,52 @@ for the tape. Two policies, chosen per value:
   kernels (attention) recompute usually wins — it trades cheap FLOPs for avoiding
   a global round-trip, the standard FlashAttention argument.
 
-The pass picks save-vs-recompute by estimated cost; the checker validates either
-way because both produce ordinary typed kernels.
+The pass picks save-vs-recompute by the explicit cost model below; the checker
+validates either way because both produce ordinary typed kernels.
+
+### The cost model (`lib/ptx/ad.f`)
+
+Costs are integers in **eighths of a global-memory transaction per element**.
+The target class (Orin-like) is bandwidth-bound: elementwise math is near-free
+next to a DRAM round trip, and a block collective pays shared-memory traffic
+plus two `bar.sync`s. The constants are named in `lib/ptx/ad.f`:
+
+| constant | value | means |
+| --- | --- | --- |
+| `AD-COST-MEM` | 8 | one global load or store, per element |
+| `AD-COST-ALU` | 1 | one elementwise f32 op (`*.`, `EXP.`, `PTX:B-`, …) |
+| `AD-COST-COLLECTIVE` | 32 | one block reduce/broadcast (SMEM + 2 barriers) |
+
+**Save cost** (`AD-SAVE-COST`): a value that is the forward's **materialized
+output** already sits in global memory — saving costs one reload
+(`AD-COST-MEM`). Any other value must be stored by the forward and reloaded by
+the backward (`2 × AD-COST-MEM`).
+
+**Recompute cost** (`AD-SLICE-COST`): sum the recomputed forward slice's
+tokens — loads at `AD-COST-MEM`, collectives at `AD-COST-COLLECTIVE`,
+elementwise ops at `AD-COST-ALU`; the slice's store is dropped by the lowering
+and register renames (`DUP`/`SWAP`/`ROT`/`OVER`) cost 0. Costing an unknown
+token fails closed (`E-PTX-AD-UNKNOWN`).
+
+**Decision** (`AD-SAVE?` over `AD-RECOMPUTE?`): recompute iff its slice cost is
+strictly cheaper than the save cost.
+
+Worked acceptance cases (asserted in `lib/ptx/ad-test.f`):
+
+- **softmax saves `y`.** `y` is the materialized forward output: save = 8.
+  Recomputing it re-runs the whole row forward — a load plus TWO collectives
+  (`BLOCK-MAX`, `BLOCK-SUM`) = 75. Save wins, which is why the closed-form
+  `SOFTMAX_BWD_ROWS` kernel *consumes* `y` (the capstone's save path).
+- **a fused elementwise path recomputes.** The generated `EXP.` backward's
+  slice costs one load plus one op = 9 against an unmaterialized save
+  round-trip of 16. Recompute wins, which is why `EXPGEN`'s generated backward
+  re-runs `exp(x)` (the recompute path).
+
+The generated-kernel lowering (`lib/ptx/ad-gen.f` `ADG-LOWER-BWD`) consults
+`AD-SAVE?` per saved value: recompute proceeds row-locally; a SAVE choice
+fail-closes there because the save route is the materialized-output/closed-form
+kernel path. Save and recompute must agree numerically — the device equivalence
+fixture runs the same gradient both ways and compares within tolerance.
 
 ## Modes
 

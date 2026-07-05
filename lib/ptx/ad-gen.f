@@ -193,11 +193,19 @@ variable ADG-SV-A
 \ Lower a GENERATED backward: recompute the forward slice from the primal span
 \ (binding SAVED-*), then lower the backward body from the cotangent span. The
 \ backward body runs through the core directly so the recompute bindings stay
-\ visible to its SAVED-* tokens.
+\ visible to its SAVED-* tokens. The save-vs-recompute CHOICE comes from the
+\ cost model (AD-SAVE?, materialized? = false: a generated backward receives
+\ the primal, not a stored intermediate); when the model chooses SAVE this
+\ lowering fail-closes BEFORE any emit - the save route is the
+\ materialized-output/closed-form kernel path (SOFTMAX_BWD_ROWS), not the
+\ recompute path.
 : ADG-LOWER-BWD ( ptr u8 n ptr u8 n n n n n -- )
    {: fa:ptr fu:n ba:ptr bu:n xsp:n dzsp:n outsp:n ctx:n :}
    ADG-SV-RESET
    fa fu ADG-SAVES-OP# {: nsv:n :}
    nsv 1 > if E-PTX-NOIMPL throw then
-   nsv 1 = if fa fu xsp ctx ADG-RECOMPUTE then
+   nsv 1 = if
+      fa fu 0 0= 0= AD-SAVE? if E-PTX-NOIMPL throw then
+      fa fu xsp ctx ADG-RECOMPUTE
+   then
    ba bu dzsp outsp ctx 0 0 ADG-CORE ;
