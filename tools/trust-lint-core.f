@@ -3,6 +3,13 @@
 \ tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 
 90 constant TL-MAX-AUDIT-AGE
+\ TODAY is the UTC calendar day (epoch-seconds / seconds-per-day). A row is
+\ authored in the worker's LOCAL timezone, and the largest offset (UTC+14) can put
+\ the local calendar date one day AHEAD of UTC. So a legitimately-authored row can
+\ carry a date of at most TODAY+1; anything beyond that is genuinely in the future.
+\ A +1-day tolerance never rejects a legitimate row in ANY timezone and needs no
+\ timezone data (which the UTC epoch clock cannot supply).
+1 constant TL-AUDIT-FUTURE-SLOP
 512 constant TL-INIT-CAP
 32 constant TL-NUM-CAP
 16 constant TL-CELL-MAX
@@ -635,8 +642,8 @@ variable TL-COPY-T
       drop
       sk TL-BAD-AUDIT-DATE exit
    THEN
-   TL-TODAY swap -
-   dup 0 < IF
+   TL-TODAY swap -                             \ age = UTC-today - audit (days); negative = ahead of UTC today
+   dup TL-AUDIT-FUTURE-SLOP negate < IF        \ more than one calendar day ahead of UTC -> genuinely future
       drop
       sk TL-FUTURE-AUDIT-DATE exit
    THEN

@@ -479,10 +479,20 @@ TLT-LF TLT-LF-BUF c!
    s" bad-today" TLT-MAKE-BASE
    s" BAD-TODAY" s" 2026-02-29" s" " TLT-EXPECT-BAD-TODAY-CLI ;
 
+\ Genuinely-future date: more than one calendar day ahead of UTC today
+\ (2026-06-16) exceeds the timezone tolerance and must be rejected.
 : TLT-TEST-FUTURE-AUDIT ( -- )
    s" future-audit" TLT-MAKE-BASE
-   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-17 |" TLT-WRITE-MAN-ROW
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-18 |" TLT-WRITE-MAN-ROW
    s" FUTURE-AUDIT" TLT-EXPECT-BAD ;
+
+\ Timezone-ahead date: a row authored 'today' in a UTC+ timezone reads one
+\ calendar day ahead of UTC today (2026-06-16 -> 2026-06-17); it is legitimate and
+\ must NOT be rejected as future.
+: TLT-TEST-TZ-AHEAD-AUDIT ( -- )
+   s" tz-ahead-audit" TLT-MAKE-BASE
+   s" | foo | `n -- n` | fixture | `test/t-fixture.fs` | src/trust.f | 2026-06-17 |" TLT-WRITE-MAN-ROW
+   1 1 TLT-EXPECT-OK ;
 
 : TLT-TEST-STALE-AUDIT ( -- )
    s" stale-audit" TLT-MAKE-BASE
@@ -532,6 +542,7 @@ TLT-LF TLT-LF-BUF c!
    TLT-TEST-BAD-CALENDAR-AUDIT
    TLT-TEST-BAD-TODAY
    TLT-TEST-FUTURE-AUDIT
+   TLT-TEST-TZ-AHEAD-AUDIT
    TLT-TEST-STALE-AUDIT
    TLT-TEST-STALE-ROW
    TLT-TEST-DUP-ROW
