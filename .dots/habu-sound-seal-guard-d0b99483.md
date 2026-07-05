@@ -1,0 +1,9 @@
+---
+title: Sound seal guard for raw ffi-call/ffi-call-abi via nargs signatures
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-05T10:06:25.023835+02:00"
+---
+
+TFAM 2b-iii cat-5 residual, split from habu-tfam-2b-iii-8b09f171. The checked FFI library now routes every integer/pointer call (lib/ffi-abi.f CALL0-6, FFI-CALLN, lib/ffi.f DLOPEN/DLSYM) through the seal-guarded ffi-call-n (habu1.f BFFI-GUARD-ARGS PROT-GUARDs argbuf[0..nargs) before the BLR), so no CHECKED path packs an unguarded sealed-band pointer. Still unguarded: the raw prims ffi-call ( argbuf fn -- ret ) and ffi-call-abi/-r ( intbuf fpbuf stackbuf stackcells fn -- ret ) carry NO arg count in their signatures, so a sound guard (which must skip stale slots -- ffi-call loads 8 cells, ffi-call-abi loads x0-x7+x8 sret+d0-d7, most stale for low-arity calls) cannot be added at the sink without threading nargs/int-nargs/has-sret through the prim ABI. That means changing the PRIM: signatures in src/core/checker.f (ffi-call: add PE-N; ffi-call-abi: add int-nargs + sret-present) plus the trampoline pops in src/habu/habu1.f BFFI-CALL / BFFI-CALL-ABI-CORE, and updating the library callers (lib/ffi-test.f raw ffi-call sites, FFI-CALLABI/-R). Deferred because src/core/checker.f is owned by the active 2b-iii truncation worker (do-not-touch). Do: (1) with the checker.f owner, add the count params to the two PRIM: sigs; (2) pop them in the trampolines and call BFFI-GUARD-ARGS for the int register args [0..intnargs) plus PROT-GUARD x8 sret when has-sret; (3) route lib/ffi-test.f's raw ffi-call sites + FFI-CALLABI/-R through the new signatures; (4) add seal.f negatives: sealed-band pointer as an x8 sret out-param and as a high (arg[6]) register arg via the abi path -> rc 83. Boundary + red-first forge already in test/seal.f (FFI-CALLN band arg -> 83) covers the ffi-call-n path. DEPENDS: habu-tfam-2b-iii-8b09f171 (landed), checker.f owner availability.

@@ -240,6 +240,26 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" : SLF-FOO ( -- n ) 1 ;" SB-APPEND SLV-LF
    SB$ ;
 
+\ FFI seal guard (TFAM 2b-iii, cat 5 FFI-writer): a sealed-band pointer packed as a
+\ LIVE integer/pointer FFI arg must trap E-SEAL-VIOLATION at the trampoline BEFORE
+\ the foreign call, else the callee writes through it and tampers a sealed cell.
+\ Routed via the checked lib/ffi-abi.f FFI-PTR-ARG!/FFI-CALLN, which lowers to the
+\ guarded ffi-call-n; fn=0 so the guard must fire first (an unguarded BLR to 0
+\ signals/crashes, a distinct outcome from EXIT 83). One forge per protected band.
+: SLV-FFI-B1-FORGE$ ( -- ptr u8 n )         \ band-1 crown jewel ($28) pointer as arg[0]
+   SB-RESET
+   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" data-base $28 + 0 FFI-PTR-ARG!" SB-APPEND SLV-LF
+   s" 1 0 FFI-CALLN drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-FFI-B2-FORGE$ ( -- ptr u8 n )         \ band-2 registry ($3CB8) pointer as arg[0]
+   SB-RESET
+   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
+   s" data-base $3CB8 + 0 FFI-PTR-ARG!" SB-APPEND SLV-LF
+   s" 1 0 FFI-CALLN drop" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Post-seal language exercise: define words, a package + qualified word, a
 \ TRUSTED: word, and a DEFER + IS target, then use them. Each updates a protected
 \ cell (CUR/WIDN/DEF-WL/TSIG/PKG-*/DEFER-*) through engine primitives, not raw
@@ -354,7 +374,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" getdirentries64 basep (x3) into the band traps" T-LABEL
    SLV-DENTS-BASEP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" mmap addr (x0) into the band traps" T-LABEL
-   SLV-MMAP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   SLV-MMAP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" FFI live pointer arg into band 1 traps before the call" T-LABEL
+   SLV-FFI-B1-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" FFI live pointer arg into band 2 traps before the call" T-LABEL
+   SLV-FFI-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL

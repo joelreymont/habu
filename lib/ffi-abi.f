@@ -126,23 +126,27 @@ TRUSTED: N>P ( n -- ptr u8 ) ;            \ ret cell -> byte pointer
 \ Stack: ( arg0 .. argN-1 fn -- ret ). Args are plain cells. Prefer staged
 \ pointer arguments via FFI-PTR-ARG! + FFI-CALLN; P>N is the audited low-level
 \ cast for existing call sites. The trailing n is the resolved function pointer.
+\ These route through the SEAL-GUARDED ffi-call-n (not raw ffi-call) with the
+\ exact static arg count, so a sealed-band pointer packed as any live arg traps
+\ E-SEAL-VIOLATION before the foreign call (TFAM 2b-iii). nargs<=8 skips the
+\ ffi-call-n spill loop, so this is the old fast path plus the guard.
 : CALL0 ( n -- n ) {: fn:n :}
-   FFI-BUF fn ffi-call ;
+   FFI-BUF 0 fn ffi-call-n ;
 : CALL1 ( n n -- n ) {: a:n fn:n :}
-   a 0 FFI-ARG!  FFI-BUF fn ffi-call ;
+   a 0 FFI-ARG!  FFI-BUF 1 fn ffi-call-n ;
 : CALL2 ( n n n -- n ) {: a:n b:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  FFI-BUF fn ffi-call ;
+   a 0 FFI-ARG!  b 1 FFI-ARG!  FFI-BUF 2 fn ffi-call-n ;
 : CALL3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  FFI-BUF fn ffi-call ;
+   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  FFI-BUF 3 fn ffi-call-n ;
 : CALL4 ( n n n n n -- n ) {: a:n b:n c:n d:n fn:n :}
    a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!
-   FFI-BUF fn ffi-call ;
+   FFI-BUF 4 fn ffi-call-n ;
 : CALL5 ( n n n n n n -- n ) {: a:n b:n c:n d:n e:n fn:n :}
    a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!  e 4 FFI-ARG!
-   FFI-BUF fn ffi-call ;
+   FFI-BUF 5 fn ffi-call-n ;
 : CALL6 ( n n n n n n n -- n ) {: a:n b:n c:n d:n e:n g:n fn:n :}
    a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!  e 4 FFI-ARG!
-   g 5 FFI-ARG!  FFI-BUF fn ffi-call ;
+   g 5 FFI-ARG!  FFI-BUF 6 fn ffi-call-n ;
 
 \ ---- general arity --------------------------------------------------------
 \ For >6 args: set args 0..nargs-1 with FFI-ARG!, then FFI-CALLN. Spills past 8

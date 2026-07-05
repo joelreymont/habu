@@ -1383,6 +1383,17 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
 \ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).
+\
+\ SEAL BOUNDARY (TFAM 2b-iii, cat 5): ffi-call and ffi-call-abi/-r carry NO arg
+\ count in their prim signatures, so a sound sealed-band guard (which must skip
+\ stale slots -- see BFFI-GUARD-ARGS) cannot be added without threading nargs
+\ through the prim ABI, i.e. changing the checker PRIM: signatures in
+\ src/core/checker.f. The checked FFI library therefore routes ALL its
+\ integer/pointer calls (CALL0-6, FFI-CALLN, DLOPEN/DLSYM) through the guarded
+\ ffi-call-n, so no checked path packs an unguarded pointer arg. Raw
+\ ffi-call/ffi-call-abi remain a named tested boundary for raw hand-packed
+\ argbufs; closing them soundly (nargs-carrying signatures) is dot
+\ habu-sound-seal-guard-d0b99483 (blocked on the checker.f owner).
 : BFFI-LOAD-X0-X7 ( -- )
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
@@ -1446,6 +1457,25 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
+\ Seal guard for FFI args (TFAM 2b-iii, cat 5 FFI-writer). PROT-GUARD every LIVE
+\ integer/pointer arg the trampoline is about to hand a foreign fn: if arg[i]
+\ points into a sealed band the callee could write through it, tampering a sealed
+\ cell -- so trap E-SEAL-VIOLATION BEFORE the BLR. Guards exactly [0..nargs), NOT
+\ the 8 registers ffi-call loads, so stale slots from a prior call cannot
+\ false-trap (the soundness reason ffi-call-n, which carries nargs, is the guarded
+\ trampoline). Precondition x14=nargs, x15=argbuf, x20=DATA (call before any x20
+\ repurpose). x9-x11 scratch here; PROT-GUARD adds x12/x13. Inert pre-seal (latch).
+: BFFI-GUARD-ARGS ( -- )
+   LBL LBL {: loop:label done:label :}
+   10 0 MOVZ,                                          \ x10 = i = 0
+   loop LBL,
+      10 14 CMP,  C-GE done BCOND,                     \ i >= nargs -> done
+      11 10 3 LSLI,  11 15 11 ADD,                     \ x11 = argbuf + i*8
+      9 11 0 LDR,                                      \ x9 = argbuf[i]
+      9 PROT-GUARD                                     \ trap if arg lands in a sealed band
+      10 10 1 ADDI,  loop B,
+   done LBL, ;
+
 \ ---- FFI: general AAPCS64 trampoline, any integer/pointer arity ----
 \ ( argbuf nargs fn -- ret ) : x0-x7 from argbuf[0..7]; args 9..nargs spilled to
 \ the stack (16-byte aligned per the ABI) by an exact runtime loop -- no arity
@@ -1453,11 +1483,14 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ caller-saved regs, so x20 (callee-saved) carries the frame sp across the call
 \ to restore it afterward; the caller's x20 parks in the FPRIM frame's free
 \ [sp,#8] slot. Shifted-register SUB treats r31 as XZR not SP, so sp is lowered
-\ via a temp. Integer/pointer args only.
+\ via a temp. Integer/pointer args only. Every live arg is PROT-GUARD'd before the
+\ call, so this is the sound sink for sealed-band pointers (the checked FFI library
+\ routes its integer/pointer calls here).
 : BFFI-CALL-N ( -- )
    16 G-POP                                            \ x16 = fn
    14 G-POP                                            \ x14 = nargs
    15 G-POP                                            \ x15 = argbuf
+   BFFI-GUARD-ARGS                                     \ seal guard: [0..nargs) before x20 is repurposed
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    LBL FFI-SKIP !

@@ -2464,3 +2464,19 @@ unchanged (148855). Keys for milestone 2:
   review. Mind file order: forth.fs defines sinks top-down, so a newly guarded
   early sink (cp!/ndict!) needs PROT-GUARD moved above the primitive bodies,
   where native has it next to the register constants.
+- **A mechanical guard on all FFI arg registers is UNSOUND — guard only
+  [0..nargs); the trampoline that already carries nargs is the sound sink, and
+  the rest is a checker-signature boundary.** ffi-call loads 8 cells into x0-x7
+  regardless of arity, so slots past the real args hold STALE values from a prior
+  call — PROT-GUARDing all 8 false-traps a legit low-arity call whose stale slot
+  holds an old band pointer. Only ffi-call-n carries x14=nargs, so it is the one
+  trampoline that can guard soundly (loop argbuf[0..nargs), guard each, BEFORE the
+  x20 repurpose so x20 still = DATA). Make the CHECKED library funnel its
+  integer/pointer calls through it (CALL0-6/DLOPEN/DLSYM -> ffi-call-n) instead of
+  raw ffi-call — a pure lib change, no prim-signature/checker.f edit. Adding nargs
+  to ffi-call or int-nargs+sret to ffi-call-abi to guard THEM needs their PRIM:
+  sigs widened in src/core/checker.f; if that file is another worker's, it is a
+  named boundary + a dot, not a bypass. Red forge: `data-base <band-off> + 0
+  FFI-PTR-ARG!  1 0 FFI-CALLN` with fn=0 traps 83 (pre-fix it BLRs to 0 ->
+  signal/rc134, a distinct outcome); stale-slot proof is nargs=0 with a band value
+  in slot 0 -> NOT trapped.
