@@ -50,7 +50,7 @@ require lib/fs.f
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-8 constant SAB-GUARD-PINS               \ PROT-GUARD code sites: 1 def + 7 guarded sinks
+10 constant SAB-GUARD-PINS              \ PROT-GUARD code sites: 1 def + 9 guarded sinks (incl cp!/ndict!)
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 
 variable SAB-VIOL#                      \ unguarded surfaces found in the current scan

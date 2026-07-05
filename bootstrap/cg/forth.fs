@@ -59,6 +59,15 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $88 constant FRIEND-ARENA-LEN           \ 17 cells: latch + 16 crown jewels
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+\ Second guarded band (TFAM 2b-v): the native protected-WID registry occupies
+\ [$3CB8,$3D00) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN).
+\ stage0 has no package system and no registry (census discrepancy 5), so nothing
+\ here reads these cells -- but the ADDRESS band mirrors so a post-seal store into
+\ it traps identically to native. Only the range check mirrors; the WID-membership
+\ guards (publish guard / LPROTWIDQ / AOT boot gates) cannot exist without the
+\ package system and stay pinned absent by test/seal-absence.f.
+$3CB8 constant PROT-REG-OFF             \ second PROT-GUARD band base (= native count cell)
+$48 constant PROT-REG-LEN               \ count cell + 16 u32 table = $3CB8..$3D00
 $28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
@@ -210,6 +219,33 @@ variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 require prof.fs           \ in-binary sampling profiler (emitters + prims)
 require jit.fs          \ runtime abstract value stack for the : compiler
 
+\ Friend-arena write guard (TFAM 2b-i/2b-v) — stage0 mirror of src/habu/habu1.f
+\ PROT-GUARD. Traps fail-closed (exit E-SEAL-VIOLATION) when the target address
+\ in `n` (a register number) is inside either sealed band: band 1 = the friend
+\ arena [FRIEND-ARENA, +FRIEND-ARENA-LEN), band 2 = the protected-WID registry
+\ address band [PROT-REG-OFF, +PROT-REG-LEN). Inert while the latch is 0 (engine
+\ load); active after the cold prefix seals it. Defined here (before any sink,
+\ incl. the early cp!/ndict!) so every writer can reach it. gforth stage0 has no
+\ atomics / snap-rebase / extended-syscall sinks, so only the raw stores,
+\ read/ioctl/mmap, patch32, and the code-emit sinks cp!/ndict! carry the guard
+\ (parity = prove-absence for the rest). x12 holds target-DATA across both
+\ checks; x13 is per-check scratch, exactly like native.
+: PROT-GUARD ( n -- )
+   LBL LBL {: ok trap :} \ typed-local-lint: allow-bare-local
+   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 = friend/open)
+   EREG ok CBZ,                         \ open -> no guard (engine cold load)
+   DREG swap DATA SUB,                  \ x12 = target - DATA (region-relative offset)
+   EREG DREG FRIEND-ARENA SUBI,         \ x13 = offset - FRIEND-ARENA
+   EREG FRIEND-ARENA-LEN CMPI,          \ x13 <u FRIEND-ARENA-LEN -> in crown-jewel band
+   C-CC trap BCOND,
+   EREG PROT-REG-OFF MOVZ,              \ x13 = PROT-REG-OFF (> imm12: materialize)
+   EREG DREG EREG SUB,                  \ x13 = offset - PROT-REG-OFF
+   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in registry band
+   C-CC trap BCOND,
+   ok B,
+   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
 : B+ ( -- )   B G-POP  A G-POP  A A B ADD,  A G-PUSH ;
 
@@ -257,8 +293,15 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- )  9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
-: BCPSET ( -- )      A G-POP  CP A 0 ADDI, ;      \ ( addr -- ) set CP
-: BNDSET ( -- )      A G-POP  NDICT A 0 ADDI, ;   \ ( n -- ) set NDICT
+\ cp!/ndict! are the FORGET code-emit sinks (native: habu1.f BCPSET/BNDSET).
+\ Both PROT-GUARD the address the sink redirects a write to, so a post-seal
+\ value landing in either sealed band fails closed at the sink. Legit FORGET
+\ marks are DBASE/CP-region addresses, never a DATA-region band, so the
+\ latch-gated guard leaves them intact.
+: BCPSET ( -- )      A G-POP  A PROT-GUARD  CP A 0 ADDI, ;   \ ( addr -- ) set CP
+: BNDSET ( -- )      A G-POP                                 \ ( n -- ) set NDICT
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  B PROT-GUARD    \ x10 = next-record addr DBASE+n*DREC
+   NDICT A 0 ADDI, ;
 
 \ ( a u -- ) re-entrant interpret of the string a/u in this process: save the
 \ outer input cursor + compile state, point INP/INE at a/u, bump EVALD, and jump
@@ -442,21 +485,8 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ memory access (absolute addresses on the stack)
 : BFETCH ( -- )  A G-POP  A A 0 LDR,  A G-PUSH ;
 
-\ Friend-arena write guard (TFAM 2b-i) — stage0 mirror of src/habu/habu1.f
-\ PROT-GUARD. Traps fail-closed (exit E-SEAL-VIOLATION) when the target address
-\ in `n` (a register number) is inside the sealed friend arena. Inert while the
-\ latch is 0 (engine load); active after the cold prefix seals it. gforth stage0
-\ has no atomics / snap-rebase / extended-syscall sinks, so only the raw stores
-\ and read/ioctl/mmap carry the guard (parity = prove-absence for the rest).
-: PROT-GUARD ( n -- )
-   LBL {: ok :} \ typed-local-lint: allow-bare-local
-   DREG swap DATA SUB,                  \ x12 = target - DATA
-   DREG DREG FRIEND-ARENA SUBI,         \ x12 -= FRIEND-ARENA
-   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 open / FRIEND-ARENA-LEN sealed)
-   DREG EREG CMP,
-   C-CS ok BCOND,                       \ arena-rel >= latch -> outside sealed band -> OK
-      0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
+\ PROT-GUARD (the two-band write guard) is defined with the register constants
+\ near the top of this file -- before the earliest guarded sink (cp!/ndict!).
 
 : EMIT-SEAL-FRIEND ( -- )               \ latch := FRIEND-ARENA-LEN (x5 scratch; x9/x11 live)
    5 FRIEND-ARENA-LEN MOVZ,  5 DATA FRIEND-LATCH-CELL STR, ;

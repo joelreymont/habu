@@ -2288,7 +2288,8 @@ unchanged (148855). Keys for milestone 2:
   reach it by construction — no guard needed there). The latch cell IS the band
   base (0 = open, band-len = sealed); the guard reads it, so post-seal any write
   into the band — including the latch — traps: one-way self-sealing. Guard shape
-  `sub;subi;ldr latch;cmp;b.cs ok` (exit E-SEAL-VIOLATION), mirroring
+  (two-band since 2b-v, native + stage0 mirror): `ldr latch;cbz open` gate, then
+  per band `sub;cmpi;b.cc trap` (exit E-SEAL-VIOLATION), mirroring
   `B-TASK-LIVE-GUARD`/`DP-CHECK`; the branch makes the leaf body non-inlinable so
   it compiles to an out-of-line call (correct, ~size-neutral). Seal is emitted by
   the cold-prefix generator (after `PFX-PROVIDE-FILES` in `LCOLDPFX` and in
@@ -2451,3 +2452,15 @@ unchanged (148855). Keys for milestone 2:
   gate I ran had targeted the pre-archive tree. When closing a dot, `rg` its id
   across `.dots/` and drop it from every `blocks:` list (delete an emptied
   `blocks:` key entirely) in the same commit, then gate that exact tree.
+- **Native guard widenings do not propagate to the stage0 mirror by themselves —
+  only the seal-absence pins alarm the drift, and the cheap runtime parity proof
+  is forging the CHECK_ONLY seed.** 2b-v made native PROT-GUARD two-band while
+  the gforth mirror stayed single-band + unguarded cp!/ndict!; nothing failed
+  because pins count what IS, not what SHOULD be. When widening a native seal
+  surface, in the same effort re-pin `SAB-GUARD-PINS` red-first, mirror the
+  emission, then run `HABU_BOOTSTRAP_CHECK_ONLY=1 tools/bootstrap.sh` and pipe
+  seal.f-style forges (`data-base <off> + cp!` etc.) straight into the built
+  `hb-stdin` — rc 83/0 against the actual stage0-built engine beats source
+  review. Mind file order: forth.fs defines sinks top-down, so a newly guarded
+  early sink (cp!/ndict!) needs PROT-GUARD moved above the primitive bodies,
+  where native has it next to the register constants.
