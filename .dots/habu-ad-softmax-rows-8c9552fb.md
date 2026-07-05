@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-06-27T00:00:43.576213+02:00"
-blocks:
-  - habu-ptx-ir-opt-b90390f0
 ---
 
 Capstone of ad-reverse. Build SOFTMAX-ROWS-BWD (autograd.md Worked-example) deriving dx = y*(dy - sum(dy*y)) via reverse pass + simplifier; it must pass BOTH the checker AND the device gradcheck (not merely type-check). Gradient-buffer spans MUST share the primal extent token (mint via MK-SPAN=) so len(dx)=len(y) is proven, not re-asserted at the trusted boundary (autograd.md caveat).
