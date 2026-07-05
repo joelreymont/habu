@@ -355,6 +355,9 @@ points stay listed.
 - `tools/ptx/gemm-bench.f` — CUDA-event GEMM benchmark: times the naive (MMN)
   and register-blocked (MM) SGEMM kernels on square shapes for the
   GEMM-vs-Triton baseline recorded in `docs/eval-triton.md`.
+- `tools/ptx/mma-probe.f` — single-warp TF32 `mma.sync.aligned.m16n8k8` fragment-
+  layout isolation proof: verifies ONE MMA element-exact vs a host matmul before
+  any tiling (the course's #1 "correct in NumPy, garbage on device" guard).
 - `maki/README.md` / `maki/STATUS.md` — Maki framework overview and current
   verification status outside the Habu trust root.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
