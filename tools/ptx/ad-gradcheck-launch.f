@@ -174,10 +174,10 @@ variable AG-MISS#
    AG-GUARD
    AG-OUT dst AG-UNPACK ;
 
-: AG-BWD-RUN ( -- )
+: AG-BWD-RUN-FROM ( ptr a -- ) {: src:ptr :}   \ input-1 taken from src (x or y)
    AG-POISON
    1 AGK AGBLOCK PTX-ROW-LAUNCH-CHECK
-   AG-X AG-IN AG-PACK   AG-DY AG-DYB AG-PACK
+   src AG-IN AG-PACK   AG-DY AG-DYB AG-PACK
    AG-dX @ >CUDA-DEVPTR AG-IN AGBYTES >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
    AG-dDY @ >CUDA-DEVPTR AG-DYB AGBYTES >LEN CUDA:CUMEMCPYHTOD CUDA:RC0
    AG-dO @ >CUDA-DEVPTR 0 AGK >COUNT CUDA:CUMEMSETD32 CUDA:RC0   \ scatter-add backwards accumulate: start from zero
@@ -192,6 +192,9 @@ variable AG-MISS#
    AG-OUT AG-dO @ >CUDA-DEVPTR AGBYTES >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
    AG-GUARD
    AG-OUT AG-DXA AG-UNPACK ;
+
+: AG-BWD-RUN ( -- )
+   AG-X AG-BWD-RUN-FROM ;
 
 \ ---- central difference vs analytic --------------------------------------------
 
@@ -312,6 +315,34 @@ variable AG-MISS#
    AG-DY-RND
    0.7305 -1.4141 1.9023 -0.3672 AG-X4!  s" GENERATED backward: EXPGEN (SAVED-Y recomputed)" AG-CASE
    8.0 -8.0 0.0 3.0 AG-X4!               s" GENERATED backward: EXPGEN saturated" AG-CASE
+   AG-PAIR-CLOSE ;
+
+\ SOFTMAX_BWD_ROWS (the ad-reverse capstone): the CERTIFIED closed-form
+\ backward consumes y = softmax(x). y comes from the device forward (itself
+\ pinned to CPU-golden bits by tools/ptx/softmax-launch.f); the reference dx is
+\ the CPU GOLDEN computed on host in f64: dx = y*(dy - Sum(dy*y)).
+: AG-SMROWS-GOLDEN ( -- )   \ host f64 closed form from AG-YP into AG-DXN
+   0.0
+   AGK 0 ?do  AG-DY i AG-F@  AG-YP i AG-F@  f*  f+  loop
+   {: s:r :}
+   AGK 0 ?do
+      AG-YP i AG-F@  AG-DY i AG-F@ s f-  f*  AG-DXN i AG-F!
+   loop ;
+
+: AG-SMROWS-CASE ( ptr u8 n -- ) {: la:ptr lu:n :}
+   AG-X AG-YP AG-FWD-RUN          \ y = device softmax(x)
+   AG-SMROWS-GOLDEN               \ CPU golden dx -> AG-DXN
+   AG-YP AG-BWD-RUN-FROM          \ device closed-form backward(y, dy) -> AG-DXA
+   AG-MISMATCH# 0 T=
+   s" gradcheck PASS on Orin: " type la lu type cr ;
+
+: AG-SMROWS-ENTRY ( -- )
+   s" softmax-fwd.cubin" s" softmax-rows-bwd.cubin"
+   s" AD_FWD" s" SOFTMAX_BWD_ROWS" AG2-PAIR!
+   AG-DY-RND
+   0.7305 -1.4141 1.9023 -0.3672 AG-X4!  s" SOFTMAX_BWD_ROWS vs CPU golden (rnd)" AG-SMROWS-CASE
+   2.0 2.0 1.0 0.0 AG-X4!                s" SOFTMAX_BWD_ROWS vs CPU golden (tie)" AG-SMROWS-CASE
+   8.0 -8.0 0.0 3.0 AG-X4!               s" SOFTMAX_BWD_ROWS vs CPU golden (saturated)" AG-SMROWS-CASE
    AG-PAIR-CLOSE ;
 
 \ ==== two-input entries (+. -. *. /. via AD2, OVER/DROP composites) ==============
@@ -580,6 +611,7 @@ variable AG-MISS#
    AG-CROSS-PAIR
    AG-XSUBSUM-ENTRY
    AG-EXPGEN-ENTRY
+   AG-SMROWS-ENTRY
    AG-ADD2-ENTRY
    AG-SUB2-ENTRY
    AG-MUL2-ENTRY
