@@ -71,7 +71,7 @@ VJP-N @ 26 T=
 ' VJPT-MISS E-PTX-NOVJP TTHROWS
 : VJPT-DUP-REG ( -- )  s" +." 0 s" DUP" VJP-REGISTER ;
 ' VJPT-DUP-REG E-PTX-SYNTAX TTHROWS
-\ ZERO. is typed but fails closed until the save/zero lowering lands
-' ZERO. E-PTX-NOIMPL TTHROWS
+\ ZERO. and SAVED-A are table TOKENS, not words: the ad-gen lowering resolves
+\ them (EMIT-ZERO / recompute binding); see lib/ptx/ad-gen-test.f.
 
 T-REPORT

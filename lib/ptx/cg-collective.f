@@ -212,6 +212,12 @@
    SB-RESET s" neg.f32 " CG-S r CG-F s" , " CG-S tile CG-F s" ;" CG-S CG-LINE
    r ;
 
+\ ZERO : a fresh zero tile (DROP's typed-zero adjoint in the AD pass)
+: EMIT-ZERO ( -- n )
+   CG-NEXT-F {: r:n :}
+   SB-RESET s" mov.f32 " CG-S r CG-F s" , 0f00000000;" CG-S CG-LINE
+   r ;
+
 \ ROW-STORE : masked store to rowbase+coloff (active lanes only)
 : EMIT-ROW-STORE ( n n n -- ) {: tile span ctx :}
    CG-NEXT-RD {: a :}

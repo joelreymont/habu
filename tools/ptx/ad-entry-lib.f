@@ -186,11 +186,6 @@ variable ADE2-DZ
 : ADE2-CLOSE ( -- )
    CG-SM-RET CG-SM-CLOSE ;
 
-: ADE-EMIT-ZERO ( -- n )   \ a fresh register holding 0.0 (DROP's typed zero)
-   CG-NEXT-F {: f:n :}
-   SB-RESET s" mov.f32 " CG-S f CG-F s" , 0f00000000;" CG-S CG-LINE
-   f ;
-
 : ADE-ADD2-FWD ( -- )  CG-OP-ADD ADE2-FWD ;
 : ADE-SUB2-FWD ( -- )  CG-OP-SUB ADE2-FWD ;
 : ADE-MUL2-FWD ( -- )  CG-OP-MUL ADE2-FWD ;
@@ -260,7 +255,7 @@ variable ADE2-DZ
 : ADE-DROPK-BWD ( -- )   \ dx = dz*x + dz*x, dy = the TYPED ZERO of the dropped value
    ADE2-BWD-OPEN
    ADE2-DZ @ ADE2-X @ EMIT-MUL ADE2-DZ @ ADE2-X @ EMIT-MUL EMIT-ADD ADE2-DX!
-   ADE-EMIT-ZERO ADE2-DY!
+   EMIT-ZERO ADE2-DY!
    ADE2-CLOSE ;
 
 \ the DROP cotangent leak: the dropped value receives dz instead of zero
@@ -401,18 +396,34 @@ variable ADE2-DZ
    a u xsp osp c ADG-LOWER
    CG-SM-RET CG-SM-CLOSE ;
 
-: ADE-GEN-BWD ( ptr u8 n -- ) {: a:ptr u:n :}   \ lower a generated backward as AD_BWD
+\ Lower a FORWARD body's generated backward as AD_BWD: the reverse pass makes
+\ the backward text, and saves-ops resolve by row-local recompute from the
+\ primal x span (habu-ad-thread-saved). Linear forwards skip the recompute.
+: ADE-GEN-BWD ( ptr u8 n -- ) {: fa:ptr fu:n :}
+   fa fu AD-BACKWARD$ {: ba:ptr bu:n :}
    CG-BW-RESET  CG-HEADER ADE-BWD-ENTRY CG-SM-OPEN CG-BW-PARAMS
    EMIT-ROW              {: r:n :}
-   1 r EMIT-ROW-SPAN     {: xsp:n :}   \ x span: linear backwards leave it unread
+   1 r EMIT-ROW-SPAN     {: xsp:n :}   \ primal span: read only by saves recompute
    xsp EMIT-ROW-CTX      {: c:n :}
    2 r EMIT-ROW-SPAN     {: dzsp:n :}
    3 r EMIT-ROW-SPAN     {: osp:n :}
-   a u dzsp osp c ADG-LOWER
+   fa fu ba bu xsp dzsp osp c ADG-LOWER-BWD
    CG-SM-RET CG-SM-CLOSE ;
 
 : ADE-XSUBSUM-FWD ( -- )
    ADE-XSUBSUM-FWD$ ADE-GEN-FWD ;
 
 : ADE-XSUBSUM-BWD ( -- )
-   ADE-XSUBSUM-FWD$ AD-BACKWARD$ ADE-GEN-BWD ;
+   ADE-XSUBSUM-FWD$ ADE-GEN-BWD ;
+
+\ EXPGEN: z = exp(x) - the first generated backward with a SAVED value. The
+\ reverse pass emits "ROW-LOAD SAVED-Y *. ROW-SCATTER-ADD"; SAVED-Y resolves by
+\ recomputing y = exp(x) from the primal span inside the backward kernel.
+: ADE-EXPGEN-FWD$ ( -- ptr u8 n )
+   s" ROW-LOAD EXP. ROW-STORE" ;
+
+: ADE-EXPGEN-FWD ( -- )
+   ADE-EXPGEN-FWD$ ADE-GEN-FWD ;
+
+: ADE-EXPGEN-BWD ( -- )
+   ADE-EXPGEN-FWD$ ADE-GEN-BWD ;

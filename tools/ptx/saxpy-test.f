@@ -375,6 +375,23 @@ variable PTXT-ERR-SAVE
    [: s" ROW-LOAD DUP ROW-STORE" 1 2 3 ADG-LOWER ;] PTXT-CAPTURE
    E-PTX-AD-OUTPUT T= 2drop ;
 
+\ EXPGEN: the generated EXP. backward with SAVED-Y RESOLVED by recompute - the
+\ backward kernel re-runs exp(x) from the primal span (ex2 present) and the
+\ resolved dz*y multiply feeds the conservative scatter-add. No SAVED- token
+\ survives into the emitted text.
+: PTXT-ADG-EXPGEN-OUTPUT ( -- )
+   [: ADE-EXPGEN-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-EXPGEN-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" mul.rn.f32 %f4, %f3, %f2;" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
+   s" SAVED-" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -396,5 +413,6 @@ PTXT-ADE2-STRUCT-OUTPUT
 PTXT-ADE2-SCALAR-OUTPUT
 PTXT-ADG-XSUBSUM-OUTPUT
 PTXT-ADG-REJECTS
+PTXT-ADG-EXPGEN-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

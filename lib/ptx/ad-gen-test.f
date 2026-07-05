@@ -47,4 +47,18 @@ s" LOAD EXP. STORE" AD-BACKWARD$ s" LOAD SAVED-Y *. SCATTER-ADD" T$=
 : ADGT-EMPTY ( -- )     s" " 1 2 3 ADG-LOWER ;
 ' ADGT-EMPTY E-PTX-AD-OUTPUT TTHROWS
 
+\ ---- saved-value resolution (habu-ad-thread-saved) --------------------------------
+\ The saves-op scan drives the recompute lowering: 0 saves-ops skip the
+\ recompute, exactly 1 binds its SAVED-* registers, more than one is a named
+\ fail-closed reject BEFORE any emit (multi-save threading is DAG work).
+s" ROW-LOAD DUP BLOCK-SUM PTX:B- ROW-STORE" ADG-SAVES-OP# 0 T=
+s" ROW-LOAD EXP. ROW-STORE" ADG-SAVES-OP# 1 T=
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" ADG-SAVES-OP# 3 T=
+
+: ADGT-MULTI-SAVES ( -- )
+   s" ROW-LOAD EXP. EXP. ROW-STORE"
+   s" ROW-LOAD SAVED-Y *. SAVED-Y *. ROW-SCATTER-ADD"
+   1 2 3 4 ADG-LOWER-BWD ;
+' ADGT-MULTI-SAVES E-PTX-NOIMPL TTHROWS
+
 T-REPORT
