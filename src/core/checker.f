@@ -310,6 +310,7 @@ create PARAMU-BOOT MAXPARAM-INIT cells allot
 create PARAMC-BOOT MAXPARAM-INIT cells allot
 create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
 create PARAMOFF-BOOT MAXPARAM-INIT cells allot   \ arg-run start index into the flat PARGP pool
+create PARAMHID-BOOT MAXPARAM-INIT cells allot   \ hidden physical-field slot+1 per param term (0 = logical, docs item 12 slice-3a)
 \ PARGP is the flat per-param arg pool: each param term stores its arg terms as a
 \ contiguous run [PARAMOFF[p], PARAMOFF[p]+argc) here, so a family of ANY arity is
 \ stored without a fixed row cap. Cells hold term codes (pointer-free), so a grow
@@ -327,11 +328,11 @@ variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
 variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
-variable PARAMOFF-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
+variable PARAMOFF-P   variable PARAMHID-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
 variable PARAM-SCR-P
 variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !
+PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
 PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   0 PARG-N !
 MAXPARAM-INIT PARAM-CAP !
 PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
@@ -340,6 +341,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 : PARAMC ( -- ptr a ) PARAMC-P @ ;
 : PARAMFAM ( -- ptr a ) PARAMFAM-P @ ;
 : PARAMOFF ( -- ptr a ) PARAMOFF-P @ ;
+: PARAMHID ( -- ptr a ) PARAMHID-P @ ;
 : PARGP ( -- ptr a ) PARGP-P @ ;
 : PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
    PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
@@ -360,6 +362,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
    PARAMC-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMC-P !
    PARAMFAM-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMFAM-P !
    PARAMOFF-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMOFF-P !
+   PARAMHID-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMHID-P !
    nc PARAM-CAP ! ;
 
 \ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
@@ -399,6 +402,7 @@ UK-EXACT UNIFY-KIND !
 : PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
 : PARAM>FAM ( n -- n ) PAY cells PARAMFAM + @ ;   \ resolved family-id (identity)
 : PARAM>OFF ( n -- n ) PAY cells PARAMOFF + @ ;   \ arg-run start index into PARGP
+: PARAM>HID ( n -- n ) PAY cells PARAMHID + @ ;   \ hidden physical-field slot+1 (0 = logical, docs item 12 slice-3a)
 : PARAM-ARG-IDX ( n n -- ptr n ) {: p idx :}
    p PARAM>OFF idx + cells PARGP + ;
 : PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
@@ -422,6 +426,8 @@ UK-EXACT UNIFY-KIND !
    fam PARAMN @ cells PARAMFAM + !
    argc PARAMN @ cells PARAMC + !
    start PARAMN @ cells PARAMOFF + !
+   0 PARAMN @ cells PARAMHID + !   \ new term is logical; MK-HIDDEN/E-INST overwrite for hidden fields
+
    0 BEGIN dup argc < WHILE          \ data-stack index (RECURSE-safe; ?do clobbers locals)
       dup base + cells PARAM-SCR + @
       over start + cells PARGP + !
@@ -957,6 +963,59 @@ variable TWALK-D
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
    fam TFAM-WIDTH@* ;
 
+\ --- item 12 slice-3a: hidden physical-field substrate (docs §10-11, §17-18).
+\ Slice 3b expands a logical layout T-PARAM in a signature into W hidden physical
+\ field terms: payload slots 0..W-2 then the tag at W-1 (docs §5). Each hidden
+\ term reuses the logical family-id, name string, and arg terms, but carries a
+\ slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it pairs only
+\ with the SAME family AND slot and never binds a var/con/ptr/atom (docs §10),
+\ enforced in U-TYPE below. This slice mints and unifies the terms but does NOT
+\ wire LAYOUT-PUSH-FIELDS into PUSH-LOGICAL yet (slice 3b flips that), so no real
+\ check row holds a hidden term and user-visible checking is unchanged.
+: HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>HID 0 > ;
+: HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
+   t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
+   t T-RES PARAM>HID 1 - ;
+\ MK-HIDDEN ( n n -- n ) : mint the hidden field term for slot `slot:n` of a
+\ resolved LOGICAL layout T-PARAM `src0:n`, copying src's name/family-id/arg terms
+\ and tagging PARAMHID = slot+1. `slot` ranges over [0,W): 0..W-2 payload slots,
+\ W-1 the tag. Non-layout src or out-of-range slot fails closed (die 76).
+: MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
+   src0 T-RES {: src:n :}
+   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
+   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" 76 die THEN
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup src PARAM>ARGC < WHILE        \ copy src's arg run into the reentrant scratch
+      src over PARAM>ARG PARAM-SCR+
+      1 +
+   REPEAT drop
+   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
+   slot 1 + t PAY cells PARAMHID + !
+   t ;
+\ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
+\ in physical order — slot0 deepest, tag (W-1) on top (docs §5). Slice 3b calls
+\ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
+: LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
+   type T-RES {: src:n :}
+   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   row 0 BEGIN dup w < WHILE                 \ ( row slot )
+      dup src swap MK-HIDDEN                 \ ( row slot hid )
+      rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
+      1 +
+   REPEAT drop ;
+\ PARAM-HID-OK? ( n n -- bool ) : may two resolved T-PARAM terms pair? Neither
+\ hidden -> ordinary logical pair; exactly one hidden -> reject (a hidden field
+\ must not unify with the logical value); both hidden -> require the SAME slot
+\ (slot+1 equality). Family equality is still enforced by PARAM-PAIR-ARGS.
+: PARAM-HID-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 PARAM>HID t2 PARAM>HID {: h1:n h2:n :}
+   h1 h2 or 0= IF RES-TRUE EXIT THEN
+   h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
+   h1 h2 = ;
+
 \ --- item 12 (docs/type-families.md §17): a logical layout value is still ONE
 \ physical T-PARAM cell at this stage (item 7 kept it one cell; no LAYOUT-PUSH-
 \ FIELDS expansion, no published constructors, so a wider-than-one-cell layout
@@ -990,6 +1049,7 @@ variable LAYOUT-XPORT
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
+   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN   \ a hidden field is not a single-cell bundle: never binds a var
    a LAYOUT-PARAM? IF                           \ var <-> layout-param bind: absorb the bundle
       a T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       b ISVAR EXIT THEN
@@ -1016,7 +1076,7 @@ variable LAYOUT-XPORT
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-PAIR-ARGS 2drop ELSE
+     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE 2drop RES-FALSE UOK ! THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
    2dup LAYOUT-BLOCK? IF 2drop RES-FALSE UOK ! ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
@@ -3146,6 +3206,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          x E-RES PARAM>ARGC {: argc:n :}
          argc noff E-PTR EN.C !
          x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
+         x E-RES PARAM>HID noff E-PTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
          argc 0 > IF
             argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
             run noff E-PTR EN.D !
@@ -3380,6 +3441,7 @@ variable FMEND
             1 +
          REPEAT drop
          np E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
+         dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1 (0 in pre-3a snapshots)
          r> drop
       endof
       r> drop 0 swap

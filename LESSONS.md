@@ -35,6 +35,14 @@ lesson — keep the specific word/code/path, cut the prose.
   destruction review caught it. Transport binds now reject any layout whose
   family args resolve linear OR are still unbound vars (may later bind linear),
   fail-closed until TFAM 11 counts whole bundles; identity flow stays legal.
+- **IBUFSZ is another src/core growth watermark, and it exits SILENTLY:** the
+  engine's boot source-prefix copy loops (habu2 `SRC-SFAIL`/`SRC-BFAIL`) exit a
+  bare `74` with no message when the concatenated prefix reaches `IBUFSZ`
+  (src/habu/layout.f, Gforth mirror bootstrap/cg/forth.fs). Growing checker.f
+  ~2.4KB (item 12 slice-3a) made `install --force` fail as an opaque
+  `E-BUILD-STATUS: refresh child failed`; the leftover `hb-stdin-mk` run by
+  hand reproduced the silent 74. Bumped 1M->1.5M in both mirrors; silent
+  capacity exits are dotted to print their own name before dying.
 - **A copied `bin/hb` is not a frozen baseline:** the small engine LOADS
   `src/core/*.f` from the working tree at boot (`hb: cannot open src/core/util.f`
   when run outside the repo), so an old binary run in an edited tree exhibits

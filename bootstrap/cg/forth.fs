@@ -34,7 +34,7 @@ $60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC f
 8       constant CF-LOCN
 16      constant CF-LOCF
 $2000000 constant DATA-SIZE    \ data-space mmap (always RW, separate from the RX code region)
-$100000 constant IBUFSZ        \ stdin read buffer (1 MB)
+$180000 constant IBUFSZ        \ stdin read buffer (1.5 MB; native mirror src/habu/layout.f)
 
 require exec.fs
 require templ.fs           \ g-push, XDS(=19)

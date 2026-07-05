@@ -596,6 +596,78 @@ s" TDTOK" CHECKER-FIND-USIG -1 T=
 DIAG-BUFFER-OFF
 
 \ ---------------------------------------------------------------------------
+\ item 12 slice-3a: hidden-field substrate (inert). Drives the new checker
+\ substrate at TOP-LEVEL interpret (registry words resolve here; NEW never runs,
+\ so the terms built below survive across every assert). No CHECK runs after the
+\ first term is built. LAYOUT-PUSH-FIELDS is NOT wired into PUSH-LOGICAL yet, so
+\ every check above this section already proved user-visible behavior unchanged.
+\ ---------------------------------------------------------------------------
+variable TD3F    variable TD3M    variable TD3OK
+variable TD3LOG  variable TD3MLOG
+variable TD3H0   variable TD3H1
+variable TD3ROW  variable TD3CUR
+
+\ resolve the tdres (width 2) and tdmix (width 4) families declared above.
+s" " s" tdres" TFAM-FIND-IN TD3OK ! TD3F !
+TD3OK @ -1 T=
+s" " s" tdmix" TFAM-FIND-IN TD3OK ! TD3M !
+TD3OK @ -1 T=
+
+\ build a LOGICAL tdres<n,n> term via the same MK-PARAM path SIG parsing drives.
+PARAM-SCR-N @
+CC-N MK-CON PARAM-SCR+
+CC-N MK-CON PARAM-SCR+
+s" tdres" TD3F @ MK-PARAM  TD3LOG !
+\ a logical layout term is NOT hidden.
+TD3LOG @ HIDDEN-PARAM? 0 T=
+TD3LOG @ PARAM>HID 0 T=
+TD3LOG @ PARAM>FAM TD3F @ T=
+
+\ mint hidden fields for slot 0 (payload) and slot 1 (tag = W-1).
+TD3LOG @ 0 MK-HIDDEN TD3H0 !
+TD3LOG @ 1 MK-HIDDEN TD3H1 !
+TD3H0 @ HIDDEN-PARAM? -1 T=
+TD3H1 @ HIDDEN-PARAM? -1 T=
+TD3H0 @ HIDDEN-SLOT@ 0 T=
+TD3H1 @ HIDDEN-SLOT@ 1 T=
+TD3H0 @ PARAM>HID 1 T=          \ slot+1 encoding
+TD3H1 @ PARAM>HID 2 T=
+TD3H0 @ PARAM>FAM TD3F @ T=
+TD3H1 @ PARAM>FAM TD3F @ T=
+
+\ LAYOUT-PUSH-FIELDS on an empty fresh row pushes exactly W=2 cells, tag on top,
+\ slot0 deepest (docs §5). Walk top-down: W-1 (tag), then 0, then the base var.
+FRESH MK-ROW  TD3ROW !
+TD3LOG @ TD3ROW @ LAYOUT-PUSH-FIELDS  TD3CUR !
+TD3CUR @ R-RES TAG S-PUSH T=                                  \ top cell present
+TD3CUR @ R-RES P>TYPE HIDDEN-SLOT@ 1 T=                       \ ...is the tag (slot W-1)
+TD3CUR @ R-RES P>REST R-RES TAG S-PUSH T=                     \ next cell present
+TD3CUR @ R-RES P>REST R-RES P>TYPE HIDDEN-SLOT@ 0 T=          \ ...is slot0
+TD3CUR @ R-RES P>REST R-RES P>REST R-RES TAG S-ROW T=         \ then the base row var — exactly W cells added
+
+\ unification discipline (UNIFY ( t t -- bool ), self-contained per call).
+\ same family + same slot -> pair.
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY -1 T=
+\ same family, different slot -> reject.
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @ 1 MK-HIDDEN  UNIFY 0 T=
+\ hidden never binds a var, even under whole-bundle transport mode.
+TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY 0 T=
+1 LAYOUT-XPORT !
+TD3LOG @ 0 MK-HIDDEN  FRESH MK-VAR  UNIFY 0 T=
+0 LAYOUT-XPORT !
+\ hidden never unifies a con.
+TD3LOG @ 0 MK-HIDDEN  CC-N MK-CON  UNIFY 0 T=
+\ a hidden field never unifies its own logical value.
+TD3LOG @ 0 MK-HIDDEN  TD3LOG @  UNIFY 0 T=
+
+\ cross-family: a same-slot hidden field of a DIFFERENT family rejects.
+PARAM-SCR-N @
+CC-N MK-CON PARAM-SCR+
+CC-N MK-CON PARAM-SCR+
+s" tdmix" TD3M @ MK-PARAM  TD3MLOG !
+TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY 0 T=
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
