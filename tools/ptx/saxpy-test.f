@@ -99,6 +99,9 @@ variable PTXT-ERR-SAVE
 : PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ( -- )
    s" tools/ptx/softmax-bwd-opt-cg.f" included ;
 
+: PTXT-INCLUDE-SOFTMAX-ROWS-BWD-CG ( -- )
+   s" tools/ptx/softmax-rows-bwd-cg.f" included ;
+
 : PTXT-RUN-SAXPY ( -- n n n )
    [: PTXT-INCLUDE-SAXPY ;] PTXT-CAPTURE ;
 
@@ -128,6 +131,9 @@ variable PTXT-ERR-SAVE
 
 : PTXT-RUN-SOFTMAX-BWD-OPT-CG ( -- n n n )
    [: PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ;] PTXT-CAPTURE ;
+
+: PTXT-RUN-SOFTMAX-ROWS-BWD-CG ( -- n n n )
+   [: PTXT-INCLUDE-SOFTMAX-ROWS-BWD-CG ;] PTXT-CAPTURE ;
 
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
@@ -392,6 +398,18 @@ variable PTXT-ERR-SAVE
    s" SAVED-" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ the ad-reverse capstone: the CERTIFIED closed-form softmax backward emits its
+\ own kernel - dy*y multiply, block reduce, subtract, *y, plain store, no ERROR
+: PTXT-SOFTMAX-ROWS-BWD-OUTPUT ( -- )
+   PTXT-RUN-SOFTMAX-ROWS-BWD-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry SOFTMAX_BWD_ROWS" PTXT-HAS
+   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" sub.f32 %f8, %f2, %f7;" PTXT-HAS
+   s" mul.rn.f32 %f9, %f8, %f1;" PTXT-HAS
+   s" red.global.add.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -414,5 +432,6 @@ PTXT-ADE2-SCALAR-OUTPUT
 PTXT-ADG-XSUBSUM-OUTPUT
 PTXT-ADG-REJECTS
 PTXT-ADG-EXPGEN-OUTPUT
+PTXT-SOFTMAX-ROWS-BWD-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

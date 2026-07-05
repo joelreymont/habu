@@ -386,6 +386,14 @@ points stay listed.
   control-flow rejects, saves-op scan).
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
+- `tools/ptx/softmax-rows-bwd-cg.f` — the ad-reverse capstone: the CHECKED
+  closed-form SOFTMAX-ROWS-BWD (dx = y*(dy - Sum(dy*y)), the reverse-pass +
+  simplifier derivation asserted in ir-test.f) certifies with token-shared
+  extents and emits its own SOFTMAX_BWD_ROWS kernel for the device gradcheck.
+- `lib/ptx/autograd-neg-test.f` — the gradient extent contract is static:
+  shared-extent closed-form backward and the MK-SPAN= minted gradient pair
+  certify; a dx typed with a different extent and a separately minted gradient
+  span are checker REJECTS (len(dx)=len(y) proven by token, never re-asserted).
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header
   vocabulary and its coverage.
 - `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
