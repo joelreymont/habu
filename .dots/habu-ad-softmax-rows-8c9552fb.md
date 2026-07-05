@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-06-27T00:00:43.576213+02:00"
 blocks:
-  - habu-ad-reverse-pass-9f0c63e8
   - habu-ptx-ir-opt-b90390f0
 ---
 
