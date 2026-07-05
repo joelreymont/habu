@@ -634,6 +634,24 @@ create CAE-LF-BYTE 10 c,
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
 
+\ PENDING (TFAM 12 slice 3, habu-tfam-12-layout): staged flip of the fixture
+\ above, NOT in the runner yet. When width-aware `constant` shape-carries the
+\ whole logical value at the value-pop (native C-CONSTANT + verify-source
+\ RECORD-DEFINER? + PS-MAYBE-TRUST-DEFINER + CA-ADD-SUPPORT-CONSTANT drop the
+\ one-cell `-- a` narrowing), the same source loads clean: CAE-CV-K carries the
+\ layout shape and CAE-CV-USE certifies. Slice 3 replaces the
+\ "const-layout-narrow" runner row with this case and deletes the narrow
+\ variant plus the `-- a` boundary comments at all four sites.
+: CAE-TEST-CONST-CARRY ( -- )
+   s" const-layout-carry" CAE-CASE!
+   CAE-CONST-LAYOUT-SOURCE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TFALSE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 0 T= ;
+
 : CAE-TEST-TFAM-SUPPORT ( -- )
    s" type-family-support" CAE-CASE!
    CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;

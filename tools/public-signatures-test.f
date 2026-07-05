@@ -378,6 +378,24 @@ variable PST-SUM-U
    PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TTRUE
    PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
 
+\ PENDING (TFAM 12 slice 3, habu-tfam-12-layout): staged flip of the fixture
+\ above, NOT in PST-MAIN yet. When width-aware `constant` shape-carries the
+\ whole logical value, PS-MAYBE-TRUST-DEFINER emits the LOGICAL type for the
+\ constant (`-- cae-cv`, which signature parsing expands to the layout fields)
+\ instead of the one-cell `-- a` narrowing, and the one-cell trust must be
+\ absent. Slice 3 swaps this into PST-MAIN in place of PST-TEST-CONST-LAYOUT
+\ and deletes the narrow variant plus PST-CONST-K-TRUST$.
+: PST-CONST-K-CARRY$ ( -- ptr u8 n )
+   s" CAE-CV-K" s" -- cae-cv" PST-TRUST$ ;
+
+: PST-TEST-CONST-CARRY ( -- )
+   PST-PREPARE-CONST
+   PST-CONST PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-OUT outu PST-CONST-K-CARRY$ CONTAINS? TTRUE
+   PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TFALSE
+   PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
+
 : PST-SUM ( -- ptr u8 n )    PST-SUM-BUF PST-SUM-U @ ;
 
 \ TFAM 7 (habu-tfam-7-hidden): a sum layout family in a passing (identity)
