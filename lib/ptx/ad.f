@@ -202,8 +202,24 @@ variable AD-COST-SUM
 : AD-SAVE-COST ( bool -- n )   \ materialized forward output reloads; others round-trip
    if AD-COST-MEM else AD-COST-MEM 2 * then ;
 
-\ the per-value policy: SAVE when the recompute slice is not strictly cheaper
+\ Policy override: tests and callers may pin the choice without touching the
+\ cost table (the equivalence fixture drives BOTH paths through this).
+0 constant AD-POLICY-AUTO        \ the cost model decides
+1 constant AD-POLICY-SAVE        \ force the save path
+2 constant AD-POLICY-RECOMPUTE   \ force the recompute path
+
+variable AD-POLICY
+
+: AD-POLICY! ( n -- ) {: p:n :}
+   p AD-POLICY-AUTO < if E-PTX-SYNTAX throw then
+   p AD-POLICY-RECOMPUTE > if E-PTX-SYNTAX throw then
+   p AD-POLICY ! ;
+
+\ the per-value policy: SAVE when the recompute slice is not strictly cheaper,
+\ unless overridden
 : AD-SAVE? ( ptr u8 n bool -- bool )
+   AD-POLICY @ AD-POLICY-SAVE = if drop 2drop 0 0= exit then
+   AD-POLICY @ AD-POLICY-RECOMPUTE = if drop 2drop 0 0= 0= exit then
    AD-SAVE-COST {: sc:n :}
    AD-SLICE-COST {: rc:n :}
    sc rc AD-RECOMPUTE? 0= ;

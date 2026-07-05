@@ -410,6 +410,16 @@ variable PTXT-ERR-SAVE
    s" red.global.add.f32" PTXT-NOT-HAS
    s" ERROR" PTXT-NOT-HAS ;
 
+\ the save-vs-recompute override pair from ONE lowering: the save path reloads
+\ y (two loads, one multiply, NO ex2 recompute); the recompute path is EXPGEN
+: PTXT-ADG-EXPSAVE-OUTPUT ( -- )
+   [: ADE-EXPSAVE-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS
+   s" ex2.approx.f32" PTXT-NOT-HAS
+   s" SAVED-" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -433,5 +443,6 @@ PTXT-ADG-XSUBSUM-OUTPUT
 PTXT-ADG-REJECTS
 PTXT-ADG-EXPGEN-OUTPUT
 PTXT-SOFTMAX-ROWS-BWD-OUTPUT
+PTXT-ADG-EXPSAVE-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

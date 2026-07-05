@@ -117,6 +117,7 @@ variable AGS-PTX-U
    s" fma-fwd" AGS-KERNEL      s" fma-bwd" AGS-KERNEL
    s" xsubsum-fwd" AGS-KERNEL  s" xsubsum-bwd" AGS-KERNEL
    s" expgen-fwd" AGS-KERNEL   s" expgen-bwd" AGS-KERNEL
+   s" expsave-bwd" AGS-KERNEL
    s" softmax-rows-bwd" s" tools/ptx/softmax-rows-bwd-cg.f" AGS-KERNEL-FILE ;
 
 \ ---- device failure classes (red first) ---------------------------------------

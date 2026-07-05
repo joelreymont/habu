@@ -317,6 +317,27 @@ variable AG-MISS#
    8.0 -8.0 0.0 3.0 AG-X4!               s" GENERATED backward: EXPGEN saturated" AG-CASE
    AG-PAIR-CLOSE ;
 
+\ save-vs-recompute EQUIVALENCE (habu-ad-save-vs): the SAME gradient computed
+\ by the SAVE-path kernel (y reloaded; produced by the lowering under the
+\ policy override) and the RECOMPUTE-path kernel (exp re-run) must agree
+\ within tolerance on the same inputs.
+: AG-DX-KEEP ( -- )   \ current analytic gradient becomes the reference
+   AGK 0 ?do  AG-DXA i AG-F@  AG-DXN i AG-F!  loop ;
+
+: AG-SAVE-VS-ENTRY ( -- )
+   AG-DY-RND
+   0.7305 -1.4141 1.9023 -0.3672 AG-X4!
+   s" expgen-fwd.cubin" s" expgen-bwd.cubin" AG-PAIR!
+   AG-X AG-YP AG-FWD-RUN          \ y = device exp(x)
+   AG-BWD-RUN                     \ RECOMPUTE path -> AG-DXA
+   AG-DX-KEEP                     \ ... kept as the reference
+   AG-PAIR-CLOSE
+   s" expgen-fwd.cubin" s" expsave-bwd.cubin" AG-PAIR!
+   AG-YP AG-BWD-RUN-FROM          \ SAVE path: input-1 = the saved y -> AG-DXA
+   AG-MISMATCH# 0 T=
+   s" gradcheck PASS on Orin: save == recompute (EXP equivalence, policy override)" type cr
+   AG-PAIR-CLOSE ;
+
 \ SOFTMAX_BWD_ROWS (the ad-reverse capstone): the CERTIFIED closed-form
 \ backward consumes y = softmax(x). y comes from the device forward (itself
 \ pinned to CPU-golden bits by tools/ptx/softmax-launch.f); the reference dx is
@@ -611,6 +632,7 @@ variable AG-MISS#
    AG-CROSS-PAIR
    AG-XSUBSUM-ENTRY
    AG-EXPGEN-ENTRY
+   AG-SAVE-VS-ENTRY
    AG-SMROWS-ENTRY
    AG-ADD2-ENTRY
    AG-SUB2-ENTRY

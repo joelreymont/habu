@@ -427,3 +427,16 @@ variable ADE2-DZ
 
 : ADE-EXPGEN-BWD ( -- )
    ADE-EXPGEN-FWD$ ADE-GEN-BWD ;
+
+\ ==== the save-vs-recompute EQUIVALENCE pair (habu-ad-save-vs) ==================
+\ The SAVE path for the EXP. backward comes from the SAME lowering as the
+\ recompute path, pinned by the POLICY OVERRIDE (never by editing the cost
+\ table): under AD-POLICY-SAVE the lowering reloads y from the primal span
+\ (the kernel's input-1 becomes the saved value) and dx = dz * y with no
+\ recompute. Its gradient must be within-tolerance identical to
+\ ADE-EXPGEN-BWD (recompute); the device equivalence fixture compares the two.
+: ADE-EXPSAVE-BWD ( -- )
+   AD-POLICY-SAVE AD-POLICY!
+   [: ADE-EXPGEN-FWD$ ADE-GEN-BWD ;] catch {: rc:n :}
+   AD-POLICY-AUTO AD-POLICY!
+   rc 0 <> if rc throw then ;

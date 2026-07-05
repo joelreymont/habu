@@ -190,22 +190,45 @@ variable ADG-SV-A
 : ADG-RECOMPUTE ( ptr u8 n n n -- ) {: a:ptr u:n insp:n ctx:n :}
    a u insp 0 ctx 1 1 ADG-CORE ;
 
-\ Lower a GENERATED backward: recompute the forward slice from the primal span
-\ (binding SAVED-*), then lower the backward body from the cotangent span. The
-\ backward body runs through the core directly so the recompute bindings stay
-\ visible to its SAVED-* tokens. The save-vs-recompute CHOICE comes from the
-\ cost model (AD-SAVE?, materialized? = false: a generated backward receives
-\ the primal, not a stored intermediate); when the model chooses SAVE this
-\ lowering fail-closes BEFORE any emit - the save route is the
-\ materialized-output/closed-form kernel path (SOFTMAX_BWD_ROWS), not the
-\ recompute path.
+\ ---- the SAVE-path binding: reload the saved value from the primal span ---------
+
+: ADG-SAVES-TOK ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ the slice's saves-op token
+   a u AD-TOKENIZE
+   AD-TOK-N @ 0 ?do
+      a i TOK-STR ADG-TOK-SAVES 0 > if
+         a i TOK-STR unloop exit
+      then
+   loop
+   E-PTX-NOIMPL throw ;
+
+: ADG-SAVE-CELL! ( ptr u8 n n -- ) {: a:ptr u:n reg:n :}   \ bind the op's saved cell
+   a u s" EXP." STR= if reg ADG-SV-Y ! exit then
+   E-PTX-NOIMPL throw ;                        \ only single-buffer saves lower via save
+
+: ADG-SAVE-BIND ( ptr u8 n n n -- ) {: fa:ptr fu:n insp:n ctx:n :}
+   fa fu ADG-SAVES-TOK {: ta:ptr tu:n :}
+   ta tu VJP-SAVES# 1 <> if E-PTX-NOIMPL throw then
+   insp ctx EMIT-ROW-LOAD {: v:n :}
+   ta tu v ADG-SAVE-CELL! ;
+
+\ Lower a GENERATED backward. The save-vs-recompute CHOICE comes from the
+\ policy (AD-SAVE? - the cost model, or the explicit override; materialized? =
+\ false: a generated backward receives the primal, not a stored intermediate):
+\ RECOMPUTE re-runs the forward slice from the primal span binding SAVED-*;
+\ SAVE reloads the saved value from the primal span instead (the kernel's
+\ input-1 is then the saved/materialized value - single-buffer saves only,
+\ others fail closed). The backward body runs through the core directly so the
+\ bindings stay visible to its SAVED-* tokens.
 : ADG-LOWER-BWD ( ptr u8 n ptr u8 n n n n n -- )
    {: fa:ptr fu:n ba:ptr bu:n xsp:n dzsp:n outsp:n ctx:n :}
    ADG-SV-RESET
    fa fu ADG-SAVES-OP# {: nsv:n :}
    nsv 1 > if E-PTX-NOIMPL throw then
    nsv 1 = if
-      fa fu 0 0= 0= AD-SAVE? if E-PTX-NOIMPL throw then
-      fa fu xsp ctx ADG-RECOMPUTE
+      fa fu 0 0= 0= AD-SAVE? if
+         fa fu xsp ctx ADG-SAVE-BIND
+      else
+         fa fu xsp ctx ADG-RECOMPUTE
+      then
    then
    ba bu dzsp outsp ctx 0 0 ADG-CORE ;

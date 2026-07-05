@@ -74,6 +74,17 @@ s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
 : BAD-COST ( -- )  s" ROW-LOAD FROB ROW-STORE" AD-SLICE-COST drop ;
 ' BAD-COST E-PTX-AD-UNKNOWN TTHROWS
 
+\ the policy override pins the choice WITHOUT touching the cost table (the
+\ equivalence fixture drives both paths through it)
+AD-POLICY-SAVE AD-POLICY!
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TTRUE
+AD-POLICY-RECOMPUTE AD-POLICY!
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TFALSE
+AD-POLICY-AUTO AD-POLICY!
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
+: BAD-POLICY ( -- )  3 AD-POLICY! ;
+' BAD-POLICY E-PTX-SYNTAX TTHROWS
+
 \ nonlinear automation: a unary nonlinear op auto-derives its adjoint EXPANSION
 \ (with saved-value references) inside the reversed backward
 s" LOAD EXP. STORE" AD-REVERSE  s" LOAD SAVED-Y *. SCATTER-ADD" STR= TTRUE
