@@ -46,6 +46,7 @@ variable LMVT-VA  variable LMVT-VU
 : LMVT-TRY-MV1 ( -- )  1 LMV-ANALYZE ;
 : LMVT-TRY-EW  ( -- )  0 LEW-ANALYZE ;
 : LMVT-TRY-RED ( -- )  0 LRED-ANALYZE ;
+: LMVT-TRY-RED1 ( -- ) 1 LRED-ANALYZE ;
 : LMVT-TRY-MM  ( -- )  0 LMM-ANALYZE ;
 : LMVT-TRY-MM1 ( -- )  1 LMM-ANALYZE ;
 
@@ -141,9 +142,11 @@ LMVT-CAP-MM
 s" add.u64 %rd1, %rd1, 64"      LMVT-IN
 s" fma.rn.f32"                  LMVT-IN      \ contraction K-loop unchanged
 
-\ ================= (C) staged transpose folded into the EW load index ======================
+\ ================= (C) staged transpose: folded into EW, materialized for RED/MM ==========
 \ A STAGED transpose (dst[i,j]=src[j,i]) is a lane PERMUTATION, not a base offset. The FLAT
-\ EW kernel absorbs it in its per-element load index (dot habu-maki-fold-staged).
+\ EW kernel absorbs it in its per-element load index (dot habu-maki-fold-staged); RED's
+\ coalesced row loads and MM's K-loop addressing cannot express a transposed column read, so
+\ the planner MATERIALIZES the transpose (its own copy region, read coalesced) for those.
 \ Device numerics + goldens are pending-zed (maki/lower-mv-device-test.f); host proves the PTX.
 
 \ ---- TG: TRANSPOSE GELU folds the staged transpose into the EW load index math. x:4x8
@@ -162,16 +165,46 @@ s" mad.lo.u32 %r8, %r6, 8, %r7" LMVT-IN      \ (e mod dstC)*srcC(8) + e/dstC = s
 s" ex2.approx.f32"              LMVT-IN      \ the gelu body is unchanged
 s" .param .u64 p_in1"           LMVT-ABSENT  \ one region input (the transpose source slot)
 
-\ ---- TN / TM: RED's coalesced ROW-LOAD and MM's K-loop addressing cannot absorb the lane
-\ permutation, so a staged transpose feeding them still fails closed (E-MVW-STAGED); the
-\ planner-side materialization for these classes is the next slice of habu-maki-fold-staged.
+\ ---- TN: TRANSPOSE RMSNORM cannot fold a transposed column load into the coalesced ROW-LOAD,
+\ so the planner materializes the transpose as region 0 (a copy kernel: div/rem row remap) and
+\ the rmsnorm (region 1) reads that materialized C x R buffer coalesced.
 MODEL: TN ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
 FP-BUILD
-' LMVT-TRY-RED E-MVW-STAGED TTHROWS
+2 FP-REGION-COUNT T=                         \ two regions: transpose copy + rmsnorm
+0 MIR-MAT@ TTRUE                             \ the transpose is materialized (its own copy region)
+0 FP-RID@ 0 T=                               \ transpose is region 0
+1 FP-RID@ 1 T=                               \ rmsnorm  is region 1
+1 LRED-ANALYZE                               \ region 1 (rmsnorm) lowers, reading the transpose node
+0 LRED-IN-REF@ MIR-REF-INPUT? TFALSE         \ its input 0 is the transpose node (materialized), not a slot
+0 LRED-IN-REF@ 0 T=                          \ specifically node 0 (the transpose)
+LMVT-CAP-MV                                   \ region 0 is the transpose copy kernel (div/rem row remap)
+s" div.u32 %r8, %r7, %r1"       LMVT-IN
+s" rem.u32 %r9, %r7, %r1"       LMVT-IN
+s" mad.lo.u32 %r10, %r9, %r2"   LMVT-IN
 
+\ ---- TM: TRANSPOSE MATMUL likewise materializes the transpose (region 0 copy) and the matmul
+\ (region 1) reads it as its A operand (a cross-region materialized producer, slice-5 handoff).
 MODEL: TM ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
 FP-BUILD
-' LMVT-TRY-MM E-MVW-STAGED TTHROWS
+2 FP-REGION-COUNT T=                         \ two regions: transpose copy + matmul
+0 MIR-MAT@ TTRUE                             \ the transpose is materialized
+0 FP-RID@ 0 T=                               \ transpose is region 0
+1 FP-RID@ 1 T=                               \ matmul is region 1
+1 LMM-ANALYZE                                \ region 1 (matmul) lowers, reading the transpose node
+0 LMM-IN-REF@ MIR-REF-INPUT? TFALSE          \ A operand is the transpose node (materialized), not a slot
+0 LMM-IN-REF@ 0 T=                           \ specifically node 0 (the transpose)
+
+\ ---- defense-in-depth: a DISSOLVED staged transpose forced into a RED / MM region still fails
+\ closed (E-MVW-STAGED via MVW-CHECK). The planner materializes staged transpose for RED/MM
+\ (FP-STAGED-FOLDABLE? = EW only), so this is now unreachable by checked planning; the hand-built
+\ plan (dissolve mat=0 + poke the transpose into the consumer region) proves the guard directly.
+MODEL: TNX ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
+FP-BUILD  0 0 MIR-MAT!  1 0 cells FP-RID + !   \ dissolve the transpose, force it into the rmsnorm region
+' LMVT-TRY-RED1 E-MVW-STAGED TTHROWS
+
+MODEL: TMX ( x:8x8 w:8x16 -- y ) TRANSPOSE MATMUL ;
+FP-BUILD  0 0 MIR-MAT!  1 0 cells FP-RID + !   \ dissolve the transpose, force it into the matmul region
+' LMVT-TRY-MM1 E-MVW-STAGED TTHROWS
 
 \ ---- a non-movement EW op feeding the contraction is a rejected prologue (hand-forced) -----
 \ The backend-capability gate (maki/fusion-plan.f, dot cad-matmul-prologue) now refuses

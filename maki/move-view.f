@@ -15,9 +15,9 @@
 \ MVV-STAGED (transpose) is a lane PERMUTATION, not a base offset, so it folds only where the
 \ per-element load index can absorb it: the FLAT EW kernel, via MVW-CHECK-EW + MVW-XPOSE-DIMS
 \ (src_flat = (e mod dstC)*srcC + e/dstC). RED (coalesced row loads) and MM (K-loop A/B
-\ addressing) cannot express a transposed column load, so a staged transpose feeding them stays
-\ fail-closed (E-MVW-STAGED via MVW-CHECK); the planner-side materialization for those classes
-\ is the next slice of habu-maki-fold-staged. Every harder case fails closed:
+\ addressing) cannot express a transposed column load, so the planner MATERIALIZES a staged
+\ transpose feeding them (maki/fusion-plan.f FP-STAGED-FOLDABLE?) and their lowerings keep
+\ E-MVW-STAGED via MVW-CHECK as a defense-in-depth guard. Every harder case fails closed:
 \   MVV-STAGED into RED / MM     -> E-MVW-STAGED   (a lane permutation the row/K-loop cannot hold)
 \   MVV-MATERIALIZE/GATHERED    -> E-MVW-NOTFREE  (mat=1: a region boundary, not a fold)
 \   source not an input slot    -> E-MVW-SRC      (chained / cross-region movement, v1)

@@ -115,10 +115,12 @@ variable FP-BUILT?
 \   ROW-REDUCE -> EW, ROW-REDUCE           (softmax max+sum budget, backend-proven)
 \   MATMUL     -> EW                        (fused epilogue)
 \   MOVEMENT   -> (unused)                  verdict-governed in FP-JOIN?, never consulted here:
-\                                            a dissolved FREE movement folds into index math;
-\                                            STAGED (transpose) still fuses at plan time but is
-\                                            lower-rejected (E-MVW-STAGED) pending habu-maki-fold-
-\                                            staged; materialize/gathered are boundaries.
+\                                            a dissolved FREE movement folds into index math for
+\                                            every consumer; a STAGED (transpose) folds only into
+\                                            an EW consumer (FP-STAGED-FOLDABLE?, lower-ew
+\                                            EMIT-XPOSE-OFF) and is MATERIALIZED for RED/MM (its own
+\                                            copy region, read coalesced); materialize/gathered are
+\                                            boundaries. So every planned region stays lowerable.
 \   DECODE     -> EW                        (fused epilogue)
 create FP-CAP-ROW  CLASS-N cells allot
 : FP-CAP! ( n n -- )  cells FP-CAP-ROW + ! ;      \ ( mask cls -- ) store row cls's emit-mask
@@ -145,6 +147,14 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 : FP-BACKEND-EMITS? ( n n -- bool ) {: cp:n ck:n :}
    cp cells FP-CAP-ROW + @  ck rshift  1 and  0<> ;
 
+\ can the backend fold a dissolved STAGED (transpose) movement into a consumer of class ck?
+\ A transpose is a lane permutation, folded per-element off the reading kernel's flat index.
+\ Only the FLAT EW kernel can absorb that (maki/lower-ew.f MVW-CHECK-EW / EMIT-XPOSE-OFF); RED's
+\ coalesced row loads and MM's K-loop A/B addressing cannot express a transposed column read, so
+\ the planner materializes the transpose for them (its own copy region) and the consumer reads it
+\ coalesced. v1: EW only - flip this when a strided-column loader lands (habu-maki-fold-staged).
+: FP-STAGED-FOLDABLE? ( n -- bool )  CLASS-EW = ;
+
 \ per-region capacity ( r cK -- bool ): one contraction per region; at most two
 \ same-row reductions (softmax max+sum) and never mixed with a contraction.
 : FP-CAP-OK? ( n n -- bool ) {: r:n ck:n :}
@@ -165,6 +175,9 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
       k NODE-DISSOLVE? exit then              \ movement K: join iff free/staged (verdict)
    p NODE-MAT-VD? if false exit then          \ materialized movement producer is a boundary
    p MIR-MOVE? FP-MV-FUSE? @ 0= and if false exit then   \ OFF: a movement producer is a boundary too
+   p NODE-DISSOLVE? if                        \ dissolved movement producer: gate STAGED by consumer class
+      p MIR-MOVE-VERDICT@ MVV-STAGED =  k FP-CLASS FP-STAGED-FOLDABLE? 0=  and if false exit then
+   then                                       \ FREE folds into all consumers; STAGED into EW only (else materialize)
    p FP-CLASS k FP-CLASS FP-BASE-FUSE? 0= if false exit then
    p MIR-MOVE? 0= if                          \ backend-capability gate: compute producers only
       p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= if false exit then
