@@ -700,6 +700,23 @@ create BFT-CHECK-OFF-LINE
    BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
    BF-TMP-RESET ;
 
+\ Hash-pin mismatch: pin a sandbox boot-prefix file, reload unchanged (no
+\ throw), then mutate it mid-sequence - the reload must fail closed with
+\ E-BUILD-BOOT-DRIFT rather than silently entering the image.
+: BFT-PIN-RELOAD ( -- )
+   BFT-CERT BF-PIN-FILE ;
+
+: BFT-TEST-BOOT-PIN ( -- )
+   BF-PIN-RESET
+   BF-PIN-ON!
+   s" \ boot prefix v1" BFT-CERT-WRITE
+   BFT-CERT BF-PIN-FILE
+   BFT-CERT BF-PIN-FILE
+   BFT-CERT s" \ mid-build edit" APPEND-FILE
+   [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
+   BF-PIN-OFF!
+   BF-PIN-RESET ;
+
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -728,6 +745,7 @@ create BFT-CHECK-OFF-LINE
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
+   s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP

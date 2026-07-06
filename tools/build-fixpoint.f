@@ -21,8 +21,13 @@ $2F constant BF-SLASH
 12 constant BF-STAMP-PREFIX-U
 32 constant BF-STAMP-DG-U
 256 constant BF-STAMP-CAP
+128 constant BF-PIN-CAP
 
 create BF-LF-BUF 1 allot
+create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
+create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot
+create BF-PIN-KEYBUF 40 allot
+create BF-PIN-DIGBUF 40 allot
 create BF-CHAR-BUF 1 allot
 create BF-STAMP-KEY 80 allot
 create BF-STAMP-OLD 80 allot
@@ -74,6 +79,8 @@ variable BF-REC-STDIN?
 variable BF-ENGINE-U
 variable BF-INSTALL-TMP-U
 variable BF-FORCE
+variable BF-PIN-N
+variable BF-PIN-ON
 variable BF-CERT-RC
 variable BF-CERT-DIAG-U
 variable BF-CERT-LAB-A
@@ -381,7 +388,71 @@ variable BF-CERT-PATH-U
    BF-APP-IN BF-APP-CLOSE
    BF-APP-OUT BF-APP-CLOSE ;
 
+\ ---------------------------------------------------------------------------
+\ Boot-prefix hash pin: close the mid-build boot-reload TOCTOU.
+\
+\ Every checkout source file emitted into a stage image is streamed by
+\ BF-APPEND-SOURCE. The same boot-prefix files (checker/core/target/emitter
+\ surface) are re-read across the stage2, stdin, and snap emissions and the
+\ stamp-key re-emit. Between those reads a source edit would let stage N build
+\ from one revision and stage N+1 from another, silently entering the installed
+\ image. The pin records each path's content digest on first read and
+\ re-verifies on every reload; a drifted file throws E-BUILD-BOOT-DRIFT and
+\ fails the build.
+\
+\ Design: per-file, keyed by SHA-256 of the path (fixed 32 bytes, independent of
+\ path length), value = SHA-256 of the file content. Per-file (not one digest
+\ over a concatenated manifest) so the map spans all three emissions with no
+\ separate file list to drift, and so a mismatch names the exact drifted path.
+\ Baking the combined pin into the image for boot-time reload verification needs
+\ engine work and is tracked by dot habu-boot-pin-bake.
+: BF-PIN-RESET ( -- )
+   0 BF-PIN-N ! ;
+
+: BF-PIN-ON! ( -- )
+   BF-TRUE BF-PIN-ON ! ;
+
+: BF-PIN-OFF! ( -- )
+   BF-FALSE BF-PIN-ON ! ;
+
+: BF-PIN-KEY@ ( n -- ptr a )
+   BF-STAMP-DG-U * BF-PIN-KEYS + ;
+
+: BF-PIN-DIG@ ( n -- ptr a )
+   BF-STAMP-DG-U * BF-PIN-DIGS + ;
+
+: BF-PIN-COMPUTE ( ptr u8 n -- )
+   2dup BF-PIN-KEYBUF SHA256
+   BF-PIN-DIGBUF SHA256-FILE dup 0 <> if throw then drop ;
+
+: BF-PIN-MATCH? ( n -- bool ) {: row:n :}
+   BF-PIN-KEYBUF BF-STAMP-DG-U row BF-PIN-KEY@ BF-STAMP-DG-U STR= ;
+
+: BF-PIN-FIND ( -- n )
+   0 begin dup BF-PIN-N @ < while
+      dup BF-PIN-MATCH? if exit then
+      1 +
+   repeat drop -1 ;
+
+: BF-PIN-APPEND ( -- )
+   BF-PIN-N @ BF-PIN-CAP >= if E-STR-CAPACITY throw then
+   BF-PIN-KEYBUF BF-PIN-N @ BF-PIN-KEY@ BF-STAMP-DG-U BYTE-COPY
+   BF-PIN-DIGBUF BF-PIN-N @ BF-PIN-DIG@ BF-STAMP-DG-U BYTE-COPY
+   BF-PIN-N @ 1 + BF-PIN-N ! ;
+
+: BF-PIN-VERIFY-AT ( n -- )
+   BF-PIN-DIG@ BF-STAMP-DG-U BF-PIN-DIGBUF BF-STAMP-DG-U STR= 0= if
+      E-BUILD-BOOT-DRIFT throw
+   then ;
+
+: BF-PIN-FILE ( ptr u8 n -- )
+   BF-PIN-ON @ 0= if 2drop exit then
+   BF-PIN-COMPUTE
+   BF-PIN-FIND dup 0 < if drop BF-PIN-APPEND exit then
+   BF-PIN-VERIFY-AT ;
+
 : BF-APPEND-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu src:ptr srcu :}
+   src srcu BF-PIN-FILE
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
 
@@ -1192,6 +1263,7 @@ variable BF-CERT-PATH-U
 
 : BF-MAIN ( -- )
    BF-PARSE-FORCE {: argn:n :}
+   BF-PIN-RESET BF-PIN-ON!
    argn 0= if BF-BUILD-ALL-CACHED exit then
    argn 1 <> if BF-USAGE then
    s" all" BF-ARG0= if BF-BUILD-ALL-CACHED exit then

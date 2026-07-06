@@ -1125,6 +1125,16 @@ lesson — keep the specific word/code/path, cut the prose.
   no-static-allot executable-memory invariants. Prove the replacement with a
   negative fixture (emitter underflow -> `BF-CERTIFY-RC` 70), not by trusting
   the compile. (Ported from fable c33ec3e66479.)
+- **Re-emitting the same source across build stages is a boot-reload TOCTOU:**
+  `build-fixpoint` re-reads the boot-prefix files for the stage2, stdin, and snap
+  emissions and the stamp-key re-emit; a mid-build source edit would let stage N
+  build from one revision and N+1 from another, silently entering the installed
+  image. `BF-PIN` pins each emitted path's content digest (keyed by SHA-256 of
+  the path) on first read via the single `BF-APPEND-SOURCE` choke point and
+  re-verifies on every reload, so there is no separate manifest to drift and a
+  mismatch throws `E-BUILD-BOOT-DRIFT`. Baking the digest for boot-*time* reload
+  verification is a separate engine change (dot habu-boot-pin-bake). (Ported
+  from fable eb9ee4631166.)
 - **The dot ledger drifts from head — audit before assigning:** the 2026-07-06
   sweep of 129 open dots found 6 already fully landed+proven (object/linker epic
   parent + 5 others), 10 with stale premises ("no tiled GEMM" when cg-matmul.f is

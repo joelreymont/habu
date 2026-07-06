@@ -72,6 +72,7 @@
 -2801 constant E-BUILD-COMMAND
 -2802 constant E-BUILD-STATUS
 -2803 constant E-BUILD-PATH
+-2804 constant E-BUILD-BOOT-DRIFT
 
 \ Diagnostics: -2900..-2999
 -2900 constant E-DIAG-FIRST
