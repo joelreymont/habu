@@ -509,10 +509,14 @@ construction, and the deltas are the fusion mechanism's measured value.
 
 \emph{Pre-existing rows} are cited rather than rebuilt: the wrong-adjoint
 detection fixture, the seeded convergence gate, the Triton error battery,
-and the agent-repair-loop metrics. \todo{Pending rows: on-device
-predicted-vs-measured traffic and fused-vs-unfused latency (needs the
-bench harness); persistent-tune warmup vs Triton JIT (needs cad-6);
-EXPLAIN packet on/off A/B arm; tuned-vs-default schedule deltas.}
+and the seeded convergence gate. \emph{Repair packets, A/B}: the same
+deterministic repair loop over four seeded authoring errors, fed either
+the full typed packet or a status-quo minimal signal (verdict plus raw
+error code): packets halve repair rounds (5 vs 10) and cut repair tokens
+by a third (255 vs 383) to reach the identical green kernel.
+\todo{Pending rows: on-device predicted-vs-measured traffic and
+fused-vs-unfused latency; persistent-tune warmup vs Triton JIT (cad-6);
+tuned-vs-default schedule deltas.}
 
 \subsection{Type Families}\label{sec:tfam}
 \todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15)
