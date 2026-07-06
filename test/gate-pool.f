@@ -4,6 +4,7 @@
 
 require lib/process-fork.f
 require test/gate-stats.f
+require tools/why-threw.f
 
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
@@ -541,6 +542,7 @@ GT-POOL-ABORT-KILL!
 \ Exit with a fixed nonzero code: the kernel keeps only the low 8 exit bits,
 \ so a raw throw code that is a multiple of 256 would read as success.
 : GT-POOL-FORK-THROW ( n -- ) {: rc:n :}
+   rc WHY-THREW-DUMP                             \ self-identify an opaque capacity throw before dying
    GT-POOL-NAME-RESET
    s" fork worker throw rc " GT-POOL-NAME+
    rc 0 < if

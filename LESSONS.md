@@ -715,6 +715,31 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Ignored dot archive cannot satisfy active blockers:** `.dots/archive/` is not
   tracked, so a clean host may not have the same archived files. Dot dependency
   lint must ignore archive entries and active dots must drop completed blockers.
+- **Arm the opaque throw, don't guess the buffer:** a ~1-in-hundreds fork-worker
+  `E-STR-CAPACITY -2201` (event-closure-test, stdlib/tail-pure) would not
+  reproduce in 340+ runs and every capacity source was ruled out (all builders
+  reset before first use; real host TMPDIR=49 keeps the largest SB build ~336;
+  `s"`/`S\"` never touch SB at runtime OR compile; content-key cache inactive).
+  Machine saturation only yields 5s WAITs (over-subscription), not the flake. The
+  fix for an unreproducible race is not a capacity bump — it is arming the throw
+  site: `test/gate-pool.f GT-POOL-FORK-THROW` now calls `tools/why-threw.f`
+  `WHY-THREW-DUMP` so ANY worker throw prints one `WHY-THREW:` line per shared
+  builder (SB/CK/CK-ROW) fill+cap before dying, self-identifying the buffer on the
+  next occurrence. The gate `.f` closure is triple-registered: `FILEMAP.md`, the
+  result-cache closure member set (`test/run-files.f TR-GATE-HARNESS-FILES`, or
+  `run-result-cache-test.f CLOSURE-LINT` fails), and every `require`d file must be
+  a closure member.
+- **Hot-cache full-gate passes do not prove the engine-build closure; cold is the
+  merge oracle.** A green `test/run.f` at 8.3s was a cache-HOT run that SKIPPED the
+  native engine build slice; `test/run.f -- --cold-cache` exercises it and caught a
+  `duplicate definition: CK-CAP` (rc 78, "Habu-under-test build artifact missing")
+  my change introduced. Root cause: adding one `require` to a gate file (gate-pool.f
+  -> why-threw.f -> lib/content-key.f) registered content-key EARLIER, so the later
+  `include lib/content-key.f` in `test/gate-stdlib.f`/`test/gate-common.f`
+  re-evaluated it. Fix at root with require-dedup, not definition tolerance: those
+  build-manifest lines must be `require lib/content-key.f` (include-once), never
+  `include`. When a change adds a transitive `require` to any gate file, run the
+  cold gate before claiming green — merge-gate runs cold.
 - **New PTX trusted primitives need rows before merge:** local `master` had
   `RELU`/`RELU-V4` TRUSTED sites without `TRUSTED.md` rows; the full native lint
   slice caught it. Add the row and a checked kernel fixture in the same change.

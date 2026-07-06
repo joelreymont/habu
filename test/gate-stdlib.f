@@ -16,7 +16,7 @@ require lib/process-env.f
 require lib/test/runner.f
 require test/gate-pool.f
 require test/gate-stats.f
-include lib/content-key.f
+require lib/content-key.f
 include test/gate-stdlib-lib.f
 include test/gate-stdlib-inline-lib.f
 include test/gate-stdlib-cases.f
