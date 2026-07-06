@@ -14,3 +14,12 @@ Count drift (tools/trusted-inventory.f is authoritative): TRUST rows now 356
 repo-wide — habu2.f 101, habu1.f 40, jit.f 5. The counts GREW since mint (engine
 work keeps adding builder rows); no conversion batch has landed. The metric and
 plan stand unchanged.
+
+## Adopted rows (2026-07-06 pool-dot close)
+
+Owner-of-record for three habu1.f builder-emit rows previously owned by
+habu-pool-children-die-6e57e753 (closed - its reaper work is done, the emitter
+boundaries persist): `linux-setpgid-self`, `spawn-darwin-zero-attr`,
+`spawn-darwin-attr-defaults` (landed with the setpgid prim + spawn
+group-leader change, 1ce2fb46). Same builder TRUST->CHECKED conversion class
+as the rest of this dot's scope.

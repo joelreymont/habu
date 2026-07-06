@@ -667,9 +667,9 @@ src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436 12
 src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436 8
 src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
-src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
-src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
-src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
+src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 103
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
