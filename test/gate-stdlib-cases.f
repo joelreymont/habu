@@ -227,6 +227,8 @@ TEST:SUITE ptx-stdlib
    lib/ptx/collective-test.f
    lib/ptx/autograd-test.f
    lib/ptx/ir-test.f
+   lib/ptx/opt-ir-test.f
+   lib/ptx/opt-test.f
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
    lib/ptx/ad-saved-test.f

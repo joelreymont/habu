@@ -463,6 +463,8 @@ variable GSI-TL-FILE-A
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
    s" lib/ptx/ir-test.f" GSI-INCLUDE
+   s" lib/ptx/opt-ir-test.f" GSI-INCLUDE
+   s" lib/ptx/opt-test.f" GSI-INCLUDE
    s" lib/ptx/ad-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-test.f" GSI-INCLUDE
    s" lib/ptx/ad-saved-test.f" GSI-INCLUDE ;

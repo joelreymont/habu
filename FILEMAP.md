@@ -138,6 +138,15 @@ points stay listed.
   folding, peephole canonicalization, CSE, and DCE live marking.
 - `lib/ptx/ir-test.f` — checked value fixtures for PTX IR fold, peephole,
   CSE, DCE, and overflow rejection.
+- `lib/ptx/opt-ir.f` — line-oriented instruction-table IR over emitted PTX
+  text: parses body lines into typed pure/opaque records and re-renders them.
+- `lib/ptx/opt.f` — sound bit-exact optimization passes over that IR
+  (copy-prop, constant-fold, CSE, DCE, self-move peephole); opt-in OFF by
+  default via PTX-MAYBE-OPT.
+- `lib/ptx/opt-ir-test.f` — checked fixtures for opt-ir line classification,
+  operand parsing, fail-closed passthrough, and byte-exact round-trip.
+- `lib/ptx/opt-test.f` — per-pass before/after fixtures, idempotence,
+  fma-refusal, and safety (saxpy/gelu/cg-mma semantics + count deltas).
 - `lib/ptx/ad-dag.f` — checked reverse-mode symbolic DAG builder for PTX row
   kernels.
 - `lib/ptx/ad-dag-test.f` — checked validation tests for PTX AD DAG overflow,
