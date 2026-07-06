@@ -160,6 +160,8 @@ TEST:SUITE maki/cad-bind-test.f
 TEST:END-SUITE
 TEST:SUITE maki/cad-ref-test.f
 TEST:END-SUITE
+TEST:SUITE maki/plan-compose-test.f
+TEST:END-SUITE
 TEST:SUITE maki/golden-test.f
 TEST:END-SUITE
 TEST:SUITE maki/golden-artifact-test.f
