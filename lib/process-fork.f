@@ -146,3 +146,24 @@ create PROC-REAP-PFD 16 allot   \ two pollfd cells (8 bytes each)
       s" " 0 die
    then
    rpid ;
+
+\ ---- capture-spawn reaper context -------------------------------------------
+\ A worker that owns a death-watch read end (its worker-alive pipe: the write
+\ end is held only by the worker, so EOF == this worker died, whatever killed
+\ it) publishes the fd here; every capture spawn (PROC-RUN-CAPTURE family, via
+\ PROC-CAPTURE-PID!) then arms a co-located PROC-SPAWN-REAPER in the child's
+\ group watching that fd. Spawned capture children are their own group leaders,
+\ so neither the worker's group-kill nor its parent-death reaper reaches them;
+\ this closes that gap. -1 = no context: PROC-REAP-ARM-ON arms nothing, so
+\ ordinary tools keep zero extra processes. The fd cell is per-process state:
+\ forked children inherit a copy and nested pool workers overwrite it with
+\ their own worker-alive read end.
+variable PROC-REAP-WATCH-FD   -1 PROC-REAP-WATCH-FD !
+
+: PROC-REAP-ARM-ON ( pid -- pid ) {: cpid:pid :}
+   PROC-REAP-WATCH-FD @ dup 0 < if drop -1 >PID exit then
+   >FD cpid PROC-SPAWN-REAPER ;
+
+: PROC-REAP-ARM-INSTALL ( -- )
+   [: PROC-REAP-ARM-ON ;] is PROC-REAP-ARM ;
+PROC-REAP-ARM-INSTALL

@@ -1189,6 +1189,18 @@ parent's control path is a bug. Parent code reaps the child with `PROC-WAIT-RC`
 or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
 `PROC-FORK` converts that to `E-PROC-SPAWN`.
 
+Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
+typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
+`PROC-CAPTURE-PID!`): the default vector arms nothing; `lib/process-fork.f`
+installs the live vector, which arms a co-located `PROC-SPAWN-REAPER` in the
+child's process group watching the fd published in `PROC-REAP-WATCH-FD`
+(-1 = no context). A pool worker publishes its worker-alive read end there, so
+a quiet capture child — its own group leader, invisible to the worker's
+group-kill — dies with the worker instead of lingering. Every capture
+terminator calls `PROC-REAP-DISARM`, which kills and waits the reaper by its
+specific pid, so no reaper outlives its capture and `wait(-1)` callers never
+see a stray child.
+
 `lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
 It is loaded after the native engine rebuild because older seeds do not know
 the raw `spawn-argv-io` primitive. It owns bounded argv table and string buffers,

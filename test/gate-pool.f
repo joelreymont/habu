@@ -567,19 +567,23 @@ GT-POOL-ABORT-KILL!
 
 \ Worker side: open a worker-alive pipe, arm the parent-death reaper watching
 \ both the pool parent's death pipe (RD) and this worker-alive pipe, then drop
-\ every copy the worker no longer needs: the inherited parent death-pipe RD/WR
-\ and the worker-alive RD. The worker keeps only the worker-alive WR open (an
-\ untracked fd, close-on-exec) so it closes exactly at this worker's exit and
-\ the reaper self-exits with no orphan. The made-flag is cleared so a nested
-\ pool this worker later drives builds its own death pipe. The reaper is a
-\ reparented grandchild (see PROC-FORK-REAPER), never a child of this worker,
-\ so the worker body's wait(-1) still sees no children.
+\ every copy the worker no longer needs: the inherited parent death-pipe RD/WR.
+\ The worker keeps the worker-alive WR open (an untracked fd, close-on-exec) so
+\ it closes exactly at this worker's exit and the reaper self-exits with no
+\ orphan -- and it keeps the worker-alive RD published as PROC-REAP-WATCH-FD,
+\ so every capture child this worker spawns (PROC-RUN-CAPTURE family) gets its
+\ own co-located reaper watching this worker's life. Extra RD copies never
+\ delay the EOF (only write ends count) and both ends are close-on-exec. The
+\ made-flag is cleared so a nested pool this worker later drives builds its own
+\ death pipe. The reaper is a reparented grandchild (see PROC-FORK-REAPER),
+\ never a child of this worker, so the worker body's wait(-1) still sees no
+\ children.
 : GT-POOL-ARM-REAPER ( -- )
    PROC-DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
    GT-POOL-DEATH-RD@ wa-rd PROC-FORK-REAPER
    GT-POOL-DEATH-RD@ FD>N close
    GT-POOL-DEATH-WR@ FD>N close
-   wa-rd FD>N close
+   wa-rd FD>N PROC-REAP-WATCH-FD !
    0 GT-POOL-DEATH-MADE ! ;
 
 \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.

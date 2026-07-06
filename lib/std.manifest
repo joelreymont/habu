@@ -473,6 +473,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-OUTCOME>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map outcome kind and code to historical rc with non-exits as 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
 1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
+1	process	lib/process.f	word	PROC-REAP-ARM-OFF	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	default capture-reaper vector: arm nothing and return the no-reaper pid sentinel
+1	process	lib/process.f	word	PROC-REAP-ARM-DEFAULT	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the no-op capture-reaper vector; lib/process-fork.f replaces it with the live one
+1	process	lib/process.f	word	PROC-CAPTURE-PID!	(pid --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	record the capture child pid and arm the context's co-located death reaper for it
+1	process	lib/process.f	word	PROC-REAP-DISARM	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	kill and wait the capture reaper by its specific pid so it never outlives its capture
 1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
@@ -549,6 +553,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-fork	lib/process-fork.f	word	PROC-FORK-REAPER	(fd fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	double-fork a reparented parent-death reaper watching the death and worker-alive pipes
 1	process-fork	lib/process-fork.f	word	PROC-REAP-WATCH1	(fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	block until the single parent-death read end EOFs; kill the reaper's group on parent death
 1	process-fork	lib/process-fork.f	word	PROC-SPAWN-REAPER	(fd pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	fork a co-located reaper that joins a spawned child's group and kills it on pool-parent death; returns the reaper pid
+1	process-fork	lib/process-fork.f	word	PROC-REAP-ARM-ON	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	live capture-reaper vector: arm a co-located reaper watching PROC-REAP-WATCH-FD, or nothing when unset
+1	process-fork	lib/process-fork.f	word	PROC-REAP-ARM-INSTALL	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the live capture-reaper vector into the PROC-REAP-ARM seam
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for argv byte storage
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF@	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read the argv byte-storage pointer
