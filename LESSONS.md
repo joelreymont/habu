@@ -1077,6 +1077,17 @@ lesson — keep the specific word/code/path, cut the prose.
   a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
   words. The rules now live in `docs/forth.md`; once known, later ports needed
   ~zero checker iterations. The win is verification, not authoring speed.
+- **Advisory soundness findings rot — and can be born rotten:** the prop-test
+  metamorphic ROUNDTRIP amplifier was 100% inconsistent from its introduction
+  (REND-SIG's "just-checked effect" contract is destroyed by CHECK's own
+  certify epilogue: CHECKER-USIG-CERT-ADD → USIG-ADD → NEW wipes BROW/DCUR,
+  checker.f:5782/3338/1137) yet the gate stayed green for its whole life
+  because inconsistencies were counted "(logged, non-fatal)" and shards mute
+  output. A property tester that prints findings and exits 0 is error masking;
+  the counters must be fatal at the summary. And a 100% failure rate on a
+  metamorphic leg means the HARNESS CONTRACT is broken (one root cause), not N
+  distinct checker misses — probe the contract word directly (CHECK! then
+  REND-SIG on one line) before shrinking N "different" cases.
 - **The dot ledger drifts from head — audit before assigning:** the 2026-07-06
   sweep of 129 open dots found 6 already fully landed+proven (object/linker epic
   parent + 5 others), 10 with stale premises ("no tiled GEMM" when cg-matmul.f is
