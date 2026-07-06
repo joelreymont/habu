@@ -28,3 +28,17 @@ REMAINING here, now unblocked: retire the BF-PREFLIGHT textual asserts in
 favor of the real (now blocking) certification; hash-pin the boot prefix
 (sha256 baked into the image) to close the boot-reload TOCTOU; retire the
 stdin.f REPL set-check now that repl sources certify.
+
+## Preflight retirement + boot pin ported (2026-07-06, on 2017301c)
+
+Both residue items were found already implemented on the unmerged fable lane
+(2026-07-04) and were PORTED with provenance rather than redone: preflight
+typed-shape asserts retired (fable c33ec3e66479 -> 10fecb46, extended: icode's
+typed-shape asserts also retired since the blocking certify flip covers the
+check-off window; kept: mmap fail-closed + no-static-allot invariants and the
+two same-type codegen-role asserts, dot habu-preflight-codegen-role-a52ea587);
+boot-prefix hash pin build-time half (fable eb9ee4631166 -> ported commit)
+with E-BUILD-BOOT-DRIFT + `boot pin mismatch` regression; boot-TIME bake =
+engine work, dot habu-boot-pin-bake-8b284046. REMAINING here: stdin.f REPL
+set-check retirement (src/habu/stdin.f declared this worker's for that dot
+only).
