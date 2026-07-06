@@ -335,8 +335,12 @@ lesson — keep the specific word/code/path, cut the prose.
   diagnostic plus a deterministic nonzero rc (`BF-CLI` pattern); the engine
   boundary fix is habu-engine-bthrow-no-02c6b017.
 - **`wait-rc` is WEXITSTATUS-only:** a signal-killed child (SIGABRT = rc 134)
-  reports rc 0 through `wait-rc`/`PROC-WAIT-RAW`. Use `PROC-WAIT-RC`
-  (`wait-status` + 128+sig mapping); primitive fix is habu-wait-rc-masks-9ae37cd0.
+  reports rc 0 through the raw primitive. All in-repo users are migrated
+  (bench.f -> PROC-WAIT-RC; the dead PROC-WAIT-RAW alias retired from
+  lib/process.f + manifest + docs) with an end-to-end 128+sig regression
+  (TEST-PROC-WAIT-RC-SIGNAL). The primitive itself (habu1.f BWAITRC + its
+  checker PES row) still exists engine-side; its removal is the routed
+  remainder of habu-wait-rc-masks-9ae37cd0.
 - **Path materialization must share one fail-closed emitter:** `s" <path>"`
   loader/prefix lines were hand-rolled with zero escaping in `lib/source.f`
   (`SOURCE-APPEND-PROVIDED`) and `tools/check-core.f` (`CHK-APPEND-REQUIRED`,

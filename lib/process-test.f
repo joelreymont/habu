@@ -206,6 +206,15 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PROC-OUTCOME-SIGNAL SIGKILL PROC-OUTCOME>RC RC>N 137 T=
    PROC-OUTCOME-TIMEOUT SIGKILL PROC-OUTCOME>RC RC>N 137 T= ;
 
+\ Regression for habu-wait-rc-masks-9ae37cd0: a signal-killed child must report
+\ 128+sig end-to-end through PROC-WAIT-RC, never a masked rc 0 (the retired raw
+\ `wait-rc` path returned WEXITSTATUS only = 0 for a SIGKILLed child).
+: TEST-PROC-WAIT-RC-SIGNAL ( -- )
+   PROC-ARGV-RESET
+   s" -c"  >LEN PROC-ARGV+
+   s" kill -KILL $$"  >LEN PROC-ARGV+
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-RC RC>N 137 T= ;
+
 : TEST-WAIT-FAIL ( -- )
    [: TEST-WAIT-BAD ;] E-PROC-WAIT TTHROWSQ ;
 
@@ -315,6 +324,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-PROC-WAIT-OUTCOME-EXIT
    TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
+   TEST-PROC-WAIT-RC-SIGNAL
    TEST-WAIT-FAIL
    TEST-PIPE
    TEST-WRITE-CLOSED-PIPE-NOSIGPIPE

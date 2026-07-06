@@ -1088,7 +1088,6 @@ wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
 
 ```forth
-PROC-WAIT-RAW       ( pid -- rc )
 PROC-WAIT-STATUS-RAW ( pid -- n )
 PROC-SPAWN-RAW      ( ptr u8 fd fd fd -- pid )
 PROC-KILL-RAW       ( pid n -- rc )
@@ -1165,12 +1164,14 @@ polls one fd for readable input and returns the raw poll result as `count`;
 `POLL-IN-OR-TIMEOUT` throws `E-PROC-TIMEOUT` for a zero poll result and
 `E-PROC-OUTPUT` for poll failure.
 
-`PROC-WAIT-RAW` and `PROC-SPAWN-RAW` are raw primitive aliases captured before
-the checked wrapper names are defined. A failed raw spawn returns a negative
-target code (`-errno` on macOS; the Linux exec-failure handshake still reports
-negative failure), while checked wrappers convert any negative pid to
-`E-PROC-SPAWN`. Application code should prefer `PROC-SPAWN-IO`,
-`PROC-WAIT-RC`, and `PROC-RUN-RC`.
+`PROC-SPAWN-RAW` is a raw primitive alias captured before the checked wrapper
+names are defined. A failed raw spawn returns a negative target code (`-errno`
+on macOS; the Linux exec-failure handshake still reports negative failure),
+while checked wrappers convert any negative pid to `E-PROC-SPAWN`. Application
+code should prefer `PROC-SPAWN-IO`, `PROC-WAIT-RC`, and `PROC-RUN-RC`. There is
+deliberately no raw `wait-rc` wrapper: the primitive reports WEXITSTATUS only,
+so a signal-killed child would read as rc 0 (a swallowed crash). Wait through
+`PROC-WAIT-RC` / `PROC-WAIT-OUTCOME`, which decode signal deaths as 128+sig.
 
 `lib/process-fork.f` layers fork support after native refresh because older
 engines do not have the `fork` primitive during the build prelude.

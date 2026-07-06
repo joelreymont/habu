@@ -463,7 +463,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-LS-DRAIN	(ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	stream all lines from the active file descriptor
 1	source	lib/source.f	word	SOURCE-FILE-LINES	(ptr u8 n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	stream a counted file path line by line through a callback
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
-1	process	lib/process.f	word	PROC-WAIT-RAW	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-KILL-RAW	(pid n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children

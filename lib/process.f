@@ -46,9 +46,6 @@ variable PROC-STATUS
 variable PROC-OUTCOME-KIND
 variable PROC-OUTCOME-CODE
 
-: PROC-WAIT-RAW ( pid -- rc ) {: pid :}
-   pid PID>N wait-rc >RC ;
-
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
 

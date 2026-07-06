@@ -1,15 +1,15 @@
 \ bench.f — fixed kernels on bin/hb, timed from Habu.
 
+require lib/errors.f
+require lib/process.f
+
 1000000000 constant NS/SEC
 1000000 constant NS/MS
-256 constant BENCH-PATH-CAP
 32 constant BENCH-NUM-CAP
 2 constant BENCH-F-SETFD
 1 constant BENCH-FD-CLOEXEC
 74 constant BENCH-E-IO
-75 constant BENCH-E-CAPACITY
 
-create PATH-BUF BENCH-PATH-CAP allot
 create NL 1 allot
 create NUM-BUF BENCH-NUM-CAP allot
 
@@ -34,27 +34,12 @@ variable SMOKE?
 : BENCH-IO ( ptr u8 n -- )
    BENCH-E-IO BENCH-DIE ;
 
-: BENCH-CAPACITY ( ptr u8 n -- )
-   BENCH-E-CAPACITY BENCH-DIE ;
-
 : STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u b:ptr v :}
    u v <> if BENCH-FALSE exit then
    0 begin dup u < while
       dup a + c@ over b + c@ <> if drop BENCH-FALSE exit then
       1 +
    repeat drop BENCH-TRUE ;
-
-: BENCH-CHECK-PATH ( n -- )
-   BENCH-PATH-CAP 1 - > if s" bench: path too long" BENCH-CAPACITY then ;
-
-: PATHZ ( ptr u8 n -- ptr u8 ) {: a:ptr u :}
-   u BENCH-CHECK-PATH
-   0 begin dup u < while
-      dup a + c@ over PATH-BUF + c!
-      1 +
-   repeat drop
-   0 PATH-BUF u + c!
-   PATH-BUF ;
 
 : FD-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    fd a u write u <> if s" bench: write failed" BENCH-IO then ;
@@ -111,7 +96,7 @@ variable SMOKE?
    s"  ns/iter" type ;
 
 : BENCH-SPAWN-HB ( -- )
-   s" bin/hb" PATHZ IN-R @ -1 -1 spawn-io PID !
+   s" bin/hb" >LEN PROC-PATHZ IN-R @ -1 -1 spawn-io PID !
    PID @ 0 < if s" bench: spawn failed" BENCH-IO then ;
 
 : RUN-HB ( ptr u8 n -- n ) {: prog:ptr pu :}
@@ -121,7 +106,7 @@ variable SMOKE?
    IN-R @ close
    IN-W @ prog pu FD-WRITE-LN
    IN-W @ close
-   PID @ wait-rc ;
+   PID @ >PID PROC-WAIT-RC RC>N ;   \ 128+sig for signal deaths, never masked to 0
 
 : BENCH ( ptr u8 n n ptr u8 n -- ) {: name:ptr nu iters prog:ptr pu :}
    name nu type
