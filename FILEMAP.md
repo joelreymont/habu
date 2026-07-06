@@ -278,6 +278,7 @@ points stay listed.
 - `tools/object-image-test.f` — focused coverage for writing and running a
   tiny executable from object text.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
+- `tools/standalone-load-test.f` — proves lint/tool core entries load in isolation via hb --load child spawns (each entry requires its own deps).
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for

@@ -1,5 +1,9 @@
 \ intern.f - checked growable string interner for native lint tools.
-\ Load after lib/errors.f, lib/memory.f, lib/vector.f, and tools/lint/text.f.
+
+require lib/errors.f
+require lib/memory.f
+require lib/vector.f
+require tools/lint/text.f
 
 76 constant E-LINT-INTERN-CAP
 $400 constant INTERN-MAX

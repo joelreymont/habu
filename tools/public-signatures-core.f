@@ -1,7 +1,9 @@
 \ public-signatures-core.f - emit typed public-word manifests.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
-\ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
+\ Standalone-loadable: requires its own deps so `bin/hb --load
+\ tools/public-signatures-core.f` works without the resident DAG ordering.
 
+require tools/lint/text.f
+require tools/lint/intern.f
 require tools/event-closure-lib.f
 
 $10000 constant PS-FILE-CAP
