@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-05
+Last updated: 2026-07-06
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -1077,6 +1077,16 @@ lesson — keep the specific word/code/path, cut the prose.
   a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
   words. The rules now live in `docs/forth.md`; once known, later ports needed
   ~zero checker iterations. The win is verification, not authoring speed.
+- **The dot ledger drifts from head — audit before assigning:** the 2026-07-06
+  sweep of 129 open dots found 6 already fully landed+proven (object/linker epic
+  parent + 5 others), 10 with stale premises ("no tiled GEMM" when cg-matmul.f is
+  device-proven; counts off by 30-50 rows), and 3 TRUSTED.md rows owned by
+  archived dots (`trusted-inventory -- strict` red on DOT-EXISTS?, invisible to
+  the gate because the gate suite runs fixtures, not live strict). Rules: verify
+  a dot's claim against head before working it; `dot off` only after checking
+  `rg <id> TRUSTED.md` and reassigning owner rows; suite `rc 0` is NOT proof —
+  engine-suite standalone exits 0 after checker errors (drop-to-REPL masks), so
+  the last-line `ok` marker or the full gate is the signal.
 
 ## VCS
 

@@ -12,3 +12,13 @@ Gap #9 (the maki deployment seam). Maki ops (optim/loss/autograd/train) run on C
 - Files: maki/ (a lowering + launch driver, FFI boundary), depends on the tile-IR codegen.
 - Verify: a maki tensor add runs the checked +. kernel on the GPU and matches the CPU result; then a tensor SGD step on device.
 - Dep: tile-IR codegen (gap #1) + maki tensor types (done).
+
+## Audit refresh (2026-07-06, head 1eb3b5d3)
+
+The blanket premise "maki ops do NOT lower onto the checked Habu-PTX kernels" is
+stale: maki/gpu.f lowers AXPY (scale + `+.`) onto the checked SAXPY kernel with
+F64>F32 marshalling, and maki/gpu-train.f runs SGD on device — both device-proven
+(maki/STATUS.md: SAXPY/SOFTMAX-ROWS within 1 ULP; maki trains 3 SGD epochs on the
+GPU). Remaining scope: the GENERAL tensor-op selection/lowering seam (arbitrary
+elementwise ops, softmax, matmul dispatch from maki tensors), which maki/STATUS.md
+itself lists as future work.

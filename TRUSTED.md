@@ -700,7 +700,7 @@ src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff
 src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
-src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
+src/core/roles.f:DTC-EVAL prim-axiom habu-typed-defining-words-aa224eb5
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>LEN prim-axiom habu-primitive-effect-axiom-1119f176
@@ -738,12 +738,12 @@ src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
 tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
-lib/ffi.f:FDEF-EVAL stdlib-boundary habu-role-typed-ffi-08f99d18
+lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
-lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 6
+lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
 lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
 lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
 lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18

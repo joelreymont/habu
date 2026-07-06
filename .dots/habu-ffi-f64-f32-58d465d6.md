@@ -12,3 +12,12 @@ Gap #14. The on-device launch (tools/ptx/cuda-launch.f) HARDCODED the f32 bit pa
 - Files: an f32-narrow primitive or helper; the maki/FFI launch driver.
 - Verify: launch SAXPY with an arbitrary a (e.g. 1.7) and match the CPU golden within f32 tol.
 - Dep: M1d harness + the launch path (proven).
+
+## Audit refresh (2026-07-06, head 1eb3b5d3)
+
+The "HARDCODED f32 bit pattern" premise is stale: a general F64>F32 narrowing
+exists (lib/ptx/cg.f, via R>BITS, inventoried in TRUSTED.md) plus F32! array
+packing, used device-proven in maki/gpu.f (`xv F64>F32 GHX ix F32!`, gpu.f:59-60)
+with the gpu-test.f golden on Orin. Remaining scope: the dot's own verify — a
+non-f32-exact scalar (e.g. a = 1.7) device regression; only f32-exact a values
+(2.0, -0.25) are exercised so far.

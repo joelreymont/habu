@@ -31,3 +31,12 @@ The checker itself needs no change to be *run* over its own source — `CHECK!`/
 `CHECK-CANDIDATE!` already type arbitrary definitions. What is missing is the build
 step that FEEDS checker.f/render.f through the previous binary before baking. Owner:
 the habu2.f/build worker.
+
+## Audit refresh (2026-07-06, head 1eb3b5d3)
+
+Count drift in the premise (tools/trusted-inventory.f is authoritative): TRUST
+rows are now 356 repo-wide (101 in habu2.f, 40 habu1.f, 5 jit.f, 0 in roles.f —
+the 34 roles.f rows were retired by the deftype converter rework), TRUSTED rows
+235. The staged-prefix bake-check itself remains unbuilt; nonblocking
+BF-CERTIFY-STAGE landed (tools/build-fixpoint.f) but does not certify the full
+checker/render prefix and is not blocking.
