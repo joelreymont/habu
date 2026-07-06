@@ -21,3 +21,6 @@ CAVEAT (not a conflict): device gradient-parity verification needs the zed
 construction through the maki gate (maki/README.md); mark device parity as
 PENDING-ZED rather than claiming verified. The main gate's maki slice must stay
 green after every change.
+NOTE (2026-07-07): the zed box is unreachable for ~a week, expected back
+~2026-07-14, so the PENDING-ZED device parity stays pending until then; keep
+progressing the Mac-side codegen/autograd + maki gate meanwhile.
