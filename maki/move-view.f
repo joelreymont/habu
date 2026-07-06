@@ -9,12 +9,16 @@
 \ resolve the ultimate SOURCE input plus the constant element OFFSET the fold bakes into
 \ the reading kernel's base pointer.
 \
-\ v1 folds MVV-FREE only (reshape = identity flat, slice = a lane-aligned row offset), and
-\ only when the movement's source is a model INPUT SLOT: the whole fold is one
-\ `base += r0*cols` on the reading kernel's operand pointer (reshape r0=0), so the existing
-\ kernel body (EW flat index, RED row span, MM K-loop) is otherwise untouched. Every harder
-\ case fails closed with a named throw and is tracked for a later slice:
-\   MVV-STAGED (transpose)      -> E-MVW-STAGED   (a lane permutation, not a base offset)
+\ MVV-FREE (reshape = identity flat, slice = a lane-aligned row offset) folds into all three
+\ compute kernels (EW flat index, RED row span, MM K-loop) as one `base += r0*cols` on the
+\ reading operand pointer (reshape r0=0), when the movement's source is a model INPUT SLOT.
+\ MVV-STAGED (transpose) is a lane PERMUTATION, not a base offset, so it folds only where the
+\ per-element load index can absorb it: the FLAT EW kernel, via MVW-CHECK-EW + MVW-XPOSE-DIMS
+\ (src_flat = (e mod dstC)*srcC + e/dstC). RED (coalesced row loads) and MM (K-loop A/B
+\ addressing) cannot express a transposed column load, so a staged transpose feeding them stays
+\ fail-closed (E-MVW-STAGED via MVW-CHECK); the planner-side materialization for those classes
+\ is the next slice of habu-maki-fold-staged. Every harder case fails closed:
+\   MVV-STAGED into RED / MM     -> E-MVW-STAGED   (a lane permutation the row/K-loop cannot hold)
 \   MVV-MATERIALIZE/GATHERED    -> E-MVW-NOTFREE  (mat=1: a region boundary, not a fold)
 \   source not an input slot    -> E-MVW-SRC      (chained / cross-region movement, v1)
 \   unexpected movement op-kind -> E-MVW-OP
@@ -60,10 +64,26 @@ public
    op OP-SLICE   = if mv MIR-ATTR@ MV-PA@  mv MIR-COLS@ *  exit then   \ r0 * cols (source stride)
    E-MVW-OP throw ;
 
-\ source-buffer element count to upload (reshape = output elems ; slice = full source rows)
+\ source-buffer element count to upload (reshape = output elems ; slice = full source rows ;
+\ transpose = full source, permuted per element by the fold)
 : MVW-SRC-ELEMS ( n -- n ) {: mv:n :}
    mv MVW-SRC-REF MIR-REF-SLOT {: s:n :}
    s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
+
+\ ---- staged transpose fold (dst[i,j]=src[j,i]) -------------------------------
+\ Unlike a FREE reshape/slice (a constant base offset), a STAGED transpose is a lane
+\ PERMUTATION: it folds into the reading kernel's per-element index math, not its base
+\ pointer. MVW-STAGED? gates that path; MVW-XPOSE-DIMS exposes the remap dims so the
+\ consumer emits src_flat = (e mod dstC)*srcC + e/dstC over its flat output index e
+\ (dstC = output cols = source rows ; srcC = output rows = source cols).
+: MVW-STAGED? ( n -- bool ) {: ref:n :}
+   ref MVW-DISSOLVED? 0= if false exit then
+   ref MIR-MOVE-VERDICT@ MVV-STAGED = ;
+
+: MVW-XPOSE-DIMS ( n -- n n ) {: mv:n :}
+   mv MIR-OP@ OP-TRANSPOSE <> if E-MVW-OP throw then   \ the staged verdict is transpose-only (v1)
+   mv MVW-SRC-REF drop                                 \ v1: source must be a model slot (E-MVW-SRC)
+   mv MIR-COLS@  mv MIR-ROWS@ ;                         \ dstC (out cols = src rows) ; srcC (out rows = src cols)
 
 \ ---- resolution for a region operand (movement node or plain external ref) ---
 \ the source ref a folded operand actually uploads (its slot), else the ref itself
@@ -75,9 +95,20 @@ public
    ref MVW-DISSOLVED? if ref MVW-OFF-ELEMS 4 * else 0 then ;
 
 \ prove a region's dissolved movement members are all v1-foldable (free, slot source);
-\ a staged/chained/mat one throws here BEFORE any PTX is emitted.
+\ a staged/chained/mat one throws here BEFORE any PTX is emitted. This is the RED/MM
+\ contract (they fold FREE offsets only); EW additionally folds a staged transpose and
+\ uses MVW-CHECK-EW below.
 : MVW-CHECK ( n -- ) {: ref:n :}
    ref MVW-DISSOLVED? 0= if exit then
+   ref MVW-OFF-ELEMS drop  ref MVW-SRC-REF drop ;
+
+\ EW foldability: FREE via a base offset (MVW-OFF-ELEMS) OR a STAGED transpose via the
+\ per-element remap (MVW-XPOSE-DIMS). A chained (non-slot source) or unexpected-op one
+\ still throws here BEFORE any PTX is emitted; the flat EW kernel is the only v1 consumer
+\ whose load index can absorb a full lane permutation.
+: MVW-CHECK-EW ( n -- ) {: ref:n :}
+   ref MVW-DISSOLVED? 0= if exit then
+   ref MVW-STAGED? if ref MVW-XPOSE-DIMS 2drop exit then
    ref MVW-OFF-ELEMS drop  ref MVW-SRC-REF drop ;
 
 end-package

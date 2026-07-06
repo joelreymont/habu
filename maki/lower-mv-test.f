@@ -141,13 +141,30 @@ LMVT-CAP-MM
 s" add.u64 %rd1, %rd1, 64"      LMVT-IN
 s" fma.rn.f32"                  LMVT-IN      \ contraction K-loop unchanged
 
-\ ================= fail-closed boundaries ====================================
+\ ================= (C) staged transpose folded into the EW load index ======================
+\ A STAGED transpose (dst[i,j]=src[j,i]) is a lane PERMUTATION, not a base offset. The FLAT
+\ EW kernel absorbs it in its per-element load index (dot habu-maki-fold-staged).
+\ Device numerics + goldens are pending-zed (maki/lower-mv-device-test.f); host proves the PTX.
 
-\ ---- STAGED (transpose) fold is unsupported v1 in EW / RED / MM (a lane permutation) -------
+\ ---- TG: TRANSPOSE GELU folds the staged transpose into the EW load index math. x:4x8
+\ TRANSPOSE -> 8x4 out (dstC=4 out cols=src rows, srcC=8 src cols). The flat kernel reads
+\ src_flat = (e mod 4)*8 + e/4 per element off the grid index, then runs the unchanged GELU.
 MODEL: TG ( x:4x8 -- y ) TRANSPOSE GELU ;
 FP-BUILD
-' LMVT-TRY-EW E-MVW-STAGED TTHROWS
+1 FP-REGION-COUNT T=                         \ transpose dissolves into gelu's region (one region)
+0 MIR-MAT@ TFALSE                            \ the transpose is dissolved (folded), not materialized
+LMVT-CAP-EW
+s" .version"                    LMVT-ONCE    \ exactly one module header (a well-formed single module)
+s" .visible .entry REGION_0"    LMVT-ONCE
+s" rem.u32 %r6, %r5, 4"         LMVT-IN      \ e mod dstC  (out cols = 4)
+s" div.u32 %r7, %r5, 4"         LMVT-IN      \ e / dstC
+s" mad.lo.u32 %r8, %r6, 8, %r7" LMVT-IN      \ (e mod dstC)*srcC(8) + e/dstC = source flat index
+s" ex2.approx.f32"              LMVT-IN      \ the gelu body is unchanged
+s" .param .u64 p_in1"           LMVT-ABSENT  \ one region input (the transpose source slot)
 
+\ ---- TN / TM: RED's coalesced ROW-LOAD and MM's K-loop addressing cannot absorb the lane
+\ permutation, so a staged transpose feeding them still fails closed (E-MVW-STAGED); the
+\ planner-side materialization for these classes is the next slice of habu-maki-fold-staged.
 MODEL: TN ( x:4x8 -- y ) TRANSPOSE RMSNORM ;
 FP-BUILD
 ' LMVT-TRY-RED E-MVW-STAGED TTHROWS

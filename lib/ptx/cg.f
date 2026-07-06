@@ -9,6 +9,7 @@
 \ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
 
 variable CG-NF  variable CG-NRD  variable CG-NR  variable CG-NP  variable CG-NL
+variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX (for index-remap folds)
 
 0 constant CG-OP-ADD
 1 constant CG-OP-SUB
@@ -168,11 +169,31 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" mov.u32 " CG-S rn CG-R s" , %ntid.x;"  CG-S CG-LINE
    SB-RESET s" mov.u32 " CG-S rt CG-R s" , %tid.x;"   CG-S CG-LINE
    SB-RESET s" mad.lo.u32 " CG-S ri CG-R s" , " CG-S rc CG-R s" , " CG-S rn CG-R s" , " CG-S rt CG-R s" ;" CG-S CG-LINE
+   ri CG-GRID-IDX !                        \ expose the flat index for per-input index-remap folds
    CG-NEXT-P {: p :}
    SB-RESET s" setp.ge.u32 " CG-S p CG-P s" , " CG-S ri CG-R s" , %r1;" CG-S CG-LINE
    SB-RESET s" @" CG-S p CG-P s"  bra DONE;" CG-S CG-LINE
    CG-NEXT-RD {: off :}
    SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S ri CG-R s" , 4;" CG-S CG-LINE
+   off ;
+
+\ GRID-INDEX: the flat output index register EMIT-GRID-CTX just computed (%rN). A folded
+\ staged transpose remaps its load off this index instead of the coalesced byte offset.
+: EMIT-GRID-INDEX ( -- n )  CG-GRID-IDX @ ;
+
+\ XPOSE-OFF: the byte offset of a transpose-folded source element. Given the flat output
+\ index reg and the transpose dims (dstC = output cols, srcC = source cols), dst[i,j]=src[j,i]
+\ maps flat e -> src_flat = (e mod dstC)*srcC + e/dstC; returns the source byte-offset rd reg.
+\ dstC/srcC are emit-time constants, so they ride as immediates (no extra kernel params).
+: EMIT-XPOSE-OFF ( n n n -- n ) {: flatr:n dstC:n srcC:n :}
+   CG-NEXT-R {: rj:n :}
+   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC SB-U s" ;" CG-S CG-LINE
+   CG-NEXT-R {: ri:n :}
+   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S dstC SB-U s" ;" CG-S CG-LINE
+   CG-NEXT-R {: rsrc:n :}
+   SB-RESET s" mad.lo.u32 " CG-S rsrc CG-R s" , " CG-S rj CG-R s" , " CG-S srcC SB-U s" , " CG-S ri CG-R s" ;" CG-S CG-LINE
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S rsrc CG-R s" , 4;" CG-S CG-LINE
    off ;
 
 \ LOAD: masked coalesced load from span base + ctx offset; returns tile f reg.

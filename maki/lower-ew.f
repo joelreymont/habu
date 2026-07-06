@@ -74,12 +74,13 @@ variable LEW-RID                            \ region id being lowered
 : LEW-OP-OK? ( n -- bool ) {: op:n :}
    op OP-RELU = op OP-GELU = or op OP-SILU = or
    op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or ;
-\ compute members must be v1 EW ops; movement members must be v1-foldable dissolved
-\ movements (MVW-CHECK fails closed on staged / mat / non-slot source before any emit).
+\ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
+\ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
+\ chained / mat / non-slot source before any emit).
 : LEW-CHECK-OPS ( n -- ) {: rid:n :}
    MIR-N@ 0 ?do
       i rid LEW-IN-REGION? if
-         i MIR-MOVE? if i MVW-CHECK
+         i MIR-MOVE? if i MVW-CHECK-EW
          else i MIR-OP@ LEW-OP-OK? 0= if E-LEW-OP throw then then
       then
    loop ;
@@ -187,8 +188,23 @@ private
    1 CG-NF !  LEW-NIN @ 2 + CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
 
 \ ---- body: grid ctx, per-input loads, op chain, store -----------------------
-: LEW-LOADS ( n -- ) {: off:n :}                 \ load input i at the shared ctx offset
-   LEW-NIN @ 0 ?do  i 1+ off EMIT-LOAD  LEW-IN-REG i cells + !  loop ;
+\ Load input i: a plain / FREE-folded input reads the shared coalesced byte offset (its base
+\ was pre-advanced by LEW-APPLY-VIEWS); a STAGED transpose reads a per-element remapped offset
+\ off the flat index (src_flat = (e mod dstC)*srcC + e/dstC), so its base stays at the slot origin.
+\ PERF: the transpose read is STRIDED (adjacent lanes stride by srcC), so folding trades a
+\ materialization pass for uncoalesced loads; whether it wins over materialize-then-coalesced is
+\ a device question (measure-before-believing, docs/eval-triton.md 3c) - goldens pending-zed.
+: LEW-LOAD-IN ( n n n -- ) {: i:n off:n flatr:n :}
+   LEW-INS i cells + @ {: ref:n :}
+   ref MVW-STAGED? if
+      ref MVW-XPOSE-DIMS {: dstc:n srcc:n :}
+      flatr dstc srcc EMIT-XPOSE-OFF {: roff:n :}
+      i 1+ roff EMIT-LOAD  LEW-IN-REG i cells + !
+   else
+      i 1+ off EMIT-LOAD  LEW-IN-REG i cells + !
+   then ;
+: LEW-LOADS ( n n -- ) {: off:n flatr:n :}       \ load each input at its resolved ctx offset
+   LEW-NIN @ 0 ?do  i off flatr LEW-LOAD-IN  loop ;
 : LEW-EMIT-NODE ( n -- ) {: nd:n :}
    nd MIR-OP@ case
       OP-RELU          of nd 0 LEW-OPREG EMIT-RELU  endof
@@ -203,19 +219,25 @@ private
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
    MIR-N@ 0 ?do  i LEW-RID @ LEW-IN-REGION? i MIR-MOVE? 0= and if i LEW-EMIT-NODE then  loop ;
 
-\ fold each dissolved movement input into a base-pointer offset (reshape 0 / slice r0*cols*4):
-\ the generic operand pointer is advanced before EMIT-LOAD cvta's it, so the flat kernel's
-\ load index reads the movement's source window with no other change (maki/move-view.f).
+\ fold each dissolved FREE movement input into a base-pointer offset (reshape 0 / slice
+\ r0*cols*4): the generic operand pointer is advanced before EMIT-LOAD cvta's it, so the flat
+\ kernel's load index reads the movement's source window with no other change (maki/move-view.f).
+\ A STAGED transpose is a lane permutation, not a base offset, so it is skipped here and folded
+\ per-element in LEW-LOAD-IN instead.
 : LEW-APPLY-VIEWS ( -- )
    LEW-NIN @ 0 ?do
-      LEW-INS i cells + @ MVW-RESOLVE-OFF {: off:n :}
-      off 0 > if
-         SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+      LEW-INS i cells + @ {: ref:n :}
+      ref MVW-STAGED? 0= if
+         ref MVW-RESOLVE-OFF {: off:n :}
+         off 0 > if
+            SB-RESET s" add.u64 %rd" CG-S i 1+ SB-U s" , %rd" CG-S i 1+ SB-U s" , " CG-S off SB-U s" ;" CG-S CG-LINE
+         then
       then
    loop ;
 : LEW-BODY ( -- )
    1 EMIT-GRID-CTX {: off:n :}                    \ span base ignored; off = index*4, bounds vs %r1
-   off LEW-LOADS
+   EMIT-GRID-INDEX {: flatr:n :}                  \ the flat output index reg (staged remap reads it)
+   off flatr LEW-LOADS
    LEW-CHAIN
    LEW-OUTNODE @ LEW-NR@  LEW-NIN @ 1+  off  EMIT-STORE ;
 
