@@ -184,6 +184,8 @@ TEST:SUITE maki/eval-fixture.f
 TEST:END-SUITE
 TEST:SUITE maki/eval-repair.f
 TEST:END-SUITE
+TEST:SUITE maki/eval-repair-ab-test.f
+TEST:END-SUITE
 TEST:SUITE maki/device-smoke.f
 TEST:END-SUITE
 TEST:END-GROUP

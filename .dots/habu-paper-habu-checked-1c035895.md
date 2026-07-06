@@ -48,3 +48,18 @@ docs/ablation.md. Pending rows tracked there: on-device traffic/latency
 (bench harness), persistent-tune warmup (cad-6), EXPLAIN A/B arm,
 tuned-vs-default deltas. (The interim ablation work-dot was lost to the
 minted-on-orphaned-commit gotcha; this entry is the durable record.)
+
+EXPLAIN A/B ARM LANDED 2026-07-06: row 7 (with-vs-without-packet) is now
+implemented-here. maki/eval-repair-ab-test.f measures both arms over 4 seeded
+authoring-error fixtures (fix_type, add_producer, two-bug, remove_producer),
+scored by the same checker and converging on the same green kernel so only the
+repair PATH differs. ON = the rich EXPLAIN packet (repair_class + offending token
++ expected/actual rows + suggestion, per docs/repair-diagnostics.md); OFF = the
+minimal status-quo signal (verdict + raw code only), which forces one
+plausible-but-wrong repair per error. Measured aggregate: rounds 5 (ON) vs 10
+(OFF) = 2.0x; tokens-to-green 255 (ON) vs 383 (OFF) = +50.2%. The repair-loop
+metric engine was factored into maki/eval-repair-loop.f (shared by eval-repair.f
+and the A/B test). Numbers + per-fixture table: docs/ablation.md § EXPLAIN packet
+A/B. Rerun: bin/hb --load maki/test.f. Still pending on this row family:
+on-device latency arm (bench harness), persistent-tune warmup (cad-6),
+tuned-vs-default deltas.

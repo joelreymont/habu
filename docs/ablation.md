@@ -26,7 +26,7 @@ Status legend: **impl** = landed by this dot (`habu-ablation-fault-injection`); 
 | 5 | Verified gradient | from-scratch convergence gate (end-to-end proof) | pre | `maki/from-scratch-test.f` (seeded NLL fall + bit-exact determinism) | `bin/hb --load maki/test.f` |
 | 6 | Persistent content-keyed tuning | time-to-first-correct-inference vs Triton warmup; replay determinism across restarts | pending | store/replay exist (`maki/store.f`, `maki/store-replay-test.f`); the time-to-first + JIT-warmup comparison is **pending cad-6** | — |
 | 7 | EXPLAIN packets | repair-rounds / tokens-to-green | pre | `maki/eval-repair.f:47` (`repair-rounds` + `tokens-to-green`, checker-guided loop) | `bin/hb --load maki/test.f` |
-| 7 | EXPLAIN packets | **with-vs-without-packet** A/B ablation | pending | `eval-repair.f` measures the repair-loop metric but not yet the packet on/off arm — **pending** an eval-repair ablation arm | — |
+| 7 | EXPLAIN packets | **with-vs-without-packet** A/B ablation | impl | `maki/eval-repair-ab-test.f` (4 seeded authoring-error fixtures, ON=rich packet vs OFF=minimal status-quo signal, same checker + same green kernel); shared engine `maki/eval-repair-loop.f` | `bin/hb --load maki/test.f` (in the maki gate) | — |
 | 8 | Schedule machinery | tuned-vs-closed-form-default deltas per family | pending | **pending cad-6** (tuner output) | — |
 | 9 | Gate-licensed precision | tf32 request licenses the REAL TF32 tensor-core kernel: `PREC-TF32` -> `maki/lower-mm.f` LMM-MMA? emits the `mma.sync` kernel (`lib/ptx/cg-mma.f`), golden passes device==host within the tf32 row (reason + evidence name tf32), AND the inverse guard: a seeded 0.5% fault fails even under the tf32 band; PREC-RESET re-emits the f32 kernel green | impl | registry `maki/precision.f`; kernel `lib/ptx/cg-mma.f`; fragment/GEMM device proofs `tools/ptx/mma-probe.f` + `tools/ptx/mma-gemm-check.f` (element-exact); license `maki/precision-device-test.f` (legs 1-4); measured `docs/eval-triton.md` GEMM step 3 (375-398 GFLOP/s) | `bin/hb --load maki/precision-device-test.f` (on the Orin); host: in the maki gate |
 
@@ -92,6 +92,39 @@ test: ok
   GB/s — pending the bench harness (the fenced `tools/ptx/bench.f` lane + CAD-PLAN 8.1
   PROFILE/roofline).
 - **6 persistent tuning** (time-to-first-correct vs Triton JIT warmup): pending cad-6.
-- **7 EXPLAIN with/without-packet A/B**: `maki/eval-repair.f` already measures repair-rounds
-  and tokens-to-green; the packet-on/off ablation arm is pending.
 - **8 schedule tuned-vs-default deltas**: pending cad-6 tuner output.
+
+## EXPLAIN packet A/B ablation numbers (row 7, measured)
+
+`bin/hb --load maki/eval-repair-ab-test.f` (in the maki gate) runs 4 seeded
+authoring-error fixtures through the shared repair-loop engine
+(`maki/eval-repair-loop.f`, factored out of `maki/eval-repair.f`). Both arms are
+scored by the SAME checker (`maki/eval.f CHECK-PASSES?`) and CONVERGE TO THE SAME
+green kernel (`GREEN$`), so only the repair PATH differs and the packet's effect is
+isolated. Every candidate (draft, each repair, green) is a real source string run
+through the checker; repair-rounds and tokens-to-green are measured over real
+verdicts, not asserted.
+
+- **ON (EXPLAIN packet)**: the full checker diagnostic of `docs/repair-diagnostics.md`
+  — `repair_class`, the offending token + span, expected/actual stack rows, and a
+  class-derived suggestion. Each checker-surfaced error costs one targeted repair.
+- **OFF (status-quo baseline)**: the minimal signal a conventional compiler emits on a
+  bad definition — the verdict line plus a raw error code, nothing else. No class, no
+  offending node, no expected/actual rows, no suggestion. Unable to localize the
+  fault, the author makes one plausible-but-wrong repair per error before the correct
+  one (a conservative lower bound; each floundering step is itself a real checker
+  rejection).
+
+| Fixture (seeded error class) | ON rounds | ON tokens | OFF rounds | OFF tokens |
+|------------------------------|----------:|----------:|-----------:|-----------:|
+| `fix_type` (SCALE operand)   | 1 | 58 | 2 | 87 |
+| `add_producer` (missing store) | 1 | 55 | 2 | 77 |
+| `fix_type` + `add_producer` (two bugs) | 2 | 81 | 4 | 129 |
+| `remove_producer` (surplus load) | 1 | 61 | 2 | 90 |
+| **Aggregate (4 fixtures)** | **5** | **255** | **10** | **383** |
+
+The minimal-feedback arm costs strictly more on both axes: **2.0x the repair rounds**
+(10 vs 5) and **+50.2% tokens-to-green** (383 vs 255, +128). The test asserts the exact
+per-arm rounds per fixture and the `OFF > ON` inequality on both axes. Latency/wall-time
+is out of scope here (this is the deterministic author-trajectory harness, not an LLM
+run); the live model benchmark uses the schema-2 rows of `docs/repair-diagnostics.md`.

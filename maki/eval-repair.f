@@ -10,30 +10,7 @@
 \ authored until certification. (This is the Habu-PTX side; the Triton comparison
 \ is the external arm.)
 
-require lib/ptx/test-prelude.f
-require maki/eval.f
-
-variable ER-NTOK  variable ER-ST
-\ count whitespace-separated tokens in a kernel source string
-: COUNT-TOKS ( ptr u8 n -- n ) {: a u :}
-   0 ER-NTOK !  0 ER-ST !
-   begin  a u $20 ER-ST @ SPLIT-NEXT  while      ( tokptr toklen nextstart )
-      ER-ST !                                    ( tokptr toklen )
-      dup 0 > if  ER-NTOK @ 1+ ER-NTOK !  then  2drop
-   repeat
-   2drop drop  ER-NTOK @ ;
-
-variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN
-: ER-RESET ( -- )  0 ER-ROUND !  0 ER-TOKENS !  0 ER-GREEN ! ;
-\ one authoring step: count its tokens, check it; reject -> +1 repair round,
-\ certify -> green. Steps after green are ignored (the loop has converged).
-: ER-STEP ( ptr u8 n -- )
-   ER-GREEN @ if 2drop exit then
-   2dup COUNT-TOKS  ER-TOKENS @ +  ER-TOKENS !
-   CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
-: ER-ROUNDS@ ( -- n )  ER-ROUND @ ;
-: ER-TOKENS@ ( -- n )  ER-TOKENS @ ;
-: ER-GREEN? ( -- bool )  ER-GREEN @ ;          \ -1 (green) / 0 (not), already canonical
+require maki/eval-repair-loop.f    \ COUNT-TOKS / ER-RESET / ER-STEP / ER-ROUNDS@ / ER-TOKENS@ / ER-GREEN?
 
 T-RESET
 
