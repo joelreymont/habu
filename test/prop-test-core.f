@@ -1,8 +1,10 @@
 \ prop-test-core.f — property-based checker-soundness test, SELF-HOSTED in habu.
 \ Generates runnable typed defs, checks them, RUNS the certified ones IN-PROCESS
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
-\ from its declared ( in -- out ) — a false-cert. No host scripting, no gforth, no
-\ spawning: generator, driver and measurement are all habu, run by bin/hb.
+\ from its declared ( in -- out ) — a false-cert — or if any metamorphic amplifier
+\ (subsumption / render round-trip / composition) reports an inconsistency. No
+\ host scripting, no gforth, no spawning: generator, driver and measurement are
+\ all habu, run by bin/hb.
 \
 \ The default run shards the sweep across PROP-SHARD-N forked slots, each a
 \ distinct seed running DEFAULT-COUNT iterations, so a single gate phase covers
@@ -213,9 +215,12 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    name-ch in-arity RUN-MEAS
    LAST-TRAP @ IF  expected FC-SET-TRAP  name-ch FC-LINE
    ELSE  LAST-MEAS @ expected <> IF  expected LAST-MEAS @ FC-SET-ARITY  name-ch FC-LINE  THEN THEN ;
-\ Shards suppress the (non-fatal, capped) metamorphic inconsistency logs so N
-\ parallel children do not interleave them on the shared stdout; false-cert
-\ lines (FC-LINE) stay unconditional because a false-cert fails the phase.
+\ Shards suppress the (capped) metamorphic inconsistency logs so N parallel
+\ children do not interleave them on the shared stdout; false-cert lines
+\ (FC-LINE) stay unconditional because a false-cert fails the phase. The logs
+\ are capped/quiet but the finding is FATAL either way: the NSI/NRI/NCI
+\ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
+\ — an inconsistency-reporting property tester that exits 0 is error masking.
 variable SWEEP-QUIET
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
    SWEEP-QUIET @ if exit then
@@ -225,7 +230,7 @@ variable SWEEP-QUIET
 
 \ ---- metamorphic subsumption: an i64-certified body must also certify under the
 \ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free false-cert
-\ coverage); i64-cert but n-reject is a checker inconsistency (logged, non-fatal). ----
+\ coverage); i64-cert but n-reject is a checker inconsistency (fatal at FINISH). ----
 variable NSUB  variable NSI
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
    SMARK  1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
@@ -364,7 +369,10 @@ variable NFC0
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
-: FINISH  PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
+: NMETA ( -- n )  NSI @ NRI @ + NCI @ + ;
+: FINISH
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
+   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" 1 die THEN ;
 variable ARG-N  variable ARG-I  variable ARG-L
 : ARG>U?  ( ptr u8 -- n bool ) {: z:ptr :}   \ parse a non-empty decimal argv c-string
    z ZLEN ARG-L !  ARG-L @ 0= IF 0 0 0= 0= exit THEN
@@ -599,7 +607,8 @@ create AXBUF AXBUF-CAP allot
 \ distinct seed for DEFAULT-COUNT iterations, so one gate phase covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel. Self-tests + baits run
 \ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
-\ false-cert. One red shard fails the phase. Distinct seeds come from a per-run
+\ false-cert or metamorphic inconsistency. One red shard fails the phase.
+\ Distinct seeds come from a per-run
 \ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk. ----
 8 constant PROP-SHARD-N
 $9E3779B1 constant PROP-SHARD-STEP
@@ -622,10 +631,17 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    fd 0 < if exit then
    fd 2 dup2 drop
    fd close ;
+\ The named failure line goes to STDOUT (fd 2 is muted in shards; `die` writes
+\ stderr, so its message would vanish) and carries the shard seed so any red is
+\ reproducible serially via `bin/hb <seed> <count>`.
+: SHARD-FAIL ( ptr u8 n -- )
+   type s"  in shard seed " type RUN-SEED @ .
+   s" " 1 die ;
 : SHARD-CHILD ( n -- )   \ never returns: run this shard's seed, then exit 0 / 1
    SHARD-MUTE-STDERR
    SHARD-SEED DEFAULT-COUNT RUN-CORE
-   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT in shard" 1 die THEN
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT" SHARD-FAIL THEN
+   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY" SHARD-FAIL THEN
    s" " 0 die ;
 : SHARD-FORK ( n -- ) {: i:n :}
    PROC-FORK-RAW {: p:pid :}
@@ -637,7 +653,7 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
-   SWEEP-RED @ IF s" prop-test: sweep FALSE-CERT (a shard reported above)" 1 die THEN
+   SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" 1 die THEN
    s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
 
 : PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N distinct-seed slots
