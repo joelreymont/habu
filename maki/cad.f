@@ -47,6 +47,7 @@
 \ but never blocks. maki -> habu only; cad owns -5020..-5029.
 
 require lib/string.f
+require lib/float.f                 \ POW10: MODEL:/GOLDEN drives the float-tolerance golden compare
 require maki/report.f
 require maki/op-kind.f
 require maki/op-registry.f

@@ -6,6 +6,9 @@
 \ are exact while the scaled value (|x| * 10^k) fits an i64. Depends on
 \ lib/float.f (POW10) and lib/string.f (SB builder).
 
+require lib/float.f                        \ POW10 (SB-FIX float scaling)
+require lib/string.f                       \ SB-RESET / SB-APPEND-C / SB$ / STR-MINUS
+
 48 constant FMT-ZERO
 46 constant FMT-DOT
 

@@ -11,6 +11,8 @@
 \ on a path, so every word here binds all its locals up front (after the
 \ producing calls / value-only if-else) and keeps a single trailing exit guard.
 
+require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS
+
 46 constant FL-DOT
 101 constant FL-E-LOWER
 69 constant FL-E-UPPER

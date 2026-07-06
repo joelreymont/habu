@@ -162,6 +162,14 @@ lesson — keep the specific word/code/path, cut the prose.
 - **Run comments are not dependency setup:** `lib/render-test.f` and
   `lib/report-test.f` had accurate command comments but failed when loaded
   directly. Test and library entry files must `require` their own dependencies.
+- **Stdlib leaves hid missing requires for months; bare-load them to prove it:**
+  `lib/float.f` consumed `lib/string.f` words and `lib/fmt.f` consumed both
+  (its header even *documented* the deps) with no `require` lines — masked
+  everywhere by gate load order, surfacing only as a consumer "workaround"
+  require (`maki/ablate-fusion-test.f`) whose comment mis-attributed the dep.
+  The proof and the regression are the same command: a bare
+  `bin/hb --load lib/<mod>.f` + one word call must load green standalone; fix
+  the module that *consumes* the words, then delete the consumer workaround.
 - **Baked prefix files must be marked `provided`:** `bin/hb` loads core prefix
   files before user source, but the `require` registry was empty, so
   `require src/core/sha256.f` reloaded `W32` and hit duplicate definition.

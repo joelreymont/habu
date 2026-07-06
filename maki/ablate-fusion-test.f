@@ -17,9 +17,8 @@
 \ wired into the maki gate (maki/test.f).
 
 require lib/test.f
-require lib/float.f                               \ POW10 (MODEL: capture sets a float default tolerance)
 require lib/fmt.f
-require maki/cad.f
+require maki/cad.f                                \ brings lib/float.f (POW10) transitively for the MODEL:/GOLDEN tolerance path
 require maki/traffic.f
 
 package MAKI
