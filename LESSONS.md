@@ -1111,6 +1111,20 @@ lesson — keep the specific word/code/path, cut the prose.
   metamorphic leg means the HARNESS CONTRACT is broken (one root cause), not N
   distinct checker misses — probe the contract word directly (CHECK! then
   REND-SIG on one line) before shrinking N "different" cases.
+- **The emitted stage prefix has two check regions - retire textual asserts
+  only against a real check that covers the same region:** in the generated
+  stage source the checker-boot (util/structures/checker/render) plus
+  asm/icode/mnem load inside the `BFR-CHECK-OFF .. ' HOOK set-check` window
+  (unchecked at stage-compile time), while habu1/prof/regalloc/jit/habu2 load
+  with `HOOK` on (blocking-checked). The habu1/habu2 typed-shape preflight
+  asserts retired against the stage compile; icode's retired only once
+  BF-CERTIFY flipped blocking (the static scan checks the whole emitted source,
+  set-check windows included). Kept: same-type codegen-role asserts
+  (`LABEL@ B,` vs `@ B ;`; `SZA-I @ +` vs `over +`) no checker can express
+  (dot habu-preflight-codegen-role), and icode's mmap-fail-closed +
+  no-static-allot executable-memory invariants. Prove the replacement with a
+  negative fixture (emitter underflow -> `BF-CERTIFY-RC` 70), not by trusting
+  the compile. (Ported from fable c33ec3e66479.)
 - **The dot ledger drifts from head — audit before assigning:** the 2026-07-06
   sweep of 129 open dots found 6 already fully landed+proven (object/linker epic
   parent + 5 others), 10 with stale premises ("no tiled GEMM" when cg-matmul.f is

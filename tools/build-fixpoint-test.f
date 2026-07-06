@@ -622,6 +622,17 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Preflight-retirement regression: the retired habu1/habu2/icode typed-shape
+\ asserts guarded emitter words against stack-effect regressions; their
+\ replacement is the checker itself (habu1/habu2 compile checked in the stage;
+\ icode is covered by the blocking static certify). Prove the real check
+\ rejects the guarded corruption - an emitter body underflowing its declared
+\ inputs (the spawn-descriptor-underflow class the asserts were added for).
+: BFT-TEST-RETIRE-REGRESSION ( -- )
+   s" : SPAWN-DUP2-ACTION ( n n -- ) drop drop drop ;" BFT-CERT-WRITE
+   s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
+   BF-CERT-DIAG-U @ 0 > TTRUE ;
+
 \ Certification is BLOCKING: a generated stage source that rejects must fail
 \ the build with E-BUILD-STATUS, not warn and proceed (fail-open). The
 \ install-path proof is the red/green install pair recorded on
@@ -715,6 +726,7 @@ create BFT-CHECK-OFF-LINE
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
+   s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
    s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
    s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
