@@ -121,6 +121,8 @@
 -3411 constant E-PTX-AD-CONTROL
 -3412 constant E-PTX-EMIT      \ spawned kernel-emit child exited nonzero (its stderr surfaced)
 -3413 constant E-PTX-CAP       \ in-process PTX capture buffer overflowed
+-3414 constant E-PTX-OPT-OVERFLOW  \ PTX optimizer line/symbol/output arena overflowed
+-3415 constant E-PTX-OPT-SYNTAX    \ PTX optimizer parse invariant violated (should be fail-closed opaque)
 
 \ FFI: -3500..-3599
 -3500 constant E-FFI-FIRST
