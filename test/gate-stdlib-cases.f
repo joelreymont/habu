@@ -338,6 +338,10 @@ TEST:SUITE build-fixpoint-fixtures
    tools/build-fixpoint-test.f
 TEST:END-SUITE
 
+TEST:SUITE boot-pin-fixtures
+   test/boot-pin-test.f
+TEST:END-SUITE
+
 TEST:SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/codesign-test.f

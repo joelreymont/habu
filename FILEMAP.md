@@ -395,6 +395,8 @@ points stay listed.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
+- `tools/boot-pin.f` — boot-prefix content-pin tool: print/verify the digest of the checker/core source the engine re-reads at boot.
+- `tools/boot-pin-main.f` — CLI entrypoint for the boot-prefix pin tool.
 - `tools/lint/json-writer.f` — compact JSON writer for native lint diagnostics.
 - `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
@@ -609,6 +611,7 @@ points stay listed.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate
   slices.
 - `test/gate-hb-build-repl.f` — checked runner for `hb-build --repl` checks.
+- `test/boot-pin-test.f` — regression: boot-prefix digest determinism, drift detection, CLI verify, and path-list consistency with habu2.f.
 - `test/gate-pool.f` — bounded checked process pool used by native gate runners.
 - `test/gate-pool-test.f` — focused fork-backed pool worker coverage.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
