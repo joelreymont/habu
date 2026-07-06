@@ -271,6 +271,16 @@ TLPX-MIX-SWAP 4 T= 3 T= 2 T= 1 T= 5 T=
 : TLPX-LOCAL ( -- n n n n n n n n n ) 5 TLP-MK4 {: y:n z :} z TLP-UN4 y z TLP-UN4 ;
 TLPX-LOCAL 4 T= 3 T= 2 T= 1 T= 5 T= 4 T= 3 T= 2 T= 1 T=
 
+\ supported pass-2 boundary: a wide local bound at TOP LEVEL and REFERENCED inside
+\ both arms of a branch lowers and runs. (Binding a bundle local INSIDE branch
+\ scope is rejected by the checker — E-LAYOUT-BRANCH-LOCAL, test/type-decl-suite.f
+\ TD12-BRLOC-*; dot habu-tfam-12-pass-a77a24ce lifts it — but referencing a
+\ top-level bundle local from a branch is fine: #LOC still covers index 0.)
+\ typed-local-lint: allow-bare-local
+: TLPX-REF-BRANCH ( n -- n n ) TLP-MK2 {: a :} 0 > if a TLP-UN2 else a TLP-UN2 then ;
+5 TLPX-REF-BRANCH 9 T= 7 T=
+-3 TLPX-REF-BRANCH 9 T= 7 T=
+
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------

@@ -1973,6 +1973,8 @@ variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
+variable LOCBRANCH           \ a {: :} local was bound inside control-flow branch scope
+variable P2BRLOCBAD          \ branch-scoped local in a width-aware (pass-2) definition
 variable UNDEFERR
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
@@ -5109,6 +5111,7 @@ variable LCO
      LCO @ u < IF
       a u #LOC @ LOC-ANN
      THEN
+     #CFC @ 0 > IF -1 LOCBRANCH ! THEN     \ bound inside if/case/loop scope (popped at the join)
      #LOC @ 1 + #LOC ! THEN ;
 
 \ Linear values may not launder through locals. A local reference re-pushes its
@@ -6048,6 +6051,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
+   0 LOCBRANCH !  0 P2BRLOCBAD !
    0 WF-N !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
@@ -6098,8 +6102,21 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and ;
 
+\ Item 12 slice 3b soundness gate: the width-aware pass-2 recompiler reads the
+\ per-CHECK locals-width table (LOCW) AFTER the hook certifies, but branch-scoped
+\ locals are popped from #LOC at their join (CF-LOC-REST) and their frame slots
+\ are reused by the scalar emitter (habu2.f LCFPUSH/LCFPOP save+restore LOCN/LOCF).
+\ So in any definition that triggers pass-2 (WF-WIDE?), a local bound in branch
+\ scope is either out of range (die 76) or slot-reused (silent miscompile). Reject
+\ it here as a clean per-def diagnostic instead. Lifting the restriction needs a
+\ bind-occurrence-indexed width table (dot habu-tfam-12-pass-a77a24ce).
+: P2-BRANCH-LOCAL-GUARD ( -- )
+   WF-WIDE? 0 <>  LOCBRANCH @ 0 <>  and IF
+      0 OK !  -1 FAILSET !  -1 P2BRLOCBAD !
+   THEN ;
+
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  P2BRLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
@@ -6127,6 +6144,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
+   P2-BRANCH-LOCAL-GUARD             \ reject branch-scoped locals in a width-aware definition
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !

@@ -10,6 +10,25 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Post-check scratch read by a later pass must survive branch pops, or the
+  checker must reject:** TFAM 12 slice 3b's pass-2 width-aware emitter reads the
+  per-CHECK locals-width table (`LOCW`) AFTER the hook certifies, but branch-scoped
+  locals are popped from `#LOC` at their join (`CF-LOC-REST`) and the scalar emitter
+  REUSES their frame slots (`LCFPUSH`/`LCFPOP` save+restore `LOCN`/`LOCF`,
+  habu2.f:842-859). So a certified body with a branch-scoped local in a pass-2
+  definition either read `LOCW` out of range (die 76, whole-load abort) or read a
+  slot-reused width (silent miscompile) — while `CHECK-QUIET-CANDIDATE!` still
+  returned -1. Because pass-1's frame layout reuses slots, a whole-definition
+  high-water width table indexed by bind order is NOT the right frame math. Fix:
+  the checker rejects any local bound while `#CFC>0` in a definition where
+  `WF-WIDE?` (per-def flag `LOCBRANCH` + `P2-BRANCH-LOCAL-GUARD` →
+  `E-LAYOUT-BRANCH-LOCAL`), fail-closed as a per-def diagnostic not a die; lifting
+  it needs a bind-occurrence-indexed width table pass-2 fills itself
+  (dot habu-tfam-12-pass-a77a24ce). Mirror a new reject flag at all five sites:
+  checker variable + reject word + `CHECK-RESET` + `CHECK-VERDICT`, and render.f
+  `DCODE`/`REPAIR-CLASS`/`SUGGEST-TEXT`/`DIAG-PROSE` (the `DCODE` cascade needs one
+  extra trailing `THEN`).
+
 - **Layout transport is a per-token mode, not a per-var flag:** generic stack
   prims share polymorphic effect vars (`dup` and `0=` both use `PE-A`), so you
   cannot mark a var "layout-transportable". Item 12 sets `LAYOUT-XPORT` in
