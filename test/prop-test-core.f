@@ -449,7 +449,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -458,6 +458,18 @@ create AXBUF AXBUF-CAP allot
    s"  open read ioctl mmap path0 open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close " ;
 : AX-NOEXEC-B ( -- ptr u8 n )
    s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas " ;
+
+\ Checker-substrate introspection that cannot take dummy operands, plus the seal
+\ watermark capture. The indexed accessors fail closed with `76 die` on an
+\ out-of-range index (WF-ROW@ checker.f, TF-REC@ type-family.f), so a dummy `7`
+\ kills the census process whenever the live table is shorter; seal-capture
+\ (native BSEALCAP) rewrites the sealed friend-band ndict watermark, mutating
+\ live seal state mid-process like cp!/ndict!. Their arity is pinned by the
+\ native self-rebuild + behavioral gate. The zero-arg high-water readers
+\ (wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
+\ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
+: AX-NOEXEC-C ( -- ptr u8 n )
+   s"  seal-capture wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
@@ -470,6 +482,7 @@ create AXBUF AXBUF-CAP allot
    2dup AX-FLOAT-LIST AX-LIST-HAS? if 2drop AX-FLOAT exit then
    2dup AX-NOEXEC-A AX-LIST-HAS? if 2drop AX-NOEXEC exit then
    2dup AX-NOEXEC-B AX-LIST-HAS? if 2drop AX-NOEXEC exit then
+   2dup AX-NOEXEC-C AX-LIST-HAS? if 2drop AX-NOEXEC exit then
    2drop AX-UNKNOWN ;
 
 \ ---- name buffer -------------------------------------------------------------

@@ -307,11 +307,18 @@ The axiom set is audited two ways:
 - **Non-executable axioms** — syscalls, process/control words (`throw`, `die`,
   `fork`, `spawn-*`), parser literals (`s"`, `char`, `[']`), defining words
   (`create`, `variable`, `constant`), engine/checker introspection (`checker-*`,
-  `diag-*`, `parse-name`), image/FFI, and atomic RMW ops cannot be run
-  in-process with dummy operands. Their declared arity is pinned instead by the
-  native self-rebuild fixpoint (the engine is rebuilt from source through these
-  primitives) and the behavioral gate (the rebuilt engine runs real programs).
-  The census records them as `noexec`.
+  `diag-*`, `parse-name`), fail-closed checker-substrate table accessors that
+  `76 die` on an out-of-range dummy index (`wf-tokix@`/`wf-pos@`/`wf-fam@`/
+  `wf-width@` via `WF-ROW@`, `tfam-width@` via `TF-REC@`), the seal watermark
+  capture (`seal-capture` rewrites live seal state, like `cp!`/`ndict!`),
+  image/FFI, and atomic RMW ops cannot be run in-process with dummy operands.
+  Their declared arity is pinned instead by the native self-rebuild fixpoint
+  (the engine is rebuilt from source through these primitives) and the
+  behavioral gate (the rebuilt engine runs real programs). The census records
+  them as `noexec`. The substrate's zero-arg high-water readers (`wf-n@`,
+  `tfam-n@`, `sumv-n@`, `tf-str-u@`, `tf-pk-n@`, `schema-n@`,
+  `schema-root-n@`) are pure variable reads and ARE difftested, matching
+  `ndict@`/`cp@`.
 
 Axiom-set size is tracked separately from discharged `TRUSTED`: the census
 prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X
