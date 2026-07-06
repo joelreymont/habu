@@ -352,6 +352,14 @@ s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
 s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
+\ REND-SIG contract: a certified word's declared effect renders after CHECK!.
+\ The certify epilogue persists the usig via USIG-ADD, whose NEW re-initialized
+\ BROW/DCUR and blanked every render to '--' (dot habu-rend-sig-blanked-b269786b);
+\ CERT-REPOINT-ROWS re-points the render rows at USIG-ADD's re-parsed sig. The
+\ prop-test round-trip amplifier (serial run NRT>0, 0 inconsistencies) is the
+\ second half of this regression.
+s" COK-REND-SIG ( i64 -- i64 ) 1-" T-CHECK-PASSES
+REND-SIG s" i64 -- i64" T$=
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set

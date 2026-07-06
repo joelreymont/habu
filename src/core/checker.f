@@ -5749,6 +5749,19 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
+\ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
+\ CHECKER-USIG-CERT-ADD -> USIG-ADD runs NEW, which re-initializes BROW/DCUR
+\ (and RBROW/RCUR) to a fresh empty pair, wiping the verified declared effect
+\ recorded just above — so every certified word rendered bare `--` and the
+\ prop-test round-trip amplifier was dead since introduction (dot
+\ habu-rend-sig-blanked-b269786b). USIG-ADD's own PARSE-SIG-RAW leaves the
+\ re-parsed declared rows in SGIN/SGOUT (SGRIN/SGROUT with a return clause),
+\ live until the next CHECK — re-point the render rows at them.
+: CERT-REPOINT-ROWS ( -- )
+   SGBAD @ 0 <> IF EXIT THEN
+   SGIN @ BROW !  SGOUT @ DCUR !
+   SGHASR @ 0 <> IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN ;
+
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
@@ -5780,6 +5793,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
       THEN
       CHECK-SIG? IF
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
+         CERT-REPOINT-ROWS
       ELSE
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
       THEN

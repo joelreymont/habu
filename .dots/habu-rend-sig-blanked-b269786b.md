@@ -1,8 +1,10 @@
 ---
 title: REND-SIG blanked by certify epilogue breaks round-trip
-status: open
+status: closed
 priority: 1
 issue-type: task
+closed-at: "2026-07-06T00:00:00+02:00"
+close-reason: CERT-REPOINT-ROWS re-points BROW/DCUR (and RBROW/RCUR) at USIG-ADD's re-parsed SGIN/SGOUT after the certified-path CHECKER-USIG-CERT-ADD; probe renders i64 -- i64, engine-suite COK-REND-SIG fixture added, serial prop-test reports round-trip runs with 0 inconsistencies.
 created-at: "2026-07-06T14:43:07.474136+02:00"
 ---
 
