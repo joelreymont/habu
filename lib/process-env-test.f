@@ -188,6 +188,19 @@ variable PET-START-NS
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-CAPTURE
    1 T= 0 T= 0 T= ;
 
+\ Budget env carrier (habu-concurrent-multi-workspace-5341c7f4): a spawned hb
+\ child inherits HB_LOAD_PCT through the env rows and scales its budgets by it
+\ end-to-end - proving the gate's exported cal-factor actually reaches
+\ worker-spawned suites. Inherit-missing keeps HOME/PATH so bin/hb boots.
+: TEST-BUDGET-ENV ( -- )
+   PET-RESET
+   s" HB_LOAD_PCT" s" 250" PET-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" s" require lib/test/budget.f 100 T-BUDGET-MS . "
+   PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-STDIN-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu s" 250" CONTAINS? TTRUE ;
+
 : PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )
    PET-RESET
    PET-EARLY-IN!
@@ -278,6 +291,7 @@ variable PET-START-NS
    s" env-stdin-false-large" [: PET-RUN-ENV-STDIN-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-false-large" [: PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-timeout" [: PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ;] PET-CASE
+   s" budget-env" [: TEST-BUDGET-ENV ;] PET-CASE
    s" spawn-raw-missing" [: PET-SPAWN-RAW-MISSING ;] PET-CASE
    s" spawn-raw-true" [: PET-SPAWN-RAW-TRUE ;] PET-CASE
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE

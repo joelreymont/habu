@@ -2,6 +2,7 @@
 \
 \ Load after test/run-support.f.
 
+require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
@@ -531,6 +532,26 @@ variable TR-PRE-DIAG-FILE
 
 : TR-TMP-DEFAULT+ ( -- )
    s" HB_TMP" GT-ROOT TR-DEFAULT+ ;
+
+create TR-CAL-PCT-BUF 4 allot
+
+: TR-CAL-PCT-DIGIT! ( n n -- ) {: d:n i:n :}
+   d 48 + TR-CAL-PCT-BUF i + c! ;
+
+\ The clamp guarantees 100..300, so the text is always exactly three digits.
+: TR-CAL-PCT$ ( -- ptr u8 n )
+   TR-CAL-PCT {: pct:n :}
+   pct 100 / 0 TR-CAL-PCT-DIGIT!
+   pct 10 / 10 mod 1 TR-CAL-PCT-DIGIT!
+   pct 10 mod 2 TR-CAL-PCT-DIGIT!
+   TR-CAL-PCT-BUF 3 ;
+
+\ Export the measured load factor to spawned workers so suite budgets
+\ (lib/test/budget.f T-BUDGET-MS) scale with the same calibration the gate
+\ prints as cal-factor; forked/in-process suites read the cell TR-PREPARE
+\ sets directly.
+: TR-LOAD-PCT-DEFAULT+ ( -- )
+   s" HB_LOAD_PCT" TR-CAL-PCT$ TR-DEFAULT+ ;
 
 : TR-BUILD-CACHE-DEFAULT+ ( -- )
    TR-BUILD-CACHE-PATHS
@@ -1684,6 +1705,7 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PREPARE ( -- )
    TR-CALIBRATE
+   TR-CAL-PCT T-BUDGET-PCT !
    TR-GATE-START!
    TR-CHECK-ARGS
    TR-CHECK-PROFILE

@@ -7,6 +7,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/budget.f
 require tools/aot-call-report-lib.f
 
 $D503201F constant ACRT-NOP-INSTR
@@ -20,7 +21,10 @@ $94000002 constant ACRT-BL-PLUS-2
 $4020 constant ACRT-BUF-CAP
 $8000 constant ACRT-JSON-CAP
 $1000 constant ACRT-ERR-CAP
-10000 constant ACRT-TIMEOUT-MS
+\ Nominal budget scaled by measured load (lib/test/budget.f): saturation-proof
+\ without unbounding hang detection (max 3x nominal).
+10000 constant ACRT-NOMINAL-MS
+: ACRT-TIMEOUT-MS ( -- n ) ACRT-NOMINAL-MS T-BUDGET-MS ;
 
 create ACRT-BUF ACRT-BUF-CAP allot
 create ACRT-PATH 128 allot

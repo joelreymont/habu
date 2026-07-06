@@ -747,6 +747,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-record	lib/test/record.f	word	TREC-FAIL	(ptr u8 n n ptr u8 n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	print one TFAIL failure record line
 1	test	lib/test.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertions plus TEST package suite framework and final report policy
 1	test-assert	lib/test/assert.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertion primitives loaded by the test facade
+1	test-budget	lib/test/budget.f	module			lib/process-test.f	docs/stdlib.md	stdlib-test	active	load-aware timeout budgets scaled by the gate cal-factor via HB_LOAD_PCT, clamped to 3x nominal
+1	test-budget	lib/test/budget.f	word	T-BUDGET-CLAMP	(n -- n)	test/run-budget-cal-test.f	docs/stdlib.md	stdlib-test	active	clamp a load factor to the 100..300 percent budget band
+1	test-budget	lib/test/budget.f	word	T-BUDGET-ENV-PCT	(-- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-test	active	read and clamp HB_LOAD_PCT; unset or invalid means nominal 100
+1	test-budget	lib/test/budget.f	word	T-BUDGET-INIT	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-test	active	cache the environment load factor into T-BUDGET-PCT
+1	test-budget	lib/test/budget.f	word	T-BUDGET-MS	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-test	published	scale a nominal timeout budget by the measured load factor, at most 3x
 1	test-suite	lib/test/suite.f	module			lib/test/suite-test.f	docs/stdlib.md	stdlib-test	active	TEST package suite group test framework loaded by the test facade
 1	test-src-shape	lib/test/src-shape.f	module			lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	shared source-shape assertions that auto-size a whole-file buffer and assert its shape
 1	test-src-shape	lib/test/src-shape.f	word	SHAPE:CHECK-FIT	(ptr u8 n n n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	fail closed with a file/size diagnostic when a source would exceed the buffer cap

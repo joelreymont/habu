@@ -45,6 +45,20 @@ package TRBC
    0 MACOS!
    TR-CAL-PCT 100 T= ;
 
+\ HB_LOAD_PCT export text: the clamp guarantees 100..300, so the exported env
+\ value is always exactly three digits - the worker-side parser relies on it.
+: PCT-TEXT-NOMINAL ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   TR-CAL-PCT$ s" 100" T$= ;
+
+: PCT-TEXT-SCALED ( -- )
+   TR-CAL-REF-MACOS-MS 2 * MACOS!
+   TR-CAL-PCT$ s" 200" T$= ;
+
+: PCT-TEXT-CLAMPED ( -- )
+   TR-CAL-REF-MACOS-MS 10 * MACOS!
+   TR-CAL-PCT$ s" 300" T$= ;
+
 : MAIN ( -- )
    T-RESET
    PROBE-MEASURES
@@ -54,6 +68,9 @@ package TRBC
    THRASHING-CLAMPS-HIGH
    UNCALIBRATED-PROFILE-KEEPS-TABLE
    UNMEASURED-KEEPS-TABLE
+   PCT-TEXT-NOMINAL
+   PCT-TEXT-SCALED
+   PCT-TEXT-CLAMPED
    T-REPORT ;
 
 MAIN

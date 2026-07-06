@@ -38,9 +38,16 @@ create PT-CAPTURE-FALSE-BUF FS-PATH-CAP allot
 create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 2 constant PT-ENOENT
-5000 constant PT-HB-TIMEOUT-MS
-1000 constant PT-CMD-TIMEOUT-MS
-100 constant PT-SHORT-TIMEOUT-MS
+\ Nominal budgets, scaled by the measured load factor (lib/test/budget.f):
+\ under box saturation (concurrent gate runs) a healthy-but-slow child must
+\ not read as hung, while a genuinely hung child still fails within
+\ T-BUDGET-MAX-PCT/100 (= 3x) of the nominal budget.
+5000 constant PT-HB-NOMINAL-MS
+1000 constant PT-CMD-NOMINAL-MS
+100 constant PT-SHORT-NOMINAL-MS
+: PT-HB-TIMEOUT-MS ( -- n ) PT-HB-NOMINAL-MS T-BUDGET-MS ;
+: PT-CMD-TIMEOUT-MS ( -- n ) PT-CMD-NOMINAL-MS T-BUDGET-MS ;
+: PT-SHORT-TIMEOUT-MS ( -- n ) PT-SHORT-NOMINAL-MS T-BUDGET-MS ;
 
 : PT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -281,6 +288,20 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
    SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
 
+\ Regression for habu-concurrent-multi-workspace-5341c7f4: budgets scale with
+\ measured load (never shrink: min 100%), and detection stays BOUNDED - with
+\ the factor forced to its clamp maximum, a genuinely hung child still times
+\ out within T-BUDGET-MAX-PCT/100 (= 3x) of the nominal budget; the elapsed
+\ assert allows spawn overhead on top of the 300ms scaled kill.
+: TEST-BUDGET-HUNG-BOUNDED ( -- )
+   T-BUDGET-PCT @ {: saved:n :}
+   T-BUDGET-MAX-PCT T-BUDGET-PCT !
+   mono-ns {: t0:n :}
+   PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
+   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T=
+   mono-ns t0 - PROC-NS-PER-MS / 3000 < TTRUE
+   saved T-BUDGET-PCT ! ;
+
 : TEST-RUN-ARGV-CAPTURE-HB ( -- )
    PT-CAPTURE-HB PT-OUT 32 PT-ERR 32 PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT 0 T= 0 T= 3 T=
    PT-OUT c@ 51 T=
@@ -340,6 +361,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-ARGV-CAPTURE-FALSE
    TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT
+   TEST-BUDGET-HUNG-BOUNDED
    TEST-RUN-ARGV-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-RUN-IO-CAT

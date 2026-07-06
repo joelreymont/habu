@@ -65,7 +65,8 @@ TR-FILES: TR-GATE-HARNESS-FILES
    test/run-result-cache.f test/run-resident.f test/run-worker.f
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-   lib/process-fork.f lib/test/record.f lib/test/runner.f lib/content-key.f tools/cli-run.f
+   lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
+   lib/content-key.f tools/cli-run.f
    test/gate-pool.f test/gate-stats.f tools/why-threw.f
 ;TR-FILES
 
