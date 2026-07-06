@@ -292,12 +292,14 @@ s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0
 \ the bare linear itself still rejects a raw drop (baseline discipline).
 s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- item 12 slice-2: interpret-mode + frame-metadata boundaries (docs §17).
-\ A layout value is one logical cell, so introspection and frame-crossing words
-\ either see it whole or fail closed — pinned here as regressions.
-\ depth/.s do not touch the value: logical shape == physical shape today.
-s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! -1 T=
-s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! -1 T=
+\ --- item 12 slice-2/3b: interpret-mode + frame-metadata boundaries (docs §17).
+\ A layout value is a whole logical bundle, so introspection and frame-crossing
+\ words either see it whole or fail closed — pinned here as regressions.
+\ depth/.s report raw physical cells: with hidden-field expansion (slice 3b)
+\ they would expose a layout row's physical shape, so they fail closed over any
+\ row holding hidden fields until logical-shape introspection exists (docs §17).
+s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
+s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
 \ constant pops one n cell: a layout value rejects (whole-bundle store or
 \ reject is the item-12 contract; the native top-level pop is the slice-3 site).
 s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=

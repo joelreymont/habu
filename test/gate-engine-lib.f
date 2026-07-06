@@ -367,6 +367,18 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON
    s" bin/hb" s" type-decl suite on bin/hb" GE-TYPE-DECL-SUITE-ON ;
 
+: GE-TYPE-LAYOUT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-layout-lower-pending.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ TFAM 12 slice 3b: width-fact contracts, pass-2 lowering goldens, and
+\ whole-bundle transport execution rows (see the suite file's header).
+: GE-TYPE-LAYOUT-SUITE ( -- )
+   GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
+   s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
+
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
@@ -590,7 +602,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE-SIZE-CHECK
    GE-ENGINE-SUITE
    GE-TYPE-FAMILY-SUITE
-   GE-TYPE-DECL-SUITE ;
+   GE-TYPE-DECL-SUITE
+   GE-TYPE-LAYOUT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

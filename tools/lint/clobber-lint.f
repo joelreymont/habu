@@ -118,6 +118,7 @@ variable RX  variable RACC
    a u s" vop-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" vcmp-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" vshuf-entry" LINT-STR=CI if LINT-TRUE exit then
+   a u s" p2w-entry" LINT-STR=CI if LINT-TRUE exit then
    a u s" vun-entry" LINT-STR=CI ;
 : INSTR?  ( ptr u8 n -- bool ) {: a:ptr u :}
    a u PSEUDO? if LINT-TRUE exit then
@@ -184,6 +185,7 @@ variable RK
    a u s" vop-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" vcmp-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" vshuf-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
+   a u s" p2w-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then
    a u s" vun-entry" LINT-STR=CI if KWCMP-MASK CL-WOR exit then ;
 
 : SYS-EXIT-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}

@@ -13,6 +13,23 @@ $D2800009 constant W-MOVZ0
 $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
+\ --- item 12 slice 3b: pass-2 width-aware recompile state. Engine-private DATA
+\ cells in the freed low/high holes layout.f documents (old PKG-*/DEFER-*/TSIG
+\ slots relocated into the friend arena). The check hook certifies a definition,
+\ the emitter asks the checker for width facts, and a definition holding any
+\ wider-than-cell operand is recompiled from BODYBUF with width-aware transport
+\ lowering (habu2.f EM-COMPILE-P2WIDE / EM-P2-START).
+$27C0 constant P2-CELL       \ 0 = pass 1 (normal compile); 1 = width-aware pass 2
+$27C8 constant P2TOKIX-CELL  \ pass-2 body-token cursor (checker TOKIX parity; name = 0)
+$27D0 constant P2BODY0-CELL  \ BODYBUF offset of the first body token (after name+sig)
+$27D8 constant P2INP-CELL    \ saved INP across the pass-2 body re-run
+$27E0 constant P2INE-CELL    \ saved INE across the pass-2 body re-run
+$27E8 constant P2DP-CELL     \ DP watermark at definition start (rewound for pass 2)
+$2780 constant P2W0-CELL     \ width of transport operand 0 (stack top) at the cursor
+$2788 constant P2W1-CELL     \ operand 1
+$2790 constant P2W2-CELL     \ operand 2
+$2798 constant P2W3-CELL     \ operand 3
+$27A0 constant P2LOC0-CELL   \ LOCN at the current {: group start (pass-2 locals carve)
 \ --- primitive registry (build-side, for the seed dictionary) ---
 160 constant PRIM-CAP
 2048 constant PRIM-NAME-CAP
@@ -239,6 +256,7 @@ variable FD-SIGN
 variable BCAP-OK
 variable BCAP-CP
 variable BCAP-CD
+variable BCAP-GO
 variable TOK-SKIP
 variable TOK-HAS
 variable TOK-SCAN
@@ -1977,6 +1995,10 @@ s" emit-fp-prims" s" --" TRUST
    LBL BCAP-OK !
    LBL BCAP-CP !
    LBL BCAP-CD !
+   LBL BCAP-GO !
+   \ pass 2 re-runs the already-captured body: never re-capture (item 12 3b)
+   14 DATA P2-CELL LDR,  14 BCAP-GO LABEL@ CBZ,  RET,
+   BCAP-GO LABEL@ LBL,
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,

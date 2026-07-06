@@ -11,7 +11,12 @@
 \
 \ Load after test/gate-common.f.
 
-115831 constant GB-SIZE-BASELINE-MACOS
+\ 2026-07-06 macOS bump 115831 -> 132343: TFAM 12 slice 3b pass-2 width-aware
+\ transport lowering (habu2.f EM-COMPILE-P2WIDE dispatch, per-op width queries,
+\ LP2COPY/LP2ROT/LP2RS emit helpers, width-aware locals carve/reference, and
+\ the publish-path recompile trigger). The Linux row still holds the pre-3b
+\ value; the next Linux lane run fails closed with the measured size to commit.
+132343 constant GB-SIZE-BASELINE-MACOS
 90304 constant GB-SIZE-BASELINE-LINUX
 
 0 constant GB-SIZE-OK

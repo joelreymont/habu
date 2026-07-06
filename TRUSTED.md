@@ -179,6 +179,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| p2w-entry | `label ptr a n n n --` | Pass-2 width-aware transport dispatch case (item 12 slice 3b): keyword match, per-operand width query, and the `ext` lowering emitter run through `JIT-XT-EXECUTE`. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-compile-p2wide | `--` | Emits the pass-2 width dispatch stage: the 18 whole-bundle transport cases between the local-reference and keyword tiers. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-start | `--` | Emits the pass-2 re-entry: saves the live input, repoints the tokenizer at the captured body, rewinds CP/DP, resets per-definition compile state, and re-emits the prologue. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-trigger | `--` | Emits the certified-definition width query: any wider-than-cell width fact enters the pass-2 re-run (wide facts inside a does> split body fail closed). | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-check-definer | `--` | Emits the sig'd publish gate: pass 1 runs the hook and the pass-2 trigger; the pass-2 second ';' skips the hook re-check (the pass-1 certify already registered the signature). | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-finish | `--` | Emits the publish-tail pass-2 exit: resumes the saved real input and clears the pass-2 state cells. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
 | em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-semi | `label --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | em-compile-control-keywords | `--` | Emits compile-mode control-flow keyword dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -350,6 +356,11 @@ that source is explicitly certified; they are not stale-checked by the default
 | M-NAME16-LEN | `ptr u8 len --` | Image-byte test republishes the typed fixed-name copy effect for role-confusion fixtures. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-PAD-OFF | `off --` | Image-byte test republishes the typed pad-to-offset effect for role-confusion fixtures. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-LE32@ | `off -- n` | Image-byte test republishes the typed little-endian read effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
+| TLP-W32 | `n n -- n` | Layout-lowering golden reader: reinterprets a compiled subject's xt as the byte base for one u32 instruction load — test-only code introspection, same class as the imgdump/jitdump readers; every use sits directly under the suite's golden asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-MK2 | `-- tlp-res<n,n>` | Docs 25.5-style raw seeding of a width-2 layout bundle (payload 7, tag 9) — the declared layout effect is the execution test's premise; the physical cells match the checker's hidden-field expansion. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-UN2 | `tlp-res<n,n> -- n n` | Matching raw 2-cell unpack of the seeded width-2 bundle so plain value asserts can prove whole-bundle transport preservation. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-MK4 | `-- tlp-mix<n,n>` | Docs 25.5-style raw seeding of a width-4 layout bundle (payload 1 2 3, tag 4) for the wider-payload transport rows. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-UN4 | `tlp-mix<n,n> -- n n n n` | Matching raw 4-cell unpack of the seeded width-4 bundle for the execution asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
 | M-LE32! | `n off --` | Image-byte test republishes the typed little-endian patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-LE64! | `n off --` | Image-byte test republishes the typed 64-bit patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-BE-RESET | `off --` | Image-byte test republishes the big-endian patch cursor reset effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
@@ -670,7 +681,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 103
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 109
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
@@ -757,6 +768,7 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+test/type-layout-lower-pending.f test-metaprog habu-tfam-12-layout-057181a9 5
 test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 49
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2

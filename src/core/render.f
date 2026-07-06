@@ -106,8 +106,57 @@ variable RATOM-I
    45 EMIT1
    t ATOM>K RATOM-ORD RATOM-CHAR EMIT1 ;
 
-: PARAM-START {: t :}
-   t PARAM>NAME-A t PARAM>NAME-U RSTR  60 EMIT1 ;
+: RNUM ( n -- )                 \ small non-negative number (hidden slot index)
+   dup 10 >= IF dup 10 / RECURSE THEN
+   10 mod 48 + EMIT1 ;
+
+\ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
+\ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
+\ sig containing a lone hidden cell. Full runs never reach here: row rendering
+\ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
+: PARAM-START {: t:n :}
+   t HIDDEN-PARAM? IF
+      1 RQM !
+      64 EMIT1
+      t PARAM>NAME-A t PARAM>NAME-U RSTR
+      46 EMIT1
+      t HIDDEN-SLOT@  t PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+         s" tag" RSTR
+      ELSE
+         s" slot" RSTR  t HIDDEN-SLOT@ RNUM
+      THEN
+   ELSE
+      t PARAM>NAME-A t PARAM>NAME-U RSTR
+   THEN
+   60 EMIT1 ;
+
+\ HID-RUN-REST ( n -- n bool ) : from a resolved S-PUSH node whose type is a
+\ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
+\ true: row below the full W-cell run (compact to the logical type). false:
+\ lone/malformed run — row below the single cell (render the '@' form).
+variable HRC  variable HRI  variable HRF
+: HID-RUN-CELL? ( n n n -- bool ) {: node:n fam:n slot:n :}
+   node TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot = ;
+: HID-RUN-REST ( n -- n bool ) {: node:n :}
+   node P>TYPE T-RES {: t:n :}
+   t PARAM>FAM {: fam:n :}
+   fam TFAM-WIDTH@* {: w:n :}
+   t HIDDEN-SLOT@ w 1 - <> IF node P>REST RES-FALSE EXIT THEN
+   node HRC !  -1 HRF !
+   w 1 - HRI !
+   BEGIN HRI @ 0 >  HRF @ 0 <>  and WHILE
+      HRC @ P>REST R-RES  fam  HRI @ 1 -  HID-RUN-CELL? IF
+         HRC @ P>REST R-RES HRC !
+      ELSE
+         0 HRF !
+      THEN
+      HRI @ 1 - HRI !
+   REPEAT
+   HRF @ 0 <> IF HRC @ P>REST RES-TRUE ELSE node P>REST RES-FALSE THEN ;
 
 \ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
 \ quotation has a non-neutral return-stack effect. Rendering is fully recursive
@@ -134,9 +183,21 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
 \ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
 : QREND ( n n n -- ) {: x:n d:n mode:n :}
    mode 0 > IF
-      x R-RES dup TAG S-PUSH = IF
-         dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
-         P>TYPE d 0 RECURSE
+      x R-RES dup TAG S-PUSH = IF                 \ ( node )
+         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (docs §20)
+            dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
+               dup R-RES TAG S-PUSH = IF dup d 1 RECURSE 32 EMIT1 THEN
+               drop
+               P>TYPE T-RES MK-LOGICAL d 0 RECURSE
+            ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
+               drop
+               dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+               P>TYPE d 0 RECURSE
+            THEN
+         ELSE
+            dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+            P>TYPE d 0 RECURSE
+         THEN
       ELSE drop THEN
       EXIT
    THEN
@@ -177,10 +238,22 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
 create RBUF 64 cells allot   variable RBN
 variable RSHOW-DST
 
-: REND-COLLECT {: s :}  0 RBN !  s
+: RBUF+ ( n -- )
+   RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
+
+\ REND-COLLECT compacts each full hidden-field run to ONE logical family term
+\ (docs §20); a lone/malformed hidden cell stays and renders as its '@' form.
+: REND-COLLECT {: s:n :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
-     dup P>TYPE RBN @ cells RBUF + !  RBN @ 1 + RBN !
-     P>REST
+     dup P>TYPE T-RES HIDDEN-PARAM? IF
+        dup HID-RUN-REST IF
+           swap P>TYPE T-RES MK-LOGICAL RBUF+
+        ELSE
+           swap P>TYPE RBUF+
+        THEN
+     ELSE
+        dup P>TYPE RBUF+  P>REST
+     THEN
    REPEAT drop ;
 
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.

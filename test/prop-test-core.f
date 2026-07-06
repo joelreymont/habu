@@ -457,7 +457,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -476,8 +476,11 @@ create AXBUF AXBUF-CAP allot
 \ native self-rebuild + behavioral gate. The zero-arg high-water readers
 \ (wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
 \ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
+\ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
+\ dies) are likewise difftested in AX-GEN-LIST; locw@/locw-cum@ carry the same
+\ 76-die index guard as wf-tokix@ (LOCW-IX-GUARD, checker.f) so they sit here.
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ " ;
+   s"  seal-capture wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw@ locw-cum@ " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

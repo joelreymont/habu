@@ -1,8 +1,10 @@
 ---
 title: Snapshot format-version reject for slice-3b hidden fields (route via item-12)
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-07-06T00:00:00+02:00"
+close-reason: Two-probe trailer detection (END-48 versioned / END-40 legacy) in EM-SNAPSHOT-RESTORE; version>1 exits 80 named before COPY-DATA; snap-lib.f writes 48-byte trailer version 1; imgdump SNAP-CORE?/--snap reads it; two-direction proof by patched-image runs (v0/v1 restore, v2/v5 exit 80); a pre-3b engine probing END-40 on a 48-byte image misses the magic and cold-boots fail-closed.
 created-at: "2026-07-06T10:40:42.443550+02:00"
 ---
 

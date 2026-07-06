@@ -963,15 +963,14 @@ variable TWALK-D
    fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
    fam TFAM-WIDTH@* ;
 
-\ --- item 12 slice-3a: hidden physical-field substrate (docs §10-11, §17-18).
-\ Slice 3b expands a logical layout T-PARAM in a signature into W hidden physical
-\ field terms: payload slots 0..W-2 then the tag at W-1 (docs §5). Each hidden
-\ term reuses the logical family-id, name string, and arg terms, but carries a
-\ slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it pairs only
-\ with the SAME family AND slot and never binds a var/con/ptr/atom (docs §10),
-\ enforced in U-TYPE below. This slice mints and unifies the terms but does NOT
-\ wire LAYOUT-PUSH-FIELDS into PUSH-LOGICAL yet (slice 3b flips that), so no real
-\ check row holds a hidden term and user-visible checking is unchanged.
+\ --- item 12 slice-3a/3b: hidden physical-field substrate (docs §10-11, §17-18).
+\ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
+\ physical field terms: payload slots 0..W-2 then the tag at W-1 (docs §5). Each
+\ hidden term reuses the logical family-id, name string, and arg terms, but
+\ carries a slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it
+\ pairs only with the SAME family AND slot and never binds a var/con/ptr/atom
+\ (docs §10), enforced in U-TYPE below. Whole-bundle transports move the W-cell
+\ group by direct row surgery (XPORT-STEP?, further down).
 : HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
    t T-RES PARAM>HID 0 > ;
@@ -995,6 +994,18 @@ variable TWALK-D
    base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
    slot 1 + t PAY cells PARAMHID + !
    t ;
+\ MK-LOGICAL ( n -- n ) : the logical family term for a resolved hidden field —
+\ same name/family-id/arg terms, PARAMHID 0. Renderer compaction folds a full
+\ hidden run back to this logical type (docs §20); checking never consumes it.
+: MK-LOGICAL ( n -- n ) {: src0:n :}
+   src0 T-RES {: src:n :}
+   src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup src PARAM>ARGC < WHILE
+      src over PARAM>ARG PARAM-SCR+
+      1 +
+   REPEAT drop
+   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM ;
 \ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
 \ in physical order — slot0 deepest, tag (W-1) on top (docs §5). Slice 3b calls
 \ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
@@ -1016,16 +1027,17 @@ variable TWALK-D
    h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
    h1 h2 = ;
 
-\ --- item 12 (docs/type-families.md §17): a logical layout value is still ONE
-\ physical T-PARAM cell at this stage (item 7 kept it one cell; no LAYOUT-PUSH-
-\ FIELDS expansion, no published constructors, so a wider-than-one-cell layout
-\ value is not even constructible at runtime). A whole-bundle transport op
+\ --- item 12 (docs/type-families.md §17): a NON-linear layout value expands to
+\ its W hidden physical fields (PUSH-LOGICAL), and whole-bundle transports move
+\ the group by direct row surgery (XPORT-STEP?). A POSSIBLY-LINEAR layout stays
+\ ONE logical T-PARAM cell (docs §19); for it, a whole-bundle transport op
 \ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
-\ friends, and locals capture) moves the value as one logical unit, so its fresh
-\ transport var may bind the layout cell. LAYOUT-XPORT is set by DO-TOK1/LOC-BIND
-\ only while checking such an op. Every OTHER touch (value-inspecting prims,
-\ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) still
-\ fails closed exactly as in item 7.
+\ friends, and locals capture) would move the value through its fresh transport
+\ var — LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while checking such an op,
+\ and LAYOUT-XPORT-ALLOW? still rejects the possibly-linear bind, keeping the
+\ TFAM-11 fail-closed semantics. Every OTHER touch (value-inspecting prims,
+\ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) fails
+\ closed through the same guards.
 variable LAYOUT-XPORT
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
@@ -2222,13 +2234,22 @@ create ROWMAP 26 cells allot
 
 \ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
 \ row — the single seam for logical-vs-physical layout (docs/type-families.md
-\ §11, PLAN item 7). Every ordinary type and cell family pushes one logical cell
-\ (== MK-PUSH). A sum/enum/product layout family ALSO stays ONE logical T-PARAM
-\ cell here (reject-only): a layout value is not expanded to hidden physical
-\ fields until item 12's width-aware lowering can preserve whole bundles across
-\ generic stack ops. Until then an ordinary one-cell primitive that touches a
-\ layout cell fails closed in U-TYPE (LAYOUT-EITHER?).
-: PUSH-LOGICAL ( n n -- n ) MK-PUSH ;
+\ §10-11, item 12 slice 3b). Every ordinary type and cell family pushes one
+\ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
+\ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
+\ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
+\ discipline then keep the group intact. A POSSIBLY-LINEAR layout (a linear con
+\ arg, or an unresolved var arg that may later bind linear) stays ONE logical
+\ cell so the TFAM-11 transport reject + identity flow keep its fail-closed
+\ semantics (docs §19) until whole-bundle linear counting lands.
+: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
+   t T-RES {: r:n :}
+   r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
+      r LAYOUT-MAYBE-LINEAR? 0= IF
+         r row LAYOUT-PUSH-FIELDS EXIT
+      THEN
+   THEN
+   t row MK-PUSH ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
@@ -3871,6 +3892,10 @@ PRIM: WF-TOKIX@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-WIDE? PE-N PE-OUT PRIM;
+PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: LOCW@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: LOCW-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-N@ PE-N PE-OUT PRIM;
 PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
 PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
@@ -4700,14 +4725,33 @@ variable WF-CURROW   variable WF-POS-I
    TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
    WF-N @ 1 + WF-N ! ;
 
-: WF-POS-RECORD ( n -- )           \ one S-PUSH node: record a fact when its type is a layout
-   P>TYPE T-RES {: t:n :}
-   t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN ;
+: ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
+   R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   P>REST ;
+: ROW-DROP-N ( n n -- n ) {: w:n :}   \ ( row -- row ) below the top w cells
+   0 BEGIN dup w < WHILE
+      swap ROW-DROP-1 swap
+      1 +
+   REPEAT drop ;
+
+\ WF-POS-RECORD ( n -- n ) : one LOGICAL operand at a resolved S-PUSH node —
+\ record a width fact when it is a layout value (an expanded hidden group, whose
+\ width = group cell count = registry width, or a non-expanded possibly-linear
+\ logical cell) and return the row below the whole operand.
+: WF-POS-RECORD ( n -- n ) {: node:n :}
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? IF
+      t PARAM>FAM {: fam:n :}
+      WF-POS-I @  fam  fam TFAM-WIDTH@*  WF-ADD
+      node  fam TFAM-WIDTH@*  ROW-DROP-N EXIT
+   THEN
+   t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN
+   node P>REST ;
 
 : WF-ROW-SCAN ( n n -- ) {: row:n k:n :}   \ record facts for the top-k logical positions of row
    row WF-CURROW !  0 WF-POS-I !
    BEGIN WF-POS-I @ k <  WF-CURROW @ R-RES TAG S-PUSH =  and WHILE
-      WF-CURROW @ R-RES dup WF-POS-RECORD P>REST WF-CURROW !
+      WF-CURROW @ R-RES WF-POS-RECORD WF-CURROW !
       WF-POS-I @ 1 + WF-POS-I !
    REPEAT ;
 
@@ -4738,6 +4782,233 @@ variable WF-CURROW   variable WF-POS-I
    a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
    a u WF-XPORT-K  WF-ROW-SCAN ;
 
+\ --- item 12 slice 3b: emitter-facing width-fact queries. The engine's pass-2
+\ recompiler (habu2.f EM-COMPILE-P2WIDE) calls these through the dictionary
+\ right after the check hook certifies a definition; the facts are that
+\ definition's per-CHECK scratch, still live until the next CHECK.
+: WF-WIDE? ( -- n )                \ 1 if any recorded fact is wider than one cell
+   0 BEGIN dup WF-N @ < WHILE
+      dup WF-WIDTH@ 1 > IF drop 1 EXIT THEN
+      1 +
+   REPEAT drop 0 ;
+: WF-HIT? ( n n n -- bool ) {: i:n tok:n pos:n :}   \ row i records (tok,pos)?
+   i WF-TOKIX@ tok <> IF RES-FALSE EXIT THEN
+   i WF-POS@ pos = ;
+: WF-W-AT ( n n -- n ) {: tok:n pos:n :}   \ width of operand pos at body token tok (1 = scalar)
+   0 BEGIN dup WF-N @ < WHILE
+      dup tok pos WF-HIT? IF WF-WIDTH@ EXIT THEN
+      1 +
+   REPEAT drop 1 ;
+
+\ --- item 12 slice 3b: whole-bundle transport row surgery (docs §17) ----------
+\ With hidden-field expansion a layout value is W consecutive hidden cells (tag
+\ on top, slot0 deepest). A transport op whose top-k logical operands include
+\ such a group cannot use the var-based prim effect (a hidden field never binds
+\ a var), so the checker rebuilds the consumed row directly: read k logical
+\ GROUPS (a hidden tag opens an exactly-W run, validated slot W-1..0 same
+\ family — die 76 on a malformed run, an internal invariant; any other cell is
+\ a 1-cell group; a row var materializes a fresh 1-cell var group through the
+\ normal FRESH+UNIFY mechanism, exactly as the prim effect would — underflow
+\ against a short concrete row is the normal UNIFY reject), then write the op's
+\ output permutation with MK-PUSH from the group lists. Pure-scalar rows never
+\ reach this path: the prim/RS effects stay byte-for-byte. A non-expanded
+\ logical layout cell (possibly-linear, docs §19 / TFAM 11) rejects here
+\ exactly as the one-cell transport guard rejects it (TDLIN-* unchanged).
+64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
+256 constant XG-TCAP           \ max total cells across one op's groups
+create XG-TERMS XG-TCAP cells allot
+create XG-START XG-GCAP cells allot
+create XG-LEN XG-GCAP cells allot
+variable XG-N   variable XG-TN   variable XG-ROW
+
+: XG-T+ ( n -- )               \ append one cell term to the group scratch
+   XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
+   XG-TN @ cells XG-TERMS + !
+   XG-TN @ 1 + XG-TN ! ;
+
+: XG-TERM0@ ( n -- n ) {: gi:n :}   \ first (top) cell term of group gi
+   XG-START gi cells + @ cells XG-TERMS + @ ;
+
+: XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}   \ consume one hidden fam/slot cell off XG-ROW
+   XG-ROW @ R-RES {: node:n :}
+   node TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" 76 die THEN
+   t PARAM>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
+   t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" 76 die THEN
+   t XG-T+
+   node P>REST XG-ROW ! ;
+
+: XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
+   t PARAM>FAM {: fam:n :}
+   fam TFAM-WIDTH@* {: w:n :}
+   t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
+   w 1 - BEGIN dup 0 >= WHILE
+      fam over XG-CELL-HID@
+      1 -
+   REPEAT drop ;
+
+: XG-READ-VAR ( -- bool )      \ materialize one 1-cell var group out of the row var
+   FRESH MK-VAR {: tv:n :}
+   FRESH MK-ROW {: rest:n :}
+   XG-ROW @  tv rest MK-PUSH  UNIFY 0= IF 0 OK ! RES-FALSE EXIT THEN
+   tv XG-T+
+   rest XG-ROW !
+   RES-TRUE ;
+
+: XG-READ-GROUP ( -- bool )    \ one logical group at XG-ROW; false = rejected
+   XG-ROW @ R-RES {: node:n :}
+   node TAG S-ROW = IF XG-READ-VAR EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? IF t XG-READ-HID RES-TRUE EXIT THEN
+   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ possibly-linear layout never transports
+   node P>TYPE XG-T+
+   node P>REST XG-ROW !
+   RES-TRUE ;
+
+: XG-GROUP-DONE ( -- )
+   XG-TN @  XG-START XG-N @ cells + @  -  XG-LEN XG-N @ cells + !
+   XG-N @ 1 + XG-N ! ;
+
+: XG-READ ( n n -- bool ) {: row:n k:n :}   \ k logical groups off row; XG-ROW = rest
+   k XG-GCAP > IF s" checker: transport group cap" 76 die THEN
+   row XG-ROW !  0 XG-N !  0 XG-TN !
+   0 BEGIN dup k < WHILE
+      XG-TN @ XG-START XG-N @ cells + !
+      XG-READ-GROUP 0= IF drop RES-FALSE EXIT THEN
+      XG-GROUP-DONE
+      1 +
+   REPEAT drop RES-TRUE ;
+
+: XG-PUSH-GROUP ( n n -- n ) {: gi:n :}   \ ( row -- row ) push group gi, deepest cell first
+   XG-START gi cells + @ {: st:n :}
+   XG-LEN gi cells + @ {: len:n :}
+   st len + 1 - BEGIN dup st >= WHILE
+      dup cells XG-TERMS + @
+      rot MK-PUSH swap
+      1 -
+   REPEAT drop ;
+
+: XG-REPLAY ( n ptr u8 n -- n ) {: a:ptr u:n :}   \ ( row -- row ) push groups per index digit
+   0 BEGIN dup u < WHILE
+      dup a + c@ 48 -
+      rot swap XG-PUSH-GROUP swap
+      1 +
+   REPEAT drop ;
+
+: XG-GROUP-VAR? ( n -- bool ) {: gi:n :}   \ group gi is one still-unbound var cell?
+   XG-LEN gi cells + @ 1 <> IF RES-FALSE EXIT THEN
+   gi XG-TERM0@ T-RES ISVAR ;
+
+: XG-SEQ-COUNT ( n ptr u8 n -- n ) {: gi:n a:ptr u:n :}   \ occurrences of gi in the digit seq
+   0
+   0 BEGIN dup u < WHILE
+      dup a + c@ 48 - gi = IF swap 1 + swap THEN
+      1 +
+   REPEAT drop ;
+
+\ a var-typed scalar group copied or dropped by the permutation is a potential
+\ linear launder: taint it, exactly as LIN-EFF-PASS taints a prim-effect var
+\ with unequal in/out multiplicity. Hidden groups carry no linears (linear
+\ layouts never expand) and a concrete linear con hits LIN-CHECK conservation.
+: XG-TAINT-SEQ ( ptr u8 n -- ) {: a:ptr u:n :}
+   LIN-ANY? 0= IF EXIT THEN
+   0 BEGIN dup XG-N @ < WHILE
+      dup XG-GROUP-VAR? IF
+         dup a u XG-SEQ-COUNT 1 <> IF
+            dup XG-TERM0@ T-RES PAY LIN-TAINT
+         THEN
+      THEN
+      1 +
+   REPEAT drop ;
+
+\ output permutation of each data transport as group-index digits, bottom->top
+\ (group 0 = pre-op top-of-stack operand).
+: XP-DATA-SEQ$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u s" dup"   CORE-STR= IF s" 00" EXIT THEN
+   a u s" drop"  CORE-STR= IF s" " EXIT THEN
+   a u s" swap"  CORE-STR= IF s" 01" EXIT THEN
+   a u s" over"  CORE-STR= IF s" 101" EXIT THEN
+   a u s" nip"   CORE-STR= IF s" 0" EXIT THEN
+   a u s" tuck"  CORE-STR= IF s" 010" EXIT THEN
+   a u s" rot"   CORE-STR= IF s" 102" EXIT THEN
+   a u s" -rot"  CORE-STR= IF s" 021" EXIT THEN
+   a u s" 2dup"  CORE-STR= IF s" 1010" EXIT THEN
+   a u s" 2drop" CORE-STR= IF s" " EXIT THEN
+   a u s" 2swap" CORE-STR= IF s" 1032" EXIT THEN
+   a u s" 2over" CORE-STR= IF s" 321032" EXIT THEN
+   s" checker: transport seq for non-transport" 76 die ;
+
+: XP-RS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ return-stack transfer op?
+   a u WF-XPORT-RROW? IF RES-TRUE EXIT THEN
+   a u s" >r" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2>r" CORE-STR= ;
+
+: XP-RS-KEEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ r@/2r@ re-push the groups on the return row
+   a u s" r@" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@" CORE-STR= ;
+
+: XP-RS-SEQ$ ( ptr u8 n -- ptr u8 n )   \ rs transfer order (bottom->top; RS2->R parity)
+   WF-XPORT-K 1 = IF s" 0" ELSE s" 10" THEN ;
+
+: XPORT-RS-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WF-XPORT-RROW? IF                          \ r> r@ 2r> 2r@ : consumed from RCUR
+      a u XP-RS-KEEP? IF
+         XG-ROW @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+      ELSE
+         XG-ROW @ RCUR !
+      THEN
+      DCUR @ a u XP-RS-SEQ$ XG-REPLAY DCUR !
+   ELSE                                           \ >r 2>r : consumed from DCUR
+      XG-ROW @ DCUR !
+      RCUR @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+   THEN ;
+
+: XPORT-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
+   LIN-SNAPSHOT
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
+   a u XP-RS? IF
+      a u XPORT-RS-APPLY
+   ELSE
+      XG-ROW @ a u XP-DATA-SEQ$ XG-REPLAY DCUR !
+      a u XP-DATA-SEQ$ XG-TAINT-SEQ
+   THEN
+   OK @ IF LIN-CHECK THEN ;
+
+\ any hidden cell within the top-k CELLS implies a hidden-group operand within
+\ the top-k logical operands (a group's cells start at or above its position).
+: XP-BUNDLE-IN-K? ( n n -- bool ) {: row0:n k:n :}
+   row0
+   0 BEGIN dup k < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES P>TYPE T-RES HIDDEN-PARAM? IF 2drop RES-TRUE EXIT THEN
+      swap R-RES P>REST swap
+      1 +
+   REPEAT 2drop RES-FALSE ;
+
+: XPORT-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  XP-BUNDLE-IN-K? 0= IF RES-FALSE EXIT THEN
+   a u XPORT-APPLY
+   RES-TRUE ;
+
+: ROW-ANY-HIDDEN? ( n -- bool )    \ any hidden cell above the row's tail var?
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES HIDDEN-PARAM? IF drop RES-TRUE EXIT THEN
+      P>REST
+   REPEAT drop RES-FALSE ;
+
+\ depth/.s report raw physical cells: over a row holding hidden fields they
+\ would expose the physical expansion of a logical value, so they fail closed
+\ until a logical-shape introspection exists (docs §17).
+: HIDROW-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" depth" CORE-STR=  a u s" .s" CORE-STR= or 0= IF RES-FALSE EXIT THEN
+   DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
+   0 OK !  -1 FAILSET !
+   RES-TRUE ;
+
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
 : CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
@@ -4750,7 +5021,29 @@ variable WF-CURROW   variable WF-POS-I
 16 constant LOC-NAME-W         \ max local-name bytes (matches compiler LOCN-CELL)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
 create LOCSHOW LOC-CAP cells allot
+\ LOCW: logical width of each local's binding. 1 = scalar (LOCTV holds the type
+\ var, exactly as before). >1 = a whole hidden-field bundle (item 12 slice 3b):
+\ LOCTV holds the group's TAG term and a reference re-expands slot0..tag from it
+\ via MK-HIDDEN (LOC-PUSH-REF). Linear layouts never expand, so no linear bundle
+\ can reach a local; the bind-time linear check is unchanged.
+create LOCW LOC-CAP cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+\ Emitter-facing locals-width queries (item 12 slice 3b): the pass-2 recompiler
+\ sizes frame slots and reference pushes from the checker's LOCW, per-CHECK
+\ scratch still live right after the hook certifies the definition.
+: LOCW-IX-GUARD ( n -- )           \ die 76 outside the checked locals table
+   dup 0 <  over #LOC @ >=  or IF s" checker: bad local width index" 76 die THEN
+   drop ;
+: LOCW@ ( n -- n ) {: i:n :}       \ logical width of local i (1 = scalar)
+   i LOCW-IX-GUARD
+   i cells LOCW + @ ;
+: LOCW-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through local i
+   i LOCW-IX-GUARD
+   0
+   0 BEGIN dup i <= WHILE
+      dup cells LOCW + @  rot +  swap
+      1 +
+   REPEAT drop ;
 variable LOCSHOWXT  0 LOCSHOWXT !
 variable #CFC
 variable QDEPTH
@@ -4812,6 +5105,7 @@ variable LCO
      a  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
+     1 #LOC @ cells LOCW + !
      LCO @ u < IF
       a u #LOC @ LOC-ANN
      THEN
@@ -4841,15 +5135,51 @@ variable LCO
    LIN-ANY? 0= IF drop exit THEN
    T-RES dup TAG T-VAR = IF PAY LIN-TAINT ELSE drop THEN ;
 
+\ Bundle-aware bind (item 12 slice 3b): when any captured operand is an expanded
+\ hidden-field group, the generic var-row CHECKER-STEP cannot bind it (a hidden
+\ field never binds a var). Read the k logical groups directly: a scalar group
+\ unifies with its local's type var exactly as the step would; a hidden group
+\ stores its TAG term in LOCTV and its cell count in LOCW (an annotated local
+\ cannot hold a bundle — reject). Group i (0 = stack top) binds local #LOC-1-i.
+: LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
+   idx cells LOCTV + @ T-RES ISVAR 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   gi XG-TERM0@ T-RES idx cells LOCTV + !
+   XG-LEN gi cells + @ idx cells LOCW + ! ;
+
+: LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
+   idx cells LOCTV + @  gi XG-TERM0@  UNIFY OK @ and OK ! ;
+
+: LOC-GROUP-BIND ( n -- ) {: gi:n :}
+   #LOC @ 1 - gi - {: idx:n :}
+   gi XG-TERM0@ T-RES HIDDEN-PARAM? IF
+      gi idx LOC-BUNDLE-BIND
+   ELSE
+      gi idx LOC-SCALAR-BIND
+   THEN ;
+
+: LOC-BIND-GROUPS ( -- )
+   LIN-SNAPSHOT
+   DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
+   0 BEGIN dup #LOC @ LGRP @ - < WHILE
+      dup LOC-GROUP-BIND
+      1 +
+   REPEAT drop
+   XG-ROW @ DCUR !
+   OK @ IF LIN-CHECK THEN ;
+
 : LOC-BIND
    FRESH dup LROW !  MK-ROW LCH !
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
    DCUR @  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
-   1 LAYOUT-XPORT !                    \ capturing a local moves the value as one bundle
-   LCH @  LROW @ MK-ROW  CHECKER-STEP
-   0 LAYOUT-XPORT !
+   DCUR @  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
+      LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
+   ELSE
+      1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
+      LCH @  LROW @ MK-ROW  CHECKER-STEP
+      0 LAYOUT-XPORT !
+   THEN
    LOC-SHOW-GROUP
    LIN-LOCAL-BIND-CHECK ;
 
@@ -4865,6 +5195,24 @@ variable LCO
    QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
+\ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
+\ re-expands its whole group — slot0 deepest up to the stored tag term on top
+\ (docs §5); a scalar local pushes its var/term with the deferred-linear taint.
+: LOC-PUSH-REF ( n -- ) {: idx:n :}
+   idx cells LOCW + @ {: w:n :}
+   idx cells LOCTV + @ {: t:n :}
+   w 1 > IF
+      DCUR @
+      0 BEGIN dup w 1 - < WHILE
+         dup t swap MK-HIDDEN rot MK-PUSH swap
+         1 +
+      REPEAT drop
+      t swap MK-PUSH DCUR !
+   ELSE
+      t dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
+   THEN ;
+
+\ typed-local-lint: allow-bare-local - a/u preserve the token's ptr u8 role.
 : LOC-REF? {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
@@ -4873,7 +5221,7 @@ variable LCO
        QDEPTH @ 0 > IF
           LOC-REJECT
        ELSE
-          LI @ cells LOCTV + @  dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
+          LI @ LOC-PUSH-REF
        THEN
        -1 LRF ! THEN
    REPEAT  LRF @ ;
@@ -5579,18 +5927,19 @@ variable IS-TU
    FEP @ EFF-QUOT IS-APPLY ;
 
 \ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
-\ Whole-bundle transport tokens: their effect var may absorb a one-cell layout
-\ value, because a logical layout value moves as one unit. ?dup is excluded on
-\ purpose — it branches on the top (tag) cell, width-breaking for a sum whose
-\ tag 0 is a valid variant.
+\ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
+\ moves by direct row surgery (XPORT-STEP? above); for a non-expanded
+\ possibly-linear layout cell the op's effect var may absorb the one cell,
+\ gated by LAYOUT-XPORT-ALLOW? (which rejects the possibly-linear bind). ?dup
+\ is excluded on purpose — it branches on the top (tag) cell, width-breaking
+\ for a sum whose tag 0 is a valid variant.
 \ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs
 \ before prims, so a user word spelled dup/swap/... can bind a layout through
 \ its polymorphic effect. This is sound because the name implies a builtin or
 \ a checked/audited definition: a CHECKED shadow's effect is verified against
-\ its body, which can only move the (one-cell) value it binds; a TRUSTED
-\ shadow is already an audited manifest boundary (TRUSTED.md row) whose
-\ declared effect is the audit's responsibility. Either way the bind is a
-\ genuine whole-value move at the current one-cell stage.
+\ its body, which can only move the value it binds; a TRUSTED shadow is
+\ already an audited manifest boundary (TRUSTED.md row) whose declared effect
+\ is the audit's responsibility.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
@@ -5612,6 +5961,8 @@ variable IS-TU
    a u s" 2r@"   CORE-STR= ;
 
 : DCUR-TOP-LAYOUT? ( -- bool )     \ resolved top of the data row is a layout param?
+   \ LAYOUT-PARAM? is true for a HIDDEN field too (same layout family-id), so an
+   \ expanded bundle's tag cell on top rejects ?dup exactly like the old logical cell.
    DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
 
 : QDUP-STEP? ( ptr u8 n -- bool )  \ ?dup: reject on a layout value; scalar stays unmodeled
@@ -5640,6 +5991,8 @@ variable IS-TU
    TKF TKFU @ CF-TOK? 0= IF
    TKF TKFU @ QDUP-STEP? 0= IF
    LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
+   TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
+   TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
@@ -5647,7 +6000,7 @@ variable IS-TU
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN

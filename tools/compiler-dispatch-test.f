@@ -56,7 +56,9 @@ require lib/test/src-shape.f
    s" {: lmainlbl notloc :}" SHAPE:MUST-LACK
    s" LBL LBL {: lmem qlrefok :}" SHAPE:MUST-LACK
    s" {: a:ptr u :}" SHAPE:MUST-LACK
-   s" CLOC-MAIN LABEL@ B," 2 SHAPE:COUNT=
+   \ 3 = register path + memory path + the pass-2 width-aware reference
+   \ (EM-P2-LOCREF branch, item 12 slice 3b)
+   s" CLOC-MAIN LABEL@ B," 3 SHAPE:COUNT=
    s" CLOC-MAIN @ B ;" SHAPE:MUST-LACK
    s" CLOC-QOK LABEL@ LBL," SHAPE:MUST-HAVE
    s" CLOC-MEM LABEL@ LBL," SHAPE:MUST-HAVE ;

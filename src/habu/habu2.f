@@ -2189,6 +2189,122 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-LIT  bk LBL, ;
 
+\ ---- item 12 slice 3b: pass-2 width-aware recompile, checker-query side ----
+\ A definition whose certified check recorded any wider-than-cell width fact is
+\ re-run from BODYBUF (EM-P2-START further down) with width-aware transport
+\ lowering. These meta words emit the compile-loop plumbing shared by the
+\ transport ops and the locals carve/reference paths. The checker query words
+\ (wf-wide? / wf-w-at / locw@ / locw-cum@, src/core/checker.f) are region code:
+\ every call site flips the region RX around the BLR and back to RW before any
+\ further emission, exactly like the immediate-word path in EM-COMPILE-CALL.
+variable LWFWIDE  variable LWFWAT  variable LLOCWQ  variable LLOCWCUM
+variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
+variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
+variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
+variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable LP2RS
+
+\ pass-2 body-token cursor: +1 per dispatched compile token (checker TOKIX
+\ parity — comments never reach the dispatch, string/parse-lit payloads are
+\ consumed inside their handler, locals names are counted by the {: parser).
+: EM-P2-COUNT ( -- )
+   LBL {: nop2:label :}
+   9 DATA P2-CELL LDR,  9 nop2 CBZ,
+   9 DATA P2TOKIX-CELL LDR,  9 9 1 ADDI,  9 DATA P2TOKIX-CELL STR,
+   nop2 LBL, ;
+
+: EM-P2-QUERY-LOCW ( -- )          \ emit: x10 := locw@( [SP+0] ); caller holds the RX window
+   9 SP 0 LDR,  9 G-PUSH
+   LLOCWQ 5 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-QUERY-LOCWCUM ( -- )       \ emit: x10 := locw-cum@( [SP+0] )
+   9 SP 0 LDR,  9 G-PUSH
+   LLOCWCUM 9 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-SLOT-DIE ( -- )            \ frame slot beyond the scaled ldr/str range: fail closed
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 $4B MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ pass-2 locals carve: each local occupies its logical width in frame cells,
+\ packed from the frame top downward in declaration order (base cell of local i
+\ = LOCF/8 - locw-cum@(i)); the scalar case reproduces the pass-1 slot formula
+\ LOCF/8-1-i exactly. Capture pops each local's cells tag-first (stack order),
+\ bottom cell landing at its base slot, so a reference re-pushes ascending.
+: EM-P2-CARVE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL {: ql:label qd:label pl:label pd:label jl:label jd:label sok:label :}
+   SP SP 32 SUBI,
+   9 DATA P2LOC0-CELL LDR,  9 SP 0 STR,               \ i := group start
+   9 0 MOVZ,  9 SP 8 STR,                             \ total := 0
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   ql LBL,
+      9 SP 0 LDR,  10 DATA LOCN-CELL LDR,  9 10 CMP,  C-GE qd BCOND,
+      EM-P2-QUERY-LOCW
+      9 SP 8 LDR,  9 9 10 ADD,  9 SP 8 STR,
+      9 SP 0 LDR,  9 9 1 ADDI,  9 SP 0 STR,
+      ql B,
+   qd LBL,
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   9 SP 8 LDR,  5 9 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
+   9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,
+   15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
+   9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,    \ i := last local
+   pl LBL,
+      9 SP 0 LDR,  10 DATA P2LOC0-CELL LDR,  9 10 CMP,  C-LT pd BCOND,
+      2 5 MOVZ,  LPROT LABEL@ BL,
+      EM-P2-QUERY-LOCW  10 SP 8 STR,                  \ w
+      EM-P2-QUERY-LOCWCUM  10 SP 16 STR,              \ cum
+      2 3 MOVZ,  LPROT LABEL@ BL,
+      12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
+      10 SP 16 LDR,  12 12 10 SUB,                    \ x12 = base slot
+      10 SP 8 LDR,  10 10 1 SUBI,                     \ j := w-1 (tag cell first)
+      jl LBL,
+         10 0 CMPI,  C-LT jd BCOND,
+         9 $D1002273 LIT64,  LCEMIT LABEL@ BL,        \ sub x19,x19,#8
+         9 $F9400269 LIT64,  LCEMIT LABEL@ BL,        \ ldr x9,[x19]
+         5 12 10 ADD,
+         5 4095 CMPI,  C-LE sok BCOND,
+            EM-P2-SLOT-DIE
+         sok LBL,
+         9 $F90003E9 LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,   \ str x9,[sp,#slot]
+         10 10 1 SUBI,  jl B,
+      jd LBL,
+      9 SP 0 LDR,  9 9 1 SUBI,  9 SP 0 STR,
+      pl B,
+   pd LBL,
+   SP SP 32 ADDI, ;
+
+\ pass-2 local reference: spill, then push the local's whole group ascending
+\ from its frame base. Scalar locals take this memory path too when a wide
+\ local exists anywhere in the frame — their base comes from the same width-
+\ aware formula, so offsets stay correct after a wide neighbor.
+: EM-P2-LOCREF ( -- )
+   LBL LBL LBL {: rl:label rd:label sok2:label :}
+   SP SP 32 SUBI,
+   0 SP 0 STR,                                        \ idx from LLOC-FIND
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   EM-P2-QUERY-LOCW  10 SP 8 STR,                     \ w
+   EM-P2-QUERY-LOCWCUM  10 SP 16 STR,                 \ cum
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   LVSPILL LABEL@ BL,
+   12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
+   10 SP 16 LDR,  12 12 10 SUB,                       \ x12 = base slot
+   10 0 MOVZ,                                         \ j := 0 (bottom cell first)
+   rl LBL,
+      11 SP 8 LDR,  10 11 CMP,  C-GE rd BCOND,
+      5 12 10 ADD,
+      5 4095 CMPI,  C-LE sok2 BCOND,
+         EM-P2-SLOT-DIE
+      sok2 LBL,
+      9 $F94003E9 LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,   \ ldr x9,[sp,#slot]
+      9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,
+      9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL,
+      10 10 1 ADDI,  rl B,
+   rd LBL,
+   SP SP 32 ADDI, ;
+
 : C-LBRACE-DIE ( -- )   \ B2: emit the locals-placement diagnostic, then exit 75
    1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $27 MOVZ,  NR-WRITE SYS,
    0 $4B MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -2224,6 +2340,7 @@ s" c-lbrace-die" s" --" TRUST
    nl LBL,
       LTOK LABEL@ BL,  0 nd CBZ,
       LBCAP LABEL@ BL,                                          \ locals reach the checker too
+      EM-P2-COUNT                                               \ the checker counts each name and :}
       0 LKWENDLOC LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,  0 nstore CBZ,  nd B,
       nstore LBL,
       C-LBRACE-STORE-ONE
@@ -2232,6 +2349,11 @@ s" c-lbrace-die" s" --" TRUST
 
 : C-LBRACE-CARVE-FRAME ( -- )
    LBL LBL {: pl pd :}
+   LBL LBL {: p1c:label pjoin:label :}
+   9 DATA P2-CELL LDR,  9 p1c CBZ,                    \ pass 2: width-aware carve
+      EM-P2-CARVE
+      pjoin B,
+   p1c LBL,
    13 DATA LOCN-CELL LDR,  14 13 6 SUB,
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
    9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT LABEL@ BL,
@@ -2245,9 +2367,11 @@ s" c-lbrace-die" s" --" TRUST
       5 12 13 SUB,  5 5 1 SUBI,
       9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT LABEL@ BL,
       13 13 1 SUBI,  pl B,
-   pd LBL, ;
+   pd LBL,
+   pjoin LBL, ;
 
 : C-LBRACE ( -- )
+   9 DATA LOCN-CELL LDR,  9 DATA P2LOC0-CELL STR,     \ group start for the pass-2 carve
    C-LBRACE-GUARDS
    C-LBRACE-PARSE-NAMES
    C-LBRACE-CARVE-FRAME ;
@@ -2394,7 +2518,7 @@ variable LEX0  variable LUN0   \ re-entrant evaluate: original-path continuation
 variable LEVALREC             \ re-entrant evaluate: throw-escape recovery entry (BTHROW branches here)
 variable LEVLL  variable LEVLP  variable LEVLD  variable LEVLN  variable LEVLR   \ LEVALREC internal labels
 variable CLOC-MAIN  variable CLOC-NOT
-variable CLOC-MEM   variable CLOC-QOK
+variable CLOC-MEM   variable CLOC-QOK   variable CLOC-P1
 variable CFSK2
 
 \ cfb-entry: branch keywords (if/until/while) with the condition on the VS —
@@ -2462,6 +2586,11 @@ variable CFSK2
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    CLOC-QOK LABEL@ LBL,
+   LBL CLOC-P1 !
+   9 DATA P2-CELL LDR,  9 CLOC-P1 LABEL@ CBZ,         \ pass 2: width-aware reference
+      EM-P2-LOCREF
+      CLOC-MAIN LABEL@ B,
+   CLOC-P1 LABEL@ LBL,
    LVRALLOC LABEL@ BL,  14 CLOC-MEM LABEL@ CBZ,
    7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
    9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT LABEL@ BL,
@@ -2877,13 +3006,29 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 \ restore both regions verbatim (fixed VAs keep region addresses valid),
 \ relocate engine-text call chains (the only ASLR-movers), boot WARM. ----
 : EM-SNAPSHOT-RESTORE ( -- )
-   LBL LBL LBL {: snomag snbad snok :}
+   LBL LBL LBL LBL LBL LBL {: snomag:label snbad:label snok:label snnew:label snhave:label snbadver:label :}
    24 0 MOVZ,                                       \ x24 = snapshot flag
    9 DATA RBASE-CELL LDR,  25 9 0 ADDI,             \ x25 = live text CONTENT base
    10 9 0 ADDI,  5 $1000 LIT64,  10 10 5 SUB,
    11 10 IMAGE-TEXT-SIZE-OFF LDR,                   \ S = our executable text size
-   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,  12 12 40 SUBI,                    \ trailer from image base
-   13 12 0 LDR,  5 SNAP-MAGIC LIT64,  13 5 CMP,  C-NE snomag BCOND,
+   12 10 11 ADD,  5 IMAGE-TEXT-TRAILER-ADJ LIT64,  12 12 5 ADD,   \ x12 = trailer END (base+SNL+ADJ)
+   \ Two-probe trailer detection (dot habu-snapshot-format-ver, item 12 3b): a
+   \ 48-byte format-versioned trailer sits at END-48 with the version cell at
+   \ +40; a legacy 40-byte trailer at END-40 (version implicitly 0). SNL grows
+   \ with the trailer, so END-size lands on the same magic cell in both formats.
+   \ A pre-3b engine (fixed END-40 probe) reading a 48-byte image lands on the
+   \ text-base=0 field, misses the magic, and cold-boots: fail-closed, never a
+   \ hidden-field misread. An image version newer than we support exits 80
+   \ (E-SNAP-VERSION), mirroring the snbad rc-79 corrupt-trailer path.
+   5 SNAP-MAGIC LIT64,
+   13 12 48 SUBI,  14 13 0 LDR,  14 5 CMP,  C-EQ snnew BCOND,      \ x13 = 48-byte trailer base?
+   13 12 40 SUBI,  14 13 0 LDR,  14 5 CMP,  C-NE snomag BCOND,     \ x13 = 40-byte trailer base? else cold boot
+   snhave B,                                                       \ legacy v0 trailer: no version check
+   snnew LBL,
+      14 13 40 LDR,                                                \ x14 = image format version
+      5 1 MOVZ,  14 5 CMP,  C-GT snbadver BCOND,                   \ x5 = max supported version (SNAP-FORMAT-VERSION)
+   snhave LBL,
+      12 13 0 ADDI,                                                \ x12 = resolved trailer base
    5 IMAGE-TEXT-CONTENT-ADJ LIT64,  11 11 5 SUB,
    21 12 8 LDR,                                     \ x21 = snapshot-time text base
    15 12 16 LDR,                                    \ x15 = ndict
@@ -2895,6 +3040,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snok B,
    snbad LBL,  0 79 MOVZ,  NR-EXIT-GROUP SYS,
+   snbadver LBL,  0 80 MOVZ,  NR-EXIT-GROUP SYS,   \ E-SNAP-VERSION: image format newer than engine supports
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
@@ -2926,6 +3072,10 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,          \ protected-WID registry starts empty (TFAM 2b-v)
    cwok LBL,  9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,  9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR,  9 DATA LOOPSP-CELL STR,
+   9 DATA P2-CELL STR,  9 DATA P2TOKIX-CELL STR,  9 DATA P2BODY0-CELL STR,
+   9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
+   9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,  9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
+   9 DATA P2LOC0-CELL STR,
    G-INSTALL-CRASH
    G-INSTALL-TRAP
    9 LDOESPATCH LABEL@ ADR,  9 DATA DOESP-CELL STR,
@@ -2997,6 +3147,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
       C-CLEAR-TRUSTED-STATE
       C-COLON-MAYBE-SIG
+         9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
+         9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,  \ body starts after name+sig
          12 0 MOVZ,  12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
          12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
          12 DATA QPATCH-CELL STR,
@@ -3240,6 +3392,334 @@ s" em-compile-drop-locals" s" --" TRUST
    9 W-RET LIT64,  LCEMIT LABEL@ BL, ;
 s" em-compile-ret" s" --" TRUST
 
+\ ---- item 12 slice 3b: pass-2 width-aware transport lowering ---------------
+\ ONE mechanism for every transport tier (register shuffle, inline rs keyword,
+\ dictionary leaf prim): at a pass-2 transport token whose operands include a
+\ wider-than-cell group, force LVSPILL and emit fixed-shape memory cell loops
+\ on the live stack ([x19], top at -8). Widths are compile-time constants, so
+\ every loop shape is constant and each branch displacement is a meta-time
+\ constant — no runtime patching, no new dictionary prims, no scratch region.
+\ The loop bodies are emitted by BL-able engine helpers (LP2COPY/LP2DROPN/
+\ LP2REV/LP2ROT/LP2RS below); each op is a group-permutation composition of
+\ push-copy, pop, span-rotation (three in-place reversals), and rstk block move.
+
+\ LP2COPY ( x5=len-cells x6=src-off-cells ) : emit a push of len cells starting
+\ src-off cells below the top — a whole-group copy, bottom cell first.
+: EMIT-P2-COPY ( -- )
+   LP2COPY LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ movz x9,#len
+   8 $D100026A LIT64,  7 6 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x10,x19,#off*8
+   $F940014B C-EMITW                                                \ ldr x11,[x10]
+   $9100214A C-EMITW                                                \ add x10,x10,#8
+   $F900026B C-EMITW                                                \ str x11,[x19]
+   W-PUSH1 C-EMITW                                                  \ add x19,x19,#8
+   $F1000529 C-EMITW                                                \ subs x9,x9,#1
+   $54FFFF61 C-EMITW                                                \ b.ne loop (-5)
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LP2DROPN ( x5=cells ) : emit a pop of the top span.
+: EMIT-P2-DROPN ( -- )
+   LP2DROPN LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   8 $D1000273 LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x19,x19,#n*8
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LP2REV ( x5=lo-off-bytes x6=hi-off-bytes ) : emit an in-place reversal of the
+\ cells from x19-lo up to x19-hi (two-pointer swap; empty/1-cell span is a noop).
+: EMIT-P2-REV ( -- )
+   LP2REV LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   8 $D100026A LIT64,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x10,x19,#lo
+   8 $D100026B LIT64,  7 6 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,  \ sub x11,x19,#hi
+   $EB0B015F C-EMITW                                                \ cmp x10,x11
+   $54000102 C-EMITW                                                \ b.hs done (+8)
+   $F940014C C-EMITW                                                \ ldr x12,[x10]
+   $F940016D C-EMITW                                                \ ldr x13,[x11]
+   $F900014D C-EMITW                                                \ str x13,[x10]
+   $F900016C C-EMITW                                                \ str x12,[x11]
+   $9100214A C-EMITW                                                \ add x10,x10,#8
+   $D100216B C-EMITW                                                \ sub x11,x11,#8
+   $17FFFFF8 C-EMITW                                                \ b cmp (-8)
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LP2ROT ( x5=T-cells x6=k-cells ) : emit a left-rotation of the top T cells
+\ moving the bottom k cells to the top — triple reversal, whole-group order
+\ preserving (== the checker's group permutation for swap/rot/-rot/2swap).
+: EMIT-P2-ROT ( -- )
+   LP2ROT LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,  6 SP 16 STR,
+   5 5 3 LSLI,
+   7 SP 16 LDR,  6 SP 8 LDR,  6 6 7 SUB,  6 6 3 LSLI,  6 6 8 ADDI,
+   LP2REV LABEL@ BL,                                  \ reverse the bottom k cells
+   7 SP 16 LDR,  5 SP 8 LDR,  5 5 7 SUB,  5 5 3 LSLI,  6 8 MOVZ,
+   LP2REV LABEL@ BL,                                  \ reverse the top T-k cells
+   5 SP 8 LDR,  5 5 3 LSLI,  6 8 MOVZ,
+   LP2REV LABEL@ BL,                                  \ reverse the whole span
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+\ LP2RS ( x5=T-cells x6=mode ) : emit a block transfer between the data stack
+\ and the return-stack region ([x20+RSTK-OFF], depth at [x20+RSP-CELL]),
+\ ascending order preserved. mode 0 = data->rstk pop (>r/2>r), 1 = rstk->data
+\ pop (r>/2r>), 2 = rstk->data copy (r@/2r@). T=1 reproduces J-TOR/J-RFROM/
+\ J-RFETCH cell order; T=2 reproduces B2TOR/B2RFROM/B2RFETCH.
+: EMIT-P2-RS ( -- )
+   LBL LBL {: rsto:label rsdone:label :}
+   LP2RS LABEL@ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,  5 SP 8 STR,  6 SP 16 STR,
+   10 20 RSP-CELL W-LDRX C-EMITW                      \ ldr x10,[x20,#RSP-CELL]
+   6 rsto CBZ,
+   \ modes 1/2: x10 -= T; x11 = block base; copy T cells rstk->data
+   8 $D100014A LIT64,  5 SP 8 LDR,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   $8B0A0E8B C-EMITW                                  \ add x11,x20,x10,lsl#3
+   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   13 11 RSTK-OFF W-LDRX C-EMITW                      \ ldr x13,[x11,#RSTK-OFF]
+   $9100216B C-EMITW                                  \ add x11,x11,#8
+   $F900026D C-EMITW                                  \ str x13,[x19]
+   W-PUSH1 C-EMITW                                    \ add x19,x19,#8
+   $F1000529 C-EMITW                                  \ subs x9,x9,#1
+   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   6 SP 16 LDR,  6 2 CMPI,  C-EQ rsdone BCOND,        \ r@/2r@ keep the depth
+   10 20 RSP-CELL W-STRX C-EMITW                      \ str x10,[x20,#RSP-CELL]
+   rsdone B,
+   rsto LBL,
+   \ mode 0: x11 = rstk top; copy T cells data->rstk, pop, depth += T
+   $8B0A0E8B C-EMITW
+   8 $D100026C LIT64,  5 SP 8 LDR,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x12,x19,#T*8
+   8 $D2800009 LIT64,  5 SP 8 LDR,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   $F940018D C-EMITW                                  \ ldr x13,[x12]
+   $9100218C C-EMITW                                  \ add x12,x12,#8
+   13 11 RSTK-OFF W-STRX C-EMITW                      \ str x13,[x11,#RSTK-OFF]
+   $9100216B C-EMITW                                  \ add x11,x11,#8
+   $F1000529 C-EMITW                                  \ subs x9,x9,#1
+   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   8 $D1000273 LIT64,  5 SP 8 LDR,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#T*8
+   8 $9100014A LIT64,  5 SP 8 LDR,  7 5 10 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ add x10,x10,#T
+   10 20 RSP-CELL W-STRX C-EMITW
+   rsdone LBL,
+   30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+: EMIT-P2-HELPERS ( -- )
+   EMIT-P2-COPY  EMIT-P2-DROPN  EMIT-P2-REV  EMIT-P2-ROT  EMIT-P2-RS ;
+
+\ keyword/checker-name bytes for the pass-2 dispatch (the shuffle-op and rs
+\ keyword names reuse the jit.f/loop-keyword labels).
+: EMIT-P2KW ( -- )
+   LWFWIDE LABEL@ LBL,  s" wf-wide?" BYTES,
+   LWFWAT LABEL@ LBL,   s" wf-w-at" BYTES,
+   LLOCWQ LABEL@ LBL,   s" locw@" BYTES,
+   LLOCWCUM LABEL@ LBL, s" locw-cum@" BYTES,
+   LKWTUCK3 LABEL@ LBL,   s" tuck" BYTES,   LKWROT3 LABEL@ LBL,   s" rot" BYTES,
+   LKWMROT3 LABEL@ LBL,   s" -rot" BYTES,   LKW2DUP3 LABEL@ LBL,  s" 2dup" BYTES,
+   LKW2DROP3 LABEL@ LBL,  s" 2drop" BYTES,  LKW2SWAP3 LABEL@ LBL, s" 2swap" BYTES,
+   LKW2OVER3 LABEL@ LBL,  s" 2over" BYTES,  LKW2TOR3 LABEL@ LBL,  s" 2>r" BYTES,
+   LKW2RFROM3 LABEL@ LBL, s" 2r>" BYTES,    LKW2RFET3 LABEL@ LBL, s" 2r@" BYTES, ;
+
+: EM-P2-W-CELL ( n -- n )          \ DATA offset holding operand pos's width
+   dup 0 = IF drop P2W0-CELL EXIT THEN
+   dup 1 = IF drop P2W1-CELL EXIT THEN
+   2 = IF P2W2-CELL EXIT THEN
+   P2W3-CELL ;
+
+: EM-P2-QUERY-1 ( n -- ) {: pos:n :}   \ emit: P2W[pos] := wf-w-at(P2TOKIX, pos)
+   pos EM-P2-W-CELL {: wcell:n :}
+   9 DATA P2TOKIX-CELL LDR,  9 G-PUSH
+   9 pos MOVZ,  9 G-PUSH
+   LWFWAT 7 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP  10 DATA wcell STR, ;
+
+: EM-P2-QUERY-WIDTHS ( n -- ) {: k:n :}   \ emit: query k widths; x13 = any wider than 1
+   LBL {: scal:label :}
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   0 BEGIN dup k < WHILE
+      dup EM-P2-QUERY-1
+      1 +
+   REPEAT drop
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   9 DATA P2W0-CELL LDR,
+   k 1 > IF 10 DATA P2W1-CELL LDR,  9 9 10 ADD, THEN
+   k 2 > IF 10 DATA P2W2-CELL LDR,  9 9 10 ADD, THEN
+   k 3 > IF 10 DATA P2W3-CELL LDR,  9 9 10 ADD, THEN
+   13 0 MOVZ,  9 k CMPI,  C-LE scal BCOND,  13 1 MOVZ,
+   scal LBL, ;
+
+variable P2SK
+: P2W-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext:n :}
+   LBL P2SK !
+   0 kwvar LABEL@ ADR,  1 kwlen MOVZ,  LKWCMP LABEL@ BL,
+   0 P2SK LABEL@ CBZ,
+   k EM-P2-QUERY-WIDTHS
+   13 P2SK LABEL@ CBZ,                                \ all-scalar: normal lowering
+   LVSPILL LABEL@ BL,
+   ext JIT-XT-EXECUTE
+   lmainlbl B,
+   P2SK LABEL@ LBL, ;
+s" p2w-entry" s" label ptr a n n n --" TRUST
+
+\ op bodies: read the operand widths (P2W cells, pos 0 = stack top), compose
+\ sums into the helper args, BL the emit helper(s).
+: EM-P2X-DUP ( -- )                \ ( g0 -- g0 g0 )
+   5 DATA P2W0-CELL LDR,  6 5 0 ADDI,  LP2COPY LABEL@ BL, ;
+: EM-P2X-DROP ( -- )
+   5 DATA P2W0-CELL LDR,  LP2DROPN LABEL@ BL, ;
+: EM-P2X-SWAP ( -- )               \ ( g1 g0 -- g0 g1 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 9 10 ADD,  6 10 0 ADDI,  LP2ROT LABEL@ BL, ;
+: EM-P2X-OVER ( -- )               \ ( g1 g0 -- g1 g0 g1 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 10 0 ADDI,  6 9 10 ADD,  LP2COPY LABEL@ BL, ;
+: EM-P2X-NIP ( -- )                \ ( g1 g0 -- g0 )
+   EM-P2X-SWAP
+   5 DATA P2W1-CELL LDR,  LP2DROPN LABEL@ BL, ;
+: EM-P2X-TUCK ( -- )               \ ( g1 g0 -- g0 g1 g0 )
+   EM-P2X-SWAP
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 9 0 ADDI,  6 9 10 ADD,  LP2COPY LABEL@ BL, ;
+: EM-P2X-ROT ( -- )                \ ( g2 g1 g0 -- g1 g0 g2 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  11 DATA P2W2-CELL LDR,
+   5 9 10 ADD,  5 5 11 ADD,  6 11 0 ADDI,  LP2ROT LABEL@ BL, ;
+: EM-P2X-MROT ( -- )               \ ( g2 g1 g0 -- g0 g2 g1 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  11 DATA P2W2-CELL LDR,
+   5 9 10 ADD,  5 5 11 ADD,  6 10 11 ADD,  LP2ROT LABEL@ BL, ;
+: EM-P2X-2DUP ( -- )               \ ( g1 g0 -- g1 g0 g1 g0 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 9 10 ADD,  6 5 0 ADDI,  LP2COPY LABEL@ BL, ;
+: EM-P2X-2DROP ( -- )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,
+   5 9 10 ADD,  LP2DROPN LABEL@ BL, ;
+: EM-P2X-2SWAP ( -- )              \ ( g3 g2 g1 g0 -- g1 g0 g3 g2 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  11 DATA P2W2-CELL LDR,  12 DATA P2W3-CELL LDR,
+   5 9 10 ADD,  5 5 11 ADD,  5 5 12 ADD,  6 11 12 ADD,  LP2ROT LABEL@ BL, ;
+: EM-P2X-2OVER ( -- )              \ ( g3 g2 g1 g0 -- g3 g2 g1 g0 g3 g2 )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  11 DATA P2W2-CELL LDR,  12 DATA P2W3-CELL LDR,
+   5 11 12 ADD,  6 9 10 ADD,  6 6 11 ADD,  6 6 12 ADD,  LP2COPY LABEL@ BL, ;
+: EM-P2X-TOR ( -- )
+   5 DATA P2W0-CELL LDR,  6 0 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-RFROM ( -- )
+   5 DATA P2W0-CELL LDR,  6 1 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-RFETCH ( -- )
+   5 DATA P2W0-CELL LDR,  6 2 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-2TOR ( -- )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  5 9 10 ADD,  6 0 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-2RFROM ( -- )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  5 9 10 ADD,  6 1 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-2RFET ( -- )
+   9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  5 9 10 ADD,  6 2 MOVZ,  LP2RS LABEL@ BL, ;
+
+\ the pass-2 width dispatch: sits between the local-reference dispatch (locals
+\ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
+\ transport tier is intercepted before its scalar lowering. Facts are recorded
+\ only at transport/locals tokens; everything else falls through byte-identical.
+: EM-COMPILE-P2WIDE ( -- )
+   LBL {: notp2:label :}
+   9 DATA P2-CELL LDR,  9 notp2 CBZ,
+   LMAIN LABEL@ LKWDUP2    3 1 ['] EM-P2X-DUP     P2W-ENTRY
+   LMAIN LABEL@ LKWDROP2   4 1 ['] EM-P2X-DROP    P2W-ENTRY
+   LMAIN LABEL@ LKWSWAP2   4 2 ['] EM-P2X-SWAP    P2W-ENTRY
+   LMAIN LABEL@ LKWOVER2   4 2 ['] EM-P2X-OVER    P2W-ENTRY
+   LMAIN LABEL@ LKWNIP2    3 2 ['] EM-P2X-NIP     P2W-ENTRY
+   LMAIN LABEL@ LKWTUCK3   4 2 ['] EM-P2X-TUCK    P2W-ENTRY
+   LMAIN LABEL@ LKWROT3    3 3 ['] EM-P2X-ROT     P2W-ENTRY
+   LMAIN LABEL@ LKWMROT3   4 3 ['] EM-P2X-MROT    P2W-ENTRY
+   LMAIN LABEL@ LKW2DUP3   4 2 ['] EM-P2X-2DUP    P2W-ENTRY
+   LMAIN LABEL@ LKW2DROP3  5 2 ['] EM-P2X-2DROP   P2W-ENTRY
+   LMAIN LABEL@ LKW2SWAP3  5 4 ['] EM-P2X-2SWAP   P2W-ENTRY
+   LMAIN LABEL@ LKW2OVER3  5 4 ['] EM-P2X-2OVER   P2W-ENTRY
+   LMAIN LABEL@ LKWTOR     2 1 ['] EM-P2X-TOR     P2W-ENTRY
+   LMAIN LABEL@ LKWRFROM   2 1 ['] EM-P2X-RFROM   P2W-ENTRY
+   LMAIN LABEL@ LKWRFET    2 1 ['] EM-P2X-RFETCH  P2W-ENTRY
+   LMAIN LABEL@ LKW2TOR3   3 2 ['] EM-P2X-2TOR    P2W-ENTRY
+   LMAIN LABEL@ LKW2RFROM3 3 2 ['] EM-P2X-2RFROM  P2W-ENTRY
+   LMAIN LABEL@ LKW2RFET3  3 2 ['] EM-P2X-2RFET   P2W-ENTRY
+   notp2 LBL, ;
+s" em-compile-p2wide" s" --" TRUST
+
+\ pass-2 entry: the hook certified the body and the checker reported a wider-
+\ than-cell width fact. Save the live input, terminate the captured body with
+\ a synthetic '; ', repoint the tokenizer at BODYBUF's body span, rewind CP to
+\ the colon entry (the name bytes stay) and DP to the definition watermark,
+\ reset the per-definition compile state exactly as EM-INTERPRET-COLON does,
+\ re-emit the prologue, and re-run the compile loop width-aware.
+: EM-P2-START ( -- )
+   LBL {: capok:label :}
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   9 DATA INP-CELL LDR,  9 DATA P2INP-CELL STR,
+   9 DATA INE-CELL LDR,  9 DATA P2INE-CELL STR,
+   \ synthetic '; ' written PAST BODYLEN (BODYLEN itself stays untouched: the
+   \ pass-2 second ';' re-runs the hook over the exact pass-1 body bytes)
+   14 DATA BODYLEN-CELL LDR,  16 14 2 ADDI,
+   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE capok BCOND,
+      0 71 MOVZ,  NR-EXIT-GROUP SYS,                  \ BCAP-overflow parity
+   capok LBL,
+   15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
+   13 $3B MOVZ,  13 15 0 STRB,  13 32 MOVZ,  13 15 1 STRB,
+   10 DATA BODYBUF-OFF ADDI,
+   9 DATA P2BODY0-CELL LDR,  9 10 9 ADD,  9 DATA INP-CELL STR,
+   9 DATA BODYLEN-CELL LDR,  9 9 2 ADDI,  9 10 9 ADD,  9 DATA INE-CELL STR,
+   11 DATA PEND-CELL LDR,  CP 11 0 LDR,
+   9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA VSP-CELL STR,  12 DATA SNAPSP-CELL STR,
+   12 DATA EXITH-CELL STR,  12 DATA LVD-CELL STR,
+   12 DATA QPATCH-CELL STR,
+   12 VRALL MOVZ,  12 DATA VRFREE-CELL STR,
+   12 FRALL MOVZ,  12 DATA FRFREE-CELL STR,
+   9 $D10043FF LIT64,  LCEMIT LABEL@ BL,
+   9 $F90003FE LIT64,  LCEMIT LABEL@ BL,
+   9 1 MOVZ,  9 DATA P2-CELL STR,
+   9 0 MOVZ,  9 DATA P2TOKIX-CELL STR, ;
+s" em-p2-start" s" --" TRUST
+
+\ EM-P2-TRIGGER: emitted right after the publish path's hook call certifies a
+\ definition. Pass 1 with any wider-than-cell width fact -> enter the pass-2
+\ re-run (wide facts inside a does> split body fail closed: the two-phase body
+\ check indexes tokens differently, so a width-aware re-run cannot align).
+\ Pass 2 (the re-run's own ';') falls through to the normal publish.
+: EM-P2-TRIGGER ( -- )
+   LBL LBL {: nowide:label p2ok:label :}
+   9 DATA P2-CELL LDR,  9 nowide CBNZ,
+   LWFWIDE 8 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP  10 nowide CBZ,
+   10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 $4B MOVZ,  NR-EXIT-GROUP SYS,
+   p2ok LBL,
+   EM-P2-START
+   LMAIN LABEL@ B,
+   nowide LBL, ;
+s" em-p2-trigger" s" --" TRUST
+
+\ EM-P2-CHECK-DEFINER: the sig'd-definition publish gate. Pass 1 runs the hook
+\ (which registers the certified signature) and then the pass-2 trigger. The
+\ pass-2 second ';' must NOT re-run the hook — a second CHECK! of the same name
+\ hits the checker's certified-duplicate guard (CHECKER-DUP-DEFINITION, throw
+\ $4E) — so it skips straight to the normal TRUST-PEND publish tail, giving the
+\ exact pass-1 registration sequence (one certify add + one trust row).
+: EM-P2-CHECK-DEFINER ( -- )
+   LBL {: p2sk:label :}
+   9 DATA P2-CELL LDR,  9 p2sk CBNZ,
+      C-CALL-CHECK-DEFINER
+      EM-P2-TRIGGER
+   p2sk LBL, ;
+s" em-p2-check-definer" s" --" TRUST
+
+\ EM-P2-FINISH: emitted on the publish tail — the pass-2 second ';' published
+\ through the ordinary trusted tail (hook re-check skipped), so resume the
+\ saved real input and clear the pass-2 state (dead pointers zeroed for image
+\ determinism).
+: EM-P2-FINISH ( -- )
+   LBL {: nop2:label :}
+   9 DATA P2-CELL LDR,  9 nop2 CBZ,
+   9 DATA P2INP-CELL LDR,  9 DATA INP-CELL STR,
+   9 DATA P2INE-CELL LDR,  9 DATA INE-CELL STR,
+   9 0 MOVZ,  9 DATA P2-CELL STR,
+   9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,
+   nop2 LBL, ;
+s" em-p2-finish" s" --" TRUST
+
 : EM-COMPILE-FLUSH-PEND ( -- )
    11 DATA PEND-CELL LDR,
    9 11 0 LDR,  10 CP 9 SUB,  10 10 4 SUBI,  10 11 8 STR,
@@ -3249,7 +3729,11 @@ s" em-compile-flush-pend" s" --" TRUST
 : EM-COMPILE-PUBLISH-TRUSTED ( -- )
    LBL LBL LBL {: ttrusted ndhas ndchk :}
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      C-CALL-CHECK-DEFINER
+      \ hook-certified sig'd definition (TSIG holds the captured signature, so
+      \ every checked `: NAME ( .. )` publishes HERE): a wider-than-cell width
+      \ fact triggers the pass-2 width-aware re-run (item 12 slice 3b); the
+      \ pass-2 second ';' skips the re-check and publishes below.
+      EM-P2-CHECK-DEFINER
    ttrusted LBL,
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
@@ -3260,6 +3744,7 @@ s" em-compile-flush-pend" s" --" TRUST
    ndchk LBL,
    C-CALL-TRUST-PEND
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    LMAIN LABEL@ B, ;
@@ -3267,16 +3752,22 @@ s" em-compile-publish-trusted" s" --" TRUST
 
 : EM-COMPILE-PUBLISH-HOOKED ( -- )
    LBL LBL LBL LBL {: nohook:label rejected:label inl:label done:label :}
+   9 DATA P2-CELL LDR,  9 nohook CBNZ,                \ pass-2 second ';': no hook re-check
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
       10 G-POP  10 rejected CBZ,
+      \ certified sig-less definition: same pass-2 dispatch as the sig'd
+      \ publish path (item 12 slice 3b).
+      EM-P2-TRIGGER
    nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  done B,
    rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
    inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
-   done LBL,  C-CLEAR-TRUSTED-STATE
+   done LBL,
+   EM-P2-FINISH
+   C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,  LMAIN LABEL@ B, ;
 s" em-compile-publish-hooked" s" --" TRUST
 
@@ -3580,8 +4071,10 @@ s" em-compile-exit" s" --" TRUST
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
+   EM-P2-COUNT
    lnotsemi EM-COMPILE-SEMI
    EM-COMPILE-LOCAL
+   EM-COMPILE-P2WIDE
    EM-COMPILE-KEYWORDS
    EM-COMPILE-LITERAL
    EM-COMPILE-OPS
@@ -3680,13 +4173,21 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
+: EMIT-LABEL-P2 ( -- )
+   LBL LWFWIDE !  LBL LWFWAT !  LBL LLOCWQ !  LBL LLOCWCUM !
+   LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
+   LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
+   LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !
+   LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS ! ;
+
 : EMIT-LABELS ( -- )
    EMIT-LABEL-CORE
    EMIT-LABEL-CONTROL
    EMIT-LABEL-RUNTIME
    EMIT-LABEL-SOURCES
    EMIT-LABEL-JIT
-   EMIT-LABEL-OPS ;
+   EMIT-LABEL-OPS
+   EMIT-LABEL-P2 ;
 
 \ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
 \ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
@@ -3814,7 +4315,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-FOLDKW
    EMIT-SHUFKW
    EMIT-CMPKW
-   EMIT-UNKW ;
+   EMIT-UNKW
+   EMIT-P2KW ;
 
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-CRASH-HANDLER
@@ -3825,7 +4327,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-SHEBANG-COMMENT
    EMIT-SOURCE-READ
    EMIT-FLAGS
-   EMIT-JIT ;
+   EMIT-JIT
+   EMIT-P2-HELPERS ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN
