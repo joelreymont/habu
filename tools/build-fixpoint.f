@@ -858,12 +858,20 @@ variable BF-CERT-PATH-U
 
 : BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
    s" certify: " type lab labu type
-   s"  rejected rc " type BF-CERT-RC @ . s" (non-blocking)" type cr
+   s"  rejected rc " type BF-CERT-RC @ . s" (blocking)" type cr
    BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
+\ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
+\ build (E-BUILD-STATUS) after reporting the diagnostic. The self-host window
+\ is fail-closed: a type error in emitted engine source can no longer warn its
+\ way into an installed binary. No escape hatch: the gforth recovery lane
+\ (docs/bootstrap.md) reaches this native refresh only after a working bin/hb
+\ exists, and a tree whose generated sources reject must be repaired, not
+\ installed.
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
    BF-CERTIFY-RC 0= IF exit THEN
-   BF-CERT-LABEL$ BF-CERTIFY-REPORT ;
+   BF-CERT-LABEL$ BF-CERTIFY-REPORT
+   E-BUILD-STATUS throw ;
 
 \ The stage engine reads its source from the fixed `stage2-src` name in the temp
 \ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so

@@ -35,15 +35,21 @@ variable RDIAG-I
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
+\ Typed slot for the diagnostic buffer pointer: a plain `variable @` reads back
+\ an untyped n, so the byte store below would not certify; `0 ptr-field` gives
+\ the checked ptr u8 view (the lib-wide *-BUF-A idiom).
+: RDIAG-A-FIELD ( -- ptr ptr u8 )
+   RDIAG-A 0 ptr-field ;
+
 : DIAG-BUFFER$ ( -- ptr u8 n )
-   RDIAG-A @ RDIAG-U @ ;
+   RDIAG-A-FIELD @ RDIAG-U @ ;
 
 : RDIAG-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 RDIAG-I !
    BEGIN RDIAG-I @ u < WHILE
       a RDIAG-I @ + c@
-      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
+      RDIAG-A-FIELD @ RDIAG-U @ + RDIAG-I @ + c!
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
@@ -71,10 +77,10 @@ variable RATOM-I
 : RATOM-FIND ( n -- n bool ) {: key:n :}
    0 RATOM-I !
    BEGIN RATOM-I @ RATOM-N @ < WHILE
-      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ -1 EXIT THEN
+      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ 0 0= EXIT THEN
       RATOM-I @ 1 + RATOM-I !
    REPEAT
-   0 0 ;
+   0 1 0= ;
 : RATOM-ADD ( n -- n ) {: key:n :}
    RATOM-N @ RATOM-CAP >= IF 1 RQM ! 0 EXIT THEN
    key RATOM-N @ cells RATOM-KEY + !
@@ -84,12 +90,13 @@ variable RATOM-I
    key RATOM-FIND IF EXIT THEN drop
    key RATOM-ADD ;
 
-: RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: RSTR ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: CON-OUT {: p :}
+: CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
    p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user deftype)
-      p CT-NAME$ dup IF RSTR ELSE 2drop 63 EMIT1 THEN
+      p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN
    ELSE 63 EMIT1 THEN THEN ;
 
 : ATOM-REND {: t :}
@@ -125,7 +132,7 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
 \ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
 \ bottom-to-top (space-separated); mode=0 renders a type. RECURSE re-enters with
 \ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
-: QREND {: x:n d:n mode:n :}
+: QREND ( n n n -- ) {: x:n d:n mode:n :}
    mode 0 > IF
       x R-RES dup TAG S-PUSH = IF
          dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
@@ -207,7 +214,8 @@ variable RSHOW-DST
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
 \ only appear when the failing unify was captured (STEP/SUNI).
-: DTXT {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
@@ -236,16 +244,18 @@ variable DSUGE  variable DSUGA
       92 of 92 EMIT1 c EMIT1 endof
       c EMIT1
    endcase ;
-: JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
-: JKEY {: a u :}  a u JSTR  58 EMIT1 ;
+: JSTR ( ptr u8 n -- ) {: a:ptr u:n :}
+   34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u JSTR  58 EMIT1 ;
 : JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
 : SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
-: SIG-LTRIM {: a u :}
+: SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
       1 +
    REPEAT drop a 0 ;
-: SIG-RTRIM {: a u :}
+: SIG-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u BEGIN dup 0 > WHILE
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
@@ -331,10 +341,10 @@ variable DSUGE  variable DSUGA
    ELSE  s" Change the body so produced types match the signature."
    THEN THEN ;
 variable JPOS  variable JLINE  variable JCOL
-: JLOC-CALC
+: JLOC-CALC ( -- )
    1 JLINE !  1 JCOL !  0 JPOS !
    BEGIN JPOS @ FAILB @ <  JPOS @ TBLEN @ <  and WHILE
-      TBASE @ JPOS @ + c@ 10 = IF
+      TBASE 0 ptr-field @ JPOS @ + c@ 10 = IF
          JLINE @ 1 + JLINE !  1 JCOL !
       ELSE
          JCOL @ 1 + JCOL !

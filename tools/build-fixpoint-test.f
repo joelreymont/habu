@@ -426,6 +426,10 @@ create BFT-CHECK-OFF-LINE
 \ BF-BUILD-RC exit, a named stderr diagnostic, the engine binary byte-unchanged,
 \ and no stamp. Before the BF-CLI boundary the E-BUILD-STATUS throw escaped to
 \ BTHROW's no-handler exit: silent, exit code masked to the low 8 bits.
+\ The crash rides a TRUSTED: boundary so BLOCKING certification cannot see it
+\ (a `0 set-check` body is still checked by VERIFY:SOURCE-BUF and would be
+\ rejected statically before ever running) -- the stale-seed scenario this
+\ models is a semantic runtime failure, not a type error.
 : BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    BFT-STALE a u BFT-CP-BUF JOIN-PATH BFT-CP-U !
    BFT-CP-BUF BFT-CP-U @ ;
@@ -444,7 +448,7 @@ create BFT-CHECK-OFF-LINE
 
 : BFT-STALE-SABOTAGE ( -- )
    s" src/habu/hide.f" BFT-READ {: u:n :}
-   BFT-STALE-HIDE s" 0 set-check : BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
+   BFT-STALE-HIDE s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
    BFT-STALE-HIDE BFT-NL 1 APPEND-FILE
    BFT-STALE-HIDE BFT-READ-BUF u APPEND-FILE ;
 
@@ -618,24 +622,35 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
+\ Certification is BLOCKING: a generated stage source that rejects must fail
+\ the build with E-BUILD-STATUS, not warn and proceed (fail-open). The
+\ install-path proof is the red/green install pair recorded on
+\ habu-make-fixpoint-certify-a11dbad5; this pins the unit behavior.
+: BFT-TEST-CERTIFY-BLOCKING ( -- )
+   s" : BFT-CERT-BAD2 ( n -- n ) drop ;" BFT-CERT-WRITE
+   [: s" cert-blocking" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-STATUS TTHROWSQ ;
+
+: BFT-TEST-CERTIFY-GOOD-PASSES ( -- )
+   s" : BFT-CERT-GOOD2 ( n -- n ) 1 + ;" BFT-CERT-WRITE
+   s" cert-good2" BFT-CERT BF-CERTIFY-GENERATED ;
+
 \ Self-certification guard: the checker's own source and the pre-compile source
 \ verifier must certify clean via the same VERIFY:SOURCE-BUF path the fixpoint
 \ install uses, so any future de-typing of checker.f/verify-source.f turns this
-\ suite red immediately. The broader whole-stage2/stdin RC-0 assertion and the
-\ blocking-certify flip remain with habu-checker-self-typing-9ff8ba86 /
-\ habu-make-fixpoint-certify-a11dbad5 (render.f must certify clean first).
+\ suite red immediately. The whole stage2/stdin sources now certify rc 0 and
+\ certification is BLOCKING (BFT-TEST-CERTIFY-BLOCKING); the fixpoint install
+\ is the end-to-end assertion.
 : BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
    s" checker-self" s" src/core/checker.f" BF-CERTIFY-RC 0 T=
    s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T= ;
 
-\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, and
-\ sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each verified as
-\ the tail of its exact BF-APPEND-CHECKER-BOOT prefix context (util, structures,
-\ checker, then the earlier TFAM files), so de-typing any one file fails its own
-\ assert. render.f sits between type-family.f and sumtype.f in the real prefix
-\ but does not certify yet (habu-checker-self-typing-9ff8ba86 owns it); the
-\ sumtype context stands in a CHECKED stub pinning render.f's declared
-\ TDECL-DIAG effect — swap it for src/core/render.f once that dot lands.
+\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
+\ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
+\ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
+\ (util, structures, checker, then the earlier TFAM files), so de-typing any
+\ one file fails its own assert. render.f sits between type-family.f and
+\ sumtype.f in the real prefix and certifies since its typed cleanup
+\ (habu-make-fixpoint-certify-a11dbad5).
 : BFT-CERT-TFAM$ ( -- ptr u8 n )
    s" cert-tfam" BF-A$ ;
 
@@ -645,11 +660,6 @@ create BFT-CHECK-OFF-LINE
    s" cert-tfam" s" src/core/structures.f" BF-APPEND-SOURCE
    s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE ;
 
-: BFT-CERT-TFAM-DIAG-STUB ( -- )
-   s" cert-tfam"
-   s" : TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) 2drop 2drop 2drop 2drop ;"
-   BF-APPEND-LINE ;
-
 : BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
    BFT-ROOT BF-TMP!
    BFT-CERT-TFAM-BASE
@@ -657,7 +667,8 @@ create BFT-CHECK-OFF-LINE
    s" tfam-type-schema" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
    s" cert-tfam" s" src/core/type-family.f" BF-APPEND-SOURCE
    s" tfam-type-family" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
-   BFT-CERT-TFAM-DIAG-STUB
+   s" cert-tfam" s" src/core/render.f" BF-APPEND-SOURCE
+   s" tfam-render" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
    s" cert-tfam" s" src/core/sumtype.f" BF-APPEND-SOURCE
    s" tfam-sumtype" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
    BF-TMP-RESET ;
@@ -704,6 +715,8 @@ create BFT-CHECK-OFF-LINE
    s" no build shims" [: BFT-TEST-NO-BUILD-SHIMS ;] BFT-STEP
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
+   s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
+   s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
    s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
    s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
    s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP

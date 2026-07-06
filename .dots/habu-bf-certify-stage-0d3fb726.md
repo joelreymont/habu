@@ -17,3 +17,14 @@ PSTACK at RECURSE. Blocking flip, preflight retirement, boot-prefix hash pin,
 and stdin set-check retirement remain.
 The only new checker.f trust sites are thin mmap result refinements
 (`*-RC>PTR`); mmap invocation and failure checks remain checked.
+
+## Blocking flip landed (2026-07-06, on 50ed2c53)
+
+Certification went clean and BLOCKING: the render.f typed cleanup removed the
+last VERIFY:SOURCE-BUF misses (stage2/stdin/snap sources all rc 0), and
+BF-CERTIFY-GENERATED now throws E-BUILD-STATUS on any reject (see
+habu-make-fixpoint-certify-a11dbad5, closed, for the full evidence chain).
+REMAINING here, now unblocked: retire the BF-PREFLIGHT textual asserts in
+favor of the real (now blocking) certification; hash-pin the boot prefix
+(sha256 baked into the image) to close the boot-reload TOCTOU; retire the
+stdin.f REPL set-check now that repl sources certify.
