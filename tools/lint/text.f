@@ -5,9 +5,11 @@ require lib/string.f
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
 \ buf n -- n ), close ( fd -- ). O_RDONLY = 0. Path must be NUL-terminated.
-\ Audited hook-install boundary: lint tools load this first so shared helpers
-\ fail closed under LINT-CHECK-HOOK.
-0 set-check
+\ Lint tools load this first so shared helpers fail closed under
+\ LINT-CHECK-HOOK. CHECK! (engine checker entrypoint) is modeled as a
+\ primitive axiom so the hook definition itself compiles checked
+\ (axiom owner: habu-primitive-effect-axiom-1119f176).
+s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : LINT-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;

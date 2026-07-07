@@ -749,7 +749,8 @@ src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
 tools/check-all-errors-core.f builder-emit habu-multi-err-checking-42db26f4 2
-tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
+tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 6
+tools/check-core.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
@@ -765,7 +766,7 @@ lib/ptx/tile-loop.f stdlib-boundary habu-checker-capability-typed-e0c76a02 1
 lib/ptx/tile-smem.f stdlib-boundary habu-checker-capability-typed-e0c76a02 3
 lib/ptx/tile-v4.f stdlib-boundary habu-audit-trusted-inventory-3a950436 9
 lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436 31
-tools/lint/text.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1

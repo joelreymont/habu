@@ -13,9 +13,11 @@
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 
-\ Audited hook-install boundary: this tool must install its checker hook before
-\ validating generated source snippets with CHECK!.
-0 set-check
+\ This tool installs its checker hook before validating generated source
+\ snippets with CHECK!. CHECK! (engine checker entrypoint) is modeled as a
+\ primitive axiom so the hook definition itself compiles checked
+\ (axiom owner: habu-primitive-effect-axiom-1119f176).
+s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;

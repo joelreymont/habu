@@ -2614,3 +2614,11 @@ unchanged (148855). Keys for milestone 2:
   FFI-PTR-ARG!  1 0 FFI-CALLN` with fn=0 traps 83 (pre-fix it BLRs to 0 ->
   signal/rc134, a distinct outcome); stale-slot proof is nargs=0 with a band value
   in slot 0 -> NOT trapped.
+- **A `0 set-check` span may exist only because ONE primitive lacks an axiom
+  row — probe before accepting it as a boundary.** Both hook-install spans
+  (tools/lint/text.f, tools/check-core.f) disabled checking solely because the
+  hook body calls `CHECK!`, which the checker did not know. A one-line fixture
+  (`s" CHECK!" s" ptr u8 n -- n" TRUST` then the hook definition, under the
+  baked hook) proved the span retirable; the swap keeps the file fully checked
+  and turns an opaque check-off region into a single audited prim-axiom TRUST
+  row. Duplicate TRUST of the same primitive in two files is idempotent.
