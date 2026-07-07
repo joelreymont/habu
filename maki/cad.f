@@ -211,7 +211,7 @@ private
 : CAP-HAS-VALUE? ( -- bool )  CAP-IN-N @ 0<>  CAP-OPS @ 0<> or ;   \ a running value exists
 
 : CAP-BEGIN ( -- )
-   TV-RESET  PLAN-RESET  MIR-RESET
+   TENSOR:TV-RESET  TENSOR:PLAN-RESET  MIR-RESET
    0 CAP-IN-N !  1 CAP-IP !  0 CAP-OPS !
    NT-RESET  CAP-PEND-RESET  MSRC-RESET
    0 MODEL-SET? ! ;
@@ -278,9 +278,9 @@ private
 
 \ capture entry points: elementwise param vs its data operand; linear bias vs output cols
 : EW-SHAPE-CHECK ( tensor tensor n -- ) {: x:tensor p:tensor op:n :}
-   x TV-ROWS@ x TV-COLS@  p TV-ROWS@ p TV-COLS@  op  SHP-CHECK ;
+   x TENSOR:TV-ROWS@ x TENSOR:TV-COLS@  p TENSOR:TV-ROWS@ p TENSOR:TV-COLS@  op  SHP-CHECK ;
 : LIN-BIAS-CHECK ( tensor tensor tensor -- ) {: x:tensor w:tensor b:tensor :}
-   x TV-ROWS@ w TV-COLS@  b TV-ROWS@ b TV-COLS@  OP-BIAS  SHP-CHECK ;
+   x TENSOR:TV-ROWS@ w TENSOR:TV-COLS@  b TENSOR:TV-ROWS@ b TENSOR:TV-COLS@  OP-BIAS  SHP-CHECK ;
 
 \ ---- post-capture param-operand shape legality (over the captured plan store) --------
 \ The named vocabulary is the arity/kind surface only (plan-vocab.f); broadcast legality
@@ -288,15 +288,15 @@ private
 \ populates the plan store, each elementwise/linear node's parameter operand is re-checked
 \ against its data operand's shape. An unbound (0) extent defers to BIND-SHAPES reprop.
 : PLAN-SHP-NODE ( n -- ) {: j:n :}
-   j PLAN-OP@ {: op:n :}
+   j TENSOR:PLAN-OP@ {: op:n :}
    op OPR-CLASS {: cls:n :}
    cls CLASS-EW = if
-      j PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
-      j 0 PLAN-IN@  j 1 PLAN-IN@  op EW-SHAPE-CHECK  exit then
+      j TENSOR:PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
+      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  op EW-SHAPE-CHECK  exit then
    cls CLASS-MATMUL = if
-      j PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
-      j 0 PLAN-IN@  j 1 PLAN-IN@  j 2 PLAN-IN@  LIN-BIAS-CHECK then ;
-: PLAN-SHP-ALL ( -- )  PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
+      j TENSOR:PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
+      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  LIN-BIAS-CHECK then ;
+: PLAN-SHP-ALL ( -- )  TENSOR:PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
 : PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
@@ -311,20 +311,20 @@ private
    else 1 then ;
 
 : BRIDGE-NODE ( n -- ) {: j:n :}
-   j PLAN-OP@ {: op:n :}
+   j TENSOR:PLAN-OP@ {: op:n :}
    op MIR-OP-BEGIN
-   j PLAN-IN-COUNT@ 0 ?do  j i PLAN-IN@ PLAN-REF MIR-IN+  loop
-   j PLAN-OUT@ {: y:tensor :}
-   j PLAN-ATTR@ {: attr:n :}
-   y TV-ROWS@ y TV-COLS@ y TV-DTYPE@ y TV-LAYOUT@  attr  op attr BRIDGE-MAT  MIR-OP+ drop ;
+   j TENSOR:PLAN-IN-COUNT@ 0 ?do  j i TENSOR:PLAN-IN@ PLAN-REF MIR-IN+  loop
+   j TENSOR:PLAN-OUT@ {: y:tensor :}
+   j TENSOR:PLAN-ATTR@ {: attr:n :}
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ y TENSOR:TV-DTYPE@ y TENSOR:TV-LAYOUT@  attr  op attr BRIDGE-MAT  MIR-OP+ drop ;
 
-: BRIDGE-PLAN ( -- )  PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
+: BRIDGE-PLAN ( -- )  TENSOR:PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
 \ finish capture after the compiled body ran: no dangling reference, a non-empty plan, the
 \ param-operand shape pass (E-CAD-PARAM-SHAPE), then bridge the plan into the model IR.
 : CAP-FINISH ( -- )
    CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a named ref left unconsumed by any op
-   PLAN-N@ 0= if E-CAD-EMPTY throw then             \ the compiled body captured no ops
+   TENSOR:PLAN-N@ 0= if E-CAD-EMPTY throw then             \ the compiled body captured no ops
    PLAN-SHP-ALL
    BRIDGE-PLAN
    -1 MODEL-SET? ! ;
@@ -359,7 +359,7 @@ private
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols DT-F32 LAY-ROW TV-DESC tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
+   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
    rows cols DT-F32 LAY-ROW MIR-INPUT+ drop                                  \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then

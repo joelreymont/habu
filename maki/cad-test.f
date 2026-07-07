@@ -43,11 +43,11 @@ variable CT-VA  variable CT-VU
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
 \ ---- capture-time param-shape legality probes (data then param on the plan store) --------
 : TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
-   TV-RESET  4 8 DT-F32 LAY-ROW TV-DESC  2 3 DT-F32 LAY-ROW TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  4 8 DT-F32 LAY-ROW TENSOR:TV-DESC  2 3 DT-F32 LAY-ROW TENSOR:TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
 : TRY-BIAS-BADCOL ( -- )                              \ bias cols != data cols (not 1xC)
-   TV-RESET  2 4 DT-F32 LAY-ROW TV-DESC  1 3 DT-F32 LAY-ROW TV-DESC  OP-BIAS EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  2 4 DT-F32 LAY-ROW TENSOR:TV-DESC  1 3 DT-F32 LAY-ROW TENSOR:TV-DESC  OP-BIAS EW-SHAPE-CHECK ;
 : TRY-SCALE-BAD   ( -- )                              \ scale param neither same-shape nor 1x1
-   TV-RESET  2 4 DT-F32 LAY-ROW TV-DESC  1 4 DT-F32 LAY-ROW TV-DESC  OP-SCALE EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  2 4 DT-F32 LAY-ROW TENSOR:TV-DESC  1 4 DT-F32 LAY-ROW TENSOR:TV-DESC  OP-SCALE EW-SHAPE-CHECK ;
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
@@ -305,7 +305,7 @@ s" memory.move:"                CT-NOTIN
 : TRY-MV-RANGE   ( -- )  s" 12" PARSE-RANGE 2drop ;          \ no ".." separator
 : TRY-MV-NOPARAM ( -- )  CAP-BEGIN s" RESHAPE" EMIT-OP-TOKEN ;   \ bare reshape needs ":RxC" params
 : TRY-MV-RESHAPE ( -- )                                       \ element count mismatch
-   TV-RESET PLAN-RESET  2 3 DT-F32 LAY-ROW TV-DESC 2 2 PLAN-RESHAPE drop ;
+   TENSOR:TV-RESET TENSOR:PLAN-RESET  2 3 DT-F32 LAY-ROW TENSOR:TV-DESC 2 2 PLAN-RESHAPE drop ;
 ' TRY-MV-RANGE   E-CAD-SYNTAX TTHROWS
 ' TRY-MV-NOPARAM E-CAD-SYNTAX TTHROWS
 ' TRY-MV-RESHAPE E-TV-SHAPE   TTHROWS

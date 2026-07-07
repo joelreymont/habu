@@ -63,12 +63,24 @@ public
 
 : AL-VALID? ( n -- bool ) {: al:n :}  al 0 < 0=  al AL-N <  and ;
 
-\ Model op kinds (OP-LINEAR / OP-GELU / OP-N) come from the shared op registry
-\ maki/op-kind.f (CAD-PLAN section 4.2); PLINEAR/PGELU record them below.
+end-package
+
+\ ---------------------------------------------------------------------------
+\ The stateful tensor-value store + descriptor plan builder is a real subsystem
+\ (mutable handle table + IR plan), so it lives in its own package TENSOR. The
+\ value-type vocabulary above (dtype/layout/align enums + predicates) is shared
+\ maki substrate used bare across the whole layer, so it stays package MAKI and
+\ is qualified MAKI: from inside TENSOR. Model op kinds (OP-LINEAR / OP-GELU /
+\ OP-N) come from the shared op registry maki/op-kind.f (still MAKI); PLINEAR/
+\ PGELU record them below.
+package TENSOR
+
+public
+
+256 constant TV-CAP            \ max live tensor values (store capacity contract)
 
 private
 
-256 constant TV-CAP            \ max live tensor values
 
 \ record table: one create-array per field so each keeps its own cell type
 \ (TV-DATA holds a pointer; the rest hold n). Indexed by slot 0..TV-U-1.
@@ -86,16 +98,16 @@ variable TV-U                          \ free counter / live count
 \ pointer->cell cast; the low bits are exact, so no data-base assumption is made.
 : TV-ALIGN-CLASS ( ptr a -- n ) {: p:ptr :}
    p P>N {: a:n :}
-   a 15 and 0= if AL-16  exit then
-   a 7  and 0= if AL-8   exit then
-   a 3  and 0= if AL-4   exit then
-   AL-BYTE ;
+   a 15 and 0= if MAKI:AL-16  exit then
+   a 7  and 0= if MAKI:AL-8   exit then
+   a 3  and 0= if MAKI:AL-4   exit then
+   MAKI:AL-BYTE ;
 
 \ ---- store commit (validates every tag before writing a slot) -------------
 : TV-COMMIT ( ptr a n n n n n n -- tensor )    \ data rows cols dtype layout align has
    {: base:ptr rows:n cols:n dt:n lay:n al:n has:n :}
-   dt DT-VALID? 0= if E-MK-DTYPE throw then
-   lay 0 < lay LAY-N >= or if E-TV-LAYOUT throw then
+   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
+   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
    TV-U @ TV-CAP >= if E-TV-FULL throw then
    TV-U @ {: idx:n :}
    base  TV-DATA idx cells + !
@@ -130,14 +142,14 @@ public
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
 : TV-NEW ( ptr a n n -- tensor )               \ data rows cols
-   DT-F32 LAY-ROW TV-NEW-AS ;
+   MAKI:DT-F32 MAKI:LAY-ROW TV-NEW-AS ;
 
 \ TV-DESC builds a planning descriptor: shape/dtype/layout only, no buffer.
 \ Alignment is AL-UNKNOWN (conservative) and TV-DATA@ fails closed. The data
 \ slot stores data-base purely as a never-read placeholder (HAS=0 guards it).
 : TV-DESC ( n n n n -- tensor )                \ rows cols dtype layout
    {: rows:n cols:n dt:n lay:n :}
-   data-base rows cols dt lay  AL-UNKNOWN  0  TV-COMMIT ;
+   data-base rows cols dt lay  MAKI:AL-UNKNOWN  0  TV-COMMIT ;
 
 \ ---- accessors (one per recorded fact) ------------------------------------
 : TV-ROWS@   ( tensor -- n )  TV-ROWS TV-N@ ;
@@ -154,23 +166,26 @@ public
 
 \ ---- settable dtype / layout (validated) ----------------------------------
 : TV-DTYPE! ( tensor n -- tensor ) {: t:tensor dt:n :}
-   dt DT-VALID? 0= if E-MK-DTYPE throw then
+   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
    dt t TV-DT TV-N!  t ;
 : TV-LAYOUT! ( tensor n -- tensor ) {: t:tensor lay:n :}
-   lay 0 < lay LAY-N >= or if E-TV-LAYOUT throw then
+   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
    lay t TV-LAY TV-N!  t ;
 
 \ ---- store lifecycle -------------------------------------------------------
 : TV-RESET ( -- )  0 TV-U ! ;                  \ clears store; invalidates handles
 : TV-COUNT ( -- n )  TV-U @ ;
 
-private
+public
 
 \ ---- plan store (descriptor-mode IR: an ordered list of op records) -------
 \ Each op keeps op-kind, output tensor, and a (offset,count) window into a flat
 \ input-tensor pool. A pending record is staged by PLAN-OP-BEGIN / PLAN-IN+ and
 \ committed by PLAN-OP+, so any input arity records with a fixed-arity wordset.
-64  constant PLAN-CAP           \ max ops per plan
+64  constant PLAN-CAP           \ max ops per plan (plan capacity contract)
+
+private
+
 256 constant PLAN-INCAP         \ max total input slots across the plan
 
 create P-KIND  PLAN-CAP cells allot     \ op-kind (OP-*)
@@ -200,7 +215,7 @@ public
 
 : PLAN-OP-BEGIN ( n -- ) {: k:n :}             \ open a record with op-kind k
    PEND-ON @ if E-TV-PLAN-STATE throw then
-   k 0 < k OP-N >= or if E-TV-OPKIND throw then
+   k 0 < k MAKI:OP-N >= or if E-TV-OPKIND throw then
    k PEND-KIND !  P-INS-U @ PEND-OFF !  0 PEND-CNT !  0 PEND-ATTR !  1 PEND-ON ! ;
 
 : PLAN-IN+ ( tensor -- ) {: t:tensor :}        \ stage one input for the open record
@@ -239,15 +254,15 @@ public
 \ ---- descriptor-mode model ops (append IR, do not compute) -----------------
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.
 : PLINEAR ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
-   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ LAY-ROW TV-DESC {: y:tensor :}
-   OP-LINEAR PLAN-OP-BEGIN
+   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI:LAY-ROW TV-DESC {: y:tensor :}
+   MAKI:OP-LINEAR PLAN-OP-BEGIN
    x PLAN-IN+  w PLAN-IN+  b PLAN-IN+
    y PLAN-OP+
    y ;
 
 : PGELU ( tensor -- tensor ) {: x:tensor :}    \ elementwise: same shape/layout
    x TV-ROWS@ x TV-COLS@ x TV-DTYPE@ x TV-LAYOUT@ TV-DESC {: y:tensor :}
-   OP-GELU PLAN-OP-BEGIN
+   MAKI:OP-GELU PLAN-OP-BEGIN
    x PLAN-IN+
    y PLAN-OP+
    y ;
@@ -259,7 +274,7 @@ public
    {: x:tensor w:tensor b:tensor y:tensor :}
    x TV-COLS@ w TV-ROWS@ <> if E-TV-SHAPE throw then
    x TV-DATA@  w TV-DATA@  b TV-DATA@  y TV-DATA@
-   x TV-ROWS@  x TV-COLS@  w TV-COLS@  LINEAR
+   x TV-ROWS@  x TV-COLS@  w TV-COLS@  MAKI:LINEAR
    y ;
 
 end-package

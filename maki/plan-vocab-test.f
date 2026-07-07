@@ -55,50 +55,50 @@ end-package
 package MAKI
 
 : PVT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols DT-F32 LAY-ROW TV-DESC ;
-: PVT-IN ( n n -- n ) {: node:n k:n :}  node k PLAN-IN@ tensor>N ;   \ k-th input handle
-: PVT-OUT ( n -- n ) {: node:n :}  node PLAN-OUT@ tensor>N ;         \ output handle
+   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC ;
+: PVT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ tensor>N ;   \ k-th input handle
+: PVT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ tensor>N ;         \ output handle
 
 \ PVT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and x
 \ fanning out to node 0 and node 3.
 : PVT-RUN-SKIP ( -- )
-   TV-RESET PLAN-RESET
+   TENSOR:TV-RESET TENSOR:PLAN-RESET
    4 8 PVT-DESC {: x:tensor :}          \ handle 0
    8 16 PVT-DESC {: w1:tensor :}        \ handle 1
    1 16 PVT-DESC {: b1:tensor :}        \ handle 2
    16 8 PVT-DESC {: w2:tensor :}        \ handle 3
    1 8 PVT-DESC {: b2:tensor :}         \ handle 4
    x w1 b1 w2 b2 PLAN:PVT-SKIP {: y:tensor :}
-   PLAN-N@ 5 T=                         \ five IR nodes captured
-   0 PLAN-OP@ OP-LINEAR       T=
-   1 PLAN-OP@ OP-GELU         T=
-   2 PLAN-OP@ OP-LINEAR       T=
-   3 PLAN-OP@ OP-RESIDUAL-ADD T=
-   4 PLAN-OP@ OP-RMSNORM      T=
-   3 PLAN-IN-COUNT@ 2 T=
+   TENSOR:PLAN-N@ 5 T=                         \ five IR nodes captured
+   0 TENSOR:PLAN-OP@ OP-LINEAR       T=
+   1 TENSOR:PLAN-OP@ OP-GELU         T=
+   2 TENSOR:PLAN-OP@ OP-LINEAR       T=
+   3 TENSOR:PLAN-OP@ OP-RESIDUAL-ADD T=
+   4 TENSOR:PLAN-OP@ OP-RMSNORM      T=
+   3 TENSOR:PLAN-IN-COUNT@ 2 T=
    0 0 PVT-IN x tensor>N T=             \ node0.in0 = x
    3 1 PVT-IN x tensor>N T=             \ node3.in1 = x   (the skip)
    3 0 PVT-IN 2 PVT-OUT   T=            \ node3.in0 = node2 output (data = running value)
-   y TV-ROWS@ 4 T=  y TV-COLS@ 8 T=     \ shape flows through the whole composition
-   4 PLAN-OUT@ TV-ROWS@ 4 T=  4 PLAN-OUT@ TV-COLS@ 8 T= ;
+   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T=     \ shape flows through the whole composition
+   4 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 4 T=  4 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 8 T= ;
 
 \ PVT-BRANCH: a DAG (re-root + fan-out + join).
 : PVT-RUN-BRANCH ( -- )
-   TV-RESET PLAN-RESET
+   TENSOR:TV-RESET TENSOR:PLAN-RESET
    4 8 PVT-DESC {: x:tensor :}          \ handle 0
    8 8 PVT-DESC {: w:tensor :}          \ handle 1
    1 8 PVT-DESC {: b:tensor :}          \ handle 2
    x w b PLAN:PVT-BRANCH {: y:tensor :}
-   PLAN-N@ 3 T=
-   0 PLAN-OP@ OP-GELU   T=
-   1 PLAN-OP@ OP-LINEAR T=
-   2 PLAN-OP@ OP-ADD    T=
+   TENSOR:PLAN-N@ 3 T=
+   0 TENSOR:PLAN-OP@ OP-GELU   T=
+   1 TENSOR:PLAN-OP@ OP-LINEAR T=
+   2 TENSOR:PLAN-OP@ OP-ADD    T=
    0 0 PVT-IN x tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
    1 0 PVT-IN x tensor>N T=             \ node1.in0 = x   (x fanned out again)
    2 0 PVT-IN 1 PVT-OUT   T=            \ node2.in0 = linear output
    2 1 PVT-IN 0 PVT-OUT   T=            \ node2.in1 = gelu output
-   2 PLAN-IN-COUNT@ 2 T=
-   y TV-ROWS@ 4 T=  y TV-COLS@ 8 T= ;
+   2 TENSOR:PLAN-IN-COUNT@ 2 T=
+   y TENSOR:TV-ROWS@ 4 T=  y TENSOR:TV-COLS@ 8 T= ;
 
 end-package
 
