@@ -775,6 +775,10 @@ test/prop-test-core.f:AX-ARITY prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AXEVAL prim-axiom habu-primitive-effect-axiom-1119f176
 tools/asm-src-test.f test-metaprog habu-audit-trusted-inventory-3a950436 12
 tools/image-bytes-test.f test-metaprog habu-audit-trusted-inventory-3a950436 22
+tools/codegen-role.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+tools/codegen-role.f:CGR-EVALUATE test-metaprog habu-audit-trusted-inventory-3a950436
+tools/codegen-role.f:CGR-CHECK! test-metaprog habu-audit-trusted-inventory-3a950436
+tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog habu-audit-trusted-inventory-3a950436
 src/core/check-hook.f:HOOK stdlib-boundary habu-police-set-check-850bc543
 src/habu/aot.f:USER-HOOK builder-emit habu-police-set-check-850bc543
 src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543 2
@@ -784,4 +788,6 @@ test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543
 test/engine-suite.f:HOOK test-metaprog habu-police-set-check-850bc543 2
 test/gate-aot-negative-lib.f:HOOK test-metaprog habu-police-set-check-850bc543
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543 4
+tools/codegen-role.f:CGR-HOOK test-metaprog habu-police-set-check-850bc543 2
+tools/codegen-role.f:CGR-HOOK! test-metaprog habu-police-set-check-850bc543
 -->

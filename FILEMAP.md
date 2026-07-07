@@ -471,6 +471,11 @@ points stay listed.
   signature scanner/capture emitters in native and recovery codegen.
 - `tools/compiler-dispatch-test.f` — source-shape coverage for factored compiler
   dispatch and code-section emitter groups in native and recovery codegen.
+- `tools/codegen-role.f` — structural codegen-role checks: extracts guarded
+  emitter definitions from the real stage sources, certifies and runs them on
+  the live arm64 primitives, and asserts branch-fixup and store-slot roles.
+- `tools/codegen-role-test.f` — positive coverage plus corruption fixtures for
+  the codegen-role checks, replacing the retired BF-PREFLIGHT textual asserts.
 - `tools/aot-call-report-lib.f` — reusable AOT call-stencil report scanner.
 - `tools/aot-call-report.f` — CLI entrypoint for AOT call-stencil reports.
 - `tools/aot-call-report-test.f` — checked fixture coverage for AOT call-stencil reports.

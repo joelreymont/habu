@@ -304,6 +304,10 @@ TEST:SUITE compiler-dispatch-shape
    tools/compiler-dispatch-test.f
 TEST:END-SUITE
 
+TEST:SUITE codegen-role
+   tools/codegen-role-test.f
+TEST:END-SUITE
+
 TEST:SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f
