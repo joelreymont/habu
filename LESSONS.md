@@ -2633,3 +2633,10 @@ unchanged (148855). Keys for milestone 2:
   baked hook) proved the span retirable; the swap keeps the file fully checked
   and turns an opaque check-off region into a single audited prim-axiom TRUST
   row. Duplicate TRUST of the same primitive in two files is idempotent.
+- **Clean up a lane's jj workspace the moment its work is merged and the agent is
+  finished — `jj workspace forget <name>` + remove the directory in one step.**
+  Finished-lane workspaces accumulated for weeks (~40 dirs) until a manual bulk
+  removal looked like data loss and cost a restore-and-verify round trip; stale
+  workspaces also hold stale baked `bin/hb` binaries that produce fake gate reds
+  when reused. Verify first (no unmerged commits, clean wc), keep active lanes,
+  parked device-blocked chains, and the merge-gate workspace.
