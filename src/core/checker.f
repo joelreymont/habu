@@ -874,22 +874,12 @@ CT-INIT
 : PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
-\ a var arg may never bind a linear con through param-arg pairing: hidden
-\ groups must stay non-linear (item 11 slice 1; whole-bundle linear counting is
-\ the remaining item-11 capability). Inert while no linear type is declared.
-: PARAM-ARG-LIN-BLOCK? ( n n -- bool ) {: x:n y:n :}
-   x ISVAR y ISVAR xor 0= IF RES-FALSE EXIT THEN
-   x ISVAR IF y ELSE x THEN {: c:n :}
-   c TAG T-CON = 0= IF RES-FALSE EXIT THEN
-   c PAY CT-LINEAR? ;
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
    t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
    t1 t2 PARAM-FAM-OK? 0= IF RES-FALSE UOK ! EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
-      t1 PARAM-I @ PARAM>ARG T-RES  t2 PARAM-I @ PARAM>ARG T-RES
-      2dup PARAM-ARG-LIN-BLOCK? IF 2drop RES-FALSE UOK ! EXIT THEN
-      PAIR
+      t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
       PARAM-I @ 1 + PARAM-I !
    REPEAT ;
 
@@ -1062,6 +1052,32 @@ variable LAYOUT-XPORT
 : LAYOUT-MAYBE-LINEAR? ( n -- bool ) {: p:n :}    \ resolved layout T-PARAM term
    0 BEGIN dup p PARAM>ARGC < WHILE
       p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
+\ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
+\ sums the linear cons among a layout term's (flat, cell-kinded) args, sampled
+\ once per logical value — LIN-TYPE-COUNT counts a bundle only at its tag cell.
+\ LAYOUT-ARGS-OPEN? is the width question (any arg still an unresolved var):
+\ width-known layouts expand to hidden fields even when linear, so the checker
+\ row and the runtime cells agree; open-arg layouts stay one conservative cell.
+variable LLC-N
+: LAYOUT-ARG-LIN-N ( n -- n ) {: t:n :}   \ 1 when the arg resolves to a linear con
+   t T-RES {: r:n :}
+   r TAG T-CON <> IF 0 EXIT THEN
+   r PAY CT-LINEAR? IF 1 ELSE 0 THEN ;
+: LAYOUT-LINEAR-COUNT ( n -- n ) {: p:n :}
+   0 LLC-N !
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG LAYOUT-ARG-LIN-N LLC-N @ + LLC-N !
+      1 +
+   REPEAT drop
+   LLC-N @ ;
+: LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
+: LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG T-RES ISVAR IF drop RES-TRUE EXIT THEN
       1 +
    REPEAT drop RES-FALSE ;
 
@@ -1300,6 +1316,7 @@ variable LTNT-I
 \ so the inner descent must go through `t T-RES`, matching the FIELD-PARAM?
 \ guard just before it. Descending on the raw var reads an unrelated arena slot
 \ and, under accumulated arena state, can point back at `t` (infinite recursion).
+variable LTC-P
 : LIN-TYPE-COUNT* ( n -- n ) {: t:n :}
    t T-RES TAG case
       T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
@@ -1307,7 +1324,16 @@ variable LTNT-I
       T-QUOT of 0 endof
       T-ATOM of 0 endof
       T-PARAM of
-         t FIELD-PARAM? IF t T-RES FIELD-INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE 0 THEN
+         t FIELD-PARAM? IF t T-RES FIELD-INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE
+            t T-RES LTC-P !
+            LTC-P @ HIDDEN-PARAM? IF
+               LTC-P @ HIDDEN-SLOT@  LTC-P @ PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+                  LTC-P @ LAYOUT-LINEAR-COUNT               \ one bundle: count at the tag only
+               ELSE 0 THEN
+            ELSE LTC-P @ LAYOUT-PARAM? IF
+               LTC-P @ LAYOUT-LINEAR-COUNT                  \ one conservative logical cell
+            ELSE 0 THEN THEN
+         THEN
       endof
       0 swap
    endcase ;
@@ -2287,8 +2313,8 @@ create ROWMAP 26 cells allot
 : PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
    t T-RES {: r:n :}
    r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
-      r LAYOUT-MAYBE-LINEAR? 0= IF
-         r row LAYOUT-PUSH-FIELDS EXIT
+      r LAYOUT-ARGS-OPEN? 0= IF
+         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear args): rows tell the truth
       THEN
    THEN
    t row MK-PUSH ;
@@ -4928,8 +4954,10 @@ variable XG-N   variable XG-TN   variable XG-ROW
    XG-ROW @ R-RES {: node:n :}
    node TAG S-ROW = IF XG-READ-VAR EXIT THEN
    node P>TYPE T-RES {: t:n :}
-   t HIDDEN-PARAM? IF t XG-READ-HID RES-TRUE EXIT THEN
-   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ possibly-linear layout never transports
+   t HIDDEN-PARAM? IF
+      t LAYOUT-LINEAR? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ linear bundles do not transport (v1: construct/flow only, exact accounting)
+      t XG-READ-HID RES-TRUE EXIT THEN
+   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ open-arg layout never transports
    node P>TYPE XG-T+
    node P>REST XG-ROW !
    RES-TRUE ;

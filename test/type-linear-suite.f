@@ -1,0 +1,88 @@
+\ type-linear-suite.f — whole-bundle linear accounting for layout values
+\ (PLAN item 11, docs/type-families.md §19). Run BY THE ENGINE over stdin:
+\     bin/hb < test/type-linear-suite.f
+\ A sum whose type args include a linear con is ONE linear unit: constructors
+\ consume linear payloads and mint the bundle (empty-payload variants mint
+\ without input, the option-NONE shape), pass-through and deeper-row flow
+\ conserve it, and every copy/drop/transport/local-capture/unconsumed path
+\ rejects (v1: construct + flow only; move-class transports and MATCH
+\ consumption land with item 9). Width stays truthful: linear-arg layouts
+\ expand to hidden fields exactly like non-linear ones (LAYOUT-ARGS-OPEN?),
+\ so checker rows and runtime cells agree.
+
+require test/checker-assert.f
+
+variable #FAIL
+variable #CASE
+
+: T-FAIL ( -- )
+   [char] F emit #CASE @ .
+   #FAIL @ 1 + #FAIL ! ;
+: T= ( n n -- ) {: got:n want:n :}
+   #CASE @ 1 + #CASE !
+   got want <> if
+      T-FAIL s" assert: expected " type want . s" got " type got . cr
+   then ;
+
+deflinear ltok
+SUMTYPE lq2 2
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
+SUMTYPE lqmix 2
+  VARIANT small a ;VARIANT
+  VARIANT big a b n ;VARIANT
+;SUMTYPE
+
+\ ---------------------------------------------------------------------------
+\ accepted: construction, minting, pass-through, deeper-row flow, wrappers.
+\ ---------------------------------------------------------------------------
+s" A1=" type s" C1 ( ltok -- lq2<ltok,n> ) LQ2:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" A2=" type s" C2 ( n -- lq2<ltok,n> ) LQ2:ERR" CHECK-QUIET-CANDIDATE! -1 T=
+s" A3=" type s" C3 ( lq2<ltok,n> -- lq2<ltok,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+\ transports beside the bundle stay legal: the reject targets the bundle only.
+s" A4=" type s" C4 ( lq2<ltok,n> n -- lq2<ltok,n> ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ a generic wrapper flows the linear through construction (1-in/1-out var).
+: LWRAP ( a -- lq2<a,b> ) LQ2:OK ;
+s" A5=" type s" C5 ( ltok -- lq2<ltok,n> ) LWRAP" CHECK-QUIET-CANDIDATE! -1 T=
+\ wider payloads: multi-cell construction with a linear arg mints one unit.
+s" A6=" type s" C6 ( ltok n n -- lqmix<ltok,n> ) LQMIX:BIG" CHECK-QUIET-CANDIDATE! -1 T=
+\ narrow variant with zero padding still consumes the linear payload exactly once.
+s" A7=" type s" C7 ( ltok -- lqmix<ltok,n> ) LQMIX:SMALL" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+
+\ ---------------------------------------------------------------------------
+\ rejected: copy, drop, transport, locals, return stack, unconsumed, loss.
+\ ---------------------------------------------------------------------------
+s" R1=" type s" B1 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" R2=" type s" B2 ( lq2<ltok,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" R3=" type s" B3 ( lq2<ltok,n> -- )" CHECK-QUIET-CANDIDATE! 0 T=
+s" R4=" type s" B4 ( lq2<ltok,n> n -- n lq2<ltok,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" R5=" type s" B5 ( lq2<ltok,n> -- lq2<ltok,n> ) {: x :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" R6=" type s" B6 ( lq2<ltok,n> -- lq2<ltok,n> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+s" R7=" type s" B7 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) >r r@ r>" CHECK-QUIET-CANDIDATE! 0 T=
+\ payload reuse: the second construction has no linear input left.
+s" R8=" type s" B8 ( ltok -- lq2<ltok,n> ) LQ2:OK LQ2:OK" CHECK-QUIET-CANDIDATE! 0 T=
+\ branch loss: only one arm constructs -> join mismatch.
+s" R9=" type s" B9 ( ltok f -- lq2<ltok,n> ) if LQ2:OK then" CHECK-QUIET-CANDIDATE! 0 T=
+\ raw cells still cannot forge a linear bundle.
+s" R10=" type s" B10 ( ltok n -- lq2<ltok,n> ) nip 0 0" CHECK-QUIET-CANDIDATE! 0 T=
+\ dropping the linear payload before construction still trips conservation.
+s" R11=" type s" B11 ( ltok n -- lq2<ltok,n> ) nip LQ2:ERR" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+\ ---------------------------------------------------------------------------
+\ scalar linear discipline unchanged next to the bundle machinery.
+\ ---------------------------------------------------------------------------
+s" S1=" type s" D1 ( ltok -- ltok )" CHECK-QUIET-CANDIDATE! -1 T=
+s" S2=" type s" D2 ( ltok -- ltok ltok ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" S3=" type s" D3 ( ltok -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+\ ---------------------------------------------------------------------------
+\ report: "ok" on success, nonzero exit on any failure.
+\ ---------------------------------------------------------------------------
+: REPORT ( -- )
+   #FAIL @ 0 = if s" ok" type cr exit then
+   #FAIL @ . s" type-linear-suite: failures" 1 die ;
+REPORT
