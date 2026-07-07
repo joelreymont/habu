@@ -83,6 +83,15 @@
 : EMIT-ROW-SPAN-ONCE ( n n -- n )
    EMIT-ROW-SPAN ;
 
+\ ROW-SPAN0: rowbase pinned to row 0 = cvta.global(base) (no row*k advance). A 1xC / 1x1
+\ broadcast operand has a single row, so every block reads the SAME row; ROW-LOAD then
+\ reads element tid (1xC) or, with a zero col offset, element 0 (1x1). Mirrors the
+\ executor EX-BC@ row-0 read for a broadcast operand (maki/bcast.f).
+: EMIT-ROW-SPAN0 ( n -- n ) {: base:n :}
+   CG-NEXT-RD {: g:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S g CG-RD s" , " CG-S base CG-RD s" ;" CG-S CG-LINE
+   g ;
+
 \ ROW-CTX: per-thread column byte offset = tid*4 (span unused; bounds recomputed
 \ at load/store from %tid.x and %r1).
 : EMIT-ROW-CTX ( n -- n ) {: span :}

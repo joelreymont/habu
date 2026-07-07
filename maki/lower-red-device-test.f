@@ -100,5 +100,17 @@ s" == GELU->RMSNORM 4x8 ==" type cr
 MODEL: GR ( x:4x8 -- y ) GELU RMSNORM ;  FP-BUILD
 s" MODEL: GR ( x:4x8 -- y ) GELU RMSNORM ;" LRD-GOLD1
 
+\ BIAS->RMSNORM 4x8 + 1x8: a 1xC row-broadcast prologue pinned to row 0 (same row/block);
+\ the device kernel reads element tid of the single bias row and the host reads EX-BC@ 1xC.
+s" == BIAS->RMSNORM 4x8 + 1x8 (1xC row-broadcast) ==" type cr
+MODEL: BR ( x:4x8 b:1x8 -- y ) BIAS RMSNORM ;  FP-BUILD
+s" MODEL: BR ( x:4x8 b:1x8 -- y ) BIAS RMSNORM ;" LRD-GOLD1
+
+\ SCALE->RMSNORM 4x8 + 1x1: a 1x1 scalar-broadcast prologue (row 0 + zero column offset);
+\ every lane reads element 0 on both legs.
+s" == SCALE->RMSNORM 4x8 + 1x1 (1x1 scalar-broadcast) ==" type cr
+MODEL: SR ( x:4x8 s:1x1 -- y ) SCALE RMSNORM ;  FP-BUILD
+s" MODEL: SR ( x:4x8 s:1x1 -- y ) SCALE RMSNORM ;" LRD-GOLD1
+
 LRD-END
 end-package

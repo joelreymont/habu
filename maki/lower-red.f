@@ -28,14 +28,23 @@
 \ then `.param .u64 p_out`, then `.param .u32 p_k` (= C, the row width -> %r1); shared SMEM
 \ for the block reduction. Block is fixed at 256 (matches the launch grid).
 \
+\ BROADCAST operands (bias/scale around the reduction): a region input whose shape is a legal
+\ ROW (1xC) or SCALAR (1x1) broadcast of the region shape is loaded with its row span pinned to
+\ row 0 (EMIT-ROW-SPAN0), so every block reads the SAME single row - a 1xC reads element tid
+\ (the shared column ctx), a 1x1 reads element 0 (a zero ctx). This mirrors the host executor
+\ EX-BC@ (maki/bcast.f) and unblocks fused BIAS/SCALE prologues (e.g. BIAS RMSNORM). A COLUMN
+\ (Rx1) broadcast needs a stride-1 row span the coalesced row loader cannot express, so it stays
+\ fail-closed (LRED-BCAST); it is not a legal capture class anyway (dot for the row-vector fold).
+\ OP-BIAS lowers as EMIT-ADD and OP-SCALE as EMIT-MUL, matching the executor's scalar references.
+\
 \ Fail closed BEFORE any PTX is emitted (a rejected region emits nothing): a region whose
 \ class mix is not ROW-REDUCE (optionally + EW) (LRED-NOTRED), an op that is neither a
 \ v1 elementwise op nor a supported reduction (LRED-OP), a region with != 1 reduction node
 \ (LRED-MULTIRED, v1 cap: one reduction per region), more than the v1 input cap (LRED-INPUTS),
-\ a region without exactly one materialized output (LRED-MULTIOUT), a region input that is
-\ not the full RxC region shape i.e. a broadcast operand (LRED-BCAST), and a row width beyond
-\ the block cap (LRED-COLS, v1: C <= 256) are named throws. maki -> habu only; lower-red owns
-\ -5185..-5192. Load after the cg emit stack (see requires).
+\ a region without exactly one materialized output (LRED-MULTIOUT), a region input whose shape
+\ is not a row/scalar broadcast of the RxC region shape - an Rx1 column or a non-1-non-full dim
+\ (LRED-BCAST), and a row width beyond the block cap (LRED-COLS, v1: C <= 256) are named throws.
+\ maki -> habu only; lower-red owns -5185..-5192. Load after the cg emit stack (see requires).
 
 require lib/errors.f
 require lib/string.f
@@ -51,6 +60,7 @@ require maki/op-registry.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/move-view.f
+require maki/bcast.f
 require maki/layernorm.f
 require maki/rmsnorm.f
 
@@ -59,7 +69,7 @@ require maki/rmsnorm.f
 -5187 constant E-LRED-MULTIRED \ region does not have exactly one reduction node (v1 cap)
 -5188 constant E-LRED-INPUTS   \ region has more than the v1 input cap (4)
 -5189 constant E-LRED-MULTIOUT \ region does not have exactly one materialized output
--5190 constant E-LRED-BCAST    \ a region input is not the full RxC region shape (broadcast, v1)
+-5190 constant E-LRED-BCAST    \ a region input shape is not a row/scalar broadcast (Rx1 col / illegal dim)
 -5191 constant E-LRED-COLS     \ row width (cols) exceeds the block cap (v1: k <= 256)
 -5192 constant E-LRED-REG      \ node / input register-map index out of range
 
@@ -73,6 +83,7 @@ private
 
 create LRED-INS     LRED-MAX-IN cells allot   \ ordered external-input operand refs
 create LRED-IN-REG  LRED-MAX-IN cells allot   \ loaded %f tile register per external input
+create LRED-IN-BC   LRED-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LRED-NODE-REG LRED-NCAP cells allot    \ result %f register per region-member node
 variable LRED-NIN                              \ region input count
 variable LRED-OUTNODE                          \ the single materialized region-output node
@@ -94,7 +105,8 @@ variable LRED-RID                              \ region id being lowered
    op OP-LAYERNORM = op OP-RMSNORM = or op OP-SOFTMAX-ROW = or ;
 : LRED-EW-OP? ( n -- bool ) {: op:n :}           \ a v1 elementwise prologue / epilogue op
    op OP-RELU = op OP-GELU = or op OP-SILU = or
-   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or ;
+   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or
+   op OP-BIAS = or op OP-SCALE = or ;             \ broadcast binary prologue/epilogue (1xC / 1x1)
 
 : LRED-RED-COUNT ( n -- n ) {: rid:n :}          \ reduction nodes in the region
    0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-OP@ LRED-RED-OP? and if 1+ then  loop ;
@@ -143,17 +155,22 @@ variable LRED-RID                              \ region id being lowered
    -1 LRED-OUTNODE !
    MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MAT@ and if i LRED-OUTNODE ! then  loop ;
 
-\ ---- shape check (row kernel: every buffer is exactly the RxC region shape) --
+\ ---- broadcast classification (row kernel: each input is full / row / scalar) --
 : LRED-REF-ROWS ( n -- n ) {: ref:n :}
    ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
 : LRED-REF-COLS ( n -- n ) {: ref:n :}
    ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
-: LRED-CHECK-SHAPES ( -- )
+\ classify each input; FULL/ROW/SCALAR load with the row loader (row 0 pinned for a broadcast),
+\ but an Rx1 COLUMN (a stride-1 row span the coalesced loader cannot hold) or an illegal dim
+\ fails closed. Record the class for the per-input load in LRED-BODY.
+: LRED-CLASSIFY-INS ( -- )
    LRED-OUTNODE @ {: out:n :}
    out MIR-ROWS@ {: R:n :}  out MIR-COLS@ {: C:n :}
    LRED-NIN @ 0 ?do
       LRED-INS i cells + @ {: ref:n :}
-      ref LRED-REF-ROWS R <>  ref LRED-REF-COLS C <>  or if E-LRED-BCAST throw then
+      ref LRED-REF-ROWS  ref LRED-REF-COLS  R C  BC-CLASS {: cls:n :}
+      cls BC-FULL = cls BC-ROW = or cls BC-SCALAR = or 0= if E-LRED-BCAST throw then
+      cls LRED-IN-BC i cells + !
    loop ;
 
 public
@@ -164,7 +181,7 @@ public
    rid LRED-CHECK-OPS
    rid LRED-COLLECT-INS
    rid LRED-FIND-OUT
-   LRED-CHECK-SHAPES
+   LRED-CLASSIFY-INS
    LRED-OUTNODE @ MIR-COLS@ LRED-BLOCK > if E-LRED-COLS throw then ;
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
@@ -238,7 +255,9 @@ private
       OP-SILU          of nd 0 LRED-OPREG EMIT-SILU     endof
       OP-ADD           of nd LRED-BINREGS EMIT-ADD      endof
       OP-RESIDUAL-ADD  of nd LRED-BINREGS EMIT-ADD      endof
+      OP-BIAS          of nd LRED-BINREGS EMIT-ADD      endof
       OP-MUL           of nd LRED-BINREGS EMIT-MUL      endof
+      OP-SCALE         of nd LRED-BINREGS EMIT-MUL      endof
       OP-LAYERNORM     of nd 0 LRED-OPREG LRED-EMIT-LN  endof
       OP-RMSNORM       of nd 0 LRED-OPREG LRED-EMIT-RMS endof
       OP-SOFTMAX-ROW   of nd 0 LRED-OPREG LRED-EMIT-SM  endof
@@ -286,14 +305,23 @@ private
 \ ---- body: row ctx, per-input row loads, node chain, masked store -----------
 : LRED-BASE ( n -- n )  1+ ;                     \ rd index of input i's pointer param (rd1..rdK)
 : LRED-OUT-BASE ( -- n )  LRED-NIN @ 1+ ;        \ rd index of p_out (rd K+1)
+\ per-input row load (i >= 1): FULL reads the r-th row span at the shared column ctx; a ROW (1xC)
+\ broadcast pins the span to row 0 (same row every block) and reads element tid via the shared ctx;
+\ a SCALAR (1x1) pins row 0 and reads element 0 via a zero ctx. Result tile -> LRED-IN-REG[i].
+: LRED-LOAD-IN ( n n n -- ) {: i:n r:n ctx:n :}
+   i cells LRED-IN-BC + @ case
+      BC-FULL   of i LRED-BASE r EMIT-ROW-SPAN  ctx EMIT-ROW-LOAD          endof
+      BC-ROW    of i LRED-BASE EMIT-ROW-SPAN0   ctx EMIT-ROW-LOAD          endof
+      BC-SCALAR of i LRED-BASE EMIT-ROW-SPAN0   EMIT-ZERO-OFF EMIT-ROW-LOAD endof
+      drop E-LRED-BCAST throw
+   endcase
+   LRED-IN-REG i cells + ! ;
 : LRED-BODY ( -- )
    EMIT-ROW {: r:n :}                            \ r = blockIdx.x (one block per row)
-   0 LRED-BASE r EMIT-ROW-SPAN {: sp0:n :}       \ input-0 row span (base for the shared ctx)
+   0 LRED-BASE r EMIT-ROW-SPAN {: sp0:n :}       \ input-0 (always FULL data operand) row span
    sp0 EMIT-ROW-CTX {: ctx:n :}                  \ per-thread column byte offset (tid*4)
    sp0 ctx EMIT-ROW-LOAD  LRED-IN-REG 0 cells + !
-   LRED-NIN @ 1 ?do
-      i LRED-BASE r EMIT-ROW-SPAN  ctx EMIT-ROW-LOAD  LRED-IN-REG i cells + !
-   loop
+   LRED-NIN @ 1 ?do  i r ctx LRED-LOAD-IN  loop
    LRED-CHAIN
    LRED-OUTNODE @ LRED-NR@  LRED-OUT-BASE r EMIT-ROW-SPAN  ctx EMIT-ROW-STORE ;
 

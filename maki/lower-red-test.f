@@ -5,10 +5,12 @@
 \ .version header, one REGION_<rid> entry, the per-input/out/k params, the shared SMEM +
 \ bar.sync block reduction, and the per-op signature instructions for RMSNORM (sqrt, no
 \ subtract), LAYERNORM (subtract + sqrt), SOFTMAX-ROW (block-max + ex2.approx, no sqrt),
-\ plus prologue fusion (GELU->RMSNORM in one kernel; ADD->RMSNORM with two params). Then
-\ the fail-closed paths: a pure-elementwise region, an unsupported op, two reductions, the
-\ column cap, the input cap, a broadcast operand (hand-built IR), and a corrupted
-\ multi-output plan. No device, no ptxas - PTX validity is proven on the Orin by
+\ plus prologue fusion (GELU->RMSNORM in one kernel; ADD->RMSNORM with two params). Then the
+\ broadcast prologues: BIAS->RMSNORM (a 1xC row-broadcast pinned to row 0, add.rn) and
+\ SCALE->RMSNORM (a 1x1 scalar-broadcast via a zero column offset, mul.rn), mirroring EX-BC@.
+\ Then the fail-closed paths: a pure-elementwise region, an unsupported op, two reductions, the
+\ column cap, the input cap, an Rx1 column and an illegal broadcast shape (both hand-built IR),
+\ and a corrupted multi-output plan. No device, no ptxas - PTX validity is proven on the Orin by
 \ maki/lower-device-test.f. Load via maki/test.f.
 
 require lib/test.f
@@ -107,6 +109,32 @@ s" .param .u64 p_in1"           LREDT-IN
 s" add.rn.f32"                  LREDT-IN     \ tile+tile ADD prologue
 s" sqrt.rn.f32"                 LREDT-IN     \ rmsnorm reduction
 
+\ ---- BIAS->RMSNORM: a 1xC row-broadcast prologue pinned to row 0 (same row/block) -
+\ The bias operand (p_in1) is loaded from row 0 with the shared column ctx (element tid),
+\ so it needs no zero column offset (mov.u64 absent); BIAS lowers as add.rn.f32.
+MODEL: BR ( x:4x8 b:1x8 -- y ) BIAS RMSNORM ;
+FP-BUILD
+LREDT-CAP0
+s" .version 8.3"                LREDT-ONCE
+s" .visible .entry REGION_0"    LREDT-ONCE
+s" .param .u64 p_in1"           LREDT-IN
+s" add.rn.f32"                  LREDT-IN     \ BIAS tile add
+s" sqrt.rn.f32"                 LREDT-IN     \ rmsnorm reduction
+s" mov.u64"                     LREDT-ABSENT \ 1xC uses the shared tid ctx, not a scalar zero offset
+
+\ ---- SCALE->RMSNORM: a 1x1 scalar-broadcast prologue (row 0 + zero column offset) -
+\ The scale operand reads element 0 for every lane via a zero byte offset (mov.u64 ..,0);
+\ SCALE lowers as mul.rn.f32.
+MODEL: SR ( x:4x8 s:1x1 -- y ) SCALE RMSNORM ;
+FP-BUILD
+LREDT-CAP0
+s" .visible .entry REGION_0"    LREDT-ONCE
+s" .param .u64 p_in1"           LREDT-IN
+s" mov.u64"                     LREDT-IN     \ scalar zero column offset
+s" , 0;"                        LREDT-IN
+s" mul.rn.f32"                  LREDT-IN     \ SCALE tile mul
+s" sqrt.rn.f32"                 LREDT-IN     \ rmsnorm reduction
+
 \ ---- fail closed: a pure-elementwise region is not a reduction region ------------
 MODEL: GRL ( x:4x8 -- y ) GELU RELU ;
 FP-BUILD
@@ -140,13 +168,26 @@ FP-BUILD
 -1 0 MIR-MAT!
 ' LREDT-TRY E-LRED-MULTIOUT TTHROWS
 
-\ ---- fail closed: a 1-row broadcast operand into the reduction, unsupported in v1 -
-\ Capture-time shape legality (E-CAD-PARAM-SHAPE) rejects a mismatched ADD at MODEL:, so
-\ the IR is hand-built (backward-test pattern) to keep the analyzer's own guard tested as
-\ defense-in-depth (LRED-ANALYZE must not trust its caller).
+\ ---- fail closed: an Rx1 COLUMN broadcast into the reduction (no clean row load) ---
+\ A 1xC row / 1x1 scalar broadcast now lowers (pinned to row 0); an Rx1 column would need a
+\ stride-1 row span the coalesced row loader cannot express, so it stays fail-closed. It is
+\ not a legal capture class either, so the IR is hand-built (backward-test pattern) to keep
+\ LRED-ANALYZE's guard tested as defense-in-depth. 4x1 into 4x8: br=R=4, bc=1 -> BC-COL.
 MIR-RESET
 4 8 DT-F32 LAY-ROW MIR-INPUT+ drop
-1 8 DT-F32 LAY-ROW MIR-INPUT+ drop
+4 1 DT-F32 LAY-ROW MIR-INPUT+ drop
+OP-ADD MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
+   4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+OP-RMSNORM MIR-OP-BEGIN  0 MIR-IN+
+   4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+FP-BUILD
+' LREDT-TRY E-LRED-BCAST TTHROWS
+
+\ ---- fail closed: an ILLEGAL broadcast shape (a dim neither 1 nor full) ------------
+\ 3x8 into a 4x8 region: 3 is neither 1 nor R=4 -> BC-ILLEGAL -> E-LRED-BCAST.
+MIR-RESET
+4 8 DT-F32 LAY-ROW MIR-INPUT+ drop
+3 8 DT-F32 LAY-ROW MIR-INPUT+ drop
 OP-ADD MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
    4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 OP-RMSNORM MIR-OP-BEGIN  0 MIR-IN+
