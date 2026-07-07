@@ -1122,6 +1122,17 @@ lesson — keep the specific word/code/path, cut the prose.
   a flag, a no-`else` `if` must be stack-neutral, `i`/`j`/`k` are reserved loop
   words. The rules now live in `docs/forth.md`; once known, later ports needed
   ~zero checker iterations. The win is verification, not authoring speed.
+- **A checker driver must never execute candidate code - reuse the verify
+  path, not the load path:** the all-errors CLI rewire nearly shipped on
+  `evaluate` (the native MULTI-ERR load), which runs top-level candidate forms
+  in the checking process and pollutes the live dictionary (checker-scope
+  rollback restores registries, NOT cp/ndict - RBF-POP). The crash-immune
+  reuse point is VERIFY:SOURCE-BUF (parse+check, zero execution) with the
+  multi-error continue decision inside VERIFY-BODY. Also: checker.f words are
+  NOT registry-published to later checked loads (MULTI-ERR? rejected at the
+  engine rebuild despite being dictionary-visible) - checker-internal access
+  from tools rides small documented TRUSTED: one-liners, same class as
+  CHECK-BODY.
 - **Advisory soundness findings rot — and can be born rotten:** the prop-test
   metamorphic ROUNDTRIP amplifier was 100% inconsistent from its introduction
   (REND-SIG's "just-checked effect" contract is destroyed by CHECK's own

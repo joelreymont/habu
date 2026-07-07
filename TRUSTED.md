@@ -451,6 +451,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECK-BODY | `ptr u8 n -- n` | Shared source pre-verification recursively invokes the checker on an assembled definition body and renders the checker-owned uncheckable diagnostic before returning the verdict; recursive checker invocation and diagnostic-state access are the explicit verifier boundary. | `tools/hb-build-test.f`, `tools/check-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-01 |
 | CHECK-DOES-BODY | `ptr u8 n ptr u8 n -- n` | Shared source pre-verification routes `DOES>` bodies through the checker's dedicated `CHECK-DOES!` entrypoint; ordinary `CHECK!` cannot model the created-word data-field pointer. | `tools/check-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
 | TRUST-SIGNATURE | `ptr u8 n ptr u8 n --` | Shared source pre-verification records source-order defining-word signatures for parsed names; the checker cannot infer a dynamic mutation of its signature table from scanner state. | `tools/hb-build-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
+| MULTI-ERR-MODE? | `-- bool` | Shared source pre-verification reads the checker-internal multi-error mode flag; the checker registry does not publish `MULTI-ERR?` to later checked loads, so the verify loop's continue-past-reject decision rides the same verifier boundary as `CHECK-BODY`. | `tools/check-all-errors-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-07 |
+| CA-MULTI-BEGIN | `--` | The all-errors driver arms the checker-internal multi-error load mode around its single whole-buffer verify pass; mode control words are not registry-published to checked tool loads. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
+| CA-MULTI-END | `-- n` | Reads the multi-error reject count and clears the mode for the fail-closed exit decision; same unpublished-mode-word boundary as `CA-MULTI-BEGIN`. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
@@ -692,7 +695,7 @@ src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
-src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
+src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 5
 src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 7
 src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
 src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
@@ -747,6 +750,7 @@ src/core/roles.f:IMG>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
+tools/check-all-errors-core.f builder-emit habu-multi-err-checking-42db26f4 2
 tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5

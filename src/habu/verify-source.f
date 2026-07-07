@@ -281,15 +281,32 @@ create BODY-BUF BODYBUF-CAP allot
 TRUSTED: CHECK-BODY ( ptr u8 n -- n )
    CHECK! dup 1 = JSON-DIAGS @ 0= and DIAGXT @ 0 <> and IF DIAGXT @ execute THEN ;
 
+\ Checker-internal mode flag read; the checker registry does not publish
+\ MULTI-ERR? to later checked loads, so this rides the same trusted boundary
+\ class as CHECK-BODY above.
+TRUSTED: MULTI-ERR-MODE? ( -- bool )
+   MULTI-ERR? ;
+
+\ In MULTI-ERR mode a verdict-0 reject RETURNS instead of throwing: CHECK has
+\ already emitted the diagnostic, counted MULTI-ERR-N, and recorded the
+\ declared signature (no-cascade), so the scan continues at the next
+\ definition. Verdict-1 (uncheckable) still throws in BOTH modes: MULTI-ERR-N
+\ counts verdict-0 only, so continuing past uncheckables would let an
+\ all-uncheckable file exit 0 - fail-open.
 : VERIFY-BODY ( -- )
-   BODY-BUF BODY-U @ CHECK-BODY  dup -1 <> IF 70 throw THEN drop ;
+   BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
+   v -1 = IF EXIT THEN
+   v 0 = MULTI-ERR-MODE? and IF EXIT THEN
+   70 throw ;
 
 TRUSTED: CHECK-DOES-BODY ( ptr u8 n ptr u8 n -- n )
    CHECK-DOES! ;
 
 : VERIFY-DOES-BODY ( ptr u8 n -- ) {: sig:ptr sigu:n :}
-   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY
-   dup -1 <> IF 70 throw THEN drop ;
+   BODY-BUF BODY-U @ sig sigu CHECK-DOES-BODY {: v:n :}
+   v -1 = IF EXIT THEN
+   v 0 = MULTI-ERR-MODE? and IF EXIT THEN
+   70 throw ;
 
 : VERIFY-DOES ( -- )
    VERIFY-BODY

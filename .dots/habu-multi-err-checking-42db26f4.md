@@ -255,3 +255,37 @@ fail-closed exit; cross-file support keeps VERIFY:SOURCE-BUF-IN-SCOPE replay
 unchanged (check-only, proven by probe c's same-scope behavior); the CA-DEF-*
 re-drive retires. New fixtures: the 2-diagnostic cascade contract (Option A,
 ruling recorded) + dup pre-scan + golden position parity.
+
+## CLI-rewire half CLOSED (2026-07-07, on 6a1d8f3e) - dot remains open for
+## intra-def recovery ONLY
+
+Landed in one unit:
+- src/habu/verify-source.f (declared for this change): VERIFY-BODY and
+  VERIFY-DOES-BODY continue past verdict-0 rejects under MULTI-ERR (fail-open
+  rationale for keeping verdict-1 uncheckable fatal stated at the site);
+  checker-registry publication gap bridged by TRUSTED: MULTI-ERR-MODE? (the
+  registry does not publish checker-internal words to later checked loads -
+  discovered when the engine rebuild rejected the direct MULTI-ERR? reference).
+- tools/check-all-errors-core.f: the per-definition re-drive is RETIRED
+  (958 -> 483 lines): one whole-buffer VERIFY:SOURCE-BUF-IN-SCOPE pass in
+  MULTI-ERR mode (CA-MULTI-BEGIN/END trusted mode control) inside the existing
+  checker scope with unchanged cross-file support replay; duplicate definitions
+  still surface as the catchable CA-DUP-RC from the verify path and report
+  exactly as before (no lexer pre-scan needed - that concern was
+  evaluate-design-specific); lex-unterminated detection kept; fail-closed exit
+  iff rejects or rc. CA-DEF-*/CA-SUP-* tables, per-def diag frames, support
+  slicing, and the raw-undefined JSON synthesis all deleted (the native render
+  path emits every reject's JSON, byte-identical goldens).
+- Fixtures: CAE-TEST-CASCADE pins the Option-A no-cascade contract (proven RED
+  against the re-driver: 3 diagnostics incl. phantom E-UNDEFINED; GREEN at 2
+  after the rewire); CAE-TEST-UNCHECKABLE-FAILS pins the all-uncheckable
+  nonzero exit.
+PROOFS: full CAE suite ok; check-test / check-repair-hints / repair-packet /
+repair-schema-doc ok; build-fixpoint-test ok (verify-source certify pin);
+fixpoint install --force rc 0 through blocking certify; serial prop oracle
+census OK; cold gate PASS (one -2502 load flake, rerun green); trust-lint +
+trusted-inventory strict green with the three new documented boundary rows
+owned here.
+
+REMAINING SCOPE OF THIS DOT: intra-definition recovery only (blocked on
+reusable per-token checkpoint/restore machinery, as analyzed above).

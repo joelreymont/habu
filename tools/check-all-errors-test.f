@@ -512,6 +512,50 @@ create CAE-LF-BYTE 10 c,
    s" PASS: " type label labelu type
    s"  (" type mono-ns CAE-START-NS @ - PROC-NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
 
+: CAE-CASCADE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-CBADA ( n -- n ) drop ;" SB-APPEND CAE-LF
+   s" : CAE-CBADB ( a -- ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-CGOOD ( n -- n ) CAE-CBADA ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Option-A no-cascade contract (ruling recorded on
+\ habu-multi-err-checking-42db26f4): a definition calling an earlier REJECTED
+\ definition certifies against its trusted declared signature - exactly the
+\ two real errors report, with no phantom E-UNDEFINED cascade entry.
+: CAE-TEST-CASCADE ( -- )
+   s" cascade-no-phantom" CAE-CASE!
+   CAE-IN CAE-CASCADE-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" cascade stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" cascade bada" T-LABEL
+   CAE-ERR erru s" cae-cbada" CONTAINS? TTRUE
+   s" cascade badb" T-LABEL
+   CAE-ERR erru s" cae-cbadb" CONTAINS? TTRUE
+   s" cascade no phantom" T-LABEL
+   CAE-ERR erru s" cae-cgood" CONTAINS? TFALSE
+   s" cascade diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-UNCHK-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-UNCHK ( n -- n ) ?dup drop ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Fail-closed negative: uncheckable definitions are not counted by the
+\ multi-error reject counter, so a file whose only definition is uncheckable
+\ must still exit nonzero (verdict 1 aborts the scan; continuing past it
+\ would let an all-uncheckable file read as clean).
+: CAE-TEST-UNCHECKABLE-FAILS ( -- )
+   s" all-uncheckable" CAE-CASE!
+   CAE-IN CAE-UNCHK-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" uncheckable stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" uncheckable reported" T-LABEL
+   erru 0 > TTRUE ;
+
 : CAE-TEST-BASE ( -- )
    s" base-two-errors" CAE-CASE!
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
@@ -745,6 +789,8 @@ create CAE-LF-BYTE 10 c,
    T-RESET
    CAE-PREPARE
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
+   s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
    s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
