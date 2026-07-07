@@ -546,15 +546,21 @@ create TR-CAL-PCT-BUF 4 allot
    TR-CAL-PCT-BUF 3 ;
 
 \ Structural pressure floor: startup calibration runs on an otherwise idle
-\ box (cal-factor 100), but the gate's OWN pool then oversubscribes it by the
-\ nested factor (pool ~= cores, x nested workers per slot), and suites spawned
-\ inside that window run ~nested-times slower than the calibration saw - the
-\ recurring -2502 class hit exactly the in-gate process-spawning suites at
-\ their nominal budgets. Floor the exported factor at nested x 100 so in-gate
-\ budgets carry the gate's known self-contention; TR-CAL-CLAMP keeps the
-\ hung-child bound at <= 3x nominal.
+\ box (cal-factor 100), but the gate's OWN pool oversubscribes it by the
+\ nested factor, and in practice merge gating overlaps a SECOND full gate
+\ (and often an install) on the same box - suites spawned inside that window
+\ run several times slower than the calibration saw. The nested x 100 floor
+\ (200%) was MEASURED MARGINAL: four incidents on 2026-07-07 alone killed
+\ lib/process-test.f at exactly its 2x-floored 10s budget under merge+worker
+\ overlap (throw -2502, WHY-THREW buffers far from caps every time), and the
+\ 8000-program sweep experiment pushed past 2x as well. Any nested pool
+\ therefore floors at TR-CAL-MAX-PCT (300%): the same worst case the clamp
+\ already accepts for the wall budget, so a genuinely hung child still fails
+\ within 3x its nominal budget - detection stays bounded. nested=1 setups
+\ keep the measured cal-factor alone (no self-contention to cover).
 : TR-POOL-PRESSURE-PCT ( -- n )
-   TR-NESTED-POOL @ 100 * TR-CAL-CLAMP ;
+   TR-NESTED-POOL @ 1 > if TR-CAL-MAX-PCT exit then
+   TR-CAL-MIN-PCT ;
 
 : TR-LOAD-PCT-EXPORT ( -- n )
    TR-CAL-PCT {: cal:n :}

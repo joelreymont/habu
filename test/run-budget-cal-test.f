@@ -59,18 +59,19 @@ package TRBC
    TR-CAL-REF-MACOS-MS 10 * MACOS!
    TR-CAL-PCT TR-PCT$ s" 300" T$= ;
 
-\ The export floors the calibration at the gate's own pool pressure
-\ (nested x 100): an idle-box calibration still budgets for in-gate
-\ self-contention, while a heavy calibration wins over a light floor.
+\ The export floors the calibration at the gate's pool pressure: any nested
+\ pool budgets for the clamp-max worst case (self-contention plus the merge
+\ practice of overlapping gates on one box - the 200 floor was measured
+\ marginal), while nested=1 keeps the measured cal-factor alone.
 : EXPORT-FLOORS-AT-PRESSURE ( -- )
    TR-CAL-REF-MACOS-MS MACOS!
    2 TR-NESTED-POOL !
-   TR-LOAD-PCT-EXPORT 200 T= ;
+   TR-LOAD-PCT-EXPORT 300 T= ;
 
 : EXPORT-KEEPS-HEAVY-CAL ( -- )
-   TR-CAL-REF-MACOS-MS 3 * MACOS!
-   2 TR-NESTED-POOL !
-   TR-LOAD-PCT-EXPORT 300 T= ;
+   TR-CAL-REF-MACOS-MS 2 * MACOS!
+   1 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 200 T= ;
 
 : EXPORT-NO-NEST-NO-FLOOR ( -- )
    TR-CAL-REF-MACOS-MS MACOS!
