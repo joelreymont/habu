@@ -6,6 +6,7 @@
 require test/gate-build-size.f
 
 64 constant GENG-USAGE-RC
+67 constant GE-UNCAUGHT-RC       \ deterministic exit status for an uncaught top-level throw
 0 constant GENG-ALL-ID
 1 constant GENG-BUILD-ID
 2 constant GENG-FIXTURES-ID
@@ -404,6 +405,39 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
 \ HABU_UNDER_TEST spawn per candidate. See engine-suite.f "candidate ... smoke".
 
+\ An uncaught top-level throw reaches the engine's BTHROW no-handler path
+\ (habu1.f THROW-NOREC). Before the fix it exit_group'd the RAW code, so the
+\ kernel masked it to 8 bits: -2816 (a multiple of 256) exited 0 SILENTLY and
+\ -2802 exited 14 SILENTLY - fail-open for any tool reading the exit status.
+\ Now a kernel-representable code in [1,255] still exits byte-identically to
+\ before (deliberate exit contracts: argv usage 64, check hook 70, lint
+\ findings 1), while any other code is named on fd 2 and exits GE-UNCAUGHT-RC.
+: GE-UNCAUGHT-RUN ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n want:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   want label labelu GE-EXPECT-RC ;
+
+: GE-UNCAUGHT-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n want:n needle:ptr needleu:n label:ptr labelu:n :}
+   src srcu want label labelu GE-UNCAUGHT-RUN
+   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+
+: GE-UNCAUGHT-THROW ( -- )
+   s" -2816 throw" GE-UNCAUGHT-RC s" uncaught throw code -2816"
+      s" uncaught throw -2816 (kernel-masks-to-0)" GE-UNCAUGHT-CASE
+   s" -2802 throw" GE-UNCAUGHT-RC s" uncaught throw code -2802"
+      s" uncaught throw -2802 (kernel-masks-to-14)" GE-UNCAUGHT-CASE
+   s" 70 throw" 70 s" uncaught throw 70 representable passthrough" GE-UNCAUGHT-RUN
+   s" uncaught throw 70 representable passthrough" GE-EXPECT-SILENT
+   s" : GEUT ( -- ) [: -2816 throw ;] catch . ;  GEUT" 0
+      s" caught throw stays in-process rc 0" GE-UNCAUGHT-RUN
+   SB-RESET s" -2816" SB-APPEND GE-SB-LF
+   SB$ s" caught throw control output" GE-EXPECT-OUT
+   s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
+
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
    s" divide by zero trap" GE-HB-RUN-STDIN-NZ
@@ -603,6 +637,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" PASS: process/pty primitives" type cr ;
 
 : GE-RUNTIME-CHECKS ( -- )
+   GE-UNCAUGHT-THROW
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN

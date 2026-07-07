@@ -62,6 +62,11 @@ FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN =
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
 84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
+67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW
+                                        \ THROW-NOREC): the raw code was exit_group'd and kernel-masked to
+                                        \ 8 bits, so a multiple of 256 exited 0 silently - fail-open. 67 is
+                                        \ free repo-wide (64/70/71/74/76/78/83/84/127 are the other fixed
+                                        \ engine exits; 69/77 collide with checker/lint codes).
 $28 constant CUR-CELL
 $30 constant WIDN-CELL
 $38 constant HOOK-CELL
@@ -149,6 +154,14 @@ $3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX
 16 constant PROT-WID-MAX                \ table capacity (16 u32 = $40 -> fills the gap to $3D00)
 PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
 PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $48: count + table
+\ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
+\ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
+\ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
+\ reaches THROW-NOREC with no handler and no REPL. Sits at $3D00 - the slot directly
+\ below the task-user region, which now starts at $3D08 (lib/task.f TASK-USER-BASE).
+\ Like EVALREC/AOT-SEED/PROT-WID it is a fixed engine cell no compiled source writes
+\ (task-user cells allocate up from $3D08; the mmap'd DATA region is zero until boot).
+$3D00 constant UNCGH-CELL
 $4000 constant HIDX-SLOTS
 $10000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL

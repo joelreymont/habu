@@ -59,8 +59,9 @@ s" SBUF@" s" -- ptr u8" TRUST
    SBUF@ SLEN @ EMIT-FORTH
    s" hb" S2-OUT DRV-EMIT-IMAGE ;
 
-\ Process boundary: report uncaught throws instead of exiting silently with
-\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+\ Process boundary: report uncaught throws instead of exiting silently
+\ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,
+\ else die maps it to UNCAUGHT-RC).
 : S2-RUN ( -- )
    [: GO ;] catch
    dup 0 = IF drop DRV-EXIT-OK THEN

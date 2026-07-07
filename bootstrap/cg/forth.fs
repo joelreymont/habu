@@ -60,6 +60,9 @@ $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + se
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (see
+                                        \ src/habu/layout.f); stage0 has no driver-io reporter, so it only
+                                        \ maps the raw code to this fixed nonzero rc - never the masked value
 \ Second guarded band (TFAM 2b-v): the native protected-WID registry occupies
 \ [$3CB8,$3D00) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN).
 \ stage0 has no package system and no registry (census discrepancy 5), so nothing
@@ -544,8 +547,17 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 \ die ( a u code -- noreturn ): msg to stderr, exit(code). The in-subset abort for
 \ compiler invariant violations — better a loud death than silent memory corruption.
-: BDIE ( -- )    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
-          0 7 0 ADDI,  NR-EXIT-GROUP SYS, ;
+\ The requested rc is honored when kernel-representable ([0,255]; 0 stays the
+\ deliberate success exit); anything else would be silently masked to `rc & 0xFF`,
+\ so it maps to UNCAUGHT-RC instead (mirrors src/habu/habu1.f BDIE).
+: BDIE ( -- )
+   LBL {: lfixed :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
+   0 7 0 ADDI,
+   7 0 CMPI,    C-LT lfixed BCOND,
+   7 255 CMPI,  C-GT lfixed BCOND,
+   NR-EXIT-GROUP SYS,
+   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : SYS-PUSH ( -- )                         \ push x0, or -1 when the syscall carry is set
    LBL LBL {: ok done :}
@@ -635,7 +647,14 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    lnoh LBL,
    10 DATA REPLH-CELL LDR,  LBL {: lnorec :}  10 lnorec CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,                                \ tty REPL: recover instead of dying
-   lnorec LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;   \ no handler -> exit(exc)
+   lnorec LBL,                           \ no handler: exit(exc) if kernel-representable [1,255], else the
+   LBL {: lfixed :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   0 9 0 ADDI,                           \ deterministic UNCAUGHT-RC, never the silently masked code
+                                         \ (mirrors src/habu/habu1.f BTHROW THROW-NOREC-FB)
+   9 1 CMPI,    C-LT lfixed BCOND,
+   9 255 CMPI,  C-GT lfixed BCOND,
+   NR-EXIT-GROUP SYS,
+   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )

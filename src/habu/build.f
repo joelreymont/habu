@@ -59,8 +59,9 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    BLD-PB@ PN @ EMIT-FORTH
    s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
 
-\ Process boundary: report uncaught throws instead of exiting silently with
-\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+\ Process boundary: report uncaught throws instead of exiting silently
+\ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,
+\ else die maps it to UNCAUGHT-RC).
 : BLD-RUN ( -- )
    [: GO ;] catch
    dup 0 = IF drop EXIT THEN

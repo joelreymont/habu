@@ -239,6 +239,8 @@ variable CATCH-RES
 variable CATCH-PUSH
 variable THROW-NOH
 variable THROW-NOREC
+variable THROW-NOREC-FB
+variable THROW-NOREC-FB2
 variable THROW-EVAL
 variable SWL-LOOP
 variable SWL-END
@@ -1340,9 +1342,19 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BTYPE ( -- )
    2 G-POP  1 G-POP  0 1 MOVZ,  NR-WRITE SYS, ;
 
+\ die ( ptr u8 n n -- ): write the message to fd 2, then exit. The requested rc is
+\ honored when kernel-representable ([0,255]; 0 stays the deliberate success exit,
+\ DRV-EXIT-OK); any other rc would be silently masked to `rc & 0xFF` (a negative
+\ throw code re-used as rc could exit 0 - the DRV-FAIL second masked layer of the
+\ BTHROW no-handler class), so it maps to the deterministic UNCAUGHT-RC instead.
 : BDIE ( -- )
+   LBL {: lfixed:label :}
    7 G-POP  2 G-POP  1 G-POP  0 2 MOVZ,  NR-WRITE SYS,
-          0 7 0 ADDI,  NR-EXIT-GROUP SYS, ;
+   0 7 0 ADDI,
+   7 0 CMPI,    C-LT lfixed BCOND,
+   7 255 CMPI,  C-GT lfixed BCOND,
+   NR-EXIT-GROUP SYS,
+   lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : SYS-PUSH ( -- )                  \ push x0, or -1 when the syscall carry is set
    LBL SYS-OK !
@@ -1716,10 +1728,18 @@ s" linux-stat-fix" s" n --" TRUST
    THROW-EVAL LABEL@ LBL,
    10 DATA EVALREC-CELL LDR,  10 BR,                   \ x15 = code → LEVALREC (habu2.f)
    THROW-NOH LABEL@ LBL,
-   LBL THROW-NOREC !
-   10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,
+   LBL THROW-NOREC !  LBL THROW-NOREC-FB !  LBL THROW-NOREC-FB2 !
+   10 DATA REPLH-CELL LDR,  10 THROW-NOREC LABEL@ CBZ,   \ tty REPL: recover instead of exiting
    10 DATA RRECP-CELL LDR,  10 BR,
-   THROW-NOREC LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;
+   THROW-NOREC LABEL@ LBL,                                \ x9 = code; no handler, no REPL
+   10 DATA UNCGH-CELL LDR,  10 THROW-NOREC-FB LABEL@ CBZ, \ reporter installed? branch with x9 = code
+   10 BR,                                                 \ LUNCAUGHT (habu2.f): rc-map + report out-of-range codes
+   THROW-NOREC-FB LABEL@ LBL,                             \ pre-install boot fallback: silent but never masked
+   0 9 0 ADDI,                                            \ code in [1,255] is kernel-representable: exit(code)
+   9 1 CMPI,    C-LT THROW-NOREC-FB2 LABEL@ BCOND,
+   9 255 CMPI,  C-GT THROW-NOREC-FB2 LABEL@ BCOND,
+   NR-EXIT-GROUP SYS,
+   THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ; \ else deterministic uncaught-throw rc
 
 : BWORDLIST ( -- )
    9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;

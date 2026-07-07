@@ -121,6 +121,9 @@ $D63F0200 constant C-CALL-BLR-X16
 \ ---- source setup: baked LSRC or stdin ----
 variable LTRAPH   variable LBPH   variable LBPSH   variable LBPWH   variable LBADLOC
 variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
+variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
+variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
+24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -297,7 +300,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LBPWH LABEL@ LBL, BPW-KW 15 BYTES,
    LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES,
    LOPENERR LABEL@ LBL, s" hb: cannot open " BYTES,
-   LOPENNL LABEL@ LBL, NL-KW 1 BYTES, ;
+   LOPENNL LABEL@ LBL, NL-KW 1 BYTES,
+   LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES, ;   \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -3086,6 +3090,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 LRREC LABEL@ ADR,  9 DATA RRECP-CELL STR,
    9 LMAIN LABEL@ ADR,  9 DATA LMAINP-CELL STR,            \ interpret-loop top (B-EVAL branches here)
    9 LEVALREC LABEL@ ADR,  9 DATA EVALREC-CELL STR,       \ evaluate throw-recovery entry (BTHROW branches here)
+   9 LUNCAUGHT LABEL@ ADR,  9 DATA UNCGH-CELL STR,        \ uncaught top-level throw reporter (BTHROW THROW-NOREC branches here)
    LVRINIT LABEL@ BL,  LHIDXBUILD LABEL@ BL,             \ VRTAB/VRITAB fill + dict hash table (data mapped, NDICT final)
    EMIT-SOURCE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -4003,7 +4008,45 @@ s" em-eval-undef-rollback" s" --" TRUST
    LEVLN LABEL@ LBL,
    10 DATA REPLH-CELL LDR,  10 LEVLR LABEL@ CBZ,
    10 DATA RRECP-CELL LDR,  10 BR,
-   LEVLR LABEL@ LBL,  0 9 0 ADDI,  NR-EXIT-GROUP SYS, ;
+   \ No handler and no REPL: fall into the shared uncaught-throw exit (x9 = code).
+   \ LEVLR (eval-frame path) and LUNCAUGHT (BTHROW THROW-NOREC path, reached via
+   \ UNCGH-CELL - stored at boot since a leaf prim cannot name this label) share one
+   \ address. A code in [1,255] is kernel-representable and is an established
+   \ deliberate exit contract (lib/argv.f usage 64, check hook 70, lint findings 1),
+   \ so it exits byte-identically to before: exit_group(code), no extra output. Any
+   \ other code would be kernel-masked to `code & 0xFF` - the fail-open class this
+   \ closes (-2816 exited 0 SILENTLY, -2802 exited an aliased 14) - so it is instead
+   \ reported as "hb: uncaught throw code <n>\n" on fd 2 (signed itoa mirrors
+   \ G-PRINT9) and exits the deterministic UNCAUGHT-RC. x15 keeps the code across
+   \ the message write (the kernel preserves x2-x15, as EMIT-SOURCE-READ's open-error
+   \ path relies on for x12). Never returns - no RET, keeps FPRIM-L throw leaf-safe.
+   LEVLR LABEL@ LBL,  LUNCAUGHT LABEL@ LBL,
+   LBL LUNCRPT !  LBL LUNCPOS !  LBL LUNCLOOP !  LBL LUNCDONE !
+   15 9 0 ADDI,                                        \ x15 = code (survives writes; x9-x14 are itoa scratch)
+   0 9 0 ADDI,                                         \ x0 = code for the passthrough exit
+   9 1 CMPI,    C-LT LUNCRPT LABEL@ BCOND,
+   9 255 CMPI,  C-GT LUNCRPT LABEL@ BCOND,
+   NR-EXIT-GROUP SYS,                                  \ representable deliberate code: exit(code) as before
+   LUNCRPT LABEL@ LBL,                                 \ out-of-range: report, then exit UNCAUGHT-RC
+   1 LUNCMSG LABEL@ ADR,  0 2 MOVZ,  2 UNCMSG-LEN MOVZ,  NR-WRITE SYS,   \ write(2,"hb: uncaught throw code ",24)
+   9 15 0 ADDI,                                        \ x9 = code for the itoa
+   SP SP $20 SUBI,  12 SP $20 ADDI,
+   13 $A MOVZ,  12 12 1 SUBI,  13 12 0 STRB,           \ trailing newline
+   14 0 MOVZ,  9 0 CMPI,
+   C-GE LUNCPOS LABEL@ BCOND,
+   14 1 MOVZ,  9 SP 9 SUB,                             \ x9 = -x9 (abs); x14 = sign flag
+   LUNCPOS LABEL@ LBL,
+   10 $A MOVZ,
+   LUNCLOOP LABEL@ LBL,
+   11 9 10 SDIV,  13 11 10 MUL,  13 9 13 SUB,
+   13 13 $30 ADDI,  12 12 1 SUBI,  13 12 0 STRB,
+   9 11 0 ADDI,  9 LUNCLOOP LABEL@ CBNZ,
+   14 LUNCDONE LABEL@ CBZ,
+   13 $2D MOVZ,  12 12 1 SUBI,  13 12 0 STRB,          \ leading '-'
+   LUNCDONE LABEL@ LBL,
+   0 2 MOVZ,  1 12 0 ADDI,  2 SP $20 ADDI,  2 2 12 SUB,
+   NR-WRITE SYS,                                       \ write(2, digits, len)
+   0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-eval-throw-recover" s" --" TRUST
 
 : EM-REPL-RECOVER ( -- )
@@ -4143,6 +4186,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
+   LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 

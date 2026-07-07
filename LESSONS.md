@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-07
+Last updated: 2026-07-08
 
 - **Generated constructor WID protection belongs after emission, not inside
   `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
@@ -377,15 +377,29 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
-- **Uncaught top-level throws exit silently with `code & 0xFF`:** BTHROW's
-  no-handler path passes the raw throw code to `NR-EXIT-GROUP` with no
-  diagnostic — `-2802 throw` exits 14 silently and `-2816 throw` (a multiple of
-  256) exits 0 — so a CLI tool relying on throw propagation for its exit status
-  is fail-open. The fixpoint install proved it: a crashed refresh child's
-  `E-BUILD-STATUS` escaped `BF-MAIN` and the install looked successful under a
-  stale seed. CLI entry points must catch at main and `die` with a named stderr
-  diagnostic plus a deterministic nonzero rc (`BF-CLI` pattern); the engine
-  boundary fix is habu-engine-bthrow-no-02c6b017.
+- **Exit-status mapping must honor deliberate small codes, not flatten them:**
+  fixing BTHROW's masked no-handler exit (`-2816 throw` exited 0 SILENTLY,
+  `-2802` an aliased 14 — fail-open for any tool reading the rc) with an
+  always-fixed rc broke the ecosystem's deliberate throw-as-exit contracts:
+  lib/argv.f usage 64, the check hook's documented "bad definition exits 70",
+  lint findings `1 throw` — all asserted by tests with empty/exact stderr, and
+  all REQUIRED to stay throws for in-process catchers (`CHECK-CANDIDATE!`,
+  `PARSE-RC`). The sound mapping: [1,255] exits byte-identically (those codes
+  were never masked); anything else prints `hb: uncaught throw code N` on fd 2
+  and exits UNCAUGHT-RC 67. The same [0,255]-else-67 rule in the `die`
+  primitive closed the DRV-FAIL second masked layer without touching any
+  driver (driver-io.f loads in OBJIMG contexts without layout.f, so the
+  primitive — not the library — owns the mapping). Closed by
+  habu-engine-bthrow-no-02c6b017 (reporter baked at the EM-EVAL-THROW-RECOVER
+  tail, reached from BTHROW via UNCGH-CELL).
+- **layout.f is not the sole owner of fixed DATA cells:** a "free hole" read
+  from layout.f alone ($36B0, between INE-CELL and FRCLM-CELL) was actually
+  FRFREE-CELL — the JIT float-pool bitmask defined in src/habu/regalloc.f —
+  and storing the uncaught-throw reporter address there made the engine jump
+  to PC=0xff (lldb caught it in one run). Before claiming a DATA slot, `rg`
+  the ADDRESS across src/ lib/ bootstrap/ (regalloc.f, debug.f, and lib/task.f
+  all define cells outside layout.f); the one proven-safe home was $3D00 with
+  lib/task.f TASK-USER-BASE bumped to $3D08.
 - **`wait-rc` is WEXITSTATUS-only:** a signal-killed child (SIGABRT = rc 134)
   reports rc 0 through the raw primitive. All in-repo users are migrated
   (bench.f -> PROC-WAIT-RC; the dead PROC-WAIT-RAW alias retired from

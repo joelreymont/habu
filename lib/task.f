@@ -101,7 +101,7 @@ variable TASK-MUNMAP
 variable TASK-ENTRY
 variable TASK-USER-NEXT
 
-$3D00 constant TASK-USER-BASE
+$3D08 constant TASK-USER-BASE   \ $3D00 is reserved for UNCGH-CELL (src/habu/layout.f); task-user cells start one cell above
 TASK-USER-BASE TASK-USER-NEXT !
 
 TRUSTED: TASK-NULL ( -- ptr a )
