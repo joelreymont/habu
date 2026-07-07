@@ -20,13 +20,14 @@ Retired now (typed rewrite):
   compile fully checked. Probe-proven before edit (TRUST + checked hook def
   under the baked hook, rc 0).
 
-Queued capability - builder prefix (6 sites, engine files, annotations
-specced for engine-lane routing, see report):
+Queued capability - builder prefix (6 sites, annotated in-file under a
+comment-only scoped grant):
 - src/habu/aot-closure.f:5, aot-lib.f:15, build.f:13, maker.f:8, snap.f:25
   (bare) and src/habu/hide.f:20 (TRUSTED: BFR-CHECK-OFF): all dissolve with
   habu-staged-fixpoint-src-0b5fc6e6 (+ its builder-trust conversion dep),
   whose blocked-evidence section names these exact injected boundaries.
-  TRUSTED.md: hide.f:BFR-CHECK-OFF re-owned to the staged-fixpoint dot.
+  Each site carries the dissolution cross-ref comment. TRUSTED.md:
+  hide.f:BFR-CHECK-OFF re-owned to the staged-fixpoint dot.
 
 Queued capability - test spans (3 sites, annotated in-file):
 - test/engine-suite.f:1395 (HIDX rollback churn): manual ndict/cp rollback
@@ -38,6 +39,11 @@ Queued capability - test spans (3 sites, annotated in-file):
   confirm false rejects). Already named TRUSTED: boundaries with typed
   effects; file-level row re-owned to habu-seal-set-check-b3676b33.
 
-End state unchanged: remaining 9 sites all carry class + owning capability
-dot; ratchet enforced by TRUSTED.md row counts under trusted-inventory
-strict.
+End state (2026-07-07): SETCHECK 9; every remaining site carries an
+inventory class, an owning capability dot, and an in-file cross-ref to the
+capability that retires it. Ratchet enforced by TRUSTED.md row counts under
+trusted-inventory strict. This dot STAYS OPEN pinned to the builder
+conversion dependency: the 6 builder-prefix sites fall with
+habu-staged-fixpoint-src-0b5fc6e6 (blocked on its builder-trust conversion
+dep), the 3 test spans with habu-seal-set-check-b3676b33. Close only when
+set-check exists solely for the seed/bootstrap path.

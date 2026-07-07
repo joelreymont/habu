@@ -10,6 +10,7 @@
 
 \ Audited driver boundary: generated makers run this source at startup, then
 \ VERIFY:SOURCE-BUF checks user colon definitions explicitly.
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 0 set-check
 
 : BLD-IN  s" hb-build-src" TMP-PATH ;

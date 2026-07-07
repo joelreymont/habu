@@ -19,6 +19,7 @@
 \ PREPARE are prefix-internal words with no charted effects. It is a named
 \ build-driver boundary that never survives into the image (its own entry
 \ and code sit above the retired marker).
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 
 require src/habu/snap-lib.f
 

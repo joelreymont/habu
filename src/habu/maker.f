@@ -5,6 +5,7 @@
 \ source into stage2-got; the resulting maker runs later against user source.
 
 \ Audited build-driver boundary: appended after the toolchain hook is enabled.
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 0 set-check
 
 : MK-IN ( -- ptr u8 n )

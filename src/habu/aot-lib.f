@@ -12,6 +12,7 @@
 
 \ Audited driver boundary: the toolchain hook is on when this file is appended;
 \ the driver installs USER-HOOK below for user source only.
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 0 set-check
 
 variable PB  variable PN  variable PFD  variable PRD
