@@ -166,6 +166,35 @@ MULTI-ERR-END 1 T=
 s" " s" zlin" TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
 \ ---------------------------------------------------------------------------
+\ slice 3: protection. Generated packages are closed-but-callable: `package`
+\ cannot open/reopen the derived name (any case), `undefine` of a generated
+\ word rejects BEFORE retirement (still callable after the catch), and a new
+\ tail cannot certify into the constructor package. SV.CTOR-SYM records the
+\ published checker symbol.
+\ ---------------------------------------------------------------------------
+s" " s" zres" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
+s" ZRES:OK" CHECKER-RECORD-SYM  TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@  T=
+\ package reopen rejects, case-insensitively; state rolls back (a later
+\ package still opens cleanly).
+s" package zres" TCE-CATCH E-CTOR-PROTECTED T=
+s" package ZRES" TCE-CATCH E-CTOR-PROTECTED T=
+s" package Zres" TCE-CATCH E-CTOR-PROTECTED T=
+s" package zok end-package" TCE-CATCH 0 T=
+\ undefine of a generated word rejects before retirement...
+s" undefine ZRES:OK" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
+\ ...and the constructor is still fully usable afterwards.
+: ZMK-OK3 ( n -- zres ) ZRES:OK ;
+s" UNDEF-SAFE" type cr
+\ a new tail cannot certify into the closed constructor package.
+s" : ZRES:EVIL ( -- n ) 7 ;" TCE-CATCH E-CTOR-PROTECTED T=
+\ ordinary undefine of a user word still works.
+: ZDOOMED ( -- n ) 5 ;
+s" undefine ZDOOMED" TCE-CATCH 0 T=
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

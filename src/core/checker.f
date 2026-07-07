@@ -3882,6 +3882,7 @@ PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -3988,7 +3989,25 @@ variable DFER-END
    REPEAT drop
    u CHECKER-PACKAGE-U ! ;
 
+\ --- generated-constructor protection (item 8 slice 3). The registry-backed
+\ predicates live in type-family.f (loads later) and install into these friend
+\ cells; empty cells fail open only in engines with no TFAM registry at all
+\ (stage builders, which never see user declarations). Guards: a recorded
+\ constructor package cannot be opened/reopened by `package`; a generated
+\ constructor word cannot be undefined; a new tail cannot certify into a
+\ constructor package (closed-but-callable, PLAN Package Shape).
+7111 constant E-CTOR-PROTECTED
+variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
+variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
+variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
+: CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   CTOR-WORD?-XT @ 0= IF EXIT THEN
+   a u CTOR-WORD?-XT @ execute IF E-CTOR-PROTECTED throw THEN ;
+
 : CHECKER-PACKAGE ( ptr u8 n -- )
+   CTOR-PKG?-XT @ 0 <> IF
+      2dup CTOR-PKG?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 
@@ -4263,6 +4282,9 @@ variable DFER-POS
    $4E throw ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   CTOR-EXTEND?-XT @ 0 <> IF
+      na nu CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
@@ -4496,6 +4518,7 @@ variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
    THEN ;
 
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
    name nameu USIG-DELETE
    name nameu DFER-DELETE

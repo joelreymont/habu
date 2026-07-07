@@ -381,6 +381,46 @@ variable SUMV-N   0 SUMV-N !
    off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
 : SUMV-CTOR-PKG$ ( n -- ptr u8 n ) {: id:n :}
    id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
+: SUMV-CTOR-SYM! ( n n -- ) swap SUMV-REC@ SV.CTOR-SYM ! ;
+: SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
+
+\ generated-constructor protection predicates (item 8 slice 3). Names are
+\ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
+\ folded alias cannot reopen a constructor package, extend it with a new
+\ tail, or undefine a generated word through any case variant. Installed into
+\ the checker's CTOR-*-XT friend cells at the end of this file.
+variable TF-CI              \ protection scan index (TF-I stays the decl scanner's)
+variable TF-CW-COL          \ first-colon split position
+: SUMV-CTOR-PKG-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
+   id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
+: TFAM-CTOR-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a recorded ctor package name?
+   0 TF-CI !
+   BEGIN TF-CI @ SUMV-N @ < WHILE
+      a u TF-CI @ SUMV-CTOR-PKG-MATCH? IF RES-TRUE EXIT THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+: TF-CW-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ first non-edge ':' -> TF-CW-COL
+   -1 TF-CW-COL !
+   0 TF-CI !
+   BEGIN TF-CI @ u < WHILE
+      a TF-CI @ + c@ 58 = IF TF-CI @ TF-CW-COL ! u TF-CI ! ELSE TF-CI @ 1 + TF-CI ! THEN
+   REPEAT
+   TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and ;
+: TFAM-CTOR-WORD-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = ctor id?
+   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ CORE-STR=CI ;
+: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT ctor word?
+   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+   0 TF-CI !
+   BEGIN TF-CI @ SUMV-N @ < WHILE
+      a u TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
+      TF-CI @ 1 + TF-CI !
+   REPEAT RES-FALSE ;
+: TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
+   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+   a TF-CW-COL @ TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
+   a u TFAM-CTOR-WORD? 0= ;
 
 : SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
@@ -834,6 +874,9 @@ variable TFSR-ID   variable TFSR-FLAG
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
+' TFAM-CTOR-PKG?    CTOR-PKG?-XT !     \ item 8: constructor-package reopen reject
+' TFAM-CTOR-WORD?   CTOR-WORD?-XT !    \ item 8: generated-word undefine reject
+' TFAM-CTOR-EXTEND? CTOR-EXTEND?-XT !  \ item 8: closed-package extra-tail reject
 ' TFAM-ARITY@  TFAM-ARITY-XT !
 ' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
 ' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface

@@ -411,7 +411,8 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    TDGEN-NA @ TDGEN-NU @  fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 +  CTOR-PEND!
    TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
    TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute
-   CTOR-PEND-CLEAR ;
+   CTOR-PEND-CLEAR
+   vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
 
 : TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
    TDECL-FAM-REG @ {: fam:n :}
