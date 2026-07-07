@@ -25,11 +25,11 @@ public
 
 \ one training step on y = w*x:
 \   pred = w*x ; dpred = dL/dpred ; dw = dpred*x ; w' = w - lr*dw
-: TRAIN-STEP ( r r r r -- r ) {: w x t lr :}
-   w x MUL-F            {: pred :}
-   pred t LOSS:MSE-GRAD      {: dpred :}
-   dpred x f*           {: dw :}     \ chain rule: d(w*x)/dw = x
-   w dw lr SGD ;
+: TRAIN-STEP ( r r r r -- r ) {: w:r x:r t:r lr:r :}
+   w x MUL-F            {: pred:r :}
+   pred t LOSS:MSE-GRAD  {: dpred:r :}
+   dpred x f*           {: dw:r :}     \ chain rule: d(w*x)/dw = x
+   w dw lr OPTIM:SGD ;
 
 \ run n steps, threading the weight; returns the trained weight
 : TRAIN-N ( r r r r n -- r ) {: x t lr n :}

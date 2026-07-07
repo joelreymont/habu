@@ -6,7 +6,7 @@
 require maki/array.f
 require maki/optim.f
 
-package MAKI
+package OPTIM
 
 : TT-ADAM-AT! ( r r r r r r ptr a ptr a ptr a ptr a n -- )
    {: lr:r b1:r b2:r eps:r c1:r c2:r wp:ptr gp:ptr mp:ptr vp:ptr idx:n :}

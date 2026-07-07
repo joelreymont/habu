@@ -5,7 +5,7 @@
 \ parameter tensor) lowers onto a Habu-PTX kernel, later; this is the rule itself,
 \ runnable checked Habu (Habu has a float stack: f+ f- f* f/). maki -> habu only.
 
-package MAKI
+package OPTIM
 public
 
 \ Plain SGD:        w' = w - lr*g

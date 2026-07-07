@@ -19,7 +19,7 @@ create OTV 2 cells allot
 
 \ First Adam step, eps=0, bc1=0.1, bc2=0.001:
 \ w=[1,2], g=[1,2], m=v=0 -> w'=[0.9,1.9], m'=[0.1,0.2], v'=[0.001,0.004].
-0.1 0.9 0.999 0.0 0.1 0.001 OTW OTG OTM OTV 2 TT-ADAM!
+0.1 0.9 0.999 0.0 0.1 0.001 OTW OTG OTM OTV 2 OPTIM:TT-ADAM!
 
 OTW 0 T-GET  10.0 f* 0.5 f+ f>s      9 T=
 OTW 1 T-GET  10.0 f* 0.5 f+ f>s     19 T=
