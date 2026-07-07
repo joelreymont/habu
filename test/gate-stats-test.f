@@ -215,6 +215,50 @@ variable GST-CHILD-SAVE-U
    GST-SCAN
    GST-EXPECT-LABEL-DUP ;
 
+\ The hard guard refuses a run with a label collision (die rc 1 after the
+\ dup diagnostic) and stays silent when labels are unique. die exits the
+\ process, so both legs run as spawned children over tiny fixture files.
+create GST-GUARD-PATH-BUF FS-PATH-CAP allot
+variable GST-GUARD-PATH-U
+2048 constant GST-GUARD-CAP
+create GST-GUARD-OUT GST-GUARD-CAP allot
+create GST-GUARD-ERR GST-GUARD-CAP allot
+5000 constant GST-GUARD-NOMINAL-MS
+
+: GST-GUARD-PATH$ ( -- ptr u8 n )
+   GST-GUARD-PATH-BUF GST-GUARD-PATH-U @ ;
+
+: GST-GUARD-FIXTURE! ( ptr u8 n -- )
+   GST-ROOT$ s" dup-guard.f" GST-GUARD-PATH-BUF JOIN-PATH GST-GUARD-PATH-U !
+   GST-GUARD-PATH$ 2swap ATOMIC-WRITE-FILE ;
+
+: GST-GUARD-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/memory.f" >LEN PROC-ARGV+
+   s" lib/fs.f" >LEN PROC-ARGV+
+   s" lib/fs-mutate.f" >LEN PROC-ARGV+
+   s" lib/process.f" >LEN PROC-ARGV+
+   s" lib/process-argv.f" >LEN PROC-ARGV+
+   s" lib/process-env.f" >LEN PROC-ARGV+
+   s" test/gate-stats.f" >LEN PROC-ARGV+
+   GST-GUARD-PATH$ >LEN PROC-ARGV+ ;
+
+: GST-GUARD-RUN ( -- n )
+   GST-GUARD-ARGV
+   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-CAPTURE {: ou:len eu:len rc:rc :}
+   rc RC>N ;
+
+: GST-TEST-DUP-GUARD ( -- )
+   s" 1 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
+   GST-GUARD-RUN 1 T=
+   s" 0 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
+   GST-GUARD-RUN 0 T=
+   GST-GUARD-PATH$ REMOVE-FILE ;
+
 : GST-TEST-SCAN ( -- )
    GST-PREPARE
    GS-PATH$ FILE? TTRUE
@@ -230,6 +274,7 @@ variable GST-CHILD-SAVE-U
    T-RESET
    GST-TEST-SCAN
    GST-TEST-LABEL-DUP
+   GST-TEST-DUP-GUARD
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT

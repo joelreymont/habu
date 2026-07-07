@@ -434,6 +434,13 @@ variable GS-HELPER-SPAWN
       GS-LD-I @ 1+ GS-LD-I !
    repeat ;
 
+\ Hard gate: a nonzero label-dup means fork-child span suppression and subject
+\ attribution can silently miscount, so the runner refuses the run instead of
+\ reporting around it. Callers run this after GS-SUMMARY has scanned.
+: GS-LABEL-DUP-GUARD ( -- )
+   GS-LABEL-DUP @ 0= if exit then
+   s" gate-stats: duplicate test labels across subjects - qualify the label at its source" 1 die ;
+
 : GS-SPAN-LABEL$ ( n n -- ptr u8 n ) {: off:n u:n :}
    GS-BUF off GS-SPAN-LABEL-I @ + BYTE+ u GS-SPAN-LABEL-I @ - ;
 

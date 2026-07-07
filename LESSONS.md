@@ -2640,3 +2640,10 @@ unchanged (148855). Keys for milestone 2:
   workspaces also hold stale baked `bin/hb` binaries that produce fake gate reds
   when reused. Verify first (no unmerged commits, clean wc), keep active lanes,
   parked device-blocked chains, and the merge-gate workspace.
+- **A static checkability probe is only as honest as its registry context:**
+  probing src/habu/aot-closure.f through `tools/check.f` came back clean
+  because check-core's own requires (tools/json.f) had put JSON-DIAGS into
+  the probe registry - the real maker compile then rejected it. When asking
+  "does this file check in context X?", the oracle must BE context X (the
+  live stage/maker compile), not a tool whose own dependency closure
+  overlaps the words under test.
