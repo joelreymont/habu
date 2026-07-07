@@ -459,7 +459,7 @@ create AXBUF AXBUF-CAP allot
 : AX-GEN-LIST ( -- ptr u8 n )
    s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
 : AX-MEM-LIST ( -- ptr u8 n )
-   s"  @ ! ptr-field +! c@ c! count rd32 core-str= type " ;
+   s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
    s"  f+ f- f* f/ fnegate fabs fsqrt f< f> f= f0< f0= f>s " ;
 : AX-NOEXEC-A ( -- ptr u8 n )
@@ -517,6 +517,7 @@ create AXBUF AXBUF-CAP allot
    2dup s" ptr-field" AX-STR= if 2drop s" AXBUF 0 " exit then
    2dup s" type" AX-STR= if 2drop s" AXBUF 0 " exit then
    2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
+   2dup s" core-str=ci" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
    2drop s"  " ;
 
 \ ---- runner builders: PBUF := "depth BASE ! <ops> <name> depth BASE @ - CLEAR-MEAS"

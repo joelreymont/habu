@@ -3865,6 +3865,7 @@ PRIM: set-current    PE-N PE-IN PRIM;
 PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CORE-STR=      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CORE-STR=CI    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: PATHZ          PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PRIM;
 PRIM: PATH0          PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
@@ -6174,7 +6175,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
 : CTOR-PEND-CLEAR ( -- ) 0 CTOR-PEND-U ! ;
 : CTOR-PEND-MATCH? ( -- bool )
    CTOR-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
-   CTOR-PEND-A @ CTOR-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+   CTOR-PEND-A @ CTOR-PEND-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA holds the case-folded token; the armed buffer is uppercase
 : CTOR-EXPECTED-ROW ( -- n )          \ SGIN + (pads+tag) type-n cells on top
    SGIN @
    0 CTOR-PEND-I !
