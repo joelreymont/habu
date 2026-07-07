@@ -38,3 +38,7 @@ frame or a reentrant-safe wrapper in check-hook.f.
 Key sites: habu2.f 1219/3068-3110/2799/3358/3303/2376; habu1.f B-EVAL 1036,
 BTHROW 1631; check-hook.f HOOK/CHECK!; checker.f 5113.
 habu-compiler-pkg-scoped stays BLOCKED on this.
+
+SEQUENCING 2026-07-07 (user): fix this LAST - after the remaining host lanes
+(codegen-role, named-descriptor) land. Then attempt the lldb single-step
+session agent-driven per the banked next-step plan.
