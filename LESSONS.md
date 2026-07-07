@@ -2,7 +2,29 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-06
+Last updated: 2026-07-07
+
+- **bin/hb keeps NO baked checker DATA — the boot prefix re-parses from disk:**
+  `EMIT-COLD-PREFIX` (habu2.f PFX-LOAD-BASE-FILES) reloads util→checker→
+  type-family→…→sha256→combinators→xref at EVERY boot, so top-level writes to
+  checker cells from COMMON-tail files (habu2.f) never reach the installed
+  binary — a canary literal store proved it. A hook between a checker-prefix
+  file and later support must live in its own prefix file (e.g.
+  `src/core/type-family-sha.f`) registered in ALL prefix/source registries:
+  habu2.f PFX tables ×3 + label var/init, bootstrap/cg/forth.fs mirrors ×5,
+  build-fixpoint COMMON+SNAP-KEEP, srclist.f, bootstrap.sh SRC_COMMON,
+  diagnose-hb-core.f (+ COMMON-N count in diagnose-hb-test.f), shadow-lint.f,
+  hb-build-lib.f key list, test/run-files.f, FILEMAP.md.
+- **Escape every joined segment, including the last:** the constructor-package
+  derivation escaped '-' only inside the package segment, so top-level family
+  `a-b-c` collided with package `a` family `b-c` (both `A-B-C`) — the pinned
+  A-B+c example passed and hid it. An escape/join scheme is injective only if
+  EVERY joined component is escaped; a raw final component is safe only behind
+  a fixed-width delimiter (the SHA-fallback's 16-hex region).
+- **Suite helpers that return shared-buffer strings need an intern before the
+  second call:** TF-CTOR-PKG$ returns TF-CTOR-BUF; asserting determinism by
+  calling twice compared the buffer with itself (vacuously green) until the
+  first result was TF-INTERNed. Copy-out before re-deriving in tests.
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per

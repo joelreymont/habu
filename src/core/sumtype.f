@@ -258,6 +258,19 @@ variable TDV-NA    variable TDV-NU
       2drop fam TDECL-VARIANT
    AGAIN ;
 
+\ --- constructor metadata (item 8): a PUBLIC family derives its reserved
+\ constructor package (Package Shape) once and records it in every variant's
+\ SV.CTOR-PKG slot, keyed by family id so same-tail families in different
+\ packages get disjoint constructor namespaces. Private families export nothing,
+\ so the slot stays empty and construction waits on item 9's `construct` form.
+\ The derived name is interned AFTER the escaped/hashed spelling is built, so the
+\ transient family package/tail pointers are consumed before any pool grow.
+: TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
+   fam TFAM-PUBLIC? 0= IF EXIT THEN
+   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
+   ca cu TF-INTERN {: coff:n :}
+   count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
+
 \ --- registration entry points (verify-source and the definers below).
 : CHECKER-DEFSUM-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
@@ -270,7 +283,8 @@ variable TDV-NA    variable TDV-NU
    fam TDECL-SUM-VARIANTS
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDV-N @ TFAM-VAR-RANGE!
-   fam TDV-MAX @ TFAM-SLOTS! ;
+   fam TDV-MAX @ TFAM-SLOTS!
+   fam vstart TDV-N @ TDECL-CTOR-PUBLISH ;
 
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}

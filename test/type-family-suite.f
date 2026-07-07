@@ -29,6 +29,15 @@ variable #CASE
       then
       1+
    repeat drop ;
+\ TSNE ( ga gu wa wu -- ) : assert two strings are NOT byte-identical.
+: TSNE ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
+   #CASE @ 1 + #CASE !
+   gu wu <> if exit then
+   0 begin dup gu < while
+      dup ga + c@  over wa + c@ <> if drop exit then
+      1+
+   repeat drop
+   T-FAIL s" assert strings differ: both " type ga gu type cr ;
 
 \ catch-code stash (TC) + result-flag stash (FOUNDF) + id/node scratch.
 variable TC     variable FOUNDF
@@ -262,6 +271,83 @@ CLID @ TL-CUSTOM          8 8 8 LAY-ADD drop    \ 5 layouts > seed cap 4 -> LAY 
 FID @ LAY-FIND FOUNDF !  L0 @ T=  FOUNDF @ -1 T=
 CLID @ LAY-FIND FOUNDF !  LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
 FID @ TL-STACK-CELL-TAG 8 8 8 ' LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
+
+\ ---------------------------------------------------------------------------
+\ 12b. constructor package-name derivation (PLAN Package Shape, docs §12; item 8).
+\    TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ctor-a ctor-u ): uppercase the
+\    package segment and family tail, escape a literal '-' inside the segment as
+\    '--', join package-then-tail with a single '-'; when the escaped spelling
+\    exceeds the 16-byte inline dictionary name limit, the name is `T` + the
+\    first 16 lowercase hex digits of SHA-256 over the length-prefixed segment
+\    list + `-` + the uppercase tail. Pure, injective, stable (no alloc-order id).
+\ ---------------------------------------------------------------------------
+variable CPA   variable CPU   variable CQA   variable CQU
+\ top level: bare uppercased tail, no separator.
+s" " s" result" TF-CTOR-PKG$ s" RESULT" T$=
+\ in-package: PKG-TAIL.
+s" pkg" s" result" TF-CTOR-PKG$ s" PKG-RESULT" T$=
+s" opt" s" some"   TF-CTOR-PKG$ s" OPT-SOME" T$=
+\ digits pass through unchanged.
+s" v2" s" ok"      TF-CTOR-PKG$ s" V2-OK" T$=
+\ injectivity across the hyphen boundary: every joined segment (package AND
+\ tail) escapes '-' as '--', so all three hyphen splits stay distinct:
+\   a-b + c  ->  A--B-C      a + b-c  ->  A-B--C      "" + a-b-c -> A--B--C
+s" a-b" s" c"      TF-CTOR-PKG$ s" A--B-C" T$=
+s" a"   s" b-c"    TF-CTOR-PKG$ s" A-B--C" T$=
+s" "    s" a-b-c"  TF-CTOR-PKG$ s" A--B--C" T$=
+\ determinism: identical inputs -> byte-identical output.
+s" pkg" s" result" TF-CTOR-PKG$ s" PKG-RESULT" T$=
+
+\ SHA-256 fallback: escaped `VERYLONGPACKAGENAME-RESULT` is 26 bytes > 16, so the
+\ derived name is `T` + 16 hex + `-RESULT` = 24 bytes. Structure asserted here;
+\ the exact hash goldens (determinism + injectivity + algorithm pin) follow.
+s" verylongpackagename" s" result" TF-CTOR-PKG$ CPU ! CPA !
+CPU @ 24 T=
+CPA @ 1 s" T" T$=                           \ prefix marker
+CPA @ 17 + 1 s" -" T$=                      \ separator after the 16-hex hash
+CPA @ 18 + 6 s" RESULT" T$=                 \ uppercase family tail suffix
+\ every hash byte is a lowercase hex digit (0-9 a-f).
+: HEXLC? ( n -- bool ) {: c:n :}
+   c 48 >= c 57 <= and   c 97 >= c 102 <= and   or ;
+: HEX16? ( ptr u8 -- bool ) {: p:ptr :}
+   0 begin dup 16 < while
+      dup p + c@ HEXLC? 0= if drop 0 0= 0= exit then
+      1+
+   repeat drop 0 0= ;
+CPA @ 1 + HEX16? -1 T=
+\ TF-CTOR-PKG$ returns a pointer into the shared derivation buffer, so intern a
+\ stable copy of the first result before deriving again.
+variable CPOFF
+CPA @ CPU @ TF-INTERN CPOFF !
+\ determinism: the same long input reproduces the same derived name.
+s" verylongpackagename" s" result" TF-CTOR-PKG$ CQU ! CQA !
+CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  T$=
+\ injectivity: a different long package hashes to a different name (the hash
+\ region separates inputs that share length and tail).
+s" verylongpackagenamx" s" result" TF-CTOR-PKG$ CQU ! CQA !
+CQA @ CQU @  CPOFF @ CPU @ TF-OFF$  TSNE   \ NOT equal to the first long name
+\ exact golden pins the pinned algorithm byte-for-byte:
+\ SHA-256(0x13 "verylongpackagename") = 92a8624462e75ea4... (independent impl).
+s" verylongpackagename" s" result" TF-CTOR-PKG$ s" T92a8624462e75ea4-RESULT" T$=
+\ a long family tail with an empty package: fallback hashes the empty segment
+\ list, tail still appended (verylongfamilyname = 18 bytes > 16).
+s" " s" verylongfamilyname" TF-CTOR-PKG$ CQU ! CQA !
+CQU @ 36 T=                                 \ T(1)+16 hex+ -(1)+VERYLONGFAMILYNAME(18)
+CQA @ 1 s" T" T$=
+CQA @ 1 + HEX16? -1 T=
+CQA @ 18 + 18 s" VERYLONGFAMILYNAME" T$=
+\ empty segment list golden: SHA-256("") = e3b0c44298fc1c14... (FIPS-180 constant).
+s" " s" verylongfamilyname" TF-CTOR-PKG$ s" Te3b0c44298fc1c14-VERYLONGFAMILYNAME" T$=
+
+\ SV.CTOR-PKG metadata slot: friend writer/reader round-trip through the pool.
+\ VOK is a live variant id from section 10; storing its constructor package name
+\ leaves the other variant fields untouched.
+variable RPK
+s" RESULT" TF-INTERN RPK !
+VOK @ SUMV-CTOR-PKG$ nip 0 T=               \ unset variants report an empty name
+VOK @ RPK @ 6 SUMV-CTOR-PKG!
+VOK @ SUMV-CTOR-PKG$ s" RESULT" T$=
+VOK @ SUMV-TAG@ 0 T=                        \ tag field intact after the CTOR write
 
 \ ---------------------------------------------------------------------------
 \ 13. grow across the TFAM record / string / param-kind seed caps, then prove

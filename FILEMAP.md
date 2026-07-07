@@ -52,6 +52,7 @@ points stay listed.
 - `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
+- `src/core/type-family-sha.f` — installs the constructor package-name SHA-256 fallback hook (TF-SHA16) after sha256.f loads.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
 - `src/core/check-hook.f` — default native source checker hook installation.
 - `src/core/combinators.f` — legacy higher-order library words baked into

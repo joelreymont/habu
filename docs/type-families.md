@@ -690,17 +690,22 @@ uppercase tail. A top-level `SUMTYPE result` may publish `RESULT:OK` and
 a distinct constructor package derived from stable source identity by one
 pinned algorithm shared byte-identically by native `habu2`, `habu1`, and the
 Gforth bootstrap mirror: uppercase each canonical package path segment and the
-family tail, escape every literal `-` inside a segment as `--`, and join
-segments plus tail with single `-` separators; if the escaped spelling exceeds
-the engine dictionary name-length limit, the spelling is `T` plus the first 16
-lowercase hex digits of SHA-256 over the length-prefixed unescaped segment
-list, then `-` plus the uppercase family tail. It must not
+family tail, escape every literal `-` inside every joined segment — the family
+tail included — as `--`, and join segments plus tail with single `-`
+separators (escaping only the package segments is not injective: package `a`
+with family `b-c` would collide with a top-level family `a-b-c`); if the
+escaped spelling exceeds the engine dictionary name-length limit, the spelling
+is `T` plus the first 16 lowercase hex digits of SHA-256 over the
+length-prefixed unescaped segment list, then `-` plus the raw uppercase family
+tail (unescaped: the fixed-width hash region already delimits it, and hash
+spellings are always longer than the escaped-form limit, so the two forms can
+never collide). It must not
 collide with the top-level `RESULT` package. The spelling must be a legal
 one-colon package call, injective, and stable across unrelated earlier
 package/family declarations; it must not use allocation-order numeric
 package/family ids or raw hyphen concatenation. Hyphenated names such as package
 `A-B` with family `c` and package `A` with family `b-c` must not derive the same
-constructor package.
+constructor package (`A--B-C` vs `A-B--C`).
 Generated constructor package names are reserved and
 non-reopenable by ordinary `package`; an existing ordinary package with that
 spelling, or an existing qualified definition-created wordlist with that

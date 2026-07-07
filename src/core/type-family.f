@@ -372,6 +372,16 @@ variable SUMV-N   0 SUMV-N !
 : SUMV-PAYCELLS@ ( n -- n ) SUMV-REC@ SV.PAYCELLS @ ;
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
+\ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
+\ derived constructor package name (interned offset+len) in every variant; the
+\ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
+\ families export nothing, so both stay zero. All three cells are integers /
+\ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
+: SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
+   off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
+: SUMV-CTOR-PKG$ ( n -- ptr u8 n ) {: id:n :}
+   id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
+
 : SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
    id SUMV-NAME$ na nu CORE-STR= ;
@@ -395,6 +405,99 @@ variable SUMV-N   0 SUMV-N !
    tag r SV.TAG !   ss r SV.SCH-START !   sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
    0 r SV.CTOR-SYM !   0 r SV.CTOR-PKG-OFF !   0 r SV.CTOR-PKG-U !
    id ;
+
+\ ---------------------------------------------------------------------------
+\ constructor package-name derivation (Package Shape; docs/type-families.md §12,
+\ PLAN "Package Shape"). Maps the defining (package, family tail) to the reserved
+\ constructor package spelling — the same bytes native, habu1, and the Gforth
+\ mirror must produce (all three parse this one file). Readable escaped form:
+\ uppercase every joined segment (the package segment AND the family tail),
+\ double a literal '-' inside each ('-' -> '--'), join with single '-'
+\ separators. Escaping the tail too is what makes the map injective: canonical
+\ segments never start/end with '-', so hyphen runs inside escaped segments stay
+\ even-length and interior, and each single '-' separator decodes uniquely.
+\ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`; a
+\ top-level `a-b-c` derives `A--B--C` — all distinct. Past the pinned 16-byte
+\ name limit the spelling is `T` + the first 16 lowercase hex digits of SHA-256
+\ over the length-prefixed unescaped segment list + '-' + the raw uppercase
+\ tail (unescaped: the fixed-width hash region already delimits it).
+\ Top level (empty package) derives the bare escaped tail: `result` -> `RESULT`.
+\ SHA-256 loads after this file in the engine prefix, so the fallback hashes
+\ through the friend xt installed by type-family-sha.f.
+16 constant TF-CTOR-NAME-LIMIT   \ pinned inline dictionary name limit (= DNAME-INL)
+$400 constant TF-CTOR-CAP        \ derived-name / segment-list buffer bytes
+create TF-CTOR-BUF TF-CTOR-CAP allot
+variable TF-CTOR-U               \ derived-name length
+create TF-CTOR-SEG TF-CTOR-CAP allot   \ length-prefixed segment list (SHA input)
+variable TF-CTOR-SEG-U
+create TF-CTOR-HEX 16 allot       \ 16 lowercase hex digits from the SHA fallback
+
+variable TF-SHA16-XT   0 TF-SHA16-XT !   \ friend xt ( ptr u8 n ptr u8 -- ): 16 hex of SHA-256
+
+: TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
+: TF-CTOR-C, ( n -- )            \ append one byte to the derived-name buffer
+   TF-CTOR-U @ TF-CTOR-CAP >= IF s" tfam: constructor name too long" 76 die THEN
+   TF-CTOR-BUF TF-CTOR-U @ + c!
+   TF-CTOR-U @ 1 + TF-CTOR-U ! ;
+: TF-CTOR-SEG-C, ( n -- )        \ append one byte to the SHA segment-list input
+   TF-CTOR-SEG-U @ TF-CTOR-CAP >= IF s" tfam: segment list too long" 76 die THEN
+   TF-CTOR-SEG TF-CTOR-SEG-U @ + c!
+   TF-CTOR-SEG-U @ 1 + TF-CTOR-SEG-U ! ;
+
+: TF-CTOR-ESC ( ptr u8 n -- ) {: a:ptr u:n :}   \ one uppercased '-'->'--' escaped segment
+   0 TF-I !
+   BEGIN TF-I @ u < WHILE
+      a TF-I @ + c@ dup 45 = IF
+         drop 45 TF-CTOR-C, 45 TF-CTOR-C,
+      ELSE TF-UPPER-C TF-CTOR-C, THEN
+      TF-I @ 1 + TF-I !
+   REPEAT ;
+: TF-CTOR-TAIL ( ptr u8 n -- ) {: a:ptr u:n :}      \ raw uppercased tail (hash form)
+   0 TF-I !
+   BEGIN TF-I @ u < WHILE
+      a TF-I @ + c@ TF-UPPER-C TF-CTOR-C,
+      TF-I @ 1 + TF-I !
+   REPEAT ;
+: TF-CTOR-BUILD-ESCAPED ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
+   {: pa:ptr pu:n ta:ptr tu:n :}
+   0 TF-CTOR-U !
+   pu 0 > IF pa pu TF-CTOR-ESC  45 TF-CTOR-C, THEN
+   ta tu TF-CTOR-ESC ;
+
+: TF-CTOR-SEG-BUILD ( ptr u8 n -- ) {: pa:ptr pu:n :}   \ length-prefixed segment list
+   0 TF-CTOR-SEG-U !
+   pu 0= IF EXIT THEN                     \ top level: empty segment list
+   pu TF-CTOR-SEG-C,                      \ one length byte (package name <= 255)
+   0 TF-I !
+   BEGIN TF-I @ pu < WHILE
+      pa TF-I @ + c@ TF-CTOR-SEG-C,
+      TF-I @ 1 + TF-I !
+   REPEAT ;
+: TF-CTOR-HEX, ( -- )            \ append the 16 fallback hex digits to the buffer
+   0 TF-I !
+   BEGIN TF-I @ 16 < WHILE
+      TF-CTOR-HEX TF-I @ + c@ TF-CTOR-C,
+      TF-I @ 1 + TF-I !
+   REPEAT ;
+: TF-CTOR-BUILD-HASH ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
+   {: pa:ptr pu:n ta:ptr tu:n :}
+   TF-SHA16-XT @ 0= IF s" tfam: constructor sha hook not installed" 76 die THEN
+   pa pu TF-CTOR-SEG-BUILD
+   TF-CTOR-SEG TF-CTOR-SEG-U @ TF-CTOR-HEX TF-SHA16-XT @ execute
+   0 TF-CTOR-U !
+   [char] T TF-CTOR-C,
+   TF-CTOR-HEX,
+   45 TF-CTOR-C,
+   ta tu TF-CTOR-TAIL ;
+
+\ TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ptr u8 n ) : derived constructor
+\ package name in TF-CTOR-BUF. Escaped form when it fits the inline name limit,
+\ else the SHA-256 fallback. The tail must already be a canonical lowercase tail.
+: TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n ta:ptr tu:n :}
+   pa pu ta tu TF-CTOR-BUILD-ESCAPED
+   TF-CTOR-U @ TF-CTOR-NAME-LIMIT > IF pa pu ta tu TF-CTOR-BUILD-HASH THEN
+   TF-CTOR-BUF TF-CTOR-U @ ;
 
 \ ---------------------------------------------------------------------------
 \ product fields, keyed by (family-id, field tail).

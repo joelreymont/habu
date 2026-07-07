@@ -477,6 +477,7 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/enums.f" HBB-KEY-FILE+
    s" src/core/exec-vector.f" HBB-KEY-FILE+
    s" src/core/sha256.f" HBB-KEY-FILE+
+   s" src/core/type-family-sha.f" HBB-KEY-FILE+
    s" src/core/combinators.f" HBB-KEY-FILE+
    s" src/habu/treeshake.f" HBB-KEY-FILE+
    s" src/habu/rt.f" HBB-KEY-FILE+

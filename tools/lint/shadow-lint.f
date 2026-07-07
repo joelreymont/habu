@@ -81,6 +81,7 @@ variable BAD  variable LI
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
+   s" src/core/type-family-sha.f" LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
    s" src/os/macos/sys.f"   LINT-FILE

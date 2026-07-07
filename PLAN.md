@@ -89,12 +89,14 @@ feature is allowed.
   The constructor package tail is injectively derived from stable source
   identity by one pinned algorithm shared byte-identically by native `habu2`,
   `habu1`, and the Gforth bootstrap mirror: uppercase each canonical package
-  path segment and the family tail, escape every literal `-` inside a segment
-  as `--`, and join segments plus tail with single `-` separators; if the
+  path segment and the family tail, escape every literal `-` inside every
+  joined segment — the family tail included — as `--`, and join segments plus
+  tail with single `-` separators (tail escaping is required for injectivity:
+  package `a` + family `b-c` must not collide with top-level `a-b-c`); if the
   escaped spelling exceeds the engine dictionary name-length limit, the
   spelling is `T` plus the first 16 lowercase hex digits of SHA-256 over the
-  length-prefixed unescaped segment list, then `-` plus the uppercase family
-  tail. It never uses
+  length-prefixed unescaped segment list, then `-` plus the raw uppercase
+  family tail. It never uses
   allocation-order numeric package/family ids for visible spelling. The derived
   package is reserved/non-reopenable as an ordinary package and is
   collision-checked against existing package names and qualified definition

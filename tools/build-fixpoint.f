@@ -708,6 +708,7 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
@@ -775,6 +776,7 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV ;

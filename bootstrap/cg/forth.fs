@@ -1095,8 +1095,8 @@ variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable
 variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPCOMBINATORS
-variable LPXREF
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
+variable LPCOMBINATORS  variable LPXREF
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -1272,6 +1272,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-LOAD-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
+   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
 
@@ -1312,6 +1313,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
+   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
 
@@ -1473,6 +1475,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPEXECVECTOR   s" src/core/exec-vector.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
+   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    EMIT-SEAL-FRIEND ;                    \ seal before user source (all stdin/file/repl paths)
@@ -3478,7 +3481,7 @@ variable CFSK2
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !
+   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF ! ;
 
 : EMIT-LABEL-JIT ( -- )

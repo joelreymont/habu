@@ -83,6 +83,7 @@ variable CHECKED
    s" src/core/enums.f" PREFIX-FILE
    s" src/core/exec-vector.f" PREFIX-FILE
    s" src/core/sha256.f" PREFIX-FILE
+   s" src/core/type-family-sha.f" PREFIX-FILE
    s" src/core/combinators.f" PREFIX-FILE
    s" src/habu/xref.f" PREFIX-FILE
    s" src/os/script-argv.f" PREFIX-FILE ;

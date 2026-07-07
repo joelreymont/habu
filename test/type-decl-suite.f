@@ -441,6 +441,33 @@ TDOK @ -1 T=
 TDF @ TDX @ <> -1 T=
 
 \ ---------------------------------------------------------------------------
+\ item 8 metadata: a PUBLIC sum/enum family derives its constructor package name
+\ (Package Shape) at ;SUMTYPE and stores it in every variant's SV.CTOR-PKG slot;
+\ a PRIVATE family exports nothing, so the slot stays empty (the `construct`
+\ form is item 9). No runtime constructor word is published in this item yet.
+\ ---------------------------------------------------------------------------
+\ top-level public `tdres` -> package TDRES on both variants.
+s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
+TDF @ TFAM-VAR-START@ TDV0 !
+TDV0 @ SUMV-CTOR-PKG$ s" TDRES" T$=
+TDV0 @ 1 + SUMV-CTOR-PKG$ s" TDRES" T$=
+\ in-package public `tdpa:tres` -> package TDPA-TRES.
+s" tdpa" s" tres" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
+TDF @ TFAM-VAR-START@ TDV0 !
+TDV0 @ SUMV-CTOR-PKG$ s" TDPA-TRES" T$=
+\ a private sum exports no constructor package: SV.CTOR-PKG stays empty.
+package tdp8
+private
+SUMTYPE tsec 1
+  VARIANT hidden a ;VARIANT
+;SUMTYPE
+end-package
+s" tdp8" s" tsec" TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
+TDF @ TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
+TDF @ TFAM-VAR-START@ TDV0 !
+TDV0 @ SUMV-CTOR-PKG$ nip 0 T=
+
+\ ---------------------------------------------------------------------------
 \ package-scoped SIG resolution (habu-tfam-4-remainder part 3): unqualified
 \ family tokens resolve through the ACTIVE package before the unique public
 \ tail; qualified PKG:tail folds the qualifier, requires a lowercase tail, and

@@ -76,6 +76,7 @@ SRC_COMMON=(
   src/core/enums.f
   src/core/exec-vector.f
   src/core/sha256.f
+  src/core/type-family-sha.f
   src/core/combinators.f
   src/habu/treeshake.f
   src/habu/rt.f
