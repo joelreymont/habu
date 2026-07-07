@@ -620,6 +620,62 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" drop" s" hb nested bad def token" GE-EXPECT-ERR-HAS
    s" PASS: nested bad-effect def rejected from inside a word" type cr ;
 
+: GE-EVAL-UNDEF-SRC ( -- )
+   \ The dot reproducer: an undefined word aborts a nested `:`-compile INSIDE
+   \ `evaluate` (called from GO via the TRUSTED evaluate wrapper). Mid-compile the
+   \ JIT dict region is RW; the aborted definition must unwind cleanly, not fault.
+   GE-SRC-RESET
+   s" TRUSTED: EV ( ptr u8 n -- ) evaluate ;" GE-SRC-LINE
+   s" : GO ( -- )" GE-SRC+  GE-SRC-SP
+   s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-S"
+   s"  EV ;" GE-SRC-LINE ;
+
+: GE-EVAL-UNDEF-CATCHABLE ( -- )
+   \ Under an enclosing quotation catch, the aborted nested :-compile unwinds the
+   \ eval frame (partial def dropped) and delivers a CATCHABLE throw (code 70) to
+   \ the catch -> `. cr` prints 70 and the process exits 0. Was: native register
+   \ dump / SIGBUS exit 134 (W^X: returned into RW dict code without restoring RX).
+   GE-HB-RESET
+   GE-EVAL-UNDEF-SRC
+   s" : T1 ( -- ) [: GO ;] catch . cr ;" GE-SRC-LINE
+   s" T1" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb eval-undef catch rc" GE-EXPECT-OK
+   s" 70" s" hb eval-undef catch code" GE-EXPECT-OUT-HAS
+   s" E-UNDEFINED" s" hb eval-undef catch diag" GE-EXPECT-ERR-HAS
+   s" UNDEFINED-WORD-XYZ" s" hb eval-undef catch token" GE-EXPECT-ERR-HAS
+   s" PASS: undefined in nested :-compile under catch -> catchable code 70, exit 0" type cr ;
+
+: GE-EVAL-UNDEF-FAILCLOSED ( -- )
+   \ Same mid-compile abort inside evaluate but NO handler: the throw finds no
+   \ catch, so it fails closed with rc 70 + E-UNDEFINED (like the top-level LRDIE
+   \ path), never a signal and never continuing past the abort.
+   GE-HB-RESET
+   GE-EVAL-UNDEF-SRC
+   s" GO" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb eval-undef no-catch rc" GE-EXPECT-RC
+   s" E-UNDEFINED" s" hb eval-undef no-catch diag" GE-EXPECT-ERR-HAS
+   s" UNDEFINED-WORD-XYZ" s" hb eval-undef no-catch token" GE-EXPECT-ERR-HAS
+   s" PASS: undefined in nested :-compile w/o catch -> fail-closed rc70" type cr ;
+
+: GE-COMPILE-UNDEF-TOPLEVEL ( -- )
+   \ The top-level undefined-in-:-compile path (EVALD==0, no eval frame) is
+   \ unchanged by the eval-frame recovery fix: E-UNDEFINED + rc 70, never a signal.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : FOO ( -- ) UNDEFINED-WORD-XYZ ;" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb top-level undef-compile rc" GE-EXPECT-RC
+   s" E-UNDEFINED" s" hb top-level undef-compile diag" GE-EXPECT-ERR-HAS
+   s" UNDEFINED-WORD-XYZ" s" hb top-level undef-compile token" GE-EXPECT-ERR-HAS
+   s" PASS: top-level undefined-in-compile fail-closed rc70 (unchanged)" type cr ;
+
+: GE-EVAL-UNDEF-RECOVER ( -- )
+   GE-EVAL-UNDEF-CATCHABLE
+   GE-EVAL-UNDEF-FAILCLOSED
+   GE-COMPILE-UNDEF-TOPLEVEL ;
+
 : GE-SET-CHECK-NEG ( -- )
    \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
    \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
@@ -647,6 +703,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-DEREF-ARITY-DIAG
    GE-NESTED-CHECKED-DEF
    GE-NESTED-BAD-DEF
+   GE-EVAL-UNDEF-RECOVER
    GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
