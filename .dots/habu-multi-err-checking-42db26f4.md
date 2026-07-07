@@ -162,3 +162,49 @@ checkpoint/restore (trail machinery); not part of the rewire.
 STOP: awaiting the cascade-policy ruling (Option A recommended). On A, the
 rewire above is a tools-only unit executable immediately; checker.f is not
 touched under either half of this packet.
+
+## PACKET AMENDMENT (2026-07-07, during rewire execution): evaluate-based
+## rewire is UNSOUND for this tool - corrected design needs verification
+
+RULING RECORDED: Option A (no-cascade) accepted by the coordinator.
+
+But implementation investigation found a contract difference the packet
+missed, discovered while auditing the 21 consumers' API surface:
+
+1. EXECUTION SAFETY (disqualifying): the native MULTI-ERR path is a real
+   `evaluate` load - it EXECUTES top-level candidate forms in the checking
+   process. This tool's input is untrusted LLM-generated code; the re-driver
+   is crash-immune BY DESIGN (per-def candidate scopes, nothing ever runs).
+   An evaluate-based rewire turns a crashing candidate into a checker-driver
+   crash (and in check-core's batch drive, one bad file kills the whole
+   multi-file run). The engine-suite MEO regression got away with `evaluate`
+   because its fixture is trusted test code.
+2. DICTIONARY ISOLATION: CHECKER-SCOPE rollback (RBF-POP, checker.f:6267)
+   restores checker registries (usigs/norets/syms/types/vrecs + TFAM hooks)
+   but NOT the compile dictionary - RBF.NEND is NORET-END, not ndict. An
+   evaluate-based core in a long-lived process (check-core drives many files;
+   gate-dictionary calls CHECK-ALL-ERRORS-BUF repeatedly) would pollute the
+   live dictionary per call and hard-exit 78 on cross-call name collisions.
+
+CORRECTED DESIGN (to verify before implementing): MULTI-ERR x
+VERIFY:SOURCE-BUF - wrap the existing check-only scope verifier (the same
+path certify uses: parses + checks every def in a candidate scope, compiles
+and executes NOTHING) in MULTI-ERR mode so a reject counts + records the
+declared sig and the verify loop CONTINUES to the next def. Open questions
+that need empirical verification and possibly touch src/habu/verify-source.f
+(engine-family, item-8-adjacent): (a) does VERIFY:SOURCE-BUF's driver loop
+continue past a rejected def when MULTI-ERR? is set, or does it abort on the
+CHECK verdict; (b) do the MEO file-relative origins thread through the verify
+path (verify has its own SOURCE-AT!/DIAG-ORIGIN! per-def frame - likely YES
+via VERIFY:SOURCE-BUF-AT-IN-SCOPE, which the re-driver already uses); (c)
+does CHECKER-USIG-CERT-ADD-on-reject fire on the verify path so no-cascade
+holds there too. If (a) needs a loop change in verify-source.f, that is a
+small engine-family edit to route; (b)/(c) are likely already true.
+
+The dup-name pre-scan and the fail-closed exit from the original design
+stand. The evaluate-based CLI sketch in the previous section is WITHDRAWN
+for the core; it remains valid only for single-shot trusted-input contexts.
+
+STOP (again): the corrected rewire hinges on (a)-(c); verifying them and any
+verify-source.f loop change is the next unit. No consumer-visible code was
+changed in this investigation.
