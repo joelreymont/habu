@@ -584,6 +584,42 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" hb valid deref store succeeds" GE-EXPECT-OK ;
 
+: GE-NESTED-DEF-SRC ( ptr u8 n -- ) {: body:ptr bodyu:n :}
+   \ Build: TRUSTED: W ( -- ) s" <body>" evaluate ;  then run W.
+   \ W is TRUSTED: because `evaluate` is an uncheckable metaprogramming boundary
+   \ (its effect is dynamic); the definition compiled BY <body> is still fully
+   \ checked by the active hook, from inside W's execution.
+   GE-SRC-RESET
+   s" TRUSTED: W ( -- )" GE-SRC+  GE-SRC-SP
+   body bodyu GE-SRC-S"
+   s"  evaluate ;" GE-SRC-LINE
+   s" W" GE-SRC-LINE ;
+
+: GE-NESTED-CHECKED-DEF ( -- )
+   \ Checker reentrancy across the word-execution boundary: a checked colon
+   \ definition compiled WHILE a word executes must certify + publish correctly.
+   \ Proven: ZZ compiles under the active hook from inside W, then runs -> 5, rc 0.
+   GE-HB-RESET
+   s" : ZZ ( -- n ) 5 ;" GE-NESTED-DEF-SRC
+   s" ZZ ." GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" hb nested checked def rc" GE-EXPECT-OK
+   SB-RESET s" 5" SB-APPEND GE-SB-LF
+   SB$ s" hb nested checked def output" GE-EXPECT-OUT
+   s" PASS: nested checked def certifies + runs (reentrant hook)" type cr ;
+
+: GE-NESTED-BAD-DEF ( -- )
+   \ The nested definition is NOT trusted just because its definer word is: a
+   \ bad-effect nested def compiled from inside an executing word must still be
+   \ REJECTED (rc 70). Proven: BAD ( -- n ) drop is rejected at 'drop'.
+   GE-HB-RESET
+   s" : BAD ( -- n ) drop ;" GE-NESTED-DEF-SRC
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb nested bad def rc" GE-EXPECT-RC
+   s" bad" s" hb nested bad def word" GE-EXPECT-ERR-HAS
+   s" drop" s" hb nested bad def token" GE-EXPECT-ERR-HAS
+   s" PASS: nested bad-effect def rejected from inside a word" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-PROCESS-PTY
@@ -591,6 +627,8 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-ARGV-MODES
    GE-UNDERFLOW-DIAG
    GE-DEREF-ARITY-DIAG
+   GE-NESTED-CHECKED-DEF
+   GE-NESTED-BAD-DEF
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
 

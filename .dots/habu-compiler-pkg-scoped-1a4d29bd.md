@@ -61,3 +61,11 @@ section-3 planning vocabulary (LINEAR/GELU/... in a planning package) is a clean
 forward step split to habu-maki-named-descriptor-720fdc74; MODEL:-driven capture
 stays blocked on habu-checker-reentrancy-certify-86771a6f. This dot stays open,
 blocked on those two capabilities.
+
+UNBLOCKED 2026-07-07: the reentrancy blocker dissolved - the natural
+TRUSTED:-definer nested-compile path works on the stock engine (regressions in
+test/gate-engine-lib.f; see habu-checker-reentrancy-certify RESOLUTION). The
+remaining defect is confined to the hook-swap idiom no natural path uses.
+MODEL:-driven static composition over package PLAN (maki/plan-vocab.f, landed)
+can now be implemented; Blocker 2 (tensor kind-opacity,
+habu-checker-shape-kind) still bounds what the checker proves to arity/kind.

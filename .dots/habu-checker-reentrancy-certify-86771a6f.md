@@ -42,3 +42,18 @@ habu-compiler-pkg-scoped stays BLOCKED on this.
 SEQUENCING 2026-07-07 (user): fix this LAST - after the remaining host lanes
 (codegen-role, named-descriptor) land. Then attempt the lldb single-step
 session agent-driven per the banked next-step plan.
+
+RESOLUTION 2026-07-07 (lldb-lane finding, verified independently on the stock
+engine): the NATURAL nested-compile path WORKS - a `TRUSTED: W ( -- ) s" : ZZ
+( -- n ) 5 ;" evaluate ;` definer with the hook active certifies+publishes+runs
+the nested checked def (ZZ -> 5, rc 0) and a bad-effect nested def still
+rejects (rc 70 at 'drop'). Both landed as engine-gate regressions
+(GE-NESTED-CHECKED-DEF / GE-NESTED-BAD-DEF in test/gate-engine-lib.f). The
+does> failure REMAINS but only under the hook-swap idiom (save hook ->
+0 set-check -> define W unchecked -> set-check restore -> W) - the prior RCA's
+reproducer idiom, not the natural path. The defect narrows to hook-swap state
+(likely the same stale-registry class as habu-check-records-go-4f62cd2e).
+CONSEQUENCE: habu-compiler-pkg-scoped (MODEL:-driven static composition) is
+UNBLOCKED - a TRUSTED:/checked definer wiring package PLAN is the natural
+idiom and it works today. This dot stays open ONLY for the hook-swap-idiom
+defect, deprioritized (p3): no natural code path uses that idiom.
