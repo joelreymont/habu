@@ -158,3 +158,112 @@ flags top-level maki defs outside a package (whitelisting E-* cross-cutting
 constants) and legacy BEGIN-/END- pairs. Primary targets it should catch today:
 array.f + the GLOBAL eval cluster. Not built this session; needs its own commit
 + test.
+
+---
+
+PROGRESS 2026-07-07 (session 2, workspace .jj-ws/fable-pkgs, host-side). On top
+of the session-1 base (fable). maki/test.f green 73/73 after every commit;
+test/run.f green (native suite ~6.8s < budget, run with fork enabled);
+filemap-lint/host-lint 0 findings; typed-local-diff-lint clean. Commits:
+  - eb889ef4  maki: tensor-value store+plan into package TENSOR
+  - 9f872cec  tools: namespace-lint for global maki defs (ledger)
+
+CLUSTER LANDED — TENSOR (substrate-split, NOT the naive whole-file package):
+  Measured the real blast radius first. DT-F32 appears 157x and LAY-ROW 177x
+  across maki — these dtype/layout/align ENUMS are pervasive VALUE-TYPE SUBSTRATE
+  (like `true`/`false`), not a packageable subsystem; TENSOR:DT-F32 on every
+  tensor literal is huge churn for NEGATIVE readability. So the split is:
+    - value-type vocabulary (tensor.f DT-*/DT-VALID?/DT-SIZE/SHAPE-*/DIM-*/
+      BCAST-SHAPE/TENSOR-BYTES + tensor-value.f LAY-*/AL-*/AL-VALID?) STAYS
+      package MAKI substrate. Bare from every MAKI consumer via same-package
+      resolution -> ~0 caller churn; ~520 refs untouched. In tensor-value.f these
+      moved into a small leading `package MAKI ... end-package` block.
+    - the STATEFUL tensor-value handle store + descriptor PLAN builder (TV-*,
+      PLAN-*, PLINEAR, PGELU, TV-LINEAR) -> package TENSOR. This is a real module
+      (mutable table + IR plan), the right thing to package.
+  Inbound was BOUNDED to 8 files (cad, model-ir[comment-only], plan-ops, cad-test,
+  cad-ref-test, plan-compose-test, plan-vocab-test, tensor-value-test) — the
+  store/plan is used narrowly by the planning core while the enums are used
+  everywhere, which VALIDATES the split. ~293 TV-/PLAN- refs qualified TENSOR:
+  (exact-word, code-only via a scratch perl + the fail-closed maki/test.f as the
+  oracle). CAUTION resolved: PLAN- is NOT a safe prefix — plan-ops.f (PLAN-UNARY/
+  -LINEAR/-BIN-EW/...) and cad.f (PLAN-SHP-*/PLAN-REF) own other PLAN- families
+  and plan-vocab.f already writes MAKI:PLAN-UNARY; only the exact tensor-value
+  PLAN words were qualified. Downward from TENSOR: MAKI:DT-*/LAY-*/AL-*/OP-*
+  (op-kind still MAKI) + MAKI:LINEAR. TV-CAP/PLAN-CAP promoted to public (a
+  fixed-capacity store's capacity is legitimate contract; the E-TV-FULL /
+  E-TV-PLAN-FULL fail-closed tests need them). Fully gated by maki/test.f (all 8
+  consumers transitively loaded by gated suites; NO device-test uses TV-/DT-).
+
+CLUSTER LANDED — namespace-lint (dot cluster 4; the ledger that drives the rest):
+  tools/namespace-lint{-core,,-test}.f — checked Habu on the tools/lint framework
+  (TOKENIZE/TOK/TN#, LINT-* helpers), sibling triad like maki-dep-lint. Tracks
+  package/end-package depth; every definition at depth 0 (global, outside any
+  package) in a maki/*.f is a finding. Whitelist: E-* error constants; the
+  documented maki/array.f ARRAY substrate; BEGIN-/END- legacy pairs (separate
+  tally); *-test.f scaffolding. String bodies skipped via quote-parity (so a
+  defining word inside `s" ... "` never reads as a def — caught 3 false `:`/`"`
+  during dev). REPORT-ONLY (never throws) while eval/gpu await packages;
+  NAMESPACE-LINT-STRICT throws for future enforcement. Wired into the gate
+  (test/gate-stdlib-cases.f suites), registered in FILEMAP.md.
+  CURRENT LEDGER (verbatim count): 76 maki files, 126 global-def findings, 0
+  legacy-pairs. By file: eval-device 32, eval-device-sm 27, gpu 21, eval-compare
+  17, eval-repair-loop 11, eval 7, gpu-train 6, device-smoke 3, tensor-value 1
+  (DEFTYPE tensor), report 1 (DEFTYPE report). => eval cluster 94, gpu cluster 27,
+  device-smoke 3, two DEFTYPE value-handles 2. These GLOBAL clusters are the real
+  remaining PACKAGE work; the lint is their TODO ledger.
+
+SUBSTRATE POLICY (the load-bearing session-2 decision; generalizes the prompt's
+ARRAY steer). Maki has a VALUE-TYPE / ENUM SUBSTRATE layer that must NOT be forced
+into per-subsystem packages: forcing it is hundreds of qualified refs of churn for
+worse readability, and global/same-package fallback keeps bare refs working, so
+the "gain" is negative. Documented substrate exceptions (explicit, recorded here
++ the lint whitelist / package-MAKI membership):
+  - ARRAY (array.f, GLOBAL): T-GET/T-SET/T-SGD!/T-ADD!/... — the value-array
+    substrate, used bare across ~19 maki files AND lib/ptx tests. VERDICT: keep as
+    GLOBAL substrate (lint whitelists array.f). Packaging = biggest single-leaf
+    churn for arguable gain (the prompt's own read; confirmed).
+  - op-kind (op-kind.f, package MAKI): OP-ADD..OP-N model op-kind enum, used bare
+    in ~40 files (DIFFERENT enum than fusion.f's local OP-SCALE/ADD/RELU — do NOT
+    conflate). VERDICT: value substrate; stays package MAKI, NOT its own package.
+  - tensor value-type enums (see TENSOR cluster): DT-*/LAY-*/AL-*/SHAPE-*/DIM-*.
+    Stay package MAKI substrate.
+  - report enums V-*/RC-*/CO-*/G-*: verdict/roofline/coalescing/gate tags, ~26
+    files incl device tests. Substrate; stay MAKI even when RPT-* packages.
+  - E-* error constants: cross-cutting, top-level, whitelisted.
+  Rule of thumb: a family that is a stateful MODULE (a store, a plan, a builder,
+  a planner) -> package; a family that is primitive VALUE-TYPE VOCABULARY (dtype/
+  layout/align/op-kind/verdict enums + pure predicates) -> shared substrate.
+
+REMAINING CLUSTERS — reranked with session-2 blast-radius data:
+  - REPORT: RPT-* report-builder API in 22 files (only 1 device test:
+    lower-model-device-test) is a genuine subsystem -> package REPORT via the SAME
+    substrate-split (RPT-* packaged; V-/RC-/CO-/G- enums stay MAKI substrate,
+    bare, so the device-const leak the s1 note feared is a NON-issue for the enum
+    half). report.f already has E-RPT-* top level + a `package MAKI` body; DEFTYPE
+    report is the 1 lint finding there. RE-MEASURED, heavier than it looks: the
+    substrate-split costs ~66 internal V-/RC-/CO-/G- refs inside report.f's render
+    machinery (R-*/H-/P-/EMIT-* + RPT-* validators) that need MAKI: quals; the
+    whole-file alternative avoids those but pushes V-/RC-/CO-/G- into 26 inbound
+    files incl 7 device tests (pending-zed). Do the substrate-split, but budget
+    the 66 internal quals + 22-file RPT- inbound as a full cluster of its own.
+  - FUSION (fold fusion-plan.f -> package FUSION): HEAVY ROOT, re-measured. FP-*
+    inbound is 33 files incl ~13 UNGATED device tests (lower-*-device-test), and
+    fusion-plan.f needs ~60 downward MAKI: quals (CLASS-* 25, MIR-* 25, OPR-CLASS,
+    MV-*, RPT-SPLIT+) that are transitional (redone when model-ir/op-registry/
+    move-facts extract). s1 called it "medium"; the body says otherwise. DEFER:
+    high churn + device-entangled + not gate-provable host-side. Do after model-ir/
+    op-registry are packaged (so the downward quals land final), with the device
+    gate (pending-zed).
+  - AUTOGRAD (autograd/autograd-tensor/adjoint/backward/gradcheck, all MAKI):
+    names are clean domain scalar VJPs (ADD-F/ADD-BWD/MUL-BWD/RELU-F...) — GENERIC
+    and collision-prone; inbound not yet safely characterized. Needs a careful
+    per-word assessment (which -F/-BWD are the public VJP table vs helpers) before
+    a package name/qualify pass. Deferred pending that assessment.
+  - EVAL / GPU (the GLOBAL clusters, = the 126 lint findings): the real remaining
+    PACKAGE work. Large + device-entangled + need the EV-/ER-/GRADE- tail scheme
+    (s1 note). Left RED in the report-only lint as the driving TODO ledger.
+
+DEFERRED (spec 2), unchanged: maki.f curated re-export still needs compiler EXPORT
+(dot habu-compiler-pkg-re-688212c1). Consumers still require maki/<file>.f and
+call ONNX:/LOSS:/OPTIM:/TENSOR: pkg-qualified.
