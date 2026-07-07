@@ -161,6 +161,8 @@ FP-BUILD
 ' LREDT-TRY E-LRED-INPUTS TTHROWS
 
 \ ---- fail closed: a corrupted plan with two materialized outputs in one region ---
+\ The planner NEVER produces this - maki/fusion-mout-test.f proves exactly one materialized
+\ output per region - so E-LRED-MULTIOUT is a defense-in-depth invariant guard, not a v1 cap.
 \ FP-BUILD leaves GELU interior (mat=0) and RMSNORM the sole output (mat=1). Forcing
 \ GELU materialized simulates a bad plan; LRED-ANALYZE must not trust it.
 MODEL: MO ( x:4x8 -- y ) GELU RMSNORM ;

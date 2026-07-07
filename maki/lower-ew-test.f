@@ -38,6 +38,7 @@ variable LEWT-VA  variable LEWT-VU
 : LEWT-TRY-OP     ( -- )  0 LEW-ANALYZE ;   \ unsupported elementwise op
 : LEWT-TRY-INPUTS ( -- )  0 LEW-ANALYZE ;   \ more than the v1 input cap
 : LEWT-TRY-BCAST  ( -- )  0 LEW-ANALYZE ;   \ illegal broadcast shape (a dim neither 1 nor full)
+: LEWT-TRY-MOUT   ( -- )  0 LEW-ANALYZE ;   \ >1 materialized output in the region (corrupted plan)
 
 T-RESET
 
@@ -122,6 +123,16 @@ OP-ADD MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
    4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
 ' LEWT-TRY-BCAST E-LEW-BCAST TTHROWS
+
+\ ---- fail closed: a corrupted plan with two materialized outputs in one region -----
+\ The planner NEVER produces this (maki/fusion-mout-test.f proves each region has exactly
+\ one materialized output), so E-LEW-MULTIOUT is a defense-in-depth invariant guard, not a
+\ v1 feature cap. FP-BUILD leaves GELU interior (mat=0) and RELU the sole output (mat=1);
+\ forcing GELU materialized simulates a bad plan LEW-ANALYZE (LEW-FIND-OUT) must reject.
+MODEL: MO ( x:4x8 -- y ) GELU RELU ;
+FP-BUILD
+-1 0 MIR-MAT!
+' LEWT-TRY-MOUT E-LEW-MULTIOUT TTHROWS
 
 T-REPORT
 

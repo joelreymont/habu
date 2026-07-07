@@ -25,8 +25,10 @@
 \ OP-SCALE as EMIT-MUL, matching the executor's scalar references.
 \
 \ Fail closed: a non-elementwise region (LEW-NOTEW), an op not in the v1 chain set
-\ (LEW-OP), more than 4 region inputs (LEW-INPUTS, v1 cap), a region without exactly
-\ one materialized output (LEW-MULTIOUT), and any region input whose shape is not a legal
+\ (LEW-OP), more than 4 region inputs (LEW-INPUTS, v1 cap), a region whose materialized-
+\ output count is not exactly one (LEW-MULTIOUT - a defense-in-depth PLANNER-INVARIANT guard,
+\ not a v1 cap: the planner always plans exactly one materialized output per region, proven
+\ over a fan-out battery in maki/fusion-mout-test.f), and any region input whose shape is not a legal
 \ broadcast of the region shape - a dim that is neither 1 nor full (LEW-BCAST) - are named
 \ throws. The analysis runs BEFORE any PTX is emitted, so a rejected region emits nothing.
 \ maki -> habu only; lower-ew owns -5170..-5176. Load after the cg emit stack (see requires).
@@ -52,7 +54,7 @@ require maki/bcast.f
 -5170 constant E-LEW-NOTEW    \ region class is not pure elementwise
 -5171 constant E-LEW-OP       \ op in the region chain is not a v1-supported elementwise op
 -5172 constant E-LEW-INPUTS   \ region has more than the v1 input cap (4)
--5173 constant E-LEW-MULTIOUT \ region does not have exactly one materialized output
+-5173 constant E-LEW-MULTIOUT \ region's materialized-output count != 1 (planner-invariant guard, not a cap)
 -5174 constant E-LEW-BCAST    \ a region input shape is not a legal broadcast (a dim neither 1 nor full)
 -5175 constant E-LEW-REG      \ node/input register-map index out of range
 -5176 constant E-LEW-CAP      \ driver text buffer capacity exceeded
@@ -124,6 +126,10 @@ variable LEW-RID                            \ region id being lowered
    MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MOVE? 0= and if rid i LEW-SCAN-INS then  loop ;
 
 \ ---- single materialized output --------------------------------------------
+\ The planner plans EXACTLY ONE materialized output per region (maki/fusion-plan.f grows a
+\ linear operand-0 chain whose only materialized node is the tail; proof + fan-out battery in
+\ maki/fusion-mout-test.f). LEW-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a
+\ corrupted plan (>1 structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LEW-MAT-COUNT ( n -- n ) {: rid:n :}
    0 MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
 : LEW-FIND-OUT ( n -- ) {: rid:n :}

@@ -49,8 +49,10 @@
 \ nor a v1 unary EW epilogue (E-LMM-OP), a region without exactly one contraction node
 \ (E-LMM-MULTIMM, v1 cap: one contraction per region), an EW op that feeds INTO the
 \ contraction i.e. a fused PROLOGUE (E-LMM-PROLOGUE, unsupported in v1 - the epilogue-only
-\ kernel cannot pre-transform the contraction operands), a region without exactly one
-\ materialized output (E-LMM-MULTIOUT), an operand shape that disagrees with the M/N/K the
+\ kernel cannot pre-transform the contraction operands), a region whose materialized-output
+\ count is not exactly one (E-LMM-MULTIOUT - a defense-in-depth PLANNER-INVARIANT guard, not a
+\ v1 cap: the planner always plans exactly one materialized output per region, proven in
+\ maki/fusion-mout-test.f), an operand shape that disagrees with the M/N/K the
 \ contraction node declares (E-LMM-DIMS), a buffer element count above the launch arena
 \ (E-LMM-DIMS, v1 cap 4096 f32), and K above the accumulation cap (E-LMM-KCAP, v1 K<=256)
 \ are named throws. maki -> habu only; lower-mm owns -5193..-5200. Load after the cg emit
@@ -78,7 +80,7 @@ require maki/move-view.f
 -5194 constant E-LMM-OP        \ a region op is neither the contraction nor a v1 unary EW epilogue
 -5195 constant E-LMM-MULTIMM   \ region does not have exactly one contraction node (v1 cap)
 -5196 constant E-LMM-PROLOGUE  \ an EW op feeds INTO the contraction (prologue fusion unsupported v1)
--5197 constant E-LMM-MULTIOUT  \ region does not have exactly one materialized output
+-5197 constant E-LMM-MULTIOUT  \ region's materialized-output count != 1 (planner-invariant guard, not a cap)
 -5198 constant E-LMM-DIMS      \ operand shape disagrees with M/N/K, or a buffer exceeds the arena cap
 -5199 constant E-LMM-KCAP      \ contraction inner dim K exceeds the v1 accumulation cap (K<=256)
 -5200 constant E-LMM-REG       \ node / input register-map index out of range
@@ -161,6 +163,10 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
    c 0 ?do  mm i MIR-IN@  LMM-INS i cells + !  loop ;
 
 \ ---- single materialized output --------------------------------------------
+\ The planner plans EXACTLY ONE materialized output per region (linear operand-0 chain, the
+\ tail its sole materialized node; proof + fan-out battery in maki/fusion-mout-test.f).
+\ LMM-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
+\ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LMM-MAT-COUNT ( n -- n ) {: rid:n :}
    0 MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
 : LMM-FIND-OUT ( n -- ) {: rid:n :}

@@ -41,7 +41,9 @@
 \ class mix is not ROW-REDUCE (optionally + EW) (LRED-NOTRED), an op that is neither a
 \ v1 elementwise op nor a supported reduction (LRED-OP), a region with != 1 reduction node
 \ (LRED-MULTIRED, v1 cap: one reduction per region), more than the v1 input cap (LRED-INPUTS),
-\ a region without exactly one materialized output (LRED-MULTIOUT), a region input whose shape
+\ a region whose materialized-output count is not exactly one (LRED-MULTIOUT - a defense-in-depth
+\ PLANNER-INVARIANT guard, not a v1 cap: the planner always plans exactly one materialized output
+\ per region, proven in maki/fusion-mout-test.f), a region input whose shape
 \ is not a row/scalar broadcast of the RxC region shape - an Rx1 column or a non-1-non-full dim
 \ (LRED-BCAST), and a row width beyond the block cap (LRED-COLS, v1: C <= 256) are named throws.
 \ maki -> habu only; lower-red owns -5185..-5192. Load after the cg emit stack (see requires).
@@ -68,7 +70,7 @@ require maki/rmsnorm.f
 -5186 constant E-LRED-OP       \ a region op is neither a v1 elementwise op nor a supported reduction
 -5187 constant E-LRED-MULTIRED \ region does not have exactly one reduction node (v1 cap)
 -5188 constant E-LRED-INPUTS   \ region has more than the v1 input cap (4)
--5189 constant E-LRED-MULTIOUT \ region does not have exactly one materialized output
+-5189 constant E-LRED-MULTIOUT \ region's materialized-output count != 1 (planner-invariant guard, not a cap)
 -5190 constant E-LRED-BCAST    \ a region input shape is not a row/scalar broadcast (Rx1 col / illegal dim)
 -5191 constant E-LRED-COLS     \ row width (cols) exceeds the block cap (v1: k <= 256)
 -5192 constant E-LRED-REG      \ node / input register-map index out of range
@@ -148,6 +150,10 @@ variable LRED-RID                              \ region id being lowered
    MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MOVE? 0= and if rid i LRED-SCAN-INS then  loop ;
 
 \ ---- single materialized output --------------------------------------------
+\ The planner plans EXACTLY ONE materialized output per region (linear operand-0 chain, the
+\ tail its sole materialized node; proof + fan-out battery in maki/fusion-mout-test.f).
+\ LRED-FIND-OUT asserts that invariant as defense-in-depth: != 1 is a corrupted plan (>1
+\ structurally impossible, 0 a materialization-flag regression), never a v1 cap.
 : LRED-MAT-COUNT ( n -- n ) {: rid:n :}
    0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-MAT@ and if 1+ then  loop ;
 : LRED-FIND-OUT ( n -- ) {: rid:n :}

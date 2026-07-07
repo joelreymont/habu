@@ -165,6 +165,8 @@ FP-BUILD
 ' LMMT-TRY E-LMM-DIMS TTHROWS
 
 \ ---- fail closed: a corrupted plan with two materialized outputs in one region -----
+\ The planner NEVER produces this - maki/fusion-mout-test.f proves exactly one materialized
+\ output per region - so E-LMM-MULTIOUT is a defense-in-depth invariant guard, not a v1 cap.
 \ FP-BUILD leaves MATMUL interior (mat=0) and RELU the sole output (mat=1). Forcing the
 \ MATMUL node materialized simulates a bad plan; LMM-ANALYZE must not trust it.
 MODEL: MO ( x:8x8 w:8x8 -- y ) MATMUL RELU ;
