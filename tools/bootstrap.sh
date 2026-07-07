@@ -186,19 +186,8 @@ emit_src() {
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
-    if [[ "$f" == "$OS_IMAGE" ]]; then
-      printf "0 set-check\n" >> "$out"
-    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
-    if [[ "$f" == "$OS_SIGN" ]]; then
-      printf "' HOOK set-check\n" >> "$out"
-      printf 's" ASM-CODE" s" -- asm" TRUST\n' >> "$out"
-      printf 's" BUILD-IMAGE" s" asm -- img" TRUST\n' >> "$out"
-      printf 's" BUILD-SNAP-HDR" s" n -- snap n" TRUST\n' >> "$out"
-      printf 's" SET-SIGID" s" ptr u8 n --" TRUST\n' >> "$out"
-      printf 's" CODESIG2" s" img -- img" TRUST\n' >> "$out"
-    fi
   done
   if [[ "$driver" == "src/habu/snap.f" ]]; then
     cat src/core/include.f >> "$out"

@@ -615,24 +615,25 @@ row's count in the same change; the ratchet stays fail-closed both ways.
 
 ### Build-time-generated trust (explicit exemption)
 
-The inventory counts checked-in sources only. `tools/build-fixpoint.f` also
-emits trust sites as string literals into *generated* stage2/fixpoint source,
-which the lexer correctly skips in the emitter itself:
+The inventory counts checked-in sources only. The build emitters MAY generate
+trust sites as string literals into *generated* stage2/fixpoint source, which
+the lexer correctly skips in the emitter itself. As of 2026-07-07 that
+generated set is EMPTY: the former image-writer window (`0 set-check` span +
+`' HOOK set-check` reinstall around the target-image emitters) and the five
+synthetic TRUST rows (`ASM-CODE`, `BUILD-IMAGE`, `BUILD-SNAP-HDR`,
+`SET-SIGID`, `CODESIG2`) were retired — src/os/{linux/elf.f,linux/sign.f,
+macos/macho.f,macos/sign2.f} compile checked in stage2, with their effects
+coming from the checked definitions themselves. The only remaining generated
+check-state transitions are the refresh prelude's `BFR-CHECK-OFF` call (a
+hide.f TRUSTED word with its own row) and `src/core/check-hook.f`'s own
+`' HOOK set-check`.
 
-- `BF-APPEND-IMAGE-TRUSTS` emits five TRUST rows for the raw image emitters:
-  `ASM-CODE` (`-- asm`), `BUILD-IMAGE` (`asm -- img`), `BUILD-SNAP-HDR`
-  (`n -- snap n`), `SET-SIGID` (`ptr u8 n --`), and `CODESIG2` (`img -- img`).
-- `BF-APPEND-CHECK-OFF` emits the generated `0 set-check` span opener and
-  `BF-APPEND-FRESH-CHECK-HOOK` emits the `' HOOK set-check` reinstall.
-
-These generated sites are exempt from the ratchet by design: they exist only in
-`HB_TMP` build artifacts, and they are pinned instead by the build-fixpoint
-source-shape regressions (`tools/build-fixpoint-test.f` asserts the emitted
-span cut and hook reinstall) and the native self-rebuild gate. Growing this
-generated set requires updating those shape tests, which is the review point.
-One related edge: a TRUST row written with escaped-string literals
-(`s\" name"`) is not the plain two-literal shape, so the inventory counts it as
-`TRUST-BARE` rather than `TRUST` — never silently.
+Reintroducing generated trust requires updating the build-fixpoint
+source-shape regressions (`tools/build-fixpoint-test.f` asserts stage2
+contains NO bare `0 set-check` line and none of the retired TRUST rows),
+which is the review point. One related edge: a TRUST row written with
+escaped-string literals (`s\" name"`) is not the plain two-literal shape, so
+the inventory counts it as `TRUST-BARE` rather than `TRUST` — never silently.
 
 ## Inventory classification
 
