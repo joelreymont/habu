@@ -3343,11 +3343,25 @@ s" em-eval-throw-recover" s" --" TRUST
    LREAD LABEL@ B, ;
 s" em-repl-recover" s" --" TRUST
 
+\ Reject rc: an undefined word in a `:`-body is a rejected definition. Used both
+\ as the catchable throw code delivered to an enclosing catch and as the
+\ fail-closed process exit code, so caught -> code 70 and uncaught -> rc70 are the
+\ same value (matches the top-level LRDIE exit and driver-io's "check reject 70").
+70 constant RC-REJECT
+
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-   9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,
-      EM-EVAL-UNDEF-ROLLBACK
+   9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,               \ EVALD==0 -> top-level path (LUN0), unchanged
+      \ Inside evaluate: the aborted nested :-compile unwinds as a catchable throw
+      \ (RC-REJECT) via the eval throw-recovery (the same LEVALREC path BTHROW uses),
+      \ which rolls back every escaped eval frame -- dropping the partial definition
+      \ (CP/NDICT/XDS/DP) -- and delivers to the enclosing catch, or fails closed with
+      \ rc70 when no handler exists (exactly like LRDIE). We abort mid-compile with the
+      \ dict region RW; restore RX before re-entering executable (EV/handler) code.
+      2 5 MOVZ,  LPROT LABEL@ BL,                           \ region -> RX
+      15 RC-REJECT MOVZ,                                    \ x15 = throw code
+      10 DATA EVALREC-CELL LDR,  10 BR,                     \ -> LEVALREC (frame unwind + deliver)
    LUN0 LABEL@ LBL,
    9 DATA REPLH-CELL LDR,  9 LRDIE LABEL@ CBZ,
    EM-REPL-RECOVER
