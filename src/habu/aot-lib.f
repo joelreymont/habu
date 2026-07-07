@@ -10,9 +10,11 @@
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
 \ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
 
-\ Audited driver boundary: the toolchain hook is on when this file is appended;
-\ the driver installs USER-HOOK below for user source only.
-\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
+\ Audited driver boundary: the toolchain hook is on when this file is appended
+\ (aot-closure.f before it now compiles checked); the relocation core below
+\ still has typed gaps (REC record roles, blob mapping, immediate patchers) -
+\ gap inventory on dot habu-checked-image-writers-229ae789. The driver
+\ installs USER-HOOK below for user source only.
 0 set-check
 
 variable PB  variable PN  variable PFD  variable PRD
@@ -118,9 +120,9 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 
 : EMIT-DATA-REGION-MAP ( -- )
    LBL {: dvok:label :}
-   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 EM-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 DATA-VA LIT64,  0 5 CMP,
+   5 EM-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL,

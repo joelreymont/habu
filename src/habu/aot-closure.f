@@ -1,9 +1,15 @@
 \ aot-closure.f - stripped AOT closure analysis and diagnostics.
 
-\ Audited driver boundary: the toolchain hook is on when this file is appended;
-\ the driver installs USER-HOOK below for user source only.
-\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
-0 set-check
+\ The toolchain hook is on when this file is appended and stays on: this file
+\ compiles checked, with its raw-pointer boundaries as explicit TRUST rows.
+\ The driver installs USER-HOOK below for user source only.
+
+\ Checker-internal surface used by AOT diagnostics and the driver hook: the
+\ checker registry does not publish its own words to later checked loads
+\ (same boundary class as verify-source.f CHECK-BODY), so the two entrypoints
+\ the AOT tail needs are typed here as axioms.
+s" JSON-DIAGS" s" -- ptr a" TRUST
+s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
@@ -106,10 +112,10 @@ create AENB 20 allot  variable AENV  variable AENN
    s" hb-build: AOT unsupported word" 70 die ;
 
 variable FX
-: FINDADDR {: t:ptr :}  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
-: FINDMAIN  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
+: FINDADDR ( n -- ptr a ) {: t:n :}  0 FX !
+   BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
+: FINDMAIN ( -- ptr a )  0 FX !
+   BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
 \ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
@@ -158,7 +164,7 @@ variable SP2  variable SEND
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
-         SP2 @ TGT FINDADDR dup IF
+         SP2 @ TGT FINDADDR dup XREF-FOUND? IF
             dup AOT-UNSAFE? IF r swap AOT-UNSAFE-DIE THEN
             ADD-CLO
          ELSE drop THEN

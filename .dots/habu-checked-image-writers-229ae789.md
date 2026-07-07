@@ -31,3 +31,37 @@ REMAINING (this dot stays open): the aot-lib.f half - convert its
 file-top 0 set-check region (~237 ln ARM64 relocation core) into named
 TRUSTED: words at minimum; probe first whether most defs check as-is the
 same way the writers did (hb-build maker source under certify).
+
+## aot half, probe results (2026-07-07, from head ccbe0bd1)
+
+Split outcome:
+- src/habu/aot-closure.f window RETIRED - the file now compiles CHECKED in
+  the live hb-build maker. Needed: two prim-axiom TRUST rows (JSON-DIAGS
+  `-- ptr a`, CHECK! `ptr u8 n -- n`; the checker registry does not publish
+  its own words, same class as verify-source CHECK-BODY), typed effects on
+  FINDADDR ( n -- ptr a ) / FINDMAIN ( -- ptr a ) with the not-found return
+  minted through xref.f XREF-NULL instead of a raw 0 (HIDX-MEM-NULL class),
+  and SCAN-REC's found test via XREF-FOUND? instead of `dup IF` on a ptr.
+  Behavior identical (null is the same 0 bits); stripped AOT binary proven
+  end-to-end (7 SQ -> 49).
+- src/habu/aot-lib.f window STAYS: genuine typed gaps in the relocation
+  core. Fixed on the way (kept, valid under the window too): the
+  EMIT-DATA-REGION-MAP LIT64, sites now reuse habu2.f's EM-DATA-VA>N
+  boundary instead of raw DATA-VA.
+
+aot-lib gap inventory (next blocker verbatim, then suspects in file order):
+- `habu: in map-in-blob: at 'REC-END' expected: ptr a ptr n actual:
+  ptr a ptr ptr a` - MAP-IN-BLOB {: r:ptr t:ptr :} bare-ptr locals vs
+  REC-END ( ptr a -- ptr u8 ); the record/blob pointer roles need explicit
+  pointee types through the whole MAP-IN-BLOB/OLD>NEW/MAP-TARGET chain.
+- REC record reads (r @ / r 8 + @) want the typed dictionary-record
+  capability (habu-typed-dictionary-record-c67adddb spec) rather than
+  ad-hoc per-site unification.
+- -1 sentinels mixed with offsets in REC-NEWOFF/MAP-IN-BLOB/OLD>NEW are
+  n-typed and fine, but the found/not-found flow through `dup -1 <> IF
+  EXIT THEN drop` needs re-verification once pointers are typed.
+- The ADR/ADRP/B/BCOND/CBZ/TBZ immediate patchers and EMIT-* entry code
+  operate on raw instruction words (n) over CODE/blob byte pointers -
+  expect a small named TRUSTED: set (per this dot's original "named
+  boundaries at minimum") for the patch32-class stores.
+Estimated remainder: the ~180 lines from RAW-LEN to AOT-LINK.

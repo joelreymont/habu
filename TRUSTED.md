@@ -455,6 +455,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
+| JSON-DIAGS | `-- ptr a` | AOT diagnostics read the checker's JSON-mode flag; the checker registry does not publish its own words to later checked loads, so the variable is typed as an axiom for the checked AOT tail. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
+| CHECK! | `ptr u8 n -- n` | The AOT driver hook wraps the engine checker entrypoint for user source; the entrypoint's effect is modeled as a primitive axiom so the checked AOT tail compiles under the toolchain hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | MK-SBUF@ | `-- ptr u8` | Reads the hb-build maker source buffer pointer stored in a raw variable while compiling the separate maker image. | `tools/hb-build-test.f`, `test/run.f` | src/habu/maker.f | 2026-06-24 |
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 |
 | STB-CELL@ | `-- ptr n` | Reads the snapshot source text base pointer as a cell-address for executable-header size lookup. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-06-26 |
@@ -672,7 +674,9 @@ owners is the rest of `habu-audit-trusted-inventory-3a950436`.
 <!-- trusted-inventory-classes
 src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/aot-capture.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/aot-closure.f:JSON-DIAGS prim-axiom habu-primitive-effect-axiom-1119f176
+src/habu/aot-closure.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436 4

@@ -47,3 +47,12 @@ conversion dependency: the 6 builder-prefix sites fall with
 habu-staged-fixpoint-src-0b5fc6e6 (blocked on its builder-trust conversion
 dep), the 3 test spans with habu-seal-set-check-b3676b33. Close only when
 set-check exists solely for the seed/bootstrap path.
+
+## Update (2026-07-07, aot half): SETCHECK 9 -> 8
+
+src/habu/aot-closure.f:5 retired ahead of staged-fixpoint by direct typing
+(habu-checked-image-writers aot half): the file compiles checked in the
+live hb-build maker with two prim-axiom TRUST rows + XREF-NULL null mints.
+src/habu/aot-lib.f keeps its window with a concrete gap inventory on the
+image-writers dot (relocation-core pointer roles; partially dischargeable
+by the typed dictionary-record capability).
