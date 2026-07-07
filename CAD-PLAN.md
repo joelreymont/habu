@@ -87,6 +87,12 @@ and migrates onto the tensor value module-by-module. The model *source text*
 is mode-independent; the two vocabularies are kept in sync by the op
 registry (§4.2), not by textual duplication.
 
+**Status 2026-07-07: DELIVERED.** `MODEL:` compiles its body as a
+checker-verified definition over `package PLAN` (maki/plan-vocab.f,
+maki/cad.f v2 definer); the checker certifies arity/kind for the whole
+composition at load; shape legality stays a runtime pass
+(`PLAN-SHP-ALL`) pending shape-indexed types (habu-checker-shape-kind).
+
 The tensor value is owned by its own dot (`habu-maki-unified-single`), a
 Phase-1 predecessor. Until it lands, Phase 0's `MODEL:` (as built by
 `cad-0b`) parses op *tokens* against a fail-closed table — the model body is

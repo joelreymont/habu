@@ -245,7 +245,13 @@ skip connections and fan-out DAGs are expressible---in the listing above,
 \code{x RESIDUAL-ADD} reads input~0, and the backward pass will sum both
 cotangent paths through \code{x}. Unbound dimensions defer to
 \code{BIND-SHAPES}, which re-propagates shapes through the IR and
-re-validates every rule.
+re-validates every rule. As of this writing the capture is fully
+\emph{compiled}: \code{MODEL:} translates its body into a checked
+definition over the planning package and certifies the whole composition
+with the same checker that types every other word --- a malformed model
+body (an arity underflow, a non-tensor operand) is a located compiler
+diagnostic at load, before any planning; shape legality remains a
+runtime check by design, pending shape-indexed tensor types.
 
 \paragraph{Fusion.} The planner groups nodes into regions under typed
 legality---elementwise chains fuse; a contraction admits an elementwise
