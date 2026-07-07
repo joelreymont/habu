@@ -418,13 +418,12 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TFAM-PUBLIC? 0= IF EXIT THEN
-   \ v1 type parameters are cell-kinded vars, and the linear kind discipline
-   \ lets a linear con flow THROUGH a var, so every parametric family is a
-   \ possibly-linear layout: its values stay one conservative logical cell
-   \ (PUSH-LOGICAL) and its constructors must reject until TFAM 11's
-   \ whole-bundle linear counting (PLAN item 8 linear rule). Constructor
-   \ metadata (SV.CTOR-PKG) stays recorded; only word publication waits.
-   fam TFAM-ARITY@ 0 > IF EXIT THEN
+   \ parametric (arity > 0) families publish too (item 11 slice 1): a
+   \ constructor's parametric result stays one conservative logical cell while
+   \ its args are unresolved, expands to hidden fields where instantiation
+   \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
+   \ linear instantiations stay rejected at the sig/param-arg layers until
+   \ whole-bundle linear counting lands.
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: k:n :}
    0 TDGEN-M !

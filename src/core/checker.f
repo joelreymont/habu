@@ -874,19 +874,25 @@ CT-INIT
 : PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
+\ a var arg may never bind a linear con through param-arg pairing: hidden
+\ groups must stay non-linear (item 11 slice 1; whole-bundle linear counting is
+\ the remaining item-11 capability). Inert while no linear type is declared.
+: PARAM-ARG-LIN-BLOCK? ( n n -- bool ) {: x:n y:n :}
+   x ISVAR y ISVAR xor 0= IF RES-FALSE EXIT THEN
+   x ISVAR IF y ELSE x THEN {: c:n :}
+   c TAG T-CON = 0= IF RES-FALSE EXIT THEN
+   c PAY CT-LINEAR? ;
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
    t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
    t1 t2 PARAM-FAM-OK? 0= IF RES-FALSE UOK ! EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
-      t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
+      t1 PARAM-I @ PARAM>ARG T-RES  t2 PARAM-I @ PARAM>ARG T-RES
+      2dup PARAM-ARG-LIN-BLOCK? IF 2drop RES-FALSE UOK ! EXIT THEN
+      PAIR
       PARAM-I @ 1 + PARAM-I !
    REPEAT ;
 
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
-   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
-   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
-   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
 
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
@@ -1097,6 +1103,40 @@ variable LAYOUT-XPORT
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN
    ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+
+\ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
+\ effect keeps a parametric layout value as ONE logical cell whenever an arg is
+\ an unresolved var or linear con (PUSH-LOGICAL's possibly-linear rule). At a
+\ boundary or call site that cell can meet the W-cell hidden expansion of the
+\ SAME family whose args are, by the PUSH-LOGICAL invariant, always fully
+\ resolved and non-linear. Unifying the two proves the logical side's args
+\ non-linear (they bind pairwise to the hidden side's), so the logical cell
+\ expands to its hidden fields and the rows re-pair cell for cell. Genuinely
+\ linear instantiations never reach here: linear-arg layout sigs reject at the
+\ sig/borrow layer and PARAM-ARG-LIN-BLOCK? below refuses a var~linear-con arg
+\ bind, so no hidden group can ever absorb a linear payload. Transport mode
+\ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
+: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
+   LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
+   rh P>TYPE T-RES {: th:n :}
+   rl P>TYPE T-RES {: tl:n :}
+   th HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   tl TAG T-PARAM = 0= IF RES-FALSE EXIT THEN
+   tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   th PARAM>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN
+   th HIDDEN-SLOT@ th PARAM>FAM TFAM-WIDTH@* 1 - = ;   \ whole group: tag on top
+: LOGHID-EXPAND ( n n -- ) {: rh:n rl:n :}   \ expand rl's logical top, re-pair rows
+   rl P>TYPE T-RES {: tl:n :}
+   tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
+   rh re PAIR ;
+
+: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
+   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
+   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
+   2dup LOGHID-AT? IF LOGHID-EXPAND ELSE
+   2dup swap LOGHID-AT? IF swap LOGHID-EXPAND ELSE
+   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  PAIR

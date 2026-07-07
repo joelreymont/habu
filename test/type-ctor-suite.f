@@ -123,15 +123,54 @@ SUMTYPE zafter 0
 s" GEN-AFTER" type cr
 
 \ ---------------------------------------------------------------------------
-\ parametric families: possibly-linear until TFAM 11, so no words publish;
-\ constructor-package metadata is still recorded for items 9/11.
+\ parametric families publish (item 11 slice 1): the constructor's result is
+\ one conservative logical cell while args are vars, expands to the hidden
+\ fields where instantiation proves the args non-linear (LOGHID coercion),
+\ and genuinely-linear instantiations stay fail-closed.
 \ ---------------------------------------------------------------------------
 SUMTYPE zpar 1
   VARIANT psome a ;VARIANT
 ;SUMTYPE
 s" " s" zpar" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPAR" T$=
-s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! -1 T=   \ publishes + certifies
+
+SUMTYPE zpoly 2
+  VARIANT ok  a ;VARIANT
+  VARIANT err b ;VARIANT
+;SUMTYPE
+\ concrete instantiation: the 1-cell result expands wide at the boundary.
+: ZPMK-OK ( n -- zpoly<n,n> ) ZPOLY:OK ;
+: ZPMK-ERR ( n -- zpoly<n,n> ) ZPOLY:ERR ;
+\ ptr payload instantiation crosses the coercion with a non-scalar arg.
+: ZPMK-PTR ( ptr u8 -- zpoly<ptr u8,n> ) ZPOLY:OK ;
+\ generic wrapper: stays one logical cell internally, certifies against the
+\ var-arg declared out, and expands at ITS concrete callers.
+: ZPMK-G ( a -- zpoly<a,b> ) ZPOLY:OK ;
+: ZPMK-USE ( n -- zpoly<n,n> ) ZPMK-G ;
+s" GEN-POLY" type cr
+\ multi-cell payloads + zero padding through a parametric family.
+SUMTYPE zpmix 2
+  VARIANT small a ;VARIANT
+  VARIANT big a b n ;VARIANT
+;SUMTYPE
+: ZPMK-SMALL ( n -- zpmix<n,n> ) ZPMIX:SMALL ;
+: ZPMK-BIG ( n n n -- zpmix<n,n> ) ZPMIX:BIG ;
+s" GEN-POLY-MIX" type cr
+\ wrong payloads keep rejecting at the call site.
+s" ZP1 ( -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZP2 ( ptr u8 -- zpoly<n,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZP3 ( n -- zpoly<n,n> ) 0" CHECK-QUIET-CANDIDATE! 0 T=
+\ cross-family bundles cannot alias: a zpmix result is not a zpoly.
+s" ZP4 ( n -- zpoly<n,n> ) ZPMIX:SMALL" CHECK-QUIET-CANDIDATE! 0 T=
+\ genuinely-linear instantiations stay fail-closed (until whole-bundle
+\ linear counting): linear-arg layout sigs reject, construction included.
+s" ZP5 ( own -- zpoly<own,n> ) ZPOLY:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZP6 ( zpoly<own,n> -- zpoly<own,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" ZP7 ( own -- zpoly<own,n> ) ZPMK-G" CHECK-QUIET-CANDIDATE! 0 T=
+\ transports of a still-unresolved parametric result stay rejected inside a
+\ body (possibly-linear conservative path).
+s" ZP8 ( n -- zpoly<n,n> zpoly<n,n> ) ZPOLY:OK dup" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
 \ private families export nothing: no constructor package, no words.
