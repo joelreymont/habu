@@ -3329,6 +3329,7 @@ PRIM: rbase          PE-N PE-OUT PRIM;
 PRIM: cp@            PE-N PE-OUT PRIM;
 PRIM: cp!            PE-N PE-IN PRIM;
 PRIM: dbase@         PE-N PE-OUT PRIM;
+PRIM: check@         PE-N PE-OUT PRIM;
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;

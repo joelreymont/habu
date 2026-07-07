@@ -984,6 +984,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 : BNDICTFETCH ( -- ) 9 NDICT 0 ADDI,  A G-PUSH ;  \ ( -- n ) live dict count
 : BDBASEFETCH ( -- ) 9 DBASE 0 ADDI,  A G-PUSH ;  \ ( -- addr ) region base
 : BDATAFETCH ( -- ) 9 DATA 0 ADDI,  A G-PUSH ;   \ ( -- addr ) live DATA base
+: BCHECKFETCH ( -- ) 9 DATA HOOK-CELL LDR,  A G-PUSH ;  \ ( -- xt ) live checker hook — getter for set-check ([x20/DATA + HOOK-CELL])
 
 : B-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
@@ -1656,8 +1657,31 @@ s" linux-stat-fix" s" n --" TRUST
 : BSETCUR ( -- )
    A G-POP  A DATA CUR-CELL STR, ;
 
+\ set-check ( xt -- ): install the checker hook, fail-closed at install. 0
+\ disables checking (the audited `0 set-check` boundary). A non-zero argument
+\ must be a live JIT code entry: DBASE <= xt < CP (x26/x28). Every real hook —
+\ ' HOOK, SNAP-CHECK-HOOK, USER-HOOK, ES-VERDICT-HOOK — is a source-loaded
+\ colon/TRUSTED: word JIT-compiled into [DBASE, CP), so this never rejects a
+\ valid install; while garbage (1, a DATA-region address, a baked-primitive xt,
+\ or a code word mis-read via `dbase@`) lies outside the window and dies here
+\ with a named rc-70 diagnostic instead of BLRing into it at the next publish.
+\ Limit: the window cannot tell a true word entry from any other in-range address
+\ (mid-instruction, a dict record), so it catches wild installs — the crash class
+\ — not a well-formed pointer that already lands inside live code.
 : BSETCHECK ( -- )
-   A G-POP  A DATA HOOK-CELL STR, ;
+   LBL LBL LBL LBL {: bad:label ok:label done:label msg:label :}
+   A G-POP                               \ x9 = candidate xt
+   9 ok CBZ,                             \ 0 -> checking off, install as-is
+      9 DBASE CMP,  C-CC bad BCOND,      \ xt < DBASE (unsigned) -> reject
+      9 CP CMP,     C-CS bad BCOND,      \ xt >= CP (unsigned) -> reject
+   ok LBL,
+      A DATA HOOK-CELL STR,
+      done B,
+   bad LBL,
+      0 2 MOVZ,  1 msg ADR,  2 29 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" set-check: invalid checker xt" BYTES,
+   done LBL, ;
 
 : BSWL ( -- )
    LBL SWL-LOOP !
@@ -1796,7 +1820,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
    s" set-current" ['] BSETCUR FPRIM-L  s" search-wl" ['] BSWL FPRIM-L
-   s" set-check" ['] BSETCHECK FPRIM-L ;
+   s" set-check" ['] BSETCHECK FPRIM-L   s" check@" ['] BCHECKFETCH FPRIM-L ;
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS

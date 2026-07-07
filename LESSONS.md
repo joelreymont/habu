@@ -2385,3 +2385,26 @@ unchanged (148855). Keys for milestone 2:
   workspaces by campaign owner (fable-*) so ownership is visible; (b) workers
   commit early - uncommitted work in a workspace is one cleanup away from loss;
   (c) never bulk-remove workspace dirs you do not own.
+- **xts live in TWO code regions; validate hook installs against the JIT one
+  (dot habu-stdlib-check-hook-fd883aea).** Baked primitives (`' dup`) sit in the
+  engine binary's `__text` at the PIE image base (~`$104…`, measured 4.36e9);
+  runtime colon/`TRUSTED:` defs are JIT-compiled into the RBASE-VA region
+  (`$300000000..+REGION`, x26/DBASE .. x28/CP). Every real checker hook — `HOOK`,
+  `SNAP-CHECK-HOOK`, `USER-HOOK`, `ES-VERDICT-HOOK` — is a source-loaded def, so
+  its xt is always in `[DBASE, CP)` when `set-check` fires (even inside the baked
+  `bin/hb`, the cold prefix re-JITs the checker). So `set-check` can fail-closed
+  cheaply with two register compares `DBASE <= xt < CP` (no LIT64): 0 stays legal;
+  `1`, a DATA-region address (~4.67e12 > CP), a baked-prim xt, and a code word
+  mis-read via `dbase@ HOOK-CELL + @` (~4.34e9 < DBASE) all fall outside and die
+  rc-70 with a named diagnostic instead of BLRing into garbage. Limit: the window
+  can't tell a true entry from any in-range address (mid-instruction / dict
+  record) — it catches wild installs, not a well-formed pointer into live code.
+  Measure xt magnitudes with the engine before choosing the predicate; do not
+  assume one region.
+- **A computed-argument `set-check` (e.g. `check@ set-check`) is a trusted-
+  inventory site.** The scanner skips string bodies, so `s" … set-check"` fixtures
+  don't count, but a real `set-check` whose argument is neither literal `0` nor a
+  ticked name lands in the file's file-level count in `TRUSTED.md`. Adding the
+  round-trip test to a file with a `file class dot N` count row means bumping N
+  (engine-suite 47→48), not adding a named row — that ratchet is separate from
+  `checked-boundary-lint` (which passed it as a test boundary).
