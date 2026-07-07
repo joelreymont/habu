@@ -2376,3 +2376,12 @@ unchanged (148855). Keys for milestone 2:
   under catch crashes natively, dot habu-undefined-word-in-d9dc3452; CHECK!
   records go stale across ndict rollback + re-definition, dot
   habu-check-records-go-4f62cd2e).
+- **Clean up worker workspaces immediately after merging (user rule
+  2026-07-07).** Once a lane's commits are merged into fable and the dot is
+  closed, `jj workspace forget <name>` + remove the directory in the SAME merge
+  window - never leave merged workspaces around. Dozens of stale checkouts
+  invite exactly the collision we hit: another session's cleanup swept them
+  (with one lane's uncommitted work) into ~/Downloads. Corollaries: (a) prefix
+  workspaces by campaign owner (fable-*) so ownership is visible; (b) workers
+  commit early - uncommitted work in a workspace is one cleanup away from loss;
+  (c) never bulk-remove workspace dirs you do not own.
