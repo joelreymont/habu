@@ -100,3 +100,65 @@ machinery that habu-trail-based-unification-84a86c0c is about (TRIAL-SAVE/REST +
 the scalar/registry snapshots). Blocked on that; no regression can prove the
 narrow reset safe because it is not. Reassess after the trail work lands a
 reusable per-token save/restore.
+
+## Decision packet: CLI rewire unblocked except for the cascade POLICY (2026-07-07, head 11fbedbb)
+
+BLOCKER 1 (position frame): RESOLVED by habu-native-file-relative-e0438cd1
+(closed) - MULTI-ERR-ORIGIN!/MEO-APPLY thread file-relative positions with no
+habu2.f edit; test/engine-suite.f:783-799 pins byte-for-byte golden parity
+with the re-driver. Re-confirmed at this head: the native path emits the same
+rich JSON through the same DIAGXT/render machinery.
+
+BLOCKER 2 (cascade policy): re-confirmed empirically at this head with the
+dot's own fixture (`: BADA ( n -- n ) drop ; : BADB ( a -- ) dup ;
+: GOODC ( n -- n ) BADA ;`): re-driver emits 3 diagnostics (GOODC E-UNDEFINED
+cascade), native emits 2 with reject-count 2 (GOODC certifies against BADA's
+trusted declared sig). NEW FIXTURE CENSUS RESULT that changes the cost picture:
+NO existing fixture or golden pins cascade-reporting - surveyed
+tools/check-all-errors-test.f (all sources independent or true-undefined
+`NOPE`; the dup case is separate, below), test/golden/* (diag-all-errors
+independent defs; diag-undefined true-undefined; repair packets single-def),
+and test/gate-diagnostics-lib.f / gate-diagnostics-all-strict-lib.f (all
+single-def or unrelated-def fixtures). Adopting no-cascade re-baselines ZERO
+existing fixtures.
+
+RECOMMENDATION (Option A): adopt the native NO-CASCADE contract. (i) It is the
+real load path's semantics - the whole point of retiring the re-driver is
+ending load-path divergence (the sig-clobber class); (ii) it is better for
+repair loops: the cascade E-UNDEFINED on GOODC is a phantom (BADA is not
+undefined - it is rejected), and phantom errors misdirect repair; the true
+error set is minimal per iteration and re-running after repair surfaces
+anything real; (iii) zero re-baseline cost today (census above). Add a NEW
+committed fixture pinning the contract: the BADA/BADB/GOODC source must yield
+exactly 2 diagnostics and no GOODC entry. Option B (keep cascade-reporting)
+requires undoing CHECKER-USIG-CERT-ADD-on-reject in checker.f (item-8 lane)
+and contradicts that design's stated intent - not recommended.
+
+NEW BLOCKER FOUND + TOOLS-SIDE ANSWER (duplicate definitions): the re-driver
+reports a duplicate definition as a diagnostic (CA-DUP-RC) and continues; the
+native load path HARD-EXITS 78 at the duplicate (engine raw exit, not
+catchable - conversion to a throw is the routed habu-raw-exit-compile /
+BTHROW-family engine work). The rewired driver therefore keeps a light
+def-name duplicate PRE-SCAN (names only - no per-def re-drive): duplicates are
+reported as diagnostics and the driver fail-closes WITHOUT evaluating when any
+exist, preserving the CAE-DUP contract with no engine change.
+
+REWIRED DRIVER DESIGN (tools/check-all-errors-core.f, tools-only): replace the
+source-lex def-splitting + per-def VERIFY:SOURCE-BUF-AT-IN-SCOPE re-drive
+with: read file -> dup-name pre-scan (above) -> DIAG-FILE! label ->
+DIAG-JSON!/DIAG-BUFFER! as today -> MULTI-ERR-BEGIN -> MULTI-ERR-ORIGIN!
+(buffer base, data-base DEF-TKA-CELL + [the one engine-cell-read, top-level
+interpreted setup per the e0438cd1 precedent - no new trusted site], 1 1 0) ->
+evaluate -> MULTI-ERR-END -> exit nonzero iff count > 0. Diagnostic ordering:
+load order (same as today). JSON: unchanged - one object per reject through
+the shared render path (proven identical). RETIRES: CA-DEF-* vectors, the
+source-lex def-boundary tracking (except the dup-name scan), the per-def
+candidate-scope machinery in this tool. Suite deltas: CAE cascade fixture
+added; everything else keeps passing unchanged per the census.
+
+INTRA-DEF recovery half: unchanged - blocked on reusable per-token
+checkpoint/restore (trail machinery); not part of the rewire.
+
+STOP: awaiting the cascade-policy ruling (Option A recommended). On A, the
+rewire above is a tools-only unit executable immediately; checker.f is not
+touched under either half of this packet.
