@@ -651,6 +651,9 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ by then, so a raw ! would trap; this direct STR from NDICT is the sanctioned
 \ bypass, mirroring native src/habu/habu1.f BSEALCAP.
 : BSEALCAP ( -- )   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
+\ stage0 has no package registry; self-hosted native generations replace this
+\ no-op with the real registry append primitive.
+: BPROTWIDADD ( -- )  9 G-POP ;                                                            \ ( wid -- )
 
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : BSWL ( -- )
@@ -740,6 +743,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" prot-wid-add" ['] BPROTWIDADD FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )

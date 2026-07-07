@@ -215,6 +215,18 @@ variable XREF-QWID
    dup 0 >= if exit then
    s" undefine: word not found" 70 die ;
 
+TRUSTED: PROT-WID-CTOR? ( ptr u8 n -- bool )
+   s" TFAM-CTOR-WORD?" evaluate ;
+
+: PROT-WID-CTOR-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u PROT-WID-CTOR? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
+   a u XREF-FIND dup XREF-FOUND? 0= IF
+      drop s" xref: protected-WID constructor not found" 76 die
+   THEN
+   XREF-WORDLIST prot-wid-add ;
+
+' PROT-WID-CTOR-ADD TDECL-PROT-WID-XT !
+
 TRUSTED: XREF-PATCH32 ( n ptr a -- )
    patch32 ;
 

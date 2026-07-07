@@ -227,11 +227,13 @@ s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
-\ a new tail cannot certify into the closed constructor package.
-s" : ZRES:EVIL ( -- n ) 7 ;" TCE-CATCH E-CTOR-PROTECTED T=
+\ a new tail is now caught by the native protected-WID wall; seal-package.f runs
+\ that process-exit regression because it cannot be caught in-process.
 \ ordinary undefine of a user word still works.
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
+\ native producer populated the protected-WID registry for constructor packages.
+data-base PROT-WID-N-CELL + @ 0 > -1 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

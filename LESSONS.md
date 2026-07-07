@@ -4,6 +4,13 @@
 
 Last updated: 2026-07-07
 
+- **Generated constructor WID protection belongs after emission, not inside
+  `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
+  definition machinery is mid-publish and has no stable generated-word identity.
+  The sound producer is post-generation: regenerate one constructor name from
+  SUMV metadata, validate it with `TFAM-CTOR-WORD?`, resolve the record through
+  xref, then native `prot-wid-add` the wordlist. Native seal rejects need a child
+  process fixture because rc 84 exits the engine and cannot be caught in-process.
 - **bin/hb keeps NO baked checker DATA — the boot prefix re-parses from disk:**
   `EMIT-COLD-PREFIX` (habu2.f PFX-LOAD-BASE-FILES) reloads util→checker→
   type-family→…→sha256→combinators→xref at EVERY boot, so top-level writes to

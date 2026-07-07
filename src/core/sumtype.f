@@ -321,6 +321,7 @@ variable TDV-NA    variable TDV-NU
 \ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
 \ adds no unchecked code.
 variable TDECL-EVAL-XT   0 TDECL-EVAL-XT !
+variable TDECL-PROT-WID-XT   0 TDECL-PROT-WID-XT !
 
 $200 constant TDGEN-CAP
 create TDGEN-BUF TDGEN-CAP allot
@@ -414,6 +415,12 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    CTOR-PEND-CLEAR
    vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
 
+: TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
+   TDECL-PROT-WID-XT @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
+   TDGEN-CLEAR
+   vid TDGEN-NAME
+   TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT @ execute ;
+
 : TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
@@ -430,7 +437,8 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    BEGIN TDGEN-M @ k < WHILE
       fam vstart TDGEN-M @ + TDECL-CTOR-WORD
       TDGEN-M @ 1 + TDGEN-M !
-   REPEAT ;
+   REPEAT
+   vstart TDECL-CTOR-PROT-WID ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.

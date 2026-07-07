@@ -117,6 +117,17 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" end-package" SPK-LINE
    SB$ ;
 
+: SPK-CTOR-WID-FORGE$ ( -- ptr u8 n )       \ generated ctor WID closes to later tails
+   SB-RESET
+   s" SUMTYPE spkw 0" SPK-LINE
+   s"   VARIANT ok n ;VARIANT" SPK-LINE
+   s"   VARIANT err n ;VARIANT" SPK-LINE
+   s" ;SUMTYPE" SPK-LINE
+   S\" s\" ctor-ready\" type cr" SPK-LINE
+   s" 0 set-check" SPK-LINE
+   s" : SPKW:EVIL ( -- n ) 7 ;" SPK-LINE
+   SB$ ;
+
 \ --- tick / bracket-tick / postpone reserved-name forges (TFAM 2b-iii) ---
 
 : SPK-TICK-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `' <NAME>:X drop` at top level (tick is checker-legal)
@@ -209,6 +220,9 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-KIND @ PROC-OUTCOME-EXIT T=
    SPK-RC @ 0 T= ;
 
+: SPK-ASSERT-CTOR-MARK ( -- )
+   SPK-OUT SPK-OUT-U @ s" ctor-ready" CONTAINS? TTRUE ;
+
 : SPK-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seal-pkg" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -241,6 +255,12 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" qualified def TFAM:tail traps" T-LABEL     s" TFAM"  SPK-QUAL-NEG
    s" qualified def type:tail traps" T-LABEL     s" type"  SPK-QUAL-NEG
    s" qualified def MATCH:tail traps" T-LABEL    s" MATCH" SPK-QUAL-NEG ;
+
+: SPK-NEGATIVE-CTOR-WID ( -- )
+   s" generated constructor WID rejects new tail (--load)" T-LABEL
+   SPK-CTOR-WID-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK
+   s" generated constructor WID rejects new tail (stdin)" T-LABEL
+   SPK-CTOR-WID-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK ;
 
 : SPK-POSITIVES ( -- )
    s" non-reserved package still compiles" T-LABEL
@@ -294,6 +314,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-PREPARE
    SPK-NEGATIVES
    SPK-NEGATIVES-QUAL
+   SPK-NEGATIVE-CTOR-WID
    SPK-NEGATIVES-TICK
    SPK-NEGATIVES-BTICK-POST
    SPK-POSITIVES

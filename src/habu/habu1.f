@@ -99,6 +99,7 @@ variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATA
 variable LAOTNCSITE  variable LAOTCSITES  variable LAOTCODEB0
 variable LAOTBOOTRUN
 variable LAOTNPWID   variable LAOTPWID   \ protected-WID registry: count + u32 table (TFAM 2b-v)
+variable LPROTWIDQ
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
 variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
@@ -1743,6 +1744,21 @@ s" linux-stat-fix" s" n --" TRUST
 : BSEALCAP ( -- )
    NDICT DATA SEAL-NDICT-CELL STR, ;
 
+: BPROTWIDADD ( -- )
+   LBL LBL {: room:label done:label :}
+   9 G-POP
+   LPROTWIDQ LABEL@ BL,
+   13 done CBNZ,
+   14 DATA PROT-WID-N-CELL LDR,
+   14 PROT-WID-MAX CMPI,  C-LT room BCOND,
+      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+   room LBL,
+   15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
+   16 14 2 LSLI,  15 15 16 ADD,
+   9 15 0 STRW,
+   14 14 1 ADDI,  14 DATA PROT-WID-N-CELL STR,
+   done LBL, ;
+
 : BSWL ( -- )
    LBL SWL-LOOP !
    LBL SWL-END !
@@ -1855,6 +1871,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
@@ -2037,8 +2054,6 @@ s" emit-fp-prims" s" --" TRUST
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
    0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
-
-variable LPROTWIDQ
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the
