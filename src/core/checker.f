@@ -6132,6 +6132,34 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    SGIN @ BROW !  SGOUT @ DCUR !
    SGHASR @ 0 <> IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN ;
 
+\ --- generated-constructor certification (item 8, docs/type-families.md §12).
+\ Hidden physical fields are checker-owned, so no user body can produce a
+\ layout-typed output — that reject IS the anti-forgery rule. The one intro
+\ form is the generated constructor: ;SUMTYPE arms this single-shot pending
+\ record (word name + the physical pad+tag n-cell count from SUMV metadata)
+\ around the one evaluate that defines it, and the boundary unification below
+\ verifies the body against the metadata-derived RAW row — the declared inputs
+\ untouched underneath, the counted type-n cells (zero pads + tag) on top. The
+\ declared hidden-field sig is then recorded/published through the normal
+\ certify path, coercing the raw cells into the layout bundle by construction:
+\ both rows derive from the same SUMV record, and only the sumtype declaration
+\ path (sealed against user reopening) can arm the window.
+variable CTOR-PEND-A   variable CTOR-PEND-U   0 CTOR-PEND-U !
+variable CTOR-PEND-N   variable CTOR-PEND-I
+: CTOR-PEND! ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   k CTOR-PEND-N !  u CTOR-PEND-U !  a CTOR-PEND-A ! ;
+: CTOR-PEND-CLEAR ( -- ) 0 CTOR-PEND-U ! ;
+: CTOR-PEND-MATCH? ( -- bool )
+   CTOR-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
+   CTOR-PEND-A @ CTOR-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+: CTOR-EXPECTED-ROW ( -- n )          \ SGIN + (pads+tag) type-n cells on top
+   SGIN @
+   0 CTOR-PEND-I !
+   BEGIN CTOR-PEND-I @ CTOR-PEND-N @ < WHILE
+      CC-N MK-CON swap MK-PUSH
+      CTOR-PEND-I @ 1 + CTOR-PEND-I !
+   REPEAT ;
+
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
@@ -6140,7 +6168,12 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-FOLD-EXITS
    CHECK-SIG? IF CHECK-NO-BORROW THEN
    CHECK-SIG? IF
-      SGOUT @ SUNI-COERCE
+      CTOR-PEND-MATCH? IF
+         CTOR-PEND-CLEAR                            \ single shot, even on reject
+         CTOR-EXPECTED-ROW SUNI-COERCE
+      ELSE
+         SGOUT @ SUNI-COERCE
+      THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN

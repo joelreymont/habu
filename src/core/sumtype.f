@@ -45,6 +45,7 @@ variable TDW-A   variable TDW-U      \ short reason (diagnostics)
 variable TDM-TFAM   variable TDM-STR   variable TDM-PK
 variable TDM-SUMV   variable TDM-PF    variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
+variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
 
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
@@ -64,8 +65,10 @@ variable TDM-SCH    variable TDM-ROOT
 \ load counts the reject and continues, otherwise the named code propagates.
 : TDECL-RUN ( [ -- ] -- )
    TDECL-MARK
+   -1 TDECL-FAM-REG !               \ set by a successful sum registration only
    catch {: rc:n :}
    rc 0= IF EXIT THEN
+   CTOR-PEND-CLEAR                  \ no armed constructor window survives a reject
    TDECL-RESTORE
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
@@ -284,7 +287,8 @@ variable TDV-NA    variable TDV-NU
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty sum" E-TDECL-SYNTAX TDECL-THROW THEN
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
-   fam vstart TDV-N @ TDECL-CTOR-PUBLISH ;
+   fam vstart TDV-N @ TDECL-CTOR-PUBLISH
+   fam TDECL-FAM-REG ! ;
 
 : CHECKER-DEFSUM ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
    {: na:ptr nu:n ba:ptr bu:n :}
@@ -300,6 +304,133 @@ variable TDV-NA    variable TDV-NU
    {: na:ptr nu:n aa:ptr au:n :}
    s" typefamily" na nu aa au TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
+
+\ --- runtime constructor generation (item 8, docs §12). Only the engine's
+\ SUMTYPE word below generates dictionary words; the direct CHECKER-DEFSUM
+\ entry stays metadata-only, so preverify/all-errors dispatch never mutates
+\ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
+\ becomes one checked qualified definition
+\    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> ) 0 .. 0 <tag> ;
+\ rendered from interned SUMV metadata only and evaluated with the checker's
+\ single-shot pending-constructor window armed (checker.f CTOR-PEND!): the
+\ body certifies against the SUMV-derived raw row and the declared
+\ hidden-field sig publishes through the normal certify path. The generated
+\ text never contains TRUST, TRUSTED:, or set-check.
+\ the one evaluate crossing rides the audited INCLUDE-EVALUATE boundary
+\ (include.f), reached through this friend xt installed by type-family-sha.f
+\ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
+\ adds no unchecked code.
+variable TDECL-EVAL-XT   0 TDECL-EVAL-XT !
+
+$200 constant TDGEN-CAP
+create TDGEN-BUF TDGEN-CAP allot
+variable TDGEN-U
+variable TDGEN-NA   variable TDGEN-NU     \ word-name span inside TDGEN-BUF
+variable TDGEN-I    variable TDGEN-J      \ render loop indexes
+variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
+
+: TDGEN-CLEAR ( -- ) 0 TDGEN-U ! ;
+: TDGEN-C, ( n -- )
+   TDGEN-U @ TDGEN-CAP >= IF s" sumtype: generated constructor too long" 76 die THEN
+   TDGEN-BUF TDGEN-U @ + c!
+   TDGEN-U @ 1 + TDGEN-U ! ;
+: TDGEN-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 TDGEN-B !
+   BEGIN TDGEN-B @ u < WHILE
+      a TDGEN-B @ + c@ TDGEN-C,
+      TDGEN-B @ 1 + TDGEN-B !
+   REPEAT ;
+: TDGEN-UPPER ( ptr u8 n -- ) {: a:ptr u:n :}   \ variant tail -> word tail
+   0 TDGEN-B !
+   BEGIN TDGEN-B @ u < WHILE
+      a TDGEN-B @ + c@ TF-UPPER-C TDGEN-C,
+      TDGEN-B @ 1 + TDGEN-B !
+   REPEAT ;
+: TDGEN-DEC ( n -- ) {: v:n :}           \ non-negative decimal (tag literal)
+   v 10 >= IF v 10 / RECURSE THEN
+   v 10 mod 48 + TDGEN-C, ;
+: TDGEN-LETTER ( n -- ) 97 + TDGEN-C, ;  \ positional param -> a..z
+
+: TDGEN-SCH ( n -- ) {: node:n :}        \ one payload schema node -> sig text
+   node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
+   node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
+   node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
+   s" sumtype: unsupported constructor payload schema" 76 die ;
+
+: TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root
+   vid SUMV-SCH-COUNT@ {: k:n :}
+   0 TDGEN-J !
+   BEGIN TDGEN-J @ k < WHILE
+      vid SUMV-SCH-START@ TDGEN-J @ + SCHEMA-ROOT@ TDGEN-SCH
+      32 TDGEN-C,
+      TDGEN-J @ 1 + TDGEN-J !
+   REPEAT ;
+
+: TDGEN-OUT-TYPE ( n -- ) {: fam:n :}    \ family<a,b,..> (bare tail at arity 0)
+   fam TFAM-NAME$ TDGEN-APP
+   fam TFAM-ARITY@ {: ar:n :}
+   ar 0= IF EXIT THEN
+   60 TDGEN-C,
+   0 TDGEN-I !
+   BEGIN TDGEN-I @ ar < WHILE
+      TDGEN-I @ 0 > IF 44 TDGEN-C, THEN
+      TDGEN-I @ TDGEN-LETTER
+      TDGEN-I @ 1 + TDGEN-I !
+   REPEAT
+   62 TDGEN-C, ;
+
+: TDGEN-NAME ( n -- ) {: vid:n :}        \ ": PKG:VARIANT " with the span recorded
+   s" : " TDGEN-APP
+   TDGEN-U @ {: n0:n :}
+   vid SUMV-CTOR-PKG$ TDGEN-APP
+   58 TDGEN-C,
+   vid SUMV-NAME$ TDGEN-UPPER
+   TDGEN-BUF n0 + TDGEN-NA !
+   TDGEN-U @ n0 - TDGEN-NU !
+   32 TDGEN-C, ;
+
+: TDGEN-BODY ( n n -- ) {: fam:n vid:n :}   \ "0 .. 0 tag ;" zero pads + tag
+   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - {: pads:n :}
+   0 TDGEN-K !
+   BEGIN TDGEN-K @ pads < WHILE
+      48 TDGEN-C,  32 TDGEN-C,
+      TDGEN-K @ 1 + TDGEN-K !
+   REPEAT
+   vid SUMV-TAG@ TDGEN-DEC
+   s"  ;" TDGEN-APP ;
+
+: TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
+   TDGEN-CLEAR
+   vid TDGEN-NAME
+   s" ( " TDGEN-APP
+   vid TDGEN-PAYLOAD
+   s" -- " TDGEN-APP
+   fam TDGEN-OUT-TYPE
+   s"  ) " TDGEN-APP
+   fam vid TDGEN-BODY
+   TDGEN-NA @ TDGEN-NU @  fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 +  CTOR-PEND!
+   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute
+   CTOR-PEND-CLEAR ;
+
+: TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   fam TFAM-PUBLIC? 0= IF EXIT THEN
+   \ v1 type parameters are cell-kinded vars, and the linear kind discipline
+   \ lets a linear con flow THROUGH a var, so every parametric family is a
+   \ possibly-linear layout: its values stay one conservative logical cell
+   \ (PUSH-LOGICAL) and its constructors must reject until TFAM 11's
+   \ whole-bundle linear counting (PLAN item 8 linear rule). Constructor
+   \ metadata (SV.CTOR-PKG) stays recorded; only word publication waits.
+   fam TFAM-ARITY@ 0 > IF EXIT THEN
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam TFAM-VAR-COUNT@ {: k:n :}
+   0 TDGEN-M !
+   BEGIN TDGEN-M @ k < WHILE
+      fam vstart TDGEN-M @ + TDECL-CTOR-WORD
+      TDGEN-M @ 1 + TDGEN-M !
+   REPEAT ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
@@ -345,4 +476,5 @@ variable TDECL-I
       s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
       [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
-   na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM ;
+   na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM
+   TDECL-CTOR-WORDS ;

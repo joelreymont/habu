@@ -367,6 +367,16 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON
    s" bin/hb" s" type-decl suite on bin/hb" GE-TYPE-DECL-SUITE-ON ;
 
+: GE-TYPE-CTOR-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-ctor-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-CTOR-SUITE ( -- )
+   GE-CANDIDATE$ s" type-ctor suite on Habu-under-test" GE-TYPE-CTOR-SUITE-ON
+   s" bin/hb" s" type-ctor suite on bin/hb" GE-TYPE-CTOR-SUITE-ON ;
+
 : GE-TYPE-LAYOUT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -603,6 +613,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-ENGINE-SUITE
    GE-TYPE-FAMILY-SUITE
    GE-TYPE-DECL-SUITE
+   GE-TYPE-CTOR-SUITE
    GE-TYPE-LAYOUT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )

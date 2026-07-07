@@ -336,3 +336,8 @@ immediate
    EVENT-OFF
    DISCOVERY-OFF
    EVENTS-RESET ;
+
+\ constructor generation (sumtype.f, loaded earlier in the boot prefix) crosses
+\ evaluate only through this audited INCLUDE-EVALUATE boundary; engines without
+\ include.f (stage builders) leave the cell 0 and generation stays fail-closed.
+' INCLUDE-EVALUATE TDECL-EVAL-XT !
