@@ -208,3 +208,50 @@ for the core; it remains valid only for single-shot trusted-input contexts.
 STOP (again): the corrected rewire hinges on (a)-(c); verifying them and any
 verify-source.f loop change is the next unit. No consumer-visible code was
 changed in this investigation.
+
+## Probe results (a)-(c) + exact verify-source.f spec (2026-07-07, head c8419a37)
+
+(a) NO - the loop change is REQUIRED. Source: VERIFY-BODY (verify-source.f:285)
+`CHECK-BODY dup -1 <> IF 70 throw THEN` throws on any non-certified verdict
+unconditionally (same in VERIFY-DOES-BODY :292). Transcript (cascade fixture
+BADA/BADB/GOODC via MULTI-ERR-BEGIN + catch VERIFY:SOURCE-BUF + MULTI-ERR-END):
+`catch-rc=70 reject-count=1`, stderr shows only bada - counted by CHECK, then
+aborted by the verify loop.
+
+(b) YES - byte-exact, MEO not needed on this path. Transcript (golden-shaped
+4-def fixture via CHECKER-CANDIDATE-SCOPE-START + VERIFY:SOURCE-BUF-AT-IN-SCOPE
+with 1 1 0 + JSON diag buffer): BAD1 emits `"line":3,"column":30,
+"byte_start":100,"byte_end":103` - the exact diag-all-errors golden numbers;
+the verify path's own per-def ORIGIN! (TOKEN-START, :519) threads file-relative
+positions from the buffer origin.
+
+(c) YES - declared-sig trust fires on the verify path; no-cascade holds.
+Transcript (two buffers, one scope, MULTI-ERR on): verify BADA-only ->
+`bada-rc=70` (diagnosed + counted), then verify GOODC-only in the same scope ->
+`goodc-rc=0` (certifies against BADA's trusted declared sig), `count=1`.
+
+PROPOSED verify-source.f CHANGE (small, engine-family - awaiting declaration
+after the item-12 RECORD-DEFINER? conflict check):
+
+  : VERIFY-BODY ( -- )
+     BODY-BUF BODY-U @ CHECK-BODY {: v:n :}
+     v -1 = IF EXIT THEN
+     v 0 = MULTI-ERR? and IF EXIT THEN
+     70 throw ;
+
+(and the same three-line pattern in VERIFY-DOES-BODY). Semantics: certified
+continues as today; in MULTI-ERR mode a verdict-0 reject continues to the next
+definition (CHECK already emitted the diagnostic, counted MULTI-ERR-N, and
+cert-added the declared sig - probes b/c); verdict-1 uncheckable STILL throws
+in both modes (a file of only-uncheckable defs must not exit 0 - MULTI-ERR-N
+counts verdict-0 only, so continuing on 1 would be fail-open). Default mode is
+byte-identical. Continuation point is clean: VERIFY-BODY runs at the `;` token,
+so the outer scan resumes at the next definition.
+
+Once that lands, the tools-only rewire proceeds exactly as amended: dup-name
+pre-scan -> DIAG-FILE!/JSON -> MULTI-ERR-BEGIN -> CHECKER-CANDIDATE-SCOPE-START
+-> VERIFY:SOURCE-BUF-AT-IN-SCOPE (1 1 0) -> SCOPE-DONE -> MULTI-ERR-END ->
+fail-closed exit; cross-file support keeps VERIFY:SOURCE-BUF-IN-SCOPE replay
+unchanged (check-only, proven by probe c's same-scope behavior); the CA-DEF-*
+re-drive retires. New fixtures: the 2-diagnostic cascade contract (Option A,
+ruling recorded) + dup pre-scan + golden position parity.
