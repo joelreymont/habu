@@ -697,6 +697,11 @@ points stay listed.
 
 - `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
   negative checked-source tests.
+- `test/drec-shape-test.f` — checked-prim surface pins for the typed
+  dictionary-record capability: the record access shapes the XREF-*/BFR-*/
+  BP-SLOT-* rewrite relies on compile checked today, and the two PES gaps
+  (`dbase@` provenance, `patch32` ptr overload) stay rejected until the
+  engine lane closes them deliberately.
 - `test/nf.fs` — Gforth-hosted native-Forth build/run/capture harness used by
   the no-binary bootstrap path.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive

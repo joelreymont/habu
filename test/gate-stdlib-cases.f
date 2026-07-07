@@ -352,6 +352,10 @@ TEST:SUITE sealed-system-package
    test/seal-package.f
 TEST:;SUITE
 
+TEST:SUITE dictionary-record-shapes
+   test/drec-shape-test.f
+TEST:;SUITE
+
 TEST:SUITE stdlib-runner-fixtures
    lib/test/runner-test.f
 TEST:;SUITE
