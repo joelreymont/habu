@@ -751,7 +751,7 @@ lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 47
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 48
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436

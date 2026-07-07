@@ -1245,6 +1245,18 @@ s" smoke-hook-installed" T-LABEL data-base HOOK-CELL + @ 0= 0 T=
 s" smoke-checked-compile-run" T-LABEL 7 ES-SMOKE-SQ 49 T=
 s" smoke-baked-word-resolves" T-LABEL ' spawn-argv-env-cwd-io 0 <> -1 T=
 
+\ check@ getter round-trip (dot habu-stdlib-check-hook-fd883aea): check@ reads the
+\ live hook that set-check installed ([x20/DATA + HOOK-CELL]); reinstalling it via
+\ check@ is a no-op and the checker hook still fires afterward. This is the typed
+\ getter that removes the reason an agent reached for `dbase@ HOOK-CELL + @` (the
+\ wrong CODE base), which installed code bytes as the hook.
+s" check@ reads live hook" T-LABEL check@ data-base HOOK-CELL + @ T=
+s" check@ nonzero after boot install" T-LABEL check@ 0 <> -1 T=
+check@ set-check
+s" check@ set-check is a no-op" T-LABEL check@ data-base HOOK-CELL + @ T=
+: ES-CHK-RT ( i64 -- i64 ) dup + ;
+s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
+
 \ x18 Darwin-reserved regressions (dot habu-rca-engine-sigsegv-ba81a08c):
 \ XNU zeroes x18 on any trap return; pre-fix, interpret-mode escaped
 \ literals pushed base 0 once a copy crossed a fresh DATA page, and

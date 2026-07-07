@@ -620,6 +620,24 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" drop" s" hb nested bad def token" GE-EXPECT-ERR-HAS
    s" PASS: nested bad-effect def rejected from inside a word" type cr ;
 
+: GE-SET-CHECK-NEG ( -- )
+   \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
+   \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
+   \ NAMED rc-70 diagnostic instead of BLRing into garbage at the next publish.
+   \ 1 (below DBASE) and `dbase@ HOOK-CELL + @` (a code word mis-read from the
+   \ wrong CODE base) are the two RCA shapes; both must exit 70, never signal.
+   GE-HB-RESET
+   GE-SRC-RESET s" 1 set-check" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb set-check tiny-xt rc" GE-EXPECT-RC
+   s" set-check: invalid checker xt" s" hb set-check tiny-xt diag" GE-EXPECT-ERR-HAS
+   GE-HB-RESET
+   GE-SRC-RESET s" dbase@ $1B0 + @ set-check" GE-SRC-LINE
+   s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" hb set-check dbase-garbage rc" GE-EXPECT-RC
+   s" set-check: invalid checker xt" s" hb set-check dbase-garbage diag" GE-EXPECT-ERR-HAS
+   s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
+
 : GE-RUNTIME-CHECKS ( -- )
    GE-DIV-MOD
    GE-PROCESS-PTY
@@ -629,6 +647,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-DEREF-ARITY-DIAG
    GE-NESTED-CHECKED-DEF
    GE-NESTED-BAD-DEF
+   GE-SET-CHECK-NEG
    GE-TYPED-SMOKE
    GE-TIMEOUT-ATTRIBUTION ;
 
