@@ -4,8 +4,8 @@
 \ and lowers region 0: spawn a fresh bin/hb (via LOWER-DRIVER!) to EMIT the kernel to
 \ PTXTC:PTX$, EMIT-GUARD, ptxas ASSEMBLE + ASM-REPORT, then LOWER-GOLDEN (maki/lower-golden.f)
 \ runs the host executor and the device kernel on the same synthetic inputs and compares. Two
-\ legs: (B) MATERIALIZED movement copy kernels (TRANSPOSE via a multi-use fan-out that
-\ materializes it, unaligned SLICE, GATHER) route to LMV-RUN under the exact copy tolerance;
+\ legs: (B) MATERIALIZED movement copy kernels (a standalone TRANSPOSE materialized directly by
+\ FP-MAT-FLAG, unaligned SLICE, GATHER) route to LMV-RUN under the exact copy tolerance;
 \ (A) DISSOLVED free movement folded into a compute kernel (SLICE:0..2 GELU into the flat EW
 \ kernel, SLICE RMSNORM into the row kernel, SLICE MATMUL into the K-loop) route to the EW/RED/MM
 \ launch with the movement offset baked into the base pointer. Off the Orin (no libcuda) the
@@ -95,11 +95,12 @@ LMD-BEGIN
 
 \ ============ (B) materialized movement copy kernels =========================
 
-\ TRANSPOSE 4x8: a multi-use fan-out (H used twice) materializes the transpose as region 0,
-\ so the device copy kernel runs and is compared against the host MOVE-TRANSPOSE reference.
+\ TRANSPOSE 4x8: a standalone transpose is the materialized model output (FP-MAT-FLAG,
+\ dot maki-fusion-plan-59caf199), so region 0 is the device copy kernel compared against
+\ the host MOVE-TRANSPOSE reference - no fan-out workaround needed.
 s" == TRANSPOSE 4x8 (materialized copy) ==" type cr
-MODEL: TP ( x:4x8 -- y ) TRANSPOSE >V H H RESIDUAL-ADD ;  FP-BUILD
-s" MODEL: TP ( x:4x8 -- y ) TRANSPOSE >V H H RESIDUAL-ADD ;" LMD-COPY
+MODEL: TP ( x:4x8 -- y ) TRANSPOSE ;  FP-BUILD
+s" MODEL: TP ( x:4x8 -- y ) TRANSPOSE ;" LMD-COPY
 
 \ SLICE 1..3 of 4x6: r0*cols=6 is lane-unaligned (verdict materialize), a standalone offset copy.
 s" == SLICE:1..3 of 4x6 (materialized offset copy) ==" type cr
