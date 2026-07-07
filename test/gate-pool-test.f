@@ -281,6 +281,41 @@ variable GPT-KR-LOG-U
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
 
+\ Pin the other real-fork shape: a worker that emits SEVERAL sibling completion
+\ spans, none of which is its own slot label. This is the GSI-LINT-TOOLS-STATUS
+\ pattern (four GSI-RUN/GSI-INCLUDE spans - repl-lint, trust-lint,
+\ stale-status-lint, gate-stats-test.f - none equal to the "lint-tools/status"
+\ pool label). The parent pass-hook is the ONLY emitter of the slot label; the
+\ child never emits it, so GS-CHILD-OWNED? suppresses nothing and nothing is
+\ double-counted. Because these sub-spans sit at the same fork depth as the
+\ single self-completion span in GPT-SPAN-CASE, no label-free structural rule
+\ can suppress the self-completion there yet keep every sub-span here - the
+\ evidence that this dot's design (b) is unsound.
+: GPT-SPAN-MULTI-CHILD ( -- )
+   s" fork sub one" 7 GS-SPAN
+   s" fork sub two" 9 GS-SPAN
+   s" fork sub three" 11 GS-SPAN ;
+
+: GPT-SPAN-MULTI-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork multi parent" GPT-TIMEOUT-MS [: GPT-SPAN-MULTI-CHILD ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" fork multi parent" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub one" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub two" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub three" GPT-COUNT$ 1 T= ;
+
+: GPT-SPAN-MULTI-CASE ( -- )
+   GPT-GS-SAVE!
+   [: GPT-SPAN-MULTI-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
 : GPT-ROOT-SAVE! ( -- )
    GT-ROOT {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -444,6 +479,7 @@ variable GPT-GK-SENTINEL-U
    GPT-COW @ 0 T=
    GPT-BIG-CASE
    GPT-SPAN-CASE
+   GPT-SPAN-MULTI-CASE
    GPT-INFRA-CASE
    GT-CLEANUP
    GPT-GROUP-KILL-CASE

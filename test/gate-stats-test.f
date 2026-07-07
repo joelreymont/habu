@@ -215,6 +215,36 @@ variable GST-CHILD-SAVE-U
    GST-SCAN
    GST-EXPECT-LABEL-DUP ;
 
+\ Pin the fork-child suppression's label selectivity: a child whose slot label
+\ is "slot label" emits three SIBLING completion spans, none of which carries
+\ that slot label - the shape a real fork worker like GSI-LINT-TOOLS-STATUS
+\ produces (repl-lint / trust-lint / stale-status-lint / gate-stats-test.f, none
+\ equal to its "lint-tools/status" pool label). GS-CHILD-OWNED? keys on the slot
+\ label, so it suppresses NONE of them; all three are counted. A label-free
+\ redesign that dropped "the child's first/outermost span" instead would wrongly
+\ swallow "first sub" here, undercounting a real span - which is why this dot's
+\ design (b) is unsound (see the dot's blocker note). The first span is emitted
+\ FIRST on purpose so a naive one-shot's failure is visible.
+: GST-WRITE-MULTI-EVENTS ( -- )
+   s" slot label" GS-CHILD-LABEL!
+   s" first sub" 9 GS-SPAN
+   s" second sub" 8 GS-SPAN
+   s" third sub" 7 GS-SPAN ;
+
+: GST-EXPECT-MULTI ( -- )
+   GS-SPANS @ 3 T=
+   GS-BUF GS-U @ s" first sub" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" second sub" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" third sub" CONTAINS? TTRUE ;
+
+: GST-TEST-MULTI ( -- )
+   GST-ROOT$ GS-ROOT!
+   GST-CHILD-SAVE!
+   GST-WRITE-MULTI-EVENTS
+   GST-CHILD-RESTORE
+   GST-SCAN
+   GST-EXPECT-MULTI ;
+
 \ The hard guard refuses a run with a label collision (die rc 1 after the
 \ dup diagnostic) and stays silent when labels are unique. die exits the
 \ process, so both legs run as spawned children over tiny fixture files.
@@ -274,6 +304,7 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    T-RESET
    GST-TEST-SCAN
    GST-TEST-LABEL-DUP
+   GST-TEST-MULTI
    GST-TEST-DUP-GUARD
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE

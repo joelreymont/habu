@@ -73,3 +73,72 @@ GSI/GR emitters' nesting behavior pinned by fixtures first. Either way the
 change spans gate-pool.f + gate-stats.f + gate-stdlib-inline-lib.f /
 gate-runner-lib.f; with the hard guard in place a regression cannot land
 silently, so the remaining work is safe to schedule as its own unit.
+
+## Design (b) pinned and REJECTED as unsound (2026-07-07, from head c3fd3853)
+
+Pinned the GSI/GR fork-child span-emission behavior before touching anything.
+Result: design (b) - "suppress exactly the child's OUTERMOST completion span,
+label-independent" - cannot be made sound. Two real fork-worker shapes emit
+their completion spans at the SAME emitter nesting depth (the top level of the
+fork-worker body), so no depth/order/one-shot rule can tell them apart; only
+equality with the slot's pool label can. The label match is load-bearing, not
+incidental fragility.
+
+Evidence (both shapes are live in the gate today):
+
+- SINGLE-MATCH shape - `GSI-FORK-INCLUDE` (gate-stdlib-inline-lib.f:170) sets
+  the pool label to the file path, then the child runs `GSI-INCLUDE`, whose
+  `GSI-LOAD-FINISH` -> `GSI-SPAN` -> `GS-SPAN` emits exactly ONE span whose
+  label EQUALS the pool label. The parent's pass-hook (`TR-POOL-PASS-SPAN` ->
+  `GS-SPAN`, run-lib.f:595) emits the authoritative copy, so the child's must be
+  suppressed. `GS-CHILD-OWNED?` does exactly that by byte-matching the pool
+  label.
+
+- MULTI-NONE-MATCH shape - `GSI-LINT-TOOLS-STATUS` (gate-stdlib-lint-tools.f:34)
+  is a fork worker whose pool label is "lint-tools/status", but its body emits
+  FOUR sibling completion spans via `GSI-RUN`/`GSI-INCLUDE` - "repl-lint",
+  "trust-lint", "stale-status-lint", "test/gate-stats-test.f" - NONE equal to
+  the pool label. The parent records only "lint-tools/status" (pass-hook); the
+  four sub-spans are legitimate drill-down strays that must all be counted.
+  `GS-CHILD-OWNED?` suppresses none of them because none matches the slot label.
+
+A label-free "suppress the first/outermost completion span" one-shot armed at
+fork entry would swallow "repl-lint" (undercount) while the SINGLE-MATCH shape
+needs its one span swallowed - and both spans are top-level siblings of the
+fork-worker body, indistinguishable structurally. There is no
+depth/first/last signal that keeps every sub-span in the MULTI shape yet drops
+the self-completion in the SINGLE shape. Hence (b) is unsound.
+
+Two further wrinkles reinforce this:
+- Nested pools reuse the SAME `GS-SPAN` entry for a DIFFERENT role: a fork child
+  that is itself a pool parent (e.g. the resident phase-9 child ->
+  `TRWE-POST-CANDIDATE`) emits its grandchildren's authoritative spans through
+  the pass-hook -> `GS-SPAN` -> `GS-CHILD-OWNED?`. A one-shot armed in that child
+  would consume on the first grandchild span and suppress an authoritative span.
+  So (b) would also have to split the pass-hook emission from the self-completion
+  emission, which are indistinguishable at the `GS-SPAN` call site.
+- `GSI-RUN` emits its span AFTER its quotation runs, so if a worker ever nested
+  GSI scopes the outermost completion would be emitted LAST, not first - the
+  "deterministically first/last" assumption also fails.
+
+Pinning fixtures (pass on the current tree, guard the byte-match semantics a
+future change must preserve or consciously replace):
+- `GST-TEST-MULTI` (test/gate-stats-test.f) - unit: child label set, three
+  sibling spans none matching, all three counted; falsifies "drop the first
+  span".
+- `GPT-SPAN-MULTI-CASE` (test/gate-pool-test.f) - real fork of the
+  MULTI-NONE-MATCH shape: parent emits the slot label once, all three child
+  sub-spans survive; sits beside `GPT-SPAN-CHILD` (the SINGLE-MATCH shape) so the
+  two shapes are pinned side by side.
+
+STILL OPEN - the sound fix is generation qualification of BOTH sides
+consistently (the dot's original top-of-file direction, not (a)/(b)): thread
+`GT-POOL-GEN$` into the pool label SOURCE (`GT-POOL-LABEL$`/`GS-CHILD-LABEL!`) AND
+into every self-completion emitter (`GSI-SPAN` via `GSI-PATH$`, `GR-STATS` via
+`GR-TOKEN$`, the `GSI-INCLUDE` path) so the byte-match still lines up but labels
+are unique per generation and cannot collide across subjects. That keeps the
+label match (which is doing real work) while removing the collision it can
+mis-fire on. It is the cross-territory change the earlier note flagged (frozen
+`GS-TEST`/`GS-SPAN`/`GS-CHILD-LABEL!` signatures, every emitter), NOT the smaller
+label-free redesign (b) hoped for. The hard `GS-LABEL-DUP-GUARD` remains the
+safety net so no collision regression can land silently while this is scheduled.
