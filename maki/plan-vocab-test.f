@@ -1,0 +1,131 @@
+\ maki/plan-vocab-test.f - CAD-PLAN section 3 over the NAMED planning vocabulary (maki/plan-vocab.f).
+\
+\ maki/plan-compose-test.f proved the section-3 form using the PARAMETRIC appenders (op-kind
+\ threaded as an OP-* argument). This file proves the SAME thing over the named vocabulary: a
+\ model block opens `package PLAN` and its bare LINEAR / GELU / RESIDUAL-ADD read as section-3
+\ source, and the checker certifies the WHOLE composition (arity + tensor discipline) at author
+\ time. The skip and fan-out DAG forms of plan-compose-test are migrated onto the named words.
+\
+\ Two proofs, both at LOAD time:
+\   1. Positive: PVT-SKIP / PVT-BRANCH are top-level ": ... ;" definitions - bin/hb checks their
+\      ( tensor ... -- tensor ) effects on load, and the drivers run them to assert the captured
+\      plan (op sequence, re-rooted skip operand, fan-out, shape flow) matches plan-compose-test.
+\   2. Negative: CHECK-PASSES? (the same checker, driven over a source string) proves a malformed
+\      composition - wrong arity, a non-tensor operand, a leftover value, a movement op missing its
+\      scalar params - is REJECTED before any planning. Run inside `package PLAN` so the candidate's
+\      bare vocabulary words resolve; the positive controls double as the scope guard.
+\
+\ NOT the MODEL:-driven capture: having MODEL: (an executing word) open this package and compile its
+\ body as a checked ": ... ;" needs checker reentrancy (dot habu-checker-reentrancy-certify-86771a6f).
+\ This file locks the hand-authored half that IS expressible today. maki -> habu only.
+
+require lib/test.f
+require maki/eval.f          \ CHECK-PASSES?: drive the checker over a candidate string
+require maki/plan-vocab.f
+require maki/tensor-value.f
+
+\ ---- model blocks authored as ordinary checked words over the NAMED vocabulary ----
+\ Bare LINEAR / GELU / RESIDUAL-ADD / RMSNORM / ADD resolve to the PLAN package words; the
+\ block reads as section-3 source and the checker certifies its arity before any planning runs.
+package PLAN
+public
+
+\ PVT-SKIP: linear -> gelu -> linear -> residual(+x) -> rmsnorm. The residual re-roots its PARAM
+\ onto the ORIGINAL input x (a true skip); x fans out to the first linear (node 0) and the residual
+\ (node 3). Same DAG as plan-compose-test's PCT-SKIP, now over the named vocabulary.
+: PVT-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x:tensor w1:tensor b1:tensor w2:tensor b2:tensor :}
+   x w1 b1 LINEAR                       \ n0: linear(x, w1, b1)
+   GELU                                 \ n1: gelu(n0)
+   w2 b2 LINEAR                         \ n2: linear(n1, w2, b2)
+   x RESIDUAL-ADD                       \ n3: residual(n2, x)   <- x re-rooted as the param
+   RMSNORM ;                            \ n4: rmsnorm(n3)
+
+\ PVT-BRANCH: two branches from x join in an add - a DAG. GELU's data operand is x (re-root), the
+\ linear also reads x (fan-out), and the add joins both branch outputs.
+: PVT-BRANCH ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
+   x GELU {: g:tensor :}                \ n0: gelu(x)          <- re-root: data = x
+   x w b LINEAR {: h:tensor :}          \ n1: linear(x, w, b)  <- x fans out
+   h g ADD ;                            \ n2: add(n1, n0)      <- branches join
+
+end-package
+
+\ ---- descriptor seeding + plan-store probes + scenario drivers -------------------
+\ MAKI scope: the plan store, descriptor constructor and op-kind constants are MAKI words; the
+\ drivers call the PLAN blocks as PLAN:PVT-SKIP / PLAN:PVT-BRANCH.
+package MAKI
+
+: PVT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
+   rows cols DT-F32 LAY-ROW TV-DESC ;
+: PVT-IN ( n n -- n ) {: node:n k:n :}  node k PLAN-IN@ tensor>N ;   \ k-th input handle
+: PVT-OUT ( n -- n ) {: node:n :}  node PLAN-OUT@ tensor>N ;         \ output handle
+
+\ PVT-SKIP: a checker-verified 5-node plan with the residual re-rooted onto x (skip) and x
+\ fanning out to node 0 and node 3.
+: PVT-RUN-SKIP ( -- )
+   TV-RESET PLAN-RESET
+   4 8 PVT-DESC {: x:tensor :}          \ handle 0
+   8 16 PVT-DESC {: w1:tensor :}        \ handle 1
+   1 16 PVT-DESC {: b1:tensor :}        \ handle 2
+   16 8 PVT-DESC {: w2:tensor :}        \ handle 3
+   1 8 PVT-DESC {: b2:tensor :}         \ handle 4
+   x w1 b1 w2 b2 PLAN:PVT-SKIP {: y:tensor :}
+   PLAN-N@ 5 T=                         \ five IR nodes captured
+   0 PLAN-OP@ OP-LINEAR       T=
+   1 PLAN-OP@ OP-GELU         T=
+   2 PLAN-OP@ OP-LINEAR       T=
+   3 PLAN-OP@ OP-RESIDUAL-ADD T=
+   4 PLAN-OP@ OP-RMSNORM      T=
+   3 PLAN-IN-COUNT@ 2 T=
+   0 0 PVT-IN x tensor>N T=             \ node0.in0 = x
+   3 1 PVT-IN x tensor>N T=             \ node3.in1 = x   (the skip)
+   3 0 PVT-IN 2 PVT-OUT   T=            \ node3.in0 = node2 output (data = running value)
+   y TV-ROWS@ 4 T=  y TV-COLS@ 8 T=     \ shape flows through the whole composition
+   4 PLAN-OUT@ TV-ROWS@ 4 T=  4 PLAN-OUT@ TV-COLS@ 8 T= ;
+
+\ PVT-BRANCH: a DAG (re-root + fan-out + join).
+: PVT-RUN-BRANCH ( -- )
+   TV-RESET PLAN-RESET
+   4 8 PVT-DESC {: x:tensor :}          \ handle 0
+   8 8 PVT-DESC {: w:tensor :}          \ handle 1
+   1 8 PVT-DESC {: b:tensor :}          \ handle 2
+   x w b PLAN:PVT-BRANCH {: y:tensor :}
+   PLAN-N@ 3 T=
+   0 PLAN-OP@ OP-GELU   T=
+   1 PLAN-OP@ OP-LINEAR T=
+   2 PLAN-OP@ OP-ADD    T=
+   0 0 PVT-IN x tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
+   1 0 PVT-IN x tensor>N T=             \ node1.in0 = x   (x fanned out again)
+   2 0 PVT-IN 1 PVT-OUT   T=            \ node2.in0 = linear output
+   2 1 PVT-IN 0 PVT-OUT   T=            \ node2.in1 = gelu output
+   2 PLAN-IN-COUNT@ 2 T=
+   y TV-ROWS@ 4 T=  y TV-COLS@ 8 T= ;
+
+end-package
+
+T-RESET
+
+\ ---- proof 1: the named-vocabulary compositions capture the right plan --------
+package MAKI
+PVT-RUN-SKIP
+PVT-RUN-BRANCH
+end-package
+
+\ ---- proof 2: the checker REJECTS malformed compositions at load (CHECK-PASSES?) --
+\ Inside package PLAN so the candidate's bare vocabulary words resolve. Positive controls
+\ certify (and prove the words resolve); every malformed form is rejected before planning.
+package PLAN
+\ positive controls: well-formed compositions certify (arity + tensor discipline hold)
+s" PVOK-LIN ( tensor tensor tensor -- tensor ) LINEAR GELU"                                   CHECK-PASSES? TTRUE
+s" PVOK-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x w1 b1 w2 b2 :} x w1 b1 LINEAR GELU w2 b2 LINEAR x RESIDUAL-ADD RMSNORM"  CHECK-PASSES? TTRUE
+s" PVOK-RESHAPE ( tensor n n -- tensor ) RESHAPE"                                             CHECK-PASSES? TTRUE
+\ negatives: arity underflow (binary / ternary / movement ops missing operands)
+s" PVBAD-ADD ( tensor -- tensor ) ADD"                                                        CHECK-PASSES? TFALSE
+s" PVBAD-LINEAR ( tensor tensor -- tensor ) LINEAR"                                           CHECK-PASSES? TFALSE
+s" PVBAD-RESHAPE ( tensor -- tensor ) RESHAPE"                                                CHECK-PASSES? TFALSE
+\ negative: type mismatch (a non-tensor value fed to a tensor-typed op)
+s" PVBAD-TYPE ( n -- tensor ) GELU"                                                           CHECK-PASSES? TFALSE
+\ negative: leftover value (two inputs, one unary op) - result arity != declared output
+s" PVBAD-LEFT ( tensor tensor -- tensor ) GELU"                                               CHECK-PASSES? TFALSE
+end-package
+
+T-REPORT
