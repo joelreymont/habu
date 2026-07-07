@@ -748,6 +748,7 @@ lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436 31
 tools/lint/text.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 47

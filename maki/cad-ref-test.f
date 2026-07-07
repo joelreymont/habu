@@ -18,18 +18,20 @@ variable CR-VA  variable CR-VU
 : CR-SAVE ( ptr u8 n -- )  CR-VU ! CR-VA ! ;
 : CR-IN ( ptr u8 n -- )  CR-VA @ CR-VU @ 2swap CONTAINS? TTRUE ;
 
-\ ---- fail-closed probes (drive the private capture engine directly) ----------
-: CR-TRY-NOVALUE   ( -- )  CAP-BEGIN s" H1" NT-BIND-CUR ;              \ name with no current value
-: CR-TRY-DUPNAME   ( -- )  CAP-BEGIN s" DUP" 0 NT-BIND  s" DUP" 1 NT-BIND ;  \ duplicate name
-: CR-TRY-OPSHADOW  ( -- )  CAP-BEGIN s" GELU" 0 NT-BIND ;             \ a name shadows an op token
+\ ---- fail-closed probes (drive the package-visible translator primitives directly) ----------
+\ v2 translates the body at MODEL: time; the reference/name errors below fire in the same
+\ translator words that MODEL: drives, so driving them directly is faithful (and catchable,
+\ unlike the MODEL: driver whose own throws cross an `evaluate` boundary).
+: CR-TRY-NOVALUE   ( -- )  CAP-BEGIN s" H1" NT-BIND-CUR ;              \ ">V" with no running value
+: CR-TRY-DUPNAME   ( -- )  CAP-BEGIN s" DUP" NT-BIND drop  s" DUP" NT-BIND drop ;  \ duplicate name
+: CR-TRY-OPSHADOW  ( -- )  CAP-BEGIN s" GELU" NT-BIND drop ;          \ a name shadows an op token
 : CR-TRY-REF-UNARY ( -- )                                            \ a ref a unary op cannot accept
-   CAP-BEGIN 2 2 CAP-INPUT  0 CAP-PEND-PUSH  OP-GELU CAP-OP ;
+   CAP-BEGIN 0 CAP-PEND-PUSH  0 CAP-EMIT-PARAMS ;                     \ 1 pending ref, unary op takes 0
 : CR-TRY-REF-DANGLE ( -- )                                            \ a ref left unconsumed at ";"
-   CAP-BEGIN 2 2 CAP-INPUT  OP-GELU CAP-OP  0 CAP-PEND-PUSH  CAP-END ;
+   CAP-BEGIN 0 CAP-PEND-PUSH  CAP-FINISH ;
 : CR-TRY-UNBOUND   ( -- )  s" H9" OP-KIND drop ;                      \ unbound reference = unknown token
-: CR-TRY-REF-BADSHAPE ( -- )                                         \ a named residual ref whose shape != the current value
-   CAP-BEGIN 4 8 CAP-INPUT  2 3 CAP-INPUT       \ input0 4x8 (current), input1 2x3
-   1 CAP-PEND-PUSH  OP-RESIDUAL-ADD CAP-OP ;    \ residual reads the 2x3 ref against 4x8 data
+: CR-TRY-REF-BADSHAPE ( -- )                                         \ a residual param whose shape != the data operand
+   TV-RESET  4 8 DT-F32 LAY-ROW TV-DESC  2 3 DT-F32 LAY-ROW TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
 
 T-RESET
 

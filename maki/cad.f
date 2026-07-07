@@ -1,13 +1,23 @@
 \ maki/cad.f - Model CAD REPL commands + checked MODEL: capture (dot cad-1).
 \
-\ MODEL: no longer parses op TOKENS against an inert table (the cad-0b phase-0
-\ design). It now CAPTURES by running the model body against the descriptor-mode
-\ planning vocabulary (maki/plan-ops.f: PLAN-UNARY / PLAN-BIN-EW / PLAN-MATMUL /
-\ PLAN-LINEAR / PLAN-TERN-EW over maki/tensor-value.f descriptors), so every op is
-\ a checked `tensor`-typed word, and the captured plan is bridged into the model-IR
-\ node table (maki/model-ir.f). The op registry (maki/op-registry.f) supplies each
-\ op's arity and class, so capture pulls the right operands and dispatches with no
-\ per-op branches beyond arity/class.
+\ MODEL: is a package-scoped colon definer (CAD-PLAN section 3). It does NOT parse op
+\ tokens against a table, nor drive a per-token capture engine: it TRANSLATES the model
+\ body into an ordinary checked ": ( tensor ... -- tensor ) ... ;" definition over the
+\ named planning vocabulary (maki/plan-vocab.f, package PLAN), then a single nested
+\ `evaluate` COMPILES that definition with the check hook active - so the checker
+\ certifies the WHOLE composition's stack arity + tensor discipline at MODEL: time -
+\ and RUNS it once against seeded descriptors to CAPTURE the plan (the vocab words append
+\ IR nodes to the plan store exactly as the old capture engine did). The captured plan is
+\ bridged into the model-IR node table (maki/model-ir.f), identical facts to before.
+\
+\ The translation is mechanical (op registry supplies each op's arity/class): the first
+\ signature input is the running value; each op's parameter operands are drained FIFO from
+\ pending named references then the declared-input cursor, and emitted as explicit stack
+\ pushes before the vocab word; ">V NAME" compiles to `dup {: NAME:tensor :}` (name the
+\ current value, keep it running); "RESHAPE:RxC"/"SLICE:R0..R1" rewrite to the vocab's
+\ ( tensor n n -- tensor ) forms with the scalar params. A malformed composition - an op
+\ with too few operands (arity underflow), a non-tensor operand - is now a CHECKER
+\ diagnostic (load-time exit 70) from the nested compile, not a runtime E-CAD-ARITY throw.
 \
 \ Surface (single line):  MODEL: NAME ( x:RxC w:RxC ... -- y ) OP OP ... ;
 \ Inputs are declared with shapes; the first is the running "current" tensor and
@@ -24,17 +34,16 @@
 \     across a multi-operand op), instead of consuming the next declared input.
 \ So "LINEAR GELU LINEAR x RESIDUAL-ADD RMSNORM" adds the ORIGINAL input x back (a
 \ real skip), and ">V H1 ... H1 RESIDUAL-ADD" fans a named intermediate out to two
-\ consumers. This named-value capture is the v1 seam for the full CAD-PLAN section 3
-\ vision (compile the whole body as one checker-verified composition over descriptors);
-\ until that lands, capture runs the body through the checked planning vocabulary and
-\ the name table resolves references at capture time.
+\ consumers. The translator resolves references at MODEL: time by name; the compiled
+\ body threads them as explicit stack operands so the checker sees the whole DAG.
 \
 \ Fail closed: unknown op / unbound reference token -> E-CAD-OP; empty body ->
-\ E-CAD-EMPTY; malformed signature/shape -> E-CAD-SYNTAX; an op with no data or too
-\ few declared inputs -> E-CAD-ARITY; too many inputs -> E-CAD-INPUTS; a bad named
-\ value (duplicate, op-shadow, oversized, table full) -> E-CAD-NAME; ">V" with no
-\ current value -> E-CAD-NOVALUE; a reference the following op cannot accept ->
-\ E-CAD-REF; a param operand whose shape is illegal for the op's broadcast class
+\ E-CAD-EMPTY; malformed signature/shape -> E-CAD-SYNTAX; too many inputs -> E-CAD-INPUTS;
+\ a bad named value (duplicate, op-shadow, oversized, table full) -> E-CAD-NAME; ">V" with
+\ no current value -> E-CAD-NOVALUE; a reference the following op cannot accept ->
+\ E-CAD-REF. An op with too few operands (arity underflow) is a CHECKER diagnostic from
+\ the nested compile (load-time exit 70), no longer a runtime E-CAD-ARITY throw. A param
+\ operand whose shape is illegal for the op's broadcast class
 \ (add/mul/residual-add need same-shape, bias 1xC, scale 1x1 or same-shape, linear
 \ bias 1xN) -> E-CAD-PARAM-SHAPE (an unbound 0 extent defers to BIND-SHAPES reprop).
 \ LOWER reports REAL node facts (op
@@ -54,6 +63,7 @@ require maki/op-registry.f
 require maki/move-facts.f
 require maki/tensor-value.f
 require maki/plan-ops.f
+require maki/plan-vocab.f            \ the package-scoped, descriptor-typed model vocabulary MODEL: compiles over
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/traffic.f
@@ -70,7 +80,7 @@ require maki/gradcheck.f
 -5022 constant E-CAD-EMPTY     \ MODEL: with no name or no ops
 -5023 constant E-CAD-GATE      \ PROMOTE refused: required gates did not pass
 -5024 constant E-CAD-SYNTAX    \ malformed MODEL: (bad signature / shape / terminator)
--5025 constant E-CAD-ARITY     \ op missing its data input or declared parameters
+-5025 constant E-CAD-ARITY     \ RETIRED: arity underflow is now a nested-compile checker diagnostic (kept: reserved slot)
 -5026 constant E-CAD-INPUTS    \ more model inputs than the capture pool holds
 -5027 constant E-CAD-NAME      \ bad named value: duplicate, op-shadow, oversized, or table full
 -5028 constant E-CAD-NOVALUE   \ ">V" naming with no current value to name
@@ -89,24 +99,39 @@ variable MODEL-SET?                        \ 0 until a MODEL: succeeds
                                            \ model NAME lives in the IR (MIR-NAME$)
 
 64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
-create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n)
-variable CAP-IN-N
-variable CAP-CUR                           \ running "current" tensor handle (n; -1 = none)
-variable CAP-IP                            \ next unconsumed parameter-input index
+create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n), order 0..N-1
+variable CAP-IN-N                          \ number of declared inputs
+variable CAP-IP                            \ declared-input cursor: next input a param may drain (starts 1)
+variable CAP-OPS                           \ ops emitted so far (a running value exists once >0)
 
-\ named value table: name -> value handle (signature input names + ">V" intermediates)
-32 constant NT-CAP                         \ max named values per model
+\ name set: signature input names occupy NT slots 0..N-1 (slot index == input index, so a
+\ by-name reference and the declared-input cursor resolve to the SAME compiled local); ">V"
+\ intermediates occupy the slots above. A bare body token that hits the set is a value
+\ reference (a parameter for the next op); anything else is an op token.
+96 constant NT-CAP                         \ names: up to CAP-CAP inputs + ">V" intermediates
 16 constant NT-NAME-CAP                    \ max bytes per name
 create NT-NAMES NT-CAP NT-NAME-CAP * allot \ fixed-width name text slots
 create NT-LENS  NT-CAP cells allot         \ name lengths
-create NT-VALS  NT-CAP cells allot         \ value handles (tensor as n)
 variable NT-N
 
-\ pending named-operand queue: refs drained (FIFO) by the next op's parameter slots
-4 constant CAP-PEND-CAP                    \ max pending named operands before one op
-create CAP-PEND CAP-PEND-CAP cells allot   \ pending operand handles (as n)
+\ pending reference queue: NT slot indices drained (FIFO) into the next op's parameter slots
+4 constant CAP-PEND-CAP                    \ max pending references before one op
+create CAP-PEND CAP-PEND-CAP cells allot   \ pending reference NT slot indices
 variable CAP-PEND-N                        \ tail (push index)
 variable CAP-PEND-HD                       \ head (dequeue index)
+
+\ compiled-body source buffer: MODEL: emits a checked ": ... ;" over package PLAN here, then
+\ one nested `evaluate` compiles it (the checker certifies the whole composition) and runs it
+\ once to capture the plan. Sized for the largest single-line model body.
+2048 constant MSRC-CAP
+create MSRC-BUF MSRC-CAP allot
+variable MSRC-N
+
+\ generated throwaway name for the capture word (redefinition is fatal, so each MODEL: mints a
+\ fresh %MDLCAP<ctr>); the compiled word is run once and left defined (harmless, uniquely named).
+create CAPNAME-BUF 24 allot
+variable CAPNAME-N
+variable MDL-CTR
 
 public
 
@@ -142,7 +167,20 @@ public
 
 private
 
-\ ---- pending named-operand queue (FIFO; the next op drains it into its params) --
+\ ---- compiled-body source buffer (build the checked ": ... ;" MODEL: compiles) ------
+: MSRC-RESET ( -- )  0 MSRC-N ! ;
+: MSRC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   MSRC-N @ u + MSRC-CAP > if E-CAD-SYNTAX throw then
+   a  MSRC-BUF MSRC-N @ +  u  BYTE-COPY
+   MSRC-N @ u + MSRC-N ! ;
+: MSRC-C ( n -- ) {: c:n :}
+   MSRC-N @ 1+ MSRC-CAP > if E-CAD-SYNTAX throw then
+   c  MSRC-BUF MSRC-N @ +  c!  MSRC-N @ 1+ MSRC-N ! ;
+: MSRC-SP ( -- )  $20 MSRC-C ;
+: MSRC-INT ( n -- )  SB-RESET SB-INT SB$ MSRC+ ;   \ decimal text via the shared SB, copied stable
+: MSRC$ ( -- ptr u8 n )  MSRC-BUF MSRC-N @ ;
+
+\ ---- pending reference queue (FIFO NT slot indices; the next op drains them into params) --
 : CAP-PEND-RESET ( -- )  0 CAP-PEND-N !  0 CAP-PEND-HD ! ;
 : CAP-PEND-CNT ( -- n )  CAP-PEND-N @ CAP-PEND-HD @ - ;      \ remaining pending refs
 : CAP-PEND-PUSH ( n -- )
@@ -151,16 +189,15 @@ private
 : CAP-PEND-DEQ ( -- n )
    CAP-PEND-HD @ cells CAP-PEND + @  CAP-PEND-HD @ 1+ CAP-PEND-HD ! ;
 
-\ ---- named value table (name -> value handle) ------------------------------
+\ ---- name set (input names slots 0..N-1, then ">V" names; slot index is the ref handle) --
 : NT-RESET ( -- )  0 NT-N ! ;
 : NT-SLOT ( n -- ptr u8 )  NT-NAME-CAP *  NT-NAMES + ;
-: NT-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ handle valid only when true
+: NT-NAME ( n -- ptr u8 n ) {: i:n :}  i NT-SLOT  i cells NT-LENS + @ ;   \ slot -> name text
+: NT-FIND ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ slot index valid only when true
    NT-N @ 0 ?do
-      a u  i NT-SLOT  i cells NT-LENS + @  STR= if
-         i cells NT-VALS + @  true  unloop exit
-      then
+      a u  i NT-NAME  STR= if  i true  unloop exit  then
    loop  0 false ;
-: NT-BIND ( ptr u8 n n -- ) {: a:ptr u:n h:n :}    \ bind name -> value handle
+: NT-BIND ( ptr u8 n -- n ) {: a:ptr u:n :}        \ intern a name, return its slot index
    u NT-NAME-CAP > if E-CAD-NAME throw then                 \ name too long
    a u OP-LOOKUP nip if E-CAD-NAME throw then               \ a name may not shadow an op token
    a u NT-FIND   nip if E-CAD-NAME throw then               \ no duplicate name
@@ -168,47 +205,49 @@ private
    NT-N @ {: i:n :}
    a  i NT-SLOT  u  BYTE-COPY
    u  i cells NT-LENS + !
-   h  i cells NT-VALS + !
-   i 1+ NT-N ! ;
-: NT-BIND-CUR ( ptr u8 n -- ) {: a:ptr u:n :}      \ ">V": name the current value
-   CAP-CUR @ 0< if E-CAD-NOVALUE throw then
-   CAP-PEND-CNT 0 > if E-CAD-REF throw then                  \ a ref must be consumed before naming
-   a u CAP-CUR @ NT-BIND ;
+   i 1+ NT-N !  i ;
 
-\ ---- capture engine --------------------------------------------------------
-: CAP-IN@   ( n -- tensor )  cells CAP-INS + @ >tensor ;
-: CAP-CUR@  ( -- tensor )    CAP-CUR @ >tensor ;
-: CAP-CUR!  ( tensor -- )    tensor>N CAP-CUR ! ;
+\ ---- capture / translate state ---------------------------------------------
+: CAP-HAS-VALUE? ( -- bool )  CAP-IN-N @ 0<>  CAP-OPS @ 0<> or ;   \ a running value exists
 
 : CAP-BEGIN ( -- )
    TV-RESET  PLAN-RESET  MIR-RESET
-   0 CAP-IN-N !  1 CAP-IP !  -1 CAP-CUR !
-   NT-RESET  CAP-PEND-RESET
+   0 CAP-IN-N !  1 CAP-IP !  0 CAP-OPS !
+   NT-RESET  CAP-PEND-RESET  MSRC-RESET
    0 MODEL-SET? ! ;
 
-: CAP-INPUT ( n n -- ) {: rows:n cols:n :}      \ declare one model input (f32/row)
-   CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
-   rows cols DT-F32 LAY-ROW TV-DESC {: t:tensor :}
-   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop
-   t tensor>N  CAP-INS CAP-IN-N @ cells + !
-   CAP-IN-N @ 0= if t CAP-CUR! then               \ first input is the running value
-   CAP-IN-N @ 1+ CAP-IN-N ! ;
+\ fresh throwaway capture-word name -> CAPNAME-BUF (redefinition is fatal, so mint per MODEL:)
+: CAP-GEN-NAME ( -- )
+   SB-RESET  s" %MDLCAP" SB-APPEND  MDL-CTR @ SB-INT  MDL-CTR @ 1+ MDL-CTR !
+   SB$ {: a:ptr u:n :}  a CAPNAME-BUF u BYTE-COPY  u CAPNAME-N ! ;
+: CAPNAME$ ( -- ptr u8 n )  CAPNAME-BUF CAPNAME-N @ ;
 
-\ declare one model input and (when named) bind its name to the input's value handle
-: CAP-INPUT-NAMED ( ptr u8 n n n -- ) {: a:ptr u:n rows:n cols:n :}
-   rows cols CAP-INPUT
-   u 0 > if  a u  CAP-IN-N @ 1- cells CAP-INS + @  NT-BIND  then ;
+\ ---- body emit helpers (translate one op's operands into explicit stack pushes) ------
+\ emit the declared input at the cursor (advancing it); exhausted -> emit nothing so the op
+\ underflows and the nested checker rejects it (arity underflow is a checker diagnostic).
+: CAP-EMIT-DECL ( -- )
+   CAP-IP @ CAP-IN-N @ < if
+      CAP-IP @ NT-NAME MSRC+ MSRC-SP  CAP-IP @ 1+ CAP-IP !
+   then ;
 
-: CAP-NEED ( n -- ) {: params:n :}              \ data + params must be available
-   CAP-CUR @ 0< if E-CAD-ARITY throw then
-   CAP-PEND-CNT params > if E-CAD-REF throw then            \ more refs than the op accepts
-   params CAP-PEND-CNT - {: decl:n :}                       \ declared inputs still needed
-   CAP-IP @ decl + CAP-IN-N @ > if E-CAD-ARITY throw then ;
+\ emit k parameter operands: pending references first (FIFO), then declared inputs
+: CAP-EMIT-PARAMS ( n -- ) {: k:n :}
+   CAP-PEND-CNT k > if E-CAD-REF throw then        \ more refs than the op accepts (e.g. ref before a unary op)
+   k 0 ?do
+      CAP-PEND-CNT 0 > if  CAP-PEND-DEQ NT-NAME MSRC+ MSRC-SP
+      else  CAP-EMIT-DECL  then
+   loop ;
 
-\ next op parameter: a pending named ref (FIFO), else the next declared input (advances)
-: CAP-PARAM ( -- tensor )
-   CAP-PEND-CNT 0 > if CAP-PEND-DEQ >tensor
-   else CAP-IP @ CAP-IN@  CAP-IP @ 1+ CAP-IP !  then ;
+\ emit the vocabulary word for a body op token: "PLAN:<TOKEN> "
+: CAP-EMIT-OP ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" PLAN:" MSRC+  a u MSRC+  MSRC-SP  1 CAP-OPS +! ;
+
+\ ">V NAME": name the current running value, keep it running -> compile `dup {: NAME:tensor :}`
+: NT-BIND-CUR ( ptr u8 n -- ) {: a:ptr u:n :}
+   CAP-HAS-VALUE? 0= if E-CAD-NOVALUE throw then
+   CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a ref must be consumed before naming
+   a u NT-BIND drop
+   s" dup {: " MSRC+  a u MSRC+  s" :tensor :} " MSRC+ ;
 
 \ ---- param-operand shape legality (shared by capture + BIND-SHAPES reprop) ------
 \ A binary elementwise op's parameter must broadcast-match its data operand under the
@@ -243,42 +282,21 @@ private
 : LIN-BIAS-CHECK ( tensor tensor tensor -- ) {: x:tensor w:tensor b:tensor :}
    x TV-ROWS@ w TV-COLS@  b TV-ROWS@ b TV-COLS@  OP-BIAS  SHP-CHECK ;
 
-: CAP-OP ( n -- ) {: op:n :}                    \ apply one op-kind to the current value
-   op OPR-ARITY {: ar:n :}
-   ar 1- CAP-NEED
-   op OPR-CLASS CLASS-MATMUL = {: mm:bool :}
-   ar 1 = if
-      CAP-CUR@ op PLAN-UNARY CAP-CUR!
-   else ar 2 = if
-      CAP-CUR@ {: x:tensor :}  CAP-PARAM {: p:tensor :}
-      mm if x p op PLAN-MATMUL
-      else x p op EW-SHAPE-CHECK  x p op PLAN-BIN-EW then CAP-CUR!
-   else ar 3 = if
-      CAP-CUR@ {: x3:tensor :}  CAP-PARAM {: p1:tensor :}  CAP-PARAM {: p2:tensor :}
-      mm if x3 p1 p2 LIN-BIAS-CHECK  x3 p1 p2 op PLAN-LINEAR
-      else x3 p1 p2 op PLAN-TERN-EW then CAP-CUR!
-   else
-      E-CAD-ARITY throw
-   then then then
-   CAP-PEND-RESET ;
-
-\ ---- movement capture (layout rewrites; scalar params come from the token) ---
-\ arity-1 rewrites consume only the running value; concat/gather also consume one
-\ declared input as their second operand (like other binary ops).
-: CAP-TRANSPOSE ( -- )
-   0 CAP-NEED  CAP-CUR@ PLAN-TRANSPOSE CAP-CUR! ;
-
-: CAP-RESHAPE ( n n -- ) {: tr:n tc:n :}
-   0 CAP-NEED  CAP-CUR@ tr tc PLAN-RESHAPE CAP-CUR! ;
-
-: CAP-SLICE ( n n -- ) {: r0:n r1:n :}
-   0 CAP-NEED  CAP-CUR@ r0 r1 PLAN-SLICE CAP-CUR! ;
-
-: CAP-CONCAT ( -- )
-   1 CAP-NEED  CAP-CUR@ CAP-PARAM PLAN-CONCAT CAP-CUR!  CAP-PEND-RESET ;
-
-: CAP-GATHER ( -- )
-   1 CAP-NEED  CAP-CUR@ CAP-PARAM PLAN-GATHER CAP-CUR!  CAP-PEND-RESET ;
+\ ---- post-capture param-operand shape legality (over the captured plan store) --------
+\ The named vocabulary is the arity/kind surface only (plan-vocab.f); broadcast legality
+\ layers here, exactly as the old per-op capture did. After the compiled body runs and
+\ populates the plan store, each elementwise/linear node's parameter operand is re-checked
+\ against its data operand's shape. An unbound (0) extent defers to BIND-SHAPES reprop.
+: PLAN-SHP-NODE ( n -- ) {: j:n :}
+   j PLAN-OP@ {: op:n :}
+   op OPR-CLASS {: cls:n :}
+   cls CLASS-EW = if
+      j PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
+      j 0 PLAN-IN@  j 1 PLAN-IN@  op EW-SHAPE-CHECK  exit then
+   cls CLASS-MATMUL = if
+      j PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
+      j 0 PLAN-IN@  j 1 PLAN-IN@  j 2 PLAN-IN@  LIN-BIAS-CHECK then ;
+: PLAN-SHP-ALL ( -- )  PLAN-N@ 0 ?do  i PLAN-SHP-NODE  loop ;
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
 : PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
@@ -302,9 +320,12 @@ private
 
 : BRIDGE-PLAN ( -- )  PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
-: CAP-END ( -- )
+\ finish capture after the compiled body ran: no dangling reference, a non-empty plan, the
+\ param-operand shape pass (E-CAD-PARAM-SHAPE), then bridge the plan into the model IR.
+: CAP-FINISH ( -- )
    CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a named ref left unconsumed by any op
-   PLAN-N@ 0= if E-CAD-EMPTY throw then
+   PLAN-N@ 0= if E-CAD-EMPTY throw then             \ the compiled body captured no ops
+   PLAN-SHP-ALL
    BRIDGE-PLAN
    -1 MODEL-SET? ! ;
 
@@ -331,9 +352,18 @@ private
    a u $3A INDEX-OF {: ci:n :}
    ci 0< if a 0 else a ci then ;
 
-\ one "[name:]RxC" spec: declare the input and (when named) bind its reference
+\ one "[name:]RxC" spec: build the input descriptor + IR slot, and intern its local name
+\ (synthesized when the spec is a bare "RxC") into NT slot == input index.
+: CAP-SYNTH-NAME ( -- )                             \ bare RxC input: bind IN<idx>
+   SB-RESET  s" IN" SB-APPEND  CAP-IN-N @ SB-INT  SB$ NT-BIND drop ;
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPEC-NAME  a u PARSE-SHAPE  CAP-INPUT-NAMED ;
+   CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
+   a u PARSE-SHAPE {: rows:n cols:n :}
+   rows cols DT-F32 LAY-ROW TV-DESC tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
+   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop                                  \ register the IR input slot
+   a u SPEC-NAME {: na:ptr nu:n :}
+   nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then
+   CAP-IN-N @ 1+ CAP-IN-N ! ;
 
 : PARSE-SIG ( -- )                              \ '(' input-specs [ -- names ] ')'
    parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
@@ -352,49 +382,83 @@ private
    a di            PARSE-INT                          \ r0
    a di 2 + +  u di 2 + -  PARSE-INT ;                \ r1
 
-\ movement token carrying colon params: RESHAPE:RxC | SLICE:R0..R1
-: CAP-MOVE-PARAM ( n ptr u8 n -- ) {: op:n a:ptr u:n :}
-   op OP-RESHAPE = if a u PARSE-SHAPE CAP-RESHAPE exit then
-   op OP-SLICE   = if a u PARSE-RANGE CAP-SLICE   exit then
-   E-CAD-SYNTAX throw ;                               \ others take no colon params
+\ "MOVE:params" body token (RESHAPE:RxC | SLICE:R0..R1): emit the scalar params then the word.
+\ The scalar params are the vocab word's ( tensor n n -- tensor ) integer operands.
+: EMIT-MOVE-PARAM ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n pa:ptr pu:n :}
+   op opu OP-KIND {: mop:n :}
+   mop OP-RESHAPE = if  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+      op opu CAP-EMIT-OP  exit  then
+   mop OP-SLICE   = if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+      op opu CAP-EMIT-OP  exit  then
+   E-CAD-SYNTAX throw ;                              \ only reshape/slice carry ':' params
 
-\ param-less movement token: TRANSPOSE | CONCAT | GATHER
-: CAP-MOVE0 ( n -- ) {: op:n :}
-   op OP-TRANSPOSE = if CAP-TRANSPOSE exit then
-   op OP-CONCAT    = if CAP-CONCAT    exit then
-   op OP-GATHER    = if CAP-GATHER    exit then
-   E-CAD-SYNTAX throw ;                               \ reshape/slice require params
-
-\ one body token: named-value reference, compute op, param-less movement, or "MOVE:params"
-: CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u NT-FIND if  CAP-PEND-PUSH  exit  then  drop   \ known name -> pending operand ref
+\ one body op token (not a ">V" and not a bare reference): translate to explicit stack form.
+: EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u $3A INDEX-OF {: ci:n :}
    ci 0< if
       a u OP-KIND {: op:n :}
-      op OPR-CLASS CLASS-MOVEMENT = if op CAP-MOVE0 else op CAP-OP then
-      exit
-   then
-   a ci OP-KIND  a ci 1+ +  u ci 1+ -  CAP-MOVE-PARAM ;
+      op OP-RESHAPE = op OP-SLICE = or if E-CAD-SYNTAX throw then  \ reshape/slice need ":params"
+      op OPR-ARITY 1- CAP-EMIT-PARAMS                              \ tensor params = arity-1
+      a u CAP-EMIT-OP  exit  then
+   a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
 
-\ ">V NAME": bind NAME to the current value (read the name token from the body)
+\ one body token: a known name is a pending reference; else an op token to translate
+: CAP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NT-FIND if  CAP-PEND-PUSH  exit  then  drop
+   a u EMIT-OP-TOKEN ;
+
+\ ">V NAME": name the current value (read the name token from the body)
 : PARSE-NAMED ( -- )
    parse-name dup 0= if 2drop E-CAD-SYNTAX throw then  NT-BIND-CUR ;
 
 : PARSE-BODY ( -- )                             \ op / ">V NAME" / reference tokens up to ';'
    begin
       parse-name dup 0= if 2drop E-CAD-SYNTAX throw then
-      2dup s" ;"  STR= if 2drop CAP-END exit then
+      2dup s" ;"  STR= if 2drop exit then
       2dup s" >V" STR= if 2drop PARSE-NAMED else CAP-TOKEN then
    again ;
+
+\ ---- assemble + compile + run the capture definition -----------------------
+\ CAP-EMIT-SIG: "( tensor.. -- tensor ) {: <locals> :} <input0> " - the effect, typed locals,
+\ and initial running-value push shared by the compile framing (MODEL:) and any dry-run framing.
+: CAP-EMIT-SIG ( -- )
+   s"  ( " MSRC+
+   CAP-IN-N @ 0 ?do  s" tensor " MSRC+  loop
+   s" -- tensor ) " MSRC+
+   CAP-IN-N @ 0 > if
+      s" {: " MSRC+
+      CAP-IN-N @ 0 ?do  i NT-NAME MSRC+  s" :tensor " MSRC+  loop
+      s" :} " MSRC+
+      0 NT-NAME MSRC+  MSRC-SP                     \ push input0 as the initial running value
+   then ;
+\ CAP-EMIT-PREFIX: ": <cap> ( ... ) {: ... :} <input0>" up to the body.
+: CAP-EMIT-PREFIX ( -- )  s" : " MSRC+  CAPNAME$ MSRC+  CAP-EMIT-SIG ;
+: CAP-EMIT-SUFFIX ( -- )  s" ; " MSRC+  CAPNAME$ MSRC+ ;
+
+\ seed the declared input descriptors onto the stack and run the assembled definition: the
+\ nested `evaluate` compiles it (the check hook certifies the whole composition) then, in the
+\ same string, runs the capture word once to populate the plan store. TRUSTED: `evaluate`
+\ and the dynamic-arity descriptor push are metaprogramming the checker cannot express;
+\ the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
+TRUSTED: CAP-COMPILE-RUN ( -- )
+   CAP-IN-N @ 0 ?do  i cells CAP-INS + @  loop     \ push all N input descriptor handles
+   MSRC$ evaluate                                  \ compile + run the capture word
+   drop ;                                          \ discard the captured output descriptor
 
 public
 
 \ MODEL: NAME ( inputs -- outputs ) OP OP ... ;   (single line)
+\ Translates the body into a checked ": ... ;" over package PLAN, compiles it (the checker
+\ certifies the whole composition), runs it once to capture the plan, then bridges to the IR.
 : MODEL: ( -- )
-   CAP-BEGIN
+   CAP-BEGIN  CAP-GEN-NAME
    parse-name dup 0= if 2drop E-CAD-EMPTY throw then MIR-NAME!
    PARSE-SIG
-   PARSE-BODY ;
+   CAP-EMIT-PREFIX
+   PARSE-BODY
+   CAP-EMIT-SUFFIX
+   CAP-COMPILE-RUN
+   CAP-FINISH ;
 
 : MODEL-CLEAR ( -- )  CAP-BEGIN ;
 : MODEL-DEFINED? ( -- bool )  MODEL-SET? @ 0= 0= ;

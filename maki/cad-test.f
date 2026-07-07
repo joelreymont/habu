@@ -6,6 +6,7 @@ require lib/test.f
 require lib/string.f
 require maki/report.f
 require maki/cad.f
+require maki/eval.f                 \ CHECK-PASSES?: drive the checker over the translated body
 
 package MAKI
 
@@ -15,22 +16,38 @@ variable CT-VA  variable CT-VU
 : CT-IN ( ptr u8 n -- )  CT-VA @ CT-VU @ 2swap CONTAINS? TTRUE ;
 : CT-NOTIN ( ptr u8 n -- )  CT-VA @ CT-VU @ 2swap CONTAINS? TFALSE ;
 
+\ ---- MODEL: translator dry-run (the checker verdict without compiling) -------
+\ MODEL-CAND: runs MODEL:'s EXACT translation (CAP-BEGIN / PARSE-SIG / CAP-EMIT-SIG /
+\ PARSE-BODY) but frames the result as a CHECK-CANDIDATE! string ("NAME ( effect )
+\ {: locals :} body") instead of compiling it, so CHECK-PASSES? can observe the checker's
+\ verdict in-process. This proves - through MODEL:'s real translator - that a malformed
+\ model body is rejected by the same checker MODEL: drives (which off the dry-run path is a
+\ load-time exit-70 diagnostic, uncatchable because the MODEL: driver crosses an evaluate).
+: MODEL-CAND: ( -- )
+   CAP-BEGIN
+   parse-name dup 0= if 2drop E-CAD-EMPTY throw then  MSRC+
+   PARSE-SIG  CAP-EMIT-SIG  PARSE-BODY ;
+: MODEL-CAND$ ( -- ptr u8 n )  MSRC$ ;
+
 \ ---- fail-closed probes ----------------------------------------------------
+\ v2 MODEL: compiles the body as a checked PLAN definition, so an arity underflow (an op
+\ with too few operands) is now a load-time checker diagnostic, proven THROUGH MODEL: by
+\ the subprocess fixtures GE-MODEL-* in test/gate-engine-lib.f. The catchable throws below
+\ drive the capture primitives directly (as the old suite did), since the MODEL: driver's
+\ own throws cross an `evaluate` boundary and are not catchable in-process.
 : TRY-NOMODEL ( -- )  MODEL-CLEAR LOWER drop ;
 : TRY-BADOP   ( -- )  s" BOGUS" OP-KIND drop ;
 : TRY-PROMOTE ( -- )  PROMOTE drop ;
-: TRY-EMPTY   ( -- )  CAP-BEGIN CAP-END ;
-: TRY-NODATA  ( -- )  CAP-BEGIN OP-GELU CAP-OP ;
-: TRY-ARITY   ( -- )  CAP-BEGIN 2 2 CAP-INPUT OP-LINEAR CAP-OP ;
-: TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do 1 1 CAP-INPUT loop ;
+: TRY-EMPTY   ( -- )  CAP-BEGIN CAP-FINISH ;                 \ no ops captured -> E-CAD-EMPTY
+: TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do s" 1x1" SIG-INPUT loop ;
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
-\ ---- capture-time param-shape legality probes (positional operands) ----------
+\ ---- capture-time param-shape legality probes (data then param on the plan store) --------
 : TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
-   CAP-BEGIN 4 8 CAP-INPUT  2 3 CAP-INPUT  OP-RESIDUAL-ADD CAP-OP ;
+   TV-RESET  4 8 DT-F32 LAY-ROW TV-DESC  2 3 DT-F32 LAY-ROW TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
 : TRY-BIAS-BADCOL ( -- )                              \ bias cols != data cols (not 1xC)
-   CAP-BEGIN 2 4 CAP-INPUT  1 3 CAP-INPUT  OP-BIAS CAP-OP ;
+   TV-RESET  2 4 DT-F32 LAY-ROW TV-DESC  1 3 DT-F32 LAY-ROW TV-DESC  OP-BIAS EW-SHAPE-CHECK ;
 : TRY-SCALE-BAD   ( -- )                              \ scale param neither same-shape nor 1x1
-   CAP-BEGIN 2 4 CAP-INPUT  1 4 CAP-INPUT  OP-SCALE CAP-OP ;
+   TV-RESET  2 4 DT-F32 LAY-ROW TV-DESC  1 4 DT-F32 LAY-ROW TV-DESC  OP-SCALE EW-SHAPE-CHECK ;
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
@@ -57,9 +74,9 @@ s" ROPE"        OP-KIND OP-ROPE        T=
 s" SOFTMAX-ROW" OP-KIND OP-SOFTMAX-ROW T=
 
 \ ---- capture engine fail-closed paths --------------------------------------
+\ arity underflow is no longer a runtime throw: it is a nested-compile checker diagnostic,
+\ proven THROUGH MODEL:'s translator by the CHECK-PASSES? fixtures below.
 ' TRY-EMPTY   E-CAD-EMPTY  TTHROWS
-' TRY-NODATA  E-CAD-ARITY  TTHROWS
-' TRY-ARITY   E-CAD-ARITY  TTHROWS
 ' TRY-INPUTS  E-CAD-INPUTS TTHROWS
 ' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
 
@@ -72,6 +89,24 @@ MODEL: BIB ( x:2x4 b:1x4 -- y ) BIAS ;    MODEL-K 1 T=      \ 1xC bias broadcast
 ' TRY-EW-MISMATCH E-CAD-PARAM-SHAPE TTHROWS
 ' TRY-BIAS-BADCOL E-CAD-PARAM-SHAPE TTHROWS
 ' TRY-SCALE-BAD   E-CAD-PARAM-SHAPE TTHROWS
+
+\ ---- the checker rejects malformed model bodies at DEFINITION (CAD-PLAN section 3) ----------
+\ v2 compiles the translated body over package PLAN, so a composition the checker cannot type
+\ is rejected at MODEL: time. MODEL-CAND: yields the exact string MODEL: compiles; CHECK-PASSES?
+\ reads the same checker's verdict. Positive controls certify; every arity underflow is rejected.
+\ (Off the dry-run path this rejection is a load-time exit 70 - the improved failure mode that
+\ replaces the old runtime E-CAD-ARITY throw; the whole model is a checker-verified word now.)
+MODEL-CAND: MCOK-EW   ( x:4x8 y:4x8 -- z ) ADD ;              MODEL-CAND$ CHECK-PASSES? TTRUE
+MODEL-CAND: MCOK-LIN  ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;     MODEL-CAND$ CHECK-PASSES? TTRUE
+MODEL-CAND: MCOK-FFN  ( x:4x8 w1:8x8 b1:1x8 -- y ) LINEAR GELU ; MODEL-CAND$ CHECK-PASSES? TTRUE
+\ negatives: binary / ternary / movement ops whose signature supplies too few operands underflow
+MODEL-CAND: MCBAD-ADD ( x:4x8 -- y ) ADD ;                    MODEL-CAND$ CHECK-PASSES? TFALSE
+MODEL-CAND: MCBAD-LIN ( x:2x3 w:3x4 -- y ) LINEAR ;           MODEL-CAND$ CHECK-PASSES? TFALSE
+MODEL-CAND: MCBAD-CAT ( x:4x8 -- y ) CONCAT ;                 MODEL-CAND$ CHECK-PASSES? TFALSE
+\ Blocker 2 (tensor kind-opacity, dot habu-checker-shape-kind): the checker proves ARITY/KIND
+\ only - shape legality (E-CAD-PARAM-SHAPE, above) and the non-tensor/leftover negatives of
+\ plan-vocab-test are NOT reachable through MODEL:'s tensor-only signature; the vocabulary-level
+\ proofs of those stay in maki/plan-vocab-test.f.
 
 \ ---- capture a toy FFN by running the body through the planning vocabulary --
 MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
@@ -268,7 +303,7 @@ s" memory.move:"                CT-NOTIN
 
 \ ---- movement fail-closed paths --------------------------------------------
 : TRY-MV-RANGE   ( -- )  s" 12" PARSE-RANGE 2drop ;          \ no ".." separator
-: TRY-MV-NOPARAM ( -- )  OP-RESHAPE CAP-MOVE0 ;              \ reshape needs params
+: TRY-MV-NOPARAM ( -- )  CAP-BEGIN s" RESHAPE" EMIT-OP-TOKEN ;   \ bare reshape needs ":RxC" params
 : TRY-MV-RESHAPE ( -- )                                       \ element count mismatch
    TV-RESET PLAN-RESET  2 3 DT-F32 LAY-ROW TV-DESC 2 2 PLAN-RESHAPE drop ;
 ' TRY-MV-RANGE   E-CAD-SYNTAX TTHROWS
