@@ -31,10 +31,10 @@ variable L0   variable LF
    0.0 MB2 1 T-FILL ;
 
 : MFWD  ( -- )  QX MW1 MB1 MW2 MB2 MZ1 MH QY  2 2 2 1  MLP-FWD ;
-: MLOSS ( -- r ) QY MT 2 TT-MSE-LOSS ;
+: MLOSS ( -- r ) QY MT 2 LOSS:TT-MSE ;
 : MEPOCH ( -- )                                         \ one SGD epoch at lr=0.01
    MFWD
-   QY MT QDY 2 TT-MSE-DY
+   QY MT QDY 2 LOSS:TT-MSE-DY
    QDY QX MW1 MZ1 MH MW2  MDH MDZ1 QDX MDW1 MDB1 MDW2 MDB2  2 2 2 1  MLP-BWD
    0.01  MW1 MB1 MW2 MB2  MDW1 MDB1 MDW2 MDB2  2 2 1  MLP-SGD ;
 : TRAIN ( n -- )  0 ?do  MEPOCH  loop ;

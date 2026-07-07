@@ -12,14 +12,14 @@ create LP 2 cells allot   create LT 2 cells allot   create LTDY 2 cells allot
 3.0 LP 0 T-SET   5.0 LP 1 T-SET
 1.0 LT 0 T-SET   1.0 LT 1 T-SET
 
-LP LT 2 TT-MSE-LOSS  0.5 f+ f>s  20 T=        \ L = 4 + 16
-LP LT LTDY 2 TT-MSE-DY
+LP LT 2 LOSS:TT-MSE  0.5 f+ f>s  20 T=        \ L = 4 + 16
+LP LT LTDY 2 LOSS:TT-MSE-DY
 LTDY 0 T-GET  0.5 f+ f>s  4 T=                 \ 2*(3-1)
 LTDY 1 T-GET  0.5 f+ f>s  8 T=                 \ 2*(5-1)
 
 \ central finite difference dL/dpred[0] = 4
-3.001 LP 0 T-SET  LP LT 2 TT-MSE-LOSS
-2.999 LP 0 T-SET  LP LT 2 TT-MSE-LOSS
+3.001 LP 0 T-SET  LP LT 2 LOSS:TT-MSE
+2.999 LP 0 T-SET  LP LT 2 LOSS:TT-MSE
 f-  0.002 f/  0.5 f+ f>s  4 T=
 3.0 LP 0 T-SET
 
@@ -31,16 +31,16 @@ create LNDMU 2 cells allot  create LNDLV 2 cells allot
 0.5 LNM 0 T-SET   0.0 LNM 1 T-SET
 0.0 LNLV 0 T-SET  0.6931471805599453 LNLV 1 T-SET
 
-LNY LNM LNLV 2 TT-NLL-LOSS         1000.0 f* 0.5 f+ f>s  1472 T=
-LNY LNM LNLV LNDMU 2 TT-NLL-DMU
+LNY LNM LNLV 2 LOSS:TT-NLL         1000.0 f* 0.5 f+ f>s  1472 T=
+LNY LNM LNLV LNDMU 2 LOSS:TT-NLL-DMU
 LNDMU 0 T-GET  1000.0 f* 0.5 f- f>s  -500 T=       \ (0.5-1)*1
 LNDMU 1 T-GET  1000.0 f* 0.5 f- f>s -1000 T=       \ (0-2)*0.5
-LNY LNM LNLV LNDLV 2 TT-NLL-DLV
+LNY LNM LNLV LNDLV 2 LOSS:TT-NLL-DLV
 LNDLV 0 T-GET  1000.0 f* 0.5 f+ f>s   375 T=        \ 0.5*(1-0.25)
 LNDLV 1 T-GET  1000.0 f* 0.5 f- f>s  -500 T=        \ 0.5*(1-2)
 \ central FD dL/dmu[0] over the summed NLL = -0.5
-0.501 LNM 0 T-SET  LNY LNM LNLV 2 TT-NLL-LOSS
-0.499 LNM 0 T-SET  LNY LNM LNLV 2 TT-NLL-LOSS
+0.501 LNM 0 T-SET  LNY LNM LNLV 2 LOSS:TT-NLL
+0.499 LNM 0 T-SET  LNY LNM LNLV 2 LOSS:TT-NLL
 f-  0.002 f/  1000.0 f* 0.5 f- f>s  -500 T=
 0.5 LNM 0 T-SET
 
@@ -52,15 +52,15 @@ create LMDMU 2 cells allot  create LMVBAD 2 cells allot
 1.0 LMM 0 T-SET   1.0 LMM 1 T-SET
 4.0 LMV 0 T-SET   2.0 LMV 1 T-SET
 
-LMY LMM LMV 2 TT-MAHALANOBIS-LOSS  1000.0 f* 0.5 f+ f>s  9000 T=
-LMY LMM LMV LMDMU 2 TT-MAHALANOBIS-DMU
+LMY LMM LMV 2 LOSS:TT-MAHALANOBIS  1000.0 f* 0.5 f+ f>s  9000 T=
+LMY LMM LMV LMDMU 2 LOSS:TT-MAHALANOBIS-DMU
 LMDMU 0 T-GET  1000.0 f* 0.5 f- f>s -1000 T=       \ 2*(1-3)/4
 LMDMU 1 T-GET  1000.0 f* 0.5 f- f>s -4000 T=       \ 2*(1-5)/2
 
 \ degenerate variance in the buffer fails the whole reduction closed (E-MK-VAR).
 4.0 LMVBAD 0 T-SET   0.0 LMVBAD 1 T-SET
-: BAD-TT-VAR     ( -- )  LMY LMM LMVBAD 2 TT-MAHALANOBIS-LOSS f>s drop ;
-: BAD-TT-VAR-DMU ( -- )  LMY LMM LMVBAD LMDMU 2 TT-MAHALANOBIS-DMU ;
+: BAD-TT-VAR     ( -- )  LMY LMM LMVBAD 2 LOSS:TT-MAHALANOBIS f>s drop ;
+: BAD-TT-VAR-DMU ( -- )  LMY LMM LMVBAD LMDMU 2 LOSS:TT-MAHALANOBIS-DMU ;
 ' BAD-TT-VAR     E-MK-VAR TTHROWS
 ' BAD-TT-VAR-DMU E-MK-VAR TTHROWS
 
@@ -70,13 +70,13 @@ create LHP 2 cells allot   create LHT 2 cells allot   create LHDY 2 cells allot
 0.5 LHP 0 T-SET   3.0 LHP 1 T-SET
 0.0 LHT 0 T-SET   0.0 LHT 1 T-SET
 
-LHP LHT HUBER-DELTA 2 TT-HUBER-LOSS  1000.0 f* 0.5 f+ f>s  2625 T=
-LHP LHT HUBER-DELTA LHDY 2 TT-HUBER-DY
+LHP LHT LOSS:HUBER-DELTA 2 LOSS:TT-HUBER  1000.0 f* 0.5 f+ f>s  2625 T=
+LHP LHT LOSS:HUBER-DELTA LHDY 2 LOSS:TT-HUBER-DY
 LHDY 0 T-GET  1000.0 f* 0.5 f+ f>s   500 T=         \ quadratic grad = r
 LHDY 1 T-GET  1000.0 f* 0.5 f+ f>s  1000 T=         \ linear grad = +delta
 \ central FD dL/dpred[1] (linear region) = 1.0
-3.001 LHP 1 T-SET  LHP LHT HUBER-DELTA 2 TT-HUBER-LOSS
-2.999 LHP 1 T-SET  LHP LHT HUBER-DELTA 2 TT-HUBER-LOSS
+3.001 LHP 1 T-SET  LHP LHT LOSS:HUBER-DELTA 2 LOSS:TT-HUBER
+2.999 LHP 1 T-SET  LHP LHT LOSS:HUBER-DELTA 2 LOSS:TT-HUBER
 f-  0.002 f/  1000.0 f* 0.5 f+ f>s  1000 T=
 3.0 LHP 1 T-SET
 

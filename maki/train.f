@@ -21,13 +21,13 @@ public
 
 \ current loss of the linear model: L = MSE(w*x, t)
 : LOSS-AT ( r r r -- r ) {: w x t :}
-   w x MUL-F  t MSE ;
+   w x MUL-F  t LOSS:MSE ;
 
 \ one training step on y = w*x:
 \   pred = w*x ; dpred = dL/dpred ; dw = dpred*x ; w' = w - lr*dw
 : TRAIN-STEP ( r r r r -- r ) {: w x t lr :}
    w x MUL-F            {: pred :}
-   pred t MSE-GRAD      {: dpred :}
+   pred t LOSS:MSE-GRAD      {: dpred :}
    dpred x f*           {: dw :}     \ chain rule: d(w*x)/dw = x
    w dw lr SGD ;
 

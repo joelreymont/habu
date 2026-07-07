@@ -64,9 +64,9 @@ create SC-SEED SC-BATCH SC-OUT * cells allot
    ob r SC-OUT-MU {: mu:r :}
    ob r SC-OUT-LV {: lv:r :}
    SC-Y r T-GET {: y:r :}
-   y mu lv NLL-MU-GRAD     SC-INV-BATCH f*  SC-SEED r SC-OUT *    T-SET
-   y mu lv NLL-LOGVAR-GRAD SC-INV-BATCH f*  SC-SEED r SC-OUT * 1+ T-SET
-   y mu lv NLL ;
+   y mu lv LOSS:NLL-MU-GRAD     SC-INV-BATCH f*  SC-SEED r SC-OUT *    T-SET
+   y mu lv LOSS:NLL-LOGVAR-GRAD SC-INV-BATCH f*  SC-SEED r SC-OUT * 1+ T-SET
+   y mu lv LOSS:NLL ;
 
 \ fill the seed buffer from the current forward output; return the batch MEAN NLL
 : SC-LOSS-SEED ( -- r )
