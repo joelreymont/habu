@@ -90,9 +90,9 @@ verdict dispatch and report rendering. Target vocabulary:
 
 | Artifact | Family kind | Sketch |
 | --- | --- | --- |
-| Op kind | enum | `ENUM op-kind add mul bias gelu matmul ... END-ENUM` |
+| Op kind | enum | `ENUM op-kind add mul bias gelu matmul ... ;ENUM` |
 | Dtype/layout keys | enum + product | `dtype` enum exists as constants today; becomes enum family |
-| Gate verdict | sum | `SUMTYPE verdict 1  VARIANT pass END  VARIANT fail a END` |
+| Gate verdict | sum | `SUMTYPE verdict 1  VARIANT pass ;VARIANT  VARIANT fail a ;VARIANT ;SUMTYPE` |
 | Fusion decision | sum | `fused` / `split<reason>` with named split reasons |
 | Lookup/IO results | sum | `option<a>`, `result<a,b>` from the stdlib families |
 | Report rows | product | shape key, schedule, profile row, memory-plan row |
@@ -111,6 +111,13 @@ whose signatures do not leak representation; internals swap to
 sum/enum/product families as TFAM lands (dot `cad-adt-swap`). No
 result-specific staging helpers; no new `TRUSTED:`/`set-check` boundaries for
 report or IR plumbing.
+
+As of 2026-07-07 TFAM 1-8 have landed on `maki-type-families`: `TYPEFAMILY`,
+`SUMTYPE`/`VARIANT`/`;SUMTYPE`, and trust-free generated constructors
+(`ZRES:OK` shape, public arity-0 sums) are live, along with package sealing and
+source-replay. The `cad-adt-swap` swap itself still waits on `MATCH` (tfam-9,
+the eliminator), `ENUM`/`PRODUCT` block grammar (tfam-14/15), layout-aware stack
+ops (tfam-12), and native lowering (tfam-10); see the dot for the pinned syntax.
 
 ### TFAM dependency map
 
