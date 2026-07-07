@@ -13,11 +13,11 @@
 \      (EM-COMPILE-P2WIDE / LP2COPY / LP2ROT / LP2RS / EM-P2-CARVE, habu2.f).
 \      The emitter is deterministic (the build's two-build byte-compare pins
 \      it), so the goldens are exact; they move only when the lowering does.
-\   3. execution rows — TRUSTED seed makers push raw payload+tag cells
-\      (docs §25.5-style seeding; the maker's declared layout effect is the
-\      premise), whole-bundle transports run at RUNTIME, and TRUSTED unpackers
-\      surface the cells for value asserts: dup/swap/over/nip/tuck/rot/-rot/
-\      2dup/2drop/2swap/2over, the return-stack transfers, and wide locals.
+\   3. execution rows — generated constructors (TLP--RES:ERR / TLP--MIX:BIG)
+\      seed the bundles in checked code, whole-bundle transports run at
+\      RUNTIME, and TRUSTED unpackers surface the cells for value asserts:
+\      dup/swap/over/nip/tuck/rot/-rot/2dup/2drop/2swap/2over, the
+\      return-stack transfers, and wide locals.
 \
 \ Remaining follow-up (constant shape-carry, habu-tfam-12-layout dot): flip the
 \ parity fixtures staged in tools/check-all-errors-test.f (CAE-TEST-CONST-CARRY)
@@ -199,77 +199,77 @@ variable GXT
 16 $F94003FE GG  17 $910043FF GG  18 $D65F03C0 GG
 
 \ ---------------------------------------------------------------------------
-\ execution rows: whole-bundle transports at RUNTIME. The TRUSTED makers push
-\ raw payload+tag cells under a declared layout effect (docs §25.5-style
-\ seeding — the declared effect is the test's premise, the audited boundary);
-\ the TRUSTED unpackers surface the cells so plain value asserts can prove
-\ the bundle survived the transport. Wide locals unpack the deeper results.
+\ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL
+\ generated constructors (item 8/11: `tlp-res` derives package TLP--RES,
+\ `tlp-mix` derives TLP--MIX — tail hyphens escape as `--`), so the physical
+\ cells (payload, zero pads, tag) come from checked constructor bodies, not
+\ trusted raw pushes. TLP-MK2 = 7 TLP--RES:ERR -> (7, tag 1); TLP-MK4 =
+\ 91 92 93 TLP--MIX:BIG -> (91, 92, 93, tag 1). Only the UNPACKERS remain a
+\ tested TRUSTED boundary: surfacing bundle cells for value asserts needs a
+\ destructor, which is item 9's MATCH (dot habu-retire-tlp-mk2-ac7760d2).
 \ ---------------------------------------------------------------------------
-\ Tested boundary (TRUSTED): raw 2-cell seeding of tlp-res<n,n> (payload 7,
-\ tag 9) — the physical layout the checker's hidden-field expansion declares.
-TRUSTED: TLP-MK2 ( -- tlp-res<n,n> ) 7 9 ;
+: TLP-MK2 ( -- tlp-res<n,n> ) 7 TLP--RES:ERR ;
 \ Tested boundary (TRUSTED): the matching 2-cell unpack (payload, tag).
 TRUSTED: TLP-UN2 ( tlp-res<n,n> -- n n ) ;
-\ Tested boundary (TRUSTED): raw 4-cell seeding of tlp-mix<n,n> (1 2 3, tag 4).
-TRUSTED: TLP-MK4 ( -- tlp-mix<n,n> ) 1 2 3 4 ;
+: TLP-MK4 ( -- tlp-mix<n,n> ) 91 92 93 TLP--MIX:BIG ;
 \ Tested boundary (TRUSTED): the matching 4-cell unpack.
 TRUSTED: TLP-UN4 ( tlp-mix<n,n> -- n n n n ) ;
 
 \ typed-local-lint: allow-bare-local
 : TLPX-DUP ( -- n n n n ) TLP-MK2 dup {: a b :} a TLP-UN2 b TLP-UN2 ;
-TLPX-DUP 9 T= 7 T= 9 T= 7 T=
+TLPX-DUP 1 T= 7 T= 1 T= 7 T=
 : TLPX-DROP ( -- n ) 5 TLP-MK2 drop ;
 TLPX-DROP 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-SWAP ( -- n n n ) TLP-MK2 5 swap {: s:n r :} s r TLP-UN2 ;
-TLPX-SWAP 9 T= 7 T= 5 T=
+TLPX-SWAP 1 T= 7 T= 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-OVER ( -- n n n n n ) TLP-MK2 5 over {: r1 s:n r2 :} r1 TLP-UN2 s r2 TLP-UN2 ;
-TLPX-OVER 9 T= 7 T= 5 T= 9 T= 7 T=
+TLPX-OVER 1 T= 7 T= 5 T= 1 T= 7 T=
 : TLPX-NIP ( -- n n ) 5 TLP-MK2 nip TLP-UN2 ;
-TLPX-NIP 9 T= 7 T=
+TLPX-NIP 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-TUCK ( -- n n n n n ) 5 TLP-MK2 tuck {: r1 s:n r2 :} r1 TLP-UN2 s r2 TLP-UN2 ;
-TLPX-TUCK 9 T= 7 T= 5 T= 9 T= 7 T=
+TLPX-TUCK 1 T= 7 T= 5 T= 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-ROT ( -- n n n n ) TLP-MK2 5 6 rot {: s1:n s2:n r :} s1 s2 r TLP-UN2 ;
-TLPX-ROT 9 T= 7 T= 6 T= 5 T=
+TLPX-ROT 1 T= 7 T= 6 T= 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-MROT ( -- n n n n ) 5 6 TLP-MK2 -rot {: r s1:n s2:n :} r TLP-UN2 s1 s2 ;
-TLPX-MROT 6 T= 5 T= 9 T= 7 T=
+TLPX-MROT 6 T= 5 T= 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-2DUP ( -- n n n n n n ) TLP-MK2 5 2dup {: r1 s1:n r2 s2:n :} r1 TLP-UN2 s1 r2 TLP-UN2 s2 ;
-TLPX-2DUP 5 T= 9 T= 7 T= 5 T= 9 T= 7 T=
+TLPX-2DUP 5 T= 1 T= 7 T= 5 T= 1 T= 7 T=
 : TLPX-2DROP ( -- n ) 6 TLP-MK2 5 2drop ;
 TLPX-2DROP 6 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-2SWAP ( -- n n n n n n n n ) TLP-MK2 5 TLP-MK4 6 2swap {: m s2:n r s1:n :} m TLP-UN4 s2 r TLP-UN2 s1 ;
-TLPX-2SWAP 5 T= 9 T= 7 T= 6 T= 4 T= 3 T= 2 T= 1 T=
+TLPX-2SWAP 5 T= 1 T= 7 T= 6 T= 1 T= 93 T= 92 T= 91 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-2OVER ( -- n n n n n n n n n n n ) TLP-MK2 5 TLP-MK4 6 2over {: r1 s1:n m1 s2:n r2 s3:n :} r1 TLP-UN2 s1 m1 TLP-UN4 s2 r2 TLP-UN2 s3 ;
-TLPX-2OVER 5 T= 9 T= 7 T= 6 T= 4 T= 3 T= 2 T= 1 T= 5 T= 9 T= 7 T=
+TLPX-2OVER 5 T= 1 T= 7 T= 6 T= 1 T= 93 T= 92 T= 91 T= 5 T= 1 T= 7 T=
 : TLPX-TOR ( -- n n n ) TLP-MK2 >r 5 r> TLP-UN2 ;
-TLPX-TOR 9 T= 7 T= 5 T=
+TLPX-TOR 1 T= 7 T= 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-RAT ( -- n n n n ) TLP-MK2 >r r@ {: c :} r> TLP-UN2 c TLP-UN2 ;
-TLPX-RAT 9 T= 7 T= 9 T= 7 T=
+TLPX-RAT 1 T= 7 T= 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-2TOR ( -- n n n ) TLP-MK2 5 2>r 2r> {: r s:n :} r TLP-UN2 s ;
-TLPX-2TOR 5 T= 9 T= 7 T=
+TLPX-2TOR 5 T= 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-2RAT ( -- n n n n n n ) TLP-MK2 5 2>r 2r@ {: c cs:n :}
 \ typed-local-lint: allow-bare-local
    2r> {: r s:n :} c TLP-UN2 cs r TLP-UN2 s ;
-TLPX-2RAT 5 T= 9 T= 7 T= 5 T= 9 T= 7 T=
+TLPX-2RAT 5 T= 1 T= 7 T= 5 T= 1 T= 7 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-MIX-DUP ( -- n n n n n n n n ) TLP-MK4 dup {: a b :} a TLP-UN4 b TLP-UN4 ;
-TLPX-MIX-DUP 4 T= 3 T= 2 T= 1 T= 4 T= 3 T= 2 T= 1 T=
+TLPX-MIX-DUP 1 T= 93 T= 92 T= 91 T= 1 T= 93 T= 92 T= 91 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-MIX-SWAP ( -- n n n n n ) TLP-MK4 5 swap {: s:n m :} s m TLP-UN4 ;
-TLPX-MIX-SWAP 4 T= 3 T= 2 T= 1 T= 5 T=
+TLPX-MIX-SWAP 1 T= 93 T= 92 T= 91 T= 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-LOCAL ( -- n n n n n n n n n ) 5 TLP-MK4 {: y:n z :} z TLP-UN4 y z TLP-UN4 ;
-TLPX-LOCAL 4 T= 3 T= 2 T= 1 T= 5 T= 4 T= 3 T= 2 T= 1 T=
+TLPX-LOCAL 1 T= 93 T= 92 T= 91 T= 5 T= 1 T= 93 T= 92 T= 91 T=
 
 \ supported pass-2 boundary: a wide local bound at TOP LEVEL and REFERENCED inside
 \ both arms of a branch lowers and runs. (Binding a bundle local INSIDE branch
@@ -278,8 +278,8 @@ TLPX-LOCAL 4 T= 3 T= 2 T= 1 T= 5 T= 4 T= 3 T= 2 T= 1 T=
 \ top-level bundle local from a branch is fine: #LOC still covers index 0.)
 \ typed-local-lint: allow-bare-local
 : TLPX-REF-BRANCH ( n -- n n ) TLP-MK2 {: a :} 0 > if a TLP-UN2 else a TLP-UN2 then ;
-5 TLPX-REF-BRANCH 9 T= 7 T=
--3 TLPX-REF-BRANCH 9 T= 7 T=
+5 TLPX-REF-BRANCH 1 T= 7 T=
+-3 TLPX-REF-BRANCH 1 T= 7 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
