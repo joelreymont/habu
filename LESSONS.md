@@ -2357,3 +2357,22 @@ unchanged (148855). Keys for milestone 2:
   (restore bin/hb from a sibling checkout). Corollary: a fail-closed-by-default
   boot check deadlocks self-hosting — the rebuild command boots the engine over
   the very prefix it needs to rebuild; default off/warn, strict opt-in.
+- **CHECK! is line-oriented and registers what it certifies.** Feeding it a
+  multi-line definition body returns verdict 1 no matter how well-typed —
+  whitespace-normalize to one line first (prop-test builds single-line PBUF
+  strings). And after a -1 verdict the name is registered, so a CHECKED
+  re-compile of the same text dies duplicate-definition: compile certified text
+  under `0 set-check` and reinstall the hook right after (CHK-COMPILE-CERT
+  shape). Leaving the hook off compiles later definitions untyped, which makes
+  every later CHECK! that references them reject — the failure appears one
+  check DOWNSTREAM of the mistake.
+- **Driving real emitters in isolation works via `included` trio + certified
+  eval, not via the built image.** Retired emitter xts in bin/hb crash on
+  `execute`; instead load src/arch/arm64/{asm,icode,mnem}.f live (object-image
+  precedent), extract the emitter definition from the stage source, CHECK! it,
+  compile, run, and decode CODE words + fixup tables. Generation-suffixed names
+  (NAME-A, NAME-B per check region) beat CHK-MARK rollback for repeated checks:
+  two engine bugs make the rollback route unusable today (undefined-in-evaluate
+  under catch crashes natively, dot habu-undefined-word-in-d9dc3452; CHECK!
+  records go stale across ndict rollback + re-definition, dot
+  habu-check-records-go-4f62cd2e).
