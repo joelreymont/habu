@@ -6,22 +6,24 @@
 \ protobuf decoding are the larger follow-up; this is the op-coverage table that
 \ decides what a model can lower to.) maki -> habu only; load after lib/string.f.
 \
-\ Wrapped in `package MAKI`: the public word exports as `MAKI:ONNX-LOWER`, so a bare
-\ `ONNX-LOWER` does not resolve in the global/habu namespace - the one-way maki<-habu
-\ seam enforced at the dictionary level (docs/forth.md "Packages"). The E-MK-ONNX error
-\ code stays global (cross-cutting, like lib/errors.f's E-* codes); the package body
-\ reaches it via the package's global-fallback lookup.
+\ Wrapped in `package ONNX`: the public words export as `ONNX:LOWER` /
+\ `ONNX:MOVE-KIND`, so a bare `LOWER` does not resolve in the global/habu namespace -
+\ the one-way maki<-habu seam enforced at the dictionary level (docs/forth.md
+\ "Packages"). The E-MK-ONNX error code stays global (cross-cutting, like
+\ lib/errors.f's E-* codes); the package body reaches it via the package's
+\ global-fallback lookup. The op-kind FACTs (MAKI:OP-RESHAPE ...) are qualified
+\ across the ONNX<-MAKI package seam.
 
 require lib/string.f
 require maki/op-kind.f
 
 -5001 constant E-MK-ONNX   \ unsupported ONNX op (fail-closed import)
 
-package MAKI
+package ONNX
 public
 
 \ ONNX op name -> the maki/Habu-PTX entry it lowers onto.
-: ONNX-LOWER ( ptr u8 n -- ptr u8 n )
+: LOWER ( ptr u8 n -- ptr u8 n )
    2dup s" Add"     STR= if 2drop s" ADD-F"        exit then
    2dup s" Mul"     STR= if 2drop s" MUL-F"        exit then
    2dup s" Relu"    STR= if 2drop s" RELU-F"       exit then
@@ -31,12 +33,12 @@ public
 
 \ Movement ONNX ops carry no kernel; they lower to a maki movement op-kind
 \ (the IR layout FACT the planner reasons over). Fail closed on any other op.
-: ONNX-MOVE-KIND ( ptr u8 n -- n )
-   2dup s" Reshape"   STR= if 2drop OP-RESHAPE   exit then
-   2dup s" Transpose" STR= if 2drop OP-TRANSPOSE exit then
-   2dup s" Slice"     STR= if 2drop OP-SLICE     exit then
-   2dup s" Concat"    STR= if 2drop OP-CONCAT    exit then
-   2dup s" Gather"    STR= if 2drop OP-GATHER    exit then
+: MOVE-KIND ( ptr u8 n -- n )
+   2dup s" Reshape"   STR= if 2drop MAKI:OP-RESHAPE   exit then
+   2dup s" Transpose" STR= if 2drop MAKI:OP-TRANSPOSE exit then
+   2dup s" Slice"     STR= if 2drop MAKI:OP-SLICE     exit then
+   2dup s" Concat"    STR= if 2drop MAKI:OP-CONCAT    exit then
+   2dup s" Gather"    STR= if 2drop MAKI:OP-GATHER    exit then
    2drop E-MK-ONNX throw ;
 
 end-package

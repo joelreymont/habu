@@ -5,7 +5,7 @@ maki / Habu-PTX kernel entry it lowers onto, with a **fail-closed** policy — a
 unsupported op is rejected (`E-MK-ONNX throw`), never silently approximated. This is
 the contract that decides what a model can lower to.
 
-## Current coverage (`ONNX-LOWER`)
+## Current coverage (`ONNX:LOWER`)
 `Add → ADD-F`, `Mul → MUL-F`, `Relu → RELU-F`, `Softmax → SOFTMAX-ROWS`,
 `Gemm → SAXPY` (affine y=a·x+b). Anything else fails closed (tested in `onnx-test.f`,
 e.g. `Conv` throws).
@@ -13,7 +13,7 @@ e.g. `Conv` throws).
 ## Design intent + roadmap
 - **Subgraph, not single op.** Lowering a *chain* of elementwise ops = concatenating
   their Habu words into one fused kernel (`maki/fusion.f`) — fusion is the default in a
-  concatenative DSL, not a pass. So `ONNX-LOWER` over a subgraph maps each node to its
+  concatenative DSL, not a pass. So `ONNX:LOWER` over a subgraph maps each node to its
   word(s) and concatenates (memory-bound ops fuse → fewer HBM round-trips).
 - **Real GEMM/attention.** `Gemm` lowers onto the tiled GEMM (`lib/ptx/cg-matmul.f`,
   the tensor-core path on the compute roof); an attention subgraph onto the fused
