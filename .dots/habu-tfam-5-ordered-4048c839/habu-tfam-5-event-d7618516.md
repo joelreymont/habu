@@ -3,7 +3,7 @@ title: "TFAM 5: event-driven redrive blocked by DISCOVER colon-body blindness"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T10:44:09.593692+02:00\""
+created-at: "2026-07-04T10:44:09.593692+02:00"
 closed-at: "2026-07-04T18:44:14.677858+02:00"
 ---
 

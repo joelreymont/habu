@@ -3,7 +3,7 @@ title: "TFAM 5: C-quote/dot-quote loader + dynamic-span fail-closed"
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-07-04T08:53:59.626268+02:00\""
+created-at: "2026-07-04T08:53:59.626268+02:00"
 closed-at: "2026-07-04T18:44:14.683485+02:00"
 ---
 
