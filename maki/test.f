@@ -104,6 +104,8 @@ TEST:SUITE maki/model-ir-test.f
 TEST:END-SUITE
 TEST:SUITE maki/fusion-plan-test.f
 TEST:END-SUITE
+TEST:SUITE maki/fusion-mout-test.f
+TEST:END-SUITE
 TEST:SUITE maki/bcast-test.f
 TEST:END-SUITE
 TEST:SUITE maki/lower-ew-test.f
