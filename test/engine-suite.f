@@ -1388,6 +1388,11 @@ s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 \ Hash-index rollback churn must terminate. A rejected/evaluated candidate can
 \ roll NDICT and CP back while leaving stale HIDX slots. Inserts must reuse
 \ those stale slots instead of probing forever once the fixed table fills.
+\ Unchecked span: the churn rolls ndict/cp back by hand WITHOUT rolling the
+\ checker registries, so checked evaluate would re-register ES-HIDX-CHURNED
+\ 20000 times against a dictionary that forgot it - the raw-dictionary churn
+\ is the mechanism under test. Queued owner: habu-seal-set-check-b3676b33
+\ migrates test set-check spans behind the friend latch.
 variable ES-HIDX-ND
 variable ES-HIDX-CP
 : ES-HIDX-SRC$ ( -- ptr u8 n )

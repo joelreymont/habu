@@ -683,7 +683,8 @@ src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 109
-src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
+src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
+src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
@@ -774,7 +775,7 @@ test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/type-layout-lower-pending.f test-metaprog habu-tfam-12-layout-057181a9 3
 test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 49
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
-test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
+test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:ERR@ test-metaprog habu-audit-trusted-inventory-3a950436

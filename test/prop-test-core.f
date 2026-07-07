@@ -178,6 +178,10 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 TRUSTED: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
+\ Differential boundary: certification already happened via CHECK! in CHK;
+\ the compile stage runs unchecked so the fuzzer measures the candidate's
+\ true runtime arity without re-entering the hook. Queued owner:
+\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
 TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    0 set-check
    evaluate
@@ -282,6 +286,9 @@ variable BSAVE
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
+\ Differential boundary: deliberately compiles a checker-REJECTED body to
+\ confirm a false reject - unchecked compile is the point. Queued owner:
+\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  ['] PROP-CHECK-HOOK set-check
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
