@@ -196,6 +196,30 @@ TRUSTED: BITS>R ( n -- r ) ;
    SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S rsrc CG-R s" , 4;" CG-S CG-LINE
    off ;
 
+\ --- broadcast-operand load offsets (mirror the executor EX-BC@ element mapping) ---
+\ A region input whose shape is a legal broadcast of the region shape loads a REMAPPED
+\ flat index off the shared grid index reg; C (the region output cols) is an emit-time
+\ immediate, so the remap needs no extra kernel param. See maki/bcast.f for the classes.
+\ MOD-OFF: a 1xC row-broadcast reads element (e mod C) -> byte offset (e mod C)*4.
+: EMIT-MOD-OFF ( n n -- n ) {: flatr:n C:n :}
+   CG-NEXT-R {: rj:n :}
+   SB-RESET s" rem.u32 " CG-S rj CG-R s" , " CG-S flatr CG-R s" , " CG-S C SB-U s" ;" CG-S CG-LINE
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S rj CG-R s" , 4;" CG-S CG-LINE
+   off ;
+\ DIV-OFF: an Rx1 col-broadcast reads element (e / C) -> byte offset (e / C)*4.
+: EMIT-DIV-OFF ( n n -- n ) {: flatr:n C:n :}
+   CG-NEXT-R {: ri:n :}
+   SB-RESET s" div.u32 " CG-S ri CG-R s" , " CG-S flatr CG-R s" , " CG-S C SB-U s" ;" CG-S CG-LINE
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S ri CG-R s" , 4;" CG-S CG-LINE
+   off ;
+\ ZERO-OFF: a 1x1 scalar broadcast reads element 0 -> a constant zero byte offset.
+: EMIT-ZERO-OFF ( -- n )
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mov.u64 " CG-S off CG-RD s" , 0;" CG-S CG-LINE
+   off ;
+
 \ LOAD: masked coalesced load from span base + ctx offset; returns tile f reg.
 : EMIT-LOAD ( n n -- n ) {: spanrd ctxrd :}
    CG-NEXT-RD {: a :}

@@ -16,12 +16,20 @@
 \ host references op-for-op so the device f32 output matches F64>F32(host) under the
 \ section 11 tolerance (proven by maki/lower-golden.f LOWER-GOLDEN).
 \
+\ BROADCAST operands (bias/scale): a region input whose shape is a legal broadcast of the
+\ region shape (1xC row, 1x1 scalar, Rx1 column) is loaded with a REMAPPED flat index that
+\ mirrors the host executor EX-BC@ - 1xC reads [e mod C], 1x1 reads [0], Rx1 reads [e/C]
+\ (maki/bcast.f classifies; lib/ptx/cg.f EMIT-MOD-OFF/ZERO-OFF/DIV-OFF emit the offset).
+\ Broadcast inputs stay ordinary kernel inputs (no planner change): only their per-input
+\ load offset differs from the shared coalesced offset. OP-BIAS lowers as EMIT-ADD and
+\ OP-SCALE as EMIT-MUL, matching the executor's scalar references.
+\
 \ Fail closed: a non-elementwise region (LEW-NOTEW), an op not in the v1 chain set
 \ (LEW-OP), more than 4 region inputs (LEW-INPUTS, v1 cap), a region without exactly
-\ one materialized output (LEW-MULTIOUT), and any region input whose element count is
-\ not the full N i.e. a broadcast operand (LEW-BCAST) are named throws. The analysis
-\ runs BEFORE any PTX is emitted, so a rejected region emits nothing. maki -> habu
-\ only; lower-ew owns -5170..-5176. Load after the cg emit stack (see requires).
+\ one materialized output (LEW-MULTIOUT), and any region input whose shape is not a legal
+\ broadcast of the region shape - a dim that is neither 1 nor full (LEW-BCAST) - are named
+\ throws. The analysis runs BEFORE any PTX is emitted, so a rejected region emits nothing.
+\ maki -> habu only; lower-ew owns -5170..-5176. Load after the cg emit stack (see requires).
 
 require lib/errors.f
 require lib/string.f
@@ -39,12 +47,13 @@ require maki/op-registry.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/move-view.f
+require maki/bcast.f
 
 -5170 constant E-LEW-NOTEW    \ region class is not pure elementwise
 -5171 constant E-LEW-OP       \ op in the region chain is not a v1-supported elementwise op
 -5172 constant E-LEW-INPUTS   \ region has more than the v1 input cap (4)
 -5173 constant E-LEW-MULTIOUT \ region does not have exactly one materialized output
--5174 constant E-LEW-BCAST    \ a region input is not the full region shape (broadcast, v1)
+-5174 constant E-LEW-BCAST    \ a region input shape is not a legal broadcast (a dim neither 1 nor full)
 -5175 constant E-LEW-REG      \ node/input register-map index out of range
 -5176 constant E-LEW-CAP      \ driver text buffer capacity exceeded
 
@@ -56,6 +65,7 @@ private
 
 create LEW-INS    LEW-MAX-IN cells allot   \ ordered external-input operand refs
 create LEW-IN-REG LEW-MAX-IN cells allot   \ loaded %f tile register per external input
+create LEW-IN-BC  LEW-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LEW-NODE-REG LEW-NCAP cells allot   \ result %f register per region-member node
 variable LEW-NIN                            \ region input count
 variable LEW-OUTNODE                        \ the single materialized region-output node
@@ -71,9 +81,12 @@ variable LEW-RID                            \ region id being lowered
    mix  1 CLASS-EW lshift  1 CLASS-MOVEMENT lshift or  invert and 0= ;
 
 \ ---- supported op set (v1 elementwise chain) -------------------------------
+\ BIAS/SCALE join the set as broadcast binary ops (their param operand is a 1xC / 1x1
+\ broadcast); they lower to the same add.rn / mul.rn the executor uses (EX-EW2-EL).
 : LEW-OP-OK? ( n -- bool ) {: op:n :}
    op OP-RELU = op OP-GELU = or op OP-SILU = or
-   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or ;
+   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or
+   op OP-BIAS = or op OP-SCALE = or ;
 \ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
 \ chained / mat / non-slot source before any emit).
@@ -118,16 +131,23 @@ variable LEW-RID                            \ region id being lowered
    -1 LEW-OUTNODE !
    MIR-N@ 0 ?do  i rid LEW-IN-REGION? i MIR-MAT@ and if i LEW-OUTNODE ! then  loop ;
 
-\ ---- shape check (flat kernel: every buffer is exactly N elements) ----------
+\ ---- broadcast classification (flat kernel: each input reads a legal broadcast) -----
 : LEW-OUT-ELEMS ( -- n )  LEW-OUTNODE @ dup MIR-ROWS@ swap MIR-COLS@ * ;
-: LEW-REF-ELEMS ( n -- n ) {: ref:n :}
-   ref MIR-REF-INPUT? if
-      ref MIR-REF-SLOT dup MIR-SLOT-ROWS@ swap MIR-SLOT-COLS@ *
-   else ref dup MIR-ROWS@ swap MIR-COLS@ * then ;
-: LEW-CHECK-SHAPES ( -- )
-   LEW-OUT-ELEMS {: n:n :}
+: LEW-ROWS ( -- n )  LEW-OUTNODE @ MIR-ROWS@ ;
+: LEW-COLS ( -- n )  LEW-OUTNODE @ MIR-COLS@ ;
+: LEW-REF-ROWS ( n -- n ) {: ref:n :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
+: LEW-REF-COLS ( n -- n ) {: ref:n :}
+   ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
+\ classify each input's shape vs the region shape; an illegal (non-1-non-full dim) fails
+\ closed, else record its broadcast class for the per-input load offset (LEW-LOAD-IN).
+: LEW-CLASSIFY-INS ( -- )
+   LEW-ROWS {: R:n :}  LEW-COLS {: C:n :}
    LEW-NIN @ 0 ?do
-      LEW-INS i cells + @ LEW-REF-ELEMS n <> if E-LEW-BCAST throw then
+      LEW-INS i cells + @ {: ref:n :}
+      ref LEW-REF-ROWS  ref LEW-REF-COLS  R C  BC-CLASS {: cls:n :}
+      cls BC-ILLEGAL = if E-LEW-BCAST throw then
+      cls LEW-IN-BC i cells + !
    loop ;
 
 public
@@ -138,7 +158,7 @@ public
    rid LEW-CHECK-OPS
    rid LEW-COLLECT-INS
    rid LEW-FIND-OUT
-   LEW-CHECK-SHAPES ;
+   LEW-CLASSIFY-INS ;
 
 \ ---- analysis accessors (lower-launch / lower-golden read these) ------------
 : LEW-NIN@ ( -- n )      LEW-NIN @ ;
@@ -188,9 +208,20 @@ private
    1 CG-NF !  LEW-NIN @ 2 + CG-NRD !  2 CG-NR !  1 CG-NP !  0 CG-NL ! ;
 
 \ ---- body: grid ctx, per-input loads, op chain, store -----------------------
-\ Load input i: a plain / FREE-folded input reads the shared coalesced byte offset (its base
-\ was pre-advanced by LEW-APPLY-VIEWS); a STAGED transpose reads a per-element remapped offset
-\ off the flat index (src_flat = (e mod dstC)*srcC + e/dstC), so its base stays at the slot origin.
+\ ctx byte-offset for a NON-STAGED input i: a FULL operand reads the shared coalesced offset
+\ (its base was pre-advanced by LEW-APPLY-VIEWS); a broadcast operand reads the executor-matching
+\ remap off the flat index - 1xC [e mod C], Rx1 [e/C], 1x1 [0] (maki/bcast.f).
+: LEW-BC-OFF ( n n n -- n ) {: i:n off:n flatr:n :}
+   i cells LEW-IN-BC + @ case
+      BC-FULL   of off endof
+      BC-ROW    of flatr LEW-COLS EMIT-MOD-OFF endof
+      BC-COL    of flatr LEW-COLS EMIT-DIV-OFF endof
+      BC-SCALAR of EMIT-ZERO-OFF endof
+      drop E-LEW-BCAST throw
+   endcase ;
+\ Load input i: a STAGED transpose reads a per-element remapped offset off the flat index
+\ (src_flat = (e mod dstC)*srcC + e/dstC), so its base stays at the slot origin; otherwise the
+\ per-class broadcast/coalesced offset (LEW-BC-OFF) drives the load.
 \ PERF: the transpose read is STRIDED (adjacent lanes stride by srcC), so folding trades a
 \ materialization pass for uncoalesced loads; whether it wins over materialize-then-coalesced is
 \ a device question (measure-before-believing, docs/eval-triton.md 3c) - goldens pending-zed.
@@ -201,7 +232,8 @@ private
       flatr dstc srcc EMIT-XPOSE-OFF {: roff:n :}
       i 1+ roff EMIT-LOAD  LEW-IN-REG i cells + !
    else
-      i 1+ off EMIT-LOAD  LEW-IN-REG i cells + !
+      i off flatr LEW-BC-OFF {: ctxoff:n :}
+      i 1+ ctxoff EMIT-LOAD  LEW-IN-REG i cells + !
    then ;
 : LEW-LOADS ( n n -- ) {: off:n flatr:n :}       \ load each input at its resolved ctx offset
    LEW-NIN @ 0 ?do  i off flatr LEW-LOAD-IN  loop ;
@@ -212,7 +244,9 @@ private
       OP-SILU          of nd 0 LEW-OPREG EMIT-SILU  endof
       OP-ADD           of nd LEW-BINREGS EMIT-ADD   endof
       OP-RESIDUAL-ADD  of nd LEW-BINREGS EMIT-ADD   endof
+      OP-BIAS          of nd LEW-BINREGS EMIT-ADD   endof
       OP-MUL           of nd LEW-BINREGS EMIT-MUL   endof
+      OP-SCALE         of nd LEW-BINREGS EMIT-MUL   endof
       E-LEW-OP throw
    endcase
    nd LEW-NR! ;
