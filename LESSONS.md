@@ -11,6 +11,10 @@ Last updated: 2026-07-07
   SUMV metadata, validate it with `TFAM-CTOR-WORD?`, resolve the record through
   xref, then native `prot-wid-add` the wordlist. Native seal rejects need a child
   process fixture because rc 84 exits the engine and cannot be caught in-process.
+  Calling an unchecked-prefix predicate from checked xref code needs a `PRIM:`
+  effect row (type-family.f loads before xref.f in every context) — NOT a
+  `TRUSTED: ... evaluate` name-lookup wrapper, which launders the call and adds
+  a manifest row for a word that is lexically in scope.
 - **bin/hb keeps NO baked checker DATA — the boot prefix re-parses from disk:**
   `EMIT-COLD-PREFIX` (habu2.f PFX-LOAD-BASE-FILES) reloads util→checker→
   type-family→…→sha256→combinators→xref at EVERY boot, so top-level writes to

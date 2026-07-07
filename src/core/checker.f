@@ -3900,6 +3900,7 @@ PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: SEAL-CAPTURE   PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
+PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;

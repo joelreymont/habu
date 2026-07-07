@@ -466,7 +466,7 @@ create AXBUF AXBUF-CAP allot
 : AX-GEN-LIST ( -- ptr u8 n )
    s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
 : AX-MEM-LIST ( -- ptr u8 n )
-   s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci type " ;
+   s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
    s"  f+ f- f* f/ fnegate fabs fsqrt f< f> f= f0< f0= f>s " ;
 : AX-NOEXEC-A ( -- ptr u8 n )
@@ -486,8 +486,13 @@ create AXBUF AXBUF-CAP allot
 \ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
 \ dies) are likewise difftested in AX-GEN-LIST; locw@/locw-cum@ carry the same
 \ 76-die index guard as wf-tokix@ (LOCW-IX-GUARD, checker.f) so they sit here.
+\ prot-wid-add mutates the sealed friend-band protected-WID registry (a
+\ seal-capture-class live seal mutation) and its overflow path exits the
+\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
+\ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
+\ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw@ locw-cum@ " ;
+   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw@ locw-cum@ " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
@@ -525,6 +530,7 @@ create AXBUF AXBUF-CAP allot
    2dup s" type" AX-STR= if 2drop s" AXBUF 0 " exit then
    2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
    2dup s" core-str=ci" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
+   2dup s" tfam-ctor-word?" AX-STR= if 2drop s" AXBUF 3 " exit then
    2drop s"  " ;
 
 \ ---- runner builders: PBUF := "depth BASE ! <ops> <name> depth BASE @ - CLEAR-MEAS"
