@@ -2346,3 +2346,14 @@ unchanged (148855). Keys for milestone 2:
   bits of the raw f32 register, so `ld.shared.b32` with NO cvt is a valid tf32
   feed (truncation vs cvt.rna RNE: <1 ulp tf32, inside the licensed rtol 2e-3;
   keep cvt.rna where the golden must stay bit-identical).
+- **bin/hb bakes ONLY primitives - a generated `constant` is re-read source, not
+  image data.** The stage source's colon words/constants (the whole checker
+  included) are re-parsed from the checkout at every boot (PFX-LOAD-BASE-FILES);
+  EMIT-DICT bakes just the #PL primitive registry, and the AOT boot-run seed
+  arms only on the interactive REPL entry. So "bake a digest into the image and
+  verify at startup" designs need a metacompiler baked-data capability (dot
+  habu-baked-boot-data), not an emitted source line — an injected boot token
+  (VERIFY-BOOT-PIN) died E-UNDEFINED on every boot and bricked self-rebuild
+  (restore bin/hb from a sibling checkout). Corollary: a fail-closed-by-default
+  boot check deadlocks self-hosting — the rebuild command boots the engine over
+  the very prefix it needs to rebuild; default off/warn, strict opt-in.
