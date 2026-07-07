@@ -528,3 +528,65 @@ forward-lookup(name)->xt == the original target (146 OK / 0 bad) — boot LFIND(
 resolves every callee to the exact source address. Combined with the AOTF-D
 execution fixture (seeded relocated word runs correctly), the capture+name-reloc
 is proven faithful for the real REPL.
+
+## DECISION ANALYSIS + CURRENT-STATE VERDICT (2026-07-07, head 43cca9d7)
+
+FINDING THAT CHANGES THE DECISION: the decision is not just made, it is
+LANDED IN PRODUCTION. At head, src/habu/stdin.f GO emits an EMPTY LSRC
+(stdin.f:97 "empty LSRC: the REPL is seeded, not re-parsed"); CAPTURE-REPL
+(:84) compiles the REPL/stepper/debugger once in the metabuild host and
+ACAP-CAPTURE captures blob + dict records + call/DATA/CODE relocation tables;
+EM-SEED-AOT seeds them at boot as CODE. The ~19 KB of baked REPL source text
+this dot set out to remove is GONE from bin/hb; the per-tty-start unchecked
+compile it wanted to eliminate is GONE (no source to parse at startup). The
+Approach-3 name-relocated N-word seed (the dot's own recommendation) is the
+shipped mechanism.
+
+OPTIONS (as resolved):
+1. Keep baked source (original state) - REJECTED and removed.
+2. Checkout-load the bundle (~116 KB, smallest) - REJECTED by user: a bare
+   bin/hb with no checkout must still have the REPL/debugger. Standing.
+3. AOT-compile into the binary, seed at boot - CHOSEN and IMPLEMENTED.
+
+COSTS, reconciled against the measurements in this dot:
+- SIZE: the original motivation (~132 KB -> ~116 KB, under a page boundary)
+  was a CHECKOUT-LOAD win and does NOT transfer to AOT. Measured: the AOT
+  section (blob 21468 + records + reloc + name pool, minimal encoding
+  24431 B) minus the 11.9 KB dropped LSRC is NET +12.5 KB - baking compiled
+  code (~1.8x its source) is growth, not shrink. bin/hb at head is 132343 B
+  (= GB-SIZE-BASELINE-MACOS), i.e. size-neutral-to-slightly-up, NOT the
+  ~116 KB the dot's headline promised. That headline is obsolete: AOT was
+  never a size play once measured. The ~100 KB target is SEPARATE work (the
+  ~39 KB C-SOURCE-STDIN cold-prefix loader block dominates, not the REPL).
+- STARTUP: per-boot REPL compile eliminated (seed + LFIND-relocate is cheaper
+  than parse+check); the dot recorded ~neutral at M1 scale, favorable at full.
+- SOUNDNESS: the per-tty-start `0 set-check` compile is gone. The compile now
+  happens ONCE in the metabuild host through TRUSTED: EVAL-HOST
+  (stdin.f:81, an `evaluate` boundary, inventoried). The INSTALL raw-xt-cell
+  blocker from the M2 certification note is RESOLVED at head: repl.f now uses
+  a typed `defer REPL-READ` + `[: RD-LINE ;] is REPL-READ` (repl.f:26,155,
+  164), so the execution-vector pattern the checker could not express is gone.
+
+WHAT THE AOT-REPL MILESTONE ALREADY CHANGED (delta this dot drove):
+- M1: one-word AOT seed end-to-end, fixpoint byte-identical.
+- Snapshot determinism: two-build bit-identical images (prerequisite, done).
+- M2/Approach-3: N-word capture + reverse-name call relocation + DATA/CODE
+  literal relocation + boot-run install-tail; REPL source dropped from LSRC.
+- Snapshot-RESTORE machinery declared dead (architecture correction: habu
+  builds binaries, never restores images) - retirement tracked by the OPEN
+  dot habu-retire-snapshot-restore-3098fa63.
+
+RECOMMENDATION: this DECISION dot is DISCHARGED - the decision (AOT into the
+binary, not checkout-load) is made and the mechanism is in production with the
+source unbaked. Close it as decided+implemented. The remaining work is
+execution/hardening already owned elsewhere, NOT decisions:
+1. Certification completion: confirm/finish that the captured REPL compiles
+   CHECKED in the host (EVAL-HOST is today a TRUSTED evaluate boundary); the
+   INSTALL blocker is cleared, so the residual is the trust-lint manifest cap
+   and running the checker over the capture path. -> fold into the
+   type-habu / retire-TRUSTED epic, not this dot.
+2. Snapshot-restore retirement -> habu-retire-snapshot-restore-3098fa63 (open).
+3. ~100 KB size target -> a NEW size-focused dot against the C-SOURCE-STDIN
+   cold-prefix-loader (~39 KB), since AOT is proven size-neutral. The stale
+   "~116 KB" headline in this dot's summary should not be inherited as a goal.
+No code in this analysis; the disposition above is the deliverable.
