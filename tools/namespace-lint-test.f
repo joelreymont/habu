@@ -1,0 +1,66 @@
+\ namespace-lint-test.f - checked fixtures for the maki namespace ledger lint.
+\ Run: bin/hb --load tools/namespace-lint-test.f
+\ Requiring the core also lets MNLT-LIVE run the real repo ledger (report-only).
+\ Load after lib/test.f and tools/namespace-lint-core.f.
+
+require lib/errors.f
+require lib/string.f
+require lib/test.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/namespace-lint-core.f
+
+: MNLT-FILES ( -- )
+   \ maki source selection + documented exemptions
+   s" maki/eval.f"       NL-MAKI-SRC? TTRUE
+   s" lib/string.f"      NL-MAKI-SRC? TFALSE
+   s" maki/eval-test.f"  NL-SKIP-FILE? TTRUE     \ test scaffolding is exempt
+   s" maki/array.f"      NL-SKIP-FILE? TTRUE     \ documented ARRAY substrate
+   s" maki/eval.f"       NL-SKIP-FILE? TFALSE ;
+
+: MNLT-DETECT ( -- )
+   \ a definition at global scope is a finding
+   s" : SQUARE dup * ;"  NL-COUNT 1 T=
+   s" 5 constant FOO"     NL-COUNT 1 T=
+   s" variable V"         NL-COUNT 1 T=
+   s" create BUF 4 allot" NL-COUNT 1 T=
+   s" DEFTYPE handle"     NL-COUNT 1 T= ;
+
+: MNLT-SCOPE ( -- )
+   \ inside a package it is NOT a finding; after end-package it is again
+   s" package MK : SQUARE dup * ; end-package"  NL-COUNT 0 T=
+   s" package MK end-package : LATE dup ;"       NL-COUNT 1 T= ;
+
+: MNLT-WHITELIST ( -- )
+   \ E-* cross-cutting error constants are exempt
+   s" -5 constant E-FOO"  NL-COUNT 0 T=
+   \ legacy BEGIN-/END- names count as legacy pairs, not primary findings
+   s" : BEGIN-BLOCK dup ;"  NL-COUNT 0 T=
+   s" : BEGIN-BLOCK dup ;"  NL-LEGACY-COUNT 1 T=
+   s" : END-BLOCK dup ;"    NL-LEGACY-COUNT 1 T= ;
+
+: MNLT-NO-FALSE-POSITIVE ( -- )
+   \ `\` line comments and `( )` stack comments are stripped by TOKENIZE
+   s" \ : NOTADEF in prose"        NL-COUNT 0 T=
+   s" : F ( a : b -- n ) dup ;"    NL-COUNT 1 T=
+   \ a defining word inside an s" ... " string body is NOT a definition
+   s\" : F .\" x : y\" ;"           NL-COUNT 1 T= ;
+
+: MNLT-LIVE ( -- )
+   \ the real maki tree still parses and the ledger runs without error
+   NAMESPACE-LINT ;
+
+: MNLT-MAIN ( -- )
+   T-RESET
+   MNLT-FILES
+   MNLT-DETECT
+   MNLT-SCOPE
+   MNLT-WHITELIST
+   MNLT-NO-FALSE-POSITIVE
+   T-REPORT
+   MNLT-LIVE ;
+
+MNLT-MAIN

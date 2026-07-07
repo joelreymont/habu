@@ -510,6 +510,9 @@ points stay listed.
 - `tools/maki-dep-lint-core.f` — one-way habu<-maki dependency guard: token-scans src/ lib/ test/ for a forbidden maki/ path reference.
 - `tools/maki-dep-lint.f` — CLI wrapper for the maki one-way dependency lint.
 - `tools/maki-dep-lint-test.f` — checked fixture coverage for the maki one-way dependency lint.
+- `tools/namespace-lint-core.f` — reports maki definitions at global scope (outside any subsystem package), whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs.
+- `tools/namespace-lint.f` — CLI wrapper for the maki namespace ledger lint (report-only).
+- `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace ledger lint.
 - `tools/string.f` — shared checked byte-string helper library.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
