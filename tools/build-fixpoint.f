@@ -529,17 +529,16 @@ variable BF-PIN-ON
 : BF-SOURCE-MUST-LACK ( ptr u8 n -- )
    BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
 
-\ habu2.f is emitted after `' HOOK set-check`, so every `:` emitter word here is
-\ compiled checked; a stack-effect regression in C-LOCAL-REF-*, EMIT-RESET-BUILDER,
-\ etc. fails the stage compile (blocking). Those typed-shape/bare-locals asserts
-\ were therefore retired in favor of that real check. Kept below: a same-type
-\ codegen role the checker cannot express (label-relative branch `LABEL@ B,` vs
-\ raw fetch-branch `@ B ;`; both stack-neutral). A dedicated codegen/role check is
-\ tracked by dot habu-preflight-codegen-role.
-: BF-PREFLIGHT-HABU2 ( -- )
-   s" src/habu/habu2.f" BF-READ-SOURCE
-   s" CLOC-MAIN LABEL@ B," BF-SOURCE-MUST-HAVE
-   s" CLOC-MAIN @ B ;" BF-SOURCE-MUST-LACK ;
+\ habu2.f/habu1.f preflight history: the typed-shape/bare-locals asserts were
+\ retired for the blocking stage compile (`' HOOK set-check` checks every
+\ emitter word), and the final same-type codegen-role asserts (habu2
+\ `CLOC-MAIN LABEL@ B,` must-have / `CLOC-MAIN @ B ;` must-lack; habu1
+\ `14 SP SPAWN-ADESC-OFF SZA-I @ + STR,` must-have / `... + over + STR,`
+\ must-lack) retired for the structural check tools/codegen-role-test.f
+\ (gate suite codegen-role): it runs the extracted real emitters on the live
+\ arm64 primitives and asserts the label-relative branch fixup and the exact
+\ descriptor-slot store progression, with corruption fixtures covering both
+\ historic bad forms.
 
 \ icode.f is emitted inside the check-off window (BFR-CHECK-OFF .. `' HOOK
 \ set-check`), so the stage compile does NOT check it. Only the non-blocking
@@ -568,22 +567,7 @@ variable BF-PIN-ON
    s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK
    s" {: a:ptr u :}" BF-SOURCE-MUST-LACK ;
 
-\ habu1.f is emitted after `' HOOK set-check`, so REG-PRIM/FPRIM/FPRIM-L/
-\ SPAWN-DUP2-ACTION/SPAWN-CHDIR-ACTION and friends are all compiled checked; a
-\ stack-effect regression (e.g. the historic spawn-descriptor underflow) fails
-\ the stage compile (blocking). Those typed-shape/bare-locals asserts were
-\ retired in favor of that real check. Kept below: the same-type codegen role the
-\ checker cannot express — the exact spawn descriptor-slot address computation
-\ (`SZA-I @ +` vs `over +`; both stack-neutral). Dedicated codegen/role check is
-\ tracked by dot habu-preflight-codegen-role.
-: BF-PREFLIGHT-HABU1 ( -- )
-   s" src/habu/habu1.f" BF-READ-SOURCE
-   s" 14 SP SPAWN-ADESC-OFF SZA-I @ + STR," BF-SOURCE-MUST-HAVE
-   s" 14 SP SPAWN-ADESC-OFF + over + STR," BF-SOURCE-MUST-LACK ;
-
 : BF-PREFLIGHT ( -- )
-   BF-PREFLIGHT-HABU2
-   BF-PREFLIGHT-HABU1
    BF-PREFLIGHT-ICODE ;
 
 : BF-TARGET-UNKNOWN ( -- )
