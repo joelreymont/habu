@@ -297,7 +297,7 @@ variable SUITE-TIMINGS
    label labelu GT-PROGRESS-PASS ;
 
 : SUITE-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu ms GS-SPAN ;
+   label labelu ms GS-SPAN-AUTH ;
 
 : SUITE-INSTALL-POOL-HOOKS ( -- )
    [: SUITE-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;

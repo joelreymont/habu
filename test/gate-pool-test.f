@@ -257,7 +257,7 @@ variable GPT-KR-LOG-U
    -1 GS-INITED ! ;
 
 : GPT-SPAN-HOOK ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu ms GS-SPAN ;
+   label labelu ms GS-SPAN-AUTH ;
 
 : GPT-SPAN-CHILD ( -- )
    s" fork span child" 7 GS-SPAN
@@ -312,6 +312,39 @@ variable GPT-KR-LOG-U
 : GPT-SPAN-MULTI-CASE ( -- )
    GPT-GS-SAVE!
    [: GPT-SPAN-MULTI-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
+\ The genuine label-collision mis-fire this dot prevents: a fork child that is
+\ ITSELF a nested pool parent (the TRWE-POST-CANDIDATE shape) emits its nested
+\ slot's authoritative pass-hook span through the same GS-SPAN entry its own
+\ self-suppression watches. When the nested slot's label bytes equal the
+\ child's own slot label, byte-matching suppression swallows an authoritative
+\ span the child-as-pool-parent owns: exactly two "fork nest label" spans must
+\ reach the tsv (outer pool's + nested pool's), not one.
+: GPT-NEST-INNER ( -- )
+   s" gate-pool nested inner" type cr ;
+
+: GPT-NEST-CHILD ( -- )
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-INNER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN ;
+
+: GPT-NEST-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-CHILD ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" fork nest label" GPT-COUNT$ 2 T= ;
+
+: GPT-NEST-CASE ( -- )
+   GPT-GS-SAVE!
+   [: GPT-NEST-CASE-BODY ;] catch GPT-SPAN-RC !
    GPT-GS-RESTORE
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
@@ -480,6 +513,7 @@ variable GPT-GK-SENTINEL-U
    GPT-BIG-CASE
    GPT-SPAN-CASE
    GPT-SPAN-MULTI-CASE
+   GPT-NEST-CASE
    GPT-INFRA-CASE
    GT-CLEANUP
    GPT-GROUP-KILL-CASE

@@ -2647,3 +2647,14 @@ unchanged (148855). Keys for milestone 2:
   "does this file check in context X?", the oracle must BE context X (the
   live stage/maker compile), not a tool whose own dependency closure
   overlaps the words under test.
+- **Suppression is process-local; ownership is not.** The gate's fork-child
+  span dedupe (GS-CHILD-OWNED?) only ever compares spans emitted within one
+  process, so a pool parent's authoritative pass-hook spans must bypass it
+  (GS-SPAN-AUTH) - a fork child that is itself a pool parent otherwise
+  swallows a nested slot's span whenever labels collide. And any identity
+  qualifier must be applied identically to both halves of a (test row, span)
+  pair; since pairs are always emitted by one process, qualifying with the
+  emitting process's generation keeps them matched, while qualifying
+  authoritative spans with the slot's generation would silently break
+  attribution. Split "who owns this record" from "which identity scope is it
+  in" before adding any qualifier to a byte-keyed dedupe.

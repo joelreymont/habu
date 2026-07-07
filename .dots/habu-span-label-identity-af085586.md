@@ -1,8 +1,10 @@
 ---
 title: Span label identity beyond string equality
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-07-08T00:00:00+02:00"
+close-reason: Span/test-row identity is now generation-qualified ("g<gen>:<label>"; gate-stats owns the generation, GT-POOL-GEN-CHILD! extends+publishes it per fork), GS-CHILD-LABEL!/GS-CHILD-OWNED? compare whole qualified identities, and pool pass-hooks emit through GS-SPAN-AUTH which bypasses the process-local self-suppression - fixing the proven nested-pool mis-fire (GPT-NEST-CASE red before, green after). GST-TEST-AUTH/GST-TEST-GEN-SPLIT pin bypass and guard-independent uniqueness; GS-LABEL-DUP-GUARD stays as the net. Spawn-slot generation inheritance is follow-up dot habu-spawn-slot-span-a335ae50.
 created-at: "2026-07-02T00:18:23.161682+02:00"
 ---
 
@@ -142,3 +144,45 @@ mis-fire on. It is the cross-territory change the earlier note flagged (frozen
 `GS-TEST`/`GS-SPAN`/`GS-CHILD-LABEL!` signatures, every emitter), NOT the smaller
 label-free redesign (b) hoped for. The hard `GS-LABEL-DUP-GUARD` remains the
 safety net so no collision regression can land silently while this is scheduled.
+
+## CLOSED: generation qualification landed (2026-07-08, from head 33e45d3e)
+
+Implemented centrally in gate-stats rather than per emitter, so no emitter can
+be missed: `test/gate-stats.f` now owns the generation (`GS-GEN$`/`GS-GEN!`,
+validated digits+dashes, init "0"); `GS-SPAN`, `GS-TEST`, and `GS-CHILD-LABEL!`
+qualify their labels as `g<gen>:<label>` (one `GS-QUAL$` scratch), so every
+self-completion emitter (GSI-SPAN/GSI-INCLUDE paths, GR-STATS tokens, GD spans,
+fixtures) and every test row is qualified automatically with the emitting
+process's generation, and the fork-child suppression byte-match compares whole
+qualified identities. `test/gate-pool.f` dropped its private gen buffer:
+`GT-POOL-GEN-CHILD!` builds inherited-gen + "-" + slot seq and publishes it via
+`GS-GEN!` (capture names read `GS-GEN$`).
+
+Two mechanisms, split deliberately:
+- Attribution uniqueness: (row, span) pairs are always emitted by the same
+  process, so both sides use the process gen and keep matching; labels reused
+  across fork generations no longer collide (GST-TEST-GEN-SPLIT: same raw label
+  under gens 7-1/7-2, different subjects -> label-dup=0, exact attribution).
+- Suppression soundness: suppression is process-local, so the nested-pool
+  mis-fire (a fork child that is itself a pool parent swallowing its nested
+  slot's authoritative span when raw labels collide - GPT-NEST-CASE, proven RED
+  on the pre-change tree, count 1 of 2 spans) is fixed by routing pool
+  pass-hooks (TR-POOL-PASS-SPAN, SUITE-POOL-PASS-SPAN, GPT-SPAN-HOOK) through
+  new `GS-SPAN-AUTH`, which qualifies but never self-suppresses: the pool owns
+  its slots' spans by construction. GST-TEST-AUTH pins the bypass at unit level.
+
+Scan side: `GS-UNQUAL$` strips the qualifier for stray-prefix classification
+and the slowest-test display, so gate summary accounting is unchanged
+(label-dup=0, span-stray-unexpected=0, same subject counts).
+
+Residual, tracked in dot habu-spawn-slot-span-a335ae50: SPAWNED pool slots start at
+gen "0" (no env inheritance yet), so processes across spawn boundaries can
+share a generation; any cross-subject qualified-label collision there still
+collides in the rows too, so it dies loudly via GS-LABEL-DUP-GUARD - fail
+closed, never a silent miscount. Suppression cannot mis-fire cross-process
+(child-label is process memory).
+
+The residual same-generation shadowing (a child sub-span byte-equal to the
+child's own qualified slot identity) is the irreducible ambiguity of any
+byte-keyed dedupe; no live emitter has that shape (pinned by GST-TEST-MULTI /
+GPT-SPAN-MULTI-CASE), and a test-row collision in that shape trips the guard.

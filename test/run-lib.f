@@ -592,7 +592,7 @@ create TR-CAL-PCT-BUF 4 allot
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
 
 : TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu ms GS-SPAN ;
+   label labelu ms GS-SPAN-AUTH ;
 
 : TR-INSTALL-POOL-HOOKS ( -- )
    [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;

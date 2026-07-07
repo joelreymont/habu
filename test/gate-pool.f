@@ -39,7 +39,6 @@ create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
 create GT-POOL-CHUNK GT-POOL-CHUNK-CAP allot
 create GT-POOL-NUM-BUF GT-POOL-NUM-CAP allot
 create GT-POOL-NAME-BUF GT-POOL-NAME-CAP allot
-create GT-POOL-GEN-BUF GT-POOL-NAME-CAP allot
 create GT-POOL-FALLBACK-BUF FS-PATH-CAP allot
 create GT-POOL-OUT-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-ERR-PATHS GT-POOL-MAX FS-PATH-CAP * allot
@@ -68,7 +67,6 @@ variable GT-POOL-REQ
 variable GT-POOL-SEQ
 variable GT-POOL-NUM-U
 variable GT-POOL-NAME-U
-variable GT-POOL-GEN-U
 variable GT-POOL-WR
 variable GT-POOL-WR-OFF
 variable GT-POOL-RED-N
@@ -86,6 +84,9 @@ variable GT-POOL-DEATH-MADE
 : GT-POOL-NO-PASS-HOOK ( ptr u8 n n -- )
    drop 2drop ;
 
+\ Receives ( label labelu ms ) for every passing slot. Hooks that record the
+\ span must emit through GS-SPAN-AUTH: the pool owns the slot, so its span is
+\ authoritative and must bypass the fork child's self-suppression.
 defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
 
 : GT-POOL-PASS-HOOK-DEFAULT! ( -- )
@@ -153,21 +154,6 @@ GT-POOL-ABORT-BARE!
    v GT-POOL-NUM+
    GT-POOL-NUM-BUF GT-POOL-NUM-U @ ;
 
-: GT-POOL-GEN$ ( -- ptr u8 n )
-   GT-POOL-GEN-BUF GT-POOL-GEN-U @ ;
-
-: GT-POOL-GEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-STR-BOUNDS GT-POOL-ABORT then
-   GT-POOL-GEN-U @ u + GT-POOL-NAME-CAP > if E-STR-CAPACITY GT-POOL-ABORT then
-   a GT-POOL-GEN-BUF GT-POOL-GEN-U @ + u BYTE-COPY
-   GT-POOL-GEN-U @ u + GT-POOL-GEN-U ! ;
-
-: GT-POOL-GEN-INIT ( -- )
-   0 GT-POOL-GEN-U !
-   s" 0" GT-POOL-GEN+ ;
-
-GT-POOL-GEN-INIT
-
 : GT-POOL-NAME-RESET ( -- )
    0 GT-POOL-NAME-U ! ;
 
@@ -183,7 +169,7 @@ GT-POOL-GEN-INIT
 : GT-POOL-CAPTURE-NAME ( n ptr u8 n -- ptr u8 n ) {: seq:n suf:ptr sufu:n :}
    GT-POOL-NAME-RESET
    s" pool-" GT-POOL-NAME+
-   GT-POOL-GEN$ GT-POOL-NAME+
+   GS-GEN$ GT-POOL-NAME+
    s" -" GT-POOL-NAME+
    seq GT-POOL-NUM$ GT-POOL-NAME+
    suf sufu GT-POOL-NAME+
@@ -532,9 +518,15 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 
+\ Fork-child generation: extend the inherited generation with this slot's seq
+\ and publish it to gate-stats, so every label this child stores or emits is
+\ qualified with the child's own identity path.
 : GT-POOL-GEN-CHILD! ( idx -- ) {: idx:idx :}
-   s" -" GT-POOL-GEN+
-   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-GEN+ ;
+   GT-POOL-NAME-RESET
+   GS-GEN$ GT-POOL-NAME+
+   s" -" GT-POOL-NAME+
+   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-NAME+
+   GT-POOL-NAME$ GS-GEN! ;
 
 : GT-POOL-FORK-EXIT ( n -- )
    s" " rot die ;

@@ -7,6 +7,10 @@ $40000 constant GS-CAP
 $200 constant GS-LINE-CAP
 $0A constant GS-LF
 $09 constant GS-TAB
+$67 constant GS-CHAR-G
+$3A constant GS-COLON
+$2D constant GS-DASH
+64 constant GS-GEN-CAP
 256 constant GS-TROW-MAX
 4 constant GS-SUBJ-N
 -2 constant GS-SUBJ-AMBIG
@@ -16,6 +20,8 @@ create GS-LINE-BUF GS-LINE-CAP allot
 create GS-BUF GS-CAP allot
 create GS-SLOW-LABEL GS-LINE-CAP allot
 create GS-CHILD-BUF GS-LINE-CAP allot
+create GS-GEN-BUF GS-GEN-CAP allot
+create GS-QUAL-BUF GS-LINE-CAP allot
 create GS-TROW-OFFS GS-TROW-MAX cells allot
 create GS-TROW-US GS-TROW-MAX cells allot
 create GS-TROW-SUBJS GS-TROW-MAX cells allot
@@ -36,6 +42,9 @@ variable GS-SPANS
 variable GS-SLOW-MS
 variable GS-SLOW-U
 variable GS-CHILD-U
+variable GS-GEN-U
+variable GS-GEN-I
+variable GS-UQ-I
 variable GS-TROW-N
 variable GS-LOAD-SPANS
 variable GS-LOAD-MS
@@ -83,6 +92,65 @@ variable GS-HELPER-SPAWN
 
 : GS-TRUE ( -- bool )
    0 0= ;
+
+: GS-DIGIT? ( n -- bool ) {: c:n :}
+   c STR-ZERO >= c STR-ZERO 10 + < and ;
+
+\ Generation: a per-process identity path ("0", "0-3", "0-3-7") rooted at "0"
+\ and extended by the pool at every fork (parent gen + "-" + slot seq). Span
+\ and test-row labels are qualified with it ("g<gen>:<label>") so equal label
+\ bytes emitted by different pool generations stay distinct identities.
+: GS-GEN$ ( -- ptr u8 n )
+   GS-GEN-BUF GS-GEN-U @ ;
+
+: GS-GEN-CHAR? ( n -- bool ) {: c:n :}
+   c GS-DIGIT? if GS-TRUE exit then
+   c GS-DASH = ;
+
+: GS-GEN-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 GS-GEN-I !
+   begin GS-GEN-I @ u < while
+      a GS-GEN-I @ BYTE+ c@ GS-GEN-CHAR? 0= if E-STR-BOUNDS throw then
+      GS-GEN-I @ 1+ GS-GEN-I !
+   repeat ;
+
+: GS-GEN! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1 < if E-STR-BOUNDS throw then
+   u GS-GEN-CAP > if E-STR-CAPACITY throw then
+   a u GS-GEN-CHECK
+   a GS-GEN-BUF u BYTE-COPY
+   u GS-GEN-U ! ;
+
+: GS-GEN-INIT ( -- )
+   s" 0" GS-GEN! ;
+
+GS-GEN-INIT
+
+: GS-QUAL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 0 < if E-STR-BOUNDS throw then
+   GS-GEN-U @ u + 2 + GS-LINE-CAP > if E-STR-CAPACITY throw then
+   GS-CHAR-G GS-QUAL-BUF c!
+   GS-GEN-BUF GS-QUAL-BUF 1 BYTE+ GS-GEN-U @ BYTE-COPY
+   GS-COLON GS-QUAL-BUF GS-GEN-U @ 1+ BYTE+ c!
+   a GS-QUAL-BUF GS-GEN-U @ 2 + BYTE+ u BYTE-COPY
+   GS-QUAL-BUF GS-GEN-U @ 2 + u + ;
+
+\ Strip a "g<gen>:" qualifier for display and stray classification; a label
+\ without one comes back unchanged.
+: GS-UNQUAL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 3 < if a u exit then
+   a c@ GS-CHAR-G <> if a u exit then
+   1 GS-UQ-I !
+   begin GS-UQ-I @ u < while
+      a GS-UQ-I @ BYTE+ c@ {: c:n :}
+      c GS-COLON = if
+         GS-UQ-I @ 1 = if a u exit then
+         a GS-UQ-I @ 1+ BYTE+ u GS-UQ-I @ 1+ - exit
+      then
+      c GS-GEN-CHAR? 0= if a u exit then
+      GS-UQ-I @ 1+ GS-UQ-I !
+   repeat
+   a u ;
 
 : GS-EMPTY$ ( -- ptr u8 n )
    GS-LINE-BUF 0 ;
@@ -172,17 +240,19 @@ variable GS-HELPER-SPAWN
    v 10 >= if v 10 / RECURSE then
    v 10 mod STR-ZERO + GS-LINE-C+ ;
 
-: GS-CHILD-LABEL! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-STR-BOUNDS throw then
-   u GS-LINE-CAP > if E-STR-CAPACITY throw then
+\ Store the fork child's own slot identity, qualified with the generation the
+\ pool set for this child, so the suppression byte-match below compares whole
+\ identities ("g<gen>:<label>"), never raw label bytes.
+: GS-CHILD-LABEL! ( ptr u8 n -- )
+   GS-QUAL$ {: a:ptr u:n :}
    a GS-CHILD-BUF u BYTE-COPY
    u GS-CHILD-U ! ;
 
-\ A fork child suppresses re-emitting the span for its own pool label because the
-\ parent emits the authoritative one. The match is by label bytes, so it is only
-\ sound while labels are unique subject keys; a label reused across subjects would
-\ suppress a span the pool does not own. That precondition is now witnessed by the
-\ GS-LABEL-DUP scan below (nonzero = a collision to fix at the label source).
+\ A fork child suppresses re-emitting the span for its own qualified slot
+\ identity because the parent pool emits the authoritative one (GS-SPAN-AUTH).
+\ Generation qualification keeps another generation's reuse of the same label
+\ bytes from matching; within one generation the label IS the identity, and a
+\ cross-subject reuse there is witnessed by GS-LABEL-DUP and its hard guard.
 : GS-CHILD-OWNED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    GS-CHILD-U @ 0= if GS-FALSE exit then
    a u GS-CHILD-BUF GS-CHILD-U @ STR= ;
@@ -199,8 +269,16 @@ variable GS-HELPER-SPAWN
    GS-PATH$ GS-LINE-BUF GS-LINE-U @ APPEND-FILE ;
 
 : GS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu GS-CHILD-OWNED? if exit then
-   s" span" label labelu ms GS-SPAN-EMIT ;
+   label labelu GS-QUAL$ {: ql:ptr qlu:n :}
+   ql qlu GS-CHILD-OWNED? if exit then
+   s" span" ql qlu ms GS-SPAN-EMIT ;
+
+\ Pool-authoritative completion span (pass hooks only): the emitting pool owns
+\ the slot, so this must never be self-suppressed - a fork child that is itself
+\ a pool parent emits its nested slots' authoritative spans here even when a
+\ nested label collides with the child's own slot label.
+: GS-SPAN-AUTH ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
+   s" span" label labelu GS-QUAL$ ms GS-SPAN-EMIT ;
 
 : GS-SPAN-LOAD ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    s" span-load" label labelu ms GS-SPAN-EMIT ;
@@ -214,7 +292,7 @@ variable GS-HELPER-SPAWN
    GS-LINE-RESET
    s" test" GS-LINE+
    GS-TAB+
-   label labelu GS-LINE+
+   label labelu GS-QUAL$ GS-LINE+
    GS-TAB+
    subj subju GS-LINE+
    GS-TAB+
@@ -308,9 +386,6 @@ variable GS-HELPER-SPAWN
    0 GS-LABEL-DUP !
    0 GS-TROW-N !
    GS-SUBJS-RESET ;
-
-: GS-DIGIT? ( n -- bool ) {: c:n :}
-   c STR-ZERO >= c STR-ZERO 10 + < and ;
 
 : GS-KIND-PREFIX? ( n n ptr u8 n -- bool ) {: off:n u:n key:ptr keyu:n :}
    u keyu 2 + < if GS-FALSE exit then
@@ -479,7 +554,7 @@ variable GS-HELPER-SPAWN
 
 : GS-STRAY+ ( ptr u8 n -- ) {: a:ptr u:n :}
    GS-SPAN-STRAY GS-INC
-   a u GS-STRAY-EXPECTED? if GS-SPAN-STRAY-EXPECTED GS-INC exit then
+   a u GS-UNQUAL$ GS-STRAY-EXPECTED? if GS-SPAN-STRAY-EXPECTED GS-INC exit then
    GS-SPAN-STRAY-UNEXPECTED GS-INC ;
 
 : GS-SUBJ+ ( ptr u8 n n n -- ) {: label:ptr labelu:n id:n ms:n :}
@@ -499,7 +574,7 @@ variable GS-HELPER-SPAWN
    GS-SPANS GS-INC
    GS-SPAN-V @ {: ms:n :}
    off u GS-SPAN-LABEL$ {: la:ptr lu:n :}
-   ms GS-SLOW-MS @ > if la lu ms GS-SLOW! then
+   ms GS-SLOW-MS @ > if la lu GS-UNQUAL$ ms GS-SLOW! then
    la lu la lu GS-LABEL-SUBJ ms GS-SUBJ+ ;
 
 : GS-COUNT-LOAD-SPAN ( n n -- ) {: off:n u:n :}
