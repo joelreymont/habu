@@ -36,7 +36,7 @@ TRUSTED: ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 \ ---- seeded PRNG (LCG) ----
-250 constant DEFAULT-COUNT
+500 constant DEFAULT-COUNT
 
 \ Default seed varies per run (mono-ns clock) so the fuzzer explores a fresh
 \ space each gate instead of a frozen 250-case regression; RUN-SEED is printed
@@ -659,10 +659,12 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" 1 die THEN
    s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
 
-: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N distinct-seed slots
+: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests + axiom census once, then N slots
    SELFTEST
    SELFTEST-SHRINK
    BAITS
+   AX-SELFTEST
+   AX-CENSUS
    FRESH-SEED SWEEP ;
 
 : PROP-MAIN ( -- )

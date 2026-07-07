@@ -11,6 +11,7 @@ require tools/jitdump-core.f
    s" bin/hb" GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    s" prop-test" GE-EXPECT-OK
    s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
+   s" census OK" s" prop-test axiom census did not run in the gate path" GE-EXPECT-OUT-HAS
    s" PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)" type cr ;
 
 : GDB-PROFILER-SOURCE ( -- )

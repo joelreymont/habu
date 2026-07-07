@@ -539,19 +539,35 @@ create TR-CAL-PCT-BUF 4 allot
    d 48 + TR-CAL-PCT-BUF i + c! ;
 
 \ The clamp guarantees 100..300, so the text is always exactly three digits.
-: TR-CAL-PCT$ ( -- ptr u8 n )
-   TR-CAL-PCT {: pct:n :}
+: TR-PCT$ ( n -- ptr u8 n ) {: pct:n :}
    pct 100 / 0 TR-CAL-PCT-DIGIT!
    pct 10 / 10 mod 1 TR-CAL-PCT-DIGIT!
    pct 10 mod 2 TR-CAL-PCT-DIGIT!
    TR-CAL-PCT-BUF 3 ;
 
-\ Export the measured load factor to spawned workers so suite budgets
-\ (lib/test/budget.f T-BUDGET-MS) scale with the same calibration the gate
-\ prints as cal-factor; forked/in-process suites read the cell TR-PREPARE
-\ sets directly.
+\ Structural pressure floor: startup calibration runs on an otherwise idle
+\ box (cal-factor 100), but the gate's OWN pool then oversubscribes it by the
+\ nested factor (pool ~= cores, x nested workers per slot), and suites spawned
+\ inside that window run ~nested-times slower than the calibration saw - the
+\ recurring -2502 class hit exactly the in-gate process-spawning suites at
+\ their nominal budgets. Floor the exported factor at nested x 100 so in-gate
+\ budgets carry the gate's known self-contention; TR-CAL-CLAMP keeps the
+\ hung-child bound at <= 3x nominal.
+: TR-POOL-PRESSURE-PCT ( -- n )
+   TR-NESTED-POOL @ 100 * TR-CAL-CLAMP ;
+
+: TR-LOAD-PCT-EXPORT ( -- n )
+   TR-CAL-PCT {: cal:n :}
+   TR-POOL-PRESSURE-PCT {: floor:n :}
+   cal floor < if floor exit then
+   cal ;
+
+\ Export the load factor to spawned workers so suite budgets
+\ (lib/test/budget.f T-BUDGET-MS) scale with the gate's measured calibration
+\ and its structural pool pressure; forked/in-process suites read the cell
+\ TR-PREPARE sets directly.
 : TR-LOAD-PCT-DEFAULT+ ( -- )
-   s" HB_LOAD_PCT" TR-CAL-PCT$ TR-DEFAULT+ ;
+   s" HB_LOAD_PCT" TR-LOAD-PCT-EXPORT TR-PCT$ TR-DEFAULT+ ;
 
 : TR-BUILD-CACHE-DEFAULT+ ( -- )
    TR-BUILD-CACHE-PATHS
@@ -1705,10 +1721,10 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-PREPARE ( -- )
    TR-CALIBRATE
-   TR-CAL-PCT T-BUDGET-PCT !
    TR-GATE-START!
    TR-CHECK-ARGS
    TR-CHECK-PROFILE
+   TR-LOAD-PCT-EXPORT T-BUDGET-PCT !
    TR-START
    TR-PRE-RESET
    TR-EXPECT-HB

@@ -49,15 +49,33 @@ package TRBC
 \ value is always exactly three digits - the worker-side parser relies on it.
 : PCT-TEXT-NOMINAL ( -- )
    TR-CAL-REF-MACOS-MS MACOS!
-   TR-CAL-PCT$ s" 100" T$= ;
+   TR-CAL-PCT TR-PCT$ s" 100" T$= ;
 
 : PCT-TEXT-SCALED ( -- )
    TR-CAL-REF-MACOS-MS 2 * MACOS!
-   TR-CAL-PCT$ s" 200" T$= ;
+   TR-CAL-PCT TR-PCT$ s" 200" T$= ;
 
 : PCT-TEXT-CLAMPED ( -- )
    TR-CAL-REF-MACOS-MS 10 * MACOS!
-   TR-CAL-PCT$ s" 300" T$= ;
+   TR-CAL-PCT TR-PCT$ s" 300" T$= ;
+
+\ The export floors the calibration at the gate's own pool pressure
+\ (nested x 100): an idle-box calibration still budgets for in-gate
+\ self-contention, while a heavy calibration wins over a light floor.
+: EXPORT-FLOORS-AT-PRESSURE ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   2 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 200 T= ;
+
+: EXPORT-KEEPS-HEAVY-CAL ( -- )
+   TR-CAL-REF-MACOS-MS 3 * MACOS!
+   2 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 300 T= ;
+
+: EXPORT-NO-NEST-NO-FLOOR ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   1 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 100 T= ;
 
 : MAIN ( -- )
    T-RESET
@@ -71,6 +89,9 @@ package TRBC
    PCT-TEXT-NOMINAL
    PCT-TEXT-SCALED
    PCT-TEXT-CLAMPED
+   EXPORT-FLOORS-AT-PRESSURE
+   EXPORT-KEEPS-HEAVY-CAL
+   EXPORT-NO-NEST-NO-FLOOR
    T-REPORT ;
 
 MAIN
