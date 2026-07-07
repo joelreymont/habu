@@ -101,6 +101,38 @@ tools/bootstrap.sh
 `HABU_BOOTSTRAP_CHECK_ONLY=1` builds the private Gforth/native bootstrap chain
 through `hb-stdin` and exits before replacing `bin/hb`.
 
+## DDC Audit (Diverse Double-Compiling)
+
+`tools/ddc-verify.f` is the explicit (never per-commit) trust audit: it builds
+`bin/hb` two ways — the native self-hosted fixpoint and the independent Gforth
+recovery chain (the CHECK_ONLY path above) — and requires byte-identical output.
+A seed backdoor would have to be mirrored in both the Gforth host and the native
+seed to survive the sha256 compare, reducing seed trust to "no coordinated
+cross-host backdoor". It is gated on `HABU_ALLOW_BOOTSTRAP=1`, like the launcher
+it drives.
+
+```sh
+HABU_ALLOW_BOOTSTRAP=1 bin/hb --load \
+  lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/fs-mutate.f \
+  lib/process.f lib/process-argv.f lib/process-env.f \
+  tools/ddc-verify.f tools/ddc-drive.f
+```
+
+where `tools/ddc-drive.f` is a one-line `DDC-MAIN`. The tool prints
+`ddc: byte-identical <sha>` and exits 0 on match, or `ddc: DIVERGENT` with both
+digests and the first differing byte offset and exits 1. It compares the current
+native `bin/hb` against a freshly Gforth-built `hb-stdin`, so ensure `bin/hb` is
+a fresh native fixpoint (`install --force`) before the audit.
+
+KNOWN GAP (2026-07-07): the two chains are NOT yet byte-identical — they diverge
+in ~678 `__text` bytes (plus the downstream code signature) that decode as
+`movz/movk` 64-bit address-immediate chains in the AOT-REPL blob. Both binaries
+are functionally identical (verified) and each chain is internally deterministic;
+the divergence is baked capture-host addresses that `EM-SEED-AOT` re-relocates at
+boot, so the byte values are dead. Canonicalizing those immediates at AOT capture
+(they are boot-relocated anyway) is required for full DDC byte-identity; tracked
+on dot `habu-ddc-cross-check-16562dae`.
+
 ## Refresh `bin/hb`
 
 After `bin/hb` exists, do not use Gforth for normal work:

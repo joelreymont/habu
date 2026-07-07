@@ -650,6 +650,7 @@ points stay listed.
 - `tools/repair-packet.f` — CLI entrypoint for repair packet generation.
 - `tools/diagnose-hb.f` — CLI entry that reports why bin/hb exits 74 outside the repo.
 - `tools/bench.f` — fixed Habu-timed kernels run on `bin/hb`.
+- `tools/ddc-verify.f` / `tools/ddc-verify-test.f` / `tools/ddc-drive.f` — Diverse Double-Compiling audit: builds bin/hb via the native fixpoint and the Gforth recovery chain and requires byte-identical output; explicit `HABU_ALLOW_BOOTSTRAP=1` audit, not per-commit.
 - `tools/why-threw.f` — throw-site diagnostic: runs a quotation under `catch` and, on a nonzero throw, reports the code plus the live fill of the shared string builders (SB, content-key CK/CK-ROW) before re-throwing, so an opaque capacity code (e.g. E-STR-CAPACITY) names its buffer in fork-worker/parallel-gate captures.
 - `tools/xref-test.f` — focused coverage for live dictionary xref words.
 - `tools/asm-src-test.f` / `tools/asm-checked-test.f` — ARM64 encoder source
