@@ -488,6 +488,62 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-ILAYOUT-GUARD
    s" PASS: interpret-mode layout transports fail closed" type cr ;
 
+\ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
+\ a tool closure needing more than DICT-CAP records died exit_group(77)
+\ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
+\ unattributable. The definer capacity arms must emit a fixed label first:
+\ `hb: dictionary full at: <token>`; rc 77 is the deterministic contract and
+\ stays. The fixture is Habu-generated and scales with the baked DICT-CAP
+\ (src/habu/layout.f is in the runtime prefix): DICT-CAP+1 unchecked trivial
+\ definitions always overflow regardless of the boot dictionary count.
+variable GE-DFULL-P                 \ generated-source cursor offset
+variable GE-DFULL-DIV               \ decimal-render divisor
+variable GE-DFULL-I                 \ copy/definition loop index
+
+: GE-DFULL-C ( ptr u8 n -- ) {: buf:ptr c:n :}
+   c buf GE-DFULL-P @ + c!
+   GE-DFULL-P @ 1+ GE-DFULL-P ! ;
+
+: GE-DFULL-S ( ptr u8 ptr u8 n -- ) {: buf:ptr a:ptr u:n :}
+   0 GE-DFULL-I !
+   begin GE-DFULL-I @ u < while
+      buf  a GE-DFULL-I @ + c@  GE-DFULL-C
+      GE-DFULL-I @ 1+ GE-DFULL-I !
+   repeat ;
+
+: GE-DFULL-DIGITS ( ptr u8 n -- ) {: buf:ptr i:n :}
+   10000 GE-DFULL-DIV !
+   begin GE-DFULL-DIV @ 0 > while
+      buf  i GE-DFULL-DIV @ / 10 mod 48 +  GE-DFULL-C
+      GE-DFULL-DIV @ 10 / GE-DFULL-DIV !
+   repeat ;
+
+: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNN ;\n`
+   buf 58 GE-DFULL-C  buf 32 GE-DFULL-C  buf 119 GE-DFULL-C
+   buf i GE-DFULL-DIGITS
+   buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
+
+: GE-DFULL-SOURCE ( -- ptr u8 n )                     \ generated define-past-cap program
+   DICT-CAP 1+ 16 * 32 + MEM-ALLOC-BYTES drop {: buf:ptr :}
+   0 GE-DFULL-P !
+   buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
+   0 GE-DFULL-I !
+   begin GE-DFULL-I @ DICT-CAP 1+ < while
+      buf GE-DFULL-I @ GE-DFULL-DEF
+      GE-DFULL-I @ 1+ GE-DFULL-I !
+   repeat
+   buf GE-DFULL-P @ ;
+
+: GE-DICT-FULL ( -- )
+   GE-DFULL-SOURCE {: src:ptr srcu:n :}
+   GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GE-SCRIPT-PATH GE-SCRIPT-U @ src srcu WRITE-ALL
+   GE-HB-RESET
+   GE-HB$ GE-SCRIPT-PATH GE-SCRIPT-U @ GE-TIMEOUT-MS GE-RUN-STDIN-FILE
+   77 s" dict-capacity exit rc" GE-EXPECT-RC
+   s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
+   s" PASS: dictionary-capacity exit is labeled" type cr ;
+
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
    s" divide by zero trap" GE-HB-RUN-STDIN-NZ
@@ -689,6 +745,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
+   GE-DICT-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN
