@@ -521,6 +521,28 @@ variable GDX-TRUST-MAN-U
    s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
    s" checked load accepted bad declared effect" GE-EXPECT-NONZERO ;
 
+\ A reject diagnostic whose expected/actual row is wider than RBUF-CAP (64) values
+\ must fail closed: the renderer caps the row instead of overflowing RBUF into
+\ adjacent DATA (which fed garbage type pointers to REND-TYPE -> SIGSEGV). 70
+\ layout values in the actual row exceed the cap; the child must still exit with
+\ the checker-reject rc and print the mismatch, never crash. (Red pre-fix: rc 134.)
+: GDX-RENDER-CAP-FAIL-CLOSED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zrc 0" GE-SRC-LINE
+   s"   VARIANT keep n ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" : ZRCK ( n -- zrc ) ZRC:KEEP ;" GE-SRC-LINE
+   s" : RENDER-CAP-MISUSE ( -- n ) " GE-SRC+
+   70 0 ?do s" 1 ZRCK " GE-SRC+ loop
+   s" ;" GE-SRC-LINE
+   s" render-cap.f" GDX-WRITE-SRC
+   s" --load" GDX-ARG+
+   s" render-cap.f" GDX-PATH-ARGV+
+   s" bin/hb" GE-TIMEOUT-MS GE-RUN-ENV
+   70 s" wide diagnostic row must fail closed with rc 70, not crash" GE-EXPECT-RC
+   s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
+
 : GDX-ALL-ERRORS-SOURCE ( -- )
    GE-SRC-RESET
    s" : GDX-AE-OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
@@ -605,6 +627,7 @@ variable GDX-TRUST-MAN-U
    GDX-UNKNOWN-SIGNATURE
    GDX-MALFORMED-QUOTATION-SIGNATURE
    GDX-BAD-PARAM-SIGNATURE
+   GDX-RENDER-CAP-FAIL-CLOSED
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 

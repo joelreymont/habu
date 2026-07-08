@@ -235,10 +235,16 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
    endcase ;
 
 : REND-TYPE {: t:n :}  t 0 0 QREND ;
-create RBUF 64 cells allot   variable RBN
+64 constant RBUF-CAP                             \ diagnostic-row render budget (values)
+create RBUF RBUF-CAP cells allot   variable RBN
 variable RSHOW-DST
 
+\ RBUF+ appends one collected row value; a reject diagnostic must fail closed, so
+\ a pathological row (>RBUF-CAP values) is truncated here rather than overflowing
+\ RBUF into adjacent DATA (which produced garbage type pointers -> SIGSEGV in the
+\ later REND-TYPE walk). The checker still rejects with its normal diagnostic + rc.
 : RBUF+ ( n -- )
+   RBN @ RBUF-CAP >= IF drop EXIT THEN
    RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
 
 \ REND-COLLECT compacts each full hidden-field run to ONE logical family term
