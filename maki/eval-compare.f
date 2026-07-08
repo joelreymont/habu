@@ -16,6 +16,14 @@
 \ mechanism against the actual target: Triton catches name/type errors at compile
 \ but the stack-discipline class only at runtime. Load after maki/eval-device.f.
 
+\ eval-compare reopens package EVAL as the CMP- ablation module. Its verdict-source
+\ words (GRADE-CANDIDATE / GRADE-NOCHECK-CANDIDATE / EVN-*) live in the same package
+\ (maki/eval-device.f), so they resolve bare here; the CMP- state + API and the
+\ device fixture stay private to this file.
+package EVAL
+
+private
+
 variable NC0  variable NC1  variable NC2     \ counts of verdict 0 / 1 / 2
 variable NU-EMIT  variable NU-PTXAS  variable NU-WRONG  variable NU-GREEN
 
@@ -82,3 +90,5 @@ s" WITHOUT checker later failures: emit=" type NU-EMIT @ . s" ptxas=" type NU-PT
 s" => the static checker catches the type/stack bug class for free; that is the checker's value. Confirmed vs real Triton on the Orin (docs/eval-triton.md): Triton catches name/type errors at compile but the stack-discipline class only at runtime (3/5 battery bugs slipped to runtime)." type cr
 
 T-REPORT
+
+end-package
