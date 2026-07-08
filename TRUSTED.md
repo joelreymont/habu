@@ -625,10 +625,17 @@ generated set is EMPTY: the former image-writer window (`0 set-check` span +
 synthetic TRUST rows (`ASM-CODE`, `BUILD-IMAGE`, `BUILD-SNAP-HDR`,
 `SET-SIGID`, `CODESIG2`) were retired — src/os/{linux/elf.f,linux/sign.f,
 macos/macho.f,macos/sign2.f} compile checked in stage2, with their effects
-coming from the checked definitions themselves. The only remaining generated
+coming from the checked definitions themselves. The remaining generated
 check-state transitions are the refresh prelude's `BFR-CHECK-OFF` call (a
-hide.f TRUSTED word with its own row) and `src/core/check-hook.f`'s own
-`' HOOK set-check`.
+hide.f TRUSTED word with its own row), `src/core/check-hook.f`'s own
+`' HOOK set-check`, and the check-CLI runner prelude that
+`tools/check-core.f` `CHK-BUILD-PREFIX` generates into every check child: a
+`0 set-check` window followed by the `CHECK-F-HOOK` definition and its
+`' CHECK-F-HOOK set-check` re-arm, fail-closed via `70 throw`. That generated
+install is lexer-invisible to hook-identity policing by design; its shape is
+pinned by the `check/prelude-hook-shape` regression
+(`tools/check-test-lib.f`), which rejects any other installed hook name or a
+missing re-arm in the generated text.
 
 Reintroducing generated trust requires updating the build-fixpoint
 source-shape regressions (`tools/build-fixpoint-test.f` asserts stage2

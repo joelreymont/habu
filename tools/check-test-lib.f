@@ -617,6 +617,75 @@ variable CKT-PAR-U
    s" lib/process-cwd.f" CKT-PAR-ENTRY
    s" lib/test/suite-test.f" CKT-PAR-ENTRY ;
 
+\ Source-shape pin for the GENERATED check-runner prelude (dot
+\ habu-enumerate-generated-check-4109899a): CHK-BUILD-PREFIX emits a
+\ deliberate `0 set-check` window into every check-CLI child and must re-arm
+\ checking by installing EXACTLY the audited CHECK-F-HOOK, whose body
+\ re-enables fail-closed (70 throw). Generated source is lexer-invisible to
+\ checked-boundary-lint and trusted-inventory (string literals are skipped by
+\ design), so this shape regression IS the policing for the generated seam:
+\ every set-check line in the generated text must be one of the two audited
+\ shapes, with exactly one hook install. The doctored legs prove the scanner
+\ has teeth - a rogue install name or a missing install rejects.
+1024 constant CKTP-DOC-CAP
+create CKTP-DOC CKTP-DOC-CAP allot
+variable CKTP-I  variable CKTP-START
+variable CKTP-BAD  variable CKTP-INSTALLS
+variable CKTP-DOC-U
+
+: CKTP-LINE-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" 0 set-check" LINT-STR= if LINT-TRUE exit then
+   a u s" ' CHECK-F-HOOK set-check" LINT-STR= ;
+
+: CKTP-NOTE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" set-check" CONTAINS? 0= if exit then
+   a u s" ' CHECK-F-HOOK set-check" LINT-STR= if CKTP-INSTALLS @ 1+ CKTP-INSTALLS ! then
+   a u CKTP-LINE-OK? 0= if -1 CKTP-BAD ! then ;
+
+: CKTP-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 CKTP-BAD !  0 CKTP-INSTALLS !
+   0 CKTP-START !  0 CKTP-I !
+   begin CKTP-I @ u < while
+      a CKTP-I @ + c@ 10 = if
+         a CKTP-START @ + CKTP-I @ CKTP-START @ - CKTP-NOTE-LINE
+         CKTP-I @ 1+ CKTP-START !
+      then
+      CKTP-I @ 1+ CKTP-I !
+   repeat
+   CKTP-START @ u < if
+      a CKTP-START @ + u CKTP-START @ - CKTP-NOTE-LINE
+   then ;
+
+: CKTP-SHAPE-OK? ( ptr u8 n -- bool )
+   CKTP-SCAN
+   CKTP-BAD @ 0=  CKTP-INSTALLS @ 1 =  and ;
+
+: CKTP-PRELUDE ( -- ptr u8 n )
+   s" prelude-shape.f" CHK-LABEL!
+   0 CHK-JSON !
+   CHK-RUN-RESET
+   CHK-BUILD-PREFIX
+   CHK-RUN-BUF CHK-RUN-U @ ;
+
+: CKTP-DOC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   CKTP-DOC-U @ u + CKTP-DOC-CAP > if E-STR-CAPACITY throw then
+   a CKTP-DOC CKTP-DOC-U @ + u BYTE-COPY
+   CKTP-DOC-U @ u + CKTP-DOC-U ! ;
+
+: CKTP-DOCTORED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 CKTP-DOC-U !
+   a u CKTP-DOC+
+   S\" ' EVIL-HOOK set-check\n" CKTP-DOC+
+   CKTP-DOC CKTP-DOC-U @ ;
+
+: CKT-TEST-PRELUDE-HOOK ( -- )
+   CKTP-PRELUDE {: pa:ptr pu:n :}
+   pa pu CKTP-SHAPE-OK? TTRUE
+   pa pu s" CHECK! HOOK-REPORT-UNCHECKABLE dup -1 <> IF 70 throw THEN ;" CONTAINS? TTRUE
+   pa pu s" 0 set-check" CONTAINS? TTRUE
+   pa pu CKTP-DOCTORED$ CKTP-SHAPE-OK? TFALSE
+   pa 0 CKTP-SHAPE-OK? TFALSE ;
+
 \ typed-local-lint: allow-bare-local - q is the test action quotation.
 : CKT-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns CKT-START-NS !
@@ -650,6 +719,7 @@ variable CKT-PAR-U
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
    s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
    s" check/source-list-all-errors" [: CKT-TEST-SOURCE-LIST-ALL-ERRORS ;] CKT-RUN
+   s" check/prelude-hook-shape" [: CKT-TEST-PRELUDE-HOOK ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

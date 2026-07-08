@@ -1,8 +1,10 @@
 ---
 title: Enumerate generated check-state transitions
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-07-08T00:00:00+02:00"
+close-reason: Both specced parts landed. (1) TRUSTED.md "Build-time-generated trust (explicit exemption)" now enumerates the check-CLI runner prelude (tools/check-core.f CHK-BUILD-PREFIX) alongside BFR-CHECK-OFF and check-hook.f's own install, naming the 0 set-check window, the CHECK-F-HOOK re-arm, and the 70-throw fail-closed body. (2) Source-shape regression check/prelude-hook-shape (tools/check-test-lib.f CKT-TEST-PRELUDE-HOOK): a line-split scanner asserts every set-check line in the GENERATED prelude is one of the two audited shapes with exactly one hook install, plus the fail-closed body text; doctored legs prove teeth (appended rogue "' EVIL-HOOK set-check" rejects; missing-install truncation rejects). Generated source stays lexer-invisible to checked-boundary-lint/trusted-inventory by design - this regression is the policing for the generated seam. check-test rc 0; trusted-inventory strict rc 0.
 created-at: "2026-07-08T09:22:08.935302+02:00"
 ---
 
