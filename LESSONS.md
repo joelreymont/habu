@@ -2730,3 +2730,11 @@ unchanged (148855). Keys for milestone 2:
   token, suspect a reporter that prints [TKA/TKL] with no label. Falsify
   cheap hypotheses with in-state controls (`' evaluate catch` on a known
   throw) before believing a code-number match.
+- **Anything that rides the AOT seed pass is invisible to batch programs.**
+  EM-SEED-AOT runs at LEXIT, and batch input (piped stdin AND --load files) is
+  consumed by the pre-LEXIT interpret loop, so AOT-seeded words (BP., stepper)
+  and AOT-restored state (the protected-WID registry) do not exist while a
+  batch program runs - they appear only for post-seed interactive sessions.
+  Probe with an AOT-seeded word (`BP.` E-UNDEFINED = pre-seed) before assuming
+  boot-restored state is visible. Boot-restored DATA with no name-relocation
+  dependency belongs in EM-STARTUP, not the LEXIT seed.
