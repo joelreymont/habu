@@ -170,12 +170,15 @@ variable PROC-ENV-DEF-BUF-A
    idx PROC-ENV-SLOT @ {: z:ptr :}
    a u z z ZLEN >LEN PROC-ENV-SAME-NAME? ;
 
-: PROC-ENV-HAS-NAME? ( ptr u8 len -- bool ) {: a:ptr u :}
+: PROC-ENV-NAME-IDX ( ptr u8 len -- n ) {: a:ptr u:len :}
    0 begin dup PROC-ENV-N @ COUNT>N < while
       dup >IDX PROC-ENV-I !
-      a u PROC-ENV-I @ PROC-ENV-SLOT-NAME? if drop PROC-ENV-TRUE exit then
+      a u PROC-ENV-I @ PROC-ENV-SLOT-NAME? if exit then
       1+
-   repeat drop PROC-ENV-FALSE ;
+   repeat drop -1 ;
+
+: PROC-ENV-HAS-NAME? ( ptr u8 len -- bool )
+   PROC-ENV-NAME-IDX 0 >= ;
 
 : PROC-ENV-DEFAULT$? ( ptr u8 len -- ptr u8 len bool ) {: a:ptr u:len :}
    0 >IDX begin dup IDX>N PROC-ENV-DEF-N @ COUNT>N < while
@@ -193,18 +196,30 @@ variable PROC-ENV-DEF-BUF-A
    repeat drop
    s" " >LEN PROC-ENV-FALSE ;
 
-: PROC-ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu val:ptr valu :}
+: PROC-ENV-ROW-Z ( ptr u8 len ptr u8 len -- ptr u8 ) {: name:ptr nameu:len val:ptr valu:len :}
    name nameu PROC-ENV-CHECK-NAME
    valu LEN>N 0 < if E-PROC-ENV throw then
-   PROC-ENV-CHECK-EXTRA
-   PROC-ENV-OFF @ {: off :}
+   PROC-ENV-OFF @ {: off:off :}
    off OFF>N nameu LEN>N valu LEN>N + 2 + + PROC-ENV-BUF-CAP > if E-PROC-ENV throw then
    name PROC-ENV-BUF off OFF>N + nameu LEN>N BYTE-COPY
    PROC-ENV-EQUAL PROC-ENV-BUF off OFF>N + nameu LEN>N + c!
    val PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N BYTE-COPY
    0 PROC-ENV-BUF off OFF>N + nameu LEN>N + 1 + valu LEN>N + c!
-   PROC-ENV-BUF off OFF>N + PROC-ENV-INSTALL-Z
-   off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-OFF ! ;
+   off OFF>N nameu LEN>N valu LEN>N + 2 + + >OFF PROC-ENV-OFF !
+   PROC-ENV-BUF off OFF>N + ;
+
+: PROC-ENV+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
+   PROC-ENV-CHECK-EXTRA
+   name nameu val valu PROC-ENV-ROW-Z PROC-ENV-INSTALL-Z ;
+
+\ Replace-or-add: exactly one row for the name survives. Unlike PROC-ENV+,
+\ which appends and leaves duplicate-key resolution to the child's getenv,
+\ this overwrites an existing row in place (e.g. one copied from the parent's
+\ own environment by PROC-ENV-INHERIT-MISSING) and appends only when absent.
+: PROC-ENV-SET ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
+   name nameu PROC-ENV-NAME-IDX {: i:n :}
+   i 0 < if name nameu val valu PROC-ENV+ exit then
+   name nameu val valu PROC-ENV-ROW-Z i >IDX PROC-ENV-SLOT ! ;
 
 : PROC-ENV-DEFAULT+ ( ptr u8 len ptr u8 len -- ) {: name:ptr nameu:len val:ptr valu:len :}
    name nameu PROC-ENV-CHECK-NAME

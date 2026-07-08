@@ -323,7 +323,7 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    GST-ROOT$ s" dup-guard.f" GST-GUARD-PATH-BUF JOIN-PATH GST-GUARD-PATH-U !
    GST-GUARD-PATH$ 2swap ATOMIC-WRITE-FILE ;
 
-: GST-GUARD-ARGV ( -- )
+: GST-LOAD-ARGV ( -- )
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
    s" lib/errors.f" >LEN PROC-ARGV+
@@ -334,7 +334,10 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    s" lib/process.f" >LEN PROC-ARGV+
    s" lib/process-argv.f" >LEN PROC-ARGV+
    s" lib/process-env.f" >LEN PROC-ARGV+
-   s" test/gate-stats.f" >LEN PROC-ARGV+
+   s" test/gate-stats.f" >LEN PROC-ARGV+ ;
+
+: GST-GUARD-ARGV ( -- )
+   GST-LOAD-ARGV
    GST-GUARD-PATH$ >LEN PROC-ARGV+ ;
 
 : GST-GUARD-RUN ( -- n )
@@ -349,6 +352,25 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    s" 0 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
    GST-GUARD-RUN 0 T=
    GST-GUARD-PATH$ REMOVE-FILE ;
+
+\ GS-GEN-INIT adopts HABU_GATE_GEN at load (spawn-slot generation inheritance):
+\ a valid generation loads clean, a malformed one must die rc 1 with a
+\ source-pointing diagnostic naming the variable - never an opaque exit and
+\ never a silent fallback to root "0". die exits the process, so both legs run
+\ as spawned children of the bare load path.
+: GST-GEN-ENV-RUN ( ptr u8 n -- n n ) {: val:ptr valu:n :}
+   GST-LOAD-ARGV
+   PROC-ENV-RESET
+   s" HABU_GATE_GEN" >LEN val valu >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE {: ou:len eu:len rc:rc :}
+   eu LEN>N rc RC>N ;
+
+: GST-TEST-GEN-ENV ( -- )
+   s" 3-4" GST-GEN-ENV-RUN 0 T= drop
+   s" x" GST-GEN-ENV-RUN 1 T= {: erru:n :}
+   GST-GUARD-ERR erru s" HABU_GATE_GEN" CONTAINS? TTRUE ;
 
 : GST-TEST-SCAN ( -- )
    GST-PREPARE
@@ -369,6 +391,7 @@ create GST-GUARD-ERR GST-GUARD-CAP allot
    GST-TEST-AUTH
    GST-TEST-GEN-SPLIT
    GST-TEST-DUP-GUARD
+   GST-TEST-GEN-ENV
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT

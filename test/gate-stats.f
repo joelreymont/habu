@@ -107,22 +107,35 @@ variable GS-HELPER-SPAWN
    c GS-DIGIT? if GS-TRUE exit then
    c GS-DASH = ;
 
-: GS-GEN-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+: GS-GEN-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 < if GS-FALSE exit then
+   u GS-GEN-CAP > if GS-FALSE exit then
    0 GS-GEN-I !
    begin GS-GEN-I @ u < while
-      a GS-GEN-I @ BYTE+ c@ GS-GEN-CHAR? 0= if E-STR-BOUNDS throw then
+      a GS-GEN-I @ BYTE+ c@ GS-GEN-CHAR? 0= if GS-FALSE exit then
       GS-GEN-I @ 1+ GS-GEN-I !
-   repeat ;
+   repeat GS-TRUE ;
 
 : GS-GEN! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 1 < if E-STR-BOUNDS throw then
    u GS-GEN-CAP > if E-STR-CAPACITY throw then
-   a u GS-GEN-CHECK
+   a u GS-GEN-OK? 0= if E-STR-BOUNDS throw then
    a GS-GEN-BUF u BYTE-COPY
    u GS-GEN-U ! ;
 
+\ Spawn-slot generation inheritance: a pool-SPAWNED child cannot inherit the
+\ parent's in-memory generation, so the pool exports the slot generation as
+\ HABU_GATE_GEN and this init adopts it. Absent means root "0". A malformed
+\ value dies with a source-pointing diagnostic - a bare throw here would exit
+\ with an opaque low-byte code and no message, and a silent "0" fallback would
+\ hide a broken exporter.
 : GS-GEN-INIT ( -- )
-   s" 0" GS-GEN! ;
+   s" HABU_GATE_GEN" GETENV dup 0= if
+      2drop s" 0" GS-GEN! exit
+   then
+   2dup GS-GEN-OK? 0= if
+      2drop s" gate-stats: malformed HABU_GATE_GEN in environment (digits and dashes only)" 1 die
+   then
+   GS-GEN! ;
 
 GS-GEN-INIT
 

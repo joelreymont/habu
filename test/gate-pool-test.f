@@ -349,6 +349,72 @@ variable GPT-KR-LOG-U
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
 
+\ Spawn-slot generation inheritance: a pool-SPAWNED child cannot inherit the
+\ parent's in-memory generation the way a fork child does, so the pool passes
+\ the slot generation (parent gen + "-" + seq) through HABU_GATE_GEN and
+\ GS-GEN-INIT adopts it at load. With the parent at gen "5", the child's span
+\ must be qualified "g5-<seq>:", never rebooted to root "g0:".
+create GPT-SG-PATH FS-PATH-CAP allot
+create GPT-GEN-SAVE GS-GEN-CAP allot
+variable GPT-SG-PATH-U
+variable GPT-GEN-SAVE-U
+
+: GPT-GEN-SAVE! ( -- )
+   GS-GEN$ {: a:ptr u:n :}
+   a GPT-GEN-SAVE u BYTE-COPY
+   u GPT-GEN-SAVE-U ! ;
+
+: GPT-GEN-RESTORE ( -- )
+   GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
+
+: GPT-SG-PATH$ ( -- ptr u8 n )
+   GPT-SG-PATH GPT-SG-PATH-U @ ;
+
+: GPT-SG-FIXTURE! ( -- )
+   GT-ROOT s" spawn-gen.f" GPT-SG-PATH JOIN-PATH GPT-SG-PATH-U !
+   GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN" ATOMIC-WRITE-FILE ;
+
+: GPT-SG-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/memory.f" >LEN PROC-ARGV+
+   s" lib/fs.f" >LEN PROC-ARGV+
+   s" lib/fs-mutate.f" >LEN PROC-ARGV+
+   s" lib/process.f" >LEN PROC-ARGV+
+   s" lib/process-argv.f" >LEN PROC-ARGV+
+   s" lib/process-env.f" >LEN PROC-ARGV+
+   s" test/gate-stats.f" >LEN PROC-ARGV+
+   GPT-SG-PATH$ >LEN PROC-ARGV+ ;
+
+: GPT-SG-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SG-FIXTURE!
+   s" 5" GS-GEN!
+   GPT-SG-ARGV
+   PROC-ENV-RESET
+   GS-ENV+
+   PROC-ENV-INHERIT-MISSING
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" bin/hb" s" spawn gen case" GPT-TIMEOUT-MS GT-POOL-START
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" spawn gen label" GPT-COUNT$ 1 T=
+   GPT-OUT n s" g5-" GPT-COUNT$ 1 T=
+   GPT-OUT n s" g0:spawn gen label" GPT-COUNT$ 0 T= ;
+
+: GPT-SG-CASE ( -- )
+   GPT-GS-SAVE!
+   GPT-GEN-SAVE!
+   [: GPT-SG-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GPT-GEN-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
 : GPT-ROOT-SAVE! ( -- )
    GT-ROOT {: a:ptr u:n :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -514,6 +580,7 @@ variable GPT-GK-SENTINEL-U
    GPT-SPAN-CASE
    GPT-SPAN-MULTI-CASE
    GPT-NEST-CASE
+   GPT-SG-CASE
    GPT-INFRA-CASE
    GT-CLEANUP
    GPT-GROUP-KILL-CASE

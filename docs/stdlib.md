@@ -1266,6 +1266,7 @@ PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a fd fd fd -- pid )
 PROC-ENV-RESET            ( -- )
 PROC-ENV-ENTRY+           ( ptr u8 len -- )
 PROC-ENV+                 ( ptr u8 len ptr u8 len -- )
+PROC-ENV-SET              ( ptr u8 len ptr u8 len -- )
 PROC-ENV-DEFAULT-RESET    ( -- )
 PROC-ENV-DEFAULT+         ( ptr u8 len ptr u8 len -- )
 PROC-ENV-DEFAULT$?        ( ptr u8 len -- ptr u8 len bool )
@@ -1287,7 +1288,10 @@ Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
 of the env-aware wrappers. The child receives exactly the prepared env vector.
 Call `PROC-ENV-INHERIT-MISSING` after explicit overrides to copy parent envp
 entries whose names are not already present; explicit entries win and duplicate
-names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
+names are skipped. `PROC-ENV-SET` replaces an existing row by name in place
+(for example one already copied from the parent's own environment) and appends
+only when the name is absent, so exactly one row for the name reaches the
+child; `PROC-ENV+` always appends and never deduplicates. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
 for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
 Resident test runners and other in-process harnesses can install inherited

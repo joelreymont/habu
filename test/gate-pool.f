@@ -502,7 +502,21 @@ GT-POOL-ABORT-KILL!
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
+\ Slot generation: the inherited process generation extended with this slot's
+\ seq, built in the shared name buffer.
+: GT-POOL-SLOT-GEN$ ( idx -- ptr u8 n ) {: idx:idx :}
+   GT-POOL-NAME-RESET
+   GS-GEN$ GT-POOL-NAME+
+   s" -" GT-POOL-NAME+
+   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-NAME+
+   GT-POOL-NAME$ ;
+
 : GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
+   \ A spawned child cannot inherit this process's in-memory generation, so
+   \ export the slot generation; GS-GEN-INIT adopts it at load. PROC-ENV-SET
+   \ replaces any row PROC-ENV-INHERIT-MISSING copied from this process's own
+   \ environment, so exactly one HABU_GATE_GEN reaches the child.
+   s" HABU_GATE_GEN" >LEN idx GT-POOL-SLOT-GEN$ >LEN PROC-ENV-SET
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
@@ -518,15 +532,10 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 
-\ Fork-child generation: extend the inherited generation with this slot's seq
-\ and publish it to gate-stats, so every label this child stores or emits is
-\ qualified with the child's own identity path.
-: GT-POOL-GEN-CHILD! ( idx -- ) {: idx:idx :}
-   GT-POOL-NAME-RESET
-   GS-GEN$ GT-POOL-NAME+
-   s" -" GT-POOL-NAME+
-   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-NAME+
-   GT-POOL-NAME$ GS-GEN! ;
+\ Fork-child generation: adopt this slot's generation in place, so every label
+\ this child stores or emits is qualified with its own identity path.
+: GT-POOL-GEN-CHILD! ( idx -- )
+   GT-POOL-SLOT-GEN$ GS-GEN! ;
 
 : GT-POOL-FORK-EXIT ( n -- )
    s" " rot die ;

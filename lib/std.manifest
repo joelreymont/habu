@@ -612,9 +612,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-NAME-LEN	(ptr u8 len -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the byte length before an environment entry equals sign
 1	process-env	lib/process-env.f	word	PROC-ENV-SAME-NAME?	(ptr u8 len ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	compare environment entries by variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-SLOT-NAME?	(ptr u8 len idx -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether one env table slot has a requested variable name
+1	process-env	lib/process-env.f	word	PROC-ENV-NAME-IDX	(ptr u8 len -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the prepared envp slot index for a variable name or -1
 1	process-env	lib/process-env.f	word	PROC-ENV-HAS-NAME?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether prepared envp already contains a variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT$?	(ptr u8 len -- ptr u8 len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the prepared default value for a child environment name when present
+1	process-env	lib/process-env.f	word	PROC-ENV-ROW-Z	(ptr u8 len ptr u8 len -- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	store one NAME=VALUE z-string into child env byte storage
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
+1	process-env	lib/process-env.f	word	PROC-ENV-SET	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	replace one child environment row by name or append it when absent
 1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	append one default child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-ONE	(idx -- idx)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one parent envp entry unless overridden

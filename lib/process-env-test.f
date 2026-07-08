@@ -164,6 +164,36 @@ variable PET-START-NS
    PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
+\ PROC-ENV-SET vs PROC-ENV+: SET replaces an existing row in place (one row
+\ survives, the child sees only the last value), while PROC-ENV+ appends and
+\ never deduplicates. SET on an absent name appends like PROC-ENV+.
+: PET-SET-REPLACES ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" s" wrong" PET-ENV+
+   PROC-ENV-N @ COUNT>N 1 T=
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-SET
+   PROC-ENV-N @ COUNT>N 1 T=
+   PROC-ENV-INHERIT-MISSING
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
+   outu PET-INHERIT-ENV-OUT ;
+
+: PET-SET-APPENDS-NEW ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-SET
+   PROC-ENV-N @ COUNT>N 1 T=
+   PROC-ENV-INHERIT-MISSING
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   outu PET-INHERIT-ENV-OUT ;
+
+: PET-APPEND-KEEPS-DUP ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" s" wrong" PET-ENV+
+   s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
+   PROC-ENV-N @ COUNT>N 2 T= ;
+
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
@@ -285,6 +315,9 @@ variable PET-START-NS
    s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
    s" default-lookup" [: PET-DEFAULT-LOOKUP ;] PET-CASE
    s" explicit-beats-default" [: PET-EXPLICIT-BEATS-DEFAULT ;] PET-CASE
+   s" set-replaces" [: PET-SET-REPLACES ;] PET-CASE
+   s" set-appends-new" [: PET-SET-APPENDS-NEW ;] PET-CASE
+   s" append-keeps-dup" [: PET-APPEND-KEEPS-DUP ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
    s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE

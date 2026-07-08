@@ -2658,3 +2658,9 @@ unchanged (148855). Keys for milestone 2:
   authoritative spans with the slot's generation would silently break
   attribution. Split "who owns this record" from "which identity scope is it
   in" before adding any qualifier to a byte-keyed dedupe.
+- **An uncaught throw in a `--load` child exits with the throw code's low 8
+  bits and prints nothing** (E-STR-BOUNDS = -2200 surfaced as an opaque rc 104
+  with empty stderr). Boundary validation that can fail on external input (env
+  vars, argv) must `die` with a source-pointing message naming the input;
+  keep bare named throws for in-process programmatic callers, where the
+  enclosing harness still has the code.
