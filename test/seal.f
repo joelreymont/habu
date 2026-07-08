@@ -214,6 +214,20 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" WORDS\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
+\ The engine-prefix TAIL gap (dot habu-tfam-2b-iii-5d25b52f): src/os/script-argv.f
+\ loads AFTER xref.f, so a watermark captured at end-of-xref left its words
+\ FORGET/HIDEable (proven rc 0). The SEAL-CAPTURE token appended at the true
+\ engine-prefix end closes it: the tail must trap like any engine definition.
+: SLV-FORGET-TAIL-FORGE$ ( -- ptr u8 n )         \ FORGET the script-argv tail
+   SB-RESET
+   S\" s\" SCRIPT-ARGV$\" FORGET-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-HIDE-TAIL-FORGE$ ( -- ptr u8 n )           \ HIDE the script-argv tail
+   SB-RESET
+   S\" s\" SCRIPT-ARGV$\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
+   SB$ ;
+
 \ Direct checker signature-registry truncation (bypasses the FORGET/HIDE index
 \ guard, but forgets an engine word's checker signature so it can be redefined =
 \ spoof). The public CHECKER-USIGS-TRUNCATE-FROM rejects any post-seal call.
@@ -438,7 +452,15 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" direct CHECKER-USIGS-TRUNCATE-FROM traps via --load" T-LABEL
    SLV-USIG-TRUNC-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" direct CHECKER-USIGS-TRUNCATE-FROM traps via stdin pipe" T-LABEL
-   SLV-USIG-TRUNC-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL ;
+   SLV-USIG-TRUNC-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
+   s" FORGET-DEFS-FROM of the script-argv tail traps via --load" T-LABEL
+   SLV-FORGET-TAIL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" FORGET-DEFS-FROM of the script-argv tail traps via stdin pipe" T-LABEL
+   SLV-FORGET-TAIL-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of the script-argv tail traps via --load" T-LABEL
+   SLV-HIDE-TAIL-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" HIDE-DEFS-FROM of the script-argv tail traps via stdin pipe" T-LABEL
+   SLV-HIDE-TAIL-FORGE$ SLV-RUN-STDIN SLV-ASSERT-SEAL ;
 
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
