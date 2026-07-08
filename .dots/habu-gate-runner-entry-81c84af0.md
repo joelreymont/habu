@@ -67,3 +67,40 @@ Secondary anomaly found while reducing (dotted separately,
 habu-eof-inside-a-7a539941): a file ending mid-definition exits rc 0 silently in
 a small context and crashes rc 134 in a large one - EOF-in-definition is
 neither rejected nor consistent.
+
+## Engine half LANDED (2026-07-08, engine lane)
+
+Root cause per the 2b RCA: the gate-runner-support closure needs ~9.5k dict
+records against DICT-CAP 8192, and the definer capacity arms wrote only the
+current token (a lone ':') before exit_group(77) - label-free, uncatchable.
+
+1. CAPACITY: DICT-CAP 8192 -> 16384; CFSTK-OFF $60000 -> $C0000 (= cap x
+   DREC); DICT-SIZE $61000 -> $C1000 (CFSTK + $1000; code area follows at
+   DBASE+DICT-SIZE inside REGION $400000 - still ~3.2MB code headroom).
+   Dict-name hash index doubled in step: HIDX-SLOTS $4000 -> $8000,
+   HIDX-BYTES $10000 -> $20000, and the six hardcoded $3FFF probe masks in
+   habu1.f now derive as `HIDX-SLOTS 1 -` (drift-proof). tools/imgdump.f
+   arrays scale via the constant. Stage0 mirrors the three layout constants
+   (no HIDX in stage0 - linear find). Seal watermark semantics unchanged
+   (count-based; focused test/seal.f green at the new cap).
+2. NAMED EXITS: new LDICTFULL/LCODEFULL 24-byte labels beside LUNCMSG;
+   C-DIE-DICT-FULL/C-DIE-CODE-FULL emit label + token + newline, keeping the
+   deterministic exit codes ($4D=77 dict, $4C=76 code space). Replaced the
+   raw arms in C-TRUSTED, C-DEFER-ROOM, and C-COLON; C-QUALIFY-CAP prefixes
+   its $4D C-QUALIFY-FAIL with the label, and C-QUALIFY-FAIL now terminates
+   its token with a newline (both its callers benefit). Stage0
+   C-COLON-DICT-ROOM mirrors label+token+newline+77; its code-room arm keeps
+   the already-labeled static C-EXIT76 message.
+3. REGRESSION (committed RED first): test/gate-engine-lib.f GE-DICT-FULL in
+   the engine runtime slice - a Habu-generated program of DICT-CAP+1
+   unchecked definitions (scales with the baked layout.f constant) asserts
+   rc 77 + `hb: dictionary full at: ` on stderr. Child runtime ~0.2s (16400
+   unchecked defs) - negligible against the slice budget.
+
+Fail-closed note: the first rebuild attempt was itself rejected by the
+staged-source certify (bare `ptr` in a new emitter sig -> stage2-src
+rejected rc 70, named diagnostic) - the build path caught the typed-effect
+error before any image was produced.
+
+Remaining (2b lane, per the split): the standalone gate-runner-entry
+regression proving the original 41-require closure now loads.

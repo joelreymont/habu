@@ -126,6 +126,8 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
+variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
+24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -304,7 +306,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LOPENERR LABEL@ LBL, s" hb: cannot open " BYTES,
    LOPENNL LABEL@ LBL, NL-KW 1 BYTES,
    LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
-   LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES, ;   \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
+   LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
+   LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
+   LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES, ;           \ CAPMSG-LEN bytes
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -1541,11 +1545,37 @@ s" c-call-checker-defer" s" --" TRUST
 
 : C-QUALIFY-FAIL ( n -- ) {: rc:n :}
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
    0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+\ Capacity exits (dot habu-gate-runner-entry-81c84af0): a definer hitting the
+\ dict-record or code-region capacity used to write only the CURRENT TOKEN to
+\ fd 2 (a lone ':' at a colon definition) and exit_group - label-free and
+\ unattributable. Emit the fixed label first, then the token + newline; the
+\ exit codes stay the deterministic contracts (dict full $4D=77, code space
+\ full $4C=76).
+: C-CAP-LABEL ( ptr a -- )
+   0 2 MOVZ,
+   LABEL@ 1 swap ADR,
+   2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
+
+: C-DIE-TOKEN-NL ( n -- ) {: rc:n :}
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: C-DIE-DICT-FULL ( -- )
+   LDICTFULL C-CAP-LABEL
+   $4D C-DIE-TOKEN-NL ;
+
+: C-DIE-CODE-FULL ( -- )
+   LCODEFULL C-CAP-LABEL
+   $4C C-DIE-TOKEN-NL ;
 
 : C-QUALIFY-CAP ( -- )
    LBL {: room :}
    14 DICT-CAP MOVZ,  NDICT 14 CMP,  C-LT room BCOND,
+      LDICTFULL C-CAP-LABEL
       $4D C-QUALIFY-FAIL
    room LBL, ;
 
@@ -1816,12 +1846,10 @@ s" c-store-def-name" s" --" TRUST
    LBL LBL LBL {: cpok ndok done :}
    2 3 MOVZ,  LPROT LABEL@ BL,
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4C MOVZ,  NR-EXIT-GROUP SYS,
+      C-DIE-CODE-FULL
    cpok LBL,
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 $4D MOVZ,  NR-EXIT-GROUP SYS,
+      C-DIE-DICT-FULL
    ndok LBL,
    LTOK LABEL@ BL,  0 done CBZ,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -1887,10 +1915,10 @@ s" c-defer-meta-write" s" --" TRUST
 : C-DEFER-ROOM ( -- )
    LBL LBL {: cpok ndok :}
    9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-      $4C C-DEFER-DIE-TOKEN
+      C-DIE-CODE-FULL
    cpok LBL,
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
-      $4D C-DEFER-DIE-TOKEN
+      C-DIE-DICT-FULL
    ndok LBL, ;
 s" c-defer-room" s" --" TRUST
 
@@ -3172,12 +3200,10 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       C-TASK-LIVE-GUARD
       2 3 MOVZ,  LPROT LABEL@ BL,
       9 REGION $4000 - LIT64,  9 DBASE 9 ADD,  CP 9 CMP,  C-LT cpok BCOND,
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 $4C MOVZ,  NR-EXIT-GROUP SYS,
+         C-DIE-CODE-FULL
       cpok LBL,
       9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,      \ slots end at CFSTK-OFF
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 $4D MOVZ,  NR-EXIT-GROUP SYS,
+         C-DIE-DICT-FULL
       ndok LBL,
       LTOK LABEL@ BL,
       12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -4239,6 +4265,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
+   LBL LDICTFULL !  LBL LCODEFULL !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 

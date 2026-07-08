@@ -9,7 +9,12 @@ $400000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
 
-$61000 constant DICT-SIZE
+\ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
+\ stack; the code area follows at DBASE+DICT-SIZE inside the $400000 REGION.
+\ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the gate-runner-support
+\ tool closure needs ~9.5k records; dot habu-gate-runner-entry-81c84af0).
+\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
+$C1000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
@@ -24,8 +29,8 @@ $2000000000000000 constant DNAME-EXT
 \ record time once the sequenced src/core/checker.f half lands. Compile-mode
 \ calls inside checked definitions are unaffected (pass-2 lowers them).
 $4000000000000000 constant DNAME-WIDE
-8192 constant DICT-CAP
-$60000 constant CFSTK-OFF
+16384 constant DICT-CAP
+$C0000 constant CFSTK-OFF
 24 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
@@ -173,8 +178,11 @@ PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $48: c
 \ Like EVALREC/AOT-SEED/PROT-WID it is a fixed engine cell no compiled source writes
 \ (task-user cells allocate up from $3D08; the mmap'd DATA region is zero until boot).
 $3D00 constant UNCGH-CELL
-$4000 constant HIDX-SLOTS
-$10000 constant HIDX-BYTES
+\ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
+\ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
+\ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
+$8000 constant HIDX-SLOTS
+$20000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL

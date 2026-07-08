@@ -2161,7 +2161,7 @@ variable LHIDXBUILD
       16 5 24 LDR,
    rinl LBL,
    16 15 6 4 5 7 C-HIDX-HASH
-   6 6 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,
+   6 6 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    8 HIDX-SLOTS MOVZ,
    iloop LBL,
       17 6 2 LSLI,  17 14 17 ADD,  4 17 0 LDRW,
@@ -2169,7 +2169,7 @@ variable LHIDXBUILD
       4 4 1 SUBI,  4 NDICT CMP,  C-GE idone BCOND,
    inext LBL,
       8 8 1 SUBI,  8 ifull CBZ,
-      6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  iloop B,
+      6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  iloop B,
    ifull LBL,
       4 0 MOVZ,  4 DATA HIDXP-CELL STR,  iret B,
    idone LBL,
@@ -2186,7 +2186,7 @@ variable LHIDXBUILD
    LBL LBL LBL LBL LBL LBL {: dloop:label dnext:label dinl:label dcmp:label dfound:label dret:label :}
    16 DATA TKA-CELL LDR,  15 DATA TKL-CELL LDR,
    16 15 3 4 5 7 C-HIDX-HASH
-   4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 $3FFF LIT64,  6 6 5 AND,
+   4 DATA DEF-WL-CELL LDR,  6 3 4 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,
    13 0 MOVZ,
    8 HIDX-SLOTS MOVZ,
    dloop LBL,
@@ -2211,7 +2211,7 @@ variable LHIDXBUILD
          7 7 1 ADDI,  dcmp B,
       dnext LBL,
          8 8 1 SUBI,  8 dret CBZ,
-         6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  dloop B,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  dloop B,
    dfound LBL,  13 1 MOVZ,
    dret LBL, ;
 
@@ -2345,7 +2345,7 @@ variable FIND-HMATCH
       \ (wid), x9/x10 (name), x13 (result) are preserved for that fallback.
       14 DATA HIDXP-CELL LDR,  14 FIND-LINEAR LABEL@ CBZ,      \ no table yet -> linear
       9 10 15 4 16 7 C-HIDX-HASH
-      6 15 2 EOR,  5 $3FFF LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
+      6 15 2 EOR,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,                 \ slot = (hash XOR wid) & (HIDX-SLOTS-1)
       8 HIDX-SLOTS MOVZ,
    FIND-HLOOP LABEL@ LBL,
       17 6 2 LSLI,  17 14 17 ADD,  3 17 0 LDRW,               \ x3 = slot value (index+1)
@@ -2376,7 +2376,7 @@ variable FIND-HMATCH
          13 1 MOVZ,  13 13 14 ORR,  RET,
       FIND-HNEXT LABEL@ LBL,
          8 8 1 SUBI,  8 FIND-LINEAR LABEL@ CBZ,
-         6 6 1 ADDI,  5 $3FFF LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
+         6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
    FIND-LINEAR LABEL@ LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    FIND-LOOP LABEL@ LBL,

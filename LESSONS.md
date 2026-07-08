@@ -94,7 +94,14 @@ lesson — keep the specific word/code/path, cut the prose.
   ~2.4KB (item 12 slice-3a) made `install --force` fail as an opaque
   `E-BUILD-STATUS: refresh child failed`; the leftover `hb-stdin-mk` run by
   hand reproduced the silent 74. Bumped 1M->1.5M in both mirrors; silent
-  capacity exits are dotted to print their own name before dying.
+  capacity exits are dotted to print their own name before dying. The
+  definer capacity exits are now labeled (`hb: dictionary full at: <token>`
+  77 / `hb: code space full at: <token>` 76, habu-gate-runner-entry-81c84af0)
+  — a capacity wall that prints only the current token is unattributable (the
+  dict-full one surfaced as a lone ':' byte). DICT-CAP is a growth watermark
+  too: the gate-runner-support closure crossed 8192 records; cap now 16384
+  with CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES scaled in step and the
+  LFIND probe masks derived from HIDX-SLOTS instead of hardcoded.
 - **A copied `bin/hb` is not a frozen baseline:** the small engine LOADS
   `src/core/*.f` from the working tree at boot (`hb: cannot open src/core/util.f`
   when run outside the repo), so an old binary run in an edited tree exhibits

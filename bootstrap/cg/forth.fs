@@ -22,7 +22,9 @@ $400000 constant REGION       \ mmap region size (4 MB)
 $300000000 constant RBASE-VA \ FIXED region VA: baked addresses survive re-runs (AOT)
 $340000000 constant DATA-VA  \ FIXED data VA
 $48425350414E5321 constant SNAP-MAGIC \ AOT snapshot trailer marker
-$61000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
+$C1000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
+                               \ (= CFSTK-OFF + $1000; grown with DICT-CAP 16384,
+                               \ mirrors src/habu/layout.f)
 48      constant DREC          \ dict record: addr(8) clen(8) name-len|flags(8) name|ptr(16) wid(8)
 16      constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
@@ -32,8 +34,8 @@ $2000000000000000 constant DNAME-EXT
 \ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
 \ sets the bit (no checker), so the mirrored gate is inert parity.
 $4000000000000000 constant DNAME-WIDE
-8192    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..8191 end exactly at CFSTK.
-$60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
+16384   constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..16383 end exactly at CFSTK.
+$C0000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
 8       constant CF-LOCN
 16      constant CF-LOCF
@@ -149,6 +151,7 @@ create BCHAR-KW 91 c, 99 c, 104 c, 97 c, 114 c, 93 c,   \ [char]
 create QUOT-KW 91 c, 58 c,      \ [:
 create SEMIQ-KW 59 c, 93 c,     \ ;]
 create QNL-KW 63 c, 10 c,       \ ?\n  (REPL reject)
+create CAPNL-KW 10 c,           \ \n  (capacity-exit diagnostic terminator)
 create OKS-KW 32 c, 111 c, 107 c, 10 c,   \ \x20ok\n (REPL accept)
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
@@ -3104,10 +3107,19 @@ variable CFSK2
       s" bootstrap: code region full" C-EXIT76
    cpok LBL, ;
 
+\ Dict-capacity exit (mirrors native C-DIE-DICT-FULL, dot
+\ habu-gate-runner-entry-81c84af0): fixed label + the current token + newline
+\ to fd 2, exit 77. The msg blob carries the newline at offset 24.
 : C-COLON-DICT-ROOM ( -- )
-   LBL {: ndok :}
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL {: ndok msg full :}
    9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT ndok BCOND,
+   full B,
+   msg LBL,  s" hb: dictionary full at: " BYTES,  CAPNL-KW 1 BYTES,
+   full LBL,
+      0 2 MOVZ,  1 msg ADR,  2 24 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 msg ADR,  1 1 24 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL, ;
 
