@@ -1,12 +1,12 @@
 \ maki/eval-repair-loop.f - the repair-loop metric engine shared by the eval-repair
 \ tests (maki/eval-repair.f) and the EXPLAIN-packet A/B ablation
-\ (maki/eval-repair-ab-test.f).
+\ (maki/eval-repair-ab-test.f). Reopens package EVAL: the REPAIR- module.
 \
-\ Feed candidate kernel sources one at a time with ER-STEP: it counts a repair
-\ round per checker rejection and sums authored tokens until the checker certifies
-\ (green). repair-rounds = number of checker-guided fixes; tokens-to-green = total
-\ kernel-source tokens authored until certification. The checker (maki/eval.f
-\ EVAL:CHECK-PASSES?) is the in-environment judge.
+\ Feed candidate kernel sources one at a time with EVAL:REPAIR-STEP: it counts a
+\ repair round per checker rejection and sums authored tokens until the checker
+\ certifies (green). repair-rounds = number of checker-guided fixes; tokens-to-green
+\ = total kernel-source tokens authored until certification. The checker
+\ (EVAL:CHECK-PASSES?) is the in-environment judge.
 \
 \ This engine is ARM-AGNOSTIC: the difference between rich EXPLAIN-packet feedback
 \ and minimal status-quo feedback is expressed purely by WHICH candidate trajectory
@@ -15,6 +15,8 @@
 
 require lib/ptx/test-prelude.f
 require maki/eval.f
+
+package EVAL
 
 variable ER-NTOK  variable ER-ST
 \ count whitespace-separated tokens in a kernel source string
@@ -28,13 +30,18 @@ variable ER-NTOK  variable ER-ST
    2drop drop  ER-NTOK @ ;
 
 variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN
-: ER-RESET ( -- )  0 ER-ROUND !  0 ER-TOKENS !  0 ER-GREEN ! ;
+
+public
+
+: REPAIR-RESET ( -- )  0 ER-ROUND !  0 ER-TOKENS !  0 ER-GREEN ! ;
 \ one authoring step: count its tokens, check it; reject -> +1 repair round,
 \ certify -> green. Steps after green are ignored (the loop has converged).
-: ER-STEP ( ptr u8 n -- )
+: REPAIR-STEP ( ptr u8 n -- )
    ER-GREEN @ if 2drop exit then
    2dup COUNT-TOKS  ER-TOKENS @ +  ER-TOKENS !
-   EVAL:CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
-: ER-ROUNDS@ ( -- n )  ER-ROUND @ ;
-: ER-TOKENS@ ( -- n )  ER-TOKENS @ ;
-: ER-GREEN? ( -- bool )  ER-GREEN @ ;          \ -1 (green) / 0 (not), already canonical
+   CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
+: REPAIR-ROUNDS@ ( -- n )  ER-ROUND @ ;
+: REPAIR-TOKENS@ ( -- n )  ER-TOKENS @ ;
+: REPAIR-GREEN? ( -- bool )  ER-GREEN @ ;      \ -1 (green) / 0 (not), already canonical
+
+end-package

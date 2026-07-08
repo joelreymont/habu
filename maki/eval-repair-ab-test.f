@@ -55,13 +55,13 @@ require maki/eval-repair-loop.f
 variable ABON-R  variable ABON-T  variable ABOF-R  variable ABOF-T
 : AB-AGG-RESET ( -- )  0 ABON-R !  0 ABON-T !  0 ABOF-R !  0 ABOF-T ! ;
 : AB-HDR ( ptr u8 n -- )  s" -- fixture: " type type cr ;
-\ after a trajectory: fold ER-* into the arm aggregate and print the row
+\ after a trajectory: fold the repair metrics into the arm aggregate and print the row
 : AB-ON! ( -- )
-   ER-ROUNDS@ ABON-R +!  ER-TOKENS@ ABON-T +!
-   s"    ON  (packet):  repair-rounds=" type ER-ROUNDS@ . s"  tokens-to-green=" type ER-TOKENS@ . cr ;
+   EVAL:REPAIR-ROUNDS@ ABON-R +!  EVAL:REPAIR-TOKENS@ ABON-T +!
+   s"    ON  (packet):  repair-rounds=" type EVAL:REPAIR-ROUNDS@ . s"  tokens-to-green=" type EVAL:REPAIR-TOKENS@ . cr ;
 : AB-OFF! ( -- )
-   ER-ROUNDS@ ABOF-R +!  ER-TOKENS@ ABOF-T +!
-   s"    OFF (minimal): repair-rounds=" type ER-ROUNDS@ . s"  tokens-to-green=" type ER-TOKENS@ . cr ;
+   EVAL:REPAIR-ROUNDS@ ABOF-R +!  EVAL:REPAIR-TOKENS@ ABOF-T +!
+   s"    OFF (minimal): repair-rounds=" type EVAL:REPAIR-ROUNDS@ . s"  tokens-to-green=" type EVAL:REPAIR-TOKENS@ . cr ;
 
 T-RESET
 AB-AGG-RESET
@@ -70,39 +70,39 @@ AB-AGG-RESET
 \ OFF flounder: minimal signal names no token / expected-actual, so the author blind-
 \ swaps the scale operand to the other span (x) once before landing on the uniform a.
 s" fix_type (SCALE operand)" AB-HDR
-ER-RESET  D-TYPE$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 1 T=  AB-ON!
-ER-RESET  D-TYPE$ ER-STEP  FL-XSCALE$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 2 T=  AB-OFF!
+EVAL:REPAIR-RESET  D-TYPE$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 1 T=  AB-ON!
+EVAL:REPAIR-RESET  D-TYPE$ EVAL:REPAIR-STEP  FL-XSCALE$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 2 T=  AB-OFF!
 
 \ ===== Fixture 2: single add_producer error (missing store) =======================
 \ OFF flounder: a bare rejection is ambiguous between too-many / too-few producers;
 \ lacking repair_class=add_producer the author first tries removing a value (drops the
 \ combine tail) before adding the STORE.
 s" add_producer (missing store)" AB-HDR
-ER-RESET  D-NOSTORE$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 1 T=  AB-ON!
-ER-RESET  D-NOSTORE$ ER-STEP  FL-DROPTAIL$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 2 T=  AB-OFF!
+EVAL:REPAIR-RESET  D-NOSTORE$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 1 T=  AB-ON!
+EVAL:REPAIR-RESET  D-NOSTORE$ EVAL:REPAIR-STEP  FL-DROPTAIL$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 2 T=  AB-OFF!
 
 \ ===== Fixture 3: two errors (fix_type + add_producer) ============================
 \ The checker surfaces errors sequentially, so even the packet arm needs two rounds
 \ (fix type, then add store). OFF adds one blind flounder per error: a type-swap, then
 \ a remove-surplus, around the two real fixes.
 s" fix_type + add_producer (two bugs)" AB-HDR
-ER-RESET  D-BOTH$ ER-STEP  D-NOSTORE$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 2 T=  AB-ON!
-ER-RESET  D-BOTH$ ER-STEP  FL-XN$ ER-STEP  D-NOSTORE$ ER-STEP  FL-DROPTAIL$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 4 T=  AB-OFF!
+EVAL:REPAIR-RESET  D-BOTH$ EVAL:REPAIR-STEP  D-NOSTORE$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 2 T=  AB-ON!
+EVAL:REPAIR-RESET  D-BOTH$ EVAL:REPAIR-STEP  FL-XN$ EVAL:REPAIR-STEP  D-NOSTORE$ EVAL:REPAIR-STEP  FL-DROPTAIL$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 4 T=  AB-OFF!
 
 \ ===== Fixture 4: single remove_producer error (surplus load) =====================
 \ OFF flounder: without the offending token / repair_class the author removes the
 \ wrong trailing token (the real STORE) before removing the surplus LOAD.
 s" remove_producer (surplus load)" AB-HDR
-ER-RESET  D-SURPLUS$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 1 T=  AB-ON!
-ER-RESET  D-SURPLUS$ ER-STEP  FL-DROPSTORE$ ER-STEP  GREEN$ ER-STEP
-ER-GREEN? TTRUE  ER-ROUNDS@ 2 T=  AB-OFF!
+EVAL:REPAIR-RESET  D-SURPLUS$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 1 T=  AB-ON!
+EVAL:REPAIR-RESET  D-SURPLUS$ EVAL:REPAIR-STEP  FL-DROPSTORE$ EVAL:REPAIR-STEP  GREEN$ EVAL:REPAIR-STEP
+EVAL:REPAIR-GREEN? TTRUE  EVAL:REPAIR-ROUNDS@ 2 T=  AB-OFF!
 
 \ ===== Aggregate (4 fixtures) =====================================================
 cr s" == EXPLAIN packet A/B aggregate (4 fixtures) ==" type cr
