@@ -104,7 +104,14 @@ public
 private
 
 \ ---- synthetic input synthesis (shared by golden self-consistency + GA-SAVE) --
-\ Gather's index operand must hold valid indices; those slots get 0 (valid row 0).
+\ Gather's index operand must hold valid indices; those slots get a deterministic
+\ in-range REVERSAL of the gather source rows (src_rows-1 - e mod src_rows): exact
+\ small integers (unambiguous under the kernel's +0.5/cvt.rzi rounding), never
+\ constant and never the identity for src_rows>1, so the golden exercises a real
+\ row permutation instead of selecting source row 0 only. A fixed (e*small) mod
+\ src_rows multiplier was rejected: it degenerates to constant 0 whenever the
+\ multiplier divides src_rows. src_rows comes from the gather node's data operand
+\ (min over all gathers indexing via the slot, so every consumer stays in range).
 : GA-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
 public
 : GA-IN-PTR ( n -- ptr a )  cells GA-IN-OFF + @ {: off:n :}  GA-ARENA off T-AT ;
@@ -115,10 +122,24 @@ private
    nd 1 MIR-IN@ {: r:n :}
    r MIR-REF-INPUT? 0= if false exit then
    r MIR-REF-SLOT s = ;
-: GA-INDEX-SLOT? ( n -- bool ) {: s:n :}
-   MIR-N@ 0 ?do  i s GA-NODE-IDX? if unloop true exit then  loop  false ;
+: GA-SRC-ROWS ( n -- n ) {: nd:n :}              \ gather node's data-operand row count
+   nd 0 MIR-IN@ {: r:n :}
+   r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
+variable GA-IDX-MIN
+: GA-IDX-ROWS ( n -- n ) {: s:n :}               \ min src rows over gathers indexing slot s (0 = none)
+   0 GA-IDX-MIN !
+   MIR-N@ 0 ?do
+      i s GA-NODE-IDX? if
+         i GA-SRC-ROWS {: r:n :}
+         GA-IDX-MIN @ 0=  r GA-IDX-MIN @ <  or if r GA-IDX-MIN ! then
+      then
+   loop
+   GA-IDX-MIN @ ;
+: GA-IDX-VAL ( n n -- r ) {: rows:n e:n :}       \ reversed in-range source row for index elem e
+   rows 1-  e rows mod  -  s>f ;
 : GA-FILL-VAL ( n n -- r ) {: s:n e:n :}
-   s GA-INDEX-SLOT? if 0.0 exit then
+   s GA-IDX-ROWS {: rows:n :}
+   rows 0 > if rows e GA-IDX-VAL exit then
    s 5 * e +  13 mod  s>f  0.17 f*  0.4 f+ ;
 : GA-FILL-SLOT ( n -- ) {: s:n :}
    s GA-IN-PTR {: p:ptr :}

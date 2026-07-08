@@ -1,8 +1,11 @@
 \ maki/golden-artifact-test.f - checked tests for external GOLDEN reference artifacts.
 \ save->load->check round-trips; a corrupted / out-of-tolerance stored output FAILs; a
 \ within-tolerance perturbation still PASSes; a missing artifact is not-run; a save on a
-\ non-host-executable model fails closed; and GOLDEN-INTO prefers an artifact over the
-\ self-consistency v1. The store lives under a throwaway CAD store root (STORE-RESET).
+\ non-host-executable model fails closed; GOLDEN-INTO prefers an artifact over the
+\ self-consistency v1; and GA-BIND-SYNTH fills gather INDEX slots with a varied in-range
+\ row permutation whose executed output discriminates real row selection from both a
+\ row-0-only fill and an index-ignoring positional copy. The store lives under a
+\ throwaway CAD store root (STORE-RESET).
 
 require lib/test.f
 require lib/string.f
@@ -86,6 +89,29 @@ GOLDEN
 dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
 dup G-GOLDEN REPORT:GATE-REASON@ GT-SAVE  s" host self-consistent" GT-IN
 drop
+
+\ ---- gather index slots fill with a varied in-range row permutation ----------
+\ GA-BIND-SYNTH fills a GATHER index slot with src_rows-1 - (e mod src_rows): for
+\ x:4x2 idx:3x1 that is {3,2,1} - deterministic, in-range, non-constant and
+\ non-identity - so the golden exercises a real index->row mapping, not row 0 only.
+MODEL: GA-GAT ( x:4x2 idx:3x1 -- y ) GATHER ;
+GA-BIND-SYNTH
+1 GA-IN-PTR 0 T-GET 0.5 f+ f>s 3 T=
+1 GA-IN-PTR 1 T-GET 0.5 f+ f>s 2 T=
+1 GA-IN-PTR 2 T-GET 0.5 f+ f>s 1 T=
+
+\ ---- ...and the executed gather output under that fill DISCRIMINATES ---------
+\ y row0 = x row idx[0]=3 (flat 6 -> 6*0.17+0.4 = 1.42). The old all-0.0 fill and
+\ an index-IGNORING positional-copy kernel would both put x[0,0] = 0.40 there, so
+\ this output separates real row selection from both failure shapes.
+MIR-N@ EX-RUN-N
+0 EX-OUT@ 0 T-GET 100.0 f* 0.5 f+ f>s 142 T=      \ y[0,0] = x[3,0], NOT...
+0 GA-IN-PTR 0 T-GET 100.0 f* 0.5 f+ f>s  40 T=    \ ...the row-0 value 0.40
+0 EX-OUT@ 4 T-GET 100.0 f* 0.5 f+ f>s  74 T=      \ y[2,0] = x[1,0] (flat 2: 0.74)
+
+\ ---- gather artifact round-trip: save -> check PASSes under the varied fill ---
+GA-SAVE
+GA-CHECK V-PASS T=
 
 STORE-RESET
 T-REPORT
