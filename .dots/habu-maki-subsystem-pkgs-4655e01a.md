@@ -267,3 +267,119 @@ REMAINING CLUSTERS — reranked with session-2 blast-radius data:
 DEFERRED (spec 2), unchanged: maki.f curated re-export still needs compiler EXPORT
 (dot habu-compiler-pkg-re-688212c1). Consumers still require maki/<file>.f and
 call ONNX:/LOSS:/OPTIM:/TENSOR: pkg-qualified.
+
+---
+
+PROGRESS 2026-07-08 (session 3, workspace .jj-ws/fable-pkgs, host-side). On top
+of the session-2 base (fable = 6c601eb9). maki/test.f green 73/73 after every
+commit; test/run.f green at checkpoint + final (6.8s < budget); typed-local-diff-
+lint clean per commit and final. Commits:
+  - e9e1202b  maki: report builder into package REPORT
+  - 8e9f3b4b  maki: eval core into package EVAL
+  - 5898c050  maki: eval repair-loop into EVAL REPAIR- module
+  - e641a455  maki: tensor DEFTYPE into package TENSOR
+  - 3197548c  STATUS: roll last-verified to 2026-07-08 (daily stale-status lint)
+LINT LEDGER (verbatim tail counts): 126 -> 125 (REPORT) -> 118 (EVAL core)
+  -> 107 (REPAIR-) -> 106 (tensor DEFTYPE). Remaining 106 by file: eval-device 32,
+  eval-device-sm 27, gpu 21, eval-compare 17, gpu-train 6, device-smoke 3.
+  ALL remaining findings are device-entangled (pending-zed).
+
+CLUSTER LANDED - REPORT (substrate-split as prescribed):
+  report.f -> enum block V-*/RC-*/CO-*/G-* stays a leading `package MAKI public`
+  block (substrate; device tests + whole CAD pipeline read them bare); the
+  stateful builder/renderer -> package REPORT. Public names STRIP the RPT- stem
+  (REPORT:NEW / MODEL! / GATE! / RENDER / WARN+ / HOT+ / GATE-TAG@ ...) because
+  RPT *is* the package name (forth.md: don't repeat the package in the tail) -
+  unlike TENSOR's TV-/PLAN- which name two distinct subfamilies. 51 public words;
+  RPT-DROP + cap constants + arena/out buffers stay private with RPT- names.
+  Private raw readers MODEL$/...(no-handle) renamed K-MODEL$/... to avoid
+  private/public tail shadowing with the stripped public accessors. DEFTYPE
+  report moved INSIDE package REPORT (casts >report/report>N are package-scoped;
+  >report used only by NEW, report>N unused anywhere - verified; the checker
+  registers the nominal TYPE globally so bare `report` in external signatures
+  keeps working - fixture-proven). ~43 internal MAKI: enum quals landed (est. 66
+  was high; def lines moved with the enums). Inbound: 23 caller files (all
+  `package MAKI`) exact-word qualified REPORT:; comments/docs updated
+  (docs/ablation.md, mem-plan/cad-test/traffic prose).
+  TRAP CONFIRMED + AVOIDED: tools/repair-packet-test.f owns an UNRELATED RPT-*
+  family (RPT-OUT/RPT-ERR/RPT-LABEL!...) and does NOT require maki/report.f -
+  exact-word set only, never a prefix sweep (the s2 PLAN- lesson again).
+  lower-model-device-test.f updated (2 sites), host-parse green (device leg
+  SKIPPED off-device); device re-verify pending-zed.
+
+AUTOGRAD ASSESSMENT (the per-word public-vs-helper verdict; no code change):
+  Evidence gathered:
+  - op-registry.f R-REF reference-binding table (the COMPLETE-membership gate)
+    tick-binds ' ADD-F ' MUL-F(x2) ' RELU-F from autograd.f UNIFORMLY NEXT TO
+    ' GELU-F (gelu.f), ' SILU-F (silu.f), ' LN-FWD (layernorm.f), ' RMS-FWD
+    (rmsnorm.f), ' SM-FWD (softmax.f), ' ROPE-PAIR (rope.f), ' MOVE-* (move.f),
+    ' MATMUL/' LINEAR. The scalar-reference vocabulary is CROSS-FILE; autograd.f
+    owns only its primitive-arithmetic subset.
+  - ONNX:LOWER maps ONNX ops to reference names AS STRINGS: s" ADD-F" s" MUL-F"
+    s" RELU-F" - a string-level contract on the bare spellings.
+  - executor.f dispatches ADD-F(x3)/MUL-F(x2)/RELU-F/RELU-BWD; softmax.f calls
+    MAX-F; train.f calls MUL-F; autograd-tensor.f lifts ADD/MUL/SUB/SQUARE/RELU
+    F+BWD. ALL 18 scalar words are referenced contract members (the vjp primitive
+    table, dot habu-ad-vjp-primitive); NONE are internal helpers. No collisions:
+    no other definition of any *-F/*-BWD name repo-wide.
+  VERDICT (documented substrate, recorded here per the substrate policy):
+  - autograd.f + autograd-tensor.f STAY package MAKI substrate. They are pure
+    functions (zero module state) = the function-value side of the op-kind enum
+    vocabulary; packaging autograd.f's subset alone would fracture ONE uniform
+    reference vocabulary across two namespaces (registry ticks and ONNX strings
+    would mix AUTOGRAD:ADD-F with bare GELU-F). Names already stem-free domain
+    spellings; zero lint findings (already in package MAKI).
+  - adjoint.f / backward.f / gradcheck.f ARE genuine stateful modules (fact
+    registry + IR transform tables + gradcheck arena/gate wiring) and DO deserve
+    package AUTOGRAD - but DEFERRED on measured grounds, same profile that
+    deferred FUSION in s2: downward refs adjoint 57 OP + 2 OPR; backward 107 MIR
+    + 15 MV + 25 OP; gradcheck 18 MIR + 10 EX + 3 OPR + 1 OP. Of ~238 downward
+    quals ~155 (MIR/MV/OPR/EX) are TRANSITIONAL against unpackaged model-ir/
+    move-facts/op-registry/executor (2.5x the FUSION deferral). Package AUTOGRAD
+    after MIR/OPREG/EXEC extract. External inbound today is modest and all
+    package MAKI (saved.f, from-scratch-train.f, cad.f + 4 tests) - nothing
+    breaks by waiting. Side evidence for the generic-prefix risk: tools/ptx/
+    bandwidth-lib.f owns a DISTINCT BW-* (bandwidth) family; packages fix this
+    class of ambiguity.
+
+EVAL TAIL SCHEME (designed; collisions pre-solved; pattern-setter + 1 landed):
+  ONE package EVAL for the whole eval subsystem, reopened per file (multi-file
+  package per forth.md). Rules:
+  1. eval.f core = the package ROOT: EV- stem drops entirely. Landed:
+     EVAL:CHECK-PASSES? (TRUSTED: boundary, name kept - descriptive not stem),
+     EVAL:RESET / SCORE / PASS@1? and public tally variables EVAL:PASS /
+     EVAL:TOTAL (direct `@` reads are existing contract). EV-RECORD had no
+     external callers -> private RECORD. RESET-as-package-word follows the
+     FUSION precedent (fusion.f RESET).
+  2. Sub-modules keep a DOMAIN subfamily tail (TENSOR TV-/PLAN- precedent),
+     which resolves the EV-/ER- tail collision (both wanted RESET/STEP/...):
+     eval-repair-loop -> REPAIR- (LANDED: EVAL:REPAIR-RESET/-STEP/-ROUNDS@/
+     -TOKENS@/-GREEN?; COUNT-TOKS + ER-* state private), eval-compare -> CMP-
+     kept, device grading -> GRADE- kept (EVAL:GRADE-CANDIDATE reads right),
+     device tally EVD-* -> DEVICE-, device-sm -> GRADE-SM-/SM- (s4 refines).
+  3. PRIVATE names KEEP their per-module prefixes (ER-, CMP-, ED-, SM-):
+     reopening a package RESUMES one shared private wordlist (no-duplicate set),
+     so generic private names would collide ACROSS the package's files.
+  4. Eval-internal verdict vocab (EVN-*) stays inside EVAL (unlike V-/RC-:
+     nothing outside eval reads it) - final call in s4 with the device cluster.
+  GATING: eval core + repair fully proven by maki/test.f (eval-test, eval-
+  fixture, eval-repair, eval-repair-ab-test, cad-test, plan-vocab-test all
+  gated). The touched 1-site CHECK-PASSES? callers eval-device.f/eval-device-
+  sm.f host-load green through the maki/README.md Orin prelude (checker verifies
+  the qualified refs at load); device re-verify pending-zed.
+
+ALSO LANDED: tensor-value.f DEFTYPE tensor moved into package TENSOR public
+  (casts are package-scoped - fixture-proven; tensor>N is externally used by
+  cad.f + 3 tests -> now TENSOR:tensor>N, 17 sites; >tensor internal-only).
+  Public because handle inspection is the audited representation boundary the
+  tests legitimately consume. Nominal type `tensor` stays globally visible in
+  signatures (checker registers types globally regardless of package).
+
+REMAINING (all device-entangled, pending-zed; the 106-finding ledger):
+  - eval-device.f (32) + eval-device-sm.f (27) + eval-compare.f (17, "load
+    after eval-device.f", consumes GRADE-CANDIDATE/EVN-*): the EVAL device
+    modules under the scheme above; need the Orin leg to re-verify.
+  - gpu.f (21) + gpu-train.f (6): package GPU cluster, parked per the dot.
+  - device-smoke.f (3): tiny; decide package vs test-scaffolding whitelist in s4.
+  - maki.f curated re-export still blocked on compiler EXPORT
+    (habu-compiler-pkg-re-688212c1).
