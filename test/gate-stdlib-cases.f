@@ -352,6 +352,10 @@ TEST:SUITE sealed-system-package
    test/seal-package.f
 TEST:;SUITE
 
+TEST:SUITE gate-runner-entry-load
+   test/gate-runner-entry-test.f
+TEST:;SUITE
+
 TEST:SUITE dictionary-record-shapes
    test/drec-shape-test.f
 TEST:;SUITE

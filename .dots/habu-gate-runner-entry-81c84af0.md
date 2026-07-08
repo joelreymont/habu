@@ -1,8 +1,10 @@
 ---
 title: gate-runner-entry standalone load dies rc 77
-status: open
+status: closed
 priority: 2
 issue-type: task
+closed-at: "2026-07-08T00:00:00+02:00"
+close-reason: Fixed by the engine lane's DICT-CAP raise (8192 -> 16384, DICT-SIZE $61000 -> $C1000; maki-type-families 9004102c) plus the labeled capacity exit. Verified on a fresh install --force bin/hb (sha f10acb38): the exact GR-USAGE invocation `bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f -- <phase>` now loads clean - unknown phase exits rc 64 with the full usage banner (ndict after the closure = 9325, comfortably under 16384; it was 8191 vs the old 8192 cap = the exhaustion). The silent lone-':' is also gone: forcing overflow now prints `hb: dictionary full at: :` (label + offending token) on stderr with rc 77, no bare byte. Regression landed: test/gate-runner-entry-test.f (GRE-TEST-UNKNOWN-PHASE spawns the exact closure, asserts EXIT/rc 64/usage banner naming both source files) - red on the pre-DICT-CAP engine (rc 77 dict-full before GR-MAIN, cited from the 2026-07-08 RCA commit 3112de03) and green now. Wired next to test/seal.f in BOTH dispatch manifests (GSI-TAIL-PROCESS fork in test/gate-stdlib-inline-lib.f, which runs in the resident test/run.f gate, and the TEST:SUITE gate-runner-entry-load in test/gate-stdlib-cases.f) so it cannot rot. No residual check-core hook interaction: the poison was pure definition-count, proven by a trivial filler def arming it at the brink (RCA §H1).
 created-at: "2026-07-08T09:17:14.697236+02:00"
 ---
 

@@ -440,6 +440,7 @@ variable GSI-TL-FILE-A
    s" test/seal.f" GSI-FORK-INCLUDE
    s" test/seal-absence.f" GSI-FORK-INCLUDE
    s" test/seal-package.f" GSI-FORK-INCLUDE
+   s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;

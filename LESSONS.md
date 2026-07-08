@@ -2738,3 +2738,11 @@ unchanged (148855). Keys for milestone 2:
   Probe with an AOT-seeded word (`BP.` E-UNDEFINED = pre-seed) before assuming
   boot-restored state is visible. Boot-restored DATA with no name-relocation
   dependency belongs in EM-STARTUP, not the LEXIT seed.
+- **A tool's full require closure can outgrow the engine dictionary silently.**
+  The gate-runner-support+entry closure registered ~9.3k dict entries; against
+  the old DICT-CAP 8192 it exhausted mid-load and the definer exited rc 77 with
+  a bare token byte and no label. Nothing in the resident gate noticed because
+  phases fork per-phase subsets - only the documented standalone invocation
+  loads the whole closure in one process. Lesson: a load path that only ever
+  runs subsets needs an EXPLICIT whole-closure regression, and capacity exits
+  must carry a label (`hb: dictionary full at: <token>`), never a lone byte.
