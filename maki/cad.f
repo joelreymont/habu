@@ -618,31 +618,31 @@ private
 \ ---- report builders (read model-IR facts, write the report) ---------------
 : CAD-BASE ( report -- report )                \ model name + real node counts
    MODEL-SET? @ 0= if E-CAD-NOMODEL throw then
-   MODEL-NAME$ RPT-MODEL!
-   MODEL-K MODEL-K RPT-OPS!
-   MODEL-K RPT-REGIONS!
-   MIR-MAT-COUNT RPT-MATERIALIZED! ;
+   MODEL-NAME$ REPORT:MODEL!
+   MODEL-K MODEL-K REPORT:OPS!
+   MODEL-K REPORT:REGIONS!
+   MIR-MAT-COUNT REPORT:MATERIALIZED! ;
 
 : LOWER-KEYS ( report -- report )              \ shape/dtype/layout of the model output
    MIR-N@ 0= if exit then
    MIR-N@ 1- {: out:n :}
-   out MIR-SHAPE-KEY  RPT-SHAPE!
-   out MIR-DTYPE-KEY  RPT-DTYPE!
-   out MIR-LAYOUT-KEY RPT-LAYOUT! ;
+   out MIR-SHAPE-KEY  REPORT:SHAPE!
+   out MIR-DTYPE-KEY  REPORT:DTYPE!
+   out MIR-LAYOUT-KEY REPORT:LAYOUT! ;
 
 : LOWER-INTO ( report -- report )
    CAD-BASE
    LOWER-KEYS
-   s" lowering: model-IR node table (cad-1)" RPT-WARN+ ;
+   s" lowering: model-IR node table (cad-1)" REPORT:WARN+ ;
 
 \ FUSE plans regions (maki/fusion-plan.f) then estimates traffic (maki/traffic.f):
 \ ops before (nodes) / after (regions), the typed split rows, the materialized count
 \ from the updated IR flags, and estimated bytes before/after when the shapes bind.
 : FUSE-INTO ( report -- report )
    FP-BUILD
-   MODEL-K FP-REGION-COUNT RPT-OPS!
-   FP-REGION-COUNT RPT-REGIONS!
-   MIR-MAT-COUNT RPT-MATERIALIZED!
+   MODEL-K FP-REGION-COUNT REPORT:OPS!
+   FP-REGION-COUNT REPORT:REGIONS!
+   MIR-MAT-COUNT REPORT:MATERIALIZED!
    FP-REPORT+
    TRF-INTO ;
 
@@ -658,7 +658,7 @@ private
 : MEM-MOVE-ROW+ ( report n -- report ) {: node:n :}
    node MIR-MOVE? 0= if exit then                          \ compute nodes carry no row
    node MIR-MOVE-VERDICT@ MV-VD-REPORTS? 0= if exit then   \ free/staged: no traffic cost
-   node MOVE-WARN$ RPT-WARN+ ;
+   node MOVE-WARN$ REPORT:WARN+ ;
 
 : MEM-MOVE-ROWS ( report -- report )
    MIR-N@ 0 ?do  i MEM-MOVE-ROW+  loop ;
@@ -688,31 +688,31 @@ private
    AL-16  rep MIR-DT@ DT-SIZE  rep MIR-COLS@  MP-W ;
 
 : TILE-CANDS+ ( report n -- report ) {: fam:n :}   \ emit every candidate row of a family
-   fam FAM-SPACE 0 ?do  fam i CAND$ RPT-CAND+  loop ;
+   fam FAM-SPACE 0 ?do  fam i CAND$ REPORT:CAND+  loop ;
 
 \ replay lookup is the cad-5 store seam: a miss means the shape class is unmeasured.
 : TILE-REPLAY-NOTE ( report n -- report ) {: r:n :}
    r SK-KEY$ SK-GET nip if exit then
-   s" schedule: unmeasured shape class -> using defaults" RPT-WARN+ ;
+   s" schedule: unmeasured shape class -> using defaults" REPORT:WARN+ ;
 
 : TILE-INTO ( report -- report )
    FP-BUILD
    0 REGION-FAM {: fam:n :}
    0 SK-REGION-REP {: rep:n :}
    fam TILE-CANDS+
-   fam  rep MIR-COLS@  rep REGION-MAXVEC  FAM-DEFAULT  RPT-SELECT!
-   0 SK-KEY$ RPT-CACHE!
+   fam  rep MIR-COLS@  rep REGION-MAXVEC  FAM-DEFAULT  REPORT:SELECT!
+   0 SK-KEY$ REPORT:CACHE!
    0 TILE-REPLAY-NOTE
-   s" schedule: defaults (unmeasured shape class - cad-6 tunes)" RPT-WARN+
-   s" schedule: family from region 0 only (v1 limitation)" RPT-WARN+ ;
+   s" schedule: defaults (unmeasured shape class - cad-6 tunes)" REPORT:WARN+
+   s" schedule: family from region 0 only (v1 limitation)" REPORT:WARN+ ;
 
 : TUNE-INTO ( report -- report )
    TILE-INTO
-   s" tune: measurement needs device (cad-6)" RPT-WARN+ ;
+   s" tune: measurement needs device (cad-6)" REPORT:WARN+ ;
 
 : CERTIFY-INTO ( report -- report )            \ static, no GPU: model-level legality
-   s" " V-PASS G-CERTIFY RPT-GATE!
-   s" certify: model-level legality only; kernel legality in cad-5" RPT-WARN+ ;
+   s" " V-PASS G-CERTIFY REPORT:GATE!
+   s" certify: model-level legality only; kernel legality in cad-5" REPORT:WARN+ ;
 
 \ GOLDEN is REAL (maki/golden.f + maki/lower-golden.f). Precedence: an external reference
 \ artifact wins; else, when a device is present and the model is device-lowerable, the DEVICE
@@ -727,7 +727,7 @@ private
 \ GRADCHECK-INTO is provided by maki/gradcheck.f.
 
 : PROFILE-INTO ( report -- report )
-   s" no-device" V-NOTRUN G-PROFILE RPT-GATE! ;
+   s" no-device" V-NOTRUN G-PROFILE REPORT:GATE! ;
 
 \ ---- device golden leg (cad.f owns the device dependency; golden.f stays device-free) ---------
 \ GOLDEN precedence: external artifact > DEVICE model golden > host self-consistency. The device
@@ -741,8 +741,8 @@ private
    LOWER-MODEL-GOLDEN {: v:n :}
    -1 GOLDEN-DEV!                                  \ evidence: the device leg produced this verdict
    LG-PREC-USED@ GOLDEN-PREC!                      \ evidence: the precision it was judged under
-   LOWER-GOLDEN-REASON$ v G-GOLDEN RPT-GATE!
-   s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" RPT-WARN+ ;
+   LOWER-GOLDEN-REASON$ v G-GOLDEN REPORT:GATE!
+   s" golden: device model golden (cross-region vs host, composed licensed-precision tolerance)" REPORT:WARN+ ;
 : GOLDEN-GATE-INTO ( report -- report )
    GA-EXISTS? if GOLDEN-INTO exit then             \ external artifact wins (GOLDEN-INTO selects it)
    CUDA:OPEN? if
@@ -753,16 +753,16 @@ private
 
 \ full conservative report over every phase (PROMOTE / OPTIMIZE / EXPLAIN)
 : FULL-REPORT ( -- report )
-   RPT-NEW LOWER-INTO FUSE-INTO MEMORY-INTO TILE-INTO
+   REPORT:NEW LOWER-INTO FUSE-INTO MEMORY-INTO TILE-INTO
    CERTIFY-INTO GOLDEN-GATE-INTO GRADCHECK-INTO PROFILE-INTO ;
 
 \ ---- promotion gate (CAD 7c gate-set alignment) ----------------------------
 : GATE-PASS? ( report n -- report bool )
-   over swap RPT-GATE-TAG@ V-PASS = ;
+   over swap REPORT:GATE-TAG@ V-PASS = ;
 : GATE-NOT-FAIL? ( report n -- report bool )   \ pass or not-run, but not a real fail
-   over swap RPT-GATE-TAG@ V-FAIL <> ;
+   over swap REPORT:GATE-TAG@ V-FAIL <> ;
 : GATE-RECORDED? ( report n -- report bool )   \ a recorded verdict (any legal tag)
-   over swap RPT-GATE-TAG@ dup 0 >= swap V-N < and ;
+   over swap REPORT:GATE-TAG@ dup 0 >= swap V-N < and ;
 
 \ PROMOTE gate set (docs/model-cad.md Phase 7 / CAD-PLAN, cad-7 UPDATE fold):
 \ a model promotes when CERTIFY passes AND GOLDEN passes AND GRADCHECK did not
@@ -778,7 +778,7 @@ private
    G-PROFILE   GATE-RECORDED?  r> and ;
 
 : CACHE-KEY-INTO ( report -- report )          \ artifact key (model-scoped in phase 1)
-   MODEL-NAME$ RPT-CACHE! ;
+   MODEL-NAME$ REPORT:CACHE! ;
 
 : PROMOTE-REPORT ( report -- report )
    PROMOTE-OK? 0= if E-CAD-GATE throw then
@@ -789,33 +789,33 @@ private
 \ both keyed by the section 7.4 key of region 0 (the same key TILE/OPTIMIZE cache). A
 \ refused promote throws in PROMOTE-REPORT before this runs, so no partial rows land.
 : PROMOTE-EVIDENCE ( report -- report )
-   dup G-CERTIFY   RPT-GATE-TAG@ {: c:n :}
-   dup G-GOLDEN    RPT-GATE-TAG@ {: g:n :}
-   dup G-GRADCHECK RPT-GATE-TAG@ {: gc:n :}
-   dup G-PROFILE   RPT-GATE-TAG@ {: p:n :}
-   dup RPT-SELECT@ {: sel:n :}
+   dup G-CERTIFY   REPORT:GATE-TAG@ {: c:n :}
+   dup G-GOLDEN    REPORT:GATE-TAG@ {: g:n :}
+   dup G-GRADCHECK REPORT:GATE-TAG@ {: gc:n :}
+   dup G-PROFILE   REPORT:GATE-TAG@ {: p:n :}
+   dup REPORT:SELECT@ {: sel:n :}
    0 SK-KEY$ c g gc p GOLDEN-DEV? GOLDEN-PREC@ EVID-PUT-G  \ golden=device-<v>:<prec> when the device leg ran
    0 SK-KEY$ sel SCHED-PUT ;
 
 : OPTIMIZE-PROMOTE ( report -- report )        \ record the decision, never throw
    PROMOTE-OK? if
-      CACHE-KEY-INTO  s" promote: gates pass; artifact cached" RPT-WARN+
+      CACHE-KEY-INTO  s" promote: gates pass; artifact cached" REPORT:WARN+
    else
-      s" promote: refused; certify/golden/gradcheck gate not satisfied" RPT-WARN+
+      s" promote: refused; certify/golden/gradcheck gate not satisfied" REPORT:WARN+
    then ;
 
 public
 
 \ ---- inspection commands (each returns a structured cad-0a report) ----------
-: LOWER ( -- report )      RPT-NEW LOWER-INTO ;
-: FUSE ( -- report )       RPT-NEW LOWER-INTO FUSE-INTO ;
-: MEMORY ( -- report )     RPT-NEW LOWER-INTO MEMORY-INTO ;
-: TILE ( -- report )       RPT-NEW LOWER-INTO TILE-INTO ;
-: CERTIFY ( -- report )    RPT-NEW LOWER-INTO CERTIFY-INTO ;
-: GOLDEN ( -- report )     RPT-NEW LOWER-INTO GOLDEN-GATE-INTO ;
-: GRADCHECK ( -- report )  RPT-NEW LOWER-INTO GRADCHECK-INTO ;
-: PROFILE ( -- report )    RPT-NEW LOWER-INTO PROFILE-INTO ;
-: TUNE ( -- report )       RPT-NEW LOWER-INTO TUNE-INTO ;
+: LOWER ( -- report )      REPORT:NEW LOWER-INTO ;
+: FUSE ( -- report )       REPORT:NEW LOWER-INTO FUSE-INTO ;
+: MEMORY ( -- report )     REPORT:NEW LOWER-INTO MEMORY-INTO ;
+: TILE ( -- report )       REPORT:NEW LOWER-INTO TILE-INTO ;
+: CERTIFY ( -- report )    REPORT:NEW LOWER-INTO CERTIFY-INTO ;
+: GOLDEN ( -- report )     REPORT:NEW LOWER-INTO GOLDEN-GATE-INTO ;
+: GRADCHECK ( -- report )  REPORT:NEW LOWER-INTO GRADCHECK-INTO ;
+: PROFILE ( -- report )    REPORT:NEW LOWER-INTO PROFILE-INTO ;
+: TUNE ( -- report )       REPORT:NEW LOWER-INTO TUNE-INTO ;
 
 \ PROMOTE refuses (named throw) unless every gate passes; on success caches the key
 \ and writes the artifact + evidence rows to the CAD store.
@@ -825,9 +825,9 @@ public
 : OPTIMIZE ( -- report )  FULL-REPORT OPTIMIZE-PROMOTE ;
 
 \ EXPLAIN emits repair-packet-discipline failure lines for every non-pass gate.
-: EXPLAIN ( -- ptr u8 n )  FULL-REPORT RPT-RENDER-PACKETS ;
+: EXPLAIN ( -- ptr u8 n )  FULL-REPORT REPORT:RENDER-PACKETS ;
 
 \ CAD-SHOW renders a report's machine view to stdout (interactive convenience).
-: CAD-SHOW ( report -- )  RPT-RENDER type cr ;
+: CAD-SHOW ( report -- )  REPORT:RENDER type cr ;
 
 end-package

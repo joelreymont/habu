@@ -108,9 +108,9 @@ MIR-IN-SLOTS@ 1 T=                        \ only x; the seed slot was released
 
 \ ---- gate wiring: GRADCHECK-INTO produces a real verdict --------------------
 MODEL: GC-CAST2 ( x:2x2 -- y ) CAST ;
-RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-NOTRUN T=
+REPORT:NEW GRADCHECK-INTO G-GRADCHECK REPORT:GATE-TAG@ V-NOTRUN T=
 MODEL: GC-G2 ( x:2x2 -- y ) GELU ;
-RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
+REPORT:NEW GRADCHECK-INTO G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
 
 \ ---- DETECTION: a deliberately-wrong adjoint fixture -----------------------
 \ relu-bwd where gelu-bwd is correct: the analytic grad it yields must DISAGREE

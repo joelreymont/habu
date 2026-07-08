@@ -50,7 +50,7 @@ MODEL: MLP2 ( x:2x3 w1:3x4 b1:1x4 w2:4x2 b2:1x2 -- y ) LINEAR GELU LINEAR ;
 GC-RUN V-PASS T=
 s" host: 5 input(s) gradchecked" MLPT-REASON-IN
 \ the gate wiring agrees: a real host pass
-RPT-NEW GRADCHECK-INTO G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
+REPORT:NEW GRADCHECK-INTO G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
 
 \ ---- the other reduce/scatter models gradcheck V-PASS on host too -----------
 MODEL: MB ( x:2x3 b:1x3 -- y ) BIAS ;

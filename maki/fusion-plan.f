@@ -308,6 +308,6 @@ public
    SB$ ;
 
 : FP-REPORT+ ( report -- report )
-   FP-SPLIT-COUNT 0 ?do  i FP-SPLIT-ROW$ RPT-SPLIT+  loop ;
+   FP-SPLIT-COUNT 0 ?do  i FP-SPLIT-ROW$ REPORT:SPLIT+  loop ;
 
 end-package

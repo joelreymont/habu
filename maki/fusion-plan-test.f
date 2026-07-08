@@ -49,7 +49,7 @@ FP-SPLIT-COUNT 1 T=
 \ node0 (first linear) is interior; node1 (region output) + node2 (model out) set
 0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TTRUE
 \ report row wording
-RPT-NEW FP-REPORT+ RPT-RENDER FT-SAVE
+REPORT:NEW FP-REPORT+ REPORT:RENDER FT-SAVE
 s" matmul-boundary at node 2" FT-IN
 
 \ ---- MIX GELU SILU MATMUL RELU: an EW prologue (gelu,silu) CANNOT fuse into the matmul -
@@ -70,7 +70,7 @@ FP-SPLIT-COUNT      1 T=
 \ prologue interior (gelu) cleared; prologue output (silu) materialized; matmul interior;
 \ model output (relu) materialized.
 0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TFALSE  3 MIR-MAT@ TTRUE
-RPT-NEW FP-REPORT+ RPT-RENDER FT-SAVE
+REPORT:NEW FP-REPORT+ REPORT:RENDER FT-SAVE
 s" backend-capability at node 2" FT-IN
 
 \ ---- a free reshape dissolves and does NOT break the chain ------------------

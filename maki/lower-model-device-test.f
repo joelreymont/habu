@@ -110,8 +110,8 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    STORE-RESET
    s" == OPTIMIZE (device golden into the gate) ==" type cr
    OPTIMIZE
-   dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-   dup G-GOLDEN RPT-GATE-REASON@ type cr                  \ verbatim device golden reason
+   dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+   dup G-GOLDEN REPORT:GATE-REASON@ type cr                  \ verbatim device golden reason
    drop
    s" == PROMOTE (evidence row) ==" type cr
    PROMOTE drop

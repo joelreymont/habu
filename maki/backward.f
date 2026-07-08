@@ -327,10 +327,10 @@ public
 
 : BW-INTO ( report -- report )
    BW-CK
-   BW-SEED-ROW$ RPT-WARN+
-   BW-COUNT-ROW$ RPT-WARN+
+   BW-SEED-ROW$ REPORT:WARN+
+   BW-COUNT-ROW$ REPORT:WARN+
    MIR-IN-SLOTS@ 0 ?do
-      i BW-SEED @ <> if  i BW-GRAD-ROW$ RPT-WARN+  then
+      i BW-SEED @ <> if  i BW-GRAD-ROW$ REPORT:WARN+  then
    loop ;
 
 end-package

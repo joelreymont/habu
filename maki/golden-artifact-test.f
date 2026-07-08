@@ -74,17 +74,17 @@ GA-RE$ GT-SAVE  s" not host-executable" GT-IN
 MODEL: GA-RT ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
 GA-EXISTS? TTRUE
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ GT-SAVE  s" external artifact GA-RT matched" GT-IN
-dup RPT-RENDER GT-SAVE  s" golden: external reference artifact comparison" GT-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ GT-SAVE  s" external artifact GA-RT matched" GT-IN
+dup REPORT:RENDER GT-SAVE  s" golden: external reference artifact comparison" GT-IN
 drop
 
 \ ---- ...and falls back to self-consistency when no artifact exists -----------
 MODEL: GA-SELF ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
 GA-EXISTS? TFALSE
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ GT-SAVE  s" host self-consistent" GT-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ GT-SAVE  s" host self-consistent" GT-IN
 drop
 
 STORE-RESET

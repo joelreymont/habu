@@ -106,13 +106,13 @@ private
 \ SAVE-INPUT saves every forward operand the adjoint reads (unary -> operand 0;
 \ mul/matmul -> both). The policy floor rides through as the matmul-class flag.
 : SV-INPUT-SAVES ( report n bool -- report ) {: fn:n floor:bool :}
-   fn MIR-IN-COUNT@ 0 ?do  fn i MIR-IN@ floor SV-ROW$ RPT-WARN+  loop ;
+   fn MIR-IN-COUNT@ 0 ?do  fn i MIR-IN@ floor SV-ROW$ REPORT:WARN+  loop ;
 
 : SV-NODE-INTO ( report n -- report ) {: fn:n :}
    fn MIR-OP@ ADJ-SAVE {: sv:n :}
    sv SAVE-NONE = if exit then
    fn MIR-OP@ OPR-CLASS CLASS-MATMUL = {: floor:bool :}
-   sv SAVE-OUTPUT = if  fn floor SV-ROW$ RPT-WARN+  exit then
+   sv SAVE-OUTPUT = if  fn floor SV-ROW$ REPORT:WARN+  exit then
    fn floor SV-INPUT-SAVES ;
 
 public

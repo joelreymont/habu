@@ -58,36 +58,36 @@ MIR-RESET
 
 \ ---- (1) 2x4 f32 chain, 16B RECORDED input -> coalesced-v4 -----------------
 2 4 LAY-ROW MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup RPT-HOT-COUNT 2 T=
-dup 0 RPT-HOT-NAME@   s" i0" T$=
-dup 0 RPT-HOT-STATUS@ CO-COALESCED-V4 T=            \ input read
-dup 1 RPT-HOT-NAME@   s" n1" T$=
-dup 1 RPT-HOT-STATUS@ CO-COALESCED-V4 T=            \ materialized output write
-RPT-RENDER PT-SAVE
+REPORT:NEW MEM-PLAN-INTO
+dup REPORT:HOT-COUNT 2 T=
+dup 0 REPORT:HOT-NAME@   s" i0" T$=
+dup 0 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ input read
+dup 1 REPORT:HOT-NAME@   s" n1" T$=
+dup 1 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ materialized output write
+REPORT:RENDER PT-SAVE
 s" memory.align" PT-NOTIN
 s" memory.tail"  PT-NOTIN
 
 \ ---- (2) same chain, unrecorded input (AL-UNKNOWN) -> scalar + warning ------
 2 4 LAY-ROW MP-EW  FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup 0 RPT-HOT-STATUS@ CO-UNALIGNED    T=            \ input falls back to scalar
-dup 1 RPT-HOT-STATUS@ CO-COALESCED-V4 T=            \ compiler-allocated output still v4
-RPT-RENDER PT-SAVE
+REPORT:NEW MEM-PLAN-INTO
+dup 0 REPORT:HOT-STATUS@ CO-UNALIGNED    T=            \ input falls back to scalar
+dup 1 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ compiler-allocated output still v4
+REPORT:RENDER PT-SAVE
 s" coalesce.status.0: unaligned"                      PT-IN
 s" memory.align: input 0 unknown alignment -> scalar" PT-IN
 
 \ ---- (3) column-major input -> strided -------------------------------------
 2 4 LAY-COL MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup 0 RPT-HOT-STATUS@ CO-STRIDED T=
-RPT-RENDER PT-SAVE  s" coalesce.status.0: strided" PT-IN
+REPORT:NEW MEM-PLAN-INTO
+dup 0 REPORT:HOT-STATUS@ CO-STRIDED T=
+REPORT:RENDER PT-SAVE  s" coalesce.status.0: strided" PT-IN
 
 \ ---- (4) extent 2x5 -> masked-tail row (5 mod 4 = 1) -----------------------
 2 5 LAY-ROW MP-EW  0 AL-16 MIR-SLOT-AL!  FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup 0 RPT-HOT-STATUS@ CO-COALESCED-V4 T=            \ v4 with a masked tail
-RPT-RENDER PT-SAVE  s" memory.tail: i0 5 mod 4 = 1" PT-IN
+REPORT:NEW MEM-PLAN-INTO
+dup 0 REPORT:HOT-STATUS@ CO-COALESCED-V4 T=            \ v4 with a masked tail
+REPORT:RENDER PT-SAVE  s" memory.tail: i0 5 mod 4 = 1" PT-IN
 
 \ ---- (5) 1xC bias into a 2D op -> broadcast-register -----------------------
 MIR-RESET
@@ -95,9 +95,9 @@ MIR-RESET
 1 4 DT-F32 LAY-ROW MIR-INPUT+ drop  1 AL-16 MIR-SLOT-AL!    \ slot1 b  (1x4)
 OP-ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup 1 RPT-HOT-NAME@   s" i1" T$=
-dup 1 RPT-HOT-STATUS@ CO-BROADCAST T=
+REPORT:NEW MEM-PLAN-INTO
+dup 1 REPORT:HOT-NAME@   s" i1" T$=
+dup 1 REPORT:HOT-STATUS@ CO-BROADCAST T=
 drop
 
 \ ---- (6) gather data read -> gathered --------------------------------------
@@ -107,9 +107,9 @@ MIR-RESET
 OP-GATHER MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+
    3 8 DT-F32 LAY-ROW  MV-GATHER MVV-GATHERED 0 0 MV-PACK  1  MIR-OP+ drop
 FP-BUILD
-RPT-NEW MEM-PLAN-INTO
-dup 0 RPT-HOT-NAME@   s" i0" T$=
-dup 0 RPT-HOT-STATUS@ CO-GATHERED T=
+REPORT:NEW MEM-PLAN-INTO
+dup 0 REPORT:HOT-NAME@   s" i0" T$=
+dup 0 REPORT:HOT-STATUS@ CO-GATHERED T=
 drop
 
 T-REPORT

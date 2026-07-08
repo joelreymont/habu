@@ -35,7 +35,7 @@ Status legend: **impl** = landed by this dot (`habu-ablation-fault-injection`); 
 `bin/hb --load maki/ablate-fusion-test.f` plans the SAME IR with fusion ON (default
 capability table) and OFF (`FP-FUSE-OFF!`: every node its own region), and asserts both
 the region count and the `maki/traffic.f` byte estimate (the byte model behind
-`RPT-BYTES!`). OFF is the ablation control: it collapses to the unfused per-node total
+`REPORT:BYTES!`). OFF is the ablation control: it collapses to the unfused per-node total
 (equal to `TRF-BEFORE`). The ON→OFF deltas are the ablation.
 
 | Model | ON regions | OFF regions | ΔRegions | ON bytes | OFF bytes | ΔBytes | Fusion saves |

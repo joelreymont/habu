@@ -6,7 +6,7 @@
 \ never leave registers, so they carry no memory row. This file classifies each such
 \ access into the section 6.4 vocabulary - coalesced-v4 / coalesced / strided /
 \ broadcast-register / gathered - derives the section 6.2 vector width and masked-tail
-\ facts, and emits the MEMORY report rows (RPT-HOT+ status + tail/align warnings).
+\ facts, and emits the MEMORY report rows (REPORT:HOT+ status + tail/align warnings).
 \ One concern: access classification + its report rows (no region growth, no traffic
 \ bytes - those are maki/fusion-plan.f and maki/traffic.f).
 \
@@ -160,9 +160,9 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 \ ---- emit one staged access (hot status row + its warnings) -----------------
 : MP-EMIT+ ( report -- report )
-   MP-NAME$ MP-STATUS RPT-HOT+
-   MP-STATUS CO-UNALIGNED = if MP-ALIGN-WARN$ RPT-WARN+ then
-   MP-HAS-TAIL?           if MP-TAIL-WARN$  RPT-WARN+ then ;
+   MP-NAME$ MP-STATUS REPORT:HOT+
+   MP-STATUS CO-UNALIGNED = if MP-ALIGN-WARN$ REPORT:WARN+ then
+   MP-HAS-TAIL?           if MP-TAIL-WARN$  REPORT:WARN+ then ;
 
 \ ---- per-tensor iteration ---------------------------------------------------
 : MP-INPUT-STEP ( report n -- report ) {: s:n :}

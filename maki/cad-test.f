@@ -51,11 +51,11 @@ variable CT-VA  variable CT-VU
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
-   RPT-NEW
-   s" " V-PASS G-CERTIFY   RPT-GATE!
-   s" " V-PASS G-GOLDEN     RPT-GATE!
-   s" " V-PASS G-GRADCHECK  RPT-GATE!
-   s" " V-PASS G-PROFILE    RPT-GATE! ;
+   REPORT:NEW
+   s" " V-PASS G-CERTIFY   REPORT:GATE!
+   s" " V-PASS G-GOLDEN     REPORT:GATE!
+   s" " V-PASS G-GRADCHECK  REPORT:GATE!
+   s" " V-PASS G-PROFILE    REPORT:GATE! ;
 
 T-RESET
 
@@ -115,14 +115,14 @@ MODEL-K 3 T=
 
 \ ---- LOWER: real node facts (op count + output shape/dtype/layout keys) -----
 LOWER
-dup RPT-OPS-BEFORE@   3 T=
-dup RPT-OPS-AFTER@    3 T=
-dup RPT-REGIONS@      3 T=
-dup RPT-MATERIALIZED@ 3 T=
-dup RPT-SHAPE$  s" 2x5" T$=
-dup RPT-DTYPE$  s" f32" T$=
-dup RPT-LAYOUT$ s" row" T$=
-dup RPT-RENDER CT-SAVE  s" report.model: FFN" CT-IN
+dup REPORT:OPS-BEFORE@   3 T=
+dup REPORT:OPS-AFTER@    3 T=
+dup REPORT:REGIONS@      3 T=
+dup REPORT:MATERIALIZED@ 3 T=
+dup REPORT:SHAPE$  s" 2x5" T$=
+dup REPORT:DTYPE$  s" f32" T$=
+dup REPORT:LAYOUT$ s" row" T$=
+dup REPORT:RENDER CT-SAVE  s" report.model: FFN" CT-IN
 drop
 
 \ ---- the captured IR: op sequence + operand connectivity -------------------
@@ -139,39 +139,39 @@ s" node.2.in: n1 i3 i4" CT-IN
 \ FFN = LINEAR GELU LINEAR: gelu fuses as the first matmul's epilogue; the second
 \ matmul splits (one contraction per region) -> 2 regions, matmul-boundary at node 2.
 FUSE
-dup RPT-OPS-BEFORE@   3 T=
-dup RPT-OPS-AFTER@     2 T=
-dup RPT-REGIONS@       2 T=
-dup RPT-MATERIALIZED@  2 T=
-dup RPT-SPLIT-COUNT    1 T=
-dup 0 RPT-SPLIT@ s" matmul-boundary at node 2" T$=
+dup REPORT:OPS-BEFORE@   3 T=
+dup REPORT:OPS-AFTER@     2 T=
+dup REPORT:REGIONS@       2 T=
+dup REPORT:MATERIALIZED@  2 T=
+dup REPORT:SPLIT-COUNT    1 T=
+dup 0 REPORT:SPLIT@ s" matmul-boundary at node 2" T$=
 \ traffic bytes computable (all FFN shapes bound); fusion removes the interior write
-dup RPT-BYTES-KNOWN? TTRUE
-dup RPT-BYTES-BEFORE@ 356 T=
-dup RPT-BYTES-AFTER@  292 T=
-dup RPT-RENDER CT-SAVE  s" fusion.split.0: matmul-boundary at node 2" CT-IN
+dup REPORT:BYTES-KNOWN? TTRUE
+dup REPORT:BYTES-BEFORE@ 356 T=
+dup REPORT:BYTES-AFTER@  292 T=
+dup REPORT:RENDER CT-SAVE  s" fusion.split.0: matmul-boundary at node 2" CT-IN
 drop
 
 \ ---- MEMORY: bytes unknown (shapes not yet bound for a cost model) ----------
 MEMORY
-dup RPT-BYTES-KNOWN? TFALSE
-dup RPT-RENDER CT-SAVE  s" memory.bytes-before: unknown" CT-IN
+dup REPORT:BYTES-KNOWN? TFALSE
+dup REPORT:RENDER CT-SAVE  s" memory.bytes-before: unknown" CT-IN
 drop
 
 \ ---- TILE: region 0 = linear+gelu epilogue -> gemm family, all 32 candidates --
 \ candidates printed before emission; the closed-form default (smallest tile) is
 \ selected; the section 7.4 cache key renders; the replay miss says "using defaults".
 TILE
-dup RPT-CAND-COUNT 32 T=
-dup RPT-SELECT@ 0 T=
-dup 0 RPT-CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
+dup REPORT:CAND-COUNT 32 T=
+dup REPORT:SELECT@ 0 T=
+dup 0 REPORT:CAND@ s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1" T$=
 \ full section-7.4 cache key, exact: the report arena copy is stable, so build the
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
-dup RPT-CACHE$
+dup REPORT:CACHE$
 SB-RESET s" CDFF1E0D197DD30A|2x4|f32|row|al?|sm_87|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
-dup RPT-RENDER CT-SAVE
+dup REPORT:RENDER CT-SAVE
 s" schedule.candidate.0: gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"    CT-IN
 s" schedule.candidate.31: gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" CT-IN
 s" schedule.selected: 0"                                        CT-IN
@@ -182,25 +182,25 @@ s" schedule: family from region 0 only (v1 limitation)"        CT-IN
 drop
 
 \ ---- CERTIFY: model-level static legality passes ---------------------------
-CERTIFY dup G-CERTIFY RPT-GATE-TAG@ V-PASS T= drop
+CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
 
 \ ---- host gates now real; profile still needs a device -----------------------
 \ cad-7a: FFN (LINEAR GELU LINEAR) is reference-complete + host-executable, so GOLDEN
 \ (self-consistency) and GRADCHECK both pass on host; only PROFILE needs a device.
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ CT-SAVE  s" host self-consistent" CT-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ CT-SAVE  s" host self-consistent" CT-IN
 drop
-GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T= drop
+GRADCHECK dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T= drop
 PROFILE
-dup G-PROFILE RPT-GATE-TAG@ V-NOTRUN T=
-dup RPT-ROOFLINE@ RC-UNKNOWN T=
+dup G-PROFILE REPORT:GATE-TAG@ V-NOTRUN T=
+dup REPORT:ROOFLINE@ RC-UNKNOWN T=
 drop
 
 \ ---- TUNE: TILE plus the honest "measurement needs device" note ------------
 TUNE
-dup RPT-CAND-COUNT 32 T=
-dup RPT-RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
+dup REPORT:CAND-COUNT 32 T=
+dup REPORT:RENDER CT-SAVE  s" tune: measurement needs device (cad-6)" CT-IN
 drop
 
 \ ---- OPTIMIZE: aggregate report; CAD 7c gate set PROMOTES on host -----------
@@ -208,9 +208,9 @@ drop
 \ GOLDEN, and GRADCHECK all pass; PROFILE stays not-run but is non-blocking. The
 \ CAD 7c gate set therefore clears and OPTIMIZE records the promote decision.
 OPTIMIZE
-dup G-CERTIFY RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN  RPT-GATE-TAG@ V-PASS T=
-dup RPT-RENDER CT-SAVE
+dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN  REPORT:GATE-TAG@ V-PASS T=
+dup REPORT:RENDER CT-SAVE
 s" gate.certify.verdict: pass"           CT-IN
 s" gate.golden.verdict: pass"            CT-IN
 s" promote: gates pass; artifact cached" CT-IN
@@ -223,7 +223,7 @@ ALL-PASS    PROMOTE-OK? TTRUE drop
 
 \ ---- promote success path caches the artifact key --------------------------
 ALL-PASS PROMOTE-REPORT
-dup RPT-CACHE$ s" FFN" T$=
+dup REPORT:CACHE$ s" FFN" T$=
 drop
 
 \ ---- a passing PROMOTE writes the schedules + evidence rows -----------------
@@ -231,7 +231,7 @@ drop
 \ region 0's section-7.4 key. STORE-RESET brackets keep the store leak-free. The
 \ evidence row records profile=not-run (mandatory-to-run, non-blocking off-device).
 STORE-RESET
-PROMOTE dup RPT-CACHE$ s" FFN" T$= drop
+PROMOTE dup REPORT:CACHE$ s" FFN" T$= drop
 0 SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
 0 SK-KEY$ EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
@@ -252,7 +252,7 @@ s" repro=model:FFN"                CT-IN
 \ pass, so the CAD 7c gate set refuses (E-CAD-GATE) and PROMOTE-REPORT throws before
 \ any row lands - proving the gate still fails closed on a non-promotable model.
 MODEL: MCAST ( x:2x4 -- y ) CAST ;
-GOLDEN dup G-GOLDEN RPT-GATE-TAG@ V-NOTRUN T= drop
+GOLDEN dup G-GOLDEN REPORT:GATE-TAG@ V-NOTRUN T= drop
 FULL-REPORT PROMOTE-OK? TFALSE drop
 STORE-RESET
 ' TRY-PROMOTE E-CAD-GATE TTHROWS
@@ -272,7 +272,7 @@ s" node.1.op: slice"            CT-IN
 s" node.1.shape: 2x4"           CT-IN
 s" node.1.verdict: free"        CT-IN
 \ MEMORY flags the concat's materialization, not the free slice
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" memory.move: node 0 concat verdict=materialize" CT-IN
 s" memory.move: node 1"                            CT-NOTIN
 
@@ -287,7 +287,7 @@ s" node.1.op: gather"           CT-IN
 s" node.1.shape: 3x4"           CT-IN
 s" node.1.verdict: gathered"    CT-IN
 \ MEMORY flags the gathered read, not the staged transpose
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" memory.move: node 1 gather verdict=gathered" CT-IN
 s" memory.move: node 0"                         CT-NOTIN
 
@@ -298,7 +298,7 @@ MIR-RENDER CT-SAVE
 s" node.0.op: reshape"          CT-IN
 s" node.0.shape: 8x4"           CT-IN
 s" node.0.verdict: free"        CT-IN
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" memory.move:"                CT-NOTIN
 
 \ ---- movement fail-closed paths --------------------------------------------
@@ -315,7 +315,7 @@ s" memory.move:"                CT-NOTIN
 \ AL-UNKNOWN and reports "unaligned -> scalar" honestly; compiler-allocated output
 \ writes are 16B-aligned by construction -> coalesced-v4.
 MODEL: EWV ( x:2x4 -- y ) GELU RELU ;
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" coalesce.tensor.0: i0"                             CT-IN
 s" coalesce.status.0: unaligned"                      CT-IN
 s" memory.align: input 0 unknown alignment -> scalar" CT-IN
@@ -323,17 +323,17 @@ s" coalesce.status.1: coalesced-v4"                   CT-IN
 
 \ a materialized output with extent not a multiple of 4 shows a masked-tail row
 MODEL: EWT ( x:2x5 -- y ) GELU RELU ;
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" memory.tail: n1 5 mod 4 = 1" CT-IN
 
 \ a 1xC bias into a compute op reports broadcast-register
 MODEL: EWB ( x:2x4 b:1x4 -- y ) BIAS ;
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" coalesce.status.1: broadcast" CT-IN
 
 \ a gather's data read reports gathered (per-hot status + the movement row)
 MODEL: GAT ( x:4x8 idx:3x1 -- y ) GATHER ;
-MEMORY RPT-RENDER CT-SAVE
+MEMORY REPORT:RENDER CT-SAVE
 s" coalesce.status.0: gathered"                 CT-IN
 s" memory.move: node 0 gather verdict=gathered" CT-IN
 
@@ -341,28 +341,28 @@ s" memory.move: node 0 gather verdict=gathered" CT-IN
 \ elementwise chain -> elementwise-v1; default block 256, max legal vec 4, grid-stride.
 MODEL: EWS ( x:2x4 -- y ) GELU RELU ;
 TILE
-dup RPT-CAND-COUNT 18 T=
-dup RPT-SELECT@ 11 T=
-dup 11 RPT-CAND@ s" elementwise-v1 block=256 vec=4 grid-stride=y" T$=
-dup RPT-RENDER CT-SAVE  s" schedule.candidate.17: elementwise-v1 block=512 vec=4 grid-stride=y" CT-IN
+dup REPORT:CAND-COUNT 18 T=
+dup REPORT:SELECT@ 11 T=
+dup 11 REPORT:CAND@ s" elementwise-v1 block=256 vec=4 grid-stride=y" T$=
+dup REPORT:RENDER CT-SAVE  s" schedule.candidate.17: elementwise-v1 block=512 vec=4 grid-stride=y" CT-IN
 drop
 
 \ a bare row-reduction (layernorm) -> row-reduce-v1 (not softmax); default two-pass.
 MODEL: RRS ( x:4x128 -- y ) LAYERNORM ;
 TILE
-dup RPT-CAND-COUNT 36 T=
-dup RPT-SELECT@ 0 T=
-dup 0 RPT-CAND@ s" row-reduce-v1 lanes=32 rows=1 vec=1" T$=
+dup REPORT:CAND-COUNT 36 T=
+dup REPORT:SELECT@ 0 T=
+dup 0 REPORT:CAND@ s" row-reduce-v1 lanes=32 rows=1 vec=1" T$=
 drop
 
 \ a softmax-row region -> softmax-row-v1; its 72-candidate space records in full,
-\ proving the report holds a whole family (RPT-CAND-CAP), not the old 16-item cap.
+\ proving the report holds a whole family (the report CAND capacity), not the old 16-item cap.
 MODEL: SMS ( x:4x128 -- y ) SOFTMAX-ROW ;
 TILE
-dup RPT-CAND-COUNT 72 T=
-dup RPT-SELECT@ 0 T=
-dup 0 RPT-CAND@ s" softmax-row-v1 lanes=32 rows=1 vec=1 online=n" T$=
-dup 71 RPT-CAND@ s" softmax-row-v1 lanes=256 rows=4 vec=4 online=y" T$=
+dup REPORT:CAND-COUNT 72 T=
+dup REPORT:SELECT@ 0 T=
+dup 0 REPORT:CAND@ s" softmax-row-v1 lanes=32 rows=1 vec=1 online=n" T$=
+dup 71 REPORT:CAND@ s" softmax-row-v1 lanes=256 rows=4 vec=4 online=y" T$=
 drop
 
 T-REPORT

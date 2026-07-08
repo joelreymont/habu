@@ -7,7 +7,7 @@
 \ falsifiable STRUCTURE + TRAFFIC leg: for the FFN and the MIX model it plans the SAME IR
 \ with fusion ON (default capability table) and OFF (maki/fusion-plan.f FP-FUSE-OFF!:
 \ every node its own region), then asserts the region count AND the traffic-byte estimate
-\ (maki/traffic.f, the byte model behind RPT-BYTES!) both ways. The ON->OFF deltas ARE the
+\ (maki/traffic.f, the byte model behind REPORT:BYTES!) both ways. The ON->OFF deltas ARE the
 \ ablation numbers written into docs/ablation.md; OFF traffic collapses to the unfused
 \ per-node total (TRF-BEFORE), which is the ablation's control.
 \

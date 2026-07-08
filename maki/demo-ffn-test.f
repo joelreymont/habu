@@ -82,29 +82,29 @@ s" node.4.op: rmsnorm"      DM-IN
 
 \ ==== 2. LOWER: model output shape / dtype / layout keys ====================
 LOWER
-dup RPT-OPS-BEFORE@ 5 T=
-dup RPT-REGIONS@    5 T=
-dup RPT-SHAPE$  s" 4x8" T$=
-dup RPT-DTYPE$  s" f32" T$=
-dup RPT-LAYOUT$ s" row" T$=
-dup RPT-RENDER DM-SAVE  s" report.model: FFN-DEMO" DM-IN
+dup REPORT:OPS-BEFORE@ 5 T=
+dup REPORT:REGIONS@    5 T=
+dup REPORT:SHAPE$  s" 4x8" T$=
+dup REPORT:DTYPE$  s" f32" T$=
+dup REPORT:LAYOUT$ s" row" T$=
+dup REPORT:RENDER DM-SAVE  s" report.model: FFN-DEMO" DM-IN
 drop
 
 \ ==== 3. FUSE: regions, typed splits, bytes before / after ==================
 \ region 0 = linear+gelu epilogue; the second matmul splits (one contraction per
 \ region); rmsnorm's reduction barrier splits again -> 3 regions, 2 typed splits.
 FUSE
-dup RPT-OPS-BEFORE@   5 T=
-dup RPT-OPS-AFTER@    3 T=
-dup RPT-REGIONS@      3 T=
-dup RPT-MATERIALIZED@ 3 T=
-dup RPT-SPLIT-COUNT   2 T=
-dup 0 RPT-SPLIT@ s" matmul-boundary at node 2"  T$=
-dup 1 RPT-SPLIT@ s" barrier-boundary at node 4" T$=
-dup RPT-BYTES-KNOWN? TTRUE
-dup RPT-BYTES-BEFORE@ 3040 T=
-dup RPT-BYTES-AFTER@  2272 T=
-dup RPT-RENDER DM-SAVE
+dup REPORT:OPS-BEFORE@   5 T=
+dup REPORT:OPS-AFTER@    3 T=
+dup REPORT:REGIONS@      3 T=
+dup REPORT:MATERIALIZED@ 3 T=
+dup REPORT:SPLIT-COUNT   2 T=
+dup 0 REPORT:SPLIT@ s" matmul-boundary at node 2"  T$=
+dup 1 REPORT:SPLIT@ s" barrier-boundary at node 4" T$=
+dup REPORT:BYTES-KNOWN? TTRUE
+dup REPORT:BYTES-BEFORE@ 3040 T=
+dup REPORT:BYTES-AFTER@  2272 T=
+dup REPORT:RENDER DM-SAVE
 s" fusion.split.0: matmul-boundary at node 2"  DM-IN
 s" fusion.split.1: barrier-boundary at node 4" DM-IN
 drop
@@ -112,7 +112,7 @@ drop
 \ ==== 4. MEMORY: coalescing rows (compute-only model -> no movement rows) =====
 \ a 1xC bias reads broadcast-register; compiler-allocated outputs are 16B-aligned
 \ (coalesced-v4); model inputs carry no buffer so their alignment is unknown -> scalar.
-MEMORY RPT-RENDER DM-SAVE
+MEMORY REPORT:RENDER DM-SAVE
 s" coalesce.tensor.2: i2"                             DM-IN
 s" coalesce.status.2: broadcast"                      DM-IN
 s" coalesce.tensor.6: n1"                             DM-IN
@@ -123,50 +123,50 @@ s" memory.move:"                                      DM-NOTIN
 
 \ ==== 5. TILE: gemm-tf32 family candidates + default + cache key ============
 TILE
-dup RPT-CAND-COUNT 32 T=
-dup RPT-SELECT@ 0 T=
-dup 0 RPT-CAND@  s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"   T$=
-dup 31 RPT-CAND@ s" gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" T$=
+dup REPORT:CAND-COUNT 32 T=
+dup REPORT:SELECT@ 0 T=
+dup 0 REPORT:CAND@  s" gemm-tf32-v1 bm=64 bn=64 bk=32 warps=4 stages=1"   T$=
+dup 31 REPORT:CAND@ s" gemm-tf32-v1 bm=128 bn=128 bk=64 warps=8 stages=2" T$=
 \ full section-7.4 cache key, exact: the report arena copy is stable, so build the
 \ expected key in SB with the binary-dependent engine field spliced in, then compare.
-dup RPT-CACHE$
+dup REPORT:CACHE$
 SB-RESET s" 3C09A0D86344114A|4x16|f32|row|al?|sm_87|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND  SB$
 STR= TTRUE
 drop
 
 \ ==== 6. CERTIFY: model-level static legality passes ========================
-CERTIFY dup G-CERTIFY RPT-GATE-TAG@ V-PASS T= drop
+CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
 
 \ ==== 7. GOLDEN: self-consistency, then GA-SAVE + artifact-backed pass =======
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
 drop
 GA-EXISTS? TFALSE                                  \ no external artifact yet
 GA-SAVE                                            \ dump synthetic inputs + executed output
 GA-EXISTS? TTRUE
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ DM-SAVE  s" external artifact FFN-DEMO matched" DM-IN
-dup RPT-RENDER DM-SAVE  s" golden: external reference artifact comparison" DM-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ DM-SAVE  s" external artifact FFN-DEMO matched" DM-IN
+dup REPORT:RENDER DM-SAVE  s" golden: external reference artifact comparison" DM-IN
 drop
 
 \ ==== 8. GRADCHECK: numeric host gradcheck passes ===========================
 GRADCHECK
-dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
-dup G-GRADCHECK RPT-GATE-REASON@ DM-SAVE  s" input(s) gradchecked" DM-IN
+dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
+dup G-GRADCHECK REPORT:GATE-REASON@ DM-SAVE  s" input(s) gradchecked" DM-IN
 drop
 
 \ ==== 9. OPTIMIZE: aggregate report; CAD 7c gate set promotes on host ========
 \ CERTIFY + GOLDEN + GRADCHECK pass; PROFILE is not-run but mandatory-to-run and
 \ non-blocking, so the gate set clears and OPTIMIZE records the promote decision.
 OPTIMIZE
-dup G-CERTIFY   RPT-GATE-TAG@ V-PASS   T=
-dup G-GOLDEN    RPT-GATE-TAG@ V-PASS   T=
-dup G-GRADCHECK RPT-GATE-TAG@ V-PASS   T=
-dup G-PROFILE   RPT-GATE-TAG@ V-NOTRUN T=
-dup RPT-RENDER DM-SAVE
+dup G-CERTIFY   REPORT:GATE-TAG@ V-PASS   T=
+dup G-GOLDEN    REPORT:GATE-TAG@ V-PASS   T=
+dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS   T=
+dup G-PROFILE   REPORT:GATE-TAG@ V-NOTRUN T=
+dup REPORT:RENDER DM-SAVE
 s" gate.certify.verdict: pass"           DM-IN
 s" gate.golden.verdict: pass"            DM-IN
 s" gate.gradcheck.verdict: pass"         DM-IN
@@ -174,7 +174,7 @@ s" promote: gates pass; artifact cached" DM-IN
 drop
 
 \ ==== 10. PROMOTE: artifact promoted; store evidence + schedule rows land ====
-PROMOTE dup RPT-CACHE$ s" FFN-DEMO" T$= drop
+PROMOTE dup REPORT:CACHE$ s" FFN-DEMO" T$= drop
 0 SK-KEY$ EVID-GET TTRUE
 s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
 0 SK-KEY$ SCHED-GET TTRUE 0 T=                     \ region-0 selection = gemm default (candidate 0)
@@ -182,7 +182,7 @@ s" certify=pass|golden=pass|gradcheck=pass|profile=not-run" T$=
 \ ==== 11. Comparison vs the unfused baseline ================================
 \ unfused traffic 3040 B, fused 2272 B: the flagship win, computed from the report's
 \ byte fields (not a hardcoded literal), locked as "demo: traffic 1.33x reduced".
-FUSE dup RPT-BYTES-BEFORE@ swap RPT-BYTES-AFTER@ DM-RATIO$
+FUSE dup REPORT:BYTES-BEFORE@ swap REPORT:BYTES-AFTER@ DM-RATIO$
 s" demo: traffic 1.33x reduced" T$=
 
 \ ==== 12. FFN-SKIP: the TRUE skip connection via a named reference ===========
@@ -211,32 +211,32 @@ s" node.3.in: n2 i0"        DM-IN
 s" node.4.op: rmsnorm"      DM-IN
 
 \ LOWER + FUSE: same output shape and the same fusion/traffic win as FFN-DEMO
-LOWER dup RPT-SHAPE$ s" 4x8" T$= drop
+LOWER dup REPORT:SHAPE$ s" 4x8" T$= drop
 FUSE
-dup RPT-OPS-AFTER@    3 T=
-dup RPT-REGIONS@      3 T=
-dup RPT-MATERIALIZED@ 3 T=
-dup RPT-SPLIT-COUNT   2 T=
-dup 0 RPT-SPLIT@ s" matmul-boundary at node 2"  T$=
-dup 1 RPT-SPLIT@ s" barrier-boundary at node 4" T$=
-dup RPT-BYTES-BEFORE@ 3040 T=
-dup RPT-BYTES-AFTER@  2272 T=
+dup REPORT:OPS-AFTER@    3 T=
+dup REPORT:REGIONS@      3 T=
+dup REPORT:MATERIALIZED@ 3 T=
+dup REPORT:SPLIT-COUNT   2 T=
+dup 0 REPORT:SPLIT@ s" matmul-boundary at node 2"  T$=
+dup 1 REPORT:SPLIT@ s" barrier-boundary at node 4" T$=
+dup REPORT:BYTES-BEFORE@ 3040 T=
+dup REPORT:BYTES-AFTER@  2272 T=
 drop
 
 \ gates + promote end-to-end: host self-consistent + gradcheck pass, PROFILE non-blocking
-CERTIFY dup G-CERTIFY RPT-GATE-TAG@ V-PASS T= drop
+CERTIFY dup G-CERTIFY REPORT:GATE-TAG@ V-PASS T= drop
 GOLDEN
-dup G-GOLDEN RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN RPT-GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
+dup G-GOLDEN REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN REPORT:GATE-REASON@ DM-SAVE  s" host self-consistent (5 nodes)" DM-IN
 drop
-GRADCHECK dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T= drop
+GRADCHECK dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T= drop
 OPTIMIZE
-dup G-CERTIFY   RPT-GATE-TAG@ V-PASS T=
-dup G-GOLDEN    RPT-GATE-TAG@ V-PASS T=
-dup G-GRADCHECK RPT-GATE-TAG@ V-PASS T=
-dup RPT-RENDER DM-SAVE  s" promote: gates pass; artifact cached" DM-IN
+dup G-CERTIFY   REPORT:GATE-TAG@ V-PASS T=
+dup G-GOLDEN    REPORT:GATE-TAG@ V-PASS T=
+dup G-GRADCHECK REPORT:GATE-TAG@ V-PASS T=
+dup REPORT:RENDER DM-SAVE  s" promote: gates pass; artifact cached" DM-IN
 drop
-PROMOTE dup RPT-CACHE$ s" FFN-SKIP" T$= drop
+PROMOTE dup REPORT:CACHE$ s" FFN-SKIP" T$= drop
 
 \ backward: x fans out (the first LINEAR reads it AND the residual skip re-reads it),
 \ so its cotangent SUMS the two paths -> the input-0 gradient node is an OP-ADD. The

@@ -9,7 +9,7 @@
 \ and a gathered node's indexed read is counted with a `gathered` warning row.
 \
 \ Honesty over fabrication: any unbound extent (a 0 dimension) makes the whole
-\ estimate unknown - RPT-BYTES is left unset and a warning names the unbound input
+\ estimate unknown - REPORT:BYTES! is never called and a warning names the unbound input
 \ or node. maki -> habu only; traffic owns -5075. Depends on the region ids being
 \ current (call FP-BUILD before TRF-AFTER / TRF-INTO).
 
@@ -136,20 +136,20 @@ private
 : TRF-GATHERED+ ( report -- report )
    MIR-N@ 0 ?do
       i MIR-MOVE? if
-         i MIR-MOVE-VERDICT@ MVV-GATHERED = if i TRF-GATHERED-ROW$ RPT-WARN+ then
+         i MIR-MOVE-VERDICT@ MVV-GATHERED = if i TRF-GATHERED-ROW$ REPORT:WARN+ then
       then
    loop ;
 
 : TRF-UNBOUND+ ( report -- report )
-   MIR-IN-SLOTS@ 0 ?do  i TRF-SLOT-BOUND? 0= if i TRF-UNBOUND-SLOT$ RPT-WARN+ then  loop
-   MIR-N@       0 ?do  i TRF-NODE-BOUND? 0= if i TRF-UNBOUND-NODE$ RPT-WARN+ then  loop ;
+   MIR-IN-SLOTS@ 0 ?do  i TRF-SLOT-BOUND? 0= if i TRF-UNBOUND-SLOT$ REPORT:WARN+ then  loop
+   MIR-N@       0 ?do  i TRF-NODE-BOUND? 0= if i TRF-UNBOUND-NODE$ REPORT:WARN+ then  loop ;
 
 public
 
 \ write the traffic estimate into a report: bytes when bound, unbound warnings
 \ otherwise; a gathered warning row for every gathered read either way.
 : TRF-INTO ( report -- report )
-   TRF-BOUND? if  TRF-BEFORE TRF-AFTER RPT-BYTES!  else  TRF-UNBOUND+  then
+   TRF-BOUND? if  TRF-BEFORE TRF-AFTER REPORT:BYTES!  else  TRF-UNBOUND+  then
    TRF-GATHERED+ ;
 
 end-package

@@ -51,18 +51,18 @@ TRF-AFTER   96 T=                          \ x(8)+b(8) read once + y(8) write = 
 MODEL: UB ( x:0x8 -- y ) GELU ;
 FP-BUILD
 TRF-BOUND? TFALSE
-RPT-NEW TRF-INTO
-dup RPT-BYTES-KNOWN? TFALSE
-RPT-RENDER TT-SAVE
+REPORT:NEW TRF-INTO
+dup REPORT:BYTES-KNOWN? TFALSE
+REPORT:RENDER TT-SAVE
 s" traffic.unbound: input 0" TT-IN
 
 \ ---- gathered read: bytes known but flagged with a gathered warning ---------
 MODEL: MGAT ( x:4x8 idx:3x1 -- y ) TRANSPOSE GATHER ;
 FP-BUILD
 TRF-BOUND? TTRUE
-RPT-NEW TRF-INTO
-dup RPT-BYTES-KNOWN? TTRUE
-RPT-RENDER TT-SAVE
+REPORT:NEW TRF-INTO
+dup REPORT:BYTES-KNOWN? TTRUE
+REPORT:RENDER TT-SAVE
 s" traffic.gathered: node 1 gather" TT-IN
 
 T-REPORT

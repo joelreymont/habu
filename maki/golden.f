@@ -110,11 +110,11 @@ private
 
 \ ---- cad.f gate wiring: prefer an external reference artifact, else self-consistency --
 : GO-GATE-ARTIFACT ( report -- report )
-   GA-CHECK {: v:n :}  GA-RE$ v G-GOLDEN RPT-GATE!
-   s" golden: external reference artifact comparison (per-artifact tolerance)" RPT-WARN+ ;
+   GA-CHECK {: v:n :}  GA-RE$ v G-GOLDEN REPORT:GATE!
+   s" golden: external reference artifact comparison (per-artifact tolerance)" REPORT:WARN+ ;
 : GO-GATE-SELF ( report -- report )
-   GO-RUN {: v:n :}  GO-RE$ v G-GOLDEN RPT-GATE!
-   s" golden: host self-consistency (v1); device-vs-host is the cad.f device leg" RPT-WARN+ ;
+   GO-RUN {: v:n :}  GO-RE$ v G-GOLDEN REPORT:GATE!
+   s" golden: host self-consistency (v1); device-vs-host is the cad.f device leg" REPORT:WARN+ ;
 
 public
 : GOLDEN-INTO ( report -- report )              \ host golden gate (device leg is cad.f's GOLDEN-GATE-INTO)

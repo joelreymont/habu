@@ -116,7 +116,7 @@ BW-BWD-COUNT 1 T=
 \ ---- report rows: seed, node count, per-input gradient ----------------------
 MODEL: R ( x:4x8 -- y ) GELU ;
 BW-BUILD
-RPT-NEW BW-INTO RPT-RENDER BT-SAVE
+REPORT:NEW BW-INTO REPORT:RENDER BT-SAVE
 s" backward.seed: input 1" BT-IN
 s" backward.nodes: fwd=1 bwd=1" BT-IN
 s" backward.grad: input 0 <- node 1" BT-IN

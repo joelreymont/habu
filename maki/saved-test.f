@@ -36,7 +36,7 @@ MODEL: RG ( x:2x4 -- y ) RELU GELU ;
 0 false SAVED-DECIDE   SV-RECOMPUTE T=
 \ relu's saved input is the model input i0 (ref -1): not recomputable -> SAVE
 0 MIR-IN-REF false SAVED-DECIDE SV-SAVE T=
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.recompute: n0 (save 64B > recompute 40B)" SVT-IN
 s" backward.saved: i0 (model input; not recomputable)" SVT-IN
 
@@ -47,7 +47,7 @@ MODEL: SMX ( x:4x8 -- y ) SOFTMAX-ROW ;
 0 SAVED-SAVE-COST      256 T=
 0 SAVED-RECOMPUTE-COST 288 T=
 0 false SAVED-DECIDE   SV-SAVE T=
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: n0 (save 256B < recompute 288B)" SVT-IN
 
 \ ---- MATMUL (2x3, 3x4): operands ALWAYS saved by the policy floor --------------
@@ -55,31 +55,31 @@ MODEL: MM ( x:2x3 w:3x4 -- y ) MATMUL ;
 \ both operands are model inputs; the floor forces SAVE regardless of any comparison
 0 MIR-IN-REF true SAVED-DECIDE SV-SAVE T=
 1 MIR-IN-REF true SAVED-DECIDE SV-SAVE T=
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: i0 (matmul operand; policy floor)" SVT-IN
 s" backward.saved: i1 (matmul operand; policy floor)" SVT-IN
 
 \ ---- ADD (no save needed): the linear adjoint records nothing ------------------
 MODEL: ADDM ( x:2x2 y:2x2 -- z ) ADD ;
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved" SVT-VA @ SVT-VU @ 2swap CONTAINS? TFALSE   \ no save rows at all
 
 \ ---- cad-9e: LINEAR saves every operand (matmul policy floor) ------------------
 \ the linear adjoint reads x (dW) and w (dX); the bias-grad reads only the cotangent,
 \ so b is over-saved by the matmul floor - conservative-correct (saving is always safe).
 MODEL: LINM ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: i0 (matmul operand; policy floor)" SVT-IN
 s" backward.saved: i2 (matmul operand; policy floor)" SVT-IN
 
 \ ---- cad-9e: BIAS saves nothing (d-bias = OP-ROWSUM-BWD reads only the cotangent) --
 MODEL: BIASM ( x:2x3 b:1x3 -- y ) BIAS ;
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved" SVT-VA @ SVT-VU @ 2swap CONTAINS? TFALSE   \ SAVE-NONE: no save rows
 
 \ ---- cad-9e: SCALE saves both operands (the 1x1 factor + the input) ------------
 MODEL: SCS ( x:2x3 s:1x1 -- z ) SCALE ;
-RPT-NEW SAVED-INTO RPT-RENDER SVT-SAVE
+REPORT:NEW SAVED-INTO REPORT:RENDER SVT-SAVE
 s" backward.saved: i0 (model input; not recomputable)" SVT-IN
 s" backward.saved: i1 (model input; not recomputable)" SVT-IN
 

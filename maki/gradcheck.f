@@ -190,6 +190,6 @@ public
 
 \ ---- cad.f gate wiring ------------------------------------------------------
 : GRADCHECK-INTO ( report -- report )
-   GC-RUN {: v:n :}  GC-RE$ v G-GRADCHECK RPT-GATE! ;
+   GC-RUN {: v:n :}  GC-RE$ v G-GRADCHECK REPORT:GATE! ;
 
 end-package
