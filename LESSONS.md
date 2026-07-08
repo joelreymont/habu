@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-05
+Last updated: 2026-07-08
 
 Concise findings only: what worked, what failed, why. Coding standards live in
 `docs/forth.md`; API details in `docs/` near their feature. One tight bullet per
@@ -1462,6 +1462,36 @@ lesson — keep the specific word/code/path, cut the prose.
   rows keep a source-preserving effect field (`R x -- R x`) beside the normalized
   one; `fix_return_stack` only when the data stack already matches (a bad `>r` that
   drops a declared output is `add_producer` first).
+- **Lint-infra fixed caps are tree-growth time bombs, and uncaught positive
+  throws die silent:** `INTERN-MAX` $200 sat below FILEMAP.md's 513 backticked
+  paths, so `filemap-lint` exited rc=76 (`E-LINT-INTERN-CAP`) with ZERO output
+  and a bogus downstream FILEMAP-UNLISTED artifact — and a piped gate check
+  (`... | tail; echo $?`) masked the rc, reporting green. Same disease shape as
+  the rc=77 gate-runner death (dot habu-focused-gate-runner-12b9812a): unlabeled
+  capacity exits — engine dict-full 77 there, lint intern-cap 76 here —
+  different subsystems; capacity exits must attribute themselves everywhere.
+  Fixes: size caps from the real corpus with the driver named in a comment;
+  route lint CLIs through `LINT-MAIN` (catch, print `tool: threw <code>
+  (<name>)`, re-throw); never read `$?` after a pipeline.
+- **Error codes are a global namespace; lint it, don't trust review:** three
+  live collisions (E-CUDA/E-FUSE both -5002, E-PTX-READBACK/E-MK-EVAL both
+  -5003, E-LMV-NOOUT+E-LMV-REG/E-ABL-NOSUB+E-ABL-CAP at -5210/-5211) plus a
+  fresh one (E-MECH-* reusing adjoint's -5100..-5103) all slipped past review
+  because no gate proved uniqueness. `tools/error-code-lint.f` now fails any
+  negative code claimed by two different E- names (allowing sysexits-style
+  positive exit codes, -FIRST/-LAST range sentinels, and exact same-name
+  re-registrations). Claim a fresh block in the file header before minting
+  codes; keep older widely-used codes stable and renumber the newer claimant.
+- **Repair packets are mechanically consumable in checked code:** `DIAG-BUFFER!`
+  + `DIAG-JSON!` + `DIAG-ORIGIN! 1 1 0` around `CHECK-CANDIDATE!` capture the
+  JSONL diagnostic in-process with candidate-relative `byte_start`/`byte_end`
+  (no TRUSTED needed — only `DIAGXT` mutation forces trust). The checker flags
+  the LAST surplus producer for `remove_producer`, and an unconsumed-input
+  surplus flags `token_index` 0 (the definition-name token) — mechanical editors
+  must guard index 0 or they delete the name. `add_producer`/`fix_type` packets
+  carry no insertable/replacement token, so a mechanical repairer reports those
+  honest UNREPAIRABLE (maki/eval-repair-mech.f; gap dots
+  habu-repair-packet-machine-879ad716, habu-repair-packet-typed-62bc5df2).
 - **JSON quoting/storage split:** the `s"` quoting rule moved to `docs/forth.md`;
   the infra lesson is that row artifacts exceeded fixed builders, so large
   prompt/response/replay fields need chunked Habu emitters or OS-backed storage.
