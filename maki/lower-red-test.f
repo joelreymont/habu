@@ -6,12 +6,13 @@
 \ bar.sync block reduction, and the per-op signature instructions for RMSNORM (sqrt, no
 \ subtract), LAYERNORM (subtract + sqrt), SOFTMAX-ROW (block-max + ex2.approx, no sqrt),
 \ plus prologue fusion (GELU->RMSNORM in one kernel; ADD->RMSNORM with two params). Then the
-\ broadcast prologues: BIAS->RMSNORM (a 1xC row-broadcast pinned to row 0, add.rn) and
-\ SCALE->RMSNORM (a 1x1 scalar-broadcast via a zero column offset, mul.rn), mirroring EX-BC@.
-\ Then the fail-closed paths: a pure-elementwise region, an unsupported op, two reductions, the
-\ column cap, the input cap, an Rx1 column and an illegal broadcast shape (both hand-built IR),
-\ and a corrupted multi-output plan. No device, no ptxas - PTX validity is proven on the Orin by
-\ maki/lower-device-test.f. Load via maki/test.f.
+\ broadcast prologues: BIAS->RMSNORM (a 1xC row-broadcast pinned to row 0, add.rn),
+\ SCALE->RMSNORM (a 1x1 scalar-broadcast via a zero column offset, mul.rn), and an Rx1 COLUMN
+\ broadcast (hand-built IR: a stride-1 row span - base + row*4, no row*k mul.lo - plus a zero
+\ column offset), all mirroring EX-BC@. Then the fail-closed paths: a pure-elementwise region,
+\ an unsupported op, two reductions, the column cap, the input cap, an illegal broadcast shape
+\ and a broadcast input 0 (both hand-built IR), and a corrupted multi-output plan. No device,
+\ no ptxas - PTX validity is proven on the Orin by maki/lower-device-test.f. Load via maki/test.f.
 
 require lib/test.f
 require lib/string.f
@@ -170,15 +171,39 @@ FP-BUILD
 -1 0 MIR-MAT!
 ' LREDT-TRY E-LRED-MULTIOUT TTHROWS
 
-\ ---- fail closed: an Rx1 COLUMN broadcast into the reduction (no clean row load) ---
-\ A 1xC row / 1x1 scalar broadcast now lowers (pinned to row 0); an Rx1 column would need a
-\ stride-1 row span the coalesced row loader cannot express, so it stays fail-closed. It is
-\ not a legal capture class either, so the IR is hand-built (backward-test pattern) to keep
-\ LRED-ANALYZE's guard tested as defense-in-depth. 4x1 into 4x8: br=R=4, bc=1 -> BC-COL.
+\ ---- COL->RMSNORM: an Rx1 COLUMN broadcast reads element r in every lane (hand-built) --
+\ The col operand (p_in1 = %rd2) loads a STRIDE-1 row span - mul.wide directly off the row
+\ register %r2 (base + row*1*4), NOT the full-row row*k mul.lo - plus a zero column offset,
+\ so block r reads element r, mirroring EX-BC@ Rx1 [e/C]. Not a legal capture class today
+\ (cad.f SHP-LEGAL?: BIAS 1xC, SCALE 1x1/same only), so the IR is hand-built (backward-test
+\ pattern); the lowering is defense-in-depth cover. 4x1 into 4x8: br=R=4, bc=1 -> BC-COL.
 MIR-RESET
 4 8 DT-F32 LAY-ROW MIR-INPUT+ drop
 4 1 DT-F32 LAY-ROW MIR-INPUT+ drop
 OP-ADD MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
+   4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+OP-RMSNORM MIR-OP-BEGIN  0 MIR-IN+
+   4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+FP-BUILD
+LREDT-CAP0
+s" .visible .entry REGION_0"        LREDT-ONCE
+s" .param .u64 p_in1"               LREDT-IN
+s" mul.wide.u32 %rd9, %r2, 4;"      LREDT-IN     \ stride-1 span math: row reg * 4 directly
+s" cvta.to.global.u64 %rd10, %rd2;" LREDT-IN     \ ...cvta of the col operand's base (p_in1)
+s" add.u64 %rd11, %rd10, %rd9;"     LREDT-IN     \ ...rowbase = base + row*4
+s" , %r2, 4;"                       LREDT-ONCE   \ exactly ONE span skips the full-row row*k mul.lo
+s" mov.u64 %rd12, 0;"               LREDT-IN     \ zero column offset: every lane reads element r
+s" add.rn.f32"                      LREDT-IN     \ the ADD prologue consumes the col tile
+s" sqrt.rn.f32"                     LREDT-IN     \ rmsnorm reduction
+
+\ ---- fail closed: a broadcast (Rx1) input 0 (hand-built) ---------------------------
+\ LRED-BODY hardwires input 0 as the FULL data operand's row span, so a plan whose FIRST
+\ collected input is a broadcast must reject rather than silently emit a full-row span
+\ over a 1-column buffer. ADD(col, x) collects the 4x1 col as input 0 -> E-LRED-BCAST.
+MIR-RESET
+4 8 DT-F32 LAY-ROW MIR-INPUT+ drop
+4 1 DT-F32 LAY-ROW MIR-INPUT+ drop
+OP-ADD MIR-OP-BEGIN  1 MIR-IN-REF MIR-IN+  0 MIR-IN-REF MIR-IN+
    4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 OP-RMSNORM MIR-OP-BEGIN  0 MIR-IN+
    4 8 DT-F32 LAY-ROW 0 1 MIR-OP+ drop

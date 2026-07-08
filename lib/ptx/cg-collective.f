@@ -92,6 +92,19 @@
    SB-RESET s" cvta.to.global.u64 " CG-S g CG-RD s" , " CG-S base CG-RD s" ;" CG-S CG-LINE
    g ;
 
+\ ROW-SPAN-STRIDE1: rowbase = cvta.global(base) + row*4 (stride 1, not k). An Rx1
+\ column operand holds ONE element per row, so block r's span starts at element r;
+\ ROW-LOAD with a zero col offset then reads element r in every lane. Mirrors the
+\ executor EX-BC@ Rx1 read [e / C] (maki/bcast.f BC-COL).
+: EMIT-ROW-SPAN-STRIDE1 ( n n -- n ) {: base:n row:n :}
+   CG-NEXT-RD {: off:n :}
+   SB-RESET s" mul.wide.u32 " CG-S off CG-RD s" , " CG-S row CG-R s" , 4;" CG-S CG-LINE
+   CG-NEXT-RD {: g:n :}
+   SB-RESET s" cvta.to.global.u64 " CG-S g CG-RD s" , " CG-S base CG-RD s" ;" CG-S CG-LINE
+   CG-NEXT-RD {: rb:n :}
+   SB-RESET s" add.u64 " CG-S rb CG-RD s" , " CG-S g CG-RD s" , " CG-S off CG-RD s" ;" CG-S CG-LINE
+   rb ;
+
 \ ROW-CTX: per-thread column byte offset = tid*4 (span unused; bounds recomputed
 \ at load/store from %tid.x and %r1).
 : EMIT-ROW-CTX ( n -- n ) {: span :}

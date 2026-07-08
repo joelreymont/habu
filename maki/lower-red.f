@@ -31,10 +31,11 @@
 \ BROADCAST operands (bias/scale around the reduction): a region input whose shape is a legal
 \ ROW (1xC) or SCALAR (1x1) broadcast of the region shape is loaded with its row span pinned to
 \ row 0 (EMIT-ROW-SPAN0), so every block reads the SAME single row - a 1xC reads element tid
-\ (the shared column ctx), a 1x1 reads element 0 (a zero ctx). This mirrors the host executor
-\ EX-BC@ (maki/bcast.f) and unblocks fused BIAS/SCALE prologues (e.g. BIAS RMSNORM). A COLUMN
-\ (Rx1) broadcast needs a stride-1 row span the coalesced row loader cannot express, so it stays
-\ fail-closed (LRED-BCAST); it is not a legal capture class anyway (dot for the row-vector fold).
+\ (the shared column ctx), a 1x1 reads element 0 (a zero ctx). A COLUMN (Rx1) broadcast loads a
+\ STRIDE-1 row span (EMIT-ROW-SPAN-STRIDE1: base + row*4) with a zero column ctx, so every lane
+\ in block r reads element r. All three mirror the host executor EX-BC@ (maki/bcast.f). No legal
+\ capture class produces an Rx1 into a reduction today (cad.f SHP-LEGAL?: BIAS 1xC, SCALE
+\ 1x1/same), so the BC-COL lowering is defense-in-depth cover for hand-built/synthesized IR.
 \ OP-BIAS lowers as EMIT-ADD and OP-SCALE as EMIT-MUL, matching the executor's scalar references.
 \
 \ Fail closed BEFORE any PTX is emitted (a rejected region emits nothing): a region whose
@@ -43,8 +44,9 @@
 \ (LRED-MULTIRED, v1 cap: one reduction per region), more than the v1 input cap (LRED-INPUTS),
 \ a region whose materialized-output count is not exactly one (LRED-MULTIOUT - a defense-in-depth
 \ PLANNER-INVARIANT guard, not a v1 cap: the planner always plans exactly one materialized output
-\ per region, proven in maki/fusion-mout-test.f), a region input whose shape
-\ is not a row/scalar broadcast of the RxC region shape - an Rx1 column or a non-1-non-full dim
+\ per region, proven in maki/fusion-mout-test.f), a region input whose shape is not a legal
+\ broadcast of the RxC region shape - a non-1-non-full dim - or a broadcast (non-RxC) input 0
+\ (LRED-BODY hardwires the full data-operand row span for input 0)
 \ (LRED-BCAST), and a row width beyond the block cap (LRED-COLS, v1: C <= 256) are named throws.
 \ maki -> habu only; lower-red owns -5185..-5192. Load after the cg emit stack (see requires).
 
@@ -71,7 +73,7 @@ require maki/rmsnorm.f
 -5187 constant E-LRED-MULTIRED \ region does not have exactly one reduction node (v1 cap)
 -5188 constant E-LRED-INPUTS   \ region has more than the v1 input cap (4)
 -5189 constant E-LRED-MULTIOUT \ region's materialized-output count != 1 (planner-invariant guard, not a cap)
--5190 constant E-LRED-BCAST    \ a region input shape is not a row/scalar broadcast (Rx1 col / illegal dim)
+-5190 constant E-LRED-BCAST    \ a region input shape is not a legal broadcast (illegal dim / broadcast input 0)
 -5191 constant E-LRED-COLS     \ row width (cols) exceeds the block cap (v1: k <= 256)
 -5192 constant E-LRED-REG      \ node / input register-map index out of range
 
@@ -166,16 +168,18 @@ variable LRED-RID                              \ region id being lowered
    ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-ROWS@ else ref MIR-ROWS@ then ;
 : LRED-REF-COLS ( n -- n ) {: ref:n :}
    ref MIR-REF-INPUT? if ref MIR-REF-SLOT MIR-SLOT-COLS@ else ref MIR-COLS@ then ;
-\ classify each input; FULL/ROW/SCALAR load with the row loader (row 0 pinned for a broadcast),
-\ but an Rx1 COLUMN (a stride-1 row span the coalesced loader cannot hold) or an illegal dim
-\ fails closed. Record the class for the per-input load in LRED-BODY.
+\ classify each input; FULL/ROW/SCALAR/COL load with the row loader (row 0 pinned for a
+\ row/scalar broadcast, a stride-1 span for an Rx1 column); an illegal dim fails closed.
+\ Input 0 must be the FULL data operand - LRED-BODY hardwires its full row span - so a
+\ broadcast in position 0 also fails closed. Record the class for LRED-BODY's loads.
 : LRED-CLASSIFY-INS ( -- )
    LRED-OUTNODE @ {: out:n :}
    out MIR-ROWS@ {: R:n :}  out MIR-COLS@ {: C:n :}
    LRED-NIN @ 0 ?do
       LRED-INS i cells + @ {: ref:n :}
       ref LRED-REF-ROWS  ref LRED-REF-COLS  R C  BC-CLASS {: cls:n :}
-      cls BC-FULL = cls BC-ROW = or cls BC-SCALAR = or 0= if E-LRED-BCAST throw then
+      cls BC-ILLEGAL = if E-LRED-BCAST throw then
+      i 0=  cls BC-FULL <>  and if E-LRED-BCAST throw then
       cls LRED-IN-BC i cells + !
    loop ;
 
@@ -313,12 +317,14 @@ private
 : LRED-OUT-BASE ( -- n )  LRED-NIN @ 1+ ;        \ rd index of p_out (rd K+1)
 \ per-input row load (i >= 1): FULL reads the r-th row span at the shared column ctx; a ROW (1xC)
 \ broadcast pins the span to row 0 (same row every block) and reads element tid via the shared ctx;
-\ a SCALAR (1x1) pins row 0 and reads element 0 via a zero ctx. Result tile -> LRED-IN-REG[i].
+\ a SCALAR (1x1) pins row 0 and reads element 0 via a zero ctx; a COLUMN (Rx1) reads element r in
+\ every lane (stride-1 span at row r + a zero ctx = EX-BC@ [e/C]). Result tile -> LRED-IN-REG[i].
 : LRED-LOAD-IN ( n n n -- ) {: i:n r:n ctx:n :}
    i cells LRED-IN-BC + @ case
       BC-FULL   of i LRED-BASE r EMIT-ROW-SPAN  ctx EMIT-ROW-LOAD          endof
       BC-ROW    of i LRED-BASE EMIT-ROW-SPAN0   ctx EMIT-ROW-LOAD          endof
       BC-SCALAR of i LRED-BASE EMIT-ROW-SPAN0   EMIT-ZERO-OFF EMIT-ROW-LOAD endof
+      BC-COL    of i LRED-BASE r EMIT-ROW-SPAN-STRIDE1  EMIT-ZERO-OFF EMIT-ROW-LOAD endof
       drop E-LRED-BCAST throw
    endcase
    LRED-IN-REG i cells + ! ;

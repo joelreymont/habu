@@ -1307,6 +1307,14 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## FFI / GPU (PTX)
 
+- **Relaxing a fail-closed class re-audits every site that leaned on the old
+  rejection:** maki/lower-red.f LRED-BODY hardwires input 0 as the FULL data
+  operand's row span; only LRED-CLASSIFY-INS's blanket BC-COL rejection kept a
+  hand-built broadcast out of position 0. Unlocking BC-COL (stride-1 span,
+  2026-07-08) therefore needed a NEW input-0-must-be-FULL guard + negative
+  fixture, and exposed that BC-ROW/BC-SCALAR in position 0 were already silently
+  mis-loadable. Before widening an accepted-class set, grep every consumer of
+  the classification for positional/shape assumptions the old set masked.
 - **TF32 mma.sync: prove the fragment layout element-EXACT in isolation FIRST.**
   The PTX-ISA m16n8k8 tf32 layout (gid=lane>>2, t=lane&3: A a0=A[gid][t]
   a1=A[gid+8][t] a2=A[gid][t+4] a3=A[gid+8][t+4]; B b0=B[t][gid] b1=B[t+4][gid];
