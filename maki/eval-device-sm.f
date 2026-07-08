@@ -29,6 +29,13 @@ require maki/cuda-driver.f
 require maki/device-artifacts.f
 require lib/ptx/sentinel.f
 
+\ eval-device-sm reopens package EVAL as the softmax-rows device-golden module,
+\ mirroring maki/eval-device.f. CHECK-PASSES? is same-package (bare); the SM- launch
+\ state and GRADE-SM- driver helpers are private, GRADE-SM the one public entrypoint.
+package EVAL
+
+private
+
 create SM-PATH 64 allot  create SM-KN 32 allot
 create SM-IN 16 allot   create SM-OUT 16 allot   create SMG 4 cells allot
 variable SM-DEV variable SM-CTX variable SM-MOD variable SM-FUNC
@@ -117,8 +124,10 @@ create GSQ-OUT $1000 allot  create GSQ-ERR $1000 allot
 : GRADE-SM-DEVICE-VERDICT ( -- n )
    MAKI-GRADE:CUBIN$ DEVICE-CORRECT-SM? if 2 else 1 then ;
 
+public
+
 : GRADE-SM ( ptr u8 n -- n ) {: a u :}
-   a u EVAL:CHECK-PASSES? 0= if 0 exit then
+   a u CHECK-PASSES? 0= if 0 exit then
    s" habu-grade-softmax" MAKI-GRADE:PREPARE
    a u GRADE-SM-WRITE-DRIVER
    GRADE-SM-EMIT  0 = if MAKI-GRADE:CLEAN 1 exit then
@@ -128,6 +137,8 @@ create GSQ-OUT $1000 allot  create GSQ-ERR $1000 allot
    v ;
 
 SM-INIT
+
+end-package
 
 \ This file is now the GRADE-SM LIBRARY (mirrors maki/eval-device.f). The device-golden
 \ test candidates moved to maki/eval-device-sm-test.f so the grader can be reused by

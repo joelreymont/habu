@@ -107,7 +107,7 @@ Triton error-catch battery (6 candidates):
 ### Internal no-checker Habu ablation
 
 `maki/eval-compare.f` also runs an internal Habu-PTX ablation over the SAXPY
-fixture: the checked arm grades through `GRADE-CANDIDATE`, while the no-checker
+fixture: the checked arm grades through `EVAL:GRADE-CANDIDATE`, while the no-checker
 arm emits a throwaway `0 set-check` driver and then attempts ptxas + device golden
 for every candidate. On the Orin run, the checked arm caught 5/6 bugs before GPU
 execution and ran only the 3 green + 1 semantic-wrong candidates. The no-checker

@@ -6,7 +6,7 @@
 \ produce ITS OWN PTX (a fresh top-level emit, captured) -> ptxas (subprocess) -> run
 \ on the Orin (x=2,y=0,a=3) -> compare the SAXPY golden a*x+y=6.0. Verdict: 2 GREEN
 \ (certify + device-correct), 1 TYPED-WRONG (certifies but device output != golden -
-\ a semantic bug the checker can't catch), 0 REJECTED (does not certify). EVD-SCORE
+\ a semantic bug the checker can't catch), 0 REJECTED (does not certify). DEVICE-SCORE
 \ tallies GREEN so pass@k means well-typed AND device-correct. Fully checked Habu.
 \ Load after the PTX tile vocab; this file owns its stdlib/process setup.
 
@@ -28,10 +28,25 @@ require maki/cuda-driver.f
 require maki/device-artifacts.f
 require lib/ptx/sentinel.f
 
+\ eval-device reopens package EVAL as the SAXPY device-golden module. CHECK-PASSES?
+\ (maki/eval.f) is same-package now, so it resolves bare; only the MAKI-GRADE:/CUDA:/
+\ PTXSENT: artifact + driver packages stay qualified. The ED-*/GP-*/GQ- launch state,
+\ the EVN- verdict codes, and the GRADE- driver helpers are private; the GRADE-
+\ entrypoints and DEVICE- pass@k tally are the public surface.
+package EVAL
+
+private
+
 \ ---- device gate: run a SAXPY cubin and compare the task golden ----
 create ED-PATH 64 allot  create ED-KN 32 allot
 variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
 variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
+
+\ verdict codes for the without-checker arm (eval-internal; the CMP- ablation reads them)
+0 constant EVN-EMIT-FAIL
+1 constant EVN-PTXAS-FAIL
+2 constant EVN-DEVICE-WRONG
+3 constant EVN-GREEN
 
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
    ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
@@ -120,9 +135,11 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
 : GRADE-DEVICE-VERDICT ( -- n )
    MAKI-GRADE:CUBIN$ DEVICE-CORRECT? if 2 else 1 then ;
 
+public
+
 \ ---- the general grade: 2 GREEN / 1 TYPED-BUT-WRONG / 0 REJECTED ----
 : GRADE-CANDIDATE ( ptr u8 n -- n ) {: a u :}
-   a u EVAL:CHECK-PASSES? 0= if 0 exit then            \ checker rejects -> 0
+   a u CHECK-PASSES? 0= if 0 exit then                 \ checker rejects -> 0
    s" habu-grade-saxpy" MAKI-GRADE:PREPARE
    a u GRADE-WRITE-DRIVER
    GRADE-EMIT  0 = if MAKI-GRADE:CLEAN 1 exit then
@@ -130,11 +147,6 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    GRADE-DEVICE-VERDICT {: v:n :}
    MAKI-GRADE:CLEAN
    v ;
-
-0 constant EVN-EMIT-FAIL
-1 constant EVN-PTXAS-FAIL
-2 constant EVN-DEVICE-WRONG
-3 constant EVN-GREEN
 
 : GRADE-NOCHECK-CANDIDATE ( ptr u8 n -- n ) {: a:ptr u:n :}
    s" habu-grade-saxpy" MAKI-GRADE:PREPARE
@@ -146,7 +158,9 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
    v ;
 
 \ pass@k that means certify AND device-correct
-variable EVD-PASS  variable EVD-TOTAL
-: EVD-RESET ( -- )  0 EVD-PASS !  0 EVD-TOTAL ! ;
-: EVD-SCORE ( ptr u8 n -- )
-   GRADE-CANDIDATE  2 = if EVD-PASS @ 1+ EVD-PASS ! then  EVD-TOTAL @ 1+ EVD-TOTAL ! ;
+variable DEVICE-PASS  variable DEVICE-TOTAL
+: DEVICE-RESET ( -- )  0 DEVICE-PASS !  0 DEVICE-TOTAL ! ;
+: DEVICE-SCORE ( ptr u8 n -- )
+   GRADE-CANDIDATE  2 = if DEVICE-PASS @ 1+ DEVICE-PASS ! then  DEVICE-TOTAL @ 1+ DEVICE-TOTAL ! ;
+
+end-package

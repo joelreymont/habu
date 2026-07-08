@@ -4,20 +4,20 @@
 T-RESET
 
 \ correct SAXPY -> certifies AND device-correct -> GREEN(2)
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  GRADE-CANDIDATE  2 T=
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  EVAL:GRADE-CANDIDATE  2 T=
 \ WRONG-but-certified (x+y) -> certifies but device output != golden -> TYPED-WRONG(1)
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           GRADE-CANDIDATE  1 T=
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           EVAL:GRADE-CANDIDATE  1 T=
 \ ill-typed (missing store) -> checker rejects -> REJECTED(0)
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             GRADE-CANDIDATE  0 T=
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             EVAL:GRADE-CANDIDATE  0 T=
 
 \ device-gated pass@k: 3 candidates, only the device-correct one is GREEN
-EVD-RESET
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  EVD-SCORE
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           EVD-SCORE
-s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             EVD-SCORE
-EVD-TOTAL @  3 T=
-EVD-PASS  @  1 T=                                   \ ONE green (device-correct), vs 2 that merely certify
+EVAL:DEVICE-RESET
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +. y g STORE"  EVAL:DEVICE-SCORE
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD y g LOAD +. y g STORE"           EVAL:DEVICE-SCORE
+s" K ( span<space-global,f32,extent-n> span<space-global,f32,extent-n> uniform<f32> -- ) {: x y a :} x GRID-CTX {: g :} x g LOAD a SCALE y g LOAD +."             EVAL:DEVICE-SCORE
+EVAL:DEVICE-TOTAL @  3 T=
+EVAL:DEVICE-PASS  @  1 T=                                   \ ONE green (device-correct), vs 2 that merely certify
 
-s" device-golden pass@k: green(certify AND device-correct)=" type EVD-PASS @ . s" / total=" type EVD-TOTAL @ . cr
+s" device-golden pass@k: green(certify AND device-correct)=" type EVAL:DEVICE-PASS @ . s" / total=" type EVAL:DEVICE-TOTAL @ . cr
 
 T-REPORT

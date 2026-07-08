@@ -22,8 +22,8 @@ public
 
 : GRADE-AUTHOR ( ptr u8 n n -- n ) {: a u task :}
    task case
-      TASK-SAXPY   of a u GRADE-CANDIDATE endof
-      TASK-SOFTMAX of a u GRADE-SM        endof
+      TASK-SAXPY   of a u EVAL:GRADE-CANDIDATE endof
+      TASK-SOFTMAX of a u EVAL:GRADE-SM        endof
       E-MK-EVAL throw
    endcase ;
 

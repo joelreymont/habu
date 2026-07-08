@@ -88,7 +88,7 @@ the device, each verified correct-vs-CPU on the Orin:
   streaming-memory ceiling.
 
 - **Device-golden autograder (task-general)** — `maki/eval-device.f` grades a
-  candidate by `certify AND run-correct`: `GRADE-CANDIDATE` certifies, spawns
+  candidate by `certify AND run-correct`: `EVAL:GRADE-CANDIDATE` certifies, spawns
   `bin/hb` to emit the candidate's PTX, ptxas-assembles, runs on the Orin, and
   compares the task golden. A SAXPY that computes `x+y` (forgetting the scale)
   *certifies* yet is graded TYPED-WRONG by the device gate, while the correct one
@@ -97,8 +97,8 @@ the device, each verified correct-vs-CPU on the Orin:
   `B-`/`B/` confusion (subtract vs divide) certifies but is caught as TYPED-WRONG,
   proving the gate works for block-reduction kernels, not just SAXPY.
 - **Unified authoring grader** — `maki/eval-author.f` `GRADE-AUTHOR ( a u task -- verdict )`
-  dispatches a candidate to its task's device-golden grader (`TASK-SAXPY` → `GRADE-CANDIDATE`,
-  `TASK-SOFTMAX` → `GRADE-SM`), failing closed on an unknown task. This replaces the
+  dispatches a candidate to its task's device-golden grader (`TASK-SAXPY` → `EVAL:GRADE-CANDIDATE`,
+  `TASK-SOFTMAX` → `EVAL:GRADE-SM`), failing closed on an unknown task. This replaces the
   throwaway `/tmp` grade scripts so the model-driven authoring matrix is reproducible from
   the committed tree. Orin-only device suite (run alongside `eval-device-test.f` /
   `eval-device-sm-test.f` / `eval-author-test.f`):

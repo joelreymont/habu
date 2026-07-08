@@ -24,7 +24,7 @@ candidate signatures are allowed to shadow existing names during that one check,
 the checker registries are restored so repeated `K`/`A` candidates do not poison the
 host dictionary. `maki/eval-device.f` grades `certify AND run-correct` (emit → ptxas →
 device golden); `maki/eval-compare.f` is the internal checker-ablation. That ablation
-scores every candidate through both `GRADE-CANDIDATE` and a
+scores every candidate through both `EVAL:GRADE-CANDIDATE` and a
 throwaway `0 set-check` emit/ptxas/device path; on the SAXPY fixture, the checker
 catches 5/6 bugs before execution while the no-checker arm catches 0/6 before
 execution and all six buggy candidates fail only at the device golden. The committed
