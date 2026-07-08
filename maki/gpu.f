@@ -13,6 +13,13 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/sentinel.f
 
+\ package GPU owns the stateful launch machinery. The G- stem drops (GPU carries it:
+\ GPU:SETUP / GPU:LAUNCH / GPU:SGD ...); the CUDA:/PTXSENT: bindings stay the driver's.
+\ Launch state (GN/G*/host buffers) and the f32 pack/unpack helpers are private.
+package GPU
+
+private
+
 4 constant GN                       \ vector length (demo)
 create GPATH 64 allot
 create GKN  32 allot
@@ -35,7 +42,9 @@ variable GDX variable GDY variable GABITS variable GNVAR
    buf o 2 + + c@  16 lshift or
    buf o 3 + + c@  24 lshift or ;
 
-: G-SETUP ( -- )
+public
+
+: SETUP ( -- )
    CUDA:OPEN
    0 CUDA:CUINIT CUDA:RC0
    GDEV 0 >IDX CUDA:CUDEVICEGET CUDA:RC0
@@ -47,11 +56,11 @@ variable GDX variable GDY variable GABITS variable GNVAR
    GFUNC GMOD @ >CUDA-MOD GKN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 \ load element i of x and y from Habu floats into the host f32 buffers
-: G-PUT ( r r n -- ) {: xv yv ix :}
+: PUT ( r r n -- ) {: xv:r yv:r ix:n :}
    xv F64>F32 GHX ix F32!
    yv F64>F32 GHY ix F32! ;
 
-: G-LAUNCH ( r -- )  {: a :}                          \ a = scalar; x,y already in GHX/GHY
+: LAUNCH ( r -- )  {: a:r :}                        \ a = scalar; x,y already in GHX/GHY
    GN 4 *  {: bytes :}
    GDX bytes >LEN CUDA:CUMEMALLOC CUDA:RC0
    GDY bytes >LEN CUDA:CUMEMALLOC CUDA:RC0
@@ -69,17 +78,19 @@ variable GDX variable GDY variable GABITS variable GNVAR
    GHY bytes PTXSENT:FILL                                \ poison before copy-back (y already on device)
    GHY GDY @ >CUDA-DEVPTR bytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0 ;
 
-: G-RELEASE ( -- )
+: RELEASE ( -- )
    GDX @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
    GDY @ >CUDA-DEVPTR CUDA:CUMEMFREE CUDA:RC0
    GMOD @ >CUDA-MOD CUDA:CUMODULEUNLOAD CUDA:RC0
    GDEV @ >CUDA-DEV CUDA:CUDEVICEPRIMARYCTXRELEASE CUDA:RC0 ;
 
 \ result element i (f32 bits) after the launch
-: G-RESULT ( n -- n )  GHY swap F32@ PTXSENT:GUARD ;
+: RESULT ( n -- n )  GHY swap F32@ PTXSENT:GUARD ;
 
 \ tensor SGD step on the GPU: w[i] -= lr*g[i], lowered onto the SAXPY kernel
 \ (a = -lr, x = grad, y = weight, so a*x+y = w - lr*g). Put grad as x and weight
-\ as y via G-PUT, then G-SGD; G-RESULT i is the updated weight. Matches maki/array.f
+\ as y via PUT, then SGD; RESULT i is the updated weight. Matches maki/array.f
 \ T-SGD! on the f32-marshalled inputs - the optimizer step runs on device.
-: G-SGD ( r -- )  fnegate G-LAUNCH ;
+: SGD ( r -- )  fnegate LAUNCH ;
+
+end-package
