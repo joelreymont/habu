@@ -14,3 +14,10 @@ around that date. The pending-zed queue (this dot + habu-zed-ew-broadcast +
 habu-zed-red-broadcast + fold-staged goldens + optimizer flip + mma-16x64-warp
 + cad-6-tune + rooflines + latency + SAXPY retirement device leg) stays parked;
 nothing in it blocks host work.
+
+PENDING-ZED ADDITION 2026-07-08 (subsystem-pkgs s3+s4): re-verify the packaged
+device stack on the Orin - the 5 command blocks are recorded in full in dot
+habu-maki-subsystem-pkgs s4 note (eval authoring prelude, device-golden demos,
+checker ablation load, gpu cluster w/ saxpy.cubin prereq + goldens, smoke gate
+leg). All files host-compile clean under qualified names; only device legs
+remain.
