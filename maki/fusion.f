@@ -20,7 +20,9 @@
 \ (docs/forth.md "Packages"). E-FUSE stays global (a cross-cutting error code, like
 \ lib/errors.f's E-*); the package body reaches it via global fallback.
 
--5002 constant E-FUSE  \ unfusible / unknown op, or chain overflow (fail-closed)
+\ -5004: moved off -5002, which lib/ptx/cuda-driver.f E-CUDA owns (device-boundary
+\ code proven on-device; tools/error-code-lint.f now enforces uniqueness).
+-5004 constant E-FUSE  \ unfusible / unknown op, or chain overflow (fail-closed)
 
 require lib/string.f
 require lib/fs.f

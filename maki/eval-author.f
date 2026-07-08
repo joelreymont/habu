@@ -12,7 +12,9 @@
 \ run by bin/hb. The Triton baseline and the subagent generation arm stay external + documented
 \ (Habu Only). Load after maki/eval-device.f and maki/eval-device-sm.f.
 
--5003 constant E-MK-EVAL          \ unknown eval task (fail-closed)
+\ -5005: moved off -5003, which lib/ptx/sentinel.f E-PTX-READBACK owns (device-
+\ boundary code cited in docs; tools/error-code-lint.f now enforces uniqueness).
+-5005 constant E-MK-EVAL          \ unknown eval task (fail-closed)
 
 package MAKI
 public

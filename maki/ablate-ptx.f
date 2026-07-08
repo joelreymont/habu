@@ -6,13 +6,14 @@
 \ edited), so a drifted emitter surfaces as E-ABL-NOSUB, never as a silent no-op
 \ mutation that would let a "caught fault" assertion pass vacuously. The mutated
 \ text is what the test hands to ptxas. maki -> habu only; ablate-ptx owns
-\ -5210..-5211.
+\ -5250..-5251 (moved off -5210..-5211, which maki/lower-move.f already owned;
+\ tools/error-code-lint.f now enforces uniqueness).
 
 require lib/errors.f
 require lib/string.f
 
--5210 constant E-ABL-NOSUB        \ ablate: PTX mutation target substring not found (fail closed)
--5211 constant E-ABL-CAP          \ ablate: mutated PTX exceeds the scratch buffer
+-5250 constant E-ABL-NOSUB        \ ablate: PTX mutation target substring not found (fail closed)
+-5251 constant E-ABL-CAP          \ ablate: mutated PTX exceeds the scratch buffer
 
 package MAKI
 private

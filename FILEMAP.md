@@ -513,6 +513,9 @@ points stay listed.
 - `tools/namespace-lint-core.f` — reports maki definitions at global scope (outside any subsystem package), whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs.
 - `tools/namespace-lint.f` — CLI wrapper for the maki namespace ledger lint (report-only).
 - `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace ledger lint.
+- `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
+- `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
+- `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
 - `tools/string.f` — shared checked byte-string helper library.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
