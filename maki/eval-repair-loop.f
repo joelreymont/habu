@@ -6,7 +6,7 @@
 \ round per checker rejection and sums authored tokens until the checker certifies
 \ (green). repair-rounds = number of checker-guided fixes; tokens-to-green = total
 \ kernel-source tokens authored until certification. The checker (maki/eval.f
-\ CHECK-PASSES?) is the in-environment judge.
+\ EVAL:CHECK-PASSES?) is the in-environment judge.
 \
 \ This engine is ARM-AGNOSTIC: the difference between rich EXPLAIN-packet feedback
 \ and minimal status-quo feedback is expressed purely by WHICH candidate trajectory
@@ -34,7 +34,7 @@ variable ER-ROUND  variable ER-TOKENS  variable ER-GREEN
 : ER-STEP ( ptr u8 n -- )
    ER-GREEN @ if 2drop exit then
    2dup COUNT-TOKS  ER-TOKENS @ +  ER-TOKENS !
-   CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
+   EVAL:CHECK-PASSES? if  -1 ER-GREEN !  else  ER-ROUND @ 1+ ER-ROUND !  then ;
 : ER-ROUNDS@ ( -- n )  ER-ROUND @ ;
 : ER-TOKENS@ ( -- n )  ER-TOKENS @ ;
 : ER-GREEN? ( -- bool )  ER-GREEN @ ;          \ -1 (green) / 0 (not), already canonical

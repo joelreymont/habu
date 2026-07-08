@@ -2,7 +2,7 @@
 \ for the Habu-PTX kernel-authoring loop.
 \
 \ The authoring loop is author -> checker-feedback -> repair -> green, with the
-\ checker (maki/eval.f CHECK-PASSES?) as the in-environment judge. Each trajectory
+\ checker (EVAL:CHECK-PASSES?) as the in-environment judge. Each trajectory
 \ below is a real authoring path: a buggy first draft, then one repair per checker
 \ rejection until the kernel certifies. ER-STEP feeds each candidate, counting a
 \ repair round per rejection and summing tokens until green. repair-rounds = the

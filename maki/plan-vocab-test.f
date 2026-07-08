@@ -10,7 +10,7 @@
 \   1. Positive: PVT-SKIP / PVT-BRANCH are top-level ": ... ;" definitions - bin/hb checks their
 \      ( tensor ... -- tensor ) effects on load, and the drivers run them to assert the captured
 \      plan (op sequence, re-rooted skip operand, fan-out, shape flow) matches plan-compose-test.
-\   2. Negative: CHECK-PASSES? (the same checker, driven over a source string) proves a malformed
+\   2. Negative: EVAL:CHECK-PASSES? (the same checker, driven over a source string) proves a malformed
 \      composition - wrong arity, a non-tensor operand, a leftover value, a movement op missing its
 \      scalar params - is REJECTED before any planning. Run inside `package PLAN` so the candidate's
 \      bare vocabulary words resolve; the positive controls double as the scope guard.
@@ -20,7 +20,7 @@
 \ This file locks the hand-authored half that IS expressible today. maki -> habu only.
 
 require lib/test.f
-require maki/eval.f          \ CHECK-PASSES?: drive the checker over a candidate string
+require maki/eval.f          \ EVAL:CHECK-PASSES?: drive the checker over a candidate string
 require maki/plan-vocab.f
 require maki/tensor-value.f
 
@@ -110,22 +110,22 @@ PVT-RUN-SKIP
 PVT-RUN-BRANCH
 end-package
 
-\ ---- proof 2: the checker REJECTS malformed compositions at load (CHECK-PASSES?) --
+\ ---- proof 2: the checker REJECTS malformed compositions at load (EVAL:CHECK-PASSES?) --
 \ Inside package PLAN so the candidate's bare vocabulary words resolve. Positive controls
 \ certify (and prove the words resolve); every malformed form is rejected before planning.
 package PLAN
 \ positive controls: well-formed compositions certify (arity + tensor discipline hold)
-s" PVOK-LIN ( tensor tensor tensor -- tensor ) LINEAR GELU"                                   CHECK-PASSES? TTRUE
-s" PVOK-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x w1 b1 w2 b2 :} x w1 b1 LINEAR GELU w2 b2 LINEAR x RESIDUAL-ADD RMSNORM"  CHECK-PASSES? TTRUE
-s" PVOK-RESHAPE ( tensor n n -- tensor ) RESHAPE"                                             CHECK-PASSES? TTRUE
+s" PVOK-LIN ( tensor tensor tensor -- tensor ) LINEAR GELU"                                   EVAL:CHECK-PASSES? TTRUE
+s" PVOK-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x w1 b1 w2 b2 :} x w1 b1 LINEAR GELU w2 b2 LINEAR x RESIDUAL-ADD RMSNORM"  EVAL:CHECK-PASSES? TTRUE
+s" PVOK-RESHAPE ( tensor n n -- tensor ) RESHAPE"                                             EVAL:CHECK-PASSES? TTRUE
 \ negatives: arity underflow (binary / ternary / movement ops missing operands)
-s" PVBAD-ADD ( tensor -- tensor ) ADD"                                                        CHECK-PASSES? TFALSE
-s" PVBAD-LINEAR ( tensor tensor -- tensor ) LINEAR"                                           CHECK-PASSES? TFALSE
-s" PVBAD-RESHAPE ( tensor -- tensor ) RESHAPE"                                                CHECK-PASSES? TFALSE
+s" PVBAD-ADD ( tensor -- tensor ) ADD"                                                        EVAL:CHECK-PASSES? TFALSE
+s" PVBAD-LINEAR ( tensor tensor -- tensor ) LINEAR"                                           EVAL:CHECK-PASSES? TFALSE
+s" PVBAD-RESHAPE ( tensor -- tensor ) RESHAPE"                                                EVAL:CHECK-PASSES? TFALSE
 \ negative: type mismatch (a non-tensor value fed to a tensor-typed op)
-s" PVBAD-TYPE ( n -- tensor ) GELU"                                                           CHECK-PASSES? TFALSE
+s" PVBAD-TYPE ( n -- tensor ) GELU"                                                           EVAL:CHECK-PASSES? TFALSE
 \ negative: leftover value (two inputs, one unary op) - result arity != declared output
-s" PVBAD-LEFT ( tensor tensor -- tensor ) GELU"                                               CHECK-PASSES? TFALSE
+s" PVBAD-LEFT ( tensor tensor -- tensor ) GELU"                                               EVAL:CHECK-PASSES? TFALSE
 end-package
 
 T-REPORT

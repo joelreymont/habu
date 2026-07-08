@@ -4,7 +4,7 @@
 \ task-general, not SAXPY-specific. The softmax authoring task uses block reductions
 \ (ROW/BLOCK-MAX/B-/EXP./BLOCK-SUM/B/), and its sharpest authoring error is B- vs B/
 \ (subtract instead of divide) - TYPE-IDENTICAL, so it certifies, but the device gate
-\ catches it. GRADE-SM: CHECK-PASSES? -> spawn bin/hb to emit the candidate's softmax
+\ catches it. GRADE-SM: EVAL:CHECK-PASSES? -> spawn bin/hb to emit the candidate's softmax
 \ PTX -> ptxas -> run on the Orin (row [1,2,3,4]) -> compare softmax([1,2,3,4]) within
 \ tolerance. Verdict 2 GREEN / 1 TYPED-WRONG / 0 REJECTED. Load after the PTX tile +
 \ collective vocab and `lib/ptx/launch.f`; this file owns stdlib/process setup.
@@ -118,7 +118,7 @@ create GSQ-OUT $1000 allot  create GSQ-ERR $1000 allot
    MAKI-GRADE:CUBIN$ DEVICE-CORRECT-SM? if 2 else 1 then ;
 
 : GRADE-SM ( ptr u8 n -- n ) {: a u :}
-   a u CHECK-PASSES? 0= if 0 exit then
+   a u EVAL:CHECK-PASSES? 0= if 0 exit then
    s" habu-grade-softmax" MAKI-GRADE:PREPARE
    a u GRADE-SM-WRITE-DRIVER
    GRADE-SM-EMIT  0 = if MAKI-GRADE:CLEAN 1 exit then

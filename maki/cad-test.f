@@ -6,7 +6,7 @@ require lib/test.f
 require lib/string.f
 require maki/report.f
 require maki/cad.f
-require maki/eval.f                 \ CHECK-PASSES?: drive the checker over the translated body
+require maki/eval.f                 \ EVAL:CHECK-PASSES?: drive the checker over the translated body
 
 package MAKI
 
@@ -19,7 +19,7 @@ variable CT-VA  variable CT-VU
 \ ---- MODEL: translator dry-run (the checker verdict without compiling) -------
 \ MODEL-CAND: runs MODEL:'s EXACT translation (CAP-BEGIN / PARSE-SIG / CAP-EMIT-SIG /
 \ PARSE-BODY) but frames the result as a CHECK-CANDIDATE! string ("NAME ( effect )
-\ {: locals :} body") instead of compiling it, so CHECK-PASSES? can observe the checker's
+\ {: locals :} body") instead of compiling it, so EVAL:CHECK-PASSES? can observe the checker's
 \ verdict in-process. This proves - through MODEL:'s real translator - that a malformed
 \ model body is rejected by the same checker MODEL: drives (which off the dry-run path is a
 \ load-time exit-70 diagnostic, uncatchable because the MODEL: driver crosses an evaluate).
@@ -75,7 +75,7 @@ s" SOFTMAX-ROW" OP-KIND OP-SOFTMAX-ROW T=
 
 \ ---- capture engine fail-closed paths --------------------------------------
 \ arity underflow is no longer a runtime throw: it is a nested-compile checker diagnostic,
-\ proven THROUGH MODEL:'s translator by the CHECK-PASSES? fixtures below.
+\ proven THROUGH MODEL:'s translator by the EVAL:CHECK-PASSES? fixtures below.
 ' TRY-EMPTY   E-CAD-EMPTY  TTHROWS
 ' TRY-INPUTS  E-CAD-INPUTS TTHROWS
 ' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
@@ -92,17 +92,17 @@ MODEL: BIB ( x:2x4 b:1x4 -- y ) BIAS ;    MODEL-K 1 T=      \ 1xC bias broadcast
 
 \ ---- the checker rejects malformed model bodies at DEFINITION (CAD-PLAN section 3) ----------
 \ v2 compiles the translated body over package PLAN, so a composition the checker cannot type
-\ is rejected at MODEL: time. MODEL-CAND: yields the exact string MODEL: compiles; CHECK-PASSES?
+\ is rejected at MODEL: time. MODEL-CAND: yields the exact string MODEL: compiles; EVAL:CHECK-PASSES?
 \ reads the same checker's verdict. Positive controls certify; every arity underflow is rejected.
 \ (Off the dry-run path this rejection is a load-time exit 70 - the improved failure mode that
 \ replaces the old runtime E-CAD-ARITY throw; the whole model is a checker-verified word now.)
-MODEL-CAND: MCOK-EW   ( x:4x8 y:4x8 -- z ) ADD ;              MODEL-CAND$ CHECK-PASSES? TTRUE
-MODEL-CAND: MCOK-LIN  ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;     MODEL-CAND$ CHECK-PASSES? TTRUE
-MODEL-CAND: MCOK-FFN  ( x:4x8 w1:8x8 b1:1x8 -- y ) LINEAR GELU ; MODEL-CAND$ CHECK-PASSES? TTRUE
+MODEL-CAND: MCOK-EW   ( x:4x8 y:4x8 -- z ) ADD ;              MODEL-CAND$ EVAL:CHECK-PASSES? TTRUE
+MODEL-CAND: MCOK-LIN  ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;     MODEL-CAND$ EVAL:CHECK-PASSES? TTRUE
+MODEL-CAND: MCOK-FFN  ( x:4x8 w1:8x8 b1:1x8 -- y ) LINEAR GELU ; MODEL-CAND$ EVAL:CHECK-PASSES? TTRUE
 \ negatives: binary / ternary / movement ops whose signature supplies too few operands underflow
-MODEL-CAND: MCBAD-ADD ( x:4x8 -- y ) ADD ;                    MODEL-CAND$ CHECK-PASSES? TFALSE
-MODEL-CAND: MCBAD-LIN ( x:2x3 w:3x4 -- y ) LINEAR ;           MODEL-CAND$ CHECK-PASSES? TFALSE
-MODEL-CAND: MCBAD-CAT ( x:4x8 -- y ) CONCAT ;                 MODEL-CAND$ CHECK-PASSES? TFALSE
+MODEL-CAND: MCBAD-ADD ( x:4x8 -- y ) ADD ;                    MODEL-CAND$ EVAL:CHECK-PASSES? TFALSE
+MODEL-CAND: MCBAD-LIN ( x:2x3 w:3x4 -- y ) LINEAR ;           MODEL-CAND$ EVAL:CHECK-PASSES? TFALSE
+MODEL-CAND: MCBAD-CAT ( x:4x8 -- y ) CONCAT ;                 MODEL-CAND$ EVAL:CHECK-PASSES? TFALSE
 \ Blocker 2 (tensor kind-opacity, dot habu-checker-shape-kind): the checker proves ARITY/KIND
 \ only - shape legality (E-CAD-PARAM-SHAPE, above) and the non-tensor/leftover negatives of
 \ plan-vocab-test are NOT reachable through MODEL:'s tensor-only signature; the vocabulary-level

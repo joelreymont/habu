@@ -99,7 +99,7 @@ test: ok
 `bin/hb --load maki/eval-repair-ab-test.f` (in the maki gate) runs 4 seeded
 authoring-error fixtures through the shared repair-loop engine
 (`maki/eval-repair-loop.f`, factored out of `maki/eval-repair.f`). Both arms are
-scored by the SAME checker (`maki/eval.f CHECK-PASSES?`) and CONVERGE TO THE SAME
+scored by the SAME checker (`EVAL:CHECK-PASSES?`) and CONVERGE TO THE SAME
 green kernel (`GREEN$`), so only the repair PATH differs and the packet's effect is
 isolated. Every candidate (draft, each repair, green) is a real source string run
 through the checker; repair-rounds and tokens-to-green are measured over real

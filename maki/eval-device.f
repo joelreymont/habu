@@ -1,7 +1,7 @@
 \ maki/eval-device.f - the device-golden autograder: GRADE = certify AND run-correct.
 \
 \ Closes the "grading is certification, not correctness" gap. GRADE-CANDIDATE takes
-\ an arbitrary SAXPY candidate source and, per candidate: CHECK-PASSES? (the type/
+\ an arbitrary SAXPY candidate source and, per candidate: EVAL:CHECK-PASSES? (the type/
 \ stack judge) -> write a driver that defines the kernel + emits it, spawn bin/hb to
 \ produce ITS OWN PTX (a fresh top-level emit, captured) -> ptxas (subprocess) -> run
 \ on the Orin (x=2,y=0,a=3) -> compare the SAXPY golden a*x+y=6.0. Verdict: 2 GREEN
@@ -122,7 +122,7 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
 
 \ ---- the general grade: 2 GREEN / 1 TYPED-BUT-WRONG / 0 REJECTED ----
 : GRADE-CANDIDATE ( ptr u8 n -- n ) {: a u :}
-   a u CHECK-PASSES? 0= if 0 exit then            \ checker rejects -> 0
+   a u EVAL:CHECK-PASSES? 0= if 0 exit then            \ checker rejects -> 0
    s" habu-grade-saxpy" MAKI-GRADE:PREPARE
    a u GRADE-WRITE-DRIVER
    GRADE-EMIT  0 = if MAKI-GRADE:CLEAN 1 exit then
