@@ -150,6 +150,10 @@ TEST:SUITE maki/train-test.f
 TEST:END-SUITE
 TEST:SUITE maki/onnx-test.f
 TEST:END-SUITE
+TEST:SUITE maki/onnx/proto-test.f
+TEST:END-SUITE
+TEST:SUITE maki/onnx/import-test.f
+TEST:END-SUITE
 TEST:SUITE maki/eval-test.f
 TEST:END-SUITE
 TEST:SUITE maki/fusion-test.f
