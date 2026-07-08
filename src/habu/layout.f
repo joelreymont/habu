@@ -60,8 +60,10 @@ $3000 constant LOCNAMES
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
 \ checker/xref/stdlib source is even evaluated), so the watermark is captured
-\ later by SEAL-CAPTURE (habu1.f BSEALCAP) at the end of that engine source
-\ (xref.f), once ndict is the full engine boundary and no user record exists yet.
+\ later by SEAL-CAPTURE (habu1.f BSEALCAP) tokens: a baseline at the end of
+\ xref.f plus the cold-prefix assembler's token at the true engine-prefix end
+\ (after script-argv.f), once ndict is the full engine boundary and no user
+\ record exists yet.
 \ The dictionary-truncation words (HIDE-DEFS-FROM/FORGET-DEFS-FROM, xref.f) reject
 \ a post-seal FORGET below it. It lives inside the sealed band so user source
 \ cannot lower the watermark to bypass the guard. ---

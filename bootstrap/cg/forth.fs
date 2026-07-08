@@ -669,10 +669,11 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BSETCHECK ( -- )  A G-POP  A DATA HOOK-CELL STR, ;                                       \ ( xt -- ): install check hook
 
-\ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark at
-\ the end of the engine's own source (xref.f). The friend latch is already sealed
-\ by then, so a raw ! would trap; this direct STR from NDICT is the sanctioned
-\ bypass, mirroring native src/habu/habu1.f BSEALCAP.
+\ SEAL-CAPTURE (TFAM 2b-iii): freeze the seal-time ndict truncation watermark
+\ (xref.f baseline token + the cold-prefix assembler's token at the true
+\ engine-prefix end). The friend latch is already sealed by then, so a raw !
+\ would trap; this direct STR from NDICT is the sanctioned bypass, mirroring
+\ native src/habu/habu1.f BSEALCAP.
 : BSEALCAP ( -- )   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
 \ wide-mark ( -- ): set DNAME-WIDE on the newest dict record (interpret-mode
 \ wide-effect gate; mirrors src/habu/habu1.f BWIDEMARK incl. the LPROT bracket).
@@ -1483,6 +1484,30 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
 
+\ TFAM 2b-iii: append `SEAL-CAPTURE` as the LAST engine-prefix source token
+\ (mirrors src/habu/habu2.f EMIT-SEAL-CAPTURE-TOKEN): xref.f's in-file call is
+\ only the baseline - script-argv.f loads after it, so the truncation watermark
+\ must re-freeze at the true engine-prefix end. Source token, not a native
+\ store: nothing has evaluated at cold-prefix assembly time. Cold boots only.
+: EMIT-SEAL-CAPTURE-TOKEN ( -- )
+   LBL {: done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   $53 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $41 C-SOURCE-APPEND-CHAR
+   $4C C-SOURCE-APPEND-CHAR
+   $2D C-SOURCE-APPEND-CHAR
+   $43 C-SOURCE-APPEND-CHAR
+   $41 C-SOURCE-APPEND-CHAR
+   $50 C-SOURCE-APPEND-CHAR
+   $54 C-SOURCE-APPEND-CHAR
+   $55 C-SOURCE-APPEND-CHAR
+   $52 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
+
 : PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- )
    {: kind var a u :} \ typed-local-lint: allow-bare-local
    kind PFX-LOAD? if
@@ -1516,6 +1541,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
+   EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
    EMIT-SEAL-FRIEND ;                    \ seal before user source (all stdin/file/repl paths)
 
 : C-SOURCE-PIPE ( -- )

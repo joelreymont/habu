@@ -543,7 +543,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ The latch is set BEFORE the engine's own checker/xref/stdlib source is
 \ evaluated (that source runs post-latch via guard-bypassing DATA stores), so the
 \ seal-time ndict is NOT the engine boundary; the truncation watermark is instead
-\ captured by SEAL-CAPTURE (habu1.f) at the end of that engine source (xref.f).
+\ captured by SEAL-CAPTURE (habu1.f) tokens in the source stream - a baseline at
+\ the end of xref.f plus the cold-prefix assembler's token at the true prefix
+\ end (EMIT-SEAL-CAPTURE-TOKEN, after script-argv.f and the provide rows).
 : EMIT-SEAL-FRIEND ( -- )
    5 FRIEND-ARENA-LEN MOVZ,  5 DATA FRIEND-LATCH-CELL STR, ;
 
@@ -645,6 +647,34 @@ variable LCOLDPFX variable LAPPPROV
    $65 C-SOURCE-APPEND-CHAR
    $64 C-SOURCE-APPEND-CHAR
    $0A C-SOURCE-APPEND-CHAR ;
+
+\ TFAM 2b-iii (dot habu-tfam-2b-iii-5d25b52f): append `SEAL-CAPTURE` as the
+\ LAST engine-prefix source token, after every engine file and the provide
+\ rows. xref.f's in-file call is only the baseline: src/os/script-argv.f loads
+\ after xref.f, so a watermark frozen there left the argv tail FORGET/HIDEable.
+\ The capture must be a SOURCE token, not a native store: at cold-prefix
+\ assembly time nothing has evaluated yet - ndict is still the native-prim
+\ boundary and only grows as the interpret loop chews the concatenated source.
+\ Cold boots only: a snapshot restores its bake-time watermark from the
+\ persisted friend band (same gate as PFX-LOAD-SCRIPT-ARGV-COLD).
+: EMIT-SEAL-CAPTURE-TOKEN ( -- )
+   LBL {: done:label :}
+   12 DATA SNAP-CELL LDR,
+   12 done CBNZ,
+   $53 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $41 C-SOURCE-APPEND-CHAR
+   $4C C-SOURCE-APPEND-CHAR
+   $2D C-SOURCE-APPEND-CHAR
+   $43 C-SOURCE-APPEND-CHAR
+   $41 C-SOURCE-APPEND-CHAR
+   $50 C-SOURCE-APPEND-CHAR
+   $54 C-SOURCE-APPEND-CHAR
+   $55 C-SOURCE-APPEND-CHAR
+   $52 C-SOURCE-APPEND-CHAR
+   $45 C-SOURCE-APPEND-CHAR
+   $0A C-SOURCE-APPEND-CHAR
+   done LBL, ;
 
 : PFX-PROVIDE-ROW ( n ptr n ptr u8 n -- ) {: kind:n var:ptr a:ptr u:n :}
    kind PFX-LOAD? if
@@ -831,6 +861,7 @@ variable LCOLDPFX variable LAPPPROV
       EMIT-COLD-PREFIX
       PFX-LOAD-SCRIPT-ARGV-COLD
       PFX-PROVIDE-FILES
+      EMIT-SEAL-CAPTURE-TOKEN                      \ watermark token at the true engine-prefix end
       EMIT-SEAL-FRIEND                             \ seal before any appended user source
       30 SP 0 LDR,  SP SP 16 ADDI,  RET,
    skip LBL, ;

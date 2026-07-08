@@ -398,6 +398,24 @@ lesson — keep the specific word/code/path, cut the prose.
   an engine prim wrapping the store in the LPROT RW/RX mprotect bracket
   (habu1.f BWIDEMARK for DNAME-WIDE). Forth-side dict mutation is truncation
   only (`ndict!`/`cp!`); anything touching record bytes needs a prim.
+- **A seal watermark must be captured where the SOURCE ends, not where a file
+  ends:** SEAL-CAPTURE at the tail of xref.f froze the truncation watermark
+  below src/os/script-argv.f (loaded after it), leaving the argv tail
+  FORGET/HIDEable rc 0. The boot prefix is CONCATENATED before anything
+  evaluates (ndict is still the prim boundary at assembly time), so the fix is
+  a second SEAL-CAPTURE token appended by the cold-prefix assembler after ALL
+  engine files + provide rows (capture is monotonic — re-running only raises
+  the watermark; snap-gated so snapshots keep their bake-time value). Guards
+  keyed to "end of file X" rot the moment a file loads after X
+  (habu-tfam-2b-iii-5d25b52f).
+- **Don't guard a prim whose legitimate caller is indistinguishable from the
+  attacker:** a raw `ndict!` watermark guard needs a principal, but the engine
+  refresh runs as ordinary post-seal `--load` source and legitimately
+  truncates below the watermark (hide.f BFR-NDICT!); any exemption reachable
+  by that source is reachable by an attacker's. The sound sequencing is to
+  eliminate the legitimate below-watermark caller first (staged-fixpoint
+  fresh-process refresh), then add the guard — meanwhile the actual spoof is
+  closed one layer up (sealed USIG registry → redefine exits 78).
 - **Interpret-mode is the untyped surface — gate wide producers, don't type
   the REPL:** layout bundles silently corrupted under top-level dup/drop/swap
   (one physical cell moved; a TRUSTED `( -- pp<n,n> )` maker exposed it). The

@@ -338,8 +338,11 @@ variable XREF-FORGET-CP
       1+
    repeat drop cr ;
 
-\ TFAM 2b-iii: freeze the dictionary-truncation watermark. xref.f is the last
-\ engine source file, so at this point ndict is the full engine boundary and no
-\ user record exists yet. SEAL-CAPTURE stores it into the sealed friend band; the
-\ FORGET/HIDE guards above reject any post-seal truncation below it.
+\ TFAM 2b-iii: freeze the dictionary-truncation watermark (baseline capture).
+\ xref.f is the last BASE prefix file, but src/os/script-argv.f still loads
+\ after it, so the cold-prefix assembler appends a second SEAL-CAPTURE token at
+\ the true engine-prefix end (habu2.f EMIT-SEAL-CAPTURE-TOKEN) - re-running the
+\ capture is monotonic and only ever raises the watermark. This baseline keeps
+\ contexts that load the base files without the cold-prefix assembler sealed up
+\ to here. The FORGET/HIDE guards above reject truncation below the watermark.
 SEAL-CAPTURE

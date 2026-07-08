@@ -1753,9 +1753,11 @@ s" linux-stat-fix" s" n --" TRUST
 : BSETCHECK ( -- )
    A G-POP  A DATA HOOK-CELL STR, ;
 
-\ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called once
-\ at the end of the engine's own source (xref.f), after all engine definitions and
-\ before any user token. The friend latch is already sealed at this point (it is
+\ TFAM 2b-iii: capture the seal-time dictionary-truncation watermark. Called from
+\ SEAL-CAPTURE source tokens - the xref.f baseline plus the cold-prefix
+\ assembler's token at the true engine-prefix end (habu2.f
+\ EMIT-SEAL-CAPTURE-TOKEN, after script-argv.f) - always after engine
+\ definitions and before any user token. The friend latch is already sealed (it is
 \ set much earlier, before the engine source is evaluated), so a raw ! would trap;
 \ this direct STR from NDICT (x27) is the engine's sanctioned bypass, mirroring how
 \ BSETCUR/BSETCHECK update sealed crown-jewel cells. ndict only grows once the
