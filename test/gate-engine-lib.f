@@ -438,6 +438,51 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SB$ s" caught throw control output" GE-EXPECT-OUT
    s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
 
+\ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the
+\ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
+\ bundle followed by `dup . . . .` printed the tag twice and then read below
+\ the seed (9 9 7 <garbage>, rc 0) - fail-open through any TRUSTED boundary
+\ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine must
+\ fail closed: executing a word whose recorded effect carries a
+\ wider-than-cell layout value at interpret level dies with a named
+\ diagnostic before the value can land on the untyped interpret stack.
+\ Checked definitions own bundle work; the guard leg proves compiled
+\ transports and scalar surfacing still run at top level.
+: GE-ILAYOUT-PRELUDE ( -- )
+   s" SUMTYPE gewide 2" GE-SRC-LINE
+   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
+   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE ;
+
+: GE-ILAYOUT-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   src srcu GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" interpret-mode layout value" label labelu GE-EXPECT-ERR-HAS ;
+
+: GE-ILAYOUT-GUARD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" TRUSTED: GE-WUN ( gewide<n,n> -- n n ) ;" GE-SRC-LINE
+   s" : GE-WRUN ( -- n n ) GE-WMK GE-WUN ;" GE-SRC-LINE
+   s" GE-WRUN . ." GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" checked wide transport guard" GE-EXPECT-OK
+   SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
+   SB$ s" checked wide transport guard output" GE-EXPECT-OUT ;
+
+: GE-INTERP-LAYOUT ( -- )
+   s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
+   s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
+   s" 5 GE-WMK swap . . ." s" interp layout swap fails closed" GE-ILAYOUT-CASE
+   GE-ILAYOUT-GUARD
+   s" PASS: interpret-mode layout transports fail closed" type cr ;
+
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
    s" divide by zero trap" GE-HB-RUN-STDIN-NZ
@@ -638,6 +683,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
+   GE-INTERP-LAYOUT
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN
