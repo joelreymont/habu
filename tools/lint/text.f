@@ -221,3 +221,35 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
    a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .fs" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .tsv" HAS-EXT? ;
+
+\ ---- throw-code name registry for CLI failure attribution ------------------
+\ Lint modules register their named throw codes at load (intern/token caps) so
+\ LINT-MAIN (tools/lint/lib.f) can name an uncaught code in its attribution
+\ line regardless of which modules a CLI loads.
+8 constant LINT-CODE-MAX
+32 constant LINT-CODE-NAME-CAP
+create LINT-CODE-VALS LINT-CODE-MAX cells allot
+create LINT-CODE-NAME-BUF LINT-CODE-MAX LINT-CODE-NAME-CAP * allot
+create LINT-CODE-NAME-US LINT-CODE-MAX cells allot
+variable LINT-CODE#
+
+: LINT-CODE-NAME$ ( n -- ptr u8 n ) {: i:n :}
+   LINT-CODE-NAME-BUF i LINT-CODE-NAME-CAP * +
+   LINT-CODE-NAME-US i cells + @ ;
+
+: LINT-CODE-VAL@ ( n -- n )
+   cells LINT-CODE-VALS + @ ;
+
+: LINT-CODE-NAME+ ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
+   LINT-CODE# @ LINT-CODE-MAX >= IF s" lint: code-name table full" 1 die THEN
+   u LINT-CODE-NAME-CAP > IF s" lint: code name too long" 1 die THEN
+   code LINT-CODE-VALS LINT-CODE# @ cells + !
+   a LINT-CODE-NAME-BUF LINT-CODE# @ LINT-CODE-NAME-CAP * + u LINT-BMOVE
+   u LINT-CODE-NAME-US LINT-CODE# @ cells + !
+   LINT-CODE# @ 1+ LINT-CODE# ! ;
+
+: LINT-CODE-FIND ( n -- n ) {: code:n :}   \ registry index or -1
+   0 begin dup LINT-CODE# @ < while
+      dup LINT-CODE-VAL@ code = IF exit THEN
+      1+
+   repeat drop -1 ;

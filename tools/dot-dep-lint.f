@@ -9,6 +9,12 @@ require lib/fs.f
 require lib/fs-mutate.f
 require tools/lint/text.f
 require tools/lint/intern.f
+require tools/lint/token.f
+require tools/lint/lib.f
 require tools/dot-dep-lint-core.f
 
-DOT-DEP-LINT
+: DDL-MAIN ( -- )
+   [: DOT-DEP-LINT ;] catch {: code:n :}
+   s" dot-dep-lint" code LINT-MAIN ;
+
+DDL-MAIN

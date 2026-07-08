@@ -3,6 +3,7 @@
 
 $8000 constant TMAX             \ largest linted source (src/core/checker.f) + headroom
 77 constant E-LINT-TOKEN-CAP
+s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 
 create TOFF TMAX cells allot
 create TLEN TMAX cells allot

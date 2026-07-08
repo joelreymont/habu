@@ -12,6 +12,11 @@ require lib/vector.f
 require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
+require tools/lint/lib.f
 require tools/namespace-lint-core.f
 
-NAMESPACE-LINT-STRICT
+: NL-MAIN ( -- )
+   [: NAMESPACE-LINT-STRICT ;] catch {: code:n :}
+   s" namespace-lint" code LINT-MAIN ;
+
+NL-MAIN

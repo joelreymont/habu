@@ -240,4 +240,8 @@ variable FM-EXC#
    FM-CHECK-TREE
    FM-REPORT ;
 
-FILEMAP-LINT
+: FM-MAIN ( -- )
+   [: FILEMAP-LINT ;] catch {: code:n :}
+   s" filemap-lint" code LINT-MAIN ;
+
+FM-MAIN

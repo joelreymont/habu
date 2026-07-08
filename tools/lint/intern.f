@@ -2,7 +2,10 @@
 \ Load after lib/errors.f, lib/memory.f, lib/vector.f, and tools/lint/text.f.
 
 76 constant E-LINT-INTERN-CAP
-$200 constant INTERN-MAX
+s" E-LINT-INTERN-CAP" E-LINT-INTERN-CAP LINT-CODE-NAME+
+\ Sized by the largest interned set: filemap-lint interns every FILEMAP.md
+\ path (513 as of 2026-07, past the old $200); keep growth headroom.
+$400 constant INTERN-MAX
 $1000 constant INTERN-CHUNK-MIN
 $100 constant INTERN-FOLD-CAP
 8 constant INTERN-VEC-CAP

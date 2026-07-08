@@ -8,6 +8,11 @@ require lib/vector.f
 require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
+require tools/lint/lib.f
 require tools/maki-dep-lint-core.f
 
-MAKI-DEP-LINT
+: MDL-MAIN ( -- )
+   [: MAKI-DEP-LINT ;] catch {: code:n :}
+   s" maki-dep-lint" code LINT-MAIN ;
+
+MDL-MAIN

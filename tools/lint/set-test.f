@@ -1,10 +1,13 @@
-\ set-test.f — focused tests for tools/lint/intern.f helpers.
+\ set-test.f — focused tests for tools/lint/intern.f helpers and the
+\ LINT-MAIN attributed-failure seam they throw into.
 
 require lib/errors.f
 require lib/memory.f
 require lib/vector.f
 require tools/lint/text.f
 require tools/lint/intern.f
+require tools/lint/token.f
+require tools/lint/lib.f
 
 variable TEST-N
 : ASSERT  ( bool -- )
@@ -98,6 +101,27 @@ $40 constant WALK-LIMIT
 : TEST-CAPACITY  ( -- )
    [: COUNT-OVERFLOW ;] catch E-LINT-INTERN-CAP ASSERT= ;
 
+\ a cap throw routed through LINT-MAIN prints an attribution line naming the
+\ tool and the code, and re-throws the same code (never a silent rc-only death)
+$100 constant ATTR-CAP
+create ATTR-BUF ATTR-CAP allot
+
+: ATTR-THROW  ( -- )
+   s" set-test" E-LINT-INTERN-CAP LINT-MAIN ;
+: TEST-ATTRIBUTION  ( -- )
+   ATTR-BUF ATTR-CAP LINT-OUT-BUFFER!
+   [: ATTR-THROW ;] catch
+   LINT-OUT-BUFFER-OFF
+   E-LINT-INTERN-CAP ASSERT=
+   LINT-OUT$ s" set-test: threw " LINT-STARTS-WITH? ASSERT
+   LINT-OUT$ s" (E-LINT-INTERN-CAP)" LINT-CONTAINS? ASSERT
+   LINT-OUT$ 1- + c@ 10 = ASSERT ;
+: TEST-ATTRIBUTION-OK  ( -- )
+   ATTR-BUF ATTR-CAP LINT-OUT-BUFFER!
+   s" set-test" 0 LINT-MAIN
+   LINT-OUT-BUFFER-OFF
+   LINT-OUT$ nip 0 ASSERT= ;
+
 : SET-TEST  ( -- )
    1 TEST-N !
    TEST-DUPLICATES
@@ -106,6 +130,8 @@ $40 constant WALK-LIMIT
    TEST-MEMBERSHIP
    TEST-WALK
    TEST-CAPACITY
+   TEST-ATTRIBUTION
+   TEST-ATTRIBUTION-OK
    INTERN-RESET
    s" set-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
