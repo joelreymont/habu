@@ -1,6 +1,6 @@
 ---
 title: "Maki: subsystem packages + maki.f re-export"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-04T01:10:04.572860+02:00"
@@ -383,3 +383,119 @@ REMAINING (all device-entangled, pending-zed; the 106-finding ledger):
   - device-smoke.f (3): tiny; decide package vs test-scaffolding whitelist in s4.
   - maki.f curated re-export still blocked on compiler EXPORT
     (habu-compiler-pkg-re-688212c1).
+
+---
+
+PROGRESS 2026-07-08 (session 4, workspace .jj-ws/fable-pkgs, host-side). On top
+of the session-3 base (fable = 6ae5f758). CLOSED the executable scope: every
+device-entangled remainder is now packaged and the namespace ledger is 0. The
+ONLY unbuilt scope item is the maki.f curated re-export, which stays BLOCKED on
+compiler EXPORT (habu-compiler-pkg-re-688212c1) - nothing further is doable here,
+so this dot is marked closed with that single tail handed to the EXPORT dot.
+
+GATES (green per commit + final): maki/test.f 73/73 after every commit; test/run.f
+green at cluster-2 checkpoint (6650ms) + final (6661ms), <40s budget; typed-local-
+diff-lint clean per commit and on the full fable..@ diff. No bookmark moves, no
+push. Commits (on top of fable):
+  - e306f78f  maki: eval-compare ablation into package EVAL
+  - 5dcacaca  maki: eval device-golden graders into package EVAL
+  - 31f33372  maki: gpu launch + train loop into package GPU
+  - 07eae1fd  namespace-lint: whitelist device-smoke canary, enforce
+
+LINT LEDGER (verbatim tail counts, per commit): 106 -> 89 (eval-compare) ->
+  30 (eval-device 32 + eval-device-sm 27 = 59) -> 3 (gpu 21 + gpu-train 6 = 27)
+  -> 0 (device-smoke 3 whitelisted; file count 76 -> 75). Enforcing mode ON.
+
+CLUSTER 1 - eval-compare (17 -> 0): the CMP- ablation reopens `package EVAL`. It
+  has NO external callers (CMP-*/NC*/NU* used only in-file), so the whole file
+  (state + CMP- words + the device fixture) is one PRIVATE block inside package
+  EVAL; the fixture runs at load with bare in-package refs, and its verdict source
+  (GRADE-CANDIDATE / GRADE-NOCHECK-CANDIDATE / EVN-*) resolves same-package bare.
+  Verified: definitions compile clean (exit 60 silent off-Orin = device fixture,
+  no checker diagnostic); ledger eval-compare -> 0.
+
+CLUSTER 2 - eval-device (32) + eval-device-sm (27) + eval-author callers: both
+  device files reopen `package EVAL` (multi-file package, eval-repair-loop.f
+  precedent). Extended the existing MAKI-GRADE: artifact package + EVAL:CHECK-
+  PASSES? work rather than fighting it. Naming per the s1/s3 scheme:
+    - eval-device: GRADE-CANDIDATE / GRADE-NOCHECK-CANDIDATE public (GRADE- kept);
+      EVD- tally -> DEVICE- (public DEVICE-RESET/SCORE/PASS/TOTAL, read by eval-
+      device-test.f); ED-*/GP-*/GQ-*/EVN-* + GRADE-WRITE-*/EMIT/PTXAS/DEVICE-
+      VERDICT + DEVICE-CORRECT? PRIVATE (EVN- moved into the top private block).
+      EVAL:CHECK-PASSES? -> bare CHECK-PASSES? (same package now). EVN-* stay
+      inside EVAL (only the CMP- ablation reads them, same package).
+    - eval-device-sm: GRADE-SM public; SM-*/GSP-*/GSQ-*/GRADE-SM-* + DEVICE-
+      CORRECT-SM? private; EVAL:CHECK-PASSES? -> bare. SM-INIT runs at load inside
+      the package.
+  Callers updated same increment: eval-author.f (package MAKI) -> EVAL:GRADE-
+  CANDIDATE / EVAL:GRADE-SM; eval-device-test.f -> EVAL:GRADE-CANDIDATE /
+  EVAL:DEVICE-RESET/SCORE/TOTAL/PASS; eval-device-sm-test.f -> EVAL:GRADE-SM.
+  eval-author-test.f needs NO change (calls GRADE-AUTHOR bare, package MAKI). Doc
+  word-refs updated: maki/README.md, docs/maki/eval.md, docs/eval-triton.md ->
+  EVAL:GRADE-CANDIDATE / EVAL:GRADE-SM. Verified: all device libs load exit 0;
+  README Orin prelude + device test files compile clean (exit 60, no checker
+  diagnostics). PRIVATE-COLLISION check: ED-*/SM-*/GRADE-*/GRADE-SM-* all distinct
+  in the shared EVAL private wordlist.
+
+CLUSTER 3 - gpu (21) + gpu-train (6): both reopen `package GPU`. STRIPPED the G-
+  stem (REPORT precedent - the package carries it; forth.md "don't repeat the
+  package in the tail"): G-SETUP/PUT/LAUNCH/RELEASE/RESULT/SGD -> GPU:SETUP/PUT/
+  LAUNCH/RELEASE/RESULT/SGD; G-INIT-W/LOSS/EPOCH/WBITS -> GPU:INIT-W/LOSS/EPOCH/
+  WBITS. Private: launch state (GN/GPATH/G*/GHX/GHY), F32!/F32@, WBUF, GRAD. CUDA:/
+  PTXSENT: bindings stay the driver's. Callers same increment: gpu-test.f /
+  gpu-sgd-test.f / gpu-train-test.f -> GPU:* (code + stale comment refs). TYPED
+  the 3 touched bare-locals groups the diff-lint flagged (PUT {: xv:r yv:r ix:n :},
+  LAUNCH {: a:r :}, EPOCH {: lr:r :}). Verified: gpu libs load exit 0; gpu tests
+  compile clean (exit 118 off-Orin device fail, no checker diagnostics); diff-lint
+  clean; maki/test.f green.
+
+CLUSTER 4 - device-smoke (3 -> whitelisted) + ENFORCING FLIP: decision recorded.
+  device-smoke.f is the maki gate's device-FFI CANARY - a smoke-test suite run by
+  maki/test.f under lib/test.f (T-RESET/TTRUE/T-REPORT). By the substrate policy it
+  is gate scaffolding, the SAME category the lint already exempts for *-test.f, and
+  only lacks the -test suffix by history. Verdict: documented WHITELIST (added
+  maki/device-smoke.f to NL-SKIP-FILE? with rationale in the header), NOT a package
+  (packaging a self-contained 3-word canary that nothing consumes buys no subsystem
+  gain). With the ledger now 0, FLIPPED to enforcing: tools/namespace-lint.f (the
+  gate CLI) + namespace-lint-test.f MNLT-LIVE now call NAMESPACE-LINT-STRICT, so any
+  new global maki def outside a package fails the gate. Added the device-smoke skip
+  assertion to MNLT-FILES. Verified: enforcing CLI exit 0 (75 files, 0 findings);
+  fixtures test exit 0; maki/test.f green (device-smoke suite still passes).
+
+PENDING-ZED (device re-verification - host proves the checked packaging compiles;
+  the Orin proves the device legs still PASS under the new qualified names). Run on
+  the Orin (sm_87), cwd = repo root, after refreshing bin/hb:
+  1. eval device-golden authoring matrix (unchanged file paths; now exercises the
+     EVAL: qualified refs):
+       bin/hb --load lib/errors.f lib/string.f lib/float.f lib/fmt.f lib/test.f \
+         lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f lib/ffi.f \
+         src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f lib/ptx/cg-collective.f lib/ptx/tile.f \
+         lib/ptx/collective.f maki/eval.f maki/eval-device.f maki/eval-device-sm.f \
+         maki/eval-author.f maki/eval-author-test.f
+  2. eval device-golden per-task demos (EVAL:GRADE-CANDIDATE / EVAL:DEVICE-* /
+     EVAL:GRADE-SM):
+       bin/hb --load <the same lib/ptx prelude as #1> maki/eval.f maki/eval-device.f \
+         maki/eval-device-sm.f maki/eval-device-test.f maki/eval-device-sm-test.f
+     expect: SAXPY 2/1/0 + pass@k 3-total/1-green; softmax 2/1/0.
+  3. checker ablation (EVAL CMP-, reads bare in-package GRADE-CANDIDATE):
+       bin/hb --load lib/test.f maki/eval-device.f maki/eval-compare.f
+     expect: NC2=3 NC0=5 NC1=1; NU-WRONG=6 NU-GREEN=3.
+  4. gpu cluster (prereq: /tmp/saxpy.cubin from tools/ptx/saxpy-cg.f + ptxas
+     -arch=sm_87, per maki/gpu.f):
+       bin/hb --load lib/test.f maki/gpu.f maki/gpu-test.f
+       bin/hb --load lib/test.f maki/gpu.f maki/gpu-sgd-test.f
+       bin/hb --load lib/test.f maki/array.f maki/gpu.f maki/gpu-train.f maki/gpu-train-test.f
+     expect: AXPY [12,24,36,48]; SGD [1.5,3.5,5.5,7.5]; train converge to
+     [1.125,1.375,1.625,1.875], loss falls 84 -> 1.3125.
+  5. device-smoke device leg is already in the host gate (maki/test.f); on the Orin
+     it runs the live cuInit/cuDeviceGet instead of SKIP.
+
+CLOSED. All subsystem packaging is done and the namespace-lint is enforcing at 0
+findings. Substrate exceptions remain documented + whitelisted (array.f ARRAY;
+op-kind / dtype-layout-align / report V-RC-CO-G enums as package-MAKI substrate;
+E-* cross-cutting; device-smoke canary). The remaining dot-scope item - the maki.f
+top-level curated re-export - is BLOCKED on compiler EXPORT
+(habu-compiler-pkg-re-688212c1); resume it (re-open this dot or a fresh tail dot)
+once EXPORT lands. Not started: FUSION, AUTOGRAD adjoint/backward/gradcheck,
+REPORT-already-done, TRAIN, CAD, op-kind - those were out of this dot's device-
+remainder scope and are tracked in the s2/s3 rerank above.
