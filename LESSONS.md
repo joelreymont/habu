@@ -2713,3 +2713,13 @@ unchanged (148855). Keys for milestone 2:
   vars, argv) must `die` with a source-pointing message naming the input;
   keep bare named throws for in-process programmatic callers, where the
   enclosing harness still has the code.
+- **A 1-byte diagnostic + clean exit means a raw engine capacity path, not a
+  throw.** The definer code paths write only the CURRENT TOKEN to stderr and
+  `exit_group` with a fixed code when NDICT/CP hit their caps (dictionary full
+  = ':' + rc 77, code space = rc 76) - uncatchable by `catch`, invisible to
+  the BTHROW de-masking, and coincidentally equal to unrelated E- codes
+  (E-LINT-TOKEN-CAP is also 77). When `catch` cannot intercept a death, stop
+  hunting for throwers and hunt for exit_group emitters; when output is one
+  token, suspect a reporter that prints [TKA/TKL] with no label. Falsify
+  cheap hypotheses with in-state controls (`' evaluate catch` on a known
+  throw) before believing a code-number match.
