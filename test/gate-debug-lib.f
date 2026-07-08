@@ -12,6 +12,9 @@ require tools/jitdump-core.f
    s" prop-test" GE-EXPECT-OK
    s" self-test OK" s" prop-test self-test/run did not complete" GE-EXPECT-OUT-HAS
    s" census OK" s" prop-test axiom census did not run in the gate path" GE-EXPECT-OUT-HAS
+   s" alphabet OK" s" prop-test alphabet self-test did not run in the gate path" GE-EXPECT-OUT-HAS
+   s" shard-seeds OK" s" prop-test shard-seed self-test did not run in the gate path" GE-EXPECT-OUT-HAS
+   s" sweep-red OK" s" prop-test sweep red-path self-test did not run in the gate path" GE-EXPECT-OUT-HAS
    s" PASS: prop-test soundness smoke (self-hosted in habu, in-process via evaluate)" type cr ;
 
 : GDB-PROFILER-SOURCE ( -- )

@@ -74,6 +74,32 @@ max'd with cal-factor in TR-LOAD-PCT-EXPORT) so in-gate suite budgets carry
 the gate's own oversubscription even when startup calibration saw an idle box;
 fixtures in test/run-budget-cal-test.f.
 
+## Proof fixtures for sharding + alphabet (2026-07-08, from head 44efc694)
+
+DONE - the test-side scope now carries its own regressions; only the engine
+primitive slice below remains open:
+- Alphabet: PROP-STEP's structural op texts are named words (OP-LOOP$ ..
+  OP-QUOT1$) shared with SELFTEST-ALPHABET, which (a) certifies each of the 9
+  classes as a minimal ( i64 -- i64 ) body and (b) proves each class is
+  GENERATED within a deterministic capped sweep (SEED 12345, cap 400 GEN
+  bodies, substring census over BBUF). A renumbered K table or a narrowed RND%
+  bound that silently dropped a class from the explored space now dies with
+  the class named.
+- Sharding: SELFTEST-SHARD-SEEDS pins pairwise-distinct, in-range slot seeds
+  across representative bases including the wrap that exercises the 0->1 clamp
+  (base $61C8864F + STEP = 2^31); distinct seeds imply distinct streams
+  because the LCG's odd multiplier makes each step a bijection.
+  SELFTEST-SWEEP-RED proves one red shard fails the whole sweep: a forked
+  probe child (stdout+stderr muted via the MUTE-FD factor) arms the
+  SHARD-FAULT seam so every shard dies red before its first iteration - the
+  probe costs only the forks - and the parent asserts the probe exits 1
+  through SWEEP's red die.
+- Gate visibility: GDB-PROP asserts "alphabet OK", "shard-seeds OK", and
+  "sweep-red OK" in the phase output, proven red-first against the pre-change
+  tree (FAIL: prop-test alphabet self-test did not run in the gate path). The
+  serial repro path also runs SELFTEST-ALPHABET; the fork-based self-tests
+  stay in the sharded default path.
+
 STILL OPEN - ROUTED (engine territory, item-8 lane owns checker/engine now):
 replace the TRUSTED ERR@ peek with a checked engine primitive. Routable spec:
 add an FPRIM `eval-err@ ( -- n )` in src/habu/habu1.f reading EVALERR-CELL
