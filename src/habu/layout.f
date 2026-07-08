@@ -15,6 +15,15 @@ $61000 constant DICT-SIZE
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
+\ DNAME-WIDE (bit 62; 63 stays free): the word's recorded stack effect carries a
+\ wider-than-cell layout value in some row, so executing it at INTERPRET level
+\ would land a multi-cell bundle on the untyped interpret stack where scalar
+\ dup/drop/swap silently corrupt it (dot habu-tfam-12-interpret-10b385b1).
+\ LFIND folds the bit into x13 bit 3; EM-INTERPRET-FIND and interpret ' fail
+\ closed on it. Set by xref.f XREF-WIDE-MARK; the checker marks at signature
+\ record time once the sequenced src/core/checker.f half lands. Compile-mode
+\ calls inside checked definitions are unaffected (pass-2 lowers them).
+$4000000000000000 constant DNAME-WIDE
 8192 constant DICT-CAP
 $60000 constant CFSTK-OFF
 24 constant CF-REC

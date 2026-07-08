@@ -70,3 +70,53 @@ TRUSTED-seeded 2-cell bundle assert rc 70 + `interpret-mode layout value`
 on stderr (RED today: rc 0, silent corruption), plus a guard leg proving a
 checked definition calling the same TRUSTED maker still runs at top level
 (rc 0, `9 7`).
+
+## Engine half LANDED (2026-07-08, engine lane); checker half SEQUENCED
+
+Implemented per the decision above, with these findings:
+
+- The dict region is READ-ONLY at runtime: a Forth-level record-flag store
+  (xref.f raw `!`) SIGBUSes. Marking is therefore the engine prim
+  `wide-mark` ( -- ) (habu1.f BWIDEMARK, FPRIM): sets DNAME-WIDE on the
+  NEWEST PUBLISHED record (ndict-1) inside the same LPROT RW/RX mprotect
+  bracket the `immediate` flag write uses (habu2.f C-IMMEDIATE). xref.f
+  keeps the read query `XREF-WIDE? ( ptr a -- bool )`.
+- LFIND folds the bit into x13 bit 3 at both final match sites (hash +
+  linear); the qualified-name FIND-NMATCH restart is not a final match. All
+  pre-existing x13 consumers CBZ/CBNZ or mask with `13 2 ANDI` - audited.
+- EM-INTERPRET-FIND and interpret `'` (C-TICK) branch to LWIDE, which shares
+  LUNDEF's recovery tail via a new LDIAGRET label (eval-frame rollback, tty
+  REPL recovery, else exit 70): diagnostic
+  `hb: interpret-mode layout value: <token>` on fd 2. Inside `evaluate` the
+  behavior matches undefined-word recovery (diagnostic + EVALERR + resume) -
+  the rc-0-after-load-error question is the separate
+  habu-standalone-support-load-7c3d9f16.
+- No new TRUST rows: the LWIDE block lives inside the existing trusted
+  em-compile-undef emitter; the prim is an FPRIM registration (PES row for
+  checked-code callers is checker.f work, sequenced).
+- Stage0 mirror: DNAME-WIDE, find-bit extraction, dispatch + tick gates
+  (exit 70; inert - stage0 never marks), and a real BWIDEMARK.
+- Growth watermark: the concatenated stage2 engine source crossed
+  S2-SOURCE-CAP $C0000 by 33 bytes ('stage2: source exceeds buffer', rc 74,
+  loud). S2-SOURCE-CAP and MK-SOURCE-CAP bumped to $100000 in step.
+- Regression test/gate-engine-lib.f GE-INTERP-LAYOUT (engine runtime slice):
+  dup/drop/swap/tick legs assert rc 70 + the diagnostic; guard leg proves a
+  checked definition compiling a call to the SAME marked word still runs at
+  top level (9 7, rc 0). STAND-IN: the fixture marks the maker itself with
+  `wide-mark` until the checker half lands - then DELETE that line so the
+  legs pin the checker-computed flag (the dot's true acceptance).
+
+CHECKER HALF (blocked on src/core/checker.f, held by the item lane):
+at the signature-record choke point (hook certify, trust-pend, TRUST,
+checker-defer), walk the four effect row terms with T-WIDTH (including
+quotation sub-sigs - a quotation value can be `execute`d at top level) and
+mark the target dict record when any term is a layout value wider than one
+cell. NOTE the prim's semantics: `wide-mark` targets the newest PUBLISHED
+record, but the record flows run in the PEND window (before ndict++), so the
+integration needs either (a) a pend-variant prim marking index ndict, or
+(b) a checker-set DATA cell consumed by the engine publish tails after
+ndict++ (the EM-P2-TRIGGER `wf-wide?` C-FIND-GLOBAL pattern), plus a PES row
+for the prim and the regression stand-in removal. Residual to keep dotted:
+`TRUST`-declared wide effects recorded AFTER a word was already
+interpret-executed, and raw-xt laundering (`find`/`search-wl` + `execute`)
+in fully unchecked code.

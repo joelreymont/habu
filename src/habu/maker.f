@@ -19,7 +19,9 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-$C0000 constant MK-SOURCE-CAP   \ engine source cap; prefix grew past $A0000 with sumtype.f
+$100000 constant MK-SOURCE-CAP  \ engine source cap - same growth watermark as stage2.f
+                                \ S2-SOURCE-CAP (crossed $C0000 with the DNAME-WIDE gate);
+                                \ keep the two caps in step.
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;

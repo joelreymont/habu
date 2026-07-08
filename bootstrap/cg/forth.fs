@@ -28,6 +28,10 @@ $61000  constant DICT-SIZE     \ dict + control-flow stack; code area follows
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
+\ DNAME-WIDE (bit 62): recorded effect carries a wider-than-cell layout value;
+\ interpret dispatch/tick fail closed on it (src/habu/layout.f). Stage0 never
+\ sets the bit (no checker), so the mirrored gate is inert parity.
+$4000000000000000 constant DNAME-WIDE
 8192    constant DICT-CAP      \ CFSTK-OFF / DREC; slots 0..8191 end exactly at CFSTK.
 $60000  constant CFSTK-OFF     \ control-flow stack: cell[0]=CFSP, then CF-REC frames
 24      constant CF-REC
@@ -670,6 +674,13 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ by then, so a raw ! would trap; this direct STR from NDICT is the sanctioned
 \ bypass, mirroring native src/habu/habu1.f BSEALCAP.
 : BSEALCAP ( -- )   NDICT DATA SEAL-NDICT-CELL STR, ;                                      \ ( -- )
+\ wide-mark ( -- ): set DNAME-WIDE on the newest dict record (interpret-mode
+\ wide-effect gate; mirrors src/habu/habu1.f BWIDEMARK incl. the LPROT bracket).
+: BWIDEMARK ( -- )
+   2 3 MOVZ,  LPROT @ BL,
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
+   2 5 MOVZ,  LPROT @ BL, ;
 \ stage0 has no package registry; self-hosted native generations replace this
 \ no-op with the real registry append primitive.
 : BPROTWIDADD ( -- )  9 G-POP ;                                                            \ ( wid -- )
@@ -762,6 +773,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" wide-mark" ['] BWIDEMARK FPRIM
    s" prot-wid-add" ['] BPROTWIDADD FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
 
@@ -944,7 +956,10 @@ require jit.fs          \ runtime abstract value stack for the : compiler
          7 7 1 ADDI,  fcmp B,
       fmatch LBL,                                          \ keep scanning: take the LAST
          11 5 0 LDR,  12 5 8 LDR,
-         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
+         14 5 16 LDR,
+         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,                \ wide-effect bit -> 8
+         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                 \ immediate bit -> 2
+         14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  fnext B,    \ (newest) match -> redefs shadow
       fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
    fdone LBL,  RET, ;
@@ -2341,7 +2356,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ the address as a literal push into the word being compiled (via c-lit, x11=addr).
 : C-TICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
-   LBL {: tk :}  13 tk CBZ,  11 G-PUSH  tk LBL, ;
+   LBL {: tk :}  13 tk CBZ, \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: twide :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   14 13 8 ANDI,  14 twide CBNZ,        \ DNAME-WIDE gate (mirror of native C-TICK; inert in stage0)
+   11 G-PUSH  tk B,
+   twide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   tk LBL, ;
 
 : C-BTICK ( -- )
    LTOK @ BL,  9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
@@ -3146,7 +3166,10 @@ variable CFSK2
    lnotnum LBL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND @ BL,
    13 lundef CBZ,
-   11 BLR,  lmain B, ;
+   LBL {: lwide :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   14 13 8 ANDI,  14 lwide CBNZ,        \ DNAME-WIDE gate (mirror of EM-INTERPRET-FIND; inert in stage0)
+   11 BLR,  lmain B,
+   lwide LBL,  0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : EMIT-INTERPRET ( n n -- ) {: lmain lundef :}
    LBL {: lnotcolon :}

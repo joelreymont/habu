@@ -68,6 +68,16 @@ TRUSTED: XREF-REC+ ( ptr a n -- ptr a )
 : XREF-EXT? ( ptr a -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
+\ DNAME-WIDE (dot habu-tfam-12-interpret-10b385b1): the record's recorded stack
+\ effect carries a wider-than-cell layout value, so the engine's interpret
+\ dispatch and interpret ' fail closed before such a bundle can land on the
+\ untyped interpret stack (scalar dup/drop/swap silently corrupt it). Marking
+\ is the engine prim `wide-mark` (habu1.f BWIDEMARK - the dict region is
+\ read-only at runtime, so the write needs the engine's mprotect bracket);
+\ monotonic, no unmark. This is the read-side introspection query.
+: XREF-WIDE? ( ptr a -- bool )
+   XREF-FLAGS DNAME-WIDE and 0= 0= ;
+
 : XREF-INLINE-NAME ( ptr a -- ptr u8 )
    $18 XREF-REC+ XREF-A>U8 ;
 

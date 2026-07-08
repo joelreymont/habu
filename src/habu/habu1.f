@@ -1764,6 +1764,19 @@ s" linux-stat-fix" s" n --" TRUST
 : BSEALCAP ( -- )
    NDICT DATA SEAL-NDICT-CELL STR, ;
 
+\ wide-mark ( -- ): set DNAME-WIDE on the newest dictionary record - the word's
+\ recorded effect carries a wider-than-cell layout value, so interpret-mode
+\ execute/tick fail closed on it (habu2.f LWIDE; dot
+\ habu-tfam-12-interpret-10b385b1). Mirrors the `immediate` flag write
+\ (habu2.f C-IMMEDIATE) including the LPROT RW/RX bracket - the dict region is
+\ read-only at runtime, so a raw store SIGBUSes. Engine-half marking surface;
+\ the sequenced checker half calls it at signature-record time.
+: BWIDEMARK ( -- )
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   9 NDICT 0 ADDI,  9 9 1 SUBI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
+   2 5 MOVZ,  LPROT LABEL@ BL, ;
+
 : BPROTWIDADD ( -- )
    LBL LBL {: room:label done:label :}
    9 G-POP
@@ -1891,6 +1904,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" wide-mark" ['] BWIDEMARK FPRIM
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
@@ -2353,7 +2367,10 @@ variable FIND-HMATCH
          7 7 1 ADDI,  FIND-HCMP LABEL@ B,
       FIND-HMATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
-         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
+         14 5 16 LDR,
+         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
+         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
+         14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  RET,
       FIND-HNEXT LABEL@ LBL,
          8 8 1 SUBI,  8 FIND-LINEAR LABEL@ CBZ,
@@ -2379,7 +2396,10 @@ variable FIND-HMATCH
          7 7 1 ADDI,  FIND-CMP LABEL@ B,
       FIND-MATCH LABEL@ LBL,
          11 5 0 LDR,  12 5 8 LDR,
-         14 5 16 LDR,  14 14 DNAME-IMM ANDI,  14 14 59 LSRI,   \ immediate bit -> 2
+         14 5 16 LDR,
+         15 14 DNAME-WIDE ANDI,  15 15 59 LSRI,               \ wide-effect bit -> 8
+         14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
+         14 14 15 ORR,
          13 1 MOVZ,  13 13 14 ORR,  FIND-NEXT LABEL@ B,
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,

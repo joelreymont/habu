@@ -392,6 +392,23 @@ lesson — keep the specific word/code/path, cut the prose.
   primitive — not the library — owns the mapping). Closed by
   habu-engine-bthrow-no-02c6b017 (reporter baked at the EM-EVAL-THROW-RECOVER
   tail, reached from BTHROW via UNCGH-CELL).
+- **Dictionary records are read-only at runtime — flag writes are engine
+  prims:** an xref.f Forth-level `!` into a record's name cell SIGBUSed (the
+  dict lives in the RX region); the `immediate` keyword's shape is the model —
+  an engine prim wrapping the store in the LPROT RW/RX mprotect bracket
+  (habu1.f BWIDEMARK for DNAME-WIDE). Forth-side dict mutation is truncation
+  only (`ndict!`/`cp!`); anything touching record bytes needs a prim.
+- **Interpret-mode is the untyped surface — gate wide producers, don't type
+  the REPL:** layout bundles silently corrupted under top-level dup/drop/swap
+  (one physical cell moved; a TRUSTED `( -- pp<n,n> )` maker exposed it). The
+  sound v1 is a DNAME-WIDE dict bit tested at interpret dispatch/tick (fail
+  closed, named diagnostic, LUNDEF recovery shape) rather than dynamic width
+  tagging of the interpret stack, which would re-implement the checker at
+  runtime. Checked compile-mode calls of the same marked word stay legal —
+  that discrimination is the regression's guard leg
+  (habu-tfam-12-interpret-10b385b1; checker-side record-time marking
+  sequenced). Growing the engine also crossed the stage2/maker source caps
+  ($C0000, 33 bytes over — another loud growth watermark, bumped in step).
 - **layout.f is not the sole owner of fixed DATA cells:** a "free hole" read
   from layout.f alone ($36B0, between INE-CELL and FRCLM-CELL) was actually
   FRFREE-CELL — the JIT float-pool bitmask defined in src/habu/regalloc.f —

@@ -124,6 +124,8 @@ variable LSRCRD   variable LSHBANG   variable LOPENERR   variable LOPENNL
 variable LUNCAUGHT   variable LUNCMSG   \ uncaught-top-level-throw reporter + its fd-2 message
 variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ reporter branch + itoa labels
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
+variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
+33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -301,7 +303,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LBADLOC LABEL@ LBL, BADLOC-KW $50 BYTES,
    LOPENERR LABEL@ LBL, s" hb: cannot open " BYTES,
    LOPENNL LABEL@ LBL, NL-KW 1 BYTES,
-   LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES, ;   \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
+   LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
+   LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES, ;   \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -2188,7 +2191,9 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
    LBL {: tk :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
-   13 tk CBZ,  11 G-PUSH  tk LBL, ;
+   13 tk CBZ,
+   14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                  \ `' <wide-effect word>` would launder the bundle past the dispatch gate
+   11 G-PUSH  tk LBL, ;
 
 : C-BTICK ( -- )
    LBL {: bk :}
@@ -3369,6 +3374,7 @@ s" em-interpret-number" s" label --" TRUST
 : EM-INTERPRET-FIND ( -- )
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 LUNDEF LABEL@ CBZ,
+   14 13 8 ANDI,  14 LWIDE LABEL@ CBNZ,                \ DNAME-WIDE effect: fail closed, never land a bundle on the interpret stack
    11 BLR,  LMAIN LABEL@ B, ;
 s" em-interpret-find" s" --" TRUST
 
@@ -4061,16 +4067,30 @@ s" em-eval-throw-recover" s" --" TRUST
    LREAD LABEL@ B, ;
 s" em-repl-recover" s" --" TRUST
 
+\ Interpret-level reject diagnostics. LUNDEF: undefined token. LWIDE: a found
+\ word whose DNAME-WIDE dict flag is set (recorded effect carries a
+\ wider-than-cell layout value) was executed or ticked at interpret level -
+\ running it would land a multi-cell bundle on the untyped interpret stack,
+\ where scalar dup/drop/swap silently corrupt it (dot
+\ habu-tfam-12-interpret-10b385b1); checked definitions own bundle work. Both
+\ print their diagnostic + the token, then share the LDIAGRET recovery tail:
+\ eval-frame rollback, tty REPL recovery, else exit 70.
 : EM-COMPILE-UNDEF ( -- )
    LUNDEF LABEL@ LBL,
    SP SP 16 SUBI,  9 $494645444E552D45 LIT64,  9 SP 0 STR,  9 $000000203A44454E LIT64,  9 SP 8 STR,  0 2 MOVZ,  1 SP 0 ADDI,  2 13 MOVZ,  NR-WRITE SYS,  SP SP 16 ADDI,  0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,  0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ LBL,
    9 DATA EVALD-CELL LDR,  9 LUN0 LABEL@ CBZ,
       EM-EVAL-UNDEF-ROLLBACK
    LUN0 LABEL@ LBL,
    9 DATA REPLH-CELL LDR,  9 LRDIE LABEL@ CBZ,
    EM-REPL-RECOVER
    LRDIE LABEL@ LBL,
-   0 70 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   LWIDE LABEL@ LBL,                                   \ branch target: TKA/TKL still hold the token
+   0 2 MOVZ,  1 LWIDEMSG LABEL@ ADR,  2 WIDEMSG-LEN MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   LDIAGRET LABEL@ B, ;
 s" em-compile-undef" s" --" TRUST
 
 : EM-EVAL-CLEAN-EXIT ( -- )
@@ -4187,6 +4207,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !  LBL LBPSH !  LBL LBPWH !  LBL LBADLOC !
    LBL LSRCRD !  LBL LSHBANG !  LBL LOPENERR !  LBL LOPENNL !
    LBL LUNCAUGHT !  LBL LUNCMSG !
+   LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 

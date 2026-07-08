@@ -442,18 +442,22 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
 \ bundle followed by `dup . . . .` printed the tag twice and then read below
 \ the seed (9 9 7 <garbage>, rc 0) - fail-open through any TRUSTED boundary
-\ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine must
-\ fail closed: executing a word whose recorded effect carries a
-\ wider-than-cell layout value at interpret level dies with a named
-\ diagnostic before the value can land on the untyped interpret stack.
-\ Checked definitions own bundle work; the guard leg proves compiled
-\ transports and scalar surfacing still run at top level.
+\ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine
+\ fails closed: executing (or ticking) a DNAME-WIDE-flagged word at interpret
+\ level dies with a named diagnostic before the bundle can land on the
+\ untyped interpret stack. STAND-IN: until the sequenced src/core/checker.f
+\ half marks at signature-record time, the fixture marks the maker itself
+\ (the `wide-mark` engine prim); when that half lands, DELETE the mark line -
+\ the legs then pin the checker-computed flag (the dot's true acceptance). Checked
+\ definitions own bundle work; the guard leg proves a compiled call of the
+\ SAME marked word still compiles and runs at top level.
 : GE-ILAYOUT-PRELUDE ( -- )
    s" SUMTYPE gewide 2" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
-   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE ;
+   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE
+   s" wide-mark" GE-SRC-LINE ;
 
 : GE-ILAYOUT-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -480,6 +484,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
    s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
    s" 5 GE-WMK swap . . ." s" interp layout swap fails closed" GE-ILAYOUT-CASE
+   s" ' GE-WMK execute" s" interp layout tick fails closed" GE-ILAYOUT-CASE
    GE-ILAYOUT-GUARD
    s" PASS: interpret-mode layout transports fail closed" type cr ;
 
