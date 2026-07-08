@@ -1,6 +1,6 @@
 \ namespace-lint-test.f - checked fixtures for the maki namespace ledger lint.
 \ Run: bin/hb --load tools/namespace-lint-test.f
-\ Requiring the core also lets MNLT-LIVE run the real repo ledger (report-only).
+\ Requiring the core also lets MNLT-LIVE enforce the real repo ledger (must be clean).
 \ Load after lib/test.f and tools/namespace-lint-core.f.
 
 require lib/errors.f
@@ -17,9 +17,10 @@ require tools/namespace-lint-core.f
    \ maki source selection + documented exemptions
    s" maki/eval.f"       NL-MAKI-SRC? TTRUE
    s" lib/string.f"      NL-MAKI-SRC? TFALSE
-   s" maki/eval-test.f"  NL-SKIP-FILE? TTRUE     \ test scaffolding is exempt
-   s" maki/array.f"      NL-SKIP-FILE? TTRUE     \ documented ARRAY substrate
-   s" maki/eval.f"       NL-SKIP-FILE? TFALSE ;
+   s" maki/eval-test.f"     NL-SKIP-FILE? TTRUE  \ test scaffolding is exempt
+   s" maki/array.f"         NL-SKIP-FILE? TTRUE  \ documented ARRAY substrate
+   s" maki/device-smoke.f"  NL-SKIP-FILE? TTRUE  \ gate device-FFI canary (smoke suite)
+   s" maki/eval.f"          NL-SKIP-FILE? TFALSE ;
 
 : MNLT-DETECT ( -- )
    \ a definition at global scope is a finding
@@ -50,8 +51,8 @@ require tools/namespace-lint-core.f
    s\" : F .\" x : y\" ;"           NL-COUNT 1 T= ;
 
 : MNLT-LIVE ( -- )
-   \ the real maki tree still parses and the ledger runs without error
-   NAMESPACE-LINT ;
+   \ the real maki tree is clean: every def lives in a package (enforcing check)
+   NAMESPACE-LINT-STRICT ;
 
 : MNLT-MAIN ( -- )
    T-RESET

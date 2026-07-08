@@ -19,11 +19,14 @@
 \   - BEGIN-*/END-* names: legacy scope pairs (owed a FOO/;FOO rename by their own
 \     dot); reported in a separate legacy-pair tally, not the primary finding set.
 \   - *-test.f files: test scaffolding legitimately defines global test locals.
+\   - maki/device-smoke.f: the gate's device-FFI canary - a smoke-test suite run by
+\     maki/test.f under lib/test.f (T-RESET/TTRUE/T-REPORT). It is gate scaffolding,
+\     the same category as *-test.f, and just lacks the -test suffix by history.
 \
-\ Report-only: NAMESPACE-LINT prints the ledger and the count but does NOT throw,
-\ so the gate stays green while the eval/gpu GLOBAL clusters await packaging.
-\ NAMESPACE-LINT-STRICT throws on any finding for future enforcement once those
-\ clusters land in packages.
+\ NAMESPACE-LINT prints the ledger and the count without throwing (a report view).
+\ NAMESPACE-LINT-STRICT throws on any finding and is the gate entrypoint now that the
+\ eval/gpu GLOBAL clusters have landed in per-subsystem packages: the ledger is clean,
+\ enforcement is on, and any NEW global maki def outside a package fails the gate.
 \
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/lint/text.f,
 \ and tools/lint/token.f.
@@ -105,10 +108,11 @@ variable NL-QI
 : NL-MAKI-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" maki/" LINT-CONTAINS?  a u s" .f" HAS-EXT?  and ;
 
-\ documented ARRAY substrate + test scaffolding are exempt from the scan
+\ documented ARRAY substrate + test/canary scaffolding are exempt from the scan
 : NL-SKIP-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" -test.f"      HAS-EXT?        if LINT-TRUE exit then
-   a u s" maki/array.f" LINT-ENDS-WITH? ;
+   a u s" -test.f"             HAS-EXT?        if LINT-TRUE exit then
+   a u s" maki/device-smoke.f" LINT-ENDS-WITH? if LINT-TRUE exit then
+   a u s" maki/array.f"        LINT-ENDS-WITH? ;
 
 : NL-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    a NL-PATH u LINT-BMOVE  u NL-PATHU ! ;
@@ -196,11 +200,11 @@ variable NL-QI
    NL-BAD    @ NL-U. s"  global-def finding(s), " type
    NL-LEGACY @ NL-U. s"  legacy-pair(s)" type NL-NL ;
 
-\ gate entry: report-only ledger (never throws while eval/gpu await packaging)
+\ report view: prints the ledger without throwing (NAMESPACE-LINT-STRICT enforces)
 : NAMESPACE-LINT ( -- )
    NL-REPORT-ON  NL-RUN  NL-SUMMARY ;
 
-\ future enforcement once the flagged clusters land in packages
+\ gate entry (enforcing): any global maki def outside a package fails the gate
 : NAMESPACE-LINT-STRICT ( -- )
    NAMESPACE-LINT
    NL-BAD @ 0 > if 1 throw then ;
