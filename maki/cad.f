@@ -300,7 +300,7 @@ private
 
 \ ---- bridge the captured plan into the model-IR node table -----------------
 : PLAN-REF ( tensor -- n )                      \ plan tensor handle -> MIR operand ref
-   tensor>N {: h:n :}
+   TENSOR:tensor>N {: h:n :}
    h CAP-IN-N @ < if h MIR-IN-REF else h CAP-IN-N @ - then ;
 
 \ movement nodes materialize only on a materialize/gathered verdict; compute nodes
@@ -359,7 +359,7 @@ private
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
+   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
    rows cols DT-F32 LAY-ROW MIR-INPUT+ drop                                  \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then

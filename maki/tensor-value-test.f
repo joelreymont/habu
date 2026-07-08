@@ -84,7 +84,7 @@ TVT-BLDX @ TENSOR:PLAN-IN+
 TENSOR:PLAN-N@ 1 T=
 0 TENSOR:PLAN-OP@ OP-GELU T=
 0 TENSOR:PLAN-IN-COUNT@ 1 T=
-0 0 TENSOR:PLAN-IN@ tensor>N  TVT-BLDX @ tensor>N  T=
+0 0 TENSOR:PLAN-IN@ TENSOR:tensor>N  TVT-BLDX @ TENSOR:tensor>N  T=
 
 \ ---- descriptor-mode model: PLINEAR PGELU PLINEAR records the right sequence -
 variable TVT-X  variable TVT-W1  variable TVT-B1  variable TVT-W2  variable TVT-B2
@@ -103,12 +103,12 @@ TENSOR:PLAN-N@ 3 T=
 0 TENSOR:PLAN-IN-COUNT@ 3 T=
 1 TENSOR:PLAN-IN-COUNT@ 1 T=
 2 TENSOR:PLAN-IN-COUNT@ 3 T=
-0 0 TENSOR:PLAN-IN@ tensor>N  TVT-X @  tensor>N T=            \ op0 inputs = X W1 b1
-0 1 TENSOR:PLAN-IN@ tensor>N  TVT-W1 @ tensor>N T=
-0 2 TENSOR:PLAN-IN@ tensor>N  TVT-B1 @ tensor>N T=
-1 0 TENSOR:PLAN-IN@ tensor>N  0 TENSOR:PLAN-OUT@ tensor>N T=         \ GELU consumes op0 output
-2 0 TENSOR:PLAN-IN@ tensor>N  1 TENSOR:PLAN-OUT@ tensor>N T=         \ op2 consumes GELU output
-2 1 TENSOR:PLAN-IN@ tensor>N  TVT-W2 @ tensor>N T=
+0 0 TENSOR:PLAN-IN@ TENSOR:tensor>N  TVT-X @  TENSOR:tensor>N T=            \ op0 inputs = X W1 b1
+0 1 TENSOR:PLAN-IN@ TENSOR:tensor>N  TVT-W1 @ TENSOR:tensor>N T=
+0 2 TENSOR:PLAN-IN@ TENSOR:tensor>N  TVT-B1 @ TENSOR:tensor>N T=
+1 0 TENSOR:PLAN-IN@ TENSOR:tensor>N  0 TENSOR:PLAN-OUT@ TENSOR:tensor>N T=         \ GELU consumes op0 output
+2 0 TENSOR:PLAN-IN@ TENSOR:tensor>N  1 TENSOR:PLAN-OUT@ TENSOR:tensor>N T=         \ op2 consumes GELU output
+2 1 TENSOR:PLAN-IN@ TENSOR:tensor>N  TVT-W2 @ TENSOR:tensor>N T=
 0 TENSOR:PLAN-OUT@ TENSOR:TV-ROWS@ 2 T=                              \ inferred output shapes
 0 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 4 T=
 1 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 4 T=

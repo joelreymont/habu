@@ -43,8 +43,6 @@ require lib/ffi-abi.f
 -5047 constant E-TV-PLAN-STATE  \ plan builder used out of order
 -5048 constant E-TV-OPKIND      \ op-kind out of range
 
-DEFTYPE tensor                  \ opaque single-cell handle; internals swap to an ADT later
-
 package MAKI
 public
 
@@ -76,6 +74,9 @@ end-package
 package TENSOR
 
 public
+
+DEFTYPE tensor                 \ opaque single-cell handle; internals swap to an ADT later
+                               \ (public: TENSOR:tensor>N is the audited handle-inspection cast)
 
 256 constant TV-CAP            \ max live tensor values (store capacity contract)
 
