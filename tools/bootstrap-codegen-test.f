@@ -234,7 +234,9 @@ variable BCG-LEN
    s" : J-CASE ( -- )" BCG-MUST-HAVE
    s" : J-OF ( -- )" BCG-MUST-HAVE
    s" : J-ENDOF ( -- )" BCG-MUST-HAVE
-   s" : J-ENDCASE ( -- )" BCG-MUST-HAVE ;
+   s" : J-ENDCASE ( -- )" BCG-MUST-HAVE
+   s" : J-MATCH ( -- )" BCG-MUST-HAVE
+   s" : C-DIE-BAD-TAG ( -- )" BCG-MUST-HAVE ;
 
 : BCG-TEST-BOOTSTRAP-HIDE-PRELUDE ( -- )
    s" tools/bootstrap.sh" BCG-LOAD

@@ -130,14 +130,16 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    k AOT-REC AOT-RXT bstart -  d AOT-N-C!                     \ [0] = xt - blob-start
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
-\ --- compact 12B records: blob-off u32 + end u32 + name-off u16 + flags u8 + wid u8.
-\ Built from the verbatim 48B records; each record's inline name is added to the
-\ deduped pool. EM-AOT-REGISTER-RECS expands each 12B record back to the full 48B
-\ dict record at boot. All the constant/derivable fields (flags nibble, wid, name
+\ --- compact 12B records: blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8
+\ + wid u32. Built from the verbatim 48B records; each record's inline name is added
+\ to the deduped pool. EM-AOT-REGISTER-RECS expands each 12B record back to the full
+\ 48B dict record at boot. All the constant/derivable fields (flags nibble, wid, name
 \ length, and the [24..40) inline-name zero padding) are asserted or reconstructed;
-\ the ACAP-PROVE-RECS pass then proves the expansion is byte-identical. ---
-: ACAP-CREC-DST ( n -- ptr u8 ) 8 * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
-: ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX 8 * +  AOT-REC-BUF@ swap + ;
+\ the ACAP-PROVE-RECS pass then proves the expansion is byte-identical. The wid is a
+\ full u32 (matching the verbatim [40] cell's checked u32 domain) so wordlist IDs
+\ above 255 round-trip through the seed -- the field was a truncating u8. ---
+: ACAP-CREC-DST ( n -- ptr u8 ) 12 * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
+: ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX 12 * +  AOT-REC-BUF@ swap + ;
 : ACAP-COMPACT-RECS ( -- )
    AOT-REC-N @ 0 ?do
       i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
@@ -149,22 +151,21 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
       flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
       v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
       len 16 > if s" aot-capture: rec name too long for inline" 74 die then
-      v 40 + ACAP-W32@ {: wid:n :}
-      wid 255 > if s" aot-capture: rec wid exceeds u8" 74 die then
+      v 40 + ACAP-W32@ {: wid:n :}                            \ full u32 (v+44 u32-bound asserted above)
       v ACAP-W32@ {: boff:n :}  v 8 + ACAP-W32@ {: rend:n :}
       boff $FFFF > if s" aot-capture: rec blob-off exceeds u16" 74 die then
       rend $FFFF > if s" aot-capture: rec end (codelen-4) exceeds u16" 74 die then
       v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
       noff $FFFF > if s" aot-capture: rec name-off exceeds u16" 74 die then
-      i ACAP-CREC-DST {: c:ptr :}                             \ 8B: blob-off u16 + end u16 + name-off u16 + flags u8 + wid u8
-      boff c AOT-P16!  rend c 2 + AOT-P16!  noff c 4 + AOT-P16!  flags c 6 + c!  wid c 7 + c!
+      i ACAP-CREC-DST {: c:ptr :}                             \ 12B: blob-off u16 + end u16 + name-off u16 + flags u8 + pad u8 + wid u32
+      boff c AOT-P16!  rend c 2 + AOT-P16!  noff c 4 + AOT-P16!  flags c 6 + c!  0 c 7 + c!  wid c 8 + AOT-P32!
    loop ;
 
-\ Expand a compact 8B record to a 48B dict record image -- the EXACT algorithm
+\ Expand a compact 12B record to a 48B dict record image -- the EXACT algorithm
 \ EM-AOT-REGISTER-RECS runs at boot (minus the CP rebase of [0], added here as 0 so
 \ the record-body comparison holds field-for-field with the pre-rebase verbatim).
 : ACAP-U16@ ( ptr u8 -- n ) {: p:ptr :}  p c@  p 1+ c@ 8 lshift or ;
-: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 8B, s=48B out
+: ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 12B, s=48B out
    c ACAP-U16@ s AOT-N-C!                                     \ [0..8) = blob-off (u16 -> u64, hi=0)
    c 2 + ACAP-U16@ s 8 + AOT-N-C!                             \ [8..16) = end (u16 -> u64, hi=0)
    c 4 + ACAP-U16@ {: noff:n :}                               \ name-off u16
@@ -173,7 +174,7 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    flags 60 lshift len or  s 16 + AOT-N-C!                    \ [16] = flags<<60 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   c 7 + c@ s 40 + AOT-N-C! ;                                 \ [40..48) = wid (u64, hi=0)
+   c 8 + ACAP-W32@ s 40 + AOT-N-C! ;                          \ [40..48) = wid (u32 -> u64, hi=0)
 variable ACAP-RECMM                                           \ record-proof mismatch count
 : ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
    0 ACAP-RECMM !
@@ -269,12 +270,40 @@ variable ACAP-P
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
+\ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
+\ registry (PROT-WID-N-CELL count + PROT-WID-OFF u32 table) into AOT-PWID-BUF so
+\ EMIT-AOT-SEED bakes it and EM-AOT-REGISTER-PROT-WIDS restores it at boot. Each
+\ WID is a full u32, so wordlist IDs above 255 round-trip with no u8 truncation.
+\ In the current metabuild no producer populates the registry (item 8 will), so the
+\ live count is 0 and the capture is a clean no-op; ACAP-PWID-SELFTEST proves the
+\ u32 serialize/deserialize round-trip independently, exactly as ACAP-WID-SELFTEST
+\ proves the record path. ---
+: ACAP-PWID-SLOT ( n -- ptr u8 ) 4 * AOT-PWID-BUF@ + ;         \ slot index -> u32 byte addr
+: ACAP-PWID-PUT ( n n -- ) {: v:n ix:n :}                      \ v=wid ix=slot: store as u32
+   v  ix ACAP-PWID-SLOT  AOT-P32! ;
+: ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
+: ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
+   AOT-DBASE PROT-WID-N-CELL + AOT-CELL@ {: n:n :}
+   n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
+   n AOT-PWID-N !
+   n 0 ?do
+      AOT-DBASE PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@       \ live table[i] (u32)
+      i ACAP-PWID-PUT
+   loop ;
+variable ACAP-PWID-MX                                          \ max-WID accumulator
+: ACAP-PWID-MAXWID ( -- n )                                    \ largest WID in AOT-PWID-BUF (0 if empty)
+   0 ACAP-PWID-MX !
+   AOT-PWID-N @ 0 ?do
+      i ACAP-PWID-GET dup ACAP-PWID-MX @ > if ACAP-PWID-MX ! else drop then
+   loop
+   ACAP-PWID-MX @ ;
+
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-PWID-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 : ACAP-CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET
@@ -284,7 +313,8 @@ variable ACAP-P
    d0 d1 ACAP-SCAN-DATA
    bstart bend ACAP-SCAN-CODE
    ACAP-COMPACT-RECS                            \ build 12B compact records + add record names to pool
-   ACAP-PROVE-RECS ;                            \ fail-closed: expand(compact)==verbatim 48B, field-for-field
+   ACAP-PROVE-RECS                              \ fail-closed: expand(compact)==verbatim 48B, field-for-field
+   ACAP-PWID-CAPTURE ;                          \ serialize the protected-WID registry (TFAM 2b-v)
 
 \ --- host validation dump (bring-up only) ---
 : ACAP-. ( -- )
@@ -298,3 +328,48 @@ variable ACAP-P
       s" name=" type
       AOT-NAMES-BUF@ noff 1+ +  AOT-NAMES-BUF@ noff + c@  type cr
    loop ;
+
+\ --- build-time regression: a wordlist ID above 255 must round-trip through the
+\ compact record format. Runs here in the live metabuild (the only context where
+\ ACAP-* exist) BEFORE stdin.f's CAPTURE-REPL / ACAP-RESET, so the synthetic record
+\ it writes into record #0 is discarded before the real capture. Fail-closed via
+\ die: pre-widening ACAP-COMPACT-RECS died on wid>255; the u16->u32 wid field now
+\ lets it survive, and ACAP-PROVE-RECS confirms expand(compact)==verbatim including
+\ the [40] wid. ACAP-EXPAND-REC is the EXACT model of the boot-time
+\ EM-AOT-REGISTER-RECS unpack, so this also guards that inverse.
+: ACAP-WID-SELFTEST ( -- )
+   0 AOT-NAMES-LEN !                                \ fresh dedup pool for the synthetic record
+   0 ACAP-REC-DST {: d:ptr :}                        \ verbatim 48B dict record #0
+   0 d AOT-N-C!                                      \ [0..8)   xt/blob-off = 0
+   8 d 8 + AOT-N-C!                                  \ [8..16)  end = 8
+   3 d 16 + AOT-N-C!                                 \ [16]     flags(0)<<60 | name-len(3)
+   $434241 d 24 + AOT-N-C!                           \ [24..32) inline name "ABC" (LE)
+   0 d 32 + AOT-N-C!                                 \ [32..40) inline-name zero pad
+   1000 d 40 + AOT-N-C!                              \ [40..48) wid = 1000  ( > 255 )
+   1 AOT-REC-N !
+   ACAP-COMPACT-RECS                                 \ pack -> 12B compact (died here pre-fix on wid>255)
+   ACAP-PROVE-RECS                                   \ expand==verbatim, field-for-field (incl [40] wid)
+   0 ACAP-CREC-DST 8 + ACAP-W32@ 1000 <> if
+      s" aot-capture: wid>255 self-test: compact wid corrupted" 74 die then
+   0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
+ACAP-WID-SELFTEST
+
+\ --- build-time regression (TFAM 2b-v): a protected-WID registry entry above 255
+\ must round-trip through the u32 AOT serialize/deserialize with no truncation, and
+\ the max-WID (used at boot to advance WIDN past every restored WID) must be exact.
+\ Runs in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE, and clears
+\ AOT-PWID-N so the real (empty) capture is unaffected. Fail-closed via die:
+\ ACAP-PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
+\ u32 read EM-AOT-REGISTER-PROT-WIDS runs at boot, so this guards both directions. ---
+: ACAP-PWID-SELFTEST ( -- )
+   0 AOT-PWID-N !
+   42   0 ACAP-PWID-PUT                              \ entry 0 = 42
+   1000 1 ACAP-PWID-PUT                              \ entry 1 = 1000  ( > 255 )
+   300  2 ACAP-PWID-PUT                              \ entry 2 = 300   ( > 255 )
+   3 AOT-PWID-N !
+   0 ACAP-PWID-GET 42   <> if s" aot-capture: pwid self-test: entry 0 corrupted" 74 die then
+   1 ACAP-PWID-GET 1000 <> if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
+   2 ACAP-PWID-GET 300  <> if s" aot-capture: pwid self-test: wid 300 (>255) truncated" 74 die then
+   ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
+   0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
+ACAP-PWID-SELFTEST

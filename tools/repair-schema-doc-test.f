@@ -23,6 +23,7 @@ require tools/json.f
 require tools/gate-json-assert-core.f
 
 $40000 constant RSD-DOC-CAP
+$10000 constant RSD-EMIT-CAP
 8192 constant RSD-BUF-CAP
 
 variable RSD-ROOT-U
@@ -31,6 +32,8 @@ variable RSD-DIAG-U
 variable RSD-DOC-U
 variable RSD-LLM-U
 variable RSD-ERR-U
+variable RSD-REND-U
+variable RSD-CHK-U
 variable RSD-DOC-BUF-A
 variable RSD-LLM-BUF-A
 variable RSD-OUT-A
@@ -39,6 +42,8 @@ variable RSD-ERR-A
 create RSD-ROOT-BUF FS-PATH-CAP allot
 create RSD-SRC-BUF FS-PATH-CAP allot
 create RSD-DIAG-BUF FS-PATH-CAP allot
+create RSD-REND-BUF RSD-EMIT-CAP allot
+create RSD-CHK-BUF RSD-EMIT-CAP allot
 
 : RSD-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -104,6 +109,12 @@ create RSD-DIAG-BUF FS-PATH-CAP allot
    s" docs/repair-diagnostics.md" RSD-DOC-BUF RSD-DOC-CAP READ-ALL RSD-DOC-U !
    s" LLM.md" RSD-LLM-BUF RSD-DOC-CAP READ-ALL RSD-LLM-U ! ;
 
+\ Emitter sources: render.f owns REPAIR-CLASS (data-stack/return/signature/dead
+\ classes), check-core.f owns CHK-TYPE-JSON (fix_nominal_type, the deftype path).
+: RSD-LOAD-EMITTERS ( -- )
+   s" src/core/render.f" RSD-REND-BUF RSD-EMIT-CAP READ-ALL RSD-REND-U !
+   s" tools/check-core.f" RSD-CHK-BUF RSD-EMIT-CAP READ-ALL RSD-CHK-U ! ;
+
 : RSD-NEED-DOC ( ptr u8 n -- )
    RSD-DOC-BUF RSD-DOC-U @ 2swap CONTAINS? TTRUE ;
 
@@ -160,17 +171,58 @@ create RSD-DIAG-BUF FS-PATH-CAP allot
    s" source_excerpt" RSD-NEED-DOC-FIELD
    s" reason" RSD-NEED-DOC-FIELD ;
 
+\ Needle for an emitter site: the verbatim `s" class"` literal the emitters
+\ write, so `s" fix_type"` cannot match `s" fix_signature_type"`.
+: RSD-EMIT-NEEDLE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   115 SB-APPEND-C                             \ s
+   RSD-DQ                                       \ "
+   32 SB-APPEND-C                               \ space
+   a u SB-APPEND
+   RSD-DQ                                        \ "
+   SB$ ;
+
+: RSD-EMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RSD-REND-BUF RSD-REND-U @ a u CONTAINS?
+   RSD-CHK-BUF RSD-CHK-U @ a u CONTAINS? or ;
+
+: RSD-NEED-EMITTER ( ptr u8 n -- )
+   RSD-EMIT-NEEDLE$ RSD-EMITTED? TTRUE ;
+
+\ Completeness gate for one repair class across all four drift sites:
+\   site 1 (emitters render.f/check-core.f) emit `s" class"`,
+\   site 2 (GJA-SUGGEST-FOR) maps class -> suggestion (dies if unmapped) and
+\           that suggestion text appears verbatim in the doc table (ties GJA<->doc),
+\   site 3 (docs Repair Classes list) names `class`,
+\   site 4 is this canonical list itself.
+: RSD-NEED-CLASS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u RSD-NEED-DOC-CLASS
+   a u RSD-NEED-EMITTER
+   a u GJA-SUGGEST-FOR RSD-NEED-DOC ;
+
+\ Canonical repair-class enumeration (17). This is the single source of truth;
+\ RSD-NEED-CLASS proves every downstream site carries each one. Reverse drift (a
+\ class an emitter grows but this list omits) is caught at commit time by the
+\ Forth gate, which re-runs this fixture after any emitter edit; a source-parsing
+\ enumerator is deliberately out of scope (ADT/parser work, dot territory).
 : RSD-TEST-DOC-CLASSES ( -- )
-   s" remove_producer" RSD-NEED-DOC-CLASS
-   s" add_producer" RSD-NEED-DOC-CLASS
-   s" fix_type" RSD-NEED-DOC-CLASS
-   s" fix_return_stack" RSD-NEED-DOC-CLASS
-   s" trusted_boundary_required" RSD-NEED-DOC-CLASS
-   s" factor_local_shape" RSD-NEED-DOC-CLASS
-   s" fix_signature_syntax" RSD-NEED-DOC-CLASS
-   s" fix_signature_type" RSD-NEED-DOC-CLASS
-   s" rewrite_uncheckable" RSD-NEED-DOC-CLASS
-   s" unknown_rejection" RSD-NEED-DOC-CLASS ;
+   s" remove_producer" RSD-NEED-CLASS
+   s" add_producer" RSD-NEED-CLASS
+   s" fix_type" RSD-NEED-CLASS
+   s" fix_return_stack" RSD-NEED-CLASS
+   s" trusted_boundary_required" RSD-NEED-CLASS
+   s" factor_local_shape" RSD-NEED-CLASS
+   s" factor_linear_local" RSD-NEED-CLASS
+   s" remove_dead_code" RSD-NEED-CLASS
+   s" fix_qualified_name" RSD-NEED-CLASS
+   s" fix_signature_syntax" RSD-NEED-CLASS
+   s" fix_signature_type" RSD-NEED-CLASS
+   s" fix_signature_arity" RSD-NEED-CLASS
+   s" fix_bare_ptr_element" RSD-NEED-CLASS
+   s" fix_nominal_type" RSD-NEED-CLASS
+   s" fix_family_declaration" RSD-NEED-CLASS
+   s" rewrite_uncheckable" RSD-NEED-CLASS
+   s" unknown_rejection" RSD-NEED-CLASS ;
 
 : RSD-TEST-LLM-LINKS ( -- )
    s" docs/repair-diagnostics.md" RSD-NEED-LLM
@@ -184,7 +236,8 @@ create RSD-DIAG-BUF FS-PATH-CAP allot
    RSD-ROOT s" bad.f" RSD-SRC-BUF RSD-SRC-U RSD-PATH!
    RSD-ROOT s" bad.err" RSD-DIAG-BUF RSD-DIAG-U RSD-PATH!
    RSD-SRC RSD-SRC$ WRITE-ALL
-   RSD-LOAD-DOCS ;
+   RSD-LOAD-DOCS
+   RSD-LOAD-EMITTERS ;
 
 : RSD-RUN-CHECK-ACT ( -- )
    RSD-SRC RSD-SRC CHECK-ALL-ERRORS-FILE ;

@@ -36,6 +36,9 @@ create ST-B-BUF FS-PATH-CAP allot
 create ST-OUT-PATH-BUF FS-PATH-CAP allot
 create ST-PATHS 2 cells allot
 create ST-LENS 2 cells allot
+create ST-QP-BUF ST-CAP allot
+
+variable ST-QP-U
 
 : ST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: src:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -254,12 +257,61 @@ create ST-LENS 2 cells allot
    5 ST-APPEND-LEN !
    s" x" >LEN ST-BUF 4 >LEN ST-APPEND-LEN SOURCE-APPEND-BYTES ;
 
+: ST-QP$ ( -- ptr u8 n )
+   ST-QP-BUF ST-QP-U @ LEN>N ;
+
+: ST-QPATH ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 >LEN ST-QP-U !
+   a u >LEN ST-QP-BUF ST-CAP >LEN ST-QP-U SOURCE-APPEND-QPATH ;
+
+: ST-QPATH-WANT$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   s" s" SB-APPEND
+   34 SB-APPEND-C
+   32 SB-APPEND-C
+   a u SB-APPEND
+   34 SB-APPEND-C
+   SB$ ;
+
+: ST-QP-UNSAFE! ( n -- ) {: c:n :}
+   SB-RESET
+   s" a" SB-APPEND
+   c SB-APPEND-C
+   s" b.f" SB-APPEND
+   SB$ ST-QPATH ;
+
+: TEST-QPATH-SAFE ( -- )
+   s" lib/foo.f" ST-QPATH
+   ST-QP$ s" lib/foo.f" ST-QPATH-WANT$ T$= ;
+
+: TEST-QPATH-SPACE ( -- )
+   s" a dir/b.f" ST-QPATH
+   ST-QP$ s" a dir/b.f" ST-QPATH-WANT$ T$= ;
+
+: TEST-QPATH-DQ ( -- )
+   [: 34 ST-QP-UNSAFE! ;] E-FS-PATH-UNSAFE TTHROWSQ ;
+
+: TEST-QPATH-BS ( -- )
+   [: ST-BACKSLASH ST-QP-UNSAFE! ;] E-FS-PATH-UNSAFE TTHROWSQ ;
+
+: TEST-QPATH-LF ( -- )
+   [: 10 ST-QP-UNSAFE! ;] E-FS-PATH-UNSAFE TTHROWSQ ;
+
+: TEST-QPATH-CR ( -- )
+   [: 13 ST-QP-UNSAFE! ;] E-FS-PATH-UNSAFE TTHROWSQ ;
+
 : SOURCE-TEST-MAIN ( -- )
    T-RESET
    ST-PREPARE
    TEST-READ-STDIN-ALL
    TEST-CONCAT-FILES
    TEST-WRITE-SOURCE-LIST
+   TEST-QPATH-SAFE
+   TEST-QPATH-SPACE
+   TEST-QPATH-DQ
+   TEST-QPATH-BS
+   TEST-QPATH-LF
+   TEST-QPATH-CR
    TEST-INSERT-BEFORE-FINAL-LINE
    TEST-COMMENT-EXPORTS
    TEST-SOURCE-FILE-LINES-EMPTY

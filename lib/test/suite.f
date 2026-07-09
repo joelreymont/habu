@@ -156,8 +156,33 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
 : PARSE-NAME ( -- ptr u8 n )
    parse-name dup 0= if 2drop E-STR-BOUNDS throw then ;
 
-: END-SUITE? ( ptr u8 n -- bool )
-   s" TEST:END-SUITE" STR= ;
+: RESERVED-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" GROUP"       STR=CI
+   a u s" SUITE"       STR=CI or
+   a u s" SUITE-STDIN" STR=CI or
+   a u s" ;GROUP"      STR=CI or
+   a u s" ;SUITE"      STR=CI or
+   a u s" SEQ"         STR=CI or
+   a u s" PARA"        STR=CI or ;
+
+: MODE-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" SEQ"  STR=CI if GROUP-SEQUENTIAL else
+   a u s" PARA" STR=CI if GROUP-PARALLEL else
+      E-SUITE-MODE throw
+   then then ;
+
+: CHECK-NAME ( ptr u8 n -- ptr u8 n )
+   dup 0= if 2drop E-SUITE-NAME throw then
+   2dup RESERVED-NAME? if 2drop E-SUITE-NAME throw then ;
+
+: MODE-TOKEN ( -- n )
+   parse-name MODE-OF ;
+
+: NAME-TOKEN ( -- ptr u8 n )
+   parse-name CHECK-NAME ;
+
+: ;SUITE? ( ptr u8 n -- bool )
+   s" TEST:;SUITE" STR= ;
 
 : ITEM-ALLOC ( -- n )
    ITEM-N @ ITEM-MAX >= if E-TBL-BOUNDS throw then
@@ -203,7 +228,7 @@ defer STDIN-RUNNER ( ptr u8 n ptr u8 n -- )
    0 DEF-ID !
    begin DEF-ID @ 0= while
       parse-name dup 0= if 2drop E-FS-CAPACITY throw then
-      2dup END-SUITE? if
+      2dup ;SUITE? if
          2drop -1 DEF-ID !
       else
          id ITEM-ADD-ARG
@@ -334,13 +359,12 @@ public
 : LABEL= ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CUR-LABEL-BUF CUR-LABEL-U @ a u STR= ;
 
-: GROUP-PARALLEL ( -- )
-   PARSE-NAME GROUP-PARALLEL GROUP-ADD GROUP-CUR ! ;
+: GROUP ( -- )
+   MODE-TOKEN {: mode:n :}
+   NAME-TOKEN {: a:ptr u:n :}
+   a u mode GROUP-ADD GROUP-CUR ! ;
 
-: GROUP-SEQUENTIAL ( -- )
-   PARSE-NAME GROUP-SEQUENTIAL GROUP-ADD GROUP-CUR ! ;
-
-: END-GROUP ( -- )
+: ;GROUP ( -- )
    0 GROUP-CUR ! ;
 
 : SUITE ( -- )
@@ -352,7 +376,7 @@ public
    PARSE-NAME {: inptr:ptr inu:n :}
    ITEM-STDIN name nameu inptr inu ITEM-ADD ;
 
-: END-SUITE ( -- )
+: ;SUITE ( -- )
 ;
 
 : RUN ( -- )

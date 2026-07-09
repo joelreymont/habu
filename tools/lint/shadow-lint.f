@@ -13,7 +13,7 @@ require tools/lint/lib.f
 
 package SHADOW-LINT-TOOL
 
-$30000 constant SL-FB-CAP                    \ largest linted source + headroom
+$60000 constant SL-FB-CAP                    \ largest linted source + headroom (item 9 pushed checker.f near $40000)
 create FB SL-FB-CAP allot                    \ one file at a time
 
 \ ---- prim-name store: copied out of habu1.f so FB can be reused per file ----
@@ -77,9 +77,11 @@ variable BAD  variable LI
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/checker.f"   LINT-FILE
+   s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
+   s" src/core/type-family-sha.f" LINT-FILE
    s" src/arch/arm64/asm.f" LINT-FILE   s" src/arch/arm64/icode.f" LINT-FILE
    s" src/arch/arm64/mnem.f" LINT-FILE  s" src/os/macos/layout.f" LINT-FILE
    s" src/os/macos/sys.f"   LINT-FILE

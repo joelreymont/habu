@@ -32,6 +32,7 @@ require tools/argv.f
 variable CAE-ROOT-U
 variable CAE-IN-U
 variable CAE-LARGE-U
+variable CAE-XSUP-PATH-U
 variable CAE-NUM-I
 variable CAE-RUN-A
 variable CAE-RUN-U
@@ -45,6 +46,7 @@ variable CAE-START-NS
 create CAE-ROOT-BUF FS-PATH-CAP allot
 create CAE-IN-BUF FS-PATH-CAP allot
 create CAE-LARGE-BUF FS-PATH-CAP allot
+create CAE-XSUP-PATH-BUF FS-PATH-CAP allot
 create CAE-OUT CAE-BUF-CAP allot
 create CAE-ERR CAE-BUF-CAP allot
 create CAE-NUM CAE-NUM-CAP allot
@@ -62,6 +64,9 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-LARGE ( -- ptr u8 n )
    CAE-LARGE-BUF CAE-LARGE-U @ ;
+
+: CAE-XSUP ( -- ptr u8 n )
+   CAE-XSUP-PATH-BUF CAE-XSUP-PATH-U @ ;
 
 : CAE-RUN-A-FIELD ( -- ptr ptr u8 )
    CAE-RUN-A 0 ptr-field ;
@@ -281,8 +286,10 @@ create CAE-LF-BYTE 10 c,
    CAE-ROOT CLEANUP-DIR+
    CAE-ROOT s" input.f" CAE-IN-BUF JOIN-PATH CAE-IN-U !
    CAE-ROOT s" large.f" CAE-LARGE-BUF JOIN-PATH CAE-LARGE-U !
+   CAE-ROOT s" xsup-a.f" CAE-XSUP-PATH-BUF JOIN-PATH CAE-XSUP-PATH-U !
    CAE-IN CLEANUP+
    CAE-LARGE CLEANUP+
+   CAE-XSUP CLEANUP+
    CAE-IN CAE-SOURCE$ WRITE-ALL ;
 
 : CAE-APPEND-LF ( ptr u8 n -- )
@@ -505,6 +512,50 @@ create CAE-LF-BYTE 10 c,
    s" PASS: " type label labelu type
    s"  (" type mono-ns CAE-START-NS @ - PROC-NS-PER-MS / CAE-U-TYPE s" ms)" type cr ;
 
+: CAE-CASCADE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-CBADA ( n -- n ) drop ;" SB-APPEND CAE-LF
+   s" : CAE-CBADB ( a -- ) dup ;" SB-APPEND CAE-LF
+   s" : CAE-CGOOD ( n -- n ) CAE-CBADA ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Option-A no-cascade contract (ruling recorded on
+\ habu-multi-err-checking-42db26f4): a definition calling an earlier REJECTED
+\ definition certifies against its trusted declared signature - exactly the
+\ two real errors report, with no phantom E-UNDEFINED cascade entry.
+: CAE-TEST-CASCADE ( -- )
+   s" cascade-no-phantom" CAE-CASE!
+   CAE-IN CAE-CASCADE-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" cascade stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" cascade bada" T-LABEL
+   CAE-ERR erru s" cae-cbada" CONTAINS? TTRUE
+   s" cascade badb" T-LABEL
+   CAE-ERR erru s" cae-cbadb" CONTAINS? TTRUE
+   s" cascade no phantom" T-LABEL
+   CAE-ERR erru s" cae-cgood" CONTAINS? TFALSE
+   s" cascade diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 2 T= ;
+
+: CAE-UNCHK-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-UNCHK ( n -- n ) ?dup drop ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ Fail-closed negative: uncheckable definitions are not counted by the
+\ multi-error reject counter, so a file whose only definition is uncheckable
+\ must still exit nonzero (verdict 1 aborts the scan; continuing past it
+\ would let an all-uncheckable file read as clean).
+: CAE-TEST-UNCHECKABLE-FAILS ( -- )
+   s" all-uncheckable" CAE-CASE!
+   CAE-IN CAE-UNCHK-SOURCE$ WRITE-ALL
+   CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" uncheckable stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" uncheckable reported" T-LABEL
+   erru 0 > TTRUE ;
+
 : CAE-TEST-BASE ( -- )
    s" base-two-errors" CAE-CASE!
    CAE-RUN 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
@@ -526,10 +577,214 @@ create CAE-LF-BYTE 10 c,
    s" large word" T-LABEL
    CAE-ERR lerru CAE-WORD-LARGE$ CONTAINS? TTRUE ;
 
+\ ---- TFAM 5: all-errors support-parity fixtures (census gap4) ----------------
+\ verify-source's full re-drive replays deftype/deflinear/value-record before
+\ later definitions; per-def all-errors redrive must collect the same support
+\ or a good definition whose signature references the declared type is spuriously
+\ rejected. Each fixture pairs a good type-using def with a genuinely-bad def:
+\ the bad def forces per-def mode; before the fix the good def is ALSO reported.
+
+: CAE-DEFTYPE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" deftype cae-dt" SB-APPEND CAE-LF
+   s" : CAE-DT-USE ( cae-dt -- cae-dt ) ;" SB-APPEND CAE-LF
+   s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-DEFLINEAR-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" deflinear cae-lin" SB-APPEND CAE-LF
+   s" : CAE-LIN-USE ( cae-lin -- cae-lin ) ;" SB-APPEND CAE-LF
+   s" : CAE-LIN-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-VREC-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-vr x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" : CAE-VR-USE ( cae-vr -- cae-vr ) ;" SB-APPEND CAE-LF
+   s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ ---- layout-constant one-cell contract parity (TFAM 5 + TFAM 12 verdict) -----
+\ `constant` bakes exactly one physical cell, so its recorded effect is the
+\ one-cell `-- a` model in EVERY path (native C-CONSTANT, verify-source
+\ RECORD-DEFINER?, this all-errors funnel, and public-signatures). This is the
+\ PERMANENT contract, not a pending narrowing (TFAM 12 verdict 2026-07-09,
+\ habu-tfam-12-layout): the interpret stack is untyped by design, so no path
+\ has a sound shape source — an adjacent-producer heuristic mis-carries
+\ (`MK 5 constant K`), and carrying the producer's multi-cell type would
+\ certify USE words that push fewer cells than the constant holds. A
+\ wider-than-cell layout value cannot even LAND on the interpret stack
+\ (DNAME-WIDE dispatch gate, habu-tfam-12-interpret), and a checked-body pop
+\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed
+\ at USE — which this fixture proves end-to-end.
+: CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
+   s" TRUSTED: CAE-CV-MK ( -- cae-cv ) 0 ;" SB-APPEND CAE-LF
+   s" CAE-CV-MK constant CAE-CV-K" SB-APPEND CAE-LF
+   s" : CAE-CV-USE ( -- cae-cv ) CAE-CV-K ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-TFAM-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" TYPEFAMILY cae-tf 1" SB-APPEND CAE-LF
+   s" SUMTYPE cae-rs 2" SB-APPEND CAE-LF
+   s"   VARIANT ok  a ;VARIANT" SB-APPEND CAE-LF
+   s"   VARIANT err b ;VARIANT" SB-APPEND CAE-LF
+   s" ;SUMTYPE" SB-APPEND CAE-LF
+   s" : CAE-TF-USE ( cae-tf<n> cae-rs<n,f> -- cae-tf<n> cae-rs<n,f> ) ;" SB-APPEND CAE-LF
+   s" : CAE-TF-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-WORD-JSON$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   SB-RESET
+   CAE-DQ s" word" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ a u SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CHECK-SUPPORT-PARITY ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n good:ptr goodu:n bad:ptr badu:n :}
+   src srcu CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru bad badu CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru good goodu CAE-WORD-JSON$ CONTAINS? TFALSE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-DEFTYPE-SUPPORT ( -- )
+   s" deftype-support" CAE-CASE!
+   CAE-DEFTYPE-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-DEFLINEAR-SUPPORT ( -- )
+   s" deflinear-support" CAE-CASE!
+   CAE-DEFLINEAR-SOURCE$ s" cae-lin-use" s" cae-lin-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+: CAE-TEST-VREC-SUPPORT ( -- )
+   s" value-record-support" CAE-CASE!
+   CAE-VREC-SOURCE$ s" cae-vr-use" s" cae-vr-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+\ The layout constant is narrowed to one-cell `-- a`, so `CAE-CV-USE` (which
+\ declares the 2-field `cae-cv` layout) is fail-closed rejected: the inferred
+\ effect is `-- a`, the declared effect is `-- field<cae-cv,x,i64> ...`.
+: CAE-TEST-CONST-LAYOUT ( -- )
+   s" const-layout-narrow" CAE-CASE!
+   CAE-CONST-LAYOUT-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
+
+: CAE-TEST-TFAM-SUPPORT ( -- )
+   s" type-family-support" CAE-CASE!
+   CAE-TFAM-SOURCE$ s" cae-tf-use" s" cae-tf-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+\ ---- TFAM 5: verify-source top-level TRUST replay (census gap5) ---------------
+\ all-errors collects a top-level `s" NAME" s" SIG" TRUST` line and replays it
+\ through verify-source before later definitions. verify-source's RECORD-DEFINER?
+\ must dispatch that TRUST so a definition using the trusted word passes. A clean
+\ fixture (no genuinely-bad def) exits 0 only when the TRUST replay works.
+
+: CAE-SQ-LIT ( ptr u8 n -- ) {: a:ptr u:n :}
+   115 SB-APPEND-C
+   CAE-DQ
+   32 SB-APPEND-C
+   a u SB-APPEND
+   CAE-DQ
+   32 SB-APPEND-C ;
+
+: CAE-TRUST-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" CAE-TRO-HELP" CAE-SQ-LIT
+   s" i64 -- i64" CAE-SQ-LIT
+   s" TRUST" SB-APPEND CAE-LF
+   s" : CAE-TRO-USE ( i64 -- i64 ) CAE-TRO-HELP ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-IMMEDIATE-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-IM ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" immediate" SB-APPEND CAE-LF
+   s" : CAE-IM-USE ( i64 -- i64 ) CAE-IM ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-EXPORT-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-EX ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" EXPORT CAE-EX" SB-APPEND CAE-LF
+   s" : CAE-EX-USE ( i64 -- i64 ) CAE-EX ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-CHECK-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru CAE-EMPTY$ T$= ;
+
+: CAE-TEST-TRUST-SUPPORT ( -- )
+   s" trust-support" CAE-CASE!
+   CAE-TRUST-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-IMMEDIATE-SUPPORT ( -- )
+   s" immediate-support" CAE-CASE!
+   CAE-IMMEDIATE-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-EXPORT-SUPPORT ( -- )
+   s" export-support" CAE-CASE!
+   CAE-EXPORT-SOURCE$ CAE-CHECK-CLEAN ;
+
+\ Cross-file support: a prior source-list file's type and word are in scope
+\ for the checked buffer only when its path is registered through
+\ CHECK-ALL-ERRORS-SUPPORT+; the same buffer without registration fail-closed
+\ rejects. This is the hook the check source-list redrive drives per file.
+: CAE-XSUP-SUP$ ( -- ptr u8 n )
+   SB-RESET
+   s" deftype cae-xt" SB-APPEND CAE-LF
+   s" : CAE-XT-ID ( cae-xt -- cae-xt ) ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-XSUP-USE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-XT-USE ( cae-xt -- cae-xt ) CAE-XT-ID ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-TEST-XSUP-REPLAY ( -- )
+   s" xsup-replay" CAE-CASE!
+   CAE-XSUP CAE-XSUP-SUP$ WRITE-ALL
+   CHECK-ALL-ERRORS-SUPPORT-RESET
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-xt-use" CAE-WORD-JSON$ CONTAINS? TTRUE
+   CAE-XSUP CHECK-ALL-ERRORS-SUPPORT+
+   CAE-XSUP-USE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu2:n erru2:n :}
+   CAE-CASE$ T-LABEL
+   outu2 0 T=
+   CAE-CASE$ T-LABEL
+   erru2 0 T=
+   CHECK-ALL-ERRORS-SUPPORT-RESET ;
+
 : CAE-MAIN ( -- )
    T-RESET
    CAE-PREPARE
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
+   s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
+   s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
+   s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
+   s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
+   s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN
+   s" type-family-support" [: CAE-TEST-TFAM-SUPPORT ;] CAE-CASE-RUN
+   s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
+   s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
+   s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
+   s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
    s" as-add-task-leak" [: CAE-TEST-AS-ADD-TASK-LEAK ;] CAE-CASE-RUN

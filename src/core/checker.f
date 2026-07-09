@@ -305,32 +305,96 @@ ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INI
 : ATOM>K ( n -- n ) PAY cells ATOMK + @ ;
 
 512 constant MAXPARAM-INIT      \ param terms (grows on demand)
-4 constant PARAM-MAX-ARGS
 create PARAMA-BOOT MAXPARAM-INIT cells allot
 create PARAMU-BOOT MAXPARAM-INIT cells allot
 create PARAMC-BOOT MAXPARAM-INIT cells allot
-create PARAMARGS-BOOT MAXPARAM-INIT PARAM-MAX-ARGS * cells allot
-create PARAM-SCR PARAM-MAX-ARGS cells allot
+create PARAMFAM-BOOT MAXPARAM-INIT cells allot   \ resolved family-id per param term (identity)
+create PARAMOFF-BOOT MAXPARAM-INIT cells allot   \ arg-run start index into the flat PARGP pool
+create PARAMHID-BOOT MAXPARAM-INIT cells allot   \ hidden physical-field slot+1 per param term (0 = logical, docs item 12 slice-3a)
+\ PARGP is the flat per-param arg pool: each param term stores its arg terms as a
+\ contiguous run [PARAMOFF[p], PARAMOFF[p]+argc) here, so a family of ANY arity is
+\ stored without a fixed row cap. Cells hold term codes (pointer-free), so a grow
+\ is a plain byte copy and it resets in NEW alongside PARAMN. This replaces the old
+\ fixed PARAM-MAX-ARGS-strided PARAMARGS row.
+2048 constant PARG-INIT
+create PARGP-BOOT PARG-INIT cells allot
+\ PARAM-SCR is the reentrant parse/replay scratch: it holds the arg terms pushed
+\ across ALL currently-open nesting levels, so its depth is a nesting-peak, not a
+\ per-param arg count. It grows on demand (a nested family whose args land at a
+\ non-zero base must not overflow); per-param arity is uncapped (PARGP grows).
+32 constant PARAM-SCR-INIT
+create PARAM-SCR-BOOT PARAM-SCR-INIT cells allot
 variable PARAMN
 variable PARAM-SCR-N
 variable PARAM-I
-variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMARGS-P
-variable PARAM-CAP
+variable PARAMA-P   variable PARAMU-P   variable PARAMC-P   variable PARAMFAM-P
+variable PARAMOFF-P   variable PARAMHID-P   variable PARGP-P   variable PARG-N   variable PARG-CAP-V
+variable PARAM-SCR-P
+variable PARAM-CAP     variable PARAM-SCR-CAP-V
 PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   PARAMHID-BOOT PARAMHID-P !
+PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   0 PARG-N !
+MAXPARAM-INIT PARAM-CAP !
+PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 : PARAMA ( -- ptr a ) PARAMA-P @ ;
 : PARAMU ( -- ptr a ) PARAMU-P @ ;
 : PARAMC ( -- ptr a ) PARAMC-P @ ;
-: PARAMARGS ( -- ptr a ) PARAMARGS-P @ ;
+: PARAMFAM ( -- ptr a ) PARAMFAM-P @ ;
+: PARAMOFF ( -- ptr a ) PARAMOFF-P @ ;
+: PARAMHID ( -- ptr a ) PARAMHID-P @ ;
+: PARGP ( -- ptr a ) PARGP-P @ ;
+: PARG-ENSURE ( n -- ) {: need:n :}    \ room for `need` more arg cells past PARG-N
+   PARG-N @ need + PARG-CAP-V @ <= IF exit THEN
+   PARG-N @ need + PARG-CAP-V @ 2 * max {: nc:n :}
+   PARGP-P @ PARG-CAP-V @ cells nc cells ARENA-BYTES-GROW PARGP-P !
+   nc PARG-CAP-V ! ;
+: PARAM-SCR ( -- ptr a ) PARAM-SCR-P @ ;
+: PARAM-SCR-ENSURE ( -- )         \ room for one more scratch arg (grows the nesting-peak buffer)
+   PARAM-SCR-N @ PARAM-SCR-CAP-V @ < IF exit THEN
+   PARAM-SCR-N @ 1 + PARAM-SCR-CAP-V @ 2 * max {: nc:n :}
+   PARAM-SCR-P @ PARAM-SCR-CAP-V @ cells nc cells ARENA-BYTES-GROW PARAM-SCR-P !
+   nc PARAM-SCR-CAP-V ! ;
 : PARAM-ENSURE ( n -- ) {: need:n :}
    need PARAM-CAP @ <= IF exit THEN
    need PARAM-CAP @ 2 * max {: nc:n :}
    PARAMA-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMA-P !
    PARAMU-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMU-P !
    PARAMC-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMC-P !
-   PARAMARGS-P @ PARAM-CAP @ PARAM-MAX-ARGS * cells
-      nc PARAM-MAX-ARGS * cells ARENA-BYTES-GROW PARAMARGS-P !
+   PARAMFAM-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMFAM-P !
+   PARAMOFF-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMOFF-P !
+   PARAMHID-P @ PARAM-CAP @ cells nc cells ARENA-BYTES-GROW PARAMHID-P !
    nc PARAM-CAP ! ;
+
+\ --- resolved type-family (TFAM) identity for T-PARAM terms. The TFAM registry
+\ lives in src/core/type-family.f, loaded AFTER checker.f, so its query words are
+\ reached through friend xt hooks installed at prefix load (0 = not yet loaded).
+\ The TFAM-RESOLVE*/TFAM-ARITY* wrappers live just below RES-FALSE (which they use).
+variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
+variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
+variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
+variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
+variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
+variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
+variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
+variable MATCH-VAR-XT      0 MATCH-VAR-XT !      \ ( ptr u8 n n -- n bool ) : variant tail -> SUMV id within a family
+variable MATCH-VTAG-XT     0 MATCH-VTAG-XT !     \ ( n -- n ) : SUMV id -> declaration-order tag (seen-bitset index)
+variable MATCH-VCOUNT-XT   0 MATCH-VCOUNT-XT !   \ ( n -- n ) : family id -> variant count (exhaustiveness domain)
+variable MATCH-PAY-XT      0 MATCH-PAY-XT !      \ ( n n n -- n ) : vid famterm row -- row + instantiated payload
+variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
+
+\ --- checker package scope state. Declared here (not with the package words
+\ further down) so signature parsing (SIG-FAM?) can resolve family tokens
+\ through the ACTIVE package scope. The mutators stay in the package block.
+0 constant CHECKER-PACKAGE-NONE
+1 constant CHECKER-PACKAGE-PRIVATE
+2 constant CHECKER-PACKAGE-PUBLIC
+$100 constant CHECKER-PACKAGE-CAP
+create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
+variable CHECKER-PACKAGE-U
+variable CHECKER-PACKAGE-MODE
+
+: CHECKER-PACKAGE-ACTIVE? ( -- bool )
+   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -343,28 +407,41 @@ UK-EXACT UNIFY-KIND !
 : PARAM>NAME-A ( n -- ptr u8 ) PAY PARAMA-FIELD @ ;
 : PARAM>NAME-U ( n -- n ) PAY cells PARAMU + @ ;
 : PARAM>ARGC ( n -- n ) PAY cells PARAMC + @ ;
+: PARAM>FAM ( n -- n ) PAY cells PARAMFAM + @ ;   \ resolved family-id (identity)
+: PARAM>OFF ( n -- n ) PAY cells PARAMOFF + @ ;   \ arg-run start index into PARGP
+: PARAM>HID ( n -- n ) PAY cells PARAMHID + @ ;   \ hidden physical-field slot+1 (0 = logical, docs item 12 slice-3a)
 : PARAM-ARG-IDX ( n n -- ptr n ) {: p idx :}
-   p PAY PARAM-MAX-ARGS * idx + cells PARAMARGS + ;
+   p PARAM>OFF idx + cells PARGP + ;
 : PARAM>ARG ( n n -- n ) PARAM-ARG-IDX @ ;
-: PARAM-ARG-OR-DUMMY ( n n -- n ) {: p idx :}
-   idx p PARAM>ARGC < IF p idx PARAM>ARG ELSE 1 MK-CON THEN ;
-: PARAM-SCR-RESET ( -- ) 0 PARAM-SCR-N ! ;
-: PARAM-SCR-FULL? ( -- bool )
-   PARAM-SCR-N @ PARAM-MAX-ARGS >= ;
 : PARAM-SCR+ ( n -- )
+   PARAM-SCR-ENSURE
    PARAM-SCR-N @ cells PARAM-SCR + !
    PARAM-SCR-N @ 1 + PARAM-SCR-N ! ;
-: MK-PARAM {: a u :}
+\ MK-PARAM ( base a u fam -- t ) : build a T-PARAM from the scratch args pushed at
+\ [base, PARAM-SCR-N); argc = PARAM-SCR-N - base. `base` is the caller's scratch
+\ mark, so nested/replayed param builds are reentrant: MK-PARAM rewinds the shared
+\ scratch back to `base` (never to 0), so a parent's already-pushed args survive.
+\ The argc args are copied into a fresh contiguous run in the flat PARGP pool
+\ (uncapped arity); the run start is recorded in PARAMOFF.
+: MK-PARAM {: base:n a:ptr u:n fam:n :}
    PARAMN @ 1 + PARAM-ENSURE
+   PARAM-SCR-N @ base - {: argc:n :}
+   argc PARG-ENSURE
+   PARG-N @ {: start:n :}
    a PARAMN @ PARAMA-FIELD !
    u PARAMN @ cells PARAMU + !
-   PARAM-SCR-N @ PARAMN @ cells PARAMC + !
-   0 PARAM-I !
-   BEGIN PARAM-I @ PARAM-SCR-N @ < WHILE
-      PARAM-I @ cells PARAM-SCR + @
-      PARAMN @ PARAM-MAX-ARGS * PARAM-I @ + cells PARAMARGS + !
-      PARAM-I @ 1 + PARAM-I !
-   REPEAT
+   fam PARAMN @ cells PARAMFAM + !
+   argc PARAMN @ cells PARAMC + !
+   start PARAMN @ cells PARAMOFF + !
+   0 PARAMN @ cells PARAMHID + !   \ new term is logical; MK-HIDDEN/E-INST overwrite for hidden fields
+
+   0 BEGIN dup argc < WHILE          \ data-stack index (RECURSE-safe; ?do clobbers locals)
+      dup base + cells PARAM-SCR + @
+      over start + cells PARGP + !
+      1 +
+   REPEAT drop
+   argc PARG-N @ + PARG-N !
+   base PARAM-SCR-N !
    PARAMN @ 3 lshift T-PARAM or
    PARAMN @ 1 + PARAMN ! ;
 
@@ -400,6 +477,20 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 
 : RES-FALSE ( -- bool )
    0 0= 0= ;
+
+\ friend xt wrappers over the TFAM registry query surface (installed by
+\ type-family.f at prefix load); a 0 hook resolves nothing / arity 0. Both hooks
+\ always return a fixed row (id-or-0 + flag, arity int), never a variable arity.
+\ The xt sits ABOVE its data args, so we must not `?dup` it before `execute` (that
+\ would leave a stray xt under the args and misalign the call) — branch on a dup.
+: TFAM-RESOLVE* ( ptr u8 n ptr u8 n -- n bool )
+   TFAM-RESOLVE-XT @ dup 0= IF drop 2drop 2drop 0 RES-FALSE ELSE execute THEN ;
+: TFAM-ARITY* ( n -- n )
+   TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
+: TFAM-LAYOUT?* ( n -- bool )      \ 0 hook (registry not yet loaded) -> not a layout
+   TFAM-LAYOUT?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
+: TFAM-WIDTH@* ( n -- n )          \ 0 hook (registry not yet loaded) -> one cell
+   TFAM-WIDTH-XT @ dup 0= IF 2drop 1 ELSE execute THEN ;
 
 : TV-NEXT? ( n -- n bool )
    dup ISVAR 0= IF RES-FALSE EXIT THEN
@@ -488,9 +579,9 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
    USP @ cells UWL-STR + @ CUR-STRICT ! ;
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
+   FIELD-FAM @ 0 < IF RES-FALSE EXIT THEN   \ field family not registered (e.g. after TFAM-RESET)
    t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>ARGC 3 <> IF RES-FALSE EXIT THEN
-   t T-RES PARAM>NAME-A t T-RES PARAM>NAME-U s" field" CORE-STR= ;
+   t T-RES PARAM>FAM FIELD-FAM @ = ;   \ identity by reserved family-id, not spelling
 
 : FIELD-REC ( n -- n )
    0 PARAM>ARG ;
@@ -787,50 +878,229 @@ CT-INIT
    t1 ATOM>K 0 = 0= IF RES-TRUE EXIT THEN
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
-: PARAM-NAME-OK? ( n n -- bool ) {: t1:n t2:n :}
-   t1 PARAM>NAME-A t1 PARAM>NAME-U t2 PARAM>NAME-A t2 PARAM>NAME-U CORE-STR= ;
+: PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
    t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
-   t1 t2 PARAM-NAME-OK? 0= IF RES-FALSE UOK ! EXIT THEN
+   t1 t2 PARAM-FAM-OK? 0= IF RES-FALSE UOK ! EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
       t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
       PARAM-I @ 1 + PARAM-I !
    REPEAT ;
 
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
-   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
-   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
-   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN ;
+
+\ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
+\ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
+\ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
+\ real walk never nears TWALK-MAX-DEPTH. A cyclic or mis-indexed term instead
+\ descends without bound; the guard trips far below the native stack limit and
+\ dies with a named diagnostic instead of overflowing the stack (SIGSEGV). A
+\ call-count budget cannot help: the native stack blows at ~80k frames, so the
+\ bound must track DEPTH, not total steps. TWALK-DEEPER/TWALK-SHALLOWER bracket
+\ each RECURSE (charge on descent, release when the child returns — exit-safe
+\ however the child returns); each public wrapper resets depth before descending.
+$2000 constant TWALK-MAX-DEPTH     \ 8192: >> any finite term depth, << native stack limit
+variable TWALK-D
+: TWALK-RESET ( -- ) 0 TWALK-D ! ;
+: TWALK-DEEPER ( -- )
+   TWALK-D @ 1 + dup TWALK-D !
+   TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
+: TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
 \ TY-OCC? ( n n -- bool ) : does tyvar v occur in type/row t, descending
 \ through quotation effect rows and parameter arguments.
-: TY-OCC? ( n n -- bool ) {: v:n t:n :}
+: TY-OCC?* ( n n -- bool ) {: v:n t:n :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE v swap RECURSE IF drop RES-TRUE EXIT THEN
+         dup P>TYPE v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
       REPEAT drop RES-FALSE EXIT
    THEN drop
    t T-RES {: x:n :}
    x TAG T-VAR = IF x PAY v = EXIT THEN
-   x TAG T-PTR = IF v x PTR>INNER RECURSE EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      v x Q>DIN RECURSE IF RES-TRUE EXIT THEN
-      v x Q>DOUT RECURSE IF RES-TRUE EXIT THEN
-      v x Q>RIN RECURSE IF RES-TRUE EXIT THEN
-      v x Q>ROUT RECURSE
+      v x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
-      v x 0 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 1 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 2 PARAM-ARG-OR-DUMMY RECURSE IF RES-TRUE EXIT THEN
-      v x 3 PARAM-ARG-OR-DUMMY RECURSE
-      EXIT
+      0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
+         x over PARAM>ARG                    \ ( i arg )
+         v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      RES-FALSE EXIT
    THEN
    RES-FALSE ;
+: TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
+
+\ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
+\ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
+\ expanded to hidden physical fields until item 12's width-aware lowering can
+\ preserve whole bundles across generic stack ops. Until then an ordinary
+\ one-cell primitive (dup/drop/swap/over/nip/>r/...) that would bind or consume
+\ the logical layout cell fails closed in U-TYPE. Layout identity is the resolved
+\ family-id, so a layout cell unifying with the SAME family (the PARAM-PAIR-ARGS
+\ arm) flows fine; only a var/con/ptr/atom pairing reaches this guard.
+: LAYOUT-PARAM? ( n -- bool ) {: t:n :}
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   TFAM-LAYOUT?* ;
+: LAYOUT-EITHER? ( n n -- bool ) {: t1:n t2:n :}
+   t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
+   t2 LAYOUT-PARAM? ;
+
+\ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
+\ (docs §18 WIDTH function). Every non-layout term is one cell; a layout-family
+\ T-PARAM asks the registry (sum: slots+tag, enum: tag, product: field cells).
+\ This is the type-level fact the WF- width-fact surface records for emitters.
+: T-WIDTH ( n -- n ) {: t:n :}
+   t T-RES TAG T-PARAM <> IF 1 EXIT THEN
+   t T-RES PARAM>FAM {: fam:n :}
+   fam 0 < IF 1 EXIT THEN
+   fam TFAM-LAYOUT?* 0= IF 1 EXIT THEN
+   fam TFAM-WIDTH@* ;
+
+\ --- item 12 slice-3a/3b: hidden physical-field substrate (docs §10-11, §17-18).
+\ PUSH-LOGICAL expands a logical layout T-PARAM in a signature into W hidden
+\ physical field terms: payload slots 0..W-2 then the tag at W-1 (docs §5). Each
+\ hidden term reuses the logical family-id, name string, and arg terms, but
+\ carries a slot+1 in PARAMHID (0 = logical). A hidden term is checker-owned: it
+\ pairs only with the SAME family AND slot and never binds a var/con/ptr/atom
+\ (docs §10), enforced in U-TYPE below. Whole-bundle transports move the W-cell
+\ group by direct row surgery (XPORT-STEP?, further down).
+: HIDDEN-PARAM? ( n -- bool ) {: t:n :}     \ resolved term is a hidden physical field
+   t T-RES TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t T-RES PARAM>HID 0 > ;
+: HIDDEN-SLOT@ ( n -- n ) {: t:n :}         \ physical slot index; dies on a non-hidden term
+   t HIDDEN-PARAM? 0= IF s" checker: hidden-slot@ on non-hidden param" 76 die THEN
+   t T-RES PARAM>HID 1 - ;
+\ MK-HIDDEN ( n n -- n ) : mint the hidden field term for slot `slot:n` of a
+\ resolved LOGICAL layout T-PARAM `src0:n`, copying src's name/family-id/arg terms
+\ and tagging PARAMHID = slot+1. `slot` ranges over [0,W): 0..W-2 payload slots,
+\ W-1 the tag. Non-layout src or out-of-range slot fails closed (die 76).
+: MK-HIDDEN ( n n -- n ) {: src0:n slot:n :}
+   src0 T-RES {: src:n :}
+   src LAYOUT-PARAM? 0= IF s" checker: mk-hidden on non-layout param" 76 die THEN
+   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   slot 0 < slot w >= or IF s" checker: mk-hidden slot out of range" 76 die THEN
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup src PARAM>ARGC < WHILE        \ copy src's arg run into the reentrant scratch
+      src over PARAM>ARG PARAM-SCR+
+      1 +
+   REPEAT drop
+   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM {: t:n :}
+   slot 1 + t PAY cells PARAMHID + !
+   t ;
+\ MK-LOGICAL ( n -- n ) : the logical family term for a resolved hidden field —
+\ same name/family-id/arg terms, PARAMHID 0. Renderer compaction folds a full
+\ hidden run back to this logical type (docs §20); checking never consumes it.
+: MK-LOGICAL ( n -- n ) {: src0:n :}
+   src0 T-RES {: src:n :}
+   src HIDDEN-PARAM? 0= IF s" checker: mk-logical on non-hidden param" 76 die THEN
+   PARAM-SCR-N @ {: base:n :}
+   0 BEGIN dup src PARAM>ARGC < WHILE
+      src over PARAM>ARG PARAM-SCR+
+      1 +
+   REPEAT drop
+   base src PARAM>NAME-A src PARAM>NAME-U src PARAM>FAM MK-PARAM ;
+\ LAYOUT-PUSH-FIELDS ( n n -- n ) : push `type:n`'s W hidden fields onto `row:n`
+\ in physical order — slot0 deepest, tag (W-1) on top (docs §5). Slice 3b calls
+\ this from PUSH-LOGICAL; in slice 3a only the new fixtures drive it.
+: LAYOUT-PUSH-FIELDS ( n n -- n ) {: type:n row:n :}
+   type T-RES {: src:n :}
+   src PARAM>FAM TFAM-WIDTH@* {: w:n :}
+   row 0 BEGIN dup w < WHILE                 \ ( row slot )
+      dup src swap MK-HIDDEN                 \ ( row slot hid )
+      rot MK-PUSH swap                       \ push hid onto row -> ( row' slot )
+      1 +
+   REPEAT drop ;
+\ PARAM-HID-OK? ( n n -- bool ) : may two resolved T-PARAM terms pair? Neither
+\ hidden -> ordinary logical pair; exactly one hidden -> reject (a hidden field
+\ must not unify with the logical value); both hidden -> require the SAME slot
+\ (slot+1 equality). Family equality is still enforced by PARAM-PAIR-ARGS.
+: PARAM-HID-OK? ( n n -- bool ) {: t1:n t2:n :}
+   t1 PARAM>HID t2 PARAM>HID {: h1:n h2:n :}
+   h1 h2 or 0= IF RES-TRUE EXIT THEN
+   h1 0 > h2 0 > and 0= IF RES-FALSE EXIT THEN
+   h1 h2 = ;
+
+\ --- item 12 (docs/type-families.md §17): a NON-linear layout value expands to
+\ its W hidden physical fields (PUSH-LOGICAL), and whole-bundle transports move
+\ the group by direct row surgery (XPORT-STEP?). A POSSIBLY-LINEAR layout stays
+\ ONE logical T-PARAM cell (docs §19); for it, a whole-bundle transport op
+\ (dup/drop/swap/over/nip/rot/-rot/tuck/2dup/2drop/2swap/2over, >r/r>/r@ and
+\ friends, and locals capture) would move the value through its fresh transport
+\ var — LAYOUT-XPORT is set by DO-TOK1/LOC-BIND only while checking such an op,
+\ and LAYOUT-XPORT-ALLOW? still rejects the possibly-linear bind, keeping the
+\ TFAM-11 fail-closed semantics. Every OTHER touch (value-inspecting prims,
+\ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) fails
+\ closed through the same guards.
+variable LAYOUT-XPORT
+
+\ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
+\ layout whose family args contain a linear con — or an arg still unresolved,
+\ which may LATER bind linear — must not transport. The linear discipline
+\ counts concrete linear cons on the rows; a layout T-PARAM hides its payload
+\ from that count, so dup/over/tuck/2dup would duplicate the payload resource,
+\ drop/nip/2drop would lose it, and locals capture launders the reference
+\ count. Fail closed on both proven and possible linears; TFAM 11 replaces
+\ this with whole-bundle linear counting.
+: LAYOUT-ARG-LINEARISH? ( n -- bool ) {: t:n :}   \ arg term: linear con or unresolved var
+   t T-RES {: r:n :}
+   r ISVAR IF RES-TRUE EXIT THEN
+   r TAG T-CON <> IF RES-FALSE EXIT THEN
+   r PAY CT-LINEAR? ;
+: LAYOUT-MAYBE-LINEAR? ( n -- bool ) {: p:n :}    \ resolved layout T-PARAM term
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+\ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
+\ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
+\ sums the linear cons among a layout term's (flat, cell-kinded) args, sampled
+\ once per logical value — LIN-TYPE-COUNT counts a bundle only at its tag cell.
+\ LAYOUT-ARGS-OPEN? is the width question (any arg still an unresolved var):
+\ width-known layouts expand to hidden fields even when linear, so the checker
+\ row and the runtime cells agree; open-arg layouts stay one conservative cell.
+variable LLC-N
+: LAYOUT-ARG-LIN-N ( n -- n ) {: t:n :}   \ 1 when the arg resolves to a linear con
+   t T-RES {: r:n :}
+   r TAG T-CON <> IF 0 EXIT THEN
+   r PAY CT-LINEAR? IF 1 ELSE 0 THEN ;
+: LAYOUT-LINEAR-COUNT ( n -- n ) {: p:n :}
+   0 LLC-N !
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG LAYOUT-ARG-LIN-N LLC-N @ + LLC-N !
+      1 +
+   REPEAT drop
+   LLC-N @ ;
+: LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
+: LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
+   0 BEGIN dup p PARAM>ARGC < WHILE
+      p over PARAM>ARG T-RES ISVAR IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+
+: LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
+   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
+   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN   \ a hidden field is not a single-cell bundle: never binds a var
+   a LAYOUT-PARAM? IF                           \ var <-> layout-param bind: absorb the bundle
+      a T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      b ISVAR EXIT THEN
+   b LAYOUT-PARAM? IF
+      b T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+      a ISVAR EXIT THEN
+   RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
+: LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
+   a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
+   a b LAYOUT-XPORT-ALLOW? 0= ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -847,14 +1117,49 @@ CT-INIT
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-PAIR-ARGS 2drop ELSE
+     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE 2drop RES-FALSE UOK ! THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
+   2dup LAYOUT-BLOCK? IF 2drop RES-FALSE UOK ! ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
      over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN
-   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+
+\ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
+\ effect keeps a parametric layout value as ONE logical cell whenever an arg is
+\ an unresolved var or linear con (PUSH-LOGICAL's possibly-linear rule). At a
+\ boundary or call site that cell can meet the W-cell hidden expansion of the
+\ SAME family whose args are, by the PUSH-LOGICAL invariant, always fully
+\ resolved and non-linear. Unifying the two proves the logical side's args
+\ non-linear (they bind pairwise to the hidden side's), so the logical cell
+\ expands to its hidden fields and the rows re-pair cell for cell. Genuinely
+\ linear instantiations never reach here: linear-arg layout sigs reject at the
+\ sig/borrow layer and PARAM-ARG-LIN-BLOCK? below refuses a var~linear-con arg
+\ bind, so no hidden group can ever absorb a linear payload. Transport mode
+\ (LAYOUT-XPORT) keeps its own group surgery and is excluded.
+: LOGHID-AT? ( n n -- bool ) {: rh:n rl:n :}   \ rh top = group tag, rl top = logical same-family layout
+   LAYOUT-XPORT @ 0 <> IF RES-FALSE EXIT THEN
+   rh P>TYPE T-RES {: th:n :}
+   rl P>TYPE T-RES {: tl:n :}
+   th HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   tl TAG T-PARAM = 0= IF RES-FALSE EXIT THEN
+   tl HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   tl LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   th PARAM>FAM tl PARAM>FAM = 0= IF RES-FALSE EXIT THEN
+   th HIDDEN-SLOT@ th PARAM>FAM TFAM-WIDTH@* 1 - = ;   \ whole group: tag on top
+: LOGHID-EXPAND ( n n -- ) {: rh:n rl:n :}   \ expand rl's logical top, re-pair rows
+   rl P>TYPE T-RES {: tl:n :}
+   tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
+   rh re PAIR ;
+
+: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
+   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
+   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
+   2dup LOGHID-AT? IF LOGHID-EXPAND ELSE
+   2dup swap LOGHID-AT? IF swap LOGHID-EXPAND ELSE
+   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  PAIR
@@ -900,9 +1205,10 @@ variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
+   0 LAYOUT-XPORT !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
-   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N !
+   0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
@@ -969,6 +1275,23 @@ variable FAILB  variable FAILE
 variable TBASE  variable TBLEN  variable TI  variable TSTART
 variable JSON-DIAGS   0 JSON-DIAGS !
 
+\ TBASE holds the checked source base pointer (ptr u8); read it through a
+\ cell-indexed ptr-field view so byte access keeps its ptr u8 role.
+: TBASE-FIELD ( -- ptr ptr u8 )
+   TBASE 0 ptr-field ;
+
+: TBASE@ ( -- ptr u8 )
+   TBASE-FIELD @ ;
+
+: TBASE! ( ptr u8 -- )
+   TBASE-FIELD ! ;
+
+: TADDR ( n -- ptr u8 )
+   TBASE@ swap + ;
+
+: TBYTE@ ( n -- n )
+   TADDR c@ ;
+
 : DIAG-JSON! ( bool -- )
    JSON-DIAGS ! ;
 
@@ -994,17 +1317,34 @@ variable LTNT-I
       LTNT-I @ 1 + LTNT-I !
    REPEAT ;
 
-: LIN-TYPE-COUNT ( n -- n ) {: t:n :}
+\ FIELD-INNER (and every PARAM>ARG accessor) requires a RESOLVED param term:
+\ it indexes the param arena by the term's payload. `t` here is a stack type
+\ that is usually a bound var whose payload is a VAR id, not a param index —
+\ so the inner descent must go through `t T-RES`, matching the FIELD-PARAM?
+\ guard just before it. Descending on the raw var reads an unrelated arena slot
+\ and, under accumulated arena state, can point back at `t` (infinite recursion).
+variable LTC-P
+: LIN-TYPE-COUNT* ( n -- n ) {: t:n :}
    t T-RES TAG case
       T-CON of t LIN-CON? IF 1 ELSE 0 THEN endof
       T-PTR of 0 endof
       T-QUOT of 0 endof
       T-ATOM of 0 endof
       T-PARAM of
-         t FIELD-PARAM? IF t FIELD-INNER RECURSE ELSE 0 THEN
+         t FIELD-PARAM? IF t T-RES FIELD-INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER ELSE
+            t T-RES LTC-P !
+            LTC-P @ HIDDEN-PARAM? IF
+               LTC-P @ HIDDEN-SLOT@  LTC-P @ PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+                  LTC-P @ LAYOUT-LINEAR-COUNT               \ one bundle: count at the tag only
+               ELSE 0 THEN
+            ELSE LTC-P @ LAYOUT-PARAM? IF
+               LTC-P @ LAYOUT-LINEAR-COUNT                  \ one conservative logical cell
+            ELSE 0 THEN THEN
+         THEN
       endof
       0 swap
    endcase ;
+: LIN-TYPE-COUNT ( n -- n ) TWALK-RESET LIN-TYPE-COUNT* ;
 
 : LIN-ROW-COUNT ( n -- n ) {: row:n :}
    0 LINC !
@@ -1254,6 +1594,29 @@ create VRI-AK-BOOT VRI-AK-INIT cells allot
 variable VRI-AK-P   VRI-AK-BOOT VRI-AK-P !
 : VRI-AK ( -- ptr a ) VRI-AK-P @ ;
 
+\ VNARG: flat per-node arg pool for persisted VR-PARAM nodes (uncapped arity).
+\ A VR-PARAM node stores argc in VN.C, the arg-run start (into VNARG) in VN.D, and
+\ the family-id in VN.H; the argc child node ids live at [start,start+argc). Cells
+\ hold node ids (pointer-free), so REG-GROW1 relocation and snapshot bake verbatim.
+\ VNARG-N rewinds through the rollback frame (RBF.VNARGN) in lockstep with
+\ VREC-NODE-N: a VR-PARAM node and its arg run are allocated together inside one
+\ VREC-COPY (never across a frame boundary), so at every RBF-PUSH/POP point all
+\ nodes below the VREC-NODE-N mark have runs entirely below the VNARG-N mark —
+\ rewinding both retires a rejected scope's runs without dangling a survivor.
+$4000 constant VNARG-INIT
+create VNARG-BOOT VNARG-INIT cells allot
+variable VNARG-P   VNARG-BOOT VNARG-P !
+variable VNARG-CAP-V   VNARG-INIT VNARG-CAP-V !
+variable VNARG-N   0 VNARG-N !
+: VNARG ( -- ptr a ) VNARG-P @ ;
+: VNARG-GROW ( n -- ) {: need:n :}
+   need VNARG-CAP-V @ 2 * max {: nc:n :}
+   VNARG-P VNARG-CAP-V @ cells nc cells REG-GROW1
+   nc VNARG-CAP-V ! ;
+: VNARG-ENSURE ( n -- ) {: need:n :}      \ room for `need` more cells past VNARG-N
+   VNARG-N @ need + VNARG-CAP-V @ <= IF exit THEN
+   VNARG-N @ need + VNARG-GROW ;
+
 variable VREC-N
 variable VREC-FIELD-N
 variable VREC-NODE-N
@@ -1375,6 +1738,10 @@ variable VRC-RVN
 : VN.F! ( n n -- ) VRN-F VREC-NODE-SLOT ! ;
 : VN.G! ( n n -- ) VRN-G VREC-NODE-SLOT ! ;
 : VN.H! ( n n -- ) VRN-H VREC-NODE-SLOT ! ;
+\ VN>ARG ( node i -- childnode ) : the i-th arg node of a persisted VR-PARAM node,
+\ read from the flat VNARG pool at [VN.D@, VN.D@+argc). (VN.C@ holds argc.)
+: VN>ARG ( n n -- n ) {: node:n i:n :}
+   node VN.D@ i + cells VNARG + @ ;
 
 variable VREC-RB-I
 \ VREC-STR-REBASE ( n -- ) : a VREC-STR relocation moved the pool by delta; add
@@ -1508,11 +1875,21 @@ variable VREC-RB-I
       T-PARAM of
          VR-PARAM VREC-NODE-NEW {: node:n :}
          x VREC-RES PARAM>NAME-A x VREC-RES PARAM>NAME-U node VREC-COPY-STR
-         x VREC-RES PARAM>ARGC node VN.C!
-         x VREC-RES PARAM>ARGC 0 > IF x VREC-RES 0 PARAM>ARG RECURSE node VN.D! THEN
-         x VREC-RES PARAM>ARGC 1 > IF x VREC-RES 1 PARAM>ARG RECURSE node VN.E! THEN
-         x VREC-RES PARAM>ARGC 2 > IF x VREC-RES 2 PARAM>ARG RECURSE node VN.F! THEN
-         x VREC-RES PARAM>ARGC 3 > IF x VREC-RES 3 PARAM>ARG RECURSE node VN.G! THEN
+         x VREC-RES PARAM>ARGC {: argc:n :}
+         argc node VN.C!
+         x VREC-RES PARAM>FAM node VN.H!            \ resolved family-id (identity)
+         \ reserve an argc-cell run in VNARG, then copy children into it. Children
+         \ (nested params) allocate their own runs after this one; the run start
+         \ index is stable across REG-GROW1 relocation, so re-fetch VNARG per store.
+         VNARG-N @ {: start:n :}
+         argc VNARG-ENSURE
+         start node VN.D!
+         argc VNARG-N @ + VNARG-N !
+         0 BEGIN dup argc < WHILE            \ data-stack index (RECURSE-safe)
+            x VREC-RES over PARAM>ARG RECURSE   \ ( i childid )
+            over start + cells VNARG + !        \ ( i )
+            1 +
+         REPEAT drop
          node
       endof
       0 swap
@@ -1582,12 +1959,14 @@ variable VREC-RB-I
       endof
       VR-ATOM of node VREC-I-STR node VN.C@ VREC-I-AK MK-ATOM-K endof
       VR-PARAM of
-         PARAM-SCR-RESET
-         node VN.C@ 0 > IF node VN.D@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 1 > IF node VN.E@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 2 > IF node VN.F@ RECURSE PARAM-SCR+ THEN
-         node VN.C@ 3 > IF node VN.G@ RECURSE PARAM-SCR+ THEN
-         node VREC-I-STR MK-PARAM
+         node VN.C@ {: argc:n :}
+         node VN.D@ {: start:n :}
+         PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
+         0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
+            dup start + cells VNARG + @ RECURSE PARAM-SCR+
+            1 +
+         REPEAT drop
+         node VREC-I-STR node VN.H@ MK-PARAM        \ ( base a u fam -- t )
       endof
       0 swap
    endcase ;
@@ -1659,14 +2038,17 @@ variable NRES  variable NDI  variable NDH
 0 constant SGBAD-SYNTAX-KIND
 1 constant SGBAD-UNKNOWN-KIND
 2 constant SGBAD-BAREPTR-KIND
+3 constant SGBAD-ARITY-KIND
 variable SGBAD
 variable SGBAD-A
 variable SGBAD-U
 variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
+variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
 variable QUALBAD
+variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -1711,6 +2093,8 @@ variable QUALBAD
 
 : SGBAD-SYNTAX! ( ptr u8 n -- )
    SGBAD-SYNTAX-KIND SGBAD-SET ;
+: SGBAD-SYNTAX? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-SYNTAX-KIND = and ;
 
 : SGBAD-UNKNOWN! ( ptr u8 n -- )
    SGBAD-UNKNOWN-KIND SGBAD-SET ;
@@ -1721,6 +2105,10 @@ variable QUALBAD
    SGBAD-BAREPTR-KIND SGBAD-SET ;
 : SGBAD-BAREPTR? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
+: SGBAD-ARITY! ( ptr u8 n -- )      \ family applied to the wrong number of args
+   SGBAD-ARITY-KIND SGBAD-SET ;
+: SGBAD-ARITY? ( -- bool )
+   SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
 
 : BAD-SIG-TYPE ( ptr u8 n -- n )
    SGBAD-UNKNOWN!
@@ -1740,22 +2128,19 @@ variable QUALBAD
 : FRESH-ATOM>TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FAM-MARK FAM-K !
    a 6 + u 6 - FAM-K @ MK-ATOM-K ;
-: PARAM-CTOR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" span" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" matrix" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" gridctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" fanctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" idxctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" uniqidxctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" coopctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" rowctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" tile" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" acc" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" mmctx" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" mmacc" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" uniform" CORE-STR= IF RES-TRUE EXIT THEN
-   a u s" rowidx" CORE-STR= ;
+\ SIG-FAM? ( ptr u8 n -- n bool ) : resolve a family token through the TFAM
+\ registry, replacing the old PARAM-CTOR? whitelist. Returns (family-id true) or
+\ (0 false) — always two items, so every caller drops the id on the false path.
+\ Resolution is package-scoped (PLAN item 6): an active package resolves its own
+\ (private+public) families first, then the unique public tail; top level uses
+\ the global scope, where every built-in cell family lives public. Qualified
+\ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
+\ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
+: SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   CHECKER-PACKAGE-ACTIVE? IF
+      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-RESOLVE* EXIT
+   THEN
+   s" " a u TFAM-RESOLVE* ;
 : TYPE-VAR-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF a c@ LOWER? EXIT THEN
    RES-FALSE ;
@@ -1769,7 +2154,7 @@ variable QUALBAD
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
    a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
    a u CT-FIND 0 <> IF RES-TRUE EXIT THEN
-   a u PARAM-CTOR? IF RES-TRUE EXIT THEN
+   a u SIG-FAM? IF drop RES-TRUE EXIT THEN drop
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
    a u TYPE-VAR-TOK? IF RES-TRUE EXIT THEN
@@ -1861,26 +2246,50 @@ variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
    a u s" ]"  CORE-STR= IF RES-TRUE EXIT THEN
    a u s" |"  CORE-STR= ;
 
+\ SIG-QUOT-XT parses a quotation ([ in -- out | rin -- rout ]) as a family
+\ argument (SC-QUOT). It needs PSTACK, defined below SIG-TYPE, so it is reached
+\ through a friend xt installed just after PSTACK (same late-binding shape as
+\ TFAM-RESOLVE-XT). 0 = not yet installed (never reached before install).
+variable SIG-QUOT-XT   0 SIG-QUOT-XT !
+
+\ SIG-END-PARAM ( base a u fam -- t ) : close a parsed family application. Reject
+\ (family-specific arity diagnostic) when the arg count differs from the family's
+\ declared arity, then build the T-PARAM (MK-PARAM rewinds scratch to `base`).
+: SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
+   PARAM-SCR-N @ base - fam TFAM-ARITY* <> IF a u SGBAD-ARITY! THEN
+   base a u fam MK-PARAM ;
+
+\ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
+\ `family<arg,...>`; each arg RECURSEs. `base` marks the shared scratch depth on
+\ entry so nested params are reentrant (a nested family's MK-PARAM rewinds to its
+\ own base, leaving the parent's already-pushed args intact). A bare family token
+\ (no `<`) builds a zero-arg application whose arity check rejects arity>0 families.
+\ `ptr` is dual: `ptr<space,elem>` resolves as a family here (a T-PARAM), while
+\ `ptr elem` (no `<`) must ALWAYS reach the MK-PTR special case below — even when
+\ `ptr` is not a live family (e.g. a suite that TFAM-RESETs the registry). So the
+\ family branch only builds a real `family<...>`; every no-`<` path (and the
+\ not-a-family path) falls through to the shared `ptr`/TOK-TYPE tail.
 : SIG-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u PARAM-CTOR? IF
+   a u SIG-FAM? IF {: fam:n :}                        \ ( id ) resolved family; build application
       NEXT-SIG-TOK 2dup s" <" CORE-STR= IF
-         2drop PARAM-SCR-RESET
+         2drop PARAM-SCR-N @ {: base:n :}
          BEGIN
-            NEXT-SIG-TOK 2dup s" >" CORE-STR= IF
-               2drop a u MK-PARAM EXIT
-            THEN
-            2dup DELIM? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
-            PARAM-SCR-FULL? IF SGBAD-SYNTAX! a u MK-PARAM EXIT THEN
-            RECURSE PARAM-SCR+
+            NEXT-SIG-TOK 2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT THEN
+            2dup DELIM? IF SGBAD-SYNTAX! base a u fam MK-PARAM EXIT THEN
+            2dup s" [" CORE-STR= IF 2drop SIG-QUOT-XT @ execute ELSE RECURSE THEN  \ quotation arg (SC-QUOT) or nested type
+            PARAM-SCR+
             NEXT-SIG-TOK 2dup s" ," CORE-STR= IF 2drop ELSE
-            2dup s" >" CORE-STR= IF 2drop a u MK-PARAM EXIT ELSE
-               SGBAD-SYNTAX! a u MK-PARAM EXIT
+            2dup s" >" CORE-STR= IF 2drop base a u fam SIG-END-PARAM EXIT ELSE
+               SGBAD-SYNTAX! base a u fam MK-PARAM EXIT
             THEN THEN
          AGAIN
       ELSE
-         PK!
+         PK!                                          \ push back the non-'<' token
+         a u s" ptr" CORE-STR= 0= IF                  \ non-ptr family, no '<' -> 0-arg (arity reject)
+            PARAM-SCR-N @ a u fam SIG-END-PARAM EXIT
+         THEN                                         \ `ptr` (no '<') -> MK-PTR fall-through below
       THEN
-   THEN
+   ELSE drop THEN                                     \ not a family: drop the 0 family-id
    a u s" ptr" CORE-STR= IF
       NEXT-SIG-TOK 2dup DELIM? IF a u SGBAD-BAREPTR! PK! 1 MK-CON ELSE RECURSE MK-PTR THEN
    ELSE a u TOK-TYPE THEN ;
@@ -1895,6 +2304,25 @@ create ROWMAP 26 cells allot
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
 : EXPECT-SIG {: ea eu :}
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
+
+\ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
+\ row — the single seam for logical-vs-physical layout (docs/type-families.md
+\ §10-11, item 12 slice 3b). Every ordinary type and cell family pushes one
+\ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
+\ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
+\ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
+\ discipline then keep the group intact. A POSSIBLY-LINEAR layout (a linear con
+\ arg, or an unresolved var arg that may later bind linear) stays ONE logical
+\ cell so the TFAM-11 transport reject + identity flow keep its fail-closed
+\ semantics (docs §19) until whole-bundle linear counting lands.
+: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
+   t T-RES {: r:n :}
+   r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
+      r LAYOUT-ARGS-OPEN? 0= IF
+         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear args): rows tell the truth
+      THEN
+   THEN
+   t row MK-PUSH ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
@@ -1938,10 +2366,36 @@ create ROWMAP 26 cells allot
         2dup VREC-FIND IF
            >r 2drop r> VREC-PUSH-FIELDS
         ELSE
-           drop SIG-TYPE swap MK-PUSH
+           drop SIG-TYPE swap PUSH-LOGICAL
         THEN
      THEN
    AGAIN ;
+
+\ SIG-PARSE-QUOT ( -- n ) : parse a quotation as a family argument (SC-QUOT),
+\ with the opening '[' already consumed: "in -- out [ '|' rin -- rout ] ]". Each
+\ sub-stack is a full PSTACK; in/out share one fresh data base row and rin/rout
+\ share one fresh return base row (row-polymorphic tails). No '|' means the return
+\ effect is neutral (rin = rout = the empty return base). Malformed rows (a missing
+\ '--' or ']') set SGBAD-SYNTAX! through EXPECT-SIG so the whole signature rejects.
+\ Installed into SIG-QUOT-XT so SIG-TYPE (defined above PSTACK) can reach it.
+: SIG-PARSE-QUOT ( -- n )
+   FRESH MK-ROW {: qdbase:n :}
+   FRESH MK-ROW {: qrbase:n :}
+   qdbase PSTACK {: qin:n :}                 \ data-in row (stops at '--')
+   s" --" EXPECT-SIG
+   qdbase PSTACK {: qout:n :}                \ data-out row (same base tail)
+   NEXT-SIG-TOK 2dup s" |" CORE-STR= IF
+      2drop
+      qrbase PSTACK {: qrin:n :}
+      s" --" EXPECT-SIG
+      qrbase PSTACK {: qrout:n :}
+      s" ]" EXPECT-SIG
+      qin qout qrin qrout MK-QUOT
+   ELSE
+      2dup s" ]" CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN
+      qin qout qrbase qrbase MK-QUOT         \ no return clause: rin = rout = base
+   THEN ;
+' SIG-PARSE-QUOT SIG-QUOT-XT !
 
 variable SGHASR                          \ a return-stack clause ( ... | rin -- rout ) present?
 variable RR-SHARED                       \ the shared return row, allocated lazily on '|'
@@ -2002,11 +2456,11 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : VREC-FIELD-WRAP ( ptr u8 n ptr u8 n n -- n )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
-   PARAM-SCR-RESET
+   PARAM-SCR-N @ {: base:n :}
    rec recu MK-ATOM PARAM-SCR+
    fld fldu MK-ATOM PARAM-SCR+
    typ PARAM-SCR+
-   s" field" MK-PARAM ;
+   base s" field" FIELD-FAM @ MK-PARAM ;   \ base a u fam -> field<rec,name,inner>
 
 : VREC-FIELD-STORE ( ptr u8 n ptr u8 n n -- )
    {: rec:ptr recu:n fld:ptr fldu:n typ:n :}
@@ -2018,7 +2472,7 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 : VREC-FIELD-NAME= ( ptr u8 n n -- bool ) {: a:ptr u:n node:n :}
    node VN.TAG@ VR-PARAM <> IF RES-FALSE EXIT THEN
-   a u node VN.E@ VREC-ATOM-COPY= ;
+   a u node 1 VN>ARG VREC-ATOM-COPY= ;   \ field name is arg[1] of field<rec,name,type>
 
 : VREC-FIELD-DUP? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id VREC-START@ VREC-J !
@@ -2121,6 +2575,16 @@ PTR-VARIABLE USIGS-SNAP-P
 
 : USIGS ( -- ptr u8 ) USIGS-P @ ;
 
+\ USIGS is a byte-addressed store (ptr u8), but its head cell holds a real cell
+\ value the checker metadata writes with `!`. USIGS-CELL-AT refines a cell-aligned
+\ offset into that byte store to a cell pointer so the head/metadata stores stay
+\ typed while the byte-copy paths keep ptr u8.
+TRUSTED: USIGS-CELL-AT ( n -- ptr a )
+   USIGS swap + ;
+
+: USIGS-HEAD ( -- ptr a )
+   0 USIGS-CELL-AT ;
+
 0 USIGS-USER-OFF !
 0 CHK-CAND !
 
@@ -2155,7 +2619,7 @@ TRUSTED: USIGS-RC>PTR ( n -- ptr u8 ) ;
 
 : USIGS-CLEAR ( -- )
    0 UEND !
-   0 USIGS !
+   0 USIGS-HEAD !
    0 USIGS-GROW-CAP !
    0 USIGS-GROW-NEXT ! ;
 
@@ -2182,7 +2646,7 @@ USIGS-RUNTIME-INIT
    USIGS-SNAP-P @ ;
 
 : USIGS-SNAPSHOT-SIZE ( -- n )
-   UEND @ cell+ ;
+   UEND @ CELL + ;
 
 : USIGS-SNAPSHOT-ALLOC ( n -- ptr u8 ) {: n:n :}
    here USIGS-SNAP-P !
@@ -2211,7 +2675,7 @@ USIGS-RUNTIME-INIT
 : USIGS-GROW {: need :}
    need USIGS-CAP-U @ 2 * max USIGS-ROUND-CAP USIGS-GROW-CAP !
    USIGS-GROW-CAP @ USIGS-ALLOC USIGS-GROW-NEXT !
-   USIGS USIGS-GROW-NEXT @ UEND @ cell+ USIGS-COPY
+   USIGS USIGS-GROW-NEXT @ UEND @ CELL + USIGS-COPY
    USIGS-GROW-NEXT @ USIGS-P !
    USIGS-GROW-CAP @ USIGS-CAP-U ! ;
 
@@ -2235,10 +2699,12 @@ USIGS-RUNTIME-INIT
 \ UALIGN! ( -- )
 : UALIGN! UEND @ UALIGN UEND ! ;
 
-: U!+ {: x :}  x USIGS UEND @ + !  UEND @ cell+ UEND ! ;
+: U!+ ( n -- ) {: x:n :}
+   x UEND @ USIGS-CELL-AT !
+   UEND @ CELL + UEND ! ;
 
 \ UTERM! ( -- )
-: UTERM! 0 USIGS UEND @ + ! ;
+: UTERM! 0 UEND @ USIGS-CELL-AT ! ;
 
 : USIGS-RESTORE-END ( n -- )
    UEND !
@@ -2253,13 +2719,13 @@ USIGS-RUNTIME-INIT
    c $20 or ;
 
 : SYM-STR=CI ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> if 0 exit then
+   u v <> if RES-FALSE exit then
    0 begin dup u < while
       dup a + c@ SYM-FOLD-C
-      over b + c@ SYM-FOLD-C <> if drop 0 exit then
+      over b + c@ SYM-FOLD-C <> if drop RES-FALSE exit then
       1+
    repeat drop
-   0 0= ;
+   RES-TRUE ;
 
 \ SYM-CAP is a live power-of-2 cap (HIDX masks by SYM-CAP 1 -). It grows
 \ geometrically; the HIDX table (sized/masked by SYM-CAP) is rebuilt — rehashed —
@@ -2360,10 +2826,11 @@ variable SYM-ID
    SYM-STR-U @ u + SYM-STR-U !
    SYM-DST@ u ;
 
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
 : SYM-MATCH? ( ptr u8 n n ptr u8 n n -- bool )
-   {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
-   id SYM-ROW SYM.VIS @ vis <> IF 0 EXIT THEN
-   id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF 0 EXIT THEN
+   {: pkg pkgu:n vis:n name nameu:n id:n :}
+   id SYM-ROW SYM.VIS @ vis <> IF RES-FALSE EXIT THEN
+   id SYM-PKG$ pkg pkgu SYM-STR=CI 0= IF RES-FALSE EXIT THEN
    id SYM-NAME$ name nameu SYM-STR=CI ;
 
 \ --- symbol hash index + current-state cache. SYMS and the USIGS/NORETS/
@@ -2398,14 +2865,51 @@ variable HIDX-EPOCH
 variable HIDX-EFF-HI
 variable HIDX-EFF-BASE
 variable HIDX-CTL-HI
+variable HIDX-DFR-HI    \ max DFER-END a cached defer answer depends on (rollback sync)
 variable HIDX-H
 variable HIDX-I
 variable HIDX-CUR
-0 HIDX-MEM !   0 HIDX-VALID !   1 HIDX-EPOCH !
-0 HIDX-EFF-HI !   0 HIDX-EFF-BASE !   0 HIDX-CTL-HI !
+
+\ HIDX-MEM/HIDX-EFF-BASE hold typed pointers into the mmap cache and USIGS store.
+\ A plain variable @ yields a bare cell value, so the store base is read through a
+\ cell-indexed ptr-field view (ptr ptr a) to preserve the nested pointer role.
+: HIDX-MEM-FIELD ( -- ptr ptr a )
+   HIDX-MEM 0 ptr-field ;
+
+: HIDX-MEM@ ( -- ptr a )
+   HIDX-MEM-FIELD @ ;
+
+: HIDX-MEM! ( ptr a -- )
+   HIDX-MEM-FIELD ! ;
+
+\ HIDX-MEM-NULL: the unallocated-cache sentinel is a null pointer; the checker
+\ cannot type a literal 0 as ptr a, so this one-line refinement asserts it.
+TRUSTED: HIDX-MEM-NULL ( -- ptr a )
+   0 ;
+
+: HIDX-MEM-CLEAR ( -- )
+   HIDX-MEM-NULL HIDX-MEM! ;
+
+: HIDX-MEM-READY? ( -- bool )
+   HIDX-MEM@ 0= 0= ;
+
+: HIDX-EFF-BASE-FIELD ( -- ptr ptr u8 )
+   HIDX-EFF-BASE 0 ptr-field ;
+
+: HIDX-EFF-BASE@ ( -- ptr u8 )
+   HIDX-EFF-BASE-FIELD @ ;
+
+: HIDX-EFF-BASE! ( ptr u8 -- )
+   HIDX-EFF-BASE-FIELD ! ;
+
+: HIDX-EFF-BASE-CLEAR ( -- )
+   USIGS HIDX-EFF-BASE! ;
+
+HIDX-MEM-CLEAR   0 HIDX-VALID !   1 HIDX-EPOCH !
+0 HIDX-EFF-HI !   HIDX-EFF-BASE-CLEAR   0 HIDX-CTL-HI !   0 HIDX-DFR-HI !
 
 : HIDX-CELL ( n n -- ptr a ) {: slot:n tbl:n :}
-   tbl SYM-CAP * slot + cells HIDX-MEM @ + ;
+   tbl SYM-CAP * slot + cells HIDX-MEM@ + ;
 
 : HIDX-H+ ( n -- )
    SYM-FOLD-C HIDX-H @ xor HIDX-FNV-PRIME * HIDX-H ! ;
@@ -2416,7 +2920,8 @@ variable HIDX-CUR
       1 +
    repeat drop ;
 
-: HIDX-HASH ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: HIDX-HASH ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-FNV-BASIS HIDX-H !
    pkg pkgu HIDX-H$
    vis HIDX-H+
@@ -2458,15 +2963,16 @@ variable HIDX-CUR
 : HIDX-EPOCH+ ( -- )
    HIDX-EPOCH @ 1 + HIDX-EPOCH !
    0 HIDX-EFF-HI !
-   0 HIDX-CTL-HI ! ;
+   0 HIDX-CTL-HI !
+   0 HIDX-DFR-HI ! ;
 
 \ HIDX-EFF-SYNC ( -- ) : flush the cache when USIGS rewound below a cached
 \ dependency or the store was swapped (grow, reset, external restore).
 : HIDX-EFF-SYNC
    UEND @ HIDX-EFF-HI @ <
-   USIGS-P @ HIDX-EFF-BASE @ <> or IF
+   USIGS HIDX-EFF-BASE@ <> or IF
       HIDX-EPOCH+
-      USIGS-P @ HIDX-EFF-BASE !
+      USIGS HIDX-EFF-BASE!
    THEN ;
 
 : HIDX-MMAP-RC ( -- n )
@@ -2480,7 +2986,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    HIDX-MMAP-RC HIDX-RC>PTR ;
 
 : HIDX-ALLOC ( -- )
-   HIDX-ALLOC-PTR HIDX-MEM ! ;
+   HIDX-ALLOC-PTR HIDX-MEM! ;
 
 : HIDX-BKT-CLEAR ( -- )
    0 begin dup SYM-CAP < while
@@ -2489,7 +2995,7 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    repeat drop ;
 
 : HIDX-BUILD ( -- )
-   HIDX-MEM @ 0 = IF HIDX-ALLOC THEN
+   HIDX-MEM-READY? 0= IF HIDX-ALLOC THEN
    HIDX-BKT-CLEAR
    1 HIDX-I !
    begin HIDX-I @ SYM-N @ < while
@@ -2504,11 +3010,12 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 
 \ HIDX-RESET ( -- ) : snapshot prepare — the mapping is process-local.
 : HIDX-RESET
-   0 HIDX-MEM !
+   HIDX-MEM-CLEAR
    0 HIDX-VALID !
    0 HIDX-EFF-HI !
-   0 HIDX-EFF-BASE !
-   0 HIDX-CTL-HI ! ;
+   HIDX-EFF-BASE-CLEAR
+   0 HIDX-CTL-HI !
+   0 HIDX-DFR-HI ! ;
 
 : HIDX@ ( n n n -- n bool ) {: id:n vt:n et:n :}
    id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF 0 RES-FALSE EXIT THEN
@@ -2518,12 +3025,22 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    v id vt HIDX-CELL !
    HIDX-EPOCH @ id et HIDX-CELL ! ;
 
+\ HIDX-B@/HIDX-B! store a boolean payload (the defer-active flag) so the cached
+\ value keeps its bool role instead of a bare cell.
+: HIDX-B@ ( n n n -- bool bool ) {: id:n vt:n et:n :}
+   id et HIDX-CELL @ HIDX-EPOCH @ = 0= IF RES-FALSE RES-FALSE EXIT THEN
+   id vt HIDX-CELL @ 0 <> RES-TRUE ;
+
+: HIDX-B! ( bool n n n -- ) {: v:bool id:n vt:n et:n :}
+   v id vt HIDX-CELL !
+   HIDX-EPOCH @ id et HIDX-CELL ! ;
+
 : HIDX-EFF@ ( n -- n bool ) HT-EFF-V HT-EFF-E HIDX@ ;
 : HIDX-EFF! ( n n -- ) HT-EFF-V HT-EFF-E HIDX! ;
 : HIDX-CTL@ ( n -- n bool ) HT-CTL-V HT-CTL-E HIDX@ ;
 : HIDX-CTL! ( n n -- ) HT-CTL-V HT-CTL-E HIDX! ;
-: HIDX-DFR@ ( n -- n bool ) HT-DFR-V HT-DFR-E HIDX@ ;
-: HIDX-DFR! ( n n -- ) HT-DFR-V HT-DFR-E HIDX! ;
+: HIDX-DFR@ ( n -- bool bool ) HT-DFR-V HT-DFR-E HIDX-B@ ;
+: HIDX-DFR! ( bool n -- ) HT-DFR-V HT-DFR-E HIDX-B! ;
 : HIDX-PRM@ ( n -- n bool ) HT-PRM-V HT-PRM-E HIDX@ ;
 : HIDX-PRM! ( n n -- ) HT-PRM-V HT-PRM-E HIDX! ;
 
@@ -2533,7 +3050,11 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
 : HIDX-CTL-DEP+ ( n -- )
    HIDX-CTL-HI @ max HIDX-CTL-HI ! ;
 
-: SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+: HIDX-DFR-DEP+ ( n -- )
+   HIDX-DFR-HI @ max HIDX-DFR-HI ! ;
+
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-FIND ( ptr u8 n n ptr u8 n -- n bool ) {: pkg pkgu:n vis:n name nameu:n :}
    HIDX-ENSURE
    pkg pkgu vis name nameu HIDX-HASH HIDX-BKT @ HIDX-CUR !
    begin HIDX-CUR @ 0 <> while
@@ -2552,7 +3073,8 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    dst id SYM-NAME-A-FIELD !
    len id SYM-ROW SYM.NAME-U ! ;
 
-: SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n id:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-SET ( ptr u8 n n ptr u8 n n -- ) {: pkg pkgu:n vis:n name nameu:n id:n :}
    pkg pkgu id SYM-PKG!
    name nameu id SYM-NAME!
    vis id SYM-ROW SYM.VIS ! ;
@@ -2566,14 +3088,15 @@ TRUSTED: HIDX-RC>PTR ( n -- ptr n ) ;
    need SYM-CAP-NEXT {: nc:n :}
    SYMS-P @ SYM-CAP-V @ SYM-REC * nc SYM-REC * ARENA-BYTES-GROW SYMS-P !
    nc SYM-CAP-V !
-   0 HIDX-MEM !   0 HIDX-VALID !
+   HIDX-MEM-CLEAR   0 HIDX-VALID !
    HIDX-EPOCH+ ;
 
 : SYM-ENSURE ( -- )             \ ensure room for the next id (SYM-N)
    SYM-N @ SYM-CAP-V @ < IF exit THEN
    SYM-N @ 1 + SYM-GROW ;
 
-: SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n name:ptr nameu:n :}
+\ typed-local-lint: allow-bare-local - pkg/name preserve ptr u8 roles.
+: SYM-INTERN ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n name nameu:n :}
    pkg pkgu vis name nameu SYM-FIND IF EXIT THEN drop
    SYM-ENSURE
    pkgu nameu + SYM-STR-ENSURE   \ reserve the whole record's strings up front so
@@ -2635,6 +3158,7 @@ variable EC-RVN
 create EI-AK EI-AK-CAP cells allot
 
 variable FEP
+variable FEP-OFF
 variable CHECKER-REC-SYM
 0 CHECKER-REC-SYM !
 
@@ -2686,31 +3210,44 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    USIGS + ;
 
 : E-ENSURE-NODE ( -- )
-   UEND @ EFF-NODE + cell+ USIGS-ENSURE ;
+   UEND @ EFF-NODE + CELL + USIGS-ENSURE ;
+
+\ typed-local-lint: allow-bare-local - p preserves ptr a field-owner role.
+: E-NODE-INIT ( n ptr a -- ) {: tag:n p :}
+   tag p EN.TAG !
+   0 p EN.A !  0 p EN.B !  0 p EN.C !  0 p EN.D !
+   0 p EN.E !  0 p EN.F !  0 p EN.G !  0 p EN.H ! ;
 
 : E-NODE-NEW ( n -- ptr a ) {: tag:n :}
    E-ENSURE-NODE
-   USIGS UEND @ + >r
-   tag r@ EN.TAG !
-   0 r@ EN.A !  0 r@ EN.B !  0 r@ EN.C !  0 r@ EN.D !
-   0 r@ EN.E !  0 r@ EN.F !  0 r@ EN.G !  0 r@ EN.H !
+   USIGS UEND @ + {: p:ptr :}
+   tag p E-NODE-INIT
    UEND @ EFF-NODE + UEND !
-   r> ;
+   p ;
 
 : E-NODE-OFF ( n -- n )
    E-NODE-NEW E-OFF ;
 
+\ E-ARGS-RESERVE ( n -- n ) : reserve a contiguous argc-cell run in USIGS
+\ for a persisted EN-PARAM node's arg offsets (uncapped arity). The run is a byte
+\ offset (E-OFF-relative), stable across USIGS relocation. Children copied after
+\ the reserve allocate past this run, so their offsets never overlap it.
+: E-ARGS-RESERVE ( n -- n ) {: argc:n :}
+   UEND @ argc cells + CELL + USIGS-ENSURE
+   UEND @
+   dup argc cells + UEND ! ;
+
 : E-COPY-STR ( ptr u8 n ptr a -- ) {: a:ptr u:n p:ptr :}
    UEND @ p EN.A !
    u p EN.B !
-   UEND @ u + UALIGN cell+ USIGS-ENSURE
+   UEND @ u + UALIGN CELL + USIGS-ENSURE
    a u UBS
    UALIGN! ;
 
 : E-RES ( n -- n ) {: x:n :}
    x TAG S-ROW = x TAG S-PUSH = or if x R-RES else x T-RES then ;
 
-: E-COPY ( n -- n ) {: x:n :}
+: E-COPY* ( n -- n ) {: x:n :}
    x 0= if 0 exit then
    x E-RES TAG case
       T-CON of
@@ -2730,21 +3267,21 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       endof
       T-PTR of
          EN-PTR E-NODE-NEW E-OFF >r
-         x E-RES PTR>INNER RECURSE r@ E-PTR EN.A !
+         x E-RES PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
          r>
       endof
       S-PUSH of
          EN-PUSH E-NODE-NEW E-OFF >r
-         x E-RES P>TYPE RECURSE r@ E-PTR EN.A !
-         x E-RES P>REST RECURSE r@ E-PTR EN.B !
+         x E-RES P>TYPE TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         x E-RES P>REST TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
          r>
       endof
       T-QUOT of
          EN-QUOT E-NODE-NEW E-OFF >r
-         x E-RES Q>DIN RECURSE r@ E-PTR EN.A !
-         x E-RES Q>DOUT RECURSE r@ E-PTR EN.B !
-         x E-RES Q>RIN RECURSE r@ E-PTR EN.C !
-         x E-RES Q>ROUT RECURSE r@ E-PTR EN.D !
+         x E-RES Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.A !
+         x E-RES Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.B !
+         x E-RES Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.C !
+         x E-RES Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER r@ E-PTR EN.D !
          x E-RES Q>XHAS r@ E-PTR EN.E !
          x E-RES Q>XDEAD r@ E-PTR EN.F !
          x E-RES Q>XDOUT r@ E-PTR EN.G !
@@ -2758,23 +3295,47 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
          r>
       endof
       T-PARAM of
-         EN-PARAM E-NODE-NEW E-OFF >r
-         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U r@ E-PTR E-COPY-STR
-         x E-RES PARAM>ARGC r@ E-PTR EN.C !
-         x E-RES PARAM>ARGC 0 > if x E-RES 0 PARAM>ARG RECURSE r@ E-PTR EN.D ! then
-         x E-RES PARAM>ARGC 1 > if x E-RES 1 PARAM>ARG RECURSE r@ E-PTR EN.E ! then
-         x E-RES PARAM>ARGC 2 > if x E-RES 2 PARAM>ARG RECURSE r@ E-PTR EN.F ! then
-         x E-RES PARAM>ARGC 3 > if x E-RES 3 PARAM>ARG RECURSE r@ E-PTR EN.G ! then
-         r>
+         EN-PARAM E-NODE-NEW E-OFF {: noff:n :}      \ node offset (stable across USIGS grow)
+         x E-RES PARAM>NAME-A x E-RES PARAM>NAME-U noff E-PTR E-COPY-STR
+         x E-RES PARAM>ARGC {: argc:n :}
+         argc noff E-PTR EN.C !
+         x E-RES PARAM>FAM noff E-PTR EN.H !         \ resolved family-id (identity)
+         x E-RES PARAM>HID noff E-PTR EN.E !         \ hidden physical-field slot+1 (0 = logical; 0 in pre-3a snapshots)
+         argc 0 > IF
+            argc E-ARGS-RESERVE {: run:n :}          \ argc-cell run in USIGS
+            run noff E-PTR EN.D !
+            0 BEGIN dup argc < WHILE                 \ data-stack index (RECURSE-safe)
+               x E-RES over PARAM>ARG TWALK-DEEPER RECURSE TWALK-SHALLOWER   \ ( i childoff )
+               over cells run + E-PTR !                                     \ ( i )
+               1 +
+            REPEAT drop
+         THEN
+         noff
       endof
       0 swap
    endcase ;
+: E-COPY ( n -- n ) TWALK-RESET E-COPY* ;
 
 : USIG-NEXT ( ptr a -- ptr a )
    ER.NEXT @ E-PTR ;
 
 : USIG-OFF ( ptr a -- n )
    E-OFF ;
+
+\ FEP holds the found active effect record; FEP-OFF stores its USIGS offset+1 so
+\ 0 means "no active record" even when a real record lives at offset 0.
+: FEP-CLEAR ( -- )
+   0 FEP-OFF ! ;
+
+: FEP-SET ( ptr a -- )
+   dup FEP !
+   USIG-OFF 1 + FEP-OFF ! ;
+
+: FEP-OFF@ ( -- n )
+   FEP-OFF @ ;
+
+: FEP-HIT? ( -- bool )
+   FEP-OFF@ 0 <> ;
 
 : USIG-END? ( ptr a -- bool )
    @ 0= ;
@@ -2783,22 +3344,26 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
 \ for USIGS appends, so a rewind (scope/candidate rollback, forget, reset)
 \ flushes the cache BEFORE new records can reuse the truncated offsets — a
 \ read-time-only check could be masked by rewind-then-regrow.
+\ typed-local-lint: allow-bare-local - p preserves ptr a record-owner role.
+: E-REC-INIT ( ptr a -- ) {: p :}
+   0 p ER.NEXT !  0 p ER.ACTIVE !
+   0 p ER.DIN !   0 p ER.DOUT !  0 p ER.RIN !  0 p ER.ROUT !
+   0 p ER.HASR !  0 p ER.TVN !   0 p ER.RVN !
+   CHECKER-REC-SYM @ p ER.SYM ! ;
+
 : E-REC-START ( -- ptr a )
    HIDX-EFF-SYNC
-   UEND @ EFF-REC + cell+ USIGS-ENSURE
-   USIGS UEND @ + >r
-   0 r@ ER.NEXT !  0 r@ ER.ACTIVE !
-   0 r@ ER.DIN !   0 r@ ER.DOUT !  0 r@ ER.RIN !  0 r@ ER.ROUT !
-   0 r@ ER.HASR !  0 r@ ER.TVN !   0 r@ ER.RVN !
-   CHECKER-REC-SYM @ r@ ER.SYM !
-   r@ EFF-REC + USIGS - UEND !
-   r> ;
+   UEND @ EFF-REC + CELL + USIGS-ENSURE
+   USIGS UEND @ + {: p:ptr :}
+   p E-REC-INIT
+   p EFF-REC + USIGS - UEND !
+   p ;
 
 : E-REC-FINISH ( ptr a -- )
    UEND @ swap ER.NEXT !
    UTERM! ;
 
-: E-BUILD-EFFECT ( n n n n n -- n ) {: din:n dout:n rin:n rout:n hasr:n :}
+: E-BUILD-EFFECT ( n n n n bool -- n ) {: din:n dout:n rin:n rout:n hasr:bool :}
    E-REC-START E-OFF >r
    E-COPY-MAPS-RESET
    EFF-ACTIVE r@ E-PTR ER.ACTIVE !
@@ -2814,18 +3379,62 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    r@ E-PTR E-REC-FINISH
    r> ;
 
+\ Interpret-gate wide scan (habu-tfam-12-interpret checker half): a word whose
+\ recorded effect mentions ANY wider-than-cell layout value — producers and
+\ consumers, on any of the four rows, including inside quotation sub-effects
+\ (a quotation value can be `execute`d at top level) — must never run at the
+\ untyped interpret level: its dict record is marked DNAME-WIDE so
+\ EM-INTERPRET-FIND / interpret `'` fail closed before a bundle can land on
+\ (or be expected from) the interpret stack. A `ptr` to a layout is one cell
+\ and stays unmarked; pointers are deref'd only to reach nested quotations.
+: ROW-WIDE? ( n -- bool ) {: s:n :}
+   RES-FALSE s                           \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+     dup P>TYPE T-RES
+     dup T-WIDTH 1 > IF
+       drop nip RES-TRUE swap            \ ( true cur )
+     ELSE
+       BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+       dup TAG T-QUOT = IF
+         dup Q>DIN RECURSE  swap         \ ( acc cur f1 qt )
+         dup Q>DOUT RECURSE  swap        \ ( acc cur f1 f2 qt )
+         dup Q>RIN RECURSE  swap         \ ( acc cur f1 f2 f3 qt )
+         Q>ROUT RECURSE                  \ ( acc cur f1 f2 f3 f4 )
+         or or or  rot or swap           \ ( acc' cur )
+       ELSE drop THEN
+     THEN
+     P>REST
+   REPEAT drop ;
+
+\ RECW: latch holding the wide? verdict of the LAST effect record, stored by
+\ VALUE at the single record choke point (E-ADD-EFFECT) so a stale value from
+\ a candidate/rolled-back check is always overwritten by the current record
+\ flow before any publish tail consumes it; CHECK-RESET zeroes it for hook
+\ paths that certify without recording. REC-WIDE-PUBLISH is called by the
+\ engine publish tails AFTER ndict++ (EM-COMPILE-PUBLISH-TRUSTED/-HOOKED and
+\ C-DEFER, habu2.f), where the `wide-mark` prim's newest-published target
+\ (ndict-1) is exactly the record whose effect was just recorded.
+variable RECW   0 RECW !
+: REC-WIDE-PUBLISH ( -- )
+   RECW @ 0 <> IF wide-mark THEN
+   0 RECW ! ;
+
 \ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
-: E-ADD-EFFECT ( n n n n n -- )
-   E-BUILD-EFFECT {: off:n :}
+: E-ADD-EFFECT ( n n n n bool -- ) {: din:n dout:n rin:n rout:n hasr:bool :}
+   din ROW-WIDE?  dout ROW-WIDE? or
+   hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
+   RECW !
+   din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
 : E-ADD-DELETED ( -- )
+   0 RECW !
    E-REC-START E-OFF >r
    EFF-DELETED r@ E-PTR ER.ACTIVE !
    r> E-PTR E-REC-FINISH
@@ -2834,15 +3443,42 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
-: E-PARSE-ADD ( ptr u8 n -- ) {: sa:ptr su:n :}
+\ --- stored-signature intake. USIG-ADD parses a declared/trusted signature
+\ into an effect row. A signature that does not parse is a hard stop on the
+\ ordinary load path (a baked or TRUSTed effect must never be silently wrong).
+\ In a MULTI-ERROR load it must not abort the run and must not store a row: a
+\ rejected DEFINITION was already diagnosed and counted by CHECK (the native
+\ re-records every published definition's declared sig through TRUST), so its
+\ own name is suppressed here; a foreign name — a raw TRUST row — counts as a
+\ reject and reports through BADSIG-XT (render.f). Either way no row exists,
+\ so later callers reject as undefined instead of trusting a malformed effect.
+variable NMA  variable NMU              \ current definition name (set by DO-TOK1)
+variable MULTI-ERR      \ multi-error load mode active?
+variable MULTI-ERR-N    \ rejected definitions recorded this load
+0 MULTI-ERR !   0 MULTI-ERR-N !
+variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
+
+: MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
+
+: USIG-BAD-FOREIGN? ( ptr u8 n -- bool )   \ not the definition CHECK just handled
+   NMA @ NMU @ CORE-STR= 0= ;
+
+: USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   0 RECW !                              \ no record stored: nothing to publish wide
+   MULTI-ERR? 0= IF
+      2 sa su write drop                 \ name the offending stored sig text
+      s" : checker: bad stored signature" 76 die
+   THEN
+   na nu USIG-BAD-FOREIGN? 0= IF EXIT THEN
+   1 MULTI-ERR-N +!
+   sa su na nu BADSIG-XT @ dup 0= IF drop 2drop 2drop ELSE execute THEN ;
+
+: USIG-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
    NEW
    SGBAD-CLEAR
    sa su PARSE-SIG-RAW
-   SGBAD @ if s" checker: bad stored signature" 76 die then
+   SGBAD @ if 2drop 2drop sa su na nu USIG-ADD-BAD exit then
    SGHASR @ E-ADD-EFFECT ;
-
-: USIG-ADD ( ptr u8 n ptr u8 n -- )
-   2drop E-PARSE-ADD ;
 
 : USIG-DELETE ( ptr u8 n -- )
    2drop E-ADD-DELETED ;
@@ -2868,13 +3504,13 @@ variable FMEND
 \ deleted); FMEND = end offset of the last matching record of ANY state — the
 \ cache dependency: a rewind below it can change the answer.
 : SCAN-USIGS-SYM {: sym:n :}
-   0 FEP !
+   FEP-CLEAR
    0 FMEND !
    USIGS-USER FP !
    begin FP @ USIG-END? 0= while
       FP @ sym USIG-MATCH-SYM? if
          FP @ ER.NEXT @ FMEND !
-         FP @ dup ER.ACTIVE @ if FEP ! else drop 0 FEP ! then
+         FP @ dup ER.ACTIVE @ if FEP-SET else drop FEP-CLEAR then
       then
       FP @ USIG-NEXT FP !
    repeat ;
@@ -2935,12 +3571,17 @@ variable FMEND
       endof
       EN-ATOM of r@ E-I-STR r@ EN.C @ E-I-AK MK-ATOM-K r> drop endof
       EN-PARAM of
-         PARAM-SCR-RESET
-         r@ EN.C @ 0 > if r@ EN.D @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 1 > if r@ EN.E @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 2 > if r@ EN.F @ RECURSE PARAM-SCR+ then
-         r@ EN.C @ 3 > if r@ EN.G @ RECURSE PARAM-SCR+ then
-         r@ E-I-STR MK-PARAM r> drop
+         r@ {: np:ptr :}                           \ node ptr (parked value)
+         np EN.C @ {: argc:n :}
+         np EN.D @ {: run:n :}                      \ arg-run offset in USIGS
+         PARAM-SCR-N @                              \ reentrant scratch mark (base) on the data stack
+         0 BEGIN dup argc < WHILE                   \ data-stack index (RECURSE-safe)
+            dup cells run + E-PTR @ RECURSE PARAM-SCR+
+            1 +
+         REPEAT drop
+         np E-I-STR np EN.H @ MK-PARAM              \ ( base a u fam -- t )
+         dup np EN.E @ swap PAY cells PARAMHID + !  \ restore hidden slot+1 (0 in pre-3a snapshots)
+         r> drop
       endof
       r> drop 0 swap
    endcase ;
@@ -2953,7 +3594,7 @@ variable FMEND
 \ passing a linear into a consumer quotation counts as one output-side use, and
 \ KEEP (which also returns it) exceeds one. Mirrors E-INST's node walk.
 variable LMNEG  variable LMPOS  variable LMV
-: EN-MULT ( off pol -- ) {: off:n pol:n :}
+: EN-MULT ( n bool -- ) {: off:n pol:bool :}
    off 0= IF exit THEN
    off E-PTR >r
    r@ EN.TAG @ case
@@ -2980,22 +3621,23 @@ variable LMNEG  variable LMPOS  variable LMV
          r> drop
       endof
       EN-PARAM of
-         r@ EN.C @ 0 > IF r@ EN.D @ pol RECURSE THEN
-         r@ EN.C @ 1 > IF r@ EN.E @ pol RECURSE THEN
-         r@ EN.C @ 2 > IF r@ EN.F @ pol RECURSE THEN
-         r@ EN.C @ 3 > IF r@ EN.G @ pol RECURSE THEN
+         r@ {: np:ptr :}                   \ node ptr (parked value)
+         0 BEGIN dup np EN.C @ < WHILE      \ data-stack index (RECURSE-safe)
+            dup cells np EN.D @ + E-PTR @ pol RECURSE
+            1 +
+         REPEAT drop
          r> drop
       endof
       r> drop
    endcase ;
 
-: LIN-VAR-MULT ( h v -- neg pos ) {: h:ptr v:n :}
+: LIN-VAR-MULT ( ptr a n -- n n ) {: h:ptr v:n :}
    v LMV !  0 LMNEG !  0 LMPOS !
-   h ER.DIN @ 0 EN-MULT
-   h ER.DOUT @ 1 EN-MULT
-   h ER.HASR @ IF
-      h ER.RIN @ 0 EN-MULT
-      h ER.ROUT @ 1 EN-MULT
+   h ER.DIN @ RES-FALSE EN-MULT
+   h ER.DOUT @ RES-TRUE EN-MULT
+   h ER.HASR @ 0 <> IF
+      h ER.RIN @ RES-FALSE EN-MULT
+      h ER.ROUT @ RES-TRUE EN-MULT
    THEN
    LMNEG @ LMPOS @ ;
 
@@ -3029,7 +3671,7 @@ variable LMI
    h ER.DIN @ E-INST
    h ER.DOUT @ E-INST
    CHECKER-STEP
-   h ER.HASR @ if
+   h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
       h ER.ROUT @ E-INST RCUR !
    then
@@ -3037,7 +3679,7 @@ variable LMI
 
 : EFF-QUOT ( ptr a -- n ) {: h:ptr :}
    h E-INST-RESET
-   h ER.HASR @ if
+   h ER.HASR @ 0 <> if
       h ER.DIN @ E-INST
       h ER.DOUT @ E-INST
       h ER.RIN @ E-INST
@@ -3332,13 +3974,17 @@ PRIM: dbase@         PE-N PE-OUT PRIM;
 PRIM: check@         PE-N PE-OUT PRIM;
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
+PRIM: SEAL-CAPTURE   PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
+PRIM: prot-wid-add   PE-N PE-IN PRIM;
+PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
 PRIM: set-current    PE-N PE-IN PRIM;
 PRIM: search-wl      PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: parse-name     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CORE-STR=      PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: CORE-STR=CI    PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: PATHZ          PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PRIM;
 PRIM: PATH0          PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-OUT PRIM;
 PRIM: RD32           PE-PTR-U8 PE-IN  PE-N PE-OUT PRIM;
@@ -3354,10 +4000,38 @@ PRIM: CHECK-CANDIDATE! PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-START PRIM;
 PRIM: CHECKER-CANDIDATE-SCOPE-DONE PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFENUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: TFAM-N@ PE-N PE-OUT PRIM;
+PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-N@ PE-N PE-OUT PRIM;
+PRIM: WF-TOKIX@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-WIDE? PE-N PE-OUT PRIM;
+PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: wide-mark PRIM;
+PRIM: REC-WIDE-PUBLISH PRIM;
+PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LOCSEQ-RESET PRIM;
+PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LIVE-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: SUMV-N@ PE-N PE-OUT PRIM;
+PRIM: PF-N@ PE-N PE-OUT PRIM;
+PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
+PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
+PRIM: SCHEMA-N@ PE-N PE-OUT PRIM;
+PRIM: SCHEMA-ROOT-N@ PE-N PE-OUT PRIM;
 PRIM: CHECKER-DEFER PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PUBLIC PRIM;
@@ -3406,13 +4080,6 @@ PRIM: constant PE-A PE-OUT PRIM;
 
 PTABLE-END
 
-0 constant CHECKER-PACKAGE-NONE
-1 constant CHECKER-PACKAGE-PRIVATE
-2 constant CHECKER-PACKAGE-PUBLIC
-$100 constant CHECKER-PACKAGE-CAP
-create CHECKER-PACKAGE-NAME CHECKER-PACKAGE-CAP allot
-variable CHECKER-PACKAGE-U
-variable CHECKER-PACKAGE-MODE
 variable CHECKER-COLON-N
 variable CHECKER-COLON-I
 variable CHECKER-REC-A
@@ -3439,9 +4106,6 @@ variable DFER-END
    c $5A > IF c EXIT THEN
    c $20 or ;
 
-: CHECKER-PACKAGE-ACTIVE? ( -- bool )
-   CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
-
 : CHECKER-PACKAGE-COPY-C ( ptr u8 n -- ) {: a:ptr i:n :}
    a i + c@ CHECKER-FOLD-C CHECKER-PACKAGE-NAME i + c! ;
 
@@ -3453,7 +4117,25 @@ variable DFER-END
    REPEAT drop
    u CHECKER-PACKAGE-U ! ;
 
+\ --- generated-constructor protection (item 8 slice 3). The registry-backed
+\ predicates live in type-family.f (loads later) and install into these friend
+\ cells; empty cells fail open only in engines with no TFAM registry at all
+\ (stage builders, which never see user declarations). Guards: a recorded
+\ constructor package cannot be opened/reopened by `package`; a generated
+\ constructor word cannot be undefined; a new tail cannot certify into a
+\ constructor package (closed-but-callable, PLAN Package Shape).
+7111 constant E-CTOR-PROTECTED
+variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
+variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
+variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
+: CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   CTOR-WORD?-XT @ 0= IF EXIT THEN
+   a u CTOR-WORD?-XT @ execute IF E-CTOR-PROTECTED throw THEN ;
+
 : CHECKER-PACKAGE ( ptr u8 n -- )
+   CTOR-PKG?-XT @ 0 <> IF
+      2dup CTOR-PKG?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 
@@ -3504,15 +4186,15 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
    a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0= IF 0 EXIT THEN
-   CHECKER-COLON-I @ 0= IF 0 EXIT THEN
-   CHECKER-COLON-I @ u 1 - = IF 0 EXIT THEN
-   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! 0 EXIT THEN
+   CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
+   CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
+   CHECKER-COLON-I @ u 1 - = IF RES-FALSE EXIT THEN
+   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
    a CHECKER-QA!
    CHECKER-COLON-I @ CHECKER-QU !
    a CHECKER-COLON-I @ + 1 + CHECKER-TA!
    u CHECKER-COLON-I @ - 1 - CHECKER-TU !
-   -1 ;
+   RES-TRUE ;
 
 : CHECKER-QPKG$ ( -- ptr u8 n )
    CHECKER-QA@ CHECKER-QU @ ;
@@ -3520,25 +4202,32 @@ variable CHECKER-QBAD-TOK
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
 
-: CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-INTERN ;
 
-: CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-GLOBAL-SYM? ( ptr u8 n -- n ) {: a u:n :}
    s" " SYM-GLOBAL a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PUBLIC-SYM ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-INTERN ;
 
-: CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg:ptr pkgu:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PUBLIC-SYM? ( ptr u8 n ptr u8 n -- n ) {: pkg pkgu:n a u:n :}
    pkg pkgu SYM-PUBLIC a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PKG-SYM ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-INTERN ;
 
-: CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg:ptr pkgu:n vis:n a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - pkg/a preserve ptr u8 roles.
+: CHECKER-PKG-SYM? ( ptr u8 n n ptr u8 n -- n ) {: pkg pkgu:n vis:n a u:n :}
    pkg pkgu vis a u SYM-FIND IF EXIT THEN drop 0 ;
 
-: CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
+: CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
    CHECKER-PACKAGE-ACTIVE? IF
@@ -3558,39 +4247,60 @@ variable CHECKER-QBAD-TOK
 \ CHECKER-FIND-USIG-SYM ( n -- bool ) : FEP = current active record for sym.
 \ Cache value: record offset+1, 0 = none/deleted; a miss re-derives from the
 \ arena scan and memoizes both the answer and its watermark dependency.
-: CHECKER-FIND-USIG-SYM {: sym:n :}
-   sym 0= IF 0 EXIT THEN
+: CHECKER-FIND-USIG-SYM ( n -- bool ) {: sym:n :}
+   sym 0= IF RES-FALSE EXIT THEN
    HIDX-ENSURE
    HIDX-EFF-SYNC
-   sym HIDX-EFF@ IF
-      dup IF 1 - E-PTR FEP ! ELSE drop 0 FEP ! THEN
+   sym HIDX-EFF@ {: cached:n hit:bool :}
+   hit IF
+      cached 0 <> IF cached 1 - E-PTR FEP-SET ELSE FEP-CLEAR THEN
    ELSE
-      drop
       sym SCAN-USIGS-SYM
-      FEP @ IF FEP @ USIG-OFF 1 + ELSE 0 THEN sym HIDX-EFF!
+      FEP-OFF@ sym HIDX-EFF!
       FMEND @ HIDX-EFF-DEP+
    THEN
-   FEP @ 0 <> ;
+   FEP-HIT? ;
 
 : CHECKER-FIND-USIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-RECORD-SYM CHECKER-FIND-USIG-SYM ;
 
-: CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
+: CHECKER-USIGS-TRUNCATE-FROM-RAW ( ptr u8 n -- ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM USIG-FIND-OFF-SYM 0= IF
       s" checker: missing signature truncation mark" 76 die
    THEN
    UEND !
    UTERM! ;
 
+\ TFAM 2b-iii: a direct post-seal user call would forget the checker's signature
+\ for an engine word so it could be redefined (spoof). Reject it fail-closed; the
+\ friend/engine load path (latch 0) and the guarded FORGET/HIDE wrappers (which
+\ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
+\ checker.f loads before layout.f, so the friend-arena latch offset and the seal
+\ exit code are mirrored here as named constants (both are foundational and stable).
+$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
+83 constant CK-E-SEAL-VIOLATION         \ = layout.f E-SEAL-VIOLATION
+
+: CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
+   data-base CK-SEAL-LATCH-OFF + @ 0= 0= IF
+      2drop s" seal: cannot truncate sealed checker signatures" CK-E-SEAL-VIOLATION die
+   THEN
+   CHECKER-USIGS-TRUNCATE-FROM-RAW ;
+
 : CHECKER-FIND-ACTIVE-SIG ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 FEP !
+   FEP-CLEAR
    a u CHECKER-FIND-ACTIVE-SYM CHECKER-FIND-USIG-SYM drop ;
 
 : FIND-SIG ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SIG
-   FEP @ IF -1 EXIT THEN
+   FEP-HIT? IF RES-TRUE EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-SYM
-   dup IF E-PTR FEP ! -1 ELSE drop 0 THEN ;
+   dup 0 <> IF E-PTR FEP-SET RES-TRUE ELSE drop RES-FALSE THEN ;
+
+\ HIDX-DFR-SYNC ( -- ) : flush the cache when DFERS rewound below a cached defer
+\ answer. Rollback frames restore DFER-END, so a cached flag whose scan reached a
+\ now-retired tail must be dropped before the stale answer masks the rewind.
+: HIDX-DFR-SYNC
+   DFER-END @ HIDX-DFR-HI @ < IF HIDX-EPOCH+ THEN ;
 
 : DFER-ENSURE ( n -- )
    DFER-CAP > IF s" checker: defer table full" 76 die THEN ;
@@ -3599,14 +4309,17 @@ variable CHECKER-QBAD-TOK
    DFERS DFER-END @ + ;
 
 : DFER-NEED ( -- n )
-   DFER-END @ DFER-REC + cell+ ;
+   DFER-END @ DFER-REC + CELL + ;
 
 : DFER-TERM ( -- )
    0 DFERS DFER-END @ + ! ;
 
-\ The DFERS arena never rewinds (scopes do not restore DFER-END), so the
-\ cached flag needs no watermark; it mirrors the arena's later-wins answer.
-: DFER-ADD-FLAG ( ptr u8 n n -- ) {: a:ptr u:n flag:n :}
+\ Scopes DO rewind DFER-END (item 3 made rollback restore it; the watermark below
+\ exists precisely for that), so the deferred-target cache cannot assume later-wins
+\ permanence: HIDX-DFR-SYNC / HIDX-DFR-DEP+ record the DFER-END a cached answer
+\ depends on and flush it (epoch bump) when a rollback rewinds below that mark.
+: DFER-ADD-FLAG ( ptr u8 n bool -- ) {: a:ptr u:n flag:bool :}
+   HIDX-DFR-SYNC
    DFER-NEED DFER-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym DFER-CUR DFER.SYM !
@@ -3614,20 +4327,21 @@ variable CHECKER-QBAD-TOK
    DFER-END @ DFER-REC + DFER-END !
    DFER-TERM
    sym 0 <> HIDX-VALID @ and IF
-      flag 0 <> sym HIDX-DFR!
+      flag sym HIDX-DFR!
+      DFER-END @ HIDX-DFR-DEP+
    THEN ;
 
 : DFER-ADD ( ptr u8 n -- )
-   1 DFER-ADD-FLAG ;
+   RES-TRUE DFER-ADD-FLAG ;
 
 : DFER-DELETE ( ptr u8 n -- )
-   0 DFER-ADD-FLAG ;
+   RES-FALSE DFER-ADD-FLAG ;
 
 : DFER-NEXT ( ptr a -- ptr a )
    DFER-REC + ;
 
-: DFER-FLAG@ ( ptr a -- n )
-   DFER.FLAG @ ;
+: DFER-FLAG@ ( ptr a -- bool )
+   DFER.FLAG @ 0 <> ;
 
 : DFER-SYM@ ( ptr a -- n )
    DFER.SYM @ ;
@@ -3647,22 +4361,24 @@ variable DFER-POS
    0 DFER-POS !
    begin DFERS DFER-POS @ + DFER-END? 0= while
       DFERS DFER-POS @ + sym DFER-MATCH-SYM? IF
-         -1 DFER-HIT !
+         RES-TRUE DFER-HIT !
          DFERS DFER-POS @ + DFER-FLAG@ DFER-VALUE !
       THEN
       DFER-POS @ DFER-REC + DFER-POS !
    repeat ;
 
 : DFER-FIND-SYM ( n -- bool ) {: sym:n :}
-   sym 0= IF 0 EXIT THEN
+   sym 0= IF RES-FALSE EXIT THEN
    HIDX-ENSURE
-   sym HIDX-DFR@ IF EXIT THEN
-   drop
-   0 DFER-HIT !
-   0 DFER-VALUE !
+   HIDX-DFR-SYNC
+   sym HIDX-DFR@ {: cached:bool hit:bool :}
+   hit IF cached EXIT THEN
+   RES-FALSE DFER-HIT !
+   RES-FALSE DFER-VALUE !
    sym DFER-SCAN-SYM
-   DFER-HIT @ IF DFER-VALUE @ 0 <> ELSE 0 0= 0= THEN
-   dup sym HIDX-DFR! ;
+   DFER-HIT @ IF DFER-VALUE @ ELSE RES-FALSE THEN
+   dup sym HIDX-DFR!
+   DFER-END @ HIDX-DFR-DEP+ ;
 
 : CHECKER-FIND-ACTIVE-DEFER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u CHECKER-FIND-ACTIVE-SYM DFER-FIND-SYM ;
@@ -3687,13 +4403,16 @@ variable DFER-POS
    CHECKER-REC-U @ ;
 
 : CHECKER-CERT-DUP? ( -- bool )
-   CHK-CAND @ IF 0 EXIT THEN
+   CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
 : CHECKER-USIG-CERT-ADD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   CTOR-EXTEND?-XT @ 0 <> IF
+      na nu CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
@@ -3701,7 +4420,7 @@ variable DFER-POS
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
-   BROW @ DCUR @ 0 0 0 E-ADD-EFFECT ;
+   BROW @ DCUR @ 0 0 RES-FALSE E-ADD-EFFECT ;
 
 \ Control-effect flags are append-only and later-wins so redefinitions can clear
 \ stale metadata. CTL-DEAD means a call has no normal continuation. CTL-THROW
@@ -3723,8 +4442,12 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 
 : NORETS ( -- ptr u8 ) NORET-P @ ;
 
+: NORET-CELL ( n -- ptr a ) {: off:n :}
+   off 7 and 0 <> IF s" checker: unaligned no-return cell" 76 die THEN
+   NORETS off + ;
+
 : NORET-TERM ( -- )
-   0 NORETS NORET-END @ + ! ;
+   0 NORET-END @ NORET-CELL ! ;
 
 : NORET-RESTORE-END ( n -- )
    NORET-END !
@@ -3734,7 +4457,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-END !
-   0 NORET-BOOT !
+   0 0 NORET-CELL !
    0 NORET-GROW-CAP !
    0 NORET-GROW-NEXT ! ;
 
@@ -3742,11 +4465,11 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    NORETS NORET-BOOT = ;
 
 : NORET-SNAPSHOT-CAP ( -- )
-   NORET-END @ cell+ NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
+   NORET-END @ CELL + NORET-INIT-CAP > IF s" checker: no-return snapshot too large" 76 die THEN ;
 
 : NORET-SNAPSHOT-PERSIST ( -- )
    NORET-SNAPSHOT-CAP
-   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ cell+ USIGS-COPY THEN
+   NORET-BOOT? 0= IF NORETS NORET-BOOT NORET-END @ CELL + USIGS-COPY THEN
    NORET-BOOT NORET-P !
    NORET-INIT-CAP NORET-CAP-U !
    0 NORET-GROW-CAP !
@@ -3755,7 +4478,7 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 : NORET-GROW {: need :}
    need NORET-CAP-U @ 2 * max USIGS-ROUND-CAP NORET-GROW-CAP !
    NORET-GROW-CAP @ USIGS-ALLOC NORET-GROW-NEXT !
-   NORETS NORET-GROW-NEXT @ NORET-END @ cell+ USIGS-COPY
+   NORETS NORET-GROW-NEXT @ NORET-END @ CELL + USIGS-COPY
    NORET-GROW-NEXT @ NORET-P !
    NORET-GROW-CAP @ NORET-CAP-U ! ;
 
@@ -3790,7 +4513,9 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
    QXHA-BOOT QXHA-P !   QXNA-BOOT QXNA-P !   MAXQE-INIT QE-CAP !
    ATOMA-BOOT ATOMA-P !   ATOMU-BOOT ATOMU-P !   ATOMK-BOOT ATOMK-P !   MAXATOM-INIT ATOM-CAP !
    PARAMA-BOOT PARAMA-P !   PARAMU-BOOT PARAMU-P !   PARAMC-BOOT PARAMC-P !
-   PARAMARGS-BOOT PARAMARGS-P !   MAXPARAM-INIT PARAM-CAP !
+   PARAMFAM-BOOT PARAMFAM-P !   PARAMOFF-BOOT PARAMOFF-P !   MAXPARAM-INIT PARAM-CAP !
+   PARGP-BOOT PARGP-P !   PARG-INIT PARG-CAP-V !   \ flat per-param arg pool (resets in NEW)
+   PARAM-SCR-BOOT PARAM-SCR-P !   PARAM-SCR-INIT PARAM-SCR-CAP-V !   \ reentrant parse scratch
    VRI-AK-BOOT VRI-AK-P !   VRI-AK-INIT VRI-AK-CAP-V !     \ transient inst scratch
    TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   TRAIL-RESET ; \ unification trail
 
@@ -3802,15 +4527,24 @@ variable NORET-GROW-CAP   variable NORET-GROW-NEXT
 \ hold pointers into their string pool; the string pool is persisted last and its
 \ relocation delta rebases those pointers in the just-persisted arrays.
 variable REG-PERSIST-DELTA
-: REG-PERSIST-BUF ( ptr ptr n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
-   pvar @ boot = IF 0 EXIT THEN            \ not grown: boot buffer is baked DATA
-   pvar @ {: old:ptr :}
+
+\ REG-PVAR@/REG-PVAR! read/write a persisted pointer slot through a cell-indexed
+\ ptr-field view so the stored pointer keeps its nested ptr role.
+: REG-PVAR@ ( ptr a -- ptr a )
+   0 ptr-field @ ;
+
+: REG-PVAR! ( ptr a ptr a -- )
+   0 ptr-field ! ;
+
+: REG-PERSIST-BUF ( ptr a ptr a n -- bool ) {: pvar:ptr boot:ptr bytes:n :}
+   pvar REG-PVAR@ boot = IF RES-FALSE EXIT THEN            \ not grown: boot buffer is baked DATA
+   pvar REG-PVAR@ {: old:ptr :}
    here {: dst:ptr :}
    bytes allot
    old dst bytes USIGS-COPY
-   dst pvar !
+   dst pvar REG-PVAR!
    dst old - REG-PERSIST-DELTA !
-   -1 ;
+   RES-TRUE ;
 
 : CT-SNAPSHOT-PERSIST ( -- )
    CT-CAP-V @ cells {: ab:n :}
@@ -3843,6 +4577,7 @@ variable REG-PERSIST-DELTA
    VRN-F-P VRN-F-BOOT nb REG-PERSIST-BUF drop
    VRN-G-P VRN-G-BOOT nb REG-PERSIST-BUF drop
    VRN-H-P VRN-H-BOOT nb REG-PERSIST-BUF drop
+   VNARG-P VNARG-BOOT VNARG-CAP-V @ cells REG-PERSIST-BUF drop
    VREC-STR-P VREC-STR-BOOT VREC-STR-U @ REG-PERSIST-BUF IF
       VREC-STR-U @ VREC-STR-CAP-V !
       REG-PERSIST-DELTA @ VREC-STR-REBASE
@@ -3855,6 +4590,13 @@ variable REG-PERSIST-DELTA
       REG-PERSIST-DELTA @ SYM-STR-REBASE
    THEN ;
 
+\ Friend-only extension hook: the package-scoped TFAM/SCHEMA registries live in
+\ files loaded after checker.f (src/core/type-schema.f, src/core/type-family.f),
+\ so they cannot be named here. They install their combined persist word into
+\ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
+\ shape the checker already uses for the source-check hook (`set-check`).
+variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
+
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
    HIDX-RESET
@@ -3864,10 +4606,11 @@ variable REG-PERSIST-DELTA
    VREC-SNAPSHOT-PERSIST
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
-   NORET-SNAPSHOT-PERSIST ;
+   NORET-SNAPSHOT-PERSIST
+   REG-EXT-PERSIST-XT @ dup 0= if drop else execute then ;
 
 : NORET-REC ( -- ptr a )
-   NORETS NORET-END @ + ;
+   NORET-END @ NORET-CELL ;
 
 : NORET-FLAG@ ( ptr a -- n )
    NORET.FLAG @ ;
@@ -3891,7 +4634,7 @@ variable REG-PERSIST-DELTA
 \ before the new entry masks the rewind.
 : NORET-ADD {: a:ptr u:n flag:n :}
    HIDX-CTL-SYNC
-   NORET-END @ NORET-ENTRY + cell+ NORET-ENSURE
+   NORET-END @ NORET-ENTRY + CELL + NORET-ENSURE
    a u CHECKER-RECORD-SYM {: sym:n :}
    sym NORET-REC NORET.SYM !
    flag NORET-REC NORET.FLAG !
@@ -3903,6 +4646,7 @@ variable REG-PERSIST-DELTA
    THEN ;
 
 : CHECKER-UNDEFINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-UNDEFINE-GUARD
    a u CHECKER-RECORD-NAME {: name:ptr nameu:n :}
    name nameu USIG-DELETE
    name nameu DFER-DELETE
@@ -3953,13 +4697,13 @@ variable CURSYM
 : CTL-FLAGS-CUR ( -- n )
    CURSYM @ CTL-FLAGS-SYM ;
 
-: DEAD-CUR? {: a:ptr u:n :}
-   a u s" die" CORE-STR= IF -1 EXIT THEN
-   a u s" throw" CORE-STR= IF -1 EXIT THEN
+: DEAD-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" die" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-DEAD and 0 <> ;
 
-: THROW-CUR? {: a:ptr u:n :}
-   a u s" throw" CORE-STR= IF -1 EXIT THEN
+: THROW-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
@@ -4011,14 +4755,14 @@ variable TSEEN  variable TSOK  variable TFA
    TRIAL-DEPTH @ 1 + TRIAL-DEPTH !       \ open a trial: disables path compression
    TRIAL-SAVE
    h EFF-APPLY
-   OK @ SGBAD @ 0= and IF TRIAL-REST-SG -1 ELSE TRIAL-REST 0 THEN
+   OK @ SGBAD @ 0= and IF TRIAL-REST-SG RES-TRUE ELSE TRIAL-REST RES-FALSE THEN
    TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;     \ (stack-neutral; the bool stays on top)
 
 \ TRY-PRIMS ( n -- bool ) : try each prim overload for sym until one unifies.
 \ Starts at the cached first slot and stops at the first success.
-: TRY-PRIMS {: sym:n :}
+: TRY-PRIMS ( n -- bool ) {: sym:n :}
    0 TSEEN !  0 TSOK !  0 TFA !
-   sym PRIM-FIRST-IDX dup 0 = IF drop 0 EXIT THEN
+   sym PRIM-FIRST-IDX dup 0 = IF drop RES-FALSE EXIT THEN
    1 - PE-I !
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
       PE-I @ PE-ACTIVE? IF
@@ -4030,10 +4774,10 @@ variable TSEEN  variable TSOK  variable TFA
       THEN
       PE-I @ 1 + PE-I !
    repeat
-   TSOK @ ;
+   TSOK @ 0 <> ;
 variable FLD  variable FLI  variable FLO  variable FLC
 
-: FLODIG? {: a u :}                        \ -?d+.d+ (one interior dot) -> float literal
+: FLODIG? ( ptr u8 n -- bool ) {: a:ptr u:n :}     \ -?d+.d+ (one interior dot) -> float literal
    0 FLD !  0 FLI !  -1 FLO !
    u 3 < IF 0 FLO ! THEN
    a c@ 45 = IF 1 FLI ! THEN
@@ -4042,30 +4786,30 @@ variable FLD  variable FLI  variable FLO  variable FLC
      FLC @ 46 = IF FLD @ 0 > IF 0 FLO ! THEN FLD @ 1 + FLD !
      ELSE FLC @ 47 > FLC @ 58 < and 0= IF 0 FLO ! THEN THEN
      1 + REPEAT drop
-   FLD @ 1 = FLO @ and
-   u 0 > IF a u 1 - + c@ 46 = IF drop 0 THEN THEN
-   a FLI @ + c@ 46 = IF drop 0 THEN ;
+   FLD @ 1 = FLO @ 0 <> and
+   u 0 > IF a u 1 - + c@ 46 = IF drop RES-FALSE THEN THEN
+   a FLI @ + c@ 46 = IF drop RES-FALSE THEN ;
 
-: DEFINER-TOK {: a u :}
-   SGSEEN @ 0= IF 0 EXIT THEN
-   a u s" create" CORE-STR= IF -1 EXIT THEN
-   a u s" variable" CORE-STR= IF -1 EXIT THEN
-   a u s" constant" CORE-STR= IF STEP-N-IN -1 EXIT THEN
-   0 ;
+: DEFINER-TOK ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   SGSEEN @ 0= IF RES-FALSE EXIT THEN
+   a u s" create" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" variable" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" constant" CORE-STR= IF STEP-N-IN RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : LITERAL-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u ALLDIG? IF STEP-N-OUT -1 EXIT THEN
-   a u FLODIG? IF STEP-R-OUT -1 EXIT THEN
-   0 ;
+   a u ALLDIG? IF STEP-N-OUT RES-TRUE EXIT THEN
+   a u FLODIG? IF STEP-R-OUT RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : BYTE-CON? ( n -- bool )
-   T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop 0 ;
+   T-RES dup TAG T-CON = IF PAY CC-U8 = EXIT THEN drop RES-FALSE ;
 
 : BYTE-PTR? ( n -- bool )
-   T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop 0 ;
+   T-RES dup TAG T-PTR = IF PTR>INNER BYTE-CON? EXIT THEN drop RES-FALSE ;
 
 : ROW-TOP-BYTE-PTR? ( n -- bool )
-   R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop 0 ;
+   R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
 : CELL-FETCH-TOK ( -- )
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
@@ -4078,39 +4822,418 @@ variable FLD  variable FLI  variable FLO  variable FLC
    bad IF 0 OK ! THEN ;
 
 : CELL-MEMORY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" @" CORE-STR= IF CELL-FETCH-TOK -1 EXIT THEN
-   a u s" !" CORE-STR= IF CELL-STORE-TOK -1 EXIT THEN
-   0 ;
+   a u s" @" CORE-STR= IF CELL-FETCH-TOK RES-TRUE EXIT THEN
+   a u s" !" CORE-STR= IF CELL-STORE-TOK RES-TRUE EXIT THEN
+   RES-FALSE ;
 
-: DO-TOK {: a u :}
+: DO-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CURSYM !
    a u DEFINER-TOK IF EXIT THEN
    a u LITERAL-TOK? IF EXIT THEN
    a u CELL-MEMORY-TOK? IF EXIT THEN
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
-   0 FEP !
+   FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   FEP @ IF FEP @ EFF-APPLY ELSE
+   FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
-   TSEEN @ IF TFA @ E-PTR EFF-APPLY ELSE
-   CHECKER-QBAD-TOK @ IF -1 QUALBAD ! THEN
+   TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
+   CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
+
+\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
+\ Per checked definition the checker records, for every whole-bundle transport
+\ op and locals capture whose logical operands include a layout value, one row
+\ per layout operand: (body token index, operand position 0=top, family-id,
+\ logical width from the registry). An absent row means every operand is one
+\ cell, so today's one-cell lowering stands. Native+Gforth emitters consume the
+\ table keyed by token index BEFORE emitting the op; the width is the REGISTRY
+\ logical width (sum: slots+tag), which becomes the physical width when item
+\ 12's LAYOUT-PUSH-FIELDS expansion lands with the width-aware lowering slice —
+\ emitters must not lower from these facts before that slice. The table is
+\ per-CHECK scratch (reset in CHECK-RESET, valid until the next CHECK), like
+\ the FAILTK diagnostics.
+BEGIN-STRUCTURE WF-REC
+   CELL +FIELD WF.TOK
+   CELL +FIELD WF.POS
+   CELL +FIELD WF.FAM
+   CELL +FIELD WF.W
+END-STRUCTURE
+128 constant WF-CAP
+create WFS WF-CAP WF-REC * allot
+variable WF-N
+variable WF-CURROW   variable WF-POS-I
+
+: WF-ROW@ ( n -- ptr a ) {: i:n :}
+   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
+   i WF-REC * WFS + ;
+: WF-N@ ( -- n ) WF-N @ ;
+: WF-TOKIX@ ( n -- n ) WF-ROW@ WF.TOK @ ;
+: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
+: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
+: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
+
+: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}   \ append one fact at the current token
+   WF-N @ WF-CAP >= IF s" checker: width-fact table full" 76 die THEN
+   WF-N @ WF-REC * WFS + {: r:ptr :}
+   TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
+   WF-N @ 1 + WF-N ! ;
+
+: ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
+   R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   P>REST ;
+: ROW-DROP-N ( n n -- n ) {: w:n :}   \ ( row -- row ) below the top w cells
+   0 BEGIN dup w < WHILE
+      swap ROW-DROP-1 swap
+      1 +
+   REPEAT drop ;
+
+\ WF-POS-RECORD ( n -- n ) : one LOGICAL operand at a resolved S-PUSH node —
+\ record a width fact when it is a layout value (an expanded hidden group, whose
+\ width = group cell count = registry width, or a non-expanded possibly-linear
+\ logical cell) and return the row below the whole operand.
+: WF-POS-RECORD ( n -- n ) {: node:n :}
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? IF
+      t PARAM>FAM {: fam:n :}
+      WF-POS-I @  fam  fam TFAM-WIDTH@*  WF-ADD
+      node  fam TFAM-WIDTH@*  ROW-DROP-N EXIT
+   THEN
+   t LAYOUT-PARAM? IF WF-POS-I @  t PARAM>FAM  t T-WIDTH  WF-ADD THEN
+   node P>REST ;
+
+: WF-ROW-SCAN ( n n -- ) {: row:n k:n :}   \ record facts for the top-k logical positions of row
+   row WF-CURROW !  0 WF-POS-I !
+   BEGIN WF-POS-I @ k <  WF-CURROW @ R-RES TAG S-PUSH =  and WHILE
+      WF-CURROW @ R-RES WF-POS-RECORD WF-CURROW !
+      WF-POS-I @ 1 + WF-POS-I !
+   REPEAT ;
+
+\ operand count each transport op moves as logical values, and the row it reads
+\ (r>/r@/2r>/2r@ consume from the return row; everything else the data row).
+: WF-XPORT-K ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" rot"   CORE-STR= IF 3 EXIT THEN
+   a u s" -rot"  CORE-STR= IF 3 EXIT THEN
+   a u s" 2swap" CORE-STR= IF 4 EXIT THEN
+   a u s" 2over" CORE-STR= IF 4 EXIT THEN
+   a u s" swap"  CORE-STR= IF 2 EXIT THEN
+   a u s" over"  CORE-STR= IF 2 EXIT THEN
+   a u s" nip"   CORE-STR= IF 2 EXIT THEN
+   a u s" tuck"  CORE-STR= IF 2 EXIT THEN
+   a u s" 2dup"  CORE-STR= IF 2 EXIT THEN
+   a u s" 2drop" CORE-STR= IF 2 EXIT THEN
+   a u s" 2>r"   CORE-STR= IF 2 EXIT THEN
+   a u s" 2r>"   CORE-STR= IF 2 EXIT THEN
+   a u s" 2r@"   CORE-STR= IF 2 EXIT THEN
+   1 ;
+: WF-XPORT-RROW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" r>"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r@"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r>" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@" CORE-STR= IF RES-TRUE EXIT THEN
+   RES-FALSE ;
+: WF-XPORT-RECORD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  WF-ROW-SCAN ;
+
+\ --- item 12 slice 3b: emitter-facing width-fact queries. The engine's pass-2
+\ recompiler (habu2.f EM-COMPILE-P2WIDE) calls these through the dictionary
+\ right after the check hook certifies a definition; the facts are that
+\ definition's per-CHECK scratch, still live until the next CHECK.
+: WF-WIDE? ( -- n )                \ 1 if any recorded fact is wider than one cell
+   0 BEGIN dup WF-N @ < WHILE
+      dup WF-WIDTH@ 1 > IF drop 1 EXIT THEN
+      1 +
+   REPEAT drop 0 ;
+: WF-HIT? ( n n n -- bool ) {: i:n tok:n pos:n :}   \ row i records (tok,pos)?
+   i WF-TOKIX@ tok <> IF RES-FALSE EXIT THEN
+   i WF-POS@ pos = ;
+: WF-W-AT ( n n -- n ) {: tok:n pos:n :}   \ width of operand pos at body token tok (1 = scalar)
+   0 BEGIN dup WF-N @ < WHILE
+      dup tok pos WF-HIT? IF WF-WIDTH@ EXIT THEN
+      1 +
+   REPEAT drop 1 ;
+
+\ --- item 12 slice 3b: whole-bundle transport row surgery (docs §17) ----------
+\ With hidden-field expansion a layout value is W consecutive hidden cells (tag
+\ on top, slot0 deepest). A transport op whose top-k logical operands include
+\ such a group cannot use the var-based prim effect (a hidden field never binds
+\ a var), so the checker rebuilds the consumed row directly: read k logical
+\ GROUPS (a hidden tag opens an exactly-W run, validated slot W-1..0 same
+\ family — die 76 on a malformed run, an internal invariant; any other cell is
+\ a 1-cell group; a row var materializes a fresh 1-cell var group through the
+\ normal FRESH+UNIFY mechanism, exactly as the prim effect would — underflow
+\ against a short concrete row is the normal UNIFY reject), then write the op's
+\ output permutation with MK-PUSH from the group lists. Pure-scalar rows never
+\ reach this path: the prim/RS effects stay byte-for-byte. A non-expanded
+\ logical layout cell (possibly-linear, docs §19 / TFAM 11) rejects here
+\ exactly as the one-cell transport guard rejects it (TDLIN-* unchanged).
+64 constant XG-GCAP            \ max logical groups per op (= LOC-CAP for locals capture)
+256 constant XG-TCAP           \ max total cells across one op's groups
+create XG-TERMS XG-TCAP cells allot
+create XG-START XG-GCAP cells allot
+create XG-LEN XG-GCAP cells allot
+variable XG-N   variable XG-TN   variable XG-ROW
+
+: XG-T+ ( n -- )               \ append one cell term to the group scratch
+   XG-TN @ XG-TCAP >= IF s" checker: transport group scratch full" 76 die THEN
+   XG-TN @ cells XG-TERMS + !
+   XG-TN @ 1 + XG-TN ! ;
+
+: XG-TERM0@ ( n -- n ) {: gi:n :}   \ first (top) cell term of group gi
+   XG-START gi cells + @ cells XG-TERMS + @ ;
+
+: XG-CELL-HID@ ( n n -- ) {: fam:n slot:n :}   \ consume one hidden fam/slot cell off XG-ROW
+   XG-ROW @ R-RES {: node:n :}
+   node TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF s" checker: hidden group cell not hidden" 76 die THEN
+   t PARAM>FAM fam <> IF s" checker: hidden group family mismatch" 76 die THEN
+   t HIDDEN-SLOT@ slot <> IF s" checker: hidden group slot mismatch" 76 die THEN
+   t XG-T+
+   node P>REST XG-ROW ! ;
+
+: XG-READ-HID ( n -- ) {: t:n :}   \ read the whole W-cell group whose resolved tag is t
+   t PARAM>FAM {: fam:n :}
+   fam TFAM-WIDTH@* {: w:n :}
+   t HIDDEN-SLOT@ w 1 - <> IF s" checker: hidden tag not on group top" 76 die THEN
+   w 1 - BEGIN dup 0 >= WHILE
+      fam over XG-CELL-HID@
+      1 -
+   REPEAT drop ;
+
+: XG-READ-VAR ( -- bool )      \ materialize one 1-cell var group out of the row var
+   FRESH MK-VAR {: tv:n :}
+   FRESH MK-ROW {: rest:n :}
+   XG-ROW @  tv rest MK-PUSH  UNIFY 0= IF 0 OK ! RES-FALSE EXIT THEN
+   tv XG-T+
+   rest XG-ROW !
+   RES-TRUE ;
+
+: XG-READ-GROUP ( -- bool )    \ one logical group at XG-ROW; false = rejected
+   XG-ROW @ R-RES {: node:n :}
+   node TAG S-ROW = IF XG-READ-VAR EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? IF
+      t LAYOUT-LINEAR? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ linear bundles do not transport (v1: construct/flow only, exact accounting)
+      t XG-READ-HID RES-TRUE EXIT THEN
+   t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ open-arg layout never transports
+   node P>TYPE XG-T+
+   node P>REST XG-ROW !
+   RES-TRUE ;
+
+: XG-GROUP-DONE ( -- )
+   XG-TN @  XG-START XG-N @ cells + @  -  XG-LEN XG-N @ cells + !
+   XG-N @ 1 + XG-N ! ;
+
+: XG-READ ( n n -- bool ) {: row:n k:n :}   \ k logical groups off row; XG-ROW = rest
+   k XG-GCAP > IF s" checker: transport group cap" 76 die THEN
+   row XG-ROW !  0 XG-N !  0 XG-TN !
+   0 BEGIN dup k < WHILE
+      XG-TN @ XG-START XG-N @ cells + !
+      XG-READ-GROUP 0= IF drop RES-FALSE EXIT THEN
+      XG-GROUP-DONE
+      1 +
+   REPEAT drop RES-TRUE ;
+
+: XG-PUSH-GROUP ( n n -- n ) {: gi:n :}   \ ( row -- row ) push group gi, deepest cell first
+   XG-START gi cells + @ {: st:n :}
+   XG-LEN gi cells + @ {: len:n :}
+   st len + 1 - BEGIN dup st >= WHILE
+      dup cells XG-TERMS + @
+      rot MK-PUSH swap
+      1 -
+   REPEAT drop ;
+
+: XG-REPLAY ( n ptr u8 n -- n ) {: a:ptr u:n :}   \ ( row -- row ) push groups per index digit
+   0 BEGIN dup u < WHILE
+      dup a + c@ 48 -
+      rot swap XG-PUSH-GROUP swap
+      1 +
+   REPEAT drop ;
+
+: XG-GROUP-VAR? ( n -- bool ) {: gi:n :}   \ group gi is one still-unbound var cell?
+   XG-LEN gi cells + @ 1 <> IF RES-FALSE EXIT THEN
+   gi XG-TERM0@ T-RES ISVAR ;
+
+: XG-SEQ-COUNT ( n ptr u8 n -- n ) {: gi:n a:ptr u:n :}   \ occurrences of gi in the digit seq
+   0
+   0 BEGIN dup u < WHILE
+      dup a + c@ 48 - gi = IF swap 1 + swap THEN
+      1 +
+   REPEAT drop ;
+
+\ a var-typed scalar group copied or dropped by the permutation is a potential
+\ linear launder: taint it, exactly as LIN-EFF-PASS taints a prim-effect var
+\ with unequal in/out multiplicity. Hidden groups carry no linears (linear
+\ layouts never expand) and a concrete linear con hits LIN-CHECK conservation.
+: XG-TAINT-SEQ ( ptr u8 n -- ) {: a:ptr u:n :}
+   LIN-ANY? 0= IF EXIT THEN
+   0 BEGIN dup XG-N @ < WHILE
+      dup XG-GROUP-VAR? IF
+         dup a u XG-SEQ-COUNT 1 <> IF
+            dup XG-TERM0@ T-RES PAY LIN-TAINT
+         THEN
+      THEN
+      1 +
+   REPEAT drop ;
+
+\ output permutation of each data transport as group-index digits, bottom->top
+\ (group 0 = pre-op top-of-stack operand).
+: XP-DATA-SEQ$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u s" dup"   CORE-STR= IF s" 00" EXIT THEN
+   a u s" drop"  CORE-STR= IF s" " EXIT THEN
+   a u s" swap"  CORE-STR= IF s" 01" EXIT THEN
+   a u s" over"  CORE-STR= IF s" 101" EXIT THEN
+   a u s" nip"   CORE-STR= IF s" 0" EXIT THEN
+   a u s" tuck"  CORE-STR= IF s" 010" EXIT THEN
+   a u s" rot"   CORE-STR= IF s" 102" EXIT THEN
+   a u s" -rot"  CORE-STR= IF s" 021" EXIT THEN
+   a u s" 2dup"  CORE-STR= IF s" 1010" EXIT THEN
+   a u s" 2drop" CORE-STR= IF s" " EXIT THEN
+   a u s" 2swap" CORE-STR= IF s" 1032" EXIT THEN
+   a u s" 2over" CORE-STR= IF s" 321032" EXIT THEN
+   s" checker: transport seq for non-transport" 76 die ;
+
+: XP-RS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ return-stack transfer op?
+   a u WF-XPORT-RROW? IF RES-TRUE EXIT THEN
+   a u s" >r" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2>r" CORE-STR= ;
+
+: XP-RS-KEEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ r@/2r@ re-push the groups on the return row
+   a u s" r@" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@" CORE-STR= ;
+
+: XP-RS-SEQ$ ( ptr u8 n -- ptr u8 n )   \ rs transfer order (bottom->top; RS2->R parity)
+   WF-XPORT-K 1 = IF s" 0" ELSE s" 10" THEN ;
+
+: XPORT-RS-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u WF-XPORT-RROW? IF                          \ r> r@ 2r> 2r@ : consumed from RCUR
+      a u XP-RS-KEEP? IF
+         XG-ROW @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+      ELSE
+         XG-ROW @ RCUR !
+      THEN
+      DCUR @ a u XP-RS-SEQ$ XG-REPLAY DCUR !
+   ELSE                                           \ >r 2>r : consumed from DCUR
+      XG-ROW @ DCUR !
+      RCUR @ a u XP-RS-SEQ$ XG-REPLAY RCUR !
+   THEN ;
+
+: XPORT-APPLY ( ptr u8 n -- ) {: a:ptr u:n :}
+   LIN-SNAPSHOT
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  XG-READ 0= IF EXIT THEN
+   a u XP-RS? IF
+      a u XPORT-RS-APPLY
+   ELSE
+      XG-ROW @ a u XP-DATA-SEQ$ XG-REPLAY DCUR !
+      a u XP-DATA-SEQ$ XG-TAINT-SEQ
+   THEN
+   OK @ IF LIN-CHECK THEN ;
+
+\ any hidden cell within the top-k CELLS implies a hidden-group operand within
+\ the top-k logical operands (a group's cells start at or above its position).
+: XP-BUNDLE-IN-K? ( n n -- bool ) {: row0:n k:n :}
+   row0
+   0 BEGIN dup k < WHILE
+      over R-RES TAG S-PUSH <> IF 2drop RES-FALSE EXIT THEN
+      over R-RES P>TYPE T-RES HIDDEN-PARAM? IF 2drop RES-TRUE EXIT THEN
+      swap R-RES P>REST swap
+      1 +
+   REPEAT 2drop RES-FALSE ;
+
+: XPORT-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN
+   a u WF-XPORT-RROW? IF RCUR ELSE DCUR THEN @
+   a u WF-XPORT-K  XP-BUNDLE-IN-K? 0= IF RES-FALSE EXIT THEN
+   a u XPORT-APPLY
+   RES-TRUE ;
+
+: ROW-ANY-HIDDEN? ( n -- bool )    \ any hidden cell above the row's tail var?
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE T-RES HIDDEN-PARAM? IF drop RES-TRUE EXIT THEN
+      P>REST
+   REPEAT drop RES-FALSE ;
+
+\ depth/.s report raw physical cells: over a row holding hidden fields they
+\ would expose the physical expansion of a logical value, so they fail closed
+\ PERMANENTLY (TFAM 12 item-5 verdict 2026-07-09; docs §17 sanctions reject
+\ over logical-shape reporting). The lift — logical-shape introspection that
+\ counts whole bundles — is capability dot habu-logical-shape-depth-9686f5c1.
+: HIDROW-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" depth" CORE-STR=  a u s" .s" CORE-STR= or 0= IF RES-FALSE EXIT THEN
+   DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
+   0 OK !  -1 FAILSET !
+   RES-TRUE ;
 
 \ --- locals: {: a b :} pops and binds names to type vars; a reference pushes
 \ its binding. Groups accumulate (a later group binds only its own names).
-: CCOPY {: a d u :}  0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop ;
+: CCOPY ( ptr u8 ptr u8 n -- ) {: a:ptr d:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@
+      over d + c!
+      1 +
+   REPEAT drop ;
 64 constant LOC-CAP            \ max locals per definition (matches compiler frame)
 16 constant LOC-NAME-W         \ max local-name bytes (matches compiler LOCN-CELL)
 create LOCNB LOC-CAP LOC-NAME-W * allot   create LOCLN LOC-CAP cells allot   create LOCTV LOC-CAP cells allot
 create LOCSHOW LOC-CAP cells allot
+\ LOCW: logical width of each local's binding. 1 = scalar (LOCTV holds the type
+\ var, exactly as before). >1 = a whole hidden-field bundle (item 12 slice 3b):
+\ LOCTV holds the group's TAG term and a reference re-expands slot0..tag from it
+\ via MK-HIDDEN (LOC-PUSH-REF). Linear layouts never expand, so no linear bundle
+\ can reach a local; the bind-time linear check is unchanged.
+create LOCW LOC-CAP cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
+\ Emitter-facing width queries (item 12 slice 3b + habu-tfam-12-pass): LOCW is
+\ live-indexed and branch-scoped locals are popped at their join (CF-LOC-REST)
+\ with their slots rebound by sibling arms, so the pass-2 recompiler must not
+\ read LOCW by live index after the verdict. LOCW-HW records every bind
+\ occurrence's FINAL width keyed by a monotone bind sequence that is never
+\ popped; LOCSEQIX maps a live index to its bind seq while the local is live
+\ (written at LOC-ADD, read at the group's :} bind).
+LOC-CAP 4 * constant LOC-HW-CAP    \ bind occurrences per definition, branch arms included
+create LOCW-HW LOC-HW-CAP cells allot
+create LOCSEQIX LOC-CAP cells allot
+variable LOCSEQ
+: LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
+   s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
+   s cells LOCW-HW + @ ;
+\ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE /
+\ EM-P2-LOCREF) replays the certified body's {: groups in bind order — each
+\ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
+\ under its ENGINE live frame index, so a frame slot reused by a sibling branch
+\ reads its own width; checker #LOC joins never skew the frame math.
+create P2LW LOC-CAP cells allot
+variable P2SEQ
+: P2LW-IX-GUARD ( n -- )           \ die 76 outside the engine locals frame
+   dup 0 <  over LOC-CAP >=  or IF s" checker: bad pass-2 local index" 76 die THEN
+   drop ;
+: P2-LOCSEQ-RESET ( -- )           \ engine EM-P2-TRIGGER: the pass-2 re-run starts at bind seq 0
+   0 P2SEQ ! ;
+: P2-CARVE-W ( n -- n ) {: i:n :}  \ next bind's width, recorded as live local i's width
+   i P2LW-IX-GUARD
+   P2SEQ @ LOCW-HW@ {: w:n :}
+   P2SEQ @ 1 + P2SEQ !
+   w i cells P2LW + !
+   w ;
+: P2-LIVE-W@ ( n -- n ) {: i:n :}  \ live local i's width (recorded at its carve)
+   i P2LW-IX-GUARD
+   i cells P2LW + @ ;
+: P2-LIVE-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through live local i
+   i P2LW-IX-GUARD
+   0
+   0 BEGIN dup i <= WHILE
+      dup cells P2LW + @  rot +  swap
+      1 +
+   REPEAT drop ;
 variable LOCSHOWXT  0 LOCSHOWXT !
 variable #CFC
 variable QDEPTH
 
 variable LCO
 
-: LCOLON {: a u :}   \ ( a u -- ) LCO = index of the first ':' in a/u, or u
+: LCOLON ( ptr u8 n -- ) {: a:ptr u:n :}   \ LCO = index of the first ':' in a/u, or u
    u LCO !
    0 BEGIN  dup u <  LCO @ u =  and WHILE
      dup a + c@ 58 = IF dup LCO ! THEN
@@ -4120,7 +5243,7 @@ variable LCO
 \ the local's type var with the asserted type — a wrong use then rejects.
 : LOC-SHOW-SUFFIX? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = if a c@ 63 = exit then
-   0 ;
+   RES-FALSE ;
 
 : LOC-SUFFIX$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a LCO @ + 1 +  u LCO @ - 1 - ;
@@ -4158,25 +5281,94 @@ variable LCO
 \ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic.
 : LOC-ADD {: a u :}
    a u LCOLON
-   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or IF
+   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or  LOCSEQ @ LOC-HW-CAP 1 - >  or IF
      0 OK !  -1 FAILSET !  -1 LOCALBAD !
    ELSE
      #LOC @ LOC-SHOW-OFF!
      a  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
+     1 #LOC @ cells LOCW + !
+     LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
+     1 LOCSEQ @ cells LOCW-HW + !
+     LOCSEQ @ 1 + LOCSEQ !
      LCO @ u < IF
       a u #LOC @ LOC-ANN
      THEN
      #LOC @ 1 + #LOC ! THEN ;
+
+\ Linear values may not launder through locals. A local reference re-pushes its
+\ binding without a LIN-SNAPSHOT/LIN-CHECK-covered step, so the concrete-count
+\ conservation discipline never sees the copy (two references duplicate) or the
+\ drop (an unreferenced local leaks). Binding a linear con into a local — where
+\ the value CONCRETELY resolves linear at bind time — is therefore rejected
+\ outright with a dedicated E-LINEAR-LOCAL diagnostic (keep the linear on the
+\ stack and factor). Path-sensitive per-reference accounting (consume-exactly-
+\ once across every branch) is a separate capability tracked by dot.
+: LIN-LOCAL-REJECT ( -- )  0 OK !  -1 FAILSET !  -1 LINLOCBAD ! ;
+
+: LIN-LOCAL-BIND-CHECK ( -- )       \ reject if any just-bound local resolves linear
+   LIN-ANY? 0= IF exit THEN
+   LGRP @ BEGIN dup #LOC @ < WHILE
+     dup cells LOCTV + @ LIN-CON? IF LIN-LOCAL-REJECT THEN
+     1 + REPEAT drop ;
+
+\ A local bound to a still-polymorphic var that only LATER resolves to a linear
+\ con (deferred laundering, e.g. `( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN`)
+\ escapes the bind-time check. Taint each such reference's var like a stack copy;
+\ LIN-TAINT-SCAN then rejects it once the var binds linear.
+: LIN-LOCAL-REF-TAINT ( n -- )
+   LIN-ANY? 0= IF drop exit THEN
+   T-RES dup TAG T-VAR = IF PAY LIN-TAINT ELSE drop THEN ;
+
+\ Bundle-aware bind (item 12 slice 3b): when any captured operand is an expanded
+\ hidden-field group, the generic var-row CHECKER-STEP cannot bind it (a hidden
+\ field never binds a var). Read the k logical groups directly: a scalar group
+\ unifies with its local's type var exactly as the step would; a hidden group
+\ stores its TAG term in LOCTV and its cell count in LOCW (an annotated local
+\ cannot hold a bundle — reject). Group i (0 = stack top) binds local #LOC-1-i.
+: LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
+   idx cells LOCTV + @ T-RES ISVAR 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   gi XG-TERM0@ T-RES idx cells LOCTV + !
+   XG-LEN gi cells + @ idx cells LOCW + !
+   XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOCW-HW + ! ;   \ final width at the bind seq
+
+: LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
+   idx cells LOCTV + @  gi XG-TERM0@  UNIFY OK @ and OK ! ;
+
+: LOC-GROUP-BIND ( n -- ) {: gi:n :}
+   #LOC @ 1 - gi - {: idx:n :}
+   gi XG-TERM0@ T-RES HIDDEN-PARAM? IF
+      gi idx LOC-BUNDLE-BIND
+   ELSE
+      gi idx LOC-SCALAR-BIND
+   THEN ;
+
+: LOC-BIND-GROUPS ( -- )
+   LIN-SNAPSHOT
+   DCUR @  #LOC @ LGRP @ -  XG-READ 0= IF EXIT THEN
+   0 BEGIN dup #LOC @ LGRP @ - < WHILE
+      dup LOC-GROUP-BIND
+      1 +
+   REPEAT drop
+   XG-ROW @ DCUR !
+   OK @ IF LIN-CHECK THEN ;
 
 : LOC-BIND
    FRESH dup LROW !  MK-ROW LCH !
    LGRP @ BEGIN dup #LOC @ < WHILE
      dup cells LOCTV + @  LCH @ MK-PUSH LCH !
      1 + REPEAT drop
-   LCH @  LROW @ MK-ROW  CHECKER-STEP
-   LOC-SHOW-GROUP ;
+   DCUR @  #LOC @ LGRP @ -  WF-ROW-SCAN   \ width facts at the :} token
+   DCUR @  #LOC @ LGRP @ -  XP-BUNDLE-IN-K? IF
+      LOC-BIND-GROUPS                  \ a captured operand is a hidden-field bundle
+   ELSE
+      1 LAYOUT-XPORT !                 \ capturing a local moves the value as one bundle
+      LCH @  LROW @ MK-ROW  CHECKER-STEP
+      0 LAYOUT-XPORT !
+   THEN
+   LOC-SHOW-GROUP
+   LIN-LOCAL-BIND-CHECK ;
 
 : LOC-TOK {: a u :}
    a u s" :}" CORE-STR= IF 0 LMODE ! LOC-BIND ELSE
@@ -4190,6 +5382,24 @@ variable LCO
    QDEPTH @ 0 >  DEADP @ or IF LOC-REJECT ELSE
    1 LMODE !  #LOC @ LGRP ! THEN ;
 
+\ LOC-PUSH-REF ( n -- ) : push local idx's binding. A bundle local (LOCW > 1)
+\ re-expands its whole group — slot0 deepest up to the stored tag term on top
+\ (docs §5); a scalar local pushes its var/term with the deferred-linear taint.
+: LOC-PUSH-REF ( n -- ) {: idx:n :}
+   idx cells LOCW + @ {: w:n :}
+   idx cells LOCTV + @ {: t:n :}
+   w 1 > IF
+      DCUR @
+      0 BEGIN dup w 1 - < WHILE
+         dup t swap MK-HIDDEN rot MK-PUSH swap
+         1 +
+      REPEAT drop
+      t swap MK-PUSH DCUR !
+   ELSE
+      t dup LIN-LOCAL-REF-TAINT  DCUR @ MK-PUSH DCUR !
+   THEN ;
+
+\ typed-local-lint: allow-bare-local - a/u preserve the token's ptr u8 role.
 : LOC-REF? {: a u :}
    0 LRF !  #LOC @ LI !
    BEGIN LI @ 0 >  LRF @ 0=  and WHILE
@@ -4198,7 +5408,7 @@ variable LCO
        QDEPTH @ 0 > IF
           LOC-REJECT
        ELSE
-          LI @ cells LOCTV + @  DCUR @ MK-PUSH DCUR !
+          LI @ LOC-PUSH-REF
        THEN
        -1 LRF ! THEN
    REPEAT  LRF @ ;
@@ -4206,6 +5416,7 @@ variable LCO
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
 \ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
+\        7 case  8 case-of  9 match  10 match-branch (item 9; MF side arena)
 \ exit-accumulator save fields: a [: ;] quotation is a nested scope, so its
 \ early returns must NOT leak into the enclosing word's accumulator.
 BEGIN-STRUCTURE CFS-REC
@@ -4244,15 +5455,24 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 : CF@DED ( -- n )
    CF-TOP CF.DED @ ;
 
+: CF@DED? ( -- bool )
+   CF@DED 0 <> ;
+
+: DEADP? ( -- bool )
+   DEADP @ 0 <> ;
+
+: XSET? ( -- bool )
+   XSET @ 0 <> ;
+
 : CF-BELOW-CASE? ( -- bool )
-   #CFC @ 2 < IF 0 EXIT THEN
+   #CFC @ 2 < IF RES-FALSE EXIT THEN
    #CFC @ 2 - CF-ROW CF.KND @ 7 = ;
 
 : CF-CASE-IDX ( -- n )
    #CFC @ 2 - ;
 
 : CF-CASE-HAS? ( n -- bool ) {: idx:n :}
-   idx CF-ROW CF.DED @ ;
+   idx CF-ROW CF.DED @ 0 <> ;
 
 : CF-CASE-HAS! ( n -- ) {: idx:n :}
    -1 idx CF-ROW CF.DED ! ;
@@ -4332,6 +5552,20 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SYM
 
+: RECEFF-ON? ( -- bool )
+   RECEFF-ON @ 0 <> ;
+
+: VSIG-ON? ( -- bool )
+   VSIG @ 0 <> ;
+
+: SGSEEN? ( -- bool )
+   SGSEEN @ 0 <> ;
+
+: RECURSE-CACHE? ( -- bool )
+   VSIG-ON? 0= IF RES-FALSE EXIT THEN
+   SGSEEN? 0= IF RES-FALSE EXIT THEN
+   RECEFF-ON? ;
+
 \ SIG-EFF-CACHE! ( -- ) : cache the parsed declared sig as an arena effect record
 \ so recurse sites instantiate it via E-INST instead of re-parsing the sig text.
 \ The record carries sym 0 so signature lookup never sees it.
@@ -4346,7 +5580,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
 
 \ SIG-EFF-DROP ( -- ) : truncate the recurse cache record once the body scan is done.
 : SIG-EFF-DROP
-   RECEFF-ON @ 0= IF EXIT THEN
+   RECEFF-ON? 0= IF EXIT THEN
    RECEFF-UEND @ USIGS-RESTORE-END
    0 RECEFF-ON ! ;
 
@@ -4355,13 +5589,13 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    h ER.HASR @ RHAS !
    h ER.DIN @ E-INST RDIN !
    h ER.DOUT @ E-INST RDOUT !
-   RHAS @ IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
+   RHAS @ 0 <> IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
    RDIN @ SUNI-IN  RDOUT @ DCUR !
-   RHAS @ IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
+   RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
    h LIN-EFF-PASS ;
 
 : CF-RECURSE
-   VSIG @ SGSEEN @ and RECEFF-ON @ and IF RECEFF @ E-PTR CF-RECURSE-EFF
+   RECURSE-CACHE? IF RECEFF @ E-PTR CF-RECURSE-EFF
    ELSE -1 UNCK ! THEN ;
 
 : CF-IF  STEP-BOOL-IN  1 DCUR @ 0 RCUR @ 0 CF-PUSH ;   \ IF consumes a flag, not any value
@@ -4405,7 +5639,7 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    CF-MT? IF CF-FAIL ELSE CF@K 7 <> IF CF-FAIL ELSE
       DEADP @ 0= IF STEP-N-IN THEN
       #CFC @ 1 - CF-CASE-ACCUM
-      CF@DED IF
+      CF@DED 0 <> IF
          CF@B DCUR !  CF@RB RCUR !  0 DEADP !
       ELSE
          -1 DEADP !
@@ -4425,17 +5659,30 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
      CF-LOC-REST
    THEN THEN ;
 
+: CF-THEN-ELSE-MERGE ( -- )
+   DEADP? {: else-dead:bool :}
+   CF@DED? {: if-dead:bool :}
+   else-dead IF
+      if-dead IF
+         -1 DEADP !
+      ELSE
+         CF@B DCUR !  CF@RB RCUR !  0 DEADP !
+      THEN
+   ELSE
+      if-dead IF
+         0 DEADP !
+      ELSE
+         CF@B SUNI  CF@RB RSUNI  0 DEADP !
+      THEN
+   THEN ;
+
 : CF-THEN
    CF-MT? IF CF-FAIL ELSE
      CF@K 1 = IF                                          \ IF ... THEN (no else)
-        DEADP @ IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
+        DEADP? IF CF@A DCUR !  CF@RA RCUR !  0 DEADP !   \ if-branch exited: take fall-through
         ELSE CF@A SUNI  CF@RA RSUNI THEN  CF-LOC-REST  CF-DROP
      ELSE CF@K 2 = IF                                     \ IF ... ELSE ... THEN
-        DEADP @  CF@DED                                   \ ( else-dead if-dead )
-        2dup and IF 2drop -1 DEADP !                      \ both exited -> path stays dead
-        ELSE over IF 2drop CF@B DCUR ! CF@RB RCUR ! 0 DEADP !  \ else exited -> take if-branch
-        ELSE nip IF 0 DEADP !                             \ if exited -> keep else (in DCUR)
-        ELSE CF@B SUNI CF@RB RSUNI 0 DEADP ! THEN THEN THEN
+        CF-THEN-ELSE-MERGE
         CF-LOC-REST  CF-DROP
      ELSE CF-FAIL THEN THEN THEN ;
 
@@ -4558,6 +5805,282 @@ variable QTMP
      CF-LOC-REST
      CF-DROP THEN THEN ;
 
+\ --- MATCH eliminator (item 9 slice 3, docs/type-families.md §13-14). `MATCH
+\ family  variant OF ... ENDOF ...  ;MATCH` is a checker control form: the
+\ family and variant tokens are captured in DO-TOK1 before locals/control/word
+\ dispatch (the construct discipline), OF/ENDOF are shared with CASE and
+\ distinguished by the enclosing CFS frame kind (9 = match, 10 = match
+\ branch; CASE stays 7/8). MATCH pops the scrutinee's hidden-field bundle
+\ (slot0..tag, verified cell by cell against the resolved family), recovers
+\ the family type args from the tag term, and each branch checks with
+\ DCUR = base + that variant's instantiated payload. Branch outputs unify at
+\ ENDOF; ;MATCH enforces exhaustiveness over the declaration-order tag bitset
+\ (v1 has no default branch) and installs the joined rows. Frames live in a
+\ growable side arena (MF) with a growable seen-bitset pool (MSEEN) — never a
+\ silent-uncheckable path: every structural failure latches MREJ, which
+\ CHECK-VERDICT ranks as a hard reject above UNCK, and the CFS headroom check
+\ (two frames per match) rejects instead of tripping CF-PUSH's UNCK overflow.
+\ v1 scrutinee rule: only a width-expanded bundle matches; an open-arg
+\ parametric value (one conservative logical cell, possibly linear) rejects
+\ until whole-bundle MATCH consumption lands with the TFAM 11 tail.
+BEGIN-STRUCTURE MF-REC
+   CELL +FIELD MF.FAM
+   CELL +FIELD MF.TERM
+   CELL +FIELD MF.BASE
+   CELL +FIELD MF.RBASE
+   CELL +FIELD MF.OUT
+   CELL +FIELD MF.ROUT
+   CELL +FIELD MF.HAS
+   CELL +FIELD MF.SEEN
+   CELL +FIELD MF.VCNT
+   CELL +FIELD MF.TIX
+END-STRUCTURE
+
+8 constant MF-CAP-INIT
+variable MF-CAP-V   MF-CAP-INIT MF-CAP-V !
+create MF-A-BOOT   MF-CAP-INIT MF-REC * allot
+variable MF-A-P    MF-A-BOOT MF-A-P !
+: MF-ARENA ( -- ptr a ) MF-A-P @ ;
+variable MF-DEPTH   0 MF-DEPTH !
+
+: MF-GROW ( -- )
+   MF-CAP-V @ 2 * {: nc:n :}
+   MF-A-P  MF-CAP-V @ MF-REC *  nc MF-REC *  REG-GROW1
+   nc MF-CAP-V ! ;
+
+: MF-ENSURE ( -- )
+   MF-DEPTH @ MF-CAP-V @ < IF exit THEN
+   MF-GROW ;
+
+: MF-CUR ( -- ptr a )
+   MF-DEPTH @ 1 - MF-REC * MF-ARENA + ;
+
+8 constant MSEEN-CAP-INIT
+variable MSEEN-CAP-V   MSEEN-CAP-INIT MSEEN-CAP-V !
+create MSEEN-BOOT   MSEEN-CAP-INIT cells allot
+variable MSEEN-P   MSEEN-BOOT MSEEN-P !
+: MSEEN-POOL ( -- ptr a ) MSEEN-P @ ;
+variable MSEEN-N   0 MSEEN-N !
+variable MSEEN-I
+
+: MSEEN-GROW ( n -- ) {: need:n :}
+   need MSEEN-CAP-V @ 2 * max {: nc:n :}
+   MSEEN-P  MSEEN-CAP-V @ cells  nc cells  REG-GROW1
+   nc MSEEN-CAP-V ! ;
+
+: MSEEN-ENSURE ( n -- ) {: add:n :}
+   MSEEN-N @ add + MSEEN-CAP-V @ <= IF exit THEN
+   MSEEN-N @ add + MSEEN-GROW ;
+
+: MSEEN-ALLOC ( n -- n ) {: count:n :}   \ zeroed bitset cells for count variants -> offset
+   count 63 + 64 / {: k:n :}
+   k MSEEN-ENSURE
+   MSEEN-N @ {: off:n :}
+   0 MSEEN-I !
+   BEGIN MSEEN-I @ k < WHILE
+      0  MSEEN-POOL off MSEEN-I @ + cells + !
+      MSEEN-I @ 1 + MSEEN-I !
+   REPEAT
+   MSEEN-N @ k + MSEEN-N !
+   off ;
+
+: MSEEN-CELL ( n n -- ptr a ) {: off:n tag:n :}
+   MSEEN-POOL  off tag 64 / + cells  + ;
+
+: MSEEN-BIT ( n -- n )
+   63 and 1 swap lshift ;
+
+: MSEEN-GET ( n n -- bool ) {: off:n tag:n :}
+   off tag MSEEN-CELL @  tag MSEEN-BIT  and 0 <> ;
+
+: MSEEN-SET ( n n -- ) {: off:n tag:n :}
+   off tag MSEEN-CELL dup @  tag MSEEN-BIT or  swap ! ;
+
+: MSEEN-FULL? ( n n -- bool ) {: off:n count:n :}
+   0 MSEEN-I !
+   BEGIN MSEEN-I @ count < WHILE
+      off MSEEN-I @ MSEEN-GET 0= IF RES-FALSE EXIT THEN
+      MSEEN-I @ 1 + MSEEN-I !
+   REPEAT RES-TRUE ;
+
+variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of
+variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
+variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
+
+\ --- item 9 slice 4: match/construct reject reasons (docs §24). Failure sites
+\ latch a reason code alongside the token pin; render.f maps it to a stable
+\ E-MATCH-*/E-CONSTRUCT-* code, repair class, suggestion, and prose. First
+\ reason wins and only while the token pin is still open (FAILSET clear), so
+\ the reason always describes the pinned token. The nonexhaustive reason also
+\ latches (family, seen-bitset offset, variant count) so the renderer can walk
+\ the unseen declaration-order tags to variant NAMES.
+1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
+2 constant MD-FAM-KIND        \ match family is not a sum or enum
+3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
+4 constant MD-FAM-MISMATCH    \ top bundle belongs to a different family
+5 constant MD-VAR-UNKNOWN     \ variant not declared by the matched family
+6 constant MD-VAR-DUP         \ duplicate variant branch
+7 constant MD-MISSING-OF      \ variant token not followed by OF
+8 constant MD-NONEXH          \ ;MATCH with unseen variants (no default branch in v1)
+9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
+10 constant MD-TRUNC          \ unterminated match form at definition end
+11 constant MD-DEPTH          \ match cannot reserve its two control frames
+12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
+13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (v1 conservative cell)
+14 constant MD-JOIN           \ branch outputs do not unify
+15 constant MD-CON-FAM        \ construct family not declared in the active package
+16 constant MD-CON-KIND       \ construct family is not a sum or enum
+17 constant MD-CON-VAR        \ construct variant not declared by the family
+18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
+
+variable MDIAG        \ latched reason code (0 = none; reset per definition)
+variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
+variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
+variable MDIAG-VCNT   \ nonexhaustive: variant count
+
+: MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
+   MDIAG @ 0 <> IF EXIT THEN
+   FAILSET @ 0 <> IF EXIT THEN
+   code MDIAG ! ;
+
+: MATCH-REJECT ( -- )
+   0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
+
+: MATCH-BEGIN ( -- )
+   MATCH-FAM-XT @ 0= IF 0 OK ! EXIT THEN   \ stage engines without the registry fail closed
+   1 MM ! ;
+
+variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
+
+: MATCH-SCRUT-CELL? ( n n n -- bool ) {: fam:n w:n j:n :}   \ one bundle level, top-down
+   MTCH-ROW @ R-RES TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   MTCH-ROW @ R-RES P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@  w 1 - j -  <> IF RES-FALSE EXIT THEN
+   j 0 = IF t MTCH-TAGT ! THEN
+   MTCH-ROW @ R-RES P>REST MTCH-ROW !
+   RES-TRUE ;
+
+: MATCH-SCRUT? ( n -- bool ) {: fam:n :}   \ verify + walk off the W-cell bundle
+   fam TFAM-WIDTH@* {: w:n :}
+   DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !
+   BEGIN MTCH-I @ w < WHILE
+      fam w MTCH-I @ MATCH-SCRUT-CELL? 0= IF RES-FALSE EXIT THEN
+      MTCH-I @ 1 + MTCH-I !
+   REPEAT RES-TRUE ;
+
+: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}   \ classify a failed scrutinee for §24
+   QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
+   DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
+   DCUR @ R-RES P>TYPE T-RES {: t:n :}
+   t LAYOUT-PARAM? 0= IF MD-SCRUT MDIAG! EXIT THEN
+   t PARAM>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
+   t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
+   MD-SCRUT MDIAG! ;
+
+: MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u MATCH-FAM-XT @ execute 0= IF drop MATCH-REJECT EXIT THEN
+   {: fam:n :}
+   #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
+   fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
+   MF-ENSURE
+   MF-DEPTH @ 1 + MF-DEPTH !
+   MF-CUR {: r:ptr :}
+   fam r MF.FAM !
+   MTCH-TAGT @ r MF.TERM !
+   MTCH-ROW @ r MF.BASE !
+   RCUR @ r MF.RBASE !
+   0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
+   fam MATCH-VCOUNT-XT @ execute dup r MF.VCNT !
+   MSEEN-ALLOC r MF.SEEN !
+   TOKIX @ r MF.TIX !
+   MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
+   9 DCUR @ 0 RCUR @ 0 CF-PUSH
+   2 MM ! ;
+
+: MATCH-ACCUM ( -- )
+   OK @ 0= IF EXIT THEN
+   DEADP @ IF EXIT THEN
+   MF-CUR MF.HAS @ IF
+      FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
+      MF-CUR MF.OUT @ SUNI                    \ join reason only when THIS unify failed
+      MF-CUR MF.ROUT @ RSUNI
+      OK @ 0=  fs0 0=  and  MDIAG @ 0=  and IF MD-JOIN MDIAG ! THEN
+   ELSE
+      DCUR @ MF-CUR MF.OUT !
+      RCUR @ MF-CUR MF.ROUT !
+      -1 MF-CUR MF.HAS !
+   THEN ;
+
+: MATCH-ENDOF ( -- )   \ dispatcher-guarded: top CFS frame is the kind-10 branch
+   MATCH-ACCUM
+   CF-LOC-REST
+   CF-DROP
+   0 DEADP !
+   MF-CUR MF.BASE @ DCUR !
+   MF-CUR MF.RBASE @ RCUR !
+   2 MM ! ;
+
+: MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
+   CF-MT? IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
+   CF@K 9 <> IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
+   MF-CUR MF.SEEN @ MF-CUR MF.VCNT @ MSEEN-FULL? 0= IF
+      MDIAG @ 0=  FAILSET @ 0=  and IF          \ latch the name-walk data with the reason
+         MD-NONEXH MDIAG !
+         MF-CUR MF.FAM @ MDIAG-FAM !
+         MF-CUR MF.SEEN @ MDIAG-SEEN !
+         MF-CUR MF.VCNT @ MDIAG-VCNT !
+      THEN
+      0 OK !  -1 MREJ !
+   THEN
+   MF-CUR MF.HAS @ IF
+      MF-CUR MF.OUT @ DCUR !
+      MF-CUR MF.ROUT @ RCUR !
+      0 DEADP !
+   ELSE
+      MF-CUR MF.BASE @ DCUR !
+      MF-CUR MF.RBASE @ RCUR !
+      -1 DEADP !                             \ every branch exited: no normal continuation
+   THEN
+   CF-LOC-REST
+   CF-DROP
+   MF-DEPTH @ 1 - MF-DEPTH !
+   0 MM ! ;
+
+: MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
+   a u MF-CUR MF.FAM @ MATCH-VAR-XT @ execute 0= IF
+      drop MD-VAR-UNKNOWN MDIAG! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
+   {: vid:n :}
+   vid MATCH-VTAG-XT @ execute {: tag:n :}
+   MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
+   MF-CUR MF.SEEN @ tag MSEEN-SET
+   vid MPEND !
+   3 MM ! ;
+
+: MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   MF-CUR {: r:ptr :}
+   r MF.BASE @ DCUR !
+   r MF.RBASE @ RCUR !
+   MPEND @ 0 < 0= IF
+      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT @ execute DCUR !
+   THEN
+   10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
+   0 DEADP !
+   0 MM ! ;
+
+: MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   MM @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
+   MM @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
+   a u MATCH-OF-TOK ;
+
+: CF-ENDOF-DISPATCH ( -- )   \ ENDOF serves CASE (7/8) and MATCH (10) by frame kind
+   CF-MT? IF CF-ENDOF EXIT THEN
+   CF@K 10 = IF MATCH-ENDOF EXIT THEN
+   CF-ENDOF ;
+
 : CF-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [:" CORE-STR= IF CF-QUOT RES-TRUE EXIT THEN
    a u s" ;]" CORE-STR= IF CF-SEMIQ RES-TRUE EXIT THEN
@@ -4566,8 +6089,9 @@ variable QTMP
    a u s" then" CORE-STR= IF CF-THEN RES-TRUE EXIT THEN
    a u s" case" CORE-STR= IF CF-CASE RES-TRUE EXIT THEN
    a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
-   a u s" endof" CORE-STR= IF CF-ENDOF RES-TRUE EXIT THEN
+   a u s" endof" CORE-STR= IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
+   a u s" ;match" CORE-STR= IF MD-STRAY MDIAG! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
    a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
@@ -4586,7 +6110,7 @@ variable QTMP
    RES-FALSE ;
 \ first token of the checked text is the word's NAME (skipped, kept for the
 \ recorder); RECXT (installed by render.f) records certified sigs by name.
-variable NMA  variable NMU  variable TOK0  variable RECXT  0 RECXT !
+variable TOK0  variable RECXT  0 RECXT !
 variable DIAGXT  0 DIAGXT !              \ reject-diagnostic hook (render.f installs)
 variable CTLNEW
 \ the engine folds A-Z in keyword and dict matching — fold every token the same
@@ -4595,10 +6119,10 @@ variable TKFU
 variable SKI  variable SKF
 
 : SGBAD-IN-SOURCE? ( -- bool )
-   SGBAD-U @ 0= IF 0 EXIT THEN
-   SGBAD-A @ TBASE @ < IF 0 EXIT THEN
-   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF 0 EXIT THEN
-   -1 ;
+   SGBAD-U @ 0= IF RES-FALSE EXIT THEN
+   SGBAD-A @ TBASE @ < IF RES-FALSE EXIT THEN
+   SGBAD-A @ SGBAD-U @ + TBASE @ TBLEN @ + > IF RES-FALSE EXIT THEN
+   RES-TRUE ;
 
 : SGBAD-COPY-TOKEN ( -- )
    SGBAD-U @ TOKBUF-ENSURE
@@ -4646,14 +6170,14 @@ variable SKI  variable SKF
    2dup NORMAL-STRING-OPENER? IF 2drop RES-TRUE EXIT THEN
    ESCAPED-STRING-OPENER? ;
 
-: PARSE-LIT? {: a:ptr u:n :}
-   a u s" [char]" CORE-STR= IF -1 EXIT THEN
+: PARSE-LIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" [char]" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" char" CORE-STR= ;
 
 : SKIP-STRING-PAYLOAD
    TI @ SKI !  0 SKF !
    BEGIN SKI @ TBLEN @ <  SKF @ 0=  and WHILE
-      TBASE @ SKI @ + c@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
+      SKI @ TBYTE@ 34 = IF -1 SKF ! ELSE SKI @ 1 + SKI ! THEN
    REPEAT
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
@@ -4673,7 +6197,7 @@ variable SKI  variable SKF
    c $78 = c $58 = or ;
 
 : SKIP-ESC-BYTE@ ( -- n )
-   TBASE @ SKI @ + c@ ;
+   SKI @ TBYTE@ ;
 
 \ SKIP-ESC-BAD ( -- ) : invalid escape — spend the rest of the payload so the
 \ tail branch rejects the definition exactly like an unterminated string.
@@ -4682,8 +6206,8 @@ variable SKI  variable SKF
 
 : SKIP-ESC-HEX ( -- )   \ SKI at 'x'/'X': require two hex digits, then continue
    SKI @ 2 + TBLEN @ >= IF SKIP-ESC-BAD EXIT THEN
-   TBASE @ SKI @ + 1 + c@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
-   TBASE @ SKI @ + 2 + c@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
+   SKI @ 1 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
+   SKI @ 2 + TBYTE@ ESC-HEX-DIGIT? 0= IF SKIP-ESC-BAD EXIT THEN
    SKI @ 3 + SKI ! ;
 
 : SKIP-ESC-SEQ ( -- )   \ SKI at '\'
@@ -4703,11 +6227,11 @@ variable SKI  variable SKF
    SKF @ IF SKI @ 1 + TI ! ELSE TBLEN @ TI ! 0 OK ! THEN ;
 
 : SKIP-PARSE-LIT-PAYLOAD ( -- )
-   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 <= ELSE 0 0= 0= THEN WHILE
+   BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 <= ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT
    TI @ TBLEN @ >= IF 0 OK ! exit THEN
-   BEGIN TI @ TBLEN @ < IF TBASE @ TI @ + c@ 32 > ELSE 0 0= 0= THEN WHILE
+   BEGIN TI @ TBLEN @ < IF TI @ TBYTE@ 32 > ELSE 0 0= 0= THEN WHILE
       TI @ 1 + TI !
    REPEAT ;
 
@@ -4715,30 +6239,30 @@ variable SKI  variable SKF
    DEADTU !  DEADTA ! ;
 
 : DEAD-CLOSE? {: a u :}
-   a u s" else"   CORE-STR= IF -1 EXIT THEN
-   a u s" then"   CORE-STR= IF -1 EXIT THEN
-   a u s" loop"   CORE-STR= IF -1 EXIT THEN
-   a u s" +loop"  CORE-STR= IF -1 EXIT THEN
-   a u s" endof"  CORE-STR= IF -1 EXIT THEN
-   a u s" endcase" CORE-STR= IF -1 EXIT THEN
-   a u s" repeat" CORE-STR= IF -1 EXIT THEN
-   a u s" again"  CORE-STR= IF -1 EXIT THEN
-   a u s" ;]"     CORE-STR= IF -1 EXIT THEN
-   0 ;
+   a u s" else"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" then"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" loop"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" +loop"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" endof"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" endcase" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" repeat" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" again"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" ;]"     CORE-STR= IF RES-TRUE EXIT THEN
+   RES-FALSE ;
 
 : LIVE-TOKEN? {: a u :}
-   DEADP @ 0= IF -1 EXIT THEN
+   DEADP @ 0= IF RES-TRUE EXIT THEN
    a u DEAD-CLOSE? ;
 
-: TOKFOLD {: a u :}
+: TOKFOLD ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u TOKBUF-ENSURE
    0 BEGIN dup u < WHILE
      dup a + c@  dup 64 >  over 91 <  and IF 32 or THEN
      over TKF + c!  1 +
    REPEAT drop
-   u TKFU !  -1 ;
+   u TKFU !  RES-TRUE ;
 : FAIL-SPAN! ( -- )
-   TSTART @ TBASE @ - FAILB !
+   TSTART @ FAILB !
    FAILB @ FAILTU @ + FAILE ! ;
 : CAP-FAIL ( ptr u8 n -- )
    FAILSET @ 0= IF
@@ -4750,7 +6274,7 @@ variable SKI  variable SKF
    THEN ;
 create DIAGFB 256 allot   variable DIAGFU
 variable DIAGL0  variable DIAGC0  variable DIAGB0
-: DIAG-FILE! {: a u :}
+: DIAG-FILE! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > IF s" diag: file path too long" 76 die THEN
    0 BEGIN dup u < WHILE
       dup a + c@  over DIAGFB + c!
@@ -4790,13 +6314,13 @@ s" <input>" DIAG-FILE!
    sa su  TKF TKFU @  CHECKER-USIG-ADD ;
 
 : UNSAFE-TOK? {: a u :}
-   a u s" evaluate" CORE-STR= IF -1 EXIT THEN
-   a u s" trust" CORE-STR= IF -1 EXIT THEN
-   a u s" set-check" CORE-STR= IF -1 EXIT THEN
-   a u s" postpone" CORE-STR= IF -1 EXIT THEN
-   a u s" compile," CORE-STR= IF -1 EXIT THEN
-   a u s" immediate" CORE-STR= IF -1 EXIT THEN
-   a u s" [" CORE-STR= IF -1 EXIT THEN
+   a u s" evaluate" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" trust" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" set-check" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" postpone" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" compile," CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" immediate" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" [" CORE-STR= IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR= ;
 
 : REJECT-UNSAFE ( -- )
@@ -4806,28 +6330,39 @@ variable ISQ
 variable IS-TA
 variable IS-TU
 
+\ IS-TA holds a token-start pointer (ptr u8); read/write it through a ptr-field
+\ view so the emitted token span keeps its ptr u8 role.
+: IS-TA-FIELD ( -- ptr ptr u8 )
+   IS-TA 0 ptr-field ;
+
+: IS-TA@ ( -- ptr u8 )
+   IS-TA-FIELD @ ;
+
+: IS-TA! ( ptr u8 -- )
+   IS-TA-FIELD ! ;
+
 : IS-WS? ( n -- bool )
    32 <= ;
 
 : IS-SKIP-WS ( -- )
    BEGIN TI @ TBLEN @ < WHILE
-      TBASE @ TI @ + c@ IS-WS? 0= IF exit THEN
+      TI @ TBYTE@ IS-WS? 0= IF exit THEN
       TI @ 1 + TI !
    REPEAT ;
 
 : IS-NEXT-TOKEN ( -- ptr u8 n bool )
    IS-SKIP-WS
-   TI @ TBLEN @ >= IF 0 0 RES-FALSE EXIT THEN
-   TBASE @ TI @ + IS-TA !
+   TI @ TBLEN @ >= IF TBASE@ 0 RES-FALSE EXIT THEN
+   TI @ TADDR IS-TA!
    0 IS-TU !
    BEGIN TI @ TBLEN @ < WHILE
-      TBASE @ TI @ + c@ IS-WS? IF
-         IS-TA @ IS-TU @ RES-TRUE EXIT
+      TI @ TBYTE@ IS-WS? IF
+         IS-TA@ IS-TU @ RES-TRUE EXIT
       THEN
       IS-TU @ 1 + IS-TU !
       TI @ 1 + TI !
    REPEAT
-   IS-TA @ IS-TU @ RES-TRUE ;
+   IS-TA@ IS-TU @ RES-TRUE ;
 
 : IS-FAIL ( -- )
    0 OK !
@@ -4844,20 +6379,111 @@ variable IS-TU
    DCUR @ ISQ @ rest MK-PUSH UNIFY OK @ and OK !
    rest DCUR ! ;
 
-: IS-TOK ( -- )
-   IS-NEXT-TOKEN 0= IF IS-FAIL EXIT THEN
+: IS-TARGET-TOK? ( -- bool )
+   IS-NEXT-TOKEN 0= IF 2drop RES-FALSE EXIT THEN
    TOKFOLD drop
+   RES-TRUE ;
+
+: IS-TOK ( -- )
+   IS-TARGET-TOK? 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-DEFER 0= IF IS-FAIL EXIT THEN
    TKF TKFU @ CHECKER-FIND-ACTIVE-SIG
-   FEP @ 0= IF IS-FAIL EXIT THEN
+   FEP-HIT? 0= IF IS-FAIL EXIT THEN
    FEP @ EFF-QUOT IS-APPLY ;
+
+\ --- item 12 layout stack-op typing (docs/type-families.md §17) --------------
+\ Whole-bundle transport tokens. For an EXPANDED (non-linear) layout the group
+\ moves by direct row surgery (XPORT-STEP? above); for a non-expanded
+\ possibly-linear layout cell the op's effect var may absorb the one cell,
+\ gated by LAYOUT-XPORT-ALLOW? (which rejects the possibly-linear bind). ?dup
+\ is excluded on purpose — it branches on the top (tag) cell, width-breaking
+\ for a sum whose tag 0 is a valid variant.
+\ Transport mode keys on the FOLDED TOKEN NAME, and DO-TOK consults user sigs
+\ before prims, so a user word spelled dup/swap/... can bind a layout through
+\ its polymorphic effect. This is sound because the name implies a builtin or
+\ a checked/audited definition: a CHECKED shadow's effect is verified against
+\ its body, which can only move the value it binds; a TRUSTED shadow is
+\ already an audited manifest boundary (TRUSTED.md row) whose declared effect
+\ is the audit's responsibility.
+: LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" swap"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" over"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" nip"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" tuck"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" rot"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" -rot"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2dup"  CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2drop" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2swap" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2over" CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" >r"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r>"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" r@"    CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2>r"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r>"   CORE-STR= IF RES-TRUE EXIT THEN
+   a u s" 2r@"   CORE-STR= ;
+
+: DCUR-TOP-LAYOUT? ( -- bool )     \ resolved top of the data row is a layout param?
+   \ LAYOUT-PARAM? is true for a HIDDEN field too (same layout family-id), so an
+   \ expanded bundle's tag cell on top rejects ?dup exactly like the old logical cell.
+   DCUR @ R-RES dup TAG S-PUSH = IF P>TYPE LAYOUT-PARAM? EXIT THEN drop RES-FALSE ;
+
+: QDUP-STEP? ( ptr u8 n -- bool )  \ ?dup: reject on a layout value; scalar stays unmodeled
+   s" ?dup" CORE-STR= 0= IF RES-FALSE EXIT THEN
+   DCUR-TOP-LAYOUT? IF
+      0 OK !  -1 FAILSET !  -1 QDUPBAD !         \ width-breaking touch of a layout value
+   ELSE
+      -1 UNDEFERR !  -1 UNCK !                   \ scalar ?dup unmodeled (pre-existing gap; dotted)
+   THEN
+   RES-TRUE ;
+
+\ --- construct form (item 9, docs/type-families.md §12): `construct family
+\ variant` is a reserved checker token protocol, not a word lookup. The two
+\ operand tokens are captured in DO-TOK1 BEFORE locals reference, control
+\ dispatch, and dictionary lookup (PLAN item 9: family/variant tokens must not
+\ collide with locals or words) and resolved through the registry xts installed
+\ by type-family.f: the family in the ACTIVE package only (the ownership
+\ predicate — cross-package construction never resolves), the variant within
+\ that family. The step effect is then applied inline exactly like a generated
+\ constructor call (payloads consumed, layout bundle produced, CHECKER-STEP
+\ conservation). Stage engines without the registry keep the 0 hooks and fail
+\ closed. Native/Gforth lowering is item 10: a certified construct body cannot
+\ compile or run until it lands (engine undefined-word reject, pinned in the
+\ ctor suite).
+variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
+variable CONFAM    \ resolved family id while CONM = 2
+
+: CONSTRUCT-BEGIN ( -- )
+   CONSTRUCT-FAM-XT @ 0= IF 0 OK ! EXIT THEN
+   1 CONM ! ;
+
+\ A failed family resolve still consumes the variant token (poisoned CONFAM
+\ -1): the three-token form always captures whole, so the trailing operand can
+\ never fall through to locals/word lookup and blur the hard reject into an
+\ uncheckable-undefined verdict.
+: CONSTRUCT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   CONM @ 1 = IF
+      a u CONSTRUCT-FAM-XT @ execute IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
+      2 CONM !
+      EXIT THEN
+   CONFAM @ 0 < 0= IF
+      a u CONFAM @ CONSTRUCT-STEP-XT @ execute 0= IF 0 OK ! THEN
+   THEN
+   0 CONM ! ;
 
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    a u CAP-FAIL
+   TKF TKFU @ LAYOUT-XPORT-TOK? LAYOUT-XPORT !    \ transport op? layout value moves whole
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
+   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
+   MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
+   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
+   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
@@ -4866,6 +6492,10 @@ variable IS-TU
    OK @ IF TKF TKFU @ s" again" CORE-STR= IF a u DEAD-OWNER! THEN THEN
    TKF TKFU @ LOC-REF? 0= IF
    TKF TKFU @ CF-TOK? 0= IF
+   TKF TKFU @ QDUP-STEP? 0= IF
+   LAYOUT-XPORT @ IF TKF TKFU @ WF-XPORT-RECORD THEN   \ width facts from the pre-op row
+   TKF TKFU @ HIDROW-STEP? 0= IF                       \ depth/.s fail closed over hidden cells
+   TKF TKFU @ XPORT-STEP? 0= IF                        \ whole-bundle transport row surgery
    TKF TKFU @ RS-TOK? 0= IF
    TKF TKFU @ DO-TOK
    OK @ IF TKF TKFU @ THROW-CUR? IF THROW-EDGE THEN THEN
@@ -4873,7 +6503,7 @@ variable IS-TU
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -4884,13 +6514,11 @@ variable IS-TU
 \ Off by default so the ordinary load path (fixpoint build, gate) keeps the
 \ fail-on-first-reject HOOK behavior. When on, a rejected definition still
 \ trusts its DECLARED signature (so later definitions check against a known
-\ effect instead of cascading undefined-word errors) and the reject is counted
-\ so the driver can exit nonzero at end of load — one diagnostic per reject in
-\ a single process run instead of one reject per process.
-variable MULTI-ERR      \ multi-error load mode active?
-variable MULTI-ERR-N    \ rejected definitions recorded this load
-0 MULTI-ERR !   0 MULTI-ERR-N !
-
+\ effect instead of cascading undefined-word errors) — unless that signature
+\ itself failed to parse (SGBAD), in which case no row is stored and callers
+\ reject as undefined (USIG-ADD-BAD) — and the reject is counted so the
+\ driver can exit nonzero at end of load. The mode cells and MULTI-ERR? live
+\ above USIG-ADD, which shares them.
 \ File-relative diagnostic origin for a MULTI-ERR load. The driver evaluates a
 \ whole source buffer in one run; per rejected definition the checker re-points
 \ DIAG-ORIGIN! to that def's FILE position so JSON positions are file-relative
@@ -4904,7 +6532,6 @@ variable MEO-NAMEC    \ absolute addr of the compiler's def name-token cell
 variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/col/byte
 0 MEO-ON !
 
-: MULTI-ERR? ( -- bool ) MULTI-ERR @ 0 <> ;
 : MULTI-ERR-BEGIN ( -- ) -1 MULTI-ERR !  0 MULTI-ERR-N !  0 MEO-ON ! ;
 : MULTI-ERR-END ( -- n ) MULTI-ERR-N @  0 MULTI-ERR !  0 MEO-ON ! ;   \ reject count; clears mode
 : MULTI-ERR-ORIGIN! {: base:ptr namec:n bl:n bc:n bb:n :}
@@ -4916,29 +6543,33 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
+   0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
+   0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 UNDEFERR !  0 QUALBAD !
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
+   0 LOCSEQ !
+   0 WF-N !  0 RECW !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )
    BEGIN TI @ TBLEN @ < WHILE
-     BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
+     BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
-       TBASE @ TI @ + c@ 40 =  TBASE @ TI @ + 1 + c@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
+       TI @ TBYTE@ 40 =  TI @ 1 + TBYTE@ 32 =  and IF   \ '( ' (not '(CMP)') -> sig or comment
          TI @ 1 + TI !  TI @ TSTART !             \ sig text starts after '('
-         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
+         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 41 <>  and WHILE TI @ 1 + TI ! REPEAT
          \ only the '( ... )' right after the name is the sig; once it is seen
          \ (or body tokens ran) every later '( ... )' is a comment (EM-COMMENT
          \ parity) and must not touch any signature state.
          VSIG @  SGSEEN @ 0= and  TOKIX @ 2 < and  IF
-           TBASE @ TSTART @ + SGA !  TI @ TSTART @ - SGU !
-           TBASE @ TSTART @ +  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
+           TSTART @ TADDR SGA !  TI @ TSTART @ - SGU !
+           TSTART @ TADDR  TI @ TSTART @ -  PARSE-SIG-RAW   \ ( din dout rin rout )
            SGBAD-FAIL!
            PD-BASE @ SGDBASE !
            RR-SHARED @ SGRBASE !
@@ -4951,9 +6582,9 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
          THEN
          TI @ TBLEN @ < IF TI @ 1 + TI ! THEN     \ skip ')'
        ELSE
-         TBASE @ TI @ + TSTART !
-         BEGIN TI @ TBLEN @ <  TBASE @ TI @ + c@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
-         TSTART @  TBASE @ TI @ +  TSTART @ -  DO-TOK1
+         TI @ TSTART !
+         BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
        THEN
      THEN
    REPEAT ;
@@ -4964,22 +6595,81 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
      ELSE DCUR @ XROW @ UNIFY OK @ and OK !  RCUR @ XRROW @ UNIFY OK @ and OK ! THEN
    THEN ;
 
+: SGHASR? ( -- bool )
+   SGHASR @ 0 <> ;
+
+: CHECK-SIG? ( -- bool )
+   VSIG-ON? SGSEEN? and ;
+
+: CHECK-RET-SIG? ( -- bool )
+   CHECK-SIG? SGHASR? and ;
+
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or IF 0 ELSE UNCK @ IF 1 ELSE OK @ THEN THEN ;
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  MREJ @ or 0 <> IF 0 ELSE
+   UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
+
+\ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
+\ CHECKER-USIG-CERT-ADD -> USIG-ADD runs NEW, which re-initializes BROW/DCUR
+\ (and RBROW/RCUR) to a fresh empty pair, wiping the verified declared effect
+\ recorded just above — so every certified word rendered bare `--` and the
+\ prop-test round-trip amplifier was dead since introduction (dot
+\ habu-rend-sig-blanked-b269786b). USIG-ADD's own PARSE-SIG-RAW leaves the
+\ re-parsed declared rows in SGIN/SGOUT (SGRIN/SGROUT with a return clause),
+\ live until the next CHECK — re-point the render rows at them.
+: CERT-REPOINT-ROWS ( -- )
+   SGBAD @ 0 <> IF EXIT THEN
+   SGIN @ BROW !  SGOUT @ DCUR !
+   SGHASR @ 0 <> IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN ;
+
+\ --- generated-constructor certification (item 8, docs/type-families.md §12).
+\ Hidden physical fields are checker-owned, so no user body can produce a
+\ layout-typed output — that reject IS the anti-forgery rule. The one intro
+\ form is the generated constructor: ;SUMTYPE arms this single-shot pending
+\ record (word name + the physical pad+tag n-cell count from SUMV metadata)
+\ around the one evaluate that defines it, and the boundary unification below
+\ verifies the body against the metadata-derived RAW row — the declared inputs
+\ untouched underneath, the counted type-n cells (zero pads + tag) on top. The
+\ declared hidden-field sig is then recorded/published through the normal
+\ certify path, coercing the raw cells into the layout bundle by construction:
+\ both rows derive from the same SUMV record, and only the sumtype declaration
+\ path (sealed against user reopening) can arm the window.
+variable CTOR-PEND-A   variable CTOR-PEND-U   0 CTOR-PEND-U !
+variable CTOR-PEND-N   variable CTOR-PEND-I
+: CTOR-PEND! ( ptr u8 n n -- ) {: a:ptr u:n k:n :}
+   k CTOR-PEND-N !  u CTOR-PEND-U !  a CTOR-PEND-A ! ;
+: CTOR-PEND-CLEAR ( -- ) 0 CTOR-PEND-U ! ;
+: CTOR-PEND-MATCH? ( -- bool )
+   CTOR-PEND-U @ 0 >  NMU @ 0 >  and 0= IF RES-FALSE EXIT THEN
+   CTOR-PEND-A @ CTOR-PEND-U @ NMA @ NMU @ CORE-STR=CI ;   \ NMA holds the case-folded token; the armed buffer is uppercase
+: CTOR-EXPECTED-ROW ( -- n )          \ SGIN + (pads+tag) type-n cells on top
+   SGIN @
+   0 CTOR-PEND-I !
+   BEGIN CTOR-PEND-I @ CTOR-PEND-N @ < WHILE
+      CC-N MK-CON swap MK-PUSH
+      CTOR-PEND-I @ 1 + CTOR-PEND-I !
+   REPEAT ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
+   0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
-   VSIG @ SGSEEN @ and IF CHECK-NO-BORROW THEN
-   VSIG @ SGSEEN @ and IF
-      SGOUT @ SUNI-COERCE
+   CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
+   CHECK-SIG? IF CHECK-NO-BORROW THEN
+   CHECK-SIG? IF
+      CTOR-PEND-MATCH? IF
+         CTOR-PEND-CLEAR                            \ single shot, even on reject
+         CTOR-EXPECTED-ROW SUNI-COERCE
+      ELSE
+         SGOUT @ SUNI-COERCE
+      THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
-   VSIG @ SGSEEN @ SGHASR @ and and IF
+   CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
       OK @ IF SGRIN @ RBROW !  SGROUT @ RCUR ! THEN
    THEN
@@ -4995,113 +6685,167 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
       NMA @ NMU @ CTL-FLAGS CTLNEW @ <> IF
          NMA @ NMU @ CTLNEW @ NORET-ADD
       THEN
-      VSIG @ SGSEEN @ and IF
+      CHECK-SIG? IF
          SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD
+         CERT-REPOINT-ROWS
       ELSE
          RECXT @ 0 <> IF NMA @ NMU @ RECXT @ execute THEN
       THEN
    THEN
    dup 0 =  MULTI-ERR?  and  NMU @ 0 >  and IF          \ reject in multi-error mode:
       1 MULTI-ERR-N +!                                  \ count it (fail-closed exit) and
-      VSIG @ SGSEEN @ and IF                            \ trust the declared sig so later
-         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking
-      THEN
+      CHECK-SIG? SGBAD @ 0= and IF                      \ trust the declared sig so later
+         SGA @ SGU @  NMA @ NMU @  CHECKER-USIG-CERT-ADD \ definitions keep checking —
+      THEN                                              \ unless the sig itself was bad
    THEN ;
 
-variable CAND-UEND
-variable CAND-NEND
-variable CAND-SYMN
-variable CAND-SYMU
-variable CAND-CTN
-variable CAND-CTU
-variable CAND-LIN-NDECL
-variable CAND-VREC-N
-variable CAND-VREC-FIELD-N
-variable CAND-VREC-NODE-N
-variable CAND-VREC-STR-U
-variable CAND-VERD
-variable CSCOPE-UEND
-variable CSCOPE-NEND
-variable CSCOPE-SYMN
-variable CSCOPE-SYMU
-variable CSCOPE-CTN
-variable CSCOPE-CTU
-variable CSCOPE-LIN-NDECL
-variable CSCOPE-VREC-N
-variable CSCOPE-VREC-FIELD-N
-variable CSCOPE-VREC-NODE-N
-variable CSCOPE-VREC-STR-U
-variable CSCOPE-CAND
-variable CSCOPE-VSIG
+\ ---------------------------------------------------------------------------
+\ Transactional rollback-frame STACK. Depth-safe replacement for the old single
+\ CAND-*/CSCOPE- slots: every checker scope (CHECKER-SCOPE-START) and candidate
+\ probe (CHECK-CANDIDATE-START) pushes a frame holding every mutable high-water
+\ mark, and DONE pops it. Nested candidates/scopes (all-errors replay, preverify,
+\ CHK-RUN-STATIC-LINTS inside CHK-RUN-SCOPED) therefore cannot overwrite a
+\ parent's saved marks. Core marks live in the RBF frame; the TFAM/SUMV/SCHEMA
+\ registries hang parallel marks off the REG-EXT-RB-* hooks that type-schema.f /
+\ type-family.f install, kept in lockstep because every push pairs with one pop.
+\ ---------------------------------------------------------------------------
+variable REG-EXT-RB-SAVE-XT      0 REG-EXT-RB-SAVE-XT !
+variable REG-EXT-RB-RESTORE-XT   0 REG-EXT-RB-RESTORE-XT !
+
+BEGIN-STRUCTURE RBF-REC
+   CELL +FIELD RBF.UEND
+   CELL +FIELD RBF.NEND
+   CELL +FIELD RBF.SYMN
+   CELL +FIELD RBF.SYMU
+   CELL +FIELD RBF.CTN
+   CELL +FIELD RBF.CTU
+   CELL +FIELD RBF.LIN
+   CELL +FIELD RBF.VRECN
+   CELL +FIELD RBF.VRECF
+   CELL +FIELD RBF.VRECND
+   CELL +FIELD RBF.VNARGN
+   CELL +FIELD RBF.VRECU
+   CELL +FIELD RBF.CAND
+   CELL +FIELD RBF.VSIG
+   CELL +FIELD RBF.PKGMODE
+   CELL +FIELD RBF.PKGU
+   CELL +FIELD RBF.DFEREND
+END-STRUCTURE
+
+16 constant RBF-CAP-INIT
+variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
+create RBF-A-BOOT      RBF-CAP-INIT RBF-REC * allot
+variable RBF-A-P       RBF-A-BOOT RBF-A-P !
+: RBF-BASE ( -- ptr a ) RBF-A-P @ ;
+create RBF-NAME-BOOT   RBF-CAP-INIT CHECKER-PACKAGE-CAP * allot
+variable RBF-NAME-P    RBF-NAME-BOOT RBF-NAME-P !
+: RBF-NAME-BASE ( -- ptr a ) RBF-NAME-P @ ;
+variable RBF-DEPTH   0 RBF-DEPTH !
+
+: RBF-GROW ( -- )
+   RBF-CAP-V @ 2 * {: nc:n :}
+   RBF-A-P    RBF-CAP-V @ RBF-REC *              nc RBF-REC *              REG-GROW1
+   RBF-NAME-P RBF-CAP-V @ CHECKER-PACKAGE-CAP *  nc CHECKER-PACKAGE-CAP *  REG-GROW1
+   nc RBF-CAP-V ! ;
+: RBF-ENSURE ( -- )
+   RBF-DEPTH @ RBF-CAP-V @ < IF exit THEN
+   RBF-GROW ;
+: RBF-CUR ( -- ptr a )       RBF-DEPTH @ RBF-REC * RBF-BASE + ;
+: RBF-NAME-CUR ( -- ptr a )  RBF-DEPTH @ CHECKER-PACKAGE-CAP * RBF-NAME-BASE + ;
+
+\ RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0 at
+\ snapshot), so drop any grown arena buffer back to the baked boot store; the
+\ next scope re-grows lazily. Mirrors HIDX-RESET's process-local reset.
+: RBF-SNAP-RESET ( -- )
+   RBF-DEPTH @ IF s" checker: snapshot inside rollback scope" 76 die THEN
+   RBF-A-BOOT RBF-A-P !
+   RBF-NAME-BOOT RBF-NAME-P !
+   RBF-CAP-INIT RBF-CAP-V !
+   0 RBF-DEPTH !
+   MF-DEPTH @ IF s" checker: snapshot inside match frame" 76 die THEN
+   MF-A-BOOT MF-A-P !          \ MATCH frames are per-definition transient: drop any
+   MF-CAP-INIT MF-CAP-V !      \ grown arena back to the baked boot stores
+   MSEEN-BOOT MSEEN-P !
+   MSEEN-CAP-INIT MSEEN-CAP-V !
+   0 MSEEN-N ! ;
+
+: RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
+   RBF-ENSURE
+   RBF-CUR {: r:ptr :}
+   UEND @ r RBF.UEND !
+   NORET-END @ r RBF.NEND !
+   SYM-N @ r RBF.SYMN !
+   SYM-STR-U @ r RBF.SYMU !
+   CTN @ r RBF.CTN !
+   CT-STR-U @ r RBF.CTU !
+   LIN-NDECL @ r RBF.LIN !
+   VREC-N @ r RBF.VRECN !
+   VREC-FIELD-N @ r RBF.VRECF !
+   VREC-NODE-N @ r RBF.VRECND !
+   VNARG-N @ r RBF.VNARGN !
+   VREC-STR-U @ r RBF.VRECU !
+   CHK-CAND @ r RBF.CAND !
+   VSIG @ r RBF.VSIG !
+   CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
+   CHECKER-PACKAGE-U @ r RBF.PKGU !
+   DFER-END @ r RBF.DFEREND !
+   CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
+   RBF-DEPTH @ 1 + RBF-DEPTH !
+   REG-EXT-RB-SAVE-XT @ dup 0= IF drop ELSE execute THEN ;
+
+: RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
+   REG-EXT-RB-RESTORE-XT @ dup 0= IF drop ELSE execute THEN
+   RBF-DEPTH @ 1 - RBF-DEPTH !
+   RBF-CUR {: r:ptr :}
+   r RBF.UEND @ USIGS-RESTORE-END
+   r RBF.NEND @ NORET-RESTORE-END
+   r RBF.SYMN @ HIDX-SYMS-RETIRE      \ pop retired hash-index rows before SYM-N rewinds
+   r RBF.SYMN @ SYM-N !
+   r RBF.SYMU @ SYM-STR-U !
+   r RBF.CTN @ CTN !
+   r RBF.CTU @ CT-STR-U !
+   r RBF.LIN @ LIN-NDECL !
+   r RBF.VRECN @ VREC-N !
+   r RBF.VRECF @ VREC-FIELD-N !
+   r RBF.VRECND @ VREC-NODE-N !
+   r RBF.VNARGN @ VNARG-N !
+   r RBF.VRECU @ VREC-STR-U !
+   r RBF.CAND @ CHK-CAND !
+   r RBF.VSIG @ VSIG !
+   r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
+   r RBF.PKGU @ CHECKER-PACKAGE-U !
+   RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
+   r RBF.DFEREND @ DFER-END !
+   DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
 : CHECKER-SCOPE-START ( -- )
-   UEND @ CSCOPE-UEND !
-   NORET-END @ CSCOPE-NEND !
-   SYM-N @ CSCOPE-SYMN !
-   SYM-STR-U @ CSCOPE-SYMU !
-   CTN @ CSCOPE-CTN !
-   CT-STR-U @ CSCOPE-CTU !
-   LIN-NDECL @ CSCOPE-LIN-NDECL !
-   VREC-N @ CSCOPE-VREC-N !
-   VREC-FIELD-N @ CSCOPE-VREC-FIELD-N !
-   VREC-NODE-N @ CSCOPE-VREC-NODE-N !
-   VREC-STR-U @ CSCOPE-VREC-STR-U !
-   CHK-CAND @ CSCOPE-CAND !
-   VSIG @ CSCOPE-VSIG ! ;
+   RBF-PUSH ;
 
 : CHECKER-SCOPE-DONE ( -- )
-   CSCOPE-UEND @ USIGS-RESTORE-END
-   CSCOPE-NEND @ NORET-RESTORE-END
-   CSCOPE-SYMN @ HIDX-SYMS-RETIRE
-   CSCOPE-SYMN @ SYM-N !
-   CSCOPE-SYMU @ SYM-STR-U !
-   CSCOPE-CTN @ CTN !
-   CSCOPE-CTU @ CT-STR-U !
-   CSCOPE-LIN-NDECL @ LIN-NDECL !
-   CSCOPE-VREC-N @ VREC-N !
-   CSCOPE-VREC-FIELD-N @ VREC-FIELD-N !
-   CSCOPE-VREC-NODE-N @ VREC-NODE-N !
-   CSCOPE-VREC-STR-U @ VREC-STR-U !
-   CSCOPE-CAND @ CHK-CAND !
-   CSCOPE-VSIG @ VSIG ! ;
+   RBF-POP ;
 
 : CHECK-CANDIDATE-START ( -- )
-   UEND @ CAND-UEND !
-   NORET-END @ CAND-NEND !
-   SYM-N @ CAND-SYMN !
-   SYM-STR-U @ CAND-SYMU !
-   CTN @ CAND-CTN !
-   CT-STR-U @ CAND-CTU !
-   LIN-NDECL @ CAND-LIN-NDECL !
-   VREC-N @ CAND-VREC-N !
-   VREC-FIELD-N @ CAND-VREC-FIELD-N !
-   VREC-NODE-N @ CAND-VREC-NODE-N !
-   VREC-STR-U @ CAND-VREC-STR-U !
+   RBF-PUSH
    -1 CHK-CAND !
    -1 VSIG ! ;
 
 : CHECK-CANDIDATE-DONE ( n -- n )
-   CAND-VERD !
-   0 VSIG !
-   0 CHK-CAND !
-   CAND-UEND @ USIGS-RESTORE-END
-   CAND-NEND @ NORET-RESTORE-END
-   CAND-SYMN @ HIDX-SYMS-RETIRE
-   CAND-SYMN @ SYM-N !
-   CAND-SYMU @ SYM-STR-U !
-   CAND-CTN @ CTN !
-   CAND-CTU @ CT-STR-U !
-   CAND-LIN-NDECL @ LIN-NDECL !
-   CAND-VREC-N @ VREC-N !
-   CAND-VREC-FIELD-N @ VREC-FIELD-N !
-   CAND-VREC-NODE-N @ VREC-NODE-N !
-   CAND-VREC-STR-U @ VREC-STR-U !
-   CAND-VERD @ ;
+   RBF-POP ;
 
-: CHECK-CANDIDATE! ( ptr u8 n -- n )
+variable CAND-A   variable CAND-U   variable CAND-VERDICT
+: CHECK-CANDIDATE-BODY ( -- )        \ ( -- ) closure: check the stashed source, stash the verdict
+   CAND-A @ CAND-U @ CHECK CAND-VERDICT ! ;
+\ Throw-safe: a throw inside CHECK must not unwind past the candidate pop, or the
+\ rollback frame leaks (RBF-DEPTH stuck, rejected rows survive) and the next probe
+\ runs on corrupted state. Mirror CHK-RUN-SCOPED: run the body under catch, pop the
+\ frame unconditionally, re-throw the caught code, return the verdict on success.
+: CHECK-CANDIDATE! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a CAND-A !  u CAND-U !
    CHECK-CANDIDATE-START
-   CHECK
-   CHECK-CANDIDATE-DONE ;
+   [: CHECK-CANDIDATE-BODY ;] catch {: rc:n :}
+   0 CHECK-CANDIDATE-DONE drop
+   rc 0 <> IF rc throw THEN
+   CAND-VERDICT @ ;
 
 : CHECKER-CANDIDATE-SCOPE-START ( -- )
    CHECK-CANDIDATE-START ;
@@ -5116,7 +6860,7 @@ variable CSCOPE-VSIG
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;
 
-: RAW-SIG! ( din dout rin rout -- )
+: RAW-SIG! ( n n n n -- )
    PD-BASE @ SGDBASE !
    RR-SHARED @ SGRBASE !
    SGHASR @ IF
@@ -5138,10 +6882,12 @@ variable CSCOPE-VSIG
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    CHECK-SCAN
    CHECK-FOLD-EXITS
+   CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;

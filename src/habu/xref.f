@@ -68,6 +68,16 @@ TRUSTED: XREF-REC+ ( ptr a n -- ptr a )
 : XREF-EXT? ( ptr a -- bool )
    XREF-FLAGS DNAME-EXT and 0= 0= ;
 
+\ DNAME-WIDE (dot habu-tfam-12-interpret-10b385b1): the record's recorded stack
+\ effect carries a wider-than-cell layout value, so the engine's interpret
+\ dispatch and interpret ' fail closed before such a bundle can land on the
+\ untyped interpret stack (scalar dup/drop/swap silently corrupt it). Marking
+\ is the engine prim `wide-mark` (habu1.f BWIDEMARK - the dict region is
+\ read-only at runtime, so the write needs the engine's mprotect bracket);
+\ monotonic, no unmark. This is the read-side introspection query.
+: XREF-WIDE? ( ptr a -- bool )
+   XREF-FLAGS DNAME-WIDE and 0= 0= ;
+
 : XREF-INLINE-NAME ( ptr a -- ptr u8 )
    $18 XREF-REC+ XREF-A>U8 ;
 
@@ -215,6 +225,15 @@ variable XREF-QWID
    dup 0 >= if exit then
    s" undefine: word not found" 70 die ;
 
+: PROT-WID-CTOR-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
+   a u XREF-FIND dup XREF-FOUND? 0= IF
+      drop s" xref: protected-WID constructor not found" 76 die
+   THEN
+   XREF-WORDLIST prot-wid-add ;
+
+' PROT-WID-CTOR-ADD TDECL-PROT-WID-XT !
+
 TRUSTED: XREF-PATCH32 ( n ptr a -- )
    patch32 ;
 
@@ -238,12 +257,14 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
 
 : UNDEFINE-NAME ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE-GUARD   \ generated ctors reject BEFORE retirement
    XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-REC XREF-WORDLIST XREF-WID !
    XREF-SN@ XREF-SU @ XREF-WID @ XREF-RETIRE-WL
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE ;
 
 : UNDEFINE-FOUND ( ptr u8 n n -- )
    XREF-IDX ! XREF-SU ! XREF-SN!
+   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE-GUARD   \ generated ctors reject BEFORE retirement
    XREF-IDX @ XREF-REC XREF-WORDLIST
    XREF-SN@ XREF-SU @ rot XREF-RETIRE-WL
    XREF-SN@ XREF-SU @ CHECKER-UNDEFINE ;
@@ -253,19 +274,35 @@ TRUSTED: XREF-PATCH32 ( n ptr a -- )
    XREF-SN@ XREF-SU @ XREF-FIND-INDEX
    dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
 
+\ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the friend latch is
+\ sealed (SEAL-FRIEND, end of cold prefix), a dictionary FORGET/HIDE that lowers
+\ ndict below the seal-time watermark would retire engine definitions and (FORGET)
+\ rewind CP into engine code. Reject it fail-closed with E-SEAL-VIOLATION. The
+\ latch and watermark live in the sealed friend band; friend/cold-load (latch 0)
+\ and post-seal user marks (index >= watermark) pass unchanged.
+TRUSTED: SEAL-LATCH@ ( -- n ) data-base FRIEND-LATCH-CELL + @ ;
+TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
+
+: SEAL-DICT-GUARD ( n -- n )
+   SEAL-LATCH@ 0= if exit then
+   dup SEAL-NDICT@ < if
+      s" seal: cannot FORGET/HIDE sealed engine definitions" E-SEAL-VIOLATION die
+   then ;
+
 : HIDE-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX ndict! ;
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   idx ndict! ;
 
 variable XREF-FORGET-CP
 
 : FORGET-DEFS-FROM ( ptr u8 n -- )
    XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX
-   dup XREF-REC XREF-START XREF-FORGET-CP !
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM
-   ndict!
+   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   idx XREF-REC XREF-START XREF-FORGET-CP !
+   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   idx ndict!
    XREF-FORGET-CP @ cp! ;
 
 : XREF-NAME. ( ptr a -- )
@@ -300,3 +337,12 @@ variable XREF-FORGET-CP
       dup XREF-REC dup XREF-RETIRED? if drop else XREF-NAME. space then
       1+
    repeat drop cr ;
+
+\ TFAM 2b-iii: freeze the dictionary-truncation watermark (baseline capture).
+\ xref.f is the last BASE prefix file, but src/os/script-argv.f still loads
+\ after it, so the cold-prefix assembler appends a second SEAL-CAPTURE token at
+\ the true engine-prefix end (habu2.f EMIT-SEAL-CAPTURE-TOKEN) - re-running the
+\ capture is monotonic and only ever raises the watermark. This baseline keeps
+\ contexts that load the base files without the cold-prefix assembler sealed up
+\ to here. The FORGET/HIDE guards above reject truncation below the watermark.
+SEAL-CAPTURE

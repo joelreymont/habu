@@ -504,6 +504,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	READ-STDIN-ALL	(ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	read fd zero into a caller buffer and fail closed on overflow
 1	source	lib/source.f	word	SOURCE-APPEND-BYTES	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append bytes into a bounded destination tracked by a length cell
 1	source	lib/source.f	word	SOURCE-APPEND-C	(n ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one byte into a bounded destination tracked by a length cell
+1	source	lib/source.f	word	SOURCE-PATH-BYTE-SAFE?	(n -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	reject one path byte that would change materialized source structure
+1	source	lib/source.f	word	SOURCE-PATH-SAFE?	(ptr u8 n -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	true when a path has no quote backslash or newline bytes
+1	source	lib/source.f	word	SOURCE-QPATH-CHECK	(ptr u8 n --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fail closed when a path is unsafe to materialize as a quoted token
+1	source	lib/source.f	word	SOURCE-APPEND-QPATH	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one quoted path token with a shared fail-closed structure check
 1	source	lib/source.f	word	SOURCE-PATH-A@	(ptr a idx -- ptr u8)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path pointer from a source-list pointer table
 1	source	lib/source.f	word	SOURCE-PATH-U@	(ptr a idx -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	fetch one path length from a source-list length table
 1	source	lib/source.f	word	SOURCE-APPEND-FILE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one counted file into a bounded destination
@@ -531,7 +535,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-LS-DRAIN	(ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	stream all lines from the active file descriptor
 1	source	lib/source.f	word	SOURCE-FILE-LINES	(ptr u8 n ptr u8 n [ ptr u8 n n -- ] --)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	stream a counted file path line by line through a callback
 1	process	lib/process.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	counted pathz process wrappers RUN-CAPTURE buffers timeout FD_CLOEXEC cleanup
-1	process	lib/process.f	word	PROC-WAIT-RAW	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-rc alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-WAIT-STATUS-RAW	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw wait-status alias captured before checked wrappers decode wait outcomes
 1	process	lib/process.f	word	PROC-SPAWN-RAW	(ptr u8 fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-io alias captured before checked wrapper shadows the primitive name
 1	process	lib/process.f	word	PROC-KILL-RAW	(pid n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw kill alias for terminating timed-out capture children
@@ -542,6 +545,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-OUTCOME>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map outcome kind and code to historical rc with non-exits as 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
 1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
+1	process	lib/process.f	word	PROC-REAP-ARM-OFF	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	default capture-reaper vector: arm nothing and return the no-reaper pid sentinel
+1	process	lib/process.f	word	PROC-REAP-ARM-DEFAULT	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the no-op capture-reaper vector; lib/process-fork.f replaces it with the live one
+1	process	lib/process.f	word	PROC-CAPTURE-PID!	(pid --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	record the capture child pid and arm the context's co-located death reaper for it
+1	process	lib/process.f	word	PROC-REAP-DISARM	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	kill and wait the capture reaper by its specific pid so it never outlives its capture
 1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
@@ -618,6 +625,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-fork	lib/process-fork.f	word	PROC-FORK-REAPER	(fd fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	double-fork a reparented parent-death reaper watching the death and worker-alive pipes
 1	process-fork	lib/process-fork.f	word	PROC-REAP-WATCH1	(fd --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	block until the single parent-death read end EOFs; kill the reaper's group on parent death
 1	process-fork	lib/process-fork.f	word	PROC-SPAWN-REAPER	(fd pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	published	fork a co-located reaper that joins a spawned child's group and kills it on pool-parent death; returns the reaper pid
+1	process-fork	lib/process-fork.f	word	PROC-REAP-ARM-ON	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	live capture-reaper vector: arm a co-located reaper watching PROC-REAP-WATCH-FD, or nothing when unset
+1	process-fork	lib/process-fork.f	word	PROC-REAP-ARM-INSTALL	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the live capture-reaper vector into the PROC-REAP-ARM seam
 1	process-argv	lib/process-argv.f	module			lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	checked argv table builder layered after native primitive rebuild
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF-A-FIELD	(-- ptr ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for argv byte storage
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-BUF@	(-- ptr u8)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	read the argv byte-storage pointer
@@ -675,9 +684,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-NAME-LEN	(ptr u8 len -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the byte length before an environment entry equals sign
 1	process-env	lib/process-env.f	word	PROC-ENV-SAME-NAME?	(ptr u8 len ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	compare environment entries by variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-SLOT-NAME?	(ptr u8 len idx -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether one env table slot has a requested variable name
+1	process-env	lib/process-env.f	word	PROC-ENV-NAME-IDX	(ptr u8 len -- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the prepared envp slot index for a variable name or -1
 1	process-env	lib/process-env.f	word	PROC-ENV-HAS-NAME?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether prepared envp already contains a variable name
 1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT$?	(ptr u8 len -- ptr u8 len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the prepared default value for a child environment name when present
+1	process-env	lib/process-env.f	word	PROC-ENV-ROW-Z	(ptr u8 len ptr u8 len -- ptr u8)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	store one NAME=VALUE z-string into child env byte storage
 1	process-env	lib/process-env.f	word	PROC-ENV+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	append one checked child environment name/value pair
+1	process-env	lib/process-env.f	word	PROC-ENV-SET	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	replace one child environment row by name or append it when absent
 1	process-env	lib/process-env.f	word	PROC-ENV-DEFAULT+	(ptr u8 len ptr u8 len --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	append one default child environment name/value pair
 1	process-env	lib/process-env.f	word	PROC-ENV-PREPARE	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	terminate and return the prepared child envp pointer table
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-ONE	(idx -- idx)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	inherit one parent envp entry unless overridden
@@ -810,6 +822,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-record	lib/test/record.f	word	TREC-FAIL	(ptr u8 n n ptr u8 n --)	lib/test/record-test.f	docs/stdlib.md	stdlib-test	active	print one TFAIL failure record line
 1	test	lib/test.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertions plus TEST package suite framework and final report policy
 1	test-assert	lib/test/assert.f	module			lib/test/assert-test.f	docs/stdlib.md	stdlib-test	active	checked assertion primitives loaded by the test facade
+1	test-budget	lib/test/budget.f	module			lib/process-test.f	docs/stdlib.md	stdlib-test	active	load-aware timeout budgets scaled by the gate cal-factor via HB_LOAD_PCT, clamped to 3x nominal
+1	test-budget	lib/test/budget.f	word	T-BUDGET-CLAMP	(n -- n)	test/run-budget-cal-test.f	docs/stdlib.md	stdlib-test	active	clamp a load factor to the 100..300 percent budget band
+1	test-budget	lib/test/budget.f	word	T-BUDGET-ENV-PCT	(-- n)	lib/process-env-test.f	docs/stdlib.md	stdlib-test	active	read and clamp HB_LOAD_PCT; unset or invalid means nominal 100
+1	test-budget	lib/test/budget.f	word	T-BUDGET-INIT	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-test	active	cache the environment load factor into T-BUDGET-PCT
+1	test-budget	lib/test/budget.f	word	T-BUDGET-MS	(n -- n)	lib/process-test.f	docs/stdlib.md	stdlib-test	published	scale a nominal timeout budget by the measured load factor, at most 3x
 1	test-suite	lib/test/suite.f	module			lib/test/suite-test.f	docs/stdlib.md	stdlib-test	active	TEST package suite group test framework loaded by the test facade
 1	test-src-shape	lib/test/src-shape.f	module			lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	shared source-shape assertions that auto-size a whole-file buffer and assert its shape
 1	test-src-shape	lib/test/src-shape.f	word	SHAPE:CHECK-FIT	(ptr u8 n n n --)	lib/test/src-shape-test.f	docs/stdlib.md	stdlib-test	active	fail closed with a file/size diagnostic when a source would exceed the buffer cap
@@ -855,12 +872,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test	lib/test/suite.f	word	TEST:RESET	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	clear suite definitions and restore default group
 1	test	lib/test/suite.f	word	TEST:LABEL$	(-- ptr u8 n)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	return current test label
 1	test	lib/test/suite.f	word	TEST:LABEL=	(ptr u8 n -- bool)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	compare against current test label
-1	test	lib/test/suite.f	word	TEST:GROUP-PARALLEL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named parallel test group
-1	test	lib/test/suite.f	word	TEST:GROUP-SEQUENTIAL	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	begin a named sequential test group
-1	test	lib/test/suite.f	word	TEST:END-GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test group
+1	test	lib/test/suite.f	word	TEST:GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	open a named test group with SEQ or PARA mode
+1	test	lib/test/suite.f	word	TEST:;GROUP	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test group
 1	test	lib/test/suite.f	word	TEST:SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named file test
 1	test	lib/test/suite.f	word	TEST:SUITE-STDIN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	define a named stdin file test
-1	test	lib/test/suite.f	word	TEST:END-SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
+1	test	lib/test/suite.f	word	TEST:;SUITE	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	close the current test definition
 1	test	lib/test/suite.f	word	TEST:RUN	(--)	lib/test/suite-test.f	docs/stdlib.md	stdlib-test	published	run configured setup tests drain and teardown
 1	test-snap	lib/test/snap.f	module			lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	typed SNAP= stack snapshot comparator aggregated into the assert counters
 1	test-snap	lib/test/snap.f	word	TS-CELL	(ptr a n -- ptr a)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	return one bounded snapshot scratch cell address
@@ -1070,6 +1086,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:PACKAGE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append package name and visibility metadata
 1	object	lib/object.f	word	OBJ:EXPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append exported symbol and effect metadata
 1	object	lib/object.f	word	OBJ:DEF+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append address-bearing text symbol definition metadata
+1	object	lib/object.f	word	OBJ:ENTRY+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append selected non-MAIN entry identity seed cells and test-mode metadata
 1	object	lib/object.f	word	OBJ:IMPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append imported symbol and effect metadata
 1	object	lib/object.f	word	OBJ:TYPE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append declared type metadata
 1	object	lib/object.f	word	OBJ:RELOC+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append relocation kind offset and symbol metadata
@@ -1310,7 +1327,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	report	lib/report.f	word	TBL-MD	(n --)	lib/report-test.f	docs/stdlib.md	stdlib-report	published	report engine word
 1	task	lib/task.f	module			lib/task-test.f	docs/threads.md	stdlib-task	active	checked pthread-backed CPU tasking and per-task user storage
 1	task	lib/task.f	word	TASK:TASK	(n --)	lib/task-test.f	docs/threads.md	stdlib-task	published	define a TASK package task control block
-1	task	lib/task.f	word	TASK:CONSTRUCT	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
+1	task	lib/task.f	word	TASK:PREPARE	(ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	allocate and initialize a task without starting it
 1	task	lib/task.f	word	TASK:ACTIVATE	(n ptr a --)	lib/task-test.f	docs/threads.md	stdlib-task	published	start a task with an execution token
 1	task	lib/task.f	word	TASK:SELF	(-- ptr a)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer
 1	task	lib/task.f	word	TASK:SELF-N	(-- n)	lib/task-test.f	docs/threads.md	stdlib-task	published	return the current task control block pointer as a cell

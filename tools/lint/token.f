@@ -1,7 +1,8 @@
 \ token.f - checked whitespace token table for native lint tools.
 \ Load after tools/lint/text.f.
 
-$8000 constant TMAX             \ largest linted source (src/core/checker.f) + headroom
+$10000 constant TMAX            \ largest linted source (src/core/checker.f) + headroom
+                                \ (item 9 grew checker.f past the old $8000 tokens)
 77 constant E-LINT-TOKEN-CAP
 s" E-LINT-TOKEN-CAP" E-LINT-TOKEN-CAP LINT-CODE-NAME+
 
@@ -48,8 +49,8 @@ variable BOL
 : PARENS-ENABLED? ( -- bool )
    PARENS? @ T-FLAG ;
 
-: TOKEN-ENSURE ( -- )
-   TN# @ TMAX >= if E-LINT-TOKEN-CAP throw then ;
+: TOKEN-ENSURE ( -- )   \ labeled capacity exit: a bare rc 77 is unattributable
+   TN# @ TMAX >= if s" lint: token table full (TMAX); grow tools/lint/token.f" E-LINT-TOKEN-CAP die then ;
 
 : TOKEN+ ( ptr u8 n bool -- ) {: a:ptr u bol :}
    TOKEN-ENSURE

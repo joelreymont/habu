@@ -231,7 +231,8 @@ variable ERR#
    0 CUR-EXEMPT !
    CUR$ s" test/run-lib.f" STR= if -1 CUR-EXEMPT ! then
    CUR$ s" test/run-resident.f" STR= if -1 CUR-EXEMPT ! then
-   CUR$ s" test/run-worker.f" STR= if -1 CUR-EXEMPT ! then ;
+   CUR$ s" test/run-worker.f" STR= if -1 CUR-EXEMPT ! then
+   CUR$ s" tools/dynamic-tail-manifest.f" STR= if -1 CUR-EXEMPT ! then ;
 
 : LINT-CUR ( -- )
    CUR$ s" src/" STARTS-WITH? if exit then

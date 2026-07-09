@@ -36,3 +36,12 @@ shipping a pre-pass that either rejects legit boundaries or has to fork a parall
 deps land: build the checkable subset from the SAME BF-APPEND-* order, minus the
 injected-boundary files, and grow it as builder-trust conversion shrinks the
 boundary set.
+
+## Blocker shrunk (2026-07-07)
+
+The injected target-image boundaries named in the blocked-evidence above
+are GONE: the emitted stage source no longer contains any generated
+`0 set-check` span, hook reinstall, or synthetic TRUST rows (habu-checked-
+image-writers, build-fixpoint half). The image writers compile checked in
+stage2. Remaining injected boundaries for the pre-pass: the refresh
+prelude's BFR-CHECK-OFF before the checker-boot region only.

@@ -51,6 +51,63 @@ DONE:
   arity for `{: a b :}` local-binding bodies) are unchanged by this - present in
   both original and extended alphabets; not this dot's scope.
 
-STILL OPEN (other worker's territory, do not touch here): replace the TRUSTED
-ERR@ magic-offset/EVALERR-CELL peek with a checked engine primitive exposing the
-eval-error flag - needs an engine (src/habu/*) change.
+## Gate-path census + width unfreeze (2026-07-06, on 1ded5e5e)
+
+DONE: (1) the axiom census + its lying-axiom self-test now run in the GATE path
+too - PROP-RUN-DEFAULT runs AX-SELFTEST + AX-CENSUS once in the parent before
+the sweep, and the gate's prop/debug phase asserts `census OK` in the output
+(test/gate-debug-lib.f GDB-PROP; proven red-first: the assert failed against
+the old default path, which is exactly how the 13-axiom census red previously
+went gate-invisible until a manual serial run). (2) Width unfrozen 2x:
+DEFAULT-COUNT 250 -> 500, so one gate phase covers 8 x 500 = 4000
+distinct-seed programs with all metamorphic amplifiers fatal (0.8s wall vs the
+120s phase timeout). 1000/shard was MEASURED AND REJECTED: under the
+two-concurrent-gates acceptance the 8000-program sweep's contention pushed
+lib/process-test past even its pressure-floored 2x budget (failed at ~10.1s
+twice); at 500 the same acceptance runs 3 rounds x 2 gates all green, zero
+-2502. The width ceiling is contention-bound, not budget-bound - raising it
+further belongs with an isolation mechanism (gate mutex / machine slot
+budget), not a bigger constant. Serial `bin/hb <seed> <count>` repro
+unchanged. Also added in this unit: the gate's exported load factor now floors
+at the pool's structural self-contention (TR-POOL-PRESSURE-PCT = nested x 100,
+max'd with cal-factor in TR-LOAD-PCT-EXPORT) so in-gate suite budgets carry
+the gate's own oversubscription even when startup calibration saw an idle box;
+fixtures in test/run-budget-cal-test.f.
+
+## Proof fixtures for sharding + alphabet (2026-07-08, from head 44efc694)
+
+DONE - the test-side scope now carries its own regressions; only the engine
+primitive slice below remains open:
+- Alphabet: PROP-STEP's structural op texts are named words (OP-LOOP$ ..
+  OP-QUOT1$) shared with SELFTEST-ALPHABET, which (a) certifies each of the 9
+  classes as a minimal ( i64 -- i64 ) body and (b) proves each class is
+  GENERATED within a deterministic capped sweep (SEED 12345, cap 400 GEN
+  bodies, substring census over BBUF). A renumbered K table or a narrowed RND%
+  bound that silently dropped a class from the explored space now dies with
+  the class named.
+- Sharding: SELFTEST-SHARD-SEEDS pins pairwise-distinct, in-range slot seeds
+  across representative bases including the wrap that exercises the 0->1 clamp
+  (base $61C8864F + STEP = 2^31); distinct seeds imply distinct streams
+  because the LCG's odd multiplier makes each step a bijection.
+  SELFTEST-SWEEP-RED proves one red shard fails the whole sweep: a forked
+  probe child (stdout+stderr muted via the MUTE-FD factor) arms the
+  SHARD-FAULT seam so every shard dies red before its first iteration - the
+  probe costs only the forks - and the parent asserts the probe exits 1
+  through SWEEP's red die.
+- Gate visibility: GDB-PROP asserts "alphabet OK", "shard-seeds OK", and
+  "sweep-red OK" in the phase output, proven red-first against the pre-change
+  tree (FAIL: prop-test alphabet self-test did not run in the gate path). The
+  serial repro path also runs SELFTEST-ALPHABET; the fork-based self-tests
+  stay in the sharded default path.
+
+STILL OPEN - ROUTED (engine territory, item-8 lane owns checker/engine now):
+replace the TRUSTED ERR@ peek with a checked engine primitive. Routable spec:
+add an FPRIM `eval-err@ ( -- n )` in src/habu/habu1.f reading EVALERR-CELL
+(src/habu/layout.f) - the exact cell ERR@ peeks via
+`data-base EVALERR-CELL + @` today - plus its `PRIM: eval-err@ PE-N PE-OUT`
+PES row in src/core/checker.f and a census classification in AX-GEN-LIST (a
+pure engine-state read, difftestable like ndict@/cp@ - it executes safely: the
+census's own AXEVAL path already exercises the cell). Then
+test/prop-test-core.f ERR@ becomes `: ERR@ ( -- n ) eval-err@ ;` (checked) and
+the TRUSTED: row retires; mirror the prim in bootstrap/cg/forth.fs per the
+2-stage self-hosting bootstrap (register unused, rebuild, then use).

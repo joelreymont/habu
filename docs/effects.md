@@ -123,13 +123,19 @@ are inert unless a `DEFLINEAR` type is in scope, so non-linear polymorphic code
 unaffected. `KEEP`/`BI`/`TRI` and self-duplicating quotations may again be
 trusted to uphold linearity (tracked by `habu-linear-kind-inference-c31475b8`).
 
-`VALUE-RECORD name field type ... END-VALUE-RECORD` declares a by-value record
-token for signatures. The token expands to hidden field types, so
+`VALUE-RECORD name field type ... END-VALUE-RECORD` declares a legacy by-value
+record token for signatures. The token expands to TOUCHABLE `field<rec,name,t>`
+cells: ordinary one-cell primitives destructure them (`drop`/`nip`/`over`),
+and a field coerces to its inner type at an output boundary, so
 `( n n -- point )` and `( point -- n n )` can be certified with empty runtime
 bodies, while `( point -- rect )` rejects even if both records have the same
-cell shape. Record fields may be polymorphic or parametric signature types;
-accessors, updaters, copies, and destructors are normal checked words over the
-expanded stack cells.
+cell shape (field identity is record+name). Record fields may be polymorphic
+or parametric signature types; accessors, updaters, copies, and destructors
+are normal checked words over the expanded touchable cells. This is the
+compatibility layer — contrast `PRODUCT` (docs/type-families.md §9.4), whose
+fields are checker-owned HIDDEN cells that only the generated
+`PKG:MAKE`/`PKG:UNMAKE` words may assemble or split; new by-value records
+should use `PRODUCT`.
 
 ## Pointer types and arithmetic
 
@@ -307,11 +313,18 @@ The axiom set is audited two ways:
 - **Non-executable axioms** — syscalls, process/control words (`throw`, `die`,
   `fork`, `spawn-*`), parser literals (`s"`, `char`, `[']`), defining words
   (`create`, `variable`, `constant`), engine/checker introspection (`checker-*`,
-  `diag-*`, `parse-name`), image/FFI, and atomic RMW ops cannot be run
-  in-process with dummy operands. Their declared arity is pinned instead by the
-  native self-rebuild fixpoint (the engine is rebuilt from source through these
-  primitives) and the behavioral gate (the rebuilt engine runs real programs).
-  The census records them as `noexec`.
+  `diag-*`, `parse-name`), fail-closed checker-substrate table accessors that
+  `76 die` on an out-of-range dummy index (`wf-tokix@`/`wf-pos@`/`wf-fam@`/
+  `wf-width@` via `WF-ROW@`, `tfam-width@` via `TF-REC@`), the seal watermark
+  capture (`seal-capture` rewrites live seal state, like `cp!`/`ndict!`),
+  image/FFI, and atomic RMW ops cannot be run in-process with dummy operands.
+  Their declared arity is pinned instead by the native self-rebuild fixpoint
+  (the engine is rebuilt from source through these primitives) and the
+  behavioral gate (the rebuilt engine runs real programs). The census records
+  them as `noexec`. The substrate's zero-arg high-water readers (`wf-n@`,
+  `tfam-n@`, `sumv-n@`, `tf-str-u@`, `tf-pk-n@`, `schema-n@`,
+  `schema-root-n@`) are pure variable reads and ARE difftested, matching
+  `ndict@`/`cp@`.
 
 Axiom-set size is tracked separately from discharged `TRUSTED`: the census
 prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X

@@ -4,6 +4,7 @@
 
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
+require tools/ptx/ad-entry-lib.f
 
 $8000 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
@@ -109,6 +110,9 @@ variable PTXT-ERR-SAVE
 : PTXT-INCLUDE-SOFTMAX-BWD-OPT-CG ( -- )
    s" tools/ptx/softmax-bwd-opt-cg.f" included ;
 
+: PTXT-INCLUDE-SOFTMAX-ROWS-BWD-CG ( -- )
+   s" tools/ptx/softmax-rows-bwd-cg.f" included ;
+
 : PTXT-RUN-SAXPY ( -- n n n )
    [: PTXT-INCLUDE-SAXPY ;] PTXT-CAPTURE ;
 
@@ -148,6 +152,9 @@ variable PTXT-ERR-SAVE
    s" tools/ptx/softmax-fb-cg.f" >LEN PROC-ARGV+
    s" bin/hb" >LEN  PTXT-OUT PTXT-CAP >LEN  PTXT-ERR PTXT-CAP >LEN  PTXT-TIMEOUT-MS >MS  RUN-ARGV-CAPTURE
    PTXT-CAPTURE>N ;
+
+: PTXT-RUN-SOFTMAX-ROWS-BWD-CG ( -- n n n )
+   [: PTXT-INCLUDE-SOFTMAX-ROWS-BWD-CG ;] PTXT-CAPTURE ;
 
 : PTXT-SAXPY-OUTPUT ( -- )
    PTXT-RUN-SAXPY 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
@@ -281,6 +288,178 @@ variable PTXT-ERR-SAVE
    s" .visible .entry" PTXT-COUNT 2 T=      \ fwd + bwd share that one module
    s" ERROR" PTXT-NOT-HAS ;
 
+\ --- per-VJP-entry AD kernels (tools/ptx/ad-entry-lib.f): emitted text shape ---
+
+: PTXT-ADE-COMMON ( n n n -- )
+   0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE ;
+
+: PTXT-ADE-EXP-OUTPUT ( -- )
+   [: ADE-EXP-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-EXP-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" mul.rn.f32 %f4, %f2, %f3;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-XMSUB-OUTPUT ( -- )
+   [: ADE-XMSUB-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" mov.f32 %f2, 0fFF800000;" PTXT-HAS
+   s" sub.f32 %f6, %f1, %f5;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XMSUB-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" setp.eq.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-XDIVSUM-OUTPUT ( -- )
+   [: ADE-XDIVSUM-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" mov.f32 %f2, 0f00000000;" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XDIVSUM-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE-SOFTMAX-OUTPUT ( -- )
+   [: ADE-SOFTMAX-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SOFTMAX-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ the deliberate wrong VJP keeps dy/s and DROPS the fan-out term: no neg.f32
+: PTXT-ADE-WRONG-OUTPUT ( -- )
+   [: ADE-XDIVSUM-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ --- vjp.f table entry kernels: two-input elementwise + composites ---
+
+: PTXT-ADE2-ELEM-OUTPUT ( -- )
+   [: ADE-ADD2-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD2_FWD" PTXT-HAS
+   s" add.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SUB2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD2_BWD" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-MUL2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" mul.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DIV2-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" div.rn.f32" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ OVER fan-out: the correct backward SUMS the copy's cotangents (add.rn.f32);
+\ the OVER-as-permutation bug drops the sum. DROP: the correct backward writes
+\ the typed zero (0f00000000); the cotangent leak has no zero.
+: PTXT-ADE2-STRUCT-OUTPUT ( -- )
+   [: ADE-OVERK-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" add.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-OVERK-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" add.rn.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DROPK-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" 0f00000000" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-DROPK-BWD-WRONG ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" 0f00000000" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADE2-SCALAR-OUTPUT ( -- )
+   [: ADE-SCALE-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADS_FWD" PTXT-HAS
+   s" ld.param.f32 %f1, [p_a];" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-SCALE-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADS_BWD" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-FMA-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADF_FWD" PTXT-HAS
+   s" fma.rn.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-FMA-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry ADF_BWD" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ --- the GENERATED backward (reverse pass over the vjp.f table, ad-gen lowering) ---
+\ XSUBSUM fwd z = x - Sum(x); the generated backward ends in the conservative
+\ ROW-SCATTER-ADD (red.global.add). The emitting lowering rejects are asserted
+\ under capture: a second load and a dangling value both fail closed.
+
+: PTXT-ADG-XSUBSUM-OUTPUT ( -- )
+   [: ADE-XSUBSUM-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" sub.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-XSUBSUM-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" neg.f32" PTXT-HAS
+   s" add.rn.f32" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+: PTXT-ADG-REJECTS ( -- )
+   [: s" ROW-LOAD ROW-LOAD +. ROW-STORE" 1 2 3 ADG-LOWER ;] PTXT-CAPTURE
+   E-PTX-NOIMPL T= 2drop
+   [: s" ROW-LOAD DUP ROW-STORE" 1 2 3 ADG-LOWER ;] PTXT-CAPTURE
+   E-PTX-AD-OUTPUT T= 2drop ;
+
+\ EXPGEN: the generated EXP. backward with SAVED-Y RESOLVED by recompute - the
+\ backward kernel re-runs exp(x) from the primal span (ex2 present) and the
+\ resolved dz*y multiply feeds the conservative scatter-add. No SAVED- token
+\ survives into the emitted text.
+: PTXT-ADG-EXPGEN-OUTPUT ( -- )
+   [: ADE-EXPGEN-FWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_FWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" ERROR" PTXT-NOT-HAS
+   [: ADE-EXPGEN-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" ex2.approx.f32" PTXT-HAS
+   s" mul.rn.f32 %f4, %f3, %f2;" PTXT-HAS
+   s" red.global.add.f32" PTXT-HAS
+   s" SAVED-" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ the ad-reverse capstone: the CERTIFIED closed-form softmax backward emits its
+\ own kernel - dy*y multiply, block reduce, subtract, *y, plain store, no ERROR
+: PTXT-SOFTMAX-ROWS-BWD-OUTPUT ( -- )
+   PTXT-RUN-SOFTMAX-ROWS-BWD-CG 0 T= 0 T= dup PTXT-OUT-U ! 0 > TTRUE
+   s" .visible .entry SOFTMAX_BWD_ROWS" PTXT-HAS
+   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS
+   s" bar.sync 0;" PTXT-HAS
+   s" sub.f32 %f8, %f2, %f7;" PTXT-HAS
+   s" mul.rn.f32 %f9, %f8, %f1;" PTXT-HAS
+   s" red.global.add.f32" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
+\ the save-vs-recompute override pair from ONE lowering: the save path reloads
+\ y (two loads, one multiply, NO ex2 recompute); the recompute path is EXPGEN
+: PTXT-ADG-EXPSAVE-OUTPUT ( -- )
+   [: ADE-EXPSAVE-BWD ;] PTXT-CAPTURE PTXT-ADE-COMMON
+   s" .visible .entry AD_BWD" PTXT-HAS
+   s" mul.rn.f32 %f3, %f2, %f1;" PTXT-HAS
+   s" ex2.approx.f32" PTXT-NOT-HAS
+   s" SAVED-" PTXT-NOT-HAS
+   s" ERROR" PTXT-NOT-HAS ;
+
 T-RESET
 PTXT-SAXPY-OUTPUT
 PTXT-OPS-CG-OUTPUT
@@ -293,5 +472,18 @@ PTXT-SMEM-CG-OUTPUT
 PTXT-SOFTMAX-BWD-CG-OUTPUT
 PTXT-SOFTMAX-BWD-OPT-CG-OUTPUT
 PTXT-SOFTMAX-FB-CG-OUTPUT
+PTXT-ADE-EXP-OUTPUT
+PTXT-ADE-XMSUB-OUTPUT
+PTXT-ADE-XDIVSUM-OUTPUT
+PTXT-ADE-SOFTMAX-OUTPUT
+PTXT-ADE-WRONG-OUTPUT
+PTXT-ADE2-ELEM-OUTPUT
+PTXT-ADE2-STRUCT-OUTPUT
+PTXT-ADE2-SCALAR-OUTPUT
+PTXT-ADG-XSUBSUM-OUTPUT
+PTXT-ADG-REJECTS
+PTXT-ADG-EXPGEN-OUTPUT
+PTXT-SOFTMAX-ROWS-BWD-OUTPUT
+PTXT-ADG-EXPSAVE-OUTPUT
 T-REPORT
 s" saxpy-test: ok" type cr

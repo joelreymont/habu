@@ -39,6 +39,8 @@ variable HBT-REPL-BAD-SRC-U
 variable HBT-REPL-BAD-OUT-U
 variable HBT-AOT-SRC-U
 variable HBT-AOT-OUT-U
+variable HBT-DEP-SRC-U
+variable HBT-ENTRY-SRC-U
 variable HBT-ENG-U
 
 create HBT-ROOT-BUF FS-PATH-CAP allot
@@ -52,6 +54,8 @@ create HBT-REPL-BAD-SRC-BUF FS-PATH-CAP allot
 create HBT-REPL-BAD-OUT-BUF FS-PATH-CAP allot
 create HBT-AOT-SRC-BUF FS-PATH-CAP allot
 create HBT-AOT-OUT-BUF FS-PATH-CAP allot
+create HBT-DEP-SRC-BUF FS-PATH-CAP allot
+create HBT-ENTRY-SRC-BUF FS-PATH-CAP allot
 create HBT-ENG-BUF FS-PATH-CAP allot
 create HBT-ABI-ALT 96 allot
 create HBT-OUT HBT-CAPTURE-CAP allot
@@ -109,6 +113,12 @@ create HBT-KEY-B 64 allot
 
 : HBT-AOT-OUT ( -- ptr u8 n )
    HBT-AOT-OUT-BUF HBT-AOT-OUT-U @ ;
+
+: HBT-DEP-SRC ( -- ptr u8 n )
+   HBT-DEP-SRC-BUF HBT-DEP-SRC-U @ ;
+
+: HBT-ENTRY-SRC ( -- ptr u8 n )
+   HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U @ ;
 
 : HBT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
@@ -397,8 +407,13 @@ create HBT-KEY-B 64 allot
    HBT-NEW-TMP DIR? TTRUE
    HBT-BAD-OUT EXISTS? TFALSE ;
 
+\ The object cache key is the ordered-closure hex of the source (a self-contained
+\ AOT source closes over only itself), so the fixtures that pre-store objects must
+\ key them the same way hb-build now does.
 : HBT-AOT-HEX! ( -- )
-   HBT-AOT-SRC HBT-AOT-HEX SHA256-FILE-HEX dup 0 <> if throw then drop ;
+   HBT-AOT-SRC HBB-SRC!
+   HBB-SRC-CLOSURE-HEX!
+   HBB-SRC-CLOSURE-HEX HBT-AOT-HEX 64 BYTE-COPY ;
 
 : HBT-AOT-SOURCE-KEY! ( -- )
    HBT-AOT-HEX HBT-KEY-U HBB-TARGET-ABI$ HBB-CHECKER-ABI$ HBB-COMPILER-ABI$
@@ -531,19 +546,67 @@ create HBT-KEY-B 64 allot
    HBB-MAKER-RUN @ 0= TTRUE
    HBT-AOT-OUT EXISTS? TFALSE ;
 
+\ The AOT/REPL/object cache keys fold the whole require/include closure, so a
+\ content edit to a required file (not just the top-level source) must change the
+\ key. This is the property a single-file digest could not provide.
+: HBT-ENTRY-CLOSURE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require " SB-APPEND
+   HBT-DEP-SRC SB-APPEND
+   HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-ARTIFACT-KEY ( ptr u8 -- ) {: dst:ptr :}
+   HBB-ARTIFACT-KEY!
+   HBB-ARTIFACT-KEY-HEX dst 64 BYTE-COPY ;
+
+: HBT-CLOSURE-KEY-CHANGES ( -- )
+   HBB-RESET-OPTIONS
+   HBT-TMP HBB-CACHE-ROOT!
+   HBT-ROOT s" dep-closure.f" HBT-DEP-SRC-BUF HBT-DEP-SRC-U HBT-PATH!
+   HBT-ROOT s" entry-closure.f" HBT-ENTRY-SRC-BUF HBT-ENTRY-SRC-U HBT-PATH!
+   HBT-DEP-SRC s\" \\ dep v1\n" WRITE-ALL
+   HBT-ENTRY-SRC HBT-ENTRY-CLOSURE$ WRITE-ALL
+   HBT-ENTRY-SRC HBB-SRC!
+   HBT-KEY-A HBT-ARTIFACT-KEY
+   HBT-DEP-SRC s\" \\ dep v2 changed\n" APPEND-FILE
+   HBT-KEY-B HBT-ARTIFACT-KEY
+   HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE
+   HBT-ENTRY-SRC HBB-SRC!
+   HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-A 64 BYTE-COPY
+   HBT-DEP-SRC s\" \\ dep v3 changed\n" APPEND-FILE
+   HBB-SRC-CLOSURE-HEX! HBB-SRC-CLOSURE-HEX HBT-KEY-B 64 BYTE-COPY
+   HBT-KEY-A 64 HBT-KEY-B 64 STR= TFALSE ;
+
 \ Maker-build failures must be attributable even when the child is silent:
 \ the die message carries the child rc.
 : HBT-MAKER-DIE-MSG ( -- )
    7 HBB-MAKER-DIE$ s" hb-build: native maker build failed, rc 7" T$=
    75 HBB-MAKER-DIE$ s" rc 75" CONTAINS? TTRUE ;
 
+\ tools/dynamic-tail-manifest.f is a behaviour-bearing dependency of the
+\ discovery producer (tools/source-discovery.f requires it, and its rows steer
+\ closure computation), so its content must fold into the maker cache key. The
+\ key preimage records each tool source through CK-FILE+, which appends the path
+\ fragment and then the file's content digest with no earlier return, so the
+\ presence of the manifest path in CK-BUF proves its content participates in the
+\ key. If the manifest is missing from HBB-KEY-LOAD-FILES a manifest edit
+\ silently reuses a stale hb-build maker artifact.
+: HBT-MAKER-KEY-FOLDS-MANIFEST ( -- )
+   CK-CACHE-CLEAR!
+   CK-RESET
+   HBB-KEY-LOAD-FILES
+   CK-BUF CK-U @ s" tools/dynamic-tail-manifest.f" CONTAINS? TTRUE ;
+
 : HBT-MAIN ( -- )
    T-RESET
    HBT-MAKER-DIE-MSG
+   HBT-MAKER-KEY-FOLDS-MANIFEST
    HBT-PREPARE
    HBT-BUILD-REPL
    HBT-REBUILD-REPL-CACHE
    HBT-CACHE-KEY-CHANGES
+   HBT-CLOSURE-KEY-CHANGES
    HBT-RUN-REPL
    HBT-RUN-REPL-ARGS
    HBT-IMGDUMP-REPL

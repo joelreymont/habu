@@ -35,15 +35,21 @@ variable RDIAG-I
    0 RDIAG-ON !
    0 RDIAG-U ! ;
 
+\ Typed slot for the diagnostic buffer pointer: a plain `variable @` reads back
+\ an untyped n, so the byte store below would not certify; `0 ptr-field` gives
+\ the checked ptr u8 view (the lib-wide *-BUF-A idiom).
+: RDIAG-A-FIELD ( -- ptr ptr u8 )
+   RDIAG-A 0 ptr-field ;
+
 : DIAG-BUFFER$ ( -- ptr u8 n )
-   RDIAG-A @ RDIAG-U @ ;
+   RDIAG-A-FIELD @ RDIAG-U @ ;
 
 : RDIAG-COPY ( ptr u8 n -- )
    {: a:ptr u:n :}
    0 RDIAG-I !
    BEGIN RDIAG-I @ u < WHILE
       a RDIAG-I @ + c@
-      RDIAG-A @ RDIAG-U @ + RDIAG-I @ + c!
+      RDIAG-A-FIELD @ RDIAG-U @ + RDIAG-I @ + c!
       RDIAG-I @ 1 + RDIAG-I !
    REPEAT ;
 
@@ -71,10 +77,10 @@ variable RATOM-I
 : RATOM-FIND ( n -- n bool ) {: key:n :}
    0 RATOM-I !
    BEGIN RATOM-I @ RATOM-N @ < WHILE
-      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ -1 EXIT THEN
+      RATOM-I @ cells RATOM-KEY + @ key = IF RATOM-I @ 0 0= EXIT THEN
       RATOM-I @ 1 + RATOM-I !
    REPEAT
-   0 0 ;
+   0 1 0= ;
 : RATOM-ADD ( n -- n ) {: key:n :}
    RATOM-N @ RATOM-CAP >= IF 1 RQM ! 0 EXIT THEN
    key RATOM-N @ cells RATOM-KEY + !
@@ -84,12 +90,13 @@ variable RATOM-I
    key RATOM-FIND IF EXIT THEN drop
    key RATOM-ADD ;
 
-: RSTR {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: RSTR ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
-: CON-OUT {: p :}
+: CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
    p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user deftype)
-      p CT-NAME$ dup IF RSTR ELSE 2drop 63 EMIT1 THEN
+      p CT-NAME$ dup 0 <> IF RSTR ELSE 2drop 63 EMIT1 THEN
    ELSE 63 EMIT1 THEN THEN ;
 
 : ATOM-REND {: t :}
@@ -99,8 +106,57 @@ variable RATOM-I
    45 EMIT1
    t ATOM>K RATOM-ORD RATOM-CHAR EMIT1 ;
 
-: PARAM-START {: t :}
-   t PARAM>NAME-A t PARAM>NAME-U RSTR  60 EMIT1 ;
+: RNUM ( n -- )                 \ small non-negative number (hidden slot index)
+   dup 10 >= IF dup 10 / RECURSE THEN
+   10 mod 48 + EMIT1 ;
+
+\ a hidden physical field renders as the diagnostic-only '@family.slotN<args>' /
+\ '@family.tag<args>' form (docs §20) and sets RQM so REC-SIG never records a
+\ sig containing a lone hidden cell. Full runs never reach here: row rendering
+\ (REND-COLLECT / QREND's row mode) compacts them to the logical family type.
+: PARAM-START {: t:n :}
+   t HIDDEN-PARAM? IF
+      1 RQM !
+      64 EMIT1
+      t PARAM>NAME-A t PARAM>NAME-U RSTR
+      46 EMIT1
+      t HIDDEN-SLOT@  t PARAM>FAM TFAM-WIDTH@* 1 -  = IF
+         s" tag" RSTR
+      ELSE
+         s" slot" RSTR  t HIDDEN-SLOT@ RNUM
+      THEN
+   ELSE
+      t PARAM>NAME-A t PARAM>NAME-U RSTR
+   THEN
+   60 EMIT1 ;
+
+\ HID-RUN-REST ( n -- n bool ) : from a resolved S-PUSH node whose type is a
+\ hidden field, walk the whole run (tag W-1 on top down to slot0, one family).
+\ true: row below the full W-cell run (compact to the logical type). false:
+\ lone/malformed run — row below the single cell (render the '@' form).
+variable HRC  variable HRI  variable HRF
+: HID-RUN-CELL? ( n n n -- bool ) {: node:n fam:n slot:n :}
+   node TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@ slot = ;
+: HID-RUN-REST ( n -- n bool ) {: node:n :}
+   node P>TYPE T-RES {: t:n :}
+   t PARAM>FAM {: fam:n :}
+   fam TFAM-WIDTH@* {: w:n :}
+   t HIDDEN-SLOT@ w 1 - <> IF node P>REST RES-FALSE EXIT THEN
+   node HRC !  -1 HRF !
+   w 1 - HRI !
+   BEGIN HRI @ 0 >  HRF @ 0 <>  and WHILE
+      HRC @ P>REST R-RES  fam  HRI @ 1 -  HID-RUN-CELL? IF
+         HRC @ P>REST R-RES HRC !
+      ELSE
+         0 HRF !
+      THEN
+      HRI @ 1 - HRI !
+   REPEAT
+   HRF @ 0 <> IF HRC @ P>REST RES-TRUE ELSE node P>REST RES-FALSE THEN ;
 
 \ a quot type renders [ in -- out ] or [ in -- out | rin -- rout ] when the
 \ quotation has a non-neutral return-stack effect. Rendering is fully recursive
@@ -125,11 +181,23 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
 \ QREND ( x d mode -- ) : one recursive renderer. mode>0 renders a row
 \ bottom-to-top (space-separated); mode=0 renders a type. RECURSE re-enters with
 \ the mode flag, so nested quots reuse it at depth d+1 up to QDEPTH-MAX.
-: QREND {: x:n d:n mode:n :}
+: QREND ( n n n -- ) {: x:n d:n mode:n :}
    mode 0 > IF
-      x R-RES dup TAG S-PUSH = IF
-         dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
-         P>TYPE d 0 RECURSE
+      x R-RES dup TAG S-PUSH = IF                 \ ( node )
+         dup P>TYPE T-RES HIDDEN-PARAM? IF        \ hidden run: compact or '@' form (docs §20)
+            dup HID-RUN-REST IF                   \ ( node rest ) full run -> logical type
+               dup R-RES TAG S-PUSH = IF dup d 1 RECURSE 32 EMIT1 THEN
+               drop
+               P>TYPE T-RES MK-LOGICAL d 0 RECURSE
+            ELSE                                  \ ( node rest ) lone/malformed -> '@' cell
+               drop
+               dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+               P>TYPE d 0 RECURSE
+            THEN
+         ELSE
+            dup P>REST dup R-RES TAG S-PUSH = IF d 1 RECURSE 32 EMIT1 ELSE drop THEN
+            P>TYPE d 0 RECURSE
+         THEN
       ELSE drop THEN
       EXIT
    THEN
@@ -153,12 +221,15 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
       endof
       T-ATOM of r ATOM-REND endof
       T-PARAM of
-        r PARAM-START
-        0 BEGIN dup r PARAM>ARGC < WHILE
-          dup 0 > IF 44 EMIT1 THEN
-          r over PARAM>ARG d 0 RECURSE
-          1 +
-        REPEAT drop 62 EMIT1
+        d QDEPTH-MAX <  r d QANCESTOR? 0=  and IF
+           r d cells QPATH + !
+           r PARAM-START
+           0 BEGIN dup r PARAM>ARGC < WHILE
+             dup 0 > IF 44 EMIT1 THEN
+             r over PARAM>ARG d 1+ 0 RECURSE
+             1 +
+           REPEAT drop 62 EMIT1
+        ELSE 63 EMIT1 THEN
       endof
       63 EMIT1
    endcase ;
@@ -167,10 +238,22 @@ create QPATH QDEPTH-MAX 1 + cells allot      \ quot node on the current render p
 create RBUF 64 cells allot   variable RBN
 variable RSHOW-DST
 
-: REND-COLLECT {: s :}  0 RBN !  s
+: RBUF+ ( n -- )
+   RBN @ cells RBUF + !  RBN @ 1 + RBN ! ;
+
+\ REND-COLLECT compacts each full hidden-field run to ONE logical family term
+\ (docs §20); a lone/malformed hidden cell stays and renders as its '@' form.
+: REND-COLLECT {: s:n :}  0 RBN !  s
    BEGIN R-RES dup TAG S-PUSH = WHILE          \ no locals inside the loop
-     dup P>TYPE RBN @ cells RBUF + !  RBN @ 1 + RBN !
-     P>REST
+     dup P>TYPE T-RES HIDDEN-PARAM? IF
+        dup HID-RUN-REST IF
+           swap P>TYPE T-RES MK-LOGICAL RBUF+
+        ELSE
+           swap P>TYPE RBUF+
+        THEN
+     ELSE
+        dup P>TYPE RBUF+  P>REST
+     THEN
    REPEAT drop ;
 
 \ RENDER ( -- ) : print DCUR's residual stack bottom-to-top, space-separated.
@@ -204,7 +287,8 @@ variable RSHOW-DST
 \   habu: in NAME: at 'TOK' expected: <row> actual: <row>
 \ Rows render bottom-to-top with the shared var-letter naming; expected/actual
 \ only appear when the failing unify was captured (STEP/SUNI).
-: DTXT {: a u :}  0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
+: DTXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
 : DROW {: s :}  s REND-COLLECT
    RBN @ BEGIN dup 0 > WHILE 1 - dup cells RBUF + @ REND-TYPE 32 EMIT1 REPEAT drop ;
@@ -233,16 +317,18 @@ variable DSUGE  variable DSUGA
       92 of 92 EMIT1 c EMIT1 endof
       c EMIT1
    endcase ;
-: JSTR {: a u :}  34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
-: JKEY {: a u :}  a u JSTR  58 EMIT1 ;
+: JSTR ( ptr u8 n -- ) {: a:ptr u:n :}
+   34 EMIT1  0 BEGIN dup u < WHILE dup a + c@ JCHAR 1 + REPEAT drop 34 EMIT1 ;
+: JKEY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u JSTR  58 EMIT1 ;
 : JROW {: s :}  34 EMIT1  s DROW  34 EMIT1 ;
 : SIG-WS? {: c :}  c 32 =  c 9 = or  c 10 = or  c 13 = or ;
-: SIG-LTRIM {: a u :}
+: SIG-LTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE
       dup a + c@ SIG-WS? 0= IF dup a + u rot - EXIT THEN
       1 +
    REPEAT drop a 0 ;
-: SIG-RTRIM {: a u :}
+: SIG-RTRIM ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u BEGIN dup 0 > WHILE
       a over 1 - + c@ SIG-WS? IF 1 - ELSE a swap EXIT THEN
    REPEAT drop a 0 ;
@@ -252,15 +338,127 @@ variable DSUGE  variable DSUGA
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    34 EMIT1 ;
+\ --- item 9 slice 4: match/construct reason surface (docs §24). The checker
+\ latches an MDIAG reason code with the token pin; these words map it to a
+\ stable JSON code, repair class, suggestion, and §24 prose. MD-NONEXH also
+\ walks the latched (family, seen-bitset, count) to the missing variant NAMES
+\ (declaration-order tags index the family's contiguous SUMV rows).
+variable MDV-I   variable MDV-F
+
+: MDIAG-CODE$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
+      MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
+      MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
+      MD-FAM-MISMATCH of s" E-MATCH-FAMILY-MISMATCH" endof
+      MD-VAR-UNKNOWN  of s" E-MATCH-UNKNOWN-VARIANT" endof
+      MD-VAR-DUP      of s" E-MATCH-DUPLICATE-VARIANT" endof
+      MD-MISSING-OF   of s" E-MATCH-MISSING-OF" endof
+      MD-NONEXH       of s" E-MATCH-NONEXHAUSTIVE" endof
+      MD-STRAY        of s" E-MATCH-STRAY" endof
+      MD-TRUNC        of s" E-MATCH-UNTERMINATED" endof
+      MD-DEPTH        of s" E-MATCH-DEPTH" endof
+      MD-QUOT         of s" E-MATCH-QUOTATION" endof
+      MD-OPEN-ARGS    of s" E-MATCH-OPEN-ARGS" endof
+      MD-JOIN         of s" E-MATCH-BRANCH-JOIN" endof
+      MD-CON-FAM      of s" E-CONSTRUCT-UNKNOWN-FAMILY" endof
+      MD-CON-KIND     of s" E-CONSTRUCT-FAMILY-KIND" endof
+      MD-CON-VAR      of s" E-CONSTRUCT-UNKNOWN-VARIANT" endof
+      MD-CON-TRUNC    of s" E-CONSTRUCT-UNTERMINATED" endof
+      s" E-REJECTED" rot
+   endcase ;
+
+: MDIAG-CLASS$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-NONEXH       of s" add_missing_branches" endof
+      MD-VAR-DUP      of s" remove_duplicate_branch" endof
+      MD-VAR-UNKNOWN  of s" fix_variant_reference" endof
+      MD-CON-VAR      of s" fix_variant_reference" endof
+      MD-FAM-UNKNOWN  of s" fix_family_reference" endof
+      MD-FAM-KIND     of s" fix_family_reference" endof
+      MD-CON-FAM      of s" fix_family_reference" endof
+      MD-CON-KIND     of s" fix_family_reference" endof
+      MD-SCRUT        of s" fix_match_scrutinee" endof
+      MD-FAM-MISMATCH of s" fix_match_scrutinee" endof
+      MD-QUOT         of s" fix_match_scrutinee" endof
+      MD-OPEN-ARGS    of s" fix_match_scrutinee" endof
+      MD-JOIN         of s" fix_branch_outputs" endof
+      MD-DEPTH        of s" factor_match_nesting" endof
+      s" fix_match_syntax" rot
+   endcase ;
+
+: MDIAG-SUGGEST$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-NONEXH       of s" Add an OF branch for every listed variant; v1 has no default branch." endof
+      MD-VAR-DUP      of s" Remove the repeated variant branch; each variant may appear once." endof
+      MD-VAR-UNKNOWN  of s" Use a variant declared by this family, lowercase as declared." endof
+      MD-CON-VAR      of s" Use a variant declared by this family, lowercase as declared." endof
+      MD-FAM-UNKNOWN  of s" Name a visible sum family: own package first, else a unique public family." endof
+      MD-CON-FAM      of s" construct resolves only families declared in the active package." endof
+      MD-FAM-KIND     of s" MATCH eliminates sum or enum families only." endof
+      MD-CON-KIND     of s" construct builds sum or enum families only." endof
+      MD-SCRUT        of s" Put the family value on top of the stack before MATCH." endof
+      MD-FAM-MISMATCH of s" The value on top belongs to a different family; match that family." endof
+      MD-QUOT         of s" Move the match out of the quotation; quotation rows cannot carry a scrutinee." endof
+      MD-OPEN-ARGS    of s" Instantiate the family arguments to concrete types before matching." endof
+      MD-JOIN         of s" Make every branch leave the same stack shape; ;MATCH has one continuation." endof
+      MD-DEPTH        of s" Factor the inner match into a named word; control frames are capped." endof
+      MD-MISSING-OF   of s" Write `variant OF ... ENDOF` for each branch." endof
+      s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
+   endcase ;
+
+: MDIAG-REASON$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
+      MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
+      MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
+      MD-FAM-MISMATCH of s" bad match: family mismatch" endof
+      MD-VAR-UNKNOWN  of s" bad match: unknown variant" endof
+      MD-VAR-DUP      of s" bad match: duplicate variant" endof
+      MD-MISSING-OF   of s" bad match: variant token must be followed by OF" endof
+      MD-NONEXH       of s" bad match: missing variants:" endof
+      MD-STRAY        of s" bad match: misplaced match token" endof
+      MD-TRUNC        of s" bad match: unterminated match" endof
+      MD-DEPTH        of s" bad match: nesting exceeds control-frame capacity" endof
+      MD-QUOT         of s" bad match: quotation rows cannot carry a scrutinee" endof
+      MD-OPEN-ARGS    of s" bad match: scrutinee type arguments are unresolved" endof
+      MD-JOIN         of s" bad match: branch output mismatch" endof
+      MD-CON-FAM      of s" bad construct: family not declared in the active package" endof
+      MD-CON-KIND     of s" bad construct: family is not a sum or enum" endof
+      MD-CON-VAR      of s" bad construct: unknown variant" endof
+      MD-CON-TRUNC    of s" bad construct: missing family or variant token" endof
+      s" bad match: rejected" rot
+   endcase ;
+
+: MDIAG-MISSING-WALK ( bool -- ) {: json:bool :}   \ unseen variant tails, space-led
+   MDIAG-FAM @ TFAM-VAR-START@ {: vstart:n :}
+   0 MDV-I !  0 MDV-F !
+   BEGIN MDV-I @ MDIAG-VCNT @ < WHILE
+      MDIAG-SEEN @ MDV-I @ MSEEN-GET 0= IF
+         json MDV-F @ 0= and 0= IF s"  " DTXT THEN
+         vstart MDV-I @ + SUMV-NAME$ DTXT
+         -1 MDV-F !
+      THEN
+      MDV-I @ 1 + MDV-I !
+   REPEAT ;
+
+: MDIAG-MISSING-JSTR ( -- )   \ canonical lowercase tails: JCHAR-safe verbatim
+   34 EMIT1  0 0= MDIAG-MISSING-WALK  34 EMIT1 ;
+
+: MDIAG-MISSING-PROSE ( -- )
+   0 0= 0= MDIAG-MISSING-WALK ;
+
 : DCODE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
+   LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
+   MDIAG @ 0 <> IF MDIAG-CODE$ ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
-   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE s" E-BAD-SIGNATURE" THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN ;
+   SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -276,12 +474,14 @@ variable DSUGE  variable DSUGA
 : REPAIR-CLASS ( -- a u )
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
+   LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
+   MDIAG @ 0 <> IF MDIAG-CLASS$ EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    QUALBAD @ IF s" fix_qualified_name" EXIT THEN
    UNDEFERR @ IF s" unknown_rejection" EXIT THEN
    DVERD @ 1 = IF s" rewrite_uncheckable" EXIT THEN
    SGBAD @ IF
-      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE s" fix_signature_syntax" THEN THEN
+      SGBAD-UNKNOWN? IF s" fix_signature_type" ELSE SGBAD-BAREPTR? IF s" fix_bare_ptr_element" ELSE SGBAD-ARITY? IF s" fix_signature_arity" ELSE s" fix_signature_syntax" THEN THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" fix_return_stack" EXIT THEN
@@ -298,6 +498,8 @@ variable DSUGE  variable DSUGA
 : SUGGEST-TEXT ( -- a u )
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
+   LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
+   MDIAG @ 0 <> IF MDIAG-SUGGEST$ EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
@@ -307,9 +509,11 @@ variable DSUGE  variable DSUGA
          s" Use a known stack-signature type or a single-letter type variable."
       ELSE SGBAD-BAREPTR? IF
          s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
+      ELSE SGBAD-ARITY? IF
+         s" Give the type family its exact declared number of arguments."
       ELSE
          s" Repair the stack-effect comment syntax, including --."
-      THEN THEN
+      THEN THEN THEN
       EXIT
    THEN
    RETURN-MISMATCH? IF s" Balance return-stack transfers before the definition exits." EXIT THEN
@@ -323,10 +527,10 @@ variable DSUGE  variable DSUGA
    ELSE  s" Change the body so produced types match the signature."
    THEN THEN ;
 variable JPOS  variable JLINE  variable JCOL
-: JLOC-CALC
+: JLOC-CALC ( -- )
    1 JLINE !  1 JCOL !  0 JPOS !
    BEGIN JPOS @ FAILB @ <  JPOS @ TBLEN @ <  and WHILE
-      TBASE @ JPOS @ + c@ 10 = IF
+      TBASE 0 ptr-field @ JPOS @ + c@ 10 = IF
          JLINE @ 1 + JLINE !  1 JCOL !
       ELSE
          JCOL @ 1 + JCOL !
@@ -347,6 +551,10 @@ variable JPOS  variable JLINE  variable JCOL
      s" habu: in " DTXT  NMA @ NMU @ DTXT
      s" : 'ptr' needs an element type, e.g. 'ptr u8' or 'ptr a'" DTXT EXIT
    THEN
+   SGBAD-ARITY? IF
+     s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : wrong arity for type family '" DTXT
+     FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
+   THEN
    QUALBAD @ IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
@@ -356,8 +564,16 @@ variable JPOS  variable JLINE  variable JCOL
      s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : undefined word '" DTXT  FAILTK FAILTU @ DTXT  s" '" DTXT EXIT
    THEN
+   LINLOCBAD @ IF
+     s" E-LINEAR-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
+   THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
+   MDIAG @ 0 <> IF
+     s"  " DTXT  MDIAG-REASON$ DTXT
+     MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
+   THEN
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
@@ -372,6 +588,10 @@ variable JPOS  variable JLINE  variable JCOL
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
+   MDIAG @ 0 <> IF
+     s" reason" JKEY MDIAG-REASON$ JSTR 44 EMIT1
+     MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
+   THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
    s" line" JKEY  JABS-LINE JNUM  44 EMIT1
@@ -408,6 +628,76 @@ variable JPOS  variable JLINE  variable JCOL
    RSBUF RSN @ RDIAG-APPEND
    0 RDST !  0 RSN ! ;
 ' DIAG-PRINT DIAGXT !
+
+\ --- bad stored-signature diagnostics (multi-error TRUST rows; USIG-ADD-BAD).
+\ SGBAD state from the failed parse is still live, so class + suggestion mirror
+\ REPAIR-CLASS's signature arm (same stable strings).
+: BADSIG-CLASS ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" fix_signature_type" EXIT THEN
+   SGBAD-BAREPTR? IF s" fix_bare_ptr_element" EXIT THEN
+   SGBAD-ARITY? IF s" fix_signature_arity" EXIT THEN
+   s" fix_signature_syntax" ;
+: BADSIG-SUGGEST ( -- ptr u8 n )
+   SGBAD-UNKNOWN? IF s" Use a known stack-signature type or a single-letter type variable." EXIT THEN
+   SGBAD-BAREPTR? IF s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'." EXIT THEN
+   SGBAD-ARITY? IF s" Give the type family its exact declared number of arguments." EXIT THEN
+   s" Repair the stack-effect comment syntax, including --." ;
+: BADSIG-JSON ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-STORED-SIGNATURE" JSTR 44 EMIT1
+   s" repair_class" JKEY BADSIG-CLASS JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" word" JKEY na nu JSTR 44 EMIT1
+   s" declared_effect_source" JKEY sa su SIG-TRIM JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY BADSIG-SUGGEST JSTR
+   125 EMIT1 ;                                            \ }
+: BADSIG-PROSE ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   s" habu: in " DTXT  na nu DTXT  s" : bad stored signature '" DTXT
+   sa su SIG-TRIM DTXT  s" '" DTXT ;
+: BADSIG-DIAG ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   1 RDST !  0 RSN !
+   sa su na nu JSON-DIAGS @ IF BADSIG-JSON ELSE BADSIG-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
+' BADSIG-DIAG BADSIG-XT !
+
+\ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
+\ TYPEFAMILY/SUMTYPE reports a declaration-shaped packet: decl kind, family,
+\ offending token, and reason — with NO invented definition fields (no
+\ declared_effect, definition_source, or return_stack; docs/type-families.md
+\ §24). Source-span fields wait on the declaration origin plumbing (item 13).
+: TDECL-SUGGEST$ ( -- ptr u8 n )
+   s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." ;
+: TDECL-DIAG-JSON ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   123 EMIT1                                              \ {
+   s" schema_version" JKEY 1 JNUM 44 EMIT1
+   s" code" JKEY s" E-BAD-DECLARATION" JSTR 44 EMIT1
+   s" repair_class" JKEY s" fix_family_declaration" JSTR 44 EMIT1
+   s" verdict" JKEY s" rejected" JSTR 44 EMIT1
+   s" decl" JKEY ka ku JSTR 44 EMIT1
+   s" family" JKEY fa fu JSTR 44 EMIT1
+   s" token" JKEY ta tu JSTR 44 EMIT1
+   s" reason" JKEY wa wu JSTR 44 EMIT1
+   s" file" JKEY DIAGFB DIAGFU @ JSTR 44 EMIT1
+   s" suggestion" JKEY TDECL-SUGGEST$ JSTR
+   125 EMIT1 ;                                            \ }
+: TDECL-DIAG-PROSE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   s" habu: bad " DTXT  ka ku DTXT  s"  declaration '" DTXT  fa fu DTXT
+   s" ': " DTXT  wa wu DTXT
+   tu 0 > IF s"  at '" DTXT  ta tu DTXT  s" '" DTXT THEN ;
+: TDECL-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: ka:ptr ku:n fa:ptr fu:n ta:ptr tu:n wa:ptr wu:n :}
+   1 RDST !  0 RSN !
+   ka ku fa fu ta tu wa wu
+   JSON-DIAGS @ IF TDECL-DIAG-JSON ELSE TDECL-DIAG-PROSE THEN
+   10 EMIT1
+   RSBUF RSN @ RDIAG-APPEND
+   0 RDST !  0 RSN ! ;
 
 \ REC-SIG ( ptr u8 n -- ) : record a certified sig-less word. Refuses
 \ (conservatively, the word stays unrecorded) on unknown tags or absurd var

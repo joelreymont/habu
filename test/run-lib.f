@@ -2,6 +2,7 @@
 \
 \ Load after test/run-support.f.
 
+require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
@@ -532,6 +533,48 @@ variable TR-PRE-DIAG-FILE
 : TR-TMP-DEFAULT+ ( -- )
    s" HB_TMP" GT-ROOT TR-DEFAULT+ ;
 
+create TR-CAL-PCT-BUF 4 allot
+
+: TR-CAL-PCT-DIGIT! ( n n -- ) {: d:n i:n :}
+   d 48 + TR-CAL-PCT-BUF i + c! ;
+
+\ The clamp guarantees 100..300, so the text is always exactly three digits.
+: TR-PCT$ ( n -- ptr u8 n ) {: pct:n :}
+   pct 100 / 0 TR-CAL-PCT-DIGIT!
+   pct 10 / 10 mod 1 TR-CAL-PCT-DIGIT!
+   pct 10 mod 2 TR-CAL-PCT-DIGIT!
+   TR-CAL-PCT-BUF 3 ;
+
+\ Structural pressure floor: startup calibration runs on an otherwise idle
+\ box (cal-factor 100), but the gate's OWN pool oversubscribes it by the
+\ nested factor, and in practice merge gating overlaps a SECOND full gate
+\ (and often an install) on the same box - suites spawned inside that window
+\ run several times slower than the calibration saw. The nested x 100 floor
+\ (200%) was MEASURED MARGINAL: four incidents on 2026-07-07 alone killed
+\ lib/process-test.f at exactly its 2x-floored 10s budget under merge+worker
+\ overlap (throw -2502, WHY-THREW buffers far from caps every time), and the
+\ 8000-program sweep experiment pushed past 2x as well. Any nested pool
+\ therefore floors at TR-CAL-MAX-PCT (300%): the same worst case the clamp
+\ already accepts for the wall budget, so a genuinely hung child still fails
+\ within 3x its nominal budget - detection stays bounded. nested=1 setups
+\ keep the measured cal-factor alone (no self-contention to cover).
+: TR-POOL-PRESSURE-PCT ( -- n )
+   TR-NESTED-POOL @ 1 > if TR-CAL-MAX-PCT exit then
+   TR-CAL-MIN-PCT ;
+
+: TR-LOAD-PCT-EXPORT ( -- n )
+   TR-CAL-PCT {: cal:n :}
+   TR-POOL-PRESSURE-PCT {: floor:n :}
+   cal floor < if floor exit then
+   cal ;
+
+\ Export the load factor to spawned workers so suite budgets
+\ (lib/test/budget.f T-BUDGET-MS) scale with the gate's measured calibration
+\ and its structural pool pressure; forked/in-process suites read the cell
+\ TR-PREPARE sets directly.
+: TR-LOAD-PCT-DEFAULT+ ( -- )
+   s" HB_LOAD_PCT" TR-LOAD-PCT-EXPORT TR-PCT$ TR-DEFAULT+ ;
+
 : TR-BUILD-CACHE-DEFAULT+ ( -- )
    TR-BUILD-CACHE-PATHS
    s" HABU_BUILD_CACHE" TR-BUILD-CACHE$ TR-DEFAULT+ ;
@@ -549,7 +592,7 @@ variable TR-PRE-DIAG-FILE
    s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
 
 : TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu ms GS-SPAN ;
+   label labelu ms GS-SPAN-AUTH ;
 
 : TR-INSTALL-POOL-HOOKS ( -- )
    [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK ;
@@ -1687,6 +1730,7 @@ TR-INSTALL-POOL-HOOKS
    TR-GATE-START!
    TR-CHECK-ARGS
    TR-CHECK-PROFILE
+   TR-LOAD-PCT-EXPORT T-BUDGET-PCT !
    TR-START
    TR-PRE-RESET
    TR-EXPECT-HB
@@ -1703,6 +1747,7 @@ TR-INSTALL-POOL-HOOKS
 : TR-COMPLETE ( -- )
    GS-SUMMARY
    GT-POOL-RED# 0 > if TR-RED-COMPLETE then
+   GS-LABEL-DUP-GUARD
    TR-RESULT-STAMPS
    GT-CLEANUP
    TR-FINISH ;

@@ -11,10 +11,25 @@
 \
 \ Load after test/gate-common.f.
 
-115831 constant GB-SIZE-BASELINE-MACOS
-102592 constant GB-SIZE-BASELINE-LINUX   \ re-measured on the Orin 2026-07-04 (zed phase;
-                                         \ dot habu-re-measure-set): fable tree incl. the
-                                         \ engine-id, underflow/arity-guard, and boot-pin work
+\ 2026-07-06 macOS bump 115831 -> 132343: TFAM 12 slice 3b pass-2 width-aware
+\ transport lowering (habu2.f EM-COMPILE-P2WIDE dispatch, per-op width queries,
+\ LP2COPY/LP2ROT/LP2RS emit helpers, width-aware locals carve/reference, and
+\ the publish-path recompile trigger). The Linux row still holds the pre-3b
+\ value; the next Linux lane run fails closed with the measured size to commit.
+\ 2026-07-09 macOS bump 132343 -> 148855: TFAM 10 slice 3a native MATCH lowering
+\ (habu2.f J-MATCH + EM-ADT-MATCH-FAM/VAR/OF + EM-MATCH-SEMI + the C-DIE-BAD-TAG
+\ inline invalid-tag die, plus the CMBK/CMFR match-frame state and the tfl-match-
+\ fam?/tfam-name$/bad-tag kwdata). Page-granular growth (same delta as slice 3b).
+\ 2026-07-10 MERGE macOS bump 148855 -> 148855: type-families campaign merged into
+\ fable. The merged engine = TFAM slice-3a/3b lowering (above) plus fable's set-check
+\ checker-xt validation, BCHECKFETCH, undefined-word EVAL recovery (code 70), and the
+\ engine-id/underflow-guard/boot-pin work; those fable fixes fit within the existing
+\ 148855-byte page floor, so the macOS ratchet is unchanged on the merged fixpoint.
+148855 constant GB-SIZE-BASELINE-MACOS
+102592 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-04 (Orin, habu-re-measure-set);
+                                         \ STALE for the merged engine (adds the TFAM +1269-line
+                                         \ lowering) — the next Linux lane run fails closed with the
+                                         \ measured merged size to commit.
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN

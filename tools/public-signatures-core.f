@@ -1,6 +1,10 @@
 \ public-signatures-core.f - emit typed public-word manifests.
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, tools/lint/text.f,
-\ tools/lint/intern.f, tools/lint/token.f, and tools/lint/lib.f.
+\ Standalone-loadable: requires its own deps so `bin/hb --load
+\ tools/public-signatures-core.f` works without the resident DAG ordering.
+
+require tools/lint/text.f
+require tools/lint/intern.f
+require tools/event-closure-lib.f
 
 $10000 constant PS-FILE-CAP
 256 constant PS-WORD-CAP
@@ -26,12 +30,16 @@ $10000 constant PS-FILE-CAP
 2 constant PS-COMMENT
 
 create PS-FILE-BUF PS-FILE-CAP allot
+create PS-CLOSURE-BUF PS-FILE-CAP allot
 create PS-WORD-BUF PS-WORD-CAP allot
+create PS-PKG-BUF PS-WORD-CAP allot
 create PS-SIG-BUF PS-SIG-CAP allot
 create PS-NUM-BUF PS-NUM-CAP allot
 create PS-ONE 1 allot
 
 variable PS-I
+variable PS-CLOSURE-TU
+variable PS-CLOSURE-I
 variable PS-NUM-I
 variable PS-FIRST?
 variable PS-TA
@@ -549,15 +557,29 @@ variable PS-PKG-PUBLIC
 
 : PS-MAYBE-TRUST-DEFINER ( ptr u8 n -- bool ) {: a:ptr u:n :}
    PS-TRUST @ 0= IF PS-FALSE exit THEN
+   \ `constant` bakes one physical cell: the emitted trust is the one-cell `-- a`
+   \ model, matching native C-CONSTANT / verify-source / all-errors — the
+   \ PERMANENT contract (TFAM 12 verdict 2026-07-09): the interpret stack is
+   \ untyped by design, so no path has a sound shape source, and wider-than-cell
+   \ layout values never land there (DNAME-WIDE dispatch gate). Layout mis-use
+   \ of a constant stays fail-closed at USE; parity locked by
+   \ public-signatures-test const-layout.
    a u s" constant" LINT-STR=CI IF s" -- a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" create" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
+\ Copy the package name into a stable buffer: the token bytes live in the
+\ transient PS-CLOSURE-BUF / PS-FILE-BUF, which the next dep read or the entry
+\ scan overwrites. Storing a raw pointer there dangles once the opener is not the
+\ last file processed - which is exactly the nested-unclosed-package case under
+\ true load order. PS-PKG-BUF is owned bytes, so the residual name survives.
 : PS-PACKAGE-NAME! ( -- )
    PS-NEXT-TOK 0= IF exit THEN
    PS-WORD? 0= IF exit THEN
-   PS-TOK-A@ PS-PKG-A!
+   PS-TOK-U @ PS-WORD-CAP > IF s" public-signatures: package name too long" PS-DIE THEN
+   PS-TOK-A@ PS-PKG-BUF PS-TOK-U @ LINT-BMOVE
+   PS-PKG-BUF PS-PKG-A!
    PS-TOK-U @ PS-PKG-U !
    PS-TRUE PS-IN-PKG !
    PS-FALSE PS-PKG-PUBLIC ! ;
@@ -574,8 +596,7 @@ variable PS-PKG-PUBLIC
    PS-FALSE PS-PKG-PUBLIC !
    0 PS-PKG-U ! ;
 
-: PS-SCAN-DEFS ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
-   PS-RESET-SCOPE
+: PS-SCAN-DEFS-BODY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-FILE-BUF PS-TU @ PS-LEX-START
    begin PS-NEXT-TOK while
       PS-WORD? IF
@@ -588,10 +609,42 @@ variable PS-PKG-PUBLIC
       THEN
    repeat ;
 
+: PS-SCAN-DEFS ( ptr u8 n -- )
+   PS-RESET-SCOPE
+   PS-SCAN-DEFS-BODY ;
+
+\ Load the package scope its required/included closure leaves open before the
+\ entry file's own rows are rendered, so a file that continues a package opened
+\ in a dependency qualifies its public words correctly. Only scope tokens are
+\ replayed; balanced packages leave no residual and self-contained files see an
+\ empty closure, so their output is unchanged.
+: PS-PRESCAN-DEP ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u PS-CLOSURE-BUF PS-FILE-CAP READ-FILE nip PS-CLOSURE-TU !
+   PS-CLOSURE-BUF PS-CLOSURE-TU @ PS-LEX-START
+   begin PS-NEXT-TOK while
+      PS-WORD? IF PS-TOK$ PS-SCOPE-TOKEN? drop THEN
+   repeat ;
+
+\ Replay residual scope in true load order (EC:LOAD-ORDER is depth-first,
+\ post-order), threading package open/public/private/end-package state
+\ file-by-file exactly where each dep's content would load. A package left
+\ UNCLOSED across transitively-nested deps then settles to the same residual the
+\ real loader would leave. The entry file is always the last ordered element, so
+\ its deps are indices 0..ORDER-COUNT-2; it is scanned separately by the caller.
+: PS-PRESCAN-CLOSURE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+   file-a file-u EC:LOAD-ORDER
+   0 PS-CLOSURE-I !
+   begin PS-CLOSURE-I @ EC:ORDER-COUNT 1- < while
+      PS-CLOSURE-I @ EC:ORDER-PATH$ PS-PRESCAN-DEP
+      PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
+   repeat ;
+
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    file-a file-u PS-FILE-BUF PS-FILE-CAP READ-FILE nip PS-TU !
    PS-COLLECT-EXPORTS
-   file-a file-u PS-SCAN-DEFS ;
+   PS-RESET-SCOPE
+   file-a file-u PS-PRESCAN-CLOSURE
+   file-a file-u PS-SCAN-DEFS-BODY ;
 
 : PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !

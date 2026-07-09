@@ -76,6 +76,7 @@ SRC_COMMON=(
   src/core/enums.f
   src/core/exec-vector.f
   src/core/sha256.f
+  src/core/type-family-sha.f
   src/core/combinators.f
   src/habu/treeshake.f
   src/habu/rt.f
@@ -170,7 +171,13 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/type-schema.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/type-family.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/render.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/sumtype.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/check-hook.f >> "$out"
   printf '\n' >> "$out"
@@ -179,19 +186,8 @@ emit_src() {
   printf "' HOOK set-check\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
-    if [[ "$f" == "$OS_IMAGE" ]]; then
-      printf "0 set-check\n" >> "$out"
-    fi
     cat "$f" >> "$out"
     printf '\n' >> "$out"
-    if [[ "$f" == "$OS_SIGN" ]]; then
-      printf "' HOOK set-check\n" >> "$out"
-      printf 's" ASM-CODE" s" -- asm" TRUST\n' >> "$out"
-      printf 's" BUILD-IMAGE" s" asm -- img" TRUST\n' >> "$out"
-      printf 's" BUILD-SNAP-HDR" s" n -- snap n" TRUST\n' >> "$out"
-      printf 's" SET-SIGID" s" ptr u8 n --" TRUST\n' >> "$out"
-      printf 's" CODESIG2" s" img -- img" TRUST\n' >> "$out"
-    fi
   done
   if [[ "$driver" == "src/habu/snap.f" ]]; then
     cat src/core/include.f >> "$out"
@@ -199,6 +195,10 @@ emit_src() {
   fi
   cat src/habu/driver-io.f >> "$out"
   printf '\n' >> "$out"
+  if [[ "$driver" == "src/habu/stdin.f" ]]; then
+    cat src/habu/aot-capture.f >> "$out"
+    printf '\n' >> "$out"
+  fi
   cat "$driver" >> "$out"
   printf '\n' >> "$out"
 }

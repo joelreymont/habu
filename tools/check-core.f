@@ -7,10 +7,17 @@
 \ tools/signature-lint-core.f, tools/checked-boundary-lint-core.f,
 \ tools/reserved-name-lint-core.f, tools/trust-lint-core.f,
 \ tools/check-all-errors-core.f (which loads verify-source.f), and tools/argv.f.
+\ The dependency-closure producer (whole-file ordered loader events) and its
+\ dynamic-tail manifest are required below.
 
-\ Audited hook-install boundary: this tool must install its checker hook before
-\ validating generated source snippets with CHECK!.
-0 set-check
+require tools/dynamic-tail-manifest.f
+require tools/source-discovery.f
+
+\ This tool installs its checker hook before validating generated source
+\ snippets with CHECK!. CHECK! (engine checker entrypoint) is modeled as a
+\ primitive axiom so the hook definition itself compiles checked
+\ (axiom owner: habu-primitive-effect-axiom-1119f176).
+s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : CHK-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
@@ -97,6 +104,9 @@ variable CHK-EXP-OUT-U
 variable CHK-DEP-N
 variable CHK-DIR-N
 variable CHK-DEP-ORDER-N
+variable CHK-DISC-ID
+variable CHK-ALL-ID
+variable CHK-ALL-RC
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -414,61 +424,43 @@ variable CHK-DEP-ORDER-N
 : CHK-DEP-DIRECT+ ( ptr u8 n -- )
    CHK-DEP-ID CHK-DIR-PUSH ;
 
-: CHK-LEX-WORD? ( n -- bool ) {: k:n :}
-   k 0 < if LINT-FALSE exit then
-   k L# @ >= if LINT-FALSE exit then
-   k LK@ L-WORD = ;
+\ Dependency closure: the shared whole-file ordered-event producer
+\ (tools/source-discovery.f) scans every token of a file - colon bodies
+\ included - and records one event per literal loader form
+\ (include/included/require/required/provided). Every event path is a direct
+\ dep, so the closure is a superset of the runtime load set; dynamic or
+\ retired loader forms reject fail-closed unless manifested.
 
-: CHK-LEX=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
-   k LEX-TOK a u LINT-STR=CI ;
+: CHK-DISC-RC? ( n -- bool ) {: rc:n :}
+   rc E-DISC-FIRST <= rc E-DISC-LAST >= and ;
 
-: CHK-REQUIRE-TOK? ( n -- bool )
-   s" require" CHK-LEX=CI ;
+: CHK-DISC-MSG$ ( n -- ptr u8 n ) {: rc:n :}
+   rc E-DISC-SHADOW = if s" check.f: discovery rejected: loader word shadowed or undefined" exit then
+   rc E-DISC-DYNAMIC = if s" check.f: discovery rejected: dynamic (non-literal) loader path" exit then
+   rc E-DISC-OPENER = if s" check.f: discovery rejected: unsupported string opener before a loader word" exit then
+   rc E-DISC-RETIRE = if s" check.f: discovery rejected: loader word retired (UNDEFINE-IF-DEFINED)" exit then
+   rc E-DISC-UNTERM = if s" check.f: discovery rejected: unterminated string" exit then
+   s" check.f: discovery rejected: capacity exceeded" ;
 
-: CHK-REQUIRED-TOK? ( n -- bool )
-   s" required" CHK-LEX=CI ;
+: CHK-DISC-FAIL ( n -- )
+   CHK-DISC-MSG$ CHK-E-CHECK CHK-FAIL ;
 
-: CHK-SQUOTE-TOK? ( n -- bool ) {: k:n :}
-   k CHK-LEX-WORD? 0= if LINT-FALSE exit then
-   k LEX-TOK {: a:ptr u:n :}
-   u 2 <> if LINT-FALSE exit then
-   a c@ LINT-FOLD 115 <> if LINT-FALSE exit then
-   a 1 + c@ CHK-DQ = ;
+: CHK-DISCOVER-ACT ( -- )
+   CHK-DISC-ID @ CHK-DEP$ DISCOVER:RUN ;
 
-: CHK-WS? ( n -- bool )
-   dup CHK-SP = over 9 = or over CHK-LF = or swap CHK-CR = or ;
+: CHK-EXPAND-SCAN ( n -- ) {: id:n :}
+   id CHK-DISC-ID !
+   [: CHK-DISCOVER-ACT ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc CHK-DISC-RC? if rc CHK-DISC-FAIL then
+   rc throw ;
 
-: CHK-SQ-SKIP ( n -- n )
-   begin dup CHK-EXP-U @ < while
-      CHK-EXP-BUF over + c@ CHK-WS? if 1+ else exit then
-   repeat ;
+: CHK-EVENT-DEP+ ( n -- ) {: ix:n :}
+   ix EVENT-PATH@ CHK-DEP-DIRECT+ ;
 
-: CHK-SQ-END ( n -- n )
-   begin dup CHK-EXP-U @ < while
-      CHK-EXP-BUF over + c@ CHK-DQ = if exit then
-      1+
-   repeat ;
-
-: CHK-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
-   k CHK-SQUOTE-TOK? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
-   k LB@ k LEX-TOK nip + CHK-SQ-SKIP {: start:n :}
-   start CHK-SQ-END {: end:n :}
-   end CHK-EXP-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
-   CHK-EXP-BUF start + end start - LINT-TRUE ;
-
-: CHK-SCAN-REQUIRE ( n -- ) {: k:n :}
-   k 1+ CHK-LEX-WORD? 0= if exit then
-   k 1+ LEX-TOK CHK-DEP-DIRECT+ ;
-
-: CHK-SCAN-REQUIRED ( n -- ) {: k:n :}
-   k 0 <= if exit then
-   k 1- CHK-SQ-PATH$ if CHK-DEP-DIRECT+ else 2drop then ;
-
-: CHK-SCAN-DEPS ( -- )
-   0 begin dup L# @ < while
-      dup CHK-REQUIRE-TOK? if dup CHK-SCAN-REQUIRE then
-      dup CHK-REQUIRED-TOK? if dup CHK-SCAN-REQUIRED then
+: CHK-EVENTS>DEPS ( -- )
+   0 begin dup EVENT-COUNT < while
+      dup CHK-EVENT-DEP+
       1+
    repeat drop ;
 
@@ -479,9 +471,8 @@ variable CHK-DEP-ORDER-N
    1 id CHK-DEP-STATE !
    CHK-DIR-N @
    id CHK-DEP$ FILE? 0= if s" check.f: no such source" CHK-E-NOINPUT CHK-FAIL then
-   id CHK-DEP$ CHK-EXP-BUF CHK-SRC-CAP READ-ALL CHK-EXP-U !
-   CHK-EXP-BUF CHK-EXP-U @ LEX-SOURCE
-   CHK-SCAN-DEPS
+   id CHK-EXPAND-SCAN
+   CHK-EVENTS>DEPS
    dup CHK-DIR-N @
    begin 2dup < while
       over cells CHK-DIR-IDS + @ RECURSE
@@ -510,12 +501,8 @@ variable CHK-DEP-ORDER-N
 : CHK-EXP-C ( n -- )
    CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-C ;
 
-: CHK-APPEND-REQUIRED ( ptr u8 n -- )
-   s" s" CHK-EXP-APP
-   CHK-DQ CHK-EXP-C
-   CHK-SP CHK-EXP-C
-   CHK-EXP-APP
-   CHK-DQ CHK-EXP-C
+: CHK-APPEND-REQUIRED ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu >LEN CHK-SRC-BUF CHK-SRC-CAP >LEN CHK-EXP-OUT-U SOURCE-APPEND-QPATH
    CHK-SP CHK-EXP-C
    s" required" CHK-EXP-APP
    CHK-LF CHK-EXP-C ;
@@ -710,6 +697,100 @@ variable CHK-VREC-NAME-I
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
 
+variable CHK-TFAM-NAME-I
+
+: CHK-TFAM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ 1+ LEX-TOK
+   CHECKER-DEFFAMILY ;
+
+: CHK-SUM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFSUM ;
+
+\ A failed TYPEFAMILY/SUMTYPE declaration already reported through the
+\ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
+\ capture that packet into the check error stream (the preverify pattern) and
+\ map the registration throw to the check rc without a second packet.
+: CHK-DECL-CAPTURE ( -- )
+   CHK-JSON @ DIAG-JSON!
+   CHK-ERR-BUF CHK-ERR-CAP DIAG-BUFFER! ;
+
+: CHK-DECL-FLUSH ( -- )
+   DIAG-BUFFER$ CHK-ERR
+   DIAG-BUFFER-OFF ;
+
+: CHK-DECL-FAIL ( n -- )
+   dup 0= IF drop EXIT THEN
+   drop CHK-E-CHECK CHK-THROW ;
+
+: CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'typefamily'; next scan index
+   k 2 + L# @ >= IF s" check.f: missing typefamily arity" CHK-E-CHECK CHK-THROW THEN
+   k 1+ CHK-TFAM-NAME-I !
+   CHK-DECL-CAPTURE
+   [: CHK-TFAM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   k 3 + ;
+
+\ shared block-declaration collector: name at k+1, body tokens buffered from
+\ k+2 to the end token. Returns the next scan index and true, or k and false
+\ when the input ends unterminated (caller reports its own terminator).
+: CHK-BLOCK-COLLECT ( n ptr u8 n -- n bool ) {: k:n ea:ptr eu:n :}
+   k 1+ CHK-TFAM-NAME-I !
+   CHK-VREC-RESET
+   k 2 +
+   begin dup L# @ < while
+      dup ea eu CHK-TOK=CI if 1+ LINT-TRUE exit then
+      dup LEX-TOK CHK-VREC-TOKEN+
+      1+
+   repeat drop k LINT-FALSE ;
+
+: CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
+   k s" ;SUMTYPE" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;SUMTYPE" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-SUM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
+\ ENUM/PRODUCT block declarations (items 14/15) register through the same
+\ collector so signature uses of the family later in the file resolve. The
+\ enum arm also closes the item-14 gap where an enum-declaring file failed
+\ the nominal pass with unknown-family rejects.
+: CHK-ENUM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFENUM ;
+
+: CHK-PROD-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFPRODUCT ;
+
+: CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
+   k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-ENUM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
+: CHK-PROD-REGISTER ( n -- n ) {: k:n :}   \ k at 'product'; next scan index
+   k s" ;PRODUCT" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-PROD-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
 : CHK-TOK-SEMI? ( n -- bool )
    s" ;" CHK-TOK=CI ;
 
@@ -735,6 +816,18 @@ variable CHK-VREC-NAME-I
    then
    k s" VALUE-RECORD" CHK-TOK=CI if
       k k 1+ CHK-VREC-REGISTER exit
+   then
+   k s" TYPEFAMILY" CHK-TOK=CI if
+      k CHK-TFAM-REGISTER exit
+   then
+   k s" SUMTYPE" CHK-TOK=CI if
+      k CHK-SUM-REGISTER exit
+   then
+   k s" ENUM" CHK-TOK=CI if
+      k CHK-ENUM-REGISTER exit
+   then
+   k s" PRODUCT" CHK-TOK=CI if
+      k CHK-PROD-REGISTER exit
    then
    k 1 + ;
 
@@ -818,11 +911,7 @@ variable CHK-VREC-NAME-I
 
 : CHK-BUILD-PREFIX ( -- )
    s" 0 set-check" CHK-RUN-LN
-   s" s" CHK-RUN+
-   CHK-DQ CHK-RUN-C
-   CHK-SP CHK-RUN-C
-   CHK-LABEL CHK-RUN+
-   CHK-DQ CHK-RUN-C
+   CHK-LABEL >LEN CHK-RUN-BUF CHK-RUN-CAP >LEN CHK-RUN-U SOURCE-APPEND-QPATH
    s"  DIAG-FILE!" CHK-RUN-LN
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
    s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
@@ -908,9 +997,42 @@ variable CHK-VREC-NAME-I
    CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
    CHK-RUN-TRUST-SOURCE ;
 
+\ Source-list all-errors redrive: run all-errors per ORIGINAL file in
+\ dependency order, registering each verified file as cross-file support so
+\ later files check against real prefix state. Per-file check failures
+\ (70/duplicate) are collected so every file reports; any other throw aborts.
+
+: CHK-ALL-ID-ACT ( -- )
+   CHK-ALL-ID @ CHK-DEP$ 2dup CHECK-ALL-ERRORS-FILE ;
+
+: CHK-ALL-RC-NOTE ( n -- ) {: rc:n :}
+   CHK-ALL-RC @ 0= if rc CHK-ALL-RC ! then ;
+
+: CHK-ALL-SUPPORT+ ( n -- ) {: id:n :}
+   id CHK-DEP$ CHECK-ALL-ERRORS-SUPPORT+ ;
+
+: CHK-RUN-ALL-ID ( n -- ) {: id:n :}
+   id CHK-DEP-PRELOAD? 0= if exit then
+   id CHK-ALL-ID !
+   [: CHK-ALL-ID-ACT ;] catch {: rc:n :}
+   rc 0= if id CHK-ALL-SUPPORT+ exit then
+   rc CHK-E-CHECK = rc CA-DUP-RC = or if rc CHK-ALL-RC-NOTE exit then
+   rc throw ;
+
+: CHK-RUN-ALL-LIST-CURRENT ( -- )
+   CHECK-ALL-ERRORS-SUPPORT-RESET
+   0 CHK-ALL-RC !
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-RUN-ALL-ID
+      1+
+   repeat drop
+   CHK-ALL-RC @ 0 <> if CHK-ALL-RC @ throw then ;
+
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS-BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS-JSON!
+   CHK-SOURCE-LIST @ if CHK-RUN-ALL-LIST-CURRENT exit then
+   CHECK-ALL-ERRORS-SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS-FILE ;
 
 : CHK-RUN-ALL-FLUSH ( -- )

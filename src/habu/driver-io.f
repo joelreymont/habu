@@ -67,12 +67,13 @@ variable DRV-WALL-U
 : DRV-EXIT-OK ( -- )
    s" " 0 die ;
 
-\ Uncaught-throw boundary reporting. BTHROW's no-handler path exits with the
-\ raw throw code and NO message, so a driver that lets a throw escape produces
-\ a silent nonzero build (proven: an image-buffer overrun exited 75 with no
-\ output). Driver runners catch at top level and report here; the exit code
-\ stays the raw throw code so existing rc contracts hold (check reject 70,
-\ image-bytes bounds 75).
+\ Uncaught-throw boundary reporting. Driver runners catch at top level and
+\ report here so a build failure always names its throw code (proven need: an
+\ image-buffer overrun once exited 75 with no output). The exit code stays the
+\ raw throw code when kernel-representable so existing rc contracts hold (check
+\ reject 70, image-bytes bounds 75); for any other code the die primitive maps
+\ the exit status to the deterministic UNCAUGHT-RC instead of the silently
+\ masked `code & 0xFF` (which turned -2816 into rc 0).
 create DRV-FC 1 allot
 create DRV-FB 24 allot
 variable DRV-FV

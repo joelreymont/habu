@@ -30,7 +30,10 @@ s" S2-PATH-BUF" s" -- ptr u8" TRUST
 : S2-OUT ( -- ptr u8 n )
    s" stage2-got" S2-PATH ;
 variable SBUF  variable SLEN  variable SFD  variable SRD
-$A0000 constant S2-SOURCE-CAP
+$100000 constant S2-SOURCE-CAP  \ mmap'd source cap - an engine-source growth watermark: the
+                                \ concatenated stage2 source crossed $C0000 by 33 bytes with the
+                                \ interpret-mode DNAME-WIDE gate (was $A0000 before sumtype.f).
+                                \ Overflow dies loudly ('stage2: source exceeds buffer', rc 74).
 $1002 constant S2-MAP-PRIVATE-ANON
 : SBUF@ SBUF @ ;
 s" SBUF@" s" -- ptr u8" TRUST
@@ -59,8 +62,9 @@ s" SBUF@" s" -- ptr u8" TRUST
    SBUF@ SLEN @ EMIT-FORTH
    s" hb" S2-OUT DRV-EMIT-IMAGE ;
 
-\ Process boundary: report uncaught throws instead of exiting silently with
-\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+\ Process boundary: report uncaught throws instead of exiting silently
+\ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,
+\ else die maps it to UNCAUGHT-RC).
 : S2-RUN ( -- )
    [: GO ;] catch
    dup 0 = IF drop DRV-EXIT-OK THEN

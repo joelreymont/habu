@@ -268,9 +268,11 @@ end-package
 \ ---- dynamic loading ------------------------------------------------------
 \ DLOPEN returns 0 on failure; DLSYM returns 0 for a missing symbol. Callers
 \ that must not proceed on failure check the handle/fn against 0 themselves.
+\ Both take 2 args (handle/path + flags/name), so route through the seal-guarded
+\ ffi-call-n (nargs=2) rather than raw ffi-call (TFAM 2b-iii).
 : DLOPEN ( ptr u8 n -- n ) {: path:ptr flags :}
    path P>N FFI-DLBUF !  flags FFI-DLBUF 8 + !
-   FFI-DLBUF DLOPEN-SLOT @ ffi-call ;
+   FFI-DLBUF 2 DLOPEN-SLOT @ ffi-call-n ;
 : DLSYM ( n ptr u8 -- n ) {: handle name:ptr :}
    handle FFI-DLBUF !  name P>N FFI-DLBUF 8 + !
-   FFI-DLBUF DLSYM-SLOT @ ffi-call ;
+   FFI-DLBUF 2 DLSYM-SLOT @ ffi-call-n ;

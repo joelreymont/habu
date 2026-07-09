@@ -41,6 +41,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f
    lib/process.f lib/process-argv.f lib/process-env.f lib/process-fork.f lib/test/record.f lib/test/runner.f
    lib/source.f lib/build.f lib/codesign.f lib/content-key.f tools/build-fixpoint.f
+   tools/stdin-closure-lib.f
    lib/object.f lib/object-cache.f lib/object-index.f lib/object-resolve.f
    lib/object-link.f tools/cli-run.f tools/object-image.f tools/hb-build-lib.f
    tools/lint/text.f tools/lint/token.f
@@ -64,8 +65,9 @@ TR-FILES: TR-GATE-HARNESS-FILES
    test/run-result-cache.f test/run-resident.f test/run-worker.f
    lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f
    lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
-   lib/process-fork.f lib/test/record.f lib/test/runner.f lib/content-key.f tools/cli-run.f
-   test/gate-pool.f test/gate-stats.f
+   lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
+   lib/content-key.f tools/cli-run.f
+   test/gate-pool.f test/gate-stats.f tools/why-threw.f
 ;TR-FILES
 
 TR-FILES: TR-GATE-COMMON-FILES
@@ -75,6 +77,7 @@ TR-FILES: TR-GATE-COMMON-FILES
    tools/json-only-core.f tools/signature-lint-core.f
    tools/checked-boundary-lint-core.f tools/reserved-name-lint-core.f
    tools/trust-lint-core.f tools/check-all-errors-core.f tools/argv.f
+   tools/dynamic-tail-manifest.f tools/source-discovery.f
    tools/check-core.f tools/check-main.f src/habu/verify-source.f
 ;TR-FILES
 
@@ -89,17 +92,20 @@ TR-FILES: TR-AOT-NEG-PHASE-FILES
 ;TR-FILES
 
 TR-FILES: TR-UNDER-SOURCE-FILES
-   tools/build-fixpoint.f src/habu/hide.f src/core/util.f
+   tools/build-fixpoint.f tools/stdin-closure-lib.f src/habu/hide.f src/core/util.f
    src/core/structures.f src/core/checker.f
-   src/core/render.f src/core/check-hook.f src/core/structures-effects.f
+   src/core/type-schema.f src/core/type-family.f
+   src/core/render.f src/core/sumtype.f
+   src/core/check-hook.f src/core/structures-effects.f
    src/core/roles.f src/core/bytes.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
    src/core/enums.f src/core/exec-vector.f
-   src/core/sha256.f src/core/combinators.f src/habu/treeshake.f
+   src/core/sha256.f src/core/type-family-sha.f
+   src/core/combinators.f src/habu/treeshake.f
    src/habu/rt.f src/habu/crash.f src/os/image-bytes.f src/habu/habu1.f
    src/habu/prof.f src/habu/regalloc.f src/habu/jit.f src/habu/habu2.f
-   src/habu/xref.f src/habu/driver-io.f src/core/include.f
+   src/habu/xref.f src/habu/driver-io.f src/core/include.f src/habu/aot-capture.f
    src/habu/stage2.f src/habu/stdin.f src/habu/snap-lib.f src/habu/snap.f src/habu/repl.f
    src/habu/debug-watch.f src/habu/stepper.f src/habu/debug.f
 ;TR-FILES

@@ -19,6 +19,7 @@
 -2104 constant E-FS-DEPTH
 -2105 constant E-FS-IO
 -2106 constant E-FS-CAPACITY
+-2107 constant E-FS-PATH-UNSAFE
 
 \ Strings: -2200..-2299
 -2200 constant E-STR-FIRST
@@ -168,3 +169,31 @@
 -3908 constant E-JR-COLON       \ missing ':' after an object key
 -3909 constant E-JR-COMMA       \ expected ',' or the matching container close
 -3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
+
+\ Remote device harness (ssh zed): -4000..-4099
+-4000 constant E-ZED-FIRST
+-4099 constant E-ZED-LAST
+-4000 constant E-ZED-UNREACH     \ ssh could not reach the host (connect/auth)
+-4001 constant E-ZED-RC          \ remote command exited nonzero
+-4002 constant E-ZED-PUT         \ scp/rsync artifact transfer failed
+-4003 constant E-ZED-TOOLCHAIN   \ required remote tool missing (ptxas/nvcc/...)
+-4004 constant E-ZED-ARG         \ bad harness argument or buffer capacity
+-4005 constant E-ZED-DISABLED    \ device required but HABU_ZED unset/0
+-4006 constant E-ZED-TIMEOUT     \ remote command exceeded the timeout
+-4007 constant E-ZED-EMIT        \ local artifact emit (bin/hb spawn) failed
+
+\ Source-composition discovery: -4100..-4199 (merge renumber from -3800; E-ENGINE owns -3800)
+-4100 constant E-DISC-FIRST
+-4199 constant E-DISC-LAST
+-4100 constant E-DISC-SHADOW
+-4101 constant E-DISC-DYNAMIC
+-4102 constant E-DISC-OPENER
+-4103 constant E-DISC-UNTERM
+-4104 constant E-DISC-CAPACITY
+-4105 constant E-DISC-RETIRE
+
+\ Test-suite DSL: -4200..-4299 (merge renumber from -3900; E-JR owns -3900)
+-4200 constant E-SUITE-FIRST
+-4299 constant E-SUITE-LAST
+-4200 constant E-SUITE-MODE   \ GROUP mode token missing or not SEQ/PARA
+-4201 constant E-SUITE-NAME   \ GROUP name missing or a reserved DSL keyword

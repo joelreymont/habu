@@ -1,6 +1,10 @@
 # habu — Status
 
-Last verified: 2026-07-08
+Last verified: 2026-07-10
+Merged state: the type-families campaign (TFAM 9/10/12/14/15 engine — pass-2 width
+lowering, construct/MATCH lowering, record staging) merged into fable (Model CAD:
+subsystem packages, EVAL/GPU packages, 76-suite maki manifest, the set-check
+checker-xt validation, BCHECKFETCH, and undefined-word EVAL recovery).
 Gate: passing; current tree is under active test-suite architecture work. Last
 measured persistent content-key hot run after removing top snapshot launchers,
 splitting AOT closure diagnostics from the maker path, collapsing the remaining

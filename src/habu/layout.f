@@ -9,19 +9,37 @@ $400000 constant REGION
 $300000000 constant RBASE-VA
 $48425350414E5321 constant SNAP-MAGIC
 
-$61000 constant DICT-SIZE
+\ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
+\ stack; the code area follows at DBASE+DICT-SIZE inside the $400000 REGION.
+\ Grown $61000 -> $C1000 with DICT-CAP 8192 -> 16384 (the gate-runner-support
+\ tool closure needs ~9.5k records; dot habu-gate-runner-entry-81c84af0).
+\ Keep DICT-CAP/CFSTK-OFF/DICT-SIZE/HIDX-SLOTS/HIDX-BYTES in step.
+$C1000 constant DICT-SIZE
 48 constant DREC
 16 constant DNAME-INL
 $0FFFFFFFFFFFFFFF constant DNAME-LEN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
-8192 constant DICT-CAP
-$60000 constant CFSTK-OFF
+\ DNAME-WIDE (bit 62; 63 stays free): the word's recorded stack effect carries a
+\ wider-than-cell layout value in some row, so executing it at INTERPRET level
+\ would land a multi-cell bundle on the untyped interpret stack where scalar
+\ dup/drop/swap silently corrupt it (dot habu-tfam-12-interpret-10b385b1).
+\ LFIND folds the bit into x13 bit 3; EM-INTERPRET-FIND and interpret ' fail
+\ closed on it. Set by xref.f XREF-WIDE-MARK; the checker marks at signature
+\ record time once the sequenced src/core/checker.f half lands. Compile-mode
+\ calls inside checked definitions are unaffected (pass-2 lowers them).
+$4000000000000000 constant DNAME-WIDE
+16384 constant DICT-CAP
+$C0000 constant CFSTK-OFF
 24 constant CF-REC
 8 constant CF-LOCN
 16 constant CF-LOCF
 
-$100000 constant IBUFSZ
+$180000 constant IBUFSZ   \ boot source-prefix + program input buffer; the copy
+                           \ loops exit a SILENT 74 at this cap (habu2 SRC-SFAIL/
+                           \ SRC-BFAIL) - grown 1M->1.5M when the src/core prefix
+                           \ neared the wall (item 12 slice-3a; keep the bootstrap
+                           \ mirror in cg/forth.fs in sync)
 20 constant DATA
 
 0 constant DP-CELL
@@ -30,9 +48,92 @@ $100000 constant IBUFSZ
 24 constant LOCF-CELL
 $3000 constant LOCNAMES
 24 constant LOC-REC
-$1A0 constant CUR-CELL
-$1A8 constant WIDN-CELL
-$1B0 constant HOOK-CELL
+\ --- Friend arena (TFAM 2b-i): one contiguous write-protected band
+\ [FRIEND-ARENA, FRIEND-ARENA+FRIEND-ARENA-LEN) holding the boot-seal latch plus
+\ every checker/wordlist crown-jewel cell (CUR/WIDN/HOOK/DEF-WL, the TRUSTED:
+\ TSIG/TCSIG/CRSIG signature cells, the package PKG-* cells, and the DEFER-*
+\ cells). The latch cell IS the arena base: it holds 0 while the engine loads its
+\ own canonical source (range guard inert) and FRIEND-ARENA-LEN once SEAL-FRIEND
+\ runs at the end of the cold prefix. Self-sealing: post-seal any raw write into
+\ the band — including the latch itself — is trapped fail-closed, so the seal is
+\ a one-way monotonic latch. The band sits BELOW DATA-START, so allot/,/c,/the DP
+\ heap (bounded >= DATA-START by DP-CHECK) can never reach it; only sinks that
+\ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
+\ write buffers) carry the runtime range check. The old scattered slots were
+\ since reclaimed: $2780..$27A0/$27C0..$27E8 by the habu1.f P2-* cells, $27A8
+\ by CMM-CELL below ($1A0 stays free). A SECOND guarded band (the
+\ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
+\ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
+\ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
+\ checker/xref/stdlib source is even evaluated), so the watermark is captured
+\ later by SEAL-CAPTURE (habu1.f BSEALCAP) tokens: a baseline at the end of
+\ xref.f plus the cold-prefix assembler's token at the true engine-prefix end
+\ (after script-argv.f), once ndict is the full engine boundary and no user
+\ record exists yet.
+\ The dictionary-truncation words (HIDE-DEFS-FROM/FORGET-DEFS-FROM, xref.f) reject
+\ a post-seal FORGET below it. It lives inside the sealed band so user source
+\ cannot lower the watermark to bypass the guard. ---
+$20 constant FRIEND-ARENA               \ arena base offset within the DATA region (x20)
+$90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
+FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+$A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
+83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
+\ E-BAD-TAG: runtime exit status when a compiled MATCH reaches its invalid-tag
+\ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
+\ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
+\ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
+\ reaches it; a forged tag (TRUSTED constructor) exits deterministically with this
+\ code. 85 is free repo-wide (the fixed engine exits are 64/67/69/70/71/74/75/76/
+\ 77/78/83/84/127); it sits above the seal codes in the runtime-exit family.
+85 constant E-BAD-TAG
+67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW
+                                        \ THROW-NOREC): the raw code was exit_group'd and kernel-masked to
+                                        \ 8 bits, so a multiple of 256 exited 0 silently - fail-open. 67 is
+                                        \ free repo-wide (64/70/71/74/76/78/83/84/127 are the other fixed
+                                        \ engine exits; 69/77 collide with checker/lint codes).
+$28 constant CUR-CELL
+$30 constant WIDN-CELL
+$38 constant HOOK-CELL
+$40 constant DEF-WL-CELL
+$48 constant TSIG-A-CELL
+$50 constant TSIG-U-CELL
+$58 constant TCSIG-A-CELL
+$60 constant TCSIG-U-CELL
+$68 constant CRSIG-A-CELL
+$70 constant CRSIG-U-CELL
+$78 constant PKG-PUB-CELL
+$80 constant PKG-PRI-CELL
+$88 constant PKG-PARENT-CELL
+$90 constant PKG-REC-CELL
+$98 constant DEFER-META-CELL
+$A0 constant DEFER-XT-CELL
+\ CMFAM-CELL: resolved construct family id, live only between the family and
+\ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2; TFAM
+\ 10 slice 2). Eager family resolution at the family token means no operand
+\ string is stashed across a possible REPL line refill. $1B0 has no exact user
+\ and no covering ranged region (GTOD-SCRATCH is $1E0..$1F0; the seal suite's
+\ deliberate poke hole is $1A0 — left alone).
+$1B0 constant CMFAM-CELL
+\ MATCH-lowering compile state (TFAM 10 slice 3, docs §16). All DATA-relative
+\ (x20), in the reclaimed $B0..$1B0 free band above the friend arena ($20..$B0)
+\ and below CMFAM-CELL ($1B0) — rg-verified unused (the seal-suite poke hole $1A0
+\ is left alone; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0). CMBK-CELL is a
+\ 64-bit branch-kind bitstack (J-OF pushes 0, EM-ADT-MATCH-OF pushes 1, J-ENDOF
+\ pops+checks) so ENDOF re-arms the match token machine (CMM=4) only for a MATCH
+\ variant branch, never a CASE arm or a nested case/match ENDOF — the compiler
+\ analogue of the checker's CF-ENDOF-DISPATCH frame-kind routing. CMTAG/CMPADS
+\ hold the pending variant (tag,M-p) between a variant token and its OF (never
+\ nested: no token falls between them). CMFR is the nesting fam stack indexed by
+\ CMFRD (match depth); a level's fam feeds later variant resolution and the
+\ ;MATCH bad-tag family-name die. Definition-scoped: CMFRD/CMBK cleared at
+\ colon/TRUSTED: entry and by EM-RESET-COMPILE-STATE alongside CMM-CELL.
+$B0 constant CMBK-CELL                  \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
+$B8 constant CMTAG-CELL                 \ pending MATCH variant tag (VAR -> OF)
+$C0 constant CMPADS-CELL                \ pending MATCH variant zero pads M-p (VAR -> OF)
+$C8 constant CMFRD-CELL                 \ MATCH nesting depth (0 = not in a match)
+$D0 constant CMFR-OFF                   \ MATCH fam stack base (one cell per open match)
+26 constant CMFR-MAX                    \ levels: $D0..$1A0 = 26 cells (checker caps CF frames at 30)
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL
@@ -62,12 +163,7 @@ $3800 constant EVAL-FRAME
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
 $8 constant EVAL-MAX-DEPTH
-$2780 constant TSIG-A-CELL
-$2788 constant TSIG-U-CELL
-$2790 constant TCSIG-A-CELL
-$2798 constant TCSIG-U-CELL
-$27A0 constant CRSIG-A-CELL
-$27A8 constant CRSIG-U-CELL
+\ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
 $37D0 constant EVALD-CELL
@@ -93,8 +189,35 @@ $3CA8 constant AOT-SEED-DONE-CELL
 \ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
 \ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
 $3CB0 constant AOT-SEED-ARM-CELL
-$4000 constant HIDX-SLOTS
-$10000 constant HIDX-BYTES
+\ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Placed in the same
+\ proven-safe $3CA0..$3D00 engine gap as EVALREC/AOT-SEED-* (slots no compiled source
+\ ever writes) -- NOT in the low friend arena, whose $A8+ tail is transient checker
+\ scratch during stage-engine source evaluation. Records the WIDs of sealed system /
+\ generated constructor packages created in the friend window; PROT-WID? membership
+\ (habu1.f) gates the sealed-WID guards. u32 entries so wordlist IDs above 255 fit.
+\ The band [PROT-REG-OFF, +PROT-REG-LEN) fills $3CB8..$3D00 (below TASK-USER-BASE) and
+\ is a SECOND range checked by PROT-GUARD, rejecting user data stores into the count
+\ cell or table. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET) ARE
+\ range-guarded too: each PROT-GUARDs the address it redirects a write to, so a
+\ post-seal cp!/ndict! into either band fails closed at the sink. ---
+$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32 in a full cell)
+$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32 entries)
+16 constant PROT-WID-MAX                \ table capacity (16 u32 = $40 -> fills the gap to $3D00)
+PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
+PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $48: count + table
+\ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
+\ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
+\ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
+\ reaches THROW-NOREC with no handler and no REPL. Sits at $3D00 - the slot directly
+\ below the task-user region, which now starts at $3D08 (lib/task.f TASK-USER-BASE).
+\ Like EVALREC/AOT-SEED/PROT-WID it is a fixed engine cell no compiled source writes
+\ (task-user cells allocate up from $3D08; the mmap'd DATA region is zero until boot).
+$3D00 constant UNCGH-CELL
+\ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
+\ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
+\ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
+$8000 constant HIDX-SLOTS
+$20000 constant HIDX-BYTES
 $36B8 constant FRCLM-CELL
 $37F8 constant SNAP-CELL
 $1D8 constant SSCR-CELL
@@ -119,12 +242,21 @@ $240 constant QENT-CELL
 $248 constant QXH-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-$260 constant DEF-WL-CELL
-$27C0 constant PKG-PUB-CELL
-$27C8 constant PKG-PRI-CELL
-$27D0 constant PKG-PARENT-CELL
-$27D8 constant PKG-REC-CELL
-$27E0 constant DEFER-META-CELL
-$27E8 constant DEFER-XT-CELL
+\ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
+\ mirroring the checker's MM token machine: 0 = off; slices 2-3 arm it at a
+\ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
+\ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
+\ Tested fail-closed at the LCOMPILE head (EM-COMPILE-ADT-MODE): armed with no
+\ handler dies deterministically. Definition-scoped: cleared at colon/TRUSTED:
+\ entry and by EM-RESET-COMPILE-STATE. Lives at $27A8, the last old CRSIG slot
+\ (freed when CRSIG moved into the friend arena) between P2LOC0-CELL ($27A0,
+\ habu1.f) and DOESB-CELL ($27B0) — rg-verified unused repo-wide. NOTE the low
+\ "free hole" $260 is NOT usable: VVAL-OFF ($250) + VSMAX cells spans
+\ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
+\ is confined to the definition NAME token, when the virtual stack is empty.
+$27A8 constant CMM-CELL
+\ PKG-* ($27C0..$27D8) and DEFER-* ($27E0..$27E8) relocated into
+\ the friend arena above and were later reclaimed by the habu1.f P2-* pass-2
+\ cells (item 12), as were $2780..$27A0.
 $2800 constant RSTK-OFF
 $4000 constant DATA-START

@@ -45,6 +45,39 @@ package TRBC
    0 MACOS!
    TR-CAL-PCT 100 T= ;
 
+\ HB_LOAD_PCT export text: the clamp guarantees 100..300, so the exported env
+\ value is always exactly three digits - the worker-side parser relies on it.
+: PCT-TEXT-NOMINAL ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   TR-CAL-PCT TR-PCT$ s" 100" T$= ;
+
+: PCT-TEXT-SCALED ( -- )
+   TR-CAL-REF-MACOS-MS 2 * MACOS!
+   TR-CAL-PCT TR-PCT$ s" 200" T$= ;
+
+: PCT-TEXT-CLAMPED ( -- )
+   TR-CAL-REF-MACOS-MS 10 * MACOS!
+   TR-CAL-PCT TR-PCT$ s" 300" T$= ;
+
+\ The export floors the calibration at the gate's pool pressure: any nested
+\ pool budgets for the clamp-max worst case (self-contention plus the merge
+\ practice of overlapping gates on one box - the 200 floor was measured
+\ marginal), while nested=1 keeps the measured cal-factor alone.
+: EXPORT-FLOORS-AT-PRESSURE ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   2 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 300 T= ;
+
+: EXPORT-KEEPS-HEAVY-CAL ( -- )
+   TR-CAL-REF-MACOS-MS 2 * MACOS!
+   1 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 200 T= ;
+
+: EXPORT-NO-NEST-NO-FLOOR ( -- )
+   TR-CAL-REF-MACOS-MS MACOS!
+   1 TR-NESTED-POOL !
+   TR-LOAD-PCT-EXPORT 100 T= ;
+
 : MAIN ( -- )
    T-RESET
    PROBE-MEASURES
@@ -54,6 +87,12 @@ package TRBC
    THRASHING-CLAMPS-HIGH
    UNCALIBRATED-PROFILE-KEEPS-TABLE
    UNMEASURED-KEEPS-TABLE
+   PCT-TEXT-NOMINAL
+   PCT-TEXT-SCALED
+   PCT-TEXT-CLAMPED
+   EXPORT-FLOORS-AT-PRESSURE
+   EXPORT-KEEPS-HEAVY-CAL
+   EXPORT-NO-NEST-NO-FLOOR
    T-REPORT ;
 
 MAIN

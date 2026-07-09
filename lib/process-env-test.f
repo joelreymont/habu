@@ -164,6 +164,36 @@ variable PET-START-NS
    PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
    outu PET-INHERIT-ENV-OUT ;
 
+\ PROC-ENV-SET vs PROC-ENV+: SET replaces an existing row in place (one row
+\ survives, the child sees only the last value), while PROC-ENV+ appends and
+\ never deduplicates. SET on an absent name appends like PROC-ENV+.
+: PET-SET-REPLACES ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" s" wrong" PET-ENV+
+   PROC-ENV-N @ COUNT>N 1 T=
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-SET
+   PROC-ENV-N @ COUNT>N 1 T=
+   PROC-ENV-INHERIT-MISSING
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu s" HABU_PROC_ENV_TEST=wrong" CONTAINS? TFALSE
+   outu PET-INHERIT-ENV-OUT ;
+
+: PET-SET-APPENDS-NEW ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" >LEN s" alpha" >LEN PROC-ENV-SET
+   PROC-ENV-N @ COUNT>N 1 T=
+   PROC-ENV-INHERIT-MISSING
+   PET-ENV-CMD$ PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   outu PET-INHERIT-ENV-OUT ;
+
+: PET-APPEND-KEEPS-DUP ( -- )
+   PET-RESET
+   s" HABU_PROC_ENV_TEST" s" wrong" PET-ENV+
+   s" HABU_PROC_ENV_TEST" s" alpha" PET-ENV+
+   PROC-ENV-N @ COUNT>N 2 T= ;
+
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
@@ -187,6 +217,19 @@ variable PET-START-NS
    s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-CAPTURE
    1 T= 0 T= 0 T= ;
+
+\ Budget env carrier (habu-concurrent-multi-workspace-5341c7f4): a spawned hb
+\ child inherits HB_LOAD_PCT through the env rows and scales its budgets by it
+\ end-to-end - proving the gate's exported cal-factor actually reaches
+\ worker-spawned suites. Inherit-missing keeps HOME/PATH so bin/hb boots.
+: TEST-BUDGET-ENV ( -- )
+   PET-RESET
+   s" HB_LOAD_PCT" s" 250" PET-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" s" require lib/test/budget.f 100 T-BUDGET-MS . "
+   PET-OUT PET-CAP PET-ERR PET-CAP PET-HB-TIMEOUT-MS PET-STDIN-CAPTURE
+   0 T= 0 T= {: outu:n :}
+   PET-OUT outu s" 250" CONTAINS? TTRUE ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ( -- )
    PET-RESET
@@ -272,12 +315,16 @@ variable PET-START-NS
    s" default-env-child" [: PET-DEFAULT-ENV-CHILD ;] PET-CASE
    s" default-lookup" [: PET-DEFAULT-LOOKUP ;] PET-CASE
    s" explicit-beats-default" [: PET-EXPLICIT-BEATS-DEFAULT ;] PET-CASE
+   s" set-replaces" [: PET-SET-REPLACES ;] PET-CASE
+   s" set-appends-new" [: PET-SET-APPENDS-NEW ;] PET-CASE
+   s" append-keeps-dup" [: PET-APPEND-KEEPS-DUP ;] PET-CASE
    s" env-outcome-false" [: PET-RUN-ENV-OUTCOME-FALSE ;] PET-CASE
    s" env-outcome-timeout" [: PET-RUN-ENV-OUTCOME-TIMEOUT ;] PET-CASE
    s" env-stdin-outcome" [: PET-RUN-ENV-STDIN-OUTCOME ;] PET-CASE
    s" env-stdin-false-large" [: PET-RUN-ENV-STDIN-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-false-large" [: PET-RUN-ENV-STDIN-OUTCOME-FALSE-LARGE ;] PET-CASE
    s" env-stdin-outcome-timeout" [: PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ;] PET-CASE
+   s" budget-env" [: TEST-BUDGET-ENV ;] PET-CASE
    s" spawn-raw-missing" [: PET-SPAWN-RAW-MISSING ;] PET-CASE
    s" spawn-raw-true" [: PET-SPAWN-RAW-TRUE ;] PET-CASE
    s" bad-env-name" [: PET-BAD-ENV-NAME-THROWS ;] PET-CASE

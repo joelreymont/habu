@@ -6,6 +6,7 @@
 require test/gate-build-size.f
 
 64 constant GENG-USAGE-RC
+67 constant GE-UNCAUGHT-RC       \ deterministic exit status for an uncaught top-level throw
 0 constant GENG-ALL-ID
 1 constant GENG-BUILD-ID
 2 constant GENG-FIXTURES-ID
@@ -330,24 +331,422 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-RUN-STD-FIXTURES
    GE-REPAIR-HINTS-RUN ;
 
-: GE-ENGINE-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
-   GE-HB-RESET
-   GE-SRC-RESET
-   s" test/engine-suite.f" GE-SRC-FILE+
+: GE-SUITE-RUN ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
    label labelu GE-EXPECT-OK
    SB-RESET s" ok" SB-APPEND GE-SB-LF
    GT-OUT$ SB$ ENDS-WITH? 0= if label labelu GE-FAIL then
    s" PASS: " type label labelu type cr ;
 
+: GE-ENGINE-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/engine-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-FAMILY-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-family-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
 : GE-ENGINE-SUITE ( -- )
    GE-CANDIDATE$ s" engine suite on Habu-under-test" GE-ENGINE-SUITE-ON
    s" bin/hb" s" engine suite on bin/hb" GE-ENGINE-SUITE-ON ;
+
+: GE-TYPE-FAMILY-SUITE ( -- )
+   GE-CANDIDATE$ s" type-family suite on Habu-under-test" GE-TYPE-FAMILY-SUITE-ON
+   s" bin/hb" s" type-family suite on bin/hb" GE-TYPE-FAMILY-SUITE-ON ;
+
+: GE-TYPE-DECL-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-decl-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-DECL-SUITE ( -- )
+   GE-CANDIDATE$ s" type-decl suite on Habu-under-test" GE-TYPE-DECL-SUITE-ON
+   s" bin/hb" s" type-decl suite on bin/hb" GE-TYPE-DECL-SUITE-ON ;
+
+: GE-TYPE-CTOR-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-ctor-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-CTOR-SUITE ( -- )
+   GE-CANDIDATE$ s" type-ctor suite on Habu-under-test" GE-TYPE-CTOR-SUITE-ON
+   s" bin/hb" s" type-ctor suite on bin/hb" GE-TYPE-CTOR-SUITE-ON ;
+
+: GE-TYPE-LINEAR-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-linear-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-TYPE-LINEAR-SUITE ( -- )
+   GE-CANDIDATE$ s" type-linear suite on Habu-under-test" GE-TYPE-LINEAR-SUITE-ON
+   s" bin/hb" s" type-linear suite on bin/hb" GE-TYPE-LINEAR-SUITE-ON ;
+
+: GE-TYPE-MATCH-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-match-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ TFAM 9 slice 3 (Gate 17j): checked MATCH eliminator — exhaustiveness,
+\ payload refinement, joins, linear consumption, depth fail-closure.
+: GE-TYPE-MATCH-SUITE ( -- )
+   GE-CANDIDATE$ s" type-match suite on Habu-under-test" GE-TYPE-MATCH-SUITE-ON
+   s" bin/hb" s" type-match suite on bin/hb" GE-TYPE-MATCH-SUITE-ON ;
+
+: GE-TYPE-LAYOUT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-layout-lower-pending.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ TFAM 12 slice 3b: width-fact contracts, pass-2 lowering goldens, and
+\ whole-bundle transport execution rows (see the suite file's header).
+: GE-TYPE-LAYOUT-SUITE ( -- )
+   GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
+   s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
 
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
 \ HABU_UNDER_TEST spawn per candidate. See engine-suite.f "candidate ... smoke".
+
+\ An uncaught top-level throw reaches the engine's BTHROW no-handler path
+\ (habu1.f THROW-NOREC). Before the fix it exit_group'd the RAW code, so the
+\ kernel masked it to 8 bits: -2816 (a multiple of 256) exited 0 SILENTLY and
+\ -2802 exited 14 SILENTLY - fail-open for any tool reading the exit status.
+\ Now a kernel-representable code in [1,255] still exits byte-identically to
+\ before (deliberate exit contracts: argv usage 64, check hook 70, lint
+\ findings 1), while any other code is named on fd 2 and exits GE-UNCAUGHT-RC.
+: GE-UNCAUGHT-RUN ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n want:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   want label labelu GE-EXPECT-RC ;
+
+: GE-UNCAUGHT-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n want:n needle:ptr needleu:n label:ptr labelu:n :}
+   src srcu want label labelu GE-UNCAUGHT-RUN
+   needle needleu label labelu GE-EXPECT-ERR-HAS ;
+
+: GE-UNCAUGHT-THROW ( -- )
+   s" -2816 throw" GE-UNCAUGHT-RC s" uncaught throw code -2816"
+      s" uncaught throw -2816 (kernel-masks-to-0)" GE-UNCAUGHT-CASE
+   s" -2802 throw" GE-UNCAUGHT-RC s" uncaught throw code -2802"
+      s" uncaught throw -2802 (kernel-masks-to-14)" GE-UNCAUGHT-CASE
+   s" 70 throw" 70 s" uncaught throw 70 representable passthrough" GE-UNCAUGHT-RUN
+   s" uncaught throw 70 representable passthrough" GE-EXPECT-SILENT
+   s" : GEUT ( -- ) [: -2816 throw ;] catch . ;  GEUT" 0
+      s" caught throw stays in-process rc 0" GE-UNCAUGHT-RUN
+   SB-RESET s" -2816" SB-APPEND GE-SB-LF
+   SB$ s" caught throw control output" GE-EXPECT-OUT
+   s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
+
+\ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the
+\ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
+\ bundle followed by `dup . . . .` printed the tag twice and then read below
+\ the seed (9 9 7 <garbage>, rc 0) - fail-open through any TRUSTED boundary
+\ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine
+\ fails closed: executing (or ticking) a DNAME-WIDE-flagged word at interpret
+\ level dies with a named diagnostic before the bundle can land on the
+\ untyped interpret stack. The flag is CHECKER-COMPUTED: the record choke
+\ point (E-ADD-EFFECT) scans the four effect rows with T-WIDTH (quotation
+\ sub-effects included) and the engine publish tails consume the latch
+\ (rec-wide-publish -> wide-mark) after ndict++ — no manual marking anywhere
+\ in this fixture. Checked definitions own bundle work; the guard leg proves
+\ a compiled call of the SAME marked word still compiles and runs at top
+\ level, and the scalar leg proves a one-cell TRUSTED word stays unmarked.
+: GE-ILAYOUT-PRELUDE ( -- )
+   s" SUMTYPE gewide 2" GE-SRC-LINE
+   s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
+   s"   VARIANT err b ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE ;
+
+: GE-ILAYOUT-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   src srcu GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" interpret-mode layout value" label labelu GE-EXPECT-ERR-HAS ;
+
+: GE-ILAYOUT-GUARD ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" TRUSTED: GE-WUN ( gewide<n,n> -- n n ) ;" GE-SRC-LINE
+   s" : GE-WRUN ( -- n n ) GE-WMK GE-WUN ;" GE-SRC-LINE
+   s" GE-WRUN . ." GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" checked wide transport guard" GE-EXPECT-OK
+   SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
+   SB$ s" checked wide transport guard output" GE-EXPECT-OUT ;
+
+\ negative control: a one-cell TRUSTED word is NOT marked by the checker scan
+\ and still interprets at top level (rc 0, value printed).
+: GE-ILAYOUT-SCALAR ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" TRUSTED: GE-WN ( -- n ) 42 ;" GE-SRC-LINE
+   s" GE-WN ." GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" scalar trusted word interprets" GE-EXPECT-OK
+   SB-RESET s" 42" SB-APPEND GE-SB-LF
+   SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
+
+\ does>-split wide facts fail closed at the pass-2 trigger with a fixed
+\ label (previously a lone current-token write - unattributable; TFAM 12
+\ item 3 verdict: the checker cannot see across the does> split, so the
+\ labeled engine exit IS the permanent contract).
+: GE-DOES-WIDE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( ptr a -- n ) drop 5 ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   75 s" does>-split wide facts fail closed" GE-EXPECT-RC
+   s" does>-split cannot lower layout width facts" s" does>-split wide diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-INTERP-LAYOUT ( -- )
+   s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
+   s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
+   s" 5 GE-WMK swap . . ." s" interp layout swap fails closed" GE-ILAYOUT-CASE
+   s" ' GE-WMK execute" s" interp layout tick fails closed" GE-ILAYOUT-CASE
+   s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
+   s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
+   GE-DOES-WIDE
+   GE-ILAYOUT-GUARD
+   GE-ILAYOUT-SCALAR
+   s" PASS: interpret-mode layout transports fail closed" type cr ;
+
+\ item 10 slice 2: `construct family variant` LOWERS in the native compiler —
+\ (M-p) zero pads + tag as VS constants, the same literal path the item-8
+\ generated-constructor bodies compile through, so the two intro forms are
+\ indistinguishable at runtime. The execution fixture proves round-trips
+\ cell-for-cell against the generated word across one-payload, wide
+\ (max-payload), and zero-payload variants of an arbitrary family (gecn — not
+\ result/option/color); the unpack is a generated TRUSTED boundary confined to
+\ the temp fixture source (checked code cannot read raw bundle cells until
+\ MATCH lowers in slice 3). Interpret-mode construct stays fail-closed
+\ (E-UNDEFINED: compile-only keyword; the DNAME-WIDE gate owns the interpret
+\ surface), and owner-only scope holds at compile: a foreign-package public
+\ family and an unknown variant die with the named engine rejects.
+: GE-CONSTRUCT-EXEC-SRC ( -- )          \ shared family + unpack + printer prelude
+   s" SUMTYPE gecn 0" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" TRUSTED: GE-UN3 ( gecn -- n n n ) ;" GE-SRC-LINE
+   s" : GE-P3 ( gecn -- ) GE-UN3 . . . ;" GE-SRC-LINE ;
+
+: GE-CONSTRUCT-ROUND ( -- )             \ construct == generated ctor, cell-for-cell
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-CONSTRUCT-EXEC-SRC
+   s" : GE-MK1 ( n -- gecn ) construct gecn one ;" GE-SRC-LINE
+   s" : GE-MK2 ( n n -- gecn ) construct gecn two ;" GE-SRC-LINE
+   s" : GE-MK0 ( -- gecn ) construct gecn nil ;" GE-SRC-LINE
+   s" : GE-T1 ( -- ) 7 GE-MK1 GE-P3 ;  GE-T1" GE-SRC-LINE
+   s" : GE-T2 ( -- ) 3 4 GE-MK2 GE-P3 ;  GE-T2" GE-SRC-LINE
+   s" : GE-T0 ( -- ) GE-MK0 GE-P3 ;  GE-T0" GE-SRC-LINE
+   s" : GE-G1 ( -- ) 7 GECN:ONE GE-P3 ;  GE-G1" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" construct lowering executes" GE-EXPECT-OK
+   SB-RESET                              \ stack prints top-first: tag, slot1, slot0
+   s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF
+   s" 1" SB-APPEND GE-SB-LF  s" 4" SB-APPEND GE-SB-LF  s" 3" SB-APPEND GE-SB-LF
+   s" 2" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF
+   SB$ s" construct round-trip cells" GE-EXPECT-OUT ;
+
+: GE-CONSTRUCT-BAD-VARIANT ( -- )       \ unknown variant dies at ITS token
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-CONSTRUCT-EXEC-SRC
+   s" : GE-BADV ( n -- gecn ) construct gecn nope ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" unknown construct variant fails closed" GE-EXPECT-RC
+   s" hb: construct: unknown variant: nope" s" construct variant diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-CONSTRUCT-FOREIGN ( -- )           \ owner-only: a foreign public family never lowers
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package gepk" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" SUMTYPE gefr 0" GE-SRC-LINE
+   s"   VARIANT yes n ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GE-BADF ( n -- gefr ) construct gefr yes ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" foreign-package construct fails closed" GE-EXPECT-RC
+   s" hb: construct: unknown family: gefr" s" construct foreign-family diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-CONSTRUCT-EXEC ( -- )
+   GE-CONSTRUCT-ROUND
+   GE-CONSTRUCT-BAD-VARIANT
+   GE-CONSTRUCT-FOREIGN
+   s" construct" 70 s" interpret construct fails closed" GE-UNCAUGHT-RUN
+   s" PASS: construct lowers natively; interpret + foreign scope stay fail-closed" type cr ;
+
+\ item 10 slice 3: `MATCH family v OF ... ENDOF ... ;MATCH` LOWERS in the native
+\ compiler — peek tag / compare-branch chain / per-variant prologue (drop tag +
+\ M-p pads, expose the p payload cells) / ENDOF jump-to-join / ;MATCH join +
+\ invalid-tag die. The family gemt (one n / two n n / nil, M=2) is an arbitrary
+\ third sum, not result/option/color. The round-trip drives one/two/nil so the
+\ zero-, one-, and multi-payload prologues are all exercised and the payload cells
+\ arrive in order; a nested MATCH proves the token machine and the fam stack
+\ restore across ;MATCH. A forged tag (TRUSTED constructor with an out-of-range
+\ tag) reaches the die IN A CHILD PROCESS (a die exits the engine): rc E-BAD-TAG
+\ (85) + the inline "hb: bad gemt tag" diagnostic. Compile-time rejects
+\ (unknown variant / a token where OF was required) die fail-closed at their
+\ token, and interpret-mode MATCH stays E-UNDEFINED (compile-only keyword; the
+\ DNAME-WIDE gate owns the interpret surface).
+: GE-MATCH-EXEC-SRC ( -- )              \ shared matchable family (arbitrary third sum)
+   s" SUMTYPE gemt 0" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE ;
+
+: GE-MATCH-ROUND ( -- )                 \ construct+MATCH round-trip, each variant + payload
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : RN ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : RP ( gemt -- ) MATCH gemt one OF . ENDOF two OF . . ENDOF nil OF 111 . ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GN ( -- ) 7 construct gemt one RN .  3 4 construct gemt two RN .  construct gemt nil RN . ;  GN" GE-SRC-LINE
+   s" : GP ( -- ) 5 construct gemt one RP  8 9 construct gemt two RP  construct gemt nil RP ;  GP" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" match lowering executes" GE-EXPECT-OK
+   SB-RESET
+   s" 7" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF  s" 999" SB-APPEND GE-SB-LF   \ RN one/two/nil
+   s" 5" SB-APPEND GE-SB-LF                                                          \ RP one payload
+   s" 9" SB-APPEND GE-SB-LF  s" 8" SB-APPEND GE-SB-LF                                \ RP two payload (top-first)
+   s" 111" SB-APPEND GE-SB-LF                                                        \ RP nil branch
+   SB$ s" match round-trip output" GE-EXPECT-OUT ;
+
+: GE-MATCH-NESTED ( -- )                \ MATCH nested inside a MATCH branch body
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : RNEST ( gemt -- n )" GE-SRC-LINE
+   s"    MATCH gemt" GE-SRC-LINE
+   s"      one OF construct gemt nil MATCH gemt one OF drop ENDOF two OF drop drop ENDOF nil OF ENDOF ;MATCH ENDOF" GE-SRC-LINE
+   s"      two OF + ENDOF" GE-SRC-LINE
+   s"      nil OF 0 ENDOF" GE-SRC-LINE
+   s"    ;MATCH ;" GE-SRC-LINE
+   s" : GO ( -- ) 7 construct gemt one RNEST .  3 4 construct gemt two RNEST .  construct gemt nil RNEST . ;  GO" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" nested match lowering executes" GE-EXPECT-OK
+   SB-RESET  s" 7" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF
+   SB$ s" nested match output" GE-EXPECT-OUT ;
+
+: GE-MATCH-BAD-TAG ( -- )               \ forged tag dies E-BAD-TAG in a child process
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" TRUSTED: GE-FORGE ( -- gemt ) 0 0 5 ;" GE-SRC-LINE
+   s" : RN ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 0 ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GO ( -- ) GE-FORGE RN . ;  GO" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   85 s" forged tag dies with E-BAD-TAG" GE-EXPECT-RC
+   s" hb: bad gemt tag" s" bad-tag diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-BAD-VARIANT ( -- )           \ unknown variant dies at ITS token
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : Z ( gemt -- n ) MATCH gemt nope OF ENDOF ;MATCH ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" unknown match variant fails closed" GE-EXPECT-RC
+   s" hb: match: unknown variant: nope" s" match variant diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-EXPECTED-OF ( -- )           \ a variant not followed by OF dies fail-closed
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : Z ( gemt -- n ) MATCH gemt one drop ;MATCH ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" match expected-of fails closed" GE-EXPECT-RC
+   s" hb: match: expected of: drop" s" match expected-of diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-EXEC ( -- )
+   GE-MATCH-ROUND
+   GE-MATCH-NESTED
+   GE-MATCH-BAD-TAG
+   GE-MATCH-BAD-VARIANT
+   GE-MATCH-EXPECTED-OF
+   s" match" 70 s" interpret match fails closed" GE-UNCAUGHT-RUN
+   s" PASS: match lowers natively; forged tag dies E-BAD-TAG; interpret stays fail-closed" type cr ;
+
+\ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
+\ a tool closure needing more than DICT-CAP records died exit_group(77)
+\ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
+\ unattributable. The definer capacity arms must emit a fixed label first:
+\ `hb: dictionary full at: <token>`; rc 77 is the deterministic contract and
+\ stays. The fixture is Habu-generated and scales with the baked DICT-CAP
+\ (src/habu/layout.f is in the runtime prefix): DICT-CAP+1 unchecked trivial
+\ definitions always overflow regardless of the boot dictionary count.
+variable GE-DFULL-P                 \ generated-source cursor offset
+variable GE-DFULL-DIV               \ decimal-render divisor
+variable GE-DFULL-I                 \ copy/definition loop index
+
+: GE-DFULL-C ( ptr u8 n -- ) {: buf:ptr c:n :}
+   c buf GE-DFULL-P @ + c!
+   GE-DFULL-P @ 1+ GE-DFULL-P ! ;
+
+: GE-DFULL-S ( ptr u8 ptr u8 n -- ) {: buf:ptr a:ptr u:n :}
+   0 GE-DFULL-I !
+   begin GE-DFULL-I @ u < while
+      buf  a GE-DFULL-I @ + c@  GE-DFULL-C
+      GE-DFULL-I @ 1+ GE-DFULL-I !
+   repeat ;
+
+: GE-DFULL-DIGITS ( ptr u8 n -- ) {: buf:ptr i:n :}
+   10000 GE-DFULL-DIV !
+   begin GE-DFULL-DIV @ 0 > while
+      buf  i GE-DFULL-DIV @ / 10 mod 48 +  GE-DFULL-C
+      GE-DFULL-DIV @ 10 / GE-DFULL-DIV !
+   repeat ;
+
+: GE-DFULL-DEF ( ptr u8 n -- ) {: buf:ptr i:n :}      \ append `: wNNNNN ;\n`
+   buf 58 GE-DFULL-C  buf 32 GE-DFULL-C  buf 119 GE-DFULL-C
+   buf i GE-DFULL-DIGITS
+   buf 32 GE-DFULL-C  buf 59 GE-DFULL-C  buf 10 GE-DFULL-C ;
+
+: GE-DFULL-SOURCE ( -- ptr u8 n )                     \ generated define-past-cap program
+   DICT-CAP 1+ 16 * 32 + MEM-ALLOC-BYTES drop {: buf:ptr :}
+   0 GE-DFULL-P !
+   buf s" 0 set-check" GE-DFULL-S  buf 10 GE-DFULL-C
+   0 GE-DFULL-I !
+   begin GE-DFULL-I @ DICT-CAP 1+ < while
+      buf GE-DFULL-I @ GE-DFULL-DEF
+      GE-DFULL-I @ 1+ GE-DFULL-I !
+   repeat
+   buf GE-DFULL-P @ ;
+
+: GE-DICT-FULL ( -- )
+   GE-DFULL-SOURCE {: src:ptr srcu:n :}
+   GT-ROOT s" hb-dict-full.f" GE-SCRIPT-PATH JOIN-PATH GE-SCRIPT-U !
+   GE-SCRIPT-PATH GE-SCRIPT-U @ src srcu WRITE-ALL
+   GE-HB-RESET
+   GE-HB$ GE-SCRIPT-PATH GE-SCRIPT-U @ GE-TIMEOUT-MS GE-RUN-STDIN-FILE
+   77 s" dict-capacity exit rc" GE-EXPECT-RC
+   s" hb: dictionary full at: " s" dict-capacity exit diagnostic" GE-EXPECT-ERR-HAS
+   s" PASS: dictionary-capacity exit is labeled" type cr ;
 
 : GE-DIV-MOD ( -- )
    GE-HB-RESET GE-SRC-RESET s" 1 0 / ." GE-SRC-LINE
@@ -695,6 +1094,11 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" PASS: set-check fail-closed on garbage xt (rc 70, named diagnostic)" type cr ;
 
 : GE-RUNTIME-CHECKS ( -- )
+   GE-UNCAUGHT-THROW
+   GE-INTERP-LAYOUT
+   GE-CONSTRUCT-EXEC
+   GE-MATCH-EXEC
+   GE-DICT-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY
    GE-TRUST-RUN
@@ -718,7 +1122,13 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE!
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK
-   GE-ENGINE-SUITE ;
+   GE-ENGINE-SUITE
+   GE-TYPE-FAMILY-SUITE
+   GE-TYPE-DECL-SUITE
+   GE-TYPE-CTOR-SUITE
+   GE-TYPE-LINEAR-SUITE
+   GE-TYPE-MATCH-SUITE
+   GE-TYPE-LAYOUT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

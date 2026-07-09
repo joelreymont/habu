@@ -257,7 +257,7 @@ variable GPT-KR-LOG-U
    -1 GS-INITED ! ;
 
 : GPT-SPAN-HOOK ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
-   label labelu ms GS-SPAN ;
+   label labelu ms GS-SPAN-AUTH ;
 
 : GPT-SPAN-CHILD ( -- )
    s" fork span child" 7 GS-SPAN
@@ -278,6 +278,140 @@ variable GPT-KR-LOG-U
    GPT-GS-SAVE!
    [: GPT-SPAN-CASE-BODY ;] catch GPT-SPAN-RC !
    GPT-GS-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
+\ Pin the other real-fork shape: a worker that emits SEVERAL sibling completion
+\ spans, none of which is its own slot label. This is the GSI-LINT-TOOLS-STATUS
+\ pattern (four GSI-RUN/GSI-INCLUDE spans - repl-lint, trust-lint,
+\ stale-status-lint, gate-stats-test.f - none equal to the "lint-tools/status"
+\ pool label). The parent pass-hook is the ONLY emitter of the slot label; the
+\ child never emits it, so GS-CHILD-OWNED? suppresses nothing and nothing is
+\ double-counted. Because these sub-spans sit at the same fork depth as the
+\ single self-completion span in GPT-SPAN-CASE, no label-free structural rule
+\ can suppress the self-completion there yet keep every sub-span here - the
+\ evidence that this dot's design (b) is unsound.
+: GPT-SPAN-MULTI-CHILD ( -- )
+   s" fork sub one" 7 GS-SPAN
+   s" fork sub two" 9 GS-SPAN
+   s" fork sub three" 11 GS-SPAN ;
+
+: GPT-SPAN-MULTI-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork multi parent" GPT-TIMEOUT-MS [: GPT-SPAN-MULTI-CHILD ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" fork multi parent" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub one" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub two" GPT-COUNT$ 1 T=
+   GPT-OUT n s" fork sub three" GPT-COUNT$ 1 T= ;
+
+: GPT-SPAN-MULTI-CASE ( -- )
+   GPT-GS-SAVE!
+   [: GPT-SPAN-MULTI-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
+\ The genuine label-collision mis-fire this dot prevents: a fork child that is
+\ ITSELF a nested pool parent (the TRWE-POST-CANDIDATE shape) emits its nested
+\ slot's authoritative pass-hook span through the same GS-SPAN entry its own
+\ self-suppression watches. When the nested slot's label bytes equal the
+\ child's own slot label, byte-matching suppression swallows an authoritative
+\ span the child-as-pool-parent owns: exactly two "fork nest label" spans must
+\ reach the tsv (outer pool's + nested pool's), not one.
+: GPT-NEST-INNER ( -- )
+   s" gate-pool nested inner" type cr ;
+
+: GPT-NEST-CHILD ( -- )
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-INNER ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN ;
+
+: GPT-NEST-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   [: GPT-SPAN-HOOK ;] is GT-POOL-PASS-HOOK
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" fork nest label" GPT-TIMEOUT-MS [: GPT-NEST-CHILD ;] GT-POOL-START-FORK
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" fork nest label" GPT-COUNT$ 2 T= ;
+
+: GPT-NEST-CASE ( -- )
+   GPT-GS-SAVE!
+   [: GPT-NEST-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
+
+\ Spawn-slot generation inheritance: a pool-SPAWNED child cannot inherit the
+\ parent's in-memory generation the way a fork child does, so the pool passes
+\ the slot generation (parent gen + "-" + seq) through HABU_GATE_GEN and
+\ GS-GEN-INIT adopts it at load. With the parent at gen "5", the child's span
+\ must be qualified "g5-<seq>:", never rebooted to root "g0:".
+create GPT-SG-PATH FS-PATH-CAP allot
+create GPT-GEN-SAVE GS-GEN-CAP allot
+variable GPT-SG-PATH-U
+variable GPT-GEN-SAVE-U
+
+: GPT-GEN-SAVE! ( -- )
+   GS-GEN$ {: a:ptr u:n :}
+   a GPT-GEN-SAVE u BYTE-COPY
+   u GPT-GEN-SAVE-U ! ;
+
+: GPT-GEN-RESTORE ( -- )
+   GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
+
+: GPT-SG-PATH$ ( -- ptr u8 n )
+   GPT-SG-PATH GPT-SG-PATH-U @ ;
+
+: GPT-SG-FIXTURE! ( -- )
+   GT-ROOT s" spawn-gen.f" GPT-SG-PATH JOIN-PATH GPT-SG-PATH-U !
+   GPT-SG-PATH$ S\" s\" spawn gen label\" 3 GS-SPAN" ATOMIC-WRITE-FILE ;
+
+: GPT-SG-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/memory.f" >LEN PROC-ARGV+
+   s" lib/fs.f" >LEN PROC-ARGV+
+   s" lib/fs-mutate.f" >LEN PROC-ARGV+
+   s" lib/process.f" >LEN PROC-ARGV+
+   s" lib/process-argv.f" >LEN PROC-ARGV+
+   s" lib/process-env.f" >LEN PROC-ARGV+
+   s" test/gate-stats.f" >LEN PROC-ARGV+
+   GPT-SG-PATH$ >LEN PROC-ARGV+ ;
+
+: GPT-SG-CASE-BODY ( -- )
+   GT-ROOT GS-ROOT!
+   GT-POOL-PASS-HOOK-DEFAULT!
+   GPT-SG-FIXTURE!
+   s" 5" GS-GEN!
+   GPT-SG-ARGV
+   PROC-ENV-RESET
+   GS-ENV+
+   PROC-ENV-INHERIT-MISSING
+   1 GT-POOL-SLOTS!
+   GT-POOL-RESET
+   s" bin/hb" s" spawn gen case" GPT-TIMEOUT-MS GT-POOL-START
+   GT-POOL-DRAIN
+   GS-PATH$ GPT-OUT GPT-CAP READ-ALL {: n:n :}
+   GPT-OUT n s" spawn gen label" GPT-COUNT$ 1 T=
+   GPT-OUT n s" g5-" GPT-COUNT$ 1 T=
+   GPT-OUT n s" g0:spawn gen label" GPT-COUNT$ 0 T= ;
+
+: GPT-SG-CASE ( -- )
+   GPT-GS-SAVE!
+   GPT-GEN-SAVE!
+   [: GPT-SG-CASE-BODY ;] catch GPT-SPAN-RC !
+   GPT-GS-RESTORE
+   GPT-GEN-RESTORE
    GT-POOL-PASS-HOOK-DEFAULT!
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
 
@@ -444,6 +578,9 @@ variable GPT-GK-SENTINEL-U
    GPT-COW @ 0 T=
    GPT-BIG-CASE
    GPT-SPAN-CASE
+   GPT-SPAN-MULTI-CASE
+   GPT-NEST-CASE
+   GPT-SG-CASE
    GPT-INFRA-CASE
    GT-CLEANUP
    GPT-GROUP-KILL-CASE

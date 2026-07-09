@@ -100,6 +100,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | XREF-A>U8 | `ptr a -- ptr u8` | Treats the inline-name bytes inside a dictionary record as a byte string; fixed raw record byte offsets are outside pointer-role inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-N>U8 | `n -- ptr u8` | Converts a numeric long-name address fetched from a dictionary record into a byte pointer; the record stores mixed numeric and pointer cells. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-27 |
 | XREF-PATCH32 | `n ptr a --` | Explicit `undefine` retires dictionary records by patching raw wordlist/status cells inside the live dictionary; the record layout is outside checked pointer inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-30 |
+| SEAL-LATCH@ | `-- n` | Reads the friend-arena seal latch from the sealed DATA band by raw `data-base` offset; a raw state cell (0 open / sealed) outside checked pointer/role inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 |
+| SEAL-NDICT@ | `-- n` | Reads the seal-time ndict truncation watermark from the sealed DATA band by raw `data-base` offset; a raw state cell outside checked inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 |
 | c-crash-entry | `--` | Target signal entry register shuffle is raw ABI-specific ARM64; it only mutates generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | c-crash-mctx>r21 | `--` | Target ucontext-to-mcontext addressing is ABI-specific raw register code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | c-crash-xreg>r9 | `--` | Crash dump register extraction walks target mcontext layout in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
@@ -159,6 +161,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-existing-private | `label --` | Package reopen helper branches to the caller's done label after ensuring an existing namespace has a private wordlist id. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-ensure | `--` | Package keyword dictionary lookup/creation scans namespace records, reuses public wordlists, creates missing private wordlists, and leaves package ids in generated registers. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package | `--` | Interpreter `package` keyword consumes the following token, rejects nested/malformed packages, opens private scope, syncs checker package state, and saves the parent current wordlist. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| c-seal-package-fail | `--` | Sealed-system-package failure emitter prints the offending token from the fixed token cells and exits `E-SEAL-PACKAGE`; raw process exit is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-seal-match | `--` | Sealed-system-package matcher scans the native reserved-name table (`RESTAB`) in generated registers, case-folds the candidate token `TKA[0,x24)`, and calls the seal failure emitter on a match. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-qualify-seal-guard | `--` | Definition-time seal guard: when the friend latch is closed and the pending token is a non-edge `NAME:tail`, matches the prefix against the reserved-name table and fails closed; raw latch/register scan is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| c-package-seal-guard | `--` | `package` keyword seal guard: when the friend latch is closed, matches the pending package name against the reserved-name table and fails closed before wordlist allocation. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-public | `--` | Interpreter `public` keyword switches the active package's current wordlist to the exported public wordlist and syncs checker public mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-private | `--` | Interpreter `private` keyword switches the active package's current wordlist back to the private wordlist and syncs checker private mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-end-package | `--` | Interpreter `end-package` keyword restores the saved parent current wordlist and clears both runtime and checker package frames. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -173,6 +179,12 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-compile-flush-pend | `--` | Finalizes the pending dictionary entry length and flips/flushed the generated code region. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-publish-trusted | `--` | Emits checked/trusted publication for declarations, DOES> signatures, and trust metadata. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-publish-hooked | `--` | Emits hook-based publication for ordinary compiled definitions. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
+| p2w-entry | `label ptr a n n n --` | Pass-2 width-aware transport dispatch case (item 12 slice 3b): keyword match, per-operand width query, and the `ext` lowering emitter run through `JIT-XT-EXECUTE`. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-compile-p2wide | `--` | Emits the pass-2 width dispatch stage: the 18 whole-bundle transport cases between the local-reference and keyword tiers. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-start | `--` | Emits the pass-2 re-entry: saves the live input, repoints the tokenizer at the captured body, rewinds CP/DP, resets per-definition compile state, and re-emits the prologue. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-trigger | `--` | Emits the certified-definition width query: any wider-than-cell width fact enters the pass-2 re-run (wide facts inside a does> split body fail closed). | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-check-definer | `--` | Emits the sig'd publish gate: pass 1 runs the hook and the pass-2 trigger; the pass-2 second ';' skips the hook re-check (the pass-1 certify already registered the signature). | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
+| em-p2-finish | `--` | Emits the publish-tail pass-2 exit: resumes the saved real input and clears the pass-2 state cells. | `test/run.f` | src/habu/habu2.f | 2026-07-06 |
 | em-compile-publish | `--` | Selects trusted-signature or hook publication for a closed compiled definition. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-semi | `label --` | Emits semicolon close handling and binds the caller-provided not-semi continuation label. | `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | em-compile-control-keywords | `--` | Emits compile-mode control-flow keyword dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -198,6 +210,15 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-underflow | `--` | Emits the top-level data-stack underflow diagnostic (named E-UNDERFLOW + offending word) and evaluate/REPL/batch recovery routing for the LMAIN depth-floor guard. | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
+| em-adt-con-fam | `--` | Emits the construct family-operand step: TFL bridge call, fail-closed unknown-family die, CMFAM/CMM state stores. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-con-pushes | `--` | Emits the construct pad/tag VS-constant pushes with frame-saved counters around LVPUSHC. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-con-var | `--` | Emits the construct variant-operand step: TFL bridge call, fail-closed unknown-variant die, pad/tag emission, mode clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| c-die-bad-tag | `--` | Emits the MATCH invalid-tag die INLINE into the user word: a jump over the message, "hb: bad <family> tag\n" copied inline (the name bytes travel with the word), then a self-contained write(2) + exit_group(E-BAD-TAG). | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-match-semi | `--` | Emits the MATCH `;match` tail: family-name bridge, inline invalid-tag die, ENDCASE-style join patch loop, match-frame pop, CMM clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-fam | `--` | Emits the MATCH family-operand step: signature-scope TFL bridge call, fail-closed unknown-family die, fam stored on the match-frame stack, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-var | `--` | Emits the MATCH variant-operand step (or routes `;match`): TFL bridge call, fail-closed unknown-variant die, pending tag/pads stash, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-of | `--` | Emits the MATCH per-variant compare/branch/prologue (peek tag, cbz-skip, drop tag+pads), pushes the branch-kind marker, arms the branch body. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-compile-adt-mode | `--` | Emits the ADT-lowering mode dispatch (CMM-CELL) at the compile-dispatch head: construct operand states; MATCH states land in slice 3. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | emit-main | `--` | Allocates main-loop labels (incl. LARITY) and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -207,6 +228,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | AOT-NAMES-BUF@ | `-- ptr u8` | Views the AOT-REPL capture name-pool scratch buffer as bytes for the name intern and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | AOT-DSITE-BUF@ | `-- ptr u8` | Views the AOT-REPL capture DATA/CODE-literal relocation table scratch buffer as bytes for the packed u16 blob-offset tables and `BYTES,` emit. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
 | AOT-BOOTRUN-BUF@ | `-- ptr u8` | Views the AOT-REPL capture boot-run name-list scratch buffer as bytes for the `[len][name]` intern and `BYTES,` emit of the install-tail entry words. | `test/run.f` | src/habu/habu2.f | 2026-07-03 |
+| AOT-PWID-BUF@ | `-- ptr u8` | Views the protected-WID registry AOT capture scratch buffer as bytes for the u32-WID serialize (ACAP-PWID-*) and `BYTES,` emit (TFAM 2b-v). | `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | AOT-DBASE | `-- ptr a` | Host build-time cast of the metabuild dictionary base to a record pointer for the AOT-REPL capture reverse-lookup. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
 | AOT-A>U8 | `ptr a -- ptr u8` | Host build-time byte view of a code/dict address for the AOT-REPL capture blob and name copies. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
 | AOT-N>U8 | `n -- ptr u8` | Host build-time byte view of a code/dict address value for the AOT-REPL capture blob source and EXT-name reads. | `test/run.f` | src/habu/aot-capture.f | 2026-07-03 |
@@ -270,6 +292,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | ARENA-RC>PTR | `n -- ptr a` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's cell arena pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | TOKBUF-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's token byte-buffer pointer; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | USIGS-RC>PTR | `n -- ptr u8` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's transient signature byte store; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
+| USIGS-CELL-AT | `n -- ptr a` | Refines a cell-aligned offset inside the byte-addressed transient signature store so checker metadata can write cell headers (e.g. the USIGS-CLEAR head cell) while byte-copy paths keep `ptr u8`. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
+| HIDX-MEM-NULL | `-- ptr a` | The unallocated symbol-index cache sentinel is a null pointer; the checker cannot type a literal `0` as `ptr a`, so this one-line refinement supplies the typed null that `HIDX-MEM-CLEAR` stores and `HIDX-MEM-READY?` tests. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-04 |
 | HIDX-RC>PTR | `n -- ptr n` | Thin identity refinement from a checked, nonnegative anonymous `mmap` result into the checker's symbol-index cell table; syscall-result pointer typing is outside checker inference. | `tools/check-test.f`, `tools/build-fixpoint-test.f`, `test/run.f` | src/core/checker.f | 2026-07-03 |
 | CELL | `-- n` | Structure layouts load before the checker so checker records can use them; this row publishes the already-defined cell-size constant to checked users. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | STRUCT-BYTE+ | `ptr a n -- ptr u8` | `CFIELD:` needs to refine a structure base plus byte offset into a byte pointer; generic `+` can produce only `ptr a`, and `BYTE+` requires an existing byte pointer. | `test/gate-dictionary.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
@@ -342,6 +366,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | M-NAME16-LEN | `ptr u8 len --` | Image-byte test republishes the typed fixed-name copy effect for role-confusion fixtures. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-PAD-OFF | `off --` | Image-byte test republishes the typed pad-to-offset effect for role-confusion fixtures. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-LE32@ | `off -- n` | Image-byte test republishes the typed little-endian read effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
+| TLP-W32 | `n n -- n` | Layout-lowering golden reader: reinterprets a compiled subject's xt as the byte base for one u32 instruction load — test-only code introspection, same class as the imgdump/jitdump readers; every use sits directly under the suite's golden asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-UN2 | `tlp-res<n,n> -- n n` | Matching raw 2-cell unpack of the seeded width-2 bundle so plain value asserts can prove whole-bundle transport preservation. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-UN4 | `tlp-mix<n,n> -- n n n n` | Matching raw 4-cell unpack of the seeded width-4 bundle for the execution asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-XT | `ptr u8 n -- n` | Golden-subject xt lookup via raw search-wl: the subjects carry wide effects, so their records are DNAME-WIDE and interpret `'` correctly fails closed; the goldens only read code bytes (documented raw-xt introspection residual, habu-tfam-12-interpret). | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-09 |
 | M-LE32! | `n off --` | Image-byte test republishes the typed little-endian patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-LE64! | `n off --` | Image-byte test republishes the typed 64-bit patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-BE-RESET | `off --` | Image-byte test republishes the big-endian patch cursor reset effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
@@ -432,9 +460,14 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECK-BODY | `ptr u8 n -- n` | Shared source pre-verification recursively invokes the checker on an assembled definition body and renders the checker-owned uncheckable diagnostic before returning the verdict; recursive checker invocation and diagnostic-state access are the explicit verifier boundary. | `tools/hb-build-test.f`, `tools/check-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-01 |
 | CHECK-DOES-BODY | `ptr u8 n ptr u8 n -- n` | Shared source pre-verification routes `DOES>` bodies through the checker's dedicated `CHECK-DOES!` entrypoint; ordinary `CHECK!` cannot model the created-word data-field pointer. | `tools/check-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
 | TRUST-SIGNATURE | `ptr u8 n ptr u8 n --` | Shared source pre-verification records source-order defining-word signatures for parsed names; the checker cannot infer a dynamic mutation of its signature table from scanner state. | `tools/hb-build-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/verify-source.f | 2026-06-28 |
+| MULTI-ERR-MODE? | `-- bool` | Shared source pre-verification reads the checker-internal multi-error mode flag; the checker registry does not publish `MULTI-ERR?` to later checked loads, so the verify loop's continue-past-reject decision rides the same verifier boundary as `CHECK-BODY`. | `tools/check-all-errors-test.f`, `test/run.f` | src/habu/verify-source.f | 2026-07-07 |
+| CA-MULTI-BEGIN | `--` | The all-errors driver arms the checker-internal multi-error load mode around its single whole-buffer verify pass; mode control words are not registry-published to checked tool loads. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
+| CA-MULTI-END | `-- n` | Reads the multi-error reject count and clears the mode for the fail-closed exit decision; same unpublished-mode-word boundary as `CA-MULTI-BEGIN`. | `tools/check-all-errors-test.f` | tools/check-all-errors-core.f | 2026-07-07 |
 | AOT-PB@ | `-- ptr u8` | Reads the AOT build source buffer pointer stored in a raw variable. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-lib.f | 2026-06-24 |
 | AOT-DBASE@ | `-- ptr a` | Reads the runtime dictionary base pointer for AOT dictionary-record scans; record fields are mixed, so callers specialize the pointee type at each access. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
 | AOT-PTR@ | `ptr a -- ptr a` | Reads a dictionary long-name pointer field whose pointee is another address; the checker cannot express this pointer-to-pointer load yet. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-06-24 |
+| JSON-DIAGS | `-- ptr a` | AOT diagnostics read the checker's JSON-mode flag; the checker registry does not publish its own words to later checked loads, so the variable is typed as an axiom for the checked AOT tail. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
+| CHECK! | `ptr u8 n -- n` | The AOT driver hook wraps the engine checker entrypoint for user source; the entrypoint's effect is modeled as a primitive axiom so the checked AOT tail compiles under the toolchain hook. | `test/run.f`, `tools/hb-build.f` | src/habu/aot-closure.f | 2026-07-07 |
 | MK-SBUF@ | `-- ptr u8` | Reads the hb-build maker source buffer pointer stored in a raw variable while compiling the separate maker image. | `tools/hb-build-test.f`, `test/run.f` | src/habu/maker.f | 2026-06-24 |
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 |
 | STB-CELL@ | `-- ptr n` | Reads the snapshot source text base pointer as a cell-address for executable-header size lookup. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-06-26 |
@@ -597,24 +630,32 @@ row's count in the same change; the ratchet stays fail-closed both ways.
 
 ### Build-time-generated trust (explicit exemption)
 
-The inventory counts checked-in sources only. `tools/build-fixpoint.f` also
-emits trust sites as string literals into *generated* stage2/fixpoint source,
-which the lexer correctly skips in the emitter itself:
+The inventory counts checked-in sources only. The build emitters MAY generate
+trust sites as string literals into *generated* stage2/fixpoint source, which
+the lexer correctly skips in the emitter itself. As of 2026-07-07 that
+generated set is EMPTY: the former image-writer window (`0 set-check` span +
+`' HOOK set-check` reinstall around the target-image emitters) and the five
+synthetic TRUST rows (`ASM-CODE`, `BUILD-IMAGE`, `BUILD-SNAP-HDR`,
+`SET-SIGID`, `CODESIG2`) were retired — src/os/{linux/elf.f,linux/sign.f,
+macos/macho.f,macos/sign2.f} compile checked in stage2, with their effects
+coming from the checked definitions themselves. The remaining generated
+check-state transitions are the refresh prelude's `BFR-CHECK-OFF` call (a
+hide.f TRUSTED word with its own row), `src/core/check-hook.f`'s own
+`' HOOK set-check`, and the check-CLI runner prelude that
+`tools/check-core.f` `CHK-BUILD-PREFIX` generates into every check child: a
+`0 set-check` window followed by the `CHECK-F-HOOK` definition and its
+`' CHECK-F-HOOK set-check` re-arm, fail-closed via `70 throw`. That generated
+install is lexer-invisible to hook-identity policing by design; its shape is
+pinned by the `check/prelude-hook-shape` regression
+(`tools/check-test-lib.f`), which rejects any other installed hook name or a
+missing re-arm in the generated text.
 
-- `BF-APPEND-IMAGE-TRUSTS` emits five TRUST rows for the raw image emitters:
-  `ASM-CODE` (`-- asm`), `BUILD-IMAGE` (`asm -- img`), `BUILD-SNAP-HDR`
-  (`n -- snap n`), `SET-SIGID` (`ptr u8 n --`), and `CODESIG2` (`img -- img`).
-- `BF-APPEND-CHECK-OFF` emits the generated `0 set-check` span opener and
-  `BF-APPEND-FRESH-CHECK-HOOK` emits the `' HOOK set-check` reinstall.
-
-These generated sites are exempt from the ratchet by design: they exist only in
-`HB_TMP` build artifacts, and they are pinned instead by the build-fixpoint
-source-shape regressions (`tools/build-fixpoint-test.f` asserts the emitted
-span cut and hook reinstall) and the native self-rebuild gate. Growing this
-generated set requires updating those shape tests, which is the review point.
-One related edge: a TRUST row written with escaped-string literals
-(`s\" name"`) is not the plain two-literal shape, so the inventory counts it as
-`TRUST-BARE` rather than `TRUST` — never silently.
+Reintroducing generated trust requires updating the build-fixpoint
+source-shape regressions (`tools/build-fixpoint-test.f` asserts stage2
+contains NO bare `0 set-check` line and none of the retired TRUST rows),
+which is the review point. One related edge: a TRUST row written with
+escaped-string literals (`s\" name"`) is not the plain two-literal shape, so
+the inventory counts it as `TRUST-BARE` rather than `TRUST` — never silently.
 
 ## Inventory classification
 
@@ -653,7 +694,9 @@ owners is the rest of `habu-audit-trusted-inventory-3a950436`.
 <!-- trusted-inventory-classes
 src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/aot-capture.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 3
+src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 2
+src/habu/aot-closure.f:JSON-DIAGS prim-axiom habu-primitive-effect-axiom-1119f176
+src/habu/aot-closure.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436 4
@@ -661,11 +704,12 @@ src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436 12
 src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436 8
 src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
-src/habu/habu1.f:linux-setpgid-self builder-emit habu-pool-children-die-6e57e753
-src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-pool-children-die-6e57e753
-src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-pool-children-die-6e57e753
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 99
-src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 15
+src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 119
+src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
+src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
 src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
@@ -675,8 +719,8 @@ src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
 src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
 src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
-src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 5
+src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 5
+src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 7
 src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
 src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
 src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
@@ -691,8 +735,10 @@ src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
 src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
-src/core/roles.f:DTC-EVAL prim-axiom habu-declarable-nominal-int-3b0721cc
+src/core/roles.f:DTC-EVAL prim-axiom habu-typed-defining-words-aa224eb5
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>LEN prim-axiom habu-primitive-effect-axiom-1119f176
@@ -728,15 +774,17 @@ src/core/roles.f:IMG>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
-tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 7
+tools/check-all-errors-core.f builder-emit habu-multi-err-checking-42db26f4 2
+tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 6
+tools/check-core.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
-lib/ffi.f:FDEF-EVAL stdlib-boundary habu-role-typed-ffi-08f99d18
+lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
-lib/engine-id.f stdlib-boundary habu-engine-identity-stable-766edc08 2
+lib/engine-id.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
-lib/ptx/ad-saved.f stdlib-boundary habu-ad-thread-saved-36bad526 6
+lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
 lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
 lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
 lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18
@@ -745,15 +793,16 @@ lib/ptx/tile-loop.f stdlib-boundary habu-checker-capability-typed-e0c76a02 1
 lib/ptx/tile-smem.f stdlib-boundary habu-checker-capability-typed-e0c76a02 3
 lib/ptx/tile-v4.f stdlib-boundary habu-audit-trusted-inventory-3a950436 9
 lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436 31
-tools/lint/text.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 48
+test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 50
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
-test/prop-test-core.f test-metaprog habu-audit-trusted-inventory-3a950436 2
+test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:ERR@ test-metaprog habu-audit-trusted-inventory-3a950436

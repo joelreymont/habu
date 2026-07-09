@@ -46,9 +46,6 @@ variable PROC-STATUS
 variable PROC-OUTCOME-KIND
 variable PROC-OUTCOME-CODE
 
-: PROC-WAIT-RAW ( pid -- rc ) {: pid :}
-   pid PID>N wait-rc >RC ;
-
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
 
@@ -140,7 +137,37 @@ variable PROC-OUTCOME-CODE
    rc COUNT>N 0= if E-PROC-TIMEOUT throw then
    rc ;
 
+\ Capture-child death-reaper seam. Contexts that own a death-watch fd (a pool
+\ worker's worker-alive read end; lib/process-fork.f installs the live vector)
+\ arm a co-located reaper for the just-spawned capture child so the child's
+\ whole group dies with the arming process instead of orphan-lingering. The
+\ default vector arms nothing and returns the no-reaper pid sentinel (-1).
+\ The reaper is a DIRECT child of this process; every capture-termination path
+\ disarms it (kill + wait by its specific pid), so no reaper outlives its
+\ capture and no wait(-1) caller ever sees a stray child.
+variable PROC-REAP-PID   -1 PROC-REAP-PID !
+defer PROC-REAP-ARM ( pid -- pid )
+: PROC-REAP-ARM-OFF ( pid -- pid )
+   drop -1 >PID ;
+: PROC-REAP-ARM-DEFAULT ( -- )
+   [: PROC-REAP-ARM-OFF ;] is PROC-REAP-ARM ;
+PROC-REAP-ARM-DEFAULT
+
+: PROC-CAPTURE-PID! ( pid -- ) {: pid:pid :}
+   pid PROC-PID !
+   pid PROC-REAP-ARM PROC-REAP-PID ! ;
+
+: PROC-REAP-DISARM ( -- )
+   PROC-REAP-PID @ dup PID>N 0 > if
+      dup SIGKILL PROC-KILL-RAW drop
+      PROC-WAIT-STATUS drop
+      -1 >PID PROC-REAP-PID !
+   else
+      drop
+   then ;
+
 : PROC-CAPTURE-RESET ( -- )
+   PROC-REAP-DISARM
    -1 >PID PROC-PID !
    -1 >RC PROC-RC !
    -1 >FD PROC-OUT-R !
@@ -186,7 +213,8 @@ variable PROC-OUTCOME-CODE
       -1 >PID PROC-PID !
    else
       drop
-   then ;
+   then
+   PROC-REAP-DISARM ;
 
 : PROC-REAP-CAPTURE-TIMEOUT ( -- )
    PROC-PID @ dup PID>N 0 >= if
@@ -196,6 +224,7 @@ variable PROC-OUTCOME-CODE
    else
       drop
    then
+   PROC-REAP-DISARM
    PROC-OUTCOME-TIMEOUT PROC-OUTCOME-KIND !
    SIGKILL PROC-OUTCOME-CODE !
    128 SIGKILL + >RC PROC-RC ! ;
@@ -453,7 +482,7 @@ variable PROC-OUTCOME-CODE
 : PROC-SPAWN-CAPTURE ( ptr u8 -- )
    -1 >FD PROC-OUT-W @ PROC-ERR-W @ PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-PID !
+   pid PROC-CAPTURE-PID!
    PROC-OUT-W PROC-CLOSE-CELL
    PROC-ERR-W PROC-CLOSE-CELL ;
 

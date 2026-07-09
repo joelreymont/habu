@@ -34,8 +34,12 @@ s" ROW-LOAD-ONCE ROW-STORE-ONCE" AD-REVERSE
    s" ROW-LOAD-ONCE ROW-STORE-ONCE" STR= TTRUE
 
 \ a forward word with no registered adjoint fails closed
-: BAD-VJP ( -- )  s" SCALE" VJP-ADJOINT 2drop ;
+: BAD-VJP ( -- )  s" NO-SUCH-OP" VJP-ADJOINT 2drop ;
 ' BAD-VJP E-PTX-NOVJP TTHROWS
+
+\ SCALE and -. resolve from the vjp.f table (they had no v0 ladder entry)
+s" SCALE" VJP-ADJOINT s" DUP SAVED-A SCALE SWAP SAVED-X *. BLOCK-SUM" STR= TTRUE
+s" -." VJP-ADJOINT s" DUP NEG" STR= TTRUE
 
 \ control flow is a named straight-line-boundary reject, not a generic missing VJP
 : BAD-AD-CONTROL ( -- )
@@ -53,6 +57,33 @@ s" +."   VJP-NONLINEAR? TFALSE
 \ recompute chosen only when cheaper than the save round-trip
 10 3  AD-RECOMPUTE? TTRUE      \ recompute(3) < save(10)
 3 10  AD-RECOMPUTE? TFALSE     \ recompute(10) !< save(3)
+
+\ the EXPLICIT cost model (docs/autograd.md "Checkpointing"): unit = 1/8 of a
+\ global-memory transaction per element. MEM 8, ALU 1, COLLECTIVE 32; stores
+\ and register moves cost 0 in a recomputed slice (the store is dropped).
+s" ROW-LOAD EXP. ROW-STORE" AD-SLICE-COST 9 T=
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" AD-SLICE-COST 75 T=
+0 0= AD-SAVE-COST 8 T=            \ materialized forward output: reload only
+0 0= 0= AD-SAVE-COST 16 T=        \ unmaterialized value: store + reload
+\ softmax picks SAVE for its small per-row state: y is the materialized output
+\ and recomputing it costs two block collectives
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TTRUE
+\ the fused elementwise path picks RECOMPUTE: cheap FLOPs beat the round trip
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
+\ costing an unknown token fails closed
+: BAD-COST ( -- )  s" ROW-LOAD FROB ROW-STORE" AD-SLICE-COST drop ;
+' BAD-COST E-PTX-AD-UNKNOWN TTHROWS
+
+\ the policy override pins the choice WITHOUT touching the cost table (the
+\ equivalence fixture drives both paths through it)
+AD-POLICY-SAVE AD-POLICY!
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TTRUE
+AD-POLICY-RECOMPUTE AD-POLICY!
+s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TFALSE
+AD-POLICY-AUTO AD-POLICY!
+s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
+: BAD-POLICY ( -- )  3 AD-POLICY! ;
+' BAD-POLICY E-PTX-SYNTAX TTHROWS
 
 \ nonlinear automation: a unary nonlinear op auto-derives its adjoint EXPANSION
 \ (with saved-value references) inside the reversed backward

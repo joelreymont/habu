@@ -4,6 +4,7 @@
 
 require lib/process-fork.f
 require test/gate-stats.f
+require tools/why-threw.f
 
 16 constant GT-POOL-MAX
 6 constant GT-POOL-LINUX-DEFAULT
@@ -38,7 +39,6 @@ create GT-POOL-PFDS GT-POOL-MAX GT-POOL-FDS * GT-PFD-SZ * allot
 create GT-POOL-CHUNK GT-POOL-CHUNK-CAP allot
 create GT-POOL-NUM-BUF GT-POOL-NUM-CAP allot
 create GT-POOL-NAME-BUF GT-POOL-NAME-CAP allot
-create GT-POOL-GEN-BUF GT-POOL-NAME-CAP allot
 create GT-POOL-FALLBACK-BUF FS-PATH-CAP allot
 create GT-POOL-OUT-PATHS GT-POOL-MAX FS-PATH-CAP * allot
 create GT-POOL-ERR-PATHS GT-POOL-MAX FS-PATH-CAP * allot
@@ -67,7 +67,6 @@ variable GT-POOL-REQ
 variable GT-POOL-SEQ
 variable GT-POOL-NUM-U
 variable GT-POOL-NAME-U
-variable GT-POOL-GEN-U
 variable GT-POOL-WR
 variable GT-POOL-WR-OFF
 variable GT-POOL-RED-N
@@ -85,6 +84,9 @@ variable GT-POOL-DEATH-MADE
 : GT-POOL-NO-PASS-HOOK ( ptr u8 n n -- )
    drop 2drop ;
 
+\ Receives ( label labelu ms ) for every passing slot. Hooks that record the
+\ span must emit through GS-SPAN-AUTH: the pool owns the slot, so its span is
+\ authoritative and must bypass the fork child's self-suppression.
 defer GT-POOL-PASS-HOOK ( ptr u8 n n -- )
 
 : GT-POOL-PASS-HOOK-DEFAULT! ( -- )
@@ -152,21 +154,6 @@ GT-POOL-ABORT-BARE!
    v GT-POOL-NUM+
    GT-POOL-NUM-BUF GT-POOL-NUM-U @ ;
 
-: GT-POOL-GEN$ ( -- ptr u8 n )
-   GT-POOL-GEN-BUF GT-POOL-GEN-U @ ;
-
-: GT-POOL-GEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-STR-BOUNDS GT-POOL-ABORT then
-   GT-POOL-GEN-U @ u + GT-POOL-NAME-CAP > if E-STR-CAPACITY GT-POOL-ABORT then
-   a GT-POOL-GEN-BUF GT-POOL-GEN-U @ + u BYTE-COPY
-   GT-POOL-GEN-U @ u + GT-POOL-GEN-U ! ;
-
-: GT-POOL-GEN-INIT ( -- )
-   0 GT-POOL-GEN-U !
-   s" 0" GT-POOL-GEN+ ;
-
-GT-POOL-GEN-INIT
-
 : GT-POOL-NAME-RESET ( -- )
    0 GT-POOL-NAME-U ! ;
 
@@ -182,7 +169,7 @@ GT-POOL-GEN-INIT
 : GT-POOL-CAPTURE-NAME ( n ptr u8 n -- ptr u8 n ) {: seq:n suf:ptr sufu:n :}
    GT-POOL-NAME-RESET
    s" pool-" GT-POOL-NAME+
-   GT-POOL-GEN$ GT-POOL-NAME+
+   GS-GEN$ GT-POOL-NAME+
    s" -" GT-POOL-NAME+
    seq GT-POOL-NUM$ GT-POOL-NAME+
    suf sufu GT-POOL-NAME+
@@ -515,7 +502,21 @@ GT-POOL-ABORT-KILL!
    rpid PID>N 0 < if E-PROC-SPAWN GT-POOL-THROW then
    rpid idx GT-POOL-REAPER-PID-PTR ! ;
 
+\ Slot generation: the inherited process generation extended with this slot's
+\ seq, built in the shared name buffer.
+: GT-POOL-SLOT-GEN$ ( idx -- ptr u8 n ) {: idx:idx :}
+   GT-POOL-NAME-RESET
+   GS-GEN$ GT-POOL-NAME+
+   s" -" GT-POOL-NAME+
+   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-NAME+
+   GT-POOL-NAME$ ;
+
 : GT-POOL-SPAWN ( idx ptr u8 n -- ) {: idx:idx path:ptr pathu:n :}
+   \ A spawned child cannot inherit this process's in-memory generation, so
+   \ export the slot generation; GS-GEN-INIT adopts it at load. PROC-ENV-SET
+   \ replaces any row PROC-ENV-INHERIT-MISSING copied from this process's own
+   \ environment, so exactly one HABU_GATE_GEN reaches the child.
+   s" HABU_GATE_GEN" >LEN idx GT-POOL-SLOT-GEN$ >LEN PROC-ENV-SET
    path pathu >LEN PROC-ARGV-CHECK-PATH
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
@@ -531,9 +532,10 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-CLOSE-WRITES
    idx GT-POOL-ARM-SPAWN-REAPER ;
 
-: GT-POOL-GEN-CHILD! ( idx -- ) {: idx:idx :}
-   s" -" GT-POOL-GEN+
-   idx GT-POOL-SEQ-PTR @ GT-POOL-NUM$ GT-POOL-GEN+ ;
+\ Fork-child generation: adopt this slot's generation in place, so every label
+\ this child stores or emits is qualified with its own identity path.
+: GT-POOL-GEN-CHILD! ( idx -- )
+   GT-POOL-SLOT-GEN$ GS-GEN! ;
 
 : GT-POOL-FORK-EXIT ( n -- )
    s" " rot die ;
@@ -541,6 +543,7 @@ GT-POOL-ABORT-KILL!
 \ Exit with a fixed nonzero code: the kernel keeps only the low 8 exit bits,
 \ so a raw throw code that is a multiple of 256 would read as success.
 : GT-POOL-FORK-THROW ( n -- ) {: rc:n :}
+   rc WHY-THREW-DUMP                             \ self-identify an opaque capacity throw before dying
    GT-POOL-NAME-RESET
    s" fork worker throw rc " GT-POOL-NAME+
    rc 0 < if
@@ -565,19 +568,23 @@ GT-POOL-ABORT-KILL!
 
 \ Worker side: open a worker-alive pipe, arm the parent-death reaper watching
 \ both the pool parent's death pipe (RD) and this worker-alive pipe, then drop
-\ every copy the worker no longer needs: the inherited parent death-pipe RD/WR
-\ and the worker-alive RD. The worker keeps only the worker-alive WR open (an
-\ untracked fd, close-on-exec) so it closes exactly at this worker's exit and
-\ the reaper self-exits with no orphan. The made-flag is cleared so a nested
-\ pool this worker later drives builds its own death pipe. The reaper is a
-\ reparented grandchild (see PROC-FORK-REAPER), never a child of this worker,
-\ so the worker body's wait(-1) still sees no children.
+\ every copy the worker no longer needs: the inherited parent death-pipe RD/WR.
+\ The worker keeps the worker-alive WR open (an untracked fd, close-on-exec) so
+\ it closes exactly at this worker's exit and the reaper self-exits with no
+\ orphan -- and it keeps the worker-alive RD published as PROC-REAP-WATCH-FD,
+\ so every capture child this worker spawns (PROC-RUN-CAPTURE family) gets its
+\ own co-located reaper watching this worker's life. Extra RD copies never
+\ delay the EOF (only write ends count) and both ends are close-on-exec. The
+\ made-flag is cleared so a nested pool this worker later drives builds its own
+\ death pipe. The reaper is a reparented grandchild (see PROC-FORK-REAPER),
+\ never a child of this worker, so the worker body's wait(-1) still sees no
+\ children.
 : GT-POOL-ARM-REAPER ( -- )
    PROC-DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
    GT-POOL-DEATH-RD@ wa-rd PROC-FORK-REAPER
    GT-POOL-DEATH-RD@ FD>N close
    GT-POOL-DEATH-WR@ FD>N close
-   wa-rd FD>N close
+   wa-rd FD>N PROC-REAP-WATCH-FD !
    0 GT-POOL-DEATH-MADE ! ;
 
 \ typed-local-lint: allow-bare-local - q keeps the forked worker quotation effect.

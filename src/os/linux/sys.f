@@ -49,6 +49,17 @@ $100 constant AT-SYMLINK-NOFOLLOW
    8 swap MOVZ,  0 SVC,
    16 -4095 LIT64,  0 16 CMP, ;
 
+\ Runtime-emit syscall stencils (TFAM 10 slice 3): the MATCH bad-tag die is
+\ EMITTED into the user word, so its write+exit syscall words are baked here at
+\ engine-build time rather than assembled by SYS, at build time. The Linux
+\ syscall number goes in x8 (movz x8,#NR = $D2800008 + NR*32; Rd and the imm
+\ field do not overlap so + == or) and the call is `svc #0`. The die never
+\ inspects the write return, so the -4095 errno reconciliation SYS, adds is not
+\ needed.
+$D2800008 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x8, #NR-WRITE
+$D2800008 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x8, #NR-EXIT-GROUP
+$D4000001 constant SYS-EMIT-SVC                          \ svc #0
+
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;

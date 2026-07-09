@@ -37,7 +37,7 @@ is process-fatal by design until a checked result/future model exists.
 ```forth
 TASK:TASK            ( n -- )          \ define a task TCB; n is stack bytes
 TASK:MIN-STACK       ( -- n )
-TASK:CONSTRUCT       ( ptr a -- )      \ allocate task stack/region without starting
+TASK:PREPARE         ( ptr a -- )      \ allocate task stack/region without starting
 TASK:ACTIVATE        ( n ptr a -- )    \ run xt in a pthread-backed task
 TASK:SELF            ( -- ptr a )
 TASK:SELF-N          ( -- n )

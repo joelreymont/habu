@@ -103,23 +103,23 @@ RESET-COUNTS
 INSTALL
 TEST:RESET
 
-TEST:GROUP-SEQUENTIAL seq
+TEST:GROUP SEQ seq-grp
 TEST:SUITE alpha
    a.f -- one two
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 
-TEST:GROUP-PARALLEL par
+TEST:GROUP PARA par
 TEST:SUITE beta
    b.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE-STDIN stdin-case DATA
    c.f -- arg
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE skip-me
    skip.f
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 
 TEST:RUN
 
@@ -137,18 +137,63 @@ DRAIN-N @ 6 T=
 
 INSTALL-THROW
 TEST:RESET
-TEST:GROUP-SEQUENTIAL throw-loop
+TEST:GROUP SEQ throw-loop
 TEST:SUITE throw-caught
    throw-caught.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE throw-late
    throw-late.f
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 TEST:RUN
 
 THROW-N @ 1 T=
 THROW-LATE-N @ 1 T=
+T-REPORT
+
+end-package
+
+\ Grammar regression: block terminators are FOO … ;FOO and GROUP takes a
+\ positional SEQ|PARA mode before the name. Reopen package TEST to reach the
+\ private ;SUITE? recognizer and the mode/name validators.
+package TEST
+
+: T-MODE-BAD ( -- )   s" NOPE"   MODE-OF drop ;
+: T-MODE-EMPTY ( -- ) s" "       MODE-OF drop ;
+: T-NAME-KW ( -- )    s" ;GROUP" CHECK-NAME 2drop ;
+: T-NAME-EMPTY ( -- ) s" "       CHECK-NAME 2drop ;
+
+T-RESET
+
+\ terminator recognizer renamed: ;SUITE, not END-SUITE
+s" TEST:;SUITE"    ;SUITE? TTRUE
+s" TEST:END-SUITE" ;SUITE? TFALSE
+s" TEST:END-GROUP" ;SUITE? TFALSE
+
+\ GROUP mode token maps SEQ/PARA; missing or unknown mode throws E-SUITE-MODE
+s" SEQ"  MODE-OF GROUP-SEQUENTIAL T=
+s" PARA" MODE-OF GROUP-PARALLEL   T=
+' T-MODE-BAD   E-SUITE-MODE TTHROWS
+' T-MODE-EMPTY E-SUITE-MODE TTHROWS
+
+\ GROUP name rejects reserved DSL keywords and empty names (E-SUITE-NAME)
+s" GROUP"       RESERVED-NAME? TTRUE
+s" SUITE-STDIN" RESERVED-NAME? TTRUE
+s" ;SUITE"      RESERVED-NAME? TTRUE
+s" PARA"        RESERVED-NAME? TTRUE
+s" alpha"       RESERVED-NAME? TFALSE
+' T-NAME-KW    E-SUITE-NAME TTHROWS
+' T-NAME-EMPTY E-SUITE-NAME TTHROWS
+
+\ positive end-to-end: SEQ and PARA groups set the mode (read via GROUP-MODE@)
+RESET
+GROUP SEQ grp-seq
+GROUP-CUR @ GROUP-MODE@ GROUP-SEQUENTIAL T=
+;GROUP
+GROUP PARA grp-par
+GROUP-CUR @ GROUP-MODE@ GROUP-PARALLEL T=
+;GROUP
+
 T-REPORT
 
 end-package

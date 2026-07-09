@@ -5,6 +5,7 @@
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
 require src/habu/verify-source.f
+require tools/stdin-closure-lib.f
 
 262144 constant BF-SOURCE-CAP
 32768 constant BF-CMP-CAP
@@ -23,6 +24,10 @@ $2F constant BF-SLASH
 128 constant BF-PIN-CAP
 
 create BF-LF-BUF 1 allot
+create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
+create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot
+create BF-PIN-KEYBUF 40 allot
+create BF-PIN-DIGBUF 40 allot
 create BF-CHAR-BUF 1 allot
 create BF-STAMP-KEY 80 allot
 create BF-STAMP-OLD 80 allot
@@ -36,10 +41,6 @@ create BF-STAMP-DIR-BUF FS-PATH-CAP allot
 create BF-STAMP-DEF-BUF FS-PATH-CAP allot
 create BF-ENGINE-BUF FS-PATH-CAP allot
 create BF-INSTALL-TMP-BUF FS-PATH-CAP allot
-create BF-PIN-KEYS BF-PIN-CAP BF-STAMP-DG-U * allot
-create BF-PIN-DIGS BF-PIN-CAP BF-STAMP-DG-U * allot
-create BF-PIN-KEYBUF 40 allot
-create BF-PIN-DIGBUF 40 allot
 BF-LF BF-LF-BUF c!
 
 variable BF-ART-PATH-A
@@ -78,14 +79,14 @@ variable BF-REC-STDIN?
 variable BF-ENGINE-U
 variable BF-INSTALL-TMP-U
 variable BF-FORCE
+variable BF-PIN-N
+variable BF-PIN-ON
 variable BF-CERT-RC
 variable BF-CERT-DIAG-U
 variable BF-CERT-LAB-A
 variable BF-CERT-LAB-U
 variable BF-CERT-PATH-A
 variable BF-CERT-PATH-U
-variable BF-PIN-N
-variable BF-PIN-ON
 
 : BF-TMP-A-FIELD ( -- ptr ptr u8 )
    BF-TMP-A 0 ptr-field ;
@@ -541,32 +542,29 @@ variable BF-PIN-ON
 \ historic bad forms.
 
 \ icode.f is emitted inside the check-off window (BFR-CHECK-OFF .. `' HOOK
-\ set-check`), so the stage compile does NOT check it. Only the non-blocking
-\ BF-CERTIFY static scan covers icode's typed shape today. Every assert below is
-\ therefore KEPT until BF-CERTIFY flips blocking (blocked by checker self-typing,
-\ dot habu-checker-self-typing); retiring them now would be a net loss of the
-\ only enforcement. The mmap-error and static-allot asserts additionally guard
-\ fail-closed / executable-memory invariants the checker cannot express.
+\ set-check`), so the stage compile does not check it -- but the BLOCKING
+\ BF-CERTIFY static scan covers its typed shape (VERIFY:SOURCE-BUF checks the
+\ whole emitted source, set-check windows included, and a reject now kills the
+\ build), so the typed-shape asserts retired with habu1/habu2's. Kept below:
+\ runtime invariants the checker cannot express -- fail-closed mmap error
+\ handling, and the no-static-allot executable-memory shape (JIT code/label/
+\ fixup storage must live in mmap'd regions, never `create ... allot` data
+\ space).
 : BF-PREFLIGHT-ICODE ( -- )
    s" src/arch/arm64/icode.f" BF-READ-SOURCE
-   s" variable CODE-A" BF-SOURCE-MUST-HAVE
-   s" : CODE ( -- ptr u8 )" BF-SOURCE-MUST-HAVE
-   s" : ICODE-TABS ( -- ptr n )" BF-SOURCE-MUST-HAVE
    s" icode: code mmap failed" BF-SOURCE-MUST-HAVE
    s" icode: table mmap failed" BF-SOURCE-MUST-HAVE
-   s" variable BYA" BF-SOURCE-MUST-HAVE
-   s" variable BYU" BF-SOURCE-MUST-HAVE
-   s" : BYA@ ( -- ptr u8 )" BF-SOURCE-MUST-HAVE
-   s" : BYTES-ARGS ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
-   s" : BYTES-CAP ( -- )" BF-SOURCE-MUST-HAVE
-   s" : BYTES-COPY ( -- )" BF-SOURCE-MUST-HAVE
-   s" : BYTES-PAD ( -- )" BF-SOURCE-MUST-HAVE
-   s" : BYTES, ( ptr u8 n -- )" BF-SOURCE-MUST-HAVE
    s" create CODE CODE-CAP-BYTES allot" BF-SOURCE-MUST-LACK
    s" create LBLP LBL-CAP cells allot" BF-SOURCE-MUST-LACK
-   s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK
-   s" {: a:ptr u :}" BF-SOURCE-MUST-LACK ;
+   s" create FXS 2048 cells allot" BF-SOURCE-MUST-LACK ;
 
+\ habu1.f/habu2.f preflight retired (see the history comment above BF-PREFLIGHT-ICODE):
+\ REG-PRIM/FPRIM/FPRIM-L/SPAWN-DUP2-ACTION/SPAWN-CHDIR-ACTION and friends are emitted
+\ after `' HOOK set-check` and so are compiled checked (a stack-effect regression fails
+\ the stage compile, blocking); the residual same-type codegen roles the checker cannot
+\ express (label-relative branch fixup, spawn descriptor-slot store progression) are
+\ covered by the structural tools/codegen-role-test.f (gate suite codegen-role). Only
+\ BF-PREFLIGHT-ICODE remains here, for icode's mmap/no-static-allot runtime invariants.
 : BF-PREFLIGHT ( -- )
    BF-PREFLIGHT-ICODE ;
 
@@ -629,38 +627,15 @@ variable BF-PIN-ON
    out outu s" src/core/util.f" BF-APPEND-SOURCE
    out outu s" src/core/structures.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
+   out outu s" src/core/sumtype.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-BYTES ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/bytes.f" BF-APPEND-SOURCE ;
-
-: BF-APPEND-CHECK-OFF ( ptr u8 n -- )
-   s" 0 set-check" BF-APPEND-LINE ;
-
-: BF-APPEND-FRESH-CHECK-HOOK ( ptr u8 n -- )
-   s" ' HOOK set-check" BF-APPEND-LINE ;
-
-: BF-APPEND-SQUOTE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n a:ptr u:n :}
-   out outu s" s" BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C
-   out outu BF-SP BF-APPEND-C
-   out outu a u BF-APPEND-BYTES
-   out outu BF-DQ BF-APPEND-C ;
-
-: BF-APPEND-TRUST ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n sig:ptr sigu:n :}
-   out outu name nameu BF-APPEND-SQUOTE
-   out outu BF-SP BF-APPEND-C
-   out outu sig sigu BF-APPEND-SQUOTE
-   out outu s"  TRUST" BF-APPEND-LINE ;
-
-: BF-APPEND-IMAGE-TRUSTS ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu s" ASM-CODE" s" -- asm" BF-APPEND-TRUST
-   out outu s" BUILD-IMAGE" s" asm -- img" BF-APPEND-TRUST
-   out outu s" BUILD-SNAP-HDR" s" n -- snap n" BF-APPEND-TRUST
-   out outu s" SET-SIGID" s" ptr u8 n --" BF-APPEND-TRUST
-   out outu s" CODESIG2" s" img -- img" BF-APPEND-TRUST ;
 
 : BF-APPEND-HABU-LAYOUT ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/layout.f" BF-APPEND-SOURCE ;
@@ -678,7 +653,7 @@ variable BF-PIN-ON
    out outu s" src/core/exec-vector.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-INCLUDE ( ptr u8 n -- ) {: out:ptr outu :}
-   out outu s" src/core/include.f" BF-APPEND-SOURCE ;
+   out outu SDC-INCLUDE$ BF-APPEND-SOURCE ;
 
 : BF-APPEND-ENUMS ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/core/enums.f" BF-APPEND-SOURCE ;
@@ -698,15 +673,13 @@ variable BF-PIN-ON
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/treeshake.f" BF-APPEND-SOURCE
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
-   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
-   out outu BF-APPEND-FRESH-CHECK-HOOK
-   out outu BF-APPEND-IMAGE-TRUSTS
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
@@ -746,7 +719,7 @@ variable BF-PIN-ON
    out outu BF-APPEND-COMMON
    out outu BF-APPEND-INCLUDE
    out outu BF-APPEND-DRIVER-IO
-   out outu s" src/habu/aot-capture.f" BF-APPEND-SOURCE
+   out outu SDC-AOT$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
 
 \ Snapshot source layout: the dev-engine keep surface (the same files the
@@ -765,6 +738,7 @@ variable BF-PIN-ON
    out outu BF-APPEND-ENUMS
    out outu BF-APPEND-EXEC-VECTOR
    out outu s" src/core/sha256.f" BF-APPEND-SOURCE
+   out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV ;
@@ -800,10 +774,7 @@ variable BF-PIN-ON
    out outu s" src/habu/rt.f" BF-APPEND-SOURCE
    out outu s" src/habu/crash.f" BF-APPEND-SOURCE
    out outu BF-APPEND-IMAGE-BYTES
-   out outu BF-APPEND-CHECK-OFF
    out outu BF-APPEND-TARGET-IMAGE
-   out outu BF-APPEND-FRESH-CHECK-HOOK
-   out outu BF-APPEND-IMAGE-TRUSTS
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
@@ -868,7 +839,7 @@ variable BF-PIN-ON
    s" stage2-src" s" src/habu/stage2.f" BF-EMIT-SOURCE ;
 
 : BF-STDIN-SOURCE ( -- )
-   s" stage2-src" s" src/habu/stdin.f" BF-EMIT-STDIN-RUN-SOURCE ;
+   s" stage2-src" SDC-DRIVER$ BF-EMIT-STDIN-RUN-SOURCE ;
 
 : BF-SNAP-SOURCE ( -- )
    s" hb-snap-src" s" src/habu/snap.f" BF-EMIT-SNAP-RUN-SOURCE ;
@@ -903,13 +874,28 @@ variable BF-PIN-ON
 
 : BF-CERTIFY-REPORT ( ptr u8 n -- ) {: lab:ptr labu:n :}
    s" certify: " type lab labu type
-   s"  rejected rc " type BF-CERT-RC @ . s" (non-blocking)" type cr
+   s"  rejected rc " type BF-CERT-RC @ . s" (blocking)" type cr
    BF-CERT-DIAG-U @ 0 > IF BF-CERT-DIAG BF-CERT-DIAG-U @ type cr THEN ;
 
+\ BLOCKING: a generated stage source that fails VERIFY:SOURCE-BUF kills the
+\ build (E-BUILD-STATUS) after reporting the diagnostic. The self-host window
+\ is fail-closed: a type error in emitted engine source can no longer warn its
+\ way into an installed binary. No escape hatch: the gforth recovery lane
+\ (docs/bootstrap.md) reaches this native refresh only after a working bin/hb
+\ exists, and a tree whose generated sources reject must be repaired, not
+\ installed.
 : BF-CERTIFY-GENERATED ( ptr u8 n ptr u8 n -- )
    BF-CERTIFY-RC 0= IF exit THEN
-   BF-CERT-LABEL$ BF-CERTIFY-REPORT ;
+   BF-CERT-LABEL$ BF-CERTIFY-REPORT
+   E-BUILD-STATUS throw ;
 
+\ The stage engine reads its source from the fixed `stage2-src` name in the temp
+\ root (BF-PREPARE-STAGE-ARGV runs hb-stage with just `-- <tmp>`, no --load), so
+\ both build phases emit into that one path. BF-STAGE2-SOURCE writes the stage2
+\ source, then BF-STDIN-SOURCE OVERWRITES the same path with the stdin driver
+\ source before BF-CERTIFY-STDIN runs. Each certify therefore reads the same
+\ physical path but its own phase's distinct content — the `stage2-src`/`stdin-src`
+\ argument is the diagnostic label for the phase, not a second file name.
 : BF-CERTIFY-STAGE2 ( -- )
    s" stage2-src" s" stage2-src" BF-A$ BF-CERTIFY-GENERATED ;
 
@@ -1247,3 +1233,62 @@ variable BF-PIN-ON
    s" stdin" BF-ARG0= if BF-BUILD-STDIN-FRESH exit then
    s" snap" BF-ARG0= if BF-BUILD-SNAP-FRESH exit then
    BF-USAGE ;
+
+\ Fail-closed CLI boundary. BTHROW's no-handler path exits with the raw throw
+\ code masked to 8 bits and NO diagnostic (a code that is a multiple of 256
+\ exits 0), so a crashed refresh child whose BF-RC0 E-BUILD-STATUS throw
+\ escaped BF-MAIN used to fail silently with an arbitrary exit code. BF-CLI
+\ catches every escaped throw, names it on stderr, and dies with the
+\ deterministic build rc so any failure anywhere in the refresh chain is loud
+\ and nonzero under every seed.
+$80 constant BF-FAIL-CAP
+$18 constant BF-FAIL-DG-CAP
+create BF-FAIL-BUF BF-FAIL-CAP allot
+create BF-FAIL-DG BF-FAIL-DG-CAP allot
+variable BF-FAIL-U
+variable BF-FAIL-V
+variable BF-FAIL-N
+
+: BF-FAIL-C+ ( n -- ) {: c:n :}
+   BF-FAIL-U @ 1 + BF-FAIL-CAP > if s" build-fixpoint: fail message overflow" BF-BUILD-RC die then
+   c BF-FAIL-BUF BF-FAIL-U @ + c!
+   BF-FAIL-U @ 1 + BF-FAIL-U ! ;
+
+: BF-FAIL+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   BF-FAIL-U @ u + BF-FAIL-CAP > if s" build-fixpoint: fail message overflow" BF-BUILD-RC die then
+   a BF-FAIL-BUF BF-FAIL-U @ + u BYTE-COPY
+   BF-FAIL-U @ u + BF-FAIL-U ! ;
+
+: BF-FAIL-DIGITS+ ( -- )
+   0 BF-FAIL-N !
+   BF-FAIL-V @ 0 = if $30 BF-FAIL-C+ exit then
+   begin BF-FAIL-V @ 0 > while
+      BF-FAIL-V @ 10 mod $30 +  BF-FAIL-DG BF-FAIL-N @ + c!
+      BF-FAIL-N @ 1 + BF-FAIL-N !
+      BF-FAIL-V @ 10 / BF-FAIL-V !
+   repeat
+   begin BF-FAIL-N @ 0 > while
+      BF-FAIL-N @ 1 - BF-FAIL-N !
+      BF-FAIL-DG BF-FAIL-N @ + c@ BF-FAIL-C+
+   repeat ;
+
+: BF-FAIL-CODE+ ( n -- ) {: rc:n :}
+   rc 0 < if $2D BF-FAIL-C+ then
+   rc 0 < if 0 rc - else rc then BF-FAIL-V !
+   BF-FAIL-DIGITS+ ;
+
+: BF-FAIL-NAME+ ( n -- ) {: rc:n :}
+   rc E-BUILD-STATUS = if s"  (E-BUILD-STATUS: refresh child failed)" BF-FAIL+ exit then
+   rc E-BUILD-PATH = if s"  (E-BUILD-PATH: build artifact missing)" BF-FAIL+ exit then ;
+
+: BF-FAIL-DIE ( n -- ) {: rc:n :}
+   0 BF-FAIL-U !
+   s" build-fixpoint: failed: uncaught throw code " BF-FAIL+
+   rc BF-FAIL-CODE+
+   rc BF-FAIL-NAME+
+   BF-LF BF-FAIL-C+
+   BF-FAIL-BUF BF-FAIL-U @ BF-BUILD-RC die ;
+
+: BF-CLI ( -- )
+   [: BF-MAIN ;] catch {: rc:n :}
+   rc 0 <> if rc BF-FAIL-DIE then ;

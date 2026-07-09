@@ -1,8 +1,15 @@
 \ aot-closure.f - stripped AOT closure analysis and diagnostics.
 
-\ Audited driver boundary: the toolchain hook is on when this file is appended;
-\ the driver installs USER-HOOK below for user source only.
-0 set-check
+\ The toolchain hook is on when this file is appended and stays on: this file
+\ compiles checked, with its raw-pointer boundaries as explicit TRUST rows.
+\ The driver installs USER-HOOK below for user source only.
+
+\ Checker-internal surface used by AOT diagnostics and the driver hook: the
+\ checker registry does not publish its own words to later checked loads
+\ (same boundary class as verify-source.f CHECK-BODY), so the two entrypoints
+\ the AOT tail needs are typed here as axioms.
+s" JSON-DIAGS" s" -- ptr a" TRUST
+s" CHECK!" s" ptr u8 n -- n" TRUST
 
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
@@ -42,8 +49,21 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
          1 +
       REPEAT drop 0 0=
    ELSE 0 0= 0= THEN ;
+\ Selected AOT entry word. Defaults to MAIN (the zero-argument process entry);
+\ a preseeded test entry (tools/hb-build.f --preseed-entry) sets it to a matched
+\ helper so the stripped image starts at a non-MAIN root (docs/census-tfam-10.md
+\ Category 1/6: identity is resolved by record here, not carried as a bare name).
+create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
+: ENTRY-NAME$ ( -- ptr u8 n )
+   ENTRY-NAME-BUF ENTRY-NAME-U @ ;
+: ENTRY-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1 < IF s" aot: empty entry name" 74 die THEN
+   u 64 > IF s" aot: entry name too long" 74 die THEN
+   a ENTRY-NAME-BUF u BYTE-COPY
+   u ENTRY-NAME-U ! ;
+s" MAIN" ENTRY-NAME!
 : MAIN? {: r:ptr :} ( ptr a -- bool )
-   r s" MAIN" REC-NAME= ;
+   r ENTRY-NAME$ REC-NAME= ;
 \ Data-space words (@ ! c@ c! here allot , c,) are now supported: the AOT entry
 \ maps the fixed DATA region and restores the program's persistent data (see
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry
@@ -105,10 +125,10 @@ create AENB 20 allot  variable AENV  variable AENN
    s" hb-build: AOT unsupported word" 70 die ;
 
 variable FX
-: FINDADDR {: t:ptr :}  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
-: FINDMAIN  0 FX !
-   BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  0 ;
+: FINDADDR ( n -- ptr a ) {: t:n :}  0 FX !
+   BEGIN FX @ ndict@ < WHILE  FX @ REC @ t = IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
+: FINDMAIN ( -- ptr a )  0 FX !
+   BEGIN FX @ ndict@ < WHILE  FX @ REC MAIN? IF FX @ REC exit THEN  FX @ 1+ FX ! REPEAT  XREF-NULL ;
 
 \ --- closure: BFS from MAIN over the native call graph. CLO and the parallel
 \ COPY/RELOCATE arrays (OLDA/NEWOFF/BLEN) are all sized by MAX-CLO; ADD-CLO fails
@@ -157,7 +177,7 @@ variable SP2  variable SEND
    r @ SP2 !  r @ r 8 + @ + SEND !
    BEGIN SP2 @ SEND @ < WHILE
       SP2 @ CALL? IF
-         SP2 @ TGT FINDADDR dup IF
+         SP2 @ TGT FINDADDR dup XREF-FOUND? IF
             dup AOT-UNSAFE? IF r swap AOT-UNSAFE-DIE THEN
             ADD-CLO
          ELSE drop THEN
@@ -165,5 +185,8 @@ variable SP2  variable SEND
       ELSE SP2 @ 4 + SP2 ! THEN
    REPEAT ;
 variable WI
-: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop s" aot: no MAIN" 74 die THEN  dup ROOTREC !  ADD-CLO
+: NO-ENTRY-DIE ( -- )
+   s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
+   s" aot: no entry" 74 die ;
+: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;

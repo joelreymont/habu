@@ -17,6 +17,7 @@ TRUSTED: BFR-N>U8 ( n -- ptr u8 ) ;
 TRUSTED: BFR-USIG-END-PTR ( -- ptr a ) USIGS UEND @ + ;
 TRUSTED: BFR-UEND! ( n -- ) UEND ! ;
 TRUSTED: BFR-NDICT! ( n -- ) ndict! ;
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 TRUSTED: BFR-CHECK-OFF ( -- ) 0 set-check ;
 
 : BFR-REC-ADDR ( n -- n )

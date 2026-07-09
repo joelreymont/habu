@@ -316,13 +316,23 @@ variable GJA-DIRECT
    GJA-SUGGEST-ROW IF exit THEN
    s" factor_local_shape" s" Move locals to a live top-level path or factor a helper."
    GJA-SUGGEST-ROW IF exit THEN
+   s" factor_linear_local" s" Keep the linear value on the stack; do not bind it to a local."
+   GJA-SUGGEST-ROW IF exit THEN
    s" remove_dead_code" s" Remove tokens after the terminating control word, or move the work before it."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_qualified_name" s" Use one ':' qualifier, e.g. PKG:WORD."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_signature_syntax" s" Repair the stack-effect comment syntax, including --."
    GJA-SUGGEST-ROW IF exit THEN
    s" fix_signature_type" s" Use a known stack-signature type or a single-letter type variable."
    GJA-SUGGEST-ROW IF exit THEN
+   s" fix_signature_arity" s" Give the type family its exact declared number of arguments."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_bare_ptr_element" s" Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'."
+   GJA-SUGGEST-ROW IF exit THEN
    s" fix_nominal_type" s" Choose a unique non-reserved nominal type name."
+   GJA-SUGGEST-ROW IF exit THEN
+   s" fix_family_declaration" s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks."
    GJA-SUGGEST-ROW IF exit THEN
    s" rewrite_uncheckable" s" Rewrite with modeled words or isolate an audited primitive."
    GJA-SUGGEST-ROW IF exit THEN

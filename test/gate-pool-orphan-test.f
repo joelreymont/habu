@@ -25,6 +25,7 @@ require lib/string.f
 require lib/test.f
 require lib/memory.f
 require lib/process.f
+require lib/process-argv.f
 require lib/process-fork.f
 
 300 constant GPO-SETTLE-MS
@@ -191,12 +192,158 @@ variable GPO-DEATH-GOT
    ar GPO-OBSERVE-DEAD?
    ar FD>N close ;
 
+\ ---- capture-spawn reaper (PROC-REAP-ARM seam, live mechanism) ---------------
+\ A pool worker publishes its worker-alive read end as PROC-REAP-WATCH-FD; a
+\ capture spawn then arms a co-located reaper in the LEAF's group watching that
+\ fd, so a quiet leaf dies when the worker dies even though the leaf leads its
+\ own group (the worker group-kill misses it) and writes nothing (no SIGPIPE
+\ bound). Topology (T = this test):
+\   T forks W. W: own group; worker-alive pipe WA-RD/WA-WR; publishes WA-RD as
+\   PROC-REAP-WATCH-FD; spawns quiet hanging leaf L (/bin/sh -c "sleep 30")
+\   through the REAL capture seam (PROC-CAPTURE-BEGIN + PROC-ARGV-PREPARE +
+\   PROC-SPAWN-ARGV-CAPTURE -> PROC-CAPTURE-PID! arms the reaper), reports L's
+\   pid + the reaper pid to T, then idles mid-capture.
+\   T SIGKILLs W's group -> WA-WR closes -> L's reaper EOFs -> L's group dies.
+\   T observes L's death by kill(L,0) polling within a hard deadline.
+\ The CONTROL repeats the topology without publishing the watch fd: no reaper
+\ is armed and L must SURVIVE W's death (proves the observation is real);
+\ T then kills L directly. Two in-process legs prove both capture terminators
+\ disarm: a timeout capture and two back-to-back completed captures each leave
+\ PROC-REAP-PID at the no-reaper sentinel.
+
+256 constant GCR-CAP
+200 constant GCR-SHORT-MS
+5000 constant GCR-LONG-MS
+60000 constant GCR-HANG-MS
+create GCR-PID-BUF 16 allot
+create GCR-OUT-BUF GCR-CAP allot
+create GCR-ERR-BUF GCR-CAP allot
+variable GCR-LPID   variable GCR-RPID
+
+: GCR-SLEEP-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s" sleep 30" >LEN PROC-ARGV+ ;
+
+: GCR-NOOP-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s" :" >LEN PROC-ARGV+ ;
+
+\ W: arm (or not), spawn the quiet leaf through the real capture seam, report
+\ the leaf + reaper pids, and idle mid-capture until T kills the group. The
+\ control arm EXPLICITLY clears the watch fd: under the gate this test runs
+\ inside a pool worker that already publishes its own watch fd, and the forked
+\ W inherits that cell -- "not set here" is not "unarmed".
+: GCR-WORKER ( fd fd n -- ) {: pp-rd:fd pp-wr:fd armed:n :}
+   0 >PID 0 >PID PROC-SETPGID drop
+   pp-rd FD>N close
+   PROC-DEATH-PIPE {: wa-rd:fd wa-wr:fd :}
+   armed 0 <> if
+      wa-rd FD>N PROC-REAP-WATCH-FD !
+   else
+      -1 PROC-REAP-WATCH-FD !
+   then
+   GCR-SLEEP-ARGV
+   s" /bin/sh" >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
+   GCR-HANG-MS >MS PROC-CAPTURE-BEGIN
+   pathz argv PROC-SPAWN-ARGV-CAPTURE
+   PROC-PID @ PID>N GCR-PID-BUF !
+   PROC-REAP-PID @ PID>N GCR-PID-BUF 8 + !
+   pp-wr FD>N GCR-PID-BUF 16 write drop
+   pp-wr FD>N close
+   GPO-IDLE
+   0 GPO-EXIT ;
+
+: GCR-READ-PIDS ( fd -- ) {: pp-rd:fd :}
+   pp-rd FD>N GCR-PID-BUF 16 read 16 <> if E-PROC-OUTPUT throw then
+   GCR-PID-BUF @ GCR-LPID !
+   GCR-PID-BUF 8 + @ GCR-RPID ! ;
+
+: GCR-DEAD? ( n -- bool ) {: lpid:n :}
+   lpid >PID 0 PROC-KILL-RAW RC>N 0 < ;
+
+: GCR-OBSERVE-DEAD? ( n -- bool ) {: lpid:n :}
+   0 begin dup GPO-OBSERVE-STEPS < while
+      lpid GCR-DEAD? if drop 0 0= exit then
+      GPO-POLL-MS GPO-SLEEP
+      1+
+   repeat drop 1 0= ;
+
+\ Fork W (armed or control), harvest the reported pids, then SIGKILL W's group
+\ mid-capture and wait it -- the trigger both cases observe from.
+: GCR-LAUNCH ( n -- ) {: armed:n :}
+   PIPE-PAIR {: pp-rd:fd pp-wr:fd :}
+   PROC-FORK-RAW {: wpid:pid :}
+   wpid PID>N 0= if pp-rd pp-wr armed GCR-WORKER then
+   pp-wr FD>N close
+   pp-rd GCR-READ-PIDS
+   pp-rd FD>N close
+   GPO-SETTLE-MS GPO-SLEEP
+   wpid SIGKILL PROC-KILL-GROUP drop
+   wpid PROC-WAIT-STATUS drop ;
+
+: GCR-ARMED? ( -- bool bool )   \ ( -- reaper-armed leaf-reaped )
+   1 GCR-LAUNCH
+   GCR-RPID @ 0 >
+   GCR-LPID @ GCR-OBSERVE-DEAD? ;
+
+: GCR-CONTROL? ( -- bool bool )   \ ( -- no-reaper leaf-survived ) + cleanup
+   0 GCR-LAUNCH
+   GCR-RPID @ 0 <
+   GPO-SETTLE-MS GPO-SLEEP
+   GCR-LPID @ GCR-DEAD? 0=
+   GCR-LPID @ >PID SIGKILL PROC-KILL-RAW drop ;
+
+\ The in-process legs run in whatever context hosts this test (under the gate:
+\ a pool worker with its own live watch fd), so they save and RESTORE the cell
+\ instead of clobbering it to -1 -- later suites in the same worker keep their
+\ reaper coverage.
+variable GCR-SAVED-FD
+
+: GCR-TIMEOUT-DISARMED? ( -- bool bool )   \ timeout terminator disarms
+   PROC-REAP-WATCH-FD @ GCR-SAVED-FD !
+   PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
+   dw-rd FD>N PROC-REAP-WATCH-FD !
+   GCR-SLEEP-ARGV
+   s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
+   GCR-SHORT-MS >MS RUN-ARGV-CAPTURE-OUTCOME {: outl:len errl:len kind:n code:n :}
+   GCR-SAVED-FD @ PROC-REAP-WATCH-FD !
+   dw-rd FD>N close
+   dw-wr FD>N close
+   kind PROC-OUTCOME-TIMEOUT =
+   PROC-REAP-PID @ PID>N 0 < ;
+
+: GCR-DONE-DISARMED? ( -- bool bool )   \ completion terminator disarms, twice
+   PROC-REAP-WATCH-FD @ GCR-SAVED-FD !
+   PIPE-PAIR {: dw-rd:fd dw-wr:fd :}
+   dw-rd FD>N PROC-REAP-WATCH-FD !
+   GCR-NOOP-ARGV
+   s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
+   GCR-LONG-MS >MS RUN-ARGV-CAPTURE {: o1:len e1:len r1:rc :}
+   GCR-NOOP-ARGV
+   s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
+   GCR-LONG-MS >MS RUN-ARGV-CAPTURE {: o2:len e2:len r2:rc :}
+   GCR-SAVED-FD @ PROC-REAP-WATCH-FD !
+   dw-rd FD>N close
+   dw-wr FD>N close
+   r1 RC>N 0 = r2 RC>N 0 = and
+   PROC-REAP-PID @ PID>N 0 < ;
+
 : GPO-MAIN ( -- )
    T-RESET
    s" pool worker reaped when its parent is SIGKILLed" T-LABEL
    GPO-RUN TTRUE
    s" spawned pool child + reaper reaped when parent is SIGKILLed" T-LABEL
    GSR-RUN TTRUE
+   s" capture leaf reaper arms via the spawn seam and reaps on worker death" T-LABEL
+   GCR-ARMED? TTRUE TTRUE
+   s" unarmed control: no reaper and the leaf survives worker death" T-LABEL
+   GCR-CONTROL? TTRUE TTRUE
+   s" timeout terminator disarms the capture reaper" T-LABEL
+   GCR-TIMEOUT-DISARMED? TTRUE TTRUE
+   s" completion terminator disarms the capture reaper (twice)" T-LABEL
+   GCR-DONE-DISARMED? TTRUE TTRUE
    T-REPORT
    s" gate-pool-orphan-test: ok" type cr ;
 

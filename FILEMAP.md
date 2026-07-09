@@ -19,6 +19,8 @@ points stay listed.
 - `skills/habu-build/SKILL.md` — current AOT and REPL build commands.
 - `docs/bootstrap.md` — no-binary recovery, native refresh, and porting.
 - `docs/forth.md` — blocking Forth style rules.
+- `docs/type-families.md` — generic lowercase type-family/ADT design plan.
+- `docs/census-switchover.md` — site-level inventory for the post-TFAM switchover: sentinel-return conventions to migrate to option/result, legacy enum clusters, value-record/PTX-IR products, ADT-dischargeable trust rows, and the wave-ordered migration plan.
 - `docs/gate.md` — native gate architecture, proof subjects, metrics, and
   process-boundary rules.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
@@ -39,14 +41,18 @@ points stay listed.
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.
 - `src/core/checker.f` — native stack-effect checker and verifier.
+- `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
+- `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
+- `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
-- `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`.
+- `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
 - `src/core/structures-effects.f` — checker effect rows for the early structure defining words.
-- `src/core/enums.f` — checked `ENUM` and `ENUM4` defining words for named integer families.
+- `src/core/enums.f` — checked `ENUM+` and `ENUM4+` legacy numeric counter definers for named integer families.
 - `src/core/exec-vector.f` — checked execution-vector support for `defer`/`is` runtime sentinels.
 - `src/core/sha256.f` — standalone SHA-256, streaming file digest, and hex helpers.
+- `src/core/type-family-sha.f` — installs the constructor package-name SHA-256 fallback hook (TF-SHA16) after sha256.f loads.
 - `src/core/sha-check.f` — standalone SHA-256 self-test against FIPS-180 vectors.
 - `src/core/check-hook.f` — default native source checker hook installation.
 - `src/core/combinators.f` — legacy higher-order library words baked into
@@ -91,6 +97,71 @@ points stay listed.
 - `src/os/linux/target.f` / `src/os/macos/target.f` — runtime/build-script
   target flag words.
 
+## Gforth Bootstrap Recovery
+
+- `bootstrap/habu.fs` — top-level Gforth no-binary recovery driver.
+- `bootstrap/habu-lib.fs` — shared Gforth bootstrap library bundle.
+- `bootstrap/habu-cg.fs` — Gforth codegen bootstrap bundle.
+- `bootstrap/habu-repl.fs` — Gforth REPL bootstrap entry.
+- `bootstrap/habu-tui.fs` — Gforth TUI bootstrap entry.
+- `bootstrap/examples.fs` — bootstrap example source.
+- `bootstrap/src/arena.fs` — bootstrap arena allocator.
+- `bootstrap/src/capture.fs` — bootstrap source capture.
+- `bootstrap/src/checker.fs` — bootstrap checker entry.
+- `bootstrap/src/colon.fs` — bootstrap colon-definition parser.
+- `bootstrap/src/config.fs` — bootstrap configuration constants.
+- `bootstrap/src/control.fs` — bootstrap control-flow checker.
+- `bootstrap/src/db.fs` — bootstrap dictionary storage.
+- `bootstrap/src/defining.fs` — bootstrap defining words.
+- `bootstrap/src/diag-state.fs` — bootstrap diagnostic state.
+- `bootstrap/src/diag.fs` — bootstrap diagnostic rendering.
+- `bootstrap/src/effects-repr.fs` — bootstrap effect representation.
+- `bootstrap/src/forward.fs` — bootstrap forward-declaration handling.
+- `bootstrap/src/habu.fs` — bootstrap engine assembly.
+- `bootstrap/src/locals.fs` — bootstrap locals checker.
+- `bootstrap/src/parsing.fs` — bootstrap parser helpers.
+- `bootstrap/src/pickroll.fs` — bootstrap stack primitive helpers.
+- `bootstrap/src/prims.fs` — bootstrap primitive signatures.
+- `bootstrap/src/quots.fs` — bootstrap quotation support.
+- `bootstrap/src/render.fs` — bootstrap effect renderer.
+- `bootstrap/src/repl.fs` — bootstrap REPL support.
+- `bootstrap/src/rows.fs` — bootstrap row operations.
+- `bootstrap/src/runtime.fs` — bootstrap runtime support.
+- `bootstrap/src/sig.fs` — bootstrap signature model.
+- `bootstrap/src/sigparse.fs` — bootstrap signature parser.
+- `bootstrap/src/tui.fs` — bootstrap terminal UI support.
+- `bootstrap/src/types.fs` — bootstrap type model.
+- `bootstrap/src/unify.fs` — bootstrap unifier.
+- `bootstrap/cg/asm.fs` — Gforth ARM64 assembler helpers.
+- `bootstrap/cg/asm-checked.fs` — Gforth checked assembler surface.
+- `bootstrap/cg/cglocals.fs` — Gforth locals codegen.
+- `bootstrap/cg/cgloop.fs` — Gforth loop codegen.
+- `bootstrap/cg/cgquot.fs` — Gforth quotation codegen.
+- `bootstrap/cg/crash.fs` — Gforth crash handler codegen.
+- `bootstrap/cg/disasm-core.fs` — Gforth disassembler core.
+- `bootstrap/cg/disasm.fs` — Gforth disassembler entry.
+- `bootstrap/cg/elf.fs` — Gforth ELF image writer.
+- `bootstrap/cg/exec.fs` — Gforth executable emitter.
+- `bootstrap/cg/forth.fs` — Gforth stage0 engine code generator.
+- `bootstrap/cg/icode.fs` — Gforth instruction-code layer.
+- `bootstrap/cg/image.fs` — Gforth image layout writer.
+- `bootstrap/cg/inspect.fs` — Gforth inspection tools.
+- `bootstrap/cg/install.fs` — Gforth install helpers.
+- `bootstrap/cg/jit.fs` — Gforth JIT emitter mirror.
+- `bootstrap/cg/link.fs` — Gforth link helpers.
+- `bootstrap/cg/macho.fs` — Gforth Mach-O image writer.
+- `bootstrap/cg/opt.fs` — Gforth peephole optimizer.
+- `bootstrap/cg/prof.fs` — Gforth profiler support.
+- `bootstrap/cg/regalloc.fs` — Gforth register allocator mirror.
+- `bootstrap/cg/regstack.fs` — Gforth virtual stack register model.
+- `bootstrap/cg/rt.fs` — Gforth runtime emitter.
+- `bootstrap/cg/sha256.fs` — Gforth SHA-256 helper.
+- `bootstrap/cg/sign.fs` — Gforth signing helper.
+- `bootstrap/cg/stepper.fs` — Gforth stepper support.
+- `bootstrap/cg/sys.fs` — Gforth OS syscall helpers.
+- `bootstrap/cg/templ.fs` — Gforth template emitter.
+- `bootstrap/cg/walk.fs` — Gforth source walker.
+
 ## Debugging And Inspection
 
 - `docs/debugging.md` — first stop for runtime/codegen RCA tooling; covers the
@@ -110,6 +181,10 @@ points stay listed.
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
   toolchain spike.
+- `src/arch/ptx/vjp.f` / `src/arch/ptx/vjp-test.f` — the `VJP:` paired-word
+  table for the M6 forward primitives (adjoint expansion + saves count per
+  entry, consumed by lib/ptx/ad.f) plus per-entry unit tests including the
+  review-corrected OVER fan-out-sum and DROP typed-zero direction facts.
 - `lib/ptx/test-prelude.f` — require-only shared setup for PTX positive entry
   tests; suites list the entry tests, not this dependency bundle.
 - `lib/ptx/process-test-prelude.f` — require-only process-boundary setup for
@@ -225,6 +300,7 @@ points stay listed.
 - `tools/object-image-test.f` — focused coverage for writing and running a
   tiny executable from object text.
 - `tools/hb-cli-contracts-test.f` — checked coverage for `hb` startup and stdin-data contracts.
+- `tools/standalone-load-test.f` — proves lint/tool core entries load in isolation via hb --load child spawns (each entry requires its own deps).
 - `tools/hb-baseline-contracts-test.f` — checked public `bin/hb` baseline contract fixture.
 - `tools/hb-build-lib.f` — checked native AOT/REPL build CLI library.
 - `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for
@@ -239,6 +315,12 @@ points stay listed.
 - `tools/imgdump-test.f` — checked fixture coverage for image dump compare mode.
 - `tools/imagedisasm.f` — native raw image slice disassembler.
 - `tools/imagedisasm-test.f` — checked fixture coverage for raw image disassembly.
+- `tools/include-events-test.f` — checked fixtures for the source-composition event log and loader instrumentation.
+- `tools/source-discovery.f` — whole-file source-composition discovery pass that lexes the entire token stream (colon bodies included), replays every literal loader form against a fresh require registry, and emits the ordered event artifact; dynamic paths, loader shadow/undefine/retirement, and unsupported openers reject fail-closed unless the entry is a declared dynamic-tail boundary.
+- `tools/source-discovery-test.f` — checked fixtures for the whole-file discovery pass (ordering, multiplicity, dedup, fresh registry, colon-body capture, byte-exact spans, shared emitter, fail-closed rejection, dynamic-tail manifest boundary).
+- `tools/dynamic-tail-manifest.f` — declared dynamic-tail boundary table (path + reason) consumed by the discovery pass; a listed file's dynamic/retired loader forms are tolerated instead of rejected.
+- `tools/event-closure-lib.f` — ordered transitive source-composition closure list built by replaying the discovery pass breadth-first over the event log.
+- `tools/event-closure-test.f` — checked fixtures for the closure list (order, dedup, transitive descent, provided/missing exclusion, colon-wrapped deps) and closure key sensitivity.
 - `tools/ptx/saxpy.f` — CLI entrypoint that emits the M3 SAXPY PTX kernel.
 - `tools/ptx/saxpy-test.f` — checked fixture for the PTX SAXPY encoder output.
 - `tools/ptx/ptxas-smoke.f` — Orin-only checked smoke that emits SAXPY PTX,
@@ -267,6 +349,14 @@ points stay listed.
   transcendental op gradcheck.f gates (d exp/dx = exp(x), non-constant gradient).
 - `tools/ptx/expbwd-cg.f` — checked EXP backward kernel (dx=dz*savedy, the SAVED-Y→real-load
   resolution); gradcheck.f runs it on device and checks its output = the numeric gradient.
+- `tools/zed-run-lib.f` — checked remote device-run harness (`package ZED`): argv-spawned
+  ssh/scp/rsync via lib/process-command.f, private scratch-dir lifecycle, remote command
+  capture (stdout/stderr/rc), failures mapped to named E-ZED-* throw codes, and the HABU_ZED
+  availability/skip policy. No shell scripts, no interpolated remote test input.
+- `tools/zed-run.f` — CLI probe over the harness: joins script argv into one remote command,
+  runs it on the ZED host, echoes captured output, and exits fail-closed on failure.
+- `tools/zed-run-test.f` — checked unit tests (availability policy, command construction,
+  outcome classification) plus HABU_ZED-gated device smokes (`true` rc0, `false` fail-closed).
 - `tools/ptx/redadd-cg.f` — raw-PTX emit driver for a `red.global.add.f32` kernel (each thread
   atomically adds 1.0 to out[0]); the scatter-add primitive reverse-mode fan-in adjoints need.
 - `tools/ptx/redadd-device-test.f` — Orin device proof that `red.global.add.f32` assembles for
@@ -282,13 +372,55 @@ points stay listed.
   codegen plus Orin device proof for BLOCK-SUM's reducer-local inactive-lane zero.
 - `tools/ptx/sum1024-cg.f` — checked direct row-sum text fixture proving `%BLOCK
   1024` changes shared-memory size and reduction fold bounds.
+- `tools/ptx/sum-device-cg.f` — single-kernel SUM_ROWS emit (one module header)
+  so ptxas assembles it for the Orin sum device golden; same body as sum-cg.f.
+- `tools/ptx/zed-device-suite.f` — Orin device proof of the collective fix:
+  emits SUM_ROWS / softmax forward / softmax backward PTX with the branch engine,
+  ships via the ssh harness, remote ptxas-assembles, and launches the committed
+  launchers on the Orin comparing the CPU reference. HABU_ZED-gated.
+- `tools/ptx/launch-neg-test.f` — fail-closed regressions for the launch/emit
+  contracts: malformed WHERE (E-PTX-SYNTAX), block mismatch and k > block
+  (E-PTX-BLOCK); the same header.f/launch.f contracts the device goldens launch under.
 - `tools/ptx/softmax-cg.f` / `tools/ptx/softmax-bwd-cg.f` — checked
   SOFTMAX-ROWS forward/backward emit drivers.
 - `tools/ptx/softmax-fb-cg.f` — combined driver emitting ONE PTX module with both
   the forward SOFTMAX_ROWS and the AD-derived SOFTMAX_BWD entries under a single
   header, so softmax-gradcheck loads a single cubin and pulls both handles from it.
+- `tools/ptx/ad-entry-lib.f` — per-VJP-entry kernel emitters for the device
+  gradcheck gate: DAG op-lists isolating each ad-dag entry (EXP, x-max, x/sum,
+  full softmax) plus the vjp.f table fixtures - two-input elementwise
+  (+./-./*.//. via AD2_FWD/AD2_BWD), scalar-factor SCALE/FMA. (ADS_*/ADF_*),
+  the OVER fan-out composite and DROP composite - and the deliberate wrong
+  variants (fan-out dropped, OVER-as-permutation, DROP cotangent leak); text
+  shape asserted in saxpy-test.f.
+- `tools/ptx/ad-gradcheck-launch.f` — Orin-side per-VJP gradcheck launcher:
+  central differences over each emitted forward (both inputs and the scalar
+  factor) vs the analytic backward, per-element rtol+atol, tie and saturated
+  fixtures, poisoned readbacks, every CUDA rc checked; the wrong variants
+  (fan-out dropped, OVER-as-permutation, DROP leak, cross-pair) must mismatch.
+- `tools/ptx/zed-gradcheck-suite.f` — Mac orchestrator for the per-VJP device
+  gradcheck gate: emits all entry kernels, ships/assembles via the ssh harness,
+  proves malformed-PTX and missing-cubin failure classes red, then runs the
+  launcher on the Orin. HABU_ZED-gated.
+- `lib/ptx/ad-gen.f` / `lib/ptx/ad-gen-test.f` — lowering of a GENERATED
+  straight-line body (the reverse pass output, AD-BACKWARD$) to PTX kernel
+  compute: token-driven EMIT dispatch over an emit-time register stack, with
+  SAVED-* resolution by row-local recompute of the forward slice (bindings for
+  X/Y/Z/MX/S/A; ZERO. lowers to a fresh zero tile); fail-closed v0 contract
+  (one load, one final store/scatter, at most one saves-op per forward,
+  unbound SAVED-*, unknown tokens and unbalanced bodies reject) plus the
+  composed pass tests (generated XSUBSUM backward text, NEG NEG collapse,
+  control-flow rejects, saves-op scan).
 - `lib/ptx/ad-ir.f` / `tools/ptx/softmax-bwd-opt-cg.f` — AD-op-list to PTX-IR
   bridge plus closed-form SOFTMAX backward emitter for the saved-output path.
+- `tools/ptx/softmax-rows-bwd-cg.f` — the ad-reverse capstone: the CHECKED
+  closed-form SOFTMAX-ROWS-BWD (dx = y*(dy - Sum(dy*y)), the reverse-pass +
+  simplifier derivation asserted in ir-test.f) certifies with token-shared
+  extents and emits its own SOFTMAX_BWD_ROWS kernel for the device gradcheck.
+- `lib/ptx/autograd-neg-test.f` — the gradient extent contract is static:
+  shared-extent closed-form backward and the MK-SPAN= minted gradient pair
+  certify; a dx typed with a different extent and a separately minted gradient
+  span are checker REJECTS (len(dx)=len(y) proven by token, never re-asserted).
 - `lib/ptx/header.f` / `lib/ptx/header-test.f` — checked PTX kernel-header
   vocabulary and its coverage.
 - `lib/ptx/tile.f` / `lib/ptx/tile-test.f` — PTX tile-DSL v0 operation
@@ -338,6 +470,7 @@ points stay listed.
 - `lib/test.f` — public checked test framework interface: assertions plus
   the `TEST:*` suite/group/test package facade.
 - `lib/test/assert.f` — checked assertion primitives used by test fixtures.
+- `lib/test/budget.f` — load-aware test timeout budgets: `T-BUDGET-MS` scales nominal budgets by the gate-exported `HB_LOAD_PCT` cal-factor, clamped to at most 3x.
 - `lib/test/assert-test.f` — focused coverage for checked assertion primitives.
 - `lib/test/record.f` — machine-readable `TFAIL` TSV failure records shared by
   the assert, snapshot, and runner test layers.
@@ -392,6 +525,8 @@ points stay listed.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.
+- `tools/stdin-closure-lib.f` — canonical stdin driver closure manifest (single source of truth for gate 17e).
+- `tools/stdin-closure-lint.f` — fail-closed drift gate proving stdin-closure consumers stay reconciled with the manifest.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver.
@@ -516,6 +651,9 @@ points stay listed.
 - `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
 - `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
 - `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
+- `tools/maki-ns-lint-core.f` — maki wordlist-namespace guard: token-scans maki/*.f for a top-level definition outside `package MAKI`; `E-` error constants stay global; a non-MAKI subsystem package (CUDA/FUSION/MAKI-GRADE) must carry a `\ maki-ns-lint: boundary <PKG>` marker matching its `package` token (stale marker = finding). UNGATED (dot habu-maki-ns-lint-reconcile): the single-package-per-file model is incompatible with fable's multi-package subsystem maki design; `tools/namespace-lint.f` is the active maki-namespace guard.
+- `tools/maki-ns-lint.f` — CLI wrapper for the maki wordlist-namespace lint (ungated; see maki-ns-lint-core.f).
+- `tools/maki-ns-lint-test.f` — checked fixture coverage for the maki wordlist-namespace lint (red-first detection, exempt/boundary/stale cases, live sweep; ungated).
 - `tools/string.f` — shared checked byte-string helper library.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
@@ -569,6 +707,8 @@ points stay listed.
 - `tools/repair-packet.f` — CLI entrypoint for repair packet generation.
 - `tools/diagnose-hb.f` — CLI entry that reports why bin/hb exits 74 outside the repo.
 - `tools/bench.f` — fixed Habu-timed kernels run on `bin/hb`.
+- `tools/ddc-verify.f` / `tools/ddc-verify-test.f` / `tools/ddc-drive.f` — Diverse Double-Compiling audit: builds bin/hb via the native fixpoint and the Gforth recovery chain and requires byte-identical output; explicit `HABU_ALLOW_BOOTSTRAP=1` audit, not per-commit.
+- `tools/why-threw.f` — throw-site diagnostic: runs a quotation under `catch` and, on a nonzero throw, reports the code plus the live fill of the shared string builders (SB, content-key CK/CK-ROW) before re-throwing, so an opaque capacity code (e.g. E-STR-CAPACITY) names its buffer in fork-worker/parallel-gate captures.
 - `tools/xref-test.f` — focused coverage for live dictionary xref words.
 - `tools/asm-src-test.f` / `tools/asm-checked-test.f` — ARM64 encoder source
   regression and the checked encoder layout regression.
@@ -613,10 +753,36 @@ points stay listed.
 
 - `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
   negative checked-source tests.
+- `test/drec-shape-test.f` — checked-prim surface pins for the typed
+  dictionary-record capability: the record access shapes the XREF-*/BFR-*/
+  BP-SLOT-* rewrite relies on compile checked today, and the two PES gaps
+  (`dbase@` provenance, `patch32` ptr overload) stay rejected until the
+  engine lane closes them deliberately.
 - `test/nf.fs` — Gforth-hosted native-Forth build/run/capture harness used by
   the no-binary bootstrap path.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
+- `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
+  PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
+  `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`
+  syscall buffers, each exercising its own guard register) traps with exit
+  `E-SEAL-VIOLATION`, the latch is one-way, free holes stay writable, and
+  post-seal language features still update protected cells via engine primitives.
+  `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
+  the file).
+- `test/seal-absence.f` — Gforth stage0 absence-parity fixture: scans
+  `bootstrap/cg/forth.fs` and fails closed if any pinned guard-bypass surface
+  (atomics, snap-rebase, extended syscalls, `CHECKER-*` mutators, package
+  intrinsic) appears on a code line without a `PROT-GUARD`, and pins the present
+  `PROT-GUARD`/`EMIT-SEAL-FRIEND` seal machinery so a mirrored guard cannot be
+  silently deleted. In-memory self-proofs cover the reject, guard-escape, and
+  comment-only cases.
+- `test/seal-package.f` — sealed system-package regressions (TFAM 2b-ii): child
+  forges prove post-seal user source cannot open/reopen `package TFAM`/`TYPE`/
+  `MATCH` nor define a qualified word into one (`: TFAM:tail ...`),
+  case-insensitively, fail-closed with exit `E-SEAL-PACKAGE`; ordinary packages
+  and qualified defs still compile, and a trailing-colon ordinary name is never
+  treated as qualified. Covers both `--load` and stdin cold-prefix entry paths.
 - `test/c3-widen-test.f` / `test/c4-shadow-test.f` — checker regressions for
   narrow-to-wide integer widening and local shadowing of ordinary words.
 - `test/gate-build-common.f` — checked helpers shared by native hb-build gate
@@ -671,9 +837,17 @@ points stay listed.
 - `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
+- `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
+- `test/type-decl-suite.f` — behavior suite for the TYPEFAMILY/SUMTYPE declaration grammar (positives, negatives, rollback, multi-error, diagnostics).
+- `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
+- `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
+- `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).
+- `test/type-layout-lower-pending.f` — staged TFAM 12 slice-3 width-aware lowering fixtures: real compile-subject words plus the per-op width-fact contract; standalone, not yet wired into a suite.
+- `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
+- `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.

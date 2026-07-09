@@ -7,7 +7,17 @@
 \ output path — the single knob; build-fixpoint owns/moves the artifact
 : SNAP-OUT s" hb-snap0" TMP-PATH ;
 
-create TRL 40 allot
+\ Snapshot trailer format version (item 12 slice 3b, dot
+\ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
+\ persisted effect-node arena, a pre-3b engine restoring such an image would
+\ misread hidden fields as logical params. The trailer grows 40->48 bytes with
+\ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
+\ rejects any image whose version exceeds what the engine supports with a
+\ distinct exit status (80, mirroring the snbad rc-79 corrupt-trailer path).
+\ Version 0 (an old 40-byte trailer) still restores. Bump on any layout change
+\ that a prior engine would misread.
+1 constant SNAP-FORMAT-VERSION
+create TRL 48 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
 : STB@ STB @ ;
@@ -18,7 +28,7 @@ s" STB-CELL@" s" -- ptr n" TRUST
 s" SDB@" s" -- ptr u8" TRUST
 
 : SNAP-SIZE! ( -- )
-   STSZ @ SCL @ + SDL @ + 40 + SNL ! ;
+   STSZ @ SCL @ + SDL @ + 48 + SNL ! ;   \ +48: 48-byte format-versioned trailer
 
 : SNAP-HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
@@ -190,10 +200,12 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
    SNC-CANON ;
 
 : SNAP-WRITE-BYTES ( -- )
-   \ trailer: magic, CANONICAL text base (0), dict count, region length,
-   \ data length - the region stream below is the canonicalized copy.
+   \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
+   \ length, data length, format version - the region stream below is the
+   \ canonicalized copy. Version at +40 is the last field so the magic/field
+   \ offsets 0..40 stay identical to the legacy 40-byte trailer.
    SNAP-MAGIC TRL !  0 TRL 8 + !  ndict@ TRL 16 + !
-   SCL @ TRL 24 + !  SDL @ TRL 32 + !
+   SCL @ TRL 24 + !  SDL @ TRL 32 + !  SNAP-FORMAT-VERSION TRL 40 + !
    \ stream: header, engine text, region, data, trailer, zero pad
    SNAP-OUT PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
@@ -204,7 +216,7 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
    SFD @ STB@ STSZ @ DRV-WALL
    SFD @ SNC-PTR SCL @ DRV-WALL
    SFD @ SND-PTR SDL @ DRV-WALL
-   SFD @ TRL 40 DRV-WALL
+   SFD @ TRL 48 DRV-WALL
    SFD @ extra SNAP-EXTRA-SIZE DRV-WALL
    SFD @ close ;
 

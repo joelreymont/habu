@@ -35,6 +35,12 @@ require lib/test/src-shape.f
    s" LKWOF 2 ['] J-OF CF-ENTRY" SHAPE:MUST-HAVE
    s" LKWENDOF 5 ['] J-ENDOF CF-ENTRY" SHAPE:MUST-HAVE
    s" LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY" SHAPE:MUST-HAVE
+   \ item 10: MATCH keyword lowered; CASE shape above is unchanged
+   s" : J-MATCH ( -- )" SHAPE:MUST-HAVE
+   s" : EM-ADT-MATCH-FAM ( -- )" SHAPE:MUST-HAVE
+   s" : EM-MATCH-SEMI ( -- )" SHAPE:MUST-HAVE
+   s" : C-DIE-BAD-TAG ( -- )" SHAPE:MUST-HAVE
+   s" LKWMATCH 5 ['] J-MATCH CF-ENTRY" SHAPE:MUST-HAVE
    s" EM-COMPILE-CONTROL-KEYWORDS" 2 SHAPE:COUNT=
    s" EM-COMPILE-STRING-KEYWORDS" 2 SHAPE:COUNT=
    s" EM-COMPILE-META-KEYWORDS" 2 SHAPE:COUNT=
@@ -56,7 +62,9 @@ require lib/test/src-shape.f
    s" {: lmainlbl notloc :}" SHAPE:MUST-LACK
    s" LBL LBL {: lmem qlrefok :}" SHAPE:MUST-LACK
    s" {: a:ptr u :}" SHAPE:MUST-LACK
-   s" CLOC-MAIN LABEL@ B," 2 SHAPE:COUNT=
+   \ 3 = register path + memory path + the pass-2 width-aware reference
+   \ (EM-P2-LOCREF branch, item 12 slice 3b)
+   s" CLOC-MAIN LABEL@ B," 3 SHAPE:COUNT=
    s" CLOC-MAIN @ B ;" SHAPE:MUST-LACK
    s" CLOC-QOK LABEL@ LBL," SHAPE:MUST-HAVE
    s" CLOC-MEM LABEL@ LBL," SHAPE:MUST-HAVE ;

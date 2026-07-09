@@ -43,6 +43,10 @@ $4000 constant CKT-BUF-CAP
 create CKT-ROOT FS-PATH-CAP allot
 create CKT-BAD-PATH FS-PATH-CAP allot
 create CKT-LIST-PATH FS-PATH-CAP allot
+create CKT-INC-DEP-PATH FS-PATH-CAP allot
+create CKT-INC-ENTRY-PATH FS-PATH-CAP allot
+create CKT-SUP-PATH FS-PATH-CAP allot
+create CKT-USE-PATH FS-PATH-CAP allot
 create CKT-HB-BUF FS-PATH-CAP allot
 
 variable CKT-OUT-A
@@ -50,8 +54,13 @@ variable CKT-ERR-A
 variable CKT-ROOT-U
 variable CKT-BAD-U
 variable CKT-LIST-U
+variable CKT-INC-DEP-U
+variable CKT-INC-ENTRY-U
+variable CKT-SUP-U
+variable CKT-USE-U
 variable CKT-HB-U
 variable CKT-START-NS
+variable CKT-PAR-U
 
 : CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -65,6 +74,18 @@ variable CKT-START-NS
 
 : CKT-LIST$ ( -- ptr u8 n )
    CKT-LIST-PATH CKT-LIST-U @ ;
+
+: CKT-INC-DEP$ ( -- ptr u8 n )
+   CKT-INC-DEP-PATH CKT-INC-DEP-U @ ;
+
+: CKT-INC-ENTRY$ ( -- ptr u8 n )
+   CKT-INC-ENTRY-PATH CKT-INC-ENTRY-U @ ;
+
+: CKT-SUP$ ( -- ptr u8 n )
+   CKT-SUP-PATH CKT-SUP-U @ ;
+
+: CKT-USE$ ( -- ptr u8 n )
+   CKT-USE-PATH CKT-USE-U @ ;
 
 : CKT-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -137,6 +158,17 @@ variable CKT-START-NS
 : CKT-DIRECT-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
    CKT-DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
+: CKT-DIRECT-ALL-LIST ( ptr u8 n ptr u8 n -- n n n ) {: aa:ptr au:n ba:ptr bu:n :}
+   CKT-DIRECT-START
+   -1 CHK-JSON !
+   -1 CHK-ALL !
+   -1 CHK-SOURCE-LIST !
+   aa au CHK-ADD-POS
+   ba bu CHK-ADD-POS
+   CHK-MAKE-TEMP
+   CHK-MATERIALIZE-LIST
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
 : CKT-DIRECT-PREVERIFY-LIST-PATH ( ptr u8 n -- n n n )
@@ -242,6 +274,71 @@ variable CKT-START-NS
    s" : CKT-BAD-OWN-DUP ( own -- own own ) dup ;" SB-APPEND
    SB$ ;
 
+: CKT-TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
+   SB-RESET
+   s" TYPEFAMILY tfck 1" SB-APPEND
+   $0a SB-APPEND-C
+   s" SUMTYPE rsck 2" SB-APPEND
+   $0a SB-APPEND-C
+   s"   VARIANT ok  a ;VARIANT" SB-APPEND
+   $0a SB-APPEND-C
+   s"   VARIANT err b ;VARIANT" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-TF-PASS ( tfck<n> -- tfck<n> ) ;" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-RS-PASS ( rsck<n,f> -- rsck<n,f> ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-TFAM-BAD$ ( -- ptr u8 n )    \ duplicate variant rejects fail-closed
+   SB-RESET
+   s" SUMTYPE rsbad 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
+   SB-RESET
+   s" ENUM eck red green ;ENUM" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-EN-PASS ( eck -- eck ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-ENUM-BAD$ ( -- ptr u8 n )    \ duplicate enum variant rejects fail-closed
+   SB-RESET
+   s" ENUM ebad red red ;ENUM" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-EBAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
+   SB-RESET
+   s" PRODUCT pck 0" SB-APPEND
+   $0a SB-APPEND-C
+   s"   FIELD x n" SB-APPEND
+   $0a SB-APPEND-C
+   s"   FIELD y n" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-PD-PASS ( pck -- pck ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-BAD$ ( -- ptr u8 n )    \ duplicate product field rejects fail-closed
+   SB-RESET
+   s" PRODUCT pbad 1 FIELD x a FIELD x a ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-PBAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-ALL$SRC ( -- ptr u8 n ) \ all-errors support replay registers products
+   SB-RESET
+   s" PRODUCT pae 0 FIELD v n ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-PAE-USE ( pae -- pae ) ;" SB-APPEND
+   SB$ ;
+
 : CKT-VREC-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
@@ -307,6 +404,10 @@ variable CKT-START-NS
    CKT-ROOT$ CLEANUP-TREE+
    CKT-ROOT$ s" bad.f" CKT-BAD-PATH JOIN-PATH CKT-BAD-U !
    CKT-ROOT$ s" local-test.f" CKT-LIST-PATH JOIN-PATH CKT-LIST-U !
+   CKT-ROOT$ s" inc-dep.f" CKT-INC-DEP-PATH JOIN-PATH CKT-INC-DEP-U !
+   CKT-ROOT$ s" inc-entry.f" CKT-INC-ENTRY-PATH JOIN-PATH CKT-INC-ENTRY-U !
+   CKT-ROOT$ s" list-sup.f" CKT-SUP-PATH JOIN-PATH CKT-SUP-U !
+   CKT-ROOT$ s" list-use.f" CKT-USE-PATH JOIN-PATH CKT-USE-U !
    CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
 
 : CKT-TEST-GOOD ( -- )
@@ -409,6 +510,51 @@ variable CKT-START-NS
    CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CKT-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
 
+: CKT-TEST-TYPEFAMILY-GOOD ( -- )
+   CKT-TFAM-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-SUMTYPE-BAD ( -- )
+   CKT-TFAM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: CKT-TEST-ENUM-GOOD ( -- )
+   CKT-ENUM-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-ENUM-BAD ( -- )
+   CKT-ENUM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: CKT-TEST-PRODUCT-GOOD ( -- )
+   CKT-PROD-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-PRODUCT-BAD ( -- )
+   CKT-PROD-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate field" CONTAINS? TTRUE ;
+
+: CKT-TEST-PRODUCT-ALL-ERRORS ( -- )   \ verify-source support replay (RECORD-PRODUCT)
+   CKT-PROD-ALL$SRC CKT-CORE-JSON 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 : CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
    CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -425,6 +571,193 @@ variable CKT-START-NS
    {: outu:n erru:n :}
    erru 0 T=
    outu 0 T= ;
+
+\ A dep loaded through a literal `s" path" included` is part of the closure:
+\ the entry's use of the dep's word preverifies (the pre-producer scan captured
+\ require/required only and rejected this good program).
+: CKT-INC-ENTRY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
+   CKT-INC-DEP$ SB-APPEND
+   $22 SB-APPEND-C
+   s"  included" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-USE-EIGHT ( -- n ) CKT-EIGHT ;" SB-APPEND $0a SB-APPEND-C
+   SB$ ;
+
+: CKT-TEST-INCLUDED-DEP ( -- )
+   CKT-INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
+   CKT-INC-ENTRY$ CKT-INC-ENTRY-SRC$ WRITE-ALL
+   CKT-INC-ENTRY$ CKT-DIRECT-PREVERIFY-PATH 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+\ `--all-errors --source-list a b` runs all-errors per ORIGINAL file with
+\ prior entries replayed as support: both bad defs in b report against b's
+\ path (the pre-redrive materialized temp had zero defs, so all-errors was a
+\ no-op and only preverify's first error surfaced).
+: CKT-TEST-SOURCE-LIST-ALL-ERRORS ( -- )
+   CKT-SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
+   CKT-USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
+   CKT-SUP$ CKT-USE$ CKT-DIRECT-ALL-LIST 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru CKT-USE$ CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-bad-one" CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-bad-two" CONTAINS? TTRUE
+   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
+   CKT-ERR erru s" ckt-good-use" CONTAINS? TFALSE
+   CKT-ERR erru s" preverify" CONTAINS? TFALSE ;
+
+\ Closure parity oracle: the retired token-level require/required scan
+\ (the pre-producer CHK-SCAN-DEPS semantics) re-expressed here as an
+\ independent check that the producer-backed closure is a superset of the old
+\ closure on every entry file the gate exercises.
+: CKT-PAR-WORD? ( n -- bool ) {: k:n :}
+   k 0 < if LINT-FALSE exit then
+   k L# @ >= if LINT-FALSE exit then
+   k LK@ L-WORD = ;
+
+: CKT-PAR=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK a u LINT-STR=CI ;
+
+: CKT-PAR-SQUOTE? ( n -- bool ) {: k:n :}
+   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+   k LEX-TOK {: a:ptr u:n :}
+   u 2 <> if LINT-FALSE exit then
+   a c@ LINT-FOLD $73 <> if LINT-FALSE exit then
+   a 1 + c@ $22 = ;
+
+: CKT-PAR-WS? ( n -- bool )
+   dup $20 = over 9 = or over $0A = or swap $0D = or ;
+
+: CKT-PAR-SQ-SKIP ( n -- n )
+   begin dup CKT-PAR-U @ < while
+      CHK-EXP-BUF over + c@ CKT-PAR-WS? if 1+ else exit then
+   repeat ;
+
+: CKT-PAR-SQ-END ( n -- n )
+   begin dup CKT-PAR-U @ < while
+      CHK-EXP-BUF over + c@ $22 = if exit then
+      1+
+   repeat ;
+
+: CKT-PAR-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
+   k CKT-PAR-SQUOTE? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   k LB@ k LEX-TOK nip + CKT-PAR-SQ-SKIP {: start:n :}
+   start CKT-PAR-SQ-END {: end:n :}
+   end CKT-PAR-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   CHK-EXP-BUF start + end start - LINT-TRUE ;
+
+: CKT-PAR-IN-CLOSURE ( ptr u8 n -- )
+   CHK-DEP-FIND 0 >= TTRUE ;
+
+: CKT-PAR-REQUIRE ( n -- ) {: k:n :}
+   k 1+ CKT-PAR-WORD? 0= if exit then
+   k 1+ LEX-TOK CKT-PAR-IN-CLOSURE ;
+
+: CKT-PAR-REQUIRED ( n -- ) {: k:n :}
+   k 0 <= if exit then
+   k 1- CKT-PAR-SQ-PATH$ if CKT-PAR-IN-CLOSURE else 2drop then ;
+
+: CKT-PAR-ORACLE-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHK-EXP-BUF CHK-SRC-CAP READ-ALL CKT-PAR-U !
+   CHK-EXP-BUF CKT-PAR-U @ LEX-SOURCE
+   0 begin dup L# @ < while
+      dup s" require" CKT-PAR=CI if dup CKT-PAR-REQUIRE then
+      dup s" required" CKT-PAR=CI if dup CKT-PAR-REQUIRED then
+      1+
+   repeat drop ;
+
+: CKT-PAR-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHK-EXPAND-RESET
+   a u CHK-EXPAND-PATH
+   0 begin dup CHK-DEP-ORDER-N @ < while
+      dup cells CHK-DEP-ORDER + @ CHK-DEP$ CKT-PAR-ORACLE-FILE
+      1+
+   repeat drop ;
+
+: CKT-TEST-CLOSURE-PARITY ( -- )
+   s" lib/errors.f" CKT-PAR-ENTRY
+   s" lib/string.f" CKT-PAR-ENTRY
+   s" lib/memory.f" CKT-PAR-ENTRY
+   s" lib/fs.f" CKT-PAR-ENTRY
+   s" lib/fs-mutate.f" CKT-PAR-ENTRY
+   s" lib/process.f" CKT-PAR-ENTRY
+   s" lib/process-argv.f" CKT-PAR-ENTRY
+   s" lib/process-env.f" CKT-PAR-ENTRY
+   s" lib/process-cwd.f" CKT-PAR-ENTRY
+   s" lib/test/suite-test.f" CKT-PAR-ENTRY ;
+
+\ Source-shape pin for the GENERATED check-runner prelude (dot
+\ habu-enumerate-generated-check-4109899a): CHK-BUILD-PREFIX emits a
+\ deliberate `0 set-check` window into every check-CLI child and must re-arm
+\ checking by installing EXACTLY the audited CHECK-F-HOOK, whose body
+\ re-enables fail-closed (70 throw). Generated source is lexer-invisible to
+\ checked-boundary-lint and trusted-inventory (string literals are skipped by
+\ design), so this shape regression IS the policing for the generated seam:
+\ every set-check line in the generated text must be one of the two audited
+\ shapes, with exactly one hook install. The doctored legs prove the scanner
+\ has teeth - a rogue install name or a missing install rejects.
+1024 constant CKTP-DOC-CAP
+create CKTP-DOC CKTP-DOC-CAP allot
+variable CKTP-I  variable CKTP-START
+variable CKTP-BAD  variable CKTP-INSTALLS
+variable CKTP-DOC-U
+
+: CKTP-LINE-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" 0 set-check" LINT-STR= if LINT-TRUE exit then
+   a u s" ' CHECK-F-HOOK set-check" LINT-STR= ;
+
+: CKTP-NOTE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" set-check" CONTAINS? 0= if exit then
+   a u s" ' CHECK-F-HOOK set-check" LINT-STR= if CKTP-INSTALLS @ 1+ CKTP-INSTALLS ! then
+   a u CKTP-LINE-OK? 0= if -1 CKTP-BAD ! then ;
+
+: CKTP-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 CKTP-BAD !  0 CKTP-INSTALLS !
+   0 CKTP-START !  0 CKTP-I !
+   begin CKTP-I @ u < while
+      a CKTP-I @ + c@ 10 = if
+         a CKTP-START @ + CKTP-I @ CKTP-START @ - CKTP-NOTE-LINE
+         CKTP-I @ 1+ CKTP-START !
+      then
+      CKTP-I @ 1+ CKTP-I !
+   repeat
+   CKTP-START @ u < if
+      a CKTP-START @ + u CKTP-START @ - CKTP-NOTE-LINE
+   then ;
+
+: CKTP-SHAPE-OK? ( ptr u8 n -- bool )
+   CKTP-SCAN
+   CKTP-BAD @ 0=  CKTP-INSTALLS @ 1 =  and ;
+
+: CKTP-PRELUDE ( -- ptr u8 n )
+   s" prelude-shape.f" CHK-LABEL!
+   0 CHK-JSON !
+   CHK-RUN-RESET
+   CHK-BUILD-PREFIX
+   CHK-RUN-BUF CHK-RUN-U @ ;
+
+: CKTP-DOC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   CKTP-DOC-U @ u + CKTP-DOC-CAP > if E-STR-CAPACITY throw then
+   a CKTP-DOC CKTP-DOC-U @ + u BYTE-COPY
+   CKTP-DOC-U @ u + CKTP-DOC-U ! ;
+
+: CKTP-DOCTORED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 CKTP-DOC-U !
+   a u CKTP-DOC+
+   S\" ' EVIL-HOOK set-check\n" CKTP-DOC+
+   CKTP-DOC CKTP-DOC-U @ ;
+
+: CKT-TEST-PRELUDE-HOOK ( -- )
+   CKTP-PRELUDE {: pa:ptr pu:n :}
+   pa pu CKTP-SHAPE-OK? TTRUE
+   pa pu s" CHECK! HOOK-REPORT-UNCHECKABLE dup -1 <> IF 70 throw THEN ;" CONTAINS? TTRUE
+   pa pu s" 0 set-check" CONTAINS? TTRUE
+   pa pu CKTP-DOCTORED$ CKTP-SHAPE-OK? TFALSE
+   pa 0 CKTP-SHAPE-OK? TFALSE ;
 
 \ typed-local-lint: allow-bare-local - q is the test action quotation.
 : CKT-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
@@ -452,8 +785,19 @@ variable CKT-START-NS
    s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
+   s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
+   s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
+   s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
+   s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
+   s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN
+   s" check/product-bad" [: CKT-TEST-PRODUCT-BAD ;] CKT-RUN
+   s" check/product-all-errors" [: CKT-TEST-PRODUCT-ALL-ERRORS ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
+   s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
+   s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
+   s" check/source-list-all-errors" [: CKT-TEST-SOURCE-LIST-ALL-ERRORS ;] CKT-RUN
+   s" check/prelude-hook-shape" [: CKT-TEST-PRELUDE-HOOK ;] CKT-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;

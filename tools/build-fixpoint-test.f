@@ -1,7 +1,7 @@
 \ build-fixpoint-test.f - checked fixture for tools/build-fixpoint.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \ lib/fs-mutate.f lib/process.f
-\ lib/process-argv.f lib/process-env.f lib/build.f lib/codesign.f
+\ lib/process-argv.f lib/process-env.f lib/process-cwd.f lib/build.f lib/codesign.f
 \ tools/build-fixpoint.f tools/build-fixpoint-test.f
 
 require lib/errors.f
@@ -13,14 +13,23 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+require lib/process-cwd.f
 require lib/build.f
 require lib/codesign.f
 require tools/build-fixpoint.f
 
 8192 constant BFT-CAPTURE-CAP
+$40000 constant BFT-BIG-CAP
 $100000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
+
+\ Snapshot trailer field offsets from the magic cell (src/habu/snap-lib.f
+\ SNAP-WRITE-BYTES): magic +0, text base +8, ndict +16, region len +24,
+\ data len +32, format version +40.
+16 constant BFT-TRL-NDICT
+24 constant BFT-TRL-REGLEN
+40 constant BFT-TRL-VERSION
 
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
@@ -35,8 +44,20 @@ variable BFT-NOTDIR-U
 variable BFT-ENG-A-U
 variable BFT-ENG-B-U
 variable BFT-CERT-U
+variable BFT-STALE-U
+variable BFT-STALE-HB-U
+variable BFT-STALE-TMP-U
+variable BFT-STALE-STAMP-U
+variable BFT-STALE-HIDE-U
+variable BFT-CP-U
+variable BFT-BIG-OUT-A
+variable BFT-BIG-ERR-A
 variable BFT-BUILD-FILES
 variable BFT-READ-A
+variable BFT-BYTES-A
+variable BFT-BYTES-N
+variable BFT-MAG-I
+variable BFT-MAG-LAST
 variable BFT-PROF-I
 variable BFT-REG-I
 variable BFT-JIT-I
@@ -57,6 +78,13 @@ create BFT-NOTDIR-BUF FS-PATH-CAP allot
 create BFT-ENG-A-BUF FS-PATH-CAP allot
 create BFT-ENG-B-BUF FS-PATH-CAP allot
 create BFT-CERT-BUF FS-PATH-CAP allot
+create BFT-STALE-BUF FS-PATH-CAP allot
+create BFT-STALE-HB-BUF FS-PATH-CAP allot
+create BFT-STALE-TMP-BUF FS-PATH-CAP allot
+create BFT-STALE-STAMP-BUF FS-PATH-CAP allot
+create BFT-STALE-HIDE-BUF FS-PATH-CAP allot
+create BFT-CP-BUF FS-PATH-CAP allot
+create BFT-NL 10 c,
 create BFT-KEY1 64 allot
 create BFT-OUT BFT-CAPTURE-CAP allot
 create BFT-ERR BFT-CAPTURE-CAP allot
@@ -123,6 +151,37 @@ create BFT-CHECK-OFF-LINE
 : BFT-CERT ( -- ptr u8 n )
    BFT-CERT-BUF BFT-CERT-U @ ;
 
+: BFT-STALE ( -- ptr u8 n )
+   BFT-STALE-BUF BFT-STALE-U @ ;
+
+: BFT-STALE-HB ( -- ptr u8 n )
+   BFT-STALE-HB-BUF BFT-STALE-HB-U @ ;
+
+: BFT-STALE-TMP ( -- ptr u8 n )
+   BFT-STALE-TMP-BUF BFT-STALE-TMP-U @ ;
+
+: BFT-STALE-STAMP ( -- ptr u8 n )
+   BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U @ ;
+
+: BFT-STALE-HIDE ( -- ptr u8 n )
+   BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U @ ;
+
+: BFT-BIG-OUT-FIELD ( -- ptr ptr u8 )
+   BFT-BIG-OUT-A 0 ptr-field ;
+
+: BFT-BIG-ERR-FIELD ( -- ptr ptr u8 )
+   BFT-BIG-ERR-A 0 ptr-field ;
+
+: BFT-BIG-OUT ( -- ptr u8 )
+   BFT-BIG-OUT-FIELD @ ;
+
+: BFT-BIG-ERR ( -- ptr u8 )
+   BFT-BIG-ERR-FIELD @ ;
+
+: BFT-ALLOC-BIG ( -- )
+   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-OUT-FIELD !
+   BFT-BIG-CAP MEM-ALLOC-BYTES drop BFT-BIG-ERR-FIELD ! ;
+
 : BFT-EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
@@ -156,12 +215,7 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT s" cert-source.f" BFT-CERT-BUF BFT-CERT-U BFT-PATH!
    BFT-NOTDIR s" plain file, not a directory" WRITE-ALL ;
 
-: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
-   PROC-ARGV-RESET
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
-   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+: BFT-ARGV-LOAD-FILES ( -- )
    s" --load"  >LEN PROC-ARGV+
    s" lib/errors.f" BFT-ARG+
    s" lib/string.f" BFT-ARG+
@@ -174,7 +228,15 @@ create BFT-CHECK-OFF-LINE
    s" lib/build.f" BFT-ARG+
    s" lib/codesign.f" BFT-ARG+
    s" tools/build-fixpoint.f" BFT-ARG+
-   s" tools/build-fixpoint-main.f" BFT-ARG+
+   s" tools/build-fixpoint-main.f" BFT-ARG+ ;
+
+: BFT-ARGV-FIXPOINT ( ptr u8 n ptr u8 n -- n ) {: tmp:ptr tmpu:n stamp:ptr stampu:n :}
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN tmp tmpu >LEN PROC-ENV+
+   s" HABU_FIXPOINT_STAMP" >LEN stamp stampu >LEN PROC-ENV+
+   s" HABU_FIXPOINT_ENGINE" >LEN BFT-HB >LEN PROC-ENV+
+   BFT-ARGV-LOAD-FILES
    PROC-ARGV-N @ COUNT>N ;
 
 : BFT-ARGV-BUILD ( -- n )
@@ -275,7 +337,8 @@ create BFT-CHECK-OFF-LINE
    BFT-ARGV-FAIL BFT-BUILD-ARGV# T=
    BFT-ARGV-ALL-FORCE
    BFT-SPAWN-FIXPOINT {: outu:n erru:n rcn:n :}
-   rcn 0 T<>
+   rcn BF-BUILD-RC T=
+   BFT-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
    BFT-STAMP2 FILE? TFALSE ;
 
 : BFT-STAGE-MUTATED-KEY! ( -- )
@@ -367,6 +430,90 @@ create BFT-CHECK-OFF-LINE
 : BFT-READ ( ptr u8 n -- n )
    BFT-READ-BUF BFT-READ-CAP READ-ALL ;
 
+\ Stale-seed install regression: a refresh child that dies (here: a crash baked
+\ into the fixture's src/habu/hide.f, the first stage2 prefix file, so the
+\ bootstrap child aborts with SIGABRT rc 134 exactly like a seed that cannot
+\ load the current engine prefix) must fail the install loudly: deterministic
+\ BF-BUILD-RC exit, a named stderr diagnostic, the engine binary byte-unchanged,
+\ and no stamp. Before the BF-CLI boundary the E-BUILD-STATUS throw escaped to
+\ BTHROW's no-handler exit: silent, exit code masked to the low 8 bits.
+\ The crash rides a TRUSTED: boundary so BLOCKING certification cannot see it
+\ (a `0 set-check` body is still checked by VERIFY:SOURCE-BUF and would be
+\ rejected statically before ever running) -- the stale-seed scenario this
+\ models is a semantic runtime failure, not a type error.
+: BFT-STALE-DST ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   BFT-STALE a u BFT-CP-BUF JOIN-PATH BFT-CP-U !
+   BFT-CP-BUF BFT-CP-U @ ;
+
+: BFT-STALE-COPY-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u BFT-STALE-DST {: d:ptr du:n :}
+   d du BF-PARENT-U {: pu:n :}
+   pu 0 > if d pu MAKE-DIRS then
+   a u d du COPY-FILE-STREAM ;
+
+: BFT-STALE-COPY-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FILE? if a u BFT-STALE-COPY-FILE then ;
+
+: BFT-STALE-COPY-TREE ( ptr u8 n -- )
+   [: BFT-STALE-COPY-ENTRY ;] WALK-FILES ;
+
+: BFT-STALE-SABOTAGE ( -- )
+   s" src/habu/hide.f" BFT-READ {: u:n :}
+   BFT-STALE-HIDE s" TRUSTED: BFT-STALE-CRASH ( -- ) 1 0 ! ; BFT-STALE-CRASH" WRITE-ALL
+   BFT-STALE-HIDE BFT-NL 1 APPEND-FILE
+   BFT-STALE-HIDE BFT-READ-BUF u APPEND-FILE ;
+
+: BFT-STALE-PATHS! ( -- )
+   s" habu-bft-stale" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u BFT-STALE-BUF BFT-STALE-U BFT-COPY!
+   BFT-STALE CLEANUP-TREE+
+   BFT-STALE s" bin/hb" BFT-STALE-HB-BUF BFT-STALE-HB-U BFT-PATH!
+   BFT-STALE s" tmp" BFT-STALE-TMP-BUF BFT-STALE-TMP-U BFT-PATH!
+   BFT-STALE s" stamp" BFT-STALE-STAMP-BUF BFT-STALE-STAMP-U BFT-PATH!
+   BFT-STALE s" src/habu/hide.f" BFT-STALE-HIDE-BUF BFT-STALE-HIDE-U BFT-PATH! ;
+
+: BFT-STALE-PREPARE ( -- )
+   BFT-STALE-PATHS!
+   BFT-ALLOC-BIG
+   BFT-STALE-TMP MAKE-DIRS
+   s" src" BFT-STALE-COPY-TREE
+   s" lib" BFT-STALE-COPY-TREE
+   s" tools/build-fixpoint.f" BFT-STALE-COPY-FILE
+   s" tools/build-fixpoint-main.f" BFT-STALE-COPY-FILE
+   s" tools/stdin-closure-lib.f" BFT-STALE-COPY-FILE
+   s" bin/hb" BFT-STALE-COPY-FILE
+   BFT-STALE-HB CHMOD-X
+   BFT-STALE-SABOTAGE ;
+
+: BFT-STALE-ARGV ( -- )
+   PROC-ARGV-RESET
+   PROC-ENV-RESET
+   s" HB_TMP" >LEN BFT-STALE-TMP >LEN PROC-ENV+
+   s" HABU_FIXPOINT_STAMP" >LEN BFT-STALE-STAMP >LEN PROC-ENV+
+   BFT-ARGV-LOAD-FILES
+   s" --" BFT-ARG+
+   s" install" BFT-ARG+
+   s" --force" BFT-ARG+ ;
+
+: BFT-STALE-SPAWN ( -- n n n )
+   BFT-STALE-HB >LEN BFT-STALE >LEN
+   BFT-BIG-OUT BFT-BIG-CAP >LEN
+   BFT-BIG-ERR BFT-BIG-CAP >LEN
+   BFT-TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CWD-CAPTURE
+   BFT-CAPTURE>N ;
+
+: BFT-TEST-STALE-INSTALL ( -- )
+   BFT-STALE-PREPARE
+   BFT-STALE-ARGV
+   BFT-STALE-SPAWN {: outu:n erru:n rcn:n :}
+   rcn BF-BUILD-RC T=
+   BFT-BIG-ERR erru s" build-fixpoint: failed" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" E-BUILD-STATUS" CONTAINS? TTRUE
+   BFT-BIG-ERR erru s" habu-crash regs" CONTAINS? TTRUE
+   BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
+   BFT-STALE-STAMP FILE? TFALSE ;
+
 : BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u start needle:ptr nu :}
    start 0 < if -1 exit then
    start u >= if -1 exit then
@@ -399,6 +546,8 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
    BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
    BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
+   BFT-READ-BUF u BFT-CHECK-OFF-LINE$ CONTAINS? TFALSE
+   BFT-READ-BUF u s\" s\" ASM-CODE\" s\" -- asm\" TRUST" CONTAINS? TFALSE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
 
 : BFT-TEST-NO-STAGE2-RUN-SOURCE ( -- )
@@ -412,12 +561,16 @@ create BFT-CHECK-OFF-LINE
    BFT-PROF-I @ BFT-REG-I @ < TTRUE
    BFT-REG-I @ BFT-JIT-I @ < TTRUE ;
 
+\ The target-image writers (elf/macho/sign) compile CHECKED in stage2: no
+\ 0 set-check window opens at or after the image region and no synthetic
+\ TRUST rows are injected, so a stack-effect regression in ASM-CODE/
+\ BUILD-IMAGE/BUILD-SNAP-HDR/SET-SIGID/CODESIG2 fails the stage compile.
 : BFT-TEST-CHECKED-TARGET-IMAGE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
    BFT-READ-BUF u s" : ASM-CODELEN!" FIND-SUB dup BFT-FOUND BFT-IMG-I !
    BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER dup BFT-FOUND BFT-IMG-BUILD-I !
    BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER dup BFT-FOUND BFT-HABU1-I !
-   BFT-READ-BUF u BFT-IMG-BUILD-I @ BFT-CHECK-OFF-LINE$ BFT-FIND-AFTER BFT-NOT-FOUND
+   BFT-READ-BUF u BFT-IMG-I @ BFT-CHECK-OFF-LINE$ BFT-FIND-AFTER BFT-NOT-FOUND
    BFT-IMG-I @ BFT-IMG-BUILD-I @ < TTRUE
    BFT-IMG-BUILD-I @ BFT-HABU1-I @ < TTRUE ;
 
@@ -436,6 +589,106 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : INCLUDE-READ-ALL ( ptr u8 n -- ptr u8 n )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : included ( ptr u8 n -- )" CONTAINS? TTRUE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
+   BF-TMP-RESET ;
+
+\ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
+\ habu-tfam-12-layout-057181a9): the loader EM-SNAPSHOT-RESTORE
+\ (src/habu/habu2.f) validates the 48-byte format-versioned trailer before
+\ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
+\ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
+\ (corrupt trailer). The snapshot binary is built through the WORKING runtime
+\ route the pipeline itself uses (hb-stdin < hb-snap-src -> hb-snap0, the
+\ BF-BUILD-SNAP-FROM-STDIN mechanism minus its certify gate: BF-CERTIFY-SNAP
+\ fails closed on snap.f's 0 set-check boundary until VERIFY:SOURCE-BUF
+\ honors injected set-check spans - dot habu-tfam-12-item-346f03c2).
+\ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
+\ - The trailer magic is NOT at FILE-SIZE-48: SNAP-EXTRA-SIZE padding and the
+\   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
+\   occurrence (the trailer is written after both payloads; nothing after it
+\   contains the magic).
+\ - A patched image must be re-signed (CODESIGN-FORCE) or macOS SIGKILLs it
+\   before the loader runs.
+\ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
+\   and the engine falls through to a COLD boot (rc 0) by design, so there is
+\   no magic-corruption leg.
+\ - EM-SNAPSHOT-RESTORE emits no diagnostic text on 79/80 (bare
+\   NR-EXIT-GROUP); rc is the only assertable surface. A labeled exit is a
+\   follow-up tracked in habu-tfam-12-item-346f03c2.
+: BFT-BYTES-FIELD ( -- ptr ptr u8 )
+   BFT-BYTES-A 0 ptr-field ;
+
+: BFT-BYTES ( -- ptr u8 )
+   BFT-BYTES-FIELD @ ;
+
+: BFT-SNAP0-BUILD ( -- )
+   BF-SNAP-SOURCE
+   s" hb-snap0" BF-REMOVE-TMP
+   s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0
+   s" hb-snap0" BF-EXPECT
+   s" hb-snap0" BF-CODESIGN-FORCE-TMP
+   s" hb-snap0" BF-CHMOD-X-TMP ;
+
+: BFT-EMPTY-STDIN! ( -- )
+   s" empty-stdin" BF-A$ BFT-EMPTY$ WRITE-ALL ;
+
+: BFT-SNAP-RUN ( ptr u8 n -- n )
+   s" empty-stdin" BF-RUN-ENV-TMP-INFILE ;
+
+: BFT-BYTES-READ ( -- )
+   s" hb-snap0" BF-A$ FILE-SIZE {: sz:n :}
+   sz MEM-ALLOC-BYTES drop BFT-BYTES-FIELD !
+   s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
+
+: BFT-MAGIC$ ( -- ptr u8 n )
+   s" !SNAPSBH" ;
+
+: BFT-MAGIC-STEP ( -- bool )
+   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER {: i:n :}
+   i 0 < if 0 0= 0= exit then
+   i BFT-MAG-LAST !
+   i 1 + BFT-MAG-I !
+   0 0= ;
+
+: BFT-MAGIC-LAST! ( -- )
+   0 BFT-MAG-I !
+   -1 BFT-MAG-LAST !
+   begin BFT-MAGIC-STEP 0= until
+   BFT-MAG-LAST @ 0 >= TTRUE ;
+
+: BFT-BYTE@ ( n -- n ) {: off:n :}
+   BFT-BYTES off BYTE+ c@ ;
+
+: BFT-BYTE! ( n n -- ) {: val:n off:n :}
+   val BFT-BYTES off BYTE+ c! ;
+
+: BFT-DOCTOR-WRITE ( -- )
+   s" hb-doctored" BF-REMOVE-TMP
+   s" hb-doctored" BF-A$ BFT-BYTES BFT-BYTES-N @ WRITE-ALL
+   s" hb-doctored" BF-CODESIGN-FORCE-TMP
+   s" hb-doctored" BF-CHMOD-X-TMP ;
+
+: BFT-DOCTORED-RC ( n n -- n ) {: off:n val:n :}
+   off BFT-BYTE@ {: orig:n :}
+   val off BFT-BYTE!
+   BFT-DOCTOR-WRITE
+   s" hb-doctored" BFT-SNAP-RUN {: rcn:n :}
+   orig off BFT-BYTE!
+   rcn ;
+
+: BFT-TEST-SNAP-TRAILER ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-SNAP0-BUILD
+   BFT-EMPTY-STDIN!
+   s" hb-snap0" BFT-SNAP-RUN 0 T=
+   BFT-BYTES-READ
+   BFT-MAGIC-LAST!
+   BFT-MAG-LAST @ {: mag:n :}
+   mag BFT-TRL-VERSION + BFT-BYTE@ 1 T=
+   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-RC 80 T=
+   \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
+   \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
+   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-RC 79 T=
+   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-RC 79 T=
    BF-TMP-RESET ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
@@ -486,15 +739,83 @@ create BFT-CHECK-OFF-LINE
    s" cert-bad" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
 
-\ Preflight-retirement regression: the retired habu1/habu2 typed-shape asserts
-\ guarded emitter words against stack-effect regressions; their replacement is
-\ the checker itself (habu1/habu2 are emitted checked). Prove the real check
+\ Preflight-retirement regression: the retired habu1/habu2/icode typed-shape
+\ asserts guarded emitter words against stack-effect regressions; their
+\ replacement is the checker itself (habu1/habu2 compile checked in the stage;
+\ icode is covered by the blocking static certify). Prove the real check
 \ rejects the guarded corruption - an emitter body underflowing its declared
 \ inputs (the spawn-descriptor-underflow class the asserts were added for).
 : BFT-TEST-RETIRE-REGRESSION ( -- )
    s" : SPAWN-DUP2-ACTION ( n n -- ) drop drop drop ;" BFT-CERT-WRITE
    s" retire-spawn-underflow" BFT-CERT BF-CERTIFY-RC 70 T=
    BF-CERT-DIAG-U @ 0 > TTRUE ;
+
+\ Certification is BLOCKING: a generated stage source that rejects must fail
+\ the build with E-BUILD-STATUS, not warn and proceed (fail-open). The
+\ install-path proof is the red/green install pair recorded on
+\ habu-make-fixpoint-certify-a11dbad5; this pins the unit behavior.
+: BFT-TEST-CERTIFY-BLOCKING ( -- )
+   s" : BFT-CERT-BAD2 ( n -- n ) drop ;" BFT-CERT-WRITE
+   [: s" cert-blocking" BFT-CERT BF-CERTIFY-GENERATED ;] E-BUILD-STATUS TTHROWSQ ;
+
+: BFT-TEST-CERTIFY-GOOD-PASSES ( -- )
+   s" : BFT-CERT-GOOD2 ( n -- n ) 1 + ;" BFT-CERT-WRITE
+   s" cert-good2" BFT-CERT BF-CERTIFY-GENERATED ;
+
+\ Self-certification guard: the checker's own source and the pre-compile source
+\ verifier must certify clean via the same VERIFY:SOURCE-BUF path the fixpoint
+\ install uses, so any future de-typing of checker.f/verify-source.f turns this
+\ suite red immediately. The whole stage2/stdin sources now certify rc 0 and
+\ certification is BLOCKING (BFT-TEST-CERTIFY-BLOCKING); the fixpoint install
+\ is the end-to-end assertion.
+: BFT-TEST-CERTIFY-CHECKER-SELF ( -- )
+   s" checker-self" s" src/core/checker.f" BF-CERTIFY-RC 0 T=
+   s" verify-source-self" s" src/habu/verify-source.f" BF-CERTIFY-RC 0 T= ;
+
+\ Per-file TFAM-prefix certification: type-schema.f, type-family.f, render.f,
+\ and sumtype.f certify clean via the same VERIFY:SOURCE-BUF path, each
+\ verified as the tail of its exact BF-APPEND-CHECKER-BOOT prefix context
+\ (util, structures, checker, then the earlier TFAM files), so de-typing any
+\ one file fails its own assert. render.f sits between type-family.f and
+\ sumtype.f in the real prefix and certifies since its typed cleanup
+\ (habu-make-fixpoint-certify-a11dbad5).
+: BFT-CERT-TFAM$ ( -- ptr u8 n )
+   s" cert-tfam" BF-A$ ;
+
+: BFT-CERT-TFAM-BASE ( -- )
+   s" cert-tfam" BF-RESET-OUT
+   s" cert-tfam" s" src/core/util.f" BF-APPEND-SOURCE
+   s" cert-tfam" s" src/core/structures.f" BF-APPEND-SOURCE
+   s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE ;
+
+: BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-CERT-TFAM-BASE
+   s" cert-tfam" s" src/core/type-schema.f" BF-APPEND-SOURCE
+   s" tfam-type-schema" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
+   s" cert-tfam" s" src/core/type-family.f" BF-APPEND-SOURCE
+   s" tfam-type-family" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
+   s" cert-tfam" s" src/core/render.f" BF-APPEND-SOURCE
+   s" tfam-render" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
+   s" cert-tfam" s" src/core/sumtype.f" BF-APPEND-SOURCE
+   s" tfam-sumtype" BFT-CERT-TFAM$ BF-CERTIFY-RC 0 T=
+   BF-TMP-RESET ;
+
+\ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
+\ stage-input path (hb-stage reads that name), so BF-CERTIFY-STAGE2 and
+\ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
+\ exists in each phase and that the stdin phase OVERWRITES it with distinct
+\ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.
+: BFT-TEST-CERTIFY-PHASE-SOURCES ( -- )
+   BFT-ROOT BF-TMP!
+   BF-STAGE2-SOURCE
+   BFT-STAGE2 FILE? TTRUE
+   BF-RECORD-STAGE
+   BF-STDIN-SOURCE
+   BFT-STAGE2 FILE? TTRUE
+   BF-RECORD-STDIN
+   BF-REC-STAGE-DG BF-STAMP-DG-U BF-REC-STDIN-DG BF-STAMP-DG-U STR= TFALSE
+   BF-TMP-RESET ;
 
 \ Hash-pin mismatch: pin a sandbox boot-prefix file, reload unchanged (no
 \ throw), then mutate it mid-sequence - the reload must fail closed with
@@ -512,7 +833,6 @@ create BFT-CHECK-OFF-LINE
    [: BFT-PIN-RELOAD ;] E-BUILD-BOOT-DRIFT TTHROWSQ
    BF-PIN-OFF!
    BF-PIN-RESET ;
-
 \ typed-local-lint: allow-bare-local - q keeps the named subtest quotation effect.
 : BFT-STEP ( ptr u8 n [ -- ] -- ) {: a:ptr u:n q :}
    a u T-LABEL
@@ -530,6 +850,7 @@ create BFT-CHECK-OFF-LINE
    s" build" [: BFT-TEST-BUILD ;] BFT-STEP
    s" cached skip" [: BFT-TEST-CACHED-SKIP ;] BFT-STEP
    s" build fail no stamp" [: BFT-TEST-BUILD-FAIL-NO-STAMP ;] BFT-STEP
+   s" stale seed install" [: BFT-TEST-STALE-INSTALL ;] BFT-STEP
    s" stamp source key" [: BFT-TEST-STAMP-SOURCE-KEY ;] BFT-STEP
    s" stamp corrupt" [: BFT-TEST-STAMP-CORRUPT ;] BFT-STEP
    s" stamp engine" [: BFT-TEST-STAMP-ENGINE ;] BFT-STEP
@@ -539,12 +860,18 @@ create BFT-CHECK-OFF-LINE
    s" certify good" [: BFT-TEST-CERTIFY-GOOD ;] BFT-STEP
    s" certify bad" [: BFT-TEST-CERTIFY-BAD ;] BFT-STEP
    s" retire regression" [: BFT-TEST-RETIRE-REGRESSION ;] BFT-STEP
+   s" certify blocking" [: BFT-TEST-CERTIFY-BLOCKING ;] BFT-STEP
    s" boot pin mismatch" [: BFT-TEST-BOOT-PIN ;] BFT-STEP
+   s" certify good passes" [: BFT-TEST-CERTIFY-GOOD-PASSES ;] BFT-STEP
+   s" certify checker self" [: BFT-TEST-CERTIFY-CHECKER-SELF ;] BFT-STEP
+   s" certify tfam prefix" [: BFT-TEST-CERTIFY-TFAM-PREFIX ;] BFT-STEP
+   s" certify phase sources" [: BFT-TEST-CERTIFY-PHASE-SOURCES ;] BFT-STEP
    s" stage2 source" [: BFT-TEST-STAGE2-SOURCE ;] BFT-STEP
    s" no stage2 run source" [: BFT-TEST-NO-STAGE2-RUN-SOURCE ;] BFT-STEP
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
+   s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT

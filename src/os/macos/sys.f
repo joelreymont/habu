@@ -46,6 +46,17 @@ $1   constant NR-EXIT-GROUP
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
 
+\ Runtime-emit syscall stencils (TFAM 10 slice 3): the MATCH bad-tag die is
+\ EMITTED into the user word, so its write+exit syscall words are baked here at
+\ engine-build time rather than assembled by SYS, at build time. The macOS
+\ syscall number goes in x16 (movz x16,#NR = $D2800010 + NR*32; Rd and the imm
+\ field do not overlap so + == or) and the call is `svc #0x80`. The die never
+\ inspects the write return, so the Darwin carry-flag reconciliation SYS, adds is
+\ not needed.
+$D2800010 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x16, #NR-WRITE
+$D2800010 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x16, #NR-EXIT-GROUP
+$D4001001 constant SYS-EMIT-SVC                          \ svc #0x80
+
 : OS-OPEN-RD ( n -- )
    0 swap 0 ADDI,  1 0 MOVZ,  2 0 MOVZ,  NR-OPEN SYS, ;
 

@@ -25,32 +25,32 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    SB-APPEND
    STR-LF SB-APPEND-C ;
 
-: FIELD ( ptr u8 n -- )
+: FIELD+ ( ptr u8 n -- )
    SB-APPEND
    STR-TAB SB-APPEND-C ;
 
 : EXPECTED$ ( -- ptr u8 n )
    SB-RESET
-   s" HBOBJ" FIELD s" 1" LINE
-   s" source" FIELD HASH$ LINE
-   s" target" FIELD s" macos-aarch64" LINE
-   s" checker" FIELD s" checker-effect-v1" LINE
-   s" compiler" FIELD s" hb-arm64-v1" LINE
-   s" require" FIELD s" lib/string.f" LINE
-   s" text" FIELD s" 007fff" LINE
-   s" data" FIELD s" 010210" LINE
-   s" package" FIELD s" OBJ" FIELD s" public" LINE
-   s" export" FIELD s" SQUARE" FIELD s" n -- n" LINE
-   s" def" FIELD s" SQUARE" FIELD s" 1" FIELD s" n -- n" LINE
-   s" import" FIELD s" PRINT" FIELD s" ptr u8 n --" LINE
-   s" reloc" FIELD s" abs64" FIELD s" 16" FIELD s" PRINT" LINE
-   s" type" FIELD s" count" FIELD s" nominal" LINE
-   s" noret" FIELD s" DIE" LINE
+   s" HBOBJ" FIELD+ s" 1" LINE
+   s" source" FIELD+ HASH$ LINE
+   s" target" FIELD+ s" macos-aarch64" LINE
+   s" checker" FIELD+ s" checker-effect-v1" LINE
+   s" compiler" FIELD+ s" hb-arm64-v1" LINE
+   s" require" FIELD+ s" lib/string.f" LINE
+   s" text" FIELD+ s" 007fff" LINE
+   s" data" FIELD+ s" 010210" LINE
+   s" package" FIELD+ s" OBJ" FIELD+ s" public" LINE
+   s" export" FIELD+ s" SQUARE" FIELD+ s" n -- n" LINE
+   s" def" FIELD+ s" SQUARE" FIELD+ s" 1" FIELD+ s" n -- n" LINE
+   s" import" FIELD+ s" PRINT" FIELD+ s" ptr u8 n --" LINE
+   s" reloc" FIELD+ s" abs64" FIELD+ s" 16" FIELD+ s" PRINT" LINE
+   s" type" FIELD+ s" count" FIELD+ s" nominal" LINE
+   s" noret" FIELD+ s" DIE" LINE
    SB$ ;
 
 : SOURCE-ROW$ ( -- ptr u8 n )
    SB-RESET
-   s" source" FIELD HASH$ SB-APPEND
+   s" source" FIELD+ HASH$ SB-APPEND
    SB$ ;
 
 : BUILD ( -- )
@@ -131,6 +131,39 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    11 1 OBJ:ROW-FIELD$ s" 16" T$=
    11 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
 
+create ENTRY-SCRATCH 1024 allot
+variable ENTRY-SCRATCH-U
+
+: ENTRY-BUILD ( -- )
+   OBJ:RESET
+   HASH$ OBJ:SOURCE!
+   s" macos-aarch64" OBJ:TARGET!
+   s" checker-effect-v1" OBJ:CHECKER!
+   s" hb-arm64-v1" OBJ:COMPILER!
+   TEXT-BYTES 3 OBJ:TEXT+
+   s" HLP" s" --" OBJ:EXPORT+
+   s" HLP" 0 s" --" OBJ:DEF+
+   s" HLP" 1 s" 0000000000000005" OBJ:ENTRY+ ;
+
+: ENTRY-ASSERT-ROW ( -- )                         \ row 7: source/target/checker/compiler/text/export/def/entry
+   7 OBJ:ROW-TAG$ s" entry" T$=
+   7 OBJ:ROW-FIELD# 3 T=
+   7 0 OBJ:ROW-FIELD$ s" HLP" T$=
+   7 1 OBJ:ROW-FIELD$ s" 1" T$=
+   7 2 OBJ:ROW-FIELD$ s" 0000000000000005" T$= ;
+
+\ A selected non-MAIN entry row (name, test mode, forged seed hex) emits, and
+\ re-parses from a serialized copy with a stable content key (item 10 slice 5).
+: ENTRY-ROW ( -- )
+   ENTRY-BUILD
+   ENTRY-ASSERT-ROW
+   KEY1 OBJ:KEY-HEX
+   OBJ:BYTES$ dup ENTRY-SCRATCH-U ! ENTRY-SCRATCH swap BYTE-COPY
+   ENTRY-SCRATCH ENTRY-SCRATCH-U @ OBJ:LOAD
+   KEY2 OBJ:KEY-HEX
+   KEY1 KEY-U KEY2 KEY-U T$=
+   ENTRY-ASSERT-ROW ;
+
 : BAD-TAB ( -- )
    OBJ:RESET
    s" bad	name" OBJ:REQUIRE+ ;
@@ -201,6 +234,7 @@ public
    KEY-CHANGES
    MAX-BYTES-PUBLISHED
    ROW-ACCESSORS
+   ENTRY-ROW
    FAILURES
    T-REPORT ;
 

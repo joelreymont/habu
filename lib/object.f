@@ -94,7 +94,7 @@ variable LOAD-OFF
    c SPACE < if E-OBJ-FIELD throw then
    c STR-BYTE-MAX > if E-OBJ-FIELD throw then ;
 
-: FIELD ( ptr u8 n -- ) {: a:ptr u:n :}
+: FIELD+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-OBJ-FIELD throw then
    u FIELD-CAP > if E-OBJ-FIELD throw then
    0 begin dup u < while
@@ -114,7 +114,7 @@ variable LOAD-OFF
       dup a + c@ HEX? 0= if E-OBJ-FIELD throw then
       1+
    repeat drop
-   a u FIELD ;
+   a u FIELD+ ;
 
 : HEX-FIELD ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-OBJ-FIELD throw then
@@ -130,15 +130,15 @@ variable LOAD-OFF
 
 : LINE1 ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n tag:ptr tagu:n :}
    tag tagu TAG+
-   a u FIELD
+   a u FIELD+
    LF+ ;
 
 : LINE2 ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n b:ptr v:n tag:ptr tagu:n :}
    tag tagu TAG+
-   a u FIELD
+   a u FIELD+
    TAB+
-   b v FIELD
+   b v FIELD+
    LF+ ;
 
 : U+ ( n -- ) {: n:n :}
@@ -168,11 +168,11 @@ variable LOAD-OFF
 : LINE3N ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: a:ptr u:n off:n b:ptr v:n tag:ptr tagu:n :}
    tag tagu TAG+
-   a u FIELD
+   a u FIELD+
    TAB+
    off U+
    TAB+
-   b v FIELD
+   b v FIELD+
    LF+ ;
 
 : SECTION+ ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n tag:ptr tagu:n :}
@@ -265,6 +265,11 @@ variable LOAD-OFF
       exit
    then
    a u s" def" TAG? if
+      a u 3 EXPECT-TABS
+      a u PARSE-RELOC-OFF
+      exit
+   then
+   a u s" entry" TAG? if
       a u 3 EXPECT-TABS
       a u PARSE-RELOC-OFF
       exit
@@ -379,6 +384,14 @@ public
 
 : DEF+ ( ptr u8 n n ptr u8 n -- )
    s" def" LINE3N ;
+
+\ Selected AOT/object entry identity for a preseeded test entry: the entry word
+\ name, a test mode, and the forged seed cells (big-endian u64 hex, tag last).
+\ Recording it in the object bytes makes a preseeded object distinct from a
+\ normal MAIN object (OBJ:KEY-HEX diverges) and lets the object self-describe its
+\ non-MAIN entry. docs/census-tfam-10.md Category 2.
+: ENTRY+ ( ptr u8 n n ptr u8 n -- )
+   s" entry" LINE3N ;
 
 : IMPORT+ ( ptr u8 n ptr u8 n -- )
    s" import" LINE2 ;

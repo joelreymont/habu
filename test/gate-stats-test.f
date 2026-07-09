@@ -17,10 +17,12 @@ create GST-ROOT-BUF FS-PATH-CAP allot
 create GST-ROW-BUF GS-LINE-CAP allot
 create GST-SAVE-BUF FS-PATH-CAP allot
 create GST-CHILD-SAVE GS-LINE-CAP allot
+create GST-GEN-SAVE GS-GEN-CAP allot
 variable GST-ROOT-U
 variable GST-ROW-U
 variable GST-SAVE-U
 variable GST-CHILD-SAVE-U
+variable GST-GEN-SAVE-U
 
 : GST-COPY! ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-FS-PATH throw then
@@ -54,6 +56,16 @@ variable GST-CHILD-SAVE-U
    GST-CHILD-SAVE GS-CHILD-BUF GST-CHILD-SAVE-U @ BYTE-COPY
    GST-CHILD-SAVE-U @ GS-CHILD-U ! ;
 
+\ Pin the process generation to "0" for the whole run (in-gate this file runs
+\ inside a fork child whose gen is dynamic) and restore the real one after.
+: GST-GEN-SAVE! ( -- )
+   GS-GEN$ {: a:ptr u:n :}
+   a GST-GEN-SAVE u BYTE-COPY
+   u GST-GEN-SAVE-U ! ;
+
+: GST-GEN-RESTORE ( -- )
+   GST-GEN-SAVE GST-GEN-SAVE-U @ GS-GEN! ;
+
 : GST-ROW-RESET ( -- )
    0 GST-ROW-U ! ;
 
@@ -68,7 +80,7 @@ variable GST-CHILD-SAVE-U
 : GST-TEST-EXPECTED ( -- ptr u8 n )
    GST-ROW-RESET
    s" test" GST-ROW+ GST-ROW-TAB
-   s" test phase" GST-ROW+ GST-ROW-TAB
+   s" g0:test phase" GST-ROW+ GST-ROW-TAB
    s" host-source" GST-ROW+ GST-ROW-TAB
    s" gate-runner" GST-ROW+ GST-ROW-TAB
    s" process" GST-ROW+ GST-ROW-TAB
@@ -215,6 +227,151 @@ variable GST-CHILD-SAVE-U
    GST-SCAN
    GST-EXPECT-LABEL-DUP ;
 
+\ Pin the fork-child suppression's label selectivity: a child whose slot label
+\ is "slot label" emits three SIBLING completion spans, none of which carries
+\ that slot label - the shape a real fork worker like GSI-LINT-TOOLS-STATUS
+\ produces (repl-lint / trust-lint / stale-status-lint / gate-stats-test.f, none
+\ equal to its "lint-tools/status" pool label). GS-CHILD-OWNED? keys on the
+\ qualified slot identity, so it suppresses NONE of them; all three are counted
+\ (same generation, different label bytes). A label-free
+\ redesign that dropped "the child's first/outermost span" instead would wrongly
+\ swallow "first sub" here, undercounting a real span - which is why this dot's
+\ design (b) is unsound (see the dot's blocker note). The first span is emitted
+\ FIRST on purpose so a naive one-shot's failure is visible.
+: GST-WRITE-MULTI-EVENTS ( -- )
+   s" slot label" GS-CHILD-LABEL!
+   s" first sub" 9 GS-SPAN
+   s" second sub" 8 GS-SPAN
+   s" third sub" 7 GS-SPAN ;
+
+: GST-EXPECT-MULTI ( -- )
+   GS-SPANS @ 3 T=
+   GS-BUF GS-U @ s" first sub" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" second sub" CONTAINS? TTRUE
+   GS-BUF GS-U @ s" third sub" CONTAINS? TTRUE ;
+
+: GST-TEST-MULTI ( -- )
+   GST-ROOT$ GS-ROOT!
+   GST-CHILD-SAVE!
+   GST-WRITE-MULTI-EVENTS
+   GST-CHILD-RESTORE
+   GST-SCAN
+   GST-EXPECT-MULTI ;
+
+\ GS-SPAN-AUTH is the pool-authoritative emitter: it bypasses the fork child's
+\ self-suppression even when its label bytes equal the armed child identity,
+\ because the emitting pool owns the slot (GPT-NEST-CASE proves the nested-pool
+\ shape end to end). GS-SPAN with the same bytes stays suppressed.
+: GST-WRITE-AUTH-EVENTS ( -- )
+   s" auth label" GS-CHILD-LABEL!
+   s" auth label" 4 GS-SPAN
+   s" auth label" 6 GS-SPAN-AUTH ;
+
+: GST-EXPECT-AUTH ( -- )
+   GS-SPANS @ 1 T=
+   GS-BUF GS-U @ s" auth label" CONTAINS? TTRUE ;
+
+: GST-TEST-AUTH ( -- )
+   GST-ROOT$ GS-ROOT!
+   GST-CHILD-SAVE!
+   GST-WRITE-AUTH-EVENTS
+   GST-CHILD-RESTORE
+   GST-SCAN
+   GST-EXPECT-AUTH ;
+
+\ Generation qualification makes equal label bytes from different pool
+\ generations distinct identities: no label-dup (guard-independent), and each
+\ span attributes exactly to its own generation's test row.
+: GST-WRITE-GEN-SPLIT ( -- )
+   s" 7-1" GS-GEN!
+   s" split label" s" host-source" s" gate-runner" s" process" s" -" GS-TEST
+   s" split label" 5 GS-SPAN
+   s" 7-2" GS-GEN!
+   s" split label" s" artifact" s" gate-runner" s" process" s" -" GS-TEST
+   s" split label" 6 GS-SPAN
+   s" 0" GS-GEN! ;
+
+: GST-EXPECT-GEN-SPLIT ( -- )
+   GS-LABEL-DUP @ 0 T=
+   GS-SPANS @ 2 T=
+   0 GS-SUBJ-COUNT-PTR @ 1 T=
+   0 GS-SUBJ-TOTAL-PTR @ 5 T=
+   3 GS-SUBJ-COUNT-PTR @ 1 T=
+   3 GS-SUBJ-TOTAL-PTR @ 6 T=
+   GS-SPAN-STRAY @ 0 T= ;
+
+: GST-TEST-GEN-SPLIT ( -- )
+   GST-ROOT$ GS-ROOT!
+   GST-WRITE-GEN-SPLIT
+   GST-SCAN
+   GST-EXPECT-GEN-SPLIT ;
+
+\ The hard guard refuses a run with a label collision (die rc 1 after the
+\ dup diagnostic) and stays silent when labels are unique. die exits the
+\ process, so both legs run as spawned children over tiny fixture files.
+create GST-GUARD-PATH-BUF FS-PATH-CAP allot
+variable GST-GUARD-PATH-U
+2048 constant GST-GUARD-CAP
+create GST-GUARD-OUT GST-GUARD-CAP allot
+create GST-GUARD-ERR GST-GUARD-CAP allot
+5000 constant GST-GUARD-NOMINAL-MS
+
+: GST-GUARD-PATH$ ( -- ptr u8 n )
+   GST-GUARD-PATH-BUF GST-GUARD-PATH-U @ ;
+
+: GST-GUARD-FIXTURE! ( ptr u8 n -- )
+   GST-ROOT$ s" dup-guard.f" GST-GUARD-PATH-BUF JOIN-PATH GST-GUARD-PATH-U !
+   GST-GUARD-PATH$ 2swap ATOMIC-WRITE-FILE ;
+
+: GST-LOAD-ARGV ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" lib/errors.f" >LEN PROC-ARGV+
+   s" lib/string.f" >LEN PROC-ARGV+
+   s" lib/memory.f" >LEN PROC-ARGV+
+   s" lib/fs.f" >LEN PROC-ARGV+
+   s" lib/fs-mutate.f" >LEN PROC-ARGV+
+   s" lib/process.f" >LEN PROC-ARGV+
+   s" lib/process-argv.f" >LEN PROC-ARGV+
+   s" lib/process-env.f" >LEN PROC-ARGV+
+   s" test/gate-stats.f" >LEN PROC-ARGV+ ;
+
+: GST-GUARD-ARGV ( -- )
+   GST-LOAD-ARGV
+   GST-GUARD-PATH$ >LEN PROC-ARGV+ ;
+
+: GST-GUARD-RUN ( -- n )
+   GST-GUARD-ARGV
+   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-CAPTURE {: ou:len eu:len rc:rc :}
+   rc RC>N ;
+
+: GST-TEST-DUP-GUARD ( -- )
+   s" 1 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
+   GST-GUARD-RUN 1 T=
+   s" 0 GS-LABEL-DUP !  GS-LABEL-DUP-GUARD" GST-GUARD-FIXTURE!
+   GST-GUARD-RUN 0 T=
+   GST-GUARD-PATH$ REMOVE-FILE ;
+
+\ GS-GEN-INIT adopts HABU_GATE_GEN at load (spawn-slot generation inheritance):
+\ a valid generation loads clean, a malformed one must die rc 1 with a
+\ source-pointing diagnostic naming the variable - never an opaque exit and
+\ never a silent fallback to root "0". die exits the process, so both legs run
+\ as spawned children of the bare load path.
+: GST-GEN-ENV-RUN ( ptr u8 n -- n n ) {: val:ptr valu:n :}
+   GST-LOAD-ARGV
+   PROC-ENV-RESET
+   s" HABU_GATE_GEN" >LEN val valu >LEN PROC-ENV+
+   PROC-ENV-INHERIT-MISSING
+   s" bin/hb" >LEN GST-GUARD-OUT GST-GUARD-CAP >LEN GST-GUARD-ERR GST-GUARD-CAP >LEN
+   GST-GUARD-NOMINAL-MS T-BUDGET-MS >MS RUN-ARGV-ENV-CAPTURE {: ou:len eu:len rc:rc :}
+   eu LEN>N rc RC>N ;
+
+: GST-TEST-GEN-ENV ( -- )
+   s" 3-4" GST-GEN-ENV-RUN 0 T= drop
+   s" x" GST-GEN-ENV-RUN 1 T= {: erru:n :}
+   GST-GUARD-ERR erru s" HABU_GATE_GEN" CONTAINS? TTRUE ;
+
 : GST-TEST-SCAN ( -- )
    GST-PREPARE
    GS-PATH$ FILE? TTRUE
@@ -230,6 +387,11 @@ variable GST-CHILD-SAVE-U
    T-RESET
    GST-TEST-SCAN
    GST-TEST-LABEL-DUP
+   GST-TEST-MULTI
+   GST-TEST-AUTH
+   GST-TEST-GEN-SPLIT
+   GST-TEST-DUP-GUARD
+   GST-TEST-GEN-ENV
    CLEANUP-RUN
    GST-ROOT$ EXISTS? TFALSE
    T-REPORT
@@ -237,8 +399,11 @@ variable GST-CHILD-SAVE-U
 
 : GST-MAIN ( -- )
    GST-GS-SAVE
+   GST-GEN-SAVE!
+   s" 0" GS-GEN!
    [: GST-MAIN-BODY ;] catch {: rc:n :}
    GST-GS-RESTORE
+   GST-GEN-RESTORE
    rc 0 <> if rc throw then ;
 
 GST-MAIN

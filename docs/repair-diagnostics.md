@@ -18,7 +18,7 @@ Fields:
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Current checker diagnostic schema version. |
-| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
+| `code` | string | required | Stable error code such as `E-MISMATCH`, `E-REJECTED`, `E-UNDEFINED`, `E-UNSAFE`, `E-BAD-SIGNATURE`, `E-BAD-LOCAL-SHAPE`, `E-LINEAR-LOCAL`, `E-DEAD-CODE`, or `E-UNCHECKABLE`. |
 | `repair_class` | string | required | Stable repair bucket used by LLM repair loops. |
 | `verdict` | string | required | `rejected` or `uncheckable`; certification is not emitted as a diagnostic. |
 | `word` | string | required | Failing definition name as seen by the checker. |
@@ -42,6 +42,15 @@ Fields:
 The current checker JSON intentionally uses `definition_source` rather than
 `source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
 copy or normalize these fields instead of requiring the checker to emit aliases.
+
+Top-level type-family declaration failures (`TYPEFAMILY`/`SUMTYPE`) emit a
+declaration-shaped object instead of the definition shape above: code
+`E-BAD-DECLARATION`, repair class `fix_family_declaration`, `verdict`
+`rejected`, plus `decl` (declaration kind), `family` (family name token),
+`token` (offending token), `reason` (short cause), `file`, and `suggestion`.
+Declaration packets never fabricate definition-only fields such as `word`,
+`declared_effect`, `definition_source`, or `return_stack`; source-span fields
+land with the declaration origin plumbing (PLAN item 13).
 
 ## Repair Packet JSON
 
@@ -96,13 +105,25 @@ Current checker classes:
 - `factor_local_shape`: locals were introduced inside active control flow, inside
   a quotation, or after a dead `exit` path; factor a helper or move locals before
   control opens.
+- `factor_linear_local`: a linear-counting value (a `deflinear` type) was bound to
+  a `{: :}` local, where a reference could duplicate it and an unreferenced local
+  could drop it; keep the linear value on the stack and factor instead.
 - `remove_dead_code`: ordinary tokens appeared after a terminating control word;
   remove them or move the work before the terminating path.
+- `fix_qualified_name`: a call used a malformed qualified name with more than one
+  `:`; use a single `:` qualifier such as `PKG:WORD`.
 - `fix_signature_syntax`: the stack-effect comment is malformed or incomplete.
 - `fix_signature_type`: the stack-effect comment names an unknown multi-character
   type; use a known nominal type or a single-letter type variable.
+- `fix_signature_arity`: a registered type family was applied to the wrong number
+  of arguments; give it its exact declared arity.
+- `fix_bare_ptr_element`: a signature named `ptr` with no element type; give it an
+  element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
+- `fix_family_declaration`: a `TYPEFAMILY` or `SUMTYPE` declaration used a
+  reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
+  an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with
   modeled words or use an audited boundary only when the primitive is intended.
 - `unknown_rejection`: rejection did not fit a more specific class.
@@ -119,10 +140,15 @@ The checker `suggestion` field is stable short text derived only from
 | `fix_return_stack` | `Balance return-stack transfers before the definition exits.` |
 | `trusted_boundary_required` | `Move this compiler or runtime boundary behind audited TRUST.` |
 | `factor_local_shape` | `Move locals to a live top-level path or factor a helper.` |
+| `factor_linear_local` | `Keep the linear value on the stack; do not bind it to a local.` |
 | `remove_dead_code` | `Remove tokens after the terminating control word, or move the work before it.` |
+| `fix_qualified_name` | `Use one ':' qualifier, e.g. PKG:WORD.` |
 | `fix_signature_syntax` | `Repair the stack-effect comment syntax, including --.` |
 | `fix_signature_type` | `Use a known stack-signature type or a single-letter type variable.` |
+| `fix_signature_arity` | `Give the type family its exact declared number of arguments.` |
+| `fix_bare_ptr_element` | `Give 'ptr' an element type, e.g. 'ptr u8' or 'ptr a'.` |
 | `fix_nominal_type` | `Choose a unique non-reserved nominal type name.` |
+| `fix_family_declaration` | `Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks.` |
 | `rewrite_uncheckable` | `Rewrite with modeled words or isolate an audited primitive.` |
 | `unknown_rejection` | `Inspect the token, signature, and raw stack evidence.` |
 

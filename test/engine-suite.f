@@ -352,6 +352,14 @@ s" CUNK-PRES-BARE ( -- n ) ES-PRES-PUB" CHECK-QUIET-CANDIDATE! 1 T=
 s" CBAD-SIG-TRAIL ( n -- n ) dup dup ( n -- n )" T-CHECK-REJECTS
 s" CBAD-SIG-MID ( n -- n ) dup ( n -- n ) dup" T-CHECK-REJECTS
 s" COK-SIG-MID-COMMENT ( n -- n ) dup ( scratch note ) drop" T-CHECK-PASSES
+\ REND-SIG contract: a certified word's declared effect renders after CHECK!.
+\ The certify epilogue persists the usig via USIG-ADD, whose NEW re-initialized
+\ BROW/DCUR and blanked every render to '--' (dot habu-rend-sig-blanked-b269786b);
+\ CERT-REPOINT-ROWS re-points the render rows at USIG-ADD's re-parsed sig. The
+\ prop-test round-trip amplifier (serial run NRT>0, 0 inconsistencies) is the
+\ second half of this regression.
+s" COK-REND-SIG ( i64 -- i64 ) 1-" T-CHECK-PASSES
+REND-SIG s" i64 -- i64" T$=
 s" sigless-mid-comment certifies" T-LABEL
 s" COK-SIGLESS-MID-COMMENT dup ( n -- n ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 \ escaped-string payloads: the checker accepts exactly the engine's escape set
@@ -366,7 +374,7 @@ s\" CBAD-ESC-UNTERMINATED ( -- ptr u8 n ) s\\\" no end" T-CHECK-REJECTS
 \ pointer's pointee element type is invariant: the u8->cell/u32 integer widening
 \ that applies to top-level scalar cells must NOT apply inside a ptr, so a
 \ concrete ptr u8 never satisfies ptr cell/ptr u32 and cross-pointee unification
-\ is rejected. ptr+ptr and cell-@ on a byte span stay rejected.
+\ is rejected. ptr+ptr and cell @/! on a byte span stay rejected.
 s" COK-PTR-ADD ( ptr a n -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-ADD-REV ( n ptr a -- ptr a ) +" T-CHECK-PASSES
 s" COK-PTR-SUB ( ptr a n -- ptr a ) -" T-CHECK-PASSES
@@ -384,6 +392,15 @@ s" CBAD-PTR-WIDEN-NEST ( ptr ptr u8 -- ptr ptr cell )" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ ( ptr u8 ptr cell -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-UNIFY-EQ-REV ( ptr cell ptr u8 -- bool ) =" T-CHECK-REJECTS
 s" CBAD-PTR-CELL-ON-BYTE ( ptr u8 -- n ) @" T-CHECK-REJECTS
+\ Cell store `!` on a byte span is rejected exactly like cell load `@`. This is
+\ the miss class the fixpoint certify caught in checker.f USIGS-CLEAR (dot
+\ habu-fix-0-usigs): a head accessor declared ( -- ptr u8 ) whose caller stores a
+\ cell with `0 WORD !` must reject, because `!` requires a ptr a target.
+s" CBAD-PTR-CELL-STORE-ON-BYTE ( ptr u8 -- ) 0 swap !" T-CHECK-REJECTS
+s" COK-PTR-CELL-STORE ( ptr a -- ) 0 swap !" T-CHECK-PASSES
+variable ESB-BYTE-P
+: ESB-BYTE-HEAD ( -- ptr u8 ) ESB-BYTE-P @ ;
+s" CBAD-USIGS-BYTE-STORE ( -- ) 0 ESB-BYTE-HEAD !" T-CHECK-REJECTS
 \ REC-SIG refusal is certified-but-unrecorded and must say which word and why.
 512 constant RSD-CAP
 create RSD-BUF RSD-CAP allot
@@ -821,6 +838,86 @@ s" COK-PTX-RET-LONE T-MK-SPAN swap T-MK-SPAN" T-CHECK-PASSES
 s" CBAD-PTX-RET-LONE-CALL ( n n -- ) COK-PTX-RET-LONE T-PTX-SAME-EXTENT" T-CHECK-REJECTS
 s" COK-PTX-MASK-SHARED {: s :} s T-PTX-GRID {: g :} s g T-PTX-MLOAD s g T-PTX-MLOAD T-PTX-MADD" T-CHECK-PASSES
 s" CBAD-PTX-MASK-DISTINCT {: s :} s T-PTX-GRID {: g1 :} s T-PTX-GRID {: g2 :} s g1 T-PTX-MLOAD s g2 T-PTX-MLOAD T-PTX-MADD" T-CHECK-REJECTS
+\ --- parametric type-family (TFAM) signature parsing (PLAN item 4) -----------
+\ Registry-driven `family<...>` parsing replacing the old PARAM-CTOR? whitelist:
+\ correct arity, reentrant nested parse, dual `ptr`, and family-id identity.
+s" COK-TFAM-SPAN ( span<space-global,f32,extent-n> -- span<space-global,f32,extent-n> )" T-CHECK-PASSES
+s" COK-TFAM-PTRPLAIN ( ptr u8 -- ) drop" T-CHECK-PASSES
+s" COK-TFAM-PTRP ( ptr<space-global,f32> u32 -- ) drop drop" T-CHECK-PASSES
+s" COK-TFAM-NEST ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> )" T-CHECK-PASSES
+s" COK-TFAM-NEST4 ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> )" T-CHECK-PASSES
+s" CBAD-TFAM-ARITY ( span<a,b> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-ARITY4 ( tile<a,b,c,d> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-UNKNOWN ( nope<n> -- ) drop" T-CHECK-REJECTS
+s" CBAD-TFAM-PTRARITY ( ptr<a> -- ) drop" T-CHECK-REJECTS
+\ Referencing a STORED nested-param sig used to crash the checker (native stack
+\ overflow) once enough arena state accumulated: LIN-TYPE-COUNT descended a bound
+\ VAR through FIELD-INNER without resolving it, reading an unrelated param-arena
+\ slot that pointed back at the var. Fixed by resolving before the field descent
+\ (src/core/checker.f LIN-TYPE-COUNT); dot habu-tfam-nested-param-09fa2004.
+s" COK-TFAM-NEST-CALL ( acc<t,tile<t,b,m>,b> -- acc<t,tile<t,b,m>,b> ) COK-TFAM-NEST" T-CHECK-PASSES
+s" COK-TFAM-NEST4-CALL ( matrix<tile<x,y,z>,a,b,c> -- matrix<tile<x,y,z>,a,b,c> ) COK-TFAM-NEST4" T-CHECK-PASSES
+\ Family-specific arity diagnostics (PLAN item 4 acceptance): assert the verdict
+\ AND the diagnostic KIND (SGBAD-ARITY?), not merely rejection, so a regression
+\ swapping the arity reason for a generic syntax error is caught. These read a
+\ checker-internal predicate, so they run at top level (not inside a `:` body).
+s" CBAD-TFAM-ARITY-DIAG ( span<a,b> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-TFAM-ARITY4-DIAG ( tile<a,b,c,d> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+\ `ptr` duality: proper `ptr<space,elem>` resolves as a family (incl. nested in
+\ another family's args); over-arity rejects via the arity diagnostic; a bare
+\ `ptr` with no element rejects via the bare-ptr diagnostic; a bare `ptr` inside
+\ another family's args also rejects.
+s" COK-PTR-IN-FAM ( span<space-global,ptr<space-global,f32>,extent-n> -- ) drop" T-CHECK-PASSES
+s" CBAD-PTR-OVERARITY ( ptr<a,b,c> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-PTR-BARE-ROWEND ( a ptr -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-BAREPTR? -1 T=
+s" CBAD-PTR-BARE-IN-FAM ( span<space-global,ptr,extent-n> -- ) drop" T-CHECK-REJECTS
+\ Uncapped per-param arity (dot habu-tfam-4-remainder): a family with arity > 4
+\ (old PARAM-MAX-ARGS SoA-row cap) parses, checks, persists, instantiates through
+\ the flat PARGP/VNARG/EN arg pools, and renders. Register a test-only arity-6
+\ family, then prove: bare parse; a STORED-sig reference (E-COPY + E-INST round
+\ trip); a nested arity-6 arg; a value-record field of the arity-6 family (VNARG
+\ pool); and wrong-arity rejection (5 and 7 args) with the arity diagnostic.
+s" tfam6r-big" 6 TFAM-REG-CELL
+s" COK-BIG6 ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> )" T-CHECK-PASSES
+s" COK-BIG6-CALL ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) COK-BIG6" T-CHECK-PASSES
+s" COK-BIG6-NEST ( tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> -- tfam6r-big<a,tfam6r-big<t,u,v,w,x,y>,c,d,e,f> )" T-CHECK-PASSES
+s" CBAD-BIG6-A5-DIAG ( tfam6r-big<a,b,c,d,e> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+s" CBAD-BIG6-A7-DIAG ( tfam6r-big<a,b,c,d,e,f,g> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-ARITY? -1 T=
+\ SC-QUOT: a quotation as a family argument (dot habu-tfam-4-remainder). SIG-TYPE
+\ parses [ in -- out | rin -- rout ] as one param arg (a T-QUOT term), threaded
+\ through parse, persist (E-COPY/VREC-COPY), instantiate (E-INST), and render.
+\ Prove: bare parse; a STORED-sig reference (E-COPY + REND-SIG record + E-INST);
+\ an explicit return-stack clause; a quotation nested inside the quot arg's stack;
+\ and malformed effect rows (missing '--' or ']') reject.
+s" scq-fam" 2 TFAM-REG-CELL
+s" COK-SCQ ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> )" T-CHECK-PASSES
+s" COK-SCQ-CALL ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) COK-SCQ" T-CHECK-PASSES
+s" COK-SCQ-RET ( scq-fam<[ n -- n | a -- a ],f32> -- scq-fam<[ n -- n | a -- a ],f32> )" T-CHECK-PASSES
+s" COK-SCQ-QNEST ( scq-fam<[ [ n -- n ] -- n ],f32> -- scq-fam<[ [ n -- n ] -- n ],f32> )" T-CHECK-PASSES
+\ Malformed-row first causes are asserted by KIND (destruction review): a missing
+\ '--' hits SIG-PARSE-QUOT's EXPECT-SIG -> SGBAD-SYNTAX; a missing ']' after the
+\ data rows is first seen as the stray ',' by SIG-TYPE -> SGBAD-UNKNOWN (the ']'
+\ EXPECT never runs); the extra '--' after a full return clause is the fixture
+\ that genuinely reaches the return-branch s" ]" EXPECT-SIG -> SGBAD-SYNTAX.
+s" CBAD-SCQ-NODASH ( scq-fam<[ n n ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+s" CBAD-SCQ-NOCLOSE ( scq-fam<[ n -- n ,f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-UNKNOWN? -1 T=
+s" CBAD-SCQ-RETCLOSE ( scq-fam<[ n -- n | a -- a -- ],f32> -- ) drop" 2dup T-LABEL CHECK-QUIET-CANDIDATE! 0 T=  SGBAD-SYNTAX? -1 T=
+\ Render acceptance (destruction review): a mismatch diagnostic must render the
+\ full parametric type — all six args of an arity-6 application, and an SC-QUOT
+\ arg's din/dout rows plus the return clause — never a collapsed string or '?'.
+s" T-BIG6-MK" s" -- tfam6r-big<n,f32,u8,u16,i64,bool>" TRUST
+s" T-SCQ-MK" s" -- scq-fam<[ n -- n | a -- a ],f32>" TRUST
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" arity-6 mismatch diagnostic rejects" T-LABEL
+s" CBAD-BIG6-REND ( -- n ) T-BIG6-MK" CHECK-CANDIDATE! 0 T=
+s" arity-6 diagnostic renders all six args" T-LABEL
+DIAG-BUFFER$ s" tfam6r-big<n,f32,u8,u16,i64,bool>" T-HAS? -1 T=
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" SC-QUOT mismatch diagnostic rejects" T-LABEL
+s" CBAD-SCQ-REND ( -- n ) T-SCQ-MK" CHECK-CANDIDATE! 0 T=
+s" SC-QUOT diagnostic renders quot rows and return clause" T-LABEL
+DIAG-BUFFER$ s" scq-fam<[ n-- n | a-- a],f32>" T-HAS? -1 T=
+DIAG-BUFFER-OFF
 variable TSHOW-XT
 variable TSHOW-N
 : TSHOW-HOOK ( ptr u8 n n -- )
@@ -896,6 +993,37 @@ s" CBAD-OWN-QUOT-OVER-FREE ( own n -- own n ) [: over T-FREE-OWN ;] execute" T-C
 \ certifies, and a sound DIP that only MOVES the linear (1-in / 1-out) certifies.
 s" COK-N-KEEP ( n -- n ) [: 1+ ;] KEEP drop" T-CHECK-PASSES
 s" COK-OWN-DIP-PASS ( n own -- n own ) [: 1+ ;] DIP" T-CHECK-PASSES
+\ Linear values may not launder through {: :} locals (dot
+\ habu-checker-linear-values-a5745699). A local reference re-pushes its binding
+\ outside the LIN-SNAPSHOT/LIN-CHECK count discipline, so binding a linear into a
+\ local hid double-reference (duplication), an unreferenced local (leak), and a
+\ referenced-then-freed-twice double-consume. Binding a value that concretely
+\ resolves linear is rejected outright with E-LINEAR-LOCAL; the value must stay on
+\ the stack and be factored. Direct-stack linear discipline (COK-OWN-*/CBAD-OWN-*
+\ above) is unchanged, and non-linear locals are untouched.
+s" CBAD-OWN-LOCAL-DUP ( own -- own own ) {: x:own :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-LEAK ( own -- ) {: x:own :}" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-DOUBLE-FREE ( own -- ) {: x:own :} x T-FREE-OWN x T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-ONCE ( own -- ) {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-UNTYPED ( own -- own own ) {: x :} x x" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-BRANCH ( bool own -- ) {: x:own :} if x T-FREE-OWN then" T-CHECK-REJECTS
+s" CBAD-OWN-LOCAL-MAKE ( -- ) T-MAKE-OWN {: x:own :} x T-FREE-OWN" T-CHECK-REJECTS
+\ Deferred laundering: a local bound to a still-polymorphic var referenced twice,
+\ that only later resolves linear, must reject through the taint discipline.
+s" CBAD-OWN-LOCAL-POLY-DUP ( a -- ) {: x :} x x T-FREE-OWN T-FREE-OWN" T-CHECK-REJECTS
+\ Positive controls: the linear kept on the stack still certifies, a non-linear
+\ local still binds/references (single AND duplicate), and a poly local that never
+\ resolves linear is untouched.
+s" COK-OWN-STACK-KEEP ( own -- ) T-FREE-OWN" T-CHECK-PASSES
+s" COK-N-LOCAL-DUP ( n -- n n ) {: x:n :} x x" T-CHECK-PASSES
+s" COK-POLY-LOCAL-DUP ( a -- a a ) {: x :} x x" T-CHECK-PASSES
+\ The reject carries the dedicated E-LINEAR-LOCAL code and factor_linear_local class.
+RSD-BUF RSD-CAP DIAG-BUFFER!
+s" linear-local reject carries E-LINEAR-LOCAL" T-LABEL
+s" CBAD-OWN-LOCAL-DIAG ( own -- own own ) {: x:own :} x x" CHECK-CANDIDATE! 0 T=
+s" linear-local diagnostic names E-LINEAR-LOCAL" T-LABEL
+DIAG-BUFFER$ s" E-LINEAR-LOCAL" T-HAS? -1 T=
+DIAG-BUFFER-OFF
 VALUE-RECORD point x n y n END-VALUE-RECORD
 VALUE-RECORD rect w n h n END-VALUE-RECORD
 VALUE-RECORD box value a END-VALUE-RECORD
@@ -930,6 +1058,48 @@ s" CBAD-POINT-DUP ( point -- point point ) dup" T-CHECK-REJECTS
 s" CBAD-POINT-PARTIAL ( n -- point )" T-CHECK-REJECTS
 s" CBAD-BOX-RECT ( box -- rect )" T-CHECK-REJECTS
 s" CBAD-HDL-DUP ( hdl -- hdl hdl ) over over" T-CHECK-REJECTS
+\ Value-record with an arity-6 family field type (dot habu-tfam-4-remainder):
+\ the field wrapper field<rec,q,tfam6r-big<6>> stores its 6-arg inner param in the
+\ VNARG pool; the roundtrip forces VREC-PUSH-FIELDS/VREC-INST to read it back.
+VALUE-RECORD tfam6r-vr q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+: T->BIG6VR ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-vr ) ;
+: T-BIG6VR> ( tfam6r-vr -- tfam6r-big<a,b,c,d,e,f> ) ;
+s" COK-BIG6VR-ID ( tfam6r-vr -- tfam6r-vr )" T-CHECK-PASSES
+s" COK-BIG6VR-ROUNDTRIP ( tfam6r-big<a,b,c,d,e,f> -- tfam6r-big<a,b,c,d,e,f> ) T->BIG6VR T-BIG6VR>" T-CHECK-PASSES
+\ Value-record with a quotation-family (SC-QUOT) field type: VREC-COPY persists the
+\ field's T-QUOT arg subtree (VR-QUOT node) and VREC-INST reads it back on roundtrip.
+VALUE-RECORD scq-vr q scq-fam<[ n -- n ],f32> END-VALUE-RECORD
+: T->SCQVR ( scq-fam<[ n -- n ],f32> -- scq-vr ) ;
+: T-SCQVR> ( scq-vr -- scq-fam<[ n -- n ],f32> ) ;
+s" COK-SCQVR-ID ( scq-vr -- scq-vr )" T-CHECK-PASSES
+s" COK-SCQVR-ROUNDTRIP ( scq-fam<[ n -- n ],f32> -- scq-fam<[ n -- n ],f32> ) T->SCQVR T-SCQVR>" T-CHECK-PASSES
+\ VNARG rollback parity (destruction review): a VALUE-RECORD defined inside a
+\ rolled-back scope allocates VR-PARAM nodes AND their VNARG runs; RBF-POP must
+\ rewind VNARG-N in lockstep with VREC-NODE-N, and a record defined BEFORE the
+\ scope must still instantiate from its (surviving, below-the-mark) VNARG run.
+variable TR-VNARG-RB   variable TR-VNODE-RB
+VNARG-N @ TR-VNARG-RB !   VREC-NODE-N @ TR-VNODE-RB !
+CHECKER-SCOPE-START
+VALUE-RECORD tfam6r-rb q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+s" vnarg-scope-grew" T-LABEL   VNARG-N @ TR-VNARG-RB @ > -1 T=
+s" vrec-node-scope-grew" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ > -1 T=
+CHECKER-SCOPE-DONE
+s" vnarg-rollback-rewinds" T-LABEL   VNARG-N @ TR-VNARG-RB @ T=
+s" vrec-node-rollback-parity" T-LABEL   VREC-NODE-N @ TR-VNODE-RB @ T=
+s" surviving record instantiates after rollback" T-LABEL
+s" COK-BIG6VR-POSTRB ( tfam6r-vr -- tfam6r-vr )" CHECK-QUIET-CANDIDATE! -1 T=
+\ VNARG persist read-back (destruction review): force the arg pool onto a grown
+\ mmap store, bake it with VREC-SNAPSHOT-PERSIST, and prove a real >4-arg run
+\ still instantiates from the persisted buffer (VNARG-N stable across the bake).
+variable TR-VNARG-P0
+VNARG-N @ VNARG-CAP-V !          \ next reserve crosses the cap -> VNARG grows to mmap
+VALUE-RECORD tfam6r-vrp q tfam6r-big<a,b,c,d,e,f> END-VALUE-RECORD
+VNARG-N @ TR-VNARG-P0 !
+s" vnarg-grow" T-LABEL   VNARG-P @ VNARG-BOOT = 0 T=   \ pool left the boot buffer -> persist is a real copy
+VREC-SNAPSHOT-PERSIST
+s" vnarg-persist-stable" T-LABEL   VNARG-N @ TR-VNARG-P0 @ T=
+s" vnarg-persist-readback" T-LABEL
+s" COK-BIG6VRP-RT ( tfam6r-vrp -- tfam6r-vrp )" CHECK-QUIET-CANDIDATE! -1 T=
 s" CBAD-DIP ( i64 i64 -- i64 ) [: 1+ ;] DIP" T-CHECK-REJECTS
 s" CBAD-KEEP ( i64 -- i64 ) [: 1+ ;] KEEP" T-CHECK-REJECTS
 s" CBAD-BI ( i64 -- i64 ) [: 1+ ;] [: drop ;] BI" T-CHECK-REJECTS
@@ -1218,6 +1388,11 @@ s" cpx-retry-ext-entry" T-LABEL ' ES-CPX-GOOD-EXTENDED-NAME ES-CPX-CP @ 28 + T=
 \ Hash-index rollback churn must terminate. A rejected/evaluated candidate can
 \ roll NDICT and CP back while leaving stale HIDX slots. Inserts must reuse
 \ those stale slots instead of probing forever once the fixed table fills.
+\ Unchecked span: the churn rolls ndict/cp back by hand WITHOUT rolling the
+\ checker registries, so checked evaluate would re-register ES-HIDX-CHURNED
+\ 20000 times against a dictionary that forgot it - the raw-dictionary churn
+\ is the mechanism under test. Queued owner: habu-seal-set-check-b3676b33
+\ migrates test set-check spans behind the friend latch.
 variable ES-HIDX-ND
 variable ES-HIDX-CP
 : ES-HIDX-SRC$ ( -- ptr u8 n )

@@ -1,8 +1,10 @@
 \ prop-test-core.f — property-based checker-soundness test, SELF-HOSTED in habu.
 \ Generates runnable typed defs, checks them, RUNS the certified ones IN-PROCESS
 \ (via `evaluate`), and fails (exit 1) if a certified def's real out-arity differs
-\ from its declared ( in -- out ) — a false-cert. No host scripting, no gforth, no
-\ spawning: generator, driver and measurement are all habu, run by bin/hb.
+\ from its declared ( in -- out ) — a false-cert — or if any metamorphic amplifier
+\ (subsumption / render round-trip / composition) reports an inconsistency. No
+\ host scripting, no gforth, no spawning: generator, driver and measurement are
+\ all habu, run by bin/hb.
 \
 \ The default run shards the sweep across PROP-SHARD-N forked slots, each a
 \ distinct seed running DEFAULT-COUNT iterations, so a single gate phase covers
@@ -34,7 +36,7 @@ TRUSTED: ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
 \ ---- seeded PRNG (LCG) ----
-250 constant DEFAULT-COUNT
+500 constant DEFAULT-COUNT
 
 \ Default seed varies per run (mono-ns clock) so the fuzzer explores a fresh
 \ space each gate instead of a frozen 250-case regression; RUN-SEED is printed
@@ -99,17 +101,28 @@ variable PERT?                             \ declared out perturbed away from th
 : STEP-LOCAL  ( -- )
    s" {: z" PROP-B+  LOCN @ BD  s"  :} z" PROP-B+  LOCN @ BD  s"  " PROP-B+
    LOCN @ 1+ LOCN ! ;
+\ Named structural (net-0) op texts: PROP-STEP emits them and the alphabet
+\ self-test asserts each one is generated and certifies, so a class cannot
+\ silently fall out of the fuzzer's reach.
+: OP-LOOP$   ( -- ptr u8 n )  s" 3 0 ?do loop " ;                \ bounded neutral loop
+: OP-LEAVE$  ( -- ptr u8 n )  s" 3 0 ?do leave loop " ;          \ valid leave inside a loop
+: OP-STR$    ( -- ptr u8 n )  S\" s\" x\" 2drop " ;              \ string literal, then dropped
+: OP-QUOT0$  ( -- ptr u8 n )  s" [: ;] execute " ;               \ empty row-poly quotation
+: OP-BRANCH$ ( -- ptr u8 n )  s" dup 0= if 1+ else 1- then " ;   \ balanced branch
+: OP-RSTK$   ( -- ptr u8 n )  s" >r r> " ;                       \ balanced return stack
+: OP-RCOPY$  ( -- ptr u8 n )  s" >r r@ drop r> " ;               \ return-stack copy via r@
+: OP-QUOT1$  ( -- ptr u8 n )  s" [: 1+ ;] execute " ;            \ quotation applied
 : PROP-STEP  ( -- )   \ append one depth-feasible op to BBUF, update DEP
    5 RND% 0 = IF                          \ 1-in-5: a net-0 STRUCTURAL op (DEP unchanged)
       DEP @ 1 >= IF 9 ELSE 4 THEN RND% K !     \ DEP>=1: ops 0..8; DEP=0: depth-free 0..3
-      K @ 0 = IF s" 3 0 ?do loop " PROP-B+ exit THEN              \ bounded neutral loop
-      K @ 1 = IF s" 3 0 ?do leave loop " PROP-B+ exit THEN        \ valid leave inside a loop
-      K @ 2 = IF S\" s\" x\" 2drop " PROP-B+ exit THEN            \ string literal, then dropped
-      K @ 3 = IF s" [: ;] execute " PROP-B+ exit THEN             \ empty row-poly quotation
-      K @ 4 = IF s" dup 0= if 1+ else 1- then " PROP-B+ exit THEN \ balanced branch
-      K @ 5 = IF s" >r r> " PROP-B+ exit THEN                     \ balanced return stack
-      K @ 6 = IF s" >r r@ drop r> " PROP-B+ exit THEN             \ return-stack copy via r@
-      K @ 7 = IF s" [: 1+ ;] execute " PROP-B+ exit THEN          \ quotation applied
+      K @ 0 = IF OP-LOOP$ PROP-B+ exit THEN
+      K @ 1 = IF OP-LEAVE$ PROP-B+ exit THEN
+      K @ 2 = IF OP-STR$ PROP-B+ exit THEN
+      K @ 3 = IF OP-QUOT0$ PROP-B+ exit THEN
+      K @ 4 = IF OP-BRANCH$ PROP-B+ exit THEN
+      K @ 5 = IF OP-RSTK$ PROP-B+ exit THEN
+      K @ 6 = IF OP-RCOPY$ PROP-B+ exit THEN
+      K @ 7 = IF OP-QUOT1$ PROP-B+ exit THEN
                STEP-LOCAL exit THEN                               \ mid-body local round-trip
    DEP @ 2 >= IF 15 RND% ELSE  DEP @ 1 >= IF 6 RND% ELSE 0 THEN  THEN  K !
    K @ 0 = IF                                                  \ push a value: a local ref, or a literal
@@ -176,6 +189,10 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
 TRUSTED: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
+\ Differential boundary: certification already happened via CHECK! in CHK;
+\ the compile stage runs unchecked so the fuzzer measures the candidate's
+\ true runtime arity without re-entering the hook. Queued owner:
+\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
 TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    0 set-check
    evaluate
@@ -213,9 +230,12 @@ TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    name-ch in-arity RUN-MEAS
    LAST-TRAP @ IF  expected FC-SET-TRAP  name-ch FC-LINE
    ELSE  LAST-MEAS @ expected <> IF  expected LAST-MEAS @ FC-SET-ARITY  name-ch FC-LINE  THEN THEN ;
-\ Shards suppress the (non-fatal, capped) metamorphic inconsistency logs so N
-\ parallel children do not interleave them on the shared stdout; false-cert
-\ lines (FC-LINE) stay unconditional because a false-cert fails the phase.
+\ Shards suppress the (capped) metamorphic inconsistency logs so N parallel
+\ children do not interleave them on the shared stdout; false-cert lines
+\ (FC-LINE) stay unconditional because a false-cert fails the phase. The logs
+\ are capped/quiet but the finding is FATAL either way: the NSI/NRI/NCI
+\ counters fail the run at the summary (FINISH) and fail the shard (SHARD-CHILD)
+\ — an inconsistency-reporting property tester that exits 0 is error masking.
 variable SWEEP-QUIET
 : LOG-META  ( ptr u8 n -- ) {: a:ptr u:n :}
    SWEEP-QUIET @ if exit then
@@ -225,7 +245,7 @@ variable SWEEP-QUIET
 
 \ ---- metamorphic subsumption: an i64-certified body must also certify under the
 \ generic ( n -- n ) sig (n subsumes i64). If it does, run it too (free false-cert
-\ coverage); i64-cert but n-reject is a checker inconsistency (logged, non-fatal). ----
+\ coverage); i64-cert but n-reject is a checker inconsistency (fatal at FINISH). ----
 variable NSUB  variable NSI
 : SUBSUME  ( -- )   \ pre: BBUF/NIN/DOUT is the certified i64 program G
    SMARK  1 TFLAG !  83 NIN @ DOUT @ HEAD  BODY+  0 TFLAG !  PBUF PBUF-U @ CHK
@@ -277,6 +297,9 @@ variable BSAVE
       LAST-TRAP @ 0= 0= IF  0 0=  ELSE  LAST-MEAS @ DOUT @ <>  THEN
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
+\ Differential boundary: deliberately compiles a checker-REJECTED body to
+\ confirm a false reject - unchecked compile is the point. Queued owner:
+\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  ['] PROP-CHECK-HOOK set-check
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
@@ -351,6 +374,77 @@ variable NFC0
    s" : G ( [ -- ) ;"                                BAIT   \ malformed quotation sig
    s" prop-test: baits OK (control/type/signature regressions rejected)" type cr ;
 
+\ alphabet self-test: every structural op class must (a) CERTIFY as a minimal
+\ ( i64 -- i64 ) body - the checker accepts the class - and (b) be GENERATED by
+\ the fuzzer within a capped deterministic-seed sweep - the class is reachable.
+\ A renumbered K table or a narrowed RND% bound that silently dropped a class
+\ from the explored space dies here instead of shrinking coverage unnoticed.
+9 constant ALPHA-N
+400 constant ALPHA-CAP
+create ALPHA-SEEN ALPHA-N allot
+variable PH-I  variable PH-J  variable PH-HIT
+variable ALPHA-I  variable ALPHA-J  variable ALPHA-TRIES
+: PROP-HAS? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+   v 0= IF 0 0= exit THEN
+   0 PH-I !
+   begin PH-I @ v + u <= while
+      -1 PH-HIT !  0 PH-J !
+      begin PH-J @ v < while
+         a PH-I @ PH-J @ + + c@  b PH-J @ + c@ <> IF 0 PH-HIT !  v PH-J ! ELSE PH-J @ 1+ PH-J ! THEN
+      repeat
+      PH-HIT @ IF 0 0= exit THEN
+      PH-I @ 1+ PH-I !
+   repeat 0 0= 0= ;
+: ALPHA-DET$ ( n -- ptr u8 n ) {: i:n :}   \ the substring PROP-STEP emits for class i
+   i 0 = IF OP-LOOP$ exit THEN
+   i 1 = IF OP-LEAVE$ exit THEN
+   i 2 = IF OP-STR$ exit THEN
+   i 3 = IF OP-QUOT0$ exit THEN
+   i 4 = IF OP-BRANCH$ exit THEN
+   i 5 = IF OP-RSTK$ exit THEN
+   i 6 = IF OP-RCOPY$ exit THEN
+   i 7 = IF OP-QUOT1$ exit THEN
+   s" {: z" ;
+: ALPHA-CERT$ ( n -- ptr u8 n ) {: i:n :}  \ a minimal certifiable instance of class i
+   i 8 = IF s" {: z0 :} z0 " exit THEN
+   i ALPHA-DET$ ;
+: ALPHA-CERT1 ( n -- ) {: i:n :}   \ ": G ( i64 -- i64 ) <class-op> ;" must certify
+   SMARK
+   0 BLEN !  i ALPHA-CERT$ PROP-B+
+   0 LOC? !  0 TFLAG !  1 NIN !  1 DOUT !
+   71 1 1 HEAD  BODY+
+   PBUF PBUF-U @ CHK
+   VERD @ -1 <> IF
+      s" prop-test: alphabet class REJECTED: " type i ALPHA-CERT$ type cr
+      s" prop-test: alphabet self-test FAILED (class no longer certifies)" 1 die THEN
+   SFORGET ;
+: ALPHA-RESET ( -- )
+   0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
+      0 ALPHA-SEEN ALPHA-J @ + c!  ALPHA-J @ 1+ ALPHA-J !
+   repeat ;
+: ALPHA-SCAN ( -- )   \ mark every class whose op text appears in the generated BBUF
+   0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
+      BBUF BLEN @ ALPHA-J @ ALPHA-DET$ PROP-HAS? IF 1 ALPHA-SEEN ALPHA-J @ + c! THEN
+      ALPHA-J @ 1+ ALPHA-J !
+   repeat ;
+: ALPHA-MISSING ( -- n )   \ first unseen class, or -1 when all seen
+   0 ALPHA-J ! begin ALPHA-J @ ALPHA-N < while
+      ALPHA-SEEN ALPHA-J @ + c@ 0= IF ALPHA-J @ exit THEN
+      ALPHA-J @ 1+ ALPHA-J !
+   repeat -1 ;
+: SELFTEST-ALPHABET ( -- )
+   0 ALPHA-I ! begin ALPHA-I @ ALPHA-N < while
+      ALPHA-I @ ALPHA-CERT1  ALPHA-I @ 1+ ALPHA-I !
+   repeat
+   12345 SEED !  ALPHA-RESET  0 ALPHA-TRIES !
+   begin ALPHA-MISSING -1 <> ALPHA-TRIES @ ALPHA-CAP < and while
+      GEN  ALPHA-SCAN  ALPHA-TRIES @ 1+ ALPHA-TRIES !
+   repeat
+   ALPHA-MISSING -1 <> IF
+      s" prop-test: alphabet class NEVER GENERATED within cap: " type ALPHA-MISSING ALPHA-DET$ type cr
+      s" prop-test: alphabet self-test FAILED (class unreachable)" 1 die THEN
+   s" prop-test: alphabet OK (" type ALPHA-N . s" op classes generated + certified)" type cr ;
+
 \ shrink self-test: a long certified ( i64 -- i64 ) body must REDUCE under the
 \ "still certifies" predicate — proves the delta-debug loop + token surgery work
 \ (a sound checker never hands us a real false-cert to shrink, so exercise the
@@ -364,7 +458,10 @@ variable NFC0
 \ Fail loudly on any false-cert (`die` exits with the code; IF/THEN are
 \ compile-only so this is wrapped in a word). A clean run reaches end-of-input,
 \ which exits 0 in batch mode — no `bye` needed (the engine has none).
-: FINISH  PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN ;
+: NMETA ( -- n )  NSI @ NRI @ + NCI @ + ;
+: FINISH
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT found" 1 die THEN
+   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY found" 1 die THEN ;
 variable ARG-N  variable ARG-I  variable ARG-L
 : ARG>U?  ( ptr u8 -- n bool ) {: z:ptr :}   \ parse a non-empty decimal argv c-string
    z ZLEN ARG-L !  ARG-L @ 0= IF 0 0 0= 0= exit THEN
@@ -449,15 +546,41 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
 : AX-MEM-LIST ( -- ptr u8 n )
-   s"  @ ! ptr-field +! c@ c! count rd32 core-str= type " ;
+   s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
    s"  f+ f- f* f/ fnegate fabs fsqrt f< f> f= f0< f0= f>s " ;
 : AX-NOEXEC-A ( -- ptr u8 n )
    s"  open read ioctl mmap path0 open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close " ;
 : AX-NOEXEC-B ( -- ptr u8 n )
    s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas " ;
+
+\ Checker-substrate introspection that cannot take dummy operands, plus the seal
+\ watermark capture. The indexed accessors fail closed with `76 die` on an
+\ out-of-range index (WF-ROW@ checker.f, TF-REC@ type-family.f), so a dummy `7`
+\ kills the census process whenever the live table is shorter; seal-capture
+\ (native BSEALCAP) rewrites the sealed friend-band ndict watermark, mutating
+\ live seal state mid-process like cp!/ndict!. Their arity is pinned by the
+\ native self-rebuild + behavioral gate. The zero-arg high-water readers
+\ (wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
+\ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
+\ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
+\ dies) are likewise difftested in AX-GEN-LIST; locw-hw@ carries the same
+\ 76-die index guard as wf-tokix@ (a dummy seq past LOCSEQ dies), and the
+\ pass-2 live-table words (p2-carve-w / p2-live-w@ / p2-live-cum@ /
+\ p2-locseq-reset, checker.f) read or mutate live pass-2 compile scratch
+\ (P2SEQ/P2LW), so they all sit here. wide-mark stamps DNAME-WIDE on the
+\ newest published dict record inside an mprotect bracket (a live dictionary
+\ mutation, seal-capture class), and rec-wide-publish consumes the checker's
+\ RECW latch and may call it — neither can run under census dummies.
+\ prot-wid-add mutates the sealed friend-band protected-WID registry (a
+\ seal-capture-class live seal mutation) and its overflow path exits the
+\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
+\ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
+\ AX-MEM-LIST (empty census registry -> false, one flag out).
+: AX-NOEXEC-C ( -- ptr u8 n )
+   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
@@ -470,6 +593,7 @@ create AXBUF AXBUF-CAP allot
    2dup AX-FLOAT-LIST AX-LIST-HAS? if 2drop AX-FLOAT exit then
    2dup AX-NOEXEC-A AX-LIST-HAS? if 2drop AX-NOEXEC exit then
    2dup AX-NOEXEC-B AX-LIST-HAS? if 2drop AX-NOEXEC exit then
+   2dup AX-NOEXEC-C AX-LIST-HAS? if 2drop AX-NOEXEC exit then
    2drop AX-UNKNOWN ;
 
 \ ---- name buffer -------------------------------------------------------------
@@ -493,6 +617,8 @@ create AXBUF AXBUF-CAP allot
    2dup s" ptr-field" AX-STR= if 2drop s" AXBUF 0 " exit then
    2dup s" type" AX-STR= if 2drop s" AXBUF 0 " exit then
    2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
+   2dup s" core-str=ci" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
+   2dup s" tfam-ctor-word?" AX-STR= if 2drop s" AXBUF 3 " exit then
    2drop s"  " ;
 
 \ ---- runner builders: PBUF := "depth BASE ! <ops> <name> depth BASE @ - CLEAR-MEAS"
@@ -577,6 +703,7 @@ create AXBUF AXBUF-CAP allot
    SELFTEST
    SELFTEST-SHRINK
    BAITS
+   SELFTEST-ALPHABET
    AX-SELFTEST
    AX-CENSUS
    RUN
@@ -586,7 +713,8 @@ create AXBUF AXBUF-CAP allot
 \ distinct seed for DEFAULT-COUNT iterations, so one gate phase covers
 \ N x DEFAULT-COUNT distinct-seed programs in parallel. Self-tests + baits run
 \ once in the parent; children run silently (SWEEP-QUIET) and die 1 on a
-\ false-cert. One red shard fails the phase. Distinct seeds come from a per-run
+\ false-cert or metamorphic inconsistency. One red shard fails the phase.
+\ Distinct seeds come from a per-run
 \ base spread by a 32-bit golden-ratio step so no two slots share an LCG walk. ----
 8 constant PROP-SHARD-N
 $9E3779B1 constant PROP-SHARD-STEP
@@ -600,19 +728,35 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
 : SHARD-PID@ ( n -- pid ) {: i:n :}
    i cells PROP-SHARD-PIDS + @ >PID ;
 1 constant PROP-O-WRONLY   \ O_WRONLY (macOS/Linux)
-\ Point fd 2 at /dev/null: a shard checks hundreds of intentionally-rejected
-\ fuzz programs, and the checker's per-reject diagnostics on stderr (x N shards)
-\ would overflow the gate's bounded stderr capture. A false-cert reports on
-\ stdout (FC-LINE) and via the shard's nonzero exit, so muting stderr is safe.
-: SHARD-MUTE-STDERR ( -- )
+\ Point a descriptor at /dev/null (best effort): a shard checks hundreds of
+\ intentionally-rejected fuzz programs, and the checker's per-reject
+\ diagnostics on stderr (x N shards) would overflow the gate's bounded stderr
+\ capture. A false-cert reports on stdout (FC-LINE) and via the shard's
+\ nonzero exit, so muting stderr is safe.
+: MUTE-FD ( n -- ) {: dst:n :}
    s" /dev/null" >LEN PROC-PATHZ PROP-O-WRONLY 0 open {: fd:n :}
    fd 0 < if exit then
-   fd 2 dup2 drop
+   fd dst dup2 drop
    fd close ;
+: SHARD-MUTE-STDERR ( -- )
+   2 MUTE-FD ;
+\ The named failure line goes to STDOUT (fd 2 is muted in shards; `die` writes
+\ stderr, so its message would vanish) and carries the shard seed so any red is
+\ reproducible serially via `bin/hb <seed> <count>`.
+: SHARD-FAIL ( ptr u8 n -- )
+   type s"  in shard seed " type RUN-SEED @ .
+   s" " 1 die ;
+\ Fault-injection seam for the sweep red-path self-test ONLY: when set, a shard
+\ dies red before running any iteration, so SELFTEST-SWEEP-RED can prove one
+\ red shard fails the whole sweep at the cost of the forks alone. Never set
+\ outside that self-test's probe child.
+variable SHARD-FAULT
 : SHARD-CHILD ( n -- )   \ never returns: run this shard's seed, then exit 0 / 1
    SHARD-MUTE-STDERR
+   SHARD-FAULT @ IF s" prop-test: FAULT-INJECT" SHARD-FAIL THEN
    SHARD-SEED DEFAULT-COUNT RUN-CORE
-   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT in shard" 1 die THEN
+   PROP-NFC @ 0 > IF s" prop-test: FALSE-CERT" SHARD-FAIL THEN
+   NMETA 0 > IF s" prop-test: METAMORPHIC-INCONSISTENCY" SHARD-FAIL THEN
    s" " 0 die ;
 : SHARD-FORK ( n -- ) {: i:n :}
    PROC-FORK-RAW {: p:pid :}
@@ -624,13 +768,61 @@ variable SWEEP-BASE  variable SWEEP-RED  variable SWEEP-I
    SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-JOIN  SWEEP-I @ 1+ SWEEP-I ! repeat
-   SWEEP-RED @ IF s" prop-test: sweep FALSE-CERT (a shard reported above)" 1 die THEN
+   SWEEP-RED @ IF s" prop-test: sweep FAILED (a shard reported above: FALSE-CERT or METAMORPHIC-INCONSISTENCY)" 1 die THEN
    s" prop-test: sweep OK — " type PROP-SHARD-N . s" shards x " type DEFAULT-COUNT . s" iters, distinct seeds" type cr ;
 
-: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N distinct-seed slots
+\ shard-seed self-test: distinct per-slot streams. The golden-ratio step is
+\ odd, so i*STEP mod 2^31 is injective over the shard range, and the LCG's odd
+\ multiplier makes each step a bijection on the state space - distinct seeds
+\ can never merge into one walk. Pin pairwise distinctness and the 31-bit
+\ nonzero clamp across representative bases, including one where base + STEP
+\ wraps to exactly 0 and exercises the 0->1 clamp.
+variable SS-I  variable SS-J  variable SS-BAD
+: SHARD-SEEDS-CHECK ( n -- ) {: base:n :}
+   base SWEEP-BASE !
+   0 SS-I ! begin SS-I @ PROP-SHARD-N < while
+      SS-I @ SHARD-SEED {: si:n :}
+      si 1 < si $7FFFFFFF > or IF -1 SS-BAD ! THEN
+      0 SS-J ! begin SS-J @ SS-I @ < while
+         SS-J @ SHARD-SEED si = IF -1 SS-BAD ! THEN
+         SS-J @ 1+ SS-J !
+      repeat
+      SS-I @ 1+ SS-I !
+   repeat ;
+: SELFTEST-SHARD-SEEDS ( -- )
+   0 SS-BAD !
+   1 SHARD-SEEDS-CHECK
+   $7FFFFFFF SHARD-SEEDS-CHECK
+   $61C8864F SHARD-SEEDS-CHECK
+   SS-BAD @ IF s" prop-test: shard-seed self-test FAILED (duplicate or out-of-range slot seed)" 1 die THEN
+   s" prop-test: shard-seeds OK (distinct per-slot seed streams)" type cr ;
+
+\ sweep red-path self-test: one red shard must fail the whole sweep. The probe
+\ child mutes its own stdout+stderr, arms the fault seam, and runs a sweep in
+\ which every shard dies red before its first iteration - so the probe costs
+\ only the forks. The parent asserts the probe exits 1 (SWEEP's red die); a
+\ probe exiting 0 means shard reds no longer propagate and this dies.
+: SWEEP-RED-CHILD ( -- )   \ never returns
+   1 MUTE-FD  2 MUTE-FD
+   -1 SHARD-FAULT !
+   7 SWEEP
+   s" " 0 die ;
+: SELFTEST-SWEEP-RED ( -- )
+   PROC-FORK-RAW {: p:pid :}
+   p PID>N 0= IF SWEEP-RED-CHILD THEN
+   p PROC-WAIT-RC RC>N 1 <> IF
+      s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN
+   s" prop-test: sweep-red OK (one red shard fails the sweep)" type cr ;
+
+: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests + axiom census once, then N slots
    SELFTEST
    SELFTEST-SHRINK
    BAITS
+   SELFTEST-ALPHABET
+   SELFTEST-SHARD-SEEDS
+   SELFTEST-SWEEP-RED
+   AX-SELFTEST
+   AX-CENSUS
    FRESH-SEED SWEEP ;
 
 : PROP-MAIN ( -- )

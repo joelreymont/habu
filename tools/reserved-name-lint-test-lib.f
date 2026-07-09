@@ -11,12 +11,18 @@ create RNLT-ROOT FS-PATH-CAP allot
 create RNLT-GOOD FS-PATH-CAP allot
 create RNLT-BAD FS-PATH-CAP allot
 create RNLT-CASE FS-PATH-CAP allot
+create RNLT-LOADER FS-PATH-CAP allot
+create RNLT-TFAM FS-PATH-CAP allot
+create RNLT-CONTROL FS-PATH-CAP allot
 create RNLT-OUT RNLT-BUF-CAP allot
 
 variable RNLT-ROOT-U
 variable RNLT-GOOD-U
 variable RNLT-BAD-U
 variable RNLT-CASE-U
+variable RNLT-LOADER-U
+variable RNLT-TFAM-U
+variable RNLT-CONTROL-U
 
 : RNLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -33,6 +39,15 @@ variable RNLT-CASE-U
 
 : RNLT-CASE$ ( -- ptr u8 n )
    RNLT-CASE RNLT-CASE-U @ ;
+
+: RNLT-LOADER$ ( -- ptr u8 n )
+   RNLT-LOADER RNLT-LOADER-U @ ;
+
+: RNLT-TFAM$ ( -- ptr u8 n )
+   RNLT-TFAM RNLT-TFAM-U @ ;
+
+: RNLT-CONTROL$ ( -- ptr u8 n )
+   RNLT-CONTROL RNLT-CONTROL-U @ ;
 
 : RNLT-LF ( -- )
    $0A SB-APPEND-C ;
@@ -57,6 +72,33 @@ variable RNLT-CASE-U
 : RNLT-CASE-SRC$ ( -- ptr u8 n )
    s" : i ( -- n ) 1 ;" ;
 
+: RNLT-TFAM-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : typefamily ( -- ) ;" SB-APPEND RNLT-LF
+   s" : SUMTYPE ( -- ) ;" SB-APPEND RNLT-LF
+   s" : variant ( -- ) ;" SB-APPEND RNLT-LF
+   s" : ;VARIANT ( -- ) ;" SB-APPEND RNLT-LF
+   s" : ;sumtype ( -- ) ;" SB-APPEND RNLT-LF
+   SB$ ;
+
+\ TFAM 9: construct/MATCH/;MATCH are reserved control forms — a definition may
+\ not take those names (case-folded), exactly like case/of/endof.
+: RNLT-CONTROL-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : match ( -- ) ;" SB-APPEND RNLT-LF
+   s" : ;match ( -- ) ;" SB-APPEND RNLT-LF
+   s" : CONSTRUCT ( -- ) ;" SB-APPEND RNLT-LF
+   SB$ ;
+
+: RNLT-LOADER-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : include ( -- ) ;" SB-APPEND RNLT-LF
+   s" : included ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
+   s" : require ( -- ) ;" SB-APPEND RNLT-LF
+   s" : required ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
+   s" : provided ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
+   SB$ ;
+
 : RNLT-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-reserved-name-lint" TMPDIR-MKDIR RNLT-ROOT RNLT-ROOT-U RNLT-COPY!
@@ -64,9 +106,15 @@ variable RNLT-CASE-U
    RNLT-ROOT$ s" good.f" RNLT-GOOD JOIN-PATH RNLT-GOOD-U !
    RNLT-ROOT$ s" bad.f" RNLT-BAD JOIN-PATH RNLT-BAD-U !
    RNLT-ROOT$ s" case.f" RNLT-CASE JOIN-PATH RNLT-CASE-U !
+   RNLT-ROOT$ s" loader.f" RNLT-LOADER JOIN-PATH RNLT-LOADER-U !
+   RNLT-ROOT$ s" tfam.f" RNLT-TFAM JOIN-PATH RNLT-TFAM-U !
+   RNLT-ROOT$ s" control.f" RNLT-CONTROL JOIN-PATH RNLT-CONTROL-U !
    RNLT-GOOD$ RNLT-GOOD-SRC$ WRITE-ALL
    RNLT-BAD$ RNLT-BAD-SRC$ WRITE-ALL
-   RNLT-CASE$ RNLT-CASE-SRC$ WRITE-ALL ;
+   RNLT-CASE$ RNLT-CASE-SRC$ WRITE-ALL
+   RNLT-LOADER$ RNLT-LOADER-SRC$ WRITE-ALL
+   RNLT-TFAM$ RNLT-TFAM-SRC$ WRITE-ALL
+   RNLT-CONTROL$ RNLT-CONTROL-SRC$ WRITE-ALL ;
 
 : RNLT-CORE-SETUP ( bool -- ) {: json:bool :}
    RESERVED-NAME-LINT-RESET
@@ -127,12 +175,43 @@ variable RNLT-CASE-U
    RNLT-OUT outu s" <converted>" CONTAINS? TTRUE
    RNLT-OUT outu RNLT-JSON-WORD-I$ CONTAINS? TTRUE ;
 
+: RNLT-TEST-TFAM ( -- )
+   RNLT-TFAM$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   RNLT-OUT outu s" `typefamily`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `SUMTYPE`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `variant`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `;VARIANT`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE ;
+
+: RNLT-TEST-LOADER ( -- )
+   RNLT-LOADER$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   RNLT-OUT outu s" `include`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `included`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `require`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `required`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `provided`" CONTAINS? TTRUE ;
+
+: RNLT-TEST-CONTROL ( -- )
+   RNLT-CONTROL$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   RNLT-OUT outu s" `match`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `;match`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `CONSTRUCT`" CONTAINS? TTRUE ;
+
 : RNLT-MAIN ( -- )
    T-RESET
    RNLT-PREPARE
    RNLT-TEST-GOOD
    RNLT-TEST-BAD
    RNLT-TEST-JSON
+   RNLT-TEST-LOADER
+   RNLT-TEST-TFAM
+   RNLT-TEST-CONTROL
    CLEANUP-RUN
    RNLT-ROOT$ EXISTS? TFALSE
    T-REPORT

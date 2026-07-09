@@ -415,8 +415,12 @@ variable GSI-TL-FILE-A
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE
    s" tools/asm-checked-test.f" GSI-FORK-INCLUDE
+   s" test/drec-shape-test.f" GSI-FORK-INCLUDE
    s" tools/image-bytes-test.f" GSI-FORK-INCLUDE
    s" tools/codegen-role-test.f" GSI-FORK-INCLUDE
+   s" tools/include-events-test.f" GSI-FORK-INCLUDE
+   s" tools/source-discovery-test.f" GSI-FORK-INCLUDE
+   s" tools/event-closure-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
 
 : GSI-TAIL-RUNNER ( -- )
@@ -434,6 +438,10 @@ variable GSI-TL-FILE-A
    GSI-TEST-SETUP
    GSI-FORK-RESET
    s" tools/hb-cli-contracts-test.f" GSI-FORK-INCLUDE
+   s" test/seal.f" GSI-FORK-INCLUDE
+   s" test/seal-absence.f" GSI-FORK-INCLUDE
+   s" test/seal-package.f" GSI-FORK-INCLUDE
+   s" test/gate-runner-entry-test.f" GSI-FORK-INCLUDE
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;

@@ -24,3 +24,7 @@ TRUSTED: SAVED-Z ( -- tile<f32,b,m> )  E-PTX-NOIMPL throw ;
 \ saved block-uniform scalars (BLOCK-MAX's max; B/'s divisor)
 TRUSTED: SAVED-MX ( -- uniform<f32> )  E-PTX-NOIMPL throw ;
 TRUSTED: SAVED-S  ( -- uniform<f32> )  E-PTX-NOIMPL throw ;
+
+\ SAVED-A and ZERO. are NOT words here: they exist only as vjp.f table TOKENS,
+\ resolved by the ad-gen lowering (recompute binding / EMIT-ZERO). Only the
+\ tokens above have a checked-KERNEL: certification consumer (ad-saved-test.f).

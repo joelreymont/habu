@@ -860,6 +860,7 @@ OBJ:DATA+      ( ptr u8 n -- )
 OBJ:PACKAGE+   ( ptr u8 n ptr u8 n -- )
 OBJ:EXPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:DEF+       ( ptr u8 n n ptr u8 n -- )
+OBJ:ENTRY+     ( ptr u8 n n ptr u8 n -- )
 OBJ:IMPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
 OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
@@ -885,7 +886,10 @@ canonical. `OBJ:TEXT+` and `OBJ:DATA+` encode binary section bytes as lowercase
 hex records, and `OBJ:LOAD` rejects malformed section hex. `OBJ:BYTES$` and
 `OBJ:KEY-HEX` require source, target, checker, and compiler ABI fields before
 returning data. `OBJ:DEF+` records an address-bearing text definition as
-symbol, text byte offset, and effect. Header accessors return the validated
+symbol, text byte offset, and effect. `OBJ:ENTRY+` records a selected non-MAIN
+entry (name, test mode, and forged seed cells as big-endian u64 hex) so a
+preseeded object is a distinct artifact from a normal MAIN object. Header
+accessors return the validated
 source, target, checker, and compiler ABI fields. Row accessors expose the
 validated record body without the magic header: indexes are zero-based, fields
 exclude the tag, and bad row or field indexes throw `E-OBJ-FIELD`. `OBJ:LOAD`
@@ -1088,7 +1092,6 @@ wrappers accept counted paths/commands, own conversion to private `pathz`
 buffers, and never require LLM code to build C strings by hand.
 
 ```forth
-PROC-WAIT-RAW       ( pid -- rc )
 PROC-WAIT-STATUS-RAW ( pid -- n )
 PROC-SPAWN-RAW      ( ptr u8 fd fd fd -- pid )
 PROC-KILL-RAW       ( pid n -- rc )
@@ -1165,12 +1168,14 @@ polls one fd for readable input and returns the raw poll result as `count`;
 `POLL-IN-OR-TIMEOUT` throws `E-PROC-TIMEOUT` for a zero poll result and
 `E-PROC-OUTPUT` for poll failure.
 
-`PROC-WAIT-RAW` and `PROC-SPAWN-RAW` are raw primitive aliases captured before
-the checked wrapper names are defined. A failed raw spawn returns a negative
-target code (`-errno` on macOS; the Linux exec-failure handshake still reports
-negative failure), while checked wrappers convert any negative pid to
-`E-PROC-SPAWN`. Application code should prefer `PROC-SPAWN-IO`,
-`PROC-WAIT-RC`, and `PROC-RUN-RC`.
+`PROC-SPAWN-RAW` is a raw primitive alias captured before the checked wrapper
+names are defined. A failed raw spawn returns a negative target code (`-errno`
+on macOS; the Linux exec-failure handshake still reports negative failure),
+while checked wrappers convert any negative pid to `E-PROC-SPAWN`. Application
+code should prefer `PROC-SPAWN-IO`, `PROC-WAIT-RC`, and `PROC-RUN-RC`. There is
+deliberately no raw `wait-rc` wrapper: the primitive reports WEXITSTATUS only,
+so a signal-killed child would read as rc 0 (a swallowed crash). Wait through
+`PROC-WAIT-RC` / `PROC-WAIT-OUTCOME`, which decode signal deaths as 128+sig.
 
 `lib/process-fork.f` layers fork support after native refresh because older
 engines do not have the `fork` primitive during the build prelude.
@@ -1187,6 +1192,18 @@ be reused. The child must exit or die after its worker body; returning into the
 parent's control path is a bug. Parent code reaps the child with `PROC-WAIT-RC`
 or `PROC-WAIT-OUTCOME`. A failed raw fork returns a negative target code;
 `PROC-FORK` converts that to `E-PROC-SPAWN`.
+
+Capture spawns can carry a death reaper. `PROC-REAP-ARM ( pid -- pid )` is a
+typed execution vector consulted by every `PROC-RUN-*` capture spawn (via
+`PROC-CAPTURE-PID!`): the default vector arms nothing; `lib/process-fork.f`
+installs the live vector, which arms a co-located `PROC-SPAWN-REAPER` in the
+child's process group watching the fd published in `PROC-REAP-WATCH-FD`
+(-1 = no context). A pool worker publishes its worker-alive read end there, so
+a quiet capture child — its own group leader, invisible to the worker's
+group-kill — dies with the worker instead of lingering. Every capture
+terminator calls `PROC-REAP-DISARM`, which kills and waits the reaper by its
+specific pid, so no reaper outlives its capture and `wait(-1)` callers never
+see a stray child.
 
 `lib/process-argv.f` layers argument-vector support on top of `lib/process.f`.
 It is loaded after the native engine rebuild because older seeds do not know
@@ -1253,6 +1270,7 @@ PROC-SPAWN-ARGV-ENV-RAW   ( ptr u8 ptr a ptr a fd fd fd -- pid )
 PROC-ENV-RESET            ( -- )
 PROC-ENV-ENTRY+           ( ptr u8 len -- )
 PROC-ENV+                 ( ptr u8 len ptr u8 len -- )
+PROC-ENV-SET              ( ptr u8 len ptr u8 len -- )
 PROC-ENV-DEFAULT-RESET    ( -- )
 PROC-ENV-DEFAULT+         ( ptr u8 len ptr u8 len -- )
 PROC-ENV-DEFAULT$?        ( ptr u8 len -- ptr u8 len bool )
@@ -1274,7 +1292,10 @@ Call `PROC-ENV-RESET`, append exact `NAME=VALUE` entries with
 of the env-aware wrappers. The child receives exactly the prepared env vector.
 Call `PROC-ENV-INHERIT-MISSING` after explicit overrides to copy parent envp
 entries whose names are not already present; explicit entries win and duplicate
-names are skipped. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
+names are skipped. `PROC-ENV-SET` replaces an existing row by name in place
+(for example one already copied from the parent's own environment) and appends
+only when the name is absent, so exactly one row for the name reaches the
+child; `PROC-ENV+` always appends and never deduplicates. `FIND-EXECUTABLE-IN-PATH` accepts an explicit PATH byte string
 for deterministic tests, while `FIND-EXECUTABLE` reads the current process
 `PATH`. `RESOLVE-EXECUTABLE` throws `E-PROC-PATH` when lookup fails.
 Resident test runners and other in-process harnesses can install inherited
@@ -1349,7 +1370,7 @@ owns its `errors`/`memory`/`ffi` dependencies.
 ```forth
 TASK:TASK          ( n -- )
 TASK:MIN-STACK     ( -- n )
-TASK:CONSTRUCT     ( ptr a -- )
+TASK:PREPARE       ( ptr a -- )
 TASK:ACTIVATE      ( n ptr a -- )
 TASK:SELF          ( -- ptr a )
 TASK:SELF-N        ( -- n )
@@ -1589,14 +1610,25 @@ throw code and uses the checker's modeled `catch` effect. `TTHROWS` keeps the
 audited execution-token boundary for top-level test scripts, where `[: ;]`
 quotation syntax is unavailable.
 
+`lib/test/budget.f` provides load-aware timeout budgets for process-spawning
+suites. `T-BUDGET-MS ( n -- n )` scales a nominal budget by the load factor the
+gate measures at startup and exports as `HB_LOAD_PCT` (its printed
+`cal-factor`), so a healthy-but-slow child under box saturation does not read
+as hung. Detection stays bounded: the factor is clamped to 100..300 percent -
+budgets never shrink below nominal, and a genuinely hung child still fails
+within 3x the nominal budget. Standalone runs without `HB_LOAD_PCT` use the
+nominal budget unchanged. Declare budgets as `<nominal> constant` plus a
+`T-BUDGET-MS`-scaling colon word so call sites stay unchanged.
+
 `TEST:*` defines reusable suite/group/test orchestration. Project adapters
 install typed hooks with `TEST:SETUP!`, `TEST:TEARDOWN!`, `TEST:DRAIN!`,
 `TEST:ARGS-BEGIN!`, `TEST:ARG+!`, `TEST:SELECT?!`, `TEST:RUNNER!`, and
-`TEST:STDIN-RUNNER!`; test files declare named parallel or sequential groups
-with `TEST:GROUP-PARALLEL` / `TEST:GROUP-SEQUENTIAL`, define `TEST:SUITE` or
-`TEST:SUITE-STDIN` entries, close each entry with `TEST:END-SUITE`, and execute
-once with `TEST:RUN`. Fixture helper words should live in a private package, not
-global stemmed names.
+`TEST:STDIN-RUNNER!`; test files declare named groups with
+`TEST:GROUP SEQ name` or `TEST:GROUP PARA name` (the `SEQ`/`PARA` mode is a
+mandatory positional token before the group name), define `TEST:SUITE` or
+`TEST:SUITE-STDIN` entries, close each entry with `TEST:;SUITE`, close the group
+with `TEST:;GROUP`, and execute once with `TEST:RUN`. Fixture helper words should
+live in a private package, not global stemmed names.
 `lib/property.f` owns deterministic PRNG state, seed/count bounds, bounded
 source buffers, modeled generator depth, and token-tail shrinking utilities.
 Property execution may call an audited `evaluate` boundary for generated checked

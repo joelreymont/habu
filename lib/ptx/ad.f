@@ -10,13 +10,15 @@
 \ word's adjoint - producing the backward body, which is then an ordinary checked
 \ kernel.
 \
-\ v0 SCOPE (named, dotted boundary): linear primitives only; no cotangent-saving
-\ for nonlinear ops (*./EXP./SCALE/PTX:B-/BLOCK-MAX), no DUP/fan-out cotangent
-\ threading beyond the 1:1 adjoint, no algebraic-simplify, no control flow. Those
-\ are the autograd dot chain (habu-ad-reverse-pass, habu-ad-vjp-primitive). Load
-\ after lib/errors.f and lib/string.f.
+\ v0 SCOPE (named, dotted boundary): straight-line pipelines; the VJP table
+\ itself lives in src/arch/ptx/vjp.f (habu-ad-vjp-primitive) and this pass
+\ substitutes its expansions; full cotangent DAG threading is
+\ habu-ad-reverse-pass. Load after lib/errors.f, lib/string.f, and
+\ src/arch/ptx/vjp.f.
 
-\ --- VJP table: forward word -> adjoint word (linear primitives) ---
+require src/arch/ptx/vjp.f
+
+\ --- control-flow boundary: v0 reverses straight-line dataflow only ---
 : AD-CONTROL? ( ptr u8 n -- bool )
    2dup s" if" STR=CI if 2drop 0 0= exit then
    2dup s" else" STR=CI if 2drop 0 0= exit then
@@ -43,41 +45,16 @@
 : AD-REQUIRE-STRAIGHT ( ptr u8 n -- )
    AD-CONTROL? if E-PTX-AD-CONTROL throw then ;
 
+\ VJP-ADJOINT / VJP-EXPAND: forward word -> adjoint expansion, from the
+\ src/arch/ptx/vjp.f table. One lookup serves both the 1:1 linear adjoints
+\ (single-token expansions) and the nonlinear multi-token expansions that
+\ reference saved primals/outputs by name (SAVED-*); VJP-ADJOINT remains the
+\ historical spelling. Missing entries fail closed (E-PTX-NOVJP).
 : VJP-ADJOINT ( ptr u8 n -- ptr u8 n )
    2dup AD-REQUIRE-STRAIGHT
-   2dup s" +."        STR= if 2drop s" DUP"       exit then
-   2dup s" DUP"       STR= if 2drop s" +."        exit then
-   2dup s" BLOCK-SUM" STR= if 2drop s" BROADCAST" exit then
-   2dup s" BROADCAST" STR= if 2drop s" BLOCK-SUM" exit then
-   2dup s" LOAD"      STR= if 2drop s" SCATTER-ADD" exit then
-   2dup s" STORE"     STR= if 2drop s" LOAD"      exit then
-   2dup s" LOAD-ONCE" STR= if 2drop s" STORE-ONCE" exit then
-   2dup s" STORE-ONCE" STR= if 2drop s" LOAD-ONCE" exit then
-   2dup s" ROW-LOAD"  STR= if 2drop s" ROW-SCATTER-ADD" exit then
-   2dup s" ROW-STORE" STR= if 2drop s" ROW-LOAD"  exit then
-   2dup s" ROW-LOAD-ONCE" STR= if 2drop s" ROW-STORE-ONCE" exit then
-   2dup s" ROW-STORE-ONCE" STR= if 2drop s" ROW-LOAD-ONCE" exit then
-   2dup s" NEG"       STR= if 2drop s" NEG"       exit then
-   E-PTX-NOVJP throw ;
+   VJP-ADJOINT$ ;
 
-\ VJP-EXPAND: like VJP-ADJOINT but emits the multi-word adjoint EXPANSION for the
-\ NONLINEAR unary ops, referencing saved primals/outputs by name (SAVED-*). These
-\ are the single-cotangent nonlinear adjoints (docs/autograd.md): EXP.'s backward
-\ is dz (.) y (y = saved output); BLOCK-MAX's backward scatters dz to the arg-max
-\ lane using the saved x and max. Binary nonlinear ops (*./PTX:B-/PTX:B//SCALE) have
-\ MULTI-output adjoints needing the data-flow/cotangent-threading model (the deeper
-\ reverse-pass layer, dot habu-ad-reverse-pass) - they still route through
-\ VJP-ADJOINT and fail closed until that lands.
 : VJP-EXPAND ( ptr u8 n -- ptr u8 n )
-   2dup AD-REQUIRE-STRAIGHT
-   2dup s" EXP."      STR= if 2drop s" SAVED-Y *."                       exit then
-   2dup s" BLOCK-MAX" STR= if 2drop s" SAVED-X SAVED-MX BLOCK-MAX-SELECT" exit then
-   \ binary nonlinear ops: 2-output adjoints, the cotangents threaded by the
-   \ stack juggling (DUP/SWAP) inside the expansion (docs/autograd.md table):
-   2dup s" *." STR= if 2drop s" DUP SAVED-Y *. SWAP SAVED-X *." exit then  \ dx=dz.y, dy=dz.x
-   2dup s" PTX:B-" STR= if 2drop s" DUP BLOCK-SUM NEG"          exit then  \ dt=dz, ds=-Sum(dz)
-   \ PTX:B/ : z = x/s. dx = dz/s; ds = -Sum(dz*z)/s (saved z and s).
-   2dup s" PTX:B/" STR= if 2drop s" DUP SAVED-S PTX:B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S PTX:U/" exit then
    VJP-ADJOINT ;
 
 \ --- forward token spans (offset,len into the source body) ---
@@ -132,28 +109,9 @@ variable AD-START
 \ --- save-vs-recompute: how many forward values an op's backward must save ---
 \ Linear (data-free) adjoints save 0; nonlinear ones consume saved primals/outputs
 \ (docs/autograd.md "Full VJP table" saves column). This is the tape's replacement,
-\ finite and known at compile time.
+\ finite and known at compile time; the counts live in the vjp.f table entries.
 : VJP-SAVES ( ptr u8 n -- n )
-   2dup s" EXP."      STR= if 2drop 1 exit then   \ saves output y
-   2dup s" SCALE"     STR= if 2drop 2 exit then   \ saves a, x
-   2dup s" *."        STR= if 2drop 2 exit then   \ saves x, y
-   2dup s" PTX:B/"    STR= if 2drop 2 exit then   \ saves s, z
-   2dup s" BLOCK-MAX" STR= if 2drop 2 exit then   \ saves x, m (arg-max select)
-   2dup s" +."        STR= if 2drop 0 exit then
-   2dup s" -."        STR= if 2drop 0 exit then
-   2dup s" DUP"       STR= if 2drop 0 exit then
-   2dup s" BLOCK-SUM" STR= if 2drop 0 exit then
-   2dup s" BROADCAST" STR= if 2drop 0 exit then
-   2dup s" LOAD"      STR= if 2drop 0 exit then
-   2dup s" STORE"     STR= if 2drop 0 exit then
-   2dup s" LOAD-ONCE" STR= if 2drop 0 exit then
-   2dup s" STORE-ONCE" STR= if 2drop 0 exit then
-   2dup s" ROW-LOAD"  STR= if 2drop 0 exit then
-   2dup s" ROW-STORE" STR= if 2drop 0 exit then
-   2dup s" ROW-LOAD-ONCE" STR= if 2drop 0 exit then
-   2dup s" ROW-STORE-ONCE" STR= if 2drop 0 exit then
-   2dup s" NEG"       STR= if 2drop 0 exit then
-   E-PTX-NOVJP throw ;
+   VJP-SAVES# ;
 
 : VJP-NONLINEAR? ( ptr u8 n -- bool )  VJP-SAVES 0 > ;
 
@@ -185,3 +143,102 @@ variable AD-START
       else  SB-SEP  dup a swap TOK-STR SB-APPEND  1+  then
    repeat drop
    SB$ ;
+
+\ --- the EXPLICIT save-vs-recompute cost model (docs/autograd.md) ---
+\ Unit: 1/8 of a global-memory transaction per element (integer arithmetic).
+\ The target class is bandwidth-bound: elementwise math is near-free next to a
+\ DRAM round trip, and a block collective pays shared-memory traffic plus two
+\ barriers. Stores and register moves cost 0 inside a RECOMPUTED slice - the
+\ lowering drops the slice's store and DUP/SWAP/ROT are register renames.
+8 constant AD-COST-MEM           \ one global load or store, per element
+1 constant AD-COST-ALU           \ one elementwise f32 op
+32 constant AD-COST-COLLECTIVE   \ one block reduce/broadcast (SMEM + 2 barriers)
+
+variable AD-COST-SUM
+
+: AD-TOK-COLLECTIVE? ( ptr u8 n -- bool )
+   2dup s" BLOCK-SUM" STR= if 2drop 0 0= exit then
+   2dup s" BLOCK-MAX" STR= if 2drop 0 0= exit then
+   2dup s" BROADCAST" STR= if 2drop 0 0= exit then
+   2dup s" BLOCK-MAX-SELECT" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-LOAD? ( ptr u8 n -- bool )
+   2dup s" ROW-LOAD" STR= if 2drop 0 0= exit then
+   2dup s" LOAD" STR= if 2drop 0 0= exit then
+   2dup s" ROW-LOAD-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" LOAD-ONCE" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-FREE? ( ptr u8 n -- bool )   \ dropped stores and register renames
+   2dup s" ROW-STORE" STR= if 2drop 0 0= exit then
+   2dup s" STORE" STR= if 2drop 0 0= exit then
+   2dup s" ROW-STORE-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" STORE-ONCE" STR= if 2drop 0 0= exit then
+   2dup s" ROW-SCATTER-ADD" STR= if 2drop 0 0= exit then
+   2dup s" SCATTER-ADD" STR= if 2drop 0 0= exit then
+   2dup s" DUP" STR= if 2drop 0 0= exit then
+   2dup s" SWAP" STR= if 2drop 0 0= exit then
+   2dup s" ROT" STR= if 2drop 0 0= exit then
+   2dup s" OVER" STR= if 2drop 0 0= exit then
+   2dup s" DROP" STR= if 2drop 0 0= exit then
+   2drop 0 0= 0= ;
+
+: AD-TOK-COST ( ptr u8 n -- n )   \ recompute cost of one forward token
+   2dup AD-TOK-COLLECTIVE? if 2drop AD-COST-COLLECTIVE exit then
+   2dup AD-TOK-LOAD? if 2drop AD-COST-MEM exit then
+   2dup AD-TOK-FREE? if 2drop 0 exit then
+   VJP-FIND 0 < if E-PTX-AD-UNKNOWN throw then
+   AD-COST-ALU ;
+
+: AD-SLICE-COST ( ptr u8 n -- n ) {: a:ptr u:n :}   \ cost of recomputing a forward slice
+   a u AD-TOKENIZE
+   0 AD-COST-SUM !
+   AD-TOK-N @ 0 ?do
+      a i TOK-STR AD-TOK-COST AD-COST-SUM @ + AD-COST-SUM !
+   loop
+   AD-COST-SUM @ ;
+
+: AD-SAVE-COST ( bool -- n )   \ materialized forward output reloads; others round-trip
+   if AD-COST-MEM else AD-COST-MEM 2 * then ;
+
+\ Policy override: tests and callers may pin the choice without touching the
+\ cost table (the equivalence fixture drives BOTH paths through this).
+0 constant AD-POLICY-AUTO        \ the cost model decides
+1 constant AD-POLICY-SAVE        \ force the save path
+2 constant AD-POLICY-RECOMPUTE   \ force the recompute path
+
+variable AD-POLICY
+
+: AD-POLICY! ( n -- ) {: p:n :}
+   p AD-POLICY-AUTO < if E-PTX-SYNTAX throw then
+   p AD-POLICY-RECOMPUTE > if E-PTX-SYNTAX throw then
+   p AD-POLICY ! ;
+
+\ the per-value policy: SAVE when the recompute slice is not strictly cheaper,
+\ unless overridden
+: AD-SAVE? ( ptr u8 n bool -- bool )
+   AD-POLICY @ AD-POLICY-SAVE = if drop 2drop 0 0= exit then
+   AD-POLICY @ AD-POLICY-RECOMPUTE = if drop 2drop 0 0= 0= exit then
+   AD-SAVE-COST {: sc:n :}
+   AD-SLICE-COST {: rc:n :}
+   sc rc AD-RECOMPUTE? 0= ;
+
+\ --- the composed pass: forward body -> simplified backward body ---
+\ AD-REVERSE and AD-SIMPLIFY both render into SB, so the reversal is copied to
+\ a private buffer before simplification (never simplify SB$ in place).
+1024 constant AD-BWD-CAP
+create AD-BWD-BUF AD-BWD-CAP allot
+variable AD-BWD-U
+
+: AD-BWD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   u AD-BWD-CAP > if E-PTX-ADCAP throw then
+   a AD-BWD-BUF u BYTE-COPY
+   u AD-BWD-U ! ;
+
+\ The result is returned from the private buffer (not SB$), so it stays valid
+\ while the caller's kernel scaffold reuses SB for emit lines.
+: AD-BACKWARD$ ( ptr u8 n -- ptr u8 n )
+   AD-REVERSE AD-BWD-COPY
+   AD-BWD-BUF AD-BWD-U @ AD-SIMPLIFY AD-BWD-COPY
+   AD-BWD-BUF AD-BWD-U @ ;

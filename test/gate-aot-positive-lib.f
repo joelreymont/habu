@@ -167,9 +167,73 @@ $10000 constant GAP-STRIPPED-TEXT-MAX
    GAP-DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
+\ item 10 slice 5: a preseeded bad-tag object/AOT test entry. A source declaring a
+\ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
+\ and a forged value-stack seed (payload slots + an out-of-range tag), so the
+\ stripped image starts at the helper and reaches its inline invalid-tag die
+\ (rc E-BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
+\ MAIN) exits 0, and the entry/seed/mode axis is folded into every cache layer
+\ (artifact key + source-index key + object bytes) so the two are distinct
+\ artifacts with no cross-restore in either direction, and the die survives an
+\ object-cache relink. docs/census-tfam-10.md.
+: GAP-PRESEED-SRC ( -- )                        \ matched family + helper + trivial MAIN
+   GE-SRC-RESET
+   s" SUMTYPE gemt 0" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" : HLP ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : MAIN ( -- ) ;" GE-SRC-LINE ;
+
+\ Bundle width M+1 = 3 cells: pad, pad, out-of-range tag 5 (gemt tags 0..2 valid),
+\ each cell a big-endian u64 (16 hex chars), bottom-of-stack first / tag last.
+: GAP-PRESEED-SEED$ ( -- ptr u8 n )
+   s" 000000000000000000000000000000000000000000000005" ;
+
+: GAP-PRESEED-ARM ( -- )                        \ select the non-MAIN entry + forged seed
+   s" HLP" HBB-PRESEED-ENTRY!
+   GAP-PRESEED-SEED$ HBB-PRESEED-SEED! ;
+
+: GAP-PRESEED-BUILD ( -- )
+   GB-WRITE-SRC
+   GB-HBB-PREPARE
+   GAP-PRESEED-ARM
+   s" hb-build AOT preseed bad-tag entry build" GB-HBB-BUILD-OUT ;
+
+: GAP-PRESEED-BUILD-JSON ( -- )                 \ --json flips the artifact key only -> object-cache relink
+   GB-WRITE-SRC
+   GB-HBB-PREPARE
+   -1 HBB-JSON !
+   GAP-PRESEED-ARM
+   s" hb-build AOT preseed object-cache relink build" GB-HBB-BUILD-OUT ;
+
+: GAP-PRESEED-RUN-BAD ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   GE-HB-RESET
+   GB-OUT$ GE-TIMEOUT-MS GE-RUN-ENV
+   85 label labelu GE-EXPECT-RC
+   s" hb: bad gemt tag" label labelu GE-EXPECT-ERR-HAS ;
+
+: GAP-PRESEED ( -- )
+   s" hb-aot-preseed.f" s" hb-aot-preseed" s" hb-aot-preseed-report.json" GAP-PATHS
+   GAP-PRESEED-SRC
+   s" hb-build AOT preseed normal-MAIN control" GB-HBB-BUILD
+   s" hb-build AOT preseed normal-MAIN exits 0" GB-RUN-OUT
+   GAP-PRESEED-BUILD
+   s" hb-build AOT preseed bad-tag entry run" GAP-PRESEED-RUN-BAD
+   GAP-PRESEED-BUILD
+   s" hb-build AOT preseed restore" GAP-PRESEED-RUN-BAD
+   GAP-PRESEED-BUILD-JSON
+   HBB-OBJECT-HIT @ 0= if s" hb-build AOT preseed object-cache hit" GE-FAIL then
+   s" hb-build AOT preseed object-cache relink run" GAP-PRESEED-RUN-BAD
+   s" hb-build AOT preseed normal-MAIN control (bis)" GB-HBB-BUILD
+   s" hb-build AOT preseed normal-MAIN still exits 0" GB-RUN-OUT
+   s" PASS: hb-build AOT preseeded bad-tag entry (rc 85 hb: bad gemt tag; three-key lockstep; object relink)" type cr ;
+
 : GAP-RUN ( -- )
    s" hb-gate-aot-positive" GT-START
    GAP-BUNDLE
    GAP-DATA
+   GAP-PRESEED
    GT-CLEANUP
    s" PASS: native hb-build AOT positive gate phase" type cr ;

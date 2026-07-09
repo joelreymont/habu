@@ -10,8 +10,11 @@
 \ inter-word calls relocated. The program MUST define `: MAIN ;`.
 \ tools/hb-build.f owns the I/O paths. A DRIVER (appended last, like build.f).
 
-\ Audited driver boundary: the toolchain hook is on when this file is appended;
-\ the driver installs USER-HOOK below for user source only.
+\ Audited driver boundary: the toolchain hook is on when this file is appended
+\ (aot-closure.f before it now compiles checked); the relocation core below
+\ still has typed gaps (REC record roles, blob mapping, immediate patchers) -
+\ gap inventory on dot habu-checked-image-writers-229ae789. The driver
+\ installs USER-HOOK below for user source only.
 0 set-check
 
 variable PB  variable PN  variable PFD  variable PRD
@@ -117,9 +120,9 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 
 : EMIT-DATA-REGION-MAP ( -- )
    LBL {: dvok:label :}
-   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 EM-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 DATA-VA LIT64,  0 5 CMP,
+   5 EM-DATA-VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       0 78 MOVZ,  NR-EXIT-GROUP SYS,
    dvok LBL,
@@ -156,13 +159,35 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
    DRV-WFD @ CODE ASM-LEN DRV-WALL
    DRV-WFD @ close ;
 
+\ --- preseeded test entry: raw physical value-stack cells materialized before
+\ the selected root is called. A preseeded bad-tag object/AOT entry
+\ (tools/hb-build.f --preseed-entry) pushes a forged bundle (payload slots + an
+\ out-of-range tag) so the matched helper reaches its inline invalid-tag die
+\ (docs/type-families.md; docs/census-tfam-10.md Category 1). SEED-CELLS is
+\ bottom-of-stack first, tag last (top). Empty for a normal MAIN build.
+64 constant SEED-MAX
+create SEED-CELLS SEED-MAX cells allot   variable SEED-N
+0 SEED-N !
+: SEED-RESET ( -- )  0 SEED-N ! ;
+: SEED+ ( n -- )
+   SEED-N @ SEED-MAX >= IF s" aot: too many preseed cells" 74 die THEN
+   SEED-CELLS SEED-N @ cells + !  SEED-N @ 1 + SEED-N ! ;
+: EMIT-SEED ( -- )                               \ push SEED-CELLS onto the value stack (x19)
+   0 BEGIN dup SEED-N @ < WHILE
+      9 over cells SEED-CELLS + @ LIT64,          \ x9 = seed cell value
+      9 XDS 0 STR,                                \ *x19 = x9  (value-stack top)
+      XDS XDS 8 ADDI,                             \ x19 += 8  (advance one cell)
+      1 +
+   REPEAT drop ;
+
 : EMIT-ENTRY
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,  SP SP 2048 SUBI,
    XDS SP 0 ADDI,
    EMIT-DATA-REGION-MAP                          \ map DATA-VA, set x20/S0
    EMIT-DATA-COPY                                \ restore persistent data + DP
-   MLBL LABEL@ BL,                              \ bl MAIN (resolved when MLBL is placed)
+   EMIT-SEED                                     \ push preseeded value-stack cells (empty for MAIN)
+   MLBL LABEL@ BL,                              \ bl <entry root> (resolved when MLBL is placed)
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;               \ exit(0)
 variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 : BIMM? {: w:n :}  w $7C000000 and $14000000 = ;
@@ -208,7 +233,7 @@ variable CP2  variable CEND  variable CLEN  variable NEXT-OFF
 \ encode a compact PC-relative BL. The AOT __text is small today, but range
 \ checking makes linker corruption fail at build time if that ever changes.
 variable BDELTA  variable TNEW
-: FIELD {: w:n lo:n width:n :}  w lo rshift  1 width lshift 1 - and ;
+: BITS {: w:n lo:n width:n :}  w lo rshift  1 width lshift 1 - and ;
 : SX {: f:n width:n :}  f 1 width 1 - lshift xor  1 width 1 - lshift - ;
 : REL26 {: site:n target:n :}
    target site - BDELTA !
@@ -273,13 +298,13 @@ variable MAPOUT  variable MAPP  variable MAPE
    r t MAP-TARGET TNEW !
    TNEW @ -1 = IF s" aot: PC-relative target removed or outside closure" 74 die THEN ;
 : BTGT26 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 0 26 FIELD 26 SX 4 * + ;
+   p  w 0 26 BITS 26 SX 4 * + ;
 : BTGT19 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 19 FIELD 19 SX 4 * + ;
+   p  w 5 19 BITS 19 SX 4 * + ;
 : BTGT14 {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 14 FIELD 14 SX 4 * + ;
+   p  w 5 14 BITS 14 SX 4 * + ;
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
-   p  w 5 19 FIELD 2 lshift  w 29 2 FIELD or 21 SX + ;
+   p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
 : RELOC-W32 {: r:ptr p:ptr w:n :} ( ptr a ptr u8 n -- n )
    w BIMM? IF
       r p w BTGT26 MAP-TARGET!

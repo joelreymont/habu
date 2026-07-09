@@ -117,6 +117,9 @@ variable RNL-NUM-I
    a u s" of" LINT-STR=CI if LINT-TRUE exit then
    a u s" endof" LINT-STR=CI if LINT-TRUE exit then
    a u s" endcase" LINT-STR=CI if LINT-TRUE exit then
+   a u s" match" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 9: MATCH eliminator control form
+   a u s" ;match" LINT-STR=CI if LINT-TRUE exit then     \ TFAM 9: MATCH block close (;FOO convention)
+   a u s" construct" LINT-STR=CI if LINT-TRUE exit then  \ TFAM 9: private constructor token form
    a u s" do" LINT-STR=CI if LINT-TRUE exit then
    a u s" ?do" LINT-STR=CI if LINT-TRUE exit then
    a u s" loop" LINT-STR=CI if LINT-TRUE exit then
@@ -158,12 +161,30 @@ variable RNL-NUM-I
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
    a u s" end-package" LINT-STR=CI if LINT-TRUE exit then
+   a u s" typefamily" LINT-STR=CI if LINT-TRUE exit then
+   a u s" sumtype" LINT-STR=CI if LINT-TRUE exit then
+   a u s" variant" LINT-STR=CI if LINT-TRUE exit then
+   a u s" ;variant" LINT-STR=CI if LINT-TRUE exit then
+   a u s" ;sumtype" LINT-STR=CI if LINT-TRUE exit then
+   a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ TFAM 14: enum block definer
+   a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 14: enum block close (;FOO)
+   a u s" product" LINT-STR=CI if LINT-TRUE exit then    \ TFAM 15: product block definer
+   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 15: product field keyword
+   a u s" ;product" LINT-STR=CI if LINT-TRUE exit then   \ TFAM 15: product block close (;FOO)
    a u s" undefine" LINT-STR=CI ;
+
+: RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" include" LINT-STR=CI if LINT-TRUE exit then
+   a u s" included" LINT-STR=CI if LINT-TRUE exit then
+   a u s" require" LINT-STR=CI if LINT-TRUE exit then
+   a u s" required" LINT-STR=CI if LINT-TRUE exit then
+   a u s" provided" LINT-STR=CI ;
 
 : RNL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u RNL-RESERVED-CONTROL? if LINT-TRUE exit then
    a u RNL-RESERVED-PARSER? if LINT-TRUE exit then
-   a u RNL-RESERVED-DEFINER? ;
+   a u RNL-RESERVED-DEFINER? if LINT-TRUE exit then
+   a u RNL-RESERVED-LOADER? ;
 
 : RNL-JSON-FINDING ( n -- ) {: k :}
    LJW-RESET

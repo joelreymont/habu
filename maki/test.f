@@ -49,160 +49,160 @@ variable START-NS
 INSTALL
 TEST:RESET
 
-TEST:GROUP-SEQUENTIAL maki
+TEST:GROUP SEQ maki
 TEST:SUITE maki/array-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/tensor-value-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/optim-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/optim-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/loss-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/autograd-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fmath-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/softmax-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/celoss-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/matmul-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/linear-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/autograd-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/loss-tensor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/layernorm-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/gelu-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/silu-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/rmsnorm-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/rope-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/move-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/reduce-bwd-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/scatter-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/move-facts-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/op-registry-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/adjoint-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/model-ir-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fusion-plan-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fusion-mout-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/bcast-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/lower-ew-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/lower-red-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/lower-mm-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/lower-mv-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/lower-model-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/precision-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/backward-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/mlp-bwd-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/executor-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/saved-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/traffic-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/mem-plan-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/schedule-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/sched-key-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/store-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/store-replay-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/embedding-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/attention-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/mlp-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/train-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/onnx-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/onnx/proto-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/onnx/import-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/ablate-fusion-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/report-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cad-ref-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/plan-compose-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/plan-vocab-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/golden-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/golden-artifact-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/gradcheck-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/demo-ffn-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/from-scratch-model-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/from-scratch-train-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/from-scratch-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/device-artifacts-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-fixture.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-repair.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-repair-ab-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/eval-repair-mech-test.f
-TEST:END-SUITE
+TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
-TEST:END-SUITE
-TEST:END-GROUP
+TEST:;SUITE
+TEST:;GROUP
 
 end-package
 

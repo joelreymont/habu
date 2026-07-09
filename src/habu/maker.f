@@ -5,6 +5,7 @@
 \ source into stage2-got; the resulting maker runs later against user source.
 
 \ Audited build-driver boundary: appended after the toolchain hook is enabled.
+\ Dissolves with staged fixpoint source checking: habu-staged-fixpoint-src-0b5fc6e6.
 0 set-check
 
 : MK-IN ( -- ptr u8 n )
@@ -18,7 +19,9 @@ variable MK-SLEN
 variable MK-FD
 variable MK-RD
 
-$A0000 constant MK-SOURCE-CAP
+$100000 constant MK-SOURCE-CAP  \ engine source cap - same growth watermark as stage2.f
+                                \ S2-SOURCE-CAP (crossed $C0000 with the DNAME-WIDE gate);
+                                \ keep the two caps in step.
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;
@@ -45,8 +48,9 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
    MK-SBUF@ MK-SLEN @ EMIT-FORTH
    s" hb" MK-OUT DRV-EMIT-IMAGE ;
 
-\ Process boundary: report uncaught throws instead of exiting silently with
-\ the raw code (driver-io.f DRV-FAIL; exit code stays the throw code).
+\ Process boundary: report uncaught throws instead of exiting silently
+\ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,
+\ else die maps it to UNCAUGHT-RC).
 : MK-RUN ( -- )
    [: MK-GO ;] catch
    dup 0 = IF drop EXIT THEN
