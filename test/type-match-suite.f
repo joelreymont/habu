@@ -320,6 +320,16 @@ s" G16 ( mres -- n ) construct mres nope" MDG<
 s\" \"code\":\"E-CONSTRUCT-UNKNOWN-VARIANT\"" MDG?
 s" G17 ( n -- mres ) construct mres" MDG<
 s\" \"code\":\"E-CONSTRUCT-UNTERMINATED\"" MDG?
+\ item 15: products are not eliminable or constructible through the token
+\ forms — the family-kind gate is sum/enum only (docs §14); the product
+\ surface is its generated PKG:MAKE/PKG:UNMAKE words.
+PRODUCT mprod 0
+  FIELD v n
+;PRODUCT
+s" GP1 ( mprod -- n ) MATCH mprod make OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-FAMILY-KIND\"" MDG?
+s" GP2 ( n -- mprod ) construct mprod make" MDG<
+s\" \"code\":\"E-CONSTRUCT-FAMILY-KIND\"" MDG?
 31 MD-BODY MDG<
 s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
 s\" \"repair_class\":\"factor_match_nesting\"" MDG?

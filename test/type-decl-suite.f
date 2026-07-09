@@ -283,6 +283,15 @@ TDY @ PF-SLOT@ 1 T=
 TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-PARAM? -1 T=
 TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ 0 T=
 TDY @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ 1 T=
+\ generated-word metadata (item 15): two generator-owned SUMV rows sharing the
+\ field schema range, ctor package derived from the (pkg, tail) identity.
+TDF @ TFAM-VAR-COUNT@ 2 T=
+TDF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
+TDF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
+TDF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" TDPAIR" T$=
+TDF @ TFAM-VAR-START@ SUMV-PAYCELLS@ 2 T=
+TDF @ TFAM-VAR-START@ SUMV-SCH-COUNT@ 2 T=
+TDF @ TFAM-VAR-START@ SUMV-SCH-START@ SCHEMA-ROOT@ SCHEMA-PARAM? -1 T=
 \ a concrete-arg product expands to hidden fields in a signature and transports
 \ as ONE whole bundle (dup/drop are width-aware, item 12); identity flows.
 s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=

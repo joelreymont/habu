@@ -324,6 +324,112 @@ s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ th
 s" CONSTRUCT-OWN" type cr
 
 \ ---------------------------------------------------------------------------
+\ item 15: product generated words. A PUBLIC product publishes exactly two
+\ checked words in its derived package — PKG:MAKE ( fields -- fam<..> ) and
+\ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
+\ window: a product bundle is its field cells in slot order (no tag), so
+\ construction/destructure are physical no-ops and runtime round-trips are
+\ identity. Same publish/protection stack as sum constructors (SUMV rows).
+\ ---------------------------------------------------------------------------
+PRODUCT zpt 0
+  FIELD x n
+  FIELD y n
+;PRODUCT
+\ metadata: two generator-owned rows, ctor package derived, syms recorded.
+s" " s" zpt" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TFAM-VAR-COUNT@ 2 T=
+TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
+TCF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
+TCF @ TFAM-VAR-START@ SUMV-PAYCELLS@ 2 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-SYM@ 0 <> -1 T=
+TCF @ TFAM-VAR-START@ 1 + SUMV-CTOR-SYM@ 0 <> -1 T=
+\ checked construction/destructure compile through ordinary calls.
+: ZPT-MK ( n n -- zpt ) ZPT:MAKE ;
+: ZPT-UN ( zpt -- n n ) ZPT:UNMAKE ;
+: ZPT-RT ( -- n n ) 3 4 ZPT:MAKE ZPT:UNMAKE ;
+s" GEN-PRODUCT" type cr
+\ runtime round-trip: make/unmake are physical no-ops (field order preserved,
+\ slot0 deepest — x=3 under y=4).
+ZPT-RT 4 T= 3 T=
+\ user accessor compositions: destructure + ordinary drops over raw cells.
+: ZPT-X ( zpt -- n ) ZPT:UNMAKE drop ;
+: ZPT-Y ( zpt -- n ) ZPT:UNMAKE nip ;
+: ZPT-RTX ( -- n ) 7 9 ZPT:MAKE ZPT-X ;
+: ZPT-RTY ( -- n ) 7 9 ZPT:MAKE ZPT-Y ;
+ZPT-RTX 7 T=
+ZPT-RTY 9 T=
+\ wrong payload count/type rejects at the call site; raw cells cannot forge a
+\ product and a bundle cannot split without UNMAKE (window is closed).
+s" PB1 ( n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PB2 ( ptr u8 n -- zpt ) ZPT:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PB3 ( n n -- zpt )" CHECK-QUIET-CANDIDATE! 0 T=
+s" PB4 ( zpt -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
+\ whole-bundle transport still holds for constructed products.
+s" PB5 ( zpt -- zpt zpt ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+\ construct is kind-gated to sum/enum: no token form for products.
+s" PB6 ( n n -- zpt ) construct zpt make" CHECK-QUIET-CANDIDATE! 0 T=
+\ ptr-payload product round-trips the mixed field row.
+PRODUCT zbuf 0
+  FIELD cap n
+  FIELD raw ptr u8
+;PRODUCT
+: ZBUF-MK ( n ptr u8 -- zbuf ) ZBUF:MAKE ;
+: ZBUF-UN ( zbuf -- n ptr u8 ) ZBUF:UNMAKE ;
+s" GEN-PRODUCT-PTR" type cr
+\ parametric products publish both words: MAKE's open result expands at
+\ concrete boundaries (LOGHID out), UNMAKE's open input absorbs the caller's
+\ hidden run (LOGHID in), and generic wrappers stay one logical cell inside.
+PRODUCT zpr 2
+  FIELD fst a
+  FIELD snd b
+;PRODUCT
+: ZPR-MK ( n n -- zpr<n,n> ) ZPR:MAKE ;
+: ZPR-UN ( zpr<n,n> -- n n ) ZPR:UNMAKE ;
+: ZPR-G ( a b -- zpr<a,b> ) ZPR:MAKE ;
+: ZPR-GUN ( zpr<a,b> -- a b ) ZPR:UNMAKE ;
+: ZPR-USE ( n -- zpr<n,n> ) 5 ZPR-G ;
+: ZPR-RT ( -- n n ) 2 8 ZPR:MAKE ZPR:UNMAKE ;
+ZPR-RT 8 T= 2 T=
+s" GEN-PRODUCT-POLY" type cr
+\ wrong instantiation and cross-family aliasing keep rejecting.
+s" PP1 ( ptr u8 -- zpr<n,n> ) 0 swap ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PP2 ( n n -- zpt ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+\ linear instantiations stay fail-closed at the sig/arg-bind layers.
+s" PL1 ( own n -- zpr<own,n> ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" PL2 ( zpr<own,n> -- zpr<own,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" PL3 ( zpr<own,n> -- own n ) ZPR:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
+\ in-package public product: derived package, callable from global scope,
+\ package state survives generation.
+package zppk
+public
+PRODUCT prow 0
+  FIELD v n
+;PRODUCT
+end-package
+: ZPPK-MK ( n -- zppk:prow ) ZPPK-PROW:MAKE ;
+: ZPPK-UN ( zppk:prow -- n ) ZPPK-PROW:UNMAKE ;
+s" GEN-PRODUCT-PKG" type cr
+\ private products export nothing: no package, no words, no construct form.
+package zpsec
+private
+PRODUCT phid 0
+  FIELD v n
+;PRODUCT
+end-package
+s" zpsec" s" phid" TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
+s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+\ protection: the derived package is closed (reopen/undefine reject), and the
+\ generated words stay callable after the rejected attempts.
+s" package zpt" TCE-CATCH E-CTOR-PROTECTED T=
+s" package ZPT" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine ZPT:MAKE" TCE-CATCH E-CTOR-PROTECTED T=
+s" undefine zpt:unmake" TCE-CATCH E-CTOR-PROTECTED T=
+: ZPT-MK2 ( n n -- zpt ) ZPT:MAKE ;
+s" PRODUCT-PROTECTED" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

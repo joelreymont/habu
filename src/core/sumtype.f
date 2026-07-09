@@ -352,10 +352,22 @@ variable TDV-NA    variable TDV-NU
 \ layout the generic LAYOUT-PUSH-FIELDS already expands off TFAM-WIDTH@*. Field
 \ names are their own tail namespace: 1-char labels (x/y) are legal, so the family
 \ RESERVED gate (which blocks a..z) does not apply; PF-ADD's TF-REQUIRE-CANON +
-\ dup-reject enforce lowercase + no duplicate field within the product. This
-\ registration is metadata only — generated constructors + field accessors land
-\ in the next slice (mirrors CHECKER-DEFSUM staying metadata-only vs the SUMTYPE
-\ word's ctor generation). Constructors are NOT published here.
+\ dup-reject enforce lowercase + no duplicate field within the product.
+\ A product's generated surface is two words with FIXED generator-owned tails,
+\ recorded as two SUMV rows so the whole item-8 publish/protection stack
+\ (ctor-package derivation, closed-but-callable WID wall, CTOR-SYM records) is
+\ shared verbatim with sums: `make` ( fields -- fam<..> ) and `unmake`
+\ ( fam<..> -- fields ), both compiled with EMPTY bodies under the k=0
+\ pending-constructor window — a product bundle IS its field cells in slot
+\ order (no tag, docs §18), so construction and destructure are physical
+\ no-ops and the declared sigs are checker-owned metadata truth. Parametric
+\ products publish both words: MAKE's open result and UNMAKE's open input
+\ expand/absorb at concrete sites through the LOGHID row coercion (U-ROW,
+\ checker.f), and linear instantiations stay fail-closed at the sig/arg-bind
+\ layers. The rows are registered here (preverify parity); dictionary words
+\ are generated only by the engine PRODUCT definer below. MATCH and
+\ `construct` stay kind-gated to sum/enum, so product rows are never matchable
+\ variants and private products have no construction surface (fail-closed).
 variable TDP-N   \ product field count / next physical slot
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -388,6 +400,15 @@ variable TDP-N   \ product field count / next physical slot
       2drop fam TDECL-PRODUCT-FIELD
    AGAIN ;
 
+\ the two generated-word rows: field schemas are appended one root per field,
+\ so the ctor payload range is exactly [rstart, rstart+W) — both rows share it.
+: TDECL-PRODUCT-ROWS ( n n -- ) {: fam:n rstart:n :}
+   SUMV-N @ {: vstart:n :}
+   fam s" make"   0 rstart TDP-N @ TDP-N @ SUMV-ADD drop
+   fam s" unmake" 1 rstart TDP-N @ TDP-N @ SUMV-ADD drop
+   fam vstart 2 TFAM-VAR-RANGE!
+   fam vstart 2 TDECL-CTOR-PUBLISH ;
+
 : CHECKER-DEFPRODUCT-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
@@ -395,11 +416,13 @@ variable TDP-N   \ product field count / next physical slot
    ar TDECL-FAM-ARITY !
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    PF-N @ {: fstart:n :}
+   SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !
    fam TDECL-PRODUCT-FIELDS
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-N @ TFAM-SLOTS!               \ product width = field cell count (no tag)
+   fam rstart TDECL-PRODUCT-ROWS
    fam TDECL-FAM-REG ! ;
 
 : CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
@@ -533,10 +556,44 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    vid TDGEN-NAME
    TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT @ execute ;
 
+\ product generated words (item 15): `: PKG:MAKE ( fields -- fam<..> ) ;` and
+\ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending
+\ window is armed with k=0: a product bundle is its field cells in slot order
+\ (no pads, no tag), so the body must contribute exactly nothing and the
+\ declared sig is the checker-owned metadata truth rendered from the PF field
+\ schemas. mk:n picks the direction (nonzero = make).
+: TDECL-PROD-WORD ( n n n -- ) {: fam:n vid:n mk:n :}
+   TDGEN-CLEAR
+   vid TDGEN-NAME
+   s" ( " TDGEN-APP
+   mk 0 <> IF
+      vid TDGEN-PAYLOAD
+      s" -- " TDGEN-APP
+      fam TDGEN-OUT-TYPE
+      s"  ) ;" TDGEN-APP
+   ELSE
+      fam TDGEN-OUT-TYPE
+      s"  -- " TDGEN-APP
+      vid TDGEN-PAYLOAD
+      s" ) ;" TDGEN-APP
+   THEN
+   TDGEN-NA @ TDGEN-NU @ 0 CTOR-PEND!
+   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute
+   CTOR-PEND-CLEAR
+   vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
+
+: TDECL-PROD-WORDS ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam vstart 1 TDECL-PROD-WORD
+   fam vstart 1 + 0 TDECL-PROD-WORD
+   vstart TDECL-CTOR-PROT-WID ;
+
 : TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
    TDECL-FAM-REG @ {: fam:n :}
    fam 0 < IF EXIT THEN
    fam TFAM-PUBLIC? 0= IF EXIT THEN
+   fam TFAM-PRODUCT? IF fam TDECL-PROD-WORDS EXIT THEN
    \ parametric (arity > 0) families publish too (item 11 slice 1): a
    \ constructor's parametric result stays one conservative logical cell while
    \ its args are unresolved, expands to hidden fields where instantiation
@@ -623,8 +680,8 @@ variable TDECL-I
    TDECL-CTOR-WORDS ;
 
 \ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
-\ then registers the whole block. Metadata only: no constructor generation yet, so
-\ TDECL-CTOR-WORDS is NOT called (the constructor + field accessor slice follows).
+\ then registers the whole block and generates the PKG:MAKE/PKG:UNMAKE words
+\ for a public product (TDECL-CTOR-WORDS branches on the family kind).
 : PRODUCT-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
    BEGIN
       parse-name
@@ -643,4 +700,5 @@ variable TDECL-I
       s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
       [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
-   na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT ;
+   na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT
+   TDECL-CTOR-WORDS ;
