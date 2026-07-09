@@ -131,6 +131,39 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    11 1 OBJ:ROW-FIELD$ s" 16" T$=
    11 2 OBJ:ROW-FIELD$ s" PRINT" T$= ;
 
+create ENTRY-SCRATCH 1024 allot
+variable ENTRY-SCRATCH-U
+
+: ENTRY-BUILD ( -- )
+   OBJ:RESET
+   HASH$ OBJ:SOURCE!
+   s" macos-aarch64" OBJ:TARGET!
+   s" checker-effect-v1" OBJ:CHECKER!
+   s" hb-arm64-v1" OBJ:COMPILER!
+   TEXT-BYTES 3 OBJ:TEXT+
+   s" HLP" s" --" OBJ:EXPORT+
+   s" HLP" 0 s" --" OBJ:DEF+
+   s" HLP" 1 s" 0000000000000005" OBJ:ENTRY+ ;
+
+: ENTRY-ASSERT-ROW ( -- )                         \ row 7: source/target/checker/compiler/text/export/def/entry
+   7 OBJ:ROW-TAG$ s" entry" T$=
+   7 OBJ:ROW-FIELD# 3 T=
+   7 0 OBJ:ROW-FIELD$ s" HLP" T$=
+   7 1 OBJ:ROW-FIELD$ s" 1" T$=
+   7 2 OBJ:ROW-FIELD$ s" 0000000000000005" T$= ;
+
+\ A selected non-MAIN entry row (name, test mode, forged seed hex) emits, and
+\ re-parses from a serialized copy with a stable content key (item 10 slice 5).
+: ENTRY-ROW ( -- )
+   ENTRY-BUILD
+   ENTRY-ASSERT-ROW
+   KEY1 OBJ:KEY-HEX
+   OBJ:BYTES$ dup ENTRY-SCRATCH-U ! ENTRY-SCRATCH swap BYTE-COPY
+   ENTRY-SCRATCH ENTRY-SCRATCH-U @ OBJ:LOAD
+   KEY2 OBJ:KEY-HEX
+   KEY1 KEY-U KEY2 KEY-U T$=
+   ENTRY-ASSERT-ROW ;
+
 : BAD-TAB ( -- )
    OBJ:RESET
    s" bad	name" OBJ:REQUIRE+ ;
@@ -201,6 +234,7 @@ public
    KEY-CHANGES
    MAX-BYTES-PUBLISHED
    ROW-ACCESSORS
+   ENTRY-ROW
    FAILURES
    T-REPORT ;
 

@@ -860,6 +860,7 @@ OBJ:DATA+      ( ptr u8 n -- )
 OBJ:PACKAGE+   ( ptr u8 n ptr u8 n -- )
 OBJ:EXPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:DEF+       ( ptr u8 n n ptr u8 n -- )
+OBJ:ENTRY+     ( ptr u8 n n ptr u8 n -- )
 OBJ:IMPORT+    ( ptr u8 n ptr u8 n -- )
 OBJ:TYPE+      ( ptr u8 n ptr u8 n -- )
 OBJ:RELOC+     ( ptr u8 n n ptr u8 n -- )
@@ -885,7 +886,10 @@ canonical. `OBJ:TEXT+` and `OBJ:DATA+` encode binary section bytes as lowercase
 hex records, and `OBJ:LOAD` rejects malformed section hex. `OBJ:BYTES$` and
 `OBJ:KEY-HEX` require source, target, checker, and compiler ABI fields before
 returning data. `OBJ:DEF+` records an address-bearing text definition as
-symbol, text byte offset, and effect. Header accessors return the validated
+symbol, text byte offset, and effect. `OBJ:ENTRY+` records a selected non-MAIN
+entry (name, test mode, and forged seed cells as big-endian u64 hex) so a
+preseeded object is a distinct artifact from a normal MAIN object. Header
+accessors return the validated
 source, target, checker, and compiler ABI fields. Row accessors expose the
 validated record body without the magic header: indexes are zero-based, fields
 exclude the tag, and bad row or field indexes throw `E-OBJ-FIELD`. `OBJ:LOAD`

@@ -269,6 +269,11 @@ variable LOAD-OFF
       a u PARSE-RELOC-OFF
       exit
    then
+   a u s" entry" TAG? if
+      a u 3 EXPECT-TABS
+      a u PARSE-RELOC-OFF
+      exit
+   then
    E-OBJ-SCHEMA throw ;
 
 : NEXT-LINE ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u:n :}
@@ -379,6 +384,14 @@ public
 
 : DEF+ ( ptr u8 n n ptr u8 n -- )
    s" def" LINE3N ;
+
+\ Selected AOT/object entry identity for a preseeded test entry: the entry word
+\ name, a test mode, and the forged seed cells (big-endian u64 hex, tag last).
+\ Recording it in the object bytes makes a preseeded object distinct from a
+\ normal MAIN object (OBJ:KEY-HEX diverges) and lets the object self-describe its
+\ non-MAIN entry. docs/census-tfam-10.md Category 2.
+: ENTRY+ ( ptr u8 n n ptr u8 n -- )
+   s" entry" LINE3N ;
 
 : IMPORT+ ( ptr u8 n ptr u8 n -- )
    s" import" LINE2 ;

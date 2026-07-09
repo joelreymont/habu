@@ -441,35 +441,79 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    restore keys so a stale MAIN object can't satisfy a preseeded bad-tag run. No
    new ADT TRUST/TRUSTED:/set-check/manifest rows (may reuse image-writer trust).
 
-   **STATUS: NOT STARTED — implementation-ready; needs a fresh session (verdict
-   fable-tfam12, 2026-07-09, coordinator-approved clean stop).** The complete
-   site map with file:line anchors is **docs/census-tfam-10.md** (committed;
-   verified current against this tree — no preseed/entry/testmode support
-   exists anywhere yet, rg-confirmed). Key facts for the implementer:
-   - Capability is net-new and CROSS-CUTTING with a lockstep invariant: the
-     artifact key (hb-build-lib.f:743-753), the object source-index key
-     (object-index.f:96-105 / object-resolve.f:27-45), and the object bytes
-     (HBB-BUILD-OBJECT-RECORD hb-build-lib.f:796-804, today hardwiring
-     `s" MAIN"` export+def) must all gain the entry/preseed/test-mode axis in
-     ONE commit or a restore fast-path serves a stale normal-MAIN artifact
-     (census § Categories 2-3, "insert axis summary").
-   - Narrowest seam: HBB-BUILD-OBJECT-RECORD — a new object schema row
-     (entry/seed/testmode; PARSE-LINE arm object.f:243-272 + emit word beside
-     EXPORT+/DEF+ object.f:377-381) changes the object bytes, so OBJ:KEY-HEX
-     and OBJSTORE diverge automatically (census § Summary).
-   - Engine-risk parts (the reason this needs fresh budget): the seeded-cell
-     EMIT-ENTRY prologue (aot-lib.f:159-166; push raw payload+bad-tag onto XDS
-     before the `bl` — same emitter crash class as slice 3), FINDMAIN →
-     selected-entry by record index/code addr not bare name
-     (aot-closure.f:110-111, 168-169; same-name hazard census § Category 6),
-     and the non-CODE-OFF image entry (macho.f:88-89/157 + the elf.f mirror +
-     driver-io.f — sites the original plan list OMITS, census § discrepancies).
-   - The runtime die the seeded entry must reach is ALREADY LANDED (slice 3):
-     rc E-BAD-TAG=85 + "hb: bad <fam> tag" emitted inline into every compiled
-     MATCH; the fixture only needs to build a MATCH helper via hb-build, seed
-     payload+forged-tag, run the artifact, and pin rc/stderr — plus the
-     negative cache-coherence leg (normal-MAIN build ≠ preseeded build,
-     bidirectional no-cross-restore).
+   **LANDED (fable-tfam12, "TFAM 10 slice 5: AOT/object persistence of matched
+   definitions"). Driver/library/tooling work only — NO engine source touched, so
+   the fixpoint stays byte-identical (70b6790f…, 148855) with no gate-build-size
+   ratchet and no TRUSTED.md/classes bump.** What shipped, exactly:
+   - PREREQUISITE (net-new capability the plan implied): the AOT maker could not
+     compile ANY `SUMTYPE` source — `BF-APPEND-COMMON` omits `src/core/include.f`,
+     so the constructor eval hook `TDECL-EVAL-XT` (installed there via
+     `' INCLUDE-EVALUATE TDECL-EVAL-XT !`) was 0 and every `SUMTYPE` declaration
+     died rc 76 "sumtype: constructor eval hook not installed" before any matched
+     def could lower. Fix: `src/habu/aot.f` installs the hook directly
+     (`: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ; ' AOT-CTOR-EVAL TDECL-EVAL-XT !`)
+     at maker boot — `INCLUDE-EVALUATE` is itself just `evaluate`, and xref.f
+     (in common) already installs the prot-wid hook. This makes AOT-built matched
+     definitions possible at all.
+   - THREE-KEY LOCKSTEP (all in ONE commit, `HBB-PRESEED-CK+` tools/hb-build-lib.f):
+     folds the `preseed-entry-v1` + entry-name + seed-hex + mode axis into (1) the
+     artifact key (`HBB-ARTIFACT-KEY!`), (2) the source-index key + object `source`
+     header (via `HBB-CLOSURE-HEX!` → `HBB-SRC-CLOSURE-HEX`), and (3) the object
+     bytes (a new `entry` schema row, below). A NO-OP for a normal MAIN build, so
+     non-preseed keys/objects/executables stay byte-identical (existing caches and
+     the gate's own AOT builds unaffected). Proven: a normal-MAIN build and a
+     preseed build of the SAME source are distinct artifacts + distinct objects
+     with bidirectional no-cross-restore (re-request normal → rc 0, re-request
+     preseed → rc 85), and an object-cache relink (artifact key flipped via
+     `--json`, source-index/object key identical) still serves the seeded die.
+   - OBJECT SCHEMA (`lib/object.f`): new `entry` row `entry\t<name>\t<mode>\t<seedhex>`
+     (PARSE-LINE arm reusing the def/reloc 3-tab + PARSE-RELOC-OFF shape; `OBJ:ENTRY+`
+     emit word beside EXPORT+/DEF+, reusing LINE3N). object-link ADD-ROW/APPEND-ROW
+     ignore it (unknown-tag fall-through). `HBB-BUILD-OBJECT-RECORD` now emits the
+     entry-name export/def (`HBB-ENTRY-NAME$`, default "MAIN") + the entry row when
+     preseeded. std.manifest + lib/object-test.f ENTRY-ROW + docs coverage added.
+   - SEEDED ENTRY (`src/habu/aot-lib.f` `EMIT-SEED`/`SEED+`): after EMIT-DATA-COPY,
+     pushes each seed cell onto the value stack (`movz/movk x9; str x9,[x19]; add
+     x19,x19,#8`) before `bl <root>`. NOT the slice-3 emitter crash class: this
+     emits into the maker's batch ASM buffer, not a live RX region. `FINDMAIN` is
+     parameterized by a settable entry name (`ENTRY-NAME!`/`$`, default MAIN;
+     aot-closure.f) so the stripped image starts at the selected helper (closure
+     word 0 → MLBL → helper), MAIN stripped. `aot.f` reads argv[3]=entry,
+     argv[4]=seed-hex (big-endian u64/cell); hb-build passes them via the maker argv.
+   - CLI: `tools/hb-build.f --preseed-entry NAME --preseed-seed HEX [--preseed-mode N]`
+     + in-process setters (`HBB-PRESEED-ENTRY!`/`-SEED!`/`-MODE!`) for the gate test.
+   - DESIGN DECISION (macho.f/elf.f/driver-io.f image-entry): NOT changed, and this
+     is correct, not a shortcut. The seeded entry is an executable STUB that the
+     maker's `EMIT-ENTRY` emits FIRST (offset 0 = `CODE-OFF`) into the AOT `__text`;
+     `AOT-WRITE-OBJ` writes that full code (stub + closure) as the object `text`
+     section, and the object-relink path (`OBJIMG:WRITE` → `DRV-EMIT-IMAGE` →
+     `BUILD-IMAGE`) copies it verbatim with the image entry already at `CODE-OFF` =
+     the stub. So the seeded non-MAIN entry persists through the object cache with
+     entry identity intact WITHOUT a non-CODE-OFF image entry. Seeding requires a
+     stub (you cannot push value-stack cells with a static entry offset), and the
+     stub is at offset 0 by construction; a non-`CODE-OFF` image entry is only
+     needed for a stubless "start directly at a word" design, which cannot seed and
+     is therefore not the correct design for this capability. The census's
+     macho/elf requirement was predicated on that stubless framing (§ discrepancies);
+     the entry-offset hardwire is not on the seeding path. Same-name hazard: the
+     test helper name is unique, so name→record resolution IS record selection; the
+     dict record carries no package/WID field (census § Cat 6), so name is the only
+     resolvable identity and it is resolved once at closure root.
+   - TEST (`test/gate-aot-positive-lib.f` GAP-PRESEED, wired into GAP-RUN, phase
+     gate-aot-pos): in-process `HBB-BUILD` of a `gemt` family + MATCH helper `HLP`
+     + trivial MAIN; normal build → rc 0; preseed (entry HLP, seed 0 0 5) → run
+     dies rc 85 + "hb: bad gemt tag"; re-request restore → rc 85; object-cache
+     relink (`--json`, asserts `HBB-OBJECT-HIT`) → rc 85; normal re-request → rc 0
+     (no clobber). lib/object-test.f ENTRY-ROW proves the entry row emits + reparses
+     with a stable content key.
+   - Proofs: byte-identical fixpoint ×2 (install --force, 70b6790feb6787f0…,
+     148855 both); FULL gate rc=0 "PASS: native test suite ... (17674ms <= 40000ms
+     budget)"; six type suites ok; maki/test.f `test: ok`; typed-local-diff-lint on
+     the diff clean; host-lint 0 / filemap-lint 0 / dot-dep-lint 0 findings;
+     trusted-inventory baseline (gate) green + `-- strict` inventory-neutral for the
+     touched files (its lone failure is the PRE-EXISTING missing dot
+     `habu-tfam-12-layout-057181a9` at TRUSTED.md:797, not in this diff);
+     object-image-test / object-resolve-test / object-link-test / hb-build-test ok.
 6. **Docs + census + pin cleanup.** docs/type-families.md §16 lowering marked
    landed; docs/census-tfam-10.md; compiler-dispatch-test.f + bootstrap-codegen-
    test.f cover the new keywords and prove CASE shape unchanged; retire the

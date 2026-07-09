@@ -37,6 +37,17 @@ create HBB-ARTIFACT-KEY-HEX 80 allot
 create HBB-LF-BUF 1 allot
 HBB-LF HBB-LF-BUF c!
 
+\ Preseeded test entry (--preseed-entry / --preseed-seed): a selected non-MAIN
+\ entry word plus a forged value-stack seed (big-endian u64 hex, tag last) built
+\ into the AOT/object image, so a matched helper reaches its inline invalid-tag
+\ die (docs/census-tfam-10.md). The entry/seed/mode axis is folded into all three
+\ cache layers (artifact key, source-index key, object bytes) so a preseeded run
+\ can never restore a stale normal-MAIN artifact.
+64 constant HBB-ENTRY-NAME-CAP
+2048 constant HBB-SEED-HEX-CAP
+create HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-CAP allot
+create HBB-SEED-HEX-BUF HBB-SEED-HEX-CAP allot
+
 variable HBB-OUT-BUF-A
 variable HBB-ERR-BUF-A
 variable HBB-SRC-U
@@ -65,6 +76,10 @@ variable HBB-OBJECT-HIT
 variable HBB-OBJECT-STORE
 variable HBB-LINE-START
 variable HBB-JSON-FOUND
+variable HBB-PRESEED
+variable HBB-ENTRY-NAME-U
+variable HBB-SEED-HEX-U
+variable HBB-PRESEED-MODE
 
 : HBB-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -98,7 +113,7 @@ variable HBB-JSON-FOUND
    s" " rot die ;
 
 : HBB-USAGE ( -- )
-   s" usage: tools/hb-build.f [--repl] [--json-errors] [--strict-signatures] source.f -o out" HBB-USAGE-RC die ;
+   s" usage: tools/hb-build.f [--repl] [--json-errors] [--strict-signatures] [--preseed-entry NAME --preseed-seed HEX [--preseed-mode N]] source.f -o out" HBB-USAGE-RC die ;
 
 : HBB-COPY-PATH! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr up:ptr :}
    u FS-PATH-CAP > if E-BUILD-PATH throw then
@@ -197,7 +212,35 @@ variable HBB-JSON-FOUND
 : HBB-RESET-OPTIONS ( -- )
    0 HBB-REPL !
    0 HBB-JSON !
-   0 HBB-STRICT ! ;
+   0 HBB-STRICT !
+   0 HBB-PRESEED !
+   0 HBB-ENTRY-NAME-U !
+   0 HBB-SEED-HEX-U !
+   0 HBB-PRESEED-MODE ! ;
+
+: HBB-PRESEED? ( -- bool )
+   HBB-PRESEED @ 0 <> ;
+
+: HBB-ENTRY-NAME$ ( -- ptr u8 n )
+   HBB-PRESEED? if HBB-ENTRY-NAME-BUF HBB-ENTRY-NAME-U @ else s" MAIN" then ;
+
+: HBB-SEED-HEX$ ( -- ptr u8 n )
+   HBB-SEED-HEX-BUF HBB-SEED-HEX-U @ ;
+
+: HBB-PRESEED-ENTRY! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 <= if E-BUILD-PATH throw then
+   u HBB-ENTRY-NAME-CAP > if E-BUILD-PATH throw then
+   a HBB-ENTRY-NAME-BUF u BYTE-COPY
+   u HBB-ENTRY-NAME-U !
+   -1 HBB-PRESEED ! ;
+
+: HBB-PRESEED-SEED! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u HBB-SEED-HEX-CAP > if E-STR-CAPACITY throw then
+   a HBB-SEED-HEX-BUF u BYTE-COPY
+   u HBB-SEED-HEX-U ! ;
+
+: HBB-PRESEED-MODE! ( n -- )
+   HBB-PRESEED-MODE ! ;
 
 : HBB-RESET-TRACE ( -- )
    0 HBB-MAKER-HIT !
@@ -228,11 +271,19 @@ variable HBB-JSON-FOUND
 : HBB-ARG= ( n ptr u8 n -- bool ) {: idx pat:ptr patu :}
    idx HBB-ARG$ pat patu STR= ;
 
+: HBB-OPT-VALUE$ ( -- ptr u8 n )   \ flag is at HBB-I; advance to and return its value arg
+   HBB-INC-I
+   HBB-I @ SCRIPT-ARGC >= if HBB-USAGE then
+   HBB-I @ HBB-ARG$ ;
+
 : HBB-PARSE-OPTION? ( -- bool )
    HBB-I @ SCRIPT-ARGC >= if HBB-FALSE exit then
    HBB-I @ s" --repl" HBB-ARG= if -1 HBB-REPL ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --json-errors" HBB-ARG= if -1 HBB-JSON ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --strict-signatures" HBB-ARG= if -1 HBB-STRICT ! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --preseed-mode" HBB-ARG= if HBB-OPT-VALUE$ STR>NUMBER? 0= if HBB-USAGE then HBB-PRESEED-MODE! HBB-INC-I HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
    HBB-FALSE ;
@@ -684,7 +735,11 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-RUN-MAKER-ARGS ( -- )
    PROC-ARGV-RESET
    HBB-SRC$ >LEN PROC-ARGV+
-   HBB-JSON-FLAG$ >LEN PROC-ARGV+ ;
+   HBB-JSON-FLAG$ >LEN PROC-ARGV+
+   HBB-PRESEED? if
+      HBB-ENTRY-NAME$ >LEN PROC-ARGV+
+      HBB-SEED-HEX$ >LEN PROC-ARGV+
+   then ;
 
 : HBB-RUN-MAKER-CMD ( -- n n n )
    HBB-RUN-MAKER-ARGS
@@ -732,6 +787,19 @@ HBB-INSTALL-CHILD-LINTS
       HBB-KEY-I @ 1+ HBB-KEY-I !
    repeat ;
 
+\ Fold the selected-entry / seed / test-mode axis into a content key. A no-op for
+\ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
+\ but for a preseeded run it diverges every cache layer in lockstep: the artifact
+\ key, the source-index key (via HBB-CLOSURE-HEX!), and the object source header.
+\ Without it a preseeded run would restore a stale normal-MAIN artifact
+\ (docs/census-tfam-10.md Categories 2-3, insert-axis summary).
+: HBB-PRESEED-CK+ ( -- )
+   HBB-PRESEED? 0= if exit then
+   s" preseed-entry-v1" CK-TEXT+
+   HBB-ENTRY-NAME$ CK-TEXT+
+   HBB-SEED-HEX$ CK-TEXT+
+   SB-RESET s" mode:" SB-APPEND HBB-PRESEED-MODE @ FS-MUT-SB-U SB$ CK-TEXT+ ;
+
 : HBB-SRC-CLOSURE+ ( -- )
    s" user-source-closure-v1" CK-TEXT+
    HBB-SRC$ HBB-CLOSURE-CK+ ;
@@ -740,6 +808,7 @@ HBB-INSTALL-CHILD-LINTS
    CK-RESET
    s" user-source-closure-v1" CK-TEXT+
    a u HBB-CLOSURE-CK+
+   HBB-PRESEED-CK+
    dst CK-FINAL-HEX ;
 
 : HBB-SRC-CLOSURE-HEX! ( -- )
@@ -776,6 +845,7 @@ HBB-INSTALL-CHILD-LINTS
    s" tools/diag-origin-core.f" HBB-KEY-FILE+
    s" tools/diag-origin.f" HBB-KEY-FILE+
    HBB-SRC-CLOSURE+
+   HBB-PRESEED-CK+
    HBB-ARTIFACT-KEY-HEX CK-FINAL-HEX ;
 
 : HBB-ARTIFACT-NAME! ( -- )
@@ -826,8 +896,11 @@ HBB-INSTALL-CHILD-LINTS
    HBB-CHECKER-ABI$ OBJ:CHECKER!
    HBB-COMPILER-ABI$ OBJ:COMPILER!
    BF-SOURCE-BUF textu OBJ:TEXT+
-   s" MAIN" s" --" OBJ:EXPORT+
-   s" MAIN" 0 s" --" OBJ:DEF+ ;
+   HBB-ENTRY-NAME$ s" --" OBJ:EXPORT+
+   HBB-ENTRY-NAME$ 0 s" --" OBJ:DEF+
+   HBB-PRESEED? if
+      HBB-ENTRY-NAME$ HBB-PRESEED-MODE @ HBB-SEED-HEX$ OBJ:ENTRY+
+   then ;
 
 : HBB-VALIDATE-OBJECT ( -- )
    OBJIMG:RESET

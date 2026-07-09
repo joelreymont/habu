@@ -49,8 +49,21 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
          1 +
       REPEAT drop 0 0=
    ELSE 0 0= 0= THEN ;
+\ Selected AOT entry word. Defaults to MAIN (the zero-argument process entry);
+\ a preseeded test entry (tools/hb-build.f --preseed-entry) sets it to a matched
+\ helper so the stripped image starts at a non-MAIN root (docs/census-tfam-10.md
+\ Category 1/6: identity is resolved by record here, not carried as a bare name).
+create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
+: ENTRY-NAME$ ( -- ptr u8 n )
+   ENTRY-NAME-BUF ENTRY-NAME-U @ ;
+: ENTRY-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 1 < IF s" aot: empty entry name" 74 die THEN
+   u 64 > IF s" aot: entry name too long" 74 die THEN
+   a ENTRY-NAME-BUF u BYTE-COPY
+   u ENTRY-NAME-U ! ;
+s" MAIN" ENTRY-NAME!
 : MAIN? {: r:ptr :} ( ptr a -- bool )
-   r s" MAIN" REC-NAME= ;
+   r ENTRY-NAME$ REC-NAME= ;
 \ Data-space words (@ ! c@ c! here allot , c,) are now supported: the AOT entry
 \ maps the fixed DATA region and restores the program's persistent data (see
 \ aot-lib.f). Only words that need machinery the stripped binary does not carry
@@ -172,5 +185,8 @@ variable SP2  variable SEND
       ELSE SP2 @ 4 + SP2 ! THEN
    REPEAT ;
 variable WI
-: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop s" aot: no MAIN" 74 die THEN  dup ROOTREC !  ADD-CLO
+: NO-ENTRY-DIE ( -- )
+   s" aot: entry word not found: " AETXT  ENTRY-NAME$ AETXT  10 AE1
+   s" aot: no entry" 74 die ;
+: CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;

@@ -1014,6 +1014,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	object	lib/object.f	word	OBJ:PACKAGE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append package name and visibility metadata
 1	object	lib/object.f	word	OBJ:EXPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append exported symbol and effect metadata
 1	object	lib/object.f	word	OBJ:DEF+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append address-bearing text symbol definition metadata
+1	object	lib/object.f	word	OBJ:ENTRY+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append selected non-MAIN entry identity seed cells and test-mode metadata
 1	object	lib/object.f	word	OBJ:IMPORT+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append imported symbol and effect metadata
 1	object	lib/object.f	word	OBJ:TYPE+	(ptr u8 n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append declared type metadata
 1	object	lib/object.f	word	OBJ:RELOC+	(ptr u8 n n ptr u8 n --)	lib/object-test.f	docs/stdlib.md	stdlib-object	published	append relocation kind offset and symbol metadata
