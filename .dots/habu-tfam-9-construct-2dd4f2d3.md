@@ -180,3 +180,38 @@ TRUSTED: Habu). Close conditions per PLAN item-9 acceptance.
 ### Deferred to item 10 (NOT this dot): native/Gforth lowering of
 MATCH/OF/ENDOF/;MATCH + constructor tag pushes + bad-tag die paths + the
 runtime invalid-tag object/AOT test (§25.5). Item 9 fixtures stay check-only.
+
+## SLICE 1 LANDED (commit "TFAM 9 slice 1: reserve match/construct tokens")
+
+Refined slice-1 scope vs the plan above: this slice is the **reserved-name
+reservation only** (definition-name surface); the match/construct-mode *capture*
+folds into the construct (slice 2) and MATCH (slice 3) checker slices where the
+tokens are actually handled — capture without handling would be dead scaffolding,
+so it is deferred to where it is exercised. No throwaway.
+
+Landed: tools/reserved-name-lint-core.f `RNL-RESERVED-CONTROL?` now reserves
+`match` / `;match` / `construct` (case-folded) alongside case/of/endof, so no
+`:`/`+:`/`create`/... definition may take those names (PLAN item-9 acceptance
+"once `construct` is reserved"). `CONSTRUCT` was already migrated repo-wide
+(f968f1d93bad); a fresh grep confirmed no source defines or tokenises
+`match`/`;match`/`construct` outside comments, so the reservation adds zero new
+violations. Fixture: tools/reserved-name-lint-test-lib.f gains a `control.f`
+case (`: match` / `: ;match` / `: CONSTRUCT`) asserting E-RESERVED-DEFINITION +
+`` `match` `` / `` `;match` `` / `` `CONSTRUCT` `` in the report.
+
+Scope note: tool-only (reserved-name-lint-core.f is NOT baked into `bin/hb`
+core), so no fixpoint rebuild is required — the gate confirmed
+`candidate-build-skip=1` (fixpoint unchanged). TDECL family/variant-name
+reservation (sumtype.f) and the checker keyword awareness ride the construct/
+MATCH slices that rebuild the fixpoint anyway.
+
+Gate tails (all green, base fixpoint 8ce921d2 unchanged):
+- `bin/hb --load tools/reserved-name-lint-test.f` -> rc 0 ("reserved-name-lint-test: ok")
+- `bin/hb --load test/run.f` -> `GATE_RC=0` ("PASS: native test suite (fixpoint
+  + engine suite + checked hb + repl + hb-build) (9739ms <= 40000ms budget)";
+  candidate-validate=1 runs all five GE-TYPE-*-SUITE)
+- `bin/hb < test/type-{family,decl,ctor,linear}-suite.f` -> rc 0, "ok" each
+- typed-local-diff-lint on `jj diff --git` -> rc 0
+- dot-dep-lint -> "164 dot(s), 13 blocker(s), 0 finding(s)", test ok
+No new prims (prop census unchanged); no new TRUST sites (TRUSTED.md unchanged);
+maki/test.f unaffected (tool-only, not on maki load path).
