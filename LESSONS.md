@@ -2891,3 +2891,23 @@ unchanged (148855). Keys for milestone 2:
   cap (which was within 2.7KB of tripping too) and gave TOKEN-ENSURE a
   labeled die. When a cap comment names a specific file, grep that file's
   growth in any slice that touches it.
+- **Check whether an existing checker-owned bridge generalizes before designing
+  a new coercion.** Product destructure looked like it needed a new
+  "hidden-run to field-types" unification window; it fell out of TWO existing
+  mechanisms unchanged: the pending-constructor window at k=0 certifies any
+  empty-bodied generated word whose declared sig is metadata truth (expected
+  row = SGIN + 0 cells = inferred row), and the LOGHID logical/hidden row
+  coercion is already SYMMETRIC in U-ROW — so parametric UNMAKE's open input
+  absorbs a caller's concrete hidden run with no input-side special case.
+  Reading the unifier before designing saved a whole checker feature. Same
+  story for publication: recording fixed `make`/`unmake` tails as SUMV rows
+  bought the entire ctor-package protection wall for free.
+- **Stage a cross-layer capability so every commit is one-refresh buildable
+  from its parent's binary.** build-fixpoint `require`s tool sources into the
+  RUNNING engine, so a habu-layer consumer of a brand-new checker word breaks
+  the refresh from the parent binary (TFAM 15 hit E-UNDEFINED CHECKER-DEFPRODUCT
+  live). Land the checker word + its PRIM: exposure in commit A (stage-compiled
+  from source, so ANY parent binary builds it), and the verify-source/check-tool
+  consumers in commit B (A's binary exposes the word). TFAM 14 folded both into
+  one commit, which gates green in-session but leaves refresh-from-parent
+  broken; the two-commit shape costs nothing and keeps the chain sound.
