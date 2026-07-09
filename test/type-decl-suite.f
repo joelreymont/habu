@@ -199,6 +199,50 @@ TDOK @ -1 T=
 TDF @ TFAM-SLOTS@ 3 T=
 
 \ ---------------------------------------------------------------------------
+\ ENUM (item 14, docs §9.3): `ENUM name v0 v1 .. ;ENUM` registers a TK-ENUM
+\ family — a zero-payload sum (arity 0, slots 0) — one bare variant name per
+\ token becoming a payload-free SUMV row in declaration-tag order. It shares the
+\ SUMTYPE close/rollback/constructor path, so the family MATCHes and gets one
+\ generated constructor per variant just like an arity-0 zero-payload sum.
+\ ---------------------------------------------------------------------------
+ENUM tdcolor
+  red
+  green
+  blue
+;ENUM
+s" " s" tdcolor" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-KIND@ TK-ENUM T=
+TDF @ TFAM-ENUM? -1 T=
+TDF @ TFAM-SUM? 0 T=
+TDF @ TFAM-CELL? 0 T=
+TDF @ TFAM-ARITY@ 0 T=
+TDF @ TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
+TDF @ TFAM-VAR-COUNT@ 3 T=
+TDF @ TFAM-SLOTS@ 0 T=
+\ width is tag-only (docs §18: WIDTH(enum) = tag width = 1).
+TDF @ TFAM-WIDTH@ 1 T=
+TDF @ TFAM-VAR-START@ TDV0 !
+TDV0 @ SUMV-FAM@ TDF @ T=
+TDV0 @ SUMV-NAME$ s" red" T$=
+TDV0 @ SUMV-TAG@ 0 T=
+TDV0 @ SUMV-PAYCELLS@ 0 T=
+TDV0 @ SUMV-SCH-COUNT@ 0 T=
+TDV0 @ 1 + SUMV-NAME$ s" green" T$=
+TDV0 @ 1 + SUMV-TAG@ 1 T=
+TDV0 @ 2 + SUMV-NAME$ s" blue" T$=
+TDV0 @ 2 + SUMV-TAG@ 2 T=
+\ the bare enum tail resolves as a logical type in a signature (arity-0 family).
+s" TDE-ID ( tdcolor -- tdcolor )" CHECK-QUIET-CANDIDATE! -1 T=
+\ generated constructors: TDCOLOR:GREEN ( -- tdcolor ). A raw n is NOT the enum
+\ (docs §23 rejected example): a payload-free enum ctor takes no input and yields
+\ the enum type; a bare 0 cannot certify as tdcolor.
+s" TDE-MK ( -- tdcolor ) TDCOLOR:GREEN" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDE-BAD ( -- tdcolor ) 0" CHECK-QUIET-CANDIDATE! 0 T=
+\ a payload-free ctor rejects a spurious input just like the arity-0 sum ctors.
+s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
 \ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
 \ sum/enum/product layout value is still ONE physical T-PARAM cell at this stage
 \ (item 7 kept it one cell; no LAYOUT-PUSH-FIELDS expansion, no published
@@ -591,6 +635,29 @@ s" SUMTYPE tdpay1 1 VARIANT ok q ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay2 1 VARIANT ok whatnot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdpay3 1 VARIANT ok tdres<a,a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 
+\ malformed enum declarations (item 14): every reject rolls back to baseline via
+\ the shared transactional path (TDT-NEG asserts TDT-BASE=), so no family or
+\ variant row survives.
+\ empty / unterminated bodies.
+s" ENUM tdeempty ;ENUM" E-TDECL-SYNTAX TDT-NEG
+s" ENUM tdenoterm red green" E-TDECL-SYNTAX TDT-NEG
+\ duplicate variant within one enum.
+s" ENUM tdedup red red ;ENUM" E-TFAM-DUP TDT-NEG
+\ bad variant names: uppercase, reserved single-letter, grammar keyword, and a
+\ name that collides with an existing type family.
+s" ENUM tdecase Red ;ENUM" E-TFAM-CASE TDT-NEG
+s" ENUM tdesl a ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM tdekw enum ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM tdekw2 variant ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM tdevf tdfoo ;ENUM" E-TDECL-NAME TDT-NEG
+\ bad family names: uppercase, reserved single-letter, grammar keyword.
+s" ENUM Bad red ;ENUM" E-TFAM-CASE TDT-NEG
+s" ENUM a red ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM sumtype red ;ENUM" E-TDECL-NAME TDT-NEG
+\ redeclaring an existing family tail (enum over enum, and enum over a sum).
+s" ENUM tdcolor red ;ENUM" E-TFAM-DUP TDT-NEG
+s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
+
 \ ---------------------------------------------------------------------------
 \ declaration diagnostic packet: declaration-shaped, through the standard
 \ machinery — no fake declared stack effect, definition fields, or word row.
@@ -612,6 +679,10 @@ DIAG-BUFFER-OFF  0 DIAG-JSON!
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" SUMTYPE tdvd2 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
 DIAG-BUFFER$ s" bad sumtype declaration" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
+\ the enum kind token flows into the same declaration-shaped prose packet.
+s" ENUM tdediag red red ;ENUM" E-TFAM-DUP TDT-NEG
+DIAG-BUFFER$ s" bad enum declaration" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
 
 \ ---------------------------------------------------------------------------

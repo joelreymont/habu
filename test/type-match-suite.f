@@ -64,6 +64,15 @@ SUMTYPE mwv 0
   VARIANT dup  n ;VARIANT
   VARIANT swap n ;VARIANT
 ;SUMTYPE
+\ a genuine ENUM-declared family (item 14, kind TK-ENUM, not a SUMTYPE 0): MATCH
+\ must eliminate it exactly like the enum-SHAPED sum `men` above, since the
+\ family-kind gate is sum OR enum (docs §14). Its generated constructors are
+\ MECOLOR:RED / MECOLOR:GREEN / MECOLOR:BLUE.
+ENUM mecolor
+  red
+  green
+  blue
+;ENUM
 
 \ ---------------------------------------------------------------------------
 \ accepted: exhaustive matches with joined rows and refined payloads.
@@ -109,6 +118,22 @@ s" ML2=" type s" K2 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF ENDOF err OF 
 s" ML3=" type s" KB1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF drop 0 construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" ML4=" type s" KB2 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF dup drop construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LINEAR" type cr
+
+\ ---------------------------------------------------------------------------
+\ ENUM-declared family under MATCH (item 14): a real TK-ENUM eliminates,
+\ round-trips through its generated constructor, and enforces exhaustiveness +
+\ no-duplicate arms just like a sum.
+\ ---------------------------------------------------------------------------
+s" ME1=" type s" TE1 ( mecolor -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ constructor -> match round-trip: MECOLOR:GREEN yields a mecolor the match pops.
+s" ME2=" type s" TE2 ( -- n ) MECOLOR:GREEN MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ non-exhaustive enum match rejects (blue arm missing).
+s" MEB1=" type s" BE1 ( mecolor -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ duplicate enum variant arm rejects.
+s" MEB2=" type s" BE2 ( mecolor -- n ) MATCH mecolor red OF 0 ENDOF red OF 1 ENDOF green OF 2 ENDOF blue OF 3 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ a raw n is not the enum: the kind/scrutinee gate rejects.
+s" MEB3=" type s" BE3 ( n -- n ) MATCH mecolor red OF 0 ENDOF green OF 1 ENDOF blue OF 2 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" MATCH-ENUM" type cr
 
 \ ---------------------------------------------------------------------------
 \ rejected: exhaustiveness, duplicates, resolution, scrutinee shape, joins,

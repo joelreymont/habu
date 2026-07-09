@@ -1,5 +1,27 @@
 # TFAM-14 Census — Enum Families + Legacy `ENUM` Migration
 
+> **IMPLEMENTED 2026-07-10 (supersedes §0 STATE).** This census was written while
+> items 6-13 were unbuilt; they have all since landed and item 14 is now
+> implemented. Reality vs the census: legacy half (§3a option 1, *coexist*) was
+> already done upstream (`ENUM+`/`ENUM4+`, commit "Move numeric ENUM chain behind
+> legacy names"). The block half landed as `ENUM name v0 v1 .. ;ENUM` (the
+> `;ENUM` close, not `END-ENUM`) — a defining word in `src/core/sumtype.f` (NOT a
+> new `enum-family.f`; C2's suggestion is declined because ENUM reuses that file's
+> whole `TDECL-*`/`TDGEN-*`/`TDECL-CTOR-WORDS` machinery and the "one concern" is
+> the shared ADT *declaration grammar*, and keeping it there avoids every new-core-
+> file build-closure edit §1d/§6 lists). It registers `TFAM-DECL … TK-ENUM` +
+> zero-payload `SUMV-ADD` per variant + `TFAM-SLOTS! 0` + `TFAM-VAR-RANGE!`, and
+> generates constructors via the shared `TDECL-CTOR-WORDS` path (`TDCOLOR:RED`
+> shape) — exactly §6.2/§2b. `MATCH` already accepts `kind = enum` (item 9/10, the
+> `TFAM-SUM? or TFAM-ENUM?` gate), so exhaustive elimination works. R3 (kind-
+> blindness) and R4 (tag-0 truth) are resolved by the landed items 7/12: a raw `n`
+> is rejected where the enum type is declared (fixture `TDE-BAD`), and the enum is
+> a whole-bundle transport cell. Zero new trust rows (§5). The metadata-only
+> verify-source path (`RECORD-ENUM` → `CHECKER-DEFENUM`) does not materialize
+> constructors — identical to `RECORD-SUMTYPE`, by design. Fixtures ride
+> `test/type-decl-suite.f` (declaration + rejects) and `test/type-match-suite.f`
+> (enum elimination); Gate 17n is those two gated engine suites (no new suite file).
+
 Dot: `habu-tfam-14-enum-f418a044`. Scope: `PLAN.md` item 14
 (`PLAN.md:893-909`) and its per-item proof gate **17n** (item 17,
 `PLAN.md:958-1027`; sequence `... 13 -> 17m -> 14 -> 17n -> 15 -> 17o ...`,

@@ -421,6 +421,26 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
       BODY-APPEND
    AGAIN ;
 
+: ENUM-END? ( ptr u8 n -- bool )
+   s" ;ENUM" STR=CI ;
+
+\ Metadata-only replay of `ENUM name v0 v1 .. ;ENUM` (mirrors RECORD-SUMTYPE):
+\ buffer the bare variant tokens through ;ENUM and register the TK-ENUM family.
+: RECORD-ENUM ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing enum name" 74 die THEN
+   0 BODY-U !
+   BEGIN
+      NEXT-SCAN
+      dup 0= IF s" verify-source: missing ;ENUM" 74 die THEN
+      2dup ENUM-END? IF
+         2drop
+         name nameu BODY-BUF BODY-U @ CHECKER-DEFENUM
+         EXIT
+      THEN
+      BODY-APPEND
+   AGAIN ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -510,6 +530,7 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" typefamily" STR=CI IF RECORD-TYPEFAMILY 0 0= EXIT THEN
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
+   a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict

@@ -1,7 +1,8 @@
-\ sumtype.f — TYPEFAMILY/SUMTYPE declaration grammar (docs/type-families.md §9,
-\ PLAN item 6). The public ADT authoring surface: `TYPEFAMILY name arity`
-\ registers a TK-CELL family; `SUMTYPE name arity VARIANT v pay... ;VARIANT
-\ ... ;SUMTYPE` registers a TK-SUM family, one SUMV row per variant (tag =
+\ sumtype.f — TYPEFAMILY/SUMTYPE/ENUM declaration grammar (docs/type-families.md
+\ §9, PLAN items 6 + 14). The public ADT authoring surface: `TYPEFAMILY name
+\ arity` registers a TK-CELL family; `ENUM name v0 v1 .. ;ENUM` registers a
+\ TK-ENUM family (a zero-payload sum, docs §9.3); `SUMTYPE name arity VARIANT v
+\ pay... ;VARIANT ... ;SUMTYPE` registers a TK-SUM family, one SUMV row per variant (tag =
 \ declaration order), payload schema nodes, the family's variant range, and its
 \ max payload width. Declarations are package-aware: rows carry the active
 \ checker package and visibility, so two packages may declare the same tail.
@@ -87,6 +88,8 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 14 enum block definer
+   a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 14 enum block close (;FOO)
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI ;
 
@@ -296,6 +299,45 @@ variable TDV-NA    variable TDV-NU
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
+\ --- enum families (item 14, docs §9.3): an `ENUM name v0 v1 .. ;ENUM` block is
+\ a zero-payload sum registered as TK-ENUM (arity 0, slots 0). One bare variant
+\ name per token becomes a zero-payload SUMV row (tag = declaration order); the
+\ shared close/ctor/rollback path is reused so construct + exhaustive MATCH lower
+\ enum-kind families exactly as they already do for a 0-arity sum.
+: TDECL-ENUM-VARIANT ( ptr u8 n n -- )   \ variant tail (a u) + family id
+   {: a:ptr u:n fam:n :}
+   a u TDECL-REQUIRE-VARIANT-NAME
+   a TDV-NA !  u TDV-NU !
+   SCHEMA-ROOT-N@ TDV-SS !
+   0 TDV-PC !                            \ enum variants carry no payload
+   fam TDECL-VARIANT-CLOSE ;
+
+: TDECL-ENUM-VARIANTS ( n -- ) {: fam:n :}
+   BEGIN
+      TDECL-NEXT
+      dup 0= IF 2drop EXIT THEN
+      fam TDECL-ENUM-VARIANT
+   AGAIN ;
+
+: CHECKER-DEFENUM-BODY ( -- )
+   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
+   TDB-A @ TDB-U @ TDECL-CURSOR!
+   0 TDECL-FAM-ARITY !                   \ enums are non-parametric
+   0 TK-ENUM TDECL-FAMILY {: fam:n :}
+   SUMV-N @ {: vstart:n :}
+   0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
+   fam TDECL-ENUM-VARIANTS
+   TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty enum" E-TDECL-SYNTAX TDECL-THROW THEN
+   fam vstart TDV-N @ TFAM-VAR-RANGE!
+   fam TDV-MAX @ TFAM-SLOTS!             \ TDV-MAX stays 0: enum = tag only
+   fam vstart TDV-N @ TDECL-CTOR-PUBLISH
+   fam TDECL-FAM-REG ! ;
+
+: CHECKER-DEFENUM ( ptr u8 n ptr u8 n -- )   \ name, buffered variant tokens
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" enum" na nu ba bu TDECL-CTX!
+   [: CHECKER-DEFENUM-BODY ;] TDECL-RUN ;
+
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-ARITY
@@ -486,4 +528,27 @@ variable TDECL-I
       [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM
+   TDECL-CTOR-WORDS ;
+
+\ ENUM buffers the bare variant names up to ;ENUM (SUMTYPE's shape without an
+\ arity token or VARIANT keywords), then registers the whole block.
+: ENUM-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
+   BEGIN
+      parse-name
+      dup 0= IF 2drop RES-FALSE EXIT THEN
+      2dup s" ;enum" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
+      TDECL-TOKEN+
+   AGAIN ;
+
+: TDECL-ENUM-NOEND-BODY ( -- )
+   TDN-A @ TDN-U @ s" missing ;ENUM" E-TDECL-SYNTAX TDECL-THROW ;
+
+: ENUM ( -- )
+   parse-name {: na:ptr nu:n :}
+   TDECL-CLEAR
+   ENUM-COLLECT 0= IF
+      s" enum" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+      [: TDECL-ENUM-NOEND-BODY ;] TDECL-RUN EXIT
+   THEN
+   na nu TDECL-BUF TDECL-U @ CHECKER-DEFENUM
    TDECL-CTOR-WORDS ;
