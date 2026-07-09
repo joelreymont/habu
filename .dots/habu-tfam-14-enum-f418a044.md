@@ -84,3 +84,74 @@ ENDMATCH-vs-;MATCH question in favor of `;MATCH`. Decision: `ENUM ... ;ENUM`.
     suites + type-layout, maki/test.f, dot-dep-lint, typed-local-diff-lint,
     reserved-name-lint, host-lint, filemap-lint. No new TRUST/TRUSTED.md rows.
 - (d) close the dot with the LANDED ledger.
+
+## LANDED (2026-07-10)
+
+Commits (bookmark maki-type-families, workspace .jj-ws/fable-tfam12):
+- `3b1d8f06` TFAM 14: audit + slice plan (this dot body).
+- `94682378` TFAM 14: enum families (ENUM ... ;ENUM) — the whole engine surface
+  + fixtures + lints (slices b+c, one green unit; rejects are intrinsic to the
+  shared TDECL-RUN machinery, not a separable implementation slice).
+- (this commit) TFAM 14: close dot — ledger.
+
+Slice (a) legacy rename/migration was ALREADY DONE upstream (commit
+`ulyunwtmrsww` "Move numeric ENUM chain behind legacy names"): `ENUM+`/`ENUM4+`
++ the only call sites (test/gate-dictionary-lib.f GD-ENUMS). No bare `ENUM`/
+`ENUM4` remained; the bare token was free.
+
+What landed in `94682378` (7 files, +211/-4):
+- src/core/sumtype.f: `ENUM`/`ENUM-COLLECT`/`TDECL-ENUM-NOEND-BODY` (engine word,
+  generates constructors) + `CHECKER-DEFENUM`/`CHECKER-DEFENUM-BODY`/
+  `TDECL-ENUM-VARIANT`/`TDECL-ENUM-VARIANTS` (registers TK-ENUM, arity 0, slots 0,
+  zero-payload SUMV rows; reuses TDECL-VARIANT-CLOSE/TDECL-CTOR-WORDS/TDECL-RUN);
+  `enum`/`;enum` added to `TDECL-KEYWORD?`; header updated.
+- src/core/checker.f: `PRIM: CHECKER-DEFENUM` (name a u, body a u — mirrors
+  CHECKER-DEFSUM) so the checked verify-source caller type-checks.
+- src/habu/verify-source.f: `ENUM-END?`, `RECORD-ENUM` (metadata-only, mirrors
+  RECORD-SUMTYPE), dispatch entry in `RECORD-DEFINER?`.
+- tools/reserved-name-lint-core.f: reserve `enum`/`;enum`.
+- test/type-decl-suite.f: positive ENUM registration + width + variant/tag +
+  constructor candidates; 14 negative rejects (empty/no-term E-TDECL-SYNTAX,
+  dup variant E-TFAM-DUP, uppercase/reserved-single-letter/keyword/family-
+  collision variant + bad family name E-TFAM-CASE/E-TDECL-NAME, redeclare
+  E-TFAM-DUP) each proving transactional rollback (TDT-BASE=), plus the enum
+  diagnostic-prose packet ("bad enum declaration").
+- test/type-match-suite.f: a real `ENUM`-declared family exhaustively matched,
+  constructor→match round-trip, and non-exhaustive/duplicate/wrong-kind rejects.
+- docs/census-tfam-14.md: IMPLEMENTED reconciliation banner (its §0 predated the
+  landed deps).
+
+Design decisions (evidence in the dot + census banner):
+- Block form is `ENUM ... ;ENUM` (not END-ENUM) — docs §9.3/§23, PLAN item 14,
+  block-pair rule, ;MATCH precedent.
+- ENUM lives in sumtype.f, NOT a new enum-family.f (declines census C2): "one
+  concern" is the shared ADT declaration grammar; a new core file would fragment
+  the TDECL-*/TDGEN-* machinery and force srclist/FILEMAP/build-fixpoint/
+  hb-build/prefix/result-cache edits for zero benefit.
+- Gate 17n = fixtures in the already-gated type-decl + type-match suites (no new
+  suite file, no gate/cache wiring churn).
+- verify-source RECORD-ENUM is metadata-only like RECORD-SUMTYPE — it registers +
+  rejects but does not materialize constructors under --all-errors (proven
+  identical: `SRES:OK` is equally "undefined" via that path). Not a gap.
+
+Proof (native macOS, workspace bin/hb fixpoint):
+- Byte-fixpoint x2: build1 sha == build2 sha
+  = `3c83eee4e86054a8e9d5f3c9249620f65fe8e02bca2227f56064d08fc50fb957`
+  (new engine reproduces itself byte-identically).
+- Full gate `bin/hb --load test/run.f`: rc=0, "PASS: native test suite
+  (fixpoint + engine suite + checked hb + repl + hb-build) (30743ms <= 70000ms)";
+  candidate-validate=1 (six type suites + type-layout ran on the fresh
+  candidate); "PASS: native prop/debug gate phase" (axiom/prim census — covers
+  the new PRIM: CHECKER-DEFENUM).
+- Standalone suites on new engine: type-decl / type-match / type-family /
+  type-ctor / type-linear / type-layout / type-family-rollback all "ok".
+- maki/test.f rc=0 "test: ok". reserved-name-lint-test "ok". typed-local-diff-
+  lint rc=0. dot-dep-lint rc=0 (0 findings). host-lint 0 findings. filemap-lint
+  596 paths 0 findings.
+- verify-source path: bad enum (dup variant) via --all-errors →
+  "habu: bad enum declaration 'ebad': duplicate variant at 'red'".
+- No new TRUST / TRUSTED: / set-check / TRUSTED.md rows.
+
+Remaining work: none for item 14. bin/hb is gitignored (regenerable) — rebuild
+from source. Next in the campaign sequence is item 15 (PRODUCT / value-record
+migration), a separate dot.
