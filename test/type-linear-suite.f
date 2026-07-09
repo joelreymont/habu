@@ -80,6 +80,22 @@ s" S3=" type s" D3 ( ltok -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
 \ ---------------------------------------------------------------------------
+\ item 9 slice 2: the `construct` form conserves exactly like the generated
+\ constructor words — same CHECKER-STEP accounting, no separate linear rules.
+\ Consume (A1 parity), mint (A2), padded/multi-cell (A6/A7), and the reuse/
+\ loss/transport rejects hold through the inline form.
+\ ---------------------------------------------------------------------------
+s" K1=" type s" KC1 ( ltok -- lq2<ltok,n> ) construct lq2 ok" CHECK-QUIET-CANDIDATE! -1 T=
+s" K2=" type s" KC2 ( n -- lq2<ltok,n> ) construct lq2 err" CHECK-QUIET-CANDIDATE! -1 T=
+s" K3=" type s" KC3 ( ltok n n -- lqmix<ltok,n> ) construct lqmix big" CHECK-QUIET-CANDIDATE! -1 T=
+s" K4=" type s" KC4 ( ltok -- lqmix<ltok,n> ) construct lqmix small" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+s" KR1=" type s" KB1 ( ltok n -- lq2<ltok,n> ) construct lq2 err" CHECK-QUIET-CANDIDATE! 0 T=   \ unconsumed linear payload
+s" KR2=" type s" KB2 ( ltok -- lq2<ltok,n> lq2<ltok,n> ) construct lq2 ok dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" KR3=" type s" KB3 ( ltok n -- lq2<ltok,n> ) nip construct lq2 err" CHECK-QUIET-CANDIDATE! 0 T=   \ payload dropped before construction
+cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

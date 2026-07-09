@@ -373,6 +373,8 @@ variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
 variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
+variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
+variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -6150,6 +6152,40 @@ variable IS-TU
    THEN
    RES-TRUE ;
 
+\ --- construct form (item 9, docs/type-families.md §12): `construct family
+\ variant` is a reserved checker token protocol, not a word lookup. The two
+\ operand tokens are captured in DO-TOK1 BEFORE locals reference, control
+\ dispatch, and dictionary lookup (PLAN item 9: family/variant tokens must not
+\ collide with locals or words) and resolved through the registry xts installed
+\ by type-family.f: the family in the ACTIVE package only (the ownership
+\ predicate — cross-package construction never resolves), the variant within
+\ that family. The step effect is then applied inline exactly like a generated
+\ constructor call (payloads consumed, layout bundle produced, CHECKER-STEP
+\ conservation). Stage engines without the registry keep the 0 hooks and fail
+\ closed. Native/Gforth lowering is item 10: a certified construct body cannot
+\ compile or run until it lands (engine undefined-word reject, pinned in the
+\ ctor suite).
+variable CONM      \ 0 off | 1 expecting family token | 2 expecting variant token
+variable CONFAM    \ resolved family id while CONM = 2
+
+: CONSTRUCT-BEGIN ( -- )
+   CONSTRUCT-FAM-XT @ 0= IF 0 OK ! EXIT THEN
+   1 CONM ! ;
+
+\ A failed family resolve still consumes the variant token (poisoned CONFAM
+\ -1): the three-token form always captures whole, so the trailing operand can
+\ never fall through to locals/word lookup and blur the hard reject into an
+\ uncheckable-undefined verdict.
+: CONSTRUCT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   CONM @ 1 = IF
+      a u CONSTRUCT-FAM-XT @ execute IF CONFAM ! ELSE drop 0 OK !  -1 CONFAM ! THEN
+      2 CONM !
+      EXIT THEN
+   CONFAM @ 0 < 0= IF
+      a u CONFAM @ CONSTRUCT-STEP-XT @ execute 0= IF 0 OK ! THEN
+   THEN
+   0 CONM ! ;
+
 : DO-TOK1 {: a u :}
    a u TOKFOLD drop
    a u CAP-FAIL
@@ -6157,6 +6193,8 @@ variable IS-TU
    TOK0 @ IF TKF NMB TKFU @ CCOPY  NMB NMA !  TKFU @ NMU !  0 TOK0 ! ELSE
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
+   CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
+   TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
@@ -6176,7 +6214,7 @@ variable IS-TU
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -6216,7 +6254,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
-   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !
+   0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
@@ -6336,7 +6374,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
@@ -6548,7 +6586,7 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
-   LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;

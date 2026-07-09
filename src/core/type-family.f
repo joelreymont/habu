@@ -871,6 +871,80 @@ variable TFSR-ID   variable TFSR-FLAG
    rc E-TFAM-AMBIG = IF 0 RES-FALSE EXIT THEN
    rc throw ;
 
+\ ---------------------------------------------------------------------------
+\ construct form (item 9, docs §12): resolution + step effect for the checker's
+\ reserved `construct family variant` token protocol. The ownership predicate
+\ is package identity: the family must live in the ACTIVE checker package (top
+\ level owns the global "" package), public or private — cross-package
+\ construction never resolves, so private families stay package-sealed and
+\ public cross-package callers use the generated constructor words. Only sum
+\ and enum kinds construct. The step effect is the generated-constructor call
+\ effect built inline from SUMV metadata: payload schema nodes instantiate
+\ against one fresh checker var per family parameter (concrete payloads map to
+\ themselves), the family output term carries those vars, and CHECKER-STEP
+\ applies din/dout with the same unification, diagnostics capture, and linear
+\ conservation as any word call. PUSH-LOGICAL keeps declared-sig parity:
+\ resolved-arg bundles (incl. every arity-0 family) expand to hidden fields at
+\ the step; open-arg parametric results stay one conservative logical cell and
+\ expand at the boundary through the LOGHID coercion.
+\ ---------------------------------------------------------------------------
+26 constant TFC-VAR-CAP          \ positional params are letters a..z (TDECL-ARITY-CAP parity)
+create TFC-VARS TFC-VAR-CAP cells allot
+variable TFC-I   variable TFC-J   variable TFC-ROW
+
+: TFC-MINT-VARS ( n -- ) {: ar:n :}       \ one fresh checker var per family param
+   ar TFC-VAR-CAP > IF s" tfam: construct arity over cap" 76 die THEN
+   0 TFC-I !
+   BEGIN TFC-I @ ar < WHILE
+      FRESH MK-VAR TFC-I @ cells TFC-VARS + !
+      TFC-I @ 1 + TFC-I !
+   REPEAT ;
+
+: TFC-SCH-TERM ( n -- n ) {: node:n :}    \ payload schema node -> checker type term
+   node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
+   node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
+   node SCHEMA-PTR?   IF node SCHEMA-A@ RECURSE MK-PTR EXIT THEN
+   s" tfam: unsupported construct payload schema" 76 die ;
+
+: TFC-PAY-ROW ( n n -- n ) {: vid:n row0:n :}   \ payload terms onto row, decl order
+   row0 TFC-ROW !
+   0 TFC-J !
+   BEGIN TFC-J @ vid SUMV-SCH-COUNT@ < WHILE
+      vid SUMV-SCH-START@ TFC-J @ + SCHEMA-ROOT@ TFC-SCH-TERM
+      TFC-ROW @ MK-PUSH TFC-ROW !
+      TFC-J @ 1 + TFC-J !
+   REPEAT
+   TFC-ROW @ ;
+
+: TFC-FAM-TERM ( n -- n ) {: fam:n :}     \ family<v0,..> output term over the minted vars
+   PARAM-SCR-N @ {: base:n :}
+   0 TFC-I !
+   BEGIN TFC-I @ fam TFAM-ARITY@ < WHILE
+      TFC-I @ cells TFC-VARS + @ PARAM-SCR+
+      TFC-I @ 1 + TFC-I !
+   REPEAT
+   base fam TFAM-NAME$ fam MK-PARAM ;
+
+: TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ active checker package ("" at top level)
+   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN
+   s" " ;
+
+: TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
+   TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
+   fam na nu SUMV-FIND 0= IF drop RES-FALSE EXIT THEN
+   {: vid:n :}
+   fam TFAM-ARITY@ TFC-MINT-VARS
+   FRESH MK-ROW {: base:n :}
+   vid base TFC-PAY-ROW {: din:n :}
+   fam TFC-FAM-TERM base PUSH-LOGICAL {: dout:n :}
+   din dout CHECKER-STEP
+   RES-TRUE ;
+
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
@@ -880,3 +954,5 @@ variable TFSR-ID   variable TFSR-FLAG
 ' TFAM-ARITY@  TFAM-ARITY-XT !
 ' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
 ' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface
+' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
+' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect

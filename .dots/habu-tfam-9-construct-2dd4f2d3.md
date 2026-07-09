@@ -215,3 +215,117 @@ Gate tails (all green, base fixpoint 8ce921d2 unchanged):
 - dot-dep-lint -> "164 dot(s), 13 blocker(s), 0 finding(s)", test ok
 No new prims (prop census unchanged); no new TRUST sites (TRUSTED.md unchanged);
 maki/test.f unaffected (tool-only, not on maki load path).
+
+## SLICE 2 LANDED (commit "TFAM 9 slice 2: construct form resolution + effect")
+
+`construct family variant` is live in the checker: capture, resolution,
+inline constructor effect, exhaustive negatives, engine fail-closed pin.
+
+### Mechanism
+- checker.f: `CONSTRUCT-FAM-XT`/`CONSTRUCT-STEP-XT` friend cells (next to the
+  TFAM xt block); `CONM`/`CONFAM` mode machine + `CONSTRUCT-BEGIN`/
+  `CONSTRUCT-TOK` just above DO-TOK1; DO-TOK1 dispatch inserts the CONM branch
+  and `construct` recognition between LMODE and `{:` — BEFORE locals reference
+  (`LOC-REF?`), control dispatch (`CF-TOK?`), and word lookup (`DO-TOK`), which
+  is intentionally STRICTER than CASE (whose `of`/`endof` sit after LOC-REF?):
+  PLAN 660-661 demands operand tokens never collide with locals or words.
+  CHECK-RESET zeroes CONM; the unclosed-form check in CHECK and CHECK-DOES!
+  gains `CONM @ 0 <>` so a truncated form (`construct` / `construct fam` at
+  body end) hard-rejects. A failed family resolve poisons CONFAM (-1) and
+  still consumes the variant token, so the three-token form always captures
+  whole and an ownership/unknown-family reject stays verdict 0 (never blurred
+  into uncheckable by the dangling operand hitting word lookup).
+- type-family.f: `TFAM-ACTIVE-PKG$` (shared with sumtype.f, which drops its
+  duplicate TDECL-PKG$); `TFAM-CONSTRUCT-FAM` = TFAM-FIND-IN(active-pkg, tail)
+  + sum/enum kind gate; `TFAM-CONSTRUCT-STEP` = SUMV-FIND + the inline effect:
+  TFC-MINT-VARS (one fresh checker var per family param, a..z cap parity),
+  TFC-SCH-TERM (payload schema node -> term: param->minted var, con->MK-CON,
+  ptr->recursed MK-PTR), TFC-PAY-ROW (din = fresh base row + payload terms in
+  decl order), TFC-FAM-TERM (MK-PARAM over the minted vars via PARAM-SCR+),
+  dout = famterm PUSH-LOGICAL, then `din dout CHECKER-STEP` — the SAME
+  unification + DEXP/DACT diagnostics + linear snapshot/conservation as any
+  word call. Installed via the two new xt cells at the end-of-file block.
+- sumtype.f: TDECL-CONTROL? reserves construct/match/;match as family AND
+  variant names (E-TDECL-NAME); TDECL-FAMILY uses TFAM-ACTIVE-PKG$.
+- docs/type-families.md §12: checker-semantics paragraph pinning everything
+  below.
+
+### Design decisions (recorded per coordinator ask)
+- **Ownership predicate = package identity.** The family must live in the
+  ACTIVE checker package — `TFAM-FIND-IN(TFAM-ACTIVE-PKG$, tail)`, no public
+  fallback, no qualified `PKG:family` operands (a colon token is not a
+  registry tail; pinned rejecting). Cross-package construction never resolves
+  even for PUBLIC families — those construct through their generated words
+  (pinned accepting: CP3). Top level owns the global "" package, so top-level
+  families construct at top level. Public families in their own package also
+  construct (uniform predicate; docs frame construct as the private form, and
+  nothing in PLAN/docs forbids owner-side use for public families — the
+  effect is identical to the generated word by construction).
+- **Operand folding**: family/variant tokens fold like every body token
+  (TOKFOLD runs before dispatch), so `construct ZRES OK` == `construct zres
+  ok`; registry tails are canonical lowercase. Pinned (CN2).
+- **Linear semantics: generated-ctor PARITY, not blanket reject.** The
+  coordinator's "reject linear payloads until TFAM 11 (LAYOUT-MAYBE-LINEAR?)"
+  instruction is superseded by the tree: TFAM 11 slices 1+3 landed whole-
+  bundle linear accounting (dot habu-tfam-11-linear-99fa9990; PARAM-ARG-LIN-
+  BLOCK? was REMOVED there as wrongly rejecting the err/none mint), and
+  test/type-linear-suite.f A1-A7 PIN that generated constructors consume
+  linear payloads and mint the bundle with exact CHECKER-STEP conservation. A
+  construct-only LAYOUT-MAYBE-LINEAR? reject would make the inline form
+  strictly weaker than the equivalent generated word — a semantic fork with
+  no soundness gain. construct therefore rides the SAME CHECKER-STEP
+  accounting: consume/mint/padded accepts and reuse/loss/copy rejects are
+  pinned as K1-K4/KR1-KR3 next to the A/R battery in the linear suite.
+- **Interpret mode + compile mode are fail-closed by the engine, pinned in
+  the gate.** `construct` is not an engine word: interpret-mode use dies
+  `E-UNDEFINED: construct` rc 70 on stdin AND --load; a CERTIFIED construct
+  body also dies the same way when the engine compiles it (checker certifies,
+  compile fails closed) — that is the item-9/item-10 boundary, pinned by the
+  new GE-CONSTRUCT-PENDING case in the engine runtime gate slice
+  (test/gate-engine-lib.f, wired into GE-RUNTIME-CHECKS).
+- **Fixture placement**: construct resolution/effect/ownership in
+  test/type-ctor-suite.f (CN1-11, CB1-14, CP1-3); linear parity in
+  test/type-linear-suite.f (K/KR); reserved-name declaration gates in
+  test/type-decl-suite.f; engine fail-closure in test/gate-engine-lib.f.
+  The dedicated match suite arrives with slice 3/4.
+
+### Found + dotted (pre-existing, evidence in dot bodies)
+- habu-def-compile-failure-7182eeb2: a definition whose ENGINE COMPILE fails
+  inside `[: ... INCLUDE-EVALUATE ;] catch` CRASHES (SIGBUS register dump,
+  rc 134) instead of throwing catchably; plain stdin/--load exit orderly 70.
+  Repro needs no construct (`: X ( -- ) qwertyuiop ;` under TCE-CATCH).
+- habu-interpret-err-under-8876b500: an INTERPRET failure inside the same
+  boundary prints its diagnostic but catch returns 0 (swallowed).
+  Consequence for suites: never TCE-CATCH a failing DEFINITION; construct's
+  engine pin is a gate child-process case instead.
+
+### Fixpoint + gate proofs (verbatim tails)
+- rebuild: `bin/hb --load ... tools/build-fixpoint.f tools/build-fixpoint-main.f
+  -- install --force` -> rc 0 "bin/hb refresh OK: compiler fixpoint";
+  re-run `-- all --force` under the NEW engine -> rc 0 "bin/hb refresh OK:
+  compiler fixpoint" (byte-identical product; sha256 d7485199095d7862...
+  matches the gate's Habu-under-test line exactly).
+- `bin/hb --load test/run.f` -> `GATE_RC=0`, "PASS: native test suite
+  (fixpoint + engine suite + checked hb + repl + hb-build) (28307ms <=
+  70000ms budget)", candidate-build-skip=0 (full candidate rebuild),
+  candidate-validate=1.
+- engine runtime slice standalone (HABU_UNDER_TEST=bin/hb, `-- runtime`):
+  rc 0 incl. "PASS: construct checks; engine lowering stays fail-closed
+  until item 10".
+- `bin/hb < test/type-{family,decl,ctor,linear,layout-lower-pending}` -> rc 0
+  "ok" x5 on the rebuilt engine.
+- `bin/hb --load maki/test.f` -> rc 0 "test: ok" (device leg skipped
+  off-device as designed).
+- typed-local-diff-lint on the slice `jj diff --git` -> rc 0.
+- dot-dep-lint -> "166 dot(s), 13 blocker(s), 0 finding(s)", test ok.
+- No new prims (zero PRIM: rows in diff -> prop census unchanged; gate
+  prop/debug phase PASS). No new TRUST/TRUSTED:/set-check sites (TRUSTED.md
+  untouched; trust tool + lint manifest slices PASS).
+
+REMAINING for item 9: slice 3 (CF-MATCH frames + MATCH checking +
+exhaustiveness + linear-payload MATCH consumption rules) and slice 4 (rich
+§24 diagnostics + negative battery + dedicated test/type-match-suite.f wired
+as GE-TYPE-MATCH-SUITE = Gate 17j). The compiler-capture tuple for item 10
+lowering (keyword data) is item 10 scope; the checker resolution records
+(owning-package-id, family-id, variant-id) transiently in CONM/CONFAM + the
+step.

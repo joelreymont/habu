@@ -724,6 +724,23 @@ the constructor/MATCH token protocol after private constructor metadata exists;
 it is a reserved parser token and participates in preverify/all-errors replay
 like the public ADT definers.
 
+Checker semantics (item 9): the two operand tokens are captured before locals
+reference, control dispatch, and dictionary lookup, so they can never resolve
+as locals or words. The ownership predicate is package identity — the family
+must live in the ACTIVE checker package (top level owns the global empty
+package), public or private; cross-package construction never resolves, even
+for public families (those are constructed through their generated words).
+Qualified `PKG:family` operand tokens do not resolve either: the form is
+owner-only by design. Only sum and enum kinds construct. Operand tokens fold
+like every body token, so `construct ZRES OK` and `construct zres ok` agree.
+The applied effect is the generated-constructor effect built inline from SUMV
+metadata (payloads consumed, layout bundle produced, one fresh type var per
+family parameter), through the same unification and linear-conservation step
+as a word call — linear payloads are consumed into the minted bundle with
+exact accounting, identical to the generated constructor words. Until item 10
+lands lowering, a certified construct body fails closed at engine compile
+(`E-UNDEFINED: construct`, exit 70) on every real load path.
+
 Constructor runtime rule:
 
 ```text

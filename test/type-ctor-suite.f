@@ -236,6 +236,71 @@ s" undefine ZDOOMED" TCE-CATCH 0 T=
 data-base PROT-WID-N-CELL + @ 0 > -1 T=
 
 \ ---------------------------------------------------------------------------
+\ item 9 slice 2: `construct family variant` — the checker-owned token
+\ protocol. Resolution is package-identity-owned (the family must live in the
+\ ACTIVE package; cross-package never resolves, public families included —
+\ those use the generated words), kind-gated to sum/enum, and folded like
+\ every body token. The step effect is the generated-constructor effect built
+\ inline from SUMV metadata, so payload arity/type/instantiation rejects are
+\ the same as the generated-word call sites. Operand capture runs BEFORE
+\ locals and word lookup, so family/variant tokens never resolve as either.
+\ Native/Gforth lowering is item 10: certified construct bodies stay
+\ uncompilable (engine E-UNDEFINED rc 70, gate-pinned in GE-CONSTRUCT-PENDING).
+\ ---------------------------------------------------------------------------
+s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=   \ folded spelling
+s" CN3 ( ptr u8 n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN4 ( n -- zmix ) construct zmix small" CHECK-QUIET-CANDIDATE! -1 T=   \ zero-padded narrow variant
+s" CN5 ( -- zopt ) construct zopt none" CHECK-QUIET-CANDIDATE! -1 T=   \ empty payload
+s" CN6 ( n -- zpar<n> ) construct zpar psome" CHECK-QUIET-CANDIDATE! -1 T=   \ parametric arity 1
+s" CN7 ( ptr u8 -- zpoly<ptr u8,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN8 ( n n -- zres ) {: ok:n :} construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=   \ a local `ok` cannot shadow the variant token
+s" CN9 ( n -- zres ) [: construct zres ok ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
+\ variants spelled like stack words are captured operands, never word calls.
+SUMTYPE zwv 0
+  VARIANT dup n ;VARIANT
+  VARIANT swap  ;VARIANT
+;SUMTYPE
+s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" CONSTRUCT-OK" type cr
+\ rejects: unknown family, unknown/wrong-family variant, non-sum family,
+\ missing operand tokens, payload arity/type/instantiation mismatches,
+\ dead-path use, open-arg transport.
+s" CB1 ( n -- zres ) construct nosuch ok" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB2 ( n -- zres ) construct zres nope" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB3 ( n -- zres ) construct zres some" CHECK-QUIET-CANDIDATE! 0 T=   \ zopt's variant
+s" CB4 ( n -- zres ) construct span ok" CHECK-QUIET-CANDIDATE! 0 T=   \ cell family: kind-gated
+s" CB5 ( n -- zres ) construct zres" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB6 ( n -- zres ) construct" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB7 ( ptr u8 -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB8 ( -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB9 ( n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB10 ( n -- zres ) exit construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=   \ dead path
+s" CB11 ( ptr u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=   \ wrong instantiation
+s" CB12 ( n -- zpoly<n,n> zpoly<n,n> ) construct zpoly ok dup" CHECK-QUIET-CANDIDATE! 0 T=   \ open-arg transport
+s" CONSTRUCT-BAD" type cr
+\ ownership: in-package resolution for public AND private families; outside
+\ the package neither the bare nor the qualified family token resolves — the
+\ cross-package path is the generated constructor word only.
+package cnpub
+public
+SUMTYPE cnres 0
+  VARIANT yes n ;VARIANT
+;SUMTYPE
+s" CP1 ( n -- cnres ) construct cnres yes" CHECK-QUIET-CANDIDATE! -1 T=
+private
+SUMTYPE cnsec 0
+  VARIANT hide n ;VARIANT
+;SUMTYPE
+s" CP2 ( n -- cnsec ) construct cnsec hide" CHECK-QUIET-CANDIDATE! -1 T=
+end-package
+s" CB13 ( n -- cnpub:cnres ) construct cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
+s" CB14 ( n -- cnpub:cnres ) construct cnpub:cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
+s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
+s" CONSTRUCT-OWN" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

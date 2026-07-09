@@ -518,6 +518,25 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;
 
+\ item 9 slice 2: `construct family variant` certifies at the checker but has
+\ no native lowering until item 10 — the engine must fail closed on BOTH real
+\ load paths. Compiling a CERTIFIED construct body dies E-UNDEFINED (the token
+\ is not an engine word) with the engine's undefined-word exit, and interpret-
+\ mode construct dies the same way. Green suites + this pin ARE the item-9
+\ boundary: checkable, never silently compilable or runnable.
+: GE-CONSTRUCT-PENDING ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE gecn 0" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" : GECN-MK ( n -- gecn ) construct gecn one ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" certified construct body compile fails closed" GE-EXPECT-RC
+   s" E-UNDEFINED: construct" s" construct pending diagnostic" GE-EXPECT-ERR-HAS
+   s" construct" 70 s" interpret construct fails closed" GE-UNCAUGHT-RUN
+   s" PASS: construct checks; engine lowering stays fail-closed until item 10" type cr ;
+
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
 \ a tool closure needing more than DICT-CAP records died exit_group(77)
 \ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
@@ -775,6 +794,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
+   GE-CONSTRUCT-PENDING
    GE-DICT-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY

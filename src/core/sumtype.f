@@ -110,7 +110,10 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" leave" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" unloop" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" exit" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" recurse" CORE-STR=CI ;
+   a u s" recurse" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" construct" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 9 reserved token protocol
+   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 9 MATCH control form
+   a u s" ;match" CORE-STR=CI ;                          \ item 9 MATCH block close
 
 : TDECL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
@@ -181,10 +184,8 @@ variable TDA-I
    THEN ;
 
 \ --- package scope: a declaration registers in the active checker package with
-\ the active visibility; top level is the global scope, public.
-: TDECL-PKG$ ( -- ptr u8 n )
-   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN
-   s" " ;
+\ the active visibility (TFAM-ACTIVE-PKG$, type-family.f); top level is the
+\ global scope, public.
 : TDECL-VIS ( -- n )
    CHECKER-PACKAGE-ACTIVE? 0= IF CHECKER-PACKAGE-PUBLIC EXIT THEN
    CHECKER-PACKAGE-MODE @ ;
@@ -192,7 +193,7 @@ variable TDA-I
 : TDECL-FAMILY ( n n -- n ) {: ar:n kind:n :}   \ register the family row
    TDN-A @ TDN-U @ TDECL-TOK!
    s" duplicate family" TDECL-WHY!
-   TDECL-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
+   TFAM-ACTIVE-PKG$ TDECL-VIS TDN-A @ TDN-U @ ar kind TFAM-DECL ;
 
 \ --- body cursor over the buffered declaration tokens (checker sig lexer).
 : TDECL-CURSOR! ( ptr u8 n -- ) {: a:ptr u:n :}

@@ -526,6 +526,13 @@ s" TYPEFAMILY field 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY str 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY space-x 1" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY fresh-mask-x 1" E-TDECL-NAME TDT-NEG
+\ item 9 reserved token protocol: construct/match/;match may not name a
+\ family or a variant (;match already fails the canonical-tail gate).
+s" TYPEFAMILY construct 1" E-TDECL-NAME TDT-NEG
+s" SUMTYPE match 0 VARIANT x n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdcn 1 VARIANT construct a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdcn2 1 VARIANT match a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...

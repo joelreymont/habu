@@ -2784,3 +2784,22 @@ unchanged (148855). Keys for milestone 2:
   loads the whole closure in one process. Lesson: a load path that only ever
   runs subsets needs an EXPLICIT whole-closure regression, and capacity exits
   must carry a label (`hb: dictionary full at: <token>`), never a lone byte.
+- **Definition-compile failures under catch+evaluate crash; interpret failures
+  are swallowed.** `[: s" : X ( -- ) nosuchword ;" INCLUDE-EVALUATE ;] catch`
+  SIGBUS-crashes (rc 134) after printing E-UNDEFINED, and an interpret-level
+  failure under the same boundary prints its diagnostic but returns 0 to catch
+  — while plain stdin and --load exit an orderly rc 70 for both. Found probing
+  the item-9 construct fail-closed contract; repro needs nothing new (dots
+  habu-def-compile-failure-7182eeb2, habu-interpret-err-under-8876b500).
+  Lesson: never assert engine-compile failures through in-process TCE-CATCH —
+  pin them as gate child-process cases (GE-RUN-STDIN + GE-EXPECT-RC), and
+  treat catch-around-evaluate outcomes as untrustworthy until those dots close.
+- **Reuse the step machinery for new checker forms; a reserved form must
+  consume its operand tokens even on failure.** construct's effect is built
+  from SUMV metadata and applied through the ordinary CHECKER-STEP, which
+  bought unification diagnostics AND exact linear conservation for free (the
+  linear-suite parity pins passed first try). And when a capture form's
+  resolution fails, still consume the remaining operand tokens (poisoned
+  state): letting them fall through to word lookup turned a hard ownership
+  reject into a soft uncheckable-undefined verdict, which multi-error loads
+  would then trust-and-publish differently.
