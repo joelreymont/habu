@@ -253,6 +253,22 @@ body (an arity underflow, a non-tensor operand) is a located compiler
 diagnostic at load, before any planning; shape legality remains a
 runtime check by design, pending shape-indexed tensor types.
 
+\paragraph{Import.} The same IR admits models that were not authored in
+Habu: a checked ONNX importer (a protobuf wire-format decoder, message
+walkers, and a graph builder, all typed Habu) maps a serialized
+\code{ModelProto} onto the capture IR---graph inputs and initializers
+become input slots, nodes walk in validated topological order, and op
+coverage is the same lowering table the rest of the pipeline consults.
+The policy is fail-closed throughout: a symbolic dimension
+(\code{dim\_param}), a non-float tensor, rank above two, an attribute the
+importer cannot honor (e.g.\ \code{Gemm} with \code{transA}), a
+non-topological reference, or a rebound SSA name is a named load-time
+error, never a silent default---26 negative fixtures pin these paths. An
+imported two-node \code{Gemm}$\to$\code{Relu} graph host-executes to
+hand-computed values and fuses into a single region under the same
+planner; real-model scale (movement operators, broadcast mapping) is
+staged work recorded in the tree.
+
 \paragraph{Fusion.} The planner groups nodes into regions under typed
 legality---elementwise chains fuse; a contraction admits an elementwise
 epilogue; a row-reduction admits prologue and epilogue; one contraction
@@ -514,12 +530,23 @@ per-node baseline in every row---the byte model and the planner agree by
 construction, and the deltas are the fusion mechanism's measured value.
 
 \emph{Pre-existing rows} are cited rather than rebuilt: the wrong-adjoint
-detection fixture, the seeded convergence gate, the Triton error battery,
-and the seeded convergence gate. \emph{Repair packets, A/B}: the same
+detection fixture, the seeded convergence gate, and the Triton error
+battery. \emph{Repair packets, A/B}: the same
 deterministic repair loop over four seeded authoring errors, fed either
 the full typed packet or a status-quo minimal signal (verdict plus raw
 error code): packets halve repair rounds (5 vs 10) and cut repair tokens
 by a third (255 vs 383) to reach the identical green kernel.
+\emph{Mechanical repair.} A packet-driven repairer closes the same loop
+without an author: it applies the packet's edit directly (deleting the
+flagged surplus producer or return-stack transfer) and re-checks, so
+repair rounds and tokens-to-green are produced by the checker+repairer
+loop itself rather than a hand-authored trajectory. On a seeded
+surplus-load kernel it converges in 3 rounds and 122 tokens versus the
+packet-guided author's 1 round and 61---slower than a person, but fully
+automatic---and it reports \emph{unrepairable} honestly for the two
+packet classes that do not yet carry a machine-applicable edit
+(\code{add\_producer}, \code{fix\_type}), which is itself a measured
+statement about what the diagnostics carry.
 \todo{Pending rows: on-device predicted-vs-measured traffic and
 fused-vs-unfused latency; persistent-tune warmup vs Triton JIT (cad-6);
 tuned-vs-default schedule deltas.}
