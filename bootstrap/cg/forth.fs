@@ -66,6 +66,7 @@ $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + se
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
+85 constant E-BAD-TAG                    \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (see
                                         \ src/habu/layout.f); stage0 has no driver-io reporter, so it only
                                         \ maps the raw code to this fixed nonzero rc - never the masked value
@@ -121,6 +122,12 @@ $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 $1B0 constant CMFAM-CELL    \ resolved construct family id between the operand tokens (mirrors layout.f)
+$B0 constant CMBK-CELL      \ MATCH ENDOF branch-kind bitstack (TFAM 10 slice 3; mirrors layout.f)
+$B8 constant CMTAG-CELL     \ pending MATCH variant tag (VAR -> OF)
+$C0 constant CMPADS-CELL    \ pending MATCH variant zero pads M-p (VAR -> OF)
+$C8 constant CMFRD-CELL     \ MATCH nesting depth (0 = not in a match)
+$D0 constant CMFR-OFF       \ MATCH fam stack base (one cell per open match)
+26 constant CMFR-MAX        \ levels: $D0..$1A0 = 26 cells
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -155,6 +162,7 @@ create SEMIQ-KW 59 c, 93 c,     \ ;]
 create QNL-KW 63 c, 10 c,       \ ?\n  (REPL reject)
 create CAPNL-KW 10 c,           \ \n  (capacity-exit diagnostic terminator)
 create OKS-KW 32 c, 111 c, 107 c, 10 c,   \ \x20ok\n (REPL accept)
+create BADTAG-SFX-KW 32 c, 116 c, 97 c, 103 c, 10 c,   \ " tag\n" for the MATCH bad-tag die
 create TICK-KW   39 c,          \ '  (0x27)
 create BTICK-KW  91 c, 39 c, 93 c,   \ ['] = [ ' ]  (0x5b 0x27 0x5d)
 create LBRACE-KW 123 c, 58 c,   \ {:  (0x7b 0x3a)
@@ -213,6 +221,8 @@ variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords (TFAM 10; MATCH rows are data-only until slice 3)
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (mirrors habu2.f)
+variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
+variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
 variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
@@ -1805,6 +1815,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    LKWCONSTRUCT @ LBL, s" construct" BYTES,  LKWMATCH @ LBL, s" match" BYTES,  LKWSEMIMATCH @ LBL, s" ;match" BYTES,
    LTFLCONFAM @ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR @ LBL, s" tfl-cvar?" BYTES,
+   LTFLMATCHFAM @ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME @ LBL, s" tfam-name$" BYTES,
+   LBADTAGPFX @ LBL, s" hb: bad " BYTES,  LBADTAGSFX @ LBL, BADTAG-SFX-KW 5 BYTES,
    PFX-PATH-FILES ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
@@ -1839,7 +1851,16 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : J-CONSTRUCT ( -- )
    12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
+\ match keyword (TFAM 10 slice 3; mirrors habu2.f J-MATCH): CF-ENTRY spills the
+\ width-expanded bundle to the physical stack, then push a J-CASE-shape CF
+\ sentinel, open a match-frame level, arm CMM=3. No emission.
+: J-MATCH ( -- )
+   9 0 MOVZ,  LCFPUSH @ BL,
+   9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
+   12 3 MOVZ,  12 DATA CMM-CELL STR, ;
+
 : J-OF ( -- )
+   14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,   \ push case-arm marker (0)
    C-POP-X16
    $F85F8269 C-EMITW
    $EB10013F C-EMITW
@@ -1849,7 +1870,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    $D1002273 C-EMITW ;
 
 : J-ENDOF ( -- )
-   J-ELSE ;
+   LBL {: nm :} \ typed-local-lint: allow-bare-local
+   J-ELSE
+   14 DATA CMBK-CELL LDR,  15 14 1 ANDI,  14 14 1 LSRI,  14 DATA CMBK-CELL STR,
+   15 nm CBZ,  12 4 MOVZ,  12 DATA CMM-CELL STR,  nm LBL, ;
 
 : J-ENDCASE ( -- )
    LBL LBL {: cloop done :} \ typed-local-lint: allow-bare-local
@@ -3143,7 +3167,7 @@ variable CFSK2
    14 DATA CUR-CELL LDR,  14 9 40 STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-   12 DATA CMM-CELL STR,
+   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP @ BL, ;
 
@@ -3308,7 +3332,8 @@ variable CFSK2
    lmain LKWOF     2 ['] J-OF     CF-ENTRY
    lmain LKWENDOF  5 ['] J-ENDOF  CF-ENTRY
    lmain LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY
-   lmain LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY ;
+   lmain LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY
+   lmain LKWMATCH 5 ['] J-MATCH CF-ENTRY ;
 
 : EMIT-COMPILE-STRING-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
@@ -3522,14 +3547,162 @@ variable CFSK2
    12 0 MOVZ,  12 DATA CMM-CELL STR,
    lmain B, ;
 
+\ MATCH lowering legs (TFAM 10 slice 3; mirrors habu2.f EM-ADT-MATCH-*/EM-MATCH-
+\ SEMI/C-DIE-BAD-TAG). CMM=3/4/5 continue the token machine J-MATCH armed: 3 =
+\ want family, 4 = want variant-or-`;match`, 5 = want `of`. Each opens an RX
+\ window (LPROT 5 -> 3) around the checker-friend bridge call and LBCAPs its
+\ operand; resolution failure inlines the write-token-newline-exit die (70).
+
+\ Emit the invalid-tag die INLINE into the user word (mirrors habu2.f): jump over
+\ the message, "hb: bad <family> tag\n" copied inline, then a self-contained
+\ write(2)+exit_group(E-BAD-TAG). x11=name addr, x12=name len. Region RW.
+: C-DIE-BAD-TAG ( -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL LBL LBL LBL {: p1 p2 s1 s2 t1 t2 :}
+   SP SP $20 SUBI,  11 SP 0 STR,  12 SP 8 STR,
+   15 CP 0 ADDI,  15 SP 16 STR,
+   9 $14000000 LIT64,  LCEMIT @ BL,
+   16 CP 0 ADDI,  16 SP 24 STR,
+   11 LBADTAGPFX @ ADR,  9 8 MOVZ,
+   p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
+   p2 LBL,
+   11 SP 0 LDR,  9 SP 8 LDR,
+   s1 LBL,  9 s2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  s1 B,
+   s2 LBL,
+   11 LBADTAGSFX @ ADR,  9 5 MOVZ,
+   t1 LBL,  9 t2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  t1 B,
+   t2 LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,
+   9 SP 16 LDR,  LPAT @ BL,
+   $D2800040 C-EMITW
+   11 SP 24 LDR,  5 11 28 SUB,  8 $10000001 LIT64,
+      6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,
+      7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,
+      9 8 0 ADDI,  LCEMIT @ BL,
+   14 SP 8 LDR,  14 14 13 ADDI,
+   9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
+   9 SYS-EMIT-WRITE LIT64,  LCEMIT @ BL,
+   SYS-EMIT-SVC C-EMITW
+   9 $D2800000 E-BAD-TAG 32 * + LIT64,  LCEMIT @ BL,
+   9 SYS-EMIT-EXIT LIT64,  LCEMIT @ BL,
+   SYS-EMIT-SVC C-EMITW
+   SP SP $20 ADDI, ;
+
+: EM-MATCH-SEMI ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: jl jd :}
+   2 5 MOVZ,  LPROT @ BL,
+   LTFLNAME 10 C-FIND-GLOBAL
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,
+   9 G-PUSH
+   C-CALL-X11-SAVED
+   12 G-POP
+   11 G-POP
+   SP SP 16 SUBI,  11 SP 0 STR,  12 SP 8 STR,
+   2 3 MOVZ,  LPROT @ BL,
+   11 SP 0 LDR,  12 SP 8 LDR,  SP SP 16 ADDI,
+   C-DIE-BAD-TAG
+   jl LBL,
+      LCFPOP @ BL,
+      9 jd CBZ,
+      LPAT @ BL,
+      jl B,
+   jd LBL,
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 DATA CMFRD-CELL STR,
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   lmain B, ;
+
+: EM-ADT-MATCH-FAM ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: fmsg fok :}
+   LBCAP @ BL,
+   2 5 MOVZ,  LPROT @ BL,
+   LTFLMATCHFAM 14 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP
+   9 G-POP
+   10 fok CBNZ,
+      0 2 MOVZ,  1 fmsg ADR,  2 27 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   fmsg LBL,  s" hb: match: unknown family: " BYTES,
+   fok LBL,
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 STR,
+   12 4 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT @ BL,
+   lmain B, ;
+
+: EM-ADT-MATCH-VAR ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL LBL {: notsemi vmsg vok :}
+   LBCAP @ BL,
+   0 LKWSEMIMATCH @ ADR,  1 6 MOVZ,  LKWCMP @ BL,
+   0 notsemi CBZ,
+      lmain EM-MATCH-SEMI
+   notsemi LBL,
+   2 5 MOVZ,  LPROT @ BL,
+   LTFLCVAR 9 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP
+   12 G-POP
+   13 G-POP
+   10 vok CBNZ,
+      0 2 MOVZ,  1 vmsg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   vmsg LBL,  s" hb: match: unknown variant: " BYTES,
+   vok LBL,
+   13 DATA CMTAG-CELL STR,
+   12 DATA CMPADS-CELL STR,
+   12 5 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT @ BL,
+   lmain B, ;
+
+: EM-ADT-MATCH-OF ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: emsg eok :}
+   LBCAP @ BL,
+   0 LKWOF @ ADR,  1 2 MOVZ,  LKWCMP @ BL,
+   0 eok CBNZ,
+      0 2 MOVZ,  1 emsg ADR,  2 24 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   emsg LBL,  s" hb: match: expected of: " BYTES,
+   eok LBL,
+   14 DATA CMTAG-CELL LDR,
+   9 $D2800010 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT @ BL,   \ movz x16, #tag
+   $F85F8269 C-EMITW
+   $EB10013F C-EMITW
+   $9A9F17E9 C-EMITW
+   C-PUSHCP
+   $B4000009 C-EMITW
+   14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,  14 14 3 LSLI,
+   9 $D1000273 LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT @ BL,   \ sub x19,x19,#(8*(1+pads))
+   14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 14 1 ORRI,  14 DATA CMBK-CELL STR,
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   lmain B, ;
+
 : EMIT-COMPILE-ADT-MODE ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL {: state2 off :}
+   LBL LBL LBL LBL LBL {: s2 s3 s4 s5 off :} \ typed-local-lint: allow-bare-local
    9 DATA CMM-CELL LDR,  9 off CBZ,
-   9 2 CMPI,  C-EQ state2 BCOND,
+   9 2 CMPI,  C-EQ s2 BCOND,
+   9 3 CMPI,  C-EQ s3 BCOND,
+   9 4 CMPI,  C-EQ s4 BCOND,
+   9 5 CMPI,  C-EQ s5 BCOND,
    lmain EM-ADT-CON-FAM
-   state2 LBL,
-   lmain EM-ADT-CON-VAR
+   s2 LBL,  lmain EM-ADT-CON-VAR
+   s3 LBL,  lmain EM-ADT-MATCH-FAM
+   s4 LBL,  lmain EM-ADT-MATCH-VAR
+   s5 LBL,  lmain EM-ADT-MATCH-OF
    off LBL, ;
 
 : EMIT-COMPILE ( n n -- ) {: lmain lundef :}
@@ -3548,6 +3721,7 @@ variable CFSK2
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
+   9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
 : EMIT-EVAL-UNDEF-ROLLBACK ( -- )
@@ -3661,7 +3835,8 @@ variable CFSK2
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
-   LBL LTFLCONFAM !  LBL LTFLCVAR ! ;
+   LBL LTFLCONFAM !  LBL LTFLCVAR !
+   LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !

@@ -369,6 +369,39 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
      (fixpoint + engine suite + checked hb + repl + hb-build) (10376ms <= 40000ms
      budget)". Six type suites ok; maki/test.f `test: ok`; typed-local-diff-lint on
      the diff clean. Deferred to slice 3b: the `forth.fs` mirror.
+
+   **LANDED — COMMIT B (fable-tfam12, "TFAM 10 slice 3b: Gforth mirror for
+   MATCH lowering").** The stage0 mirror, per slice 2's parity discipline:
+   - **bootstrap/cg/sys.fs:** `SYS-EMIT-WRITE`/`SYS-EMIT-EXIT`/`SYS-EMIT-SVC`
+     stencils in BOTH target blocks (Linux x8/svc#0, macOS x16/svc#0x80),
+     mirroring src/os/{linux,macos}/sys.f.
+   - **bootstrap/cg/forth.fs:** E-BAD-TAG=85; CMBK/CMTAG/CMPADS/CMFRD/CMFR-OFF/
+     CMFR-MAX cell constants (mirror layout.f); LTFLMATCHFAM/LTFLNAME/
+     LBADTAGPFX/LBADTAGSFX label vars + kwdata rows + label inits +
+     BADTAG-SFX-KW; J-MATCH (CF-ENTRY registration, `lmain LKWMATCH 5`);
+     J-OF/J-ENDOF CMBK bookkeeping; C-DIE-BAD-TAG + EM-MATCH-SEMI +
+     EM-ADT-MATCH-FAM/VAR/OF + the 5-state EMIT-COMPILE-ADT-MODE (all in the
+     stage0 dialect: `@ BL,`/`@ ADR,` label vars, bare locals with the
+     typed-local-lint allowance rows, literal msg-length MOVZ immediates,
+     stage0 C-FIND-GLOBAL = plain LFIND); colon-entry + EMIT-RESET-COMPILE-STATE
+     clear CMFRD/CMBK with CMM.
+   - **Proof — the strongest available:** full gforth bootstrap
+     (`HABU_ALLOW_BOOTSTRAP=1 GFORTH=~/.local/bin/gforth tools/bootstrap.sh`)
+     rc=0 "bootstrap OK: bin/hb"; the Gforth-recovered engine is
+     **BYTE-IDENTICAL to the native slice-3a fixpoint** (cmp: 0 differing
+     bytes, sha256 70b6790f… both, 148855) — the stage0 mirror compiles the
+     engine to the same fixpoint, which also discharges the item-title
+     "Gforth-recovered candidates" parity for match/bad-tag (identical bytes ⊃
+     identical behavior; round-trip + nested + forged-tag rc-85 probes re-run
+     on the recovered binary directly, identical output). NOTE gforth-fast
+     fails the bootstrap locals probe; use the ~/.local/bin/gforth install.
+   - bootstrap-codegen-test ok; compiler-dispatch-test ok; FULL gate on the 3b
+     tree rc=0 "PASS: native test suite (fixpoint + engine suite + checked hb +
+     repl + hb-build) (9978ms <= 40000ms budget)"; install --force ×2
+     byte-identical (70b6790f… both runs); six type suites ok; maki/test.f ok.
+     Remaining for this item: slices 4 (recovery-corpus fixtures if any beyond
+     the byte-identity proof), 5 (AOT/object preseeded bad-tag entry), 6 (docs
+     census + pin retirement).
 4. **Gforth-recovered parity.** Build via bootstrap.sh; run the slice-2/3
    fixtures on the recovered candidate; assert identical construct/match/bad-tag
    behavior. Confirm forth.fs EMIT-KWDATA + any engine-referenced J-* mirror

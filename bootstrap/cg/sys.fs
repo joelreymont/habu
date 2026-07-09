@@ -38,6 +38,14 @@ $32 constant MAP-ANON-PRIVATE-FIXED
    8 swap MOVZ,  0 SVC,
    16 -4095 LIT64,  0 16 CMP, ;
 
+\ Runtime-emit syscall stencils (TFAM 10 slice 3; mirrors src/os/linux/sys.f):
+\ the MATCH bad-tag die is emitted INTO the user word, so its write+exit words
+\ are baked here. Linux syscall number in x8; die never inspects the write
+\ return, so no errno reconciliation.
+$D2800008 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x8, #NR-WRITE
+$D2800008 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x8, #NR-EXIT-GROUP
+$D4000001 constant SYS-EMIT-SVC                          \ svc #0
+
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
    1 pathreg 0 ADDI,  0 99 MOVN,  2 0 MOVZ,  3 0 MOVZ,  NR-OPEN SYS, ;
@@ -90,6 +98,13 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 7   constant NR-WAIT4     \ wait4(pid, &status, 0, 0)
 
 : SYS, ( n -- )  16 swap MOVZ,  $80 SVC, ;
+
+\ Runtime-emit syscall stencils (TFAM 10 slice 3; mirrors src/os/macos/sys.f):
+\ the MATCH bad-tag die is emitted INTO the user word, so its write+exit words
+\ are baked here. macOS syscall number in x16, call svc #0x80.
+$D2800010 NR-WRITE 32 * + constant SYS-EMIT-WRITE       \ movz x16, #NR-WRITE
+$D2800010 NR-EXIT-GROUP 32 * + constant SYS-EMIT-EXIT   \ movz x16, #NR-EXIT-GROUP
+$D4001001 constant SYS-EMIT-SVC                          \ svc #0x80
 
 : OS-OPEN-RD ( n -- )
    {: pathreg :}
