@@ -13,6 +13,10 @@
 \   process exit codes (64/70/74/76...), shared across tools by design.
 \ - `E-*-FIRST` / `E-*-LAST` names are range sentinels (lib/errors.f blocks):
 \   they alias their block's boundary member codes, not new throw identities.
+\   Each FIRST/LAST pair (matched by shared stem, e.g. E-FS-FIRST/E-FS-LAST) also
+\   reserves the inclusive [FIRST,LAST] code range for the file that declares it.
+\   A negative E- code claimed INSIDE another file's reserved range is a foreign
+\   claim and is flagged, even before the owning block mints that exact member.
 \ - Identical (code, name) re-registrations are allowed (re-export shims; the
 \   same constant reachable through two entry files).
 \ - bootstrap/ is not walked: the frozen recovery seed is a pinned corpus in
@@ -38,6 +42,13 @@ create ECL-NBUF 32 allot
 create ECL-CODES ECL-MAX-CLAIMS cells allot   \ claimed negative codes
 create ECL-NAMES ECL-MAX-CLAIMS cells allot   \ claimant name intern ids
 create ECL-FILEIDS ECL-MAX-CLAIMS cells allot \ claimant file intern ids
+
+1024 constant ECL-MAX-RES
+create ECL-RES-STEM  ECL-MAX-RES cells allot   \ block stem intern id (E-FS)
+create ECL-RES-FILE  ECL-MAX-RES cells allot   \ declaring/owning file intern id
+create ECL-RES-FIRST ECL-MAX-RES cells allot   \ FIRST value (0 = not yet seen)
+create ECL-RES-LAST  ECL-MAX-RES cells allot   \ LAST value  (0 = not yet seen)
+variable ECL-RES#
 
 variable ECL-PATHU
 variable ECL-INSTR                      \ inside an s" ... " string literal body
@@ -155,6 +166,52 @@ variable ECL-J
    u ECL-PCAP > if s" error-code-lint: path too long" 1 die then
    a ECL-PATH u LINT-BMOVE  u ECL-PATHU ! ;
 
+\ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
+\ A FIRST/LAST pair reserves the inclusive numeric range between its two member
+\ codes for the file that declares it (lib/errors.f owns every stdlib block).
+\ Pairs are keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS) and declaring
+\ file, so two files can each own a same-named block.
+: ECL-RES-STEM@  ( n -- n )  cells ECL-RES-STEM + @ ;
+: ECL-RES-FILE@  ( n -- n )  cells ECL-RES-FILE + @ ;
+: ECL-RES-FIRST@ ( n -- n )  cells ECL-RES-FIRST + @ ;
+: ECL-RES-LAST@  ( n -- n )  cells ECL-RES-LAST + @ ;
+
+\ name minus its -FIRST / -LAST suffix (caller guarantees ECL-SENTINEL?)
+: ECL-STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u s" -FIRST" LINT-ENDS-WITH? if a u 6 - exit then
+   a u 5 - ;
+
+: ECL-RES-FIRST-TOK? ( ptr u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
+
+: ECL-RES-FIND ( n n -- n ) {: stem:n file:n :}   \ row for (stem,file) or -1
+   0 begin dup ECL-RES# @ < while
+      dup ECL-RES-STEM@ stem =
+      over ECL-RES-FILE@ file = and if exit then
+      1+
+   repeat drop -1 ;
+
+: ECL-RES-NEW ( n n -- n ) {: stem:n file:n :}    \ append an empty row, return idx
+   ECL-RES# @ ECL-MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
+   ECL-RES# @ {: k:n :}
+   stem k cells ECL-RES-STEM + !
+   file k cells ECL-RES-FILE + !
+   0 k cells ECL-RES-FIRST + !
+   0 k cells ECL-RES-LAST + !
+   k 1+ ECL-RES# !
+   k ;
+
+: ECL-RES-ROW ( n n -- n ) {: stem:n file:n :}    \ find-or-create (stem,file) row
+   stem file ECL-RES-FIND dup 0 >= if exit then drop
+   stem file ECL-RES-NEW ;
+
+\ record one FIRST/LAST sentinel into its (stem,file) reservation row
+: ECL-RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
+   a u ECL-STEM$ INTERN {: stem:n :}
+   ECL-PATH ECL-PATHU @ INTERN {: file:n :}
+   stem file ECL-RES-ROW {: k:n :}
+   a u ECL-RES-FIRST-TOK? if code k cells ECL-RES-FIRST + !
+                          else code k cells ECL-RES-LAST + ! then ;
+
 \ ---- token walk -------------------------------------------------------------
 \ token i as `<negative-number> constant E-NAME` claim (outside strings)
 : ECL-TOK-CLAIM ( n -- ) {: i:n :}
@@ -162,9 +219,9 @@ variable ECL-J
    i 1+ TOK s" constant" LINT-STR=CI 0= if exit then
    i 2 + TOK {: nptr:ptr nu:n :}
    nptr nu s" E-" LINT-PREFIX? 0= if exit then
-   nptr nu ECL-SENTINEL? if exit then
    i TOK ECL-NEG? {: code:n ok:bool :}
    ok 0= if exit then
+   nptr nu ECL-SENTINEL? if code nptr nu ECL-RES+ exit then
    code  nptr nu INTERN  ECL-PATH ECL-PATHU @ INTERN  ECL-CLAIM+ ;
 
 : ECL-STEP ( n -- n ) {: i:n :}
@@ -213,14 +270,65 @@ variable ECL-J
       ECL-I @ 1+ ECL-I !
    repeat ;
 
+\ ---- foreign-range findings -------------------------------------------------
+: ECL-MINMAX ( n n -- n n )   \ order two bounds ascending
+   2dup > if swap then ;
+
+: ECL-INRANGE? ( n n n -- bool ) {: code:n first:n last:n :}
+   first last ECL-MINMAX {: lo:n hi:n :}
+   code lo >= code hi <= and ;
+
+\ claim ci falls inside a COMPLETE reservation ri owned by another file
+: ECL-CLAIM-FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
+   ri ECL-RES-FIRST@ {: first:n :}
+   ri ECL-RES-LAST@ {: last:n :}
+   first 0= last 0= or if LINT-FALSE exit then
+   ci ECL-CODE@ first last ECL-INRANGE? 0= if LINT-FALSE exit then
+   ci ECL-FILE@ ri ECL-RES-FILE@ <> ;
+
+: ECL-RES-HIT ( n n -- ) {: ci:n ri:n :}
+   ECL-REPORT? @ if
+      s" ERROR-CODE " type ci ECL-CODE@ ECL-N.
+      s"  claimed by '" type ci ECL-NAME@ INTERN$ type
+      s" ' (" type ci ECL-FILE@ INTERN$ type
+      s" ) inside reserved range " type ri ECL-RES-STEM@ INTERN$ type
+      s" -FIRST..-LAST owned by (" type ri ECL-RES-FILE@ INTERN$ type
+      s" )" type ECL-NL
+   then
+   ECL-BAD @ 1+ ECL-BAD ! ;
+
+\ one finding per (claim, foreign reservation) pair
+: ECL-RES-FINDINGS ( -- )
+   0 ECL-I !
+   begin ECL-I @ ECL-CLAIM# @ < while
+      0 ECL-J !
+      begin ECL-J @ ECL-RES# @ < while
+         ECL-I @ ECL-J @ ECL-CLAIM-FOREIGN? if ECL-I @ ECL-J @ ECL-RES-HIT then
+         ECL-J @ 1+ ECL-J !
+      repeat
+      ECL-I @ 1+ ECL-I !
+   repeat ;
+
 \ findings from scanning one string in isolation (reset -> scan -> pair count)
 : ECL-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
    ECL-REPORT? @ {: report:bool :}
    ECL-REPORT-OFF
-   0 ECL-BAD !  0 ECL-CLAIM# !
+   0 ECL-BAD !  0 ECL-CLAIM# !  0 ECL-RES# !
    s" <test>" ECL-PATH!
    a u ECL-SCAN-STR
-   ECL-FINDINGS
+   ECL-FINDINGS ECL-RES-FINDINGS
+   report ECL-REPORT!
+   ECL-BAD @ ;
+
+\ two-file finding count: OWNER source declares the block, FOREIGN source mints
+\ its claims under a different path, so a cross-file range claim can be tested.
+: ECL-COUNT2 ( ptr u8 n ptr u8 n -- n ) {: ao:ptr auo:n af:ptr auf:n :}
+   ECL-REPORT? @ {: report:bool :}
+   ECL-REPORT-OFF
+   0 ECL-BAD !  0 ECL-CLAIM# !  0 ECL-RES# !
+   s" owner.f" ECL-PATH!    ao auo ECL-SCAN-STR
+   s" foreign.f" ECL-PATH!  af auf ECL-SCAN-STR
+   ECL-FINDINGS ECL-RES-FINDINGS
    report ECL-REPORT!
    ECL-BAD @ ;
 
@@ -238,19 +346,20 @@ variable ECL-J
    [: ECL-SCAN-FILE ;] WALK-FILES ;
 
 : ECL-RUN ( -- )
-   0 ECL-BAD !  0 ECL-FILES# !  0 ECL-CLAIM# !
+   0 ECL-BAD !  0 ECL-FILES# !  0 ECL-CLAIM# !  0 ECL-RES# !
    s" src/" ECL-ROOT
    s" lib/" ECL-ROOT
    s" tools/" ECL-ROOT
    s" test/" ECL-ROOT
    s" maki/" ECL-ROOT
-   ECL-FINDINGS ;
+   ECL-FINDINGS ECL-RES-FINDINGS ;
 
 : ECL-SUMMARY ( -- )
    s" error-code-lint: " type
    ECL-FILES# @ ECL-U. s"  file(s), " type
    ECL-CLAIM# @ ECL-U. s"  claim(s), " type
-   ECL-BAD    @ ECL-U. s"  collision(s)" type ECL-NL ;
+   ECL-RES#   @ ECL-U. s"  reservation(s), " type
+   ECL-BAD    @ ECL-U. s"  finding(s)" type ECL-NL ;
 
 \ report view: prints the ledger without throwing
 : ERROR-CODE-LINT ( -- )

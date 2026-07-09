@@ -32,6 +32,26 @@ require tools/error-code-lint-core.f
    s" -9100 constant E-X-FIRST  -9100 constant E-XM" ECL-COUNT 0 T=
    s" -9199 constant E-X-LAST  -9199 constant E-XZ" ECL-COUNT 0 T= ;
 
+: MECLT-RESERVATIONS ( -- )
+   \ FIRST/LAST reserve [FIRST,LAST]; a foreign file minting inside is flagged
+   \ even though the owning block has not yet minted that exact member code
+   s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST"
+   s" -9150 constant E-BAR" ECL-COUNT2 1 T=
+   \ the reservation boundaries are inclusive on both ends
+   s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST"
+   s" -9100 constant E-BND" ECL-COUNT2 1 T=
+   s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST"
+   s" -9199 constant E-BND" ECL-COUNT2 1 T=
+   \ the owning file's own members inside its own block are not foreign
+   s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST  -9100 constant E-FOO-A  -9101 constant E-FOO-B"
+   ECL-COUNT 0 T=
+   \ a foreign claim OUTSIDE the reserved range passes
+   s" -9100 constant E-FOO-FIRST  -9199 constant E-FOO-LAST"
+   s" -9250 constant E-BAZ" ECL-COUNT2 0 T=
+   \ an incomplete reservation (FIRST or LAST alone) reserves nothing
+   s" -9100 constant E-FOO-FIRST"
+   s" -9150 constant E-BAR" ECL-COUNT2 0 T= ;
+
 : MECLT-NO-FALSE-POSITIVE ( -- )
    \ `\` line comments are stripped by TOKENIZE
    s" \ -9001 constant E-XA  -9001 constant E-XB" ECL-COUNT 0 T=
@@ -49,6 +69,7 @@ require tools/error-code-lint-core.f
    T-RESET
    MECLT-DETECT
    MECLT-ALLOWANCES
+   MECLT-RESERVATIONS
    MECLT-NO-FALSE-POSITIVE
    T-REPORT
    MECLT-LIVE ;
