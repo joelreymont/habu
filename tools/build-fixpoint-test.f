@@ -24,6 +24,13 @@ $100000 constant BFT-READ-CAP
 120000 constant BFT-TIMEOUT-MS
 13 constant BFT-BUILD-ARGV#
 
+\ Snapshot trailer field offsets from the magic cell (src/habu/snap-lib.f
+\ SNAP-WRITE-BYTES): magic +0, text base +8, ndict +16, region len +24,
+\ data len +32, format version +40.
+16 constant BFT-TRL-NDICT
+24 constant BFT-TRL-REGLEN
+40 constant BFT-TRL-VERSION
+
 variable BFT-ROOT-U
 variable BFT-HB-NEW-U
 variable BFT-HB-U
@@ -47,6 +54,10 @@ variable BFT-BIG-OUT-A
 variable BFT-BIG-ERR-A
 variable BFT-BUILD-FILES
 variable BFT-READ-A
+variable BFT-BYTES-A
+variable BFT-BYTES-N
+variable BFT-MAG-I
+variable BFT-MAG-LAST
 variable BFT-PROF-I
 variable BFT-REG-I
 variable BFT-JIT-I
@@ -580,6 +591,106 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" SNAP-MAGIC" CONTAINS? TTRUE
    BF-TMP-RESET ;
 
+\ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
+\ habu-tfam-12-layout-057181a9): the loader EM-SNAPSHOT-RESTORE
+\ (src/habu/habu2.f) validates the 48-byte format-versioned trailer before
+\ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
+\ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
+\ (corrupt trailer). The snapshot binary is built through the WORKING runtime
+\ route the pipeline itself uses (hb-stdin < hb-snap-src -> hb-snap0, the
+\ BF-BUILD-SNAP-FROM-STDIN mechanism minus its certify gate: BF-CERTIFY-SNAP
+\ fails closed on snap.f's 0 set-check boundary until VERIFY:SOURCE-BUF
+\ honors injected set-check spans - dot habu-tfam-12-item-346f03c2).
+\ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
+\ - The trailer magic is NOT at FILE-SIZE-48: SNAP-EXTRA-SIZE padding and the
+\   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
+\   occurrence (the trailer is written after both payloads; nothing after it
+\   contains the magic).
+\ - A patched image must be re-signed (CODESIGN-FORCE) or macOS SIGKILLs it
+\   before the loader runs.
+\ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
+\   and the engine falls through to a COLD boot (rc 0) by design, so there is
+\   no magic-corruption leg.
+\ - EM-SNAPSHOT-RESTORE emits no diagnostic text on 79/80 (bare
+\   NR-EXIT-GROUP); rc is the only assertable surface. A labeled exit is a
+\   follow-up tracked in habu-tfam-12-item-346f03c2.
+: BFT-BYTES-FIELD ( -- ptr ptr u8 )
+   BFT-BYTES-A 0 ptr-field ;
+
+: BFT-BYTES ( -- ptr u8 )
+   BFT-BYTES-FIELD @ ;
+
+: BFT-SNAP0-BUILD ( -- )
+   BF-SNAP-SOURCE
+   s" hb-snap0" BF-REMOVE-TMP
+   s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0
+   s" hb-snap0" BF-EXPECT
+   s" hb-snap0" BF-CODESIGN-FORCE-TMP
+   s" hb-snap0" BF-CHMOD-X-TMP ;
+
+: BFT-EMPTY-STDIN! ( -- )
+   s" empty-stdin" BF-A$ BFT-EMPTY$ WRITE-ALL ;
+
+: BFT-SNAP-RUN ( ptr u8 n -- n )
+   s" empty-stdin" BF-RUN-ENV-TMP-INFILE ;
+
+: BFT-BYTES-READ ( -- )
+   s" hb-snap0" BF-A$ FILE-SIZE {: sz:n :}
+   sz MEM-ALLOC-BYTES drop BFT-BYTES-FIELD !
+   s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
+
+: BFT-MAGIC$ ( -- ptr u8 n )
+   s" !SNAPSBH" ;
+
+: BFT-MAGIC-STEP ( -- bool )
+   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER {: i:n :}
+   i 0 < if 0 0= 0= exit then
+   i BFT-MAG-LAST !
+   i 1 + BFT-MAG-I !
+   0 0= ;
+
+: BFT-MAGIC-LAST! ( -- )
+   0 BFT-MAG-I !
+   -1 BFT-MAG-LAST !
+   begin BFT-MAGIC-STEP 0= until
+   BFT-MAG-LAST @ 0 >= TTRUE ;
+
+: BFT-BYTE@ ( n -- n ) {: off:n :}
+   BFT-BYTES off BYTE+ c@ ;
+
+: BFT-BYTE! ( n n -- ) {: val:n off:n :}
+   val BFT-BYTES off BYTE+ c! ;
+
+: BFT-DOCTOR-WRITE ( -- )
+   s" hb-doctored" BF-REMOVE-TMP
+   s" hb-doctored" BF-A$ BFT-BYTES BFT-BYTES-N @ WRITE-ALL
+   s" hb-doctored" BF-CODESIGN-FORCE-TMP
+   s" hb-doctored" BF-CHMOD-X-TMP ;
+
+: BFT-DOCTORED-RC ( n n -- n ) {: off:n val:n :}
+   off BFT-BYTE@ {: orig:n :}
+   val off BFT-BYTE!
+   BFT-DOCTOR-WRITE
+   s" hb-doctored" BFT-SNAP-RUN {: rcn:n :}
+   orig off BFT-BYTE!
+   rcn ;
+
+: BFT-TEST-SNAP-TRAILER ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-SNAP0-BUILD
+   BFT-EMPTY-STDIN!
+   s" hb-snap0" BFT-SNAP-RUN 0 T=
+   BFT-BYTES-READ
+   BFT-MAGIC-LAST!
+   BFT-MAG-LAST @ {: mag:n :}
+   mag BFT-TRL-VERSION + BFT-BYTE@ 1 T=
+   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-RC 80 T=
+   \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
+   \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
+   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-RC 79 T=
+   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-RC 79 T=
+   BF-TMP-RESET ;
+
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
    BF-TMP$ BFT-ROOT T$=
@@ -761,6 +872,7 @@ create BFT-CHECK-OFF-LINE
    s" checked target image" [: BFT-TEST-CHECKED-TARGET-IMAGE ;] BFT-STEP
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
+   s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT

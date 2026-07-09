@@ -4,6 +4,22 @@
 
 Last updated: 2026-07-09
 
+- **Snapshot-image regressions scan for the trailer magic and re-sign each
+  patch:** the 48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE pad plus
+  the macOS codesign blob follow it (measured magic at size-57392), so locate
+  it by scanning for the LAST SNAP-MAGIC occurrence, never FILE-SIZE offsets.
+  An un-resigned patched image is SIGKILLed (rc -9) before the loader runs.
+  Corrupting the magic is a fall-through COLD BOOT (rc 0), not a reject; the
+  rejection legs are version>max (rc 80) and a positive-but-oversized
+  region-len/ndict middle byte (rc 79) — data-len top bytes can SIGSEGV
+  instead. Fixture: BFT-TEST-SNAP-TRAILER.
+- **`-- snap` is certify-blocked; the runtime snapshot route works and is
+  cheap:** BF-CERTIFY-SNAP rejects snap.f because VERIFY:SOURCE-BUF does not
+  honor `0 set-check` (undefined SNAPGO from require'd snap-lib.f; regressed
+  by "Make fixpoint source certification blocking", owned by
+  habu-staged-fixpoint-src-0b5fc6e6). Tests needing a snapshot binary use the
+  pipeline's own runtime route hb-stdin < hb-snap-src -> hb-snap0 (0.63s),
+  then codesign — not the blocked `-- snap` CLI.
 - **Generated constructor WID protection belongs after emission, not inside
   `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
   definition machinery is mid-publish and has no stable generated-word identity.
