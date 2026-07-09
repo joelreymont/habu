@@ -495,6 +495,17 @@ lesson — keep the specific word/code/path, cut the prose.
   the ADDRESS across src/ lib/ bootstrap/ (regalloc.f, debug.f, and lib/task.f
   all define cells outside layout.f); the one proven-safe home was $3D00 with
   lib/task.f TASK-USER-BASE bumped to $3D08.
+- **A documented DATA "free hole" can be a live table's interior:** layout.f
+  called $260 (old DEF-WL slot) free, but `VVAL-OFF` ($250) + `VSMAX` cells is
+  the JIT virtual-stack value table $250..$350 — $260 is VVAL[2]; DEF-TKA/
+  DEF-TKL coexist at $250/$258 only because their liveness is confined to the
+  definition NAME token, when the VS is empty. Exact-constant rg is not
+  enough: also check every RANGED region (table base + capacity) covering the
+  candidate. A mode cell at $260 read VS garbage; its own fail-closed guard
+  caught it at the first stage build (TFAM 10 CMM-CELL landed at $27A8, the
+  last old CRSIG slot). The other old holes ($2780..$27A0, $27C0..$27E8) were
+  meanwhile reclaimed by habu1.f P2-* — free-hole comments rot, so correct
+  them whenever a slot is taken or found stale.
 - **`wait-rc` is WEXITSTATUS-only:** a signal-killed child (SIGABRT = rc 134)
   reports rc 0 through the raw primitive. All in-repo users are migrated
   (bench.f -> PROC-WAIT-RC; the dead PROC-WAIT-RAW alias retired from

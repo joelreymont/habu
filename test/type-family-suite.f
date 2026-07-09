@@ -413,6 +413,46 @@ s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TFAM-DECL drop
 s" solo" TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
+\ item 10 slice 1: TFL-* compiler-facing lowering surface (dot
+\ habu-tfam-10-native design A) — pure folded resolution + tag/pad metadata
+\ the native construct/MATCH emitters call by name at token positions. Same
+\ scope rules as the checker friend XTs (owner-only construct, signature-scope
+\ match), no diagnostic latch, no checker-row effect.
+\ ---------------------------------------------------------------------------
+variable LID   variable LVID
+SUMTYPE lres 0
+  VARIANT lok  n   ;VARIANT
+  VARIANT lerr n n ;VARIANT
+  VARIANT lnil     ;VARIANT
+;SUMTYPE
+s" " s" lres" TFAM-FIND-IN FOUNDF !  LID !  FOUNDF @ -1 T=
+\ construct one-shot -> ( tag pads ok ); pads = M-p with M = 2 (widest payload)
+s" lres" s" lok"  TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
+s" lres" s" lerr" TFL-CON? FOUNDF !  0 T=  1 T=  FOUNDF @ -1 T=
+s" lres" s" lnil" TFL-CON? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
+\ raw engine tokens fold: uppercase spellings agree with the declaration
+s" LRES" s" LOK" TFL-CON? FOUNDF !  1 T=  0 T=  FOUNDF @ -1 T=
+\ misses fail pure (no throw, no diagnostic): unknown family/variant, cell kind
+s" nosuch" s" lok" TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" lres" s" nope"  TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+s" span" s" lok"   TFL-CON? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
+\ owner-only construct scope: pkgx's public solo does NOT construct from here
+s" solo" TFL-CON-FAM? FOUNDF ! drop  FOUNDF @ 0 T=
+\ match resolution is signature scope: own ("" top level), unique public,
+\ qualified; ambiguous publics and non-sum kinds fail pure
+s" lres" TFL-MATCH-FAM? FOUNDF !  LID @ T=  FOUNDF @ -1 T=
+s" solo" TFL-MATCH-FAM? FOUNDF ! drop  FOUNDF @ -1 T=
+s" pkgx:amb" TFL-MATCH-FAM? FOUNDF !  AX @ T=  FOUNDF @ -1 T=
+s" amb"  TFL-MATCH-FAM? FOUNDF ! drop  FOUNDF @ 0 T=
+s" span" TFL-MATCH-FAM? FOUNDF ! drop  FOUNDF @ 0 T=
+\ variant resolve + per-variant metadata (folded)
+s" LERR" LID @ TFL-VAR? FOUNDF !  LVID !  FOUNDF @ -1 T=
+LVID @ SUMV-TAG@ 1 T=
+LID @ LVID @ TFL-VPADS 0 T=
+s" zzz" LID @ TFL-VAR? FOUNDF ! drop  FOUNDF @ 0 T=
+s" TFL-SURFACE" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

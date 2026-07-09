@@ -59,8 +59,9 @@ $3000 constant LOCNAMES
 \ a one-way monotonic latch. The band sits BELOW DATA-START, so allot/,/c,/the DP
 \ heap (bounded >= DATA-START by DP-CHECK) can never reach it; only sinks that
 \ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
-\ write buffers) carry the runtime range check. The old scattered slots ($1A0,
-\ $260, $2780.., $27C0..) are now free holes. A SECOND guarded band (the
+\ write buffers) carry the runtime range check. The old scattered slots were
+\ since reclaimed: $2780..$27A0/$27C0..$27E8 by the habu1.f P2-* cells, $27A8
+\ by CMM-CELL below ($1A0 stays free). A SECOND guarded band (the
 \ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
@@ -207,7 +208,21 @@ $240 constant QENT-CELL
 $248 constant QXH-CELL
 $250 constant DEF-TKA-CELL
 $258 constant DEF-TKL-CELL
-\ DEF-WL ($260), PKG-* ($27C0..$27D8) and DEFER-* ($27E0..$27E8) relocated into
-\ the friend arena above; those low/high slots are now free holes.
+\ CMM-CELL: compile-loop ADT-lowering mode (TFAM 10, docs/type-families.md §16),
+\ mirroring the checker's MM token machine: 0 = off; slices 2-3 arm it at a
+\ `construct`/`MATCH` keyword so the operand tokens are captured BEFORE the
+\ local/keyword/literal/call/undefined dispatch and never hit dictionary lookup.
+\ Tested fail-closed at the LCOMPILE head (EM-COMPILE-ADT-MODE): armed with no
+\ handler dies deterministically. Definition-scoped: cleared at colon/TRUSTED:
+\ entry and by EM-RESET-COMPILE-STATE. Lives at $27A8, the last old CRSIG slot
+\ (freed when CRSIG moved into the friend arena) between P2LOC0-CELL ($27A0,
+\ habu1.f) and DOESB-CELL ($27B0) — rg-verified unused repo-wide. NOTE the low
+\ "free hole" $260 is NOT usable: VVAL-OFF ($250) + VSMAX cells spans
+\ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
+\ is confined to the definition NAME token, when the virtual stack is empty.
+$27A8 constant CMM-CELL
+\ PKG-* ($27C0..$27D8) and DEFER-* ($27E0..$27E8) relocated into
+\ the friend arena above and were later reclaimed by the habu1.f P2-* pass-2
+\ cells (item 12), as were $2780..$27A0.
 $2800 constant RSTK-OFF
 $4000 constant DATA-START

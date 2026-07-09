@@ -98,6 +98,61 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    registry resolution (FORK 1A) returning raw (tag/pad/slots/vcount/tag-of-var).
    No dispatch yet → GE-CONSTRUCT-PENDING still green (tokens still undefined).
    Proof: fixpoint + gate unchanged-green.
+
+   **LANDED (fable-tfam12, "TFAM 10 slice 1: keyword data + lowering metadata
+   surface").** What shipped, exactly:
+   - Keyword data: `LKWCONSTRUCT`/`LKWMATCH`/`LKWSEMIMATCH` label vars,
+     `EMIT-KWDATA` rows ("construct", "match", ";match") and
+     `EMIT-LABEL-CONTROL` inits in BOTH habu2.f and the forth.fs stage0 mirror.
+     `LKWCMP` folds A-Z on the token side, so uppercase `MATCH`/`;MATCH`
+     source will hit the lowercase rows when slices 2-3 wire dispatch. Nothing
+     compares against the new rows yet: `construct` still resolves nothing →
+     `E-UNDEFINED` exit 70 on compile AND interpret (probed directly on the new
+     engine; GE-CONSTRUCT-PENDING green in the gate).
+   - FORK 2 mode cell: `CMM-CELL` at **$27A8** (layout.f + forth.fs mirror
+     constant). NOT $260 as the stale layout free-hole comment suggested — the
+     first build's own guard caught that live: `VVAL-OFF` ($250) + `VSMAX`
+     cells spans $250..$350 (the JIT virtual-stack value table), so $260 =
+     VVAL[2] and any 3-deep VS write clobbered it (DEF-TKA/DEF-TKL survive in
+     that span only via name-token-time liveness when the VS is empty). $27A8
+     is the last old CRSIG slot between P2LOC0-CELL ($27A0) and DOESB-CELL
+     ($27B0), rg-verified free; layout.f free-hole comments corrected (the
+     other old holes were reclaimed by the item-12 P2-* cells).
+   - FORK 2 guard: `EM-COMPILE-ADT-MODE` (habu2.f, TRUST row + TRUSTED.md pin
+     + classes-block habu2 count 109→110) emitted at the LCOMPILE head after
+     EM-P2-COUNT and BEFORE semi/local/keyword/literal/call/undefined — the
+     capture position slices 2-3 take over. Armed-with-no-handler dies
+     fail-closed: "hb: adt lowering pending: " + token + NL, exit 70
+     (ADTMSG-LEN 26). Cleared at `:`/`TRUSTED:` entry and in
+     EM-RESET-COMPILE-STATE (all mirrored in forth.fs: EMIT-COMPILE-ADT-MODE,
+     C-COLON-PENDING-DREC clear, EMIT-RESET-COMPILE-STATE clear).
+   - FORK 1A wrappers (src/core/type-family.f, checked, after TFAM-MATCH-PAY):
+     `TFL-CON? ( fa fu va vu -- tag pads ok )` construct one-shot (owner-only
+     scope via TFAM-ACTIVE-PKG$/TFAM-FIND-IN + sum/enum kind gate),
+     `TFL-CON-FAM?`, `TFL-MATCH-FAM? ( a u -- fam ok )` (signature scope via
+     TFAM-SIG-RESOLVE incl. qualified + ambiguity→pure-false), `TFL-VAR?
+     ( a u fam -- vid ok )`, `TFL-VPADS ( fam vid -- M-p )`, helpers
+     `TFL-SUMKIND?`/`TFL-FOLD$`. All fold raw engine tokens through the
+     checker's TOKFOLD (single TKF buffer — fold→resolve strictly sequential),
+     latch NO diagnostics, apply NO checker-row effect. Emitters will also call
+     the existing named accessors directly: SUMV-TAG@, SUMV-PAYCELLS@,
+     TFAM-SLOTS@, TFAM-VAR-COUNT@, TFAM-NAME$.
+   - Tests: test/type-family-suite.f TFL-SURFACE block — tag/pads per variant
+     (incl. zero-payload pads=M), case-fold, pure misses (unknown fam/var,
+     cell-kind `span`), owner-only vs signature scope (pkgx `solo`
+     constructs-false but matches-true from top level), qualified `pkgx:amb`,
+     ambiguous `amb` false, TFL-VAR?/TFL-VPADS.
+   - Emitter-asm note for slice 2/3: local `{: x:label :}` values are used
+     BARE with ADR/CBZ (`LABEL@` is only for label VARIABLES — the checker
+     rejects the mix loudly), and x11 must stay clear of scratch around the
+     C-FIND-GLOBAL/C-CALL-X11-SAVED bridge.
+   - Proofs: install --force twice = "bin/hb refresh OK: compiler fixpoint"
+     both runs (byte-identical); full gate rc=0 "PASS: native test suite
+     (fixpoint + engine suite + checked hb + repl + hb-build) (10010ms <=
+     40000ms budget)"; six type suites ok; maki/test.f ok;
+     bootstrap-codegen-test ok; compiler-dispatch-test ok; typed-local-diff-
+     lint/host-lint/filemap-lint/dot-dep-lint/trusted-inventory ok. No new
+     prims (TFL words are ordinary checked defs) → prop census unchanged.
 2. **Construct lowering (native).** Compiler `construct` mode (FORK 2): capture
    family+variant, resolve via slice-1 surface, emit (M-p)×push0 + push tag on
    the VS. Flip GE-CONSTRUCT-PENDING construct legs from E-UNDEFINED pins to

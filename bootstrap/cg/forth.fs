@@ -119,6 +119,7 @@ $68 constant CRSIG-A-CELL \ runtime created-word effect pending for CREATE
 $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
+$27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -209,6 +210,7 @@ variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
+variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords (TFAM 10; data rows only until slices 2-3)
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
 variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
@@ -1799,6 +1801,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWKERNEL @ LBL, s" kernel:" BYTES,
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
+   LKWCONSTRUCT @ LBL, s" construct" BYTES,  LKWMATCH @ LBL, s" match" BYTES,  LKWSEMIMATCH @ LBL, s" ;match" BYTES,
    PFX-PATH-FILES ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
@@ -3132,6 +3135,7 @@ variable CFSK2
    14 DATA CUR-CELL LDR,  14 9 40 STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA CMM-CELL STR,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
    LBCAP @ BL, ;
 
@@ -3426,8 +3430,25 @@ variable CFSK2
    notimm LBL,
    C-CALL  lmain B, ;
 
+\ ADT-lowering mode guard (TFAM 10 slice 1; mirrors habu2.f EM-COMPILE-ADT-MODE):
+\ CMM-CELL is the compile-loop construct/MATCH token machine. Slices 2-3 arm it
+\ at the LKWCONSTRUCT/LKWMATCH keywords and consume operand tokens here, before
+\ the semi/local/keyword/literal/call path. Nothing arms it yet: armed with no
+\ handler dies deterministically (msg + token + newline, exit 70).
+: EMIT-COMPILE-ADT-MODE ( -- )
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: msg off :}
+   9 DATA CMM-CELL LDR,  9 off CBZ,
+      0 2 MOVZ,  1 msg ADR,  2 26 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: adt lowering pending: " BYTES,
+   off LBL, ;
+
 : EMIT-COMPILE ( n n -- ) {: lmain lundef :}
    LBL {: lnotsemi :}
+   EMIT-COMPILE-ADT-MODE
    lmain lnotsemi EMIT-COMPILE-SEMI
    lmain EMIT-COMPILE-LOCAL
    lmain EMIT-COMPILE-KEYWORDS
@@ -3440,7 +3461,7 @@ variable CFSK2
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-   9 DATA PEND-CELL STR,
+   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 VRALL MOVZ,  9 DATA VRFREE-CELL STR, ;
 
 : EMIT-EVAL-UNDEF-ROLLBACK ( -- )
@@ -3552,7 +3573,8 @@ variable CFSK2
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
-   LBL LKWQUOT !  LBL LKWSEMIQ ! ;
+   LBL LKWQUOT !  LBL LKWSEMIQ !
+   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH ! ;
 
 : EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !

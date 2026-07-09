@@ -126,6 +126,7 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
+26 constant ADTMSG-LEN    \ byte length of "hb: adt lowering pending: " (EM-COMPILE-ADT-MODE)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
@@ -970,6 +971,11 @@ create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LP2DOESW
+\ ADT lowering keywords (TFAM 10 slice 1, docs §16): reserved token strings for
+\ the construct/MATCH compilers. Slice 1 emits the data rows only — no dispatch
+\ compares against them yet, so the tokens still fail closed as undefined words
+\ (GE-CONSTRUCT-PENDING); slices 2-3 wire the mode machine (CMM-CELL) onto them.
+variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1017,6 +1023,7 @@ create RESTAB-BUF
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1896,6 +1903,7 @@ s" c-store-def-name" s" --" TRUST
    CP 9 0 STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   12 DATA CMM-CELL STR,
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
    C-PARSE-TRUST-SIG
@@ -3266,6 +3274,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       CP 9 0 STR,
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+      12 DATA CMM-CELL STR,
       C-CLEAR-TRUSTED-STATE
       C-COLON-MAYBE-SIG
          9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
@@ -4073,7 +4082,7 @@ s" em-compile-call" s" --" TRUST
    9 DATA RSP-CELL STR,  9 DATA HND-CELL STR,  9 DATA LOOPSP-CELL STR,
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
-   9 DATA PEND-CELL STR,
+   9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
    9 0 MOVZ,
    9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
    9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
@@ -4252,10 +4261,27 @@ s" em-repl-read" s" --" TRUST
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-exit" s" --" TRUST
 
+\ EM-COMPILE-ADT-MODE (TFAM 10 slice 1): fail-closed head of the compile
+\ dispatch. CMM-CELL mirrors the checker's MM construct/MATCH token machine;
+\ slices 2-3 arm it at the LKWCONSTRUCT/LKWMATCH keywords and consume the
+\ operand tokens HERE — before the semi/local/keyword/literal/call/undefined
+\ path — so captured family/variant tokens never reach dictionary lookup
+\ (the checker's capture discipline). Nothing arms the cell yet: an armed
+\ mode with no handler dies deterministically instead of mis-dispatching.
+: EM-COMPILE-ADT-MODE ( -- )
+   LBL LBL {: msg:label off:label :}
+   9 DATA CMM-CELL LDR,  9 off CBZ,
+      0 2 MOVZ,  1 msg ADR,  2 ADTMSG-LEN MOVZ,  NR-WRITE SYS,
+      70 C-DIE-TOKEN-NL
+   msg LBL,  s" hb: adt lowering pending: " BYTES,
+   off LBL, ;
+s" em-compile-adt-mode" s" --" TRUST
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
    EM-P2-COUNT
+   EM-COMPILE-ADT-MODE
    lnotsemi EM-COMPILE-SEMI
    EM-COMPILE-LOCAL
    EM-COMPILE-P2WIDE
@@ -4316,7 +4342,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LP2DOESW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
-   LBL LSIGPTRA !  LBL LSIGA ! ;
+   LBL LSIGPTRA !  LBL LSIGA !
+   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !

@@ -978,6 +978,51 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    term T-RES TFC-ARGS!
    vid row TFC-PAY-ROW ;
 
+\ ---------------------------------------------------------------------------
+\ item 10 slice 1: compiler-facing lowering surface (docs §16; dot
+\ habu-tfam-10-native design A). Pure resolution + metadata for the native
+\ construct/MATCH emitters, called by NAME through the engine's C-FIND-GLOBAL
+\ friend bridge at the captured token positions: same registry and scope rules
+\ as the checker's friend XTs (owner-only construct, signature-scope match),
+\ but NO diagnostic latch and NO checker-row effect — the checker still judges
+\ the definition at `;` through its own construct/MATCH machinery. Raw engine
+\ token spans fold here (TOKFOLD), so `construct ZRES OK` and the lowercase
+\ spelling agree, exactly like checker body tokens. The other metadata the
+\ emitters need (SUMV-TAG@, SUMV-PAYCELLS@, TFAM-SLOTS@, TFAM-VAR-COUNT@,
+\ TFAM-NAME$) is already named public words above.
+\ ---------------------------------------------------------------------------
+: TFL-SUMKIND? ( n -- bool ) {: id:n :}   \ constructible/matchable kind
+   id TFAM-SUM? id TFAM-ENUM? or ;
+
+: TFL-FOLD$ ( ptr u8 n -- ptr u8 n )      \ fold a raw engine token (shared TKF buffer)
+   TOKFOLD drop TKF TKFU @ ;
+
+: TFL-CON-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ owner-only scope (docs §12)
+   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TFL-MATCH-FAM? ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ signature scope (docs §14)
+   TFAM-ACTIVE-PKG$ na nu TFL-FOLD$ TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFL-SUMKIND? 0= IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TFL-VAR? ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}   \ variant in fam -> vid
+   fam na nu TFL-FOLD$ SUMV-FIND ;
+
+: TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
+   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
+
+: TFL-CON? ( ptr u8 n ptr u8 n -- n n bool )   \ construct one-shot: -> tag pads ok
+   {: fa:ptr fu:n va:ptr vu:n :}
+   fa fu TFL-CON-FAM? 0= IF drop 0 0 RES-FALSE EXIT THEN
+   {: fam:n :}
+   va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
+   {: vid:n :}
+   vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
+
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
