@@ -59,7 +59,24 @@ Gate tails for the items-4+5 verdict commit (2026-07-09, verbatim, true-rc):
 - dot-dep-lint: `164 dot(s), 13 blocker(s), 0 finding(s)` rc 0;
   typed-local-diff-lint on the diff: rc 0
 
-REMAINING (3) implementation plan (keep-verdict, not yet landed): the engine
+REMAINING (3) — DECIDED + LANDED 2026-07-09 (keep fail-closed; labeled
+engine exit; commit "TFAM 12: named reject for does>-split wide facts").
+Probe evidence DISPROVED the earlier checker-side plan: the checked body
+splits AT does> (the pass-1 hook checks only the create-part and the trigger
+fires at publish), so the checker structurally cannot see that a does>
+follows a wide-fact body — candidates see the full text but mark any does>
+body UNCK (verdict 1, unmodeled token), and two OTHER fail-closed walls sit
+in front (does> + locals dies 75 at "does>"; plain checked does> without a
+captured does-sig dies 70 via C-DIE-DOES). The reachable raw exit was
+EM-P2-TRIGGER's DOESB backstop printing only the current token — a lone ";"
+(unattributable, the labeled-capacity-exit lesson). Landed: the exit now
+writes `hb: does>-split cannot lower layout width facts: <token>` before rc
+75 (habu2.f LP2DOESW), and GE-DOES-WIDE (test/gate-engine-lib.f, engine
+runtime slice) pins rc 75 + the label for a wide dup/drop + create/does>
+definition with no locals. Lifting needs two-phase-aware token indexing —
+out of scope for v1, same class as the mirror parity dot.
+
+Superseded plan (kept for history): the engine
 fail-closes at EM-P2-TRIGGER (DOESB set + wf-wide? -> token write + exit
 $4B/75, habu2.f) because pass-2's token indexing cannot align across a
 does>-split body. Keep, but surface it as a CHECKER-side named reject BEFORE

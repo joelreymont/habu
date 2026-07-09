@@ -493,6 +493,19 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SB-RESET s" 42" SB-APPEND GE-SB-LF
    SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
 
+\ does>-split wide facts fail closed at the pass-2 trigger with a fixed
+\ label (previously a lone current-token write - unattributable; TFAM 12
+\ item 3 verdict: the checker cannot see across the does> split, so the
+\ labeled engine exit IS the permanent contract).
+: GE-DOES-WIDE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" : GE-WDOES ( gewide<n,n> -- gewide<n,n> ) dup drop create does> ( ptr a -- n ) drop 5 ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   75 s" does>-split wide facts fail closed" GE-EXPECT-RC
+   s" does>-split cannot lower layout width facts" s" does>-split wide diagnostic" GE-EXPECT-ERR-HAS ;
+
 : GE-INTERP-LAYOUT ( -- )
    s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
    s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
@@ -500,6 +513,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" ' GE-WMK execute" s" interp layout tick fails closed" GE-ILAYOUT-CASE
    s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
    s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
+   GE-DOES-WIDE
    GE-ILAYOUT-GUARD
    GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;
