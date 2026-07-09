@@ -63,14 +63,15 @@ variable TDTE-A   variable TDTE-U
 \ Checked through the PRIM-modeled read-only registry queries.
 variable TDB-TFAM   variable TDB-SUMV   variable TDB-SCH
 variable TDB-ROOT   variable TDB-STR    variable TDB-PK
+variable TDB-PF
 : TDT-BASE! ( -- )
    TFAM-N@ TDB-TFAM !   SUMV-N@ TDB-SUMV !
    SCHEMA-N@ TDB-SCH !  SCHEMA-ROOT-N@ TDB-ROOT !
-   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK ! ;
+   TF-STR-U@ TDB-STR !  TF-PK-N@ TDB-PK !   PF-N@ TDB-PF ! ;
 : TDT-BASE= ( -- )
    TFAM-N@ TDB-TFAM @ T=   SUMV-N@ TDB-SUMV @ T=
    SCHEMA-N@ TDB-SCH @ T=  SCHEMA-ROOT-N@ TDB-ROOT @ T=
-   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T= ;
+   TF-STR-U@ TDB-STR @ T=  TF-PK-N@ TDB-PK @ T=   PF-N@ TDB-PF @ T= ;
 : TDT-NEG ( ptr u8 n n -- ) {: a:ptr u:n code:n :}
    TDT-BASE!
    a u TDT-EVAL-CATCH code T=
@@ -241,6 +242,85 @@ s" TDE-MK ( -- tdcolor ) TDCOLOR:GREEN" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDE-BAD ( -- tdcolor ) 0" CHECK-QUIET-CANDIDATE! 0 T=
 \ a payload-free ctor rejects a spurious input just like the arity-0 sum ctors.
 s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ PRODUCT (item 15, docs §9.4): `PRODUCT name arity FIELD f t .. ;PRODUCT`
+\ registers a TK-PRODUCT family — a single-shape record with named PF-* field
+\ rows and NO tag. Each `FIELD name type` adds one PF row (family, field tail,
+\ field schema root, physical slot) and one cell of width, so TFAM-SLOTS = field
+\ count and WIDTH(product) = field cells. Metadata only in this slice: the family
+\ resolves in signatures and expands to hidden fields through the generic
+\ LAYOUT-PUSH-FIELDS (shared with sums/enums), but no constructor is published.
+\ ---------------------------------------------------------------------------
+PRODUCT tdpair 2
+  FIELD fst a
+  FIELD snd b
+;PRODUCT
+s" " s" tdpair" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-KIND@ TK-PRODUCT T=
+TDF @ TFAM-PRODUCT? -1 T=
+TDF @ TFAM-SUM? 0 T=
+TDF @ TFAM-ENUM? 0 T=
+TDF @ TFAM-CELL? 0 T=
+TDF @ TFAM-LAYOUT? -1 T=
+TDF @ TFAM-ARITY@ 2 T=
+TDF @ TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
+\ width = field cells, NO tag (docs §18: WIDTH(product) = sum of field widths).
+TDF @ TFAM-SLOTS@ 2 T=
+TDF @ TFAM-WIDTH@ 2 T=
+\ two PF field rows, id-keyed by (family, tail), in declaration slot order.
+TDF @ TFAM-FLD-COUNT@ 2 T=
+TDF @ s" fst" PF-FIND TDOK ! TDX !
+TDOK @ -1 T=
+TDX @ PF-FAM@ TDF @ T=
+TDX @ PF-SLOT@ 0 T=
+TDX @ PF-NAME$ s" fst" T$=
+TDF @ s" snd" PF-FIND TDOK ! TDY !
+TDOK @ -1 T=
+TDY @ PF-SLOT@ 1 T=
+\ field schema: fst = paramref 0, snd = paramref 1 (one cell each).
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-PARAM? -1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ 0 T=
+TDY @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ 1 T=
+\ a concrete-arg product expands to hidden fields in a signature and transports
+\ as ONE whole bundle (dup/drop are width-aware, item 12); identity flows.
+s" TDP-ID ( tdpair<n,n> -- tdpair<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-DUP ( tdpair<n,n> -- tdpair<n,n> tdpair<n,n> ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP-DROP ( tdpair<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ hidden fields never masquerade as bare cells: the bundle cannot split into n n.
+s" TDP-SPLIT ( tdpair<n,n> -- n n )" CHECK-QUIET-CANDIDATE! 0 T=
+\ hidden physical field names never resolve in a public signature.
+s" TDP-HID ( @tdpair.slot0<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ concrete-field product (arity 0, all fields concrete n): width = field count.
+PRODUCT tdpoint 0
+  FIELD x n
+  FIELD y n
+;PRODUCT
+s" " s" tdpoint" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-ARITY@ 0 T=
+TDF @ TFAM-SLOTS@ 2 T=
+TDF @ TFAM-WIDTH@ 2 T=
+TDF @ s" x" PF-FIND TDOK ! TDX !   TDOK @ -1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-CON? -1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ CC-N T=
+s" TDPT-ID ( tdpoint -- tdpoint )" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ mixed param + ptr fields: a ptr field is one cell; arity 1 has one param field.
+PRODUCT tdbuf 1
+  FIELD cap a
+  FIELD raw ptr u8
+;PRODUCT
+s" " s" tdbuf" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-SLOTS@ 2 T=
+TDF @ s" raw" PF-FIND TDOK ! TDX !   TDOK @ -1 T=
+TDX @ PF-SLOT@ 1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-PTR? -1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-CON? -1 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ SCHEMA-A@ s" u8" CON-OF T=
 
 \ ---------------------------------------------------------------------------
 \ item 12 (habu-tfam-12), slice 1 — layout-aware generic stack ops. A logical
@@ -657,6 +737,40 @@ s" ENUM sumtype red ;ENUM" E-TDECL-NAME TDT-NEG
 \ redeclaring an existing family tail (enum over enum, and enum over a sum).
 s" ENUM tdcolor red ;ENUM" E-TFAM-DUP TDT-NEG
 s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
+
+\ malformed product declarations (item 15): every reject rolls back to baseline
+\ via the shared transactional path (TDT-NEG asserts TDT-BASE=, incl. PF-N), so
+\ no family, field, or schema row survives a failed product.
+\ empty / unterminated bodies.
+s" PRODUCT tdpempty 0 ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
+s" PRODUCT tdpnoterm 2 FIELD fst a FIELD snd b" E-TDECL-SYNTAX TDT-NEG
+\ duplicate field within one product (PF-ADD dup-reject).
+s" PRODUCT tdpdup 1 FIELD x a FIELD x a ;PRODUCT" E-TFAM-DUP TDT-NEG
+\ unknown / out-of-arity field types, and a dangling ptr.
+s" PRODUCT tdpbad 1 FIELD x q ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+s" PRODUCT tdpptr 1 FIELD x ptr ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
+\ bad field names: uppercase, grammar keyword.
+s" PRODUCT tdpfc 1 FIELD X a ;PRODUCT" E-TFAM-CASE TDT-NEG
+s" PRODUCT tdpfk 1 FIELD field a ;PRODUCT" E-TDECL-NAME TDT-NEG
+\ a stray token where FIELD is expected.
+s" PRODUCT tdpstray 1 stray FIELD x a ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
+\ missing arity token.
+s" PRODUCT tdpna FIELD x a ;PRODUCT" E-TDECL-ARITY TDT-NEG
+\ bad family names: uppercase, reserved single-letter, grammar keyword, and the
+\ product/field grammar tokens themselves (reserved case-folded).
+s" PRODUCT Bad 1 FIELD x a ;PRODUCT" E-TFAM-CASE TDT-NEG
+s" PRODUCT a 0 FIELD x n ;PRODUCT" E-TDECL-NAME TDT-NEG
+s" PRODUCT sumtype 0 FIELD x n ;PRODUCT" E-TDECL-NAME TDT-NEG
+s" PRODUCT product 0 FIELD x n ;PRODUCT" E-TDECL-NAME TDT-NEG
+s" PRODUCT field 0 FIELD x n ;PRODUCT" E-TDECL-NAME TDT-NEG
+\ redeclaring an existing family tail (product over product, product over sum).
+s" PRODUCT tdpair 2 FIELD a a FIELD b b ;PRODUCT" E-TFAM-DUP TDT-NEG
+s" PRODUCT tdres 1 FIELD x a ;PRODUCT" E-TFAM-DUP TDT-NEG
+\ product / field are reserved as variant names too (case-folded dictionary).
+s" SUMTYPE tdpv 1 VARIANT product a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdpv2 1 VARIANT field a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" TYPEFAMILY product 1" E-TDECL-NAME TDT-NEG
 
 \ ---------------------------------------------------------------------------
 \ declaration diagnostic packet: declaration-shaped, through the standard

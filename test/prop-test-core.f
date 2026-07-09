@@ -546,7 +546,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -563,7 +563,7 @@ create AXBUF AXBUF-CAP allot
 \ (native BSEALCAP) rewrites the sealed friend-band ndict watermark, mutating
 \ live seal state mid-process like cp!/ndict!. Their arity is pinned by the
 \ native self-rebuild + behavioral gate. The zero-arg high-water readers
-\ (wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
+\ (wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
 \ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
 \ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
 \ dies) are likewise difftested in AX-GEN-LIST; locw-hw@ carries the same

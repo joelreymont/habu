@@ -128,6 +128,45 @@ appears in the baked engine source (it does not).
    (zero new TRUST/TRUSTED:/set-check rows — the record path adds none, census §5).
 8. Close with ledger; PTX-IR migration follow-up dot.
 
+## PROGRESS
+
+- Slice 1 LANDED (change 689c73de): audit + slice plan (this section above).
+- Slice 2+3 LANDED (this commit): `PRODUCT name arity FIELD f t .. ;PRODUCT`
+  engine grammar (src/core/sumtype.f) — registers TK-PRODUCT + PF field rows +
+  per-field schema + TFAM-SLOTS(=field cells, no tag); reserves
+  `product`/`;product`/`field` in TDECL-KEYWORD? and reserved-name-lint;
+  `PRIM: PF-N@` exposure (checker.f) for the rollback baseline; product fixtures
+  in test/type-decl-suite.f (registry shape, PF rows/slots/schema, width,
+  hidden-field expansion via generic LAYOUT-PUSH-FIELDS, dup/drop transport,
+  split/hidden-name rejects, full negative battery with PF-N rollback);
+  pf-n@ added to the prim-axiom census (test/prop-test-core.f, AX-GEN difftested).
+  Metadata-only: NO constructor generation yet.
+  PROVEN GREEN: byte-fixpoint x2 (identical); type-decl/type-family/rollback/
+  ctor/match suites ok; full gate (test/run.f) PASS; maki/test.f rc0;
+  typed-local-diff-lint/host-lint/filemap-lint/dot-dep-lint clean; zero new
+  trust rows; reserved-name-lint green (FIELD+/HASH-FIELD/etc. pass — distinct
+  tokens, exact-match lint).
+- DEFERRED to the constructor slice (NEXT): verify-source.f RECORD-PRODUCT +
+  check-core.f product arm + `PRIM: CHECKER-DEFPRODUCT` exposure. Rationale: the
+  preverify/check-tool arms are only exercised by a PRODUCT-using SOURCE FILE
+  (none exists yet — the stdin type-decl-suite drives the engine definer
+  directly), and adding the habu-layer reference forces a two-phase checker
+  bootstrap (build-fixpoint `require`s verify-source.f against the running
+  engine, which cannot see a brand-new CHECKER-DEFPRODUCT until it is baked).
+  Matches the existing precedent that check-core.f has no ENUM arm either. These
+  land WITH the constructor generation slice, when a PRODUCT-using file first
+  needs them.
+
+## REMAINING SLICES (dotted / next)
+4. Constructor generation (k=0 no-tag) via engine PRODUCT word -> TDGEN no-tag
+   path; `: PKG:tail` publish+certify. PLUS the deferred verify-source/check-core/
+   PRIM-CHECKER-DEFPRODUCT (two-phase build). Positive+reject construction fixtures.
+5. Destructure `PKG:tail>` + per-field accessors `PKG:tail-fname` (hidden->logical
+   output coercion); by-value construct/destructure + linear-payload (item 11) fixtures.
+6. Docs: type-families.md §9.4 + effects.md distinguish PRODUCT (hidden) vs
+   VALUE-RECORD (touchable, compat verdict); refresh census-tfam-15 §0.
+7. PTX-IR migration follow-up dot (keep ptxir-node on VALUE-RECORD compat).
+
 ## ACCEPTANCE (PLAN:922-929 + Gate 17o:958-1021)
 existing value-record fixtures pass (kept, compat verdict); product fixtures cover
 by-value construct/destructure, hidden fields, logical rendering, package visibility,

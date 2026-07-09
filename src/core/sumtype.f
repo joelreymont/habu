@@ -1,7 +1,10 @@
-\ sumtype.f — TYPEFAMILY/SUMTYPE/ENUM declaration grammar (docs/type-families.md
-\ §9, PLAN items 6 + 14). The public ADT authoring surface: `TYPEFAMILY name
+\ sumtype.f — TYPEFAMILY/SUMTYPE/ENUM/PRODUCT declaration grammar
+\ (docs/type-families.md §9, PLAN items 6 + 14 + 15). The public ADT authoring
+\ surface: `TYPEFAMILY name
 \ arity` registers a TK-CELL family; `ENUM name v0 v1 .. ;ENUM` registers a
-\ TK-ENUM family (a zero-payload sum, docs §9.3); `SUMTYPE name arity VARIANT v
+\ TK-ENUM family (a zero-payload sum, docs §9.3); `PRODUCT name arity FIELD f t ..
+\ ;PRODUCT` registers a TK-PRODUCT family (single-shape record, PF-* field rows,
+\ no tag, docs §9.4); `SUMTYPE name arity VARIANT v
 \ pay... ;VARIANT ... ;SUMTYPE` registers a TK-SUM family, one SUMV row per variant (tag =
 \ declaration order), payload schema nodes, the family's variant range, and its
 \ max payload width. Declarations are package-aware: rows carry the active
@@ -90,6 +93,9 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 14 enum block definer
    a u s" ;enum" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 14 enum block close (;FOO)
+   a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN    \ item 15 product block definer
+   a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 15 product block close (;FOO)
+   a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI ;
 
@@ -338,6 +344,69 @@ variable TDV-NA    variable TDV-NU
    s" enum" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFENUM-BODY ;] TDECL-RUN ;
 
+\ --- product families (item 15, docs §9.4): a `PRODUCT name arity FIELD f t ..
+\ ;PRODUCT` block is a single-shape record registered as TK-PRODUCT (no tag, no
+\ variants). Each `FIELD name type` becomes one PF-* row (fam, field tail, field
+\ schema root, physical slot) plus one cell of width; TFAM-SLOTS = field count, so
+\ TFAM-WIDTH(product) = field cells (no tag). Fields are the item-7/12 hidden
+\ layout the generic LAYOUT-PUSH-FIELDS already expands off TFAM-WIDTH@*. Field
+\ names are their own tail namespace: 1-char labels (x/y) are legal, so the family
+\ RESERVED gate (which blocks a..z) does not apply; PF-ADD's TF-REQUIRE-CANON +
+\ dup-reject enforce lowercase + no duplicate field within the product. This
+\ registration is metadata only — generated constructors + field accessors land
+\ in the next slice (mirrors CHECKER-DEFSUM staying metadata-only vs the SUMTYPE
+\ word's ctor generation). Constructors are NOT published here.
+variable TDP-N   \ product field count / next physical slot
+
+: TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
+   a u DELIM? IF a u s" bad field name" E-TDECL-SYNTAX TDECL-THROW THEN
+   a u TDECL-KEYWORD? IF a u s" reserved field name" E-TDECL-NAME TDECL-THROW THEN
+   a u TF-CANON? 0= IF
+      a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW
+   THEN ;
+
+\ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
+\ the field tail + one payload-shaped type into a schema root, add the PF row.
+: TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
+   TDECL-NEXT {: fna:ptr fnu:n :}
+   fna fnu TDECL-REQUIRE-FIELD-NAME
+   SCHEMA-ROOT-N@ {: ss:n :}
+   TDECL-NEXT TDECL-PAY-ELEM SCHEMA-ROOT+ drop      \ one field type (letter/con/ptr T)
+   fna fnu TDECL-TOK!
+   s" duplicate field" TDECL-WHY!
+   fam fna fnu ss TDP-N @ PF-ADD drop               \ PF-ADD: canon + dup-reject
+   TDP-N @ 1 + TDP-N ! ;
+
+: TDECL-PRODUCT-FIELDS ( n -- ) {: fam:n :}
+   BEGIN
+      TDECL-NEXT
+      dup 0= IF 2drop EXIT THEN
+      2dup s" field" CORE-STR=CI 0= IF
+         s" unexpected token in product declaration" E-TDECL-SYNTAX TDECL-THROW
+      THEN
+      2drop fam TDECL-PRODUCT-FIELD
+   AGAIN ;
+
+: CHECKER-DEFPRODUCT-BODY ( -- )
+   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
+   TDB-A @ TDB-U @ TDECL-CURSOR!
+   TDECL-NEXT TDECL-ARITY {: ar:n :}
+   ar TDECL-FAM-ARITY !
+   ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
+   PF-N @ {: fstart:n :}
+   0 TDP-N !
+   fam TDECL-PRODUCT-FIELDS
+   TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
+   fam fstart TDP-N @ TFAM-FLD-RANGE!
+   fam TDP-N @ TFAM-SLOTS!               \ product width = field cell count (no tag)
+   fam TDECL-FAM-REG ! ;
+
+: CHECKER-DEFPRODUCT ( ptr u8 n ptr u8 n -- )   \ name, buffered body tokens
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" product" na nu ba bu TDECL-CTX!
+   [: CHECKER-DEFPRODUCT-BODY ;] TDECL-RUN ;
+
 : CHECKER-DEFFAMILY-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-ARITY
@@ -552,3 +621,26 @@ variable TDECL-I
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFENUM
    TDECL-CTOR-WORDS ;
+
+\ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
+\ then registers the whole block. Metadata only: no constructor generation yet, so
+\ TDECL-CTOR-WORDS is NOT called (the constructor + field accessor slice follows).
+: PRODUCT-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
+   BEGIN
+      parse-name
+      dup 0= IF 2drop RES-FALSE EXIT THEN
+      2dup s" ;product" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
+      TDECL-TOKEN+
+   AGAIN ;
+
+: TDECL-PRODUCT-NOEND-BODY ( -- )
+   TDN-A @ TDN-U @ s" missing ;PRODUCT" E-TDECL-SYNTAX TDECL-THROW ;
+
+: PRODUCT ( -- )
+   parse-name {: na:ptr nu:n :}
+   TDECL-CLEAR
+   PRODUCT-COLLECT 0= IF
+      s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
+      [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT
+   THEN
+   na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT ;

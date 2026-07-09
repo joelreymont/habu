@@ -168,6 +168,9 @@ variable RNL-NUM-I
    a u s" ;sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" enum" LINT-STR=CI if LINT-TRUE exit then       \ TFAM 14: enum block definer
    a u s" ;enum" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 14: enum block close (;FOO)
+   a u s" product" LINT-STR=CI if LINT-TRUE exit then    \ TFAM 15: product block definer
+   a u s" field" LINT-STR=CI if LINT-TRUE exit then      \ TFAM 15: product field keyword
+   a u s" ;product" LINT-STR=CI if LINT-TRUE exit then   \ TFAM 15: product block close (;FOO)
    a u s" undefine" LINT-STR=CI ;
 
 : RNL-RESERVED-LOADER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
