@@ -160,6 +160,64 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    physical slot0..tag). Keep interpret-mode construct fail-closed OR lower it too
    per docs (decide + record). One-payload + zero-payload + wide + an arbitrary
    third family (not result/option/color).
+
+   **LANDED (fable-tfam12, "TFAM 10 slice 2: construct lowering").**
+   - Dispatch: `J-CONSTRUCT` (CFN-ENTRY, keyword row) arms CMM=1; the operand
+     tokens are consumed at the LCOMPILE head (`EM-COMPILE-ADT-MODE` →
+     `EM-ADT-CON-FAM`/`EM-ADT-CON-VAR`) before semi/local/keyword/literal/call/
+     undefined dispatch — they never reach LFIND. CFN (no spill): construct
+     only ADDS VS constants, like the generated-ctor literal tokens.
+   - Family step (CMM=1): EAGER resolve via `tfl-con-fam?` bridge; id parked in
+     the new `CMFAM-CELL` ($1B0 — no exact user, no covering ranged region; the
+     seal suite's deliberate $1A0 poke hole left alone); arm CMM=2. Eager
+     resolution means no operand STRING crosses a possible REPL line refill.
+     Variant step (CMM=2): `tfl-cvar?` (new checked wrapper; TFL-CON?
+     refactored through it) returns ( tag pads ok ); emission = pads×LVPUSHC(0)
+     + LVPUSHC(tag) — the SAME VS-constant path item-8 ctor body literals
+     compile through, so runtime cells are identical by construction.
+   - DECISION (die messages): resolution failure dies fail-closed at ITS token
+     with named messages `hb: construct: unknown family: <tok>` /
+     `hb: construct: unknown variant: <tok>`, exit 70. The slice-1 generic
+     "adt lowering pending" message is retired (construct states fully
+     handled; slice 3 adds MATCH states). Foreign-package and wrong-kind
+     collapse into "unknown family" — owner scope makes them literally
+     unknown; the checker's richer E-CONSTRUCT-* diagnostics remain the
+     check-path surface, which the engine leg never reaches. `construct fam ;`
+     dies as "unknown variant: ;" — MD-CON-TRUNC's engine mirror.
+   - TWO ENGINE FACTS LEARNED (both fixed, both in LESSONS):
+     (a) mid-body the code REGION is RW; the TFL bridge targets are checker
+     words compiled INTO that region → BLR from the compile loop SIGBUSed
+     (W^X). Every leg opens an RX window (LPROT 5) around find+call and
+     returns to RW before emission resumes (EM-P2-CARVE-W's "caller holds the
+     RX window" was the documented precedent). EM-ADT-CON-PUSHES frames
+     x12/x13 on SP, flips RW, then loops (LVPUSHC may spill = emit).
+     (b) the central body capture is the LBCAP at EM-COMPILE-KEYWORDS' head —
+     downstream of ADT-MODE — so consumed operand tokens never reached the
+     checker's body (MD-CON-TRUNC at `;`). Each leg now LBCAPs its operand
+     first; `;` stays uncaptured (EM-COMPILE-SEMI runs before the keyword
+     LBCAP), matching the checker's body contract.
+   - Mirror: forth.fs gains C-FIND-GLOBAL (plain LFIND — stage0 has no package
+     cells, exact global-scope equivalent), J-CONSTRUCT + registration, both
+     operand legs with the identical LPROT/LBCAP discipline, CMFAM-CELL.
+   - GE flip: GE-CONSTRUCT-PENDING → `GE-CONSTRUCT-EXEC` = GE-CONSTRUCT-ROUND
+     (round-trip vs generated word, cell-for-cell via a fixture-local TRUSTED
+     unpack: one-payload 0/0/7, wide 1/4/3, zero-payload 2/0/0, generated
+     GECN:ONE identical 0/0/7 — exact-stdout pinned) + GE-CONSTRUCT-BAD-VARIANT
+     (rc 70 + named msg) + GE-CONSTRUCT-FOREIGN (public family in a package,
+     construct from top level → rc 70 "unknown family: gefr") + the interpret
+     pin unchanged (rc 70 E-UNDEFINED — construct is a compile-only keyword;
+     the DNAME-WIDE gate owns the interpret surface). Direct probes also
+     proved case folding (`construct G4 CC` executes) and quotation interiors
+     compile through the same loop.
+   - TRUSTED.md: +3 rows (em-adt-con-fam/-pushes/-var), habu2 classes count
+     110→113. No new prims (census unchanged). type-family-suite gains
+     TFL-CVAR? fixtures.
+   - Proofs: fixpoint ×2 ("compiler fixpoint" both); FULL gate rc=0 twice
+     (final tree: "PASS: native test suite ... (10432ms <= 42000ms budget)");
+     engine runtime slice direct run prints "PASS: construct lowers natively;
+     interpret + foreign scope stay fail-closed"; six type suites ok; maki ok;
+     bootstrap-codegen-test ok; compiler-dispatch-test ok; typed-local-diff-
+     lint/host/filemap/dot-dep/trusted-inventory ok.
 3. **MATCH/OF/ENDOF/;MATCH lowering (native).** MATCH mode + frame; peek tag,
    compare/branch chain per variant, branch prologue (drop tag+pads, expose
    payload), ENDOF jump-to-join, ;MATCH join + invalid-tag die (FORK 3). Reuse

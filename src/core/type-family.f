@@ -1015,13 +1015,17 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 : TFL-VPADS ( n n -- n ) {: fam:n vid:n :}   \ zero pads M-p for a variant's construct
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - ;
 
+: TFL-CVAR? ( ptr u8 n n -- n n bool )   \ variant in a resolved fam -> ( tag pads ok )
+   {: va:ptr vu:n fam:n :}
+   va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
+   {: vid:n :}
+   vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
+
 : TFL-CON? ( ptr u8 n ptr u8 n -- n n bool )   \ construct one-shot: -> tag pads ok
    {: fa:ptr fu:n va:ptr vu:n :}
    fa fu TFL-CON-FAM? 0= IF drop 0 0 RES-FALSE EXIT THEN
    {: fam:n :}
-   va vu fam TFL-VAR? 0= IF drop 0 0 RES-FALSE EXIT THEN
-   {: vid:n :}
-   vid SUMV-TAG@  fam vid TFL-VPADS  RES-TRUE ;
+   va vu fam TFL-CVAR? ;
 
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.

@@ -126,7 +126,8 @@ variable LUNCRPT   variable LUNCPOS   variable LUNCLOOP   variable LUNCDONE   \ 
 24 constant UNCMSG-LEN   \ byte length of "hb: uncaught throw code " (LUNCMSG)
 variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-effect reject + its message + shared recovery tail
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
-26 constant ADTMSG-LEN    \ byte length of "hb: adt lowering pending: " (EM-COMPILE-ADT-MODE)
+31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
+32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
@@ -971,11 +972,12 @@ create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
 variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variable LP2DOESW
-\ ADT lowering keywords (TFAM 10 slice 1, docs §16): reserved token strings for
-\ the construct/MATCH compilers. Slice 1 emits the data rows only — no dispatch
-\ compares against them yet, so the tokens still fail closed as undefined words
-\ (GE-CONSTRUCT-PENDING); slices 2-3 wire the mode machine (CMM-CELL) onto them.
+\ ADT lowering keywords (TFAM 10, docs §16): `construct` dispatches through the
+\ CMM-CELL mode machine (J-CONSTRUCT + EM-COMPILE-ADT-MODE, slice 2; execution
+\ gate-pinned by GE-CONSTRUCT-EXEC). The MATCH rows are data-only until slice 3
+\ wires the eliminator states — those tokens still fail closed as undefined.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
+variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1024,6 +1026,7 @@ create RESTAB-BUF
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
+   LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1052,6 +1055,13 @@ create RESTAB-BUF
 
 : J-CASE ( -- )
    9 0 MOVZ,  LCFPUSH LABEL@ BL, ;
+
+\ construct keyword (TFAM 10 slice 2): arm the operand capture (CMM=1). CFN
+\ entry — no spill: construct only ADDS VS constants on top, exactly like the
+\ literal tokens of a generated-constructor body; tracked payload cells stay
+\ wherever the VS has them.
+: J-CONSTRUCT ( -- )
+   12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
 : J-OF ( -- )
    C-POP-X16
@@ -3947,7 +3957,8 @@ s" em-compile-semi" s" label --" TRUST
    s" case" KEEP? IF LMAIN LABEL@ LKWCASE 4 ['] J-CASE CFN-ENTRY THEN
    s" of" KEEP? IF LMAIN LABEL@ LKWOF 2 ['] J-OF CF-ENTRY THEN
    s" endof" KEEP? IF LMAIN LABEL@ LKWENDOF 5 ['] J-ENDOF CF-ENTRY THEN
-   s" endcase" KEEP? IF LMAIN LABEL@ LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY THEN ;
+   s" endcase" KEEP? IF LMAIN LABEL@ LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY THEN
+   s" construct" KEEP? IF LMAIN LABEL@ LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY THEN ;
 s" em-compile-control-keywords" s" --" TRUST
 
 : EM-COMPILE-STRING-KEYWORDS ( -- )
@@ -4261,19 +4272,94 @@ s" em-repl-read" s" --" TRUST
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-exit" s" --" TRUST
 
-\ EM-COMPILE-ADT-MODE (TFAM 10 slice 1): fail-closed head of the compile
-\ dispatch. CMM-CELL mirrors the checker's MM construct/MATCH token machine;
-\ slices 2-3 arm it at the LKWCONSTRUCT/LKWMATCH keywords and consume the
-\ operand tokens HERE — before the semi/local/keyword/literal/call/undefined
-\ path — so captured family/variant tokens never reach dictionary lookup
-\ (the checker's capture discipline). Nothing arms the cell yet: an armed
-\ mode with no handler dies deterministically instead of mis-dispatching.
-: EM-COMPILE-ADT-MODE ( -- )
-   LBL LBL {: msg:label off:label :}
-   9 DATA CMM-CELL LDR,  9 off CBZ,
-      0 2 MOVZ,  1 msg ADR,  2 ADTMSG-LEN MOVZ,  NR-WRITE SYS,
+\ construct operand steps (TFAM 10 slice 2, docs §16 Constructors). CMM=1: the
+\ token is the FAMILY operand — resolve eagerly through tfl-con-fam? (owner-only
+\ scope, sum/enum gate) so no operand string must survive a REPL line refill;
+\ stash the id in CMFAM-CELL, arm CMM=2. CMM=2: the token is the VARIANT operand
+\ — tfl-cvar? returns ( tag pads ok ); emit pads x VS-constant 0 pushes + one
+\ tag push (LVPUSHC, byte-identical to how the item-8 generated-constructor body
+\ literals compile), clear the mode. Either resolution failure dies fail-closed
+\ at ITS token with a named message + exit 70, the same class as E-UNDEFINED;
+\ a foreign-package or wrong-kind family is "unknown" by owner-scope design, and
+\ the checker's richer E-CONSTRUCT-* diagnostics live on the check-only paths,
+\ which never reach this engine leg. `;` (or any closer) arriving mid-form is
+\ consumed as the operand and dies the same way (MD-CON-TRUNC's engine mirror).
+\ Region protection: the compile loop holds the code REGION RW between the
+\ colon start and the `;` flush, but the TFL bridge targets are checker words
+\ COMPILED INTO that region — executing them from a writable page SIGBUSes
+\ under W^X. Each leg therefore opens an RX window (LPROT 5) around the find +
+\ call and returns to RW (LPROT 3) before any emission resumes; DATA stores
+\ (CMFAM/CMM) are outside the flipped region and legal in either state, and
+\ the die legs exit the process, so their protection state is irrelevant.
+: EM-ADT-CON-FAM ( -- )                 \ CMM=1 leg: resolve family, arm state 2
+   LBL LBL {: fmsg:label fok:label :}
+   LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
+   2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
+   LTFLCONFAM 12 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP                             \ ok flag (top)
+   9 G-POP                              \ family id
+   10 fok CBNZ,
+      0 2 MOVZ,  1 fmsg ADR,  2 CONFMSG-LEN MOVZ,  NR-WRITE SYS,
       70 C-DIE-TOKEN-NL
-   msg LBL,  s" hb: adt lowering pending: " BYTES,
+   fmsg LBL,  s" hb: construct: unknown family: " BYTES,
+   fok LBL,
+   9 DATA CMFAM-CELL STR,
+   12 2 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT LABEL@ BL,          \ region -> RW: resume emission
+   LMAIN LABEL@ B, ;
+s" em-adt-con-fam" s" --" TRUST
+
+: EM-ADT-CON-PUSHES ( -- )              \ pads x 0 + tag as VS constants (x12=pads, x13=tag)
+   LBL LBL {: ploop:label pdone:label :}
+   SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
+   2 3 MOVZ,  LPROT LABEL@ BL,                  \ spill (emission -> region RW first)
+   ploop LBL,
+      12 SP 0 LDR,  12 pdone CBZ,
+      11 0 MOVZ,  LVPUSHC LABEL@ BL,
+      12 SP 0 LDR,  12 12 1 SUBI,  12 SP 0 STR,  ploop B,
+   pdone LBL,
+   11 SP 8 LDR,  LVPUSHC LABEL@ BL,
+   SP SP 16 ADDI, ;
+s" em-adt-con-pushes" s" --" TRUST
+
+: EM-ADT-CON-VAR ( -- )                 \ CMM=2 leg: resolve variant, emit, mode off
+   LBL LBL {: vmsg:label vok:label :}
+   LBCAP LABEL@ BL,                     \ operand reaches the checker's body too
+   2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-call window
+   LTFLCVAR 9 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   9 DATA CMFAM-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP                             \ ok flag (top)
+   12 G-POP                             \ pads
+   13 G-POP                             \ tag
+   10 vok CBNZ,
+      0 2 MOVZ,  1 vmsg ADR,  2 CONVMSG-LEN MOVZ,  NR-WRITE SYS,
+      70 C-DIE-TOKEN-NL
+   vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
+   vok LBL,
+   EM-ADT-CON-PUSHES                    \ frames the counters, then flips back to RW
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   LMAIN LABEL@ B, ;
+s" em-adt-con-var" s" --" TRUST
+
+\ EM-COMPILE-ADT-MODE (TFAM 10 slices 1-2): fail-closed head of the compile
+\ dispatch. CMM-CELL mirrors the checker's construct token machine; J-CONSTRUCT
+\ arms it at the `construct` keyword and the operand tokens are consumed HERE —
+\ before the semi/local/keyword/literal/call/undefined path — so captured
+\ family/variant tokens never reach dictionary lookup (the checker's capture
+\ discipline). Slice 3 extends the dispatch with the MATCH states.
+: EM-COMPILE-ADT-MODE ( -- )
+   LBL LBL {: state2:label off:label :}
+   9 DATA CMM-CELL LDR,  9 off CBZ,
+   9 2 CMPI,  C-EQ state2 BCOND,
+   EM-ADT-CON-FAM
+   state2 LBL,
+   EM-ADT-CON-VAR
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
 
@@ -4343,7 +4429,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LP2DOESW !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA !
-   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH ! ;
+   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
+   LBL LTFLCONFAM !  LBL LTFLCVAR ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !

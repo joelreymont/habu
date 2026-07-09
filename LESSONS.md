@@ -495,6 +495,24 @@ lesson — keep the specific word/code/path, cut the prose.
   the ADDRESS across src/ lib/ bootstrap/ (regalloc.f, debug.f, and lib/task.f
   all define cells outside layout.f); the one proven-safe home was $3D00 with
   lib/task.f TASK-USER-BASE bumped to $3D08.
+- **Mid-compile bridge calls into checker words need an RX window:** the compile
+  loop holds the code REGION RW between colon start and the `;` flush, and the
+  checker words the C-FIND-GLOBAL bridge targets are COMPILED INTO that region —
+  a BLR from the loop fetches a writable page and SIGBUSes under W^X (crash
+  signature: pc == x11, SIGBUS, mid-body). Bracket the find+call with
+  `2 5 MOVZ, LPROT` / `2 3 MOVZ, LPROT` (EM-P2-CARVE-W's "caller holds the RX
+  window" is the documented precedent — the P2 calls run at `;` post-flush or
+  under a caller window; a NEW mid-body call site must open its own). DATA
+  stores are legal in either state; die legs exit, so their prot state is
+  irrelevant; anything that may EMIT (LVPUSHC can spill) must be back in RW.
+- **The compile loop's central body capture is the LBCAP at
+  EM-COMPILE-KEYWORDS' head:** locals capture in C-LOCAL-REF, `;` is never
+  captured (EM-COMPILE-SEMI runs earlier), and everything else (keywords,
+  literals, ops, calls, undefined) is captured by that one keyword-head LBCAP.
+  Any dispatch inserted UPSTREAM that consumes tokens (TFAM 10's ADT mode) must
+  LBCAP them itself or the checker's body is silently truncated — construct
+  first rejected with MD-CON-TRUNC because the checked body ended at
+  `construct` while the engine had already consumed the operand tokens.
 - **A documented DATA "free hole" can be a live table's interior:** layout.f
   called $260 (old DEF-WL slot) free, but `VVAL-OFF` ($250) + `VSMAX` cells is
   the JIT virtual-stack value table $250..$350 — $260 is VVAL[2]; DEF-TKA/

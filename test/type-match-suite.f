@@ -9,8 +9,8 @@
 \ OF/ENDOF are shared with CASE and dispatched by the enclosing frame kind.
 \ Family resolution is signature scope (eliminability = nameability), unlike
 \ construct's owner-only rule. All fixtures are CHECK-only candidates —
-\ native/Gforth lowering is item 10 (engine fail-closure gate-pinned by
-\ GE-CONSTRUCT-PENDING for the token protocol family).
+\ construct lowering landed with item 10 slice 2 (GE-CONSTRUCT-EXEC); MATCH
+\ lowering is item 10 slice 3, so MATCH bodies stay engine fail-closed.
 
 require test/checker-assert.f
 

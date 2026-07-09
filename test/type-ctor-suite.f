@@ -252,8 +252,8 @@ data-base PROT-WID-N-CELL + @ 0 > -1 T=
 \ inline from SUMV metadata, so payload arity/type/instantiation rejects are
 \ the same as the generated-word call sites. Operand capture runs BEFORE
 \ locals and word lookup, so family/variant tokens never resolve as either.
-\ Native/Gforth lowering is item 10: certified construct bodies stay
-\ uncompilable (engine E-UNDEFINED rc 70, gate-pinned in GE-CONSTRUCT-PENDING).
+\ Native construct lowering landed with item 10 slice 2 (execution round-trips
+\ gate-pinned in GE-CONSTRUCT-EXEC); these stay CHECK-only candidates.
 \ ---------------------------------------------------------------------------
 s" CN1 ( n -- zres ) construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN2 ( n -- zres ) construct ZRES OK" CHECK-QUIET-CANDIDATE! -1 T=   \ folded spelling

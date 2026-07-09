@@ -120,6 +120,7 @@ $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
+$1B0 constant CMFAM-CELL    \ resolved construct family id between the operand tokens (mirrors layout.f)
 $37D0 constant EVALD-CELL  \ evaluate nesting depth (0 = top-level REPL/batch; gates the nested paths)
 $37D8 constant EVALERR-CELL \ result of the last evaluate: 0 = clean, 1 = recovered from an error
 $37E0 constant LMAINP-CELL  \ runtime addr of the interpret loop top (EM-STARTUP stores it; B-EVAL branches there)
@@ -210,7 +211,8 @@ variable LBCHAIN  variable LCREATE  variable LDOESPATCH
 variable LKWIF    variable LKWTHEN variable LKWELSE variable LKWBEGIN
 variable LKWUNTIL variable LKWAGAIN variable LKWWHILE variable LKWREPEAT
 variable LKWCASE  variable LKWOF    variable LKWENDOF variable LKWENDCASE
-variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords (TFAM 10; data rows only until slices 2-3)
+variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH   \ ADT lowering keywords (TFAM 10; MATCH rows are data-only until slice 3)
+variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (mirrors habu2.f)
 variable LKWCREATE variable LKWVAR variable LKWSQ variable LKWCQ variable LKWDOTQ
 variable LKWESQ variable LKWECQ variable LKWEDOTQ
 variable LKWTICK variable LKWBTICK
@@ -1802,6 +1804,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    LKWCONSTRUCT @ LBL, s" construct" BYTES,  LKWMATCH @ LBL, s" match" BYTES,  LKWSEMIMATCH @ LBL, s" ;match" BYTES,
+   LTFLCONFAM @ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR @ LBL, s" tfl-cvar?" BYTES,
    PFX-PATH-FILES ;
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
@@ -1830,6 +1833,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : J-CASE ( -- )
    9 0 MOVZ,  LCFPUSH @ BL, ;
+
+\ construct keyword (TFAM 10 slice 2; mirrors habu2.f J-CONSTRUCT): arm the
+\ operand capture (CMM=1). CFN entry — construct only ADDS VS constants.
+: J-CONSTRUCT ( -- )
+   12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
 : J-OF ( -- )
    C-POP-X16
@@ -3299,7 +3307,8 @@ variable CFSK2
    lmain LKWCASE   4 ['] J-CASE   CFN-ENTRY
    lmain LKWOF     2 ['] J-OF     CF-ENTRY
    lmain LKWENDOF  5 ['] J-ENDOF  CF-ENTRY
-   lmain LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY ;
+   lmain LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY
+   lmain LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY ;
 
 : EMIT-COMPILE-STRING-KEYWORDS ( n -- ) {: lmain :}
    lmain LKWSQ     2 ['] C-SDQ    CF-ENTRY
@@ -3430,25 +3439,102 @@ variable CFSK2
    notimm LBL,
    C-CALL  lmain B, ;
 
-\ ADT-lowering mode guard (TFAM 10 slice 1; mirrors habu2.f EM-COMPILE-ADT-MODE):
-\ CMM-CELL is the compile-loop construct/MATCH token machine. Slices 2-3 arm it
-\ at the LKWCONSTRUCT/LKWMATCH keywords and consume operand tokens here, before
-\ the semi/local/keyword/literal/call path. Nothing arms it yet: armed with no
-\ handler dies deterministically (msg + token + newline, exit 70).
-: EMIT-COMPILE-ADT-MODE ( -- )
+\ construct lowering (TFAM 10 slice 2; mirrors habu2.f C-FIND-GLOBAL and the
+\ EM-ADT-CON-* operand steps — stage0 has no package cells, so a plain LFIND is
+\ the exact global-scope equivalent). CMM=1: family operand -> eager resolve via
+\ tfl-con-fam?, stash id in CMFAM-CELL, arm CMM=2. CMM=2: variant operand ->
+\ tfl-cvar? gives ( tag pads ok ); emit pads x VS-constant 0 pushes + tag push
+\ (LVPUSHC, the generated-constructor literal path), mode off. Resolution
+\ failure dies fail-closed at its token: named message + token + newline, 70.
+\ find a global word by kwdata name or die 70
+: C-FIND-GLOBAL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local
+   LBL {: ok :} \ typed-local-lint: allow-bare-local
+   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ Region protection: the compile loop holds the code REGION RW mid-body, but
+\ the TFL bridge targets are checker words compiled INTO that region — an RX
+\ window (LPROT 5) brackets the find + call, back to RW (LPROT 3) before any
+\ emission resumes (mirrors habu2.f; DATA stores are outside the flipped
+\ region, die legs exit the process).
+\ CMM=1 leg: resolve family, arm state 2
+: EM-ADT-CON-FAM ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   LBL LBL {: msg off :}
-   9 DATA CMM-CELL LDR,  9 off CBZ,
-      0 2 MOVZ,  1 msg ADR,  2 26 MOVZ,  NR-WRITE SYS,
+   LBL LBL {: fmsg fok :}
+   LBCAP @ BL,                          \ operand reaches the checker's body too
+   2 5 MOVZ,  LPROT @ BL,               \ region -> RX: checker-call window
+   LTFLCONFAM 12 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP
+   9 G-POP
+   10 fok CBNZ,
+      0 2 MOVZ,  1 fmsg ADR,  2 31 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
-   msg LBL,  s" hb: adt lowering pending: " BYTES,
+   fmsg LBL,  s" hb: construct: unknown family: " BYTES,
+   fok LBL,
+   9 DATA CMFAM-CELL STR,
+   12 2 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT @ BL,               \ region -> RW: resume emission
+   lmain B, ;
+
+: EM-ADT-CON-PUSHES ( -- )              \ pads x 0 + tag as VS constants (x12=pads, x13=tag)
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: ploop pdone :}
+   SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,   \ frame the counters: LVPUSHC may
+   2 3 MOVZ,  LPROT @ BL,                       \ spill (emission -> region RW first)
+   ploop LBL,
+      12 SP 0 LDR,  12 pdone CBZ,
+      11 0 MOVZ,  LVPUSHC @ BL,
+      12 SP 0 LDR,  12 12 1 SUBI,  12 SP 0 STR,  ploop B,
+   pdone LBL,
+   11 SP 8 LDR,  LVPUSHC @ BL,
+   SP SP 16 ADDI, ;
+
+\ CMM=2 leg: resolve variant, emit, mode off
+: EM-ADT-CON-VAR ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: vmsg vok :}
+   LBCAP @ BL,                          \ operand reaches the checker's body too
+   2 5 MOVZ,  LPROT @ BL,               \ region -> RX: checker-call window
+   LTFLCVAR 9 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   9 DATA CMFAM-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP
+   12 G-POP
+   13 G-POP
+   10 vok CBNZ,
+      0 2 MOVZ,  1 vmsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   vmsg LBL,  s" hb: construct: unknown variant: " BYTES,
+   vok LBL,
+   EM-ADT-CON-PUSHES                    \ frames the counters, then flips back to RW
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   lmain B, ;
+
+: EMIT-COMPILE-ADT-MODE ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
+   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: state2 off :}
+   9 DATA CMM-CELL LDR,  9 off CBZ,
+   9 2 CMPI,  C-EQ state2 BCOND,
+   lmain EM-ADT-CON-FAM
+   state2 LBL,
+   lmain EM-ADT-CON-VAR
    off LBL, ;
 
 : EMIT-COMPILE ( n n -- ) {: lmain lundef :}
    LBL {: lnotsemi :}
-   EMIT-COMPILE-ADT-MODE
+   lmain EMIT-COMPILE-ADT-MODE
    lmain lnotsemi EMIT-COMPILE-SEMI
    lmain EMIT-COMPILE-LOCAL
    lmain EMIT-COMPILE-KEYWORDS
@@ -3574,7 +3660,8 @@ variable CFSK2
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWQUOT !  LBL LKWSEMIQ !
-   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH ! ;
+   LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
+   LBL LTFLCONFAM !  LBL LTFLCVAR ! ;
 
 : EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !

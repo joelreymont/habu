@@ -450,6 +450,9 @@ s" LERR" LID @ TFL-VAR? FOUNDF !  LVID !  FOUNDF @ -1 T=
 LVID @ SUMV-TAG@ 1 T=
 LID @ LVID @ TFL-VPADS 0 T=
 s" zzz" LID @ TFL-VAR? FOUNDF ! drop  FOUNDF @ 0 T=
+\ variant one-shot for a resolved fam (the engine's state-2 bridge call)
+s" lnil" LID @ TFL-CVAR? FOUNDF !  2 T=  2 T=  FOUNDF @ -1 T=
+s" nope" LID @ TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 s" TFL-SURFACE" type cr
 
 \ ---------------------------------------------------------------------------

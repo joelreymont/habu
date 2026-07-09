@@ -209,7 +209,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-eval-clean-exit | `--` | Emits clean evaluate end-of-buffer return path. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-repl-read | `--` | Emits REPL line-state save, read callback call, EOF handling, and input reset. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-compile-exit | `--` | Emits interpreter end-of-input handling for evaluate, REPL ok/read, and process exit. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
-| em-compile-adt-mode | `--` | Emits the fail-closed ADT-lowering mode guard (CMM-CELL) at the compile-dispatch head; armed by TFAM 10 slices 2-3. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-con-fam | `--` | Emits the construct family-operand step: TFL bridge call, fail-closed unknown-family die, CMFAM/CMM state stores. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-con-pushes | `--` | Emits the construct pad/tag VS-constant pushes with frame-saved counters around LVPUSHC. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-con-var | `--` | Emits the construct variant-operand step: TFL bridge call, fail-closed unknown-variant die, pad/tag emission, mode clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-compile-adt-mode | `--` | Emits the ADT-lowering mode dispatch (CMM-CELL) at the compile-dispatch head: construct operand states; MATCH states land in slice 3. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | SRCA@ | `-- ptr u8` | Reads EMIT-FORTH's saved source pointer from a raw variable for the final `BYTES,` copy. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -696,7 +699,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 110
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 113
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
 src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6

@@ -100,6 +100,13 @@ $88 constant PKG-PARENT-CELL
 $90 constant PKG-REC-CELL
 $98 constant DEFER-META-CELL
 $A0 constant DEFER-XT-CELL
+\ CMFAM-CELL: resolved construct family id, live only between the family and
+\ variant operand tokens of one `construct` form (CMM-CELL state 1 -> 2; TFAM
+\ 10 slice 2). Eager family resolution at the family token means no operand
+\ string is stashed across a possible REPL line refill. $1B0 has no exact user
+\ and no covering ranged region (GTOD-SCRATCH is $1E0..$1F0; the seal suite's
+\ deliberate poke hole is $1A0 — left alone).
+$1B0 constant CMFAM-CELL
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL

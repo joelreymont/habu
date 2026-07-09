@@ -530,24 +530,76 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;
 
-\ item 9 slice 2: `construct family variant` certifies at the checker but has
-\ no native lowering until item 10 — the engine must fail closed on BOTH real
-\ load paths. Compiling a CERTIFIED construct body dies E-UNDEFINED (the token
-\ is not an engine word) with the engine's undefined-word exit, and interpret-
-\ mode construct dies the same way. Green suites + this pin ARE the item-9
-\ boundary: checkable, never silently compilable or runnable.
-: GE-CONSTRUCT-PENDING ( -- )
-   GE-HB-RESET
-   GE-SRC-RESET
+\ item 10 slice 2: `construct family variant` LOWERS in the native compiler —
+\ (M-p) zero pads + tag as VS constants, the same literal path the item-8
+\ generated-constructor bodies compile through, so the two intro forms are
+\ indistinguishable at runtime. The execution fixture proves round-trips
+\ cell-for-cell against the generated word across one-payload, wide
+\ (max-payload), and zero-payload variants of an arbitrary family (gecn — not
+\ result/option/color); the unpack is a generated TRUSTED boundary confined to
+\ the temp fixture source (checked code cannot read raw bundle cells until
+\ MATCH lowers in slice 3). Interpret-mode construct stays fail-closed
+\ (E-UNDEFINED: compile-only keyword; the DNAME-WIDE gate owns the interpret
+\ surface), and owner-only scope holds at compile: a foreign-package public
+\ family and an unknown variant die with the named engine rejects.
+: GE-CONSTRUCT-EXEC-SRC ( -- )          \ shared family + unpack + printer prelude
    s" SUMTYPE gecn 0" GE-SRC-LINE
    s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
-   s" : GECN-MK ( n -- gecn ) construct gecn one ;" GE-SRC-LINE
+   s" TRUSTED: GE-UN3 ( gecn -- n n n ) ;" GE-SRC-LINE
+   s" : GE-P3 ( gecn -- ) GE-UN3 . . . ;" GE-SRC-LINE ;
+
+: GE-CONSTRUCT-ROUND ( -- )             \ construct == generated ctor, cell-for-cell
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-CONSTRUCT-EXEC-SRC
+   s" : GE-MK1 ( n -- gecn ) construct gecn one ;" GE-SRC-LINE
+   s" : GE-MK2 ( n n -- gecn ) construct gecn two ;" GE-SRC-LINE
+   s" : GE-MK0 ( -- gecn ) construct gecn nil ;" GE-SRC-LINE
+   s" : GE-T1 ( -- ) 7 GE-MK1 GE-P3 ;  GE-T1" GE-SRC-LINE
+   s" : GE-T2 ( -- ) 3 4 GE-MK2 GE-P3 ;  GE-T2" GE-SRC-LINE
+   s" : GE-T0 ( -- ) GE-MK0 GE-P3 ;  GE-T0" GE-SRC-LINE
+   s" : GE-G1 ( -- ) 7 GECN:ONE GE-P3 ;  GE-G1" GE-SRC-LINE
    GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
-   70 s" certified construct body compile fails closed" GE-EXPECT-RC
-   s" E-UNDEFINED: construct" s" construct pending diagnostic" GE-EXPECT-ERR-HAS
+   s" construct lowering executes" GE-EXPECT-OK
+   SB-RESET                              \ stack prints top-first: tag, slot1, slot0
+   s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF
+   s" 1" SB-APPEND GE-SB-LF  s" 4" SB-APPEND GE-SB-LF  s" 3" SB-APPEND GE-SB-LF
+   s" 2" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF
+   s" 0" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF
+   SB$ s" construct round-trip cells" GE-EXPECT-OUT ;
+
+: GE-CONSTRUCT-BAD-VARIANT ( -- )       \ unknown variant dies at ITS token
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-CONSTRUCT-EXEC-SRC
+   s" : GE-BADV ( n -- gecn ) construct gecn nope ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" unknown construct variant fails closed" GE-EXPECT-RC
+   s" hb: construct: unknown variant: nope" s" construct variant diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-CONSTRUCT-FOREIGN ( -- )           \ owner-only: a foreign public family never lowers
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package gepk" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" SUMTYPE gefr 0" GE-SRC-LINE
+   s"   VARIANT yes n ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE
+   s" end-package" GE-SRC-LINE
+   s" : GE-BADF ( n -- gefr ) construct gefr yes ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" foreign-package construct fails closed" GE-EXPECT-RC
+   s" hb: construct: unknown family: gefr" s" construct foreign-family diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-CONSTRUCT-EXEC ( -- )
+   GE-CONSTRUCT-ROUND
+   GE-CONSTRUCT-BAD-VARIANT
+   GE-CONSTRUCT-FOREIGN
    s" construct" 70 s" interpret construct fails closed" GE-UNCAUGHT-RUN
-   s" PASS: construct checks; engine lowering stays fail-closed until item 10" type cr ;
+   s" PASS: construct lowers natively; interpret + foreign scope stay fail-closed" type cr ;
 
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
 \ a tool closure needing more than DICT-CAP records died exit_group(77)
@@ -806,7 +858,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
 : GE-RUNTIME-CHECKS ( -- )
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
-   GE-CONSTRUCT-PENDING
+   GE-CONSTRUCT-EXEC
    GE-DICT-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY
