@@ -256,13 +256,6 @@ s" CN6 ( n -- zpar<n> ) construct zpar psome" CHECK-QUIET-CANDIDATE! -1 T=   \ p
 s" CN7 ( ptr u8 -- zpoly<ptr u8,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN8 ( n n -- zres ) {: ok:n :} construct zres ok" CHECK-QUIET-CANDIDATE! -1 T=   \ a local `ok` cannot shadow the variant token
 s" CN9 ( n -- zres ) [: construct zres ok ;] execute" CHECK-QUIET-CANDIDATE! -1 T=
-\ variants spelled like stack words are captured operands, never word calls.
-SUMTYPE zwv 0
-  VARIANT dup n ;VARIANT
-  VARIANT swap  ;VARIANT
-;SUMTYPE
-s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
-s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-OK" type cr
 \ rejects: unknown family, unknown/wrong-family variant, non-sum family,
 \ missing operand tokens, payload arity/type/instantiation mismatches,
@@ -279,6 +272,17 @@ s" CB9 ( n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB10 ( n -- zres ) exit construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=   \ dead path
 s" CB11 ( ptr u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=   \ wrong instantiation
 s" CB12 ( n -- zpoly<n,n> zpoly<n,n> ) construct zpoly ok dup" CHECK-QUIET-CANDIDATE! 0 T=   \ open-arg transport
+\ variants spelled like stack words are captured operands, never word calls.
+\ DECLARED AFTER every bare-prim-using fixture above: a public family with
+\ prim-named variants leaks bare `dup`/`swap` effect records that shadow the
+\ prims in later checked bodies (pre-existing engine record-call bug, dot
+\ habu-qualified-defs-leak-aadeb5c9).
+SUMTYPE zwv 0
+  VARIANT dup n ;VARIANT
+  VARIANT swap  ;VARIANT
+;SUMTYPE
+s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-BAD" type cr
 \ ownership: in-package resolution for public AND private families; outside
 \ the package neither the bare nor the qualified family token resolves — the

@@ -2803,3 +2803,24 @@ unchanged (148855). Keys for milestone 2:
   state): letting them fall through to word lookup turned a hard ownership
   reject into a soft uncheckable-undefined verdict, which multi-error loads
   would then trust-and-publish differently.
+- **A new consumer is a bug magnet for old producers — instrument the sym/record
+  store, don't stare at the new code.** The MATCH suite's CASE-interleave
+  fixtures failed on plain `swap`; the new match machinery was innocent. Walking
+  the checker's authoritative stores with tiny in-suite probes
+  (CHECKER-FIND-ACTIVE-SYM, USIG-FIND-OFF-SYM, SYM-PKG$/VIS dumps) found TWO
+  effect records per qualified definition — every `PKG:TAIL` def (generated
+  constructors included) also records under the bare-global tail, certifying
+  calls the engine rejects and SHADOWING same-named prims for all later
+  definitions (dot habu-qualified-defs-leak-aadeb5c9). The TRUSTED:-qualified
+  control probe (only ONE record, bare-global) localized it to the engine's
+  post-C-QUALIFY-DEF record call in three minutes of probing. Lesson: bisect by
+  declaration-set difference, then dump the store — and expect word-named
+  ADT variants to surface every latent name-resolution bug in the pipeline.
+- **Rank new structural rejects above the uncheckable verdict, or trailing
+  tokens soften them.** A hard match reject (unknown family, overflow) leaves
+  the rest of the block as undefined-word noise, and UNCK would have won in
+  CHECK-VERDICT, blurring verdict 0 into 1 (which multi-error loads trust
+  differently). The MREJ latch in the hard-reject class fixed the whole failure
+  family at once; construct solved the same problem earlier by consuming its
+  full token form even when poisoned. Any future capture form needs one of the
+  two from day one.

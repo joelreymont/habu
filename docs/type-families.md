@@ -939,6 +939,19 @@ V1 has no default branch syntax. Every variant must be named explicitly. A
 default branch would need its own reserved token, replay support, diagnostics,
 and runtime lowering proof, so it is a later extension.
 
+V1 scrutinee rule (item 9 slice 3): `MATCH` requires the scrutinee's
+width-expanded hidden-field bundle on top of the data row. An open-arg
+parametric value (one conservative logical cell — its args still unresolved
+vars, so possibly linear) rejects; it becomes matchable when whole-bundle
+MATCH consumption lands with the TFAM 11 tail. A `MATCH` inside a `[: ;]`
+quotation also rejects: quotation rows are open and inferred forward, so no
+scrutinee bundle exists to verify — a future declared-effect quotation form
+would lift this. `MATCH` family resolution is signature scope (own package
+first, else the unique public family, qualified `PKG:tail` accepted):
+eliminability follows nameability, unlike `construct`'s owner-only rule.
+Frame headroom is fail-closed: a match that cannot reserve its two control
+frames hard-rejects with pinned diagnostics — never a silent uncheckable.
+
 Branch outputs still need to unify because the code after `;MATCH` has one continuation. This is not a user-facing contortion; it is the same kind of coherence Rust requires for `match` expressions and Habu already requires for structured control flow.
 
 ---

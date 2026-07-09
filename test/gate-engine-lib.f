@@ -388,6 +388,18 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-linear suite on Habu-under-test" GE-TYPE-LINEAR-SUITE-ON
    s" bin/hb" s" type-linear suite on bin/hb" GE-TYPE-LINEAR-SUITE-ON ;
 
+: GE-TYPE-MATCH-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-match-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ TFAM 9 slice 3 (Gate 17j): checked MATCH eliminator — exhaustiveness,
+\ payload refinement, joins, linear consumption, depth fail-closure.
+: GE-TYPE-MATCH-SUITE ( -- )
+   GE-CANDIDATE$ s" type-match suite on Habu-under-test" GE-TYPE-MATCH-SUITE-ON
+   s" bin/hb" s" type-match suite on bin/hb" GE-TYPE-MATCH-SUITE-ON ;
+
 : GE-TYPE-LAYOUT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -818,6 +830,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TYPE-DECL-SUITE
    GE-TYPE-CTOR-SUITE
    GE-TYPE-LINEAR-SUITE
+   GE-TYPE-MATCH-SUITE
    GE-TYPE-LAYOUT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )

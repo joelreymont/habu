@@ -945,6 +945,39 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    din dout CHECKER-STEP
    RES-TRUE ;
 
+\ ---------------------------------------------------------------------------
+\ MATCH resolution + payload instantiation (item 9 slice 3, docs §14). MATCH
+\ resolution follows SIGNATURE scope, not construct's owner-only rule:
+\ eliminability = nameability. You may match any family you could name in a
+\ stack signature (own package private+public, else the unique public family,
+\ qualified PKG:tail included), because a value of that family can only reach
+\ you through such a signature — private families stay unmatchable outside
+\ their package by unnameability. Only sum/enum kinds match. The branch payload
+\ row instantiates the variant's schema against the SCRUTINEE's recovered arg
+\ terms (copied into the TFC scratch vars, consumed immediately at OF — no
+\ liveness across tokens, so construct and nested matches may interleave).
+\ ---------------------------------------------------------------------------
+: TFAM-MATCH-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token
+   TFAM-ACTIVE-PKG$ na nu TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TFAM-MATCH-VARIANT ( ptr u8 n n -- n bool ) {: na:ptr nu:n fam:n :}
+   fam na nu SUMV-FIND ;
+
+: TFC-ARGS! ( n -- ) {: term:n :}   \ copy a resolved family term's args into TFC-VARS
+   term PARAM>ARGC TFC-VAR-CAP > IF s" tfam: match arity over cap" 76 die THEN
+   0 TFC-I !
+   BEGIN TFC-I @ term PARAM>ARGC < WHILE
+      term TFC-I @ PARAM>ARG  TFC-I @ cells TFC-VARS + !
+      TFC-I @ 1 + TFC-I !
+   REPEAT ;
+
+: TFAM-MATCH-PAY ( n n n -- n ) {: vid:n term:n row:n :}   \ variant payload onto row
+   term T-RES TFC-ARGS!
+   vid row TFC-PAY-ROW ;
+
 \ Install the checker's friend xt hooks: checker.f loads before this file, so it
 \ resolves families / reads arities during signature parsing through these cells.
 ' TFAM-SIG-RESOLVE TFAM-RESOLVE-XT !
@@ -956,3 +989,8 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 ' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface
 ' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
 ' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect
+' TFAM-MATCH-FAM     MATCH-FAM-XT !     \ item 9: MATCH family resolution (signature scope)
+' TFAM-MATCH-VARIANT MATCH-VAR-XT !     \ item 9: MATCH branch variant resolve
+' SUMV-TAG@          MATCH-VTAG-XT !    \ item 9: variant id -> declaration-order tag (bitset index)
+' TFAM-VAR-COUNT@    MATCH-VCOUNT-XT !  \ item 9: exhaustiveness domain size
+' TFAM-MATCH-PAY     MATCH-PAY-XT !     \ item 9: branch payload row from the scrutinee's args

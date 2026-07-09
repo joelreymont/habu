@@ -375,6 +375,11 @@ variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id oc
 variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
 variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
+variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
+variable MATCH-VAR-XT      0 MATCH-VAR-XT !      \ ( ptr u8 n n -- n bool ) : variant tail -> SUMV id within a family
+variable MATCH-VTAG-XT     0 MATCH-VTAG-XT !     \ ( n -- n ) : SUMV id -> declaration-order tag (seen-bitset index)
+variable MATCH-VCOUNT-XT   0 MATCH-VCOUNT-XT !   \ ( n -- n ) : family id -> variant count (exhaustiveness domain)
+variable MATCH-PAY-XT      0 MATCH-PAY-XT !      \ ( n n n -- n ) : vid famterm row -- row + instantiated payload
 variable FIELD-FAM   -1 FIELD-FAM !              \ reserved family-id of the internal `field` ctor
 
 \ --- checker package scope state. Declared here (not with the package words
@@ -5407,6 +5412,7 @@ variable LCO
 \ Both rows are snapshot: A/B = data, RA/RB = return (PLAN: net growth on
 \ either row at a back edge is a row-occurs failure).
 \ kinds: 1 if  2 if+else  3 begin  4 begin+while  5 do  6 quotation
+\        7 case  8 case-of  9 match  10 match-branch (item 9; MF side arena)
 \ exit-accumulator save fields: a [: ;] quotation is a nested scope, so its
 \ early returns must NOT leak into the enclosing word's accumulator.
 BEGIN-STRUCTURE CFS-REC
@@ -5795,6 +5801,227 @@ variable QTMP
      CF-LOC-REST
      CF-DROP THEN THEN ;
 
+\ --- MATCH eliminator (item 9 slice 3, docs/type-families.md §13-14). `MATCH
+\ family  variant OF ... ENDOF ...  ;MATCH` is a checker control form: the
+\ family and variant tokens are captured in DO-TOK1 before locals/control/word
+\ dispatch (the construct discipline), OF/ENDOF are shared with CASE and
+\ distinguished by the enclosing CFS frame kind (9 = match, 10 = match
+\ branch; CASE stays 7/8). MATCH pops the scrutinee's hidden-field bundle
+\ (slot0..tag, verified cell by cell against the resolved family), recovers
+\ the family type args from the tag term, and each branch checks with
+\ DCUR = base + that variant's instantiated payload. Branch outputs unify at
+\ ENDOF; ;MATCH enforces exhaustiveness over the declaration-order tag bitset
+\ (v1 has no default branch) and installs the joined rows. Frames live in a
+\ growable side arena (MF) with a growable seen-bitset pool (MSEEN) — never a
+\ silent-uncheckable path: every structural failure latches MREJ, which
+\ CHECK-VERDICT ranks as a hard reject above UNCK, and the CFS headroom check
+\ (two frames per match) rejects instead of tripping CF-PUSH's UNCK overflow.
+\ v1 scrutinee rule: only a width-expanded bundle matches; an open-arg
+\ parametric value (one conservative logical cell, possibly linear) rejects
+\ until whole-bundle MATCH consumption lands with the TFAM 11 tail.
+BEGIN-STRUCTURE MF-REC
+   CELL +FIELD MF.FAM
+   CELL +FIELD MF.TERM
+   CELL +FIELD MF.BASE
+   CELL +FIELD MF.RBASE
+   CELL +FIELD MF.OUT
+   CELL +FIELD MF.ROUT
+   CELL +FIELD MF.HAS
+   CELL +FIELD MF.SEEN
+   CELL +FIELD MF.VCNT
+   CELL +FIELD MF.TIX
+END-STRUCTURE
+
+8 constant MF-CAP-INIT
+variable MF-CAP-V   MF-CAP-INIT MF-CAP-V !
+create MF-A-BOOT   MF-CAP-INIT MF-REC * allot
+variable MF-A-P    MF-A-BOOT MF-A-P !
+: MF-ARENA ( -- ptr a ) MF-A-P @ ;
+variable MF-DEPTH   0 MF-DEPTH !
+
+: MF-GROW ( -- )
+   MF-CAP-V @ 2 * {: nc:n :}
+   MF-A-P  MF-CAP-V @ MF-REC *  nc MF-REC *  REG-GROW1
+   nc MF-CAP-V ! ;
+
+: MF-ENSURE ( -- )
+   MF-DEPTH @ MF-CAP-V @ < IF exit THEN
+   MF-GROW ;
+
+: MF-CUR ( -- ptr a )
+   MF-DEPTH @ 1 - MF-REC * MF-ARENA + ;
+
+8 constant MSEEN-CAP-INIT
+variable MSEEN-CAP-V   MSEEN-CAP-INIT MSEEN-CAP-V !
+create MSEEN-BOOT   MSEEN-CAP-INIT cells allot
+variable MSEEN-P   MSEEN-BOOT MSEEN-P !
+: MSEEN-POOL ( -- ptr a ) MSEEN-P @ ;
+variable MSEEN-N   0 MSEEN-N !
+variable MSEEN-I
+
+: MSEEN-GROW ( n -- ) {: need:n :}
+   need MSEEN-CAP-V @ 2 * max {: nc:n :}
+   MSEEN-P  MSEEN-CAP-V @ cells  nc cells  REG-GROW1
+   nc MSEEN-CAP-V ! ;
+
+: MSEEN-ENSURE ( n -- ) {: add:n :}
+   MSEEN-N @ add + MSEEN-CAP-V @ <= IF exit THEN
+   MSEEN-N @ add + MSEEN-GROW ;
+
+: MSEEN-ALLOC ( n -- n ) {: count:n :}   \ zeroed bitset cells for count variants -> offset
+   count 63 + 64 / {: k:n :}
+   k MSEEN-ENSURE
+   MSEEN-N @ {: off:n :}
+   0 MSEEN-I !
+   BEGIN MSEEN-I @ k < WHILE
+      0  MSEEN-POOL off MSEEN-I @ + cells + !
+      MSEEN-I @ 1 + MSEEN-I !
+   REPEAT
+   MSEEN-N @ k + MSEEN-N !
+   off ;
+
+: MSEEN-CELL ( n n -- ptr a ) {: off:n tag:n :}
+   MSEEN-POOL  off tag 64 / + cells  + ;
+
+: MSEEN-BIT ( n -- n )
+   63 and 1 swap lshift ;
+
+: MSEEN-GET ( n n -- bool ) {: off:n tag:n :}
+   off tag MSEEN-CELL @  tag MSEEN-BIT  and 0 <> ;
+
+: MSEEN-SET ( n n -- ) {: off:n tag:n :}
+   off tag MSEEN-CELL dup @  tag MSEEN-BIT or  swap ! ;
+
+: MSEEN-FULL? ( n n -- bool ) {: off:n count:n :}
+   0 MSEEN-I !
+   BEGIN MSEEN-I @ count < WHILE
+      off MSEEN-I @ MSEEN-GET 0= IF RES-FALSE EXIT THEN
+      MSEEN-I @ 1 + MSEEN-I !
+   REPEAT RES-TRUE ;
+
+variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 3 expecting of
+variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
+variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
+
+: MATCH-REJECT ( -- )
+   0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
+
+: MATCH-BEGIN ( -- )
+   MATCH-FAM-XT @ 0= IF 0 OK ! EXIT THEN   \ stage engines without the registry fail closed
+   1 MM ! ;
+
+variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
+
+: MATCH-SCRUT-CELL? ( n n n -- bool ) {: fam:n w:n j:n :}   \ one bundle level, top-down
+   MTCH-ROW @ R-RES TAG S-PUSH <> IF RES-FALSE EXIT THEN
+   MTCH-ROW @ R-RES P>TYPE T-RES {: t:n :}
+   t HIDDEN-PARAM? 0= IF RES-FALSE EXIT THEN
+   t PARAM>FAM fam <> IF RES-FALSE EXIT THEN
+   t HIDDEN-SLOT@  w 1 - j -  <> IF RES-FALSE EXIT THEN
+   j 0 = IF t MTCH-TAGT ! THEN
+   MTCH-ROW @ R-RES P>REST MTCH-ROW !
+   RES-TRUE ;
+
+: MATCH-SCRUT? ( n -- bool ) {: fam:n :}   \ verify + walk off the W-cell bundle
+   fam TFAM-WIDTH@* {: w:n :}
+   DCUR @ MTCH-ROW !  0 MTCH-I !  0 MTCH-TAGT !
+   BEGIN MTCH-I @ w < WHILE
+      fam w MTCH-I @ MATCH-SCRUT-CELL? 0= IF RES-FALSE EXIT THEN
+      MTCH-I @ 1 + MTCH-I !
+   REPEAT RES-TRUE ;
+
+: MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u MATCH-FAM-XT @ execute 0= IF drop MATCH-REJECT EXIT THEN
+   {: fam:n :}
+   #CFC @ 30 > IF MATCH-REJECT EXIT THEN     \ two CFS frames per match: reject, never UNCK
+   fam MATCH-SCRUT? 0= IF MATCH-REJECT EXIT THEN
+   MF-ENSURE
+   MF-DEPTH @ 1 + MF-DEPTH !
+   MF-CUR {: r:ptr :}
+   fam r MF.FAM !
+   MTCH-TAGT @ r MF.TERM !
+   MTCH-ROW @ r MF.BASE !
+   RCUR @ r MF.RBASE !
+   0 r MF.OUT !  0 r MF.ROUT !  0 r MF.HAS !
+   fam MATCH-VCOUNT-XT @ execute dup r MF.VCNT !
+   MSEEN-ALLOC r MF.SEEN !
+   TOKIX @ r MF.TIX !
+   MTCH-ROW @ DCUR !                         \ bundle popped; branches re-derive their rows
+   9 DCUR @ 0 RCUR @ 0 CF-PUSH
+   2 MM ! ;
+
+: MATCH-ACCUM ( -- )
+   OK @ 0= IF EXIT THEN
+   DEADP @ IF EXIT THEN
+   MF-CUR MF.HAS @ IF
+      MF-CUR MF.OUT @ SUNI
+      MF-CUR MF.ROUT @ RSUNI
+   ELSE
+      DCUR @ MF-CUR MF.OUT !
+      RCUR @ MF-CUR MF.ROUT !
+      -1 MF-CUR MF.HAS !
+   THEN ;
+
+: MATCH-ENDOF ( -- )   \ dispatcher-guarded: top CFS frame is the kind-10 branch
+   MATCH-ACCUM
+   CF-LOC-REST
+   CF-DROP
+   0 DEADP !
+   MF-CUR MF.BASE @ DCUR !
+   MF-CUR MF.RBASE @ RCUR !
+   2 MM ! ;
+
+: MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
+   CF-MT? IF MATCH-REJECT EXIT THEN
+   CF@K 9 <> IF MATCH-REJECT EXIT THEN
+   MF-CUR MF.SEEN @ MF-CUR MF.VCNT @ MSEEN-FULL? 0= IF 0 OK !  -1 MREJ ! THEN
+   MF-CUR MF.HAS @ IF
+      MF-CUR MF.OUT @ DCUR !
+      MF-CUR MF.ROUT @ RCUR !
+      0 DEADP !
+   ELSE
+      MF-CUR MF.BASE @ DCUR !
+      MF-CUR MF.RBASE @ RCUR !
+      -1 DEADP !                             \ every branch exited: no normal continuation
+   THEN
+   CF-LOC-REST
+   CF-DROP
+   MF-DEPTH @ 1 - MF-DEPTH !
+   0 MM ! ;
+
+: MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
+   a u MF-CUR MF.FAM @ MATCH-VAR-XT @ execute 0= IF
+      drop 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
+   {: vid:n :}
+   vid MATCH-VTAG-XT @ execute {: tag:n :}
+   MF-CUR MF.SEEN @ tag MSEEN-GET IF 0 OK !  -1 MREJ ! THEN   \ duplicate variant
+   MF-CUR MF.SEEN @ tag MSEEN-SET
+   vid MPEND !
+   3 MM ! ;
+
+: MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" of" CORE-STR= 0= IF 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   MF-CUR {: r:ptr :}
+   r MF.BASE @ DCUR !
+   r MF.RBASE @ RCUR !
+   MPEND @ 0 < 0= IF
+      MPEND @  r MF.TERM @  DCUR @  MATCH-PAY-XT @ execute DCUR !
+   THEN
+   10  r MF.BASE @  0  r MF.RBASE @  0  CF-PUSH
+   0 DEADP !
+   0 MM ! ;
+
+: MATCH-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
+   MM @ 1 = IF a u MATCH-FAM-TOK EXIT THEN
+   MM @ 2 = IF a u MATCH-VARIANT-TOK EXIT THEN
+   a u MATCH-OF-TOK ;
+
+: CF-ENDOF-DISPATCH ( -- )   \ ENDOF serves CASE (7/8) and MATCH (10) by frame kind
+   CF-MT? IF CF-ENDOF EXIT THEN
+   CF@K 10 = IF MATCH-ENDOF EXIT THEN
+   CF-ENDOF ;
+
 : CF-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" [:" CORE-STR= IF CF-QUOT RES-TRUE EXIT THEN
    a u s" ;]" CORE-STR= IF CF-SEMIQ RES-TRUE EXIT THEN
@@ -5803,8 +6030,9 @@ variable QTMP
    a u s" then" CORE-STR= IF CF-THEN RES-TRUE EXIT THEN
    a u s" case" CORE-STR= IF CF-CASE RES-TRUE EXIT THEN
    a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
-   a u s" endof" CORE-STR= IF CF-ENDOF RES-TRUE EXIT THEN
+   a u s" endof" CORE-STR= IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
+   a u s" ;match" CORE-STR= IF CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
    a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
@@ -6194,7 +6422,9 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ LIVE-TOKEN? 0= IF -1 DEADERR ! 0 OK ! ELSE
    LMODE @ IF TKF TKFU @ LOC-TOK ELSE
    CONM @ 0 <> IF TKF TKFU @ CONSTRUCT-TOK ELSE
+   MM @ 0 <> IF TKF TKFU @ MATCH-TOK ELSE
    TKF TKFU @ s" construct" CORE-STR= IF CONSTRUCT-BEGIN ELSE
+   TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
@@ -6214,7 +6444,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ ESCAPED-STRING-OPENER? IF SKIP-ESCAPED-STRING-PAYLOAD ELSE
    TKF TKFU @ NORMAL-STRING-OPENER? IF SKIP-STRING-PAYLOAD THEN THEN
    TKF TKFU @ PARSE-LIT? IF SKIP-PARSE-LIT-PAYLOAD THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    LIN-TAINT-SCAN
    OK @ 0=  FAILSET @ 0=  and IF -1 FAILSET ! THEN
    UNCK @  FAILSET @ 0=  and IF -1 FAILSET ! THEN
@@ -6255,6 +6485,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
+   0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
@@ -6314,7 +6545,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  MREJ @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
@@ -6374,7 +6605,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
-   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !
@@ -6468,7 +6699,13 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    RBF-A-BOOT RBF-A-P !
    RBF-NAME-BOOT RBF-NAME-P !
    RBF-CAP-INIT RBF-CAP-V !
-   0 RBF-DEPTH ! ;
+   0 RBF-DEPTH !
+   MF-DEPTH @ IF s" checker: snapshot inside match frame" 76 die THEN
+   MF-A-BOOT MF-A-P !          \ MATCH frames are per-definition transient: drop any
+   MF-CAP-INIT MF-CAP-V !      \ grown arena back to the baked boot stores
+   MSEEN-BOOT MSEEN-P !
+   MSEEN-CAP-INIT MSEEN-CAP-V !
+   0 MSEEN-N ! ;
 
 : RBF-PUSH ( -- )          \ save every current high-water mark into a new frame
    RBF-ENSURE
@@ -6586,7 +6823,7 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
-   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or IF CF-FAIL THEN
+   LMODE @ 0 <>  #CFC @ 0 <>  or  CONM @ 0 <>  or  MM @ 0 <>  or IF CF-FAIL THEN
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN
    SGHASR @ IF RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK ! THEN
    CHECK-VERDICT dup DVERD ! ;

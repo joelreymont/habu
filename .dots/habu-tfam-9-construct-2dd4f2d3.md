@@ -329,3 +329,141 @@ as GE-TYPE-MATCH-SUITE = Gate 17j). The compiler-capture tuple for item 10
 lowering (keyword data) is item 10 scope; the checker resolution records
 (owning-package-id, family-id, variant-id) transiently in CONM/CONFAM + the
 step.
+
+## SLICE 3 LANDED (commit "TFAM 9 slice 3: CF-MATCH frames + exhaustive checking")
+
+The MATCH eliminator checks: `MATCH family  variant OF ... ENDOF ...  ;MATCH`
+with exhaustiveness, payload refinement, branch joins, linear consumption,
+nesting, and fail-closed overflow. Gate 17j is live (GE-TYPE-MATCH-SUITE).
+
+### Mechanism (checker.f)
+- Growable MF side arena (MF-REC: fam, scrutinee term, base data/return rows,
+  accumulated out rows + has-flag, seen-bitset offset, variant count, match
+  token index) + growable MSEEN bitset pool, both REG-GROW1-grown from baked
+  boot stores and reset in RBF-SNAP-RESET (frames are per-definition
+  transient; snapshot inside a match frame dies 76 like RBF).
+- CFS integration: kinds 9 (match) / 10 (match branch) extend the frame-kind
+  table, so every existing well-nesting check (then/repeat/;]/endcase kind
+  guards) fails closed across match boundaries for free. OF/ENDOF stay shared
+  with CASE: CF-ENDOF-DISPATCH routes `endof` by top-frame kind (10 -> match,
+  else CASE 7/8 path); a stray `;match` in normal flow is a CF-FAIL line in
+  CF-TOK?; `of` in normal flow keeps CASE's kind-7 guard.
+- Token protocol: MM mode machine (1 family, 2 variant-or-;match, 3 of)
+  dispatched in DO-TOK1 next to construct's CONM — BEFORE locals reference,
+  control dispatch, and word lookup. MM states never span nested constructs
+  (2->3->0 immediately), so nested matches need no MM stack; frames carry all
+  per-match state. CHECK-RESET zeroes MM/MPEND/MREJ/MF-DEPTH/MSEEN-N; the
+  unclosed-form check in CHECK/CHECK-DOES! gains `MM @ 0 <>`.
+- MATCH family: resolve via MATCH-FAM-XT (signature scope, sum/enum gate),
+  then MATCH-SCRUT? verifies the top W cells are the family's hidden-field
+  bundle (S-PUSH levels, HIDDEN-PARAM?, same fam, slots W-1..0 descending),
+  stashes the tag term (arg source) and the base row below the bundle, pops
+  the bundle, pushes MF + kind-9 frames. Frame headroom (#CFC > 30, two
+  slots per match) rejects via MREJ — never CF-PUSH's silent -1 UNCK.
+- variant OF: MATCH-VAR-XT (SUMV-FIND in the frame's family) -> tag =
+  declaration order (MATCH-VTAG-XT = SUMV-TAG@) indexes the seen bitset;
+  duplicates reject; DCUR = base + MATCH-PAY-XT(vid, tag-term, base) — the
+  variant schema instantiated against the SCRUTINEE'S recovered args (TFC
+  scratch reuse, consumed immediately at OF so construct/nested matches
+  interleave safely); RCUR = base return row; kind-10 frame pushed; branch
+  live. ENDOF: accumulate live DCUR/RCUR into MF.OUT/ROUT (SUNI/RSUNI join),
+  CF-LOC-REST + pop branch frame, back to variant level (MM=2).
+- ;MATCH: exhaustiveness = MSEEN-FULL? over 0..VCNT-1 (no default branch —
+  any non-variant token where a variant is expected rejects as unknown);
+  DCUR/RCUR = joined outputs, or dead path (all branches exited: -1 DEADP,
+  no normal continuation, docs §14 step 5); pop kind-9 + MF frames.
+- MREJ latch: every match structural failure (unknown family/variant, kind
+  gate, scrutinee mismatch, dup variant, missing of, non-exhaustive, stray
+  closer, headroom) latches MREJ, ranked in CHECK-VERDICT's hard-reject class
+  ABOVE UNCK — so trailing-token blur after a match reject can never soften
+  the verdict to uncheckable (PLAN 663-665's overflow requirement,
+  generalized). Pinned: depth-31 fixture verdict 0, depth-29 certifies.
+
+### type-family.f
+TFAM-MATCH-FAM (TFAM-SIG-RESOLVE + sum/enum gate), TFAM-MATCH-VARIANT
+(SUMV-FIND), TFC-ARGS! (copy a resolved term's args into the TFC vars),
+TFAM-MATCH-PAY (payload row via TFC-PAY-ROW reuse); installs MATCH-FAM/VAR/
+VTAG/VCOUNT/PAY xt cells (SUMV-TAG@ and TFAM-VAR-COUNT@ install directly).
+
+### Design decisions
+- **MATCH resolution = signature scope (eliminability = nameability)**, NOT
+  construct's owner-only rule: you may match any family you could name in a
+  sig (own package private+public, unique public, qualified PKG:tail).
+  Privacy holds by unnameability: a private family's values cannot cross its
+  package boundary in checked code (slice-2 evidence). Pinned: in-package
+  private match; cross-package public match bare AND qualified.
+- **v1 scrutinee rule: width-expanded bundles only.** An open-arg parametric
+  value (one conservative logical cell, possibly linear) rejects until
+  whole-bundle MATCH consumption lands with the TFAM 11 tail (pinned MB19).
+  Concrete parametric instantiations match with args recovered from the
+  value's hidden terms (pinned M5/M6 incl. ptr args).
+- **MATCH inside quotations rejects (v1)**: [: ;] rows are open and inferred
+  forward-only — there is no scrutinee bundle to verify on a fresh row var
+  (pinned MB20). construct-in-quotation stays legal (push-only constrains the
+  open row; slice-2 CN9) — the asymmetry is principled: introduction adds
+  constraints, elimination needs resolved facts. A declared-effect quotation
+  form would lift this later; not an item-9 requirement.
+- **Linear consumption rides the existing accounting**: MATCH pops the bundle
+  and each branch exposes exactly ITS payload; branch bodies are policed by
+  the same per-step conservation + joins (drop/copy of a linear payload
+  rejects; moving it out through the join is legal consumption). Pinned
+  TRUST-free via construct round-trips (ML1-ML4).
+- Depth/overflow: MF/MSEEN arenas grow without bound; only the CFS cap is
+  finite, and match handles it as a hard reject (MREJ), contrasted with
+  CASE/IF's pre-existing silent-uncheckable overflow which stays as-is.
+
+### FOUND + DOTTED: bare-tail effect leak (pre-existing, severe)
+habu-qualified-defs-leak-aadeb5c9 — discovered by this slice's CASE-interleave
+fixtures. Any qualified definition (': PKG:TAIL ... ;', TRUSTED: included, so
+every generated constructor) records a checker effect under the BARE-GLOBAL
+tail sym as well (TRUSTED: records ONLY that one): the checker then certifies
+bare-tail calls the engine rejects (E-UNDEFINED), and — since user sigs are
+consulted before prims — a leaked `swap`/`dup` record SHADOWS the prim for
+every later checked definition ('( n n -- n n ) swap' rejects after any
+public family declares a variant named swap). Localized to the engine's
+post-C-QUALIFY-DEF record call using the rewritten tail token (original
+spelling survives in DEF-TKA/DEF-TKL cells); full evidence chain + suggested
+fix + regression list in the dot. Suites route around it honestly: the
+word-named-variant families (mwv/zwv) are declared AFTER every fixture that
+uses those names as bare prims, with dot-citing comments to revert.
+
+### Fixtures + gate wiring
+test/type-match-suite.f (NEW, FILEMAP row added): M1-M15 accepts (two-variant
+join, payload refinement wide+ptr, enum, parametric concrete, nested via
+construct, if/case interleave both directions, locals-shadow immunity,
+word-named variants via capture, exit/all-exit, return-stack balance);
+ML1-ML4 linear; MB1-MB21 negatives (missing variant, duplicate, foreign,
+unknown family, non-family/misplaced scrutinee, family mismatch, branch-join
++ return-stack mismatches, 4 truncations, strays, missing variant token,
+variant-without-OF, endcase-closing-match, open-arg, quotation, dead code
+after all-exit); MD31/MD29 depth fail-closure (0 vs -1 — the hard-reject-not-
+UNCK pin); MS1-MS3 scope; CS1-CS3 CASE pins. GE-TYPE-MATCH-SUITE wired into
+GE-CANDIDATE-VALIDATE (Gate 17j; validate slice has no result-cache set, so
+no run-files change). docs §14 gains the v1 scrutinee/quotation/scope notes.
+
+### Fixpoint + gate proofs (verbatim tails)
+- rebuild `-- install --force` -> rc 0 "bin/hb refresh OK: compiler fixpoint";
+  re-run `-- all --force` under the new engine -> rc 0 "bin/hb refresh OK:
+  compiler fixpoint" (byte-identical; sha256 2c1b5210db7d35a8... matches the
+  gate's Habu-under-test line exactly).
+- `bin/hb --load test/run.f` -> `GATE_RC=0`, "PASS: native test suite
+  (fixpoint + engine suite + checked hb + repl + hb-build) (28916ms <=
+  70000ms budget)".
+- validate slice standalone (`-- validate`, HABU_UNDER_TEST=bin/hb) -> rc 0:
+  "PASS: type-match suite on Habu-under-test" + "on bin/hb" alongside all
+  five prior suites (Gate 17j live).
+- all six type suites over stdin -> rc 0 "ok" each (family, decl, ctor,
+  linear, match, layout).
+- `bin/hb --load maki/test.f` -> rc 0 "test: ok".
+- typed-local-diff-lint on the slice diff -> rc 0; dot-dep-lint test -> rc 0;
+  filemap-lint -> "596 path(s), 0 finding(s)" (new suite file mapped).
+- Zero new PRIM: rows (census unchanged; prop/debug phase in gate PASS);
+  zero new TRUST sites (match linear fixtures are TRUST-free by design).
+
+REMAINING for item 9: slice 4 — rich §24 diagnostics (named reasons: unknown
+family, family mismatch, unknown/duplicate variant, missing variant NAMES at
+;MATCH, branch-output mismatch rendering "ok branch leaves: ..."), any
+negative-battery gaps found writing them, and the render.f reason-cell
+plumbing. Item 10 owns lowering + the runtime invalid-tag battery; the
+match-in-quotation and open-arg-scrutinee capabilities ride TFAM 11 / a
+declared-quotation extension as recorded above.
