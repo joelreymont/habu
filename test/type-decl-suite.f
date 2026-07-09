@@ -251,25 +251,25 @@ s" TD12-WIDE-SWAP ( tdmix<n,n> n -- n tdmix<n,n> ) swap" CHECK-QUIET-CANDIDATE! 
 \ whole, so a signature that splits it (claims a bare n out) still rejects.
 s" TD12-SWAP-SPLIT ( tdres<n,n> n -- tdres<n,n> tdres<n,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- item 12 slice-3b: branch-scoped locals in a width-aware definition --------
-\ The width-aware pass-2 recompiler reads the per-CHECK LOCW table AFTER the hook
-\ certifies, but branch-scoped locals are popped from #LOC at their join and the
-\ scalar emitter reuses their frame slots (habu2.f LCFPUSH/LCFPOP). So in any
-\ definition that triggers pass-2 (a wide fact anywhere), a local bound inside an
-\ if/case/loop scope would be read out of range (die 76) or slot-reused (silent
-\ miscompile). The checker rejects it fail-closed instead. These certified as -1
-\ before the guard, and each of the four bodies died 76 on the load path; lifting
-\ the restriction is dot habu-tfam-12-pass-a77a24ce.
-s" TD12-BRLOC-IF ( tdres<n,n> n -- tdres<n,n> ) 0 > if {: a :} a else then" CHECK-QUIET-CANDIDATE! 0 T=
-s" TD12-BRLOC-CASE ( tdres<n,n> n -- tdres<n,n> ) case 0 of {: a :} a endof endcase" CHECK-QUIET-CANDIDATE! 0 T=
-\ a scalar AND a wide local bound in the same branch: still rejected.
-s" TD12-BRLOC-MIX ( tdres<n,n> n -- tdres<n,n> n ) 0 > if 5 {: s:n :} {: a :} a s else 0 then" CHECK-QUIET-CANDIDATE! 0 T=
-\ even a purely SCALAR branch local rejects once the definition is width-aware
-\ (the top-level wide local a triggers pass-2, which would query the popped s).
-s" TD12-BRLOC-SCALAR ( n tdres<n,n> -- tdres<n,n> n ) {: a :} 0 > if 5 {: s:n :} s else 9 then a swap" CHECK-QUIET-CANDIDATE! 0 T=
-\ supported boundary stays certified: a wide local bound at TOP LEVEL (not in a
-\ branch), a scalar branch local in a NON-width-aware definition, and a top-level
-\ wide local REFERENCED inside both branches (binding, not referencing, is the gate).
+\ --- item 12 slice-3b + habu-tfam-12-pass: branch-scoped locals lower ----------
+\ The pass-2 recompiler used to read the per-CHECK LOCW table by LIVE index
+\ AFTER the hook certified, but branch-scoped locals are popped from #LOC at
+\ their join and the scalar emitter reuses their frame slots (habu2.f
+\ LCFPUSH/LCFPOP) — so these bodies were rejected fail-closed
+\ (E-LAYOUT-BRANCH-LOCAL). The bind-sequence width table (checker LOCW-HW +
+\ the P2-CARVE-W live replay) lifted the guard: a local bound inside branch
+\ scope in a width-aware definition now certifies and lowers position-
+\ correctly. Execution proof: test/type-layout-lower-pending.f TLPX-BR*.
+s" TD12-BRLOC-IF ( tdres<n,n> n -- tdres<n,n> ) 0 > if {: a :} a else then" CHECK-QUIET-CANDIDATE! -1 T=
+s" TD12-BRLOC-CASE ( tdres<n,n> n -- tdres<n,n> ) case 0 of {: a :} a endof endcase" CHECK-QUIET-CANDIDATE! -1 T=
+\ a scalar AND a wide local bound in the same branch: certifies.
+s" TD12-BRLOC-MIX ( tdres<n,n> n -- tdres<n,n> n ) 0 > if 5 {: s:n :} {: a :} a s else 0 then" CHECK-QUIET-CANDIDATE! -1 T=
+\ a purely SCALAR branch local in a width-aware definition (the top-level wide
+\ local a triggers pass-2, which replays s's bind by sequence): certifies.
+s" TD12-BRLOC-SCALAR ( n tdres<n,n> -- tdres<n,n> n ) {: a :} 0 > if 5 {: s:n :} s else 9 then a swap" CHECK-QUIET-CANDIDATE! -1 T=
+\ the previously supported boundary stays certified: a wide local bound at TOP
+\ LEVEL, a scalar branch local in a NON-width-aware definition, and a top-level
+\ wide local REFERENCED inside both branches.
 s" TD12-BROK-TOPWIDE ( n tdres<n,n> -- tdres<n,n> n ) {: a :} a swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD12-BROK-SCALARBR ( n -- n ) 0 > if 5 {: s:n :} s else 9 then" CHECK-QUIET-CANDIDATE! -1 T=
 s" TD12-BROK-REF ( n tdres<n,n> -- tdres<n,n> ) {: a :} 0 > if a else a then" CHECK-QUIET-CANDIDATE! -1 T=

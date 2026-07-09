@@ -342,13 +342,12 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
-   P2BRLOCBAD @ IF s" E-LAYOUT-BRANCH-LOCAL" ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -365,7 +364,6 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
-   P2BRLOCBAD @ IF s" factor_branch_local" EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    QUALBAD @ IF s" fix_qualified_name" EXIT THEN
    UNDEFERR @ IF s" unknown_rejection" EXIT THEN
@@ -389,7 +387,6 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
-   P2BRLOCBAD @ IF s" Bind the layout local before the branch, or factor the branch body into a helper." EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
@@ -457,10 +454,6 @@ variable JPOS  variable JLINE  variable JCOL
    LINLOCBAD @ IF
      s" E-LINEAR-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
      s" : linear value cannot be bound to a local; keep it on the stack" DTXT EXIT
-   THEN
-   P2BRLOCBAD @ IF
-     s" E-LAYOUT-BRANCH-LOCAL habu: in " DTXT  NMA @ NMU @ DTXT
-     s" : a local bound in control-flow branch scope is not supported while a layout value is lowered; bind it before the branch or factor a helper" DTXT EXIT
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT

@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-08
+Last updated: 2026-07-09
 
 - **Generated constructor WID protection belongs after emission, not inside
   `C-STORE`:** a `C-STORE`-time predicate re-enters Forth while the native
@@ -43,24 +43,26 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
-- **Post-check scratch read by a later pass must survive branch pops, or the
-  checker must reject:** TFAM 12 slice 3b's pass-2 width-aware emitter reads the
-  per-CHECK locals-width table (`LOCW`) AFTER the hook certifies, but branch-scoped
-  locals are popped from `#LOC` at their join (`CF-LOC-REST`) and the scalar emitter
-  REUSES their frame slots (`LCFPUSH`/`LCFPOP` save+restore `LOCN`/`LOCF`,
-  habu2.f:842-859). So a certified body with a branch-scoped local in a pass-2
-  definition either read `LOCW` out of range (die 76, whole-load abort) or read a
-  slot-reused width (silent miscompile) — while `CHECK-QUIET-CANDIDATE!` still
-  returned -1. Because pass-1's frame layout reuses slots, a whole-definition
-  high-water width table indexed by bind order is NOT the right frame math. Fix:
-  the checker rejects any local bound while `#CFC>0` in a definition where
-  `WF-WIDE?` (per-def flag `LOCBRANCH` + `P2-BRANCH-LOCAL-GUARD` →
-  `E-LAYOUT-BRANCH-LOCAL`), fail-closed as a per-def diagnostic not a die; lifting
-  it needs a bind-occurrence-indexed width table pass-2 fills itself
-  (dot habu-tfam-12-pass-a77a24ce). Mirror a new reject flag at all five sites:
-  checker variable + reject word + `CHECK-RESET` + `CHECK-VERDICT`, and render.f
-  `DCODE`/`REPAIR-CLASS`/`SUGGEST-TEXT`/`DIAG-PROSE` (the `DCODE` cascade needs one
-  extra trailing `THEN`).
+- **Post-check scratch read by a later pass must be keyed by something the
+  branch joins never pop:** TFAM 12's pass-2 width-aware emitter reads checker
+  locals widths AFTER the hook certifies, but the live table (`LOCW`) is popped
+  at joins (`CF-LOC-REST`) and frame slots are reused by sibling arms — live-
+  index reads died 76 or took a sibling's width while the verdict stayed -1.
+  Landed fix (habu-tfam-12-pass): key the durable table by a monotone bind
+  sequence (`LOCW-HW[LOCSEQ]`, assigned in `LOC-ADD`, finalized via
+  `LOCSEQIX[live]` at the `:}` bind, reset only in `CHECK-RESET`), and let the
+  pass-2 carve REPLAY binds in textual order (`P2-CARVE-W` consumes one seq per
+  group local, rebuilding a live table `P2LW` the slot math reads). Replay
+  alignment holds because `LOC-BEGIN` rejects `{:` in dead code and quotations;
+  `LOCW-HW@` dies 76 on any skew. Host such pass-2 scratch in checker.f, not
+  new engine DATA cells — the fixed DATA map is full ($3A00..$3C88 is the FFI
+  block) and the checker already owns the facts.
+- **Diagnosing with the row renderer beats guessing:** the branch-local exec row
+  first rejected not from the branch at all — a RAW generated-constructor call
+  + immediate local bind (`7 TLP--RES:ERR {: r :}`) rejects identically at top
+  level (ctor output is still in the CTOR-PEND signature-boundary window). Test
+  seeds must be checked maker words; reduce with `CHECK-QUIET-CANDIDATE!`
+  probes before blaming the new mechanism.
 
 - **Layout transport is a per-token mode, not a per-var flag:** generic stack
   prims share polymorphic effect vars (`dup` and `0=` both use `PE-A`), so you

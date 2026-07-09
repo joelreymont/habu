@@ -25,23 +25,70 @@ Lift E-LAYOUT-BRANCH-LOCAL (src/core/checker.f P2-BRANCH-LOCAL-GUARD / CHECK-VER
   (habu2.f). LLOC-FIND resolves a local reference to a LIVE index; the pass-2 fix must
   drive P2LW by the SAME bind order the checker records into LOCW-HW[seq].
 
-CONFIRMED codegen mechanism (2026-07-09, decisive for the fix shape):
-EM-P2-QUERY-LOCW/-LOCWCUM (habu2.f:2286-2296) EMIT runtime code — `C-FIND-GLOBAL`
-(:1259) emits an LFIND + puts the xt in x11, `C-CALL-X11-SAVED` (:1215) emits
-`BLR x11`. So EM-P2-CARVE (:2307) and EM-P2-LOCREF (:2354) bake a RUNTIME loop into
-the defined word's prologue that calls locw@/locw-cum@ AT THE WORD'S RUNTIME,
-indexed by LIVE local index [P2LOC0..LOCN). LOCW is per-CHECK scratch, so this is
-sound only because these wide-local words execute IMMEDIATELY after definition
-(same window LOCW is valid) — the execution rows in type-layout-lower-pending.f
-all define+run inline. Implication for this dot: LOCW-HW and P2LW are likewise
-RUNTIME tables (DATA cells) read at word-runtime. The fix = pass-2's emitted carve
-increments a runtime P2-LOCSEQ per `{:` group and fills P2LW[live-index] from
-LOCW-HW@(seq) so a reused live slot (after a branch join) gets the NEW local's
-width via its NEW bind-seq; EM-P2-CARVE base-slot (`LOCF/8 - locw-cum@(i)`) and
-EM-P2-LOCREF read P2LW instead of live-index LOCW@/LOCW-CUM@. Checker: LOCW-HW[seq]
-appended at LOC-ADD (checker.f:5195, alongside `1 #LOC cells LOCW !` at :5204) and
-LOC-BUNDLE-BIND (:5241, alongside the LOCW store at :5244), NEVER rewound by
-CF-LOC-REST; LOCSEQ reset in CHECK-RESET (:6140-6148). Add LOCW-HW@ PRIM row next to
-LOCW@/LOCW-CUM@ (:3969). This is a byte-fixpoint engine commit (checker.f + habu2.f)
-+ full gate + inline-execution proof across both branches; NOT started to avoid a
-half-landed silent-miscompile risk.
+## LANDED (2026-07-09, commit "TFAM 12: pass-2 branch-scoped bundle locals")
+
+Mechanism correction to the earlier audit note: the EM-P2 width queries are NOT
+word-runtime calls. EM-P2-CARVE/EM-P2-LOCREF are engine COMPILE-LOOP code — the
+C-FIND-GLOBAL + BLR x11 they contain executes during the pass-2 recompilation
+(immediately after the pass-1 hook certifies, while per-CHECK scratch is valid)
+and the results are BAKED into the user word as constant frame-slot offsets.
+The bug was purely live-index skew: the checker pops #LOC at joins (CF-LOC-REST)
+while the engine replays the body with its own LOCN, so live-index LOCW reads
+died 76 or read a sibling arm's width.
+
+Fix as landed (storage checker-hosted — the DATA map has no free 65-cell hole;
+$3A00..$3C88 is the lib/ffi-abi.f FFI block — so the pass-2 live table lives
+beside the width facts it derives from, zero new engine DATA cells):
+- checker.f: LOCW-HW[LOC-HW-CAP = 4*LOC-CAP] final width per bind occurrence,
+  keyed by monotone LOCSEQ (assigned in LOC-ADD beside the LOCW store, cap
+  folded into the over-cap LOCALBAD reject; finalized via LOCSEQIX[live] in
+  LOC-BUNDLE-BIND); never rewound by CF-LOC-REST; LOCSEQ reset in CHECK-RESET.
+  Queries: LOCW-HW@ (die 76 past LOCSEQ = misalignment backstop) + pass-2 live
+  table P2LW[LOC-CAP]/P2SEQ with P2-LOCSEQ-RESET / P2-CARVE-W (consumes next
+  seq, records live width) / P2-LIVE-W@ / P2-LIVE-CUM@. PRIM rows replace the
+  LOCW@/LOCW-CUM@ rows; live-indexed LOCW@/LOCW-CUM@/LOCW-IX-GUARD deleted.
+  P2-BRANCH-LOCAL-GUARD, LOCBRANCH, P2BRLOCBAD deleted (CHECK-RESET +
+  CHECK-VERDICT rows too).
+- render.f: E-LAYOUT-BRANCH-LOCAL DCODE/REPAIR-CLASS/SUGGEST-TEXT/DIAG-PROSE
+  rows removed (one trailing THEN off the DCODE cascade).
+- habu2.f: EM-P2-CARVE-W / EM-P2-LIVE-W / EM-P2-LIVE-CUM replace
+  EM-P2-QUERY-LOCW/-LOCWCUM (same emit shape; name labels LP2CARVW/LP2LIVEW/
+  LP2LIVEC/LP2SEQRST in EMIT-P2KW + EMIT-LABEL-P2); EM-P2-TRIGGER calls
+  p2-locseq-reset before EM-P2-START (RX window already open there). The carve
+  width pass consumes one seq per group local in textual order = checker
+  LOC-ADD order (LOC-BEGIN rejects {: in dead code and inside quotations, so a
+  certified body cannot diverge from the replay).
+- tests: TD12-BRLOC-IF/CASE/MIX/SCALAR flipped to certified (-1);
+  test/type-layout-lower-pending.f gains define+run-inline rows TLPX-BRIF,
+  TLPX-BRCASE (case/of arms), TLPX-BRW (sibling arms reuse frame slot 0 at
+  width 2 vs 4), TLPX-BRMIX (scalar+wide group in an arm), TLPX-BROUTER
+  (outer w4 local below a branch-scoped w2 local; survives the join) — each
+  runs BOTH arms. prop-test census AX-NOEXEC-C rows swapped accordingly.
+- Emitted-instruction goldens unchanged (the fix redirects the compile-time
+  width source only; emitted user code is identical for previously-legal
+  bodies).
+
+Boundary found while writing the rows (pre-existing, NOT this dot): a RAW
+generated-constructor call followed immediately by a local bind rejects at the
+:} (`7 TLP--RES:ERR {: r :}` — ctor output flows through the CTOR-PEND
+signature-boundary coercion, not yet a bindable row group; fails identically at
+top level, unrelated to branches). The suite's checked maker-word seeds
+(TLP-MK2/TLP-MK2B) are the supported surface; constructor mid-body ergonomics
+belong to items 8/9 (see habu-retire-tlp-mk2-ac7760d2).
+
+Gate tails (2026-07-09, verbatim, all true-rc):
+- fixpoint refresh (install --force): `bin/hb refresh OK: compiler fixpoint` /
+  `bin/hb ready (small checked engine, tty REPL + stdin)` rc 0
+- full gate `bin/hb --load test/run.f` (final tree): `PASS: native test suite
+  (fixpoint + engine suite + checked hb + repl + hb-build) (9667ms <= 40000ms
+  budget)` rc 0, zero RED lines
+- test/type-decl-suite.f: `ok` rc 0
+- test/type-layout-lower-pending.f (stdin): `ok` rc 0
+- test/type-family-suite.f: `ok` rc 0
+- test/type-ctor-suite.f: `UNDEF-SAFE` / `ok` rc 0
+- maki/test.f: `test: ok` / `PASS: maki/device-smoke.f (1ms)` rc 0
+- test/prop-test.f (stdin): `prim-axiom: census OK (every PES axiom
+  classified; executable axioms difftested)` / `prop-test: sweep OK — 8` rc 0
+- tools/dot-dep-lint.f: `dot-dep-lint: 163 dot(s), 13 blocker(s), 0
+  finding(s)` rc 0
+- tools/typed-local-diff-lint.f on the jj diff --git: rc 0

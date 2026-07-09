@@ -2039,8 +2039,6 @@ variable SGBAD-KIND
 variable UNSAFE
 variable LOCALBAD
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
-variable LOCBRANCH           \ a {: :} local was bound inside control-flow branch scope
-variable P2BRLOCBAD          \ branch-scoped local in a width-aware (pass-2) definition
 variable UNDEFERR
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
@@ -3966,8 +3964,11 @@ PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDE? PE-N PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: LOCW@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: LOCW-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LOCSEQ-RESET PRIM;
+PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: P2-LIVE-CUM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-N@ PE-N PE-OUT PRIM;
 PRIM: TF-STR-U@ PE-N PE-OUT PRIM;
 PRIM: TF-PK-N@ PE-N PE-OUT PRIM;
@@ -5124,20 +5125,46 @@ create LOCSHOW LOC-CAP cells allot
 \ can reach a local; the bind-time linear check is unchanged.
 create LOCW LOC-CAP cells allot
 variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  variable LI  variable LRF
-\ Emitter-facing locals-width queries (item 12 slice 3b): the pass-2 recompiler
-\ sizes frame slots and reference pushes from the checker's LOCW, per-CHECK
-\ scratch still live right after the hook certifies the definition.
-: LOCW-IX-GUARD ( n -- )           \ die 76 outside the checked locals table
-   dup 0 <  over #LOC @ >=  or IF s" checker: bad local width index" 76 die THEN
+\ Emitter-facing width queries (item 12 slice 3b + habu-tfam-12-pass): LOCW is
+\ live-indexed and branch-scoped locals are popped at their join (CF-LOC-REST)
+\ with their slots rebound by sibling arms, so the pass-2 recompiler must not
+\ read LOCW by live index after the verdict. LOCW-HW records every bind
+\ occurrence's FINAL width keyed by a monotone bind sequence that is never
+\ popped; LOCSEQIX maps a live index to its bind seq while the local is live
+\ (written at LOC-ADD, read at the group's :} bind).
+LOC-CAP 4 * constant LOC-HW-CAP    \ bind occurrences per definition, branch arms included
+create LOCW-HW LOC-HW-CAP cells allot
+create LOCSEQIX LOC-CAP cells allot
+variable LOCSEQ
+: LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
+   s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
+   s cells LOCW-HW + @ ;
+\ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE /
+\ EM-P2-LOCREF) replays the certified body's {: groups in bind order — each
+\ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
+\ under its ENGINE live frame index, so a frame slot reused by a sibling branch
+\ reads its own width; checker #LOC joins never skew the frame math.
+create P2LW LOC-CAP cells allot
+variable P2SEQ
+: P2LW-IX-GUARD ( n -- )           \ die 76 outside the engine locals frame
+   dup 0 <  over LOC-CAP >=  or IF s" checker: bad pass-2 local index" 76 die THEN
    drop ;
-: LOCW@ ( n -- n ) {: i:n :}       \ logical width of local i (1 = scalar)
-   i LOCW-IX-GUARD
-   i cells LOCW + @ ;
-: LOCW-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through local i
-   i LOCW-IX-GUARD
+: P2-LOCSEQ-RESET ( -- )           \ engine EM-P2-TRIGGER: the pass-2 re-run starts at bind seq 0
+   0 P2SEQ ! ;
+: P2-CARVE-W ( n -- n ) {: i:n :}  \ next bind's width, recorded as live local i's width
+   i P2LW-IX-GUARD
+   P2SEQ @ LOCW-HW@ {: w:n :}
+   P2SEQ @ 1 + P2SEQ !
+   w i cells P2LW + !
+   w ;
+: P2-LIVE-W@ ( n -- n ) {: i:n :}  \ live local i's width (recorded at its carve)
+   i P2LW-IX-GUARD
+   i cells P2LW + @ ;
+: P2-LIVE-CUM@ ( n -- n ) {: i:n :}   \ frame cells from the frame top through live local i
+   i P2LW-IX-GUARD
    0
    0 BEGIN dup i <= WHILE
-      dup cells LOCW + @  rot +  swap
+      dup cells P2LW + @  rot +  swap
       1 +
    REPEAT drop ;
 variable LOCSHOWXT  0 LOCSHOWXT !
@@ -5194,7 +5221,7 @@ variable LCO
 \ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic.
 : LOC-ADD {: a u :}
    a u LCOLON
-   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or IF
+   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or  LOCSEQ @ LOC-HW-CAP 1 - >  or IF
      0 OK !  -1 FAILSET !  -1 LOCALBAD !
    ELSE
      #LOC @ LOC-SHOW-OFF!
@@ -5202,10 +5229,12 @@ variable LCO
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      1 #LOC @ cells LOCW + !
+     LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
+     1 LOCSEQ @ cells LOCW-HW + !
+     LOCSEQ @ 1 + LOCSEQ !
      LCO @ u < IF
       a u #LOC @ LOC-ANN
      THEN
-     #CFC @ 0 > IF -1 LOCBRANCH ! THEN     \ bound inside if/case/loop scope (popped at the join)
      #LOC @ 1 + #LOC ! THEN ;
 
 \ Linear values may not launder through locals. A local reference re-pushes its
@@ -5241,7 +5270,8 @@ variable LCO
 : LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
    idx cells LOCTV + @ T-RES ISVAR 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
    gi XG-TERM0@ T-RES idx cells LOCTV + !
-   XG-LEN gi cells + @ idx cells LOCW + ! ;
+   XG-LEN gi cells + @ idx cells LOCW + !
+   XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOCW-HW + ! ;   \ final width at the bind seq
 
 : LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
    idx cells LOCTV + @  gi XG-TERM0@  UNIFY OK @ and OK ! ;
@@ -6145,7 +6175,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
-   0 LOCBRANCH !  0 P2BRLOCBAD !
+   0 LOCSEQ !
    0 WF-N !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
@@ -6196,21 +6226,8 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
 : CHECK-RET-SIG? ( -- bool )
    CHECK-SIG? SGHASR? and ;
 
-\ Item 12 slice 3b soundness gate: the width-aware pass-2 recompiler reads the
-\ per-CHECK locals-width table (LOCW) AFTER the hook certifies, but branch-scoped
-\ locals are popped from #LOC at their join (CF-LOC-REST) and their frame slots
-\ are reused by the scalar emitter (habu2.f LCFPUSH/LCFPOP save+restore LOCN/LOCF).
-\ So in any definition that triggers pass-2 (WF-WIDE?), a local bound in branch
-\ scope is either out of range (die 76) or slot-reused (silent miscompile). Reject
-\ it here as a clean per-def diagnostic instead. Lifting the restriction needs a
-\ bind-occurrence-indexed width table (dot habu-tfam-12-pass-a77a24ce).
-: P2-BRANCH-LOCAL-GUARD ( -- )
-   WF-WIDE? 0 <>  LOCBRANCH @ 0 <>  and IF
-      0 OK !  -1 FAILSET !  -1 P2BRLOCBAD !
-   THEN ;
-
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  P2BRLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.
@@ -6271,7 +6288,6 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
    LMODE @ 0 <>  #CFC @ 0 <>  or IF CF-FAIL THEN
-   P2-BRANCH-LOCAL-GUARD             \ reject branch-scoped locals in a width-aware definition
    SGHASR @ 0= IF RCUR @ R-RES  RBROW @ R-RES  <> IF 0 OK ! THEN THEN   \ balance (no clause)
    CHECK-RET-SIG? IF
       RCUR @ SGROUT @ UNIFY-COERCE OK @ and OK !

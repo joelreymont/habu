@@ -2265,10 +2265,16 @@ variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 \ re-run from BODYBUF (EM-P2-START further down) with width-aware transport
 \ lowering. These meta words emit the compile-loop plumbing shared by the
 \ transport ops and the locals carve/reference paths. The checker query words
-\ (wf-wide? / wf-w-at / locw@ / locw-cum@, src/core/checker.f) are region code:
-\ every call site flips the region RX around the BLR and back to RW before any
-\ further emission, exactly like the immediate-word path in EM-COMPILE-CALL.
-variable LWFWIDE  variable LWFWAT  variable LLOCWQ  variable LLOCWCUM
+\ (wf-wide? / wf-w-at / p2-carve-w / p2-live-w@ / p2-live-cum@ /
+\ p2-locseq-reset, src/core/checker.f) are region code: every call site flips
+\ the region RX around the BLR and back to RW before any further emission,
+\ exactly like the immediate-word path in EM-COMPILE-CALL. Locals widths come
+\ from the bind-sequence table (checker LOCW-HW), replayed by the carve in the
+\ same textual bind order the checker recorded (habu-tfam-12-pass): the live
+\ LOCW table is popped/slot-reused at branch joins, so live-index reads after
+\ the verdict would skew (die 76 or a sibling arm's width).
+variable LWFWIDE  variable LWFWAT
+variable LP2CARVW  variable LP2LIVEW  variable LP2LIVEC  variable LP2SEQRST
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
 variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
@@ -2283,15 +2289,21 @@ variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable 
    9 DATA P2TOKIX-CELL LDR,  9 9 1 ADDI,  9 DATA P2TOKIX-CELL STR,
    nop2 LBL, ;
 
-: EM-P2-QUERY-LOCW ( -- )          \ emit: x10 := locw@( [SP+0] ); caller holds the RX window
-   9 SP 0 LDR,  9 G-PUSH
-   LLOCWQ 5 C-FIND-GLOBAL
+: EM-P2-CARVE-W ( -- )             \ emit: x10 := p2-carve-w( [SP+0] ); caller holds the RX window
+   9 SP 0 LDR,  9 G-PUSH             \ next bind seq's width, recorded as live local [SP+0]'s
+   LP2CARVW 10 C-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP ;
 
-: EM-P2-QUERY-LOCWCUM ( -- )       \ emit: x10 := locw-cum@( [SP+0] )
+: EM-P2-LIVE-W ( -- )              \ emit: x10 := p2-live-w@( [SP+0] )
    9 SP 0 LDR,  9 G-PUSH
-   LLOCWCUM 9 C-FIND-GLOBAL
+   LP2LIVEW 10 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-LIVE-CUM ( -- )            \ emit: x10 := p2-live-cum@( [SP+0] )
+   9 SP 0 LDR,  9 G-PUSH
+   LP2LIVEC 12 C-FIND-GLOBAL
    C-CALL-X11-SAVED
    10 G-POP ;
 
@@ -2301,9 +2313,12 @@ variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable 
 
 \ pass-2 locals carve: each local occupies its logical width in frame cells,
 \ packed from the frame top downward in declaration order (base cell of local i
-\ = LOCF/8 - locw-cum@(i)); the scalar case reproduces the pass-1 slot formula
-\ LOCF/8-1-i exactly. Capture pops each local's cells tag-first (stack order),
-\ bottom cell landing at its base slot, so a reference re-pushes ascending.
+\ = LOCF/8 - p2-live-cum@(i)); the scalar case reproduces the pass-1 slot
+\ formula LOCF/8-1-i exactly. Capture pops each local's cells tag-first (stack
+\ order), bottom cell landing at its base slot, so a reference re-pushes
+\ ascending. The width pass (ql loop) consumes one bind seq per group local
+\ (p2-carve-w), filling the checker-hosted live table the placement pass (pl
+\ loop) and EM-P2-LOCREF read back by live index.
 : EM-P2-CARVE ( -- )
    LBL LBL LBL LBL LBL LBL LBL {: ql:label qd:label pl:label pd:label jl:label jd:label sok:label :}
    SP SP 32 SUBI,
@@ -2312,7 +2327,7 @@ variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable 
    2 5 MOVZ,  LPROT LABEL@ BL,
    ql LBL,
       9 SP 0 LDR,  10 DATA LOCN-CELL LDR,  9 10 CMP,  C-GE qd BCOND,
-      EM-P2-QUERY-LOCW
+      EM-P2-CARVE-W
       9 SP 8 LDR,  9 9 10 ADD,  9 SP 8 STR,
       9 SP 0 LDR,  9 9 1 ADDI,  9 SP 0 STR,
       ql B,
@@ -2325,8 +2340,8 @@ variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable 
    pl LBL,
       9 SP 0 LDR,  10 DATA P2LOC0-CELL LDR,  9 10 CMP,  C-LT pd BCOND,
       2 5 MOVZ,  LPROT LABEL@ BL,
-      EM-P2-QUERY-LOCW  10 SP 8 STR,                  \ w
-      EM-P2-QUERY-LOCWCUM  10 SP 16 STR,              \ cum
+      EM-P2-LIVE-W  10 SP 8 STR,                      \ w
+      EM-P2-LIVE-CUM  10 SP 16 STR,                   \ cum
       2 3 MOVZ,  LPROT LABEL@ BL,
       12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
       10 SP 16 LDR,  12 12 10 SUB,                    \ x12 = base slot
@@ -2356,8 +2371,8 @@ variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable 
    SP SP 32 SUBI,
    0 SP 0 STR,                                        \ idx from LLOC-FIND
    2 5 MOVZ,  LPROT LABEL@ BL,
-   EM-P2-QUERY-LOCW  10 SP 8 STR,                     \ w
-   EM-P2-QUERY-LOCWCUM  10 SP 16 STR,                 \ cum
+   EM-P2-LIVE-W  10 SP 8 STR,                         \ w
+   EM-P2-LIVE-CUM  10 SP 16 STR,                      \ cum
    2 3 MOVZ,  LPROT LABEL@ BL,
    LVSPILL LABEL@ BL,
    12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
@@ -3578,8 +3593,10 @@ s" em-compile-ret" s" --" TRUST
 : EMIT-P2KW ( -- )
    LWFWIDE LABEL@ LBL,  s" wf-wide?" BYTES,
    LWFWAT LABEL@ LBL,   s" wf-w-at" BYTES,
-   LLOCWQ LABEL@ LBL,   s" locw@" BYTES,
-   LLOCWCUM LABEL@ LBL, s" locw-cum@" BYTES,
+   LP2CARVW LABEL@ LBL,  s" p2-carve-w" BYTES,
+   LP2LIVEW LABEL@ LBL,  s" p2-live-w@" BYTES,
+   LP2LIVEC LABEL@ LBL,  s" p2-live-cum@" BYTES,
+   LP2SEQRST LABEL@ LBL, s" p2-locseq-reset" BYTES,
    LKWTUCK3 LABEL@ LBL,   s" tuck" BYTES,   LKWROT3 LABEL@ LBL,   s" rot" BYTES,
    LKWMROT3 LABEL@ LBL,   s" -rot" BYTES,   LKW2DUP3 LABEL@ LBL,  s" 2dup" BYTES,
    LKW2DROP3 LABEL@ LBL,  s" 2drop" BYTES,  LKW2SWAP3 LABEL@ LBL, s" 2swap" BYTES,
@@ -3744,10 +3761,12 @@ s" em-compile-p2wide" s" --" TRUST
 s" em-p2-start" s" --" TRUST
 
 \ EM-P2-TRIGGER: emitted right after the publish path's hook call certifies a
-\ definition. Pass 1 with any wider-than-cell width fact -> enter the pass-2
-\ re-run (wide facts inside a does> split body fail closed: the two-phase body
-\ check indexes tokens differently, so a width-aware re-run cannot align).
-\ Pass 2 (the re-run's own ';') falls through to the normal publish.
+\ definition. Pass 1 with any wider-than-cell width fact -> reset the locals
+\ bind-sequence cursor (the pass-2 carve replays the checker's bind order from
+\ seq 0) and enter the pass-2 re-run (wide facts inside a does> split body fail
+\ closed: the two-phase body check indexes tokens differently, so a width-aware
+\ re-run cannot align). Pass 2 (the re-run's own ';') falls through to the
+\ normal publish.
 : EM-P2-TRIGGER ( -- )
    LBL LBL {: nowide:label p2ok:label :}
    9 DATA P2-CELL LDR,  9 nowide CBNZ,
@@ -3758,6 +3777,8 @@ s" em-p2-start" s" --" TRUST
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 $4B MOVZ,  NR-EXIT-GROUP SYS,
    p2ok LBL,
+   LP2SEQRST 15 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
    EM-P2-START
    LMAIN LABEL@ B,
    nowide LBL, ;
@@ -4300,7 +4321,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
 : EMIT-LABEL-P2 ( -- )
-   LBL LWFWIDE !  LBL LWFWAT !  LBL LLOCWQ !  LBL LLOCWCUM !
+   LBL LWFWIDE !  LBL LWFWAT !
+   LBL LP2CARVW !  LBL LP2LIVEW !  LBL LP2LIVEC !  LBL LP2SEQRST !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !

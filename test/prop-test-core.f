@@ -566,15 +566,18 @@ create AXBUF AXBUF-CAP allot
 \ (wf-n@ tfam-n@ sumv-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
 \ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
 \ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
-\ dies) are likewise difftested in AX-GEN-LIST; locw@/locw-cum@ carry the same
-\ 76-die index guard as wf-tokix@ (LOCW-IX-GUARD, checker.f) so they sit here.
+\ dies) are likewise difftested in AX-GEN-LIST; locw-hw@ carries the same
+\ 76-die index guard as wf-tokix@ (a dummy seq past LOCSEQ dies), and the
+\ pass-2 live-table words (p2-carve-w / p2-live-w@ / p2-live-cum@ /
+\ p2-locseq-reset, checker.f) read or mutate live pass-2 compile scratch
+\ (P2SEQ/P2LW), so they all sit here.
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
 \ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw@ locw-cum@ " ;
+   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
