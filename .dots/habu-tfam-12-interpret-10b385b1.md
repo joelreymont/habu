@@ -120,3 +120,22 @@ for the prim and the regression stand-in removal. Residual to keep dotted:
 `TRUST`-declared wide effects recorded AFTER a word was already
 interpret-executed, and raw-xt laundering (`find`/`search-wl` + `execute`)
 in fully unchecked code.
+
+## Audit vs tip db88a576 (2026-07-09)
+
+ENGINE half LANDED (confirmed in tip source; the copied `bin/hb` was stale and
+did NOT bake it — a fixpoint refresh was required for the seal/tail-process gate
+to go green): DNAME-WIDE dict flag + LFIND bit + `wide-mark`/BWIDEMARK + XREF-WIDE?
++ EM-INTERPRET-FIND/C-TICK LWIDE gate sharing LDIAGRET recovery + diagnostic
+`interpret-mode layout value` + stage0 mirror + S2/MK source-cap bump; regression
+test/gate-engine-lib.f GE-INTERP-LAYOUT (dup/drop/swap/tick legs rc 70 + guard
+leg) with the maker-self `wide-mark` STAND-IN at gate-engine-lib.f:460.
+
+CHECKER half OPEN: no marking in src/core/checker.f at the E-REC-START choke point;
+no pend-marking engine prim + PES row; the GE-INTERP-LAYOUT STAND-IN `wide-mark`
+line (gate-engine-lib.f:460) is still present and must be DELETED once the checker
+computes the flag (the dot's true acceptance). Prim-target subtlety from the note:
+`wide-mark` targets the NEWEST PUBLISHED record (ndict-1) but E-REC-START flows run
+in the PEND window before ndict++, so integration needs a pend-variant prim (mark
+index ndict) or a checker-set DATA cell consumed by the engine publish tail after
+ndict++.

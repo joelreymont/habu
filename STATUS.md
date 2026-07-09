@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-07-08
+Last verified: 2026-07-09
 Gate: passing; current tree is under active test-suite architecture work. Last
 measured persistent content-key hot run after removing top snapshot launchers,
 splitting AOT closure diagnostics from the maker path, collapsing the remaining

@@ -12,3 +12,34 @@ Constant follow-up (from TFAM 5 const-b89c90f0): native C-CONSTANT + verify-sour
 
 
 REMAINING after the 3b commit (checker flip + pass-2 width-aware lowering + snapshot format version): (1) constant shape-carry at the four value-pop sites (native C-CONSTANT habu2.f, verify-source RECORD-DEFINER?, PS-MAYBE-TRUST-DEFINER, CA-ADD-SUPPORT-CONSTANT) with the staged parity-fixture flips (CAE-TEST-CONST-CARRY, PST-TEST-CONST-CARRY, TD12-CONST) — separable value-pop change, own commit (3c); (2) interpret-mode wide values (top-level transports of layout values outside colon bodies) are REACHABLE TODAY via a TRUSTED boundary at the unchecked REPL and SILENTLY CORRUPT rather than failing closed: with `TRUSTED: MK ( -- pp<n,n> ) 7 9 ;`, top-level `MK dup . . .` prints `9 9 7` — the interpret-mode `dup` copies only the top (tag) cell of the 2-cell bundle instead of the whole group, and no reject/die fires (exit 0). This is NOT unreachable and is NOT waiting on items 8/9; it is its own capability gap, now tracked by dot habu-tfam-12-interpret-10b385b1 (interpret-mode width tagging or a top-level check hook so interpret-mode transports lower width-aware or fail closed); (3) does>-split bodies with wide facts currently FAIL CLOSED (named exit at the pass-2 trigger) — lift with a two-phase-aware token indexing or keep fail-closed with a checker-side reject; (4) the Gforth bootstrap mirror of the pass-2 lowering (bootstrap/cg/forth.fs + jit.fs) — no current gate exercises the bootstrap emitter (verified), tools/bootstrap.sh recovery is the exposure; (5) depth/.s logical-shape introspection (currently fail-closed reject over hidden-bearing rows); (6) committed snapshot doctored-trailer regression fixture needs a snapshot-test home (version bump itself proven by patched-image runs).
+
+## Audit vs tip db88a576 (2026-07-09)
+
+Baseline: the copied `bin/hb` was STALE vs tip `src/habu` (the interpret
+engine-half + seal-watermark commits were not baked in) -> `test/seal.f` and
+`test/gate-runner-entry-test.f` red (expected 83/64 got 0/77). A fixpoint
+`install --force` refresh made both green; tip source is green modulo the
+date-only `stale-status-lint` (STATUS.md Last-verified 07-08 vs today 07-09).
+No tip code defect.
+
+LANDED:
+- Sub-dot 12-interpret ENGINE half — DNAME-WIDE (habu1/habu2/xref/layout/stage2/
+  maker/bootstrap mirror), `wide-mark`/BWIDEMARK, XREF-WIDE?, LFIND bit,
+  EM-INTERPRET-FIND + C-TICK LWIDE/LDIAGRET gate, diagnostic
+  `interpret-mode layout value`, S2/MK source-cap bump, GE-INTERP-LAYOUT
+  regression with the maker-self `wide-mark` STAND-IN.
+
+OPEN:
+- REMAINING (1) const shape-carry (3c) — fixtures still in narrow/reject wiring:
+  CAE-TEST-CONST-LAYOUT active (expects 70), TD12-CONST expects 0, PST-MAIN runs
+  PST-TEST-CONST-LAYOUT; carry variants CAE-TEST-CONST-CARRY / PST-TEST-CONST-CARRY
+  staged but unwired. Value-pop sites: C-CONSTANT (habu2.f:1798), verify-source
+  RECORD-DEFINER? (:502), PS-MAYBE-TRUST-DEFINER (public-signatures-core.f:558),
+  CA-ADD-SUPPORT-CONSTANT.
+- REMAINING (2) interpret-mode wide values — CHECKER half OPEN (see 12-interpret
+  dot); engine half landed as above.
+- Sub-dot 12-pass (branch-scoped bundle locals) — OPEN: P2-BRANCH-LOCAL-GUARD
+  still at checker.f:6207 (+ render.f rows), no LOCW-HW/P2-LOCSEQ/P2LW,
+  TD12-BRLOC-* still rejected.
+- REMAINING (3) does>-split, (4) Gforth bootstrap mirror of pass-2, (5) depth/.s,
+  (6) snapshot doctored-trailer fixture home — all OPEN, untouched.
