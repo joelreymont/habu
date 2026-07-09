@@ -212,6 +212,11 @@ that source is explicitly certified; they are not stale-checked by the default
 | em-adt-con-fam | `--` | Emits the construct family-operand step: TFL bridge call, fail-closed unknown-family die, CMFAM/CMM state stores. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-pushes | `--` | Emits the construct pad/tag VS-constant pushes with frame-saved counters around LVPUSHC. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-adt-con-var | `--` | Emits the construct variant-operand step: TFL bridge call, fail-closed unknown-variant die, pad/tag emission, mode clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| c-die-bad-tag | `--` | Emits the MATCH invalid-tag die INLINE into the user word: a jump over the message, "hb: bad <family> tag\n" copied inline (the name bytes travel with the word), then a self-contained write(2) + exit_group(E-BAD-TAG). | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-match-semi | `--` | Emits the MATCH `;match` tail: family-name bridge, inline invalid-tag die, ENDCASE-style join patch loop, match-frame pop, CMM clear. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-fam | `--` | Emits the MATCH family-operand step: signature-scope TFL bridge call, fail-closed unknown-family die, fam stored on the match-frame stack, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-var | `--` | Emits the MATCH variant-operand step (or routes `;match`): TFL bridge call, fail-closed unknown-variant die, pending tag/pads stash, CMM state store. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
+| em-adt-match-of | `--` | Emits the MATCH per-variant compare/branch/prologue (peek tag, cbz-skip, drop tag+pads), pushes the branch-kind marker, arms the branch body. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-compile-adt-mode | `--` | Emits the ADT-lowering mode dispatch (CMM-CELL) at the compile-dispatch head: construct operand states; MATCH states land in slice 3. | `test/run.f` | src/habu/habu2.f | 2026-07-09 |
 | em-compile | `--` | Chains the factored compile-mode dispatch, call, undefined, and exit emitters. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | emit-main | `--` | Allocates main-loop labels and chains EM-STARTUP/COMMENT/INTERPRET/COMPILE. | `test/run.f` | src/habu/habu2.f | 2026-06-25 |
@@ -699,7 +704,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 113
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 118
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
 src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6

@@ -601,6 +601,97 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" construct" 70 s" interpret construct fails closed" GE-UNCAUGHT-RUN
    s" PASS: construct lowers natively; interpret + foreign scope stay fail-closed" type cr ;
 
+\ item 10 slice 3: `MATCH family v OF ... ENDOF ... ;MATCH` LOWERS in the native
+\ compiler — peek tag / compare-branch chain / per-variant prologue (drop tag +
+\ M-p pads, expose the p payload cells) / ENDOF jump-to-join / ;MATCH join +
+\ invalid-tag die. The family gemt (one n / two n n / nil, M=2) is an arbitrary
+\ third sum, not result/option/color. The round-trip drives one/two/nil so the
+\ zero-, one-, and multi-payload prologues are all exercised and the payload cells
+\ arrive in order; a nested MATCH proves the token machine and the fam stack
+\ restore across ;MATCH. A forged tag (TRUSTED constructor with an out-of-range
+\ tag) reaches the die IN A CHILD PROCESS (a die exits the engine): rc E-BAD-TAG
+\ (85) + the inline "hb: bad gemt tag" diagnostic. Compile-time rejects
+\ (unknown variant / a token where OF was required) die fail-closed at their
+\ token, and interpret-mode MATCH stays E-UNDEFINED (compile-only keyword; the
+\ DNAME-WIDE gate owns the interpret surface).
+: GE-MATCH-EXEC-SRC ( -- )              \ shared matchable family (arbitrary third sum)
+   s" SUMTYPE gemt 0" GE-SRC-LINE
+   s"   VARIANT one n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT two n n ;VARIANT" GE-SRC-LINE
+   s"   VARIANT nil ;VARIANT" GE-SRC-LINE
+   s" ;SUMTYPE" GE-SRC-LINE ;
+
+: GE-MATCH-ROUND ( -- )                 \ construct+MATCH round-trip, each variant + payload
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : RN ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 999 ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : RP ( gemt -- ) MATCH gemt one OF . ENDOF two OF . . ENDOF nil OF 111 . ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GN ( -- ) 7 construct gemt one RN .  3 4 construct gemt two RN .  construct gemt nil RN . ;  GN" GE-SRC-LINE
+   s" : GP ( -- ) 5 construct gemt one RP  8 9 construct gemt two RP  construct gemt nil RP ;  GP" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" match lowering executes" GE-EXPECT-OK
+   SB-RESET
+   s" 7" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF  s" 999" SB-APPEND GE-SB-LF   \ RN one/two/nil
+   s" 5" SB-APPEND GE-SB-LF                                                          \ RP one payload
+   s" 9" SB-APPEND GE-SB-LF  s" 8" SB-APPEND GE-SB-LF                                \ RP two payload (top-first)
+   s" 111" SB-APPEND GE-SB-LF                                                        \ RP nil branch
+   SB$ s" match round-trip output" GE-EXPECT-OUT ;
+
+: GE-MATCH-NESTED ( -- )                \ MATCH nested inside a MATCH branch body
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : RNEST ( gemt -- n )" GE-SRC-LINE
+   s"    MATCH gemt" GE-SRC-LINE
+   s"      one OF construct gemt nil MATCH gemt one OF drop ENDOF two OF drop drop ENDOF nil OF ENDOF ;MATCH ENDOF" GE-SRC-LINE
+   s"      two OF + ENDOF" GE-SRC-LINE
+   s"      nil OF 0 ENDOF" GE-SRC-LINE
+   s"    ;MATCH ;" GE-SRC-LINE
+   s" : GO ( -- ) 7 construct gemt one RNEST .  3 4 construct gemt two RNEST .  construct gemt nil RNEST . ;  GO" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" nested match lowering executes" GE-EXPECT-OK
+   SB-RESET  s" 7" SB-APPEND GE-SB-LF  s" 7" SB-APPEND GE-SB-LF  s" 0" SB-APPEND GE-SB-LF
+   SB$ s" nested match output" GE-EXPECT-OUT ;
+
+: GE-MATCH-BAD-TAG ( -- )               \ forged tag dies E-BAD-TAG in a child process
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" TRUSTED: GE-FORGE ( -- gemt ) 0 0 5 ;" GE-SRC-LINE
+   s" : RN ( gemt -- n ) MATCH gemt one OF ENDOF two OF + ENDOF nil OF 0 ENDOF ;MATCH ;" GE-SRC-LINE
+   s" : GO ( -- ) GE-FORGE RN . ;  GO" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   85 s" forged tag dies with E-BAD-TAG" GE-EXPECT-RC
+   s" hb: bad gemt tag" s" bad-tag diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-BAD-VARIANT ( -- )           \ unknown variant dies at ITS token
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : Z ( gemt -- n ) MATCH gemt nope OF ENDOF ;MATCH ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" unknown match variant fails closed" GE-EXPECT-RC
+   s" hb: match: unknown variant: nope" s" match variant diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-EXPECTED-OF ( -- )           \ a variant not followed by OF dies fail-closed
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-MATCH-EXEC-SRC
+   s" : Z ( gemt -- n ) MATCH gemt one drop ;MATCH ;" GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 s" match expected-of fails closed" GE-EXPECT-RC
+   s" hb: match: expected of: drop" s" match expected-of diagnostic" GE-EXPECT-ERR-HAS ;
+
+: GE-MATCH-EXEC ( -- )
+   GE-MATCH-ROUND
+   GE-MATCH-NESTED
+   GE-MATCH-BAD-TAG
+   GE-MATCH-BAD-VARIANT
+   GE-MATCH-EXPECTED-OF
+   s" match" 70 s" interpret match fails closed" GE-UNCAUGHT-RUN
+   s" PASS: match lowers natively; forged tag dies E-BAD-TAG; interpret stays fail-closed" type cr ;
+
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):
 \ a tool closure needing more than DICT-CAP records died exit_group(77)
 \ writing only the CURRENT TOKEN to fd 2 - a lone ':' byte, label-free and
@@ -859,6 +950,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-UNCAUGHT-THROW
    GE-INTERP-LAYOUT
    GE-CONSTRUCT-EXEC
+   GE-MATCH-EXEC
    GE-DICT-FULL
    GE-DIV-MOD
    GE-PROCESS-PTY

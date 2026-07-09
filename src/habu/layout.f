@@ -79,6 +79,14 @@ FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN =
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 83 constant E-SEAL-VIOLATION            \ process exit status for a post-seal protected write
 84 constant E-SEAL-PACKAGE              \ exit status for a sealed system-package open/reopen from user source
+\ E-BAD-TAG: runtime exit status when a compiled MATCH reaches its invalid-tag
+\ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
+\ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
+\ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
+\ reaches it; a forged tag (TRUSTED constructor) exits deterministically with this
+\ code. 85 is free repo-wide (the fixed engine exits are 64/67/69/70/71/74/75/76/
+\ 77/78/83/84/127); it sits above the seal codes in the runtime-exit family.
+85 constant E-BAD-TAG
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (BTHROW
                                         \ THROW-NOREC): the raw code was exit_group'd and kernel-masked to
                                         \ 8 bits, so a multiple of 256 exited 0 silently - fail-open. 67 is
@@ -107,6 +115,25 @@ $A0 constant DEFER-XT-CELL
 \ and no covering ranged region (GTOD-SCRATCH is $1E0..$1F0; the seal suite's
 \ deliberate poke hole is $1A0 — left alone).
 $1B0 constant CMFAM-CELL
+\ MATCH-lowering compile state (TFAM 10 slice 3, docs §16). All DATA-relative
+\ (x20), in the reclaimed $B0..$1B0 free band above the friend arena ($20..$B0)
+\ and below CMFAM-CELL ($1B0) — rg-verified unused (the seal-suite poke hole $1A0
+\ is left alone; the fam stack tops out at $D0+CMFR-MAX*8 = $1A0). CMBK-CELL is a
+\ 64-bit branch-kind bitstack (J-OF pushes 0, EM-ADT-MATCH-OF pushes 1, J-ENDOF
+\ pops+checks) so ENDOF re-arms the match token machine (CMM=4) only for a MATCH
+\ variant branch, never a CASE arm or a nested case/match ENDOF — the compiler
+\ analogue of the checker's CF-ENDOF-DISPATCH frame-kind routing. CMTAG/CMPADS
+\ hold the pending variant (tag,M-p) between a variant token and its OF (never
+\ nested: no token falls between them). CMFR is the nesting fam stack indexed by
+\ CMFRD (match depth); a level's fam feeds later variant resolution and the
+\ ;MATCH bad-tag family-name die. Definition-scoped: CMFRD/CMBK cleared at
+\ colon/TRUSTED: entry and by EM-RESET-COMPILE-STATE alongside CMM-CELL.
+$B0 constant CMBK-CELL                  \ ENDOF branch-kind bitstack (0=case arm, 1=match branch)
+$B8 constant CMTAG-CELL                 \ pending MATCH variant tag (VAR -> OF)
+$C0 constant CMPADS-CELL                \ pending MATCH variant zero pads M-p (VAR -> OF)
+$C8 constant CMFRD-CELL                 \ MATCH nesting depth (0 = not in a match)
+$D0 constant CMFR-OFF                   \ MATCH fam stack base (one cell per open match)
+26 constant CMFR-MAX                    \ levels: $D0..$1A0 = 26 cells (checker caps CF frames at 30)
 $1B8 constant BODYLEN-CELL
 $1C0 constant RBASE-CELL
 $1C8 constant LOOPSP-CELL

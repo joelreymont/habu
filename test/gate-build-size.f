@@ -16,7 +16,11 @@
 \ LP2COPY/LP2ROT/LP2RS emit helpers, width-aware locals carve/reference, and
 \ the publish-path recompile trigger). The Linux row still holds the pre-3b
 \ value; the next Linux lane run fails closed with the measured size to commit.
-132343 constant GB-SIZE-BASELINE-MACOS
+\ 2026-07-09 macOS bump 132343 -> 148855: TFAM 10 slice 3a native MATCH lowering
+\ (habu2.f J-MATCH + EM-ADT-MATCH-FAM/VAR/OF + EM-MATCH-SEMI + the C-DIE-BAD-TAG
+\ inline invalid-tag die, plus the CMBK/CMFR match-frame state and the tfl-match-
+\ fam?/tfam-name$/bad-tag kwdata). Page-granular growth (same delta as slice 3b).
+148855 constant GB-SIZE-BASELINE-MACOS
 90304 constant GB-SIZE-BASELINE-LINUX
 
 0 constant GB-SIZE-OK

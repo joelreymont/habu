@@ -320,6 +320,55 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
      consumed operand (the central LBCAP sits downstream of ADT-MODE dispatch);
      (3) keep x11 clear of scratch around C-CALL-X11-SAVED; (4) bare `{: x:label :}`
      used directly with ADR/CBZ, never LABEL@.
+
+   **LANDED — COMMIT A (fable-tfam12, "TFAM 10 slice 3a: native MATCH lowering +
+   bad-tag die").** Native `habu2.f` only; `forth.fs` stays MATCH-undefined
+   (commit B). What shipped, and the refinements made vs the design above:
+   - **State (DATA cells, layout.f, reclaimed $B0..$1B0 band):** `CMBK-CELL`($B0)
+     branch-kind bitstack, `CMTAG`/`CMPADS`($B8/$C0) pending variant, `CMFRD`($C8)
+     match depth, `CMFR-OFF`($D0, CMFR-MAX=26 levels) fam nesting stack. All
+     cleared with CMM-CELL at colon/TRUSTED: entry + EM-RESET-COMPILE-STATE.
+   - **`endof` routing — implemented, contra the scout's "no routing" claim.** The
+     scout was right that J-ENDOF's *codegen* is byte-identical CASE/MATCH, but the
+     token machine MUST re-arm to CMM=4 after a match branch (mirrors the checker's
+     MATCH-ENDOF → MM=2). A single CMM cell + a **CMBK branch-kind bitstack** does
+     it correctly for ALL nesting (match-in-match, case-in-match, if-in-match):
+     J-OF pushes bit 0, EM-ADT-MATCH-OF pushes bit 1, J-ENDOF pops+checks (bit 1 →
+     CMM=4). This is the compiler analogue of CF-ENDOF-DISPATCH with no per-CF-frame
+     kind. J-OF/J-ENDOF gained only compile-time bookkeeping; emitted CASE bytes
+     unchanged (CASE fixtures + bootstrap/dispatch tests green).
+   - **Reused slice-1 TFL wrappers — no type-family.f change.** `tfl-match-fam?`
+     (signature scope), `tfl-cvar?` (→ tag pads ok), `tfam-name$` (die name) are all
+     existing checked words; slice 3a only registers `tfl-match-fam?`/`tfam-name$`
+     as C-FIND-GLOBAL bridges (LTFLMATCHFAM/LTFLNAME) + the "hb: bad "/" tag\n"
+     die spans (LBADTAGPFX/LBADTAGSFX). No `TFL-MFAM?` needed.
+   - **Invalid-tag path = write+exit ONLY (no pre-die drops).** `exit_group`
+     terminates, so docs §16's "drop tag / drop all payload slots" is unobservable
+     before the die and is elided — the compiled word stays minimal, the match-frame
+     stores only fam (26 levels of headroom vs the checker's ~15-deep CF cap). Docs
+     §16/§24 updated to record this.
+   - **C-DIE-BAD-TAG (the one un-derisked novelty) works first try.** C-SDQ-style
+     inline byte copy of "hb: bad <fam> tag\n" into the user word + a self-contained
+     write(2)+exit_group(E-BAD-TAG=85) built from per-OS `SYS-EMIT-WRITE/EXIT/SVC`
+     stencils baked in src/os/{macos,linux}/sys.f (the syscall reg/svc-imm are
+     platform ABI, so they live there). Family NAME BYTES copied inline (no TF-STR
+     pool pointer). E-BAD-TAG=85 defined in layout.f by the runtime-exit convention.
+   - **Battery (test/gate-engine-lib.f GE-MATCH-EXEC, wired into GE-RUNTIME-CHECKS):**
+     GE-MATCH-ROUND (construct+MATCH round-trip, zero/one/multi payload, exact
+     stdout, payload cells arrive in order), GE-MATCH-NESTED (match-in-match),
+     GE-MATCH-BAD-TAG (forged-tag TRUSTED ctor → child dies rc 85 + "hb: bad gemt
+     tag"), GE-MATCH-BAD-VARIANT + GE-MATCH-EXPECTED-OF (named rc-70 dies), interpret
+     MATCH → E-UNDEFINED. Family `gemt` = arbitrary third sum. CASE fixtures stay
+     green; construct interpret pin unchanged.
+   - **TRUSTED.md:** +5 manifest rows (c-die-bad-tag, em-match-semi, em-adt-match-
+     fam/-var/-of); habu2.f builder-emit classification count 113→118. Size ratchet
+     `test/gate-build-size.f` macOS 132343→148855 (page-granular, same delta as
+     slice 3b). No new prims (census unchanged).
+   - **Proofs:** byte-identical fixpoint ×2 (`install --force`,
+     sha256 70b6790f… both, size 148855). FULL gate rc=0 "PASS: native test suite
+     (fixpoint + engine suite + checked hb + repl + hb-build) (10376ms <= 40000ms
+     budget)". Six type suites ok; maki/test.f `test: ok`; typed-local-diff-lint on
+     the diff clean. Deferred to slice 3b: the `forth.fs` mirror.
 4. **Gforth-recovered parity.** Build via bootstrap.sh; run the slice-2/3
    fixtures on the recovered candidate; assert identical construct/match/bad-tag
    behavior. Confirm forth.fs EMIT-KWDATA + any engine-referenced J-* mirror

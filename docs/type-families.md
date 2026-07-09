@@ -1087,6 +1087,24 @@ drop all payload slots
 die "bad <family> tag"
 ```
 
+**LANDED (native, item 10 slice 3a).** The compiler (`src/habu/habu2.f`) lowers
+`MATCH family v OF … ENDOF … ;MATCH` exactly as above: `J-MATCH` (via `CF-ENTRY`,
+which spills the width-expanded bundle to the physical stack) arms the token
+machine and pushes a `J-CASE`-shape CF sentinel; `EM-ADT-MATCH-FAM/VAR/OF`
+consume the family/variant/`of` operands (resolving through the checker-friend
+`tfl-match-fam?`/`tfl-cvar?` bridges) and emit the peek-tag compare/branch chain
++ per-variant prologue (drop tag + `M-p` pads, expose the `p` payload cells);
+`ENDOF` reuses the CASE `J-ENDOF` codegen and re-arms the token machine only for a
+match branch (a CMBK branch-kind bitstack, the compiler analogue of the checker's
+`CF-ENDOF-DISPATCH`); `EM-MATCH-SEMI` emits the invalid-tag die then patches every
+`ENDOF` jump to the join with a `J-ENDCASE`-style loop. The die is emitted
+write+exit only (`C-DIE-BAD-TAG`): because `exit_group` terminates the process, the
+`drop tag / drop all payload slots` above are unobservable before the exit and are
+elided, keeping the compiled word minimal — the diagnostic and the `E-BAD-TAG`
+(85) exit are the observable contract (see §24). The `bootstrap/cg/forth.fs` stage0
+mirror lands in slice 3b; until then stage0 keeps `MATCH` undefined (fail-closed),
+a sound intermediate state since the native fixpoint owns lowering.
+
 ---
 
 ## 17. Layout-aware generic stack operations
@@ -1584,6 +1602,15 @@ declaration order), `E-MATCH-STRAY`, `E-MATCH-UNTERMINATED`, `E-MATCH-DEPTH`,
 `E-CONSTRUCT-UNKNOWN-VARIANT`, `E-CONSTRUCT-UNTERMINATED`. Each carries a
 repair class and suggestion through the standard diagnostic JSON, so repair
 packets consume them with no schema change.
+
+The `MATCH` reject codes above are compile/check-time. The one *runtime* ADT
+diagnostic is the compiled invalid-tag fallback (item 10 slice 3): every lowered
+`MATCH` ends with a self-contained die that a well-typed scrutinee never reaches.
+A forged tag (only reachable through a `TRUSTED:` constructor that fabricates an
+out-of-range tag) writes `hb: bad <family> tag\n` to fd 2 with the family name
+copied INLINE into the compiled word — never a live pointer into the growable,
+relocatable `TF-STR` pool — and exits `E-BAD-TAG` (process exit status 85,
+`src/habu/layout.f`). There is no normal continuation past the die.
 
 Top-level declaration diagnostics are not fake word-definition diagnostics. A
 bad `SUMTYPE` or `TYPEFAMILY` reports a declaration-shaped packet with its source

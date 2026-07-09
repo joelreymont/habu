@@ -128,6 +128,9 @@ variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-e
 33 constant WIDEMSG-LEN   \ byte length of "hb: interpret-mode layout value: " (LWIDEMSG)
 31 constant CONFMSG-LEN   \ byte length of "hb: construct: unknown family: " (EM-COMPILE-ADT-MODE)
 32 constant CONVMSG-LEN   \ byte length of "hb: construct: unknown variant: " (EM-COMPILE-ADT-MODE)
+27 constant MFAMMSG-LEN   \ byte length of "hb: match: unknown family: " (EM-ADT-MATCH-FAM)
+28 constant MVARMSG-LEN   \ byte length of "hb: match: unknown variant: " (EM-ADT-MATCH-VAR)
+24 constant MOFMSG-LEN    \ byte length of "hb: match: expected of: " (EM-ADT-MATCH-OF)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
@@ -965,6 +968,7 @@ create SEMIQ-KW 59 c, 93 c,     \ ;]
 variable LREAD  variable LRBYE  variable LRDIE  variable LRREC  variable LQNL  variable LOKS
 create QNL-KW 63 c, 10 c,
 create OKS-KW 32 c, 111 c, 107 c, 10 c,
+create BADTAG-SFX-KW 32 c, 116 c, 97 c, 103 c, 10 c,   \ " tag\n" for the MATCH bad-tag die
 create TICK-KW   39 c,
 create BTICK-KW  91 c, 39 c, 93 c,
 create LBRACE-KW 123 c, 58 c,
@@ -978,6 +982,8 @@ variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB  variab
 \ wires the eliminator states — those tokens still fail closed as undefined.
 variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
+variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
+variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1027,6 +1033,8 @@ create RESTAB-BUF
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
+   LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
+   LBADTAGPFX LABEL@ LBL, s" hb: bad " BYTES,  LBADTAGSFX LABEL@ LBL, BADTAG-SFX-KW 5 BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1063,7 +1071,22 @@ create RESTAB-BUF
 : J-CONSTRUCT ( -- )
    12 1 MOVZ,  12 DATA CMM-CELL STR, ;
 
+\ match keyword (TFAM 10 slice 3, docs §16): CF-ENTRY spills the width-expanded
+\ scrutinee bundle to the physical stack first, then J-MATCH pushes a CF sentinel
+\ (x9=0, J-CASE shape, so ;MATCH's J-ENDCASE-style join loop stops at it), opens a
+\ match-frame nesting level (the family id is filled at the family token), and
+\ arms CMM=3 (want family). No emission — the bundle is already spilled and each
+\ OF peeks the tag in place.
+: J-MATCH ( -- )
+   9 0 MOVZ,  LCFPUSH LABEL@ BL,
+   9 DATA CMFRD-CELL LDR,  9 9 1 ADDI,  9 DATA CMFRD-CELL STR,
+   12 3 MOVZ,  12 DATA CMM-CELL STR, ;
+
+\ J-OF pushes a CASE-arm marker (bit 0) onto the CMBK branch-kind bitstack so the
+\ shared J-ENDOF can tell a CASE arm from a MATCH variant branch (which pushes a 1
+\ in EM-ADT-MATCH-OF). The emitted CASE compare/branch code is unchanged.
 : J-OF ( -- )
+   14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 DATA CMBK-CELL STR,
    C-POP-X16
    $F85F8269 C-EMITW
    $EB10013F C-EMITW
@@ -1072,8 +1095,16 @@ create RESTAB-BUF
    $B4000009 C-EMITW
    $D1002273 C-EMITW ;
 
+\ J-ENDOF: identical branch-placeholder codegen for CASE and MATCH (= J-ELSE);
+\ then pop the CMBK branch-kind bit — a MATCH variant branch (1) re-arms the token
+\ machine to CMM=4 (want variant-or-;match), a CASE arm or nested case/match ENDOF
+\ (0) leaves CMM untouched. This is the compiler analogue of the checker's
+\ CF-ENDOF-DISPATCH frame-kind routing, with no per-frame kind on the CF stack.
 : J-ENDOF ( -- )
-   J-ELSE ;
+   LBL {: nm:label :}
+   J-ELSE
+   14 DATA CMBK-CELL LDR,  15 14 1 ANDI,  14 14 1 LSRI,  14 DATA CMBK-CELL STR,
+   15 nm CBZ,  12 4 MOVZ,  12 DATA CMM-CELL STR,  nm LBL, ;
 
 : J-ENDCASE ( -- )
    LBL LBL {: cloop:label done:label :}
@@ -1913,7 +1944,7 @@ s" c-store-def-name" s" --" TRUST
    CP 9 0 STR,
    5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
    12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-   12 DATA CMM-CELL STR,
+   12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
    C-CLEAR-TRUSTED-STATE
    12 1 MOVZ,  12 DATA TRUSTED-CELL STR,
    C-PARSE-TRUST-SIG
@@ -3284,7 +3315,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       CP 9 0 STR,
       5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
       12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
-      12 DATA CMM-CELL STR,
+      12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
       C-CLEAR-TRUSTED-STATE
       C-COLON-MAYBE-SIG
          9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,          \ pass-2 DP watermark
@@ -3958,7 +3989,8 @@ s" em-compile-semi" s" label --" TRUST
    s" of" KEEP? IF LMAIN LABEL@ LKWOF 2 ['] J-OF CF-ENTRY THEN
    s" endof" KEEP? IF LMAIN LABEL@ LKWENDOF 5 ['] J-ENDOF CF-ENTRY THEN
    s" endcase" KEEP? IF LMAIN LABEL@ LKWENDCASE 7 ['] J-ENDCASE CF-ENTRY THEN
-   s" construct" KEEP? IF LMAIN LABEL@ LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY THEN ;
+   s" construct" KEEP? IF LMAIN LABEL@ LKWCONSTRUCT 9 ['] J-CONSTRUCT CFN-ENTRY THEN
+   s" match" KEEP? IF LMAIN LABEL@ LKWMATCH 5 ['] J-MATCH CF-ENTRY THEN ;
 s" em-compile-control-keywords" s" --" TRUST
 
 : EM-COMPILE-STRING-KEYWORDS ( -- )
@@ -4094,6 +4126,7 @@ s" em-compile-call" s" --" TRUST
    9 DATA LVD-CELL STR,  9 DATA VSP-CELL STR,  9 DATA QPATCH-CELL STR,
    9 DATA LOCN-CELL STR,  9 DATA BODYLEN-CELL STR,  9 DATA EXITH-CELL STR,
    9 DATA PEND-CELL STR,  9 DATA CMM-CELL STR,
+   9 DATA CMFRD-CELL STR,  9 DATA CMBK-CELL STR,
    9 0 MOVZ,
    9 DATA TSIG-A-CELL STR,   9 DATA TSIG-U-CELL STR,
    9 DATA TCSIG-A-CELL STR,  9 DATA TCSIG-U-CELL STR,
@@ -4347,19 +4380,171 @@ s" em-adt-con-pushes" s" --" TRUST
    LMAIN LABEL@ B, ;
 s" em-adt-con-var" s" --" TRUST
 
-\ EM-COMPILE-ADT-MODE (TFAM 10 slices 1-2): fail-closed head of the compile
-\ dispatch. CMM-CELL mirrors the checker's construct token machine; J-CONSTRUCT
-\ arms it at the `construct` keyword and the operand tokens are consumed HERE —
-\ before the semi/local/keyword/literal/call/undefined path — so captured
-\ family/variant tokens never reach dictionary lookup (the checker's capture
-\ discipline). Slice 3 extends the dispatch with the MATCH states.
+\ MATCH lowering legs (TFAM 10 slice 3, docs §16). CMM=3/4/5 continue the token
+\ machine J-MATCH armed at `match`: 3 = want family, 4 = want variant-or-`;match`,
+\ 5 = want `of`. Like the construct legs each opens an RX window (LPROT 5) only
+\ around the checker-friend bridge call (the bridge targets are checker words
+\ compiled INTO the mid-body RW code region — a BLR from a writable page SIGBUSes
+\ under W^X) and flips back to RW (LPROT 3) before any emission; each LBCAPs its
+\ consumed operand so the checker body sees it (the keyword-phase LBCAP only sees
+\ `match`/`endof`); resolution failure dies fail-closed at ITS token, exit 70.
+\ The scrutinee is the width-expanded bundle spilled to the physical stack by
+\ J-MATCH's CF-ENTRY; each variant peeks the tag at [x19,#-8] in place.
+
+\ C-DIE-BAD-TAG ( x11=family-name-addr  x12=family-name-len -- )
+\   Emit the invalid-tag die INLINE into the user word with no normal
+\   continuation: a jump over the message, the message "hb: bad <family> tag\n"
+\   copied inline (the NAME BYTES travel with the word — never a live pointer into
+\   the mmap-relocatable TF-STR pool), then a self-contained write(2,msg,len) +
+\   exit_group(E-BAD-TAG). Modeled on C-DIE-TOKEN-NL's write/exit tail and C-SDQ's
+\   inline-byte copy, but every instruction is C-EMITW'd into the user code region
+\   (x28=CP), not the engine. Runs with the region RW. Clobbers x5-x16.
+: C-DIE-BAD-TAG ( -- )
+   LBL LBL LBL LBL LBL LBL {: p1:label p2:label s1:label s2:label t1:label t2:label :}
+   SP SP $20 SUBI,  11 SP 0 STR,  12 SP 8 STR,        \ frame name addr/len (loops clobber x11)
+   15 CP 0 ADDI,  15 SP 16 STR,                        \ B-over addr (patch target)
+   9 $14000000 LIT64,  LCEMIT LABEL@ BL,               \ emit B placeholder
+   16 CP 0 ADDI,  16 SP 24 STR,                        \ msg start addr
+   11 LBADTAGPFX LABEL@ ADR,  9 8 MOVZ,                \ copy "hb: bad " (8)
+   p1 LBL,  9 p2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  p1 B,
+   p2 LBL,
+   11 SP 0 LDR,  9 SP 8 LDR,                           \ copy family name
+   s1 LBL,  9 s2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  s1 B,
+   s2 LBL,
+   11 LBADTAGSFX LABEL@ ADR,  9 5 MOVZ,                \ copy " tag\n" (5)
+   t1 LBL,  9 t2 CBZ,  14 11 0 LDRB,  14 28 0 STRB,  28 28 1 ADDI,  11 11 1 ADDI,  9 9 1 SUBI,  t1 B,
+   t2 LBL,
+   28 28 3 ADDI,  5 -4 LIT64,  28 28 5 AND,            \ align CP to 4
+   9 SP 16 LDR,  LPAT LABEL@ BL,                       \ patch B-over -> past the bytes
+   $D2800040 C-EMITW                                   \ movz x0, #2  (fd)
+   11 SP 24 LDR,  5 11 28 SUB,  8 $10000001 LIT64,     \ adr x1, msg : d = msg - CP, Rd=x1
+      6 3 MOVZ,  7 5 6 AND,  7 7 29 LSLI,  8 8 7 ORR,
+      7 5 2 LSRI,  6 $7FFFF LIT64,  7 7 6 AND,  7 7 5 LSLI,  8 8 7 ORR,
+      9 8 0 ADDI,  LCEMIT LABEL@ BL,
+   14 SP 8 LDR,  14 14 13 ADDI,                        \ x14 = 8 + name-len + 5 = name-len + 13
+   9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
+   9 SYS-EMIT-WRITE LIT64,  LCEMIT LABEL@ BL,          \ movz x_sys, #NR-WRITE
+   SYS-EMIT-SVC C-EMITW                                \ svc
+   9 $D2800000 E-BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #E-BAD-TAG
+   9 SYS-EMIT-EXIT LIT64,  LCEMIT LABEL@ BL,           \ movz x_sys, #NR-EXIT-GROUP
+   SYS-EMIT-SVC C-EMITW                                \ svc
+   SP SP $20 ADDI, ;
+s" c-die-bad-tag" s" --" TRUST
+
+: EM-MATCH-SEMI ( -- )                  \ ;match: invalid-tag die + join + pop frame
+   LBL LBL {: jl:label jd:label :}
+   2 5 MOVZ,  LPROT LABEL@ BL,          \ region -> RX: checker-friend call window
+   LTFLNAME 10 C-FIND-GLOBAL
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,
+   9 G-PUSH                             \ top match-frame family id
+   C-CALL-X11-SAVED
+   12 G-POP                             \ family name length
+   11 G-POP                             \ family name address
+   SP SP 16 SUBI,  11 SP 0 STR,  12 SP 8 STR,    \ frame the name span across the RW flip
+   2 3 MOVZ,  LPROT LABEL@ BL,          \ region -> RW: emission
+   11 SP 0 LDR,  12 SP 8 LDR,  SP SP 16 ADDI,
+   C-DIE-BAD-TAG                        \ emit the inline bad-tag die (no continuation)
+   jl LBL,                              \ J-ENDCASE-style: patch every ENDOF B to the join
+      LCFPOP LABEL@ BL,
+      9 jd CBZ,
+      LPAT LABEL@ BL,
+      jl B,
+   jd LBL,
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 DATA CMFRD-CELL STR,   \ pop match-frame level
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   LMAIN LABEL@ B, ;
+s" em-match-semi" s" --" TRUST
+
+: EM-ADT-MATCH-FAM ( -- )               \ CMM=3: resolve match family (signature scope)
+   LBL LBL {: fmsg:label fok:label :}
+   LBCAP LABEL@ BL,
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   LTFLMATCHFAM 14 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP                             \ ok flag
+   9 G-POP                              \ family id
+   10 fok CBNZ,
+      0 2 MOVZ,  1 fmsg ADR,  2 MFAMMSG-LEN MOVZ,  NR-WRITE SYS,
+      70 C-DIE-TOKEN-NL
+   fmsg LBL,  s" hb: match: unknown family: " BYTES,
+   fok LBL,
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 STR,
+   12 4 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   LMAIN LABEL@ B, ;
+s" em-adt-match-fam" s" --" TRUST
+
+: EM-ADT-MATCH-VAR ( -- )               \ CMM=4: ;match -> semi, else resolve variant
+   LBL LBL LBL {: notsemi:label vmsg:label vok:label :}
+   LBCAP LABEL@ BL,
+   0 LKWSEMIMATCH LABEL@ ADR,  1 6 MOVZ,  LKWCMP LABEL@ BL,
+   0 notsemi CBZ,
+      EM-MATCH-SEMI
+   notsemi LBL,
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   LTFLCVAR 9 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   14 DATA CMFRD-CELL LDR,  14 14 1 SUBI,  14 14 3 LSLI,  14 14 CMFR-OFF ADDI,  15 DATA 14 ADD,  9 15 0 LDR,  9 G-PUSH
+   C-CALL-X11-SAVED
+   10 G-POP                             \ ok flag
+   12 G-POP                             \ pads (M-p)
+   13 G-POP                             \ tag
+   10 vok CBNZ,
+      0 2 MOVZ,  1 vmsg ADR,  2 MVARMSG-LEN MOVZ,  NR-WRITE SYS,
+      70 C-DIE-TOKEN-NL
+   vmsg LBL,  s" hb: match: unknown variant: " BYTES,
+   vok LBL,
+   13 DATA CMTAG-CELL STR,
+   12 DATA CMPADS-CELL STR,
+   12 5 MOVZ,  12 DATA CMM-CELL STR,
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   LMAIN LABEL@ B, ;
+s" em-adt-match-var" s" --" TRUST
+
+: EM-ADT-MATCH-OF ( -- )                \ CMM=5: require `of`, emit compare + prologue
+   LBL LBL {: emsg:label eok:label :}
+   LBCAP LABEL@ BL,
+   0 LKWOF LABEL@ ADR,  1 2 MOVZ,  LKWCMP LABEL@ BL,
+   0 eok CBNZ,
+      0 2 MOVZ,  1 emsg ADR,  2 MOFMSG-LEN MOVZ,  NR-WRITE SYS,
+      70 C-DIE-TOKEN-NL
+   emsg LBL,  s" hb: match: expected of: " BYTES,
+   eok LBL,
+   14 DATA CMTAG-CELL LDR,
+   9 C-CALL-MOVZ-X16 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x16, #tag
+   $F85F8269 C-EMITW                    \ ldur x9,[x19,#-8]  peek tag
+   $EB10013F C-EMITW                    \ cmp x9,x16
+   $9A9F17E9 C-EMITW                    \ cset x9,eq
+   C-PUSHCP
+   $B4000009 C-EMITW                    \ cbz x9,+0  (skip to next variant if no match)
+   14 DATA CMPADS-CELL LDR,  14 14 1 ADDI,  14 14 3 LSLI,
+   9 $D1000273 LIT64,  14 14 10 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#(8*(1+pads))
+   14 DATA CMBK-CELL LDR,  14 14 1 LSLI,  14 14 1 ORRI,  14 DATA CMBK-CELL STR,   \ push match-branch marker (1)
+   12 0 MOVZ,  12 DATA CMM-CELL STR,
+   LMAIN LABEL@ B, ;
+s" em-adt-match-of" s" --" TRUST
+
+\ EM-COMPILE-ADT-MODE (TFAM 10 slices 1-3): fail-closed head of the compile
+\ dispatch. CMM-CELL mirrors the checker's construct+match token machine; the
+\ operand tokens are consumed HERE — before the semi/local/keyword/literal/call/
+\ undefined path — so captured family/variant/of/;match tokens never reach
+\ dictionary lookup (the checker's capture discipline). 1/2 = construct, 3/4/5 =
+\ match; each leg branches to LMAIN so the legs never fall into one another.
 : EM-COMPILE-ADT-MODE ( -- )
-   LBL LBL {: state2:label off:label :}
+   LBL LBL LBL LBL LBL {: s2:label s3:label s4:label s5:label off:label :}
    9 DATA CMM-CELL LDR,  9 off CBZ,
-   9 2 CMPI,  C-EQ state2 BCOND,
+   9 2 CMPI,  C-EQ s2 BCOND,
+   9 3 CMPI,  C-EQ s3 BCOND,
+   9 4 CMPI,  C-EQ s4 BCOND,
+   9 5 CMPI,  C-EQ s5 BCOND,
    EM-ADT-CON-FAM
-   state2 LBL,
-   EM-ADT-CON-VAR
+   s2 LBL,  EM-ADT-CON-VAR
+   s3 LBL,  EM-ADT-MATCH-FAM
+   s4 LBL,  EM-ADT-MATCH-VAR
+   s5 LBL,  EM-ADT-MATCH-OF
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
 
@@ -4430,7 +4615,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
-   LBL LTFLCONFAM !  LBL LTFLCVAR ! ;
+   LBL LTFLCONFAM !  LBL LTFLCVAR !
+   LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
