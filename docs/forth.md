@@ -769,9 +769,11 @@ end-package
   and an explicit OS allocation failure. If ordinary composition still hits
   capacity, fix the shared memory model and add a regression for the composed
   load.
-- **Missing convenience words are not bugs in the standard.** Habu currently lacks
-  words such as `pick`, `within`, and `0<>`; use variables, explicit increments,
-  or explicit comparisons (`0 = 0=` for nonzero).
+- **Missing convenience words are not bugs in the standard.** Core lacks `pick`
+  and `within`; use variables, explicit increments, or explicit comparisons. `0<>`
+  and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
+  `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
+  of re-deriving `0 0=` / `0 0= 0=` by hand.
 - **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
   can be checked, but audit rows must stay current and stale dates must fail lint.
 - **Typed pointer fields use cell indexes.** When a variable or record cell
