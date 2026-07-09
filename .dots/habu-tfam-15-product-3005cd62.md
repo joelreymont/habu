@@ -157,16 +157,6 @@ appears in the baked engine source (it does not).
   land WITH the constructor generation slice, when a PRODUCT-using file first
   needs them.
 
-## REMAINING SLICES (dotted / next)
-4. Constructor generation (k=0 no-tag) via engine PRODUCT word -> TDGEN no-tag
-   path; `: PKG:tail` publish+certify. PLUS the deferred verify-source/check-core/
-   PRIM-CHECKER-DEFPRODUCT (two-phase build). Positive+reject construction fixtures.
-5. Destructure `PKG:tail>` + per-field accessors `PKG:tail-fname` (hidden->logical
-   output coercion); by-value construct/destructure + linear-payload (item 11) fixtures.
-6. Docs: type-families.md §9.4 + effects.md distinguish PRODUCT (hidden) vs
-   VALUE-RECORD (touchable, compat verdict); refresh census-tfam-15 §0.
-7. PTX-IR migration follow-up dot (keep ptxir-node on VALUE-RECORD compat).
-
 ## ACCEPTANCE (PLAN:922-929 + Gate 17o:958-1021)
 existing value-record fixtures pass (kept, compat verdict); product fixtures cover
 by-value construct/destructure, hidden fields, logical rendering, package visibility,
@@ -174,3 +164,103 @@ linear payloads; reserved-name lint clean (bare FIELD reserved, distinct tokens 
 docs distinguish supported vs legacy; zero new trust rows; native fixpoint byte-identical;
 Gforth bootstrap reaches fixpoint; GE-CANDIDATE-SIZE-CHECK green; master advances only on
 exact-tree green.
+
+## LANDED (2026-07-10) — ITEM 15 COMPLETE
+
+Commits (bookmark maki-type-families, workspace .jj-ws/fable-tfam12):
+- `689c73de` (lyzvwsxy) TFAM 15: audit + slice plan (merged upstream pre-close).
+- `310f7e71` (ktosptyx) TFAM 15: PRODUCT ... ;PRODUCT grammar + registration
+  (merged upstream; slices 2+3: reservation + metadata grammar + decl fixtures).
+- `1c0b17f6` (wwokwmtr) TFAM 15: product MAKE/UNMAKE generated words (slice 4a).
+- `60283696` (wossutyo) TFAM 15: preverify + check-tool product arms (slice 4b).
+- `035953ad` (zlkrxkkz) TFAM 15: docs - product surface + VREC compat verdict (slice 6).
+- (this commit) TFAM 15: close dot — ledger.
+
+What landed in `1c0b17f6` (5 files, +191/-7):
+- src/core/sumtype.f: TDECL-PRODUCT-ROWS (two generator-owned SUMV rows `make`/
+  `unmake` sharing the field-schema range, var-range + TDECL-CTOR-PUBLISH reuse);
+  TDECL-PROD-WORD/TDECL-PROD-WORDS (render `: PKG:MAKE ( fields -- fam<..> ) ;`
+  and `: PKG:UNMAKE ( fam<..> -- fields ) ;`, EMPTY bodies, k=0 CTOR-PEND
+  window, CHECKER-RECORD-SYM into SV.CTOR-SYM); TDECL-CTOR-WORDS product branch;
+  PRODUCT definer now calls TDECL-CTOR-WORDS.
+- src/core/checker.f: `PRIM: CHECKER-DEFPRODUCT` (staged-landing enabler: bakes
+  tool-source visibility so slice 4b compiles in ONE refresh from this commit's
+  binary; prim-axiom census auto-classifies the `checker-` prefix NOEXEC).
+- test/type-ctor-suite.f (+106): metadata rows/pkg/syms; checked MAKE/UNMAKE
+  compositions; RUNTIME round-trips (ZPT-RT 3 4 -> 4,3; parametric ZPR-RT);
+  user accessor compositions ZPT-X/ZPT-Y (UNMAKE + drop/nip) with runtime proof;
+  payload rejects PB1-PB4 (wrong count/type, raw-forge, raw-split); PB5 bundle
+  dup; PB6 construct kind-gate; ptr-field product; parametric MAKE/UNMAKE incl.
+  generic wrappers (LOGHID both directions, U-ROW checker.f:1160) + PP1/PP2
+  wrong-instantiation/cross-family rejects; PL1-PL3 linear fail-closed
+  (construction, transport, destructure); in-package public + private-exports-
+  nothing; E-CTOR-PROTECTED package-reopen/undefine with post-reject usability.
+- test/type-decl-suite.f (+9): tdpair generated-row metadata asserts.
+- test/type-match-suite.f (+10): GP1 MATCH-on-product E-MATCH-FAMILY-KIND, GP2
+  construct-on-product E-CONSTRUCT-FAMILY-KIND (products are kind-gated out of
+  both token forms).
+
+What landed in `60283696` (3 files, +163/-18):
+- src/habu/verify-source.f: PRODUCT-END? + RECORD-PRODUCT (metadata-only,
+  mirrors RECORD-SUMTYPE) + RECORD-DEFINER? dispatch arm.
+- tools/check-core.f: factored CHK-BLOCK-COLLECT (shared block-declaration
+  collector; CHK-SUM-REGISTER rewritten onto it, dead CHK-SUM-END? removed);
+  CHK-ENUM-REGISTER + CHK-PROD-REGISTER + CHK-NOM-STEP arms. The enum arm
+  closes the item-14 gap (an enum-declaring file failed the nominal pass).
+- tools/check-test-lib.f: CKT enum-good/enum-bad/product-good/product-bad
+  fixtures + CKT-TEST-PRODUCT-ALL-ERRORS (proves verify-source support replay
+  registers products: all-errors over PRODUCT + a using def -> rc 0).
+
+Design decisions (evidence in AUDIT above + docs/type-families.md 9.4):
+- Block form `PRODUCT ... ;PRODUCT` (docs 9.4 + 26, ;FOO convention); the dot's
+  END-PRODUCT wording was wrong.
+- FIELD-word "migration" discharged by proof of absence (census C1/C2): no bare
+  FIELD exists anywhere; FIELD+/HASH-FIELD/etc. are distinct exact tokens under
+  LINT-STR=CI; zero renames needed; reserved-name-lint green with `field`
+  reserved.
+- Generated surface = fixed tails PKG:MAKE/PKG:UNMAKE recorded as SUMV rows:
+  reuses the ENTIRE item-8 publish/protection stack (ctor-pkg derivation,
+  closed-but-callable WID wall, undefine guard, CTOR-SYM) with zero new
+  protection machinery. Canon rules out `PAIR>`-style tails (`>` is not a canon
+  tail byte); fixed generator-owned tails cannot collide with field names
+  (fields generate no words).
+- Destructure = UNMAKE under the same k=0 pending window (a product bundle IS
+  its field cells in slot order; both directions are checker-owned metadata
+  truth). No new checker machinery: parametric concrete-site calls ride the
+  existing symmetric LOGHID row coercion.
+- Per-field accessors are NOT generated: user compositions over UNMAKE
+  (`ZPT:UNMAKE drop`) are fully checked and make linear-field access rejects
+  automatic (effect taint on the dropped var). Fixture-proven at runtime.
+- MATCH/construct kind gates untouched (products reject in both, fixtured);
+  private products have no construction surface — documented fail-closed.
+- VALUE-RECORD verdict: typed COMPAT LAYER (docs 9.4 + effects.md C5 fix); the
+  touchable-vs-hidden fixture flip (census 3a/C4) decided it, and item 12 had
+  already established the reality (the field family is TK-CELL, exempt from
+  layout machinery).
+- PTX-IR migration NOT forced: pre-existing dot habu-switchover-wave-d-1fcdef69
+  updated with the R8 decision + landed-surface recipe; unblocked,
+  consumer-driven. (A freshly minted duplicate dot was removed in its favor.)
+- Rendering: product rejects render logical `rpt<>` (no @slot/field<> leak);
+  the empty `<>` on arity-0 is shared pre-existing renderer behavior (enum and
+  sum render identically) — parity, not an item-15 regression.
+
+Proof (native macOS, workspace bin/hb fixpoint
+sha256 320ca4c24b3734662a0da1fdf19a3a6ea4086fccd277ff4be5f2f821c98b88a9):
+- Byte-fixpoint x2 at BOTH engine slices (4a and 4b): rebuild byte-identical.
+- Staged landing proven live: 4a's binary compiles 4b's verify-source arm in
+  one refresh (the parent binary could not — E-UNDEFINED CHECKER-DEFPRODUCT —
+  which is why the PRIM row rides 4a). Two commits, each one-refresh buildable
+  from its parent's binary.
+- Full gate `bin/hb --load test/run.f` after 4a AND after 4b: rc=0 "PASS:
+  native test suite (fixpoint + engine suite + checked hb + repl + hb-build)".
+- Suites on the new engine: type-decl / type-ctor / type-match / type-family /
+  type-family-rollback all "ok"; check-test rc=0 "check-test: ok" (new CKT
+  product/enum/all-errors cases in the run).
+- maki/test.f rc=0 after both engine slices. typed-local-diff-lint rc=0 on both
+  diffs. host-lint 0 findings; filemap-lint 596 paths 0 findings; dot-dep-lint
+  0 findings. No new TRUST / TRUSTED: / set-check / TRUSTED.md rows.
+
+Remaining (tracked elsewhere, none blocking item 15):
+- habu-switchover-wave-d-1fcdef69: ptxir-node -> PRODUCT when a consumer needs
+  it (unblocked, recipe recorded).
+- PLAN item 16 (POLICY) is the campaign's next and final item (Gate 17p after).
