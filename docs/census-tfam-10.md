@@ -2,6 +2,22 @@
 
 Dot: `habu-tfam-10-native-9ef7cc53` (PLAN.md item 10, lines 751-818).
 
+> **LANDED (slice 5).** This census is the *pre-implementation* site map; its
+> `file:line` anchors describe the tree before slice 5 and are intentionally not
+> re-numbered (they document the seams that were changed, not the result). The
+> preseeded bad-tag object/AOT entry is implemented — see the dot's slice-5
+> LANDED note for the shipped mechanism and proofs. Key deltas vs the map below:
+> the capability is driver/library/tooling only (no engine source, byte-identical
+> fixpoint); the three-key lockstep is `HBB-PRESEED-CK+` folded into the artifact
+> key, the source-index key (via the source-closure hex), and a new `entry`
+> object schema row; the seeded entry is an `EMIT-ENTRY` stub baked at `CODE-OFF`
+> into the AOT `__text`, so the object-relink path carries it verbatim and the
+> **image entry stays at `CODE-OFF` — macho.f/elf.f/driver-io.f were not changed**
+> (a non-`CODE-OFF` image entry is only needed for a stubless design that cannot
+> seed value-stack cells; see the slice-5 note); and the AOT maker had to install
+> the constructor eval hook (`aot.f` `TDECL-EVAL-XT`) before any `SUMTYPE` source
+> could AOT-compile at all.
+
 Plan requirement (verbatim gist, lines 782-810): a test-only object/AOT entry
 seeds raw physical payload slots + an invalid tag, then calls a generated checked
 `MATCH` helper instead of the zero-argument `MAIN` path. Selected dictionary

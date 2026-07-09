@@ -1,6 +1,6 @@
 ---
 title: "TFAM 10: native+Gforth MATCH/constructor lowering + bad-tag proof"
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "\"2026-07-03T23:36:48.948255+02:00\""
@@ -518,6 +518,58 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    landed; docs/census-tfam-10.md; compiler-dispatch-test.f + bootstrap-codegen-
    test.f cover the new keywords and prove CASE shape unchanged; retire the
    fail-closed pin comments.
+
+   **LANDED (fable-tfam12, "Close TFAM 10: native+Gforth MATCH/constructor
+   lowering + bad-tag proof").**
+   - docs/type-families.md §16: retired the stale "stage0 mirror lands in slice
+     3b; until then stage0 keeps MATCH undefined (fail-closed)" intermediate-state
+     note — 3b landed byte-identical; added the slice-5 AOT/object persistence
+     summary + E-BAD-TAG restore contract.
+   - docs/census-tfam-10.md: LANDED banner at the top marking it the
+     pre-implementation site map (anchors intentionally not re-numbered), with the
+     key deltas (driver-only/byte-identical fixpoint; HBB-PRESEED-CK+ three-key
+     lockstep; entry stub at CODE-OFF so macho.f/elf.f/driver-io.f were not
+     changed; the ctor-eval-hook prerequisite).
+   - Shape tests now cover the MATCH keyword and prove CASE unchanged:
+     compiler-dispatch-test.f (`: J-MATCH`, `: EM-ADT-MATCH-FAM`, `: EM-MATCH-SEMI`,
+     `: C-DIE-BAD-TAG`, `LKWMATCH 5 ['] J-MATCH CF-ENTRY`) and
+     bootstrap-codegen-test.f (`: J-MATCH`, `: C-DIE-BAD-TAG`); both ok.
+   - Fail-closed pin cleanup: GE-CONSTRUCT-PENDING was already flipped in slice 2
+     (→ GE-CONSTRUCT-EXEC); no other TFAM-10 "pending/fail-closed" code pin
+     remained (rg-confirmed). The permanent contracts (interpret-mode
+     construct/MATCH stay E-UNDEFINED — compile-only keywords owned by the
+     DNAME-WIDE gate) are kept as-is, not pins.
+   - Proofs: compiler-dispatch-test ok; bootstrap-codegen-test ok; dot-dep-lint 0
+     findings; filemap-lint 0 findings.
+
+### Final ledger (slices 1-6)
+1. **Keyword data + lowering-metadata surface** — LANDED (slice 1): LKW* label
+   vars + EMIT-KWDATA rows + EMIT-LABEL-CONTROL (native + forth.fs), CMM mode
+   cell $27A8, EM-COMPILE-ADT-MODE guard, FORK-1A TFL-* checker-friend wrappers.
+2. **Construct lowering (native)** — LANDED (slice 2): J-CONSTRUCT + EM-ADT-CON-*,
+   GE-CONSTRUCT-PENDING flipped to GE-CONSTRUCT-EXEC round-trips; RW/RX window +
+   LBCAP engine facts.
+3. **MATCH/OF/ENDOF/;MATCH lowering + bad-tag die** — LANDED (slice 3a native /
+   3b Gforth mirror, byte-identical fixpoint): J-MATCH + EM-ADT-MATCH-FAM/VAR/OF
+   + EM-MATCH-SEMI, C-DIE-BAD-TAG inline "hb: bad <fam> tag" + E-BAD-TAG=85,
+   GE-MATCH-EXEC battery.
+4. **Gforth-recovered parity** — DISCHARGED (slice 3b proofs): bootstrap.sh
+   recovery reaches the byte-identical fixpoint; GE-MATCH/CONSTRUCT run on the
+   recovered binary, identical results.
+5. **AOT/object persistence of matched defs + bad-tag object entry** — LANDED
+   (slice 5): `--preseed-entry`/`--preseed-seed`, ctor-eval-hook prerequisite,
+   three-key lockstep (HBB-PRESEED-CK+), `entry` object schema row, seeded
+   EMIT-ENTRY at CODE-OFF, FINDMAIN entry selection, GAP-PRESEED test; rc 85 +
+   "hb: bad gemt tag" through a persisted-then-restored definition;
+   macho.f/elf.f/driver-io.f unchanged by design (stub at CODE-OFF).
+6. **Docs + census + pin cleanup** — LANDED (this commit, above).
+
+All acceptance clauses met: valid matches execute every branch (incl. an
+arbitrary third family `gemt`); the invalid-tag fixture dies deterministically
+rc 85 on native AND Gforth-recovered candidates; one-/wide-/zero-payload covered;
+byte-identical native fixpoint + Gforth bootstrap fixpoint; preseeded bad-tag
+object/AOT entry with entry identity in every cache key/schema/index and no
+cross-restore; no new ADT TRUST/TRUSTED:/set-check/manifest rows.
 
 ### Invariants to preserve (v1, do not weaken)
 width-expanded-bundle scrutinee only; construct is owner-only; MATCH family is

@@ -1101,9 +1101,15 @@ match branch (a CMBK branch-kind bitstack, the compiler analogue of the checker'
 write+exit only (`C-DIE-BAD-TAG`): because `exit_group` terminates the process, the
 `drop tag / drop all payload slots` above are unobservable before the exit and are
 elided, keeping the compiled word minimal — the diagnostic and the `E-BAD-TAG`
-(85) exit are the observable contract (see §24). The `bootstrap/cg/forth.fs` stage0
-mirror lands in slice 3b; until then stage0 keeps `MATCH` undefined (fail-closed),
-a sound intermediate state since the native fixpoint owns lowering.
+(85) exit are the observable contract (see §24). **The `bootstrap/cg/forth.fs`
+stage0 mirror landed in slice 3b** (byte-identical fixpoint from the
+Gforth-recovered engine), and slice 5 landed AOT/object persistence of matched
+definitions: `tools/hb-build.f --preseed-entry NAME --preseed-seed HEX` builds a
+selected non-`MAIN` entry that seeds a forged value-stack bundle before calling the
+matched helper, so the persisted-then-restored artifact reaches the same
+`E-BAD-TAG` die; the entry/seed/mode axis is folded into the artifact key, the
+object source-index key, and the object bytes (a new `entry` schema row) so a
+preseeded run can never restore a stale normal-`MAIN` artifact.
 
 ---
 
