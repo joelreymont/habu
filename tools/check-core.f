@@ -697,9 +697,6 @@ variable CHK-VREC-NAME-I
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-THROW ;
 
-: CHK-SUM-END? ( n -- bool )
-   s" ;SUMTYPE" CHK-TOK=CI ;
-
 variable CHK-TFAM-NAME-I
 
 : CHK-TFAM-DO-DEF ( -- )
@@ -737,22 +734,62 @@ variable CHK-TFAM-NAME-I
    CHK-DECL-FAIL
    k 3 + ;
 
-: CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
+\ shared block-declaration collector: name at k+1, body tokens buffered from
+\ k+2 to the end token. Returns the next scan index and true, or k and false
+\ when the input ends unterminated (caller reports its own terminator).
+: CHK-BLOCK-COLLECT ( n ptr u8 n -- n bool ) {: k:n ea:ptr eu:n :}
    k 1+ CHK-TFAM-NAME-I !
    CHK-VREC-RESET
    k 2 +
    begin dup L# @ < while
-      dup CHK-SUM-END? if
-         CHK-DECL-CAPTURE
-         [: CHK-SUM-DO-DEF ;] catch
-         CHK-DECL-FLUSH
-         CHK-DECL-FAIL
-         1+ exit
-      then
+      dup ea eu CHK-TOK=CI if 1+ LINT-TRUE exit then
       dup LEX-TOK CHK-VREC-TOKEN+
       1+
-   repeat
-   s" check.f: missing ;SUMTYPE" CHK-E-CHECK CHK-THROW ;
+   repeat drop k LINT-FALSE ;
+
+: CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
+   k s" ;SUMTYPE" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;SUMTYPE" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-SUM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
+\ ENUM/PRODUCT block declarations (items 14/15) register through the same
+\ collector so signature uses of the family later in the file resolve. The
+\ enum arm also closes the item-14 gap where an enum-declaring file failed
+\ the nominal pass with unknown-family rejects.
+: CHK-ENUM-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFENUM ;
+
+: CHK-PROD-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFPRODUCT ;
+
+: CHK-ENUM-REGISTER ( n -- n ) {: k:n :}   \ k at 'enum'; next scan index
+   k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-ENUM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
+: CHK-PROD-REGISTER ( n -- n ) {: k:n :}   \ k at 'product'; next scan index
+   k s" ;PRODUCT" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;PRODUCT" CHK-E-CHECK CHK-THROW
+   then {: nxt:n :}
+   CHK-DECL-CAPTURE
+   [: CHK-PROD-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
 
 : CHK-TOK-SEMI? ( n -- bool )
    s" ;" CHK-TOK=CI ;
@@ -785,6 +822,12 @@ variable CHK-TFAM-NAME-I
    then
    k s" SUMTYPE" CHK-TOK=CI if
       k CHK-SUM-REGISTER exit
+   then
+   k s" ENUM" CHK-TOK=CI if
+      k CHK-ENUM-REGISTER exit
+   then
+   k s" PRODUCT" CHK-TOK=CI if
+      k CHK-PROD-REGISTER exit
    then
    k 1 + ;
 

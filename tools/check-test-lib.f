@@ -298,6 +298,47 @@ variable CKT-PAR-U
    s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
+: CKT-ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
+   SB-RESET
+   s" ENUM eck red green ;ENUM" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-EN-PASS ( eck -- eck ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-ENUM-BAD$ ( -- ptr u8 n )    \ duplicate enum variant rejects fail-closed
+   SB-RESET
+   s" ENUM ebad red red ;ENUM" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-EBAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
+   SB-RESET
+   s" PRODUCT pck 0" SB-APPEND
+   $0a SB-APPEND-C
+   s"   FIELD x n" SB-APPEND
+   $0a SB-APPEND-C
+   s"   FIELD y n" SB-APPEND
+   $0a SB-APPEND-C
+   s" ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-PD-PASS ( pck -- pck ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-BAD$ ( -- ptr u8 n )    \ duplicate product field rejects fail-closed
+   SB-RESET
+   s" PRODUCT pbad 1 FIELD x a FIELD x a ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-PBAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: CKT-PROD-ALL$SRC ( -- ptr u8 n ) \ all-errors support replay registers products
+   SB-RESET
+   s" PRODUCT pae 0 FIELD v n ;PRODUCT" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-PAE-USE ( pae -- pae ) ;" SB-APPEND
+   SB$ ;
+
 : CKT-VREC-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
@@ -481,6 +522,38 @@ variable CKT-PAR-U
    outu 0 T=
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: CKT-TEST-ENUM-GOOD ( -- )
+   CKT-ENUM-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-ENUM-BAD ( -- )
+   CKT-ENUM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: CKT-TEST-PRODUCT-GOOD ( -- )
+   CKT-PROD-GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CKT-TEST-PRODUCT-BAD ( -- )
+   CKT-PROD-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" duplicate field" CONTAINS? TTRUE ;
+
+: CKT-TEST-PRODUCT-ALL-ERRORS ( -- )   \ verify-source support replay (RECORD-PRODUCT)
+   CKT-PROD-ALL$SRC CKT-CORE-JSON 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
 
 : CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
    CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
@@ -714,6 +787,11 @@ variable CKTP-DOC-U
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
+   s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
+   s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
+   s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN
+   s" check/product-bad" [: CKT-TEST-PRODUCT-BAD ;] CKT-RUN
+   s" check/product-all-errors" [: CKT-TEST-PRODUCT-ALL-ERRORS ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
