@@ -406,6 +406,32 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    fixtures on the recovered candidate; assert identical construct/match/bad-tag
    behavior. Confirm forth.fs EMIT-KWDATA + any engine-referenced J-* mirror
    compiles the engine to the byte-identical fixpoint.
+
+   **VERDICT: DISCHARGED by the slice-3b proofs (fable-tfam12, 2026-07-09) — no
+   new fixtures required.** Each acceptance clause, with evidence:
+   - *Build via bootstrap.sh:* `HABU_ALLOW_BOOTSTRAP=1
+     GFORTH=~/.local/bin/gforth tools/bootstrap.sh` rc=0
+     "bootstrap OK: bin/hb" (run twice: once on the 3b tree, once on the final
+     lint-touched tree). gforth-fast fails the locals probe — use the
+     ~/.local/bin/gforth install.
+   - *Byte-identical fixpoint:* recovered engine vs the native slice-3a
+     fixpoint: `cmp -l` = 0 differing bytes, sha256
+     70b6790feb6787f08bfee7737bd6750d3ed1db6ae3ee84042d3342b1249b4d00 both,
+     size 148855 — EMIT-KWDATA + every engine-referenced J-*/EM-* mirror
+     compiles the engine to the same fixpoint.
+   - *Slice-2/3 fixtures on the recovered candidate:* after bootstrap.sh
+     replaced bin/hb with the recovered binary, the FULL gate ran against it —
+     rc=0, including GE-CONSTRUCT-EXEC and GE-MATCH-EXEC (round-trips, nested
+     match, forged-tag child die, foreign-scope + interpret pins). Direct
+     probes on the recovered binary: match round-trip `7 7 999`, nested
+     `7 7 0`, forged tag rc=85 "hb: bad gecn tag" — identical to native.
+     Byte-identity makes candidate-vs-native divergence structurally
+     impossible; the runs above also prove it observationally.
+   - *Optional hardening (NOT required):* a standing recovery-lane gate hook
+     running GE-MATCH-EXEC on a freshly bootstrap.sh-recovered binary would
+     only re-guard what GE-BUILD-FIXPOINT's fixpoint-divergence tripwire
+     already fails on; it adds wall-clock cost, no new coverage. Revisit only
+     if a dedicated recovery CI lane lands.
 5. **AOT/object persistence of matched defs + bad-tag object entry.** PLAN item
    10 paths: lib/object*.f, aot-*.f, tools/object-image.f, driver-io.f. Add the
    test-only checked object/AOT entry that seeds raw payload+invalid-tag cells
@@ -414,6 +440,36 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    ABI/source digest) through artifact-cache key, object schema/index/cache, and
    restore keys so a stale MAIN object can't satisfy a preseeded bad-tag run. No
    new ADT TRUST/TRUSTED:/set-check/manifest rows (may reuse image-writer trust).
+
+   **STATUS: NOT STARTED — implementation-ready; needs a fresh session (verdict
+   fable-tfam12, 2026-07-09, coordinator-approved clean stop).** The complete
+   site map with file:line anchors is **docs/census-tfam-10.md** (committed;
+   verified current against this tree — no preseed/entry/testmode support
+   exists anywhere yet, rg-confirmed). Key facts for the implementer:
+   - Capability is net-new and CROSS-CUTTING with a lockstep invariant: the
+     artifact key (hb-build-lib.f:743-753), the object source-index key
+     (object-index.f:96-105 / object-resolve.f:27-45), and the object bytes
+     (HBB-BUILD-OBJECT-RECORD hb-build-lib.f:796-804, today hardwiring
+     `s" MAIN"` export+def) must all gain the entry/preseed/test-mode axis in
+     ONE commit or a restore fast-path serves a stale normal-MAIN artifact
+     (census § Categories 2-3, "insert axis summary").
+   - Narrowest seam: HBB-BUILD-OBJECT-RECORD — a new object schema row
+     (entry/seed/testmode; PARSE-LINE arm object.f:243-272 + emit word beside
+     EXPORT+/DEF+ object.f:377-381) changes the object bytes, so OBJ:KEY-HEX
+     and OBJSTORE diverge automatically (census § Summary).
+   - Engine-risk parts (the reason this needs fresh budget): the seeded-cell
+     EMIT-ENTRY prologue (aot-lib.f:159-166; push raw payload+bad-tag onto XDS
+     before the `bl` — same emitter crash class as slice 3), FINDMAIN →
+     selected-entry by record index/code addr not bare name
+     (aot-closure.f:110-111, 168-169; same-name hazard census § Category 6),
+     and the non-CODE-OFF image entry (macho.f:88-89/157 + the elf.f mirror +
+     driver-io.f — sites the original plan list OMITS, census § discrepancies).
+   - The runtime die the seeded entry must reach is ALREADY LANDED (slice 3):
+     rc E-BAD-TAG=85 + "hb: bad <fam> tag" emitted inline into every compiled
+     MATCH; the fixture only needs to build a MATCH helper via hb-build, seed
+     payload+forged-tag, run the artifact, and pin rc/stderr — plus the
+     negative cache-coherence leg (normal-MAIN build ≠ preseeded build,
+     bidirectional no-cross-restore).
 6. **Docs + census + pin cleanup.** docs/type-families.md §16 lowering marked
    landed; docs/census-tfam-10.md; compiler-dispatch-test.f + bootstrap-codegen-
    test.f cover the new keywords and prove CASE shape unchanged; retire the
