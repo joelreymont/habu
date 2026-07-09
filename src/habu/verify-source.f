@@ -512,10 +512,12 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
-   \ and public-signatures. A multi-cell layout-family value is thus narrowed to
-   \ `-- a` and any layout USE fails downstream. Sound rejection / shape-carrying
-   \ at the constant is width-aware interpret-mode work owned by TFAM 12
-   \ (habu-tfam-12-layout); parity locked by check-all-errors-test const-layout.
+   \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict
+   \ 2026-07-09, habu-tfam-12-layout): the interpret stack is untyped by
+   \ design, so no path has a sound shape source, and a wider-than-cell layout
+   \ value never lands there (DNAME-WIDE dispatch gate). Any layout USE of the
+   \ constant fails closed downstream; parity locked by check-all-errors-test
+   \ const-layout-narrow.
    a u s" constant" STR=CI IF s" -- a" TRUST-NEXT 0 0= EXIT THEN
    a u s" create" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN
    a u s" variable" STR=CI IF s" -- ptr a" TRUST-NEXT 0 0= EXIT THEN

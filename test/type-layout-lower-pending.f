@@ -19,10 +19,11 @@
 \      dup/swap/over/nip/tuck/rot/-rot/2dup/2drop/2swap/2over, the
 \      return-stack transfers, and wide locals.
 \
-\ Remaining follow-up (constant shape-carry, habu-tfam-12-layout dot): flip the
-\ parity fixtures staged in tools/check-all-errors-test.f (CAE-TEST-CONST-CARRY)
-\ and tools/public-signatures-test.f (PST-TEST-CONST-CARRY), and flip TD12-CONST
-\ in test/type-decl-suite.f to the shape-carry expectation.
+\ Constant contract (TFAM 12 verdict 2026-07-09): `constant` keeps the one-cell
+\ `-- a` model permanently — checked-body layout pops reject (TD12-CONST), the
+\ top-level pop never sees a wide value (DNAME-WIDE dispatch gate), and the
+\ staged shape-carry fixtures were deleted as unsound (a one-cell bake cannot
+\ carry a multi-cell shape). Parity: check-all-errors-test const-layout-narrow.
 
 variable #FAIL
 variable #CASE

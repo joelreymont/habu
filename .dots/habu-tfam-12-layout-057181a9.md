@@ -30,16 +30,66 @@ LANDED:
   regression with the maker-self `wide-mark` STAND-IN.
 
 OPEN:
-- REMAINING (1) const shape-carry (3c) — fixtures still in narrow/reject wiring:
-  CAE-TEST-CONST-LAYOUT active (expects 70), TD12-CONST expects 0, PST-MAIN runs
-  PST-TEST-CONST-LAYOUT; carry variants CAE-TEST-CONST-CARRY / PST-TEST-CONST-CARRY
-  staged but unwired. Value-pop sites: C-CONSTANT (habu2.f:1798), verify-source
-  RECORD-DEFINER? (:502), PS-MAYBE-TRUST-DEFINER (public-signatures-core.f:558),
-  CA-ADD-SUPPORT-CONSTANT.
 - REMAINING (2) interpret-mode wide values — CHECKER half OPEN (see 12-interpret
   dot); engine half landed as above.
-- Sub-dot 12-pass (branch-scoped bundle locals) — OPEN: P2-BRANCH-LOCAL-GUARD
-  still at checker.f:6207 (+ render.f rows), no LOCW-HW/P2-LOCSEQ/P2LW,
-  TD12-BRLOC-* still rejected.
 - REMAINING (3) does>-split, (4) Gforth bootstrap mirror of pass-2, (5) depth/.s,
   (6) snapshot doctored-trailer fixture home — all OPEN, untouched.
+
+## Update 2026-07-09 (branch commits after the audit)
+
+- Sub-dot 12-pass (branch-scoped bundle locals) — LANDED and CLOSED (commit
+  "TFAM 12: pass-2 branch-scoped bundle locals"): checker LOCW-HW bind-sequence
+  table + checker-hosted P2LW live replay (P2-CARVE-W/P2-LIVE-W@/P2-LIVE-CUM@/
+  P2-LOCSEQ-RESET), P2-BRANCH-LOCAL-GUARD + render rows removed, TD12-BRLOC-*
+  certified, TLPX-BR* execution rows run both arms (sibling slot reuse at
+  widths 2 vs 4, mixed scalar+wide, outer+branch carve).
+
+## REMAINING (1) resolved by verdict: fail-closed, no shape-carry (2026-07-09)
+
+The staged carry design is REJECTED as unsound; the one-cell `-- a` model is
+the PERMANENT `constant` contract. Rationale:
+1. Physical ground truth: native C-CONSTANT pops exactly ONE cell (15 G-POP)
+   and bakes one literal. Recording the producer's multi-cell type (staged
+   PST-CONST-K-CARRY$: `CAE-CV-K | -- cae-cv`, 2 field cells) would let the
+   checker certify USE words that push fewer physical cells than declared — a
+   checker-certified stack corruption laundered through the constant.
+2. No sound shape source: the interpret stack is untyped BY DESIGN (the
+   12-interpret CHOSEN decision explicitly rejected typing the REPL as
+   disproportionate). The only alternative — an adjacent-producer heuristic
+   (`<word> constant NAME`) — mis-carries on `MK 5 constant K`, literals,
+   stack shuffles, and multi-output words, and native C-CONSTANT would have to
+   implement the same unsound inference to keep four-path parity.
+3. The wide case is gated upstream: a wider-than-cell layout value can never
+   LAND on the interpret stack (DNAME-WIDE dispatch gate — engine half landed,
+   checker half = 12-interpret dot), so top-level `constant` can never see
+   one; the gate at value PRODUCTION dominates every value-pop consumer. In
+   checked bodies the pop rejects (TD12-CONST; docs/type-families.md §17
+   sanctions "reject" as the alternative to "store the whole logical value").
+   True multi-cell constant storage is buildable later without breaking this
+   contract, but has no current consumer.
+
+Landed as commit "TFAM 12: fail-closed constant layout pop": staged carry
+fixtures DELETED (CAE-TEST-CONST-CARRY, PST-TEST-CONST-CARRY +
+PST-CONST-K-CARRY$); the narrow parity fixtures re-commented as the permanent
+contract (const-layout-narrow stays the runner row; TD12-CONST stays rejected);
+the four sites' comments settled (C-CONSTANT habu2.f, verify-source
+RECORD-DEFINER?, PS-MAYBE-TRUST-DEFINER, all-errors constant-capture comment —
+CA-ADD-SUPPORT-CONSTANT no longer exists as a word; the funnel is
+verify-source). The `-- a` trust rows themselves are unchanged (they ARE the
+contract).
+
+Gate tails for the verdict commit (2026-07-09, verbatim, all true-rc):
+- fixpoint refresh (install --force): `bin/hb refresh OK: compiler fixpoint` /
+  `bin/hb ready (small checked engine, tty REPL + stdin)` rc 0
+- full gate `bin/hb --load test/run.f`: `PASS: native test suite (fixpoint +
+  engine suite + checked hb + repl + hb-build) (30177ms <= 76300ms budget)`
+  rc 0, zero RED lines
+- tools/check-all-errors-test.f: `test: ok` / `check-all-errors-test: ok` rc 0
+- tools/public-signatures-test.f: `test: ok` / `public-signatures-test: ok` rc 0
+- test/type-decl-suite.f: `ok` rc 0; test/type-layout-lower-pending.f (stdin):
+  `ok` rc 0; test/type-family-suite.f: `ok` rc 0; test/type-ctor-suite.f:
+  `ok` rc 0
+- maki/test.f: `test: ok` / `PASS: maki/device-smoke.f (7ms)` rc 0
+- tools/dot-dep-lint.f: `dot-dep-lint: 162 dot(s), 13 blocker(s), 0
+  finding(s)` rc 0
+- tools/typed-local-diff-lint.f on the jj diff --git: rc 0

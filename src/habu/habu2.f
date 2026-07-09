@@ -1795,6 +1795,12 @@ s" c-store-def-name" s" --" TRUST
 : C-VARIABLE ( -- )  C-CREATE
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
+\ `constant` pops ONE physical cell and records the one-cell `-- a` trust
+\ (C-CALL-TRUST-LASTC-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
+\ the interpret stack is untyped, so no shape source exists here, and a
+\ wider-than-cell layout value never lands on it (DNAME-WIDE dispatch gate).
+\ Parity with verify-source / public-signatures / all-errors is locked by the
+\ check-all-errors-test const-layout-narrow fixture.
 : C-CONSTANT ( -- )
    C-TASK-LIVE-GUARD
    2 3 MOVZ,  LPROT LABEL@ BL,  LTOK LABEL@ BL,

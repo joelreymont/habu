@@ -605,16 +605,19 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-VR-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
-\ ---- TFAM 5 const-b89c90f0: layout-constant one-cell narrowing parity --------
-\ `constant` bakes exactly one physical cell, so a value of a multi-cell layout
-\ family (here the 2-field `cae-cv`) is narrowed to the one-cell `-- a` model in
-\ EVERY replay path (native C-CONSTANT, verify-source RECORD-DEFINER?, this
-\ all-errors funnel, and public-signatures). No path invents a multi-cell shape.
-\ The checker-backed paths then fail-closed on any layout USE of the constant,
-\ proving the narrowing is observable and not silently widened. Sound rejection /
-\ shape-carrying at the constant itself is width-aware interpret-mode work owned
-\ by TFAM 12 (habu-tfam-12-layout: `constant/depth/.s`, interpret mode); when it
-\ lands this fixture flips from "layout USE rejected" to accepted/shape-carried.
+\ ---- layout-constant one-cell contract parity (TFAM 5 + TFAM 12 verdict) -----
+\ `constant` bakes exactly one physical cell, so its recorded effect is the
+\ one-cell `-- a` model in EVERY path (native C-CONSTANT, verify-source
+\ RECORD-DEFINER?, this all-errors funnel, and public-signatures). This is the
+\ PERMANENT contract, not a pending narrowing (TFAM 12 verdict 2026-07-09,
+\ habu-tfam-12-layout): the interpret stack is untyped by design, so no path
+\ has a sound shape source — an adjacent-producer heuristic mis-carries
+\ (`MK 5 constant K`), and carrying the producer's multi-cell type would
+\ certify USE words that push fewer cells than the constant holds. A
+\ wider-than-cell layout value cannot even LAND on the interpret stack
+\ (DNAME-WIDE dispatch gate, habu-tfam-12-interpret), and a checked-body pop
+\ rejects (TD12-CONST), so every layout mis-use of a constant is fail-closed
+\ at USE — which this fixture proves end-to-end.
 : CAE-CONST-LAYOUT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND CAE-LF
@@ -677,24 +680,6 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TTRUE
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" field<cae-cv" CONTAINS? TTRUE ;
-
-\ PENDING (TFAM 12 slice 3, habu-tfam-12-layout): staged flip of the fixture
-\ above, NOT in the runner yet. When width-aware `constant` shape-carries the
-\ whole logical value at the value-pop (native C-CONSTANT + verify-source
-\ RECORD-DEFINER? + PS-MAYBE-TRUST-DEFINER + CA-ADD-SUPPORT-CONSTANT drop the
-\ one-cell `-- a` narrowing), the same source loads clean: CAE-CV-K carries the
-\ layout shape and CAE-CV-USE certifies. Slice 3 replaces the
-\ "const-layout-narrow" runner row with this case and deletes the narrow
-\ variant plus the `-- a` boundary comments at all four sites.
-: CAE-TEST-CONST-CARRY ( -- )
-   s" const-layout-carry" CAE-CASE!
-   CAE-CONST-LAYOUT-SOURCE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu:n erru:n :}
-   CAE-CASE$ T-LABEL
-   CAE-OUT outu CAE-EMPTY$ T$=
-   CAE-CASE$ T-LABEL
-   CAE-ERR erru s" cae-cv-use" CAE-WORD-JSON$ CONTAINS? TFALSE
-   CAE-CASE$ T-LABEL
-   CAE-ERR erru 10 COUNT-CHAR 0 T= ;
 
 : CAE-TEST-TFAM-SUPPORT ( -- )
    s" type-family-support" CAE-CASE!

@@ -323,8 +323,10 @@ s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ row holding hidden fields until logical-shape introspection exists (docs §17).
 s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
-\ constant pops one n cell: a layout value rejects (whole-bundle store or
-\ reject is the item-12 contract; the native top-level pop is the slice-3 site).
+\ constant pops one physical cell: a checked-body pop of a layout value rejects
+\ PERMANENTLY (TFAM 12 verdict 2026-07-09: docs §17 sanctions reject over
+\ multi-cell store; the top-level pop never sees a wide value — DNAME-WIDE
+\ dispatch gate — and records the one-cell `-- a` trust for the rest).
 s" TD12-CONST ( tdres<n,n> -- ) constant" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-CONST-N ( n -- ) constant" CHECK-QUIET-CANDIDATE! -1 T=
 \ catch/frame words: a layout value FLOWS through a stack-preserving quotation

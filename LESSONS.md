@@ -63,6 +63,16 @@ lesson — keep the specific word/code/path, cut the prose.
   level (ctor output is still in the CTOR-PEND signature-boundary window). Test
   seeds must be checked maker words; reduce with `CHECK-QUIET-CANDIDATE!`
   probes before blaming the new mechanism.
+- **Staged fixtures can encode an unsound expectation — re-derive from physical
+  truth before wiring them in:** the staged constant shape-carry fixtures
+  (PST-CONST-K-CARRY$ `CAE-CV-K | -- cae-cv`) expected a 2-field record effect
+  from a ONE-cell bake — certifying USE words that push fewer cells than
+  declared. A definer's recordable effect is bounded by what its runtime
+  actually stores (C-CONSTANT pops one cell), and the untyped interpret stack
+  has no sound shape source (adjacent-producer inference mis-carries on
+  `MK 5 constant K`). Verdict: `-- a` is the permanent constant contract; wide
+  values are gated at interpret DISPATCH (DNAME-WIDE), which dominates every
+  downstream value-pop consumer — gate production, not each definer.
 
 - **Layout transport is a per-token mode, not a per-var flag:** generic stack
   prims share polymorphic effect vars (`dup` and `0=` both use `PE-A`), so you

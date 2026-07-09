@@ -346,12 +346,15 @@ variable PST-SUM-U
 
 : PST-CONST ( -- ptr u8 n )  PST-CONST-BUF PST-CONST-U @ ;
 
-\ TFAM 5 const-b89c90f0: `constant` bakes one physical cell, so a value of the
-\ 2-field `cae-cv` layout family is narrowed to the one-cell `-- a` trust here —
-\ identical to the verify-source / all-errors / native C-CONSTANT model. This
-\ locks that public-signatures does NOT invent a multi-cell shape (nor drop the
-\ constant); sound rejection / shape-carrying at the constant is owned by
-\ TFAM 12 (habu-tfam-12-layout), which flips this expectation when it lands.
+\ `constant` bakes one physical cell, so a value of the 2-field `cae-cv` layout
+\ family records the one-cell `-- a` trust here — identical to the
+\ verify-source / all-errors / native C-CONSTANT model. This is the PERMANENT
+\ contract (TFAM 12 verdict 2026-07-09, habu-tfam-12-layout): the interpret
+\ stack is untyped by design, no path has a sound shape source, and carrying
+\ the producer's multi-cell type would record more cells than the constant
+\ holds. This locks that public-signatures does NOT invent a multi-cell shape
+\ (nor drop the constant); layout mis-use stays fail-closed at USE
+\ (check-all-errors-test const-layout-narrow).
 : PST-CONST-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" value-record cae-cv x i64 y i64 END-VALUE-RECORD" SB-APPEND PST-LF
@@ -376,24 +379,6 @@ variable PST-SUM-U
    PST-CONST PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TTRUE
-   PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
-
-\ PENDING (TFAM 12 slice 3, habu-tfam-12-layout): staged flip of the fixture
-\ above, NOT in PST-MAIN yet. When width-aware `constant` shape-carries the
-\ whole logical value, PS-MAYBE-TRUST-DEFINER emits the LOGICAL type for the
-\ constant (`-- cae-cv`, which signature parsing expands to the layout fields)
-\ instead of the one-cell `-- a` narrowing, and the one-cell trust must be
-\ absent. Slice 3 swaps this into PST-MAIN in place of PST-TEST-CONST-LAYOUT
-\ and deletes the narrow variant plus PST-CONST-K-TRUST$.
-: PST-CONST-K-CARRY$ ( -- ptr u8 n )
-   s" CAE-CV-K" s" -- cae-cv" PST-TRUST$ ;
-
-: PST-TEST-CONST-CARRY ( -- )
-   PST-PREPARE-CONST
-   PST-CONST PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu:n erru:n :}
-   erru 0 T=
-   PST-OUT outu PST-CONST-K-CARRY$ CONTAINS? TTRUE
-   PST-OUT outu PST-CONST-K-TRUST$ CONTAINS? TFALSE
    PST-OUT outu PST-CONST-USE-TRUST$ CONTAINS? TTRUE ;
 
 : PST-SUM ( -- ptr u8 n )    PST-SUM-BUF PST-SUM-U @ ;

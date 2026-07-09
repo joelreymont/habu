@@ -234,9 +234,11 @@ variable CA-XSUP-BUF-CAP
 
 \ Captures the whole `<value> constant NAME` line segment so replay defines the
 \ constant; the replay funnels through verify-source, whose one-cell `-- a`
-\ model narrows a multi-cell layout-family value (layout USE then fails
-\ downstream). Sound rejection / shape-carrying at the constant is owned by
-\ TFAM 12 (habu-tfam-12-layout); parity locked by the const-layout fixture.
+\ model is the PERMANENT constant contract (TFAM 12 verdict 2026-07-09: the
+\ interpret stack is untyped by design, no sound shape source exists, and
+\ wider-than-cell layout values never land there — DNAME-WIDE dispatch gate).
+\ A layout USE of the constant fails closed downstream; parity locked by the
+\ const-layout-narrow fixture.
 
 
 
