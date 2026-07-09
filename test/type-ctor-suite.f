@@ -54,6 +54,14 @@ SUMTYPE zres 0
   VARIANT ok  n ;VARIANT
   VARIANT err n ;VARIANT
 ;SUMTYPE
+\ variants spelled like stack words: ZWV:DUP/ZWV:SWAP are qualified constructor
+\ defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed): a qualified
+\ def no longer leaks a bare-global `dup`/`swap` effect row, so every later
+\ checked body that uses bare dup/swap as PRIMS still certifies (proven below).
+SUMTYPE zwv 0
+  VARIANT dup n ;VARIANT
+  VARIANT swap  ;VARIANT
+;SUMTYPE
 
 : ZMK-OK ( n -- zres ) ZRES:OK ;
 : ZMK-ERR ( n -- zres ) ZRES:ERR ;
@@ -272,18 +280,29 @@ s" CB9 ( n n -- zmix ) construct zmix big" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB10 ( n -- zres ) exit construct zres ok" CHECK-QUIET-CANDIDATE! 0 T=   \ dead path
 s" CB11 ( ptr u8 -- zpoly<n,n> ) construct zpoly ok" CHECK-QUIET-CANDIDATE! 0 T=   \ wrong instantiation
 s" CB12 ( n -- zpoly<n,n> zpoly<n,n> ) construct zpoly ok dup" CHECK-QUIET-CANDIDATE! 0 T=   \ open-arg transport
-\ variants spelled like stack words are captured operands, never word calls.
-\ DECLARED AFTER every bare-prim-using fixture above: a public family with
-\ prim-named variants leaks bare `dup`/`swap` effect records that shadow the
-\ prims in later checked bodies (pre-existing engine record-call bug, dot
-\ habu-qualified-defs-leak-aadeb5c9).
-SUMTYPE zwv 0
-  VARIANT dup n ;VARIANT
-  VARIANT swap  ;VARIANT
-;SUMTYPE
+\ variants spelled like stack words are captured operands, never word calls
+\ (`zwv` is declared with the other families above; ordering is free now).
 s" CN10 ( n -- zwv ) construct zwv dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" CN11 ( -- zwv ) construct zwv swap" CHECK-QUIET-CANDIDATE! -1 T=
 s" CONSTRUCT-BAD" type cr
+
+\ ---------------------------------------------------------------------------
+\ leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9). `zwv` above
+\ published qualified ZWV:DUP/ZWV:SWAP constructor defs. Before the fix each
+\ qualified def ALSO recorded its checker effect under the BARE-GLOBAL tail,
+\ so bare dup/swap resolved to the constructor effect (shadowing the prim) and
+\ arbitrary bare tails certified calls the engine rejects. After the fix a
+\ qualified def records only ( pkg, tail ) PUBLIC.
+\ 1) bare dup/swap bind the PRIMS, not the leaked constructor rows.
+s" LK1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" LK2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
+\ 2) a plain qualified colon def leaks no bare-global tail: bare `lkw` stays an
+\ undefined word (uncheckable 1), it does NOT certify (-1) as it did with the leak.
+: lkpkg:lkw ( n -- n ) 1 + ;
+s" LK3 ( n -- n ) lkw"       CHECK-QUIET-CANDIDATE! 1 T=
+\ 3) the qualified spelling DOES resolve (records under ( pkg, tail ) PUBLIC).
+s" LK4 ( n -- n ) lkpkg:lkw" CHECK-QUIET-CANDIDATE! -1 T=
+s" LEAK-FIX" type cr
 \ ownership: in-package resolution for public AND private families; outside
 \ the package neither the bare nor the qualified family token resolves — the
 \ cross-package path is the generated constructor word only.

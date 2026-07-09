@@ -55,6 +55,15 @@ SUMTYPE mlin 2
   VARIANT ok  a ;VARIANT
   VARIANT err b ;VARIANT
 ;SUMTYPE
+\ variants spelled like stack words: the generated constructors MWV:DUP/MWV:SWAP
+\ are qualified defs. Declared EARLY (dot habu-qualified-defs-leak-aadeb5c9 fixed):
+\ a qualified def no longer leaks a bare-global `dup`/`swap` effect row, so the
+\ later fixtures that use bare dup/swap as prims (M9, CS1, CS2, PS*) still certify
+\ even though this family declared those variant names first.
+SUMTYPE mwv 0
+  VARIANT dup  n ;VARIANT
+  VARIANT swap n ;VARIANT
+;SUMTYPE
 
 \ ---------------------------------------------------------------------------
 \ accepted: exhaustive matches with joined rows and refined payloads.
@@ -140,8 +149,10 @@ s" MB21=" type s" B21 ( mres -- n ) MATCH mres ok OF exit ENDOF err OF exit ENDO
 s" MATCH-BAD" type cr
 
 \ ---------------------------------------------------------------------------
-\ CASE regression pins beside the shared OF/ENDOF surface (before the mwv
-\ block below: its leaked bare `dup` record would shadow the prim here).
+\ CASE regression pins beside the shared OF/ENDOF surface. These use bare `dup`
+\ as a prim AFTER `mwv` (declared at the top) published its MWV:DUP constructor,
+\ so they double as leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9):
+\ a qualified def no longer leaks a bare-global `dup` row that shadowed the prim.
 \ ---------------------------------------------------------------------------
 s" CS1=" type s" C1 ( n -- n ) case 1 of 2 endof dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
 s" CS2=" type s" C2 ( n n -- n ) case 1 of 1 + endof 2 of 2 + endof drop dup endcase" CHECK-QUIET-CANDIDATE! -1 T=
@@ -149,17 +160,15 @@ s" CS3=" type s" C3 ( n -- n ) endof" CHECK-QUIET-CANDIDATE! 0 T=
 s" CASE-GREEN" type cr
 
 \ ---------------------------------------------------------------------------
-\ variants spelled like stack words are captured operands, never word calls.
-\ DECLARED LAST among the word-shape fixtures: a public family with prim-named
-\ variants leaks bare `dup`/`swap` effect records that shadow the prims in
-\ every LATER checked body (pre-existing engine record-call bug, dot
-\ habu-qualified-defs-leak-aadeb5c9) — keep bare-prim-using fixtures above.
+\ variants spelled like stack words are captured operands, never word calls;
+\ `mwv` (declared with the other families above) proves ordering is free now.
 \ ---------------------------------------------------------------------------
-SUMTYPE mwv 0
-  VARIANT dup  n ;VARIANT
-  VARIANT swap n ;VARIANT
-;SUMTYPE
 s" M12=" type s" T12 ( mwv -- n ) MATCH mwv dup OF ENDOF swap OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ leak-fix regressions (dot habu-qualified-defs-leak-aadeb5c9): a public family
+\ declared prim-named variants ABOVE, yet bare dup/swap still bind the PRIMS in
+\ these later checked bodies — no leaked bare-global effect row shadows them.
+s" PS1=" type s" PS1 ( n n -- n n ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" PS2=" type s" PS2 ( n -- n n ) dup"    CHECK-QUIET-CANDIDATE! -1 T=
 s" MATCH-WORDVAR" type cr
 
 \ ---------------------------------------------------------------------------

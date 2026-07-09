@@ -59,6 +59,21 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **A qualified def's engine->checker record call must key off the QUALIFIED
+  name, and read it from a STABLE buffer:** every sig'd `: PKG:tail (..)` recorded
+  twice at `;` — the hook cert under the qualified body-buffer name (correct) AND
+  `C-CALL-TRUST-PEND` under the BARE dict-record tail (`C-PUSH-DREC-NAME` read the
+  published record whose name is the rewritten tail), leaking a bare-global `tail`
+  effect row that shadowed core prims and certified bare-tail calls the engine
+  rejects; `TRUSTED: PKG:tail` had ONLY that bare row (qualified lookup found
+  nothing). Fix: `C-PUSH-DREC-NAME` pushes the body buffer's first token
+  (BODYBUF-OFF) = byte-identical to the cert path's NMA, so CHECKER-RECORD-SYM
+  splits the `:` into the PUBLIC (pkg,tail) sym. Two traps: DEF-TKA is a raw
+  SOURCE pointer (stale across a multi-line body → hb-stage boot SIGSEGV), the
+  body buffer is a fixed engine DATA region; and scratch must avoid x11 (holds the
+  trust XT for the later C-CALL-X11-SAVED BLR). Gforth stage0 has no package
+  system, so its record name IS the full name — no mirror change
+  (habu-qualified-defs-leak-aadeb5c9).
 - **Post-check scratch read by a later pass must be keyed by something the
   branch joins never pop:** TFAM 12's pass-2 width-aware emitter reads checker
   locals widths AFTER the hook certifies, but the live table (`LOCW`) is popped

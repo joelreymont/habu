@@ -1196,14 +1196,35 @@ create RESTAB-BUF
    ok LBL, ;
 s" c-task-live-guard" s" --" TRUST
 
+\ C-PUSH-DREC-NAME: push the definition's ORIGINAL qualified spelling for the
+\ engine->checker record calls (trust/defer rows). It is the FIRST TOKEN of the
+\ body buffer -- LBCAP seeds "NAME " there before C-QUALIFY-DEF rewrites the
+\ token, and that is byte-for-byte the spelling the CHECK cert path reads as NMA.
+\ Two properties matter: (1) it is a fixed engine DATA buffer, so it survives a
+\ multi-line body, unlike the raw source pointer DEF-TKA (stale once the source
+\ reader refills); (2) it is the QUALIFIED `PKG:tail`, unlike the published bare
+\ dictionary-record tail. CHECKER-RECORD-SYM then records a qualified def under
+\ ( pkg, tail ) PUBLIC -- matching the certify record -- instead of leaking a
+\ bare-global `tail` effect row that shadowed core prims and certified bare-tail
+\ calls the engine rejects (dot habu-qualified-defs-leak-aadeb5c9). Unqualified
+\ defs are unchanged (first token == whole name). The Gforth stage0 mirror keeps
+\ the record-name form: it has no package system, so its name cannot diverge.
+\ Scratch stays off x11: C-FIND-TRUST/C-FIND-GLOBAL leave the record XT in x11
+\ for the caller's later C-CALL-X11-SAVED, so this word must preserve it.
 : C-PUSH-DREC-NAME ( -- )
-   LBL {: pinl :}
-   9 12 24 ADDI,
-   10 12 16 LDR,  10 10 DNAME-EXT ANDI,  10 pinl CBZ,
-      9 12 24 LDR,
-   pinl LBL,
+   LBL LBL {: scan:label done:label :}
+   9 DATA BODYBUF-OFF ADDI,             \ x9 = name start (body buffer base)
+   10 0 MOVZ,                           \ x10 = name length
+   12 DATA BODYLEN-CELL LDR,            \ x12 = body length bound (fail-closed)
+   scan LBL,
+      10 12 CMP,  C-GE done BCOND,      \ hit body end without a space -> stop
+      13 9 10 ADD,  13 13 0 LDRB,       \ x13 = name[x10]
+      13 $20 CMPI,  C-EQ done BCOND,    \ the seeded trailing space ends the name
+      13 done CBZ,                      \ NUL also ends it (safety)
+      10 10 1 ADDI,  scan B,
+   done LBL,
    9 G-PUSH
-   9 12 16 LDR,  9 9 4 LSLI,  9 9 4 LSRI,  9 G-PUSH ;
+   10 G-PUSH ;
 
 : C-PUSH-DATA-CELL ( n -- ) {: off :}
    9 DATA off LDR,  9 G-PUSH ;
@@ -1219,7 +1240,6 @@ s" c-task-live-guard" s" --" TRUST
 
 : C-CALL-TRUST-PEND ( -- )
    C-FIND-TRUST
-   12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
@@ -1228,7 +1248,6 @@ s" c-task-live-guard" s" --" TRUST
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST
-   12 DATA LASTC-CELL LDR,
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
@@ -1238,7 +1257,6 @@ s" c-task-live-guard" s" --" TRUST
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST
-   12 DATA LASTC-CELL LDR,
    C-PUSH-DREC-NAME
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
@@ -1249,7 +1267,6 @@ s" c-task-live-guard" s" --" TRUST
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
    C-FIND-TRUST
-   12 DATA LASTC-CELL LDR,
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
@@ -1274,7 +1291,6 @@ s" c-find-global" s" ptr n n --" TRUST
 
 : C-CALL-CHECKER-DEFER ( -- )
    LCHKDEFER 13 C-FIND-GLOBAL
-   12 DATA PEND-CELL LDR,
    C-PUSH-DREC-NAME
    C-CALL-X11-SAVED ;
 s" c-call-checker-defer" s" --" TRUST
