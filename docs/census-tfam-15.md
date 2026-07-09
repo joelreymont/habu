@@ -17,6 +17,17 @@ VR-PTR 3 VR-PUSH 4 VR-QUOT 5 VR-ATOM 6 VR-PARAM 7` (`checker.f:1249-1256`).
 
 ## 0. State of the world (what item 15 builds ON / against)
 
+> STALENESS NOTE (2026-07-10, item-15 implementation): this census was scouted
+> at TFAM item 4. Items 6-14 have since LANDED, and item 15 itself is now
+> implemented: `PRODUCT name arity FIELD f t .. ;PRODUCT` (src/core/sumtype.f)
+> registers TK-PRODUCT + PF rows + two generated-word SUMV rows and publishes
+> `PKG:MAKE`/`PKG:UNMAKE` (empty-bodied, k=0 pending window); preverify
+> (verify-source.f RECORD-PRODUCT) and the check tool (check-core.f
+> CHK-PROD-REGISTER + the item-14 gap's CHK-ENUM-REGISTER) replay the
+> declaration; the VALUE-RECORD verdict landed as COMPAT LAYER (§3a/§C4
+> exactly as predicted — docs/type-families.md §9.4). The bullets below are
+> the pre-item-15 baseline, kept for the file:line inventory in §§1-7.
+
 - **No `PRODUCT`/`FIELD`/`;PRODUCT` grammar exists.** Probe (read-only,
   `/private/tmp`): `printf ': P1 ( -- ) ;\nPRODUCT\n' | bin/hb --load …` →
   `E-UNDEFINED: PRODUCT`. `rg '^: PRODUCT|;PRODUCT|: FIELD\b'` over

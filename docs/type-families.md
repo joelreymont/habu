@@ -547,7 +547,53 @@ PRODUCT pair 2
 ;PRODUCT
 ```
 
-This should eventually generalize or subsume `VALUE-RECORD`.
+Landed (item 15). A product is a single-shape record family (`TK-PRODUCT`):
+each `FIELD name type` registers one product-field row keyed by
+`(family-id, field tail)` plus one field schema, in declaration slot order
+(slot 0 deepest). There is no tag and no variants:
+
+```text
+WIDTH(product<...>) = sum of field widths
+```
+
+Field names are their own tail namespace (single letters such as `x` are
+legal, lowercase canon enforced, duplicates reject). Field types use the
+variant payload grammar: positional letter params within arity, concrete cell
+types, and `ptr T`.
+
+A PUBLIC product publishes exactly two generated words in its derived
+constructor package, with fixed generator-owned tails (the analogue of a
+sum's per-variant constructors):
+
+```forth
+PAIR:MAKE   ( fst snd -- pair<a,b> )
+PAIR:UNMAKE ( pair<a,b> -- fst snd )
+```
+
+Both bodies are empty and certify under the k=0 pending-constructor window: a
+product bundle is exactly its field cells in slot order, so construction and
+destructure are physical no-ops and the declared signatures are checker-owned
+metadata truth. Parametric products publish both words — MAKE's open result
+expands and UNMAKE's open input absorbs the caller's hidden run through the
+logical/hidden row coercion (§19) — and linear instantiations stay
+fail-closed at the signature/argument-bind layers. Field accessors are
+ordinary checked user compositions over `UNMAKE` (destructure, then
+`drop`/`nip` the raw field cells), which keeps single-field access fully
+checked and makes the linear discipline automatic; no per-field words are
+generated.
+
+`MATCH` and `construct` remain kind-gated to sum/enum families: a product is
+eliminated only by `UNMAKE` and constructed only by `MAKE`, so a PRIVATE
+product currently has no construction surface (fail-closed by design until a
+product form is specified).
+
+Verdict (item 15, decided by evidence): `VALUE-RECORD` is NOT subsumed. It
+remains a typed, tested compatibility layer over its own registry (VREC) with
+touchable `field<...>` cells — its fixtures rely on ordinary
+`drop`/`nip`/`over over` destructuring and the field-to-inner output
+coercion, which the hidden-field model deliberately forbids. New by-value
+records should use `PRODUCT`; `VALUE-RECORD` stays for the existing engine
+fixtures and PTX IR until those migrate.
 
 ---
 
@@ -1918,6 +1964,9 @@ FIELD
 ```
 
 Then decide whether existing `VALUE-RECORD` becomes sugar over `PRODUCT` or remains as a compatibility feature.
+
+Landed (item 15): the grammar plus generated `PKG:MAKE`/`PKG:UNMAKE`; decided
+by evidence that `VALUE-RECORD` remains a typed compatibility feature (§9.4).
 
 ### Phase 8: Layout policies
 
