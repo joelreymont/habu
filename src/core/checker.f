@@ -3372,18 +3372,62 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
    r@ E-PTR E-REC-FINISH
    r> ;
 
+\ Interpret-gate wide scan (habu-tfam-12-interpret checker half): a word whose
+\ recorded effect mentions ANY wider-than-cell layout value — producers and
+\ consumers, on any of the four rows, including inside quotation sub-effects
+\ (a quotation value can be `execute`d at top level) — must never run at the
+\ untyped interpret level: its dict record is marked DNAME-WIDE so
+\ EM-INTERPRET-FIND / interpret `'` fail closed before a bundle can land on
+\ (or be expected from) the interpret stack. A `ptr` to a layout is one cell
+\ and stays unmarked; pointers are deref'd only to reach nested quotations.
+: ROW-WIDE? ( n -- bool ) {: s:n :}
+   RES-FALSE s                           \ ( acc cur )
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+     dup P>TYPE T-RES
+     dup T-WIDTH 1 > IF
+       drop nip RES-TRUE swap            \ ( true cur )
+     ELSE
+       BEGIN dup TAG T-PTR = WHILE PTR>INNER T-RES REPEAT
+       dup TAG T-QUOT = IF
+         dup Q>DIN RECURSE  swap         \ ( acc cur f1 qt )
+         dup Q>DOUT RECURSE  swap        \ ( acc cur f1 f2 qt )
+         dup Q>RIN RECURSE  swap         \ ( acc cur f1 f2 f3 qt )
+         Q>ROUT RECURSE                  \ ( acc cur f1 f2 f3 f4 )
+         or or or  rot or swap           \ ( acc' cur )
+       ELSE drop THEN
+     THEN
+     P>REST
+   REPEAT drop ;
+
+\ RECW: latch holding the wide? verdict of the LAST effect record, stored by
+\ VALUE at the single record choke point (E-ADD-EFFECT) so a stale value from
+\ a candidate/rolled-back check is always overwritten by the current record
+\ flow before any publish tail consumes it; CHECK-RESET zeroes it for hook
+\ paths that certify without recording. REC-WIDE-PUBLISH is called by the
+\ engine publish tails AFTER ndict++ (EM-COMPILE-PUBLISH-TRUSTED/-HOOKED and
+\ C-DEFER, habu2.f), where the `wide-mark` prim's newest-published target
+\ (ndict-1) is exactly the record whose effect was just recorded.
+variable RECW   0 RECW !
+: REC-WIDE-PUBLISH ( -- )
+   RECW @ 0 <> IF wide-mark THEN
+   0 RECW ! ;
+
 \ E-ADD-EFFECT/E-ADD-DELETED are the only creators of USER records (prims go
 \ through PE-CLOSE/E-BUILD-EFFECT directly), so they own the in-place cache
 \ update: the record just built IS the current effect for its symbol. The
 \ cache stores offset+1 because offset 0 is legal after USIGS-RESET.
-: E-ADD-EFFECT ( n n n n bool -- )
-   E-BUILD-EFFECT {: off:n :}
+: E-ADD-EFFECT ( n n n n bool -- ) {: din:n dout:n rin:n rout:n hasr:bool :}
+   din ROW-WIDE?  dout ROW-WIDE? or
+   hasr IF rin ROW-WIDE? or  rout ROW-WIDE? or THEN
+   RECW !
+   din dout rin rout hasr E-BUILD-EFFECT {: off:n :}
    CHECKER-REC-SYM @ 0 <> HIDX-VALID @ and IF
       off 1 + CHECKER-REC-SYM @ HIDX-EFF!
       UEND @ HIDX-EFF-DEP+
    THEN ;
 
 : E-ADD-DELETED ( -- )
+   0 RECW !
    E-REC-START E-OFF >r
    EFF-DELETED r@ E-PTR ER.ACTIVE !
    r> E-PTR E-REC-FINISH
@@ -3413,6 +3457,7 @@ variable BADSIG-XT   0 BADSIG-XT !      \ ( sig-a sig-u n name-a name-u n -- )
    NMA @ NMU @ CORE-STR= 0= ;
 
 : USIG-ADD-BAD ( ptr u8 n ptr u8 n -- ) {: sa:ptr su:n na:ptr nu:n :}
+   0 RECW !                              \ no record stored: nothing to publish wide
    MULTI-ERR? 0= IF
       2 sa su write drop                 \ name the offending stored sig text
       s" : checker: bad stored signature" 76 die
@@ -3964,6 +4009,8 @@ PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDE? PE-N PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: wide-mark PRIM;
+PRIM: REC-WIDE-PUBLISH PRIM;
 PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -6176,7 +6223,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 THDROW !  0 THRROW !  0 THSET !
    SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
    0 LOCSEQ !
-   0 WF-N !
+   0 WF-N !  0 RECW !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )

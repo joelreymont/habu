@@ -969,7 +969,7 @@ create LBRACE-KW 123 c, 58 c,
 create ENDLOC-KW 58 c, 125 c,
 $4842444546455201 constant DEFER-MAGIC
 variable LKWDEFER  variable LKWIS  variable LKWDEFERUNSET
-variable LCHKDEFER  variable LSIGPTRA  variable LSIGA
+variable LCHKDEFER  variable LSIGPTRA  variable LSIGA  variable LRECWPUB
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1016,7 +1016,7 @@ create RESTAB-BUF
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,
    PFX-PATH-FILES ;
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
@@ -1278,6 +1278,19 @@ s" c-find-global" s" ptr n n --" TRUST
    C-PUSH-DREC-NAME
    C-CALL-X11-SAVED ;
 s" c-call-checker-defer" s" --" TRUST
+
+\ Interpret-gate marking (habu-tfam-12-interpret checker half): after ndict++
+\ the checker's rec-wide-publish consumes the RECW latch its record choke
+\ point stored for THIS definition's effect and, when wide, `wide-mark`s the
+\ just-published record (ndict-1) DNAME-WIDE. Hook-guarded: during the engine
+\ prefix self-load (no checker hook) nothing marks — the prefix has no
+\ wide-effect rows (verified) and user source only loads post-hook.
+: EM-REC-WIDE-PUBLISH ( -- )
+   LBL {: nohook:label :}
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   LRECWPUB 16 C-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   nohook LBL, ;
 
 : C-DIE-DOES ( -- )
    0 2 MOVZ,  1 LKWDOES LABEL@ ADR,  2 5 MOVZ,  NR-WRITE SYS,
@@ -1954,6 +1967,7 @@ s" c-defer-room" s" --" TRUST
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    C-CALL-TRUST-PEND
    C-CALL-CHECKER-DEFER
+   EM-REC-WIDE-PUBLISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;
 s" c-defer" s" --" TRUST
@@ -3842,6 +3856,7 @@ s" em-compile-flush-pend" s" --" TRUST
    ndchk LBL,
    C-CALL-TRUST-PEND
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-REC-WIDE-PUBLISH
    EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
@@ -3859,7 +3874,9 @@ s" em-compile-publish-trusted" s" --" TRUST
       \ certified sig-less definition: same pass-2 dispatch as the sig'd
       \ publish path (item 12 slice 3b).
       EM-P2-TRIGGER
-   nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  done B,
+   nohook LBL,  NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   EM-REC-WIDE-PUBLISH
+   done B,
    rejected LBL,  11 DATA PEND-CELL LDR,  12 11 16 LDR,  12 12 DNAME-EXT ANDI,  12 inl CBZ,
       CP 11 24 LDR,  done B,                           \ ext name in code space: CP := pre-name CP
    inl LBL,  CP 11 0 LDR,                              \ inline name: CP := colon entry
@@ -4280,7 +4297,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWENDPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !
+   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA ! ;
 

@@ -570,14 +570,17 @@ create AXBUF AXBUF-CAP allot
 \ 76-die index guard as wf-tokix@ (a dummy seq past LOCSEQ dies), and the
 \ pass-2 live-table words (p2-carve-w / p2-live-w@ / p2-live-cum@ /
 \ p2-locseq-reset, checker.f) read or mutate live pass-2 compile scratch
-\ (P2SEQ/P2LW), so they all sit here.
+\ (P2SEQ/P2LW), so they all sit here. wide-mark stamps DNAME-WIDE on the
+\ newest published dict record inside an mprotect bracket (a live dictionary
+\ mutation, seal-capture class), and rec-wide-publish consumes the checker's
+\ RECW latch and may call it — neither can run under census dummies.
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
 \ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset " ;
+   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

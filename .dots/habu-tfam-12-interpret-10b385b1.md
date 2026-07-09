@@ -131,11 +131,66 @@ to go green): DNAME-WIDE dict flag + LFIND bit + `wide-mark`/BWIDEMARK + XREF-WI
 test/gate-engine-lib.f GE-INTERP-LAYOUT (dup/drop/swap/tick legs rc 70 + guard
 leg) with the maker-self `wide-mark` STAND-IN at gate-engine-lib.f:460.
 
-CHECKER half OPEN: no marking in src/core/checker.f at the E-REC-START choke point;
-no pend-marking engine prim + PES row; the GE-INTERP-LAYOUT STAND-IN `wide-mark`
-line (gate-engine-lib.f:460) is still present and must be DELETED once the checker
-computes the flag (the dot's true acceptance). Prim-target subtlety from the note:
-`wide-mark` targets the NEWEST PUBLISHED record (ndict-1) but E-REC-START flows run
-in the PEND window before ndict++, so integration needs a pend-variant prim (mark
-index ndict) or a checker-set DATA cell consumed by the engine publish tail after
-ndict++.
+## CHECKER half LANDED (2026-07-09, commit "TFAM 12: checker-computed interpret wide marking")
+
+Prim-target choice: option (b)-variant — NO new engine prim and NO new DATA
+cell. The checker owns both the fact and its publication: E-ADD-EFFECT (the
+single creator of USER effect records, so every flow funnels there — hook
+certify via CHECKER-USIG-CERT-ADD, trust-pend and top-level TRUST via
+CHECKER-USIG-ADD, defer effects via C-DEFER's trust-pend) computes ROW-WIDE?
+over the four rows (T-WIDTH per term; recursion into T-QUOT sub-effects via
+Q>DIN/Q>DOUT/Q>RIN/Q>ROUT; pointers deref'd only to reach nested quotations —
+`ptr <layout>` is one cell and stays unmarked) and stores the verdict BY VALUE
+into the RECW latch. REC-WIDE-PUBLISH consumes the latch (read+clear) and,
+when set, calls the EXISTING `wide-mark` prim — the engine publish tails
+invoke it AFTER ndict++ (EM-REC-WIDE-PUBLISH, hook-guarded, in
+EM-COMPILE-PUBLISH-TRUSTED / EM-COMPILE-PUBLISH-HOOKED / C-DEFER), where
+wide-mark's newest-published target (ndict-1) is exactly the record whose
+effect was just recorded. Rationale vs the alternatives: a pend-variant prim
+duplicates the mprotect bracket for a timing problem the tails solve for
+free; a raw DATA cell splits ownership of the fact. Latch staleness is
+impossible at a consumer: every consuming publish path runs its own record
+flow last (hook / trust-pend / defer trust-pend), CHECK-RESET zeroes RECW for
+hook paths that certify without recording, and USIG-ADD-BAD / E-ADD-DELETED
+zero it. PES rows added for `wide-mark` and REC-WIDE-PUBLISH; both censused
+AX-NOEXEC-C.
+
+Regression: GE-INTERP-LAYOUT STAND-IN deleted — the dup/drop/swap/tick legs
+now pin the CHECKER-computed flag (TRUSTED wide maker, rc 70,
+`hb: interpret-mode layout value: <name>`), plus new legs: a hook-certified
+wide producer (`: GE-WMK2 ( -- gewide<n,n> ) GE-WMK ;` then top-level call),
+a wide defer (`defer GE-WD ( -- gewide<n,n> )` then top-level call), and the
+scalar negative control (TRUSTED `( -- n )` maker interprets, rc 0, `42`).
+
+Blast-radius finding: the type-layout goldens ticked their wide-effect
+subjects (`' TLP-DUP`) — the interpret tick gate now CORRECTLY fails closed
+on them. The goldens only read code bytes, so the xt acquisition moved into
+the suite's TRUSTED introspection boundary (TLP-XT via raw `search-wl` — the
+documented raw-xt residual) with a TRUSTED.md row + inventory count bump.
+
+RESIDUALS (unchanged, stay dotted here): a top-level `s" name" s" effect"
+TRUST` row that WIDENS an already-published word's effect does not mark its
+record (no publish tail follows; same class as the TRUST-after-execution
+ordering residual), and raw-xt laundering (`find`/`search-wl` + `execute`)
+in fully unchecked code bypasses any static flag by definition.
+
+Gate tails for the checker-half commit (2026-07-09, verbatim, all true-rc):
+- fixpoint refresh (install --force): `bin/hb refresh OK: compiler fixpoint` /
+  `bin/hb ready (small checked engine, tty REPL + stdin)` rc 0
+- full gate `bin/hb --load test/run.f`: `PASS: native test suite (fixpoint +
+  engine suite + checked hb + repl + hb-build) (10428ms <= 40000ms budget)`
+  rc 0, zero RED lines (the first gate run correctly went RED on the golden
+  ticks — `FAIL: type-layout suite on Habu-under-test`,
+  `hb: interpret-mode layout value: TLP-DUP` — fixed via TLP-XT)
+- end-to-end smokes: TRUSTED wide maker `GE-WMK dup . . . .` rc 70
+  `hb: interpret-mode layout value: GE-WMK` (no manual marking); checked
+  producer GE-WMK2 rc 70; wide defer GE-WD rc 70; checked guard GE-WRUN rc 0
+  `9 7`; scalar control GE-WN rc 0 `42`
+- test/type-decl-suite.f `ok`; test/type-layout-lower-pending.f (stdin) `ok`;
+  test/type-family-suite.f `ok`; test/type-ctor-suite.f `ok` — all rc 0
+- maki/test.f: `test: ok` / `PASS: maki/device-smoke.f (3ms)` rc 0
+- test/prop-test.f (stdin): `prop-test: sweep OK — 8` (census OK) rc 0
+- tools/trust-lint.f: `trust-lint: 479 TRUST site(s), 543 manifest row(s), 0
+  finding(s)`; tools/trusted-inventory-test.f: `test: ok` rc 0
+- tools/dot-dep-lint.f: `dot-dep-lint: 162 dot(s), 13 blocker(s), 0
+  finding(s)` rc 0; typed-local-diff-lint on the diff: rc 0

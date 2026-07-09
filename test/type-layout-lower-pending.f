@@ -145,18 +145,25 @@ WF-N@ 1 T=  0 WF-WIDTH@ 1 T=
 TRUSTED: TLP-W32 ( n n -- n )
    + dup c@ over 1 + c@ 8 lshift or over 2 + c@ 16 lshift or swap 3 + c@ 24 lshift or ;
 
+\ Tested boundary (TRUSTED): the golden subjects carry wide effects, so their
+\ dict records are DNAME-WIDE (habu-tfam-12-interpret) and interpret `'`
+\ correctly fails closed on them. The goldens only READ code bytes, so the xt
+\ comes from the raw-xt introspection boundary (search-wl, wordlist 0) — the
+\ same test-only class as TLP-W32 and the documented unchecked residual.
+TRUSTED: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
+
 variable GXT
 : GG ( n n -- ) {: ix:n want:n :}   \ golden: instruction ix of subject GXT
    GXT @ ix 4 * TLP-W32  want T= ;
 
-' TLP-DUP GXT !
+s" TLP-DUP" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG                          \ prologue
 2 $D2800049 GG  3 $D100426A GG                          \ movz x9,#2 ; sub x10,x19,#16
 4 $F940014B GG  5 $9100214A GG  6 $F900026B GG          \ copy loop: ldr/add/str
 7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG          \ push/subs/b.ne -5
 10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG       \ epilogue
 
-' TLP-SWAP GXT !
+s" TLP-SWAP" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG                          \ prologue
 2 $D100626A GG  3 $D100426B GG                          \ rev1: [top-24, top-16]
 4 $EB0B015F GG  5 $54000102 GG  6 $F940014C GG  7 $F940016D GG
@@ -169,14 +176,14 @@ variable GXT
 30 $F900014D GG  31 $F900016C GG  32 $9100214A GG  33 $D100216B GG  34 $17FFFFF8 GG
 35 $F94003FE GG  36 $910043FF GG  37 $D65F03C0 GG       \ epilogue
 
-' TLP-MIX-DUP GXT !
+s" TLP-MIX-DUP" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG
 2 $D2800089 GG  3 $D100826A GG                          \ movz x9,#4 ; sub x10,x19,#32
 4 $F940014B GG  5 $9100214A GG  6 $F900026B GG
 7 $91002273 GG  8 $F1000529 GG  9 $54FFFF61 GG
 10 $F94003FE GG  11 $910043FF GG  12 $D65F03C0 GG
 
-' TLP-TOR GXT !
+s" TLP-TOR" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG
 2 $F942B68A GG  3 $8B0A0E8B GG                          \ >r: ldr rsp ; block base
 4 $D100426C GG  5 $D2800049 GG                          \ src = top-16 ; movz #2
@@ -189,7 +196,7 @@ variable GXT
 25 $F902B68A GG                                         \ commit rsp
 26 $F94003FE GG  27 $910043FF GG  28 $D65F03C0 GG
 
-' TLP-LOCAL GXT !
+s" TLP-LOCAL" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG
 2 $D10083FF GG                                          \ sub sp,sp,#32 (3 cells + pad)
 3 $D1002273 GG  4 $F9400269 GG  5 $F90007E9 GG          \ pop y -> slot 1

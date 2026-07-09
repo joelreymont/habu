@@ -445,19 +445,19 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 \ at the unchecked REPL (dot habu-tfam-12-interpret-10b385b1). The engine
 \ fails closed: executing (or ticking) a DNAME-WIDE-flagged word at interpret
 \ level dies with a named diagnostic before the bundle can land on the
-\ untyped interpret stack. STAND-IN: until the sequenced src/core/checker.f
-\ half marks at signature-record time, the fixture marks the maker itself
-\ (the `wide-mark` engine prim); when that half lands, DELETE the mark line -
-\ the legs then pin the checker-computed flag (the dot's true acceptance). Checked
-\ definitions own bundle work; the guard leg proves a compiled call of the
-\ SAME marked word still compiles and runs at top level.
+\ untyped interpret stack. The flag is CHECKER-COMPUTED: the record choke
+\ point (E-ADD-EFFECT) scans the four effect rows with T-WIDTH (quotation
+\ sub-effects included) and the engine publish tails consume the latch
+\ (rec-wide-publish -> wide-mark) after ndict++ — no manual marking anywhere
+\ in this fixture. Checked definitions own bundle work; the guard leg proves
+\ a compiled call of the SAME marked word still compiles and runs at top
+\ level, and the scalar leg proves a one-cell TRUSTED word stays unmarked.
 : GE-ILAYOUT-PRELUDE ( -- )
    s" SUMTYPE gewide 2" GE-SRC-LINE
    s"   VARIANT ok a ;VARIANT" GE-SRC-LINE
    s"   VARIANT err b ;VARIANT" GE-SRC-LINE
    s" ;SUMTYPE" GE-SRC-LINE
-   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE
-   s" wide-mark" GE-SRC-LINE ;
+   s" TRUSTED: GE-WMK ( -- gewide<n,n> ) 7 9 ;" GE-SRC-LINE ;
 
 : GE-ILAYOUT-CASE ( ptr u8 n ptr u8 n -- ) {: src:ptr srcu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -480,12 +480,28 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SB-RESET s" 9" SB-APPEND GE-SB-LF s" 7" SB-APPEND GE-SB-LF
    SB$ s" checked wide transport guard output" GE-EXPECT-OUT ;
 
+\ negative control: a one-cell TRUSTED word is NOT marked by the checker scan
+\ and still interprets at top level (rc 0, value printed).
+: GE-ILAYOUT-SCALAR ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   GE-ILAYOUT-PRELUDE
+   s" TRUSTED: GE-WN ( -- n ) 42 ;" GE-SRC-LINE
+   s" GE-WN ." GE-SRC-LINE
+   GE-HB$ GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   s" scalar trusted word interprets" GE-EXPECT-OK
+   SB-RESET s" 42" SB-APPEND GE-SB-LF
+   SB$ s" scalar trusted word output" GE-EXPECT-OUT ;
+
 : GE-INTERP-LAYOUT ( -- )
    s" GE-WMK dup . . . ." s" interp layout dup fails closed" GE-ILAYOUT-CASE
    s" GE-WMK drop ." s" interp layout drop fails closed" GE-ILAYOUT-CASE
    s" 5 GE-WMK swap . . ." s" interp layout swap fails closed" GE-ILAYOUT-CASE
    s" ' GE-WMK execute" s" interp layout tick fails closed" GE-ILAYOUT-CASE
+   s" : GE-WMK2 ( -- gewide<n,n> ) GE-WMK ; GE-WMK2 drop ." s" interp layout checked producer fails closed" GE-ILAYOUT-CASE
+   s" defer GE-WD ( -- gewide<n,n> ) GE-WD" s" interp layout defer fails closed" GE-ILAYOUT-CASE
    GE-ILAYOUT-GUARD
+   GE-ILAYOUT-SCALAR
    s" PASS: interpret-mode layout transports fail closed" type cr ;
 
 \ Dictionary-capacity exit diagnostic (dot habu-gate-runner-entry-81c84af0):

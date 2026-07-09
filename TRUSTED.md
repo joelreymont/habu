@@ -359,6 +359,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | TLP-W32 | `n n -- n` | Layout-lowering golden reader: reinterprets a compiled subject's xt as the byte base for one u32 instruction load — test-only code introspection, same class as the imgdump/jitdump readers; every use sits directly under the suite's golden asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
 | TLP-UN2 | `tlp-res<n,n> -- n n` | Matching raw 2-cell unpack of the seeded width-2 bundle so plain value asserts can prove whole-bundle transport preservation. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
 | TLP-UN4 | `tlp-mix<n,n> -- n n n n` | Matching raw 4-cell unpack of the seeded width-4 bundle for the execution asserts. | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-06 |
+| TLP-XT | `ptr u8 n -- n` | Golden-subject xt lookup via raw search-wl: the subjects carry wide effects, so their records are DNAME-WIDE and interpret `'` correctly fails closed; the goldens only read code bytes (documented raw-xt introspection residual, habu-tfam-12-interpret). | `test/type-layout-lower-pending.f`, `test/run.f` | test/type-layout-lower-pending.f | 2026-07-09 |
 | M-LE32! | `n off --` | Image-byte test republishes the typed little-endian patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-LE64! | `n off --` | Image-byte test republishes the typed 64-bit patch effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
 | M-BE-RESET | `off --` | Image-byte test republishes the big-endian patch cursor reset effect for fixture coverage. | `tools/image-bytes-test.f`, `test/run.f` | tools/image-bytes-test.f | 2026-06-30 |
@@ -784,7 +785,7 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/type-layout-lower-pending.f test-metaprog habu-tfam-12-layout-057181a9 3
+test/type-layout-lower-pending.f test-metaprog habu-tfam-12-layout-057181a9 4
 test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 49
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2

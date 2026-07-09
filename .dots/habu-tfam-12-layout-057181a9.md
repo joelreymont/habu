@@ -30,9 +30,12 @@ LANDED:
   regression with the maker-self `wide-mark` STAND-IN.
 
 OPEN:
-- REMAINING (2) interpret-mode wide values — CHECKER half OPEN (see 12-interpret
-  dot); engine half landed as above.
-- REMAINING (3) does>-split, (4) Gforth bootstrap mirror of pass-2, (5) depth/.s,
+- REMAINING (2) interpret-mode wide values — CLOSED 2026-07-09: checker half
+  landed (commit "TFAM 12: checker-computed interpret wide marking", see the
+  12-interpret dot for design + residuals); engine half was already landed.
+- REMAINING (3) does>-split, (4) Gforth bootstrap mirror of pass-2 (NOTE: the
+  new EM-REC-WIDE-PUBLISH publish-tail marking call is likewise native-only —
+  fold its mirror into the same item-4 bootstrap parity work), (5) depth/.s,
   (6) snapshot doctored-trailer fixture home — all OPEN, untouched.
 
 ## Update 2026-07-09 (branch commits after the audit)

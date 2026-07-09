@@ -63,6 +63,16 @@ lesson — keep the specific word/code/path, cut the prose.
   level (ctor output is still in the CTOR-PEND signature-boundary window). Test
   seeds must be checked maker words; reduce with `CHECK-QUIET-CANDIDATE!`
   probes before blaming the new mechanism.
+- **A new static gate's blast radius includes the test corpus's own
+  metaprogramming:** checker-computed DNAME-WIDE marking made the interpret
+  tick gate fire on the layout goldens' `' TLP-DUP` — correct enforcement, not
+  a bug. Test-only xt introspection must live in the raw-xt TRUSTED boundary
+  (search-wl), not interpret `'`, once ticking is part of the gate surface.
+  When a checker fact needs an engine-side record flag, prefer a checker-owned
+  latch stored BY VALUE at the single record choke point (E-ADD-EFFECT) and
+  consumed by the publish tails after ndict++ — the existing `wide-mark`
+  newest-record prim then needs no pend variant, and staleness is impossible
+  because every consuming publish runs its own record flow last.
 - **Staged fixtures can encode an unsound expectation — re-derive from physical
   truth before wiring them in:** the staged constant shape-carry fixtures
   (PST-CONST-K-CARRY$ `CAE-CV-K | -- cae-cv`) expected a 2-field record effect
