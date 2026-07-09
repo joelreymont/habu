@@ -2824,3 +2824,26 @@ unchanged (148855). Keys for milestone 2:
   family at once; construct solved the same problem earlier by consuming its
   full token form even when poisoned. Any future capture form needs one of the
   two from day one.
+- **Reason codes must be latched with the token pin, not derived at render
+  time.** The §24 match diagnostics work because every failure site latches a
+  reason code under the same first-wins discipline as the FAILSET token pin
+  (and the nonexhaustive latch carries the family/bitset for the name walk).
+  Two ordering traps found by fixtures: truncation must latch BEFORE the
+  output-boundary coercion (whose mismatch otherwise steals the reason), and
+  the reason arm in DCODE/REPAIR-CLASS must rank ABOVE the generic
+  UNDEFERR/DEADERR flags, which post-reject token blur routinely sets.
+- **Suite-visible checker words are checked even in test files: bools are not
+  n.** Three round-trips lost to `-1`/`0` where `bool` was declared
+  (DIAG-JSON!, a CONTAINS? helper, and a render walk flag that only the
+  fixpoint CERTIFY pass caught — local stdin runs parse unchecked and stay
+  green, so run the certify path early when adding checked prefix words).
+  The `0 0=` / `0 0= 0=` literal idiom is the existing convention; T=-style
+  n asserts need bool-specific helpers inside checked words.
+- **Capacity caps sized to "current largest file + headroom" are time bombs;
+  label every capacity exit.** Item 9 grew checker.f past the lint
+  tokenizer's TMAX and shadow-lint died a BARE rc 77 (unlabeled throw,
+  nothing on stderr standalone) — the same failure class as the DICT-CAP
+  lesson above, in a different store. Raised TMAX and the shadow-lint byte
+  cap (which was within 2.7KB of tripping too) and gave TOKEN-ENSURE a
+  labeled die. When a cap comment names a specific file, grep that file's
+  growth in any slice that touches it.

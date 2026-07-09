@@ -214,6 +214,90 @@ s" MS3=" type s" S3 ( mpub:mpres -- n ) MATCH mpub:mpres yes OF ENDOF ;MATCH" CH
 s" MATCH-SCOPE" type cr
 
 \ ---------------------------------------------------------------------------
+\ item 9 slice 4: §24 diagnostics. Every match/construct reject class carries
+\ a stable code, repair class, reason, and suggestion; nonexhaustive lists the
+\ missing variant NAMES. Captured through the render diag buffer in JSON mode
+\ (the type-decl-suite pattern); one prose case pins the §24 text shape.
+\ ---------------------------------------------------------------------------
+variable MDT-I
+: MDT-CONTAINS? ( ptr u8 n ptr u8 n -- bool ) {: h:ptr hu:n n:ptr nu:n :}
+   hu nu < if 0 0= 0= exit then
+   0 MDT-I !
+   begin MDT-I @ nu + hu <= while
+      h MDT-I @ + nu  n nu CORE-STR= if 0 0= exit then
+      MDT-I @ 1 + MDT-I !
+   repeat 0 0= 0= ;
+
+create MDG-BUF 8192 allot
+: MDG< ( ptr u8 n -- )   \ run one candidate with JSON diags into the buffer
+   MDG-BUF 8192 DIAG-BUFFER!  0 0= DIAG-JSON!
+   CHECK-CANDIDATE! 0 T= ;
+: MDG? ( ptr u8 n -- )   \ assert the captured diag contains the needle
+   #CASE @ 1 + #CASE !
+   DIAG-BUFFER$ 2swap MDT-CONTAINS? 0= if
+      T-FAIL s" assert: diag needle missing" type cr
+   then ;
+: MDG-END ( -- ) 0 0= 0= DIAG-JSON! DIAG-BUFFER-OFF ;
+
+SUMTYPE mtri 0
+  VARIANT aa n ;VARIANT
+  VARIANT bb n ;VARIANT
+  VARIANT cc n ;VARIANT
+;SUMTYPE
+
+s" G1 ( mres -- n ) MATCH nofam ok OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-UNKNOWN-FAMILY\"" MDG?
+s\" \"repair_class\":\"fix_family_reference\"" MDG?
+s" G2 ( mres -- n ) MATCH span ok OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-FAMILY-KIND\"" MDG?
+s" G3 ( n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-SCRUTINEE\"" MDG?
+s\" \"reason\":\"bad match: expected sum or enum value on stack\"" MDG?
+s" G4 ( mmix -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-FAMILY-MISMATCH\"" MDG?
+s" G5 ( mres -- n ) MATCH mres small OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-UNKNOWN-VARIANT\"" MDG?
+s\" \"repair_class\":\"fix_variant_reference\"" MDG?
+s" G6 ( mres -- n ) MATCH mres ok OF ENDOF ok OF ENDOF err OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-DUPLICATE-VARIANT\"" MDG?
+s\" \"repair_class\":\"remove_duplicate_branch\"" MDG?
+s" G7 ( mres -- n ) MATCH mres ok drop OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-MISSING-OF\"" MDG?
+s" G8 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-NONEXHAUSTIVE\"" MDG?
+s\" \"repair_class\":\"add_missing_branches\"" MDG?
+s\" \"missing_variants\":\"aa cc\"" MDG?
+s" G9 ( n -- n ) ;match" MDG<
+s\" \"code\":\"E-MATCH-STRAY\"" MDG?
+s" G10 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF" MDG<
+s\" \"code\":\"E-MATCH-UNTERMINATED\"" MDG?
+s" G11 ( mpoly<a,b> -- a ) MATCH mpoly ok OF ENDOF err OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-OPEN-ARGS\"" MDG?
+s" G12 ( mres -- n ) [: MATCH mres ok OF ENDOF err OF ENDOF ;MATCH ;] execute" MDG<
+s\" \"code\":\"E-MATCH-QUOTATION\"" MDG?
+s" G13 ( mjoin -- n ) MATCH mjoin ok OF ENDOF err OF ENDOF ;MATCH" MDG<
+s\" \"code\":\"E-MATCH-BRANCH-JOIN\"" MDG?
+s\" \"repair_class\":\"fix_branch_outputs\"" MDG?
+s" G14 ( mres -- n ) construct nofam ok" MDG<
+s\" \"code\":\"E-CONSTRUCT-UNKNOWN-FAMILY\"" MDG?
+s" G15 ( mres -- n ) construct span ok" MDG<
+s\" \"code\":\"E-CONSTRUCT-FAMILY-KIND\"" MDG?
+s" G16 ( mres -- n ) construct mres nope" MDG<
+s\" \"code\":\"E-CONSTRUCT-UNKNOWN-VARIANT\"" MDG?
+s" G17 ( n -- mres ) construct mres" MDG<
+s\" \"code\":\"E-CONSTRUCT-UNTERMINATED\"" MDG?
+31 MD-BODY MDG<
+s\" \"code\":\"E-MATCH-DEPTH\"" MDG?
+s\" \"repair_class\":\"factor_match_nesting\"" MDG?
+MDG-END
+\ prose shape: the §24 text with the missing-variant names, prose mode.
+MDG-BUF 8192 DIAG-BUFFER!
+s" G18 ( mtri -- n ) MATCH mtri bb OF ENDOF ;MATCH" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" bad match: missing variants: aa cc" MDT-CONTAINS? -1 T=
+DIAG-BUFFER-OFF
+s" MATCH-DIAG" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

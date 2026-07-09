@@ -1573,6 +1573,18 @@ invalid layout policy for recursive sum
 
 Diagnostics should show logical types, not hidden fields.
 
+Match/construct rejects carry stable machine codes (item 9 slice 4):
+`E-MATCH-UNKNOWN-FAMILY`, `E-MATCH-FAMILY-KIND`, `E-MATCH-SCRUTINEE`,
+`E-MATCH-FAMILY-MISMATCH`, `E-MATCH-UNKNOWN-VARIANT`,
+`E-MATCH-DUPLICATE-VARIANT`, `E-MATCH-MISSING-OF`, `E-MATCH-NONEXHAUSTIVE`
+(with a `missing_variants` JSON field listing the unhandled variant names in
+declaration order), `E-MATCH-STRAY`, `E-MATCH-UNTERMINATED`, `E-MATCH-DEPTH`,
+`E-MATCH-QUOTATION`, `E-MATCH-OPEN-ARGS`, `E-MATCH-BRANCH-JOIN`, and
+`E-CONSTRUCT-UNKNOWN-FAMILY`, `E-CONSTRUCT-FAMILY-KIND`,
+`E-CONSTRUCT-UNKNOWN-VARIANT`, `E-CONSTRUCT-UNTERMINATED`. Each carries a
+repair class and suggestion through the standard diagnostic JSON, so repair
+packets consume them with no schema change.
+
 Top-level declaration diagnostics are not fake word-definition diagnostics. A
 bad `SUMTYPE` or `TYPEFAMILY` reports a declaration-shaped packet with its source
 span and ADT fields; it does not invent a declared stack effect or require

@@ -338,16 +338,127 @@ variable DSUGE  variable DSUGA
    din DROW  s" -- " DTXT  dout DROW
    hasr IF s" | " DTXT  rin DROW  s" -- " DTXT  rout DROW THEN
    34 EMIT1 ;
+\ --- item 9 slice 4: match/construct reason surface (docs §24). The checker
+\ latches an MDIAG reason code with the token pin; these words map it to a
+\ stable JSON code, repair class, suggestion, and §24 prose. MD-NONEXH also
+\ walks the latched (family, seen-bitset, count) to the missing variant NAMES
+\ (declaration-order tags index the family's contiguous SUMV rows).
+variable MDV-I   variable MDV-F
+
+: MDIAG-CODE$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-FAM-UNKNOWN  of s" E-MATCH-UNKNOWN-FAMILY" endof
+      MD-FAM-KIND     of s" E-MATCH-FAMILY-KIND" endof
+      MD-SCRUT        of s" E-MATCH-SCRUTINEE" endof
+      MD-FAM-MISMATCH of s" E-MATCH-FAMILY-MISMATCH" endof
+      MD-VAR-UNKNOWN  of s" E-MATCH-UNKNOWN-VARIANT" endof
+      MD-VAR-DUP      of s" E-MATCH-DUPLICATE-VARIANT" endof
+      MD-MISSING-OF   of s" E-MATCH-MISSING-OF" endof
+      MD-NONEXH       of s" E-MATCH-NONEXHAUSTIVE" endof
+      MD-STRAY        of s" E-MATCH-STRAY" endof
+      MD-TRUNC        of s" E-MATCH-UNTERMINATED" endof
+      MD-DEPTH        of s" E-MATCH-DEPTH" endof
+      MD-QUOT         of s" E-MATCH-QUOTATION" endof
+      MD-OPEN-ARGS    of s" E-MATCH-OPEN-ARGS" endof
+      MD-JOIN         of s" E-MATCH-BRANCH-JOIN" endof
+      MD-CON-FAM      of s" E-CONSTRUCT-UNKNOWN-FAMILY" endof
+      MD-CON-KIND     of s" E-CONSTRUCT-FAMILY-KIND" endof
+      MD-CON-VAR      of s" E-CONSTRUCT-UNKNOWN-VARIANT" endof
+      MD-CON-TRUNC    of s" E-CONSTRUCT-UNTERMINATED" endof
+      s" E-REJECTED" rot
+   endcase ;
+
+: MDIAG-CLASS$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-NONEXH       of s" add_missing_branches" endof
+      MD-VAR-DUP      of s" remove_duplicate_branch" endof
+      MD-VAR-UNKNOWN  of s" fix_variant_reference" endof
+      MD-CON-VAR      of s" fix_variant_reference" endof
+      MD-FAM-UNKNOWN  of s" fix_family_reference" endof
+      MD-FAM-KIND     of s" fix_family_reference" endof
+      MD-CON-FAM      of s" fix_family_reference" endof
+      MD-CON-KIND     of s" fix_family_reference" endof
+      MD-SCRUT        of s" fix_match_scrutinee" endof
+      MD-FAM-MISMATCH of s" fix_match_scrutinee" endof
+      MD-QUOT         of s" fix_match_scrutinee" endof
+      MD-OPEN-ARGS    of s" fix_match_scrutinee" endof
+      MD-JOIN         of s" fix_branch_outputs" endof
+      MD-DEPTH        of s" factor_match_nesting" endof
+      s" fix_match_syntax" rot
+   endcase ;
+
+: MDIAG-SUGGEST$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-NONEXH       of s" Add an OF branch for every listed variant; v1 has no default branch." endof
+      MD-VAR-DUP      of s" Remove the repeated variant branch; each variant may appear once." endof
+      MD-VAR-UNKNOWN  of s" Use a variant declared by this family, lowercase as declared." endof
+      MD-CON-VAR      of s" Use a variant declared by this family, lowercase as declared." endof
+      MD-FAM-UNKNOWN  of s" Name a visible sum family: own package first, else a unique public family." endof
+      MD-CON-FAM      of s" construct resolves only families declared in the active package." endof
+      MD-FAM-KIND     of s" MATCH eliminates sum or enum families only." endof
+      MD-CON-KIND     of s" construct builds sum or enum families only." endof
+      MD-SCRUT        of s" Put the family value on top of the stack before MATCH." endof
+      MD-FAM-MISMATCH of s" The value on top belongs to a different family; match that family." endof
+      MD-QUOT         of s" Move the match out of the quotation; quotation rows cannot carry a scrutinee." endof
+      MD-OPEN-ARGS    of s" Instantiate the family arguments to concrete types before matching." endof
+      MD-JOIN         of s" Make every branch leave the same stack shape; ;MATCH has one continuation." endof
+      MD-DEPTH        of s" Factor the inner match into a named word; control frames are capped." endof
+      MD-MISSING-OF   of s" Write `variant OF ... ENDOF` for each branch." endof
+      s" Complete the form: MATCH family, variant OF ... ENDOF per variant, ;MATCH." rot
+   endcase ;
+
+: MDIAG-REASON$ ( -- ptr u8 n )
+   MDIAG @ case
+      MD-FAM-UNKNOWN  of s" bad match: unknown type family" endof
+      MD-FAM-KIND     of s" bad match: family is not a sum or enum" endof
+      MD-SCRUT        of s" bad match: expected sum or enum value on stack" endof
+      MD-FAM-MISMATCH of s" bad match: family mismatch" endof
+      MD-VAR-UNKNOWN  of s" bad match: unknown variant" endof
+      MD-VAR-DUP      of s" bad match: duplicate variant" endof
+      MD-MISSING-OF   of s" bad match: variant token must be followed by OF" endof
+      MD-NONEXH       of s" bad match: missing variants:" endof
+      MD-STRAY        of s" bad match: misplaced match token" endof
+      MD-TRUNC        of s" bad match: unterminated match" endof
+      MD-DEPTH        of s" bad match: nesting exceeds control-frame capacity" endof
+      MD-QUOT         of s" bad match: quotation rows cannot carry a scrutinee" endof
+      MD-OPEN-ARGS    of s" bad match: scrutinee type arguments are unresolved" endof
+      MD-JOIN         of s" bad match: branch output mismatch" endof
+      MD-CON-FAM      of s" bad construct: family not declared in the active package" endof
+      MD-CON-KIND     of s" bad construct: family is not a sum or enum" endof
+      MD-CON-VAR      of s" bad construct: unknown variant" endof
+      MD-CON-TRUNC    of s" bad construct: missing family or variant token" endof
+      s" bad match: rejected" rot
+   endcase ;
+
+: MDIAG-MISSING-WALK ( bool -- ) {: json:bool :}   \ unseen variant tails, space-led
+   MDIAG-FAM @ TFAM-VAR-START@ {: vstart:n :}
+   0 MDV-I !  0 MDV-F !
+   BEGIN MDV-I @ MDIAG-VCNT @ < WHILE
+      MDIAG-SEEN @ MDV-I @ MSEEN-GET 0= IF
+         json MDV-F @ 0= and 0= IF s"  " DTXT THEN
+         vstart MDV-I @ + SUMV-NAME$ DTXT
+         -1 MDV-F !
+      THEN
+      MDV-I @ 1 + MDV-I !
+   REPEAT ;
+
+: MDIAG-MISSING-JSTR ( -- )   \ canonical lowercase tails: JCHAR-safe verbatim
+   34 EMIT1  0 0= MDIAG-MISSING-WALK  34 EMIT1 ;
+
+: MDIAG-MISSING-PROSE ( -- )
+   0 0= 0= MDIAG-MISSING-WALK ;
+
 : DCODE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
+   MDIAG @ 0 <> IF MDIAG-CODE$ ELSE
    DEADERR @ IF s" E-DEAD-CODE" ELSE
    QUALBAD @ IF s" E-BAD-QUALIFIED" ELSE
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -364,6 +475,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
+   MDIAG @ 0 <> IF MDIAG-CLASS$ EXIT THEN
    DEADERR @ IF s" remove_dead_code" EXIT THEN
    QUALBAD @ IF s" fix_qualified_name" EXIT THEN
    UNDEFERR @ IF s" unknown_rejection" EXIT THEN
@@ -387,6 +499,7 @@ variable DSUGE  variable DSUGA
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
+   MDIAG @ 0 <> IF MDIAG-SUGGEST$ EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
    QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
@@ -457,6 +570,10 @@ variable JPOS  variable JLINE  variable JCOL
    THEN
    s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : at '" DTXT  FAILTK FAILTU @ DTXT
    s" '" DTXT
+   MDIAG @ 0 <> IF
+     s"  " DTXT  MDIAG-REASON$ DTXT
+     MDIAG @ MD-NONEXH = IF MDIAG-MISSING-PROSE THEN
+   THEN
    DEADERR @ IF s"  after '" DTXT DEADTA @ DEADTU @ DTXT s" '" DTXT THEN
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
@@ -471,6 +588,10 @@ variable JPOS  variable JLINE  variable JCOL
    s" word" JKEY   NMA @ NMU @ JSTR   44 EMIT1
    s" token" JKEY  FAILTK FAILTU @ JSTR  44 EMIT1
    DEADERR @ IF s" dead_owner" JKEY DEADTA @ DEADTU @ JSTR 44 EMIT1 THEN
+   MDIAG @ 0 <> IF
+     s" reason" JKEY MDIAG-REASON$ JSTR 44 EMIT1
+     MDIAG @ MD-NONEXH = IF s" missing_variants" JKEY MDIAG-MISSING-JSTR 44 EMIT1 THEN
+   THEN
    s" token_index" JKEY  FAILIX @ JNUM  44 EMIT1
    s" file" JKEY  DIAGFB DIAGFU @ JSTR  44 EMIT1
    s" line" JKEY  JABS-LINE JNUM  44 EMIT1

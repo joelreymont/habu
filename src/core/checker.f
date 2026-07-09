@@ -5903,6 +5903,42 @@ variable MM      \ 0 off | 1 expecting family | 2 expecting variant or ;match | 
 variable MPEND   \ pending variant SUMV id between the variant token and its OF (-1 poisoned)
 variable MREJ    \ match structural-reject latch: forces verdict 0, never uncheckable
 
+\ --- item 9 slice 4: match/construct reject reasons (docs §24). Failure sites
+\ latch a reason code alongside the token pin; render.f maps it to a stable
+\ E-MATCH-*/E-CONSTRUCT-* code, repair class, suggestion, and prose. First
+\ reason wins and only while the token pin is still open (FAILSET clear), so
+\ the reason always describes the pinned token. The nonexhaustive reason also
+\ latches (family, seen-bitset offset, variant count) so the renderer can walk
+\ the unseen declaration-order tags to variant NAMES.
+1 constant MD-FAM-UNKNOWN     \ match family token resolves nothing in signature scope
+2 constant MD-FAM-KIND        \ match family is not a sum or enum
+3 constant MD-SCRUT           \ top of stack is not a sum/enum bundle
+4 constant MD-FAM-MISMATCH    \ top bundle belongs to a different family
+5 constant MD-VAR-UNKNOWN     \ variant not declared by the matched family
+6 constant MD-VAR-DUP         \ duplicate variant branch
+7 constant MD-MISSING-OF      \ variant token not followed by OF
+8 constant MD-NONEXH          \ ;MATCH with unseen variants (no default branch in v1)
+9 constant MD-STRAY           \ stray ;match / closer over a foreign frame
+10 constant MD-TRUNC          \ unterminated match form at definition end
+11 constant MD-DEPTH          \ match cannot reserve its two control frames
+12 constant MD-QUOT           \ match inside a quotation: open rows carry no scrutinee
+13 constant MD-OPEN-ARGS      \ open-arg parametric scrutinee (v1 conservative cell)
+14 constant MD-JOIN           \ branch outputs do not unify
+15 constant MD-CON-FAM        \ construct family not declared in the active package
+16 constant MD-CON-KIND       \ construct family is not a sum or enum
+17 constant MD-CON-VAR        \ construct variant not declared by the family
+18 constant MD-CON-TRUNC      \ construct missing its family/variant operand
+
+variable MDIAG        \ latched reason code (0 = none; reset per definition)
+variable MDIAG-FAM    \ nonexhaustive: family id for the name walk
+variable MDIAG-SEEN   \ nonexhaustive: seen-bitset offset (MSEEN pool, per-check)
+variable MDIAG-VCNT   \ nonexhaustive: variant count
+
+: MDIAG! ( n -- ) {: code:n :}   \ first reason wins, only while the pin is open
+   MDIAG @ 0 <> IF EXIT THEN
+   FAILSET @ 0 <> IF EXIT THEN
+   code MDIAG ! ;
+
 : MATCH-REJECT ( -- )
    0 OK !  -1 FAILSET !  -1 MREJ !  0 MM ! ;
 
@@ -5930,11 +5966,20 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
       MTCH-I @ 1 + MTCH-I !
    REPEAT RES-TRUE ;
 
+: MATCH-SCRUT-DIAG ( n -- ) {: fam:n :}   \ classify a failed scrutinee for §24
+   QDEPTH @ 0 > IF MD-QUOT MDIAG! EXIT THEN
+   DCUR @ R-RES TAG S-PUSH <> IF MD-SCRUT MDIAG! EXIT THEN
+   DCUR @ R-RES P>TYPE T-RES {: t:n :}
+   t LAYOUT-PARAM? 0= IF MD-SCRUT MDIAG! EXIT THEN
+   t PARAM>FAM fam <> IF MD-FAM-MISMATCH MDIAG! EXIT THEN
+   t HIDDEN-PARAM? 0= IF MD-OPEN-ARGS MDIAG! EXIT THEN
+   MD-SCRUT MDIAG! ;
+
 : MATCH-FAM-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u MATCH-FAM-XT @ execute 0= IF drop MATCH-REJECT EXIT THEN
    {: fam:n :}
-   #CFC @ 30 > IF MATCH-REJECT EXIT THEN     \ two CFS frames per match: reject, never UNCK
-   fam MATCH-SCRUT? 0= IF MATCH-REJECT EXIT THEN
+   #CFC @ 30 > IF MD-DEPTH MDIAG! MATCH-REJECT EXIT THEN   \ two CFS frames per match: reject, never UNCK
+   fam MATCH-SCRUT? 0= IF fam MATCH-SCRUT-DIAG MATCH-REJECT EXIT THEN
    MF-ENSURE
    MF-DEPTH @ 1 + MF-DEPTH !
    MF-CUR {: r:ptr :}
@@ -5954,8 +5999,10 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    OK @ 0= IF EXIT THEN
    DEADP @ IF EXIT THEN
    MF-CUR MF.HAS @ IF
-      MF-CUR MF.OUT @ SUNI
+      FAILSET @ {: fs0:n :}                   \ SUNI pins the token itself: latch the
+      MF-CUR MF.OUT @ SUNI                    \ join reason only when THIS unify failed
       MF-CUR MF.ROUT @ RSUNI
+      OK @ 0=  fs0 0=  and  MDIAG @ 0=  and IF MD-JOIN MDIAG ! THEN
    ELSE
       DCUR @ MF-CUR MF.OUT !
       RCUR @ MF-CUR MF.ROUT !
@@ -5972,9 +6019,17 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    2 MM ! ;
 
 : MATCH-SEMI ( -- )    \ ;match at variant-list level: exhaustiveness + join
-   CF-MT? IF MATCH-REJECT EXIT THEN
-   CF@K 9 <> IF MATCH-REJECT EXIT THEN
-   MF-CUR MF.SEEN @ MF-CUR MF.VCNT @ MSEEN-FULL? 0= IF 0 OK !  -1 MREJ ! THEN
+   CF-MT? IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
+   CF@K 9 <> IF MD-STRAY MDIAG! MATCH-REJECT EXIT THEN
+   MF-CUR MF.SEEN @ MF-CUR MF.VCNT @ MSEEN-FULL? 0= IF
+      MDIAG @ 0=  FAILSET @ 0=  and IF          \ latch the name-walk data with the reason
+         MD-NONEXH MDIAG !
+         MF-CUR MF.FAM @ MDIAG-FAM !
+         MF-CUR MF.SEEN @ MDIAG-SEEN !
+         MF-CUR MF.VCNT @ MDIAG-VCNT !
+      THEN
+      0 OK !  -1 MREJ !
+   THEN
    MF-CUR MF.HAS @ IF
       MF-CUR MF.OUT @ DCUR !
       MF-CUR MF.ROUT @ RCUR !
@@ -5992,16 +6047,16 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
 : MATCH-VARIANT-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" ;match" CORE-STR= IF MATCH-SEMI EXIT THEN
    a u MF-CUR MF.FAM @ MATCH-VAR-XT @ execute 0= IF
-      drop 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
+      drop MD-VAR-UNKNOWN MDIAG! 0 OK !  -1 MREJ !  -1 MPEND !  3 MM !  EXIT THEN
    {: vid:n :}
    vid MATCH-VTAG-XT @ execute {: tag:n :}
-   MF-CUR MF.SEEN @ tag MSEEN-GET IF 0 OK !  -1 MREJ ! THEN   \ duplicate variant
+   MF-CUR MF.SEEN @ tag MSEEN-GET IF MD-VAR-DUP MDIAG! 0 OK !  -1 MREJ ! THEN   \ duplicate variant
    MF-CUR MF.SEEN @ tag MSEEN-SET
    vid MPEND !
    3 MM ! ;
 
 : MATCH-OF-TOK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" of" CORE-STR= 0= IF 0 OK !  -1 MREJ ! THEN   \ variant token without OF
+   a u s" of" CORE-STR= 0= IF MD-MISSING-OF MDIAG! 0 OK !  -1 MREJ ! THEN   \ variant token without OF
    MF-CUR {: r:ptr :}
    r MF.BASE @ DCUR !
    r MF.RBASE @ RCUR !
@@ -6032,7 +6087,7 @@ variable MTCH-ROW   variable MTCH-I   variable MTCH-TAGT
    a u s" of" CORE-STR= IF CF-OF RES-TRUE EXIT THEN
    a u s" endof" CORE-STR= IF CF-ENDOF-DISPATCH RES-TRUE EXIT THEN
    a u s" endcase" CORE-STR= IF CF-ENDCASE RES-TRUE EXIT THEN
-   a u s" ;match" CORE-STR= IF CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
+   a u s" ;match" CORE-STR= IF MD-STRAY MDIAG! CF-FAIL RES-TRUE EXIT THEN   \ stray ;match: hard reject
    a u s" begin" CORE-STR= IF CF-BEGIN RES-TRUE EXIT THEN
    a u s" until" CORE-STR= IF CF-UNTIL RES-TRUE EXIT THEN
    a u s" again" CORE-STR= IF CF-AGAIN RES-TRUE EXIT THEN
@@ -6486,6 +6541,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    a TBASE !  u TBLEN !  NEW
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
+   0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
    0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
@@ -6595,6 +6651,8 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
    0 LAYOUT-XPORT !                  \ boundary unification is never in transport mode
    SIG-EFF-DROP
    CHECK-FOLD-EXITS
+   CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN   \ unify pins its own mismatch
    CHECK-SIG? IF CHECK-NO-BORROW THEN
    CHECK-SIG? IF
       CTOR-PEND-MATCH? IF
@@ -6820,6 +6878,8 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
    SGHASR @ IF SGRIN @ dup RBROW ! RCUR ! THEN
    CHECK-SCAN
    CHECK-FOLD-EXITS
+   CONM @ 0 <> IF MD-CON-TRUNC MDIAG! THEN     \ latch truncation BEFORE the boundary
+   MM @ 0 <>  MF-DEPTH @ 0 <>  or IF MD-TRUNC MDIAG! THEN
    CHECK-NO-BORROW
    SGOUT @ SUNI-COERCE
    OK @ IF SGOUT @ DCUR ! THEN
