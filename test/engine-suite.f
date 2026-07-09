@@ -1335,11 +1335,13 @@ TFG -1 T=
 \ return, and that XDS (x19) survives the C call. Trusted boundary (raw code +
 \ foreign call).
 create FFI-ARGS 8 cells allot
+TRUSTED: ES-PATCH32 ( n n -- ) patch32 ;   \ code-emission boundary (F3 gate):
+                                           \ patch32 is TRUSTED-ONLY; TFFI stays checked.
 : TFFI ( -- n )
    3 FFI-ARGS !  4 FFI-ARGS 8 + !
    cp@ {: fn:n :}
-   $8B010000 fn patch32            \ add x0, x0, x1   at fn
-   $D65F03C0 fn 4 + patch32        \ ret             at fn+4
+   $8B010000 fn ES-PATCH32         \ add x0, x0, x1   at fn
+   $D65F03C0 fn 4 + ES-PATCH32     \ ret             at fn+4
    FFI-ARGS fn ffi-call ;
 TFFI 7 T=
 

@@ -449,6 +449,7 @@ variable MDV-I   variable MDV-F
    0 0= 0= MDIAG-MISSING-WALK ;
 
 : DCODE
+   CAPREQ @ IF s" E-CAP-TRUSTED" ELSE
    UNSAFE @ IF s" E-UNSAFE" ELSE
    LOCALBAD @ IF s" E-BAD-LOCAL-SHAPE" ELSE
    LINLOCBAD @ IF s" E-LINEAR-LOCAL" ELSE
@@ -458,7 +459,7 @@ variable MDV-I   variable MDV-F
    UNDEFERR @ IF s" E-UNDEFINED" ELSE
    DVERD @ 1 = IF s" E-UNCHECKABLE" ELSE
    SGBAD @ IF SGBAD-UNKNOWN? IF s" E-UNKNOWN-SIGNATURE-TYPE" ELSE SGBAD-BAREPTR? IF s" E-BARE-PTR-SIGNATURE" ELSE SGBAD-ARITY? IF s" E-WRONG-ARITY" ELSE s" E-BAD-SIGNATURE" THEN THEN THEN ELSE
-   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+   DEXP @ 0 <> IF s" E-MISMATCH" ELSE s" E-REJECTED" THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 : DVERDICT ( -- ptr u8 n )
    UNDEFERR @ IF
       s" rejected"
@@ -472,6 +473,7 @@ variable MDV-I   variable MDV-F
       RCUR @ R-RES  RBROW @ R-RES  <>
    THEN ;
 : REPAIR-CLASS ( -- a u )
+   CAPREQ @ IF s" trusted_boundary_required" EXIT THEN
    UNSAFE @ IF s" trusted_boundary_required" EXIT THEN
    LOCALBAD @ IF s" factor_local_shape" EXIT THEN
    LINLOCBAD @ IF s" factor_linear_local" EXIT THEN
@@ -496,6 +498,7 @@ variable MDV-I   variable MDV-F
 \ Short repair hint derived from the stable class. Raw stack rows stay in their
 \ own JSON fields; this text is only for LLM action selection.
 : SUGGEST-TEXT ( -- a u )
+   CAPREQ @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    UNSAFE @ IF s" Move this compiler or runtime boundary behind audited TRUST." EXIT THEN
    LOCALBAD @ IF s" Move locals to a live top-level path or factor a helper." EXIT THEN
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
@@ -543,6 +546,11 @@ variable JPOS  variable JLINE  variable JCOL
 : JABS-BSTART ( -- n )  DIAGB0 @ FAILB @ + ;
 : JABS-BEND ( -- n )  DIAGB0 @ FAILE @ + ;
 : DIAG-PROSE
+   CAPREQ @ IF
+     s" E-CAP-TRUSTED habu: in " DTXT  NMA @ NMU @ DTXT
+     s" : '" DTXT  FAILTK FAILTU @ DTXT
+     s" ' is a trust-boundary primitive; call it only from a TRUSTED: definition" DTXT EXIT
+   THEN
    SGBAD-UNKNOWN? IF
      s" habu: in " DTXT  NMA @ NMU @ DTXT  s" : unknown type '" DTXT
      FAILTK FAILTU @ DTXT  s" ' in signature" DTXT EXIT

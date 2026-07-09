@@ -8,17 +8,17 @@ create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot
 
 : FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
-   $F9000001 fn patch32
-   $D65F03C0 fn $4 + patch32
+   $F9000001 fn FFI-PATCH
+   $D65F03C0 fn $4 + FFI-PATCH
    fn ;
 
 : FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
-   $F9400009 fn       patch32
-   $F940040A fn $4 +  patch32
-   $F9400129 fn $8 +  patch32
-   $F940014A fn $C +  patch32
-   $8B0A0120 fn $10 + patch32
-   $D65F03C0 fn $14 + patch32
+   $F9400009 fn       FFI-PATCH
+   $F940040A fn $4 +  FFI-PATCH
+   $F9400129 fn $8 +  FFI-PATCH
+   $F940014A fn $C +  FFI-PATCH
+   $8B0A0120 fn $10 + FFI-PATCH
+   $D65F03C0 fn $14 + FFI-PATCH
    fn ;
 
 : FFI-T-OUT-PARAM ( -- )

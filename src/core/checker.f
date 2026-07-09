@@ -2049,6 +2049,7 @@ variable LINLOCBAD           \ a linear-counting value was bound into a {: :} lo
 variable UNDEFERR
 variable QUALBAD
 variable QDUPBAD             \ ?dup applied to a layout value (width-breaking; item 12)
+variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen sink) called from checked code
 
 : HEXD? {: c :} c DIGIT?  c 96 > c 103 < and or  c 64 > c 71 < and or ;
 
@@ -3693,6 +3694,7 @@ variable LMI
 
 256 constant PE-CAP
 1 constant PE-ACTIVE
+2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 
 BEGIN-STRUCTURE PE-REC
    CELL +FIELD PE.SYM
@@ -3719,6 +3721,9 @@ variable PE-I
 : PE-ACTIVE? ( n -- bool )
    PE-FLAGS@ PE-ACTIVE and 0 <> ;
 
+: PE-TRUSTED-ONLY? ( n -- bool )
+   PE-FLAGS@ PE-TRUSTED-ONLY and 0 <> ;
+
 : PRIM-CHECK-CAP ( -- )
    #PE @ PE-CAP >= IF s" checker: prim table full" 76 die THEN ;
 
@@ -3728,6 +3733,11 @@ variable PE-I
    eff #PE @ PE-ROW PE.EFF !
    flags #PE @ PE-ROW PE.FLAGS !
    #PE @ 1 + #PE ! ;
+
+\ mark the just-registered prim (last PES slot) as a TRUSTED-only trust boundary,
+\ so a CHECKED caller is rejected while a TRUSTED: body (never checked) may use it.
+: PRIM-TRUSTED-ONLY! ( -- )
+   #PE @ 1 - PE-ROW PE.FLAGS dup @ PE-TRUSTED-ONLY or swap ! ;
 
 variable PRM-FIRST
 
@@ -3959,6 +3969,7 @@ PRIM: fork          PE-N PE-OUT PRIM;
 PRIM: wait-rc       PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: wait-status   PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: patch32       PE-N PE-IN PE-N PE-IN PRIM;
+PRIM-TRUSTED-ONLY!                       \ code injection: only a TRUSTED: boundary may emit machine code (F3)
 PRIM: snap-rebase PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PRIM;
 PRIM: write         PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: close         PE-N PE-IN PRIM;
@@ -4852,6 +4863,8 @@ variable TSEEN  variable TSOK  variable TFA
    begin PE-I @ #PE @ <  TSOK @ 0=  and while
       PE-I @ PE-ACTIVE? IF
          PE-I @ PE-SYM@ sym = IF
+            PE-I @ PE-TRUSTED-ONLY? IF        \ reached only from a CHECKED body -> reject fail-closed
+               -1 CAPREQ !  0 OK !  -1 FAILSET !  RES-TRUE EXIT THEN
             TSEEN @ 0= IF PE-I @ PE-EFF@ TFA ! THEN
             -1 TSEEN !
             PE-I @ PE-EFF@ E-PTR TRY-EFF IF -1 TSOK ! THEN
@@ -6641,7 +6654,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !
+   SGBAD-CLEAR  0 UNSAFE !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 LOCSEQ !
    0 WF-N !  0 RECW !
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
@@ -6694,7 +6707,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  MREJ @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.

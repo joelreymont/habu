@@ -46,10 +46,16 @@ $3C80 constant FFI-KPARAM#-OFF
 : FFI-KPARAM# ( -- ptr n )
    data-base FFI-KPARAM#-OFF + ;
 
-\ Pointer <-> cell reinterpret. The only trusted boundary in this file: the
-\ checker cannot know a raw cell is a valid pointer, so we assert it here, once.
+\ Pointer <-> cell reinterpret trusted boundary: the checker cannot know a raw
+\ cell is a valid pointer, so we assert it here, once.
 TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
 TRUSTED: N>P ( n -- ptr u8 ) ;            \ ret cell -> byte pointer
+
+\ Code-emission trusted boundary: patch32 is a TRUSTED-ONLY capability prim
+\ (machine-code sink, rejected from CHECKED code). Leaf-stub builders below and
+\ in the FFI test suites stay CHECKED and route their instruction writes through
+\ this single audited wrapper instead of calling patch32 directly.
+TRUSTED: FFI-PATCH ( n n -- ) patch32 ;   \ instr addr -- : emit one 32-bit word
 
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are

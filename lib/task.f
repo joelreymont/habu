@@ -247,8 +247,8 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
 : A64-BLR ( n -- n )
    5 lshift $D63F0000 or ;
 
-: TASK-PATCH ( n n -- )
-   patch32 ;
+TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
+   patch32 ;                             \ TRUSTED-ONLY capability prim (F3 gate)
 
 : TASK-ENTRY-BUILD ( -- )
    TASK-ENTRY-NEEDED? 0= if exit then

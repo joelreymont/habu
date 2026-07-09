@@ -57,27 +57,27 @@ FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
 \ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
 \ the stable free code slot (a top-level cp@ patch would clobber the line buffer).
 : FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
-   $8B010000 fn       patch32  $8B020000 fn $4 +  patch32  $8B030000 fn $8 +  patch32
-   $8B040000 fn $C +  patch32  $8B050000 fn $10 + patch32  $8B060000 fn $14 + patch32
-   $8B070000 fn $18 + patch32
-   $F94003E9 fn $1C + patch32  $8B090000 fn $20 + patch32
-   $F94007E9 fn $24 + patch32  $8B090000 fn $28 + patch32
-   $D65F03C0 fn $2C + patch32  fn ;
+   $8B010000 fn       FFI-PATCH  $8B020000 fn $4 +  FFI-PATCH  $8B030000 fn $8 +  FFI-PATCH
+   $8B040000 fn $C +  FFI-PATCH  $8B050000 fn $10 + FFI-PATCH  $8B060000 fn $14 + FFI-PATCH
+   $8B070000 fn $18 + FFI-PATCH
+   $F94003E9 fn $1C + FFI-PATCH  $8B090000 fn $20 + FFI-PATCH
+   $F94007E9 fn $24 + FFI-PATCH  $8B090000 fn $28 + FFI-PATCH
+   $D65F03C0 fn $2C + FFI-PATCH  fn ;
 
 : FFI-T-FSUM3 ( -- n ) cp@ {: fn:n :}
-   $1E612800 fn      patch32  $1E622800 fn $4 + patch32
-   $D65F03C0 fn $8 + patch32  fn ;
+   $1E612800 fn      FFI-PATCH  $1E622800 fn $4 + FFI-PATCH
+   $D65F03C0 fn $8 + FFI-PATCH  fn ;
 
 : FFI-T-FADD-X0 ( -- n ) cp@ {: fn:n :}
-   $9E620008 fn       patch32  $1E682800 fn $4 + patch32
-   $D65F03C0 fn $8 +  patch32  fn ;
+   $9E620008 fn       FFI-PATCH  $1E682800 fn $4 + FFI-PATCH
+   $D65F03C0 fn $8 +  FFI-PATCH  fn ;
 
 : FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
-   $F94003E9 fn       patch32  $9E670128 fn $4 + patch32
-   $1E682800 fn $8 +  patch32  $D65F03C0 fn $C + patch32  fn ;
+   $F94003E9 fn       FFI-PATCH  $9E670128 fn $4 + FFI-PATCH
+   $1E682800 fn $8 +  FFI-PATCH  $D65F03C0 fn $C + FFI-PATCH  fn ;
 
 : FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
-   $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
+   $F9000100 fn FFI-PATCH  $D65F03C0 fn $4 + FFI-PATCH  fn ;
 
 : FFI-RUN ( -- )
    T-RESET

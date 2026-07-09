@@ -464,6 +464,21 @@ variable GDX-TRUST-MAN-U
    s" EV ." GE-SRC-LINE
    s" hb published unsafe evaluate definition" GE-HB-RUN-STDIN-NZ ;
 
+\ F3: patch32 is a TRUSTED-only capability prim (machine-code sink). A CHECKED
+\ definition that calls it must be rejected with the named E-CAP-TRUSTED code and
+\ routed to the trusted_boundary_required repair class; the TRUSTED: wrappers
+\ (lib/ffi-abi.f FFI-PATCH, lib/task.f TASK-PATCH) are the audited certified path.
+: GDX-CAP-TRUSTED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : GDX-FORGE ( -- ) 0 0 patch32 ;" GE-SRC-LINE
+   s" tools/check.f accepted checked patch32 (F3)" GDX-CHECK-JSON
+   s" habu-cap-trusted.err" GDX-WRITE-ERR
+   s" code" s" E-CAP-TRUSTED" s" capability checker E-CAP-TRUSTED" GDX-EXPECT-ERR-JSTR
+   s" token" s" patch32" s" capability checker token" GDX-EXPECT-ERR-JSTR
+   s" habu-cap-trusted.err" s" capability diagnostic contract" GDX-DIAG-CONTRACT
+   s" diag-repair-class" s" habu-cap-trusted.err" s" trusted_boundary_required" s" capability repair class" GDX-GJA2S ;
+
 : GDX-LOCAL-IN-LOOP ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -597,6 +612,7 @@ variable GDX-TRUST-MAN-U
    s" hb-gate-diagnostics-file-unsafe" GT-START
    GDX-FILE-ORIGIN
    GDX-UNSAFE-CHECKS
+   GDX-CAP-TRUSTED
    GDX-LOCAL-IN-LOOP
    GT-CLEANUP
    s" PASS: native checker diagnostics file-unsafe slice" type cr ;

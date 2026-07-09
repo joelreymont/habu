@@ -345,8 +345,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | TTHROWS-RAW | `a n --` | Top-level test assertion boundary around execution-token `catch`; checked colon definitions should use `TTHROWSQ`, but top-level scripts cannot push `[: ;]` quotations. | `lib/test/assert-test.f`, `test/run.f` | lib/test/assert.f | 2026-06-22 |
 | P>N | `ptr a -- n` | FFI argument marshalling: reinterpret any pointer as the raw integer cell the AAPCS64 trampoline loads into x0-x7; the checker has no pointer-to-cell coercion. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-06-27 |
 | N>P | `n -- ptr u8` | FFI return marshalling: reinterpret an integer return cell (a handle or pointer from dlopen/dlsym or a callee) as a byte pointer. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-06-27 |
+| FFI-PATCH | `n n --` | Code-emission boundary: `patch32` is a TRUSTED-only capability primitive (machine-code sink, rejected from CHECKED code as E-CAP-TRUSTED). Checked FFI leaf-stub builders route every instruction write through this single audited wrapper. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-07-09 |
 | TASK-NULL | `-- ptr a` | Null pointer sentinel for task control-block fields; Habu has no typed null literal. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | TASK-N>PTR | `n -- ptr a` | Reinterpret task-control-block cell storage as a pointer when loading the current task pointer. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
+| TASK-PATCH | `n n --` | Code-emission boundary: emits JIT task-trampoline instructions via `patch32`, a TRUSTED-only capability primitive (machine-code sink, rejected from CHECKED code as E-CAP-TRUSTED). | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-07-09 |
 | TASK-CELL>PTR-SLOT | `ptr a -- ptr ptr a` | Reinterpret a data-region cell address as a pointer-valued slot; the checker cannot infer the slot payload type from the offset. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | TASK | `n --` | Defining word that allocates a task control-block record and returns it through DOES>; CREATE/DOES> effect is outside checker inference. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | +USER | `n n -- n` | Defining word for task-local user storage; CREATE/DOES> returns an address derived from the current data region. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
@@ -784,9 +786,9 @@ src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
 lib/engine-id.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
-lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
+lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 3
 lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
-lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 6
+lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 7
 lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
 lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
 lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
@@ -803,7 +805,7 @@ maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 50
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 51
 test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436

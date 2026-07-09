@@ -100,7 +100,7 @@ variable GAN-REPORT-U
 : GAN-SOURCE-PATCH32 ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" : MAIN ( -- ) 0 0 patch32 ;" GE-SRC-LINE
+   s" TRUSTED: MAIN ( -- ) 0 0 patch32 ;" GE-SRC-LINE
    s" CLOSURE" GE-SRC-LINE ;
 
 : GAN-PATCH32 ( -- )
