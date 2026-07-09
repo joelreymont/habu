@@ -224,6 +224,102 @@ PLAN.md item 10. Keyword data/labels/EMIT-KWDATA + lowering for MATCH/OF/ENDOF/E
    the checker's CF-ENDOF-DISPATCH discipline: OF/ENDOF codegen must route by the
    compiler frame kind. Runtime round-trips execute every branch; bad-tag DIES
    with the named diagnostic (child-process fixture — a die exits the engine).
+
+   **SLICE-3 DESIGN (refined by fable-tfam12 scout, 2026-07-09; NOT yet
+   implemented — stopped before starting per the full-proof-battery budget rule;
+   this note lives in its own empty change opnumukx on top of slice 2, so the
+   slice-2 commit stays pristine).** Deep read of habu2.f CASE/construct lowering
+   + checker MATCH machine yields a materially simpler compiler shape than the
+   anchor above, plus one hazard fix:
+   - **endof needs NO compiler routing.** The checker routes endof (MATCH-ENDOF vs
+     CF-ENDOF) because they do different *type-frame* work. The COMPILER's endof is
+     pure branch-placeholder bookkeeping: `J-ENDOF` (= `J-ELSE`, habu2.f:1048) pops
+     the of-CBZ frame, emits a B-to-join, pushes that B frame, patches the CBZ — and
+     never touches the data stack. This is **byte-identical** for CASE and MATCH
+     branches (both push exactly one CF frame at `of`, via C-PUSHCP which snapshots
+     LOCN/LOCF so branch locals scope correctly). So **reuse J-ENDOF unchanged**; do
+     NOT add a compiler CF-frame kind. Only `of` needs routing.
+   - **`of` routes via the CMM machine, not a keyword.** `MATCH` (new keyword
+     `J-MATCH`, register in EM-COMPILE-CONTROL-KEYWORDS `s" match" … LKWMATCH 5
+     ['] J-MATCH CF-ENTRY`) arms a match CMM state; the family/variant/`of`/`;match`
+     operand tokens are then consumed by EM-COMPILE-ADT-MODE (runs BEFORE the
+     keyword dispatch), so `of`-in-match never reaches `J-OF`. `J-OF` stays
+     CASE-only; `endof` still reaches the keyword dispatch (CMM=0 in the branch body)
+     and hits the shared `J-ENDOF`. `;match` needs no keyword row — it is consumed
+     at CMM=4; a stray `;match` at CMM=0 falls to EM-COMPILE-UNDEF (E-UNDEFINED,
+     fail-closed; the checker already hard-rejects it via CF-TOK? MD-STRAY).
+   - **CMM states extend construct's 1/2:** 3=match-want-family, 4=match-want-
+     variant-or-`;match`, 5=match-want-`of`. Pending variant (tag,pads) = 2 cells,
+     NON-nesting (no token ever falls between a variant and its `of`). Extend
+     EM-COMPILE-ADT-MODE's dispatch (habu2.f:4356) with the 3/4/5 legs.
+   - **Compiler match-frame stack NESTS** (checker fixture M7): (fam,M) per level +
+     a depth cell. A `create CMATCH-… allot` arena in habu2.f + a depth variable is
+     sufficient and SIDESTEPS the fixed-layout-cell hunt: it is pure compile-time
+     compiler state, never baked into user code, so its address need only be
+     self-consistent within each build — habu2's and forth.fs's create addresses
+     need NOT match (unlike CMM-CELL/CMFAM-CELL, which slice 2 pinned as shared
+     layout constants). M = TFAM-SLOTS@ captured at the family token.
+   - **J-MATCH** (CF-ENTRY → LVSPILL spills the VS bundle to the physical data
+     stack): push a CF sentinel frame x9=0 (J-CASE shape, habu2.f:1056) so `;match`
+     can patch the B-chain with the J-ENDCASE loop; push a compiler match-frame; arm
+     CMM=3. No emission (bundle already spilled).
+   - **EM-ADT-MATCH-FAM** (CMM=3): LBCAP the token; RX-window the bridge call to
+     `tfl-match-fam?` (signature scope) → fam; store fam + `fam TFAM-SLOTS@`=M in the
+     top match-frame; arm CMM=4. Fail → die `hb: match: unknown family: <tok>` rc.
+   - **EM-ADT-MATCH-VAR** (CMM=4): if token folds to `;match` → EM-MATCH-SEMI. Else
+     LBCAP; bridge `tfl-var?` (fam) → vid; tag=`vid SUMV-TAG@`, pads=`fam vid
+     TFL-VPADS`(=M−p); stash (tag,pads); arm CMM=5. Fail → die
+     `hb: match: unknown variant: <tok>` rc.
+   - **EM-ADT-MATCH-OF** (CMM=5): require token folds to `of` (else die
+     `hb: match: expected of: <tok>`). Emit compare+prologue: peek tag
+     `ldur x9,[x19,#-8]` ($F85F8269), `movz x16,#tag`, `cmp x9,x16`, C-PUSHCP + CBZ
+     placeholder (skip-if-not-this-variant), then the branch prologue drop of the
+     top (1+pads) cells (`sub x19,x19,#(8*(1+pads))`) leaving the p payload cells
+     exposed. Arm CMM=0 (branch body compiles normally; VS empty, payload on
+     physical stack — the CASE-arm convention).
+   - **EM-MATCH-SEMI** (`;match`): CP is already at the bad-tag point (the last of's
+     CBZ was patched here by its endof). Emit the bad-tag fall-through: drop the
+     full bundle (`sub x19,x19,#(8*(M+1))`) + the runtime die; then run the
+     J-ENDCASE B-chain-patch loop (habu2.f:1078) to point every accumulated endof-B
+     at the join (CP after the die), stopping at the sentinel; pop the match-frame;
+     CMM=0.
+   - **BAD-TAG DIE — HAZARD + FIX (supersedes FORK 3's pointer plan).** FORK 3 said
+     "materialize the family name pointer at emit (from TFAM-NAME$)". That is
+     UNSAFE: TFAM-NAME$ resolves into the `TF-STR` pool (type-family.f:60-83), which
+     is GROWABLE / mmap-relocatable (LESSONS "growable registries rebase on
+     relocation"), so a LIT64-baked name pointer dangles after a later grow/relocate
+     or snapshot. Correct: **emit the family NAME BYTES INLINE into the user code**
+     (C-SDQ-style copy at emit — the bytes travel with the word, no live pool
+     pointer), and a shared engine helper `C-DIE-BAD-TAG` that at RUNTIME writes
+     `hb: bad ` + inline-name + ` tag\n` to fd 2 and `NR-EXIT-GROUP` with the new
+     E-BAD-TAG code. (Inline bytes are also forward-compatible with slice-5
+     AOT/object persistence, where a family id/pointer would need the registry
+     restored.) Model the write/exit tail on C-DIE-TOKEN-NL (habu2.f:1608) but as
+     code EMITTED INTO the user word (C-EMITW sequence + inline-bytes span), not the
+     engine's own compile-time die. Scout `C-SDQ` / the `s"`-into-user-code path
+     first — this inline-string + runtime-syscall emission is the one un-derisked
+     novelty (slice 2's dies were all compile-time engine dies).
+   - **E-BAD-TAG code:** construct's dies use raw exit `70`. FORK 3 wants a distinct
+     named code. Locate the E-code convention home (no `src/config.fs` in this tree;
+     E-* names live across render.f/repl.f/habu2.f) and pick a distinct exit code +
+     a `docs/type-families.md §24` diagnostic row.
+   - **Test battery** (extend GE-CONSTRUCT-ROUND, test/gate-engine-lib.f:554):
+     construct+MATCH round-trip per variant (zero/one/multi payload — payload cells
+     arrive correctly, exact-stdout pin); a NESTED match; the forged-tag die via a
+     `TRUSTED: … ( -- fam<…> ) <payload> <bad-tag> ;` (GE-WMK pattern, :472) matched
+     in a CHILD process asserting the E-BAD-TAG rc + `hb: bad <fam> tag` text; CASE
+     fixtures stay green; interpret-mode MATCH stays fail-closed (E-UNDEFINED — MATCH
+     is a compile-only keyword, like construct; DNAME-WIDE owns the interpret
+     surface).
+   - **forth.fs mirror:** EMIT-KWDATA rows already present (slice 1). Mirror J-MATCH
+     + the three EM-ADT-MATCH-* legs + EM-MATCH-SEMI + C-DIE-BAD-TAG + the CMATCH
+     arena, and register the `match` keyword, all per slice 2's parity discipline
+     (C-FIND-GLOBAL = plain LFIND in stage0).
+   - **Four engine facts to honor** (predecessor): (1) mid-body code region is RW —
+     wrap each bridge find+call in an RX window (LPROT 5 → 3); (2) LBCAP each
+     consumed operand (the central LBCAP sits downstream of ADT-MODE dispatch);
+     (3) keep x11 clear of scratch around C-CALL-X11-SAVED; (4) bare `{: x:label :}`
+     used directly with ADR/CBZ, never LABEL@.
 4. **Gforth-recovered parity.** Build via bootstrap.sh; run the slice-2/3
    fixtures on the recovered candidate; assert identical construct/match/bad-tag
    behavior. Confirm forth.fs EMIT-KWDATA + any engine-referenced J-* mirror
