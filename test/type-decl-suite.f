@@ -320,7 +320,8 @@ s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ words either see it whole or fail closed — pinned here as regressions.
 \ depth/.s report raw physical cells: with hidden-field expansion (slice 3b)
 \ they would expose a layout row's physical shape, so they fail closed over any
-\ row holding hidden fields until logical-shape introspection exists (docs §17).
+\ row holding hidden fields PERMANENTLY (TFAM 12 item-5 verdict; the lift is
+\ capability dot habu-logical-shape-depth-9686f5c1, docs §17).
 s" TD12-DEPTH ( tdres<n,n> -- tdres<n,n> n ) depth" CHECK-QUIET-CANDIDATE! 0 T=
 s" TD12-DOTS ( tdres<n,n> -- tdres<n,n> ) .s" CHECK-QUIET-CANDIDATE! 0 T=
 \ constant pops one physical cell: a checked-body pop of a layout value rejects

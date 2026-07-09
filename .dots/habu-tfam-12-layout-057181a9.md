@@ -31,12 +31,44 @@ LANDED:
 
 OPEN:
 - REMAINING (2) interpret-mode wide values — CLOSED 2026-07-09: checker half
-  landed (commit "TFAM 12: checker-computed interpret wide marking", see the
-  12-interpret dot for design + residuals); engine half was already landed.
-- REMAINING (3) does>-split, (4) Gforth bootstrap mirror of pass-2 (NOTE: the
-  new EM-REC-WIDE-PUBLISH publish-tail marking call is likewise native-only —
-  fold its mirror into the same item-4 bootstrap parity work), (5) depth/.s,
-  (6) snapshot doctored-trailer fixture home — all OPEN, untouched.
+  landed (commit "TFAM 12: checker-computed interpret wide marking"); engine
+  half was already landed; the 12-interpret dot is closed and its two
+  documented residuals moved to dot habu-interpret-wide-gate-1d70acf7.
+- REMAINING (3) does>-split — OPEN (implementation plan below); (6) snapshot
+  doctored-trailer fixture — OPEN.
+- REMAINING (4) — DECIDED 2026-07-09 (document-the-vacuous-boundary, proven):
+  no SUMTYPE/PRODUCT/TYPEFAMILY/ENUM declaration exists in src/, lib/, tools/,
+  or maki/ non-test source (line-start declaration scan = 0 rows; hits are
+  only the implementation words in src/core/sumtype.f and dispatch mirrors),
+  so no definition compiled by a Gforth-recovered engine can carry a wide
+  width fact before the immediate native fixpoint refresh replaces it
+  (docs/bootstrap.md recovery contract). Mirror parity for pass-2 lowering +
+  EM-REC-WIDE-PUBLISH is capability dot habu-bootstrap-mirror-pass-f1714953,
+  which must land before (or with) the first non-test wide family declaration.
+- REMAINING (5) — DECIDED 2026-07-09 (keep fail-closed, permanent): the
+  checker reject already exists (HIDROW-STEP?, checker.f) with committed
+  regressions (TD12-DEPTH/TD12-DOTS assert reject); docs §17 sanctions reject
+  over logical-shape reporting. Comments settled at both sites; the lift is
+  capability dot habu-logical-shape-depth-9686f5c1.
+
+Gate tails for the items-4+5 verdict commit (2026-07-09, verbatim, true-rc):
+- fixpoint refresh: `bin/hb refresh OK: compiler fixpoint` rc 0
+- full gate: `PASS: native test suite (fixpoint + engine suite + checked hb +
+  repl + hb-build) (27926ms <= 70000ms budget)` rc 0, zero RED lines
+- test/type-decl-suite.f: `ok` rc 0
+- dot-dep-lint: `164 dot(s), 13 blocker(s), 0 finding(s)` rc 0;
+  typed-local-diff-lint on the diff: rc 0
+
+REMAINING (3) implementation plan (keep-verdict, not yet landed): the engine
+fail-closes at EM-P2-TRIGGER (DOESB set + wf-wide? -> token write + exit
+$4B/75, habu2.f) because pass-2's token indexing cannot align across a
+does>-split body. Keep, but surface it as a CHECKER-side named reject BEFORE
+the trigger: new flag (variable + reject in the does-aware verdict path when
+WF-WIDE? and the body's does> token was seen + CHECK-RESET + CHECK-VERDICT +
+render.f DCODE/REPAIR-CLASS/SUGGEST/PROSE rows, the same 5-site pattern the
+E-LAYOUT-BRANCH-LOCAL guard used), negative regression in
+test/type-decl-suite.f (wide fact + does> rejects; scalar does> stays
+certified), engine exit kept as backstop. Fixpoint + full gate.
 
 ## Update 2026-07-09 (branch commits after the audit)
 

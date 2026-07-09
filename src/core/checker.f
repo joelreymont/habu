@@ -5146,7 +5146,9 @@ variable XG-N   variable XG-TN   variable XG-ROW
 
 \ depth/.s report raw physical cells: over a row holding hidden fields they
 \ would expose the physical expansion of a logical value, so they fail closed
-\ until a logical-shape introspection exists (docs §17).
+\ PERMANENTLY (TFAM 12 item-5 verdict 2026-07-09; docs §17 sanctions reject
+\ over logical-shape reporting). The lift — logical-shape introspection that
+\ counts whole bundles — is capability dot habu-logical-shape-depth-9686f5c1.
 : HIDROW-STEP? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" depth" CORE-STR=  a u s" .s" CORE-STR= or 0= IF RES-FALSE EXIT THEN
    DCUR @ ROW-ANY-HIDDEN? 0= IF RES-FALSE EXIT THEN
