@@ -646,12 +646,83 @@ variable PS-PKG-PUBLIC
       PS-CLOSURE-I @ 1+ PS-CLOSURE-I !
    repeat ;
 
+\ --- synthesized public constructor signatures (item 13). Each PUBLIC ENUM
+\ family in the live registry publishes one nullary constructor per variant:
+\ word `PKG:VARIANT` (from SUMV-CTOR-PKG$/SUMV-NAME$), signature `-- family<args>`
+\ (the logical family type from name+arity, mirroring sumtype.f TDGEN-OUT-TYPE).
+\ Metadata only -- never a hidden field; payload-carrying SUM/PRODUCT constructors
+\ are a later sub-slice.
+3 constant PS-TK-ENUM                    \ TK-ENUM: payload-free sum
+create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
+
+: PS-CSIG-RESET ( -- ) 0 PS-CSIG-W ! ;
+: PS-CSIG-C, ( n -- )
+   PS-CSIG-W @ PS-SIG-CAP >= IF s" public-signatures: constructor signature too long" PS-DIE THEN
+   PS-CSIG-BUF PS-CSIG-W @ + c!  PS-CSIG-W @ 1+ PS-CSIG-W ! ;
+: PS-CSIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 ?do  a i + c@ PS-CSIG-C,  loop ;
+: PS-CSIG$ ( -- ptr u8 n ) PS-CSIG-BUF PS-CSIG-W @ ;
+
+: PS-FAM-ARGS ( n -- )                   \ append `<a,b,..>` for arity>0 (nothing at 0)
+   dup 0= IF drop EXIT THEN {: ar:n :}
+   60 PS-CSIG-C,                          \ '<'
+   ar 0 ?do
+      i 0 > IF 44 PS-CSIG-C, THEN         \ ','
+      i 97 + PS-CSIG-C,                   \ 'a'+i
+   loop
+   62 PS-CSIG-C, ;                        \ '>'
+
+: PS-CTOR-SIG$ ( n -- ptr u8 n ) {: fam:n :}   \ "-- family<args>"
+   PS-CSIG-RESET
+   45 PS-CSIG-C,  45 PS-CSIG-C,  32 PS-CSIG-C,   \ "-- "
+   fam TFAM-NAME$ PS-CSIG-APP
+   fam TFAM-ARITY@ PS-FAM-ARGS
+   PS-CSIG$ ;
+
+: PS-CTOR-WORD$ ( n -- ptr u8 n ) {: vid:n :}   \ PKG:VARIANT (upper-cased)
+   vid SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
+   vid SUMV-NAME$ {: na:ptr nu:n :}
+   pu nu + 1+ {: u:n :}
+   u PS-WORD-CAP > IF s" public-signatures: constructor word too long" PS-DIE THEN
+   pa pu PS-WORD-BUF COPY-UPPER
+   PS-COLON-C PS-WORD-BUF pu + c!
+   na nu PS-WORD-BUF pu + 1+ COPY-UPPER
+   PS-WORD-BUF u ;
+
+: PS-EMIT-CTOR ( n n ptr u8 n -- ) {: fam:n vid:n file-a:ptr file-u:n :}
+   PS-DEF-START
+   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
+   s" word" PS-JSON-KEY vid PS-CTOR-WORD$ PS-JSON-STRING PS-PAIR-COMMA
+   s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
+   s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" column" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" byte_start" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" signature" PS-JSON-KEY fam PS-CTOR-SIG$ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
+   s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
+   PS-DEF-END ;
+
+: PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
+   fam TFAM-KIND@ PS-TK-ENUM = fam TFAM-PUBLIC? and ;
+
+: PS-EMIT-FAM-CTORS ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
+   fam TFAM-VAR-START@ {: vs:n :}
+   vs fam TFAM-VAR-COUNT@ + vs ?do
+      fam  i  file-a file-u PS-EMIT-CTOR
+   loop ;
+
+: PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+   PS-TRUST @ IF exit THEN
+   TFAM-N@ 0 ?do
+      i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
+   loop ;
+
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    file-a file-u PS-FILE-BUF PS-FILE-CAP READ-FILE nip PS-TU !
    PS-COLLECT-EXPORTS
    PS-RESET-SCOPE
    file-a file-u PS-PRESCAN-CLOSURE
-   file-a file-u PS-SCAN-DEFS-BODY ;
+   file-a file-u PS-SCAN-DEFS-BODY
+   file-a file-u PS-EMIT-REGISTRY ;
 
 : PS-JSON-DOC-START ( -- )
    -1 PS-FIRST? !

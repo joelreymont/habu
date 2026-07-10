@@ -18,6 +18,11 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/public-signatures-core.f
 
+\ A public ENUM registered here exercises the metadata-synthesized constructor
+\ signatures (item 13): each variant publishes a nullary `PKG:VARIANT ( -- fam )`
+\ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
+ENUM pstcolor red green blue ;ENUM
+
 8192 constant PST-BUF-CAP
 
 variable PST-ROOT-U
@@ -418,11 +423,23 @@ variable PST-SUM-U
    PST-OUT outu s" .slot0" CONTAINS? TFALSE
    PST-OUT outu s" .tag" CONTAINS? TFALSE ;
 
+\ item 13: the registered public ENUM `pstcolor` publishes one synthesized
+\ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
+: PST-TEST-ENUM-CTORS ( -- )
+   PST-FIX PST-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   outu 0 > TTRUE
+   erru 0 T=
+   PST-OUT outu s" PSTCOLOR:RED" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (-- pstcolor)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTCOLOR:GREEN" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTCOLOR:BLUE" PST-WORD$ CONTAINS? TTRUE ;
+
 : PST-MAIN ( -- )
    T-RESET
    PST-PREPARE
    PST-TEST-GOOD
    PST-TEST-FIXTURE
+   PST-TEST-ENUM-CTORS
    PST-TEST-TRUST
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
