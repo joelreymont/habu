@@ -58,6 +58,54 @@ require lib/float.f
    s" 12e5" FL-PARSE-EXP 2 T=
    s" 123"  FL-PARSE-EXP 3 T= ;
 
+\ --- switchover wave A: FL-SIG now returns option<r> (SOME significand, else
+\ NONE). It is STR>FLOAT's mantissa parser; test its both branches directly.
+: T-FS ( ptr u8 n r -- ) {: want:r :}               \ FL-SIG: some(r) near want, none -> fail
+   FL-SIG MATCH option
+     none OF 0 0= 0= ENDOF                           \ none -> false (unexpected)
+     some OF want FL-NEAR ENDOF                       \ some(r) -> r ~ want
+   ;MATCH T-ASSERT ;
+: T-FS-BAD ( ptr u8 n -- )                          \ FL-SIG: expect NONE
+   FL-SIG MATCH option
+     none OF 0 0= ENDOF                              \ none -> true
+     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+   ;MATCH T-ASSERT ;
+: FL-RUN-SIG ( -- )
+   \ FL-SIG: valid unsigned mantissa -> SOME(value); bad/no-digit -> NONE.
+   s" 3.14"  3.14  T-FS
+   s" 100"   100.0 T-FS
+   s" .5"    0.5   T-FS
+   s" 5."    5.0   T-FS
+   s" 0"     0.0   T-FS
+   s" "      T-FS-BAD
+   s" ."     T-FS-BAD
+   s" abc"   T-FS-BAD
+   s" 1.2.3" T-FS-BAD ;
+
+\ --- switchover wave A: FL-DIGITS>F now returns option<r> (SOME digit-run value,
+\ empty -> SOME 0.0; NONE on any non-digit). It is FL-SIG's half-parser; test its
+\ both branches directly.
+: T-FD ( ptr u8 n r -- ) {: want:r :}               \ FL-DIGITS>F: some(r) near want, none -> fail
+   FL-DIGITS>F MATCH option
+     none OF 0 0= 0= ENDOF                           \ none -> false (unexpected)
+     some OF want FL-NEAR ENDOF                       \ some(r) -> r ~ want
+   ;MATCH T-ASSERT ;
+: T-FD-BAD ( ptr u8 n -- )                          \ FL-DIGITS>F: expect NONE
+   FL-DIGITS>F MATCH option
+     none OF 0 0= ENDOF                              \ none -> true
+     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+   ;MATCH T-ASSERT ;
+: FL-RUN-DIGITS ( -- )
+   \ FL-DIGITS>F: run of digits -> SOME(value); empty -> SOME(0.0); non-digit -> NONE.
+   s" 123" 123.0 T-FD
+   s" 0"   0.0   T-FD
+   s" "    0.0   T-FD                                \ empty is valid -> SOME 0.0
+   s" abc" T-FD-BAD
+   s" 1.2" T-FD-BAD                                   \ the dot is a non-digit to FL-DIGITS>F
+   s" 12x" T-FD-BAD ;
+
 FL-RUN
 FL-RUN-EXP
+FL-RUN-SIG
+FL-RUN-DIGITS
 T-REPORT

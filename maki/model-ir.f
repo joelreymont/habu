@@ -118,88 +118,6 @@ variable MIR-PEND-ON
    then
    ref ;
 
-\ ---- descriptor enum boundaries (dot habu-cad-adt-swap; capability S1) --------
-\ DT-*/LAY-*/AL-* stay the public/wire/table-index vocabulary; each descriptor
-\ cell now stores a real ENUM (dtype/layout/align, declared in tensor.f /
-\ tensor-value.f). Store words validate (MIR-DT-CK/MIR-LAY-CK/AL-VALID?) then
-\ convert n->enum transiently at `!`; public accessors convert enum->n; the two
-\ render sites convert enum->wire string. Enum-typed locals reject on this
-\ fixpoint, so the enum value is produced and consumed in one phrase, never bound.
-
-\ typed slot addresses (S1 pointee-bind: a `ptr a` body binds a `ptr <fam>` output)
-: MI-DT-AT      ( n -- ptr dtype )   cells MI-DT      + ;
-: MI-LAY-AT     ( n -- ptr layout )  cells MI-LAY     + ;
-: MI-IS-DT-AT   ( n -- ptr dtype )   cells MI-IS-DT   + ;
-: MI-IS-LAY-AT  ( n -- ptr layout )  cells MI-IS-LAY  + ;
-: MI-IS-AL-AT   ( n -- ptr align )   cells MI-IS-AL   + ;
-
-\ parse boundaries: DT-*/LAY-*/AL-* code -> enum. Fail-closed: the real path is
-\ pre-validated by the CK words, so the trailing throw is defensive and never
-\ reorders diagnostics (the caller's CK fires first for a bad code).
-: >DTYPE ( n -- dtype )
-   dup DT-F32  = if drop MAKI-DTYPE:DF32  exit then
-   dup DT-F16  = if drop MAKI-DTYPE:DF16  exit then
-   dup DT-BF16 = if drop MAKI-DTYPE:DBF16 exit then
-   dup DT-U32  = if drop MAKI-DTYPE:DU32  exit then
-   dup DT-I32  = if drop MAKI-DTYPE:DI32  exit then
-   E-MK-DTYPE throw ;
-: >LAYOUT ( n -- layout )
-   dup LAY-ROW = if drop MAKI-LAYOUT:ROW exit then
-   dup LAY-COL = if drop MAKI-LAYOUT:COL exit then
-   E-TV-LAYOUT throw ;
-: >ALIGN ( n -- align )
-   dup AL-UNKNOWN = if drop MAKI-ALIGN:UNKNOWN exit then
-   dup AL-BYTE    = if drop MAKI-ALIGN:BYTE    exit then
-   dup AL-4       = if drop MAKI-ALIGN:A4      exit then
-   dup AL-8       = if drop MAKI-ALIGN:A8      exit then
-   dup AL-16      = if drop MAKI-ALIGN:A16     exit then
-   E-MIR-ALIGN throw ;
-
-\ render-to-code boundaries: enum -> DT-*/LAY-*/AL-* code (exhaustive MATCH)
-: DTYPE>N ( dtype -- n )
-   MATCH dtype
-      df32  OF DT-F32  ENDOF
-      df16  OF DT-F16  ENDOF
-      dbf16 OF DT-BF16 ENDOF
-      du32  OF DT-U32  ENDOF
-      di32  OF DT-I32  ENDOF
-   ;MATCH ;
-: LAYOUT>N ( layout -- n )
-   MATCH layout
-      row OF LAY-ROW ENDOF
-      col OF LAY-COL ENDOF
-   ;MATCH ;
-: ALIGN>N ( align -- n )
-   MATCH align
-      unknown OF AL-UNKNOWN ENDOF
-      byte    OF AL-BYTE    ENDOF
-      a4      OF AL-4       ENDOF
-      a8      OF AL-8       ENDOF
-      a16     OF AL-16      ENDOF
-   ;MATCH ;
-
-\ render-to-wire-string boundaries (exhaustive; supersede the old case renders)
-: DT-KEY ( dtype -- ptr u8 n )
-   MATCH dtype
-      df32  OF s" f32"  ENDOF
-      df16  OF s" f16"  ENDOF
-      dbf16 OF s" bf16" ENDOF
-      du32  OF s" u32"  ENDOF
-      di32  OF s" i32"  ENDOF
-   ;MATCH ;
-: LAY-KEY ( layout -- ptr u8 n )
-   MATCH layout
-      row OF s" row" ENDOF
-      col OF s" col" ENDOF
-   ;MATCH ;
-
-\ enum getters (transient): validate the index, then fetch the stored enum
-: MIR-DT@E       ( n -- dtype )   MIR-CK    MI-DT-AT     @ ;
-: MIR-LAY@E      ( n -- layout )  MIR-CK    MI-LAY-AT    @ ;
-: MIR-SLOT-DT@E  ( n -- dtype )   MIR-IS-CK MI-IS-DT-AT  @ ;
-: MIR-SLOT-LAY@E ( n -- layout )  MIR-IS-CK MI-IS-LAY-AT @ ;
-: MIR-SLOT-AL@E  ( n -- align )   MIR-IS-CK MI-IS-AL-AT  @ ;
-
 public
 
 \ ---- lifecycle -------------------------------------------------------------
@@ -231,23 +149,23 @@ public
    MIR-IS-N @ {: s:n :}
    rows s cells MI-IS-ROWS + !
    cols s cells MI-IS-COLS + !
-   dt  >DTYPE   s MI-IS-DT-AT  !
-   lay >LAYOUT  s MI-IS-LAY-AT !
-   AL-UNKNOWN >ALIGN s MI-IS-AL-AT !             \ no recorded pointer yet -> conservative
+   dt   s cells MI-IS-DT   + !
+   lay  s cells MI-IS-LAY  + !
+   AL-UNKNOWN s cells MI-IS-AL + !               \ no recorded pointer yet -> conservative
    s 1+ MIR-IS-N !
    s ;
 
 : MIR-SLOT-ROWS@ ( n -- n )  MIR-IS-CK cells MI-IS-ROWS + @ ;
 : MIR-SLOT-COLS@ ( n -- n )  MIR-IS-CK cells MI-IS-COLS + @ ;
-: MIR-SLOT-DT@   ( n -- n )  MIR-SLOT-DT@E  DTYPE>N ;
-: MIR-SLOT-LAY@  ( n -- n )  MIR-SLOT-LAY@E LAYOUT>N ;
-: MIR-SLOT-AL@   ( n -- n )  MIR-SLOT-AL@E  ALIGN>N ;
+: MIR-SLOT-DT@   ( n -- n )  MIR-IS-CK cells MI-IS-DT   + @ ;
+: MIR-SLOT-LAY@  ( n -- n )  MIR-IS-CK cells MI-IS-LAY  + @ ;
+: MIR-SLOT-AL@   ( n -- n )  MIR-IS-CK cells MI-IS-AL   + @ ;
 
 \ record a measured base alignment class onto an input slot (bound-buffer path)
 : MIR-SLOT-AL! ( n n -- ) {: s:n al:n :}         \ slot align --
    al AL-VALID? 0= if E-MIR-ALIGN throw then
    s MIR-IS-CK drop
-   al >ALIGN s MI-IS-AL-AT ! ;
+   al s cells MI-IS-AL + ! ;
 
 \ rebind an input slot's extents (OPTIMIZE-time shape binding, maki/cad.f)
 : MIR-SLOT-SHAPE! ( n n n -- ) {: rows:n cols:n s:n :}   \ rows cols slot --
@@ -279,8 +197,8 @@ public
    MIR-PEND-CNT  @ k cells MI-INCNT + !
    rows k cells MI-ROWS + !
    cols k cells MI-COLS + !
-   dt  >DTYPE  k MI-DT-AT  !
-   lay >LAYOUT k MI-LAY-AT !
+   dt   k cells MI-DT   + !
+   lay  k cells MI-LAY  + !
    attr k cells MI-ATTR + !
    mat  k cells MI-MAT  + !
    0    k cells MI-AD   + !
@@ -292,8 +210,8 @@ public
 : MIR-OP@   ( n -- n )     MIR-CK cells MI-OP    + @ ;
 : MIR-ROWS@ ( n -- n )     MIR-CK cells MI-ROWS  + @ ;
 : MIR-COLS@ ( n -- n )     MIR-CK cells MI-COLS  + @ ;
-: MIR-DT@   ( n -- n )     MIR-DT@E  DTYPE>N ;
-: MIR-LAY@  ( n -- n )     MIR-LAY@E LAYOUT>N ;
+: MIR-DT@   ( n -- n )     MIR-CK cells MI-DT    + @ ;
+: MIR-LAY@  ( n -- n )     MIR-CK cells MI-LAY   + @ ;
 : MIR-ATTR@ ( n -- n )     MIR-CK cells MI-ATTR  + @ ;
 : MIR-AD@   ( n -- n )     MIR-CK cells MI-AD    + @ ;
 : MIR-MAT@  ( n -- bool )  MIR-CK cells MI-MAT   + @ 0= 0= ;
@@ -329,6 +247,24 @@ public
 
 private
 
+\ ---- dtype / layout key text (fail closed) ---------------------------------
+: DT-KEY ( n -- ptr u8 n )
+   case
+      DT-F32  of s" f32"  endof
+      DT-F16  of s" f16"  endof
+      DT-BF16 of s" bf16" endof
+      DT-U32  of s" u32"  endof
+      DT-I32  of s" i32"  endof
+      E-MK-DTYPE throw
+   endcase ;
+
+: LAY-KEY ( n -- ptr u8 n )
+   case
+      LAY-ROW of s" row" endof
+      LAY-COL of s" col" endof
+      E-TV-LAYOUT throw
+   endcase ;
+
 \ one dim: an unbound extent (0) renders "?" (shapes bind at OPTIMIZE time)
 : DIM-KEY+ ( n -- )  dup 0= if drop s" ?" SB-APPEND else SB-INT then ;
 
@@ -338,8 +274,8 @@ private
 public
 
 : MIR-SHAPE-KEY  ( n -- ptr u8 n ) {: node:n :}  node MIR-ROWS@ node MIR-COLS@ SHAPE-KEY$ ;
-: MIR-DTYPE-KEY  ( n -- ptr u8 n )  MIR-DT@E  DT-KEY ;
-: MIR-LAYOUT-KEY ( n -- ptr u8 n )  MIR-LAY@E LAY-KEY ;
+: MIR-DTYPE-KEY  ( n -- ptr u8 n )  MIR-DT@  DT-KEY ;
+: MIR-LAYOUT-KEY ( n -- ptr u8 n )  MIR-LAY@ LAY-KEY ;
 
 : MIR-SLOT-SHAPE-KEY ( n -- ptr u8 n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ SHAPE-KEY$ ;
 
@@ -370,8 +306,8 @@ variable MO-U
 
 : R-INPUT ( n -- ) {: s:n :}
    s" input" s MO-KEY.IDX  s" .shape: "  MO+ s MIR-SLOT-SHAPE-KEY MO+ MO-NL
-   s" input" s MO-KEY.IDX  s" .dtype: "  MO+ s MIR-SLOT-DT@E  DT-KEY MO+ MO-NL
-   s" input" s MO-KEY.IDX  s" .layout: " MO+ s MIR-SLOT-LAY@E LAY-KEY MO+ MO-NL ;
+   s" input" s MO-KEY.IDX  s" .dtype: "  MO+ s MIR-SLOT-DT@ DT-KEY MO+ MO-NL
+   s" input" s MO-KEY.IDX  s" .layout: " MO+ s MIR-SLOT-LAY@ LAY-KEY MO+ MO-NL ;
 
 : R-NODE-INS ( n -- ) {: node:n :}
    s" node" node MO-KEY.IDX  s" .in:" MO+

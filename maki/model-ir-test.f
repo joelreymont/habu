@@ -4,7 +4,6 @@
 
 require lib/test.f
 require lib/string.f
-require test/checker-assert.f
 require maki/model-ir.f
 
 package MAKI
@@ -124,37 +123,6 @@ s" node.0.verdict: free"  MT-IN
 ' TRY-MIR-CAP     E-MIR-CAP     TTHROWS
 ' TRY-MIR-SLOTCAP E-MIR-INSLOT  TTHROWS
 ' TRY-MIR-NOTMOVE E-MV-NOTMOVE  TTHROWS
-
-\ ---- swapped-family negatives (dot habu-cad-adt-swap; capability S1) ---------
-\ Each descriptor cell is addressed only as `ptr dtype` / `ptr layout` / `ptr
-\ align` (the private MI-*-AT slots), so the checker rejects (a) laundering a raw
-\ n into or out of a column, (b) storing a descriptor through a bare `ptr a` that
-\ drops the family identity, and (c) the dtype<->layout swap this dot's headline
-\ "indistinguishable bytes" hole names. A mis-typed descriptor is now impossible
-\ before runtime. Positive controls pin that the well-typed store still certifies.
-
-\ node dtype column (MI-DT-AT : ptr dtype)
-s" MTX-DT-OK   ( dtype n -- ) MI-DT-AT !"       CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-DT-NIN  ( n n -- ) MI-DT-AT !"           CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-DT-NOUT ( n -- n ) MI-DT-AT @"           CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-DT-BARE ( dtype -- ) 0 cells MI-DT + !"  CHECK-QUIET-CANDIDATE! 0 T=
-\ node layout column (MI-LAY-AT : ptr layout) + the dtype<->layout cross swaps
-s" MTX-LAY-OK  ( layout n -- ) MI-LAY-AT !"     CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-DT-LAY  ( layout n -- ) MI-DT-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-LAY-DT  ( dtype n -- ) MI-LAY-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
-\ input-slot dtype column (MI-IS-DT-AT : ptr dtype)
-s" MTX-SDT-OK  ( dtype n -- ) MI-IS-DT-AT !"    CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-SDT-NIN ( n n -- ) MI-IS-DT-AT !"        CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-SDT-LAY ( layout n -- ) MI-IS-DT-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
-\ input-slot layout column (MI-IS-LAY-AT : ptr layout)
-s" MTX-SLAY-OK ( layout n -- ) MI-IS-LAY-AT !"  CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-SLAY-DT ( dtype n -- ) MI-IS-LAY-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
-\ input-slot align column (MI-IS-AL-AT : ptr align) + both cross-family directions
-s" MTX-SAL-OK   ( align n -- ) MI-IS-AL-AT !"   CHECK-QUIET-CANDIDATE! -1 T=
-s" MTX-SAL-NIN  ( n n -- ) MI-IS-AL-AT !"       CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-SAL-NOUT ( n -- n ) MI-IS-AL-AT @"       CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-SAL-DT   ( dtype n -- ) MI-IS-AL-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
-s" MTX-SAL-LAY  ( layout n -- ) MI-IS-AL-AT !"  CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

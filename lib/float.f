@@ -41,14 +41,14 @@ variable FL-VALID                           \ exponent validity flag
 \ ---- digit string -> double -----------------------------------------------
 \ Unsigned run of decimal digits. Empty is valid and yields 0.0; any non-digit
 \ byte is rejected.
-: FL-DIGITS>F ( ptr u8 n -- r bool ) {: a:ptr u :}
-   u 0= if 0.0 0 0= exit then
-   a u STR-DIGITS? 0= if 0.0 0 0= 0= exit then
+: FL-DIGITS>F ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME digit-run value (empty -> SOME 0.0), NONE on a non-digit
+   u 0= if 0.0 OPTION:SOME exit then
+   a u STR-DIGITS? 0= if OPTION:NONE exit then
    0.0  0 FL-IX !
    begin FL-IX @ u < while
       10.0 f*  a FL-IX @ + c@ STR-DIGIT-VALUE s>f f+
       FL-IX @ 1+ FL-IX !
-   repeat  0 0= ;
+   repeat  OPTION:SOME ;
 
 \ ---- field splitting ------------------------------------------------------
 : FL-STRIP-SIGN ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
@@ -63,16 +63,21 @@ variable FL-VALID                           \ exponent validity flag
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Split the mantissa at the dot, parse both halves, combine. Requires at least
 \ one digit across the two halves, so "" and "." are rejected.
-: FL-SIG ( ptr u8 n -- r bool ) {: a:ptr u :}
+: FL-SIG ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME significand, NONE if no digits / bad
    a u FL-DOT INDEX-OF {: dpos :}
    dpos 0 >= if dpos else u then {: ilen :}
    dpos 0 >= if a dpos 1+ + else a u + then {: fa:ptr :}
    dpos 0 >= if u dpos 1+ - else 0 then {: flen :}
-   a ilen FL-DIGITS>F {: iok :}                  \ int value left below iok
-   fa flen FL-DIGITS>F {: fok :}                 \ frac value left below fok
-   ilen flen + 0=  iok 0= or  fok 0= or
-   if drop drop 0.0 0 0= 0= exit then
-   flen POW10 f/ f+ 0 0= ;                        \ ival + fval/10^flen, true
+   ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
+   a ilen FL-DIGITS>F MATCH option
+     none OF OPTION:NONE exit ENDOF
+     some OF ENDOF                                \ int value (ival) left on the stack
+   ;MATCH
+   fa flen FL-DIGITS>F MATCH option
+     none OF drop OPTION:NONE exit ENDOF          \ drop ival, reject a bad fraction
+     some OF ENDOF                                \ stack: ival fval
+   ;MATCH
+   flen POW10 f/ f+ OPTION:SOME ;                 \ SOME (ival + fval/10^flen)
 
 \ ---- exponent -------------------------------------------------------------
 \ FL-EXP-AT parses the exponent text after position epos, records it, and
@@ -92,8 +97,11 @@ variable FL-VALID                           \ exponent validity flag
    -1 FL-VALID !
    a0 u0 FL-STRIP-SIGN {: a:ptr u neg :}
    a u FL-PARSE-EXP {: mlen :}
-   a mlen FL-SIG {: sok :}
-   u 0=  sok 0= or  FL-VALID @ 0= or
+   a mlen FL-SIG MATCH option
+     none OF 0.0 0 0= 0= exit ENDOF                 \ bad significand -> 0.0, false
+     some OF ENDOF                                  \ SOME significand left on the stack
+   ;MATCH
+   u 0=  FL-VALID @ 0= or
    if drop 0.0 0 0= 0= exit then
    FL-EXPV @ POW10 f*
    neg if fnegate then

@@ -405,7 +405,22 @@ create FS-TEST-U64
    FS-STAT-MODE@ S-IFMT and S-IFREG = FS-TEST-TRUE
    FS-STAT-SIZE@ FS-TEST-EXACT-CAP FS-TEST=
    s" no-such-habu-fs-path-for-stdlib-test" FS-TRY-STAT FS-TEST-FALSE
-   s" no-such-habu-fs-path-for-stdlib-test" FS-TRY-STAT-MODE -1 FS-TEST= ;
+   s" no-such-habu-fs-path-for-stdlib-test" FS-TRY-STAT-MODE MATCH option
+     none OF FS-TRUE ENDOF
+     some OF drop FS-FALSE ENDOF
+   ;MATCH FS-TEST-TRUE
+   s" AGENTS.md" FS-TRY-STAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFREG = ENDOF
+   ;MATCH FS-TEST-TRUE
+   s" no-such-habu-fs-path-for-stdlib-test" FS-TRY-LSTAT-MODE MATCH option
+     none OF FS-TRUE ENDOF
+     some OF drop FS-FALSE ENDOF
+   ;MATCH FS-TEST-TRUE
+   s" AGENTS.md" FS-TRY-LSTAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFREG = ENDOF
+   ;MATCH FS-TEST-TRUE ;
 
 : FS-TEST-REPORT ( -- )
    FS-TEST-FAIL @ 0 = if s" fs-test: ok" type cr exit then

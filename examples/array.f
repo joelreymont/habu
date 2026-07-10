@@ -20,8 +20,11 @@ create AE-DATA AE-LEN cells allot
 : AE-DOUBLE! ( -- )
    AE-DATA AE-LEN >LEN [: 2 * ;] A-MAP! ;
 
-: AE-FIRST-GT-SIX ( -- n )
-   AE-DATA AE-LEN >LEN [: 6 > ;] A-FIND-INDEX ;
+: AE-FIRST-GT-SIX ( -- n )                            \ A-FIND-INDEX now returns option<idx>: MATCH it
+   AE-DATA AE-LEN >LEN [: 6 > ;] A-FIND-INDEX MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
 
 : AE-BIAS-BY-INDEX! ( -- )
    AE-DATA AE-LEN >LEN [: swap IDX>N + ;] A-MAPI! ;

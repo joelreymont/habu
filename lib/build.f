@@ -202,9 +202,12 @@ TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    cmdu 0 <= if E-BUILD-COMMAND throw then
    cmd cmdu FILE? 0= if E-BUILD-COMMAND throw then
    BUILD-DEV-NULL-RD {: nullfd:fd :}
-   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC RC>N {: rc:n :}
-   nullfd FD>N close
-   rc 0 <> if E-BUILD-STATUS throw then
+   cmd cmdu >LEN nullfd -1 >FD -1 >FD PROC-RUN-IO-RC   \ result<n,n> on the stack
+   nullfd FD>N close                                    \ close nullfd; the result stays below
+   MATCH result
+     ok  OF ENDOF                                       \ clean exit: rc 0 left on the stack
+     err OF drop E-BUILD-STATUS throw ENDOF              \ nonzero exit / signal -> build failure
+   ;MATCH {: rc:n :}
    artifact artifactu BUILD-EXPECT
    rc ;
 

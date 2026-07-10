@@ -32,8 +32,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-FOLDI	(ptr a len b [ b idx a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold indexes and cells with an accumulator
 1	array	lib/array.f	word	A-SCAN!	(ptr n len n [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values from an explicit seed
 1	array	lib/array.f	word	A-SCAN1!	(ptr n len [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values using the first cell as seed
-1	array	lib/array.f	word	A-FIND-INDEX	(ptr a len [ a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first value-matching index or -1
-1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first index-aware match or -1
+1	array	lib/array.f	word	A-FIND-INDEX	(ptr a len [ a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first value-matching index, else NONE
+1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first index-aware match, else NONE
 1	table	lib/table.f	module			lib/table-test.f	docs/stdlib.md	stdlib-table	active	checked fixed-capacity cell table record helpers
 1	table	lib/table.f	word	TBL-CHECK-ROW	(count idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based row index against a table row capacity
 1	table	lib/table.f	word	TBL-CHECK-FIELD	(count idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based field index against a record width
@@ -402,8 +402,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-STAT-CTIME-NS@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read stat ctime nanoseconds from the shared stat buffer
 1	fs	lib/fs.f	word	FS-TRY-STAT	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	fill the shared stat buffer and report success
 1	fs	lib/fs.f	word	FS-TRY-LSTAT	(ptr u8 n -- bool)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	fill the shared stat buffer without following symlinks and report success
-1	fs	lib/fs.f	word	FS-TRY-STAT-MODE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return stat mode or -1 for missing/unstatable path
-1	fs	lib/fs.f	word	FS-TRY-LSTAT-MODE	(ptr u8 n -- n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	return lstat mode or -1 for missing/unstatable path
+1	fs	lib/fs.f	word	FS-TRY-STAT-MODE	(ptr u8 n -- option<n>)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	stat a path: SOME mode if statable, else NONE
+1	fs	lib/fs.f	word	FS-TRY-LSTAT-MODE	(ptr u8 n -- option<n>)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	lstat a path: SOME mode if statable, else NONE
 1	fs	lib/fs.f	word	STAT-MODE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return stat mode or throw E-FS-STAT
 1	fs	lib/fs.f	word	FILE-SIZE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return regular file byte size or throw E-FS-STAT
 1	fs	lib/fs.f	word	FILE-META	(ptr u8 n -- n n n n n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return regular file size mtime seconds mtime nanoseconds ctime seconds and ctime nanoseconds
@@ -555,8 +555,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-REAP-DISARM	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	kill and wait the capture reaper by its specific pid so it never outlives its capture
 1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
-1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
-1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
+1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with inherited stdio: ok = clean exit (0), err = nonzero completion rc
+1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds: ok = clean exit (0), err = nonzero completion rc
 1	process	lib/process.f	word	FD-CLOEXEC!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
 1	process	lib/process.f	word	FD-NOSIGPIPE!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	disable SIGPIPE delivery for writes to a parent-owned fd
 1	process	lib/process.f	word	PIPE-PAIR	(-- fd fd)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
@@ -1243,10 +1243,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range
 1	float	lib/float.f	word	POW10	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a signed integer power
-1	float	lib/float.f	word	FL-DIGITS>F	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse an unsigned run of decimal digits into a double
+1	float	lib/float.f	word	FL-DIGITS>F	(ptr u8 n -- option<r>)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse an unsigned run of decimal digits: SOME value (empty -> SOME 0.0), else NONE
 1	float	lib/float.f	word	FL-STRIP-SIGN	(ptr u8 n -- ptr u8 n bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	strip a leading sign, returning the rest and negativity
 1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- option<idx>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	SOME index of the e/E exponent marker, else NONE
-1	float	lib/float.f	word	FL-SIG	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse an unsigned significand with optional fraction
+1	float	lib/float.f	word	FL-SIG	(ptr u8 n -- option<r>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse an unsigned significand with optional fraction: SOME value, else NONE
 1	float	lib/float.f	word	FL-EXP-AT	(ptr u8 n n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse the exponent after a marker position, returning mantissa length
 1	float	lib/float.f	word	FL-PARSE-EXP	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse any exponent suffix, returning mantissa length
 1	float	lib/float.f	word	STR>FLOAT	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse a decimal float string into an IEEE double

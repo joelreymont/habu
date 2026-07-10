@@ -1,5 +1,7 @@
 \ array.f - checked cell-array helpers.
 
+require lib/adt/option.f                        \ option<idx> for A-FIND-INDEX / A-FIND-INDEXI (switchover wave A)
+
 : A-LEN ( n -- len )
    dup 0 < if E-A-BOUNDS throw then
    >LEN ;
@@ -177,16 +179,18 @@
    loop
    drop ;
 
-: A-FIND-INDEX ( ptr a len [ a -- bool ] -- n ) {: arr:ptr len q :}
+\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
+: A-FIND-INDEX ( ptr a len [ a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first value-matching index, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
-      arr len i A-IDX A@ q execute if i unloop exit then
+      arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
    loop
-   -1 ;
+   OPTION:NONE ;
 
-: A-FIND-INDEXI ( ptr a len [ idx a -- bool ] -- n ) {: arr:ptr len q :}
+\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
+: A-FIND-INDEXI ( ptr a len [ idx a -- bool ] -- option<idx> ) {: arr:ptr len:len q :}   \ SOME first index-aware match, else NONE
    len A-CHECK-WHOLE
    len LEN>N 0 ?do
-      i A-IDX arr len i A-IDX A@ q execute if i unloop exit then
+      i A-IDX arr len i A-IDX A@ q execute if i >IDX OPTION:SOME unloop exit then
    loop
-   -1 ;
+   OPTION:NONE ;
