@@ -58,6 +58,31 @@ require lib/float.f
    s" 12e5" FL-PARSE-EXP 2 T=
    s" 123"  FL-PARSE-EXP 3 T= ;
 
+\ --- switchover wave A: FL-SIG now returns option<r> (SOME significand, else
+\ NONE). It is STR>FLOAT's mantissa parser; test its both branches directly.
+: T-FS ( ptr u8 n r -- ) {: want:r :}               \ FL-SIG: some(r) near want, none -> fail
+   FL-SIG MATCH option
+     none OF 0 0= 0= ENDOF                           \ none -> false (unexpected)
+     some OF want FL-NEAR ENDOF                       \ some(r) -> r ~ want
+   ;MATCH T-ASSERT ;
+: T-FS-BAD ( ptr u8 n -- )                          \ FL-SIG: expect NONE
+   FL-SIG MATCH option
+     none OF 0 0= ENDOF                              \ none -> true
+     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+   ;MATCH T-ASSERT ;
+: FL-RUN-SIG ( -- )
+   \ FL-SIG: valid unsigned mantissa -> SOME(value); bad/no-digit -> NONE.
+   s" 3.14"  3.14  T-FS
+   s" 100"   100.0 T-FS
+   s" .5"    0.5   T-FS
+   s" 5."    5.0   T-FS
+   s" 0"     0.0   T-FS
+   s" "      T-FS-BAD
+   s" ."     T-FS-BAD
+   s" abc"   T-FS-BAD
+   s" 1.2.3" T-FS-BAD ;
+
 FL-RUN
 FL-RUN-EXP
+FL-RUN-SIG
 T-REPORT

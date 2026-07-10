@@ -103,3 +103,38 @@ option.f edit correctly invalidates fs.f-dependent phases. This is why slices 1�
 switchover of a harness-closure lib (process*, content-key, test/*) must likewise
 declare its new option.f edge in TR-GATE-HARNESS-FILES. Gate class LIGHTER (fs.f
 on-demand, no byte-fixpoint). NO new trust rows.
+
+## SLICE 5 — LANDED (lib/float.f FL-SIG, first option<r>)
+
+`FL-SIG` (lib/float.f) `( ptr u8 n -- r bool )` → `( ptr u8 n -- option<r> )`:
+SOME significand (unsigned mantissa with optional fraction), NONE if there are no
+digits / a bad half (wraps the two internal `FL-DIGITS>F` bool sentinels at the
+boundary — `iok`/`fok` still bool inside FL-SIG; only FL-SIG's OWN return
+migrated, FL-DIGITS>F stays value+flag for a later slice). FIRST **option<r>**
+instantiation (payload is a float role `r`, not `n`/`idx`) — the checker accepts
+it exactly like option<n>/option<idx>; no layout issue (1 cell). ONE in-file
+caller `STR>FLOAT`, rewritten from `FL-SIG {: sok :} … sok 0= or … if drop …` to
+`MATCH option none OF 0.0 0 0= 0= exit ENDOF some OF ENDOF ;MATCH` — the empty
+`some` arm leaves the significand `r` on the stack, then the remaining
+`u 0= FL-VALID @ 0= or` guard and the exponent multiply continue unchanged. No
+sentinel test left in the migrated path.
+
+Picked FL-SIG over: STR>FLOAT itself (its callers include `maki/golden-artifact.f`
+— forbidden lane) and FL-DIGITS>F (two callers, both combine into FL-SIG needing
+nested double-MATCH — messier). FL-SIG has the single clean caller. float.f is in
+NO TR-*-FILES set, so NO run-files.f closure edge (unlike fs.f) and it already
+`require`s lib/adt/option.f from slice 1 — NO new require, NO new public family.
+
+Manifest FL-SIG row → `(ptr u8 n -- option<r>)`. Direct FL-SIG test added
+(lib/float-test.f FL-RUN-SIG: T-FS some(r)~want for 3.14/100/.5/5./0, T-FS-BAD
+none for ""/"."/"abc"/"1.2.3"); the STR>FLOAT FL-RUN cases still green
+(behavior preserved). typed-local-diff-lint forced typing the pre-existing bare
+`u` on the FL-SIG def line I touched → `u:n` (byte-string length role; matches
+slice-1's FL-FIND-E / FL-PARSE-EXP `{: a:ptr u:n :}` in the same file). Test local
+`{: want:r :}` typed to the float role (precedent lib/json-read-test.f). Gate class
+LIGHTER (float.f on-demand, no byte-fixpoint). NO new trust rows.
+
+CAVEAT for future float slices: STR>FLOAT can't migrate to option<r> here — its
+maki-lane caller (golden-artifact.f) is off-limits to the tfam lane; that
+migration needs cross-lane coordination or a dot. FL-DIGITS>F is the remaining
+in-float leaf finder.
