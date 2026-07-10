@@ -163,3 +163,83 @@ PACKED-DESC → LAY-ADD at declaration, with layout tests (private families) pro
 the packed family carries the right LAY descriptor; gated on sub-slice 1. Optional
 later: mixed narrow-width payload tier (explicit payload-offsets table, needs a
 LAY-REC offsets field).
+
+## NICHE-NULL + BOXED — AUDIT (which next + bounded first sub-slice)
+
+Shared machinery both hit (unlike packed, which kept the stack width): both
+collapse the STACK width to 1 (docs §22.3/§22.4). W is computed by the single
+policy-INDEPENDENT `TFAM-WIDTH@` (type-family.f:226: sum/enum→SLOTS+1,
+product→SLOTS, else 1). Its value flows into every transport/linear/MATCH
+consumer (`PARAM>FAM TFAM-WIDTH@` in PUSH-LOGICAL/LAYOUT-PUSH-FIELDS/XG-READ-GROUP
+/LAYOUT-LINEAR-COUNT and the MATCH tag-on-top = slot W-1 read). So a W→1 collapse
+is a one-line edit at the source but a soundness-delicate change at MATCH: a W=1
+family has no inline tag cell, so the discriminant must move off the (now absent)
+tag slot. That "W=1, no inline tag, discriminant elsewhere" MATCH routing is
+SHARED by niche and boxed — build it once.
+
+### niche-null
+- Qualifying layouts (docs §22.3): NARROW — only the null-pointer niche, i.e. a
+  2-variant sum `{ none (empty), some (single non-null pointer) }`; none=null,
+  some=non-null, W=1. Docs forbid the implicit arbitrary-pointer niche ("Require
+  a non-null type or capability"), and the unused-enum-tag niche is not in v1.
+- Checker model: W→1 via a TFAM-WIDTH@ policy branch; MATCH discriminant = null
+  test on the single pointer cell (not a tag read); ctor: none→store null,
+  some→store the ptr. Touches the SAME width machinery the linear/transport/MATCH
+  slices use → churn + soundness risk (a forged null in `some` breaks the null
+  discriminant, hence the mandatory non-null type).
+- PREREQUISITE: a `nonnull-ptr<a>` refined pointer type the v1 grammar/checker
+  lacks (a pointer type carrying a checker-tracked non-null invariant, sourced
+  from a capability/constructor). That is itself a meaty checker-type addition.
+- Minimal first sub-slice: the nonnull-ptr type + a `NICHE-QUALIFIES?` predicate
+  (recognize the option-shape) — recognition only, no W-collapse, no accept.
+  Clean but delivers no niche value alone; gated on the refined-type work.
+
+### boxed  (the maki recursive-IR unlock)
+- Needs: (a) inline self-family references in the payload grammar (today
+  fail-closed — `VARIANT node ptr tree<a>` → E-TDECL-PAYLOAD "unknown payload
+  type at 'tree'"; TDECL-PAY-ELEM rejects family-application payloads, so
+  recursion is not expressible and the §24 reject is moot); (b) a boxed
+  representation (the whole value is one heap/DATA pointer, W=1, so a self-ref is
+  finite); (c) HEAP/DATA allocation + constructor lowering (alloc record, store
+  tag+payload, return ptr) — relaxes the project "no heap" only for boxed; (d)
+  MATCH deref+tag lowering; (e) layout-cycle detection (mutual recursion). Big,
+  and the pieces are entangled (representation ↔ alloc ↔ self-ref ↔ deref).
+- BOUNDED first sub-slice (recommended below): recognize a DIRECT self-family
+  reference in a variant/field payload and REJECT it under any non-boxed policy
+  with the deferred §24 "invalid layout policy for recursive sum" diagnostic.
+  Pure grammar + reject — no representation, no heap, no width change, no accept.
+  It (i) closes the §24 gap the foundation explicitly deferred to boxed, (ii)
+  establishes the self-reference recognition point boxed's accept later hooks,
+  (iii) is fully testable (recursive sum rejects with the §24 code). Mutual-
+  recursion cycle detection and the boxed representation/alloc/deref are later
+  sub-slices.
+
+### RECOMMENDATION: boxed next.
+1. Higher value — the maki recursive-IR unlock (the campaign's Model-CAD / IR
+   driver), vs niche's narrower one-cell option<ptr>.
+2. Its bounded first sub-slice is pure-checker (no heap) AND closes the deferred
+   §24 recursive-reject gap — double value at low churn/risk.
+3. boxed-first builds the shared "W=1 / no inline tag / discriminant elsewhere"
+   MATCH routing that niche then reuses (niche adds only the null-test variant),
+   so it de-risks niche.
+4. niche is the soundness-delicate one (null-test MATCH) AND gated on the
+   nonnull-ptr refined-type prerequisite — better once the W=1 MATCH machinery
+   exists and maki's pointer-niche need is concrete.
+
+Boxed sub-slicing: (1) direct self-ref recognition + §24 reject [recommended
+first, pure checker]; (2) boxed representation — TFAM-WIDTH@→1 for boxed + accept
+POLICY boxed for self-referential families + self-ref lays out as a pointer; (3)
+heap/DATA alloc + constructor lowering; (4) MATCH deref+tag lowering; (5) mutual-
+recursion cycle detection; (6) full construct/match/invalid-tag/layout tests.
+
+### Item-lane collision (public-signature / repair-diagnostics, tfam-13)
+Item lane touches sumtype.f (declaration-DIAGNOSTIC packet shape: c1-doc,
+c2-oversize) and render.f (repair-packet rendering). niche/boxed touch sumtype.f
+too (payload grammar TDECL-PAY-ELEM + the policy path), but a DIFFERENT region
+(grammar vs the TDECL-THROW packet shape) — SOFT overlap, rebaseable, as the
+foundation's clean 3-way merge with fable's concurrent sumtype.f refactor showed.
+No fundamental collision for the recommended boxed first sub-slice (it edits
+TDECL-PAY-ELEM + adds a §24 reject, not the packet shape or render.f). render.f is
+touched only at the later niche/boxed logical-type RENDERING sub-slice — flag to
+sequence that after the item lane's render.f work lands. TFAM-WIDTH@ lives in
+type-family.f, which the item lane does not touch.
