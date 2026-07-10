@@ -10,10 +10,18 @@ package FFI
 
 $800 constant FDEF-CAP
 $400 constant FDEF-TOK-CAP
-0 constant FDEF-N
-1 constant FDEF-PTR
-2 constant FDEF-NOM
-3 constant FDEF-VOID
+
+\ kind - the per-argument/return marshalling kind (switchover wave C). A
+\ PRIVATE ENUM instead of raw 0..3 sentinel ints: the whole kind surface is
+\ package-private, so the family publishes no constructor package and is
+\ built only through the owner-only `construct kind <variant>` form; the
+\ checker forces every dispatch through exhaustive MATCH.
+ENUM kind
+  int
+  pointer
+  nominal
+  void
+;ENUM
 
 create FDEF-BUF FDEF-CAP allot
 create FDEF-TOK-BUF FDEF-TOK-CAP allot
@@ -26,14 +34,6 @@ variable FDEF-ARGC
 variable FDEF-OUT
 variable FDEF-OUT-OFF
 variable FDEF-OUT-LEN
-
-: FDEF-CLEAR ( -- )
-   0 FDEF-U !
-   0 FDEF-TOK-U !
-   0 FDEF-ARGC !
-   FDEF-VOID FDEF-OUT !
-   0 FDEF-OUT-OFF !
-   0 FDEF-OUT-LEN ! ;
 
 : FDEF-ROOM ( n -- )
    FDEF-U @ + FDEF-CAP > if E-FFI-ARITY throw then ;
@@ -73,10 +73,15 @@ variable FDEF-OUT-LEN
 : FDEF-CHECK-ARG ( n -- )
    FFI-MAX-ARGS FFI-CHECK-INDEX ;
 
-: FDEF-TAG! ( n n -- )
-   {: tag:n idx:n :}
-   idx FDEF-CHECK-ARG
-   tag FDEF-TAG idx cells + ! ;
+: FDEF-TAG-PTR ( n -- ptr kind )
+   dup FDEF-CHECK-ARG
+   FDEF-TAG swap cells + ;
+
+: FDEF-OUT-PTR ( -- ptr kind )
+   FDEF-OUT ;
+
+: FDEF-TAG! ( kind n -- ) {: idx:n :}   \ kind stays on stack (no enum locals)
+   idx FDEF-TAG-PTR ! ;
 
 : FDEF-OFF! ( n n -- )
    {: off:n idx:n :}
@@ -88,9 +93,22 @@ variable FDEF-OUT-LEN
    idx FDEF-CHECK-ARG
    len FDEF-LEN idx cells + ! ;
 
-: FDEF-TAG@ ( n -- n )
-   dup FDEF-CHECK-ARG
-   FDEF-TAG swap cells + @ ;
+: FDEF-TAG@ ( n -- kind )
+   FDEF-TAG-PTR @ ;
+
+: FDEF-TAG-CLEAR ( -- )                 \ every cell holds a valid kind; void = no argument here
+   FFI-MAX-ARGS 0 ?do
+      construct kind void i FDEF-TAG!
+   loop ;
+
+: FDEF-CLEAR ( -- )
+   0 FDEF-U !
+   0 FDEF-TOK-U !
+   0 FDEF-ARGC !
+   FDEF-TAG-CLEAR
+   construct kind void FDEF-OUT-PTR !
+   0 FDEF-OUT-OFF !
+   0 FDEF-OUT-LEN ! ;
 
 : FDEF-OFF@ ( n -- n )
    dup FDEF-CHECK-ARG
@@ -103,17 +121,17 @@ variable FDEF-OUT-LEN
 : FDEF-TOK$ ( n -- ptr u8 n ) {: idx:n :}
    FDEF-TOK-BUF idx FDEF-OFF@ + idx FDEF-LEN@ ;
 
-: FDEF-ARG+ ( n ptr u8 n -- )
-   {: tag:n a:ptr u:n :}
+: FDEF-ARG+ ( kind ptr u8 n -- )
+   {: a:ptr u:n :}
    FDEF-ARGC @ dup FFI-MAX-ARGS >= if E-FFI-ARITY throw then {: idx:n :}
-   tag idx FDEF-TAG!
+   idx FDEF-TAG!
    a u FDEF-TOK+ idx FDEF-OFF!
    u idx FDEF-LEN!
    idx 1+ FDEF-ARGC ! ;
 
-: FDEF-OUT! ( n ptr u8 n -- )
-   {: tag:n a:ptr u:n :}
-   tag FDEF-OUT !
+: FDEF-OUT! ( kind ptr u8 n -- )
+   {: a:ptr u:n :}
+   FDEF-OUT-PTR !
    a u FDEF-TOK+ FDEF-OUT-OFF !
    u FDEF-OUT-LEN ! ;
 
@@ -140,23 +158,23 @@ variable FDEF-OUT-LEN
    {: a:ptr u:n :}
    a u FDEF-EFF+
    a u s" ptr" STR= if
-      FDEF-PTR a u FDEF-ARG+
+      construct kind pointer a u FDEF-ARG+
       FDEF-PTR-TAIL
       exit
    then
-   a u FDEF-CELL? if FDEF-N a u FDEF-ARG+ exit then
-   FDEF-NOM a u FDEF-ARG+ ;
+   a u FDEF-CELL? if construct kind int a u FDEF-ARG+ exit then
+   construct kind nominal a u FDEF-ARG+ ;
 
 : FDEF-OUT-TYPE ( ptr u8 n -- )
    {: a:ptr u:n :}
    a u FDEF-EFF+
    a u s" ptr" STR= if
-      FDEF-PTR a u FDEF-OUT!
+      construct kind pointer a u FDEF-OUT!
       FDEF-PTR-TAIL
       exit
    then
-   a u FDEF-CELL? if FDEF-N a u FDEF-OUT! exit then
-   FDEF-NOM a u FDEF-OUT! ;
+   a u FDEF-CELL? if construct kind int a u FDEF-OUT! exit then
+   construct kind nominal a u FDEF-OUT! ;
 
 : FDEF-INPUTS ( -- )
    begin
@@ -204,12 +222,12 @@ variable FDEF-OUT-LEN
    s" >N" FDEF+ ;
 
 : FDEF-ERASE ( n -- ) {: idx:n :}
-   idx FDEF-TAG@ case
-      FDEF-N of endof
-      FDEF-PTR of s" P>N" FDEF+ FDEF-SP endof
-      FDEF-NOM of idx FDEF-ERASE-NOM FDEF-SP endof
-      E-FFI-ARITY throw
-   endcase
+   idx FDEF-TAG@ MATCH kind
+     int OF ENDOF
+     pointer OF s" P>N" FDEF+ FDEF-SP ENDOF
+     nominal OF idx FDEF-ERASE-NOM FDEF-SP ENDOF
+     void OF E-FFI-ARITY throw ENDOF   \ void is a return kind only, never a marshalled argument
+   ;MATCH
    idx 10 >= if idx 10 / 48 + FDEF-C+ then
    idx 10 mod 48 + FDEF-C+
    s"  FFI-ARG!" FDEF+ FDEF-NL ;
@@ -224,13 +242,12 @@ variable FDEF-OUT-LEN
    FDEF-OUT$ FDEF+ ;
 
 : FDEF-REFINE ( -- )
-   FDEF-OUT @ case
-      FDEF-VOID of s"  drop" FDEF+ endof
-      FDEF-N of endof
-      FDEF-PTR of s"  N>P" FDEF+ endof
-      FDEF-NOM of s"  " FDEF+ FDEF-REFINE-NOM endof
-      E-FFI-ARITY throw
-   endcase
+   FDEF-OUT-PTR @ MATCH kind
+     int OF ENDOF
+     pointer OF s"  N>P" FDEF+ ENDOF
+     nominal OF s"  " FDEF+ FDEF-REFINE-NOM ENDOF
+     void OF s"  drop" FDEF+ ENDOF
+   ;MATCH
    FDEF-NL ;
 
 : FDEF-BODY ( ptr u8 n ptr u8 n ptr u8 n -- )
