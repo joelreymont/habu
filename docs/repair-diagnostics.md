@@ -37,6 +37,7 @@ Fields:
 | `return_stack` | object | required | Object with `expected` and `actual` return-stack rows. |
 | `expected` | string | data mismatch only | Expected data-stack row. Absent when only the return stack or safety verdict failed. |
 | `actual` | string | data mismatch only | Actual data-stack row. Absent when only the return stack or safety verdict failed. |
+| `family` | string | layout mismatch only | Type-family name of the ADT layout value involved in the mismatch (expected side, else actual). Absent for pure-scalar mismatches. |
 | `suggestion` | string | required | Human-readable repair hint derived from `repair_class`. |
 
 The current checker JSON intentionally uses `definition_source` rather than

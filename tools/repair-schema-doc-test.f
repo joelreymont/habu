@@ -100,9 +100,17 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
 : RSD-DQ ( -- )
    34 SB-APPEND-C ;
 
+\ JBAD drives the scalar data-mismatch fields (expected/actual/declared_effect).
+\ The zrc SUMTYPE + ZBAD drive the layout-mismatch `family` field: ZBAD declares
+\ ( n -- zrc ) but leaves n, so expected zrc<> / actual n -> family "zrc".
+\ (--all-errors re-drive emits an extra spurious E-BAD-DECLARATION duplicate-family
+\ line for zrc; that is a separate registry-rollback gap, dotted, and does not
+\ affect field-presence/schema parity here.)
 : RSD-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : JBAD ( i64 -- i64 ) dup ;" SB-APPEND RSD-LF
+   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND RSD-LF
+   s" : ZBAD ( n -- zrc ) ;" SB-APPEND RSD-LF
    SB$ ;
 
 : RSD-LOAD-DOCS ( -- )
@@ -167,6 +175,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    s" return_stack" RSD-NEED-DOC-FIELD
    s" expected" RSD-NEED-DOC-FIELD
    s" actual" RSD-NEED-DOC-FIELD
+   s" family" RSD-NEED-DOC-FIELD
    s" suggestion" RSD-NEED-DOC-FIELD
    s" source_excerpt" RSD-NEED-DOC-FIELD
    s" reason" RSD-NEED-DOC-FIELD ;
@@ -289,6 +298,7 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
    s" return_stack" RSD-NEED-DIAG-FIELD
    s" expected" RSD-NEED-DIAG-FIELD
    s" actual" RSD-NEED-DIAG-FIELD
+   s" family" RSD-NEED-DIAG-FIELD
    s" suggestion" RSD-NEED-DIAG-FIELD ;
 
 : RSD-TEST-DIAG ( -- )

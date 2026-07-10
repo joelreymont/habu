@@ -82,6 +82,12 @@ variable GDX-TRUST-MAN-U
    val valu SB-APPEND
    SB$ label labelu GE-EXPECT-ERR-HAS ;
 
+: GDX-EXPECT-ERR-NO-JKEY ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n label:ptr labelu:n :}
+   SB-RESET
+   key keyu GDX-JKEY
+   GDX-J-COLON
+   SB$ label labelu GE-EXPECT-ERR-LACKS ;
+
 : GDX-PATH! ( ptr u8 n -- ) {: name:ptr nameu:n :}
    name nameu GDX-PATH-BUF GT-PATH GDX-PATH-U ! ;
 
@@ -543,6 +549,29 @@ variable GDX-TRUST-MAN-U
    70 s" wide diagnostic row must fail closed with rc 70, not crash" GE-EXPECT-RC
    s" actual: " s" wide diagnostic row must still render the mismatch" GE-EXPECT-ERR-HAS ;
 
+\ Item 13 repair-packet family field: a layout (ADT) type mismatch must carry the
+\ involved type-family name as `"family"`; a pure-scalar mismatch must not.
+: GDX-ADT-FAMILY ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : ZBAD ( n -- zrc ) ;" GE-SRC-LINE
+   s" tools/check.f accepted ADT layout mismatch" GDX-CHECK-JSON
+   s" habu-adt-family.err" GDX-WRITE-ERR
+   s" code" s" E-MISMATCH" s" ADT mismatch code" GDX-EXPECT-ERR-JSTR
+   s" family" s" zrc" s" ADT mismatch carries family field" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_type" s" ADT mismatch repair class" GDX-EXPECT-ERR-JSTR
+   s" habu-adt-family.err" s" ADT family diagnostic contract" GDX-DIAG-CONTRACT
+   s" json-one-schema" s" habu-adt-family.err" s" ADT family schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : SBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   s" tools/check.f accepted scalar mismatch" GDX-CHECK-JSON
+   s" habu-scalar-nofam.err" GDX-WRITE-ERR
+   s" code" s" E-MISMATCH" s" scalar mismatch code" GDX-EXPECT-ERR-JSTR
+   s" family" s" scalar mismatch omits family field" GDX-EXPECT-ERR-NO-JKEY
+   s" json-one-schema" s" habu-scalar-nofam.err" s" scalar mismatch schema" GDX-GJA1 ;
+
 : GDX-ALL-ERRORS-SOURCE ( -- )
    GE-SRC-RESET
    s" : GDX-AE-OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
@@ -628,6 +657,7 @@ variable GDX-TRUST-MAN-U
    GDX-MALFORMED-QUOTATION-SIGNATURE
    GDX-BAD-PARAM-SIGNATURE
    GDX-RENDER-CAP-FAIL-CLOSED
+   GDX-ADT-FAMILY
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 

@@ -244,6 +244,9 @@ variable GE-EVAL-STACK-A
 : GE-EXPECT-ERR-HAS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
    GT-ERR$ want wantu CONTAINS? 0= if label labelu GE-FAIL then ;
 
+: GE-EXPECT-ERR-LACKS ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu:n label:ptr labelu:n :}
+   GT-ERR$ want wantu CONTAINS? if label labelu GE-FAIL then ;
+
 : GE-SB-LF ( -- )
    GE-LF SB-APPEND-C ;
 
