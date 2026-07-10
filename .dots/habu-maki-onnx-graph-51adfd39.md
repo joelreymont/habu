@@ -13,6 +13,25 @@ Gap #10. maki/onnx.f is only the op-COVERAGE lowering table (Add/Mul/Relu/Softma
 - Verify: import a small real .onnx model, run vs onnxruntime golden; unsupported op / dynamic rank rejected loudly.
 - Dep: maki onnx op-table (done) + maki->PTX lowering.
 
+## Follow-up legs (host-side)
+
+The graph importer landed (proto.f + graph.f + import.f + encode.f, host-executed
+fixtures A-D). Remaining host-side legs, one commit each:
+
+- **LEG A — numpy broadcast for Add/Mul. LANDED.** Add/Mul no longer require strict
+  same-shape operands: the second operand is classified with maki/bcast.f BC-CLASS
+  (the mapping EX-BC@ / SHP-LEGAL? already prove) and mapped onto the capture-legal
+  classes — Add + full -> OP-ADD, Add + 1xC -> OP-BIAS (row broadcast); Mul + full
+  -> OP-MUL, Mul + 1x1 -> OP-SCALE (scalar). Every other numpy shape (Rx1 column,
+  1x1 into Add, 1xC into Mul, ragged rows) stays fail-closed E-ONNX-SHAPE.
+  Fixtures E (Add bias 1x2) and F (Mul scale 1x1) host-execute vs hand-computed;
+  negatives TRY-ADDCOL (2x1 column) and TRY-ADDRAGGED (3x2 vs 2x2) reject. Files:
+  maki/onnx/import.f, maki/onnx/import-test.f (+ require maki/bcast.f).
+- **LEG B — movement operators (Reshape / Transpose / …).** REMAINING.
+- **LEG C — Gemm attribute composition (transA/transB, alpha/beta).** REMAINING.
+- **Real-model onnxruntime golden.** REMAINING (needs a host onnxruntime run;
+  user-gated).
+
 LANDED (importer core, all in package ONNX):
 - maki/onnx/proto.f: protobuf wire subset decoder over (base,lo,hi) windows with
   model-absolute offsets - varint (10-byte/64-bit, fail-closed overflow), tag,

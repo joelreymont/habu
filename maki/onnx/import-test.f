@@ -8,12 +8,15 @@
 \                            (legacy export form), written/reimported via IMPORT-FILE
 \   C: Mul -> Softmax(axis=-1)  negative-varint attr, OP-SOFTMAX-ROW
 \   D: Gemm(x,w) two-input   -> OP-MATMUL
+\   E: Add(x,bias 1x2)       numpy row broadcast -> OP-BIAS
+\   F: Mul(x,scale 1x1)      numpy scalar broadcast -> OP-SCALE
 \ The fusion planner runs the imported IR too (FP-BUILD; Gemm->Relu fuses into
 \ one region). Negative fixtures cover every importer throw: dynamic dim_param,
 \ unsupported op (the ONNX:LOWER rejection), non-topological input, bad Gemm /
-\ Softmax / foreign attrs, rank 3, non-f32 dtype, operand shape mismatch, two
-\ graph outputs, output not the last node, missing graph, SSA rebind, missing
-\ initializer payload, oversized name, wrong arity, and truncated model bytes.
+\ Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column and a ragged 3x2-vs-2x2
+\ Add (broadcast shapes outside the legal classes), two graph outputs, output not the
+\ last node, missing graph, SSA rebind, missing initializer payload, oversized name,
+\ wrong arity, and truncated model bytes.
 
 require lib/test.f
 require lib/string.f
@@ -141,6 +144,51 @@ create X2B 8 cells allot
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
    ;MDL ;
 
+\ ---- broadcast initializers (dims [r,c], f32 raw_data) --------------------------
+: INIT-BR ( -- )                               \ bias row 1x2 = [10,20]
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" br" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB  10.0 ONNX:ENC-F32  20.0 ONNX:ENC-F32  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: INIT-SC ( -- )                               \ scale scalar 1x1 = [3]
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  1 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" sc" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB  3.0 ONNX:ENC-F32  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: INIT-COL ( -- )                              \ column 2x1 = [[5],[6]] (Rx1, an illegal Add class)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  1 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" col" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB  5.0 ONNX:ENC-F32  6.0 ONNX:ENC-F32  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: INIT-R2 ( -- )                               \ 2x2 = ones (ragged vs a 3x2 operand)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" r2" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB
+         1.0 ONNX:ENC-F32  1.0 ONNX:ENC-F32  1.0 ONNX:ENC-F32  1.0 ONNX:ENC-F32
+      ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+\ ---- fixture E: Add(x 2x2, bias 1x2) -> OP-BIAS (row broadcast) ------------------
+: MODEL-E ( -- )
+   MDL
+   s" EB" 2 ONNX:ENC-STR
+   s" Add" s" x" s" br" s" y" NODE2
+   INIT-BR
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+\ ---- fixture F: Mul(x 2x2, scale 1x1) -> OP-SCALE (scalar broadcast) -------------
+: MODEL-F ( -- )
+   MDL
+   s" FS" 2 ONNX:ENC-STR
+   s" Mul" s" x" s" sc" s" y" NODE2
+   INIT-SC
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
 \ ---- negative fixtures (each builds a model then imports it) ---------------------
 : IMP! ( -- )  ONNX:ENC$ ONNX:IMPORT ;
 
@@ -228,11 +276,17 @@ create X2B 8 cells allot
    ONNX:;ENC-SUB
    s" y" 12 2 2 VI+  ;MDL IMP! ;
 
-: TRY-SHAPE ( -- )                             \ Add operands 2x2 vs 1x2: no silent broadcast
+: TRY-ADDCOL ( -- )                            \ Add second operand 2x1 column: not a legal Add class
    MDL
-   s" Add" s" x" s" b" s" y" NODE2
-   INIT-B
+   s" Add" s" x" s" col" s" y" NODE2
+   INIT-COL
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-ADDRAGGED ( -- )                         \ Add operands 3x2 vs 2x2 (rows differ, neither 1)
+   MDL
+   s" Add" s" x" s" r2" s" y" NODE2
+   INIT-R2
+   s" x" 11 3 2 VI+  s" y" 12 3 2 VI+  ;MDL IMP! ;
 
 : TRY-2OUT ( -- )                              \ two graph outputs: outside the v1 contract
    MDL
@@ -348,6 +402,29 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 22 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 43 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 50 T=
 
+\ ---- fixture E: Add with a 1x2 bias -> OP-BIAS, row-broadcast ---------------------
+MODEL-E  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OP-BIAS T=                  \ 1xC second operand maps to a bias node
+ONNX:IN# 1 T=                                   \ br is initializer-bound, x is the runtime input
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 11 T=          \ x + [10,20] broadcast over rows
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 22 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 13 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 24 T=
+
+\ ---- fixture F: Mul with a 1x1 scalar -> OP-SCALE --------------------------------
+MODEL-F  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OP-SCALE T=                 \ 1x1 second operand maps to a scale node
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 3 T=           \ x * 3 (scalar broadcast)
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 6 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 9 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 12 T=
+
 \ ---- fail closed -------------------------------------------------------------------
 ' TRY-DYN      E-ONNX-DYNSHAPE TTHROWS
 ' TRY-CONV     E-MK-ONNX       TTHROWS
@@ -358,7 +435,8 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 50 T=
 ' TRY-BADATTR  E-ONNX-ATTR     TTHROWS
 ' TRY-RANK3    E-ONNX-RANK     TTHROWS
 ' TRY-I64DT    E-ONNX-DTYPE    TTHROWS
-' TRY-SHAPE    E-ONNX-SHAPE    TTHROWS
+' TRY-ADDCOL   E-ONNX-SHAPE    TTHROWS
+' TRY-ADDRAGGED E-ONNX-SHAPE   TTHROWS
 ' TRY-2OUT     E-ONNX-OUTPUT   TTHROWS
 ' TRY-OUTMID   E-ONNX-OUTPUT   TTHROWS
 ' TRY-NOGRAPH  E-ONNX-NOGRAPH  TTHROWS

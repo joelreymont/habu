@@ -13,8 +13,11 @@
 \
 \ Op coverage IS the ONNX:LOWER table (maki/onnx.f): every node passes through
 \ it first, so an unsupported op gets the table's existing E-MK-ONNX rejection.
-\ The IR mapping on top of that coverage: Add->OP-ADD, Mul->OP-MUL (strict
-\ same-shape operands; ONNX numpy broadcast beyond that fails E-ONNX-SHAPE),
+\ The IR mapping on top of that coverage: Add->OP-ADD (same shape) / OP-BIAS
+\ (1xC second operand, row broadcast), Mul->OP-MUL (same shape) / OP-SCALE (1x1
+\ second operand, scalar broadcast) - ONNX numpy broadcast mapped onto the
+\ capture-legal classes (maki/bcast.f BC-CLASS, the same mapping EX-BC@ /
+\ SHP-LEGAL? use); any other numpy shape fails closed E-ONNX-SHAPE.
 \ Relu->OP-RELU, Softmax->OP-SOFTMAX-ROW (axis must be the last: -1 or 1),
 \ Gemm->OP-MATMUL (2 inputs) / OP-LINEAR (3 inputs, bias 1xN) with
 \ alpha=beta=1 and transA=transB=0 enforced (E-ONNX-ATTR otherwise). Movement
@@ -38,6 +41,7 @@ require maki/onnx.f
 require maki/onnx/proto.f
 require maki/onnx/graph.f
 require maki/op-kind.f
+require maki/bcast.f
 require maki/tensor.f
 require maki/tensor-value.f
 require maki/array.f
@@ -131,14 +135,37 @@ variable IMP-BUMP
    rows cols MAKI:DT-F32 MAKI:LAY-ROW 0 1 MAKI:MIR-OP+ {: k:n :}
    j OND-OUT@ k IMP-BIND ;
 
-: IMP-EW2 ( n n -- ) {: j:n op:n :}            \ Add / Mul: strict same-shape binary elementwise
+\ Add / Mul: numpy broadcast mapped onto the capture-legal classes. The second
+\ operand's shape is classified against the first (BC-CLASS, the exact mapping the
+\ host executor's EX-BC@ and the planner's SHP-LEGAL? use): a full-shape operand is
+\ the plain elementwise op; a 1xC second operand is a row-broadcast bias; a 1x1 is a
+\ scalar. Add -> OP-ADD (full) / OP-BIAS (1xC); Mul -> OP-MUL (full) / OP-SCALE (1x1).
+\ Every other numpy shape (Rx1 column, 1x1 into Add, 1xC into Mul, ragged) is outside
+\ the legal classes and fails closed E-ONNX-SHAPE.
+: IMP-EW-REFS ( n -- n n ) {: j:n :}           \ attr+arity gate; resolve both operands -> r0 r1
    j 0 IMP-ATTRS-OK  j 2 IMP-ARITY-OK
-   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
-   j 1 OND-IN@ IMP-RESOLVE {: r1:n :}
-   r0 IMP-REF-ROWS r1 IMP-REF-ROWS <>  r0 IMP-REF-COLS r1 IMP-REF-COLS <>  or
-      if E-ONNX-SHAPE throw then
+   j 0 OND-IN@ IMP-RESOLVE  j 1 OND-IN@ IMP-RESOLVE ;
+
+: IMP-EW-BC ( n n -- n ) {: r0:n r1:n :}        \ operand-1 broadcast class against operand-0's RxC
+   r1 IMP-REF-ROWS r1 IMP-REF-COLS  r0 IMP-REF-ROWS r0 IMP-REF-COLS  MAKI:BC-CLASS ;
+
+: IMP-EW-BUILD ( n n n n -- ) {: j:n op:n r0:n r1:n :}   \ commit op(r0,r1); output = operand-0 shape
    op MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+  r1 MAKI:MIR-IN+
    j  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  IMP-COMMIT ;
+
+: IMP-ADD ( n -- ) {: j:n :}                   \ same shape -> OP-ADD ; 1xC second operand -> OP-BIAS
+   j IMP-EW-REFS {: r0:n r1:n :}
+   r0 r1 IMP-EW-BC {: bc:n :}
+   bc MAKI:BC-FULL = if j MAKI:OP-ADD  r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-ROW  = if j MAKI:OP-BIAS r0 r1 IMP-EW-BUILD exit then
+   E-ONNX-SHAPE throw ;
+
+: IMP-MUL ( n -- ) {: j:n :}                   \ same shape -> OP-MUL ; 1x1 second operand -> OP-SCALE
+   j IMP-EW-REFS {: r0:n r1:n :}
+   r0 r1 IMP-EW-BC {: bc:n :}
+   bc MAKI:BC-FULL   = if j MAKI:OP-MUL   r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-SCALAR = if j MAKI:OP-SCALE r0 r1 IMP-EW-BUILD exit then
+   E-ONNX-SHAPE throw ;
 
 : IMP-UNARY ( n n -- ) {: j:n op:n :}          \ shape-preserving one-input op
    j 1 IMP-ARITY-OK
@@ -180,8 +207,8 @@ variable IMP-BUMP
 : IMP-NODE ( n -- ) {: j:n :}
    j OND-OP$ LOWER 2drop
    j OND-OP$ {: a:ptr u:n :}
-   a u s" Add"     STR= if j MAKI:OP-ADD IMP-EW2 exit then
-   a u s" Mul"     STR= if j MAKI:OP-MUL IMP-EW2 exit then
+   a u s" Add"     STR= if j IMP-ADD     exit then
+   a u s" Mul"     STR= if j IMP-MUL     exit then
    a u s" Relu"    STR= if j IMP-RELU    exit then
    a u s" Softmax" STR= if j IMP-SOFTMAX exit then
    a u s" Gemm"    STR= if j IMP-GEMM    exit then
