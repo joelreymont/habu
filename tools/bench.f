@@ -106,7 +106,7 @@ variable SMOKE?
    IN-R @ close
    IN-W @ prog pu FD-WRITE-LN
    IN-W @ close
-   PID @ >PID PROC-WAIT-RC RC>N ;   \ 128+sig for signal deaths, never masked to 0
+   PID @ >PID PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code: 128+sig for signal deaths (err payload), never masked to 0
 
 : BENCH ( ptr u8 n n ptr u8 n -- ) {: name:ptr nu iters prog:ptr pu :}
    name nu type

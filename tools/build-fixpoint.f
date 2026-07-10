@@ -225,7 +225,7 @@ variable BF-CERT-PATH-U
 : BF-FINISH-PID ( pid -- n ) {: pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 < if E-PROC-SPAWN throw then
-   pid PROC-WAIT-RC RC>N ;
+   pid PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH ;   \ completion code (ok 0 / err nonzero)
 
 : BF-RUN-ENV-FDS ( ptr u8 n n n n -- n ) {: exe:ptr exeu infd outfd errfd :}
    BF-PREPARE-ENV

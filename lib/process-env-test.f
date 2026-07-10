@@ -260,7 +260,7 @@ variable PET-START-NS
    pathz argv envp -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
    PROC-ARGV-ENV-RESET
    pid PID>N 0 > TTRUE
-   pid PROC-WAIT-RC RC>N 0 T= ;
+   pid PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : PET-SPAWN-RAW-TRUE ( -- )
    0 begin dup 16 < while

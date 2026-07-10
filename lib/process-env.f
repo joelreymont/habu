@@ -272,7 +272,7 @@ variable PROC-ENV-DEF-BUF-A
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- rc )
+: PROC-RUN-ARGV-ENV-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
    PROC-SPAWN-ARGV-ENV-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}

@@ -763,7 +763,7 @@ variable SHARD-FAULT
    p PID>N 0= IF i SHARD-CHILD THEN   \ child diverges (dies), only the parent falls through
    p i SHARD-PID! ;
 : SHARD-JOIN ( n -- ) {: i:n :}
-   i SHARD-PID@ PROC-WAIT-RC RC>N 0 <> IF -1 SWEEP-RED ! THEN ;
+   i SHARD-PID@ PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop -1 SWEEP-RED ! ENDOF ;MATCH ;
 : SWEEP  ( n -- )   \ base seed -> fork all shards, join all, fail on any red
    SWEEP-BASE !  0 SWEEP-RED !  -1 SWEEP-QUIET !
    0 SWEEP-I ! begin SWEEP-I @ PROP-SHARD-N < while  SWEEP-I @ SHARD-FORK  SWEEP-I @ 1+ SWEEP-I ! repeat
@@ -810,7 +810,7 @@ variable SS-I  variable SS-J  variable SS-BAD
 : SELFTEST-SWEEP-RED ( -- )
    PROC-FORK-RAW {: p:pid :}
    p PID>N 0= IF SWEEP-RED-CHILD THEN
-   p PROC-WAIT-RC RC>N 1 <> IF
+   p PROC-WAIT-RC MATCH result ok OF ENDOF err OF ENDOF ;MATCH 1 <> IF   \ completion code; a red shard must exit 1
       s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN
    s" prop-test: sweep-red OK (one red shard fails the sweep)" type cr ;
 

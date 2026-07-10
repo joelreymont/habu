@@ -77,7 +77,8 @@ variable PAT-I
    s" %s-%s"  >LEN PROC-ARGV+
    s" left"  >LEN PROC-ARGV+
    s" right"  >LEN PROC-ARGV+
-   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC RC>N 0 T=
+   s" /usr/bin/printf" >LEN -1 >FD PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PAT-OUT-W @ close
    PAT-READ 10 T=
    PAT-BUF 10 s" left-right" T$=
@@ -89,7 +90,8 @@ variable PAT-I
    PAT-IN-W @ s" argv-stdin" write 10 T=
    PAT-IN-W @ close
    PROC-ARGV-RESET
-   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC RC>N 0 T=
+   s" /bin/cat" >LEN PAT-IN-R @ PAT-OUT-W @ -1 >FD PROC-RUN-ARGV-IO-RC
+   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PAT-IN-R @ close
    PAT-OUT-W @ close
    PAT-READ 10 T=

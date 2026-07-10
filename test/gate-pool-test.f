@@ -551,7 +551,7 @@ variable GPT-GK-SENTINEL-U
 \ the reaper was a direct child. If the reaper regresses to a worker child, the
 \ worker blocks, the pool times it out, and GT-POOL-DRAIN dies here.
 : GPT-WAIT-ANY ( -- )
-   -1 >PID PROC-WAIT-RC drop ;
+   -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 : GPT-WAIT-NEG-WORKER ( -- )
    [: GPT-WAIT-ANY ;] E-PROC-WAIT TTHROWSQ ;

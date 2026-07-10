@@ -168,3 +168,43 @@ consume a result, wrong direction); PROC-OUTCOME>RC / PROC-STATUS>OUTCOME (the
 raw kind/code producers — Wave C outcome-sum territory). The next honest step is the
 WIDE PROC-WAIT-RC with a full caller-rewrite plan (its ~12 sites decide exit-vs-rc),
 or pivot; a low-radius top wrapper is no longer available in this cluster.
+
+## SLICE 3 — LANDED (lib/process.f PROC-WAIT-RC, the wide base + its wrapper cluster)
+
+`PROC-WAIT-RC ( pid -- rc )` → `( pid -- result<n,n> )`. ADT DECISION: `result<n,n>`,
+NOT the outcome sum. Reasoning from all 13 call sites: NO caller structurally
+branches on exited-vs-signaled — they all use the NUMERIC completion code (rc==0 =
+success, rc!=0 = failure, or the raw number). The 128+signal encoding (regression
+habu-wait-rc-masks-9ae37cd0; bench.f wants signal deaths visible; TEST-PROC-WAIT-RC-
+SIGNAL asserts 137) is FULLY PRESERVED in the err payload (err = the nonzero
+completion rc, which is 128+sig for signal deaths). ok = clean exit (0). A wait
+failure (ECHILD) still THROWS E-PROC-WAIT inside PROC-WAIT-STATUS — no errno is
+returned. The STRUCTURAL exited/signaled outcome sum stays Wave C, where (and only
+if) a consumer actually needs to branch on it — none does today.
+
+The wrapping moved DOWN to PROC-WAIT-RC itself (it does the `rc 0 = if RESULT:OK
+else RESULT:ERR`), which let PROC-RUN-IO-RC SIMPLIFY to a plain forward
+(`PROC-SPAWN-IO PROC-WAIT-RC`) — de-duping slice 1's wrap. The 3 sibling run
+wrappers (PROC-RUN-ARGV-IO-RC, PROC-RUN-ARGV-ENV-CWD-IO-RC, PROC-RUN-ARGV-ENV-IO-RC)
+migrated to result<n,n> the same way (forward PROC-WAIT-RC).
+
+Caller sweep (14 files, all trees, all -> exhaustive MATCH; NO sentinel/RC>N left):
+- get-completion-code idiom `MATCH result ok OF ENDOF err OF ENDOF ;MATCH` for the
+  words that return/compare the raw code: tools/bench.f (128+sig visible in err),
+  tools/build-fixpoint.f (BF-FINISH-PID), test/prop-test-core.f:813 (`… ;MATCH 1 <>`
+  self-test on a red shard exiting 1).
+- expect-ok(0) `MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH` for
+  the success tests: proc-pty (2), process-test (3), process-env-test, codesign-test,
+  process-argv-test (2).
+- expect-err(137) for TEST-PROC-WAIT-RC-SIGNAL (SIGKILL -> err(128+9)).
+- red-on-failure `err OF drop -1 SWEEP-RED !` for prop-test SHARD-JOIN.
+- consume-both-arms `ok OF drop ENDOF err OF drop ENDOF` for the wait(-1) THROW tests
+  (gate-pool-test GPT-WAIT-ANY, process-test TEST-WAIT-BAD) — the throw happens first,
+  the MATCH just typechecks (a result can't be a bare `drop`, so both arms drop).
+4 manifest rows updated. NO run-files.f edit (result.f already a
+TR-GATE-HARNESS-FILES member from slice 1; process-argv/env are members and reach
+result via process.f). NO byte-fixpoint (all on-demand; test/run.f fixpoint phase
+normal). NO new trust rows. The scalar-rc process cluster is now fully result<n,n>
+down to PROC-WAIT-RC. Remaining rc-adjacent: PROC-STATUS>RC / PROC-OUTCOME>RC /
+PROC-STATUS>OUTCOME are the raw kind/code producers = Wave C outcome-sum territory
+(migrate there, not as result). Wave B scalar-rc half is COMPLETE.
