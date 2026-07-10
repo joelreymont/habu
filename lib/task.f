@@ -101,7 +101,7 @@ variable TASK-MUNMAP
 variable TASK-ENTRY
 variable TASK-USER-NEXT
 
-$3D08 constant TASK-USER-BASE   \ $3D00 is reserved for UNCGH-CELL (src/habu/layout.f); task-user cells start one cell above
+$40C8 constant TASK-USER-BASE   \ above UNCGH-CELL ($40C0), which sits above the grown protected-WID table ($3CC0..$40C0, src/habu/layout.f); bounded by DATA-START ($43C0)
 TASK-USER-BASE TASK-USER-NEXT !
 
 TRUSTED: TASK-NULL ( -- ptr a )

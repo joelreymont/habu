@@ -71,14 +71,15 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
                                         \ src/habu/layout.f); stage0 has no driver-io reporter, so it only
                                         \ maps the raw code to this fixed nonzero rc - never the masked value
 \ Second guarded band (TFAM 2b-v): the native protected-WID registry occupies
-\ [$3CB8,$3D00) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN).
+\ [$3CB8,$40C0) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN;
+\ table grown 16->256 slots in place, dot habu-seal-protwid-cap-6f1c9d2b).
 \ stage0 has no package system and no registry (census discrepancy 5), so nothing
 \ here reads these cells -- but the ADDRESS band mirrors so a post-seal store into
 \ it traps identically to native. Only the range check mirrors; the WID-membership
 \ guards (publish guard / LPROTWIDQ / AOT boot gates) cannot exist without the
 \ package system and stay pinned absent by test/seal-absence.f.
 $3CB8 constant PROT-REG-OFF             \ second PROT-GUARD band base (= native count cell)
-$48 constant PROT-REG-LEN               \ count cell + 16 u32 table = $3CB8..$3D00
+$408 constant PROT-REG-LEN              \ count cell + 256 u32 table = $3CB8..$40C0
 $28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
@@ -149,7 +150,7 @@ $238 constant QPATCH-CELL \ [: b-over patch site (0 = not inside a quotation)
 $240 constant QENT-CELL   \ [: nested entry address (the xt ;] pushes)
 $248 constant QXH-CELL    \ saved EXIT chain head across the quotation
 $2800 constant RSTK-OFF   \ user return stack — 256 cells, below DATA-START
-$4000 constant DATA-START \ DP initial offset (past header + loop stack + body buf + rstack + eval/runtime scratch)
+$43C0 constant DATA-START \ DP initial offset; bumped $4000->$43C0 for the grown 256-slot protected-WID table + UNCGH/task above it (dot habu-seal-protwid-cap-6f1c9d2b)
 create SQ-KW  115 c, 34 c,      \ build-time bytes for the keyword  s"  (s=115, "=34)
 create CQ-KW  99 c, 34 c,
 create DOTQ-KW 46 c, 34 c,

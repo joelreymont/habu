@@ -177,43 +177,53 @@ $3C98 constant HIDXP-CELL
 \ habu2.f), set at startup like LMAINP-CELL so the throw primitive (a leaf prim that
 \ cannot name emit-time labels) can branch to it. It must sit in a DATA slot no
 \ compiled source ever writes: $3A00..$3C88 is the lib/ffi-abi.f FFI buffer block
-\ (FFI-BUF-OFF etc.), $3C88..$3CA0 is the task cells above, and lib/task.f grows
-\ TASK-USER-BASE up from $3D00 — so this $3CA0 slot in the $3CA0..$3D00 gap is the
-\ single free engine cell between those two library regions.
+\ (FFI-BUF-OFF etc.), $3C88..$3CA0 is the task TCB cells; the protected-WID registry
+\ count/table follow at $3CB8..$40C0 — so these $3CA0..$3CB8 slots are free engine
+\ cells between the FFI block and the registry.
 $3CA0 constant EVALREC-CELL
 \ AOT-SEED-DONE-CELL: one-shot flag set the first time the post-cold-prefix AOT
-\ seed runs at LEXIT (EM-COMPILE-EXIT), so REPL re-entry does not re-seed. Lives
-\ in the same $3CA0..$3D00 free engine gap as EVALREC-CELL, above the task cells.
+\ seed runs at LEXIT (EM-COMPILE-EXIT), so REPL re-entry does not re-seed. Lives in
+\ the $3CA0..$3CB8 free engine gap between the FFI block and the registry count cell.
 $3CA8 constant AOT-SEED-DONE-CELL
 \ AOT-SEED-ARM-CELL: set to 1 only on the interactive repl entry (C-SOURCE SRC-REPL),
 \ so the AOT REPL seed runs solely when the engine is about to present the REPL --
 \ never for pipe programs, `--load` tool runs, or the snapshot builder (which retires
 \ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
 $3CB0 constant AOT-SEED-ARM-CELL
-\ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Placed in the same
-\ proven-safe $3CA0..$3D00 engine gap as EVALREC/AOT-SEED-* (slots no compiled source
-\ ever writes) -- NOT in the low friend arena, whose $A8+ tail is transient checker
-\ scratch during stage-engine source evaluation. Records the WIDs of sealed system /
-\ generated constructor packages created in the friend window; PROT-WID? membership
-\ (habu1.f) gates the sealed-WID guards. u32 entries so wordlist IDs above 255 fit.
-\ The band [PROT-REG-OFF, +PROT-REG-LEN) fills $3CB8..$3D00 (below TASK-USER-BASE) and
-\ is a SECOND range checked by PROT-GUARD, rejecting user data stores into the count
-\ cell or table. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET) ARE
-\ range-guarded too: each PROT-GUARDs the address it redirects a write to, so a
-\ post-seal cp!/ndict! into either band fails closed at the sink. ---
-$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32 in a full cell)
-$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32 entries)
-16 constant PROT-WID-MAX                \ table capacity (16 u32 = $40 -> fills the gap to $3D00)
+\ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
+\ sealed system / generated constructor packages created in the friend window;
+\ PROT-WID? membership (habu1.f) gates the sealed-WID guards. u32 entries so wordlist
+\ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot (xref.f PROT-WID-CTOR-ADD
+\ -> prot-wid-add per family constructor wordlist), so the capacity is the number of
+\ public ADT families a session may declare. Raised 16 -> 256 (dot
+\ habu-seal-protwid-cap-6f1c9d2b): 16 overflowed at the 17th public family (silent
+\ exit 84), and a realistic switchover (a public stdlib plus user Option/Result/...
+\ families) declares dozens-to-hundreds. The count cell ($3CB8) and table base ($3CC0)
+\ are DELIBERATELY UNCHANGED: aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild
+\ host registry at these offsets (via dbase@) during the self-hosting build, so moving
+\ them would make the transitional build read the old-layout host at a new offset (a
+\ garbage count -> "protected-WID registry overflow"). Instead the 256-slot table
+\ ($3CC0..$40C0) grows UPWARD and UNCGH-CELL/TASK-USER-BASE/DATA-START are bumped above
+\ it; those cells are not read live at build time, so relocating them is safe. It stays
+\ engine-reserved -- no compiled source writes it, the DP heap is bounded >= DATA-START
+\ (above the table) and snapshot saves it. The band [PROT-REG-OFF, +PROT-REG-LEN) is a
+\ SECOND range checked by PROT-GUARD, rejecting user data stores into the count cell or
+\ table. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET) ARE range-guarded too:
+\ each PROT-GUARDs the address it redirects a write to, so a post-seal cp!/ndict! into
+\ either band fails closed at the sink. ---
+$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32); UNCHANGED offset (aot-capture reads it live at build time)
+$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32); UNCHANGED offset (aot-capture reads it live)
+256 constant PROT-WID-MAX               \ table capacity (256 u32 = $400, spans $3CC0..$40C0); raised from 16 (dot habu-seal-protwid-cap-6f1c9d2b)
 PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
-PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $48: count + table
+PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $408: count + 256 u32 table = $3CB8..$40C0
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
-\ reaches THROW-NOREC with no handler and no REPL. Sits at $3D00 - the slot directly
-\ below the task-user region, which now starts at $3D08 (lib/task.f TASK-USER-BASE).
-\ Like EVALREC/AOT-SEED/PROT-WID it is a fixed engine cell no compiled source writes
-\ (task-user cells allocate up from $3D08; the mmap'd DATA region is zero until boot).
-$3D00 constant UNCGH-CELL
+\ reaches THROW-NOREC with no handler and no REPL. Moved $3D00 -> $40C0 (above the grown
+\ 256-slot protected-WID table); not read live at build time so the relocation is safe.
+\ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
+\ DATA region is zero until boot).
+$40C0 constant UNCGH-CELL
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.
@@ -260,4 +270,9 @@ $27A8 constant CMM-CELL
 \ the friend arena above and were later reclaimed by the habu1.f P2-* pass-2
 \ cells (item 12), as were $2780..$27A0.
 $2800 constant RSTK-OFF
-$4000 constant DATA-START
+\ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
+\ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
+\ >= DATA-START; task-user cells stay below it). Bumped $4000 -> $43C0 to reserve the
+\ grown 256-slot protected-WID table (ends $40C0), UNCGH-CELL ($40C0), and the unchanged
+\ $2F8 task-user region ($40C8..$43C0) below it (dot habu-seal-protwid-cap-6f1c9d2b).
+$43C0 constant DATA-START

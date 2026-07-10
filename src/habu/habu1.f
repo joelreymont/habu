@@ -1832,13 +1832,15 @@ s" linux-stat-fix" s" n --" TRUST
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
 : BPROTWIDADD ( -- )
-   LBL LBL {: room:label done:label :}
+   LBL LBL LBL {: room:label done:label msg:label :}
    9 G-POP
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
    14 DATA PROT-WID-N-CELL LDR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
       0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
    16 14 2 LSLI,  15 15 16 ADD,
