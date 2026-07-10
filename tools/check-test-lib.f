@@ -298,6 +298,18 @@ variable CKT-PAR-U
    s" : CKT-AFTER-BAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
+\ S2: a declaration PRE-CHECK reject (missing arity / unterminated) must report
+\ the same E-BAD-DECLARATION packet the native path emits, not a raw die.
+: CKT-TFAM-NOARITY$ ( -- ptr u8 n )   \ TYPEFAMILY missing its arity token
+   SB-RESET
+   s" TYPEFAMILY ckfnoar" SB-APPEND
+   SB$ ;
+
+: CKT-SUM-NOEND$ ( -- ptr u8 n )      \ SUMTYPE body never reaches ;SUMTYPE
+   SB-RESET
+   s" SUMTYPE cksnoend 1 VARIANT ok a ;VARIANT" SB-APPEND
+   SB$ ;
+
 : CKT-ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
    SB-RESET
    s" ENUM eck red green ;ENUM" SB-APPEND
@@ -522,6 +534,20 @@ variable CKT-PAR-U
    outu 0 T=
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: CKT-TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
+   CKT-TFAM-NOARITY$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" missing arity" CONTAINS? TTRUE ;
+
+: CKT-TEST-SUM-NOEND ( -- )      \ S2 parity: unterminated sum -> declaration packet
+   CKT-SUM-NOEND$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
 : CKT-TEST-ENUM-GOOD ( -- )
    CKT-ENUM-GOOD$ CKT-DIRECT-STDIN 0 T=
@@ -787,6 +813,8 @@ variable CKTP-DOC-U
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
+   s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
+   s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
    s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
    s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
    s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN

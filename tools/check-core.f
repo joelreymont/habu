@@ -699,15 +699,20 @@ variable CHK-VREC-NAME-I
 
 variable CHK-TFAM-NAME-I
 
-: CHK-TFAM-DO-DEF ( -- )
+: CHK-TFAM-DO-DEF ( -- )         \ arity token, or empty when absent (missing-arity packet)
    CHK-TFAM-NAME-I @ LEX-TOK
-   CHK-TFAM-NAME-I @ 1+ LEX-TOK
+   CHK-TFAM-NAME-I @ 1+ dup L# @ < IF LEX-TOK ELSE drop s" " THEN
    CHECKER-DEFFAMILY ;
 
 : CHK-SUM-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LEX-TOK
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFSUM ;
+
+: CHK-SUM-DO-NOEND ( -- )        \ unterminated: declaration packet from name + partial body
+   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-EXP-BUF CHK-EXP-U @
+   CHECKER-DEFSUM-NOEND ;
 
 \ A failed TYPEFAMILY/SUMTYPE declaration already reported through the
 \ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
@@ -725,8 +730,9 @@ variable CHK-TFAM-NAME-I
    dup 0= IF drop EXIT THEN
    drop CHK-E-CHECK CHK-THROW ;
 
+\ Missing arity is reported by CHECKER-DEFFAMILY through the declaration packet
+\ (§24), matching native/verify-source -- not a raw pre-check throw.
 : CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'typefamily'; next scan index
-   k 2 + L# @ >= IF s" check.f: missing typefamily arity" CHK-E-CHECK CHK-THROW THEN
    k 1+ CHK-TFAM-NAME-I !
    CHK-DECL-CAPTURE
    [: CHK-TFAM-DO-DEF ;] catch
@@ -747,9 +753,16 @@ variable CHK-TFAM-NAME-I
       1+
    repeat drop k LINT-FALSE ;
 
+\ Unterminated SUMTYPE is reported by CHECKER-DEFSUM-NOEND through the declaration packet
+\ (§24), matching native/verify-source -- not a raw pre-check throw.
 : CHK-SUM-REGISTER ( n -- n ) {: k:n :}    \ k at 'sumtype'; next scan index
    k s" ;SUMTYPE" CHK-BLOCK-COLLECT 0= if
-      drop s" check.f: missing ;SUMTYPE" CHK-E-CHECK CHK-THROW
+      drop
+      CHK-DECL-CAPTURE
+      [: CHK-SUM-DO-NOEND ;] catch
+      CHK-DECL-FLUSH
+      CHK-DECL-FAIL
+      L# @ exit
    then {: nxt:n :}
    CHK-DECL-CAPTURE
    [: CHK-SUM-DO-DEF ;] catch
