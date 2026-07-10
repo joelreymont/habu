@@ -565,7 +565,16 @@ variable GDX-TRUST-MAN-U
    s" json-one-schema" s" habu-adt-family.err" s" ADT family schema" GDX-GJA1
    GE-HB-RESET
    GE-SRC-RESET
-   s" : SBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   s" SUMTYPE famaa 0 VARIANT lefta ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE fambb 0 VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" SUMTYPE famcc 0 VARIANT rightc ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : FAM-MIS ( -- famaa fambb ) construct famcc rightc construct fambb sameb ;" GE-SRC-LINE
+   s" tools/check.f accepted adjacent ADT mismatch" GDX-CHECK-JSON
+   s" family" s" famaa" s" family names the exact expected mismatch" GDX-EXPECT-ERR-JSTR
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE fambb 0 VARIANT sameb ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : SBAD ( -- i64 fambb ) 0 >COUNT construct fambb sameb ;" GE-SRC-LINE
    s" tools/check.f accepted scalar mismatch" GDX-CHECK-JSON
    s" habu-scalar-nofam.err" GDX-WRITE-ERR
    s" code" s" E-MISMATCH" s" scalar mismatch code" GDX-EXPECT-ERR-JSTR

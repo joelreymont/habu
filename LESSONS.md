@@ -3281,3 +3281,9 @@ unchanged (148855). Keys for milestone 2:
   source inside that still-mutated scope and diagnosed duplicates. Roll back
   the nominal/lint phase before replay; the outer command scope still preserves
   transactionality without leaking pass-local declarations.
+- **Mismatch attribution must come from the failed unification pair, not a row
+  scan.** A matched ADT beside the real failure made `family` name the wrong
+  type; a scalar failure beside an ADT could invent a family. Capture the first
+  failed `(actual, expected)` type pair, process row heads before recursive
+  tails so width differences reach that pair before an occurs-check backstop,
+  and render optional metadata only from the captured terms.

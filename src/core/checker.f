@@ -553,6 +553,7 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    root ;
 4096 constant MAXUWL           \ unify worklist cells (deep spines queue many pairs)
 create UWL MAXUWL cells allot   variable USP   variable UOK
+variable UF-ACT   variable UF-EXP   variable UF-SET
 \ Parallel per-pair strictness flag, keyed by the pair's base worklist index.
 \ Strict pairs (pointer pointees) unify by equality/var-binding only — integer
 \ widening (INT-WIDENS?) applies to top-level scalar stack cells, never to a
@@ -577,6 +578,12 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 : UNPAIR ( -- n n )    \ pop a pair and restore its strictness into CUR-STRICT
    U-POP U-POP swap
    USP @ cells UWL-STR + @ CUR-STRICT ! ;
+
+: U-FAIL ( n n -- ) {: act:n exp:n :}
+   UF-SET @ 0= IF
+      act UF-ACT !  exp UF-EXP !  -1 UF-SET !
+   THEN
+   RES-FALSE UOK ! ;
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
    FIELD-FAM @ 0 < IF RES-FALSE EXIT THEN   \ field family not registered (e.g. after TFAM-RESET)
@@ -604,7 +611,7 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 
 : FIELD-PAIR? ( n n -- bool ) {: got:n want:n :}
    got FIELD-PARAM? want FIELD-PARAM? and 0= IF RES-FALSE EXIT THEN
-   got want FIELD-ID-SAME? 0= IF RES-FALSE UOK ! RES-TRUE EXIT THEN
+   got want FIELD-ID-SAME? 0= IF got want U-FAIL RES-TRUE EXIT THEN
    got FIELD-INNER want FIELD-INNER PAIR
    RES-TRUE ;
 
@@ -882,8 +889,8 @@ CT-INIT
    t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
-   t1 PARAM>ARGC t2 PARAM>ARGC <> IF RES-FALSE UOK ! EXIT THEN
-   t1 t2 PARAM-FAM-OK? 0= IF RES-FALSE UOK ! EXIT THEN
+   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
+   t1 t2 PARAM-FAM-OK? 0= IF t1 t2 U-FAIL EXIT THEN
    0 PARAM-I !
    BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
       t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
@@ -1146,19 +1153,19 @@ variable LLC-N
    over TAG T-PTR =  over TAG T-PTR =  and IF
      over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
    over TAG T-ATOM =  over TAG T-ATOM =  and IF
-     2dup ATOM-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN ELSE
+     2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN ELSE
    2dup FIELD-PAIR? IF 2drop ELSE
    2dup FIELD-COERCE? IF 2drop ELSE
    over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE 2drop RES-FALSE UOK ! THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
-   2dup LAYOUT-BLOCK? IF 2drop RES-FALSE UOK ! ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
+     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
+   2dup LAYOUT-BLOCK? IF U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
-     over PAY over TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
+     over PAY over TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
    dup ISVAR IF
-     dup PAY  rot  tuck TY-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY TV! THEN ELSE
+     dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
-     2dup CON-OK? IF 2drop ELSE 2drop RES-FALSE UOK ! THEN
-   ELSE 2drop RES-FALSE UOK ! THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+     2dup CON-OK? IF 2drop ELSE U-FAIL THEN
+   ELSE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
 
 \ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
 \ effect keeps a parametric layout value as ONE logical cell whenever an arg is
@@ -1192,10 +1199,13 @@ variable LLC-N
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
    2dup LOGHID-AT? IF LOGHID-EXPAND ELSE
    2dup swap LOGHID-AT? IF swap LOGHID-EXPAND ELSE
-   2dup P>TYPE swap P>TYPE swap PAIR P>REST swap P>REST swap PAIR THEN THEN THEN THEN THEN ;
+   2dup P>REST swap P>REST swap PAIR
+   P>TYPE swap P>TYPE swap PAIR THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
-   0 USP !  RES-TRUE UOK !  0 CUR-STRICT !  PAIR
+   0 USP !  RES-TRUE UOK !  0 CUR-STRICT !
+   0 UF-ACT !  0 UF-EXP !  0 UF-SET !
+   PAIR
    BEGIN USP @ 0 > UOK @ and WHILE
      UNPAIR  over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN
    REPEAT
@@ -1245,6 +1255,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
    FRESH MK-ROW dup BROW ! DCUR !
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
+variable DF-ACT   variable DF-EXP
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 variable SGA  variable SGU
@@ -1400,12 +1411,19 @@ variable LTC-P
 : LIN-CHECK ( -- )
    DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
 
+: UF>DIAG ( -- )
+   UF-SET @ IF
+      UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !
+   ELSE
+      0 DF-ACT !  0 DF-EXP !
+   THEN ;
+
 : CHECKER-STEP {: din dout :}
    din dout LIN-EXPLICIT? LINEXP !
    LINEXP @ 0= IF LIN-SNAPSHOT THEN
    DCUR @ WAS !
    DCUR @ din UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  UF>DIAG  -1 FAILSET ! THEN
    OK @ and OK !
    dout DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
@@ -4850,7 +4868,8 @@ variable CURSYM
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
-variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-SGBAD
+variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-SGBAD
 variable SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
@@ -4862,6 +4881,7 @@ variable SV-TRAIL
    SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
+   DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
@@ -4887,6 +4907,7 @@ variable SV-TRAIL
    SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
+   SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !
    SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
@@ -5705,17 +5726,17 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : SUNI {: s :}
    DCUR @ s UNIFY
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
    OK @ and OK ! ;
 
 : SUNI-IN {: s:n :}
    DCUR @ s UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
    OK @ and OK ! ;
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
    OK @ and OK ! ;
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;
@@ -6729,7 +6750,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
