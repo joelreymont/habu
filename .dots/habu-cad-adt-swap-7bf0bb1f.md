@@ -4,6 +4,10 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-04T00:20:50.079838+02:00"
+blocks:
+  - habu-checker-capability-typed-a480c423
+  - habu-checker-capability-derive-23788e95
+  - habu-checker-capability-layout-4e7f1f03
 ---
 
 docs/model-cad.md typed backbone. When TFAM 9/10/12/14/15 land: swap cad-0a report, cad-1 IR, cad-4 schedule internals to sum/enum/product families with MATCH dispatch (op-kind enum, verdict sum pass|fail<reason>, fusion sum fused|split<reason>, report rows as products, option/result for lookups). Representation-hiding accessor signatures must not change; tests prove behavior identical. Recursive by-value IR waits for TFAM 16 boxed (habu-epic-adopt-adts child). Depends: TFAM campaign on maki-type-families.
@@ -112,3 +116,108 @@ words. It does NOT touch src/core/*, verify-source.f, checker.f, or any file the
 TFAM campaign owns. Clean vs the campaign; its only gate is TFAM 9/10/12/14/15
 landing the capabilities above (no shared files, so no serialization needed once
 they land). Depends: TFAM campaign on maki-type-families (9/10/12/14/15).
+
+UPDATE 2026-07-10 (fable-adt lane, audit-first commit). TFAM 9/10/12/14/15
+have LANDED and are frozen for this lane (merge b0556262): MATCH executes,
+ENUM/PRODUCT declare and generate constructors/MAKE/UNMAKE, construct works.
+So the 2026-07-07 "STILL BLOCKED" list is closed for the AUTHORING surface.
+Audited each swap target against the landed surface with a capability probe
+(scratchpad cad-probe.f, method = CHECK-QUIET-CANDIDATE! candidates +
+INCLUDE-EVALUATE decl catch, the type-decl/ctor/match-suite pattern). The swap
+is NOT executable as specified, because the landed layout machinery (item 7/12,
+docs/type-families.md §17) makes a sum/enum/product value a STACK-ONLY logical
+bundle that fails closed on every memory/compare/store touch. Proven walls
+(probe verdicts verbatim; also pinned upstream in test/type-decl-suite.f):
+
+  WALL-1 STORAGE. A layout value cannot be `!`/`c!` into a cell, held in a
+    `variable`, `create`d array, or `constant`. Probe P1 `( pdt ptr a -- ) !`
+    -> reject(0); P2 `( pdt -- ) constant` -> reject(0). Upstream pins:
+    TD12-STORE, TD12-CONST, TD12-DEPTH. This is the decisive wall: EVERY CAD
+    representation the dot targets stores its tag as an integer in a
+    memory-backed record/array and returns it through an n-typed accessor —
+    report G-TAG/G-RO/G-RL (report.f:120-122, `tag gid cells G-TAG + !`
+    :486), IR MI-OP/MI-DT/MI-LAY/MI-IS-AL (model-ir.f:66-86, `dt k cells
+    MI-DT + !` :200), fusion FP-SP-REASON (fusion-plan.f:60, :247). None can
+    hold an ADT value. Storing one needs the packed-memory layout policy
+    (§22.2) / typed ADT buffer store-load — NOT landed.
+  WALL-2 EQUALITY. No `=`/compare on layout values. Probe P3 `( pdt pdt --
+    bool ) =` -> reject(0). Derived eq/order/hash is an explicit v1 non-goal
+    (§27). So "typed equality for the replay table" over stored SKEY values is
+    not expressible; the replay table cannot key on ADT-value identity.
+  WALL-3 NESTED LAYOUT FIELDS. A PRODUCT/SUMTYPE field/payload typed as
+    another layout family rejects at declaration. Probe P6 `PRODUCT prec 0
+    FIELD d pdt FIELD l play ;PRODUCT` -> throws (E-TDECL-PAYLOAD). §18 keeps
+    v1 params cell-kinded. So "SKEY as a PRODUCT with enum fields" cannot be
+    authored — a product cannot hold dtype/layout/align enum fields.
+
+Proven CAPABILITIES (what v1 CAN do, transient stack only):
+  CAP-A n->enum via if/else join certifies (P4 `0 = if PDT:DF32 else PDT:DF16
+    then` -> -1); enum->n via MATCH executes (P7 round-trips 1). CASE-join of
+    layout branch outputs did NOT certify in the naive form (P4b -> 0); use
+    if/else.
+  CAP-B positional enum typing catches a dtype/layout SWAP at a transient
+    assembly boundary: P5swap `( play pdt -- ) {: d:pdt l:play :}` -> reject(0)
+    (binding a `play` into a `pdt` local rejects). This is the ONE piece of the
+    dot's priority-1 acceptance ("a swapped dtype/layout field must become a
+    CHECKER diagnostic") that is reachable today.
+  CAP-C all-cell / ptr-u8 products MAKE/UNMAKE + user field accessors work
+    (P8 -> 4, P9 accepted). Products are fine — as long as no field is a layout
+    family (WALL-3) and the product value is never stored/compared (WALL-1/2).
+
+PER-PRIORITY RECLASSIFICATION (all four scoped swaps are storage-backed):
+  (1) SKEY product w/ enum fields + typed equality: BLOCKED. Needs WALL-1
+      (typed ADT store, habu-checker-capability-typed-a480c423), WALL-2
+      (habu-checker-capability-derive-23788e95), WALL-3
+      (habu-checker-capability-layout-4e7f1f03). A PARTIAL transient win is
+      possible — see FORK below.
+  (2) report gate tags -> verdict sum w/ MATCH: BLOCKED by WALL-1 (verdict tag
+      stored in G-TAG; `fail<reason>` carries a 2-cell string payload, width 3,
+      un-storable). The render dispatchers (V-NAME/RC-NAME/CO-NAME, case->text)
+      take a STORED n; MATCH would need an n->sum step first (a case) — strictly
+      more code, no win, still un-storable.
+  (3) fusion fused|split<reason>: BLOCKED by WALL-1 (split reasons stored in
+      FP-SP-REASON; FP-FUSED? is a bool over a variable).
+  (4) op-kind enum for the IR "where accessor signatures stay stable": BLOCKED
+      by WALL-1. op-kind is stored in MI-OP; MIR-OP@ returns n and every
+      consumer (OPR-CLASS/OPR-NAME/fusion/lowering) takes n — there is NO
+      stable-signature slot to place an enum without WALL-1.
+  Recursive by-value IR stays out of scope (TFAM 16 boxed), as before.
+
+This matches the pre-existing project position: habu-checker-capability-typed
+already states "Until it lands, tables stay parallel-column records per the cad
+staging rule." The audit confirms it with proof and extends it to all four
+swaps.
+
+DESIGN FORK (priority 1 residue — orchestrator decides; lane STOPPED here):
+  Option A (land now): a transient typed key-field DSL. Add PARALLEL ENUM
+    families dtype/layout/align (alongside, NOT replacing, the DT-*/LAY-*/AL-*
+    int constants, which stay as the stored/wire encoding), typed field
+    accessors DTYPE-OF/LAYOUT-OF/ALIGN-OF ( node -- enum ) that read the stored
+    n and convert (if/else, CAP-A), MATCH-based field renderers, and a typed
+    SK-KEY assembler consuming dtype/layout/align positionally so an
+    assembly-order swap is a checker diagnostic (CAP-B) + a negative fixture.
+    SK-KEY$ stays the single durable render (byte-identical; sched-key-test.f:53
+    already pins the format). Replay table stays string-keyed (WALL-1/2).
+    COST: duplicates the representation (two vocabularies), adds an
+    n->enum->string double dispatch on the key path, is NOT a product, has NO
+    typed equality, does NOT replace the constants, and closes only the
+    assembly-order swap (not a mis-read field, e.g. `MIR-LAY@ N>DTYPE`). It
+    would need rework when WALL-1 lands the real swap.
+  Option B (hold — RECOMMENDED): keep sched-key as-is; land nothing that
+    duplicates the representation. The dot's headline shape (PRODUCT record +
+    enums replacing the constants + typed equality + durable typed key) is
+    provably unbuildable on the frozen surface; per "dot it rather than force
+    it", gate the whole dot on the three capability dots above and revisit when
+    they land, at which point priorities 1-4 all become buildable as specified
+    with stable accessor signatures. The walls and the durable format are
+    already regression-pinned (test/type-decl-suite.f; sched-key-test.f), so
+    holding loses no coverage.
+
+NOTE for the eventual dtype/layout enum authoring: single-letter and builtin
+type spellings are reserved enum-variant tails — `ENUM pdt a ...` and `ENUM pdt
+f32 ...` both reject ("reserved name"). The dtype enum will need non-reserved
+tails (spelled-out or prefixed) rendered to the wire strings "f32"/"f16"/... by
+its MATCH renderer.
+
+No maki/*.f changed in this commit: the audit is the deliverable. Dot stays
+open, now BLOCKED-on the three capability dots (front-matter `blocks:`).
