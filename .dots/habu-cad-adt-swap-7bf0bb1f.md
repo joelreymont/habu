@@ -427,3 +427,15 @@ COMMIT SEQUENCE:
 5. Search the committed diff for `>DTYPE`, `>LAYOUT`, `>ALIGN`, `>OPKIND`, and
    family-to-`n` conversions. Each survivor must be a named wire/table-index
    boundary with an owning regression; no internal compatibility adapters.
+
+ATTEMPT LOG 2026-07-10 (maki orchestrator): a G-TAG descriptor-trio slice
+(ENUM dtype/layout/align behind stable `( n -- n )` accessors, n-taking stores,
+storage-cell swapped-family negatives) was implemented on a stale fable copy of
+this dot, gated green (maki 77 suites + lints), and pushed — then REVERTED once a
+rebase onto master exposed this PLAN CORRECTION. Proof of why it was reverted:
+`2 4 LAY-ROW DT-F32 0 1 MIR-OP+` and the MIR-INPUT+ analogue both CERTIFY (-1)
+under that design — the field-swap hole stays open at the API boundary, exactly
+as this correction states. Revert is fable append-merge b8936c4e (tree == master).
+Do NOT re-attempt any G-TAG/`n`-accessor form; the next attempt is the FULL
+family-typed migration gated behind habu-typed-locals-for-b06b6707 (enum locals
+verified still rejecting on the 2026-07-10 fixpoint).
