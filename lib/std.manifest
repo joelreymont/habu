@@ -312,9 +312,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-CHECK-CAP	(count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
 1	map	lib/map.f	word	MAP-CHECK-LEN	(len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length
 1	map	lib/map.f	word	MAP-CELLS	(count -- count)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the cell count needed for a fixed-capacity map
-1	map	lib/map.f	word	MAP-EMPTY?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an empty slot state
-1	map	lib/map.f	word	MAP-DELETED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test a deleted slot state
-1	map	lib/map.f	word	MAP-OCCUPIED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an occupied slot state
+1	map	lib/map.f	word	MAP-EMPTY?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an empty slot state
+1	map	lib/map.f	word	MAP-DELETED?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test a deleted slot state
+1	map	lib/map.f	word	MAP-OCCUPIED?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an occupied slot state
 1	map	lib/map.f	word	MAP-CAP@	(ptr a -- count)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read map capacity
 1	map	lib/map.f	word	MAP-CAP!	(count ptr a --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write checked map capacity
 1	map	lib/map.f	word	MAP-CHECK-HANDLE	(ptr a count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a map storage pointer and capacity pair
@@ -326,8 +326,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-CHECK-INDEX	(ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a slot index
 1	map	lib/map.f	word	MAP-SLOT	(ptr a idx -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a slot address
 1	map	lib/map.f	word	MAP-SLOT-FIELD	(ptr a idx off -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a checked slot field address
-1	map	lib/map.f	word	MAP-SLOT-STATE@	(ptr a idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot state
-1	map	lib/map.f	word	MAP-SLOT-STATE!	(n ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a checked slot state
+1	map	lib/map.f	word	MAP-SLOT-STATE-PTR	(ptr a idx -- ptr slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the typed slot state cell address
+1	map	lib/map.f	word	MAP-SLOT-STATE@	(ptr a idx -- slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot state
+1	map	lib/map.f	word	MAP-SLOT-STATE!	(slot-state ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a slot state
 1	map	lib/map.f	word	MAP-SLOT-HASH@	(ptr a idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot hash
 1	map	lib/map.f	word	MAP-SLOT-HASH!	(n ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a checked slot hash
 1	map	lib/map.f	word	MAP-SLOT-KEY-A@	(ptr a idx -- ptr u8)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot key pointer

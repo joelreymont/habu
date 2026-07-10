@@ -570,15 +570,21 @@ stored counts are `count`, slot indexes are `idx`, slot field offsets are `off`,
 and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
 capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
 
+Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
+`occupied`) with generated constructors `SLOT--STATE:EMPTY`,
+`SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
+consumer through `MATCH slot-state` or the `MAP-*?` predicates; a raw `n`
+cannot pose as a slot state and a state cannot launder back to `n`.
+
 The published words expose checked storage layout plus lookup/update helpers:
 
 ```forth
 MAP-CHECK-CAP       ( count -- )
 MAP-CHECK-LEN       ( len -- )
 MAP-CELLS           ( count -- count )
-MAP-EMPTY?          ( n -- bool )
-MAP-DELETED?        ( n -- bool )
-MAP-OCCUPIED?       ( n -- bool )
+MAP-EMPTY?          ( slot-state -- bool )
+MAP-DELETED?        ( slot-state -- bool )
+MAP-OCCUPIED?       ( slot-state -- bool )
 MAP-CAP@            ( ptr a -- count )
 MAP-CAP!            ( count ptr a -- )
 MAP-CHECK-HANDLE    ( ptr a count -- )
@@ -590,8 +596,9 @@ MAP-SLOTS           ( ptr a -- ptr a )
 MAP-CHECK-INDEX     ( ptr a idx -- )
 MAP-SLOT            ( ptr a idx -- ptr a )
 MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE@     ( ptr a idx -- n )
-MAP-SLOT-STATE!     ( n ptr a idx -- )
+MAP-SLOT-STATE-PTR  ( ptr a idx -- ptr slot-state )
+MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
+MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
 MAP-SLOT-HASH@      ( ptr a idx -- n )
 MAP-SLOT-HASH!      ( n ptr a idx -- )
 MAP-SLOT-KEY-A@     ( ptr a idx -- ptr u8 )
@@ -612,14 +619,15 @@ MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n n n )
 MAP-LOCATE          ( ptr a count ptr u8 len -- n n n )
 MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
 MAP-HAS?    ( ptr a count ptr u8 len -- bool )
-MAP-GET     ( ptr a count ptr u8 len -- n bool )
+MAP-GET     ( ptr a count ptr u8 len -- option<n> )
 MAP-SET     ( n ptr a count ptr u8 len -- )
 MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
 ```
 
-`MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one
-numeric value. Capacity, malformed storage, and full-table states throw named
-errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
+`MAP-GET` returns `SOME` with the stored value when the key is present, else
+`NONE`. `MAP-SET` inserts or replaces one numeric value. Capacity, malformed
+storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
+`E-MAP-FULL`.
 
 ## Memory
 

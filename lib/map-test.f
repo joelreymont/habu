@@ -4,6 +4,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/map.f
+require test/checker-assert.f
 
 1 constant MT-EX-FAIL
 8 constant MT-CAP
@@ -81,11 +82,11 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-FIELD ( ptr a n n -- ptr a ) {: m:ptr ix off :}
    m ix >IDX off >OFF MAP-SLOT-FIELD ;
 
-: MT-MAP-SLOT-STATE@ ( ptr a n -- n ) {: m:ptr ix :}
+: MT-MAP-SLOT-STATE@ ( ptr a n -- slot-state ) {: m:ptr ix:n :}
    m ix >IDX MAP-SLOT-STATE@ ;
 
-: MT-MAP-SLOT-STATE! ( n ptr a n -- ) {: state m:ptr ix :}
-   state m ix >IDX MAP-SLOT-STATE! ;
+: MT-MAP-SLOT-STATE! ( slot-state ptr a n -- ) {: m:ptr ix:n :}   \ enum stays on stack (no enum locals)
+   m ix >IDX MAP-SLOT-STATE! ;
 
 : MT-MAP-SLOT-HASH@ ( ptr a n -- n ) {: m:ptr ix :}
    m ix >IDX MAP-SLOT-HASH@ ;
@@ -181,7 +182,7 @@ create MT-KEY-Z 122 c,
    MT-EACH-LEN-SUM @ len LEN>N + MT-EACH-LEN-SUM ! ;
 
 : MT-ASSERT-CLEAR-SLOT ( n -- ) {: ix :}
-   MT-MAP ix MT-MAP-SLOT-STATE@ MAP-EMPTY MT=
+   MT-MAP ix MT-MAP-SLOT-STATE@ MAP-EMPTY? MT-ASSERT
    MT-MAP ix MT-MAP-SLOT-HASH@ 0 MT=
    MT-MAP ix MT-MAP-SLOT-KEY-A@ NULL$ drop = MT-ASSERT
    MT-MAP ix MT-MAP-SLOT-KEY-U@ 0 MT=
@@ -234,9 +235,6 @@ create MT-KEY-Z 122 c,
 : MT-BAD-FIELD-HIGH ( -- )
    MT-MAP 0 MAP-SLOT-CELLS MT-MAP-SLOT-FIELD drop ;
 
-: MT-BAD-STATE ( -- )
-   99 MT-MAP 0 MT-MAP-SLOT-STATE! ;
-
 : MT-BAD-HASH ( -- )
    -1 MT-MAP 0 MT-MAP-SLOT-HASH! ;
 
@@ -253,12 +251,28 @@ create MT-KEY-Z 122 c,
    MAP-SLOT-KEY-A-OFF 2 MT=
    MAP-SLOT-KEY-U-OFF 3 MT=
    MAP-SLOT-VALUE-OFF 4 MT=
-   MAP-SLOT-CELLS 5 MT=
-   MAP-EMPTY MAP-EMPTY? MT-ASSERT
-   MAP-DELETED MAP-DELETED? MT-ASSERT
-   MAP-OCCUPIED MAP-OCCUPIED? MT-ASSERT
-   MAP-EMPTY MAP-DELETED? 0= MT-ASSERT
-   MAP-DELETED MAP-OCCUPIED? 0= MT-ASSERT ;
+   MAP-SLOT-CELLS 5 MT= ;
+
+\ Full constructor x predicate matrix for the slot-state enum.
+: MT-TEST-STATES ( -- )
+   SLOT--STATE:EMPTY MAP-EMPTY? MT-ASSERT
+   SLOT--STATE:DELETED MAP-DELETED? MT-ASSERT
+   SLOT--STATE:OCCUPIED MAP-OCCUPIED? MT-ASSERT
+   SLOT--STATE:EMPTY MAP-DELETED? 0= MT-ASSERT
+   SLOT--STATE:EMPTY MAP-OCCUPIED? 0= MT-ASSERT
+   SLOT--STATE:DELETED MAP-EMPTY? 0= MT-ASSERT
+   SLOT--STATE:DELETED MAP-OCCUPIED? 0= MT-ASSERT
+   SLOT--STATE:OCCUPIED MAP-EMPTY? 0= MT-ASSERT
+   SLOT--STATE:OCCUPIED MAP-DELETED? 0= MT-ASSERT ;
+
+\ Negative checked regressions: a raw n can no longer pose as a slot state,
+\ a slot state cannot launder back to n, and enums do not compare with `=`.
+\ The positive baseline proves the rejects are type errors, not noise.
+: MT-TEST-STATE-TYPES ( -- )
+   s" MTP1 ( slot-state ptr a idx -- ) MAP-SLOT-STATE!" CHECK-QUIET-CANDIDATE! -1 MT=
+   s" MTN1 ( n ptr a idx -- ) MAP-SLOT-STATE!" CHECK-QUIET-CANDIDATE! 0 MT=
+   s" MTN2 ( ptr a idx -- n ) MAP-SLOT-STATE@" CHECK-QUIET-CANDIDATE! 0 MT=
+   s" MTN3 ( slot-state slot-state -- bool ) =" CHECK-QUIET-CANDIDATE! 0 MT= ;
 
 : MT-TEST-CHECKS ( -- )
    [: MT-GOOD-CAP ;] catch 0 MT=
@@ -280,7 +294,6 @@ create MT-KEY-Z 122 c,
    [: MT-BAD-INDEX-NEG ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-INDEX-HIGH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-FIELD-HIGH ;] catch E-MAP-BAD-CAP MT=
-   [: MT-BAD-STATE ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-HASH ;] catch E-MAP-BAD-CAP MT=
    [: MT-BAD-KEY-U ;] catch E-MAP-BAD-CAP MT= ;
 
@@ -299,12 +312,12 @@ create MT-KEY-Z 122 c,
 
 : MT-TEST-SLOT-FIELDS ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
-   MAP-DELETED MT-MAP 2 MT-MAP-SLOT-STATE!
+   SLOT--STATE:DELETED MT-MAP 2 MT-MAP-SLOT-STATE!
    12345 MT-MAP 2 MT-MAP-SLOT-HASH!
    MT-KEY MT-MAP 2 MT-MAP-SLOT-KEY-A!
    3 MT-MAP 2 MT-MAP-SLOT-KEY-U!
    99 MT-MAP 2 MT-MAP-SLOT-VALUE!
-   MT-MAP 2 MT-MAP-SLOT-STATE@ MAP-DELETED MT=
+   MT-MAP 2 MT-MAP-SLOT-STATE@ MAP-DELETED? MT-ASSERT
    MT-MAP 2 MT-MAP-SLOT-HASH@ 12345 MT=
    MT-MAP 2 MT-MAP-SLOT-KEY-A@ MT-KEY = MT-ASSERT
    MT-MAP 2 MT-MAP-SLOT-KEY-U@ 3 MT=
@@ -319,7 +332,7 @@ create MT-KEY-Z 122 c,
    MT-MAP MT-MAP-COUNT@ 0 MT=
    MT-MAP MT-MAP-DELETED@ 0 MT=
    MT-CAP 0 ?do i MT-ASSERT-CLEAR-SLOT loop
-   MAP-OCCUPIED MT-MAP 3 MT-MAP-SLOT-STATE!
+   SLOT--STATE:OCCUPIED MT-MAP 3 MT-MAP-SLOT-STATE!
    88 MT-MAP 3 MT-MAP-SLOT-VALUE!
    4 MT-MAP MT-MAP-COUNT!
    2 MT-MAP MT-MAP-DELETED!
@@ -415,6 +428,26 @@ create MT-KEY-Z 122 c,
    MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 44 MT-ASSERT-HIT
    MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-ASSERT-MISS ;
 
+\ Tombstone transitions: occupied -> deleted skips the slot in lookups but
+\ keeps the probe chain alive, and a later insert of the tombstoned key
+\ reclaims the slot through MAP-SLOT-INSERT's deleted branch.
+: MT-TEST-TOMBSTONE ( -- )
+   MT-MAP MT-CAP MT-MAP-INIT
+   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   22 MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-SET
+   MT-KEY-A 1 MT-MAP-HASH 0 MT-CAP MT-MAP-PROBE {: ixa:n :}
+   SLOT--STATE:DELETED MT-MAP ixa MT-MAP-SLOT-STATE!
+   1 MT-MAP MT-MAP-COUNT!
+   1 MT-MAP MT-MAP-DELETED!
+   MT-MAP ixa MT-MAP-SLOT-STATE@ MAP-DELETED? MT-ASSERT
+   MT-MAP MT-CAP MT-KEY-A 1 MT-ASSERT-MISS               \ deleted -> lookup miss
+   MT-MAP MT-CAP MT-KEY-I 1 22 MT-ASSERT-HIT             \ probe walks past the tombstone
+   33 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET                \ reinsert reclaims the tombstone
+   MT-MAP MT-MAP-DELETED@ 0 MT=
+   MT-MAP MT-MAP-COUNT@ 2 MT=
+   MT-MAP ixa MT-MAP-SLOT-STATE@ MAP-OCCUPIED? MT-ASSERT
+   MT-MAP MT-CAP MT-KEY-A 1 33 MT-ASSERT-HIT ;
+
 : MT-TEST-MAP-EACH-EMPTY ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-EACH-RESET
@@ -467,6 +500,8 @@ create MT-KEY-Z 122 c,
 
 : MT-MAIN ( -- )
    MT-TEST-CONSTANTS
+   MT-TEST-STATES
+   MT-TEST-STATE-TYPES
    MT-TEST-CHECKS
    MT-TEST-LAYOUT
    MT-TEST-SLOT-FIELDS
@@ -475,6 +510,7 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-SET-GET
    MT-TEST-MAP-COLLISIONS
    MT-TEST-MAP-FULL
+   MT-TEST-TOMBSTONE
    MT-TEST-MAP-EACH-EMPTY
    MT-TEST-MAP-EACH-INSERTS
    MT-TEST-MAP-EACH-UPDATES

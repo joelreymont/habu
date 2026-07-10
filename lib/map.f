@@ -2,6 +2,15 @@
 
 require lib/adt/option.f                      \ option<n> for MAP-GET (switchover wave A)
 
+\ slot-state - the per-slot lifecycle tag (switchover wave C). An ENUM instead
+\ of raw 0/-1/1 sentinel ints: the checker forces every consumer through MATCH
+\ or the predicates below, and a plain n can no longer pose as a slot state.
+ENUM slot-state
+  empty
+  deleted
+  occupied
+;ENUM
+
 0 constant MAP-CAP-OFF
 1 constant MAP-COUNT-OFF
 2 constant MAP-DELETED-OFF
@@ -13,10 +22,6 @@ require lib/adt/option.f                      \ option<n> for MAP-GET (switchove
 3 constant MAP-SLOT-KEY-U-OFF
 4 constant MAP-SLOT-VALUE-OFF
 5 constant MAP-SLOT-CELLS
-
-0 constant MAP-EMPTY
--1 constant MAP-DELETED
-1 constant MAP-OCCUPIED
 
 0 constant MAP-LOC-FULL
 1 constant MAP-LOC-FREE
@@ -38,14 +43,26 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    cap MAP-CHECK-CAP
    MAP-HEADER-CELLS cap COUNT>N MAP-SLOT-CELLS * + >COUNT ;
 
-: MAP-EMPTY? ( n -- bool )
-   MAP-EMPTY = ;
+: MAP-EMPTY? ( slot-state -- bool )
+   MATCH slot-state
+     empty OF 0 0= ENDOF
+     deleted OF 0 0= 0= ENDOF
+     occupied OF 0 0= 0= ENDOF
+   ;MATCH ;
 
-: MAP-DELETED? ( n -- bool )
-   MAP-DELETED = ;
+: MAP-DELETED? ( slot-state -- bool )
+   MATCH slot-state
+     empty OF 0 0= 0= ENDOF
+     deleted OF 0 0= ENDOF
+     occupied OF 0 0= 0= ENDOF
+   ;MATCH ;
 
-: MAP-OCCUPIED? ( n -- bool )
-   MAP-OCCUPIED = ;
+: MAP-OCCUPIED? ( slot-state -- bool )
+   MATCH slot-state
+     empty OF 0 0= 0= ENDOF
+     deleted OF 0 0= 0= ENDOF
+     occupied OF 0 0= ENDOF
+   ;MATCH ;
 
 : MAP-CAP@ ( ptr a -- count )
    MAP-CAP-OFF cells + @ >COUNT ;
@@ -90,14 +107,14 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    off OFF>N MAP-SLOT-CELLS >= if E-MAP-BAD-CAP throw then
    m ix MAP-SLOT off OFF>N cells + ;
 
-: MAP-SLOT-STATE@ ( ptr a idx -- n )
-   MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD @ ;
+: MAP-SLOT-STATE-PTR ( ptr a idx -- ptr slot-state )
+   MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD ;
 
-: MAP-SLOT-STATE! ( n ptr a idx -- ) {: state m:ptr ix :}
-   state MAP-EMPTY? state MAP-DELETED? or state MAP-OCCUPIED? or 0= if
-      E-MAP-BAD-CAP throw
-   then
-   state m ix MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD ! ;
+: MAP-SLOT-STATE@ ( ptr a idx -- slot-state )
+   MAP-SLOT-STATE-PTR @ ;
+
+: MAP-SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}   \ enum stays on stack; the checker owns state validity
+   m ix MAP-SLOT-STATE-PTR ! ;
 
 : MAP-SLOT-HASH@ ( ptr a idx -- n )
    MAP-SLOT-HASH-OFF >OFF MAP-SLOT-FIELD @ ;
@@ -130,7 +147,7 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    NULL$ drop m ix MAP-SLOT-KEY-A!
    0 >LEN m ix MAP-SLOT-KEY-U!
    0 m ix MAP-SLOT-VALUE!
-   MAP-EMPTY m ix MAP-SLOT-STATE! ;
+   SLOT--STATE:EMPTY m ix MAP-SLOT-STATE! ;
 
 : MAP-CLEAR ( ptr a -- ) {: m:ptr :}
    m MAP-CAP@ dup MAP-CHECK-CAP {: cap :}
@@ -174,11 +191,17 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    free 0 < if ix IDX>N else free then ;
 
 : MAP-LOCATE-SLOT ( n ptr a idx ptr u8 len n -- n n n ) {: free m:ptr ix key:ptr len hash :}
-   m ix MAP-SLOT-STATE@ {: state :}
-   state MAP-EMPTY? if free ix MAP-REMEMBER-FREE dup MAP-LOC-FREE exit then
-   state MAP-DELETED? if free ix MAP-REMEMBER-FREE -1 MAP-LOC-FULL exit then
-   m ix hash key len MAP-SLOT-MATCH? if free ix IDX>N MAP-LOC-FOUND exit then
-   free -1 MAP-LOC-FULL ;
+   m ix MAP-SLOT-STATE@ MATCH slot-state
+     empty OF free ix MAP-REMEMBER-FREE dup MAP-LOC-FREE ENDOF
+     deleted OF free ix MAP-REMEMBER-FREE -1 MAP-LOC-FULL ENDOF
+     occupied OF
+        m ix hash key len MAP-SLOT-MATCH? if
+           free ix IDX>N MAP-LOC-FOUND
+        else
+           free -1 MAP-LOC-FULL
+        then
+     ENDOF
+   ;MATCH ;
 
 : MAP-LOCATE ( ptr a count ptr u8 len -- n n n ) {: m:ptr cap key:ptr len :}
    m cap MAP-CHECK-HANDLE
@@ -195,15 +218,17 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    dup 0 < if drop -1 MAP-LOC-FULL hash else MAP-LOC-FREE hash then ;
 
 : MAP-SLOT-INSERT ( a ptr a idx n ptr u8 len -- ) {: value m:ptr ix hash key:ptr len :}
-   m ix MAP-SLOT-STATE@ {: state :}
-   state MAP-OCCUPIED? if E-MAP-FULL throw then
-   state MAP-DELETED? if m MAP-DELETED@ COUNT>N 1 - >COUNT m MAP-DELETED! then
+   m ix MAP-SLOT-STATE@ MATCH slot-state
+     empty OF ENDOF
+     deleted OF m MAP-DELETED@ COUNT>N 1 - >COUNT m MAP-DELETED! ENDOF
+     occupied OF E-MAP-FULL throw ENDOF
+   ;MATCH
    m MAP-COUNT@ COUNT>N 1 + >COUNT m MAP-COUNT!
    hash m ix MAP-SLOT-HASH!
    key m ix MAP-SLOT-KEY-A!
    len m ix MAP-SLOT-KEY-U!
    value m ix MAP-SLOT-VALUE!
-   MAP-OCCUPIED m ix MAP-SLOT-STATE! ;
+   SLOT--STATE:OCCUPIED m ix MAP-SLOT-STATE! ;
 
 : MAP-GET ( ptr a count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}   \ SOME value if the key is present, else NONE
    m cap key len MAP-LOCATE {: ix:n loc:n hash:n :}
