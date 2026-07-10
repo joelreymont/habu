@@ -1483,6 +1483,39 @@ always at depth 0 at snapshot time, like the `HIDX` mapping.
 
 ## 22. Runtime layout policies
 
+### 22.0 The `POLICY` header clause
+
+A family selects its physical representation with an optional `POLICY <name>`
+clause on its declaration header — after the arity on a `SUMTYPE`/`PRODUCT`, and
+after the name on an `ENUM`, before the first `VARIANT`/`FIELD`:
+
+```forth
+SUMTYPE option 1 POLICY stack-cell-tag
+  VARIANT none   ;VARIANT
+  VARIANT some a ;VARIANT
+;SUMTYPE
+```
+
+`POLICY` is a reserved token: it may not name a family, variant, or field.
+
+Policy is bound **per family**, chosen once at declaration; it is never a
+per-use-site decision. A missing clause defaults to `stack-cell-tag` (§22.1).
+
+v1 grammar surface (item 16 foundation):
+
+- `stack-cell-tag` — accepted; the universal default, the only policy v1 lowers.
+- `packed-tag`, `niche-null`, `boxed` — recognised policy names, but the grammar
+  rejects them today with `layout policy not yet supported` (§24). They ship as
+  separate checked extensions, each with constructor/match/stack-op/invalid-tag
+  tests, before being exposed publicly — a physical-layout policy must not be
+  selectable before its lowering support exists (PLAN item 16 risk).
+- any other token (including `custom`, a v1 non-goal even though the `LAY-*`
+  registry range admits `TL-CUSTOM`) rejects with `unknown layout policy` (§24).
+- a bare `POLICY` with no following name rejects with `missing layout policy
+  name`.
+
+Every reject is transactional: the family row and any layout state roll back.
+
 ### 22.1 Default: `stack-cell-tag`
 
 Universal v1 representation:
@@ -1661,8 +1694,18 @@ bad match: branch output mismatch
 bad constructor payload: expected ptr u8, actual n
 layout type not allowed in cell-only parameter
 linear payload requires explicit match/destructor
+layout policy not yet supported
+unknown layout policy
+missing layout policy name
 invalid layout policy for recursive sum
 ```
+
+The layout-policy rejects above (`E-TDECL-POLICY`) are top-level declaration
+diagnostics: they carry the offending policy token and ride the same
+declaration-shaped packet as every other `SUMTYPE`/`ENUM`/`PRODUCT` reject (a bad
+policy on a `SUMTYPE` renders `bad sumtype declaration '<name>': layout policy
+not yet supported at '<policy>'`). `invalid layout policy for recursive sum`
+lands with the boxed policy — the only layout that admits recursion.
 
 Diagnostics should show logical types, not hidden fields.
 

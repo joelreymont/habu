@@ -25,6 +25,7 @@
 7108 constant E-TDECL-ARITY     \ arity token is not a small decimal
 7109 constant E-TDECL-PAYLOAD   \ unknown variant payload type
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
+7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
 
 26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
@@ -108,6 +109,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN    \ item 15 product block definer
    a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 15 product block close (;FOO)
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
+   a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN     \ item 16 layout-policy header keyword
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI ;
 
@@ -296,6 +298,35 @@ variable TDV-NA    variable TDV-NU
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
 
+\ --- optional layout-policy header clause (item 16, docs §22): `POLICY <name>`
+\ after the arity (sum/product) or the name (enum), before the first VARIANT /
+\ FIELD. A missing clause leaves the TFAM-DECL default (TL-STACK-CELL-TAG, the
+\ universal M-payload + tag stack representation, docs §22.1). `stack-cell-tag`
+\ is the only policy v1 lowers; `packed-tag`/`niche-null`/`boxed` are recognised
+\ but reject as not-yet-supported until their per-policy lowering ships (PLAN
+\ item 16 risk: physical-layout policies must not be exposed before codegen
+\ supports them), and each becomes its own follow-on slice. Any other token
+\ (including the v1 non-goal `custom`, which the LAY-* registry tolerates but the
+\ grammar must not) is an unknown policy. The recursive-sum reject (docs §24)
+\ lands with the boxed slice — boxed is the only layout that admits recursion,
+\ and a recursive payload is not expressible in the v1 grammar today.
+: TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" packed-tag" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" boxed" CORE-STR=CI ;
+: TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}   \ map a policy-name token onto the fresh family
+   a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
+   a u TDECL-POLICY-DEFERRED? IF
+      a u s" layout policy not yet supported" E-TDECL-POLICY TDECL-THROW
+   THEN
+   a u s" unknown layout policy" E-TDECL-POLICY TDECL-THROW ;
+: TDECL-POLICY ( n -- ) {: fam:n :}   \ consume an optional POLICY clause off the body cursor
+   TDECL-NEXT {: a:ptr u:n :}
+   a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
+   TDECL-NEXT {: pa:ptr pu:n :}
+   pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" E-TDECL-POLICY TDECL-THROW THEN
+   pa pu fam TDECL-POLICY-SET ;
+
 \ --- registration entry points (verify-source and the definers below).
 : CHECKER-DEFSUM-BODY ( -- )
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
@@ -303,6 +334,7 @@ variable TDV-NA    variable TDV-NU
    TDECL-NEXT TDECL-ARITY {: ar:n :}
    ar TDECL-FAM-ARITY !
    ar TK-SUM TDECL-FAMILY {: fam:n :}
+   fam TDECL-POLICY                       \ optional POLICY clause before the variants
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-SUM-VARIANTS
@@ -342,6 +374,7 @@ variable TDV-NA    variable TDV-NU
    TDB-A @ TDB-U @ TDECL-CURSOR!
    0 TDECL-FAM-ARITY !                   \ enums are non-parametric
    0 TK-ENUM TDECL-FAMILY {: fam:n :}
+   fam TDECL-POLICY                       \ optional POLICY clause before the variants
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-ENUM-VARIANTS
@@ -460,6 +493,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    TDECL-NEXT TDECL-ARITY {: ar:n :}
    ar TDECL-FAM-ARITY !
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
+   fam TDECL-POLICY                       \ optional POLICY clause before the fields
    PF-N @ {: fstart:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !   0 TDP-W !
