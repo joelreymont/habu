@@ -38,5 +38,26 @@ require lib/float.f
    s" -"      T-FL-BAD
    s" 1.2e3x" T-FL-BAD ;
 
+\ --- switchover wave A: FL-FIND-E now returns option<idx> (SOME index of e/E,
+\ else NONE) and FL-PARSE-EXP MATCHes it. Test both words directly.
+: T-FE ( ptr u8 n n -- ) {: want:n :}               \ FL-FIND-E: some idx -> want, none -> -1
+   FL-FIND-E MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH  want T= ;
+: FL-RUN-EXP ( -- )
+   \ FL-FIND-E: found -> SOME(index of e/E); absent -> NONE.
+   s" 1e3"   1 T-FE
+   s" 1E3"   1 T-FE
+   s" 1.5e2" 3 T-FE
+   s" 123"  -1 T-FE
+   s" 3.14" -1 T-FE
+   \ FL-PARSE-EXP: the some branch returns the mantissa length (before the e);
+   \ the none branch returns the whole length. Both drive the STR>FLOAT cases above.
+   s" 1e3"  FL-PARSE-EXP 1 T=
+   s" 12e5" FL-PARSE-EXP 2 T=
+   s" 123"  FL-PARSE-EXP 3 T= ;
+
 FL-RUN
+FL-RUN-EXP
 T-REPORT

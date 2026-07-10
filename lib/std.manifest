@@ -1245,7 +1245,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	float	lib/float.f	word	POW10	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a signed integer power
 1	float	lib/float.f	word	FL-DIGITS>F	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	parse an unsigned run of decimal digits into a double
 1	float	lib/float.f	word	FL-STRIP-SIGN	(ptr u8 n -- ptr u8 n bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	strip a leading sign, returning the rest and negativity
-1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	index of the e/E exponent marker, or -1
+1	float	lib/float.f	word	FL-FIND-E	(ptr u8 n -- option<idx>)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	SOME index of the e/E exponent marker, else NONE
 1	float	lib/float.f	word	FL-SIG	(ptr u8 n -- r bool)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse an unsigned significand with optional fraction
 1	float	lib/float.f	word	FL-EXP-AT	(ptr u8 n n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse the exponent after a marker position, returning mantissa length
 1	float	lib/float.f	word	FL-PARSE-EXP	(ptr u8 n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	parse any exponent suffix, returning mantissa length

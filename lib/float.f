@@ -12,6 +12,7 @@
 \ producing calls / value-only if-else) and keeps a single trailing exit guard.
 
 require lib/string.f                         \ STR-DIGITS? / STR-DIGIT-VALUE / STR-MINUS / STR-PLUS
+require lib/adt/option.f                      \ option<idx> for FL-FIND-E (switchover wave A)
 
 46 constant FL-DOT
 101 constant FL-E-LOWER
@@ -55,9 +56,9 @@ variable FL-VALID                           \ exponent validity flag
    a c@ STR-MINUS = if a 1+ u 1- 0 0= exit then
    a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
-: FL-FIND-E ( ptr u8 n -- n ) {: a:ptr u :}      \ index of e/E, else -1
-   a u FL-E-LOWER INDEX-OF dup 0 >= if exit then drop
-   a u FL-E-UPPER INDEX-OF ;
+: FL-FIND-E ( ptr u8 n -- option<idx> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
+   a u FL-E-LOWER INDEX-OF dup 0 >= if >IDX OPTION:SOME exit then drop
+   a u FL-E-UPPER INDEX-OF dup 0 >= if >IDX OPTION:SOME else drop OPTION:NONE then ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Split the mantissa at the dot, parse both halves, combine. Requires at least
@@ -80,10 +81,11 @@ variable FL-VALID                           \ exponent validity flag
    a epos 1+ + u epos 1+ - STR>NUMBER? {: ok :}
    ok if FL-EXPV ! else drop 0 FL-VALID ! then
    epos ;
-: FL-PARSE-EXP ( ptr u8 n -- n ) {: a:ptr u :}
-   a u FL-FIND-E {: epos :}
-   epos 0 < if 0 FL-EXPV ! u exit then
-   a u epos FL-EXP-AT ;
+: FL-PARSE-EXP ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FL-FIND-E MATCH option
+     none OF 0 FL-EXPV ! u ENDOF                    \ no exponent: exp 0, mantissa = whole string
+     some OF IDX>N {: epos:n :} a u epos FL-EXP-AT ENDOF
+   ;MATCH ;
 
 \ ---- public entry ---------------------------------------------------------
 : STR>FLOAT ( ptr u8 n -- r bool ) {: a0:ptr u0 :}
