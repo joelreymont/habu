@@ -27,6 +27,7 @@ require lib/string.f
 require lib/memory.f
 require lib/fs.f
 require lib/sort.f
+require lib/adt/option.f
 require tools/lint/text.f
 require tools/argv.f
 
@@ -693,10 +694,11 @@ private
    a u s" prim-axiom" LINT-STR= if LINT-TRUE exit then
    a u s" discharge-candidate" LINT-STR= ;
 
-: PARSE-COUNT ( ptr u8 n -- n bool )
-   STR>NUMBER? 0= if drop 0 LINT-FALSE exit then
-   dup 1 < if drop 0 LINT-FALSE exit then
-   LINT-TRUE ;
+: PARSE-COUNT ( ptr u8 n -- option<n> )   \ SOME ratchet count >= 1, else NONE
+   STR>NUMBER? STR>OPTION MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF dup 1 < if drop OPTION:NONE else OPTION:SOME then ENDOF
+   ;MATCH ;
 
 \ One classification row `key class dot [count]`. `key` is `file:name` (names the
 \ site(s) called `name` in `file`) or bare `file` (a file-level row covering the
@@ -716,7 +718,10 @@ private
    then
    SN# @ 4 = if
       1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
-      3 S@ PARSE-COUNT 0= if drop LINT-FALSE exit then {: cnt:n :}
+      3 S@ PARSE-COUNT MATCH option
+        none OF LINT-FALSE exit ENDOF
+        some OF ENDOF
+      ;MATCH {: cnt:n :}
       fa fu na nu 1 S@ 2 S@ cnt CMAP+ LINT-TRUE exit
    then
    LINT-FALSE ;

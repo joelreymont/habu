@@ -286,3 +286,17 @@ slot opens, STR>NUMBER? → option<n> and STR>NUMBER-UNWRAP is DELETED with it.
 
 Skips honored: MAP-INDEX/PROBE (wave-C worker in map.f), gate-json-assert* +
 trusted-inventory parser (deferred solo slices), src/core + TFAM-13 files, maki/*.
+
+## SOLO SLICE — LANDED (tools/trusted-inventory.f PARSE-COUNT)
+
+`PARSE-COUNT ( ptr u8 n -- n bool )` → `( ptr u8 n -- option<n> )`: SOME ratchet
+count >= 1, NONE on unparsable or < 1. Body lifts the blocked STR>NUMBER?
+boundary via STR>OPTION then MATCHes (the adapter's intended use). ONE caller,
+CROW-PARSE's 4-token row arm: `0= if drop LINT-FALSE exit then {: cnt:n :}` →
+`MATCH option none OF LINT-FALSE exit ENDOF some OF ENDOF ;MATCH {: cnt:n :}`.
+tools/ manifest-exempt (verified — no rows). require lib/adt/option.f added.
+STRICT-MODE IDENTITY PROVEN: migrated vs master tool run on the SAME live tree —
+`-- strict` and default-report outputs BYTE-IDENTICAL, both exit 0; reject paths
+covered by new PARSE-CLASSES$ fixtures (4-token row with count 0 → reject, count
+abc → reject, count 2 → accept) plus the existing ratchet GREW/STALE/UNSET cases.
+NO behavior drift, NO new trust rows.
