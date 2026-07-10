@@ -40,6 +40,9 @@ Fields:
 | `family` | string | layout mismatch only | Type-family name of the ADT layout value involved in the mismatch (expected side, else actual; else the captured variant's family for a `construct` payload mismatch). Absent for pure-scalar mismatches. |
 | `variant` | string | construct-arm mismatch only | Sum-variant name of the `construct family variant` arm being built when a payload type mismatched. Absent when no specific variant was in scope (boundary or pure-scalar mismatches). |
 | `tag` | integer | construct-arm mismatch only | Declaration-order tag of the `variant` arm (0-based, matching the SUMTYPE declaration order). Present exactly when `variant` is. |
+| `payload_pos` | integer | construct payload mismatch only | 0-based declaration-order index of the variant payload slot whose type failed to unify. Present only with `variant`, and only when the checker pinned the failure to a specific payload cell (absent for whole-row or post-expansion failures). |
+| `arity_expected` | integer | wrong-arity signature only | The family's declared arity, on `E-WRONG-ARITY` / `fix_signature_arity` packets. |
+| `arity_actual` | integer | wrong-arity signature only | The argument count actually written in the signature's family application. Present exactly when `arity_expected` is. |
 | `suggestion` | string | required | Human-readable repair hint derived from `repair_class`. |
 
 The current checker JSON intentionally uses `definition_source` rather than

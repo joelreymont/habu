@@ -608,10 +608,20 @@ variable JPOS  variable JLINE  variable JCOL
    efam 0 >= IF efam EXIT THEN
    afam 0 >= IF afam EXIT THEN
    DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
+\ Payload slot (item 13): the checker's DPOS is the slot-from-top of the failed
+\ expected-row element; the packet reports the declaration-order payload index
+\ (0-based, first declared payload = 0). Absent when the position is unknown or
+\ the failure was not inside the variant's payload cells.
+: DIAG-PAYLOAD-POS ( -- )                \ "payload_pos":<decl-order slot> when captured
+   DPOS @ 0 < IF EXIT THEN
+   DVAR @ SUMV-SCH-COUNT@ {: cnt:n :}
+   DPOS @ cnt < 0= IF EXIT THEN
+   44 EMIT1 s" payload_pos" JKEY  cnt 1 - DPOS @ - JNUM ;
 : DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
    DVAR @ 0 < IF EXIT THEN
    44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME$ JSTR
-   44 EMIT1 s" tag" JKEY  DVAR @ SUMV-TAG@ JNUM ;
+   44 EMIT1 s" tag" JKEY  DVAR @ SUMV-TAG@ JNUM
+   DIAG-PAYLOAD-POS ;
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
    fam 0 >= IF
@@ -660,6 +670,9 @@ variable JPOS  variable JLINE  variable JCOL
      44 EMIT1 s" expected" JKEY DEXP @ JROW
      44 EMIT1 s" actual"   JKEY DACT @ JROW
      DIAG-FAMILY THEN
+   SGBAD-ARITY? IF                                        \ item 13: E-WRONG-ARITY counts
+     44 EMIT1 s" arity_expected" JKEY SGBAD-AR-DECL @ JNUM
+     44 EMIT1 s" arity_actual" JKEY SGBAD-AR-GOT @ JNUM THEN
    44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
    125 EMIT1 ;                                            \ }
 : DIAG-PRINT

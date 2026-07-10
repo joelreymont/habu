@@ -608,6 +608,78 @@ variable GDX-TRUST-MAN-U
    s" tag" s" scalar mismatch omits tag field" GDX-EXPECT-ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-novar.err" s" scalar novar schema" GDX-GJA1 ;
 
+\ Item 13 repair-packet payload_pos field: a construct payload mismatch names the
+\ 0-based declaration-order slot that failed. Both slots of the two-payload
+\ variant expect the SAME type (n), so a type-matched capture cannot tell them
+\ apart: the two arms prove the position is tracked structurally through the
+\ unification spine (top slot 1, deep slot 0). A family-only layout mismatch
+\ (no construct in scope) carries no payload_pos.
+: GDX-ADT-PAYLOAD-POS ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zpp 0 VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : PBAD1 ( n ptr u8 -- zpp ) construct zpp mix ;" GE-SRC-LINE
+   s" tools/check.f accepted slot-1 payload mismatch" GDX-CHECK-JSON
+   s" habu-adt-pos1.err" GDX-WRITE-ERR
+   s" code" s" E-MISMATCH" s" slot-1 payload mismatch code" GDX-EXPECT-ERR-JSTR
+   s" variant" s" mix" s" slot-1 payload mismatch carries variant" GDX-EXPECT-ERR-JSTR
+   s" payload_pos" s" 1" s" slot-1 payload mismatch names slot 1" GDX-EXPECT-ERR-JRAW
+   s" habu-adt-pos1.err" s" payload_pos slot-1 diagnostic contract" GDX-DIAG-CONTRACT
+   s" json-one-schema" s" habu-adt-pos1.err" s" payload_pos slot-1 schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zpp 0 VARIANT mix n n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : PBAD0 ( ptr u8 n -- zpp ) construct zpp mix ;" GE-SRC-LINE
+   s" tools/check.f accepted slot-0 payload mismatch" GDX-CHECK-JSON
+   s" habu-adt-pos0.err" GDX-WRITE-ERR
+   s" payload_pos" s" 0" s" slot-0 payload mismatch names slot 0" GDX-EXPECT-ERR-JRAW
+   s" json-one-schema" s" habu-adt-pos0.err" s" payload_pos slot-0 schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zpf 0 VARIANT keep n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : ZPBAD ( n -- zpf ) ;" GE-SRC-LINE
+   s" tools/check.f accepted family-only mismatch (pos slice)" GDX-CHECK-JSON
+   s" habu-adt-nopos.err" GDX-WRITE-ERR
+   s" family" s" zpf" s" family-only mismatch still carries family" GDX-EXPECT-ERR-JSTR
+   s" payload_pos" s" family-only mismatch omits payload_pos" GDX-EXPECT-ERR-NO-JKEY
+   s" json-one-schema" s" habu-adt-nopos.err" s" family-only nopos schema" GDX-GJA1 ;
+
+\ Item 13 repair-packet arity fields: a family applied with the wrong number of
+\ signature arguments (E-WRONG-ARITY / fix_signature_arity) carries the family's
+\ declared arity (`arity_expected`) and the written count (`arity_actual`). The
+\ arity-2 arm proves the counts track the declaration, not a hard-coded pair; a
+\ scalar mismatch carries neither.
+: GDX-SIG-ARITY ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zar 0 VARIANT one ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : ABAD ( zar<n> -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f accepted over-applied family signature" GDX-CHECK-JSON
+   s" habu-sig-arity.err" GDX-WRITE-ERR
+   s" code" s" E-WRONG-ARITY" s" wrong-arity code" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_signature_arity" s" wrong-arity repair class" GDX-EXPECT-ERR-JSTR
+   s" arity_expected" s" 0" s" wrong-arity declared count" GDX-EXPECT-ERR-JRAW
+   s" arity_actual" s" 1" s" wrong-arity written count" GDX-EXPECT-ERR-JRAW
+   s" habu-sig-arity.err" s" wrong-arity diagnostic contract" GDX-DIAG-CONTRACT
+   s" json-one-schema" s" habu-sig-arity.err" s" wrong-arity schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zar2 2 VARIANT two a ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : A2BAD ( zar2<n> -- ) drop ;" GE-SRC-LINE
+   s" tools/check.f accepted under-applied family signature" GDX-CHECK-JSON
+   s" habu-sig-arity2.err" GDX-WRITE-ERR
+   s" arity_expected" s" 2" s" under-applied declared count" GDX-EXPECT-ERR-JRAW
+   s" arity_actual" s" 1" s" under-applied written count" GDX-EXPECT-ERR-JRAW
+   s" json-one-schema" s" habu-sig-arity2.err" s" under-applied schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : SBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   s" tools/check.f accepted scalar mismatch (arity slice)" GDX-CHECK-JSON
+   s" habu-scalar-noarity.err" GDX-WRITE-ERR
+   s" arity_expected" s" scalar mismatch omits arity_expected" GDX-EXPECT-ERR-NO-JKEY
+   s" arity_actual" s" scalar mismatch omits arity_actual" GDX-EXPECT-ERR-NO-JKEY
+   s" json-one-schema" s" habu-scalar-noarity.err" s" scalar noarity schema" GDX-GJA1 ;
+
 : GDX-TFAM-DECL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -706,6 +778,8 @@ variable GDX-TRUST-MAN-U
    GDX-RENDER-CAP-FAIL-CLOSED
    GDX-ADT-FAMILY
    GDX-ADT-VARIANT
+   GDX-ADT-PAYLOAD-POS
+   GDX-SIG-ARITY
    GDX-TFAM-DECL
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
