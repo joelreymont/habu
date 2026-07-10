@@ -456,6 +456,42 @@ s" nope" LID @ TFL-CVAR? FOUNDF !  0 T=  0 T=  FOUNDF @ 0 T=
 s" TFL-SURFACE" type cr
 
 \ ---------------------------------------------------------------------------
+\ packed ABI descriptor (docs §22.2, policy TL-PACKED-TAG). PACKED-NARROW picks
+\ the smallest byte tag width holding a K-variant tag; PACKED-DESC composes
+\ ( size align tagw ) with cell payloads (align CELL) and the narrowed tag placed
+\ last, SIZE the aligned record stride. Computed for ANY family regardless of its
+\ declared policy (the accept-flip that populates LAY on POLICY packed-tag is a
+\ later sub-slice); private families (package pkpk) keep the protected-WID seal
+\ cap untouched (dot habu-seal-protwid-cap-6f1c9d2b).
+\ ---------------------------------------------------------------------------
+0 PACKED-NARROW 0 T=
+1 PACKED-NARROW 1 T=
+256 PACKED-NARROW 1 T=
+257 PACKED-NARROW 2 T=
+65536 PACKED-NARROW 2 T=
+65537 PACKED-NARROW 4 T=
+1 32 lshift PACKED-NARROW 4 T=
+1 32 lshift 1 + PACKED-NARROW 8 T=
+variable PSZ  variable PAL  variable PTW  variable PKI
+package pkpk
+ENUM pkpke red green blue ;ENUM
+SUMTYPE pkpks 1 VARIANT none ;VARIANT VARIANT some a ;VARIANT ;SUMTYPE
+PRODUCT pkpkp 0 FIELD x n FIELD y n ;PRODUCT
+end-package
+\ enum (3 variants, no payload): tag-only u8 -> size 1 align 1 tagw 1
+s" pkpk" s" pkpke" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
+PSZ @ 1 T=   PAL @ 1 T=   PTW @ 1 T=
+\ sum (2 variants, M=1 cell): tag u8 after one cell -> align_up(8+1,8)=16, align 8, tagw 1
+s" pkpk" s" pkpks" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
+PSZ @ 16 T=  PAL @ 8 T=   PTW @ 1 T=
+\ product (2 cell fields, no tag): align_up(16,8)=16, align 8, tagw 0
+s" pkpk" s" pkpkp" TFAM-FIND-IN drop PKI !
+PKI @ PACKED-DESC PTW ! PAL ! PSZ !
+PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

@@ -127,3 +127,39 @@ label-dup 0); seven type suites ok; maki ok; error-code/filemap/host-lint 0
 findings; trusted-inventory strict + typed-local-diff-lint exit 0; no new trust
 rows. Follow-on slices unchanged: packed-tag (maki store/fetch upstream key),
 niche-null, boxed (+ the recursive-sum reject).
+
+## PACKED-TAG — AUDIT + SUB-SLICE 1 (descriptor computation)
+
+Audit finding (de-risks the arc): packed-tag keeps the STACK representation as
+cells (docs §4/§22.2 — stack width W identical to stack-cell-tag), so there is NO
+stack-codegen lowering on habu's side — constructor/MATCH/stack-op behave exactly
+as the default. packed adds ONLY a memory ABI descriptor (`LAY.SIZE/ALIGN/TAGW`);
+the buffer marshalling that consumes it is maki's separate capability
+(`habu-checker-capability-typed-a480c423`). So the accept-flip is low-risk once
+the descriptor is correct — no "lowering is a bigger dependency" fork. The LAY-*
+registry (type-family.f) already STORES size/align/tagw but nothing COMPUTED
+them (existing LAY tests use hand-written placeholders); that computation is the
+deliverable.
+
+SUB-SLICE 1 (landed): pure descriptor computation in `src/core/type-family.f` —
+`PACKED-NARROW` (smallest u8/u16/u32/cell tag width for a K-variant count),
+`PACKED-TAGW` (0 for tag-less products), `PACKED-ALIGN-UP`, `PACKED-ALIGN`,
+`PACKED-DESC ( fam -- size align tagw )`. v1 payloads are cell-kinded, so offsets
+are implicit (slot i at i*CELL) and size/align/tagw fully specify the ABI; tag
+placed after payload; SIZE = aligned array stride. NO grammar change, NO accept
+(POLICY packed-tag still rejects) — nothing exposed to maki yet, so the ABI
+conventions are still cheap to revise. Unit tests in `test/type-family-suite.f`
+(PACKED-NARROW thresholds + PACKED-DESC on private enum/sum/product). Docs §22.2
+specifies the ABI (the contract maki reads).
+
+ABI conventions defined this sub-slice (flag for maki review before consumption):
+tag-byte-width = ceil to u8/u16/u32/cell by variant count; tag placed AFTER the M
+payload cells; payload cells stay 8-byte / align 8; SIZE = align_up(M*CELL +
+tagw, align) = array stride; ALIGN = CELL when M>0 else tagw.
+
+REMAINING sub-slices: (2, LAST) accept-flip — drop packed-tag from
+TDECL-POLICY-DEFERRED?, map it in TDECL-POLICY-SET to TFAM-LAYOUT! TL-PACKED-TAG +
+PACKED-DESC → LAY-ADD at declaration, with layout tests (private families) proving
+the packed family carries the right LAY descriptor; gated on sub-slice 1. Optional
+later: mixed narrow-width payload tier (explicit payload-offsets table, needs a
+LAY-REC offsets field).

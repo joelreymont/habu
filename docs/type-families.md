@@ -1539,6 +1539,45 @@ size
 
 This matters later for arrays of ADTs, GPU buffers, and ABI-stable structs.
 
+**Descriptor computation (`PACKED-DESC`, `src/core/type-family.f`).** Packed
+keeps the *stack* representation as cells — the stack width `W` is identical to
+`stack-cell-tag` (§4/§18), so constructors, `MATCH`, and layout-aware stack ops
+lower exactly as the default; packed adds *only* the memory descriptor. Because
+v1 payloads are cell-kinded (§4: `slot0 .. slot(M-1) tag`, `M` = `TFAM-SLOTS`
+cells), the only field packed narrows is the **tag**:
+
+```text
+tag-byte-width = PACKED-NARROW(variant-count)
+   K ≤ 256      → 1 (u8)     \ tags 0..K-1
+   K ≤ 65536    → 2 (u16)
+   K ≤ 2^32     → 4 (u32)
+   else         → 8 (cell)
+   enum/sum only; products carry no tag → 0
+```
+
+Payloads stay `CELL`-wide and `CELL`-aligned, so per-field byte offsets are
+implicit (`slot i` at byte `i * CELL`) and need no offset table — `size`,
+`alignment`, and `tag-byte-width` fully specify the v1 ABI. The tag is placed
+**after** the payload, matching the stack order. The descriptor is:
+
+```text
+payload-bytes = M * CELL
+alignment     = CELL when M > 0, else tag-byte-width (byte for the empty case)
+size          = align_up(payload-bytes + tag-byte-width, alignment)   \ array stride
+```
+
+Examples: `ENUM` of 3 → `size 1, align 1, tagw 1`; `SUMTYPE` of 2 variants,
+`M=1` → `size 16, align 8, tagw 1`; `PRODUCT` of two cell fields → `size 16,
+align 8, tagw 0`. These land in the `LAY-*` registry (`LAY.SIZE/ALIGN/TAGW`) —
+this is the ABI the maki store/fetch capability reads; habu defines it, the
+capability marshals against it. A mixed narrow-width payload tier (an explicit
+`payload-offsets` table) is a later refinement. The descriptor is pure
+compile-time metadata: no heap, no per-value runtime cost.
+
+Staging: `PACKED-DESC` computes the descriptor for any family regardless of its
+declared policy; the grammar still **rejects** `POLICY packed-tag` until a later
+sub-slice flips the accept and wires `PACKED-DESC` → `LAY-ADD` at declaration.
+
 ### 22.3 Niche optimization
 
 Later:

@@ -656,6 +656,44 @@ variable LAY-N   0 LAY-N !
    id ;
 
 \ ---------------------------------------------------------------------------
+\ packed memory ABI descriptor (docs §22.2, policy TL-PACKED-TAG). packed keeps
+\ the STACK representation as cells (docs §4/§22.2 - the stack width W is
+\ unchanged, identical to stack-cell-tag); it ONLY adds a memory descriptor so a
+\ layout value can be marshalled into an ABI-stable buffer (arrays of ADTs, GPU
+\ buffers). v1 payloads are cell-kinded (docs §4: slot0..slot(M-1) tag, M cells),
+\ so the only field packed narrows is the TAG: a K-variant tag is stored in the
+\ smallest of u8/u16/u32/cell holding tags [0,K). Payloads stay CELL-wide (align
+\ CELL), so per-field byte offsets are implicit (slot i at byte i*CELL) and need
+\ no table; SIZE/ALIGN/TAGW fully specify the v1 ABI (a mixed narrow-payload tier
+\ with an explicit offset table is a later refinement). The tag sits AFTER the
+\ payload, matching the stack order (slot0..slot(M-1) tag); SIZE is the aligned
+\ record stride (align_up so an array is a stride*i walk). Pure compile-time
+\ metadata: no heap, no runtime cost. These compute the descriptor for ANY family
+\ independent of its declared policy, so the accept sub-slice can compute-then-
+\ LAY-ADD; the grammar keeps rejecting POLICY packed-tag until that lands.
+: PACKED-ALIGN-UP ( n n -- n ) {: v:n a:n :}   \ round v up to a multiple of pow2 a
+   v a 1- + a 1- invert and ;
+: PACKED-NARROW ( n -- n )   \ smallest byte width 1/2/4/8 holding tags [0,count); 0 if none
+   {: count:n :}
+   count 0 <= IF 0 EXIT THEN
+   count 256 <= IF 1 EXIT THEN
+   count 65536 <= IF 2 EXIT THEN
+   count 1 32 lshift <= IF 4 EXIT THEN
+   8 ;
+: PACKED-TAGW ( n -- n ) {: fam:n :}   \ narrowed tag byte width (0 for tag-less products)
+   fam TFAM-SUM? fam TFAM-ENUM? or 0= IF 0 EXIT THEN
+   fam TFAM-VAR-COUNT@ PACKED-NARROW ;
+: PACKED-ALIGN ( n n -- n ) {: pay:n tw:n :}   \ record alignment from payload bytes + tag width
+   pay 0 > IF CELL EXIT THEN     \ any cell payload -> cell alignment
+   tw 0 > IF tw EXIT THEN        \ tag-only -> tag alignment
+   1 ;                           \ defensive empty -> byte
+: PACKED-DESC ( n -- n n n ) {: fam:n :}   \ ( fam -- size align tagw ) packed ABI descriptor
+   fam PACKED-TAGW {: tw:n :}
+   fam TFAM-SLOTS@ CELL * {: pay:n :}
+   pay tw PACKED-ALIGN {: al:n :}
+   pay tw + al PACKED-ALIGN-UP  al  tw ;
+
+\ ---------------------------------------------------------------------------
 \ base-state reset.
 \ ---------------------------------------------------------------------------
 : TFAM-RESET ( -- )
