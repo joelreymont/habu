@@ -3,6 +3,7 @@
 \ Load after lib/errors.f.
 
 s" lib/errors.f" required
+s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 
 1024 constant PROC-PATHZ-CAP
 1000000 constant PROC-NS-PER-MS
@@ -101,8 +102,13 @@ variable PROC-OUTCOME-CODE
 : PROC-RUN-RC ( ptr u8 len -- rc )
    -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC ;
 
-: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- rc )
-   PROC-SPAWN-IO PROC-WAIT-RC ;
+\ ok = clean exit (rc 0); err = the nonzero completion rc (a nonzero exit code, or
+\ 128+signal). OS-level spawn/wait failures do NOT land here — they throw
+\ E-PROC-SPAWN inside PROC-SPAWN-IO, so no errno is returned; err carries the
+\ process's own failure code.
+: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
+   PROC-SPAWN-IO PROC-WAIT-RC RC>N {: rc:n :}
+   rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}
    fd FD>N F-SETFD FD-CLOEXEC fcntl 0 <> if E-PROC-OUTPUT throw then ;

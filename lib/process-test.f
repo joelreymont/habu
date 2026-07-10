@@ -319,12 +319,21 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PIPE-PAIR PT-OUT-W ! PT-OUT-R !
    PT-IN-W @ s" cat-in" write 6 T=
    PT-IN-W @ close
-   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROC-RUN-IO-RC RC>N 0 T=
+   s" /bin/cat" >LEN PT-IN-R @ PT-OUT-W @ -1 >FD PROC-RUN-IO-RC MATCH result
+     ok  OF 0 T= ENDOF                          \ cat exits clean -> ok(0)
+     err OF drop 1 0 T= ENDOF                    \ signaled/nonzero -> unexpected failure
+   ;MATCH
    PT-IN-R @ close
    PT-OUT-W @ close
    PT-OUT-R @ PT-READ 6 T=
    PT-BUF 6 s" cat-in" T$=
    PT-OUT-R @ close ;
+
+: TEST-RUN-IO-FALSE ( -- )                          \ /usr/bin/false exits 1 -> err(1)
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-RUN-IO-RC MATCH result
+     ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
+     err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
+   ;MATCH ;
 
 : TEST-PROC-READ-NEG-LEN ( -- )
    -1 PT-CAPTURE-OK-U !
@@ -365,6 +374,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-ARGV-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-RUN-IO-CAT
+   TEST-RUN-IO-FALSE
    [: TEST-PROC-READ-NEG-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    [: TEST-PROC-READ-HIGH-LEN ;] E-PROC-TRUNCATED TTHROWSQ
    PT-CLEANUP

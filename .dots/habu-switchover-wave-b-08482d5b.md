@@ -90,3 +90,51 @@ it proves out, climb the chain PROC-WAIT-RC → PROC-RUN-RC → PROC-STATUS>RC �
 PROC-OUTCOME>RC in dependency order, each wrapping the still-sentinel lower word.
 NEXT-NEXT: the outcome sum (exited/signaled/timeout) is Wave C, not B — B stops at
 result<exit,errno>.
+
+## SLICE 1 — LANDED (lib/process.f PROC-RUN-IO-RC, first result<n,n> word)
+
+`PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- rc )` → `( … -- result<n,n> )`.
+
+ERRNO BOUNDARY FINDING (answers the scope's open question): the errno is NOT
+available at this boundary. OS-level spawn/wait failures do not RETURN a negative
+rc — they THROW E-PROC-SPAWN inside PROC-SPAWN-IO. The rc that PROC-RUN-IO-RC
+returns is always ≥0 (PROC-OUTCOME>RC: exit→code, signal→128+sig). So the genuine
+distinction the return carries is success vs the process's own failure code, NOT
+success vs errno. MAPPING CHOSEN: **ok = clean exit (rc 0); err = the nonzero
+completion rc** (a nonzero exit code, or 128+signal). This matches how both callers
+already interpret rc (rc==0 = success), gives clean caller code (the err arm
+handles ALL failures — build.f dropped its extra `rc 0 <> if throw`), and err
+carries a real distinguishing reason. (result<exit,signal> via PROC-WAIT-OUTCOME
+was the alternative — rejected: it forces callers to re-check the exit code and
+buries success/failure, and its signal arm is hard to trigger portably. The
+exit-vs-signal split belongs to the Wave-C outcome sum.)
+
+Body wraps the sentinel at the boundary:
+`PROC-SPAWN-IO PROC-WAIT-RC RC>N {: rc:n :} rc 0 = if rc RESULT:OK else rc
+RESULT:ERR then`. Callers (exactly 2, swept lib/tools/test/examples/maki/src):
+- lib/build.f BUILD-RUN — `PROC-RUN-IO-RC RC>N … rc 0 <> if E-BUILD-STATUS throw`
+  → `PROC-RUN-IO-RC` then `nullfd FD>N close` then `MATCH result ok OF … ENDOF err
+  OF drop E-BUILD-STATUS throw ENDOF ;MATCH {: rc:n :}`. BUILD-RUN keeps its
+  `( … -- n )` sig (it has several callers) — only its body changed.
+- lib/process-test.f TEST-RUN-IO-CAT — `/bin/cat` (exit 0) → MATCH ok(0). ADDED
+  TEST-RUN-IO-FALSE — `/usr/bin/false` (exit 1) → MATCH err(1) — a DIRECT both-arm
+  test (BUILD-RUN's ok/err arms are already covered by build-test BT-CMD-OK /
+  BT-CMD-FAIL).
+
+CHECKER LESSONS for result callers (learned building this slice):
+- A `result<…>` value CANNOT be bound to a typed local — `{: r:result<n,n> :}`
+  throws "unknown type ':}'" (the local-type grammar doesn't parse the parametric
+  `<…>`). Keep the result on the data stack and MATCH it directly.
+- A result value DOES survive an intervening stack op below it (build.f runs
+  `nullfd FD>N close` with the result sitting on the stack, then MATCHes it — OK).
+- An `if … RESULT:OK else … RESULT:ERR then` unifies both branches to result<n,n>
+  cleanly (that is the constructor body shape).
+- Same interpret-mode rule as option: construct/MATCH only inside a compiled word.
+
+Manifest row → result<n,n>. process.f is a TR-GATE-HARNESS-FILES member, so
+lib/adt/result.f declared in test/run-files.f TR-GATE-HARNESS-FILES (before
+lib/process.f) — the closure-lint edge, exactly like slice 4's option+fs.f.
+process.f uses the `s" path" required` dep style, so the require is
+`s" lib/adt/result.f" required`. NO byte-fixpoint (process.f is on-demand, not in
+the boot prefix; test/run.f fixpoint phase ran at normal 20.9s). NO new trust rows,
+reused the shared result family. NEXT: climb to PROC-WAIT-RC (r23) / PROC-RUN-RC.

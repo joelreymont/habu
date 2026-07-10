@@ -556,7 +556,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
 1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path and return exit status
-1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds and return exit status
+1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds: ok = clean exit (0), err = nonzero completion rc
 1	process	lib/process.f	word	FD-CLOEXEC!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	mark a parent-owned fd close-on-exec
 1	process	lib/process.f	word	FD-NOSIGPIPE!	(fd --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	disable SIGPIPE delivery for writes to a parent-owned fd
 1	process	lib/process.f	word	PIPE-PAIR	(-- fd fd)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	create a pipe and throw on failure
