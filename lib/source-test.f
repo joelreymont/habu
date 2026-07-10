@@ -204,6 +204,33 @@ variable ST-QP-U
    ST-SRC ST-BUF ST-CAP ST-COMMENT-EXPORTS ST-WANT-U @ T=
    ST-BUF ST-WANT-U @ ST-WANT T$= ;
 
+\ Package context splits EXPORT's roles (dot habu-compiler-pkg-re-688212c1):
+\ an in-package `EXPORT NAME` is the re-export declaration and passes through
+\ untouched; only top-level directive lines are commented, including after
+\ the package block closes (both `end-package` and `;package` closers).
+: ST-EXPORT-PKG-CASE! ( -- )
+   SB-RESET
+   s" EXPORT TOP1" SB-APPEND ST-LF
+   s" package XP" SB-APPEND ST-LF
+   s" public" SB-APPEND ST-LF
+   s" EXPORT XA:W" SB-APPEND ST-LF
+   s" end-package" SB-APPEND ST-LF
+   s" EXPORT TOP2" SB-APPEND ST-LF
+   ST-SB>SRC
+   SB-RESET
+   ST-BACKSLASH SB-APPEND-C STR-SPACE SB-APPEND-C s" EXPORT TOP1" SB-APPEND ST-LF
+   s" package XP" SB-APPEND ST-LF
+   s" public" SB-APPEND ST-LF
+   s" EXPORT XA:W" SB-APPEND ST-LF
+   s" end-package" SB-APPEND ST-LF
+   ST-BACKSLASH SB-APPEND-C STR-SPACE SB-APPEND-C s" EXPORT TOP2" SB-APPEND ST-LF
+   ST-SB>WANT ;
+
+: TEST-COMMENT-EXPORTS-PKG ( -- )
+   ST-EXPORT-PKG-CASE!
+   ST-SRC ST-BUF ST-CAP ST-COMMENT-EXPORTS ST-WANT-U @ T=
+   ST-BUF ST-WANT-U @ ST-WANT T$= ;
+
 : ST-LINES-PARTIAL-CB ( ptr u8 n n -- ) {: a:ptr u line :}
    line 1 = if a u s" alpha" T$= then
    line 2 = if a u s" beta" T$= then
@@ -314,6 +341,7 @@ variable ST-QP-U
    TEST-QPATH-CR
    TEST-INSERT-BEFORE-FINAL-LINE
    TEST-COMMENT-EXPORTS
+   TEST-COMMENT-EXPORTS-PKG
    TEST-SOURCE-FILE-LINES-EMPTY
    TEST-SOURCE-FILE-LINES-PARTIAL
    TEST-SOURCE-FILE-LINES-CRLF

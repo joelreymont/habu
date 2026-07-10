@@ -714,11 +714,42 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-IM-USE ( i64 -- i64 ) CAE-IM ;" SB-APPEND CAE-LF
    SB$ ;
 
+\ Top-level EXPORT is the hb-build --repl directive: replay consumes the name
+\ and records nothing, so the source stays clean.
 : CAE-EXPORT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" : CAE-EX ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
    s" EXPORT CAE-EX" SB-APPEND CAE-LF
    s" : CAE-EX-USE ( i64 -- i64 ) CAE-EX ;" SB-APPEND CAE-LF
+   SB$ ;
+
+\ In-package EXPORT is the re-export declaration: the alias really aliases —
+\ a caller through the alias name checks clean, and a wrong effect through
+\ the alias rejects naming the caller (no trivial pass).
+: CAE-EXPORT-ALIAS-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAEXA" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" : AW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" end-package" SB-APPEND CAE-LF
+   s" package CAEXB" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" EXPORT CAEXA:AW" SB-APPEND CAE-LF
+   s" end-package" SB-APPEND CAE-LF
+   s" : CAE-AL-USE ( i64 -- i64 ) CAEXB:AW ;" SB-APPEND CAE-LF
+   SB$ ;
+
+: CAE-EXPORT-ALIAS-BAD-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAEXC" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" : CW ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" end-package" SB-APPEND CAE-LF
+   s" package CAEXD" SB-APPEND CAE-LF
+   s" public" SB-APPEND CAE-LF
+   s" EXPORT CAEXC:CW" SB-APPEND CAE-LF
+   s" end-package" SB-APPEND CAE-LF
+   s" : CAE-AL-BAD ( -- i64 ) CAEXD:CW ;" SB-APPEND CAE-LF
    SB$ ;
 
 : CAE-CHECK-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
@@ -739,6 +770,13 @@ create CAE-LF-BYTE 10 c,
 : CAE-TEST-EXPORT-SUPPORT ( -- )
    s" export-support" CAE-CASE!
    CAE-EXPORT-SOURCE$ CAE-CHECK-CLEAN ;
+
+: CAE-TEST-EXPORT-ALIAS ( -- )
+   s" export-alias" CAE-CASE!
+   CAE-EXPORT-ALIAS-SOURCE$ CAE-CHECK-CLEAN
+   CAE-EXPORT-ALIAS-BAD-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-CASE$ T-LABEL
+   CAE-ERR erru s" cae-al-bad" CAE-WORD-JSON$ CONTAINS? TTRUE ;
 
 \ Cross-file support: a prior source-list file's type and word are in scope
 \ for the checked buffer only when its path is registered through
@@ -784,6 +822,7 @@ create CAE-LF-BYTE 10 c,
    s" trust-support" [: CAE-TEST-TRUST-SUPPORT ;] CAE-CASE-RUN
    s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
+   s" export-alias" [: CAE-TEST-EXPORT-ALIAS ;] CAE-CASE-RUN
    s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN

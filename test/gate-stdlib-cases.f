@@ -373,6 +373,10 @@ TEST:SUITE sealed-system-package
    test/seal-package.f
 TEST:;SUITE
 
+TEST:SUITE export-keyword-package
+   test/export-package.f
+TEST:;SUITE
+
 TEST:SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
 TEST:;SUITE

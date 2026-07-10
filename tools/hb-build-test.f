@@ -66,6 +66,13 @@ create HBT-AOT-HEX 80 allot
 create HBT-SRC-KEY 80 allot
 create HBT-KEY-A 64 allot
 create HBT-KEY-B 64 allot
+variable HBT-EXP-SRC-U
+variable HBT-EXP-OUT-U
+create HBT-EXP-SRC-BUF FS-PATH-CAP allot
+create HBT-EXP-OUT-BUF FS-PATH-CAP allot
+create HBT-EXP-DG 32 allot
+create HBT-EXP-HEX1 64 allot
+create HBT-EXP-HEX2 64 allot
 
 : HBT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
@@ -495,6 +502,72 @@ create HBT-KEY-B 64 allot
    HBT-AOT-OUT FILE? TTRUE
    HBT-RUN-AOT ;
 
+\ EXPORT keeps one body (dot habu-compiler-pkg-re-688212c1): the stripped AOT
+\ binary carries no names, so a program calling a word through its defining
+\ package AND a re-exported alias must be byte-identical to the same program
+\ calling the defining name twice — a second body or a diverged call target
+\ changes the bytes. Both variants build to the SAME output path so the ad-hoc
+\ signature identifier cannot differ; the alias variant also runs, proving
+\ both names execute the one body.
+: HBT-EXP-SRC ( -- ptr u8 n )
+   HBT-EXP-SRC-BUF HBT-EXP-SRC-U @ ;
+
+: HBT-EXP-OUT ( -- ptr u8 n )
+   HBT-EXP-OUT-BUF HBT-EXP-OUT-U @ ;
+
+: HBT-EXP-COMMON ( -- )
+   s" package XA" SB-APPEND HBB-LF SB-APPEND-C
+   s" public" SB-APPEND HBB-LF SB-APPEND-C
+   s" : W ( i64 -- i64 ) dup * ;" SB-APPEND HBB-LF SB-APPEND-C
+   s" end-package" SB-APPEND HBB-LF SB-APPEND-C ;
+
+: HBT-EXP-REF-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   HBT-EXP-COMMON
+   s" : MAIN ( -- ) 5 XA:W . cr 5 XA:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-EXP-ALIAS-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   HBT-EXP-COMMON
+   s" package XB" SB-APPEND HBB-LF SB-APPEND-C
+   s" public" SB-APPEND HBB-LF SB-APPEND-C
+   s" EXPORT XA:W" SB-APPEND HBB-LF SB-APPEND-C
+   s" end-package" SB-APPEND HBB-LF SB-APPEND-C
+   s" : MAIN ( -- ) 5 XA:W . cr 5 XB:W . cr ;" SB-APPEND HBB-LF SB-APPEND-C
+   SB$ ;
+
+: HBT-EXP-BUILD ( ptr u8 n -- ) {: sa:ptr su:n :}
+   HBT-EXP-SRC sa su WRITE-ALL
+   HBT-EXP-OUT HBT-REMOVE-FILE?
+   HBT-EXP-SRC HBT-EXP-OUT HBT-HBB-PREPARE-AOT
+   HBB-BUILD
+   HBT-REMOVE-ARTIFACT ;
+
+: HBT-EXP-HASH ( ptr u8 -- ) {: hex:ptr :}
+   HBT-EXP-OUT HBT-EXP-DG SHA256-FILE 0 T=
+   HBT-EXP-DG hex SHA256>HEX ;
+
+: HBT-EXP-RUN ( -- )
+   HBT-EXP-OUT >LEN HBT-RUN-OUT HBT-CAPTURE-CAP >LEN HBT-RUN-ERR HBT-CAPTURE-CAP >LEN
+   HBT-TIMEOUT-MS >MS RUN-CAPTURE HBT-CAPTURE>N {: outn:n errn:n rcn:n :}
+   rcn 0 T=
+   errn 0 T=
+   HBT-RUN-OUT outn s" 25" CONTAINS? TTRUE ;
+
+: HBT-BUILD-AOT-EXPORT-ONE-BODY ( -- )
+   HBT-TMP HBB-CACHE-ROOT!
+   HBT-ROOT s" exp.f" HBT-EXP-SRC-BUF HBT-EXP-SRC-U HBT-PATH!
+   HBT-ROOT s" exp" HBT-EXP-OUT-BUF HBT-EXP-OUT-U HBT-PATH!
+   HBT-EXP-REF-SRC$ HBT-EXP-BUILD
+   HBT-EXP-HEX1 HBT-EXP-HASH
+   HBT-EXP-ALIAS-SRC$ HBT-EXP-BUILD
+   HBT-EXP-HEX2 HBT-EXP-HASH
+   HBT-EXP-HEX1 64 HBT-EXP-HEX2 64 T$=
+   HBT-EXP-RUN
+   HBT-EXP-OUT HBT-REMOVE-FILE?
+   BF-TMP-RESET ;
+
 : HBT-ENG ( -- ptr u8 n )
    HBT-ENG-BUF HBT-ENG-U @ ;
 
@@ -614,6 +687,7 @@ create HBT-KEY-B 64 allot
    HBT-BUILD-MISSING-TMP
    HBT-BUILD-AOT-OBJECT-PRODUCER
    HBT-BUILD-AOT-OBJECT-HIT
+   HBT-BUILD-AOT-EXPORT-ONE-BODY
    HBT-ENGINE-KEY-FLIP
    HBT-PRODUCER-KEY-MISS
    HBT-BUILD-AOT-WRONG-OBJECT-FAILS

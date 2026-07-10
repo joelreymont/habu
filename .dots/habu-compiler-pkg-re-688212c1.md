@@ -262,12 +262,47 @@ throw surfaced by the stdin boundary ("hb: uncaught throw code 7115" rc 67).
 Immediate/wide name bits are copied from the source record (LFIND flag bits
 1/3 -> DNAME-IMM/DNAME-WIDE); the alias shares [0] code ptr + [8] body len.
 
-REMAINING (slice 3): child-process reject fixtures in the gate (each rc above);
-CAE export-support upgraded to prove a real cross-package alias (top-level
-directive case stays as its own pin); AOT single-body proof via hb-build
-closure diagnostic on a dual-name program; generated-ctor-word re-export case
-(RESULT:OK-under-second-name) once a real SUMTYPE fixture is wired; docs
-(docs/forth.md Packages EXPORT paragraph, STATUS.md note); defer-through-
-alias engine case (`is` via alias); immediate-word alias execution case;
-close-out ledger + follow-up dots (COMMENT-EXPORTS package awareness;
-diagnostics provenance F3).
+SLICE 3 LANDED (this change): the full test battery + docs.
+- test/export-package.f (wired: GSI stdlib fork slice + gate-stdlib-cases +
+  FILEMAP): child forges pin dual-name execution + checked callers, the
+  top-level directive no-op, generated-ctor re-export ALLOWED (checked alias
+  caller compiles over a real SUMTYPE), DNAME-WIDE parity (source and alias
+  fail the interpret wide gate with IDENTICAL kind+rc), and every reject rc:
+  undefined 70 (stdin + --load, token named), sealed 84, missing name 74,
+  duplicate/self-export 78 + "duplicate definition:" label, prim 67 +
+  "7115" named.
+- AOT single-body PROOF (tools/hb-build-test.f HBT-BUILD-AOT-EXPORT-ONE-BODY):
+  the alias-variant AOT binary is BYTE-IDENTICAL (SHA-256, same output path so
+  the ad-hoc signature identifier matches) to the reference program calling
+  the source name twice, and it runs correctly — no second body, same call
+  target, airtight because the stripped binary carries no names.
+- COMMENT-EXPORTS made package-aware (lib/source.f): the AOT proof initially
+  FAILED loud (E-UNDEFINED XB:W) because the directive strip ate the
+  in-package EXPORT before the maker compiled — the exact gap the slice-2
+  ledger predicted. Now only TOP-LEVEL `EXPORT ` lines are commented; a
+  line-based package tracker (line-leading `package `/`end-package`/
+  `;package`) guards the block, and both miss modes fail safe (uncommented
+  top-level directive = keyword no-op; wrongly-commented in-package line =
+  loud undefined at build). lib/source-test.f TEST-COMMENT-EXPORTS-PKG pins
+  it; lib/std.manifest + docs/stdlib.md rows added for the four new words.
+- CAE export-alias case (tools/check-all-errors-test.f): a real cross-package
+  alias checks clean through the alias caller AND a wrong effect through the
+  alias rejects naming the caller — the old trivial pass is dead; the
+  top-level directive case remains as its own pin (export-support).
+- Docs: docs/forth.md § Packages EXPORT bullet; STATUS.md EXPORT note.
+- Follow-up dot minted: habu-export-alias-diagnostics-5fd8dcde (F3 provenance:
+  diagnostics through the alias name the alias; spec asks for the defining
+  package — needs a defining-sym backref + render support).
+- NOT-DONE (deliberate, small): defer-through-alias engine execution case
+  (`is` via alias; checker-level defer-flag copy IS covered by
+  type-export-suite case 3) and an immediate-word alias execution case (the
+  DNAME-IMM copy is pinned indirectly by the wide-bit parity sharing the same
+  flag-copy code path). Fold both into the diagnostics dot if they earn a
+  fixture.
+
+FINAL STATE: capability COMPLETE per the spec. `EXPORT NAME` in a package
+section publishes an existing word — same xt, same checked effect, defer +
+control flags, immediate/wide bits — under its own tail, zero runtime cost,
+one AOT body, rollback-safe, fail-closed on every reject class, `export`
+reserved in the lint, checker/engine/verify-source/hb-build agreeing on the
+context split with the pre-existing --repl directive surface.

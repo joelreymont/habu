@@ -520,6 +520,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	source	lib/source.f	word	SOURCE-LINE-END	(ptr u8 len off -- off)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the end offset of a source line including newline when present
 1	source	lib/source.f	word	SOURCE-LINE-SKIP-WS	(ptr u8 len -- off)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return first non-space-or-tab offset in a source line
 1	source	lib/source.f	word	SOURCE-EXPORT-LINE?	(ptr u8 len -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	test whether a source line begins with EXPORT after indentation
+1	source	lib/source.f	word	SOURCE-LINE-LEAD$	(ptr u8 len -- ptr u8 n)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	return the line span after leading whitespace
+1	source	lib/source.f	word	SOURCE-PACKAGE-OPEN-LINE?	(ptr u8 len -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	test whether a source line opens a package block
+1	source	lib/source.f	word	SOURCE-PACKAGE-CLOSE-LINE?	(ptr u8 len -- bool)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	test whether a source line closes a package block
+1	source	lib/source.f	word	SOURCE-LINE-PKG-TRACK	(ptr u8 len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	update the package-depth tracker for one source line
 1	source	lib/source.f	word	SOURCE-APPEND-COMMENTED-EXPORT	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one EXPORT line with leading whitespace replaced by a comment marker
 1	source	lib/source.f	word	SOURCE-APPEND-COMMENT-LINE	(ptr u8 len ptr u8 len ptr len --)	lib/source-test.f	docs/stdlib.md	stdlib-source	active	append one source line while commenting EXPORT directives
 1	source	lib/source.f	word	COMMENT-EXPORTS	(ptr u8 len ptr u8 len -- len)	lib/source-test.f	docs/stdlib.md	stdlib-source	published	comment source EXPORT directives into a caller buffer

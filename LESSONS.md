@@ -3204,3 +3204,14 @@ unchanged (148855). Keys for milestone 2:
   tree, not the binary. Corollary: prefix-internal colon words are dictionary-
   visible but checker-invisible to later tool sources unless a PRIM: row
   persists their effect (CHECKER-PACKAGE-ACTIVE? hit this).
+- **The gap you ledger as "follow-up" will bite before you close the dot —
+  write the proof that exercises it first.** The EXPORT AOT single-body proof
+  failed on first run with E-UNDEFINED because hb-build's COMMENT-EXPORTS
+  stripped the in-package re-export line — the exact divergence the slice-2
+  ledger had filed as a follow-up. The byte-identity proof (alias-variant AOT
+  binary SHA-equal to the source-name-twice variant, same output path so the
+  codesign identifier matches) both caught the gap and pinned the tree-shake
+  contract; the fix (package-aware directive strip) was 30 lines with both
+  miss modes failing safe only BECAUSE the keyword's top-level no-op had
+  landed first. Proof-first ordering turned a latent wrong-program bug into a
+  same-session fix.

@@ -154,3 +154,11 @@ compiles. Two entry points: `CHECK ( a u -- flag )` infers a body's effect
   comparisons return `bool`.
 - **Naked `?DUP`** — runtime exists, but the checker deliberately rejects it as
   value-dependent (`CHECK!` verdict 1); use `?DUP-IF` for a typeable branch.
+- **`EXPORT` package re-export** — landed (dot habu-compiler-pkg-re-688212c1).
+  Inside an open package, `EXPORT NAME` publishes an existing word under its
+  own tail (one body, two names; checker records a fresh alpha-equivalent
+  scheme; defer/control flags and immediate/wide bits ride the alias; AOT emits
+  one body). Top-level `EXPORT` remains the hb-build `--repl` directive, now a
+  keyword no-op on plain loads; hb-build's directive strip is package-aware.
+  See docs/forth.md § Packages and test/type-export-suite.f +
+  test/export-package.f.

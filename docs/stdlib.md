@@ -1046,6 +1046,10 @@ INSERT-BEFORE-FINAL-LINE       ( ptr u8 len ptr u8 len ptr u8 len -- len )
 SOURCE-LINE-END                ( ptr u8 len off -- off )
 SOURCE-LINE-SKIP-WS            ( ptr u8 len -- off )
 SOURCE-EXPORT-LINE?            ( ptr u8 len -- bool )
+SOURCE-LINE-LEAD$              ( ptr u8 len -- ptr u8 n )
+SOURCE-PACKAGE-OPEN-LINE?      ( ptr u8 len -- bool )
+SOURCE-PACKAGE-CLOSE-LINE?     ( ptr u8 len -- bool )
+SOURCE-LINE-PKG-TRACK          ( ptr u8 len -- )
 SOURCE-APPEND-COMMENTED-EXPORT ( ptr u8 len ptr u8 len ptr len -- )
 SOURCE-APPEND-COMMENT-LINE     ( ptr u8 len ptr u8 len ptr len -- )
 COMMENT-EXPORTS                ( ptr u8 len ptr u8 len -- len )
@@ -1067,9 +1071,12 @@ tables into a caller buffer. `WRITE-SOURCE-LIST` writes source-list material
 with a `provided` marker before each file so later `required` calls do not
 reload already concatenated dependencies. `INSERT-BEFORE-FINAL-LINE` inserts a counted byte string
 before the final line of another counted byte string; when the source has no
-line break, insertion happens at the beginning. `COMMENT-EXPORTS` rewrites lines
+line break, insertion happens at the beginning. `COMMENT-EXPORTS` rewrites TOP-LEVEL lines
 whose first non-space byte sequence starts with `EXPORT ` by replacing leading
-whitespace with `\ `, preserving all other bytes.
+whitespace with `\ `, preserving all other bytes. Lines inside a
+`package ... end-package`/`;package` block pass through untouched: there
+`EXPORT NAME` is the package re-export declaration, not the hb-build --repl
+directive (the line tracker counts line-leading openers/closers).
 
 `READ-STDIN-ALL` reads fd 0 into a caller buffer and probes one extra byte when
 the buffer fills so overflow fails closed instead of truncating. Use explicit

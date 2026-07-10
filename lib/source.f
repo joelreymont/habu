@@ -195,6 +195,37 @@ variable SOURCE-LS-LINE#
    line lineu SOURCE-LINE-SKIP-WS SOURCE-SKIP !
    line SOURCE-SKIP @ OFF>N + lineu LEN>N SOURCE-SKIP @ OFF>N - s" EXPORT " STARTS-WITH? ;
 
+\ Package-context tracking for the directive strip (dot
+\ habu-compiler-pkg-re-688212c1): `EXPORT NAME` INSIDE an open package block is
+\ the re-export declaration and must reach the compiler; only TOP-LEVEL
+\ `EXPORT ` lines are the hb-build --repl directive to comment out. The
+\ tracker is line-based like the strip itself (canonical line-leading
+\ `package NAME` openers and `end-package`/`;package` closers). Both miss
+\ modes fail safe: an uncommented top-level directive compiles as the engine
+\ keyword's no-op, and a wrongly-commented in-package re-export leaves the
+\ alias undefined so the build rejects loudly.
+variable SOURCE-PKG-DEPTH
+
+: SOURCE-LINE-LEAD$ ( ptr u8 len -- ptr u8 n ) {: line:ptr lineu:len :}
+   line lineu SOURCE-LINE-SKIP-WS SOURCE-SKIP !
+   line SOURCE-SKIP @ OFF>N + lineu LEN>N SOURCE-SKIP @ OFF>N - ;
+
+: SOURCE-PACKAGE-OPEN-LINE? ( ptr u8 len -- bool )
+   SOURCE-LINE-LEAD$ s" package " STARTS-WITH? ;
+
+: SOURCE-PACKAGE-CLOSE-LINE? ( ptr u8 len -- bool )
+   SOURCE-LINE-LEAD$ {: a:ptr u:n :}
+   a u s" end-package" STARTS-WITH? if 0 0= exit then
+   a u s" ;package" STARTS-WITH? ;
+
+: SOURCE-LINE-PKG-TRACK ( ptr u8 len -- ) {: line:ptr lineu:len :}
+   line lineu SOURCE-PACKAGE-OPEN-LINE? if
+      SOURCE-PKG-DEPTH @ 1 + SOURCE-PKG-DEPTH ! exit
+   then
+   line lineu SOURCE-PACKAGE-CLOSE-LINE? if
+      SOURCE-PKG-DEPTH @ 0 > if SOURCE-PKG-DEPTH @ 1 - SOURCE-PKG-DEPTH ! then
+   then ;
+
 : SOURCE-APPEND-COMMENTED-EXPORT ( ptr u8 len ptr u8 len ptr len -- )
    {: line:ptr lineu dst:ptr cap lenp:ptr :}
    line lineu SOURCE-LINE-SKIP-WS SOURCE-SKIP !
@@ -203,7 +234,8 @@ variable SOURCE-LS-LINE#
 
 : SOURCE-APPEND-COMMENT-LINE ( ptr u8 len ptr u8 len ptr len -- )
    {: line:ptr lineu dst:ptr cap lenp:ptr :}
-   line lineu SOURCE-EXPORT-LINE? if
+   line lineu SOURCE-LINE-PKG-TRACK
+   line lineu SOURCE-EXPORT-LINE? SOURCE-PKG-DEPTH @ 0 = and if
       line lineu dst cap lenp SOURCE-APPEND-COMMENTED-EXPORT
    else
       line lineu dst cap lenp SOURCE-APPEND-BYTES
@@ -212,6 +244,7 @@ variable SOURCE-LS-LINE#
 : COMMENT-EXPORTS ( ptr u8 len ptr u8 len -- len ) {: src:ptr u dst:ptr cap :}
    0 >LEN SOURCE-LEN !
    0 >OFF SOURCE-I !
+   0 SOURCE-PKG-DEPTH !
    begin SOURCE-I @ OFF>N u LEN>N < while
       src u SOURCE-I @ SOURCE-LINE-END SOURCE-END !
       src SOURCE-I @ OFF>N + SOURCE-END @ OFF>N SOURCE-I @ OFF>N - >LEN dst cap SOURCE-LEN SOURCE-APPEND-COMMENT-LINE

@@ -224,6 +224,25 @@ end-package
   then the package public wordlist, then the saved/global lookup path. This lets
   public words call private helpers without qualification and lets later private
   helpers call earlier public words.
+- `EXPORT NAME` inside an open package re-exports an EXISTING word into the
+  current section wordlist under its own tail: same execution token, same
+  checked stack effect (a fresh alpha-equivalent scheme copy), defer and
+  control-effect flags carried, immediate/wide name bits copied — no
+  forwarding body and zero runtime cost, one word under two names.
+  `EXPORT EVAL:RUN` in `package MAKI public` publishes `MAKI:RUN`; a bare
+  `EXPORT HELPER` in the public section promotes the package's private
+  `HELPER` to public. Fail-closed rejects: an undefined source, a private
+  word behind a CLOSED package (qualified lookup is public-only), a source
+  qualified into a sealed system package, a primitive source (prims may be
+  overloaded; aliasing one row would narrow the effect), and a duplicate
+  tail in the target section. Re-exporting a generated constructor word
+  (closed-but-callable) under a second name is allowed; adding tails INTO a
+  generated constructor package stays rejected. AOT tree-shake keeps one
+  body, and the alias rows roll back atomically with checker scope frames.
+  At TOP LEVEL (outside any package) `EXPORT name…` is the pre-existing
+  hb-build `--repl` export directive: the build strips it before compiling
+  and a plain load consumes the name as a no-op, so directive-carrying
+  programs stay directly loadable.
 - Qualified names use the existing single-colon wordlist syntax. The qualifier
   selects the package public wordlist and the dictionary record stores the tail,
   so `HB:COUNT` resolves public `COUNT` in package `HB`.
