@@ -6,6 +6,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/cad.f
 require maki/fusion-plan.f
 
@@ -20,7 +21,15 @@ variable FT-VA  variable FT-VU
 : TRY-STATE  ( -- )  FP-RESET FP-REGION-COUNT drop ;      \ accessor before build
 : TRY-RID    ( -- )  99 FP-RID@ drop ;                    \ node index out of range
 : TRY-RGN    ( -- )  99 FP-REGION-MEMBERS drop ;          \ region index out of range
-: TRY-REASON ( -- )  99 FP-REASON-NAME 2drop ;            \ bad reason tag
+
+\ ---- reason column is a real ENUM: assert stored reason via its MATCH render ---
+\ FP-SPLIT-REASON@ now returns `reason` (a width-1 layout value, not an n), so a
+\ split's reason is asserted through FP-REASON-NAME (the one exhaustive-MATCH
+\ boundary word) rather than a raw `=` against an int tag. The old "bad reason tag"
+\ runtime throw is gone: an out-of-family tag is now a checker reject, pinned by the
+\ swapped-role negatives at the end of this suite.
+: FT-REASON= ( n ptr u8 n -- )  {: sa:ptr su:n :}        \ split-idx expected-name --
+   FP-SPLIT-REASON@ FP-REASON-NAME sa su T$= ;
 
 T-RESET
 
@@ -45,7 +54,7 @@ FP-REGION-COUNT 2 T=
 0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 1 T=
 FP-SPLIT-COUNT 1 T=
 0 FP-SPLIT-NODE@   2 T=
-0 FP-SPLIT-REASON@ SR-MATMUL T=
+0 s" matmul-boundary" FT-REASON=
 \ node0 (first linear) is interior; node1 (region output) + node2 (model out) set
 0 MIR-MAT@ TFALSE  1 MIR-MAT@ TTRUE  2 MIR-MAT@ TTRUE
 \ report row wording
@@ -65,7 +74,7 @@ FP-REGION-COUNT     2 T=
 1 FP-REGION-MEMBERS 2 T=
 0 FP-RID@ 0 T=  1 FP-RID@ 0 T=  2 FP-RID@ 1 T=  3 FP-RID@ 1 T=
 FP-SPLIT-COUNT      1 T=
-0 FP-SPLIT-REASON@  SR-BACKEND T=
+0 s" backend-capability" FT-REASON=
 0 FP-SPLIT-NODE@    2 T=
 \ prologue interior (gelu) cleared; prologue output (silu) materialized; matmul interior;
 \ model output (relu) materialized.
@@ -86,7 +95,7 @@ MODEL: MM2 ( x:2x3 w1:3x4 w2:4x5 -- y ) MATMUL MATMUL ;
 FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
-0 FP-SPLIT-REASON@ SR-MATMUL T=
+0 s" matmul-boundary" FT-REASON=
 0 FP-SPLIT-NODE@   1 T=
 
 \ ---- a materialize-verdict movement node splits (layout-conflict) ----------
@@ -95,7 +104,7 @@ MODEL: MMAT ( x:2x4 b:2x4 -- y ) GELU CONCAT ;
 FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
-0 FP-SPLIT-REASON@ SR-LAYOUT T=
+0 s" layout-conflict" FT-REASON=
 0 FP-SPLIT-NODE@   1 T=
 
 \ ---- two same-row reductions fuse (softmax max+sum budget) ------------------
@@ -109,7 +118,7 @@ MODEL: RR3 ( x:4x8 -- y ) LAYERNORM SOFTMAX-ROW RMSNORM ;
 FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
-0 FP-SPLIT-REASON@ SR-BARRIER T=
+0 s" barrier-boundary" FT-REASON=
 0 FP-SPLIT-NODE@   2 T=
 
 \ ---- multi-use producer materializes + splits (hand-built IR) --------------
@@ -121,7 +130,7 @@ OP-ADD  MIR-OP-BEGIN  0 MIR-IN+ 0 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
 FP-BUILD
 FP-REGION-COUNT    2 T=
 FP-SPLIT-COUNT     1 T=
-0 FP-SPLIT-REASON@ SR-MULTI-USE T=
+0 s" multi-use-materialize" FT-REASON=
 0 FP-SPLIT-NODE@   0 T=                    \ reported at the materialized producer
 0 MIR-MAT@ TTRUE                            \ multi-use producer is materialized
 
@@ -141,7 +150,21 @@ FP-REGION-COUNT 1 T=
 \ ---- fail-closed accessor paths (after a valid build) ----------------------
 ' TRY-RID    E-FP-IDX TTHROWS
 ' TRY-RGN    E-FP-IDX TTHROWS
-' TRY-REASON E-FP-IDX TTHROWS
+
+\ ---- swapped-role negatives (dot habu-cad-adt-swap; capability S1) ----------
+\ The reason column is addressed only through `ptr reason` (FP-SP-REASON-AT), so
+\ the checker rejects any attempt to launder a raw n -- or reach the column past a
+\ bare `ptr a` -- into or out of it. A mis-typed reason is impossible before runtime
+\ (this replaces the old "bad reason tag" throw). Diagnostics are pinned as comments.
+\ store an n where a reason is required (diag: "at '!' expected: reason<> ptr
+\ reason<> actual: n ptr reason<>")
+s" FPT-RSN-NIN ( n n -- ) FP-SP-REASON-AT !"          CHECK-QUIET-CANDIDATE! 0 T=
+\ fetch a reason as a bare n -- enum->n laundering (diag: "at '@' expected: n
+\ actual: reason<>")
+s" FPT-RSN-NOUT ( n -- n ) FP-SP-REASON-AT @"         CHECK-QUIET-CANDIDATE! 0 T=
+\ store a reason through a bare `ptr a` (family identity dropped): the address must
+\ name `ptr reason` (diag: "at '!' expected: a ptr a actual: reason<> ptr b")
+s" FPT-RSN-BARE ( reason -- ) 0 cells FP-SP-REASON + !" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

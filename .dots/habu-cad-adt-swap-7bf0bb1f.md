@@ -221,3 +221,42 @@ its MATCH renderer.
 
 No maki/*.f changed in this commit: the audit is the deliverable. Dot stays
 open, now BLOCKED-on the three capability dots (front-matter `blocks:`).
+
+UPDATE 2026-07-10 (fable-swap lane, ENUM-COLUMN slice — capability S1 landed).
+WALL-1 storage is now PARTIALLY down: habu-checker-capability-typed S1 landed the
+enum-tier (width-1) typed store/fetch through a `ptr family` address, so the
+priority 2-4 enum tag columns (NOT the SKEY product, still blocked on WALL-2/3)
+are now buildable with STABLE array shapes. Authoring pattern proven on this
+fixpoint (scratchpad probes + the landed test/type-decl-suite.f TDS1-*):
+  - Declare the ENUM PUBLIC inside `package MAKI` (a PRIVATE family skips
+    constructor generation). Constructors derive into package `MAKI-<TAIL>`,
+    e.g. `MAKI-REASON:MATMUL`. The ENUM block reads RAW variant tokens — inline
+    `\` comments inside the block are a parse error ("name must be a lowercase
+    family tail at '\'"), so per-variant notes go in the header comment.
+  - The stored column keeps its `create ... cells allot` shape (enum W=1 = 1
+    cell). Add a typed slot accessor `: NAME-AT ( n -- ptr fam ) cells ARR + ;`
+    — the declared `ptr fam` output binds the body's `ptr a` via the S1
+    pointee-bind relax. Store/fetch go `val i NAME-AT !` / `i NAME-AT @`.
+  - ENUM-TYPED LOCALS REJECT on this fixpoint: even the identity
+    `( fam -- fam ) {: t:fam :} t` is reject(0) (binding a width-1 layout value
+    into a local is unsupported — the a480c423 CAP-B "swap reject" was actually
+    this, mis-attributed to family mismatch). So a store word must keep the enum
+    on the STACK: take it on TOP and store it FIRST, before binding any n local.
+  - Readers dispatch with an exhaustive `MATCH fam ... ;MATCH` (uppercase
+    OF/ENDOF), which RETIRES the range-`*-N` sentinel and the bad-tag runtime
+    throw — an out-of-family tag is now a checker reject.
+
+COLUMN 1 LANDED 2026-07-10 — fusion FP-SP-REASON (fusion-plan.f). Fewest readers
+(self-contained: fusion-plan.f + fusion-plan-test.f only; no other maki file reads
+it). `ENUM reason multi-use matmul layout barrier backend ;ENUM` replaced the
+SR-* int constants (SR-N retired). FP-SP-REASON-AT is the typed slot; FP-SPLIT+
+restructured to a stack-only store (no local for the reason); FP-REASON returns
+`reason`; FP-SPLIT-REASON@ returns `reason`; FP-REASON-NAME is the ONE render
+boundary (case->MATCH, exhaustive, E-FP-IDX default dropped). Readers converted: 1
+internal render (FP-REASON-NAME), 1 internal row builder (FP-SPLIT-ROW$, unchanged
+— composes over the new types), 6 test assertions (now assert via FP-REASON-NAME).
+Boundary kept numeric: NONE (reason has no wire/durable form). Swapped-role
+negatives added (fusion-plan-test.f): n->reason store, reason->n fetch, and
+reason-through-bare-`ptr a` all reject with cited diagnostics. Gates green: focused
+fusion-plan-test.f rc=0; maki/test.f rc=0 (77 suites); namespace/error-code/dot-dep/
+host lints 0 findings; typed-local-diff-lint rc=0.

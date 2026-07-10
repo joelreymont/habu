@@ -37,13 +37,28 @@ require maki/report.f
 package MAKI
 public
 
-\ ---- split reason tags (subset of CAD-PLAN 5.6 computable in cad-2) ----------
-0 constant SR-MULTI-USE     \ multi-use producer materialized (no recompute in v1)
-1 constant SR-MATMUL        \ a second contraction cannot share the region
-2 constant SR-LAYOUT        \ movement verdict materialize/gathered breaks fusion
-3 constant SR-BARRIER       \ reduction barrier / row-reduce budget exhausted
-4 constant SR-BACKEND       \ base-legal, but the lowering backend cannot emit this fusion (yet)
-5 constant SR-N
+\ ---- split reason family (CAD-PLAN 5.6 subset computable in cad-2) -----------
+\ Real ENUM (width-1 layout value; dot habu-cad-adt-swap, capability S1 of
+\ habu-checker-capability-typed): the per-split reason is stored/fetched through a
+\ typed `ptr reason` slot (FP-SP-REASON-AT) and every reader dispatches with an
+\ exhaustive MATCH, so adding a variant is a checker error at each dispatch site
+\ rather than silent tag drift. There is NO durable/wire encoding of a reason -- it
+\ only ever renders to report text (FP-REASON-NAME, the one boundary word) -- so no
+\ numeric form is kept and the old SR-N range sentinel is retired by exhaustiveness.
+\ Constructors: MAKI-REASON:MULTI-USE .. MAKI-REASON:BACKEND. Variants:
+\   multi-use  multi-use producer materialized (no recompute in v1)
+\   matmul     a second contraction cannot share the region
+\   layout     movement verdict materialize/gathered breaks fusion
+\   barrier    reduction barrier / row-reduce budget exhausted
+\   backend    base-legal, but the lowering backend cannot emit this fusion (yet)
+\ (the ENUM block reads raw variant tokens, so keep the descriptions here.)
+ENUM reason
+  multi-use
+  matmul
+  layout
+  barrier
+  backend
+;ENUM
 
 private
 
@@ -57,9 +72,14 @@ create FP-MIX FP-CAP cells allot         \ per-region class bitmask (1<<class)
 variable FP-RN                            \ region count
 
 create FP-SP-NODE   FP-CAP cells allot    \ per-split node id
-create FP-SP-REASON FP-CAP cells allot    \ per-split reason tag
+create FP-SP-REASON FP-CAP cells allot    \ per-split reason enum (width-1 layout value)
 variable FP-SP-N
 variable FP-BUILT?
+
+\ typed reason slot: retype the plain cell address to `ptr reason` so the enum
+\ store/fetch certifies with family identity (capability S1). A raw `ptr a` or a
+\ foreign-family address fails closed -- a reason can only reach this column here.
+: FP-SP-REASON-AT ( n -- ptr reason )  cells FP-SP-REASON + ;
 
 \ ---- dataflow queries ------------------------------------------------------
 : FP-CLASS ( n -- n )  MIR-OP@ OPR-CLASS ;   \ node -> op class
@@ -231,25 +251,28 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 
 \ ---- split classification (typed reason per broken chain edge) --------------
 \ ( K P -- tag ): P>=0, P not multi-use, K did not fuse into P
-: FP-REASON ( n n -- n ) {: k:n p:n :}
-   k MIR-MOVE? if k NODE-MAT-VD? if SR-LAYOUT exit then then
-   p NODE-MAT-VD? if SR-LAYOUT exit then
-   p FP-CLASS CLASS-MATMUL = k FP-CLASS CLASS-MATMUL = and if SR-MATMUL exit then
-   k FP-CLASS CLASS-MATMUL = p FP-RID-RAW cells FP-MMC + @ 0 > and if SR-MATMUL exit then
+: FP-REASON ( n n -- reason ) {: k:n p:n :}
+   k MIR-MOVE? if k NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then then
+   p NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then
+   p FP-CLASS CLASS-MATMUL = k FP-CLASS CLASS-MATMUL = and if MAKI-REASON:MATMUL exit then
+   k FP-CLASS CLASS-MATMUL = p FP-RID-RAW cells FP-MMC + @ 0 > and if MAKI-REASON:MATMUL exit then
    p MIR-MOVE? 0=                                       \ compute edge, base-legal, but the
    p FP-CLASS k FP-CLASS FP-BASE-FUSE?      and         \ backend cannot emit it (e.g. EW prologue
-   p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= and if SR-BACKEND exit then  \ into a matmul)
-   SR-BARRIER ;
+   p FP-CLASS k FP-CLASS FP-BACKEND-EMITS? 0= and if MAKI-REASON:BACKEND exit then  \ into a matmul)
+   MAKI-REASON:BARRIER ;
 
-: FP-SPLIT+ ( n n -- ) {: k:n tag:n :}
+\ append one split row. The reason enum arrives on TOP and is stored first: a
+\ width-1 layout value cannot be bound into a local (it is a whole bundle), so it
+\ stays on the stack and crosses `!` through its typed slot with no juggling.
+: FP-SPLIT+ ( n reason -- )                  \ node reason --
    FP-SP-N @ FP-CAP >= if E-FP-CAP throw then
-   k   FP-SP-N @ cells FP-SP-NODE   + !
-   tag FP-SP-N @ cells FP-SP-REASON + !
+   FP-SP-N @ FP-SP-REASON-AT !               \ reason (top) -> its `ptr reason` slot
+   FP-SP-N @ cells FP-SP-NODE + !            \ node id -> the node column
    FP-SP-N @ 1+ FP-SP-N ! ;
 
 \ one node's contribution: its own multi-use materialize row, then its broken edge
 : FP-SPLIT-STEP ( n -- ) {: k:n :}
-   k FP-REF-USES 1 > if k SR-MULTI-USE FP-SPLIT+ then
+   k FP-REF-USES 1 > if k MAKI-REASON:MULTI-USE FP-SPLIT+ then
    k FP-PROD {: p:n :}
    p 0 < if exit then
    k FP-RID-RAW p FP-RID-RAW = if exit then   \ fused: no split
@@ -288,17 +311,19 @@ public
 : FP-SPLIT-COUNT ( -- n )  FP-CK FP-SP-N @ ;
 : FP-SP-CK ( n -- n )  FP-CK  dup 0 < over FP-SP-N @ >= or if E-FP-IDX throw then ;
 : FP-SPLIT-NODE@   ( n -- n )  FP-SP-CK cells FP-SP-NODE   + @ ;
-: FP-SPLIT-REASON@ ( n -- n )  FP-SP-CK cells FP-SP-REASON + @ ;
+: FP-SPLIT-REASON@ ( n -- reason )  FP-SP-CK FP-SP-REASON-AT @ ;
 
-: FP-REASON-NAME ( n -- ptr u8 n )           \ reason tag -> text
-   case
-      SR-MULTI-USE of s" multi-use-materialize" endof
-      SR-MATMUL    of s" matmul-boundary"       endof
-      SR-LAYOUT    of s" layout-conflict"       endof
-      SR-BARRIER   of s" barrier-boundary"      endof
-      SR-BACKEND   of s" backend-capability"    endof
-      E-FP-IDX throw
-   endcase ;
+\ the one reason render boundary: enum -> report text. Exhaustive MATCH means a bad
+\ tag is unrepresentable, so the old E-FP-IDX default is gone; a new variant makes
+\ this fail to compile until it is rendered here.
+: FP-REASON-NAME ( reason -- ptr u8 n )
+   MATCH reason
+      multi-use OF s" multi-use-materialize" ENDOF
+      matmul    OF s" matmul-boundary"       ENDOF
+      layout    OF s" layout-conflict"       ENDOF
+      barrier   OF s" barrier-boundary"      ENDOF
+      backend   OF s" backend-capability"    ENDOF
+   ;MATCH ;
 
 \ ---- report integration (one "<reason> at node K" split row each) -----------
 : FP-SPLIT-ROW$ ( n -- ptr u8 n ) {: i:n :}
