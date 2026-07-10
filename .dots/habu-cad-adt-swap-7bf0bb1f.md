@@ -456,3 +456,57 @@ executable now; commit sequence steps 3 (descriptor trio + readers) and 4
 (opkind + readers) proceed immediately, each as one green stack. The
 fusion-plan `reason` variant rename layout->layout-conflict (proven above)
 must be re-applied with the descriptor trio.
+
+DESCRIPTOR TRIO LANDED 2026-07-10 (fable 6c58e1d6, corrected-plan step 3).
+Family-typed dtype/layout/align through construction -> Model IR + TV storage ->
+every consumer; DT-*/LAY-*/AL-* survive only at named boundaries (DTYPE>N/
+LAYOUT>N + DT-KEY/LAY-KEY wire renders in tensor/tensor-value.f; ALIGN>N at
+sched-key's documented ordinal min-fold; test asserts). API: MIR-INPUT+
+( n n dtype layout -- n ), MIR-OP+ ( n n dtype layout n n -- n ), MIR-SLOT-AL!
+( n align -- ), accessors return families; TV-NEW-AS/TV-DESC/TV-DTYPE!/
+TV-LAYOUT!/TV-ALIGN-CLASS take/return families; DT-SIZE/MP-W/MP-CLASSIFY/
+MV-*-VERDICT/GA-DEFAULT-TOL take families (exhaustive MATCH). E-MK-DTYPE/
+E-TV-LAYOUT/E-MIR-ALIGN/E-MP-ALIGN retired (unrepresentable; checker negatives
+replace them). DT-N/LAY-N sentinels deleted; traffic DT-BYTES duplicate retired
+for DT-SIZE. HEADLINE PROVEN: dtype<->layout swap at MIR-INPUT+/MIR-OP+/
+TV-NEW-AS is a checker reject BOTH directions (pinned in model-ir-test/
+tensor-value-test). Hashes/wire strings byte-identical (sched-key FNV golden
+green). Gates: maki 77/77, 5 lints clean, typed-local-diff-lint rc=0;
+destruction review clean (1 medium - dead sentinels - closed pre-merge).
+AUTHORING PATTERNS THAT WORK (for step 4): families ride the stack; store
+before binding n locals (multiple {: :} groups per word are legal, binding over
+families below is legal); dup/swap on W=1 families certify (incl. family-over-
+family swap); if/else joins across two family sources certify; typed variable
+slots (`: X-AT ( -- ptr fam ) X ;`) work; test helpers that need a family
+"local" read it back from the stored slot (BUILD-DT pattern) or refetch
+(PLAN-RESHAPE pattern).
+
+STEP 4 REMAINING (op-kind; census 2026-07-10, ~25 files - the big slice):
+- ENUM opkind (31 variants, op-kind.f, order = OP-ADD..OP-SCATTER-ADD; check
+  variant-tail/family collisions: `cast`/`slice`/`gather`/`reshape` etc. are
+  free today). OPKIND>N render boundary; OP-N stays wire-range bound only if a
+  consumer survives (executor.f:327 EX-OK-OP? range check).
+- MIR-OP-BEGIN takes opkind (validation E-MIR-OPKIND becomes unrepresentable);
+  MIR-OP@ returns opkind; MI-OP behind a typed slot.
+- op-registry.f: OPR-CLASS/OPR-NAME/OPR-FLOPS/OPR-COMPLETE?/OPR-ELEMENTWISE?
+  take opkind, convert ONCE at the private table index (per plan item 3).
+  adjoint.f ADJ-* tables (ADJ-GRAD-IN?/ADJ-BOP/ADJ-ID/ADJ-SAVE) same treatment.
+- case dispatchers -> exhaustive MATCH (the win: adding an op becomes a checker
+  error at every dispatcher): backward.f:242, lower-ew.f:247, lower-red.f:262,
+  lower-mm.f:257, lower-move.f:114+234, executor.f:277, op-registry renders.
+- predicate chains (`op OP-X = op OP-Y = or ...`) -> MATCH predicates:
+  lower-ew.f LEW-OP-OK?, lower-mm LMM-MM-OP?/LMM-EPI-OP?, lower-move
+  LMV-COPY-OP?, backward BW-OK-OP?, golden-artifact GA-OP-BLOCKS?, cad.f
+  SHP-CHECK dispatch + OP-SOFTMAX-ROW/OP-TRANSPOSE/OP-RESHAPE/OP-SLICE
+  compares, gradcheck/mem-plan OP-GATHER compares, fusion.f OP-SCALE,
+  executor EX-OK-OP?, move-view OP-TRANSPOSE guard.
+- `MIR-OP@ {: op:n :}` binds (~15 non-test sites: cad 516/530, gradcheck 166,
+  lower-mm 131, lower-red 125, move-view 62, executor 109/134/155/171, saved,
+  backward 272 dup-pattern) -> stack discipline / refetch / factored helpers.
+- onnx/import.f maps wire op names -> OP-* codes -> constructors.
+- sched-key RSIG-NODE folds MIR-OP@ via OPKIND>N (codes unchanged -> hash
+  stable; keep the golden green).
+- tests: constructor call sites (backward-test 19 uses, onnx/import-test 15,
+  model-ir-test/mlp-bwd-test/demo-ffn-test asserts via OPKIND>N), E-MIR-OPKIND
+  throw probes -> checker negatives, swapped-family negatives (opkind vs
+  dtype/layout/align cross-swaps).
