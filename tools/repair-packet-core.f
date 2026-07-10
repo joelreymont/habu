@@ -119,6 +119,15 @@ variable RP-NODE
       s" repair-packet: missing diagnostic field" RP-E-IO RP-FAIL
    then ;
 
+: RP-STR= ( n ptr u8 n -- bool ) {: node:n want:ptr wantu:n :}
+   node JSON-KIND J-STR <> if 0 0= 0= exit then
+   node JSON-STRING$ want wantu JSON-STR= ;
+
+: RP-DECL? ( n -- bool ) {: root:n :}
+   root s" decl" JSON-GET dup -1 <> if drop 0 0= exit then
+   drop
+   root s" code" RP-REQ s" E-BAD-DECLARATION" RP-STR= ;
+
 : RP-REQ-STR ( n ptr u8 n -- )
    RP-REQ dup JSON-KIND J-STR <> if
       drop
@@ -168,7 +177,7 @@ variable RP-NODE
    RP-NODE @ s" actual" RP-OPT-STR-FIELD
    JSONW-OBJECT-END ;
 
-: RP-PACKET ( n n -- ptr u8 n )
+: RP-DEF-PACKET ( n n -- ptr u8 n )
    {: root:n count:n :}
    JSONW-RESET
    JSONW-OBJECT-START
@@ -187,10 +196,11 @@ variable RP-NODE
    JSONW-COMMA root s" inferred_effect" RP-REQ-STR-FIELD
    JSONW-COMMA root s" expected" RP-OPT-STR-FIELD
    JSONW-COMMA root s" actual" RP-OPT-STR-FIELD
+   JSONW-COMMA root s" family" RP-OPT-STR-FIELD
    JSONW-COMMA root RP-RETURN-STACK
    JSONW-COMMA root s" code" RP-REQ-STR-FIELD
    JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
-   JSONW-COMMA s" reason" JSONW-KEY RP-NULL
+   JSONW-COMMA root s" reason" RP-OPT-STR-FIELD
    JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
    JSONW-COMMA s" source_excerpt" JSONW-KEY root s" definition_source" RP-REQ-STR
    JSONW-COMMA s" diagnostic_count" JSONW-KEY count RP-U
@@ -198,6 +208,30 @@ variable RP-NODE
    s" Fix the definition so it certifies. Output only corrected Habu code." JSONW-STRING
    JSONW-OBJECT-END
    JSON-OUT-BUF JSON-OUT-LEN @ ;
+
+: RP-DECL-PACKET ( n n -- ptr u8 n )
+   {: root:n count:n :}
+   JSONW-RESET
+   JSONW-OBJECT-START
+   s" schema_version" JSONW-KEY s" 1" JSONW-RAW
+   JSONW-COMMA s" kind" JSONW-KEY s" habu_repair_packet" JSONW-STRING
+   JSONW-COMMA root s" decl" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" family" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" token" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" file" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" code" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" repair_class" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" reason" RP-REQ-STR-FIELD
+   JSONW-COMMA root s" suggestion" RP-REQ-STR-FIELD
+   JSONW-COMMA s" diagnostic_count" JSONW-KEY count RP-U
+   JSONW-COMMA s" instruction" JSONW-KEY
+   s" Repair the type-family declaration. Output only corrected Habu code." JSONW-STRING
+   JSONW-OBJECT-END
+   JSON-OUT-BUF JSON-OUT-LEN @ ;
+
+: RP-PACKET ( n n -- ptr u8 n ) {: root:n count:n :}
+   root RP-DECL? if root count RP-DECL-PACKET exit then
+   root count RP-DEF-PACKET ;
 
 : RP-MAIN ( -- )
    RP-INPUT$ RP-READ-FILE 2dup RP-COUNT >r RP-FIRST r> RP-PACKET type cr ;

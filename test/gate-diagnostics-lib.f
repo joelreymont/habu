@@ -581,6 +581,17 @@ variable GDX-TRUST-MAN-U
    s" family" s" scalar mismatch omits family field" GDX-EXPECT-ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-nofam.err" s" scalar mismatch schema" GDX-GJA1 ;
 
+: GDX-TFAM-DECL ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE badsum 0 VARIANT samev n ;VARIANT VARIANT samev n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" tools/check.f accepted duplicate type-family variant" GDX-CHECK-JSON
+   s" habu-tfam-decl.err" GDX-WRITE-ERR
+   s" code" s" E-BAD-DECLARATION" s" declaration diagnostic code" GDX-EXPECT-ERR-JSTR
+   s" repair_class" s" fix_family_declaration" s" declaration repair class" GDX-EXPECT-ERR-JSTR
+   s" habu-tfam-decl.err" s" declaration diagnostic contract" GDX-DIAG-CONTRACT
+   s" json-one-schema" s" habu-tfam-decl.err" s" declaration diagnostic schema" GDX-GJA1 ;
+
 : GDX-ALL-ERRORS-SOURCE ( -- )
    GE-SRC-RESET
    s" : GDX-AE-OK ( i64 -- i64 ) dup * ;" GE-SRC-LINE
@@ -667,6 +678,7 @@ variable GDX-TRUST-MAN-U
    GDX-BAD-PARAM-SIGNATURE
    GDX-RENDER-CAP-FAIL-CLOSED
    GDX-ADT-FAMILY
+   GDX-TFAM-DECL
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;
 

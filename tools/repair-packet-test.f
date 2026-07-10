@@ -268,6 +268,63 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" : BAD2 ( i64 -- ) >r ;" SB-APPEND RPT-LF
    SB$ ;
 
+: RPT-JSTR ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n val:ptr valu:n :}
+   key keyu JSONW-KEY
+   val valu JSONW-STRING ;
+
+: RPT-JNUM ( ptr u8 n n -- ) {: key:ptr keyu:n val:n :}
+   key keyu JSONW-KEY
+   val RP-U ;
+
+: RPT-JNEXT ( -- )
+   JSONW-COMMA ;
+
+: RPT-JDONE ( -- ptr u8 n )
+   JSONW-OBJECT-END
+   JSON-OUT-BUF JSON-OUT-LEN @ ;
+
+: RPT-FAMILY-DIAG$ ( -- ptr u8 n )
+   JSONW-RESET  JSONW-OBJECT-START
+   s" schema_version" 1 RPT-JNUM
+   RPT-JNEXT s" code" s" E-MISMATCH" RPT-JSTR
+   RPT-JNEXT s" repair_class" s" fix_type" RPT-JSTR
+   RPT-JNEXT s" verdict" s" rejected" RPT-JSTR
+   RPT-JNEXT s" word" s" diag-family" RPT-JSTR
+   RPT-JNEXT s" token" s" DIAG-FAMILY" RPT-JSTR
+   RPT-JNEXT s" token_index" 0 RPT-JNUM
+   RPT-JNEXT s" file" s" family" RPT-JSTR
+   RPT-JNEXT s" line" 1 RPT-JNUM
+   RPT-JNEXT s" column" 3 RPT-JNUM
+   RPT-JNEXT s" byte_start" 2 RPT-JNUM
+   RPT-JNEXT s" byte_end" 13 RPT-JNUM
+   RPT-JNEXT s" definition_source" s" DIAG-FAMILY ( n -- rptzrc ) " RPT-JSTR
+   RPT-JNEXT s" declared_effect" s" n -- rptzrc<> " RPT-JSTR
+   RPT-JNEXT s" declared_effect_source" s" n -- rptzrc" RPT-JSTR
+   RPT-JNEXT s" inferred_effect" s" n -- n " RPT-JSTR
+   RPT-JNEXT s" return_stack" JSONW-KEY JSONW-OBJECT-START
+   s" expected" s" " RPT-JSTR
+   RPT-JNEXT s" actual" s" " RPT-JSTR
+   JSONW-OBJECT-END
+   RPT-JNEXT s" expected" s" rptzrc<> " RPT-JSTR
+   RPT-JNEXT s" actual" s" n " RPT-JSTR
+   RPT-JNEXT s" family" s" rptzrc" RPT-JSTR
+   RPT-JNEXT s" suggestion" s" Change the body so produced types match the signature." RPT-JSTR
+   RPT-JDONE ;
+
+: RPT-DECL-DIAG$ ( -- ptr u8 n )
+   JSONW-RESET  JSONW-OBJECT-START
+   s" schema_version" 1 RPT-JNUM
+   RPT-JNEXT s" code" s" E-BAD-DECLARATION" RPT-JSTR
+   RPT-JNEXT s" repair_class" s" fix_family_declaration" RPT-JSTR
+   RPT-JNEXT s" verdict" s" rejected" RPT-JSTR
+   RPT-JNEXT s" decl" s" sumtype" RPT-JSTR
+   RPT-JNEXT s" family" s" badsum" RPT-JSTR
+   RPT-JNEXT s" token" s" samev" RPT-JSTR
+   RPT-JNEXT s" reason" s" duplicate variant" RPT-JSTR
+   RPT-JNEXT s" file" s" declaration" RPT-JSTR
+   RPT-JNEXT s" suggestion" s" Repair the family declaration: unique lowercase names, exact arity, closed VARIANT blocks." RPT-JSTR
+   RPT-JDONE ;
+
 : RPT-TEST-REPAIR-CLASSES ( -- )
    s" remove" s" remove_producer" s" : DIAG-REMOVE ( i64 -- i64 ) dup ;" RPT-CASE
    s" add" s" add_producer" s" : DIAG-ADD ( i64 -- i64 ) drop ;" RPT-CASE
@@ -284,6 +341,20 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" two diagnostic count" T-LABEL
    RPT-OUT packetu RPT-COUNT2$ CONTAINS? TTRUE
    s" two" RPT-EXPECT-GOLDEN ;
+
+: RPT-DIAG-CASE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n class:ptr classu:n diag:ptr diagu:n :}
+   name nameu RPT-CASE-PATHS
+   RPT-DIAG diag diagu WRITE-ALL
+   name nameu RPT-LABEL!
+   RPT-MAKE-PACKET
+   class classu RPT-ASSERT-PACKET
+   name nameu RPT-EXPECT-GOLDEN ;
+
+: RPT-TEST-FAMILY ( -- )
+   s" family" s" fix_type" RPT-FAMILY-DIAG$ RPT-DIAG-CASE ;
+
+: RPT-TEST-DECL ( -- )
+   s" declaration" s" fix_family_declaration" RPT-DECL-DIAG$ RPT-DIAG-CASE ;
 
 \ Keep one warm-aware CLI no-argument smoke; packet semantics run in-process.
 : RPT-ARGV-REPAIR-NOARGS ( -- )
@@ -315,6 +386,8 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    GOLD:INIT
    RPT-PREPARE
    RPT-TEST-REPAIR-CLASSES
+   RPT-TEST-FAMILY
+   RPT-TEST-DECL
    RPT-TEST-TWO-DIAGS
    RPT-TEST-NOARGS
    CLEANUP-RUN

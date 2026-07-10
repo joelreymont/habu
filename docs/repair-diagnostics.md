@@ -56,11 +56,11 @@ land with the declaration origin plumbing (PLAN item 13).
 ## Repair Packet JSON
 
 Repair packets are the LLM-facing object passed back after a checker rejection.
-They are derived from checker diagnostics and must preserve the same token,
-span, stack, code, class, and source evidence. Packet builders may include
-additional prompt-oriented text, but must not remove the stable fields below.
+They preserve the evidence present in the source diagnostic without inventing
+fields that its shape cannot supply. Schema 1 has definition and declaration
+packet shapes.
 
-Fields:
+Definition packet fields:
 
 | Field | Type | Presence | Meaning |
 | --- | --- | --- | --- |
@@ -79,13 +79,35 @@ Fields:
 | `inferred_effect` | string | required | Inferred effect copied from the checker. |
 | `expected` | string or null | required | Expected data-stack row, or null when the checker did not emit a data-stack mismatch. |
 | `actual` | string or null | required | Actual data-stack row, or null when the checker did not emit a data-stack mismatch. |
+| `family` | string or null | required | Exact mismatched layout family, or null for non-layout failures. |
 | `return_stack` | object | required | Object with `expected` and `actual` return-stack rows. |
 | `code` | string | required | Stable checker error code. |
 | `repair_class` | string | required | Stable repair bucket. |
-| `reason` | string | nullable | Short packet-level explanation. Current checker JSON does not emit this field. |
+| `reason` | string or null | required | Checker reason when present, otherwise null. |
 | `suggestion` | string | required | Checker repair hint. |
 | `source_excerpt` | string | required | Packet alias for checker `definition_source`. |
 | `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | Definition-repair output constraint. |
+
+Declaration packets carry only declaration evidence:
+
+| Field | Type | Presence | Meaning |
+| --- | --- | --- | --- |
+| `schema_version` | integer | required | Repair packet schema version, currently `1`. |
+| `kind` | string | required | Must be `habu_repair_packet`. |
+| `decl` | string | required | Declaration kind (`typefamily`, `sumtype`, `enum`, or `product`). |
+| `family` | string | required | Family token; may be empty when the declaration omitted it. |
+| `token` | string | required | Offending token; may be empty when one was missing. |
+| `file` | string | required | Source label or path. |
+| `code` | string | required | Must be `E-BAD-DECLARATION`. |
+| `repair_class` | string | required | Must be `fix_family_declaration`. |
+| `reason` | string | required | Short declaration failure cause. |
+| `suggestion` | string | required | Stable declaration repair hint. |
+| `diagnostic_count` | integer | required | Number of diagnostics represented by the packet. |
+| `instruction` | string | required | Declaration-repair output constraint. |
+
+Declaration packets do not fabricate `word`, source spans, effects, stack rows,
+or `source_excerpt`.
 
 When a packet aggregates multiple diagnostics, it must preserve deterministic
 ordering from `--all-errors` and either include one packet per diagnostic or a

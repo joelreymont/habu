@@ -3287,3 +3287,8 @@ unchanged (148855). Keys for milestone 2:
   failed `(actual, expected)` type pair, process row heads before recursive
   tails so width differences reach that pair before an occurs-check backstop,
   and render optional metadata only from the captured terms.
+- **Repair diagnostics are a sum of evidence shapes, not one nullable mega-
+  record.** Definition validation required spans and stack rows from declaration
+  failures that never owned them, while packet generation dropped declaration
+  fields and ADT family identity. Dispatch on the diagnostic shape, preserve its
+  required evidence, and never fabricate fields from the other variant.

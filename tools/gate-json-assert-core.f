@@ -356,42 +356,87 @@ variable GJA-DIRECT
    json jsonu word wordu GJA-FIND-WORD GJA-ROOT !
    GJA-ROOT @ class classu GJA-DIAG-CLASS-SUGGEST ;
 
+: GJA-HAS? ( n ptr u8 n -- bool )
+   JSON-GET -1 <> ;
+
+: GJA-NO-FIELD ( n ptr u8 n -- )
+   GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
+
+: GJA-DECL-NO-DEF ( n -- )
+   dup s" word" GJA-NO-FIELD
+   dup s" token_index" GJA-NO-FIELD
+   dup s" line" GJA-NO-FIELD
+   dup s" column" GJA-NO-FIELD
+   dup s" byte_start" GJA-NO-FIELD
+   dup s" byte_end" GJA-NO-FIELD
+   dup s" definition_source" GJA-NO-FIELD
+   dup s" declared_effect" GJA-NO-FIELD
+   dup s" declared_effect_source" GJA-NO-FIELD
+   dup s" inferred_effect" GJA-NO-FIELD
+   dup s" expected" GJA-NO-FIELD
+   dup s" actual" GJA-NO-FIELD
+   dup s" return_stack" GJA-NO-FIELD
+   s" source_excerpt" GJA-NO-FIELD ;
+
+: GJA-DECL? ( n -- bool ) {: root:n :}
+   root s" decl" GJA-HAS? IF GJA-TRUE exit THEN
+   root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-STR= ;
+
+: GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}
+   root s" schema_version" 1 GJA-ASSERT-INT-FIELD
+   root s" kind" GJA-REQ s" habu_repair_packet" GJA-ASSERT-STR
+   root s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
+   root s" code" GJA-REQ GJA-NONEMPTY-STR
+   root s" file" GJA-REQ GJA-NONEMPTY-STR
+   root class classu GJA-DIAG-CLASS-SUGGEST ;
+
+: GJA-REPAIR-DEF ( n -- ) {: root:n :}
+   root s" word" GJA-REQ GJA-NONEMPTY-STR
+   root s" token" GJA-REQ GJA-NONEMPTY-STR
+   root s" token_index" GJA-REQ-INTF
+   root s" line" GJA-REQ-INTF
+   root s" column" GJA-REQ-INTF
+   root s" byte_start" GJA-REQ-INTF
+   root s" byte_end" GJA-REQ-INTF
+   root s" declared_effect" GJA-REQ-NULL-OR-STRF
+   root s" declared_effect_source" GJA-REQ-NULL-OR-STRF
+   root s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
+   root s" family" GJA-REQ-NULL-OR-STRF
+   root s" reason" GJA-REQ-NULL-OR-STRF
+   root s" return_stack" GJA-REQ GJA-OBJ
+   root s" source_excerpt" GJA-REQ GJA-NONEMPTY-STR
+   root s" instruction" GJA-REQ
+   s" Fix the definition so it certifies. Output only corrected Habu code." GJA-ASSERT-STR ;
+
+: GJA-REPAIR-DECL ( n -- ) {: root:n :}
+   root GJA-DECL-NO-DEF
+   root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
+   root s" decl" GJA-REQ GJA-NONEMPTY-STR
+   root s" family" GJA-REQ-STRF
+   root s" token" GJA-REQ-STRF
+   root s" reason" GJA-REQ GJA-NONEMPTY-STR
+   root s" instruction" GJA-REQ
+   s" Repair the type-family declaration. Output only corrected Habu code." GJA-ASSERT-STR ;
+
 : GJA-REPAIR-PACKET ( ptr u8 n ptr u8 n -- )
    {: json:ptr jsonu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
-   GJA-ROOT @ s" schema_version" 1 GJA-ASSERT-INT-FIELD
-   GJA-ROOT @ s" kind" GJA-REQ s" habu_repair_packet" GJA-ASSERT-STR
-   GJA-ROOT @ s" repair_class" GJA-REQ
-   class classu GJA-ASSERT-STR
-   GJA-ROOT @ s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
-   GJA-ROOT @ s" word" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" token" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" token_index" GJA-REQ-INTF
-   GJA-ROOT @ s" file" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" line" GJA-REQ-INTF
-   GJA-ROOT @ s" column" GJA-REQ-INTF
-   GJA-ROOT @ s" byte_start" GJA-REQ-INTF
-   GJA-ROOT @ s" byte_end" GJA-REQ-INTF
-   GJA-ROOT @ s" declared_effect" GJA-REQ-NULL-OR-STRF
-   GJA-ROOT @ s" declared_effect_source" GJA-REQ-NULL-OR-STRF
-   GJA-ROOT @ s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" return_stack" GJA-REQ GJA-OBJ
-   GJA-ROOT @ s" code" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" suggestion" GJA-REQ dup GJA-NONEMPTY-STR
-   class classu GJA-SUGGEST-FOR GJA-ASSERT-STR
-   GJA-ROOT @ s" source_excerpt" GJA-REQ GJA-NONEMPTY-STR
-   GJA-ROOT @ s" instruction" GJA-REQ
-   s" Fix the definition so it certifies. Output only corrected Habu code." GJA-ASSERT-STR ;
+   GJA-ROOT @ class classu GJA-REPAIR-HEAD
+   GJA-ROOT @ dup GJA-DECL? IF GJA-REPAIR-DECL ELSE GJA-REPAIR-DEF THEN ;
 
-: GJA-DIAG-COMMON ( n -- )
+: GJA-DIAG-HEAD ( n -- )
    dup GJA-SCHEMA1
    dup s" code" GJA-REQ GJA-NONEMPTY-STR
    dup s" repair_class" GJA-REQ GJA-NONEMPTY-STR
    dup s" verdict" GJA-REQ GJA-NONEMPTY-STR
+   dup s" file" GJA-REQ GJA-NONEMPTY-STR
+   s" suggestion" GJA-REQ GJA-NONEMPTY-STR ;
+
+: GJA-DIAG-COMMON ( n -- )
+   dup GJA-DIAG-HEAD
    dup s" word" GJA-REQ GJA-NONEMPTY-STR
    dup s" token" GJA-REQ GJA-NONEMPTY-STR
    dup s" token_index" GJA-REQ-INTF
-   dup s" file" GJA-REQ GJA-NONEMPTY-STR
    dup s" line" GJA-REQ-INTF
    dup s" column" GJA-REQ-INTF
    dup s" byte_start" GJA-REQ-INTF
@@ -400,11 +445,19 @@ variable GJA-DIRECT
    dup s" declared_effect" GJA-REQ GJA-NONEMPTY-STR
    dup s" declared_effect_source" GJA-REQ GJA-NONEMPTY-STR
    dup s" inferred_effect" GJA-REQ GJA-NONEMPTY-STR
-   dup s" suggestion" GJA-REQ GJA-NONEMPTY-STR
    dup s" return_stack" GJA-REQ dup GJA-OBJ
    dup s" expected" GJA-REQ-STRF
    s" actual" GJA-REQ-STRF
    drop ;
+
+: GJA-DIAG-DECL ( n -- )
+   dup GJA-DIAG-HEAD
+   dup GJA-DECL-NO-DEF
+   dup s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-ASSERT-STR
+   dup s" decl" GJA-REQ GJA-NONEMPTY-STR
+   dup s" family" GJA-REQ-STRF
+   dup s" token" GJA-REQ-STRF
+   s" reason" GJA-REQ GJA-NONEMPTY-STR ;
 
 : GJA-DIAG-VERDICT ( n -- )
    s" verdict" GJA-REQ
@@ -412,7 +465,7 @@ variable GJA-DIRECT
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
 : GJA-DIAG-CONTRACT-ROW ( n -- )
-   dup GJA-DIAG-COMMON
+   dup GJA-DECL? IF dup GJA-DIAG-DECL ELSE dup GJA-DIAG-COMMON THEN
    dup GJA-DIAG-VERDICT
    dup s" repair_class" GJA-REQ JSON-STRING$ GJA-DIAG-CLASS-SUGGEST ;
 
