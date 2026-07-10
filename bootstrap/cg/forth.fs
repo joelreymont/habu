@@ -536,13 +536,18 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 
 : BCOUNT ( -- ) A G-POP  B A 0 LDRB,  A A 1 ADDI,  A G-PUSH  B G-PUSH ;
 
-: C-EXIT76 ( ptr u8 n -- ) {: a u :} \ typed-local-lint: allow-bare-local
-   LBL LBL {: msg code :} \ typed-local-lint: allow-bare-local
-   code B,
+\ Labeled fd-2 diagnostic + exit(rc): branch over the inline message bytes,
+\ write them to fd 2, then exit_group(rc). Mirrors the native engine's labeled
+\ capacity/snapshot exits so no fatal path is a bare rc-only exit.
+: C-EXIT-DIAG ( ptr u8 n rc -- ) {: a u rc :} \ typed-local-lint: allow-bare-local
+   LBL LBL {: msg after :} \ typed-local-lint: allow-bare-local
+   after B,
    msg LBL,  a u BYTES,
-   code LBL,
+   after LBL,
    0 2 MOVZ,  1 msg ADR,  2 u MOVZ,  NR-WRITE SYS,
-   0 76 MOVZ,  NR-EXIT-GROUP SYS, ;
+   0 rc MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: C-EXIT76 ( ptr u8 n -- )  76 C-EXIT-DIAG ;
 
 \ data space: DP cell is [x20]; HERE/ALLOT/,/C, bump it (x20 region is always RW)
 : BHERE ( -- )   7 DATA 0 LDR,  7 G-PUSH ;
@@ -3062,7 +3067,7 @@ variable CFSK2
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snok B,
-   snbad LBL,  0 79 MOVZ,  NR-EXIT-GROUP SYS,
+   snbad LBL,  s" hb: snapshot trailer corrupt" 79 C-EXIT-DIAG   \ label the fd-2 diagnostic before exit 79 (no rc-80 version path in the gforth tripwire)
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,

@@ -133,6 +133,9 @@ variable LWIDE   variable LWIDEMSG   variable LDIAGRET   \ interpret-mode wide-e
 24 constant MOFMSG-LEN    \ byte length of "hb: match: expected of: " (EM-ADT-MATCH-OF)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
+variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
+29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
+40 constant SNAPVER-MSG-LEN   \ byte length of "hb: snapshot format version unsupported\n" (LSNAPVER)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -313,7 +316,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LUNCMSG LABEL@ LBL, s" hb: uncaught throw code " BYTES,     \ UNCMSG-LEN bytes; LUNCAUGHT appends the signed code + newline
    LWIDEMSG LABEL@ LBL, s" hb: interpret-mode layout value: " BYTES,     \ WIDEMSG-LEN bytes; LWIDE appends the token + newline
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
-   LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES, ;           \ CAPMSG-LEN bytes
+   LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
+   LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
+   LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES, ;   \ SNAPVER-MSG-LEN bytes incl. newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -3213,8 +3218,12 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    5 DATA-SIZE LIT64,  7 5 CMP,  C-GT snbad BCOND,
    5 DICT-CAP MOVZ,  15 5 CMP,  C-GT snbad BCOND,
    snok B,
-   snbad LBL,  0 79 MOVZ,  NR-EXIT-GROUP SYS,
-   snbadver LBL,  0 80 MOVZ,  NR-EXIT-GROUP SYS,   \ E-SNAP-VERSION: image format newer than engine supports
+   snbad LBL,                                                              \ corrupt/truncated trailer: label the fd-2 diagnostic before exit 79
+      1 LSNAPBAD LABEL@ ADR,  0 2 MOVZ,  2 SNAPBAD-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 79 MOVZ,  NR-EXIT-GROUP SYS,
+   snbadver LBL,                                                           \ E-SNAP-VERSION: image format newer than engine supports; label before exit 80
+      1 LSNAPVER LABEL@ ADR,  0 2 MOVZ,  2 SNAPVER-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 80 MOVZ,  NR-EXIT-GROUP SYS,
    snok LBL,
    9 DATA ARGC-CELL LDR,  10 DATA ARGV-CELL LDR,  0 DATA ENVP-CELL LDR,
    22 11 6 SUB,  22 22 7 SUB,  22 22 40 SUBI,       \ x22 = engine text len then
@@ -4789,6 +4798,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LUNCAUGHT !  LBL LUNCMSG !
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LDICTFULL !  LBL LCODEFULL !
+   LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
