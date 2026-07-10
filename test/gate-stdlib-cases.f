@@ -227,6 +227,10 @@ TEST:SUITE array-helpers
    lib/array-test.f
 TEST:;SUITE
 
+TEST:SUITE adt-result
+   lib/adt/result-test.f
+TEST:;SUITE
+
 TEST:SUITE table-stdlib
    lib/table-test.f
 TEST:;SUITE
