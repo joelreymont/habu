@@ -19,11 +19,16 @@ consistent with README.md + docs/positioning.md.
    gate, error battery - just cite paths). Report as one table with
    per-row gate paths.
 
-9. Section 4.1 (Type Families): BLOCKED until the maki-type-families branch
-   merges and cad-adt-swap lands. Then write from the merged implementation
-   + its negative regressions (bad-tag proofs, field-swap rejection), never
-   from design docs alone. Evidence rule applies: the adt-swap IS the
-   type-families ablation row.
+9. Section 4.1 (Type Families): DONE 2026-07-10. Written from the merged
+   implementation (TFAM 9/10/12/14/15) and its negative regressions: 228
+   reject fixtures across type-{decl,ctor,match,linear}-suite.f, the
+   GE-MATCH-EXEC/GE-CONSTRUCT-EXEC engine batteries (forged-tag die, rc 85
+   E-BAD-TAG, "hb: bad gemt tag"), and the mirror/AOT-persistence proofs.
+   Adoption honestly deferred: the cad-adt-swap audit
+   (.dots/habu-cad-adt-swap-7bf0bb1f.md) proves the swap is blocked on
+   stack-only layout (WALL-1/2/3), gated on three capability dots; the paper
+   claims the landed capability, not CAD adoption. Not an ablation row (no
+   measured delta) — do not add it to the 16-row matrix.
 
 ## Writable now (source material exists; expand the TODO sections)
 3. Section 4 (Checked Kernel Target): docs/forth.md (type system),

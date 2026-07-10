@@ -167,9 +167,10 @@ languages are prior art---Cat~\cite{cat} and Kitten explored typed
 concatenative calculi, and Factor ships a stack-effect checker---but to
 our knowledge none types \emph{code-generating kernel compositions}
 where the checked property is the legality of the emitted GPU program's
-construction. A formal treatment, together with the algebraic data
-types now being added to the checker, is future work we intend to
-report separately.
+construction. A formal treatment is future work we intend to report
+separately; the checked algebraic data types the checker has since
+gained---sum, enum, and product families with exhaustive \code{MATCH}---are
+described in \S\ref{sec:tfam}.
 
 \paragraph{Fail-closed discipline.} Fallible words return error unions or
 throw \emph{named} codes from documented per-subsystem ranges; silent
@@ -552,13 +553,66 @@ fused-vs-unfused latency; persistent-tune warmup vs Triton JIT (cad-6);
 tuned-vs-default schedule deltas.}
 
 \subsection{Type Families}\label{sec:tfam}
-\todo{BLOCKED on the type-families campaign merging (TFAM 9/10/12/14/15)
-and the cad-adt-swap adoption: checker-enforced algebraic data types
-(sums with MATCH and bad-tag proofs, enum and product families); adoption
-evidence = the CAD internals (schedule key as a product record, verdicts
-as sums) where the checker turns field-swap and tag-confusion into
-compile errors. Write from the merged implementation and its negative
-regressions only.}
+The checker now admits user-declared algebraic data types, closing the gap
+the language section flagged. A family is declared with \code{TYPEFAMILY}
+(one-cell parametric types), \code{SUMTYPE} (tagged unions), \code{ENUM}, or
+\code{PRODUCT}; a public sum generates one checked constructor word per
+variant into a sealed, family-id--keyed package (\code{RESULT:OK}), a product
+generates \code{MAKE}/\code{UNMAKE}, and owner-private families construct
+through the checker-owned \code{construct}~\emph{family}~\emph{variant} form.
+Generated constructor bodies are ordinary checked code---the generator emits
+no \code{TRUST}, \code{TRUSTED:}, or \code{set-check}. Elimination is a checker
+control form, \code{MATCH}~\emph{family}~\code{v OF \ldots{} ENDOF \ldots{}
+;MATCH}, that refines each branch to that variant's payload type, joins the
+branch outputs under one continuation, and enforces exhaustiveness with
+\emph{no default branch}: a missing arm is a compile error that names the
+unhandled variants (\code{E-MATCH-NONEXHAUSTIVE}, a \code{missing\_variants}
+field listing them in declaration order). Multi-cell values move as one
+logical bundle---a \code{result} occupies its payload slot(s) plus a tag cell,
+and \code{dup}, \code{drop}, \code{swap}, locals capture, and return-stack
+transfers lower width-aware so the whole bundle is duplicated or dropped,
+never a lone tag.
+
+\paragraph{Checker-first, engine-proven.} Tag confusion and non-exhaustiveness
+are rejected before runtime, not caught by a default arm. The four behavioral
+suites commit 228 negative fixtures across the declaration, constructor,
+match, and linear paths: 82 malformed declarations each pinned to a named
+error code with a registry-rollback proof and 45 layout-misuse rejects
+(\code{type-decl-suite.f}); 37 constructor rejects (\code{type-ctor-suite.f});
+28 elimination rejects plus 20 that additionally pin the stable
+\code{E-MATCH-*}/\code{E-CONSTRUCT-*} diagnostic (\code{type-match-suite.f});
+and 16 linear-discipline rejects (\code{type-linear-suite.f})---every one a
+committed \code{CHECK} candidate asserted to reject. The residual is a single
+runtime path: an out-of-range tag, reachable only through a \code{TRUSTED:}
+constructor that forges it. The engine battery (\code{GE-MATCH-EXEC}) compiles
+a \code{MATCH} natively, forges such a tag, and proves the lowered die
+fires---process exit status 85 (\code{E-BAD-TAG}) and the inline diagnostic
+\code{hb: bad gemt tag} written to \code{fd~2}, with no normal continuation
+past the die, which a well-typed scrutinee never reaches. The
+Gforth-bootstrapped stage0 mirror rebuilds this lowering byte-identically, and
+a matched definition survives the AOT object cache: a preseeded forged-tag
+entry (\code{tools/hb-build.f --preseed-entry}), folded into the artifact key,
+restores and dies with the same \code{E-BAD-TAG}, so a stale normal object
+cannot silently satisfy it.
+
+\paragraph{Adoption is deliberately not yet claimed.} By design (\S17 of the
+type-families note) an ADT value is \emph{stack-only}: $M$ payload cells plus a
+tag, with no heap, GC, or boxing, so it stays register- and stack-friendly and
+its layout is predictable for future lowering---but it cannot be stored to
+memory, compared, or nested as another family's field until later layout
+policies land. The intended adoption target---swapping the Model-CAD
+internals (the schedule key to a product record with
+\code{dtype}/\code{layout}/\code{align} enum fields, gate verdicts to a
+\code{pass|fail} sum) so that a field swap or a tag confusion becomes a
+compile error---was audited against the merged surface and found blocked on
+exactly that stack-only discipline: every CAD representation stores its tag as
+an integer in a memory-backed record, which the checker (correctly) refuses
+for a layout value. The audit is regression-pinned
+(\code{type-decl-suite.f}), and the three enabling capabilities (a typed ADT
+store, derived equality, layout-kinded parameters) are tracked as open
+capability tasks in the tree. The checked-ADT \emph{capability} has therefore
+landed and is gated; its adoption inside CAD has not, and this paper claims
+only the former.
 
 \section{Limitations}
 V1 caps are explicit and fail closed: one contraction per region;
