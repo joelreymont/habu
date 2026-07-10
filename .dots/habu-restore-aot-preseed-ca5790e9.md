@@ -1,6 +1,6 @@
 ---
 title: Restore AOT preseed cache hit
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-10T17:51:50.772753+02:00"
