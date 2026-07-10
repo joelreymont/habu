@@ -3265,3 +3265,9 @@ unchanged (148855). Keys for milestone 2:
   invariant instead of new state: PAIR-STRICT has exactly one call site (ptr
   pointees) and PAIR inherits it, so CUR-STRICT already IS the "inside a
   pointee" context flag — one gated relax there, no new mode variable.
+- **A protected table's adjacent control cell belongs to the same guarded
+  metadata band.** Extending the protected-WID table moved `UNCGH-CELL` to its
+  former upper boundary but left that reporter pointer writable, so a user
+  store could redirect the uncaught-throw branch. Define the band through the
+  final engine-owned cell, mirror that length in stage0, and pin both the last
+  protected byte and the first writable byte.

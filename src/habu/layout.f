@@ -207,15 +207,16 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ it; those cells are not read live at build time, so relocating them is safe. It stays
 \ engine-reserved -- no compiled source writes it, the DP heap is bounded >= DATA-START
 \ (above the table) and snapshot saves it. The band [PROT-REG-OFF, +PROT-REG-LEN) is a
-\ SECOND range checked by PROT-GUARD, rejecting user data stores into the count cell or
-\ table. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET) ARE range-guarded too:
+\ SECOND range checked by PROT-GUARD, rejecting user data stores into the count cell,
+\ table, or uncaught-throw hook. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET)
+\ ARE range-guarded too:
 \ each PROT-GUARDs the address it redirects a write to, so a post-seal cp!/ndict! into
 \ either band fails closed at the sink. ---
 $3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32); UNCHANGED offset (aot-capture reads it live at build time)
 $3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32); UNCHANGED offset (aot-capture reads it live)
 256 constant PROT-WID-MAX               \ table capacity (256 u32 = $400, spans $3CC0..$40C0); raised from 16 (dot habu-seal-protwid-cap-6f1c9d2b)
 PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
-PROT-WID-OFF PROT-WID-MAX 4 * +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $408: count + 256 u32 table = $3CB8..$40C0
+PROT-WID-OFF PROT-WID-MAX 4 * +  1 cells +  PROT-REG-OFF -  constant PROT-REG-LEN  \ $410: registry + UNCGH-CELL = $3CB8..$40C8
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw

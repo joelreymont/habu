@@ -161,7 +161,7 @@ variable LKWEXPORT variable LCHKEXPORT
 \ DP-CHECK. Defined here (before any sink, incl. the early BPOLL) so every
 \ writer can reach it.
 \ Two guarded bands (TFAM 2b-v): band 1 = crown-jewel friend arena
-\ [FRIEND-ARENA, +FRIEND-ARENA-LEN); band 2 = protected-WID registry
+\ [FRIEND-ARENA, +FRIEND-ARENA-LEN); band 2 = protected-WID registry and uncaught hook
 \ [PROT-REG-OFF, +PROT-REG-LEN). Both are inert while the latch is 0 (engine cold
 \ load) and fail-closed once sealed. x12 holds target-DATA across both checks; x13
 \ is per-check scratch.
@@ -175,7 +175,7 @@ variable LKWEXPORT variable LCHKEXPORT
    C-CC trap BCOND,
    EREG PROT-REG-OFF MOVZ,              \ x13 = PROT-REG-OFF (> imm12: materialize)
    EREG DREG EREG SUB,                  \ x13 = offset - PROT-REG-OFF
-   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in registry band
+   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in protected metadata band
    C-CC trap BCOND,
    ok B,
    trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,

@@ -70,8 +70,8 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
 67 constant UNCAUGHT-RC                 \ deterministic exit status for an uncaught top-level throw (see
                                         \ src/habu/layout.f); stage0 has no driver-io reporter, so it only
                                         \ maps the raw code to this fixed nonzero rc - never the masked value
-\ Second guarded band (TFAM 2b-v): the native protected-WID registry occupies
-\ [$3CB8,$40C0) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN;
+\ Second guarded band (TFAM 2b-v): native protected metadata occupies
+\ [$3CB8,$40C8) in the DATA region (src/habu/layout.f PROT-REG-OFF/PROT-REG-LEN;
 \ table grown 16->256 slots in place, dot habu-seal-protwid-cap-6f1c9d2b).
 \ stage0 has no package system and no registry (census discrepancy 5), so nothing
 \ here reads these cells -- but the ADDRESS band mirrors so a post-seal store into
@@ -79,7 +79,7 @@ $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii
 \ guards (publish guard / LPROTWIDQ / AOT boot gates) cannot exist without the
 \ package system and stay pinned absent by test/seal-absence.f.
 $3CB8 constant PROT-REG-OFF             \ second PROT-GUARD band base (= native count cell)
-$408 constant PROT-REG-LEN              \ count cell + 256 u32 table = $3CB8..$40C0
+$410 constant PROT-REG-LEN              \ registry + uncaught hook = $3CB8..$40C8
 $28 constant CUR-CELL    \ get/set-current wordlist id (new defs go here)
 $30 constant WIDN-CELL   \ next fresh wordlist id (WORDLIST hands these out)
 $38 constant HOOK-CELL   \ check hook: a word addr run on each : body (0 = none)
@@ -248,7 +248,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
 \ Friend-arena write guard (TFAM 2b-i/2b-v) — stage0 mirror of src/habu/habu1.f
 \ PROT-GUARD. Traps fail-closed (exit E-SEAL-VIOLATION) when the target address
 \ in `n` (a register number) is inside either sealed band: band 1 = the friend
-\ arena [FRIEND-ARENA, +FRIEND-ARENA-LEN), band 2 = the protected-WID registry
+\ arena [FRIEND-ARENA, +FRIEND-ARENA-LEN), band 2 = protected metadata
 \ address band [PROT-REG-OFF, +PROT-REG-LEN). Inert while the latch is 0 (engine
 \ load); active after the cold prefix seals it. Defined here (before any sink,
 \ incl. the early cp!/ndict!) so every writer can reach it. gforth stage0 has no
@@ -266,7 +266,7 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    C-CC trap BCOND,
    EREG PROT-REG-OFF MOVZ,              \ x13 = PROT-REG-OFF (> imm12: materialize)
    EREG DREG EREG SUB,                  \ x13 = offset - PROT-REG-OFF
-   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in registry band
+   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in protected metadata band
    C-CC trap BCOND,
    ok B,
    trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,

@@ -179,9 +179,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-HOLE + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-PAST-BAND2-FORGE$ ( -- ptr u8 n )     \ ! at $40C0 (one past band 2, = UNCGH-CELL) stays writable
+: SLV-PAST-BAND2-FORGE$ ( -- ptr u8 n )     \ ! at $40C8 (one past band 2, = TASK-USER-BASE) stays writable
    SB-RESET
-   s" $40C0 constant SLF-PAST" SB-APPEND SLV-LF
+   s" $40C8 constant SLF-PAST" SB-APPEND SLV-LF
    s" data-base SLF-PAST + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
@@ -254,10 +254,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $40C0) (count
-\ cell + 256-slot u32 table, grown from 16 by dot habu-seal-protwid-cap-6f1c9d2b). A raw
-\ store to the count cell ($3CB8) or the u32 table ($3CC0) must trap, so user source
-\ can neither zero the count (un-protecting every sealed WID) nor overflow the table.
+\ Second guarded band (TFAM 2b-v): protected metadata [$3CB8, $40C8) contains the
+\ protected-WID registry and UNCGH-CELL. A raw store to the registry or reporter hook
+\ must trap, so user source cannot unprotect sealed WIDs or redirect uncaught throws.
 : SLV-PWIDN-FORGE$ ( -- ptr u8 n )          \ ! into the registry count cell ($3CB8)
    SB-RESET
    s" $3CB8 constant SLF-PWIDN" SB-APPEND SLV-LF
@@ -270,10 +269,16 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-PWIDT + 9 swap c!" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-PWIDT-END-FORGE$ ( -- ptr u8 n )      \ ! at the band-2 last byte (PROT-REG-OFF+PROT-REG-LEN-1 = $40BF)
+: SLV-BAND2-END-FORGE$ ( -- ptr u8 n )       \ c! at the protected metadata last byte ($40C7)
    SB-RESET
-   s" $40BF constant SLF-PWEND" SB-APPEND SLV-LF
-   s" data-base SLF-PWEND + 0 swap !" SB-APPEND SLV-LF
+   s" $40C7 constant SLF-B2END" SB-APPEND SLV-LF
+   s" data-base SLF-B2END + 0 swap c!" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-UNCGH-FORGE$ ( -- ptr u8 n )          \ ! into the uncaught-throw reporter hook ($40C0)
+   SB-RESET
+   s" $40C0 constant SLF-UNCGH" SB-APPEND SLV-LF
+   s" data-base SLF-UNCGH + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
 \ Code-emit sinks (habu-range-reject-cp-e2eed7e4): cp! sets the JIT code pointer;
@@ -476,8 +481,10 @@ variable PWG-U
    SLV-PWIDN-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" c! into the protected-WID registry table traps (band 2)" T-LABEL
    SLV-PWIDT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
-   s" ! at the band-2 upper boundary (PROT-REG-OFF+PROT-REG-LEN-1) traps" T-LABEL
-   SLV-PWIDT-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" c! at the band-2 upper boundary (PROT-REG-OFF+PROT-REG-LEN-1) traps" T-LABEL
+   SLV-BAND2-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ! into the uncaught-throw reporter hook traps" T-LABEL
+   SLV-UNCGH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 2 traps at the sink" T-LABEL
    SLV-CPSET-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
@@ -539,7 +546,7 @@ variable PWG-U
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
-   s" store one past band 2 ($40C0) stays writable" T-LABEL
+   s" store one past band 2 ($40C8) stays writable" T-LABEL
    SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
