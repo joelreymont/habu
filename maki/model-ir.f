@@ -44,7 +44,8 @@ require lib/fmt.f
 -5059 constant E-MIR-REF      \ operand ref names an uncommitted node / bad input slot
 -5060 constant E-MIR-INSLOT   \ input-slot index / capacity out of range
 -5061 constant E-MIR-STATE    \ node builder used out of order
--5062 constant E-MIR-ALIGN    \ input-slot alignment class out of range
+\ -5062 (E-MIR-ALIGN) retired: the align family makes an out-of-range class a
+\ checker reject; the code stays reserved to model-ir.
 -5063 constant E-MIR-NAME     \ model name longer than the name buffer
 
 package MAKI
@@ -68,8 +69,8 @@ create MI-INOFF MIR-CAP cells allot     \ operand window start in MI-INS
 create MI-INCNT MIR-CAP cells allot     \ operand window length
 create MI-ROWS  MIR-CAP cells allot     \ output descriptor facts
 create MI-COLS  MIR-CAP cells allot
-create MI-DT    MIR-CAP cells allot
-create MI-LAY   MIR-CAP cells allot
+create MI-DT    MIR-CAP cells allot     \ dtype (family value; typed slot MI-DT-AT)
+create MI-LAY   MIR-CAP cells allot     \ layout (family value; typed slot MI-LAY-AT)
 create MI-ATTR  MIR-CAP cells allot     \ attrs cell (variant/axis/eps, op-typed)
 create MI-MAT   MIR-CAP cells allot     \ materialization flag
 create MI-AD    MIR-CAP cells allot     \ autograd metadata (reserved)
@@ -81,10 +82,19 @@ variable MIR-INS-U
 \ model-input slots (their own descriptor facts)
 create MI-IS-ROWS MIR-IN-CAP cells allot
 create MI-IS-COLS MIR-IN-CAP cells allot
-create MI-IS-DT   MIR-IN-CAP cells allot
-create MI-IS-LAY  MIR-IN-CAP cells allot
-create MI-IS-AL   MIR-IN-CAP cells allot     \ base alignment class (AL-*); AL-UNKNOWN default
+create MI-IS-DT   MIR-IN-CAP cells allot     \ dtype (family value)
+create MI-IS-LAY  MIR-IN-CAP cells allot     \ layout (family value)
+create MI-IS-AL   MIR-IN-CAP cells allot     \ align (family value; unknown default)
 variable MIR-IS-N
+
+\ typed slot addresses (dot habu-cad-adt-swap): the descriptor columns are
+\ reachable only through these, so a raw n or a foreign family can never enter
+\ or leave a descriptor cell.
+: MI-DT-AT     ( n -- ptr dtype )   cells MI-DT     + ;
+: MI-LAY-AT    ( n -- ptr layout )  cells MI-LAY    + ;
+: MI-IS-DT-AT  ( n -- ptr dtype )   cells MI-IS-DT  + ;
+: MI-IS-LAY-AT ( n -- ptr layout )  cells MI-IS-LAY + ;
+: MI-IS-AL-AT  ( n -- ptr align )   cells MI-IS-AL  + ;
 
 \ model name (denormalized into the IR so the golden artifact store can key a file
 \ by model below the cad.f layer without a load-order cycle). Reset with the table.
@@ -102,12 +112,6 @@ variable MIR-PEND-ON
 
 : MIR-IS-CK ( n -- n )                  \ validate a model-input slot index
    dup 0 < over MIR-IS-N @ >= or if E-MIR-INSLOT throw then ;
-
-: MIR-DT-CK ( n -- n )
-   dup DT-VALID? 0= if E-MK-DTYPE throw then ;
-
-: MIR-LAY-CK ( n -- n )
-   dup dup 0 < swap LAY-N >= or if E-TV-LAYOUT throw then ;
 
 \ an operand ref must name a committed node (>=0, < MIR-N) or a live input slot
 : MIR-REF-CK ( n -- n ) {: ref:n :}
@@ -142,30 +146,34 @@ public
    nn MIR-N !  sn MIR-IS-N !  iu MIR-INS-U !  0 MIR-PEND-ON ! ;
 
 \ ---- model-input slots -----------------------------------------------------
-: MIR-INPUT+ ( n n n n -- n )           \ rows cols dtype layout -- slot
-   {: rows:n cols:n dt:n lay:n :}
-   dt MIR-DT-CK drop  lay MIR-LAY-CK drop
+\ dtype/layout arrive as family values (a bad tag is a checker reject; the old
+\ E-MK-DTYPE/E-TV-LAYOUT range validation is unrepresentable). Families cannot
+\ bind into locals, so the descriptor stores run from the stack before the
+\ extent locals bind.
+: MIR-INPUT+ ( n n dtype layout -- n )           \ rows cols dtype layout -- slot
    MIR-IS-N @ MIR-IN-CAP >= if E-MIR-INSLOT throw then
    MIR-IS-N @ {: s:n :}
+   s MI-IS-LAY-AT !                              \ layout (top)
+   s MI-IS-DT-AT !                               \ dtype
+   MAKI-ALIGN:UNKNOWN s MI-IS-AL-AT !            \ no recorded pointer yet -> conservative
+   {: rows:n cols:n :}
    rows s cells MI-IS-ROWS + !
    cols s cells MI-IS-COLS + !
-   dt   s cells MI-IS-DT   + !
-   lay  s cells MI-IS-LAY  + !
-   AL-UNKNOWN s cells MI-IS-AL + !               \ no recorded pointer yet -> conservative
    s 1+ MIR-IS-N !
    s ;
 
-: MIR-SLOT-ROWS@ ( n -- n )  MIR-IS-CK cells MI-IS-ROWS + @ ;
-: MIR-SLOT-COLS@ ( n -- n )  MIR-IS-CK cells MI-IS-COLS + @ ;
-: MIR-SLOT-DT@   ( n -- n )  MIR-IS-CK cells MI-IS-DT   + @ ;
-: MIR-SLOT-LAY@  ( n -- n )  MIR-IS-CK cells MI-IS-LAY  + @ ;
-: MIR-SLOT-AL@   ( n -- n )  MIR-IS-CK cells MI-IS-AL   + @ ;
+: MIR-SLOT-ROWS@ ( n -- n )       MIR-IS-CK cells MI-IS-ROWS + @ ;
+: MIR-SLOT-COLS@ ( n -- n )       MIR-IS-CK cells MI-IS-COLS + @ ;
+: MIR-SLOT-DT@   ( n -- dtype )   MIR-IS-CK MI-IS-DT-AT  @ ;
+: MIR-SLOT-LAY@  ( n -- layout )  MIR-IS-CK MI-IS-LAY-AT @ ;
+: MIR-SLOT-AL@   ( n -- align )   MIR-IS-CK MI-IS-AL-AT  @ ;
 
-\ record a measured base alignment class onto an input slot (bound-buffer path)
-: MIR-SLOT-AL! ( n n -- ) {: s:n al:n :}         \ slot align --
-   al AL-VALID? 0= if E-MIR-ALIGN throw then
-   s MIR-IS-CK drop
-   al s cells MI-IS-AL + ! ;
+\ record a measured base alignment class onto an input slot (bound-buffer path);
+\ the align arrives as a family value and swaps over the slot index so the index
+\ can validate + bind while the align stores from the stack.
+: MIR-SLOT-AL! ( n align -- )                    \ slot align --
+   swap MIR-IS-CK {: s:n :}
+   s MI-IS-AL-AT ! ;
 
 \ rebind an input slot's extents (OPTIMIZE-time shape binding, maki/cad.f)
 : MIR-SLOT-SHAPE! ( n n n -- ) {: rows:n cols:n s:n :}   \ rows cols slot --
@@ -186,19 +194,19 @@ public
    MIR-INS-U @ 1+ MIR-INS-U !
    MIR-PEND-CNT @ 1+ MIR-PEND-CNT ! ;
 
-: MIR-OP+ ( n n n n n n -- n )          \ rows cols dtype layout attr mat -- node
-   {: rows:n cols:n dt:n lay:n attr:n mat:n :}
+: MIR-OP+ ( n n dtype layout n n -- n ) \ rows cols dtype layout attr mat -- node
+   {: attr:n mat:n :}
    MIR-PEND-ON @ 0= if E-MIR-STATE throw then
-   dt MIR-DT-CK drop  lay MIR-LAY-CK drop
    MIR-N @ MIR-CAP >= if E-MIR-CAP throw then
    MIR-N @ {: k:n :}
+   k MI-LAY-AT !                         \ layout (top after attr/mat bound)
+   k MI-DT-AT !                          \ dtype
+   {: rows:n cols:n :}
    MIR-PEND-KIND @ k cells MI-OP    + !
    MIR-PEND-OFF  @ k cells MI-INOFF + !
    MIR-PEND-CNT  @ k cells MI-INCNT + !
    rows k cells MI-ROWS + !
    cols k cells MI-COLS + !
-   dt   k cells MI-DT   + !
-   lay  k cells MI-LAY  + !
    attr k cells MI-ATTR + !
    mat  k cells MI-MAT  + !
    0    k cells MI-AD   + !
@@ -207,11 +215,11 @@ public
    k ;
 
 \ ---- node accessors (each validates the node index) ------------------------
-: MIR-OP@   ( n -- n )     MIR-CK cells MI-OP    + @ ;
-: MIR-ROWS@ ( n -- n )     MIR-CK cells MI-ROWS  + @ ;
-: MIR-COLS@ ( n -- n )     MIR-CK cells MI-COLS  + @ ;
-: MIR-DT@   ( n -- n )     MIR-CK cells MI-DT    + @ ;
-: MIR-LAY@  ( n -- n )     MIR-CK cells MI-LAY   + @ ;
+: MIR-OP@   ( n -- n )       MIR-CK cells MI-OP    + @ ;
+: MIR-ROWS@ ( n -- n )       MIR-CK cells MI-ROWS  + @ ;
+: MIR-COLS@ ( n -- n )       MIR-CK cells MI-COLS  + @ ;
+: MIR-DT@   ( n -- dtype )   MIR-CK MI-DT-AT  @ ;
+: MIR-LAY@  ( n -- layout )  MIR-CK MI-LAY-AT @ ;
 : MIR-ATTR@ ( n -- n )     MIR-CK cells MI-ATTR  + @ ;
 : MIR-AD@   ( n -- n )     MIR-CK cells MI-AD    + @ ;
 : MIR-MAT@  ( n -- bool )  MIR-CK cells MI-MAT   + @ 0= 0= ;
@@ -247,23 +255,8 @@ public
 
 private
 
-\ ---- dtype / layout key text (fail closed) ---------------------------------
-: DT-KEY ( n -- ptr u8 n )
-   case
-      DT-F32  of s" f32"  endof
-      DT-F16  of s" f16"  endof
-      DT-BF16 of s" bf16" endof
-      DT-U32  of s" u32"  endof
-      DT-I32  of s" i32"  endof
-      E-MK-DTYPE throw
-   endcase ;
-
-: LAY-KEY ( n -- ptr u8 n )
-   case
-      LAY-ROW of s" row" endof
-      LAY-COL of s" col" endof
-      E-TV-LAYOUT throw
-   endcase ;
+\ dtype/layout wire text comes from the family renders DT-KEY / LAY-KEY
+\ (tensor.f / tensor-value.f): exhaustive MATCH, so a bad tag is unrepresentable.
 
 \ one dim: an unbound extent (0) renders "?" (shapes bind at OPTIMIZE time)
 : DIM-KEY+ ( n -- )  dup 0= if drop s" ?" SB-APPEND else SB-INT then ;

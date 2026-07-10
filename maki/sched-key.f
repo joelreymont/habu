@@ -62,12 +62,14 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    h
    8 0 ?do  SK-FOLD @ $FF and FNV-BYTE  SK-FOLD @ 8 rshift SK-FOLD !  loop ;
 
+\ dtype/layout fold through their named wire-code boundaries (DTYPE>N/LAYOUT>N);
+\ the codes equal the pre-family DT-*/LAY-* values, so persisted hashes are stable
 : RSIG-NODE ( n n -- n ) {: node:n :}           \ ( h node -- h' ) fold a node's facts
    node MIR-OP@   FNV-CELL
    node MIR-ROWS@ FNV-CELL
    node MIR-COLS@ FNV-CELL
-   node MIR-DT@   FNV-CELL
-   node MIR-LAY@  FNV-CELL ;
+   node MIR-DT@  DTYPE>N  FNV-CELL
+   node MIR-LAY@ LAYOUT>N FNV-CELL ;
 
 : RSIG ( n -- n ) {: r:n :}                     \ region -> content hash (nodes in order)
    FNV-BASIS
@@ -89,10 +91,14 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    rows DIM-CLASS+  $78 SB-APPEND-C  cols DIM-CLASS+ ;
 
 \ ---- alignment class over the region's model-input reads --------------------
+\ Alignment classes are intrinsically ORDERED (unknown < byte < a4 < a8 < a16)
+\ and the region class is their min-fold; ALIGN>N preserves that order, so the
+\ fold runs on the ordinal codes. This is align's one named ordinal boundary;
+\ the folded n feeds only AL-KEY below.
 : NODE-ALIGN ( n n -- n ) {: node:n :}          \ ( al node -- al' ) min input-slot alignment
    node MIR-IN-COUNT@ 0 ?do
       node i MIR-IN@ dup MIR-REF-INPUT?
-      if MIR-REF-SLOT MIR-SLOT-AL@ min else drop then
+      if MIR-REF-SLOT MIR-SLOT-AL@ ALIGN>N min else drop then
    loop ;
 
 : REGION-ALIGN ( n -- n ) {: r:n :}

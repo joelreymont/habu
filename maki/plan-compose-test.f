@@ -51,7 +51,7 @@ package MAKI
 
 \ ---- descriptor seeding + plan-store probes (read the captured IR node facts) ----
 : PCT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
-   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC ;
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC ;
 : PCT-IN ( n n -- n ) {: node:n k:n :}  node k TENSOR:PLAN-IN@ TENSOR:tensor>N ;   \ k-th input handle
 : PCT-OUT ( n -- n ) {: node:n :}  node TENSOR:PLAN-OUT@ TENSOR:tensor>N ;         \ output handle
 

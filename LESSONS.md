@@ -3310,3 +3310,11 @@ unchanged (148855). Keys for milestone 2:
   Before executing a dot on a branch behind master, diff the dot against
   master's version and rebase onto the plan-owner's branch BEFORE implementing,
   not after; a destruction review is only as good as the spec it is given.
+- **Probe a BLOCKER claim before repeating it.** A plan note said the Model IR
+  family-typed migration was blocked on enum-typed locals. A five-pattern
+  feasibility probe showed everything the migration needs — family-returning
+  accessors, MATCH renders/predicates, dup multi-use, families as word args
+  through factored helpers — certifies without any local; only the `{: x:fam :}`
+  bind rejects, and stack-discipline style never needs it. A missing capability
+  blocks only the code shapes that require it, not the goal; prove the
+  intersection empty before declaring work blocked.

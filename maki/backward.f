@@ -65,8 +65,8 @@ variable BW-BUILT?
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
 : REF-ROWS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
 : REF-COLS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: REF-DT   ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@   else r MIR-DT@   then ;
-: REF-LAY  ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@  else r MIR-LAY@  then ;
+: REF-DT   ( n -- dtype )  {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@   else r MIR-DT@   then ;
+: REF-LAY  ( n -- layout ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@  else r MIR-LAY@  then ;
 
 \ ---- cotangent table access (node ref -> BW-CT, input ref -> BW-ISG) ----------
 : BW-GET ( n -- n ) {: ref:n :}
@@ -89,7 +89,7 @@ variable BW-BUILT?
 \ matmul: out rows = a.rows, out cols = b.cols (the contraction result shape)
 : BW-MM ( n n -- n ) {: a:n b:n :}
    OP-MATMUL MIR-OP-BEGIN  a MIR-IN+  b MIR-IN+
-   a REF-ROWS  b REF-COLS  a REF-DT  LAY-ROW  0  1  MIR-OP+ ;
+   a REF-ROWS  b REF-COLS  a REF-DT  MAKI-LAYOUT:ROW  0  1  MIR-OP+ ;
 
 \ transpose: RxC -> CxR (movement node with staged verdict, like PLAN-TRANSPOSE)
 : BW-TR ( n -- n ) {: s:n :}
@@ -97,11 +97,13 @@ variable BW-BUILT?
    OP-TRANSPOSE MIR-OP-BEGIN  s MIR-IN+
    s REF-COLS  s REF-ROWS  s REF-DT  s REF-LAY  attr  1  MIR-OP+ ;
 
-\ reshape the cotangent to a target shape (movement node; verdict per target layout)
-: BW-RS ( n n n n n -- n ) {: ct:n tr:n tc:n dt:n lay:n :}
-   MV-RESHAPE  lay MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
+\ reshape the cotangent to a target shape (movement node; verdict per target
+\ layout); dtype/layout come from a reference tensor like the other emitters,
+\ so the families ride the stack straight into MIR-OP+
+: BW-RS ( n n n n -- n ) {: ct:n tr:n tc:n dref:n :}   \ ct target-rows target-cols dref
+   MV-RESHAPE  dref REF-LAY MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
    OP-RESHAPE MIR-OP-BEGIN  ct MIR-IN+
-   tr tc dt lay  attr  1  MIR-OP+ ;
+   tr tc  dref REF-DT  dref REF-LAY  attr  1  MIR-OP+ ;
 
 \ slice rows [r0,r1) of the cotangent; output descriptor from a reference tensor
 : BW-SL ( n n n n -- n ) {: ct:n r0:n r1:n dref:n :}
@@ -178,7 +180,7 @@ variable BW-BUILT?
 \ reshape adjoint reshapes the cotangent back to the input shape
 : BW-STEP-RESHAPE ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}
-   ct  x REF-ROWS  x REF-COLS  x REF-DT  x REF-LAY  BW-RS  x BW-ACCUM ;
+   ct  x REF-ROWS  x REF-COLS  x  BW-RS  x BW-ACCUM ;
 
 \ transpose adjoint transposes the cotangent (self-inverse)
 : BW-STEP-TRANSPOSE ( n n -- ) {: fn:n ct:n :}

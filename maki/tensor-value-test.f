@@ -3,6 +3,7 @@
 \ Test-local names are TVT- prefixed: suites share the MAKI wordlist.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/tensor-value.f
 
 package MAKI
@@ -21,37 +22,38 @@ create TVT-BX 4 cells allot
 TVT-BX 2 2 TENSOR:TV-NEW
 dup TENSOR:TV-ROWS@    2       T=
 dup TENSOR:TV-COLS@    2       T=
-dup TENSOR:TV-DTYPE@   DT-F32  T=
-dup TENSOR:TV-LAYOUT@  LAY-ROW T=
+dup TENSOR:TV-DTYPE@   DTYPE>N DT-F32   T=
+dup TENSOR:TV-LAYOUT@  LAYOUT>N LAY-ROW T=
 dup TENSOR:TV-ELEMS    4       T=
 dup TENSOR:TV-HAS-DATA?        TTRUE
 dup TENSOR:TV-DATA@ TVT-BX =   TTRUE
 drop
 
 \ ---- explicit constructor + settable dtype/layout ---------------------------
-TVT-BX 3 5 DT-BF16 LAY-COL TENSOR:TV-NEW-AS
-dup TENSOR:TV-ROWS@    3       T=
-dup TENSOR:TV-COLS@    5       T=
-dup TENSOR:TV-DTYPE@   DT-BF16 T=
-dup TENSOR:TV-LAYOUT@  LAY-COL T=
-dup DT-F16  TENSOR:TV-DTYPE!  TENSOR:TV-DTYPE@  DT-F16  T=
-dup LAY-ROW TENSOR:TV-LAYOUT! TENSOR:TV-LAYOUT@ LAY-ROW T=
+\ (family accessors assert through the DTYPE>N/LAYOUT>N wire boundaries)
+TVT-BX 3 5 MAKI-DTYPE:DBF16 MAKI-LAYOUT:COL TENSOR:TV-NEW-AS
+dup TENSOR:TV-ROWS@    3               T=
+dup TENSOR:TV-COLS@    5               T=
+dup TENSOR:TV-DTYPE@   DTYPE>N DT-BF16 T=
+dup TENSOR:TV-LAYOUT@  LAYOUT>N LAY-COL T=
+dup MAKI-DTYPE:DF16  TENSOR:TV-DTYPE!  TENSOR:TV-DTYPE@  DTYPE>N DT-F16  T=
+dup MAKI-LAYOUT:ROW TENSOR:TV-LAYOUT! TENSOR:TV-LAYOUT@ LAYOUT>N LAY-ROW T=
 drop
 
 \ ---- alignment recorded from the actual pointer -----------------------------
 \ Exact class from a known 16-aligned anchor and byte offsets off it.
-TVT-A16     1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ AL-16   T=  drop
-TVT-A16 8 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ AL-8    T=  drop
-TVT-A16 4 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ AL-4    T=  drop
-TVT-A16 2 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ AL-BYTE T=  drop
-TVT-A16 1 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ AL-BYTE T=  drop
+TVT-A16     1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ ALIGN>N AL-16   T=  drop
+TVT-A16 8 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ ALIGN>N AL-8    T=  drop
+TVT-A16 4 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ ALIGN>N AL-4    T=  drop
+TVT-A16 2 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ ALIGN>N AL-BYTE T=  drop
+TVT-A16 1 + 1 1 TENSOR:TV-NEW  dup TENSOR:TV-ALIGN@ ALIGN>N AL-BYTE T=  drop
 
 \ ---- descriptor: shape/dtype only, no buffer, conservative alignment --------
-2 3 DT-F32 LAY-ROW TENSOR:TV-DESC
+2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC
 dup TENSOR:TV-ROWS@   2          T=
 dup TENSOR:TV-COLS@   3          T=
-dup TENSOR:TV-DTYPE@  DT-F32     T=
-dup TENSOR:TV-ALIGN@  AL-UNKNOWN T=
+dup TENSOR:TV-DTYPE@  DTYPE>N DT-F32     T=
+dup TENSOR:TV-ALIGN@  ALIGN>N AL-UNKNOWN T=
 dup TENSOR:TV-HAS-DATA?          TFALSE
 drop
 
@@ -77,10 +79,10 @@ TVT-IY 3 T-GET 0.5 f+ f>s 250 T=
 \ ---- plan builder mechanism (PLAN-RESET / begin / IN+ / OP+ / accessors) ----
 variable TVT-BLDX
 TENSOR:PLAN-RESET
-2 3 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-BLDX !
+2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-BLDX !
 OP-GELU TENSOR:PLAN-OP-BEGIN
 TVT-BLDX @ TENSOR:PLAN-IN+
-2 3 DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:PLAN-OP+
+2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:PLAN-OP+
 TENSOR:PLAN-N@ 1 T=
 0 TENSOR:PLAN-OP@ OP-GELU T=
 0 TENSOR:PLAN-IN-COUNT@ 1 T=
@@ -89,11 +91,11 @@ TENSOR:PLAN-N@ 1 T=
 \ ---- descriptor-mode model: PLINEAR PGELU PLINEAR records the right sequence -
 variable TVT-X  variable TVT-W1  variable TVT-B1  variable TVT-W2  variable TVT-B2
 TENSOR:PLAN-RESET
-2 3 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-X !                     \ X   2x3
-3 4 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-W1 !                    \ W1  3x4
-1 4 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-B1 !                    \ b1  1x4
-4 5 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-W2 !                    \ W2  4x5
-1 5 DT-F32 LAY-ROW TENSOR:TV-DESC TVT-B2 !                    \ b2  1x5
+2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-X !                     \ X   2x3
+3 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-W1 !                    \ W1  3x4
+1 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-B1 !                    \ b1  1x4
+4 5 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-W2 !                    \ W2  4x5
+1 5 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TVT-B2 !                    \ b2  1x5
 TVT-X @ TVT-W1 @ TVT-B1 @ TENSOR:PLINEAR  TENSOR:PGELU  TVT-W2 @ TVT-B2 @ TENSOR:PLINEAR  drop
 
 TENSOR:PLAN-N@ 3 T=
@@ -116,26 +118,18 @@ TENSOR:PLAN-N@ 3 T=
 2 TENSOR:PLAN-OUT@ TENSOR:TV-COLS@ 5 T=
 
 \ ---- fail-closed probes (top-level cannot push quotations) ------------------
-: TVT-BAD-DT    ( -- )  TVT-BX 2 2 99 LAY-ROW TENSOR:TV-NEW-AS drop ;
-: TVT-BAD-LAY   ( -- )  TVT-BX 2 2 DT-F32 99 TENSOR:TV-NEW-AS drop ;
-: TVT-BAD-DT!   ( -- )  TVT-BX 2 2 TENSOR:TV-NEW 99 TENSOR:TV-DTYPE!  drop ;
-: TVT-BAD-LAY!  ( -- )  TVT-BX 2 2 TENSOR:TV-NEW 99 TENSOR:TV-LAYOUT! drop ;
-: TVT-NODATA    ( -- )  2 2 DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:TV-DATA@ drop ;
+: TVT-NODATA    ( -- )  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:TV-DATA@ drop ;
 : TVT-BAD-SHAPE ( -- )  TVT-BX 2 3 TENSOR:TV-NEW  TVT-BX 2 2 TENSOR:TV-NEW  TVT-BX 1 2 TENSOR:TV-NEW  TVT-BX 2 2 TENSOR:TV-NEW  TENSOR:TV-LINEAR drop ;
 : TVT-PLAN-IDX  ( -- )  TENSOR:PLAN-RESET 0 TENSOR:PLAN-OP@ drop ;
 : TVT-OPKIND    ( -- )  TENSOR:PLAN-RESET 99 TENSOR:PLAN-OP-BEGIN ;
 : TVT-PLAN-DBL  ( -- )  TENSOR:PLAN-RESET OP-GELU TENSOR:PLAN-OP-BEGIN OP-GELU TENSOR:PLAN-OP-BEGIN ;
-: TVT-IN-NB     ( -- )  TENSOR:PLAN-RESET 2 2 DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:PLAN-IN+ ;
-: TVT-OP-NB     ( -- )  TENSOR:PLAN-RESET 2 2 DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:PLAN-OP+ ;
-: TVT-FULL-TV   ( -- )  TENSOR:TV-RESET  TENSOR:TV-CAP 1+ 0 ?do 2 2 DT-F32 LAY-ROW TENSOR:TV-DESC drop loop ;
+: TVT-IN-NB     ( -- )  TENSOR:PLAN-RESET 2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:PLAN-IN+ ;
+: TVT-OP-NB     ( -- )  TENSOR:PLAN-RESET 2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:PLAN-OP+ ;
+: TVT-FULL-TV   ( -- )  TENSOR:TV-RESET  TENSOR:TV-CAP 1+ 0 ?do 2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC drop loop ;
 : TVT-FULL-PLAN ( -- )
    TENSOR:TV-RESET TENSOR:PLAN-RESET
-   TENSOR:PLAN-CAP 1+ 0 ?do  OP-GELU TENSOR:PLAN-OP-BEGIN  2 2 DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:PLAN-OP+  loop ;
+   TENSOR:PLAN-CAP 1+ 0 ?do  OP-GELU TENSOR:PLAN-OP-BEGIN  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:PLAN-OP+  loop ;
 
-' TVT-BAD-DT    E-MK-DTYPE      TTHROWS
-' TVT-BAD-LAY   E-TV-LAYOUT     TTHROWS
-' TVT-BAD-DT!   E-MK-DTYPE      TTHROWS
-' TVT-BAD-LAY!  E-TV-LAYOUT     TTHROWS
 ' TVT-NODATA    E-TV-NODATA     TTHROWS
 ' TVT-BAD-SHAPE E-TV-SHAPE      TTHROWS
 ' TVT-PLAN-IDX  E-TV-PLAN-IDX   TTHROWS
@@ -145,6 +139,18 @@ TENSOR:PLAN-N@ 3 T=
 ' TVT-OP-NB     E-TV-PLAN-STATE TTHROWS
 ' TVT-FULL-TV   E-TV-FULL       TTHROWS
 ' TVT-FULL-PLAN E-TV-PLAN-FULL  TTHROWS
+
+\ ---- swapped-family negatives (dot habu-cad-adt-swap, corrected plan) --------
+\ A bad dtype/layout tag is now a CHECKER reject at the constructor/setter
+\ boundary (replacing the old E-MK-DTYPE/E-TV-LAYOUT runtime throws), and the
+\ dtype<->layout swap - the "indistinguishable bytes" hole - rejects both ways.
+s" TVT-OK-NEW   ( ptr a n n dtype layout -- tensor ) TENSOR:TV-NEW-AS" CHECK-QUIET-CANDIDATE! -1 T=
+s" TVT-N-DT     ( ptr a n n n layout -- tensor ) TENSOR:TV-NEW-AS"     CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-N-LAY    ( ptr a n n dtype n -- tensor ) TENSOR:TV-NEW-AS"      CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-SWAP-NEW ( ptr a n n layout dtype -- tensor ) TENSOR:TV-NEW-AS" CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-N-DT!    ( tensor n -- tensor ) TENSOR:TV-DTYPE!"               CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-LAY-DT!  ( tensor layout -- tensor ) TENSOR:TV-DTYPE!"          CHECK-QUIET-CANDIDATE! 0 T=
+s" TVT-DT-LAY!  ( tensor dtype -- tensor ) TENSOR:TV-LAYOUT!"          CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

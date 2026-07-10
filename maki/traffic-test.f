@@ -15,17 +15,10 @@ variable TT-VA  variable TT-VU
 : TT-SAVE ( ptr u8 n -- )  TT-VU ! TT-VA ! ;
 : TT-IN ( ptr u8 n -- )  TT-VA @ TT-VU @ 2swap CONTAINS? TTRUE ;
 
-: TRY-DT ( -- )  99 DT-BYTES drop ;                       \ unknown dtype fails closed
-
 T-RESET
 
-\ ---- dtype byte widths -----------------------------------------------------
-DT-F32  DT-BYTES 4 T=
-DT-F16  DT-BYTES 2 T=
-DT-BF16 DT-BYTES 2 T=
-DT-U32  DT-BYTES 4 T=
-DT-I32  DT-BYTES 4 T=
-' TRY-DT E-MK-DTYPE TTHROWS
+\ (dtype byte widths are tensor.f DT-SIZE, covered by maki/tensor-test.f; the
+\ old numeric DT-BYTES duplicate and its runtime bad-tag throw are retired)
 
 \ ---- fused elementwise pair: GELU RELU on 2x4 (f32) ------------------------
 \ before: 2 nodes * (read 8 + write 8) * 4B = 128; after: read x(8) + write y(8) = 64.
@@ -38,10 +31,10 @@ TRF-AFTER   64 T=
 \ ---- broadcast discount: an input read by two nodes IN ONE region counts once -
 \ node0 = ADD(x, b) ; node1 = ADD(n0, b) -> b (slot1) read twice, discounted once.
 MIR-RESET
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop
-2 4 DT-F32 LAY-ROW MIR-INPUT+ drop
-OP-ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-OP-ADD MIR-OP-BEGIN 0 MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+OP-ADD MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+OP-ADD MIR-OP-BEGIN 0 MIR-IN+ 1 MIR-IN-REF MIR-IN+ 2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
 FP-BUILD
 FP-REGION-COUNT 1 T=
 TRF-BEFORE 192 T=                          \ 48 elems * 4

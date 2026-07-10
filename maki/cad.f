@@ -359,8 +359,8 @@ private
 : SIG-INPUT ( ptr u8 n -- ) {: a:ptr u:n :}
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols DT-F32 LAY-ROW TENSOR:TV-DESC TENSOR:tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
-   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop                                  \ register the IR input slot
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC TENSOR:tensor>N  CAP-INS CAP-IN-N @ cells + !   \ handle for the seed
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                 \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then
    CAP-IN-N @ 1+ CAP-IN-N ! ;
@@ -478,7 +478,7 @@ private
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
 : RB-REF-COLS ( n -- n ) {: r:n :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: RB-REF-LAY ( n -- n ) {: r:n :}
+: RB-REF-LAY ( n -- layout ) {: r:n :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-LAY@ else r MIR-LAY@ then ;
 
 \ elementwise / row-reduce forward: output = data operand (operand 0) shape
@@ -684,8 +684,8 @@ private
 \ max legal vector width for the region output's compiler-allocated (AL-16) write;
 \ this is the elementwise default's "max legal vec" (else scalar for a strided write).
 : REGION-MAXVEC ( n -- n ) {: rep:n :}
-   rep MIR-LAY@ LAY-ROW <> if 1 exit then
-   AL-16  rep MIR-DT@ DT-SIZE  rep MIR-COLS@  MP-W ;
+   rep MIR-LAY@ LAYOUT-ROW? 0= if 1 exit then
+   MAKI-ALIGN:A16  rep MIR-DT@ DT-SIZE  rep MIR-COLS@  MP-W ;
 
 : TILE-CANDS+ ( report n -- report ) {: fam:n :}   \ emit every candidate row of a family
    fam FAM-SPACE 0 ?do  fam i CAND$ REPORT:CAND+  loop ;

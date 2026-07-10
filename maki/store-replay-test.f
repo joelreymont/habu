@@ -12,9 +12,9 @@ package MAKI
 \ ---- one gelu/relu elementwise chain over a single input (sched-key fixture) --
 : SRT-BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 \ ---- capacity fixtures: 33 distinct synthetic schedule rows (> SK-TAB-CAP) -----
 : SRT-WRITE ( n -- ) {: k:n :}
@@ -25,7 +25,7 @@ T-RESET
 
 \ ---- durable put lands in both the table and schedules.rows -----------------
 STORE-RESET  SK-TAB-RESET
-2 100 SRT-BUILD  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 100 SRT-BUILD  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 0 SK-KEY$ 7 SK-PUT-DURABLE
 0 SK-KEY$ SK-GET drop 7 T=            \ hot table
 SK-TAB-COUNT 1 T=

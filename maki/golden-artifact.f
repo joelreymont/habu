@@ -187,8 +187,14 @@ private
 
 \ ---- tolerance --------------------------------------------------------------
 : GA-OUT-NODE ( -- n )  MIR-N@ 1- ;
-: GA-DEFAULT-TOL ( n -- n n ) {: dt:n :}          \ dtype -> atol-exp rtol-exp
-   dt DT-F32 = if GA-F32-ATOL-EXP GA-F32-RTOL-EXP else GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP then ;
+: GA-DEFAULT-TOL ( dtype -- n n )                 \ dtype -> atol-exp rtol-exp
+   MATCH dtype
+      df32  OF GA-F32-ATOL-EXP GA-F32-RTOL-EXP ENDOF
+      df16  OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF
+      dbf16 OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF
+      du32  OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF
+      di32  OF GA-LOW-ATOL-EXP GA-LOW-RTOL-EXP ENDOF
+   ;MATCH ;
 : GA-SET-SAVE-TOL ( -- )                          \ tolerance for the model output dtype
    GA-OUT-NODE MIR-DT@ GA-DEFAULT-TOL GA-RTOL-EXP ! GA-ATOL-EXP ! ;
 

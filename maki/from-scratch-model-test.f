@@ -27,7 +27,7 @@ MODEL-DEFINED? TTRUE
 MIR-N@ 3 T=                                   \ LINEAR, GELU, LINEAR
 MIR-IN-SLOTS@ 5 T=                            \ x, w1, b1, w2, b2
 2 MIR-ROWS@ 8 T=  2 MIR-COLS@ 2 T=            \ output y = 8x2 (mu, logvar)
-2 MIR-DT@ DT-F32 T=  2 MIR-LAY@ LAY-ROW T=
+2 MIR-DT@ DTYPE>N DT-F32 T=  2 MIR-LAY@ LAYOUT>N LAY-ROW T=
 0 MIR-ROWS@ 8 T=  0 MIR-COLS@ 16 T=           \ hidden = 8x16
 
 \ ---- committed dataset: deterministic + in range ----------------------------

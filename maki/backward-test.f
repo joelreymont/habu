@@ -21,14 +21,14 @@ variable BT-VA  variable BT-VU
 
 \ ---- fail-closed probes (MODEL: parses at runtime, so build the IR by hand) --
 : BT-MK1 ( n -- )  {: op:n :}                            \ single op over one 2x2 input
-   MIR-RESET  2 2 DT-F32 LAY-ROW MIR-INPUT+ drop
-   op MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  2 2 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   MIR-RESET  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   op MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  2 2 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 : BT-MK-SCALE ( n n -- ) {: sr:n sc:n :}                 \ SCALE(x:2x3, s:sr x sc)
    MIR-RESET
-   2 3 DT-F32 LAY-ROW MIR-INPUT+ drop                     \ x = 2x3 (slot 0)
-   sr sc DT-F32 LAY-ROW MIR-INPUT+ drop                   \ s = sr x sc (slot 1)
+   2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                     \ x = 2x3 (slot 0)
+   sr sc MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                   \ s = sr x sc (slot 1)
    OP-SCALE MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  1 MIR-IN-REF MIR-IN+
-   2 3 DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
+   2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 : BT-TRY-STATE ( -- )  BW-FWD-N@ drop ;                  \ accessor before build
 : BT-TRY-EMPTY ( -- )  MIR-RESET BW-BUILD ;              \ empty IR
 : BT-TRY-CAST  ( -- )  OP-CAST  BT-MK1 BW-BUILD ;           \ no adjoint (non-differentiable)
@@ -59,9 +59,9 @@ FP-BUILD
 \ ---- fan-out: a value used twice sums its cotangents via OP-ADD -------------
 \ n0 = gelu(i0) ; n1 = add(n0, n0) -> n0 used twice on the backward path.
 MIR-RESET
-0 0 DT-F32 LAY-ROW MIR-INPUT+ drop
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-OP-ADD  MIR-OP-BEGIN  0 MIR-IN+ 0 MIR-IN+   0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop
+0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+OP-ADD  MIR-OP-BEGIN  0 MIR-IN+ 0 MIR-IN+   0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
 BW-BUILD
 BW-BWD-COUNT 2 T=
 2 MIR-OP@ OP-ADD      T=                       \ the fan-out summation node

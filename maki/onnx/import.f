@@ -109,7 +109,7 @@ variable SYN-N
          if E-ONNX-SHAPE throw then            \ shapes must agree; the initializer binds it
       exit then
    drop
-   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI:DT-F32 MAKI:LAY-ROW MAKI:MIR-INPUT+ {: s:n :}
+   gi OGIN-ROWS@ gi OGIN-COLS@ MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
    ni s MAKI:MIR-IN-REF IMP-BIND
    s  IMP-IN-N @ cells IMP-INSLOT + !
    gi IMP-IN-N @ cells IMP-INGI + !
@@ -117,7 +117,7 @@ variable SYN-N
 
 : IMP-INIT-1 ( n -- ) {: iz:n :}
    iz OGI-ROWS@ {: rows:n :}  iz OGI-COLS@ {: cols:n :}
-   rows cols MAKI:DT-F32 MAKI:LAY-ROW MAKI:MIR-INPUT+ {: s:n :}
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
    iz OGI-NAME@ s MAKI:MIR-IN-REF IMP-BIND
    s iz cells IMP-SLOT + !
    rows cols * {: e:n :}
@@ -145,7 +145,7 @@ variable SYN-N
    j OND-IN# want <> if E-ONNX-ARITY throw then ;
 
 : IMP-COMMIT ( n n n -- ) {: j:n rows:n cols:n :}   \ close the staged MIR node; bind its output
-   rows cols MAKI:DT-F32 MAKI:LAY-ROW 0 1 MAKI:MIR-OP+ {: k:n :}
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ {: k:n :}
    j OND-OUT@ k IMP-BIND ;
 
 \ movement nodes carry MV-PACK'd attrs and materialize only on a materialize/gathered
@@ -154,23 +154,23 @@ variable SYN-N
    attr MAKI:MV-VD@ MAKI:MV-VD-REPORTS? if 1 else 0 then ;
 
 : IMP-COMMIT-MOVE ( n n n n -- ) {: j:n rows:n cols:n attr:n :}   \ close a movement node
-   rows cols MAKI:DT-F32 MAKI:LAY-ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ {: k:n :}
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ {: k:n :}
    j OND-OUT@ k IMP-BIND ;
 
 \ ---- internal node construction (Gemm composition builds a multi-node chain) ------
 \ These commit a staged node and return its MIR node ref WITHOUT binding an ONNX name;
 \ only the last node in a composed chain binds the graph output name (IMP-COMMIT).
 : MK-COMPUTE ( n n -- n ) {: rows:n cols:n :}   \ close a compute node (materialized); return its ref
-   rows cols MAKI:DT-F32 MAKI:LAY-ROW 0 1 MAKI:MIR-OP+ ;
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MAKI:MIR-OP+ ;
 
 : MK-MOVE ( n n n -- n ) {: rows:n cols:n attr:n :}   \ close a movement node; return its ref
-   rows cols MAKI:DT-F32 MAKI:LAY-ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ ;
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ ;
 
 \ a synthetic 1x1 f32 constant holding v (written into the arena now); returns its MIR input ref
 : SYN-CONST ( r -- n ) {: v:r :}
    SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
    IMP-BUMP @ 1+ IMP-ARENA-CELLS > if E-ONNX-CAP throw then
-   1 1 MAKI:DT-F32 MAKI:LAY-ROW MAKI:MIR-INPUT+ {: s:n :}
+   1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
    v IMP-ARENA IMP-BUMP @ T-SET
    IMP-BUMP @ SYN-N @ cells SYN-OFF + !
    s SYN-N @ cells SYN-SLOT + !

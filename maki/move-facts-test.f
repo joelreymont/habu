@@ -38,12 +38,12 @@ MVV-MATERIALIZE MV-VD-NAME s" materialize" T$=
 MVV-GATHERED    MV-VD-NAME s" gathered"    T$=
 
 \ ---- dissolution classifiers (6.3) -----------------------------------------
-LAY-ROW MV-RESHAPE-VERDICT MVV-FREE        T=   \ contiguous reshape dissolves
-LAY-COL MV-RESHAPE-VERDICT MVV-MATERIALIZE T=   \ non-contiguous -> materialize
+MAKI-LAYOUT:ROW MV-RESHAPE-VERDICT MVV-FREE        T=   \ contiguous reshape dissolves
+MAKI-LAYOUT:COL MV-RESHAPE-VERDICT MVV-MATERIALIZE T=   \ non-contiguous -> materialize
 MV-TRANSPOSE-VERDICT       MVV-STAGED      T=
-LAY-ROW 0 8 MV-SLICE-VERDICT MVV-FREE        T=  \ offset 0 lane-aligned
-LAY-ROW 1 3 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ offset 3 not lane-aligned
-LAY-COL 0 8 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ column-major rows strided
+MAKI-LAYOUT:ROW 0 8 MV-SLICE-VERDICT MVV-FREE        T=  \ offset 0 lane-aligned
+MAKI-LAYOUT:ROW 1 3 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ offset 3 not lane-aligned
+MAKI-LAYOUT:COL 0 8 MV-SLICE-VERDICT MVV-MATERIALIZE T=  \ column-major rows strided
 MV-CONCAT-VERDICT MVV-MATERIALIZE T=
 MV-GATHER-VERDICT MVV-GATHERED    T=
 

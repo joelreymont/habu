@@ -82,23 +82,23 @@ MOUT-MAX 1 T=  MOUT-BAD 0 T=
 \ ---- hand-built extreme fan-out (beyond the DSL's chain shape) ---------------
 \ n0 -> three independent relus, recombined by two adds. n0 is used 3x, each relu once.
 MIR-RESET
-0 0 DT-F32 LAY-ROW MIR-INPUT+ drop                                              \ i0
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=RELU(n0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=RELU(n0)
-OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n4=ADD(n1,n2)
-OP-ADD  MIR-OP-BEGIN  4 MIR-IN+ 3 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n5=ADD(n4,n3)
+0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                                              \ i0
+OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
+OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
+OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n2=RELU(n0)
+OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n3=RELU(n0)
+OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n4=ADD(n1,n2)
+OP-ADD  MIR-OP-BEGIN  4 MIR-IN+ 3 MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n5=ADD(n4,n3)
 FP-BUILD
 FP-REGION-COUNT 4 T=  MOUT-MAX 1 T=  MOUT-BAD 0 T=
 
 \ diamond: n0 -> {relu, silu} -> add (producer used in op0 and op1 of the join)
 MIR-RESET
-0 0 DT-F32 LAY-ROW MIR-INPUT+ drop                                              \ i0
-OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
-OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
-OP-SILU MIR-OP-BEGIN  0 MIR-IN+            0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n2=SILU(n0)
-OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 DT-F32 LAY-ROW 0 1 MIR-OP+ drop  \ n3=ADD(n1,n2)
+0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                                              \ i0
+OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop \ n0=GELU(i0)
+OP-RELU MIR-OP-BEGIN  0 MIR-IN+            0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n1=RELU(n0)
+OP-SILU MIR-OP-BEGIN  0 MIR-IN+            0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n2=SILU(n0)
+OP-ADD  MIR-OP-BEGIN  1 MIR-IN+ 2 MIR-IN+  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  \ n3=ADD(n1,n2)
 FP-BUILD
 FP-REGION-COUNT 3 T=  MOUT-MAX 1 T=  MOUT-BAD 0 T=
 

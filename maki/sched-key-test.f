@@ -18,14 +18,17 @@ create KT-BUF KT-CAP allot  variable KT-BU
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols DT-F32 LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols DT-F32 LAY-ROW 0 1 MIR-OP+ drop ;
-: BUILD-DT ( n n n -- ) {: rows:n cols:n dt:n :}   \ same chain, chosen input dtype
+   rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+\ same chain, chosen input dtype; the dtype family cannot bind into a local, so
+\ it rides the stack into MIR-INPUT+ and the nodes read it back from the slot
+: BUILD-DT ( n n dtype -- )
    MIR-RESET
-   rows cols dt LAY-ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols dt LAY-ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols dt LAY-ROW 0 1 MIR-OP+ drop ;
+   MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   0 MIR-SLOT-ROWS@ 0 MIR-SLOT-COLS@ {: rows:n cols:n :}
+   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -46,7 +49,7 @@ SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a pl
 SK-PTXAS$  s" unprobed"  T$=
 
 \ ---- full section 7.4 key over a built region ------------------------------
-2 100 BUILD  0 AL-16 MIR-SLOT-AL!  FP-BUILD
+2 100 BUILD  0 MAKI-ALIGN:A16 MIR-SLOT-AL!  FP-BUILD
 0 SK-RSIG$ s" 431E24867468A764" T$=                 \ deterministic FNV-1a signature
 \ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
 \ builder), then splice the binary-dependent engine key into the expected string.
@@ -64,10 +67,10 @@ KT-BUF$ SB$ STR= TTRUE
 \ ---- signature determinism + sensitivity -----------------------------------
 2 100 BUILD FP-BUILD  0 SK-RSIG$ KT-COPY                       \ baseline (f32) signature
 2 100 BUILD FP-BUILD  0 SK-RSIG$ KT-BUF$ STR= TTRUE            \ same facts -> identical
-2 100 DT-F16 BUILD-DT FP-BUILD  0 SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
+2 100 MAKI-DTYPE:DF16 BUILD-DT FP-BUILD  0 SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
 
 \ ---- replay table: cad-5 store seam ----------------------------------------
-2 100 BUILD 0 AL-16 MIR-SLOT-AL! FP-BUILD
+2 100 BUILD 0 MAKI-ALIGN:A16 MIR-SLOT-AL! FP-BUILD
 SK-TAB-RESET
 0 SK-KEY$ SK-GET nip TFALSE                          \ miss -> not found
 0 SK-KEY$ SK-GET drop -1 T=                          \ miss selection is -1 (use defaults)

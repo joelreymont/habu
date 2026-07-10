@@ -22,7 +22,8 @@
 \ 1-col input into a wider compute op) hoist to a register (6.2.3); a column-major read
 \ is strided; the data read of a gather is gathered (6.3).
 \
-\ Fail closed: an out-of-range alignment class or a name overflow is a named throw.
+\ Fail closed: a name overflow is a named throw; an out-of-range alignment class
+\ is a checker reject (the align family cannot hold one).
 \ maki -> habu only; mem-plan owns -5076..-5079 (schedule/sched-key own -5080..-5089).
 
 require lib/string.f
@@ -30,42 +31,52 @@ require lib/fmt.f
 require maki/report.f
 require maki/model-ir.f
 
--5076 constant E-MP-ALIGN     \ alignment class out of range (AL-* domain)
+\ -5076 (E-MP-ALIGN) retired: the align family makes an out-of-range class a
+\ checker reject; the code stays reserved to mem-plan.
 -5077 constant E-MP-NAME      \ staged tensor name exceeds the name buffer
 
 package MAKI
 private
 
-\ ---- alignment class -> guaranteed base byte alignment (fail closed) ---------
-: MP-AL-BYTES ( n -- n )
-   case
-      AL-UNKNOWN of 0  endof
-      AL-BYTE    of 1  endof
-      AL-4       of 4  endof
-      AL-8       of 8  endof
-      AL-16      of 16 endof
-      E-MP-ALIGN throw
-   endcase ;
+\ ---- alignment class -> guaranteed base byte alignment (exhaustive MATCH) ----
+: MP-AL-BYTES ( align -- n )
+   MATCH align
+      unknown OF 0  ENDOF
+      byte    OF 1  ENDOF
+      a4      OF 4  ENDOF
+      a8      OF 8  ENDOF
+      a16     OF 16 ENDOF
+   ;MATCH ;
 
 public
 
 \ ---- vector width: largest w in {4,2,1} with align >= w*esize and extent >= w --
-: MP-W ( n n n -- n ) {: al:n es:n ext:n :}        \ align esize extent -- w
-   al MP-AL-BYTES {: ab:n :}
+\ the align family converts to guaranteed bytes up front (families cannot bind
+\ into locals), then the width pick is plain arithmetic
+: MP-W ( align n n -- n )                          \ align esize extent -- w
+   {: es:n ext:n :}
+   MP-AL-BYTES {: ab:n :}
    4 es * ab <=  ext 4 >=  and if 4 exit then
    2 es * ab <=  ext 2 >=  and if 2 exit then
    1 ;
 
 \ ---- classify a plain (align esize extent layout) access into a CO-* status ---
-: MP-CLASSIFY ( n n n n -- n ) {: al:n es:n ext:n lay:n :}   \ align esize extent layout -- status
-   lay LAY-ROW <> if CO-STRIDED exit then          \ non-unit innermost stride
-   al MP-AL-BYTES es < if CO-UNALIGNED exit then    \ below element width -> scalar fallback
-   al es ext MP-W 4 = if CO-COALESCED-V4 else CO-COALESCED then ;
+\ layout (top) is consumed by the contiguity predicate first; align stays on the
+\ stack (dup for its two uses) while the extent locals bind
+: MP-CLASSIFY ( align n n layout -- n )            \ align esize extent layout -- status
+   LAYOUT-ROW? 0= if 2drop drop CO-STRIDED exit then   \ non-unit innermost stride
+   {: es:n ext:n :}
+   dup MP-AL-BYTES es < if drop CO-UNALIGNED exit then \ below element width -> scalar
+   es ext MP-W 4 = if CO-COALESCED-V4 else CO-COALESCED then ;
 
 private
 
 \ ---- staged access facts (filled per tensor, read by the emitter) -----------
+\ MP-AL / MP-LAY hold family values behind typed variable slots (the report.f
+\ F-ROOFLINE-AT precedent); the others stay n cells.
 variable MP-AL   variable MP-ES   variable MP-EXT   variable MP-LAY
+: MP-AL-AT  ( -- ptr align )   MP-AL ;
+: MP-LAY-AT ( -- ptr layout )  MP-LAY ;
 variable MP-OVR                    \ broadcast/gathered override status, or -1
 variable MP-SLOT                   \ input-slot index for the align warning, or -1
 64 constant MP-NM-CAP
@@ -108,19 +119,19 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 \ ---- stage a slot read / a node write ---------------------------------------
 : MP-SET-SLOT ( n -- ) {: s:n :}
-   s MIR-SLOT-AL@         MP-AL !
+   s MIR-SLOT-AL@         MP-AL-AT !
    s MIR-SLOT-DT@ DT-SIZE MP-ES !
-   s MIR-SLOT-COLS@       MP-EXT !                  \ innermost extent (LAY-ROW: cols)
-   s MIR-SLOT-LAY@        MP-LAY !
+   s MIR-SLOT-COLS@       MP-EXT !                  \ innermost extent (row-major: cols)
+   s MIR-SLOT-LAY@        MP-LAY-AT !
    s                      MP-SLOT !
    s MP-SLOT-OVERRIDE     MP-OVR !
    SB-RESET s" i" SB-APPEND s SB-INT SB$ MP-NM! ;
 
 : MP-SET-NODE ( n -- ) {: nd:n :}
-   AL-16                  MP-AL !                   \ compiler-allocated write: aligned by construction
+   MAKI-ALIGN:A16         MP-AL-AT !                \ compiler-allocated write: aligned by construction
    nd MIR-DT@ DT-SIZE     MP-ES !
    nd MIR-COLS@           MP-EXT !
-   nd MIR-LAY@            MP-LAY !
+   nd MIR-LAY@            MP-LAY-AT !
    -1                     MP-SLOT !
    -1                     MP-OVR !
    SB-RESET s" n" SB-APPEND nd SB-INT SB$ MP-NM! ;
@@ -130,13 +141,13 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 
 : MP-STATUS ( -- n )
    MP-OVERRIDDEN? if MP-OVR @ exit then
-   MP-AL @ MP-ES @ MP-EXT @ MP-LAY @ MP-CLASSIFY ;
+   MP-AL-AT @ MP-ES @ MP-EXT @ MP-LAY-AT @ MP-CLASSIFY ;
 
 : MP-VEC ( -- n )                                  \ chosen vector width for the staged access
-   MP-OVERRIDDEN?              if 1 exit then
-   MP-LAY @ LAY-ROW <>         if 1 exit then
-   MP-AL @ MP-AL-BYTES MP-ES @ < if 1 exit then
-   MP-AL @ MP-ES @ MP-EXT @ MP-W ;
+   MP-OVERRIDDEN?                    if 1 exit then
+   MP-LAY-AT @ LAYOUT-ROW? 0=        if 1 exit then
+   MP-AL-AT @ MP-AL-BYTES MP-ES @ <  if 1 exit then
+   MP-AL-AT @ MP-ES @ MP-EXT @ MP-W ;
 
 : MP-TAIL-K ( -- n )                               \ masked-tail remainder (0 when none)
    MP-VEC {: w:n :}
@@ -148,8 +159,8 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 \ ---- warning rows -----------------------------------------------------------
 : MP-ALIGN-WARN$ ( -- ptr u8 n )
    SB-RESET s" memory.align: input " SB-APPEND MP-SLOT @ SB-INT
-   MP-AL @ AL-UNKNOWN = if s"  unknown alignment -> scalar"
-                       else s"  sub-4B alignment -> scalar" then SB-APPEND
+   MP-AL-AT @ ALIGN-UNKNOWN? if s"  unknown alignment -> scalar"
+                             else s"  sub-4B alignment -> scalar" then SB-APPEND
    SB$ ;
 
 : MP-TAIL-WARN$ ( -- ptr u8 n )

@@ -28,6 +28,7 @@
 \ mismatch, plan-builder misuse and every capacity are named throws, never
 \ defaulted. maki owns -5000..-5099; tensor-value uses -5040..-5049 (loss.f owns -5030..-5039).
 
+require lib/prelude.f
 require maki/tensor.f
 require maki/linear.f
 require maki/op-kind.f
@@ -35,7 +36,8 @@ require lib/ffi-abi.f
 
 -5040 constant E-TV-FULL        \ tensor store capacity exceeded
 -5041 constant E-TV-HANDLE      \ handle slot index out of range
--5042 constant E-TV-LAYOUT      \ layout tag out of range
+\ -5042 (E-TV-LAYOUT) retired: the layout family makes an out-of-range tag a
+\ checker reject; the code stays reserved to tensor-value.
 -5043 constant E-TV-NODATA      \ data requested from a descriptor (no buffer)
 -5044 constant E-TV-SHAPE       \ shape mismatch (eager linear inner dim)
 -5045 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
@@ -47,19 +49,70 @@ package MAKI
 public
 
 \ ---- layout tags (v1: contiguity order only; strides arrive with cad-1) ----
+\ The `layout` ENUM is the semantic type carried through construction, storage,
+\ and every consumer (dot habu-cad-adt-swap, corrected plan). LAY-* codes remain
+\ ONLY as the wire/hash vocabulary at the named boundaries below.
 0 constant LAY-ROW              \ row-major / C-contiguous
 1 constant LAY-COL             \ column-major
-2 constant LAY-N               \ range bound
+ENUM layout
+  row
+  col
+;ENUM
+
+: LAYOUT>N ( layout -- n )             \ named render boundary (exhaustive)
+   MATCH layout
+      row OF LAY-ROW ENDOF
+      col OF LAY-COL ENDOF
+   ;MATCH ;
+
+: LAY-KEY ( layout -- ptr u8 n )       \ wire text render (exhaustive)
+   MATCH layout
+      row OF s" row" ENDOF
+      col OF s" col" ENDOF
+   ;MATCH ;
+
+: LAYOUT-ROW? ( layout -- bool )       \ contiguity predicate (replaces LAY-ROW =)
+   MATCH layout
+      row OF true  ENDOF
+      col OF false ENDOF
+   ;MATCH ;
 
 \ ---- alignment classes (recorded from the pointer, never assumed) ----
+\ The `align` ENUM is the semantic type; AL-* codes remain ONLY for the ordinal
+\ min-fold + key render inside sched-key (alignment classes are intrinsically
+\ ordered: AL-UNKNOWN < .. < AL-16, and ALIGN>N preserves that order) and for
+\ wire/test assertions. Bare-digit variant tails reject, so a4/a8/a16.
 0 constant AL-UNKNOWN          \ conservative: not measured (descriptors)
 1 constant AL-BYTE             \ measured: < 4-byte aligned
 2 constant AL-4                \ measured: 4-byte aligned
 3 constant AL-8                \ measured: 8-byte aligned
 4 constant AL-16               \ measured: 16-byte aligned
-5 constant AL-N                \ range bound
+5 constant AL-N                \ range bound (wire codes)
+ENUM align
+  unknown
+  byte
+  a4
+  a8
+  a16
+;ENUM
 
-: AL-VALID? ( n -- bool ) {: al:n :}  al 0 < 0=  al AL-N <  and ;
+: ALIGN>N ( align -- n )               \ named render boundary (order-preserving)
+   MATCH align
+      unknown OF AL-UNKNOWN ENDOF
+      byte    OF AL-BYTE    ENDOF
+      a4      OF AL-4       ENDOF
+      a8      OF AL-8       ENDOF
+      a16     OF AL-16      ENDOF
+   ;MATCH ;
+
+: ALIGN-UNKNOWN? ( align -- bool )     \ measurement predicate (replaces AL-UNKNOWN =)
+   MATCH align
+      unknown OF true  ENDOF
+      byte    OF false ENDOF
+      a4      OF false ENDOF
+      a8      OF false ENDOF
+      a16     OF false ENDOF
+   ;MATCH ;
 
 end-package
 
@@ -88,38 +141,39 @@ private
 create TV-DATA TV-CAP cells allot      \ data pointer (materialized tensors only)
 create TV-ROWS TV-CAP cells allot
 create TV-COLS TV-CAP cells allot
-create TV-DT   TV-CAP cells allot      \ dtype tag (maki/tensor.f DT-*)
-create TV-LAY  TV-CAP cells allot      \ layout tag (LAY-*)
-create TV-AL   TV-CAP cells allot      \ alignment class (AL-*)
+create TV-DT   TV-CAP cells allot      \ dtype (family value; typed slot TV-DT-AT)
+create TV-LAY  TV-CAP cells allot      \ layout (family value; typed slot TV-LAY-AT)
+create TV-AL   TV-CAP cells allot      \ align (family value; typed slot TV-AL-AT)
 create TV-HAS  TV-CAP cells allot      \ 1 = has data buffer, 0 = descriptor
 variable TV-U                          \ free counter / live count
+
+\ typed slot addresses: the descriptor columns are reachable only through these,
+\ so a raw n (or a foreign family) can never enter or leave a descriptor cell.
+: TV-DT-AT  ( n -- ptr dtype )   cells TV-DT  + ;
+: TV-LAY-AT ( n -- ptr layout )  cells TV-LAY + ;
+: TV-AL-AT  ( n -- ptr align )   cells TV-AL  + ;
 
 \ ---- alignment measurement ------------------------------------------------
 \ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
 \ pointer->cell cast; the low bits are exact, so no data-base assumption is made.
-: TV-ALIGN-CLASS ( ptr a -- n ) {: p:ptr :}
+: TV-ALIGN-CLASS ( ptr a -- align ) {: p:ptr :}
    p P>N {: a:n :}
-   a 15 and 0= if MAKI:AL-16  exit then
-   a 7  and 0= if MAKI:AL-8   exit then
-   a 3  and 0= if MAKI:AL-4   exit then
-   MAKI:AL-BYTE ;
+   a 15 and 0= if MAKI-ALIGN:A16  exit then
+   a 7  and 0= if MAKI-ALIGN:A8   exit then
+   a 3  and 0= if MAKI-ALIGN:A4   exit then
+   MAKI-ALIGN:BYTE ;
 
-\ ---- store commit (validates every tag before writing a slot) -------------
-: TV-COMMIT ( ptr a n n n n n n -- tensor )    \ data rows cols dtype layout align has
-   {: base:ptr rows:n cols:n dt:n lay:n al:n has:n :}
-   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
-   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
+\ ---- slot allocation + shared n-field tail ---------------------------------
+: TV-SLOT+ ( -- n )                    \ allocate the next slot index (fail closed)
    TV-U @ TV-CAP >= if E-TV-FULL throw then
-   TV-U @ {: idx:n :}
+   TV-U @ dup 1+ TV-U ! ;
+
+: TV-FIELDS! ( ptr a n n n n -- )      \ data rows cols has idx -- (the n-typed columns)
+   {: base:ptr rows:n cols:n has:n idx:n :}
    base  TV-DATA idx cells + !
    rows  TV-ROWS idx cells + !
    cols  TV-COLS idx cells + !
-   dt    TV-DT   idx cells + !
-   lay   TV-LAY  idx cells + !
-   al    TV-AL   idx cells + !
-   has   TV-HAS  idx cells + !
-   idx 1+ TV-U !
-   idx >tensor ;
+   has   TV-HAS  idx cells + ! ;
 
 \ ---- handle -> validated slot index ---------------------------------------
 : TV-IX ( tensor -- n ) {: t:tensor :}
@@ -127,37 +181,49 @@ variable TV-U                          \ free counter / live count
    idx 0 < idx TV-U @ >= or if E-TV-HANDLE throw then
    idx ;
 
-\ ---- generic n-field read/write (data pointer handled separately) ---------
+\ ---- generic n-field read (data pointer handled separately) ----------------
 : TV-N@ ( tensor ptr a -- n ) {: t:tensor base:ptr :}
    base t TV-IX cells + @ ;
-: TV-N! ( n tensor ptr a -- ) {: v:n t:tensor base:ptr :}
-   v base t TV-IX cells + ! ;
 
 public
 
 \ ---- constructors ----------------------------------------------------------
-\ TV-NEW-AS is the explicit form; alignment is measured from the data pointer.
-: TV-NEW-AS ( ptr a n n n n -- tensor )        \ data rows cols dtype layout
-   {: base:ptr rows:n cols:n dt:n lay:n :}
-   base rows cols dt lay  base TV-ALIGN-CLASS  1  TV-COMMIT ;
+\ dtype/layout arrive as family values and store from the stack into the typed
+\ slots before the n fields bind (families cannot bind into locals); a bad tag
+\ is a checker reject, so the old E-MK-DTYPE/E-TV-LAYOUT validation is
+\ unrepresentable here. Alignment is measured from the real data pointer.
+: TV-NEW-AS ( ptr a n n dtype layout -- tensor )   \ data rows cols dtype layout
+   TV-SLOT+ {: idx:n :}
+   idx TV-LAY-AT !                      \ layout (top)
+   idx TV-DT-AT !                       \ dtype
+   {: base:ptr rows:n cols:n :}
+   base TV-ALIGN-CLASS idx TV-AL-AT !
+   base rows cols 1 idx TV-FIELDS!
+   idx >tensor ;
 
 \ TV-NEW defaults dtype f32 + row-major (the eager host-array convention).
 : TV-NEW ( ptr a n n -- tensor )               \ data rows cols
-   MAKI:DT-F32 MAKI:LAY-ROW TV-NEW-AS ;
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TV-NEW-AS ;
 
 \ TV-DESC builds a planning descriptor: shape/dtype/layout only, no buffer.
-\ Alignment is AL-UNKNOWN (conservative) and TV-DATA@ fails closed. The data
+\ Alignment is unknown (conservative) and TV-DATA@ fails closed. The data
 \ slot stores data-base purely as a never-read placeholder (HAS=0 guards it).
-: TV-DESC ( n n n n -- tensor )                \ rows cols dtype layout
-   {: rows:n cols:n dt:n lay:n :}
-   data-base rows cols dt lay  MAKI:AL-UNKNOWN  0  TV-COMMIT ;
+: TV-DESC ( n n dtype layout -- tensor )       \ rows cols dtype layout
+   TV-SLOT+ {: idx:n :}
+   idx TV-LAY-AT !                      \ layout (top)
+   idx TV-DT-AT !                       \ dtype
+   MAKI-ALIGN:UNKNOWN idx TV-AL-AT !
+   {: rows:n cols:n :}
+   data-base rows cols 0 idx TV-FIELDS!
+   idx >tensor ;
 
-\ ---- accessors (one per recorded fact) ------------------------------------
-: TV-ROWS@   ( tensor -- n )  TV-ROWS TV-N@ ;
-: TV-COLS@   ( tensor -- n )  TV-COLS TV-N@ ;
-: TV-DTYPE@  ( tensor -- n )  TV-DT   TV-N@ ;
-: TV-LAYOUT@ ( tensor -- n )  TV-LAY  TV-N@ ;
-: TV-ALIGN@  ( tensor -- n )  TV-AL   TV-N@ ;
+\ ---- accessors (one per recorded fact; descriptor facts return families) ----
+: TV-ROWS@   ( tensor -- n )       TV-ROWS TV-N@ ;
+: TV-COLS@   ( tensor -- n )       TV-COLS TV-N@ ;
+: TV-DTYPE@  ( tensor -- dtype )   TV-IX TV-DT-AT  @ ;
+: TV-LAYOUT@ ( tensor -- layout )  TV-IX TV-LAY-AT @ ;
+: TV-ALIGN@  ( tensor -- align )   TV-IX TV-AL-AT  @ ;
+
 : TV-ELEMS   ( tensor -- n )  {: t:tensor :}  t TV-ROWS@ t TV-COLS@ * ;
 : TV-HAS-DATA? ( tensor -- bool )  TV-HAS TV-N@ 0= 0= ;
 
@@ -165,13 +231,13 @@ public
    t TV-HAS-DATA? 0= if E-TV-NODATA throw then
    TV-DATA t TV-IX cells + @ ;
 
-\ ---- settable dtype / layout (validated) ----------------------------------
-: TV-DTYPE! ( tensor n -- tensor ) {: t:tensor dt:n :}
-   dt MAKI:DT-VALID? 0= if E-MK-DTYPE throw then
-   dt t TV-DT TV-N!  t ;
-: TV-LAYOUT! ( tensor n -- tensor ) {: t:tensor lay:n :}
-   lay 0 < lay MAKI:LAY-N >= or if E-TV-LAYOUT throw then
-   lay t TV-LAY TV-N!  t ;
+\ ---- settable dtype / layout ------------------------------------------------
+\ The new value arrives as a family (a bad tag is a checker reject); it swaps
+\ over the handle so the handle can bind while the family stores from the stack.
+: TV-DTYPE! ( tensor dtype -- tensor )
+   swap {: t:tensor :}  t TV-IX TV-DT-AT !  t ;
+: TV-LAYOUT! ( tensor layout -- tensor )
+   swap {: t:tensor :}  t TV-IX TV-LAY-AT !  t ;
 
 \ ---- store lifecycle -------------------------------------------------------
 : TV-RESET ( -- )  0 TV-U ! ;                  \ clears store; invalidates handles
@@ -255,7 +321,7 @@ public
 \ ---- descriptor-mode model ops (append IR, do not compute) -----------------
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.
 : PLINEAR ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
-   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI:LAY-ROW TV-DESC {: y:tensor :}
+   x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI-LAYOUT:ROW TV-DESC {: y:tensor :}
    MAKI:OP-LINEAR PLAN-OP-BEGIN
    x PLAN-IN+  w PLAN-IN+  b PLAN-IN+
    y PLAN-OP+

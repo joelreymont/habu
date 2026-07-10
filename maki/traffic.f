@@ -25,26 +25,15 @@ require maki/report.f
 -5075 constant E-TRF-CAP     \ per-region external-source set capacity exceeded
 
 package MAKI
-public
-
-\ ---- dtype byte width (fail closed on an unknown dtype) ---------------------
-: DT-BYTES ( n -- n )
-   case
-      DT-F32  of 4 endof
-      DT-F16  of 2 endof
-      DT-BF16 of 2 endof
-      DT-U32  of 4 endof
-      DT-I32  of 4 endof
-      E-MK-DTYPE throw
-   endcase ;
-
 private
 
 \ ---- element / byte counts (slot and node outputs) -------------------------
+\ (dtype byte width is tensor.f DT-SIZE, an exhaustive MATCH over the family;
+\ the old numeric DT-BYTES duplicate is retired)
 : TRF-SLOT-ELEMS ( n -- n ) {: s:n :}  s MIR-SLOT-ROWS@ s MIR-SLOT-COLS@ * ;
 : TRF-NODE-ELEMS ( n -- n ) {: nd:n :}  nd MIR-ROWS@ nd MIR-COLS@ * ;
-: TRF-SLOT-BYTES ( n -- n ) {: s:n :}  s TRF-SLOT-ELEMS s MIR-SLOT-DT@ DT-BYTES * ;
-: TRF-NODE-BYTES ( n -- n ) {: nd:n :}  nd TRF-NODE-ELEMS nd MIR-DT@ DT-BYTES * ;
+: TRF-SLOT-BYTES ( n -- n ) {: s:n :}  s TRF-SLOT-ELEMS s MIR-SLOT-DT@ DT-SIZE * ;
+: TRF-NODE-BYTES ( n -- n ) {: nd:n :}  nd TRF-NODE-ELEMS nd MIR-DT@ DT-SIZE * ;
 
 \ operand ref -> the bytes of the tensor it names (input slot or producer node)
 : TRF-REF-BYTES ( n -- n ) {: ref:n :}

@@ -46,16 +46,18 @@ public
 \ only ever renders to report text (FP-REASON-NAME, the one boundary word) -- so no
 \ numeric form is kept and the old SR-N range sentinel is retired by exhaustiveness.
 \ Constructors: MAKI-REASON:MULTI-USE .. MAKI-REASON:BACKEND. Variants:
-\   multi-use  multi-use producer materialized (no recompute in v1)
-\   matmul     a second contraction cannot share the region
-\   layout     movement verdict materialize/gathered breaks fusion
-\   barrier    reduction barrier / row-reduce budget exhausted
-\   backend    base-legal, but the lowering backend cannot emit this fusion (yet)
+\   multi-use        multi-use producer materialized (no recompute in v1)
+\   matmul           a second contraction cannot share the region
+\   layout-conflict  movement verdict materialize/gathered breaks fusion
+\   barrier          reduction barrier / row-reduce budget exhausted
+\   backend          base-legal, but the lowering backend cannot emit this fusion (yet)
 \ (the ENUM block reads raw variant tokens, so keep the descriptions here.)
+\ NB: the variant is `layout-conflict`, not `layout`: `layout` is a type family
+\ (tensor-value.f) and a variant tail may not share a name with a family.
 ENUM reason
   multi-use
   matmul
-  layout
+  layout-conflict
   barrier
   backend
 ;ENUM
@@ -252,8 +254,8 @@ variable FP-MV-FUSE?                          \ movements dissolve/fuse? (defaul
 \ ---- split classification (typed reason per broken chain edge) --------------
 \ ( K P -- tag ): P>=0, P not multi-use, K did not fuse into P
 : FP-REASON ( n n -- reason ) {: k:n p:n :}
-   k MIR-MOVE? if k NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then then
-   p NODE-MAT-VD? if MAKI-REASON:LAYOUT exit then
+   k MIR-MOVE? if k NODE-MAT-VD? if MAKI-REASON:LAYOUT-CONFLICT exit then then
+   p NODE-MAT-VD? if MAKI-REASON:LAYOUT-CONFLICT exit then
    p FP-CLASS CLASS-MATMUL = k FP-CLASS CLASS-MATMUL = and if MAKI-REASON:MATMUL exit then
    k FP-CLASS CLASS-MATMUL = p FP-RID-RAW cells FP-MMC + @ 0 > and if MAKI-REASON:MATMUL exit then
    p MIR-MOVE? 0=                                       \ compute edge, base-legal, but the
@@ -320,7 +322,7 @@ public
    MATCH reason
       multi-use OF s" multi-use-materialize" ENDOF
       matmul    OF s" matmul-boundary"       ENDOF
-      layout    OF s" layout-conflict"       ENDOF
+      layout-conflict OF s" layout-conflict" ENDOF
       barrier   OF s" barrier-boundary"      ENDOF
       backend   OF s" backend-capability"    ENDOF
    ;MATCH ;

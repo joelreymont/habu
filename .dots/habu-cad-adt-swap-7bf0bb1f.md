@@ -437,5 +437,22 @@ rebase onto master exposed this PLAN CORRECTION. Proof of why it was reverted:
 under that design — the field-swap hole stays open at the API boundary, exactly
 as this correction states. Revert is fable append-merge b8936c4e (tree == master).
 Do NOT re-attempt any G-TAG/`n`-accessor form; the next attempt is the FULL
-family-typed migration gated behind habu-typed-locals-for-b06b6707 (enum locals
-verified still rejecting on the 2026-07-10 fixpoint).
+family-typed migration.
+
+FEASIBILITY CORRECTION 2026-07-10 (same day, orchestrator): the BLOCKER
+paragraph above overstates. Enum-typed locals rejecting does NOT gate the
+family-typed migration. Probe-proven on this fixpoint (scratchpad feasible.f):
+a family-returning accessor (`( n -- opk )` via `ptr opk` fetch), MATCH
+renders, MATCH predicates replacing `OP-* =` compares, `dup`-based multi-use,
+and families flowing as WORD ARGUMENTS through factored helpers all certify
+with zero enum locals; only `{: x:fam :}` binding rejects (negative control
+rc=70). Stack-discipline style (docs/forth.md: small factored words, shallow
+stacks, MATCH dispatch) never needs the local. The census's `{: op:n :}` bind
+sites are restructured to keep the family on the stack / pass it to factored
+helpers — that is the mandated style, not a workaround. b06b6707 remains
+open as a code-quality follow-up (typed locals will simplify some words when
+it lands) but is NOT a prerequisite. The REQUIRED API MIGRATION above is
+executable now; commit sequence steps 3 (descriptor trio + readers) and 4
+(opkind + readers) proceed immediately, each as one green stack. The
+fusion-plan `reason` variant rename layout->layout-conflict (proven above)
+must be re-applied with the descriptor trio.

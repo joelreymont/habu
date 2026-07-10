@@ -42,7 +42,7 @@ private
 \ ---- contraction output descriptor (rows from data, cols from weight) -------
 : PLAN-MM-DESC ( tensor tensor -- tensor ) {: x:tensor w:tensor :}
    x TENSOR:TV-COLS@ w TENSOR:TV-ROWS@ <> if E-TV-SHAPE throw then
-   x TENSOR:TV-ROWS@  w TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@  LAY-ROW  TENSOR:TV-DESC ;
+   x TENSOR:TV-ROWS@  w TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@  MAKI-LAYOUT:ROW  TENSOR:TV-DESC ;
 
 public
 
@@ -60,11 +60,11 @@ public
 \ into the model-IR node and drives its materialization flag.
 
 \ reshape: same elements, target RxC (params); free on contiguous else materialize.
+\ (the layout family cannot bind into a local, so each use refetches from x)
 : PLAN-RESHAPE ( tensor n n -- tensor ) {: x:tensor tr:n tc:n :}
    x TENSOR:TV-ELEMS  tr tc *  <> if E-TV-SHAPE throw then
-   x TENSOR:TV-LAYOUT@ {: lay:n :}
-   tr tc x TENSOR:TV-DTYPE@ lay TENSOR:TV-DESC {: y:tensor :}
-   MV-RESHAPE  lay MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
+   tr tc x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
+   MV-RESHAPE  x TENSOR:TV-LAYOUT@ MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
    OP-RESHAPE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ transpose: RxC -> CxR (no params); dissolves inside a staged region.

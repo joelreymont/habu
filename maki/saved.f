@@ -51,10 +51,10 @@ private
 \ ---- operand-ref descriptor (input slot or producer node) -------------------
 : SV-REF-ROWS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-ROWS@ then ;
 : SV-REF-COLS ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-COLS@ then ;
-: SV-REF-DT   ( n -- n ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@   else r MIR-DT@   then ;
+: SV-REF-DT   ( n -- dtype ) {: r:n :}  r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@   else r MIR-DT@   then ;
 
 : SV-REF-ELEMS ( n -- n ) {: r:n :}  r SV-REF-ROWS r SV-REF-COLS * ;
-: SV-REF-BYTES ( n -- n ) {: r:n :}  r SV-REF-ELEMS r SV-REF-DT DT-BYTES * ;
+: SV-REF-BYTES ( n -- n ) {: r:n :}  r SV-REF-ELEMS r SV-REF-DT DT-SIZE * ;
 
 \ a node ref is recomputable (a node produces it); a model input is not
 : SV-RECOMPUTABLE? ( n -- bool )  MIR-REF-INPUT? 0= ;

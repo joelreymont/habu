@@ -87,13 +87,15 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 4 constant MV-VEC            \ vectorization lane width (f32x4); slice offset must
                              \ be lane-aligned to stay a pure offset rewrite (4.1 tail)
 
-: MV-RESHAPE-VERDICT ( n -- n )                \ in-layout -> free (contiguous) | materialize
-   LAY-ROW = if MVV-FREE else MVV-MATERIALIZE then ;
+: MV-RESHAPE-VERDICT ( layout -- n )           \ in-layout -> free (contiguous) | materialize
+   LAYOUT-ROW? if MVV-FREE else MVV-MATERIALIZE then ;
 
 : MV-TRANSPOSE-VERDICT ( -- n )  MVV-STAGED ;  \ always dissolves inside a staged region
 
-: MV-SLICE-VERDICT ( n n n -- n ) {: lay:n r0:n cols:n :}   \ in-layout r0 cols -> verdict
-   lay LAY-ROW <> if MVV-MATERIALIZE exit then \ strided rows -> materialize
+\ the in-layout family is consumed by the contiguity predicate before the
+\ extent locals bind (families cannot bind into locals)
+: MV-SLICE-VERDICT ( layout n n -- n ) {: r0:n cols:n :}    \ in-layout r0 cols -> verdict
+   LAYOUT-ROW? 0= if MVV-MATERIALIZE exit then \ strided rows -> materialize
    r0 cols * MV-VEC mod 0= if MVV-FREE else MVV-MATERIALIZE then ;
 
 : MV-CONCAT-VERDICT ( -- n )  MVV-MATERIALIZE ; \ v1: lane-range dispatch is a later extension
