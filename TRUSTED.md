@@ -702,19 +702,27 @@ the typed-defining-word family; `lib/build.f` (`BUILD-CHECK-RAW` wrapping the
 `CHECK!` engine entrypoint) goes to `habu-primitive-effect-axiom-1119f176`; and
 `lib/ptx/cg-matmul.f` (`MM-A/B/C-REG` + `MM-STATE` kernel wrappers) goes to
 `habu-re-express-tiled-9cc4a73a`, which re-expresses `EMIT-MATMUL` as a checked
-KERNEL and deletes that boundary. `lib/ffi-abi.f` and `lib/task.f` are now
+KERNEL and deletes that boundary. `lib/ffi-abi.f` and `lib/task.f` are
 mixed-class: the seal's `patch32` code-emission wrappers (`FFI-PATCH`,
-`TASK-PATCH`) carry `file:name` placeholder rows and stay on
-`habu-audit-trusted-inventory-3a950436` for a seal-capability owner, while the
-file-level row (reduced to the remaining cast/mint/defining sites) carries the
-typed-defining owner. The four remaining `lib/ptx` files (`cg.f`,
-`collective.f`, `tile.f`, `tile-v4.f`) and `lib/engine-id.f` stay on the
-placeholder: the PTX files need per-site mint-vs-phantom classification
-(`habu-ptx-phantom-preserving-3df9db92`'s 17-mint-vs-~70-wrapper split) and
-`engine-id.f` needs its own domain judgment — separate increments, not
-file-level guesses. Reassigning the remaining `builder-emit`, `test-metaprog`,
-`discharge-candidate`, those PTX/engine-id `stdlib-boundary` rows, and the
-`patch32` code-emission rows to their real owners is the rest of
+`TASK-PATCH`) carry `file:name` rows owned by
+`habu-checker-capability-gate-14022ba9` (patch32 gated PRIM-TRUSTED-ONLY so
+checked code cannot forge the seal; that dot is owner-of-record for the patch32
+boundaries, incl. `ES-PATCH32` still folded in `test/engine-suite.f`'s
+test-metaprog file-level count), while the file-level row (reduced to the
+remaining cast/mint/defining sites) carries the typed-defining owner. The four
+remaining `lib/ptx` files (`cg.f`, `collective.f`, `tile.f`, `tile-v4.f`) and
+`lib/engine-id.f` stay on the placeholder: the PTX files need per-site
+mint-vs-phantom classification (`habu-ptx-phantom-preserving-3df9db92`'s
+17-mint-vs-~70-wrapper split), and `engine-id.f`'s two sites
+(`ENGINE-SELF-MACOS`/`ENGINE-SELF-LINUX`) are raw startup-image/syscall
+self-path reads (apple[] pointer walk + NULL tests / `/proc/self/exe`
+readlink) — the same boundary class as `src/os/env-base.f`'s startup-image
+reads, which are themselves still on the placeholder; no existing capability
+dot discharges these raw-syscall reads (`habu-checker-capability-ptr-113a95e9`
+covers pointer-arithmetic byte-views, not the reads), so assigning them is a
+separate increment, not a file-level guess. Reassigning the remaining
+`builder-emit`, `test-metaprog`, `discharge-candidate`, and those
+PTX/engine-id `stdlib-boundary` rows to their real owners is the rest of
 `habu-audit-trusted-inventory-3a950436`.
 
 <!-- trusted-inventory-classes
@@ -807,10 +815,10 @@ src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f stdlib-boundary habu-primitive-effect-axiom-1119f176 1
 lib/engine-id.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
-lib/ffi-abi.f:FFI-PATCH stdlib-boundary habu-audit-trusted-inventory-3a950436
+lib/ffi-abi.f:FFI-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
 lib/ffi-abi.f stdlib-boundary habu-typed-defining-words-aa224eb5 2
 lib/memory.f stdlib-boundary habu-typed-defining-words-aa224eb5 1
-lib/task.f:TASK-PATCH stdlib-boundary habu-audit-trusted-inventory-3a950436
+lib/task.f:TASK-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
 lib/task.f stdlib-boundary habu-typed-defining-words-aa224eb5 6
 lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
 lib/ptx/cg-matmul.f stdlib-boundary habu-re-express-tiled-9cc4a73a 4
