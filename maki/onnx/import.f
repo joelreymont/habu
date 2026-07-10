@@ -19,8 +19,11 @@
 \ capture-legal classes (maki/bcast.f BC-CLASS, the same mapping EX-BC@ /
 \ SHP-LEGAL? use); any other numpy shape fails closed E-ONNX-SHAPE.
 \ Relu->OP-RELU, Softmax->OP-SOFTMAX-ROW (axis must be the last: -1 or 1),
-\ Gemm->OP-MATMUL (2 inputs) / OP-LINEAR (3 inputs, bias 1xN) with
-\ alpha=beta=1 and transA=transB=0 enforced (E-ONNX-ATTR otherwise). Movement
+\ Gemm: the default affine form (alpha=beta=1, transA=transB=0) is the single-node
+\ OP-MATMUL (2 inputs) / OP-LINEAR (3 inputs, bias 1xN); attributes compose into a
+\ node chain otherwise - transA/transB insert a TRANSPOSE on that operand, a non-unit
+\ alpha/beta inserts an OP-SCALE against a synthesized 1x1 constant, beta=0 drops C,
+\ beta=1 adds C as a bias; any non-Gemm attribute rejects E-ONNX-ATTR. Movement
 \ ops (ONNX:MOVE-KIND coverage): Reshape->OP-RESHAPE (target [R,C] read from the
 \ INT64 shape initializer; a runtime-computed shape fails E-ONNX-DYNSHAPE),
 \ Transpose->OP-TRANSPOSE (2D; perm absent or exactly [1,0], else E-ONNX-ATTR),
@@ -68,8 +71,14 @@ create IMP-SLOT OGI-CAP cells allot            \ initializer -> MIR input slot
 create IMP-AOFF OGI-CAP cells allot            \ initializer -> arena offset (cells)
 variable IMP-BUMP
 
+\ ---- synthetic scalar constants (Gemm alpha/beta): 1x1 f32 slots into the arena ----
+32 constant SYN-CAP
+create SYN-SLOT SYN-CAP cells allot            \ synthetic constant -> MIR input slot
+create SYN-OFF  SYN-CAP cells allot            \ synthetic constant -> arena offset (cells)
+variable SYN-N
+
 : IMP-RESET ( -- )
-   0 IMP-BUMP !  0 IMP-IN-N !
+   0 IMP-BUMP !  0 IMP-IN-N !  0 SYN-N !
    OGN-CAP 0 ?do  0 IMP-SET i cells + !  loop ;
 
 : IMP-BIND ( n n -- ) {: ni:n ref:n :}         \ bind a name slot to a MIR ref (SSA)
@@ -148,6 +157,27 @@ variable IMP-BUMP
    rows cols MAKI:DT-F32 MAKI:LAY-ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ {: k:n :}
    j OND-OUT@ k IMP-BIND ;
 
+\ ---- internal node construction (Gemm composition builds a multi-node chain) ------
+\ These commit a staged node and return its MIR node ref WITHOUT binding an ONNX name;
+\ only the last node in a composed chain binds the graph output name (IMP-COMMIT).
+: MK-COMPUTE ( n n -- n ) {: rows:n cols:n :}   \ close a compute node (materialized); return its ref
+   rows cols MAKI:DT-F32 MAKI:LAY-ROW 0 1 MAKI:MIR-OP+ ;
+
+: MK-MOVE ( n n n -- n ) {: rows:n cols:n attr:n :}   \ close a movement node; return its ref
+   rows cols MAKI:DT-F32 MAKI:LAY-ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ ;
+
+\ a synthetic 1x1 f32 constant holding v (written into the arena now); returns its MIR input ref
+: SYN-CONST ( r -- n ) {: v:r :}
+   SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
+   IMP-BUMP @ 1+ IMP-ARENA-CELLS > if E-ONNX-CAP throw then
+   1 1 MAKI:DT-F32 MAKI:LAY-ROW MAKI:MIR-INPUT+ {: s:n :}
+   v IMP-ARENA IMP-BUMP @ T-SET
+   IMP-BUMP @ SYN-N @ cells SYN-OFF + !
+   s SYN-N @ cells SYN-SLOT + !
+   IMP-BUMP @ 1+ IMP-BUMP !
+   SYN-N @ 1+ SYN-N !
+   s MAKI:MIR-IN-REF ;
+
 \ Add / Mul: numpy broadcast mapped onto the capture-legal classes. The second
 \ operand's shape is classified against the first (BC-CLASS, the exact mapping the
 \ host executor's EX-BC@ and the planner's SHP-LEGAL? use): a full-shape operand is
@@ -195,15 +225,18 @@ variable IMP-BUMP
    ax -1 <> ax 1 <> and if E-ONNX-ATTR throw then
    j MAKI:OP-SOFTMAX-ROW IMP-UNARY ;
 
-: IMP-GEMM-ATTRS ( n -- ) {: j:n :}            \ only the default affine form lowers
-   j ATTR-ALPHA ATTR-BETA or ATTR-TA or ATTR-TB or IMP-ATTRS-OK
-   j OND-ALPHA@ F32-ONE <> if E-ONNX-ATTR throw then
-   j OND-BETA@  F32-ONE <> if E-ONNX-ATTR throw then
-   j OND-TA@ 0<>  j OND-TB@ 0<>  or if E-ONNX-ATTR throw then ;
+\ Gemm accepts alpha / beta / transA / transB; any other attribute rejects. Every one
+\ is expressible by composition (a TRANSPOSE per transA/transB; a SCALE per non-unit
+\ alpha/beta), so the value rejects that the pre-composition importer raised are gone.
+: IMP-GEMM-ATTRS ( n -- ) {: j:n :}
+   j ATTR-ALPHA ATTR-BETA or ATTR-TA or ATTR-TB or IMP-ATTRS-OK ;
 
-: IMP-GEMM ( n -- ) {: j:n :}                  \ 2 inputs -> matmul; 3 -> linear (bias 1xN)
-   j IMP-GEMM-ATTRS
-   j OND-IN# dup 2 < swap 3 > or if E-ONNX-ARITY throw then
+\ default affine form (no transpose, unit alpha/beta): the single-node OP-MATMUL / OP-LINEAR path
+: GEMM-SIMPLE? ( n -- bool ) {: j:n :}
+   j OND-TA@ 0=  j OND-TB@ 0=  and
+   j OND-ALPHA@ F32-ONE =  and  j OND-BETA@ F32-ONE =  and ;
+
+: IMP-GEMM-SIMPLE ( n -- ) {: j:n :}           \ 2 inputs -> matmul; 3 -> linear (bias 1xN)
    j 0 OND-IN@ IMP-RESOLVE {: rx:n :}
    j 1 OND-IN@ IMP-RESOLVE {: rw:n :}
    rx IMP-REF-COLS rw IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
@@ -215,6 +248,46 @@ variable IMP-BUMP
    rb IMP-REF-ROWS 1 <>  rb IMP-REF-COLS nc <>  or if E-ONNX-SHAPE throw then
    MAKI:OP-LINEAR MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+  rb MAKI:MIR-IN+
    j m nc IMP-COMMIT ;
+
+\ transA/transB: return the operand, transposed by an inserted TRANSPOSE node when the flag is set
+: GEMM-T ( n -- n ) {: r:n :}                  \ insert TRANSPOSE(r) -> r^T ref
+   MAKI:OP-TRANSPOSE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+
+   MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
+   r IMP-REF-COLS  r IMP-REF-ROWS  attr  MK-MOVE ;
+: GEMM-MAYBE-T ( n n -- n ) {: r:n t:n :}  t 0<> if r GEMM-T else r then ;
+
+\ non-unit alpha/beta: insert an OP-SCALE node multiplying ref r by the scalar a (1x1 constant)
+: GEMM-SCALE ( n r -- n ) {: r:n a:r :}
+   a SYN-CONST {: cs:n :}
+   MAKI:OP-SCALE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+  cs MAKI:MIR-IN+
+   r IMP-REF-ROWS  r IMP-REF-COLS  MK-COMPUTE ;
+
+\ apply the C operand under beta: 0 drops C, 1 adds it as a bias, else scales C by beta then adds
+: GEMM-C ( n n -- n ) {: j:n acc:n :}          \ j acc -- result ref
+   j OND-BETA@ 0= if acc exit then
+   j 2 OND-IN@ IMP-RESOLVE {: rc:n :}
+   rc IMP-REF-ROWS 1 <>  rc IMP-REF-COLS acc IMP-REF-COLS <>  or if E-ONNX-SHAPE throw then
+   j OND-BETA@ F32-ONE <> if  rc j OND-BETA@ F32>F64 GEMM-SCALE  else rc  then  {: rc2:n :}
+   MAKI:OP-BIAS MAKI:MIR-OP-BEGIN  acc MAKI:MIR-IN+  rc2 MAKI:MIR-IN+
+   acc IMP-REF-ROWS  acc IMP-REF-COLS  MK-COMPUTE ;
+
+\ composed form: (transA?A^T:A) @ (transB?B^T:B), then alpha scale, then beta*C bias-add
+: IMP-GEMM-COMPOSED ( n -- ) {: j:n :}
+   j 0 OND-IN@ IMP-RESOLVE  j OND-TA@ GEMM-MAYBE-T {: ra:n :}
+   j 1 OND-IN@ IMP-RESOLVE  j OND-TB@ GEMM-MAYBE-T {: rb:n :}
+   ra IMP-REF-COLS rb IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
+   ra IMP-REF-ROWS {: m:n :}  rb IMP-REF-COLS {: nc:n :}
+   MAKI:OP-MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
+   m nc MK-COMPUTE {: acc:n :}
+   j OND-ALPHA@ F32-ONE <> if  acc j OND-ALPHA@ F32>F64 GEMM-SCALE  else acc  then  {: acc2:n :}
+   j OND-IN# 3 = if  j acc2 GEMM-C  else acc2  then  {: acc3:n :}
+   j OND-OUT@ acc3 IMP-BIND ;
+
+: IMP-GEMM ( n -- ) {: j:n :}
+   j IMP-GEMM-ATTRS
+   j OND-IN# dup 2 < swap 3 > or if E-ONNX-ARITY throw then
+   j GEMM-SIMPLE? if j IMP-GEMM-SIMPLE exit then
+   j IMP-GEMM-COMPOSED ;
 
 \ ---- movement op builders (MOVE-KIND coverage; wired the way MODEL: capture does) ---
 \ Movement nodes are exact layout rewrites: they carry MV-PACK'd attrs + a dissolution
@@ -315,9 +388,12 @@ public
 : INIT-SLOT@ ( n -- n )  OGI-CK cells IMP-SLOT + @ ;
 : INIT-DATA@ ( n -- ptr a )  OGI-CK cells IMP-AOFF + @  IMP-ARENA swap T-AT ;
 
-\ bind every initializer buffer to its executor input slot (after MAKI:EX-RESET)
+\ bind every initializer buffer + synthetic Gemm constant to its executor slot (after MAKI:EX-RESET)
 : BIND-INITS ( -- )
-   INIT# 0 ?do  i INIT-DATA@ i INIT-SLOT@ MAKI:EX-BIND  loop ;
+   INIT# 0 ?do  i INIT-DATA@ i INIT-SLOT@ MAKI:EX-BIND  loop
+   SYN-N @ 0 ?do
+      IMP-ARENA i cells SYN-OFF + @ T-AT   i cells SYN-SLOT + @   MAKI:EX-BIND
+   loop ;
 
 \ ---- the imported model's output node -------------------------------------------
 : OUT-NODE@ ( -- n )

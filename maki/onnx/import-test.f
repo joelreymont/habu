@@ -13,14 +13,16 @@
 \   RS: Reshape(x,[1,4])     target from an INT64 shape initializer -> OP-RESHAPE
 \   TR: Transpose(x,[1,0])   2x3 -> 3x2 perm attribute -> OP-TRANSPOSE
 \   CC: Concat(x,cc,axis 0)  2x2 + 1x2 -> 3x2 row-append -> OP-CONCAT
+\   GTB: Gemm(x,wt,transB=1) TRANSPOSE + MATMUL (the PyTorch Linear export shape)
+\   GAB: Gemm(x,w,b,a=2,b=0) MATMUL + SCALE (synthetic 1x1), C dropped
 \ The fusion planner runs the imported IR too (FP-BUILD; Gemm->Relu fuses into
 \ one region). Negative fixtures cover every importer throw: dynamic dim_param,
-\ unsupported op (the ONNX:LOWER rejection), non-topological input, bad Gemm /
-\ Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column and a ragged 3x2-vs-2x2
-\ Add (broadcast shapes outside the legal classes), a runtime-computed Reshape shape,
-\ a non-transpose and a rank-3 Transpose perm, two graph outputs, output not the last
-\ node, missing graph, SSA rebind, missing initializer payload, oversized name, wrong
-\ arity, and truncated model bytes.
+\ unsupported op (the ONNX:LOWER rejection), non-topological input, a foreign Gemm
+\ attr / bad Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column and a ragged
+\ 3x2-vs-2x2 Add (broadcast shapes outside the legal classes), a runtime-computed
+\ Reshape shape, a non-transpose and a rank-3 Transpose perm, two graph outputs, output
+\ not the last node, missing graph, SSA rebind, missing initializer payload, oversized
+\ name, wrong arity, and truncated model bytes.
 
 require lib/test.f
 require lib/string.f
@@ -254,6 +256,45 @@ create X2B 8 cells allot
    s" x" 11 2 2 VI+  s" y" 12 3 2 VI+
    ;MDL ;
 
+\ ---- Gemm attribute composition fixtures (transB / alpha+beta) -------------------
+: INIT-WT ( -- )                               \ wt 2x3 = [[1,0,1],[0,1,0]] (a transB weight)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  3 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" wt" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB
+         1.0 ONNX:ENC-F32  0.0 ONNX:ENC-F32  1.0 ONNX:ENC-F32
+         0.0 ONNX:ENC-F32  1.0 ONNX:ENC-F32  0.0 ONNX:ENC-F32
+      ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: GEMM-TB-NODE ( -- )                          \ Gemm x wt -> y, transB=1
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" wt" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR
+      s" Gemm" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" transB" 1 ONNX:ENC-STR  1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: MODEL-GTB ( -- )                             \ Gemm(x 2x3, wt 2x3, transB=1) -> y 2x2 = x . wt^T
+   MDL
+   s" GTB" 2 ONNX:ENC-STR
+   GEMM-TB-NODE  INIT-WT
+   s" x" 11 2 3 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+: GEMM-AB-NODE ( -- )                          \ Gemm x w b -> y, alpha=2 beta=0
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" w" 1 ONNX:ENC-STR  s" b" 1 ONNX:ENC-STR
+      s" y" 2 ONNX:ENC-STR  s" Gemm" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" alpha" 1 ONNX:ENC-STR  2.0 2 ONNX:ENC-F32A  ONNX:;ENC-SUB
+      5 ONNX:ENC-SUB  s" beta"  1 ONNX:ENC-STR  0.0 2 ONNX:ENC-F32A  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: MODEL-GAB ( -- )                             \ Gemm(x 2x2, w 2x2, b, alpha=2, beta=0) -> 2*(x . w)
+   MDL
+   s" GAB" 2 ONNX:ENC-STR
+   GEMM-AB-NODE  INIT-W  INIT-B
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
 \ ---- negative fixtures (each builds a model then imports it) ---------------------
 : IMP! ( -- )  ONNX:ENC$ ONNX:IMPORT ;
 
@@ -283,12 +324,12 @@ create X2B 8 cells allot
    s" Relu" s" x" s" t" NODE1
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
 
-: TRY-TRANSB ( -- )                            \ Gemm transB=1 is not the affine form
+: TRY-GEMMATTR ( -- )                          \ Gemm with an axis attr: outside the Gemm attribute set
    MDL
    1 ONNX:ENC-SUB
       s" x" 1 ONNX:ENC-STR  s" w" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR
       s" Gemm" 4 ONNX:ENC-STR
-      5 ONNX:ENC-SUB  s" transB" 1 ONNX:ENC-STR  1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
+      5 ONNX:ENC-SUB  s" axis" 1 ONNX:ENC-STR  1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
    ONNX:;ENC-SUB
    INIT-W  s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
 
@@ -555,11 +596,39 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 4 >I 10 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 20 T=
 
+\ ---- Gemm transB=1 (the common PyTorch Linear export): TRANSPOSE + MATMUL ---------
+MODEL-GTB  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 2 T=
+0 MAKI:MIR-OP@ MAKI:OP-TRANSPOSE T=            \ B is transposed by an inserted movement node
+1 MAKI:MIR-OP@ MAKI:OP-MATMUL T=
+ONNX:OUT-NODE@ 1 T=
+1 MAKI:MIR-ROWS@ 2 T=  1 MAKI:MIR-COLS@ 2 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 4 T=          \ x . wt^T, wt=[[1,0,1],[0,1,0]]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 2 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 10 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 5 T=
+
+\ ---- Gemm alpha=2 beta=0: MATMUL + SCALE (synthetic 1x1), C dropped ----------------
+MODEL-GAB  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 2 T=
+0 MAKI:MIR-OP@ MAKI:OP-MATMUL T=
+1 MAKI:MIR-OP@ MAKI:OP-SCALE T=               \ alpha=2 -> an inserted scale node
+ONNX:OUT-NODE@ 1 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 38 T=          \ 2 * (x . w), w=[[5,6],[7,8]]; beta=0 drops b
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 44 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 86 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 100 T=
+
 \ ---- fail closed -------------------------------------------------------------------
 ' TRY-DYN      E-ONNX-DYNSHAPE TTHROWS
 ' TRY-CONV     E-MK-ONNX       TTHROWS
 ' TRY-TOPO     E-ONNX-TOPO     TTHROWS
-' TRY-TRANSB   E-ONNX-ATTR     TTHROWS
+' TRY-GEMMATTR E-ONNX-ATTR     TTHROWS
 ' TRY-AXIS     E-ONNX-ATTR     TTHROWS
 ' TRY-ADDATTR  E-ONNX-ATTR     TTHROWS
 ' TRY-BADATTR  E-ONNX-ATTR     TTHROWS

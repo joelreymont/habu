@@ -48,9 +48,21 @@ fixtures A-D). Remaining host-side legs, one commit each:
     rejection (E-MK-ONNX). Also remaining: INT64 int64_data (field 7) initializers (only
     raw_data field 9 is decoded), Reshape -1 (infer) / 0 (copy) dims, and Transpose perm
     honoring for rank>2 once the IR is >2D.
-- **LEG C — Gemm attribute composition (transA/transB, alpha/beta).** REMAINING.
+- **LEG C — Gemm attribute composition. LANDED.** The default affine form
+  (alpha=beta=1, transA=transB=0) still lowers to the single-node OP-MATMUL /
+  OP-LINEAR fast path; attributes now COMPOSE into a node chain instead of being
+  rejected: transA/transB insert a TRANSPOSE on that operand; a non-unit alpha
+  inserts an OP-SCALE against a synthesized 1x1 constant (SYN-CONST + BIND-INITS
+  binds it alongside the initializers); beta=0 drops C, beta=1 adds C as an OP-BIAS,
+  other beta scales C first. Only a non-Gemm attribute now rejects E-ONNX-ATTR.
+  Fixtures GTB (Gemm transB=1 -> TRANSPOSE+MATMUL, the PyTorch Linear export shape)
+  and GAB (alpha=2 beta=0 -> MATMUL+SCALE, C dropped) host-execute vs hand-computed;
+  TRY-GEMMATTR (foreign axis attr) rejects. Files: maki/onnx/import.f,
+  maki/onnx/import-test.f. (F32 attr bits -> f64 via lib/ptx/cg.f F32>F64.)
 - **Real-model onnxruntime golden.** REMAINING (needs a host onnxruntime run;
-  user-gated).
+  user-gated). The in-source hand-encoded fixtures host-execute every op vs
+  hand-computed values, but a real .onnx model compared against an onnxruntime
+  reference run has not been done (no onnxruntime in this environment).
 
 LANDED (importer core, all in package ONNX):
 - maki/onnx/proto.f: protobuf wire subset decoder over (base,lo,hi) windows with
