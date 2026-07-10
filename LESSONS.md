@@ -3301,3 +3301,12 @@ unchanged (148855). Keys for milestone 2:
   variant path rejected family tails, but the family path never scanned prior
   variants, so identical names accepted in one order. Apply the same in-scope
   rule at both declaration gates and pin unrelated-package acceptance.
+- **A lagging integration branch can carry a stale plan; check the authoritative
+  version before building.** The Model IR descriptor swap was implemented from
+  fable's copy of a dot whose plan master had already CORRECTED (the G-TAG "enum
+  behind stable n accessors" design was declared INVALID on master, because it
+  leaves the dtype/layout field-swap hole open at the API boundary). The
+  self-run destruction review passed only because it was handed the stale spec.
+  Before executing a dot on a branch behind master, diff the dot against
+  master's version and rebase onto the plan-owner's branch BEFORE implementing,
+  not after; a destruction review is only as good as the spec it is given.
