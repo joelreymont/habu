@@ -250,6 +250,70 @@ test/type-decl-suite.f (4 self-ref forms reject 7117 + a non-self stays 7109 + a
 private non-recursive positive). Docs §24 + the foundation TDECL-POLICY comment
 updated. Remaining boxed sub-slices 2-6 unchanged.
 
+## BOXED SUB-SLICE 2 (representation) — AUDIT
+
+Q1: can the checker-side representation be prepared WITHOUT accepting the policy?
+- The WIDTH branch alone (TFAM-WIDTH@→1 for a TL-BOXED/TL-NICHE family; today
+  type-family.f:226 is kind-only, policy-independent) is CHECK-SOUND and
+  unit-testable in isolation. The checker models a layout value as a W-cell bundle
+  with the tag at slot W-1 (checker.f:1184 "tag on top"; :5177 asserts "hidden tag
+  not on group top"; MATCH-SCRUT :6138-6169 walks the W cells WITHOUT reading the
+  runtime tag). For a boxed W=1 family, slot 0 is a pointer but the checker treats
+  it exactly like a W=1 enum's tag cell — the pointer-vs-tag distinction is
+  invisible at check time (linear counts the one cell once = correct; MATCH-check
+  reads variants from the registry, not the runtime cell). It only materializes at
+  LOWER time (deref vs inline tag read). Testable via the direct TFAM-LAYOUT!
+  TL-BOXED mutator, exactly like PACKED-DESC / the LAY unit tests.
+- BUT that WIDTH branch is the ONLY cleanly-isolatable piece. The full routing
+  (transport/MATCH-check/linear on a REAL boxed value) and the ctor/MATCH LOWERING
+  cannot be exercised without boxed DECLARATIONS succeeding, and ctor bodies are
+  generated AT declaration from the policy (TDECL-CTOR-WORDS → TDGEN-BODY emits
+  "pads + tag ;"), so a post-hoc mutator CANNOT retrofit a boxed (alloc-based)
+  ctor. So the representation is only PARTIALLY isolatable: the width metadata yes;
+  the routing + lowering no.
+
+Q2: re-scoped ordering (accept moves to LAST, per the expose-after-lowering guard).
+- COUPLED block (none independently mergeable/exposable): accept POLICY boxed +
+  boxed ctor codegen (alloc+store+return ptr, TDGEN-BODY branches on policy) +
+  MATCH deref codegen (habu2.f reads the tag inline at [x19,#-8]; boxed must deref
+  the pointer first) + self-ref grammar acceptance (invert s1's reject under
+  boxed). accept-without-lowering exposes a broken policy; lowering-without-accept
+  has no boxed family to generate ctors for → they land together.
+- Cleanly-separable pieces BEFORE the coupled block:
+  (a) WIDTH branch [thin metadata, mutator-tested, shared with niche];
+  (b) boxed runtime record library — a bump arena over MEM-ALLOC-64K-SPAN + a box
+      record layout (tag + payload cells) + BOX-ALLOC / BOX-DEREF-TAG, standalone
+      checked words tested DIRECTLY (no boxed family needed). De-risks the coupled
+      block's allocator integration + record ABI.
+- RECOMMENDED smallest sound next step: (b) the boxed runtime record library.
+  Higher value than the thin WIDTH branch — it is the isolatable half of lowering,
+  directly testable, and builds on the existing allocator; the coupled codegen
+  block then just emits calls to it. (a) is the even-smaller alternative if you
+  want the absolute minimum / to bank the shared niche W=1 infra first.
+
+Q3: total boxed lowering size — MEDIUM (tractable), NOT a heap+GC mega-feature.
+- Allocator is NOT net-new: MEM-ALLOC-BYTES/CELLS/64K-SPAN (lib/memory.f,
+  mmap-backed) exist and are checked-callable. There is NO MEM-FREE (grow-only
+  pools), so ARENA ownership (bump-allocate boxed records into a pool, free-all /
+  leak-until-reset, no per-node free) is the natural fit — consistent with the
+  project "no GC" and it AVOIDS coupling boxed to the linear destructor system.
+- Size drivers: (b) record library [small, on MEM-ALLOC]; WIDTH branch [tiny];
+  coupled block [medium: accept + ctor codegen + MATCH deref + self-ref grammar];
+  mutual-recursion cycle detection [moderate, schema walk — foldable or deferrable,
+  direct self-ref already covers the maki tree/IR case]; full construct/match/
+  invalid-tag/layout tests. Realistic: ~2 small prep slices + 1 medium COUPLED
+  accept+lowering slice (the bulk; not incrementally mergeable) + optional
+  mutual-recursion follow-on. PHASE-2-appropriate; the allocator + arena ownership
+  are the two facts that keep it medium rather than large.
+
+Design forks (flag before implementing the coupled block):
+1. Ownership: arena/pool (recommended — small, no free, matches no-MEM-FREE) vs
+   per-node linear free (big, couples to the linear/destructor system). v1 = arena.
+2. Mutual recursion: fold into the coupled block or defer as a follow-on.
+3. The boxed hidden-field's slot-0 "tag" label is check-harmless but the deref
+   codegen MUST gate on TL-BOXED so it never emits an inline tag read for a boxed
+   scrutinee (or an inline pointer read for a stack-cell-tag one).
+
 ### Item-lane collision (public-signature / repair-diagnostics, tfam-13)
 Item lane touches sumtype.f (declaration-DIAGNOSTIC packet shape: c1-doc,
 c2-oversize) and render.f (repair-packet rendering). niche/boxed touch sumtype.f
