@@ -3215,3 +3215,12 @@ unchanged (148855). Keys for milestone 2:
   miss modes failing safe only BECAUSE the keyword's top-level no-op had
   landed first. Proof-first ordering turned a latent wrong-program bug into a
   same-session fix.
+- **Token lints must match dictionary-significant words case-insensitively.**
+  The dictionary is case-insensitive, so `CREATE BUF` defines a global and
+  `END-PACKAGE` closes a package exactly like the lower-case spellings — a
+  lint matching definers/`package` with `LINT-STR=` has both an evasion vector
+  (upper `CREATE`, upper closer leaving depth stuck > 0 hides every later def)
+  and a false-positive vector (upper opener not counted). Proven red-first in
+  the maki-ns-lint reconciliation: 3 misses + 1 false positive on 5 fixtures.
+  `LINT-STR=CI` for anything the engine resolves; keep exemption prefixes
+  (`E-`) case-sensitive so whitelists stay narrow.

@@ -9,8 +9,14 @@
 \ Scan: each maki/*.f source is TOKENIZEd (PARENS? on, so `\` line comments and
 \ `( )` stack comments are stripped and `s"` bodies stay single tokens), then the
 \ token stream is walked while tracking `package`/`end-package` depth. Every
-\ defining word (`:`, `constant`, `variable`, `create`, `DEFTYPE`, ...) seen at
-\ depth 0 names a global maki def; its name token is a finding unless whitelisted.
+\ defining word (`:`, `constant`, `variable`, `create`, `DEFTYPE`, `KERNEL:`, ...)
+\ seen at depth 0 names a global maki def; its name token is a finding unless
+\ whitelisted. Definer and package tokens match case-INSENSITIVELY: the dictionary
+\ is case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global
+\ and `END-PACKAGE` closes a package exactly like their lower-case spellings; a
+\ case-sensitive scan is an evasion vector (this subsumed the retired
+\ tools/maki-ns-lint.f, whose one-package-per-file marker model could not express
+\ the multi-package subsystem files - dot habu-maki-ns-lint-reconcile).
 \
 \ Whitelist (documented substrate / cross-cutting, NOT flagged):
 \   - E-*  names: cross-cutting error-code constants, top-level by convention.
@@ -69,22 +75,24 @@ variable NL-QI
    repeat ;
 
 \ ---- token classification ---------------------------------------------------
-\ true when the token names the next token as a new global word
+\ true when the token names the next token as a new global word (CI: the
+\ dictionary is case-insensitive, so `CREATE`/`Constant` define like `create`)
 : NL-DEF-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" :"         LINT-STR= if LINT-TRUE exit then
-   a u s" +:"        LINT-STR= if LINT-TRUE exit then
-   a u s" constant"  LINT-STR= if LINT-TRUE exit then
-   a u s" 2constant" LINT-STR= if LINT-TRUE exit then
-   a u s" fconstant" LINT-STR= if LINT-TRUE exit then
-   a u s" variable"  LINT-STR= if LINT-TRUE exit then
-   a u s" 2variable" LINT-STR= if LINT-TRUE exit then
-   a u s" fvariable" LINT-STR= if LINT-TRUE exit then
-   a u s" create"    LINT-STR= if LINT-TRUE exit then
-   a u s" DEFTYPE"   LINT-STR= if LINT-TRUE exit then
-   a u s" value"     LINT-STR= if LINT-TRUE exit then
-   a u s" defer"     LINT-STR= if LINT-TRUE exit then
-   a u s" CHECKED:"  LINT-STR= if LINT-TRUE exit then
-   a u s" TRUSTED:"  LINT-STR= if LINT-TRUE exit then
+   a u s" :"         LINT-STR=   if LINT-TRUE exit then
+   a u s" +:"        LINT-STR=   if LINT-TRUE exit then
+   a u s" constant"  LINT-STR=CI if LINT-TRUE exit then
+   a u s" 2constant" LINT-STR=CI if LINT-TRUE exit then
+   a u s" fconstant" LINT-STR=CI if LINT-TRUE exit then
+   a u s" variable"  LINT-STR=CI if LINT-TRUE exit then
+   a u s" 2variable" LINT-STR=CI if LINT-TRUE exit then
+   a u s" fvariable" LINT-STR=CI if LINT-TRUE exit then
+   a u s" create"    LINT-STR=CI if LINT-TRUE exit then
+   a u s" DEFTYPE"   LINT-STR=CI if LINT-TRUE exit then
+   a u s" value"     LINT-STR=CI if LINT-TRUE exit then
+   a u s" defer"     LINT-STR=CI if LINT-TRUE exit then
+   a u s" CHECKED:"  LINT-STR=CI if LINT-TRUE exit then
+   a u s" TRUSTED:"  LINT-STR=CI if LINT-TRUE exit then
+   a u s" KERNEL:"   LINT-STR=CI if LINT-TRUE exit then
    LINT-FALSE ;
 
 : NL-LEGACY-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -148,9 +156,9 @@ variable NL-QI
    NL-INSTR @ if                                     \ skip string bodies wholesale
       tp tu NL-QUOTES-ODD? if NL-INSTR @ 0= NL-INSTR ! then
       i 1+ exit then
-   tp tu s" package" LINT-STR= if
+   tp tu s" package" LINT-STR=CI if
       NL-DEPTH @ 1+ NL-DEPTH !  i 2 + exit then      \ skip the package name token
-   tp tu s" end-package" LINT-STR= if
+   tp tu s" end-package" LINT-STR=CI if
       NL-DEPTH @ 1- NL-DEPTH !  i 1+ exit then
    NL-DEPTH @ 0= tp tu NL-DEF-WORD? and if
       i NL-DEF-AT  i 2 + exit then                   \ skip past the defined name

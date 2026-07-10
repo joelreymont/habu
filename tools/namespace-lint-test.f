@@ -28,11 +28,22 @@ require tools/namespace-lint-core.f
    s" 5 constant FOO"     NL-COUNT 1 T=
    s" variable V"         NL-COUNT 1 T=
    s" create BUF 4 allot" NL-COUNT 1 T=
-   s" DEFTYPE handle"     NL-COUNT 1 T= ;
+   s" DEFTYPE handle"     NL-COUNT 1 T=
+   s" KERNEL: K dup ;"    NL-COUNT 1 T= ;
+
+: MNLT-CASE ( -- )
+   \ the dictionary is case-insensitive: upper-case definers define globals too
+   s" CREATE BUF 4 allot"  NL-COUNT 1 T=
+   s" VARIABLE V"          NL-COUNT 1 T=
+   \ upper-case package words still open/close scope: no false positive inside,
+   \ and an upper-case closer must not leave the scan stuck at depth > 0
+   s" PACKAGE MK : F dup ; end-package"     NL-COUNT 0 T=
+   s" package MK END-PACKAGE : LATE dup ;"  NL-COUNT 1 T= ;
 
 : MNLT-SCOPE ( -- )
    \ inside a package it is NOT a finding; after end-package it is again
-   s" package MK : SQUARE dup * ; end-package"  NL-COUNT 0 T=
+   s" package MK : SQUARE dup * ; end-package"   NL-COUNT 0 T=
+   s" package MK KERNEL: K dup ; end-package"    NL-COUNT 0 T=
    s" package MK end-package : LATE dup ;"       NL-COUNT 1 T= ;
 
 : MNLT-WHITELIST ( -- )
@@ -58,6 +69,7 @@ require tools/namespace-lint-core.f
    T-RESET
    MNLT-FILES
    MNLT-DETECT
+   MNLT-CASE
    MNLT-SCOPE
    MNLT-WHITELIST
    MNLT-NO-FALSE-POSITIVE

@@ -645,15 +645,12 @@ points stay listed.
 - `tools/maki-dep-lint-core.f` — one-way habu<-maki dependency guard: token-scans src/ lib/ test/ for a forbidden maki/ path reference.
 - `tools/maki-dep-lint.f` — CLI wrapper for the maki one-way dependency lint.
 - `tools/maki-dep-lint-test.f` — checked fixture coverage for the maki one-way dependency lint.
-- `tools/namespace-lint-core.f` — reports maki definitions at global scope (outside any subsystem package), whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs.
-- `tools/namespace-lint.f` — CLI wrapper for the maki namespace ledger lint (report-only).
-- `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace ledger lint.
+- `tools/namespace-lint-core.f` — flags maki definitions at global scope (outside any subsystem package): case-insensitive definer/package matching (the dictionary is case-insensitive) including `KERNEL:`, whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs; the active maki-namespace guard (subsumed the retired maki-ns-lint, dot habu-maki-ns-lint-reconcile).
+- `tools/namespace-lint.f` — CLI wrapper for the maki namespace lint (enforcing: throws on any global-def finding).
+- `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace lint (detection, case-insensitivity, scope, whitelist, live strict sweep).
 - `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
 - `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
 - `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
-- `tools/maki-ns-lint-core.f` — maki wordlist-namespace guard: token-scans maki/*.f for a top-level definition outside `package MAKI`; `E-` error constants stay global; a non-MAKI subsystem package (CUDA/FUSION/MAKI-GRADE) must carry a `\ maki-ns-lint: boundary <PKG>` marker matching its `package` token (stale marker = finding). UNGATED (dot habu-maki-ns-lint-reconcile): the single-package-per-file model is incompatible with fable's multi-package subsystem maki design; `tools/namespace-lint.f` is the active maki-namespace guard.
-- `tools/maki-ns-lint.f` — CLI wrapper for the maki wordlist-namespace lint (ungated; see maki-ns-lint-core.f).
-- `tools/maki-ns-lint-test.f` — checked fixture coverage for the maki wordlist-namespace lint (red-first detection, exempt/boundary/stale cases, live sweep; ungated).
 - `tools/string.f` — shared checked byte-string helper library.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
