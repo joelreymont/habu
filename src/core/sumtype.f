@@ -27,6 +27,7 @@
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
+7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
 
 26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
@@ -37,6 +38,7 @@ variable TDN-A   variable TDN-U      \ family name token
 variable TDB-A   variable TDB-U      \ body (SUMTYPE token buffer / arity token)
 variable TDT-A   variable TDT-U      \ offending token (diagnostics)
 variable TDW-A   variable TDW-U      \ short reason (diagnostics)
+variable TDECL-OVERSIZE             \ a collection buffer capped an over-cap body (item 13 C2)
 
 : TDECL-TOK! ( ptr u8 n -- ) TDT-U ! TDT-A ! ;
 : TDECL-WHY! ( ptr u8 n -- ) TDW-U ! TDW-A ! ;
@@ -86,6 +88,18 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    TDK-U ! TDK-A !
    0 TDT-U !  0 TDT-A !
    s" declaration failed" TDECL-WHY! ;
+
+\ Reject an over-cap declaration body through the declaration packet (§24 C2):
+\ either a collection buffer capped an over-long body (TDECL-OVERSIZE, native
+\ TDECL-C,) or the collected body already exceeds TDECL-CAP (verify-source /
+\ check-core, whose larger buffers hand the full body across). Runs at the head
+\ of each body under TDECL-RUN, name already in the TDN context.
+: TDECL-REQUIRE-FIT ( -- )
+   TDECL-OVERSIZE @ {: over:n :}
+   0 TDECL-OVERSIZE !
+   over 0 <>  TDB-U @ TDECL-CAP >  or IF
+      TDN-A @ TDN-U @ s" declaration too long" E-TDECL-CAP TDECL-THROW
+   THEN ;
 
 \ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
 \ packet (name + partial body) through TDECL-RUN so every path -- native SUMTYPE,
@@ -347,6 +361,7 @@ variable TDV-NA    variable TDV-NU
 
 \ --- registration entry points (verify-source and the definers below).
 : CHECKER-DEFSUM-BODY ( -- )
+   TDECL-REQUIRE-FIT
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
    TDECL-NEXT TDECL-ARITY {: ar:n :}
@@ -388,6 +403,7 @@ variable TDV-NA    variable TDV-NU
    AGAIN ;
 
 : CHECKER-DEFENUM-BODY ( -- )
+   TDECL-REQUIRE-FIT
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
    0 TDECL-FAM-ARITY !                   \ enums are non-parametric
@@ -506,6 +522,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 
 : CHECKER-DEFPRODUCT-BODY ( -- )
+   TDECL-REQUIRE-FIT
    TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
    TDB-A @ TDB-U @ TDECL-CURSOR!
    TDECL-NEXT TDECL-ARITY {: ar:n :}
@@ -728,9 +745,9 @@ create TDECL-BUF TDECL-CAP allot
 variable TDECL-U
 variable TDECL-I
 
-: TDECL-CLEAR ( -- ) 0 TDECL-U ! ;
-: TDECL-C, ( n -- )
-   TDECL-U @ 1 + TDECL-CAP > IF s" sumtype: declaration too long" 70 die THEN
+: TDECL-CLEAR ( -- ) 0 TDECL-U !  0 TDECL-OVERSIZE ! ;
+: TDECL-C, ( n -- )                     \ over-cap: cap + flag (never raw-die); the
+   TDECL-U @ 1 + TDECL-CAP > IF drop -1 TDECL-OVERSIZE ! EXIT THEN   \ body reaches the checker (§24 C2)
    TDECL-BUF TDECL-U @ + c!
    TDECL-U @ 1 + TDECL-U ! ;
 : TDECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}

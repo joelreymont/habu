@@ -1016,8 +1016,22 @@ DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
 \ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics (item
 \ 13) change; the richer JSON ADT fields join it unchanged when item 13 lands.
 s" SUMTYPE tdpolpk 1 POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
+
 DIAG-BUFFER$ s" bad sumtype declaration" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s" layout policy not yet supported" TDT-CONTAINS? -1 T=
+
+\ C2: a declaration body over TDECL-CAP ($1000) reports the packet, not a raw
+\ die (the length check fires ahead of variant parsing, so repeats never matter).
+create TDT-BIG 8192 allot   variable TDT-BIG-U
+: TDT-BIG-C, ( n -- ) TDT-BIG TDT-BIG-U @ + c!  TDT-BIG-U @ 1+ TDT-BIG-U ! ;
+: TDT-BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ TDT-BIG-C, loop ;
+: TDT-BIG-SUM$ ( -- ptr u8 n )
+   0 TDT-BIG-U !
+   s" SUMTYPE tdbig 1 " TDT-BIG-APP
+   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " TDT-BIG-APP loop
+   s" ;SUMTYPE" TDT-BIG-APP
+   TDT-BIG TDT-BIG-U @ ;
+TDT-BIG-SUM$ E-TDECL-CAP TDT-NEG
 
 \ ---------------------------------------------------------------------------
 \ multi-error load mode: a bad top-level declaration is reported + counted +

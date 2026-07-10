@@ -549,6 +549,25 @@ variable CKT-PAR-U
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
+\ C2: a declaration body over TDECL-CAP ($1000) must report the same
+\ E-BAD-DECLARATION packet (the length check fires ahead of variant parsing, so
+\ the repeated variant names never matter).
+create CKT-BIG $2000 allot   variable CKT-BIG-U
+: CKT-BIG-C, ( n -- ) CKT-BIG CKT-BIG-U @ + c!  CKT-BIG-U @ 1+ CKT-BIG-U ! ;
+: CKT-BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ CKT-BIG-C, loop ;
+: CKT-OVERSIZE$ ( -- ptr u8 n )
+   0 CKT-BIG-U !
+   s" SUMTYPE ckbig 1 " CKT-BIG-APP
+   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " CKT-BIG-APP loop
+   s" ;SUMTYPE" CKT-BIG-APP
+   CKT-BIG CKT-BIG-U @ ;
+: CKT-TEST-OVERSIZE ( -- )
+   CKT-OVERSIZE$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" declaration too long" CONTAINS? TTRUE ;
+
 : CKT-TEST-ENUM-GOOD ( -- )
    CKT-ENUM-GOOD$ CKT-DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -815,6 +834,7 @@ variable CKTP-DOC-U
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
    s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
+   s" check/oversize" [: CKT-TEST-OVERSIZE ;] CKT-RUN
    s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
    s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
    s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN

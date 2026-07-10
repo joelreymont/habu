@@ -151,7 +151,9 @@ create BODY-BUF BODYBUF-CAP allot
    NEXT-BODY  TOKEN-U !  TOKEN-A ! ;
 
 : BODY-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   BODY-U @ u + 1 + BODYBUF-CAP > IF s" verify-source: check body too long" 74 die THEN
+   \ over-cap: cap (skip) instead of raw-die; the body still exceeds TDECL-CAP,
+   \ so CHECKER-DEFSUM rejects it with the declaration packet (§24 C2).
+   BODY-U @ u + 1 + BODYBUF-CAP > IF EXIT THEN
    0 BEGIN dup u < WHILE
       dup a + c@  BODY-BUF BODY-U @ + c!
       BODY-U @ 1 + BODY-U !
