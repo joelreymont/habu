@@ -260,3 +260,30 @@ negatives added (fusion-plan-test.f): n->reason store, reason->n fetch, and
 reason-through-bare-`ptr a` all reject with cited diagnostics. Gates green: focused
 fusion-plan-test.f rc=0; maki/test.f rc=0 (77 suites); namespace/error-code/dot-dep/
 host lints 0 findings; typed-local-diff-lint rc=0.
+
+COLUMN 2 LANDED 2026-07-10 — report F-ROOFLINE (report.f). Fewest readers among
+the report columns (internal: NEW init, ROOFLINE!/@, R-ROOFLINE, RENDER-HUMAN;
+external: tests only, all through the unchanged n accessors). Cross-package
+resolution PROVEN by probe: a PUBLIC ENUM declared in `package MAKI` types
+signatures, MATCHes (signature scope), and constructs via the generated
+`MAKI-ROOFLINE:*` words from inside `package REPORT`. Design differs from column
+1 because the accessor signatures ARE the boundary: RC-* constants stay the
+public numeric vocabulary of ROOFLINE!/ROOFLINE@ (representation-hiding contract,
+signatures unchanged); the STORED value is the enum. `ENUM roofline unknown
+memory compute ;ENUM` in the MAKI substrate block; F-ROOFLINE-AT is the typed
+`ptr roofline` slot; >ROOFLINE (validate-first RC-CK, then if/else n->enum) is
+the ONE parse boundary; ROOFLINE>N (MATCH) is the ONE render-to-code boundary;
+RC-NAME becomes ( roofline -- text ) exhaustive MATCH (E-RPT-ROOF render default
+dropped — unrepresentable). ROOFLINE! keeps E-RPT-ROOF for out-of-range n (via
+RC-CK inside >ROOFLINE; BAD-ROOF test unchanged). MATCH sites: 2 (ROOFLINE>N,
+RC-NAME). Readers converted: R-ROOFLINE + RENDER-HUMAN render via enum; ROOFLINE@
+converts at the boundary. Swapped-role negatives (report-test.f, reopened REPORT
+block): n->roofline store, roofline->n fetch, and FOREIGN-FAMILY store (test-owned
+private `ENUM rtalien` — private families DO resolve in candidate signatures
+inside their open package; positive identity control pins it) — all reject with
+cited diagnostics. Gates green: report-test rc=0, cad-test rc=0, maki/test.f rc=0
+(77 suites), all 5 lints clean.
+HARNESS NOTE: `bin/hb file.f` script mode drops into a stdin REPL after the file;
+under a non-EOF stdin (this agent harness with `timeout`) it hangs. Always run
+probes/tests with `< /dev/null` (or stdin-feed the file). `bye` is NOT defined.
+The earlier probe "hangs" were exactly this, not checker loops.

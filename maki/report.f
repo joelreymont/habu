@@ -46,10 +46,19 @@ public
 3 constant V-N
 
 \ ---- roofline classes ----
+\ RC-* stay the public numeric vocabulary of the representation-hiding accessors
+\ (REPORT:ROOFLINE! / REPORT:ROOFLINE@ keep their n signatures); internally the
+\ report stores a real ENUM (dot habu-cad-adt-swap, capability S1) and converts
+\ at that accessor boundary only. Constructors: MAKI-ROOFLINE:UNKNOWN/MEMORY/COMPUTE.
 0 constant RC-UNKNOWN
 1 constant RC-MEMORY
 2 constant RC-COMPUTE
 3 constant RC-N
+ENUM roofline
+  unknown
+  memory
+  compute
+;ENUM
 
 \ ---- per-tensor coalescing status (CAD-PLAN 6.4 access vocabulary) ----
 0 constant CO-UNKNOWN
@@ -95,8 +104,13 @@ variable F-MATERIALIZED
 variable F-BYTES-BEFORE
 variable F-BYTES-AFTER
 variable F-BYTES-KNOWN
-variable F-ROOFLINE
+variable F-ROOFLINE            \ holds a `roofline` enum (typed slot below)
 variable F-SELECT
+
+\ typed roofline slot: retype the cell address to `ptr roofline` so the enum
+\ store/fetch certifies with family identity (capability S1); a raw n or a
+\ foreign family cannot reach this cell.
+: F-ROOFLINE-AT ( -- ptr roofline )  F-ROOFLINE ;
 
 \ key strings as (offset,length) into the arena; length 0 means unset
 variable K-MODEL-O   variable K-MODEL-L
@@ -175,13 +189,29 @@ create G-RL  MAKI:G-N cells allot
       E-RPT-VERDICT throw
    endcase ;
 
-: RC-NAME ( n -- ptr u8 n )
-   case
-      MAKI:RC-UNKNOWN of s" unknown"       endof
-      MAKI:RC-MEMORY  of s" memory-bound"  endof
-      MAKI:RC-COMPUTE of s" compute-bound" endof
-      E-RPT-ROOF throw
-   endcase ;
+\ roofline enum boundary (dot habu-cad-adt-swap): the stored value is the enum;
+\ the public accessors keep their RC-* n vocabulary, converted exactly here.
+: RC-CK ( n -- n )                             \ validate an RC-* code
+   dup 0 < over MAKI:RC-N >= or if E-RPT-ROOF throw then ;
+
+: >ROOFLINE ( n -- roofline )                  \ parse boundary: RC-* code -> enum
+   RC-CK
+   dup MAKI:RC-MEMORY = if drop MAKI-ROOFLINE:MEMORY exit then
+   MAKI:RC-COMPUTE = if MAKI-ROOFLINE:COMPUTE else MAKI-ROOFLINE:UNKNOWN then ;
+
+: ROOFLINE>N ( roofline -- n )                 \ render boundary: enum -> RC-* code
+   MATCH roofline
+      unknown OF MAKI:RC-UNKNOWN ENDOF
+      memory  OF MAKI:RC-MEMORY  ENDOF
+      compute OF MAKI:RC-COMPUTE ENDOF
+   ;MATCH ;
+
+: RC-NAME ( roofline -- ptr u8 n )             \ exhaustive: no bad-tag throw possible
+   MATCH roofline
+      unknown OF s" unknown"       ENDOF
+      memory  OF s" memory-bound"  ENDOF
+      compute OF s" compute-bound" ENDOF
+   ;MATCH ;
 
 : CO-NAME ( n -- ptr u8 n )
    case
@@ -275,7 +305,7 @@ create G-RL  MAKI:G-N cells allot
    loop ;
 
 : R-ROOFLINE ( -- )
-   s" roofline.class" EMIT-KEY  F-ROOFLINE @ RC-NAME OUT+ OUT-NL ;
+   s" roofline.class" EMIT-KEY  F-ROOFLINE-AT @ RC-NAME OUT+ OUT-NL ;
 
 : R-CACHE ( -- )
    s" cache.key" K-CACHE$ EMIT-K$ ;
@@ -344,7 +374,7 @@ public
    0 N-SPLIT !  0 N-WARN !  0 N-CAND !  0 N-HOT !  0 N-PROF !
    0 F-OPS-BEFORE !  0 F-OPS-AFTER !  0 F-REGIONS !  0 F-MATERIALIZED !
    0 F-BYTES-BEFORE !  0 F-BYTES-AFTER !  0 F-BYTES-KNOWN !
-   MAKI:RC-UNKNOWN F-ROOFLINE !  -1 F-SELECT !
+   MAKI-ROOFLINE:UNKNOWN F-ROOFLINE-AT !  -1 F-SELECT !
    0 K-MODEL-O !  0 K-MODEL-L !  0 K-SHAPE-O !  0 K-SHAPE-L !
    0 K-DTYPE-O !  0 K-DTYPE-L !  0 K-LAYOUT-O ! 0 K-LAYOUT-L !
    0 K-TARGET-O ! 0 K-TARGET-L ! 0 K-CACHE-O !  0 K-CACHE-L !
@@ -387,10 +417,9 @@ public
 : BYTES-AFTER@  ( report -- n )  RPT-DROP F-BYTES-AFTER @ ;
 
 \ ---- roofline class --------------------------------------------------------
-: ROOFLINE! ( report n -- report ) {: rc:n :}
-   rc 0 < rc MAKI:RC-N >= or if E-RPT-ROOF throw then
-   rc F-ROOFLINE ! ;
-: ROOFLINE@ ( report -- n )  RPT-DROP F-ROOFLINE @ ;
+: ROOFLINE! ( report n -- report ) {: rc:n :}   \ RC-* code; >ROOFLINE fail-closes
+   rc >ROOFLINE F-ROOFLINE-AT ! ;
+: ROOFLINE@ ( report -- n )  RPT-DROP F-ROOFLINE-AT @ ROOFLINE>N ;
 
 \ ---- split reasons ---------------------------------------------------------
 : SPLIT+ ( report ptr u8 n -- report )
@@ -511,7 +540,7 @@ public
    s"   target:    " OUT+ K-TARGET$ EMIT-STR OUT-NL
    s"   fusion:    " OUT+ F-OPS-BEFORE @ OUT-INT s"  -> " OUT+ F-OPS-AFTER @ OUT-INT
       s"  ops, " OUT+ F-REGIONS @ OUT-INT s"  regions" OUT+ OUT-NL
-   s"   roofline:  " OUT+ F-ROOFLINE @ RC-NAME OUT+ OUT-NL
+   s"   roofline:  " OUT+ F-ROOFLINE-AT @ RC-NAME OUT+ OUT-NL
    s"   certify:   " OUT+ MAKI:G-CERTIFY   H-GATE
    s"   golden:    " OUT+ MAKI:G-GOLDEN    H-GATE
    s"   gradcheck: " OUT+ MAKI:G-GRADCHECK H-GATE

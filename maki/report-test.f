@@ -2,6 +2,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/report.f
 
 package MAKI
@@ -197,6 +198,28 @@ s" repair=run-device-golden"          HAS
 s" repro=model:FFN"                   HAS
 drop
 
-T-REPORT
+end-package
+
+\ ---- roofline swapped-role negatives (dot habu-cad-adt-swap; capability S1) --
+\ F-ROOFLINE stores a real `roofline` ENUM behind the unchanged RC-* n accessors;
+\ the slot is reachable only as `ptr roofline` (F-ROOFLINE-AT, REPORT-private, so
+\ the checks run in a reopened REPORT block). rtalien is a test-owned foreign
+\ family proving family identity (not just n-vs-enum) is enforced at the slot.
+package REPORT
+
+ENUM rtalien aa bb ;ENUM
+
+\ positive controls: the typed slot accepts its own family; the alien type resolves
+s" RT-ROOF-OK ( roofline -- ) F-ROOFLINE-AT !"    CHECK-QUIET-CANDIDATE! -1 T=
+s" RT-ALIEN-ID ( rtalien -- rtalien )"            CHECK-QUIET-CANDIDATE! -1 T=
+\ n->enum laundering (diag: "at '!' expected: roofline<> ptr roofline<> actual: n ptr roofline<>")
+s" RT-ROOF-NIN ( n -- ) F-ROOFLINE-AT !"          CHECK-QUIET-CANDIDATE! 0 T=
+\ enum->n laundering (diag: "at '@' expected: n actual: roofline<>")
+s" RT-ROOF-NOUT ( -- n ) F-ROOFLINE-AT @"         CHECK-QUIET-CANDIDATE! 0 T=
+\ wrong family into the roofline slot (diag: "at '!' expected: roofline<> ptr
+\ roofline<> actual: rtalien<> ptr roofline<>")
+s" RT-ROOF-MIX ( rtalien -- ) F-ROOFLINE-AT !"    CHECK-QUIET-CANDIDATE! 0 T=
 
 end-package
+
+T-REPORT
