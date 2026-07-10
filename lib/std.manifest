@@ -345,8 +345,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-PROBE	(n count count -- idx)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	compute a linear-probe slot index
 1	map	lib/map.f	word	MAP-SLOT-MATCH?	(ptr a idx n ptr u8 len -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether one occupied slot matches hash and key
 1	map	lib/map.f	word	MAP-REMEMBER-FREE	(n idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	remember the first reusable probe slot
-1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a idx ptr u8 len n -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot
-1	map	lib/map.f	word	MAP-LOCATE	(ptr a count ptr u8 len -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate key insertion or lookup slot
+1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a idx ptr u8 len n -- n map-loc)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot: free memo plus a map-loc verdict
+1	map	lib/map.f	word	MAP-LOCATE	(ptr a count ptr u8 len -- map-loc n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate a key: map-loc verdict carrying the slot index, plus the key hash
 1	map	lib/map.f	word	MAP-SLOT-INSERT	(a ptr a idx n ptr u8 len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert one value into a free map slot
 1	map	lib/map.f	word	MAP-GET	(ptr a count ptr u8 len -- option<n>)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a value by counted key: SOME value if present, else NONE
 1	map	lib/map.f	word	MAP-HAS?	(ptr a count ptr u8 len -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists

@@ -576,6 +576,12 @@ Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
 consumer through `MATCH slot-state` or the `MAP-*?` predicates; a raw `n`
 cannot pose as a slot state and a state cannot launder back to `n`.
 
+The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
+no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
+generated constructors `MAP--LOC:FULL`, `MAP--LOC:FREE`, and `MAP--LOC:FOUND`.
+The carried `idx` payload replaces the old `-1` index placeholder, and every
+consumer dispatches through exhaustive `MATCH map-loc`.
+
 The published words expose checked storage layout plus lookup/update helpers:
 
 ```forth
@@ -615,8 +621,8 @@ MAP-INDEX           ( n count -- idx )
 MAP-PROBE           ( n count count -- idx )
 MAP-SLOT-MATCH?     ( ptr a idx n ptr u8 len -- bool )
 MAP-REMEMBER-FREE   ( n idx -- n )
-MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n n n )
-MAP-LOCATE          ( ptr a count ptr u8 len -- n n n )
+MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n map-loc )
+MAP-LOCATE          ( ptr a count ptr u8 len -- map-loc n )
 MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
 MAP-HAS?    ( ptr a count ptr u8 len -- bool )
 MAP-GET     ( ptr a count ptr u8 len -- option<n> )

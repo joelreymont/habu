@@ -130,11 +130,29 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-MATCH? ( ptr a n n ptr u8 n -- bool ) {: m:ptr ix hash key:ptr len :}
    m ix >IDX hash key len >LEN MAP-SLOT-MATCH? ;
 
-: MT-MAP-LOCATE-SLOT ( n ptr a n ptr u8 n n -- n n n ) {: free m:ptr ix key:ptr len hash :}
-   free m ix >IDX key len >LEN hash MAP-LOCATE-SLOT ;
+: MT-MAP-LOCATE-SLOT ( n ptr a n ptr u8 n n -- n map-loc ) {: fm:n m:ptr ix:n key:ptr len:n hash:n :}
+   fm m ix >IDX key len >LEN hash MAP-LOCATE-SLOT ;
 
-: MT-MAP-LOCATE ( ptr a n ptr u8 n -- n n n ) {: m:ptr cap key:ptr len :}
+: MT-MAP-LOCATE ( ptr a n ptr u8 n -- map-loc n ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN MAP-LOCATE ;
+
+: MT-LOC-KIND ( map-loc -- n )                       \ 0 full, 1 free, 2 found
+   MATCH map-loc
+     full OF 0 ENDOF
+     free OF drop 1 ENDOF
+     found OF drop 2 ENDOF
+   ;MATCH ;
+
+: MT-LOC-IDX ( map-loc -- n )                        \ carried slot index, -1 for full
+   MATCH map-loc
+     full OF -1 ENDOF
+     free OF IDX>N ENDOF
+     found OF IDX>N ENDOF
+   ;MATCH ;
+
+: MT-ASSERT-LOC ( map-loc n n -- ) {: kind:n ix:n :} \ verdict kind + carried idx
+   dup MT-LOC-KIND kind MT=
+   MT-LOC-IDX ix MT= ;
 
 : MT-MAP-SLOT-INSERT ( a ptr a n n ptr u8 n -- ) {: value m:ptr ix hash key:ptr len :}
    value m ix >IDX hash key len >LEN MAP-SLOT-INSERT ;
@@ -448,6 +466,57 @@ create MT-KEY-Z 122 c,
    MT-MAP ixa MT-MAP-SLOT-STATE@ MAP-OCCUPIED? MT-ASSERT
    MT-MAP MT-CAP MT-KEY-A 1 33 MT-ASSERT-HIT ;
 
+\ Direct MAP-LOCATE-SLOT matrix: all four slot-state arms of the map-loc
+\ verdict, with the free memo asserted below the verdict.
+: MT-TEST-LOCATE-SLOT ( -- )
+   MT-MAP MT-CAP MT-MAP-INIT
+   MT-KEY-A 1 MT-MAP-HASH {: ha:n :}
+   ha 0 MT-CAP MT-MAP-PROBE {: home:n :}
+   -1 MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
+      1 home MT-ASSERT-LOC home MT=                     \ empty -> free home, memo home
+   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   -1 MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
+      2 home MT-ASSERT-LOC -1 MT=                       \ key match -> found home, memo kept
+   -1 MT-MAP home MT-KEY-I 1 MT-KEY-I 1 MT-MAP-HASH MT-MAP-LOCATE-SLOT
+      0 -1 MT-ASSERT-LOC -1 MT=                         \ occupied non-match -> full, memo kept
+   SLOT--STATE:DELETED MT-MAP home MT-MAP-SLOT-STATE!
+   0 MT-MAP MT-MAP-COUNT!
+   1 MT-MAP MT-MAP-DELETED!
+   -1 MT-MAP home MT-KEY-A 1 ha MT-MAP-LOCATE-SLOT
+      0 -1 MT-ASSERT-LOC home MT= ;                     \ deleted -> full, memo remembers slot
+
+\ MAP-LOCATE end-to-end: every verdict with its carried index payload.
+: MT-TEST-LOCATE ( -- )
+   MT-MAP MT-CAP MT-MAP-INIT
+   MT-KEY-A 1 MT-MAP-HASH 0 MT-CAP MT-MAP-PROBE {: home:n :}
+   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-LOCATE drop
+      1 home MT-ASSERT-LOC                              \ empty table -> free at home
+   11 MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-SET
+   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-LOCATE drop
+      2 home MT-ASSERT-LOC                              \ present -> found at home
+   MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-LOCATE drop
+      1 MT-KEY-I 1 MT-MAP-HASH 1 MT-CAP MT-MAP-PROBE MT-ASSERT-LOC   \ collision -> free one past home
+   22 MT-MAP MT-CAP MT-KEY-I 1 MT-MAP-SET
+   SLOT--STATE:DELETED MT-MAP home MT-MAP-SLOT-STATE!
+   1 MT-MAP MT-MAP-COUNT!
+   1 MT-MAP MT-MAP-DELETED!
+   MT-MAP MT-CAP MT-KEY-A 1 MT-MAP-LOCATE drop
+      1 home MT-ASSERT-LOC                              \ tombstoned key -> free reclaims home
+   MT-FULL-MAP MT-FULL-CAP MT-MAP-INIT
+   11 MT-FULL-MAP MT-FULL-CAP MT-KEY-A 1 MT-MAP-SET
+   22 MT-FULL-MAP MT-FULL-CAP MT-KEY-B 1 MT-MAP-SET
+   33 MT-FULL-MAP MT-FULL-CAP MT-KEY-C 1 MT-MAP-SET
+   MT-FULL-MAP MT-FULL-CAP MT-KEY-D 1 MT-MAP-LOCATE drop
+      0 -1 MT-ASSERT-LOC ;                              \ full table -> full, no index
+
+\ Negative checked regressions: the verdict is not three loose ints, does not
+\ compare with `=`, and a raw n cannot pose as one. Positive baseline first.
+: MT-TEST-LOC-TYPES ( -- )
+   s" MTLP ( ptr a count ptr u8 len -- map-loc n ) MAP-LOCATE" CHECK-QUIET-CANDIDATE! -1 MT=
+   s" MTLN1 ( ptr a count ptr u8 len -- n n n ) MAP-LOCATE" CHECK-QUIET-CANDIDATE! 0 MT=
+   s" MTLN2 ( map-loc map-loc -- bool ) =" CHECK-QUIET-CANDIDATE! 0 MT=
+   s" MTLN3 ( n -- map-loc )" CHECK-QUIET-CANDIDATE! 0 MT= ;
+
 : MT-TEST-MAP-EACH-EMPTY ( -- )
    MT-MAP MT-CAP MT-MAP-INIT
    MT-EACH-RESET
@@ -511,6 +580,9 @@ create MT-KEY-Z 122 c,
    MT-TEST-MAP-COLLISIONS
    MT-TEST-MAP-FULL
    MT-TEST-TOMBSTONE
+   MT-TEST-LOCATE-SLOT
+   MT-TEST-LOCATE
+   MT-TEST-LOC-TYPES
    MT-TEST-MAP-EACH-EMPTY
    MT-TEST-MAP-EACH-INSERTS
    MT-TEST-MAP-EACH-UPDATES
