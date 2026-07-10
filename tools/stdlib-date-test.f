@@ -34,13 +34,17 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
 : T$= ( ptr u8 n ptr u8 n -- )
    DATE-TEST-STR= TTRUE ;
 
-: DATE-PARSE= {: a:ptr u days :} ( ptr u8 n n -- )
-   a u PARSE-YMD TTRUE
-   days T= ;
+: DATE-PARSE= {: a:ptr u:n days:n :} ( ptr u8 n n -- )   \ valid date -> SOME days
+   a u PARSE-YMD MATCH option
+     none OF 0 0= 0= TTRUE ENDOF                      \ NONE = unexpected parse failure -> false
+     some OF days T= ENDOF                            \ SOME day -> compare to expected
+   ;MATCH ;
 
-: DATE-PARSE-BAD ( ptr u8 n -- )
-   PARSE-YMD 0= TTRUE
-   drop ;
+: DATE-PARSE-BAD ( ptr u8 n -- )                     \ invalid date -> NONE
+   PARSE-YMD MATCH option
+     none OF 0 0= TTRUE ENDOF                         \ NONE = correctly rejected -> true
+     some OF drop 0 0= 0= TTRUE ENDOF                 \ SOME = unexpected parse success -> false
+   ;MATCH ;
 
 : DATE-FORMAT= {: days a:ptr u :} ( n ptr u8 n -- )
    days DATE-TEST-BUF DATE-TEST-BUF-LEN FORMAT-YMD
@@ -68,12 +72,26 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
      some OF drop 0 ENDOF
    ;MATCH  -1 T= ;
 
+: PARSE-YMD-OK ( -- )                               \ valid date -> SOME epoch day
+   s" 2026-06-16" PARSE-YMD MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH  20620 T= ;
+
+: PARSE-YMD-BAD ( -- )                              \ invalid date -> NONE
+   s" 2026/06/16" PARSE-YMD MATCH option
+     none OF -1 ENDOF
+     some OF drop 0 ENDOF
+   ;MATCH  -1 T= ;
+
 $30 DATE-DIGIT? TTRUE
 $39 DATE-DIGIT? TTRUE
 $2F DATE-DIGIT? 0= TTRUE
 $3A DATE-DIGIT? 0= TTRUE
 DATE-N-OK
 DATE-N-BAD
+PARSE-YMD-OK
+PARSE-YMD-BAD
 
 0 DAYS>YMD 1 T= 1 T= 1970 T=
 1970 1 1 YMD>DAYS 0 T=

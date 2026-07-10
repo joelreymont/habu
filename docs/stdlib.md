@@ -1429,15 +1429,15 @@ VALID-YMD?        ( n n n -- bool )
 YMD>DAYS          ( n n n -- n )
 DAYS>YMD          ( n -- n n n )
 DATE-N            ( ptr u8 n n -- option<n> )
-PARSE-YMD         ( ptr u8 n -- n bool )
+PARSE-YMD         ( ptr u8 n -- option<n> )
 DATE-WIDTH!       ( n n ptr u8 n -- )
 FORMAT-YMD        ( n ptr u8 n -- ptr u8 n )
 FORMAT-EPOCH-UTC  ( n ptr u8 n -- ptr u8 n )
 ```
 
 `DATE-N` returns `SOME` with the parsed field or `NONE` on a non-digit.
-`PARSE-YMD` accepts exactly `YYYY-MM-DD` and returns the Unix epoch day plus a
-success flag. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
+`PARSE-YMD` accepts exactly `YYYY-MM-DD` and returns `SOME` with the Unix epoch
+day, or `NONE` on malformed input. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
 `YYYY-MM-DDTHH:MM:SSZ`. Formatters use caller-provided buffers and throw
 `E-TIME-CAPACITY` when the buffer is too small. `FORMAT-EPOCH-UTC` also throws
 `E-TIME-RANGE` for negative epoch seconds. Load `lib/errors.f` before

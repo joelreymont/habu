@@ -1187,7 +1187,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	YMD>DAYS	(n n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Gregorian date to Unix epoch day
 1	date	lib/date.f	word	DAYS>YMD	(n -- n n n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Unix epoch day to Gregorian date
 1	date	lib/date.f	word	DATE-N	(ptr u8 n n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse a fixed-width decimal field: SOME value, or NONE on a non-digit
-1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- n bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd to Unix epoch day plus success flag
+1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd: SOME Unix epoch day, or NONE on bad input
 1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp

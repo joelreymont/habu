@@ -133,24 +133,24 @@ variable DATE-RUN
       DATE-I @ 1+ DATE-I !
    repeat OPTION:SOME ;
 
-: PARSE-YMD ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   u DATE-LEN <> IF 0 0 0= 0= exit THEN
-   a DATE-YEAR-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
-   a DATE-MONTH-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
+: PARSE-YMD ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
+   u DATE-LEN <> IF OPTION:NONE exit THEN
+   a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
+   a DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
    a 0 DATE-YEAR-LEN DATE-N MATCH option
-     none OF 0 0 0= 0= exit ENDOF
+     none OF OPTION:NONE exit ENDOF
      some OF DATE-Y ! ENDOF
    ;MATCH
    a DATE-YEAR-DASH 1+ DATE-PART-LEN DATE-N MATCH option
-     none OF 0 0 0= 0= exit ENDOF
+     none OF OPTION:NONE exit ENDOF
      some OF DATE-M ! ENDOF
    ;MATCH
    a DATE-MONTH-DASH 1+ DATE-PART-LEN DATE-N MATCH option
-     none OF 0 0 0= 0= exit ENDOF
+     none OF OPTION:NONE exit ENDOF
      some OF DATE-D ! ENDOF
    ;MATCH
-   DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF 0 0 0= 0= exit THEN
-   DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS 0 0= ;
+   DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF OPTION:NONE exit THEN
+   DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS OPTION:SOME ;
 
 : DATE-WIDTH! ( n n ptr u8 n -- ) {: n width dst:ptr pos :}
    n DATE-RUN !
