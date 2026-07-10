@@ -45,6 +45,21 @@ T-RESET
    x y <> TTRUE
    PTXIR-COUNT 2 T= ;
 
+\ switchover wave A: PTXIR-FIND-RAW / PTXIR-FIND return option<n> (SOME matching
+\ node id, else NONE). Both branches, via the raw finder (interned consts are
+\ written with live 0).
+: PTXIRT-FIND-OPTION ( -- )
+   PTXIR-RESET
+   5 PTXIR-CONST {: five:n :}
+   PTXIR-K-CONST PTXIR-NONE PTXIR-NONE 5 0 PTXIR-FIND-RAW MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> fail (const 5 exists)
+     some OF five = ENDOF                            \ some(id) -> the interned const
+   ;MATCH TTRUE
+   PTXIR-K-CONST PTXIR-NONE PTXIR-NONE 99 0 PTXIR-FIND-RAW MATCH option
+     none OF 0 0= ENDOF                             \ none -> pass (no const 99)
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
+
 : PTXIRT-DCE ( -- )
    PTXIR-RESET
    PTXIR-INPUT {: x:n :}
@@ -100,6 +115,7 @@ PTXIRT-FOLD
 PTXIRT-PEEPHOLE
 PTXIRT-CSE
 PTXIRT-INPUT-SYMS
+PTXIRT-FIND-OPTION
 PTXIRT-DCE
 PTXIRT-SOFTMAX-BWD
 PTXIRT-ADIR-SOFTMAX-BWD

@@ -1,5 +1,7 @@
 \ regex.f - bounded capture-free regex scanner/tokenizer.
 
+require lib/adt/option.f                     \ option<n>/option<len> for RX-META-TOKEN / RX-PREFIX-LEN (switchover wave A)
+
 $2E constant RX-C-DOT
 $5E constant RX-C-CARET
 $24 constant RX-C-DOLLAR
@@ -141,29 +143,33 @@ variable RX-COUNT-POS
    dst cap out RX-EMIT-LIT
    idx OFF>N 2 + >OFF swap ;
 
-: RX-META-TOKEN ( n -- n bool ) {: c :}
+: RX-META-TOKEN ( n -- option<n> ) {: c:n :}   \ SOME compiled token byte for a metachar, else NONE
    0 begin dup RX-META-TOKEN-N < while
       RX-META-TOKEN-BYTES over RX-META-TOKEN-STRIDE * + c@ c = if
          RX-META-TOKEN-BYTES swap RX-META-TOKEN-STRIDE * 1 + + c@
-         STR-TRUE exit
+         OPTION:SOME exit
       then
       1+
-   repeat drop c STR-FALSE ;
+   repeat drop OPTION:NONE ;
 
 : RX-EMIT-SINGLE-TOKEN ( n off ptr u8 len off -- off off ) {: op idx dst:ptr cap out :}
    op dst cap out RX-EMIT-1
    idx OFF>N 1 + >OFF swap ;
 
 : RX-SCAN-ONE ( ptr u8 len off ptr u8 len off -- off off ) {: a:ptr u idx dst:ptr cap out :}
-   a idx OFF>N + c@
-   dup RX-C-BACKSLASH = if drop a u idx dst cap out RX-SCAN-ESCAPE exit then
-   RX-META-TOKEN if
-      dup RX-TOK-CLASS = if drop a u idx dst cap out RX-EMIT-CLASS swap exit then
-      idx dst cap out RX-EMIT-SINGLE-TOKEN exit
-   then
-   dup RX-UNSUPPORTED-META? if E-RX-SYNTAX throw then
-   dst cap out RX-EMIT-LIT
-   idx OFF>N 1 + >OFF swap ;
+   a idx OFF>N + c@ {: c:n :}
+   c RX-C-BACKSLASH = if a u idx dst cap out RX-SCAN-ESCAPE exit then
+   c RX-META-TOKEN MATCH option
+     none OF                                        \ not a metachar: emit c as a literal
+        c RX-UNSUPPORTED-META? if E-RX-SYNTAX throw then
+        c dst cap out RX-EMIT-LIT
+        idx OFF>N 1 + >OFF swap
+     ENDOF
+     some OF                                        \ token byte on the stack
+        dup RX-TOK-CLASS = if drop a u idx dst cap out RX-EMIT-CLASS swap exit then
+        idx dst cap out RX-EMIT-SINGLE-TOKEN
+     ENDOF
+   ;MATCH ;
 
 : RX-COMPILE ( ptr u8 len ptr u8 len -- len ) {: a:ptr u dst:ptr cap :}
    u LEN>N 0 < if E-RX-SYNTAX throw then
@@ -422,9 +428,9 @@ variable RX-COUNT-POS
 : RX-ACCEPT? ( len -- bool ) {: rx-u :}
    RX-ACTIVE rx-u LEN>N >OFF RX-FLAG? ;
 
-: RX-PREFIX-LEN ( ptr u8 len ptr u8 len off -- len bool ) {: text:ptr text-u rx:ptr rx-u start :}
+: RX-PREFIX-LEN ( ptr u8 len ptr u8 len off -- option<len> ) {: text:ptr text-u:len rx:ptr rx-u:len start:off :}   \ SOME match length from start, else NONE
    start OFF>N 0 < if E-RX-SYNTAX throw then
-   start OFF>N text-u LEN>N > if 0 >LEN STR-FALSE exit then
+   start OFF>N text-u LEN>N > if OPTION:NONE exit then
    -1 RX-BEST !
    rx-u RX-RESET-STATES
    rx rx-u start text-u RX-ACTIVE RX-CLOSE
@@ -437,8 +443,8 @@ variable RX-COUNT-POS
       dup >r rx rx-u r> text-u RX-ACTIVE RX-CLOSE
       rx-u RX-ACCEPT? if dup OFF>N start OFF>N - RX-BEST ! then
    repeat drop
-   RX-BEST @ dup 0 < if drop 0 >LEN STR-FALSE exit then
-   >LEN STR-TRUE ;
+   RX-BEST @ dup 0 < if drop OPTION:NONE exit then
+   >LEN OPTION:SOME ;
 
 : RX-PREPARE ( len ptr u8 len -- ) {: text-u rx:ptr rx-u :}
    text-u rx-u RX-CHECK-MATCH-ARGS
@@ -446,18 +452,19 @@ variable RX-COUNT-POS
 
 : RX-MATCH? ( ptr u8 len ptr u8 len -- bool ) {: text:ptr text-u rx:ptr rx-u :}
    text-u rx rx-u RX-PREPARE
-   text text-u rx rx-u 0 >OFF RX-PREFIX-LEN if
-      LEN>N text-u LEN>N = exit
-   then
-   drop STR-FALSE ;
+   text text-u rx rx-u 0 >OFF RX-PREFIX-LEN MATCH option
+     none OF STR-FALSE ENDOF
+     some OF LEN>N text-u LEN>N = ENDOF               \ whole input must match
+   ;MATCH ;
 
 : RX-FIND-FROM ( ptr u8 len ptr u8 len off -- off len bool ) {: text:ptr text-u rx:ptr rx-u from :}
    from OFF>N 0 < if E-RX-SYNTAX throw then
    from begin dup OFF>N text-u LEN>N <= while
-      dup >r text text-u rx rx-u r> RX-PREFIX-LEN if
-         STR-TRUE exit
-      then
-      drop OFF>N 1 + >OFF
+      dup >r text text-u rx rx-u r> RX-PREFIX-LEN MATCH option
+        none OF ENDOF                                \ no match here: advance
+        some OF STR-TRUE exit ENDOF                    \ ( off len ) found
+      ;MATCH
+      OFF>N 1 + >OFF
    repeat drop
    0 >OFF 0 >LEN STR-FALSE ;
 

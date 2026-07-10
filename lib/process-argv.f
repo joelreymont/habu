@@ -72,7 +72,7 @@ variable PROC-ARGV-BUF-A
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- rc )
+: PROC-RUN-ARGV-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
    PROC-SPAWN-ARGV-IO PROC-WAIT-RC ;
 
 : PROC-ARGV-CHECK-PATH ( ptr u8 len -- ) {: path:ptr pathu :}

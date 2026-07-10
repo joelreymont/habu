@@ -62,8 +62,14 @@ variable RXT-RX-LEN
    97 RX-ESCAPABLE? TFALSE
    RX-C-LPAREN RX-UNSUPPORTED-META? TTRUE
    RX-C-DOT RX-UNSUPPORTED-META? TFALSE
-   RX-C-PLUS RX-META-TOKEN TTRUE RX-TOK-PLUS T=
-   97 RX-META-TOKEN TFALSE 97 T= ;
+   RX-C-PLUS RX-META-TOKEN MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> fail (+ is a metachar)
+     some OF RX-TOK-PLUS = ENDOF                     \ some(tok) -> the plus token
+   ;MATCH TTRUE
+   97 RX-META-TOKEN MATCH option
+     none OF 0 0= ENDOF                             \ none -> pass (a is not a metachar)
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
 
 : RXT-TEST-SINGLE-TOKEN-EMIT ( -- )
    RX-TOK-DOT 0 >OFF RXT-BUF-PTR RXT-BUF-CAP >LEN 0 >OFF RX-EMIT-SINGLE-TOKEN
@@ -154,6 +160,19 @@ variable RXT-RX-LEN
    s" ab" RXT-MATCH? TFALSE
    s" xabc" RXT-MATCH? TFALSE ;
 
+\ switchover wave A: RX-PREFIX-LEN returns option<len> (SOME match length from
+\ the start offset, else NONE). Both branches, directly.
+: RXT-TEST-PREFIX-OPTION ( -- )
+   s" ab*" RXT-COMPILE!
+   s" abbb" >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN 0 >OFF RX-PREFIX-LEN MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> fail (prefix matches)
+     some OF LEN>N 4 = ENDOF                         \ some(len) -> greedy a+bbb = 4
+   ;MATCH TTRUE
+   s" xyz" >LEN RXT-BUF-PTR RXT-RX-LEN @ >LEN 0 >OFF RX-PREFIX-LEN MATCH option
+     none OF 0 0= ENDOF                             \ none -> pass (no prefix match)
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
+
 : RXT-TEST-MATCH-META ( -- )
    s" a.c" RXT-COMPILE!
    s" abc" RXT-MATCH? TTRUE
@@ -233,6 +252,7 @@ variable RXT-RX-LEN
    RXT-TEST-CLASSES
    RXT-TEST-CLASS-ESCAPE
    RXT-TEST-MATCH-LITERALS
+   RXT-TEST-PREFIX-OPTION
    RXT-TEST-MATCH-META
    RXT-TEST-MATCH-CLASSES
    RXT-TEST-MATCH-ESCAPED

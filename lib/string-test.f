@@ -153,6 +153,30 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" 0 STR-FALSE STR-PARSE-CHECK
    s" -9223372036854775809" 0 STR-FALSE STR-PARSE-CHECK ;
 
+\ switchover wave A: STR-PARSE-POS/NEG return option<n> (SOME parsed value, else
+\ NONE); STR>NUMBER? stays value+flag at its documented boundary (maki callers).
+\ typed-local-lint: allow-bare-local - q keeps the parser quotation effect from the stack signature.
+: STR-PARSE-SOME ( ptr u8 n n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n want:n q :}
+   a u q execute MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> fail (expected a value)
+     some OF want = ENDOF
+   ;MATCH STR-ASSERT ;
+\ typed-local-lint: allow-bare-local - q keeps the parser quotation effect from the stack signature.
+: STR-PARSE-NONE ( ptr u8 n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n q :}
+   a u q execute MATCH option
+     none OF 0 0= ENDOF                             \ none -> pass
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH STR-ASSERT ;
+: STR-TEST-PARSE-OPTION ( -- )
+   s" 42" 42 [: STR-PARSE-POS ;] STR-PARSE-SOME
+   s" 0" 0 [: STR-PARSE-POS ;] STR-PARSE-SOME
+   s" abc" [: STR-PARSE-POS ;] STR-PARSE-NONE
+   s" 9223372036854775808" [: STR-PARSE-POS ;] STR-PARSE-NONE
+   s" 456" -456 [: STR-PARSE-NEG ;] STR-PARSE-SOME
+   s" 9223372036854775808" STR-MIN-I64 [: STR-PARSE-NEG ;] STR-PARSE-SOME
+   s" 4x6" [: STR-PARSE-NEG ;] STR-PARSE-NONE
+   s" 9223372036854775809" [: STR-PARSE-NEG ;] STR-PARSE-NONE ;
+
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT
 s" abc" s" abd" STR= 0= STR-ASSERT
@@ -202,6 +226,7 @@ STR-TEST-BUILDER
 STR-TEST-BUFFER
 STR-TEST-SPLIT
 STR-TEST-PARSE
+STR-TEST-PARSE-OPTION
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then

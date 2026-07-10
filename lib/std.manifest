@@ -134,8 +134,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-DIGIT-VALUE	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII decimal digit byte to value
 1	string	lib/string.f	word	STR-DIGITS?	(ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test a non-empty all-digit byte string
 1	string	lib/string.f	word	STR-DIGITS<=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare decimal digit strings by numeric value
-1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
-1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
+1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64: SOME value, else NONE
+1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64: SOME value, else NONE
+1	string	lib/string.f	word	STR>NUMBER-UNWRAP	(option<n> -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	flatten a parsed option to the STR>NUMBER? value+flag boundary
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
 1	json-write	lib/json-write.f	word	JW-BUF-FIELD	(-- ptr ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the typed pointer field for JSON writer output storage
@@ -262,7 +263,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-EMIT-CLASS-DONE	(ptr u8 ptr u8 len off off off n -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit scanned class token and next index
 1	regex	lib/regex.f	word	RX-EMIT-CLASS	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one class token
 1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
-1	regex	lib/regex.f	word	RX-META-TOKEN	(n -- n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	map a pattern metacharacter to a compiled token byte
+1	regex	lib/regex.f	word	RX-META-TOKEN	(n -- option<n>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	map a pattern metacharacter to a compiled token byte: SOME token, else NONE
 1	regex	lib/regex.f	word	RX-EMIT-SINGLE-TOKEN	(n off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit one one-byte token and advance the scanner index
 1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
 1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 len ptr u8 len -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
@@ -300,7 +301,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-CONSUME-STATE	(ptr u8 ptr u8 len off ptr u8 ptr u8 off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	consume one byte from one active state
 1	regex	lib/regex.f	word	RX-CONSUME-CHAR	(ptr u8 ptr u8 len off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	advance regex states by one text byte
 1	regex	lib/regex.f	word	RX-ACCEPT?	(len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether regex accept state is active
-1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return match length from a start offset
+1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- option<len>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	match from a start offset: SOME match length, else NONE
 1	regex	lib/regex.f	word	RX-PREPARE	(len ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
 1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 len ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
 1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 len ptr u8 len off -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset
@@ -553,7 +554,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-REAP-ARM-DEFAULT	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the no-op capture-reaper vector; lib/process-fork.f replaces it with the live one
 1	process	lib/process.f	word	PROC-CAPTURE-PID!	(pid --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	record the capture child pid and arm the context's co-located death reaper for it
 1	process	lib/process.f	word	PROC-REAP-DISARM	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	kill and wait the capture reaper by its specific pid so it never outlives its capture
-1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and throw on wait failure
+1	process	lib/process.f	word	PROC-WAIT-RC	(pid -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid (throws on wait failure): ok = clean exit (0), err = nonzero completion rc
 1	process	lib/process.f	word	PROC-SPAWN-IO	(ptr u8 len fd fd fd -- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with explicit stdio fds
 1	process	lib/process.f	word	PROC-RUN-RC	(ptr u8 len -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with inherited stdio: ok = clean exit (0), err = nonzero completion rc
 1	process	lib/process.f	word	PROC-RUN-IO-RC	(ptr u8 len fd fd fd -- result<n,n>)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with explicit stdio fds: ok = clean exit (0), err = nonzero completion rc
@@ -644,7 +645,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-ARGV+	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	append one counted extra argv string after argv0
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-PREPARE	(ptr u8 len -- ptr u8 ptr a)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	install executable path as argv0 and terminate the argv pointer table
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared extra argv strings and explicit stdio fds
-1	process-argv	lib/process-argv.f	word	PROC-RUN-ARGV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv strings explicit stdio fds and return exit status
+1	process-argv	lib/process-argv.f	word	PROC-RUN-ARGV-IO-RC	(ptr u8 len fd fd fd -- result<n,n>)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run counted executable with prepared argv and explicit stdio fds: ok = clean exit (0), err = nonzero completion rc
 1	process-argv	lib/process-argv.f	word	PROC-ARGV-CHECK-PATH	(ptr u8 len --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	validate a counted executable path before argv capture opens fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
@@ -702,7 +703,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-ENV-INHERIT-MISSING	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	copy parent envp entries whose names are not already present
 1	process-env	lib/process-env.f	word	PROC-ARGV-ENV-RESET	(--)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state together
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-IO	(ptr u8 len fd fd fd -- pid)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp and explicit stdio fds
-1	process-env	lib/process-env.f	word	PROC-RUN-ARGV-ENV-IO-RC	(ptr u8 len fd fd fd -- rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp stdio fds and return exit status
+1	process-env	lib/process-env.f	word	PROC-RUN-ARGV-ENV-IO-RC	(ptr u8 len fd fd fd -- result<n,n>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run counted executable with prepared argv/envp and stdio fds: ok = clean exit (0), err = nonzero completion rc
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdout stderr capture fds
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdin stdout stderr capture fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc
@@ -753,7 +754,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-cwd	lib/process-cwd.f	word	PROC-CWDZ	(ptr u8 len -- ptr u8)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	copy one checked cwd path into separate NUL-terminated storage
 1	process-cwd	lib/process-cwd.f	word	PROC-ARGV-ENV-CWD-RESET	(--)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	clear prepared argv and environment state after cwd spawn attempts
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-IO	(ptr u8 len ptr u8 len fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	spawn counted executable path with prepared argv envp child cwd and explicit stdio fds
-1	process-cwd	lib/process-cwd.f	word	PROC-RUN-ARGV-ENV-CWD-IO-RC	(ptr u8 len ptr u8 len fd fd fd -- rc)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run counted executable path with prepared argv envp child cwd stdio fds and return exit status
+1	process-cwd	lib/process-cwd.f	word	PROC-RUN-ARGV-ENV-CWD-IO-RC	(ptr u8 len ptr u8 len fd fd fd -- result<n,n>)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run counted executable with prepared argv/envp/cwd and stdio fds: ok = clean exit (0), err = nonzero completion rc
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-CAPTURE	(ptr u8 ptr a ptr a ptr u8 --)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv envp and cwd with stdout stderr capture fds
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-STDIN-CAPTURE	(ptr u8 ptr a ptr a ptr u8 --)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv envp and cwd with stdin stdout stderr capture fds
 1	process-cwd	lib/process-cwd.f	word	RUN-ARGV-ENV-CWD-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv envp and child cwd with bounded stdout stderr rc capture
@@ -1187,7 +1188,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	date	lib/date.f	word	YMD>DAYS	(n n n -- n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Gregorian date to Unix epoch day
 1	date	lib/date.f	word	DAYS>YMD	(n -- n n n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	convert Unix epoch day to Gregorian date
 1	date	lib/date.f	word	DATE-N	(ptr u8 n n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse a fixed-width decimal field: SOME value, or NONE on a non-digit
-1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- n bool)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd to Unix epoch day plus success flag
+1	date	lib/date.f	word	PARSE-YMD	(ptr u8 n -- option<n>)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	parse yyyy-mm-dd: SOME Unix epoch day, or NONE on bad input
 1	date	lib/date.f	word	DATE-WIDTH!	(n n ptr u8 n --)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	write fixed-width zero-padded decimal field
 1	date	lib/date.f	word	FORMAT-YMD	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format Unix epoch day as yyyy-mm-dd
 1	date	lib/date.f	word	FORMAT-EPOCH-UTC	(n ptr u8 n -- ptr u8 n)	tools/stdlib-date-test.f	docs/stdlib.md	stdlib-date	active	format nonnegative Unix seconds as UTC timestamp

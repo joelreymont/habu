@@ -24,7 +24,7 @@ create PROC-CWDZ-BUF PROC-PATHZ-CAP allot
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-: PROC-RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- rc )
+: PROC-RUN-ARGV-ENV-CWD-IO-RC ( ptr u8 len ptr u8 len fd fd fd -- result<n,n> )   \ ok = clean exit (0), err = nonzero completion rc
    PROC-SPAWN-ARGV-ENV-CWD-IO PROC-WAIT-RC ;
 
 : PROC-SPAWN-ARGV-ENV-CWD-CAPTURE ( ptr u8 ptr a ptr a ptr u8 -- )

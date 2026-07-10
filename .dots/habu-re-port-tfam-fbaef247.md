@@ -1,6 +1,6 @@
 ---
 title: Re-port TFAM 13 variant/tag onto master TERM-FAM diagnostic
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-10T17:42:16.280228+02:00"

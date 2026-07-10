@@ -198,3 +198,64 @@ FIND-TAG throws (not a sentinel); STR>FLOAT/PARSE-YMD/FIND-SUB/INDEX-OF already
 deferred. RECOMMENDATION: the next slice should either take a deferred WIDE
 finder WITH a caller-rewrite plan (INDEX-OF r21 is the most mechanical: callers
 do `0 >= `/`0 < ` tests) or PIVOT to wave-B scoping (result<T,E> shared family).
+
+## BATCH 1 — LANDED (3 finders, one commit each; post wave-B pivot-back)
+
+1. `PTXIR-FIND-RAW` / `PTXIR-FIND` (lib/ptx/ir.f) `( … -- n bool )` returning
+   `PTXIR-NONE(-1) false` → `( … -- option<n> )` (SOME matching node id, else
+   NONE). ONE caller `PTXIR-NODE-INTERN` (in-file): `if >r NODE-DROP r> exit then
+   drop` → `MATCH option none OF ENDOF some OF >r NODE-DROP r> exit ENDOF ;MATCH`
+   (the option scrutinee MATCHes fine sitting ABOVE the multi-cell ptxir-node).
+   PTXIR-NONE stays (still the no-operand marker). Also fixed the original's
+   missing `unloop` before the in-?do `exit` (matches the A-FIND-INDEX pattern).
+   lib/ptx/ is manifest-exempt — NO manifest row. Direct both-branch test
+   PTXIRT-FIND-OPTION added (interned consts are written live=0, so the raw
+   probe uses live 0). ir.f gained its first `require` (lib/adt/option.f).
+2. `RX-META-TOKEN` (lib/regex.f) `( n -- n bool )` (tok true | ORIGINAL CHAR
+   false) → `( n -- option<n> )`. The not-found branch used to RETURN THE INPUT
+   CHAR — the caller RX-SCAN-ONE needed it for UNSUPPORTED-META?/EMIT-LIT — so
+   the caller now binds `c` to a typed local and the none arm re-uses `c`
+   (pattern for value+flag words whose false branch passes the INPUT through).
+   Manifest row → option<n>; direct test rewritten to MATCH both branches.
+3. `RX-PREFIX-LEN` (lib/regex.f) `( … off -- len bool )` → `( … -- option<len> )`.
+   TWO in-file callers: RX-MATCH? (`if LEN>N u = exit then drop STR-FALSE` →
+   MATCH none/some) and RX-FIND-FROM (in-loop probe: none arm falls through to
+   advance, some arm `STR-TRUE exit` with (off len) on the stack). Manifest row →
+   option<len>; direct both-branch test RXT-TEST-PREFIX-OPTION added
+   (`ab*` on "abbb" → some(4) greedy, on "xyz" → none).
+
+regex.f + ptx/ir.f are in NO TR-*-FILES set — no run-files.f closure edges. NO
+new trust rows. Remaining wave-A: tools/ parsers (imgdump/imagedisasm/
+trusted-inventory/gate-json-assert), STR-PARSE-POS/NEG+STR>NUMBER? (r16, one
+combined slice), MAP-INDEX/PROBE (map-internal), FIND-EXECUTABLE* cluster,
+FIND-SUB/INDEX-OF (wide pair, LAST), PARSE-YMD (own dot/worker).
+
+## BATCH 2 — STR-PARSE-POS/NEG LANDED; STR>NUMBER? BLOCKED (maki callers)
+
+`STR-PARSE-POS` / `STR-PARSE-NEG` (lib/string.f) `( ptr u8 n -- n bool )` →
+`( ptr u8 n -- option<n> )` (SOME parsed bounded i64, else NONE — empty/non-digit/
+overflow all NONE). Twins migrated in ONE commit; their ONLY callers are the three
+sign-split sites inside STR>NUMBER?. NEW helper `STR>NUMBER-UNWRAP
+( option<n> -- n bool )` (manifest row, active) re-flattens at the STR>NUMBER?
+boundary. string.f gained `s" lib/adt/option.f" required`; string.f IS a
+TR-GATE-HARNESS-FILES member but option.f is ALREADY in that set (slice 4) — no
+run-files.f edit. string.f is NOT in the boot prefix (BP-EACH is all src/) — no
+byte-fixpoint. docs/stdlib.md sig lines updated. Direct both-branch tests
+STR-TEST-PARSE-OPTION added (42/0/abc/2^63 for POS; 456→-456/min-i64/4x6/min-1
+for NEG); the STR>NUMBER? STR-PARSE-CHECK suite unchanged and green (boundary
+behavior preserved).
+
+STR>NUMBER? ( ptr u8 n -- n bool ) is DELIBERATELY NOT migrated: its ~16 callers
+include FOUR maki-lane files this lane must not touch —
+maki/store.f:267, maki/cad.f:334, maki/golden-artifact.f:262, maki/saved.f:65.
+A checked public-sig change REQUIRES rewriting every caller atomically, so the
+migration needs a cross-lane slot (maki worker rewrites its four callers to MATCH
+in the same change, or the maki lane grants a window). The full non-maki caller
+list for that future slice: examples/string-regex.f:20, test/gate-stdlib-lib.f:47,
+test/run-lib.f:173,:1687, src/arch/ptx/vjp.f:106, lib/object-link.f:482,
+lib/object.f:237, test/gate-engine-lib.f:51, tools/hb-build-lib.f:286,
+lib/json-read.f:418, test/gate-runner-lib.f:72,
+tools/typed-local-diff-lint-core.f:179, tools/codegen-role.f:129,
+tools/imagedisasm.f:98, tools/trusted-inventory.f:697, lib/string-test.f,
+lib/test/budget.f:30, lib/ptx/header.f:28, lib/float.f:86. When the cross-lane
+slot opens, STR>NUMBER? → option<n> and STR>NUMBER-UNWRAP is DELETED with it.

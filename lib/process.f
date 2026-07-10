@@ -91,23 +91,23 @@ variable PROC-OUTCOME-CODE
 : PROC-WAIT-OUTCOME ( pid -- n n )
    PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 
-: PROC-WAIT-RC ( pid -- rc )
-   PROC-WAIT-STATUS PROC-STATUS>RC ;
+\ ok = clean exit (rc 0); err = the nonzero completion rc (a nonzero exit code, or
+\ 128+signal — the signal-death encoding, regression habu-wait-rc-masks-9ae37cd0).
+\ A wait failure (e.g. ECHILD) still THROWS E-PROC-WAIT inside PROC-WAIT-STATUS; no
+\ errno is returned, so err carries only the process's own completion code.
+: PROC-WAIT-RC ( pid -- result<n,n> )
+   PROC-WAIT-STATUS PROC-STATUS>RC RC>N {: rc:n :}
+   rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
 
 : PROC-SPAWN-IO ( ptr u8 len fd fd fd -- pid ) {: a:ptr u infd outfd errfd :}
    a u PROC-PATHZ infd outfd errfd PROC-SPAWN-RAW {: pid :}
    pid PID>N 0 < if E-PROC-SPAWN throw then
    pid ;
 
-\ ok = clean exit (rc 0); err = the nonzero completion rc (a nonzero exit code, or
-\ 128+signal). OS-level spawn/wait failures do NOT land here — they throw
-\ E-PROC-SPAWN inside PROC-SPAWN-IO, so no errno is returned; err carries the
-\ process's own failure code.
-: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )
-   PROC-SPAWN-IO PROC-WAIT-RC RC>N {: rc:n :}
-   rc 0 = if rc RESULT:OK else rc RESULT:ERR then ;
+: PROC-RUN-IO-RC ( ptr u8 len fd fd fd -- result<n,n> )   \ spawn with explicit stdio, wait -> result
+   PROC-SPAWN-IO PROC-WAIT-RC ;
 
-: PROC-RUN-RC ( ptr u8 len -- result<n,n> )   \ inherit-stdio run: same ok/err as PROC-RUN-IO-RC
+: PROC-RUN-RC ( ptr u8 len -- result<n,n> )   \ inherit-stdio run
    -1 >FD -1 >FD -1 >FD PROC-RUN-IO-RC ;
 
 : FD-CLOEXEC! ( fd -- ) {: fd :}

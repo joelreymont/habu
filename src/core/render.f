@@ -599,12 +599,25 @@ variable JPOS  variable JLINE  variable JCOL
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
    T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
    drop -1 ;
+\ ADT variant field (item 13): the sum-variant/tag captured by the checker at the
+\ mismatch point (DVAR = SUMV id, -1 = none). A `construct family variant` payload
+\ mismatch latches the variant being built; a pure-scalar or non-construct
+\ mismatch leaves DVAR -1 and emits no variant/tag.
+: DIAG-FAM-ID ( n n -- n )               \ term family: expected precedence, then actual, else the captured variant's family
+   {: efam:n afam:n :}
+   efam 0 >= IF efam EXIT THEN
+   afam 0 >= IF afam EXIT THEN
+   DVAR @ dup 0 >= IF SUMV-FAM@ THEN ;
+: DIAG-VARIANT ( -- )                    \ "variant":"<name>","tag":<n> for the captured arm
+   DVAR @ 0 < IF EXIT THEN
+   44 EMIT1 s" variant" JKEY  DVAR @ SUMV-NAME$ JSTR
+   44 EMIT1 s" tag" JKEY  DVAR @ SUMV-TAG@ JNUM ;
 : DIAG-FAMILY ( -- )
-   DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  {: efam:n afam:n :}
-   efam 0 >= afam 0 >= or IF
-      44 EMIT1 s" family" JKEY
-      efam 0 >= IF efam ELSE afam THEN TFAM-NAME$ JSTR
-   THEN ;
+   DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  DIAG-FAM-ID {: fam:n :}
+   fam 0 >= IF
+      44 EMIT1 s" family" JKEY  fam TFAM-NAME$ JSTR
+   THEN
+   DIAG-VARIANT ;
 : DIAG-JSON
    JLOC-CALC
    123 EMIT1                                              \ {

@@ -186,7 +186,7 @@ variable PTYNUM
    IN-W @ close ;
 
 : CAPTURE-EXPECT-RC ( -- )
-   PID @ >PID PROC-WAIT-RC RC>N 0 T= ;
+   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH ;
 
 : CAPTURE-EXPECT-OUT ( -- )
    RCLR
@@ -594,7 +594,7 @@ variable PTYNUM
 
 : PTY-STOP-HB ( -- )
    4 SEND-C
-   PID @ >PID PROC-WAIT-RC RC>N 0 T=
+   PID @ >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    MFD @ close ;
 
 : PTY-BASIC ( -- )

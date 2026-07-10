@@ -150,7 +150,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    HB-TARGET-MACOS? if code PT-ENOENT negate T= then ;
 
 : TEST-WAIT-BAD ( -- )
-   -1 >PID PROC-WAIT-RC drop ;
+   -1 >PID PROC-WAIT-RC MATCH result ok OF drop ENDOF err OF drop ENDOF ;MATCH ;
 
 : TEST-POLL-WAIT ( -- )
    PT-R @ 1 >MS POLL-IN-OR-TIMEOUT drop ;
@@ -169,7 +169,8 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-SPAWN-WAIT ( -- )
    TEST-SPAWN-RAW-MISSING
-   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC RC>N 0 T=
+   s" /usr/bin/true" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-RC
+   MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    [: TEST-SPAWN-FAIL ;] E-PROC-SPAWN TTHROWSQ ;
 
 : TEST-PROC-WAIT-STATUS ( -- )
@@ -192,7 +193,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-R @ 1000 >MS POLL-IN COUNT>N 1 T=
    PT-R @ PT-READ 1 T=
    PT-BUF c@ 102 T=
-   pid >PID PROC-WAIT-RC RC>N 0 T=
+   pid >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PT-R @ close ;
 
 : TEST-PROC-FORK-COW ( -- )
@@ -202,7 +203,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
       9 PT-FORK-CELL !
       0 PT-FORK-EXIT
    then
-   pid >PID PROC-WAIT-RC RC>N 0 T=
+   pid >PID PROC-WAIT-RC MATCH result ok OF 0 T= ENDOF err OF drop 1 0 T= ENDOF ;MATCH
    PT-FORK-CELL @ 7 T= ;
 
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
@@ -226,7 +227,8 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -KILL $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-RC RC>N 137 T= ;
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-RC
+   MATCH result ok OF drop 1 0 T= ENDOF err OF 137 T= ENDOF ;MATCH ;   \ SIGKILL -> err(128+9)
 
 : TEST-WAIT-FAIL ( -- )
    [: TEST-WAIT-BAD ;] E-PROC-WAIT TTHROWSQ ;

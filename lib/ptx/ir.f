@@ -4,6 +4,8 @@
 \ binary ops, folds constants, applies small peepholes, and reuses equivalent
 \ nodes by value number. DCE is a live-mark pass over chosen roots.
 
+require lib/adt/option.f                     \ option<n> for PTXIR-FIND(-RAW) (switchover wave A)
+
 0 constant PTXIR-K-INPUT
 1 constant PTXIR-K-CONST
 2 constant PTXIR-K-ADD
@@ -109,22 +111,23 @@ variable PTXIR-N
 : PTXIR-MATCH? ( ptxir-node n -- bool )
    >r PTXIR-NODE> r> PTXIR-MATCH-RAW? ;
 
-: PTXIR-FIND-RAW ( n n n n n -- n bool ) {: op:n a:n b:n val:n live:n :}
+: PTXIR-FIND-RAW ( n n n n n -- option<n> ) {: op:n a:n b:n val:n live:n :}   \ SOME matching node id, else NONE
    PTXIR-N @ 0 ?do
-      op a b val live i PTXIR-MATCH-RAW? if i 0 0= exit then
+      op a b val live i PTXIR-MATCH-RAW? if i OPTION:SOME unloop exit then
    loop
-   PTXIR-NONE 0 0= 0= ;
+   OPTION:NONE ;
 
-: PTXIR-FIND ( ptxir-node -- n bool )
+: PTXIR-FIND ( ptxir-node -- option<n> )   \ SOME equivalent node id, else NONE
    PTXIR-NODE> PTXIR-FIND-RAW ;
 
 : PTXIR-ROOM ( -- )
    PTXIR-N @ PTXIR-MAX >= if E-PTX-IR-OVERFLOW throw then ;
 
 : PTXIR-NODE-INTERN ( ptxir-node -- n )
-   PTXIR-NODE-DUP PTXIR-FIND if
-      >r PTXIR-NODE-DROP r> exit
-   then drop
+   PTXIR-NODE-DUP PTXIR-FIND MATCH option
+     none OF ENDOF                                  \ no equivalent: fall through, write the node
+     some OF >r PTXIR-NODE-DROP r> exit ENDOF        \ reuse: drop the dup, return the found id
+   ;MATCH
    PTXIR-ROOM
    PTXIR-N @ {: id:n :}
    id PTXIR-WRITE
