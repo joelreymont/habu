@@ -62,8 +62,14 @@ variable RXT-RX-LEN
    97 RX-ESCAPABLE? TFALSE
    RX-C-LPAREN RX-UNSUPPORTED-META? TTRUE
    RX-C-DOT RX-UNSUPPORTED-META? TFALSE
-   RX-C-PLUS RX-META-TOKEN TTRUE RX-TOK-PLUS T=
-   97 RX-META-TOKEN TFALSE 97 T= ;
+   RX-C-PLUS RX-META-TOKEN MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> fail (+ is a metachar)
+     some OF RX-TOK-PLUS = ENDOF                     \ some(tok) -> the plus token
+   ;MATCH TTRUE
+   97 RX-META-TOKEN MATCH option
+     none OF 0 0= ENDOF                             \ none -> pass (a is not a metachar)
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
 
 : RXT-TEST-SINGLE-TOKEN-EMIT ( -- )
    RX-TOK-DOT 0 >OFF RXT-BUF-PTR RXT-BUF-CAP >LEN 0 >OFF RX-EMIT-SINGLE-TOKEN

@@ -262,7 +262,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-EMIT-CLASS-DONE	(ptr u8 ptr u8 len off off off n -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit scanned class token and next index
 1	regex	lib/regex.f	word	RX-EMIT-CLASS	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one class token
 1	regex	lib/regex.f	word	RX-SCAN-ESCAPE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one escaped literal
-1	regex	lib/regex.f	word	RX-META-TOKEN	(n -- n bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	map a pattern metacharacter to a compiled token byte
+1	regex	lib/regex.f	word	RX-META-TOKEN	(n -- option<n>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	map a pattern metacharacter to a compiled token byte: SOME token, else NONE
 1	regex	lib/regex.f	word	RX-EMIT-SINGLE-TOKEN	(n off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	emit one one-byte token and advance the scanner index
 1	regex	lib/regex.f	word	RX-SCAN-ONE	(ptr u8 len off ptr u8 len off -- off off)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	scan and emit one regex token
 1	regex	lib/regex.f	word	RX-COMPILE	(ptr u8 len ptr u8 len -- len)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	compile bounded capture-free regex tokens
