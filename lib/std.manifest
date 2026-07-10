@@ -300,7 +300,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	regex	lib/regex.f	word	RX-CONSUME-STATE	(ptr u8 ptr u8 len off ptr u8 ptr u8 off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	consume one byte from one active state
 1	regex	lib/regex.f	word	RX-CONSUME-CHAR	(ptr u8 ptr u8 len off --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	advance regex states by one text byte
 1	regex	lib/regex.f	word	RX-ACCEPT?	(len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether regex accept state is active
-1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	return match length from a start offset
+1	regex	lib/regex.f	word	RX-PREFIX-LEN	(ptr u8 len ptr u8 len off -- option<len>)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	match from a start offset: SOME match length, else NONE
 1	regex	lib/regex.f	word	RX-PREPARE	(len ptr u8 len --)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	validate args and bytecode before matching
 1	regex	lib/regex.f	word	RX-MATCH?	(ptr u8 len ptr u8 len -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whole-input regex match
 1	regex	lib/regex.f	word	RX-FIND-FROM	(ptr u8 len ptr u8 len off -- off len bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	find a regex match from a start offset

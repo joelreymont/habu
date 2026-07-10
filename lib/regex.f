@@ -428,9 +428,9 @@ variable RX-COUNT-POS
 : RX-ACCEPT? ( len -- bool ) {: rx-u :}
    RX-ACTIVE rx-u LEN>N >OFF RX-FLAG? ;
 
-: RX-PREFIX-LEN ( ptr u8 len ptr u8 len off -- len bool ) {: text:ptr text-u rx:ptr rx-u start :}
+: RX-PREFIX-LEN ( ptr u8 len ptr u8 len off -- option<len> ) {: text:ptr text-u:len rx:ptr rx-u:len start:off :}   \ SOME match length from start, else NONE
    start OFF>N 0 < if E-RX-SYNTAX throw then
-   start OFF>N text-u LEN>N > if 0 >LEN STR-FALSE exit then
+   start OFF>N text-u LEN>N > if OPTION:NONE exit then
    -1 RX-BEST !
    rx-u RX-RESET-STATES
    rx rx-u start text-u RX-ACTIVE RX-CLOSE
@@ -443,8 +443,8 @@ variable RX-COUNT-POS
       dup >r rx rx-u r> text-u RX-ACTIVE RX-CLOSE
       rx-u RX-ACCEPT? if dup OFF>N start OFF>N - RX-BEST ! then
    repeat drop
-   RX-BEST @ dup 0 < if drop 0 >LEN STR-FALSE exit then
-   >LEN STR-TRUE ;
+   RX-BEST @ dup 0 < if drop OPTION:NONE exit then
+   >LEN OPTION:SOME ;
 
 : RX-PREPARE ( len ptr u8 len -- ) {: text-u rx:ptr rx-u :}
    text-u rx-u RX-CHECK-MATCH-ARGS
@@ -452,18 +452,19 @@ variable RX-COUNT-POS
 
 : RX-MATCH? ( ptr u8 len ptr u8 len -- bool ) {: text:ptr text-u rx:ptr rx-u :}
    text-u rx rx-u RX-PREPARE
-   text text-u rx rx-u 0 >OFF RX-PREFIX-LEN if
-      LEN>N text-u LEN>N = exit
-   then
-   drop STR-FALSE ;
+   text text-u rx rx-u 0 >OFF RX-PREFIX-LEN MATCH option
+     none OF STR-FALSE ENDOF
+     some OF LEN>N text-u LEN>N = ENDOF               \ whole input must match
+   ;MATCH ;
 
 : RX-FIND-FROM ( ptr u8 len ptr u8 len off -- off len bool ) {: text:ptr text-u rx:ptr rx-u from :}
    from OFF>N 0 < if E-RX-SYNTAX throw then
    from begin dup OFF>N text-u LEN>N <= while
-      dup >r text text-u rx rx-u r> RX-PREFIX-LEN if
-         STR-TRUE exit
-      then
-      drop OFF>N 1 + >OFF
+      dup >r text text-u rx rx-u r> RX-PREFIX-LEN MATCH option
+        none OF ENDOF                                \ no match here: advance
+        some OF STR-TRUE exit ENDOF                    \ ( off len ) found
+      ;MATCH
+      OFF>N 1 + >OFF
    repeat drop
    0 >OFF 0 >LEN STR-FALSE ;
 

@@ -198,3 +198,34 @@ FIND-TAG throws (not a sentinel); STR>FLOAT/PARSE-YMD/FIND-SUB/INDEX-OF already
 deferred. RECOMMENDATION: the next slice should either take a deferred WIDE
 finder WITH a caller-rewrite plan (INDEX-OF r21 is the most mechanical: callers
 do `0 >= `/`0 < ` tests) or PIVOT to wave-B scoping (result<T,E> shared family).
+
+## BATCH 1 — LANDED (3 finders, one commit each; post wave-B pivot-back)
+
+1. `PTXIR-FIND-RAW` / `PTXIR-FIND` (lib/ptx/ir.f) `( … -- n bool )` returning
+   `PTXIR-NONE(-1) false` → `( … -- option<n> )` (SOME matching node id, else
+   NONE). ONE caller `PTXIR-NODE-INTERN` (in-file): `if >r NODE-DROP r> exit then
+   drop` → `MATCH option none OF ENDOF some OF >r NODE-DROP r> exit ENDOF ;MATCH`
+   (the option scrutinee MATCHes fine sitting ABOVE the multi-cell ptxir-node).
+   PTXIR-NONE stays (still the no-operand marker). Also fixed the original's
+   missing `unloop` before the in-?do `exit` (matches the A-FIND-INDEX pattern).
+   lib/ptx/ is manifest-exempt — NO manifest row. Direct both-branch test
+   PTXIRT-FIND-OPTION added (interned consts are written live=0, so the raw
+   probe uses live 0). ir.f gained its first `require` (lib/adt/option.f).
+2. `RX-META-TOKEN` (lib/regex.f) `( n -- n bool )` (tok true | ORIGINAL CHAR
+   false) → `( n -- option<n> )`. The not-found branch used to RETURN THE INPUT
+   CHAR — the caller RX-SCAN-ONE needed it for UNSUPPORTED-META?/EMIT-LIT — so
+   the caller now binds `c` to a typed local and the none arm re-uses `c`
+   (pattern for value+flag words whose false branch passes the INPUT through).
+   Manifest row → option<n>; direct test rewritten to MATCH both branches.
+3. `RX-PREFIX-LEN` (lib/regex.f) `( … off -- len bool )` → `( … -- option<len> )`.
+   TWO in-file callers: RX-MATCH? (`if LEN>N u = exit then drop STR-FALSE` →
+   MATCH none/some) and RX-FIND-FROM (in-loop probe: none arm falls through to
+   advance, some arm `STR-TRUE exit` with (off len) on the stack). Manifest row →
+   option<len>; direct both-branch test RXT-TEST-PREFIX-OPTION added
+   (`ab*` on "abbb" → some(4) greedy, on "xyz" → none).
+
+regex.f + ptx/ir.f are in NO TR-*-FILES set — no run-files.f closure edges. NO
+new trust rows. Remaining wave-A: tools/ parsers (imgdump/imagedisasm/
+trusted-inventory/gate-json-assert), STR-PARSE-POS/NEG+STR>NUMBER? (r16, one
+combined slice), MAP-INDEX/PROBE (map-internal), FIND-EXECUTABLE* cluster,
+FIND-SUB/INDEX-OF (wide pair, LAST), PARSE-YMD (own dot/worker).
