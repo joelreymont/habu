@@ -580,9 +580,9 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
    USP @ cells UWL-STR + @ CUR-STRICT ! ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
-   UF-SET @ 0= IF
+   UF-SET @ 0= if
       act UF-ACT !  exp UF-EXP !  -1 UF-SET !
-   THEN
+   then
    RES-FALSE UOK ! ;
 
 : FIELD-PARAM? ( n -- bool ) {: t:n :}
@@ -610,8 +610,8 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
    a T-RES FIELD-NAME b T-RES FIELD-NAME FIELD-ATOM-SAME? ;
 
 : FIELD-PAIR? ( n n -- bool ) {: got:n want:n :}
-   got FIELD-PARAM? want FIELD-PARAM? and 0= IF RES-FALSE EXIT THEN
-   got want FIELD-ID-SAME? 0= IF got want U-FAIL RES-TRUE EXIT THEN
+   got FIELD-PARAM? want FIELD-PARAM? and 0= if RES-FALSE exit then
+   got want FIELD-ID-SAME? 0= if got want U-FAIL RES-TRUE exit then
    got FIELD-INNER want FIELD-INNER PAIR
    RES-TRUE ;
 
@@ -889,13 +889,13 @@ CT-INIT
    t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
 
 : PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
-   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
-   t1 t2 PARAM-FAM-OK? 0= IF t1 t2 U-FAIL EXIT THEN
+   t1 PARAM>ARGC t2 PARAM>ARGC <> if t1 t2 U-FAIL exit then
+   t1 t2 PARAM-FAM-OK? 0= if t1 t2 U-FAIL exit then
    0 PARAM-I !
-   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
+   begin PARAM-I @ t1 PARAM>ARGC < while
       t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
       PARAM-I @ 1 + PARAM-I !
-   REPEAT ;
+   repeat ;
 
 
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
@@ -1144,28 +1144,28 @@ variable LLC-N
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
-   2dup = IF 2drop ELSE
-   over TAG T-QUOT =  over TAG T-QUOT =  and IF
+   2dup = if 2drop else
+   over TAG T-QUOT =  over TAG T-QUOT =  and if
      2dup Q>DIN swap Q>DIN swap PAIR
      2dup Q>DOUT swap Q>DOUT swap PAIR
      2dup Q>RIN swap Q>RIN swap PAIR
-     Q>ROUT swap Q>ROUT swap PAIR ELSE
-   over TAG T-PTR =  over TAG T-PTR =  and IF
-     over PTR>INNER over PTR>INNER PAIR-STRICT 2drop ELSE
-   over TAG T-ATOM =  over TAG T-ATOM =  and IF
-     2dup ATOM-OK? IF 2drop ELSE U-FAIL THEN ELSE
-   2dup FIELD-PAIR? IF 2drop ELSE
-   2dup FIELD-COERCE? IF 2drop ELSE
-   over TAG T-PARAM =  over TAG T-PARAM =  and IF
-     2dup PARAM-HID-OK? IF 2dup PARAM-PAIR-ARGS 2drop ELSE U-FAIL THEN ELSE   \ item 12 slice-3a: hidden field pairs only same-family same-slot
-   2dup LAYOUT-BLOCK? IF U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
-   over ISVAR IF
-     over PAY over TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
-   dup ISVAR IF
-     dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE swap PAY TV! THEN ELSE
-   over TAG T-CON =  over TAG T-CON =  and IF
-     2dup CON-OK? IF 2drop ELSE U-FAIL THEN
-   ELSE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
+     Q>ROUT swap Q>ROUT swap PAIR else
+   over TAG T-PTR =  over TAG T-PTR =  and if
+     over PTR>INNER over PTR>INNER PAIR-STRICT 2drop else
+   over TAG T-ATOM =  over TAG T-ATOM =  and if
+     2dup ATOM-OK? if 2drop else U-FAIL then else
+   2dup FIELD-PAIR? if 2drop else
+   2dup FIELD-COERCE? if 2drop else
+   over TAG T-PARAM =  over TAG T-PARAM =  and if
+     2dup PARAM-HID-OK? if 2dup PARAM-PAIR-ARGS 2drop else U-FAIL then else   \ item 12 slice-3a: hidden field pairs only same-family same-slot
+   2dup LAYOUT-BLOCK? if U-FAIL else   \ item 12: only a whole-bundle transport op may bind a layout cell
+   over ISVAR if
+     over PAY over TY-OCC? if U-FAIL else swap PAY TV! then else
+   dup ISVAR if
+     dup PAY  rot  tuck TY-OCC? if U-FAIL else swap PAY TV! then else
+   over TAG T-CON =  over TAG T-CON =  and if
+     2dup CON-OK? if 2drop else U-FAIL then
+   else U-FAIL then then then then then then then then then then then ;
 
 \ --- logical<->hidden bundle coercion (item 11 slice 1, docs §18-19). A stored
 \ effect keeps a parametric layout value as ONE logical cell whenever an arg is
@@ -1194,21 +1194,21 @@ variable LLC-N
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
    rh re PAIR ;
 
-: U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
-   over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
-   dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
-   2dup LOGHID-AT? IF LOGHID-EXPAND ELSE
-   2dup swap LOGHID-AT? IF swap LOGHID-EXPAND ELSE
+: U-ROW R-RES swap R-RES swap 2dup = if 2drop else
+   over ISROW if 2dup ROW-OCC? if 2drop RES-FALSE UOK ! else swap PAY RV! then else
+   dup ISROW if 2dup swap ROW-OCC? if 2drop RES-FALSE UOK ! else PAY RV! then else
+   2dup LOGHID-AT? if LOGHID-EXPAND else
+   2dup swap LOGHID-AT? if swap LOGHID-EXPAND else
    2dup P>REST swap P>REST swap PAIR
-   P>TYPE swap P>TYPE swap PAIR THEN THEN THEN THEN THEN ;
+   P>TYPE swap P>TYPE swap PAIR then then then then then ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !
    PAIR
-   BEGIN USP @ 0 > UOK @ and WHILE
-     UNPAIR  over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN
-   REPEAT
+   begin USP @ 0 > UOK @ and while
+     UNPAIR  over TAG dup S-ROW = swap S-PUSH = or if U-ROW else U-TYPE then
+   repeat
    UOK @ ;
 
 : UNIFY-EXACT ( n n -- bool )
@@ -1412,21 +1412,21 @@ variable LTC-P
    DCUR @ RCUR @ LIN-TOTAL LINBEF @ <> IF 0 OK ! THEN ;
 
 : UF>DIAG ( -- )
-   UF-SET @ IF
+   UF-SET @ if
       UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !
-   ELSE
+   else
       0 DF-ACT !  0 DF-EXP !
-   THEN ;
+   then ;
 
-: CHECKER-STEP {: din dout :}
+: CHECKER-STEP {: din:n dout:n :}
    din dout LIN-EXPLICIT? LINEXP !
-   LINEXP @ 0= IF LIN-SNAPSHOT THEN
+   LINEXP @ 0= if LIN-SNAPSHOT then
    DCUR @ WAS !
    DCUR @ din UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  if din DEXP !  WAS @ DACT !  UF>DIAG  -1 FAILSET ! then
    OK @ and OK !
    dout DCUR !
-   OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
+   OK @ LINEXP @ 0= and if LIN-CHECK then ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
 \ must leave the return row exactly as it found it (ANS 3.2.3.3) — the final
@@ -5726,17 +5726,17 @@ variable RHAS   variable RDIN   variable RDOUT   variable RRIN    variable RROUT
 
 : SUNI {: s :}
    DCUR @ s UNIFY
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  if s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! then
    OK @ and OK ! ;
 
 : SUNI-IN {: s:n :}
    DCUR @ s UNIFY-IN
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  if s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! then
    OK @ and OK ! ;
 
 : SUNI-COERCE {: s:n :}
    DCUR @ s UNIFY-COERCE
-   dup 0=  FAILSET @ 0=  and  OK @ and  IF s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! THEN
+   dup 0=  FAILSET @ 0=  and  OK @ and  if s DEXP !  DCUR @ DACT !  UF>DIAG  -1 FAILSET ! then
    OK @ and OK ! ;
 
 : RSUNI {: s :}  RCUR @ s UNIFY OK @ and OK ! ;

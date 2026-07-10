@@ -597,14 +597,14 @@ variable JPOS  variable JLINE  variable JCOL
 \ Expected takes precedence over actual; unrelated matched row cells cannot leak
 \ into the diagnostic, and a scalar pair emits no family.
 : TERM-FAM ( n -- n )                    \ layout-family id for one type term, else -1
-   T-RES dup LAYOUT-PARAM? IF PARAM>FAM EXIT THEN
+   T-RES dup LAYOUT-PARAM? if PARAM>FAM exit then
    drop -1 ;
 : DIAG-FAMILY ( -- )
    DF-EXP @ TERM-FAM  DF-ACT @ TERM-FAM  {: efam:n afam:n :}
-   efam 0 >= afam 0 >= or IF
+   efam 0 >= afam 0 >= or if
       44 EMIT1 s" family" JKEY
-      efam 0 >= IF efam ELSE afam THEN TFAM-NAME$ JSTR
-   THEN ;
+      efam 0 >= if efam else afam then TFAM-NAME$ JSTR
+   then ;
 : DIAG-JSON
    JLOC-CALC
    123 EMIT1                                              \ {

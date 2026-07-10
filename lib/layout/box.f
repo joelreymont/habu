@@ -57,7 +57,7 @@ BOX-ARENA-RESET
 
 : BOX-BUMP ( n -- ptr a )               \ take n cells off the current chunk, return the base
    {: n:n :}
-   n BOX-ROOM? 0= IF E-MEM-SIZE throw THEN
+   n BOX-ROOM? 0= if E-MEM-SIZE throw then
    BOX-CUR@ BOX-OFF @ cells +  {: p:ptr :}
    BOX-OFF @ n +  BOX-OFF !
    p ;
@@ -65,12 +65,12 @@ BOX-ARENA-RESET
 : BOX-CELLS ( n -- ptr a )              \ allocate n contiguous zero-filled cells from the arena
    {: n:n :}
    n BOX-CELL-COUNT-CHECK
-   n BOX-ROOM? 0= IF n BOX-CHUNK THEN
+   n BOX-ROOM? 0= if n BOX-CHUNK then
    n BOX-BUMP ;
 
 : BOX-PAY-COUNT-CHECK ( n -- )
-   dup 0 < IF E-MEM-SIZE throw THEN
-   dup MEM-MAX-CELLS BOX-HEAD-CELLS - > IF E-MEM-SIZE throw THEN
+   dup 0 < if E-MEM-SIZE throw then
+   dup MEM-MAX-CELLS BOX-HEAD-CELLS - > if E-MEM-SIZE throw then
    drop ;
 
 : BOX-RECORD-CELLS ( n -- n )           \ allocation size: hidden capacity + tag + payload
@@ -94,8 +94,8 @@ BOX-ARENA-RESET
 
 : BOX-PAY-ADDR ( n ptr a -- ptr a )     \ address of payload cell i
    {: i:n p:ptr :}
-   i 0 < IF E-TBL-BOUNDS throw THEN
-   i p BOX-PAY-CAP >= IF E-TBL-BOUNDS throw THEN
+   i 0 < if E-TBL-BOUNDS throw then
+   i p BOX-PAY-CAP >= if E-TBL-BOUNDS throw then
    p  BOX-PAY-CELL0 i +  cells + ;
 : BOX-PAY! ( n n ptr a -- )             \ store val into payload cell i
    {: val:n i:n p:ptr :}

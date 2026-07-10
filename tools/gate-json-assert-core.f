@@ -360,7 +360,7 @@ variable GJA-DIRECT
    JSON-GET -1 <> ;
 
 : GJA-NO-FIELD ( n ptr u8 n -- )
-   GJA-HAS? IF s" unexpected JSON field" GJA-FAIL THEN ;
+   GJA-HAS? if s" unexpected JSON field" GJA-FAIL then ;
 
 : GJA-DECL-NO-DEF ( n -- )
    dup s" word" GJA-NO-FIELD
@@ -379,13 +379,13 @@ variable GJA-DIRECT
    s" source_excerpt" GJA-NO-FIELD ;
 
 : GJA-DECL? ( n -- bool ) {: root:n :}
-   root s" decl" GJA-HAS? IF GJA-TRUE exit THEN
+   root s" decl" GJA-HAS? if GJA-TRUE exit then
    root s" code" GJA-REQ s" E-BAD-DECLARATION" GJA-STR= ;
 
 : GJA-REPAIR-HEAD ( n ptr u8 n -- ) {: root:n class:ptr classu:n :}
    root s" schema_version" 1 GJA-ASSERT-INT-FIELD
    root s" kind" GJA-REQ s" habu_repair_packet" GJA-ASSERT-STR
-   root s" diagnostic_count" GJA-REQ GJA-INT 0 <= IF s" invalid diagnostic_count" GJA-FAIL THEN
+   root s" diagnostic_count" GJA-REQ GJA-INT 0 <= if s" invalid diagnostic_count" GJA-FAIL then
    root s" code" GJA-REQ GJA-NONEMPTY-STR
    root s" file" GJA-REQ GJA-NONEMPTY-STR
    root class classu GJA-DIAG-CLASS-SUGGEST ;
@@ -422,7 +422,7 @@ variable GJA-DIRECT
    {: json:ptr jsonu class:ptr classu :}
    json jsonu GJA-FIRST-JSON GJA-ROOT !
    GJA-ROOT @ class classu GJA-REPAIR-HEAD
-   GJA-ROOT @ dup GJA-DECL? IF GJA-REPAIR-DECL ELSE GJA-REPAIR-DEF THEN ;
+   GJA-ROOT @ dup GJA-DECL? if GJA-REPAIR-DECL else GJA-REPAIR-DEF then ;
 
 : GJA-DIAG-HEAD ( n -- )
    dup GJA-SCHEMA1
@@ -465,7 +465,7 @@ variable GJA-DIRECT
    s" uncheckable" GJA-STR= 0= IF s" unexpected checker verdict" GJA-FAIL THEN ;
 
 : GJA-DIAG-CONTRACT-ROW ( n -- )
-   dup GJA-DECL? IF dup GJA-DIAG-DECL ELSE dup GJA-DIAG-COMMON THEN
+   dup GJA-DECL? if dup GJA-DIAG-DECL else dup GJA-DIAG-COMMON then
    dup GJA-DIAG-VERDICT
    dup s" repair_class" GJA-REQ JSON-STRING$ GJA-DIAG-CLASS-SUGGEST ;
 

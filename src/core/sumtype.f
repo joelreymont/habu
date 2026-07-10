@@ -175,18 +175,18 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 variable TDECL-NI
 : TDECL-VAR-SCOPE? ( n -- bool )
    SUMV-FAM@ TFAM-PKG$ {: pa:ptr pu:n :}
-   pu 0= IF RES-TRUE EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   pu 0= if RES-TRUE exit then
+   CHECKER-PACKAGE-ACTIVE? 0= if RES-FALSE exit then
    pa pu CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CORE-STR= ;
 
 : TDECL-VAR-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 TDECL-NI !
-   BEGIN TDECL-NI @ SUMV-N @ < WHILE
-      TDECL-NI @ SUMV-NAME$ a u CORE-STR= IF
-         TDECL-NI @ TDECL-VAR-SCOPE? IF RES-TRUE EXIT THEN
-      THEN
+   begin TDECL-NI @ SUMV-N @ < while
+      TDECL-NI @ SUMV-NAME$ a u CORE-STR= if
+         TDECL-NI @ TDECL-VAR-SCOPE? if RES-TRUE exit then
+      then
       TDECL-NI @ 1 + TDECL-NI !
-   REPEAT RES-FALSE ;
+   repeat RES-FALSE ;
 
 : TDECL-REQUIRE-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing name" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -201,11 +201,11 @@ variable TDECL-NI
 \ diagnostic says "duplicate family". Both scopes consult the registry.
 : TDECL-REQUIRE-FAMILY-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
-   a u TDECL-VAR-TAKEN? IF
+   a u TDECL-VAR-TAKEN? if
       a u s" collides with a sum variant" E-TDECL-NAME TDECL-THROW
-   THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   s" " a u TFAM-FIND-IN nip 0= IF EXIT THEN
+   then
+   CHECKER-PACKAGE-ACTIVE? 0= if exit then
+   s" " a u TFAM-FIND-IN nip 0= if exit then
    a u s" shadows a global family" E-TDECL-NAME TDECL-THROW ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family

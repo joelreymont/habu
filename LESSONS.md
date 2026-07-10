@@ -3301,3 +3301,7 @@ unchanged (148855). Keys for milestone 2:
   variant path rejected family tails, but the family path never scanned prior
   variants, so identical names accepted in one order. Apply the same in-scope
   rule at both declaration gates and pin unrelated-package acceptance.
+- **Audit casing on the added-token diff, not by visual consistency with nearby
+  legacy code.** New control words inherited uppercase spelling from surrounding
+  files even though `docs/forth.md` requires language words lowercase and
+  project words uppercase. A baseline-to-tip token scan exposes that drift.
