@@ -381,6 +381,29 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" noargs usage" T-LABEL
    RPT-ERR erru s" usage: tools/repair-packet.f checker-jsonl.err" CONTAINS? TTRUE ;
 
+
+\ switchover wave A: GJA-U? returns option<n> (SOME parsed unsigned decimal,
+\ else NONE). Both branches, directly (GJA-INT's none arm dies via GJA-FAIL, so
+\ the raw parser is the testable seam).
+: RPT-TEST-GJA-U ( -- )
+   s" gja-u option branches" T-LABEL
+   s" 12345" GJA-U? MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF 12345 = ENDOF
+   ;MATCH TTRUE
+   s" 0" GJA-U? MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF 0 = ENDOF
+   ;MATCH TTRUE
+   s" 12a" GJA-U? MATCH option
+     none OF 0 0= ENDOF
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE
+   s" " GJA-U? MATCH option
+     none OF 0 0= ENDOF
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
+
 : RPT-MAIN ( -- )
    T-RESET
    GOLD:INIT
@@ -390,6 +413,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    RPT-TEST-DECL
    RPT-TEST-TWO-DIAGS
    RPT-TEST-NOARGS
+   RPT-TEST-GJA-U
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL
    RPT-ROOT EXISTS? TFALSE

@@ -334,3 +334,20 @@ The REAL sentinels in the map cluster, and where they belong:
 Wave-A census scoreboard for the map cluster: MAP-GET migrated (slice 3);
 MAP-INDEX/MAP-PROBE reclassified total-arithmetic (this audit); free-memo
 reclassified loop-cursor; MAP-LOC-* handed to wave C.
+
+## SOLO SLICE — LANDED (tools/gate-json-assert-core.f GJA-U?)
+
+`GJA-U? ( ptr u8 n -- n bool )` → `( ptr u8 n -- option<n> )`: SOME parsed
+unsigned decimal, NONE on empty or a non-digit byte. ONE consumer (in-file),
+`GJA-INT`'s integer-field assert: `0= IF drop s" invalid JSON integer" GJA-FAIL
+THEN` → `MATCH option none OF … GJA-FAIL ENDOF some OF ENDOF ;MATCH` (GJA-FAIL
+dies — diverging none arm). The wider gate-json-assert consumer set (diag/aot/
+repair fixtures, 16 files) uses the higher-level assert API — no sig exposure.
+GJA-SUGGEST-ROW ( … -- ptr u8 n bool ) left for wave B (multi-value tuple).
+require lib/adt/option.f added; gate-json-assert-core.f is a TR-AOT-NEG-PHASE-
+FILES member, but the closure set union (HARNESS+COMMON+AOT-NEG) already contains
+option.f via TR-GATE-HARNESS-FILES — no run-files.f edit. tools/ manifest-exempt.
+Direct both-branch test RPT-TEST-GJA-U added to tools/repair-packet-test.f
+(12345/0 → some; 12a/empty → none); behavior identity proven by the untouched
+repair-schema-doc-test + check-repair-hints-test + the gate's diag slices
+(variant/tag/payload_pos/arity packet fields all assert through GJA-INT).
