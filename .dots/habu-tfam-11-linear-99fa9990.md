@@ -71,3 +71,53 @@ REMAINING item-11 work: delayed/open-arg resolution (E-MATCH-OPEN-ARGS / MB19 /
 LAYOUT-PARAM? reject for partially-determined args — width-resolution +
 refinement; the substantive remaining checker slice); item-8 TLP UN-row
 retirement at item 9.
+
+PIECE 3 AUDIT (2026-07-10, engine lane) — delayed/open-arg resolution.
+RECOMMENDATION: STOP-AND-REPORT. The open-arg reject is over-conservative but
+lifting it is a substantial, entangled slice, NOT a minimal one — scope it as a
+dedicated feature/dot; the current fail-closed reject is sound v1 meanwhile.
+
+Findings:
+1. WIDTH IS NOT THE BLOCKER. v1 params are cell-kinded, so a layout's width
+   (slots+tag) is FIXED regardless of args: `mlin<a,b>` is always width 2. So
+   "refine an open-arg bundle to its resolved width" is trivial (width is always
+   known). The blocker is LINEARITY resolution, not width.
+2. OVER-CONSERVATIVE vs the scalar discipline. Scalar generics DEFER linearity to
+   call sites: `( a -- a a ) dup` and `( a -- ) drop` both certify (-1) today; a
+   call with a concrete linear is caught at the call step by LIN-CHECK. The layout
+   analog `( tdlin<a> -- tdlin<a> tdlin<a> ) dup` REJECTS (0). Inconsistent — the
+   layout case blanket-rejects where the scalar case admits + defers.
+3. BUT THE 1-CELL OPEN-ARG REPRESENTATION IS LOAD-BEARING, not pure conservatism.
+   PUSH-LOGICAL keeps an open-arg layout ONE logical cell (LAYOUT-ARGS-OPEN?
+   gate). Empirically removing that gate (always expand — width is fixed) BREAKS
+   the construct->boundary coercion: a constructor yields a partially-open bundle
+   (`lq2<ltok,?b>`, the un-provided variant's arg open), and expanding it breaks
+   the raw->hidden SUNI/LOGHID coercion. Reverted-probe result: type-linear A1/A5/
+   A6/A7 (all construct-accept), plus type-decl/type-match/type-ctor cases, flip to
+   E-REJECTED (declared==inferred effect, yet rejected). So the gate does real work
+   holding constructor outputs at 1-cell for boundary unification.
+4. NO MINIMAL WIN. Even a MOVE (swap/rot/>r) of an open-arg bundle needs the
+   W-cell expansion for correct lowering — a 1-cell move would miscompile the
+   W-cell runtime value — so there is no "move-only" narrow slice without the
+   expansion that breaks (3).
+5. SOUND LIFT SCOPE (a coherent dedicated feature, not a tail item):
+   (a) expand open-arg bundles to their fixed width WHILE preserving construct's
+       raw->hidden coercion for partially-open bundles (rework SUNI/LOGHID so a
+       hidden field carrying an open var arg unifies with a resolved hidden field);
+   (b) extend the deferred linear taint to layout arg vars (this dot's
+       "delayed-resolution taint": XG-TAINT-SEQ/LIN-TAINT currently taints only
+       copied scalar var groups and skips hidden bundle groups on the premise
+       "linear layouts never expand"; a copied open-arg bundle must taint its arg
+       vars so a LATER linear binding rejects, mirroring scalar LIN-TAINT-SCAN);
+   (c) verify call-site LIN-CHECK + LIN-EFF-PASS/EN-PARAM catch linear
+       instantiations of a generic bundle transport (the scalar model);
+   (d) lift the MATCH open-arg reject (E-MATCH-OPEN-ARGS/MB19) once the scrutinee
+       expands.
+   Pins that flip when it lands: TDLIN-VAR-DUP/TDLIN-VAR-TOR (type-decl-suite),
+   MB19/B19 (type-match-suite), ZP8/P5/P6.
+
+Net: the reject is over-conservative, but its removal is entangled with construct
+coercion + deferred linear taint + MATCH, i.e. a dedicated multi-part slice. It is
+a documented v1 limitation until that feature is scoped and built; no minimal
+in-tail fix exists. Recommend a new dot for the feature; TFAM 11 core (slices
+1/3/4/5) is otherwise complete.

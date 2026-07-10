@@ -4,6 +4,19 @@
 
 Last updated: 2026-07-10
 
+- **Probe "over-conservative reject" claims by removing the guard and reading
+  what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
+  conservatism (scalar `( a -- a a ) dup` certifies + defers linearity to call
+  sites, but layout `( tdlin<a> -- tdlin<a> tdlin<a> ) dup` rejects). Width was a
+  red herring — cell-kinded params make a layout's width fixed regardless of args,
+  so it's a linearity question, not width. But deleting the `LAYOUT-ARGS-OPEN?`
+  gate in `PUSH-LOGICAL` (always expand) broke every construct-accept case
+  (type-linear A1/A5/A6/A7 → E-REJECTED with declared==inferred): the 1-cell
+  open-arg form is LOAD-BEARING for the constructor's raw→hidden boundary coercion
+  (a ctor yields `lq2<ltok,?b>` with the un-provided arg open). Lesson: a
+  fail-closed guard can be over-conservative AND structurally load-bearing at once
+  — a checker-boot-prefix edit + one suite run separates "flip a fixture" from "a
+  dedicated multi-part feature." (habu-tfam-11-linear piece 3: stop-and-report.)
 - **Reuse the conservation machinery, don't add a transport special-case:** the
   TFAM 11 move-class relaxation (swap/rot/>r of a linear layout bundle) needed
   ZERO new classification code — deleting XG-READ-GROUP's blanket linear-bundle
