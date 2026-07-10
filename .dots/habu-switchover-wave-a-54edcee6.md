@@ -300,3 +300,37 @@ STRICT-MODE IDENTITY PROVEN: migrated vs master tool run on the SAME live tree �
 covered by new PARSE-CLASSES$ fixtures (4-token row with count 0 → reject, count
 abc → reject, count 2 → accept) plus the existing ratchet GREW/STALE/UNSET cases.
 NO behavior drift, NO new trust rows.
+
+## AUDIT — MAP-INDEX / MAP-PROBE: CENSUS CORRECTED, NOT FINDERS (no migration)
+
+Census §1a listed `lib/map.f MAP-INDEX / MAP-PROBE` under "-1-means-missing index
+returns". AUDIT VERDICT: NEITHER is a finder; both are TOTAL index-arithmetic
+words that always return a valid `idx` — there is no absence signal to lift into
+option<idx>.
+
+- `MAP-INDEX ( n count -- idx )` normalizes ANY hash (including negative) into
+  [0, cap): `hash cap mod dup 0 < if cap + then >IDX`, after MAP-CHECK-CAP
+  (throws on a bad cap). PROOF the census misread it: lib/map-test.f:378
+  `-1 MT-CAP MT-MAP-INDEX MT-CAP 1 - MT=` — the `-1` in the sweep hits is an
+  INPUT hash (mapped to cap-1), not a missing-result output.
+- `MAP-PROBE ( n count count -- idx )` is pure wrap-around arithmetic
+  (base + step mod cap); MT-RANGE asserts membership in [0, cap) for every case.
+  No flag, no -1 output.
+
+The REAL sentinels in the map cluster, and where they belong:
+- The `free` memo threaded through MAP-LOCATE / MAP-LOCATE-SLOT /
+  MAP-REMEMBER-FREE (`-1` = "no free slot remembered yet") is a LOOP-INTERNAL
+  CURSOR (HM-PROBE class): it never crosses a public boundary as absence —
+  MAP-LOCATE resolves it into the `loc` verdict, and MAP-LOCATE's only external
+  user is the map-test wrapper. Rejected for option, same reasoning as HM-PROBE.
+- The `loc` verdict `MAP-LOC-FULL/FREE/FOUND` (0/1/2 constants) is a genuine
+  THREE-way outcome — option<idx> cannot express it (MAP-SET at map.f:253 needs
+  FREE vs FULL distinguished after not-FOUND). That is WAVE-C block-ENUM
+  territory, exactly parallel to the slot-state ENUM the wave-C worker just
+  landed (map.f:194-206 MATCHes slot-state). RECOMMENDATION for wave C: `ENUM
+  map-loc full free found ;ENUM`, MATCH in MAP-GET/SET/DELETE, retiring the
+  three constants and the `ix -1` placeholder that rides with FULL.
+
+Wave-A census scoreboard for the map cluster: MAP-GET migrated (slice 3);
+MAP-INDEX/MAP-PROBE reclassified total-arithmetic (this audit); free-memo
+reclassified loop-cursor; MAP-LOC-* handed to wave C.
