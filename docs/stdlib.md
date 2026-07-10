@@ -417,8 +417,8 @@ STR-DIGIT?      ( n -- bool )
 STR-DIGIT-VALUE ( n -- n )
 STR-DIGITS?     ( ptr u8 n -- bool )
 STR-DIGITS<=    ( ptr u8 n ptr u8 n -- bool )
-STR-PARSE-POS   ( ptr u8 n -- n bool )
-STR-PARSE-NEG   ( ptr u8 n -- n bool )
+STR-PARSE-POS   ( ptr u8 n -- option<n> )
+STR-PARSE-NEG   ( ptr u8 n -- option<n> )
 STR>NUMBER?     ( ptr u8 n -- n bool )
 ```
 

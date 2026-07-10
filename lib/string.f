@@ -1,6 +1,7 @@
 \ string.f - checked byte-string helpers.
 
 s" lib/errors.f" required
+s" lib/adt/option.f" required            \ option<n> for STR-PARSE-POS/NEG (switchover wave A)
 
 9 constant STR-TAB
 10 constant STR-LF
@@ -211,30 +212,38 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop STR-TRUE ;
 
-: STR-PARSE-POS ( ptr u8 n -- n bool ) {: a:ptr u :}
-   a u STR-DIGITS? 0= if 0 STR-FALSE exit then
-   a u STR-MAX-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if 0 STR-FALSE exit then
+: STR-PARSE-POS ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed nonnegative bounded i64, else NONE
+   a u STR-DIGITS? 0= if OPTION:NONE exit then
+   a u STR-MAX-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if OPTION:NONE exit then
    0 0 begin dup u < while
       swap STR-BASE * over a + c@ STR-DIGIT-VALUE + swap
       1+
-   repeat drop STR-TRUE ;
+   repeat drop OPTION:SOME ;
 
-: STR-PARSE-NEG ( ptr u8 n -- n bool ) {: a:ptr u :}
-   a u STR-DIGITS? 0= if 0 STR-FALSE exit then
-   a u STR-MIN-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if 0 STR-FALSE exit then
+: STR-PARSE-NEG ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed negative bounded i64, else NONE
+   a u STR-DIGITS? 0= if OPTION:NONE exit then
+   a u STR-MIN-I64$ STR-I64-DIGITS STR-DIGITS<= 0= if OPTION:NONE exit then
    0 0 begin dup u < while
       swap STR-BASE * over a + c@ STR-DIGIT-VALUE - swap
       1+
-   repeat drop STR-TRUE ;
+   repeat drop OPTION:SOME ;
 
-: STR>NUMBER? ( ptr u8 n -- n bool ) {: a:ptr u :}
+\ STR>NUMBER? keeps the value+flag boundary for now: its ~16 callers span the
+\ repo including maki/ (store, cad, golden-artifact, saved), which this lane
+\ must not touch. The sign split MATCHes the option-returning digit parsers and
+\ STR>NUMBER-UNWRAP re-flattens at this documented boundary (wave-A dot tracks
+\ the cross-lane public-sig migration).
+: STR>NUMBER-UNWRAP ( option<n> -- n bool )
+   MATCH option none OF 0 STR-FALSE ENDOF some OF STR-TRUE ENDOF ;MATCH ;
+
+: STR>NUMBER? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 0= if 0 STR-FALSE exit then
    a c@ STR-MINUS = if
       u 1 = if 0 STR-FALSE exit then
-      a 1+ u 1- STR-PARSE-NEG exit
+      a 1+ u 1- STR-PARSE-NEG STR>NUMBER-UNWRAP exit
    then
    a c@ STR-PLUS = if
       u 1 = if 0 STR-FALSE exit then
-      a 1+ u 1- STR-PARSE-POS exit
+      a 1+ u 1- STR-PARSE-POS STR>NUMBER-UNWRAP exit
    then
-   a u STR-PARSE-POS ;
+   a u STR-PARSE-POS STR>NUMBER-UNWRAP ;

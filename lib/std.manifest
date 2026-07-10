@@ -134,8 +134,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-DIGIT-VALUE	(n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	convert an ASCII decimal digit byte to value
 1	string	lib/string.f	word	STR-DIGITS?	(ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test a non-empty all-digit byte string
 1	string	lib/string.f	word	STR-DIGITS<=	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare decimal digit strings by numeric value
-1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64
-1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64
+1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64: SOME value, else NONE
+1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64: SOME value, else NONE
+1	string	lib/string.f	word	STR>NUMBER-UNWRAP	(option<n> -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	flatten a parsed option to the STR>NUMBER? value+flag boundary
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
 1	json-write	lib/json-write.f	word	JW-BUF-FIELD	(-- ptr ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the typed pointer field for JSON writer output storage
