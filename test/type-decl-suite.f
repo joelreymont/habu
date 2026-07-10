@@ -798,6 +798,21 @@ s" SUMTYPE tdvres3 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 TYPEFAMILY tvloc 1
 s" SUMTYPE tdvres4 1 VARIANT tvloc a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 end-package
+\ family declarations must reject a prior in-scope variant tail too; otherwise
+\ the collision verdict depends on declaration order.
+ENUM tdvowner tdfuture ;ENUM
+s" TYPEFAMILY tdfuture 0" E-TDECL-NAME TDT-NEG
+package tvorder
+ENUM tvowner tvfuture ;ENUM
+s" TYPEFAMILY tvfuture 0" E-TDECL-NAME TDT-NEG
+end-package
+\ Package-local variant tails do not reserve unrelated package namespaces.
+package tvordera
+ENUM tvowner tvlocal ;ENUM
+end-package
+package tvorderb
+TYPEFAMILY tvlocal 0
+end-package
 \ ...and an unreserved variant name in the same shape still accepts.
 SUMTYPE tdvok 1
   VARIANT fine a ;VARIANT

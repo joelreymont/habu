@@ -3297,3 +3297,7 @@ unchanged (148855). Keys for milestone 2:
   range when their tags overlap, and converting a typed fetch straight back to
   `n` erases the only proof consumers need. Carry the family through internal
   APIs and locals; convert only inside named wire or private table-index owners.
+- **Cross-kind name collision checks must be declaration-order symmetric.** The
+  variant path rejected family tails, but the family path never scanned prior
+  variants, so identical names accepted in one order. Apply the same in-scope
+  rule at both declaration gates and pin unrelated-package acceptance.

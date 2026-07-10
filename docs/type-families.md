@@ -20,6 +20,9 @@ qualifier from the family tail: `PKG:result<n>` is valid, `PKG:Result<n>` is
 not. Family declarations also reject reserved signature tokens such as
 `a`..`z`, builtins (`n`, `f`, `r`), pointer/layout tokens (`ptr`, `field`), atom
 prefixes, and existing type names.
+Family and sum-variant tails share one collision policy within the global or
+active package scope: whichever is declared second rejects with
+`E-TDECL-NAME`. Package-local variant tails do not reserve unrelated packages.
 
 Use the generic term internally and the specific terms externally:
 
