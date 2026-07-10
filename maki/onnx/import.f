@@ -21,8 +21,12 @@
 \ Relu->OP-RELU, Softmax->OP-SOFTMAX-ROW (axis must be the last: -1 or 1),
 \ Gemm->OP-MATMUL (2 inputs) / OP-LINEAR (3 inputs, bias 1xN) with
 \ alpha=beta=1 and transA=transB=0 enforced (E-ONNX-ATTR otherwise). Movement
-\ ops (ONNX:MOVE-KIND set) are a follow-up leg and today fail closed through
-\ LOWER. v1 output contract: exactly one graph output and it is the LAST node
+\ ops (ONNX:MOVE-KIND coverage): Reshape->OP-RESHAPE (target [R,C] read from the
+\ INT64 shape initializer; a runtime-computed shape fails E-ONNX-DYNSHAPE),
+\ Transpose->OP-TRANSPOSE (2D; perm absent or exactly [1,0], else E-ONNX-ATTR),
+\ Concat->OP-CONCAT (2 inputs, axis 0 row-append) - each carries MV-PACK'd attrs
+\ and host-executes on the maki/move.f references. Slice/Gather stay the LOWER
+\ rejection (E-MK-ONNX). v1 output contract: exactly one graph output, the LAST node
 \ (E-ONNX-OUTPUT), with the declared output shape checked (E-ONNX-SHAPE).
 \
 \ Fail closed: unresolved input E-ONNX-TOPO; rebound output name (SSA)
@@ -135,6 +139,15 @@ variable IMP-BUMP
    rows cols MAKI:DT-F32 MAKI:LAY-ROW 0 1 MAKI:MIR-OP+ {: k:n :}
    j OND-OUT@ k IMP-BIND ;
 
+\ movement nodes carry MV-PACK'd attrs and materialize only on a materialize/gathered
+\ verdict (the BRIDGE-MAT rule maki/cad.f uses), so the imported IR matches MODEL: capture.
+: IMP-MOVE-MAT ( n -- n ) {: attr:n :}         \ movement materialization flag from the packed verdict
+   attr MAKI:MV-VD@ MAKI:MV-VD-REPORTS? if 1 else 0 then ;
+
+: IMP-COMMIT-MOVE ( n n n n -- ) {: j:n rows:n cols:n attr:n :}   \ close a movement node
+   rows cols MAKI:DT-F32 MAKI:LAY-ROW  attr  attr IMP-MOVE-MAT  MAKI:MIR-OP+ {: k:n :}
+   j OND-OUT@ k IMP-BIND ;
+
 \ Add / Mul: numpy broadcast mapped onto the capture-legal classes. The second
 \ operand's shape is classified against the first (BC-CLASS, the exact mapping the
 \ host executor's EX-BC@ and the planner's SHP-LEGAL? use): a full-shape operand is
@@ -203,15 +216,60 @@ variable IMP-BUMP
    MAKI:OP-LINEAR MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+  rb MAKI:MIR-IN+
    j m nc IMP-COMMIT ;
 
-\ one node: the LOWER table is the fail-closed coverage gate, then the IR mapping
+\ ---- movement op builders (MOVE-KIND coverage; wired the way MODEL: capture does) ---
+\ Movement nodes are exact layout rewrites: they carry MV-PACK'd attrs + a dissolution
+\ verdict and are host-executed by the same maki/move.f references the planner proves.
+
+: IMP-RESHAPE ( n -- ) {: j:n :}               \ shape is an INT64 initializer; a runtime shape rejects
+   j 0 IMP-ATTRS-OK  j 2 IMP-ARITY-OK
+   j 1 OND-IN@ OGIC-FIND 0= if E-ONNX-DYNSHAPE throw then   \ shape not a static constant -> dynamic
+   {: c:n :}
+   c OGIC-NVAL@ 2 <> if E-ONNX-RANK throw then              \ the 2D IR needs a [R,C] target
+   c 0 OGIC-VAL@ {: tr:n :}  c 1 OGIC-VAL@ {: tc:n :}
+   tr 0 <= tc 0 <= or if E-ONNX-DYNSHAPE throw then         \ -1 (infer) / 0 (copy dim): not resolved v1
+   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   r0 IMP-REF-ROWS r0 IMP-REF-COLS *  tr tc *  <> if E-ONNX-SHAPE throw then   \ element count must agree
+   MAKI:OP-RESHAPE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI:MV-RESHAPE MAKI:MVV-FREE tr tc MAKI:MV-PACK {: attr:n :}   \ row-major reshape is a free rewrite
+   j  tr tc  attr  IMP-COMMIT-MOVE ;
+
+: IMP-TRANSPOSE ( n -- ) {: j:n :}             \ 2D transpose; perm absent (reverse) or exactly [1,0]
+   j ATTR-PERM IMP-ATTRS-OK
+   j OND-PERMN@ {: pn:n :}
+   pn 0<> if
+      pn 2 <> if E-ONNX-ATTR throw then                    \ 2D only: perm must be rank 2
+      j OND-PERM0@ 1 <>  j OND-PERM1@ 0 <>  or if E-ONNX-ATTR throw then
+   then
+   j 1 IMP-ARITY-OK
+   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   MAKI:OP-TRANSPOSE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
+   j  r0 IMP-REF-COLS  r0 IMP-REF-ROWS  attr  IMP-COMMIT-MOVE ;
+
+: IMP-CONCAT ( n -- ) {: j:n :}                \ 2-input row concat (axis 0): RxC + SxC -> (R+S)xC
+   j ATTR-AXIS IMP-ATTRS-OK
+   j OND-ATTRS@ ATTR-AXIS and 0= if E-ONNX-ATTR throw then  \ Concat requires an axis
+   j OND-AXIS@ 0 <> if E-ONNX-ATTR throw then               \ only axis 0 (row append) in v1
+   j 2 IMP-ARITY-OK
+   j 0 OND-IN@ IMP-RESOLVE {: ra:n :}
+   j 1 OND-IN@ IMP-RESOLVE {: rb:n :}
+   ra IMP-REF-COLS rb IMP-REF-COLS <> if E-ONNX-SHAPE throw then
+   MAKI:OP-CONCAT MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
+   MAKI:MV-CONCAT MAKI:MVV-MATERIALIZE 0 0 MAKI:MV-PACK {: attr:n :}
+   j  ra IMP-REF-ROWS rb IMP-REF-ROWS +  ra IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
+
+\ one node: LOWER (compute) + MOVE-KIND (movement) are the fail-closed coverage; then IR map
 : IMP-NODE ( n -- ) {: j:n :}
-   j OND-OP$ LOWER 2drop
    j OND-OP$ {: a:ptr u:n :}
-   a u s" Add"     STR= if j IMP-ADD     exit then
-   a u s" Mul"     STR= if j IMP-MUL     exit then
-   a u s" Relu"    STR= if j IMP-RELU    exit then
-   a u s" Softmax" STR= if j IMP-SOFTMAX exit then
-   a u s" Gemm"    STR= if j IMP-GEMM    exit then
+   a u s" Add"       STR= if j IMP-ADD       exit then
+   a u s" Mul"       STR= if j IMP-MUL       exit then
+   a u s" Relu"      STR= if j IMP-RELU      exit then
+   a u s" Softmax"   STR= if j IMP-SOFTMAX   exit then
+   a u s" Gemm"      STR= if j IMP-GEMM      exit then
+   a u s" Reshape"   STR= if j IMP-RESHAPE   exit then
+   a u s" Transpose" STR= if j IMP-TRANSPOSE exit then
+   a u s" Concat"    STR= if j IMP-CONCAT    exit then
+   a u LOWER 2drop                             \ unmatched: LOWER's E-MK-ONNX (Conv; Slice/Gather too)
    E-MK-ONNX throw ;                           \ LOWER/IR-map drift: still fail closed
 
 \ ---- v1 output contract: one graph output, and it is the last node -----------

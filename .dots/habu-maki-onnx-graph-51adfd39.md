@@ -27,7 +27,27 @@ fixtures A-D). Remaining host-side legs, one commit each:
   Fixtures E (Add bias 1x2) and F (Mul scale 1x1) host-execute vs hand-computed;
   negatives TRY-ADDCOL (2x1 column) and TRY-ADDRAGGED (3x2 vs 2x2) reject. Files:
   maki/onnx/import.f, maki/onnx/import-test.f (+ require maki/bcast.f).
-- **LEG B — movement operators (Reshape / Transpose / …).** REMAINING.
+- **LEG B — movement operators. LANDED (Reshape / Transpose / Concat).** graph.f
+  now splits initializers by data_type: FLOAT (1) -> f32 OGI arena as before; INT64
+  (7) -> a new rank-1 int-constant table (OGIC), decoded to cell ints at parse. It
+  also collects the Transpose `perm` ints (AttributeProto.ints=8, packed or unpacked)
+  onto the node. import.f wires three movement builders with MV-PACK'd attrs + verdict,
+  host-executed on the maki/move.f references: Reshape->OP-RESHAPE (target [R,C] read
+  from the INT64 shape initializer; a shape input absent from OGIC is a runtime-computed
+  shape -> E-ONNX-DYNSHAPE); Transpose->OP-TRANSPOSE (2D; perm absent=reverse or exactly
+  [1,0], any other/rank-3 perm -> E-ONNX-ATTR); Concat->OP-CONCAT (2 inputs, axis 0
+  row-append). Fixtures RS/TR/CC host-execute vs hand-computed; negatives TRY-RSDYN
+  (runtime shape), TRY-BADPERM ([0,1]), TRY-PERM3 (rank-3). Files: maki/onnx/graph.f,
+  maki/onnx/import.f, maki/onnx/import-test.f.
+  - **Slice / Gather import: REMAINING.** The MOVE-KIND table lowers them and the
+    executor proves them, but their ONNX operand semantics are extra import surface:
+    Slice needs starts/ends/axes/steps as INT64 constants (the OGIC table already exists;
+    read starts[0]/ends[0] into the slice attrs, validate axis 0 / step 1); Gather needs
+    an INT64 indices operand, but EX-GATHER reads FLOAT indices (EX-BUILD-IDX rounds),
+    so a float-vs-int64 operand bridge is needed first. Both currently stay the LOWER
+    rejection (E-MK-ONNX). Also remaining: INT64 int64_data (field 7) initializers (only
+    raw_data field 9 is decoded), Reshape -1 (infer) / 0 (copy) dims, and Transpose perm
+    honoring for rank>2 once the IR is >2D.
 - **LEG C — Gemm attribute composition (transA/transB, alpha/beta).** REMAINING.
 - **Real-model onnxruntime golden.** REMAINING (needs a host onnxruntime run;
   user-gated).

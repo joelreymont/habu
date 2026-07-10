@@ -10,13 +10,17 @@
 \   D: Gemm(x,w) two-input   -> OP-MATMUL
 \   E: Add(x,bias 1x2)       numpy row broadcast -> OP-BIAS
 \   F: Mul(x,scale 1x1)      numpy scalar broadcast -> OP-SCALE
+\   RS: Reshape(x,[1,4])     target from an INT64 shape initializer -> OP-RESHAPE
+\   TR: Transpose(x,[1,0])   2x3 -> 3x2 perm attribute -> OP-TRANSPOSE
+\   CC: Concat(x,cc,axis 0)  2x2 + 1x2 -> 3x2 row-append -> OP-CONCAT
 \ The fusion planner runs the imported IR too (FP-BUILD; Gemm->Relu fuses into
 \ one region). Negative fixtures cover every importer throw: dynamic dim_param,
 \ unsupported op (the ONNX:LOWER rejection), non-topological input, bad Gemm /
 \ Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column and a ragged 3x2-vs-2x2
-\ Add (broadcast shapes outside the legal classes), two graph outputs, output not the
-\ last node, missing graph, SSA rebind, missing initializer payload, oversized name,
-\ wrong arity, and truncated model bytes.
+\ Add (broadcast shapes outside the legal classes), a runtime-computed Reshape shape,
+\ a non-transpose and a rank-3 Transpose perm, two graph outputs, output not the last
+\ node, missing graph, SSA rebind, missing initializer payload, oversized name, wrong
+\ arity, and truncated model bytes.
 
 require lib/test.f
 require lib/string.f
@@ -38,6 +42,12 @@ package ONNX-IMPORT-TEST
 
 create XB 8 cells allot                        \ runtime input buffer
 create X2B 8 cells allot
+
+: ENC-I64 ( n -- ) {: v:n :}                   \ append 8 raw LE bytes of an int64 (constant payload)
+   v $FF and ONNX:ENC-B          v 8  rshift $FF and ONNX:ENC-B
+   v 16 rshift $FF and ONNX:ENC-B  v 24 rshift $FF and ONNX:ENC-B
+   v 32 rshift $FF and ONNX:ENC-B  v 40 rshift $FF and ONNX:ENC-B
+   v 48 rshift $FF and ONNX:ENC-B  v 56 rshift $FF and ONNX:ENC-B ;
 
 \ ---- encoder helpers: ValueInfo / node / initializer builders ------------------
 : DIM+ ( n -- ) {: d:n :}                      \ one TensorShapeProto.Dimension
@@ -189,6 +199,61 @@ create X2B 8 cells allot
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
    ;MDL ;
 
+\ ---- movement fixtures (Reshape / Transpose / Concat) ---------------------------
+: INIT-SH ( -- )                               \ int64 shape constant "sh" = [1,4] (rank-1 dims=[2])
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" sh" 8 ONNX:ENC-STR   \ dims [2], data_type INT64
+      9 ONNX:ENC-SUB  1 ENC-I64  4 ENC-I64  ONNX:;ENC-SUB          \ raw_data [1,4]
+   ONNX:;ENC-SUB ;
+
+: RESHAPE-NODE ( -- )                          \ Reshape x sh -> y
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" sh" 1 ONNX:ENC-STR
+      s" y" 2 ONNX:ENC-STR  s" Reshape" 4 ONNX:ENC-STR
+   ONNX:;ENC-SUB ;
+
+: MODEL-RS ( -- )                              \ Reshape(x 2x2, sh [1,4]) -> y 1x4
+   MDL
+   s" RS" 2 ONNX:ENC-STR
+   RESHAPE-NODE  INIT-SH
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+
+   ;MDL ;
+
+: TRANSPOSE-NODE ( -- )                        \ Transpose x -> y, perm [1,0] (unpacked ints)
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR  s" Transpose" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" perm" 1 ONNX:ENC-STR
+         1 8 ONNX:ENC-INT  0 8 ONNX:ENC-INT
+      ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: MODEL-TR ( -- )                              \ Transpose(x 2x3, perm [1,0]) -> y 3x2
+   MDL
+   s" TR" 2 ONNX:ENC-STR
+   TRANSPOSE-NODE
+   s" x" 11 2 3 VI+  s" y" 12 3 2 VI+
+   ;MDL ;
+
+: INIT-CC ( -- )                               \ float 1x2 = [10,20] (concat second operand)
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" cc" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB  10.0 ONNX:ENC-F32  20.0 ONNX:ENC-F32  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: CONCAT-NODE ( -- )                           \ Concat x cc -> y, axis 0
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" cc" 1 ONNX:ENC-STR
+      s" y" 2 ONNX:ENC-STR  s" Concat" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" axis" 1 ONNX:ENC-STR  0 3 ONNX:ENC-INT  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: MODEL-CC ( -- )                              \ Concat(x 2x2, cc 1x2) axis 0 -> y 3x2
+   MDL
+   s" CC" 2 ONNX:ENC-STR
+   CONCAT-NODE  INIT-CC
+   s" x" 11 2 2 VI+  s" y" 12 3 2 VI+
+   ;MDL ;
+
 \ ---- negative fixtures (each builds a model then imports it) ---------------------
 : IMP! ( -- )  ONNX:ENC$ ONNX:IMPORT ;
 
@@ -287,6 +352,29 @@ create X2B 8 cells allot
    s" Add" s" x" s" r2" s" y" NODE2
    INIT-R2
    s" x" 11 3 2 VI+  s" y" 12 3 2 VI+  ;MDL IMP! ;
+
+: TRY-RSDYN ( -- )                             \ Reshape shape is a runtime graph input, not a constant
+   MDL
+   RESHAPE-NODE
+   s" x" 11 2 2 VI+  s" sh" 11 1 2 VI+  s" y" 12 1 4 VI+  ;MDL IMP! ;
+
+: TRY-BADPERM ( -- )                           \ Transpose perm [0,1] is identity, not the 2D transpose
+   MDL
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR  s" Transpose" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" perm" 1 ONNX:ENC-STR  0 8 ONNX:ENC-INT  1 8 ONNX:ENC-INT  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-PERM3 ( -- )                             \ a rank-3 perm on the 2D importer
+   MDL
+   1 ONNX:ENC-SUB
+      s" x" 1 ONNX:ENC-STR  s" y" 2 ONNX:ENC-STR  s" Transpose" 4 ONNX:ENC-STR
+      5 ONNX:ENC-SUB  s" perm" 1 ONNX:ENC-STR
+         2 8 ONNX:ENC-INT  1 8 ONNX:ENC-INT  0 8 ONNX:ENC-INT
+      ONNX:;ENC-SUB
+   ONNX:;ENC-SUB
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
 
 : TRY-2OUT ( -- )                              \ two graph outputs: outside the v1 contract
    MDL
@@ -425,6 +513,48 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 6 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 9 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 12 T=
 
+\ ---- Reshape: shape from the INT64 constant, host-executed ------------------------
+MODEL-RS  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OP-RESHAPE T=
+0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=    \ target [1,4] read from the shape initializer
+ONNX:IN# 1 T=                                   \ sh is an int64 constant, not a runtime input
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=           \ row-major reshape preserves order
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 2 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 3 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
+
+\ ---- Transpose: perm [1,0], 2x3 -> 3x2, host-executed -----------------------------
+MODEL-TR  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OP-TRANSPOSE T=
+0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=           \ [[1,2,3],[4,5,6]]^T = [[1,4],[2,5],[3,6]]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 4 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 2 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 5 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 4 >I 3 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
+
+\ ---- Concat: axis 0 row-append, 2x2 + 1x2 -> 3x2, host-executed -------------------
+MODEL-CC  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OP-CONCAT T=
+0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=           \ x rows then the cc row [10,20]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 2 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 3 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 4 >I 10 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 20 T=
+
 \ ---- fail closed -------------------------------------------------------------------
 ' TRY-DYN      E-ONNX-DYNSHAPE TTHROWS
 ' TRY-CONV     E-MK-ONNX       TTHROWS
@@ -437,6 +567,9 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 12 T=
 ' TRY-I64DT    E-ONNX-DTYPE    TTHROWS
 ' TRY-ADDCOL   E-ONNX-SHAPE    TTHROWS
 ' TRY-ADDRAGGED E-ONNX-SHAPE   TTHROWS
+' TRY-RSDYN    E-ONNX-DYNSHAPE TTHROWS
+' TRY-BADPERM  E-ONNX-ATTR     TTHROWS
+' TRY-PERM3    E-ONNX-ATTR     TTHROWS
 ' TRY-2OUT     E-ONNX-OUTPUT   TTHROWS
 ' TRY-OUTMID   E-ONNX-OUTPUT   TTHROWS
 ' TRY-NOGRAPH  E-ONNX-NOGRAPH  TTHROWS

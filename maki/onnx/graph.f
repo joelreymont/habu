@@ -10,8 +10,15 @@
 \ op_type=4 attribute=5; TensorProto dims=1 data_type=2 float_data=4 name=8
 \ raw_data=9; ValueInfoProto name=1 type=2; TypeProto.tensor_type=1;
 \ TypeProto.Tensor elem_type=1 shape=2; TensorShapeProto.dim=1; Dimension
-\ dim_value=1 dim_param=2; AttributeProto name=1 f=2 i=3. Unknown fields are
+\ dim_value=1 dim_param=2; AttributeProto name=1 f=2 i=3 ints=8. Unknown fields are
 \ skipped by wire type (PB-SKIP).
+\
+\ Initializers split by data_type: FLOAT (1) tensors are 2D f32 weights recorded in
+\ the OGI table (payload span, materialized later); INT64 (7) tensors are rank-1 int
+\ vectors (a Reshape target shape, a Slice range) decoded to cell ints HERE into the
+\ OGIC constant table - a movement op reads its dims/range by input name, and a name
+\ absent from OGIC is a runtime-computed operand the importer rejects (E-ONNX-DYNSHAPE).
+\ The Transpose perm attribute (ints=8, packed or unpacked) is collected onto the node.
 \
 \ Fail closed (docs/maki/onnx.md dynamic-shape policy): a dim_param (symbolic
 \ dim), a missing/empty Dimension, a non-positive dim_value, or a ValueInfo
@@ -58,10 +65,10 @@ package ONNX
 \ ---- recognized attribute kinds + presence bits -----------------------------
 0 constant OGA-ALPHA   1 constant OGA-BETA
 2 constant OGA-TA      3 constant OGA-TB
-4 constant OGA-AXIS
+4 constant OGA-AXIS    5 constant OGA-PERM
 1 constant ATTR-ALPHA  2 constant ATTR-BETA
 4 constant ATTR-TA     8 constant ATTR-TB
-16 constant ATTR-AXIS
+16 constant ATTR-AXIS  32 constant ATTR-PERM
 
 $3F800000 constant F32-ONE      \ IEEE-754 f32 bit pattern of 1.0
 
@@ -103,6 +110,9 @@ create OND-BETA  OND-CAP cells allot
 create OND-TA    OND-CAP cells allot
 create OND-TB    OND-CAP cells allot
 create OND-AXIS  OND-CAP cells allot           \ default -1 (last axis)
+create OND-PERMN OND-CAP cells allot           \ Transpose perm length (0 = absent -> default reverse)
+create OND-PERM0 OND-CAP cells allot           \ perm[0], perm[1] (2D transpose is [1,0])
+create OND-PERM1 OND-CAP cells allot
 variable OND-N
 create OND-INS OND-INCAP cells allot           \ flat input name-slot pool
 variable OND-INS-U
@@ -121,6 +131,9 @@ variable OND-INS-U
 : OND-TA@    ( n -- n ) OND-CK cells OND-TA    + @ ;
 : OND-TB@    ( n -- n ) OND-CK cells OND-TB    + @ ;
 : OND-AXIS@  ( n -- n ) OND-CK cells OND-AXIS  + @ ;
+: OND-PERMN@ ( n -- n ) OND-CK cells OND-PERMN + @ ;
+: OND-PERM0@ ( n -- n ) OND-CK cells OND-PERM0 + @ ;
+: OND-PERM1@ ( n -- n ) OND-CK cells OND-PERM1 + @ ;
 
 : OND-IN@ ( n n -- n ) {: j:n k:n :}           \ k-th input name slot of node j
    j OND-CK drop
@@ -144,6 +157,41 @@ variable OGI-N
 : OGI-COLS@  ( n -- n )  OGI-CK cells OGI-COLS + @ ;
 : OGI-OFF@   ( n -- n )  OGI-CK cells OGI-OFF  + @ ;
 : OGI-LEN@   ( n -- n )  OGI-CK cells OGI-LEN  + @ ;
+
+\ ---- int64 constant table (rank-1 int vectors: Reshape target shape) ----------
+\ INT64 initializers are static graph constants (a Reshape shape input, a Slice range),
+\ not f32 tensors: they are decoded to cell ints HERE at parse time and never enter the
+\ f32 arena. A movement op reads its dims/range from this table by the input name; a name
+\ absent here is a runtime-computed operand (fail-closed E-ONNX-DYNSHAPE at import).
+16 constant OGIC-CAP            \ int-constant records
+8  constant OGIC-VW             \ max ints per record
+create OGIC-NAME OGIC-CAP cells allot
+create OGIC-NVAL OGIC-CAP cells allot
+create OGIC-VALS OGIC-CAP OGIC-VW * cells allot
+variable OGIC-N
+
+: OGIC-CK ( n -- n )
+   dup 0 < over OGIC-N @ >= or if E-ONNX-IDX throw then ;
+: OGIC#      ( -- n )  OGIC-N @ ;
+: OGIC-NAME@ ( n -- n )  OGIC-CK cells OGIC-NAME + @ ;
+: OGIC-NVAL@ ( n -- n )  OGIC-CK cells OGIC-NVAL + @ ;
+: OGIC-VAL@ ( n n -- n ) {: c:n k:n :}         \ k-th int of constant c
+   c OGIC-CK drop
+   k 0 < k c cells OGIC-NVAL + @ >= or if E-ONNX-IDX throw then
+   OGIC-VALS c OGIC-VW * cells +  k cells +  @ ;
+: OGIC-FIND ( n -- n bool ) {: ni:n :}         \ name slot -> int-constant index? (slot valid iff true)
+   OGIC-N @ 0 ?do  i OGIC-NAME@ ni = if i true unloop exit then  loop  0 false ;
+
+\ read one little-endian int64 at a model-absolute byte offset (span already bounds-checked)
+: OGIC-LD64 ( ptr u8 n -- n ) {: a:ptr off:n :}
+   a off + c@
+   a off 1+ + c@ 8  lshift or
+   a off 2 + + c@ 16 lshift or
+   a off 3 + + c@ 24 lshift or
+   a off 4 + + c@ 32 lshift or
+   a off 5 + + c@ 40 lshift or
+   a off 6 + + c@ 48 lshift or
+   a off 7 + + c@ 56 lshift or ;
 
 \ ---- graph input / output tables ---------------------------------------------
 create OGIN-NAME OGIN-CAP cells allot
@@ -185,6 +233,14 @@ variable OGS-DVAL  variable OGS-DSEEN
 variable OGA-KIND               \ current attribute kind (-1 = not recognized yet)
 variable OGA-F  variable OGA-F?      \ fixed32 attr value bits + seen flag
 variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
+8 constant OGA-PERM-CAP              \ collected perm ints (Transpose; 2D uses 2)
+create OGA-PERM-BUF OGA-PERM-CAP cells allot
+variable OGA-PERM-N
+
+: OGA-PERM+ ( n -- ) {: v:n :}       \ append one collected perm int
+   OGA-PERM-N @ OGA-PERM-CAP >= if E-ONNX-ATTR throw then
+   v OGA-PERM-BUF OGA-PERM-N @ cells + !
+   OGA-PERM-N @ 1+ OGA-PERM-N ! ;
 
 : OGS-DIM+ ( n -- ) {: d:n :}                  \ record one collected dim (2D cap)
    d 0 <= if E-ONNX-DYNSHAPE throw then
@@ -289,7 +345,13 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
    a u s" transA" STR= if OGA-TA    OGA-KIND ! exit then
    a u s" transB" STR= if OGA-TB    OGA-KIND ! exit then
    a u s" axis"   STR= if OGA-AXIS  OGA-KIND ! exit then
+   a u s" perm"   STR= if OGA-PERM  OGA-KIND ! exit then
    E-ONNX-ATTR throw ;
+
+: OGW-PERM-PACK ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}   \ packed repeated int64 (perm ints)
+   lo begin dup hi < while
+      a hi rot PB-VARINT@ swap OGA-PERM+
+   repeat drop ;
 
 : OGW-ATTR-1 ( ptr u8 n n -- n ) {: a:ptr hi:n pos:n :}
    a hi pos PB-TAG@ {: f:n w:n p:n :}
@@ -300,6 +362,10 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
       a hi p PB-I32@ {: v:n p2:n :}  v OGA-F !  1 OGA-F? !  p2 exit then
    f 3 = w WT-VARINT = and if
       a hi p PB-VARINT@ {: v:n p2:n :}  v OGA-I !  1 OGA-I? !  p2 exit then
+   f 8 = w WT-VARINT = and if                          \ AttributeProto.ints (perm), unpacked
+      a hi p PB-VARINT@ {: v:n p2:n :}  v OGA-PERM+  p2 exit then
+   f 8 = w WT-LEN = and if                             \ AttributeProto.ints, packed
+      a hi p PB-LEN@ {: off:n len:n p2:n :}  a off p2 OGW-PERM-PACK  p2 exit then
    a hi p w PB-SKIP ;
 
 : OGA-BIT+ ( n -- )                            \ record presence on the staged node
@@ -313,16 +379,23 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
    OGA-I? @ 0= if E-ONNX-ATTR throw then
    OGA-I @ fld OND-N @ cells + ! ;
 
+: OGA-PERM-COMMIT ( -- )                       \ perm ints -> length + first two elems on the node
+   OGA-PERM-N @ 0= if E-ONNX-ATTR throw then    \ a perm attr with no ints
+   OGA-PERM-N @ OND-PERMN OND-N @ cells + !
+   OGA-PERM-BUF @  OND-PERM0 OND-N @ cells + !
+   OGA-PERM-N @ 1 > if OGA-PERM-BUF cell+ @ else -1 then  OND-PERM1 OND-N @ cells + ! ;
+
 : OGA-COMMIT ( -- )                            \ dispatch the finished attribute
    OGA-KIND @ 0 < if E-ONNX-ATTR throw then
    OGA-KIND @ OGA-ALPHA = if OND-ALPHA OGA-F-COMMIT ATTR-ALPHA OGA-BIT+ exit then
    OGA-KIND @ OGA-BETA  = if OND-BETA  OGA-F-COMMIT ATTR-BETA  OGA-BIT+ exit then
    OGA-KIND @ OGA-TA    = if OND-TA    OGA-I-COMMIT ATTR-TA    OGA-BIT+ exit then
    OGA-KIND @ OGA-TB    = if OND-TB    OGA-I-COMMIT ATTR-TB    OGA-BIT+ exit then
+   OGA-KIND @ OGA-PERM  = if OGA-PERM-COMMIT ATTR-PERM OGA-BIT+ exit then
    OND-AXIS OGA-I-COMMIT  ATTR-AXIS OGA-BIT+ ;
 
 : OGW-ATTR ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}
-   -1 OGA-KIND !  0 OGA-F? !  0 OGA-I? !
+   -1 OGA-KIND !  0 OGA-F? !  0 OGA-I? !  0 OGA-PERM-N !
    lo begin dup hi < while  a hi rot OGW-ATTR-1  repeat drop
    OGA-COMMIT ;
 
@@ -338,6 +411,7 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
    F32-ONE j cells OND-BETA  + !
    0  j cells OND-TA + !  0 j cells OND-TB + !
    -1 j cells OND-AXIS + !
+   0  j cells OND-PERMN + !
    0  j cells OND-OPLEN + ! ;
 
 : OND-IN+ ( n -- ) {: ni:n :}                  \ append one input name slot to the pool
@@ -397,25 +471,45 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
       p2 exit then
    a hi p w PB-SKIP ;
 
-: OGW-TENSOR-FACTS ( -- n n )                  \ validate the record; rows cols
-   OGS-NAME-I @ 0 < if E-ONNX-NAME throw then
-   OGS-ELEM @ 1 <> if E-ONNX-DTYPE throw then
+: OGW-TENSOR-F32-FACTS ( -- n n )              \ FLOAT initializer: rows cols; f32 payload span
    OGS-RANK>RC {: rows:n cols:n :}
    OGS-OFF @ 0 < if E-ONNX-DATA throw then
    OGS-LEN @ rows cols * 4 * <> if E-ONNX-DATA throw then
    rows cols ;
 
-: OGW-TENSOR ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}
+: OGW-TENSOR-F32 ( -- )                        \ commit a FLOAT (f32) initializer into OGI
    OGI-N @ OGI-CAP >= if E-ONNX-CAP throw then
-   -1 OGS-NAME-I !  -1 OGS-ELEM !  0 OGS-DIM# !  -1 OGS-OFF !  -1 OGS-LEN !
-   lo begin dup hi < while  a hi rot OGW-TENSOR-1  repeat drop
-   OGW-TENSOR-FACTS {: rows:n cols:n :}
+   OGW-TENSOR-F32-FACTS {: rows:n cols:n :}
    OGS-NAME-I @ OGI-N @ cells OGI-NAME + !
    rows OGI-N @ cells OGI-ROWS + !
    cols OGI-N @ cells OGI-COLS + !
    OGS-OFF @ OGI-N @ cells OGI-OFF + !
    OGS-LEN @ OGI-N @ cells OGI-LEN + !
    OGI-N @ 1+ OGI-N ! ;
+
+: OGW-TENSOR-INT ( ptr u8 -- ) {: a:ptr :}     \ commit an INT64 rank-1 constant into OGIC
+   OGIC-N @ OGIC-CAP >= if E-ONNX-CAP throw then
+   OGS-DIM# @ 1 <> if E-ONNX-DATA throw then    \ int constants are rank-1 vectors
+   OGS-D0 @ {: nv:n :}
+   nv OGIC-VW > if E-ONNX-CAP throw then
+   OGS-OFF @ 0 < if E-ONNX-DATA throw then
+   OGS-LEN @ nv 8 * <> if E-ONNX-DATA throw then
+   OGS-NAME-I @ OGIC-N @ cells OGIC-NAME + !
+   nv OGIC-N @ cells OGIC-NVAL + !
+   nv 0 ?do
+      a  OGS-OFF @ i 8 * +  OGIC-LD64
+      OGIC-VALS OGIC-N @ OGIC-VW * cells +  i cells +  !
+   loop
+   OGIC-N @ 1+ OGIC-N ! ;
+
+\ dispatch a TensorProto by data_type: FLOAT (1) -> f32 arena; INT64 (7) -> int constant.
+: OGW-TENSOR ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}
+   -1 OGS-NAME-I !  -1 OGS-ELEM !  0 OGS-DIM# !  -1 OGS-OFF !  -1 OGS-LEN !
+   lo begin dup hi < while  a hi rot OGW-TENSOR-1  repeat drop
+   OGS-NAME-I @ 0 < if E-ONNX-NAME throw then
+   OGS-ELEM @ 1 = if OGW-TENSOR-F32 exit then
+   OGS-ELEM @ 7 = if a OGW-TENSOR-INT exit then
+   E-ONNX-DTYPE throw ;
 
 \ ---- GraphProto / ModelProto walkers ----------------------------------------------
 : OGG-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -450,7 +544,7 @@ variable OGA-I  variable OGA-I?      \ varint attr value + seen flag
 
 : OG-RESET ( -- )
    0 OGN-N !  0 OND-N !  0 OND-INS-U !
-   0 OGI-N !  0 OGIN-N !  0 OGO-N !
+   0 OGI-N !  0 OGIC-N !  0 OGIN-N !  0 OGO-N !
    0 OGG-U !  0 OGW-GRAPH? ! ;
 
 : OG-PARSE ( ptr u8 n -- ) {: a:ptr u:n :}     \ walk a serialized ModelProto into the tables
