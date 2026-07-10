@@ -338,3 +338,85 @@ REMAINING (honest scope for follow-on slices, evidence-based):
   habu-checker-capability-derive (typed equality) — unchanged, do not attempt.
 - report evidence rows / measurement history as typed arrays: blocked on S3
   LAYOUT-BUFFER (not landed).
+
+UPDATE 2026-07-10 (fable-mir lane, MODEL-IR PLAN — audit-first, dot-only). The
+model-ir MI-OP / MI-DT / MI-LAY / MI-IS-AL columns from REMAINING above. This
+commit is the plan; no .f changed. All four columns get the G-TAG precedent
+(stable public n signature, enum stored behind, one parse boundary + one
+render/code boundary in the consumer), decided by the reader census below — the
+"convert the consumers to take the enum" full-win is unreachable on this fixpoint
+(see WHY-NOT), so the enum lives entirely inside model-ir.f's storage, exactly
+like report.f columns 2-4.
+
+READER CENSUS (rg over maki/*.f; call-site classification):
+- MIR-OP@ — 21 files (backward, gradcheck, lower-ew/red/move/mm, cad, sched-key,
+  saved, move-view, golden-artifact, fusion-plan, traffic, mem-plan, executor,
+  onnx/import-test, model-ir(-test), demo-ffn-test, mlp-bwd-test, backward-test).
+  Uses: OPR-CLASS / OPR-NAME table index into op-registry (n); `OP-* = / <>`
+  compares (many); `MIR-OP@ case ... OP-* of` dispatch (lower-*, executor,
+  backward); `MIR-OP@ {: op:n :}` LOCAL BIND (lower-mm/red, move-view, cad,
+  executor, gradcheck); predicate helpers taking n (LMM-MM-OP?, LEW-OP-OK?,
+  BW-OK-OP?, GA-OP-BLOCKS?); test `N MIR-OP@ OP-* T=`. VERDICT: stable n. op-kind
+  is a live table index; readers bind it to n locals (enum locals reject on this
+  fixpoint) and feed n-typed op-registry accessors shared with op-registry.f.
+- MIR-DT@ / MIR-SLOT-DT@ — ~10 files. Uses: DT-SIZE / DT-BYTES (n case in
+  tensor.f / traffic.f); FNV-CELL hash of the raw cell (sched-key.f:69); node dt
+  fed straight into MIR-INPUT+ (backward.f:283); tolerance pick (golden-artifact);
+  REF-DT/SV-REF-DT combine node+slot dt (n); test `MIR-DT@ DT-F32 T=`. VERDICT:
+  stable n (DT-SIZE/DT-BYTES/FNV-CELL take n and live in out-of-scope files).
+- MIR-LAY@ / MIR-SLOT-LAY@ — Uses: MP-LAY store (mem-plan), FNV-CELL hash
+  (sched-key), `LAY-ROW <>` compare (cad), fed into MIR-INPUT+ (backward), test.
+  VERDICT: stable n.
+- MIR-SLOT-AL@ — mem-plan (`case AL-*`), sched-key (FNV-CELL), test. No text
+  render anywhere. VERDICT: stable n (align has NO wire/text form; only >ALIGN /
+  ALIGN>N boundaries).
+
+WHY-NOT reader-takes-enum (the full win) for ANY column: (1) enum-typed locals
+REJECT on this fixpoint (a480c423 note; TDS-* pin) and MIR-OP@'s consumers bind
+`{: op:n :}` at 6+ sites, MIR-DT@'s at several; (2) the values index live tables
+(OPR-CLASS/OPR-NAME by op-kind; DT-SIZE/DT-BYTES by dtype) and are hashed by
+FNV-CELL — all `( n -- ... )` and defined in out-of-scope files (op-registry.f,
+tensor.f, traffic.f, sched-key.f); (3) node dt/lay flow directly into MIR-INPUT+
+(n). Converting readers would force rewriting op-registry/tensor/traffic/sched-
+key/mem-plan AND need the enum-locals capability — a separate multi-file campaign,
+not this lane. So every column is G-TAG-precedent; the live-table-index concern is
+handled by OPKIND>N / DTYPE>N / LAYOUT>N / ALIGN>N — the ONE render-to-code word
+per column indexes the OPR-*/DT-* tables through the declaration-order tag, tables
+unrestructured (per the mission's documented-boundary guidance).
+
+STORE PATH (proven, scratchpad probe-full.f): the store words keep their public
+n signatures; the n arg stays an n local and converts TRANSIENTLY at the store
+(`dt >DTYPE  s MI-IS-DT-AT !`) — the enum is produced and consumed by `!` in one
+phrase, never bound to a local, so the enum-locals wall is not hit. Early
+MIR-DT-CK/MIR-LAY-CK/AL-VALID? validation is KEPT (throw-ordering fidelity:
+E-MK-DTYPE / E-TV-LAYOUT / E-MIR-ALIGN still fire before capacity), >X are pure
+converters called post-validation. Read path: private MI-*@E getters return the
+stored enum (transient) → DTYPE>N/LAYOUT>N/ALIGN>N for the public n accessors, or
+→ DT-KEY/LAY-KEY (now `( dtype/layout -- ptr u8 n )` exhaustive MATCH) for the two
+render sites (MIR-DTYPE-KEY/MIR-LAYOUT-KEY, R-INPUT). DT-KEY/LAY-KEY are
+model-ir-private, no external caller — signature change is safe.
+
+ENUM HOMES (constant-co-location precedent, per this dot's file-plan lines 87-89):
+- ENUM dtype df32 df16 dbf16 du32 di32 ;ENUM  -> tensor.f (with DT-*), PUBLIC MAKI.
+  (`f32` is a reserved variant tail — probe-confirmed — so tails are df-prefixed;
+  DT-KEY MATCH renders them to the wire strings "f32".."i32".)
+- ENUM layout row col ;ENUM                    -> tensor-value.f (with LAY-*).
+- ENUM align unknown byte a4 a8 a16 ;ENUM      -> tensor-value.f (with AL-*).
+  (bare-digit tails reject; a4/a8/a16 map to AL-4/AL-8/AL-16.)
+- ENUM opkind add mul ... scatter-add ;ENUM (31 variants) -> op-kind.f (with OP-*).
+The DT-*/LAY-*/AL-*/OP-* int constants STAY as the public/wire/table-index
+vocabulary (G-TAG precedent). Boundary words + typed `MI-*-AT` slots + MI-*@E
+getters live in model-ir.f (consumer owns its storage boundary, like report.f
+owns G-TAG-AT/>VERDICT). Same-package resolution: model-ir.f, tensor.f,
+tensor-value.f, op-kind.f all `package MAKI`.
+
+COMMIT SEQUENCE:
+1. this plan (dot-only).
+2. "CAD swap: model-ir dtype/layout/align enums" — the descriptor-facts trio
+   (MI-DT + MI-IS-DT, MI-LAY + MI-IS-LAY, MI-IS-AL). One coherent column group:
+   the exact dtype/layout "indistinguishable bytes" hole this dot's 2026-07-04
+   update names, all flowing through MIR-INPUT+/MIR-OP+ and DT-KEY/LAY-KEY.
+   Per-column swapped-family negatives in model-ir-test.f.
+3. "CAD swap: model-ir op-kind enum" — MI-OP, 31-variant opkind, budget
+   permitting; else re-dot with the exact remaining shape (>OPKIND 31-arm n->enum
+   + OPKIND>N 31-arm MATCH; MIR-OP@ keeps n; OPR-* tables index via OPKIND>N).
