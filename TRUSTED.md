@@ -692,9 +692,30 @@ the engine-primitive TRUST rows in `src/core/structures-effects.f`,
 `tools/check-core.f`, and `src/core/include.f` — is now owned by its real owner
 `habu-primitive-effect-axiom-1119f176` (the audited axiom table).
 `test/prop-test-core.f` keeps a file-level row because its `0 set-check`
-boundaries have no nameable key. Reassigning the remaining `builder-emit`,
-`stdlib-boundary`, `test-metaprog`, and `discharge-candidate` rows to their real
-owners is the rest of `habu-audit-trusted-inventory-3a950436`.
+boundaries have no nameable key. The self-contained `stdlib-boundary` files are
+reassigned per-site: `lib/ffi-abi.f` (`P>N`/`N>P` cell<->pointer casts),
+`lib/memory.f` (`MEM-ALLOC-PTR` mmap provenance mint), and `lib/task.f`
+(`TASK-NULL`/`TASK-N>PTR`/`TASK-CELL>PTR-SLOT` mints plus the `TASK`/`+USER`/
+`FACILITY` `create`/`does>` defining words) go to
+`habu-typed-defining-words-aa224eb5`, which enumerates exactly those mints and
+the typed-defining-word family; `lib/build.f` (`BUILD-CHECK-RAW` wrapping the
+`CHECK!` engine entrypoint) goes to `habu-primitive-effect-axiom-1119f176`; and
+`lib/ptx/cg-matmul.f` (`MM-A/B/C-REG` + `MM-STATE` kernel wrappers) goes to
+`habu-re-express-tiled-9cc4a73a`, which re-expresses `EMIT-MATMUL` as a checked
+KERNEL and deletes that boundary. `lib/ffi-abi.f` and `lib/task.f` are now
+mixed-class: the seal's `patch32` code-emission wrappers (`FFI-PATCH`,
+`TASK-PATCH`) carry `file:name` placeholder rows and stay on
+`habu-audit-trusted-inventory-3a950436` for a seal-capability owner, while the
+file-level row (reduced to the remaining cast/mint/defining sites) carries the
+typed-defining owner. The four remaining `lib/ptx` files (`cg.f`,
+`collective.f`, `tile.f`, `tile-v4.f`) and `lib/engine-id.f` stay on the
+placeholder: the PTX files need per-site mint-vs-phantom classification
+(`habu-ptx-phantom-preserving-3df9db92`'s 17-mint-vs-~70-wrapper split) and
+`engine-id.f` needs its own domain judgment — separate increments, not
+file-level guesses. Reassigning the remaining `builder-emit`, `test-metaprog`,
+`discharge-candidate`, those PTX/engine-id `stdlib-boundary` rows, and the
+`patch32` code-emission rows to their real owners is the rest of
+`habu-audit-trusted-inventory-3a950436`.
 
 <!-- trusted-inventory-classes
 src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
@@ -784,13 +805,15 @@ tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 6
 tools/check-core.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
-lib/build.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
+lib/build.f stdlib-boundary habu-primitive-effect-axiom-1119f176 1
 lib/engine-id.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
-lib/ffi-abi.f stdlib-boundary habu-audit-trusted-inventory-3a950436 3
-lib/memory.f stdlib-boundary habu-audit-trusted-inventory-3a950436 1
-lib/task.f stdlib-boundary habu-audit-trusted-inventory-3a950436 7
+lib/ffi-abi.f:FFI-PATCH stdlib-boundary habu-audit-trusted-inventory-3a950436
+lib/ffi-abi.f stdlib-boundary habu-typed-defining-words-aa224eb5 2
+lib/memory.f stdlib-boundary habu-typed-defining-words-aa224eb5 1
+lib/task.f:TASK-PATCH stdlib-boundary habu-audit-trusted-inventory-3a950436
+lib/task.f stdlib-boundary habu-typed-defining-words-aa224eb5 6
 lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
-lib/ptx/cg-matmul.f stdlib-boundary habu-audit-trusted-inventory-3a950436 4
+lib/ptx/cg-matmul.f stdlib-boundary habu-re-express-tiled-9cc4a73a 4
 lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
 lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18
 lib/ptx/tile-acc.f stdlib-boundary habu-checker-capability-typed-e0c76a02 4
