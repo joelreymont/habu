@@ -458,11 +458,18 @@ variable PS-PKG-PUBLIC
    PS-TOK-A@ PS-TOK-U @ LINT-ESC-STRING-OPENER? IF PS-SKIP-ESC-QUOTE ELSE
    PS-TOK-A@ PS-TOK-U @ LINT-NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
+\ `(` opens a comment only as a STANDALONE token (next byte is whitespace or
+\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. Mirrors the
+\ trusted-inventory PAREN-STANDALONE? rule so both lexers agree.
+: PS-PAREN-STANDALONE? ( -- bool )
+   PS-X @ 1+ PS-SRC-U @ >= IF PS-TRUE exit THEN
+   PS-SRC-A@ PS-X @ 1+ + c@ PS-WS? ;
+
 : PS-NEXT-TOK ( -- bool )
    PS-SKIP-WS
    PS-END? IF PS-FALSE exit THEN
    PS-MARK-START
-   PS-C@ 40 = IF PS-LEX-COMMENT ELSE PS-LEX-WORD THEN
+   PS-C@ 40 = PS-PAREN-STANDALONE? and IF PS-LEX-COMMENT ELSE PS-LEX-WORD THEN
    PS-TRUE ;
 
 : PS-WORD? ( -- bool ) PS-TOK-K @ PS-WORD = ;

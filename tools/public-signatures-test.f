@@ -85,9 +85,11 @@ variable PST-SUM-U
    92 SB-APPEND-C s"  public signature fixture" SB-APPEND PST-LF
    s" EXPORT lower" SB-APPEND PST-LF
    s" EXPORT 1+" SB-APPEND PST-LF
+   s" EXPORT (CMP)" SB-APPEND PST-LF
    s" : lower (   x -- x   ) dup ;" SB-APPEND PST-LF
    s" : CAPS ( i64 [ i64 -- i64 ] -- i64 ) execute ;" SB-APPEND PST-LF
    s" : Mixed ( i64 -- i64 ) dup ;" SB-APPEND PST-LF
+   s" : (CMP) ( i64 i64 -- i64 ) - ;" SB-APPEND PST-LF
    s" : 1+ ( i64 -- i64 ) 1 + ;" SB-APPEND PST-LF
    s" 99 constant KFIX" SB-APPEND PST-LF
    s" : BAD ( i64 ) dup ;" SB-APPEND PST-LF
@@ -197,6 +199,11 @@ variable PST-SUM-U
    PST-OUT outu s" CAPS" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu PST-EXPORTED-FALSE$ CONTAINS? TTRUE
    PST-OUT outu s" 1+" PST-WORD$ CONTAINS? TTRUE
+   \ a paren-initial word name (`(CMP)`) is a WORD, not a comment: it stays visible.
+   PST-OUT outu s" (CMP)" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (i64 i64 -- i64)" PST-SIG$ CONTAINS? TTRUE
+   \ a real standalone `( comment )` must still be stripped (no over-correction).
+   PST-OUT outu s" COMMENTED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" MIXED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" BAD" PST-WORD$ CONTAINS? TFALSE ;
 
