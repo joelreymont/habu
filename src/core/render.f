@@ -592,6 +592,21 @@ variable JPOS  variable JLINE  variable JCOL
    DEXP @ 0 <> IF
      s"  expected: " DTXT  DEXP @ DROW
      s" actual: " DTXT  DACT @ DROW THEN ;
+
+\ ADT family field (item 13): the layout family involved in a type mismatch,
+\ read from the already-captured DEXP/DACT rows (expected side takes precedence,
+\ then actual). A pure-scalar mismatch has no layout family, so emits no field.
+: ROW-FAM ( n -- n )                     \ first layout-family id in a row, else -1
+   BEGIN R-RES dup TAG S-PUSH = WHILE
+      dup P>TYPE LAYOUT-PARAM? IF P>TYPE T-RES PARAM>FAM EXIT THEN
+      P>REST
+   REPEAT drop -1 ;
+: DIAG-FAMILY ( -- )
+   DEXP @ ROW-FAM  DACT @ ROW-FAM  {: efam:n afam:n :}
+   efam 0 >= afam 0 >= or IF
+      44 EMIT1 s" family" JKEY
+      efam 0 >= IF efam ELSE afam THEN TFAM-NAME$ JSTR
+   THEN ;
 : DIAG-JSON
    JLOC-CALC
    123 EMIT1                                              \ {
@@ -632,7 +647,8 @@ variable JPOS  variable JLINE  variable JCOL
    125 EMIT1
    DEXP @ 0 <> IF
      44 EMIT1 s" expected" JKEY DEXP @ JROW
-     44 EMIT1 s" actual"   JKEY DACT @ JROW THEN
+     44 EMIT1 s" actual"   JKEY DACT @ JROW
+     DIAG-FAMILY THEN
    44 EMIT1 s" suggestion" JKEY SUGGEST-TEXT JSTR
    125 EMIT1 ;                                            \ }
 : DIAG-PRINT
