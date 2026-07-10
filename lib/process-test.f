@@ -158,8 +158,14 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : TEST-PATHZ ( -- )
    s" /usr/bin/true" >LEN PROC-PATHZ dup ZLEN 13 T=
    13 + c@ 0 T=
-   s" /usr/bin/true" >LEN PROC-RUN-RC RC>N 0 T=
-   s" /usr/bin/false" >LEN PROC-RUN-RC RC>N 1 T= ;
+   s" /usr/bin/true" >LEN PROC-RUN-RC MATCH result
+     ok  OF 0 T= ENDOF                          \ true exits clean -> ok(0)
+     err OF drop 1 0 T= ENDOF                    \ unexpected failure
+   ;MATCH
+   s" /usr/bin/false" >LEN PROC-RUN-RC MATCH result
+     ok  OF drop 1 0 T= ENDOF                     \ unexpected clean exit
+     err OF 1 T= ENDOF                             \ false exits 1 -> err(1)
+   ;MATCH ;
 
 : TEST-SPAWN-WAIT ( -- )
    TEST-SPAWN-RAW-MISSING

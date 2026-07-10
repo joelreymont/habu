@@ -138,3 +138,33 @@ process.f uses the `s" path" required` dep style, so the require is
 `s" lib/adt/result.f" required`. NO byte-fixpoint (process.f is on-demand, not in
 the boot prefix; test/run.f fixpoint phase ran at normal 20.9s). NO new trust rows,
 reused the shared result family. NEXT: climb to PROC-WAIT-RC (r23) / PROC-RUN-RC.
+
+## SLICE 2 — LANDED (lib/process.f PROC-RUN-RC, delegates to slice 1)
+
+`PROC-RUN-RC ( ptr u8 len -- rc )` → `( … -- result<n,n> )`, same ok/err semantics
+as PROC-RUN-IO-RC (ok = clean exit 0, err = nonzero completion rc). CHAIN FIT: it
+is a TOP-of-chain consumer (like PROC-RUN-IO-RC), NOT the wide base — so it wraps
+the lower rc word at its boundary and only its own callers change. Rather than
+duplicate the wrap logic, PROC-RUN-RC now DELEGATES to the already-migrated
+PROC-RUN-IO-RC: body `-1 >FD -1 >FD -1 >FD PROC-RUN-IO-RC` (supplies null stdio,
+inherits the result). This required reordering PROC-RUN-IO-RC BEFORE PROC-RUN-RC in
+process.f (a definition must precede its user). De-dups the old
+`PROC-SPAWN-IO PROC-WAIT-RC` copy. ok/err vs option: genuine RESULT (rc distinguishes
+success vs a nonzero failure code), not absence.
+
+Radius: exactly 2 real callers, both in lib/process-test.f (TEST-PATHZ:
+`/usr/bin/true` → ok(0), `/usr/bin/false` → err(1)) — rewritten to exhaustive
+`MATCH result ok OF … ENDOF err OF … ENDOF ;MATCH`, covering BOTH arms directly.
+(The `PCMDT-PROC-RUN-RC` hits in process-command-test.f are a same-named wrapper
+around a DIFFERENT word, PROC-CMD-RUN-RC — not callers.) Manifest row → result<n,n>.
+NO run-files.f edit needed (lib/adt/result.f already declared in
+TR-GATE-HARNESS-FILES from slice 1). NO byte-fixpoint, NO new trust rows.
+
+CHAIN STATUS: PROC-RUN-IO-RC + PROC-RUN-RC (the two top-of-chain run wrappers) are
+now result<n,n>. Remaining rc words: PROC-WAIT-RC (r12, the wide BASE — its callers
+include the rc emitters and PROC-RUN-* which now consume it internally); PROC-STATUS>RC
+(r2 but LOWER — called BY PROC-WAIT-RC, so migrating it forces the wide base to
+consume a result, wrong direction); PROC-OUTCOME>RC / PROC-STATUS>OUTCOME (the
+raw kind/code producers — Wave C outcome-sum territory). The next honest step is the
+WIDE PROC-WAIT-RC with a full caller-rewrite plan (its ~12 sites decide exit-vs-rc),
+or pivot; a low-radius top wrapper is no longer available in this cluster.
