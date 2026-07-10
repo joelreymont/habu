@@ -31,12 +31,16 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
    DATE-STR= DATE-ASSERT ;
 
 : DATE-PARSE= {: a:ptr u days :} ( ptr u8 n n -- )
-   a u PARSE-YMD DATE-ASSERT
-   days DATE-ASSERT= ;
+   a u PARSE-YMD MATCH option
+     none OF 0 0= 0= DATE-ASSERT ENDOF            \ absent: record the failure
+     some OF days DATE-ASSERT= ENDOF               \ SOME epoch day matches
+   ;MATCH ;
 
 : DATE-PARSE-BAD ( ptr u8 n -- )
-   PARSE-YMD 0= DATE-ASSERT
-   drop ;
+   PARSE-YMD MATCH option
+     none OF 0 0= ENDOF                           \ none -> pass
+     some OF drop 0 0= 0= ENDOF                    \ unexpected parse
+   ;MATCH DATE-ASSERT ;
 
 : DATE-FORMAT= {: days a:ptr u :} ( n ptr u8 n -- )
    days DATE-TEST-BUF DATE-TEST-BUF-LEN FORMAT-YMD

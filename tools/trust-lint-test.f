@@ -298,7 +298,10 @@ TLT-LF TLT-LF-BUF c!
    TLT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE TLT-CAPTURE>N ;
 
 : TLT-TODAY>N ( ptr u8 n -- n )
-   PARSE-YMD 0= if drop E-FS-PATH throw then ;
+   PARSE-YMD MATCH option
+     none OF E-FS-PATH throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : TLT-CORE-SETUP ( ptr u8 n -- )
    TLT-OUT TLT-CAP LINT-OUT-BUFFER!

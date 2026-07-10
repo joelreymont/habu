@@ -743,7 +743,10 @@ variable GDX-TRUST-MAN-U
    s" public-signatures" s" public-signatures.json" s" public signatures output" GDX-GJA1 ;
 
 : GDX-TRUST-LINT-TODAY ( -- )
-   s" 2026-10-01" PARSE-YMD 0= if s" trust-lint fixture today" GE-FAIL then
+   s" 2026-10-01" PARSE-YMD MATCH option
+     none OF s" trust-lint fixture today" GE-FAIL ENDOF
+     some OF ENDOF
+   ;MATCH
    TRUST-LINT-TODAY! ;
 
 : GDX-TRUST-LINT-STALE-ACT ( -- )
