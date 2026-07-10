@@ -10,6 +10,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-fork.f
 require lib/process-argv.f
+require test/checker-assert.f
 
 variable PT-R
 variable PT-W
@@ -207,18 +208,47 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    PT-FORK-CELL @ 7 T= ;
 
 : TEST-PROC-WAIT-OUTCOME-EXIT ( -- )
-   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-OUTCOME 1 T= PROC-OUTCOME-EXIT T= ;
+   s" /usr/bin/false" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-IO PROC-WAIT-OUTCOME
+   MATCH outcome
+     exited OF 1 T= ENDOF                           \ /usr/bin/false -> exited 1
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF 1 0 T= ENDOF
+   ;MATCH ;
 
 : TEST-PROC-WAIT-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c"  >LEN PROC-ARGV+
    s" kill -TERM $$"  >LEN PROC-ARGV+
-   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-OUTCOME 15 T= PROC-OUTCOME-SIGNAL T= ;
+   s" /bin/sh" >LEN -1 >FD -1 >FD -1 >FD PROC-SPAWN-ARGV-IO PROC-WAIT-OUTCOME
+   MATCH outcome
+     exited OF drop 1 0 T= ENDOF
+     signaled OF 15 T= ENDOF                        \ SIGTERM death -> signaled 15
+     timeout OF 1 0 T= ENDOF
+   ;MATCH ;
 
 : TEST-PROC-OUTCOME>RC ( -- )
-   PROC-OUTCOME-EXIT 7 PROC-OUTCOME>RC RC>N 7 T=
-   PROC-OUTCOME-SIGNAL SIGKILL PROC-OUTCOME>RC RC>N 137 T=
-   PROC-OUTCOME-TIMEOUT SIGKILL PROC-OUTCOME>RC RC>N 137 T= ;
+   7 OUTCOME:EXITED PROC-OUTCOME>RC RC>N 7 T=
+   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME>RC RC>N 137 T=
+   OUTCOME:TIMEOUT PROC-OUTCOME>RC RC>N 137 T= ;
+
+: TEST-PROC-OUTCOME-PAIR ( -- )
+   7 OUTCOME:EXITED PROC-OUTCOME-PAIR 7 T= PROC-OUTCOME-EXIT T=
+   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME-PAIR SIGKILL T= PROC-OUTCOME-SIGNAL T=
+   OUTCOME:TIMEOUT PROC-OUTCOME-PAIR SIGKILL T= PROC-OUTCOME-TIMEOUT T= ;
+
+: TEST-PROC-PAIR>RC ( -- )
+   PROC-OUTCOME-EXIT 7 PROC-PAIR>RC RC>N 7 T=
+   PROC-OUTCOME-SIGNAL SIGKILL PROC-PAIR>RC RC>N 137 T=
+   PROC-OUTCOME-TIMEOUT SIGKILL PROC-PAIR>RC RC>N 137 T= ;
+
+\ Negative checked regressions: the outcome is not a loose (kind code) pair,
+\ does not compare with `=`, and a raw pair cannot pose as one.
+: TEST-PROC-OUTCOME-TYPES ( -- )
+   s" PTP1 ( n -- outcome ) PROC-STATUS>OUTCOME" CHECK-QUIET-CANDIDATE! -1 T=
+   s" PTN1 ( n -- n n ) PROC-STATUS>OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN2 ( n n -- rc ) PROC-OUTCOME>RC" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN3 ( outcome outcome -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN4 ( pid -- n n ) PROC-WAIT-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ Regression for habu-wait-rc-masks-9ae37cd0: a signal-killed child must report
 \ 128+sig end-to-end through PROC-WAIT-RC, never a masked rc 0 (the retired raw
@@ -362,6 +392,9 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-PROC-WAIT-OUTCOME-EXIT
    TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
+   TEST-PROC-OUTCOME-PAIR
+   TEST-PROC-PAIR>RC
+   TEST-PROC-OUTCOME-TYPES
    TEST-PROC-WAIT-RC-SIGNAL
    TEST-WAIT-FAIL
    TEST-PIPE

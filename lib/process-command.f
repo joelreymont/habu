@@ -166,7 +166,7 @@ variable PROC-CMD-INHERIT
    erru PROC-CMD-ERR-LEN !
    kind PROC-CMD-OUTCOME-KIND !
    code PROC-CMD-OUTCOME-CODE !
-   kind code PROC-OUTCOME>RC PROC-CMD-RC ! ;
+   kind code PROC-PAIR>RC PROC-CMD-RC ! ;
 
 : PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n ) {: path:ptr pathu timeout :}
    path pathu timeout PROC-CMD-CHECK-RUN

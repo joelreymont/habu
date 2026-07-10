@@ -548,10 +548,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-ZCOPY	(ptr u8 len ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted bytes into a bounded NUL-terminated process buffer
 1	process	lib/process.f	word	PROC-PATHZ	(ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
 1	process	lib/process.f	word	PROC-WAIT-STATUS	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
-1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to outcome kind and exit or signal code
-1	process	lib/process.f	word	PROC-OUTCOME>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map outcome kind and code to historical rc with non-exits as 128 plus signal
+1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to the outcome sum: exited code or signaled sig
+1	process	lib/process.f	word	PROC-OUTCOME>RC	(outcome -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	flatten an outcome to historical rc with non-exits as 128 plus signal
+1	process	lib/process.f	word	PROC-OUTCOME-PAIR	(outcome -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy kind/code pair view for the -OUTCOME capture API boundary
+1	process	lib/process.f	word	PROC-PAIR>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy pair rc flatten: exit code for exits, else 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
-1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
+1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return its completion outcome sum
 1	process	lib/process.f	word	PROC-REAP-ARM-OFF	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	default capture-reaper vector: arm nothing and return the no-reaper pid sentinel
 1	process	lib/process.f	word	PROC-REAP-ARM-DEFAULT	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the no-op capture-reaper vector; lib/process-fork.f replaces it with the live one
 1	process	lib/process.f	word	PROC-CAPTURE-PID!	(pid --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	record the capture child pid and arm the context's co-located death reaper for it

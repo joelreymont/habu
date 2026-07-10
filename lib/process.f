@@ -5,6 +5,17 @@
 s" lib/errors.f" required
 s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switchover wave B)
 
+\ outcome - how a child process completed (switchover wave C): a clean exit
+\ carrying the exit code, a signal death carrying the signal, or a capture
+\ timeout (always SIGKILL-reaped, so no payload). The checker forces every
+\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener and
+\ PROC-OUTCOME-PAIR the one documented legacy (kind code) boundary.
+SUMTYPE outcome 0
+  VARIANT exited n ;VARIANT
+  VARIANT signaled n ;VARIANT
+  VARIANT timeout ;VARIANT
+;SUMTYPE
+
 1024 constant PROC-PATHZ-CAP
 1000000 constant PROC-NS-PER-MS
 1 constant POLLIN
@@ -73,22 +84,41 @@ variable PROC-OUTCOME-CODE
    status 0 < if E-PROC-WAIT throw then
    status ;
 
-: PROC-STATUS>OUTCOME ( n -- n n ) {: status :}
-   status PROC-WAIT-TERM-MASK and {: term :}
+: PROC-STATUS>OUTCOME ( n -- outcome ) {: status:n :}
+   status PROC-WAIT-TERM-MASK and {: term:n :}
    term 0= if
-      PROC-OUTCOME-EXIT status 8 rshift PROC-WAIT-EXIT-MASK and
+      status 8 rshift PROC-WAIT-EXIT-MASK and OUTCOME:EXITED
       exit
    then
-   PROC-OUTCOME-SIGNAL term ;
+   term OUTCOME:SIGNALED ;
 
-: PROC-OUTCOME>RC ( n n -- rc ) {: kind code :}
+: PROC-OUTCOME>RC ( outcome -- rc )   \ 128+sig for non-exits (regression habu-wait-rc-masks-9ae37cd0)
+   MATCH outcome
+     exited OF >RC ENDOF
+     signaled OF 128 + >RC ENDOF
+     timeout OF 128 SIGKILL + >RC ENDOF
+   ;MATCH ;
+
+\ Legacy (kind code) pair boundary. The wide -OUTCOME capture API (PROC-
+\ CAPTURE-OUTCOME@, RUN-*-OUTCOME, PROC-CMD-*) still speaks int pairs across
+\ its consumer set; these two words are the documented sum<->rc/pair boundary
+\ until dot habu-switchover-outcome-capture-3aee9248 migrates that surface.
+: PROC-OUTCOME-PAIR ( outcome -- n n )
+   MATCH outcome
+     exited OF PROC-OUTCOME-EXIT swap ENDOF
+     signaled OF PROC-OUTCOME-SIGNAL swap ENDOF
+     timeout OF PROC-OUTCOME-TIMEOUT SIGKILL ENDOF
+   ;MATCH ;
+
+: PROC-PAIR>RC ( n n -- rc )   \ legacy pair rc flatten: exit code, else 128+signal
+   {: kind:n code:n :}
    kind PROC-OUTCOME-EXIT = if code >RC exit then
    128 code + >RC ;
 
 : PROC-STATUS>RC ( n -- rc )
    PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
 
-: PROC-WAIT-OUTCOME ( pid -- n n )
+: PROC-WAIT-OUTCOME ( pid -- outcome )
    PROC-WAIT-STATUS PROC-STATUS>OUTCOME ;
 
 \ ok = clean exit (rc 0); err = the nonzero completion rc (a nonzero exit code, or
@@ -215,7 +245,7 @@ PROC-REAP-ARM-DEFAULT
    PROC-PID @ dup PID>N 0 >= if
       PROC-WAIT-STATUS dup PROC-STATUS !
       dup PROC-STATUS>RC PROC-RC !
-      PROC-STATUS>OUTCOME PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
+      PROC-STATUS>OUTCOME PROC-OUTCOME-PAIR PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
       -1 >PID PROC-PID !
    else
       drop
@@ -231,9 +261,8 @@ PROC-REAP-ARM-DEFAULT
       drop
    then
    PROC-REAP-DISARM
-   PROC-OUTCOME-TIMEOUT PROC-OUTCOME-KIND !
-   SIGKILL PROC-OUTCOME-CODE !
-   128 SIGKILL + >RC PROC-RC ! ;
+   OUTCOME:TIMEOUT PROC-OUTCOME-PAIR PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
+   OUTCOME:TIMEOUT PROC-OUTCOME>RC PROC-RC ! ;
 
 : PROC-KILL-CAPTURE ( -- )
    PROC-PID @ dup PID>N 0 >= if
