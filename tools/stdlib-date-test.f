@@ -56,13 +56,17 @@ create DATE-TEST-BUF DATE-TEST-BUF-LEN allot
    m T=
    y T= ;
 
-: DATE-N-OK ( -- )
-   s" 9876" drop 0 4 DATE-N TTRUE
-   9876 T= ;
+: DATE-N-OK ( -- )                                  \ all digits -> SOME parsed value
+   s" 9876" drop 0 4 DATE-N MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH  9876 T= ;
 
-: DATE-N-BAD ( -- )
-   s" 98x6" drop 0 4 DATE-N 0= TTRUE
-   drop ;
+: DATE-N-BAD ( -- )                                 \ a non-digit -> NONE
+   s" 98x6" drop 0 4 DATE-N MATCH option
+     none OF -1 ENDOF
+     some OF drop 0 ENDOF
+   ;MATCH  -1 T= ;
 
 $30 DATE-DIGIT? TTRUE
 $39 DATE-DIGIT? TTRUE

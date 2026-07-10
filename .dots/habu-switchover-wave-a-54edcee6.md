@@ -38,3 +38,18 @@ preserved). Gate class: LIGHTER — float.f/option.f are on-demand libs, not in 
 boot prefix, so no engine change and NO byte-fixpoint. NO new trust rows.
 Registered: FILEMAP (option.f) + manifest (FL-FIND-E row) + the existing
 float-parse gate suite. Remaining ~79 wave-A sites are later slices.
+
+## SLICE 2 — LANDED (lib/date.f DATE-N)
+
+`DATE-N` (lib/date.f) `( ptr u8 n n -- n bool )` → `( ptr u8 n n -- option<n> )`:
+SOME parsed fixed-width decimal field, NONE on a non-digit (wraps the internal
+digit-loop sentinel at the boundary). Its THREE in-file callers in `PARSE-YMD`
+(the Y/M/D field parses) rewritten from `DATE-N 0= IF drop ... exit THEN X !` to
+the guard-and-continue MATCH shape `MATCH option none OF 0 0 0= 0= exit ENDOF some
+OF X ! ENDOF ;MATCH` (verified an `exit` inside a MATCH arm works — the common
+early-return migration shape). DATE-N test (tools/stdlib-date-test.f DATE-N-OK/BAD)
+rewritten to MATCH both branches; DATE-N manifest row updated to the option<n> sig
+(public-sig renders it). Reused the shared `lib/adt/option.f` — NO new public
+family, no WID pressure. Gate class LIGHTER (date.f on-demand, no byte-fixpoint).
+NO new trust rows. PARSE-YMD (its own return; WIDE external radius — trust-lint,
+stale-status-lint) deferred to dot habu-switchover-parse-ymd-b3d81c47.
