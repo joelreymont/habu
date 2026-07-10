@@ -1265,7 +1265,7 @@ create ZBYTE 0 c,
 
 : EMIT-SOURCE-READ ( -- )
    LSRCRD @ LBL,
-   LBL LBL LBL LBL {: srl sdone sreaderr sopenerr :}
+   LBL LBL LBL LBL LBL {: srl sdone sreaderr sopenerr sbufull :}   \ typed-local-lint: allow-bare-local - gforth host emitter; {: :} has no :type
    12 OS-OPEN-RD
    13 C-CS CSET,  13 sopenerr CBNZ,
    12 0 0 ADDI,
@@ -1273,7 +1273,7 @@ create ZBYTE 0 c,
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sreaderr CBZ,
+      2 sbufull CBZ,                              \ no room left: IBUFSZ overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -1284,9 +1284,12 @@ create ZBYTE 0 c,
    LSHBANG @ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,
    RET,
-   sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
-   sopenerr LBL,
-   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+   sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: label fd 2 before exit 74
+   s" hb: cannot read source" 74 C-EXIT-DIAG
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew IBUFSZ mid-read: name the buffer
+   s" hb: source prefix buffer full" 74 C-EXIT-DIAG
+   sopenerr LBL,                                  \ open error: label fd 2 before exit 74 (no per-path name in the tripwire)
+   s" hb: cannot open source" 74 C-EXIT-DIAG ;
 
 : C-TARGET-UNKNOWN ( -- )
    1 abort" hb: unknown target" ;
@@ -1645,7 +1648,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    lsdone LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL @ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   SRC-SFAIL @ LBL,  s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ source-prefix overflow
    SRC-REPL @ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
@@ -1694,7 +1697,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    SRC-BDONE @ LBL,
    LSHBANG @ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE @ B,
-   SRC-BFAIL @ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   SRC-BFAIL @ LBL,  s" hb: source prefix buffer full" 74 C-EXIT-DIAG   \ IBUFSZ baked-prefix overflow
    SRC-DONE @ LBL, ;
 
 : EMIT-SOURCE ( -- )
@@ -2508,8 +2511,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
-: C-QUOTE-EOF ( -- )
-   0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+: C-QUOTE-EOF ( -- )                               \ unterminated or bad-escape string literal: label fd 2 before exit 74
+   s" hb: bad string literal" 74 C-EXIT-DIAG ;
 
 : C-QUOTE-SCAN ( -- )
    LBL {: sl :}  LBL {: sd :}  LBL {: eof :}

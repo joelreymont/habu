@@ -136,6 +136,10 @@ variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-r
 variable LSNAPBAD   variable LSNAPVER   \ snapshot-loader labeled-exit messages (corrupt trailer 79 / unsupported version 80)
 29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
 40 constant SNAPVER-MSG-LEN   \ byte length of "hb: snapshot format version unsupported\n" (LSNAPVER)
+variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
+30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
+23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
+23 constant BADSTR-MSG-LEN    \ byte length of "hb: bad string literal\n" (LBADSTR; unterminated or bad-escape string literal)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -318,7 +322,10 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LDICTFULL LABEL@ LBL, s" hb: dictionary full at: " BYTES,             \ CAPMSG-LEN bytes; capacity arms append the token + newline
    LCODEFULL LABEL@ LBL, s" hb: code space full at: " BYTES,             \ CAPMSG-LEN bytes
    LSNAPBAD LABEL@ LBL, s" hb: snapshot trailer corrupt" BYTES,  NL-KW 1 BYTES,               \ SNAPBAD-MSG-LEN bytes incl. newline
-   LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES, ;   \ SNAPVER-MSG-LEN bytes incl. newline
+   LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
+   LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
+   LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
+   LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES, ;                     \ BADSTR-MSG-LEN bytes incl. newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -341,7 +348,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 : EMIT-SOURCE-READ ( -- )
    LSRCRD LABEL@ LBL,
    LBL LBL LBL LBL {: srl sdone sreaderr sopenerr :}
-   LBL LBL {: sscan:label sscandone:label :}
+   LBL LBL LBL {: sscan:label sscandone:label sbufull:label :}
    12 OS-OPEN-RD
    13 C-CS CSET,  13 sopenerr CBNZ,
    12 0 0 ADDI,
@@ -349,7 +356,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    srl LBL,
       0 12 0 ADDI,  1 9 0 ADDI,
       2 11 0 ADDI,  5 IBUFSZ LIT64,  2 2 5 ADD,  2 2 9 SUB,
-      2 sreaderr CBZ,
+      2 sbufull CBZ,                                \ no room left: IBUFSZ overflow, not a read fault
       NR-READ SYS,
       13 C-CS CSET,  13 sreaderr CBNZ,
       0 sdone CBZ,
@@ -360,8 +367,12 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSHBANG LABEL@ BL,
    30 SP 0 LDR,  SP SP 16 ADDI,
    RET,
-   sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,
-   0 74 MOVZ,  NR-EXIT-GROUP SYS,                 \ read error: x12 is the fd, no path to name
+   sreaderr LBL,  0 12 0 ADDI,  NR-CLOSE SYS,     \ read() fault: x12 is the fd, no path to name; label the cause on fd 2
+   1 LSRCREAD LABEL@ ADR,  0 2 MOVZ,  2 SRCREAD-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   sbufull LBL,  0 12 0 ADDI,  NR-CLOSE SYS,      \ source outgrew IBUFSZ mid-read: name the buffer, not a read fault
+   1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,
    sopenerr LBL,                                  \ x12 = NUL-terminated source path (untouched since open)
    1 LOPENERR LABEL@ ADR,  0 2 MOVZ,  2 16 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: cannot open ",16)
    13 12 0 ADDI,                                  \ cursor := path
@@ -798,7 +809,9 @@ variable LCOLDPFX variable LAPPPROV
    done LBL, ;
 
 : C-SOURCE-FAIL-REPL-DONE ( -- )
-   SRC-SFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   SRC-SFAIL LABEL@ LBL,                                          \ IBUFSZ source-prefix overflow: label fd 2 before exit 74
+   1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-REPL LABEL@ LBL,
    SRC-SFAIL @ C-SOURCE-MMAP
    11 0 0 ADDI,  9 11 0 ADDI,
@@ -847,7 +860,9 @@ variable LCOLDPFX variable LAPPPROV
    SRC-BDONE LABEL@ LBL,
    LSHBANG LABEL@ BL,
    11 DATA INP-CELL STR,  9 DATA INE-CELL STR,  SRC-DONE LABEL@ B,
-   SRC-BFAIL LABEL@ LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS,
+   SRC-BFAIL LABEL@ LBL,                                          \ IBUFSZ baked-prefix overflow: label fd 2 before exit 74
+   1 LSRCFULL LABEL@ ADR,  0 2 MOVZ,  2 SRCFULL-MSG-LEN MOVZ,  NR-WRITE SYS,
+   0 74 MOVZ,  NR-EXIT-GROUP SYS,
    SRC-DONE LABEL@ LBL, ;
 
 \ Shared cold-prefix routines: the stdin engine builds the checker/stdlib
@@ -2097,7 +2112,8 @@ s" j-is" s" --" TRUST
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
 
-: C-QUOTE-EOF ( -- )
+: C-QUOTE-EOF ( -- )                               \ unterminated or bad-escape string literal: label fd 2 before exit 74
+   1 LBADSTR LABEL@ ADR,  0 2 MOVZ,  2 BADSTR-MSG-LEN MOVZ,  NR-WRITE SYS,
    0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 : C-QUOTE-SCAN ( -- )
@@ -4799,6 +4815,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LWIDE !  LBL LWIDEMSG !  LBL LDIAGRET !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
+   LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 

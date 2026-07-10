@@ -2272,7 +2272,7 @@ variable LHIDXBUILD
 \ zeroed mmap (anonymous pages are zero), then add every record
 \ [0,NDICT); a failed mmap is a startup failure, not a degraded mode.
 : EMIT-HIDX ( -- )
-   LBL LBL LBL LBL {: aret:label bloop:label bdone:label bfail:label :}
+   LBL LBL LBL LBL LBL {: aret:label bloop:label bdone:label bfail:label msg:label :}
    LHIDXADD LABEL@ LBL,
       SP SP 96 SUBI,
       30 SP 0 STR,  2 SP 8 STR,  3 SP 16 STR,  4 SP 24 STR,  5 SP 32 STR,
@@ -2307,7 +2307,10 @@ variable LHIDXBUILD
       4 SP 40 LDR,   5 SP 48 LDR,  6 SP 56 LDR,  7 SP 64 LDR,  8 SP 72 LDR,
       13 SP 80 LDR,  14 SP 88 LDR, 15 SP 96 LDR, 16 SP 104 LDR, 17 SP 112 LDR,
       SP SP 160 ADDI,  RET,
-      bfail LBL,  0 74 MOVZ,  NR-EXIT-GROUP SYS, ;
+      bfail LBL,                                     \ dict hash-index mmap failed: label fd 2 before exit 74
+         0 2 MOVZ,  1 msg ADR,  2 33 MOVZ,  NR-WRITE SYS,   \ write(2,"hb: dictionary index alloc failed",33)
+         0 74 MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  s" hb: dictionary index alloc failed" BYTES, ;
 
 variable FIND-LINEAR
 variable FIND-HLOOP
