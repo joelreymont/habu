@@ -3301,3 +3301,7 @@ unchanged (148855). Keys for milestone 2:
   variant path rejected family tails, but the family path never scanned prior
   variants, so identical names accepted in one order. Apply the same in-scope
   rule at both declaration gates and pin unrelated-package acceptance.
+- **Cache-hit tests must own the cache state that makes a hit possible.** An
+  object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
+  shared warm artifact may bypass object production entirely. Bind a fresh
+  gate-local cache before proving store, restore, or relink transitions.
