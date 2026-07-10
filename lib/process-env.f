@@ -4,6 +4,8 @@
 \ and lib/process-argv.f. Kept separate from process-argv so old native seeds can
 \ still run the build-fixpoint installer before this newer primitive exists.
 
+require lib/adt/option.f                 \ option<len> for the FIND-EXECUTABLE cluster (switchover wave A)
+
 256 constant PROC-ENV-MAX
 131072 constant PROC-ENV-BUF-CAP
 61 constant PROC-ENV-EQUAL
@@ -359,34 +361,38 @@ variable PROC-ENV-DEF-BUF-A
       seg segu LEN>N cmd cmdu LEN>N dst JOIN-PATH >LEN
    then ;
 
-: PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- len bool )
+: PROC-TRY-PATH-SEG ( ptr u8 len ptr u8 len ptr u8 -- option<len> )   \ SOME resolved length if executable, else NONE
    {: seg:ptr segu cmd:ptr cmdu dst:ptr :}
    seg segu cmd cmdu dst PROC-JOIN-PATH-SEG {: gotu :}
-   dst gotu PROC-EXECUTABLE? if gotu PROC-ENV-TRUE exit then
-   gotu PROC-ENV-FALSE ;
+   dst gotu PROC-EXECUTABLE? if gotu OPTION:SOME exit then
+   OPTION:NONE ;
 
-: FIND-EXECUTABLE-IN-PATH ( ptr u8 len ptr u8 len ptr u8 -- len bool )
+: FIND-EXECUTABLE-IN-PATH ( ptr u8 len ptr u8 len ptr u8 -- option<len> )   \ SOME resolved length in dst, else NONE
    {: cmd:ptr cmdu path:ptr pathu dst:ptr :}
    cmd cmdu PROC-HAS-SLASH? if
       cmd cmdu PROC-EXECUTABLE? if
-         cmd cmdu dst PROC-COPY-PATH PROC-ENV-TRUE exit
+         cmd cmdu dst PROC-COPY-PATH OPTION:SOME exit
       then
-      0 >LEN PROC-ENV-FALSE exit
+      OPTION:NONE exit
    then
    0 >OFF PROC-PATH-I !
    begin path pathu LEN>N PROC-PATH-SEP PROC-PATH-I @ OFF>N SPLIT-NEXT while
       >OFF PROC-PATH-I !
-      >LEN cmd cmdu dst PROC-TRY-PATH-SEG if PROC-ENV-TRUE exit then
-      drop
+      >LEN cmd cmdu dst PROC-TRY-PATH-SEG MATCH option
+        none OF ENDOF                              \ segment miss: try the next one
+        some OF OPTION:SOME exit ENDOF              \ resolved: re-wrap and return
+      ;MATCH
    repeat
    drop 2drop
-   0 >LEN PROC-ENV-FALSE ;
+   OPTION:NONE ;
 
-: FIND-EXECUTABLE ( ptr u8 len ptr u8 -- len bool ) {: cmd:ptr cmdu dst:ptr :}
+: FIND-EXECUTABLE ( ptr u8 len ptr u8 -- option<len> ) {: cmd:ptr cmdu:len dst:ptr :}   \ SOME resolved length via $PATH, else NONE
    s" PATH" GETENV {: path:ptr pathu :}
-   pathu 0= if 0 >LEN PROC-ENV-FALSE exit then
+   pathu 0= if OPTION:NONE exit then
    cmd cmdu path pathu >LEN dst FIND-EXECUTABLE-IN-PATH ;
 
 : RESOLVE-EXECUTABLE ( ptr u8 len ptr u8 -- len )
-   FIND-EXECUTABLE if exit then
-   E-PROC-PATH throw ;
+   FIND-EXECUTABLE MATCH option
+     none OF E-PROC-PATH throw ENDOF
+     some OF ENDOF
+   ;MATCH ;

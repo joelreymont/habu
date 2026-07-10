@@ -1289,8 +1289,8 @@ RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
 RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
-FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- len bool )
-FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- len bool )
+FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
+FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- option<len> )
 RESOLVE-EXECUTABLE        ( ptr u8 len ptr u8 -- len )
 ```
 

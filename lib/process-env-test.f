@@ -47,8 +47,11 @@ variable PET-START-NS
 : PET-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
    outu LEN>N erru LEN>N kind code ;
 
-: PET-FIND>N ( len bool -- n bool ) {: gotu found :}
-   gotu LEN>N found ;
+: PET-FIND>N ( option<len> -- n bool )                 \ flatten for the test asserts
+   MATCH option
+     none OF 0 0 0= 0= ENDOF
+     some OF LEN>N 0 0= ENDOF
+   ;MATCH ;
 
 : PET-ENV+ ( ptr u8 n ptr u8 n -- )
    {: name:ptr nameu val:ptr valu :}
