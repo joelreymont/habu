@@ -581,6 +581,33 @@ variable GDX-TRUST-MAN-U
    s" family" s" scalar mismatch omits family field" GDX-EXPECT-ERR-NO-JKEY
    s" json-one-schema" s" habu-scalar-nofam.err" s" scalar mismatch schema" GDX-GJA1 ;
 
+\ Item 13 repair-packet variant/tag field: a `construct family variant` payload
+\ mismatch must carry the arm's sum-variant name (`variant`) and declaration-order
+\ `tag`, plus the family it belongs to; a pure-scalar mismatch carries none. The
+\ two-variant sum built on the SECOND variant proves `tag` tracks the actual arm
+\ (toss = 1), not a hard-coded 0.
+: GDX-ADT-VARIANT ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT VARIANT toss n ;VARIANT ;SUMTYPE" GE-SRC-LINE
+   s" : CVBAD ( ptr u8 -- zrc ) construct zrc toss ;" GE-SRC-LINE
+   s" tools/check.f accepted ADT variant payload mismatch" GDX-CHECK-JSON
+   s" habu-adt-variant.err" GDX-WRITE-ERR
+   s" code" s" E-MISMATCH" s" ADT variant mismatch code" GDX-EXPECT-ERR-JSTR
+   s" family" s" zrc" s" ADT variant mismatch carries family" GDX-EXPECT-ERR-JSTR
+   s" variant" s" toss" s" ADT variant mismatch carries variant name" GDX-EXPECT-ERR-JSTR
+   s" tag" s" 1" s" ADT variant mismatch carries declaration-order tag" GDX-EXPECT-ERR-JRAW
+   s" habu-adt-variant.err" s" ADT variant diagnostic contract" GDX-DIAG-CONTRACT
+   s" json-one-schema" s" habu-adt-variant.err" s" ADT variant schema" GDX-GJA1
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : SBAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   s" tools/check.f accepted scalar mismatch (variant slice)" GDX-CHECK-JSON
+   s" habu-scalar-novar.err" GDX-WRITE-ERR
+   s" variant" s" scalar mismatch omits variant field" GDX-EXPECT-ERR-NO-JKEY
+   s" tag" s" scalar mismatch omits tag field" GDX-EXPECT-ERR-NO-JKEY
+   s" json-one-schema" s" habu-scalar-novar.err" s" scalar novar schema" GDX-GJA1 ;
+
 : GDX-TFAM-DECL ( -- )
    GE-HB-RESET
    GE-SRC-RESET
@@ -678,6 +705,7 @@ variable GDX-TRUST-MAN-U
    GDX-BAD-PARAM-SIGNATURE
    GDX-RENDER-CAP-FAIL-CLOSED
    GDX-ADT-FAMILY
+   GDX-ADT-VARIANT
    GDX-TFAM-DECL
    GT-CLEANUP
    s" PASS: native checker diagnostics undef-primary slice" type cr ;

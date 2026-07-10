@@ -1256,6 +1256,14 @@ variable DEADERR  variable DEADTA  variable DEADTU
    FRESH MK-ROW dup RBROW ! RCUR ! ;
 variable WAS   variable DEXP   variable DACT   variable FAILSET
 variable DF-ACT   variable DF-EXP
+\ ADT variant capture (item 13, docs/type-families.md §13): the sum-variant/tag
+\ involved at a layout mismatch. CVLIVE holds the SUMV id of the variant a
+\ `construct family variant` step is applying (its payload row is what
+\ CHECKER-STEP unifies); UF>DIAG latches it into DVAR exactly when the first
+\ failure is captured (beside DF-ACT/DF-EXP). -1 = no variant in scope, so a
+\ pure-scalar or non-construct mismatch renders no variant/tag.
+variable DVAR    -1 DVAR !
+variable CVLIVE  -1 CVLIVE !
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 variable SGA  variable SGU
@@ -1416,7 +1424,8 @@ variable LTC-P
       UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !
    ELSE
       0 DF-ACT !  0 DF-EXP !
-   THEN ;
+   THEN
+   CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
 
 : CHECKER-STEP {: din dout :}
    din dout LIN-EXPLICIT? LINEXP !
@@ -4869,6 +4878,7 @@ variable CURSYM
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
+variable SV-DVAR
 variable SV-SGBAD
 variable SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
@@ -4881,7 +4891,7 @@ variable SV-TRAIL
    SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
-   DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !
+   DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
@@ -4907,7 +4917,7 @@ variable SV-TRAIL
    SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
-   SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !
+   SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !
    SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
@@ -6673,7 +6683,9 @@ variable CONFAM    \ resolved family id while CONM = 2
       2 CONM !
       EXIT THEN
    CONFAM @ 0 < 0= IF
+      a u CONFAM @ MATCH-VAR-XT @ execute IF CVLIVE ! ELSE drop THEN   \ latch variant SUMV id for the mismatch capture
       a u CONFAM @ CONSTRUCT-STEP-XT @ execute 0= IF 0 OK ! THEN
+      -1 CVLIVE !                                                      \ variant leaves scope with the step
    THEN
    0 CONM ! ;
 
@@ -6750,7 +6762,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !
