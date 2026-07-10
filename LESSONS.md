@@ -4,6 +4,23 @@
 
 Last updated: 2026-07-10
 
+- **Reuse the conservation machinery, don't add a transport special-case:** the
+  TFAM 11 move-class relaxation (swap/rot/>r of a linear layout bundle) needed
+  ZERO new classification code — deleting XG-READ-GROUP's blanket linear-bundle
+  reject let linear bundles read through XG-READ-HID, and XPORT-APPLY's existing
+  LIN-SNAPSHOT/LIN-CHECK (bundle counted once at its tag by LAYOUT-LINEAR-COUNT)
+  already accepts a permutation (before=after) and rejects copy/drop. Locals
+  capture kept rejecting for free (LOC-BIND-GROUPS removes the bundle from the
+  counted rows at bind → count drop → reject), and boundary-loss/return-stack
+  stranding are caught by the boundary balance. When a fail-closed v1 guard sits
+  in front of a general count/conservation path, relaxing = deleting the guard,
+  not adding op-class logic. (habu-tfam-11-linear slice 4.)
+- **checker.f is a boot-time prefix — a checker edit is live at next boot, no
+  rebuild needed to test:** run the fixtures against the current bin/hb
+  immediately; the fixpoint rebuild is only for the byte-identity gate. But do
+  NOT `rm bin/hb` before the install path (it builds to a temp then installs);
+  a manual rm strands you with no builder — restore from a sibling fable
+  workspace's bin/hb (same base) if it happens.
 - **Snapshot-image regressions scan for the trailer magic and re-sign each
   patch:** the 48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE pad plus
   the macOS codesign blob follow it (measured magic at size-57392), so locate

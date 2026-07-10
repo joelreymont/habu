@@ -5099,8 +5099,12 @@ variable XG-N   variable XG-TN   variable XG-ROW
    node TAG S-ROW = IF XG-READ-VAR EXIT THEN
    node P>TYPE T-RES {: t:n :}
    t HIDDEN-PARAM? IF
-      t LAYOUT-LINEAR? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ linear bundles do not transport (v1: construct/flow only, exact accounting)
-      t XG-READ-HID RES-TRUE EXIT THEN
+      t XG-READ-HID RES-TRUE EXIT THEN   \ linear bundles transport too: the whole M+1 group moves
+                                         \ atomically, and XPORT-APPLY's LIN-SNAPSHOT/LIN-CHECK conserves
+                                         \ the bundle count — a move keeps before=after (accept), a
+                                         \ copy raises it and a drop lowers it (reject). Locals capture
+                                         \ (LOC-BIND-GROUPS) removes the bundle from the counted rows at
+                                         \ bind, so the same LIN-CHECK still rejects a linear layout local.
    t LAYOUT-PARAM? IF 0 OK ! -1 FAILSET ! RES-FALSE EXIT THEN   \ open-arg layout never transports
    node P>TYPE XG-T+
    node P>REST XG-ROW !

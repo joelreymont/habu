@@ -52,23 +52,43 @@ s" A7=" type s" C7 ( ltok -- lqmix<ltok,n> ) LQMIX:SMALL" CHECK-QUIET-CANDIDATE!
 cr
 
 \ ---------------------------------------------------------------------------
-\ rejected: copy, drop, transport, locals, return stack, unconsumed, loss.
+\ move-class transports (swap/rot/-rot/2swap and >r/2>r round trips) reorder the
+\ bundle without copy or drop, so the linear count is CONSERVED -> accept. The
+\ whole M+1-cell group moves atomically (XG-READ-HID), and LIN-CHECK conservation
+\ classifies: a permutation keeps before=after, so it certifies.
+\ ---------------------------------------------------------------------------
+s" M1=" type s" M1 ( lq2<ltok,n> n -- n lq2<ltok,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" M2=" type s" M2 ( lq2<ltok,n> n n -- n n lq2<ltok,n> ) rot" CHECK-QUIET-CANDIDATE! -1 T=
+s" M3=" type s" M3 ( n n lq2<ltok,n> -- lq2<ltok,n> n n ) -rot" CHECK-QUIET-CANDIDATE! -1 T=
+s" M4=" type s" M4 ( lq2<ltok,n> n n n -- n n lq2<ltok,n> n ) 2swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" M5=" type s" M5 ( lq2<ltok,n> -- lq2<ltok,n> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+s" M6=" type s" M6 ( lq2<ltok,n> n -- lq2<ltok,n> n ) 2>r 2r>" CHECK-QUIET-CANDIDATE! -1 T=
+\ two linear bundles swapped: both conserved -> accept.
+s" M7=" type s" M7 ( lq2<ltok,n> lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+\ a move that then loses the bundle at the boundary, or strands it on the return
+\ stack, still rejects: conservation is per-step, boundary balance catches the loss.
+s" MR1=" type s" MR1 ( lq2<ltok,n> n -- n ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" MR2=" type s" MR2 ( lq2<ltok,n> -- ) >r" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+\ ---------------------------------------------------------------------------
+\ rejected: copy, drop, locals, return-stack copy, unconsumed, loss. Copy-class
+\ (dup/over/tuck/2dup) raises the count, drop-class (drop/nip/2drop) lowers it,
+\ and r@/2r@ re-push (copy) the group -> LIN-CHECK conservation fires.
 \ ---------------------------------------------------------------------------
 s" R1=" type s" B1 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" R2=" type s" B2 ( lq2<ltok,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" R3=" type s" B3 ( lq2<ltok,n> -- )" CHECK-QUIET-CANDIDATE! 0 T=
-s" R4=" type s" B4 ( lq2<ltok,n> n -- n lq2<ltok,n> ) swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" R4=" type s" B4 ( lq2<ltok,n> n -- lq2<ltok,n> n lq2<ltok,n> ) over" CHECK-QUIET-CANDIDATE! 0 T=
 s" R5=" type s" B5 ( lq2<ltok,n> -- lq2<ltok,n> ) {: x :} x" CHECK-QUIET-CANDIDATE! 0 T=
-s" R6=" type s" B6 ( lq2<ltok,n> -- lq2<ltok,n> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+s" R6=" type s" B6 ( n lq2<ltok,n> -- lq2<ltok,n> n lq2<ltok,n> ) tuck" CHECK-QUIET-CANDIDATE! 0 T=
 s" R7=" type s" B7 ( lq2<ltok,n> -- lq2<ltok,n> lq2<ltok,n> ) >r r@ r>" CHECK-QUIET-CANDIDATE! 0 T=
-\ payload reuse: the second construction has no linear input left.
-s" R8=" type s" B8 ( ltok -- lq2<ltok,n> ) LQ2:OK LQ2:OK" CHECK-QUIET-CANDIDATE! 0 T=
-\ branch loss: only one arm constructs -> join mismatch.
-s" R9=" type s" B9 ( ltok f -- lq2<ltok,n> ) if LQ2:OK then" CHECK-QUIET-CANDIDATE! 0 T=
-\ raw cells still cannot forge a linear bundle.
-s" R10=" type s" B10 ( ltok n -- lq2<ltok,n> ) nip 0 0" CHECK-QUIET-CANDIDATE! 0 T=
-\ dropping the linear payload before construction still trips conservation.
-s" R11=" type s" B11 ( ltok n -- lq2<ltok,n> ) nip LQ2:ERR" CHECK-QUIET-CANDIDATE! 0 T=
+s" R8=" type s" B8 ( ltok -- lq2<ltok,n> ) LQ2:OK LQ2:OK" CHECK-QUIET-CANDIDATE! 0 T=   \ payload reuse
+s" R9=" type s" B9 ( ltok f -- lq2<ltok,n> ) if LQ2:OK then" CHECK-QUIET-CANDIDATE! 0 T=  \ branch loss
+s" R10=" type s" B10 ( ltok n -- lq2<ltok,n> ) nip 0 0" CHECK-QUIET-CANDIDATE! 0 T=       \ raw forge
+s" R11=" type s" B11 ( ltok n -- lq2<ltok,n> ) nip LQ2:ERR" CHECK-QUIET-CANDIDATE! 0 T=   \ payload dropped
+s" R12=" type s" B12 ( lq2<ltok,n> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=              \ bundle dropped by nip
+s" R13=" type s" B13 ( lq2<ltok,n> n -- lq2<ltok,n> n lq2<ltok,n> n ) 2dup" CHECK-QUIET-CANDIDATE! 0 T=  \ 2dup copies bundle
 cr
 
 \ ---------------------------------------------------------------------------

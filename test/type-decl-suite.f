@@ -436,8 +436,14 @@ s" TDLIN-DROP ( tdlin<tdown> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-2DROP ( tdlin<tdown> n -- ) 2drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-LOCAL ( tdlin<tdown> -- ) {: x :} x drop" CHECK-QUIET-CANDIDATE! 0 T=
-\ even a count-preserving move fails closed until TFAM 11 counts bundles.
-s" TDLIN-TOR ( tdlin<tdown> -- tdlin<tdown> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
+\ TFAM 11 move-class relaxation: a count-preserving move (>r r>) of a resolved
+\ linear bundle conserves the count (LIN-CHECK before=after) and now certifies;
+\ copy/drop above still reject. An OPEN-arg (may-later-bind-linear) layout stays
+\ fail-closed for every transport (TDLIN-VAR-DUP), including moves — that is the
+\ separate delayed-resolution piece.
+s" TDLIN-TOR ( tdlin<tdown> -- tdlin<tdown> ) >r r>" CHECK-QUIET-CANDIDATE! -1 T=
+\ open-arg move stays rejected (delayed-resolution piece, not this slice).
+s" TDLIN-VAR-TOR ( tdlin<a> -- tdlin<a> ) >r r>" CHECK-QUIET-CANDIDATE! 0 T=
 \ identity needs no transport bind: the linear-carrying layout still flows.
 s" TDLIN-ID ( tdlin<tdown> -- tdlin<tdown> )" CHECK-QUIET-CANDIDATE! -1 T=
 \ the same family with a non-linear arg keeps full transport.
