@@ -43,3 +43,31 @@ taint/laundering extension for DELAYED arg resolution (open-arg bundle
 local/copy whose arg later binds linear — the LAYOUT-PARAM? reject keeps it
 fail-closed today, pinned TDLIN-VAR-DUP/TDLIN-VAR-TOR); item-8 TLP UN-row
 retirement at item 9.
+
+SLICE 5 LANDED (commit "TFAM 11: MATCH consume-once proof fixtures"): audit +
+soundness-proof hardening. AUDIT FINDING: MATCH consume/refine-exactly-once is
+ALREADY correctly implemented and sound — no checker gap. Mechanism:
+MATCH-FAM-TOK pops the scrutinee bundle once at entry (structurally unusable
+after); MATCH-OF-TOK refines each arm with the variant's instantiated payload
+(MATCH-PAY-XT/TFAM-MATCH-PAY); the arm body runs under the normal per-step
+LIN-CHECK, which enforces the refined linear payload is consumed exactly once;
+the join (MATCH-ACCUM/MATCH-SEMI) unifies arm outputs. No MATCH-specific linear
+code was needed (composes from refinement + existing conservation, like the
+transport slice). Verified by 8 probes (all correct, no soundness hole): full
+consume via destructor=accept, leak=reject, double-free=reject, exit-leak=
+reject, forward-through-join=accept, forward+free(copy)=reject, return-stack
+move-then-consume=accept (proves the slice-4 move relaxation composes with match
+refinement), return-stack strand=reject. Landed as test/type-match-suite.f
+ML5-ML12 (the block had only ML1-ML4, under-covering the use-after-free
+invariant), using FREE-MTOK (abstract linear consumer; engine-suite T-FREE-OWN
+pattern) + one census-§6-sanctioned trusted-inventory-classes row
+(test/type-match-suite.f test-metaprog, owned by this dot). Test-only, no checker
+change (no byte-fixpoint). The one apparent nested-linear-match reject
+(reconstruct+inner-match) is E-MATCH-OPEN-ARGS: `construct mlin ok` yields
+mlin<mtok,?b> with b unresolved, and matching an open-arg scrutinee is the known
+v1 reject (MB19) -> the delayed/open-arg resolution piece, NOT a linear gap.
+
+REMAINING item-11 work: delayed/open-arg resolution (E-MATCH-OPEN-ARGS / MB19 /
+LAYOUT-PARAM? reject for partially-determined args — width-resolution +
+refinement; the substantive remaining checker slice); item-8 TLP UN-row
+retirement at item 9.

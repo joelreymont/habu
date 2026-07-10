@@ -104,8 +104,14 @@ s" M15=" type s" T15 ( mres -- n ) MATCH mres ok OF >r 0 r> + ENDOF err OF ENDOF
 s" MATCH-OK" type cr
 
 \ ---------------------------------------------------------------------------
-\ linear payloads: the branch consumes its payload exactly once — proven
-\ TRUST-free by construct round-trips (the only checked linear consumers).
+\ linear payloads: matching a linear sum consumes the scrutinee exactly once
+\ (popped at MATCH entry, structurally unusable after), and each arm's refined
+\ payload is a use-after-free-class resource that the arm must consume EXACTLY
+\ once — no leak, no drop, no copy, no double-consume. ML1-ML4 prove this
+\ TRUST-free via construct round-trips (consume = re-mint); ML5-ML12 pin the
+\ consume-to-nothing contract using FREE-MTOK, the abstract linear consumer
+\ (test-fixture boundary, engine-suite T-FREE-OWN pattern; the sole checked way
+\ to release a linear to nothing), so a branch can fully discharge the payload.
 \ ---------------------------------------------------------------------------
 s" ML1=" type s" K1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 \ moving the linear payload out through the join is legitimate consumption.
@@ -117,6 +123,27 @@ s" ML2=" type s" K2 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF ENDOF err OF 
 \ dropping or copying the linear payload in a branch rejects.
 s" ML3=" type s" KB1 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF drop 0 construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" ML4=" type s" KB2 ( mlin<mtok,n> -- mlin<mtok,n> ) MATCH mlin ok OF dup drop construct mlin ok ENDOF err OF construct mlin err ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ FREE-MTOK: abstract linear consumer (test-fixture boundary; released to nothing).
+s" FREE-MTOK" s" mtok --" TRUST
+\ full consume: the linear arm frees its refined payload to nothing, the err arm
+\ (payload n, non-linear) passes it through -> accept. The single-consumption
+\ contract: the scrutinee's linear resource is discharged exactly once.
+s" ML5=" type s" K5 ( mlin<mtok,n> -- n ) MATCH mlin ok OF FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ leak: the refined linear payload is never consumed (only n produced) -> reject.
+s" ML6=" type s" K6 ( mlin<mtok,n> -- n ) MATCH mlin ok OF 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ double-consume: freeing the payload twice (use-after-free) -> reject.
+s" ML7=" type s" K7 ( mlin<mtok,n> -- n ) MATCH mlin ok OF FREE-MTOK FREE-MTOK 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ leak on early exit: the payload is live when the arm exits -> reject.
+s" ML8=" type s" K8 ( mlin<mtok,n> -- n ) MATCH mlin ok OF exit ENDOF err OF 0 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ forward the payload out through the join (both arms carry mtok) -> accept.
+s" ML9=" type s" K9 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ forward AND free the same payload (copy then consume) -> reject.
+s" ML10=" type s" K10 ( mlin2<mtok,mtok> -- mtok ) MATCH mlin2 ok OF dup FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ payload moved via balanced return-stack traffic then consumed -> accept
+\ (the move-class relaxation composes with match refinement).
+s" ML11=" type s" K11 ( mlin<mtok,n> -- n ) MATCH mlin ok OF >r 0 r> FREE-MTOK ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ payload stranded on the return stack (>r, never r>) -> reject.
+s" ML12=" type s" K12 ( mlin<mtok,n> -- n ) MATCH mlin ok OF >r 0 ENDOF err OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 s" MATCH-LINEAR" type cr
 
 \ ---------------------------------------------------------------------------
