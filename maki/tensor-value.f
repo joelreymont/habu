@@ -51,6 +51,14 @@ public
 1 constant LAY-COL             \ column-major
 2 constant LAY-N               \ range bound
 
+\ Real ENUM co-located with LAY-* (dot habu-cad-adt-swap; capability S1). LAY-*
+\ stay the public/wire/table-index vocabulary; model-ir.f stores this enum behind
+\ its unchanged n accessors (>LAYOUT / LAYOUT>N / LAY-KEY). Order tracks LAY-ROW/COL.
+ENUM layout
+  row
+  col
+;ENUM
+
 \ ---- alignment classes (recorded from the pointer, never assumed) ----
 0 constant AL-UNKNOWN          \ conservative: not measured (descriptors)
 1 constant AL-BYTE             \ measured: < 4-byte aligned
@@ -58,6 +66,18 @@ public
 3 constant AL-8                \ measured: 8-byte aligned
 4 constant AL-16               \ measured: 16-byte aligned
 5 constant AL-N                \ range bound
+
+\ Real ENUM co-located with AL-* (dot habu-cad-adt-swap; capability S1). AL-* stay
+\ the public/table-index vocabulary (align has no wire/text form); model-ir.f
+\ stores this enum behind its unchanged n accessors (>ALIGN / ALIGN>N). Bare-digit
+\ tails reject, so a4/a8/a16 map to AL-4/AL-8/AL-16. Order tracks AL-UNKNOWN..AL-16.
+ENUM align
+  unknown
+  byte
+  a4
+  a8
+  a16
+;ENUM
 
 : AL-VALID? ( n -- bool ) {: al:n :}  al 0 < 0=  al AL-N <  and ;
 
