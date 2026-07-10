@@ -161,6 +161,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-existing-private | `label --` | Package reopen helper branches to the caller's done label after ensuring an existing namespace has a private wordlist id. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-ensure | `--` | Package keyword dictionary lookup/creation scans namespace records, reuses public wordlists, creates missing private wordlists, and leaves package ids in generated registers. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package | `--` | Interpreter `package` keyword consumes the following token, rejects nested/malformed packages, opens private scope, syncs checker package state, and saves the parent current wordlist. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| c-call-checker-export | `--` | Bridges the `EXPORT` keyword to `CHECKER-EXPORT`: finds the global checker word, pushes the original source-name token from the fixed token cells, and calls through the saved x11 record; raw register bridge is outside Forth stack inference. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
+| c-export-tail! | `--` | `EXPORT` tail rewriter: scans the pending token for a non-edge first colon and rewrites the fixed token cells to the tail span (FIND parity for edge colons); raw register scan is outside Forth stack inference. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
+| c-export | `--` | Interpreter `EXPORT` keyword: rejects use outside a package, applies the seal guard to the source spelling, resolves the source via FIND, syncs the checker alias, and publishes a dictionary record sharing the source code pointer/body span with immediate/wide name bits copied. | `test/type-export-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-07-10 |
 | c-seal-package-fail | `--` | Sealed-system-package failure emitter prints the offending token from the fixed token cells and exits `E-SEAL-PACKAGE`; raw process exit is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-seal-match | `--` | Sealed-system-package matcher scans the native reserved-name table (`RESTAB`) in generated registers, case-folds the candidate token `TKA[0,x24)`, and calls the seal failure emitter on a match. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-qualify-seal-guard | `--` | Definition-time seal guard: when the friend latch is closed and the pending token is a non-edge `NAME:tail`, matches the prefix against the reserved-name table and fails closed; raw latch/register scan is outside Forth stack inference. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
@@ -707,7 +710,7 @@ src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 119
+src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 122
 src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
 src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
 src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6

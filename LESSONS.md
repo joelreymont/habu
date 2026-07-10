@@ -3182,3 +3182,25 @@ unchanged (148855). Keys for milestone 2:
   print the offending path (LINT-READ-DIE, tools/lint/text.f). When one cap
   named after a growing file trips, sweep EVERY READ-FILE buffer cap in the
   same pass instead of raising them one gate failure at a time.
+- **A "no name clash" premise must be checked against TOKEN SURFACES, not just
+  defined words.** The EXPORT dot said "no top-level EXPORT exists today" —
+  true for the dictionary, false for the tree: hb-build's --repl path treats
+  line-leading `EXPORT ` as a build directive (lib/source.f COMMENT-EXPORTS
+  strips it), verify-source consumed it as a no-op declaration, public-
+  signatures collects the names, and lib/prelude.f even defined a top-level
+  `export` shim so directive-carrying programs stayed plainly loadable. The
+  keyword landed as a context split (in-package = re-export declaration; top
+  level = the directive no-op, engine and verify-source agreeing 1:1), and the
+  prelude shim became dead code (a keyword shadows any same-named word at
+  interpret level) and was removed. Sweep grep for the token in STRINGS,
+  comments, directives, and preprocessors before declaring a name free.
+- **checker.f is a boot-time source prefix, not baked engine bytes.** bin/hb
+  compiles src/core/checker.f from the WORKING TREE at every launch, so a
+  checker.f-only edit changes behavior with byte-identical binaries (the
+  byte-fixpoint proves engine-source determinism only), a PRIM: exposure row
+  takes effect for any binary running in that tree, and the TFAM-15 two-commit
+  staging rule really constrains ENGINE (habu1/habu2) changes plus tool
+  sources `require`d into the RUNNING engine — the checker half follows the
+  tree, not the binary. Corollary: prefix-internal colon words are dictionary-
+  visible but checker-invisible to later tool sources unless a PRIM: row
+  persists their effect (CHECKER-PACKAGE-ACTIVE? hit this).

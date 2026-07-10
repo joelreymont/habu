@@ -212,3 +212,62 @@ R3 idempotent same-binding no-op must be consistent in engine + checker or the
 Each engine/checker edit = a full byte-fixpoint + multi-suite gate cycle; these
   are separate commits, not one session. This audit is the artifact; SLICE 1
   starts the next session.
+
+================================================================================
+EXECUTION LEDGER (2026-07-10, fable-export lane)
+
+SLICE 1 LANDED (change qnmskrkm / 71477509): CHECKER-EXPORT + helpers
+(EXPORT-SEAL-GUARD/-RESOLVE/-TAIL$/-EFF-INST/-RECORD/-META-COPY) in checker.f,
+PRIM: CHECKER-EXPORT row, E-EXPORT-NO-PACKAGE/-UNDEFINED/-SEALED/-PRIM codes
+(7112-7115), test/type-export-suite.f (checker half) wired as
+GE-TYPE-EXPORT-SUITE into GE-CANDIDATE-VALIDATE, FILEMAP entry, labeled lint
+capacity exits (tools/lint/text.f LINT-READ-DIE) + five $40000->$80000 cap
+raises (checker.f crossed 262144 bytes). Findings: PRIM-FIRST-SYM offset-0
+conflation (use PRIM-FIRST-IDX for existence); prim sources REJECTED
+(E-EXPORT-PRIM) because prims may be overloaded and a single-row copy would
+narrow the effect.
+
+SLICE 2a LANDED (change nrotqkrq / staged exposure): PRIM:
+CHECKER-PACKAGE-ACTIVE? row — prefix-internal colon words are checker-invisible
+to tool sources required into the RUNNING engine without a PES row (found when
+verify-source.f stopped compiling; TFAM-15 class).
+
+SLICE 2b LANDED (this change): engine keyword C-EXPORT + C-EXPORT-TAIL! +
+C-CALL-CHECKER-EXPORT in habu2.f (LKWEXPORT/LCHKEXPORT labels + kwdata rows,
+EM-INTERPRET-DEFINE-KEYWORDS entry, KEEP? tree-shake gated), real
+RECORD-EXPORT in verify-source.f, `export` reserved in reserved-name-lint (+
+test case), TRUSTED.md rows for the three emitters + habu2.f builder-emit
+ratchet 119->122, engine-half suite cases, prelude shim removal.
+
+DESIGN FORK DISCOVERED + RESOLVED (the dot's "no top-level EXPORT" premise was
+wrong): line-leading `EXPORT ` was ALREADY a surface — hb-build --repl export
+directive (COMMENT-EXPORTS strips it; public-signatures collects names;
+lib/prelude.f carried a `: export` shim so directive lines no-op on plain
+loads). RESOLUTION: context split, engine and verify-source agreeing 1:1 —
+INSIDE an open package `EXPORT NAME` is the re-export declaration; at TOP LEVEL
+it is the directive (engine consumes the name as a no-op; verify-source replay
+records nothing). The prelude shim is dead under keyword precedence and was
+removed. FOLLOW-UP (dotted below): COMMENT-EXPORTS is line-based and strips
+`EXPORT `-prefixed lines regardless of package context, so an in-package
+re-export inside an hb-build INPUT would be stripped (build then fails loudly
+on the undefined alias — fail-closed but confusing); a package-aware directive
+scoping or a directive rename needs its own decision.
+
+ENGINE REJECT CONTRACT (pinned by smokes; child-run gate fixtures in slice 3):
+missing name rc 74 ($4A, token); undefined source rc 70 (token); sealed-source
+prefix rc 84 (E-SEAL-PACKAGE, token); duplicate tail rc 78 ($4E,
+"duplicate definition: <original spelling>", native wall fires BEFORE the
+checker call so the labeled diagnosis wins); unsigned/prim source = checker
+throw surfaced by the stdin boundary ("hb: uncaught throw code 7115" rc 67).
+Immediate/wide name bits are copied from the source record (LFIND flag bits
+1/3 -> DNAME-IMM/DNAME-WIDE); the alias shares [0] code ptr + [8] body len.
+
+REMAINING (slice 3): child-process reject fixtures in the gate (each rc above);
+CAE export-support upgraded to prove a real cross-package alias (top-level
+directive case stays as its own pin); AOT single-body proof via hb-build
+closure diagnostic on a dual-name program; generated-ctor-word re-export case
+(RESULT:OK-under-second-name) once a real SUMTYPE fixture is wired; docs
+(docs/forth.md Packages EXPORT paragraph, STATUS.md note); defer-through-
+alias engine case (`is` via alias); immediate-word alias execution case;
+close-out ledger + follow-up dots (COMMENT-EXPORTS package awareness;
+diagnostics provenance F3).

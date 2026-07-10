@@ -2,8 +2,10 @@
 \ out. Without these, callers re-derive true/false as 0 0= / 0 0= 0= and lack
 \ typed float dup/over/drop plus float <= / >= comparisons. Core only; load early.
 
-: export ( -- )
-   parse-name 2drop ;
+\ The `export NAME` lines below are hb-build --repl export directives (they
+\ keep these words callable in a --repl bundle). At top level the engine's
+\ `export` keyword consumes the name as a no-op on plain loads, so no local
+\ shim word is needed (or possible: the keyword shadows any definition).
 
 export true
 export false

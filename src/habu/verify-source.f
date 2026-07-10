@@ -486,9 +486,16 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    STR-LAST-A @ STR-LAST-U @
    TRUST-SIGNATURE ;
 
+\ EXPORT has two documented roles split by package context (dot
+\ habu-compiler-pkg-re-688212c1): inside an open package it is the re-export
+\ declaration (CHECKER-EXPORT aliases the source's checked effect under its
+\ tail); at top level it is the hb-build --repl export directive, which the
+\ build strips via COMMENT-EXPORTS before engine load — replay consumes the
+\ name and records nothing, exactly like the engine never seeing the line.
 : RECORD-EXPORT ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN ;
+   nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
+   CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
 : PRIM-END? ( ptr u8 n -- bool )
    s" PRIM;" STR=CI ;

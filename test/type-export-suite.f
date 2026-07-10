@@ -7,7 +7,9 @@
 \ untouched), private->public promotion, defer + control-flag copy, quotation
 \ scheme fidelity, every reject (no package, undefined, private from a closed
 \ package, malformed qualification, sealed-system source, primitive source,
-\ duplicate/self-export), and scope/candidate rollback of the alias rows.
+\ duplicate/self-export), scope/candidate rollback of the alias rows, and the
+\ engine keyword half (real package blocks, dual-name execution, checked
+\ callers through both names).
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 variable #FAIL
@@ -161,6 +163,37 @@ RBF-DEPTH @ P-DEPTH @ T=
 s" xrb2:XP-DEF" CHECKER-FIND-USIG FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-DEF" CHECKER-FIND-ACTIVE-DEFER FOUNDF !  FOUNDF @ 0 T=
 s" xrb2:XP-THR" CTL-FLAGS 0 T=
+
+\ ---------------------------------------------------------------------------
+\ 8. engine keyword half: real package blocks, EXPORT publishes a callable
+\    alias — same xt, dual-name execution, checked callers through each name.
+\    (Engine REJECT cases exit the process, so they are pinned as child-run
+\    gate fixtures, not here.)
+\ ---------------------------------------------------------------------------
+package XPE
+public
+: XPE-DBL ( n -- n ) 2 * ;
+end-package
+
+package XPF
+public
+EXPORT XPE:XPE-DBL
+end-package
+
+7 XPE:XPE-DBL 14 T=
+7 XPF:XPE-DBL 14 T=
+: XPE-USE1 ( n -- n ) XPF:XPE-DBL ;
+: XPE-USE2 ( n -- n ) XPE:XPE-DBL ;
+5 XPE-USE1 10 T=
+5 XPE-USE2 10 T=
+
+\ private->public promotion through the engine keyword.
+package XPG
+: XPG-HID ( n -- n ) 3 + ;
+public
+EXPORT XPG-HID
+end-package
+4 XPG:XPG-HID 7 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

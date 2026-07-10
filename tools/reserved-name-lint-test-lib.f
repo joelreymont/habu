@@ -79,6 +79,7 @@ variable RNLT-CONTROL-U
    s" : variant ( -- ) ;" SB-APPEND RNLT-LF
    s" : ;VARIANT ( -- ) ;" SB-APPEND RNLT-LF
    s" : ;sumtype ( -- ) ;" SB-APPEND RNLT-LF
+   s" : Export ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
 \ TFAM 9: construct/MATCH/;MATCH are reserved control forms — a definition may
@@ -183,7 +184,8 @@ variable RNLT-CONTROL-U
    RNLT-OUT outu s" `SUMTYPE`" CONTAINS? TTRUE
    RNLT-OUT outu s" `variant`" CONTAINS? TTRUE
    RNLT-OUT outu s" `;VARIANT`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE ;
+   RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `Export`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-LOADER ( -- )
    RNLT-LOADER$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}

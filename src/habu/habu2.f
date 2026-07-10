@@ -1031,6 +1031,7 @@ create RESTAB-BUF
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWENDPACKAGE LABEL@ LBL, s" end-package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
    LTFLCONFAM LABEL@ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR LABEL@ LBL, s" tfl-cvar?" BYTES,
    LTFLMATCHFAM LABEL@ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME LABEL@ LBL, s" tfam-name$" BYTES,
@@ -3506,11 +3507,102 @@ s" c-private" s" --" TRUST
    9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR, ;
 s" c-end-package" s" --" TRUST
 
+: C-CALL-CHECKER-EXPORT ( -- )
+   LCHKEXPORT 14 C-FIND-GLOBAL
+   9 DATA TKA-CELL LDR,  9 G-PUSH
+   9 DATA TKL-CELL LDR,  9 G-PUSH
+   C-CALL-X11-SAVED ;
+s" c-call-checker-export" s" --" TRUST
+
+\ Rewrite TKA/TKL to the tail of a NAME:tail token (DEF-TKA/DEF-TKL hold the
+\ original spelling). A leading/trailing first colon keeps the token an
+\ ordinary name (FIND parity); a malformed double-colon token never reaches
+\ here (LFIND already rejected it as undefined).
+: C-EXPORT-TAIL! ( -- )
+   LBL LBL LBL {: scan:label have:label done:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  17 0 MOVZ,
+   scan LBL,
+      17 10 CMP,  C-GE done BCOND,                     \ no ':' -> bare name
+      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ have BCOND,
+      17 17 1 ADDI,  scan B,
+   have LBL,
+      17 done CBZ,                                     \ leading ':' -> ordinary
+      14 17 1 ADDI,  14 10 CMP,  C-GE done BCOND,      \ trailing ':' -> ordinary
+      11 9 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
+      12 10 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
+   done LBL, ;
+s" c-export-tail!" s" --" TRUST
+
+\ EXPORT keyword (dot habu-compiler-pkg-re-688212c1). Two documented roles
+\ split by package context, mirrored 1:1 by verify-source RECORD-EXPORT:
+\ - INSIDE an open package: publish an EXISTING word under its own tail into
+\   the CURRENT section wordlist — same code pointer, same body span,
+\   immediate/wide name bits copied — no forwarding body, zero runtime cost.
+\ - TOP LEVEL: the pre-existing hb-build --repl export directive surface
+\   (`EXPORT word…` keeps extra words callable; lib/prelude.f rides it).
+\   COMMENT-EXPORTS strips these lines before hb-build compiles, and a plain
+\   load consumes the name as a no-op so directive-carrying programs stay
+\   directly loadable.
+\ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
+\ and throws on unsigned/prim sources). Native walls that hold without the
+\ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,
+\ E-SEAL-PACKAGE), undefined word (token + rc 70), duplicate tail
+\ (C-REJECT-DUP-DEF $4E, checked BEFORE the checker call so the labeled
+\ native diagnosis wins), protected-WID target (C-STORE-DEF-NAME publish
+\ guard). The checker call runs OUTSIDE the RW code window (checked code must
+\ execute RX); the record publish sits inside the 3/5 LPROT window because
+\ C-STORE-NAME spills long names at CP.
+: C-EXPORT ( -- )
+   C-TASK-LIVE-GUARD
+   LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
+   9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
+      LTOK LABEL@ BL,  0 dnamed CBNZ,
+         $4A C-PACKAGE-FAIL
+      dnamed LBL,
+      done B,
+   active LBL,
+   LTOK LABEL@ BL,  0 named CBNZ,
+      $4A C-PACKAGE-FAIL
+   named LBL,
+   C-QUALIFY-SEAL-GUARD
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
+   13 found CBNZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   found LBL,
+   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
+   12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
+   14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
+   C-EXPORT-TAIL!
+   C-QUALIFY-CAP
+   C-REJECT-DUP-DEF                                      \ native dup wall first: labeled diagnosis + $4E
+   11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,      \ checker sees the ORIGINAL spelling
+   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
+   C-CALL-CHECKER-EXPORT
+   2 3 MOVZ,  LPROT LABEL@ BL,
+   C-EXPORT-TAIL!                                        \ tail again for the publish (pure rescan)
+   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+   C-STORE-DEF-NAME
+   14 SP 0 LDR,  14 9 0 STR,                            \ [0] = source code ptr
+   14 SP 8 LDR,  14 9 8 STR,                            \ [8] = source body len
+   14 SP 16 LDR,                                        \ x14 = LFIND flags
+   15 9 16 LDR,
+   16 14 2 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit1 -> DNAME-IMM
+   16 14 8 ANDI,  16 16 59 LSLI,  15 15 16 ORR,         \ flag bit3 -> DNAME-WIDE
+   15 9 16 STR,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
+   2 5 MOVZ,  LPROT LABEL@ BL,
+   SP SP 32 ADDI,
+   done LBL, ;
+s" c-export" s" --" TRUST
+
 : EM-INTERPRET-DEFINE-KEYWORDS ( -- )
    s" package" KEEP? IF LMAIN LABEL@ LKWPACKAGE 7 ['] C-PACKAGE CF-ENTRY THEN
    s" public" KEEP? IF LMAIN LABEL@ LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY THEN
    s" private" KEEP? IF LMAIN LABEL@ LKWPRIVATE 7 ['] C-PRIVATE CF-ENTRY THEN
    s" end-package" KEEP? IF LMAIN LABEL@ LKWENDPACKAGE 11 ['] C-END-PACKAGE CF-ENTRY THEN
+   s" export" KEEP? IF LMAIN LABEL@ LKWEXPORT 6 ['] C-EXPORT CF-ENTRY THEN
    s" trusted:" KEEP? IF LMAIN LABEL@ LKWTRUSTED 8 ['] C-TRUSTED CF-ENTRY THEN
    s" defer" KEEP? IF LMAIN LABEL@ LKWDEFER 5 ['] C-DEFER CF-ENTRY THEN
    s" create" KEEP? IF LMAIN LABEL@ LKWCREATE 6 ['] C-CREATE   CF-ENTRY THEN
@@ -4681,6 +4773,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
    LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LP2DOESW !
+   LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LSIGPTRA !  LBL LSIGA !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
