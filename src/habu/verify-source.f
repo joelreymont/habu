@@ -399,20 +399,23 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 : SUMTYPE-END? ( ptr u8 n -- bool )
    s" ;SUMTYPE" STR=CI ;
 
+\ Missing name/arity are reported by CHECKER-DEFFAMILY through the declaration
+\ packet (E-BAD-DECLARATION), matching the native path -- no raw pre-check die (§24).
 : RECORD-TYPEFAMILY ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing typefamily name" 74 die THEN
    NEXT-SCAN {: ar:ptr aru:n :}
-   aru 0= IF s" verify-source: missing typefamily arity" 74 die THEN
    name nameu ar aru CHECKER-DEFFAMILY ;
 
 : RECORD-SUMTYPE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
-   nameu 0= IF s" verify-source: missing sumtype name" 74 die THEN
    0 BODY-U !
    BEGIN
       NEXT-SCAN
-      dup 0= IF s" verify-source: missing ;SUMTYPE" 74 die THEN
+      dup 0= IF                        \ EOF before ;SUMTYPE -> declaration packet (§24)
+         2drop
+         name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM-NOEND
+         EXIT
+      THEN
       2dup SUMTYPE-END? IF
          2drop
          name nameu BODY-BUF BODY-U @ CHECKER-DEFSUM

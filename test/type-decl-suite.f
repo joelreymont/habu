@@ -817,6 +817,8 @@ s" TYPEFAMILY tdarx x" E-TDECL-ARITY TDT-NEG
 s" TYPEFAMILY tdarneg -1" E-TDECL-ARITY TDT-NEG
 s" TYPEFAMILY tdarbig 27" E-TDECL-ARITY TDT-NEG
 s" SUMTYPE tdarv VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-ARITY TDT-NEG
+\ unterminated body (no ;SUMTYPE) reports the declaration packet via SUM-NOEND (S2).
+s" SUMTYPE tdnoend 1 VARIANT ok a ;VARIANT" E-TDECL-SYNTAX TDT-NEG
 \ malformed sum bodies.
 s" SUMTYPE tdempty 1 ;SUMTYPE" E-TDECL-SYNTAX TDT-NEG
 s" SUMTYPE tdnoterm 1 VARIANT ok a ;VARIANT" E-TDECL-SYNTAX TDT-NEG

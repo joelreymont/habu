@@ -85,6 +85,18 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    0 TDT-U !  0 TDT-A !
    s" declaration failed" TDECL-WHY! ;
 
+\ Shared unterminated-sum reject: report the declaration-shaped E-BAD-DECLARATION
+\ packet (name + partial body) through TDECL-RUN so every path -- native SUMTYPE,
+\ the verify-source recording pass, and the check.f collector -- agrees (§24).
+\ Defined here (before CHECKER-DEFSUM) so every context that sees CHECKER-DEFSUM
+\ also sees CHECKER-DEFSUM-NOEND.
+: TDECL-NOEND-BODY ( -- )
+   TDN-A @ TDN-U @ s" missing ;SUMTYPE" E-TDECL-SYNTAX TDECL-THROW ;
+: CHECKER-DEFSUM-NOEND ( ptr u8 n ptr u8 n -- )   \ name, partial body -> declaration packet
+   {: na:ptr nu:n ba:ptr bu:n :}
+   s" sumtype" na nu ba bu TDECL-CTX!
+   [: TDECL-NOEND-BODY ;] TDECL-RUN ;
+
 \ --- name gate: reserved signature/type tokens, control words, and grammar
 \ keywords may not name a family or variant (docs §1, PLAN item 6).
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
@@ -687,15 +699,11 @@ variable TDECL-I
       TDECL-TOKEN+
    AGAIN ;
 
-: TDECL-NOEND-BODY ( -- )
-   TDN-A @ TDN-U @ s" missing ;SUMTYPE" E-TDECL-SYNTAX TDECL-THROW ;
-
 : SUMTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    TDECL-CLEAR
    SUMTYPE-COLLECT 0= IF
-      s" sumtype" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-      [: TDECL-NOEND-BODY ;] TDECL-RUN EXIT
+      na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM-NOEND EXIT
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM
    TDECL-CTOR-WORDS ;
