@@ -422,6 +422,30 @@ variable PWG-U
    s" the 257th public family overflows -> labeled 'protected-WID table full' exit 84" T-LABEL
    257 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
 
+\ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
+\ Once the friend latch is sealed, publishing a definition into a protected WID (a public
+\ family's generated constructor package) via `<pkg>:WORD` must fail closed. The guard
+\ (habu2.f C-STORE-DEF-NAME) now names itself on fd 2 (LPROTPUB) with the offending word
+\ before exit 84. Red-first: the bare exit left stderr empty, so the CONTAINS assertion
+\ fails. (The sibling AOT boot-pass gate EM-AOTWIDGATE is also now labeled (LPROTAOT); it
+\ fires only on a crafted AOT/snapshot image, so its forced-reject fixture is dotted.)
+: SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
+   SB-RESET
+   s" SUMTYPE foo 1 VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
+   s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died E-SEAL-PACKAGE naming the publish guard
+   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-RC @ SLV-PWID-RC T=
+   SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
+
+: SLV-PROT-PUBLISH ( -- )
+   s" : foo:BOGUS ; into a public family's protected WID -> labeled exit 84 (stdin)" T-LABEL
+   SLV-PUBLISH-FORGE$ SLV-RUN-STDIN SLV-ASSERT-PROT-PUBLISH
+   s" : foo:BOGUS ; into a protected WID -> labeled exit 84 (--load)" T-LABEL
+   SLV-PUBLISH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PROT-PUBLISH ;
+
 : SLV-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seal" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -534,6 +558,7 @@ variable PWG-U
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
    SLV-PWID-CAP
+   SLV-PROT-PUBLISH
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;
