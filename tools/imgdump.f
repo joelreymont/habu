@@ -6,6 +6,8 @@
 \ Loads the target executable layout on demand; common dictionary layout is
 \ already present in the native cold prefix.
 
+require lib/adt/option.f                 \ option<n> for the number parsers (switchover wave A)
+
 : IMG-FALSE ( -- bool )
    0 0= 0= ;
 
@@ -271,46 +273,50 @@ variable OKV
 : A-START@ ( n -- n ) cells A-START + @ ;
 : A-LEN@ ( n -- n ) cells A-LEN + @ ;
 
-: IMG-HEX-DIGIT? ( n -- n bool ) {: c :}
-   c 48 >= c 57 <= and if c 48 - 0 0= exit then
-   c 65 >= c 70 <= and if c 55 - 0 0= exit then
-   c 97 >= c 102 <= and if c 87 - 0 0= exit then
-   0 0 0= 0= ;
+: IMG-HEX-DIGIT? ( n -- option<n> ) {: c:n :}   \ SOME hex digit value, else NONE
+   c 48 >= c 57 <= and if c 48 - OPTION:SOME exit then
+   c 65 >= c 70 <= and if c 55 - OPTION:SOME exit then
+   c 97 >= c 102 <= and if c 87 - OPTION:SOME exit then
+   OPTION:NONE ;
 
-: DEC-DIGIT? ( n -- n bool ) {: c :}
-   c 48 >= c 57 <= and if c 48 - 0 0= exit then
-   0 0 0= 0= ;
+: DEC-DIGIT? ( n -- option<n> ) {: c:n :}   \ SOME decimal digit value, else NONE
+   c 48 >= c 57 <= and if c 48 - OPTION:SOME exit then
+   OPTION:NONE ;
 
 : HEX-BODY ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
    u 1 > if a c@ 36 = if a 1 + u 1 - 0 0= exit then then
    u 2 > if a c@ 48 = a 1 + c@ 120 = and if a 2 + u 2 - 0 0= exit then then
    a u 0 0= 0= ;
 
-: PARSE-HEX ( ptr u8 n -- n bool ) {: a:ptr u :}
-   u 0= if 0 0 0= 0= exit then
+: PARSE-HEX ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed hex value, else NONE
+   u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
    begin NUM-I @ u < while
-      a NUM-I @ + c@ IMG-HEX-DIGIT? 0= if drop 0 0 0= 0= exit then
-      NUM-DIG !
+      a NUM-I @ + c@ IMG-HEX-DIGIT? MATCH option
+        none OF OPTION:NONE exit ENDOF
+        some OF NUM-DIG ! ENDOF
+      ;MATCH
       NUM-ACC @ 16 * NUM-DIG @ + NUM-ACC !
       NUM-I @ 1 + NUM-I !
    repeat
-   NUM-ACC @ 0 0= ;
+   NUM-ACC @ OPTION:SOME ;
 
-: PARSE-DEC ( ptr u8 n -- n bool ) {: a:ptr u :}
-   u 0= if 0 0 0= 0= exit then
+: PARSE-DEC ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME parsed decimal value, else NONE
+   u 0= if OPTION:NONE exit then
    0 NUM-I !
    0 NUM-ACC !
    begin NUM-I @ u < while
-      a NUM-I @ + c@ DEC-DIGIT? 0= if drop 0 0 0= 0= exit then
-      NUM-DIG !
+      a NUM-I @ + c@ DEC-DIGIT? MATCH option
+        none OF OPTION:NONE exit ENDOF
+        some OF NUM-DIG ! ENDOF
+      ;MATCH
       NUM-ACC @ 10 * NUM-DIG @ + NUM-ACC !
       NUM-I @ 1 + NUM-I !
    repeat
-   NUM-ACC @ 0 0= ;
+   NUM-ACC @ OPTION:SOME ;
 
-: IMG>NUMBER? ( ptr u8 n -- n bool )
+: IMG>NUMBER? ( ptr u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
    HEX-BODY if PARSE-HEX exit then
    PARSE-DEC ;
 
@@ -417,7 +423,10 @@ variable OKV
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG COMPARE-B REPORT-COMPARE ;
 
 : PC-ARG ( -- n )
-   2 SCRIPT-ARGV$ IMG>NUMBER? 0= if drop IMG-USAGE then ;
+   2 SCRIPT-ARGV$ IMG>NUMBER? MATCH option
+     none OF IMG-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : PC-IMG ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH PREP-IMG

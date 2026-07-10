@@ -133,9 +133,30 @@ variable IDT-DIFF-U
    IDT-OUT outu s" > B $10" CONTAINS? TTRUE
    IDT-ERR erru s" imgdump: dictionaries differ" CONTAINS? TTRUE ;
 
+\ switchover wave A: the imgdump number parsers return option<n> (SOME parsed
+\ value, else NONE). Both branches through IMG>NUMBER? ($hex, 0x hex, decimal, bad).
+: IDT-NUM-SOME ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   a u IMG>NUMBER? MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF want = ENDOF
+   ;MATCH TTRUE ;
+: IDT-NUM-NONE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u IMG>NUMBER? MATCH option
+     none OF 0 0= ENDOF
+     some OF drop 0 0= 0= ENDOF
+   ;MATCH TTRUE ;
+: IDT-TEST-PARSERS ( -- )
+   s" $ff" 255 IDT-NUM-SOME
+   s" 0x10" 16 IDT-NUM-SOME
+   s" 42" 42 IDT-NUM-SOME
+   s" $zz" IDT-NUM-NONE
+   s" 4x2" IDT-NUM-NONE
+   s" " IDT-NUM-NONE ;
+
 : IDT-MAIN ( -- )
    T-RESET
    IDT-PREPARE
+   IDT-TEST-PARSERS
    IDT-TEST-DUMP
    IDT-TEST-IDENTICAL
    IDT-TEST-SHIFT
