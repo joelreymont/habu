@@ -717,6 +717,45 @@ variable BFT-DOC-CODE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 
+\ ---- source buffer IBUFSZ overflow labeled exit (dot habu-name-silent-engine-9b28ac13) ----
+\ A --load source larger than IBUFSZ ($180000) fills the input buffer mid-read;
+\ EMIT-SOURCE-READ's sbufull leg (split from the read()-fault sreaderr leg) now
+\ names the buffer on fd 2 before the rc-74 exit ("hb: source prefix buffer
+\ full", the same message SRC-SFAIL/SRC-BFAIL emit). Content is irrelevant -- the
+\ read overflows before any byte is parsed -- so a zeroed mmap buffer is written
+\ verbatim. Red-first: a bare rc-74 exit (pre-fix) leaves stderr empty and the
+\ CONTAINS assertion fails; the earlier "hb: cannot read source" wording (before
+\ the sbufull split) also fails this assertion.
+$1A0000 constant BFT-SRCFULL-SZ   \ 1703936 > IBUFSZ 1572864: guarantees the read overflow
+
+variable BFT-OVF-KIND
+variable BFT-OVF-CODE
+variable BFT-OVF-ERR-U
+
+: BFT-OVF-ERR$ ( -- ptr u8 n )
+   BFT-ERR BFT-OVF-ERR-U @ ;
+
+: BFT-SRCFULL-WRITE ( -- )                     \ write an oversized (>IBUFSZ) source file into the tmp root
+   s" bft-srcfull.f" BF-A$ BFT-SRCFULL-SZ MEM-ALLOC-BYTES WRITE-ALL ;
+
+: BFT-SRCFULL-RUN ( -- )                       \ run bin/hb --load <oversized>, capture stderr + exit outcome
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
+   s" bin/hb" >LEN  BFT-EMPTY$ >LEN
+   BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: ou:len eu:len kind:n code:n :}
+   eu LEN>N BFT-OVF-ERR-U !  kind BFT-OVF-KIND !  code BFT-OVF-CODE ! ;
+
+: BFT-TEST-SOURCE-OVERFLOW ( -- )
+   BFT-ROOT BF-TMP!
+   BFT-SRCFULL-WRITE
+   BFT-SRCFULL-RUN
+   BFT-OVF-KIND @ PROC-OUTCOME-EXIT T=
+   BFT-OVF-CODE @ 74 T=
+   BFT-OVF-ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
+   BF-TMP-RESET ;
+
 : BFT-TEST-TMP-OVERRIDE ( -- )
    BFT-ROOT BF-TMP!
    BF-TMP$ BFT-ROOT T$=
@@ -898,6 +937,7 @@ variable BFT-DOC-CODE
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
+   s" source overflow" [: BFT-TEST-SOURCE-OVERFLOW ;] BFT-STEP
    CLEANUP-RUN
    BFT-ROOT EXISTS? TFALSE
    T-REPORT
