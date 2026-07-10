@@ -1743,8 +1743,18 @@ The layout-policy rejects above (`E-TDECL-POLICY`) are top-level declaration
 diagnostics: they carry the offending policy token and ride the same
 declaration-shaped packet as every other `SUMTYPE`/`ENUM`/`PRODUCT` reject (a bad
 policy on a `SUMTYPE` renders `bad sumtype declaration '<name>': layout policy
-not yet supported at '<policy>'`). `invalid layout policy for recursive sum`
-lands with the boxed policy — the only layout that admits recursion.
+not yet supported at '<policy>'`).
+
+`invalid layout policy for recursive sum` (`E-TDECL-RECURSIVE`) fires when a
+variant/field payload names the family being declared: a **direct** self-family
+reference (inline `tree<a>`, `ptr tree<a>`, a bare `tree`, or a product self-field)
+makes the family recursive, which only the boxed policy can represent (its pointer
+indirection breaks the width cycle). Since packed/niche/boxed all reject at the
+`POLICY` clause, every family reaching payload parsing is `stack-cell-tag`, so a
+self-reference always rejects here; the boxed accept slice will route a boxed
+family's self-reference to a pointer layout before this reject. Mutual recursion
+(`A` → `B` → `A`) needs a schema cycle walk and is a later boxed sub-slice; this
+covers the direct case only.
 
 Diagnostics should show logical types, not hidden fields.
 

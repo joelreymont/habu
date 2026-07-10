@@ -26,6 +26,7 @@
 7109 constant E-TDECL-PAYLOAD   \ unknown variant payload type
 7110 constant E-TDECL-NAME      \ reserved or colliding family/variant name
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
+7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 
 26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
@@ -237,11 +238,27 @@ variable TDECL-FAM-ARITY
    c 114 = IF CC-R SCHEMA-CON EXIT THEN
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
+\ item 16 boxed sub-slice 1: a DIRECT self-family reference is a payload token
+\ whose tail is the family being declared (TDN-A/TDN-U). An inline or ptr-wrapped
+\ self-reference makes the family recursive, which only the boxed policy can lay
+\ out (its pointer indirection breaks the width cycle); under any non-boxed policy
+\ it is unrepresentable. Since packed/niche/boxed all still reject at the POLICY
+\ clause, every family reaching payload parsing is stack-cell-tag, so a self-ref
+\ always rejects here with the docs §24 recursive-sum diagnostic (was the generic
+\ E-TDECL-PAYLOAD "unknown payload type"). The boxed accept sub-slice will route a
+\ boxed family's self-ref to a pointer layout before this reject. Mutual recursion
+\ (A -> B -> A) needs a schema cycle walk and is a later sub-slice; this is the
+\ direct case only.
+: TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u TDN-A @ TDN-U @ CORE-STR= ;
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
    a u TDECL-KEYWORD? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
    a u s" ptr" CORE-STR= IF TDECL-NEXT RECURSE SCHEMA-PTR EXIT THEN
+   a u TDECL-SELF-REF? IF
+      a u s" invalid layout policy for recursive sum" E-TDECL-RECURSIVE TDECL-THROW
+   THEN
    u 1 = IF a u TDECL-LETTER EXIT THEN
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
@@ -307,9 +324,10 @@ variable TDV-NA    variable TDV-NU
 \ item 16 risk: physical-layout policies must not be exposed before codegen
 \ supports them), and each becomes its own follow-on slice. Any other token
 \ (including the v1 non-goal `custom`, which the LAY-* registry tolerates but the
-\ grammar must not) is an unknown policy. The recursive-sum reject (docs §24)
-\ lands with the boxed slice — boxed is the only layout that admits recursion,
-\ and a recursive payload is not expressible in the v1 grammar today.
+\ grammar must not) is an unknown policy. A DIRECT self-family payload reference
+\ is recursive and rejects at TDECL-PAY-ELEM with the docs §24 recursive-sum
+\ diagnostic (E-TDECL-RECURSIVE, boxed sub-slice 1 below); boxed — the only layout
+\ that admits recursion — will later route its self-references to a pointer layout.
 : TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" packed-tag" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN

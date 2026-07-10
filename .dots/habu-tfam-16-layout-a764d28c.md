@@ -232,6 +232,24 @@ POLICY boxed for self-referential families + self-ref lays out as a pointer; (3)
 heap/DATA alloc + constructor lowering; (4) MATCH deref+tag lowering; (5) mutual-
 recursion cycle detection; (6) full construct/match/invalid-tag/layout tests.
 
+### BOXED SUB-SLICE 1 — LANDED (direct self-ref recognition + §24 reject)
+`src/core/sumtype.f`: `E-TDECL-RECURSIVE` (7117 — next free after E-TDECL-POLICY
+7116), `TDECL-SELF-REF?` (payload token tail == the declaring family TDN-A/TDN-U),
+and a reject in `TDECL-PAY-ELEM` (after the `ptr` recurse, before letter/con) that
+throws the docs §24 "invalid layout policy for recursive sum" via the standard
+TDECL-THROW declaration packet. Catches inline `tree<a>`, `ptr tree<a>`, bare
+`tree`, and product self-fields (product self-refs fall through TDECL-FIELD-FAM?,
+which excludes product-kind, into TDECL-PAY-ELEM). NO representation/heap/width/
+accept — packed/niche/boxed still reject at the POLICY clause, so every family
+reaching payload parsing is stack-cell-tag and a self-ref always rejects here.
+Mutual recursion (A→B→A) needs a schema cycle walk — deferred to a later boxed
+sub-slice. Reclassifies the pre-existing self-ref test (tdpbad3, product self-
+field) from E-TDECL-PAYLOAD → E-TDECL-RECURSIVE (the correct diagnostic); non-self
+family payloads (tdpbad1/2/4) stay E-TDECL-PAYLOAD. Fixtures in
+test/type-decl-suite.f (4 self-ref forms reject 7117 + a non-self stays 7109 + a
+private non-recursive positive). Docs §24 + the foundation TDECL-POLICY comment
+updated. Remaining boxed sub-slices 2-6 unchanged.
+
 ### Item-lane collision (public-signature / repair-diagnostics, tfam-13)
 Item lane touches sumtype.f (declaration-DIAGNOSTIC packet shape: c1-doc,
 c2-oversize) and render.f (repair-packet rendering). niche/boxed touch sumtype.f

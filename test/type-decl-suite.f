@@ -536,8 +536,9 @@ TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
 \ family-id, PF.SLOT is the cumulative CELL OFFSET (identity while every field
 \ is one cell), and MAKE/UNMAKE render the field as its family — the field is
 \ born typed, so a swapped enum-field argument order is a checker reject (the
-\ dtype/layout guarantee the CAD swap needs). Wider / parametric / product /
-\ self-referential fields and SUM variant payloads stay E-TDECL-PAYLOAD (S2/S3).
+\ dtype/layout guarantee the CAD swap needs). Wider / parametric / other-family
+\ fields and SUM variant payloads stay E-TDECL-PAYLOAD (S2/S3); a SELF-referential
+\ field is recursive and rejects with E-TDECL-RECURSIVE (item 16 boxed sub-slice 1).
 PRODUCT tdprec 0
   FIELD col tdcolor
   FIELD lum tdlight
@@ -575,14 +576,17 @@ s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1
    ;MATCH ;
 TDP-CODE 2 T=
 \ out-of-tier fields keep the payload reject, transactionally rolled back:
-\ parametric (tdres, arity 2), wider zero-arity (tdpw, W = 2), product-kinded
-\ self-reference, and an enum in a SUM variant payload (the S3 tier).
+\ parametric (tdres, arity 2), wider zero-arity (tdpw, W = 2), and an enum in a
+\ SUM variant payload (the S3 tier); a self-referential field is instead recursive
+\ (tdpbad3 → E-TDECL-RECURSIVE, item 16 boxed sub-slice 1).
 SUMTYPE tdpw 0
   VARIANT one n ;VARIANT
 ;SUMTYPE
 s" PRODUCT tdpbad1 0 FIELD r tdres ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpbad2 0 FIELD w tdpw ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
-s" PRODUCT tdpbad3 0 FIELD s tdpbad3 ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+\ a SELF-referential field is recursive: item 16 boxed sub-slice 1 rejects it with
+\ the §24 recursive-sum diagnostic (E-TDECL-RECURSIVE), not the generic payload one.
+s" PRODUCT tdpbad3 0 FIELD s tdpbad3 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
 s" SUMTYPE tdpbad4 0 VARIANT vv tdcolor ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 
 \ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).
@@ -953,6 +957,34 @@ s" SUMTYPE tdpolmiss 1 POLICY ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE policy 1 VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdpolrv 1 VARIANT policy a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" TYPEFAMILY policy 1" E-TDECL-NAME TDT-NEG
+
+\ ---------------------------------------------------------------------------
+\ item 16 boxed sub-slice 1: a DIRECT self-family reference in a payload makes
+\ the family recursive, which only the (deferred) boxed policy can represent; so
+\ under any non-boxed policy — every family today, since packed/niche/boxed reject
+\ at the POLICY clause — a self-ref rejects with the docs §24 recursive-sum
+\ diagnostic (E-TDECL-RECURSIVE), not the generic E-TDECL-PAYLOAD "unknown payload
+\ type". ptr-wrapped, inline, bare, and product-field forms all reject; the reject
+\ rolls back to baseline (TDT-NEG asserts TDT-BASE=). Mutual recursion
+\ (A -> B -> A) needs a schema cycle walk and is a later sub-slice.
+\ ---------------------------------------------------------------------------
+s" SUMTYPE tdrec1 1 VARIANT leaf a ;VARIANT VARIANT node ptr tdrec1<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrec2 1 VARIANT node tdrec2<a> ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" SUMTYPE tdrec3 0 VARIANT self tdrec3 ;VARIANT ;SUMTYPE" E-TDECL-RECURSIVE TDT-NEG
+s" PRODUCT tdrec4 0 FIELD child tdrec4 ;PRODUCT" E-TDECL-RECURSIVE TDT-NEG
+\ a NON-self family payload is unchanged: still the generic unknown-payload reject.
+s" SUMTYPE tdrec5 1 VARIANT node tdother<a> ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ non-recursive payloads are unaffected: a ptr-to-concrete payload still accepts
+\ (private family - no public constructors, so the protected-WID seal cap is
+\ untouched, dot habu-seal-protwid-cap-6f1c9d2b).
+package tdrp
+SUMTYPE tdrec6 1
+  VARIANT node ptr u8 ;VARIANT
+;SUMTYPE
+end-package
+s" tdrp" s" tdrec6" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-KIND@ TK-SUM T=
 
 \ ---------------------------------------------------------------------------
 \ declaration diagnostic packet: declaration-shaped, through the standard
