@@ -112,10 +112,24 @@ create AT-WORK 5 cells allot
    arr len A-LEN q A-SCAN1! ;
 
 : AT-A-FIND-INDEX ( ptr a n [ a -- bool ] -- n ) {: arr:ptr len q :}
-   arr len A-LEN q A-FIND-INDEX ;
+   arr len A-LEN q A-FIND-INDEX MATCH option none OF -1 ENDOF some OF IDX>N ENDOF ;MATCH ;
 
 : AT-A-FIND-INDEXI ( ptr a n [ idx a -- bool ] -- n ) {: arr:ptr len q :}
-   arr len A-LEN q A-FIND-INDEXI ;
+   arr len A-LEN q A-FIND-INDEXI MATCH option none OF -1 ENDOF some OF IDX>N ENDOF ;MATCH ;
+
+\ Direct option<idx> assertions for the migrated finders (found -> some, absent -> none).
+\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
+: AT-A-FIND-SOME ( ptr a n [ a -- bool ] n -- ) {: arr:ptr len q want:n :}
+   arr len A-LEN q A-FIND-INDEX MATCH option
+     none OF 0 0= 0= ENDOF                          \ none -> false (unexpected)
+     some OF IDX>N want = ENDOF                       \ some(idx) -> idx == want
+   ;MATCH T-ASSERT ;
+\ typed-local-lint: allow-bare-local - q keeps the predicate quotation effect from the stack signature.
+: AT-A-FIND-NONE ( ptr a n [ a -- bool ] -- ) {: arr:ptr len q :}
+   arr len A-LEN q A-FIND-INDEX MATCH option
+     none OF 0 0= ENDOF                             \ none -> true
+     some OF drop 0 0= 0= ENDOF                       \ some -> false (unexpected)
+   ;MATCH T-ASSERT ;
 
 : AT-WORK5@ ( -- n n n n n )
    AT-WORK 5 0 AT-A@
@@ -430,6 +444,11 @@ create AT-WORK 5 cells allot
    AT-ONE 1 [: drop IDX>N 0 = ;] AT-A-FIND-INDEXI 0 T=
    AT-NORMAL 5 [: drop IDX>N 3 = ;] AT-A-FIND-INDEXI 3 T=
    [: AT-AFINDI-NEG ;] catch E-A-BOUNDS T=
+   \ migrated option<idx> API: found -> SOME(idx), absent -> NONE
+   AT-NORMAL 5 [: 4 = ;] 2 AT-A-FIND-SOME
+   AT-ONE 1 [: 42 = ;] 0 AT-A-FIND-SOME
+   AT-NORMAL 5 [: 9 = ;] AT-A-FIND-NONE
+   AT-EMPTY 0 [: 4 = ;] AT-A-FIND-NONE
    [: AT-AMAX-INDEX-EMPTY ;] catch E-A-EMPTY T=
    AT-ONE 1 AT-A-MAX-INDEX 0 T=
    AT-NORMAL 5 AT-A-MAX-INDEX 2 T=

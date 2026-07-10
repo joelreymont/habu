@@ -32,8 +32,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	array	lib/array.f	word	A-FOLDI	(ptr a len b [ b idx a -- b ] -- b)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	fold indexes and cells with an accumulator
 1	array	lib/array.f	word	A-SCAN!	(ptr n len n [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values from an explicit seed
 1	array	lib/array.f	word	A-SCAN1!	(ptr n len [ n n -- n ] --)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	write prefix scan values using the first cell as seed
-1	array	lib/array.f	word	A-FIND-INDEX	(ptr a len [ a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first value-matching index or -1
-1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- n)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	return first index-aware match or -1
+1	array	lib/array.f	word	A-FIND-INDEX	(ptr a len [ a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first value-matching index, else NONE
+1	array	lib/array.f	word	A-FIND-INDEXI	(ptr a len [ idx a -- bool ] -- option<idx>)	lib/array-test.f	docs/stdlib.md	stdlib-array	published	SOME first index-aware match, else NONE
 1	table	lib/table.f	module			lib/table-test.f	docs/stdlib.md	stdlib-table	active	checked fixed-capacity cell table record helpers
 1	table	lib/table.f	word	TBL-CHECK-ROW	(count idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based row index against a table row capacity
 1	table	lib/table.f	word	TBL-CHECK-FIELD	(count idx --)	lib/table-test.f	docs/stdlib.md	stdlib-table	published	validate one zero-based field index against a record width
