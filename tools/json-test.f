@@ -68,7 +68,10 @@ variable T-LARGE-LEN
    T-LARGE-A@ T-LARGE-LEN @ ;
 
 : PARSE-CODE ( ptr u8 n -- n )
-   JSON-PARSE-TRY >r 2drop r> ;
+   JSON-PARSE-TRY MATCH result
+     ok  OF drop 0 ENDOF                        \ parsed clean -> code 0
+     err OF ENDOF                                \ the caught throw code
+   ;MATCH ;
 
 variable TA
 variable TU
@@ -213,15 +216,14 @@ variable NODE
    s" prose not json" PARSE-CODE E-JSON-SYNTAX ASSERT= ;
 
 : TEST-PARSE-TRY ( -- )
-   BUILD-NESTED JSON-PARSE-TRY
-   0 ASSERT=
-   JSON-PARSE-OK ASSERT=
-   dup JSON-KIND J-OBJ ASSERT=
-   drop
-   s" prose not json" JSON-PARSE-TRY
-   E-JSON-SYNTAX ASSERT=
-   JSON-PARSE-THROW ASSERT=
-   -1 ASSERT= ;
+   BUILD-NESTED JSON-PARSE-TRY MATCH result
+     ok  OF JSON-KIND J-OBJ ASSERT= ENDOF        \ ok(root): the nested object parses
+     err OF drop 1 0 ASSERT= ENDOF                \ unexpected throw
+   ;MATCH
+   s" prose not json" JSON-PARSE-TRY MATCH result
+     ok  OF drop 1 0 ASSERT= ENDOF                \ unexpected parse
+     err OF E-JSON-SYNTAX ASSERT= ENDOF           \ err(code): syntax throw surfaced
+   ;MATCH ;
 
 : ADD-LINE ( -- )
    J-LF T+C ;
