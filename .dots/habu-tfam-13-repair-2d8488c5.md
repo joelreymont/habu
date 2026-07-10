@@ -1,6 +1,6 @@
 ---
 title: TFAM 13 repair-packet ADT variant/tag field
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-10T14:59:02.249233+02:00"

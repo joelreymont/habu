@@ -1,6 +1,6 @@
 ---
 title: Migrate tools/date.f PARSE-YMD/DATE-N to option (wide radius)
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-10T20:29:15.597433+02:00"
