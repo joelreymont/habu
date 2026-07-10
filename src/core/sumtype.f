@@ -368,7 +368,8 @@ variable TDV-NA    variable TDV-NU
 \ are generated only by the engine PRODUCT definer below. MATCH and
 \ `construct` stay kind-gated to sum/enum, so product rows are never matchable
 \ variants and private products have no construction surface (fail-closed).
-variable TDP-N   \ product field count / next physical slot
+variable TDP-N   \ product field count (schema roots)
+variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -378,16 +379,47 @@ variable TDP-N   \ product field count / next physical slot
       a u s" field name must be a lowercase tail" E-TFAM-CASE TDECL-THROW
    THEN ;
 
+\ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03):
+\ a PRODUCT field may be typed as an S1-tier layout family — sum/enum kind,
+\ arity 0, registry width 1 (the enum tier; arity 0 also means no arg can ever
+\ be linear). The field schema is a family application (SC-APP) holding the
+\ RESOLVED family-id, so the field is born typed: MAKE consumes it as its
+\ family, UNMAKE reproduces it, and a swapped same-width enum field is a
+\ checker reject. Resolution is signature scope (TFAM-SIG-RESOLVE: own package
+\ first, else the unique public; qualified PKG:tail accepted; ambiguity maps to
+\ unresolved). Wider, parametric, product-kinded (incl. self-referential), and
+\ linear layout fields fall through to the payload grammar's E-TDECL-PAYLOAD —
+\ the S2 tier; SUM variant payloads keep the same reject until S3.
+: TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-SUM? id TFAM-ENUM? or 0= IF 0 RES-FALSE EXIT THEN
+   id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
+   id TFAM-WIDTH@ 1 <> IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TDECL-FIELD-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}   \ field type -> schema node
+   a u TDECL-FIELD-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
+   a u TDECL-PAY-ELEM ;
+
+: TDECL-SCH-WIDTH ( n -- n ) {: node:n :}   \ field schema node -> cell width
+   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
+   1 ;                                       \ letter/con/ptr fields are one cell
+
 \ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
-\ the field tail + one payload-shaped type into a schema root, add the PF row.
+\ the field tail + one field-shaped type into a schema root, add the PF row.
+\ PF.SLOT is the field's cumulative CELL OFFSET and the product's SLOTS/width
+\ is the field-width sum — identity with the old field-index/field-count values
+\ while every admitted field is one cell, and the correct shape for wider tiers.
 : TDECL-PRODUCT-FIELD ( n -- ) {: fam:n :}
    TDECL-NEXT {: fna:ptr fnu:n :}
    fna fnu TDECL-REQUIRE-FIELD-NAME
    SCHEMA-ROOT-N@ {: ss:n :}
-   TDECL-NEXT TDECL-PAY-ELEM SCHEMA-ROOT+ drop      \ one field type (letter/con/ptr T)
+   TDECL-NEXT TDECL-FIELD-ELEM SCHEMA-ROOT+ drop    \ one field type (family/letter/con/ptr T)
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
-   fam fna fnu ss TDP-N @ PF-ADD drop               \ PF-ADD: canon + dup-reject
+   fam fna fnu ss TDP-W @ PF-ADD drop               \ PF-ADD: canon + dup-reject
+   ss SCHEMA-ROOT@ TDECL-SCH-WIDTH TDP-W @ + TDP-W !
    TDP-N @ 1 + TDP-N ! ;
 
 : TDECL-PRODUCT-FIELDS ( n -- ) {: fam:n :}
@@ -401,11 +433,12 @@ variable TDP-N   \ product field count / next physical slot
    AGAIN ;
 
 \ the two generated-word rows: field schemas are appended one root per field,
-\ so the ctor payload range is exactly [rstart, rstart+W) — both rows share it.
+\ so the ctor payload range is [rstart, rstart+field-count) — both rows share
+\ it; the rows' PAYCELLS is the CELL width sum (TDP-W), not the field count.
 : TDECL-PRODUCT-ROWS ( n n -- ) {: fam:n rstart:n :}
    SUMV-N @ {: vstart:n :}
-   fam s" make"   0 rstart TDP-N @ TDP-N @ SUMV-ADD drop
-   fam s" unmake" 1 rstart TDP-N @ TDP-N @ SUMV-ADD drop
+   fam s" make"   0 rstart TDP-N @ TDP-W @ SUMV-ADD drop
+   fam s" unmake" 1 rstart TDP-N @ TDP-W @ SUMV-ADD drop
    fam vstart 2 TFAM-VAR-RANGE!
    fam vstart 2 TDECL-CTOR-PUBLISH ;
 
@@ -417,11 +450,11 @@ variable TDP-N   \ product field count / next physical slot
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    PF-N @ {: fstart:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
-   0 TDP-N !
+   0 TDP-N !   0 TDP-W !
    fam TDECL-PRODUCT-FIELDS
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
-   fam TDP-N @ TFAM-SLOTS!               \ product width = field cell count (no tag)
+   fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
    fam rstart TDECL-PRODUCT-ROWS
    fam TDECL-FAM-REG ! ;
 
@@ -487,10 +520,21 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    v 10 mod 48 + TDGEN-C, ;
 : TDGEN-LETTER ( n -- ) 97 + TDGEN-C, ;  \ positional param -> a..z
 
+\ a family-application field (SC-APP, arity 0 in the S1 tier) renders as its
+\ signature reference: PKG:tail when the family lives in a package (the sig
+\ parser resolves qualified refs; the generated eval runs while the declaring
+\ package is still open, so own-private fields resolve too), bare tail at top
+\ level.
+: TDGEN-FAM-REF ( n -- ) {: fam:n :}
+   fam TFAM-PKG$ {: pa:ptr pu:n :}
+   pu 0 > IF pa pu TDGEN-APP 58 TDGEN-C, THEN
+   fam TFAM-NAME$ TDGEN-APP ;
+
 : TDGEN-SCH ( n -- ) {: node:n :}        \ one payload schema node -> sig text
    node SCHEMA-PARAM? IF node SCHEMA-A@ TDGEN-LETTER EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ CT-NAME$ TDGEN-APP EXIT THEN
    node SCHEMA-PTR?   IF s" ptr " TDGEN-APP node SCHEMA-A@ RECURSE EXIT THEN
+   node SCHEMA-APP?   IF node SCHEMA-A@ TDGEN-FAM-REF EXIT THEN
    s" sumtype: unsupported constructor payload schema" 76 die ;
 
 : TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root

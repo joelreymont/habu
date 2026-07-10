@@ -530,6 +530,61 @@ s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 TDCOLOR:GREEN TDS1-PUT TDS1-CODE 1 T=
 TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
 
+\ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03)
+\ An S1-tier layout family (sum/enum kind, arity 0, width 1) may type a PRODUCT
+\ field: the field schema is a family application (SC-APP) carrying the resolved
+\ family-id, PF.SLOT is the cumulative CELL OFFSET (identity while every field
+\ is one cell), and MAKE/UNMAKE render the field as its family — the field is
+\ born typed, so a swapped enum-field argument order is a checker reject (the
+\ dtype/layout guarantee the CAD swap needs). Wider / parametric / product /
+\ self-referential fields and SUM variant payloads stay E-TDECL-PAYLOAD (S2/S3).
+PRODUCT tdprec 0
+  FIELD col tdcolor
+  FIELD lum tdlight
+  FIELD cnt n
+;PRODUCT
+s" " s" tdprec" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-KIND@ TK-PRODUCT T=
+TDF @ TFAM-SLOTS@ 3 T=                    \ sum of field cell widths (all 1)
+TDF @ TFAM-WIDTH@ 3 T=
+TDF @ TFAM-FLD-START@ TDX !
+TDX @ PF-SLOT@ 0 T=                       \ cumulative cell offsets
+TDX @ 1 + PF-SLOT@ 1 T=
+TDX @ 2 + PF-SLOT@ 2 T=
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-APP? -1 T=
+s" " s" tdcolor" TFAM-FIND-IN TDOK ! TDY !
+TDX @ PF-SCH@ SCHEMA-ROOT@ SCHEMA-A@ TDY @ T=   \ SC-APP carries the enum family-id
+TDX @ 2 + PF-SCH@ SCHEMA-ROOT@ SCHEMA-CON? -1 T=
+TDF @ TFAM-VAR-START@ SUMV-PAYCELLS@ 3 T=       \ make/unmake rows carry cell width
+\ generated MAKE/UNMAKE consume/produce the fields as their families.
+s" TDP1 ( tdcolor tdlight n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDP2 ( tdprec -- tdcolor tdlight n ) TDPREC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+\ the born-typed guarantee: swapped same-width enum fields are a checker reject.
+s" TDP3 ( tdlight tdcolor n -- tdprec ) TDPREC:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+\ typed field accessor: a checked composition over UNMAKE.
+s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ executed round-trip: MAKE, destructure, MATCH the enum field.
+: TDP-MK ( -- tdprec ) TDCOLOR:BLUE TDLIGHT:RED 7 TDPREC:MAKE ;
+: TDP-COL ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop ;
+: TDP-CODE ( -- n )
+   TDP-MK TDP-COL MATCH tdcolor
+     red OF 0 ENDOF
+     green OF 1 ENDOF
+     blue OF 2 ENDOF
+   ;MATCH ;
+TDP-CODE 2 T=
+\ out-of-tier fields keep the payload reject, transactionally rolled back:
+\ parametric (tdres, arity 2), wider zero-arity (tdpw, W = 2), product-kinded
+\ self-reference, and an enum in a SUM variant payload (the S3 tier).
+SUMTYPE tdpw 0
+  VARIANT one n ;VARIANT
+;SUMTYPE
+s" PRODUCT tdpbad1 0 FIELD r tdres ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+s" PRODUCT tdpbad2 0 FIELD w tdpw ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+s" PRODUCT tdpbad3 0 FIELD s tdpbad3 ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
+s" SUMTYPE tdpbad4 0 VARIANT vv tdcolor ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+
 \ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).
 s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=

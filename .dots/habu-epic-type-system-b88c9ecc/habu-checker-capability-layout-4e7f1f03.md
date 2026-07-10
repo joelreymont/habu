@@ -132,6 +132,37 @@ model-ir nodes (product-of-indices with enum op-kind/dtype/layout fields).
   parser + width/hidden), small engine (width only), 1-2 fixpoints.
   DEPENDS: habu-checker-capability-typed only when the product is STORED (SKEY
   is), so land alongside that dot's S1.
+  LANDED 2026-07-10 (fable-cap; declaration-layer only — no checker.f or
+  engine change needed, 1 fixpoint):
+  - src/core/sumtype.f: TDECL-FIELD-FAM? (S1 tier gate: sum/enum kind, arity 0,
+    width 1, via TFAM-SIG-RESOLVE — signature scope, qualified refs, ambiguity
+    maps to unresolved); TDECL-FIELD-ELEM (family arm first, else the payload
+    grammar — used by PRODUCT fields only, so SUM variant payloads keep
+    E-TDECL-PAYLOAD until S3); SC-APP field schema carrying the resolved
+    family-id; TDP-W cumulative width — PF.SLOT = cell OFFSET, product
+    SLOTS/PAYCELLS = sum of field widths (identity while the tier is W=1,
+    correct shape for S2); TDGEN-FAM-REF renders the field as PKG:tail / bare
+    tail in the generated MAKE/UNMAKE sigs.
+  - IMPLEMENTATION FINDING (design simplification): Option B's leaf-family
+    hidden cells inside the product expansion were NOT needed for S1. The
+    born-typed guarantee comes from the generated MAKE/UNMAKE SIGNATURES (the
+    field appears as its enum family; k=0 empty-body certification unchanged);
+    the product's own hidden cells stay product-identified. The swapped-field
+    reject (TDP3) holds through ordinary hidden-cell family unification at the
+    MAKE call. Leaf-identified nested expansion becomes relevant only at S2
+    (wider fields / field-level access into stored rows).
+  - No consumer breakage: PF.SLOT had no engine/checker reader (only registry
+    test asserts); TFC-SCH-TERM stays fail-closed (products never construct or
+    match); TDGEN-SCH was the only other schema consumer and got the SC-APP arm.
+  - Pins: test/type-decl-suite.f TDPREC block — registry facts (SLOTS/WIDTH 3,
+    offsets 0/1/2, SC-APP family-id, PAYCELLS 3), MAKE/UNMAKE certify, TDP3
+    swapped-enum reject, TDP4 typed accessor, executed MAKE->UNMAKE->MATCH
+    round-trip; negatives tdpbad1-4 (parametric tdres, wider tdpw W=2,
+    self-referential product, enum-in-SUM-payload) all E-TDECL-PAYLOAD with
+    registry rollback (TDT-NEG).
+  - docs/type-families.md section 9.4: field-tier paragraph.
+  - Gates: fixpoint refresh OK; test/run.f PASS (34956ms <= 74900ms budget);
+    maki/test.f PASS; all 8 type suites ok rc=0; lints green.
 - S2 non-enum layout fields (bounded-depth product/sum fields). COST: both.
 - S3 layout-kinded SUM payloads (verdict `fail<reason>` where reason is an
   enum). COST: checker.

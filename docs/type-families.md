@@ -559,7 +559,17 @@ WIDTH(product<...>) = sum of field widths
 Field names are their own tail namespace (single letters such as `x` are
 legal, lowercase canon enforced, duplicates reject). Field types use the
 variant payload grammar: positional letter params within arity, concrete cell
-types, and `ptr T`.
+types, and `ptr T` — plus, since layout-kinded fields S1 (dot
+habu-checker-capability-layout-4e7f1f03), an S1-tier LAYOUT FAMILY reference
+(sum/enum kind, arity 0, width 1 — the enum tier). Such a field's schema is a
+family application (SC-APP) carrying the resolved family-id; `PF.SLOT` is the
+field's cumulative CELL OFFSET and the product's width is the field-width sum
+(both identity with the old index/count values while every field is one cell);
+`MAKE`/`UNMAKE` consume/produce the field typed as its family, so a swapped
+same-width enum field is a checker reject. Wider, parametric,
+product-kinded (incl. self-referential), and linear layout fields keep the
+`E-TDECL-PAYLOAD` reject (the S2 tier), as do SUM variant payloads (S3).
+Pinned in `test/type-decl-suite.f` (TDPREC/tdpbad*).
 
 A PUBLIC product publishes exactly two generated words in its derived
 constructor package, with fixed generator-owned tails (the analogue of a
