@@ -140,6 +140,9 @@ variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
 23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
 23 constant BADSTR-MSG-LEN    \ byte length of "hb: bad string literal\n" (LBADSTR; unterminated or bad-escape string literal)
+variable LPROTPUB   variable LPROTAOT   \ protected-WID seal labeled rc-84 exits (publish-into-protected / AOT boot-pass gate reject)
+40 constant PROTPUB-MSG-LEN   \ byte length of "hb: cannot publish into protected word: " (LPROTPUB; C-STORE-DEF-NAME appends the def name + newline)
+34 constant PROTAOT-MSG-LEN   \ byte length of "hb: AOT protected-WID gate reject\n" (LPROTAOT; EM-AOTWIDGATE boot-pass reject)
 variable LFLAGMATCH  variable LSRCBADFLAG  variable LFLAGTAB
 variable LBADFLAG    variable LUSAGE1      variable LUSAGE2     variable LSPC
 variable LPLINUXTARGET  variable LPMACOSTARGET
@@ -325,7 +328,9 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
-   LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES, ;                     \ BADSTR-MSG-LEN bytes incl. newline
+   LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
+   LPROTPUB LABEL@ LBL, s" hb: cannot publish into protected word: " BYTES,                     \ PROTPUB-MSG-LEN bytes; C-STORE-DEF-NAME appends the def name + newline
+   LPROTAOT LABEL@ LBL, s" hb: AOT protected-WID gate reject" BYTES,  NL-KW 1 BYTES, ;          \ PROTAOT-MSG-LEN bytes incl. newline
 
 \ override SIGTRAP(5) to the resuming handler (G-INSTALL-CRASH pointed all four
 \ at the dumper; this repoints just TRAP once LTRAPH is bound).
@@ -1853,7 +1858,10 @@ s" c-qualify-def" s" --" TRUST
    9 DATA DEF-WL-CELL LDR,  LPROTWIDQ LABEL@ BL,         \ x9 = target wid; x13 = protected?
    9 SP 0 LDR,  SP SP 16 ADDI,                           \ restore record ptr
    13 pgok CBZ,                                          \ not protected -> allow
-      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,         \ protected + sealed -> fail-closed
+      1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
+      0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
+      1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,                       \ + newline
+      0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
@@ -3145,7 +3153,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       9 5 40 LDR,                                        \ x9 = record WID
       LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
       13 wdone CBZ,
-         0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,      \ protected WID -> fail-closed
+         1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
+         0 E-SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -4816,6 +4825,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
+   LBL LPROTPUB !  LBL LPROTAOT !
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
