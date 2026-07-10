@@ -3292,3 +3292,8 @@ unchanged (148855). Keys for milestone 2:
   failures that never owned them, while packet generation dropped declaration
   fields and ADT family identity. Dispatch on the diagnostic shape, preserve its
   required evidence, and never fabricate fields from the other variant.
+- **Typed storage with untyped accessors does not preserve semantic roles.** An
+  `n` converted independently at a dtype or layout store can satisfy either
+  range when their tags overlap, and converting a typed fetch straight back to
+  `n` erases the only proof consumers need. Carry the family through internal
+  APIs and locals; convert only inside named wire or private table-index owners.

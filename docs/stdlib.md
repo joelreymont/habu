@@ -1428,13 +1428,14 @@ MONTH-DAYS        ( n n -- n )
 VALID-YMD?        ( n n n -- bool )
 YMD>DAYS          ( n n n -- n )
 DAYS>YMD          ( n -- n n n )
-DATE-N            ( ptr u8 n n -- n bool )
+DATE-N            ( ptr u8 n n -- option<n> )
 PARSE-YMD         ( ptr u8 n -- n bool )
 DATE-WIDTH!       ( n n ptr u8 n -- )
 FORMAT-YMD        ( n ptr u8 n -- ptr u8 n )
 FORMAT-EPOCH-UTC  ( n ptr u8 n -- ptr u8 n )
 ```
 
+`DATE-N` returns `SOME` with the parsed field or `NONE` on a non-digit.
 `PARSE-YMD` accepts exactly `YYYY-MM-DD` and returns the Unix epoch day plus a
 success flag. `FORMAT-YMD` writes `YYYY-MM-DD`; `FORMAT-EPOCH-UTC` writes
 `YYYY-MM-DDTHH:MM:SSZ`. Formatters use caller-provided buffers and throw
