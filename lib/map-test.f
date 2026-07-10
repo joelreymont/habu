@@ -138,7 +138,7 @@ create MT-KEY-Z 122 c,
 : MT-MAP-SLOT-INSERT ( a ptr a n n ptr u8 n -- ) {: value m:ptr ix hash key:ptr len :}
    value m ix >IDX hash key len >LEN MAP-SLOT-INSERT ;
 
-: MT-MAP-GET ( ptr a n ptr u8 n -- n bool ) {: m:ptr cap key:ptr len :}
+: MT-MAP-GET ( ptr a n ptr u8 n -- option<n> ) {: m:ptr cap:n key:ptr len:n :}
    m cap >COUNT key len >LEN MAP-GET ;
 
 : MT-MAP-HAS? ( ptr a n ptr u8 n -- bool ) {: m:ptr cap key:ptr len :}
@@ -331,12 +331,19 @@ create MT-KEY-Z 122 c,
 : MT-PROBE-RANGE ( ptr u8 n n n -- ) {: a:ptr u step cap :}
    a u MT-MAP-HASH step cap MT-MAP-PROBE cap MT-RANGE ;
 
-: MT-ASSERT-HIT ( ptr a n ptr u8 n n -- ) {: m:ptr cap key:ptr len want :}
-   m cap key len MT-MAP-GET MT-ASSERT want MT= ;
+: MT-ASSERT-HIT ( ptr a n ptr u8 n n -- ) {: m:ptr cap:n key:ptr len:n want:n :}
+   m cap key len MT-MAP-HAS? MT-ASSERT                  \ present -> HAS? true
+   m cap key len MT-MAP-GET MATCH option
+     none OF 0 0= 0= MT-ASSERT ENDOF                    \ hit expected, got NONE -> fail
+     some OF want MT= ENDOF                             \ SOME -> value must equal want
+   ;MATCH ;
 
-: MT-ASSERT-MISS ( ptr a n ptr u8 n -- ) {: m:ptr cap key:ptr len :}
-   m cap key len MT-MAP-HAS? 0= MT-ASSERT
-   m cap key len MT-MAP-GET 0= MT-ASSERT 0 MT= ;
+: MT-ASSERT-MISS ( ptr a n ptr u8 n -- ) {: m:ptr cap:n key:ptr len:n :}
+   m cap key len MT-MAP-HAS? 0= MT-ASSERT               \ absent -> HAS? false
+   m cap key len MT-MAP-GET MATCH option
+     none OF ENDOF                                      \ absent -> NONE, ok
+     some OF drop 0 0= 0= MT-ASSERT ENDOF               \ got SOME -> fail
+   ;MATCH ;
 
 : MT-ASSERT-COLLISION-SLOT ( n ptr u8 -- ) {: step want:ptr :}
    MT-MAP MT-KEY-A 1 MT-MAP-HASH step MT-CAP MT-MAP-PROBE MT-MAP-SLOT-KEY-A@

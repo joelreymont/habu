@@ -1,5 +1,7 @@
 \ map.f - fixed-capacity open-addressed string-key map layout.
 
+require lib/adt/option.f                      \ option<n> for MAP-GET (switchover wave A)
+
 0 constant MAP-CAP-OFF
 1 constant MAP-COUNT-OFF
 2 constant MAP-DELETED-OFF
@@ -203,16 +205,19 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    value m ix MAP-SLOT-VALUE!
    MAP-OCCUPIED m ix MAP-SLOT-STATE! ;
 
-: MAP-GET ( ptr a count ptr u8 len -- n bool ) {: m:ptr cap key:ptr len :}
-   m cap key len MAP-LOCATE {: ix loc hash :}
+: MAP-GET ( ptr a count ptr u8 len -- option<n> ) {: m:ptr cap:count key:ptr len:len :}   \ SOME value if the key is present, else NONE
+   m cap key len MAP-LOCATE {: ix:n loc:n hash:n :}
    loc MAP-LOC-FOUND = if
-      m ix >IDX MAP-SLOT-VALUE@ 0 0=
+      m ix >IDX MAP-SLOT-VALUE@ OPTION:SOME
    else
-      0 0 0= 0=
+      OPTION:NONE
    then ;
 
 : MAP-HAS? ( ptr a count ptr u8 len -- bool )
-   MAP-GET nip ;
+   MAP-GET MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF drop 0 0= ENDOF
+   ;MATCH ;
 
 : MAP-SET ( n ptr a count ptr u8 len -- ) {: value m:ptr cap key:ptr len :}
    m cap key len MAP-LOCATE {: ix loc hash :}

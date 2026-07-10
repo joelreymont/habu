@@ -53,3 +53,22 @@ rewritten to MATCH both branches; DATE-N manifest row updated to the option<n> s
 family, no WID pressure. Gate class LIGHTER (date.f on-demand, no byte-fixpoint).
 NO new trust rows. PARSE-YMD (its own return; WIDE external radius — trust-lint,
 stale-status-lint) deferred to dot habu-switchover-parse-ymd-b3d81c47.
+
+## SLICE 3 — LANDED (lib/map.f MAP-GET)
+
+`MAP-GET` (lib/map.f) `( ptr a count ptr u8 len -- n bool )` → `( ... -- option<n> )`:
+SOME value if the key is present, else NONE (wraps the MAP-LOCATE found/not-found
+sentinel at the boundary). Callers rewritten to MATCH: `MAP-HAS?` (in-file:
+`MAP-GET nip` → MATCH → bool), the test wrapper `MT-MAP-GET` + the assertion
+helpers `MT-ASSERT-HIT`/`MT-ASSERT-MISS` (so the existing hit/miss cases now
+exercise found→some / absent→none AND MAP-HAS? both branches), and
+`examples/file-map.f` (FM-INC / FM-COUNT did `MAP-GET if` → MATCH). MAP-GET
+manifest row updated to option<n>. Reused shared option — NO new public family.
+Typed the touched locals (MAP-GET `cap:count`/`len:len` — the count/len ROLES,
+not `n`, so MAP-LOCATE's input still matches). Gate class LIGHTER (map.f on-demand,
+no byte-fixpoint). NO new trust rows.
+
+CAVEAT for future slices: caller radius must include `examples/` — `examples/
+file-map.f` is a real MAP-GET caller that lib/tools/maki/src greps miss. A jj
+op-log divergence (concurrent fable moves) also reset the working copy mid-slice
+and reverted the edits twice; re-applied from the recorded diffs.

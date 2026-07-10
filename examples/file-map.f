@@ -9,11 +9,10 @@ create FM-MAP FM-CAP >COUNT MAP-CELLS COUNT>N cells allot
    FM-MAP FM-CAP >COUNT MAP-INIT ;
 
 : FM-INC ( ptr u8 n -- ) {: key:ptr len :}
-   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET if
-      1+
-   else
-      drop 1
-   then
+   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET MATCH option
+     none OF 1 ENDOF                                    \ not present: count starts at 1
+     some OF 1+ ENDOF                                   \ present: increment the value
+   ;MATCH
    FM-MAP FM-CAP >COUNT key len >LEN MAP-SET ;
 
 : FM-CLASSIFY ( ptr u8 n -- ) {: a:ptr u :}
@@ -22,7 +21,10 @@ create FM-MAP FM-CAP >COUNT MAP-CELLS COUNT>N cells allot
    s" other" FM-INC ;
 
 : FM-COUNT ( ptr u8 n -- n ) {: key:ptr len :}
-   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET if exit then ;
+   FM-MAP FM-CAP >COUNT key len >LEN MAP-GET MATCH option
+     none OF 0 ENDOF                                    \ not present: 0
+     some OF ENDOF                                      \ present: the stored count
+   ;MATCH ;
 
 : FM-ASSERT-COUNT ( ptr u8 n n -- ) {: key:ptr len want :}
    key len FM-COUNT want T= ;

@@ -345,7 +345,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a idx ptr u8 len n -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot
 1	map	lib/map.f	word	MAP-LOCATE	(ptr a count ptr u8 len -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate key insertion or lookup slot
 1	map	lib/map.f	word	MAP-SLOT-INSERT	(a ptr a idx n ptr u8 len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert one value into a free map slot
-1	map	lib/map.f	word	MAP-GET	(ptr a count ptr u8 len -- n bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a numeric value by counted key
+1	map	lib/map.f	word	MAP-GET	(ptr a count ptr u8 len -- option<n>)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a value by counted key: SOME value if present, else NONE
 1	map	lib/map.f	word	MAP-HAS?	(ptr a count ptr u8 len -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists
 1	map	lib/map.f	word	MAP-SET	(n ptr a count ptr u8 len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert or replace a numeric value by counted key
 1	map	lib/map.f	word	MAP-EACH	(ptr a count [ ptr u8 len n -- ] --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	visit occupied entries in storage-slot order
