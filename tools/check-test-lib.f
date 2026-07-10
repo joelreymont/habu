@@ -149,6 +149,12 @@ variable CKT-PAR-U
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
+: CKT-DIRECT-ALL-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   CKT-DIRECT-START
+   -1 CHK-ALL !
+   src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
 : CKT-DIRECT-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
    CKT-DIRECT-START
    -1 CHK-JSON !
@@ -528,6 +534,12 @@ variable CKT-PAR-U
    outu 0 T=
    erru 0 T= ;
 
+: CKT-TEST-TYPEFAMILY-ALL ( -- )
+   CKT-TFAM-GOOD$ CKT-DIRECT-ALL-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
 : CKT-TEST-SUMTYPE-BAD ( -- )
    CKT-TFAM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -831,6 +843,7 @@ variable CKTP-DOC-U
    s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
    s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
    s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
+   s" check/typefamily-all-errors" [: CKT-TEST-TYPEFAMILY-ALL ;] CKT-RUN
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
    s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN

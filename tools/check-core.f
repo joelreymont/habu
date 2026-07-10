@@ -1160,7 +1160,7 @@ variable CHK-TFAM-NAME-I
    then
    CHK-CHILD-RC @ CHK-THROW ;
 
-: CHK-RUN-STATIC-LINTS ( -- )
+: CHK-RUN-NOMINAL-LINTS ( -- )
    CHECKER-SCOPE-START
    [:
       CHK-RUN-NOMINAL
@@ -1168,10 +1168,13 @@ variable CHK-TFAM-NAME-I
       CHK-RUN-BOUNDARY
       CHK-RUN-TRUST
       CHK-RUN-STRICT
-      CHK-ALL @ if CHK-RUN-ALL then
    ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;
+
+: CHK-RUN-STATIC-LINTS ( -- )
+   CHK-RUN-NOMINAL-LINTS
+   CHK-ALL @ if CHK-RUN-ALL then ;
 
 : CHK-RUN-CURRENT ( -- )
    CHK-RUN-STATIC-LINTS

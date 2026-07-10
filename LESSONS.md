@@ -3276,3 +3276,8 @@ unchanged (148855). Keys for milestone 2:
   could overwrite an earlier record. Keep the public tag-first pointer ABI,
   store capacity in a hidden preceding cell, reject both signed bounds before
   address arithmetic, and prove the rejected write leaves its neighbor intact.
+- **Independent checker passes need independent registry scopes.** The nominal
+  scan registered valid type families, then `--all-errors` replayed the same
+  source inside that still-mutated scope and diagnosed duplicates. Roll back
+  the nominal/lint phase before replay; the outer command scope still preserves
+  transactionality without leaking pass-local declarations.
