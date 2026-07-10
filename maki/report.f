@@ -24,6 +24,7 @@
 \ status, or list index is rejected with a named throw code -- never defaulted.
 \ maki owns its error range (-5000..-5099); report uses -5010..-5019.
 
+require lib/prelude.f
 require lib/string.f
 require lib/float.f
 require lib/fmt.f
@@ -40,10 +41,19 @@ package MAKI
 public
 
 \ ---- gate verdict tags ----
+\ V-* stay the public numeric vocabulary of the representation-hiding accessors
+\ (REPORT:GATE! / REPORT:GATE-TAG@ keep their n signatures); internally the four
+\ G-TAG cells store a real ENUM (dot habu-cad-adt-swap, capability S1) and convert
+\ at that accessor boundary only. Constructors: MAKI-VERDICT:PASS/FAIL/NOT-RUN.
 0 constant V-PASS
 1 constant V-FAIL
 2 constant V-NOTRUN
 3 constant V-N
+ENUM verdict
+  pass
+  fail
+  not-run
+;ENUM
 
 \ ---- roofline classes ----
 \ RC-* stay the public numeric vocabulary of the representation-hiding accessors
@@ -130,10 +140,15 @@ create L-HOT  RPT-LCAP 3 * cells allot    variable N-HOT
 \ profile rows: (name-offset,name-length,device-us) triples, stride 3
 create L-PROF RPT-LCAP 3 * cells allot    variable N-PROF
 
-\ gate verdicts: fixed 4 entries (tag, reason-offset, reason-length)
+\ gate verdicts: fixed 4 entries (verdict enum, reason-offset, reason-length)
 create G-TAG MAKI:G-N cells allot
 create G-RO  MAKI:G-N cells allot
 create G-RL  MAKI:G-N cells allot
+
+\ typed verdict slot: retype a G-TAG cell address to `ptr verdict` so the enum
+\ store/fetch certifies with family identity (capability S1); a raw n or a
+\ foreign family cannot reach these cells.
+: G-TAG-AT ( n -- ptr verdict )  cells G-TAG + ;
 
 \ ---- arena -----------------------------------------------------------------
 : ARENA-PUT ( ptr u8 n -- n n )                \ intern bytes -> (offset length)
@@ -181,13 +196,36 @@ create G-RL  MAKI:G-N cells allot
 : K-CACHE$  ( -- ptr u8 n )  K-CACHE-O  @ K-CACHE-L  @ ARENA-GET ;
 
 \ ---- enum -> text (fail closed) --------------------------------------------
-: V-NAME ( n -- ptr u8 n )
-   case
-      MAKI:V-PASS   of s" pass"    endof
-      MAKI:V-FAIL   of s" fail"    endof
-      MAKI:V-NOTRUN of s" not-run" endof
-      E-RPT-VERDICT throw
-   endcase ;
+\ verdict enum boundary (dot habu-cad-adt-swap): the stored value is the enum;
+\ the public accessors keep their V-* n vocabulary, converted exactly here.
+: V-CK ( n -- n )                              \ validate a V-* code
+   dup 0 < over MAKI:V-N >= or if E-RPT-VERDICT throw then ;
+
+: >VERDICT ( n -- verdict )                    \ parse boundary: V-* code -> enum
+   V-CK
+   dup MAKI:V-PASS = if drop MAKI-VERDICT:PASS exit then
+   MAKI:V-FAIL = if MAKI-VERDICT:FAIL else MAKI-VERDICT:NOT-RUN then ;
+
+: VERDICT>N ( verdict -- n )                   \ render boundary: enum -> V-* code
+   MATCH verdict
+      pass    OF MAKI:V-PASS   ENDOF
+      fail    OF MAKI:V-FAIL   ENDOF
+      not-run OF MAKI:V-NOTRUN ENDOF
+   ;MATCH ;
+
+: VERDICT-PASS? ( verdict -- bool )
+   MATCH verdict
+      pass    OF true  ENDOF
+      fail    OF false ENDOF
+      not-run OF false ENDOF
+   ;MATCH ;
+
+: V-NAME ( verdict -- ptr u8 n )               \ exhaustive: no bad-tag throw possible
+   MATCH verdict
+      pass    OF s" pass"    ENDOF
+      fail    OF s" fail"    ENDOF
+      not-run OF s" not-run" ENDOF
+   ;MATCH ;
 
 \ roofline enum boundary (dot habu-cad-adt-swap): the stored value is the enum;
 \ the public accessors keep their RC-* n vocabulary, converted exactly here.
@@ -282,7 +320,7 @@ create G-RL  MAKI:G-N cells allot
 
 : R-GATE ( ptr u8 n n -- )                     \ prefix gate-id -> verdict/reason lines
    {: gid:n :}
-   2dup OUT+ s" .verdict: " OUT+  gid cells G-TAG + @ V-NAME OUT+ OUT-NL
+   2dup OUT+ s" .verdict: " OUT+  gid G-TAG-AT @ V-NAME OUT+ OUT-NL
    gid cells G-RL + @ 0 > if
       OUT+ s" .reason: " OUT+
       gid cells G-RO + @  gid cells G-RL + @ ARENA-GET OUT+ OUT-NL
@@ -319,7 +357,7 @@ create G-RL  MAKI:G-N cells allot
 \ ---- human-render helpers --------------------------------------------------
 : H-GATE ( n -- )                              \ "<verdict>[ (reason)]\n" (label pre-emitted)
    {: gid:n :}
-   gid cells G-TAG + @ V-NAME OUT+
+   gid G-TAG-AT @ V-NAME OUT+
    gid cells G-RL + @ 0 > if
       s"  (" OUT+  gid cells G-RO + @ gid cells G-RL + @ ARENA-GET OUT+  $29 OUT-C
    then
@@ -334,7 +372,11 @@ create G-RL  MAKI:G-N cells allot
 
 \ ---- failure-packet helpers (repair-packet-core.f discipline; model-cad Phase 7) ---
 : P-CLASS ( n -- ptr u8 n )                    \ gate-id -> failure class
-   cells G-TAG + @ MAKI:V-FAIL = if s" contract-violation" else s" not-run" then ;
+   G-TAG-AT @ MATCH verdict                    \ only reached for non-pass gates
+      pass    OF s" not-run"            ENDOF
+      fail    OF s" contract-violation" ENDOF
+      not-run OF s" not-run"            ENDOF
+   ;MATCH ;
 
 : P-REASON ( n -- )                            \ gate-id -> reason text (or "none")
    {: gid:n :}
@@ -353,9 +395,9 @@ create G-RL  MAKI:G-N cells allot
 
 : P-GATE ( ptr u8 n n -- )                     \ prefix gate-id -> one packet line if not passed
    {: gid:n :}
-   gid cells G-TAG + @ MAKI:V-PASS = if 2drop exit then
+   gid G-TAG-AT @ VERDICT-PASS? if 2drop exit then
    OUT+ s" : class=" OUT+  gid P-CLASS OUT+
-   s"  expected=pass actual=" OUT+  gid cells G-TAG + @ V-NAME OUT+
+   s"  expected=pass actual=" OUT+  gid G-TAG-AT @ V-NAME OUT+
    s"  reason=" OUT+  gid P-REASON
    s"  repair=" OUT+  gid P-REPAIR OUT+
    s"  repro=model:" OUT+  K-MODEL$ EMIT-STR
@@ -378,7 +420,7 @@ public
    0 K-MODEL-O !  0 K-MODEL-L !  0 K-SHAPE-O !  0 K-SHAPE-L !
    0 K-DTYPE-O !  0 K-DTYPE-L !  0 K-LAYOUT-O ! 0 K-LAYOUT-L !
    0 K-TARGET-O ! 0 K-TARGET-L ! 0 K-CACHE-O !  0 K-CACHE-L !
-   MAKI:G-N 0 ?do  MAKI:V-NOTRUN i cells G-TAG + !  0 i cells G-RO + !  0 i cells G-RL + !  loop
+   MAKI:G-N 0 ?do  MAKI-VERDICT:NOT-RUN i G-TAG-AT !  0 i cells G-RO + !  0 i cells G-RL + !  loop
    0 >report ;
 
 \ ---- key setters/getters ---------------------------------------------------
@@ -510,15 +552,15 @@ public
 : GATE! ( report ptr u8 n n n -- report )  \ reason verdict-tag gate-id
    {: tag:n gid:n :}
    gid 0 < gid MAKI:G-N >= or if E-RPT-GATE throw then
-   tag 0 < tag MAKI:V-N >= or if E-RPT-VERDICT throw then
+   tag V-CK drop                           \ reject a bad tag before interning
    ARENA-PUT {: off:n len:n :}
-   tag gid cells G-TAG + !
+   tag >VERDICT gid G-TAG-AT !
    off gid cells G-RO + !
    len gid cells G-RL + ! ;
 : GATE-TAG@ ( report n -- n ) {: gid:n :}
    RPT-DROP
    gid 0 < gid MAKI:G-N >= or if E-RPT-GATE throw then
-   gid cells G-TAG + @ ;
+   gid G-TAG-AT @ VERDICT>N ;
 : GATE-REASON@ ( report n -- ptr u8 n ) {: gid:n :}
    RPT-DROP
    gid 0 < gid MAKI:G-N >= or if E-RPT-GATE throw then

@@ -220,6 +220,18 @@ s" RT-ROOF-NOUT ( -- n ) F-ROOFLINE-AT @"         CHECK-QUIET-CANDIDATE! 0 T=
 \ roofline<> actual: rtalien<> ptr roofline<>")
 s" RT-ROOF-MIX ( rtalien -- ) F-ROOFLINE-AT !"    CHECK-QUIET-CANDIDATE! 0 T=
 
+\ ---- verdict swapped-role negatives (G-TAG stores a `verdict` ENUM) ----------
+\ positive control: the typed gate slot accepts its own family
+s" RT-GATE-OK ( verdict n -- ) G-TAG-AT !"        CHECK-QUIET-CANDIDATE! -1 T=
+\ n->enum / enum->n laundering at the gate slot
+s" RT-GATE-NIN ( n n -- ) G-TAG-AT !"             CHECK-QUIET-CANDIDATE! 0 T=
+s" RT-GATE-NOUT ( n -- n ) G-TAG-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
+\ the REAL cross-column swaps, both directions (diags: "at '!' expected:
+\ verdict<> ptr verdict<> actual: roofline<> ptr verdict<>" and "at '!'
+\ expected: roofline<> ptr roofline<> actual: verdict<> ptr roofline<>")
+s" RT-GATE-ROOF ( roofline n -- ) G-TAG-AT !"     CHECK-QUIET-CANDIDATE! 0 T=
+s" RT-ROOF-VERD ( verdict -- ) F-ROOFLINE-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
+
 end-package
 
 T-REPORT

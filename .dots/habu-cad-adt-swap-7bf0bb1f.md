@@ -287,3 +287,23 @@ HARNESS NOTE: `bin/hb file.f` script mode drops into a stdin REPL after the file
 under a non-EOF stdin (this agent harness with `timeout`) it hangs. Always run
 probes/tests with `< /dev/null` (or stdin-feed the file). `bye` is NOT defined.
 The earlier probe "hangs" were exactly this, not checker loops.
+
+COLUMN 3 LANDED 2026-07-10 — report G-TAG verdict (report.f), the audit's
+priority-2 headline. Same boundary design as column 2: V-* constants stay the
+public numeric vocabulary of GATE!/GATE-TAG@ (signatures unchanged — the many
+external readers in cad.f + 9 test files consume GATE-TAG@ n and are untouched);
+the four G-TAG cells store `ENUM verdict pass fail not-run ;ENUM`. G-TAG-AT is
+the typed `ptr verdict` slot; >VERDICT (V-CK validate-first) the ONE parse
+boundary (GATE! rejects a bad tag BEFORE interning the reason, preserving the
+original throw-before-ARENA-PUT ordering); VERDICT>N the ONE render-to-code
+boundary. MATCH sites: 4 (VERDICT>N, VERDICT-PASS?, V-NAME, P-CLASS) — P-CLASS's
+`V-FAIL = if/else` numeric flag check and P-GATE's `V-PASS =` guard are now enum
+dispatch; V-NAME's E-RPT-VERDICT render default dropped (unrepresentable).
+Readers converted in-file: R-GATE, H-GATE, P-CLASS, P-GATE (2 sites), NEW init,
+GATE-TAG@. report.f now requires lib/prelude.f (typed true/false for
+VERDICT-PASS?). Swapped-role negatives: n->verdict store, verdict->n fetch, and
+the REAL cross-column swaps both directions (roofline value into a G-TAG cell,
+verdict value into F-ROOFLINE) — all reject, diagnostics cited in
+report-test.f. Gates green: report-test, cad-test, golden-test,
+golden-artifact-test, gradcheck-test, demo-ffn-test, mlp-bwd-test,
+fusion-plan-test all rc=0; maki/test.f rc=0 (77 suites); all 5 lints clean.
