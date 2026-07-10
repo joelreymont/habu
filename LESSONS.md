@@ -3271,3 +3271,8 @@ unchanged (148855). Keys for milestone 2:
   store could redirect the uncaught-throw branch. Define the band through the
   final engine-owned cell, mirror that length in stage0, and pin both the last
   protected byte and the first writable byte.
+- **A raw boxed pointer needs bounds metadata at the allocation boundary.** A
+  payload index was applied directly to `[tag|payload]`, so a negative index
+  could overwrite an earlier record. Keep the public tag-first pointer ABI,
+  store capacity in a hidden preceding cell, reject both signed bounds before
+  address arithmetic, and prove the rejected write leaves its neighbor intact.
