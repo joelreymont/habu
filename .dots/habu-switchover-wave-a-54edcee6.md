@@ -259,3 +259,30 @@ tools/typed-local-diff-lint-core.f:179, tools/codegen-role.f:129,
 tools/imagedisasm.f:98, tools/trusted-inventory.f:697, lib/string-test.f,
 lib/test/budget.f:30, lib/ptx/header.f:28, lib/float.f:86. When the cross-lane
 slot opens, STR>NUMBER? → option<n> and STR>NUMBER-UNWRAP is DELETED with it.
+
+## BATCH 3 — LANDED (FIND-EXECUTABLE cluster, imgdump, imagedisasm)
+
+1. FIND-EXECUTABLE cluster (lib/process-env.f), one commit: `PROC-TRY-PATH-SEG` /
+   `FIND-EXECUTABLE-IN-PATH` / `FIND-EXECUTABLE` `( … -- len bool )` →
+   `( … -- option<len> )`, chained in-file (IN-PATH's loop re-wraps the SEG hit:
+   `some OF OPTION:SOME exit ENDOF` — the unwrap/rewrap shape, since an option
+   can't pass through a MATCH untouched). `RESOLVE-EXECUTABLE ( … -- len )` sig
+   unchanged (none → E-PROC-PATH throw). Test wrapper PET-FIND>N now flattens the
+   option; hb/direct/missing + resolve-missing cases cover both branches. 3
+   manifest rows + docs/stdlib.md. process-env.f gained require option.f (already
+   a TR-GATE-HARNESS-FILES member — no run-files.f edit).
+2. imgdump parsers (tools/imgdump.f): `IMG-HEX-DIGIT?` / `DEC-DIGIT?` /
+   `PARSE-HEX` / `PARSE-DEC` / `IMG>NUMBER?` → option<n>; PC-ARG usage-dies on
+   none. HEX-BODY stays (multi-value slice → wave B). tools/ = manifest-exempt.
+   Direct both-branch tests IDT-TEST-PARSERS ($ff/0x10/42 some; $zz/4x2/empty none).
+3. imagedisasm parsers (tools/imagedisasm.f): `IMGD-HEX-DIGIT` / `IMGD-HEX-STEP`
+   (overflow → NONE) / `IMGD-PARSE-HEX` / `IMGD>NUMBER?` → option<n>;
+   IMGD-POS-NUM usage-dies on none. IMGD-HEX-BODY stays (wave B). NEW adapter
+   `STR>OPTION ( n bool -- option<n> )` in lib/string.f (manifest row, active) —
+   the INVERSE of STR>NUMBER-UNWRAP, lifting the blocked STR>NUMBER? boundary
+   into option for migrated consumers; BOTH adapters die together when the
+   cross-lane STR>NUMBER? slice lands. Direct both-branch tests IMDT-TEST-PARSERS
+   (incl. hex-overflow → none) + STR>OPTION cases in string-test.
+
+Skips honored: MAP-INDEX/PROBE (wave-C worker in map.f), gate-json-assert* +
+trusted-inventory parser (deferred solo slices), src/core + TFAM-13 files, maki/*.
