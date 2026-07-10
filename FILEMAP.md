@@ -666,6 +666,8 @@ points stay listed.
 - `lib/memory-test.f` — focused coverage for memory allocation and 64K buffer spans.
 - `lib/vector.f` — checked growable cell-vector helpers backed by OS memory.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.
+- `lib/layout/box.f` — boxed-layout record arena (TFAM 16): bump-allocated tag+payload heap records over the mmap allocator, arena free-all ownership.
+- `lib/layout/box-test.f` — focused coverage for box record alloc, tag/payload round-trip, chunk growth, and arena reset.
 - `lib/ffi-abi.f` — checked target-independent AAPCS64 FFI calls and marshalling: x0-x8, d0-d7, stack-spill, out-params, kernelParams, and int/float-return trampolines.
 - `lib/ffi-abi-test.f` — focused coverage for portable FFI marshalling without dynamic loader slots.
 - `lib/ffi.f` — checked dynamic loading layer over the FFI ABI: dlopen/dlsym through target-provided loader slots.
