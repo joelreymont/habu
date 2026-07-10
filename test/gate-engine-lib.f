@@ -412,6 +412,18 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
    s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
 
+: GE-TYPE-EXPORT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/type-export-suite.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+\ EXPORT re-export (dot habu-compiler-pkg-re-688212c1): checker-level alias
+\ fidelity, meta-flag copy, every reject class, and rollback of alias rows.
+: GE-TYPE-EXPORT-SUITE ( -- )
+   GE-CANDIDATE$ s" type-export suite on Habu-under-test" GE-TYPE-EXPORT-SUITE-ON
+   s" bin/hb" s" type-export suite on bin/hb" GE-TYPE-EXPORT-SUITE-ON ;
+
 \ The former GE-CAND-SMOKE (hook-installed / checked-compile-run / baked-word-
 \ resolves) is now three T= probes inside test/engine-suite.f, so it rides the
 \ existing engine-suite candidate launch (GE-ENGINE-SUITE-ON) instead of a second
@@ -1128,7 +1140,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TYPE-CTOR-SUITE
    GE-TYPE-LINEAR-SUITE
    GE-TYPE-MATCH-SUITE
-   GE-TYPE-LAYOUT-SUITE ;
+   GE-TYPE-LAYOUT-SUITE
+   GE-TYPE-EXPORT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )
    s" hb-gate-engine-validate" GT-START

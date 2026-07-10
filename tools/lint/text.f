@@ -64,26 +64,36 @@ variable LINT-OUT-ON
    THEN
    fd a u LINT-FD-WRITE ;
 
+variable RPATH-U
+
 : LINT-PATHZ ( ptr u8 n -- ) {: a:ptr u :}
    u 1+ 1024 > IF s" lint: path too long" 1 die THEN
    0 begin dup u < while
       dup a + c@ over PATHBUF + c!
       1+
    repeat drop
-   0 u PATHBUF + c! ;
+   0 u PATHBUF + c!
+   u RPATH-U ! ;
+
+\ capacity/IO exits must name the offending file (LESSONS: label every
+\ capacity exit) — a bare "file exceeds buffer" hides which source outgrew
+\ which lint buffer.
+: LINT-READ-DIE ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   2 msg msgu LINT-FD-WRITE
+   PATHBUF RPATH-U @ 1 die ;
 
 : READ-FILE ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u buf:ptr cap :}
    a u LINT-PATHZ
    PATHBUF 0 0 open  RFD !
-   RFD @ 0 < IF s" lint: cannot open file" 1 die THEN
+   RFD @ 0 < IF s" lint: cannot open file: " LINT-READ-DIE THEN
    0 RLEN !
    begin  RFD @  buf RLEN @ +  cap RLEN @ -  read  dup RGOT !  0 >
    while  RLEN @ RGOT @ + RLEN !  repeat
-   RGOT @ 0 < IF RFD @ close s" lint: cannot read file" 1 die THEN
+   RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " LINT-READ-DIE THEN
    RLEN @ cap = IF
       RFD @ READ-PROBE 1 read RGOT !
-      RGOT @ 0 < IF RFD @ close s" lint: cannot read file" 1 die THEN
-      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer" 1 die THEN
+      RGOT @ 0 < IF RFD @ close s" lint: cannot read file: " LINT-READ-DIE THEN
+      RGOT @ 0 > IF RFD @ close s" lint: file exceeds buffer: " LINT-READ-DIE THEN
    THEN
    RFD @ close
    buf RLEN @ ;

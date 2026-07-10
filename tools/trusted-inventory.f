@@ -52,7 +52,7 @@ private
 512 constant CMAX
 10 constant CTAB#
 -1 constant COUNT-UNSET
-$40000 constant FILE-CAP
+$80000 constant FILE-CAP   \ >= largest scanned source (checker.f grew past $40000)
 $40000 constant STR-CAP
 $10000 constant CSTR-CAP
 32 constant NUM-CAP

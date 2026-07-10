@@ -28,7 +28,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/intern.f, and tools/lint/token.f.
 
-$40000 constant ECL-CAP
+$80000 constant ECL-CAP   \ >= largest scanned source (checker.f grew past $40000)
 512 constant ECL-PCAP
 1024 constant ECL-MAX-CLAIMS
 48 constant ECL-ZERO

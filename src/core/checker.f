@@ -4003,6 +4003,7 @@ PRIM: CHECKER-USIGS-TRUNCATE-FROM PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-USIGS-TRUNCATE-FROM-RAW PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-EXPORT PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFTYPE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -4705,6 +4706,89 @@ variable CURSYM
 : THROW-CUR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" throw" CORE-STR= IF RES-TRUE EXIT THEN
    CTL-FLAGS-CUR CTL-THROW and 0 <> ;
+
+\ --- EXPORT: alias an existing word's checked effect under its own tail -----
+\ (dot habu-compiler-pkg-re-688212c1). `EXPORT NAME` in an open package section
+\ publishes NAME's effect under NAME's tail in the CURRENT package scope: one
+\ word, two names. The alias is a FRESH scheme copy — E-INST instantiates the
+\ source record into working terms, E-ADD-EFFECT re-records them (alpha-
+\ equivalent) under the new sym — plus the source's defer flag and control-
+\ effect flags. Rollback safety is inherited: the alias's SYM/USIG/DFER/NORET
+\ rows sit under the standard RBF-PUSH/POP watermarks. Fail-closed:
+\ - E-EXPORT-NO-PACKAGE: no open package (outside a package there is no target
+\   scope, and a global re-export would un-namespace a package word);
+\ - E-EXPORT-SEALED: source qualified into a sealed system package (checker
+\   mirror of the native RESTAB set, latch-gated like the engine seal guards);
+\ - E-EXPORT-PRIM: source resolves only to a primitive axiom (prims may be
+\   overloaded; copying the first row would silently narrow the effect);
+\ - E-EXPORT-UNDEFINED: source has no checked signature (undefined, private in
+\   a closed package — qualified lookup is public-only — or uncertified);
+\ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
+\ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
+\ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
+\ a ctor package. Re-export FROM a ctor package stays allowed by design
+\ (generated words are closed-but-callable).
+7112 constant E-EXPORT-NO-PACKAGE
+7113 constant E-EXPORT-UNDEFINED
+7114 constant E-EXPORT-SEALED
+7115 constant E-EXPORT-PRIM
+
+\ sealed system-package names: checker mirror of the native RESTAB table
+\ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
+: EXPORT-SEALED-PKG? ( ptr u8 n -- bool ) {: p:ptr pu:n :}
+   p pu s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
+   p pu s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
+   p pu s" match" CORE-STR=CI ;
+
+: EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   data-base CK-SEAL-LATCH-OFF + @ 0= IF EXIT THEN
+   a u CHECKER-QUALIFIED? 0= IF EXIT THEN
+   CHECKER-QPKG$ EXPORT-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
+
+\ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
+\ and the first PES row legitimately lives at USIGS offset 0.
+: EXPORT-RESOLVE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-SIG
+   FEP-HIT? IF EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM PRIM-FIRST-IDX 0 <> IF E-EXPORT-PRIM throw THEN
+   E-EXPORT-UNDEFINED throw ;
+
+: EXPORT-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? IF CHECKER-QTAIL$ EXIT THEN
+   a u ;
+
+\ EXPORT-EFF-INST ( ptr a -- n n n n bool ) : instantiate the source record's
+\ rows into fresh working terms (din dout rin rout hasr, E-ADD-EFFECT intake).
+: EXPORT-EFF-INST ( ptr a -- n n n n bool ) {: h:ptr :}
+   h E-INST-RESET
+   h ER.DIN @ E-INST
+   h ER.DOUT @ E-INST
+   h ER.HASR @ 0 <> IF
+      h ER.RIN @ E-INST
+      h ER.ROUT @ E-INST
+      RES-TRUE EXIT
+   THEN
+   0 0 RES-FALSE ;
+
+: EXPORT-RECORD ( ptr u8 n -- ) {: ta:ptr tu:n :}
+   ta tu CHECKER-REC-NAME!
+   CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN ;
+
+: EXPORT-META-COPY ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-FIND-ACTIVE-DEFER IF a u EXPORT-TAIL$ DFER-ADD THEN
+   a u CTL-FLAGS {: ctl:n :}
+   ctl 0 <> IF a u EXPORT-TAIL$ ctl NORET-ADD THEN ;
+
+: CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
+   CHECKER-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
+   a u EXPORT-SEAL-GUARD
+   a u EXPORT-RESOLVE
+   NEW
+   FEP-OFF@ 1 - E-PTR EXPORT-EFF-INST
+   a u EXPORT-TAIL$ EXPORT-RECORD
+   E-ADD-EFFECT
+   a u EXPORT-META-COPY ;
+
 \ Trial save/restore: a prim-overload trial saves the scalar cursors below and the
 \ trail height (SV-TRAIL); var bindings are undone via the unification trail (top).
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN

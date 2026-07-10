@@ -3167,3 +3167,18 @@ unchanged (148855). Keys for milestone 2:
   consumers in commit B (A's binary exposes the word). TFAM 14 folded both into
   one commit, which gates green in-session but leaves refresh-from-parent
   broken; the two-commit shape costs nothing and keeps the chain sound.
+- **PRIM-FIRST-SYM cannot answer "is this name a prim?" — offset 0 is a real
+  record.** It returns the first PES row's effect OFFSET, and the very first
+  prim row legitimately lives at USIGS offset 0, so `dup` (row 0) reads as
+  "no prim". FIND-SIG's prim fallback carries the same conflation. Existence
+  checks must use PRIM-FIRST-IDX (slot+1, 0 = none). Found building
+  CHECKER-EXPORT's E-EXPORT-PRIM reject; the suite caught it first run.
+- **The $40000 whole-source lint caps all tripped together when checker.f
+  crossed 262144 bytes** (EXPORT alias work) — trust-lint (gate + argv),
+  trusted-inventory, maki-dep-lint, and error-code-lint each died "file
+  exceeds buffer" with NO file name, exactly the labeled-capacity-exit lesson
+  above replaying in four more stores. All five caps are now $80000 with
+  comments naming checker.f, and the shared lint READ-FILE capacity/IO exits
+  print the offending path (LINT-READ-DIE, tools/lint/text.f). When one cap
+  named after a growing file trips, sweep EVERY READ-FILE buffer cap in the
+  same pass instead of raising them one gate failure at a time.

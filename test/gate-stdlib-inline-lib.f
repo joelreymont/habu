@@ -19,7 +19,7 @@ variable GSI-TOOL-BASE-READY
 \ Reads through the buffer stay fail-closed: READ-FILE dies on overflow, so
 \ outgrowing the cap is a loud gate failure, never truncation.
 $80000 constant GSI-TL-STR-CAP
-$40000 constant GSI-TL-FILE-CAP
+$80000 constant GSI-TL-FILE-CAP   \ checker.f grew past $40000 (EXPORT alias, 2026-07-10)
 600000 constant GSI-FORK-TIMEOUT-MS
 
 variable GSI-TL-READY

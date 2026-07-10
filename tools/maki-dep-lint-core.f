@@ -16,7 +16,7 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, tools/lint/text.f,
 \ and tools/lint/token.f.
 
-$40000 constant MDL-CAP
+$80000 constant MDL-CAP   \ >= largest scanned source (checker.f grew past $40000)
 32 constant MDL-NCAP
 10 constant MDL-LF
 48 constant MDL-ZERO
