@@ -611,9 +611,12 @@ create BFT-CHECK-OFF-LINE
 \ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
 \   and the engine falls through to a COLD boot (rc 0) by design, so there is
 \   no magic-corruption leg.
-\ - EM-SNAPSHOT-RESTORE emits no diagnostic text on 79/80 (bare
-\   NR-EXIT-GROUP); rc is the only assertable surface. A labeled exit is a
-\   follow-up tracked in habu-tfam-12-item-346f03c2.
+\ - EM-SNAPSHOT-RESTORE now labels both fatal exits on fd 2 before the
+\   NR-EXIT-GROUP (dot habu-tfam-12-item-346f03c2 part 2): rc 79 prints
+\   "hb: snapshot trailer corrupt", rc 80 prints
+\   "hb: snapshot format version unsupported". BFT-DOCTORED-CAPTURE captures the
+\   doctored engine's stderr so this fixture asserts the diagnostic TEXT, not
+\   just the rc.
 : BFT-BYTES-FIELD ( -- ptr ptr u8 )
    BFT-BYTES-A 0 ptr-field ;
 
@@ -667,13 +670,33 @@ create BFT-CHECK-OFF-LINE
    s" hb-doctored" BF-CODESIGN-FORCE-TMP
    s" hb-doctored" BF-CHMOD-X-TMP ;
 
-: BFT-DOCTORED-RC ( n n -- n ) {: off:n val:n :}
+variable BFT-DOC-ERR-U
+variable BFT-DOC-KIND
+variable BFT-DOC-CODE
+
+: BFT-DOC-ERR$ ( -- ptr u8 n )
+   BFT-ERR BFT-DOC-ERR-U @ ;
+
+\ Doctor one trailer byte, run the patched snapshot engine with empty stdin and
+\ its stderr CAPTURED (the labeled diagnostic goes to fd 2), record the exit
+\ kind/code and stderr length, then restore the byte for the next case.
+: BFT-DOCTORED-CAPTURE ( n n -- ) {: off:n val:n :}
    off BFT-BYTE@ {: orig:n :}
    val off BFT-BYTE!
    BFT-DOCTOR-WRITE
-   s" hb-doctored" BFT-SNAP-RUN {: rcn:n :}
-   orig off BFT-BYTE!
-   rcn ;
+   PROC-ARGV-RESET
+   s" hb-doctored" BF-A$ >LEN  BFT-EMPTY$ >LEN
+   BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: ou:len eu:len kind:n code:n :}
+   eu LEN>N BFT-DOC-ERR-U !  kind BFT-DOC-KIND !  code BFT-DOC-CODE !
+   orig off BFT-BYTE! ;
+
+\ A labeled fatal exit: process EXITed with the contract code and its stderr
+\ carries the named diagnostic (proves the exit is no longer a bare rc-only).
+: BFT-ASSERT-SNAP-EXIT ( n ptr u8 n -- ) {: code:n msg:ptr msgu:n :}
+   BFT-DOC-KIND @ PROC-OUTCOME-EXIT T=
+   BFT-DOC-CODE @ code T=
+   BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
 
 : BFT-TEST-SNAP-TRAILER ( -- )
    BFT-ROOT BF-TMP!
@@ -684,11 +707,14 @@ create BFT-CHECK-OFF-LINE
    BFT-MAGIC-LAST!
    BFT-MAG-LAST @ {: mag:n :}
    mag BFT-TRL-VERSION + BFT-BYTE@ 1 T=
-   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-RC 80 T=
+   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
+   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
    \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
-   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-RC 79 T=
-   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-RC 79 T=
+   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
+   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
+   79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
 
 : BFT-TEST-TMP-OVERRIDE ( -- )
