@@ -28,6 +28,7 @@
 7116 constant E-TDECL-POLICY    \ unknown or not-yet-supported layout policy (item 16; 7111-7115 = checker.f E-CTOR/E-EXPORT)
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
+7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
 
 26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
@@ -125,6 +126,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" ;product" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 15 product block close (;FOO)
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN     \ item 16 layout-policy header keyword
+   a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN     \ derive S1 header keyword
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI ;
 
@@ -378,6 +380,45 @@ variable TDV-NA    variable TDV-NU
    pu 0= IF TDN-A @ TDN-U @ s" missing layout policy name" E-TDECL-POLICY TDECL-THROW THEN
    pa pu fam TDECL-POLICY-SET ;
 
+\ --- optional derived-word header clause (derive S1, dot habu-checker-
+\ capability-derive): `DERIVE <feature>` after the POLICY position, before the
+\ variants. S1 accepts exactly `eq` on a PUBLIC ENUM; `order`/`hash` are
+\ recognised but deferred (their slices land later), anything else is unknown,
+\ and sums/products reject the clause until the flat-cell W>1 slice lands.
+\ One feature per clause keeps the grammar unambiguous against bare variant
+\ names; a later slice may repeat the clause for more features.
+: TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
+   a u s" eq" CORE-STR=CI IF
+      fam TFAM-PUBLIC? 0= IF
+         a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
+      fam TFAM-DERIVE-EQ! EXIT THEN
+   a u s" order" CORE-STR=CI  a u s" hash" CORE-STR=CI  or IF
+      a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
+   a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
+: TDECL-DERIVE ( n -- ) {: fam:n :}   \ consume an optional DERIVE clause off the body cursor
+   TDECL-NEXT {: a:ptr u:n :}
+   a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
+   TDECL-NEXT {: fa:ptr fu:n :}
+   fu 0= IF TDN-A @ TDN-U @ s" missing derive feature" E-TDECL-DERIVE TDECL-THROW THEN
+   fa fu fam TDECL-DERIVE-SET ;
+: TDECL-NO-DERIVE ( -- )              \ S1 kind gate: derive is enum-only
+   TDECL-NEXT {: a:ptr u:n :}
+   a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
+   a u s" derive is enum-only until the flat-cell slice lands" E-TDECL-DERIVE TDECL-THROW ;
+
+\ a DERIVE-marked family must not declare a variant spelled like a generated
+\ derived tail: the ctor package would hold two words with one name.
+variable TDD-I
+: TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
+   fam TFAM-DERIVE-EQ? 0= IF EXIT THEN
+   0 TDD-I !
+   BEGIN TDD-I @ count < WHILE
+      vstart TDD-I @ + SUMV-NAME$ TFAM-DERIVED-TAIL? IF
+         vstart TDD-I @ + SUMV-NAME$
+         s" variant name collides with a derived word" E-TDECL-NAME TDECL-THROW THEN
+      TDD-I @ 1 + TDD-I !
+   REPEAT ;
+
 \ --- registration entry points (verify-source and the definers below).
 : CHECKER-DEFSUM-BODY ( -- )
    TDECL-REQUIRE-FIT
@@ -387,6 +428,7 @@ variable TDV-NA    variable TDV-NU
    ar TDECL-FAM-ARITY !
    ar TK-SUM TDECL-FAMILY {: fam:n :}
    fam TDECL-POLICY                       \ optional POLICY clause before the variants
+   TDECL-NO-DERIVE                        \ derive S1 is enum-only
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-SUM-VARIANTS
@@ -428,10 +470,12 @@ variable TDV-NA    variable TDV-NU
    0 TDECL-FAM-ARITY !                   \ enums are non-parametric
    0 TK-ENUM TDECL-FAMILY {: fam:n :}
    fam TDECL-POLICY                       \ optional POLICY clause before the variants
+   fam TDECL-DERIVE                       \ optional DERIVE clause (derive S1)
    SUMV-N @ {: vstart:n :}
    0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
    fam TDECL-ENUM-VARIANTS
    TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty enum" E-TDECL-SYNTAX TDECL-THROW THEN
+   fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!             \ TDV-MAX stays 0: enum = tag only
    fam vstart TDV-N @ TDECL-CTOR-PUBLISH
@@ -548,6 +592,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    ar TDECL-FAM-ARITY !
    ar TK-PRODUCT TDECL-FAMILY {: fam:n :}
    fam TDECL-POLICY                       \ optional POLICY clause before the fields
+   TDECL-NO-DERIVE                        \ derive S1 is enum-only
    PF-N @ {: fstart:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !   0 TDP-W !
@@ -679,6 +724,10 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    vid SUMV-TAG@ TDGEN-DEC
    s"  ;" TDGEN-APP ;
 
+: TDECL-GEN-EVAL ( -- )   \ the one audited eval crossing for generated words
+   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
+   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute ;
+
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
    TDGEN-CLEAR
    vid TDGEN-NAME
@@ -689,8 +738,7 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    s"  ) " TDGEN-APP
    fam vid TDGEN-BODY
    TDGEN-NA @ TDGEN-NU @  fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 +  CTOR-PEND!
-   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
-   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute
+   TDECL-GEN-EVAL
    CTOR-PEND-CLEAR
    vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
 
@@ -722,8 +770,7 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
       s" ) ;" TDGEN-APP
    THEN
    TDGEN-NA @ TDGEN-NU @ 0 CTOR-PEND!
-   TDECL-EVAL-XT @ 0= IF s" sumtype: constructor eval hook not installed" 76 die THEN
-   TDGEN-BUF TDGEN-U @ TDECL-EVAL-XT @ execute
+   TDECL-GEN-EVAL
    CTOR-PEND-CLEAR
    vid TDGEN-NA @ TDGEN-NU @ CHECKER-RECORD-SYM SUMV-CTOR-SYM! ;
 
@@ -732,6 +779,64 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    fam vstart 1 TDECL-PROD-WORD
    fam vstart 1 + 0 TDECL-PROD-WORD
    vstart TDECL-CTOR-PROT-WID ;
+
+\ --- derived typed equality (derive S1, dot habu-checker-capability-derive):
+\ `DERIVE eq` on a PUBLIC ENUM generates two ORDINARY CHECKED words into the
+\ family's reserved constructor package — no pending window, no trust rows, no
+\ engine lowering: the bodies are plain checked MATCH/call text the checker
+\ certifies exactly like user code, so equality is semantic (tag identity) and
+\ policy-agnostic. TAG is the discriminant accessor (declaration-order tag —
+\ public metadata any checked MATCH could already observe, never a hidden
+\ field); EQ is tag equality, total for enums:
+\    : PKG:TAG ( fam -- n )        match fam v of <tag> endof .. ;match ;
+\    : PKG:EQ  ( fam fam -- bool ) PKG:TAG swap PKG:TAG = ;
+\ The scalar `=`/`0=` wall on layout values is untouched (TD12-ZEQ stays the
+\ pinned negative); the extend/undefine protection recognizes the fixed tails
+\ through TFAM-DERIVED-AT?, and both words ride the ctor package's item-8
+\ closed-but-callable WID protection and registry rollback.
+: TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ "PKG:TAIL" (upper tail)
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
+   58 TDGEN-C,
+   ta tu TDGEN-UPPER ;
+: TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ ": PKG:TAIL " span-recorded
+   s" : " TDGEN-APP
+   TDGEN-U @ {: n0:n :}
+   fam ta tu TDGEN-DRV-REF
+   TDGEN-BUF n0 + TDGEN-NA !
+   TDGEN-U @ n0 - TDGEN-NU !
+   32 TDGEN-C, ;
+: TDGEN-TAG-BODY ( n -- ) {: fam:n :}    \ "match fam v of <tag> endof .. ;match ;"
+   s" match " TDGEN-APP
+   fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C,
+   fam TFAM-VAR-START@ {: vstart:n :}
+   0 TDD-I !
+   BEGIN TDD-I @ fam TFAM-VAR-COUNT@ < WHILE
+      vstart TDD-I @ + SUMV-NAME$ TDGEN-APP
+      s"  of " TDGEN-APP
+      vstart TDD-I @ + SUMV-TAG@ TDGEN-DEC
+      s"  endof " TDGEN-APP
+      TDD-I @ 1 + TDD-I !
+   REPEAT
+   s" ;match ;" TDGEN-APP ;
+: TDECL-TAG-WORD ( n -- ) {: fam:n :}
+   TDGEN-CLEAR
+   fam s" tag" TDGEN-DRV-NAME
+   s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
+   fam TDGEN-TAG-BODY
+   TDECL-GEN-EVAL ;
+: TDECL-EQ-WORD ( n -- ) {: fam:n :}
+   TDGEN-CLEAR
+   fam s" eq" TDGEN-DRV-NAME
+   s" ( " TDGEN-APP
+   fam TDGEN-OUT-TYPE  32 TDGEN-C,  fam TDGEN-OUT-TYPE
+   s"  -- bool ) " TDGEN-APP
+   fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
+   fam s" tag" TDGEN-DRV-REF  s"  = ;" TDGEN-APP
+   TDECL-GEN-EVAL ;
+: TDECL-DRV-WORDS ( n -- ) {: fam:n :}
+   fam TFAM-DERIVE-EQ? 0= IF EXIT THEN
+   fam TDECL-TAG-WORD
+   fam TDECL-EQ-WORD ;
 
 : TDECL-CTOR-WORDS ( -- )                \ engine-load generation for the last sum
    TDECL-FAM-REG @ {: fam:n :}
@@ -751,6 +856,7 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
       fam vstart TDGEN-M @ + TDECL-CTOR-WORD
       TDGEN-M @ 1 + TDGEN-M !
    REPEAT
+   fam TDECL-DRV-WORDS                   \ derived words BEFORE the WID closes
    vstart TDECL-CTOR-PROT-WID ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers

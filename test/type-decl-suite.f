@@ -1166,6 +1166,64 @@ TD3MLOG @ 0 MK-HIDDEN  TD3LOG @ 0 MK-HIDDEN  UNIFY 0 T=
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
+\ ---------------------------------------------------------------------------
+\ derive S1 (dot habu-checker-capability-derive): `DERIVE eq` on a PUBLIC ENUM
+\ generates PKG:TAG (discriminant) + PKG:EQ (tag equality) as ORDINARY CHECKED
+\ words in the ctor package — no window, no trust, no engine lowering.
+\ ---------------------------------------------------------------------------
+TDIAG-BUF 8192 DIAG-BUFFER!   \ silence this section's expected declaration rejects
+ENUM tdrv DERIVE eq red green blue ;ENUM
+: TDRV-EQ-SAME ( -- bool ) TDRV:RED TDRV:RED TDRV:EQ ;
+: TDRV-EQ-DIFF ( -- bool ) TDRV:RED TDRV:GREEN TDRV:EQ ;
+: TDRV-EQ-LAST ( -- bool ) TDRV:BLUE TDRV:BLUE TDRV:EQ ;
+: TDRV-TAG0 ( -- n ) TDRV:RED TDRV:TAG ;
+: TDRV-TAG2 ( -- n ) TDRV:BLUE TDRV:TAG ;
+TDRV-EQ-SAME -1 T=
+TDRV-EQ-DIFF 0 T=
+TDRV-EQ-LAST -1 T=
+TDRV-TAG0 0 T=
+TDRV-TAG2 2 T=
+
+\ the scalar =/0= wall on layout values is UNTOUCHED by derive (TD12-ZEQ kin).
+s" TDRV-RAWEQ ( tdrv tdrv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ the derived word is family-exact: the wrong family rejects.
+ENUM tdrw one two ;ENUM
+s" TDRW-XEQ ( tdrw tdrw -- bool ) TDRV:EQ" CHECK-QUIET-CANDIDATE! 0 T=
+\ a non-derived enum grows no eq surface (undefined word: uncheckable).
+s" TDRW-NOEQ ( tdrw tdrw -- bool ) TDRW:EQ" CHECK-QUIET-CANDIDATE! 1 T=
+\ the derived words are undefine-protected exactly like constructors (a direct
+\ new-tail forge dies at the engine prot-wid publish, uncatchable in-process —
+\ same enforcement as constructor forges, so the pins here mirror the
+\ type-ctor-suite seal pins: undefine + reopen).
+s" undefine TDRV:EQ" E-CTOR-PROTECTED TDT-NEG
+s" undefine TDRV:TAG" E-CTOR-PROTECTED TDT-NEG
+s" package tdrv" E-CTOR-PROTECTED TDT-NEG
+
+\ grammar negatives: deferred/unknown features, kind gates, name collision,
+\ missing feature token (DERIVE eats exactly one feature token).
+s" ENUM tdrb1 DERIVE hash aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdrb5 0 DERIVE eq VARIANT vv ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" PRODUCT tdrb6 0 DERIVE eq FIELD ff n ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+s" ENUM tdrb7 DERIVE eq eq other ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM tdrb8 DERIVE eq tag other ;ENUM" E-TDECL-NAME TDT-NEG
+
+\ rollback: a REJECTED derive declaration leaves no residue — the same family
+\ name registers cleanly afterwards and its derived words work.
+s" ENUM tdrb9 DERIVE eq eq bad ;ENUM" E-TDECL-NAME TDT-NEG
+ENUM tdrb9 DERIVE eq aa bb ;ENUM
+: TDRB9-EQ ( -- bool ) TDRB9:AA TDRB9:BB TDRB9:EQ ;
+TDRB9-EQ 0 T=
+
+\ a variant named eq/tag stays legal WITHOUT derive (no reservation creep).
+ENUM tdrx eq neq ;ENUM
+s" TDRX-USE ( -- tdrx ) TDRX:EQ" CHECK-QUIET-CANDIDATE! -1 T=
+DIAG-BUFFER-OFF
+
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" type-decl-suite: failures" 1 die ;

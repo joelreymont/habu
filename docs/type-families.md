@@ -539,6 +539,52 @@ SUMTYPE color 0
 ;SUMTYPE
 ```
 
+### 9.3.1 `DERIVE eq` (derive S1)
+
+A PUBLIC enum may opt into derived typed equality with a `DERIVE eq` header
+clause (after the optional `POLICY`, before the variants):
+
+```forth
+ENUM color DERIVE eq
+  red
+  green
+  blue
+;ENUM
+```
+
+This generates two ORDINARY CHECKED words into the family's reserved
+constructor package — no pending window, no trust rows, no engine lowering.
+The bodies are plain checked `MATCH`/call text the checker certifies exactly
+like user code, so equality is semantic (tag identity) and layout-policy
+agnostic:
+
+```forth
+: COLOR:TAG ( color -- n )          \ discriminant: declaration-order tag
+   match color red of 0 endof green of 1 endof blue of 2 endof ;match ;
+: COLOR:EQ ( color color -- bool )  \ structural equality = tag equality
+   COLOR:TAG swap COLOR:TAG = ;
+```
+
+`TAG` exposes only the declaration-order tag — public metadata any checked
+`MATCH` could already observe, never a hidden field. The scalar `=`/`0=` wall
+on layout values is untouched: `( color color -- bool ) =` still rejects
+(pinned by TD12-ZEQ and the derive suite). The generated tails `eq`/`tag` are
+generator-owned: a DERIVE-marked family rejects a variant spelled `eq` or
+`tag` (`E-TDECL-NAME`), the words are extend/undefine-protected exactly like
+constructors (`TFAM-DERIVED-AT?` feeds the item-8 predicates), and both ride
+the ctor package's closed-but-callable WID protection and registry rollback
+(the request lives in the family row's `TF.DERIVE` bitmask, so a rolled-back
+declaration forgets it with the row).
+
+One feature token per clause keeps the grammar unambiguous against bare
+variant names. `DERIVE order` / `DERIVE hash` are recognised but deferred
+(`E-TDECL-DERIVE`, their slices land later); unknown features reject; sums and
+products reject the clause until the flat-cell W>1 slice lands; a private
+family rejects (`derive requires a public family` — there is no package to
+hold the words). Payload-carrying equality (W>1 flat-cell compare, which
+depends on the deterministically zeroed padding of `stack-cell-tag`) and
+`hash`/`order` are follow-on slices on the same clause.
+
 ### 9.4 `PRODUCT`
 
 Syntax:
@@ -2109,7 +2155,8 @@ Do not implement these in the first pass:
 - implicit niche optimization;
 - fully layout-polymorphic type parameters;
 - packed memory ABI for GPU arrays;
-- automatic deriving of equality/order/hash;
+- automatic deriving of equality/order/hash — REVISED: opt-in `DERIVE eq` for
+  enums landed as derive S1 (§9.3.1); order/hash and W>1 remain deferred;
 - user-defined custom layout code;
 - public construction from raw tags;
 - unsafe enum casts.

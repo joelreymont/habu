@@ -164,6 +164,7 @@ BEGIN-STRUCTURE TF-REC
    CELL +FIELD TF.SCHEMA-ROOT
    CELL +FIELD TF.SPAN-OFF
    CELL +FIELD TF.SPAN-U
+   CELL +FIELD TF.DERIVE          \ opt-in derived-word bitmask (DRV-EQ; derive S1)
 END-STRUCTURE
 
 4 constant TF-CAP-INIT
@@ -219,6 +220,15 @@ variable TFAM-N   0 TFAM-N !
 : TFAM-ENUM? ( n -- bool ) TFAM-KIND@ TK-ENUM = ;
 : TFAM-LAYOUT? ( n -- bool ) {: id:n :}   \ true when the family occupies an ADT layout
    id TFAM-PRODUCT? id TFAM-SUM? or id TFAM-ENUM? or ;
+
+\ --- opt-in derived words (derive S1, dot habu-checker-capability-derive):
+\ a `DERIVE eq` clause marks the family row; the sumtype generator then emits
+\ the family's derived words and the ctor-word predicate below recognizes
+\ their fixed generator-owned tails, exactly like generated constructors.
+1 constant DRV-EQ
+: TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
+: TFAM-DERIVE-EQ! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-EQ or swap ! ;
+: TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
 
 \ logical width in stack cells (docs/type-families.md §18 WIDTH function):
 \ sum = max payload slots + one tag cell; enum = tag only (slots 0); product =
@@ -324,6 +334,7 @@ variable TFAM-N   0 TFAM-N !
    TAGW-CELL r TF.TAGW !
    0 r TF.SCHEMA-ROOT !
    0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
+   0 r TF.DERIVE !
    arity TFAM-PK-RESERVE
    id ;
 
@@ -410,11 +421,21 @@ variable TF-CW-COL          \ first-colon split position
 : TFAM-CTOR-WORD-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = ctor id?
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ CORE-STR=CI ;
-: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT ctor word?
+: TF-CW-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ name tail after the split colon
+   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 - ;
+: TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
+   a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" tag" CORE-STR=CI ;
+: TFAM-DERIVED-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = id-family derived word?
+   id SUMV-FAM@ TFAM-DERIVE-EQ? 0= IF RES-FALSE EXIT THEN
+   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   a u TF-CW-TAIL$ TFAM-DERIVED-TAIL? ;
+: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?
    a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
    0 TF-CI !
    BEGIN TF-CI @ SUMV-N @ < WHILE
       a u TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
+      a u TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
 : TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?

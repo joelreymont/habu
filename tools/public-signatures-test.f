@@ -22,6 +22,9 @@ require tools/public-signatures-core.f
 \ signatures (item 13): each variant publishes a nullary `PKG:VARIANT ( -- fam )`
 \ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
 ENUM pstcolor red green blue ;ENUM
+\ A DERIVE-eq enum additionally publishes the synthesized derived words
+\ PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ) (derive S1).
+ENUM pstsig DERIVE eq low high ;ENUM
 
 8192 constant PST-BUF-CAP
 
@@ -432,7 +435,12 @@ variable PST-SUM-U
    PST-OUT outu s" PSTCOLOR:RED" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (-- pstcolor)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTCOLOR:GREEN" PST-WORD$ CONTAINS? TTRUE
-   PST-OUT outu s" PSTCOLOR:BLUE" PST-WORD$ CONTAINS? TTRUE ;
+   PST-OUT outu s" PSTCOLOR:BLUE" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTCOLOR:EQ" PST-WORD$ CONTAINS? TFALSE       \ derive is opt-in
+   PST-OUT outu s" PSTSIG:TAG" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (pstsig -- n)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTSIG:EQ" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (pstsig pstsig -- bool)" PST-SIG$ CONTAINS? TTRUE ;
 
 : PST-MAIN ( -- )
    T-RESET
