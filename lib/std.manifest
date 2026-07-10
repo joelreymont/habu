@@ -402,8 +402,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fs	lib/fs.f	word	FS-STAT-CTIME-NS@	(-- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	read stat ctime nanoseconds from the shared stat buffer
 1	fs	lib/fs.f	word	FS-TRY-STAT	(ptr u8 n -- bool)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	fill the shared stat buffer and report success
 1	fs	lib/fs.f	word	FS-TRY-LSTAT	(ptr u8 n -- bool)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	fill the shared stat buffer without following symlinks and report success
-1	fs	lib/fs.f	word	FS-TRY-STAT-MODE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return stat mode or -1 for missing/unstatable path
-1	fs	lib/fs.f	word	FS-TRY-LSTAT-MODE	(ptr u8 n -- n)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	return lstat mode or -1 for missing/unstatable path
+1	fs	lib/fs.f	word	FS-TRY-STAT-MODE	(ptr u8 n -- option<n>)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	stat a path: SOME mode if statable, else NONE
+1	fs	lib/fs.f	word	FS-TRY-LSTAT-MODE	(ptr u8 n -- option<n>)	lib/fs-mutate-test.f	docs/stdlib.md	stdlib-fs	published	lstat a path: SOME mode if statable, else NONE
 1	fs	lib/fs.f	word	STAT-MODE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return stat mode or throw E-FS-STAT
 1	fs	lib/fs.f	word	FILE-SIZE	(ptr u8 n -- n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return regular file byte size or throw E-FS-STAT
 1	fs	lib/fs.f	word	FILE-META	(ptr u8 n -- n n n n n)	lib/fs-test.f	docs/stdlib.md	stdlib-fs	published	return regular file size mtime seconds mtime nanoseconds ctime seconds and ctime nanoseconds

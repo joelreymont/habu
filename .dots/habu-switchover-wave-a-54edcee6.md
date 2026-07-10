@@ -72,3 +72,34 @@ CAVEAT for future slices: caller radius must include `examples/` — `examples/
 file-map.f` is a real MAP-GET caller that lib/tools/maki/src greps miss. A jj
 op-log divergence (concurrent fable moves) also reset the working copy mid-slice
 and reverted the edits twice; re-applied from the recorded diffs.
+
+## SLICE 4 — LANDED (lib/fs.f FS-TRY-*STAT-MODE pair)
+
+`FS-TRY-STAT-MODE` / `FS-TRY-LSTAT-MODE` (lib/fs.f) `( ptr u8 n -- n )` returning
+`-1` → `( ptr u8 n -- option<n> )`: SOME stat/lstat mode when statable, else NONE
+(wraps the internal `FS-TRY-STAT if FS-STAT-MODE@ else -1` sentinel at the
+boundary). Migrated the mirror PAIR together to keep fs.f internally consistent.
+All FOUR callers are in-file: `STAT-MODE` (`dup 0 < if throw` → MATCH with a
+`none OF E-FS-STAT throw ENDOF` / empty `some OF ENDOF` unwrap — proves `throw`
+is bottom in a MATCH arm, like `exit`), and `FILE?` / `DIR?` / `SYMLINK?` (each
+`dup 0 < if drop FS-FALSE else <bit-test> then` → `none OF FS-FALSE ENDOF` /
+`some OF S-IFMT and S-IF* = ENDOF`). No sentinel comparison left in fs.f. Both
+manifest rows updated to `(ptr u8 n -- option<n>)`. Direct found→some / absent→none
+tests for both finders added to `FS-TEST-INTERNALS`; caller both-branch coverage
+already exists (FS-TEST-FILE-DIR / FS-TEST-PATHS for STAT-MODE/FILE?/DIR?,
+fs-mutate-test SYMLINK? cases). Reused shared `lib/adt/option.f` — NO new public
+family. Picked the FS pair over STR>NUMBER? (r16, chained through STR-PARSE-*),
+FIND-EXECUTABLE* (7 hits) and FIND-TAG (throws, not a sentinel finder).
+
+CLOSURE NOTE (the extra edit beyond lib/): `lib/fs.f` is a `TR-GATE-HARNESS-FILES`
+member (test/run-files.f), so the result-cache CLOSURE-LINT
+(test/run-result-cache-test.f) requires every file fs.f `require`s to be a
+declared member of that set. Adding `require lib/adt/option.f` to fs.f made the
+lint fire `result-cache closure: lib/fs.f -> missing lib/adt/option.f` (twice:
+DEBUG + AOT-NEG sets). Fixed soundly by adding `lib/adt/option.f` to
+`TR-GATE-HARNESS-FILES` — it now content-keys the harness cache too, so an
+option.f edit correctly invalidates fs.f-dependent phases. This is why slices 1–3
+(map/date/float, not harness members) needed no run-files.f edit; any FUTURE
+switchover of a harness-closure lib (process*, content-key, test/*) must likewise
+declare its new option.f edge in TR-GATE-HARNESS-FILES. Gate class LIGHTER (fs.f
+on-demand, no byte-fixpoint). NO new trust rows.

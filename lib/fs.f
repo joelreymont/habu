@@ -2,6 +2,8 @@
 \
 \ Load after lib/errors.f and lib/string.f.
 
+require lib/adt/option.f                        \ option<n> for FS-TRY-*STAT-MODE (switchover wave A)
+
 1024 constant FS-PATH-CAP
 FS-PATH-CAP 1 + constant FS-PATHZ-CAP
 4096 constant FS-DIR-CAP
@@ -202,14 +204,17 @@ variable FS-IO-WR
    FS-PATHZ FS-STAT-BUF lstat64 0 < if FS-FALSE exit then
    FS-TRUE ;
 
-: FS-TRY-STAT-MODE ( ptr u8 n -- n )
-   FS-TRY-STAT if FS-STAT-MODE@ else -1 then ;
+: FS-TRY-STAT-MODE ( ptr u8 n -- option<n> )   \ SOME stat mode, NONE if missing/unstatable
+   FS-TRY-STAT if FS-STAT-MODE@ OPTION:SOME else OPTION:NONE then ;
 
-: FS-TRY-LSTAT-MODE ( ptr u8 n -- n )
-   FS-TRY-LSTAT if FS-STAT-MODE@ else -1 then ;
+: FS-TRY-LSTAT-MODE ( ptr u8 n -- option<n> )   \ SOME lstat mode, NONE if missing/unstatable
+   FS-TRY-LSTAT if FS-STAT-MODE@ OPTION:SOME else OPTION:NONE then ;
 
 : STAT-MODE ( ptr u8 n -- n )
-   FS-TRY-STAT-MODE dup 0 < if E-FS-STAT throw then ;
+   FS-TRY-STAT-MODE MATCH option
+     none OF E-FS-STAT throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : FILE-SIZE ( ptr u8 n -- n )
    FS-TRY-STAT 0= if E-FS-STAT throw then
@@ -224,25 +229,22 @@ variable FS-IO-WR
    FS-STAT-CTIME-SEC@ FS-STAT-CTIME-NS@ ;
 
 : FILE? ( ptr u8 n -- bool )
-   FS-TRY-STAT-MODE dup 0 < if
-      drop FS-FALSE
-   else
-      S-IFMT and S-IFREG =
-   then ;
+   FS-TRY-STAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFREG = ENDOF
+   ;MATCH ;
 
 : DIR? ( ptr u8 n -- bool )
-   FS-TRY-STAT-MODE dup 0 < if
-      drop FS-FALSE
-   else
-      S-IFMT and S-IFDIR =
-   then ;
+   FS-TRY-STAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFDIR = ENDOF
+   ;MATCH ;
 
 : SYMLINK? ( ptr u8 n -- bool )
-   FS-TRY-LSTAT-MODE dup 0 < if
-      drop FS-FALSE
-   else
-      S-IFMT and S-IFLNK =
-   then ;
+   FS-TRY-LSTAT-MODE MATCH option
+     none OF FS-FALSE ENDOF
+     some OF S-IFMT and S-IFLNK = ENDOF
+   ;MATCH ;
 
 : EXECUTABLE? ( ptr u8 n -- bool )
    FS-PATHZ FS-X-OK access 0= ;
