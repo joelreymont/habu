@@ -5,6 +5,38 @@ optimizers, ONNX import, the training/eval loop, and the LLM-target eval harness
 It is built **on** Habu and its checked PTX kernel backend. See the root
 [`PLAN.md`](../PLAN.md) for the full design and the dot chain.
 
+## Load Maki (one file)
+
+```
+bin/hb --load maki/maki.f
+```
+
+[`maki/maki.f`](maki.f) is the one-file entry point. It `require`s the host
+framework (model authoring, training, losses, optimizers, ONNX import, the
+checker-as-judge eval core) and re-exports a **curated top-level `MAKI:`
+surface** via the package `EXPORT` capability (`docs/forth.md` "Packages"). After
+one load you have two access modes:
+
+- call the curated workflow words as `MAKI:WORD` — the losses `MAKI:MSE` /
+  `MAKI:NLL` / `MAKI:HUBER` / `MAKI:L1` / `MAKI:MAHALANOBIS` / `MAKI:CE` (with
+  their gradients and `TT-` tensor forms), the optimizer steps `MAKI:SGD` /
+  `MAKI:SGD-MOM` / `MAKI:ADAM` / `MAKI:WEIGHT-DECAY`, model import `MAKI:IMPORT` /
+  `MAKI:IMPORT-FILE`, and the eval core `MAKI:CHECK-PASSES?` / `MAKI:PASS@1?`; or
+- drill into a subsystem package directly — `LOSS:`, `OPTIM:`, `ONNX:`, `EVAL:`,
+  `PLAN:` (the model-builder DSL), `TENSOR:`, `REPORT:` — for that package's full
+  surface.
+
+`EXPORT` is tail-preserving (one body, two names, zero runtime cost), so the
+curated set is exactly the model-authoring / train / eval words whose bare tail
+reads unambiguously at the top level and does not collide with an existing
+`MAKI:` word. Stem-clarified vocabularies (`PLAN:LINEAR`, `REPORT:RENDER-HUMAN`),
+the tensor-value store internals, ONNX proto/encode, and the device/GPU +
+device-golden grading layer (`GPU:*`, `EVAL:GRADE-*`) stay drill-in — see the
+curation criterion in the [`maki/maki.f`](maki.f) header.
+[`maki/maki-test.f`](maki-test.f) is the consumer fixture: it loads only
+`maki/maki.f` and proves each `MAKI:` alias is the identical word as its
+subsystem name.
+
 ## Boundary (BLOCKING)
 
 - **One-way dependency: `maki → habu`, never the reverse.** Maki loads Habu

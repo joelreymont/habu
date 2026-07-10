@@ -522,6 +522,11 @@ points stay listed.
   cleanup, and `PTXAS` resolution helpers for device graders.
 - `maki/device-artifacts-test.f` — focused coverage for grader artifact
   uniqueness and cleanup.
+- `maki/maki.f` — Maki one-file entry point: host-framework `require` aggregator
+  plus the curated top-level `MAKI:` surface, re-exporting the model-authoring /
+  train / eval workflow words (losses, optimizers, ONNX import, checker-as-judge
+  core) from their subsystem packages via `EXPORT`. Load it to call `MAKI:WORD`
+  or drill into `LOSS:`/`OPTIM:`/`ONNX:`/`EVAL:`/`PLAN:`/`REPORT:` directly.
 - `maki/test.f` — Maki-owned checked test-suite entry point; lists maki test
   files only and reports per-test pass/fail timing outside the Habu trust root.
 - `tools/srclist.f` — canonical source order.

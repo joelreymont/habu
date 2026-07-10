@@ -200,6 +200,8 @@ TEST:SUITE maki/eval-repair-ab-test.f
 TEST:;SUITE
 TEST:SUITE maki/eval-repair-mech-test.f
 TEST:;SUITE
+TEST:SUITE maki/maki-test.f
+TEST:;SUITE
 TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
 TEST:;GROUP
