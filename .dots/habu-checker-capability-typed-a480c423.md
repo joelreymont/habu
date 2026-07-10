@@ -181,6 +181,32 @@ MUST follow the pointer-free, REG-EXT-RB-SAVE/RESTORE + REG-EXT-PERSIST pattern
   certify; linear / open-arg / family-mismatch / bare-`ptr a` reject; a fetched
   enum MATCHes; report+IR+fusion enum columns type-check with unchanged array
   shape and unchanged on-disk output. COST: CHECKER-ONLY (+negatives), 1 fixpoint.
+  LANDED 2026-07-10 (fable-cap; checker-only as predicted, 1 fixpoint):
+  - src/core/checker.f: LAYOUT-MEM-OK? (tier gate: non-linear, W=1);
+    LAYOUT-MEM-INNER + LAYOUT-STORE-STEP/LAYOUT-FETCH-STEP wired into
+    CELL-STORE-TOK/CELL-FETCH-TOK (the resolved `ptr family` ADDRESS picks the
+    arm; effect rows built from the pointee term via PUSH-LOGICAL +
+    CHECKER-STEP, so the value side pairs hidden-to-hidden); and
+    LAYOUT-PTR-BIND-OK? in LAYOUT-BLOCK? (a var may bind a W=1 non-linear
+    layout pointee under CUR-STRICT — PAIR-STRICT's single call site is
+    U-TYPE's T-PTR arm and PAIR inherits it, so the flag IS the ptr-pointee
+    context).
+  - IMPLEMENTATION FINDING (design addendum): the wall was TWO gaps, not one.
+    Besides the `!`/`@` arm, the typed ADDRESS was unproducible — binding a
+    variable's `-- ptr a` row to `ptr family` rejected in U-TYPE (pre-S1
+    probe: `( -- ptr cpdt ) VFOO` -> 0). The pointee-bind relax is the second
+    half; without it the mem arm is unreachable from checked code.
+  - Pins: test/type-decl-suite.f TDS1-* — positives (enum store/fetch, tuck
+    round-trip, zero-arity W=1 sum, closed parametric tdmemu<n>, accessor
+    bind, executed store->fetch->MATCH round-trip on tdcolor) and negatives
+    (bare `ptr a` both directions, family mismatch, n->enum / enum->n
+    laundering, W>1 tdres store+fetch [flips at S2], linear tdmemu<tdown>,
+    open tdmemu<a>). TD12-STORE/TD12-CONST/TD12-ZEQ/TD12-DEPTH unchanged.
+  - docs/type-families.md §17: S1 status paragraph.
+  - Gates: fixpoint refresh OK ("compiler fixpoint"); test/run.f PASS
+    (35075ms <= 70000ms); maki/test.f PASS; all 8 type suites ok rc=0;
+    dot-dep-lint 0 findings; error-code-lint 0 findings;
+    typed-local-diff-lint rc=0.
 - S2 wide bundle store-fetch (W>1 sums/products): EMIT-P2-STORE/FETCH + WF facts
   on `!`/`@` + Gforth mirror. Acceptance: store-then-fetch round-trips a
   `result<n,n>` and an arbitrary non-result family; padding preserved; bad-width

@@ -3241,3 +3241,14 @@ unchanged (148855). Keys for milestone 2:
   the maki-ns-lint reconciliation: 3 misses + 1 false positive on 5 fixtures.
   `LINT-STR=CI` for anything the engine resolves; keep exemption prefixes
   (`E-`) case-sensitive so whitelists stay narrow.
+- **Probe the whole USE PATH before sizing a capability slice — the second
+  wall hides behind the first.** Storable-layouts S1 was designed as one
+  checker change (`!`/`@` accepting a `ptr family` address, width-1 tier);
+  a pre-implementation probe of the consumer pattern showed the typed address
+  itself was unproducible — `( -- ptr enum ) VAR-NAME` rejected because a var
+  could not bind a layout pointee (U-TYPE's row-level rule firing under the
+  T-PTR arm's PAIR-STRICT context). Without that probe the mem arm would have
+  landed green-but-unreachable from checked code. The fix keyed on an existing
+  invariant instead of new state: PAIR-STRICT has exactly one call site (ptr
+  pointees) and PAIR inherits it, so CUR-STRICT already IS the "inside a
+  pointee" context flag — one gated relax there, no new mode variable.

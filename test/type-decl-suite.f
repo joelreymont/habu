@@ -483,6 +483,53 @@ s" TD12-RIS-BAD ( n ptr u8 tdres<n,n> -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 
 \ throw takes an n code: a layout value is not a throw code.
 s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423) --------
+\ A width-1 (enum-tier) layout value crosses `!`/`@` through a `ptr family`
+\ address; the ADDRESS type carries the family identity, and a var may bind a
+\ width-1 non-linear layout pointee under a ptr spine (the typed-address seam:
+\ a checked accessor certifies against a variable's `-- ptr a` row). The
+\ compiled one-cell ops are the exact lowering, so certification plus the
+\ executed round-trip below are the whole proof. W > 1, linear, open-arg, and
+\ untyped/mismatched addresses stay fail-closed (S2 / TFAM-11 pins).
+SUMTYPE tdmemu 1
+  VARIANT uno ;VARIANT
+  VARIANT dos ;VARIANT
+;SUMTYPE
+variable TDS1-MEM
+s" TDS1-VP ( -- ptr tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-STORE ( tdcolor ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-FETCH ( ptr tdcolor -- tdcolor ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-RT ( tdcolor ptr tdcolor -- tdcolor ) tuck ! @" CHECK-QUIET-CANDIDATE! -1 T=
+\ a zero-arity width-1 SUM gets the same memory tier as the TK-ENUM.
+s" TDS1-SUM0 ( tdlight ptr tdlight -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+\ a parametric width-1 sum qualifies once its args are closed non-linear.
+s" TDS1-PAR ( tdmemu<n> ptr tdmemu<n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+\ family identity: untyped and mismatched addresses stay rejected.
+s" TDS1-BARE ( tdcolor ptr a -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-BAREF ( ptr a -- tdcolor ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-MIX ( tdlight ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+\ no n<->enum laundering in either direction.
+s" TDS1-NIN ( n ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-NOUT ( ptr tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+\ W > 1 store/fetch waits for the S2 width-aware engine legs.
+s" TDS1-WIDE ( tdres<n,n> ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+\ linear / open args stay fail-closed even at width 1 (TFAM-11 rule).
+s" TDS1-LIN ( tdmemu<tdown> ptr tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+\ executed round-trip: store an enum, fetch it, MATCH the fetched value.
+: TDS1-P ( -- ptr tdcolor ) TDS1-MEM ;
+: TDS1-PUT ( tdcolor -- ) TDS1-P ! ;
+: TDS1-GET ( -- tdcolor ) TDS1-P @ ;
+: TDS1-CODE ( -- n )
+   TDS1-GET MATCH tdcolor
+     red OF 0 ENDOF
+     green OF 1 ENDOF
+     blue OF 2 ENDOF
+   ;MATCH ;
+TDCOLOR:GREEN TDS1-PUT TDS1-CODE 1 T=
+TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
+
 \ --- item 12 slice-2: logical width metadata (docs §18 WIDTH function).
 s" " s" tdres" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=

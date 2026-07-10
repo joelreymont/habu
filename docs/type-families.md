@@ -1277,6 +1277,19 @@ lower from these facts until `LAYOUT-PUSH-FIELDS` expansion lands in the same
 slice — the facts carry the registry logical width, which only then equals the
 physical width.
 
+**Storable layouts S1 (dot habu-checker-capability-typed-a480c423).** `!`/`@`
+through a `ptr family<..>` address move the pointee's whole logical value for
+the width-1 (enum) tier: the ADDRESS type carries the family identity — a bare
+`ptr a` layout store, an `n` into an enum slot, a mismatched family, and an
+enum fetched back as `n` all keep the item-12 reject — and a var may bind a
+width-1 non-linear layout pointee under a ptr spine (`CUR-STRICT` context), so
+a checked accessor certifies `( -- ptr color ) VAR-NAME` against the
+variable's `-- ptr a` row. The compiled one-cell `!`/`@` are already the exact
+lowering at W = 1, so the change is checker-only. W > 1 store/fetch waits for
+the S2 width-aware engine legs; possibly-linear (incl. open-arg) pointees stay
+fail-closed until TFAM 11 whole-bundle counting. Pinned in
+`test/type-decl-suite.f` (TDS1-*).
+
 ---
 
 ## 18. Width and parameter kinds

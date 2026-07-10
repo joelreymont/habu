@@ -1088,6 +1088,16 @@ variable LLC-N
       1 +
    REPEAT drop RES-FALSE ;
 
+\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): the
+\ memory tier a layout value may cross TODAY. Gate = closed non-linear args
+\ AND one-cell registry width (the enum tier): the compiled one-cell `!`/`@`
+\ are already the exact lowering for W = 1, so acceptance is checker-only.
+\ W > 1 waits for the S2 width-aware store/fetch engine legs; possibly-linear
+\ (incl. open-arg) stays rejected until TFAM 11 whole-bundle counting.
+: LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
+   t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   t PARAM>FAM TFAM-WIDTH@* 1 = ;
+
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
    a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN   \ a hidden field is not a single-cell bundle: never binds a var
@@ -1098,9 +1108,32 @@ variable LLC-N
       b T-RES LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
+
+\ Pointer-pointee bind (storable layouts S1): CUR-STRICT marks exactly the
+\ pairs under a T-PTR pointee (PAIR-STRICT's one call site is U-TYPE's T-PTR
+\ arm, and PAIR inherits the flag for its subterm pairs), and a POINTER is one
+\ cell whatever its pointee, so binding a var to a logical layout pointee never
+\ breaks the item-12 width discipline. Allow it for the S1 memory tier only
+\ (LAYOUT-MEM-OK?: non-linear, W = 1) — that is what lets a checked accessor
+\ certify `( -- ptr color ) VAR-NAME` against the variable's `-- ptr a` row,
+\ giving `!`/`@` a typed address source; the one-cell pointee also matches the
+\ one-cell reservation a `variable`/`create` row actually backs. Hidden fields
+\ still never bind; row-level pairs (CUR-STRICT 0) keep the transport-only rule.
+: LAYOUT-PTR-BIND-OK? ( n n -- bool ) {: a:n b:n :}
+   CUR-STRICT @ 0= IF RES-FALSE EXIT THEN       \ only under a ptr pointee
+   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN
+   a LAYOUT-PARAM? IF
+      a T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
+      b ISVAR EXIT THEN
+   b LAYOUT-PARAM? IF
+      b T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
+      a ISVAR EXIT THEN
+   RES-FALSE ;
+
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
-   a b LAYOUT-XPORT-ALLOW? 0= ;
+   a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
+   a b LAYOUT-PTR-BIND-OK? 0= ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -4909,12 +4942,48 @@ variable FLD  variable FLI  variable FLO  variable FLC
 : ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
+\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): `!`/`@`
+\ through a `ptr family<..>` address move the pointee's whole logical value.
+\ The ADDRESS type picks the arm — family identity lives in the pointer, so a
+\ bare `ptr a` store of a layout value stays rejected, a mismatched family
+\ rejects in ordinary unification, an `n` cannot enter an enum slot, and a
+\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? gates the tier:
+\ W = 1 (enum) only, where the compiled one-cell `!`/`@` are already the exact
+\ lowering — W > 1 rejects until the S2 engine legs, linear/open-arg until
+\ TFAM 11. The effect rows push the family's hidden expansion (PUSH-LOGICAL),
+\ so the value side pairs hidden-to-hidden like every checked row cell.
+: LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
+   DCUR @ R-RES {: node:n :}
+   node TAG S-PUSH <> IF 0 RES-FALSE EXIT THEN
+   node P>TYPE T-RES {: pt:n :}
+   pt TAG T-PTR <> IF 0 RES-FALSE EXIT THEN
+   pt PTR>INNER T-RES {: t:n :}
+   t HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
+   t LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
+   t RES-TRUE ;
+
+: LAYOUT-FETCH-STEP ( n -- ) {: t:n :}   \ ( ptr fam -- fam ) from the pointee term
+   t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   FRESH MK-ROW {: rest:n :}
+   t MK-PTR rest MK-PUSH
+   t rest PUSH-LOGICAL
+   CHECKER-STEP ;
+
+: LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
+   t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   FRESH MK-ROW {: rest:n :}
+   t rest PUSH-LOGICAL
+   t MK-PTR swap MK-PUSH
+   rest CHECKER-STEP ;
+
 : CELL-FETCH-TOK ( -- )
+   LAYOUT-MEM-INNER IF LAYOUT-FETCH-STEP EXIT THEN drop
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STEP-FETCH
    bad IF 0 OK ! THEN ;
 
 : CELL-STORE-TOK ( -- )
+   LAYOUT-MEM-INNER IF LAYOUT-STORE-STEP EXIT THEN drop
    DCUR @ ROW-TOP-BYTE-PTR? {: bad :}
    STEP-STORE
    bad IF 0 OK ! THEN ;
