@@ -179,9 +179,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-HOLE + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-PAST-BAND2-FORGE$ ( -- ptr u8 n )     \ ! at $3D00 (one past band 2) stays writable
+: SLV-PAST-BAND2-FORGE$ ( -- ptr u8 n )     \ ! at $40C0 (one past band 2, = UNCGH-CELL) stays writable
    SB-RESET
-   s" $3D00 constant SLF-PAST" SB-APPEND SLV-LF
+   s" $40C0 constant SLF-PAST" SB-APPEND SLV-LF
    s" data-base SLF-PAST + 99 swap !" SB-APPEND SLV-LF
    SB$ ;
 
@@ -254,7 +254,8 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    S\" s\" SLF-UMARK\" HIDE-DEFS-FROM" SB-APPEND SLV-LF
    SB$ ;
 
-\ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $3D00). A raw
+\ Second guarded band (TFAM 2b-v): the protected-WID registry [$3CB8, $40C0) (count
+\ cell + 256-slot u32 table, grown from 16 by dot habu-seal-protwid-cap-6f1c9d2b). A raw
 \ store to the count cell ($3CB8) or the u32 table ($3CC0) must trap, so user source
 \ can neither zero the count (un-protecting every sealed WID) nor overflow the table.
 : SLV-PWIDN-FORGE$ ( -- ptr u8 n )          \ ! into the registry count cell ($3CB8)
@@ -269,9 +270,9 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-PWIDT + 9 swap c!" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-PWIDT-END-FORGE$ ( -- ptr u8 n )      \ ! at the band-2 last byte (PROT-REG-OFF+PROT-REG-LEN-1 = $3CFF)
+: SLV-PWIDT-END-FORGE$ ( -- ptr u8 n )      \ ! at the band-2 last byte (PROT-REG-OFF+PROT-REG-LEN-1 = $40BF)
    SB-RESET
-   s" $3CFF constant SLF-PWEND" SB-APPEND SLV-LF
+   s" $40BF constant SLF-PWEND" SB-APPEND SLV-LF
    s" data-base SLF-PWEND + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
@@ -372,6 +373,55 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-KIND @ PROC-OUTCOME-EXIT T=
    SLV-RC @ 0 T= ;
 
+\ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
+\ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
+\ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
+\ child declaring K public families is generated with unique letter-pair names (each
+\ family scopes its own 'foo' variant, so the variant name may repeat). Red-first: at
+\ the old cap of 16 the 17th family exits E-SEAL-PACKAGE (84) with NO diagnostic, so
+\ both the "succeed past 16" (rc 0) and the "labeled overflow" (stderr names the
+\ table) assertions fail. Driven via SLV-RUN-LOAD (a file), not stdin: 257 families
+\ exceed the 2 KB SLV-IN buffer.
+16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
+create PWG-BUF PWG-CAP allot
+variable PWG-U
+
+: PWG$ ( -- ptr u8 n )  PWG-BUF PWG-U @ ;
+: PWG-RESET ( -- )  0 PWG-U ! ;
+: PWG-C ( n -- ) {: c:n :}                   \ append one raw byte
+   PWG-U @ 1+ PWG-CAP > if E-FS-CAPACITY throw then
+   c  PWG-BUF PWG-U @ +  c!
+   PWG-U @ 1+ PWG-U ! ;
+: PWG-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
+   PWG-U @ u + PWG-CAP > if E-FS-CAPACITY throw then
+   a  PWG-BUF PWG-U @ +  u BYTE-COPY
+   PWG-U @ u + PWG-U ! ;
+: PWG-FAMILY ( n -- ) {: i:n :}              \ one public 1-variant SUMTYPE, unique name f<a-z><a-z>
+   s" SUMTYPE f" PWG-APPEND
+   $61 i 26 / +   PWG-C
+   $61 i 26 mod + PWG-C
+   s"  1 VARIANT foo a ;VARIANT ;SUMTYPE" PWG-APPEND
+   10 PWG-C ;
+: PWG-GEN ( n -- ptr u8 n ) {: k:n :}        \ K public families as one batch program
+   PWG-RESET
+   0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
+   PWG$ ;
+
+84 constant SLV-PWID-RC                      \ E-SEAL-PACKAGE: protected-WID table full
+: SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
+: SLV-ASSERT-PWID-FULL ( -- )                \ child died with the LABELED protected-WID-full exit
+   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-RC @ SLV-PWID-RC T=
+   SLV-ERR$ s" hb: protected-WID table full" CONTAINS? TTRUE ;
+
+: SLV-PWID-CAP ( -- )
+   s" 17 public ADT families succeed past the old 16 cap" T-LABEL
+   17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
+   s" 256 public families succeed at the raised cap" T-LABEL
+   256 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
+   s" the 257th public family overflows -> labeled 'protected-WID table full' exit 84" T-LABEL
+   257 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
+
 : SLV-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seal" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -465,7 +515,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-POSITIVES ( -- )
    s" free hole below the band stays writable" T-LABEL
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
-   s" store one past band 2 ($3D00) stays writable" T-LABEL
+   s" store one past band 2 ($40C0) stays writable" T-LABEL
    SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
@@ -483,6 +533,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-NEGATIVES-SINKS
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
+   SLV-PWID-CAP
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;
