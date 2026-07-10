@@ -41,14 +41,14 @@ variable FL-VALID                           \ exponent validity flag
 \ ---- digit string -> double -----------------------------------------------
 \ Unsigned run of decimal digits. Empty is valid and yields 0.0; any non-digit
 \ byte is rejected.
-: FL-DIGITS>F ( ptr u8 n -- r bool ) {: a:ptr u :}
-   u 0= if 0.0 0 0= exit then
-   a u STR-DIGITS? 0= if 0.0 0 0= 0= exit then
+: FL-DIGITS>F ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME digit-run value (empty -> SOME 0.0), NONE on a non-digit
+   u 0= if 0.0 OPTION:SOME exit then
+   a u STR-DIGITS? 0= if OPTION:NONE exit then
    0.0  0 FL-IX !
    begin FL-IX @ u < while
       10.0 f*  a FL-IX @ + c@ STR-DIGIT-VALUE s>f f+
       FL-IX @ 1+ FL-IX !
-   repeat  0 0= ;
+   repeat  OPTION:SOME ;
 
 \ ---- field splitting ------------------------------------------------------
 : FL-STRIP-SIGN ( ptr u8 n -- ptr u8 n bool ) {: a:ptr u :}
@@ -68,10 +68,15 @@ variable FL-VALID                           \ exponent validity flag
    dpos 0 >= if dpos else u then {: ilen :}
    dpos 0 >= if a dpos 1+ + else a u + then {: fa:ptr :}
    dpos 0 >= if u dpos 1+ - else 0 then {: flen :}
-   a ilen FL-DIGITS>F {: iok :}                  \ int value left below iok
-   fa flen FL-DIGITS>F {: fok :}                 \ frac value left below fok
-   ilen flen + 0=  iok 0= or  fok 0= or
-   if drop drop OPTION:NONE exit then
+   ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
+   a ilen FL-DIGITS>F MATCH option
+     none OF OPTION:NONE exit ENDOF
+     some OF ENDOF                                \ int value (ival) left on the stack
+   ;MATCH
+   fa flen FL-DIGITS>F MATCH option
+     none OF drop OPTION:NONE exit ENDOF          \ drop ival, reject a bad fraction
+     some OF ENDOF                                \ stack: ival fval
+   ;MATCH
    flen POW10 f/ f+ OPTION:SOME ;                 \ SOME (ival + fval/10^flen)
 
 \ ---- exponent -------------------------------------------------------------
