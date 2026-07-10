@@ -232,6 +232,15 @@ s" RT-GATE-NOUT ( n -- n ) G-TAG-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-GATE-ROOF ( roofline n -- ) G-TAG-AT !"     CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-ROOF-VERD ( verdict -- ) F-ROOFLINE-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
 
+\ ---- coalescing-status swapped-role negatives (L-HOT stores a `costatus` ENUM)
+\ positive control: the typed hot-status slot accepts its own family
+s" RT-HOT-OK ( costatus n -- ) HOT-ST-AT !"       CHECK-QUIET-CANDIDATE! -1 T=
+\ n->enum / enum->n laundering at the hot-status slot
+s" RT-HOT-NIN ( n n -- ) HOT-ST-AT !"             CHECK-QUIET-CANDIDATE! 0 T=
+s" RT-HOT-NOUT ( n -- n ) HOT-ST-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
+\ cross-column swap: a verdict can never land in a hot-status cell
+s" RT-HOT-VERD ( verdict n -- ) HOT-ST-AT !"      CHECK-QUIET-CANDIDATE! 0 T=
+
 end-package
 
 T-REPORT

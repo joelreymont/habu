@@ -307,3 +307,34 @@ verdict value into F-ROOFLINE) — all reject, diagnostics cited in
 report-test.f. Gates green: report-test, cad-test, golden-test,
 golden-artifact-test, gradcheck-test, demo-ffn-test, mlp-bwd-test,
 fusion-plan-test all rc=0; maki/test.f rc=0 (77 suites); all 5 lints clean.
+
+COLUMN 4 LANDED 2026-07-10 — report L-HOT coalescing status (report.f). The
+status is the third cell of a stride-3 triple; the typed slot accessor scales
+the index itself (`HOT-ST-AT ( n -- ptr costatus ) 3 * 2 + cells L-HOT +`),
+proving S1 typed addresses compose with strided list layouts, not just flat
+columns/variables. `ENUM costatus unknown coalesced strided unaligned
+coalesced-v4 broadcast gathered ;ENUM` — digit-suffixed variant tails
+(coalesced-v4) parse fine. CO-* stay the public vocabulary of HOT+/HOT-STATUS@
+(signatures unchanged; mem-plan-test's CO-* asserts untouched). >COSTATUS
+(CO-CK validate-first; HOT+ still rejects a bad status before interning) parses;
+COSTATUS>N + CO-NAME are exhaustive MATCH renders (E-RPT-COAL render default
+dropped). Readers converted: R-COALESCE, HOT-STATUS@. Swapped-role negatives:
+n-launder both directions + verdict-into-hot-status cross swap, all reject.
+Gates green: report-test, mem-plan-test, cad-test rc=0; maki/test.f rc=0 (77
+suites); all 5 lints clean.
+
+REMAINING (honest scope for follow-on slices, evidence-based):
+- model-ir MI-OP / MI-DT / MI-LAY / MI-IS-AL and the DT-*/LAY-*/AL-* sets
+  (tensor.f, tensor-value.f): NOT converted in this slice. Not a capability
+  wall — S1 covers the storage — but a SCALE wall under the stable-signature
+  rule: MIR-OP@ has 21 reader files and op-kind is a live TABLE INDEX
+  (OPR-CLASS/OPR-NAME index op-registry rows with it), and DT-*/LAY-*/AL-* are
+  cross-file vocabulary through sched-key/mem-plan/lowering/device paths. The
+  honest swap converts the CONSUMERS (OPR-CLASS takes the enum, etc.), which is
+  its own multi-file campaign, not a fits-in-one-commit column. Dot stays open
+  for these.
+- SKEY product with enum fields + typed equality: still BLOCKED on
+  habu-checker-capability-layout (enum-kinded product fields) +
+  habu-checker-capability-derive (typed equality) — unchanged, do not attempt.
+- report evidence rows / measurement history as typed arrays: blocked on S3
+  LAYOUT-BUFFER (not landed).

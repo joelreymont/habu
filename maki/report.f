@@ -71,6 +71,10 @@ ENUM roofline
 ;ENUM
 
 \ ---- per-tensor coalescing status (CAD-PLAN 6.4 access vocabulary) ----
+\ CO-* stay the public numeric vocabulary of the representation-hiding accessors
+\ (REPORT:HOT+ / REPORT:HOT-STATUS@ keep their n signatures); internally the hot
+\ list stores a real ENUM (dot habu-cad-adt-swap, capability S1) and converts at
+\ that accessor boundary only. Constructors: MAKI-COSTATUS:UNKNOWN/../GATHERED.
 0 constant CO-UNKNOWN
 1 constant CO-COALESCED         \ w=1 contiguous unit-stride global access
 2 constant CO-STRIDED           \ non-unit innermost stride (column-major read)
@@ -79,6 +83,15 @@ ENUM roofline
 5 constant CO-BROADCAST         \ 1-row/1-col input hoisted to a register (6.2.3)
 6 constant CO-GATHERED          \ indexed read downstream of a gather
 7 constant CO-N
+ENUM costatus
+  unknown
+  coalesced
+  strided
+  unaligned
+  coalesced-v4
+  broadcast
+  gathered
+;ENUM
 
 \ ---- gate ids (index into the fixed 4-gate array) ----
 0 constant G-CERTIFY
@@ -135,8 +148,13 @@ create L-SPLIT RPT-LCAP 2 * cells allot   variable N-SPLIT
 create L-WARN  RPT-LCAP 2 * cells allot   variable N-WARN
 create L-CAND  RPT-CAND-CAP 2 * cells allot   variable N-CAND
 
-\ hot tensors: (name-offset,name-length,coalesce-status) triples, stride 3
+\ hot tensors: (name-offset,name-length,costatus enum) triples, stride 3
 create L-HOT  RPT-LCAP 3 * cells allot    variable N-HOT
+
+\ typed coalescing-status slot: retype the third cell of a hot triple to
+\ `ptr costatus` so the enum store/fetch certifies with family identity
+\ (capability S1); a raw n or a foreign family cannot reach these cells.
+: HOT-ST-AT ( n -- ptr costatus )  3 * 2 + cells L-HOT + ;
 \ profile rows: (name-offset,name-length,device-us) triples, stride 3
 create L-PROF RPT-LCAP 3 * cells allot    variable N-PROF
 
@@ -251,17 +269,41 @@ create G-RL  MAKI:G-N cells allot
       compute OF s" compute-bound" ENDOF
    ;MATCH ;
 
-: CO-NAME ( n -- ptr u8 n )
-   case
-      MAKI:CO-UNKNOWN      of s" unknown"      endof
-      MAKI:CO-COALESCED    of s" coalesced"    endof
-      MAKI:CO-STRIDED      of s" strided"      endof
-      MAKI:CO-UNALIGNED    of s" unaligned"    endof
-      MAKI:CO-COALESCED-V4 of s" coalesced-v4" endof
-      MAKI:CO-BROADCAST    of s" broadcast"    endof
-      MAKI:CO-GATHERED     of s" gathered"     endof
-      E-RPT-COAL throw
-   endcase ;
+\ coalescing-status enum boundary (dot habu-cad-adt-swap): the stored value is
+\ the enum; the public accessors keep their CO-* n vocabulary, converted here.
+: CO-CK ( n -- n )                             \ validate a CO-* code
+   dup 0 < over MAKI:CO-N >= or if E-RPT-COAL throw then ;
+
+: >COSTATUS ( n -- costatus )                  \ parse boundary: CO-* code -> enum
+   CO-CK
+   dup MAKI:CO-COALESCED    = if drop MAKI-COSTATUS:COALESCED    exit then
+   dup MAKI:CO-STRIDED      = if drop MAKI-COSTATUS:STRIDED      exit then
+   dup MAKI:CO-UNALIGNED    = if drop MAKI-COSTATUS:UNALIGNED    exit then
+   dup MAKI:CO-COALESCED-V4 = if drop MAKI-COSTATUS:COALESCED-V4 exit then
+   dup MAKI:CO-BROADCAST    = if drop MAKI-COSTATUS:BROADCAST    exit then
+   MAKI:CO-GATHERED = if MAKI-COSTATUS:GATHERED else MAKI-COSTATUS:UNKNOWN then ;
+
+: COSTATUS>N ( costatus -- n )                 \ render boundary: enum -> CO-* code
+   MATCH costatus
+      unknown      OF MAKI:CO-UNKNOWN      ENDOF
+      coalesced    OF MAKI:CO-COALESCED    ENDOF
+      strided      OF MAKI:CO-STRIDED      ENDOF
+      unaligned    OF MAKI:CO-UNALIGNED    ENDOF
+      coalesced-v4 OF MAKI:CO-COALESCED-V4 ENDOF
+      broadcast    OF MAKI:CO-BROADCAST    ENDOF
+      gathered     OF MAKI:CO-GATHERED     ENDOF
+   ;MATCH ;
+
+: CO-NAME ( costatus -- ptr u8 n )             \ exhaustive: no bad-tag throw possible
+   MATCH costatus
+      unknown      OF s" unknown"      ENDOF
+      coalesced    OF s" coalesced"    ENDOF
+      strided      OF s" strided"      ENDOF
+      unaligned    OF s" unaligned"    ENDOF
+      coalesced-v4 OF s" coalesced-v4" ENDOF
+      broadcast    OF s" broadcast"    ENDOF
+      gathered     OF s" gathered"     ENDOF
+   ;MATCH ;
 
 \ ---- machine-render helpers ------------------------------------------------
 : EMIT-KEY ( ptr u8 n -- )  OUT+ s" : " OUT+ ;
@@ -308,7 +350,7 @@ create G-RL  MAKI:G-N cells allot
       s" coalesce.tensor" i EMIT-IDXKEY
       L-HOT 3 i 0 SL-SLOT @  L-HOT 3 i 1 SL-SLOT @ ARENA-GET OUT+ OUT-NL
       s" coalesce.status" i EMIT-IDXKEY
-      L-HOT 3 i 2 SL-SLOT @ CO-NAME OUT+ OUT-NL
+      i HOT-ST-AT @ CO-NAME OUT+ OUT-NL
    loop ;
 
 : R-SCHEDULE ( -- )
@@ -512,12 +554,12 @@ public
 \ ---- hot tensors + coalescing status ---------------------------------------
 : HOT+ ( report ptr u8 n n -- report )     \ name status
    {: st:n :}
-   st 0 < st MAKI:CO-N >= or if E-RPT-COAL throw then
+   st CO-CK drop                           \ reject a bad status before interning
    N-HOT @ RPT-LCAP >= if E-RPT-FULL throw then
    ARENA-PUT {: off:n len:n :}
    off L-HOT 3 N-HOT @ 0 SL-SLOT !
    len L-HOT 3 N-HOT @ 1 SL-SLOT !
-   st  L-HOT 3 N-HOT @ 2 SL-SLOT !
+   st >COSTATUS N-HOT @ HOT-ST-AT !
    N-HOT @ 1+ N-HOT ! ;
 : HOT-COUNT ( report -- n )  RPT-DROP N-HOT @ ;
 : HOT-NAME@ ( report n -- ptr u8 n ) {: idx:n :}
@@ -527,7 +569,7 @@ public
 : HOT-STATUS@ ( report n -- n ) {: idx:n :}
    RPT-DROP
    idx 0 < idx N-HOT @ >= or if E-RPT-IDX throw then
-   L-HOT 3 idx 2 SL-SLOT @ ;
+   idx HOT-ST-AT @ COSTATUS>N ;
 
 \ ---- profile rows ----------------------------------------------------------
 : PROF+ ( report ptr u8 n n -- report )    \ kernel device-us
