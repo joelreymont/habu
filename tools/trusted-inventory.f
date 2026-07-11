@@ -702,7 +702,7 @@ private
    a u s" discharge-candidate" LINT-STR= ;
 
 : PARSE-COUNT ( ptr u8 n -- option<n> )   \ SOME ratchet count >= 1, else NONE
-   STR>NUMBER? STR>OPTION MATCH option
+   STR>NUMBER? MATCH option
      none OF OPTION:NONE ENDOF
      some OF dup 1 < if drop OPTION:NONE else OPTION:SOME then ENDOF
    ;MATCH ;

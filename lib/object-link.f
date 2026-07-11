@@ -4,6 +4,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/memory.f
 require lib/fs.f
 require lib/content-key.f
@@ -479,8 +480,10 @@ variable APP-DATA
    off CUR-TEXT @ >= if E-OBJ-SCHEMA throw then ;
 
 : ROW-OFF ( n n -- n ) {: row:n field:n :}
-   row field OBJ:ROW-FIELD$ STR>NUMBER? if exit then
-   drop E-OBJ-FIELD throw ;
+   row field OBJ:ROW-FIELD$ STR>NUMBER? MATCH option
+     none OF E-OBJ-FIELD throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : ADD-DEF ( n -- ) {: row:n :}
    row 1 ROW-OFF {: off:n :}

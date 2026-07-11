@@ -266,7 +266,7 @@ private
 : GA-VAL$ ( -- ptr u8 n )  GA-TEXT GA-F-OFF @ +  GA-F-LEN @ ;
 : GA-REQ-LINE ( ptr u8 n -- )  GA-FIND-LINE 0= if E-GA-PARSE throw then ;
 : GA-PARSE-INT-VAL ( ptr u8 n -- n )
-   STR>NUMBER? STR>OPTION
+   STR>NUMBER?
    MATCH option none OF E-GA-PARSE throw ENDOF some OF ENDOF ;MATCH ;
 
 \ indexed key builders: "input.<i>.data: " / "input.<i>.shape: "

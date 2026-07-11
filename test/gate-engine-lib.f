@@ -49,7 +49,10 @@ create GE-CHECK-OFF-LINE
    GENG-ARG-I @ 1+ SCRIPT-ARGV$ ;
 
 : GENG-POS-NUM ( ptr u8 n -- n )
-   STR>NUMBER? 0= if drop GENG-USAGE then
+   STR>NUMBER? MATCH option
+     none OF GENG-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH
    dup 1 < if drop GENG-USAGE then ;
 
 : GENG-ADVANCE ( n -- )

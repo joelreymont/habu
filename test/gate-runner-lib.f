@@ -3,6 +3,8 @@
 \ Loaded after gate support libraries. This file defines phase dispatch only;
 \ entry files decide when to run it.
 
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
+
 64 constant GR-USAGE-RC
 -1 constant GR-ID-UNKNOWN
 0 constant GR-ID-TOOL
@@ -69,7 +71,10 @@ variable GR-ARG-I
    GR-ARG-I @ 1+ SCRIPT-ARGV$ ;
 
 : GR-POS-NUM ( ptr u8 n -- n )
-   STR>NUMBER? 0= if drop GR-USAGE then
+   STR>NUMBER? MATCH option
+     none OF GR-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH
    dup 1 < if drop GR-USAGE then ;
 
 : GR-ADVANCE ( n -- )

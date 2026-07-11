@@ -26,3 +26,15 @@ call-site hunks; the maki orchestrator reviews the maki hunks post-merge. This
 beats a throwaway IDX>OPTION adapter the plan explicitly forbids. Residual maki
 follow-up at commit D time: delete the one STR>OPTION token at the 4 rewritten
 sites (maki micro-commit; the structural MATCH rewrite is already done).
+
+TFAM SIDE COMPLETE (tfam-finale workspace, 2026-07-11): commits A/B/D landed
+under the lane-split waiver. The 22 maki index-finder call sites were rewritten
+in commits A/B exactly as censused (store.f x3 + cad.f x5 + golden-artifact.f
+x1 INDEX-OF; lower-{ew,mm,red,mv}-test.f x12 + ablate-ptx.f x1 FIND-SUB), and
+commit D removed the one STR>OPTION token at the 4 STR>NUMBER? sites
+(store.f STORE-PARSE-INT, cad.f PARSE-INT, saved.f SV-FBR-PARSE,
+golden-artifact.f GA-PARSE-INT-VAL) — the residual maki micro-commit is now
+IN commit D, not outstanding. Both adapters (STR>NUMBER-UNWRAP + STR>OPTION)
+and the orphan tools/string.f are deleted. maki/test.f 77/77 rc 0 on every
+commit. Remaining action on this dot: the maki orchestrator's post-merge
+review of the maki hunks; close after that review.

@@ -63,7 +63,7 @@ public
 
 \ ---- flop-byte ratio (calibration.rows override, else the documented default) --
 : SV-FBR-PARSE ( ptr u8 n -- n )
-   STR>NUMBER? STR>OPTION
+   STR>NUMBER?
    MATCH option none OF E-SV-CALIB throw ENDOF some OF ENDOF ;MATCH ;
 
 : SAVED-FBR ( -- n )

@@ -4,6 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, lib/test/runner.f,
 \ test/gate-pool.f, lib/test.f, and lib/content-key.f.
 
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test.f
 
 120000 constant SUITE-TIMEOUT-MS
@@ -44,7 +45,10 @@ variable SUITE-TIMINGS
    SUITE-ARG-I @ 1+ SCRIPT-ARGV$ ;
 
 : SUITE-POS-NUM ( ptr u8 n -- n )
-   STR>NUMBER? 0= if drop SUITE-USAGE then
+   STR>NUMBER? MATCH option
+     none OF SUITE-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH
    dup 1 < if drop SUITE-USAGE then ;
 
 : SUITE-ADVANCE ( n -- )

@@ -287,7 +287,12 @@ variable HBB-PRESEED-MODE
    HBB-I @ s" --strict-signatures" HBB-ARG= if -1 HBB-STRICT ! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-entry" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-ENTRY! HBB-INC-I HBB-TRUE exit then
    HBB-I @ s" --preseed-seed" HBB-ARG= if HBB-OPT-VALUE$ HBB-PRESEED-SEED! HBB-INC-I HBB-TRUE exit then
-   HBB-I @ s" --preseed-mode" HBB-ARG= if HBB-OPT-VALUE$ STR>NUMBER? 0= if HBB-USAGE then HBB-PRESEED-MODE! HBB-INC-I HBB-TRUE exit then
+   HBB-I @ s" --preseed-mode" HBB-ARG= if
+      HBB-OPT-VALUE$ STR>NUMBER? MATCH option
+        none OF HBB-USAGE ENDOF
+        some OF ENDOF
+      ;MATCH
+      HBB-PRESEED-MODE! HBB-INC-I HBB-TRUE exit then
    HBB-I @ HBB-ARG$ s" --" STR= if HBB-INC-I HBB-FALSE exit then
    HBB-I @ HBB-ARG$ s" -" STARTS-WITH? if HBB-USAGE then
    HBB-FALSE ;

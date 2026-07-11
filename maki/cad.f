@@ -370,7 +370,7 @@ private
 
 \ ---- MODEL: signature + body parser ----------------------------------------
 : PARSE-INT ( ptr u8 n -- n )
-   STR>NUMBER? STR>OPTION
+   STR>NUMBER?
    MATCH option none OF E-CAD-SYNTAX throw ENDOF some OF ENDOF ;MATCH ;
 
 : PARSE-SHAPE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "name:RxC" or "RxC" -> rows cols

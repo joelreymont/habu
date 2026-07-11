@@ -5,6 +5,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/memory.f
 require lib/fs.f
 require lib/content-key.f
@@ -234,11 +235,10 @@ variable LOAD-OFF
    a st + ed st - ;
 
 : PARSE-RELOC-OFF ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u 2 FIELD$ STR>NUMBER? if
-      0 < if E-OBJ-FIELD throw then
-   else
-      drop E-OBJ-FIELD throw
-   then ;
+   a u 2 FIELD$ STR>NUMBER? MATCH option
+     none OF E-OBJ-FIELD throw ENDOF
+     some OF 0 < if E-OBJ-FIELD throw then ENDOF
+   ;MATCH ;
 
 : PARSE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LINE-VALID

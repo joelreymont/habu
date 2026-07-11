@@ -14,16 +14,18 @@ create SRE-RX SRE-RX-CAP allot
 : SRE-RX-PTR ( -- ptr u8 )
    SRE-RX ;
 
-: SRE-SUFFIX-NUMBER ( ptr u8 n -- n bool ) {: a:ptr u :}
+: SRE-SUFFIX-NUMBER ( ptr u8 n -- option<n> ) {: a:ptr u:n :}
    a u SRE-DASH INDEX-OF MATCH option
-     none OF 0 STR-FALSE exit ENDOF
+     none OF OPTION:NONE exit ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: ix:n :}
    a ix 1 + + u ix 1 + - STR>NUMBER? ;
 
 : SRE-CHECK-SUFFIX ( ptr u8 n n -- ) {: a:ptr u want :}
-   a u SRE-SUFFIX-NUMBER TTRUE
-   want T= ;
+   a u SRE-SUFFIX-NUMBER MATCH option
+     none OF STR-FALSE TTRUE ENDOF
+     some OF STR-TRUE TTRUE want T= ENDOF
+   ;MATCH ;
 
 : SRE-COMPILE-SLUG ( -- n )
    s" ^[a-z]+-[0-9]+$" >LEN
@@ -57,7 +59,10 @@ create SRE-RX SRE-RX-CAP allot
    s" Habu-2026" s" Habu" STARTS-WITH? TTRUE
    s" Habu-2026" SRE-DASH COUNT-CHAR 1 T=
    s" Habu-2026" 2026 SRE-CHECK-SUFFIX
-   s" Habu-20x6" SRE-SUFFIX-NUMBER TFALSE 0 T=
+   s" Habu-20x6" SRE-SUFFIX-NUMBER MATCH option
+     none OF STR-TRUE ENDOF
+     some OF drop STR-FALSE ENDOF
+   ;MATCH TTRUE
    SRE-ASSERT-SLUG-RX
    T-REPORT ;
 

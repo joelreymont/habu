@@ -371,7 +371,8 @@ plus lengths; no word assumes NUL termination unless its name says `PATHZ` or a
 module boundary explicitly says it owns path conversion. `SB-*` words operate on
 the shared bounded string-builder buffer and throw `E-STR-CAPACITY` or
 `E-STR-BOUNDS` instead of truncating silently. `STR>NUMBER?` parses a signed
-i64 and returns `0 false` on invalid or out-of-range input.
+i64 and returns `option<n>`: SOME value, or NONE on invalid or out-of-range
+input.
 `STR-LEN`, `STR-OFF`, and `STR-COUNT` refine raw integers into nominal string
 roles and reject negative values. Typed variants such as `SB-APPEND-LEN` keep
 already-refined lengths from being laundered through plain `n`. `BUFFER:`
@@ -419,7 +420,7 @@ STR-DIGITS?     ( ptr u8 n -- bool )
 STR-DIGITS<=    ( ptr u8 n ptr u8 n -- bool )
 STR-PARSE-POS   ( ptr u8 n -- option<n> )
 STR-PARSE-NEG   ( ptr u8 n -- option<n> )
-STR>NUMBER?     ( ptr u8 n -- n bool )
+STR>NUMBER?     ( ptr u8 n -- option<n> )
 ```
 
 `FIND-SUB` and `INDEX-OF` return `option<idx>` (SOME index, else NONE — every

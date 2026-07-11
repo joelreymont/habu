@@ -1,5 +1,7 @@
 \ ptx.f - checked PTX kernel-header vocabulary.
 
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
+
 32 constant PTX-WARP
 1024 constant PTX-MAX-BLOCK
 
@@ -25,7 +27,10 @@ variable PTX-BLOCK-N
 
 : PTX-BLOCK-NAME>N ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u s" block-" STARTS-WITH? 0= if E-PTX-SYNTAX throw then
-   a 6 + u 6 - STR>NUMBER? 0= if E-PTX-SYNTAX throw then
+   a 6 + u 6 - STR>NUMBER? MATCH option
+     none OF E-PTX-SYNTAX throw ENDOF
+     some OF ENDOF
+   ;MATCH
    dup PTX-BLOCK-CHECK ;
 
 : PTX-WHERE-CHECK ( ptr u8 n ptr u8 n ptr u8 n -- )

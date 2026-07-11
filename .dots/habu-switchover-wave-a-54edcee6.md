@@ -453,3 +453,55 @@ declared in that set (batch 2) and string.f is NOT in the boot prefix — full
 battery, no byte-fixpoint; maki/test.f is an owning gate for the (c) callers.
 Follow-up outside the window: the tools/lint/text.f sibling trio with overlay
 byte-identity proofs.
+
+## WAVE-A FINALE — LANDED (maki window commits A/B/D, 2026-07-11)
+
+The Q4 window executed as three stacked commits on the tfam-finale workspace
+(after the boot-pin row bump commit):
+- Commit A `INDEX-OF: option<idx> + all callers rewritten` — lib/string.f
+  INDEX-OF -> option<idx> (SOME first index of byte, else NONE); callers:
+  FL-FIND-E (none-try-upper re-wrap) + FL-SIG (MATCH arms compute the
+  ilen/fa/flen triple directly — first proven MULTI-VALUE MATCH arms),
+  PROC-HAS-SLASH?/JR-SPAN-HAS?/HBB-PATH-HAS-DQ? (bool MATCH), CGR-LINE$
+  value-or-default, SRE-SUFFIX-NUMBER guard, GPT-KR-PARSE-ROOT throw-unwrap,
+  string-test re-wrap helper STR-INDEX-OF>N + direct both-branch asserts, and
+  the 9 maki sites (store.f STORE-CK-KEY/STORE-ROW-VALIDATE/STORE-SPLIT-PIPE,
+  cad.f PARSE-SHAPE x2/SPEC-NAME/PARSE-RANGE/EMIT-OP-TOKEN, golden-artifact.f
+  GA-PARSE-SHAPE) under the orchestrator lane-split waiver. Manifest row +
+  docs/stdlib.md sig + split prose line.
+- Commit B `FIND-SUB/CONTAINS?: option<idx> + all callers rewritten` —
+  FIND-SUB -> option<idx> (empty needle -> SOME 0 pin kept), CONTAINS? body
+  MATCH (sig unchanged); wrapper family migrated to option returns:
+  GE-SHAPE-FIND/-AFTER (+FOUND/NOT-FOUND unwraps), BCG-POS/-FIND-AFTER
+  (+POS-FOUND/AFTER-FOUND asserting unwraps), BF-SOURCE-FIND +
+  BF-SOURCE-REQUIRE (die unwrap), BFT-FIND-AFTER/FOUND/NOT-FOUND; count-loops
+  BPT-COUNT-SUB / SAB-OCCURS in the RX-FIND-FROM in-loop MATCH shape;
+  PTXT-SUB-COUNT kept RECURSE OUTSIDE the MATCH (guard-and-continue — the
+  RECURSE-in-arm risk never exercised); CGR-DEF$/LINE$/NEXT-USE, CRT-CORRUPT,
+  gate-pool throw-unwrap; the 13 maki sites (lower-{ew,mm,red,mv}-test
+  ABSENT/ONCE? trios + ablate-ptx ABL-MUTATE) under the waiver. Engine gate
+  build slice (full self-rebuild fixpoint) run green — GE-SHAPE-*/BF-SOURCE-*
+  proven live.
+- Commit D `STR>NUMBER?: option<n>; adapters + tools/string.f deleted` —
+  STR>NUMBER? -> option<n> (sign-split returns STR-PARSE-POS/NEG options
+  directly); STR>NUMBER-UNWRAP + STR>OPTION DELETED (defs, manifest rows,
+  string-test uses); orphan tools/string.f DELETED + FILEMAP row; the 4 maki
+  sites dropped their one STR>OPTION token (store/cad/saved/golden-artifact);
+  19 non-maki consumers rewritten to MATCH (usage-die arg parsers in
+  run-lib/gate-stdlib-lib/gate-runner-lib/gate-engine-lib/hb-build-lib,
+  throw-guards in object.f/object-link.f/json-read.f/ptx-header/vjp/
+  codegen-role, guard-and-continue in budget/TR-RERUN-LINE/tld-core hunk
+  parser, pass-through in imagedisasm/trusted-inventory/string-regex).
+  All consumer files carry `require lib/adt/option.f`.
+
+Gates per commit: focused suites for every touched file, lib/string-test.f,
+full maki/test.f (77/77 rc 0 each time), boot-pin suite, result-cache closure
+test, the 6 repo lints (namespace/error-code/host/filemap/dot-dep/maki-dep,
+all 0 findings), typed-local-diff-lint rc 0; commit B additionally ran the
+native engine gate build slice (self-rebuild fixpoint PASS). WALL (pre-existing,
+dotted habu-stdlib-manifest-missing-85fa36d1): tools/stdlib-manifest-test.f is
+red on the BASE — lib/fmath.f (AD DAG lane) has no manifest module row; not
+caused or worsened by these commits (the INDEX-OF/FIND-SUB/STR>NUMBER? rows
+validate). Wave-A string.f finders are now fully option-typed; remaining
+follow-up outside the window: the tools/lint/text.f sibling trio
+(LINT-FIND-SUB/LINT-INDEX-OF/LINT-CONTAINS?) with overlay byte-identity proofs.

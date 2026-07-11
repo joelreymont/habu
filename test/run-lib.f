@@ -2,6 +2,7 @@
 \
 \ Load after test/run-support.f.
 
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
@@ -170,7 +171,10 @@ variable TR-PRE-DIAG-FILE
    TR-ARG-I @ 1+ SCRIPT-ARGV$ ;
 
 : TR-POS-NUM ( ptr u8 n -- n )
-   STR>NUMBER? 0= if drop TR-USAGE then
+   STR>NUMBER? MATCH option
+     none OF TR-USAGE ENDOF
+     some OF ENDOF
+   ;MATCH
    dup 1 < if drop TR-USAGE then ;
 
 : TR-POOL-SLOTS-FAIL ( -- )
@@ -1680,7 +1684,10 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-RERUN-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
-   a u TR-FIELD0$ STR>NUMBER? 0= if drop exit then
+   a u TR-FIELD0$ STR>NUMBER? MATCH option
+     none OF exit ENDOF
+     some OF ENDOF
+   ;MATCH
    {: v:n :}
    v 0 < if exit then
    v TR-PHASES >= if exit then

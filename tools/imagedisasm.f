@@ -101,7 +101,7 @@ TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
 
 : IMGD>NUMBER? ( ptr u8 n -- option<n> )   \ SOME parsed $hex/0xhex/decimal, else NONE
    IMGD-HEX-BODY IF IMGD-PARSE-HEX EXIT THEN
-   STR>NUMBER? STR>OPTION ;
+   STR>NUMBER? ;
 
 : IMGD-POS-NUM ( ptr u8 n -- n )
    IMGD>NUMBER? MATCH option

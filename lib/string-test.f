@@ -17,8 +17,6 @@ variable STR-TEST-SPLIT-A
 variable STR-TEST-SPLIT-U
 variable STR-TEST-SPLIT-NEXT
 variable STR-TEST-SPLIT-OK
-variable STR-TEST-PARSE-N
-variable STR-TEST-PARSE-OK
 create STR-TEST-BUF STR-TEST-BUF-LEN allot
 create STR-TEST-LEFT-WS
    STR-TAB c, STR-LF c, 97 c, 98 c, 99 c,
@@ -60,15 +58,10 @@ variable STR-TEST-BUF2-LEN
    then ;
 
 : STR-PARSE-CHECK ( ptr u8 n n bool -- ) {: a:ptr u want ok :}
-   a u STR>NUMBER?
-   STR-TEST-PARSE-OK !
-   STR-TEST-PARSE-N !
-   ok if
-      STR-TEST-PARSE-OK @ 0= 0= STR-ASSERT
-   else
-      STR-TEST-PARSE-OK @ 0= STR-ASSERT
-   then
-   STR-TEST-PARSE-N @ want STR-ASSERT= ;
+   a u STR>NUMBER? MATCH option
+     none OF ok 0= STR-ASSERT ENDOF
+     some OF ok STR-ASSERT want STR-ASSERT= ENDOF
+   ;MATCH ;
 
 : STR-TEST-SB-OVERFLOW ( -- )
    SB-RESET
@@ -153,8 +146,8 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" 0 STR-FALSE STR-PARSE-CHECK
    s" -9223372036854775809" 0 STR-FALSE STR-PARSE-CHECK ;
 
-\ switchover wave A: STR-PARSE-POS/NEG return option<n> (SOME parsed value, else
-\ NONE); STR>NUMBER? stays value+flag at its documented boundary (maki callers).
+\ switchover wave A: STR-PARSE-POS/NEG and STR>NUMBER? return option<n>
+\ (SOME parsed value, else NONE).
 \ typed-local-lint: allow-bare-local - q keeps the parser quotation effect from the stack signature.
 : STR-PARSE-SOME ( ptr u8 n n [ ptr u8 n -- option<n> ] -- ) {: a:ptr u:n want:n q :}
    a u q execute MATCH option
@@ -176,8 +169,8 @@ variable STR-TEST-BUF2-LEN
    s" 9223372036854775808" STR-MIN-I64 [: STR-PARSE-NEG ;] STR-PARSE-SOME
    s" 4x6" [: STR-PARSE-NEG ;] STR-PARSE-NONE
    s" 9223372036854775809" [: STR-PARSE-NEG ;] STR-PARSE-NONE
-   s" 77" 77 [: STR>NUMBER? STR>OPTION ;] STR-PARSE-SOME
-   s" nope" [: STR>NUMBER? STR>OPTION ;] STR-PARSE-NONE ;
+   s" 77" 77 [: STR>NUMBER? ;] STR-PARSE-SOME
+   s" nope" [: STR>NUMBER? ;] STR-PARSE-NONE ;
 
 \ switchover wave A: INDEX-OF / FIND-SUB return option<idx> (SOME index, else NONE).
 : STR-INDEX-OF>N ( ptr u8 n n -- n )                \ test re-wrap: found index, -1 when absent

@@ -4,6 +4,19 @@
 
 Last updated: 2026-07-11
 
+- **A failing `jj diff` with "sibling of the working copy's operation" mid-gate
+  means the snapshot you are gating may be EMPTY — back up edited files BEFORE
+  `jj workspace update-stale`:** update-stale RESETS the working copy (reverting
+  unsnapshotted edits) and can leave a divergent change twin; the non-empty twin
+  holds a possibly STALE snapshot, so restore from your own backups (they are
+  the exact gated bytes), abandon the twin, and re-run the cheap gates on the
+  restored tree. The 0-byte patch file written by the failed diff is the tell.
+- **MATCH arms may produce multiple values, and both arms must agree:** FL-SIG's
+  dot-split rewrote four dpos branch expressions into one MATCH whose arms each
+  push the (ilen fa flen) triple — the checker unifies multi-cell arm effects
+  fine. Diverging arms (`throw`/`exit`/usage-`die`) unify with any shape, so
+  option unwraps built on fail-closed reporters (GE-FAIL, BF-BUILD-RC die,
+  TR-USAGE) need no sentinel filler in the dead arm.
 - **Probe "over-conservative reject" claims by removing the guard and reading
   what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
   conservatism (scalar `( a -- a a ) dup` certifies + defers linearity to call

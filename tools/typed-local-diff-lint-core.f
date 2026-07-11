@@ -3,6 +3,8 @@
 \ lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ and tools/lint/source-lex.f.
 
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
+
 32 constant TLD-NUM-CAP
 43 constant TLD-PLUS-C
 44 constant TLD-COMMA-C
@@ -182,14 +184,15 @@ variable TLD-SCAN-START
    TLD-HUNK-START @ 0 <= IF exit THEN
    a u TLD-HUNK-START @ TLD-NUM-END TLD-HUNK-END !
    TLD-HUNK-END @ TLD-HUNK-START @ <= IF exit THEN
-   a TLD-HUNK-START @ + TLD-HUNK-END @ TLD-HUNK-START @ - STR>NUMBER? IF
+   a TLD-HUNK-START @ + TLD-HUNK-END @ TLD-HUNK-START @ - STR>NUMBER? MATCH option
+     none OF ENDOF
+     some OF
       TLD-NEW-LINE !
       TLD-TRUE TLD-IN-HUNK !
       TLD-FALSE TLD-IN-LOCALS !
       TLD-FALSE TLD-ALLOW-GROUP !
-   ELSE
-      drop
-   THEN ;
+     ENDOF
+   ;MATCH ;
 
 : TLD-DIFF-FILE-LINE? ( ptr u8 n -- bool )
    s" +++ " TLD-STARTS? ;

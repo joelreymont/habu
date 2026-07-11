@@ -85,8 +85,10 @@ variable FL-VALID                           \ exponent validity flag
 \ FL-EXP-AT parses the exponent text after position epos, records it, and
 \ returns the mantissa length (epos). FL-PARSE-EXP handles the no-exponent case.
 : FL-EXP-AT ( ptr u8 n n -- n ) {: a:ptr u epos :}
-   a epos 1+ + u epos 1+ - STR>NUMBER? {: ok :}
-   ok if FL-EXPV ! else drop 0 FL-VALID ! then
+   a epos 1+ + u epos 1+ - STR>NUMBER? MATCH option
+     none OF 0 FL-VALID ! ENDOF
+     some OF FL-EXPV ! ENDOF
+   ;MATCH
    epos ;
 : FL-PARSE-EXP ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u FL-FIND-E MATCH option

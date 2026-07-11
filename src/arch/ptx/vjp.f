@@ -13,6 +13,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 
 32 constant VJP-MAX
 48 constant VJP-NAME-CAP
@@ -103,7 +104,10 @@ variable VJP-DEF-DONE
    u VJP-DEF-NAME-U ! ;
 
 : VJP-DEF-SAVES! ( ptr u8 n -- )
-   STR>NUMBER? 0= if E-PTX-SYNTAX throw then
+   STR>NUMBER? MATCH option
+     none OF E-PTX-SYNTAX throw ENDOF
+     some OF ENDOF
+   ;MATCH
    VJP-DEF-SAVES ! ;
 
 : VJP-SKIP-COMMENT ( -- )   \ consume tokens through the closing )

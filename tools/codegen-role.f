@@ -136,9 +136,10 @@ variable CGR-WP
 : CGR-LINE-NUM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u 0 CGR-SKIP-WS {: ts:n :}
    a u ts CGR-SKIP-TOKEN {: te:n :}
-   a ts + te ts - STR>NUMBER? 0= if
-      s" codegen-role: constant line has no leading number" type cr E-CGR-SRC throw
-   then ;
+   a ts + te ts - STR>NUMBER? MATCH option
+     none OF s" codegen-role: constant line has no leading number" type cr E-CGR-SRC throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 \ ---- generation names ----
 \ Every check region gets a fresh generation letter; extracted names compile as

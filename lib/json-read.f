@@ -420,7 +420,10 @@ variable JR-NI                               \ number-validator cursor
 \ ---- number value decode --------------------------------------------------
 : JR-INT ( -- n )
    JR-KIND @ JT-INT <> if E-JR-STATE throw then
-   JR-SPAN$ STR>NUMBER? 0= if E-JR-NUMBER throw then ;
+   JR-SPAN$ STR>NUMBER? MATCH option
+     none OF E-JR-NUMBER throw ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : JR-FLOAT ( -- r )
    JR-KIND @ dup JT-INT = swap JT-FLOAT = or 0= if E-JR-STATE throw then

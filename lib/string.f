@@ -231,25 +231,14 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
       1+
    repeat drop OPTION:SOME ;
 
-\ STR>NUMBER? keeps the value+flag boundary for now: its ~16 callers span the
-\ repo including maki/ (store, cad, golden-artifact, saved), which this lane
-\ must not touch. The sign split MATCHes the option-returning digit parsers and
-\ STR>NUMBER-UNWRAP re-flattens at this documented boundary (wave-A dot tracks
-\ the cross-lane public-sig migration).
-: STR>NUMBER-UNWRAP ( option<n> -- n bool )
-   MATCH option none OF 0 STR-FALSE ENDOF some OF STR-TRUE ENDOF ;MATCH ;
-
-: STR>OPTION ( n bool -- option<n> )   \ lift a value+flag parse to option (inverse adapter, dies with the boundary)
-   if OPTION:SOME exit then drop OPTION:NONE ;
-
-: STR>NUMBER? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   u 0= if 0 STR-FALSE exit then
+: STR>NUMBER? ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME optional-sign bounded i64, else NONE
+   u 0= if OPTION:NONE exit then
    a c@ STR-MINUS = if
-      u 1 = if 0 STR-FALSE exit then
-      a 1+ u 1- STR-PARSE-NEG STR>NUMBER-UNWRAP exit
+      u 1 = if OPTION:NONE exit then
+      a 1+ u 1- STR-PARSE-NEG exit
    then
    a c@ STR-PLUS = if
-      u 1 = if 0 STR-FALSE exit then
-      a 1+ u 1- STR-PARSE-POS STR>NUMBER-UNWRAP exit
+      u 1 = if OPTION:NONE exit then
+      a 1+ u 1- STR-PARSE-POS exit
    then
-   a u STR-PARSE-POS STR>NUMBER-UNWRAP ;
+   a u STR-PARSE-POS ;

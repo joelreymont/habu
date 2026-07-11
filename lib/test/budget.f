@@ -18,6 +18,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 
 100 constant T-BUDGET-MIN-PCT
 300 constant T-BUDGET-MAX-PCT
@@ -55,7 +56,10 @@ variable T-BUDGET-CAL-SINK
 \ Unset, empty, or non-numeric HB_LOAD_PCT means "no gate-exported factor":
 \ self-calibrate rather than assuming an idle box.
 : T-BUDGET-ENV-PCT ( -- n )
-   s" HB_LOAD_PCT" GETENV STR>NUMBER? 0= if drop T-BUDGET-SELF-PCT exit then
+   s" HB_LOAD_PCT" GETENV STR>NUMBER? MATCH option
+     none OF T-BUDGET-SELF-PCT exit ENDOF
+     some OF ENDOF
+   ;MATCH
    T-BUDGET-CLAMP ;
 
 : T-BUDGET-INIT ( -- )
