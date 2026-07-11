@@ -92,3 +92,31 @@ precedent classes capability-blocked library boundaries as stdlib-boundary
 owned by the capability dot). BI/TRI in the same file are already plain
 checked definitions — no rows. Zero placeholder discharge-candidate rows
 remain.
+
+## Increment 2026-07-11c (PTX + engine-id stdlib-boundary owners)
+
+All 69 lib/ptx placeholder rows reassigned to
+`habu-ptx-phantom-preserving-3df9db92` — the dot that defines this exact
+surface's split and end-state. Per-site signature evidence:
+- MINT CORE (11, permanent typed-DSL entry casts): lib/ptx/cg.f:77-85 the nine
+  `*-REG` words (`n -> span/uniform/ptr/matrix<...>` register mints) plus
+  cg.f:93 `R>BITS`/cg.f:134 `BITS>R` (`r <-> n` bit-casts).
+- WRAPPERS (58, retire when phantom-preserving lands): every TRUSTED row in
+  lib/ptx/tile.f (31, tile.f:22-112), lib/ptx/collective.f (18,
+  collective.f:28-94), lib/ptx/tile-v4.f (9, tile-v4.f:11-35) is typed->typed
+  (span/tile/matrix/uniform/ctx in AND out; the sole nullary, collective.f:28
+  ROW `-- rowidx<e>`, is a thread-state intrinsic read) — trusted only because
+  kernel newtype phantoms cannot thread through the checked EMIT-* words, the
+  dot's own definition of its retire list.
+The mint/wrapper distinction stays recorded here and in that dot (classes do
+not encode it; both halves are stdlib-boundary).
+
+lib/engine-id.f's two rows (ENGINE-SELF-MACOS engine-id.f:44, apple[] startup
+vector walk; ENGINE-SELF-LINUX engine-id.f:59, /proc/self/exe readlink) go to
+the newly minted `habu-raw-self-path-4514ffd3` — no existing capability dot
+covered raw startup-image/self-path reads (the block prose said exactly this);
+src/os/env-base.f's same-class sites stay on the placeholder under
+builder-emit until that increment.
+
+Placeholder remainder after 2026-07-11b/c: builder-emit (~210 named + the
+habu2 fold) and test-metaprog (~95 named + set-check residuals) only.
