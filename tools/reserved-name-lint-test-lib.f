@@ -122,17 +122,17 @@ variable RNLT-CONTROL-U
    RNLT-OUT RNLT-BUF-CAP LINT-OUT-BUFFER!
    json RNL-JSON! ;
 
-: RNLT-CORE-FINISH ( -- n n n n )
+: RNLT-CORE-FINISH ( -- n n n )
    [: RESERVED-NAME-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc ;
 
-: RNLT-RUN-CORE ( ptr u8 n -- n n n n )
+: RNLT-RUN-CORE ( ptr u8 n -- n n n )
    LINT-FALSE RNLT-CORE-SETUP
    RESERVED-NAME-LINT-FILE
    RNLT-CORE-FINISH ;
 
-: RNLT-RUN-CORE-JSON ( -- n n n n )
+: RNLT-RUN-CORE-JSON ( -- n n n )
    LINT-TRUE RNLT-CORE-SETUP
    RNLT-CASE$ s" <converted>" RESERVED-NAME-LINT-FILE-AS
    RNLT-CORE-FINISH ;
@@ -148,8 +148,7 @@ variable RNLT-CONTROL-U
    $22 SB-APPEND-C
    SB$ ;
 
-: RNLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n want:n :}
-   kind PROC-OUTCOME-EXIT T=
+: RNLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
    code want T=
    outu erru ;
 

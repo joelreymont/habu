@@ -163,8 +163,8 @@ variable PST-SUM-U
    PST-ERR PST-BUF-CAP PS-ERR-BUFFER!
    flag PS-TRUST ! ;
 
-: PST-CORE-FINISH ( n -- n n n n ) {: rc:n :}
-   PS-OUT$ nip PS-ERR$ nip PROC-OUTCOME-EXIT rc
+: PST-CORE-FINISH ( n -- n n n ) {: rc:n :}
+   PS-OUT$ nip PS-ERR$ nip rc
    PS-BUFFERS-OFF ;
 
 : PST-RUN-FILE-ACT ( -- )
@@ -172,26 +172,25 @@ variable PST-SUM-U
    PST-RUN$ PS-SCAN-FILE
    PS-JSON-DOC-END ;
 
-: PST-RUN-CORE ( ptr u8 n n -- n n n n ) {: flag:n :}
+: PST-RUN-CORE ( ptr u8 n n -- n n n ) {: flag:n :}
    PST-RUN!
    flag PST-CORE-SETUP
    [: PST-RUN-FILE-ACT ;] catch PST-CORE-FINISH ;
 
-: PST-RUN ( ptr u8 n -- n n n n )
+: PST-RUN ( ptr u8 n -- n n n )
    0 PST-RUN-CORE ;
 
-: PST-RUN-TRUST ( ptr u8 n -- n n n n )
+: PST-RUN-TRUST ( ptr u8 n -- n n n )
    -1 PST-RUN-CORE ;
 
 : PST-RUN-NOARG-ACT ( -- )
    PS-USAGE ;
 
-: PST-RUN-NOARG ( -- n n n n )
+: PST-RUN-NOARG ( -- n n n )
    0 PST-CORE-SETUP
    [: PST-RUN-NOARG-ACT ;] catch PST-CORE-FINISH ;
 
-: PST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT T=
+: PST-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 

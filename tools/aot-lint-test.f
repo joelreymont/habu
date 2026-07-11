@@ -8,6 +8,7 @@ require lib/vector.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/test/outcome.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f

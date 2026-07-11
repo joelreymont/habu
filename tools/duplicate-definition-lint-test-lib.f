@@ -88,23 +88,23 @@ variable DDLT-CASE-U
    DDLT-OUT DDLT-BUF-CAP LINT-OUT-BUFFER!
    json DDL-JSON! ;
 
-: DDLT-CORE-FINISH ( -- n n n n )
+: DDLT-CORE-FINISH ( -- n n n )
    [: DUPLICATE-DEFINITION-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc ;
 
-: DDLT-RUN-CORE-GOOD ( -- n n n n )
+: DDLT-RUN-CORE-GOOD ( -- n n n )
    LINT-FALSE DDLT-CORE-SETUP
    DDLT-GOOD$ DUPLICATE-DEFINITION-LINT-FILE
    DDLT-CORE-FINISH ;
 
-: DDLT-RUN-CORE-CROSS ( -- n n n n )
+: DDLT-RUN-CORE-CROSS ( -- n n n )
    LINT-FALSE DDLT-CORE-SETUP
    DDLT-BAD-A$ DUPLICATE-DEFINITION-LINT-FILE
    DDLT-BAD-B$ DUPLICATE-DEFINITION-LINT-FILE
    DDLT-CORE-FINISH ;
 
-: DDLT-RUN-CORE-JSON ( -- n n n n )
+: DDLT-RUN-CORE-JSON ( -- n n n )
    LINT-TRUE DDLT-CORE-SETUP
    DDLT-CASE$ s" <stage2-src>" DUPLICATE-DEFINITION-LINT-FILE-AS
    DDLT-CORE-FINISH ;
@@ -120,8 +120,7 @@ variable DDLT-CASE-U
    $22 SB-APPEND-C
    SB$ ;
 
-: DDLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n want:n :}
-   kind PROC-OUTCOME-EXIT T=
+: DDLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
    code want T=
    outu erru ;
 

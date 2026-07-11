@@ -78,13 +78,10 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-ROOT s" input.f" DGT-IN-BUF JOIN-PATH DGT-IN-U !
    DGT-IN CLEANUP+ ;
 
-: DGT-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
-   outu LEN>N erru LEN>N kind code ;
-
 : DGT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
 
-: DGT-RUN ( -- n n n n )
+: DGT-RUN ( -- len len outcome )
    PROC-ARGV-RESET
    s" tools/diag-origin.f" CLI-TOOLS-LOAD if DGT-IN DGT-ARG+ else
    s" --load" DGT-ARG+
@@ -100,13 +97,11 @@ create DGT-ERR DGT-BUF-CAP allot
    DGT-IN DGT-ARG+
    then
    CLI-TOOLS$ >LEN DGT-OUT DGT-BUF-CAP >LEN DGT-ERR DGT-BUF-CAP >LEN
-   DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   DGT-CAPTURE>N ;
+   DGT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: DGT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: DGT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED=
+   LEN>N swap LEN>N swap ;
 
 : DGT-RUN-CORE ( -- n )
    DGT-IN DGT-OUT DGT-BUF-CAP >LEN DIAG-ORIGIN>BUF LEN>N ;

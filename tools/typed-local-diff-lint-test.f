@@ -171,24 +171,22 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TYPED-LOCAL-DIFF-LINT-RESET
    TLDT-OUT TLDT-BUF-CAP LINT-OUT-BUFFER! ;
 
-: TLDT-CORE-FINISH ( -- n n n n )
+: TLDT-CORE-FINISH ( -- n n n )
    [: TYPED-LOCAL-DIFF-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc ;
 
-: TLDT-RUN-CORE ( ptr u8 n -- n n n n )
+: TLDT-RUN-CORE ( ptr u8 n -- n n n )
    TLDT-CORE-SETUP
    TYPED-LOCAL-DIFF-LINT-FILE
    TLDT-CORE-FINISH ;
 
-: TLDT-ASSERT-CLEAN ( n n n n -- ) {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
+: TLDT-ASSERT-CLEAN ( n n n -- ) {: outu:n erru:n code:n :}
    code 0 T=
    TLDT-OUT outu TLDT-EMPTY$ T$=
    erru 0 T= ;
 
-: TLDT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
+: TLDT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 

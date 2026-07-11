@@ -86,7 +86,12 @@ variable ROOT-U
 : CLI-REPORTS ( -- )
    BUILD-ARGV
    s" bin/hb" >LEN OUT@ CAP >LEN ERR@ CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME {: outu:len erru:len kind:n code:n :}
+   RUN-ARGV-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF ENDOF
+     signaled OF ENDOF
+     timeout OF 0 ENDOF
+   ;MATCH {: outu:len erru:len code:n :}
    s" cli exits nonzero outside repo" T-LABEL
    code 0 T<>
    s" cli stdout names the prefix file" T-LABEL

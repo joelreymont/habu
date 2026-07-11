@@ -116,34 +116,31 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-ARGV-BASE
    s" errors"  >LEN PROC-ARGV+ ;
 
-: BLTT-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
-   outu LEN>N erru LEN>N kind code ;
-
-: BLTT-HB-CAPTURE ( -- n n n n )
+: BLTT-HB-CAPTURE ( -- len len outcome )
    s" bin/hb"  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME ;
 
-: BLTT-TOOL-CAPTURE ( -- n n n n )
+: BLTT-TOOL-CAPTURE ( -- len len outcome )
    CLI-TOOLS$  >LEN BLTT-OUT BLTT-BUF-CAP >LEN
    BLTT-ERR BLTT-BUF-CAP >LEN BLTT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME BLTT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME ;
 
-: BLTT-RUN-MISSING-MODULE ( -- n n n n )
+: BLTT-RUN-MISSING-MODULE ( -- len len outcome )
    BLTT-ARGV-ERRORS
    s" missing-module" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-DRIVER BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-MISSING-SCRIPT ( -- n n n n )
+: BLTT-RUN-MISSING-SCRIPT ( -- len len outcome )
    BLTT-ARGV-ERRORS
    s" array" BLTT-ARG+
    s" --" BLTT-ARG+
    BLTT-MISSING BLTT-ARG+
    BLTT-TOOL-CAPTURE ;
 
-: BLTT-RUN-BUNDLE-LIB ( -- n n n n )
+: BLTT-RUN-BUNDLE-LIB ( -- len len outcome )
    BL-RESET
    BLTT-BUNDLE BL-OUT!
    s" errors" BL-MOD+
@@ -151,9 +148,9 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    BLTT-DRIVER BL-SCRIPT!
    BL-VERIFY
    BL-EMIT-BUNDLE
-   0 0 PROC-OUTCOME-EXIT 0 ;
+   0 >LEN 0 >LEN 0 OUTCOME:EXITED ;
 
-: BLTT-RUN-BUNDLE ( -- n n n n )
+: BLTT-RUN-BUNDLE ( -- len len outcome )
    PROC-ARGV-RESET
    s" --load" BLTT-ARG+
    BLTT-BUNDLE BLTT-ARG+
@@ -162,15 +159,17 @@ create BLTT-BUNDLE-READ BLTT-BUNDLE-CAP allot
    s" args" BLTT-ARG+
    BLTT-HB-CAPTURE ;
 
-: BLTT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: BLTT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED=
+   LEN>N swap LEN>N swap ;
 
-: BLTT-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code 0 T<>
-   outu erru ;
+: BLTT-EXPECT-EXIT-NZ ( len len outcome -- n n )
+   MATCH outcome
+     exited OF 0 T<> ENDOF
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF 1 0 T= ENDOF
+   ;MATCH
+   LEN>N swap LEN>N swap ;
 
 : BLTT-TEST-MISSING-MODULE ( -- )
    BLTT-RUN-MISSING-MODULE BLTT-EXPECT-EXIT-NZ {: outu:n erru:n :}

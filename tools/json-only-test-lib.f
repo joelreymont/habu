@@ -136,26 +136,22 @@ variable JOT-ERR-A
    s" tools/json-only-core.f"  >LEN PROC-ARGV+
    s" tools/json-only.f"  >LEN PROC-ARGV+ ;
 
-: JOT-CAPTURE>N ( len len n n -- n n n n ) {: outu:len erru:len kind:n code:n :}
-   outu LEN>N erru LEN>N kind code ;
-
-: JOT-RUN-NOARG ( -- n n n n )
+: JOT-RUN-NOARG ( -- len len outcome )
    JOT-ARGV-LOAD
    CLI-TOOLS$  >LEN JOT-OUT JOT-BUF-CAP >LEN JOT-ERR JOT-BUF-CAP >LEN
-   JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME JOT-CAPTURE>N ;
+   JOT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: JOT-RUN-CORE ( ptr u8 n -- n n n n )
+: JOT-RUN-CORE ( ptr u8 n -- len len outcome )
    JOT-OUT JOT-BUF-CAP JOT-ERR JOT-BUF-CAP JSON-ONLY-BUFFERS!
    JSON-ONLY-FILTER
-   JSON-ONLY-JSON$ nip
-   JSON-ONLY-PROSE$ nip
+   JSON-ONLY-JSON$ nip >LEN
+   JSON-ONLY-PROSE$ nip >LEN
    JSON-ONLY-BUFFERS-OFF
-   PROC-OUTCOME-EXIT 0 ;
+   0 OUTCOME:EXITED ;
 
-: JOT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: JOT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED=
+   LEN>N swap LEN>N swap ;
 
 : JOT-MIXED-CASE ( -- )
    JOT-MIXED-IN$ JOT-RUN-CORE 0 JOT-EXPECT-EXIT {: outu:n erru:n :}

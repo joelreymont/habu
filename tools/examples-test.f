@@ -10,6 +10,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/test/outcome.f
 require lib/process-argv.f
 require lib/process-env.f
 
@@ -200,14 +201,11 @@ variable EXT-ERR-A
    b u s" examples/build-script.f" EXT-ADD-SOURCE
    b u ;
 
-: EXT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: EXT-RUN-HB ( -- n n n n )
+: EXT-RUN-HB ( -- len len outcome )
    s" HABU_UNDER_TEST" GETENV dup 0= if 2drop s" bin/hb" then >LEN
    EXT-OUT EXT-CAPTURE-CAP >LEN
    EXT-ERR EXT-CAPTURE-CAP >LEN EXT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME EXT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME ;
 
 : EXT-ARG+ ( ptr u8 n -- )
    >LEN PROC-ARGV+ ;
@@ -218,17 +216,13 @@ variable EXT-ERR-A
    EXT-ARG+
    s" --" EXT-ARG+ ;
 
-: EXT-ASSERT-OK ( n n n n -- )
-   {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code 0 T=
+: EXT-ASSERT-OK ( len len outcome -- )
+   0 T-OUTCOME-EXITED= LEN>N {: erru:n :} LEN>N {: outu:n :}
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK$ T$= ;
 
-: EXT-ASSERT-OK3 ( n n n n -- )
-   {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code 0 T=
+: EXT-ASSERT-OK3 ( len len outcome -- )
+   0 T-OUTCOME-EXITED= LEN>N {: erru:n :} LEN>N {: outu:n :}
    EXT-ERR erru EXT-EMPTY$ T$=
    EXT-OUT outu EXT-OK3$ T$= ;
 

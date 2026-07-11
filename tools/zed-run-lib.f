@@ -107,7 +107,11 @@ DEFAULT-TIMEOUT-MS TIMEOUT-MS !
    SSH$ >LEN TIMEOUT-MS @ >MS PROC-CMD-RUN-RC ;
 
 : TIMED-OUT? ( -- bool )
-   PROC-CMD-OUTCOME@ drop PROC-OUTCOME-TIMEOUT = ;
+   PROC-CMD-OUTCOME@ MATCH outcome
+     exited OF drop 0 0= 0= ENDOF
+     signaled OF drop 0 0= 0= ENDOF
+     timeout OF 0 0= ENDOF
+   ;MATCH ;
 
 \ ---- newline/whitespace trim (mktemp output) ---------------------------------
 

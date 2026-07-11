@@ -195,24 +195,22 @@ create SST-ERR SST-CAP allot
    SST-CORE-TODAY SS-PARSE-TODAY SS-TODAY-DAYS !
    STALE-STATUS-LINT ;
 
-: SST-RUN ( ptr u8 n -- n n n n )
+: SST-RUN ( ptr u8 n -- n n n )
    SST-CORE-TODAY!
    SST-OUT SST-CAP SS-OUT-BUFFER!
    SST-ERR SST-CAP SS-ERR-BUFFER!
    [: SST-RUN-CORE-ACT ;] catch {: rc:n :}
-   SS-OUT$ nip SS-ERR$ nip PROC-OUTCOME-EXIT rc
+   SS-OUT$ nip SS-ERR$ nip rc
    SS-BUFFERS-OFF ;
 
-: SST-RUN-DEFAULT ( -- n n n n )
+: SST-RUN-DEFAULT ( -- n n n )
    s" 2026-06-16" SST-RUN ;
 
-: SST-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
+: SST-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 
-: SST-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
+: SST-EXPECT-EXIT-NZ ( n n n -- n n ) {: outu:n erru:n code:n :}
    code 0 T<>
    outu erru ;
 

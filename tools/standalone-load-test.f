@@ -26,10 +26,15 @@ create SL-OUT SL-CAP allot
 create SL-ERR SL-CAP allot
 create SL-EMPTY 1 allot                 \ zero-length stdin
 variable SL-RC
-variable SL-KIND
+variable SL-EXITED
 
-: SL-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind SL-KIND !  code SL-RC !  outu drop erru drop ;
+: SL-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF SL-RC ! 0 0= SL-EXITED ! ENDOF
+     signaled OF SL-RC ! 0 0= 0= SL-EXITED ! ENDOF
+     timeout OF 0 SL-RC ! 0 0= 0= SL-EXITED ! ENDOF
+   ;MATCH
+   LEN>N drop LEN>N drop ;
 
 \ Spawn `bin/hb --load <path>` with empty stdin; assert a clean exit 0.
 : SL-LOADS ( ptr u8 n -- ) {: p:ptr u:n :}
@@ -38,7 +43,7 @@ variable SL-KIND
    p u >LEN PROC-ARGV+
    s" bin/hb" >LEN  SL-EMPTY 0 >LEN  SL-OUT SL-CAP >LEN
    SL-ERR SL-CAP >LEN  SL-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME SL-STORE!
-   SL-KIND @ PROC-OUTCOME-EXIT T=  SL-RC @ 0 T= ;
+   SL-EXITED @ TTRUE  SL-RC @ 0 T= ;
 
 : SL-MAIN ( -- )
    T-RESET
