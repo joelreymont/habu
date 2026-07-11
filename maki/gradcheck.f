@@ -77,7 +77,7 @@ private
 
 \ an input slot is an index slot if a forward gather reads it as its index operand
 : GC-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
-   nd MIR-OP@ OP-GATHER <> if false exit then
+   nd MIR-OP@ MAKI-OPKIND:GATHER OPK= 0= if false exit then
    nd 1 MIR-IN@ {: r:n :}
    r MIR-REF-INPUT? 0= if false exit then
    r MIR-REF-SLOT s = ;
@@ -161,18 +161,18 @@ private
    GC-PASS-REASON  V-PASS ;
 
 \ ---- blocking-op classification (only cast / no-adjoint / unsupported remain) -
+\ first blocking NODE index (op family refetched at the use site), or -1
 : GC-FIRST-BAD ( -- n )
    MIR-N@ 0 ?do
-      i MIR-OP@ {: op:n :}
-      op ADJ-HAS? 0=  op ADJ-SUP? 0= or  op EX-OP-OK? 0= or
-      if i unloop drop op exit then
+      i MIR-OP@ dup ADJ-HAS? 0=  swap dup ADJ-SUP? 0=  swap EX-OP-OK? 0=  or or
+      if i unloop exit then
    loop  -1 ;
 
-: GC-REASON-BAD ( n -- ) {: op:n :}
+: GC-REASON-BAD ( n -- ) {: nd:n :}
    GC-RE-RESET
-   op ADJ-HAS? 0=      if s" no-adjoint:" GC-RE+          op OPR-NAME GC-RE+ exit then
-   op ADJ-SUP? 0=      if s" unsupported-adjoint:" GC-RE+ op OPR-NAME GC-RE+ exit then
-   s" host-unsupported:" GC-RE+  op OPR-NAME GC-RE+ ;
+   nd MIR-OP@ ADJ-HAS? 0=  if s" no-adjoint:" GC-RE+          nd MIR-OP@ OPR-NAME GC-RE+ exit then
+   nd MIR-OP@ ADJ-SUP? 0=  if s" unsupported-adjoint:" GC-RE+ nd MIR-OP@ OPR-NAME GC-RE+ exit then
+   s" host-unsupported:" GC-RE+  nd MIR-OP@ OPR-NAME GC-RE+ ;
 
 public
 

@@ -43,11 +43,11 @@ variable CT-VA  variable CT-VU
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
 \ ---- capture-time param-shape legality probes (data then param on the plan store) --------
 : TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
-   TENSOR:TV-RESET  4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  OP-RESIDUAL-ADD EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  MAKI-OPKIND:RESIDUAL-ADD EW-SHAPE-CHECK ;
 : TRY-BIAS-BADCOL ( -- )                              \ bias cols != data cols (not 1xC)
-   TENSOR:TV-RESET  2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  1 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  OP-BIAS EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  1 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  MAKI-OPKIND:BIAS EW-SHAPE-CHECK ;
 : TRY-SCALE-BAD   ( -- )                              \ scale param neither same-shape nor 1x1
-   TENSOR:TV-RESET  2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  1 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  OP-SCALE EW-SHAPE-CHECK ;
+   TENSOR:TV-RESET  2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  1 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  MAKI-OPKIND:SCALE EW-SHAPE-CHECK ;
 
 \ all-pass report for the promote success path
 : ALL-PASS ( -- report )
@@ -67,11 +67,11 @@ MODEL-DEFINED? TFALSE
 ' TRY-BADOP E-CAD-OP TTHROWS
 
 \ known op tokens map (spot-check the fail-closed table, incl. new silu/rope) --
-s" LINEAR"      OP-KIND OP-LINEAR      T=
-s" GELU"        OP-KIND OP-GELU        T=
-s" SILU"        OP-KIND OP-SILU        T=
-s" ROPE"        OP-KIND OP-ROPE        T=
-s" SOFTMAX-ROW" OP-KIND OP-SOFTMAX-ROW T=
+s" LINEAR"      OP-KIND OPKIND>N OP-LINEAR      T=
+s" GELU"        OP-KIND OPKIND>N OP-GELU        T=
+s" SILU"        OP-KIND OPKIND>N OP-SILU        T=
+s" ROPE"        OP-KIND OPKIND>N OP-ROPE        T=
+s" SOFTMAX-ROW" OP-KIND OPKIND>N OP-SOFTMAX-ROW T=
 
 \ ---- capture engine fail-closed paths --------------------------------------
 \ arity underflow is no longer a runtime throw: it is a nested-compile checker diagnostic,

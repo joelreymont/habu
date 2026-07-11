@@ -43,7 +43,8 @@ require lib/ffi-abi.f
 -5045 constant E-TV-PLAN-FULL   \ plan op or input-pool capacity exceeded
 -5046 constant E-TV-PLAN-IDX    \ plan index out of range
 -5047 constant E-TV-PLAN-STATE  \ plan builder used out of order
--5048 constant E-TV-OPKIND      \ op-kind out of range
+\ -5048 (E-TV-OPKIND) retired: PLAN-OP-BEGIN takes an `opkind` family, so an
+\ out-of-range op-kind is a checker reject; the code stays reserved to tensor-value.
 
 package MAKI
 public
@@ -255,7 +256,7 @@ private
 
 256 constant PLAN-INCAP         \ max total input slots across the plan
 
-create P-KIND  PLAN-CAP cells allot     \ op-kind (OP-*)
+create P-KIND  PLAN-CAP cells allot     \ op-kind (family value; typed slot P-KIND-AT)
 create P-OUT   PLAN-CAP cells allot     \ output tensor
 create P-INOFF PLAN-CAP cells allot     \ input window start in P-INS
 create P-INCNT PLAN-CAP cells allot     \ input window length
@@ -273,6 +274,12 @@ variable PEND-ON                        \ 1 while a record is being staged
    idx 0 < idx P-N @ >= or if E-TV-PLAN-IDX throw then
    idx ;
 
+\ typed op-kind slots (dot habu-cad-adt-swap): the op-kind column and the pending
+\ staging cell are reachable only through these, so a raw n or a foreign family
+\ can never enter or leave. An opkind cannot bind into a local, so it rides the stack.
+: P-KIND-AT     ( n -- ptr opkind )  cells P-KIND + ;
+: PEND-KIND-AT  ( -- ptr opkind )    PEND-KIND ;
+
 public
 
 : PLAN-RESET ( -- )
@@ -280,10 +287,13 @@ public
 
 : PLAN-N@ ( -- n )  P-N @ ;
 
-: PLAN-OP-BEGIN ( n -- ) {: k:n :}             \ open a record with op-kind k
+\ open a record with the op-kind family; a bad tag is a checker reject (the old
+\ E-TV-OPKIND range validation is unrepresentable). The family rides the stack
+\ into the typed pending slot before the bookkeeping counters set.
+: PLAN-OP-BEGIN ( opkind -- )
    PEND-ON @ if E-TV-PLAN-STATE throw then
-   k 0 < k MAKI:OP-N >= or if E-TV-OPKIND throw then
-   k PEND-KIND !  P-INS-U @ PEND-OFF !  0 PEND-CNT !  0 PEND-ATTR !  1 PEND-ON ! ;
+   PEND-KIND-AT !
+   P-INS-U @ PEND-OFF !  0 PEND-CNT !  0 PEND-ATTR !  1 PEND-ON ! ;
 
 : PLAN-IN+ ( tensor -- ) {: t:tensor :}        \ stage one input for the open record
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
@@ -300,7 +310,7 @@ public
    PEND-ON @ 0= if E-TV-PLAN-STATE throw then
    P-N @ PLAN-CAP >= if E-TV-PLAN-FULL throw then
    P-N @ {: idx:n :}
-   PEND-KIND @  P-KIND  idx cells + !
+   PEND-KIND-AT @  idx P-KIND-AT !          \ op-kind family (staged by PLAN-OP-BEGIN)
    out          P-OUT   idx cells + !
    PEND-OFF @   P-INOFF idx cells + !
    PEND-CNT @   P-INCNT idx cells + !
@@ -308,7 +318,7 @@ public
    idx 1+ P-N !
    0 PEND-ON ! ;
 
-: PLAN-OP@ ( n -- n )        PLAN-IX cells P-KIND  + @ ;
+: PLAN-OP@ ( n -- opkind )   PLAN-IX P-KIND-AT @ ;
 : PLAN-OUT@ ( n -- tensor )  PLAN-IX cells P-OUT   + @ ;
 : PLAN-ATTR@ ( n -- n )      PLAN-IX cells P-ATTR  + @ ;
 : PLAN-IN-COUNT@ ( n -- n )  PLAN-IX cells P-INCNT + @ ;
@@ -322,14 +332,14 @@ public
 \ Output shape/dtype are inferred and recorded; both ops return a descriptor.
 : PLINEAR ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
    x TV-ROWS@ w TV-COLS@ x TV-DTYPE@ MAKI-LAYOUT:ROW TV-DESC {: y:tensor :}
-   MAKI:OP-LINEAR PLAN-OP-BEGIN
+   MAKI-OPKIND:LINEAR PLAN-OP-BEGIN
    x PLAN-IN+  w PLAN-IN+  b PLAN-IN+
    y PLAN-OP+
    y ;
 
 : PGELU ( tensor -- tensor ) {: x:tensor :}    \ elementwise: same shape/layout
    x TV-ROWS@ x TV-COLS@ x TV-DTYPE@ x TV-LAYOUT@ TV-DESC {: y:tensor :}
-   MAKI:OP-GELU PLAN-OP-BEGIN
+   MAKI-OPKIND:GELU PLAN-OP-BEGIN
    x PLAN-IN+
    y PLAN-OP+
    y ;

@@ -13,8 +13,8 @@ package MAKI
 : SRT-BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
    rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 \ ---- capacity fixtures: 33 distinct synthetic schedule rows (> SK-TAB-CAP) -----
 : SRT-WRITE ( n -- ) {: k:n :}

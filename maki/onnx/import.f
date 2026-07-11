@@ -192,38 +192,39 @@ variable SYN-N
 : IMP-EW-BC ( n n -- n ) {: r0:n r1:n :}        \ operand-1 broadcast class against operand-0's RxC
    r1 IMP-REF-ROWS r1 IMP-REF-COLS  r0 IMP-REF-ROWS r0 IMP-REF-COLS  MAKI:BC-CLASS ;
 
-: IMP-EW-BUILD ( n n n n -- ) {: j:n op:n r0:n r1:n :}   \ commit op(r0,r1); output = operand-0 shape
-   op MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+  r1 MAKI:MIR-IN+
+: IMP-EW-BUILD ( n opkind n n -- ) {: r0:n r1:n :}   \ ( j op r0 r1 ) commit op(r0,r1); output = operand-0 shape
+   MAKI:MIR-OP-BEGIN {: j:n :}                       \ op family cannot bind: consumed off the top first
+   r0 MAKI:MIR-IN+  r1 MAKI:MIR-IN+
    j  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  IMP-COMMIT ;
 
 : IMP-ADD ( n -- ) {: j:n :}                   \ same shape -> OP-ADD ; 1xC second operand -> OP-BIAS
    j IMP-EW-REFS {: r0:n r1:n :}
    r0 r1 IMP-EW-BC {: bc:n :}
-   bc MAKI:BC-FULL = if j MAKI:OP-ADD  r0 r1 IMP-EW-BUILD exit then
-   bc MAKI:BC-ROW  = if j MAKI:OP-BIAS r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-FULL = if j MAKI-OPKIND:ADD  r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-ROW  = if j MAKI-OPKIND:BIAS r0 r1 IMP-EW-BUILD exit then
    E-ONNX-SHAPE throw ;
 
 : IMP-MUL ( n -- ) {: j:n :}                   \ same shape -> OP-MUL ; 1x1 second operand -> OP-SCALE
    j IMP-EW-REFS {: r0:n r1:n :}
    r0 r1 IMP-EW-BC {: bc:n :}
-   bc MAKI:BC-FULL   = if j MAKI:OP-MUL   r0 r1 IMP-EW-BUILD exit then
-   bc MAKI:BC-SCALAR = if j MAKI:OP-SCALE r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-FULL   = if j MAKI-OPKIND:MUL   r0 r1 IMP-EW-BUILD exit then
+   bc MAKI:BC-SCALAR = if j MAKI-OPKIND:SCALE r0 r1 IMP-EW-BUILD exit then
    E-ONNX-SHAPE throw ;
 
-: IMP-UNARY ( n n -- ) {: j:n op:n :}          \ shape-preserving one-input op
+: IMP-UNARY ( n opkind -- ) swap {: j:n :}     \ ( j op ) shape-preserving one-input op; op stays on the stack
    j 1 IMP-ARITY-OK
    j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
-   op MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    j  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  IMP-COMMIT ;
 
 : IMP-RELU ( n -- ) {: j:n :}
-   j 0 IMP-ATTRS-OK  j MAKI:OP-RELU IMP-UNARY ;
+   j 0 IMP-ATTRS-OK  j MAKI-OPKIND:RELU IMP-UNARY ;
 
 : IMP-SOFTMAX ( n -- ) {: j:n :}               \ axis must be the last axis of the 2D tensor
    j ATTR-AXIS IMP-ATTRS-OK
    j OND-AXIS@ {: ax:n :}
    ax -1 <> ax 1 <> and if E-ONNX-ATTR throw then
-   j MAKI:OP-SOFTMAX-ROW IMP-UNARY ;
+   j MAKI-OPKIND:SOFTMAX-ROW IMP-UNARY ;
 
 \ Gemm accepts alpha / beta / transA / transB; any other attribute rejects. Every one
 \ is expressible by composition (a TRANSPOSE per transA/transB; a SCALE per non-unit
@@ -242,16 +243,16 @@ variable SYN-N
    rx IMP-REF-COLS rw IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
    rx IMP-REF-ROWS {: m:n :}  rw IMP-REF-COLS {: nc:n :}
    j OND-IN# 2 = if
-      MAKI:OP-MATMUL MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+
+      MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+
       j m nc IMP-COMMIT exit then
    j 2 OND-IN@ IMP-RESOLVE {: rb:n :}
    rb IMP-REF-ROWS 1 <>  rb IMP-REF-COLS nc <>  or if E-ONNX-SHAPE throw then
-   MAKI:OP-LINEAR MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+  rb MAKI:MIR-IN+
+   MAKI-OPKIND:LINEAR MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  rw MAKI:MIR-IN+  rb MAKI:MIR-IN+
    j m nc IMP-COMMIT ;
 
 \ transA/transB: return the operand, transposed by an inserted TRANSPOSE node when the flag is set
 : GEMM-T ( n -- n ) {: r:n :}                  \ insert TRANSPOSE(r) -> r^T ref
-   MAKI:OP-TRANSPOSE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+
+   MAKI-OPKIND:TRANSPOSE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+
    MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
    r IMP-REF-COLS  r IMP-REF-ROWS  attr  MK-MOVE ;
 : GEMM-MAYBE-T ( n n -- n ) {: r:n t:n :}  t 0<> if r GEMM-T else r then ;
@@ -259,7 +260,7 @@ variable SYN-N
 \ non-unit alpha/beta: insert an OP-SCALE node multiplying ref r by the scalar a (1x1 constant)
 : GEMM-SCALE ( n r -- n ) {: r:n a:r :}
    a SYN-CONST {: cs:n :}
-   MAKI:OP-SCALE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+  cs MAKI:MIR-IN+
+   MAKI-OPKIND:SCALE MAKI:MIR-OP-BEGIN  r MAKI:MIR-IN+  cs MAKI:MIR-IN+
    r IMP-REF-ROWS  r IMP-REF-COLS  MK-COMPUTE ;
 
 \ apply the C operand under beta: 0 drops C, 1 adds it as a bias, else scales C by beta then adds
@@ -268,7 +269,7 @@ variable SYN-N
    j 2 OND-IN@ IMP-RESOLVE {: rc:n :}
    rc IMP-REF-ROWS 1 <>  rc IMP-REF-COLS acc IMP-REF-COLS <>  or if E-ONNX-SHAPE throw then
    j OND-BETA@ F32-ONE <> if  rc j OND-BETA@ F32>F64 GEMM-SCALE  else rc  then  {: rc2:n :}
-   MAKI:OP-BIAS MAKI:MIR-OP-BEGIN  acc MAKI:MIR-IN+  rc2 MAKI:MIR-IN+
+   MAKI-OPKIND:BIAS MAKI:MIR-OP-BEGIN  acc MAKI:MIR-IN+  rc2 MAKI:MIR-IN+
    acc IMP-REF-ROWS  acc IMP-REF-COLS  MK-COMPUTE ;
 
 \ composed form: (transA?A^T:A) @ (transB?B^T:B), then alpha scale, then beta*C bias-add
@@ -277,7 +278,7 @@ variable SYN-N
    j 1 OND-IN@ IMP-RESOLVE  j OND-TB@ GEMM-MAYBE-T {: rb:n :}
    ra IMP-REF-COLS rb IMP-REF-ROWS <> if E-ONNX-SHAPE throw then
    ra IMP-REF-ROWS {: m:n :}  rb IMP-REF-COLS {: nc:n :}
-   MAKI:OP-MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
+   MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
    m nc MK-COMPUTE {: acc:n :}
    j OND-ALPHA@ F32-ONE <> if  acc j OND-ALPHA@ F32>F64 GEMM-SCALE  else acc  then  {: acc2:n :}
    j OND-IN# 3 = if  j acc2 GEMM-C  else acc2  then  {: acc3:n :}
@@ -302,7 +303,7 @@ variable SYN-N
    tr 0 <= tc 0 <= or if E-ONNX-DYNSHAPE throw then         \ -1 (infer) / 0 (copy dim): not resolved v1
    j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
    r0 IMP-REF-ROWS r0 IMP-REF-COLS *  tr tc *  <> if E-ONNX-SHAPE throw then   \ element count must agree
-   MAKI:OP-RESHAPE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI-OPKIND:RESHAPE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-RESHAPE MAKI:MVV-FREE tr tc MAKI:MV-PACK {: attr:n :}   \ row-major reshape is a free rewrite
    j  tr tc  attr  IMP-COMMIT-MOVE ;
 
@@ -315,7 +316,7 @@ variable SYN-N
    then
    j 1 IMP-ARITY-OK
    j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
-   MAKI:OP-TRANSPOSE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI-OPKIND:TRANSPOSE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-TRANSPOSE MAKI:MVV-STAGED 0 0 MAKI:MV-PACK {: attr:n :}
    j  r0 IMP-REF-COLS  r0 IMP-REF-ROWS  attr  IMP-COMMIT-MOVE ;
 
@@ -327,7 +328,7 @@ variable SYN-N
    j 0 OND-IN@ IMP-RESOLVE {: ra:n :}
    j 1 OND-IN@ IMP-RESOLVE {: rb:n :}
    ra IMP-REF-COLS rb IMP-REF-COLS <> if E-ONNX-SHAPE throw then
-   MAKI:OP-CONCAT MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
+   MAKI-OPKIND:CONCAT MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
    MAKI:MV-CONCAT MAKI:MVV-MATERIALIZE 0 0 MAKI:MV-PACK {: attr:n :}
    j  ra IMP-REF-ROWS rb IMP-REF-ROWS +  ra IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
 

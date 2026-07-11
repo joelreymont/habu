@@ -19,16 +19,16 @@ create KT-BUF KT-CAP allot  variable KT-BU
 : BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
    rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 \ same chain, chosen input dtype; the dtype family cannot bind into a local, so
 \ it rides the stack into MIR-INPUT+ and the nodes read it back from the slot
 : BUILD-DT ( n n dtype -- )
    MIR-RESET
    MAKI-LAYOUT:ROW MIR-INPUT+ drop
    0 MIR-SLOT-ROWS@ 0 MIR-SLOT-COLS@ {: rows:n cols:n :}
-   OP-GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
-   OP-RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-IN-REF MIR-IN+ rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-IN+        rows cols 0 MIR-SLOT-DT@ MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 

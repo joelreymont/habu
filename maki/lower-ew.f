@@ -85,10 +85,19 @@ variable LEW-RID                            \ region id being lowered
 \ ---- supported op set (v1 elementwise chain) -------------------------------
 \ BIAS/SCALE join the set as broadcast binary ops (their param operand is a 1xC / 1x1
 \ broadcast); they lower to the same add.rn / mul.rn the executor uses (EX-EW2-EL).
-: LEW-OP-OK? ( n -- bool ) {: op:n :}
-   op OP-RELU = op OP-GELU = or op OP-SILU = or
-   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or
-   op OP-BIAS = or op OP-SCALE = or ;
+: LEW-OP-OK? ( opkind -- bool )
+   MATCH opkind
+      relu OF true ENDOF  gelu OF true ENDOF  silu OF true ENDOF
+      add OF true ENDOF  mul OF true ENDOF  residual-add OF true ENDOF
+      bias OF true ENDOF  scale OF true ENDOF
+      layernorm OF false ENDOF  rmsnorm OF false ENDOF  softmax-row OF false ENDOF
+      matmul OF false ENDOF  linear OF false ENDOF  cast OF false ENDOF  rope OF false ENDOF
+      reshape OF false ENDOF  transpose OF false ENDOF  slice OF false ENDOF  concat OF false ENDOF
+      gather OF false ENDOF  relu-bwd OF false ENDOF  gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF
+      layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
+      rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
+      pad-scatter OF false ENDOF  scatter-add OF false ENDOF
+   ;MATCH ;
 \ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
 \ chained / mat / non-slot source before any emit).
@@ -244,17 +253,26 @@ private
 : LEW-LOADS ( n n -- ) {: off:n flatr:n :}       \ load each input at its resolved ctx offset
    LEW-NIN @ 0 ?do  i off flatr LEW-LOAD-IN  loop ;
 : LEW-EMIT-NODE ( n -- ) {: nd:n :}
-   nd MIR-OP@ case
-      OP-RELU          of nd 0 LEW-OPREG EMIT-RELU  endof
-      OP-GELU          of nd 0 LEW-OPREG EMIT-GELU  endof
-      OP-SILU          of nd 0 LEW-OPREG EMIT-SILU  endof
-      OP-ADD           of nd LEW-BINREGS EMIT-ADD   endof
-      OP-RESIDUAL-ADD  of nd LEW-BINREGS EMIT-ADD   endof
-      OP-BIAS          of nd LEW-BINREGS EMIT-ADD   endof
-      OP-MUL           of nd LEW-BINREGS EMIT-MUL   endof
-      OP-SCALE         of nd LEW-BINREGS EMIT-MUL   endof
-      E-LEW-OP throw
-   endcase
+   nd MIR-OP@ MATCH opkind
+      relu            OF nd 0 LEW-OPREG EMIT-RELU  ENDOF
+      gelu            OF nd 0 LEW-OPREG EMIT-GELU  ENDOF
+      silu            OF nd 0 LEW-OPREG EMIT-SILU  ENDOF
+      add             OF nd LEW-BINREGS EMIT-ADD   ENDOF
+      residual-add    OF nd LEW-BINREGS EMIT-ADD   ENDOF
+      bias            OF nd LEW-BINREGS EMIT-ADD   ENDOF
+      mul             OF nd LEW-BINREGS EMIT-MUL   ENDOF
+      scale           OF nd LEW-BINREGS EMIT-MUL   ENDOF
+      layernorm OF E-LEW-OP throw ENDOF  rmsnorm OF E-LEW-OP throw ENDOF
+      softmax-row OF E-LEW-OP throw ENDOF  matmul OF E-LEW-OP throw ENDOF
+      linear OF E-LEW-OP throw ENDOF  cast OF E-LEW-OP throw ENDOF  rope OF E-LEW-OP throw ENDOF
+      reshape OF E-LEW-OP throw ENDOF  transpose OF E-LEW-OP throw ENDOF
+      slice OF E-LEW-OP throw ENDOF  concat OF E-LEW-OP throw ENDOF  gather OF E-LEW-OP throw ENDOF
+      relu-bwd OF E-LEW-OP throw ENDOF  gelu-bwd OF E-LEW-OP throw ENDOF  silu-bwd OF E-LEW-OP throw ENDOF
+      layernorm-bwd OF E-LEW-OP throw ENDOF  rmsnorm-bwd OF E-LEW-OP throw ENDOF
+      softmax-row-bwd OF E-LEW-OP throw ENDOF  rope-bwd OF E-LEW-OP throw ENDOF
+      rowsum-bwd OF E-LEW-OP throw ENDOF  fullsum-dot-bwd OF E-LEW-OP throw ENDOF
+      pad-scatter OF E-LEW-OP throw ENDOF  scatter-add OF E-LEW-OP throw ENDOF
+   ;MATCH
    nd LEW-NR! ;
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
    MIR-N@ 0 ?do  i LEW-RID @ LEW-IN-REGION? i MIR-MOVE? 0= and if i LEW-EMIT-NODE then  loop ;

@@ -32,17 +32,17 @@ BW-BUILD
 
 \ ---- parameter-gradient shape assertions -----------------------------------
 \ d-x  = ct0 @ w1^T -> 2x3 (a transposed-matmul node)
-0 BW-SLOT-GRAD@ MIR-OP@   OP-MATMUL T=
+0 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-MATMUL T=
 0 BW-SLOT-GRAD@ MIR-ROWS@ 2 T=  0 BW-SLOT-GRAD@ MIR-COLS@ 3 T=
 \ d-w1 = x^T @ ct0 -> 3x4 (a transposed-matmul node)
-1 BW-SLOT-GRAD@ MIR-OP@   OP-MATMUL T=
+1 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-MATMUL T=
 1 BW-SLOT-GRAD@ MIR-ROWS@ 3 T=  1 BW-SLOT-GRAD@ MIR-COLS@ 4 T=
 \ d-b1 = row-reduce of ct0 -> 1x4 (OP-ROWSUM-BWD)
-2 BW-SLOT-GRAD@ MIR-OP@   OP-ROWSUM-BWD T=
+2 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-ROWSUM-BWD T=
 2 BW-SLOT-GRAD@ MIR-ROWS@ 1 T=  2 BW-SLOT-GRAD@ MIR-COLS@ 4 T=
 \ d-w2 = node1^T @ ct2 -> 4x2 ; d-b2 = row-reduce of ct2 -> 1x2
 3 BW-SLOT-GRAD@ MIR-ROWS@ 4 T=  3 BW-SLOT-GRAD@ MIR-COLS@ 2 T=
-4 BW-SLOT-GRAD@ MIR-OP@   OP-ROWSUM-BWD T=
+4 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-ROWSUM-BWD T=
 4 BW-SLOT-GRAD@ MIR-ROWS@ 1 T=  4 BW-SLOT-GRAD@ MIR-COLS@ 2 T=
 
 \ ---- gradcheck now RUNS on host: linear is host-executable (cad-7a executor) --

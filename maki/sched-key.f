@@ -65,7 +65,7 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
 \ dtype/layout fold through their named wire-code boundaries (DTYPE>N/LAYOUT>N);
 \ the codes equal the pre-family DT-*/LAY-* values, so persisted hashes are stable
 : RSIG-NODE ( n n -- n ) {: node:n :}           \ ( h node -- h' ) fold a node's facts
-   node MIR-OP@   FNV-CELL
+   node MIR-OP@ OPKIND>N   FNV-CELL
    node MIR-ROWS@ FNV-CELL
    node MIR-COLS@ FNV-CELL
    node MIR-DT@  DTYPE>N  FNV-CELL

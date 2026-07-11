@@ -115,8 +115,32 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       invert and 0= ;
 
 \ ---- supported op sets -----------------------------------------------------
-: LMM-MM-OP?  ( n -- bool ) {: op:n :}  op OP-MATMUL = op OP-LINEAR = or ;      \ the contraction
-: LMM-EPI-OP? ( n -- bool ) {: op:n :}  op OP-RELU = op OP-GELU = or op OP-SILU = or ; \ v1 unary EW epilogue
+: LMM-MM-OP?  ( opkind -- bool )                 \ the contraction
+   MATCH opkind
+      matmul OF true ENDOF  linear OF true ENDOF
+      add OF false ENDOF  mul OF false ENDOF  scale OF false ENDOF  bias OF false ENDOF
+      relu OF false ENDOF  gelu OF false ENDOF  silu OF false ENDOF  layernorm OF false ENDOF
+      rmsnorm OF false ENDOF  softmax-row OF false ENDOF  residual-add OF false ENDOF
+      cast OF false ENDOF  rope OF false ENDOF  reshape OF false ENDOF  transpose OF false ENDOF
+      slice OF false ENDOF  concat OF false ENDOF  gather OF false ENDOF  relu-bwd OF false ENDOF
+      gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF  layernorm-bwd OF false ENDOF
+      rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF  rope-bwd OF false ENDOF
+      rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF  pad-scatter OF false ENDOF
+      scatter-add OF false ENDOF
+   ;MATCH ;
+: LMM-EPI-OP? ( opkind -- bool )                 \ v1 unary EW epilogue
+   MATCH opkind
+      relu OF true ENDOF  gelu OF true ENDOF  silu OF true ENDOF
+      add OF false ENDOF  mul OF false ENDOF  scale OF false ENDOF  bias OF false ENDOF
+      layernorm OF false ENDOF  rmsnorm OF false ENDOF  softmax-row OF false ENDOF
+      matmul OF false ENDOF  linear OF false ENDOF  residual-add OF false ENDOF
+      cast OF false ENDOF  rope OF false ENDOF  reshape OF false ENDOF  transpose OF false ENDOF
+      slice OF false ENDOF  concat OF false ENDOF  gather OF false ENDOF  relu-bwd OF false ENDOF
+      gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF  layernorm-bwd OF false ENDOF
+      rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF  rope-bwd OF false ENDOF
+      rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF  pad-scatter OF false ENDOF
+      scatter-add OF false ENDOF
+   ;MATCH ;
 
 : LMM-MM-COUNT ( n -- n ) {: rid:n :}          \ contraction nodes in the region
    0 MIR-N@ 0 ?do  i rid LMM-IN-REGION? i MIR-OP@ LMM-MM-OP? and if 1+ then  loop ;
@@ -128,8 +152,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       i rid LMM-IN-REGION? if
          i MIR-MOVE? if i MVW-CHECK
          else
-            i MIR-OP@ {: op:n :}
-            op LMM-MM-OP? op LMM-EPI-OP? or 0= if E-LMM-OP throw then
+            i MIR-OP@ dup LMM-MM-OP? swap LMM-EPI-OP? or 0= if E-LMM-OP throw then
          then
       then
    loop
@@ -254,12 +277,24 @@ private
 \ a unary epilogue node reads operand-0 (the contraction or a prior epilogue reg)
 : LMM-EPI-OPREG ( n -- n ) {: nd:n :}  nd 0 MIR-IN@ LMM-NR@ ;
 : LMM-EPI-NODE ( n -- ) {: nd:n :}
-   nd MIR-OP@ case
-      OP-RELU of nd LMM-EPI-OPREG EMIT-RELU endof
-      OP-GELU of nd LMM-EPI-OPREG EMIT-GELU endof
-      OP-SILU of nd LMM-EPI-OPREG EMIT-SILU endof
-      E-LMM-OP throw
-   endcase
+   nd MIR-OP@ MATCH opkind
+      relu OF nd LMM-EPI-OPREG EMIT-RELU ENDOF
+      gelu OF nd LMM-EPI-OPREG EMIT-GELU ENDOF
+      silu OF nd LMM-EPI-OPREG EMIT-SILU ENDOF
+      add OF E-LMM-OP throw ENDOF  mul OF E-LMM-OP throw ENDOF
+      scale OF E-LMM-OP throw ENDOF  bias OF E-LMM-OP throw ENDOF
+      layernorm OF E-LMM-OP throw ENDOF  rmsnorm OF E-LMM-OP throw ENDOF
+      softmax-row OF E-LMM-OP throw ENDOF  matmul OF E-LMM-OP throw ENDOF
+      linear OF E-LMM-OP throw ENDOF  residual-add OF E-LMM-OP throw ENDOF
+      cast OF E-LMM-OP throw ENDOF  rope OF E-LMM-OP throw ENDOF
+      reshape OF E-LMM-OP throw ENDOF  transpose OF E-LMM-OP throw ENDOF
+      slice OF E-LMM-OP throw ENDOF  concat OF E-LMM-OP throw ENDOF  gather OF E-LMM-OP throw ENDOF
+      relu-bwd OF E-LMM-OP throw ENDOF  gelu-bwd OF E-LMM-OP throw ENDOF  silu-bwd OF E-LMM-OP throw ENDOF
+      layernorm-bwd OF E-LMM-OP throw ENDOF  rmsnorm-bwd OF E-LMM-OP throw ENDOF
+      softmax-row-bwd OF E-LMM-OP throw ENDOF  rope-bwd OF E-LMM-OP throw ENDOF
+      rowsum-bwd OF E-LMM-OP throw ENDOF  fullsum-dot-bwd OF E-LMM-OP throw ENDOF
+      pad-scatter OF E-LMM-OP throw ENDOF  scatter-add OF E-LMM-OP throw ENDOF
+   ;MATCH
    nd LMM-NR! ;
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)
    MIR-N@ 0 ?do
@@ -358,7 +393,7 @@ private
 : LMM-BODY ( -- )
    LMM-COORDS
    LMM-KLOOP
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if LMM-BIAS then
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if LMM-BIAS then
    1 LMM-MMNODE @ LMM-NR!                          \ contraction result = %f1 (after any bias)
    LMM-RESET-REGS
    LMM-EPI-CHAIN
@@ -389,7 +424,7 @@ private
    SB-RESET s" add.u32 %r43, %r41, " CG-S i SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
    s" mad.lo.u32 %r44, %r42, %r2, %r43;" PTX-L                            \ gidx = cRow*N + cCol
    10 j 4 * + i + {: accf:n :}                                           \ accumulator %f(10+j*4+i)
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[cCol]
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if                                   \ bias fusion: acc += bias[cCol]
       s" mul.wide.u32 %rd10, %r43, 4;" PTX-L
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
@@ -427,7 +462,7 @@ private
 \ over the mma.sync (gRow0/gRow1, col0/col1) output mapping instead of the contiguous 4x4 tile.
 : LMM-MMA-ELEM ( n n n -- ) {: rr:n cr:n accf:n :}
    SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr SB-U s" , %r2, %r" CG-S cr SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
-   LMM-MMNODE @ MIR-OP@ OP-LINEAR = if                                   \ bias fusion: acc += bias[col]
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if                                   \ bias fusion: acc += bias[col]
       SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr SB-U s" , 4;" CG-S CG-LINE
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L

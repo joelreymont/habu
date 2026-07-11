@@ -25,17 +25,22 @@ public
    x TENSOR:TV-ROWS@  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@  x TENSOR:TV-LAYOUT@  TENSOR:TV-DESC ;
 
 \ ---- elementwise appenders (parametric on op-kind) --------------------------
-: PLAN-UNARY ( tensor n -- tensor ) {: x:tensor op:n :}
+\ op is the family arg on top; it cannot bind into a local, so PLAN-OP-BEGIN
+\ consumes it first (elementwise output inference never throws), then the tensors bind.
+: PLAN-UNARY ( tensor opkind -- tensor )
+   TENSOR:PLAN-OP-BEGIN {: x:tensor :}
    x PLAN-LIKE {: y:tensor :}
-   op TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
+   x TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
 
-: PLAN-BIN-EW ( tensor tensor n -- tensor ) {: x:tensor p:tensor op:n :}
+: PLAN-BIN-EW ( tensor tensor opkind -- tensor )
+   TENSOR:PLAN-OP-BEGIN {: x:tensor p:tensor :}
    x PLAN-LIKE {: y:tensor :}
-   op TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  p TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
+   x TENSOR:PLAN-IN+  p TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
 
-: PLAN-TERN-EW ( tensor tensor tensor n -- tensor ) {: x:tensor a:tensor b:tensor op:n :}
+: PLAN-TERN-EW ( tensor tensor tensor opkind -- tensor )
+   TENSOR:PLAN-OP-BEGIN {: x:tensor a:tensor b:tensor :}
    x PLAN-LIKE {: y:tensor :}
-   op TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  a TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
+   x TENSOR:PLAN-IN+  a TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
 
 private
 
@@ -46,13 +51,21 @@ private
 
 public
 
-: PLAN-MATMUL ( tensor tensor n -- tensor ) {: x:tensor w:tensor op:n :}
-   x w PLAN-MM-DESC {: y:tensor :}
-   op TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
+\ the contraction descriptor (PLAN-MM-DESC) can throw on an inner-dim mismatch, so
+\ it runs BEFORE PLAN-OP-BEGIN opens a record; the op family rides the stack under
+\ the operands (-rot / swap move it clear of the tensors that bind).
+: PLAN-MATMUL ( tensor tensor opkind -- tensor )
+   -rot {: x:tensor w:tensor :}                 \ ( op )
+   x w PLAN-MM-DESC                              \ ( op y ) -- throws before any record opens
+   swap TENSOR:PLAN-OP-BEGIN {: y:tensor :}
+   x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
 
-: PLAN-LINEAR ( tensor tensor tensor n -- tensor ) {: x:tensor w:tensor b:tensor op:n :}
-   x w PLAN-MM-DESC {: y:tensor :}
-   op TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
+: PLAN-LINEAR ( tensor tensor tensor opkind -- tensor )
+   swap {: b:tensor :}                           \ ( x w op )
+   -rot {: x:tensor w:tensor :}                  \ ( op )
+   x w PLAN-MM-DESC                              \ ( op y )
+   swap TENSOR:PLAN-OP-BEGIN {: y:tensor :}
+   x TENSOR:PLAN-IN+  w TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  y TENSOR:PLAN-OP+  y ;
 
 \ ---- movement appenders (append IR facts + packed attrs; verdict per 6.3) ----
 \ Output extents are inferred layout rewrites, not compute; each stages an attrs
@@ -65,13 +78,13 @@ public
    x TENSOR:TV-ELEMS  tr tc *  <> if E-TV-SHAPE throw then
    tr tc x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
    MV-RESHAPE  x TENSOR:TV-LAYOUT@ MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
-   OP-RESHAPE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   MAKI-OPKIND:RESHAPE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ transpose: RxC -> CxR (no params); dissolves inside a staged region.
 : PLAN-TRANSPOSE ( tensor -- tensor ) {: x:tensor :}
    x TENSOR:TV-COLS@ x TENSOR:TV-ROWS@ x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
    MV-TRANSPOSE  MV-TRANSPOSE-VERDICT  0 0 MV-PACK {: attr:n :}
-   OP-TRANSPOSE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   MAKI-OPKIND:TRANSPOSE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ slice: rows [r0,r1) (params); free when the offset is lane-aligned else materialize.
 : PLAN-SLICE ( tensor n n -- tensor ) {: x:tensor r0:n r1:n :}
@@ -79,19 +92,19 @@ public
    x TENSOR:TV-COLS@ {: cols:n :}
    r1 r0 -  cols  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
    MV-SLICE  x TENSOR:TV-LAYOUT@ r0 cols MV-SLICE-VERDICT  r0 r1 MV-PACK {: attr:n :}
-   OP-SLICE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   MAKI-OPKIND:SLICE TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ concat: row-append b to x (cols must agree); v1 always materializes.
 : PLAN-CONCAT ( tensor tensor -- tensor ) {: x:tensor b:tensor :}
    x TENSOR:TV-COLS@ b TENSOR:TV-COLS@ <> if E-TV-SHAPE throw then
    x TENSOR:TV-ROWS@ b TENSOR:TV-ROWS@ +  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
    MV-CONCAT  MV-CONCAT-VERDICT  0 0 MV-PACK {: attr:n :}
-   OP-CONCAT TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   MAKI-OPKIND:CONCAT TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  b TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 \ gather: select idx rows of x (output rows = index element count); reported gathered.
 : PLAN-GATHER ( tensor tensor -- tensor ) {: x:tensor idx:tensor :}
    idx TENSOR:TV-ELEMS  x TENSOR:TV-COLS@  x TENSOR:TV-DTYPE@ x TENSOR:TV-LAYOUT@ TENSOR:TV-DESC {: y:tensor :}
    MV-GATHER  MV-GATHER-VERDICT  0 0 MV-PACK {: attr:n :}
-   OP-GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
+   MAKI-OPKIND:GATHER TENSOR:PLAN-OP-BEGIN  x TENSOR:PLAN-IN+  idx TENSOR:PLAN-IN+  attr TENSOR:PLAN-ATTR!  y TENSOR:PLAN-OP+  y ;
 
 end-package

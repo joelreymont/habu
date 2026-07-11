@@ -11,8 +11,8 @@
 \ the one-way maki<-habu seam enforced at the dictionary level (docs/forth.md
 \ "Packages"). The E-MK-ONNX error code stays global (cross-cutting, like
 \ lib/errors.f's E-* codes); the package body reaches it via the package's
-\ global-fallback lookup. The op-kind FACTs (MAKI:OP-RESHAPE ...) are qualified
-\ across the ONNX<-MAKI package seam.
+\ global-fallback lookup. The op-kind FAMILY constructors (MAKI-OPKIND:RESHAPE
+\ ...) resolve across the ONNX<-MAKI package seam.
 
 require lib/string.f
 require maki/op-kind.f
@@ -33,12 +33,12 @@ public
 
 \ Movement ONNX ops carry no kernel; they lower to a maki movement op-kind
 \ (the IR layout FACT the planner reasons over). Fail closed on any other op.
-: MOVE-KIND ( ptr u8 n -- n )
-   2dup s" Reshape"   STR= if 2drop MAKI:OP-RESHAPE   exit then
-   2dup s" Transpose" STR= if 2drop MAKI:OP-TRANSPOSE exit then
-   2dup s" Slice"     STR= if 2drop MAKI:OP-SLICE     exit then
-   2dup s" Concat"    STR= if 2drop MAKI:OP-CONCAT    exit then
-   2dup s" Gather"    STR= if 2drop MAKI:OP-GATHER    exit then
+: MOVE-KIND ( ptr u8 n -- opkind )
+   2dup s" Reshape"   STR= if 2drop MAKI-OPKIND:RESHAPE   exit then
+   2dup s" Transpose" STR= if 2drop MAKI-OPKIND:TRANSPOSE exit then
+   2dup s" Slice"     STR= if 2drop MAKI-OPKIND:SLICE     exit then
+   2dup s" Concat"    STR= if 2drop MAKI-OPKIND:CONCAT    exit then
+   2dup s" Gather"    STR= if 2drop MAKI-OPKIND:GATHER    exit then
    2drop E-MK-ONNX throw ;
 
 end-package

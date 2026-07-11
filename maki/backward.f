@@ -77,24 +77,28 @@ variable BW-BUILT?
 \ ---- node emitters (append one backward node; mat flag is a placeholder FP-BUILD
 \ overwrites via FP-MARK, so 1 = conservative "materialize" here) --------------
 \ two operands, output descriptor taken from a reference tensor (the gradient's shape)
-: BW-OP2 ( n n n n -- n ) {: a:n b:n op:n dref:n :}
-   op MIR-OP-BEGIN  a MIR-IN+  b MIR-IN+
+\ the op family cannot bind into a local, so it is consumed by MIR-OP-BEGIN off the
+\ top (after dref binds) before the operand refs bind.
+: BW-OP2 ( n n opkind n -- n ) {: dref:n :}
+   MIR-OP-BEGIN {: a:n b:n :}
+   a MIR-IN+  b MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  0  1  MIR-OP+ ;
 
 \ three operands, output descriptor from a reference tensor (rope: dz cos sin)
-: BW-OP3 ( n n n n n -- n ) {: a:n b:n c:n op:n dref:n :}
-   op MIR-OP-BEGIN  a MIR-IN+  b MIR-IN+  c MIR-IN+
+: BW-OP3 ( n n n opkind n -- n ) {: dref:n :}
+   MIR-OP-BEGIN {: a:n b:n c:n :}
+   a MIR-IN+  b MIR-IN+  c MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  0  1  MIR-OP+ ;
 
 \ matmul: out rows = a.rows, out cols = b.cols (the contraction result shape)
 : BW-MM ( n n -- n ) {: a:n b:n :}
-   OP-MATMUL MIR-OP-BEGIN  a MIR-IN+  b MIR-IN+
+   MAKI-OPKIND:MATMUL MIR-OP-BEGIN  a MIR-IN+  b MIR-IN+
    a REF-ROWS  b REF-COLS  a REF-DT  MAKI-LAYOUT:ROW  0  1  MIR-OP+ ;
 
 \ transpose: RxC -> CxR (movement node with staged verdict, like PLAN-TRANSPOSE)
 : BW-TR ( n -- n ) {: s:n :}
    MV-TRANSPOSE MV-TRANSPOSE-VERDICT 0 0 MV-PACK {: attr:n :}
-   OP-TRANSPOSE MIR-OP-BEGIN  s MIR-IN+
+   MAKI-OPKIND:TRANSPOSE MIR-OP-BEGIN  s MIR-IN+
    s REF-COLS  s REF-ROWS  s REF-DT  s REF-LAY  attr  1  MIR-OP+ ;
 
 \ reshape the cotangent to a target shape (movement node; verdict per target
@@ -102,46 +106,46 @@ variable BW-BUILT?
 \ so the families ride the stack straight into MIR-OP+
 : BW-RS ( n n n n -- n ) {: ct:n tr:n tc:n dref:n :}   \ ct target-rows target-cols dref
    MV-RESHAPE  dref REF-LAY MV-RESHAPE-VERDICT  tr tc MV-PACK {: attr:n :}
-   OP-RESHAPE MIR-OP-BEGIN  ct MIR-IN+
+   MAKI-OPKIND:RESHAPE MIR-OP-BEGIN  ct MIR-IN+
    tr tc  dref REF-DT  dref REF-LAY  attr  1  MIR-OP+ ;
 
 \ slice rows [r0,r1) of the cotangent; output descriptor from a reference tensor
 : BW-SL ( n n n n -- n ) {: ct:n r0:n r1:n dref:n :}
    MV-SLICE  ct REF-LAY r0 dref REF-COLS MV-SLICE-VERDICT  r0 r1 MV-PACK {: attr:n :}
-   OP-SLICE MIR-OP-BEGIN  ct MIR-IN+
+   MAKI-OPKIND:SLICE MIR-OP-BEGIN  ct MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
 
 \ row-reduce the cotangent over its rows -> 1 x C (the bias / linear-bias gradient);
 \ output cols/dtype/layout come from the bias reference tensor (1xC).
 : BW-ROWSUM ( n n -- n ) {: ct:n bref:n :}
-   OP-ROWSUM-BWD MIR-OP-BEGIN  ct MIR-IN+
+   MAKI-OPKIND:ROWSUM-BWD MIR-OP-BEGIN  ct MIR-IN+
    1 bref REF-COLS  bref REF-DT  bref REF-LAY  0  1  MIR-OP+ ;
 
 \ full-reduce dot of the cotangent with the saved input -> 1 x 1 (the scale gradient);
 \ output dtype/layout come from the scalar (scale-factor) reference tensor.
 : BW-FULLSUM ( n n n -- n ) {: ct:n x:n sref:n :}
-   OP-FULLSUM-DOT-BWD MIR-OP-BEGIN  ct MIR-IN+  x MIR-IN+
+   MAKI-OPKIND:FULLSUM-DOT-BWD MIR-OP-BEGIN  ct MIR-IN+  x MIR-IN+
    1 1  sref REF-DT  sref REF-LAY  0  1  MIR-OP+ ;
 
 \ pad-scatter the cotangent into a zero R x C buffer at row r0 (the slice input-grad);
 \ output extents from the slice's forward input, r0/r1 packed like the forward slice.
 : BW-PS ( n n n n -- n ) {: ct:n r0:n r1:n dref:n :}
    MV-SLICE MVV-MATERIALIZE r0 r1 MV-PACK {: attr:n :}
-   OP-PAD-SCATTER MIR-OP-BEGIN  ct MIR-IN+
+   MAKI-OPKIND:PAD-SCATTER MIR-OP-BEGIN  ct MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
 
 \ scatter-add the cotangent rows into a zero R x C buffer at the gathered indices (the
 \ gather input-grad); reads the index operand, output extents from the gather's input.
 : BW-SA ( n n n -- n ) {: ct:n idx:n dref:n :}
    MV-GATHER MVV-MATERIALIZE 0 0 MV-PACK {: attr:n :}
-   OP-SCATTER-ADD MIR-OP-BEGIN  ct MIR-IN+  idx MIR-IN+
+   MAKI-OPKIND:SCATTER-ADD MIR-OP-BEGIN  ct MIR-IN+  idx MIR-IN+
    dref REF-ROWS dref REF-COLS dref REF-DT dref REF-LAY  attr  1  MIR-OP+ ;
 
 \ ---- accumulate a new cotangent ref into a target operand (fan-out -> OP-ADD sum) --
 : BW-ACCUM ( n n -- ) {: nc:n ref:n :}
    ref BW-GET {: cur:n :}
    cur BW-NONE = if nc ref BW-SET exit then
-   cur nc OP-ADD ref BW-OP2  ref BW-SET ;
+   cur nc MAKI-OPKIND:ADD ref BW-OP2  ref BW-SET ;
 
 \ ---- per-adjoint emitters ( fn ct -- ) --------------------------------------
 \ linear op: the cotangent copies unchanged to every masked input (add / residual)
@@ -153,23 +157,23 @@ variable BW-BUILT?
 \ product rule: dx = ct*y, dy = ct*x (both operands saved)
 : BW-STEP-MUL ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: y:n :}
-   ct y OP-MUL x BW-OP2  x BW-ACCUM
-   ct x OP-MUL y BW-OP2  y BW-ACCUM ;
+   ct y MAKI-OPKIND:MUL x BW-OP2  x BW-ACCUM
+   ct x MAKI-OPKIND:MUL y BW-OP2  y BW-ACCUM ;
 
 \ dedicated elementwise / reduction backward op over (ct, saved-input)
 : BW-STEP-UNARY ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}
-   ct x  fn MIR-OP@ ADJ-BOP  x BW-OP2  x BW-ACCUM ;
+   ct x  fn MIR-OP@ ADJ-BWD-KIND  x BW-OP2  x BW-ACCUM ;
 
 \ softmax adjoint reads the saved OUTPUT row (the forward node itself)
 : BW-STEP-SOFTMAX ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}
-   ct fn OP-SOFTMAX-ROW-BWD x BW-OP2  x BW-ACCUM ;
+   ct fn MAKI-OPKIND:SOFTMAX-ROW-BWD x BW-OP2  x BW-ACCUM ;
 
 \ rope adjoint rotates the cotangent by -angle, reading cos/sin (operands 1,2)
 : BW-STEP-ROPE ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: c:n :}  fn 2 MIR-IN@ {: s:n :}
-   ct c s OP-ROPE-BWD x BW-OP3  x BW-ACCUM ;
+   ct c s MAKI-OPKIND:ROPE-BWD x BW-OP3  x BW-ACCUM ;
 
 \ matmul adjoints are transposed matmuls: dX = ct @ Wt, dW = Xt @ ct
 : BW-STEP-MATMUL ( n n -- ) {: fn:n ct:n :}
@@ -207,12 +211,12 @@ variable BW-BUILT?
 : BW-STEP-SCALE ( n n -- ) {: fn:n ct:n :}
    fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: s:n :}
    s REF-ROWS x REF-ROWS =  s REF-COLS x REF-COLS =  and if
-      ct s OP-MUL x BW-OP2  x BW-ACCUM        \ dx = ct*s (elementwise)
-      ct x OP-MUL s BW-OP2  s BW-ACCUM        \ d-scale = ct*x (elementwise)
+      ct s MAKI-OPKIND:MUL x BW-OP2  x BW-ACCUM        \ dx = ct*s (elementwise)
+      ct x MAKI-OPKIND:MUL s BW-OP2  s BW-ACCUM        \ d-scale = ct*x (elementwise)
       exit
    then
    s REF-ROWS 1 =  s REF-COLS 1 =  and 0= if E-BW-BROADCAST throw then
-   ct s OP-SCALE x BW-OP2  x BW-ACCUM         \ dx = scale(ct, s) (broadcast-by-1x1)
+   ct s MAKI-OPKIND:SCALE x BW-OP2  x BW-ACCUM         \ dx = scale(ct, s) (broadcast-by-1x1)
    ct x s BW-FULLSUM  s BW-ACCUM ;            \ d-scale = fullsum-dot(ct, x) -> 1x1
 
 \ linear adjoint: the matmul adjoints for x and w plus the bias row-reduce.
@@ -239,37 +243,52 @@ variable BW-BUILT?
 : BW-STEP ( n -- ) {: fn:n :}
    fn cells BW-CT + @ {: ct:n :}
    ct BW-NONE = if exit then                 \ node not on the backward path
-   fn ct  fn MIR-OP@ ADJ-ID case
-      ADJ-COPY      of BW-STEP-COPY      endof
-      ADJ-MUL       of BW-STEP-MUL       endof
-      ADJ-RELU      of BW-STEP-UNARY     endof
-      ADJ-GELU      of BW-STEP-UNARY     endof
-      ADJ-SILU      of BW-STEP-UNARY     endof
-      ADJ-LAYERNORM of BW-STEP-UNARY     endof
-      ADJ-RMSNORM   of BW-STEP-UNARY     endof
-      ADJ-SOFTMAX   of BW-STEP-SOFTMAX   endof
-      ADJ-ROPE      of BW-STEP-ROPE      endof
-      ADJ-MATMUL    of BW-STEP-MATMUL    endof
-      ADJ-RESHAPE   of BW-STEP-RESHAPE   endof
-      ADJ-TRANSPOSE of BW-STEP-TRANSPOSE endof
-      ADJ-CONCAT    of BW-STEP-CONCAT    endof
-      ADJ-BIAS      of BW-STEP-BIAS      endof
-      ADJ-SCALE     of BW-STEP-SCALE     endof
-      ADJ-LINEAR    of BW-STEP-LINEAR    endof
-      ADJ-SLICE     of BW-STEP-SLICE     endof
-      ADJ-GATHER    of BW-STEP-GATHER    endof
-      2drop E-BW-UNSUP throw
-   endcase ;
+   \ dispatch straight on the forward op family (exhaustive: adding an op forces an
+   \ adjoint decision here). Non-differentiable / synthesized backward ops throw.
+   fn ct  fn MIR-OP@ MATCH opkind
+      add             OF BW-STEP-COPY      ENDOF
+      residual-add    OF BW-STEP-COPY      ENDOF
+      mul             OF BW-STEP-MUL       ENDOF
+      relu            OF BW-STEP-UNARY     ENDOF
+      gelu            OF BW-STEP-UNARY     ENDOF
+      silu            OF BW-STEP-UNARY     ENDOF
+      layernorm       OF BW-STEP-UNARY     ENDOF
+      rmsnorm         OF BW-STEP-UNARY     ENDOF
+      softmax-row     OF BW-STEP-SOFTMAX   ENDOF
+      rope            OF BW-STEP-ROPE      ENDOF
+      matmul          OF BW-STEP-MATMUL    ENDOF
+      reshape         OF BW-STEP-RESHAPE   ENDOF
+      transpose       OF BW-STEP-TRANSPOSE ENDOF
+      concat          OF BW-STEP-CONCAT    ENDOF
+      bias            OF BW-STEP-BIAS      ENDOF
+      scale           OF BW-STEP-SCALE     ENDOF
+      linear          OF BW-STEP-LINEAR    ENDOF
+      slice           OF BW-STEP-SLICE     ENDOF
+      gather          OF BW-STEP-GATHER    ENDOF
+      cast            OF E-BW-UNSUP throw  ENDOF
+      relu-bwd        OF E-BW-UNSUP throw  ENDOF
+      gelu-bwd        OF E-BW-UNSUP throw  ENDOF
+      silu-bwd        OF E-BW-UNSUP throw  ENDOF
+      layernorm-bwd   OF E-BW-UNSUP throw  ENDOF
+      rmsnorm-bwd     OF E-BW-UNSUP throw  ENDOF
+      softmax-row-bwd OF E-BW-UNSUP throw  ENDOF
+      rope-bwd        OF E-BW-UNSUP throw  ENDOF
+      rowsum-bwd      OF E-BW-UNSUP throw  ENDOF
+      fullsum-dot-bwd OF E-BW-UNSUP throw  ENDOF
+      pad-scatter     OF E-BW-UNSUP throw  ENDOF
+      scatter-add     OF E-BW-UNSUP throw  ENDOF
+   ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------
-: BW-OK-OP? ( n -- bool ) {: op:n :}  op ADJ-HAS?  op ADJ-SUP?  and ;
+: BW-OK-OP? ( opkind -- bool )  dup ADJ-HAS?  swap ADJ-SUP?  and ;
 
 public
 
-\ first forward op-kind lacking a supported adjoint, or -1 (scans forward nodes only)
+\ first forward NODE lacking a supported adjoint, or -1 (scans forward nodes only);
+\ returns the node index (the op family is refetched at the use site).
 : BW-FIRST-BAD ( -- n )
    BW-BUILT? @ if BW-FWD-N @ else MIR-N@ then {: n:n :}
-   n 0 ?do  i MIR-OP@ dup BW-OK-OP? 0= if unloop exit then drop  loop  -1 ;
+   n 0 ?do  i MIR-OP@ BW-OK-OP? 0= if i unloop exit then  loop  -1 ;
 
 : BW-CAN? ( -- bool )  BW-FIRST-BAD 0< ;
 
@@ -295,7 +314,7 @@ public
    MIR-N@ BW-NCAP > MIR-IN-SLOTS@ BW-SCAP >= or if E-BW-CAP throw then
    BW-CAN? 0= if
       BW-FIRST-BAD {: bad:n :}
-      bad ADJ-HAS? if E-BW-UNSUP else E-BW-NOADJ then throw
+      bad MIR-OP@ ADJ-HAS? if E-BW-UNSUP else E-BW-NOADJ then throw
    then
    MIR-N@ BW-FWD-N !
    BW-RESET-TABLES

@@ -57,11 +57,50 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 : MV-VD-CK ( n -- n )  dup 0 < over MVV-N  >= or if E-MV-VD throw then ;
 : MV-PARAM-CK ( n -- n )  dup 0 < over MV-PMASK > or if E-MV-PARAM throw then ;
 
-\ ---- op-kind <-> compact transform tag (movement op-kinds are contiguous) ---
-: MV-OF-OP ( n -- n )                          \ movement op-kind -> transform tag
-   dup OP-RESHAPE < over OP-GATHER > or if E-MV-NOTMOVE throw then
-   OP-RESHAPE - ;
-: OP-OF-MV ( n -- n )  MV-TF-CK OP-RESHAPE + ; \ transform tag -> movement op-kind
+\ ---- op-kind family <-> compact transform tag -------------------------------
+\ MV-OF-OP dispatches on the family (a non-movement op is a fail-closed throw,
+\ exhaustive MATCH); OP-OF-MV lifts a validated packed tag back to the family.
+: MV-OF-OP ( opkind -- n )                     \ movement op-kind -> transform tag
+   MATCH opkind
+      reshape         OF MV-RESHAPE   ENDOF
+      transpose       OF MV-TRANSPOSE ENDOF
+      slice           OF MV-SLICE     ENDOF
+      concat          OF MV-CONCAT    ENDOF
+      gather          OF MV-GATHER    ENDOF
+      add             OF E-MV-NOTMOVE throw ENDOF
+      mul             OF E-MV-NOTMOVE throw ENDOF
+      scale           OF E-MV-NOTMOVE throw ENDOF
+      bias            OF E-MV-NOTMOVE throw ENDOF
+      relu            OF E-MV-NOTMOVE throw ENDOF
+      gelu            OF E-MV-NOTMOVE throw ENDOF
+      layernorm       OF E-MV-NOTMOVE throw ENDOF
+      rmsnorm         OF E-MV-NOTMOVE throw ENDOF
+      softmax-row     OF E-MV-NOTMOVE throw ENDOF
+      matmul          OF E-MV-NOTMOVE throw ENDOF
+      linear          OF E-MV-NOTMOVE throw ENDOF
+      residual-add    OF E-MV-NOTMOVE throw ENDOF
+      cast            OF E-MV-NOTMOVE throw ENDOF
+      silu            OF E-MV-NOTMOVE throw ENDOF
+      rope            OF E-MV-NOTMOVE throw ENDOF
+      relu-bwd        OF E-MV-NOTMOVE throw ENDOF
+      gelu-bwd        OF E-MV-NOTMOVE throw ENDOF
+      silu-bwd        OF E-MV-NOTMOVE throw ENDOF
+      layernorm-bwd   OF E-MV-NOTMOVE throw ENDOF
+      rmsnorm-bwd     OF E-MV-NOTMOVE throw ENDOF
+      softmax-row-bwd OF E-MV-NOTMOVE throw ENDOF
+      rope-bwd        OF E-MV-NOTMOVE throw ENDOF
+      rowsum-bwd      OF E-MV-NOTMOVE throw ENDOF
+      fullsum-dot-bwd OF E-MV-NOTMOVE throw ENDOF
+      pad-scatter     OF E-MV-NOTMOVE throw ENDOF
+      scatter-add     OF E-MV-NOTMOVE throw ENDOF
+   ;MATCH ;
+: OP-OF-MV ( n -- opkind )                     \ transform tag -> movement op-kind
+   MV-TF-CK
+   dup MV-RESHAPE   = if drop MAKI-OPKIND:RESHAPE   exit then
+   dup MV-TRANSPOSE = if drop MAKI-OPKIND:TRANSPOSE exit then
+   dup MV-SLICE     = if drop MAKI-OPKIND:SLICE     exit then
+   dup MV-CONCAT    = if drop MAKI-OPKIND:CONCAT    exit then
+   drop MAKI-OPKIND:GATHER ;                   \ MV-TF-CK proved tag < MV-TF-N
 
 \ ---- pack / unpack the attrs cell ------------------------------------------
 : MV-PACK ( n n n n -- n ) {: tf:n vd:n pa:n pb:n :}
@@ -105,17 +144,42 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
 : MV-VD-REPORTS? ( n -- bool )  {: vd:n :}
    vd MVV-MATERIALIZE = vd MVV-GATHERED = or ;
 
-\ materialization reason per movement op-kind (naming the cause in the report)
-: MV-REASON$ ( n -- ptr u8 n )
-   case
-      OP-RESHAPE     of s" reshape on non-contiguous layout"          endof
-      OP-SLICE       of s" slice offset unaligned (masked tail)"      endof
-      OP-CONCAT      of s" concat materialized (v1)"                  endof
-      OP-GATHER      of s" gather prologue; downstream gathered"      endof
-      \ backward scatters (cad-9e): also CLASS-MOVEMENT, also materialize a buffer
-      OP-PAD-SCATTER of s" pad-scatter (slice adjoint) materialized"  endof
-      OP-SCATTER-ADD of s" scatter-add (gather adjoint) materialized" endof
-      E-MV-TF throw
-   endcase ;
+\ materialization reason per movement op-kind (naming the cause in the report);
+\ exhaustive MATCH: the six movement/scatter ops carry a reason, every other op
+\ is a non-movement node and throws the movement-fact error (fail closed).
+: MV-REASON$ ( opkind -- ptr u8 n )
+   MATCH opkind
+      reshape         OF s" reshape on non-contiguous layout"          ENDOF
+      slice           OF s" slice offset unaligned (masked tail)"      ENDOF
+      concat          OF s" concat materialized (v1)"                  ENDOF
+      gather          OF s" gather prologue; downstream gathered"      ENDOF
+      pad-scatter     OF s" pad-scatter (slice adjoint) materialized"  ENDOF
+      scatter-add     OF s" scatter-add (gather adjoint) materialized" ENDOF
+      add             OF E-MV-TF throw ENDOF
+      mul             OF E-MV-TF throw ENDOF
+      scale           OF E-MV-TF throw ENDOF
+      bias            OF E-MV-TF throw ENDOF
+      relu            OF E-MV-TF throw ENDOF
+      gelu            OF E-MV-TF throw ENDOF
+      layernorm       OF E-MV-TF throw ENDOF
+      rmsnorm         OF E-MV-TF throw ENDOF
+      softmax-row     OF E-MV-TF throw ENDOF
+      matmul          OF E-MV-TF throw ENDOF
+      linear          OF E-MV-TF throw ENDOF
+      residual-add    OF E-MV-TF throw ENDOF
+      cast            OF E-MV-TF throw ENDOF
+      silu            OF E-MV-TF throw ENDOF
+      rope            OF E-MV-TF throw ENDOF
+      transpose       OF E-MV-TF throw ENDOF
+      relu-bwd        OF E-MV-TF throw ENDOF
+      gelu-bwd        OF E-MV-TF throw ENDOF
+      silu-bwd        OF E-MV-TF throw ENDOF
+      layernorm-bwd   OF E-MV-TF throw ENDOF
+      rmsnorm-bwd     OF E-MV-TF throw ENDOF
+      softmax-row-bwd OF E-MV-TF throw ENDOF
+      rope-bwd        OF E-MV-TF throw ENDOF
+      rowsum-bwd      OF E-MV-TF throw ENDOF
+      fullsum-dot-bwd OF E-MV-TF throw ENDOF
+   ;MATCH ;
 
 end-package

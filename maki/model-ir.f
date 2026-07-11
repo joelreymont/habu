@@ -39,7 +39,8 @@ require lib/fmt.f
 
 -5055 constant E-MIR-CAP      \ node table capacity exceeded
 -5056 constant E-MIR-IDX      \ node index out of range
--5057 constant E-MIR-OPKIND   \ op-kind out of range
+\ -5057 (E-MIR-OPKIND) retired: MIR-OP-BEGIN takes an `opkind` family, so an
+\ out-of-range op-kind is a checker reject; the code stays reserved to model-ir.
 -5058 constant E-MIR-INCAP    \ operand ref pool capacity exceeded
 -5059 constant E-MIR-REF      \ operand ref names an uncommitted node / bad input slot
 -5060 constant E-MIR-INSLOT   \ input-slot index / capacity out of range
@@ -64,7 +65,7 @@ private
 64  constant MIR-IN-CAP       \ max model-input slots
 
 \ node table: one create-array per field (keeps each field's cell independent)
-create MI-OP    MIR-CAP cells allot     \ op-kind
+create MI-OP    MIR-CAP cells allot     \ op-kind (family value; typed slot MI-OP-AT)
 create MI-INOFF MIR-CAP cells allot     \ operand window start in MI-INS
 create MI-INCNT MIR-CAP cells allot     \ operand window length
 create MI-ROWS  MIR-CAP cells allot     \ output descriptor facts
@@ -90,6 +91,7 @@ variable MIR-IS-N
 \ typed slot addresses (dot habu-cad-adt-swap): the descriptor columns are
 \ reachable only through these, so a raw n or a foreign family can never enter
 \ or leave a descriptor cell.
+: MI-OP-AT     ( n -- ptr opkind )  cells MI-OP     + ;
 : MI-DT-AT     ( n -- ptr dtype )   cells MI-DT     + ;
 : MI-LAY-AT    ( n -- ptr layout )  cells MI-LAY    + ;
 : MI-IS-DT-AT  ( n -- ptr dtype )   cells MI-IS-DT  + ;
@@ -106,6 +108,10 @@ variable MIR-PEND-KIND
 variable MIR-PEND-OFF
 variable MIR-PEND-CNT
 variable MIR-PEND-ON
+
+\ the pending op-kind is a family value, so it rides through this typed slot (an
+\ opkind cannot bind into a local); MIR-OP-BEGIN stores it, MIR-OP+ moves it to MI-OP.
+: MIR-PEND-KIND-AT ( -- ptr opkind )  MIR-PEND-KIND ;
 
 : MIR-CK ( n -- n )                     \ validate a committed node index
    dup 0 < over MIR-N @ >= or if E-MIR-IDX throw then ;
@@ -182,10 +188,13 @@ public
    cols s cells MI-IS-COLS + ! ;
 
 \ ---- node builder (BEGIN op ; IN+ ref ... ; OP+ facts -> node) --------------
-: MIR-OP-BEGIN ( n -- ) {: op:n :}
+\ the op-kind arrives as a family value (a bad tag is a checker reject; the old
+\ E-MIR-OPKIND range validation is unrepresentable). It cannot bind into a local,
+\ so it stores from the stack into the typed pending slot before any bookkeeping.
+: MIR-OP-BEGIN ( opkind -- )
    MIR-PEND-ON @ if E-MIR-STATE throw then
-   op 0 < op OP-N >= or if E-MIR-OPKIND throw then
-   op MIR-PEND-KIND !  MIR-INS-U @ MIR-PEND-OFF !  0 MIR-PEND-CNT !  1 MIR-PEND-ON ! ;
+   MIR-PEND-KIND-AT !
+   MIR-INS-U @ MIR-PEND-OFF !  0 MIR-PEND-CNT !  1 MIR-PEND-ON ! ;
 
 : MIR-IN+ ( n -- ) {: ref:n :}
    MIR-PEND-ON @ 0= if E-MIR-STATE throw then
@@ -202,7 +211,7 @@ public
    k MI-LAY-AT !                         \ layout (top after attr/mat bound)
    k MI-DT-AT !                          \ dtype
    {: rows:n cols:n :}
-   MIR-PEND-KIND @ k cells MI-OP    + !
+   MIR-PEND-KIND-AT @ k MI-OP-AT !       \ op-kind family (staged by MIR-OP-BEGIN)
    MIR-PEND-OFF  @ k cells MI-INOFF + !
    MIR-PEND-CNT  @ k cells MI-INCNT + !
    rows k cells MI-ROWS + !
@@ -215,7 +224,7 @@ public
    k ;
 
 \ ---- node accessors (each validates the node index) ------------------------
-: MIR-OP@   ( n -- n )       MIR-CK cells MI-OP    + @ ;
+: MIR-OP@   ( n -- opkind )   MIR-CK MI-OP-AT @ ;
 : MIR-ROWS@ ( n -- n )       MIR-CK cells MI-ROWS  + @ ;
 : MIR-COLS@ ( n -- n )       MIR-CK cells MI-COLS  + @ ;
 : MIR-DT@   ( n -- dtype )   MIR-CK MI-DT-AT  @ ;

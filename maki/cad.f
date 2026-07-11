@@ -139,30 +139,30 @@ public
 \ OP-LOOKUP is the non-throwing table (op valid only when the flag is true); OP-KIND
 \ wraps it and throws E-CAD-OP on an unknown token. The non-throwing form lets the
 \ name table reject a value name that would shadow a reserved op token.
-: OP-LOOKUP ( ptr u8 n -- n bool )
-   2dup s" ADD"          STR= if 2drop OP-ADD          true exit then
-   2dup s" MUL"          STR= if 2drop OP-MUL          true exit then
-   2dup s" SCALE"        STR= if 2drop OP-SCALE        true exit then
-   2dup s" BIAS"         STR= if 2drop OP-BIAS         true exit then
-   2dup s" RELU"         STR= if 2drop OP-RELU         true exit then
-   2dup s" GELU"         STR= if 2drop OP-GELU         true exit then
-   2dup s" SILU"         STR= if 2drop OP-SILU         true exit then
-   2dup s" LAYERNORM"    STR= if 2drop OP-LAYERNORM    true exit then
-   2dup s" RMSNORM"      STR= if 2drop OP-RMSNORM      true exit then
-   2dup s" SOFTMAX-ROW"  STR= if 2drop OP-SOFTMAX-ROW  true exit then
-   2dup s" MATMUL"       STR= if 2drop OP-MATMUL       true exit then
-   2dup s" LINEAR"       STR= if 2drop OP-LINEAR       true exit then
-   2dup s" RESIDUAL-ADD" STR= if 2drop OP-RESIDUAL-ADD true exit then
-   2dup s" CAST"         STR= if 2drop OP-CAST         true exit then
-   2dup s" ROPE"         STR= if 2drop OP-ROPE         true exit then
-   2dup s" RESHAPE"      STR= if 2drop OP-RESHAPE      true exit then
-   2dup s" TRANSPOSE"    STR= if 2drop OP-TRANSPOSE    true exit then
-   2dup s" SLICE"        STR= if 2drop OP-SLICE        true exit then
-   2dup s" CONCAT"       STR= if 2drop OP-CONCAT       true exit then
-   2dup s" GATHER"       STR= if 2drop OP-GATHER       true exit then
-   2drop 0 false ;
+: OP-LOOKUP ( ptr u8 n -- opkind bool )
+   2dup s" ADD"          STR= if 2drop MAKI-OPKIND:ADD          true exit then
+   2dup s" MUL"          STR= if 2drop MAKI-OPKIND:MUL          true exit then
+   2dup s" SCALE"        STR= if 2drop MAKI-OPKIND:SCALE        true exit then
+   2dup s" BIAS"         STR= if 2drop MAKI-OPKIND:BIAS         true exit then
+   2dup s" RELU"         STR= if 2drop MAKI-OPKIND:RELU         true exit then
+   2dup s" GELU"         STR= if 2drop MAKI-OPKIND:GELU         true exit then
+   2dup s" SILU"         STR= if 2drop MAKI-OPKIND:SILU         true exit then
+   2dup s" LAYERNORM"    STR= if 2drop MAKI-OPKIND:LAYERNORM    true exit then
+   2dup s" RMSNORM"      STR= if 2drop MAKI-OPKIND:RMSNORM      true exit then
+   2dup s" SOFTMAX-ROW"  STR= if 2drop MAKI-OPKIND:SOFTMAX-ROW  true exit then
+   2dup s" MATMUL"       STR= if 2drop MAKI-OPKIND:MATMUL       true exit then
+   2dup s" LINEAR"       STR= if 2drop MAKI-OPKIND:LINEAR       true exit then
+   2dup s" RESIDUAL-ADD" STR= if 2drop MAKI-OPKIND:RESIDUAL-ADD true exit then
+   2dup s" CAST"         STR= if 2drop MAKI-OPKIND:CAST         true exit then
+   2dup s" ROPE"         STR= if 2drop MAKI-OPKIND:ROPE         true exit then
+   2dup s" RESHAPE"      STR= if 2drop MAKI-OPKIND:RESHAPE      true exit then
+   2dup s" TRANSPOSE"    STR= if 2drop MAKI-OPKIND:TRANSPOSE    true exit then
+   2dup s" SLICE"        STR= if 2drop MAKI-OPKIND:SLICE        true exit then
+   2dup s" CONCAT"       STR= if 2drop MAKI-OPKIND:CONCAT       true exit then
+   2dup s" GATHER"       STR= if 2drop MAKI-OPKIND:GATHER       true exit then
+   2drop MAKI-OPKIND:ADD false ;                       \ placeholder value (bool false; callers ignore it)
 
-: OP-KIND ( ptr u8 n -- n )
+: OP-KIND ( ptr u8 n -- opkind )
    OP-LOOKUP 0= if E-CAD-OP throw then ;
 
 private
@@ -266,21 +266,61 @@ private
    pr 1 =  pc dc =  and ;
 : SHP-SCALAR? ( n n -- bool ) {: pr:n pc:n :}                \ param is 1 x 1
    pr 1 =  pc 1 =  and ;
-: SHP-LEGAL? ( n n n n n -- bool ) {: dr:n dc:n pr:n pc:n op:n :}
-   dr dc pr pc SHP-BOUND? 0= if true exit then             \ unbound -> defer to reprop
-   op OP-BIAS = if dc pr pc SHP-ROW? exit then
-   op OP-SCALE = if dr dc pr pc SHP-SAME?  pr pc SHP-SCALAR? or exit then
-   op OP-ADD = op OP-MUL = or op OP-RESIDUAL-ADD = or if
-      dr dc pr pc SHP-SAME? exit then
-   true ;                                                  \ op has no documented class
-: SHP-CHECK ( n n n n n -- )
+\ per-class broadcast legality; an unbound (0) extent defers to BIND-SHAPES reprop
+: SHP-ROW-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}        \ BIAS: param 1 x dc
+   dr dc pr pc SHP-BOUND? 0= if true exit then  dc pr pc SHP-ROW? ;
+: SHP-SAME-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}       \ ADD/MUL/RESIDUAL: param == data
+   dr dc pr pc SHP-BOUND? 0= if true exit then  dr dc pr pc SHP-SAME? ;
+: SHP-SCALE-OK? ( n n n n -- bool ) {: dr:n dc:n pr:n pc:n :}      \ SCALE: param == data OR 1 x 1
+   dr dc pr pc SHP-BOUND? 0= if true exit then  dr dc pr pc SHP-SAME?  pr pc SHP-SCALAR? or ;
+
+\ param-operand broadcast legality dispatched on the op family (exhaustive MATCH:
+\ adding an op forces a broadcast-class decision here). BIAS/SCALE/ADD/MUL/RESIDUAL
+\ carry a documented class; every other op is unconstrained (any param shape legal).
+: SHP-LEGAL? ( n n n n opkind -- bool )
+   MATCH opkind
+      bias            OF SHP-ROW-OK?   ENDOF
+      scale           OF SHP-SCALE-OK? ENDOF
+      add             OF SHP-SAME-OK?  ENDOF
+      mul             OF SHP-SAME-OK?  ENDOF
+      residual-add    OF SHP-SAME-OK?  ENDOF
+      relu            OF 2drop 2drop true ENDOF
+      gelu            OF 2drop 2drop true ENDOF
+      layernorm       OF 2drop 2drop true ENDOF
+      rmsnorm         OF 2drop 2drop true ENDOF
+      softmax-row     OF 2drop 2drop true ENDOF
+      matmul          OF 2drop 2drop true ENDOF
+      linear          OF 2drop 2drop true ENDOF
+      cast            OF 2drop 2drop true ENDOF
+      silu            OF 2drop 2drop true ENDOF
+      rope            OF 2drop 2drop true ENDOF
+      reshape         OF 2drop 2drop true ENDOF
+      transpose       OF 2drop 2drop true ENDOF
+      slice           OF 2drop 2drop true ENDOF
+      concat          OF 2drop 2drop true ENDOF
+      gather          OF 2drop 2drop true ENDOF
+      relu-bwd        OF 2drop 2drop true ENDOF
+      gelu-bwd        OF 2drop 2drop true ENDOF
+      silu-bwd        OF 2drop 2drop true ENDOF
+      layernorm-bwd   OF 2drop 2drop true ENDOF
+      rmsnorm-bwd     OF 2drop 2drop true ENDOF
+      softmax-row-bwd OF 2drop 2drop true ENDOF
+      rope-bwd        OF 2drop 2drop true ENDOF
+      rowsum-bwd      OF 2drop 2drop true ENDOF
+      fullsum-dot-bwd OF 2drop 2drop true ENDOF
+      pad-scatter     OF 2drop 2drop true ENDOF
+      scatter-add     OF 2drop 2drop true ENDOF
+   ;MATCH ;
+: SHP-CHECK ( n n n n opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
 
-\ capture entry points: elementwise param vs its data operand; linear bias vs output cols
-: EW-SHAPE-CHECK ( tensor tensor n -- ) {: x:tensor p:tensor op:n :}
-   x TENSOR:TV-ROWS@ x TENSOR:TV-COLS@  p TENSOR:TV-ROWS@ p TENSOR:TV-COLS@  op  SHP-CHECK ;
+\ capture entry points: elementwise param vs its data operand; linear bias vs output cols.
+\ EW-SHAPE-CHECK's op family rides the return stack while the extents compute, so it
+\ lands on top for SHP-CHECK (an opkind cannot bind into a local).
+: EW-SHAPE-CHECK ( tensor tensor opkind -- ) >r {: x:tensor p:tensor :}
+   x TENSOR:TV-ROWS@ x TENSOR:TV-COLS@  p TENSOR:TV-ROWS@ p TENSOR:TV-COLS@  r> SHP-CHECK ;
 : LIN-BIAS-CHECK ( tensor tensor tensor -- ) {: x:tensor w:tensor b:tensor :}
-   x TENSOR:TV-ROWS@ w TENSOR:TV-COLS@  b TENSOR:TV-ROWS@ b TENSOR:TV-COLS@  OP-BIAS  SHP-CHECK ;
+   x TENSOR:TV-ROWS@ w TENSOR:TV-COLS@  b TENSOR:TV-ROWS@ b TENSOR:TV-COLS@  MAKI-OPKIND:BIAS  SHP-CHECK ;
 
 \ ---- post-capture param-operand shape legality (over the captured plan store) --------
 \ The named vocabulary is the arity/kind surface only (plan-vocab.f); broadcast legality
@@ -288,11 +328,10 @@ private
 \ populates the plan store, each elementwise/linear node's parameter operand is re-checked
 \ against its data operand's shape. An unbound (0) extent defers to BIND-SHAPES reprop.
 : PLAN-SHP-NODE ( n -- ) {: j:n :}
-   j TENSOR:PLAN-OP@ {: op:n :}
-   op OPR-CLASS {: cls:n :}
+   j TENSOR:PLAN-OP@ OPR-CLASS {: cls:n :}   \ op is a family; refetch it for the check below
    cls CLASS-EW = if
       j TENSOR:PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
-      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  op EW-SHAPE-CHECK  exit then
+      j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j TENSOR:PLAN-OP@ EW-SHAPE-CHECK  exit then
    cls CLASS-MATMUL = if
       j TENSOR:PLAN-IN-COUNT@ 3 < if exit then                       \ matmul (no bias operand): skip
       j 0 TENSOR:PLAN-IN@  j 1 TENSOR:PLAN-IN@  j 2 TENSOR:PLAN-IN@  LIN-BIAS-CHECK then ;
@@ -305,18 +344,17 @@ private
 
 \ movement nodes materialize only on a materialize/gathered verdict; compute nodes
 \ stay materialized (the conservative cad-1 default until the fusion planner lands).
-: BRIDGE-MAT ( n n -- n ) {: op:n attr:n :}     \ op-kind attr -> materialization flag
-   op OPR-CLASS CLASS-MOVEMENT = if
+: BRIDGE-MAT ( opkind n -- n ) {: attr:n :}     \ op-kind attr -> materialization flag
+   OPR-CLASS CLASS-MOVEMENT = if
       attr MV-VD@ MV-VD-REPORTS? if 1 else 0 then
    else 1 then ;
 
 : BRIDGE-NODE ( n -- ) {: j:n :}
-   j TENSOR:PLAN-OP@ {: op:n :}
-   op MIR-OP-BEGIN
+   j TENSOR:PLAN-OP@ MIR-OP-BEGIN               \ op family straight from the plan store
    j TENSOR:PLAN-IN-COUNT@ 0 ?do  j i TENSOR:PLAN-IN@ PLAN-REF MIR-IN+  loop
    j TENSOR:PLAN-OUT@ {: y:tensor :}
    j TENSOR:PLAN-ATTR@ {: attr:n :}
-   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ y TENSOR:TV-DTYPE@ y TENSOR:TV-LAYOUT@  attr  op attr BRIDGE-MAT  MIR-OP+ drop ;
+   y TENSOR:TV-ROWS@ y TENSOR:TV-COLS@ y TENSOR:TV-DTYPE@ y TENSOR:TV-LAYOUT@  attr  j TENSOR:PLAN-OP@ attr BRIDGE-MAT  MIR-OP+ drop ;
 
 : BRIDGE-PLAN ( -- )  TENSOR:PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
@@ -385,10 +423,10 @@ private
 \ "MOVE:params" body token (RESHAPE:RxC | SLICE:R0..R1): emit the scalar params then the word.
 \ The scalar params are the vocab word's ( tensor n n -- tensor ) integer operands.
 : EMIT-MOVE-PARAM ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n pa:ptr pu:n :}
-   op opu OP-KIND {: mop:n :}
-   mop OP-RESHAPE = if  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+   op opu OP-KIND                                    \ ( mop )  op family cannot bind into a local
+   dup MAKI-OPKIND:RESHAPE OPK= if  drop  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
       op opu CAP-EMIT-OP  exit  then
-   mop OP-SLICE   = if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+   MAKI-OPKIND:SLICE OPK= if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
       op opu CAP-EMIT-OP  exit  then
    E-CAD-SYNTAX throw ;                              \ only reshape/slice carry ':' params
 
@@ -396,9 +434,9 @@ private
 : EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u $3A INDEX-OF {: ci:n :}
    ci 0< if
-      a u OP-KIND {: op:n :}
-      op OP-RESHAPE = op OP-SLICE = or if E-CAD-SYNTAX throw then  \ reshape/slice need ":params"
-      op OPR-ARITY 1- CAP-EMIT-PARAMS                              \ tensor params = arity-1
+      a u OP-KIND                                                  \ ( op )  family stays on the stack
+      dup MAKI-OPKIND:RESHAPE OPK= over MAKI-OPKIND:SLICE OPK= or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
+      OPR-ARITY 1- CAP-EMIT-PARAMS                                 \ tensor params = arity-1
       a u CAP-EMIT-OP  exit  then
    a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
 
@@ -513,13 +551,39 @@ private
    r1 RB-REF-ROWS r1 RB-REF-COLS *  r0 RB-REF-COLS ;
 
 : RB-MOVE-SHAPE ( n -- n n ) {: nd:n :}
-   nd MIR-OP@ {: op:n :}
-   op OP-RESHAPE   = if nd RB-RESHAPE   exit then
-   op OP-TRANSPOSE = if nd RB-TRANSPOSE exit then
-   op OP-SLICE     = if nd RB-SLICE     exit then
-   op OP-CONCAT    = if nd RB-CONCAT    exit then
-   op OP-GATHER    = if nd RB-GATHER    exit then
-   E-CAD-BIND-SHAPE throw ;
+   nd MIR-OP@ MATCH opkind
+      reshape         OF nd RB-RESHAPE   ENDOF
+      transpose       OF nd RB-TRANSPOSE ENDOF
+      slice           OF nd RB-SLICE     ENDOF
+      concat          OF nd RB-CONCAT    ENDOF
+      gather          OF nd RB-GATHER    ENDOF
+      add             OF E-CAD-BIND-SHAPE throw ENDOF
+      mul             OF E-CAD-BIND-SHAPE throw ENDOF
+      scale           OF E-CAD-BIND-SHAPE throw ENDOF
+      bias            OF E-CAD-BIND-SHAPE throw ENDOF
+      relu            OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu            OF E-CAD-BIND-SHAPE throw ENDOF
+      layernorm       OF E-CAD-BIND-SHAPE throw ENDOF
+      rmsnorm         OF E-CAD-BIND-SHAPE throw ENDOF
+      softmax-row     OF E-CAD-BIND-SHAPE throw ENDOF
+      matmul          OF E-CAD-BIND-SHAPE throw ENDOF
+      linear          OF E-CAD-BIND-SHAPE throw ENDOF
+      residual-add    OF E-CAD-BIND-SHAPE throw ENDOF
+      cast            OF E-CAD-BIND-SHAPE throw ENDOF
+      silu            OF E-CAD-BIND-SHAPE throw ENDOF
+      rope            OF E-CAD-BIND-SHAPE throw ENDOF
+      relu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      silu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      layernorm-bwd   OF E-CAD-BIND-SHAPE throw ENDOF
+      rmsnorm-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
+      softmax-row-bwd OF E-CAD-BIND-SHAPE throw ENDOF
+      rope-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      rowsum-bwd      OF E-CAD-BIND-SHAPE throw ENDOF
+      fullsum-dot-bwd OF E-CAD-BIND-SHAPE throw ENDOF
+      pad-scatter     OF E-CAD-BIND-SHAPE throw ENDOF
+      scatter-add     OF E-CAD-BIND-SHAPE throw ENDOF
+   ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
 \ offset/col alignment; the rest are layout- or constant-determined).
@@ -527,13 +591,39 @@ private
 : RB-VD-SLICE ( n n -- n ) {: nd:n cols:n :}
    nd 0 MIR-IN@ RB-REF-LAY  nd MIR-ATTR@ MV-PA@  cols  MV-SLICE-VERDICT ;
 : RB-MOVE-VD ( n n -- n ) {: nd:n cols:n :}
-   nd MIR-OP@ {: op:n :}
-   op OP-RESHAPE   = if nd RB-VD-RESHAPE     exit then
-   op OP-TRANSPOSE = if MV-TRANSPOSE-VERDICT exit then
-   op OP-SLICE     = if nd cols RB-VD-SLICE  exit then
-   op OP-CONCAT    = if MV-CONCAT-VERDICT    exit then
-   op OP-GATHER    = if MV-GATHER-VERDICT    exit then
-   E-CAD-BIND-SHAPE throw ;
+   nd MIR-OP@ MATCH opkind
+      reshape         OF nd RB-VD-RESHAPE     ENDOF
+      transpose       OF MV-TRANSPOSE-VERDICT ENDOF
+      slice           OF nd cols RB-VD-SLICE  ENDOF
+      concat          OF MV-CONCAT-VERDICT    ENDOF
+      gather          OF MV-GATHER-VERDICT    ENDOF
+      add             OF E-CAD-BIND-SHAPE throw ENDOF
+      mul             OF E-CAD-BIND-SHAPE throw ENDOF
+      scale           OF E-CAD-BIND-SHAPE throw ENDOF
+      bias            OF E-CAD-BIND-SHAPE throw ENDOF
+      relu            OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu            OF E-CAD-BIND-SHAPE throw ENDOF
+      layernorm       OF E-CAD-BIND-SHAPE throw ENDOF
+      rmsnorm         OF E-CAD-BIND-SHAPE throw ENDOF
+      softmax-row     OF E-CAD-BIND-SHAPE throw ENDOF
+      matmul          OF E-CAD-BIND-SHAPE throw ENDOF
+      linear          OF E-CAD-BIND-SHAPE throw ENDOF
+      residual-add    OF E-CAD-BIND-SHAPE throw ENDOF
+      cast            OF E-CAD-BIND-SHAPE throw ENDOF
+      silu            OF E-CAD-BIND-SHAPE throw ENDOF
+      rope            OF E-CAD-BIND-SHAPE throw ENDOF
+      relu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      silu-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      layernorm-bwd   OF E-CAD-BIND-SHAPE throw ENDOF
+      rmsnorm-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
+      softmax-row-bwd OF E-CAD-BIND-SHAPE throw ENDOF
+      rope-bwd        OF E-CAD-BIND-SHAPE throw ENDOF
+      rowsum-bwd      OF E-CAD-BIND-SHAPE throw ENDOF
+      fullsum-dot-bwd OF E-CAD-BIND-SHAPE throw ENDOF
+      pad-scatter     OF E-CAD-BIND-SHAPE throw ENDOF
+      scatter-add     OF E-CAD-BIND-SHAPE throw ENDOF
+   ;MATCH ;
 
 : REPROP-MOVE ( n -- ) {: nd:n :}
    nd RB-MOVE-SHAPE {: rows:n cols:n :}
@@ -554,7 +644,7 @@ private
 : RB-MM-BIAS ( n -- ) {: nd:n :}
    nd MIR-IN-COUNT@ 3 < if exit then
    nd 0 MIR-IN@ {: x:n :}  nd 1 MIR-IN@ {: w:n :}  nd 2 MIR-IN@ {: b:n :}
-   x RB-REF-ROWS w RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  OP-BIAS  SHP-CHECK ;
+   x RB-REF-ROWS w RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  MAKI-OPKIND:BIAS  SHP-CHECK ;
 
 : REPROP-NODE ( n -- ) {: nd:n :}
    nd MIR-OP@ OPR-CLASS {: cls:n :}
@@ -675,7 +765,7 @@ private
 \ cad-4 has no measurements (those land in cad-5/cad-6).
 : REGION-HAS-SOFTMAX? ( n -- bool ) {: r:n :}   \ region carries a softmax-row op (two reductions)
    MIR-N@ 0 ?do
-      i FP-RID@ r =  i MIR-OP@ OP-SOFTMAX-ROW =  and if unloop true exit then
+      i FP-RID@ r =  i MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW OPK=  and if unloop true exit then
    loop false ;
 
 : REGION-FAM ( n -- n ) {: r:n :}               \ region -> schedule family id

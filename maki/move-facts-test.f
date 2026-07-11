@@ -12,15 +12,15 @@ package MAKI
 : TRY-MVF-TF     ( -- )  MV-TF-N OP-OF-MV drop ;
 : TRY-MVF-VD     ( -- )  MVV-N MV-VD-NAME 2drop ;
 : TRY-MVF-PARAM  ( -- )  MV-RESHAPE MVV-FREE  MV-PMASK 1+  0  MV-PACK drop ;
-: TRY-MVF-NOTMOVE ( -- ) OP-GELU MV-OF-OP drop ;
+: TRY-MVF-NOTMOVE ( -- ) MAKI-OPKIND:GELU MV-OF-OP drop ;
 
 T-RESET
 
 \ ---- op-kind <-> compact transform tag round-trip --------------------------
-OP-RESHAPE   MV-OF-OP MV-RESHAPE   T=
-OP-GATHER    MV-OF-OP MV-GATHER    T=
-MV-SLICE     OP-OF-MV OP-SLICE     T=
-OP-CONCAT    MV-OF-OP OP-OF-MV OP-CONCAT T=
+MAKI-OPKIND:RESHAPE MV-OF-OP MV-RESHAPE   T=
+MAKI-OPKIND:GATHER  MV-OF-OP MV-GATHER    T=
+MV-SLICE     OP-OF-MV OPKIND>N OP-SLICE     T=
+MAKI-OPKIND:CONCAT MV-OF-OP OP-OF-MV OPKIND>N OP-CONCAT T=
 
 \ ---- attrs pack / unpack round-trip ----------------------------------------
 MV-SLICE MVV-MATERIALIZE 5 9 MV-PACK
@@ -52,8 +52,8 @@ MVV-MATERIALIZE MV-VD-REPORTS? TTRUE
 MVV-GATHERED    MV-VD-REPORTS? TTRUE
 MVV-FREE        MV-VD-REPORTS? TFALSE
 MVV-STAGED      MV-VD-REPORTS? TFALSE
-OP-CONCAT MV-REASON$ s" concat" CONTAINS? TTRUE
-OP-GATHER MV-REASON$ s" gathered" CONTAINS? TTRUE
+MAKI-OPKIND:CONCAT MV-REASON$ s" concat" CONTAINS? TTRUE
+MAKI-OPKIND:GATHER MV-REASON$ s" gathered" CONTAINS? TTRUE
 
 \ ---- fail closed -----------------------------------------------------------
 ' TRY-MVF-TF      E-MV-TF      TTHROWS

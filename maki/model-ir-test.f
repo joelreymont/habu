@@ -21,12 +21,12 @@ MIR-RESET
 3 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SW !   \ slot 1 = w (3x4)
 0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ MT-SU !   \ slot 2 = unbound (?x?)
 
-OP-LINEAR MIR-OP-BEGIN
+MAKI-OPKIND:LINEAR MIR-OP-BEGIN
    MT-SX @ MIR-IN-REF MIR-IN+
    MT-SW @ MIR-IN-REF MIR-IN+
 2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N0 !  \ node 0 : y0 = 2x4, materialized
 
-OP-GELU MIR-OP-BEGIN
+MAKI-OPKIND:GELU MIR-OP-BEGIN
    MT-N0 @ MIR-IN+                       \ node ref (>=0)
 2 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ MT-N1 !  \ node 1 : y1 = 2x4
 
@@ -37,8 +37,8 @@ MIR-N@         2 T=
 MIR-IN-SLOTS@  3 T=
 
 \ ---- node facts -------------------------------------------------------------
-MT-N0 @ MIR-OP@ OP-LINEAR T=
-MT-N1 @ MIR-OP@ OP-GELU   T=
+MT-N0 @ MIR-OP@ OPKIND>N OP-LINEAR T=
+MT-N1 @ MIR-OP@ OPKIND>N OP-GELU   T=
 MT-N1 @ MIR-ROWS@ 2 T=
 MT-N1 @ MIR-COLS@ 4 T=
 MT-N1 @ MIR-DT@   DTYPE>N DT-F32   T=
@@ -83,12 +83,12 @@ s" input.2.shape: ?x?" MT-IN
 variable MT-MV
 MIR-RESET
 4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop                     \ slot 0 = x (4x8)
-OP-RESHAPE MIR-OP-BEGIN
+MAKI-OPKIND:RESHAPE MIR-OP-BEGIN
    0 MIR-IN-REF MIR-IN+
 8 4 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW  MV-RESHAPE MVV-FREE 8 4 MV-PACK  0  MIR-OP+ MT-MV !
 
 MT-MV @ MIR-MOVE?          TTRUE
-MT-MV @ MIR-OP@ OP-RESHAPE T=
+MT-MV @ MIR-OP@ OPKIND>N OP-RESHAPE T=
 MT-MV @ MIR-MOVE-VERDICT@  MVV-FREE T=
 MT-MV @ MIR-SHAPE-KEY s" 8x4" T$=
 MT-MV @ MIR-MAT@           TFALSE                       \ free -> not materialized
@@ -99,25 +99,25 @@ s" node.0.verdict: free"  MT-IN
 
 \ ---- fail-closed probes -----------------------------------------------------
 : TRY-MIR-IDX     ( -- )  MIR-N@ MIR-OP@ drop ;
-: TRY-MIR-OPKIND  ( -- )  MIR-RESET OP-N MIR-OP-BEGIN ;
-: TRY-MIR-REF     ( -- )  MIR-RESET OP-GELU MIR-OP-BEGIN 5 MIR-IN+ ;
+\ (a bad op-kind tag is a checker reject now - pinned by the opkind negatives
+\ below - so the old TRY-MIR-OPKIND runtime throw probe is unrepresentable)
+: TRY-MIR-REF     ( -- )  MIR-RESET MAKI-OPKIND:GELU MIR-OP-BEGIN 5 MIR-IN+ ;
 : TRY-MIR-STATE   ( -- )  MIR-RESET 0 MIR-IN+ ;
 \ (a bad dtype/layout tag is a checker reject now - pinned by the swapped-family
 \ negatives below - so the old TRY-MIR-DT runtime throw probe is unrepresentable)
 : TRY-MIR-INSLOT  ( -- )  MIR-RESET 0 MIR-SLOT-ROWS@ drop ;
 : TRY-MIR-CAP     ( -- )
-   MIR-RESET  MIR-CAP 1+ 0 ?do  OP-CAST MIR-OP-BEGIN  1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  loop ;
+   MIR-RESET  MIR-CAP 1+ 0 ?do  MAKI-OPKIND:CAST MIR-OP-BEGIN  1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop  loop ;
 : TRY-MIR-SLOTCAP ( -- )
    MIR-RESET  MIR-IN-CAP 1+ 0 ?do  1 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop  loop ;
 
 \ a verdict requested from a non-movement (gelu) node fails closed
 : TRY-MIR-NOTMOVE ( -- )
    MIR-RESET  0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   OP-GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+
+   MAKI-OPKIND:GELU MIR-OP-BEGIN  0 MIR-IN-REF MIR-IN+
    0 0 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+  MIR-MOVE-VERDICT@ drop ;
 
 ' TRY-MIR-IDX     E-MIR-IDX     TTHROWS
-' TRY-MIR-OPKIND  E-MIR-OPKIND  TTHROWS
 ' TRY-MIR-REF     E-MIR-REF     TTHROWS
 ' TRY-MIR-STATE   E-MIR-STATE   TTHROWS
 ' TRY-MIR-INSLOT  E-MIR-INSLOT  TTHROWS
@@ -143,6 +143,15 @@ s" MTX-AL-DT    ( n dtype -- ) MIR-SLOT-AL!"           CHECK-QUIET-CANDIDATE! 0 
 s" MTX-DT-NOUT  ( n -- n ) MIR-DT@"                    CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-LAY-NOUT ( n -- n ) MIR-SLOT-LAY@"              CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-AL-NOUT  ( n -- n ) MIR-SLOT-AL@"               CHECK-QUIET-CANDIDATE! 0 T=
+
+\ op-kind family negatives: a raw code cannot open a node record, the stored op
+\ cannot leak as n, and opkind<->dtype cross-swaps reject both directions.
+s" MTX-OPB-OK   ( opkind -- ) MIR-OP-BEGIN"            CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-OPB-N    ( n -- ) MIR-OP-BEGIN"                 CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OPB-DT   ( dtype -- ) MIR-OP-BEGIN"             CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OP-NOUT  ( n -- n ) MIR-OP@"                    CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-OP-ASDT  ( n -- dtype ) MIR-OP@"                CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-DT-ASOP  ( n n opkind opkind -- n ) MIR-INPUT+" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

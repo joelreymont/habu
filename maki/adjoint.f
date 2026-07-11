@@ -95,20 +95,35 @@ create A-BOP  OP-N cells allot      \ dedicated backward op-kind, or -1 (adjoint
 
 public
 
-\ ---- accessors (each validates the op-kind, fail closed) --------------------
-: ADJ-ID   ( n -- n )  ADJ-CK cells A-ID   + @ ;
-: ADJ-SAVE ( n -- n )  ADJ-CK cells A-SAVE + @ ;
-: ADJ-MASK ( n -- n )  ADJ-CK cells A-MASK + @ ;
-: ADJ-BOP  ( n -- n )  ADJ-CK cells A-BOP  + @ ;   \ backward op-kind, or -1
+\ ---- accessors (take the op-kind family; convert ONCE at the private table
+\ index via OPKIND>N, so the row arrays stay indexed by the wire code) --------
+: ADJ-ID   ( opkind -- n )  OPKIND>N cells A-ID   + @ ;
+: ADJ-SAVE ( opkind -- n )  OPKIND>N cells A-SAVE + @ ;
+: ADJ-MASK ( opkind -- n )  OPKIND>N cells A-MASK + @ ;
+: ADJ-BOP  ( opkind -- n )  OPKIND>N cells A-BOP  + @ ;   \ dedicated backward op CODE, or -1
 
-: ADJ-HAS? ( n -- bool )  ADJ-ID ADJ-NONE <> ;         \ op is differentiable
-: ADJ-SUP? ( n -- bool )  ADJ-CK cells A-SUP + @ 0= 0= ; \ transform can emit it (v1)
+: ADJ-HAS? ( opkind -- bool )  ADJ-ID ADJ-NONE <> ;         \ op is differentiable
+: ADJ-SUP? ( opkind -- bool )  OPKIND>N cells A-SUP + @ 0= 0= ; \ transform can emit it (v1)
 
-\ does input k of this op receive a gradient?
-: ADJ-GRAD-IN? ( n n -- bool ) {: op:n k:n :}  op ADJ-MASK  1 k lshift  and 0= 0= ;
+\ does input k of this op receive a gradient? (op below k on the stack)
+: ADJ-GRAD-IN? ( opkind n -- bool ) {: k:n :}  ADJ-MASK  1 k lshift  and 0= 0= ;
 
 \ does the adjoint use a dedicated backward op-kind (vs reusing existing ops)?
-: ADJ-BWD-OP? ( n -- bool )  ADJ-BOP 0 >= ;
+: ADJ-BWD-OP? ( opkind -- bool )  ADJ-BOP 0 >= ;
+
+\ the dedicated backward op-kind as a FAMILY (backward.f emits it as a node op).
+\ Lifts the stored code back to an opkind at this named boundary; fail closed on
+\ an op with no dedicated backward op (only ever reached for relu/gelu/silu/norms).
+: BOP-LIFT ( n -- opkind )
+   dup OP-RELU-BWD        = if drop MAKI-OPKIND:RELU-BWD        exit then
+   dup OP-GELU-BWD        = if drop MAKI-OPKIND:GELU-BWD        exit then
+   dup OP-SILU-BWD        = if drop MAKI-OPKIND:SILU-BWD        exit then
+   dup OP-LAYERNORM-BWD   = if drop MAKI-OPKIND:LAYERNORM-BWD   exit then
+   dup OP-RMSNORM-BWD     = if drop MAKI-OPKIND:RMSNORM-BWD     exit then
+   dup OP-SOFTMAX-ROW-BWD = if drop MAKI-OPKIND:SOFTMAX-ROW-BWD exit then
+   dup OP-ROPE-BWD        = if drop MAKI-OPKIND:ROPE-BWD        exit then
+   drop E-ADJ-UNSUP throw ;
+: ADJ-BWD-KIND ( opkind -- opkind )  ADJ-BOP BOP-LIFT ;
 
 \ ---- save-need text ---------------------------------------------------------
 : ADJ-SAVE-NAME ( n -- ptr u8 n )
@@ -123,11 +138,40 @@ public
 \ Fail closed on a supported op (there is no reason) or a differentiable-op query.
 \ Only cast remains v1-unsupported (non-differentiable); scale/bias/linear/slice/gather
 \ became emittable in cad-9e. A supported op has no reason and fails closed here.
-: ADJ-UNSUP$ ( n -- ptr u8 n )
-   case
-      OP-CAST   of s" cast has no adjoint (non-differentiable)" endof
-      E-ADJ-UNSUP throw
-   endcase ;
+: ADJ-UNSUP$ ( opkind -- ptr u8 n )
+   MATCH opkind
+      cast            OF s" cast has no adjoint (non-differentiable)" ENDOF
+      add             OF E-ADJ-UNSUP throw ENDOF
+      mul             OF E-ADJ-UNSUP throw ENDOF
+      scale           OF E-ADJ-UNSUP throw ENDOF
+      bias            OF E-ADJ-UNSUP throw ENDOF
+      relu            OF E-ADJ-UNSUP throw ENDOF
+      gelu            OF E-ADJ-UNSUP throw ENDOF
+      layernorm       OF E-ADJ-UNSUP throw ENDOF
+      rmsnorm         OF E-ADJ-UNSUP throw ENDOF
+      softmax-row     OF E-ADJ-UNSUP throw ENDOF
+      matmul          OF E-ADJ-UNSUP throw ENDOF
+      linear          OF E-ADJ-UNSUP throw ENDOF
+      residual-add    OF E-ADJ-UNSUP throw ENDOF
+      silu            OF E-ADJ-UNSUP throw ENDOF
+      rope            OF E-ADJ-UNSUP throw ENDOF
+      reshape         OF E-ADJ-UNSUP throw ENDOF
+      transpose       OF E-ADJ-UNSUP throw ENDOF
+      slice           OF E-ADJ-UNSUP throw ENDOF
+      concat          OF E-ADJ-UNSUP throw ENDOF
+      gather          OF E-ADJ-UNSUP throw ENDOF
+      relu-bwd        OF E-ADJ-UNSUP throw ENDOF
+      gelu-bwd        OF E-ADJ-UNSUP throw ENDOF
+      silu-bwd        OF E-ADJ-UNSUP throw ENDOF
+      layernorm-bwd   OF E-ADJ-UNSUP throw ENDOF
+      rmsnorm-bwd     OF E-ADJ-UNSUP throw ENDOF
+      softmax-row-bwd OF E-ADJ-UNSUP throw ENDOF
+      rope-bwd        OF E-ADJ-UNSUP throw ENDOF
+      rowsum-bwd      OF E-ADJ-UNSUP throw ENDOF
+      fullsum-dot-bwd OF E-ADJ-UNSUP throw ENDOF
+      pad-scatter     OF E-ADJ-UNSUP throw ENDOF
+      scatter-add     OF E-ADJ-UNSUP throw ENDOF
+   ;MATCH ;
 
 private
 
@@ -170,7 +214,9 @@ private
    ADJ-GATHER  SAVE-NONE  1  1 -1 OP-GATHER ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
-: ADJ-WIRE-VJP ( -- )  OP-N 0 ?do  i i ADJ-ID OPR-VJP!  loop ;
+\ pure private-table wiring over the code index space: copy A-ID[i] -> registry
+\ vjp[i] for every op code (no opkind conversion; both tables index by code).
+: ADJ-WIRE-VJP ( -- )  OP-N 0 ?do  i  i cells A-ID + @  OPR-VJP!  loop ;
 
 ADJ-BUILD
 ADJ-WIRE-VJP

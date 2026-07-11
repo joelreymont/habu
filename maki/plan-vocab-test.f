@@ -70,11 +70,11 @@ package MAKI
    1 8 PVT-DESC {: b2:tensor :}         \ handle 4
    x w1 b1 w2 b2 PLAN:PVT-SKIP {: y:tensor :}
    TENSOR:PLAN-N@ 5 T=                         \ five IR nodes captured
-   0 TENSOR:PLAN-OP@ OP-LINEAR       T=
-   1 TENSOR:PLAN-OP@ OP-GELU         T=
-   2 TENSOR:PLAN-OP@ OP-LINEAR       T=
-   3 TENSOR:PLAN-OP@ OP-RESIDUAL-ADD T=
-   4 TENSOR:PLAN-OP@ OP-RMSNORM      T=
+   0 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR       T=
+   1 TENSOR:PLAN-OP@ OPKIND>N OP-GELU         T=
+   2 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR       T=
+   3 TENSOR:PLAN-OP@ OPKIND>N OP-RESIDUAL-ADD T=
+   4 TENSOR:PLAN-OP@ OPKIND>N OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
    0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
    3 1 PVT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
@@ -90,9 +90,9 @@ package MAKI
    1 8 PVT-DESC {: b:tensor :}          \ handle 2
    x w b PLAN:PVT-BRANCH {: y:tensor :}
    TENSOR:PLAN-N@ 3 T=
-   0 TENSOR:PLAN-OP@ OP-GELU   T=
-   1 TENSOR:PLAN-OP@ OP-LINEAR T=
-   2 TENSOR:PLAN-OP@ OP-ADD    T=
+   0 TENSOR:PLAN-OP@ OPKIND>N OP-GELU   T=
+   1 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR T=
+   2 TENSOR:PLAN-OP@ OPKIND>N OP-ADD    T=
    0 0 PVT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
    1 0 PVT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
    2 0 PVT-IN 1 PVT-OUT   T=            \ node2.in0 = linear output

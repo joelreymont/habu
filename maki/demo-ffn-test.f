@@ -243,7 +243,7 @@ PROMOTE dup REPORT:CACHE$ s" FFN-SKIP" T$= drop
 \ r-input FFN-DEMO had NO fan-out on x (x fed only the first linear -> a matmul grad).
 BW-BUILD
 0 BW-HAS-GRAD? TTRUE
-0 BW-SLOT-GRAD@ MIR-OP@   OP-ADD T=
+0 BW-SLOT-GRAD@ MIR-OP@   OPKIND>N OP-ADD T=
 0 BW-SLOT-GRAD@ MIR-ROWS@ 4 T=
 0 BW-SLOT-GRAD@ MIR-COLS@ 8 T=
 

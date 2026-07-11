@@ -55,6 +55,67 @@ public
 28 constant OP-FULLSUM-DOT-BWD   \ sum(ct (.) x) -> 1x1          (scale grad; ref: FULLSUM-DOT-BWD)
 29 constant OP-PAD-SCATTER       \ place (r1-r0)xC ct into zero RxC at r0 (slice adj; ref: PAD-SCATTER)
 30 constant OP-SCATTER-ADD       \ add ct rows into zero RxC at gathered idx (gather adj; ref: SCATTER-ADD)
-31 constant OP-N               \ op-kind range bound
+31 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+
+\ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
+\ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
+\ PLAN-OP-BEGIN / onnx import) through Model IR storage and every consumer. The
+\ OP-* codes above remain ONLY as the wire/hash/private-table-index vocabulary
+\ crossed at the named boundaries below (OPKIND>N, the op-registry / adjoint
+\ private table indexes, sched-key's hash fold, test assertions). No internal API
+\ takes or returns a raw op code. Declaration order == OP-ADD(0)..OP-SCATTER-ADD(30),
+\ so OPKIND>N below is the single source that ties a variant to its code.
+\ NB variant tails are the wire spellings with hyphens; inline `\` comments inside
+\ the ENUM block are a parse error, so per-variant notes stay in this header.
+ENUM opkind
+  add mul scale bias relu gelu layernorm rmsnorm softmax-row matmul linear
+  residual-add cast silu rope reshape transpose slice concat gather
+  relu-bwd gelu-bwd silu-bwd layernorm-bwd rmsnorm-bwd softmax-row-bwd rope-bwd
+  rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add
+;ENUM
+
+\ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
+\ is unrepresentable, so no throw arm exists). This is THE only place a family
+\ becomes an op code; the op-registry / adjoint private tables index through it.
+: OPKIND>N ( opkind -- n )
+   MATCH opkind
+      add             OF OP-ADD             ENDOF
+      mul             OF OP-MUL             ENDOF
+      scale           OF OP-SCALE           ENDOF
+      bias            OF OP-BIAS            ENDOF
+      relu            OF OP-RELU            ENDOF
+      gelu            OF OP-GELU            ENDOF
+      layernorm       OF OP-LAYERNORM       ENDOF
+      rmsnorm         OF OP-RMSNORM         ENDOF
+      softmax-row     OF OP-SOFTMAX-ROW     ENDOF
+      matmul          OF OP-MATMUL          ENDOF
+      linear          OF OP-LINEAR          ENDOF
+      residual-add    OF OP-RESIDUAL-ADD    ENDOF
+      cast            OF OP-CAST            ENDOF
+      silu            OF OP-SILU            ENDOF
+      rope            OF OP-ROPE            ENDOF
+      reshape         OF OP-RESHAPE         ENDOF
+      transpose       OF OP-TRANSPOSE       ENDOF
+      slice           OF OP-SLICE           ENDOF
+      concat          OF OP-CONCAT          ENDOF
+      gather          OF OP-GATHER          ENDOF
+      relu-bwd        OF OP-RELU-BWD        ENDOF
+      gelu-bwd        OF OP-GELU-BWD        ENDOF
+      silu-bwd        OF OP-SILU-BWD        ENDOF
+      layernorm-bwd   OF OP-LAYERNORM-BWD   ENDOF
+      rmsnorm-bwd     OF OP-RMSNORM-BWD     ENDOF
+      softmax-row-bwd OF OP-SOFTMAX-ROW-BWD ENDOF
+      rope-bwd        OF OP-ROPE-BWD        ENDOF
+      rowsum-bwd      OF OP-ROWSUM-BWD      ENDOF
+      fullsum-dot-bwd OF OP-FULLSUM-DOT-BWD ENDOF
+      pad-scatter     OF OP-PAD-SCATTER     ENDOF
+      scatter-add     OF OP-SCATTER-ADD     ENDOF
+   ;MATCH ;
+
+\ family identity test: the checker gives enums no derived eq, so op identity is
+\ compared through the canonical codes. Type-safe (both args must be opkind, so a
+\ dtype/layout can never sneak into an op compare) and injective (distinct ops ->
+\ distinct codes), so this IS op-identity equality, not a raw-n compatibility path.
+: OPK= ( opkind opkind -- bool )  OPKIND>N swap OPKIND>N = ;
 
 end-package

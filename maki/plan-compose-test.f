@@ -35,19 +35,19 @@ package MAKI
 \ first linear (node 0) and the residual (node 3). The checker certifies the arity of
 \ the whole block before any planning; each op returns a descriptor so the words compose.
 : PCT-SKIP ( tensor tensor tensor tensor tensor -- tensor ) {: x:tensor w1:tensor b1:tensor w2:tensor b2:tensor :}
-   x w1 b1 OP-LINEAR PLAN-LINEAR        \ n0: linear(x, w1, b1)
-   OP-GELU PLAN-UNARY                   \ n1: gelu(n0)
-   w2 b2 OP-LINEAR PLAN-LINEAR          \ n2: linear(n1, w2, b2)
-   x OP-RESIDUAL-ADD PLAN-BIN-EW        \ n3: residual(n2, x)   <- x re-rooted as param
-   OP-RMSNORM PLAN-UNARY ;              \ n4: rmsnorm(n3)
+   x w1 b1 MAKI-OPKIND:LINEAR PLAN-LINEAR        \ n0: linear(x, w1, b1)
+   MAKI-OPKIND:GELU PLAN-UNARY                   \ n1: gelu(n0)
+   w2 b2 MAKI-OPKIND:LINEAR PLAN-LINEAR          \ n2: linear(n1, w2, b2)
+   x MAKI-OPKIND:RESIDUAL-ADD PLAN-BIN-EW        \ n3: residual(n2, x)   <- x re-rooted as param
+   MAKI-OPKIND:RMSNORM PLAN-UNARY ;              \ n4: rmsnorm(n3)
 
 \ PCT-BRANCH: two branches from x join in an add - a DAG the linear-consumption capture
 \ cannot express. GELU's DATA operand is x itself (re-root, not the running value), the
 \ linear also reads x (fan-out), and the add joins both branch outputs.
 : PCT-BRANCH ( tensor tensor tensor -- tensor ) {: x:tensor w:tensor b:tensor :}
-   x OP-GELU PLAN-UNARY {: g:tensor :}          \ n0: gelu(x)          <- re-root: data = x
-   x w b OP-LINEAR PLAN-LINEAR {: h:tensor :}   \ n1: linear(x, w, b)  <- x fans out
-   h g OP-ADD PLAN-BIN-EW ;             \ n2: add(n1, n0)      <- branches join
+   x MAKI-OPKIND:GELU PLAN-UNARY {: g:tensor :}          \ n0: gelu(x)          <- re-root: data = x
+   x w b MAKI-OPKIND:LINEAR PLAN-LINEAR {: h:tensor :}   \ n1: linear(x, w, b)  <- x fans out
+   h g MAKI-OPKIND:ADD PLAN-BIN-EW ;             \ n2: add(n1, n0)      <- branches join
 
 \ ---- descriptor seeding + plan-store probes (read the captured IR node facts) ----
 : PCT-DESC ( n n -- tensor ) {: rows:n cols:n :}   \ f32 row-major planning descriptor
@@ -67,11 +67,11 @@ package MAKI
    1 8 PCT-DESC {: b2:tensor :}         \ handle 4
    x w1 b1 w2 b2 PCT-SKIP {: y:tensor :}
    TENSOR:PLAN-N@ 5 T=                         \ five IR nodes captured
-   0 TENSOR:PLAN-OP@ OP-LINEAR       T=
-   1 TENSOR:PLAN-OP@ OP-GELU         T=
-   2 TENSOR:PLAN-OP@ OP-LINEAR       T=
-   3 TENSOR:PLAN-OP@ OP-RESIDUAL-ADD T=
-   4 TENSOR:PLAN-OP@ OP-RMSNORM      T=
+   0 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR       T=
+   1 TENSOR:PLAN-OP@ OPKIND>N OP-GELU         T=
+   2 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR       T=
+   3 TENSOR:PLAN-OP@ OPKIND>N OP-RESIDUAL-ADD T=
+   4 TENSOR:PLAN-OP@ OPKIND>N OP-RMSNORM      T=
    3 TENSOR:PLAN-IN-COUNT@ 2 T=
    0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x
    3 1 PCT-IN x TENSOR:tensor>N T=             \ node3.in1 = x   (the skip)
@@ -87,9 +87,9 @@ package MAKI
    1 8 PCT-DESC {: b:tensor :}          \ handle 2
    x w b PCT-BRANCH {: y:tensor :}
    TENSOR:PLAN-N@ 3 T=
-   0 TENSOR:PLAN-OP@ OP-GELU   T=
-   1 TENSOR:PLAN-OP@ OP-LINEAR T=
-   2 TENSOR:PLAN-OP@ OP-ADD    T=
+   0 TENSOR:PLAN-OP@ OPKIND>N OP-GELU   T=
+   1 TENSOR:PLAN-OP@ OPKIND>N OP-LINEAR T=
+   2 TENSOR:PLAN-OP@ OPKIND>N OP-ADD    T=
    0 0 PCT-IN x TENSOR:tensor>N T=             \ node0.in0 = x   (gelu re-rooted onto x)
    1 0 PCT-IN x TENSOR:tensor>N T=             \ node1.in0 = x   (x fanned out again)
    2 0 PCT-IN 1 PCT-OUT   T=            \ node2.in0 = linear output

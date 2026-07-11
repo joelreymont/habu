@@ -95,28 +95,30 @@ create R-REF   OP-N cells allot         \ scalar reference xt (0 = incomplete)
 
 public
 
-\ ---- accessors (each validates the op-kind, fail closed) ----
-: OPR-CLASS   ( n -- n )  OPR-CK cells R-CLASS + @ ;
-: OPR-FLOPS   ( n -- n )  OPR-CK cells R-FLOPS + @ ;
-: OPR-ACCUM   ( n -- n )  OPR-CK cells R-ACCUM + @ ;
-: OPR-NUMERIC ( n -- n )  OPR-CK cells R-NUM   + @ ;
-: OPR-ARITY   ( n -- n )  OPR-CK cells R-ARITY + @ ;
-: OPR-VJP     ( n -- n )  OPR-CK cells R-VJP   + @ ;
+\ ---- accessors (take the op-kind family; convert ONCE at the private table
+\ index via OPKIND>N, so the row arrays stay indexed by the wire code) ----
+: OPR-CLASS   ( opkind -- n )  OPKIND>N cells R-CLASS + @ ;
+: OPR-FLOPS   ( opkind -- n )  OPKIND>N cells R-FLOPS + @ ;
+: OPR-ACCUM   ( opkind -- n )  OPKIND>N cells R-ACCUM + @ ;
+: OPR-NUMERIC ( opkind -- n )  OPKIND>N cells R-NUM   + @ ;
+: OPR-ARITY   ( opkind -- n )  OPKIND>N cells R-ARITY + @ ;
+: OPR-VJP     ( opkind -- n )  OPKIND>N cells R-VJP   + @ ;
 
 \ load-time setter: the adjoint registry (maki/adjoint.f) writes each op's model-op
 \ adjoint id here (the cad-9 wiring; 0 stays "no adjoint"). Kept out of OPR! so the
 \ adjoint-id constants live in adjoint.f without a load-order cycle back into this row.
+\ The op arrives as a private table INDEX (n) from the adjoint wiring loop.
 : OPR-VJP! ( n n -- ) {: op:n vjp:n :}  op OPR-CK drop  vjp op cells R-VJP + ! ;
 
-: OPR-COMPLETE? ( n -- bool )  OPR-CK cells R-REF + @ 0= 0= ;
+: OPR-COMPLETE? ( opkind -- bool )  OPKIND>N cells R-REF + @ 0= 0= ;
 
 \ the scalar reference xt; fail closed when the row has no oracle yet
-: OPR-REF ( n -- n ) {: op:n :}
-   op OPR-COMPLETE? 0= if E-OPR-INCOMPLETE throw then
-   op cells R-REF + @ ;
+: OPR-REF ( opkind -- n )
+   dup OPR-COMPLETE? 0= if E-OPR-INCOMPLETE throw then
+   OPKIND>N cells R-REF + @ ;
 
 \ bytes model is a pure function of class (CAD-PLAN 4.2)
-: OPR-BYTES-MODEL ( n -- n )
+: OPR-BYTES-MODEL ( opkind -- n )
    OPR-CLASS case
       CLASS-EW         of BYM-INOUT endof
       CLASS-ROW-REDUCE of BYM-ROW   endof
@@ -126,44 +128,43 @@ public
       E-OPR-CLASS throw
    endcase ;
 
-: OPR-ELEMENTWISE? ( n -- bool )  OPR-CLASS CLASS-EW = ;
+: OPR-ELEMENTWISE? ( opkind -- bool )  OPR-CLASS CLASS-EW = ;
 
-\ ---- enum -> text (fail closed) ----
-: OPR-NAME ( n -- ptr u8 n )
-   OPR-CK case
-      OP-ADD          of s" add"          endof
-      OP-MUL          of s" mul"          endof
-      OP-SCALE        of s" scale"        endof
-      OP-BIAS         of s" bias"         endof
-      OP-RELU         of s" relu"         endof
-      OP-GELU         of s" gelu"         endof
-      OP-LAYERNORM    of s" layernorm"    endof
-      OP-RMSNORM      of s" rmsnorm"      endof
-      OP-SOFTMAX-ROW  of s" softmax-row"  endof
-      OP-MATMUL       of s" matmul"       endof
-      OP-LINEAR       of s" linear"       endof
-      OP-RESIDUAL-ADD of s" residual-add" endof
-      OP-CAST         of s" cast"         endof
-      OP-SILU         of s" silu"         endof
-      OP-ROPE         of s" rope"         endof
-      OP-RESHAPE      of s" reshape"      endof
-      OP-TRANSPOSE    of s" transpose"    endof
-      OP-SLICE        of s" slice"        endof
-      OP-CONCAT       of s" concat"       endof
-      OP-GATHER       of s" gather"       endof
-      OP-RELU-BWD        of s" relu-bwd"        endof
-      OP-GELU-BWD        of s" gelu-bwd"        endof
-      OP-SILU-BWD        of s" silu-bwd"        endof
-      OP-LAYERNORM-BWD   of s" layernorm-bwd"   endof
-      OP-RMSNORM-BWD     of s" rmsnorm-bwd"     endof
-      OP-SOFTMAX-ROW-BWD of s" softmax-row-bwd" endof
-      OP-ROPE-BWD        of s" rope-bwd"        endof
-      OP-ROWSUM-BWD      of s" rowsum-bwd"      endof
-      OP-FULLSUM-DOT-BWD of s" fullsum-dot-bwd" endof
-      OP-PAD-SCATTER     of s" pad-scatter"     endof
-      OP-SCATTER-ADD     of s" scatter-add"     endof
-      E-OPR-KIND throw
-   endcase ;
+\ ---- op-kind -> text (exhaustive MATCH; a bad tag is unrepresentable) ----
+: OPR-NAME ( opkind -- ptr u8 n )
+   MATCH opkind
+      add             OF s" add"             ENDOF
+      mul             OF s" mul"             ENDOF
+      scale           OF s" scale"           ENDOF
+      bias            OF s" bias"            ENDOF
+      relu            OF s" relu"            ENDOF
+      gelu            OF s" gelu"            ENDOF
+      layernorm       OF s" layernorm"       ENDOF
+      rmsnorm         OF s" rmsnorm"         ENDOF
+      softmax-row     OF s" softmax-row"     ENDOF
+      matmul          OF s" matmul"          ENDOF
+      linear          OF s" linear"          ENDOF
+      residual-add    OF s" residual-add"    ENDOF
+      cast            OF s" cast"            ENDOF
+      silu            OF s" silu"            ENDOF
+      rope            OF s" rope"            ENDOF
+      reshape         OF s" reshape"         ENDOF
+      transpose       OF s" transpose"       ENDOF
+      slice           OF s" slice"           ENDOF
+      concat          OF s" concat"          ENDOF
+      gather          OF s" gather"          ENDOF
+      relu-bwd        OF s" relu-bwd"        ENDOF
+      gelu-bwd        OF s" gelu-bwd"        ENDOF
+      silu-bwd        OF s" silu-bwd"        ENDOF
+      layernorm-bwd   OF s" layernorm-bwd"   ENDOF
+      rmsnorm-bwd     OF s" rmsnorm-bwd"     ENDOF
+      softmax-row-bwd OF s" softmax-row-bwd" ENDOF
+      rope-bwd        OF s" rope-bwd"        ENDOF
+      rowsum-bwd      OF s" rowsum-bwd"      ENDOF
+      fullsum-dot-bwd OF s" fullsum-dot-bwd" ENDOF
+      pad-scatter     OF s" pad-scatter"     ENDOF
+      scatter-add     OF s" scatter-add"     ENDOF
+   ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
    case

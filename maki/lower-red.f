@@ -105,12 +105,31 @@ variable LRED-RID                              \ region id being lowered
       invert and 0= ;
 
 \ ---- supported op sets -----------------------------------------------------
-: LRED-RED-OP? ( n -- bool ) {: op:n :}          \ a supported row reduction
-   op OP-LAYERNORM = op OP-RMSNORM = or op OP-SOFTMAX-ROW = or ;
-: LRED-EW-OP? ( n -- bool ) {: op:n :}           \ a v1 elementwise prologue / epilogue op
-   op OP-RELU = op OP-GELU = or op OP-SILU = or
-   op OP-ADD = or op OP-MUL = or op OP-RESIDUAL-ADD = or
-   op OP-BIAS = or op OP-SCALE = or ;             \ broadcast binary prologue/epilogue (1xC / 1x1)
+: LRED-RED-OP? ( opkind -- bool )                \ a supported row reduction
+   MATCH opkind
+      layernorm OF true ENDOF  rmsnorm OF true ENDOF  softmax-row OF true ENDOF
+      add OF false ENDOF  mul OF false ENDOF  scale OF false ENDOF  bias OF false ENDOF
+      relu OF false ENDOF  gelu OF false ENDOF  silu OF false ENDOF  matmul OF false ENDOF
+      linear OF false ENDOF  residual-add OF false ENDOF  cast OF false ENDOF  rope OF false ENDOF
+      reshape OF false ENDOF  transpose OF false ENDOF  slice OF false ENDOF  concat OF false ENDOF
+      gather OF false ENDOF  relu-bwd OF false ENDOF  gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF
+      layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
+      rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
+      pad-scatter OF false ENDOF  scatter-add OF false ENDOF
+   ;MATCH ;
+: LRED-EW-OP? ( opkind -- bool )                 \ a v1 elementwise prologue / epilogue op
+   MATCH opkind
+      relu OF true ENDOF  gelu OF true ENDOF  silu OF true ENDOF
+      add OF true ENDOF  mul OF true ENDOF  residual-add OF true ENDOF
+      bias OF true ENDOF  scale OF true ENDOF           \ broadcast binary prologue/epilogue (1xC / 1x1)
+      layernorm OF false ENDOF  rmsnorm OF false ENDOF  softmax-row OF false ENDOF
+      matmul OF false ENDOF  linear OF false ENDOF  cast OF false ENDOF  rope OF false ENDOF
+      reshape OF false ENDOF  transpose OF false ENDOF  slice OF false ENDOF  concat OF false ENDOF
+      gather OF false ENDOF  relu-bwd OF false ENDOF  gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF
+      layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
+      rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
+      pad-scatter OF false ENDOF  scatter-add OF false ENDOF
+   ;MATCH ;
 
 : LRED-RED-COUNT ( n -- n ) {: rid:n :}          \ reduction nodes in the region
    0 MIR-N@ 0 ?do  i rid LRED-IN-REGION? i MIR-OP@ LRED-RED-OP? and if 1+ then  loop ;
@@ -122,8 +141,7 @@ variable LRED-RID                              \ region id being lowered
       i rid LRED-IN-REGION? if
          i MIR-MOVE? if i MVW-CHECK
          else
-            i MIR-OP@ {: op:n :}
-            op LRED-RED-OP? op LRED-EW-OP? or 0= if E-LRED-OP throw then
+            i MIR-OP@ dup LRED-RED-OP? swap LRED-EW-OP? or 0= if E-LRED-OP throw then
          then
       then
    loop
@@ -259,20 +277,28 @@ private
 
 \ ---- per-node emit (elementwise prologue/epilogue, then the reduction) ------
 : LRED-EMIT-NODE ( n -- ) {: nd:n :}
-   nd MIR-OP@ case
-      OP-RELU          of nd 0 LRED-OPREG EMIT-RELU     endof
-      OP-GELU          of nd 0 LRED-OPREG EMIT-GELU     endof
-      OP-SILU          of nd 0 LRED-OPREG EMIT-SILU     endof
-      OP-ADD           of nd LRED-BINREGS EMIT-ADD      endof
-      OP-RESIDUAL-ADD  of nd LRED-BINREGS EMIT-ADD      endof
-      OP-BIAS          of nd LRED-BINREGS EMIT-ADD      endof
-      OP-MUL           of nd LRED-BINREGS EMIT-MUL      endof
-      OP-SCALE         of nd LRED-BINREGS EMIT-MUL      endof
-      OP-LAYERNORM     of nd 0 LRED-OPREG LRED-EMIT-LN  endof
-      OP-RMSNORM       of nd 0 LRED-OPREG LRED-EMIT-RMS endof
-      OP-SOFTMAX-ROW   of nd 0 LRED-OPREG LRED-EMIT-SM  endof
-      E-LRED-OP throw
-   endcase
+   nd MIR-OP@ MATCH opkind
+      relu            OF nd 0 LRED-OPREG EMIT-RELU     ENDOF
+      gelu            OF nd 0 LRED-OPREG EMIT-GELU     ENDOF
+      silu            OF nd 0 LRED-OPREG EMIT-SILU     ENDOF
+      add             OF nd LRED-BINREGS EMIT-ADD      ENDOF
+      residual-add    OF nd LRED-BINREGS EMIT-ADD      ENDOF
+      bias            OF nd LRED-BINREGS EMIT-ADD      ENDOF
+      mul             OF nd LRED-BINREGS EMIT-MUL      ENDOF
+      scale           OF nd LRED-BINREGS EMIT-MUL      ENDOF
+      layernorm       OF nd 0 LRED-OPREG LRED-EMIT-LN  ENDOF
+      rmsnorm         OF nd 0 LRED-OPREG LRED-EMIT-RMS ENDOF
+      softmax-row     OF nd 0 LRED-OPREG LRED-EMIT-SM  ENDOF
+      matmul OF E-LRED-OP throw ENDOF  linear OF E-LRED-OP throw ENDOF
+      cast OF E-LRED-OP throw ENDOF  rope OF E-LRED-OP throw ENDOF
+      reshape OF E-LRED-OP throw ENDOF  transpose OF E-LRED-OP throw ENDOF
+      slice OF E-LRED-OP throw ENDOF  concat OF E-LRED-OP throw ENDOF  gather OF E-LRED-OP throw ENDOF
+      relu-bwd OF E-LRED-OP throw ENDOF  gelu-bwd OF E-LRED-OP throw ENDOF  silu-bwd OF E-LRED-OP throw ENDOF
+      layernorm-bwd OF E-LRED-OP throw ENDOF  rmsnorm-bwd OF E-LRED-OP throw ENDOF
+      softmax-row-bwd OF E-LRED-OP throw ENDOF  rope-bwd OF E-LRED-OP throw ENDOF
+      rowsum-bwd OF E-LRED-OP throw ENDOF  fullsum-dot-bwd OF E-LRED-OP throw ENDOF
+      pad-scatter OF E-LRED-OP throw ENDOF  scatter-add OF E-LRED-OP throw ENDOF
+   ;MATCH
    nd LRED-NR! ;
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)
    MIR-N@ 0 ?do  i LRED-RID @ LRED-IN-REGION? i MIR-MOVE? 0= and if i LRED-EMIT-NODE then  loop ;

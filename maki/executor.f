@@ -97,19 +97,31 @@ public
 private
 
 \ ---- elementwise: scalar reference mapped over elements ---------------------
-: EX-U-EL ( r n -- r ) {: x:r op:n :}
-   op case
-      OP-RELU of x RELU-F endof
-      OP-GELU of x GELU-F endof
-      OP-SILU of x SILU-F endof
-      E-EX-UNSUP throw
-   endcase ;
+\ the op family is on top (the element value below it); exhaustive MATCH, so an
+\ op with no unary scalar reference is a checker-forced explicit throw.
+: EX-U-EL ( r opkind -- r )
+   MATCH opkind
+      relu OF RELU-F ENDOF  gelu OF GELU-F ENDOF  silu OF SILU-F ENDOF
+      add OF E-EX-UNSUP throw ENDOF  mul OF E-EX-UNSUP throw ENDOF
+      scale OF E-EX-UNSUP throw ENDOF  bias OF E-EX-UNSUP throw ENDOF
+      layernorm OF E-EX-UNSUP throw ENDOF  rmsnorm OF E-EX-UNSUP throw ENDOF
+      softmax-row OF E-EX-UNSUP throw ENDOF  matmul OF E-EX-UNSUP throw ENDOF
+      linear OF E-EX-UNSUP throw ENDOF  residual-add OF E-EX-UNSUP throw ENDOF
+      cast OF E-EX-UNSUP throw ENDOF  rope OF E-EX-UNSUP throw ENDOF
+      reshape OF E-EX-UNSUP throw ENDOF  transpose OF E-EX-UNSUP throw ENDOF
+      slice OF E-EX-UNSUP throw ENDOF  concat OF E-EX-UNSUP throw ENDOF
+      gather OF E-EX-UNSUP throw ENDOF  relu-bwd OF E-EX-UNSUP throw ENDOF
+      gelu-bwd OF E-EX-UNSUP throw ENDOF  silu-bwd OF E-EX-UNSUP throw ENDOF
+      layernorm-bwd OF E-EX-UNSUP throw ENDOF  rmsnorm-bwd OF E-EX-UNSUP throw ENDOF
+      softmax-row-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
+      rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
+      pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+   ;MATCH ;
 
 : EX-U ( n -- ) {: nd:n :}
-   nd MIR-OP@ {: op:n :}
    nd 0 MIR-IN@ EX-REF-PTR {: ap:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd EX-NODE-ELEMS 0 ?do  ap i T-GET op EX-U-EL  ob i T-SET  loop ;
+   nd EX-NODE-ELEMS 0 ?do  ap i T-GET  nd MIR-OP@ EX-U-EL  ob i T-SET  loop ;
 
 \ broadcast read b[r,c]: a 1-row operand reads row 0, a 1-col operand reads col 0.
 : EX-BC@ ( ptr a n n n n -- r ) {: bp:ptr br:n bc:n r:n c:n :}
@@ -117,59 +129,86 @@ private
    bc 1 = if 0 else c then {: cc:n :}
    bp  rr bc *  cc +  T-GET ;
 
-: EX-EW2-EL ( r r n -- r ) {: a:r b:r op:n :}
-   op case
-      OP-ADD          of a b ADD-F   endof
-      OP-RESIDUAL-ADD of a b ADD-F   endof
-      OP-BIAS         of a b ADD-F   endof
-      OP-MUL          of a b MUL-F   endof
-      OP-SCALE        of a b MUL-F   endof
-      OP-RELU-BWD     of a b RELU-BWD endof
-      OP-GELU-BWD     of a b GELU-BWD endof
-      OP-SILU-BWD     of a b SILU-BWD endof
-      E-EX-UNSUP throw
-   endcase ;
+: EX-EW2-EL ( r r opkind -- r )
+   MATCH opkind
+      add OF ADD-F ENDOF  residual-add OF ADD-F ENDOF  bias OF ADD-F ENDOF
+      mul OF MUL-F ENDOF  scale OF MUL-F ENDOF
+      relu-bwd OF RELU-BWD ENDOF  gelu-bwd OF GELU-BWD ENDOF  silu-bwd OF SILU-BWD ENDOF
+      relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
+      silu OF E-EX-UNSUP throw ENDOF  layernorm OF E-EX-UNSUP throw ENDOF
+      rmsnorm OF E-EX-UNSUP throw ENDOF  softmax-row OF E-EX-UNSUP throw ENDOF
+      matmul OF E-EX-UNSUP throw ENDOF  linear OF E-EX-UNSUP throw ENDOF
+      cast OF E-EX-UNSUP throw ENDOF  rope OF E-EX-UNSUP throw ENDOF
+      reshape OF E-EX-UNSUP throw ENDOF  transpose OF E-EX-UNSUP throw ENDOF
+      slice OF E-EX-UNSUP throw ENDOF  concat OF E-EX-UNSUP throw ENDOF
+      gather OF E-EX-UNSUP throw ENDOF  layernorm-bwd OF E-EX-UNSUP throw ENDOF
+      rmsnorm-bwd OF E-EX-UNSUP throw ENDOF  softmax-row-bwd OF E-EX-UNSUP throw ENDOF
+      rope-bwd OF E-EX-UNSUP throw ENDOF  rowsum-bwd OF E-EX-UNSUP throw ENDOF
+      fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF  pad-scatter OF E-EX-UNSUP throw ENDOF
+      scatter-add OF E-EX-UNSUP throw ENDOF
+   ;MATCH ;
 
 : EX-EW2 ( n -- ) {: nd:n :}
-   nd MIR-OP@ {: op:n :}
    nd 0 MIR-IN@ EX-REF-PTR {: ap:ptr :}
    nd 1 MIR-IN@ {: bref:n :}
    bref EX-REF-PTR {: bp:ptr :}  bref EX-REF-ROWS {: br:n :}  bref EX-REF-COLS {: bc:n :}
    nd EX-NODE-PTR {: ob:ptr :}  nd MIR-COLS@ {: C:n :}
    nd EX-NODE-ELEMS 0 ?do
-      ap i T-GET   bp br bc  i C /  i C mod  EX-BC@   op EX-EW2-EL   ob i T-SET
+      ap i T-GET   bp br bc  i C /  i C mod  EX-BC@   nd MIR-OP@ EX-EW2-EL   ob i T-SET
    loop ;
 
 \ ---- row words (layernorm / rmsnorm / softmax + VJPs) applied per row -------
-: EX-ROW-FWD-1 ( ptr a ptr a n n -- ) {: xb:ptr ob:ptr n:n op:n :}
-   op case
-      OP-LAYERNORM   of xb ob n LN-FWD  endof
-      OP-RMSNORM     of xb ob n RMS-FWD endof
-      OP-SOFTMAX-ROW of xb ob n SM-FWD  endof
-      E-EX-UNSUP throw
-   endcase ;
+: EX-ROW-FWD-1 ( ptr a ptr a n opkind -- )
+   MATCH opkind
+      layernorm OF LN-FWD ENDOF  rmsnorm OF RMS-FWD ENDOF  softmax-row OF SM-FWD ENDOF
+      add OF E-EX-UNSUP throw ENDOF  mul OF E-EX-UNSUP throw ENDOF
+      scale OF E-EX-UNSUP throw ENDOF  bias OF E-EX-UNSUP throw ENDOF
+      relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
+      silu OF E-EX-UNSUP throw ENDOF  matmul OF E-EX-UNSUP throw ENDOF
+      linear OF E-EX-UNSUP throw ENDOF  residual-add OF E-EX-UNSUP throw ENDOF
+      cast OF E-EX-UNSUP throw ENDOF  rope OF E-EX-UNSUP throw ENDOF
+      reshape OF E-EX-UNSUP throw ENDOF  transpose OF E-EX-UNSUP throw ENDOF
+      slice OF E-EX-UNSUP throw ENDOF  concat OF E-EX-UNSUP throw ENDOF
+      gather OF E-EX-UNSUP throw ENDOF  relu-bwd OF E-EX-UNSUP throw ENDOF
+      gelu-bwd OF E-EX-UNSUP throw ENDOF  silu-bwd OF E-EX-UNSUP throw ENDOF
+      layernorm-bwd OF E-EX-UNSUP throw ENDOF  rmsnorm-bwd OF E-EX-UNSUP throw ENDOF
+      softmax-row-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
+      rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
+      pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+   ;MATCH ;
 
 : EX-ROW-FWD ( n -- ) {: nd:n :}
    nd 0 MIR-IN@ EX-REF-PTR {: xb:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}  nd MIR-OP@ {: op:n :}
-   R 0 ?do  xb i C * T-AT   ob i C * T-AT   C   op   EX-ROW-FWD-1  loop ;
+   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   R 0 ?do  xb i C * T-AT   ob i C * T-AT   C   nd MIR-OP@   EX-ROW-FWD-1  loop ;
 
-: EX-ROW-BWD-1 ( ptr a ptr a ptr a n n -- ) {: p0:ptr p1:ptr ob:ptr n:n op:n :}
-   op case
-      OP-LAYERNORM-BWD   of p0 p1 ob n LN-BWD  endof
-      OP-RMSNORM-BWD     of p0 p1 ob n RMS-BWD endof
-      OP-SOFTMAX-ROW-BWD of p0 p1 ob n SM-BWD  endof
-      E-EX-UNSUP throw
-   endcase ;
+: EX-ROW-BWD-1 ( ptr a ptr a ptr a n opkind -- )
+   MATCH opkind
+      layernorm-bwd OF LN-BWD ENDOF  rmsnorm-bwd OF RMS-BWD ENDOF  softmax-row-bwd OF SM-BWD ENDOF
+      add OF E-EX-UNSUP throw ENDOF  mul OF E-EX-UNSUP throw ENDOF
+      scale OF E-EX-UNSUP throw ENDOF  bias OF E-EX-UNSUP throw ENDOF
+      relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
+      silu OF E-EX-UNSUP throw ENDOF  layernorm OF E-EX-UNSUP throw ENDOF
+      rmsnorm OF E-EX-UNSUP throw ENDOF  softmax-row OF E-EX-UNSUP throw ENDOF
+      matmul OF E-EX-UNSUP throw ENDOF  linear OF E-EX-UNSUP throw ENDOF
+      residual-add OF E-EX-UNSUP throw ENDOF  cast OF E-EX-UNSUP throw ENDOF
+      rope OF E-EX-UNSUP throw ENDOF  reshape OF E-EX-UNSUP throw ENDOF
+      transpose OF E-EX-UNSUP throw ENDOF  slice OF E-EX-UNSUP throw ENDOF
+      concat OF E-EX-UNSUP throw ENDOF  gather OF E-EX-UNSUP throw ENDOF
+      relu-bwd OF E-EX-UNSUP throw ENDOF  gelu-bwd OF E-EX-UNSUP throw ENDOF
+      silu-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
+      rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
+      pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+   ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
 : EX-ROW-BWD ( n -- ) {: nd:n :}
    nd 0 MIR-IN@ EX-REF-PTR {: p0:ptr :}
    nd 1 MIR-IN@ EX-REF-PTR {: p1:ptr :}
    nd EX-NODE-PTR {: ob:ptr :}
-   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}  nd MIR-OP@ {: op:n :}
-   R 0 ?do  p0 i C * T-AT   p1 i C * T-AT   ob i C * T-AT   C   op   EX-ROW-BWD-1  loop ;
+   nd MIR-ROWS@ {: R:n :}  nd MIR-COLS@ {: C:n :}
+   R 0 ?do  p0 i C * T-AT   p1 i C * T-AT   ob i C * T-AT   C   nd MIR-OP@   EX-ROW-BWD-1  loop ;
 
 \ ---- matmul / linear (inner dim = data-operand cols) ------------------------
 : EX-MATMUL ( n -- ) {: nd:n :}
@@ -274,39 +313,39 @@ private
 
 \ ---- per-node dispatch (fail closed on a non-executable op) -----------------
 : EX-NODE ( n -- ) {: nd:n :}
-   nd MIR-OP@ case
-      OP-RELU            of nd EX-U            endof
-      OP-GELU            of nd EX-U            endof
-      OP-SILU            of nd EX-U            endof
-      OP-ADD             of nd EX-EW2          endof
-      OP-MUL             of nd EX-EW2          endof
-      OP-SCALE           of nd EX-EW2          endof
-      OP-BIAS            of nd EX-EW2          endof
-      OP-RESIDUAL-ADD    of nd EX-EW2          endof
-      OP-RELU-BWD        of nd EX-EW2          endof
-      OP-GELU-BWD        of nd EX-EW2          endof
-      OP-SILU-BWD        of nd EX-EW2          endof
-      OP-LAYERNORM       of nd EX-ROW-FWD      endof
-      OP-RMSNORM         of nd EX-ROW-FWD      endof
-      OP-SOFTMAX-ROW     of nd EX-ROW-FWD      endof
-      OP-LAYERNORM-BWD   of nd EX-ROW-BWD      endof
-      OP-RMSNORM-BWD     of nd EX-ROW-BWD      endof
-      OP-SOFTMAX-ROW-BWD of nd EX-ROW-BWD      endof
-      OP-MATMUL          of nd EX-MATMUL       endof
-      OP-LINEAR          of nd EX-LINEAR       endof
-      OP-RESHAPE         of nd EX-RESHAPE      endof
-      OP-TRANSPOSE       of nd EX-TRANSPOSE    endof
-      OP-SLICE           of nd EX-SLICE        endof
-      OP-CONCAT          of nd EX-CONCAT       endof
-      OP-GATHER          of nd EX-GATHER       endof
-      OP-ROWSUM-BWD      of nd EX-ROWSUM       endof
-      OP-FULLSUM-DOT-BWD of nd EX-FULLSUM      endof
-      OP-PAD-SCATTER     of nd EX-PAD-SCATTER  endof
-      OP-SCATTER-ADD     of nd EX-SCATTER-ADD  endof
-      OP-ROPE            of nd EX-ROPE-FWD     endof
-      OP-ROPE-BWD        of nd EX-ROPE-BWD     endof
-      E-EX-UNSUP throw
-   endcase ;
+   nd MIR-OP@ MATCH opkind
+      relu            OF nd EX-U            ENDOF
+      gelu            OF nd EX-U            ENDOF
+      silu            OF nd EX-U            ENDOF
+      add             OF nd EX-EW2          ENDOF
+      mul             OF nd EX-EW2          ENDOF
+      scale           OF nd EX-EW2          ENDOF
+      bias            OF nd EX-EW2          ENDOF
+      residual-add    OF nd EX-EW2          ENDOF
+      relu-bwd        OF nd EX-EW2          ENDOF
+      gelu-bwd        OF nd EX-EW2          ENDOF
+      silu-bwd        OF nd EX-EW2          ENDOF
+      layernorm       OF nd EX-ROW-FWD      ENDOF
+      rmsnorm         OF nd EX-ROW-FWD      ENDOF
+      softmax-row     OF nd EX-ROW-FWD      ENDOF
+      layernorm-bwd   OF nd EX-ROW-BWD      ENDOF
+      rmsnorm-bwd     OF nd EX-ROW-BWD      ENDOF
+      softmax-row-bwd OF nd EX-ROW-BWD      ENDOF
+      matmul          OF nd EX-MATMUL       ENDOF
+      linear          OF nd EX-LINEAR       ENDOF
+      reshape         OF nd EX-RESHAPE      ENDOF
+      transpose       OF nd EX-TRANSPOSE    ENDOF
+      slice           OF nd EX-SLICE        ENDOF
+      concat          OF nd EX-CONCAT       ENDOF
+      gather          OF nd EX-GATHER       ENDOF
+      rowsum-bwd      OF nd EX-ROWSUM       ENDOF
+      fullsum-dot-bwd OF nd EX-FULLSUM      ENDOF
+      pad-scatter     OF nd EX-PAD-SCATTER  ENDOF
+      scatter-add     OF nd EX-SCATTER-ADD  ENDOF
+      rope            OF nd EX-ROPE-FWD     ENDOF
+      rope-bwd        OF nd EX-ROPE-BWD     ENDOF
+      cast            OF E-EX-UNSUP throw   ENDOF
+   ;MATCH ;
 
 \ ---- buffer plan + execute over a node prefix ------------------------------
 : EX-PLAN ( n -- ) {: n:n :}            \ assign each node an arena offset by shape
@@ -323,8 +362,21 @@ private
 public
 
 \ ---- membership: is an op-kind host-executable? (cast / decode are not) -----
-: EX-OP-OK? ( n -- bool ) {: op:n :}
-   op 0 < 0=  op OP-N <  and  op OP-CAST <>  and ;
+\ the op-kind family makes the old OP-N range check unrepresentable; every op is
+\ host-executable except cast (exhaustive MATCH predicate).
+: EX-OP-OK? ( opkind -- bool )
+   MATCH opkind
+      cast OF false ENDOF
+      add OF true ENDOF  mul OF true ENDOF  scale OF true ENDOF  bias OF true ENDOF
+      relu OF true ENDOF  gelu OF true ENDOF  layernorm OF true ENDOF  rmsnorm OF true ENDOF
+      softmax-row OF true ENDOF  matmul OF true ENDOF  linear OF true ENDOF
+      residual-add OF true ENDOF  silu OF true ENDOF  rope OF true ENDOF
+      reshape OF true ENDOF  transpose OF true ENDOF  slice OF true ENDOF  concat OF true ENDOF
+      gather OF true ENDOF  relu-bwd OF true ENDOF  gelu-bwd OF true ENDOF  silu-bwd OF true ENDOF
+      layernorm-bwd OF true ENDOF  rmsnorm-bwd OF true ENDOF  softmax-row-bwd OF true ENDOF
+      rope-bwd OF true ENDOF  rowsum-bwd OF true ENDOF  fullsum-dot-bwd OF true ENDOF
+      pad-scatter OF true ENDOF  scatter-add OF true ENDOF
+   ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------
 : EX-RESET ( -- )  EX-IN-CAP 0 ?do  0 i cells EX-IN-SET + !  loop ;

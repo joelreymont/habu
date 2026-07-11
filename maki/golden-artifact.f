@@ -95,12 +95,12 @@ private
 
 \ ---- host-executability membership (single home; golden.f reuses it) --------
 public
-: GA-OP-BLOCKS? ( n -- bool ) {: op:n :}         \ op has no host oracle / reference?
-   op OPR-COMPLETE? 0=  op EX-OP-OK? 0= or ;
+: GA-OP-BLOCKS? ( opkind -- bool )               \ op has no host oracle / reference?
+   dup OPR-COMPLETE? 0=  swap EX-OP-OK? 0= or ;
 : GA-SUPPORTED? ( -- bool )
    MIR-N@ 0 ?do  i MIR-OP@ GA-OP-BLOCKS? if false unloop exit then  loop  true ;
-: GA-FIRST-BAD ( -- n )                           \ first blocking node's op, or -1
-   MIR-N@ 0 ?do  i MIR-OP@ dup GA-OP-BLOCKS? if unloop exit then drop  loop  -1 ;
+: GA-FIRST-BAD ( -- n )                           \ first blocking node index, or -1 (op refetched at use)
+   MIR-N@ 0 ?do  i MIR-OP@ GA-OP-BLOCKS? if i unloop exit then  loop  -1 ;
 private
 
 \ ---- synthetic input synthesis (shared by golden self-consistency + GA-SAVE) --
@@ -118,7 +118,7 @@ public
 private
 
 : GA-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
-   nd MIR-OP@ OP-GATHER <> if false exit then
+   nd MIR-OP@ MAKI-OPKIND:GATHER OPK= 0= if false exit then
    nd 1 MIR-IN@ {: r:n :}
    r MIR-REF-INPUT? 0= if false exit then
    r MIR-REF-SLOT s = ;

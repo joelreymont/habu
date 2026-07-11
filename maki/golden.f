@@ -71,10 +71,10 @@ public
 : GO-RE$ ( -- ptr u8 n )  GO-RE GO-RE-U @ ;
 private
 
-: GO-REASON-BAD ( n -- ) {: op:n :}
+: GO-REASON-BAD ( n -- ) {: nd:n :}              \ nd = blocking node index (op refetched)
    GO-RE-RESET
-   op OPR-COMPLETE? 0= if s" golden: incomplete op " GO-RE+ op OPR-NAME GO-RE+ exit then
-   s" golden: op not host-executable " GO-RE+ op OPR-NAME GO-RE+ ;
+   nd MIR-OP@ OPR-COMPLETE? 0= if s" golden: incomplete op " GO-RE+ nd MIR-OP@ OPR-NAME GO-RE+ exit then
+   s" golden: op not host-executable " GO-RE+ nd MIR-OP@ OPR-NAME GO-RE+ ;
 
 : GO-PASS-REASON ( -- )
    GO-RE-RESET s" host self-consistent (" GO-RE+ MIR-N@ GO-RE-INT

@@ -64,8 +64,18 @@ variable LMV-BUILT?
 
 \ ---- region membership -----------------------------------------------------
 : LMV-IN-REGION? ( n n -- bool )  swap FP-RID@ = ;      \ node rid -- in-region?
-: LMV-COPY-OP? ( n -- bool ) {: op:n :}
-   op OP-TRANSPOSE = op OP-SLICE = or op OP-CONCAT = or op OP-GATHER = or ;
+: LMV-COPY-OP? ( opkind -- bool )
+   MATCH opkind
+      transpose OF true ENDOF  slice OF true ENDOF  concat OF true ENDOF  gather OF true ENDOF
+      add OF false ENDOF  mul OF false ENDOF  scale OF false ENDOF  bias OF false ENDOF
+      relu OF false ENDOF  gelu OF false ENDOF  silu OF false ENDOF  layernorm OF false ENDOF
+      rmsnorm OF false ENDOF  softmax-row OF false ENDOF  matmul OF false ENDOF  linear OF false ENDOF
+      residual-add OF false ENDOF  cast OF false ENDOF  rope OF false ENDOF  reshape OF false ENDOF
+      relu-bwd OF false ENDOF  gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF
+      layernorm-bwd OF false ENDOF  rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF
+      rope-bwd OF false ENDOF  rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF
+      pad-scatter OF false ENDOF  scatter-add OF false ENDOF
+   ;MATCH ;
 
 \ ---- operand-ref shape: a model input slot, or a MATERIALIZED producer node in another region
 \ (slice 5 cross-region handoff - the whole-model run binds that producer's device buffer). A copy
@@ -111,13 +121,26 @@ variable LMV-BUILT?
    LMV-INS 0 cells + @ LMV-REF-COLS LMV-PA !  0 LMV-PB ! ;
 : LMV-SET-DIMS ( -- )
    LMV-NODE @ MIR-ROWS@ LMV-NODE @ MIR-COLS@ * LMV-PN !     \ N = output elems
-   LMV-NODE @ MIR-OP@ case
-      OP-TRANSPOSE of LMV-DIMS-TRANSPOSE endof
-      OP-SLICE     of LMV-DIMS-SLICE     endof
-      OP-CONCAT    of LMV-DIMS-CONCAT    endof
-      OP-GATHER    of LMV-DIMS-GATHER    endof
-      E-LMV-OP throw
-   endcase ;
+   LMV-NODE @ MIR-OP@ MATCH opkind
+      transpose OF LMV-DIMS-TRANSPOSE ENDOF
+      slice     OF LMV-DIMS-SLICE     ENDOF
+      concat    OF LMV-DIMS-CONCAT    ENDOF
+      gather    OF LMV-DIMS-GATHER    ENDOF
+      add OF E-LMV-OP throw ENDOF  mul OF E-LMV-OP throw ENDOF
+      scale OF E-LMV-OP throw ENDOF  bias OF E-LMV-OP throw ENDOF
+      relu OF E-LMV-OP throw ENDOF  gelu OF E-LMV-OP throw ENDOF
+      silu OF E-LMV-OP throw ENDOF  layernorm OF E-LMV-OP throw ENDOF
+      rmsnorm OF E-LMV-OP throw ENDOF  softmax-row OF E-LMV-OP throw ENDOF
+      matmul OF E-LMV-OP throw ENDOF  linear OF E-LMV-OP throw ENDOF
+      residual-add OF E-LMV-OP throw ENDOF  cast OF E-LMV-OP throw ENDOF
+      rope OF E-LMV-OP throw ENDOF  reshape OF E-LMV-OP throw ENDOF
+      relu-bwd OF E-LMV-OP throw ENDOF  gelu-bwd OF E-LMV-OP throw ENDOF
+      silu-bwd OF E-LMV-OP throw ENDOF  layernorm-bwd OF E-LMV-OP throw ENDOF
+      rmsnorm-bwd OF E-LMV-OP throw ENDOF  softmax-row-bwd OF E-LMV-OP throw ENDOF
+      rope-bwd OF E-LMV-OP throw ENDOF  rowsum-bwd OF E-LMV-OP throw ENDOF
+      fullsum-dot-bwd OF E-LMV-OP throw ENDOF  pad-scatter OF E-LMV-OP throw ENDOF
+      scatter-add OF E-LMV-OP throw ENDOF
+   ;MATCH ;
 
 : LMV-CHECK-DIMS ( -- )
    LMV-PN @ LMV-ARENA > if E-LMV-DIMS throw then
@@ -231,13 +254,26 @@ private
 
 : LMV-BODY ( -- )
    LMV-COORD
-   LMV-NODE @ MIR-OP@ case
-      OP-TRANSPOSE of LMV-BODY-TRANSPOSE endof
-      OP-SLICE     of LMV-BODY-SLICE     endof
-      OP-CONCAT    of LMV-BODY-CONCAT    endof
-      OP-GATHER    of LMV-BODY-GATHER    endof
-      E-LMV-OP throw
-   endcase
+   LMV-NODE @ MIR-OP@ MATCH opkind
+      transpose OF LMV-BODY-TRANSPOSE ENDOF
+      slice     OF LMV-BODY-SLICE     ENDOF
+      concat    OF LMV-BODY-CONCAT    ENDOF
+      gather    OF LMV-BODY-GATHER    ENDOF
+      add OF E-LMV-OP throw ENDOF  mul OF E-LMV-OP throw ENDOF
+      scale OF E-LMV-OP throw ENDOF  bias OF E-LMV-OP throw ENDOF
+      relu OF E-LMV-OP throw ENDOF  gelu OF E-LMV-OP throw ENDOF
+      silu OF E-LMV-OP throw ENDOF  layernorm OF E-LMV-OP throw ENDOF
+      rmsnorm OF E-LMV-OP throw ENDOF  softmax-row OF E-LMV-OP throw ENDOF
+      matmul OF E-LMV-OP throw ENDOF  linear OF E-LMV-OP throw ENDOF
+      residual-add OF E-LMV-OP throw ENDOF  cast OF E-LMV-OP throw ENDOF
+      rope OF E-LMV-OP throw ENDOF  reshape OF E-LMV-OP throw ENDOF
+      relu-bwd OF E-LMV-OP throw ENDOF  gelu-bwd OF E-LMV-OP throw ENDOF
+      silu-bwd OF E-LMV-OP throw ENDOF  layernorm-bwd OF E-LMV-OP throw ENDOF
+      rmsnorm-bwd OF E-LMV-OP throw ENDOF  softmax-row-bwd OF E-LMV-OP throw ENDOF
+      rope-bwd OF E-LMV-OP throw ENDOF  rowsum-bwd OF E-LMV-OP throw ENDOF
+      fullsum-dot-bwd OF E-LMV-OP throw ENDOF  pad-scatter OF E-LMV-OP throw ENDOF
+      scatter-add OF E-LMV-OP throw ENDOF
+   ;MATCH
    LMV-STORE ;
 
 public

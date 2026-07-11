@@ -30,28 +30,28 @@ public
 
 \ ---- elementwise / row-reduce unary ops ( tensor -- tensor ) ----------------
 \ Each fixes its op-kind and re-exports MAKI:PLAN-UNARY (same-shape output descriptor).
-: RELU        ( tensor -- tensor )  MAKI:OP-RELU        MAKI:PLAN-UNARY ;
-: GELU        ( tensor -- tensor )  MAKI:OP-GELU        MAKI:PLAN-UNARY ;
-: SILU        ( tensor -- tensor )  MAKI:OP-SILU        MAKI:PLAN-UNARY ;
-: LAYERNORM   ( tensor -- tensor )  MAKI:OP-LAYERNORM   MAKI:PLAN-UNARY ;
-: RMSNORM     ( tensor -- tensor )  MAKI:OP-RMSNORM     MAKI:PLAN-UNARY ;
-: SOFTMAX-ROW ( tensor -- tensor )  MAKI:OP-SOFTMAX-ROW MAKI:PLAN-UNARY ;
-: CAST        ( tensor -- tensor )  MAKI:OP-CAST        MAKI:PLAN-UNARY ;
+: RELU        ( tensor -- tensor )  MAKI-OPKIND:RELU        MAKI:PLAN-UNARY ;
+: GELU        ( tensor -- tensor )  MAKI-OPKIND:GELU        MAKI:PLAN-UNARY ;
+: SILU        ( tensor -- tensor )  MAKI-OPKIND:SILU        MAKI:PLAN-UNARY ;
+: LAYERNORM   ( tensor -- tensor )  MAKI-OPKIND:LAYERNORM   MAKI:PLAN-UNARY ;
+: RMSNORM     ( tensor -- tensor )  MAKI-OPKIND:RMSNORM     MAKI:PLAN-UNARY ;
+: SOFTMAX-ROW ( tensor -- tensor )  MAKI-OPKIND:SOFTMAX-ROW MAKI:PLAN-UNARY ;
+: CAST        ( tensor -- tensor )  MAKI-OPKIND:CAST        MAKI:PLAN-UNARY ;
 
 \ ---- binary elementwise ops ( tensor tensor -- tensor ) : data then param ----
 \ Re-export MAKI:PLAN-BIN-EW; broadcast legality of the param is cad.f's SHP-CHECK.
-: ADD          ( tensor tensor -- tensor )  MAKI:OP-ADD          MAKI:PLAN-BIN-EW ;
-: MUL          ( tensor tensor -- tensor )  MAKI:OP-MUL          MAKI:PLAN-BIN-EW ;
-: SCALE        ( tensor tensor -- tensor )  MAKI:OP-SCALE        MAKI:PLAN-BIN-EW ;
-: BIAS         ( tensor tensor -- tensor )  MAKI:OP-BIAS         MAKI:PLAN-BIN-EW ;
-: RESIDUAL-ADD ( tensor tensor -- tensor )  MAKI:OP-RESIDUAL-ADD MAKI:PLAN-BIN-EW ;
+: ADD          ( tensor tensor -- tensor )  MAKI-OPKIND:ADD          MAKI:PLAN-BIN-EW ;
+: MUL          ( tensor tensor -- tensor )  MAKI-OPKIND:MUL          MAKI:PLAN-BIN-EW ;
+: SCALE        ( tensor tensor -- tensor )  MAKI-OPKIND:SCALE        MAKI:PLAN-BIN-EW ;
+: BIAS         ( tensor tensor -- tensor )  MAKI-OPKIND:BIAS         MAKI:PLAN-BIN-EW ;
+: RESIDUAL-ADD ( tensor tensor -- tensor )  MAKI-OPKIND:RESIDUAL-ADD MAKI:PLAN-BIN-EW ;
 
 \ ---- ternary elementwise ( tensor tensor tensor -- tensor ) : data then two params --
-: ROPE ( tensor tensor tensor -- tensor )  MAKI:OP-ROPE MAKI:PLAN-TERN-EW ;
+: ROPE ( tensor tensor tensor -- tensor )  MAKI-OPKIND:ROPE MAKI:PLAN-TERN-EW ;
 
 \ ---- contraction ops (rows from data, cols from weight; inner dim fails closed) ----
-: MATMUL ( tensor tensor -- tensor )         MAKI:OP-MATMUL MAKI:PLAN-MATMUL ;
-: LINEAR ( tensor tensor tensor -- tensor )  MAKI:OP-LINEAR MAKI:PLAN-LINEAR ;
+: MATMUL ( tensor tensor -- tensor )         MAKI-OPKIND:MATMUL MAKI:PLAN-MATMUL ;
+: LINEAR ( tensor tensor tensor -- tensor )  MAKI-OPKIND:LINEAR MAKI:PLAN-LINEAR ;
 
 \ ---- movement ops (layout rewrites; scalar params travel on the stack) -------
 \ Pure re-exports: the appenders already carry the op-kind, verdict, and packed attrs.

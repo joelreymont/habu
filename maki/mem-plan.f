@@ -99,7 +99,7 @@ create MP-NM MP-NM-CAP allot  variable MP-NM-U
 : MP-SLOT-GATHERED? ( n -- bool ) {: s:n :}        \ s is the data operand (0) of a gather
    s MIR-IN-REF {: ref:n :}
    MIR-N@ 0 ?do
-      i MIR-OP@ OP-GATHER =  i MIR-IN-COUNT@ 0 >  and if
+      i MIR-OP@ MAKI-OPKIND:GATHER OPK=  i MIR-IN-COUNT@ 0 >  and if
          i 0 MIR-IN@ ref = if unloop true exit then
       then
    loop false ;
