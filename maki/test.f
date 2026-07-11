@@ -204,6 +204,16 @@ TEST:SUITE maki/eval-repair-ab-test.f
 TEST:;SUITE
 TEST:SUITE maki/eval-repair-mech-test.f
 TEST:;SUITE
+TEST:SUITE maki/eval-passk-test.f
+TEST:;SUITE
+TEST:SUITE maki/eval-transcript-test.f
+TEST:;SUITE
+TEST:SUITE maki/eval-matrix-test.f
+TEST:;SUITE
+TEST:SUITE maki/eval-matrix-main.f
+TEST:;SUITE
+TEST:SUITE maki/eval-train.f
+TEST:;SUITE
 TEST:SUITE maki/maki-test.f
 TEST:;SUITE
 TEST:SUITE maki/device-smoke.f

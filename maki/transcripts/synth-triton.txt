@@ -1,0 +1,28 @@
+habu-eval-transcript v1
+\ Synthetic RECORDED transcript for the external arm, mirroring the 2026-06-27
+\ round (docs/eval-triton.md): Triton SAXPY 5/5 and softmax 5/5. The external
+\ target is graded outside the tree (Habu Only boundary); its per-sample
+\ verdicts enter the durable matrix as `result` lines - nothing here replays.
+target triton
+task saxpy
+sample tx1
+result green
+sample tx2
+result green
+sample tx3
+result green
+sample tx4
+result green
+sample tx5
+result green
+task softmax
+sample th1
+result green
+sample th2
+result green
+sample th3
+result green
+sample th4
+result green
+sample th5
+result green
