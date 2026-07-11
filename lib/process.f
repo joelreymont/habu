@@ -55,8 +55,7 @@ variable PROC-IN-OFF
 variable PROC-DEADLINE
 variable PROC-RD
 variable PROC-STATUS
-variable PROC-OUTCOME-KIND
-variable PROC-OUTCOME-CODE
+variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (SIGKILL-reaped)
 
 : PROC-WAIT-STATUS-RAW ( pid -- n ) {: pid :}
    pid PID>N wait-status ;
@@ -216,8 +215,7 @@ PROC-REAP-ARM-DEFAULT
    0 >LEN PROC-ERR-LEN !
    0 >OFF PROC-IN-OFF !
    0 PROC-STATUS !
-   PROC-OUTCOME-EXIT PROC-OUTCOME-KIND !
-   0 PROC-OUTCOME-CODE ! ;
+   0 0= 0= PROC-TIMED-OUT ! ;
 
 : PROC-CLOSE-CELL ( ptr fd -- ) {: p:ptr :}
    p @ dup FD>N 0 >= if
@@ -244,8 +242,7 @@ PROC-REAP-ARM-DEFAULT
 : PROC-REAP-CAPTURE ( -- )
    PROC-PID @ dup PID>N 0 >= if
       PROC-WAIT-STATUS dup PROC-STATUS !
-      dup PROC-STATUS>RC PROC-RC !
-      PROC-STATUS>OUTCOME PROC-OUTCOME-PAIR PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
+      PROC-STATUS>RC PROC-RC !
       -1 >PID PROC-PID !
    else
       drop
@@ -261,7 +258,7 @@ PROC-REAP-ARM-DEFAULT
       drop
    then
    PROC-REAP-DISARM
-   OUTCOME:TIMEOUT PROC-OUTCOME-PAIR PROC-OUTCOME-CODE ! PROC-OUTCOME-KIND !
+   0 0= PROC-TIMED-OUT !
    OUTCOME:TIMEOUT PROC-OUTCOME>RC PROC-RC ! ;
 
 : PROC-KILL-CAPTURE ( -- )
@@ -502,8 +499,16 @@ PROC-REAP-ARM-DEFAULT
 : PROC-CAPTURE-RC@ ( -- len len rc )
    PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-RC @ ;
 
+\ The capture outcome is DERIVED, never stored: the machine keeps only the
+\ raw wait status plus the timed-out flag (both one cell), so no (kind code)
+\ pair state exists to drift from the truth.
+: PROC-CAPTURE-OUTCOME ( -- outcome )
+   PROC-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
+   PROC-STATUS @ PROC-STATUS>OUTCOME ;
+
 : PROC-CAPTURE-OUTCOME@ ( -- len len n n )
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-KIND @ PROC-OUTCOME-CODE @ ;
+   PROC-OUT-LEN @ PROC-ERR-LEN @
+   PROC-CAPTURE-OUTCOME PROC-OUTCOME-PAIR ;
 
 : PROC-CAPTURE-FINISH-RC ( -- len len rc )
    PROC-CLOSE-ALL-CAPTURE-FDS

@@ -490,10 +490,12 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    old data-base S0-CELL + !
    rc 0 <> if rc throw then ;
 
+\ Store a synthesized in-process outcome (exited rc) straight into the GT
+\ runner state; the capture machine no longer stores a (kind code) pair to
+\ forge, so the runner copy is the single synthesized-state home.
 : GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
    rc >RC PROC-RC !
-   PROC-OUTCOME-EXIT PROC-OUTCOME-KIND !
-   rc PROC-OUTCOME-CODE ! ;
+   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-EXIT rc GE-STORE-OUTCOME ;
 
 : GE-EVAL-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;
@@ -510,9 +512,7 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
    rc ;
 
 : GE-EVAL-CAPTURE ( -- )
-   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION {: rc:n :}
-   rc GE-EVAL-STORE-RC
-   PROC-CAPTURE-OUTCOME@ GE-STORE-OUTCOME ;
+   [: GE-EVAL-SOURCE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC ;
 
 : GE-EVAL-FORK-EXIT ( n -- )
    s" " rot die ;

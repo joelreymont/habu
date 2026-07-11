@@ -1182,7 +1182,10 @@ normal exits, `128 + signal` for signal deaths and timeouts; `PROC-STATUS>RC`
 and `PROC-WAIT-RC` use it. The wide `-OUTCOME` capture API still returns the
 legacy `kind code` int pair (`PROC-OUTCOME-EXIT/SIGNAL/TIMEOUT` plus code);
 `PROC-OUTCOME-PAIR` is the one documented sum-to-pair boundary until that
-surface migrates.
+surface migrates. The capture machine stores no pair state: it keeps only the
+raw wait status plus a timed-out flag, and `PROC-CAPTURE-OUTCOME ( -- outcome )`
+derives the sum on demand (`PROC-CAPTURE-OUTCOME@` is that derivation flattened
+through `PROC-OUTCOME-PAIR`).
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed

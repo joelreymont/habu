@@ -324,7 +324,27 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
+   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T=
+   PROC-CAPTURE-OUTCOME MATCH outcome                    \ derived sum agrees with the pair
+     exited OF drop 1 0 T= ENDOF
+     signaled OF drop 1 0 T= ENDOF
+     timeout OF 0 0= TTRUE ENDOF
+   ;MATCH ;
+
+\ Signal-death capture: the reap path derives (SIGNAL, sig) from the raw wait
+\ status alone -- no stored pair. Both the legacy pair view and the sum getter
+\ must agree.
+: TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
+   PROC-ARGV-RESET
+   s" -c" >LEN PROC-ARGV+
+   s" kill -KILL $$" >LEN PROC-ARGV+
+   s" /bin/sh" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-HB-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
+   PT-OUTCOME>N SIGKILL T= PROC-OUTCOME-SIGNAL T= 0 T= 0 T=
+   PROC-CAPTURE-OUTCOME MATCH outcome
+     exited OF drop 1 0 T= ENDOF
+     signaled OF SIGKILL T= ENDOF
+     timeout OF 1 0 T= ENDOF
+   ;MATCH ;
 
 \ Regression for habu-concurrent-multi-workspace-5341c7f4: budgets scale with
 \ measured load (never shrink: min 100%), and detection stays BOUNDED - with
@@ -411,6 +431,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-ARGV-CAPTURE-FALSE
    TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT
+   TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL
    TEST-BUDGET-HUNG-BOUNDED
    TEST-RUN-ARGV-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
