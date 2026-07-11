@@ -354,25 +354,35 @@ variable TDV-NA    variable TDV-NU
 \ after the arity (sum/product) or the name (enum), before the first VARIANT /
 \ FIELD. A missing clause leaves the TFAM-DECL default (TL-STACK-CELL-TAG, the
 \ universal M-payload + tag stack representation, docs §22.1). `stack-cell-tag`
-\ is the only policy v1 lowers; `packed-tag`/`niche-null`/`boxed` are recognised
-\ but reject as not-yet-supported until their per-policy lowering ships (PLAN
-\ item 16 risk: physical-layout policies must not be exposed before codegen
-\ supports them), and each becomes its own follow-on slice. Any other token
-\ (including the v1 non-goal `custom`, which the LAY-* registry tolerates but the
-\ grammar must not) is an unknown policy. A DIRECT self-family payload reference
-\ is recursive and rejects at TDECL-PAY-ELEM with the docs §24 recursive-sum
-\ diagnostic (E-TDECL-RECURSIVE, boxed sub-slice 1 below); boxed — the only layout
-\ that admits recursion — will later route its self-references to a pointer layout.
+\ and `packed-tag` are accepted: packed keeps the STACK representation identical
+\ to the default (docs §4/§22.2) and only bakes a memory ABI descriptor into the
+\ LAY registry at declaration close (TDECL-LAYOUT-DESC, once the variant/field
+\ counts exist). `niche-null`/`boxed` are recognised but reject as
+\ not-yet-supported until their per-policy lowering ships (PLAN item 16 risk:
+\ physical-layout policies must not be exposed before codegen supports them),
+\ and each becomes its own follow-on slice. Any other token (including the v1
+\ non-goal `custom`, which the LAY-* registry tolerates but the grammar must
+\ not) is an unknown policy. A DIRECT self-family payload reference is recursive
+\ and rejects at TDECL-PAY-ELEM with the docs §24 recursive-sum diagnostic
+\ (E-TDECL-RECURSIVE, boxed sub-slice 1 below); boxed — the only layout that
+\ admits recursion — will later route its self-references to a pointer layout.
 : TDECL-POLICY-DEFERRED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" packed-tag" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" niche-null" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" boxed" CORE-STR=CI ;
 : TDECL-POLICY-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}   \ map a policy-name token onto the fresh family
    a u s" stack-cell-tag" CORE-STR=CI IF fam TL-STACK-CELL-TAG TFAM-LAYOUT! EXIT THEN
+   a u s" packed-tag" CORE-STR=CI IF fam TL-PACKED-TAG TFAM-LAYOUT! EXIT THEN
    a u TDECL-POLICY-DEFERRED? IF
       a u s" layout policy not yet supported" E-TDECL-POLICY TDECL-THROW
    THEN
    a u s" unknown layout policy" E-TDECL-POLICY TDECL-THROW ;
+\ Bake the packed memory descriptor at declaration close, when the variant /
+\ field counts that PACKED-DESC reads are final. stack-cell-tag families bake
+\ no LAY row (nothing consumes one). Runs inside TDECL-RUN's transaction, so a
+\ later close-stage reject rolls LAY-N back with the family row.
+: TDECL-LAYOUT-DESC ( n -- ) {: fam:n :}
+   fam TFAM-LAYOUT-POLICY@ TL-PACKED-TAG = 0= IF EXIT THEN
+   fam TL-PACKED-TAG fam PACKED-DESC LAY-ADD drop ;
 : TDECL-POLICY ( n -- ) {: fam:n :}   \ consume an optional POLICY clause off the body cursor
    TDECL-NEXT {: a:ptr u:n :}
    a u s" policy" CORE-STR=CI 0= IF a u PK! EXIT THEN     \ no clause: push the token back for the body loop
@@ -484,6 +494,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
    fam vstart TDV-N @ TDECL-DERIVE-REQUIRE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
+   fam TDECL-LAYOUT-DESC
    fam vstart TDV-N @ TDECL-CTOR-PUBLISH
    fam TDECL-FAM-REG ! ;
 
@@ -527,6 +538,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
    fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!             \ TDV-MAX stays 0: enum = tag only
+   fam TDECL-LAYOUT-DESC
    fam vstart TDV-N @ TDECL-CTOR-PUBLISH
    fam TDECL-FAM-REG ! ;
 
@@ -649,6 +661,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
    TDP-N @ 0= IF TDN-A @ TDN-U @ s" empty product" E-TDECL-SYNTAX TDECL-THROW THEN
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
+   fam TDECL-LAYOUT-DESC
    fam rstart TDECL-PRODUCT-ROWS
    fam  fam TFAM-VAR-START@  1 TDECL-DERIVE-REQUIRE   \ field roles: the make row's schema
    fam TDECL-FAM-REG ! ;

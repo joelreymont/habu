@@ -346,3 +346,24 @@ TDECL-PAY-ELEM + adds a §24 reject, not the packet shape or render.f). render.f
 touched only at the later niche/boxed logical-type RENDERING sub-slice — flag to
 sequence that after the item lane's render.f work lands. TFAM-WIDTH@ lives in
 type-family.f, which the item lane does not touch.
+
+## PACKED-TAG SUB-SLICE 2 — LANDED (accept-flip)
+
+`POLICY packed-tag` ACCEPTS on sum/enum/product: TDECL-POLICY-SET maps it to
+TFAM-LAYOUT! TL-PACKED-TAG (dropped from TDECL-POLICY-DEFERRED?), and the new
+TDECL-LAYOUT-DESC bakes PACKED-DESC -> LAY-ADD at each declaration CLOSE (after
+TFAM-SLOTS!, when the counts PACKED-DESC reads are final; inside TDECL-RUN's
+transaction so late rejects roll LAY-N back). stack-cell-tag families bake no
+LAY row. Stack representation identical to the default by construction — pinned
+differentially in test/type-family-suite.f (packed vs stack twin: same
+TFAM-WIDTH@, same construct->dup->MATCH->nip round trip) plus LAY descriptor
+value checks (sum 16/8/1, enum 1/1/1, product 16/8/0) and stack-twin-bakes-no-
+row. type-decl-suite: packed accepts on all three headers + policy readback;
+niche-null/boxed rejects unchanged. Docs §22.0/§22.2 staging notes flipped.
+Red-first: fixtures failed with 'layout policy not yet supported at packed-tag'
+(7116) on the pre-flip engine. Byte-fixpoint x2 stable (fd261032c57147a7).
+NOTE for maki: the descriptor is now REACHABLE from declarations — the §22.2
+ABI conventions are live; their buffer store/fetch capability consumes them.
+
+REMAINING: niche-null, boxed (+ recursive-sum reject), optional mixed
+narrow-width payload tier (payload-offsets LAY field).

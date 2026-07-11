@@ -913,9 +913,10 @@ s" TYPEFAMILY product 1" E-TDECL-NAME TDT-NEG
 \ ---------------------------------------------------------------------------
 \ item 16: layout-policy header clause (`POLICY <name>`, docs §22/§24). A missing
 \ clause keeps the TFAM-DECL default (stack-cell-tag, docs §22.1); explicit
-\ stack-cell-tag accepts on sum/enum/product; packed-tag/niche-null/boxed are
-\ recognised but reject as not-yet-supported until their per-policy lowering
-\ ships (grammar-gated); any other token — including the v1 non-goal `custom`
+\ stack-cell-tag and packed-tag accept on sum/enum/product (packed bakes only a
+\ memory ABI descriptor at close - stack shape identical, pinned in
+\ test/type-family-suite.f); niche-null/boxed are recognised but reject as
+\ not-yet-supported until their per-policy lowering ships (grammar-gated); any other token — including the v1 non-goal `custom`
 \ the LAY-* registry tolerates but the grammar must not expose — is an unknown
 \ policy; POLICY is a reserved name. Every reject rolls back to baseline (TDT-NEG
 \ asserts TDT-BASE=). The recursive-sum reject (docs §24) lands with boxed.
@@ -936,6 +937,13 @@ SUMTYPE tdpol 1 POLICY stack-cell-tag
 ;SUMTYPE
 ENUM tdpolen POLICY stack-cell-tag red green blue ;ENUM
 PRODUCT tdpolpr 0 POLICY stack-cell-tag FIELD x n FIELD y n ;PRODUCT
+\ packed-tag accepts on every header (descriptor coverage: type-family-suite).
+SUMTYPE tdpolpk 1 POLICY packed-tag
+  VARIANT none   ;VARIANT
+  VARIANT some a ;VARIANT
+;SUMTYPE
+ENUM tdpolpke POLICY packed-tag red green ;ENUM
+PRODUCT tdpolpkr 0 POLICY packed-tag FIELD x n ;PRODUCT
 \ missing clause still defaults to stack-cell-tag.
 SUMTYPE tdpoldef 1
   VARIANT none   ;VARIANT
@@ -957,12 +965,21 @@ TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
 s" tpol" s" tdpoldef" TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
+\ packed-tag readback on every header kind (descriptor values: type-family-suite).
+s" tpol" s" tdpolpk" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+s" tpol" s" tdpolpke" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+s" tpol" s" tdpolpkr" TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
 \ not-yet-supported policies reject on every header (grammar-gated until lowering).
-s" SUMTYPE tdpolns1 1 POLICY packed-tag VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolns2 1 POLICY niche-null VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolns3 1 POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" ENUM tdpolns4 POLICY boxed red green ;ENUM" E-TDECL-POLICY TDT-NEG
-s" PRODUCT tdpolns5 0 POLICY packed-tag FIELD x n ;PRODUCT" E-TDECL-POLICY TDT-NEG
+s" PRODUCT tdpolns5 0 POLICY niche-null FIELD x n ;PRODUCT" E-TDECL-POLICY TDT-NEG
 \ unknown policy names reject (incl. the v1 non-goal `custom`).
 s" SUMTYPE tdpolun1 1 POLICY bogus VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 s" SUMTYPE tdpolun2 1 POLICY custom VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
@@ -1030,7 +1047,7 @@ DIAG-BUFFER$ s" duplicate variant" TDT-CONTAINS? -1 T=
 \ item 16: a policy reject flows into the same declaration-shaped prose packet —
 \ it rides the standard TDECL-THROW path, so it needs no repair-diagnostics (item
 \ 13) change; the richer JSON ADT fields join it unchanged when item 13 lands.
-s" SUMTYPE tdpolpk 1 POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
+s" SUMTYPE tdpoldg 1 POLICY boxed VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 
 DIAG-BUFFER$ s" bad sumtype declaration" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s" layout policy not yet supported" TDT-CONTAINS? -1 T=
