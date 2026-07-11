@@ -1351,7 +1351,213 @@ v2-retire-v1
 Dependencies and exact acceptance commands belong in each dot. Each
 implementation dot owns one significant verified change and one commit.
 
-## 22. Risks
+## 22. Competitive Execution Program
+
+Model CAD V2 does not claim universal superiority over Triton, PyTorch,
+Inductor, cuBLAS, or cuDNN. It wins only when a fixed workload, device,
+numeric policy, and measurement protocol prove one or more of:
+
+- lower end-to-end latency;
+- higher throughput at equal output quality;
+- fewer global-memory bytes or launches;
+- lower peak device memory or energy;
+- lower clean or incremental compilation latency;
+- earlier rejection with a more actionable diagnostic;
+- deterministic, reusable compilation and tuning evidence.
+
+Single-kernel bandwidth parity is a floor, not the objective. The primary
+performance target is a repeated multi-operation region where graph-level
+fusion, memory planning, persistent tuning, and launch amortization can beat a
+piecewise incumbent execution while preserving independently checked numeric
+quality. Vendor libraries remain legal candidates: the planner chooses among a
+library call, a custom kernel, and a fused region rather than forcing custom
+code when the library is faster.
+
+### 22.1 Competitive baseline and claim discipline
+
+Every performance claim records:
+
+- exact model or region revision;
+- input shapes, dynamic bounds, dtype, layout, sparsity, and numeric policy;
+- target identity, clocks/power mode, software versions, and compiler digests;
+- cold compile, warm compile, first-run, and steady-state measurements;
+- candidate count, tuning time, cache state, and selected schedule;
+- latency distribution, throughput, bytes, launches, peak memory, and energy
+  where available;
+- host and device correctness evidence against an independent reference;
+- equivalent Triton-autotuned, `torch.compile`/Inductor, and vendor-library
+  baselines when each applies.
+
+No result may mix arithmetic domains silently. FP32 FMA, TF32 tensor-core,
+FP16/BF16 accumulation, and quantized results are separate comparison rows
+unless an explicit approximation policy licenses the conversion. The report
+distinguishes parity, workload-local win, and broad coverage; one workload can
+never support a universal claim.
+
+### 22.2 Compute backend parity
+
+Required before a compute-bound competitive claim:
+
+1. Typed `mma.sync` families for sm_87 tensor-core shapes and accumulator
+   domains.
+2. Checked `cp.async` staging with pipeline-depth, barrier, and shared-memory
+   lifetime legality.
+3. Vectorized global and shared-memory transfers with alignment evidence.
+4. Bank-conflict-aware shared layouts and coalescing verification.
+5. Register-pressure, occupancy, shared-memory, and launch-bound estimates
+   validated against device measurements.
+6. Schedule-controlled BK, warps, stages, grouping, micro-tiles, and persistent
+   variants with no lowering defaults.
+7. Shape-keyed persistent autotuning whose complete measurement history is
+   replayable across processes.
+
+Exit: GEMM and attention families cover representative small, medium, and large
+shapes; the selected kernel is correct under its declared numeric policy; the
+report explains every rejected schedule; end-to-end fused regions are compared
+against Triton, Inductor, and vendor libraries on the same device session.
+
+### 22.3 Asynchronous execution runtime
+
+The runtime must model streams, events, dependencies, and allocations as typed
+resources rather than hidden driver state. Deliver:
+
+- stream and event ownership with deterministic cleanup;
+- an async dependency DAG covering kernels, copies, memset, and host fences;
+- stream-ordered allocation, lifetime-based buffer reuse, and a zero-allocation
+  steady state;
+- overlap planning for host/device copies and independent compute;
+- CUDA Graph definition, instantiation, update, and replay;
+- graph-key invalidation on executable, shape-bound, address, or target changes;
+- launch-amortization choices between ordinary streams, graph replay, and a
+  persistent region queue.
+
+Exit: a repeated multi-kernel region performs no steady-state allocation,
+replays deterministically, preserves dependency ordering under stress, and
+beats the equivalent per-launch path where launch overhead is material.
+
+### 22.4 End-to-end fusion targets
+
+The first competitive workloads are region-level compositions where Model CAD
+can remove work rather than merely emit the same kernel faster:
+
+- GEMM + bias + activation;
+- attention score + mask + softmax + value projection;
+- residual + RMSNorm;
+- quantize/dequantize and layout-conversion chains;
+- forward + backward + optimizer regions.
+
+Each target owns unfused, hand-fused Triton, Inductor, vendor-library, and Model
+CAD rows where representable. Acceptance requires equal licensed accuracy,
+strictly fewer bytes or launches than the unfused graph, and a measured
+end-to-end win for at least one flagship shape distribution.
+
+### 22.5 Dynamic-shape multiversioning
+
+Existential shape refinement supplies runtime type identity; the execution
+program adds:
+
+- symbolic dimension intervals, divisibility, equality, and ordering guards;
+- guarded fast paths and a correct generic plan;
+- bounded specialization and code-size budgets;
+- artifact selection by shape region rather than exact shape only;
+- profiling-guided widening or splitting of regions;
+- explicit recompile and cache-miss diagnostics;
+- data-dependent-shape policy, including operations that remain unsupported.
+
+Exit: variable batch and sequence lengths reuse bounded artifacts without
+uncontrolled recompilation; guard failure selects a valid alternate artifact or
+returns a typed not-supported result; independent shape opens never alias.
+
+### 22.6 Numeric domains, mixed precision, and quantization
+
+Precision is part of the plan and artifact key. Implement exact FP32, TF32,
+FP16, BF16, INT8, INT4/weight-only, and accumulator-domain schemas as target
+support permits. A conversion or approximate rewrite requires evidence in one
+of the exact, ULP, relative-error, or empirically licensed domains. Quantized
+plans record scale/zero-point ownership, calibration provenance, saturation,
+rounding, packing, and dequantization placement.
+
+Exit: an approximate candidate cannot satisfy an exact policy; composed error
+bounds are deterministic; every empirical license names its independent
+golden dataset; tuning may optimize precision only within the requested policy.
+
+### 22.7 Training completeness
+
+To compete with PyTorch rather than only Triton, V2 must provide:
+
+- tensor-level forward and reverse rules for the flagship operator set;
+- generated backward regions using the same rewrite/plan/kernel pipeline;
+- save/recompute selection with memory and latency evidence;
+- fused optimizer steps, gradient accumulation, and mixed-precision scaling;
+- deterministic checkpoint and resume;
+- seeded convergence and gradient-parity gates;
+- a later distributed phase covering collective effects, sharding, DDP-style
+  execution, and topology-aware checkpointing.
+
+Exit: the temporal-training flagship matches the independent reference per-step
+gradients and convergence tolerance, then shows a fused profiled training step.
+Distributed work is not required for the first Orin claim but is required for
+general PyTorch-framework parity.
+
+### 22.8 Deployment and ecosystem boundary
+
+Deliver reliable ONNX import, stable AOT packages, versioned runtime ABI,
+external tensor/DLPack interoperability, weight loading, promotion-time weight
+layout transforms, schema migrations, and artifact compatibility predicates.
+The compiler/runtime remains Habu-native; foreign-language bindings are thin
+invocation boundaries, never semantic compiler owners.
+
+Exit: a promoted artifact starts without compilation or tuning, rejects an
+incompatible target or schema with a typed diagnostic, and consumes/produces
+external tensors without copies when ownership and layout permit.
+
+### 22.9 Compile-time and usability advantage
+
+The competitive loop must be faster to operate, not only faster to execute:
+
+- sub-second incremental edit-to-report for bounded edits;
+- dependency-cone recomputation and persistent package/kernel/tuning caches;
+- zero duplicate parse/check/lower work within one transaction;
+- located legality, resource, and numeric diagnostics;
+- schedule explanations and ranked counterfactual next moves;
+- source-to-Model/Plan/Kernel/PTX/device-profile provenance;
+- deterministic replay of every compiler, search, and promotion decision.
+
+Budgets are ratchets in the evidence store. A change that regresses a hot gate,
+compile phase, cache-hit path, or report latency fails unless an explicit policy
+change updates the budget with evidence.
+
+### 22.10 Non-cherry-picked evaluation matrix
+
+The standing matrix covers:
+
+- Triton autotuned kernels, `torch.compile`/Inductor, and cuBLAS/cuDNN where
+  applicable;
+- cold/warm compilation and cold/warm artifact caches;
+- static and dynamic shape distributions;
+- inference and training;
+- memory-bound, compute-bound, launch-bound, and capacity-bound regions;
+- latency percentiles, throughput, peak memory, energy, compile time, tuning
+  time, correctness, and numerical quality;
+- success, fail-closed rejection, and diagnostic-guided repair.
+
+The flagship is a fused transformer or temporal-model block. SAXPY remains a
+bandwidth-floor regression, never the headline.
+
+### 22.11 Delivery order
+
+1. Tensor-core and async-pipeline backend.
+2. Autotuning plus validated resource model.
+3. Async graph runtime and stream-ordered allocator.
+4. Fused end-to-end transformer/temporal block.
+5. Dynamic-shape multiversioning.
+6. Mixed precision and quantization.
+7. Training/autograd completeness.
+8. AOT packaging and interoperability.
+9. Proof-producing equality saturation, solver evidence, target generics, and
+   proof-carrying imports after the execution substrate is competitive.
+
+## 23. Risks
 
 ### Type-System Scope Explosion
 
@@ -1396,7 +1602,7 @@ negative facts, and explicit budgets.
 Control: typed not-run evidence names the cause; policy decides whether it
 blocks; device-required policies cannot be satisfied off-device.
 
-## 23. Flagship Acceptance
+## 24. Flagship Acceptance
 
 ### LocateAnything-Derived Inference
 
@@ -1431,7 +1637,7 @@ blocks; device-required policies cannot be satisfied off-device.
 - replay determinism across restarts;
 - candidate rejection stage and repair quality.
 
-## 24. Definition Of Done
+## 25. Definition Of Done
 
 1. Multiple immutable revisions coexist and share nodes.
 2. Every IR level is typed, encoded, hashed, and independently verified.
@@ -1449,4 +1655,8 @@ blocks; device-required policies cannot be satisfied off-device.
 13. Native fixpoint, bootstrap, Maki, PTX, lints, cold/hot gates, and device gates
     pass on the exact merge tree.
 14. Edit-to-report, compilation, and gate performance meet ratcheted V2 budgets.
-
+15. Compute-bound kernels use checked tensor-core/async pipelines where selected.
+16. Repeated regions have a typed async plan and zero-allocation steady state.
+17. Dynamic-shape distributions reuse bounded guarded artifacts.
+18. Numeric-policy and quantization evidence are part of every approximate key.
+19. Competitive claims come from the standing external-baseline matrix.
