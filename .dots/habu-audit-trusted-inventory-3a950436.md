@@ -151,3 +151,50 @@ REASSIGNED (commit B):
 
 Placeholder remainder: test-metaprog only (~95 named rows + the set-check
 residuals) — increment 4.
+
+## Increment 2026-07-11e (test-metaprog cluster resolved — DONE-CRITERION MET)
+
+Wave E-1 verdicts (commit A): TASK-NULL DISCHARGED (lib/task.f:107, body
+`NULL$ drop` — the out-var pointee binds; probed `( ptr u8 n -- ptr a ) drop`
+certifies; trust surface 493 -> 492). NOT dischargeable, with probes: BP-NULL
+and NULL$ (a null-literal mint `( -- ptr u8 ) 0` still rejects, rc=70);
+ENV-FALSE (trivially-checked body but env-base.f loads in the unchecked boot
+phase — the TRUST republication is structural until staged checked boot);
+c-defer-find-unset/c-defer-cell (contested habu2.f, inside the held fold).
+
+test-metaprog reassignments (commit B, 113 rows, per-site evidence):
+- tools/asm-src-test.f (12) + tools/image-bytes-test.f (22) -> builder-trust
+  c5d41af6: republications of the asm-encoder / image-bytes surfaces; they
+  convert in the same batch as their production emitters.
+- test/gate-common-lib.f (6: UEND/USIGS-RESTORE-END/UTERM!/JSON-DIAGS/
+  GE-EVAL-SOURCE[-ACT]), test/checker-assert.f:CHECK-QUIET-CANDIDATE!,
+  maki/eval.f:CHECK-PASSES?, maki/cad.f:CAP-COMPILE-RUN (no reentrancy dot
+  exists; nested-evaluate/check-entry family), tools/codegen-role.f
+  CGR-EVALUATE + CGR-CHECK!, prop-test MARK/FORGET/SMARK/SFORGET/CHK-MARK/
+  CHK-FORGET/CHK-HOOK/CHK-COMPILE-CERT/CHK -> prim-axiom 1119f176: engine
+  check/evaluate entrypoints and dictionary/USIG high-water surgery, the same
+  class as the check-core CHECKER-* rows already there.
+- prop-test PROP-INSTALL-HOOK, codegen-role CGR-EVALUATE-UNCHECKED,
+  engine-suite T-RDF (x2, the audited TRUST-override-path pin) and its
+  `set-check` hook row -> police-set-check 850bc543 (hook installs and
+  set-check machinery, the dot's own audited-hook mandate).
+- prop-test CLEAR-MEAS/ERR@/RUN-MEAS/REND-SIG$/CONFIRM-FR? and
+  lib/test/assert.f:TTHROWS-RAW -> typed-depth-introspection 18f0efda ("prop-
+  test depth checks and assert-layer helpers" is its mandate verbatim).
+- engine-suite: ES-PATCH32 -> capability-gate 14022ba9 (documented
+  owner-of-record); T-PTX-*/T-MK-SPAN*/T-PTX-SAME-EXTENT (8) ->
+  phantom-preserving 3df9db92; T-ASM-CODE/T-BUILD-*/T-CODESIG2/T-SNAP-EXTRA-*/
+  T-LINUX-*/T-SPAWN-* (10) -> builder-trust c5d41af6; the checker-model
+  fixtures (T-GIVE/NEED widening, T-*NODE nominal, T-MAKE/FREE-OWN linear,
+  package/role tokens a:b:/x:/::x/tq:tail, T-CHECK-PASSES, P5 immediate/
+  postpone, T-V14 etc., 27) -> prim-axiom 1119f176 (hand-asserted
+  checker-model fixture effects, the AX-* difftest genus).
+- The two 0-set-check residual file rows (engine-suite, codegen-role) ->
+  seal-set-check b3676b33 (the prop-test-core precedent for test 0-set-check
+  boundaries).
+
+DONE-CRITERION MET: no classification row's owner is this dot (0 rows).
+Remaining riders live elsewhere: the habu2.f fold (under c5d41af6) and the
+test/type-layout-lower-pending.f fold (under 1d70acf7) split to file:name
+rows when the wide-ADT stack merges, lowering fold-baseline 2 -> 0 in the
+same change.
