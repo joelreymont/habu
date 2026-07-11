@@ -38,6 +38,8 @@ require tools/check-all-errors-core.f
 require tools/argv.f
 require tools/check-core.f
 
+7121 constant CKT-LBUF-RC
+
 $4000 constant CKT-BUF-CAP
 
 create CKT-ROOT FS-PATH-CAP allot
@@ -437,6 +439,16 @@ variable CKT-PAR-U
 
 : CKT-TEST-GOOD ( -- )
    [: CKT-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
+
+: CKT-LBUF-GOOD$ ( -- ptr u8 n )
+   s" SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 LAYOUT-BUFFER CKLB-BUF cklb<n>" ;
+
+: CKT-LBUF-OLD$ ( -- ptr u8 n )
+   s" LAYOUT-BUFFER CKLB-OLD cklb<n>" ;
+
+: CKT-TEST-LAYOUT-BUFFER ( -- )
+   [: CKT-LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
+   [: CKT-LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch CKT-LBUF-RC T= ;
 
 : CKT-TEST-FILE-LABEL ( -- )
    CKT-BAD$SRC CKT-CORE-JSON 70 T=
@@ -871,7 +883,7 @@ variable CKTP-DOC-U
 : CKT-TEST-PRELUDE-HOOK ( -- )
    CKTP-PRELUDE {: pa:ptr pu:n :}
    pa pu CKTP-SHAPE-OK? TTRUE
-   pa pu s" CHECK! HOOK-REPORT-UNCHECKABLE dup -1 <> IF 70 throw THEN ;" CONTAINS? TTRUE
+   pa pu s" LOWER-CERT-HOOK:HOOK ;" CONTAINS? TTRUE
    pa pu s" 0 set-check" CONTAINS? TTRUE
    pa pu CKTP-DOCTORED$ CKTP-SHAPE-OK? TFALSE
    pa 0 CKTP-SHAPE-OK? TFALSE ;
@@ -887,6 +899,7 @@ variable CKTP-DOC-U
    T-RESET
    CKT-PREPARE
    s" check/good" [: CKT-TEST-GOOD ;] CKT-RUN
+   s" check/layout-buffer" [: CKT-TEST-LAYOUT-BUFFER ;] CKT-RUN
    s" check/file-label" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
    s" check/usage-direct" [: CKT-TEST-USAGE ;] CKT-RUN
    s" check/die" [: CKT-TEST-DIE ;] CKT-RUN

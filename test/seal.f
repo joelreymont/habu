@@ -170,7 +170,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 : SLV-MMAP-FORGE$ ( -- ptr u8 n )           \ mmap addr (x0) into the band (MAP_FIXED-class remap guard)
    SB-RESET
    s" $28 constant SLF-CUR" SB-APPEND SLV-LF
-   s" data-base SLF-CUR + $1000 3 $1002 -1 0 mmap drop" SB-APPEND SLV-LF
+   s" data-base SLF-CUR + $1000 3 $1012 -1 0 mmap drop" SB-APPEND SLV-LF
    SB$ ;
 
 : SLV-HOLE-FORGE$ ( -- ptr u8 n )           \ ! into a free hole below the band ($1A0)
@@ -281,11 +281,10 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" data-base SLF-UNCGH + 0 swap !" SB-APPEND SLV-LF
    SB$ ;
 
-\ Code-emit sinks (habu-range-reject-cp-e2eed7e4): cp! sets the JIT code pointer;
-\ a post-seal cp! that redirects emission into either protected band must trap
-\ E-SEAL-VIOLATION AT THE SINK, not silently corrupt the band nor die via the
-\ incidental word-creation bounds check. One forge per band proves cp!'s own guard
-\ wiring. ndict! (the paired FORGET count sink) writes records into the disjoint
+\ Code-emit capability: cp! may select only an aligned instruction in the full
+\ DBASE code interval. A DATA address must trap at cp! itself, before any delayed
+\ emission can cross a protected band. One forge per band proves the independent
+\ code-region guard. ndict! (the paired FORGET count sink) writes records into the disjoint
 \ dict-record region (DBASE, not data-base), bounded < DICT-CAP by the room check,
 \ so it cannot land in a data-base band; the legit round-trip forge below proves
 \ its guard leaves normal FORGET intact.
@@ -306,21 +305,23 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ FFI seal guard (TFAM 2b-iii, cat 5 FFI-writer): a sealed-band pointer packed as a
 \ LIVE integer/pointer FFI arg must trap E-SEAL-VIOLATION at the trampoline BEFORE
 \ the foreign call, else the callee writes through it and tampers a sealed cell.
-\ Routed via the checked lib/ffi-abi.f FFI-PTR-ARG!/FFI-CALLN, which lowers to the
-\ guarded ffi-call-n; fn=0 so the guard must fire first (an unguarded BLR to 0
+\ Routed via the checked FFI package with an explicit writable extent; fn=0 so
+\ the whole-span guard must fire first (an unguarded BLR to 0
 \ signals/crashes, a distinct outcome from EXIT 83). One forge per protected band.
-: SLV-FFI-B1-FORGE$ ( -- ptr u8 n )         \ band-1 crown jewel ($28) pointer as arg[0]
+: SLV-FFI-B1-FORGE$ ( -- ptr u8 n )         \ 16-byte write crosses band-1 lower edge
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
-   s" data-base $28 + 0 FFI-PTR-ARG!" SB-APPEND SLV-LF
-   s" 1 0 FFI-CALLN drop" SB-APPEND SLV-LF
+   s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 SLF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
+   s" data-base $18 + SLF-WRITE drop" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-FFI-B2-FORGE$ ( -- ptr u8 n )         \ band-2 registry ($3CB8) pointer as arg[0]
+: SLV-FFI-B2-FORGE$ ( -- ptr u8 n )         \ 16-byte write crosses band-2 lower edge
    SB-RESET
-   s" require lib/ffi-abi.f" SB-APPEND SLV-LF
-   s" data-base $3CB8 + 0 FFI-PTR-ARG!" SB-APPEND SLV-LF
-   s" 1 0 FFI-CALLN drop" SB-APPEND SLV-LF
+   s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
+   s" TRUSTED: SLF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 SLF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
+   s" data-base $3CB8 + SLF-WRITE drop" SB-APPEND SLV-LF
    SB$ ;
 
 \ Post-seal language exercise: define words, a package + qualified word, a

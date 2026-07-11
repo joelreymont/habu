@@ -630,6 +630,49 @@ variable PF-N   0 PF-N !
    sch r PF.SCH !   slot r PF.SLOT !
    id ;
 
+\ Concrete schema linearity. Family arguments are checker terms and are
+\ accounted by LAYOUT-MAYBE-LINEAR? / LAYOUT-LINEAR-COUNT; this metadata walk
+\ accounts the other ownership source: concrete linear nodes embedded in sum
+\ variants or product fields. Pointer and quotation nodes are non-owning
+\ boundaries. An application recursively checks both its concrete arguments
+\ and the referenced family's schemas, so nested field families cannot launder
+\ a linear value. The declaration graph is acyclic outside pointer boundaries.
+variable TFCL-NODE-XT
+
+: TFAM-CONCRETE-LINEAR? ( n -- bool ) {: fam:n :}
+   fam TFAM-PRODUCT? IF
+      0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
+         fam TFAM-FLD-START@ over + PF-SCH@ SCHEMA-ROOT@ TFCL-NODE-XT @ execute IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      RES-FALSE EXIT
+   THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF
+      0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+         fam TFAM-VAR-START@ over + {: vid:n :}
+         0 BEGIN dup vid SUMV-SCH-COUNT@ < WHILE
+            vid SUMV-SCH-START@ over + SCHEMA-ROOT@ TFCL-NODE-XT @ execute IF 2drop RES-TRUE EXIT THEN
+            1 +
+         REPEAT drop
+         1 +
+      REPEAT drop
+   THEN
+   RES-FALSE ;
+
+: TFCL-NODE? ( n -- bool ) {: node:n :}
+   node SCHEMA-CON? IF node SCHEMA-A@ CT-LINEAR? EXIT THEN
+   node SCHEMA-APP? IF
+      0 BEGIN dup node SCHEMA-C@ < WHILE
+         node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE IF drop RES-TRUE EXIT THEN
+         1 +
+      REPEAT drop
+      node SCHEMA-A@ TFAM-CONCRETE-LINEAR? EXIT
+   THEN
+   RES-FALSE ;
+
+' TFCL-NODE? TFCL-NODE-XT !
+' TFAM-CONCRETE-LINEAR? TFAM-CON-LIN-XT !
+
 \ ---------------------------------------------------------------------------
 \ logical layout records, one per family that has a resolved physical layout.
 \ ---------------------------------------------------------------------------
@@ -973,6 +1016,15 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
    node SCHEMA-PARAM? IF node SCHEMA-A@ cells TFC-VARS + @ EXIT THEN
    node SCHEMA-CON?   IF node SCHEMA-A@ MK-CON EXIT THEN
    node SCHEMA-PTR?   IF node SCHEMA-A@ RECURSE MK-PTR EXIT THEN
+   node SCHEMA-APP? IF
+      PARAM-SCR-N @ {: base:n :}
+      0 BEGIN dup node SCHEMA-C@ < WHILE
+         node SCHEMA-B@ over + SCHEMA-ROOT@ RECURSE PARAM-SCR+
+         1 +
+      REPEAT drop
+      node SCHEMA-A@ {: fam:n :}
+      base fam TFAM-NAME$ fam MK-PARAM EXIT
+   THEN
    s" tfam: unsupported construct payload schema" 76 die ;
 
 : TFC-PAY-ROW ( n n -- n ) {: vid:n row0:n :}   \ payload terms onto row, decl order

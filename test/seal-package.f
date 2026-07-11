@@ -2,7 +2,7 @@
 \
 \ Proves that once the friend latch is sealed (every user-source entry), the
 \ compiler rejects opening or reopening a reserved system package
-\ (`package TFAM`/`TYPE`/`MATCH`) and rejects a qualified definition into one
+\ (`package TFAM`/`TYPE`/`MATCH`/`LOWER-CERT`) and rejects a qualified definition into one
 \ (`: TFAM:tail ...`), case-insensitively, fail-closed with exit E-SEAL-PACKAGE.
 \ Ordinary (non-reserved) packages and qualified definitions still compile, and a
 \ trailing-colon ordinary name (`PRIM:`-shaped) is never treated as qualified.
@@ -126,6 +126,45 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    S\" s\" ctor-ready\" type cr" SPK-LINE
    s" 0 set-check" SPK-LINE
    s" : SPKW:EVIL ( -- n ) 7 ;" SPK-LINE
+   SB$ ;
+
+: SPK-FFI-REOPEN$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/ffi.f" SPK-LINE
+   s" package FFI" SPK-LINE
+   s" end-package" SPK-LINE
+   SB$ ;
+
+: SPK-FFI-REDIRECT$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/ffi.f" SPK-LINE
+   s" : FFI:EVIL ( -- n ) 0 ;" SPK-LINE
+   SB$ ;
+
+: SPK-CUDA-REOPEN$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/ptx/cuda-driver.f" SPK-LINE
+   s" package CUDA" SPK-LINE
+   s" end-package" SPK-LINE
+   SB$ ;
+
+: SPK-CUDA-REDIRECT$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/ptx/cuda-driver.f" SPK-LINE
+   s" : CUDA:EVIL ( -- n ) 0 ;" SPK-LINE
+   SB$ ;
+
+: SPK-TASK-REOPEN$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SPK-LINE
+   s" package TASK" SPK-LINE
+   s" end-package" SPK-LINE
+   SB$ ;
+
+: SPK-TASK-REDIRECT$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/task.f" SPK-LINE
+   s" : TASK:EVIL ( -- n ) 0 ;" SPK-LINE
    SB$ ;
 
 \ --- tick / bracket-tick / postpone reserved-name forges (TFAM 2b-iii) ---
@@ -258,18 +297,41 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" package Tfam (mixed alias) traps" T-LABEL  s" Tfam"  SPK-PKG-NEG
    s" package TYPE traps" T-LABEL                s" TYPE"  SPK-PKG-NEG
    s" package MATCH traps" T-LABEL               s" MATCH" SPK-PKG-NEG
-   s" package mAtCh (mixed alias) traps" T-LABEL s" mAtCh" SPK-PKG-NEG ;
+   s" package mAtCh (mixed alias) traps" T-LABEL s" mAtCh" SPK-PKG-NEG
+   s" package CHECKER-CERT traps" T-LABEL        s" CHECKER-CERT" SPK-PKG-NEG
+   s" package LOWER-CERT traps" T-LABEL          s" LOWER-CERT" SPK-PKG-NEG
+   s" package LOWER-CERT-HOOK traps" T-LABEL     s" LOWER-CERT-HOOK" SPK-PKG-NEG ;
 
 : SPK-NEGATIVES-QUAL ( -- )
    s" qualified def TFAM:tail traps" T-LABEL     s" TFAM"  SPK-QUAL-NEG
    s" qualified def type:tail traps" T-LABEL     s" type"  SPK-QUAL-NEG
-   s" qualified def MATCH:tail traps" T-LABEL    s" MATCH" SPK-QUAL-NEG ;
+   s" qualified def MATCH:tail traps" T-LABEL    s" MATCH" SPK-QUAL-NEG
+   s" qualified def CHECKER-CERT:tail traps" T-LABEL
+      s" CHECKER-CERT" SPK-QUAL-NEG
+   s" qualified def LOWER-CERT:tail traps" T-LABEL
+      s" LOWER-CERT" SPK-QUAL-NEG
+   s" qualified def LOWER-CERT-HOOK:tail traps" T-LABEL
+      s" LOWER-CERT-HOOK" SPK-QUAL-NEG ;
 
 : SPK-NEGATIVE-CTOR-WID ( -- )
    s" generated constructor WID rejects new tail (--load)" T-LABEL
    SPK-CTOR-WID-FORGE$ SPK-RUN-LOAD SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK
    s" generated constructor WID rejects new tail (stdin)" T-LABEL
    SPK-CTOR-WID-FORGE$ SPK-RUN-STDIN SPK-ASSERT-SEAL SPK-ASSERT-CTOR-MARK ;
+
+: SPK-NEGATIVE-FFI-WIDS ( -- )
+   s" sealed FFI rejects reopen" T-LABEL
+   SPK-FFI-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" sealed FFI rejects redirect" T-LABEL
+   SPK-FFI-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" sealed CUDA rejects reopen" T-LABEL
+   SPK-CUDA-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" sealed CUDA rejects redirect" T-LABEL
+   SPK-CUDA-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" sealed TASK rejects reopen" T-LABEL
+   SPK-TASK-REOPEN$ SPK-RUN-LOAD SPK-ASSERT-SEAL
+   s" sealed TASK rejects redirect" T-LABEL
+   SPK-TASK-REDIRECT$ SPK-RUN-LOAD SPK-ASSERT-SEAL ;
 
 : SPK-POSITIVES ( -- )
    s" non-reserved package still compiles" T-LABEL
@@ -292,7 +354,10 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" ' tfam:tail (lower alias) traps" T-LABEL    s" tfam"  SPK-TICK-NEG
    s" ' Tfam:tail (mixed alias) traps" T-LABEL    s" Tfam"  SPK-TICK-NEG
    s" ' TYPE:tail traps" T-LABEL                  s" TYPE"  SPK-TICK-NEG
-   s" ' MATCH:tail traps" T-LABEL                 s" MATCH" SPK-TICK-NEG ;
+   s" ' MATCH:tail traps" T-LABEL                 s" MATCH" SPK-TICK-NEG
+   s" ' CHECKER-CERT:private traps" T-LABEL       s" CHECKER-CERT" SPK-TICK-NEG
+   s" ' LOWER-CERT:private traps" T-LABEL         s" LOWER-CERT" SPK-TICK-NEG
+   s" ' LOWER-CERT-HOOK:private traps" T-LABEL    s" LOWER-CERT-HOOK" SPK-TICK-NEG ;
 
 : SPK-NEGATIVES-BTICK-POST ( -- )
    s" ['] TFAM:tail traps (--load)" T-LABEL
@@ -324,6 +389,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SPK-NEGATIVES
    SPK-NEGATIVES-QUAL
    SPK-NEGATIVE-CTOR-WID
+   SPK-NEGATIVE-FFI-WIDS
    SPK-NEGATIVES-TICK
    SPK-NEGATIVES-BTICK-POST
    SPK-POSITIVES

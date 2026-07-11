@@ -1,11 +1,11 @@
 \ stale-status-lint-core.f - enforce STATUS.md as the only live self-check count.
-\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/fs.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
+\ Load after tools/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/fs.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/stale-status-lint-core.f provides SS-MAIN; tools/stale-status-lint.f is
 \ the CLI entrypoint.
 
-$30000 constant SS-FILE-CAP
 32 constant SS-NUM-CAP
 
 10 constant SS-LF
@@ -13,13 +13,14 @@ $30000 constant SS-FILE-CAP
 48 constant SS-ZERO
 58 constant SS-COLON
 
-create SS-FILE-BUF SS-FILE-CAP allot
 create SS-NUM-BUF SS-NUM-CAP allot
 create SS-TODAY-BUF DATE-LEN allot
 create SS-PATH-BUF FS-PATH-CAP allot
 create SS-ONE 1 allot
 
 variable SS-BAD
+variable SS-FILE-A
+variable SS-FILE-CAP
 variable SS-NUM-L
 variable SS-LINE-N
 variable SS-FOUND?
@@ -50,6 +51,9 @@ variable SS-ERR-U
 : SS-ROOT-A-FIELD ( -- ptr ptr u8 )
    SS-ROOT-A 0 ptr-field ;
 
+: SS-FILE-A-FIELD ( -- ptr ptr u8 )
+   SS-FILE-A 0 ptr-field ;
+
 : SS-SRC-A-FIELD ( -- ptr ptr u8 )
    SS-SRC-A 0 ptr-field ;
 
@@ -68,6 +72,9 @@ variable SS-ERR-U
 : SS-ROOT-A@ ( -- ptr u8 )
    SS-ROOT-A-FIELD @ ;
 
+: SS-FILE-A@ ( -- ptr u8 )
+   SS-FILE-A-FIELD @ ;
+
 : SS-SRC-A@ ( -- ptr u8 )
    SS-SRC-A-FIELD @ ;
 
@@ -85,6 +92,9 @@ variable SS-ERR-U
 
 : SS-ROOT-A! ( ptr u8 -- )
    SS-ROOT-A-FIELD ! ;
+
+: SS-FILE-A! ( ptr u8 -- )
+   SS-FILE-A-FIELD ! ;
 
 : SS-SRC-A! ( ptr u8 -- )
    SS-SRC-A-FIELD ! ;
@@ -292,8 +302,14 @@ variable SS-ERR-U
       2drop
    THEN ;
 
-: SS-LOAD-FILE ( ptr u8 n -- )
-   SS-FILE-BUF SS-FILE-CAP READ-FILE
+: SS-FILE-ENSURE ( n -- ) {: need:n :}
+   need 0 <= IF 1 ELSE need THEN {: cap:n :}
+   SS-FILE-A@ 0= 0= SS-FILE-CAP @ cap >= and IF exit THEN
+   cap MEM-ALLOC-64K-SPAN SS-FILE-CAP ! SS-FILE-A! ;
+
+: SS-LOAD-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE SS-FILE-ENSURE
+   path pathu SS-FILE-A@ SS-FILE-CAP @ READ-FILE
    SS-SRC-U ! SS-SRC-A! ;
 
 : SS-SET-LINE-END ( -- )

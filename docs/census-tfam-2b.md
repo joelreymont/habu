@@ -279,7 +279,7 @@ one of these is the qualified-definition path that can publish into an arbitrary
 | habu2.f:744 `C-SOURCE-STDIN` | stdin dispatch (tty-probe → repl vs pipe vs file-list) | |
 | habu2.f:722 `C-SOURCE-FAIL-REPL-DONE` / `SRC-REPL` label | interactive REPL | arms AOT-seed cell (730). |
 | habu2.f:756 `C-SOURCE-BAKED` | baked `LSRC` source | non-stdin builds. |
-| habu2.f:356 `LFLAGMATCH` / 144-148 `FLAGTAB-DATA` | flag parser | only `--load` (MODE-LOAD) and `--` (MODE-SEP) exist. |
+| habu2.f `LFLAGMATCH` / `FLAGTAB-DATA` | flag parser | `--load` and `--` are user paths; build-fixpoint additionally owns the verified compiler-only `--build` path. |
 | habu2.f:2277 `LEX0`/`LUN0`, EVALD-CELL | re-entrant `evaluate` | nested evaluate depth; latch must survive nesting and stay sealed. |
 | forth.fs:1400-1517 (C-SOURCE-* mirror), 1480 `C-SOURCE-FAIL-REPL-DONE` | gforth-mirror entry points | same four entries. |
 
@@ -288,8 +288,10 @@ out of the cold-prefix (`LCOLDPFX`/`EMIT-COLD-PREFIX` completion) into the
 appended user buffer — everything after `LCOLDPFX LABEL@ BL,` in
 `C-SOURCE-PIPE`/`-FILE-PREFIX`/`-FAIL-REPL-DONE` is user origin. The engine and
 user source share ONE evaluation buffer, so the latch cannot key on a file
-boundary; it must be flipped by the prefix generator itself (e.g. an appended
-sealing token or a `provided`/`included`-driven flag), then be irreversible.
+boundary; it must be flipped by the prefix generator itself, then be
+irreversible. The exception is `MODE-BUILD`: its statically certified compiler
+prefix enters through `LCOLDPFXB` and contains an explicit `SEAL-FRIEND` before
+the build driver; it is not an application source path.
 
 ---
 
@@ -344,8 +346,8 @@ sealing token or a `provided`/`included`-driven flag), then be irreversible.
 ### Plan-cited sites that do NOT exist as described (discrepancies)
 1. **`--source-list` engine flag does not exist.** The acceptance (273-274, 302,
    335) repeatedly gates "user `--source-list` inputs", but the flag table
-   (`habu2.f:144-148`, `LFLAGMATCH` 356) only defines `--load` (MODE-LOAD) and
-   `--` (MODE-SEP); no `--source-list` anywhere in `src/` or `bootstrap/`. The
+   (`FLAGTAB-DATA`, `LFLAGMATCH`) defines `--load`, compiler-only `--build`, and
+   `--`; no `--source-list` anywhere in `src/` or `bootstrap/`. The
    only "source list" is the `tools/srclist.f` *tool* (which prints the order and
    is itself run via `--load`). The implementer must either add a `--source-list`
    flag (new MODE + FLAGTAB row + `C-SOURCE-*` branch) or the plan must be

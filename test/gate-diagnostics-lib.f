@@ -470,8 +470,8 @@ variable GDX-TRUST-MAN-U
 
 \ F3: patch32 is a TRUSTED-only capability prim (machine-code sink). A CHECKED
 \ definition that calls it must be rejected with the named E-CAP-TRUSTED code and
-\ routed to the trusted_boundary_required repair class; the TRUSTED: wrappers
-\ (lib/ffi-abi.f FFI-PATCH, lib/task.f TASK-PATCH) are the audited certified path.
+\ routed to the trusted_boundary_required repair class; exact private or
+\ test-local TRUSTED: builders are the audited certified path.
 : GDX-CAP-TRUSTED ( -- )
    GE-HB-RESET
    GE-SRC-RESET

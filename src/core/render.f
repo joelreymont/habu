@@ -59,13 +59,36 @@ variable RDIAG-I
    RDIAG-U @ u + RDIAG-CAP @ > IF s" render: diagnostic buffer full" 76 die THEN
    a u RDIAG-COPY
    RDIAG-U @ u + RDIAG-U ! ;
-create SEEN MAXTV cells allot   variable NLET           \ indexed by typevar (PAY)
+create SEEN-BOOT MAXTV-INIT cells allot
+PTR-VARIABLE SEEN-P   SEEN-BOOT SEEN-P !
+variable SEEN-CAP   MAXTV-INIT SEEN-CAP !
+variable NLET                                      \ SEEN is indexed by typevar (PAY)
 64 constant RATOM-CAP
 create RATOM-KEY RATOM-CAP cells allot
 variable RATOM-N
 variable RATOM-I
 
-: SEEN-RESET 0 BEGIN dup cells SEEN + UNBOUND swap ! 1 + dup MAXTV 1 - > UNTIL drop ;
+: SEEN ( -- ptr a )
+   SEEN-P @ ;
+
+: SEEN-ENSURE ( -- )
+   MAXTV {: need:n :}
+   need SEEN-CAP @ <= IF EXIT THEN
+   SEEN-P @ SEEN-CAP @ cells need cells ARENA-BYTES-GROW SEEN-P !
+   need SEEN-CAP ! ;
+
+: SEEN-RESET ( -- )
+   SEEN-ENSURE
+   0 BEGIN dup MAXTV < WHILE
+      UNBOUND over cells SEEN + !
+      1 +
+   REPEAT drop ;
+
+: SEEN-SNAPSHOT-RESET ( -- )
+   SEEN-BOOT SEEN-P !
+   MAXTV-INIT SEEN-CAP ! ;
+
+' SEEN-SNAPSHOT-RESET REG-SCRATCH-SNAP-XT !
 : RATOM-RESET ( -- )
    0 RATOM-N ! ;
 

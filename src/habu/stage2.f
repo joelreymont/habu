@@ -1,5 +1,5 @@
 \ stage2.fs — the FIXPOINT driver: the running standalone (stage1) reads the
-\ compiler's own source from /tmp/stage2-src, compiles it with the ported engine
+\ compiler's own source from HB_TMP/stage2-src, compiles it with the ported engine
 \ builder (EMIT-FORTH), wraps it in the target executable (BUILD-IMAGE), and writes the
 \ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
 \ asserts stage2 is byte-identical to the previous native stage for the same source.
@@ -13,8 +13,10 @@ s" S2-PATH-BUF" s" -- ptr u8" TRUST
    S2-PATH-CAP > IF s" stage2: path exceeds buffer" 74 die THEN ;
 
 : S2-ROOT ( -- ptr u8 n )
+   s" HB_TMP" GETENV dup 0 > IF EXIT THEN
+   drop drop
    SCRIPT-ARGC 0 > IF 0 SCRIPT-ARGV$ EXIT THEN
-   s" HB_TMP" GETENV dup 0= IF drop drop s" /tmp" THEN ;
+   s" /tmp" ;
 
 : S2-PATH ( ptr u8 n -- ptr u8 n ) {: a u :}
    S2-ROOT {: root:ptr rootu :}
@@ -59,7 +61,7 @@ s" SBUF@" s" -- ptr u8" TRUST
 : GO ( -- )
    READ-SRC
    DRV-RETIRE-RELOADS
-   SBUF@ SLEN @ EMIT-FORTH
+   SBUF@ SLEN @ ENGINE-BUILD:BUILD
    s" hb" S2-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently

@@ -11,9 +11,9 @@
 \ checker package and visibility, so two packages may declare the same tail.
 \ Registration is metadata only — constructors (item 8), hidden layout rows
 \ (item 7), and MATCH (item 9) land later. v1 payload elements are positional
-\ letter params (a.. within arity), concrete cell types, and `ptr T`; family
-\ applications, quotations, and atoms as payloads reject (E-TDECL-PAYLOAD)
-\ until schema instantiation work in items 7/8. Comments are not supported
+\ letter params (a.. within arity), concrete cell types, `ptr T`, and closed,
+\ non-linear, arity-0 layout families. Parametric family applications,
+\ quotations, and atoms as payloads reject (E-TDECL-PAYLOAD). Comments are not supported
 \ inside a declaration block (VALUE-RECORD parity); stray tokens reject.
 \ Every failure path is transactional: the registry high-water marks are
 \ restored, the failure is reported through TDECL-DIAG (render.f), and the
@@ -286,6 +286,22 @@ variable TDECL-FAM-ARITY
 \ direct case only.
 : TDECL-SELF-REF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TDN-A @ TDN-U @ CORE-STR= ;
+
+\ A bare family payload is one logical schema root whose physical width is the
+\ referenced closed layout width. Parametric applications need argument parsing
+\ and remain rejected; concrete linear payloads remain forbidden.
+: TDECL-PAY-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
+   {: id:n :}
+   id TFAM-LAYOUT? 0= IF 0 RES-FALSE EXIT THEN
+   id TFAM-ARITY@ 0 <> IF 0 RES-FALSE EXIT THEN
+   id TFAM-CONCRETE-LINEAR? IF 0 RES-FALSE EXIT THEN
+   id RES-TRUE ;
+
+: TDECL-SCH-WIDTH ( n -- n ) {: node:n :}
+   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
+   1 ;
+
 : TDECL-PAY-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}
    u 0= IF a u s" missing ;VARIANT" E-TDECL-SYNTAX TDECL-THROW THEN
    a u DELIM? IF a u s" bad payload token" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -296,11 +312,12 @@ variable TDECL-FAM-ARITY
    THEN
    u 1 = IF a u TDECL-LETTER EXIT THEN
    a u CON-OF dup 0 <> IF SCHEMA-CON EXIT THEN drop
+   a u TDECL-PAY-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u s" unknown payload type" E-TDECL-PAYLOAD TDECL-THROW ;
 
 \ --- variants: name gate, payload run in the schema-root pool, SUMV row.
 variable TDV-TAG   variable TDV-N    variable TDV-MAX
-variable TDV-SS    variable TDV-PC
+variable TDV-SS    variable TDV-PC   variable TDV-PW
 variable TDV-NA    variable TDV-NU
 
 : TDECL-VARIANT-NAME ( -- )
@@ -311,19 +328,20 @@ variable TDV-NA    variable TDV-NU
 : TDECL-VARIANT-CLOSE ( n -- ) {: fam:n :}
    TDV-NA @ TDV-NU @ TDECL-TOK!
    s" duplicate variant" TDECL-WHY!
-   fam TDV-NA @ TDV-NU @ TDV-TAG @ TDV-SS @ TDV-PC @ TDV-PC @ SUMV-ADD drop
-   TDV-PC @ TDV-MAX @ max TDV-MAX !
+   fam TDV-NA @ TDV-NU @ TDV-TAG @ TDV-SS @ TDV-PC @ TDV-PW @ SUMV-ADD drop
+   TDV-PW @ TDV-MAX @ max TDV-MAX !
    TDV-TAG @ 1 + TDV-TAG !
    TDV-N @ 1 + TDV-N ! ;
 
 : TDECL-VARIANT ( n -- ) {: fam:n :}
    TDECL-VARIANT-NAME
    SCHEMA-ROOT-N@ TDV-SS !
-   0 TDV-PC !
+   0 TDV-PC !  0 TDV-PW !
    BEGIN
       TDECL-NEXT
       2dup s" ;variant" CORE-STR=CI IF 2drop fam TDECL-VARIANT-CLOSE EXIT THEN
-      TDECL-PAY-ELEM SCHEMA-ROOT+ drop
+      TDECL-PAY-ELEM dup TDECL-SCH-WIDTH TDV-PW @ + TDV-PW !
+      SCHEMA-ROOT+ drop
       TDV-PC @ 1 + TDV-PC !
    AGAIN ;
 
@@ -514,6 +532,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
    a TDV-NA !  u TDV-NU !
    SCHEMA-ROOT-N@ TDV-SS !
    0 TDV-PC !                            \ enum variants carry no payload
+   0 TDV-PW !
    fam TDECL-VARIANT-CLOSE ;
 
 : TDECL-ENUM-VARIANTS ( n -- ) {: fam:n :}
@@ -591,8 +610,7 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 \ checker reject. Resolution is signature scope (TFAM-SIG-RESOLVE: own package
 \ first, else the unique public; qualified PKG:tail accepted; ambiguity maps to
 \ unresolved). Wider, parametric, product-kinded (incl. self-referential), and
-\ linear layout fields fall through to the payload grammar's E-TDECL-PAYLOAD —
-\ the S2 tier; SUM variant payloads keep the same reject until S3.
+\ linear layout fields fall through to the payload grammar's E-TDECL-PAYLOAD.
 : TDECL-FIELD-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    TFAM-ACTIVE-PKG$ a u TFAM-SIG-RESOLVE 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
@@ -604,10 +622,6 @@ variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 : TDECL-FIELD-ELEM ( ptr u8 n -- n ) {: a:ptr u:n :}   \ field type -> schema node
    a u TDECL-FIELD-FAM? IF 0 0 SCHEMA-APP EXIT THEN drop
    a u TDECL-PAY-ELEM ;
-
-: TDECL-SCH-WIDTH ( n -- n ) {: node:n :}   \ field schema node -> cell width
-   node SCHEMA-APP? IF node SCHEMA-A@ TFAM-WIDTH@ EXIT THEN
-   1 ;                                       \ letter/con/ptr fields are one cell
 
 \ TDECL-PRODUCT-FIELD ( fam -- ) : the `field` keyword is already consumed; read
 \ the field tail + one field-shaped type into a schema root, add the PF row.

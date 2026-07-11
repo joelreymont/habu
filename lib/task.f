@@ -90,18 +90,10 @@ create TASK-SYM-MUNMAP
    109 c, 117 c, 110 c, 109 c, 97 c, 112 c, 0 c,
 
 variable TASK-H
-variable TASK-PTHREAD-CREATE
-variable TASK-PTHREAD-JOIN
-variable TASK-PTHREAD-EXIT
-variable TASK-SCHED-YIELD
-variable TASK-PTHREAD-MUTEX-INIT
-variable TASK-PTHREAD-MUTEX-LOCK
-variable TASK-PTHREAD-MUTEX-UNLOCK
-variable TASK-MUNMAP
 variable TASK-ENTRY
 variable TASK-USER-NEXT
 
-$40C8 constant TASK-USER-BASE   \ above UNCGH-CELL ($40C0), which sits above the grown protected-WID table ($3CC0..$40C0, src/habu/layout.f); bounded by DATA-START ($43C0)
+FFI:SCRATCH-END constant TASK-USER-BASE
 TASK-USER-BASE TASK-USER-NEXT !
 
 : TASK-NULL ( -- ptr a )
@@ -121,23 +113,67 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
 
 : TASK-OPEN ( -- )
    TASK-H @ 0 <> if exit then
-   TASK-LIB-PATH RTLD-NOW DLOPEN dup 0= if E-TASK-DLOPEN throw then
+   TASK-LIB-PATH FFI:NOW FFI:DLOPEN dup 0= if E-TASK-DLOPEN throw then
    TASK-H ! ;
 
 : TASK-SYM ( ptr u8 -- n ) {: name:ptr :}
    TASK-OPEN
-   TASK-H @ name DLSYM dup 0= if E-TASK-DLSYM throw then ;
+   TASK-H @ name FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
 
-: TASK-CFUNS ( -- )
-   TASK-PTHREAD-CREATE @ 0 <> if exit then
-   TASK-SYM-PTHREAD-CREATE TASK-SYM TASK-PTHREAD-CREATE !
-   TASK-SYM-PTHREAD-JOIN TASK-SYM TASK-PTHREAD-JOIN !
-   TASK-SYM-PTHREAD-EXIT TASK-SYM TASK-PTHREAD-EXIT !
-   TASK-SYM-SCHED-YIELD TASK-SYM TASK-SCHED-YIELD !
-   TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM TASK-PTHREAD-MUTEX-INIT !
-   TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM TASK-PTHREAD-MUTEX-LOCK !
-   TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM TASK-PTHREAD-MUTEX-UNLOCK !
-   TASK-SYM-MUNMAP TASK-SYM TASK-MUNMAP ! ;
+TASK-SYM-MUNMAP TASK-SYM constant MUNMAP-XT
+TASK-SYM-PTHREAD-CREATE TASK-SYM constant PTHREAD-CREATE-XT
+TASK-SYM-PTHREAD-JOIN TASK-SYM constant PTHREAD-JOIN-XT
+TASK-SYM-PTHREAD-EXIT TASK-SYM constant PTHREAD-EXIT-XT
+TASK-SYM-SCHED-YIELD TASK-SYM constant SCHED-YIELD-XT
+TASK-SYM-PTHREAD-MUTEX-INIT TASK-SYM constant MUTEX-INIT-XT
+TASK-SYM-PTHREAD-MUTEX-LOCK TASK-SYM constant MUTEX-LOCK-XT
+TASK-SYM-PTHREAD-MUTEX-UNLOCK TASK-SYM constant MUTEX-UNLOCK-XT
+
+TRUSTED: MUNMAP-CALL ( ptr a n -- n ) {: a:ptr len:n :}
+   FFI:RESET
+   a 0 FFI:READABLE!
+   len 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 MUNMAP-XT ffi-call-bounded ;
+
+TRUSTED: PTHREAD-CREATE-CALL ( ptr a n n ptr a -- n )
+   {: thread:ptr attr:n entry:n arg:ptr :}
+   FFI:RESET
+   thread 8 0 FFI:WRITABLE!
+   attr 1 FFI:VALUE!
+   entry 2 FFI:VALUE!
+   arg 3 FFI:READABLE!
+   FFI:ARGS FFI:REG-LENS 4 PTHREAD-CREATE-XT ffi-call-bounded ;
+
+TRUSTED: PTHREAD-JOIN-CALL ( n ptr a -- n ) {: thread:n out:ptr :}
+   FFI:RESET
+   thread 0 FFI:VALUE!
+   out 8 1 FFI:WRITABLE!
+   FFI:ARGS FFI:REG-LENS 2 PTHREAD-JOIN-XT ffi-call-bounded ;
+
+TRUSTED: PTHREAD-EXIT-CALL ( n -- ) {: value:n :}
+   FFI:RESET
+   value 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 PTHREAD-EXIT-XT ffi-call-bounded drop ;
+
+TRUSTED: SCHED-YIELD-CALL ( -- n )
+   FFI:RESET
+   FFI:ARGS FFI:REG-LENS 0 SCHED-YIELD-XT ffi-call-bounded ;
+
+TRUSTED: MUTEX-INIT-CALL ( ptr a n -- n ) {: mutex:ptr attr:n :}
+   FFI:RESET
+   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
+   attr 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 MUTEX-INIT-XT ffi-call-bounded ;
+
+TRUSTED: MUTEX-LOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
+   FFI:RESET
+   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
+   FFI:ARGS FFI:REG-LENS 1 MUTEX-LOCK-XT ffi-call-bounded ;
+
+TRUSTED: MUTEX-UNLOCK-CALL ( ptr a -- n ) {: mutex:ptr :}
+   FFI:RESET
+   mutex TASK-MUTEX-BYTES 0 FFI:WRITABLE!
+   FFI:ARGS FFI:REG-LENS 1 MUTEX-UNLOCK-XT ffi-call-bounded ;
 
 : TASK-RC0 ( n -- )
    dup 0 <> if E-TASK-THREAD throw then
@@ -160,8 +196,7 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
    data-base TASKS-LIVE-CELL + dup @ 1 - dup 0 < if drop 0 then swap ! ;
 
 : TASK-MUNMAP-SPAN ( ptr a n -- )
-   {: a:ptr cap:n :}
-   a P>N cap TASK-MUNMAP @ CALL2 TASK-RC0 ;
+   MUNMAP-CALL TASK-RC0 ;
 
 : TASK-RELEASE-MEM ( ptr a -- ) {: tcb:ptr :}
    tcb TCB.STACK-U @ 0 <> if
@@ -208,7 +243,6 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
    TASK-STATE@ TASK-EMPTY <> ;
 
 : PREPARE ( ptr a -- ) {: tcb:ptr :}
-   TASK-CFUNS
    tcb TASK-CONSTRUCTED? if exit then
    tcb TCB.SIZE @ TASK-CHECK-SIZE
    tcb TCB.SIZE @ MEM-ALLOC-64K-SPAN tcb TCB.STACK-U ! tcb TCB.STACK !
@@ -223,14 +257,10 @@ TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
    TASK-CONSTRUCTED tcb TASK-STATE! ;
 
 : TASK-PTHREAD-CREATE-RC ( ptr a -- n ) {: tcb:ptr :}
-   tcb TCB.THREAD P>N
-   0
-   TASK-ENTRY @
-   tcb P>N
-   TASK-PTHREAD-CREATE @ CALL4 ;
+   tcb TCB.THREAD 0 TASK-ENTRY @ tcb PTHREAD-CREATE-CALL ;
 
 : TASK-PTHREAD-JOIN-CALL ( ptr a -- ) {: tcb:ptr :}
-   tcb TCB.THREAD @ tcb TCB.RET P>N TASK-PTHREAD-JOIN @ CALL2 TASK-RC0 ;
+   tcb TCB.THREAD @ tcb TCB.RET PTHREAD-JOIN-CALL TASK-RC0 ;
 
 : TASK-ENTRY-NEEDED? ( -- bool )
    TASK-ENTRY @ 0= ;
@@ -280,7 +310,6 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
    fn $5C + cp! ;
 
 : TASK-READY ( -- )
-   TASK-CFUNS
    TASK-ENTRY-BUILD ;
 
 : TASK-JOIN-RELEASE ( ptr a -- ) {: tcb:ptr :}
@@ -327,14 +356,13 @@ TRUSTED: TASK-PATCH ( n n -- )           \ code-emission boundary: patch32 is a
    TCB.STOP ! ;
 
 : PAUSE ( -- )
-   TASK-CFUNS
-   TASK-SELF-N dup 0= if drop TASK-SCHED-YIELD @ CALL0 TASK-RC0 exit then
+   TASK-SELF-N dup 0= if drop SCHED-YIELD-CALL TASK-RC0 exit then
    TASK-N>PTR dup TASK-STOP@ 0 <> if
          TASK-DONE over TASK-STATE!
-         0 TASK-PTHREAD-EXIT @ CALL1 drop
+         0 PTHREAD-EXIT-CALL
    then
    drop
-   TASK-SCHED-YIELD @ CALL0 TASK-RC0 ;
+   SCHED-YIELD-CALL TASK-RC0 ;
 
 : HALT ( ptr a -- )
    TASK-HALT-REQ over TASK-STATE!
@@ -369,11 +397,15 @@ TRUSTED: TASK ( n -- )
 : #USER ( -- n )
    TASK-USER-NEXT @ dup 0= if drop TASK-USER-BASE then ;
 
-: USER-ROOM ( n -- )
-   DATA-START > if E-TASK-USER throw then ;
+: USER-NEXT ( n n -- n ) {: off:n size:n :}
+   off TASK-USER-BASE < if E-TASK-USER throw then
+   off TXN-STATE-OFF > if E-TASK-USER throw then
+   size 0 < if E-TASK-USER throw then
+   size TXN-STATE-OFF off - > if E-TASK-USER throw then
+   off size + ;
 
 TRUSTED: +USER ( n n -- n )
-   over over + dup USER-ROOM
+   over over USER-NEXT
    dup TASK-USER-NEXT !
    >r drop create , r>
    does> ( -- ptr a ) @ data-base + ;
@@ -402,23 +434,20 @@ TRUSTED: FACILITY ( -- )
    FACILITY-OWNER atomic! ;
 
 : FACILITY-INIT ( ptr a -- )
-   TASK-CFUNS
    0 over FACILITY-OWNER!
-   FACILITY-MUTEX P>N 0 TASK-PTHREAD-MUTEX-INIT @ CALL2 TASK-RC0 ;
+   FACILITY-MUTEX 0 MUTEX-INIT-CALL TASK-RC0 ;
 
 : GET ( ptr a -- ) {: f:ptr :}
-   TASK-CFUNS
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner = if exit then
-   f FACILITY-MUTEX P>N TASK-PTHREAD-MUTEX-LOCK @ CALL1 TASK-RC0
+   f FACILITY-MUTEX MUTEX-LOCK-CALL TASK-RC0
    owner f FACILITY-OWNER! ;
 
 : RELEASE ( ptr a -- ) {: f:ptr :}
-   TASK-CFUNS
    TASK-OWNER {: owner:n :}
    f FACILITY-OWNER@ owner <> if exit then
    0 f FACILITY-OWNER!
-   f FACILITY-MUTEX P>N TASK-PTHREAD-MUTEX-UNLOCK @ CALL1 TASK-RC0 ;
+   f FACILITY-MUTEX MUTEX-UNLOCK-CALL TASK-RC0 ;
 
 public
 
@@ -471,5 +500,13 @@ TASK-MIN-STACK constant MIN-STACK
 
 : RELEASE ( ptr a -- )
    RELEASE ;
+
+private
+
+get-current prot-wid-add
+
+public
+
+get-current prot-wid-add
 
 end-package

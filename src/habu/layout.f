@@ -61,8 +61,9 @@ $3000 constant LOCNAMES
 \ heap (bounded >= DATA-START by DP-CHECK) can never reach it; only sinks that
 \ store to a computed address (! c! +! atomic* patch32 snap-rebase, and syscall
 \ write buffers) carry the runtime range check. The old scattered slots were
-\ since reclaimed: $2780..$27A0/$27C0..$27E8 by the habu1.f P2-* cells, $27A8
-\ by CMM-CELL below ($1A0 stays free). A SECOND guarded band (the
+\ since reclaimed: $2780..$27A0/$27C0..$27E8 are free again after the pass-2
+\ transaction moved into TXN-STATE-OFF; $27A8 remains CMM-CELL below ($1A0 stays
+\ free). A SECOND guarded band (the
 \ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
@@ -160,10 +161,10 @@ $36C0 constant BPA-CELL
 $36D0 constant BPTAB-OFF
 $37E8 constant BPWBASE-CELL
 $37F0 constant BPWN-CELL
-$3800 constant EVAL-FRAME
+$43C0 constant EVAL-FRAME
 $40 constant EVAL-FRAME-SIZE
 $6 constant EVAL-FRAME-SHIFT
-$8 constant EVAL-MAX-DEPTH
+$10 constant EVAL-MAX-DEPTH
 \ $2780..$27A8 (TSIG/TCSIG/CRSIG) relocated into the friend arena above.
 $27B0 constant DOESB-CELL
 $27B8 constant TRUSTED-CELL
@@ -261,19 +262,51 @@ $258 constant DEF-TKL-CELL
 \ Tested fail-closed at the LCOMPILE head (EM-COMPILE-ADT-MODE): armed with no
 \ handler dies deterministically. Definition-scoped: cleared at colon/TRUSTED:
 \ entry and by EM-RESET-COMPILE-STATE. Lives at $27A8, the last old CRSIG slot
-\ (freed when CRSIG moved into the friend arena) between P2LOC0-CELL ($27A0,
-\ habu1.f) and DOESB-CELL ($27B0) — rg-verified unused repo-wide. NOTE the low
+\ (freed when CRSIG moved into the friend arena) between the reclaimed $27A0
+\ slot and DOESB-CELL ($27B0) — rg-verified unused repo-wide. NOTE the low
 \ "free hole" $260 is NOT usable: VVAL-OFF ($250) + VSMAX cells spans
 \ $250..$350, and DEF-TKA/DEF-TKL survive inside it only because their liveness
 \ is confined to the definition NAME token, when the virtual stack is empty.
 $27A8 constant CMM-CELL
-\ PKG-* ($27C0..$27D8) and DEFER-* ($27E0..$27E8) relocated into
-\ the friend arena above and were later reclaimed by the habu1.f P2-* pass-2
-\ cells (item 12), as were $2780..$27A0.
+\ PKG-* ($27C0..$27D8), DEFER-* ($27E0..$27E8), the retired descriptor hook at
+\ $27F0, and the old $2780..$27A0 pass-2 cells are reclaimed by the immutable
+\ lowering transaction.
 $2800 constant RSTK-OFF
+
+\ Compiler lowering transaction. All mutable pass-2 authority lives in one
+\ engine band. The frozen source+certificate lives in a separately mmap'd,
+\ maximum-target-page-rounded allocation whose base and capacity are held in
+\ the protected state. It is read-only during replay and unmapped at commit.
+$5000 constant TXN-STATE-OFF
+$3000 constant TXN-STATE-LEN
+$10000 constant PROT-PAGE-MAX
+
+TXN-STATE-OFF       constant TXN-ACTIVE-CELL
+TXN-STATE-OFF $8  + constant TXN-SRC-A-CELL
+TXN-STATE-OFF $10 + constant TXN-SRC-U-CELL
+TXN-STATE-OFF $18 + constant TXN-CERT-A-CELL
+TXN-STATE-OFF $20 + constant TXN-CERT-U-CELL
+TXN-STATE-OFF $28 + constant TXN-BIND-I-CELL
+TXN-STATE-OFF $30 + constant P2-CELL
+TXN-STATE-OFF $38 + constant TXN-WF-I-CELL
+TXN-STATE-OFF $40 + constant P2BODY0-CELL
+TXN-STATE-OFF $48 + constant P2INP-CELL
+TXN-STATE-OFF $50 + constant P2INE-CELL
+TXN-STATE-OFF $58 + constant P2DP-CELL
+TXN-STATE-OFF $60 + constant P2W0-CELL
+TXN-STATE-OFF $68 + constant P2W1-CELL
+TXN-STATE-OFF $70 + constant P2W2-CELL
+TXN-STATE-OFF $78 + constant P2W3-CELL
+TXN-STATE-OFF $80 + constant P2LOC0-CELL
+TXN-STATE-OFF $88 + constant TXN-FETCH-I-CELL
+TXN-STATE-OFF $90 + constant TXN-BLOB-A-CELL
+TXN-STATE-OFF $98 + constant TXN-BLOB-CAP-CELL
+TXN-STATE-OFF $100 + constant TXN-LIVE-W-OFF
+64 constant TXN-LIVE-W-CAP
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
-\ >= DATA-START; task-user cells stay below it). Bumped $4000 -> $43C0 to reserve the
-\ grown 256-slot protected-WID table (ends $40C0), UNCGH-CELL ($40C0), and the unchanged
-\ $2F8 task-user region ($40C8..$43C0) below it (dot habu-seal-protwid-cap-6f1c9d2b).
-$43C0 constant DATA-START
+\ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
+\ frames occupy $43C0..$47C0. The lowering state ends exactly at $8000; its
+\ immutable variable-sized blob is outside DATA and cannot alias the user heap.
+TXN-STATE-OFF TXN-STATE-LEN + constant DATA-START

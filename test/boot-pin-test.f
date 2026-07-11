@@ -24,7 +24,7 @@ require tools/boot-pin.f
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-22 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 21 calls)
+31 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 30 calls)
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
@@ -57,7 +57,7 @@ variable BPT-OFF
    BPT-SBX BPT-SBX-U @ a u BPT-DST JOIN-PATH {: du:n :}
    a u BPT-DST du COPY-FILE-STREAM ;
 
-: BPT-SETUP-SBX ( -- )                                    \ fresh pristine copy of the 19 prefix files
+: BPT-SETUP-SBX ( -- )                                    \ fresh pristine target-specific prefix copy
    s" src/core" BPT-MKDIR
    s" src/os/macos" BPT-MKDIR
    s" src/habu" BPT-MKDIR

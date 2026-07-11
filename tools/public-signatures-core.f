@@ -34,6 +34,7 @@ create PS-CLOSURE-BUF PS-FILE-CAP allot
 create PS-WORD-BUF PS-WORD-CAP allot
 create PS-PKG-BUF PS-WORD-CAP allot
 create PS-SIG-BUF PS-SIG-CAP allot
+create PS-DEF-SIG-BUF PS-SIG-CAP allot
 create PS-NUM-BUF PS-NUM-CAP allot
 create PS-ONE 1 allot
 
@@ -85,6 +86,7 @@ variable PS-PKG-A
 variable PS-PKG-U
 variable PS-IN-PKG
 variable PS-PKG-PUBLIC
+variable PS-DEF-SIG-U
 
 : PS-TA-FIELD ( -- ptr ptr u8 )
    PS-TA 0 ptr-field ;
@@ -576,6 +578,26 @@ variable PS-PKG-PUBLIC
    a u s" variable" LINT-STR=CI IF s" -- ptr a" PS-TRUST-DEFINER PS-TRUE exit THEN
    PS-FALSE ;
 
+: PS-DEF-SIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   PS-DEF-SIG-U @ u + PS-SIG-CAP > IF
+      s" public-signatures: signature too long" PS-DIE
+   THEN
+   a PS-DEF-SIG-BUF PS-DEF-SIG-U @ + u LINT-BMOVE
+   PS-DEF-SIG-U @ u + PS-DEF-SIG-U ! ;
+
+: PS-LAYOUT-BUFFER ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
+   PS-NEXT-TOK 0= IF exit THEN
+   PS-WORD? 0= IF exit THEN
+   PS-SAVE-NAME
+   PS-NEXT-TOK 0= IF exit THEN
+   PS-WORD? 0= IF exit THEN
+   0 PS-DEF-SIG-U !
+   s" n -- ptr " PS-DEF-SIG-APP
+   PS-TOK$ PS-DEF-SIG-APP
+   PS-DEF-SIG-BUF PS-SIG-A!
+   PS-DEF-SIG-U @ PS-SIG-U !
+   PS-PUBLIC? IF PS-EXPORTED-FLAG file-a file-u PS-EMIT-PUBLIC THEN ;
+
 \ Copy the package name into a stable buffer: the token bytes live in the
 \ transient PS-CLOSURE-BUF / PS-FILE-BUF, which the next dep read or the entry
 \ scan overwrites. Storing a raw pointer there dangles once the opener is not the
@@ -610,9 +632,11 @@ variable PS-PKG-PUBLIC
          PS-TOK$ PS-SCOPE-TOKEN? IF
          ELSE PS-TOK$ s" :" LINT-STR= IF
             file-a file-u PS-MAYBE-DEF
+         ELSE PS-TOK$ s" LAYOUT-BUFFER" LINT-STR=CI IF
+            file-a file-u PS-LAYOUT-BUFFER
          ELSE
             PS-TOK$ PS-MAYBE-TRUST-DEFINER drop
-         THEN THEN
+         THEN THEN THEN
       THEN
    repeat ;
 

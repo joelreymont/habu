@@ -113,14 +113,21 @@ MAP-HASH-MASK MAP-HEADER-CELLS - MAP-SLOT-CELLS / constant MAP-MAX-CAP
    off OFF>N MAP-SLOT-CELLS >= if E-MAP-BAD-CAP throw then
    m ix MAP-SLOT off OFF>N cells + ;
 
-: MAP-SLOT-STATE-PTR ( ptr a idx -- ptr slot-state )
-   MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD ;
-
 : MAP-SLOT-STATE@ ( ptr a idx -- slot-state )
-   MAP-SLOT-STATE-PTR @ ;
+   MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD @ case
+      0 of SLOT--STATE:EMPTY endof
+      1 of SLOT--STATE:DELETED endof
+      2 of SLOT--STATE:OCCUPIED endof
+      E-BAD-TAG throw
+   endcase ;
 
 : MAP-SLOT-STATE! ( slot-state ptr a idx -- ) {: m:ptr ix:idx :}   \ enum stays on stack; the checker owns state validity
-   m ix MAP-SLOT-STATE-PTR ! ;
+   MATCH slot-state
+     empty OF 0 ENDOF
+     deleted OF 1 ENDOF
+     occupied OF 2 ENDOF
+   ;MATCH
+   m ix MAP-SLOT-STATE-OFF >OFF MAP-SLOT-FIELD ! ;
 
 : MAP-SLOT-HASH@ ( ptr a idx -- n )
    MAP-SLOT-HASH-OFF >OFF MAP-SLOT-FIELD @ ;

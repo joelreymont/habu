@@ -1,6 +1,6 @@
 \ stale-status-lint-test.f - checked fixtures for tools/stale-status-lint.f.
 \ Run: bin/hb --load tools/date.f lib/errors.f lib/string.f lib/test.f
-\ lib/fs.f lib/fs-mutate.f lib/process.f
+\ lib/memory.f lib/fs.f lib/fs-mutate.f lib/process.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
 \ tools/stale-status-lint-core.f tools/stale-status-lint-test.f
 
@@ -8,6 +8,7 @@ require tools/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f

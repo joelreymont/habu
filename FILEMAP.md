@@ -41,10 +41,15 @@ points stay listed.
   `BYTE-COPY`) loaded before stdlib/tool sources so low-level modules do not
   depend on `lib/string.f` order.
 - `src/core/checker.f` — native stack-effect checker and verifier.
+- `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
 - `src/core/type-family.f` — package-scoped type-family (TFAM), sum-variant (SUMV), product-field, and layout registries with snapshot persist.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
+- `src/core/layout-buffer.f` — generative checked storage for closed ADT layouts; owns allocation, zero initialization, bounds, stride, and the sole typed-layout pointer introduction boundary.
+- `src/core/layout-valid.f` — package-scoped producer for immutable, source-bound lowering certificates: canonical source-offset width rows, bind widths, fetch descriptors, and exact guard-domain evidence.
+- `src/core/layout-buffer-seal.f` — post-xref capability erasure for layout-buffer authorization.
+- `src/core/lower-cert-seal.f` — post-xref capability erasure for lowering-certificate producer hooks and backing authority cells.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
@@ -73,6 +78,8 @@ points stay listed.
 - `src/habu/build.f` — `hb-build --repl` bundle driver.
 - `src/habu/maker.f` — generic maker-image build driver for `hb-build`.
 - `src/habu/snap-lib.f` — checked snapshot writer definitions.
+- `src/habu/snap-build.f` — tail-owned snapshot checker installer resolved
+  before the friend seal and retired before image publication.
 - `src/habu/snap.f` — snapshot writer entry point.
 - `src/habu/stdin.f` — internal stdin/interactive engine builder.
 - `src/habu/rt.f` — native runtime routines emitted for the engine builder
@@ -546,7 +553,7 @@ points stay listed.
   scanner core.
 - `tools/lint/text-foundation-test.f` / `tools/lint/set-test.f` — focused
   coverage for the lint text helpers and interner.
-- `tools/lint/shadow-lint.f` — rejects toolchain definitions that shadow
+- `tools/lint/shadow-lint.f` / `tools/lint/shadow-lint-test.f` — rejects toolchain definitions that shadow
   engine PRIM names.
 - `tools/lint/clobber-lint.f` / `tools/lint/clobber-lint-test.f` —
   register-clobber analysis for BL-able emitter routines and its regressions;
@@ -674,10 +681,16 @@ points stay listed.
 - `lib/adt/option.f` — the shared `option<T>` sum family (some value / none), the checked replacement for -1/sentinel returns (switchover wave A); require before consumers.
 - `lib/adt/result.f` — the shared `result<ok,err>` sum family (ok value / err value), the checked replacement for value+flag/rc-plus-value returns where the flag distinguishes DIFFERENT errors (switchover wave B); require before consumers.
 - `lib/adt/result-test.f` — focused proof that result<ok,err> constructs (RESULT:OK/ERR), MATCHes both arms, and rejects swapped ok/err payload types.
-- `lib/ffi-abi.f` — checked target-independent AAPCS64 FFI calls and marshalling: x0-x8, d0-d7, stack-spill, out-params, kernelParams, and int/float-return trampolines.
-- `lib/ffi-abi-test.f` — focused coverage for portable FFI marshalling without dynamic loader slots.
-- `lib/ffi.f` — checked dynamic loading layer over the FFI ABI: dlopen/dlsym through target-provided loader slots.
-- `lib/ffi-test.f` — focused coverage for FFI dlopen/dlsym, fixed-arity calls, C-string marshalling, FP args/returns, x8, and stack spill.
+- `lib/ffi-abi.f` — package-scoped AAPCS64 staging without generic checked call
+  authority; trusted-only bounded trampolines carry distinct x0-x8 and stack
+  writable-extent tables, plus float, kernelParams, and return support.
+- `lib/ffi-abi-test.f` — fixed-schema writer and exact mixed-ABI coverage,
+  including positive x8/stack pointers and zero-extent/schema-lie rejects.
+- `lib/ffi.f` — compatibility entry for the sealed `FFI` package; the exact
+  package-scoped dlopen/dlsym bindings keep legacy global aliases without any
+  binding generator or mutable function-pointer export.
+- `lib/ffi-test.f` — sealed scalar/read-only binding, dynamic-loader, nominal
+  role, and trusted-only raw-capability coverage.
 - `lib/task.f` — checked pthread-backed tasking: task TCBs, per-task region
   re-entry, task-local user variables, halt/join teardown, and mutex facilities.
 - `lib/task-test.f` — focused coverage for two task workers, atomic shared
@@ -772,6 +785,14 @@ points stay listed.
   engine lane closes them deliberately.
 - `test/nf.fs` — Gforth-hosted native-Forth build/run/capture harness used by
   the no-binary bootstrap path.
+- `test/bootstrap-wide-memory.fs` — Gforth-hosted execution gate that builds a
+  stage0 compiler and requires the wide-memory subject to print `ok`.
+- `test/bootstrap-wide-memory-src.f` — checked W2/W4 ADT store/fetch subject;
+  pins stage0 instruction goldens, canonical cell order, mixed/branch locals,
+  and runtime round trips.
+- `test/bootstrap-wide-interpret-src.f` / `test/bootstrap-wide-tick-src.f` —
+  stage0 negative execution fixtures proving published wide-effect words cannot
+  run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
@@ -782,13 +803,27 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
+  ordinary storage and first/later-cell protected-band intersections: zero-valued
+  payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`
+  before any protected mutation.
+- `test/protection-span.f` — package-scoped raw-write forges proving interval
+  overlap at the compiler transaction lower/upper boundaries, unaligned scalar
+  and atomic writes, syscall-reported lengths, fixed mappings, and address-wrap
+  rejection; exact half-open neighbors remain writable.
+- `test/lower-txn-protection.f` — package-scoped immediate probes proving the
+  dynamically mapped lowering transaction is protected throughout pass-2
+  replay across syscalls, fixed mappings, FFI writable extents, and snapshot
+  relocation, then fully unmapped with cleared state after publication.
+- `test/lower-txn-large.f` — package-scoped checked source generator proving a
+  valid certificate larger than the retired 64-KiB cap compiles and executes
+  through the dynamically sized lowering transaction.
 - `test/seal-absence.f` — Gforth stage0 absence-parity fixture: scans
   `bootstrap/cg/forth.fs` and fails closed if any pinned guard-bypass surface
-  (atomics, snap-rebase, extended syscalls, `CHECKER-*` mutators, package
-  intrinsic) appears on a code line without a `PROT-GUARD`, and pins the present
-  `PROT-GUARD`/`EMIT-SEAL-FRIEND` seal machinery so a mirrored guard cannot be
-  silently deleted. In-memory self-proofs cover the reject, guard-escape, and
-  comment-only cases.
+  (atomics, snap-rebase, extended syscalls, `CHECKER-*` mutators) appears on a
+  code line without a `PROT-GUARD`; it also pins the present span guards,
+  seal-token boundary, package engine, and protected-WID reopen guard.
+  In-memory self-proofs cover reject, guard-escape, and comment-only cases.
 - `test/seal-package.f` — sealed system-package regressions (TFAM 2b-ii): child
   forges prove post-seal user source cannot open/reopen `package TFAM`/`TYPE`/
   `MATCH` nor define a qualified word into one (`: TFAM:tail ...`),
@@ -861,7 +896,29 @@ points stay listed.
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).
-- `test/type-layout-lower-pending.f` — staged TFAM 12 slice-3 width-aware lowering fixtures: real compile-subject words plus the per-op width-fact contract; standalone, not yet wired into a suite.
+- `test/lower-cert.f` — package-scoped canonical lowering-certificate producer regressions covering source binding, width rows, fetch descriptors, and guard-domain evidence.
+- `test/type-layout-lower-pending.f` — width-aware lowering fixtures retained for negative and boundary coverage after the immutable transaction switchover.
+- `test/layout-buffer.f` — generative closed-layout storage, pointer-provenance rejection, bounds, stride, zero-image, and rollback regressions.
+- `test/layout-buffer-depth.f` — entry for the executable maximum-include-depth plus generated-accessor evaluation regression.
+- `test/layout-buffer-depth-0.f` — evaluator-depth fixture link 0.
+- `test/layout-buffer-depth-1.f` — evaluator-depth fixture link 1.
+- `test/layout-buffer-depth-2.f` — evaluator-depth fixture link 2.
+- `test/layout-buffer-depth-3.f` — evaluator-depth fixture link 3.
+- `test/layout-buffer-depth-4.f` — evaluator-depth fixture link 4.
+- `test/layout-buffer-depth-5.f` — evaluator-depth fixture link 5.
+- `test/layout-buffer-depth-6.f` — evaluator-depth fixture link 6.
+- `test/layout-buffer-depth-7.f` — deepest evaluator fixture using a named capacity constant.
+- `test/layout-buffer-forge.f` — armed child-process regression proving the layout-buffer checker capability is absent from user source.
+- `test/layout-valid-w1-bad.f` — child-process W1 enum invalid-tag fetch regression (exit 85 before publication).
+- `test/layout-valid-product-bad.f` — child-process nested product-field enum invalid-tag fetch regression.
+- `test/layout-valid-hook-forge.f` — armed child-process proof that the erased typed-fetch record hook cannot be replaced.
+- `test/layout-valid-walk-forge.f` — armed child-process proof that the erased validator recursion hook cannot be replaced.
+- `test/layout-valid-desc-forge.f` — armed child-process proof that the erased descriptor bridge cell cannot be replaced.
+- `test/layout-valid-guard-base.f` — shared low-level nested-SUM metadata and raw-image boundary for validator guard tests.
+- `test/layout-valid-guards.f` — valid active nested and inactive garbage-payload typed-fetch regressions.
+- `test/layout-valid-active-bad.f` — armed child-process active nested invalid-tag regression.
+- `test/layout-valid-root-bad.f` — armed child-process invalid root-tag regression.
+- `test/layout-valid-growth.f` — forty-level nested-SUM fetch proving descriptor, environment, and guard arena growth.
 - `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
 - `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.
 - `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): cross-package alias fidelity, defer/control-flag copy, every reject class, scope/candidate rollback of alias rows.

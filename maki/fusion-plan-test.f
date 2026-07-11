@@ -21,6 +21,8 @@ variable FT-VA  variable FT-VU
 : TRY-STATE  ( -- )  FP-RESET FP-REGION-COUNT drop ;      \ accessor before build
 : TRY-RID    ( -- )  99 FP-RID@ drop ;                    \ node index out of range
 : TRY-RGN    ( -- )  99 FP-REGION-MEMBERS drop ;          \ region index out of range
+: TRY-RSN-LOW  ( -- )  -1 FP-SP-REASON-AT drop ;
+: TRY-RSN-HIGH ( -- )  FP-CAP FP-SP-REASON-AT drop ;
 
 \ ---- reason column is a real ENUM: assert stored reason via its MATCH render ---
 \ FP-SPLIT-REASON@ now returns `reason` (a width-1 layout value, not an n), so a
@@ -150,6 +152,8 @@ FP-REGION-COUNT 1 T=
 \ ---- fail-closed accessor paths (after a valid build) ----------------------
 ' TRY-RID    E-FP-IDX TTHROWS
 ' TRY-RGN    E-FP-IDX TTHROWS
+' TRY-RSN-LOW  E-LAYOUT-BOUNDS TTHROWS
+' TRY-RSN-HIGH E-LAYOUT-BOUNDS TTHROWS
 
 \ ---- swapped-role negatives (dot habu-cad-adt-swap; capability S1) ----------
 \ The reason column is addressed only through `ptr reason` (FP-SP-REASON-AT), so
@@ -158,13 +162,13 @@ FP-REGION-COUNT 1 T=
 \ (this replaces the old "bad reason tag" throw). Diagnostics are pinned as comments.
 \ store an n where a reason is required (diag: "at '!' expected: reason<> ptr
 \ reason<> actual: n ptr reason<>")
+s" FPT-RSN-PTR ( n -- ptr reason ) FP-SP-REASON-AT" CHECK-QUIET-CANDIDATE! -1 T=
 s" FPT-RSN-NIN ( n n -- ) FP-SP-REASON-AT !"          CHECK-QUIET-CANDIDATE! 0 T=
 \ fetch a reason as a bare n -- enum->n laundering (diag: "at '@' expected: n
 \ actual: reason<>")
 s" FPT-RSN-NOUT ( n -- n ) FP-SP-REASON-AT @"         CHECK-QUIET-CANDIDATE! 0 T=
-\ store a reason through a bare `ptr a` (family identity dropped): the address must
-\ name `ptr reason` (diag: "at '!' expected: a ptr a actual: reason<> ptr b")
-s" FPT-RSN-BARE ( reason -- ) 0 cells FP-SP-REASON + !" CHECK-QUIET-CANDIDATE! 0 T=
+\ The migrated accessor cannot be weakened to a plain cell pointer.
+s" FPT-RSN-BARE ( n -- ptr a ) FP-SP-REASON-AT" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 

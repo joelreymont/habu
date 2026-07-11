@@ -2,7 +2,7 @@
 \ words (asm.fs encoders) into a code buffer, define labels, and resolve B/CBZ/CBNZ
 \ branches (backward immediately, forward via backpatch). Next codegen-port step
 \ after the encoders. ASM-CP counts WORDS; deltas are word-relative (ARM64 PC-relative).
-$100000 constant CODE-CAP-BYTES  \ 1 MB code window, aligned with MPAGE
+$1ff000 constant CODE-CAP-BYTES  \ MPAGE-CODE-OFF: full 2 MB executable window
 CODE-CAP-BYTES 4 / constant CODE-CAP-WORDS  \ derived: guard can never drift from the mmap
 $1002 constant ICODE-MAP-PRIVATE-ANON
 $1000 constant ICODE-TAB-CELLS

@@ -4,6 +4,7 @@
 require tools/date.f
 require lib/errors.f
 require lib/string.f
+require lib/memory.f
 require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f

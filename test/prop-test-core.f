@@ -490,7 +490,8 @@ variable ARG-N  variable ARG-I  variable ARG-L
 
 \ ---- trusted leaves: read the live PES axiom table + evaluate a runner -------
 TRUSTED: AX-COUNT ( -- n )  #PE @ ;
-TRUSTED: AX-NAME$ ( n -- ptr u8 n )  PE-SYM@ SYM-NAME$ ;
+TRUSTED: AX-NAME$ ( n -- ptr u8 n ptr u8 n )
+   PE-SYM@ dup SYM-PKG$ rot SYM-NAME$ ;
 TRUSTED: AX-STK ( n -- n )   \ node offset -> count of EN-PUSH nodes down to the base row
    0 swap
    begin dup E-PTR EN.TAG @ EN-PUSH = while swap 1+ swap E-PTR EN.B @ repeat drop ;
@@ -546,7 +547,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-w-at " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ locw-hw-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-needs-p2? wf-w-at lower-cert:magic lower-cert:version lower-cert:header-cells lower-cert:magic-cell lower-cert:version-cell lower-cert:total-bytes-cell lower-cert:needs-cell lower-cert:wf-count-cell lower-cert:bind-count-cell lower-cert:fetch-count-cell lower-cert:fetch-data-cells-cell lower-cert:wf-cells lower-cert:fetch-cells lower-cert:check-cells lower-cert:guard-cells lower-cert:fetch-flag lower-cert:store-flag lower-cert:body-len-cell lower-cert:body-hash-cell lower-cert:fnv-offset lower-cert:fnv-prime lower-cert:cell-count " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -554,7 +555,7 @@ create AXBUF AXBUF-CAP allot
 : AX-NOEXEC-A ( -- ptr u8 n )
    s"  open read ioctl mmap path0 open-rd access unlink rename chmod symlink readlink mkdir rmdir stat64 lstat64 getdirentries64 pipe dup2 fcntl poll kill setpgid write close " ;
 : AX-NOEXEC-B ( -- ptr u8 n )
-   s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas " ;
+   s"  fence run-in-stack .s allot , c, script-argv$ throw die fork wait-rc wait-status patch32 snap-rebase prof-on prof-report cp! ndict! set-current wordlist search-wl parse-name pathz check-candidate! ['] char [char] create variable constant f. atomic@ atomic! atomic-add atomic-cas ffi-call-bounded " ;
 
 \ Checker-substrate introspection that cannot take dummy operands, plus the seal
 \ watermark capture. The indexed accessors fail closed with `76 die` on an
@@ -565,8 +566,10 @@ create AXBUF AXBUF-CAP allot
 \ native self-rebuild + behavioral gate. The zero-arg high-water readers
 \ (wf-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@) are pure
 \ variable reads and stay difftested in AX-GEN-LIST, matching ndict@/cp@.
-\ wf-wide? (zero-arg scan) and wf-w-at (indexed with a total 1-default, never
-\ dies) are likewise difftested in AX-GEN-LIST; locw-hw@ carries the same
+\ wf-wide?/wf-needs-p2? (zero-arg scans) and wf-w-at (indexed with a total
+\ 1-default, never dies) are likewise difftested in AX-GEN-LIST;
+\ layout-valid-desc-cell is checker-only metadata with no runtime dictionary
+\ word, so it is censused but cannot execute. locw-hw@ carries the same
 \ 76-die index guard as wf-tokix@ (a dummy seq past LOCSEQ dies), and the
 \ pass-2 live-table words (p2-carve-w / p2-live-w@ / p2-live-cum@ /
 \ p2-locseq-reset, checker.f) read or mutate live pass-2 compile scratch
@@ -580,12 +583,14 @@ create AXBUF AXBUF-CAP allot
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ " ;
+   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
    2dup s" spawn" AX-STARTS? if 2drop AX-NOEXEC exit then
    2dup s" checker-" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup s" checker-cert:" AX-STARTS? if 2drop AX-NOEXEC exit then
+   2dup s" lower-cert-hook:" AX-STARTS? if 2drop AX-NOEXEC exit then
    2dup s" diag-" AX-STARTS? if 2drop AX-NOEXEC exit then
    2dup s" ffi-" AX-STARTS? if 2drop AX-NOEXEC exit then
    2dup AX-GEN-LIST AX-LIST-HAS? if 2drop AX-GEN exit then
@@ -603,6 +608,25 @@ create AXBUF AXBUF-CAP allot
       dup a + c@ over AXNAME-BUF + c!
       1+
    repeat drop ;
+package AXIOM-NAME
+public
+
+: SAVE-SYMBOL ( ptr u8 n ptr u8 n -- ) {: pkg:ptr pkgu:n name:ptr nameu:n :}
+   pkgu nameu + pkgu 0 > if 1 + then
+   AXNAME-CAP > if s" prim-axiom: qualified name too long" 76 die then
+   0 AXNAME-U !
+   pkgu 0 > if
+      pkg pkgu AX-NAME-SAVE
+      58 AXNAME-BUF AXNAME-U @ + c!
+      AXNAME-U @ 1 + AXNAME-U !
+   then
+   0 begin dup nameu < while
+      dup name + c@ AXNAME-BUF AXNAME-U @ + c!
+      AXNAME-U @ 1 + AXNAME-U !
+      1+
+   repeat drop ;
+
+end-package
 : AXNAME$ ( -- ptr u8 n )  AXNAME-BUF AXNAME-U @ ;
 
 \ ---- MEM operand recipes (real AXBUF; LDR/STR tolerate the buffer) -----------
@@ -678,7 +702,7 @@ create AXBUF AXBUF-CAP allot
 
 : AX-ROW ( n -- ) {: i:n :}
    i AX-ARITY AX-DOUT-V ! AX-DIN-V !
-   i AX-NAME$ AX-NAME-SAVE
+   i AX-NAME$ AXIOM-NAME:SAVE-SYMBOL
    AXNAME$ 2dup AX-CAT AX-DISPATCH ;
 
 : AX-CENSUS ( -- )

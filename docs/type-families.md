@@ -656,19 +656,17 @@ WIDTH(product<...>) = sum of field widths
 ```
 
 Field names are their own tail namespace (single letters such as `x` are
-legal, lowercase canon enforced, duplicates reject). Field types use the
-variant payload grammar: positional letter params within arity, concrete cell
-types, and `ptr T` — plus, since layout-kinded fields S1 (dot
-habu-checker-capability-layout-4e7f1f03), an S1-tier LAYOUT FAMILY reference
-(sum/enum kind, arity 0, width 1 — the enum tier). Such a field's schema is a
-family application (SC-APP) carrying the resolved family-id; `PF.SLOT` is the
-field's cumulative CELL OFFSET and the product's width is the field-width sum
-(both identity with the old index/count values while every field is one cell);
-`MAKE`/`UNMAKE` consume/produce the field typed as its family, so a swapped
-same-width enum field is a checker reject. Wider, parametric,
-product-kinded (incl. self-referential), and linear layout fields keep the
-`E-TDECL-PAYLOAD` reject (the S2 tier), as do SUM variant payloads (S3).
-Pinned in `test/type-decl-suite.f` (TDPREC/tdpbad*).
+legal, lowercase canon enforced, duplicates reject). Field and variant payload
+types are positional letter params within arity, concrete cell types, `ptr T`,
+or a closed, non-linear, arity-0 layout family. The family form becomes an
+SC-APP carrying the resolved family id. Its physical width is the referenced
+family's full `WIDTH`, so `PF.SLOT`, product width, sum padding, constructors,
+destructors, and `MATCH` preserve nested layouts rather than counting the
+schema root as one cell. Parametric, linear, and direct self-recursive families
+reject; explicit parameterized application syntax is not yet part of the
+declaration grammar. `MAKE`/`UNMAKE` consume and produce the field under its
+family type, so same-width family swaps remain checker errors. Pinned in
+`test/type-decl-suite.f` and `test/lower-txn-large.f`.
 
 A PUBLIC product publishes exactly two generated words in its derived
 constructor package, with fixed generator-owned tails (the analogue of a
@@ -795,21 +793,16 @@ For ordinary one-cell types, behavior is unchanged.
 
 For sum/product/enum families, `LAYOUT-PUSH-FIELDS` expands to hidden physical fields.
 
-**Implementation status (PLAN item 7, reject-only).** `PUSH-LOGICAL` is installed
-as the signature-parse seam (replacing `SIG-TYPE MK-PUSH`), but the
-`LAYOUT-PUSH-FIELDS` expansion branch is deliberately **not enabled yet**: a
-sum/enum/product family in a signature stays ONE logical `T-PARAM` cell carrying
-its resolved `family-id` plus the slot/tag metadata (`TFAM-SLOTS@`, SUMV
-paycells) that items 8/9/12/16 will consume. Physical expansion waits for item
-12's width-aware generic stack operations, which alone can preserve whole
-bundles across `dup`/`drop`/`swap`/… (§17). Until then item 7 makes the logical
-cell **fail closed** rather than one-cell-touchable: a layout cell may flow
-through (identity — the same `family-id` unifies), but any ordinary one-cell
-primitive that would bind or consume it (`dup`/`drop`/`swap`/`over`/`nip`/`>r`,
-or capture into a local) is rejected in the checker's unifier
-(`LAYOUT-PARAM?`/`LAYOUT-EITHER?` in `U-TYPE`). Cell families are unaffected, and
-the public parser keeps rejecting hidden `@family.slotN`/`@family.tag` names, so
-no hidden field is ever expanded, rendered, or exposed at this stage.
+**Implementation status (PLAN items 7 and 12).** `PUSH-LOGICAL` is the
+signature-parse seam. A closed non-linear sum/enum/product family expands to its
+`W` checker-owned hidden physical fields in slot order, with the tag last and on
+top; width-aware generic transport and compiler pass 2 preserve that bundle as
+one logical value. An open family application stays one logical `T-PARAM` cell,
+and a possibly-linear application stays fail-closed for transport until TFAM 11
+provides whole-bundle linear accounting. Cell families remain one cell. The
+public parser still rejects hidden `@family.slotN`/`@family.tag` names, so
+physical fields cannot appear in public signatures even though the checker uses
+them internally.
 
 ---
 
@@ -1339,30 +1332,21 @@ Top-level value-consuming definers and stack introspection need the same rule.
 pop only the tag cell. `depth` and `.s` must report logical stack shape or reject
 rows containing hidden fields; they must not expose raw hidden physical cells.
 
-**Implementation status (PLAN item 12, slices 1–2).** Checked generic stack ops
-now treat a layout value as one whole logical bundle. The transport set —
-`dup drop swap over nip rot -rot tuck 2dup 2drop 2swap 2over`, the return-stack
-transfers `>r r> r@ 2>r 2r> 2r@`, and `{: :}` locals capture — may bind a
-layout `T-PARAM` cell to its fresh effect var (`LAYOUT-XPORT` mode set per
-token in `DO-TOK1`/`LOC-BIND`, consumed by `LAYOUT-BLOCK?` in `U-TYPE`). Every
-other touch keeps item 7's fail-closed reject: `?dup` (branches on the tag
-cell; sticky `QDUPBAD` verdict), scalar control predicates, arithmetic/compare
-/unary, memory ops, `execute`/`catch`/defer quotation operands, `constant`'s
-value pop, `throw`, and hidden `@family.*` names in public signatures. A
-stack-preserving quotation still passes a layout value through untouched
-(whole-row absorption), and `evaluate` stays rejected in checked bodies.
-Acceptance is sound at this stage because a layout value is still ONE physical
-cell: `LAYOUT-PUSH-FIELDS` expansion is not enabled and no constructors are
-published, so a wider-than-one-cell layout value is not constructible; runtime
-behavior is unchanged. Transport mode keys on the folded token name, and user
-signatures resolve before prims — sound because the name then denotes a checked
-definition (its effect is verified against its body, which can only move the
-one-cell value) or an audited `TRUSTED` boundary. A layout family whose args
-contain a linear con — or an arg still unresolved, which may later bind linear —
-must not transport at all (copies would duplicate and drops would lose the
-hidden payload resource; locals capture launders the count): the transport bind
-rejects until TFAM 11 teaches the linear discipline whole-bundle counting.
-Identity flow of such a value stays legal.
+**Implementation status (PLAN item 12, slices 1–3b).** Checked generic stack ops
+treat a layout value as one whole logical bundle. Closed non-linear layouts are
+physically expanded to `W` hidden row cells, and the compiler lowers transport
+from checker-recorded width facts. The transport set — `dup drop swap over nip
+rot -rot tuck 2dup 2drop 2swap 2over`, the return-stack transfers `>r r> r@
+2>r 2r> 2r@`, and `{: :}` locals capture — moves the complete group under the
+token-scoped `LAYOUT-XPORT` mode. `!` and `@` are the only value-touching
+primitives with a separate typed-layout rule; other inspection keeps the
+fail-closed boundary: `?dup`, scalar control predicates, arithmetic/compare/
+unary, `execute`/`catch`/defer quotation operands, `constant`'s value pop,
+`throw`, and hidden `@family.*` names in public signatures. A stack-preserving
+quotation still passes a layout value through untouched, and `evaluate` stays
+rejected in checked bodies. A layout whose args contain a linear con, or an
+unresolved arg that may later become linear, cannot transport or cross memory;
+identity flow remains legal until TFAM 11 supplies whole-bundle linear counting.
 
 **Width facts for emitters (slice 2).** The checker computes logical widths per
 §18 — `TFAM-WIDTH@ ( id -- n )` in the registry (sum: slots+tag, enum: tag,
@@ -1372,32 +1356,66 @@ per LAYOUT operand of each transport op and locals capture, holding (body token
 index, operand position 0=top, family-id, registry logical width). Absence of a
 row means every operand is one cell. Query surface (checker-modeled, callable
 from checked code): `WF-N@`, `WF-TOKIX@`, `WF-POS@`, `WF-FAM@`, `WF-WIDTH@`.
-The table is per-`CHECK` scratch: valid from a definition's verdict until the
-next `CHECK`, never persisted, never rolled back.
+Typed layout `!`/`@` also record one row at operand position 0; this position
+names the bundle width, not the one-cell address. The table is per-`CHECK`
+scratch: valid from a definition's verdict until the next `CHECK`, never
+persisted, never rolled back.
 
-**Emission-ordering requirement (slice 3+).** The native compiler emits code
-token-by-token during parse and runs the checker hook at publish time
-(`C-DEFHOOK`, `EM-COMPILE-PUBLISH-HOOKED`) — after the body is compiled. Width-
-aware lowering needs each op's operand widths BEFORE emitting it, so the colon
-pipeline for layout-touching bodies must become check-first: capture body, run
-`CHECK` (fills the width facts), then emit consuming the facts by body token
-index. The Gforth bootstrap mirror follows the same contract. Emitters must not
-lower from these facts until `LAYOUT-PUSH-FIELDS` expansion lands in the same
-slice — the facts carry the registry logical width, which only then equals the
-physical width.
+**Pass-2 ordering (slice 3b, landed).** The native compiler's first pass captures
+the body and runs the checker hook at publish time. If `CHECK` records any wide
+fact, `EM-P2-TRIGGER` replays the captured body with the fact table available;
+the second pass selects width-aware lowering by body-token index and does not
+register the definition twice. This replay supplies checker-before-emission
+ordering without making every scalar definition pay for a separate parse.
 
-**Storable layouts S1 (dot habu-checker-capability-typed-a480c423).** `!`/`@`
-through a `ptr family<..>` address move the pointee's whole logical value for
-the width-1 (enum) tier: the ADDRESS type carries the family identity — a bare
-`ptr a` layout store, an `n` into an enum slot, a mismatched family, and an
-enum fetched back as `n` all keep the item-12 reject — and a var may bind a
-width-1 non-linear layout pointee under a ptr spine (`CUR-STRICT` context), so
-a checked accessor certifies `( -- ptr color ) VAR-NAME` against the
-variable's `-- ptr a` row. The compiled one-cell `!`/`@` are already the exact
-lowering at W = 1, so the change is checker-only. W > 1 store/fetch waits for
-the S2 width-aware engine legs; possibly-linear (incl. open-arg) pointees stay
-fail-closed until TFAM 11 whole-bundle counting. Pinned in
-`test/type-decl-suite.f` (TDS1-*).
+**Storable layouts S1/S2 (dot habu-checker-capability-typed-a480c423, landed).**
+Typed `!`/`@` through a `ptr family<..>` address move the pointee's whole closed
+non-linear logical value. The address carries family identity: bare `ptr a`, a
+mismatched family, scalar-to-layout storage, and layout-to-scalar fetch all
+reject. Ordinary `variable`, `create`, pointer arithmetic, and a declared
+`ptr a` result cannot refine to `ptr family`; only the sealed generative storage
+boundary may introduce a family-typed pointer.
+
+At `W = 1`, the ordinary scalar `!`/`@` instruction is already the exact
+lowering. At `W > 1`, the checker records the operation's compile-time width and
+pass 2 emits a fixed-width loop: store pops the typed address and writes
+`slot0 .. tag` to ascending cell addresses; fetch reads ascending cells and
+reconstructs `slot0 .. tag`, with the tag again on top. A zero-width product has
+no addressable representation and rejects. Open or possibly-linear applications
+also reject until TFAM 11 whole-bundle linear accounting can discharge their
+ownership obligations.
+
+`count LAYOUT-BUFFER NAME family<args>` owns backing capacity and publishes one
+checked accessor `( n -- ptr family<args> )`. The family application must be
+closed, non-linear, addressable, and non-zero-width; `count` must be positive
+and its `count * width * CELL` extent must fit. Because count is a stack input,
+named capacity constants remain the single source of truth. The buffer is zero-initialized,
+indexing is fixed-stride, and either signed bound throws `E-LAYOUT-BOUNDS`.
+Source generation completes before allocation, and a rejected generated
+definition rolls the allocation back. This is the only typed-layout pointer
+introduction form.
+
+Zero initialization proves the initial image only. Untyped code can reconstruct
+a DATA address and corrupt tags through a raw alias, so typed fetch validates
+the root tag and every active nested tag before publishing the logical value.
+Inactive SUM payload/padding is preserved and is not interpreted.
+
+Every destination cell of a wide store executes the same two-band protected-
+store guard as scalar `!`. Guarding only the base would be unsound because a
+later cell could cross into a sealed band. The current lowering therefore fails
+at the first protected destination; the focused later-cell/protected-byte
+immutability runtime pin is tracked separately by
+`habu-pin-wide-adt-31f1639c`.
+
+`test/type-decl-suite.f` pins checker width facts, mismatched/scalar/linear/open
+rejections, and W=2/W=3/W=4 memory values. `test/layout-buffer.f` pins the
+generative storage boundary, raw-pointer rejection, bounds, stride, zero image,
+and transactional allocation. `test/type-layout-lower-pending.f`
+pins exact store/fetch instruction sequences and constructor-produced runtime
+round trips. Recovery-chain parity is behavioral: the reduced Gforth seed builds
+the current native source, whose recovered `hb-stdin` passed both suites plus
+compiler dispatch, bootstrap codegen, signature-scan emitter, and seal-absence
+tests. The seed does not duplicate `LP2STORE` as a second implementation.
 
 ---
 

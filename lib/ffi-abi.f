@@ -5,11 +5,11 @@
 \ / `ffi-call-abi-r` (x0..x8, d0..d7, caller-packed stack spill, integer or
 \ float return).
 \
-\ Marshalling uses single-threaded scratch buffers. Integer/pointer args are
+\ Marshalling uses task-DATA scratch buffers. Integer/pointer args are
 \ cells in FFI-BUF; FP args are float cells in FFI-FBUF; stack spill slots are
 \ prepacked cells in FFI-STACK-BUF. Kernel params are a `void**` pointer array
 \ plus library-owned value cells for scalar params. Do not nest CALLk or
-\ FFI-CALL* calls; finish one foreign call before preparing the next.
+\ FFI-CALL* calls in one task; finish one foreign call before preparing the next.
 
 s" lib/errors.f" required
 
@@ -24,6 +24,9 @@ $3B40 constant FFI-KPARAM-PBUF-OFF
 $3BC0 constant FFI-KPARAM-VBUF-OFF
 $3C40 constant FFI-DLBUF-OFF
 $3C80 constant FFI-KPARAM#-OFF
+$40C8 constant FFI-REG-LEN-BUF-OFF
+$4148 constant FFI-STACK-LEN-BUF-OFF
+$41C8 constant FFI-SCRATCH-END
 
 : FFI-BUF ( -- ptr a )
    data-base FFI-BUF-OFF + ;
@@ -46,16 +49,15 @@ $3C80 constant FFI-KPARAM#-OFF
 : FFI-KPARAM# ( -- ptr n )
    data-base FFI-KPARAM#-OFF + ;
 
+: FFI-REG-LEN-BUF ( -- ptr n )
+   data-base FFI-REG-LEN-BUF-OFF + ;
+
+: FFI-STACK-LEN-BUF ( -- ptr n )
+   data-base FFI-STACK-LEN-BUF-OFF + ;
+
 \ Pointer <-> cell reinterpret trusted boundary: the checker cannot know a raw
 \ cell is a valid pointer, so we assert it here, once.
 TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
-TRUSTED: N>P ( n -- ptr u8 ) ;            \ ret cell -> byte pointer
-
-\ Code-emission trusted boundary: patch32 is a TRUSTED-ONLY capability prim
-\ (machine-code sink, rejected from CHECKED code). Leaf-stub builders below and
-\ in the FFI test suites stay CHECKED and route their instruction writes through
-\ this single audited wrapper instead of calling patch32 directly.
-TRUSTED: FFI-PATCH ( n n -- ) patch32 ;   \ instr addr -- : emit one 32-bit word
 
 \ ---- argument marshalling -------------------------------------------------
 \ Integer slot 8 is x8, the AAPCS64 indirect-result register. Stack slots are
@@ -128,49 +130,126 @@ TRUSTED: FFI-PATCH ( n n -- ) patch32 ;   \ instr addr -- : emit one 32-bit word
 : FFI-KPARAMS>N ( -- n )
    FFI-KPARAM-PBUF P>N ;
 
-\ ---- fixed-arity calls ----------------------------------------------------
-\ Stack: ( arg0 .. argN-1 fn -- ret ). Args are plain cells. Prefer staged
-\ pointer arguments via FFI-PTR-ARG! + FFI-CALLN; P>N is the audited low-level
-\ cast for existing call sites. The trailing n is the resolved function pointer.
-\ These route through the SEAL-GUARDED ffi-call-n (not raw ffi-call) with the
-\ exact static arg count, so a sealed-band pointer packed as any live arg traps
-\ E-SEAL-VIOLATION before the foreign call (TFAM 2b-iii). nargs<=8 skips the
-\ ffi-call-n spill loop, so this is the old fast path plus the guard.
-: CALL0 ( n -- n ) {: fn:n :}
-   FFI-BUF 0 fn ffi-call-n ;
-: CALL1 ( n n -- n ) {: a:n fn:n :}
-   a 0 FFI-ARG!  FFI-BUF 1 fn ffi-call-n ;
-: CALL2 ( n n n -- n ) {: a:n b:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  FFI-BUF 2 fn ffi-call-n ;
-: CALL3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  FFI-BUF 3 fn ffi-call-n ;
-: CALL4 ( n n n n n -- n ) {: a:n b:n c:n d:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!
-   FFI-BUF 4 fn ffi-call-n ;
-: CALL5 ( n n n n n n -- n ) {: a:n b:n c:n d:n e:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!  e 4 FFI-ARG!
-   FFI-BUF 5 fn ffi-call-n ;
-: CALL6 ( n n n n n n n -- n ) {: a:n b:n c:n d:n e:n g:n fn:n :}
-   a 0 FFI-ARG!  b 1 FFI-ARG!  c 2 FFI-ARG!  d 3 FFI-ARG!  e 4 FFI-ARG!
-   g 5 FFI-ARG!  FFI-BUF 6 fn ffi-call-n ;
-
-\ ---- general arity --------------------------------------------------------
-\ For >6 args: set args 0..nargs-1 with FFI-ARG!, then FFI-CALLN. Spills past 8
-\ to the stack via ffi-call-n. Arity beyond the buffer is a caller error, not a
-\ silent truncation.
-: FFI-CALLN ( n n -- n ) {: nargs:n fn:n :}
-   nargs FFI-MAX-ARGS FFI-CHECK-COUNT
-   FFI-BUF nargs fn ffi-call-n ;
-: FFI-CALLABI ( n n -- n ) {: stackcells:n fn:n :}
-   stackcells FFI-MAX-ARGS FFI-CHECK-COUNT
-   FFI-BUF FFI-FBUF FFI-STACK-BUF stackcells fn ffi-call-abi ;
-: FFI-CALLABI-R ( n n -- r ) {: stackcells:n fn:n :}
-   stackcells FFI-MAX-ARGS FFI-CHECK-COUNT
-   FFI-BUF FFI-FBUF FFI-STACK-BUF stackcells fn ffi-call-abi-r ;
-
 \ ---- C strings ------------------------------------------------------------
 \ Copy a Habu byte-string into dst and NUL-terminate it, yielding a C string
 \ for the callee. dst must hold at least n+1 bytes; the caller owns it.
 : >CSTR ( ptr u8 n ptr u8 -- ) {: src:ptr u:n dst:ptr :}
    src dst u BYTE-COPY
    0 dst u + c! ;                         \ dst+u : NUL terminator
+
+\ Exact bindings use this sealed package surface. Legacy global marshalling
+\ words remain compatible but cannot mint checked effects; raw calls remain
+\ TRUSTED-only and no universal binder is published.
+package FFI
+
+: REG-LEN-SLOT ( n -- ptr n ) {: idx:n :}
+   idx FFI-MAX-ARGS FFI-CHECK-INDEX
+   FFI-REG-LEN-BUF idx cells + ;
+
+: STACK-LEN-SLOT ( n -- ptr n ) {: idx:n :}
+   idx FFI-MAX-ARGS FFI-CHECK-INDEX
+   FFI-STACK-LEN-BUF idx cells + ;
+
+: REG-LEN! ( n n -- ) {: len:n idx:n :}
+   len 0 < if E-FFI-ARITY throw then
+   len idx REG-LEN-SLOT ! ;
+
+: STACK-LEN! ( n n -- ) {: len:n idx:n :}
+   len 0 < if E-FFI-ARITY throw then
+   len idx STACK-LEN-SLOT ! ;
+
+: WRITABLE-LEN ( n -- n ) {: len:n :}
+   len 0 <= if E-FFI-ARITY throw then
+   len ;
+
+public
+
+: BUF-OFF ( -- n ) FFI-BUF-OFF ;
+: KPARAM-END-OFF ( -- n ) FFI-KPARAM#-OFF CELL + ;
+: SCRATCH-END ( -- n ) FFI-SCRATCH-END ;
+: NOW ( -- n ) 2 ;
+
+: >CELL ( ptr a -- n ) P>N ;
+
+: RESET ( -- )
+   FFI-MAX-ARGS 0 ?do
+      0 i REG-LEN!
+      0 i STACK-LEN!
+   loop ;
+
+: VALUE! ( n n -- ) {: value:n idx:n :}
+   value idx FFI-ARG!
+   0 idx REG-LEN! ;
+
+: READABLE! ( ptr a n -- ) {: value:ptr idx:n :}
+   value idx FFI-PTR-ARG!
+   0 idx REG-LEN! ;
+
+: WRITABLE! ( ptr a n n -- ) {: value:ptr len:n idx:n :}
+   value idx FFI-PTR-ARG!
+   len WRITABLE-LEN idx REG-LEN! ;
+
+: FLOAT! ( r n -- ) FFI-FARG! ;
+
+: STACK-VALUE! ( n n -- ) {: value:n idx:n :}
+   value idx FFI-STACK!
+   0 idx STACK-LEN! ;
+
+: STACK-FLOAT! ( r n -- ) {: value:r idx:n :}
+   value idx FFI-FSTACK!
+   0 idx STACK-LEN! ;
+
+: STACK-READABLE! ( ptr a n -- ) {: value:ptr idx:n :}
+   value P>N idx FFI-STACK!
+   0 idx STACK-LEN! ;
+
+: STACK-WRITABLE! ( ptr a n n -- ) {: value:ptr len:n idx:n :}
+   value P>N idx FFI-STACK!
+   len WRITABLE-LEN idx STACK-LEN! ;
+
+: X8-VALUE! ( n -- ) 8 VALUE! ;
+: X8-READABLE! ( ptr a -- ) 8 READABLE! ;
+: X8-WRITABLE! ( ptr a n -- ) 8 WRITABLE! ;
+
+: ARGS ( -- ptr a ) FFI-BUF ;
+: FLOATS ( -- ptr r ) FFI-FBUF ;
+: STACK ( -- ptr a ) FFI-STACK-BUF ;
+: REG-LENS ( -- ptr n ) FFI-REG-LEN-BUF ;
+: STACK-LENS ( -- ptr n ) FFI-STACK-LEN-BUF ;
+
+: OUT@ ( ptr n -- n ) FFI-OUT@ ;
+: OUT! ( n ptr n -- ) FFI-OUT! ;
+: KPARAM-COUNT ( -- n ) FFI-KPARAM-COUNT ;
+: KPARAM-RESET ( -- ) FFI-KPARAM-RESET ;
+: KPARAM+ ( ptr a -- ) FFI-KPARAM+ ;
+: KPARAM-VALUE+ ( n -- ) FFI-KPARAM-N+ ;
+: KPARAMS ( -- ptr n n ) FFI-KPARAMS ;
+: KPARAMS>CELL ( -- n ) FFI-KPARAMS>N ;
+: CSTR ( ptr u8 n ptr u8 -- ) >CSTR ;
+
+private
+
+TRUSTED: DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
+   path P>N FFI-DLBUF !
+   flags FFI-DLBUF CELL + !
+   0 FFI-DLBUF 2 cells + !
+   0 FFI-DLBUF 3 cells + !
+   FFI-DLBUF FFI-DLBUF 2 cells + 2 DLOPEN-SLOT @ ffi-call-bounded ;
+
+TRUSTED: DLSYM-RAW ( n ptr u8 -- n ) {: handle:n name:ptr :}
+   handle FFI-DLBUF !
+   name P>N FFI-DLBUF CELL + !
+   0 FFI-DLBUF 2 cells + !
+   0 FFI-DLBUF 3 cells + !
+   FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
+
+get-current prot-wid-add
+
+public
+
+: DLOPEN ( ptr u8 n -- n ) DLOPEN-RAW ;
+: DLSYM ( n ptr u8 -- n ) DLSYM-RAW ;
+
+get-current prot-wid-add
+
+end-package

@@ -80,6 +80,13 @@ detected.
 4. runs the normal `bin/hb` self-refresh so the installed binary is rebuilt from
    current source and reaches the byte-for-byte fixpoint.
 
+The native refresh certifies each generated compiler payload, then loads it
+through the build-only `--build` source mode. That mode does not apply the
+ordinary pre-source friend seal; the generated payload owns a mandatory
+`SEAL-FRIEND` boundary after the compiler prefix and before its driver. Normal
+`--load`, stdin, baked-program, and REPL paths remain sealed before their first
+user token.
+
 The temporary files are not build products. The final installed `bin/hb` is the
 native checked stdin/TTY engine rebuilt from current source.
 

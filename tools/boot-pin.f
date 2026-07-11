@@ -29,7 +29,7 @@
 
 32 constant BP-LEN                  \ SHA-256 digest bytes
 64 constant BP-HEX-LEN              \ SHA-256 hex digest chars
-24 constant BP-MAX-FILES            \ manifest capacity (>= boot-prefix file count)
+$400 constant BP-MAN-INIT            \ initial manifest bytes; grows with prefix rows
 70 constant BP-DRIFT-RC             \ verify-drift exit code (checker-reject convention)
 64 constant BP-USAGE-RC
 1024 constant BP-PATH-CAP           \ max resolved prefix-file path
@@ -38,7 +38,9 @@
 create BP-DIGEST  BP-LEN allot                    \ expected digest (set by BP-DIGEST-HEX!)
 create BP-GOT     BP-LEN allot                    \ recomputed on-disk digest
 create BP-FILE-DG BP-LEN allot                    \ per-file digest scratch
-create BP-MANIFEST BP-MAX-FILES BP-LEN * allot
+create BP-MAN-BOOT BP-MAN-INIT allot
+PTR-VARIABLE BP-MAN-P   BP-MAN-BOOT BP-MAN-P !
+variable BP-MAN-CAP BP-MAN-INIT BP-MAN-CAP !
 create BP-HEXOUT  80 allot
 create BP-ROOT    BP-PATH-CAP allot               \ optional path prefix (--root)
 create BP-PATHBUF BP-PATH-CAP allot
@@ -46,6 +48,16 @@ variable BP-ROOT-U
 variable BP-MAN-U
 variable BP-OK
 variable BP-SET
+
+: BP-MANIFEST ( -- ptr a ) BP-MAN-P @ ;
+
+: BP-MAN-ENSURE ( n -- ) {: need:n :}
+   need BP-MAN-CAP @ <= if exit then
+   need 0 <= if s" boot-pin: manifest capacity overflow" BP-DRIFT-RC die then
+   BP-MAN-CAP @ $3FFFFFFFFFFFFFFF <= if BP-MAN-CAP @ 2 * need max else need then
+   {: cap:n :}
+   BP-MAN-P @ BP-MAN-CAP @ cap ARENA-BYTES-GROW BP-MAN-P !
+   cap BP-MAN-CAP ! ;
 
 : BP-TRUE ( -- bool )  0 0= ;
 : BP-FALSE ( -- bool )  0 0= 0= ;
@@ -83,7 +95,7 @@ variable BP-SET
 \ ---- on-disk boot-prefix manifest hash -------------------------------------
 : BP-ACC ( ptr u8 n -- )                                  \ hash one file, append its digest
    BP-PATH BP-FILE-DG SHA256-FILE 0 <> if BP-FALSE BP-OK ! exit then
-   BP-MAN-U @ BP-MAX-FILES BP-LEN * >= if BP-FALSE BP-OK ! exit then
+   BP-MAN-U @ BP-LEN + BP-MAN-ENSURE
    BP-FILE-DG BP-MANIFEST BP-MAN-U @ + BP-LEN BYTE-COPY
    BP-MAN-U @ BP-LEN + BP-MAN-U ! ;
 
@@ -103,7 +115,13 @@ variable BP-SET
    s" src/core/util.f" q execute
    s" src/core/structures.f" q execute
    s" src/core/checker.f" q execute
+   s" src/core/lower-cert-base.f" q execute
+   s" src/core/type-schema.f" q execute
+   s" src/core/type-family.f" q execute
    s" src/core/render.f" q execute
+   s" src/core/sumtype.f" q execute
+   s" src/core/layout-buffer.f" q execute
+   s" src/core/layout-valid.f" q execute
    s" src/core/check-hook.f" q execute
    s" src/core/structures-effects.f" q execute
    s" src/core/roles.f" q execute
@@ -116,8 +134,11 @@ variable BP-SET
    s" src/core/enums.f" q execute
    s" src/core/exec-vector.f" q execute
    s" src/core/sha256.f" q execute
+   s" src/core/type-family-sha.f" q execute
    s" src/core/combinators.f" q execute
    s" src/habu/xref.f" q execute
+   s" src/core/layout-buffer-seal.f" q execute
+   s" src/core/lower-cert-seal.f" q execute
    s" src/os/script-argv.f" q execute ;
 
 : BP-HASH ( -- )                                          \ -> BP-GOT (+ BP-OK)

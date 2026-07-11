@@ -43,8 +43,9 @@ public
 \ ---- gate verdict tags ----
 \ V-* stay the public numeric vocabulary of the representation-hiding accessors
 \ (REPORT:GATE! / REPORT:GATE-TAG@ keep their n signatures); internally the four
-\ G-TAG cells store a real ENUM (dot habu-cad-adt-swap, capability S1) and convert
-\ at that accessor boundary only. Constructors: MAKI-VERDICT:PASS/FAIL/NOT-RUN.
+\ cells of the typed G-TAG column store a real ENUM (dot habu-cad-adt-swap,
+\ capability S1) and convert at that accessor boundary only. Constructors:
+\ MAKI-VERDICT:PASS/FAIL/NOT-RUN.
 0 constant V-PASS
 1 constant V-FAIL
 2 constant V-NOTRUN
@@ -73,8 +74,9 @@ ENUM roofline
 \ ---- per-tensor coalescing status (CAD-PLAN 6.4 access vocabulary) ----
 \ CO-* stay the public numeric vocabulary of the representation-hiding accessors
 \ (REPORT:HOT+ / REPORT:HOT-STATUS@ keep their n signatures); internally the hot
-\ list stores a real ENUM (dot habu-cad-adt-swap, capability S1) and converts at
-\ that accessor boundary only. Constructors: MAKI-COSTATUS:UNKNOWN/../GATHERED.
+\ typed status column stores a real ENUM (dot habu-cad-adt-swap, capability S1)
+\ and converts at that accessor boundary only. Constructors:
+\ MAKI-COSTATUS:UNKNOWN/../GATHERED.
 0 constant CO-UNKNOWN
 1 constant CO-COALESCED         \ w=1 contiguous unit-stride global access
 2 constant CO-STRIDED           \ non-unit innermost stride (column-major read)
@@ -127,13 +129,11 @@ variable F-MATERIALIZED
 variable F-BYTES-BEFORE
 variable F-BYTES-AFTER
 variable F-BYTES-KNOWN
-variable F-ROOFLINE            \ holds a `roofline` enum (typed slot below)
+1 LAYOUT-BUFFER F-ROOFLINE roofline
 variable F-SELECT
 
-\ typed roofline slot: retype the cell address to `ptr roofline` so the enum
-\ store/fetch certifies with family identity (capability S1); a raw n or a
-\ foreign family cannot reach this cell.
-: F-ROOFLINE-AT ( -- ptr roofline )  F-ROOFLINE ;
+\ The generative buffer owns the roofline cell's family provenance.
+: F-ROOFLINE-AT ( -- ptr roofline )  0 F-ROOFLINE ;
 
 \ key strings as (offset,length) into the arena; length 0 means unset
 variable K-MODEL-O   variable K-MODEL-L
@@ -148,25 +148,23 @@ create L-SPLIT RPT-LCAP 2 * cells allot   variable N-SPLIT
 create L-WARN  RPT-LCAP 2 * cells allot   variable N-WARN
 create L-CAND  RPT-CAND-CAP 2 * cells allot   variable N-CAND
 
-\ hot tensors: (name-offset,name-length,costatus enum) triples, stride 3
-create L-HOT  RPT-LCAP 3 * cells allot    variable N-HOT
+\ hot tensor names are offset/length pairs; status is a typed parallel column.
+create L-HOT RPT-LCAP 2 * cells allot
+RPT-LCAP LAYOUT-BUFFER L-HOT-ST costatus
+variable N-HOT
 
-\ typed coalescing-status slot: retype the third cell of a hot triple to
-\ `ptr costatus` so the enum store/fetch certifies with family identity
-\ (capability S1); a raw n or a foreign family cannot reach these cells.
-: HOT-ST-AT ( n -- ptr costatus )  3 * 2 + cells L-HOT + ;
+\ The generative column owns extent, stride, bounds, and family provenance.
+: HOT-ST-AT ( n -- ptr costatus )  L-HOT-ST ;
 \ profile rows: (name-offset,name-length,device-us) triples, stride 3
 create L-PROF RPT-LCAP 3 * cells allot    variable N-PROF
 
-\ gate verdicts: fixed 4 entries (verdict enum, reason-offset, reason-length)
-create G-TAG MAKI:G-N cells allot
+\ gate verdicts: typed tag column plus reason offset/length columns.
+MAKI:G-N LAYOUT-BUFFER G-TAG verdict
 create G-RO  MAKI:G-N cells allot
 create G-RL  MAKI:G-N cells allot
 
-\ typed verdict slot: retype a G-TAG cell address to `ptr verdict` so the enum
-\ store/fetch certifies with family identity (capability S1); a raw n or a
-\ foreign family cannot reach these cells.
-: G-TAG-AT ( n -- ptr verdict )  cells G-TAG + ;
+\ The generative column owns extent, stride, bounds, and family provenance.
+: G-TAG-AT ( n -- ptr verdict )  G-TAG ;
 
 \ ---- arena -----------------------------------------------------------------
 : ARENA-PUT ( ptr u8 n -- n n )                \ intern bytes -> (offset length)
@@ -348,7 +346,7 @@ create G-RL  MAKI:G-N cells allot
 : R-COALESCE ( -- )
    N-HOT @ 0 ?do
       s" coalesce.tensor" i EMIT-IDXKEY
-      L-HOT 3 i 0 SL-SLOT @  L-HOT 3 i 1 SL-SLOT @ ARENA-GET OUT+ OUT-NL
+      L-HOT 2 i 0 SL-SLOT @  L-HOT 2 i 1 SL-SLOT @ ARENA-GET OUT+ OUT-NL
       s" coalesce.status" i EMIT-IDXKEY
       i HOT-ST-AT @ CO-NAME OUT+ OUT-NL
    loop ;
@@ -557,15 +555,15 @@ public
    st CO-CK drop                           \ reject a bad status before interning
    N-HOT @ RPT-LCAP >= if E-RPT-FULL throw then
    ARENA-PUT {: off:n len:n :}
-   off L-HOT 3 N-HOT @ 0 SL-SLOT !
-   len L-HOT 3 N-HOT @ 1 SL-SLOT !
+   off L-HOT 2 N-HOT @ 0 SL-SLOT !
+   len L-HOT 2 N-HOT @ 1 SL-SLOT !
    st >COSTATUS N-HOT @ HOT-ST-AT !
    N-HOT @ 1+ N-HOT ! ;
 : HOT-COUNT ( report -- n )  RPT-DROP N-HOT @ ;
 : HOT-NAME@ ( report n -- ptr u8 n ) {: idx:n :}
    RPT-DROP
    idx 0 < idx N-HOT @ >= or if E-RPT-IDX throw then
-   L-HOT 3 idx 0 SL-SLOT @  L-HOT 3 idx 1 SL-SLOT @ ARENA-GET ;
+   L-HOT 2 idx 0 SL-SLOT @  L-HOT 2 idx 1 SL-SLOT @ ARENA-GET ;
 : HOT-STATUS@ ( report n -- n ) {: idx:n :}
    RPT-DROP
    idx 0 < idx N-HOT @ >= or if E-RPT-IDX throw then

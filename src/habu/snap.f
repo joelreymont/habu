@@ -29,5 +29,5 @@ require src/habu/snap-lib.f
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    SNAPGO ;
-' HOOK set-check
+SNAP-BUILD:HOOK-XT set-check
 SNAP-RETIRE-GO

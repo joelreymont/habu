@@ -326,7 +326,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-CHECK-INDEX	(ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a slot index
 1	map	lib/map.f	word	MAP-SLOT	(ptr a idx -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a slot address
 1	map	lib/map.f	word	MAP-SLOT-FIELD	(ptr a idx off -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a checked slot field address
-1	map	lib/map.f	word	MAP-SLOT-STATE-PTR	(ptr a idx -- ptr slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the typed slot state cell address
 1	map	lib/map.f	word	MAP-SLOT-STATE@	(ptr a idx -- slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot state
 1	map	lib/map.f	word	MAP-SLOT-STATE!	(slot-state ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a slot state
 1	map	lib/map.f	word	MAP-SLOT-HASH@	(ptr a idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot hash
@@ -1213,46 +1212,69 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-VBUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	kernel-parameter value buffer base
 1	ffi-abi	lib/ffi-abi.f	word	FFI-DLBUF	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	dynamic-loader scratch buffer base
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM#	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	kernel-parameter count cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-REG-LEN-BUF	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	register writable-extent table base
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-LEN-BUF	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stack writable-extent table base
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-INDEX	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a scratch-buffer slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-CHECK-COUNT	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a caller-supplied scratch-buffer count
 1	ffi-abi	lib/ffi-abi.f	word	FFI-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI argument slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-FSLOT	(n -- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI floating-point register slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI stack spill slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK-FSLOT	(n -- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of FFI floating-point stack spill slot index
-1	ffi-abi	lib/ffi-abi.f	word	FFI-ARG!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one cell into an FFI argument slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-PTR-ARG!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	store one pointer into an FFI argument slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-FARG!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one float into an FFI floating-point register slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one cell into an FFI stack spill slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-FSTACK!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store one float into an FFI stack spill slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-X8!	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	store the AAPCS64 indirect-result register cell
-1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT@	(ptr n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	read a caller-owned out-param cell
-1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT!	(n ptr n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	write a caller-owned out-param cell
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-COUNT	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the current kernelParams count
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-RESET	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	clear the kernelParams pointer array
+1	ffi-abi	lib/ffi-abi.f	word	FFI-ARG!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage one integer register argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI-PTR-ARG!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage one pointer register argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FARG!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage one floating register argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI-STACK!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage one integer stack argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI-FSTACK!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage one floating stack argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI-X8!	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	stage the x8 indirect-result register
+1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT@	(ptr n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	read one caller-owned output cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-OUT!	(n ptr n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	write one caller-owned output cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-COUNT	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	return the kernel parameter count
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-RESET	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	clear the kernel parameter pointer array
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	append a caller-owned kernel parameter pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-N+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	append a scalar kernel parameter value
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	return the kernel parameter array and count
+1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS>N	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	return the kernel parameter array as a cell
+1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	copy and terminate one C string
+1	ffi-abi	lib/ffi-abi.f	word	FFI:BUF-OFF	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	integer argument table offset in task DATA
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM-END-OFF	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	end of the legacy kernel parameter scratch block
+1	ffi-abi	lib/ffi-abi.f	word	FFI:SCRATCH-END	(-- n)	lib/task-test.f	docs/stdlib.md	stdlib-ffi-abi	published	end of all task-local FFI scratch storage
+1	ffi-abi	lib/ffi-abi.f	word	FFI:>CELL	(ptr a -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	package-scoped pointer to machine-cell reinterpretation
+1	ffi-abi	lib/ffi-abi.f	word	FFI:RESET	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	clear register and stack writable-extent state before one exact mixed-ABI call
+1	ffi-abi	lib/ffi-abi.f	word	FFI:VALUE!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one scalar register argument with zero writable extent
+1	ffi-abi	lib/ffi-abi.f	word	FFI:READABLE!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one schema-fixed read-only register pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI:WRITABLE!	(ptr a n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one schema-fixed writable register pointer and byte extent
+1	ffi-abi	lib/ffi-abi.f	word	FFI:FLOAT!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one floating-point register argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK-VALUE!	(n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one scalar stack argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK-FLOAT!	(r n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one floating-point stack argument
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK-READABLE!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one schema-fixed read-only stack pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK-WRITABLE!	(ptr a n n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage one schema-fixed writable stack pointer and byte extent
+1	ffi-abi	lib/ffi-abi.f	word	FFI:X8-VALUE!	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage scalar x8 indirect-result register state
+1	ffi-abi	lib/ffi-abi.f	word	FFI:X8-READABLE!	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage a schema-fixed read-only x8 pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI:X8-WRITABLE!	(ptr a n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	stage a schema-fixed writable x8 pointer and byte extent
+1	ffi-abi	lib/ffi-abi.f	word	FFI:ARGS	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the integer-register argument table for an exact trusted binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:FLOATS	(-- ptr r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the floating-register argument table for an exact trusted binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK	(-- ptr a)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the caller-packed stack argument table for an exact trusted binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:REG-LENS	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the x0-x8 writable-extent table for an exact trusted binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:STACK-LENS	(-- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the stack writable-extent table for an exact trusted binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:OUT@	(ptr n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	read a caller-owned out-param cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI:OUT!	(n ptr n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	write a caller-owned out-param cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM-COUNT	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the current kernelParams count
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM-RESET	(--)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	clear the kernelParams pointer array
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-CHECK	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	validate a kernelParams slot index
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-PTR-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one kernelParams pointer slot
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-VAL-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one library-owned kernelParams value cell
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-BUMP	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	advance the kernelParams count past one written slot
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a caller-owned kernel parameter pointer
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-N+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a scalar kernel parameter in library-owned storage
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address and count
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS>N	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address as a cell
-1	ffi-abi	lib/ffi-abi.f	word	CALL0	(n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with no arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL1	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with one cell argument
-1	ffi-abi	lib/ffi-abi.f	word	CALL2	(n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with two cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL3	(n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with three cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL4	(n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with four cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with five cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with six cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLN	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function of any arity; arg cells preset via FFI-ARG!, spills past 8 to the stack
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning x0
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
-1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
-1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked dynamic loading layer over the AAPCS64 FFI ABI
-1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
-1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
-1	ffi	lib/ffi.f	word	FFI:DEFINE	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	qualified package entry for generating a checked role-typed FFI binding
-1	ffi	lib/ffi.f	word	FFI:	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	global syntax alias for generating a checked role-typed FFI binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a caller-owned kernel parameter pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM-VALUE+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a scalar kernel parameter in library-owned storage
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address and count
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAMS>CELL	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address as a cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI:CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
+1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility entry for the sealed FFI package
+1	ffi	lib/ffi-abi.f	word	FFI:NOW	(-- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	dlopen immediate-resolution flag
+1	ffi	lib/ffi-abi.f	word	FFI:DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library through the package-scoped bounded loader buffer
+1	ffi	lib/ffi-abi.f	word	FFI:DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol through the package-scoped bounded loader buffer
+1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility alias for FFI:DLOPEN
+1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility alias for FFI:DLSYM
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range

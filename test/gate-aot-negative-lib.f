@@ -5,7 +5,7 @@
 
 require src/habu/aot-closure.f
 
-' HOOK set-check
+LOWER-CERT-HOOK:INSTALL
 
 34 constant GAN-DQ
 

@@ -18,12 +18,12 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $80000034 constant LC-DYLD-CHAINED-FIXUPS
 $100000000 constant VMBASE
-$100000   constant MPAGE             \ maximum generated code window for builder images
+$200000   constant MPAGE             \ maximum generated executable window
 $4000     constant MACHO-PAGE
 $4000     constant DATA-CONST-SIZE
 104       constant MACHO-FIXUPS-SIZE
 \ Upper bound for the CODESIG2 ad-hoc signature appended into MBUF: SuperBlob +
-\ CodeDirectory + 32 B per 4 KB page of a full-MPAGE image is ~8.6 KB; $6000
+\ CodeDirectory + 32 B per 4 KB page of a full-MPAGE image is ~16.5 KB; $6000
 \ leaves slack for the id string and header growth.
 $6000     constant MACHO-SIG-MAX
 $10       constant SG-READ-ONLY
@@ -36,6 +36,8 @@ variable CODELEN
 \ loud MPAGE code-window guard stays the binding constraint, never a silent
 \ M-BOUNDS-RC throw from the byte cursor.
 : MACHO-MSIZE-CHECK ( -- )
+   CODE-CAP-BYTES CODE-OFF + MPAGE <>
+   IF s" macho: code capacity differs from MPAGE" 73 die THEN
    MPAGE DATA-CONST-SIZE + MACHO-FIXUPS-SIZE + MACHO-SIG-MAX + MSIZE >
    IF s" macho: MSIZE below max image" 73 die THEN ;
 MACHO-MSIZE-CHECK

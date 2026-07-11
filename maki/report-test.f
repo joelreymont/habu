@@ -202,12 +202,34 @@ end-package
 
 \ ---- roofline swapped-role negatives (dot habu-cad-adt-swap; capability S1) --
 \ F-ROOFLINE stores a real `roofline` ENUM behind the unchanged RC-* n accessors;
-\ the slot is reachable only as `ptr roofline` (F-ROOFLINE-AT, REPORT-private, so
-\ the checks run in a reopened REPORT block). rtalien is a test-owned foreign
-\ family proving family identity (not just n-vs-enum) is enforced at the slot.
+\ its generative buffer exposes only `ptr roofline` through F-ROOFLINE-AT.
+\ rtalien proves family identity, not merely n-vs-enum, is enforced at the slot.
 package REPORT
 
 ENUM rtalien aa bb ;ENUM
+
+: RT-ROOF-LOW ( -- )  -1 F-ROOFLINE drop ;
+: RT-ROOF-HIGH ( -- )  1 F-ROOFLINE drop ;
+: RT-HOT-LOW ( -- )  -1 HOT-ST-AT drop ;
+: RT-HOT-HIGH ( -- )  RPT-LCAP HOT-ST-AT drop ;
+: RT-GATE-LOW ( -- )  -1 G-TAG-AT drop ;
+: RT-GATE-HIGH ( -- )  MAKI:G-N G-TAG-AT drop ;
+
+: RT-HOT-FULL ( -- )
+   NEW RPT-LCAP 0 ?do s" x" MAKI:CO-COALESCED HOT+ loop
+   dup HOT-COUNT RPT-LCAP T= drop ;
+
+: RT-HOT-OVER ( -- )
+   NEW RPT-LCAP 1+ 0 ?do s" x" MAKI:CO-COALESCED HOT+ loop drop ;
+
+' RT-ROOF-LOW E-LAYOUT-BOUNDS TTHROWS
+' RT-ROOF-HIGH E-LAYOUT-BOUNDS TTHROWS
+' RT-HOT-LOW E-LAYOUT-BOUNDS TTHROWS
+' RT-HOT-HIGH E-LAYOUT-BOUNDS TTHROWS
+' RT-GATE-LOW E-LAYOUT-BOUNDS TTHROWS
+' RT-GATE-HIGH E-LAYOUT-BOUNDS TTHROWS
+RT-HOT-FULL
+' RT-HOT-OVER E-RPT-FULL TTHROWS
 
 \ positive controls: the typed slot accepts its own family; the alien type resolves
 s" RT-ROOF-OK ( roofline -- ) F-ROOFLINE-AT !"    CHECK-QUIET-CANDIDATE! -1 T=
@@ -232,7 +254,7 @@ s" RT-GATE-NOUT ( n -- n ) G-TAG-AT @"            CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-GATE-ROOF ( roofline n -- ) G-TAG-AT !"     CHECK-QUIET-CANDIDATE! 0 T=
 s" RT-ROOF-VERD ( verdict -- ) F-ROOFLINE-AT !"   CHECK-QUIET-CANDIDATE! 0 T=
 
-\ ---- coalescing-status swapped-role negatives (L-HOT stores a `costatus` ENUM)
+\ ---- coalescing-status swapped-role negatives (typed L-HOT-ST column) -------
 \ positive control: the typed hot-status slot accepts its own family
 s" RT-HOT-OK ( costatus n -- ) HOT-ST-AT !"       CHECK-QUIET-CANDIDATE! -1 T=
 \ n->enum / enum->n laundering at the hot-status slot

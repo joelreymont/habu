@@ -2,6 +2,7 @@ GATE-STDLIB-MAIN
 
 TEST:SUITE shadow-lint
    tools/lint/shadow-lint.f
+   tools/lint/shadow-lint-test.f
 TEST:;SUITE
 
 TEST:SUITE clobber-lint

@@ -511,10 +511,13 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/util.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/checker.f" HBB-KEY-FILE+
+   s" src/core/lower-cert-base.f" HBB-KEY-FILE+
    s" src/core/type-schema.f" HBB-KEY-FILE+
    s" src/core/type-family.f" HBB-KEY-FILE+
    s" src/core/render.f" HBB-KEY-FILE+
    s" src/core/sumtype.f" HBB-KEY-FILE+
+   s" src/core/layout-buffer.f" HBB-KEY-FILE+
+   s" src/core/layout-valid.f" HBB-KEY-FILE+
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/structures-effects.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+
@@ -540,6 +543,8 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/jit.f" HBB-KEY-FILE+
    s" src/habu/habu2.f" HBB-KEY-FILE+
    s" src/habu/xref.f" HBB-KEY-FILE+
+   s" src/core/layout-buffer-seal.f" HBB-KEY-FILE+
+   s" src/core/lower-cert-seal.f" HBB-KEY-FILE+
    s" src/habu/driver-io.f" HBB-KEY-FILE+
    s" src/habu/maker.f" HBB-KEY-FILE+ ;
 
@@ -629,6 +634,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-MAKER-SRC-NAME$ BF-RESET-OUT
    HBB-MAKER-SRC-NAME$ BF-APPEND-RUN-PRELUDE
    HBB-MAKER-SRC-NAME$ BF-APPEND-COMMON
+   HBB-MAKER-SRC-NAME$ COMPILER-BUILD:SEAL
    HBB-MAKER-SRC-NAME$ BF-APPEND-DRIVER-IO
    HBB-MAKER-SRC-NAME$ HBB-APPEND-DRIVER ;
 
@@ -636,6 +642,7 @@ HBB-INSTALL-CHILD-LINTS
    s" stage2-src" BF-RESET-OUT
    s" stage2-src" BF-APPEND-RUN-PRELUDE
    s" stage2-src" BF-APPEND-COMMON
+   s" stage2-src" COMPILER-BUILD:SEAL
    s" stage2-src" BF-APPEND-DRIVER-IO
    s" stage2-src" s" src/habu/maker.f" BF-APPEND-SOURCE ;
 
@@ -662,7 +669,7 @@ HBB-INSTALL-CHILD-LINTS
    HBB-STAGE2-SOURCE
    s" stage2-got" BF-REMOVE-TMP
    HBB-MK-NAME$ BF-REMOVE-TMP
-   BF-ENGINE$ s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE {: rc:n :}
+   BF-ENGINE$ s" stage2-src" BF-A$ COMPILER-BUILD:RUN {: rc:n :}
    rc 0 <> if
       rc HBB-MAKER-DIE$ HBB-BUILD-RC die
    then

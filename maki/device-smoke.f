@@ -1,8 +1,8 @@
 \ device-smoke.f - the maki gate's device-FFI canary (closes habu-add-device-ffi).
 \
 \ Static invariant: before any device tool runs, the running bin/hb MUST provide every
-\ FFI-ABI primitive lib/ffi.f needs (ffi-call-n / ffi-call-abi / ffi-call-abi-r, the
-\ AAPCS64 additions). Two legs enforce it:
+\ trusted-only bounded FFI-ABI primitive lib/ffi.f needs (`ffi-call-bounded`).
+\ Two legs enforce it:
 \  (a) PRIMITIVE PROOF - the maki gate now loads lib/ffi.f just before this file. A
 \      stale bin/hb (predating those primitives) FAILS TO LOAD lib/ffi.f, so the gate
 \      stops early and points at the FFI layer - not cryptically deep in a device tool

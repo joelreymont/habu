@@ -72,14 +72,12 @@ create FP-MIX FP-CAP cells allot         \ per-region class bitmask (1<<class)
 variable FP-RN                            \ region count
 
 create FP-SP-NODE   FP-CAP cells allot    \ per-split node id
-create FP-SP-REASON FP-CAP cells allot    \ per-split reason enum (width-1 layout value)
+FP-CAP LAYOUT-BUFFER FP-SP-REASON reason  \ per-split reason enum
 variable FP-SP-N
 variable FP-BUILT?
 
-\ typed reason slot: retype the plain cell address to `ptr reason` so the enum
-\ store/fetch certifies with family identity (capability S1). A raw `ptr a` or a
-\ foreign-family address fails closed -- a reason can only reach this column here.
-: FP-SP-REASON-AT ( n -- ptr reason )  cells FP-SP-REASON + ;
+\ The generative buffer owns extent, stride, bounds, and family provenance.
+: FP-SP-REASON-AT ( n -- ptr reason )  FP-SP-REASON ;
 
 \ ---- dataflow queries ------------------------------------------------------
 : FP-CLASS ( n -- n )  MIR-OP@ OPR-CLASS ;   \ node -> op class

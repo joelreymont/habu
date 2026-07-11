@@ -290,64 +290,91 @@ registers, stack spill slots, out-parameter readback, and CUDA-style
 `void** kernelParams` packing. These helpers do not require a dynamic loader and
 are part of the local checked gate on macOS and Linux.
 
-Scratch storage is single-threaded and call-scoped: prepare one call, execute it,
-then prepare the next. `FFI-KPARAM-N+` stores scalar parameters in library-owned
-cells that remain stable until the next `FFI-KPARAM-RESET`; `FFI-KPARAM+` stores a
-caller-owned parameter pointer, so the caller owns that pointed-to lifetime.
+Scratch storage is task-local DATA. Every pthread task owns its integer, float,
+stack, x0..x8 extent, stack-extent, and kernel-parameter tables. A task may pause
+after staging without another task corrupting the pending call. Calls still must
+not nest within one task. `FFI:KPARAM-VALUE+` stores a scalar in task-owned
+storage until `FFI:KPARAM-RESET`; `FFI:KPARAM+` stores a caller-owned pointer.
 
-`lib/ffi.f` is the dynamic loader layer over `lib/ffi-abi.f`. On Linux/aarch64 it
+The checked call surface consists only of explicit per-symbol `TRUSTED:` words.
+There is no binding generator and no public universal call word. Each wrapper is
+a manifest-reviewed assertion of one external ABI contract: it resolves one
+symbol, fixes every value/read/write direction and writable extent, invokes a
+checker-`TRUSTED`-only trampoline, and returns either one machine result or no
+result. Multiple-result C ABIs require an explicit x8/sret wrapper and writable
+extent; declaring multiple stack outputs over one x0 return is rejected.
+
+The staging words (`FFI:VALUE!`, `FFI:READABLE!`, `FFI:WRITABLE!`, and the mixed
+ABI register/stack variants) grant no foreign-call authority. The raw integer
+and mixed-ABI trampolines are checker `TRUSTED`-only capabilities. Exact audited
+mixed-ABI boundaries use separate extent tables for x0..x8 and caller-packed
+stack slots. x8 is the AAPCS64 indirect-result register: sret writers must use
+`FFI:X8-WRITABLE!` with the complete result extent. Stack writers use the
+corresponding stack slot and extent; neither table aliases the other.
+
+`lib/ffi.f` is the compatibility entry for the sealed `FFI` package owned by
+`lib/ffi-abi.f`. On Linux/aarch64 the package
 calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 (`DLOPEN-SLOT`, `DLSYM-SLOT`). On macOS/aarch64 the Mach-O writer emits a
 `__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
 `_dlopen` and `_dlsym`; the same checked `DLOPEN`/`DLSYM` words read those
-resolved slots.
+resolved slots. The exact package bindings are `FFI:DLOPEN` and `FFI:DLSYM`.
+Legacy global `DLOPEN`/`DLSYM` aliases remain for existing sources; new code
+uses the package words. `FFI`, `CUDA`, and `TASK` seal both wordlists after
+definition, so later source cannot reopen them, add a call, or redirect a symbol.
 
-Prefer `FFI:` for named bindings. It generates a checked wrapper from a declared
-stack effect, erases nominal roles/pointers only at the C ABI edge, resolves the
-symbol once through a caller-owned resolver word, and throws on a missing symbol.
-Syntax:
+`FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
+staged call. Wrappers still resolve before staging to keep the foreign-call
+transaction linear. Long-lived libraries such as `TASK` resolve required symbols at load and
+store them as private constants. Optional libraries such as CUDA resolve inside
+each explicit wrapper before `FFI:RESET`, then stage and call without exporting a
+mutable function-pointer cell.
+
+An exact binding has this shape:
 
 ```forth
-FFI: WORD ( typed args -- typed result ) RESOLVER c_symbol FFI;
+TRUSTED: WRITE-ONE ( ptr a n -- n ) {: out:ptr value:n :}
+   s" write_one" SYMBOL {: fn:n :}
+   FFI:RESET
+   out 8 0 FFI:WRITABLE!
+   value 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 fn ffi-call-bounded ;
 ```
 
-`RESOLVER` has effect `( ptr u8 n -- n )`; it receives the symbol text and
-returns the function pointer. A CUDA binding can therefore say
-`FFI: CUDEVICEGET ( ptr a idx -- rc ) CUDA-SYM cuDeviceGet FFI;`, and a caller
-must pass an `idx`, not an arbitrary `n`. `FFI:DEFINE` is the qualified package
-entry; `FFI:` is the global syntax alias used by source files.
+The wrapper's checked callers cannot reclassify `out` or change its eight-byte
+extent. The `TRUSTED.md` row owns the symbol contract; focused tests cover the
+writer guard and the checked public effect.
 
 ```forth
-FFI-ARG!          ( n n -- )
-FFI-PTR-ARG!      ( ptr a n -- )
-FFI-FARG!         ( r n -- )
-FFI-STACK!        ( n n -- )
-FFI-FSTACK!       ( r n -- )
-FFI-X8!           ( n -- )
-FFI-OUT@          ( ptr n -- n )
-FFI-OUT!          ( n ptr n -- )
-FFI-KPARAM-COUNT  ( -- n )
-FFI-KPARAM-RESET  ( -- )
-FFI-KPARAM+       ( ptr a -- )
-FFI-KPARAM-N+     ( n -- )
-FFI-KPARAMS       ( -- ptr n n )
-FFI-KPARAMS>N     ( -- n )
-CALL0             ( n -- n )
-CALL1             ( n n -- n )
-CALL2             ( n n n -- n )
-CALL3             ( n n n n -- n )
-CALL4             ( n n n n n -- n )
-CALL5             ( n n n n n n -- n )
-CALL6             ( n n n n n n n -- n )
-FFI-CALLN         ( n n -- n )
-FFI-CALLABI       ( n n -- n )
-FFI-CALLABI-R     ( n n -- r )
->CSTR             ( ptr u8 n ptr u8 -- )
-RTLD-NOW          ( -- n )
-DLOPEN            ( ptr u8 n -- n )
-DLSYM             ( n ptr u8 -- n )
-FFI:DEFINE        ( -- )
-FFI:              ( -- )
+FFI:RESET         ( -- )
+FFI:VALUE!        ( n n -- )
+FFI:READABLE!     ( ptr a n -- )
+FFI:WRITABLE!     ( ptr a n n -- )
+FFI:FLOAT!        ( r n -- )
+FFI:STACK-VALUE!  ( n n -- )
+FFI:STACK-FLOAT!  ( r n -- )
+FFI:STACK-READABLE! ( ptr a n -- )
+FFI:STACK-WRITABLE! ( ptr a n n -- )
+FFI:X8-VALUE!     ( n -- )
+FFI:X8-READABLE!  ( ptr a -- )
+FFI:X8-WRITABLE!  ( ptr a n -- )
+FFI:ARGS          ( -- ptr a )
+FFI:FLOATS        ( -- ptr r )
+FFI:STACK         ( -- ptr a )
+FFI:REG-LENS      ( -- ptr n )
+FFI:STACK-LENS    ( -- ptr n )
+FFI:OUT@          ( ptr n -- n )
+FFI:OUT!          ( n ptr n -- )
+FFI:KPARAM-COUNT  ( -- n )
+FFI:KPARAM-RESET  ( -- )
+FFI:KPARAM+       ( ptr a -- )
+FFI:KPARAM-VALUE+ ( n -- )
+FFI:KPARAMS       ( -- ptr n n )
+FFI:KPARAMS>CELL  ( -- n )
+FFI:CSTR          ( ptr u8 n ptr u8 -- )
+FFI:NOW           ( -- n )
+FFI:DLOPEN        ( ptr u8 n -- n )
+FFI:DLSYM         ( n ptr u8 -- n )
 ```
 
 ## Core Bytes
@@ -573,8 +600,11 @@ capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
 Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
 `occupied`) with generated constructors `SLOT--STATE:EMPTY`,
 `SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
-consumer through `MATCH slot-state` or the `MAP-*?` predicates; a raw `n`
-cannot pose as a slot state and a state cannot launder back to `n`.
+consumer through `MATCH slot-state` or the `MAP-*?` predicates. The nominal
+getter/setter API prevents checked callers from laundering state through `n`.
+The caller still owns raw map storage and `MAP-SLOT-FIELD` intentionally exposes
+its representation. `MAP-SLOT-STATE@` is therefore a validating decoder: raw
+tags 0/1/2 become constructors and every other tag throws `E-BAD-TAG`.
 
 The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
 no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
@@ -602,7 +632,6 @@ MAP-SLOTS           ( ptr a -- ptr a )
 MAP-CHECK-INDEX     ( ptr a idx -- )
 MAP-SLOT            ( ptr a idx -- ptr a )
 MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE-PTR  ( ptr a idx -- ptr slot-state )
 MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
 MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
 MAP-SLOT-HASH@      ( ptr a idx -- n )

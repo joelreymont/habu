@@ -307,7 +307,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | CFIELD: | `ptr a n -- ptr a n` | Byte field definer preserves the layout cursor while creating a byte-pointer accessor; `CREATE`/`DOES>` keeps this as a trusted defining boundary. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | END-STRUCTURE | `ptr a n --` | Sealing a structure consumes the layout cursor and writes the final byte size into the created size word. | `test/gate-dictionary.f`, `lib/vector-test.f`, `test/run.f` | src/core/structures-effects.f | 2026-06-30 |
 | DTC-EVAL | `--` | Audited `evaluate` wrapper for `deftype`: compiles the constructed `TRUSTED: >NAME ( n -- NAME ) ;` / `NAME>N` converter shapes so a user-declared nominal integer gets its explicit no-op identity casts. `evaluate` cannot be checker-typed; each generated converter is a proven identity, so this single boundary covers every deftype-derived pair. | `test/engine-suite.f`, `test/run.f` | src/core/roles.f | 2026-07-03 |
-| FDEF-EVAL | `--` | Audited `evaluate` wrapper for `FFI:`: compiles one generated checked wrapper from an explicit typed effect, resolver word, and C symbol. The generated body performs only role erasure/pointer erasure at the ABI edge, fail-closed `dlsym`, `FFI-ARG!`, `FFI-CALLABI`, and declared result refinement. | `lib/ffi-test.f`, `maki/test.f`, `test/run.f` | lib/ffi.f | 2026-07-03 |
 | >IDX | `n -- idx` | Runtime identity cast from a generic cell to the nominal index role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | IDX>N | `idx -- n` | Runtime identity cast from the nominal index role back to a generic cell; the checker cannot infer nominal role erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | >LEN | `n -- len` | Runtime identity cast from a generic cell to the nominal length role; the checker cannot infer nominal role refinement from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
@@ -344,15 +343,80 @@ that source is explicitly certified; they are not stale-checked by the default
 | SNAP>N | `snap -- n` | Runtime identity cast from the nominal snapshot-header phase token back to a generic cell; the checker cannot infer phase-token erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 |
 | TTHROWS-RAW | `a n --` | Top-level test assertion boundary around execution-token `catch`; checked colon definitions should use `TTHROWSQ`, but top-level scripts cannot push `[: ;]` quotations. | `lib/test/assert-test.f`, `test/run.f` | lib/test/assert.f | 2026-06-22 |
 | P>N | `ptr a -- n` | FFI argument marshalling: reinterpret any pointer as the raw integer cell the AAPCS64 trampoline loads into x0-x7; the checker has no pointer-to-cell coercion. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-06-27 |
-| N>P | `n -- ptr u8` | FFI return marshalling: reinterpret an integer return cell (a handle or pointer from dlopen/dlsym or a callee) as a byte pointer. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-06-27 |
-| FFI-PATCH | `n n --` | Code-emission boundary: `patch32` is a TRUSTED-only capability primitive (machine-code sink, rejected from CHECKED code as E-CAP-TRUSTED). Checked FFI leaf-stub builders route every instruction write through this single audited wrapper. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-07-09 |
+| DLOPEN-RAW | `ptr u8 n -- n` | Private exact `dlopen` boundary: the path is read-only, flags are scalar, and the sealed `FFI` package fixes both directions before the trusted-only bounded call. | `lib/ffi-test.f`, `lib/task-test.f`, `lib/ptx/cuda-driver-test.f`, `test/seal-package.f` | lib/ffi-abi.f | 2026-07-11 |
+| DLSYM-RAW | `n ptr u8 -- n` | Private exact `dlsym` boundary: handle is scalar, symbol is read-only, and the sealed `FFI` package prevents replacement or extension of the call surface. | `lib/ffi-test.f`, `lib/task-test.f`, `lib/ptx/cuda-driver-test.f`, `test/seal-package.f` | lib/ffi-abi.f | 2026-07-11 |
+| FFI-T-STORE-X1 | `-- n` | Test-local fixed code emitter for one x1 store instruction; no address or instruction is caller-selected. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-STORE | `ptr a n -- n` | Exact test writer fixes argument zero to an eight-byte writable pointer and argument one to a scalar before calling the local AAPCS64 stub. | `lib/ffi-abi-test.f`, `test/protection-span.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-KPARAM-SUM2 | `-- n` | Test-local fixed code emitter for the two-parameter kernel fixture; no address or instruction is caller-selected. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-X8-STORE | `-- n` | Test-local fixed code emitter for one x8 store instruction; no address or instruction is caller-selected. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-STACK-STORE | `-- n` | Test-local fixed code emitter for one stack-argument store instruction; no address or instruction is caller-selected. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-X8-CALL | `ptr a -- n` | Exact test-only mixed-ABI binding: x8 is fixed as a one-cell writer and its extent is installed by the binding, not selected by the caller. | `lib/ffi-abi-test.f`, `test/protection-span.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-STACK-CALL | `ptr a -- n` | Exact test-only mixed-ABI binding: stack slot zero is fixed as a one-cell writer and uses the distinct stack extent table. | `lib/ffi-abi-test.f`, `test/protection-span.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-KPARAM-CALL | `ptr a -- n` | Exact test-only one-argument read-only binding for the kernel-parameter fixture; direct primitive use is confined to this fixed schema. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 |
+| FFI-T-STRLEN$ | `ptr u8 -- n` | Test-only exact libc `strlen` binding fixes its sole pointer read-only and resolves the symbol before staging task-local arguments. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-STRNCMP$ | `ptr u8 ptr u8 n -- n` | Test-only exact libc `strncmp` binding fixes two read-only pointers and one scalar length. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-GETPID$ | `-- n` | Test-only exact zero-argument libc `getpid` binding. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-CTX-SET | `ffi-ctx -- rc` | Test-only nominal-role binding proves a distinct nominal input cannot be substituted even though the ABI cell is scalar. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-VOID$ | `--` | Test-only void-result binding drops the single machine return cell at the trusted boundary. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-SUM10 | `-- n` | Test-local fixed code emitter for the ten-integer sum fixture; no address or instruction is caller-selected. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FSUM3 | `-- n` | Test-local fixed code emitter for the three-register floating sum fixture; no address or instruction is caller-selected. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FADD-X0 | `-- n` | Test-local fixed code emitter for the mixed x0/d0 fixture; no address or instruction is caller-selected. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FADD-FSTACK | `-- n` | Test-local fixed code emitter for the floating stack-spill fixture; no address or instruction is caller-selected. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-X8-STORE | `-- n` | Test-local fixed code emitter for the x8 store fixture; no address or instruction is caller-selected. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-STRLEN-LATE | `ptr u8 -- n` | Regression binding stages `strlen` before resolving it, proving the dedicated loader block cannot overwrite task-local call arguments. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-SUM10-CALL | `-- n` | Test-only exact ten-integer binding covers x0-x7 plus two stack-spilled cells through the bounded integer trampoline. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FSUM3-CALL | `-- r` | Test-only exact three-register floating-point binding. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FADD-X0-CALL | `-- r` | Test-only exact mixed x0 and d0 binding. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-FADD-FSTACK-CALL | `-- r` | Test-only exact floating-register plus stack-spill binding with separate extent tables. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-X8-ABI-CALL | `ptr a -- n` | Test-only exact sret binding fixes x8 to an eight-byte writable output. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
+| FFI-T-SQRT-CALL | `r -- r` | Test-only exact libm square-root binding returns one floating result. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 |
 | TASK-N>PTR | `n -- ptr a` | Reinterpret task-control-block cell storage as a pointer when loading the current task pointer. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | TASK-PATCH | `n n --` | Code-emission boundary: emits JIT task-trampoline instructions via `patch32`, a TRUSTED-only capability primitive (machine-code sink, rejected from CHECKED code as E-CAP-TRUSTED). | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-07-09 |
 | TASK-CELL>PTR-SLOT | `ptr a -- ptr ptr a` | Reinterpret a data-region cell address as a pointer-valued slot; the checker cannot infer the slot payload type from the offset. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | TASK | `n --` | Defining word that allocates a task control-block record and returns it through DOES>; CREATE/DOES> effect is outside checker inference. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | +USER | `n n -- n` | Defining word for task-local user storage; CREATE/DOES> returns an address derived from the current data region. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
 | FACILITY | `--` | Defining word for owner-tracked pthread mutex storage; CREATE/DOES> returns the facility record address. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 |
+| MUNMAP-CALL | `ptr a n -- n` | Exact task-internal `munmap` binding marks the unmapped address read-only from the callee's perspective and stages its byte length as scalar. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| PTHREAD-CREATE-CALL | `ptr a n n ptr a -- n` | Exact task-internal `pthread_create` binding fixes the thread id output to eight writable bytes and the opaque task argument read-only. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| PTHREAD-JOIN-CALL | `n ptr a -- n` | Exact task-internal `pthread_join` binding fixes its return-value output to eight writable bytes. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| PTHREAD-EXIT-CALL | `n --` | Exact task-internal noreturn `pthread_exit` binding consumes the machine return cell inside the trusted boundary. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| SCHED-YIELD-CALL | `-- n` | Exact zero-argument task-internal `sched_yield` binding. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| MUTEX-INIT-CALL | `ptr a n -- n` | Exact task-internal mutex initialization binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| MUTEX-LOCK-CALL | `ptr a -- n` | Exact task-internal mutex lock binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| MUTEX-UNLOCK-CALL | `ptr a -- n` | Exact task-internal mutex unlock binding fixes the mutex object to its full writable extent. | `lib/task-test.f` | lib/task.f | 2026-07-11 |
+| TASK-CSTRLEN | `ptr u8 -- n` | Task-concurrency fixture resolves `strlen` once at load time, then pauses after staging to prove every task owns separate argument and extent tables. | `lib/task-test.f` | lib/task-test.f | 2026-07-11 |
 | c-task-live-guard | `--` | Engine emitter guard that rejects dictionary/source mutation while pthread tasks are live; raw exit path and token printing are assembly-side. | `lib/task-test.f`, `test/gate-stdlib.f`, `test/run.f` | src/habu/habu2.f | 2026-06-30 |
+| CU-INIT | `n -- rc` | Exact CUDA `cuInit` scalar binding in the sealed `CUDA` package. | `lib/ptx/cuda-driver-test.f`, `maki/device-smoke.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-DEVICE-GET | `ptr a idx -- rc` | Exact CUDA device lookup binding fixes the output to one writable cell and the index to a scalar. | `lib/ptx/cuda-driver-test.f`, `maki/device-smoke.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-DEVICE-PRIMARY-CTX-RETAIN | `ptr a cuda-dev -- rc` | Exact CUDA primary-context binding fixes the output to one writable cell and preserves the nominal device role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-CTX-SET-CURRENT | `cuda-ctx -- rc` | Exact CUDA current-context binding preserves the nominal context role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MODULE-LOAD | `ptr a ptr u8 -- rc` | Exact CUDA module-load binding fixes the output to one writable cell and the path pointer read-only. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MODULE-GET-FUNCTION | `ptr a cuda-mod ptr u8 -- rc` | Exact CUDA function lookup fixes the output to one writable cell, preserves the module role, and marks the name read-only. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MEM-ALLOC | `ptr a len -- rc` | Exact CUDA allocation binding fixes the output to one writable cell and the byte length to scalar input. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MEM-FREE | `cuda-devptr -- rc` | Exact CUDA free binding preserves the nominal device-pointer role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MEMSET-D32 | `cuda-devptr n count -- rc` | Exact CUDA memset binding preserves the device-pointer role and stages value and count as scalars. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/redadd-device-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MEMCPY-HTOD | `cuda-devptr ptr u8 len -- rc` | Exact CUDA host-to-device copy marks the host source read-only and preserves device-pointer and length roles. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MEMCPY-DTOH | `ptr u8 cuda-devptr len -- rc` | Exact CUDA device-to-host copy derives the writable host extent from its length argument. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-FUNC-SET-BLOCK-SHAPE | `cuda-fn n n n -- rc` | Exact CUDA block-shape binding preserves the function role and stages dimensions as scalars. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-PARAM-SET-SIZE | `cuda-fn len -- rc` | Exact CUDA parameter-size binding preserves the function and byte-length roles. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-PARAM-SET-V | `cuda-fn idx ptr u8 len -- rc` | Exact CUDA parameter-copy binding preserves function/index/length roles and marks the source read-only. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-LAUNCH-GRID | `cuda-fn n n -- rc` | Exact CUDA grid-launch binding preserves the function role and stages grid dimensions as scalars. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-CTX-SYNCHRONIZE | `-- rc` | Exact zero-argument CUDA context synchronization binding. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-MODULE-UNLOAD | `cuda-mod -- rc` | Exact CUDA module unload binding preserves the nominal module role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-DEVICE-PRIMARY-CTX-RELEASE | `cuda-dev -- rc` | Exact CUDA primary-context release binding preserves the nominal device role. | `lib/ptx/cuda-driver-test.f`, `tools/ptx/cuda-launch.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-EVENT-CREATE | `ptr a n -- rc` | Exact CUDA event creation binding fixes the output to one writable cell and flags to scalar input. | `lib/ptx/cuda-driver-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-EVENT-DESTROY | `cuda-event -- rc` | Exact CUDA event destruction binding preserves the nominal event role. | `lib/ptx/cuda-driver-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-EVENT-RECORD | `cuda-event n -- rc` | Exact CUDA event record binding preserves the event role and stages the stream handle as a scalar. | `lib/ptx/cuda-driver-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-EVENT-SYNCHRONIZE | `cuda-event -- rc` | Exact CUDA event synchronization binding preserves the nominal event role. | `lib/ptx/cuda-driver-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| CU-EVENT-ELAPSED-TIME | `ptr a cuda-event cuda-event -- rc` | Exact CUDA elapsed-time binding fixes its float output to four writable bytes and preserves both event roles. | `lib/ptx/cuda-driver-test.f` | lib/ptx/cuda-driver.f | 2026-07-11 |
+| c-package-record-match | `label label --` | Generated package-dictionary matcher compares the current token with one record and branches to the supplied match or next labels. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
+| c-package-prot-guard | `--` | Generated package reopen guard rejects any package whose public wordlist is registered as protected. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-11 |
+| p2f-entry | `label ptr a n n --` | Pass-2 typed-fetch dispatch consumes source-offset width and descriptor rows, emits validation, and executes the frozen bundle-fetch lowering. | `test/run.f` | src/habu/habu2.f | 2026-07-11 |
+| INSTALL | `--` | Protected checker-hook installer owns the fixed `LOWER-CERT-HOOK:HOOK` execution token and restores the default fail-closed checker after package sealing. | `tools/build-fixpoint-test.f`, `test/gate-aot-negative.f`, `test/engine-suite.f`, `test/run.f` | src/core/check-hook.f | 2026-07-11 |
+| CHECKER-CERT-CALL | `ptr u8 n n n --` | Single dynamic-call boundary for the installed lowering-certificate producer; installation is private and single-assignment. | `tools/build-fixpoint-test.f`, `test/lower-cert.f`, `test/run.f` | src/core/checker.f | 2026-07-11 |
+| SCRIPT-BUILD-Z? | `ptr u8 -- bool` | Recognizes the internal `--build` argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
+| SCRIPT-SOURCE-Z? | `ptr u8 -- bool` | Recognizes either source-list argv marker in a raw argv c-string. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
+| SCRIPT-SOURCE? | `-- bool` | Detects user-load or verified-compiler source-list mode from captured process argv. | `tools/hb-cli-contracts-test.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-07-11 |
 | SNAP= | `[ R -- S ] [ R -- S ] --` | Typed depth-introspection comparator (dot habu-typed-depth-introspection-18f0efda) and the sole snapshot boundary now that the untyped `T{ -> }T` DSL is retired: the checker verifies the two quotations leave an identical row shape S at CHECK time, so a shape mismatch is rejected before runtime; only the depth-marked drain of each quotation's output row stays trusted, and both drains are inlined into this one word. Values are compared through the checked TS-* judge path. | `lib/test/snap-test.f`, `lib/array-test.f`, `test/run.f` | lib/test/snap.f | 2026-07-03 |
 | BUILD-CHECK-RAW | `ptr u8 n -- n` | Build helper boundary around `CHECK!`; the checker cannot certify a source definition by evaluating its own checker recursively. | `lib/build-test.f`, `test/run.f` | lib/build.f | 2026-06-18 |
 | CHECK-QUIET-CANDIDATE! | `ptr u8 n -- n` | Shared test harness boundary that temporarily suppresses checker diagnostics and runs `CHECK-CANDIDATE!`; recursive checker invocation and raw `DIAGXT` mutation are centralized here. | `test/engine-suite.f`, `lib/array-test.f`, `lib/vector-test.f`, `lib/string-test.f`, `lib/json-write-test.f`, `tools/image-bytes-test.f`, `tools/asm-checked-test.f`, `lib/ptx/tile-test.f`, `lib/ptx/collective-test.f`, `test/run.f` | test/checker-assert.f | 2026-06-30 |
@@ -435,7 +499,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | TMP-PATH-CHECK | `n --` | Validates the fixed target path scratch capacity before raw byte copies. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-28 |
 | TMP-PATH | `ptr u8 n -- ptr u8 n` | Builds `$HB_TMP` or `/tmp` child paths in pre-hook engine build drivers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-28 |
 | SCRIPT-LOAD-Z? | `ptr u8 -- bool` | Recognizes the `--load` argv marker in a raw argv c-string. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-06-28 |
-| SCRIPT-LOAD? | `-- bool` | Detects source-list mode from captured process argv. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-06-28 |
 | SCRIPT-SEP? | `n -- bool` | Recognizes the `--` argv separator in source-list mode. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-06-28 |
 | SCRIPT-ARG-START | `-- n` | Computes the first user script argument after source-list handling. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-06-28 |
 | SCRIPT-ARGC | `-- n` | Returns user script argument count after source-list handling. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/script-argv.f | 2026-06-28 |
@@ -689,7 +752,8 @@ the engine-primitive TRUST rows in `src/core/structures-effects.f`,
 `habu-primitive-effect-axiom-1119f176` (the audited axiom table).
 `test/prop-test-core.f` keeps a file-level row because its `0 set-check`
 boundaries have no nameable key. The self-contained `stdlib-boundary` files are
-reassigned per-site: `lib/ffi-abi.f` (`P>N`/`N>P` cell<->pointer casts),
+reassigned per-site: `lib/ffi-abi.f` (`P>N` pointer erasure plus sealed
+dynamic-loader calls),
 `lib/memory.f` (`MEM-ALLOC-PTR` mmap provenance mint), and `lib/task.f`
 (`TASK-NULL`/`TASK-N>PTR`/`TASK-CELL>PTR-SLOT` mints plus the `TASK`/`+USER`/
 `FACILITY` `create`/`does>` defining words) go to
@@ -698,12 +762,11 @@ the typed-defining-word family; `lib/build.f` (`BUILD-CHECK-RAW` wrapping the
 `CHECK!` engine entrypoint) goes to `habu-primitive-effect-axiom-1119f176`; and
 `lib/ptx/cg-matmul.f` (`MM-A/B/C-REG` + `MM-STATE` kernel wrappers) goes to
 `habu-re-express-tiled-9cc4a73a`, which re-expresses `EMIT-MATMUL` as a checked
-KERNEL and deletes that boundary. `lib/ffi-abi.f` and `lib/task.f` are
-mixed-class: the seal's `patch32` code-emission wrappers (`FFI-PATCH`,
-`TASK-PATCH`) carry `file:name` rows owned by
+KERNEL and deletes that boundary. `lib/task.f` is mixed-class: its `TASK-PATCH`
+code-emission wrapper carries a `file:name` row owned by
 `habu-checker-capability-gate-14022ba9` (patch32 gated PRIM-TRUSTED-ONLY so
 checked code cannot forge the seal; that dot is owner-of-record for the patch32
-boundaries, incl. `ES-PATCH32` still folded in `test/engine-suite.f`'s
+boundary, incl. `ES-PATCH32` still folded in `test/engine-suite.f`'s
 test-metaprog file-level count), while the file-level row (reduced to the
 remaining cast/mint/defining sites) carries the typed-defining owner. The four
 remaining `lib/ptx` files (`cg.f`, `collective.f`, `tile.f`, `tile-v4.f`) and
@@ -819,7 +882,7 @@ src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 122
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 125
 src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
@@ -865,8 +928,8 @@ src/habu/snap-lib.f:SND-ZERO-CELL builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SND-ZERO-SPAN-CELL builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SND-QUARANTINE@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap-lib.f:SNAP-INSTALL-HOOK builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/snap.f:HOOK builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/snap.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/snap.f:set-check builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:S2-PATH-CAP builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:S2-PATH-BUF builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/stage2.f:SBUF@ builder-emit habu-builder-trust-rows-c5d41af6
@@ -952,7 +1015,9 @@ src/os/macos/layout.f:DLSYM-SLOT builder-emit habu-builder-trust-rows-c5d41af6
 src/os/macos/macho.f:SNAP-EXTRA-PTR builder-emit habu-builder-trust-rows-c5d41af6
 src/os/macos/macho.f:SNAP-EXTRA-SIZE builder-emit habu-builder-trust-rows-c5d41af6
 src/os/script-argv.f:SCRIPT-LOAD-Z? builder-emit habu-raw-self-path-4514ffd3
-src/os/script-argv.f:SCRIPT-LOAD? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-BUILD-Z? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-SOURCE-Z? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-SOURCE? builder-emit habu-raw-self-path-4514ffd3
 src/os/script-argv.f:SCRIPT-SEP? builder-emit habu-raw-self-path-4514ffd3
 src/os/script-argv.f:SCRIPT-ARG-START builder-emit habu-raw-self-path-4514ffd3
 src/os/script-argv.f:SCRIPT-ARGC builder-emit habu-raw-self-path-4514ffd3
@@ -969,6 +1034,7 @@ src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff
 src/core/checker.f:USIGS-CELL-AT discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-MEM-NULL discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:HIDX-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
+src/core/checker.f:CHECKER-CERT-CALL prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:DTC-EVAL prim-axiom habu-typed-defining-words-aa224eb5
 src/core/roles.f:>IDX prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IDX>N prim-axiom habu-primitive-effect-axiom-1119f176
@@ -1025,20 +1091,76 @@ src/core/combinators.f:TIMES stdlib-boundary habu-multishot-quotations-typed-883
 src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
 src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
-lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
 lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
-lib/ffi-abi.f:FFI-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
 lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5
-lib/ffi-abi.f:N>P stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/ffi-abi.f:DLOPEN-RAW stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi.f:DLSYM-RAW stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-STORE-X1 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-STORE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-KPARAM-SUM2 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-X8-STORE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-STACK-STORE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-X8-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-STACK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-abi-test.f:FFI-T-KPARAM-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-STRLEN$ stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-STRNCMP$ stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-GETPID$ stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-CTX-SET stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-VOID$ stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-SUM10 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FSUM3 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FADD-X0 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FADD-FSTACK stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-X8-STORE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-STRLEN-LATE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-SUM10-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FSUM3-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FADD-X0-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-FADD-FSTACK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-X8-ABI-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ffi-test.f:FFI-T-SQRT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/memory.f:MEM-ALLOC-PTR stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:TASK-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
 lib/task.f:TASK-N>PTR stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:TASK-CELL>PTR-SLOT stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:MUNMAP-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:PTHREAD-CREATE-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:PTHREAD-JOIN-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:PTHREAD-EXIT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:SCHED-YIELD-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:MUTEX-INIT-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:MUTEX-LOCK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/task.f:MUTEX-UNLOCK-CALL stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/task.f:TASK stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:+USER stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:FACILITY stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task-test.f:TASK-CSTRLEN stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-INIT stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-DEVICE-GET stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-DEVICE-PRIMARY-CTX-RETAIN stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-CTX-SET-CURRENT stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MODULE-LOAD stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MODULE-GET-FUNCTION stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MEM-ALLOC stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MEM-FREE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MEMSET-D32 stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MEMCPY-HTOD stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MEMCPY-DTOH stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-FUNC-SET-BLOCK-SHAPE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-PARAM-SET-SIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-PARAM-SET-V stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-LAUNCH-GRID stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-CTX-SYNCHRONIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-MODULE-UNLOAD stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-DEVICE-PRIMARY-CTX-RELEASE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-EVENT-CREATE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-EVENT-DESTROY stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-EVENT-RECORD stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-EVENT-SYNCHRONIZE stdlib-boundary habu-ptx-m1-c-1df1d6e7
+lib/ptx/cuda-driver.f:CU-EVENT-ELAPSED-TIME stdlib-boundary habu-ptx-m1-c-1df1d6e7
 lib/ptx/ad-saved.f:NEG stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-X stdlib-boundary habu-adg-lowering-multi-24043a69
 lib/ptx/ad-saved.f:SAVED-Y stdlib-boundary habu-adg-lowering-multi-24043a69
@@ -1132,6 +1254,17 @@ lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0e
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-primitive-effect-axiom-1119f176
+test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog habu-mirror-wide-lowering-00277897
+test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-mirror-wide-lowering-00277897
+test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog habu-mirror-wide-lowering-00277897
+test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog habu-mirror-wide-lowering-00277897
+test/layout-buffer.f:LB-UN test-metaprog habu-seal-family-ptr-bd08a403
+test/layout-valid-growth.f:NAME$ test-metaprog habu-validate-fetched-adt-702ce63f
+test/layout-valid-growth.f:BUILD test-metaprog habu-validate-fetched-adt-702ce63f
+test/layout-valid-guard-base.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
+test/layout-valid-guard-base.f:SET test-metaprog habu-validate-fetched-adt-702ce63f
+test/layout-valid-product-bad.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
+test/layout-valid-w1-bad.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
@@ -1250,13 +1383,12 @@ tools/codegen-role.f:CGR-EVALUATE test-metaprog habu-primitive-effect-axiom-1119
 tools/codegen-role.f:CGR-CHECK! test-metaprog habu-primitive-effect-axiom-1119f176
 tools/codegen-role.f:CGR-EVALUATE-UNCHECKED test-metaprog habu-police-set-check-850bc543
 src/core/check-hook.f:HOOK stdlib-boundary habu-police-set-check-850bc543
+src/core/check-hook.f:INSTALL stdlib-boundary habu-police-set-check-850bc543
 src/habu/aot.f:USER-HOOK builder-emit habu-police-set-check-850bc543
 src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit habu-police-set-check-850bc543 2
 tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
 tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary habu-police-set-check-850bc543
 test/engine-suite.f:ES-VERDICT-HOOK test-metaprog habu-police-set-check-850bc543 2
-test/engine-suite.f:HOOK test-metaprog habu-police-set-check-850bc543 2
-test/gate-aot-negative-lib.f:HOOK test-metaprog habu-police-set-check-850bc543
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog habu-police-set-check-850bc543 4
 tools/codegen-role.f:CGR-HOOK test-metaprog habu-police-set-check-850bc543 2
 tools/codegen-role.f:CGR-HOOK! test-metaprog habu-police-set-check-850bc543

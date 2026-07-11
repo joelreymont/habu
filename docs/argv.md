@@ -15,6 +15,12 @@ bin/hb --load tools/argv.f my-tool.f -- --json --label NAME -o out file.f
 printf DATA | bin/hb --load lib/source.f my-tool.f -- arg
 ```
 
+`--build` is reserved for verified compiler payloads emitted by
+`tools/build-fixpoint.f` and `tools/hb-build-lib.f`. It uses the same
+source-list/separator argv convention, but leaves the friend arena open only
+for the certified compiler prefix; every generated payload executes
+`SEAL-FRIEND` before its driver. Application and tool sources use `--load`.
+
 ## Supported Options
 
 - `--json`
