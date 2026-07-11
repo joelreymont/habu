@@ -1,6 +1,6 @@
 ---
 title: Audit trusted-inventory classification to row granularity
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-02T10:30:00.000000+02:00"
