@@ -1617,12 +1617,19 @@ per-use-site decision. A missing clause defaults to `stack-cell-tag` (§22.1).
 
 v1 grammar surface (item 16 foundation):
 
-- `stack-cell-tag` — accepted; the universal default, the only policy v1 lowers.
-- `packed-tag`, `niche-null`, `boxed` — recognised policy names, but the grammar
-  rejects them today with `layout policy not yet supported` (§24). They ship as
-  separate checked extensions, each with constructor/match/stack-op/invalid-tag
-  tests, before being exposed publicly — a physical-layout policy must not be
-  selectable before its lowering support exists (PLAN item 16 risk).
+- `stack-cell-tag` — accepted; the universal default, the only stack layout v1
+  lowers.
+- `packed-tag` — accepted; the stack representation stays IDENTICAL to
+  `stack-cell-tag` (§22.2 — constructors, `MATCH`, and stack ops behave exactly
+  as the default, pinned differentially in test/type-family-suite.f), and the
+  declaration close bakes the `PACKED-DESC` memory ABI descriptor into the
+  `LAY-*` registry.
+- `niche-null`, `boxed` — recognised policy names, but the grammar rejects them
+  today with `layout policy not yet supported` (§24). They ship as separate
+  checked extensions, each with constructor/match/stack-op/invalid-tag tests,
+  before being exposed publicly — a physical-layout policy that CHANGES the
+  stack shape must not be selectable before its lowering support exists (PLAN
+  item 16 risk).
 - any other token (including `custom`, a v1 non-goal even though the `LAY-*`
   registry range admits `TL-CUSTOM`) rejects with `unknown layout policy` (§24).
 - a bare `POLICY` with no following name rejects with `missing layout policy
@@ -1689,8 +1696,11 @@ capability marshals against it. A mixed narrow-width payload tier (an explicit
 compile-time metadata: no heap, no per-value runtime cost.
 
 Staging: `PACKED-DESC` computes the descriptor for any family regardless of its
-declared policy; the grammar still **rejects** `POLICY packed-tag` until a later
-sub-slice flips the accept and wires `PACKED-DESC` → `LAY-ADD` at declaration.
+declared policy. `POLICY packed-tag` is ACCEPTED (item 16 sub-slice 2): the
+declaration close wires `PACKED-DESC` → `LAY-ADD`, so a packed family carries
+its size/align/tagw row; `stack-cell-tag` families bake no row. Buffer
+marshalling that CONSUMES the descriptor is the separate maki capability
+(the ABI contract above is what it reads).
 
 ### 22.3 Niche optimization
 

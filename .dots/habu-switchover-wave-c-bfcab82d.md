@@ -1,6 +1,6 @@
 ---
 title: "Switchover wave C: outcome sum + block ENUMs for in-process tags"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-04T22:18:57.009104+02:00"

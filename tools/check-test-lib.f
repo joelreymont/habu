@@ -155,15 +155,15 @@ variable CKT-PAR-U
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
-: CKT-DIRECT-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+: CKT-DIRECT-ALL-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
    CKT-DIRECT-START
+   -1 CHK-ALL !
    -1 CHK-JSON !
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
-: CKT-DIRECT-ALL-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+: CKT-DIRECT-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
    CKT-DIRECT-START
-   -1 CHK-ALL !
    -1 CHK-JSON !
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
    CHK-DIRECT-RUN CKT-DIRECT-END ;
@@ -554,6 +554,27 @@ variable CKT-PAR-U
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
 
+: CKT-TFAM-REDRIVE$ ( -- ptr u8 n )   \ good SUMTYPE + one real mismatch after it
+   SB-RESET
+   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-ZBAD ( n -- zrc ) ;" SB-APPEND
+   SB$ ;
+
+\ Regression habu-multi-err-re-60eb58a1 (fixed by the all-errors registry-replay
+\ isolation, CHK-RUN-NOMINAL-LINTS closing its checker scope BEFORE CHK-RUN-ALL):
+\ the redrive used to re-evaluate the SUMTYPE inside the nominal pass's
+\ still-registered scope and emit a SPURIOUS E-BAD-DECLARATION duplicate-family
+\ line beside the real mismatch. Pin: exactly ONE diagnostic, the mismatch.
+: CKT-TEST-SUMTYPE-ALL-REDRIVE ( -- )
+   CKT-TFAM-REDRIVE$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TFALSE
+   CKT-ERR erru s" duplicate family" CONTAINS? TFALSE
+   CKT-ERR erru 10 COUNT-CHAR 1 T= ;
+
 : CKT-TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
    CKT-TFAM-NOARITY$ CKT-DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
@@ -884,6 +905,7 @@ variable CKTP-DOC-U
    s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
    s" check/typefamily-all-errors" [: CKT-TEST-TYPEFAMILY-ALL ;] CKT-RUN
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
+   s" check/sumtype-all-redrive" [: CKT-TEST-SUMTYPE-ALL-REDRIVE ;] CKT-RUN
    s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
    s" check/sum-noend-all" [: CKT-TEST-SUM-NOEND-ALL ;] CKT-RUN

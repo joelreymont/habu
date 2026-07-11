@@ -492,6 +492,69 @@ PKI @ PACKED-DESC PTW ! PAL ! PSZ !
 PSZ @ 16 T=  PAL @ 8 T=   PTW @ 0 T=
 
 \ ---------------------------------------------------------------------------
+\ packed-tag ACCEPT (item 16 sub-slice 2, docs §22.0/§22.2). `POLICY packed-tag`
+\ declares: the family row carries TL-PACKED-TAG and the close bakes the
+\ PACKED-DESC memory descriptor into the LAY registry. packed is a MEMORY-ABI
+\ descriptor ONLY: the stack representation is IDENTICAL to stack-cell-tag, so a
+\ packed family and its stack-cell-tag twin construct, MATCH, and transport
+\ (dup/drop via nip) exactly alike — pinned differentially below. Private
+\ families (package pkac) keep the protected-WID seal cap untouched.
+\ ---------------------------------------------------------------------------
+variable PQA  variable PQB  variable PQL  variable PQF
+package pkac
+SUMTYPE pkacp 0 POLICY packed-tag
+  VARIANT lo n ;VARIANT
+  VARIANT hi n ;VARIANT
+;SUMTYPE
+SUMTYPE pkacs 0 POLICY stack-cell-tag
+  VARIANT lo n ;VARIANT
+  VARIANT hi n ;VARIANT
+;SUMTYPE
+ENUM pkace POLICY packed-tag red green blue ;ENUM
+PRODUCT pkacr 0 POLICY packed-tag FIELD x n FIELD y n ;PRODUCT
+
+\ policy readback + stack-width identity with the stack-cell-tag twin
+s" pkac" s" pkacp" TFAM-FIND-IN drop PQA !
+s" pkac" s" pkacs" TFAM-FIND-IN drop PQB !
+PQA @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+PQB @ TFAM-LAYOUT-POLICY@ TL-STACK-CELL-TAG T=
+PQA @ TFAM-WIDTH@ PQB @ TFAM-WIDTH@ T=
+\ the close baked one LAY row for the packed family; values == PACKED-DESC
+PQA @ LAY-FIND PQF ! PQL !
+PQF @ -1 T=
+PQL @ LAY-POLICY@ TL-PACKED-TAG T=
+PQA @ PACKED-DESC PTW ! PAL ! PSZ !
+PQL @ LAY-SIZE@ PSZ @ T=   PQL @ LAY-ALIGN@ PAL @ T=   PQL @ LAY-TAGW@ PTW @ T=
+\ the stack-cell-tag twin bakes NO row
+PQB @ LAY-FIND PQF ! drop
+PQF @ 0 T=
+\ packed enum + product descriptors baked at close
+s" pkac" s" pkace" TFAM-FIND-IN drop PQA !
+PQA @ TFAM-LAYOUT-POLICY@ TL-PACKED-TAG T=
+PQA @ LAY-FIND PQF ! PQL !
+PQF @ -1 T=
+PQL @ LAY-SIZE@ 1 T=   PQL @ LAY-ALIGN@ 1 T=   PQL @ LAY-TAGW@ 1 T=
+s" pkac" s" pkacr" TFAM-FIND-IN drop PQA !
+PQA @ LAY-FIND PQF ! PQL !
+PQF @ -1 T=
+PQL @ LAY-SIZE@ 16 T=  PQL @ LAY-ALIGN@ 8 T=   PQL @ LAY-TAGW@ 0 T=
+
+\ differential stack-shape identity: the same construct -> dup -> MATCH-the-copy
+\ -> nip-the-original round trip on the packed family and on its twin.
+: PKAC-P-RT ( n -- n )
+   construct pkacp lo dup
+   MATCH pkacp lo OF ENDOF hi OF ENDOF ;MATCH
+   nip ;
+: PKAC-S-RT ( n -- n )
+   construct pkacs lo dup
+   MATCH pkacs lo OF ENDOF hi OF ENDOF ;MATCH
+   nip ;
+41 PKAC-P-RT 41 T=
+41 PKAC-S-RT 41 T=
+7 PKAC-P-RT 7 PKAC-S-RT T=
+end-package
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

@@ -44,3 +44,110 @@ capability/discharge owner (builder emitters vs raw-layout axioms differ;
 `habu-checker-capability-typed-e0c76a02` the ptx tile sites,
 `habu-typed-depth-introspection-18f0efda` the depth-capture test-metaprog class).
 Do these as further bounded, evidenced increments — do not bulk-guess owners.
+
+## Increment 2026-07-11 (row granularity complete; fold ratchet)
+
+AUDIT (from the live TSV, 659 sites): 47 placeholder folds covered 510 sites;
+15 more folds with real owners covered ~70. Separability: 55 folds were fully
+nameable; 7 folds each held exactly one unnameable `0 set-check` site; zero
+stale rows (strict was green: no dead/unmatched rows existed).
+
+DONE: all 59 separable folds (except the two contested files) split into 427
+`file:name` rows — class and owner UNCHANGED per row (granularity only; no
+owner guessing). The 7 set-check files keep count-1 residual file rows.
+Duplicate site names carry explicit counts (test/engine-suite.f:T-RDF 2).
+Trust surface identical: same 659 sites, same classes per file (by-file lines
+unchanged), strict + derived ratchet + baseline mode green.
+
+SKIPPED BY DESIGN: `src/habu/habu2.f` (122 sites) and
+`test/type-layout-lower-pending.f` (4) — contested under the wide-ADT stack;
+their per-name rows would go stale on that merge. Split them when ownership
+releases, lowering the fold-baseline in the same change.
+
+RATCHET: tools/trusted-inventory.f strict now computes the separable-fold
+count (a file-level row whose matched sites are all nameable), prints
+`separable fold(s) N (baseline M)`, and fails when N exceeds the committed
+`fold-baseline` directive (TRUSTED.md block head, currently 2); a missing
+directive is a strict failure. Red-first proven: re-folding a split file ->
+rc=81 with per-fold detail; deleting the directive -> rc=81 named failure.
+CMAX 512 -> 1024 (block now ~525 rows); CTAB gains K-UNNAME.
+
+REMAINING (ownership, unchanged scope): 409 placeholder-owned rows now at
+word granularity await per-site owner reassignment (builder-emit ~210 named +
+habu2 fold, test-metaprog ~95 named + residuals, stdlib-boundary PTX/engine-id
+~71 named, discharge-candidate 4) — per-site domain judgment, further bounded
+increments per the rules above.
+
+## Increment 2026-07-11b (discharge-candidate class resolved)
+
+The 4 `src/core/combinators.f` rows (TIMES/EACH/MAP/FOLD, combinators.f:20-34)
+are NOT dischargeable today: each re-executes a stored quotation per loop
+iteration (`r@ execute` / local-`q execute` inside `?do`), which types only
+under the multishot-quotation capability — the file's own boundary comment
+says exactly this and names the owner. Reassigned to
+`habu-multishot-quotations-typed-8832cace` (whose text lists these words) and
+re-classed `discharge-candidate` -> `stdlib-boundary` (the class definition is
+"believed checkable today", which the evidence contradicts; the tile-rows
+precedent classes capability-blocked library boundaries as stdlib-boundary
+owned by the capability dot). BI/TRI in the same file are already plain
+checked definitions — no rows. Zero placeholder discharge-candidate rows
+remain.
+
+## Increment 2026-07-11c (PTX + engine-id stdlib-boundary owners)
+
+All 69 lib/ptx placeholder rows reassigned to
+`habu-ptx-phantom-preserving-3df9db92` — the dot that defines this exact
+surface's split and end-state. Per-site signature evidence:
+- MINT CORE (11, permanent typed-DSL entry casts): lib/ptx/cg.f:77-85 the nine
+  `*-REG` words (`n -> span/uniform/ptr/matrix<...>` register mints) plus
+  cg.f:93 `R>BITS`/cg.f:134 `BITS>R` (`r <-> n` bit-casts).
+- WRAPPERS (58, retire when phantom-preserving lands): every TRUSTED row in
+  lib/ptx/tile.f (31, tile.f:22-112), lib/ptx/collective.f (18,
+  collective.f:28-94), lib/ptx/tile-v4.f (9, tile-v4.f:11-35) is typed->typed
+  (span/tile/matrix/uniform/ctx in AND out; the sole nullary, collective.f:28
+  ROW `-- rowidx<e>`, is a thread-state intrinsic read) — trusted only because
+  kernel newtype phantoms cannot thread through the checked EMIT-* words, the
+  dot's own definition of its retire list.
+The mint/wrapper distinction stays recorded here and in that dot (classes do
+not encode it; both halves are stdlib-boundary).
+
+lib/engine-id.f's two rows (ENGINE-SELF-MACOS engine-id.f:44, apple[] startup
+vector walk; ENGINE-SELF-LINUX engine-id.f:59, /proc/self/exe readlink) go to
+the newly minted `habu-raw-self-path-4514ffd3` — no existing capability dot
+covered raw startup-image/self-path reads (the block prose said exactly this);
+src/os/env-base.f's same-class sites stay on the placeholder under
+builder-emit until that increment.
+
+Placeholder remainder after 2026-07-11b/c: builder-emit (~210 named + the
+habu2 fold) and test-metaprog (~95 named + set-check residuals) only.
+
+## Increment 2026-07-11d (builder-emit cluster resolved; 3 discharges)
+
+DISCHARGED (commit A, proven by probe + rewrite + full gate): CODE-BYTE+
+(icode.f:49), CRH-BYTE+ (crash.f:9), XREF-REC+ (xref.f:19) — plain
+pointer+offset arithmetic; `( ptr u8 n -- ptr u8 ) +` and
+`( ptr a n -- ptr a ) +` certify today. TRUSTED: -> : ; rows retired from
+both the classification block and the manifest (trust surface 496 -> 493).
+
+REASSIGNED (commit B):
+- 30 startup-image/argv raw-read rows -> habu-raw-self-path-4514ffd3:
+  src/os/env-base.f (19: ENV-DATA/ENV-DASH/ARGC/ARGV-BASE and the envp/apple
+  walkers — the same startup-vector reads the dot was minted for),
+  src/os/script-argv.f (7) and src/habu/bundle-argv.f (4) (SCRIPT-ARG-START/
+  SCRIPT-ARGC/SCRIPT-ARGV$ etc.: argv-vector views over the same startup
+  image).
+- 186 builder/engine rows (every remaining builder-emit named row plus the
+  deliberately-held src/habu/habu2.f fold) -> habu-builder-trust-rows-c5d41af6:
+  the dot's own mandate is the file-by-file TRUST->CHECKED conversion of the
+  builder emit/cast surface (~307 at its mint = this whole class), it already
+  owned three habu1.f rows, and its text names habu2.f as start-after-merge —
+  matching the fold hold. Evidence shape per file: raw-pointer casts into
+  engine records (AOT-A>U8, BFR-N>REC, XREF-N>U8), raw region accessors
+  (CODE/CRH/STB@/SBUF@/HB@/MK-SBUF@), asm/signal-frame emit entries
+  (c-crash-*/c-prof-*/fold-entry/vop-entry/fprim), engine eval/check
+  entrypoints (EVAL-HOST/CHECK-BODY/JIT-EVALUATE), image-layout casts and
+  constants (LINUX-VA>PTR/MACHO>N-PTR/IMAGE-TEXT-*/SNAP-EXTRA-*), image
+  dumper mmap mints (IMGD/IMG-MMAP-PTR).
+
+Placeholder remainder: test-metaprog only (~95 named rows + the set-check
+residuals) — increment 4.

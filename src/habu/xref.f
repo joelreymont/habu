@@ -16,7 +16,7 @@
 TRUSTED: XREF-N>REC ( n -- ptr a ) ;
 TRUSTED: XREF-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: XREF-N>U8 ( n -- ptr u8 ) ;
-TRUSTED: XREF-REC+ ( ptr a n -- ptr a )
+: XREF-REC+ ( ptr a n -- ptr a )
    + ;
 
 : XREF-TRUE ( -- bool )

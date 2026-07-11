@@ -340,6 +340,21 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    mono-ns t0 - PROC-NS-PER-MS / 3000 < TTRUE
    saved T-BUDGET-PCT ! ;
 
+\ Deterministic starved-budget characterization (dot habu-process-test-
+\ standalone-9de825bc): a budget far below any possible bin/hb boot (~10ms vs
+\ a >60ms floor) makes a HEALTHY-child capture throw E-PROC-TIMEOUT - the
+\ exact standalone-flake mechanism (nominal budgets on a saturated box).
+\ Self-calibrating budgets (lib/test/budget.f T-BUDGET-SELF-PCT) remove the
+\ under-run in practice; this pins the throw path the flake rode.
+: PT-STARVED-CAPTURE ( -- )
+   PROC-ARGV-RESET
+   PT-CAPTURE-OK >LEN PROC-ARGV+
+   s" bin/hb" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN 10 >MS RUN-ARGV-CAPTURE
+   PT-CAPTURE>N drop drop drop ;
+
+: TEST-BUDGET-STARVED ( -- )
+   [: PT-STARVED-CAPTURE ;] E-PROC-TIMEOUT TTHROWSQ ;
+
 : TEST-RUN-ARGV-CAPTURE-HB ( -- )
    PT-CAPTURE-HB PT-OUT 32 PT-ERR 32 PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT 0 T= 0 T= 3 T=
    PT-OUT c@ 51 T=
@@ -411,6 +426,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT
    TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL
    TEST-BUDGET-HUNG-BOUNDED
+   TEST-BUDGET-STARVED
    TEST-RUN-ARGV-CAPTURE-HB
    TEST-RUN-CAPTURE-FD-CLEANUP
    TEST-RUN-IO-CAT

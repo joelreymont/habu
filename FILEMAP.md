@@ -470,7 +470,8 @@ points stay listed.
 - `lib/test.f` — public checked test framework interface: assertions plus
   the `TEST:*` suite/group/test package facade.
 - `lib/test/assert.f` — checked assertion primitives used by test fixtures.
-- `lib/test/budget.f` — load-aware test timeout budgets: `T-BUDGET-MS` scales nominal budgets by the gate-exported `HB_LOAD_PCT` cal-factor, clamped to at most 3x.
+- `lib/test/budget.f` — load-aware test timeout budgets: `T-BUDGET-MS` scales nominal budgets by the gate-exported `HB_LOAD_PCT` cal-factor or a standalone self-calibration spin, clamped to at most 3x.
+- `lib/test/budget-test.f` — focused coverage for budget factor math and standalone self-calibration.
 - `lib/test/assert-test.f` — focused coverage for checked assertion primitives.
 - `lib/test/record.f` — machine-readable `TFAIL` TSV failure records shared by
   the assert, snapshot, and runner test layers.
@@ -589,6 +590,8 @@ points stay listed.
 - `tools/hb-open-failure-test.f` — regression: the built engine names the first unresolved baked prefix source on stderr and exits 74 when started outside the repo.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
+- `tools/bootstrap-mirror-lint.f` — tripwire: ADT declarations must not enter the gforth-compiled recovery corpus (src/) before the stage-0 pass-2 mirror lands.
+- `tools/bootstrap-mirror-lint-test.f` — focused coverage for the recovery-corpus tripwire (clean src walk + planted overlay).
 - `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
   per-definition checker runs as the diagnostic isolation boundary.
 - `tools/check-all-errors.f` — CLI wrapper for all-errors checking.

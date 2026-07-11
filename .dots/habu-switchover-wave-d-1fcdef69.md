@@ -1,6 +1,6 @@
 ---
 title: "Switchover wave D: ptxir-node to PRODUCT"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-04T22:18:57.012591+02:00"

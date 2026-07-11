@@ -576,9 +576,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MM-B-REG | `n -- matrix<space-global,f32,extent-k,extent-n>` | GEMM codegen from-register cast for the B operand; shares K with A and N with C at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-C-REG | `n -- matrix<space-global,f32,extent-m,extent-n>` | GEMM codegen from-register cast for the C operand; ties output rows to A and output columns to B at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-STATE | `matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live>` | GEMM codegen token shim: consumes the typed A/B/C matrix operands after checked setup emission and creates the phase/accumulator tokens used by checked `MM-K-LOOP` and `MM-STORE`. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
-| CODE-BYTE+ | `ptr u8 n -- ptr u8` | Refines assembler code-buffer byte-pointer arithmetic for emitted instruction bytes and patching. | `test/run.f`, `tools/build-fixpoint-test.f`, `tools/bootstrap-codegen-test.f` | src/arch/arm64/icode.f | 2026-06-29 |
 | CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
-| CRH-BYTE+ | `ptr u8 n -- ptr u8` | Refines crash-handler byte-pointer arithmetic while copying the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | linux-spawn-fail-n | `n --` | Linux child-side spawn failure reporter emits raw `write`/`exit_group` for the supplied failure-pipe fd register number. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-29 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-29 |
 | SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
@@ -586,7 +584,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | KEEP-U | `-- ptr n` | Treeshaker candidate-token length cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SHK-BYTE+ | `ptr u8 n -- ptr u8` | Refines treeshaker byte-pointer arithmetic for token scanning; the raw `+` is the typed pointer-offset boundary. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SCAN-MODE | `-- ptr n` | Treeshaker reachability scan-mode cell is a raw variable used by checked source walks. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| XREF-REC+ | `ptr a n -- ptr a` | Offsets an opaque dictionary-record pointer by a raw dictionary-layout displacement. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-29 |
 | ZBYTE@ | `ptr u8 n -- u8` | Reads one byte from argv/envp C strings through byte-offset pointer arithmetic. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
@@ -725,47 +722,248 @@ separate increment, not a file-level guess. Reassigning the remaining
 PTX/engine-id `stdlib-boundary` rows to their real owners is the rest of
 `habu-audit-trusted-inventory-3a950436`.
 
+Row granularity (2026-07-11): every SEPARABLE file-level fold — one whose
+covered sites all carry nameable word names — is split into `file:name` rows
+(same class, same owner: finer attribution only, ownership reassignment stays
+per-increment). Two folds remain by design and are allowed by the
+`fold-baseline 2` directive at the head of the block: `src/habu/habu2.f` and
+`test/type-layout-lower-pending.f`, both contested under the wide-ADT stack
+(splitting them now would go stale on that merge). The seven `0 set-check`
+boundary sites (no nameable key: `src/habu/aot-lib.f`, `build.f`, `hide.f`,
+`maker.f`, `snap.f`, `test/engine-suite.f`, `tools/codegen-role.f`) keep
+count-1 residual file rows, like `test/prop-test-core.f`. `strict` counts the
+separable folds, prints `separable fold(s) N (baseline M)`, and fails when N
+exceeds the committed baseline — so a new coarse row cannot creep in, and
+splitting a remaining fold prompts lowering the baseline in the same change
+(decrease-only, the PARSE-COUNT ratchet shape). A missing `fold-baseline` row
+is itself a strict failure (fail-closed).
+
 <!-- trusted-inventory-classes
-src/arch/arm64/icode.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/aot-capture.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/aot-closure.f builder-emit habu-audit-trusted-inventory-3a950436 2
+fold-baseline 2
+src/arch/arm64/icode.f:CODE builder-emit habu-builder-trust-rows-c5d41af6
+src/arch/arm64/icode.f:ICODE-TABS builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-capture.f:AOT-DBASE builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-capture.f:AOT-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-capture.f:AOT-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-capture.f:AOT-CELL@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-closure.f:AOT-DBASE@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-closure.f:AOT-PTR@ builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/aot-closure.f:JSON-DIAGS prim-axiom habu-primitive-effect-axiom-1119f176
 src/habu/aot-closure.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
-src/habu/aot-lib.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/build.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/bundle-argv.f builder-emit habu-audit-trusted-inventory-3a950436 4
-src/habu/crash.f builder-emit habu-audit-trusted-inventory-3a950436 12
-src/habu/debug-watch.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/debug.f builder-emit habu-audit-trusted-inventory-3a950436 8
-src/habu/habu1.f builder-emit habu-audit-trusted-inventory-3a950436 37
+src/habu/aot-lib.f:AOT-PB@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/aot-lib.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/build.f:BLD-PB@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/build.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/bundle-argv.f:SCRIPT-ARG-START builder-emit habu-raw-self-path-4514ffd3
+src/habu/bundle-argv.f:SCRIPT-ARGC builder-emit habu-raw-self-path-4514ffd3
+src/habu/bundle-argv.f:SCRIPT-ARGV builder-emit habu-raw-self-path-4514ffd3
+src/habu/bundle-argv.f:SCRIPT-ARGV$ builder-emit habu-raw-self-path-4514ffd3
+src/habu/crash.f:CRH builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-mctx>r21 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-xreg>r9 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc>r9 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-print-regs builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc-word builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc-8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc-4 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc0 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/crash.f:c-crash-pc+4 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug-watch.f:BPW-TAB builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug-watch.f:BPW-PRINT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug-watch.f:BPW-DATA-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-SLOT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-SLOT-INSTR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-SLOT-HITS builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-SLOT-CTRL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-NULL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-PRINT-ADDR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-PATCH32 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/debug.f:BP-XT>PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:STDIN? builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:fprim builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:fprim-l builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-fail-n builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-fail builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-dup2-fd builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-chdir-fd builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-close-r builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-close-w builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-close-pipe builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-prep-w builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-wait-stored builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-parent builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn-child builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-spawn builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-ignore-sigpipe builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-dup2-action builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-chdir-action builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-frame3-enter builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-frame3-leave builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-frame4-enter builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-frame4-leave builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-actions-reset builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-stdio-actions builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-zero-adesc builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-fill-adesc builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-use-adesc builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-pid-path builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-default-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-default-envp builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-use-default-argv-envp builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-argv-default-envp builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:spawn-darwin-finish builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:linux-stat-fix builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:emit-prims builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/habu1.f:emit-fp-prims builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:linux-setpgid-self builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-zero-attr builder-emit habu-builder-trust-rows-c5d41af6
 src/habu/habu1.f:spawn-darwin-attr-defaults builder-emit habu-builder-trust-rows-c5d41af6
-src/habu/habu2.f builder-emit habu-audit-trusted-inventory-3a950436 122
-src/habu/hide.f builder-emit habu-audit-trusted-inventory-3a950436 14
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 122
+src/habu/hide.f:BFR-N>REC builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-USIG-END-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-UEND! builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-NDICT! builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-BYTE@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-A@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-B@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-SN@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-A! builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-B! builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f:BFR-SN! builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/hide.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/hide.f:BFR-CHECK-OFF builder-emit habu-staged-fixpoint-src-0b5fc6e6
-src/habu/jit.f builder-emit habu-audit-trusted-inventory-3a950436 6
-src/habu/layout.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/maker.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/prof.f builder-emit habu-audit-trusted-inventory-3a950436 9
-src/habu/snap-lib.f builder-emit habu-audit-trusted-inventory-3a950436 10
-src/habu/snap.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/stage2.f builder-emit habu-audit-trusted-inventory-3a950436 3
-src/habu/stdin.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/habu/treeshake.f builder-emit habu-audit-trusted-inventory-3a950436 18
-src/habu/verify-source.f builder-emit habu-audit-trusted-inventory-3a950436 5
-src/habu/xref.f builder-emit habu-audit-trusted-inventory-3a950436 7
-src/os/env-base.f builder-emit habu-audit-trusted-inventory-3a950436 19
-src/os/image-bytes.f builder-emit habu-audit-trusted-inventory-3a950436 1
-src/os/linux/elf.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/os/linux/layout.f builder-emit habu-audit-trusted-inventory-3a950436 17
-src/os/macos/layout.f builder-emit habu-audit-trusted-inventory-3a950436 9
-src/os/macos/macho.f builder-emit habu-audit-trusted-inventory-3a950436 2
-src/os/script-argv.f builder-emit habu-audit-trusted-inventory-3a950436 7
-tools/imagedisasm.f builder-emit habu-audit-trusted-inventory-3a950436 1
-tools/imgdump.f builder-emit habu-audit-trusted-inventory-3a950436 1
-tools/jitdump-core.f builder-emit habu-audit-trusted-inventory-3a950436 1
-src/core/include.f prim-axiom habu-primitive-effect-axiom-1119f176 2
+src/habu/jit.f:JIT-XT-EXECUTE builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/jit.f:fold-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/jit.f:vopi-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/jit.f:vop-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/jit.f:vshuf-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/jit.f:vun-entry builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/layout.f:ARGC-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/layout.f:ARGV-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/layout.f:ENVP-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/maker.f:MK-SBUF@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/maker.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/prof.f:c-prof-mctx>r21 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-pc>r9 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-sigaction-frame builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-sigaction builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-sigaction-done builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-timer-frame builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-timer builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:c-prof-timer-done builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/prof.f:emit-prof-prims builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:STB@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:STB-CELL@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SDB@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SNC-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SNC-TEXT-N builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SND-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SND-ZERO-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SND-ZERO-SPAN-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SND-QUARANTINE@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap-lib.f:SNAP-INSTALL-HOOK builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap.f:HOOK builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/snap.f builder-emit habu-builder-trust-rows-c5d41af6 1
+src/habu/stage2.f:S2-PATH-CAP builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/stage2.f:S2-PATH-BUF builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/stage2.f:SBUF@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/stdin.f:HB@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/stdin.f:EVAL-HOST builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SHAKE? builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SHK-U builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SKP builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:STS builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SHK-N builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SHK-C builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:KEEP-U builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SHK-BYTE+ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:REACHN builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:TKP builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:CHG builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:INDEF builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:XNAME builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:KEEPCUR builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:RSP builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:RTS builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:TU builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/treeshake.f:SCAN-MODE builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:CHECK-BODY builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:MULTI-ERR-MODE? builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:CHECK-DOES-BODY builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:TRUST-SIGNATURE builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/verify-source.f:TRUST builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:XREF-N>REC builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:XREF-A>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:XREF-N>U8 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:XREF-PATCH32 builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:SEAL-LATCH@ builder-emit habu-builder-trust-rows-c5d41af6
+src/habu/xref.f:SEAL-NDICT@ builder-emit habu-builder-trust-rows-c5d41af6
+src/os/env-base.f:ENV-DATA builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ENV-DASH builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ARGC builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ARGV-BASE builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ENVP-BASE builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ZBYTE@ builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ZBYTE! builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ZPTR+ builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ZLEN builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ARGV$ builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ENV-FALSE builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:ENV=? builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:NULL$ builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:GETENV builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:TMP-PATH-CAP builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:TPP@ builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:TMP-PATH-CHECK builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:TMP-PATH-COPY-SRC builder-emit habu-raw-self-path-4514ffd3
+src/os/env-base.f:TMP-PATH builder-emit habu-raw-self-path-4514ffd3
+src/os/image-bytes.f:MBUF-RC>PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/elf.f:SNAP-EXTRA-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/elf.f:SNAP-EXTRA-SIZE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-VA>PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:IMAGE-TEXT-SIZE-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:IMAGE-TEXT-CONTENT-ADJ builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:IMAGE-TEXT-TRAILER-ADJ builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DATA-VA builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DATA-SIZE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:CODE-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-DLOPEN-SLOT-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-DLSYM-SLOT-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-IMAGE-BASE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-TEXT-CELL builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-TEXT-SIZE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:LINUX-RW-VA builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DLOPEN-SLOT-VA builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DLSYM-SLOT-VA builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DLOPEN-SLOT builder-emit habu-builder-trust-rows-c5d41af6
+src/os/linux/layout.f:DLSYM-SLOT builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:MACHO>N-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:IMAGE-TEXT-SIZE-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:IMAGE-TEXT-CONTENT-ADJ builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:IMAGE-TEXT-TRAILER-ADJ builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:DATA-VA builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:DATA-SIZE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:CODE-OFF builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:DLOPEN-SLOT builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/layout.f:DLSYM-SLOT builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/macho.f:SNAP-EXTRA-PTR builder-emit habu-builder-trust-rows-c5d41af6
+src/os/macos/macho.f:SNAP-EXTRA-SIZE builder-emit habu-builder-trust-rows-c5d41af6
+src/os/script-argv.f:SCRIPT-LOAD-Z? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-LOAD? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-SEP? builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-ARG-START builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-ARGC builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-ARGV builder-emit habu-raw-self-path-4514ffd3
+src/os/script-argv.f:SCRIPT-ARGV$ builder-emit habu-raw-self-path-4514ffd3
+tools/imagedisasm.f:IMGD-MMAP-PTR builder-emit habu-builder-trust-rows-c5d41af6
+tools/imgdump.f:IMG-MMAP-PTR builder-emit habu-builder-trust-rows-c5d41af6
+tools/jitdump-core.f:JIT-EVALUATE builder-emit habu-builder-trust-rows-c5d41af6
+src/core/include.f:INCLUDE-MMAP-PTR prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/include.f:INCLUDE-EVALUATE prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/checker.f:ARENA-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:TOKBUF-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
 src/core/checker.f:USIGS-RC>PTR discharge-candidate habu-checker-self-typing-9ff8ba86
@@ -807,38 +1005,193 @@ src/core/roles.f:>IMG prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:IMG>N prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:>SNAP prim-axiom habu-primitive-effect-axiom-1119f176
 src/core/roles.f:SNAP>N prim-axiom habu-primitive-effect-axiom-1119f176
-src/core/structures-effects.f prim-axiom habu-primitive-effect-axiom-1119f176 8
-tools/check-all-errors-core.f builder-emit habu-multi-err-checking-42db26f4 2
-tools/check-core.f prim-axiom habu-primitive-effect-axiom-1119f176 6
+src/core/structures-effects.f:CELL prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:STRUCT-BYTE+ prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:BEGIN-STRUCTURE prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:+FIELD prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:PTR-FIELD: prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:PTR-VARIABLE prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:CFIELD: prim-axiom habu-primitive-effect-axiom-1119f176
+src/core/structures-effects.f:END-STRUCTURE prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-all-errors-core.f:CA-MULTI-BEGIN builder-emit habu-multi-err-checking-42db26f4
+tools/check-all-errors-core.f:CA-MULTI-END builder-emit habu-multi-err-checking-42db26f4
+tools/check-core.f:TYPE-RESERVED? prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-core.f:CHECKER-DEFTYPE prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-core.f:CHECKER-DEFLINEAR prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-core.f:CHECKER-DEFRECORD prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-core.f:CHECKER-SCOPE-START prim-axiom habu-primitive-effect-axiom-1119f176
+tools/check-core.f:CHECKER-SCOPE-DONE prim-axiom habu-primitive-effect-axiom-1119f176
 tools/check-core.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
-src/core/combinators.f discharge-candidate habu-audit-trusted-inventory-3a950436 4
+src/core/combinators.f:TIMES stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
-lib/build.f stdlib-boundary habu-primitive-effect-axiom-1119f176 1
-lib/engine-id.f stdlib-boundary habu-audit-trusted-inventory-3a950436 2
+lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
+lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-raw-self-path-4514ffd3
+lib/engine-id.f:ENGINE-SELF-LINUX stdlib-boundary habu-raw-self-path-4514ffd3
 lib/ffi-abi.f:FFI-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
-lib/ffi-abi.f stdlib-boundary habu-typed-defining-words-aa224eb5 2
-lib/memory.f stdlib-boundary habu-typed-defining-words-aa224eb5 1
+lib/ffi-abi.f:P>N stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/ffi-abi.f:N>P stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/memory.f:MEM-ALLOC-PTR stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/task.f:TASK-PATCH stdlib-boundary habu-checker-capability-gate-14022ba9
-lib/task.f stdlib-boundary habu-typed-defining-words-aa224eb5 6
-lib/ptx/ad-saved.f stdlib-boundary habu-adg-lowering-multi-24043a69 6
-lib/ptx/cg-matmul.f stdlib-boundary habu-re-express-tiled-9cc4a73a 4
-lib/ptx/cg.f stdlib-boundary habu-audit-trusted-inventory-3a950436 11
-lib/ptx/collective.f stdlib-boundary habu-audit-trusted-inventory-3a950436 18
-lib/ptx/tile-acc.f stdlib-boundary habu-checker-capability-typed-e0c76a02 4
-lib/ptx/tile-loop.f stdlib-boundary habu-checker-capability-typed-e0c76a02 1
-lib/ptx/tile-smem.f stdlib-boundary habu-checker-capability-typed-e0c76a02 3
-lib/ptx/tile-v4.f stdlib-boundary habu-audit-trusted-inventory-3a950436 9
-lib/ptx/tile.f stdlib-boundary habu-audit-trusted-inventory-3a950436 31
+lib/task.f:TASK-NULL stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:TASK-N>PTR stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:TASK-CELL>PTR-SLOT stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:TASK stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:+USER stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/task.f:FACILITY stdlib-boundary habu-typed-defining-words-aa224eb5
+lib/ptx/ad-saved.f:NEG stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/ad-saved.f:SAVED-X stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/ad-saved.f:SAVED-Y stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/ad-saved.f:SAVED-Z stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/ad-saved.f:SAVED-MX stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/ad-saved.f:SAVED-S stdlib-boundary habu-adg-lowering-multi-24043a69
+lib/ptx/cg-matmul.f:MM-A-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg-matmul.f:MM-B-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg-matmul.f:MM-C-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg-matmul.f:MM-STATE stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg.f:SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:UNIFORM-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:PTR-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:SPAN-ONCE-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:INDEX-SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:INDEX-VALUE-SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:DATA-SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:MATRIX-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:MATRIX-ONCE-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:R>BITS stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/cg.f:BITS>R stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-SPAN stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-SPAN-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-CTX-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-LOAD-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-STORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-STORE-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:ROW-SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:BLOCK-MAX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:BLOCK-SUM stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:B- stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:B/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:U/ stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:EXP. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:BROADCAST stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/collective.f:BLOCK-MAX-SELECT stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-acc.f:ACC-ZERO stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-acc.f:ACC-FMA stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-acc.f:ACC-TILE stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-acc.f:ACC-LOOP stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-loop.f:TILE-LOOP stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-smem.f:STAGE stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-smem.f:SLOAD stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-smem.f:SSTORE stdlib-boundary habu-checker-capability-typed-e0c76a02
+lib/ptx/tile-v4.f:GRID-CTX-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:LOAD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:STORE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:SCALE-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:ADD-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:SUB-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:MUL-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:DIV-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile-v4.f:RELU-V4 stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:MK-SPAN stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:MK-SPAN-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:MK-SPAN= stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:MK-MATRIX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:MK-MATRIX-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:GRID-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:GRID-CTX-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:COOP-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:LOAD-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:STORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:STORE-ONCE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:FANIN-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:FANIN-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:FANIN-SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:UNIQUE-INDEX-CTX stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-DENSE-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:UNIQUE-INDEX-DENSE-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-DENSE-STORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-LOAD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-SCATTER-ADD stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:INDEX-STORE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:SCALE stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:FMA. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:+. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:-. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:*. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:/. stdlib-boundary habu-ptx-phantom-preserving-3df9db92
+lib/ptx/tile.f:RELU stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 tools/lint/text.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
 lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
-lib/test/assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+lib/test/assert.f:TTHROWS-RAW test-metaprog habu-audit-trusted-inventory-3a950436
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
-maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
-test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+maki/eval.f:CHECK-PASSES? test-metaprog habu-audit-trusted-inventory-3a950436
+test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-audit-trusted-inventory-3a950436
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
-test/type-match-suite.f test-metaprog habu-tfam-11-linear-99fa9990 1
-test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 51
-test/gate-common-lib.f test-metaprog habu-audit-trusted-inventory-3a950436 6
+test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
+test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-RDF test-metaprog habu-audit-trusted-inventory-3a950436 2
+test/engine-suite.f:T-SCV test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-CTV test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SCOPED-W test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PRESO test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-V14 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:a:b:c test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:a:b: test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:x: test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:::x test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:tq:tail test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-GROW-PAIR test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PHASE-ID test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-ASM-CODE test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-BUILD-IMAGE test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-CODESIG2 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-BUILD-SNAP-HDR test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SNAP-EXTRA-PTR test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SNAP-EXTRA-SIZE test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-LOAD test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-ADD test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-GRID test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-MLOAD test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-MADD test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-MK-SPAN test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-MK-SPAN= test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-PTX-SAME-EXTENT test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-BIG6-MK test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SCQ-MK test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NEED-I64 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NEED-U32 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NEED-U16 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NEED-U8 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-GIVE-U16 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-GIVE-U8 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-GIVE-I64 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T->NODE test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NODE>N test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-NEED-NODE test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-MAKE-OWN test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-FREE-OWN test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-LINUX-DUP2-FD test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-LINUX-SPAWN test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SPAWN-DUP2-ACTION test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:T-SPAWN-DARWIN-FINISH test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:P5 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:ES-PATCH32 test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f:set-check test-metaprog habu-audit-trusted-inventory-3a950436
+test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 1
+test/gate-common-lib.f:UEND test-metaprog habu-audit-trusted-inventory-3a950436
+test/gate-common-lib.f:USIGS-RESTORE-END test-metaprog habu-audit-trusted-inventory-3a950436
+test/gate-common-lib.f:UTERM! test-metaprog habu-audit-trusted-inventory-3a950436
+test/gate-common-lib.f:JSON-DIAGS test-metaprog habu-audit-trusted-inventory-3a950436
+test/gate-common-lib.f:GE-EVAL-SOURCE-ACT test-metaprog habu-audit-trusted-inventory-3a950436
+test/gate-common-lib.f:GE-EVAL-SOURCE test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f test-metaprog habu-seal-set-check-b3676b33 2
 test/prop-test-core.f:PROP-INSTALL-HOOK test-metaprog habu-audit-trusted-inventory-3a950436
 test/prop-test-core.f:CLEAR-MEAS test-metaprog habu-audit-trusted-inventory-3a950436
@@ -860,8 +1213,40 @@ test/prop-test-core.f:AX-NAME$ prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-STK prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AX-ARITY prim-axiom habu-primitive-effect-axiom-1119f176
 test/prop-test-core.f:AXEVAL prim-axiom habu-primitive-effect-axiom-1119f176
-tools/asm-src-test.f test-metaprog habu-audit-trusted-inventory-3a950436 12
-tools/image-bytes-test.f test-metaprog habu-audit-trusted-inventory-3a950436 22
+tools/asm-src-test.f:MOVZHW test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ENC-ADD test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ENC-LDR test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ENC-BLR test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:>LIMM test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ENC-ANDI test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:CW@ test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:CODE-BYTE+ test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ARESET test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ADD, test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:ASM-LEN test-metaprog habu-audit-trusted-inventory-3a950436
+tools/asm-src-test.f:LIT64, test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:MBUF test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BOUNDS-RC test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-RESET test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-LEN test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-OFF test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-HERE test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:IMG-M8 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:IMG-M16 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:IMG-M32 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:IMG-M64 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BYTES-LEN test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-NAME16-LEN test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-PAD-OFF test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-LE32@ test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-LE32! test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-LE64! test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BE-RESET test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BE-HERE test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BE32 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BE64 test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:M-BE-BYTES-LEN test-metaprog habu-audit-trusted-inventory-3a950436
+tools/image-bytes-test.f:MSIZE test-metaprog habu-audit-trusted-inventory-3a950436
 tools/codegen-role.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 tools/codegen-role.f:CGR-EVALUATE test-metaprog habu-audit-trusted-inventory-3a950436
 tools/codegen-role.f:CGR-CHECK! test-metaprog habu-audit-trusted-inventory-3a950436

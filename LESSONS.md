@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 - **Probe "over-conservative reject" claims by removing the guard and reading
   what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
@@ -3322,3 +3322,36 @@ unchanged (148855). Keys for milestone 2:
   object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
   shared warm artifact may bypass object production entirely. Bind a fresh
   gate-local cache before proving store, restore, or relink transitions.
+- **Gate retries need FRESH `XDG_CACHE_HOME` + `HB_TMP` per attempt.** A reused
+  cache dir replays a timeout-poisoned result-cache PASS/RED verdict, so the
+  retry reproduces the first attempt's flake as a false persistent red. Mint
+  both dirs inside the retry loop, not once outside it.
+- **Overlay byte-identity is the proof standard for migrating gate-critical
+  tools.** Materialize the master copy of the tool in an overlay tree (own
+  copies of the changed files, symlinks for the rest, so its require chain
+  loads its own old sources), run migrated vs master on the SAME inputs — clean
+  and dirty — and diff stdout+stderr+exit. Loading two versions into one
+  session double-defines; overlays don't. (Proven on trust-lint,
+  stale-status-lint, trusted-inventory, tools/date.f.)
+- **Probe-first generation: certify the target text before building its
+  generator.** Hand-write the exact checked source a generator must emit and
+  run it through the UNMODIFIED engine/checker first; only then automate. A
+  generator built against an unproven target conflates emitter bugs with
+  checker rejects and burns cycles bisecting the wrong layer.
+- **Match on structure, not interned ids.** Term/family ids are
+  interning-order artifacts (the payload-pos term-id trap): equality that
+  happens to hold in one session breaks when the intern order shifts. Capture
+  and compare the structural shape (kind, arity, payload positions); treat raw
+  id equality as valid only within one registry snapshot.
+- **Divergent-workspace recovery protocol: back up FIRST, then update-stale.**
+  When a sibling lane's op lands mid-edit (`jj st` errors or a 0-byte diff with
+  edits on disk), copy the edited files out, run `jj workspace update-stale`
+  (it rebuilds the working copy and reverts on-disk edits), verify the
+  concurrent commit's file set does not overlap yours, restore from the backup
+  on a fresh `jj new`, and abandon the divergent empty leftovers. Lossless
+  every time; guessing at jj state is not.
+- **Check the other lane's live diff before touching shared files; STOP beats
+  recovery.** Contested src/core files change under you between fetch and
+  commit. `jj file show -r master <file>` (and the ownership list in the task)
+  before editing turns a would-be semantic divergence into a cheap
+  STOP-and-report; the report is a deliverable, the recovery is pure cost.
