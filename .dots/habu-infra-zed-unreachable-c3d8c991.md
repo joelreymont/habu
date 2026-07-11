@@ -21,3 +21,14 @@ habu-maki-subsystem-pkgs s4 note (eval authoring prelude, device-golden demos,
 checker ablation load, gpu cluster w/ saxpy.cubin prereq + goldens, smoke gate
 leg). All files host-compile clean under qualified names; only device legs
 remain.
+
+PENDING-ZED ADDITION 2026-07-11 (ad-dag broadened op set, fable d4668e98): the
+AD DAG gained OP-MUL (`*.`, row x row via EMIT-MUL) and OP-ADD (`+.`, row x row
+via EMIT-ADD) with host-gradchecked VJPs (lib/ptx/ad-dag-eval-test.f proves the
+DAG SEMANTICS on host, incl. fan-out accumulation and mixed pipelines). The
+DEVICE residue: emitted-PTX-equals-DAG-semantics for the NEW ops - assemble
+AD-EMIT-BWD PTX for a MUL/ADD pipeline (e.g. DUP EXP MUL and DUP DUP MUL MUL)
+through ptxas and gradcheck on the Orin against ADE-GRAD host references,
+mirroring the softmax device run (50fb466). The primitive `*.` VJP math is
+already device-proven via the older ad.f AG2 path; only the DAG emission wiring
+for arbitrary MUL/ADD pipelines is unverified on device.
