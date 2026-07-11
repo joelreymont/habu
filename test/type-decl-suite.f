@@ -1401,6 +1401,56 @@ s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
 TYPEFAMILY tdlnom 0
 s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ LAYOUT-BUFFER (storable layouts container): `LAYOUT-BUFFER name fam count`
+\ generates the family-bound checked pair NAME! ( fam n -- ) / NAME@
+\ ( n -- fam ). The address never appears in a signature, the store writes
+\ the canonical W-cell image (slot order, zero pads, tag last), the fetch
+\ rebuilds through the public constructors, and an unwritten slot reads as
+\ the zero image (variant 0). W>1 sums, products, and enums all ride it.
+\ ---------------------------------------------------------------------------
+LAYOUT-BUFFER tdbsv tdsv 4
+: TDBSV-RT ( -- bool )
+   5 TDSV:SING 0 tdbsv!
+   1 2 TDSV:PAIR 1 tdbsv!
+   0 tdbsv@ match tdsv nil of 1 0= endof sing of 5 = endof pair of drop drop 1 0= endof ;match ;
+: TDBSV-RT2 ( -- n ) 1 tdbsv@ match tdsv nil of 0 endof sing of drop 0 endof pair of + endof ;match ;
+: TDBSV-OVW ( -- bool ) TDSV:NIL 0 tdbsv! 0 tdbsv@ match tdsv nil of 0 0= endof sing of drop 1 0= endof pair of drop drop 1 0= endof ;match ;
+: TDBSV-Z ( -- bool ) 3 tdbsv@ match tdsv nil of 0 0= endof sing of drop 1 0= endof pair of drop drop 1 0= endof ;match ;
+TDBSV-RT -1 T=
+TDBSV-RT2 3 T=
+TDBSV-OVW -1 T=
+TDBSV-Z -1 T=
+\ product buffer: field-wise round-trip, interleaved slots (CT-INT fields;
+\ the enum-field product tdpv is pinned as a declaration negative below).
+PRODUCT tdbp2 0 DERIVE eq FIELD aa n FIELD bb i64 ;PRODUCT
+LAYOUT-BUFFER tdbpv tdbp2 3
+: TDBPV-RT ( -- bool )
+   7 9 TDBP2:MAKE 0 tdbpv!
+   3 4 TDBP2:MAKE 2 tdbpv!
+   0 tdbpv@ 7 9 TDBP2:MAKE TDBP2:EQ
+   2 tdbpv@ 3 4 TDBP2:MAKE TDBP2:EQ and ;
+TDBPV-RT -1 T=
+\ enum buffer: derived-eq round-trip + zero image.
+LAYOUT-BUFFER tdbrv tdrv 2
+: TDBRV-RT ( -- bool ) TDRV:BLUE 1 tdbrv! 1 tdbrv@ TDRV:BLUE TDRV:EQ ;
+: TDBRV-Z ( -- bool ) 0 tdbrv@ TDRV:RED TDRV:EQ ;
+TDBRV-RT -1 T=
+TDBRV-Z -1 T=
+\ negatives: wrong-family store/fetch use; fetch result is layout, not scalar.
+s" TDBB1 ( tdrw -- ) 0 tdbrv!" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDBB2 ( -- tdrw ) 0 tdbrv@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDBB3 ( -- bool ) 0 tdbrv@ 0=" CHECK-QUIET-CANDIDATE! 0 T=
+\ declaration negatives: unknown/parametric/non-layout family, ptr/linear
+\ payloads, nested enum field (dotted), bad count.
+s" LAYOUT-BUFFER tdbb4 nosuchfam 2" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb5 tdfoo 2" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb6 tdlnom 2" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb7 tdsb1x 2" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb8 tdrv 0" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb9 tdrv x9" E-TDECL-BUFFER TDT-NEG
+s" LAYOUT-BUFFER tdbb10 tdpv 2" E-TDECL-BUFFER TDT-NEG
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )

@@ -232,3 +232,37 @@ Then the CAD ADT swap (habu-cad-adt-swap-7bf0bb1f) executes per its file plan.
 Dependency edges (front-matter `blocks:`): derive blocks on {typed, layout};
 layout blocks on {typed}. This dot has no capability-dot prerequisite (its
 upstream TFAM 15/16 are landed/frozen for this lane).
+
+PROGRESS 2026-07-11 (container slice landed; typed-pointer W>1 tier dotted):
+EXPRESSIBILITY VERDICT: the W>1 store/fetch SEMANTICS are checked-expressible
+TODAY with zero checker/engine changes — hand-written probes (W=3 sum via
+MATCH-destructure + scalar-cell writes / tag-IF-chain + ctor rebuild; W=2
+product via UNMAKE/MAKE) certify and round-trip, including interleaved slots
+and MATCH-after-fetch. What is NOT expressible without engine work is the
+dot's typed `ptr fam` RAW-ADDRESS surface: the S2 EMIT-P2-STORE/FETCH legs
+are raw ARM64 emitters and every EM-COMPILE-* leg carries a TRUST row, which
+this lane's no-new-trust-rows constraint excludes.
+
+LANDED instead: LAYOUT-BUFFER (the S3-shaped, identity-sound container):
+`LAYOUT-BUFFER name family count` (sumtype.f, E-TDECL-BUFFER 7120) reserves
+W*count DATA cells and generates the checked family-bound pair
+NAME! ( fam n -- ) / NAME@ ( n -- fam ) — the ADDRESS never appears in any
+signature, so cross-family reads are unrepresentable through the API (the
+Hard-Part-2 invariant holds BY CONSTRUCTION rather than by pointer typing).
+Store writes the canonical image (slot order, zero pads, tag last); fetch
+rebuilds through the PUBLIC ctors (cross-package OK, signature scope);
+unwritten slots read as the zero image (variant 0). Gates: public, arity-0,
+layout kind, CT-INT payload/field roles (pointer/nested-family/linear
+reject); count 1..TLB-COUNT-CAP; wide interpret gate keeps accessors inside
+checked bodies (W=1 enums stay interpretable per S1).
+
+REMAINING TAILS: (1) S2-engine typed `ptr fam` `!`/`@` W>1 arm — needs
+EMIT-P2-STORE/FETCH + WF facts on `!`/`@` + Gforth cg mirror + NEW TRUST
+ROWS; widen LAYOUT-MEM-OK?/LAYOUT-PTR-BIND-OK? only WITH the legs (a
+checker-only widening would certify miscompiling code). (2) The NAME-data
+backing word is dictionary-visible: a checked program CAN alias it with
+scalar ops — full sealing rides the same engine tier (or a defining-word
+package seal). (3) Nested enum-typed product fields in buffers (TAG-chain
+reconstruction — expressible, deferred for text size). (4) public-signatures
+emission for buffer accessors (needs a small registry: pointer-free,
+REG-EXT-RB + persist pattern). (5) iterate sugar (compose over NAME@ today).

@@ -1416,6 +1416,33 @@ named unknown-annotation rejects (their slices are tracked on the typed-locals
 dot); bare (unannotated) locals keep the item-12 wide-bundle behavior
 unchanged, and linear layouts still never expand into locals.
 
+### 17.2 `LAYOUT-BUFFER` (storable layouts container)
+
+`LAYOUT-BUFFER name family count` reserves `W*count` DATA cells and generates
+a family-bound CHECKED accessor pair — no trust rows, no engine lowering:
+
+```forth
+SUMTYPE shape 0 VARIANT dot ;VARIANT VARIANT seg n n ;VARIANT ;SUMTYPE
+LAYOUT-BUFFER shapes shape 16
+: KEEP ( shape -- ) 3 shapes! ;
+: BACK ( -- shape ) 3 shapes@ ;
+```
+
+`NAME! ( fam n -- )` destructures via `MATCH` (sums/enums) or `PKG:UNMAKE`
+(products) and writes the canonical W-cell image — slot order ascending,
+zero-filled pads, tag last; `NAME@ ( n -- fam )` reads the tag, dispatches an
+IF-chain, and rebuilds through the PUBLIC generated constructors, so the
+fetched value is born typed (`MATCH`/derived words work on it) and buffers of
+public families work cross-package. The ADDRESS never appears in a signature:
+cross-family confusion is unrepresentable through the API. An unwritten slot
+reads as the zero image (variant 0 / zero fields). Declaration gates
+(`E-TDECL-BUFFER`): public, arity-0, layout kind, CT-INT payload/field roles
+(pointer, nested-family, linear reject — their slices are dotted), count in
+range. Wide effects keep the interpret gate: W>1 accessors certify only
+inside checked bodies. The typed `ptr fam` raw-address W>1 store/fetch tier
+(engine store/fetch legs) and the sealing of the generated `NAME-data`
+backing word stay fail-closed/dotted on the storable-layouts dot.
+
 ## 18. Width and parameter kinds
 
 Add width metadata.

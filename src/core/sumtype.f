@@ -29,6 +29,7 @@
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
+7120 constant E-TDECL-BUFFER    \ bad LAYOUT-BUFFER declaration (storable layouts container)
 
 26 constant TDECL-ARITY-CAP     \ positional params are letters a..z (docs §9.2)
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
@@ -127,6 +128,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN      \ item 15 product field keyword
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN     \ item 16 layout-policy header keyword
    a u s" derive" CORE-STR=CI IF RES-TRUE EXIT THEN     \ derive S1 header keyword
+   a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN   \ storable-layouts container definer
    a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI ;
 
@@ -1135,3 +1137,196 @@ variable TDECL-I
    THEN
    na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT
    TDECL-CTOR-WORDS ;
+
+\ --- LAYOUT-BUFFER (storable layouts container slice, dot habu-checker-
+\ capability-typed-a480c423): `LAYOUT-BUFFER name family count` reserves
+\ W*count DATA cells and generates the family-bound accessor pair
+\    NAME! ( fam n -- )    NAME@ ( n -- fam )
+\ as ORDINARY CHECKED words — no trust rows, no engine lowering, and the
+\ ADDRESS never appears in any signature, so every slot's family identity is
+\ fixed by construction (the typed `ptr fam` raw-address W>1 tier needs the
+\ S2 engine store/fetch legs + trust rows and stays fail-closed; dot tail).
+\ The store destructures via MATCH (sums/enums) or PKG:UNMAKE (products) and
+\ writes the canonical W-cell image — slot order ascending, zero-filled pads,
+\ tag last (the docs memory-image contract); the fetch reads the tag,
+\ dispatches an IF-chain, and rebuilds through the PUBLIC generated
+\ constructors, so the value is born typed and cross-package buffers of
+\ public families work (signature-scope resolution). Wide effects keep the
+\ interpret gate: the accessors only certify inside checked bodies. Payload
+\ roles gate to CT-INT scalars (pointer/nested-family/linear/parametric
+\ reject); an unwritten slot reads as the zero image (variant 0, zero
+\ payloads) — DATA is zero-initialized and only the generated pair writes it.
+$100000 constant TLB-COUNT-CAP    \ static DATA: cap entries so W*count cells stays sane
+64 constant TLB-NAME-CAP
+create TLB-NB TLB-NAME-CAP allot
+variable TLB-NU   variable TLB-FAM   variable TLB-CNT   variable TLB-OK
+variable TLB-FA   variable TLB-FU    variable TLB-CA    variable TLB-CU
+: TLB-NAME$ ( -- ptr u8 n ) TLB-NB TLB-NU @ ;
+
+: TLB-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   u 0=  a u TDECL-DEC? 0=  or IF
+      a u s" buffer count must be a positive decimal" E-TDECL-BUFFER TDECL-THROW THEN
+   a u TDECL-DEC {: cnt:n :}
+   cnt 0 <=  cnt TLB-COUNT-CAP >  or IF
+      a u s" buffer count out of range" E-TDECL-BUFFER TDECL-THROW THEN
+   cnt ;
+
+: TLB-NODE-OK ( n -- ) {: node:n :}   \ one payload/field schema node or reject
+   node SCHEMA-CON? IF
+      node SCHEMA-A@ CT-INT? 0= IF
+         node SCHEMA-A@ CT-NAME$
+         s" payload type is not bufferable" E-TDECL-BUFFER TDECL-THROW THEN
+      EXIT THEN
+   node SCHEMA-PTR? IF
+      TDN-A @ TDN-U @
+      s" pointer payloads are not bufferable" E-TDECL-BUFFER TDECL-THROW THEN
+   node SCHEMA-APP? IF
+      node SCHEMA-A@ TFAM-NAME$
+      s" nested family fields are not yet bufferable" E-TDECL-BUFFER TDECL-THROW THEN
+   TDN-A @ TDN-U @
+   s" payload role is not bufferable" E-TDECL-BUFFER TDECL-THROW ;
+: TLB-ROLES ( n -- ) {: fam:n :}      \ sums walk every variant; products the make row
+   fam TFAM-VAR-START@ {: vstart:n :}
+   fam TFAM-PRODUCT? IF 1 ELSE fam TFAM-VAR-COUNT@ THEN {: count:n :}
+   0 TDD-I !
+   BEGIN TDD-I @ count < WHILE
+      0 TDD-J !
+      BEGIN TDD-J @ vstart TDD-I @ + SUMV-SCH-COUNT@ < WHILE
+         vstart TDD-I @ + SUMV-SCH-START@ TDD-J @ + SCHEMA-ROOT@ TLB-NODE-OK
+         TDD-J @ 1 + TDD-J !
+      REPEAT
+      TDD-I @ 1 + TDD-I !
+   REPEAT ;
+
+: TLB-BODY ( -- )
+   0 TLB-OK !
+   TDN-U @ TLB-NAME-CAP 8 - > IF
+      TDN-A @ TDN-U @ s" buffer name too long" E-TDECL-BUFFER TDECL-THROW THEN
+   TDN-A @ TLB-NB TDN-U @ CCOPY
+   TDN-U @ TLB-NU !
+   TFAM-ACTIVE-PKG$  TLB-FA @ TLB-FU @  TFAM-SIG-RESOLVE 0= IF
+      drop TLB-FA @ TLB-FU @ s" unknown buffer family" E-TDECL-BUFFER TDECL-THROW THEN
+   {: fam:n :}
+   fam TFAM-PUBLIC? 0= IF
+      TLB-FA @ TLB-FU @ s" layout-buffer requires a public family" E-TDECL-BUFFER TDECL-THROW THEN
+   fam TFAM-ARITY@ 0 <> IF
+      TLB-FA @ TLB-FU @ s" layout-buffer requires a concrete (arity 0) family" E-TDECL-BUFFER TDECL-THROW THEN
+   fam TFAM-LAYOUT? 0= IF
+      TLB-FA @ TLB-FU @ s" layout-buffer requires a layout family" E-TDECL-BUFFER TDECL-THROW THEN
+   fam TLB-ROLES
+   TLB-CA @ TLB-CU @ TLB-COUNT {: cnt:n :}
+   fam TLB-FAM !
+   cnt TLB-CNT !
+   -1 TLB-OK ! ;
+
+\ generation: three sequential evals (data word, store, fetch), rendered from
+\ registry metadata through the shared TDGEN machinery.
+: TLB-W ( -- n ) TLB-FAM @ TFAM-WIDTH@ ;
+: TDGEN-CELLS+ ( n -- ) {: j:n :}     \ "cell+ " x j
+   0 TDD-H !
+   BEGIN TDD-H @ j < WHILE  s" cell+ " TDGEN-APP  TDD-H @ 1 + TDD-H !  REPEAT ;
+: TLB-GEN-WRITE ( n -- ) {: j:n :}    \ "p <cell+ xj> ! " (value text precedes)
+   112 TDGEN-C,  32 TDGEN-C,
+   j TDGEN-CELLS+
+   s" ! " TDGEN-APP ;
+: TLB-GEN-READ ( n -- ) {: j:n :}     \ "p <cell+ xj> @ "
+   112 TDGEN-C,  32 TDGEN-C,
+   j TDGEN-CELLS+
+   s" @ " TDGEN-APP ;
+: TLB-GEN-ADDR ( -- )                 \ "<W> * cells <name>-data + {: p:ptr :} "
+   TLB-W TDGEN-DEC  s"  * cells " TDGEN-APP
+   TLB-NAME$ TDGEN-APP  s" -data + {: p:ptr :} " TDGEN-APP ;
+: TLB-STORE-ARM ( n -- ) {: vid:n :}  \ one MATCH arm: binds, payload/pad writes, tag
+   vid SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
+   vid 113 TDGEN-BINDS
+   vid SUMV-SCH-COUNT@ {: m:n :}
+   0 TDD-K !
+   BEGIN TDD-K @ TLB-W 1 - < WHILE
+      TDD-K @ m < IF
+         113 TDGEN-C,  TDD-K @ TDGEN-DEC  32 TDGEN-C,   \ "q<k> "
+      ELSE
+         48 TDGEN-C,  32 TDGEN-C,                        \ "0 " (canonical pad)
+      THEN
+      TDD-K @ TLB-GEN-WRITE
+      TDD-K @ 1 + TDD-K !
+   REPEAT
+   vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,
+   TLB-W 1 - TLB-GEN-WRITE
+   s" endof " TDGEN-APP ;
+: TLB-FETCH-READS ( n -- ) {: vid:n :}   \ payload reads in slot order
+   0 TDD-K !
+   BEGIN TDD-K @ vid SUMV-SCH-COUNT@ < WHILE
+      TDD-K @ TLB-GEN-READ
+      TDD-K @ 1 + TDD-K !
+   REPEAT ;
+: TLB-DATA-TEXT ( -- )
+   TDGEN-CLEAR
+   s" create " TDGEN-APP  TLB-NAME$ TDGEN-APP  s" -data " TDGEN-APP
+   TLB-W TLB-CNT @ * TDGEN-DEC  s"  cells allot" TDGEN-APP
+   TDECL-GEN-EVAL ;
+: TLB-STORE-TEXT ( -- )
+   TDGEN-CLEAR
+   s" : " TDGEN-APP  TLB-NAME$ TDGEN-APP  s" ! ( " TDGEN-APP
+   TLB-FAM @ TDGEN-OUT-TYPE  s"  n -- ) " TDGEN-APP
+   TLB-GEN-ADDR
+   TLB-FAM @ TFAM-PRODUCT? IF
+      TLB-FAM @ s" unmake" TDGEN-DRV-REF  32 TDGEN-C,
+      TLB-FAM @ TFAM-VAR-START@ 113 TDGEN-BINDS
+      0 TDD-K !
+      BEGIN TDD-K @ TLB-W < WHILE
+         113 TDGEN-C,  TDD-K @ TDGEN-DEC  32 TDGEN-C,
+         TDD-K @ TLB-GEN-WRITE
+         TDD-K @ 1 + TDD-K !
+      REPEAT
+      59 TDGEN-C,
+   ELSE
+      s" match " TDGEN-APP  TLB-FAM @ TFAM-NAME$ TDGEN-APP  32 TDGEN-C,
+      TLB-FAM @ TFAM-VAR-START@ {: vstart:n :}
+      0 TDD-I !
+      BEGIN TDD-I @ TLB-FAM @ TFAM-VAR-COUNT@ < WHILE
+         vstart TDD-I @ + TLB-STORE-ARM
+         TDD-I @ 1 + TDD-I !
+      REPEAT
+      s" ;match ;" TDGEN-APP
+   THEN
+   TDECL-GEN-EVAL ;
+: TLB-FETCH-TEXT ( -- )
+   TDGEN-CLEAR
+   s" : " TDGEN-APP  TLB-NAME$ TDGEN-APP  s" @ ( n -- " TDGEN-APP
+   TLB-FAM @ TDGEN-OUT-TYPE  s"  ) " TDGEN-APP
+   TLB-GEN-ADDR
+   TLB-FAM @ TFAM-PRODUCT? IF
+      TLB-FAM @ TFAM-VAR-START@ TLB-FETCH-READS
+      TLB-FAM @ s" make" TDGEN-DRV-REF  s"  ;" TDGEN-APP
+   ELSE
+      TLB-W 1 - TLB-GEN-READ  s" {: t:n :} " TDGEN-APP
+      TLB-FAM @ TFAM-VAR-START@ {: vstart:n :}
+      1 TDD-I !
+      BEGIN TDD-I @ TLB-FAM @ TFAM-VAR-COUNT@ < WHILE
+         s" t " TDGEN-APP
+         vstart TDD-I @ + SUMV-TAG@ TDGEN-DEC
+         s"  = if " TDGEN-APP
+         vstart TDD-I @ + TLB-FETCH-READS
+         TLB-FAM @  vstart TDD-I @ + SUMV-NAME$  TDGEN-DRV-REF
+         s"  exit then " TDGEN-APP
+         TDD-I @ 1 + TDD-I !
+      REPEAT
+      vstart TLB-FETCH-READS
+      TLB-FAM @ vstart SUMV-NAME$ TDGEN-DRV-REF
+      s"  ;" TDGEN-APP
+   THEN
+   TDECL-GEN-EVAL ;
+
+: LAYOUT-BUFFER ( -- )
+   parse-name {: na:ptr nu:n :}
+   parse-name {: fa:ptr fu:n :}
+   parse-name {: ca:ptr cu:n :}
+   fa TLB-FA !  fu TLB-FU !
+   ca TLB-CA !  cu TLB-CU !
+   s" layout-buffer" na nu fa fu TDECL-CTX!
+   [: TLB-BODY ;] TDECL-RUN
+   TLB-OK @ IF
+      TLB-DATA-TEXT
+      TLB-STORE-TEXT
+      TLB-FETCH-TEXT
+   THEN ;
