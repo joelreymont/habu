@@ -426,10 +426,14 @@ variable TF-CW-COL          \ first-colon split position
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
+: TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the KIND generates
+   a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
+   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products derive EQ only (no tag)
+   a u s" tag" CORE-STR=CI ;
 : TFAM-DERIVED-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = id-family derived word?
    id SUMV-FAM@ TFAM-DERIVE-EQ? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-TAIL$ TFAM-DERIVED-TAIL? ;
+   a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 : TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?
    a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
    0 TF-CI !

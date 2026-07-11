@@ -1207,8 +1207,8 @@ s" ENUM tdrb1 DERIVE hash aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
-s" SUMTYPE tdrb5 0 DERIVE eq VARIANT vv ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
-s" PRODUCT tdrb6 0 DERIVE eq FIELD ff n ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+\ (S1 kind-gated sums/products; derive S2 accepts them — pinned positively in
+\ the S2 section below, so the old enum-only rejects are retired.)
 s" ENUM tdrb7 DERIVE eq eq other ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdrb8 DERIVE eq tag other ;ENUM" E-TDECL-NAME TDT-NEG
 
@@ -1222,6 +1222,68 @@ TDRB9-EQ 0 T=
 \ a variant named eq/tag stays legal WITHOUT derive (no reservation creep).
 ENUM tdrx eq neq ;ENUM
 s" TDRX-USE ( -- tdrx ) TDRX:EQ" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ ---------------------------------------------------------------------------
+\ derive S2: payload sums compare diagonally (outer MATCH binds one value's
+\ payloads, inner MATCH the other's; same-variant arms compare scalars with
+\ `=`, cross arms are false); products UNMAKE both values and compare
+\ field-wise, enum-typed fields through their family's PKG:TAG.
+\ ---------------------------------------------------------------------------
+SUMTYPE tdsv 0 DERIVE eq
+  VARIANT nil ;VARIANT
+  VARIANT sing n ;VARIANT
+  VARIANT pair n i64 ;VARIANT
+;SUMTYPE
+: TDSV-EQ-NIL ( -- bool ) TDSV:NIL TDSV:NIL TDSV:EQ ;
+: TDSV-EQ-S ( -- bool ) 5 TDSV:SING 5 TDSV:SING TDSV:EQ ;
+: TDSV-NEQ-S ( -- bool ) 5 TDSV:SING 6 TDSV:SING TDSV:EQ ;
+: TDSV-EQ-P ( -- bool ) 1 2 TDSV:PAIR 1 2 TDSV:PAIR TDSV:EQ ;
+: TDSV-NEQ-P1 ( -- bool ) 1 2 TDSV:PAIR 1 3 TDSV:PAIR TDSV:EQ ;
+: TDSV-NEQ-P0 ( -- bool ) 1 2 TDSV:PAIR 9 2 TDSV:PAIR TDSV:EQ ;
+: TDSV-NEQ-X ( -- bool ) TDSV:NIL 5 TDSV:SING TDSV:EQ ;
+: TDSV-NEQ-Y ( -- bool ) 1 2 TDSV:PAIR TDSV:NIL TDSV:EQ ;
+: TDSV-TAG-P ( -- n ) 1 2 TDSV:PAIR TDSV:TAG ;
+TDSV-EQ-NIL -1 T=
+TDSV-EQ-S -1 T=
+TDSV-NEQ-S 0 T=
+TDSV-EQ-P -1 T=
+TDSV-NEQ-P1 0 T=
+TDSV-NEQ-P0 0 T=
+TDSV-NEQ-X 0 T=
+TDSV-NEQ-Y 0 T=
+TDSV-TAG-P 2 T=
+\ the scalar = wall stays closed on a derived W>1 sum.
+s" TDSV-RAW ( tdsv tdsv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ product field-wise eq; the col field routes through TDRV:TAG (derived enum).
+PRODUCT tdpv 0 DERIVE eq
+  FIELD col tdrv
+  FIELD amt n
+;PRODUCT
+: TDPV-EQ ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 7 TDPV:MAKE TDPV:EQ ;
+: TDPV-NEQ-C ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:GREEN 7 TDPV:MAKE TDPV:EQ ;
+: TDPV-NEQ-N ( -- bool ) TDRV:RED 7 TDPV:MAKE TDRV:RED 8 TDPV:MAKE TDPV:EQ ;
+TDPV-EQ -1 T=
+TDPV-NEQ-C 0 T=
+TDPV-NEQ-N 0 T=
+\ products derive EQ only: no TAG surface (undefined -> uncheckable), and the
+\ derived EQ is undefine-protected like a constructor.
+s" TDPV-TAG ( tdpv -- n ) TDPV:TAG" CHECK-QUIET-CANDIDATE! 1 T=
+s" undefine TDPV:EQ" E-CTOR-PROTECTED TDT-NEG
+
+\ S2 payload-role gates: pointer, parametric, linear, non-derived enum field,
+\ and the sum-variant name collision.
+s" SUMTYPE tdsb1 0 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdsb2 1 DERIVE eq VARIANT hold a ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdsb3 0 DERIVE eq VARIANT hold tdown ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" PRODUCT tdsb4 0 DERIVE eq FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdsb5 0 DERIVE eq VARIANT eq n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+
+\ rollback: a rejected S2 derive leaves no residue; the name redeclares clean.
+s" SUMTYPE tdsb6 0 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+SUMTYPE tdsb6 0 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
+: TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
+TDSB6-EQ -1 T=
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )

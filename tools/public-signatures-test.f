@@ -25,6 +25,10 @@ ENUM pstcolor red green blue ;ENUM
 \ A DERIVE-eq enum additionally publishes the synthesized derived words
 \ PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ) (derive S1).
 ENUM pstsig DERIVE eq low high ;ENUM
+\ derive S2: payload sums and products publish derived rows too; products
+\ derive EQ only (no discriminant row).
+SUMTYPE pstsum 0 DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
+PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
 
 8192 constant PST-BUF-CAP
 
@@ -440,7 +444,13 @@ variable PST-SUM-U
    PST-OUT outu s" PSTSIG:TAG" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (pstsig -- n)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTSIG:EQ" PST-WORD$ CONTAINS? TTRUE
-   PST-OUT outu s" (pstsig pstsig -- bool)" PST-SIG$ CONTAINS? TTRUE ;
+   PST-OUT outu s" (pstsig pstsig -- bool)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTSUM:TAG" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTSUM:EQ" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (pstsum pstsum -- bool)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTPROD:EQ" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (pstprod pstprod -- bool)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTPROD:TAG" PST-WORD$ CONTAINS? TFALSE ;    \ products: eq only
 
 : PST-MAIN ( -- )
    T-RESET

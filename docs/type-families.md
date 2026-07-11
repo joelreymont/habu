@@ -539,51 +539,79 @@ SUMTYPE color 0
 ;SUMTYPE
 ```
 
-### 9.3.1 `DERIVE eq` (derive S1)
+### 9.3.1 `DERIVE eq` (derive S1+S2)
 
-A PUBLIC enum may opt into derived typed equality with a `DERIVE eq` header
-clause (after the optional `POLICY`, before the variants):
+A PUBLIC arity-0 enum, sum, or product may opt into derived typed equality
+with a `DERIVE eq` header clause (after the optional `POLICY`, before the
+variants/fields):
 
 ```forth
-ENUM color DERIVE eq
-  red
-  green
-  blue
-;ENUM
+ENUM color DERIVE eq  red green blue ;ENUM
+SUMTYPE shape 0 DERIVE eq
+  VARIANT dot ;VARIANT
+  VARIANT seg n n ;VARIANT
+;SUMTYPE
+PRODUCT probe 0 DERIVE eq
+  FIELD col color        \ enum-typed field: color must also derive eq
+  FIELD amt n
+;PRODUCT
 ```
 
-This generates two ORDINARY CHECKED words into the family's reserved
-constructor package — no pending window, no trust rows, no engine lowering.
-The bodies are plain checked `MATCH`/call text the checker certifies exactly
-like user code, so equality is semantic (tag identity) and layout-policy
-agnostic:
+This generates ORDINARY CHECKED words into the family's reserved constructor
+package — no pending window, no trust rows, no engine lowering. The bodies are
+plain checked `MATCH`/`UNMAKE`/call text the checker certifies exactly like
+user code, so equality is semantic and layout-policy agnostic. Derived eq
+CONSUMES both operands (ordinary non-linear values; callers keep copies):
 
 ```forth
 : COLOR:TAG ( color -- n )          \ discriminant: declaration-order tag
    match color red of 0 endof green of 1 endof blue of 2 endof ;match ;
-: COLOR:EQ ( color color -- bool )  \ structural equality = tag equality
+: COLOR:EQ ( color color -- bool )  \ payload-free: tag equality (O(V))
    COLOR:TAG swap COLOR:TAG = ;
+: SHAPE:EQ ( shape shape -- bool )  \ payload sum: diagonal double MATCH
+   match shape
+     dot of match shape dot of 0 0= endof seg of drop drop 1 0= endof ;match endof
+     seg of {: q0:n q1:n :}
+       match shape dot of 1 0= endof
+         seg of {: p0:n p1:n :} p0 q0 = p1 q1 = and endof ;match endof
+   ;match ;
+: PROBE:EQ ( probe probe -- bool )  \ product: UNMAKE both, field-wise compare
+   PROBE:UNMAKE {: q1:n :} COLOR:TAG {: q0:n :}
+   PROBE:UNMAKE {: p1:n :} COLOR:TAG {: p0:n :}
+   p0 q0 = p1 q1 = and ;
 ```
 
 `TAG` exposes only the declaration-order tag — public metadata any checked
-`MATCH` could already observe, never a hidden field. The scalar `=`/`0=` wall
-on layout values is untouched: `( color color -- bool ) =` still rejects
-(pinned by TD12-ZEQ and the derive suite). The generated tails `eq`/`tag` are
-generator-owned: a DERIVE-marked family rejects a variant spelled `eq` or
-`tag` (`E-TDECL-NAME`), the words are extend/undefine-protected exactly like
-constructors (`TFAM-DERIVED-AT?` feeds the item-8 predicates), and both ride
-the ctor package's closed-but-callable WID protection and registry rollback
-(the request lives in the family row's `TF.DERIVE` bitmask, so a rolled-back
-declaration forgets it with the row).
+`MATCH` could already observe, never a hidden field; sums and enums get it,
+products do not (no discriminant). Integer payloads (any `CT-INT` scalar)
+compare with `=` after the widening local bind; an enum-typed product field
+routes through ITS family's `PKG:TAG` (that family must also `DERIVE eq`,
+else `E-TDECL-DERIVE`). The scalar `=`/`0=` wall on layout values is
+untouched: `( color color -- bool ) =` still rejects (pinned by TD12-ZEQ and
+the derive suite). The generated tails `eq`/`tag` are generator-owned: a
+DERIVE-marked family rejects a variant spelled `eq` or `tag`
+(`E-TDECL-NAME`), the words are extend/undefine-protected exactly like
+constructors (`TFAM-DERIVED-AT?` feeds the item-8 predicates; products
+recognize `eq` only), and all ride the ctor package's closed-but-callable WID
+protection and registry rollback (the request lives in the family row's
+`TF.DERIVE` bitmask, so a rolled-back declaration forgets it with the row).
+
+Underivable payload roles reject at the DECLARATION with `E-TDECL-DERIVE`:
+pointer payloads (identity-eq would need a checked pointer-equality surface,
+which does not exist — `( ptr u8 ptr u8 -- bool ) =` rejects); non-integer or
+linear scalars (comparing a linear value consumes it; deferred to TFAM-11);
+parametric families (`derive requires a concrete (arity 0) family` — open
+payload types have no comparator). A private family rejects (`derive requires
+a public family` — there is no package to hold the words).
 
 One feature token per clause keeps the grammar unambiguous against bare
 variant names. `DERIVE order` / `DERIVE hash` are recognised but deferred
-(`E-TDECL-DERIVE`, their slices land later); unknown features reject; sums and
-products reject the clause until the flat-cell W>1 slice lands; a private
-family rejects (`derive requires a public family` — there is no package to
-hold the words). Payload-carrying equality (W>1 flat-cell compare, which
-depends on the deterministically zeroed padding of `stack-cell-tag`) and
-`hash`/`order` are follow-on slices on the same clause.
+(`E-TDECL-DERIVE`, their slices land later); unknown features reject. The
+checked-MATCH generator is the semantic reference; a flat-cell engine fast
+path (which would depend on the deterministically zeroed padding of
+`stack-cell-tag`) is a possible later optimization, with this generator as
+its differential oracle. `hash` is where an engine leg becomes unavoidable
+(no checked cell-mixing over hidden cells).
 
 ### 9.4 `PRODUCT`
 
@@ -2156,7 +2184,8 @@ Do not implement these in the first pass:
 - fully layout-polymorphic type parameters;
 - packed memory ABI for GPU arrays;
 - automatic deriving of equality/order/hash — REVISED: opt-in `DERIVE eq` for
-  enums landed as derive S1 (§9.3.1); order/hash and W>1 remain deferred;
+  enums, payload sums, and products landed as derive S1+S2 (§9.3.1);
+  order/hash remain deferred;
 - user-defined custom layout code;
 - public construction from raw tags;
 - unsafe enum casts.

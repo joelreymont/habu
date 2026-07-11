@@ -740,16 +740,24 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    fam TFAM-VAR-START@ {: vs:n :}
    vs fam TFAM-VAR-COUNT@ + vs ?do
       fam  i  file-a file-u PS-EMIT-CTOR
-   loop
-   fam TFAM-DERIVE-EQ? IF
-      fam s" tag" file-a file-u 0 PS-EMIT-DRV
-      fam s" eq"  file-a file-u -1 PS-EMIT-DRV
-   THEN ;
+   loop ;
+
+\ derive S2: ANY public DERIVE-eq family (enum, sum, product) publishes its
+\ derived rows; products derive EQ only (no discriminant).
+1 constant PS-TK-PRODUCT
+: PS-EMIT-FAM-DRV ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
+   fam TFAM-KIND@ PS-TK-PRODUCT = 0= IF
+      fam s" tag" file-a file-u 0 PS-EMIT-DRV THEN
+   fam s" eq"  file-a file-u -1 PS-EMIT-DRV ;
+
+: PS-DRV-PUBLIC? ( n -- bool ) {: fam:n :}
+   fam TFAM-PUBLIC? fam TFAM-DERIVE-EQ? and ;
 
 : PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-TRUST @ IF exit THEN
    TFAM-N@ 0 ?do
       i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
+      i PS-DRV-PUBLIC? IF i file-a file-u PS-EMIT-FAM-DRV THEN
    loop ;
 
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
