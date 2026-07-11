@@ -691,8 +691,7 @@ TR-INSTALL-POOL-HOOKS
    s" bin/hb" >LEN PROC-ARGV-PREPARE PROC-ENV-PREPARE PROC-SPAWN-ARGV-ENV-CAPTURE ;
 
 : TR-PHASE-OK? ( -- bool )
-   PROC-OUTCOME-KIND @ PROC-OUTCOME-EXIT =
-   PROC-OUTCOME-CODE @ 0= and ;
+   GT-RC@ 0= ;
 
 : TR-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN

@@ -613,6 +613,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-CAPTURE-BEGIN	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	reset capture state, set deadline, and open stdout/stderr pipes
 1	process	lib/process.f	word	PROC-STDIN-CAPTURE-BEGIN	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	reset capture state, set deadline, and open stdout/stderr/stdin pipes
 1	process	lib/process.f	word	PROC-CAPTURE-RC@	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length and rc
+1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME	(-- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	derive the capture outcome sum from raw status and the timed-out flag
 1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME@	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length outcome kind and code
 1	process	lib/process.f	word	PROC-CAPTURE-FINISH-RC	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds, reap child, and return captured rc fields
 1	process	lib/process.f	word	PROC-CAPTURE-FINISH-OUTCOME	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds and return captured outcome fields

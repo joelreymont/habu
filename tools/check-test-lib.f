@@ -161,6 +161,13 @@ variable CKT-PAR-U
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
    CHK-DIRECT-RUN CKT-DIRECT-END ;
 
+: CKT-DIRECT-ALL-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   CKT-DIRECT-START
+   -1 CHK-ALL !
+   -1 CHK-JSON !
+   src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
+   CHK-DIRECT-RUN CKT-DIRECT-END ;
+
 : CKT-DIRECT-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
    CKT-DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
@@ -561,6 +568,38 @@ variable CKT-PAR-U
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
+\ S3 (dot habu-tfam-13-s3-truncate): the ALL-ERRORS collector path must report a
+\ truncated declaration with the same packet, fail-closed — never a silent skip.
+: CKT-TEST-SUM-NOEND-ALL ( -- )
+   CKT-SUM-NOEND$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
+
+: CKT-TEST-TFAM-NOARITY-ALL ( -- )
+   CKT-TFAM-NOARITY$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CKT-ERR erru s" missing arity" CONTAINS? TTRUE ;
+
+\ C2 follow-up (dot habu-tfam-13-c2-checkcore-cap): a source larger than
+\ CHK-SRC-CAP must fail closed with a clean check diagnostic (exit-class
+\ NOINPUT), never an uncaught E-FS-CAPACITY. The length check fires before any
+\ content read, so the oversize buffer stays unfilled.
+: CKT-OVERCAP$ ( -- ptr u8 n )
+   CHK-SRC-CAP 1 + MEM-ALLOC-BYTES drop CHK-SRC-CAP 1 + ;
+
+: CKT-TEST-OVERCAP-SOURCE ( -- )
+   CKT-DIRECT-START
+   [: CKT-OVERCAP$ s" <stdin>" CHK-MATERIALIZE-BUF-AS CHK-DIRECT-RUN drop ;] catch
+   CKT-DIRECT-END CHK-E-NOINPUT T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" source exceeds capacity" CONTAINS? TTRUE ;
+
+
 \ C2: a declaration body over TDECL-CAP ($1000) must report the same
 \ E-BAD-DECLARATION packet (the length check fires ahead of variant parsing, so
 \ the repeated variant names never matter).
@@ -847,6 +886,9 @@ variable CKTP-DOC-U
    s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
    s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
+   s" check/sum-noend-all" [: CKT-TEST-SUM-NOEND-ALL ;] CKT-RUN
+   s" check/tfam-noarity-all" [: CKT-TEST-TFAM-NOARITY-ALL ;] CKT-RUN
+   s" check/overcap-source" [: CKT-TEST-OVERCAP-SOURCE ;] CKT-RUN
    s" check/oversize" [: CKT-TEST-OVERSIZE ;] CKT-RUN
    s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
    s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN

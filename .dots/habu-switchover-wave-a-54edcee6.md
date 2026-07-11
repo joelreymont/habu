@@ -351,3 +351,105 @@ Direct both-branch test RPT-TEST-GJA-U added to tools/repair-packet-test.f
 (12345/0 → some; 12a/empty → none); behavior identity proven by the untouched
 repair-schema-doc-test + check-repair-hints-test + the gate's diag slices
 (variant/tag/payload_pos/arity packet fields all assert through GJA-INT).
+
+## FIND-SUB / INDEX-OF — COMPLETE REWRITE PLAN (audit only, 2026-07-11)
+
+### Q3 first — the atomic units
+FIND-SUB and INDEX-OF are INDEPENDENT (neither calls the other) — two separate
+atomic units, one commit each. Chains INTO the units:
+- `CONTAINS?` (string.f:91) chains FIND-SUB in-file: body -> MATCH, sig stays
+  `( … -- bool )` (honest predicate). Rides in the FIND-SUB commit.
+- `FL-FIND-E`/`FL-SIG` (lib/float.f, already option) consume INDEX-OF: FL-FIND-E
+  becomes a none-try-upper re-wrap, FL-SIG restructures its 4-branch `dpos`
+  locals. Ride in the INDEX-OF commit.
+- `tools/string.f` (the FIND-SUB/CONTAINS?/INDEX-OF twin bundle): ORPHAN — zero
+  loaders anywhere (only a FILEMAP.md row; last touched in the ancient "Add
+  checked string helpers" commit). DELETE it + its FILEMAP row instead of
+  migrating (audit finding).
+- `LINT-FIND-SUB`/`LINT-INDEX-OF`/`LINT-CONTAINS?` (tools/lint/text.f):
+  INDEPENDENT reimplementations with ~27 caller hits across the lint stack
+  (trusted-inventory, stdlib-manifest-test, typed-local-diff-lint-core,
+  check-core, text.f itself). NOT part of this unit — separate follow-up slices
+  with overlay byte-identity proofs (lint-affecting).
+- Class (d) is EMPTY: ZERO src/ callers of either word — no engine slice, no
+  byte-fixpoint interaction beyond the normal harness-member gate. The "src/core
+  callers" holding reason is retired by this sweep.
+
+### FIND-SUB callers (lib/string.f:82; target `( ptr u8 n ptr u8 n -- option<idx> )`)
+(e) chained/wrapper finders migrating WITH the unit (their own sentinel sigs
+    become option<idx>):
+- lib/string.f:91 CONTAINS? `FIND-SUB 0 < 0=` -> MATCH bool
+- test/gate-engine-lib.f:253 GE-SHAPE-FIND-AFTER (`-1 exit` guards + `dup 0 <
+  if exit then start +`) + :251 GE-SHAPE-FIND passthrough + :260 GE-SHAPE-FOUND
+  (`pos 0 < if GE-FAIL`) becomes the unwrap; sweep GE-SHAPE-* consumers inside
+  the engine-gate fixtures in the same commit
+- tools/bootstrap-codegen-test.f:44 BCG-FIND-AFTER (same find-after shape) +
+  :30 BCG-POS passthrough (:33 BCG-POS-FOUND becomes unwrap; found positions
+  feed `<` ordering asserts)
+- tools/build-fixpoint.f:466 BF-SOURCE-FIND passthrough; :468
+  BF-SOURCE-REQUIRE (`dup 0 >= if exit then … die`) becomes the MATCH unwrap
+  (its 3 call sites at :511/:517/:523 unchanged)
+- tools/build-fixpoint-test.f:520 (find-after clone)
+(a) mechanical MATCH (bind-then-guard or bool):
+- tools/codegen-role.f:89, :91 (CGR-DEF$ double find, `{: s :}`+`0 < throw`),
+  :102 (CGR-LINE$), :453 (CGR-NEXT-USE `dup 0 < if exit then from +`)
+- tools/codegen-role-test.f:40 (bind + `0 <` fixture throw)
+- test/gate-pool-test.f:459 (bind + `0 < throw`)
+- lib/string-test.f:202-205 direct tests (NOTE :205 pins EMPTY NEEDLE -> 0,
+  i.e. SOME 0 — semantics preserved, keep the pin)
+(b) needs restructuring:
+- test/boot-pin-test.f:146 BPT-COUNT-SUB — loop-carried (`FIND-SUB dup 0 >=
+  while`): count-occurrences loop; use the RX-FIND-FROM in-loop MATCH shape
+- test/seal-absence.f:168 — same count-loop shape
+- tools/build-fixpoint-test.f:558, :570 — `dup BFT-FOUND` bind + reuse as
+  start index
+- tools/ptx/saxpy-test.f:75 PTXT-SUB-COUNT — RECURSE after the bind; RISK:
+  RECURSE inside a MATCH arm is an unproven checker shape — if it rejects,
+  restructure to the DATE-N guard-and-continue shape before the recursion
+(c) maki coordination (13 sites / 5 files, all mechanical shapes):
+- maki/lower-ew-test.f:25,29,31; lower-mm-test.f:25,29,31;
+  lower-red-test.f:29,33,35; lower-mv-test.f:30,34,36 (identical trio per
+  file: `0 < TTRUE` absent-assert, bind, second-find `0 <`)
+- maki/ablate-ptx.f:29 (bind + branch)
+(d) src/: NONE.
+
+### INDEX-OF callers (lib/string.f:93; target `( ptr u8 n n -- option<idx> )`)
+(a) mechanical:
+- lib/process-env.f:345 PROC-HAS-SLASH? `0 >=` -> MATCH bool
+- lib/json-read.f:276 `0 >=` -> MATCH bool
+- tools/hb-build-lib.f:210 `0 >=` -> MATCH bool
+- lib/float.f:60,61 FL-FIND-E -> none-try-upper re-wrap (some arm gets idx
+  directly, drops its `>IDX`)
+- tools/codegen-role.f:105 value-or-default (`rel 0 < if u ls - else rel`) ->
+  none OF default ENDOF some OF IDX>N ENDOF
+- examples/string-regex.f:18 SRE-SUFFIX-NUMBER guard-and-continue
+- lib/string-test.f:209-211 direct tests
+(b) needs restructuring:
+- lib/float.f:67 FL-SIG — `dpos` used in FOUR branch expressions; MATCH arms
+  compute the (ilen fa flen) triple directly
+- test/gate-pool-test.f:462 — bind + throw-guard + range check + arithmetic
+(c) maki coordination (9 sites / 3 files):
+- maki/store.f:193,199 (`0 >= if throw` guards), :257 (bind)
+- maki/cad.f:337,339,352,379,397 (binds + guards)
+- maki/golden-artifact.f:293 (bind)
+(d) src/: NONE.
+
+### Q4 — slice plan (ONE coordinated maki window for the wave-A finale)
+All three remaining lib/string.f migrations (INDEX-OF, FIND-SUB, STR>NUMBER?)
+are blocked ONLY by maki callers — bundle them into a single maki-window
+sequence, each commit atomic and fully gated:
+1. Commit A — INDEX-OF -> option<idx> + ALL callers incl. maki (smaller radius,
+   proves the window mechanics). Manifest row + docs/stdlib.md sig + the
+   "`FIND-SUB` and `INDEX-OF` return `-1` on no match" prose line.
+2. Commit B — FIND-SUB -> option<idx> + CONTAINS? + ALL callers incl. maki +
+   the (e) wrapper family. Manifest row + docs prose.
+3. Commit C — delete the orphan tools/string.f + its FILEMAP row (dead code).
+4. Commit D (same window; closes the batch-2 boundary) — STR>NUMBER? ->
+   option<n> + its 4 maki callers + the 19 non-maki callers already listed in
+   BATCH 2, and DELETE the STR>NUMBER-UNWRAP + STR>OPTION adapters.
+NO temporary adapters for A/B (all callers rewritten in-commit). Gate class per
+commit: lib/string.f is a TR-GATE-HARNESS-FILES member but option.f is already
+declared in that set (batch 2) and string.f is NOT in the boot prefix — full
+battery, no byte-fixpoint; maki/test.f is an owning gate for the (c) callers.
+Follow-up outside the window: the tools/lint/text.f sibling trio with overlay
+byte-identity proofs.

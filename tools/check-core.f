@@ -535,16 +535,28 @@ variable CHK-ALL-RC
    repeat drop
    CHK-WRITE-EXPANDED-SOURCE ;
 
+: CHK-SOURCE-TOO-BIG ( -- )
+   s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
+
+: CHK-MATERIALIZE-DISPATCH ( -- )
+   CHK-SOURCE-LIST @ if CHK-MATERIALIZE-LIST exit then
+   CHK-POS-N @ 0= if CHK-MATERIALIZE-STDIN else CHK-MATERIALIZE-FILE then ;
+
+\ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
+\ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
+\ layer (dot habu-tfam-13-c2-checkcore-cap).
 : CHK-MATERIALIZE ( -- )
    s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
-   CHK-SOURCE-LIST @ if CHK-MATERIALIZE-LIST exit then
-   CHK-POS-N @ 0= if CHK-MATERIALIZE-STDIN else CHK-MATERIALIZE-FILE then ;
+   [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
+   rc 0= if exit then
+   rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
+   rc throw ;
 
 : CHK-MATERIALIZE-BUF-AS ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n label:ptr labelu:n :}
    s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
-   srcu CHK-SRC-CAP > if E-FS-CAPACITY throw then
+   srcu CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
    src CHK-SRC-BUF srcu BYTE-COPY
    srcu CHK-SRC-U !
    CHK-MAKE-TEMP

@@ -131,6 +131,24 @@ is needed.
   Acceptance: equal values hash equal; used as a SKEY bucket index. COST: both.
 - S4 order (optional): `DERIVE order`/`PKG:CMP` lexicographic. COST: both.
 
+### PROGRESS 2026-07-11 (S1+S2 landed)
+
+S1 (enum eq) landed on master; S2 (payload sums + products) implemented on the
+same checked-MATCH generator — no engine lowering, no trust rows, no Gforth
+mirror. Sums: diagonal double-MATCH (outer binds one value's payloads to
+locals, inner the other's; same-variant arms compare CT-INT scalars with `=`
+after the widening local bind; cross arms false). Products: UNMAKE both
+values, bind fields top-down (enum-typed fields route through their family's
+PKG:TAG — that family must also DERIVE eq), compare field-wise. Payload-role
+gates at DECLARATION (E-TDECL-DERIVE): pointer payloads reject (no checked
+pointer-equality surface exists; `( ptr u8 ptr u8 -- bool ) =` rejects —
+evidence-probed), non-CT-INT/linear scalars reject (linear compare consumes;
+TFAM-11), parametric families reject (arity-0 only), non-derived enum fields
+reject. Products derive EQ only (TFAM-DERIVED-KIND-TAIL? gates the tag tail).
+S3 hash remains: no checked cell-mixing over hidden cells, so hash is where
+the EM-ADT engine leg + Gforth mirror become unavoidable; the checked-MATCH
+eq generator stays the differential oracle for any flat-cell fast path.
+
 ### Campaign
 
 Prerequisites (front-matter `blocks:`): habu-checker-capability-typed (compare

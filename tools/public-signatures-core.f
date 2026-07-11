@@ -704,16 +704,60 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
 : PS-ENUM-PUBLIC? ( n -- bool ) {: fam:n :}
    fam TFAM-KIND@ PS-TK-ENUM = fam TFAM-PUBLIC? and ;
 
+\ derive S1: a DERIVE-eq enum also publishes PKG:TAG ( fam -- n ) and
+\ PKG:EQ ( fam fam -- bool ), synthesized from the same registry metadata.
+: PS-DRV-SIG$ ( n n -- ptr u8 n ) {: fam:n eq:n :}   \ "fam -- n" / "fam fam -- bool"
+   PS-CSIG-RESET
+   fam TFAM-NAME$ PS-CSIG-APP  32 PS-CSIG-C,
+   eq 0 <> IF fam TFAM-NAME$ PS-CSIG-APP  32 PS-CSIG-C, THEN
+   45 PS-CSIG-C,  45 PS-CSIG-C,  32 PS-CSIG-C,
+   eq 0 <> IF s" bool" PS-CSIG-APP ELSE 110 PS-CSIG-C, THEN
+   PS-CSIG$ ;
+
+: PS-DRV-WORD$ ( n ptr u8 n -- ptr u8 n ) {: fam:n ta:ptr tu:n :}   \ PKG:TAIL (upper)
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
+   pu tu + 1+ {: u:n :}
+   u PS-WORD-CAP > IF s" public-signatures: derived word too long" PS-DIE THEN
+   pa pu PS-WORD-BUF COPY-UPPER
+   PS-COLON-C PS-WORD-BUF pu + c!
+   ta tu PS-WORD-BUF pu + 1+ COPY-UPPER
+   PS-WORD-BUF u ;
+
+: PS-EMIT-DRV ( n ptr u8 n ptr u8 n n -- )
+   {: fam:n ta:ptr tu:n file-a:ptr file-u:n eq:n :}
+   PS-DEF-START
+   s" schema_version" PS-JSON-KEY 1 PS-JSON-U PS-PAIR-COMMA
+   s" word" PS-JSON-KEY fam ta tu PS-DRV-WORD$ PS-JSON-STRING PS-PAIR-COMMA
+   s" file" PS-JSON-KEY file-a file-u PS-JSON-STRING PS-PAIR-COMMA
+   s" line" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" column" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" byte_start" PS-JSON-KEY 0 PS-JSON-U PS-PAIR-COMMA
+   s" signature" PS-JSON-KEY fam eq PS-DRV-SIG$ PS-SIGNATURE$ PS-JSON-STRING PS-PAIR-COMMA
+   s" exported" PS-JSON-KEY PS-TRUE PS-JSON-BOOL
+   PS-DEF-END ;
+
 : PS-EMIT-FAM-CTORS ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
    fam TFAM-VAR-START@ {: vs:n :}
    vs fam TFAM-VAR-COUNT@ + vs ?do
       fam  i  file-a file-u PS-EMIT-CTOR
    loop ;
 
+\ derive S2: ANY public DERIVE-eq family (enum, sum, product) publishes its
+\ derived rows; products derive EQ only (no discriminant).
+1 constant PS-TK-PRODUCT
+: PS-EMIT-FAM-DRV ( n ptr u8 n -- ) {: fam:n file-a:ptr file-u:n :}
+   fam TFAM-KIND@ PS-TK-PRODUCT = 0= IF
+      fam s" tag" file-a file-u 0 PS-EMIT-DRV THEN
+   fam s" eq"  file-a file-u -1 PS-EMIT-DRV ;
+
+: PS-DRV-PUBLIC? ( n -- bool ) {: fam:n :}
+   fam TFAM-PUBLIC? fam TFAM-DERIVE-EQ? and ;
+
 : PS-EMIT-REGISTRY ( ptr u8 n -- ) {: file-a:ptr file-u:n :}
    PS-TRUST @ IF exit THEN
    TFAM-N@ 0 ?do
       i PS-ENUM-PUBLIC? IF i file-a file-u PS-EMIT-FAM-CTORS THEN
+      i PS-DRV-PUBLIC? IF i file-a file-u PS-EMIT-FAM-DRV THEN
    loop ;
 
 : PS-SCAN-FILE ( ptr u8 n -- ) {: file-a:ptr file-u:n :}

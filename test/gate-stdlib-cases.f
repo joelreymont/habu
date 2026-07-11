@@ -386,6 +386,10 @@ TEST:SUITE gate-runner-entry-load
    test/gate-runner-entry-test.f
 TEST:;SUITE
 
+TEST:SUITE load-reject-diag
+   test/load-reject-diag-test.f
+TEST:;SUITE
+
 TEST:SUITE dictionary-record-shapes
    test/drec-shape-test.f
 TEST:;SUITE
