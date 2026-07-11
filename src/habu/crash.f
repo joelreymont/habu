@@ -6,7 +6,7 @@ create CRH 80 allot  variable CRHL
 variable CR-L1  variable CR-L2  variable CR-L3
 variable CR-OFF  variable CR-HANDLER
 s" CRH" s" -- ptr u8" TRUST
-TRUSTED: CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: CRH-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : CRH-INIT ( -- )
    s" habu-crash regs [sig x0..x28 fp lr sp pc], hex one-per-line:" {: a:ptr u:n :}

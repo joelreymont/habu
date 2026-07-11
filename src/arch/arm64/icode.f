@@ -46,7 +46,7 @@ s" ICODE-TABS" s" -- ptr n" TRUST
    ICODE-TABS drop
    0 ASM-CP ! ;
 
-TRUSTED: CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
+: CODE-BYTE+ ( ptr u8 n -- ptr u8 ) + ;
 
 : CW@ ( n -- ptr u8 )
    $4 * CODE swap CODE-BYTE+ ;

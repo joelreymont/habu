@@ -576,9 +576,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | MM-B-REG | `n -- matrix<space-global,f32,extent-k,extent-n>` | GEMM codegen from-register cast for the B operand; shares K with A and N with C at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-C-REG | `n -- matrix<space-global,f32,extent-m,extent-n>` | GEMM codegen from-register cast for the C operand; ties output rows to A and output columns to B at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-STATE | `matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live>` | GEMM codegen token shim: consumes the typed A/B/C matrix operands after checked setup emission and creates the phase/accumulator tokens used by checked `MM-K-LOOP` and `MM-STORE`. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
-| CODE-BYTE+ | `ptr u8 n -- ptr u8` | Refines assembler code-buffer byte-pointer arithmetic for emitted instruction bytes and patching. | `test/run.f`, `tools/build-fixpoint-test.f`, `tools/bootstrap-codegen-test.f` | src/arch/arm64/icode.f | 2026-06-29 |
 | CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
-| CRH-BYTE+ | `ptr u8 n -- ptr u8` | Refines crash-handler byte-pointer arithmetic while copying the signal header. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | linux-spawn-fail-n | `n --` | Linux child-side spawn failure reporter emits raw `write`/`exit_group` for the supplied failure-pipe fd register number. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-29 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-29 |
 | SHK-N | `-- ptr n` | Treeshaker token length cell is a raw variable used by checked token comparison loops. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
@@ -586,7 +584,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | KEEP-U | `-- ptr n` | Treeshaker candidate-token length cell is a raw variable used by checked keep/reachability scanning. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SHK-BYTE+ | `ptr u8 n -- ptr u8` | Refines treeshaker byte-pointer arithmetic for token scanning; the raw `+` is the typed pointer-offset boundary. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
 | SCAN-MODE | `-- ptr n` | Treeshaker reachability scan-mode cell is a raw variable used by checked source walks. | `test/run.f` | src/habu/treeshake.f | 2026-06-30 |
-| XREF-REC+ | `ptr a n -- ptr a` | Offsets an opaque dictionary-record pointer by a raw dictionary-layout displacement. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-29 |
 | ZBYTE@ | `ptr u8 n -- u8` | Reads one byte from argv/envp C strings through byte-offset pointer arithmetic. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZBYTE! | `u8 ptr u8 n --` | Writes one byte into target temp-path scratch through byte-offset pointer arithmetic. | `test/run.f`, `tools/build-fixpoint-test.f` | src/os/env-base.f | 2026-06-29 |
 | ZPTR+ | `ptr u8 n -- ptr u8` | Refines argv/envp C-string byte-pointer arithmetic after the `NAME=` prefix. | `test/run.f`, `tools/hb-build-test.f` | src/os/env-base.f | 2026-06-29 |
@@ -745,7 +742,6 @@ is itself a strict failure (fail-closed).
 fold-baseline 2
 src/arch/arm64/icode.f:CODE builder-emit habu-audit-trusted-inventory-3a950436
 src/arch/arm64/icode.f:ICODE-TABS builder-emit habu-audit-trusted-inventory-3a950436
-src/arch/arm64/icode.f:CODE-BYTE+ builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/aot-capture.f:AOT-DBASE builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/aot-capture.f:AOT-A>U8 builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/aot-capture.f:AOT-N>U8 builder-emit habu-audit-trusted-inventory-3a950436
@@ -763,7 +759,6 @@ src/habu/bundle-argv.f:SCRIPT-ARGC builder-emit habu-audit-trusted-inventory-3a9
 src/habu/bundle-argv.f:SCRIPT-ARGV builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/bundle-argv.f:SCRIPT-ARGV$ builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/crash.f:CRH builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/crash.f:CRH-BYTE+ builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/crash.f:c-crash-entry builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/crash.f:c-crash-mctx>r21 builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/crash.f:c-crash-xreg>r9 builder-emit habu-audit-trusted-inventory-3a950436
@@ -904,7 +899,6 @@ src/habu/verify-source.f:TRUST builder-emit habu-audit-trusted-inventory-3a95043
 src/habu/xref.f:XREF-N>REC builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/xref.f:XREF-A>U8 builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/xref.f:XREF-N>U8 builder-emit habu-audit-trusted-inventory-3a950436
-src/habu/xref.f:XREF-REC+ builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/xref.f:XREF-PATCH32 builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/xref.f:SEAL-LATCH@ builder-emit habu-audit-trusted-inventory-3a950436
 src/habu/xref.f:SEAL-NDICT@ builder-emit habu-audit-trusted-inventory-3a950436
