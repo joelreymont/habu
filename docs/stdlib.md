@@ -1161,7 +1161,7 @@ PROC-RUN-CAPTURE-LOOP    ( ptr u8 len ptr u8 len -- )
 PROC-RUN-CAPTURE-OUTCOME-LOOP ( ptr u8 len ptr u8 len -- )
 PROC-SPAWN-CAPTURE       ( ptr u8 -- )
 RUN-CAPTURE  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-CAPTURE-OUTCOME  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-CAPTURE-OUTCOME  ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 ```
 
 `PROC-PATHZ` copies a counted path into the module's private NUL-terminated path
@@ -1179,13 +1179,12 @@ payload), with generated constructors `OUTCOME:EXITED`, `OUTCOME:SIGNALED`, and
 `OUTCOME:TIMEOUT`. Consumers dispatch through exhaustive `MATCH outcome`.
 `PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
 normal exits, `128 + signal` for signal deaths and timeouts; `PROC-STATUS>RC`
-and `PROC-WAIT-RC` use it. The wide `-OUTCOME` capture API still returns the
-legacy `kind code` int pair (`PROC-OUTCOME-EXIT/SIGNAL/TIMEOUT` plus code);
-`PROC-OUTCOME-PAIR` is the one documented sum-to-pair boundary until that
-surface migrates. The capture machine stores no pair state: it keeps only the
-raw wait status plus a timed-out flag, and `PROC-CAPTURE-OUTCOME ( -- outcome )`
-derives the sum on demand (`PROC-CAPTURE-OUTCOME@` is that derivation flattened
-through `PROC-OUTCOME-PAIR`).
+and `PROC-WAIT-RC` use it. The whole `-OUTCOME` capture API returns the sum:
+`PROC-CAPTURE-OUTCOME@` and the `RUN-*-OUTCOME` runners yield
+`( -- len len outcome )` and every consumer dispatches by `MATCH outcome` (or
+the `lib/test/outcome.f` assert helpers). The capture machine stores no pair
+state: it keeps only the raw wait status plus a timed-out flag, and
+`PROC-CAPTURE-OUTCOME ( -- outcome )` derives the sum on demand.
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
@@ -1255,9 +1254,9 @@ PROC-RUN-ARGV-IO-RC        ( ptr u8 len fd fd fd -- rc )
 PROC-ARGV-CHECK-PATH  ( ptr u8 len -- )
 PROC-SPAWN-ARGV-CAPTURE ( ptr u8 ptr a -- )
 RUN-ARGV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-ARGV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 RUN-ARGV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-ARGV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 ```
 
 Use `PROC-ARGV-RESET`, append zero or more extra args with `PROC-ARGV+`, then
@@ -1289,7 +1288,7 @@ buffer into the child while draining stdout and stderr. The stdin write fd is
 nonblocking and no-SIGPIPE; partial writes advance by the actual byte count, and
 an early child close of stdin closes the parent write fd while capture continues
 to the child's final rc/outcome. Its outcome variant keeps the same stdin
-behavior and returns kind/code.
+behavior and returns the outcome sum.
 
 `lib/process-env.f` is a post-rebuild layer on top of `lib/process-argv.f` for
 explicit child environments and PATH lookup. Keeping it separate preserves the
@@ -1311,9 +1310,9 @@ PROC-ENV-INHERIT-MISSING  ( -- )
 PROC-SPAWN-ARGV-ENV-IO         ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-ARGV-ENV-IO-RC        ( ptr u8 len fd fd fd -- rc )
 RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
-RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
 FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
 FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- option<len> )
 RESOLVE-EXECUTABLE        ( ptr u8 len ptr u8 -- len )
@@ -1365,7 +1364,7 @@ environment entries with `PROC-CMD-ENV+` or `PROC-CMD-ENV-ENTRY+`, optionally
 replace the default inherited environment with `PROC-CMD-ENV-HERMETIC`, and set
 bounded stdin with `PROC-CMD-IN!`. `PROC-CMD-RUN-OUTCOME` validates the path and
 timeout before transferring state into the lower-level argv/env buffers, captures
-bounded stdout/stderr into command-owned buffers, stores `kind code`, and returns
+bounded stdout/stderr into command-owned buffers, stores the decomposed outcome, and returns
 that same outcome pair. `PROC-CMD-RUN-RC` returns `PROC-OUTCOME>RC` conversion
 for callers that still need rc semantics. `PROC-CMD-OUT$`, `PROC-CMD-ERR$`,
 `PROC-CMD-OUTCOME@`, and `PROC-CMD-RC@` expose the stored result after the run.

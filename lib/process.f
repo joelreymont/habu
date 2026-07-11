@@ -506,16 +506,16 @@ PROC-REAP-ARM-DEFAULT
    PROC-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
    PROC-STATUS @ PROC-STATUS>OUTCOME ;
 
-: PROC-CAPTURE-OUTCOME@ ( -- len len n n )
+: PROC-CAPTURE-OUTCOME@ ( -- len len outcome )
    PROC-OUT-LEN @ PROC-ERR-LEN @
-   PROC-CAPTURE-OUTCOME PROC-OUTCOME-PAIR ;
+   PROC-CAPTURE-OUTCOME ;
 
 : PROC-CAPTURE-FINISH-RC ( -- len len rc )
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-REAP-CAPTURE
    PROC-CAPTURE-RC@ ;
 
-: PROC-CAPTURE-FINISH-OUTCOME ( -- len len n n )
+: PROC-CAPTURE-FINISH-OUTCOME ( -- len len outcome )
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-CAPTURE-OUTCOME@ ;
 
@@ -536,7 +536,7 @@ PROC-REAP-ARM-DEFAULT
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-: RUN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+: RUN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap PROC-CAPTURE-CHECK-CAPS

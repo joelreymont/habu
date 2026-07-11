@@ -614,12 +614,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-STDIN-CAPTURE-BEGIN	(ms --)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	reset capture state, set deadline, and open stdout/stderr/stdin pipes
 1	process	lib/process.f	word	PROC-CAPTURE-RC@	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length and rc
 1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME	(-- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	derive the capture outcome sum from raw status and the timed-out flag
-1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME@	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length outcome kind and code
+1	process	lib/process.f	word	PROC-CAPTURE-OUTCOME@	(-- len len outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	return captured stdout length stderr length and the outcome sum
 1	process	lib/process.f	word	PROC-CAPTURE-FINISH-RC	(-- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds, reap child, and return captured rc fields
-1	process	lib/process.f	word	PROC-CAPTURE-FINISH-OUTCOME	(-- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds and return captured outcome fields
+1	process	lib/process.f	word	PROC-CAPTURE-FINISH-OUTCOME	(-- len len outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	close capture fds and return captured lengths and outcome sum
 1	process	lib/process.f	word	PROC-SPAWN-CAPTURE	(ptr u8 --)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	spawn the capture child and close parent write fds
 1	process	lib/process.f	word	RUN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr rc
-1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr outcome kind and code
+1	process	lib/process.f	word	RUN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable and capture bounded stdout stderr plus the outcome sum
 1	process-fork	lib/process-fork.f	module			lib/process-test.f	docs/stdlib.md	stdlib-process	active	checked fork wrappers layered after native primitive rebuild
 1	process-fork	lib/process-fork.f	word	PROC-FORK-RAW	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	raw fork alias captured after native primitive rebuild
 1	process-fork	lib/process-fork.f	word	PROC-FORK	(-- pid)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	fork the current process and throw on primitive failure
@@ -655,9 +655,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	spawn prepared argv with stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	PROC-SPAWN-ARGV-STDIN-CAPTURE	(ptr u8 ptr a --)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv with stdin stdout and stderr capture fds
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run a counted executable with prepared argv and capture bounded stdout stderr rc
-1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv and capture bounded stdout stderr outcome kind and code
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv and capture bounded stdout stderr plus the outcome sum
 1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture
-1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture and outcome kind/code
+1	process-argv	lib/process-argv.f	word	RUN-ARGV-STDIN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-argv-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv with bounded stdin stdout stderr capture plus the outcome sum
 1	process-env	lib/process-env.f	module			lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	checked child envp builder and deterministic executable lookup
 1	process-env	lib/process-env.f	word	PROC-ENV-TABLE-A-FIELD	(-- ptr ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	return the typed pointer field for envp table storage
 1	process-env	lib/process-env.f	word	PROC-ENV-TABLE@	(-- ptr a)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	read the envp table pointer
@@ -712,9 +712,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdout stderr capture fds
 1	process-env	lib/process-env.f	word	PROC-SPAWN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 ptr a ptr a --)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	spawn prepared argv and envp with stdin stdout stderr capture fds
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp and capture bounded stdout stderr rc
-1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdout stderr capture and outcome kind/code
+1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdout stderr capture plus the outcome sum
 1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-STDIN-CAPTURE	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdin stdout stderr capture
-1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdin stdout stderr capture and outcome kind/code
+1	process-env	lib/process-env.f	word	RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME	(ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	run prepared argv/envp with bounded stdin stdout stderr capture plus the outcome sum
 1	process-env	lib/process-env.f	word	PROC-HAS-SLASH?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test whether a command path already contains a slash
 1	process-env	lib/process-env.f	word	PROC-EXECUTABLE?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test executable access for one counted path
 1	process-env	lib/process-env.f	word	PROC-COPY-PATH	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	copy one resolved executable path into caller storage
@@ -747,12 +747,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-command	lib/process-command.f	word	PROC-CMD-LOAD-ENVS	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	transfer command-owned environment entries into the env spawn builder
 1	process-command	lib/process-command.f	word	PROC-CMD-PREPARE	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	reset lower-level process builders and transfer command-owned state
 1	process-command	lib/process-command.f	word	PROC-CMD-CHECK-RUN	(ptr u8 len ms --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	validate command executable path and timeout before transfer
-1	process-command	lib/process-command.f	word	PROC-CMD-STORE-RUN	(len len n n --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	store command capture lengths outcome and converted rc
-1	process-command	lib/process-command.f	word	PROC-CMD-RUN-OUTCOME	(ptr u8 len ms -- n n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	run command-owned state and return stored outcome kind code
+1	process-command	lib/process-command.f	word	PROC-CMD-STORE-RUN	(len len outcome --)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	store command capture lengths outcome and converted rc
+1	process-command	lib/process-command.f	word	PROC-CMD-RUN-OUTCOME	(ptr u8 len ms -- outcome)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	run command-owned state and return the completion outcome sum
 1	process-command	lib/process-command.f	word	PROC-CMD-RUN-RC	(ptr u8 len ms -- rc)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	run command-owned state and return converted rc
 1	process-command	lib/process-command.f	word	PROC-CMD-OUT$	(-- ptr u8 n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return captured command stdout bytes
 1	process-command	lib/process-command.f	word	PROC-CMD-ERR$	(-- ptr u8 n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return captured command stderr bytes
-1	process-command	lib/process-command.f	word	PROC-CMD-OUTCOME@	(-- n n)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return stored command outcome kind code
+1	process-command	lib/process-command.f	word	PROC-CMD-OUTCOME@	(-- outcome)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	derive the stored command completion outcome sum
 1	process-command	lib/process-command.f	word	PROC-CMD-RC@	(-- rc)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	published	return stored converted command rc
 1	process-cwd	lib/process-cwd.f	module			lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	active	checked child cwd process helpers layered on prepared argv and envp
 1	process-cwd	lib/process-cwd.f	word	PROC-SPAWN-ARGV-ENV-CWD-RAW	(ptr u8 ptr a ptr a ptr u8 fd fd fd -- pid)	lib/process-cwd-test.f	docs/stdlib.md	stdlib-process	published	raw spawn-argv-env-cwd-io alias captured after native primitive rebuild
@@ -902,6 +902,10 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-snap	lib/test/snap.f	word	TS-EXPECT.	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	print the recorded expected snapshot cells
 1	test-snap	lib/test/snap.f	word	TS-ACTUAL.	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	print the recorded actual snapshot cells
 1	test-snap	lib/test/snap.f	word	TS-JUDGE	(--)	lib/test/snap-test.f	docs/stdlib.md	stdlib-test	active	record one snapshot case and report a mismatch
+1	test-outcome	lib/test/outcome.f	module			lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	active	checked assertions over the process outcome sum shared by capture-consuming tests
+1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-EXITED=	(outcome n --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture completed by exit with this code
+1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-SIGNALED=	(outcome n --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture died by this signal
+1	test-outcome	lib/test/outcome.f	word	T-OUTCOME-TIMEOUT	(outcome --)	lib/test/outcome-test.f	docs/stdlib.md	stdlib-test	published	assert a capture hit its deadline
 1	test-runner	lib/test/runner.f	module			lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	checked native gate runner foundation for temp roots process capture and aggregate failures
 1	test-runner	lib/test/runner.f	word	GT-FAIL-SLOT	(n -- ptr u8)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name slot
 1	test-runner	lib/test/runner.f	word	GT-FAIL-U-PTR	(n -- ptr n)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	return one bounded failure-name length cell
@@ -920,7 +924,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	test-runner	lib/test/runner.f	word	GT-FAIL-NAME!	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store a failure name when a slot remains under the cap
 1	test-runner	lib/test/runner.f	word	GT-FAIL+	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record one named aggregate failure
 1	test-runner	lib/test/runner.f	word	GT-CHECK	(bool ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	record a failure name when a boolean check fails
-1	test-runner	lib/test/runner.f	word	GT-STORE-RUN	(len len n n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store one captured process outcome
+1	test-runner	lib/test/runner.f	word	GT-OUTCOME!	(outcome --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	decompose an outcome into the runner exited timed-out and code cells
+1	test-runner	lib/test/runner.f	word	GT-OUTCOME@	(-- outcome)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	derive the stored runner completion outcome sum
+1	test-runner	lib/test/runner.f	word	GT-STORE-RUN	(len len outcome --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	decompose and store one captured process outcome
 1	test-runner	lib/test/runner.f	word	GT-CAPTURE-STORE	(--)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	active	store the current low-level process capture outcome
 1	test-runner	lib/test/runner.f	word	GT-RUN	(ptr u8 n n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with timeout
 1	test-runner	lib/test/runner.f	word	GT-RUN-DEFAULT	(ptr u8 n --)	lib/test/runner-test.f	docs/stdlib.md	stdlib-test-runner	published	run a prepared argv capture with the default timeout

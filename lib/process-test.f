@@ -10,6 +10,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-fork.f
 require lib/process-argv.f
+require lib/test/outcome.f
 require test/checker-assert.f
 
 variable PT-R
@@ -81,9 +82,6 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 : PT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: PT-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
 : PT-ROOT! ( -- )
    s" habu-process" TMPDIR-MKDIR {: a:ptr u :}
    a u PT-ROOT-BUF PT-ROOT-U PT-COPY! ;
@@ -126,12 +124,11 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE
    PT-CAPTURE>N ;
 
-: PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+: PT-RUN-HB-SCRIPT-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
    {: script:ptr scriptu out:ptr outcap err:ptr errcap timeout :}
    PROC-ARGV-RESET
    script scriptu  >LEN PROC-ARGV+
-   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME
-   PT-OUTCOME>N ;
+   s" bin/hb" >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : PT-RUN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
@@ -320,31 +317,22 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-EXIT ( -- )
    PT-CAPTURE-FALSE PT-OUT 32 PT-ERR 32 PT-HB-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T=
-   PROC-CAPTURE-OUTCOME MATCH outcome                    \ derived sum agrees with the pair
-     exited OF drop 1 0 T= ENDOF
-     signaled OF drop 1 0 T= ENDOF
-     timeout OF 0 0= TTRUE ENDOF
-   ;MATCH ;
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T=
+   PROC-CAPTURE-OUTCOME T-OUTCOME-TIMEOUT ;             \ derived getter agrees
 
-\ Signal-death capture: the reap path derives (SIGNAL, sig) from the raw wait
-\ status alone -- no stored pair. Both the legacy pair view and the sum getter
-\ must agree.
+\ Signal-death capture: the reap path derives signaled(sig) from the raw wait
+\ status alone -- no stored pair. The API return and the derived getter agree.
 : TEST-RUN-ARGV-CAPTURE-OUTCOME-SIGNAL ( -- )
    PROC-ARGV-RESET
    s" -c" >LEN PROC-ARGV+
    s" kill -KILL $$" >LEN PROC-ARGV+
    s" /bin/sh" >LEN PT-OUT 32 >LEN PT-ERR 32 >LEN PT-HB-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
-   PT-OUTCOME>N SIGKILL T= PROC-OUTCOME-SIGNAL T= 0 T= 0 T=
-   PROC-CAPTURE-OUTCOME MATCH outcome
-     exited OF drop 1 0 T= ENDOF
-     signaled OF SIGKILL T= ENDOF
-     timeout OF 1 0 T= ENDOF
-   ;MATCH ;
+   SIGKILL T-OUTCOME-SIGNALED= LEN>N 0 T= LEN>N 0 T=
+   PROC-CAPTURE-OUTCOME SIGKILL T-OUTCOME-SIGNALED= ;
 
 \ Regression for habu-concurrent-multi-workspace-5341c7f4: budgets scale with
 \ measured load (never shrink: min 100%), and detection stays BOUNDED - with
@@ -356,7 +344,7 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    T-BUDGET-MAX-PCT T-BUDGET-PCT !
    mono-ns {: t0:n :}
    PT-CAPTURE-HANG PT-OUT 32 PT-ERR 32 PT-SHORT-TIMEOUT-MS PT-RUN-HB-SCRIPT-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T=
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T=
    mono-ns t0 - PROC-NS-PER-MS / 3000 < TTRUE
    saved T-BUDGET-PCT ! ;
 

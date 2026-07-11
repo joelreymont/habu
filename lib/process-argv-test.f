@@ -5,6 +5,7 @@ require lib/errors.f
 require lib/test.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 
 variable PAT-IN-R
 variable PAT-IN-W
@@ -42,9 +43,6 @@ variable PAT-I
 : PAT-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: PAT-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
 : PAT-LTRIM-SPACES ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
    0 begin dup u < while
       dup a + c@ PAT-SPACE <> if dup a + u rot - exit then
@@ -61,10 +59,9 @@ variable PAT-I
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE
    PAT-CAPTURE>N ;
 
-: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+: PAT-STDIN-CAPTURE-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
-   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   PAT-OUTCOME>N ;
+   path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : PAT-CHECK-WC-COUNT ( n n n -- ) {: outu erru rc :}
    rc 0 T=
@@ -189,14 +186,14 @@ variable PAT-I
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-CAT ( -- )
    PROC-ARGV-RESET
    s" /bin/cat" s" stdin-outcome" PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000 PAT-STDIN-CAPTURE-OUTCOME
-   0 T= PROC-OUTCOME-EXIT T= 0 T= 13 T=
+   0 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 13 T=
    PAT-CAP-OUT 13 s" stdin-outcome" T$= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-TIMEOUT ( -- )
    PROC-ARGV-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" s" " PAT-CAP-OUT 64 PAT-CAP-ERR 32 50 PAT-STDIN-CAPTURE-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PAT-RUN-ARGV-STDIN-CAPTURE-OUTCOME-FALSE-LARGE ( -- )
    PROC-ARGV-RESET
@@ -204,7 +201,7 @@ variable PAT-I
    s" /usr/bin/false" PAT-EARLY-IN PAT-EARLY-IN-CAP
    PAT-CAP-OUT 64 PAT-CAP-ERR 32 1000
    PAT-STDIN-CAPTURE-OUTCOME
-   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
 : PAT-READ-NEG-LEN ( -- )
    -1 PAT-I !

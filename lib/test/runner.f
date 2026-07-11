@@ -23,8 +23,9 @@ create GT-FAIL-US GT-FAIL-MAX cells allot
 variable GT-ROOT-U
 variable GT-OUT-U
 variable GT-ERR-U
-variable GT-OUTCOME-KIND
-variable GT-OUTCOME-CODE
+variable GT-EXITED                       \ bool: completed by exit (vs signal) when not timed out
+variable GT-TIMED-OUT                    \ bool: capture deadline hit
+variable GT-CODE                         \ exit code or signal number; 0 for timeout
 variable GT-FAIL#
 variable GT-PROGRESS-START-NS
 variable GT-PROGRESS-LAST-NS
@@ -49,8 +50,9 @@ variable GT-TAIL-U
 : GT-RESET ( -- )
    0 GT-OUT-U !
    0 GT-ERR-U !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   0 GT-OUTCOME-CODE !
+   0 0= GT-EXITED !
+   0 0= 0= GT-TIMED-OUT !
+   0 GT-CODE !
    0 GT-FAIL# ! ;
 
 : GT-ROOT ( -- ptr u8 n )
@@ -107,11 +109,24 @@ variable GT-TAIL-U
 : GT-CHECK ( bool ptr u8 n -- ) {: ok name:ptr nameu :}
    ok 0= if name nameu GT-FAIL+ then ;
 
-: GT-STORE-RUN ( len len n n -- ) {: outu erru kind code :}
-   code GT-OUTCOME-CODE !
-   kind GT-OUTCOME-KIND !
-   erru LEN>N GT-ERR-U !
-   outu LEN>N GT-OUT-U ! ;
+\ Decompose an outcome into the runner's exited/timed-out/code cells (all one
+\ cell, lossless: exit codes >= 128 stay distinct from signal deaths).
+: GT-OUTCOME! ( outcome -- )
+   MATCH outcome
+     exited OF GT-CODE ! 0 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
+     signaled OF GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= 0= GT-TIMED-OUT ! ENDOF
+     timeout OF 0 GT-CODE ! 0 0= 0= GT-EXITED ! 0 0= GT-TIMED-OUT ! ENDOF
+   ;MATCH ;
+
+: GT-OUTCOME@ ( -- outcome )
+   GT-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
+   GT-EXITED @ if GT-CODE @ OUTCOME:EXITED exit then
+   GT-CODE @ OUTCOME:SIGNALED ;
+
+: GT-STORE-RUN ( len len outcome -- )
+   GT-OUTCOME!
+   LEN>N GT-ERR-U !
+   LEN>N GT-OUT-U ! ;
 
 : GT-CAPTURE-STORE ( -- )
    PROC-CAPTURE-OUTCOME@ GT-STORE-RUN ;
@@ -289,10 +304,7 @@ variable GT-TAIL-U
    s" ms)" type cr ;
 
 : GT-RC@ ( -- n )
-   GT-OUTCOME-KIND @ PROC-OUTCOME-EXIT = if
-      GT-OUTCOME-CODE @ exit
-   then
-   128 GT-OUTCOME-CODE @ + ;
+   GT-OUTCOME@ PROC-OUTCOME>RC RC>N ;
 
 : GT-RC= ( n ptr u8 n -- ) {: want name:ptr nameu :}
    GT-RC@ want = name nameu GT-CHECK ;
@@ -301,7 +313,7 @@ variable GT-TAIL-U
    GT-RC@ 0 <> name nameu GT-CHECK ;
 
 : GT-TIMEOUT ( ptr u8 n -- ) {: name:ptr nameu :}
-   GT-OUTCOME-KIND @ PROC-OUTCOME-TIMEOUT = name nameu GT-CHECK ;
+   GT-TIMED-OUT @ name nameu GT-CHECK ;
 
 : GT-STDOUT= ( ptr u8 n ptr u8 n -- ) {: want:ptr wantu name:ptr nameu :}
    GT-OUT$ want wantu STR= name nameu GT-CHECK ;

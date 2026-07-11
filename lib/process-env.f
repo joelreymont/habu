@@ -306,7 +306,7 @@ variable PROC-ENV-DEF-BUF-A
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+: RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    outcap errcap PROC-CAPTURE-CHECK-CAPS
@@ -329,7 +329,7 @@ variable PROC-ENV-DEF-BUF-A
    in inu out outcap err errcap PROC-RUN-STDIN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+: RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu PROC-ARGV-CHECK-PATH
    inu PROC-CAPTURE-CHECK-STDIN
