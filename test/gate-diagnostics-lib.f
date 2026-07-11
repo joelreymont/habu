@@ -163,9 +163,7 @@ variable GDX-TRUST-MAN-U
 
 \ typed-local-lint: allow-bare-local - q keeps the quotation effect from the stack signature.
 : GDX-CHECK-DIRECT-CAPTURE ( [ -- ] -- ) {: q :}
-   q GE-CAPTURE-ACTION {: rc:n :}
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
-   rc GT-OUTCOME-CODE ! ;
+   q GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME! ;
 
 : GDX-CHECK-DIRECT-STDIN-ACT ( -- )
    GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHK-MATERIALIZE-BUF-AS

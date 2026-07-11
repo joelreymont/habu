@@ -307,11 +307,15 @@ variable GCR-SAVED-FD
    dw-rd FD>N PROC-REAP-WATCH-FD !
    GCR-SLEEP-ARGV
    s" /bin/sh" >LEN GCR-OUT-BUF GCR-CAP >LEN GCR-ERR-BUF GCR-CAP >LEN
-   GCR-SHORT-MS >MS RUN-ARGV-CAPTURE-OUTCOME {: outl:len errl:len kind:n code:n :}
+   GCR-SHORT-MS >MS RUN-ARGV-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF drop 0 0= 0= ENDOF
+     signaled OF drop 0 0= 0= ENDOF
+     timeout OF 0 0= ENDOF
+   ;MATCH nip nip
    GCR-SAVED-FD @ PROC-REAP-WATCH-FD !
    dw-rd FD>N close
    dw-wr FD>N close
-   kind PROC-OUTCOME-TIMEOUT =
    PROC-REAP-PID @ PID>N 0 < ;
 
 : GCR-DONE-DISARMED? ( -- bool bool )   \ completion terminator disarms, twice

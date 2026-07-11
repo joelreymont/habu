@@ -47,7 +47,7 @@ variable XPK-CHILD-U
 variable XPK-IN-U
 variable XPK-OUT-U
 variable XPK-ERR-U
-variable XPK-KIND
+variable XPK-EXITED                 \ bool: child completed by exit
 variable XPK-RC
 
 create XPK-ROOT-BUF FS-PATH-CAP allot
@@ -211,9 +211,13 @@ create XPK-EMPTY 1 allot
 
 \ --- child spawn + outcome capture --------------------------------------------
 
-: XPK-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind XPK-KIND !  code XPK-RC !
-   erru LEN>N XPK-ERR-U !  outu LEN>N XPK-OUT-U ! ;
+: XPK-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF XPK-RC ! 0 0= XPK-EXITED ! ENDOF
+     signaled OF XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
+     timeout OF 0 XPK-RC ! 0 0= 0= XPK-EXITED ! ENDOF
+   ;MATCH
+   LEN>N XPK-ERR-U !  LEN>N XPK-OUT-U ! ;
 
 : XPK-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u XPK-CAP > if E-FS-CAPACITY throw then
@@ -237,7 +241,7 @@ create XPK-EMPTY 1 allot
    XPK-STORE! ;
 
 : XPK-ASSERT-RC ( n -- ) {: rc:n :}
-   XPK-KIND @ PROC-OUTCOME-EXIT T=
+   XPK-EXITED @ TTRUE
    XPK-RC @ rc T= ;
 
 : XPK-OUT? ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -292,18 +296,18 @@ create XPK-EMPTY 1 allot
 \ interpret-level wide gate identically (same kind + rc), proving the alias
 \ record copied DNAME-WIDE. The exact rc is whatever the engine's wide gate
 \ exits with; equality between the two runs is the contract.
-variable XPK-WIDE-KIND   variable XPK-WIDE-RC
+variable XPK-WIDE-EXITED   variable XPK-WIDE-RC
 
 : XPK-WIDE-PARITY ( -- )
    s" interpret wide gate: source ctor" T-LABEL
    XPK-CTOR-WIDE-SRC-FORGE$ XPK-RUN-STDIN
    s" pre-wide" XPK-OUT?
-   XPK-KIND @ XPK-WIDE-KIND !  XPK-RC @ XPK-WIDE-RC !
+   XPK-EXITED @ XPK-WIDE-EXITED !  XPK-RC @ XPK-WIDE-RC !
    XPK-RC @ 0 T<>
    s" interpret wide gate: alias behaves identically" T-LABEL
    XPK-CTOR-WIDE-ALIAS-FORGE$ XPK-RUN-STDIN
    s" pre-wide" XPK-OUT?
-   XPK-KIND @ XPK-WIDE-KIND @ T=
+   XPK-EXITED @ TTRUE  XPK-WIDE-EXITED @ TTRUE
    XPK-RC @ XPK-WIDE-RC @ T= ;
 
 T-RESET
