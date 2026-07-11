@@ -41,6 +41,7 @@ variable CT-VA  variable CT-VU
 : TRY-EMPTY   ( -- )  CAP-BEGIN CAP-FINISH ;                 \ no ops captured -> E-CAD-EMPTY
 : TRY-INPUTS  ( -- )  CAP-BEGIN CAP-CAP 1+ 0 ?do s" 1x1" SIG-INPUT loop ;
 : TRY-SHAPE   ( -- )  s" 2y3" PARSE-SHAPE 2drop ;
+: TRY-PARSE-INT ( -- )  s" nope" PARSE-INT drop ;            \ non-numeric MODEL: int field
 \ ---- capture-time param-shape legality probes (data then param on the plan store) --------
 : TRY-EW-MISMATCH ( -- )                              \ residual param shape != data shape
    TENSOR:TV-RESET  4 8 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  2 3 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW TENSOR:TV-DESC  MAKI-OPKIND:RESIDUAL-ADD EW-SHAPE-CHECK ;
@@ -79,6 +80,7 @@ s" SOFTMAX-ROW" OP-KIND OPKIND>N OP-SOFTMAX-ROW T=
 ' TRY-EMPTY   E-CAD-EMPTY  TTHROWS
 ' TRY-INPUTS  E-CAD-INPUTS TTHROWS
 ' TRY-SHAPE   E-CAD-SYNTAX TTHROWS
+' TRY-PARSE-INT E-CAD-SYNTAX TTHROWS
 
 \ ---- param-operand shape legality: broadcast classes pass, mismatches fail closed -
 \ residual/add/mul need same-shape; bias is 1xC; scale is 1x1 or same-shape. Legal

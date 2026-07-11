@@ -264,7 +264,8 @@ variable STORE-Q-FOUND                                                   \ -1 on
    repeat drop -1 ;
 
 : STORE-PARSE-INT ( ptr u8 n -- n )
-   STR>NUMBER? 0= if E-STORE-ROW throw then ;
+   STR>NUMBER? STR>OPTION
+   MATCH option none OF E-STORE-ROW throw ENDOF some OF ENDOF ;MATCH ;
 
 public
 

@@ -62,7 +62,9 @@ private
 public
 
 \ ---- flop-byte ratio (calibration.rows override, else the documented default) --
-: SV-FBR-PARSE ( ptr u8 n -- n )  STR>NUMBER? 0= if E-SV-CALIB throw then ;
+: SV-FBR-PARSE ( ptr u8 n -- n )
+   STR>NUMBER? STR>OPTION
+   MATCH option none OF E-SV-CALIB throw ENDOF some OF ENDOF ;MATCH ;
 
 : SAVED-FBR ( -- n )
    s" cost" s" global" s" flop-bytes" CALIB-GET if SV-FBR-PARSE else 2drop SAVED-FBR-DEFAULT then ;

@@ -31,6 +31,7 @@ FILL-BIGV
 : TRY-BADPREC    ( -- )  s" ek" V-PASS V-PASS V-PASS V-PASS true PREC-N EVID-PUT-G ;
 : TRY-BADPF      ( -- )  s" pk" s" sig" PF-N s" r" PROFIT-PUT ;
 : TRY-CAP        ( -- )  s" tbl" s" op" s" fld" BIGV BIGV-U CALIB-PUT ;
+: TRY-STORE-PI   ( -- )  s" nope" STORE-PARSE-INT drop ;    \ non-numeric row field
 
 T-RESET
 
@@ -100,6 +101,7 @@ s" occupancy" s" gemm-tf32" s" no-field" CALIB-GET nip TFALSE
 ' TRY-BADPREC    E-STORE-PREC    TTHROWS
 ' TRY-BADPF      E-STORE-VERDICT TTHROWS
 ' TRY-CAP        E-STORE-FULL    TTHROWS
+' TRY-STORE-PI   E-STORE-ROW     TTHROWS
 
 \ ---- missing store reads as not-found (no throw) ---------------------------
 STORE-RESET

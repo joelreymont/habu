@@ -22,6 +22,7 @@ variable GT-VA  variable GT-VU
 : GT-IN ( ptr u8 n -- )  GT-VA @ GT-VU @ 2swap CONTAINS? TTRUE ;
 
 : TRY-SAVE-CAST ( -- )  GA-SAVE ;
+: TRY-GA-PI ( -- )  s" nope" GA-PARSE-INT-VAL drop ;    \ non-numeric artifact value field
 
 T-RESET
 STORE-RESET
@@ -72,6 +73,7 @@ MODEL: GA-CST2 ( x:2x2 -- y ) CAST ;
 GA-CHECK V-NOTRUN T=
 GA-RE$ GT-SAVE  s" not host-executable" GT-IN
 ' TRY-SAVE-CAST E-GA-UNSUP TTHROWS
+' TRY-GA-PI      E-GA-PARSE  TTHROWS
 
 \ ---- GOLDEN-INTO prefers the external artifact (real comparison) -------------
 MODEL: GA-RT ( x:2x3 w:3x4 b:1x4 -- y ) LINEAR ;
