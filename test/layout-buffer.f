@@ -59,7 +59,10 @@ s" LB-VAR-P ( -- ptr lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-CREATE-P ( -- ptr lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-DATA-P ( -- ptr lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
 s" LBUF-PEND!" 0 search-wl 0= -1 T=
-s" CHECKER-LBUF-AUTH:INSTALL" 0 search-wl 0= -1 T=
+s" LBUF-PEND-CLEAR" 0 search-wl 0= -1 T=
+s" LBUF-PEND-MATCH?" 0 search-wl 0= -1 T=
+s" LBUF-PEND-A" 0 search-wl 0= -1 T=
+s" LBUF-PEND-U" 0 search-wl 0= -1 T=
 s" LB-CELL+ ( ptr lb-res<n,n> -- ptr lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-BYTE ( ptr lb-res<n,n> -- ptr u8 )" CHECK-QUIET-CANDIDATE! 0 T=
 s" LB-WRONG-STORE ( lb-other<n> ptr lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=

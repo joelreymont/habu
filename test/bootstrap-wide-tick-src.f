@@ -11,4 +11,5 @@ SUMTYPE bwt 1
 
 : BWT-WIDE ( -- bwt<n> ) 7 BWT:VALUE ;
 
+s" BOOTSTRAP-WIDE-ARMED" type cr
 ' BWT-WIDE drop

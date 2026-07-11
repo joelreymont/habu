@@ -11,4 +11,5 @@ SUMTYPE bwi 1
 
 : BWI-WIDE ( -- bwi<n> ) 7 BWI:VALUE ;
 
+s" BOOTSTRAP-WIDE-ARMED" type cr
 BWI-WIDE

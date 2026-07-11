@@ -13,17 +13,12 @@ $7FFFFFFFFFFFFFFF constant LBUF-N-MAX
 0 constant LBUF-FALSE
 -1 constant LBUF-TRUE
 
-package LAYOUT-BUFFER-INTERNAL
-
 create LBUF-GEN LBUF-GEN-CAP allot
 variable LBUF-GEN-U
 variable LBUF-I
 variable LBUF-N
 variable LBUF-W
 variable LBUF-BYTES
-variable LBUF-PEND-A
-variable LBUF-PEND-U   0 LBUF-PEND-U !
-variable LBUF-AUTH-OK
 
 : LBUF-CLEAR ( -- )
    0 LBUF-GEN-U ! ;
@@ -113,23 +108,6 @@ variable LBUF-AUTH-OK
 PTR-VARIABLE LBUF-EVAL-A
 variable LBUF-EVAL-U
 
-: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
-
-: LBUF-PEND-CLEAR ( -- )
-   0 LBUF-PEND-U ! ;
-
-: LBUF-AUTH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   LBUF-PEND-U @ 0 > u 0 > and IF
-      LBUF-PEND-A @ LBUF-PEND-U @ a u CORE-STR=CI LBUF-AUTH-OK !
-   ELSE
-      LBUF-FALSE LBUF-AUTH-OK !
-   THEN
-   LBUF-PEND-CLEAR
-   LBUF-AUTH-OK @ ;
-
-' LBUF-AUTH? CHECKER-LBUF-AUTH:INSTALL
-
 : LBUF-EVAL-RUN ( -- )
    LBUF-EVAL-A 0 ptr-field @ LBUF-EVAL-U @ TDECL-EVAL-XT @ execute ;
 
@@ -145,9 +123,7 @@ variable LBUF-EVAL-U
    LBUF-BYTES @ negate allot
    rc throw ;
 
-public
-
-: DEFINE ( -- )
+: LAYOUT-BUFFER ( -- )
    parse-name {: name:ptr nameu:n :}
    parse-name {: type:ptr typeu:n :}
    parse-name {: count:ptr countu:n :}
@@ -163,8 +139,3 @@ public
    src srcu pna pnu LBUF-EVAL
    dup 0 <> IF LBUF-ROLLBACK THEN
    drop ;
-
-end-package
-
-: LAYOUT-BUFFER ( -- )
-   LAYOUT-BUFFER-INTERNAL:DEFINE ;

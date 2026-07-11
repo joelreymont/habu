@@ -3328,3 +3328,14 @@ unchanged (148855). Keys for milestone 2:
   object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
   shared warm artifact may bypass object production entirely. Bind a fresh
   gate-local cache before proving store, restore, or relink transitions.
+- **Typed layout pointers need a generative introduction boundary and fetch-
+  time validation.** Letting an ordinary `ptr a` unify with `ptr FAMILY`
+  proves neither extent nor continuing representation validity. A sealed
+  allocator must own count, stride, zero-image, and bounds; build its generated
+  source before allocation so generator failure cannot leak DATA. Raw aliases
+  can still corrupt a valid image, so every typed fetch must validate active
+  tags before publishing the bundle. Erase every one-shot authorization word
+  and backing cell after compiling its direct callers: a globally callable or
+  writable arming surface turns the boundary back into an unchecked cast.
+  Validate qualified-name grammar before allocation because native definer
+  failures exit rather than unwind `catch`.

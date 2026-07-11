@@ -46,6 +46,7 @@ points stay listed.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE declaration grammar registering package-aware families, variants, and payload schemas.
 - `src/core/layout-buffer.f` — generative checked storage for closed ADT layouts; owns allocation, zero initialization, bounds, stride, and the sole typed-layout pointer introduction boundary.
+- `src/core/layout-buffer-seal.f` — post-xref capability erasure for the layout-buffer checker's one-shot arming state.
 - `src/core/roles.f` — audited nominal scalar role conversion words.
 - `src/core/include.f` — checked source composition words (`include`, `included`) with dynamic `evaluate` isolated to `INCLUDE-EVALUATE`, plus the ordered source-composition event log (`EVENT-RECORD`, `EVENT-ON`/`DISCOVERY-ON`) that records include multiplicity and require/provided registry state, and `REQUIRE-SNAPSHOT`/`REQUIRE-RESTORE` giving the discovery pass a fresh require registry without disturbing warm-snapshot state.
 - `src/core/structures.f` — early `BEGIN-STRUCTURE`, `+FIELD`, `CFIELD:`, and `END-STRUCTURE` layout DSL definitions.
@@ -873,6 +874,7 @@ points stay listed.
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).
 - `test/type-layout-lower-pending.f` — staged TFAM 12 slice-3 width-aware lowering fixtures: real compile-subject words plus the per-op width-fact contract; standalone, not yet wired into a suite.
 - `test/layout-buffer.f` — generative closed-layout storage, pointer-provenance rejection, bounds, stride, zero-image, and rollback regressions.
+- `test/layout-buffer-forge.f` — armed child-process regression proving the layout-buffer checker capability is absent from user source.
 - `test/type-family-suite.f` — behavior suite for the package-scoped TFAM/SUMV/product/layout/SCHEMA registries.
 - `test/type-family-rollback-suite.f` — behavior suite for the checker's depth-safe transactional candidate/scope rollback frames.
 - `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): cross-package alias fidelity, defer/control-flag copy, every reject class, scope/candidate rollback of alias rows.

@@ -418,11 +418,26 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    s" test/layout-buffer.f" GE-SRC-FILE+
    exe exeu label labelu GE-SUITE-RUN ;
 
+: GE-LAYOUT-BUFFER-FORGE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/layout-buffer-forge.f" GE-SRC-FILE+
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" E-UNDEFINED: LBUF-PEND!" label labelu GE-EXPECT-ERR-HAS
+   SB-RESET s" LAYOUT-BUFFER-FORGE-ARMED" SB-APPEND GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
 : GE-LAYOUT-BUFFER-SUITE ( -- )
    GE-CANDIDATE$ s" layout-buffer suite on Habu-under-test"
       GE-LAYOUT-BUFFER-SUITE-ON
+   GE-CANDIDATE$ s" layout-buffer capability sealed on Habu-under-test"
+      GE-LAYOUT-BUFFER-FORGE-ON
    s" bin/hb" s" layout-buffer suite on bin/hb"
-      GE-LAYOUT-BUFFER-SUITE-ON ;
+      GE-LAYOUT-BUFFER-SUITE-ON
+   s" bin/hb" s" layout-buffer capability sealed on bin/hb"
+      GE-LAYOUT-BUFFER-FORGE-ON ;
 
 : GE-WIDE-STORE-SEAL-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}

@@ -153,7 +153,7 @@ variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable
 variable LPSCRIPTARGV
 variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
-variable LPCOMBINATORS  variable LPXREF
+variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create BPS-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 115 c, 116 c, 97 c, 99 c, 107 c, 58 c, 10 c,
 create BPW-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 45 c, 119 c, 97 c, 116 c, 99 c, 104 c, 58 c, 10 c,
@@ -509,7 +509,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW ;
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-SCRIPT-ARGV ( -- )
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-LOAD-ROW ;
@@ -551,7 +552,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW ;
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW ;
 
 : EMIT-HOST-LOAD-PREFIX ( -- )
    16 0 MOVZ,  16 DATA HOOK-CELL STR,
@@ -740,7 +742,8 @@ variable LCOLDPFX variable LAPPPROV
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW ;
+   PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW ;
 
 : C-SOURCE-PIPE ( -- )
    SRC-STDINPROG LABEL@ LBL,
@@ -4901,7 +4904,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
-   LBL LPCOMBINATORS !  LBL LPXREF ! ;
+   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

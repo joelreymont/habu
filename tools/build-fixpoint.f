@@ -686,7 +686,8 @@ variable BF-CERT-PATH-U
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu s" src/habu/xref.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
@@ -742,6 +743,7 @@ variable BF-CERT-PATH-U
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV ;
 
 : BF-APPEND-TARGET-REPL-TERM ( ptr u8 n -- ) {: out:ptr outu:n :}

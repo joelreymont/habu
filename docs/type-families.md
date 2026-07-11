@@ -1374,9 +1374,9 @@ ordering without making every scalar definition pay for a separate parse.
 Typed `!`/`@` through a `ptr family<..>` address move the pointee's whole closed
 non-linear logical value. The address carries family identity: bare `ptr a`, a
 mismatched family, scalar-to-layout storage, and layout-to-scalar fetch all
-reject. A variable-backed accessor may refine its `ptr a` result to `ptr family`
-under the pointer-pointee bind rule, but that refinement does not enlarge its
-allocation.
+reject. Ordinary `variable`, `create`, pointer arithmetic, and a declared
+`ptr a` result cannot refine to `ptr family`; only the sealed generative storage
+boundary may introduce a family-typed pointer.
 
 At `W = 1`, the ordinary scalar `!`/`@` instruction is already the exact
 lowering. At `W > 1`, the checker records the operation's compile-time width and
@@ -1387,11 +1387,19 @@ no addressable representation and rejects. Open or possibly-linear applications
 also reject until TFAM 11 whole-bundle linear accounting can discharge their
 ownership obligations.
 
-Backing capacity remains caller-owned. A plain `variable` reserves one cell and
-is sufficient only for `W = 1`; wider accessors must point at an explicitly
-allocated `W`-cell region (`create ... W cells allot`). Bounds and lifetime are
-not inferred from `ptr family`. `LAYOUT-BUFFER` remains the planned declaration
-that will own allocation, stride, and typed indexing for arrays of layouts.
+`LAYOUT-BUFFER NAME family<args> count` owns backing capacity and publishes one
+checked accessor `( n -- ptr family<args> )`. The family application must be
+closed, non-linear, addressable, and non-zero-width; `count` must be a positive
+decimal whose `count * width * CELL` extent fits. The buffer is zero-initialized,
+indexing is fixed-stride, and either signed bound throws `E-LAYOUT-BOUNDS`.
+Source generation completes before allocation, and a rejected generated
+definition rolls the allocation back. This is the only typed-layout pointer
+introduction form.
+
+Zero initialization proves the initial image only. Untyped code can reconstruct
+a DATA address and corrupt tags through a raw alias, so typed fetch validates
+the root tag and every active nested tag before publishing the logical value.
+Inactive SUM payload/padding is preserved and is not interpreted.
 
 Every destination cell of a wide store executes the same two-band protected-
 store guard as scalar `!`. Guarding only the base would be unsound because a
@@ -1401,7 +1409,9 @@ immutability runtime pin is tracked separately by
 `habu-pin-wide-adt-31f1639c`.
 
 `test/type-decl-suite.f` pins checker width facts, mismatched/scalar/linear/open
-rejections, and W=2/W=3/W=4 memory images. `test/type-layout-lower-pending.f`
+rejections, and W=2/W=3/W=4 memory values. `test/layout-buffer.f` pins the
+generative storage boundary, raw-pointer rejection, bounds, stride, zero image,
+and transactional allocation. `test/type-layout-lower-pending.f`
 pins exact store/fetch instruction sequences and constructor-produced runtime
 round trips. Recovery-chain parity is behavioral: the reduced Gforth seed builds
 the current native source, whose recovered `hb-stdin` passed both suites plus

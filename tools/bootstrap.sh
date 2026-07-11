@@ -90,6 +90,7 @@ SRC_COMMON=(
   src/habu/jit.f
   src/habu/habu2.f
   src/habu/xref.f
+  src/core/layout-buffer-seal.f
 )
 
 emit_boot_hide() {
@@ -208,16 +209,22 @@ emit_src() {
 bootstrap_wide_gate() {
   "$GF" test/bootstrap-wide-memory.fs
 
-  local src bin rc
+  local src bin out err marker rc
   for src in bootstrap-wide-interpret bootstrap-wide-tick; do
     bin="$T/$src"
+    out="$T/$src.out"
+    err="$T/$src.err"
     "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$src-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
     set +e
-    "$bin" >/dev/null 2>&1
+    "$bin" >"$out" 2>"$err"
     rc=$?
     set -e
-    if [[ "$rc" -ne 70 ]]; then
-      printf '%s: expected wide execution rejection rc=70; got rc=%s\n' "$src" "$rc" >&2
+    marker=""
+    if ! IFS= read -r marker < "$out"; then
+      marker=""
+    fi
+    if [[ "$rc" -ne 70 || "$marker" != "BOOTSTRAP-WIDE-ARMED" ]]; then
+      printf '%s: expected armed wide rejection rc=70; got rc=%s marker=%s\n' "$src" "$rc" "$marker" >&2
       exit 75
     fi
   done

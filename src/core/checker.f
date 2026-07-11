@@ -1064,6 +1064,8 @@ variable TWALK-D
 \ closed through the same guards.
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
+variable LBUF-PEND-A
+variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -7035,24 +7037,16 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
 
-\ Generative layout-buffer authorization. The private allocator package owns
-\ the pending name; the hook is immutable after its one installation, so user
-\ source can query but cannot arm or replace it.
-package CHECKER-LBUF-AUTH
-
-variable AUTH-XT   0 AUTH-XT !
-
-public
-
-: INSTALL ( n -- ) {: xt:n :}
-   AUTH-XT @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
-   xt AUTH-XT ! ;
-
-: AUTHORIZED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   AUTH-XT @ 0= IF RES-FALSE EXIT THEN
-   a u AUTH-XT @ execute ;
-
-end-package
+\ Generative layout-buffer authorization. xref.f erases every arming-state
+\ dictionary name after compiling the allocator and CHECK, leaving only their
+\ baked direct references. User source therefore cannot arm or mutate the
+\ one-shot boundary.
+: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
+: LBUF-PEND-CLEAR ( -- ) 0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
+: LBUF-PEND-MATCH? ( -- bool )
+   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
@@ -7068,7 +7062,7 @@ end-package
          CTOR-PEND-CLEAR                            \ single shot, even on reject
          CTOR-EXPECTED-ROW SUNI-COERCE
       ELSE
-         NMA @ NMU @ CHECKER-LBUF-AUTH:AUTHORIZED? IF
+         LBUF-PEND-MATCH? IF
             -1 LAYOUT-INTRO !
             SGOUT @ SUNI-COERCE
             0 LAYOUT-INTRO !

@@ -836,6 +836,7 @@ maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-audit-trusted-inventory-3a950436
 maki/eval.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/checker-assert.f test-metaprog habu-audit-trusted-inventory-3a950436 1
 test/layout-buffer.f test-metaprog habu-seal-family-ptr-bd08a403 1
+test/bootstrap-wide-memory-src.f test-metaprog habu-mirror-wide-lowering-00277897 4
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-match-suite.f test-metaprog habu-tfam-11-linear-99fa9990 1
 test/engine-suite.f test-metaprog habu-audit-trusted-inventory-3a950436 51
