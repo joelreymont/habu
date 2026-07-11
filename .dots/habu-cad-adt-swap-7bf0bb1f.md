@@ -536,8 +536,37 @@ rebuilt): maki 77/77 rc=0, 5 lints 0 findings, typed-local-diff-lint rc=0;
 destruction review: 0 critical/high/medium (arm-by-arm dispatcher/predicate
 verification, behavior identical incl. onnx + renders + persisted hashes).
 
-REMAINING ON THIS DOT (unchanged): SKEY product w/ enum fields + typed equality
-(blocked on habu-checker-capability-layout enum-kinded product fields +
--derive typed equality; OPK= is the single word to retire when derive-eq
-lands); report evidence rows / measurement history as typed arrays (blocked on
-S3 LAYOUT-BUFFER); recursive by-value IR (TFAM 16 boxed).
+REMAINING ON THIS DOT: report evidence rows / measurement history as typed
+arrays (blocked on S3 LAYOUT-BUFFER); recursive by-value IR (TFAM 16 boxed).
+
+SKEY UNBLOCKED 2026-07-11 (probed on the current fixpoint; two walls DOWN):
+- WALL-3 DOWN (enum tier): `PRODUCT zkey 0 DERIVE eq FIELD d dtype ...` now
+  declares; the only new rule is every enum FIELD family must ALSO `DERIVE eq`
+  (diagnostic "field family must also derive eq"). WALL-2 DOWN: derive S1+S2
+  give ENUM:EQ and PRODUCT:EQ. Probe-proven end-to-end: MAKE, PRODUCT:EQ
+  (identical -1 / dtype-differing 0), UNMAKE field access + field ENUM:EQ.
+  Products publish MAKE/UNMAKE only; field accessors are checked compositions.
+  Top-level cannot push layout values (assertions live inside : definitions).
+- WALL-1 S2 STILL UP: W>1 typed addresses reject (`cells COL +` will not
+  pointee-bind a W=3 product), so a product value CANNOT be stored. The replay
+  table therefore stays PARALLEL TYPED COLUMNS (enum columns through W=1 `ptr
+  fam` slots - the landed S1 pattern - plus n columns) and recomposes a stored
+  row via MAKE to run the derived PRODUCT:EQ against a probe key. Typed
+  equality replaces STR= over rendered text; SK-KEY$ stays the ONE durable
+  render (schedules.rows format regression stays green).
+SKEY DESIGN (for the implementing lane):
+- Precursor: add `DERIVE eq` to the dtype/layout/align ENUMs (tensor.f /
+  tensor-value.f) - generates MAKI-DTYPE:EQ etc.; zero behavior change.
+- Fields must preserve EXACTLY the rendered-key identity semantics: rsig (n),
+  dim classes for rows+cols (the "2x4"/"p128+t"/"?" buckets - encode each dim
+  canonically, e.g. a small class ENUM (exact/pow2/pow2-tail/unbound) + a
+  magnitude n, with a fixture proving field-eq == rendered-text-eq across the
+  bucket domain), dtype/layout/align enums. target/engine/ptxas are per-process
+  invariants: they stay in the durable render only (the in-memory table never
+  spans engines - assert once at table init if desired).
+- align enters the product as a family: REGION-ALIGN's ordinal min-fold result
+  lifts through a resurrected >ALIGN ( n -- align ) - it now HAS a real
+  consumer, so the parse boundary returns with its fail-closed throw.
+- SK-GET/SK-PUT compare via the derived EQ (probe key vs MAKE-recomposed row);
+  the arena/interned-string key store retires with STR=; key tests move from
+  string asserts to field asserts; the one SK-KEY$ format regression stays.
