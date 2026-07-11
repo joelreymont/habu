@@ -104,7 +104,7 @@ variable TASK-USER-NEXT
 $40C8 constant TASK-USER-BASE   \ above UNCGH-CELL ($40C0), which sits above the grown protected-WID table ($3CC0..$40C0, src/habu/layout.f); bounded by DATA-START ($43C0)
 TASK-USER-BASE TASK-USER-NEXT !
 
-TRUSTED: TASK-NULL ( -- ptr a )
+: TASK-NULL ( -- ptr a )
    NULL$ drop ;
 
 TRUSTED: TASK-N>PTR ( n -- ptr a ) ;
