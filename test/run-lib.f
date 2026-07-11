@@ -35,12 +35,12 @@ $3 constant TR-LATE-PHASES
 \ keeps its static budgets; user-supplied --budget-ms/--wall-budget-ms are
 \ never scaled. The factor is clamped to [100%,300%] so a thrashing host
 \ still trips the stop-line rather than stretching it without bound.
-$A00000 constant TR-CAL-ITERS
-95 constant TR-CAL-REF-MACOS-MS
+T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budget.f self-calibration
+T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
 0 constant TR-CAL-REF-JETSON-MS
 0 constant TR-CAL-REF-LINUX-MS
-100 constant TR-CAL-MIN-PCT
-300 constant TR-CAL-MAX-PCT
+T-BUDGET-MIN-PCT constant TR-CAL-MIN-PCT
+T-BUDGET-MAX-PCT constant TR-CAL-MAX-PCT
 
 variable TR-CAL-SINK
 variable TR-CAL-MEASURED-MS
@@ -249,10 +249,7 @@ variable TR-PRE-DIAG-FILE
    2drop TR-USAGE ;
 
 : TR-CAL-SPIN ( n -- n )
-   0 swap begin dup 0 > while
-      swap dup dup * drop 1 + swap
-      1-
-   repeat drop ;
+   T-BUDGET-CAL-SPIN ;
 
 : TR-CALIBRATE ( -- )
    mono-ns {: t0:n :}

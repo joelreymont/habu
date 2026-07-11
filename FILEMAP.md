@@ -470,7 +470,8 @@ points stay listed.
 - `lib/test.f` — public checked test framework interface: assertions plus
   the `TEST:*` suite/group/test package facade.
 - `lib/test/assert.f` — checked assertion primitives used by test fixtures.
-- `lib/test/budget.f` — load-aware test timeout budgets: `T-BUDGET-MS` scales nominal budgets by the gate-exported `HB_LOAD_PCT` cal-factor, clamped to at most 3x.
+- `lib/test/budget.f` — load-aware test timeout budgets: `T-BUDGET-MS` scales nominal budgets by the gate-exported `HB_LOAD_PCT` cal-factor or a standalone self-calibration spin, clamped to at most 3x.
+- `lib/test/budget-test.f` — focused coverage for budget factor math and standalone self-calibration.
 - `lib/test/assert-test.f` — focused coverage for checked assertion primitives.
 - `lib/test/record.f` — machine-readable `TFAIL` TSV failure records shared by
   the assert, snapshot, and runner test layers.
