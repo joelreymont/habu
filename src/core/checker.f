@@ -373,6 +373,7 @@ variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
 variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
+variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
 variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
 variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
@@ -1080,7 +1081,8 @@ variable LAYOUT-XPORT
    0 BEGIN dup p PARAM>ARGC < WHILE
       p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop
+   p PARAM>FAM TFAM-CON-LIN-XT @ execute ;
 
 \ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
 \ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
@@ -1100,6 +1102,7 @@ variable LLC-N
       p over PARAM>ARG LAYOUT-ARG-LIN-N LLC-N @ + LLC-N !
       1 +
    REPEAT drop
+   p PARAM>FAM TFAM-CON-LIN-XT @ execute IF LLC-N @ 1 + LLC-N ! THEN
    LLC-N @ ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}

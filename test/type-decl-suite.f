@@ -431,6 +431,13 @@ DEFLINEAR tdown
 SUMTYPE tdlin 1
   VARIANT hold a ;VARIANT
 ;SUMTYPE
+PRODUCT tdlinp 0
+  FIELD owned tdown
+  FIELD value n
+;PRODUCT
+SUMTYPE tdlins 0
+  VARIANT owned tdown ;VARIANT
+;SUMTYPE
 s" TDLIN-DUP ( tdlin<tdown> -- tdlin<tdown> tdlin<tdown> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-DROP ( tdlin<tdown> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDLIN-NIP ( tdlin<tdown> n -- n ) nip" CHECK-QUIET-CANDIDATE! 0 T=
@@ -453,6 +460,19 @@ s" TDLIN-N-DROP ( tdlin<n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLIN-VAR-DUP ( tdlin<a> -- tdlin<a> tdlin<a> ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ the bare linear itself still rejects a raw drop (baseline discipline).
 s" TDLIN-BARE ( tdown -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ Concrete schema nodes carry the same ownership obligation as family
+\ arguments. Product fields and sum payloads therefore reject copy, drop, and
+\ typed memory even though these arity-0 families have no arguments to scan.
+s" TDLINC-P-DUP ( tdlinp -- tdlinp tdlinp ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-DROP ( tdlinp -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-STORE ( tdlinp ptr tdlinp -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-FETCH ( ptr tdlinp -- tdlinp ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-P-ID ( tdlinp -- tdlinp )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLINC-S-DUP ( tdlins -- tdlins tdlins ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-DROP ( tdlins -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-STORE ( tdlins ptr tdlins -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-FETCH ( ptr tdlins -- tdlins ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLINC-S-ID ( tdlins -- tdlins )" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ --- item 12 slice-2/3b: interpret-mode + frame-metadata boundaries (docs §17).
 \ A layout value is a whole logical bundle, so introspection and frame-crossing
