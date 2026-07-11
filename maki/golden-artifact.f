@@ -118,7 +118,7 @@ public
 private
 
 : GA-NODE-IDX? ( n n -- bool ) {: nd:n s:n :}
-   nd MIR-OP@ MAKI-OPKIND:GATHER OPK= 0= if false exit then
+   nd MIR-OP@ MAKI-OPKIND:GATHER MAKI-OPKIND:EQ 0= if false exit then
    nd 1 MIR-IN@ {: r:n :}
    r MIR-REF-INPUT? 0= if false exit then
    r MIR-REF-SLOT s = ;

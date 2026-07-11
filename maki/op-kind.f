@@ -67,7 +67,9 @@ public
 \ so OPKIND>N below is the single source that ties a variant to its code.
 \ NB variant tails are the wire spellings with hyphens; inline `\` comments inside
 \ the ENUM block are a parse error, so per-variant notes stay in this header.
-ENUM opkind
+\ DERIVE eq generates the typed identity compare MAKI-OPKIND:EQ ( opkind opkind
+\ -- bool ) (derive capability S1), replacing the interim hand-written OPK=.
+ENUM opkind DERIVE eq
   add mul scale bias relu gelu layernorm rmsnorm softmax-row matmul linear
   residual-add cast silu rope reshape transpose slice concat gather
   relu-bwd gelu-bwd silu-bwd layernorm-bwd rmsnorm-bwd softmax-row-bwd rope-bwd
@@ -111,11 +113,5 @@ ENUM opkind
       pad-scatter     OF OP-PAD-SCATTER     ENDOF
       scatter-add     OF OP-SCATTER-ADD     ENDOF
    ;MATCH ;
-
-\ family identity test: the checker gives enums no derived eq, so op identity is
-\ compared through the canonical codes. Type-safe (both args must be opkind, so a
-\ dtype/layout can never sneak into an op compare) and injective (distinct ops ->
-\ distinct codes), so this IS op-identity equality, not a raw-n compatibility path.
-: OPK= ( opkind opkind -- bool )  OPKIND>N swap OPKIND>N = ;
 
 end-package

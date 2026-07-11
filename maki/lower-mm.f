@@ -393,7 +393,7 @@ private
 : LMM-BODY ( -- )
    LMM-COORDS
    LMM-KLOOP
-   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if LMM-BIAS then
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR MAKI-OPKIND:EQ if LMM-BIAS then
    1 LMM-MMNODE @ LMM-NR!                          \ contraction result = %f1 (after any bias)
    LMM-RESET-REGS
    LMM-EPI-CHAIN
@@ -424,7 +424,7 @@ private
    SB-RESET s" add.u32 %r43, %r41, " CG-S i SB-U s" ;" CG-S CG-LINE       \ cCol = cCol0 + i
    s" mad.lo.u32 %r44, %r42, %r2, %r43;" PTX-L                            \ gidx = cRow*N + cCol
    10 j 4 * + i + {: accf:n :}                                           \ accumulator %f(10+j*4+i)
-   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if                                   \ bias fusion: acc += bias[cCol]
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR MAKI-OPKIND:EQ if                                   \ bias fusion: acc += bias[cCol]
       s" mul.wide.u32 %rd10, %r43, 4;" PTX-L
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L
@@ -462,7 +462,7 @@ private
 \ over the mma.sync (gRow0/gRow1, col0/col1) output mapping instead of the contiguous 4x4 tile.
 : LMM-MMA-ELEM ( n n n -- ) {: rr:n cr:n accf:n :}
    SB-RESET s" mad.lo.u32 %r44, %r" CG-S rr SB-U s" , %r2, %r" CG-S cr SB-U s" ;" CG-S CG-LINE  \ gidx = row*N + col
-   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR OPK= if                                   \ bias fusion: acc += bias[col]
+   LMM-MMNODE @ MIR-OP@ MAKI-OPKIND:LINEAR MAKI-OPKIND:EQ if                                   \ bias fusion: acc += bias[col]
       SB-RESET s" mul.wide.u32 %rd10, %r" CG-S cr SB-U s" , 4;" CG-S CG-LINE
       s" add.u64 %rd11, %rd3, %rd10;" PTX-L
       s" ld.global.f32 %f4, [%rd11];" PTX-L

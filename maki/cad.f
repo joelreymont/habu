@@ -424,9 +424,9 @@ private
 \ The scalar params are the vocab word's ( tensor n n -- tensor ) integer operands.
 : EMIT-MOVE-PARAM ( ptr u8 n ptr u8 n -- ) {: op:ptr opu:n pa:ptr pu:n :}
    op opu OP-KIND                                    \ ( mop )  op family cannot bind into a local
-   dup MAKI-OPKIND:RESHAPE OPK= if  drop  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+   dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ if  drop  pa pu PARSE-SHAPE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
       op opu CAP-EMIT-OP  exit  then
-   MAKI-OPKIND:SLICE OPK= if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
+   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if  pa pu PARSE-RANGE  swap MSRC-INT MSRC-SP MSRC-INT MSRC-SP
       op opu CAP-EMIT-OP  exit  then
    E-CAD-SYNTAX throw ;                              \ only reshape/slice carry ':' params
 
@@ -435,7 +435,7 @@ private
    a u $3A INDEX-OF {: ci:n :}
    ci 0< if
       a u OP-KIND                                                  \ ( op )  family stays on the stack
-      dup MAKI-OPKIND:RESHAPE OPK= over MAKI-OPKIND:SLICE OPK= or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
+      dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ over MAKI-OPKIND:SLICE MAKI-OPKIND:EQ or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
       OPR-ARITY 1- CAP-EMIT-PARAMS                                 \ tensor params = arity-1
       a u CAP-EMIT-OP  exit  then
    a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
@@ -765,7 +765,7 @@ private
 \ cad-4 has no measurements (those land in cad-5/cad-6).
 : REGION-HAS-SOFTMAX? ( n -- bool ) {: r:n :}   \ region carries a softmax-row op (two reductions)
    MIR-N@ 0 ?do
-      i FP-RID@ r =  i MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW OPK=  and if unloop true exit then
+      i FP-RID@ r =  i MIR-OP@ MAKI-OPKIND:SOFTMAX-ROW MAKI-OPKIND:EQ  and if unloop true exit then
    loop false ;
 
 : REGION-FAM ( n -- n ) {: r:n :}               \ region -> schedule family id

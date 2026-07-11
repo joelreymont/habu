@@ -153,6 +153,11 @@ s" MTX-OP-NOUT  ( n -- n ) MIR-OP@"                    CHECK-QUIET-CANDIDATE! 0 
 s" MTX-OP-ASDT  ( n -- dtype ) MIR-OP@"                CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-DT-ASOP  ( n n opkind opkind -- n ) MIR-INPUT+" CHECK-QUIET-CANDIDATE! 0 T=
 
+\ derived op identity (MAKI-OPKIND:EQ, DERIVE eq S1): both args must be opkind
+s" MTX-EQ-OK    ( opkind opkind -- bool ) MAKI-OPKIND:EQ" CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-EQ-DT    ( dtype opkind -- bool ) MAKI-OPKIND:EQ"  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-EQ-N     ( n opkind -- bool ) MAKI-OPKIND:EQ"      CHECK-QUIET-CANDIDATE! 0 T=
+
 T-REPORT
 
 end-package

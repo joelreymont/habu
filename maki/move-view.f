@@ -60,8 +60,8 @@ public
       E-MVW-NOTFREE throw
    then
    mv MIR-OP@                                        \ ( op )  family stays on the stack
-   dup MAKI-OPKIND:RESHAPE OPK= if drop 0 exit then  \ contiguous reshape: identity flat
-   MAKI-OPKIND:SLICE OPK= if mv MIR-ATTR@ MV-PA@  mv MIR-COLS@ *  exit then   \ r0 * cols (source stride)
+   dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ if drop 0 exit then  \ contiguous reshape: identity flat
+   MAKI-OPKIND:SLICE MAKI-OPKIND:EQ if mv MIR-ATTR@ MV-PA@  mv MIR-COLS@ *  exit then   \ r0 * cols (source stride)
    E-MVW-OP throw ;
 
 \ source-buffer element count to upload (reshape = output elems ; slice = full source rows ;
@@ -81,7 +81,7 @@ public
    ref MIR-MOVE-VERDICT@ MVV-STAGED = ;
 
 : MVW-XPOSE-DIMS ( n -- n n ) {: mv:n :}
-   mv MIR-OP@ MAKI-OPKIND:TRANSPOSE OPK= 0= if E-MVW-OP throw then   \ the staged verdict is transpose-only (v1)
+   mv MIR-OP@ MAKI-OPKIND:TRANSPOSE MAKI-OPKIND:EQ 0= if E-MVW-OP throw then   \ the staged verdict is transpose-only (v1)
    mv MVW-SRC-REF drop                                 \ v1: source must be a model slot (E-MVW-SRC)
    mv MIR-COLS@  mv MIR-ROWS@ ;                         \ dstC (out cols = src rows) ; srcC (out rows = src cols)
 
