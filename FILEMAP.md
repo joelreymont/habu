@@ -589,6 +589,8 @@ points stay listed.
 - `tools/hb-open-failure-test.f` — regression: the built engine names the first unresolved baked prefix source on stderr and exits 74 when started outside the repo.
 - `tools/check-repair-hints-test.f` — checked fixture coverage for repair-class hints.
 - `tools/host-lint.f` — rejects retired host-script workflow tokens.
+- `tools/bootstrap-mirror-lint.f` — tripwire: ADT declarations must not enter the gforth-compiled recovery corpus (src/) before the stage-0 pass-2 mirror lands.
+- `tools/bootstrap-mirror-lint-test.f` — focused coverage for the recovery-corpus tripwire (clean src walk + planted overlay).
 - `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
   per-definition checker runs as the diagnostic isolation boundary.
 - `tools/check-all-errors.f` — CLI wrapper for all-errors checking.

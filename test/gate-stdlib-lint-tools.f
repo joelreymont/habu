@@ -59,6 +59,9 @@
 : GSI-LINT-TOOLS-TRUSTED-INVENTORY ( -- )
    s" tools/trusted-inventory-test.f" GSI-INCLUDE ;
 
+: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ( -- )
+   s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
+
 : GSI-LINT-TOOLS-BODY ( -- )
    GSI-FORK-RESET
    s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-CLOBBER ;] GT-POOL-START-FORK
@@ -68,6 +71,7 @@
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-MAKI ;] GT-POOL-START-FORK
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-TRUSTED-INVENTORY ;] GT-POOL-START-FORK
+   s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;
 
 GSI-LINT-TOOLS-BODY
