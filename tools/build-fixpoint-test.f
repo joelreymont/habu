@@ -6,6 +6,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -514,18 +515,25 @@ create BFT-CHECK-OFF-LINE
    BFT-STALE-HB s" bin/hb" BF-FILE= TTRUE
    BFT-STALE-STAMP FILE? TFALSE ;
 
-: BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u start needle:ptr nu :}
-   start 0 < if -1 exit then
-   start u >= if -1 exit then
-   a start BYTE+ u start - needle nu FIND-SUB
-   dup 0 < if exit then
-   start + ;
+: BFT-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr nu:n :}
+   start 0 < if OPTION:NONE exit then
+   start u >= if OPTION:NONE exit then
+   a start BYTE+ u start - needle nu FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF IDX>N start + >IDX OPTION:SOME ENDOF
+   ;MATCH ;
 
-: BFT-FOUND ( n -- )
-   0 >= TTRUE ;
+: BFT-FOUND ( option<idx> -- n )                     \ assert found; found index (-1 after a recorded miss)
+   MATCH option
+     none OF STR-FALSE TTRUE -1 ENDOF
+     some OF STR-TRUE TTRUE IDX>N ENDOF
+   ;MATCH ;
 
-: BFT-NOT-FOUND ( n -- )
-   0 < TTRUE ;
+: BFT-NOT-FOUND ( option<idx> -- )
+   MATCH option
+     none OF STR-TRUE ENDOF
+     some OF drop STR-FALSE ENDOF
+   ;MATCH TTRUE ;
 
 : BFT-TEST-STAGE2-SOURCE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
@@ -555,9 +563,9 @@ create BFT-CHECK-OFF-LINE
 
 : BFT-TEST-CHECKED-REGALLOC ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : BPROF-ON" FIND-SUB dup BFT-FOUND BFT-PROF-I !
-   BFT-READ-BUF u BFT-PROF-I @ s" : EMIT-VRINIT" BFT-FIND-AFTER dup BFT-FOUND BFT-REG-I !
-   BFT-READ-BUF u BFT-REG-I @ s" : FOLD-ENTRY" BFT-FIND-AFTER dup BFT-FOUND BFT-JIT-I !
+   BFT-READ-BUF u s" : BPROF-ON" FIND-SUB BFT-FOUND BFT-PROF-I !
+   BFT-READ-BUF u BFT-PROF-I @ s" : EMIT-VRINIT" BFT-FIND-AFTER BFT-FOUND BFT-REG-I !
+   BFT-READ-BUF u BFT-REG-I @ s" : FOLD-ENTRY" BFT-FIND-AFTER BFT-FOUND BFT-JIT-I !
    BFT-PROF-I @ BFT-REG-I @ < TTRUE
    BFT-REG-I @ BFT-JIT-I @ < TTRUE ;
 
@@ -567,9 +575,9 @@ create BFT-CHECK-OFF-LINE
 \ BUILD-IMAGE/BUILD-SNAP-HDR/SET-SIGID/CODESIG2 fails the stage compile.
 : BFT-TEST-CHECKED-TARGET-IMAGE ( -- )
    BFT-STAGE2 BFT-READ {: u :}
-   BFT-READ-BUF u s" : ASM-CODELEN!" FIND-SUB dup BFT-FOUND BFT-IMG-I !
-   BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER dup BFT-FOUND BFT-IMG-BUILD-I !
-   BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER dup BFT-FOUND BFT-HABU1-I !
+   BFT-READ-BUF u s" : ASM-CODELEN!" FIND-SUB BFT-FOUND BFT-IMG-I !
+   BFT-READ-BUF u BFT-IMG-I @ s" : BUILD-IMAGE" BFT-FIND-AFTER BFT-FOUND BFT-IMG-BUILD-I !
+   BFT-READ-BUF u BFT-IMG-BUILD-I @ s" : RPD@" BFT-FIND-AFTER BFT-FOUND BFT-HABU1-I !
    BFT-READ-BUF u BFT-IMG-I @ BFT-CHECK-OFF-LINE$ BFT-FIND-AFTER BFT-NOT-FOUND
    BFT-IMG-I @ BFT-IMG-BUILD-I @ < TTRUE
    BFT-IMG-BUILD-I @ BFT-HABU1-I @ < TTRUE ;
@@ -646,8 +654,10 @@ create BFT-CHECK-OFF-LINE
    s" !SNAPSBH" ;
 
 : BFT-MAGIC-STEP ( -- bool )
-   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER {: i:n :}
-   i 0 < if 0 0= 0= exit then
+   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER MATCH option
+     none OF 0 0= 0= exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: i:n :}
    i BFT-MAG-LAST !
    i 1 + BFT-MAG-I !
    0 0= ;

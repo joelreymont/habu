@@ -4,6 +4,7 @@
 \ and tools/build-fixpoint.f.
 
 require test/gate-build-size.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 
 64 constant GENG-USAGE-RC
 67 constant GE-UNCAUGHT-RC       \ deterministic exit status for an uncaught top-level throw
@@ -247,23 +248,29 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-SHAPE-LACKS ( ptr u8 n ptr u8 n ptr u8 n -- ) {: a:ptr u:n needle:ptr needleu:n label:ptr labelu:n :}
    a u needle needleu CONTAINS? if label labelu GE-FAIL then ;
 
-: GE-SHAPE-FIND ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n needle:ptr needleu:n :}
+: GE-SHAPE-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n needle:ptr needleu:n :}
    a u needle needleu FIND-SUB ;
 
-: GE-SHAPE-FIND-AFTER ( ptr u8 n n ptr u8 n -- n ) {: a:ptr u:n start:n needle:ptr needleu:n :}
-   start 0 < if -1 exit then
-   start u >= if -1 exit then
-   a start BYTE+ u start - needle needleu FIND-SUB
-   dup 0 < if exit then
-   start + ;
+: GE-SHAPE-FIND-AFTER ( ptr u8 n n ptr u8 n -- option<idx> ) {: a:ptr u:n start:n needle:ptr needleu:n :}
+   start 0 < if OPTION:NONE exit then
+   start u >= if OPTION:NONE exit then
+   a start BYTE+ u start - needle needleu FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF IDX>N start + >IDX OPTION:SOME ENDOF
+   ;MATCH ;
 
-: GE-SHAPE-FOUND ( n ptr u8 n -- n ) {: pos:n label:ptr labelu:n :}
-   pos 0 < if label labelu GE-FAIL then
-   pos ;
+: GE-SHAPE-FOUND ( option<idx> ptr u8 n -- n ) {: label:ptr labelu:n :}
+   MATCH option
+     none OF label labelu GE-FAIL ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
 
-: GE-SHAPE-NOT-FOUND ( n ptr u8 n -- )
-   {: pos:n label:ptr labelu:n :}
-   pos 0 >= if label labelu GE-FAIL then ;
+: GE-SHAPE-NOT-FOUND ( option<idx> ptr u8 n -- )
+   {: label:ptr labelu:n :}
+   MATCH option
+     none OF ENDOF
+     some OF drop label labelu GE-FAIL ENDOF
+   ;MATCH ;
 
 : GE-STAGE2-SOURCE-SHAPE ( -- )
    s" stage2-src" GE-READ-BUILD-TMP {: a:ptr u:n :}

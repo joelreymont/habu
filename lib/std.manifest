@@ -109,7 +109,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR=CI	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	compare counted byte strings case-insensitively
 1	string	lib/string.f	word	STARTS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string prefix
 1	string	lib/string.f	word	ENDS-WITH?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test counted byte-string suffix
-1	string	lib/string.f	word	FIND-SUB	(ptr u8 n ptr u8 n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	find the first substring offset or -1
+1	string	lib/string.f	word	FIND-SUB	(ptr u8 n ptr u8 n -- option<idx>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	SOME first substring offset (empty needle SOME 0), else NONE
 1	string	lib/string.f	word	CONTAINS?	(ptr u8 n ptr u8 n -- bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	test substring containment
 1	string	lib/string.f	word	INDEX-OF	(ptr u8 n n -- option<idx>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	SOME first index of the byte, else NONE
 1	string	lib/string.f	word	COUNT-CHAR	(ptr u8 n n -- n)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	count matching bytes

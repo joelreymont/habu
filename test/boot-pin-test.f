@@ -12,6 +12,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -147,12 +148,12 @@ variable BPT-OFF
    0 BPT-CNT !  0 BPT-OFF !
    begin
       BPT-HABU2-A @ BPT-OFF @ BYTE+  BPT-HABU2-U @ BPT-OFF @ -  na nu FIND-SUB
-      dup 0 >=
-   while
-      BPT-OFF @ + nu + BPT-OFF !
-      BPT-CNT @ 1 + BPT-CNT !
-   repeat
-   drop BPT-CNT @ ;
+      MATCH option
+        none OF BPT-TRUE 0= ENDOF
+        some OF IDX>N BPT-OFF @ + nu + BPT-OFF !  BPT-CNT @ 1 + BPT-CNT !  BPT-TRUE ENDOF
+      ;MATCH
+   while repeat
+   BPT-CNT @ ;
 
 : BPT-LIST-CONSISTENT ( -- )
    [: BPT-HABU2-HAS ;] BP-EACH                            \ membership: no pinned path dropped/renamed

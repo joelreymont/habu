@@ -26,13 +26,22 @@ variable LREDT-VA  variable LREDT-VU
 : LREDT-SAVE ( ptr u8 n -- )  LREDT-VU ! LREDT-VA ! ;
 : LREDT$ ( -- ptr u8 n )  LREDT-VA @ LREDT-VU @ ;
 : LREDT-IN     ( ptr u8 n -- )  LREDT$ 2swap CONTAINS? TTRUE ;         \ needle present
-: LREDT-ABSENT ( ptr u8 n -- )  LREDT$ 2swap FIND-SUB 0 < TTRUE ;      \ needle absent
+: LREDT-ABSENT ( ptr u8 n -- )   \ needle absent
+   LREDT$ 2swap FIND-SUB MATCH option
+     none OF true ENDOF
+     some OF drop false ENDOF
+   ;MATCH TTRUE ;
 
 \ exactly-one: the needle occurs once (find it, then prove no second occurrence)
 : LREDT-ONCE? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   ha hu na nu FIND-SUB {: i1:n :}
-   i1 0 < if false exit then
-   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB 0 < ;
+   ha hu na nu FIND-SUB MATCH option
+     none OF false exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: i1:n :}
+   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB MATCH option
+     none OF true ENDOF
+     some OF drop false ENDOF
+   ;MATCH ;
 : LREDT-ONCE ( ptr u8 n -- )  LREDT$ 2swap LREDT-ONCE? TTRUE ;
 
 : LREDT-CAP0 ( -- )  PTX-CAPTURE-ON  0 LRED-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ LREDT-SAVE ;

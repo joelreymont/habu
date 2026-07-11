@@ -4,6 +4,7 @@
 \ lib/process.f, lib/process-argv.f, lib/process-env.f, and lib/codesign.f.
 \ The stamp key uses the baked SHA256 words; no lib/content-key.f dependency.
 
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require src/habu/verify-source.f
 require tools/stdin-closure-lib.f
 
@@ -462,12 +463,14 @@ variable BF-CERT-PATH-U
 : BF-SOURCE-HAS? ( ptr u8 n -- bool )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap CONTAINS? ;
 
-: BF-SOURCE-FIND ( ptr u8 n -- n )
+: BF-SOURCE-FIND ( ptr u8 n -- option<idx> )
    BF-SOURCE-BUF BF-SOURCE-LEN @ 2swap FIND-SUB ;
 
-: BF-SOURCE-REQUIRE ( n -- n )
-   dup 0 >= if exit then
-   s" build-fixpoint: source split marker missing" BF-BUILD-RC die ;
+: BF-SOURCE-REQUIRE ( option<idx> -- n )
+   MATCH option
+     none OF s" build-fixpoint: source split marker missing" BF-BUILD-RC die ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
 
 : BF-SRC-C@ ( n -- u8 )
    BF-SOURCE-BUF + c@ ;

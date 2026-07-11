@@ -179,12 +179,28 @@ variable STR-TEST-BUF2-LEN
    s" 77" 77 [: STR>NUMBER? STR>OPTION ;] STR-PARSE-SOME
    s" nope" [: STR>NUMBER? STR>OPTION ;] STR-PARSE-NONE ;
 
-\ switchover wave A: INDEX-OF returns option<idx> (SOME first index, else NONE).
+\ switchover wave A: INDEX-OF / FIND-SUB return option<idx> (SOME index, else NONE).
 : STR-INDEX-OF>N ( ptr u8 n n -- n )                \ test re-wrap: found index, -1 when absent
    INDEX-OF MATCH option
      none OF -1 ENDOF
      some OF IDX>N ENDOF
    ;MATCH ;
+
+: STR-FIND-SUB>N ( ptr u8 n ptr u8 n -- n )         \ test re-wrap: found offset, -1 when absent
+   FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+: STR-TEST-FIND-SUB-OPTION ( -- )                   \ direct both-branch option assertions
+   s" abcdef" s" bcd" FIND-SUB MATCH option
+     none OF STR-FALSE ENDOF
+     some OF IDX>N 1 = ENDOF
+   ;MATCH STR-ASSERT
+   s" abcdef" s" z" FIND-SUB MATCH option
+     none OF STR-TRUE ENDOF
+     some OF drop STR-FALSE ENDOF
+   ;MATCH STR-ASSERT ;
 
 : STR-TEST-INDEX-OF-OPTION ( -- )                   \ direct both-branch option assertions
    s" abcdef" 100 INDEX-OF MATCH option
@@ -216,10 +232,10 @@ s" abcdef" s" def" ENDS-WITH? STR-ASSERT
 s" abcdef" s" " ENDS-WITH? STR-ASSERT
 s" abcdef" s" cef" ENDS-WITH? 0= STR-ASSERT
 s" abc" s" abcdef" ENDS-WITH? 0= STR-ASSERT
-s" abcdef" s" bcd" FIND-SUB 1 STR-ASSERT=
-s" abcabc" s" abc" FIND-SUB 0 STR-ASSERT=
-s" abcdef" s" z" FIND-SUB -1 STR-ASSERT=
-s" abcdef" s" " FIND-SUB 0 STR-ASSERT=
+s" abcdef" s" bcd" STR-FIND-SUB>N 1 STR-ASSERT=
+s" abcabc" s" abc" STR-FIND-SUB>N 0 STR-ASSERT=
+s" abcdef" s" z" STR-FIND-SUB>N -1 STR-ASSERT=
+s" abcdef" s" " STR-FIND-SUB>N 0 STR-ASSERT=
 s" abcdef" s" cde" CONTAINS? STR-ASSERT
 s" abcdef" s" " CONTAINS? STR-ASSERT
 s" abcdef" s" xyz" CONTAINS? 0= STR-ASSERT
@@ -247,6 +263,7 @@ STR-TEST-SPLIT
 STR-TEST-PARSE
 STR-TEST-PARSE-OPTION
 STR-TEST-INDEX-OF-OPTION
+STR-TEST-FIND-SUB-OPTION
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then

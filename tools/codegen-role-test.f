@@ -9,6 +9,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/memory.f
 require lib/fs.f
 require lib/test.f
@@ -37,11 +38,13 @@ variable CRT-LEN
 
 : CRT-CORRUPT ( ptr u8 n ptr u8 n -- ) {: good:ptr goodu:n bad:ptr badu:n :}
    SHAPE:TEXT {: a:ptr u:n :}
-   a u good goodu FIND-SUB {: at:n :}
-   at 0 < if
+   a u good goodu FIND-SUB MATCH option
+     none OF
       s" codegen-role-test: fixture needle missing from source" type cr
       E-CGR-SRC throw
-   then
+     ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: at:n :}
    CRT-RESET
    a at CRT+
    bad badu CRT+

@@ -5,6 +5,7 @@
 require lib/ptx/test-prelude.f
 require lib/ptx/process-test-prelude.f
 require tools/ptx/ad-entry-lib.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 
 $8000 constant PTXT-CAP
 10000 constant PTXT-TIMEOUT-MS
@@ -72,9 +73,10 @@ variable PTXT-ERR-SAVE
 \ non-overlapping occurrences of b/v in a/u (the text-count the .version-once
 \ regression needs; CONTAINS? only proves presence, not multiplicity).
 : PTXT-SUB-COUNT ( ptr u8 n ptr u8 n -- n ) {: a:ptr u:n b:ptr v:n :}
-   a u b v FIND-SUB {: i:n :}
-   i 0 < if 0 exit then
-   i v + {: adv:n :}
+   a u b v FIND-SUB MATCH option
+     none OF 0 exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH v + {: adv:n :}
    a adv + u adv - b v RECURSE 1+ ;
 
 : PTXT-COUNT ( ptr u8 n -- n ) {: b:ptr v:n :}   \ occurrences of b/v in the captured stream

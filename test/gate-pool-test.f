@@ -456,8 +456,10 @@ variable GPT-GEN-SAVE-U
    s" capture root kept: " ;
 
 : GPT-KR-PARSE-ROOT ( n -- ) {: outu:n :}
-   GPT-OUT outu GPT-KR-MARK$ FIND-SUB {: pos:n :}
-   pos 0 < if E-STR-BOUNDS throw then
+   GPT-OUT outu GPT-KR-MARK$ FIND-SUB MATCH option
+     none OF E-STR-BOUNDS throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: pos:n :}
    pos GPT-KR-MARK$ nip + {: start:n :}
    GPT-OUT start BYTE+ outu start - $A INDEX-OF MATCH option
      none OF E-STR-BOUNDS throw ENDOF

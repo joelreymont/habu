@@ -43,6 +43,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -165,8 +166,10 @@ variable SAB-NAMES-LEN
    v 0 = if 0 exit then
    0 SAB-CNT !  0 SAB-CSTART !
    begin SAB-CSTART @ v + u <= while
-      a SAB-CSTART @ +  u SAB-CSTART @ -  b v FIND-SUB
-      dup 0 < if drop SAB-CNT @ exit then
+      a SAB-CSTART @ +  u SAB-CSTART @ -  b v FIND-SUB MATCH option
+        none OF SAB-CNT @ exit ENDOF
+        some OF IDX>N ENDOF
+      ;MATCH
       SAB-CNT @ 1 + SAB-CNT !
       SAB-CSTART @ + v + SAB-CSTART !
    repeat SAB-CNT @ ;

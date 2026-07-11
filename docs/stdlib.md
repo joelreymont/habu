@@ -392,7 +392,7 @@ STR=            ( ptr u8 n ptr u8 n -- bool )
 STR=CI          ( ptr u8 n ptr u8 n -- bool )
 STARTS-WITH?    ( ptr u8 n ptr u8 n -- bool )
 ENDS-WITH?      ( ptr u8 n ptr u8 n -- bool )
-FIND-SUB        ( ptr u8 n ptr u8 n -- n )
+FIND-SUB        ( ptr u8 n ptr u8 n -- option<idx> )
 CONTAINS?       ( ptr u8 n ptr u8 n -- bool )
 INDEX-OF        ( ptr u8 n n -- option<idx> )
 COUNT-CHAR      ( ptr u8 n n -- n )
@@ -422,9 +422,9 @@ STR-PARSE-NEG   ( ptr u8 n -- option<n> )
 STR>NUMBER?     ( ptr u8 n -- n bool )
 ```
 
-`FIND-SUB` returns `-1` on no match; `INDEX-OF` returns `option<idx>` (SOME
-first index, else NONE — every caller MATCHes the absent case). Builder words
-append to the
+`FIND-SUB` and `INDEX-OF` return `option<idx>` (SOME index, else NONE — every
+caller MATCHes the absent case; an empty `FIND-SUB` needle is SOME 0). Builder
+words append to the
 module's current string-builder buffer and throw a named capacity error when the
 next append would exceed that buffer; they never truncate silently. Caller-owned
 buffer appends use the same rule and keep the current length in a `ptr len`

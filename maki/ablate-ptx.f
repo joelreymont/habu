@@ -26,8 +26,10 @@ public
 \ ---- PTX text mutator: copy src, replace the FIRST tgt with rep (fail closed) ----
 : ABL-MUTATE ( ptr u8 n ptr u8 n ptr u8 n -- ) {: sa:ptr su:n ta:ptr tu:n ra:ptr ru:n :}
    su ru + tu - ABL-PTX-CAP > if E-ABL-CAP throw then
-   sa su ta tu FIND-SUB {: pos:n :}
-   pos 0 < if E-ABL-NOSUB throw then
+   sa su ta tu FIND-SUB MATCH option
+     none OF E-ABL-NOSUB throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: pos:n :}
    sa ABL-PTX pos BYTE-COPY                        \ prefix [0,pos)
    ra ABL-PTX pos + ru BYTE-COPY                   \ replacement
    sa pos + tu +  ABL-PTX pos + ru +  su pos - tu -  BYTE-COPY   \ suffix (past the target)

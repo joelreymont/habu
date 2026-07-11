@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> FIND-SUB consumer (switchover wave A)
 require lib/test.f
 require lib/fs.f
 
@@ -26,34 +27,48 @@ variable BCG-LEN
 : BCG-MUST-LACK ( ptr u8 n -- )
    BCG-HAS? 0= TTRUE ;
 
-: BCG-POS ( ptr u8 n -- n )
+: BCG-POS ( ptr u8 n -- option<idx> )
    BCG-SOURCE 2swap FIND-SUB ;
 
 : BCG-POS-FOUND ( ptr u8 n -- n )
-   BCG-POS dup 0 >= TTRUE ;
+   BCG-POS MATCH option
+     none OF STR-FALSE TTRUE -1 ENDOF
+     some OF STR-TRUE TTRUE IDX>N ENDOF
+   ;MATCH ;
 
 : BCG-MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru later:ptr lateru :}
    earlier earlieru BCG-POS-FOUND
    later lateru BCG-POS-FOUND
    < TTRUE ;
 
-: BCG-FIND-AFTER ( n ptr u8 n -- n ) {: start needle:ptr nu :}
+: BCG-FIND-AFTER ( n ptr u8 n -- option<idx> ) {: start:n needle:ptr nu:n :}
    BCG-SOURCE {: src:ptr srcu :}
-   start 0 < if -1 exit then
-   start srcu >= if -1 exit then
-   src start + srcu start - needle nu FIND-SUB
-   dup 0 < if exit then
-   start + ;
+   start 0 < if OPTION:NONE exit then
+   start srcu >= if OPTION:NONE exit then
+   src start + srcu start - needle nu FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF IDX>N start + >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
+: BCG-AFTER-FOUND ( n ptr u8 n -- n )              \ assert found after start; found index
+   BCG-FIND-AFTER MATCH option
+     none OF STR-FALSE TTRUE -1 ENDOF
+     some OF STR-TRUE TTRUE IDX>N ENDOF
+   ;MATCH ;
 
 : BCG-MUST-NOT-FIND-BEFORE ( n n ptr u8 n -- ) {: start end needle:ptr nu :}
-   start needle nu BCG-FIND-AFTER {: pos :}
-   pos 0 < if exit then
+   start needle nu BCG-FIND-AFTER MATCH option
+     none OF exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: pos:n :}
    pos end >= TTRUE ;
 
 : BCG-MUST-FIND-BEFORE ( n n ptr u8 n -- )
    {: start end needle:ptr nu :}
-   start needle nu BCG-FIND-AFTER dup 0 >= TTRUE
-   end < TTRUE ;
+   start needle nu BCG-FIND-AFTER MATCH option
+     none OF STR-FALSE TTRUE ENDOF
+     some OF STR-TRUE TTRUE IDX>N end < TTRUE ENDOF
+   ;MATCH ;
 
 : BCG-TEST-INSTALL-FAIL-CLOSED ( -- )
    s" bootstrap/cg/install.fs" BCG-LOAD
@@ -117,7 +132,7 @@ variable BCG-LEN
 
 : BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT ( -- )
    s" : C-SOURCE-BAKED" BCG-POS-FOUND {: start :}
-   start s" : EMIT-SOURCE" BCG-FIND-AFTER dup 0 >= TTRUE {: end :}
+   start s" : EMIT-SOURCE" BCG-AFTER-FOUND {: end:n :}
    start end s" EMIT-COLD-PREFIX" BCG-MUST-FIND-BEFORE ;
 
 : BCG-TEST-BAKED-SOURCE-PREFIX ( -- )
@@ -186,7 +201,7 @@ variable BCG-LEN
 : BCG-TEST-GFORTH-LOCAL-CAPTURE ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    s" : EMIT-COMPILE-LOCAL" BCG-POS-FOUND {: start:n :}
-   start s" : EMIT-COMPILE-LITERAL" BCG-FIND-AFTER dup 0 >= TTRUE {: end:n :}
+   start s" : EMIT-COMPILE-LITERAL" BCG-AFTER-FOUND {: end:n :}
    start end s" LBCAP @ BL" BCG-MUST-FIND-BEFORE
    start end s" QPATCH-CELL" BCG-MUST-FIND-BEFORE
    start end s" LVRALLOC" BCG-MUST-FIND-BEFORE ;
@@ -194,7 +209,7 @@ variable BCG-LEN
 : BCG-TEST-LINUX-SPAWN-SCOPED-LABELS ( -- )
    s" src/habu/habu1.f" BCG-LOAD
    s" : LINUX-SPAWN-PREP-W" BCG-POS-FOUND {: start:n :}
-   start s" : BRUNRC" BCG-FIND-AFTER dup 0 >= TTRUE {: end:n :}
+   start s" : BRUNRC" BCG-AFTER-FOUND {: end:n :}
    start end s" LNX-DONE LABEL@ B" BCG-MUST-NOT-FIND-BEFORE
    start end s" LNX-DONE LABEL@ LBL" BCG-MUST-NOT-FIND-BEFORE
    start end s" LNX-FAIL LABEL@ B" BCG-MUST-NOT-FIND-BEFORE

@@ -79,16 +79,19 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
    u v < if 0 0= 0= exit then
    a u v - + v b v STR= ;
 
-: FIND-SUB ( ptr u8 n ptr u8 n -- n ) {: a:ptr u b:ptr v :}
-   v 0= if 0 exit then
-   u v < if -1 exit then
+: FIND-SUB ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}   \ SOME first offset of b in a (empty needle -> SOME 0), else NONE
+   v 0= if 0 >IDX OPTION:SOME exit then
+   u v < if OPTION:NONE exit then
    0 begin dup u v - <= while
-      dup a + v b v STR= if exit then
+      dup a + v b v STR= if >IDX OPTION:SOME exit then
       1+
-   repeat drop -1 ;
+   repeat drop OPTION:NONE ;
 
 : CONTAINS? ( ptr u8 n ptr u8 n -- bool )
-   FIND-SUB 0 < 0= ;
+   FIND-SUB MATCH option
+     none OF STR-FALSE ENDOF
+     some OF drop STR-TRUE ENDOF
+   ;MATCH ;
 
 : INDEX-OF ( ptr u8 n n -- option<idx> ) {: a:ptr u:n c:n :}   \ SOME first index of byte c, else NONE
    0 begin dup u < while

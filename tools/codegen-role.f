@@ -87,10 +87,14 @@ variable CGR-WP
 
 \ ---- source extraction (fail-closed) ----
 : CGR-DEF$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n head:ptr headu:n :}
-   a u head headu FIND-SUB {: s:n :}
-   s 0 < if s" codegen-role: definition not found" type cr E-CGR-SRC throw then
-   a s + u s - s" ;" FIND-SUB {: e:n :}
-   e 0 < if s" codegen-role: definition end not found" type cr E-CGR-SRC throw then
+   a u head headu FIND-SUB MATCH option
+     none OF s" codegen-role: definition not found" type cr E-CGR-SRC throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: s:n :}
+   a s + u s - s" ;" FIND-SUB MATCH option
+     none OF s" codegen-role: definition end not found" type cr E-CGR-SRC throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: e:n :}
    a s + e 1+ ;
 
 : CGR-LINE-START ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
@@ -100,8 +104,10 @@ variable CGR-WP
    repeat ;
 
 : CGR-LINE$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: a:ptr u:n key:ptr keyu:n :}
-   a u key keyu FIND-SUB {: s:n :}
-   s 0 < if s" codegen-role: source line not found" type cr E-CGR-SRC throw then
+   a u key keyu FIND-SUB MATCH option
+     none OF s" codegen-role: source line not found" type cr E-CGR-SRC throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: s:n :}
    a u s CGR-LINE-START {: ls:n :}
    a ls +
    a ls + u ls - STR-LF INDEX-OF MATCH option
@@ -454,8 +460,10 @@ variable CGR-USES
 : CGR-NEXT-USE ( n -- n ) {: from:n :}
    CGR-BODY$ {: a:ptr u:n :}
    from u < 0= if -1 exit then
-   a from + u from - s" CLOC-MAIN" FIND-SUB dup 0 < if exit then
-   from + ;
+   a from + u from - s" CLOC-MAIN" FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N from + ENDOF
+   ;MATCH ;
 
 : CGR-USE-SPAN$ ( n -- ptr u8 n ) {: occ:n :}
    CGR-BODY$ {: a:ptr u:n :}
