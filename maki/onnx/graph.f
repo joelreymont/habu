@@ -11,14 +11,18 @@
 \ raw_data=9; ValueInfoProto name=1 type=2; TypeProto.tensor_type=1;
 \ TypeProto.Tensor elem_type=1 shape=2; TensorShapeProto.dim=1; Dimension
 \ dim_value=1 dim_param=2; AttributeProto name=1 f=2 i=3 ints=8. Unknown fields are
-\ skipped by wire type (PB-SKIP).
+\ skipped by wire type (PB-SKIP). TensorProto also carries int64_data=7 (a packed or
+\ unpacked repeated int64) as an alternate payload for INT64 constants.
 \
 \ Initializers split by data_type: FLOAT (1) tensors are 2D f32 weights recorded in
 \ the OGI table (payload span, materialized later); INT64 (7) tensors are rank-1 int
 \ vectors (a Reshape target shape, a Slice range) decoded to cell ints HERE into the
 \ OGIC constant table - a movement op reads its dims/range by input name, and a name
 \ absent from OGIC is a runtime-computed operand the importer rejects (E-ONNX-DYNSHAPE).
-\ The Transpose perm attribute (ints=8, packed or unpacked) is collected onto the node.
+\ An INT64 constant's payload is either raw_data (field 9, little-endian bytes) or
+\ int64_data (field 7, a varint list); exactly one source is required (both/neither ->
+\ E-ONNX-DATA). The Transpose perm attribute (ints=8, packed or unpacked) is collected
+\ onto the node.
 \
 \ Fail closed (docs/maki/onnx.md dynamic-shape policy): a dim_param (symbolic
 \ dim), a missing/empty Dimension, a non-positive dim_value, or a ValueInfo
@@ -228,7 +232,9 @@ variable OGS-DIM#  variable OGS-D0  variable OGS-D1
 variable OGS-ELEM               \ elem_type / data_type (-1 = not seen)
 variable OGS-SHAPE?             \ a TensorShapeProto was present
 variable OGS-NAME-I             \ interned name of the current record (-1 = not seen)
-variable OGS-OFF  variable OGS-LEN   \ initializer payload span (-1 = not seen)
+variable OGS-OFF  variable OGS-LEN   \ initializer raw_data span (-1 = not seen)
+create OGS-IVALS OGIC-VW cells allot \ collected int64_data (field 7) varints
+variable OGS-IVAL-N             \ int64_data count (0 = field 7 absent)
 variable OGS-DVAL  variable OGS-DSEEN
 variable OGA-KIND               \ current attribute kind (-1 = not recognized yet)
 variable OGA-F  variable OGA-F?      \ fixed32 attr value bits + seen flag
@@ -241,6 +247,11 @@ variable OGA-PERM-N
    OGA-PERM-N @ OGA-PERM-CAP >= if E-ONNX-ATTR throw then
    v OGA-PERM-BUF OGA-PERM-N @ cells + !
    OGA-PERM-N @ 1+ OGA-PERM-N ! ;
+
+: OGS-IVAL+ ( n -- ) {: v:n :}       \ append one collected int64_data value
+   OGS-IVAL-N @ OGIC-VW >= if E-ONNX-CAP throw then
+   v OGS-IVALS OGS-IVAL-N @ cells + !
+   OGS-IVAL-N @ 1+ OGS-IVAL-N ! ;
 
 : OGS-DIM+ ( n -- ) {: d:n :}                  \ record one collected dim (2D cap)
    d 0 <= if E-ONNX-DYNSHAPE throw then
@@ -456,18 +467,26 @@ variable OGA-PERM-N
       a hi rot PB-VARINT@ swap OGS-DIM+
    repeat drop ;
 
+: OGW-IVALS-PACK ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}   \ packed repeated int64 (int64_data)
+   lo begin dup hi < while
+      a hi rot PB-VARINT@ swap OGS-IVAL+
+   repeat drop ;
+
 : OGW-TENSOR-1 ( ptr u8 n n -- n ) {: a:ptr hi:n pos:n :}
    a hi pos PB-TAG@ {: f:n w:n p:n :}
    f 1 = w WT-VARINT = and if
       a hi p PB-VARINT@ swap OGS-DIM+ exit then
    f 2 = w WT-VARINT = and if
       a hi p PB-VARINT@ {: v:n p2:n :}  v OGS-ELEM !  p2 exit then
+   f 7 = w WT-VARINT = and if                          \ int64_data, unpacked
+      a hi p PB-VARINT@ swap OGS-IVAL+ exit then
    w WT-LEN = if
       a hi p PB-LEN@ {: off:n len:n p2:n :}
-      f 1 = if a off p2 OGW-PDIMS  p2 exit then
-      f 4 = if off len OGS-SPAN!   p2 exit then
+      f 1 = if a off p2 OGW-PDIMS       p2 exit then
+      f 4 = if off len OGS-SPAN!        p2 exit then
+      f 7 = if a off p2 OGW-IVALS-PACK  p2 exit then    \ int64_data, packed
       f 8 = if a off + len OGN-INTERN OGS-NAME-I !  p2 exit then
-      f 9 = if off len OGS-SPAN!   p2 exit then
+      f 9 = if off len OGS-SPAN!        p2 exit then
       p2 exit then
    a hi p w PB-SKIP ;
 
@@ -487,24 +506,39 @@ variable OGA-PERM-N
    OGS-LEN @ OGI-N @ cells OGI-LEN + !
    OGI-N @ 1+ OGI-N ! ;
 
+: OGIC-VAL! ( n n -- ) {: v:n k:n :}           \ store v as the k-th int of the in-progress record
+   v  OGIC-VALS OGIC-N @ OGIC-VW * cells +  k cells +  ! ;
+
+\ payload source of the current INT64 tensor: 0 = raw_data (field 9), 1 = int64_data
+\ (field 7). Exactly one must be present; both or neither is a fail-closed data error.
+: OGW-INT-SRC ( -- n )
+   OGS-OFF @ 0 >= {: raw?:bool :}  OGS-IVAL-N @ 0 > {: dat?:bool :}
+   raw? dat? and if E-ONNX-DATA throw then
+   raw? if 0 exit then
+   dat? if 1 exit then
+   E-ONNX-DATA throw ;
+
+: OGW-INT-RAW ( ptr u8 n -- ) {: a:ptr nv:n :} \ nv little-endian int64 at OGS-OFF -> OGIC
+   OGS-LEN @ nv 8 * <> if E-ONNX-DATA throw then
+   nv 0 ?do  a OGS-OFF @ i 8 * + OGIC-LD64  i OGIC-VAL!  loop ;
+
+: OGW-INT-DATA ( n -- ) {: nv:n :}             \ nv collected int64_data varints -> OGIC
+   OGS-IVAL-N @ nv <> if E-ONNX-DATA throw then
+   nv 0 ?do  OGS-IVALS i cells + @  i OGIC-VAL!  loop ;
+
 : OGW-TENSOR-INT ( ptr u8 -- ) {: a:ptr :}     \ commit an INT64 rank-1 constant into OGIC
    OGIC-N @ OGIC-CAP >= if E-ONNX-CAP throw then
    OGS-DIM# @ 1 <> if E-ONNX-DATA throw then    \ int constants are rank-1 vectors
    OGS-D0 @ {: nv:n :}
    nv OGIC-VW > if E-ONNX-CAP throw then
-   OGS-OFF @ 0 < if E-ONNX-DATA throw then
-   OGS-LEN @ nv 8 * <> if E-ONNX-DATA throw then
    OGS-NAME-I @ OGIC-N @ cells OGIC-NAME + !
    nv OGIC-N @ cells OGIC-NVAL + !
-   nv 0 ?do
-      a  OGS-OFF @ i 8 * +  OGIC-LD64
-      OGIC-VALS OGIC-N @ OGIC-VW * cells +  i cells +  !
-   loop
+   OGW-INT-SRC 0= if a nv OGW-INT-RAW else nv OGW-INT-DATA then
    OGIC-N @ 1+ OGIC-N ! ;
 
 \ dispatch a TensorProto by data_type: FLOAT (1) -> f32 arena; INT64 (7) -> int constant.
 : OGW-TENSOR ( ptr u8 n n -- ) {: a:ptr lo:n hi:n :}
-   -1 OGS-NAME-I !  -1 OGS-ELEM !  0 OGS-DIM# !  -1 OGS-OFF !  -1 OGS-LEN !
+   -1 OGS-NAME-I !  -1 OGS-ELEM !  0 OGS-DIM# !  -1 OGS-OFF !  -1 OGS-LEN !  0 OGS-IVAL-N !
    lo begin dup hi < while  a hi rot OGW-TENSOR-1  repeat drop
    OGS-NAME-I @ 0 < if E-ONNX-NAME throw then
    OGS-ELEM @ 1 = if OGW-TENSOR-F32 exit then

@@ -25,11 +25,16 @@
 \ alpha/beta inserts an OP-SCALE against a synthesized 1x1 constant, beta=0 drops C,
 \ beta=1 adds C as a bias; any non-Gemm attribute rejects E-ONNX-ATTR. Movement
 \ ops (ONNX:MOVE-KIND coverage): Reshape->OP-RESHAPE (target [R,C] read from the
-\ INT64 shape initializer; a runtime-computed shape fails E-ONNX-DYNSHAPE),
+\ INT64 shape initializer; a 0 dim copies the input dim, one -1 dim is inferred from
+\ the element count, a runtime-computed shape fails E-ONNX-DYNSHAPE),
 \ Transpose->OP-TRANSPOSE (2D; perm absent or exactly [1,0], else E-ONNX-ATTR),
-\ Concat->OP-CONCAT (2 inputs, axis 0 row-append) - each carries MV-PACK'd attrs
-\ and host-executes on the maki/move.f references. Slice/Gather stay the LOWER
-\ rejection (E-MK-ONNX). v1 output contract: exactly one graph output, the LAST node
+\ Concat->OP-CONCAT (2 inputs, axis 0 row-append), Slice->OP-SLICE (starts/ends INT64
+\ operands, axis 0 / unit step, ONNX index clamp, empty range rejected), Gather->
+\ OP-GATHER (axis 0; the INT64 indices operand is resolved against the data rows -
+\ negatives add rows, out-of-range rejects - then materialized into the float arena so
+\ the executor's float-index read runs unchanged) - each carries MV-PACK'd attrs and
+\ host-executes on the maki/move.f
+\ references. v1 output contract: exactly one graph output, the LAST node
 \ (E-ONNX-OUTPUT), with the declared output shape checked (E-ONNX-SHAPE).
 \
 \ Fail closed: unresolved input E-ONNX-TOPO; rebound output name (SSA)
@@ -178,6 +183,31 @@ variable SYN-N
    SYN-N @ 1+ SYN-N !
    s MAKI:MIR-IN-REF ;
 
+\ resolve one ONNX gather index against the data operand's row count: a negative index
+\ adds rows (-1 = the last row); a still-out-of-range index fails closed HERE - the float
+\ bridge below must never carry a value the executor's index rounding could silently fold
+\ into range (e.g. -1.0 rounding to row 0).
+: GA-IDX ( n n -- n ) {: v:n rows:n :}         \ raw index + data rows -> resolved row
+   v 0 < if v rows + else v then {: w:n :}
+   w 0 < w rows >= or if E-ONNX-SHAPE throw then
+   w ;
+
+\ materialize an INT64 gather-index constant as a Kx1 f32 input slot: each index is
+\ resolved against the data rows (GA-IDX) THEN bridged to its float value - the executor
+\ reads FLOAT indices (EX-BUILD-IDX rounds), so negative-index resolution must happen at
+\ import, the same way SYN-CONST synthesizes a Gemm scalar. Returns the slot's MIR input ref.
+: SYN-IVEC ( n n -- n ) {: c:n rows:n :}       \ OGIC constant index + data rows -> MIR input ref
+   c OGIC-NVAL@ {: k:n :}
+   SYN-N @ SYN-CAP >= if E-ONNX-CAP throw then
+   IMP-BUMP @ k + IMP-ARENA-CELLS > if E-ONNX-CAP throw then
+   k 1 MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI:MIR-INPUT+ {: s:n :}
+   IMP-BUMP @ SYN-N @ cells SYN-OFF + !
+   s SYN-N @ cells SYN-SLOT + !
+   k 0 ?do  c i OGIC-VAL@ rows GA-IDX s>f  IMP-ARENA  IMP-BUMP @ i +  T-SET  loop
+   IMP-BUMP @ k + IMP-BUMP !
+   SYN-N @ 1+ SYN-N !
+   s MAKI:MIR-IN-REF ;
+
 \ Add / Mul: numpy broadcast mapped onto the capture-legal classes. The second
 \ operand's shape is classified against the first (BC-CLASS, the exact mapping the
 \ host executor's EX-BC@ and the planner's SHP-LEGAL? use): a full-shape operand is
@@ -294,14 +324,38 @@ variable SYN-N
 \ Movement nodes are exact layout rewrites: they carry MV-PACK'd attrs + a dissolution
 \ verdict and are host-executed by the same maki/move.f references the planner proves.
 
+\ resolve one concrete reshape target dim: a positive literal stays; 0 copies the input
+\ dim at that position (ONNX allowzero=0 default). -1 (infer) is handled by RS-RESOLVE.
+: RS-DIM ( n n -- n ) {: d:n in:n :}           \ raw dim d, input dim in -> concrete dim
+   d 0 > if d exit then
+   d 0= if in exit then
+   E-ONNX-SHAPE throw ;                          \ d < -1 is not a legal reshape dim
+
+\ resolve the 2D target [R,C] from the raw shape constant [t0,t1] against the input RxC:
+\ 0 copies the input dim; exactly one -1 is inferred from the element count (must divide
+\ exactly); two -1 dims or a non-dividing infer fails closed (E-ONNX-SHAPE).
+: RS-RESOLVE ( n n n n -- n n ) {: t0:n t1:n ir:n ic:n :}   \ t0 t1 ir ic -- tr tc
+   t0 -1 = t1 -1 = and if E-ONNX-SHAPE throw then
+   ir ic * {: e:n :}
+   t0 -1 = if
+      t1 ic RS-DIM {: c:n :}
+      c 0= if E-ONNX-SHAPE throw then
+      e c mod 0<> if E-ONNX-SHAPE throw then
+      e c /  c  exit then
+   t1 -1 = if
+      t0 ir RS-DIM {: r:n :}
+      r 0= if E-ONNX-SHAPE throw then
+      e r mod 0<> if E-ONNX-SHAPE throw then
+      r  e r /  exit then
+   t0 ir RS-DIM  t1 ic RS-DIM ;
+
 : IMP-RESHAPE ( n -- ) {: j:n :}               \ shape is an INT64 initializer; a runtime shape rejects
    j 0 IMP-ATTRS-OK  j 2 IMP-ARITY-OK
    j 1 OND-IN@ OGIC-FIND 0= if E-ONNX-DYNSHAPE throw then   \ shape not a static constant -> dynamic
    {: c:n :}
    c OGIC-NVAL@ 2 <> if E-ONNX-RANK throw then              \ the 2D IR needs a [R,C] target
-   c 0 OGIC-VAL@ {: tr:n :}  c 1 OGIC-VAL@ {: tc:n :}
-   tr 0 <= tc 0 <= or if E-ONNX-DYNSHAPE throw then         \ -1 (infer) / 0 (copy dim): not resolved v1
    j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   c 0 OGIC-VAL@  c 1 OGIC-VAL@  r0 IMP-REF-ROWS  r0 IMP-REF-COLS  RS-RESOLVE {: tr:n tc:n :}
    r0 IMP-REF-ROWS r0 IMP-REF-COLS *  tr tc *  <> if E-ONNX-SHAPE throw then   \ element count must agree
    MAKI-OPKIND:RESHAPE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
    MAKI:MV-RESHAPE MAKI:MVV-FREE tr tc MAKI:MV-PACK {: attr:n :}   \ row-major reshape is a free rewrite
@@ -332,6 +386,65 @@ variable SYN-N
    MAKI:MV-CONCAT MAKI:MVV-MATERIALIZE 0 0 MAKI:MV-PACK {: attr:n :}
    j  ra IMP-REF-ROWS rb IMP-REF-ROWS +  ra IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
 
+\ Slice-13 takes starts/ends (+ optional axes/steps) as rank-1 INT64 operands. They are
+\ static graph constants (the OGIC table); a runtime-computed range fails E-ONNX-DYNSHAPE.
+\ v1 supports a single row-axis slice: axes absent or [0], steps absent or [1], starts/ends
+\ length 1 (else E-ONNX-ATTR). Indices clamp per ONNX (a negative index adds the dim; both
+\ ends clamp into [0,R]); an empty or inverted clamped range fails E-ONNX-SHAPE.
+: SLICE-VEC1 ( n -- n ) {: ni:n :}             \ single int of a length-1 INT64 constant operand
+   ni OGIC-FIND 0= if E-ONNX-DYNSHAPE throw then  {: c:n :}
+   c OGIC-NVAL@ 1 <> if E-ONNX-ATTR throw then    \ v1 slices a single axis
+   c 0 OGIC-VAL@ ;
+
+: SLICE-AXIS0 ( n -- ) {: ni:n :}  ni SLICE-VEC1 0 <> if E-ONNX-ATTR throw then ;
+: SLICE-STEP1 ( n -- ) {: ni:n :}  ni SLICE-VEC1 1 <> if E-ONNX-ATTR throw then ;
+
+: SLICE-CLAMP ( n n -- n ) {: v:n dim:n :}     \ ONNX index clamp: neg adds dim, clamp into [0,dim]
+   v 0 < if v dim + else v then {: w:n :}
+   w 0 < if 0 exit then
+   w dim > if dim exit then
+   w ;
+
+: IMP-SLICE ( n -- ) {: j:n :}
+   j 0 IMP-ATTRS-OK                             \ Slice-13 carries no attributes
+   j OND-IN# {: nin:n :}
+   nin 3 <  nin 5 >  or if E-ONNX-ARITY throw then
+   nin 4 >= if j 3 OND-IN@ SLICE-AXIS0 then     \ axes present -> must be [0]
+   nin 5 >= if j 4 OND-IN@ SLICE-STEP1 then     \ steps present -> must be [1]
+   j 1 OND-IN@ SLICE-VEC1 {: st:n :}
+   j 2 OND-IN@ SLICE-VEC1 {: en:n :}
+   j 0 OND-IN@ IMP-RESOLVE {: r0:n :}
+   r0 IMP-REF-ROWS {: rows:n :}  r0 IMP-REF-COLS {: cols:n :}
+   st rows SLICE-CLAMP {: s0:n :}  en rows SLICE-CLAMP {: s1:n :}
+   s0 s1 >= if E-ONNX-SHAPE throw then          \ empty (s0=s1) or inverted clamped range: v1 fail-closed
+   MAKI-OPKIND:SLICE MAKI:MIR-OP-BEGIN  r0 MAKI:MIR-IN+
+   MAKI:MV-SLICE  MAKI-LAYOUT:ROW s0 cols MAKI:MV-SLICE-VERDICT  s0 s1 MAKI:MV-PACK {: attr:n :}
+   j  s1 s0 -  cols  attr  IMP-COMMIT-MOVE ;
+
+\ Gather (axis 0) selects rows of the data operand by an INT64 indices operand. The
+\ executor reads FLOAT indices, so the int64 constant is materialized into the float
+\ arena as a Kx1 slot (SYN-IVEC, indices resolved against the data rows) at import.
+\ axis absent-or-0; runtime indices -> E-ONNX-DYNSHAPE; a FLOAT indices initializer
+\ (wrong dtype) -> E-ONNX-DTYPE; an out-of-range index -> E-ONNX-SHAPE (GA-IDX).
+: GATHER-IDX ( n n -- n n ) {: ni:n rows:n :}  \ indices name slot + data rows -> slot ref + count
+   ni OGIC-FIND if {: c:n :}
+      c OGIC-NVAL@ {: k:n :}  c rows SYN-IVEC  k  exit then
+   drop
+   ni IMP-INIT-FIND if drop E-ONNX-DTYPE throw then   \ a FLOAT initializer: wrong indices dtype
+   E-ONNX-DYNSHAPE throw ;                            \ runtime-computed indices
+
+: IMP-GATHER ( n -- ) {: j:n :}
+   j ATTR-AXIS IMP-ATTRS-OK                     \ axis is the only recognized attribute
+   j OND-ATTRS@ ATTR-AXIS and 0<> if
+      j OND-AXIS@ 0 <> if E-ONNX-ATTR throw then \ axis present -> must be 0
+   then
+   j 2 IMP-ARITY-OK
+   j 0 OND-IN@ IMP-RESOLVE {: rx:n :}
+   j 1 OND-IN@  rx IMP-REF-ROWS  GATHER-IDX {: ridx:n k:n :}
+   MAKI-OPKIND:GATHER MAKI:MIR-OP-BEGIN  rx MAKI:MIR-IN+  ridx MAKI:MIR-IN+
+   MAKI:MV-GATHER MAKI:MVV-GATHERED 0 0 MAKI:MV-PACK {: attr:n :}
+   j  k  rx IMP-REF-COLS  attr  IMP-COMMIT-MOVE ;
+
 \ one node: LOWER (compute) + MOVE-KIND (movement) are the fail-closed coverage; then IR map
 : IMP-NODE ( n -- ) {: j:n :}
    j OND-OP$ {: a:ptr u:n :}
@@ -343,7 +456,9 @@ variable SYN-N
    a u s" Reshape"   STR= if j IMP-RESHAPE   exit then
    a u s" Transpose" STR= if j IMP-TRANSPOSE exit then
    a u s" Concat"    STR= if j IMP-CONCAT    exit then
-   a u LOWER 2drop                             \ unmatched: LOWER's E-MK-ONNX (Conv; Slice/Gather too)
+   a u s" Slice"     STR= if j IMP-SLICE     exit then
+   a u s" Gather"    STR= if j IMP-GATHER    exit then
+   a u LOWER 2drop                             \ unmatched: LOWER's E-MK-ONNX (Conv, etc.)
    E-MK-ONNX throw ;                           \ LOWER/IR-map drift: still fail closed
 
 \ ---- v1 output contract: one graph output, and it is the last node -----------

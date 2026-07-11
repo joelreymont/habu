@@ -15,14 +15,25 @@
 \   CC: Concat(x,cc,axis 0)  2x2 + 1x2 -> 3x2 row-append -> OP-CONCAT
 \   GTB: Gemm(x,wt,transB=1) TRANSPOSE + MATMUL (the PyTorch Linear export shape)
 \   GAB: Gemm(x,w,b,a=2,b=0) MATMUL + SCALE (synthetic 1x1), C dropped
-\ The fusion planner runs the imported IR too (FP-BUILD; Gemm->Relu fuses into
-\ one region). Negative fixtures cover every importer throw: dynamic dim_param,
-\ unsupported op (the ONNX:LOWER rejection), non-topological input, a foreign Gemm
-\ attr / bad Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column and a ragged
-\ 3x2-vs-2x2 Add (broadcast shapes outside the legal classes), a runtime-computed
-\ Reshape shape, a non-transpose and a rank-3 Transpose perm, two graph outputs, output
-\ not the last node, missing graph, SSA rebind, missing initializer payload, oversized
-\ name, wrong arity, and truncated model bytes.
+\   RS7/RS7U/RSN7: Reshape shape via int64_data (field 7) packed / unpacked /
+\                            negative 10-byte varint (RSN7 also drives the infer dim)
+\   RSI/RS0: Reshape [-1,2] / [0,-1]  the -1 dim inferred, the 0 dim copied
+\   SL/SLN: Slice rows [1,3) of 4x2   starts/ends INT64 operands; SLN negative-index clamp
+\   GA/GAN: Gather rows of a 3x2      INT64 indices bridged to a float slot; GAN [-1,0]
+\                            negative indices resolved against the data rows at import
+\ The fusion planner runs the imported IR too (FP-BUILD): Gemm->Relu fuses into one
+\ region; the materialized slice and gathered gather each land in their own region
+\ with the materialization flag set. Negative fixtures cover every importer throw:
+\ dynamic dim_param, unsupported op (the ONNX:LOWER rejection), non-topological input,
+\ a foreign Gemm attr / bad Softmax / foreign attrs, rank 3, non-f32 dtype, a 2x1 column
+\ and a ragged 3x2-vs-2x2 Add (broadcast shapes outside the legal classes), a runtime-
+\ computed Reshape shape, a non-transpose and a rank-3 Transpose perm, two graph outputs,
+\ output not the last node, missing graph, SSA rebind, missing initializer payload,
+\ oversized name, wrong arity, truncated model bytes, an overflowing int64_data varint,
+\ an INT64 initializer with both / neither payload source, a two-infer and a non-dividing
+\ Reshape, a non-zero Slice axis / non-unit step / runtime starts / empty range, and a
+\ non-zero Gather axis / runtime indices / FLOAT indices dtype / out-of-range index
+\ (positive and still-negative after +rows).
 
 require lib/test.f
 require lib/string.f
@@ -295,6 +306,121 @@ create X2B 8 cells allot
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+
    ;MDL ;
 
+\ ---- node-part DSL (arity-flexible nodes: Slice/Gather take 2..5 inputs) ----------
+: N-OPEN ( -- )          1 ONNX:ENC-SUB ;
+: N-IN  ( ptr u8 n -- )  1 ONNX:ENC-STR ;      \ one input name
+: N-OUT ( ptr u8 n -- )  2 ONNX:ENC-STR ;      \ the single output name
+: N-OP  ( ptr u8 n -- )  4 ONNX:ENC-STR ;      \ op_type text
+: N-CLOSE ( -- )         ONNX:;ENC-SUB ;
+
+\ ---- INT64 constant initializers (raw_data field 9; ENC-I64 8-byte LE) ------------
+: INIT-I1 ( n ptr u8 n -- ) {: v:n a:ptr u:n :}  \ int64 rank-1 [v] named a
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR   \ dims [1], data_type INT64
+      9 ONNX:ENC-SUB  v ENC-I64  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: INIT-I2 ( n n ptr u8 n -- ) {: v0:n v1:n a:ptr u:n :}   \ int64 rank-1 [v0,v1] named a
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  a u 8 ONNX:ENC-STR   \ dims [2], data_type INT64
+      9 ONNX:ENC-SUB  v0 ENC-I64  v1 ENC-I64  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+\ ---- residual A: int64_data (field 7) INT64 initializer drives a Reshape -----------
+: INIT-SH7 ( -- )                              \ int64_data shape "sh7" = [1,4] (packed varints)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" sh7" 8 ONNX:ENC-STR  \ dims [2], data_type INT64
+      7 ONNX:ENC-SUB  1 ONNX:ENC-VARINT  4 ONNX:ENC-VARINT  ONNX:;ENC-SUB  \ int64_data [1,4]
+   ONNX:;ENC-SUB ;
+
+: MODEL-RS7 ( -- )                             \ Reshape(x 2x2, sh7 [1,4] via int64_data) -> y 1x4
+   MDL
+   s" RS7" 2 ONNX:ENC-STR
+   s" Reshape" s" x" s" sh7" s" y" NODE2  INIT-SH7
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+
+   ;MDL ;
+
+: INIT-SH7U ( -- )                             \ int64_data shape "sh7u" = [1,4] (UNPACKED varints)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" sh7u" 8 ONNX:ENC-STR  \ dims [2], data_type INT64
+      1 7 ONNX:ENC-INT  4 7 ONNX:ENC-INT                           \ int64_data as repeated varints
+   ONNX:;ENC-SUB ;
+
+: MODEL-RS7U ( -- )                            \ Reshape(x 2x2, sh7u [1,4] unpacked int64_data) -> y 1x4
+   MDL
+   s" RS7U" 2 ONNX:ENC-STR
+   s" Reshape" s" x" s" sh7u" s" y" NODE2  INIT-SH7U
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+
+   ;MDL ;
+
+: INIT-SHN7 ( -- )                             \ int64_data shape "shn7" = [-1,2] (negative 10-byte varint)
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" shn7" 8 ONNX:ENC-STR  \ dims [2], data_type INT64
+      7 ONNX:ENC-SUB  -1 ONNX:ENC-VARINT  2 ONNX:ENC-VARINT  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
+: MODEL-RSN7 ( -- )                            \ Reshape(x 2x3, shn7 [-1,2] via int64_data) -> y 3x2
+   MDL
+   s" RSN7" 2 ONNX:ENC-STR
+   s" Reshape" s" x" s" shn7" s" y" NODE2  INIT-SHN7
+   s" x" 11 2 3 VI+  s" y" 12 3 2 VI+
+   ;MDL ;
+
+\ ---- residual B: Reshape -1 (infer) / 0 (copy) dims --------------------------------
+: MODEL-RSI ( -- )                             \ Reshape(x 2x3, [-1,2]) -> y 3x2 (rows inferred)
+   MDL
+   s" RSI" 2 ONNX:ENC-STR
+   s" Reshape" s" x" s" shi" s" y" NODE2  -1 2 s" shi" INIT-I2
+   s" x" 11 2 3 VI+  s" y" 12 3 2 VI+
+   ;MDL ;
+
+: MODEL-RS0 ( -- )                             \ Reshape(x 2x3, [0,-1]) -> y 2x3 (copy rows, infer cols)
+   MDL
+   s" RS0" 2 ONNX:ENC-STR
+   s" Reshape" s" x" s" sh0" s" y" NODE2  0 -1 s" sh0" INIT-I2
+   s" x" 11 2 3 VI+  s" y" 12 2 3 VI+
+   ;MDL ;
+
+\ ---- residual C: Slice starts/ends INT64 operands (axis 0, unit step) ---------------
+: MODEL-SL ( -- )                              \ Slice(x 4x2, starts[1], ends[3]) axis 0 -> y 2x2
+   MDL
+   s" SL" 2 ONNX:ENC-STR
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   1 s" st" INIT-I1  3 s" en" INIT-I1
+   s" x" 11 4 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+: MODEL-SLN ( -- )                             \ Slice(x 4x2, starts[-3], ends[-1]) -> y 2x2 (neg clamp)
+   MDL
+   s" SLN" 2 ONNX:ENC-STR
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   -3 s" st" INIT-I1  -1 s" en" INIT-I1
+   s" x" 11 4 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+\ ---- residual D: Gather INT64 indices bridged to a float slot (axis 0) --------------
+: MODEL-GA ( -- )                              \ Gather(x 3x2, idx[2,0]) axis 0 -> y 2x2
+   MDL
+   s" GA" 2 ONNX:ENC-STR
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   2 0 s" idx" INIT-I2
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+: MODEL-GAN ( -- )                             \ Gather(x 3x2, idx[-1,0]) axis 0 -> y 2x2 (neg resolve)
+   MDL
+   s" GAN" 2 ONNX:ENC-STR
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   -1 0 s" idx" INIT-I2
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+
+   ;MDL ;
+
+: INIT-IDXF ( -- )                             \ float 1x2 = [2,0] named idxf (wrong dtype for indices)
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  2 1 ONNX:ENC-INT  1 2 ONNX:ENC-INT  s" idxf" 8 ONNX:ENC-STR
+      9 ONNX:ENC-SUB  2.0 ONNX:ENC-F32  0.0 ONNX:ENC-F32  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB ;
+
 \ ---- negative fixtures (each builds a model then imports it) ---------------------
 : IMP! ( -- )  ONNX:ENC$ ONNX:IMPORT ;
 
@@ -454,6 +580,98 @@ FILL-LONGN
    MDL
    s" Add" s" x" s" y" NODE1
    s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-I64OVER ( -- )                           \ int64_data varint overflows 64 bits: decode error
+   MDL
+   s" Reshape" s" x" s" bad" s" y" NODE2
+   5 ONNX:ENC-SUB
+      1 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" bad" 8 ONNX:ENC-STR   \ dims [1], data_type INT64
+      7 ONNX:ENC-SUB  9 0 ?do $FF ONNX:ENC-B loop  $7F ONNX:ENC-B  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+  ;MDL IMP! ;
+
+: TRY-RSII ( -- )                              \ Reshape [-1,-1]: two inferred dims
+   MDL
+   s" Reshape" s" x" s" shii" s" y" NODE2  -1 -1 s" shii" INIT-I2
+   s" x" 11 2 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-RSNODIV ( -- )                           \ Reshape [-1,4] of 6 elems: infer does not divide
+   MDL
+   s" Reshape" s" x" s" shnd" s" y" NODE2  -1 4 s" shnd" INIT-I2
+   s" x" 11 2 3 VI+  s" y" 12 3 2 VI+  ;MDL IMP! ;
+
+: TRY-SLAXIS ( -- )                            \ Slice axes=[1]: only axis 0 supported
+   MDL
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" ax" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   1 s" st" INIT-I1  3 s" en" INIT-I1  1 s" ax" INIT-I1
+   s" x" 11 4 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-SLSTEP ( -- )                            \ Slice steps=[2]: only unit step supported
+   MDL
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" ax" N-IN  s" sp" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   1 s" st" INIT-I1  3 s" en" INIT-I1  0 s" ax" INIT-I1  2 s" sp" INIT-I1
+   s" x" 11 4 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-SLDYN ( -- )                             \ Slice starts is a runtime input, not a constant
+   MDL
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   3 s" en" INIT-I1
+   s" x" 11 4 2 VI+  s" st" 11 1 1 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-GAAXIS ( -- )                            \ Gather axis=1: only axis 0 supported
+   MDL
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP
+      5 ONNX:ENC-SUB  s" axis" 1 ONNX:ENC-STR  1 3 ONNX:ENC-INT  ONNX:;ENC-SUB
+   N-CLOSE
+   2 0 s" idx" INIT-I2
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-GADYN ( -- )                             \ Gather indices is a runtime input, not a constant
+   MDL
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   s" x" 11 3 2 VI+  s" idx" 11 1 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-GADT ( -- )                              \ Gather indices is a FLOAT initializer (wrong dtype)
+   MDL
+   N-OPEN  s" x" N-IN  s" idxf" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   INIT-IDXF
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-GAOOR ( -- )                             \ Gather index 3 on 3 rows: out of range after resolve
+   MDL
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   3 0 s" idx" INIT-I2
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-GANEG ( -- )                             \ Gather index -4 on 3 rows: still negative after +rows
+   MDL
+   N-OPEN  s" x" N-IN  s" idx" N-IN  s" y" N-OUT  s" Gather" N-OP  N-CLOSE
+   -4 0 s" idx" INIT-I2
+   s" x" 11 3 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-SLEMPTY ( -- )                           \ Slice starts==ends: an empty range is fail-closed v1
+   MDL
+   N-OPEN  s" x" N-IN  s" st" N-IN  s" en" N-IN  s" y" N-OUT  s" Slice" N-OP  N-CLOSE
+   2 s" st" INIT-I1  2 s" en" INIT-I1
+   s" x" 11 4 2 VI+  s" y" 12 2 2 VI+  ;MDL IMP! ;
+
+: TRY-I64BOTH ( -- )                           \ INT64 initializer with BOTH int64_data and raw_data
+   MDL
+   s" Reshape" s" x" s" shb" s" y" NODE2
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" shb" 8 ONNX:ENC-STR
+      7 ONNX:ENC-SUB  1 ONNX:ENC-VARINT  4 ONNX:ENC-VARINT  ONNX:;ENC-SUB
+      9 ONNX:ENC-SUB  1 ENC-I64  4 ENC-I64  ONNX:;ENC-SUB
+   ONNX:;ENC-SUB
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+  ;MDL IMP! ;
+
+: TRY-I64NONE ( -- )                           \ INT64 initializer with NEITHER payload source
+   MDL
+   s" Reshape" s" x" s" shz" s" y" NODE2
+   5 ONNX:ENC-SUB
+      2 1 ONNX:ENC-INT  7 2 ONNX:ENC-INT  s" shz" 8 ONNX:ENC-STR
+   ONNX:;ENC-SUB
+   s" x" 11 2 2 VI+  s" y" 12 1 4 VI+  ;MDL IMP! ;
 
 : TRY-TRUNC ( -- )                             \ fixture A cut one byte short
    MODEL-A  ONNX:ENC$ 1- ONNX:IMPORT ;
@@ -624,6 +842,113 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 44 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 86 T=
 ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 100 T=
 
+\ ---- residual A: int64_data (field 7) shape drives a Reshape, host-executed --------
+MODEL-RS7  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RESHAPE T=
+0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=   \ target [1,4] read from the int64_data constant
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 2 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 3 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
+
+\ ---- residual A: UNPACKED int64_data (repeated varint fields), host-executed --------
+MODEL-RS7U  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-ROWS@ 1 T=  0 MAKI:MIR-COLS@ 4 T=   \ target [1,4] from unpacked field-7 varints
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 4 T=
+
+\ ---- residual A: NEGATIVE int64_data value (10-byte varint) drives the infer dim ----
+MODEL-RSN7  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=   \ [-1,2] decoded from int64_data -> rows inferred
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
+
+\ ---- residual B: Reshape [-1,2] (rows inferred), host-executed ----------------------
+MODEL-RSI  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-RESHAPE T=
+0 MAKI:MIR-ROWS@ 3 T=  0 MAKI:MIR-COLS@ 2 T=   \ 6 elems / cols 2 -> 3 rows
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=          \ row-major reshape preserves order
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
+
+\ ---- residual B: Reshape [0,-1] (copy rows, infer cols) ----------------------------
+MODEL-RS0  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 3 T=   \ rows copied (0->2), cols inferred (-1->3)
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 5 >I 6 T=
+
+\ ---- residual C: Slice rows [1,3) of a 4x2, host-executed vs hand-computed ----------
+MODEL-SL  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-SLICE T=
+0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=
+ONNX:IN# 1 T=                                   \ st/en are int64 constants, not runtime inputs
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+5.0 XB 4 T-SET  6.0 XB 5 T-SET  7.0 XB 6 T-SET  8.0 XB 7 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 3 T=           \ rows [1,3) = [[3,4],[5,6]]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 4 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 5 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 6 T=
+0 MAKI:MIR-MAT@ TTRUE                           \ offset row 1 x 2 cols is not lane-aligned -> materialize
+MAKI:FP-BUILD                                   \ the fusion planner runs the imported slice IR
+MAKI:FP-REGION-COUNT 1 T=                       \ a materialized slice output is its own region
+
+\ ---- residual C: Slice with negative indices [-3,-1) clamps to [1,3) ----------------
+MODEL-SLN  ONNX:ENC$ ONNX:IMPORT
+0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET  4.0 XB 3 T-SET
+5.0 XB 4 T-SET  6.0 XB 5 T-SET  7.0 XB 6 T-SET  8.0 XB 7 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 3 T=           \ -3 -> 1, -1 -> 3
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 6 T=
+
+\ ---- residual D: Gather rows [2,0] of a 3x2, host-executed vs hand-computed ---------
+MODEL-GA  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-OP@ MAKI:OPKIND>N MAKI:OP-GATHER T=
+0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=    \ output rows = index count
+ONNX:IN# 1 T=                                   \ idx is int64->float bridged, not a runtime input
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 5 T=           \ row 2 = [5,6], then row 0 = [1,2]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 6 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 2 T=
+0 MAKI:MIR-MAT@ TTRUE                           \ gathered verdict reports (prologue indexed read)
+MAKI:FP-BUILD                                   \ the fusion planner runs the imported gather IR
+MAKI:FP-REGION-COUNT 1 T=                       \ a gathered movement output is its own region
+
+\ ---- residual D: Gather negative indices [-1,0] resolved at import ------------------
+MODEL-GAN  ONNX:ENC$ ONNX:IMPORT
+MAKI:MIR-N@ 1 T=
+0 MAKI:MIR-ROWS@ 2 T=  0 MAKI:MIR-COLS@ 2 T=
+1.0 XB 0 T-SET  2.0 XB 1 T-SET  3.0 XB 2 T-SET
+4.0 XB 3 T-SET  5.0 XB 4 T-SET  6.0 XB 5 T-SET
+MAKI:EX-RESET  ONNX:BIND-INITS  XB 0 ONNX:IN-SLOT@ MAKI:EX-BIND  MAKI:EX-RUN
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 0 >I 5 T=           \ -1 -> row 2 = [5,6], then row 0 = [1,2]
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 1 >I 6 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 2 >I 1 T=
+ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 2 T=
+
 \ ---- fail closed -------------------------------------------------------------------
 ' TRY-DYN      E-ONNX-DYNSHAPE TTHROWS
 ' TRY-CONV     E-MK-ONNX       TTHROWS
@@ -646,6 +971,20 @@ ONNX:OUT-NODE@ MAKI:EX-OUT@ 3 >I 100 T=
 ' TRY-NODATA   E-ONNX-DATA     TTHROWS
 ' TRY-LONGNAME E-ONNX-CAP      TTHROWS
 ' TRY-ARITY    E-ONNX-ARITY    TTHROWS
+' TRY-I64OVER  E-PB-VARINT     TTHROWS
+' TRY-RSII     E-ONNX-SHAPE    TTHROWS
+' TRY-RSNODIV  E-ONNX-SHAPE    TTHROWS
+' TRY-SLAXIS   E-ONNX-ATTR     TTHROWS
+' TRY-SLSTEP   E-ONNX-ATTR     TTHROWS
+' TRY-SLDYN    E-ONNX-DYNSHAPE TTHROWS
+' TRY-GAAXIS   E-ONNX-ATTR     TTHROWS
+' TRY-GADYN    E-ONNX-DYNSHAPE TTHROWS
+' TRY-GADT     E-ONNX-DTYPE    TTHROWS
+' TRY-GAOOR    E-ONNX-SHAPE    TTHROWS
+' TRY-GANEG    E-ONNX-SHAPE    TTHROWS
+' TRY-SLEMPTY  E-ONNX-SHAPE    TTHROWS
+' TRY-I64BOTH  E-ONNX-DATA     TTHROWS
+' TRY-I64NONE  E-ONNX-DATA     TTHROWS
 ' TRY-TRUNC    E-PB-TRUNC      TTHROWS
 
 T-REPORT
