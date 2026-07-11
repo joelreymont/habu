@@ -52,6 +52,7 @@ variable BAD  variable LI
    dup TOK s" constant" LINT-STR=CI IF drop 1 exit THEN
    dup TOK s" variable" LINT-STR=CI IF drop 1 exit THEN
    dup TOK s" create" LINT-STR=CI IF drop 1 exit THEN
+   dup TOK s" LAYOUT-BUFFER" LINT-STR=CI IF drop 1 exit THEN
    drop 0 ;
 
 : LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu k :}

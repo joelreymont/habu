@@ -106,6 +106,7 @@ variable PST-SUM-U
    s" : (CMP) ( i64 i64 -- i64 ) - ;" SB-APPEND PST-LF
    s" : 1+ ( i64 -- i64 ) 1 + ;" SB-APPEND PST-LF
    s" 99 constant KFIX" SB-APPEND PST-LF
+   s" LAYOUT-BUFFER LBUF ps-res<n,n> 3" SB-APPEND PST-LF
    s" : BAD ( i64 ) dup ;" SB-APPEND PST-LF
    115 SB-APPEND-C PST-DQ s"  : STRINGED ( i64 -- i64 ) dup ;" SB-APPEND PST-DQ PST-LF
    s" ( : COMMENTED ( i64 -- i64 ) dup ; )" SB-APPEND PST-LF
@@ -215,6 +216,8 @@ variable PST-SUM-U
    \ a paren-initial word name (`(CMP)`) is a WORD, not a comment: it stays visible.
    PST-OUT outu s" (CMP)" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (i64 i64 -- i64)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" LBUF" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (n -- ptr ps-res<n,n>)" PST-SIG$ CONTAINS? TTRUE
    \ a real standalone `( comment )` must still be stripped (no over-correction).
    PST-OUT outu s" COMMENTED" PST-WORD$ CONTAINS? TFALSE
    PST-OUT outu s" MIXED" PST-WORD$ CONTAINS? TFALSE
@@ -244,12 +247,16 @@ variable PST-SUM-U
 : PST-TRUST-KFIX$ ( -- ptr u8 n )
    s" KFIX" s" -- a" PST-TRUST$ ;
 
+: PST-TRUST-LBUF$ ( -- ptr u8 n )
+   s" LBUF" s" n -- ptr ps-res<n,n>" PST-TRUST$ ;
+
 : PST-TEST-TRUST ( -- )
    PST-FIX PST-RUN-TRUST 0 PST-EXPECT-EXIT {: outu erru :}
    erru 0 T=
    PST-OUT outu PST-TRUST-LOWER$ CONTAINS? TTRUE
    PST-OUT outu PST-TRUST-CAPS$ CONTAINS? TTRUE
    PST-OUT outu PST-TRUST-KFIX$ CONTAINS? TTRUE
+   PST-OUT outu PST-TRUST-LBUF$ CONTAINS? TTRUE
    PST-OUT outu s" MIXED" CONTAINS? TFALSE ;
 
 : PST-TEST-NOARG ( -- )

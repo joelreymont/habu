@@ -546,7 +546,7 @@ points stay listed.
   scanner core.
 - `tools/lint/text-foundation-test.f` / `tools/lint/set-test.f` — focused
   coverage for the lint text helpers and interner.
-- `tools/lint/shadow-lint.f` — rejects toolchain definitions that shadow
+- `tools/lint/shadow-lint.f` / `tools/lint/shadow-lint-test.f` — rejects toolchain definitions that shadow
   engine PRIM names.
 - `tools/lint/clobber-lint.f` / `tools/lint/clobber-lint-test.f` —
   register-clobber analysis for BL-able emitter routines and its regressions;

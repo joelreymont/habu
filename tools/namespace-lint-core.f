@@ -87,6 +87,7 @@ variable NL-QI
    a u s" 2variable" LINT-STR=CI if LINT-TRUE exit then
    a u s" fvariable" LINT-STR=CI if LINT-TRUE exit then
    a u s" create"    LINT-STR=CI if LINT-TRUE exit then
+   a u s" LAYOUT-BUFFER" LINT-STR=CI if LINT-TRUE exit then
    a u s" DEFTYPE"   LINT-STR=CI if LINT-TRUE exit then
    a u s" value"     LINT-STR=CI if LINT-TRUE exit then
    a u s" defer"     LINT-STR=CI if LINT-TRUE exit then

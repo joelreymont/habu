@@ -2,7 +2,7 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
 - **Probe "over-conservative reject" claims by removing the guard and reading
   what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
@@ -493,6 +493,11 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Keep lint classifier fixtures outside the linted implementation:** an inline
+  `s" LAYOUT-BUFFER DUP ..."` self-check in `shadow-lint.f` was later tokenized
+  as source by the live lint and reported its fixture name as a real primitive
+  shadow. Put classifier probes in the owning test entry so production scans
+  cannot reinterpret test strings as source definitions.
 - **Exit-status mapping must honor deliberate small codes, not flatten them:**
   fixing BTHROW's masked no-handler exit (`-2816 throw` exited 0 SILENTLY,
   `-2802` an aliased 14 — fail-open for any tool reading the rc) with an

@@ -50,12 +50,13 @@ variable DDLT-CASE-U
    s" : redo ( -- n ) 2 ;" SB-APPEND DDLT-LF
    s" variable STATE" SB-APPEND DDLT-LF
    s" 7 constant LIMIT" SB-APPEND DDLT-LF
+   s" LAYOUT-BUFFER ARENA sample 2" SB-APPEND DDLT-LF
    SB$ ;
 
 : DDLT-BAD-A-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : RESET ( -- n ) 1 ;" SB-APPEND DDLT-LF
-   s" variable LCH" SB-APPEND DDLT-LF
+   s" LAYOUT-BUFFER LCH sample 2" SB-APPEND DDLT-LF
    SB$ ;
 
 : DDLT-BAD-B-SRC$ ( -- ptr u8 n )

@@ -282,7 +282,8 @@ variable DDL-TOK-COL
 : DDL-DATA-DEFINER? ( -- bool )
    DDL-TOK$ s" create" LINT-STR=CI if LINT-TRUE exit then
    DDL-TOK$ s" variable" LINT-STR=CI if LINT-TRUE exit then
-   DDL-TOK$ s" constant" LINT-STR=CI ;
+   DDL-TOK$ s" constant" LINT-STR=CI if LINT-TRUE exit then
+   DDL-TOK$ s" LAYOUT-BUFFER" LINT-STR=CI ;
 
 : DDL-UNDEFINE? ( -- bool )
    DDL-TOK$ s" undefine" LINT-STR=CI ;
