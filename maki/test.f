@@ -186,6 +186,8 @@ TEST:SUITE maki/from-scratch-train-test.f
 TEST:;SUITE
 TEST:SUITE maki/from-scratch-test.f
 TEST:;SUITE
+TEST:SUITE maki/adam-train-test.f
+TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-driver-test.f
