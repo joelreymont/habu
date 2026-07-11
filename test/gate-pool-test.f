@@ -3,6 +3,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
 require lib/test.f
 require lib/memory.f
 require lib/fs.f
@@ -458,8 +459,10 @@ variable GPT-GEN-SAVE-U
    GPT-OUT outu GPT-KR-MARK$ FIND-SUB {: pos:n :}
    pos 0 < if E-STR-BOUNDS throw then
    pos GPT-KR-MARK$ nip + {: start:n :}
-   GPT-OUT start BYTE+ outu start - $A INDEX-OF {: rel:n :}
-   rel 0 < if E-STR-BOUNDS throw then
+   GPT-OUT start BYTE+ outu start - $A INDEX-OF MATCH option
+     none OF E-STR-BOUNDS throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: rel:n :}
    rel FS-PATH-CAP > if E-FS-PATH throw then
    GPT-OUT start BYTE+ GPT-KR-ROOT rel BYTE-COPY
    rel GPT-KR-ROOT-U ! ;

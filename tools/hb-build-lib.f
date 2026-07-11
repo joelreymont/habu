@@ -5,6 +5,7 @@
 \ lib/object-resolve.f, tools/object-image.f, tools/build-fixpoint.f,
 \ and tools/cli-run.f.
 
+require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
 require lib/object-resolve.f
 require tools/object-image.f
 require tools/event-closure-lib.f
@@ -207,7 +208,10 @@ variable HBB-PRESEED-MODE
    HBB-JSON-FOUND @ 0= if u HBB-WERR-ERR then ;
 
 : HBB-PATH-HAS-DQ? ( ptr u8 n -- bool )
-   HBB-DQ INDEX-OF 0 >= ;
+   HBB-DQ INDEX-OF MATCH option
+     none OF HBB-FALSE ENDOF
+     some OF drop HBB-TRUE ENDOF
+   ;MATCH ;
 
 : HBB-RESET-OPTIONS ( -- )
    0 HBB-REPL !

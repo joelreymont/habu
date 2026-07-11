@@ -19,6 +19,8 @@
 \ A ',' in ST-SEP is consumed silently (JR-STEP returns JR-RETRY and JR-NEXT
 \ loops); container closes are emitted as JT-OBJ-END / JT-ARR-END.
 
+require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
+
 \ ---- byte constants -------------------------------------------------------
 8 constant JR-BS
 9 constant JR-TAB
@@ -273,7 +275,10 @@ variable JR-NI                               \ number-validator cursor
    JR-NI @ u = ;
 
 : JR-SPAN-HAS? ( n -- bool ) {: c:n :}
-   JR-SPAN$ c INDEX-OF 0 >= ;
+   JR-SPAN$ c INDEX-OF MATCH option
+     none OF JR-FALSE ENDOF
+     some OF drop JR-TRUE ENDOF
+   ;MATCH ;
 
 : JR-NUM-FLOATY? ( -- bool )
    JR-DOT JR-SPAN-HAS? if JR-TRUE exit then

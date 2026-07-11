@@ -57,17 +57,19 @@ variable FL-VALID                           \ exponent validity flag
    a c@ STR-PLUS  = if a 1+ u 1- 0 0= 0= exit then
    a u 0 0= 0= ;
 : FL-FIND-E ( ptr u8 n -- option<idx> ) {: a:ptr u:n :}   \ SOME index of e/E, else NONE
-   a u FL-E-LOWER INDEX-OF dup 0 >= if >IDX OPTION:SOME exit then drop
-   a u FL-E-UPPER INDEX-OF dup 0 >= if >IDX OPTION:SOME else drop OPTION:NONE then ;
+   a u FL-E-LOWER INDEX-OF MATCH option
+     none OF a u FL-E-UPPER INDEX-OF ENDOF
+     some OF OPTION:SOME ENDOF
+   ;MATCH ;
 
 \ ---- significand (no sign, no exponent) -----------------------------------
 \ Split the mantissa at the dot, parse both halves, combine. Requires at least
 \ one digit across the two halves, so "" and "." are rejected.
 : FL-SIG ( ptr u8 n -- option<r> ) {: a:ptr u:n :}   \ SOME significand, NONE if no digits / bad
-   a u FL-DOT INDEX-OF {: dpos :}
-   dpos 0 >= if dpos else u then {: ilen :}
-   dpos 0 >= if a dpos 1+ + else a u + then {: fa:ptr :}
-   dpos 0 >= if u dpos 1+ - else 0 then {: flen :}
+   a u FL-DOT INDEX-OF MATCH option                   \ split at the dot: ilen fa flen
+     none OF u  a u +  0 ENDOF                        \ no dot: int = whole string, empty fraction
+     some OF IDX>N {: dpos:n :} dpos  a dpos 1+ +  u dpos 1+ - ENDOF
+   ;MATCH {: ilen:n fa:ptr flen:n :}
    ilen flen + 0= if OPTION:NONE exit then       \ no digits at all: "" and "." rejected
    a ilen FL-DIGITS>F MATCH option
      none OF OPTION:NONE exit ENDOF

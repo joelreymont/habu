@@ -29,6 +29,7 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/adt/option.f                 \ option<idx> INDEX-OF consumer (switchover wave A)
 require lib/memory.f
 require lib/fs.f
 
@@ -102,8 +103,11 @@ variable CGR-WP
    a u key keyu FIND-SUB {: s:n :}
    s 0 < if s" codegen-role: source line not found" type cr E-CGR-SRC throw then
    a u s CGR-LINE-START {: ls:n :}
-   a ls + u ls - STR-LF INDEX-OF {: rel:n :}
-   a ls + rel 0 < if u ls - else rel then ;
+   a ls +
+   a ls + u ls - STR-LF INDEX-OF MATCH option
+     none OF u ls - ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
 
 : CGR-WS? ( c -- bool )
    dup STR-SPACE = over STR-TAB = or over STR-LF = or swap STR-CR = or ;

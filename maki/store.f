@@ -190,13 +190,19 @@ variable STORE-Q-FOUND                                                   \ -1 on
 \ ---- key validation (non-empty, newline-free framing) ----------------------
 : STORE-CK-KEY ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 <= if E-STORE-KEY throw then
-   a u STORE-NL INDEX-OF 0 >= if E-STORE-KEY throw then ;
+   a u STORE-NL INDEX-OF MATCH option
+     none OF ENDOF
+     some OF drop E-STORE-KEY throw ENDOF
+   ;MATCH ;
 
 \ ---- append the built row (validated) to a class file ----------------------
 : STORE-ROW-VALIDATE ( -- )                       \ content + exactly one trailing NL
    STORE-ROW-U @ 2 < if E-STORE-FIELD throw then
    STORE-ROW STORE-ROW-U @ 1- + c@ STORE-NL <> if E-STORE-FIELD throw then
-   STORE-ROW STORE-ROW-U @ 1- STORE-NL INDEX-OF 0 >= if E-STORE-FIELD throw then ;
+   STORE-ROW STORE-ROW-U @ 1- STORE-NL INDEX-OF MATCH option
+     none OF ENDOF
+     some OF drop E-STORE-FIELD throw ENDOF
+   ;MATCH ;
 
 : STORE-APPEND ( n -- ) {: cls:n :}
    STORE-ROW-VALIDATE
@@ -254,8 +260,10 @@ variable STORE-Q-FOUND                                                   \ -1 on
 
 \ ---- suffix helpers (split on the first / last pipe) ------------------------
 : STORE-SPLIT-PIPE ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u STORE-PIPE INDEX-OF {: i:n :}
-   i 0 < if E-STORE-ROW throw then
+   a u STORE-PIPE INDEX-OF MATCH option
+     none OF E-STORE-ROW throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: i:n :}
    a i  a i 1+ +  u i 1+ - ;
 
 : STORE-LAST-PIPE ( ptr u8 n -- n ) {: a:ptr u:n :}

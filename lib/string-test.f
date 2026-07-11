@@ -179,6 +179,23 @@ variable STR-TEST-BUF2-LEN
    s" 77" 77 [: STR>NUMBER? STR>OPTION ;] STR-PARSE-SOME
    s" nope" [: STR>NUMBER? STR>OPTION ;] STR-PARSE-NONE ;
 
+\ switchover wave A: INDEX-OF returns option<idx> (SOME first index, else NONE).
+: STR-INDEX-OF>N ( ptr u8 n n -- n )                \ test re-wrap: found index, -1 when absent
+   INDEX-OF MATCH option
+     none OF -1 ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH ;
+
+: STR-TEST-INDEX-OF-OPTION ( -- )                   \ direct both-branch option assertions
+   s" abcdef" 100 INDEX-OF MATCH option
+     none OF STR-FALSE ENDOF
+     some OF IDX>N 3 = ENDOF
+   ;MATCH STR-ASSERT
+   s" abcdef" 120 INDEX-OF MATCH option
+     none OF STR-TRUE ENDOF
+     some OF drop STR-FALSE ENDOF
+   ;MATCH STR-ASSERT ;
+
 s" abc" s" abc" STR= STR-ASSERT
 s" " s" " STR= STR-ASSERT
 s" abc" s" abd" STR= 0= STR-ASSERT
@@ -206,9 +223,9 @@ s" abcdef" s" " FIND-SUB 0 STR-ASSERT=
 s" abcdef" s" cde" CONTAINS? STR-ASSERT
 s" abcdef" s" " CONTAINS? STR-ASSERT
 s" abcdef" s" xyz" CONTAINS? 0= STR-ASSERT
-s" abcdef" 100 INDEX-OF 3 STR-ASSERT=
-s" abcdef" 97 INDEX-OF 0 STR-ASSERT=
-s" abcdef" 120 INDEX-OF -1 STR-ASSERT=
+s" abcdef" 100 STR-INDEX-OF>N 3 STR-ASSERT=
+s" abcdef" 97 STR-INDEX-OF>N 0 STR-ASSERT=
+s" abcdef" 120 STR-INDEX-OF>N -1 STR-ASSERT=
 s" banana" 97 COUNT-CHAR 3 STR-ASSERT=
 s" " 97 COUNT-CHAR 0 STR-ASSERT=
 s" banana" 120 COUNT-CHAR 0 STR-ASSERT=
@@ -229,6 +246,7 @@ STR-TEST-BUFFER
 STR-TEST-SPLIT
 STR-TEST-PARSE
 STR-TEST-PARSE-OPTION
+STR-TEST-INDEX-OF-OPTION
 
 : STR-TEST-REPORT ( -- )
    STR-TEST-FAIL @ 0= if s" string-test: ok" type cr exit then

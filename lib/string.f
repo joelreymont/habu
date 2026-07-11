@@ -90,11 +90,11 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : CONTAINS? ( ptr u8 n ptr u8 n -- bool )
    FIND-SUB 0 < 0= ;
 
-: INDEX-OF ( ptr u8 n n -- n ) {: a:ptr u c :}
+: INDEX-OF ( ptr u8 n n -- option<idx> ) {: a:ptr u:n c:n :}   \ SOME first index of byte c, else NONE
    0 begin dup u < while
-      dup a + c@ c = if exit then
+      dup a + c@ c = if >IDX OPTION:SOME exit then
       1+
-   repeat drop -1 ;
+   repeat drop OPTION:NONE ;
 
 : COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
    0 0 begin dup u < while

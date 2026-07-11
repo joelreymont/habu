@@ -374,10 +374,14 @@ private
    MATCH option none OF E-CAD-SYNTAX throw ENDOF some OF ENDOF ;MATCH ;
 
 : PARSE-SHAPE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "name:RxC" or "RxC" -> rows cols
-   a u $3A INDEX-OF {: ci:n :}
-   ci 0< if 0 else ci 1+ then {: off:n :}       \ shape span starts past any "name:"
-   a off +  u off -  $78 INDEX-OF {: xi:n :}     \ 'x' index within the shape span
-   xi 0< if E-CAD-SYNTAX throw then
+   a u $3A INDEX-OF MATCH option                 \ shape span starts past any "name:"
+     none OF 0 ENDOF
+     some OF IDX>N 1+ ENDOF
+   ;MATCH {: off:n :}
+   a off +  u off -  $78 INDEX-OF MATCH option   \ 'x' index within the shape span
+     none OF E-CAD-SYNTAX throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: xi:n :}
    a off +          xi           PARSE-INT       \ rows
    a off + xi 1+ +  u off - xi 1+ -  PARSE-INT ; \ cols
 
@@ -389,8 +393,10 @@ private
 
 \ the name span of a "name:RxC" spec (empty when the spec is a bare "RxC")
 : SPEC-NAME ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u $3A INDEX-OF {: ci:n :}
-   ci 0< if a 0 else a ci then ;
+   a u $3A INDEX-OF MATCH option
+     none OF a 0 ENDOF
+     some OF IDX>N {: ci:n :} a ci ENDOF
+   ;MATCH ;
 
 \ one "[name:]RxC" spec: build the input descriptor + IR slot, and intern its local name
 \ (synthesized when the spec is a bare "RxC") into NT slot == input index.
@@ -416,8 +422,11 @@ private
    again ;
 
 : PARSE-RANGE ( ptr u8 n -- n n ) {: a:ptr u:n :}   \ "R0..R1" -> r0 r1
-   a u $2E INDEX-OF {: di:n :}                       \ first '.'
-   di 0< di 1+ u >= or if E-CAD-SYNTAX throw then
+   a u $2E INDEX-OF MATCH option                     \ first '.'
+     none OF E-CAD-SYNTAX throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: di:n :}
+   di 1+ u >= if E-CAD-SYNTAX throw then
    a di 1+ + c@ $2E <> if E-CAD-SYNTAX throw then     \ require the second '.'
    a di            PARSE-INT                          \ r0
    a di 2 + +  u di 2 + -  PARSE-INT ;                \ r1
@@ -434,12 +443,15 @@ private
 
 \ one body op token (not a ">V" and not a bare reference): translate to explicit stack form.
 : EMIT-OP-TOKEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u $3A INDEX-OF {: ci:n :}
-   ci 0< if
+   a u $3A INDEX-OF MATCH option
+     none OF
       a u OP-KIND                                                  \ ( op )  family stays on the stack
       dup MAKI-OPKIND:RESHAPE MAKI-OPKIND:EQ over MAKI-OPKIND:SLICE MAKI-OPKIND:EQ or if E-CAD-SYNTAX throw then \ reshape/slice need ":params"
       OPR-ARITY 1- CAP-EMIT-PARAMS                                 \ tensor params = arity-1
-      a u CAP-EMIT-OP  exit  then
+      a u CAP-EMIT-OP  exit
+     ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: ci:n :}
    a ci  a ci 1+ +  u ci 1+ -  EMIT-MOVE-PARAM ;                   \ "OP:params"
 
 \ one body token: a known name is a pending reference; else an op token to translate

@@ -342,7 +342,10 @@ variable PROC-ENV-DEF-BUF-A
    PROC-CAPTURE-FINISH-OUTCOME ;
 
 : PROC-HAS-SLASH? ( ptr u8 len -- bool )
-   LEN>N PROC-PATH-SLASH INDEX-OF 0 >= ;
+   LEN>N PROC-PATH-SLASH INDEX-OF MATCH option
+     none OF PROC-ENV-FALSE ENDOF
+     some OF drop PROC-ENV-TRUE ENDOF
+   ;MATCH ;
 
 : PROC-EXECUTABLE? ( ptr u8 len -- bool )
    LEN>N EXECUTABLE? ;

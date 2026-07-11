@@ -15,8 +15,10 @@ create SRE-RX SRE-RX-CAP allot
    SRE-RX ;
 
 : SRE-SUFFIX-NUMBER ( ptr u8 n -- n bool ) {: a:ptr u :}
-   a u SRE-DASH INDEX-OF {: ix :}
-   ix 0 < if 0 STR-FALSE exit then
+   a u SRE-DASH INDEX-OF MATCH option
+     none OF 0 STR-FALSE exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: ix:n :}
    a ix 1 + + u ix 1 + - STR>NUMBER? ;
 
 : SRE-CHECK-SUFFIX ( ptr u8 n n -- ) {: a:ptr u want :}

@@ -298,8 +298,10 @@ private
    GA-PF-IDX @ cnt <> if E-GA-PARSE throw then ;
 
 : GA-PARSE-SHAPE ( ptr u8 n -- n n ) {: va:ptr vu:n :}   \ "RxC" -> rows cols
-   va vu $78 INDEX-OF {: xi:n :}
-   xi 0 < if E-GA-PARSE throw then
+   va vu $78 INDEX-OF MATCH option
+     none OF E-GA-PARSE throw ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: xi:n :}
    va xi GA-PARSE-INT-VAL
    va xi 1+ +  vu xi 1+ -  GA-PARSE-INT-VAL ;
 
