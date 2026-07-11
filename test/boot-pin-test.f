@@ -24,7 +24,10 @@ require tools/boot-pin.f
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-22 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 21 calls)
+26 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 25 calls)
+                                    \ 22->26: +src/core/type-family.f +src/core/type-schema.f
+                                    \ +src/core/sumtype.f +src/core/type-family-sha.f (TFAM boot
+                                    \ prefix growth; user sign-off habu-boot-pin-sign-be74cfd3)
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
