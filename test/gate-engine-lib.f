@@ -412,6 +412,20 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
    s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
 
+: GE-WIDE-STORE-SEAL-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/wide-store-seal.f" GE-SRC-FILE+
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-WIDE-STORE-SEAL-SUITE ( -- )
+   GE-CANDIDATE$ s" wide-store seal on Habu-under-test"
+      GE-WIDE-STORE-SEAL-SUITE-ON
+   s" bin/hb" s" wide-store seal on bin/hb"
+      GE-WIDE-STORE-SEAL-SUITE-ON ;
+
 : GE-TYPE-EXPORT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
@@ -1138,6 +1152,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TYPE-LINEAR-SUITE
    GE-TYPE-MATCH-SUITE
    GE-TYPE-LAYOUT-SUITE
+   GE-WIDE-STORE-SEAL-SUITE
    GE-TYPE-EXPORT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )

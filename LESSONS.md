@@ -89,6 +89,13 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Make exit-only seal tests mutation-sensitive:** target the sealed latch with
+  a zero-valued ADT cell. If a wide-store loop omits a later guard or writes
+  before loading the latch, that store opens the seal and the child exits 0
+  instead of `E-SEAL-VIOLATION`; emit an armed marker immediately before the
+  sink so an earlier compile/setup exit cannot satisfy the rc assertion. Pair
+  this runtime probe with the lowering golden that pins STR after the full
+  address-range guard.
 - **A typed pointee proves identity, not storage capacity:** wide ADT `!`/`@`
   can refine `ptr a` to `ptr family` and lower from compile-time `W`, but a
   plain `variable` still owns one cell; callers allocate `W` cells until
