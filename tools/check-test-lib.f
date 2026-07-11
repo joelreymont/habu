@@ -584,6 +584,21 @@ variable CKT-PAR-U
    CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CKT-ERR erru s" missing arity" CONTAINS? TTRUE ;
 
+\ C2 follow-up (dot habu-tfam-13-c2-checkcore-cap): a source larger than
+\ CHK-SRC-CAP must fail closed with a clean check diagnostic (exit-class
+\ NOINPUT), never an uncaught E-FS-CAPACITY. The length check fires before any
+\ content read, so the oversize buffer stays unfilled.
+: CKT-OVERCAP$ ( -- ptr u8 n )
+   CHK-SRC-CAP 1 + MEM-ALLOC-BYTES drop CHK-SRC-CAP 1 + ;
+
+: CKT-TEST-OVERCAP-SOURCE ( -- )
+   CKT-DIRECT-START
+   [: CKT-OVERCAP$ s" <stdin>" CHK-MATERIALIZE-BUF-AS CHK-DIRECT-RUN drop ;] catch
+   CKT-DIRECT-END CHK-E-NOINPUT T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" source exceeds capacity" CONTAINS? TTRUE ;
+
 
 \ C2: a declaration body over TDECL-CAP ($1000) must report the same
 \ E-BAD-DECLARATION packet (the length check fires ahead of variant parsing, so
@@ -873,6 +888,7 @@ variable CKTP-DOC-U
    s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
    s" check/sum-noend-all" [: CKT-TEST-SUM-NOEND-ALL ;] CKT-RUN
    s" check/tfam-noarity-all" [: CKT-TEST-TFAM-NOARITY-ALL ;] CKT-RUN
+   s" check/overcap-source" [: CKT-TEST-OVERCAP-SOURCE ;] CKT-RUN
    s" check/oversize" [: CKT-TEST-OVERSIZE ;] CKT-RUN
    s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
    s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
