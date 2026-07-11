@@ -580,7 +580,7 @@ create AXBUF AXBUF-CAP allot
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ " ;
+   s"  seal-capture prot-wid-add wf-tokix@ wf-pos@ wf-fam@ wf-width@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then

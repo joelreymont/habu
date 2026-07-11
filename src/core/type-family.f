@@ -226,9 +226,13 @@ variable TFAM-N   0 TFAM-N !
 \ the family's derived words and the ctor-word predicate below recognizes
 \ their fixed generator-owned tails, exactly like generated constructors.
 1 constant DRV-EQ
+2 constant DRV-HASH
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 : TFAM-DERIVE-EQ! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-EQ or swap ! ;
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
+: TFAM-DERIVE-HASH! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-HASH or swap ! ;
+: TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
+: TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
 
 \ logical width in stack cells (docs/type-families.md §18 WIDTH function):
 \ sum = max payload slots + one tag cell; enum = tag only (slots 0); product =
@@ -425,13 +429,15 @@ variable TF-CW-COL          \ first-colon split position
    a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 - ;
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI ;
-: TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the KIND generates
-   a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
-   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products derive EQ only (no tag)
-   a u s" tag" CORE-STR=CI ;
+: TFAM-DERIVED-KIND-TAIL? ( ptr u8 n n -- bool ) {: a:ptr u:n fam:n :}   \ derived tail the FAMILY generates
+   a u s" eq" CORE-STR=CI IF fam TFAM-DERIVE-EQ? EXIT THEN
+   a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
+   fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
+   a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
 : TFAM-DERIVED-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = id-family derived word?
-   id SUMV-FAM@ TFAM-DERIVE-EQ? 0= IF RES-FALSE EXIT THEN
+   id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
    a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
    a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 : TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?

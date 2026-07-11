@@ -57,12 +57,11 @@ variable GE-EVAL-STACK-A
    GE-EVAL-STACK@ 1 MEM-64K-BYTES ;
 
 : GE-STORE-CAPTURE ( len len rc -- ) {: outu:len erru:len rc:rc :}
-   rc RC>N GT-OUTCOME-CODE !
-   PROC-OUTCOME-EXIT GT-OUTCOME-KIND !
+   rc RC>N OUTCOME:EXITED GT-OUTCOME!
    erru LEN>N GT-ERR-U !
    outu LEN>N GT-OUT-U ! ;
 
-: GE-STORE-OUTCOME ( len len n n -- )
+: GE-STORE-OUTCOME ( len len outcome -- )
    GT-STORE-RUN ;
 
 : GE-ARGV-RESET ( -- )
@@ -155,13 +154,19 @@ variable GE-EVAL-STACK-A
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
-: GE-OUTCOME. ( n -- ) {: kind:n :}
-   kind case
-      PROC-OUTCOME-EXIT of s" exit" type endof
-      PROC-OUTCOME-SIGNAL of s" signal" type endof
-      PROC-OUTCOME-TIMEOUT of s" timeout" type endof
-      s" unknown" type
-   endcase ;
+: GE-OUTCOME. ( outcome -- )
+   MATCH outcome
+     exited OF drop s" exit" type ENDOF
+     signaled OF drop s" signal" type ENDOF
+     timeout OF s" timeout" type ENDOF
+   ;MATCH ;
+
+: GE-OUTCOME-CODE. ( outcome -- )
+   MATCH outcome
+     exited OF . ENDOF
+     signaled OF . ENDOF
+     timeout OF s" -" type ENDOF
+   ;MATCH ;
 
 : GE-RC-NAME. ( n -- ) {: rc:n :}
    rc case
@@ -200,8 +205,8 @@ variable GE-EVAL-STACK-A
    rc throw ;
 
 : GE-PRINT-OUTCOME ( -- )
-   s" outcome: " type GT-OUTCOME-KIND @ GE-OUTCOME.
-   s"  code: " type GT-OUTCOME-CODE @ .
+   s" outcome: " type GT-OUTCOME@ GE-OUTCOME.
+   s"  code: " type GT-OUTCOME@ GE-OUTCOME-CODE.
    s" rc: " type GT-RC@ . s" (" type GT-RC@ GE-RC-NAME. s" )" type cr ;
 
 : GE-PRINT-CAPTURE-STATS ( -- )
@@ -495,7 +500,7 @@ TRUSTED: GE-EVAL-SOURCE ( -- )
 \ forge, so the runner copy is the single synthesized-state home.
 : GE-EVAL-STORE-RC ( n -- ) {: rc:n :}
    rc >RC PROC-RC !
-   PROC-OUT-LEN @ PROC-ERR-LEN @ PROC-OUTCOME-EXIT rc GE-STORE-OUTCOME ;
+   PROC-OUT-LEN @ PROC-ERR-LEN @ rc OUTCOME:EXITED GE-STORE-OUTCOME ;
 
 : GE-EVAL-DRAIN ( -- )
    GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN PROC-RUN-CAPTURE-LOOP ;

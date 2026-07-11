@@ -169,7 +169,7 @@ variable GPT-KR-LOG-U
 : GPT-EXPECT-TRUNC-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" gate-pool failing worker" CONTAINS? TTRUE
    GPT-OUT outu s" [tail truncated " CONTAINS? TTRUE
-   GPT-OUT outu s" outcome kind: 0" CONTAINS? TTRUE
+   GPT-OUT outu s" outcome: exit" CONTAINS? TTRUE
    GPT-OUT outu s" fork worker throw rc 77" CONTAINS? TTRUE
    GPT-OUT outu s" code: 1" CONTAINS? TTRUE
    GPT-OUT outu s" stdout-file: " CONTAINS? TTRUE
@@ -197,9 +197,8 @@ variable GPT-KR-LOG-U
 : GPT-EXPECT-TIMEOUT-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" gate-pool hang worker" CONTAINS? TTRUE
    GPT-OUT outu GPT-HANG-SENTINEL$ CONTAINS? TTRUE
-   GPT-OUT outu s" outcome kind: 2" CONTAINS? TTRUE
-   GPT-OUT outu s" code: 9" CONTAINS? TTRUE
-   GPT-OUT outu s" RED: hang worker kind=2 code=9" CONTAINS? TTRUE
+   GPT-OUT outu s" outcome: timeout code: 0" CONTAINS? TTRUE
+   GPT-OUT outu s" RED: hang worker kind=timeout code=0" CONTAINS? TTRUE
    GPT-OUT outu s" PASS: quick worker" CONTAINS? TTRUE ;
 
 : GPT-EXPECT-OVERFLOW-OUT ( n -- ) {: outu:n :}

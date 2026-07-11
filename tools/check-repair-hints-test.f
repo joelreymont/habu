@@ -164,18 +164,12 @@ create CRHT-ERR CRHT-BUF-CAP allot
 : CRHT-RUN-CHECK-ACT ( -- )
    CRHT-LABEL$ CRHT-SRC CHECK-ALL-ERRORS-FILE ;
 
-: CRHT-RUN-CHECK ( ptr u8 n -- n n n n )
+: CRHT-RUN-CHECK ( ptr u8 n -- n n n )
    2drop
    CRHT-ERR CRHT-BUF-CAP CRHT-OUT CRHT-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: CRHT-RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
-
-: CRHT-OUTCOME. ( n -- ) {: kind :}
-   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
-   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
-   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
-   s" unknown" type ;
+   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
 
 : CRHT-RC-NAME. ( n -- ) {: rc :}
    rc 60 = if s" E-PROC-SPAWN" type exit then
@@ -191,8 +185,8 @@ create CRHT-ERR CRHT-BUF-CAP allot
    rc 103 = if s" E-STR-CAPACITY" type exit then
    s" unmapped" type ;
 
-: CRHT-DUMP-CAPTURE ( n n n n n -- )
-   {: outu erru kind code expect :}
+: CRHT-DUMP-CAPTURE ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
    s" check-repair-hints boundary failure" type cr
    s" case: " type CRHT-LABEL$ type cr
    s" phase: " type CRHT-PHASE$ type cr
@@ -200,9 +194,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    s" source: " type CRHT-SRC type cr
    s" diag: " type CRHT-DIAG type cr
    s" expected exit: " type expect . cr
-   s" outcome: " type kind CRHT-OUTCOME.
-   s"  code: " type code . cr
-   s" rc: " type kind code PROC-PAIR>RC RC>N dup .
+   s" code: " type code dup .
    s" (" type CRHT-RC-NAME. s" )" type cr
    s" stdout bytes: " type outu . s" / " type CRHT-BUF-CAP . cr
    s" stderr bytes: " type erru . s" / " type CRHT-BUF-CAP . cr
@@ -211,29 +203,25 @@ create CRHT-ERR CRHT-BUF-CAP allot
    s" stderr:" type cr
    CRHT-ERR erru type ;
 
-: CRHT-EXPECT-OUTCOME ( n n n n n -- )
-   {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT <> if
-      outu erru kind code expect CRHT-DUMP-CAPTURE
-   then
+: CRHT-EXPECT-OUTCOME ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
    code expect <> if
-      outu erru kind code expect CRHT-DUMP-CAPTURE
+      outu erru code expect CRHT-DUMP-CAPTURE
    then
-   kind PROC-OUTCOME-EXIT T=
    code expect T= ;
 
-: CRHT-EXPECT-CLEAN ( n n n n n -- )
-   {: outu erru kind code expect :}
-   outu erru kind code expect CRHT-EXPECT-OUTCOME
-   outu 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
-   erru 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
+: CRHT-EXPECT-CLEAN ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
+   outu erru code expect CRHT-EXPECT-OUTCOME
+   outu 0 <> if outu erru code expect CRHT-DUMP-CAPTURE then
+   erru 0 <> if outu erru code expect CRHT-DUMP-CAPTURE then
    CRHT-OUT outu CRHT-EMPTY$ T$=
    CRHT-ERR erru CRHT-EMPTY$ T$= ;
 
-: CRHT-EXPECT-DIAG ( n n n n n -- n )
-   {: outu erru kind code expect :}
-   outu erru kind code expect CRHT-EXPECT-OUTCOME
-   outu 0 <> if outu erru kind code expect CRHT-DUMP-CAPTURE then
+: CRHT-EXPECT-DIAG ( n n n n -- n )
+   {: outu:n erru:n code:n expect:n :}
+   outu erru code expect CRHT-EXPECT-OUTCOME
+   outu 0 <> if outu erru code expect CRHT-DUMP-CAPTURE then
    CRHT-OUT outu CRHT-EMPTY$ T$=
    erru ;
 

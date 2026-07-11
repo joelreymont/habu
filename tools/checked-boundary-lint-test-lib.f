@@ -149,12 +149,12 @@ create CBLT-LF-BYTE 10 c,
    CBLT-OUT CBLT-BUF-CAP LINT-OUT-BUFFER!
    strict UB-STRICT-BOUNDARY! ;
 
-: CBLT-CORE-FINISH ( -- n n n n )
+: CBLT-CORE-FINISH ( -- n n outcome )
    [: CHECKED-BOUNDARY-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc OUTCOME:EXITED ;
 
-: CBLT-RUN-CURRENT ( -- n n n n )
+: CBLT-RUN-CURRENT ( -- n n outcome )
    LINT-FALSE CBLT-CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT-FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT-FILE
@@ -173,45 +173,42 @@ create CBLT-LF-BYTE 10 c,
    s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT-FILE
    CBLT-CORE-FINISH ;
 
-: CBLT-RUN-CORE-FILE ( ptr u8 n bool -- n n n n ) {: path:ptr pathu:n strict:bool :}
+: CBLT-RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
    strict CBLT-CORE-SETUP
    path pathu CHECKED-BOUNDARY-LINT-FILE
    CBLT-CORE-FINISH ;
 
-: CBLT-RUN-CORE-GOOD ( -- n n n n )
+: CBLT-RUN-CORE-GOOD ( -- n n outcome )
    CBLT-GOOD LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-LARGE ( -- n n n n )
+: CBLT-RUN-CORE-LARGE ( -- n n outcome )
    CBLT-LARGE LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-BAD ( -- n n n n )
+: CBLT-RUN-CORE-BAD ( -- n n outcome )
    CBLT-BAD LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-STRICT-GOOD ( -- n n n n )
+: CBLT-RUN-CORE-STRICT-GOOD ( -- n n outcome )
    CBLT-GOOD LINT-TRUE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-STRICT-TRUSTED ( -- n n n n )
+: CBLT-RUN-CORE-STRICT-TRUSTED ( -- n n outcome )
    CBLT-TRUSTED LINT-TRUE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-ROGUE ( -- n n n n )
+: CBLT-RUN-CORE-ROGUE ( -- n n outcome )
    CBLT-ROGUE LINT-FALSE CBLT-RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-CROSS ( -- n n n n )
+: CBLT-RUN-CORE-CROSS ( -- n n outcome )
    LINT-FALSE CBLT-CORE-SETUP
    CBLT-OFF CHECKED-BOUNDARY-LINT-FILE
    CBLT-CROSS CHECKED-BOUNDARY-LINT-FILE
    CBLT-CORE-FINISH ;
 
-: CBLT-ASSERT-CLEAN ( n n n n -- ) {: outu:n erru:n kind:n code:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code 0 T=
+: CBLT-ASSERT-CLEAN ( n n outcome -- )
+   0 T-OUTCOME-EXITED= {: outu:n erru:n :}
    CBLT-OUT outu CBLT-EMPTY$ T$=
    CBLT-ERR erru CBLT-EMPTY$ T$= ;
 
-: CBLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: CBLT-EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED= ;
 
 : CBLT-TEST-CURRENT ( -- )
    CBLT-RUN-CURRENT CBLT-ASSERT-CLEAN ;

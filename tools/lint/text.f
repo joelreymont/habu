@@ -1,6 +1,7 @@
 \ text.f — checked text/file helpers for native lint tools.
 
 require lib/string.f
+require lib/adt/option.f                      \ option<n> finders (switchover: lint finder trio)
 
 \ ---- whole-file read -------------------------------------------------------
 \ open/read/close are engine prims: open ( path flags mode -- fd ), read ( fd
@@ -110,15 +111,18 @@ variable RPATH-U
    u v < IF LINT-FALSE exit THEN
    a v b v LINT-STR= ;
 
-\ LINT-FIND-SUB ( a u sa su -- idx | -1 ) : index of first occurrence of sa/su in a/u
-: LINT-FIND-SUB ( ptr u8 n ptr u8 n -- n ) {: a:ptr u sa:ptr su :}
-   su 0= IF 0 exit THEN
+\ LINT-FIND-SUB: SOME offset of the first occurrence of sa/su in a/u, NONE if absent.
+: LINT-FIND-SUB ( ptr u8 n ptr u8 n -- option<n> ) {: a:ptr u:n sa:ptr su:n :}
+   su 0= IF 0 OPTION:SOME exit THEN
    0 begin dup u su - <= while
-      dup a +  su  sa su LINT-STR= IF exit THEN  1+
-   repeat  drop  -1 ;
+      dup a +  su  sa su LINT-STR= IF OPTION:SOME exit THEN  1+
+   repeat  drop  OPTION:NONE ;
 
 : LINT-CONTAINS? ( ptr u8 n ptr u8 n -- bool )
-   LINT-FIND-SUB 0< LINT-NOT ;
+   LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF drop LINT-TRUE ENDOF
+   ;MATCH ;
 
 \ ---- more string ops for the linters ----
 : LINT-BMOVE ( ptr u8 ptr u8 n -- ) {: a:ptr dst:ptr u :}
@@ -182,8 +186,8 @@ variable RPATH-U
    u v < IF LINT-FALSE exit THEN
    a u v - + v b v LINT-STR= ;
 : LINT-ENDS-WITH? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
-: LINT-INDEX-OF ( ptr u8 n n -- n ) {: a:ptr u c :}
-   0 begin dup u < while  dup a + c@ c = IF exit THEN  1+  repeat  drop -1 ;
+: LINT-INDEX-OF ( ptr u8 n n -- option<n> ) {: a:ptr u:n c:n :}   \ SOME first byte offset, NONE if absent
+   0 begin dup u < while  dup a + c@ c = IF OPTION:SOME exit THEN  1+  repeat  drop OPTION:NONE ;
 : LINT-COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u c :}
    0  0 begin dup u < while
       dup a + c@ c = IF swap 1+ swap THEN  1+
@@ -227,7 +231,10 @@ create SOFF SMAX cells allot   create SLEN SMAX cells allot   variable SN#
    repeat  drop ;
 : HAS-EXT? ( ptr u8 n ptr u8 n -- bool )  LINT-SUFFIX? ;
 : PATHISH? ( ptr u8 n -- bool ) {: a:ptr u :}
-   a u SLASH LINT-INDEX-OF 0 >= IF LINT-TRUE exit THEN
+   a u SLASH LINT-INDEX-OF MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF drop LINT-TRUE ENDOF
+   ;MATCH IF LINT-TRUE exit THEN
    a u s" .md" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .sh" HAS-EXT? IF LINT-TRUE exit THEN
    a u s" .f" HAS-EXT? IF LINT-TRUE exit THEN

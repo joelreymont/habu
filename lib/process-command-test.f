@@ -10,6 +10,7 @@ require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
 require lib/process-command.f
+require lib/test/outcome.f
 
 create PCMDT-ENV-OUT 97 c, 108 c, 112 c, 104 c, 97 c, 10 c, 10 c, 10 c,
 create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
@@ -21,7 +22,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
 : PCMDT-PROC-RUN-RC ( ptr u8 n n -- n ) {: path:ptr pathu timeout :}
    path pathu >LEN timeout >MS PROC-CMD-RUN-RC RC>N ;
 
-: PCMDT-RUN-OUTCOME ( ptr u8 n n -- n n ) {: path:ptr pathu timeout :}
+: PCMDT-RUN-OUTCOME ( ptr u8 n n -- outcome ) {: path:ptr pathu:n timeout:n :}
    path pathu >LEN timeout >MS PROC-CMD-RUN-OUTCOME ;
 
 : PCMDT-ENV+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu val:ptr valu :}
@@ -96,7 +97,7 @@ create PCMDT-ENTRY-OUT 101 c, 110 c, 116 c, 114 c, 121 c, 10 c, 10 c, 10 c,
    PROC-CMD-RESET
    s" 5" >LEN PROC-CMD-ARG+
    s" /bin/sleep" PCMDT-SHORT-TIMEOUT-MS PCMDT-RUN-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T=
+   T-OUTCOME-TIMEOUT
    PROC-CMD-RC@ RC>N 137 T=
    PCMDT-OUT-LEN 0 T=
    PCMDT-ERR-LEN 0 T= ;

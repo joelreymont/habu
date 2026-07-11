@@ -8,8 +8,7 @@ s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switc
 \ outcome - how a child process completed (switchover wave C): a clean exit
 \ carrying the exit code, a signal death carrying the signal, or a capture
 \ timeout (always SIGKILL-reaped, so no payload). The checker forces every
-\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener and
-\ PROC-OUTCOME-PAIR the one documented legacy (kind code) boundary.
+\ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener.
 SUMTYPE outcome 0
   VARIANT exited n ;VARIANT
   VARIANT signaled n ;VARIANT
@@ -32,9 +31,6 @@ SUMTYPE outcome 0
 4 constant O-NONBLOCK
 $7F constant PROC-WAIT-TERM-MASK
 $FF constant PROC-WAIT-EXIT-MASK
-0 constant PROC-OUTCOME-EXIT
-1 constant PROC-OUTCOME-SIGNAL
-2 constant PROC-OUTCOME-TIMEOUT
 4096 constant PROC-STDIN-CHUNK-CAP
 
 create PROC-PATHZ-BUF PROC-PATHZ-CAP allot
@@ -97,22 +93,6 @@ variable PROC-TIMED-OUT                  \ bool: the capture hit its deadline (S
      signaled OF 128 + >RC ENDOF
      timeout OF 128 SIGKILL + >RC ENDOF
    ;MATCH ;
-
-\ Legacy (kind code) pair boundary. The wide -OUTCOME capture API (PROC-
-\ CAPTURE-OUTCOME@, RUN-*-OUTCOME, PROC-CMD-*) still speaks int pairs across
-\ its consumer set; these two words are the documented sum<->rc/pair boundary
-\ until dot habu-switchover-outcome-capture-3aee9248 migrates that surface.
-: PROC-OUTCOME-PAIR ( outcome -- n n )
-   MATCH outcome
-     exited OF PROC-OUTCOME-EXIT swap ENDOF
-     signaled OF PROC-OUTCOME-SIGNAL swap ENDOF
-     timeout OF PROC-OUTCOME-TIMEOUT SIGKILL ENDOF
-   ;MATCH ;
-
-: PROC-PAIR>RC ( n n -- rc )   \ legacy pair rc flatten: exit code, else 128+signal
-   {: kind:n code:n :}
-   kind PROC-OUTCOME-EXIT = if code >RC exit then
-   128 code + >RC ;
 
 : PROC-STATUS>RC ( n -- rc )
    PROC-STATUS>OUTCOME PROC-OUTCOME>RC ;
@@ -506,16 +486,16 @@ PROC-REAP-ARM-DEFAULT
    PROC-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
    PROC-STATUS @ PROC-STATUS>OUTCOME ;
 
-: PROC-CAPTURE-OUTCOME@ ( -- len len n n )
+: PROC-CAPTURE-OUTCOME@ ( -- len len outcome )
    PROC-OUT-LEN @ PROC-ERR-LEN @
-   PROC-CAPTURE-OUTCOME PROC-OUTCOME-PAIR ;
+   PROC-CAPTURE-OUTCOME ;
 
 : PROC-CAPTURE-FINISH-RC ( -- len len rc )
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-REAP-CAPTURE
    PROC-CAPTURE-RC@ ;
 
-: PROC-CAPTURE-FINISH-OUTCOME ( -- len len n n )
+: PROC-CAPTURE-FINISH-OUTCOME ( -- len len outcome )
    PROC-CLOSE-ALL-CAPTURE-FDS
    PROC-CAPTURE-OUTCOME@ ;
 
@@ -536,7 +516,7 @@ PROC-REAP-ARM-DEFAULT
    out outcap err errcap PROC-RUN-CAPTURE-LOOP
    PROC-CAPTURE-FINISH-RC ;
 
-: RUN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
+: RUN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    pathu LEN>N 0 < if E-PROC-OUTPUT throw then
    outcap errcap PROC-CAPTURE-CHECK-CAPS

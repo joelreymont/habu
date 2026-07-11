@@ -13,6 +13,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/test/outcome.f
 require lib/process-argv.f
 require tools/cli-run.f
 require lib/vector.f
@@ -149,40 +150,37 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
 : RPT-WRITE-SOURCE ( ptr u8 n -- ) {: a:ptr u :}
    RPT-SRC a u RPT-SOURCE$ WRITE-ALL ;
 
-: RPT-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: RPT-HB-CAPTURE ( -- n n n n )
+: RPT-HB-CAPTURE ( -- len len outcome )
    CLI-TOOLS$  >LEN RPT-OUT RPT-CAPTURE-CAP >LEN
    RPT-ERR RPT-CAPTURE-CAP >LEN RPT-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME RPT-CAPTURE>N ;
+   RUN-ARGV-CAPTURE-OUTCOME ;
 
 : RPT-RUN-CHECK-ACT ( -- )
    RPT-LABEL$ RPT-SRC CHECK-ALL-ERRORS-FILE ;
 
-: RPT-RUN-CHECK ( ptr u8 n -- n n n n )
+: RPT-RUN-CHECK ( ptr u8 n -- len len outcome )
    RPT-LABEL!
    RPT-ERR RPT-CAPTURE-CAP RPT-OUT RPT-CAPTURE-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: RPT-RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
+   0 >LEN CHECK-ALL-ERRORS-OUT$ nip >LEN rc OUTCOME:EXITED ;
 
-: RPT-OUTCOME. ( n -- ) {: kind:n :}
-   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
-   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
-   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
-   s" unknown" type ;
+: RPT-OUTCOME-CODE ( outcome -- n bool )   \ code plus exited?
+   MATCH outcome
+     exited OF 0 0= ENDOF
+     signaled OF 0 0= 0= ENDOF
+     timeout OF 0 0 0= 0= ENDOF
+   ;MATCH ;
 
-: RPT-DUMP-CAPTURE ( n n n n n -- )
-   {: outu:n erru:n kind:n code:n expect:n :}
+: RPT-DUMP-CAPTURE ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
    s" repair-packet-test failure" type cr
    s" case: " type RPT-LABEL$ type cr
    s" source: " type RPT-SRC type cr
    s" diag: " type RPT-DIAG type cr
    s" packet: " type RPT-PACKET type cr
    s" expected exit: " type expect . cr
-   s" outcome: " type kind RPT-OUTCOME.
-   s"  code: " type code . cr
+   s" code: " type code . cr
    s" stdout bytes: " type outu . s" / " type RPT-CAPTURE-CAP . cr
    s" stderr bytes: " type erru . s" / " type RPT-CAPTURE-CAP . cr
    s" stdout:" type cr
@@ -190,23 +188,25 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" stderr:" type cr
    RPT-ERR erru type ;
 
-: RPT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT <> if outu erru kind code expect RPT-DUMP-CAPTURE then
-   code expect <> if outu erru kind code expect RPT-DUMP-CAPTURE then
+: RPT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   RPT-OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
+   exited 0= if outu LEN>N erru LEN>N code expect RPT-DUMP-CAPTURE then
+   code expect <> if outu LEN>N erru LEN>N code expect RPT-DUMP-CAPTURE then
    RPT-LABEL$ T-LABEL
-   kind PROC-OUTCOME-EXIT T=
+   exited TTRUE
    RPT-LABEL$ T-LABEL
    code expect T=
-   outu erru ;
+   outu LEN>N erru LEN>N ;
 
-: RPT-EXPECT-EXIT-NZ ( n n n n -- n n ) {: outu erru kind code :}
-   kind PROC-OUTCOME-EXIT <> if outu erru kind code 0 RPT-DUMP-CAPTURE then
-   code 0 = if outu erru kind code -1 RPT-DUMP-CAPTURE then
+: RPT-EXPECT-EXIT-NZ ( len len outcome -- n n )
+   RPT-OUTCOME-CODE {: outu:len erru:len code:n exited:bool :}
+   exited 0= if outu LEN>N erru LEN>N code 0 RPT-DUMP-CAPTURE then
+   code 0 = if outu LEN>N erru LEN>N code -1 RPT-DUMP-CAPTURE then
    RPT-LABEL$ T-LABEL
-   kind PROC-OUTCOME-EXIT T=
+   exited TTRUE
    RPT-LABEL$ T-LABEL
    code 0 T<>
-   outu erru ;
+   outu LEN>N erru LEN>N ;
 
 : RPT-WRITE-DIAG ( n -- ) {: erru :}
    RPT-DIAG RPT-ERR erru WRITE-ALL ;
@@ -369,7 +369,7 @@ create RPT-PACKET-BUF FS-PATH-CAP allot
    s" tools/repair-packet.f"  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+ ;
 
-: RPT-RUN-REPAIR-NOARGS ( -- n n n n )
+: RPT-RUN-REPAIR-NOARGS ( -- len len outcome )
    RPT-ARGV-REPAIR-NOARGS
    RPT-HB-CAPTURE ;
 

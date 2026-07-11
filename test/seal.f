@@ -35,7 +35,7 @@ variable SLV-CHILD-U
 variable SLV-IN-U
 variable SLV-OUT-U
 variable SLV-ERR-U
-variable SLV-KIND
+variable SLV-EXITED                 \ bool: child completed by exit
 variable SLV-RC
 
 create SLV-ROOT-BUF FS-PATH-CAP allot
@@ -343,9 +343,13 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 
 \ --- child spawn + outcome capture ---
 
-: SLV-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind SLV-KIND !  code SLV-RC !
-   erru LEN>N SLV-ERR-U !  outu LEN>N SLV-OUT-U ! ;
+: SLV-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF SLV-RC ! 0 0= SLV-EXITED ! ENDOF
+     signaled OF SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
+     timeout OF 0 SLV-RC ! 0 0= 0= SLV-EXITED ! ENDOF
+   ;MATCH
+   LEN>N SLV-ERR-U !  LEN>N SLV-OUT-U ! ;
 
 : SLV-IN! ( ptr u8 n -- ) {: a:ptr u:n :}
    u SLV-CAP > if E-FS-CAPACITY throw then
@@ -371,11 +375,11 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SLV-STORE! ;
 
 : SLV-ASSERT-SEAL ( -- )                    \ child died with the seal-violation exit
-   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-EXITED @ TTRUE
    SLV-RC @ SLV-SEAL-RC T= ;
 
 : SLV-ASSERT-OK ( -- )                      \ child exited cleanly
-   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-EXITED @ TTRUE
    SLV-RC @ 0 T= ;
 
 \ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
@@ -415,7 +419,7 @@ variable PWG-U
 84 constant SLV-PWID-RC                      \ E-SEAL-PACKAGE: protected-WID table full
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
 : SLV-ASSERT-PWID-FULL ( -- )                \ child died with the LABELED protected-WID-full exit
-   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-EXITED @ TTRUE
    SLV-RC @ SLV-PWID-RC T=
    SLV-ERR$ s" hb: protected-WID table full" CONTAINS? TTRUE ;
 
@@ -441,7 +445,7 @@ variable PWG-U
    SB$ ;
 
 : SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died E-SEAL-PACKAGE naming the publish guard
-   SLV-KIND @ PROC-OUTCOME-EXIT T=
+   SLV-EXITED @ TTRUE
    SLV-RC @ SLV-PWID-RC T=
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 

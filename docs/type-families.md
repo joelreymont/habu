@@ -604,14 +604,36 @@ parametric families (`derive requires a concrete (arity 0) family` — open
 payload types have no comparator). A private family rejects (`derive requires
 a public family` — there is no package to hold the words).
 
-One feature token per clause keeps the grammar unambiguous against bare
-variant names. `DERIVE order` / `DERIVE hash` are recognised but deferred
-(`E-TDECL-DERIVE`, their slices land later); unknown features reject. The
-checked-MATCH generator is the semantic reference; a flat-cell engine fast
-path (which would depend on the deterministically zeroed padding of
-`stack-cell-tag`) is a possible later optimization, with this generator as
-its differential oracle. `hash` is where an engine leg becomes unavoidable
-(no checked cell-mixing over hidden cells).
+The clause is an order-free feature list: the FIRST token after `DERIVE` must
+be a known feature (`eq`, `hash`; unknown rejects `E-TDECL-DERIVE`), and the
+list continues greedily while tokens stay known features (repeats are
+idempotent), so `DERIVE eq hash` and `DERIVE hash eq` are equivalent and the
+first non-feature token safely starts the variants. `DERIVE order` stays
+deferred.
+
+### 9.3.2 `DERIVE hash` (derive S3, semantic reference)
+
+`DERIVE hash` generates `PKG:HASH ( fam -- n )` from the SAME checked
+generator family: FNV-1a folded over whole cells (`h = BASIS`, then per cell
+`h = (h xor v) * PRIME`; 64-bit offset basis `$cbf29ce484222325`, prime
+`$100000001b3`, named `DRV-FNV-BASIS`/`DRV-FNV-PRIME` in sumtype.f and
+rendered into the generated text as hex literals). Sums/enums fold the
+variant tag then each bound payload scalar per MATCH arm; products `UNMAKE`
+and fold the fields, enum-typed fields through their family's `PKG:TAG` —
+exactly the cells derived eq compares, so **equal values hash equal by
+construction**. `TAG` rides ANY derive feature on sum/enum kinds; a
+hash-only family gets `HASH` + `TAG` and no `EQ`; products get `EQ`/`HASH`
+per feature and never `TAG`. The payload-role gate is shared with eq
+(CT-INT scalars only; pointer/linear/parametric reject; product enum fields
+require the field family to also derive).
+
+Hash VALUES are an IN-MEMORY contract only: this checked generator is the
+semantic reference, and a later flat-cell `EM-ADT-HASH` engine fast path
+(gated on the zeroed padding of `stack-cell-tag`, with this generator as its
+differential oracle) may change the produced values. NOTHING may persist
+derived hashes across engine versions — consumers (e.g. the SKEY replay
+table) must key in-memory tables only and keep their durable formats on
+stable renders (SK-KEY$ stays the on-disk contract).
 
 ### 9.4 `PRODUCT`
 
@@ -1378,6 +1400,21 @@ fail-closed until TFAM 11 whole-bundle counting. Pinned in
 `test/type-decl-suite.f` (TDS1-*).
 
 ---
+
+### 17.1 Typed locals for family types (slice 1)
+
+A `{: x:fam :}` annotation accepts a bare arity-0 family tail, resolved with
+signature scope. An enum-tier layout (W=1 sum/enum, incl. a single-field
+product) asserts the family's one-cell hidden term: the `:}` bind unifies the
+captured bundle's tag term against it (wrong family = standard `E-MISMATCH`
+with family fields; a scalar operand or a scalar-annotated bundle rejects the
+same way), and a read restores the exact bound term — family id intact, so
+`MATCH`/derived words work on local reads. An arity-0 CELL family asserts its
+nominal scalar exactly as a signature would. Parametric spellings
+(`x:fam<..>`), arity>0 tails, and W>1 layout annotations stay fail-closed as
+named unknown-annotation rejects (their slices are tracked on the typed-locals
+dot); bare (unannotated) locals keep the item-12 wide-bundle behavior
+unchanged, and linear layouts still never expand into locals.
 
 ## 18. Width and parameter kinds
 
@@ -2183,9 +2220,9 @@ Do not implement these in the first pass:
 - implicit niche optimization;
 - fully layout-polymorphic type parameters;
 - packed memory ABI for GPU arrays;
-- automatic deriving of equality/order/hash — REVISED: opt-in `DERIVE eq` for
-  enums, payload sums, and products landed as derive S1+S2 (§9.3.1);
-  order/hash remain deferred;
+- automatic deriving of equality/order/hash — REVISED: opt-in `DERIVE eq`
+  (S1+S2, §9.3.1) and `DERIVE hash` (S3, §9.3.2) landed for enums, payload
+  sums, and products; `order` remains deferred;
 - user-defined custom layout code;
 - public construction from raw tags;
 - unsafe enum casts.

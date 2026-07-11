@@ -18,7 +18,7 @@ variable HCT-CHILD-U
 variable HCT-OUT-U
 variable HCT-ERR-U
 variable HCT-RC
-variable HCT-KIND
+variable HCT-EXITED
 
 create HCT-ROOT-BUF FS-PATH-CAP allot
 create HCT-CHILD-BUF FS-PATH-CAP allot
@@ -63,6 +63,14 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-ROOT s" stdin-data-tool.f" HCT-CHILD-BUF JOIN-PATH HCT-CHILD-U !
    HCT-CHILD HCT-CHILD$ WRITE-ALL ;
 
+: HCT-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF HCT-RC ! 0 0= HCT-EXITED ! ENDOF
+     signaled OF HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
+     timeout OF 0 HCT-RC ! 0 0= 0= HCT-EXITED ! ENDOF
+   ;MATCH
+   LEN>N HCT-ERR-U !  LEN>N HCT-OUT-U ! ;
+
 : HCT-EXPECT-LOAD-STDIN ( -- )
    PROC-ARGV-RESET
    s" --load"  >LEN PROC-ARGV+
@@ -74,19 +82,10 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    HCT-CHILD  >LEN PROC-ARGV+
    s" --"  >LEN PROC-ARGV+
    s" bin/hb" >LEN s" DATA" >LEN HCT-OUT HCT-CAP >LEN
-   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   {: outu erru kind code :}
-   kind HCT-KIND !
-   code HCT-RC !
-   erru LEN>N HCT-ERR-U !
-   outu LEN>N HCT-OUT-U !
-   HCT-KIND @ PROC-OUTCOME-EXIT T= HCT-RC @ 0 T=
+   HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
+   HCT-EXITED @ TTRUE HCT-RC @ 0 T=
    HCT-ERR-U @ 0 T= HCT-OUT-U @ 7 T=
    HCT-OUT 7 HCT-WANT$ T$= ;
-
-: HCT-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind HCT-KIND !  code HCT-RC !
-   erru LEN>N HCT-ERR-U !  outu LEN>N HCT-OUT-U ! ;
 
 \ printf '' | hb --loadx  ->  rc 64, stderr echoes the flag and lists --load.
 : HCT-EXPECT-UNKNOWN-FLAG ( -- )
@@ -95,7 +94,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" unknown flag exits 64" T-LABEL
-   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 64 T=
+   HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" stderr echoes the offending flag" T-LABEL
    HCT-ERR HCT-ERR-U @ s" --loadx" CONTAINS? TTRUE
    s" usage names the known --load flag" T-LABEL
@@ -109,7 +108,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" bin/hb" >LEN  s" 1 2 + . cr" >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" unknown flag rejected even with a piped program" T-LABEL
-   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 64 T=
+   HCT-EXITED @ TTRUE  HCT-RC @ 64 T=
    s" the piped stdin program did not run" T-LABEL
    HCT-OUT-U @ 0 T= ;
 
@@ -121,7 +120,7 @@ create HCT-EMPTY 1 allot   \ zero-length stdin
    s" bin/hb" >LEN  HCT-EMPTY 0 >LEN  HCT-OUT HCT-CAP >LEN
    HCT-ERR HCT-CAP >LEN HCT-TIMEOUT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME HCT-STORE!
    s" --load of an empty file exits 0" T-LABEL
-   HCT-KIND @ PROC-OUTCOME-EXIT T=  HCT-RC @ 0 T= ;
+   HCT-EXITED @ TTRUE  HCT-RC @ 0 T= ;
 
 : HCT-MAIN ( -- )
    T-RESET

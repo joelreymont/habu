@@ -9,6 +9,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/test/outcome.f
 require lib/process-argv.f
 require src/arch/arm64/disasm.f
 require tools/imagedisasm.f
@@ -86,28 +87,23 @@ variable IMDT-LDRB-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" ." IMDT-ARG+ ;
 
-: IMDT-CAPTURE>N ( len len n n -- n n n n )
-   {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
-: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- n n n n )
+: IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- len len outcome )
    {: path:ptr pathu off:ptr offu count:ptr countu :}
    IMDT-ARGV-BASE
    path pathu IMDT-ARG+
    off offu IMDT-ARG+
    count countu IMDT-ARG+
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME IMDT-CAPTURE>N ;
+   IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: IMDT-RUN-TRUST ( -- n n n n )
+: IMDT-RUN-TRUST ( -- len len outcome )
    IMDT-TRUST-ARGV
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TRUST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME IMDT-CAPTURE>N ;
+   IMDT-TRUST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
-: IMDT-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: IMDT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED=
+   LEN>N swap LEN>N swap ;
 
 : IMDT-TEST-RET ( -- )
    IMDT-RET$ s" 0" s" 1" IMDT-RUN 0 IMDT-EXPECT-EXIT {: outu erru :}

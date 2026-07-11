@@ -8,6 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 require lib/process-env.f
 
 $8000 constant PET-CAP
@@ -44,9 +45,6 @@ variable PET-START-NS
 : PET-CAPTURE>N ( len len rc -- n n n ) {: outu erru rc :}
    outu LEN>N erru LEN>N rc RC>N ;
 
-: PET-OUTCOME>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
 : PET-FIND>N ( option<len> -- n bool )                 \ flatten for the test asserts
    MATCH option
      none OF 0 0 0= 0= ENDOF
@@ -62,22 +60,20 @@ variable PET-START-NS
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS RUN-ARGV-ENV-CAPTURE
    PET-CAPTURE>N ;
 
-: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+: PET-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
    {: path:ptr pathu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN out outcap >LEN err errcap >LEN timeout >MS
-   RUN-ARGV-ENV-CAPTURE-OUTCOME
-   PET-OUTCOME>N ;
+   RUN-ARGV-ENV-CAPTURE-OUTCOME ;
 
 : PET-STDIN-CAPTURE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
    RUN-ARGV-ENV-STDIN-CAPTURE PET-CAPTURE>N ;
 
-: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- n n n n )
+: PET-STDIN-OUTCOME ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n -- len len outcome )
    {: path:ptr pathu in:ptr inu out:ptr outcap err:ptr errcap timeout :}
    path pathu >LEN in inu >LEN out outcap >LEN err errcap >LEN timeout >MS
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME
-   PET-OUTCOME>N ;
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ;
 
 : PET-FIND-IN-PATH ( ptr u8 n ptr u8 n ptr u8 -- n bool )
    {: cmd:ptr cmdu path:ptr pathu dst:ptr :}
@@ -200,18 +196,18 @@ variable PET-START-NS
 : PET-RUN-ENV-OUTCOME-FALSE ( -- )
    PET-RESET
    s" /usr/bin/false" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-OUTCOME
-   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
 : PET-RUN-ENV-OUTCOME-TIMEOUT ( -- )
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME ( -- )
    PET-RESET
    s" /bin/cat" s" env-stdin" PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
-   0 T= PROC-OUTCOME-EXIT T= 0 T= 9 T=
+   0 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 9 T=
    PET-OUT 9 s" env-stdin" T$= ;
 
 : PET-RUN-ENV-STDIN-FALSE-LARGE ( -- )
@@ -239,13 +235,13 @@ variable PET-START-NS
    PET-EARLY-IN!
    s" /usr/bin/false" PET-EARLY-IN PET-EARLY-IN-CAP
    PET-OUT PET-CAP PET-ERR PET-CAP PET-CMD-TIMEOUT-MS PET-STDIN-OUTCOME
-   1 T= PROC-OUTCOME-EXIT T= 0 T= 0 T= ;
+   1 T-OUTCOME-EXITED= LEN>N 0 T= LEN>N 0 T= ;
 
 : PET-RUN-ENV-STDIN-OUTCOME-TIMEOUT ( -- )
    PET-RESET
    s" 5"  >LEN PROC-ARGV+
    s" /bin/sleep" s" " PET-OUT PET-CAP PET-ERR PET-CAP PET-SHORT-TIMEOUT-MS PET-STDIN-OUTCOME
-   SIGKILL T= PROC-OUTCOME-TIMEOUT T= 0 T= 0 T= ;
+   T-OUTCOME-TIMEOUT LEN>N 0 T= LEN>N 0 T= ;
 
 : PET-SPAWN-RAW-MISSING ( -- )
    PET-RESET

@@ -324,29 +324,26 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE s" : CAE-CAP-SUP-BAD ( i64 -- i64 ) CAE-CAP-SUP-0 + dup ;" APPEND-FILE
    CAE-LARGE CAE-APPEND-LF ;
 
-: CAE-CAPTURE>N ( len len n n -- n n n n ) {: outu erru kind code :}
-   outu LEN>N erru LEN>N kind code ;
-
 : CAE-RUN-CORE-ACT ( -- )
    CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS-FILE ;
 
 : CAE-RUN-BUF-ACT ( -- )
    CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS-BUF ;
 
-: CAE-CORE-CAPTURE ( ptr u8 n -- n n n n )
+: CAE-CORE-CAPTURE ( ptr u8 n -- n n n )
    CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
+   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
 
-: CAE-BUF-CAPTURE ( ptr u8 n -- n n n n )
+: CAE-BUF-CAPTURE ( ptr u8 n -- n n n )
    CAE-BUF-SRC!
    CAE-IN CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
+   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
 
 : CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
    ARGV-MOCK-CLEAR
@@ -364,33 +361,26 @@ create CAE-LF-BYTE 10 c,
    ARGV-JSON? CHECK-ALL-ERRORS-JSON!
    ARGV-LABEL$ 0 ARGV-POS$ CHECK-ALL-ERRORS-FILE ;
 
-: CAE-RUN ( -- n n n n )
+: CAE-RUN ( -- n n n )
    CAE-IN CAE-CORE-CAPTURE ;
 
-: CAE-RUN-LARGE ( -- n n n n )
+: CAE-RUN-LARGE ( -- n n n )
    CAE-LARGE CAE-CORE-CAPTURE ;
 
-: CAE-RUN-CLI ( -- n n n n )
+: CAE-RUN-CLI ( -- n n n )
    CAE-IN CAE-ARGV-CHECK
    [: CAE-RUN-ARGV-ACT ;] catch CAE-RC !
    ARGV-USE-SCRIPT
    ARGV-RESET
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT CAE-RC @ ;
+   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
 
-: CAE-OUTCOME. ( n -- ) {: kind:n :}
-   kind PROC-OUTCOME-EXIT = if s" exit" type exit then
-   kind PROC-OUTCOME-SIGNAL = if s" signal" type exit then
-   kind PROC-OUTCOME-TIMEOUT = if s" timeout" type exit then
-   s" unknown" type ;
-
-: CAE-DUMP-CAPTURE ( n n n n n -- )
-   {: outu:n erru:n kind:n code:n expect:n :}
+: CAE-DUMP-CAPTURE ( n n n n -- )
+   {: outu:n erru:n code:n expect:n :}
    s" check-all-errors-test failure" type cr
    s" case: " type CAE-CASE$ type cr
    s" source: " type CAE-RUN$ type cr
    s" expected exit: " type expect . cr
-   s" outcome: " type kind CAE-OUTCOME.
-   s"  code: " type code . cr
+   s" code: " type code . cr
    s" stdout bytes: " type outu . s" / " type CAE-BUF-CAP . cr
    s" stderr bytes: " type erru . s" / " type CAE-BUF-CAP . cr
    s" stdout:" type cr
@@ -398,11 +388,8 @@ create CAE-LF-BYTE 10 c,
    s" stderr:" type cr
    CAE-ERR erru type ;
 
-: CAE-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT <> if outu erru kind code expect CAE-DUMP-CAPTURE then
-   code expect <> if outu erru kind code expect CAE-DUMP-CAPTURE then
-   CAE-CASE$ T-LABEL
-   kind PROC-OUTCOME-EXIT T=
+: CAE-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
+   code expect <> if outu erru code expect CAE-DUMP-CAPTURE then
    CAE-CASE$ T-LABEL
    code expect T=
    outu erru ;

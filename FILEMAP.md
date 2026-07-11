@@ -697,6 +697,8 @@ points stay listed.
 - `lib/report-test.f` — coverage for the report engine (one column set to CSV + Markdown).
 - `lib/test/runner.f` — checked test runner foundation for temp roots, captures, and aggregate failures.
 - `lib/test/runner-test.f` — focused coverage for test runner process, timeout, and failure aggregation helpers.
+- `lib/test/outcome.f` — checked assertions over the process outcome sum for capture-consuming tests.
+- `lib/test/outcome-test.f` — focused coverage for the outcome assert helpers.
 - `tools/date.f` — shared checked UTC Gregorian date parsing, formatting, and timestamp helpers.
 - `tools/date-test.f` — focused coverage for shared date helpers.
 - `lib/process-env.f` — checked child envp builder and PATH lookup helpers.

@@ -27,7 +27,8 @@ create GT-POOL-ERR-RS GT-POOL-MAX cells allot
 create GT-POOL-ERR-WS GT-POOL-MAX cells allot
 create GT-POOL-OUT-US GT-POOL-MAX cells allot
 create GT-POOL-ERR-US GT-POOL-MAX cells allot
-create GT-POOL-KINDS GT-POOL-MAX cells allot
+create GT-POOL-EXITEDS GT-POOL-MAX cells allot
+create GT-POOL-TIMED-OUTS GT-POOL-MAX cells allot
 create GT-POOL-CODES GT-POOL-MAX cells allot
 create GT-POOL-DONES GT-POOL-MAX cells allot
 create GT-POOL-STARTS GT-POOL-MAX cells allot
@@ -51,7 +52,8 @@ create GT-POOL-ERR-TOTALS GT-POOL-MAX cells allot
 create GT-POOL-SEQS GT-POOL-MAX cells allot
 create GT-POOL-RED-LABELS GT-POOL-RED-MAX GT-FAIL-NAME-CAP * allot
 create GT-POOL-RED-LABEL-US GT-POOL-RED-MAX cells allot
-create GT-POOL-RED-KINDS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-EXITEDS GT-POOL-RED-MAX cells allot
+create GT-POOL-RED-TIMED-OUTS GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-CODES GT-POOL-RED-MAX cells allot
 create GT-POOL-RED-OUT-PATHS GT-POOL-RED-MAX FS-PATH-CAP * allot
 create GT-POOL-RED-OUT-US GT-POOL-RED-MAX cells allot
@@ -199,11 +201,28 @@ GT-POOL-ABORT-BARE!
 : GT-POOL-ERR-U-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-ERR-US + ;
 
-: GT-POOL-KIND-PTR ( idx -- ptr n )
-   IDX>N cells GT-POOL-KINDS + ;
+: GT-POOL-EXITED-PTR ( idx -- ptr bool )
+   IDX>N cells GT-POOL-EXITEDS + ;
+
+: GT-POOL-TIMED-OUT-PTR ( idx -- ptr bool )
+   IDX>N cells GT-POOL-TIMED-OUTS + ;
 
 : GT-POOL-CODE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-CODES + ;
+
+\ Decompose a worker outcome into the slot's exited/timed-out/code cells
+\ (lossless: exit codes >= 128 stay distinct from signal deaths).
+: GT-POOL-OUTCOME! ( outcome idx -- ) {: idx:idx :}
+   MATCH outcome
+     exited OF idx GT-POOL-CODE-PTR ! 0 0= idx GT-POOL-EXITED-PTR ! 0 0= 0= idx GT-POOL-TIMED-OUT-PTR ! ENDOF
+     signaled OF idx GT-POOL-CODE-PTR ! 0 0= 0= idx GT-POOL-EXITED-PTR ! 0 0= 0= idx GT-POOL-TIMED-OUT-PTR ! ENDOF
+     timeout OF 0 idx GT-POOL-CODE-PTR ! 0 0= 0= idx GT-POOL-EXITED-PTR ! 0 0= idx GT-POOL-TIMED-OUT-PTR ! ENDOF
+   ;MATCH ;
+
+: GT-POOL-KIND-NAME. ( bool bool -- )   \ exited timed-out -> printed kind name
+   if drop s" timeout" type exit then
+   if s" exit" type exit then
+   s" signal" type ;
 
 : GT-POOL-DONE-PTR ( idx -- ptr n )
    IDX>N cells GT-POOL-DONES + ;
@@ -394,7 +413,8 @@ GT-POOL-ABORT-KILL!
    0 idx GT-POOL-OUT-PATH-U-PTR !
    0 idx GT-POOL-ERR-PATH-U-PTR !
    0 idx GT-POOL-SEQ-PTR !
-   PROC-OUTCOME-EXIT idx GT-POOL-KIND-PTR !
+   0 0= idx GT-POOL-EXITED-PTR !
+   0 0= 0= idx GT-POOL-TIMED-OUT-PTR !
    0 idx GT-POOL-CODE-PTR !
    -1 idx GT-POOL-DONE-PTR ! ;
 
@@ -697,8 +717,11 @@ GT-POOL-ABORT-KILL!
 : GT-POOL-RED-LABEL-U-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-LABEL-US + ;
 
-: GT-POOL-RED-KIND-PTR ( n -- ptr n )
-   GT-POOL-RED-CHECK cells GT-POOL-RED-KINDS + ;
+: GT-POOL-RED-EXITED-PTR ( n -- ptr bool )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-EXITEDS + ;
+
+: GT-POOL-RED-TIMED-OUT-PTR ( n -- ptr bool )
+   GT-POOL-RED-CHECK cells GT-POOL-RED-TIMED-OUTS + ;
 
 : GT-POOL-RED-CODE-PTR ( n -- ptr n )
    GT-POOL-RED-CHECK cells GT-POOL-RED-CODES + ;
@@ -732,7 +755,8 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-RED-STORE ( n idx -- ) {: i:n idx:idx :}
    idx GT-POOL-LABEL$ i GT-POOL-RED-LABEL-BUF i GT-POOL-RED-LABEL-U-PTR GT-FAIL-NAME-CAP GT-POOL-RED-COPY$
-   idx GT-POOL-KIND-PTR @ i GT-POOL-RED-KIND-PTR !
+   idx GT-POOL-EXITED-PTR @ i GT-POOL-RED-EXITED-PTR !
+   idx GT-POOL-TIMED-OUT-PTR @ i GT-POOL-RED-TIMED-OUT-PTR !
    idx GT-POOL-CODE-PTR @ i GT-POOL-RED-CODE-PTR !
    idx 0 GT-POOL-STREAM-FILE$ i GT-POOL-RED-OUT-BUF i GT-POOL-RED-OUT-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$
    idx 1 GT-POOL-STREAM-FILE$ i GT-POOL-RED-ERR-BUF i GT-POOL-RED-ERR-U-PTR FS-PATH-CAP GT-POOL-RED-COPY$ ;
@@ -748,7 +772,7 @@ GT-POOL-ABORT-KILL!
 
 : GT-POOL-RED-LINE ( n -- ) {: i:n :}
    s" RED: " type i GT-POOL-RED-LABEL$ type
-   s"  kind=" type i GT-POOL-RED-KIND-PTR @ GT-POOL-N-TYPE
+   s"  kind=" type i GT-POOL-RED-EXITED-PTR @ i GT-POOL-RED-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
    s"  code=" type i GT-POOL-RED-CODE-PTR @ GT-POOL-N-TYPE
    s"  out=" type i GT-POOL-RED-OUT$ type
    s"  err=" type i GT-POOL-RED-ERR$ type cr ;
@@ -902,7 +926,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-OUT-R@ FD>N 0 < idx GT-POOL-ERR-R@ FD>N 0 < and ;
 
 : GT-POOL-OK? ( idx -- bool ) {: idx :}
-   idx GT-POOL-KIND-PTR @ PROC-OUTCOME-EXIT =
+   idx GT-POOL-EXITED-PTR @
    idx GT-POOL-CODE-PTR @ 0= and ;
 
 : GT-POOL-TRUNC-LINE ( idx n -- ) {: idx:idx stream:n :}
@@ -920,8 +944,8 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-ERR-BUF idx GT-POOL-ERR-U-PTR @ type ;
 
 : GT-POOL-OUTCOME-LINE ( idx -- ) {: idx :}
-   s" outcome kind: " type idx GT-POOL-KIND-PTR @ .
-   s" code: " type idx GT-POOL-CODE-PTR @ . cr ;
+   s" outcome: " type idx GT-POOL-EXITED-PTR @ idx GT-POOL-TIMED-OUT-PTR @ GT-POOL-KIND-NAME.
+   s"  code: " type idx GT-POOL-CODE-PTR @ . cr ;
 
 : GT-POOL-CAPTURE-LINES ( idx -- ) {: idx:idx :}
    s" stdout-file" idx 0 GT-POOL-STREAM-FILE$ GT-POOL-LINE$
@@ -935,7 +959,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-RED+ ;
 
 : GT-POOL-REAP ( idx -- ) {: idx :}
-   idx GT-POOL-PID@ PROC-WAIT-OUTCOME PROC-OUTCOME-PAIR idx GT-POOL-CODE-PTR ! idx GT-POOL-KIND-PTR !
+   idx GT-POOL-PID@ PROC-WAIT-OUTCOME idx GT-POOL-OUTCOME!
    -1 >PID idx GT-POOL-PID-PTR !
    idx GT-POOL-KILL-REAPER
    idx GT-POOL-CLOSE-CAPTURE
@@ -961,8 +985,7 @@ GT-POOL-ABORT-KILL!
    idx GT-POOL-TIMEOUT-PTR @ >= ;
 
 : GT-POOL-TIMEOUT ( idx -- ) {: idx :}
-   PROC-OUTCOME-TIMEOUT idx GT-POOL-KIND-PTR !
-   SIGKILL idx GT-POOL-CODE-PTR !
+   OUTCOME:TIMEOUT idx GT-POOL-OUTCOME!
    \ Final bounded poll+drain so the last bytes the worker wrote (often the
    \ hang clue) reach the tail and capture file before the fds are closed.
    GT-POOL-POLL-BUILD  GT-POOL-POLL drop  idx GT-POOL-DRAIN-SLOT

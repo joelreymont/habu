@@ -8,6 +8,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
+require lib/test/outcome.f
 require tools/cli-run.f
 require tools/lint/text.f
 require tools/lint/json-writer.f

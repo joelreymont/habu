@@ -393,28 +393,41 @@ variable TDV-NA    variable TDV-NU
 \ non-integer/linear scalars reject (comparing a linear value consumes it;
 \ deferred to TFAM-11); a product's enum-typed field requires that family to
 \ also derive eq (its PKG:TAG is the field comparator).
+: TDECL-DERIVE-GUARD ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
+   fam TFAM-PUBLIC? 0= IF
+      a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
+   fam TFAM-ARITY@ 0 <> IF
+      a u s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE TDECL-THROW THEN ;
 : TDECL-DERIVE-SET ( ptr u8 n n -- ) {: a:ptr u:n fam:n :}
    a u s" eq" CORE-STR=CI IF
-      fam TFAM-PUBLIC? 0= IF
-         a u s" derive requires a public family" E-TDECL-DERIVE TDECL-THROW THEN
-      fam TFAM-ARITY@ 0 <> IF
-         a u s" derive requires a concrete (arity 0) family" E-TDECL-DERIVE TDECL-THROW THEN
-      fam TFAM-DERIVE-EQ! EXIT THEN
-   a u s" order" CORE-STR=CI  a u s" hash" CORE-STR=CI  or IF
+      a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-EQ! EXIT THEN
+   a u s" hash" CORE-STR=CI IF
+      a u fam TDECL-DERIVE-GUARD  fam TFAM-DERIVE-HASH! EXIT THEN
+   a u s" order" CORE-STR=CI IF
       a u s" derive feature not yet supported" E-TDECL-DERIVE TDECL-THROW THEN
    a u s" unknown derive feature" E-TDECL-DERIVE TDECL-THROW ;
+: TDECL-DERIVE-MORE? ( n -- bool ) {: fam:n :}   \ consume one more KNOWN feature token
+   TDECL-NEXT {: a:ptr u:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   a u s" eq" CORE-STR=CI
+   a u s" hash" CORE-STR=CI or
+   a u s" order" CORE-STR=CI or
+   0= IF a u PK! RES-FALSE EXIT THEN
+   a u fam TDECL-DERIVE-SET
+   RES-TRUE ;
 : TDECL-DERIVE ( n -- ) {: fam:n :}   \ consume an optional DERIVE clause off the body cursor
    TDECL-NEXT {: a:ptr u:n :}
    a u s" derive" CORE-STR=CI 0= IF a u PK! EXIT THEN
    TDECL-NEXT {: fa:ptr fu:n :}
    fu 0= IF TDN-A @ TDN-U @ s" missing derive feature" E-TDECL-DERIVE TDECL-THROW THEN
-   fa fu fam TDECL-DERIVE-SET ;
+   fa fu fam TDECL-DERIVE-SET          \ the FIRST token must be a feature (unknown rejects);
+   BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
 \ a DERIVE-marked family must not declare a variant spelled like a generated
 \ derived tail: the ctor package would hold two words with one name.
 variable TDD-I   variable TDD-J   variable TDD-K
 : TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-EQ? 0= IF EXIT THEN
+   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    0 TDD-I !
    BEGIN TDD-I @ count < WHILE
       vstart TDD-I @ + SUMV-NAME$ TFAM-DERIVED-TAIL? IF
@@ -435,14 +448,14 @@ variable TDD-I   variable TDD-J   variable TDD-K
       TDN-A @ TDN-U @
       s" pointer payloads have no derived equality" E-TDECL-DERIVE TDECL-THROW THEN
    node SCHEMA-APP? IF
-      node SCHEMA-A@ TFAM-DERIVE-EQ? 0= IF
+      node SCHEMA-A@ TFAM-DERIVE-ANY? 0= IF
          node SCHEMA-A@ TFAM-NAME$
-         s" field family must also derive eq" E-TDECL-DERIVE TDECL-THROW THEN
+         s" field family must also derive" E-TDECL-DERIVE TDECL-THROW THEN
       EXIT THEN
    TDN-A @ TDN-U @
    s" payload role has no derived equality" E-TDECL-DERIVE TDECL-THROW ;
 : TDECL-DERIVE-REQUIRE ( n n n -- ) {: fam:n vstart:n count:n :}
-   fam TFAM-DERIVE-EQ? 0= IF EXIT THEN
+   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
    0 TDD-I !
    BEGIN TDD-I @ count < WHILE
       0 TDD-J !
@@ -926,6 +939,58 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
    fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
    fam s" tag" TDGEN-DRV-REF  s"  = ;" TDGEN-APP ;
+
+\ derived hash (derive S3, design (a) — the checked SEMANTIC generator):
+\ FNV-1a folded over whole cells: h = BASIS, then per cell h = (h xor v) * PRIME.
+\ Sums/enums fold the variant tag then each bound payload scalar; products fold
+\ the fields (enum-typed fields through their family's PKG:TAG, exactly like
+\ derived eq), so equal values ALWAYS hash equal by construction. The constants
+\ render into the generated text as hex literals via TDGEN-HEX (single source
+\ of truth below). Hash VALUES are an in-memory contract only: a future
+\ flat-cell EM-ADT-HASH fast path may change them, so derived hashes must
+\ never be persisted across engine versions (docs 9.3.1).
+$cbf29ce484222325 constant DRV-FNV-BASIS   \ FNV-1a 64-bit offset basis
+$100000001b3 constant DRV-FNV-PRIME        \ FNV-1a 64-bit prime
+variable TDD-H
+: TDGEN-HEXD ( n -- ) {: d:n :}           \ one hex digit
+   d 10 < IF d 48 + ELSE d 87 + THEN TDGEN-C, ;
+: TDGEN-HEX ( n -- ) {: v:n :}            \ "$" + 16 nibbles + " "
+   36 TDGEN-C,
+   16 TDD-H !
+   BEGIN TDD-H @ 0 > WHILE
+      v  TDD-H @ 1 - 4 *  rshift  15 and  TDGEN-HEXD
+      TDD-H @ 1 - TDD-H !
+   REPEAT
+   32 TDGEN-C, ;
+: TDGEN-HMIX ( -- )                       \ "xor $PRIME * "
+   s" xor " TDGEN-APP  DRV-FNV-PRIME TDGEN-HEX  s" * " TDGEN-APP ;
+: TDGEN-HASH-FOLDS ( n -- ) {: m:n :}     \ fold locals p0..pm-1
+   0 TDD-J !
+   BEGIN TDD-J @ m < WHILE
+      112 TDGEN-C,  TDD-J @ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
+      TDD-J @ 1 + TDD-J !
+   REPEAT ;
+: TDGEN-HASH-ARM ( n -- ) {: vid:n :}     \ bind payloads, fold tag then payloads
+   vid 112 TDGEN-BINDS
+   DRV-FNV-BASIS TDGEN-HEX
+   vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
+   vid SUMV-SCH-COUNT@ TDGEN-HASH-FOLDS ;
+: TDGEN-HASH-BODY ( n -- ) {: fam:n :}    \ sum/enum: MATCH ladder of per-arm folds
+   fam TDGEN-MATCH-OPEN
+   fam TFAM-VAR-START@ {: vstart:n :}
+   0 TDD-I !
+   BEGIN TDD-I @ fam TFAM-VAR-COUNT@ < WHILE
+      vstart TDD-I @ + SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
+      vstart TDD-I @ + TDGEN-HASH-ARM
+      s" endof " TDGEN-APP
+      TDD-I @ 1 + TDD-I !
+   REPEAT
+   s" ;match ;" TDGEN-APP ;
+: TDGEN-HASH-PROD ( n -- ) {: fam:n :}    \ product: UNMAKE, fold fields (no tag)
+   fam 112 TDGEN-UNBIND
+   DRV-FNV-BASIS TDGEN-HEX
+   fam TFAM-VAR-START@ SUMV-SCH-COUNT@ TDGEN-HASH-FOLDS
+   59 TDGEN-C, ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
    fam s" tag" TDGEN-DRV-NAME
@@ -941,10 +1006,17 @@ variable TDGEN-K    variable TDGEN-M    variable TDGEN-B
    fam TFAM-PRODUCT? IF fam TDGEN-EQ-PROD ELSE
    fam TFAM-SLOTS@ 0= IF fam TDGEN-EQ-TAGS ELSE fam TDGEN-EQ-DIAG THEN THEN
    TDECL-GEN-EVAL ;
+: TDECL-HASH-WORD ( n -- ) {: fam:n :}
+   TDGEN-CLEAR
+   fam s" hash" TDGEN-DRV-NAME
+   s" ( " TDGEN-APP  fam TDGEN-OUT-TYPE  s"  -- n ) " TDGEN-APP
+   fam TFAM-PRODUCT? IF fam TDGEN-HASH-PROD ELSE fam TDGEN-HASH-BODY THEN
+   TDECL-GEN-EVAL ;
 : TDECL-DRV-WORDS ( n -- ) {: fam:n :}
-   fam TFAM-DERIVE-EQ? 0= IF EXIT THEN
-   fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN
-   fam TDECL-EQ-WORD ;
+   fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
+   fam TFAM-PRODUCT? 0= IF fam TDECL-TAG-WORD THEN   \ discriminant rides any derive
+   fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
+   fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
 
 : TDECL-PROD-WORDS ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}

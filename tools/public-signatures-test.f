@@ -29,6 +29,8 @@ ENUM pstsig DERIVE eq low high ;ENUM
 \ derive EQ only (no discriminant row).
 SUMTYPE pstsum 0 DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
 PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
+\ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
+SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
 8192 constant PST-BUF-CAP
 
@@ -161,8 +163,8 @@ variable PST-SUM-U
    PST-ERR PST-BUF-CAP PS-ERR-BUFFER!
    flag PS-TRUST ! ;
 
-: PST-CORE-FINISH ( n -- n n n n ) {: rc:n :}
-   PS-OUT$ nip PS-ERR$ nip PROC-OUTCOME-EXIT rc
+: PST-CORE-FINISH ( n -- n n n ) {: rc:n :}
+   PS-OUT$ nip PS-ERR$ nip rc
    PS-BUFFERS-OFF ;
 
 : PST-RUN-FILE-ACT ( -- )
@@ -170,26 +172,25 @@ variable PST-SUM-U
    PST-RUN$ PS-SCAN-FILE
    PS-JSON-DOC-END ;
 
-: PST-RUN-CORE ( ptr u8 n n -- n n n n ) {: flag:n :}
+: PST-RUN-CORE ( ptr u8 n n -- n n n ) {: flag:n :}
    PST-RUN!
    flag PST-CORE-SETUP
    [: PST-RUN-FILE-ACT ;] catch PST-CORE-FINISH ;
 
-: PST-RUN ( ptr u8 n -- n n n n )
+: PST-RUN ( ptr u8 n -- n n n )
    0 PST-RUN-CORE ;
 
-: PST-RUN-TRUST ( ptr u8 n -- n n n n )
+: PST-RUN-TRUST ( ptr u8 n -- n n n )
    -1 PST-RUN-CORE ;
 
 : PST-RUN-NOARG-ACT ( -- )
    PS-USAGE ;
 
-: PST-RUN-NOARG ( -- n n n n )
+: PST-RUN-NOARG ( -- n n n )
    0 PST-CORE-SETUP
    [: PST-RUN-NOARG-ACT ;] catch PST-CORE-FINISH ;
 
-: PST-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT T=
+: PST-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 
@@ -450,7 +451,12 @@ variable PST-SUM-U
    PST-OUT outu s" (pstsum pstsum -- bool)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTPROD:EQ" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (pstprod pstprod -- bool)" PST-SIG$ CONTAINS? TTRUE
-   PST-OUT outu s" PSTPROD:TAG" PST-WORD$ CONTAINS? TFALSE ;    \ products: eq only
+   PST-OUT outu s" PSTPROD:TAG" PST-WORD$ CONTAINS? TFALSE      \ products: no discriminant
+   PST-OUT outu s" PSTHASH:HASH" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (psthash -- n)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTHASH:TAG" PST-WORD$ CONTAINS? TTRUE       \ tag rides any derive
+   PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
+   PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
 : PST-MAIN ( -- )
    T-RESET

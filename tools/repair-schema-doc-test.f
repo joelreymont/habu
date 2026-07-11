@@ -263,14 +263,13 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
 : RSD-RUN-CHECK-ACT ( -- )
    RSD-SRC RSD-SRC CHECK-ALL-ERRORS-FILE ;
 
-: RSD-RUN-CHECK ( -- n n n n )
+: RSD-RUN-CHECK ( -- n n n )
    RSD-ERR RSD-BUF-CAP RSD-OUT RSD-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
    [: RSD-RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip PROC-OUTCOME-EXIT rc ;
+   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
 
-: RSD-EXPECT-EXIT ( n n n n n -- n n ) {: outu erru kind code expect :}
-   kind PROC-OUTCOME-EXIT T=
+: RSD-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 

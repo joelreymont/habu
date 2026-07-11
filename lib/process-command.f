@@ -26,16 +26,18 @@ variable PROC-CMD-ENV-OFF
 variable PROC-CMD-IN-LEN
 variable PROC-CMD-OUT-LEN
 variable PROC-CMD-ERR-LEN
-variable PROC-CMD-OUTCOME-KIND
-variable PROC-CMD-OUTCOME-CODE
+variable PROC-CMD-EXITED                 \ bool: completed by exit (vs signal) when not timed out
+variable PROC-CMD-TIMED-OUT              \ bool: capture deadline hit
+variable PROC-CMD-CODE                   \ exit code or signal number; 0 for timeout
 variable PROC-CMD-RC
 variable PROC-CMD-INHERIT
 
 : PROC-CMD-CAPTURE-RESET ( -- )
    0 >LEN PROC-CMD-OUT-LEN !
    0 >LEN PROC-CMD-ERR-LEN !
-   PROC-OUTCOME-EXIT PROC-CMD-OUTCOME-KIND !
-   0 PROC-CMD-OUTCOME-CODE !
+   0 0= PROC-CMD-EXITED !
+   0 0= 0= PROC-CMD-TIMED-OUT !
+   0 PROC-CMD-CODE !
    0 >RC PROC-CMD-RC ! ;
 
 : PROC-CMD-RESET ( -- )
@@ -161,35 +163,41 @@ variable PROC-CMD-INHERIT
    path pathu PROC-ARGV-CHECK-PATH
    timeout MS>N 0 < if E-PROC-TIMEOUT throw then ;
 
-: PROC-CMD-STORE-RUN ( len len n n -- ) {: outu erru kind code :}
-   outu PROC-CMD-OUT-LEN !
-   erru PROC-CMD-ERR-LEN !
-   kind PROC-CMD-OUTCOME-KIND !
-   code PROC-CMD-OUTCOME-CODE !
-   kind code PROC-PAIR>RC PROC-CMD-RC ! ;
+\ Decompose the outcome sum into exited/timed-out flags plus the code cell
+\ (all one cell, lossless): exit codes >= 128 stay distinct from signal
+\ deaths, unlike the retired rc-based pair store.
+: PROC-CMD-STORE-RUN ( len len outcome -- )
+   MATCH outcome
+     exited OF PROC-CMD-CODE ! 0 0= PROC-CMD-EXITED ! 0 0= 0= PROC-CMD-TIMED-OUT ! ENDOF
+     signaled OF PROC-CMD-CODE ! 0 0= 0= PROC-CMD-EXITED ! 0 0= 0= PROC-CMD-TIMED-OUT ! ENDOF
+     timeout OF 0 PROC-CMD-CODE ! 0 0= 0= PROC-CMD-EXITED ! 0 0= PROC-CMD-TIMED-OUT ! ENDOF
+   ;MATCH
+   PROC-CMD-ERR-LEN !
+   PROC-CMD-OUT-LEN ! ;
 
-: PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- n n ) {: path:ptr pathu timeout :}
+: PROC-CMD-OUTCOME@ ( -- outcome )
+   PROC-CMD-TIMED-OUT @ if OUTCOME:TIMEOUT exit then
+   PROC-CMD-EXITED @ if PROC-CMD-CODE @ OUTCOME:EXITED exit then
+   PROC-CMD-CODE @ OUTCOME:SIGNALED ;
+
+: PROC-CMD-RUN-OUTCOME ( ptr u8 len ms -- outcome ) {: path:ptr pathu:len timeout:ms :}
    path pathu timeout PROC-CMD-CHECK-RUN
    PROC-CMD-CAPTURE-RESET
    PROC-CMD-PREPARE
    path pathu PROC-CMD-IN PROC-CMD-IN-LEN @
    PROC-CMD-OUT PROC-CMD-OUT-CAP >LEN
    PROC-CMD-ERR PROC-CMD-ERR-CAP >LEN timeout
-   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME {: outu erru kind code :}
-   outu erru kind code PROC-CMD-STORE-RUN
-   kind code ;
+   RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME PROC-CMD-STORE-RUN
+   PROC-CMD-OUTCOME@ dup PROC-OUTCOME>RC PROC-CMD-RC ! ;
 
 : PROC-CMD-RUN-RC ( ptr u8 len ms -- rc )
-   PROC-CMD-RUN-OUTCOME 2drop PROC-CMD-RC @ ;
+   PROC-CMD-RUN-OUTCOME drop PROC-CMD-RC @ ;
 
 : PROC-CMD-OUT$ ( -- ptr u8 n )
    PROC-CMD-OUT PROC-CMD-OUT-LEN @ LEN>N ;
 
 : PROC-CMD-ERR$ ( -- ptr u8 n )
    PROC-CMD-ERR PROC-CMD-ERR-LEN @ LEN>N ;
-
-: PROC-CMD-OUTCOME@ ( -- n n )
-   PROC-CMD-OUTCOME-KIND @ PROC-CMD-OUTCOME-CODE @ ;
 
 : PROC-CMD-RC@ ( -- rc )
    PROC-CMD-RC @ ;

@@ -7,6 +7,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/test/outcome.f
 require lib/process-argv.f
 require tools/argv.f
 require tools/cli-run.f

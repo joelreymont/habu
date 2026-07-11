@@ -101,25 +101,23 @@ create ALT-OUT ALT-BUF-CAP allot
    ALT-OUT ALT-BUF-CAP LINT-OUT-BUFFER!
    json AL-JSON! ;
 
-: ALT-CORE-FINISH ( -- n n n n )
+: ALT-CORE-FINISH ( -- n n outcome )
    [: AOT-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc OUTCOME:EXITED ;
 
-: ALT-RUN-CORE ( ptr u8 n -- n n n n )
+: ALT-RUN-CORE ( ptr u8 n -- n n outcome )
    LINT-FALSE ALT-CORE-SETUP
    AOT-LINT-FILE
    ALT-CORE-FINISH ;
 
-: ALT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n n ) {: a:ptr u:n :}
+: ALT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n outcome ) {: a:ptr u:n :}
    LINT-TRUE ALT-CORE-SETUP
    a u s" <stdin>" AOT-LINT-FILE-AS
    ALT-CORE-FINISH ;
 
-: ALT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
-   code expect T=
-   outu erru ;
+: ALT-EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
+   expect T-OUTCOME-EXITED= ;
 
 : ALT-TEST-GOOD ( -- )
    ALT-GOOD ALT-RUN-CORE 0 ALT-EXPECT-EXIT {: outu:n erru:n :}

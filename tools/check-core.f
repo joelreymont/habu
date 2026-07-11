@@ -889,7 +889,10 @@ variable CHK-TFAM-NAME-I
    CHK-SOURCE CHK-RUN-NOMINAL-FILE ;
 
 : CHK-LABEL-DQ? ( -- bool )
-   CHK-LABEL CHK-DQ LINT-INDEX-OF 0 >= ;
+   CHK-LABEL CHK-DQ LINT-INDEX-OF MATCH option
+     none OF 0 0= 0= ENDOF
+     some OF drop 0 0= ENDOF
+   ;MATCH ;
 
 : CHK-CHECK-LABEL ( -- )
    CHK-LABEL-DQ? if s" check.f: source path contains a double quote, cannot set DIAG-FILE" CHK-E-USAGE CHK-FAIL then ;

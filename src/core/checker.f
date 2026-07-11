@@ -2278,8 +2278,34 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
    u 1 = c LOWER? and IF c VAR-OF ELSE          \ single letter -> type var
    a u BAD-SIG-TYPE THEN THEN THEN THEN THEN THEN THEN ;
 
+\ W=1 layout local annotation (typed-locals slice 1, dot habu-typed-locals-for):
+\ a bare arity-0 family tail resolves like a signature type. An enum-tier
+\ layout (W=1 sum/enum) asserts the one-cell hidden term; the group bind
+\ (LOC-BUNDLE-BIND) unifies the captured bundle's tag term against it, so a
+\ wrong family rejects through the standard mismatch path with family fields.
+\ An arity-0 CELL family asserts its nominal scalar param, exactly as a
+\ signature would. Parametric spellings (fam<..>), arity>0 tails, and W>1
+\ layouts stay fail-closed as unknown local annotations (their slices are
+\ dotted); linear layouts never expand into locals (item 12 invariant).
+: LOC-ANN-LT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ annotation spells <args>?
+   0 BEGIN dup u < WHILE
+      a over + c@ 60 = IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: BAD-LOC-ANN ( ptr u8 n -- n )    \ unsupported local annotation: fail fast so the
+   BAD-SIG-TYPE                    \ pinned token is the annotation itself, not ':}'
+   0 OK !  -1 FAILSET ! ;
+: LOC-FAM-ANN ( ptr u8 n n -- n ) {: a:ptr u:n fam:n :}
+   fam TFAM-ARITY* 0 <> IF a u BAD-LOC-ANN EXIT THEN
+   PARAM-SCR-N @ a u fam MK-PARAM {: pt:n :}
+   pt LAYOUT-PARAM? 0= IF pt EXIT THEN             \ arity-0 cell family: nominal scalar
+   fam TFAM-WIDTH@* 1 <> IF a u BAD-LOC-ANN EXIT THEN   \ W>1 layout locals: dotted tail
+   pt 0 MK-HIDDEN ;
 : LOCAL-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR ELSE a u TOK-TYPE THEN ;
+   a u s" ptr" CORE-STR= IF FRESH MK-VAR MK-PTR EXIT THEN
+   a u LOC-ANN-LT? IF a u BAD-LOC-ANN EXIT THEN
+   a u SIG-FAM? IF a u rot LOC-FAM-ANN EXIT THEN drop
+   a u TOK-TYPE ;
 
 variable SB variable SL variable SI variable SS
 variable PKA  variable PKU  variable PKHAVE          \ one-token push-back
@@ -4135,6 +4161,7 @@ PRIM: TFAM-ARITY@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFAM-KIND@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFAM-PUBLIC? PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-DERIVE-EQ? PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: TFAM-DERIVE-HASH? PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-VAR-START@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
@@ -5518,8 +5545,10 @@ variable LCO
       idx LOC-SHOW-ON!
       exit
    then
-   a u LOC-SUFFIX$ LOCAL-TYPE
-   idx cells LOCTV + @ UNIFY OK @ and OK ! ;
+   a u LOC-SUFFIX$ LOCAL-TYPE {: t:n :}
+   t T-RES HIDDEN-PARAM? IF                 \ layout annotation: store the asserted
+      t idx cells LOCTV + !  EXIT THEN      \ hidden term (hidden never binds a var)
+   t idx cells LOCTV + @ UNIFY OK @ and OK ! ;
 
 : LOC-SHOW-ONE ( n -- ) {: idx:n :}
    LOCSHOWXT @ 0= if exit then
@@ -5586,8 +5615,19 @@ variable LCO
 \ unifies with its local's type var exactly as the step would; a hidden group
 \ stores its TAG term in LOCTV and its cell count in LOCW (an annotated local
 \ cannot hold a bundle — reject). Group i (0 = stack top) binds local #LOC-1-i.
+: LOC-ANN-BIND-CHECK ( n n -- ) {: gi:n idx:n :}   \ assert the annotation against the bundle
+   gi XG-TERM0@  idx cells LOCTV + @  UNIFY
+   dup 0=  FAILSET @ 0=  and  OK @ and  IF        \ first failure: capture the exact pair
+      idx cells LOCTV + @ FRESH MK-ROW MK-PUSH DEXP !
+      gi XG-TERM0@ FRESH MK-ROW MK-PUSH DACT !
+      UF>DIAG  -1 FAILSET !
+   THEN
+   OK @ and OK ! ;
 : LOC-BUNDLE-BIND ( n n -- ) {: gi:n idx:n :}
-   idx cells LOCTV + @ T-RES ISVAR 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   idx cells LOCTV + @ T-RES ISVAR 0= IF
+      gi idx LOC-ANN-BIND-CHECK    \ annotated local: the annotation term must accept
+      OK @ 0= IF EXIT THEN         \ this bundle's tag term (scalar annotations reject)
+   THEN
    gi XG-TERM0@ T-RES idx cells LOCTV + !
    XG-LEN gi cells + @ idx cells LOCW + !
    XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOCW-HW + ! ;   \ final width at the bind seq

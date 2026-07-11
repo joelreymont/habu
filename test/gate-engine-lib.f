@@ -937,11 +937,8 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-HB-RESET
    s" 1" GE-ARG+
    s" /bin/sleep" 50 GE-RUN-ENV
-   GT-OUTCOME-KIND @ PROC-OUTCOME-TIMEOUT <> if
+   GT-TIMED-OUT @ 0= if
       s" gate timeout outcome attribution" GE-FAIL
-   then
-   GT-OUTCOME-CODE @ SIGKILL <> if
-      s" gate timeout signal attribution" GE-FAIL
    then
    s" PASS: gate timeout outcome attribution" type cr ;
 

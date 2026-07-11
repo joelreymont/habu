@@ -683,9 +683,11 @@ private
 
 \ Split a mapping key into file plus optional site name after the first colon.
 : KEY-SPLIT ( ptr u8 n -- ptr u8 n ptr u8 n ) {: a:ptr u:n :}
-   a u CH-COLON LINT-INDEX-OF KS-I !
-   KS-I @ 0 < if a u a 0 exit then
-   a KS-I @  a KS-I @ 1+ +  u KS-I @ 1+ - ;
+   a u CH-COLON LINT-INDEX-OF MATCH option
+     none OF a u a 0 ENDOF
+     some OF KS-I !
+        a KS-I @  a KS-I @ 1+ +  u KS-I @ 1+ - ENDOF
+   ;MATCH ;
 
 : CLASS-VALID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" builder-emit" LINT-STR= if LINT-TRUE exit then
@@ -775,16 +777,32 @@ public
 
 \ Parse the machine-readable block: one `file[:name] class dot` row per line.
 \ A second marker occurrence rejects so a shadowed block cannot win silently.
+: PC-DUP-MARKER? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a second marker after PC-M shadows the block
+   a PC-M @ 1+ +  u PC-M @ 1+ -  s" trusted-inventory-classes" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF drop LINT-TRUE ENDOF
+   ;MATCH ;
+
+: PC-ROWS ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ rows between the first LF and the --> end
+   a PC-M @ + PC-E @ CH-LF LINT-INDEX-OF MATCH option
+     none OF LINT-TRUE ENDOF
+     some OF PC-L !
+        a PC-M @ + PC-L @ 1+ +  PC-E @ PC-L @ 1+ -  CLASSES-LINES ENDOF
+   ;MATCH ;
+
+: PC-END ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ locate the --> terminator, then parse rows
+   a PC-M @ + u PC-M @ - s" -->" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF PC-E !  a u PC-ROWS ENDOF
+   ;MATCH ;
+
 : PARSE-CLASSES$ ( ptr u8 n -- bool ) {: a:ptr u:n :}
    CLASSES-RESET
-   a u s" trusted-inventory-classes" LINT-FIND-SUB PC-M !
-   PC-M @ 0 < if LINT-FALSE exit then
-   a PC-M @ 1+ +  u PC-M @ 1+ -  s" trusted-inventory-classes" LINT-FIND-SUB 0 >= if LINT-FALSE exit then
-   a PC-M @ + u PC-M @ - s" -->" LINT-FIND-SUB PC-E !
-   PC-E @ 0 < if LINT-FALSE exit then
-   a PC-M @ + PC-E @ CH-LF LINT-INDEX-OF PC-L !
-   PC-L @ 0 < if LINT-TRUE exit then
-   a PC-M @ + PC-L @ 1+ +  PC-E @ PC-L @ 1+ -  CLASSES-LINES ;
+   a u s" trusted-inventory-classes" LINT-FIND-SUB MATCH option
+     none OF LINT-FALSE ENDOF
+     some OF PC-M !
+        a u PC-DUP-MARKER? if LINT-FALSE else a u PC-END then ENDOF
+   ;MATCH ;
 
 : CLASSES-FROM ( ptr u8 n -- ) {: a:ptr u:n :}
    CLASSES-RESET

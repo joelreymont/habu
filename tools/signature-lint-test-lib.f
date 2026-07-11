@@ -125,29 +125,28 @@ create SLT-OUT SLT-BUF-CAP allot
    SLT-OUT SLT-BUF-CAP LINT-OUT-BUFFER!
    json SL-JSON! ;
 
-: SLT-CORE-FINISH ( -- n n n n )
+: SLT-CORE-FINISH ( -- n n n )
    [: SIGNATURE-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
-   0 PROC-OUTCOME-EXIT rc ;
+   0 rc ;
 
-: SLT-RUN-CORE ( ptr u8 n -- n n n n )
+: SLT-RUN-CORE ( ptr u8 n -- n n n )
    LINT-FALSE SLT-CORE-SETUP
    SIGNATURE-LINT-FILE
    SLT-CORE-FINISH ;
 
-: SLT-RUN-CORE-JSON ( ptr u8 n -- n n n n )
+: SLT-RUN-CORE-JSON ( ptr u8 n -- n n n )
    LINT-TRUE SLT-CORE-SETUP
    SIGNATURE-LINT-FILE
    SLT-CORE-FINISH ;
 
-: SLT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n n )
+: SLT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n )
    {: a:ptr u:n :}
    LINT-TRUE SLT-CORE-SETUP
    a u s" <stdin>" SIGNATURE-LINT-FILE-AS
    SLT-CORE-FINISH ;
 
-: SLT-EXPECT-EXIT ( n n n n n -- n n ) {: outu:n erru:n kind:n code:n expect:n :}
-   kind PROC-OUTCOME-EXIT T=
+: SLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 

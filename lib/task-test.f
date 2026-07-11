@@ -6,6 +6,7 @@ require lib/test.f
 require lib/process.f
 require lib/process-argv.f
 require lib/task.f
+require lib/test/outcome.f
 
 package TASK-TEST
 
@@ -259,24 +260,20 @@ variable APP-BAD
    s" TASK-THROW-WAIT" SB-APPEND TASK-LF
    SB$ ;
 
-: TASK-RUN-STDIN ( ptr u8 n -- len len n n ) {: src:ptr srcu:n :}
+: TASK-RUN-STDIN ( ptr u8 n -- len len outcome ) {: src:ptr srcu:n :}
    PROC-ARGV-RESET
    s" bin/hb" >LEN src srcu >LEN
    TASK-OUT TASK-CAP >LEN TASK-ERR TASK-CAP >LEN
    TASK-CAPTURE-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : TASK-TEST-LIVE-COMPILE-GUARD ( -- )
-   TASK-LIVE-COMPILE$ TASK-RUN-STDIN {: outu:len erru:len kind:n code:n :}
+   TASK-LIVE-COMPILE$ TASK-RUN-STDIN TASK-LIVE-RC T-OUTCOME-EXITED= {: outu:len erru:len :}
    outu LEN>N 0 T=
-   TASK-ERR erru LEN>N s" variable" T$=
-   kind PROC-OUTCOME-EXIT T=
-   code TASK-LIVE-RC T= ;
+   TASK-ERR erru LEN>N s" variable" T$= ;
 
 : TASK-EXPECT-FAIL ( ptr u8 n n ptr u8 n -- ) {: src:ptr srcu:n want:n needle:ptr needleu:n :}
-   src srcu TASK-RUN-STDIN {: outu:len erru:len kind:n code:n :}
+   src srcu TASK-RUN-STDIN want T-OUTCOME-EXITED= {: outu:len erru:len :}
    outu LEN>N 0 T=
-   kind PROC-OUTCOME-EXIT T=
-   code want T=
    TASK-ERR erru LEN>N needle needleu CONTAINS? TTRUE ;
 
 : TASK-TEST-WORKER-DIE ( -- )

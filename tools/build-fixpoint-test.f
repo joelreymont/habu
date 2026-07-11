@@ -671,7 +671,7 @@ create BFT-CHECK-OFF-LINE
    s" hb-doctored" BF-CHMOD-X-TMP ;
 
 variable BFT-DOC-ERR-U
-variable BFT-DOC-KIND
+variable BFT-DOC-EXITED
 variable BFT-DOC-CODE
 
 : BFT-DOC-ERR$ ( -- ptr u8 n )
@@ -687,14 +687,19 @@ variable BFT-DOC-CODE
    PROC-ARGV-RESET
    s" hb-doctored" BF-A$ >LEN  BFT-EMPTY$ >LEN
    BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: ou:len eu:len kind:n code:n :}
-   eu LEN>N BFT-DOC-ERR-U !  kind BFT-DOC-KIND !  code BFT-DOC-CODE !
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF BFT-DOC-CODE ! 0 0= BFT-DOC-EXITED ! ENDOF
+     signaled OF BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+     timeout OF 0 BFT-DOC-CODE ! 0 0= 0= BFT-DOC-EXITED ! ENDOF
+   ;MATCH {: ou:len eu:len :}
+   eu LEN>N BFT-DOC-ERR-U !
    orig off BFT-BYTE! ;
 
 \ A labeled fatal exit: process EXITed with the contract code and its stderr
 \ carries the named diagnostic (proves the exit is no longer a bare rc-only).
 : BFT-ASSERT-SNAP-EXIT ( n ptr u8 n -- ) {: code:n msg:ptr msgu:n :}
-   BFT-DOC-KIND @ PROC-OUTCOME-EXIT T=
+   BFT-DOC-EXITED @ TTRUE
    BFT-DOC-CODE @ code T=
    BFT-DOC-ERR$ msg msgu CONTAINS? TTRUE ;
 
@@ -728,7 +733,7 @@ variable BFT-DOC-CODE
 \ the sbufull split) also fails this assertion.
 $1A0000 constant BFT-SRCFULL-SZ   \ 1703936 > IBUFSZ 1572864: guarantees the read overflow
 
-variable BFT-OVF-KIND
+variable BFT-OVF-EXITED
 variable BFT-OVF-CODE
 variable BFT-OVF-ERR-U
 
@@ -744,14 +749,19 @@ variable BFT-OVF-ERR-U
    s" bft-srcfull.f" BF-A$ >LEN PROC-ARGV+
    s" bin/hb" >LEN  BFT-EMPTY$ >LEN
    BFT-OUT BFT-CAPTURE-CAP >LEN  BFT-ERR BFT-CAPTURE-CAP >LEN  BFT-TIMEOUT-MS >MS
-   RUN-ARGV-STDIN-CAPTURE-OUTCOME {: ou:len eu:len kind:n code:n :}
-   eu LEN>N BFT-OVF-ERR-U !  kind BFT-OVF-KIND !  code BFT-OVF-CODE ! ;
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   MATCH outcome
+     exited OF BFT-OVF-CODE ! 0 0= BFT-OVF-EXITED ! ENDOF
+     signaled OF BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
+     timeout OF 0 BFT-OVF-CODE ! 0 0= 0= BFT-OVF-EXITED ! ENDOF
+   ;MATCH {: ou:len eu:len :}
+   eu LEN>N BFT-OVF-ERR-U ! ;
 
 : BFT-TEST-SOURCE-OVERFLOW ( -- )
    BFT-ROOT BF-TMP!
    BFT-SRCFULL-WRITE
    BFT-SRCFULL-RUN
-   BFT-OVF-KIND @ PROC-OUTCOME-EXIT T=
+   BFT-OVF-EXITED @ TTRUE
    BFT-OVF-CODE @ 74 T=
    BFT-OVF-ERR$ s" hb: source prefix buffer full" CONTAINS? TTRUE
    BF-TMP-RESET ;

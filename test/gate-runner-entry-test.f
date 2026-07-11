@@ -40,7 +40,7 @@ create GRE-EMPTY 1 allot             \ zero-length stdin
 
 variable GRE-OUT-U
 variable GRE-ERR-U
-variable GRE-KIND
+variable GRE-EXITED                 \ bool: child completed by exit
 variable GRE-RC
 
 \ Resolve the child engine: gate default env HABU_UNDER_TEST -> the freshly
@@ -52,9 +52,13 @@ variable GRE-RC
       2drop s" bin/hb" exit
    then ;
 
-: GRE-STORE! ( len len n n -- ) {: outu:len erru:len kind:n code:n :}
-   kind GRE-KIND !  code GRE-RC !
-   erru LEN>N GRE-ERR-U !  outu LEN>N GRE-OUT-U ! ;
+: GRE-STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF GRE-RC ! 0 0= GRE-EXITED ! ENDOF
+     signaled OF GRE-RC ! 0 0= 0= GRE-EXITED ! ENDOF
+     timeout OF 0 GRE-RC ! 0 0= 0= GRE-EXITED ! ENDOF
+   ;MATCH
+   LEN>N GRE-ERR-U !  LEN>N GRE-OUT-U ! ;
 
 \ Spawn `<hb> --load test/gate-runner-support.f test/gate-runner-entry.f -- <phase>`
 \ with empty stdin and capture the exit outcome.
@@ -76,7 +80,7 @@ variable GRE-RC
 \ code, and the banner naming both source files (so a truncated banner or a
 \ different die site does not pass).
 : GRE-ASSERT-USAGE ( -- )
-   GRE-KIND @ PROC-OUTCOME-EXIT T=
+   GRE-EXITED @ TTRUE
    GRE-RC @ GRE-USAGE-RC T=
    GRE-ERR$ s" usage: bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f" CONTAINS? TTRUE ;
 
