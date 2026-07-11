@@ -154,6 +154,8 @@ TEST:SUITE maki/onnx/proto-test.f
 TEST:;SUITE
 TEST:SUITE maki/onnx/import-test.f
 TEST:;SUITE
+TEST:SUITE maki/onnx/deploy-test.f
+TEST:;SUITE
 TEST:SUITE maki/eval-test.f
 TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
