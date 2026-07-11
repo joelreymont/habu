@@ -2,7 +2,13 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
+
+- **Describe bootstrap parity at the implementation boundary:** when the
+  Gforth recovery host mirrors pass-2 lowering, calling parity merely
+  behavioral or claiming there is no mirror contradicts the code. Name the
+  mirrored lookup, validation, and emitter surfaces and prove the recovered
+  compiler with the same focused fixtures.
 
 - **Nested family payloads have two widths:** an SC-APP is one schema root but
   occupies the referenced family's full physical `WIDTH`. Sum padding,

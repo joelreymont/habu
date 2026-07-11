@@ -1412,10 +1412,11 @@ rejections, and W=2/W=3/W=4 memory values. `test/layout-buffer.f` pins the
 generative storage boundary, raw-pointer rejection, bounds, stride, zero image,
 and transactional allocation. `test/type-layout-lower-pending.f`
 pins exact store/fetch instruction sequences and constructor-produced runtime
-round trips. Recovery-chain parity is behavioral: the reduced Gforth seed builds
-the current native source, whose recovered `hb-stdin` passed both suites plus
-compiler dispatch, bootstrap codegen, signature-scan emitter, and seal-absence
-tests. The seed does not duplicate `LP2STORE` as a second implementation.
+round trips. Recovery-chain parity includes the Gforth host mirror in
+`bootstrap/cg/forth.fs`: its pass-2 width lookup, typed-fetch validator, and
+wide store/fetch emitters build the current native source. The recovered
+`hb-stdin` passes both suites plus compiler dispatch, bootstrap codegen,
+signature-scan emitter, and seal-absence tests.
 
 ---
 
