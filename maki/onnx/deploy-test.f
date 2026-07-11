@@ -155,9 +155,14 @@ variable ODT-VA  variable ODT-VU
 
 \ exactly-one: the needle occurs once (find it, then prove no second occurrence)
 : ODT-ONCE? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
-   ha hu na nu FIND-SUB {: i1:n :}
-   i1 0 < if false exit then
-   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB 0 < ;
+   ha hu na nu FIND-SUB MATCH option
+     none OF false exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: i1:n :}
+   ha i1 + nu +  hu i1 - nu -  na nu FIND-SUB MATCH option
+     none OF true ENDOF
+     some OF drop false ENDOF
+   ;MATCH ;
 : ODT-ONCE ( ptr u8 n -- )  ODT$ 2swap ODT-ONCE? TTRUE ;
 
 : ODT-CAP-MM  ( -- )  PTX-CAPTURE-ON  0 MAKI:LMM-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;

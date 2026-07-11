@@ -1251,6 +1251,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
 1	ffi	lib/ffi.f	word	FFI:DEFINE	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	qualified package entry for generating a checked role-typed FFI binding
 1	ffi	lib/ffi.f	word	FFI:	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	global syntax alias for generating a checked role-typed FFI binding
+1	fmath	lib/fmath.f	module			lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	shared transcendental exp core by in-Habu range reduction
+1	fmath	lib/fmath.f	word	FROUND	(r -- n)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	round a float to the nearest integer
+1	fmath	lib/fmath.f	word	F2^N	(n -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	two raised to a signed integer power
+1	fmath	lib/fmath.f	word	FEXP-POLY	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	degree-limited polynomial core for exp on the reduced range
+1	fmath	lib/fmath.f	word	FEXP-K	(r n -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	exp of x given its precomputed k = round(x/ln2)
+1	fmath	lib/fmath.f	word	FEXP	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	exponential of a float by range reduction
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range
