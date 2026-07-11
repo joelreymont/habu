@@ -45,6 +45,7 @@ require lib/ffi-abi.f
 -5047 constant E-TV-PLAN-STATE  \ plan builder used out of order
 \ -5048 (E-TV-OPKIND) retired: PLAN-OP-BEGIN takes an `opkind` family, so an
 \ out-of-range op-kind is a checker reject; the code stays reserved to tensor-value.
+-5049 constant E-TV-ALIGN       \ AL-* code out of the align domain (>ALIGN parse boundary)
 
 package MAKI
 public
@@ -52,10 +53,13 @@ public
 \ ---- layout tags (v1: contiguity order only; strides arrive with cad-1) ----
 \ The `layout` ENUM is the semantic type carried through construction, storage,
 \ and every consumer (dot habu-cad-adt-swap, corrected plan). LAY-* codes remain
-\ ONLY as the wire/hash vocabulary at the named boundaries below.
+\ ONLY as the wire/hash vocabulary at the named boundaries below. DERIVE eq
+\ generates MAKI-LAYOUT:EQ ( layout layout -- bool ) (derive S1) so layout can be
+\ an enum FIELD of the DERIVE-eq SKEY product (dot habu-cad-adt-swap); zero
+\ behavior change.
 0 constant LAY-ROW              \ row-major / C-contiguous
 1 constant LAY-COL             \ column-major
-ENUM layout
+ENUM layout DERIVE eq
   row
   col
 ;ENUM
@@ -82,14 +86,17 @@ ENUM layout
 \ The `align` ENUM is the semantic type; AL-* codes remain ONLY for the ordinal
 \ min-fold + key render inside sched-key (alignment classes are intrinsically
 \ ordered: AL-UNKNOWN < .. < AL-16, and ALIGN>N preserves that order) and for
-\ wire/test assertions. Bare-digit variant tails reject, so a4/a8/a16.
+\ wire/test assertions. Bare-digit variant tails reject, so a4/a8/a16. DERIVE eq
+\ generates MAKI-ALIGN:EQ ( align align -- bool ) (derive S1) so align can be an
+\ enum FIELD of the DERIVE-eq SKEY product (dot habu-cad-adt-swap); zero behavior
+\ change. >ALIGN (below) lifts a validated AL-* code back to the family.
 0 constant AL-UNKNOWN          \ conservative: not measured (descriptors)
 1 constant AL-BYTE             \ measured: < 4-byte aligned
 2 constant AL-4                \ measured: 4-byte aligned
 3 constant AL-8                \ measured: 8-byte aligned
 4 constant AL-16               \ measured: 16-byte aligned
 5 constant AL-N                \ range bound (wire codes)
-ENUM align
+ENUM align DERIVE eq
   unknown
   byte
   a4
@@ -114,6 +121,19 @@ ENUM align
       a8      OF false ENDOF
       a16     OF false ENDOF
    ;MATCH ;
+
+\ named parse boundary (the inverse of ALIGN>N): lift a validated AL-* ordinal
+\ back into the align family, fail closed on an out-of-domain code. sched-key's
+\ REGION-ALIGN min-folds ALIGN>N ordinals and lifts the result here for the SKEY
+\ product's align field (dot habu-cad-adt-swap). The throw is defensive: the fold
+\ only ever produces AL-UNKNOWN..AL-16, so a bad code is unreachable at runtime.
+: >ALIGN ( n -- align )
+   dup AL-UNKNOWN = if drop MAKI-ALIGN:UNKNOWN exit then
+   dup AL-BYTE    = if drop MAKI-ALIGN:BYTE    exit then
+   dup AL-4       = if drop MAKI-ALIGN:A4      exit then
+   dup AL-8       = if drop MAKI-ALIGN:A8      exit then
+   AL-16 = if MAKI-ALIGN:A16 exit then
+   E-TV-ALIGN throw ;
 
 end-package
 

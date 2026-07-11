@@ -18,9 +18,12 @@ public
 \ as the wire/hash vocabulary crossed at the named boundaries below; no internal
 \ API takes or returns a raw dtype code. Variant tails are df-prefixed (`f32` is
 \ a reserved variant tail); DT-KEY renders the wire strings "f32".."i32".
+\ DERIVE eq generates the typed identity compare MAKI-DTYPE:EQ ( dtype dtype --
+\ bool ) (derive S1) so dtype can be an enum FIELD of a DERIVE-eq PRODUCT (the
+\ SKEY schedule key, dot habu-cad-adt-swap); zero behavior change to the codes.
 0 constant DT-F32   1 constant DT-F16   2 constant DT-BF16
 3 constant DT-U32   4 constant DT-I32
-ENUM dtype
+ENUM dtype DERIVE eq
   df32
   df16
   dbf16

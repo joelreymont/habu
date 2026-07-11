@@ -17,7 +17,16 @@
 \
 \ Shape class (section 7.4): each extent <= 64 is rendered exactly; a larger extent
 \ becomes a power-of-two bucket plus a tail flag ("p128+t" when it is not itself a
-\ power of two, "p128" when it is); an unbound extent (0) renders "?".
+\ power of two, "p128" when it is); an unbound extent (0) renders "?". The shape
+\ class is a typed `dimclass` (exact/pow2/pow2-tail/unbound) + a magnitude, encoded
+\ once by DIM>CLASS and shared by both the render and the typed key below.
+\
+\ Typed key (dot habu-cad-adt-swap): SK-KEY builds the same eight facts as a typed
+\ `skey` PRODUCT (dimclass/dtype/layout/align enum fields), so a semantic-field role
+\ swap at construction is a CHECKER reject, and MAKI-SKEY:EQ is the typed identity.
+\ SK-KEY$ stays the ONE durable render; the in-memory replay table keys on that
+\ render (STR=), a documented durable-text boundary (see the replay-table note) - a
+\ typed-column table awaits the W>1 typed store (habu-checker-capability-typed S2).
 \
 \ Alignment class: the most conservative model-input alignment the region reads
 \ (AL-16 when it reads no model input - compiler-allocated buffers are aligned by
@@ -48,6 +57,50 @@ require maki/schedule.f
 -5086 constant E-SK-FULL       \ replay table / key arena capacity exceeded
 
 package MAKI
+public
+
+\ ---- typed schedule key: the shape-class family + the SKEY product record ----
+\ `dimclass` classifies one tensor extent exactly the way the rendered shape
+\ class does (dot habu-cad-adt-swap): an exact extent (<=64), a power-of-two
+\ bucket, a pow2 bucket with a non-pow2 tail, or an unbound (0) extent. Encoded
+\ as (dimclass, magnitude n) it has EXACTLY the rendered-text identity - proven
+\ field-eq == text-eq across the bucket-domain boundaries in sched-key-test.f.
+\ DERIVE eq generates MAKI-DIMCLASS:EQ so it can be an enum FIELD of `skey`.
+\ Magnitude convention (paired n): exact = the exact extent (<=64); pow2 /
+\ pow2-tail = the NEXT-POW2 bucket (extent >64, exactly a pow2 vs with a tail);
+\ unbound = 0. (Inline `\` notes inside an ENUM block are a parse error.)
+ENUM dimclass DERIVE eq
+  exact
+  pow2
+  pow2-tail
+  unbound
+;ENUM
+
+\ `skey` is the section-7.4 schedule key as a typed record: region signature
+\ hash, the two shape-class dims, and the representative node's dtype / layout /
+\ alignment - every semantically distinct field carries its own family, so a
+\ dtype/layout (or any enum-field) role swap at construction is a CHECKER reject
+\ (the semantic-role hole the string key left open). DERIVE eq gives the typed
+\ identity MAKI-SKEY:EQ; every enum field family also derives eq (else the
+\ declaration throws). target / engine / ptxas are per-process invariants (one
+\ target, one engine build, one ptxas per running process): the in-memory key
+\ never spans them, so they live in the DURABLE render (SK-KEY$) ONLY and are not
+\ product fields. The persistent schedules.rows store stays keyed by that render
+\ (see the SK-GET/SK-PUT boundary note below). Fields (slot order, deepest first):
+\ rsig = FNV-1a region signature (n); rk/rm = representative rows class+magnitude;
+\ ck/cm = representative cols class+magnitude; dt/lay = representative dtype/layout;
+\ al = region alignment class. (Inline `\` notes inside a PRODUCT block reject.)
+PRODUCT skey 0 DERIVE eq
+  FIELD rsig n
+  FIELD rk dimclass
+  FIELD rm n
+  FIELD ck dimclass
+  FIELD cm n
+  FIELD dt dtype
+  FIELD lay layout
+  FIELD al align
+;PRODUCT
+
 private
 
 \ ---- FNV-1a 64-bit content hash over the region's node facts ----------------
@@ -81,11 +134,28 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
    16 0 ?do  v  15 i - 4 * rshift HEX-NIB SB-APPEND-C  loop ;
 
 \ ---- shape class (exact <= 64, else pow2 bucket + tail flag, ? for unbound) --
-: DIM-CLASS+ ( n -- ) {: e:n :}
-   e 0= if s" ?" SB-APPEND exit then
-   e 64 <= if e SB-INT exit then
-   $70 SB-APPEND-C  e NEXT-POW2 SB-INT
-   e POW2? 0= if s" +t" SB-APPEND then ;
+\ DIM>CLASS is the canonical encoder (extent -> typed class + magnitude); it is
+\ the SINGLE source that both SK-KEY (the typed product) and DIM-CLASS+ (the
+\ durable render) classify through, so field-eq and text-eq can never diverge.
+\ DIM>CLASS is public: it is the shape classifier the typed key and the tests
+\ share (the field-eq == text-eq contract is pinned over it).
+public
+: DIM>CLASS ( e -- dimclass n )                 \ extent -> (class, magnitude)
+   dup 0=    if drop MAKI-DIMCLASS:UNBOUND 0 exit then
+   dup 64 <= if MAKI-DIMCLASS:EXACT swap exit then
+   dup POW2? if NEXT-POW2 MAKI-DIMCLASS:POW2 swap exit then
+   NEXT-POW2 MAKI-DIMCLASS:POW2-TAIL swap ;
+private
+
+: DIMCLASS+ ( dimclass n -- ) {: m:n :}         \ append one dim's class text to SB
+   MATCH dimclass
+      exact     OF m SB-INT ENDOF
+      pow2      OF $70 SB-APPEND-C m SB-INT ENDOF
+      pow2-tail OF $70 SB-APPEND-C m SB-INT s" +t" SB-APPEND ENDOF
+      unbound   OF s" ?" SB-APPEND ENDOF
+   ;MATCH ;
+
+: DIM-CLASS+ ( n -- )  DIM>CLASS DIMCLASS+ ;    \ render one dim through the typed class
 
 : SHAPE-CLASS+ ( n n -- ) {: rows:n cols:n :}
    rows DIM-CLASS+  $78 SB-APPEND-C  cols DIM-CLASS+ ;
@@ -157,9 +227,45 @@ public
 
 : SK-KEY$ ( n -- ptr u8 n )  SK-REGION-CK SB-RESET SK-KEY+ SB$ ;
 
+\ ---- the typed section-7.4 key (the durable render's semantic twin) ----------
+\ SK-KEY builds the same eight facts SK-KEY+ renders, but as a typed `skey`
+\ record: the dims through the shared DIM>CLASS encoder, dtype/layout straight
+\ off the typed MIR accessors, alignment lifted from REGION-ALIGN's ordinal
+\ min-fold through >ALIGN. Assembly is positional and typed, so a dtype/layout
+\ (or any enum-field) role swap is a checker reject. The families ride the stack
+\ into MAKE (they cannot bind into locals); only the region ids are locals.
+\ MAKI-SKEY:EQ over two SK-KEY values is the typed identity the durable string
+\ key serializes (field-eq == SK-KEY$ text-eq, pinned in sched-key-test.f).
+: SK-KEY ( n -- skey ) {: r:n :}
+   r SK-REGION-CK drop
+   r REGION-REP {: rep:n :}
+   r RSIG
+   rep MIR-ROWS@ DIM>CLASS
+   rep MIR-COLS@ DIM>CLASS
+   rep MIR-DT@
+   rep MIR-LAY@
+   r REGION-ALIGN >ALIGN
+   MAKI-SKEY:MAKE ;
+
 private
 
 \ ---- replay table (cad-5 store seam: in-memory key -> selection) -------------
+\ DURABLE-TEXT BOUNDARY (dot habu-cad-adt-swap). This in-memory table keys on the
+\ canonical SK-KEY$ RENDER (interned bytes, STR=), NOT on the typed `skey` record,
+\ and that is deliberate: the durable store maki/store.f (schedules.rows) is a
+\ persistent, line-oriented TEXT file that outlives the IR, and the rehydration
+\ path maki/store-replay.f STORE-REPLAY-LOAD replays it back through this table by
+\ feeding SCHED-LOAD's callback ONLY the stored key TEXT (store-replay-test.f even
+\ replays synthetic "sk<n>" keys that were never region keys). There are no region
+\ facts at load time, so a text key cannot be re-keyed into a `skey`, and writing a
+\ text->product parser is explicitly out of scope. The typed key still closes the
+\ semantic-role hole where it matters - at CONSTRUCTION (SK-KEY assembles typed
+\ fields; a role swap is a checker reject) - and SK-KEY$ is an injective encoding
+\ of the typed key (field-eq == text-eq, pinned in sched-key-test.f), so STR= over
+\ the render decides exactly what MAKI-SKEY:EQ would. Migrating this table to
+\ parallel typed columns keyed by MAKI-SKEY:EQ waits on the W>1 typed-column store
+\ (dot habu-checker-capability-typed-a480c423 S2); until then the table stays
+\ text-keyed as the durable store's in-memory mirror.
 32   constant SK-TAB-CAP
 $1000 constant SK-ARENA-CAP
 create SK-ARENA SK-ARENA-CAP allot   variable SK-ARENA-U
