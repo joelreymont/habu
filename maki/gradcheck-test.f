@@ -95,6 +95,22 @@ GC-RUN V-PASS T=
 MODEL: GC-GA ( x:4x2 idx:3x1 -- y ) GATHER ;
 GC-RUN V-PASS T=
 
+\ ---- PASS: composite transformer-block gradchecks (transformer-block coverage) ---
+\ RESIDUAL / skip: y = GELU(x) + x. x FANS OUT (into GELU and the residual add), so the
+\ backward SUMS its two cotangents via an emitted OP-ADD; this is the only host gradcheck
+\ that numerically FD-verifies that fan-out cotangent summation end-to-end.
+MODEL: GC-RES ( x:4x8 -- y ) GELU x RESIDUAL-ADD ;
+GC-RUN V-PASS T=
+\ ATTENTION block: O = softmax(Q @ Kt * s) @ V, composed from covered ops (matmul, scale,
+\ softmax-row, matmul). K is supplied pre-transposed (kt:DxL) because the single running
+\ value MODEL: DSL cannot express an internal Q @ K^T (a transpose of a non-running input;
+\ tracked for a DSL A@B^T / input-transpose capability). The backward still emits the matmul
+\ transpose adjoints, softmax-row-bwd, and the scale factor's fullsum-dot, so the whole
+\ block's VJP (dQ/dKt/ds/dV) is gradchecked against central finite differences.
+MODEL: GC-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL ;
+GC-RUN V-PASS T=
+s" host: 4 input(s) gradchecked" GCT-REASON-IN
+
 \ ---- NOT-RUN: only cast remains (non-differentiable) ------------------------
 MODEL: GC-CAST ( x:2x2 -- y ) CAST ;
 GC-RUN V-NOTRUN T=
