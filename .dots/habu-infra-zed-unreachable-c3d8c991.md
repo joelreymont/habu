@@ -22,6 +22,14 @@ checker ablation load, gpu cluster w/ saxpy.cubin prereq + goldens, smoke gate
 leg). All files host-compile clean under qualified names; only device legs
 remain.
 
+PENDING-ZED ADDITION 2026-07-11 (autograd orchestration audit): the maki
+tensor-op -> PTX-primitive-VJP LOWERING - each maki op's backward emitted as a
+real device kernel and device-gradchecked, tying maki/adjoint.f adjoints to the
+lib/ptx VJP surface (maki/autograd.f:5-8 marks it "later"; epic note in
+habu-epic-maki-autograd marks device parity pending-zed). This is the C-vs-D
+device seam; host side is complete (dot habu-maki-autograd-orchestration closed
+with evidence 2026-07-11).
+
 PENDING-ZED ADDITION 2026-07-11 (ad-dag broadened op set, fable d4668e98): the
 AD DAG gained OP-MUL (`*.`, row x row via EMIT-MUL) and OP-ADD (`+.`, row x row
 via EMIT-ADD) with host-gradchecked VJPs (lib/ptx/ad-dag-eval-test.f proves the
