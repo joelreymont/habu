@@ -202,7 +202,7 @@ create CRHT-ERR CRHT-BUF-CAP allot
    s" expected exit: " type expect . cr
    s" outcome: " type kind CRHT-OUTCOME.
    s"  code: " type code . cr
-   s" rc: " type kind code PROC-OUTCOME>RC RC>N dup .
+   s" rc: " type kind code PROC-PAIR>RC RC>N dup .
    s" (" type CRHT-RC-NAME. s" )" type cr
    s" stdout bytes: " type outu . s" / " type CRHT-BUF-CAP . cr
    s" stderr bytes: " type erru . s" / " type CRHT-BUF-CAP . cr

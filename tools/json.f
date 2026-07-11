@@ -1,6 +1,8 @@
 \ json.f - bounded JSON/JSONL parser and compact writer for Habu tools.
 \ Load after lib/errors.f and lib/memory.f. Parser failures throw named JSON errors.
 
+require lib/adt/result.f                 \ result<root,code> for JSON-PARSE-TRY (switchover wave C)
+
 -7100 constant E-JSON-SYNTAX
 -7101 constant E-JSON-CAPACITY
 -7102 constant E-JSON-TYPE
@@ -101,8 +103,6 @@ variable JSON-PARSE-TRY-ROOT
 1 constant JSONL-ROW-BLANK
 2 constant JSONL-ROW-ERROR
 3 constant JSONL-ROW-EOF
-0 constant JSON-PARSE-OK
-1 constant JSON-PARSE-THROW
 : JSON-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
 
@@ -652,11 +652,11 @@ variable JSON-PARSE-TRY-ROOT
    JSON-I @ JSON-U @ <> IF s" json: trailing data" JSON-SYNTAX THEN
    JSON-VN @ ;
 
-: JSON-PARSE-TRY ( ptr u8 i64 -- i64 i64 i64 )
+: JSON-PARSE-TRY ( ptr u8 i64 -- result<i64,i64> )   \ ok = root node, err = the caught throw code
    [: 2dup JSON-PARSE JSON-PARSE-TRY-ROOT ! ;] catch {: code :}
    2drop
-   code 0= IF JSON-PARSE-TRY-ROOT @ JSON-PARSE-OK 0 exit THEN
-   -1 JSON-PARSE-THROW code ;
+   code 0= IF JSON-PARSE-TRY-ROOT @ RESULT:OK exit THEN
+   code RESULT:ERR ;
 
 : JSON-KIND ( i64 -- i64 ) J-KIND@ ;
 : JSON-COUNT ( i64 -- i64 ) J-COUNT@ ;
@@ -908,15 +908,14 @@ variable JSON-PARSE-TRY-ROOT
 : JSONL-PARSE-LINE ( -- i64 )
    JSONL-LA@ JSONL-LU @ JSON-PARSE ;
 
-: JSONL-PARSE-TRY ( -- i64 i64 i64 )
+: JSONL-PARSE-TRY ( -- result<i64,i64> )   \ ok = root node, err = the caught throw code
    JSONL-LA@ JSONL-LU @ JSON-PARSE-TRY ;
 
 : JSONL-PARSE-ROW ( -- i64 i64 i64 bool )
-   JSONL-PARSE-TRY JSON-TMP ! JSON-TMP2 ! JSONL-ROOT !
-   JSON-TMP2 @ JSON-PARSE-OK = IF
-      JSONL-ROOT @ JSONL-ROW-JSON JSON-TMP @ JSONL-TRUE exit
-   THEN
-   JSONL-ROOT @ JSONL-ROW-ERROR JSON-TMP @ JSONL-TRUE ;
+   JSONL-PARSE-TRY MATCH result
+     ok  OF JSONL-ROW-JSON 0 JSONL-TRUE ENDOF               \ ( root rowkind 0 true )
+     err OF -1 JSONL-ROW-ERROR rot JSONL-TRUE ENDOF          \ ( -1 rowkind code true )
+   ;MATCH ;
 
 : JSONL-NEXT-ROW ( -- i64 i64 i64 bool )
    JSONL-TAKE-LINE 0= IF

@@ -259,3 +259,95 @@ tools/typed-local-diff-lint-core.f:179, tools/codegen-role.f:129,
 tools/imagedisasm.f:98, tools/trusted-inventory.f:697, lib/string-test.f,
 lib/test/budget.f:30, lib/ptx/header.f:28, lib/float.f:86. When the cross-lane
 slot opens, STR>NUMBER? → option<n> and STR>NUMBER-UNWRAP is DELETED with it.
+
+## BATCH 3 — LANDED (FIND-EXECUTABLE cluster, imgdump, imagedisasm)
+
+1. FIND-EXECUTABLE cluster (lib/process-env.f), one commit: `PROC-TRY-PATH-SEG` /
+   `FIND-EXECUTABLE-IN-PATH` / `FIND-EXECUTABLE` `( … -- len bool )` →
+   `( … -- option<len> )`, chained in-file (IN-PATH's loop re-wraps the SEG hit:
+   `some OF OPTION:SOME exit ENDOF` — the unwrap/rewrap shape, since an option
+   can't pass through a MATCH untouched). `RESOLVE-EXECUTABLE ( … -- len )` sig
+   unchanged (none → E-PROC-PATH throw). Test wrapper PET-FIND>N now flattens the
+   option; hb/direct/missing + resolve-missing cases cover both branches. 3
+   manifest rows + docs/stdlib.md. process-env.f gained require option.f (already
+   a TR-GATE-HARNESS-FILES member — no run-files.f edit).
+2. imgdump parsers (tools/imgdump.f): `IMG-HEX-DIGIT?` / `DEC-DIGIT?` /
+   `PARSE-HEX` / `PARSE-DEC` / `IMG>NUMBER?` → option<n>; PC-ARG usage-dies on
+   none. HEX-BODY stays (multi-value slice → wave B). tools/ = manifest-exempt.
+   Direct both-branch tests IDT-TEST-PARSERS ($ff/0x10/42 some; $zz/4x2/empty none).
+3. imagedisasm parsers (tools/imagedisasm.f): `IMGD-HEX-DIGIT` / `IMGD-HEX-STEP`
+   (overflow → NONE) / `IMGD-PARSE-HEX` / `IMGD>NUMBER?` → option<n>;
+   IMGD-POS-NUM usage-dies on none. IMGD-HEX-BODY stays (wave B). NEW adapter
+   `STR>OPTION ( n bool -- option<n> )` in lib/string.f (manifest row, active) —
+   the INVERSE of STR>NUMBER-UNWRAP, lifting the blocked STR>NUMBER? boundary
+   into option for migrated consumers; BOTH adapters die together when the
+   cross-lane STR>NUMBER? slice lands. Direct both-branch tests IMDT-TEST-PARSERS
+   (incl. hex-overflow → none) + STR>OPTION cases in string-test.
+
+Skips honored: MAP-INDEX/PROBE (wave-C worker in map.f), gate-json-assert* +
+trusted-inventory parser (deferred solo slices), src/core + TFAM-13 files, maki/*.
+
+## SOLO SLICE — LANDED (tools/trusted-inventory.f PARSE-COUNT)
+
+`PARSE-COUNT ( ptr u8 n -- n bool )` → `( ptr u8 n -- option<n> )`: SOME ratchet
+count >= 1, NONE on unparsable or < 1. Body lifts the blocked STR>NUMBER?
+boundary via STR>OPTION then MATCHes (the adapter's intended use). ONE caller,
+CROW-PARSE's 4-token row arm: `0= if drop LINT-FALSE exit then {: cnt:n :}` →
+`MATCH option none OF LINT-FALSE exit ENDOF some OF ENDOF ;MATCH {: cnt:n :}`.
+tools/ manifest-exempt (verified — no rows). require lib/adt/option.f added.
+STRICT-MODE IDENTITY PROVEN: migrated vs master tool run on the SAME live tree —
+`-- strict` and default-report outputs BYTE-IDENTICAL, both exit 0; reject paths
+covered by new PARSE-CLASSES$ fixtures (4-token row with count 0 → reject, count
+abc → reject, count 2 → accept) plus the existing ratchet GREW/STALE/UNSET cases.
+NO behavior drift, NO new trust rows.
+
+## AUDIT — MAP-INDEX / MAP-PROBE: CENSUS CORRECTED, NOT FINDERS (no migration)
+
+Census §1a listed `lib/map.f MAP-INDEX / MAP-PROBE` under "-1-means-missing index
+returns". AUDIT VERDICT: NEITHER is a finder; both are TOTAL index-arithmetic
+words that always return a valid `idx` — there is no absence signal to lift into
+option<idx>.
+
+- `MAP-INDEX ( n count -- idx )` normalizes ANY hash (including negative) into
+  [0, cap): `hash cap mod dup 0 < if cap + then >IDX`, after MAP-CHECK-CAP
+  (throws on a bad cap). PROOF the census misread it: lib/map-test.f:378
+  `-1 MT-CAP MT-MAP-INDEX MT-CAP 1 - MT=` — the `-1` in the sweep hits is an
+  INPUT hash (mapped to cap-1), not a missing-result output.
+- `MAP-PROBE ( n count count -- idx )` is pure wrap-around arithmetic
+  (base + step mod cap); MT-RANGE asserts membership in [0, cap) for every case.
+  No flag, no -1 output.
+
+The REAL sentinels in the map cluster, and where they belong:
+- The `free` memo threaded through MAP-LOCATE / MAP-LOCATE-SLOT /
+  MAP-REMEMBER-FREE (`-1` = "no free slot remembered yet") is a LOOP-INTERNAL
+  CURSOR (HM-PROBE class): it never crosses a public boundary as absence —
+  MAP-LOCATE resolves it into the `loc` verdict, and MAP-LOCATE's only external
+  user is the map-test wrapper. Rejected for option, same reasoning as HM-PROBE.
+- The `loc` verdict `MAP-LOC-FULL/FREE/FOUND` (0/1/2 constants) is a genuine
+  THREE-way outcome — option<idx> cannot express it (MAP-SET at map.f:253 needs
+  FREE vs FULL distinguished after not-FOUND). That is WAVE-C block-ENUM
+  territory, exactly parallel to the slot-state ENUM the wave-C worker just
+  landed (map.f:194-206 MATCHes slot-state). RECOMMENDATION for wave C: `ENUM
+  map-loc full free found ;ENUM`, MATCH in MAP-GET/SET/DELETE, retiring the
+  three constants and the `ix -1` placeholder that rides with FULL.
+
+Wave-A census scoreboard for the map cluster: MAP-GET migrated (slice 3);
+MAP-INDEX/MAP-PROBE reclassified total-arithmetic (this audit); free-memo
+reclassified loop-cursor; MAP-LOC-* handed to wave C.
+
+## SOLO SLICE — LANDED (tools/gate-json-assert-core.f GJA-U?)
+
+`GJA-U? ( ptr u8 n -- n bool )` → `( ptr u8 n -- option<n> )`: SOME parsed
+unsigned decimal, NONE on empty or a non-digit byte. ONE consumer (in-file),
+`GJA-INT`'s integer-field assert: `0= IF drop s" invalid JSON integer" GJA-FAIL
+THEN` → `MATCH option none OF … GJA-FAIL ENDOF some OF ENDOF ;MATCH` (GJA-FAIL
+dies — diverging none arm). The wider gate-json-assert consumer set (diag/aot/
+repair fixtures, 16 files) uses the higher-level assert API — no sig exposure.
+GJA-SUGGEST-ROW ( … -- ptr u8 n bool ) left for wave B (multi-value tuple).
+require lib/adt/option.f added; gate-json-assert-core.f is a TR-AOT-NEG-PHASE-
+FILES member, but the closure set union (HARNESS+COMMON+AOT-NEG) already contains
+option.f via TR-GATE-HARNESS-FILES — no run-files.f edit. tools/ manifest-exempt.
+Direct both-branch test RPT-TEST-GJA-U added to tools/repair-packet-test.f
+(12345/0 → some; 12a/empty → none); behavior identity proven by the untouched
+repair-schema-doc-test + check-repair-hints-test + the gate's diag slices
+(variant/tag/payload_pos/arity packet fields all assert through GJA-INT).

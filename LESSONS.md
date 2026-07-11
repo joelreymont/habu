@@ -3318,3 +3318,7 @@ unchanged (148855). Keys for milestone 2:
   bind rejects, and stack-discipline style never needs it. A missing capability
   blocks only the code shapes that require it, not the goal; prove the
   intersection empty before declaring work blocked.
+- **Cache-hit tests must own the cache state that makes a hit possible.** An
+  object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
+  shared warm artifact may bypass object production entirely. Bind a fresh
+  gate-local cache before proving store, restore, or relink transitions.

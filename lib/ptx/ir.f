@@ -17,7 +17,16 @@ require lib/adt/option.f                     \ option<n> for PTXIR-FIND(-RAW) (s
 
 64 constant PTXIR-MAX
 
-VALUE-RECORD ptxir-node op n a n b n val n live n END-VALUE-RECORD
+\ ptxir-node is a PRODUCT (wave D, dot habu-switchover-wave-d-1fcdef69): the
+\ on-stack node bundle is a checker-owned 5-cell record; the physical
+\ PTXIR-NODES array below is separate storage and stays raw cells.
+PRODUCT ptxir-node 0
+  FIELD op n
+  FIELD a n
+  FIELD b n
+  FIELD val n
+  FIELD live n
+;PRODUCT
 
 BEGIN-STRUCTURE PTXIR-REC
    CELL +FIELD PTXIR.OP
@@ -74,20 +83,20 @@ variable PTXIR-N
    id PTXIR-ID-CHECK
    live id PTXIR-REC@ PTXIR.LIVE ! ;
 
-: >PTXIR-NODE ( n n n n n -- ptxir-node ) ;
+: >PTXIR-NODE ( n n n n n -- ptxir-node )
+   PTXIR--NODE:MAKE ;
 
-: PTXIR-NODE> ( ptxir-node -- n n n n n ) ;
+: PTXIR-NODE> ( ptxir-node -- n n n n n )
+   PTXIR--NODE:UNMAKE ;
 
 : PTXIR-NODE-DROP ( ptxir-node -- )
-   drop drop drop drop drop ;
+   drop ;                                       \ one layout drop (item 12)
 
 : PTXIR-NODE-DUP-RAW ( n n n n n -- ptxir-node ptxir-node )
-   {: op:n a:n b:n val:n live:n :}
-   op a b val live >PTXIR-NODE
-   op a b val live >PTXIR-NODE ;
+   PTXIR--NODE:MAKE dup ;                        \ one layout dup (item 12)
 
 : PTXIR-NODE-DUP ( ptxir-node -- ptxir-node ptxir-node )
-   PTXIR-NODE> PTXIR-NODE-DUP-RAW ;
+   dup ;
 
 : PTXIR-WRITE-RAW ( n n n n n n -- ) {: op:n a:n b:n val:n live:n id:n :}
    id PTXIR-REC@ {: rec:ptr :}

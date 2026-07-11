@@ -570,15 +570,27 @@ stored counts are `count`, slot indexes are `idx`, slot field offsets are `off`,
 and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
 capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
 
+Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
+`occupied`) with generated constructors `SLOT--STATE:EMPTY`,
+`SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
+consumer through `MATCH slot-state` or the `MAP-*?` predicates; a raw `n`
+cannot pose as a slot state and a state cannot launder back to `n`.
+
+The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
+no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
+generated constructors `MAP--LOC:FULL`, `MAP--LOC:FREE`, and `MAP--LOC:FOUND`.
+The carried `idx` payload replaces the old `-1` index placeholder, and every
+consumer dispatches through exhaustive `MATCH map-loc`.
+
 The published words expose checked storage layout plus lookup/update helpers:
 
 ```forth
 MAP-CHECK-CAP       ( count -- )
 MAP-CHECK-LEN       ( len -- )
 MAP-CELLS           ( count -- count )
-MAP-EMPTY?          ( n -- bool )
-MAP-DELETED?        ( n -- bool )
-MAP-OCCUPIED?       ( n -- bool )
+MAP-EMPTY?          ( slot-state -- bool )
+MAP-DELETED?        ( slot-state -- bool )
+MAP-OCCUPIED?       ( slot-state -- bool )
 MAP-CAP@            ( ptr a -- count )
 MAP-CAP!            ( count ptr a -- )
 MAP-CHECK-HANDLE    ( ptr a count -- )
@@ -590,8 +602,9 @@ MAP-SLOTS           ( ptr a -- ptr a )
 MAP-CHECK-INDEX     ( ptr a idx -- )
 MAP-SLOT            ( ptr a idx -- ptr a )
 MAP-SLOT-FIELD      ( ptr a idx off -- ptr a )
-MAP-SLOT-STATE@     ( ptr a idx -- n )
-MAP-SLOT-STATE!     ( n ptr a idx -- )
+MAP-SLOT-STATE-PTR  ( ptr a idx -- ptr slot-state )
+MAP-SLOT-STATE@     ( ptr a idx -- slot-state )
+MAP-SLOT-STATE!     ( slot-state ptr a idx -- )
 MAP-SLOT-HASH@      ( ptr a idx -- n )
 MAP-SLOT-HASH!      ( n ptr a idx -- )
 MAP-SLOT-KEY-A@     ( ptr a idx -- ptr u8 )
@@ -608,18 +621,19 @@ MAP-INDEX           ( n count -- idx )
 MAP-PROBE           ( n count count -- idx )
 MAP-SLOT-MATCH?     ( ptr a idx n ptr u8 len -- bool )
 MAP-REMEMBER-FREE   ( n idx -- n )
-MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n n n )
-MAP-LOCATE          ( ptr a count ptr u8 len -- n n n )
+MAP-LOCATE-SLOT     ( n ptr a idx ptr u8 len n -- n map-loc )
+MAP-LOCATE          ( ptr a count ptr u8 len -- map-loc n )
 MAP-SLOT-INSERT     ( a ptr a idx n ptr u8 len -- )
 MAP-HAS?    ( ptr a count ptr u8 len -- bool )
-MAP-GET     ( ptr a count ptr u8 len -- n bool )
+MAP-GET     ( ptr a count ptr u8 len -- option<n> )
 MAP-SET     ( n ptr a count ptr u8 len -- )
 MAP-EACH    ( ptr a count [ ptr u8 len n -- ] -- )
 ```
 
-`MAP-GET` returns value plus present flag. `MAP-SET` inserts or replaces one
-numeric value. Capacity, malformed storage, and full-table states throw named
-errors such as `E-MAP-BAD-CAP` and `E-MAP-FULL`.
+`MAP-GET` returns `SOME` with the stored value when the key is present, else
+`NONE`. `MAP-SET` inserts or replaces one numeric value. Capacity, malformed
+storage, and full-table states throw named errors such as `E-MAP-BAD-CAP` and
+`E-MAP-FULL`.
 
 ## Memory
 
@@ -1105,10 +1119,12 @@ PROC-KILL-RAW       ( pid n -- rc )
 PROC-ZCOPY          ( ptr u8 len ptr u8 len -- ptr u8 )
 PROC-PATHZ          ( ptr u8 len -- ptr u8 )
 PROC-WAIT-STATUS         ( pid -- n )
-PROC-STATUS>OUTCOME ( n -- n n )
-PROC-OUTCOME>RC     ( n n -- rc )
+PROC-STATUS>OUTCOME ( n -- outcome )
+PROC-OUTCOME>RC     ( outcome -- rc )
+PROC-OUTCOME-PAIR   ( outcome -- n n )
+PROC-PAIR>RC        ( n n -- rc )
 PROC-STATUS>RC      ( n -- rc )
-PROC-WAIT-OUTCOME        ( pid -- n n )
+PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
 PROC-SPAWN-IO            ( ptr u8 len fd fd fd -- pid )
 PROC-RUN-RC              ( ptr u8 len -- rc )
@@ -1157,10 +1173,16 @@ explicit stdin, stdout, and stderr fds. `PROC-SPAWN-IO` and `PROC-WAIT-RC` throw
 
 `PROC-WAIT-STATUS` returns the raw Darwin wait status for a pid and throws
 `E-PROC-WAIT` on primitive failure. `PROC-WAIT-OUTCOME` decodes that status into
-`kind code`; `kind` is `PROC-OUTCOME-EXIT`, `PROC-OUTCOME-SIGNAL`, or
-`PROC-OUTCOME-TIMEOUT`, and `code` is the exit code or signal number.
-`PROC-OUTCOME>RC` preserves the historical exit-code API for normal exits and
-maps non-exit outcomes to `128 + signal`; `PROC-STATUS>RC` and `PROC-WAIT-RC` use it.
+the `outcome` sum family: `exited` carrying the exit code, `signaled` carrying
+the signal number, or `timeout` (capture deadline; always SIGKILL-reaped, no
+payload), with generated constructors `OUTCOME:EXITED`, `OUTCOME:SIGNALED`, and
+`OUTCOME:TIMEOUT`. Consumers dispatch through exhaustive `MATCH outcome`.
+`PROC-OUTCOME>RC` flattens an outcome to the historical rc: the exit code for
+normal exits, `128 + signal` for signal deaths and timeouts; `PROC-STATUS>RC`
+and `PROC-WAIT-RC` use it. The wide `-OUTCOME` capture API still returns the
+legacy `kind code` int pair (`PROC-OUTCOME-EXIT/SIGNAL/TIMEOUT` plus code);
+`PROC-OUTCOME-PAIR` is the one documented sum-to-pair boundary until that
+surface migrates.
 
 `PROC-SPAWN-IO` takes a counted executable path followed by stdin, stdout, and stderr
 `fd` roles. Negative fd values mean inherit/default; nonnegative fd values are passed
@@ -1289,8 +1311,8 @@ RUN-ARGV-ENV-CAPTURE      ( ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 RUN-ARGV-ENV-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
 RUN-ARGV-ENV-STDIN-CAPTURE ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len rc )
 RUN-ARGV-ENV-STDIN-CAPTURE-OUTCOME ( ptr u8 len ptr u8 len ptr u8 len ptr u8 len ms -- len len n n )
-FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- len bool )
-FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- len bool )
+FIND-EXECUTABLE-IN-PATH   ( ptr u8 len ptr u8 len ptr u8 -- option<len> )
+FIND-EXECUTABLE           ( ptr u8 len ptr u8 -- option<len> )
 RESOLVE-EXECUTABLE        ( ptr u8 len ptr u8 -- len )
 ```
 

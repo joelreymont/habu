@@ -559,6 +559,15 @@ variable UF-ACT   variable UF-EXP   variable UF-SET
 \ widening (INT-WIDENS?) applies to top-level scalar stack cells, never to a
 \ pointer's pointee, so a concrete `ptr u8` never satisfies `ptr cell`/`ptr u32`.
 create UWL-STR MAXUWL cells allot   variable CUR-STRICT
+\ Parallel per-pair position, keyed like UWL-STR: the expected-row slot a pair
+\ belongs to. >= 0 is a slot counted from the TOP of the root expected row (a
+\ row element or any subterm pair inside it inherits it); -1 is no position;
+\ <= -2 is the root-spine cursor c encoded as -(c+2), carried only by the
+\ row-descent pairs themselves. U-FAIL latches the slot into UF-POSN with the
+\ failed pair, so a construct payload mismatch can name the exact payload slot
+\ even when two slots share one type term (MK-CON interns: same con = same id).
+create UWL-POS MAXUWL cells allot   variable CUR-UPOS
+variable UF-POSN
 
 : U-PUSH ( n -- )
    USP @ MAXUWL 1 - > IF s" checker: unify worklist full" 76 die THEN
@@ -567,21 +576,25 @@ create UWL-STR MAXUWL cells allot   variable CUR-STRICT
 
 : U-POP USP @ 1 - USP ! USP @ cells UWL + @ ;
 
-: PAIR ( n n -- )    \ inherit the enclosing pair's strictness
+: PAIR ( n n -- )    \ inherit the enclosing pair's strictness and position
    CUR-STRICT @ USP @ cells UWL-STR + !
+   CUR-UPOS @ USP @ cells UWL-POS + !
    swap U-PUSH U-PUSH ;
 
 : PAIR-STRICT ( n n -- )    \ force a strict (no-widen) subterm unification
    -1 USP @ cells UWL-STR + !
+   CUR-UPOS @ USP @ cells UWL-POS + !
    swap U-PUSH U-PUSH ;
 
-: UNPAIR ( -- n n )    \ pop a pair and restore its strictness into CUR-STRICT
+: UNPAIR ( -- n n )    \ pop a pair; restore its strictness and position
    U-POP U-POP swap
-   USP @ cells UWL-STR + @ CUR-STRICT ! ;
+   USP @ cells UWL-STR + @ CUR-STRICT !
+   USP @ cells UWL-POS + @ CUR-UPOS ! ;
 
 : U-FAIL ( n n -- ) {: act:n exp:n :}
    UF-SET @ 0= IF
       act UF-ACT !  exp UF-EXP !  -1 UF-SET !
+      CUR-UPOS @ dup 0 < IF drop -1 THEN UF-POSN !   \ slot only; spine/none = -1
    THEN
    RES-FALSE UOK ! ;
 
@@ -1194,17 +1207,33 @@ variable LLC-N
    tl rl P>REST LAYOUT-PUSH-FIELDS {: re:n :}
    rh re PAIR ;
 
+\ Root-spine position plumbing: a spine row pair carries encoded cursor
+\ -(c+2); its type pair gets slot c, its rest pair cursor c+1. Non-spine row
+\ pairs (nested rows inside a slot's quotation/param subterm) inherit the
+\ enclosing slot unchanged, so nested descent never bumps the cursor.
+: UPOS-SPINE? ( n -- bool ) -1 < ;
+: UPOS-REST ( n -- n ) dup UPOS-SPINE? IF 1 - THEN ;         \ ENC(c)-1 = ENC(c+1)
+: UPOS-TYPE ( n -- n ) dup UPOS-SPINE? IF negate 2 - THEN ;  \ ENC(c) -> slot c
+
+: U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
+   CUR-UPOS @ {: e:n :}
+   e UPOS-REST CUR-UPOS !  r1 P>REST r2 P>REST PAIR
+   e UPOS-TYPE CUR-UPOS !  r1 P>TYPE r2 P>TYPE PAIR ;
+
+\ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, so the
+\ spine cursor is no longer slot-aligned past it: drop to no-position (fail
+\ safe, positions before the expansion were already latched exactly).
 : U-ROW R-RES swap R-RES swap 2dup = IF 2drop ELSE
    over ISROW IF 2dup ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE swap PAY RV! THEN ELSE
    dup ISROW IF 2dup swap ROW-OCC? IF 2drop RES-FALSE UOK ! ELSE PAY RV! THEN ELSE
-   2dup LOGHID-AT? IF LOGHID-EXPAND ELSE
-   2dup swap LOGHID-AT? IF swap LOGHID-EXPAND ELSE
-   2dup P>REST swap P>REST swap PAIR
-   P>TYPE swap P>TYPE swap PAIR THEN THEN THEN THEN THEN ;
+   2dup LOGHID-AT? IF -1 CUR-UPOS ! LOGHID-EXPAND ELSE
+   2dup swap LOGHID-AT? IF -1 CUR-UPOS ! swap LOGHID-EXPAND ELSE
+   U-ROW-DESCEND THEN THEN THEN THEN THEN ;
 
 : UNIFY ( n n -- bool )   \ worklist-driven; rows and types interleave
    0 USP !  RES-TRUE UOK !  0 CUR-STRICT !
    0 UF-ACT !  0 UF-EXP !  0 UF-SET !
+   -2 CUR-UPOS !  -1 UF-POSN !   \ root row pair opens the spine at cursor 0
    PAIR
    BEGIN USP @ 0 > UOK @ and WHILE
      UNPAIR  over TAG dup S-ROW = swap S-PUSH = or IF U-ROW ELSE U-TYPE THEN
@@ -1264,6 +1293,11 @@ variable DF-ACT   variable DF-EXP
 \ pure-scalar or non-construct mismatch renders no variant/tag.
 variable DVAR    -1 DVAR !
 variable CVLIVE  -1 CVLIVE !
+\ Payload slot of the captured mismatch (item 13): UF-POSN's slot-from-top of
+\ the failed expected-row element, latched beside DVAR. Render converts it to
+\ the declaration-order payload index; -1 = position unknown (row-level or
+\ post-LOGHID failure), so the packet omits payload_pos.
+variable DPOS    -1 DPOS !
 variable VSIG   variable SGSEEN   variable SGIN   variable SGOUT
 variable SGRIN  variable SGROUT  variable SGDBASE  variable SGRBASE
 variable SGA  variable SGU
@@ -1421,9 +1455,9 @@ variable LTC-P
 
 : UF>DIAG ( -- )
    UF-SET @ IF
-      UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !
+      UF-ACT @ DF-ACT !  UF-EXP @ DF-EXP !  UF-POSN @ DPOS !
    ELSE
-      0 DF-ACT !  0 DF-EXP !
+      0 DF-ACT !  0 DF-EXP !  -1 DPOS !
    THEN
    CVLIVE @ DVAR ! ;   \ the variant live at the first-failure capture (-1 = none)
 
@@ -2103,6 +2137,8 @@ variable SGBAD
 variable SGBAD-A
 variable SGBAD-U
 variable SGBAD-KIND
+variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
+variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable UNSAFE
 variable LOCALBAD
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
@@ -2140,6 +2176,8 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
 : CON-OF {: a u :}                      \ multi-char name -> con code, or 0
    a u CT-FIND ;
 : SGBAD-CLEAR ( -- )
+   -1 SGBAD-AR-DECL !
+   -1 SGBAD-AR-GOT !
    0 SGBAD !
    0 SGBAD-A !
    0 SGBAD-U !
@@ -2166,8 +2204,10 @@ variable CAPREQ              \ a TRUSTED-only capability prim (patch32/code-gen 
    SGBAD-BAREPTR-KIND SGBAD-SET ;
 : SGBAD-BAREPTR? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-BAREPTR-KIND = and ;
-: SGBAD-ARITY! ( ptr u8 n -- )      \ family applied to the wrong number of args
-   SGBAD-ARITY-KIND SGBAD-SET ;
+: SGBAD-ARITY! ( ptr u8 n n n -- )  \ family applied to the wrong number of args
+   {: a:ptr u:n decl:n got:n :}     \ first-wins: latch the counts with the token
+   SGBAD @ 0= IF decl SGBAD-AR-DECL !  got SGBAD-AR-GOT ! THEN
+   a u SGBAD-ARITY-KIND SGBAD-SET ;
 : SGBAD-ARITY? ( -- bool )
    SGBAD @ SGBAD-KIND @ SGBAD-ARITY-KIND = and ;
 
@@ -2317,7 +2357,8 @@ variable SIG-QUOT-XT   0 SIG-QUOT-XT !
 \ (family-specific arity diagnostic) when the arg count differs from the family's
 \ declared arity, then build the T-PARAM (MK-PARAM rewinds scratch to `base`).
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
-   PARAM-SCR-N @ base - fam TFAM-ARITY* <> IF a u SGBAD-ARITY! THEN
+   PARAM-SCR-N @ base - {: got:n :}
+   got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
    base a u fam MK-PARAM ;
 
 \ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
@@ -4878,9 +4919,10 @@ variable CURSYM
 variable SV-FV    variable SV-SPN   variable SV-QEN   variable SV-PTRN
 variable SV-OK    variable SV-DCUR  variable SV-RCUR  variable SV-UNCK
 variable SV-FSET  variable SV-DEXP  variable SV-DACT  variable SV-DF-ACT  variable SV-DF-EXP
-variable SV-DVAR
+variable SV-DVAR  variable SV-DPOS
 variable SV-SGBAD
 variable SV-SGBAD-A  variable SV-SGBAD-U  variable SV-SGBAD-KIND
+variable SV-SGBAD-AR-DECL  variable SV-SGBAD-AR-GOT
 variable SV-SGSEEN  variable SV-SGHASR  variable SV-SGIN  variable SV-SGOUT
 variable SV-SGRIN   variable SV-SGROUT
 variable SV-THDROW  variable SV-THRROW  variable SV-THSET
@@ -4891,9 +4933,10 @@ variable SV-TRAIL
    SPN @ SV-SPN !  QEN @ SV-QEN !  PTRN @ SV-PTRN !
    OK @ SV-OK !  DCUR @ SV-DCUR !  RCUR @ SV-RCUR !  UNCK @ SV-UNCK !
    FAILSET @ SV-FSET !  DEXP @ SV-DEXP !  DACT @ SV-DACT !
-   DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !
+   DF-ACT @ SV-DF-ACT !  DF-EXP @ SV-DF-EXP !  DVAR @ SV-DVAR !  DPOS @ SV-DPOS !
    SGBAD @ SV-SGBAD !  SGBAD-A @ SV-SGBAD-A !
    SGBAD-U @ SV-SGBAD-U !  SGBAD-KIND @ SV-SGBAD-KIND !
+   SGBAD-AR-DECL @ SV-SGBAD-AR-DECL !  SGBAD-AR-GOT @ SV-SGBAD-AR-GOT !
    SGSEEN @ SV-SGSEEN !  SGHASR @ SV-SGHASR !
    SGIN @ SV-SGIN !  SGOUT @ SV-SGOUT !  SGRIN @ SV-SGRIN !  SGROUT @ SV-SGROUT !
    THDROW @ SV-THDROW !  THRROW @ SV-THRROW !  THSET @ SV-THSET ! ;
@@ -4907,6 +4950,7 @@ variable SV-TRAIL
 : TRIAL-REST-SG
    SV-SGBAD @ SGBAD !  SV-SGBAD-A @ SGBAD-A !
    SV-SGBAD-U @ SGBAD-U !  SV-SGBAD-KIND @ SGBAD-KIND !
+   SV-SGBAD-AR-DECL @ SGBAD-AR-DECL !  SV-SGBAD-AR-GOT @ SGBAD-AR-GOT !
    SV-SGSEEN @ SGSEEN !  SV-SGHASR @ SGHASR !
    SV-SGIN @ SGIN !  SV-SGOUT @ SGOUT !  SV-SGRIN @ SGRIN !  SV-SGROUT @ SGROUT ! ;
 
@@ -4917,7 +4961,7 @@ variable SV-TRAIL
    SV-SPN @ SPN !  SV-QEN @ QEN !  SV-PTRN @ PTRN !
    SV-OK @ OK !  SV-DCUR @ DCUR !  SV-RCUR @ RCUR !  SV-UNCK @ UNCK !
    SV-FSET @ FAILSET !  SV-DEXP @ DEXP !  SV-DACT @ DACT !
-   SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !
+   SV-DF-ACT @ DF-ACT !  SV-DF-EXP @ DF-EXP !  SV-DVAR @ DVAR !  SV-DPOS @ DPOS !
    SV-THDROW @ THDROW !  SV-THRROW @ THRROW !  SV-THSET @ THSET !
    TRIAL-REST-SG ;
 
@@ -6762,7 +6806,7 @@ variable MEO-BL  variable MEO-BC  variable MEO-BB   \ buffer start's file line/c
    0 TI !  1 TOK0 !  0 NMU !  0 #LOC !  0 LMODE !  0 #CFC !  0 QDEPTH !  0 CONM !
    0 MM !  0 MPEND !  0 MREJ !  0 MF-DEPTH !  0 MSEEN-N !
    0 MDIAG !  0 MDIAG-FAM !  0 MDIAG-SEEN !  0 MDIAG-VCNT !
-   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
+   0 FAILSET !  0 DEXP !  0 DACT !  0 DF-ACT !  0 DF-EXP !  -1 DVAR !  -1 CVLIVE !  -1 DPOS !  0 FAILTU !  0 SGSEEN !  0 SGHASR !
    0 SGIN !  0 SGOUT !  0 SGRIN !  0 SGROUT !  0 SGDBASE !  0 SGRBASE !
    0 SGA !  0 SGU !
    0 TOKIX !  0 FAILIX !  0 DVERD !

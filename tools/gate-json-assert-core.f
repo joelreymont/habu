@@ -1,6 +1,8 @@
 \ gate-json-assert-core.f - native JSON assertion library for gate tests.
 \ Load after lib/errors.f, lib/memory.f, and tools/json.f.
 
+require lib/adt/option.f                 \ option<n> for GJA-U? (switchover wave A)
+
 $8000 constant GJA-IN-CAP
 $1000 constant GJA-SRC-CAP
 $400 constant GJA-PATH-CAP
@@ -121,15 +123,15 @@ variable GJA-DIRECT
       a GJA-LS @ + u GJA-LS @ - GJA-LINE+
    THEN ;
 
-: GJA-U? ( ptr u8 n -- n bool )
-   {: a:ptr u :}
-   u 0= IF 0 GJA-FALSE exit THEN
+: GJA-U? ( ptr u8 n -- option<n> )   \ SOME parsed unsigned decimal, else NONE
+   {: a:ptr u:n :}
+   u 0= IF OPTION:NONE exit THEN
    0 GJA-N !
    0 begin dup u < while
-      dup a + c@ dup 48 < over 57 > or IF drop drop 0 GJA-FALSE exit THEN
+      dup a + c@ dup 48 < over 57 > or IF drop drop OPTION:NONE exit THEN
       48 - GJA-N @ 10 * + GJA-N !
       1+
-   repeat drop GJA-N @ GJA-TRUE ;
+   repeat drop GJA-N @ OPTION:SOME ;
 
 : GJA-READ ( ptr u8 n -- ptr u8 n )
    GJA-PATHZ 0 0 open GJA-FD !
@@ -186,7 +188,10 @@ variable GJA-DIRECT
 
 : GJA-INT ( n -- n )
    dup JSON-KIND J-NUM <> IF drop s" expected JSON integer" GJA-FAIL THEN
-   JSON-NUMBER$ GJA-U? 0= IF drop s" invalid JSON integer" GJA-FAIL THEN ;
+   JSON-NUMBER$ GJA-U? MATCH option
+     none OF s" invalid JSON integer" GJA-FAIL ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : GJA-STR= ( n ptr u8 n -- bool )
    {: node want:ptr wantu :}

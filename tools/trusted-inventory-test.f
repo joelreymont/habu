@@ -332,6 +332,10 @@ variable SORT-I
    s" no marker anywhere" TINV:PARSE-CLASSES$ TFALSE
    S\" <!-- trusted-inventory-classes\nfixture.f bogus-class dot-x\n-->" TINV:PARSE-CLASSES$ TFALSE
    S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f:TIF-W test-metaprog dot-x 0\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f:TIF-W test-metaprog dot-x abc\n-->" TINV:PARSE-CLASSES$ TFALSE
+   S\" <!-- trusted-inventory-classes\nfixture.f:TIF-W test-metaprog dot-x 2\n-->" TINV:PARSE-CLASSES$ TTRUE
+   TINV:CLASSES-RESET
    S\" <!-- trusted-inventory-classes\na.f test-metaprog d\n-->\n<!-- trusted-inventory-classes\nb.f test-metaprog d\n-->" TINV:PARSE-CLASSES$ TFALSE
    TINV:CLASSES-RESET ;
 

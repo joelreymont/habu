@@ -236,6 +236,9 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 : STR>NUMBER-UNWRAP ( option<n> -- n bool )
    MATCH option none OF 0 STR-FALSE ENDOF some OF STR-TRUE ENDOF ;MATCH ;
 
+: STR>OPTION ( n bool -- option<n> )   \ lift a value+flag parse to option (inverse adapter, dies with the boundary)
+   if OPTION:SOME exit then drop OPTION:NONE ;
+
 : STR>NUMBER? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 0= if 0 STR-FALSE exit then
    a c@ STR-MINUS = if

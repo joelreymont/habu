@@ -638,10 +638,10 @@ variable TL-COPY-T
    TL-BAD+ ;
 
 : TL-CHECK-AUDIT-DATE ( n -- ) {: sk :}
-   TL-K @ TL-M-AUDIT$ PARSE-YMD 0= IF
-      drop
-      sk TL-BAD-AUDIT-DATE exit
-   THEN
+   TL-K @ TL-M-AUDIT$ PARSE-YMD MATCH option
+     none OF sk TL-BAD-AUDIT-DATE exit ENDOF
+     some OF ENDOF
+   ;MATCH
    TL-TODAY swap -                             \ age = UTC-today - audit (days); negative = ahead of UTC today
    dup TL-AUDIT-FUTURE-SLOP negate < IF        \ more than one calendar day ahead of UTC -> genuinely future
       drop

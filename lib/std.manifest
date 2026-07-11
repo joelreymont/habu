@@ -137,6 +137,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	string	lib/string.f	word	STR-PARSE-POS	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a nonnegative bounded i64: SOME value, else NONE
 1	string	lib/string.f	word	STR-PARSE-NEG	(ptr u8 n -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse a negative bounded i64: SOME value, else NONE
 1	string	lib/string.f	word	STR>NUMBER-UNWRAP	(option<n> -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	flatten a parsed option to the STR>NUMBER? value+flag boundary
+1	string	lib/string.f	word	STR>OPTION	(n bool -- option<n>)	lib/string-test.f	docs/stdlib.md	stdlib-string	active	lift a value+flag parse to option across the STR>NUMBER? boundary
 1	string	lib/string.f	word	STR>NUMBER?	(ptr u8 n -- n bool)	lib/string-test.f	docs/stdlib.md	stdlib-string	published	parse an optional-sign bounded i64
 1	json-write	lib/json-write.f	module			lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	checked growable emit-only JSON writer for fixtures and native tools
 1	json-write	lib/json-write.f	word	JW-BUF-FIELD	(-- ptr ptr u8)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	active	return the typed pointer field for JSON writer output storage
@@ -311,9 +312,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-CHECK-CAP	(count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a positive map capacity
 1	map	lib/map.f	word	MAP-CHECK-LEN	(len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a nonnegative key length
 1	map	lib/map.f	word	MAP-CELLS	(count -- count)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the cell count needed for a fixed-capacity map
-1	map	lib/map.f	word	MAP-EMPTY?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an empty slot state
-1	map	lib/map.f	word	MAP-DELETED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test a deleted slot state
-1	map	lib/map.f	word	MAP-OCCUPIED?	(n -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an occupied slot state
+1	map	lib/map.f	word	MAP-EMPTY?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an empty slot state
+1	map	lib/map.f	word	MAP-DELETED?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test a deleted slot state
+1	map	lib/map.f	word	MAP-OCCUPIED?	(slot-state -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test an occupied slot state
 1	map	lib/map.f	word	MAP-CAP@	(ptr a -- count)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read map capacity
 1	map	lib/map.f	word	MAP-CAP!	(count ptr a --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write checked map capacity
 1	map	lib/map.f	word	MAP-CHECK-HANDLE	(ptr a count --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a map storage pointer and capacity pair
@@ -325,8 +326,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-CHECK-INDEX	(ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	validate a slot index
 1	map	lib/map.f	word	MAP-SLOT	(ptr a idx -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a slot address
 1	map	lib/map.f	word	MAP-SLOT-FIELD	(ptr a idx off -- ptr a)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return a checked slot field address
-1	map	lib/map.f	word	MAP-SLOT-STATE@	(ptr a idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot state
-1	map	lib/map.f	word	MAP-SLOT-STATE!	(n ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a checked slot state
+1	map	lib/map.f	word	MAP-SLOT-STATE-PTR	(ptr a idx -- ptr slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	return the typed slot state cell address
+1	map	lib/map.f	word	MAP-SLOT-STATE@	(ptr a idx -- slot-state)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot state
+1	map	lib/map.f	word	MAP-SLOT-STATE!	(slot-state ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a slot state
 1	map	lib/map.f	word	MAP-SLOT-HASH@	(ptr a idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot hash
 1	map	lib/map.f	word	MAP-SLOT-HASH!	(n ptr a idx --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	write a checked slot hash
 1	map	lib/map.f	word	MAP-SLOT-KEY-A@	(ptr a idx -- ptr u8)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	read a slot key pointer
@@ -343,8 +345,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	map	lib/map.f	word	MAP-PROBE	(n count count -- idx)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	compute a linear-probe slot index
 1	map	lib/map.f	word	MAP-SLOT-MATCH?	(ptr a idx n ptr u8 len -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether one occupied slot matches hash and key
 1	map	lib/map.f	word	MAP-REMEMBER-FREE	(n idx -- n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	remember the first reusable probe slot
-1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a idx ptr u8 len n -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot
-1	map	lib/map.f	word	MAP-LOCATE	(ptr a count ptr u8 len -- n n n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate key insertion or lookup slot
+1	map	lib/map.f	word	MAP-LOCATE-SLOT	(n ptr a idx ptr u8 len n -- n map-loc)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	classify one probed map slot: free memo plus a map-loc verdict
+1	map	lib/map.f	word	MAP-LOCATE	(ptr a count ptr u8 len -- map-loc n)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	locate a key: map-loc verdict carrying the slot index, plus the key hash
 1	map	lib/map.f	word	MAP-SLOT-INSERT	(a ptr a idx n ptr u8 len --)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	insert one value into a free map slot
 1	map	lib/map.f	word	MAP-GET	(ptr a count ptr u8 len -- option<n>)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	lookup a value by counted key: SOME value if present, else NONE
 1	map	lib/map.f	word	MAP-HAS?	(ptr a count ptr u8 len -- bool)	lib/map-test.f	docs/stdlib.md	stdlib-map	published	test whether a counted key exists
@@ -546,10 +548,12 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-ZCOPY	(ptr u8 len ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted bytes into a bounded NUL-terminated process buffer
 1	process	lib/process.f	word	PROC-PATHZ	(ptr u8 len -- ptr u8)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	copy counted path into the process module pathz buffer
 1	process	lib/process.f	word	PROC-WAIT-STATUS	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
-1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to outcome kind and exit or signal code
-1	process	lib/process.f	word	PROC-OUTCOME>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map outcome kind and code to historical rc with non-exits as 128 plus signal
+1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to the outcome sum: exited code or signaled sig
+1	process	lib/process.f	word	PROC-OUTCOME>RC	(outcome -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	flatten an outcome to historical rc with non-exits as 128 plus signal
+1	process	lib/process.f	word	PROC-OUTCOME-PAIR	(outcome -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy kind/code pair view for the -OUTCOME capture API boundary
+1	process	lib/process.f	word	PROC-PAIR>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy pair rc flatten: exit code for exits, else 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
-1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return outcome kind plus exit or signal code
+1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return its completion outcome sum
 1	process	lib/process.f	word	PROC-REAP-ARM-OFF	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	default capture-reaper vector: arm nothing and return the no-reaper pid sentinel
 1	process	lib/process.f	word	PROC-REAP-ARM-DEFAULT	(--)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	install the no-op capture-reaper vector; lib/process-fork.f replaces it with the live one
 1	process	lib/process.f	word	PROC-CAPTURE-PID!	(pid --)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	record the capture child pid and arm the context's co-located death reaper for it
@@ -714,9 +718,9 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process-env	lib/process-env.f	word	PROC-EXECUTABLE?	(ptr u8 len -- bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test executable access for one counted path
 1	process-env	lib/process-env.f	word	PROC-COPY-PATH	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	copy one resolved executable path into caller storage
 1	process-env	lib/process-env.f	word	PROC-JOIN-PATH-SEG	(ptr u8 len ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	join one PATH segment and command name into caller storage
-1	process-env	lib/process-env.f	word	PROC-TRY-PATH-SEG	(ptr u8 len ptr u8 len ptr u8 -- len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test one PATH segment for an executable command match
-1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 len ptr u8 len ptr u8 -- len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string into caller storage
-1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 len ptr u8 -- len bool)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH
+1	process-env	lib/process-env.f	word	PROC-TRY-PATH-SEG	(ptr u8 len ptr u8 len ptr u8 -- option<len>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	active	test one PATH segment: SOME resolved length, else NONE
+1	process-env	lib/process-env.f	word	FIND-EXECUTABLE-IN-PATH	(ptr u8 len ptr u8 len ptr u8 -- option<len>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against an explicit PATH byte string: SOME resolved length in caller storage, else NONE
+1	process-env	lib/process-env.f	word	FIND-EXECUTABLE	(ptr u8 len ptr u8 -- option<len>)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command against the current process PATH: SOME resolved length, else NONE
 1	process-env	lib/process-env.f	word	RESOLVE-EXECUTABLE	(ptr u8 len ptr u8 -- len)	lib/process-env-test.f	docs/stdlib.md	stdlib-process	published	resolve a command or throw E-PROC-PATH when lookup fails
 1	process-command	lib/process-command.f	module			lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	checked command-owned argv env stdin capture and outcome runner
 1	process-command	lib/process-command.f	word	PROC-CMD-CAPTURE-RESET	(--)	lib/process-command-test.f	docs/stdlib.md	stdlib-process	active	clear stored command capture lengths outcome and rc

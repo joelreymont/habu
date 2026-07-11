@@ -329,7 +329,10 @@ variable SS-ERR-U
    1 throw ;
 
 : SS-PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u PARSE-YMD 0= IF drop a u SS-BAD-TODAY THEN ;
+   a u PARSE-YMD MATCH option
+     none OF a u SS-BAD-TODAY ENDOF
+     some OF ENDOF
+   ;MATCH ;
 
 : SS-BAD-STATUS-DATE ( -- )
    s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SS-OUT
@@ -354,8 +357,10 @@ variable SS-ERR-U
 : SS-CHECK-STATUS ( -- )
    SS-STATUS-DATE!
    SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
-   SS-DATE$ PARSE-YMD 0= IF drop SS-BAD-STATUS-DATE exit THEN
-   drop
+   SS-DATE$ PARSE-YMD MATCH option
+     none OF SS-BAD-STATUS-DATE exit ENDOF
+     some OF drop ENDOF
+   ;MATCH
    SS-TODAY$ 2dup SS-DATE$ LINT-STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
 
 : SS-BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos:n :}

@@ -60,7 +60,10 @@ variable TL-ARGV-SOURCE-U
    1 throw ;
 
 : TL-ARGV-CONFIG-TODAY ( n -- ) {: idx :}
-   idx ARGV-POS$ 2dup PARSE-YMD 0= if drop TL-ARGV-BAD-TODAY then
+   idx ARGV-POS$ 2dup PARSE-YMD MATCH option
+     none OF TL-ARGV-BAD-TODAY ENDOF
+     some OF ENDOF
+   ;MATCH
    TRUST-LINT-TODAY!
    2drop ;
 
@@ -73,7 +76,10 @@ variable TL-ARGV-SOURCE-U
 
 : TL-ARGV-CONFIG-SOURCE-LIST-TODAY? ( -- bool )
    ARGV-POS# 4 < if TL-FALSE exit then
-   2 ARGV-POS$ 2dup PARSE-YMD 0= if drop 2drop TL-FALSE exit then
+   2 ARGV-POS$ 2dup PARSE-YMD MATCH option
+     none OF 2drop TL-FALSE exit ENDOF
+     some OF ENDOF
+   ;MATCH
    TRUST-LINT-TODAY!
    2drop
    3 TL-ARGV-SOURCE-FIRST !

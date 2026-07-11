@@ -1,5 +1,7 @@
 \ date.f - shared Gregorian UTC date helpers.
 
+require lib/adt/option.f                 \ option<n> for DATE-N / PARSE-YMD (switchover wave A; mirrors lib/date.f)
+
 10 constant DATE-LEN
 20 constant DATE-TIME-LEN
 4 constant DATE-YEAR-LEN
@@ -123,24 +125,33 @@ variable DATE-RUN
    DATE-M @ DATE-FEB <= IF DATE-Y @ 1+ DATE-Y ! THEN
    DATE-Y @ DATE-M @ DATE-D @ ;
 
-: DATE-N ( ptr u8 n n -- n bool ) {: a:ptr pos:n len:n :}
+: DATE-N ( ptr u8 n n -- option<n> ) {: a:ptr pos:n len:n :}   \ SOME parsed field, NONE on a non-digit
    0 DATE-I !
    0
    begin DATE-I @ len < while
-      a pos + DATE-I @ + c@ dup DATE-DIGIT? 0= IF drop drop 0 0 0= 0= exit THEN
+      a pos + DATE-I @ + c@ dup DATE-DIGIT? 0= IF drop drop OPTION:NONE exit THEN
       DATE-ZERO - swap DATE-BASE * +
       DATE-I @ 1+ DATE-I !
-   repeat 0 0= ;
+   repeat OPTION:SOME ;
 
-: PARSE-YMD ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   u DATE-LEN <> IF 0 0 0= 0= exit THEN
-   a DATE-YEAR-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
-   a DATE-MONTH-DASH + c@ DATE-DASH <> IF 0 0 0= 0= exit THEN
-   a 0 DATE-YEAR-LEN DATE-N 0= IF drop 0 0 0= 0= exit THEN DATE-Y !
-   a DATE-YEAR-DASH 1+ DATE-PART-LEN DATE-N 0= IF drop 0 0 0= 0= exit THEN DATE-M !
-   a DATE-MONTH-DASH 1+ DATE-PART-LEN DATE-N 0= IF drop 0 0 0= 0= exit THEN DATE-D !
-   DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF 0 0 0= 0= exit THEN
-   DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS 0 0= ;
+: PARSE-YMD ( ptr u8 n -- option<n> ) {: a:ptr u:n :}   \ SOME Unix epoch day, NONE on bad YYYY-MM-DD
+   u DATE-LEN <> IF OPTION:NONE exit THEN
+   a DATE-YEAR-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
+   a DATE-MONTH-DASH + c@ DATE-DASH <> IF OPTION:NONE exit THEN
+   a 0 DATE-YEAR-LEN DATE-N MATCH option
+     none OF OPTION:NONE exit ENDOF
+     some OF DATE-Y ! ENDOF
+   ;MATCH
+   a DATE-YEAR-DASH 1+ DATE-PART-LEN DATE-N MATCH option
+     none OF OPTION:NONE exit ENDOF
+     some OF DATE-M ! ENDOF
+   ;MATCH
+   a DATE-MONTH-DASH 1+ DATE-PART-LEN DATE-N MATCH option
+     none OF OPTION:NONE exit ENDOF
+     some OF DATE-D ! ENDOF
+   ;MATCH
+   DATE-Y @ DATE-M @ DATE-D @ VALID-YMD? 0= IF OPTION:NONE exit THEN
+   DATE-Y @ DATE-M @ DATE-D @ YMD>DAYS OPTION:SOME ;
 
 : DATE-WIDTH! ( n n ptr u8 n -- ) {: n:n width:n dst:ptr pos:n :}
    n DATE-RUN !

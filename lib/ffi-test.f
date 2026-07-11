@@ -46,6 +46,7 @@ FFI: FFI-T-STRLEN$ ( ptr u8 -- n ) FFI-T-SYM$ strlen FFI;
 FFI: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n ) FFI-T-SYM$ strncmp FFI;
 FFI: FFI-T-GETPID$ ( -- n ) FFI-T-SYM$ getpid FFI;
 FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
+FFI: FFI-T-VOID$ ( -- ) FFI-T-SYM$ getpid FFI;   \ void return kind: result dropped
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -98,6 +99,7 @@ FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
 
    FFI-T-GETPID FFI-T-SYM CALL0  0 T<>            \ getpid() > 0 (non-zero)
    FFI-T-GETPID$ 0 T<>
+   FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral
 
    FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST >CSTR          \ build "world\0" then strlen==5
    FFI-T-CSTR-DST P>N  FFI-T-STRLEN FFI-T-SYM CALL1  5 T=
@@ -133,4 +135,19 @@ FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
    0 FFI-T-SQRT FFI-T-MSYM FFI-CALLABI-R  3.0 f= T-ASSERT ;
 
 FFI-RUN
+
+\ Kind-surface checked regressions (wave C: FDEF kinds are a PRIVATE ENUM).
+\ Inside the reopened package the family resolves: the positive baseline
+\ proves the rejects are type errors, and a raw n can no longer pose as a
+\ kind, a kind cannot launder back to n, and kinds do not compare with `=`.
+package FFI
+s" FFI-T-KPOS ( kind n -- ) FDEF-TAG!" FFI-T-CHECK-PASSES
+s" FFI-T-KNEG1 ( n n -- ) FDEF-TAG!" FFI-T-CHECK-REJECTS
+s" FFI-T-KNEG2 ( n -- n ) FDEF-TAG@" FFI-T-CHECK-REJECTS
+s" FFI-T-KNEG3 ( kind kind -- bool ) =" FFI-T-CHECK-REJECTS
+end-package
+\ Outside the package the private family never resolves, bare or qualified.
+s" FFI-T-KNEG4 ( kind -- ) drop" FFI-T-CHECK-REJECTS
+s" FFI-T-KNEG5 ( ffi:kind -- ) drop" FFI-T-CHECK-REJECTS
+
 T-REPORT

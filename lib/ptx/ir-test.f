@@ -45,6 +45,16 @@ T-RESET
    x y <> TTRUE
    PTXIR-COUNT 2 T= ;
 
+\ wave D: ptxir-node is a PRODUCT — by-value construct/destructure roundtrip,
+\ one-layout-dup and one-layout-drop shapes (dot acceptance).
+: PTXIRT-NODE-SUM ( ptxir-node -- n ) PTXIR-NODE> + + + + ;
+: PTXIRT-NODE-PRODUCT ( -- )
+   1 2 3 4 5 >PTXIR-NODE PTXIR-NODE> {: op:n a:n b:n val:n live:n :}
+   op 1 T=  a 2 T=  b 3 T=  val 4 T=  live 5 T=
+   1 2 3 4 5 >PTXIR-NODE PTXIR-NODE-DUP PTXIRT-NODE-SUM 15 T= PTXIRT-NODE-SUM 15 T=
+   1 2 3 4 5 PTXIR-NODE-DUP-RAW PTXIRT-NODE-SUM 15 T= PTXIRT-NODE-SUM 15 T=
+   1 2 3 4 5 >PTXIR-NODE PTXIR-NODE-DROP ;
+
 \ switchover wave A: PTXIR-FIND-RAW / PTXIR-FIND return option<n> (SOME matching
 \ node id, else NONE). Both branches, via the raw finder (interned consts are
 \ written with live 0).
@@ -115,6 +125,7 @@ PTXIRT-FOLD
 PTXIRT-PEEPHOLE
 PTXIRT-CSE
 PTXIRT-INPUT-SYMS
+PTXIRT-NODE-PRODUCT
 PTXIRT-FIND-OPTION
 PTXIRT-DCE
 PTXIRT-SOFTMAX-BWD
