@@ -570,3 +570,28 @@ SKEY DESIGN (for the implementing lane):
 - SK-GET/SK-PUT compare via the derived EQ (probe key vs MAKE-recomposed row);
   the arena/interned-string key store retires with STR=; key tests move from
   string asserts to field asserts; the one SK-KEY$ format regression stays.
+
+SKEY LANDED 2026-07-11 (fable 0a7a7d2a) — with one DESIGN CORRECTION vs the
+plan above, proven not chosen: the replay TABLE stays STR=-keyed on the SK-KEY$
+render. The durable load path hands only text (STORE-REPLAY-LOAD -> SCHED-LOAD
+callback receives ( key-text sel ); store-replay even replays synthetic
+non-region keys), so re-keying at load is impossible and a text->product parser
+is unspecified surface. The typed key still closes the semantic-role hole at
+CONSTRUCTION (a role swap in SK-KEY / MAKI-SKEY:MAKE is a checker reject, pinned
+by swapped-family negatives), and the render is a PROVEN INJECTIVE encoding of
+the typed key (dimclass field-eq == rendered-text-eq truth table across all
+bucket boundaries), so STR= decides exactly what MAKI-SKEY:EQ would. Landed
+surface: DERIVE eq on dtype/layout/align; >ALIGN resurrected (E-TV-ALIGN -5049,
+negative pinned); ENUM dimclass + DIM>CLASS canonical encoder now feeding BOTH
+the typed key and the durable render (single classifier -> no drift; render
+byte-identical, format golden untouched); PRODUCT skey DERIVE eq + SK-KEY
+( n -- skey ) + per-field EQ discrimination fixtures. Typed-column table
+upgrade remains gated on W>1 typed-column stores (a480c423 S2). Destruction
+review: 0 critical/high; its 1 medium (missing >ALIGN throw negative) closed
+pre-merge. Gates: maki 77/77 on the merged tree, 5 lints clean, tld rc=0.
+
+CAPABILITY NOTE 2026-07-11: master landed "Typed locals for W=1 family types"
+(habu-typed-locals-for-b06b6707) — probe-verified: `{: t:dtype :}` binds and
+round-trips. New family code MAY bind W=1 families into locals; the existing
+stack-discipline code stays correct and needs no rework. The FEASIBILITY
+CORRECTION above is now moot for new work (kept for history).
