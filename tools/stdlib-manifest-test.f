@@ -111,7 +111,6 @@ variable SMT-END
 variable SMT-JSON-A
 variable SMT-JSON-U
 variable SMT-JSON-NEXT
-variable SMT-JSON-POS
 variable SMT-JSON-BODY
 variable SMT-JSON-END
 variable SMT-I
@@ -731,23 +730,31 @@ variable SMT-J
    rc RC>N 0 <> IF s" public-signatures run failed" SMT-FINDING THEN
    erru LEN>N 0 <> IF s" public-signatures wrote stderr" SMT-FINDING THEN ;
 
-: SMT-FIND-FROM ( ptr u8 n ptr u8 n n -- n )
+: SMT-FIND-FROM ( ptr u8 n ptr u8 n n -- option<n> )
    {: a:ptr u needle:ptr nu start :}
-   start 0 < IF -1 exit THEN
-   u start < IF -1 exit THEN
-   a start + u start - needle nu LINT-FIND-SUB dup 0 < IF exit THEN
-   start + ;
+   start 0 < IF OPTION:NONE exit THEN
+   u start < IF OPTION:NONE exit THEN
+   a start + u start - needle nu LINT-FIND-SUB MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF start + OPTION:SOME ENDOF
+   ;MATCH ;
+
+: SMT-JSON-SLICE ( ptr u8 n n -- ptr u8 n n bool ) {: a:ptr u:n start:n :}   \ body located: slice to the closing quote
+   a SMT-JSON-BODY @ + u SMT-JSON-BODY @ - SMT-DQ LINT-INDEX-OF MATCH option
+     none OF a 0 start 0 0= 0= ENDOF
+     some OF SMT-JSON-END !
+        a SMT-JSON-BODY @ + SMT-JSON-END @
+        SMT-JSON-BODY @ SMT-JSON-END @ + 1+
+        0 0= ENDOF
+   ;MATCH ;
 
 : SMT-CAPTURE-AFTER ( ptr u8 n ptr u8 n n -- ptr u8 n n bool )
    {: a:ptr u key:ptr ku start :}
-   a u key ku start SMT-FIND-FROM SMT-JSON-POS !
-   SMT-JSON-POS @ 0 < IF a 0 start 0 0= 0= exit THEN
-   SMT-JSON-POS @ ku + SMT-JSON-BODY !
-   a SMT-JSON-BODY @ + u SMT-JSON-BODY @ - SMT-DQ LINT-INDEX-OF SMT-JSON-END !
-   SMT-JSON-END @ 0 < IF a 0 start 0 0= 0= exit THEN
-   a SMT-JSON-BODY @ + SMT-JSON-END @
-   SMT-JSON-BODY @ SMT-JSON-END @ + 1+
-   0 0= ;
+   a u key ku start SMT-FIND-FROM MATCH option
+     none OF a 0 start 0 0= 0= ENDOF
+     some OF ku + SMT-JSON-BODY !
+        a u start SMT-JSON-SLICE ENDOF
+   ;MATCH ;
 
 create SMT-JSON-WORD-KEY SMT-DQ c, 119 c, 111 c, 114 c, 100 c, SMT-DQ c, SMT-COLON c, SMT-DQ c,
 create SMT-JSON-FILE-KEY SMT-DQ c, 102 c, 105 c, 108 c, 101 c, SMT-DQ c, SMT-COLON c, SMT-DQ c,

@@ -99,7 +99,10 @@ variable TLD-SCAN-START
    k LEX-TOK a u LINT-STR= ;
 
 : TLD-TYPED-LOCAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u TLD-COLON-C LINT-INDEX-OF 0 < TLD-NOT ;
+   a u TLD-COLON-C LINT-INDEX-OF MATCH option
+     none OF TLD-FALSE ENDOF
+     some OF drop TLD-TRUE ENDOF
+   ;MATCH ;
 
 : TLD-FORTH-FILE? ( -- bool )
    TLD-FILE$ s" .f" LINT-ENDS-WITH? IF TLD-TRUE exit THEN
@@ -172,7 +175,10 @@ variable TLD-SCAN-START
    repeat ;
 
 : TLD-PARSE-HUNK ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TLD-PLUS-C LINT-INDEX-OF 1+ TLD-HUNK-START !
+   a u TLD-PLUS-C LINT-INDEX-OF MATCH option
+     none OF 0 ENDOF
+     some OF 1+ ENDOF
+   ;MATCH TLD-HUNK-START !
    TLD-HUNK-START @ 0 <= IF exit THEN
    a u TLD-HUNK-START @ TLD-NUM-END TLD-HUNK-END !
    TLD-HUNK-END @ TLD-HUNK-START @ <= IF exit THEN

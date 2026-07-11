@@ -173,7 +173,28 @@ variable BIG-LEX-U
    s" Habu" s" Ha" LINT-STARTS-WITH? ASSERT
    s" Habu" s" bu" LINT-ENDS-WITH? ASSERT
    s" banana" 97 LINT-COUNT-CHAR 3 ASSERT=
-   s" banana" 110 LINT-INDEX-OF 2 ASSERT= ;
+   s" banana" 110 LINT-INDEX-OF MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH 2 ASSERT=
+   s" banana" 122 LINT-INDEX-OF MATCH option
+     none OF -1 ENDOF
+     some OF drop -2 ENDOF
+   ;MATCH -1 ASSERT=
+   s" banana split" s" spl" LINT-FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH 7 ASSERT=
+   s" banana split" s" zz" LINT-FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF drop -2 ENDOF
+   ;MATCH -1 ASSERT=
+   s" banana" s" " LINT-FIND-SUB MATCH option
+     none OF -1 ENDOF
+     some OF ENDOF
+   ;MATCH 0 ASSERT=
+   s" banana split" s" spl" LINT-CONTAINS? ASSERT
+   s" banana split" s" zz" LINT-CONTAINS? 0= ASSERT ;
 
 : TEST-SCANNERS  ( -- )
    TRUST-FIX$ TRUST-SITE? ASSERT
