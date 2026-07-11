@@ -205,6 +205,26 @@ emit_src() {
   printf '\n' >> "$out"
 }
 
+bootstrap_wide_gate() {
+  "$GF" test/bootstrap-wide-memory.fs
+
+  local src bin rc
+  for src in bootstrap-wide-interpret bootstrap-wide-tick; do
+    bin="$T/$src"
+    "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$src-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
+    set +e
+    "$bin" >/dev/null 2>&1
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 70 ]]; then
+      printf '%s: expected wide execution rejection rc=70; got rc=%s\n' "$src" "$rc" >&2
+      exit 75
+    fi
+  done
+}
+
+bootstrap_wide_gate
+
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-EXE bye"
 

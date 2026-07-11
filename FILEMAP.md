@@ -770,6 +770,14 @@ points stay listed.
   engine lane closes them deliberately.
 - `test/nf.fs` — Gforth-hosted native-Forth build/run/capture harness used by
   the no-binary bootstrap path.
+- `test/bootstrap-wide-memory.fs` — Gforth-hosted execution gate that builds a
+  stage0 compiler and requires the wide-memory subject to print `ok`.
+- `test/bootstrap-wide-memory-src.f` — checked W2/W4 ADT store/fetch subject;
+  pins stage0 instruction goldens, canonical cell order, mixed/branch locals,
+  and runtime round trips.
+- `test/bootstrap-wide-interpret-src.f` / `test/bootstrap-wide-tick-src.f` —
+  stage0 negative execution fixtures proving published wide-effect words cannot
+  run or be ticked from interpretation state.
 - `test/atomics-smoke.f` / `test/run-in-stack-smoke.f` — tasking primitive
   smoke tests for atomics and the in-stack runner.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded

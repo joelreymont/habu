@@ -122,6 +122,17 @@ $70 constant CRSIG-U-CELL
 $27B0 constant DOESB-CELL   \ BODYBUF offset of the DOES> body in current def
 $27B8 constant TRUSTED-CELL \ open definition came from TRUSTED:
 $27A8 constant CMM-CELL     \ compile-loop ADT-lowering mode (TFAM 10; mirrors src/habu/layout.f)
+$27C0 constant P2-CELL       \ 0 = pass 1; 1 = width-aware pass 2
+$27C8 constant P2TOKIX-CELL  \ pass-2 body-token cursor (checker TOKIX parity)
+$27D0 constant P2BODY0-CELL  \ BODYBUF offset of first body token
+$27D8 constant P2INP-CELL    \ saved input cursor across pass 2
+$27E0 constant P2INE-CELL    \ saved input end across pass 2
+$27E8 constant P2DP-CELL     \ definition-start DP watermark
+$2780 constant P2W0-CELL     \ width of the current memory operand
+$2788 constant P2W1-CELL
+$2790 constant P2W2-CELL
+$2798 constant P2W3-CELL
+$27A0 constant P2LOC0-CELL   \ LOCN at the current locals-group start
 $1B0 constant CMFAM-CELL    \ resolved construct family id between the operand tokens (mirrors layout.f)
 $B0 constant CMBK-CELL      \ MATCH ENDOF branch-kind bitstack (TFAM 10 slice 3; mirrors layout.f)
 $B8 constant CMTAG-CELL     \ pending MATCH variant tag (VAR -> OF)
@@ -239,6 +250,10 @@ variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
+variable LWFWIDE variable LWFWAT variable LP2SEQRST
+variable LP2CARVW variable LP2LIVEW variable LP2LIVEC
+variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
+variable LRECWPUB variable LP2DOESW variable LP2UNSUPW
 
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
@@ -903,7 +918,9 @@ require jit.fs          \ runtime abstract value stack for the : compiler
    LBCAP @ LBL,
    11 DATA TKA-CELL LDR,  12 DATA TKL-CELL LDR,
    LBCS @ LBL,
-   LBL LBL LBL {: bok bcp bcd :}
+   LBL LBL LBL LBL {: bok bcp bcd go :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   14 DATA P2-CELL LDR,  14 go CBZ,  RET,
+   go LBL,
    17 12 0 ADDI,                  \ len in x17 (IP1): callers keep state in x5-x8
    14 DATA BODYLEN-CELL LDR,
    16 14 17 ADD,  16 16 1 ADDI,
@@ -1154,7 +1171,7 @@ variable LSRCRD   variable LSHBANG
 variable LPLINUXTARGET  variable LPMACOSTARGET
 variable LPLINUXLAYOUT  variable LPMACOSLAYOUT
 variable LPUTIL         variable LPSTRUCTURES   variable LPBYTES        variable LPCHECKER      variable LPRENDER
-variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE
+variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable LPLAYOUTBUF
 variable LPHOOK         variable LPSTRUCTEFF    variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
@@ -1323,6 +1340,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-LOAD-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-LOAD-ROW
    PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-LOAD-ROW
+   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-LOAD-ROW
@@ -1363,6 +1381,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PATH-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PATH-ROW
    PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PATH-ROW
+   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PATH-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PATH-ROW
@@ -1549,6 +1568,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPTYPEFAM      s" src/core/type-family.f" PFX-PROVIDE-ROW
    PFX-COMMON LPRENDER       s" src/core/render.f"      PFX-PROVIDE-ROW
    PFX-COMMON LPSUMTYPE      s" src/core/sumtype.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPLAYOUTBUF    s" src/core/layout-buffer.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTEFF    s" src/core/structures-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPROLES        s" src/core/roles.f"       PFX-PROVIDE-ROW
@@ -2470,12 +2490,132 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    ncd LBL,
    11 DATA LOCN-CELL LDR,  11 11 1 ADDI,  11 DATA LOCN-CELL STR, ;
 
+\ Stage0 has no package scope; pass-2 checker queries are global lookups.
+: C-P2-FIND-GLOBAL ( n n -- ) {: lvar len :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 lvar @ ADR,  10 len MOVZ,  LFIND @ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 lvar @ ADR,  2 len MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+: EM-REC-WIDE-PUBLISH ( -- )
+   LBL {: nohook :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 DATA HOOK-CELL LDR,  9 nohook CBZ,
+   LRECWPUB 16 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   nohook LBL, ;
+
+: EM-P2-COUNT ( -- )
+   LBL {: nop2 :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 nop2 CBZ,
+   9 DATA P2TOKIX-CELL LDR,  9 9 1 ADDI,
+   9 DATA P2TOKIX-CELL STR,
+   nop2 LBL, ;
+
+: EM-P2-CARVE-W ( -- )
+   9 SP 0 LDR,  9 G-PUSH
+   LP2CARVW 10 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-LIVE-W ( -- )
+   9 SP 0 LDR,  9 G-PUSH
+   LP2LIVEW 10 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-LIVE-CUM ( -- )
+   9 SP 0 LDR,  9 G-PUSH
+   LP2LIVEC 12 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP ;
+
+: EM-P2-SLOT-DIE ( -- )
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 75 MOVZ,  NR-EXIT-GROUP SYS, ;
+
+: EM-P2-CARVE ( -- )
+   LBL LBL LBL LBL LBL LBL LBL
+   {: ql qd pl pd jl jd sok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   SP SP 32 SUBI,
+   9 DATA P2LOC0-CELL LDR,  9 SP 0 STR,
+   9 0 MOVZ,  9 SP 8 STR,
+   2 5 MOVZ,  LPROT @ BL,
+   ql LBL,
+      9 SP 0 LDR,  10 DATA LOCN-CELL LDR,
+      9 10 CMP,  C-GE qd BCOND,
+      EM-P2-CARVE-W
+      9 SP 8 LDR,  9 9 10 ADD,  9 SP 8 STR,
+      9 SP 0 LDR,  9 9 1 ADDI,  9 SP 0 STR,
+      ql B,
+   qd LBL,
+   2 3 MOVZ,  LPROT @ BL,
+   9 SP 8 LDR,  5 9 3 LSLI,
+   5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,
+   9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT @ BL,
+   15 DATA LOCF-CELL LDR,  15 15 5 ADD,  15 DATA LOCF-CELL STR,
+   9 DATA LOCN-CELL LDR,  9 9 1 SUBI,  9 SP 0 STR,
+   pl LBL,
+      9 SP 0 LDR,  10 DATA P2LOC0-CELL LDR,
+      9 10 CMP,  C-LT pd BCOND,
+      2 5 MOVZ,  LPROT @ BL,
+      EM-P2-LIVE-W  10 SP 8 STR,
+      EM-P2-LIVE-CUM  10 SP 16 STR,
+      2 3 MOVZ,  LPROT @ BL,
+      12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
+      10 SP 16 LDR,  12 12 10 SUB,
+      10 SP 8 LDR,  10 10 1 SUBI,
+      jl LBL,
+         10 0 CMPI,  C-LT jd BCOND,
+         9 $D1002273 LIT64,  LCEMIT @ BL,
+         9 $F9400269 LIT64,  LCEMIT @ BL,
+         5 12 10 ADD,
+         5 4095 CMPI,  C-LE sok BCOND,
+            EM-P2-SLOT-DIE
+         sok LBL,
+         9 $F90003E9 LIT64,  15 5 10 LSLI,
+         9 9 15 ORR,  LCEMIT @ BL,
+         10 10 1 SUBI,  jl B,
+      jd LBL,
+      9 SP 0 LDR,  9 9 1 SUBI,  9 SP 0 STR,
+      pl B,
+   pd LBL,
+   SP SP 32 ADDI, ;
+
+: EM-P2-LOCREF ( -- )
+   LBL LBL LBL {: rl rd sok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   SP SP 32 SUBI,
+   0 SP 0 STR,
+   2 5 MOVZ,  LPROT @ BL,
+   EM-P2-LIVE-W  10 SP 8 STR,
+   EM-P2-LIVE-CUM  10 SP 16 STR,
+   2 3 MOVZ,  LPROT @ BL,
+   LVSPILL @ BL,
+   12 DATA LOCF-CELL LDR,  12 12 3 LSRI,
+   10 SP 16 LDR,  12 12 10 SUB,
+   10 0 MOVZ,
+   rl LBL,
+      11 SP 8 LDR,  10 11 CMP,  C-GE rd BCOND,
+      5 12 10 ADD,
+      5 4095 CMPI,  C-LE sok BCOND,
+         EM-P2-SLOT-DIE
+      sok LBL,
+      9 $F94003E9 LIT64,  15 5 10 LSLI,
+      9 9 15 ORR,  LCEMIT @ BL,
+      9 W-PUSH0 LIT64,  LCEMIT @ BL,
+      9 W-PUSH1 LIT64,  LCEMIT @ BL,
+      10 10 1 ADDI,  rl B,
+   rd LBL,
+   SP SP 32 ADDI, ;
+
 : C-LBRACE-PARSE-NAMES ( -- )
    LBL LBL LBL {: nl nd nstore :}
    6 DATA LOCN-CELL LDR,
    nl LBL,
       LTOK @ BL,  0 nd CBZ,
       LBCAP @ BL,                                          \ locals reach the checker too
+      EM-P2-COUNT
       0 LKWENDLOC @ ADR,  1 2 MOVZ,  LKWCMP @ BL,  0 nstore CBZ,  nd B,   \ ":}" -> done
       nstore LBL,
       C-LBRACE-STORE-ONE
@@ -2484,6 +2624,11 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : C-LBRACE-CARVE-FRAME ( -- )
    LBL LBL {: pl pd :}
+   LBL LBL {: p1c pjoin :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 p1c CBZ,
+      EM-P2-CARVE
+      pjoin B,
+   p1c LBL,
    13 DATA LOCN-CELL LDR,  14 13 6 SUB,       \ n = N - start
    5 14 3 LSLI,  5 5 15 ADDI,  5 5 $FFFFFFFFFFFFFFF0 ANDI,   \ carve = align16(n*8):
    9 $D10003FF LIT64,  15 5 10 LSLI,  9 9 15 ORR,  LCEMIT @ BL,   \ SP must stay 16-aligned
@@ -2498,11 +2643,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       5 12 13 SUB,  5 5 1 SUBI,               \ scaled off = total - i - 1
       9 $F90003E9 LIT64,  5 5 10 LSLI,  9 9 5 ORR,  LCEMIT @ BL,   \ str x9,[sp,#off]
       13 13 1 SUBI,  pl B,
-   pd LBL, ;
+   pd LBL,
+   pjoin LBL, ;
 
 \ {: a b :} (compile): record names, carve a machine-stack frame, and pop
 \ declared values into slots. References are resolved by LLOC-FIND.
 : C-LBRACE ( -- )
+   9 DATA LOCN-CELL LDR,  9 DATA P2LOC0-CELL STR,
    C-LBRACE-GUARDS
    C-LBRACE-PARSE-NAMES
    C-LBRACE-CARVE-FRAME ;
@@ -3100,6 +3247,12 @@ variable CFSK2
    9 0 MOVZ,  9 DATA HOOK-CELL STR,
    cwok LBL,
    9 0 MOVZ,  9 DATA LOOPSP-CELL STR,
+   9 DATA P2-CELL STR,  9 DATA P2TOKIX-CELL STR,
+   9 DATA P2BODY0-CELL STR,  9 DATA P2INP-CELL STR,
+   9 DATA P2INE-CELL STR,  9 DATA P2DP-CELL STR,
+   9 DATA P2W0-CELL STR,  9 DATA P2W1-CELL STR,
+   9 DATA P2W2-CELL STR,  9 DATA P2W3-CELL STR,
+   9 DATA P2LOC0-CELL STR,
    G-INSTALL-CRASH
    G-INSTALL-TRAP ;
 
@@ -3206,6 +3359,180 @@ variable CFSK2
    9 DATA DOESB-CELL STR,
    9 DATA TRUSTED-CELL STR, ;
 
+\ LP2FETCH emits a width-constant bundle load. The address is popped first;
+\ memory slot 0..tag is then pushed in canonical ascending order.
+: EMIT-P2-FETCH ( -- )
+   LP2FETCH @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   $D1002273 C-EMITW
+   $F940026A C-EMITW
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL,
+   $F940014B C-EMITW
+   $9100214A C-EMITW
+   $F900026B C-EMITW
+   W-PUSH1 C-EMITW
+   $F1000529 C-EMITW
+   $54FFFF61 C-EMITW
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LP2STORE emits a width-constant bundle store. Each destination cell passes
+\ the scalar store's two-band protected-memory guard before any mutation.
+: EMIT-P2-STORE ( -- )
+   LP2STORE @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   $D1002273 C-EMITW
+   $F940026A C-EMITW
+   8 $D100026E LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT @ BL,
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT @ BL,
+   $F940028D FRIEND-LATCH-CELL 8 / 10 lshift or C-EMITW
+   $B400018D C-EMITW
+   $CB14014C C-EMITW
+   $D100018D FRIEND-ARENA 10 lshift or C-EMITW
+   $F10001BF FRIEND-ARENA-LEN 10 lshift or C-EMITW
+   $540000A3 C-EMITW
+   $D280000D PROT-REG-OFF 5 lshift or C-EMITW
+   $CB0D018D C-EMITW
+   $F10001BF PROT-REG-LEN 10 lshift or C-EMITW
+   $54000082 C-EMITW
+   $D2800000 E-SEAL-VIOLATION 5 lshift or C-EMITW
+   SYS-EMIT-EXIT C-EMITW
+   SYS-EMIT-SVC C-EMITW
+   $F94001CF C-EMITW
+   $F900014F C-EMITW
+   $910021CE C-EMITW
+   $9100214A C-EMITW
+   $F1000529 C-EMITW
+   $54FFFDC1 C-EMITW
+   8 $D1000273 LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT @ BL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: EMIT-P2-HELPERS ( -- )
+   EMIT-P2-FETCH
+   EMIT-P2-STORE ;
+
+: EMIT-P2KW ( -- )
+   LWFWIDE @ LBL,   s" wf-wide?" BYTES,
+   LWFWAT @ LBL,    s" wf-w-at" BYTES,
+   LP2CARVW @ LBL,  s" p2-carve-w" BYTES,
+   LP2LIVEW @ LBL,  s" p2-live-w@" BYTES,
+   LP2LIVEC @ LBL,  s" p2-live-cum@" BYTES,
+   LP2SEQRST @ LBL, s" p2-locseq-reset" BYTES,
+   LRECWPUB @ LBL,  s" rec-wide-publish" BYTES,
+   LKWAT2 @ LBL,    s" @" BYTES,
+   LKWSTORE2 @ LBL, s" !" BYTES,
+   LP2DOESW @ LBL,
+   s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LP2UNSUPW @ LBL,
+   s" hb: stage0 cannot lower this wide operation: " BYTES, ;
+
+: EM-P2-START ( -- )
+   LBL {: capok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   2 3 MOVZ,  LPROT @ BL,
+   9 DATA INP-CELL LDR,  9 DATA P2INP-CELL STR,
+   9 DATA INE-CELL LDR,  9 DATA P2INE-CELL STR,
+   14 DATA BODYLEN-CELL LDR,  16 14 2 ADDI,
+   5 BODYBUF-CAP MOVZ,  16 5 CMP,  C-LE capok BCOND,
+      0 71 MOVZ,  NR-EXIT-GROUP SYS,
+   capok LBL,
+   15 DATA BODYBUF-OFF ADDI,  15 15 14 ADD,
+   13 $3B MOVZ,  13 15 0 STRB,  13 32 MOVZ,  13 15 1 STRB,
+   10 DATA BODYBUF-OFF ADDI,
+   9 DATA P2BODY0-CELL LDR,  9 10 9 ADD,  9 DATA INP-CELL STR,
+   9 DATA BODYLEN-CELL LDR,  9 9 2 ADDI,  9 10 9 ADD,
+   9 DATA INE-CELL STR,
+   11 DATA PEND-CELL LDR,  CP 11 0 LDR,
+   9 DATA P2DP-CELL LDR,  9 DATA DP-CELL STR,
+   5 CFSTK-OFF LIT64,  11 DBASE 5 ADD,  12 0 MOVZ,  12 11 0 STR,
+   12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
+   C-COLON-RESET-COMPILE-STATE
+   C-COLON-WORD-PROLOGUE
+   9 1 MOVZ,  9 DATA P2-CELL STR,
+   9 0 MOVZ,  9 DATA P2TOKIX-CELL STR, ;
+
+: EM-P2-TRIGGER ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: nowide p2ok :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 nowide CBNZ,
+   LWFWIDE 8 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP  10 nowide CBZ,
+   10 DATA DOESB-CELL LDR,  10 p2ok CBZ,
+      0 2 MOVZ,  1 LP2DOESW @ ADR,  2 49 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,
+      NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   p2ok LBL,
+   LP2SEQRST 15 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   EM-P2-START
+   lmain B,
+   nowide LBL, ;
+
+: EM-P2-CHECK-DEFINER ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: p2sk :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 p2sk CBNZ,
+      C-CALL-CHECK-DEFINER
+      lmain EM-P2-TRIGGER
+   p2sk LBL, ;
+
+: EM-P2-FINISH ( -- )
+   LBL {: nop2 :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 nop2 CBZ,
+   9 DATA P2INP-CELL LDR,  9 DATA INP-CELL STR,
+   9 DATA P2INE-CELL LDR,  9 DATA INE-CELL STR,
+   9 0 MOVZ,  9 DATA P2-CELL STR,
+   9 DATA P2INP-CELL STR,  9 DATA P2INE-CELL STR,
+   nop2 LBL, ;
+
+: EM-P2X-FETCH ( -- )
+   5 DATA P2W0-CELL LDR,  LP2FETCH @ BL, ;
+
+: EM-P2X-STORE ( -- )
+   5 DATA P2W0-CELL LDR,  LP2STORE @ BL, ;
+
+: P2M-ENTRY ( n n n n -- ) {: lmain kwvar kwlen hxt :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL {: skip :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   0 kwvar @ ADR,  1 kwlen MOVZ,  LKWCMP @ BL,
+   0 skip CBZ,
+   2 5 MOVZ,  LPROT @ BL,
+   9 DATA P2TOKIX-CELL LDR,  9 G-PUSH
+   9 0 MOVZ,  9 G-PUSH
+   LWFWAT 7 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP  10 DATA P2W0-CELL STR,
+   2 3 MOVZ,  LPROT @ BL,
+   10 1 CMPI,  C-LE skip BCOND,
+   LVSPILL @ BL,
+   hxt execute
+   lmain B,
+   skip LBL, ;
+
+: EM-P2-REJECT-POS ( n n -- ) {: pos die :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   2 5 MOVZ,  LPROT @ BL,
+   9 DATA P2TOKIX-CELL LDR,  9 G-PUSH
+   9 pos MOVZ,  9 G-PUSH
+   LWFWAT 7 C-P2-FIND-GLOBAL
+   C-CALL-X11-SAVED
+   10 G-POP
+   2 3 MOVZ,  LPROT @ BL,
+   10 1 CMPI,  C-GT die BCOND, ;
+
+: EMIT-COMPILE-P2WIDE ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+   LBL LBL {: notp2 unsupported :} \ typed-local-lint: allow-bare-local - Gforth bootstrap labels cannot use Habu type suffixes.
+   9 DATA P2-CELL LDR,  9 notp2 CBZ,
+   lmain LKWAT2    1 ['] EM-P2X-FETCH P2M-ENTRY
+   lmain LKWSTORE2 1 ['] EM-P2X-STORE P2M-ENTRY
+   0 unsupported EM-P2-REJECT-POS
+   1 unsupported EM-P2-REJECT-POS
+   2 unsupported EM-P2-REJECT-POS
+   3 unsupported EM-P2-REJECT-POS
+   notp2 B,
+   unsupported LBL,
+      0 2 MOVZ,  1 LP2UNSUPW @ ADR,  2 45 MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,
+      NR-WRITE SYS,
+      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+   notp2 LBL, ;
+
 : C-TRUSTED ( -- )
    2 3 MOVZ,  LPROT @ BL,
    C-COLON-CODE-ROOM
@@ -3224,6 +3551,8 @@ variable CFSK2
       C-COLON-DICT-ROOM
       C-COLON-PENDING-DREC
       C-COLON-MAYBE-SIG
+      9 DATA DP-CELL LDR,  9 DATA P2DP-CELL STR,
+      9 DATA BODYLEN-CELL LDR,  9 DATA P2BODY0-CELL STR,
       C-COLON-RESET-COMPILE-STATE
       C-COLON-WORD-PROLOGUE
       lmain B,
@@ -3278,7 +3607,7 @@ variable CFSK2
 : EMIT-COMPILE-PUBLISH-TRUSTED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    LBL LBL LBL {: ttrusted ndhas ndchk :} \ typed-local-lint: allow-bare-local
    10 DATA TRUSTED-CELL LDR,  10 ttrusted CBNZ,
-      C-CALL-CHECK-DEFINER
+      lmain EM-P2-CHECK-DEFINER
    ttrusted LBL,
    10 DATA TCSIG-U-CELL LDR,  10 ndhas CBNZ,
    10 DATA DOESB-CELL LDR,  10 ndchk CBZ,
@@ -3289,20 +3618,26 @@ variable CFSK2
    ndchk LBL,
    C-CALL-TRUST-PEND
    NDICT NDICT 1 ADDI,
+   EM-REC-WIDE-PUBLISH
+   EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
 
 : EMIT-COMPILE-PUBLISH-HOOKED ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    LBL LBL {: nohook rejected :} \ typed-local-lint: allow-bare-local
+   9 DATA P2-CELL LDR,  9 nohook CBNZ,
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
       10 DATA BODYBUF-OFF ADDI,  10 G-PUSH
       10 DATA BODYLEN-CELL LDR,  10 G-PUSH
       SP SP 16 SUBI,  30 SP 0 STR,  9 BLR,  30 SP 0 LDR,  SP SP 16 ADDI,
       10 G-POP  10 rejected CBZ,
+      lmain EM-P2-TRIGGER
    nohook LBL,
       NDICT NDICT 1 ADDI,
+      EM-REC-WIDE-PUBLISH
    rejected LBL,
+   EM-P2-FINISH
    C-CLEAR-TRUSTED-STATE
    9 0 MOVZ,  9 DATA PEND-CELL STR,
    lmain B, ;
@@ -3385,12 +3720,17 @@ variable CFSK2
 
 : EMIT-COMPILE-LOCAL ( n -- ) {: lmain :} \ typed-local-lint: allow-bare-local
    LBL LBL LBL {: notloc lmem qok :} \ typed-local-lint: allow-bare-local
+   LBL {: p1c :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LLOC-FIND @ BL,  0 0 CMPI,  C-LT notloc BCOND,
       LBCAP @ BL,
       11 DATA QPATCH-CELL LDR,  11 qok CBZ,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
          0 75 MOVZ,  NR-EXIT-GROUP SYS,
       qok LBL,
+      9 DATA P2-CELL LDR,  9 p1c CBZ,
+         EM-P2-LOCREF
+         lmain B,
+      p1c LBL,
       LVRALLOC @ BL,  14 lmem CBZ,
       7 DATA LOCF-CELL LDR,  7 7 3 LSRI,  7 7 0 SUB,  7 7 1 SUBI,
       9 $F94003E0 LIT64,  9 9 14 ORR,  7 7 10 LSLI,  9 9 7 ORR,  LCEMIT @ BL,
@@ -3716,9 +4056,11 @@ variable CFSK2
 
 : EMIT-COMPILE ( n n -- ) {: lmain lundef :}
    LBL {: lnotsemi :}
+   EM-P2-COUNT
    lmain EMIT-COMPILE-ADT-MODE
    lmain lnotsemi EMIT-COMPILE-SEMI
    lmain EMIT-COMPILE-LOCAL
+   lmain EMIT-COMPILE-P2WIDE
    lmain EMIT-COMPILE-KEYWORDS
    lmain EMIT-COMPILE-LITERAL
    lmain EMIT-COMPILE-OPS
@@ -3855,7 +4197,7 @@ variable CFSK2
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPCHECKER !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !
+   LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !
    LBL LPSTRUCTEFF !  LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
@@ -3881,6 +4223,13 @@ variable CFSK2
    LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
+: EMIT-LABEL-P2 ( -- )
+   LBL LWFWIDE !  LBL LWFWAT !
+   LBL LP2CARVW !  LBL LP2LIVEW !  LBL LP2LIVEC !  LBL LP2SEQRST !
+   LBL LRECWPUB !
+   LBL LKWAT2 !  LBL LKWSTORE2 !
+   LBL LP2FETCH !  LBL LP2STORE !  LBL LP2DOESW !  LBL LP2UNSUPW ! ;
+
 : EMIT-LABELS ( -- )
    EMIT-LABEL-CORE
    EMIT-LABEL-RUNTIME
@@ -3888,7 +4237,8 @@ variable CFSK2
    EMIT-LABEL-SIGNALS
    EMIT-LABEL-SOURCES
    EMIT-LABEL-JIT
-   EMIT-LABEL-OPS ;
+   EMIT-LABEL-OPS
+   EMIT-LABEL-P2 ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
@@ -3911,7 +4261,8 @@ variable CFSK2
    EMIT-FOLDKW
    EMIT-SHUFKW
    EMIT-CMPKW
-   EMIT-UNKW ;
+   EMIT-UNKW
+   EMIT-P2KW ;
 
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-CRASH-HANDLER
@@ -3921,7 +4272,8 @@ variable CFSK2
    EMIT-PROF
    EMIT-SHEBANG-COMMENT
    EMIT-SOURCE-READ
-   EMIT-JIT ;
+   EMIT-JIT
+   EMIT-P2-HELPERS ;
 
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
