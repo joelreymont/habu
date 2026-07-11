@@ -40,3 +40,10 @@ through ptxas and gradcheck on the Orin against ADE-GRAD host references,
 mirroring the softmax device run (50fb466). The primitive `*.` VJP math is
 already device-proven via the older ad.f AG2 path; only the DAG emission wiring
 for arbitrary MUL/ADD pipelines is unverified on device.
+
+PENDING-ZED ADDITION 2026-07-11 (Wave-2 sweep): (a) tensor-batched VJP device
+leg - lower the maki/autograd-tensor.f TT-* tensor VJPs onto checked Habu-PTX
+tile kernels and device-gradcheck on the Orin (dot habu-autograd-tensor-batched
+closed host-side); (b) composite attention backward device parity - run the
+GC-ATTN block (softmax(Q@Kt*s)@V) backward through the device path and compare
+vs the host gradcheck (dot habu-autograd-transformer-block closed host-side).
