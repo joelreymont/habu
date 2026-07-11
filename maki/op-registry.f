@@ -164,6 +164,7 @@ public
       fullsum-dot-bwd OF s" fullsum-dot-bwd" ENDOF
       pad-scatter     OF s" pad-scatter"     ENDOF
       scatter-add     OF s" scatter-add"     ENDOF
+      gelu-bwd2       OF s" gelu-bwd2"       ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -235,7 +236,9 @@ private
    CLASS-ROW-REDUCE 1 ACC-F32  NUM-RELTOL 1 OP-ROWSUM-BWD      OPR!
    CLASS-ROW-REDUCE 2 ACC-F32  NUM-RELTOL 2 OP-FULLSUM-DOT-BWD OPR!
    CLASS-MOVEMENT   0 ACC-SAME NUM-EXACT  1 OP-PAD-SCATTER     OPR!
-   CLASS-MOVEMENT   0 ACC-F32  NUM-RELTOL 2 OP-SCATTER-ADD     OPR! ;
+   CLASS-MOVEMENT   0 ACC-F32  NUM-RELTOL 2 OP-SCATTER-ADD     OPR!
+   \ second-order backward op-kind (gelu-bwd adjoint): dz * gelu''(x), (dz, x).
+   CLASS-EW        12 ACC-SAME NUM-RELTOL 2 OP-GELU-BWD2       OPR! ;
 
 OPR-BUILD
 
@@ -282,5 +285,7 @@ OPR-BUILD
 ' FULLSUM-DOT-BWD OP-FULLSUM-DOT-BWD  cells R-REF + !
 ' PAD-SCATTER     OP-PAD-SCATTER      cells R-REF + !
 ' SCATTER-ADD     OP-SCATTER-ADD      cells R-REF + !
+\ second-order backward reference (maki/gelu.f GELU-BWD2 = dz * gelu''(x)).
+' GELU-BWD2       OP-GELU-BWD2        cells R-REF + !
 
 end-package

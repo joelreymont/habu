@@ -38,13 +38,25 @@ MAKI-OPKIND:LINEAR      ADJ-ID ADJ-LINEAR   T=
 MAKI-OPKIND:SLICE       ADJ-ID ADJ-SLICE    T=
 MAKI-OPKIND:GATHER      ADJ-ID ADJ-GATHER   T=
 
-\ ---- differentiability (cast has no adjoint; the backward ops have none too) --
+\ ---- differentiability (cast has no adjoint; backward ops without a second-order
+\ row have none; gelu-bwd carries the second-order pilot row) -------------------
 MAKI-OPKIND:GELU        ADJ-HAS? TTRUE
 MAKI-OPKIND:CAST        ADJ-HAS? TFALSE
-MAKI-OPKIND:GELU-BWD    ADJ-HAS? TFALSE            \ no second-order in v1
+MAKI-OPKIND:GELU-BWD    ADJ-HAS? TTRUE            \ second-order pilot (grad-of-grad)
+MAKI-OPKIND:GELU-BWD2   ADJ-HAS? TFALSE           \ third order stays fail-closed
+MAKI-OPKIND:RELU-BWD    ADJ-HAS? TFALSE           \ remaining *-BWD kinds: no row yet
 MAKI-OPKIND:SOFTMAX-ROW-BWD ADJ-HAS? TFALSE
 MAKI-OPKIND:ROWSUM-BWD  ADJ-HAS? TFALSE           \ reduce/scatter backward ops: no second-order
 MAKI-OPKIND:PAD-SCATTER ADJ-HAS? TFALSE
+
+\ ---- the second-order gelu-bwd row ------------------------------------------
+MAKI-OPKIND:GELU-BWD    ADJ-ID   ADJ-GELU-BWD  T=
+MAKI-OPKIND:GELU-BWD    ADJ-SAVE SAVE-INPUT    T=   \ reads its own operands (dz, x)
+MAKI-OPKIND:GELU-BWD    ADJ-SUP? TTRUE
+MAKI-OPKIND:GELU-BWD    0 ADJ-GRAD-IN? TTRUE        \ d-dz
+MAKI-OPKIND:GELU-BWD    1 ADJ-GRAD-IN? TTRUE        \ d-x
+MAKI-OPKIND:GELU-BWD    ADJ-BOP OP-GELU-BWD2  T=
+MAKI-OPKIND:GELU-BWD    ADJ-BWD-OP? TTRUE
 
 \ ---- save-need: gelu needs the INPUT, softmax the OUTPUT, add neither ---------
 MAKI-OPKIND:GELU        ADJ-SAVE SAVE-INPUT  T=

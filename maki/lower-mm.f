@@ -126,7 +126,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF  layernorm-bwd OF false ENDOF
       rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF  rope-bwd OF false ENDOF
       rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF  pad-scatter OF false ENDOF
-      scatter-add OF false ENDOF
+      scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
    ;MATCH ;
 : LMM-EPI-OP? ( opkind -- bool )                 \ v1 unary EW epilogue
    MATCH opkind
@@ -139,7 +139,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       gelu-bwd OF false ENDOF  silu-bwd OF false ENDOF  layernorm-bwd OF false ENDOF
       rmsnorm-bwd OF false ENDOF  softmax-row-bwd OF false ENDOF  rope-bwd OF false ENDOF
       rowsum-bwd OF false ENDOF  fullsum-dot-bwd OF false ENDOF  pad-scatter OF false ENDOF
-      scatter-add OF false ENDOF
+      scatter-add OF false ENDOF  gelu-bwd2 OF false ENDOF
    ;MATCH ;
 
 : LMM-MM-COUNT ( n -- n ) {: rid:n :}          \ contraction nodes in the region
@@ -294,6 +294,7 @@ private
       softmax-row-bwd OF E-LMM-OP throw ENDOF  rope-bwd OF E-LMM-OP throw ENDOF
       rowsum-bwd OF E-LMM-OP throw ENDOF  fullsum-dot-bwd OF E-LMM-OP throw ENDOF
       pad-scatter OF E-LMM-OP throw ENDOF  scatter-add OF E-LMM-OP throw ENDOF
+      gelu-bwd2 OF E-LMM-OP throw ENDOF
    ;MATCH
    nd LMM-NR! ;
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)

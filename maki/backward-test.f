@@ -33,6 +33,7 @@ variable BT-VA  variable BT-VU
 : BT-TRY-EMPTY ( -- )  MIR-RESET BW-BUILD ;              \ empty IR
 : BT-TRY-CAST  ( -- )  MAKI-OPKIND:CAST  BT-MK1 BW-BUILD ;           \ no adjoint (non-differentiable)
 : BT-TRY-SCALE-BC ( -- )  1 3 BT-MK-SCALE BW-BUILD ;        \ s=1x3: partial broadcast (v1)
+: BT-TRY-2ND ( -- )  BW-BUILD ;                          \ 2nd build over the current IR
 
 T-RESET
 
@@ -175,6 +176,36 @@ BW-BWD-COUNT 2 T=
 2 MIR-OP@ OPKIND>N OP-FULLSUM-DOT-BWD T=                 \ d-scale = full-reduce dot -> 1x1
 2 MIR-ROWS@ 1 T=  2 MIR-COLS@ 1 T=
 0 BW-SLOT-GRAD@ 1 T=  1 BW-SLOT-GRAD@ 2 T=
+
+\ ---- SECOND ORDER (grad-of-grad pilot): a 2nd BW-BUILD over the combined IR --
+\ After build 1 over GELU: node 0 = gelu(x), node 1 = gelu-bwd(s, x) = dL/dx (the
+\ LAST node; slots 0 = x, 1 = s = build-1 seed). Build 2 seeds v (slot 2) on node 1
+\ and differentiates it: d-s = gelu-bwd(v, x); d-x = gelu-bwd2(mul(v, s), x).
+MODEL: GG ( x:2x2 -- y ) GELU ;
+BW-BUILD
+BW-BUILD                                       \ 2nd build: gelu-bwd's adjoint row emits
+BW-FWD-N@ 2 T=  BW-BWD-COUNT 3 T=
+BW-SEED-SLOT@ 2 T=
+2 MIR-OP@ OPKIND>N OP-GELU-BWD  T=             \ d-s reuses the first derivative
+3 MIR-OP@ OPKIND>N OP-MUL       T=             \ v*s
+4 MIR-OP@ OPKIND>N OP-GELU-BWD2 T=             \ d-x needs gelu''
+1 BW-SLOT-GRAD@ 2 T=                           \ d-s <- gelu-bwd(v, x)
+0 BW-SLOT-GRAD@ 4 T=                           \ d-x <- gelu-bwd2(v*s, x)
+\ operand wiring: d-s reads (v, x); mul reads (v, s); gelu-bwd2 reads (v*s, x)
+2 0 MIR-IN@ 2 MIR-IN-REF T=   2 1 MIR-IN@ 0 MIR-IN-REF T=
+3 0 MIR-IN@ 2 MIR-IN-REF T=   3 1 MIR-IN@ 1 MIR-IN-REF T=
+4 0 MIR-IN@ 3 T=              4 1 MIR-IN@ 0 MIR-IN-REF T=
+
+\ ---- fail closed: any OTHER *-BWD kind still rejects the 2nd build -----------
+MODEL: SGG ( x:2x2 -- y ) SILU ;
+BW-BUILD
+' BT-TRY-2ND E-BW-NOADJ TTHROWS                \ silu-bwd has no adjoint row yet
+
+\ ---- fail closed: THIRD order stays closed (gelu-bwd2 has no adjoint row) ----
+MODEL: GG3 ( x:2x2 -- y ) GELU ;
+BW-BUILD
+BW-BUILD                                       \ 2nd build succeeds (pilot above)
+' BT-TRY-2ND E-BW-NOADJ TTHROWS                \ 3rd build: gelu-bwd2 is ADJ-NONE
 
 \ ---- fail closed: no-adjoint (cast), empty IR, scale partial broadcast -------
 ' BT-TRY-CAST     E-BW-NOADJ     TTHROWS

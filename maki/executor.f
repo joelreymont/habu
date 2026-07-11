@@ -116,6 +116,7 @@ private
       softmax-row-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+      gelu-bwd2 OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( n -- ) {: nd:n :}
@@ -134,6 +135,7 @@ private
       add OF ADD-F ENDOF  residual-add OF ADD-F ENDOF  bias OF ADD-F ENDOF
       mul OF MUL-F ENDOF  scale OF MUL-F ENDOF
       relu-bwd OF RELU-BWD ENDOF  gelu-bwd OF GELU-BWD ENDOF  silu-bwd OF SILU-BWD ENDOF
+      gelu-bwd2 OF GELU-BWD2 ENDOF
       relu OF E-EX-UNSUP throw ENDOF  gelu OF E-EX-UNSUP throw ENDOF
       silu OF E-EX-UNSUP throw ENDOF  layernorm OF E-EX-UNSUP throw ENDOF
       rmsnorm OF E-EX-UNSUP throw ENDOF  softmax-row OF E-EX-UNSUP throw ENDOF
@@ -175,6 +177,7 @@ private
       softmax-row-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+      gelu-bwd2 OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-ROW-FWD ( n -- ) {: nd:n :}
@@ -200,6 +203,7 @@ private
       silu-bwd OF E-EX-UNSUP throw ENDOF  rope-bwd OF E-EX-UNSUP throw ENDOF
       rowsum-bwd OF E-EX-UNSUP throw ENDOF  fullsum-dot-bwd OF E-EX-UNSUP throw ENDOF
       pad-scatter OF E-EX-UNSUP throw ENDOF  scatter-add OF E-EX-UNSUP throw ENDOF
+      gelu-bwd2 OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -324,6 +328,7 @@ private
       residual-add    OF nd EX-EW2          ENDOF
       relu-bwd        OF nd EX-EW2          ENDOF
       gelu-bwd        OF nd EX-EW2          ENDOF
+      gelu-bwd2       OF nd EX-EW2          ENDOF
       silu-bwd        OF nd EX-EW2          ENDOF
       layernorm       OF nd EX-ROW-FWD      ENDOF
       rmsnorm         OF nd EX-ROW-FWD      ENDOF
@@ -375,7 +380,7 @@ public
       gather OF true ENDOF  relu-bwd OF true ENDOF  gelu-bwd OF true ENDOF  silu-bwd OF true ENDOF
       layernorm-bwd OF true ENDOF  rmsnorm-bwd OF true ENDOF  softmax-row-bwd OF true ENDOF
       rope-bwd OF true ENDOF  rowsum-bwd OF true ENDOF  fullsum-dot-bwd OF true ENDOF
-      pad-scatter OF true ENDOF  scatter-add OF true ENDOF
+      pad-scatter OF true ENDOF  scatter-add OF true ENDOF  gelu-bwd2 OF true ENDOF
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------

@@ -63,7 +63,8 @@ public
 16 constant ADJ-GATHER        \ OP-SCATTER-ADD the cotangent rows at the gathered indices
 17 constant ADJ-BIAS          \ dx = cotangent copy ; d-bias = OP-ROWSUM-BWD (row reduce)
 18 constant ADJ-SCALE         \ dx = ct*s (mul/scale) ; d-scale = OP-FULLSUM-DOT-BWD
-19 constant ADJ-N             \ range bound
+19 constant ADJ-GELU-BWD      \ second order: d-dz = OP-GELU-BWD, d-x = OP-GELU-BWD2
+20 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -113,7 +114,8 @@ public
 
 \ the dedicated backward op-kind as a FAMILY (backward.f emits it as a node op).
 \ Lifts the stored code back to an opkind at this named boundary; fail closed on
-\ an op with no dedicated backward op (only ever reached for relu/gelu/silu/norms).
+\ an op with no dedicated backward op (reached for relu/gelu/silu/norms and the
+\ second-order gelu-bwd row).
 : BOP-LIFT ( n -- opkind )
    dup OP-RELU-BWD        = if drop MAKI-OPKIND:RELU-BWD        exit then
    dup OP-GELU-BWD        = if drop MAKI-OPKIND:GELU-BWD        exit then
@@ -122,6 +124,7 @@ public
    dup OP-RMSNORM-BWD     = if drop MAKI-OPKIND:RMSNORM-BWD     exit then
    dup OP-SOFTMAX-ROW-BWD = if drop MAKI-OPKIND:SOFTMAX-ROW-BWD exit then
    dup OP-ROPE-BWD        = if drop MAKI-OPKIND:ROPE-BWD        exit then
+   dup OP-GELU-BWD2       = if drop MAKI-OPKIND:GELU-BWD2       exit then
    drop E-ADJ-UNSUP throw ;
 : ADJ-BWD-KIND ( opkind -- opkind )  ADJ-BOP BOP-LIFT ;
 
@@ -171,13 +174,16 @@ public
       fullsum-dot-bwd OF E-ADJ-UNSUP throw ENDOF
       pad-scatter     OF E-ADJ-UNSUP throw ENDOF
       scatter-add     OF E-ADJ-UNSUP throw ENDOF
+      gelu-bwd2       OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
 
 \ ---- the adjoint registry ( id save mask sup bop op ADJ! ) -------------------
-\ default: every op-kind is non-differentiable until a row overrides it (so the
-\ synthesized backward op-kinds themselves are correctly ADJ-NONE / no second order).
+\ default: every op-kind is non-differentiable until a row overrides it, so a
+\ synthesized backward op-kind stays ADJ-NONE (fail-closed E-BW-NOADJ on a deeper
+\ BW-BUILD) until its own adjoint row lands. gelu-bwd carries one (second-order
+\ pilot below); the remaining *-BWD kinds are tracked by the higher-order dot.
 : ADJ-DEFAULTS ( -- )
    OP-N 0 ?do  ADJ-NONE SAVE-NONE 0 0 -1 i ADJ!  loop ;
 
@@ -211,7 +217,13 @@ private
    ADJ-LINEAR  SAVE-INPUT 7  1 -1 OP-LINEAR ADJ!
    \ slice/gather: input-grad is a scatter into a zero buffer (static params/index).
    ADJ-SLICE   SAVE-NONE  1  1 -1 OP-SLICE  ADJ!
-   ADJ-GATHER  SAVE-NONE  1  1 -1 OP-GATHER ADJ! ;
+   ADJ-GATHER  SAVE-NONE  1  1 -1 OP-GATHER ADJ!
+   \ ---- second order (higher-order grad pilot): the gelu-bwd node z = dz*gelu'(x)
+   \ is itself differentiable in BOTH operands: d-dz = ct*gelu'(x) (OP-GELU-BWD
+   \ again), d-x = ct*dz*gelu''(x) (OP-GELU-BWD2). Its operands ARE the tensors the
+   \ adjoint reads -> SAVE-INPUT; gelu-bwd2 itself stays ADJ-NONE (third order is
+   \ fail-closed E-BW-NOADJ).
+   ADJ-GELU-BWD SAVE-INPUT 3 1 OP-GELU-BWD2 OP-GELU-BWD ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

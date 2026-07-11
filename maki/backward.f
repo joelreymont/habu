@@ -24,6 +24,17 @@
 \ throw BEFORE any node is appended; the scale INPUT gradient fails closed (E-BW-BROADCAST)
 \ on a partial broadcast (1xC / Rx1) needing a broadcast-reduce not in the op set; an empty
 \ IR and an accessor used before BW-BUILD are named throws. maki -> habu; owns -5105..-5110.
+\
+\ Second order (higher-order grad pilot): because backward nodes are ORDINARY IR nodes,
+\ a SECOND BW-BUILD differentiates the combined forward+backward region. Its seeding
+\ semantics are exactly the first build's: the LAST IR node is seeded with a fresh
+\ cotangent input v. After a first build over a single-output chain the last node is the
+\ final accumulated input gradient g = dL/dx, so the second build computes
+\ d/d(leaf) [ sum(v (.) g) ] for every differentiable leaf - the Hessian-vector product
+\ H v w.r.t. x plus the mixed gradient w.r.t. the first seed s (for the gelu pilot:
+\ d/dx = v (.) s (.) gelu''(x), d/ds = v (.) gelu'(x)). Each *-BWD op on the region
+\ needs its own adjoint row (maki/adjoint.f); gelu-bwd is wired (BW-STEP-GELU-BWD),
+\ every other *-BWD kind stays fail-closed E-BW-NOADJ until its row lands.
 
 require lib/prelude.f
 require lib/string.f
@@ -239,12 +250,22 @@ variable BW-BUILT?
    fn 0 MIR-IN@ {: x:n :}  fn 1 MIR-IN@ {: idx:n :}
    ct idx x  BW-SA  x BW-ACCUM ;
 
+\ gelu-bwd adjoint (second order): the node computes z = dz * gelu'(x) over (dz, x).
+\ d-dz = ct * gelu'(x)      = OP-GELU-BWD(ct, x)        (reuses the first derivative)
+\ d-x  = ct * dz * gelu''(x) = OP-GELU-BWD2(ct*dz, x)   (needs the second derivative)
+: BW-STEP-GELU-BWD ( n n -- ) {: fn:n ct:n :}
+   fn 0 MIR-IN@ {: dz:n :}  fn 1 MIR-IN@ {: x:n :}
+   ct x MAKI-OPKIND:GELU-BWD dz BW-OP2  dz BW-ACCUM
+   ct dz MAKI-OPKIND:MUL x BW-OP2
+   x MAKI-OPKIND:GELU-BWD2 x BW-OP2  x BW-ACCUM ;
+
 \ ---- one forward node's reverse step ---------------------------------------
 : BW-STEP ( n -- ) {: fn:n :}
    fn cells BW-CT + @ {: ct:n :}
    ct BW-NONE = if exit then                 \ node not on the backward path
    \ dispatch straight on the forward op family (exhaustive: adding an op forces an
-   \ adjoint decision here). Non-differentiable / synthesized backward ops throw.
+   \ adjoint decision here). Non-differentiable ops and synthesized backward ops
+   \ without an adjoint row throw; gelu-bwd carries the second-order pilot.
    fn ct  fn MIR-OP@ MATCH opkind
       add             OF BW-STEP-COPY      ENDOF
       residual-add    OF BW-STEP-COPY      ENDOF
@@ -267,7 +288,8 @@ variable BW-BUILT?
       gather          OF BW-STEP-GATHER    ENDOF
       cast            OF E-BW-UNSUP throw  ENDOF
       relu-bwd        OF E-BW-UNSUP throw  ENDOF
-      gelu-bwd        OF E-BW-UNSUP throw  ENDOF
+      gelu-bwd        OF BW-STEP-GELU-BWD  ENDOF
+      gelu-bwd2       OF E-BW-UNSUP throw  ENDOF
       silu-bwd        OF E-BW-UNSUP throw  ENDOF
       layernorm-bwd   OF E-BW-UNSUP throw  ENDOF
       rmsnorm-bwd     OF E-BW-UNSUP throw  ENDOF

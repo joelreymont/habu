@@ -111,6 +111,33 @@ MODEL: GC-ATTN ( q:4x3 kt:3x4 s:1x1 v:4x3 -- o ) MATMUL SCALE SOFTMAX-ROW MATMUL
 GC-RUN V-PASS T=
 s" host: 4 input(s) gradchecked" GCT-REASON-IN
 
+\ ---- SECOND ORDER (grad-of-grad pilot): gradcheck the 2nd BW-BUILD ------------
+\ HVP semantics under test: keep the FIRST backward in the IR, so its last node is
+\ g = dL/dx (L = sum(s (.) model(x)), s = the build-1 seed). GC-RUN then seeds a
+\ fresh cotangent v on g and FD-checks, for EVERY leaf, analytic d/d(leaf) of
+\ sum(v (.) g) against a central difference of g under leaf perturbation:
+\   d/dx = v (.) s (.) gelu''(x)   (the Hessian-vector product, diagonal here)
+\   d/ds = v (.) gelu'(x)          (the mixed gradient w.r.t. the first seed)
+MODEL: GC-GG ( x:2x2 -- y ) GELU ;
+BW-BUILD
+GC-RUN V-PASS T=
+s" host: 2 input(s) gradchecked" GCT-REASON-IN     \ x AND the build-1 seed s
+\ chain rule: gelu-bwd reads a NODE (gelu output); the 2nd order mixes
+\ gelu''(g0)*gelu'(x)^2 + gelu'(g0)*gelu''(x) via emitted mul/gelu-bwd2/fan-in ADD
+MODEL: GC-GG2 ( x:2x2 -- y ) GELU GELU ;
+BW-BUILD
+GC-RUN V-PASS T=
+\ fan-out residual: build 1 sums cotangents via OP-ADD; build 2 differentiates
+\ THROUGH that ADD (d/dx = v (.) s (.) gelu''(x), d/ds = v (.) (1 + gelu'(x)))
+MODEL: GC-GGR ( x:4x8 -- y ) GELU x RESIDUAL-ADD ;
+BW-BUILD
+GC-RUN V-PASS T=
+\ honest boundary: any other *-BWD kind on the region stays NOT-RUN (named reason)
+MODEL: GC-LN2 ( x:4x8 -- y ) LAYERNORM ;
+BW-BUILD
+GC-RUN V-NOTRUN T=
+s" no-adjoint:layernorm-bwd" GCT-REASON-IN
+
 \ ---- NOT-RUN: only cast remains (non-differentiable) ------------------------
 MODEL: GC-CAST ( x:2x2 -- y ) CAST ;
 GC-RUN V-NOTRUN T=

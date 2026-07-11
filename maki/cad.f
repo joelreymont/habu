@@ -310,6 +310,7 @@ private
       fullsum-dot-bwd OF 2drop 2drop true ENDOF
       pad-scatter     OF 2drop 2drop true ENDOF
       scatter-add     OF 2drop 2drop true ENDOF
+      gelu-bwd2       OF 2drop 2drop true ENDOF
    ;MATCH ;
 : SHP-CHECK ( n n n n opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
@@ -584,6 +585,7 @@ private
       fullsum-dot-bwd OF E-CAD-BIND-SHAPE throw ENDOF
       pad-scatter     OF E-CAD-BIND-SHAPE throw ENDOF
       scatter-add     OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu-bwd2       OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
@@ -624,6 +626,7 @@ private
       fullsum-dot-bwd OF E-CAD-BIND-SHAPE throw ENDOF
       pad-scatter     OF E-CAD-BIND-SHAPE throw ENDOF
       scatter-add     OF E-CAD-BIND-SHAPE throw ENDOF
+      gelu-bwd2       OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 : REPROP-MOVE ( n -- ) {: nd:n :}

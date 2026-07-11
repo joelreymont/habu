@@ -55,7 +55,11 @@ public
 28 constant OP-FULLSUM-DOT-BWD   \ sum(ct (.) x) -> 1x1          (scale grad; ref: FULLSUM-DOT-BWD)
 29 constant OP-PAD-SCATTER       \ place (r1-r0)xC ct into zero RxC at r0 (slice adj; ref: PAD-SCATTER)
 30 constant OP-SCATTER-ADD       \ add ct rows into zero RxC at gathered idx (gather adj; ref: SCATTER-ADD)
-31 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- second-order backward op-kinds (higher-order grad: adjoints OF *-BWD ops) --
+\ Synthesized by maki/backward.f when a SECOND BW-BUILD differentiates a backward
+\ region; never MODEL:-parseable. gelu-bwd's x-gradient needs the second derivative.
+31 constant OP-GELU-BWD2         \ dz * gelu''(x)                   (ref: GELU-BWD2)
+32 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -63,7 +67,7 @@ public
 \ OP-* codes above remain ONLY as the wire/hash/private-table-index vocabulary
 \ crossed at the named boundaries below (OPKIND>N, the op-registry / adjoint
 \ private table indexes, sched-key's hash fold, test assertions). No internal API
-\ takes or returns a raw op code. Declaration order == OP-ADD(0)..OP-SCATTER-ADD(30),
+\ takes or returns a raw op code. Declaration order == OP-ADD(0)..OP-GELU-BWD2(31),
 \ so OPKIND>N below is the single source that ties a variant to its code.
 \ NB variant tails are the wire spellings with hyphens; inline `\` comments inside
 \ the ENUM block are a parse error, so per-variant notes stay in this header.
@@ -73,7 +77,7 @@ ENUM opkind DERIVE eq
   add mul scale bias relu gelu layernorm rmsnorm softmax-row matmul linear
   residual-add cast silu rope reshape transpose slice concat gather
   relu-bwd gelu-bwd silu-bwd layernorm-bwd rmsnorm-bwd softmax-row-bwd rope-bwd
-  rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add
+  rowsum-bwd fullsum-dot-bwd pad-scatter scatter-add gelu-bwd2
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -112,6 +116,7 @@ ENUM opkind DERIVE eq
       fullsum-dot-bwd OF OP-FULLSUM-DOT-BWD ENDOF
       pad-scatter     OF OP-PAD-SCATTER     ENDOF
       scatter-add     OF OP-SCATTER-ADD     ENDOF
+      gelu-bwd2       OF OP-GELU-BWD2       ENDOF
    ;MATCH ;
 
 end-package
