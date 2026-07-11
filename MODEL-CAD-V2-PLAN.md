@@ -16,6 +16,13 @@ Model CAD V2 makes the immutable design database, typed artifact graph, and
 verified pass engine the center of Habu. The REPL becomes a client of that kernel
 instead of the owner of mutable model state.
 
+The primary client is an autonomous LLM model engineer. After a human supplies
+a signed objective, dataset authority, deployment constraints, and safety
+policy, the agent must be able to construct, train, diagnose, optimize,
+validate, deploy, monitor, and roll back a model without unstructured human
+intervention. Habu owns the legal action space and evidence requirements; the
+LLM proposes bounded transactions inside that space.
+
 The core loop is:
 
 ~~~text
@@ -1557,7 +1564,437 @@ bandwidth-floor regression, never the headline.
 9. Proof-producing equality saturation, solver evidence, target generics, and
    proof-carrying imports after the execution substrate is competitive.
 
-## 23. Risks
+## 23. Autonomous Model Engineering Program
+
+Habu is not LLM-native merely because an LLM can emit Forth. It is LLM-native
+when every engineering action is discoverable, transactional, bounded,
+machine-readable, independently verifiable, and replayable. Natural-language
+conversation may select an objective, but compiler semantics, safety policy,
+promotion, and rollback never depend on prose interpretation.
+
+The autonomy boundary begins after a human or trusted upstream system provides:
+
+- a versioned task objective and success metrics;
+- authority to use named datasets, pretrained weights, and licenses;
+- target devices and deployment topology;
+- hard latency, throughput, memory, power, accuracy, and startup limits;
+- permitted numeric and approximation policies;
+- safety constraints and actions that require external authorization;
+- experiment, compute, storage, and wall-time budgets.
+
+The system may optimize within that contract. It may not invent the objective,
+expand data authority, weaken safety constraints, or self-certify evidence.
+
+### 23.1 Agent protocol and transactional action surface
+
+Expose one typed protocol over the design database and pass engine. Every agent
+request names its input revision, expected artifact kind, capability set,
+budget, and acceptance policy. Core actions include:
+
+- inspect schemas, revisions, dependencies, diagnostics, plans, evidence, and
+  target capabilities;
+- begin, validate, commit, abort, diff, replay, and revert a transaction;
+- import or construct a model revision;
+- request analyses, rewrites, schedules, compilation, training, evaluation,
+  profiling, packaging, deployment, monitoring, and rollback;
+- enumerate legal next actions and their required evidence;
+- query why a candidate was rejected and which facts would change legality;
+- compare revisions or artifacts without mutating either;
+- promote only through a policy-owned evidence transition.
+
+Requests and responses are typed artifacts, not rendered terminal text. Text and
+JSON views are projections of the same canonical values. Idempotency keys,
+revision preconditions, capability tokens, and resource budgets prevent stale or
+duplicated agent actions. A failed transaction publishes nothing.
+
+Exit: an agent can complete a multi-step edit/compile/evaluate cycle using only
+the protocol; replay produces the same revision and artifact hashes; a stale
+revision, unauthorized effect, exhausted budget, or invalid transition returns
+a structured diagnostic without partial state.
+
+### 23.2 Diagnostic and repair contract
+
+Every failure returns a diagnostic artifact containing:
+
+- violated invariant and owning checker, verifier, runtime, or policy boundary;
+- exact source revision, artifact, pass, token/node/region, target, and inputs;
+- expected and observed typed facts;
+- minimized counterexample or smallest failing dependency cone where possible;
+- legal repair classes and the evidence each repair would invalidate;
+- related prior failures and whether the attempted repair made progress;
+- deterministic reproduction command and environment digest.
+
+The repair loop is explicit:
+
+~~~text
+failure artifact
+  -> minimize and classify
+  -> enumerate legal repair actions
+  -> create child revision
+  -> run focused verifier
+  -> run affected gates
+  -> compare objective and resource evidence
+  -> promote, continue, or revert
+~~~
+
+The search component cannot certify its own repair. Checker/compiler repairs
+require negative regressions. Numeric repairs require an independent golden.
+Performance repairs require same-session measurements. Repeated non-progress
+terminates with a typed blocked result instead of an unbounded conversational
+loop.
+
+### 23.3 Complete autonomous ML workbench
+
+The agent-facing system must cover the whole model lifecycle, not only kernel
+generation:
+
+- declarative model construction and versioned component schemas;
+- broad ONNX import with initializers, control/data dependencies, dynamic
+  shapes, provenance, and fail-closed unsupported features;
+- native components for convolutions, attention, normalization, embeddings,
+  recurrent/temporal state, detection heads, segmentation heads, geometric
+  transforms, and common vision preprocessing;
+- tensor-level autograd, losses, optimizers, schedules, gradient accumulation,
+  mixed-precision scaling, clipping, and regularization;
+- deterministic data ingestion, decoding, augmentation, shuffling, batching,
+  sampling, and split ownership;
+- checkpoint/resume including model, optimizer, scaler, RNG, data cursor, and
+  schema versions;
+- transfer learning, freezing, adapter/fine-tuning, pruning, distillation, and
+  quantization-aware or post-training quantization;
+- evaluation, calibration, robustness, drift, and failure-slice analysis;
+- reproducible AOT packaging and target deployment.
+
+Exit: a fresh agent process can resume a stopped experiment, explain every
+input and transformation, reproduce the next batch and update, and promote only
+an artifact whose full lineage and independent evaluation are present.
+
+### 23.4 Experiment, dataset, and model registry
+
+Make datasets, splits, examples, augmentations, pretrained weights, experiments,
+checkpoints, metrics, and evaluations immutable content-addressed objects.
+Record licenses and authority alongside content. Every run key includes model,
+data/split, preprocessing, seed/RNG algorithm, optimizer, numeric policy,
+target, compiler, runtime, and environment facts.
+
+The experiment controller provides bounded search, early stopping, successive
+halving, retry policy, failure attribution, checkpoint retention, and explicit
+compute/storage accounting. Metrics are typed by population, aggregation,
+units, and direction; an agent cannot compare unlike populations or optimize a
+held-out test set as if it were training evidence.
+
+Exit: equal run keys reproduce; changed data or preprocessing invalidates the
+right descendants; interrupted training resumes exactly; leakage, unauthorized
+data, missing licenses, and incompatible metric populations reject before
+promotion.
+
+### 23.5 DGX Spark to Jetson Orin deployment architecture
+
+The owner workflow is development, training, search, and tuning on a DGX Spark,
+followed by deployment to Jetson Orin NX and comparable edge targets. One
+immutable semantic model revision fans out into target-specific plans:
+
+~~~text
+semantic model revision + weights
+    |-- DGX Spark training/tuning plan -> artifacts + evidence
+    `-- Jetson Orin NX deployment plan -> artifacts + evidence
+~~~
+
+Semantic model identity, weight lineage, dataset evidence, equivalence proofs,
+and numeric licenses may transfer. Schedules, precision selections, layouts,
+memory plans, binaries, latency/energy measurements, driver/toolchain facts,
+and deployment evidence are target-specific and may never be reused by target
+name alone.
+
+Deliver:
+
+- explicit Spark and Orin target descriptions and calibrated cost models;
+- cross-target compatibility predicates for operators, dtypes, quantization,
+  layouts, memory capacity, and runtime ABI;
+- training-to-deployment transforms such as freezing, folding, pruning,
+  distillation, calibration, quantization, and weight repacking, each with
+  lineage and accuracy evidence;
+- remote execution agents with bounded capabilities, artifact transfer by
+  digest, environment attestation, resumable jobs, and structured telemetry;
+- separate Spark search evidence and on-Orin final latency, power, thermal,
+  memory, correctness, and endurance evidence;
+- reusable target-family schemas for future Orin-class devices without
+  conflating their measured capabilities.
+
+The Jetson Orin NX is expected to become available on 2026-07-15. Device-only
+acceptance remains not-run until then and must be executed on the exact promoted
+tree once access is restored. The DGX Spark environment is provisioned when the
+device arrives; no result from another GPU substitutes for its baseline.
+
+Exit: the same semantic revision trains or tunes on Spark, produces an explicit
+deployment child revision, compiles separately for Orin, passes independent
+goldens, meets Orin constraints, packages without runtime compilation/tuning,
+and can be rolled back by artifact digest.
+
+### 23.6 Perception and autonomous-navigation workload ladder
+
+Use a staged ladder so autonomy and safety evidence grow with system scope:
+
+1. Image classification and object recognition: deterministic ingest,
+   transfer/fine-tuning, quantized Orin inference, latency/power evidence.
+2. Object detection and segmentation: variable image sizes, preprocessing,
+   postprocessing/NMS, calibration, per-class and failure-slice metrics.
+3. Temporal perception and tracking: stateful regions, bounded history,
+   dropped-frame and timing behavior, sequence-level metrics.
+4. Navigation perception: depth/pose/occupancy or waypoint outputs with sensor
+   synchronization and uncertainty evidence.
+5. Closed-loop autonomous navigation: simulator scenarios, deterministic
+   replay, safety envelope, fault injection, hardware-in-the-loop, and only
+   then supervised real-world deployment.
+
+Object recognition/detection is the first deployment flagship. Navigation may
+reuse the same compiler and experiment substrate, but it cannot reuse a static
+vision golden as control-safety evidence.
+
+### 23.7 Edge runtime, observability, and safety
+
+The Orin runtime owns sensor/input schemas, timestamp and frame identity,
+pre/postprocessing, bounded queues, deadlines, memory pools, thermal/power
+policy, watchdogs, health state, telemetry, and atomic artifact activation.
+Steady-state inference performs no allocation or compilation. Overload,
+missing/stale input, shape violations, device errors, deadline misses, thermal
+throttling, and confidence-policy failures produce typed outcomes with explicit
+safe actions.
+
+Deployment requires signed manifests, compatibility checks, canary policy,
+health-gated activation, previous-artifact retention, and automatic rollback.
+For navigation, simulation and hardware-in-the-loop evidence are distinct from
+model accuracy and device performance evidence; no one category can satisfy
+another.
+
+Exit: fault injection covers corrupt artifacts, incompatible targets, missing
+sensors, stale frames, allocation exhaustion, device loss, deadline misses,
+thermal throttling, process restart, failed canary, and rollback.
+
+### 23.8 Reference frameworks and environment matrix
+
+Provision isolated, version-pinned reference environments for PyTorch,
+`torch.compile`/Inductor, Triton, ONNX Runtime, TensorRT, CUDA libraries, and
+profiling tools where supported. They are independent goldens and baselines,
+not semantic owners of Habu. Record package lockfiles, container or environment
+digests, driver/runtime/compiler versions, target identity, and installation
+verification.
+
+Required rows:
+
+- macOS host: source/check/build orchestration only;
+- DGX Spark: reference training, Habu training/tuning, compile/profile, and
+  cross-target artifact production;
+- Jetson Orin NX: reference inference, Habu inference, final correctness,
+  latency, throughput, memory, power, thermal, and endurance measurements.
+
+Exit: each framework runs a scalar/tensor smoke, one shared model golden, and a
+profiling smoke; unsupported combinations are explicit typed not-supported
+facts; no baseline claim mixes environments or device sessions.
+
+### 23.9 Trusted autonomy kernel architecture
+
+The autonomy kernel is the smallest authority-bearing layer. It owns only:
+
+- canonical artifact/schema identity and hashing;
+- immutable revision and transaction commit semantics;
+- capability and budget enforcement;
+- proof-obligation creation and discharge rules;
+- verifier identity and independence constraints;
+- evidence applicability and typestate transitions;
+- promotion, activation, and rollback authorization;
+- append-only audit records and deterministic replay.
+
+It does not own model search, rewrite selection, schedule ranking, repair choice,
+benchmark interpretation, prose generation, or UI. Those are replaceable agent
+or pass implementations operating through the kernel.
+
+#### Canonical typed artifacts
+
+Every stored value uses a canonical envelope:
+
+~~~text
+Artifact<Kind> = {
+  schema-id, schema-version, kind,
+  content-digest, canonical-payload,
+  producer-id, producer-version,
+  source-revisions[], dependencies[],
+  target/config/numeric-policy facts,
+  capabilities-used[], created-event
+}
+~~~
+
+The digest covers every semantic field and dependency version. Provenance and
+evidence are first-class linked artifacts, never comments attached to a mutable
+row. Decoders reject non-canonical representations, unknown required fields,
+kind/schema disagreement, digest mismatch, and unsupported migrations.
+
+#### Deterministic transactions
+
+Transactions use snapshot isolation with explicit read and write sets. Each
+action reads one base revision and produces immutable candidate objects plus a
+commit proposal. Commit succeeds only when:
+
+- the base/head precondition still holds or an explicit merge proof exists;
+- every read dependency and negative lookup is recorded;
+- capability and resource budgets cover all effects;
+- schemas and artifact digests validate;
+- all required proof obligations are discharged;
+- no policy-owned evidence is forged by the proposing component.
+
+Commit atomically publishes objects, dependency edges, revision, and audit
+event. Crash injection before the commit marker publishes nothing; recovery
+either observes the old revision or the complete new revision. Idempotency keys
+make retries return the original result. Rebase and merge are explicit passes,
+not hidden transaction behavior.
+
+#### Proof obligations and independent verifiers
+
+An action that changes semantics, representation, numeric domain, target,
+deployment state, or promotion state emits typed obligations. An obligation
+names subject, claimed relation, proof domain, policy, verifier class, and
+required environment. Discharge produces evidence linked to the exact subject
+digest. Rules include:
+
+- the producer/search pass cannot be the sole verifier for its own claim;
+- exact, approximate, empirical, device, safety, and performance domains are
+  distinct and non-coercible without a policy constructor;
+- changed dependencies, schema, target, numeric policy, verifier version, or
+  environment invalidate exactly the affected evidence;
+- static proof never substitutes for required execution evidence, and a device
+  measurement never proves semantic equivalence;
+- missing or stale obligations make promotion unconstructible.
+
+The kernel checks obligation closure; domain-specific verifiers remain outside
+the trusted core and are trusted only for their declared evidence constructor.
+
+#### Structured failure IR
+
+All checker, compiler, pass, runtime, benchmark, deployment, and policy failures
+lower to one diagnostic IR with typed variants for invariant violation,
+unsupported capability, invalid input, resource exhaustion, external failure,
+numeric mismatch, performance regression, stale evidence, and authorization
+denial. Common fields are:
+
+~~~text
+Diagnostic = {
+  code, class, severity, owner,
+  subject-digest, revision, phase, location,
+  expected-facts[], observed-facts[],
+  dependency-cone[], counterexample?,
+  legal-repairs[], invalidated-evidence[],
+  reproduction, environment-digest,
+  parent-diagnostic?, progress-measure?
+}
+~~~
+
+Renderers produce human text and canonical JSON from the same value. Repair
+actions reference diagnostic and repair-schema ids, so an LLM selects a legal
+typed action rather than editing prose. Diagnostic minimization is a pass with
+its own budget and evidence; it cannot alter the original failure.
+
+#### Automatic differential verification
+
+Differential suites are declared artifacts containing input generators/corpora,
+reference implementations, normalization, comparison domain/tolerance,
+metamorphic properties, target requirements, failure minimizer, and budget.
+The runner:
+
+1. derives cases deterministically from suite digest and seed;
+2. executes Habu and independent references in isolated environments;
+3. compares semantic outputs, gradients, failures, and selected performance
+   counters under the declared domain;
+4. minimizes discrepancies while retaining the original case;
+5. emits evidence on success or a structured diagnostic/counterexample on
+   failure;
+6. stores every case and environment digest needed for replay.
+
+The standing suites cover checker negative programs, IR/pass equivalence,
+operator forward/backward values, ONNX import parity, PyTorch eager and compiled
+models, Triton/vendor kernels where applicable, quantization/calibration, and
+Spark/Orin cross-target model semantics.
+
+#### Evidence-gated promotion typestate
+
+Artifacts move through explicit immutable states:
+
+~~~text
+Candidate
+  -> Verified
+  -> Measured
+  -> PolicySatisfied
+  -> Promoted
+  -> CanaryActive
+  -> Active
+  -> Retired | RolledBack
+~~~
+
+Transitions consume a complete obligation set and produce a new state artifact;
+they never mutate the candidate. Promotion policy binds model, weights,
+target, numeric policy, data populations, required verifiers, thresholds,
+expiration, and rollback artifact. Activation requires target attestation and
+deployment health evidence. Rollback is always available without recompilation
+and emits its own audit/evidence event.
+
+#### Machine-facing action registry
+
+Every callable action is a registered schema with input/output kinds,
+preconditions, effects, capabilities, deterministic/cacheable flags, budget
+dimensions, produced obligations, verifier, diagnostics, and invalidation
+rules. The LLM discovers actions and enum values from the registry; it never
+constructs raw command strings as the semantic interface. CLI/JSON/MCP-style
+adapters are thin codecs over the same transaction protocol.
+
+Initial protocol operations are `SCHEMA:LIST`, `ARTIFACT:GET`, `REVISION:DIFF`,
+`TX:BEGIN`, `TX:APPLY`, `TX:VALIDATE`, `TX:COMMIT`, `TX:ABORT`, `PASS:RUN`,
+`OBLIGATION:LIST`, `VERIFY:RUN`, `DIAGNOSTIC:EXPLAIN`, `REPAIR:LIST`,
+`EVIDENCE:COMPARE`, `PROMOTION:PROPOSE`, `PROMOTION:ACTIVATE`, and
+`PROMOTION:ROLLBACK`. Each operation has a checked Habu API and canonical
+request/response codec.
+
+#### Implementation order
+
+1. Canonical artifact envelope, schema ids, codecs, and content digests.
+2. Immutable object store, revisions, dependency index, and crash-safe
+   transactions.
+3. Action registry, capability/budget vocabulary, and typed protocol codecs.
+4. Obligation/evidence schemas and independence/applicability checker.
+5. Diagnostic IR, renderers, minimizer protocol, and legal-repair registry.
+6. Differential-suite schema, isolated runner, reference adapters, and
+   counterexample store.
+7. Promotion typestate, policy evaluator, activation, audit, and rollback.
+8. Agent-loop controller with bounded progress and deterministic replay.
+9. Object-recognition flagship through the complete interface.
+
+Exit: deleting the LLM and replaying its recorded action requests produces the
+same revisions, artifacts, evidence decisions, deployment state, and rollback;
+replacing the LLM changes search choices but cannot bypass legality, authority,
+budget, verification, or promotion policy.
+
+### 23.10 Autonomous flagship acceptance
+
+Starting from only the signed task contract and authorized inputs, a fresh agent
+must:
+
+1. inspect targets, schemas, budgets, datasets, and prior evidence;
+2. import or construct the object-recognition model;
+3. train/fine-tune and resume after an injected interruption;
+4. diagnose and repair at least one injected type/shape/numeric failure;
+5. search legal Spark candidates within budget;
+6. derive a separate Orin deployment revision;
+7. calibrate/quantize only if licensed by policy;
+8. compile, package, transfer, validate, and profile on Orin;
+9. compare PyTorch/Triton/TensorRT/ONNX Runtime baselines where applicable;
+10. promote through independent evidence, deploy a canary, detect an injected
+    health failure, and roll back;
+11. reproduce the complete decision and artifact history from the database.
+
+No step may require a human to reinterpret an error, edit hidden state, choose
+an undocumented compiler default, reconstruct provenance, or manually decide
+whether evidence applies. External authorization remains required only for
+actions explicitly named by the signed safety policy.
+
+## 24. Risks
 
 ### Type-System Scope Explosion
 
@@ -1602,7 +2039,7 @@ negative facts, and explicit budgets.
 Control: typed not-run evidence names the cause; policy decides whether it
 blocks; device-required policies cannot be satisfied off-device.
 
-## 24. Flagship Acceptance
+## 25. Flagship Acceptance
 
 ### LocateAnything-Derived Inference
 
@@ -1637,7 +2074,7 @@ blocks; device-required policies cannot be satisfied off-device.
 - replay determinism across restarts;
 - candidate rejection stage and repair quality.
 
-## 25. Definition Of Done
+## 26. Definition Of Done
 
 1. Multiple immutable revisions coexist and share nodes.
 2. Every IR level is typed, encoded, hashed, and independently verified.
@@ -1660,3 +2097,17 @@ blocks; device-required policies cannot be satisfied off-device.
 17. Dynamic-shape distributions reuse bounded guarded artifacts.
 18. Numeric-policy and quantization evidence are part of every approximate key.
 19. Competitive claims come from the standing external-baseline matrix.
+20. Every agent action is a typed, budgeted, idempotent transaction over an
+    explicit revision and capability set.
+21. Diagnostics expose violated invariants, exact ownership, reproduction,
+    legal repair classes, and invalidated evidence as structured artifacts.
+22. Experiments, datasets, checkpoints, metrics, and promotions are immutable,
+    authorized, content-addressed, and exactly resumable.
+23. One semantic revision produces separately planned, compiled, measured, and
+    promoted DGX Spark and Jetson Orin artifacts.
+24. The Orin runtime is allocation-free in steady state and has health-gated
+    activation, telemetry, fault injection, and automatic rollback.
+25. A fresh agent completes the object-recognition flagship from signed task to
+    deployed canary without unstructured human intervention.
+26. Autonomous-navigation deployment remains gated on simulator,
+    hardware-in-the-loop, timing, uncertainty, and safety-envelope evidence.
