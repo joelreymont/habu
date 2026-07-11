@@ -510,3 +510,34 @@ STEP 4 REMAINING (op-kind; census 2026-07-10, ~25 files - the big slice):
   model-ir-test/mlp-bwd-test/demo-ffn-test asserts via OPKIND>N), E-MIR-OPKIND
   throw probes -> checker negatives, swapped-family negatives (opkind vs
   dtype/layout/align cross-swaps).
+
+STEP 4 LANDED 2026-07-11 (fable 1e75815e, corrected-plan step 4 complete).
+Family-typed opkind through construction -> MI-OP/P-KIND storage -> every
+consumer. ENUM opkind (31 variants, order = OP-ADD(0)..OP-SCATTER-ADD(30)) in
+op-kind.f + OPKIND>N (codes unchanged -> sched-key FNV golden green) + OPK=
+typed identity compare. MIR-OP-BEGIN/MIR-OP@ and PLAN-OP-BEGIN/PLAN-OP@ take/
+return opkind (E-MIR-OPKIND/E-TV-OPKIND unrepresentable, retired as reserved);
+MI-OP/P-KIND/MIR-PEND-KIND/PEND-KIND behind typed slots; OPR-*/ADJ-* take
+opkind converting once at the private table index (E-OPR-KIND/E-ADJ-KIND
+survive only on load-time writers); all 8 case dispatchers -> exhaustive MATCH
+(same throw codes on unsupported arms; BW-STEP now dispatches on the op family
+directly, proven equal to the old ADJ-ID route); all 9 predicate chains ->
+MATCH predicates (true-sets verified identical); producers (cad OP-LOOKUP/
+OP-KIND, plan-vocab, plan-ops, backward emitters, onnx MOVE-KIND/import)
+construct the family. Documented deviations: FIRST-BAD words return a node
+index (-1 sentinel; family cannot join a sentinel) with callers refetching
+MIR-OP@; ADJ-BOP stays a code table with the ADJ-BWD-KIND/BOP-LIFT named lift;
+OP-LOOKUP's false path carries a bool-gated placeholder; OP-N survives for
+table dimensioning + load-time writers; fusion.f untouched (package FUSION's
+own tile codes). MATCH arm grouping is UNSUPPORTED on this fixpoint (one arm
+per variant); a family CAN ride the return stack (`>r r>`) across a locals
+bind. Gates on the exact merged tree (master Wave C/D + AOT fix merged, fixpoint
+rebuilt): maki 77/77 rc=0, 5 lints 0 findings, typed-local-diff-lint rc=0;
+destruction review: 0 critical/high/medium (arm-by-arm dispatcher/predicate
+verification, behavior identical incl. onnx + renders + persisted hashes).
+
+REMAINING ON THIS DOT (unchanged): SKEY product w/ enum fields + typed equality
+(blocked on habu-checker-capability-layout enum-kinded product fields +
+-derive typed equality; OPK= is the single word to retire when derive-eq
+lands); report evidence rows / measurement history as typed arrays (blocked on
+S3 LAYOUT-BUFFER); recursive by-value IR (TFAM 16 boxed).
