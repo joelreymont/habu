@@ -44,3 +44,36 @@ capability/discharge owner (builder emitters vs raw-layout axioms differ;
 `habu-checker-capability-typed-e0c76a02` the ptx tile sites,
 `habu-typed-depth-introspection-18f0efda` the depth-capture test-metaprog class).
 Do these as further bounded, evidenced increments — do not bulk-guess owners.
+
+## Increment 2026-07-11 (row granularity complete; fold ratchet)
+
+AUDIT (from the live TSV, 659 sites): 47 placeholder folds covered 510 sites;
+15 more folds with real owners covered ~70. Separability: 55 folds were fully
+nameable; 7 folds each held exactly one unnameable `0 set-check` site; zero
+stale rows (strict was green: no dead/unmatched rows existed).
+
+DONE: all 59 separable folds (except the two contested files) split into 427
+`file:name` rows — class and owner UNCHANGED per row (granularity only; no
+owner guessing). The 7 set-check files keep count-1 residual file rows.
+Duplicate site names carry explicit counts (test/engine-suite.f:T-RDF 2).
+Trust surface identical: same 659 sites, same classes per file (by-file lines
+unchanged), strict + derived ratchet + baseline mode green.
+
+SKIPPED BY DESIGN: `src/habu/habu2.f` (122 sites) and
+`test/type-layout-lower-pending.f` (4) — contested under the wide-ADT stack;
+their per-name rows would go stale on that merge. Split them when ownership
+releases, lowering the fold-baseline in the same change.
+
+RATCHET: tools/trusted-inventory.f strict now computes the separable-fold
+count (a file-level row whose matched sites are all nameable), prints
+`separable fold(s) N (baseline M)`, and fails when N exceeds the committed
+`fold-baseline` directive (TRUSTED.md block head, currently 2); a missing
+directive is a strict failure. Red-first proven: re-folding a split file ->
+rc=81 with per-fold detail; deleting the directive -> rc=81 named failure.
+CMAX 512 -> 1024 (block now ~525 rows); CTAB gains K-UNNAME.
+
+REMAINING (ownership, unchanged scope): 409 placeholder-owned rows now at
+word granularity await per-site owner reassignment (builder-emit ~210 named +
+habu2 fold, test-metaprog ~95 named + residuals, stdlib-boundary PTX/engine-id
+~71 named, discharge-candidate 4) — per-site domain judgment, further bounded
+increments per the rules above.

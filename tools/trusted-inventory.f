@@ -50,8 +50,9 @@ private
 
 8192 constant ROW-MAX
 9 constant TAB#
-512 constant CMAX
-10 constant CTAB#
+variable FB-COUNT   \ committed `fold-baseline N` (separable file-level rows allowed)
+1024 constant CMAX   \ row-granularity classification block (fold split) exceeds 512
+11 constant CTAB#
 -1 constant COUNT-UNSET
 $80000 constant FILE-CAP   \ >= largest scanned source (checker.f grew past $40000)
 $40000 constant STR-CAP
@@ -64,6 +65,7 @@ $10000 constant CSTR-CAP
 48 constant CH-ZERO
 58 constant CH-COLON
 92 constant CH-BSLASH
+32 constant CH-BLANK
 115 constant CH-S
 
 variable TAB-A
@@ -106,7 +108,7 @@ variable DOTP-U
 variable DB-I
 variable DV-I
 variable DV-N
-variable DV-MISS
+variable DV-MISS   variable DV-SEP
 variable MR-I
 variable MR-J
 variable MR-N
@@ -258,6 +260,7 @@ variable DOTS-ROOT-U
 : K-DU ( -- ptr a ) 7 CTAB ;
 : K-CNT ( -- ptr a ) 8 CTAB ;
 : K-MATCHED ( -- ptr a ) 9 CTAB ;
+: K-UNNAME ( -- ptr a ) 10 CTAB ;   \ file-level row matched by an unnameable site
 
 : STORE$ ( ptr u8 n -- n n ) {: a:ptr u:n :}
    ARENA-A @ 0= if s" trusted-inventory: not initialised" 1 die then
@@ -575,7 +578,8 @@ public
    0 ROW# !
    0 ARENA-END !
    0 CM# !
-   0 C-END ! ;
+   0 C-END !
+   COUNT-UNSET FB-COUNT ! ;
 
 : RESET ( -- )
    0 ROW# !
@@ -673,6 +677,7 @@ private
    da du CSTORE$ K-DU CM# @ TAB! K-DO CM# @ TAB!
    cnt K-CNT CM# @ TAB!
    0 K-MATCHED CM# @ TAB!
+   0 K-UNNAME CM# @ TAB!
    CM# @ 1+ CM# ! ;
 
 : CMAP-COUNT@ ( n -- n )
@@ -712,6 +717,13 @@ private
 : CROW-PARSE ( ptr u8 n -- bool )
    SPLIT-WHITESPACE
    SN# @ 0= if LINT-TRUE exit then
+   0 S@ s" fold-baseline" STR= if          \ ratchet directive: separable folds allowed
+      SN# @ 2 = 0= if LINT-FALSE exit then
+      1 S@ PARSE-COUNT MATCH option
+        none OF LINT-FALSE exit ENDOF
+        some OF FB-COUNT ! ENDOF
+      ;MATCH LINT-TRUE exit
+   then
    0 S@ KEY-SPLIT {: fa:ptr fu:n na:ptr nu:n :}
    SN# @ 3 = if
       1 S@ CLASS-VALID? 0= if LINT-FALSE exit then
@@ -1205,6 +1217,64 @@ public
    ARGV-POS# 2 = 0= if LINT-FALSE exit then
    0 ARGV-POS$ s" baseline" STR= ;
 
+\ ---- separable-fold ratchet (strict) ----------------------------------------
+\ A file-level row is SEPARABLE when every site it covers is nameable (a
+\ non-empty, whitespace-free word name), i.e. the row could be `file:name`
+\ rows attributing trust drift to WORDS. The committed `fold-baseline N`
+\ directive in the classes block is the allowed count (contested files whose
+\ sites churn under another lane keep folds deliberately); strict fails when
+\ separable folds EXCEED the baseline, so new coarse rows cannot creep in,
+\ and the printed count prompts lowering the baseline as folds are split.
+: NAME-UNNAMEABLE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= if LINT-TRUE exit then
+   0 begin dup u < while
+      a over + c@ CH-BLANK = if drop LINT-TRUE exit then
+      1+
+   repeat drop LINT-FALSE ;
+
+: SEP-TALLY ( -- )   \ tally file-level matches + mark rows hit by an unnameable site
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      0 K-MATCHED RD-I @ TAB!
+      0 K-UNNAME RD-I @ TAB!
+      RD-I @ 1+ RD-I !
+   repeat
+   0 RD-I !
+   begin RD-I @ ROW# @ < while
+      RD-I @ CLASS-FIND dup 0 >= if
+         {: mk:n :}
+         mk CMAP-NAMED? 0= if
+            mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB!
+            RD-I @ ROW-NAME$ NAME-UNNAMEABLE? if -1 K-UNNAME mk TAB! then
+         then
+      else drop then
+      RD-I @ 1+ RD-I !
+   repeat ;
+
+: SEP-FOLD? ( n -- bool ) {: k:n :}
+   k CMAP-NAMED? if LINT-FALSE exit then
+   k CMAP-MATCHED@ 0 > 0= if LINT-FALSE exit then
+   K-UNNAME k TAB@ 0= ;
+
+: SEP-FOLD# ( -- n )
+   0 DV-SEP !
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ SEP-FOLD? if DV-SEP @ 1+ DV-SEP ! then
+      RD-I @ 1+ RD-I !
+   repeat DV-SEP @ ;
+
+: SEP-FOLD-DETAIL ( -- )
+   0 RD-I !
+   begin RD-I @ CM# @ < while
+      RD-I @ SEP-FOLD? if
+         s" trusted-inventory: separable fold " OUT
+         RD-I @ CMAP-FILE$ OUT
+         s"  (" OUT RD-I @ CMAP-MATCHED@ OUT-U s"  nameable site(s))" OUT OUT-NL
+      then
+      RD-I @ 1+ RD-I !
+   repeat ;
+
 : STRICT-ARGS? ( -- bool )
    ARGV-POS# 1 = 0= if LINT-FALSE exit then
    0 ARGV-POS$ s" strict" STR= ;
@@ -1237,6 +1307,19 @@ public
       s" trusted-inventory: strict FAILED - " OUT DV-DEAD @ OUT-U
       s"  dead and " OUT DV-DUP @ OUT-U
       s"  duplicate mapping row(s); prune the TRUSTED.md classes block" OUT OUT-NL
+      E-TINV-STRICT throw
+   then
+   FB-COUNT @ COUNT-UNSET = if
+      s" trusted-inventory: strict FAILED - missing fold-baseline row in the classes block" OUT OUT-NL
+      E-TINV-STRICT throw
+   then
+   SEP-TALLY
+   SEP-FOLD# drop
+   s" trusted-inventory: separable fold(s) " OUT DV-SEP @ OUT-U
+   s"  (baseline " OUT FB-COUNT @ OUT-U s" )" OUT OUT-NL
+   DV-SEP @ FB-COUNT @ > if
+      SEP-FOLD-DETAIL
+      s" trusted-inventory: strict FAILED - separable fold(s) exceed the fold-baseline; split them into file:name rows" OUT OUT-NL
       E-TINV-STRICT throw
    then ;
 
