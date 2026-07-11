@@ -1353,6 +1353,54 @@ s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" SUMTYPE tdhb2 0 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdhb3 0 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
 s" PRODUCT tdhb4 0 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
+
+\ ---------------------------------------------------------------------------
+\ typed locals for family types (slice 1): a bare arity-0 family tail is a
+\ legal {: x:fam :} annotation. Enum-tier layouts (W=1 sum/enum) assert the
+\ one-cell hidden term — the :} bind unifies the captured bundle's tag term
+\ against it, reads restore the exact bound term (family id intact, MATCH
+\ works), and wrong families reject through the standard mismatch packet.
+\ Arity-0 CELL families assert their nominal scalar like a signature.
+\ Parametric spellings, arity>0 tails, and W>1 layouts stay fail-closed as
+\ named unknown annotations; linear layouts never expand into locals.
+\ ---------------------------------------------------------------------------
+ENUM tdlv DERIVE eq lva lvb ;ENUM
+: TDLV-ID ( tdlv -- tdlv ) {: x:tdlv :} x ;
+: TDLV-RT ( -- n ) TDLV:LVB TDLV-ID TDLV:TAG ;
+TDLV-RT 1 T=
+: TDLV-M ( tdlv -- n ) {: x:tdlv :} x match tdlv lva of 10 endof lvb of 20 endof ;match ;
+: TDLV-MA ( -- n ) TDLV:LVA TDLV-M ;
+: TDLV-MB ( -- n ) TDLV:LVB TDLV-M ;
+TDLV-MA 10 T=
+TDLV-MB 20 T=
+\ two annotated locals + derived eq through the reads.
+: TDLV-EQ2 ( -- bool ) TDLV:LVA TDLV:LVA {: x:tdlv y:tdlv :} x y TDLV:EQ ;
+TDLV-EQ2 -1 T=
+\ annotated local referenced in both branch arms.
+: TDLV-BR ( n tdlv -- n ) {: v:tdlv :} 0 > if v TDLV:TAG else v TDLV:TAG 10 + then ;
+: TDLV-BRT ( -- n ) 1 TDLV:LVB TDLV-BR ;
+: TDLV-BRF ( -- n ) 0 TDLV:LVB TDLV-BR ;
+TDLV-BRT 1 T=
+TDLV-BRF 11 T=
+\ single-field product (W=1 layout tier) rides the same path.
+PRODUCT tdlp 0 FIELD amt n ;PRODUCT
+: TDLP-ID ( tdlp -- tdlp ) {: x:tdlp :} x ;
+: TDLP-RT ( -- n ) 7 TDLP:MAKE TDLP-ID TDLP:UNMAKE ;
+TDLP-RT 7 T=
+\ negatives: wrong family, scalar-vs-family both ways, parametric, W>1,
+\ arity>0 cell tail — all reject fail-closed.
+s" TDLB1 ( tdrw -- tdrw ) {: x:tdrv :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB2 ( n -- n ) {: x:tdrv :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB3 ( tdrv -- tdrv ) {: x:n :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB4 ( tdres<n,n> -- n ) {: x:tdres<n,n> :} 5" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB5 ( tdsv -- tdsv ) {: x:tdsv :} x" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
+\ bare W>1 bundle locals keep working (item 12 regression).
+s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
+\ arity-0 cell family annotation = the signature nominal.
+TYPEFAMILY tdlnom 0
+s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )

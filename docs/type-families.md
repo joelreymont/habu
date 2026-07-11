@@ -1401,6 +1401,21 @@ fail-closed until TFAM 11 whole-bundle counting. Pinned in
 
 ---
 
+### 17.1 Typed locals for family types (slice 1)
+
+A `{: x:fam :}` annotation accepts a bare arity-0 family tail, resolved with
+signature scope. An enum-tier layout (W=1 sum/enum, incl. a single-field
+product) asserts the family's one-cell hidden term: the `:}` bind unifies the
+captured bundle's tag term against it (wrong family = standard `E-MISMATCH`
+with family fields; a scalar operand or a scalar-annotated bundle rejects the
+same way), and a read restores the exact bound term — family id intact, so
+`MATCH`/derived words work on local reads. An arity-0 CELL family asserts its
+nominal scalar exactly as a signature would. Parametric spellings
+(`x:fam<..>`), arity>0 tails, and W>1 layout annotations stay fail-closed as
+named unknown-annotation rejects (their slices are tracked on the typed-locals
+dot); bare (unannotated) locals keep the item-12 wide-bundle behavior
+unchanged, and linear layouts still never expand into locals.
+
 ## 18. Width and parameter kinds
 
 Add width metadata.
