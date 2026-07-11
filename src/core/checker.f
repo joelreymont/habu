@@ -1064,8 +1064,6 @@ variable TWALK-D
 \ closed through the same guards.
 variable LAYOUT-XPORT
 variable LAYOUT-INTRO
-variable LBUF-PEND-A
-variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -4166,6 +4164,7 @@ PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE
 PRIM: CHECKER-DEFLAYOUT-BUFFER
    PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
    PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
 PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -4299,6 +4298,7 @@ variable DFER-END
 variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
 variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
 variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
+
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    CTOR-WORD?-XT @ 0= IF EXIT THEN
    a u CTOR-WORD?-XT @ execute IF E-CTOR-PROTECTED throw THEN ;
@@ -4350,6 +4350,7 @@ variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
    CHECKER-TA-FIELD ! ;
 
 variable CHECKER-QBAD-TOK
+$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
@@ -4372,6 +4373,23 @@ variable CHECKER-QBAD-TOK
 
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
+
+: CHECKER-SEALED-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" match" CORE-STR=CI ;
+
+: CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? drop
+   CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   data-base CK-SEAL-LATCH-OFF + @ 0 <> IF
+      a u CHECKER-QUALIFIED? IF
+         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
+      THEN
+   THEN
+   CTOR-EXTEND?-XT @ 0 <> IF
+      a u CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN ;
 
 \ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
@@ -4448,7 +4466,6 @@ variable CHECKER-QBAD-TOK
 \ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
 \ checker.f loads before layout.f, so the friend-arena latch offset and the seal
 \ exit code are mirrored here as named constants (both are foundational and stable).
-$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 83 constant CK-E-SEAL-VIOLATION         \ = layout.f E-SEAL-VIOLATION
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
@@ -4638,6 +4655,7 @@ variable LBUF-INFO-W
 : CHECKER-DEFLAYOUT-BUFFER
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-GUARD
    type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
    nip LBUF-INFO-W !
    count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
@@ -4961,15 +4979,10 @@ variable CURSYM
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
-: EXPORT-SEALED-PKG? ( ptr u8 n -- bool ) {: p:ptr pu:n :}
-   p pu s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
-   p pu s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
-   p pu s" match" CORE-STR=CI ;
-
 : EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    data-base CK-SEAL-LATCH-OFF + @ 0= IF EXIT THEN
    a u CHECKER-QUALIFIED? 0= IF EXIT THEN
-   CHECKER-QPKG$ EXPORT-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
+   CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
@@ -7022,17 +7035,24 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
 
-\ Generative layout-buffer authorization. The sealed definer arms this around
-\ exactly one generated accessor evaluation. It admits only the accessor's
-\ boundary pointee refinement; ordinary ptr variables remain unable to acquire
-\ layout identity. Static preverification runs in a rollback scope, so the
-\ generated runtime definition remains the sole durable signature record.
-: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
-: LBUF-PEND-CLEAR ( -- ) 0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
-: LBUF-PEND-MATCH? ( -- bool )
-   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
-   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+\ Generative layout-buffer authorization. The private allocator package owns
+\ the pending name; the hook is immutable after its one installation, so user
+\ source can query but cannot arm or replace it.
+package CHECKER-LBUF-AUTH
+
+variable AUTH-XT   0 AUTH-XT !
+
+public
+
+: INSTALL ( n -- ) {: xt:n :}
+   AUTH-XT @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   xt AUTH-XT ! ;
+
+: AUTHORIZED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   AUTH-XT @ 0= IF RES-FALSE EXIT THEN
+   a u AUTH-XT @ execute ;
+
+end-package
 
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
@@ -7048,7 +7068,7 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
          CTOR-PEND-CLEAR                            \ single shot, even on reject
          CTOR-EXPECTED-ROW SUNI-COERCE
       ELSE
-         LBUF-PEND-MATCH? IF
+         NMA @ NMU @ CHECKER-LBUF-AUTH:AUTHORIZED? IF
             -1 LAYOUT-INTRO !
             SGOUT @ SUNI-COERCE
             0 LAYOUT-INTRO !
