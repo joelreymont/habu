@@ -779,6 +779,10 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
+  ordinary storage and first/later-cell protected-band intersections: zero-valued
+  payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`
+  before any protected mutation.
 - `test/seal-absence.f` — Gforth stage0 absence-parity fixture: scans
   `bootstrap/cg/forth.fs` and fails closed if any pinned guard-bypass surface
   (atomics, snap-rebase, extended syscalls, `CHECKER-*` mutators, package

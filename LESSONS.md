@@ -2,8 +2,15 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-10
+Last updated: 2026-07-11
 
+- **Make exit-only seal tests mutation-sensitive:** target the sealed latch with
+  a zero-valued ADT cell.  If a wide-store loop omits a later guard or writes
+  before loading the latch, that store opens the seal and the child exits 0
+  instead of `E-SEAL-VIOLATION`; emit an armed marker immediately before the
+  sink so an earlier compile/setup exit cannot satisfy the rc assertion.  Pair
+  this runtime probe with the lowering golden, which pins STR after the full
+  address-range guard.
 - **Probe "over-conservative reject" claims by removing the guard and reading
   what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
   conservatism (scalar `( a -- a a ) dup` certifies + defers linearity to call
