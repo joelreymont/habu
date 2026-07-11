@@ -4597,6 +4597,7 @@ create LBUF-SIG-BUF LBUF-SIG-CAP allot
 variable LBUF-SIG-U
 variable LBUF-SIG-I
 variable LBUF-COUNT-N
+variable LBUF-INFO-W
 
 : LBUF-SIG-C, ( n -- ) {: c:n :}
    LBUF-SIG-U @ LBUF-SIG-CAP >= IF E-CHECKER-LAYOUT-BUFFER throw THEN
@@ -4623,6 +4624,11 @@ variable LBUF-COUNT-N
    REPEAT
    LBUF-COUNT-N @ 0 > ;
 
+: CHECKER-LBUF-EXTENT? ( n n -- bool ) {: count:n width:n :}
+   count 0 <= width 0 <= or IF RES-FALSE EXIT THEN
+   count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
+   count width * LBUF-COUNT-MAX CELL / <= ;
+
 : CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
    0 LBUF-SIG-U !
    s" n -- ptr " LBUF-SIG-APP
@@ -4633,8 +4639,9 @@ variable LBUF-COUNT-N
    ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
    type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
-   2drop
+   nip LBUF-INFO-W !
    count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
    type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}

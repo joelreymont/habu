@@ -131,9 +131,10 @@ variable LBUF-EVAL-U
    name nameu LBUF-NAME-GUARD
    type typeu count countu LBUF-VALIDATE
    here {: base:ptr :}
+   base data-base - {: off:n :}
+   name nameu type typeu off LBUF-SOURCE {: src:ptr srcu:n pna:ptr pnu:n :}
    LBUF-BYTES @ allot
    base LBUF-BYTES @ LBUF-ZERO
-   base data-base - {: off:n :}
-   name nameu type typeu off LBUF-SOURCE LBUF-EVAL
+   src srcu pna pnu LBUF-EVAL
    dup 0 <> IF LBUF-ROLLBACK THEN
    drop ;
