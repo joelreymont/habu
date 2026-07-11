@@ -149,6 +149,26 @@ S3 hash remains: no checked cell-mixing over hidden cells, so hash is where
 the EM-ADT engine leg + Gforth mirror become unavoidable; the checked-MATCH
 eq generator stays the differential oracle for any flat-cell fast path.
 
+### PROGRESS 2026-07-11 (S3 hash landed — SKEY unblocked)
+
+S3 hash landed on design (a): the checked SEMANTIC generator. PKG:HASH
+( fam -- n ) = FNV-1a cell fold (DRV-FNV-BASIS $cbf29ce484222325 /
+DRV-FNV-PRIME $100000001b3, named constants rendered as hex literals into the
+generated text) over the variant tag + bound payload scalars per MATCH arm;
+products UNMAKE + fold fields (enum fields via their family's PKG:TAG). Folds
+exactly the cells eq compares, so equal-hash-equal holds by construction
+(pinned per variant/payload/product shape + non-degeneracy smoke incl.
+payload-order). Clause is now an order-free greedy feature list (DERIVE eq
+hash == DERIVE hash eq; first token must be a feature; repeats idempotent);
+TAG rides any derive on sum/enum; products never get TAG; hash-only families
+get HASH+TAG, no EQ. Same payload-role gate, reserved-tail protection
+(TFAM-DERIVED-KIND-TAIL? per-bit), PS rows, rollback. CONTRACT: hash values
+are in-memory only — the future EM-ADT-HASH flat-cell fast path (S-opt, with
+this generator as differential oracle) may change them; nothing persists
+derived hashes across engine versions (docs 9.3.2; SKEY keys in-memory,
+SK-KEY$ stays the durable contract). Remaining: S4 order (deferred,
+E-TDECL-DERIVE pins hold).
+
 ### Campaign
 
 Prerequisites (front-matter `blocks:`): habu-checker-capability-typed (compare

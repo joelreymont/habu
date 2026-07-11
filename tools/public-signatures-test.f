@@ -29,6 +29,8 @@ ENUM pstsig DERIVE eq low high ;ENUM
 \ derive EQ only (no discriminant row).
 SUMTYPE pstsum 0 DERIVE eq VARIANT nada ;VARIANT VARIANT some n ;VARIANT ;SUMTYPE
 PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
+\ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
+SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
 8192 constant PST-BUF-CAP
 
@@ -450,7 +452,12 @@ variable PST-SUM-U
    PST-OUT outu s" (pstsum pstsum -- bool)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTPROD:EQ" PST-WORD$ CONTAINS? TTRUE
    PST-OUT outu s" (pstprod pstprod -- bool)" PST-SIG$ CONTAINS? TTRUE
-   PST-OUT outu s" PSTPROD:TAG" PST-WORD$ CONTAINS? TFALSE ;    \ products: eq only
+   PST-OUT outu s" PSTPROD:TAG" PST-WORD$ CONTAINS? TFALSE      \ products: no discriminant
+   PST-OUT outu s" PSTHASH:HASH" PST-WORD$ CONTAINS? TTRUE
+   PST-OUT outu s" (psthash -- n)" PST-SIG$ CONTAINS? TTRUE
+   PST-OUT outu s" PSTHASH:TAG" PST-WORD$ CONTAINS? TTRUE       \ tag rides any derive
+   PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
+   PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
 
 : PST-MAIN ( -- )
    T-RESET

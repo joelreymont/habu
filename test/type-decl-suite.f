@@ -1203,18 +1203,20 @@ s" package tdrv" E-CTOR-PROTECTED TDT-NEG
 
 \ grammar negatives: deferred/unknown features, kind gates, name collision,
 \ missing feature token (DERIVE eats exactly one feature token).
-s" ENUM tdrb1 DERIVE hash aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+\ (S1 deferred `DERIVE hash`; derive S3 accepts it — pinned positively below.)
 s" ENUM tdrb2 DERIVE order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb3 DERIVE frobnicate aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
 s" ENUM tdrb4 DERIVE ;ENUM" E-TDECL-DERIVE TDT-NEG
 \ (S1 kind-gated sums/products; derive S2 accepts them — pinned positively in
 \ the S2 section below, so the old enum-only rejects are retired.)
-s" ENUM tdrb7 DERIVE eq eq other ;ENUM" E-TDECL-NAME TDT-NEG
+\ adjacent `eq` after the clause reads as a redundant FEATURE (order-free
+\ list, idempotent); a variant spelled eq must follow another variant.
+s" ENUM tdrb7 DERIVE eq other eq ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdrb8 DERIVE eq tag other ;ENUM" E-TDECL-NAME TDT-NEG
 
 \ rollback: a REJECTED derive declaration leaves no residue — the same family
 \ name registers cleanly afterwards and its derived words work.
-s" ENUM tdrb9 DERIVE eq eq bad ;ENUM" E-TDECL-NAME TDT-NEG
+s" ENUM tdrb9 DERIVE eq bad eq ;ENUM" E-TDECL-NAME TDT-NEG
 ENUM tdrb9 DERIVE eq aa bb ;ENUM
 : TDRB9-EQ ( -- bool ) TDRB9:AA TDRB9:BB TDRB9:EQ ;
 TDRB9-EQ 0 T=
@@ -1284,6 +1286,73 @@ s" SUMTYPE tdsb6 0 DERIVE eq VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERI
 SUMTYPE tdsb6 0 DERIVE eq VARIANT hold n ;VARIANT ;SUMTYPE
 : TDSB6-EQ ( -- bool ) 4 TDSB6:HOLD 4 TDSB6:HOLD TDSB6:EQ ;
 TDSB6-EQ -1 T=
+
+\ ---------------------------------------------------------------------------
+\ derive S3: hash — the checked SEMANTIC generator (FNV-1a folded over the
+\ variant tag + bound payload scalars per branch; products fold fields, enum
+\ fields through their family's PKG:TAG). INVARIANT: equal values hash equal
+\ BY CONSTRUCTION (hash folds exactly what eq compares); the differs cases
+\ are non-degeneracy smoke only. `DERIVE eq hash` and `DERIVE hash eq` are
+\ an order-free feature list; hash-alone derives HASH (+TAG) without EQ.
+\ ---------------------------------------------------------------------------
+SUMTYPE tdhs 0 DERIVE eq hash
+  VARIANT hnil ;VARIANT
+  VARIANT hone n ;VARIANT
+  VARIANT hpair n i64 ;VARIANT
+;SUMTYPE
+\ eq true implies hash equal, across every eq-suite case shape.
+: TDHS-C1 ( -- bool ) TDHS:HNIL TDHS:HNIL TDHS:EQ ;
+: TDHS-H1 ( -- bool ) TDHS:HNIL TDHS:HASH TDHS:HNIL TDHS:HASH = ;
+: TDHS-C2 ( -- bool ) 5 TDHS:HONE 5 TDHS:HONE TDHS:EQ ;
+: TDHS-H2 ( -- bool ) 5 TDHS:HONE TDHS:HASH 5 TDHS:HONE TDHS:HASH = ;
+: TDHS-C3 ( -- bool ) 1 2 TDHS:HPAIR 1 2 TDHS:HPAIR TDHS:EQ ;
+: TDHS-H3 ( -- bool ) 1 2 TDHS:HPAIR TDHS:HASH 1 2 TDHS:HPAIR TDHS:HASH = ;
+TDHS-C1 -1 T=
+TDHS-H1 -1 T=
+TDHS-C2 -1 T=
+TDHS-H2 -1 T=
+TDHS-C3 -1 T=
+TDHS-H3 -1 T=
+\ non-degeneracy smoke: tag difference, payload difference, payload ORDER.
+: TDHS-D1 ( -- bool ) TDHS:HNIL TDHS:HASH 5 TDHS:HONE TDHS:HASH = ;
+: TDHS-D2 ( -- bool ) 5 TDHS:HONE TDHS:HASH 6 TDHS:HONE TDHS:HASH = ;
+: TDHS-D3 ( -- bool ) 1 2 TDHS:HPAIR TDHS:HASH 2 1 TDHS:HPAIR TDHS:HASH = ;
+TDHS-D1 0 T=
+TDHS-D2 0 T=
+TDHS-D3 0 T=
+
+\ product hash: order-free `DERIVE hash eq`; enum field folds via TDRV:TAG.
+PRODUCT tdhp 0 DERIVE hash eq
+  FIELD col tdrv
+  FIELD amt n
+;PRODUCT
+: TDHP-C ( -- bool ) TDRV:RED 7 TDHP:MAKE TDRV:RED 7 TDHP:MAKE TDHP:EQ ;
+: TDHP-H ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 7 TDHP:MAKE TDHP:HASH = ;
+: TDHP-D1 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:GREEN 7 TDHP:MAKE TDHP:HASH = ;
+: TDHP-D2 ( -- bool ) TDRV:RED 7 TDHP:MAKE TDHP:HASH TDRV:RED 8 TDHP:MAKE TDHP:HASH = ;
+TDHP-C -1 T=
+TDHP-H -1 T=
+TDHP-D1 0 T=
+TDHP-D2 0 T=
+
+\ hash-alone: HASH + TAG generated, EQ absent (undefined -> uncheckable);
+\ the derived HASH is undefine-protected like a constructor.
+ENUM tdho DERIVE hash oa ob ;ENUM
+: TDHO-H ( -- bool ) TDHO:OA TDHO:HASH TDHO:OA TDHO:HASH = ;
+: TDHO-T ( -- n ) TDHO:OB TDHO:TAG ;
+TDHO-H -1 T=
+TDHO-T 1 T=
+s" TDHO-E ( tdho tdho -- bool ) TDHO:EQ" CHECK-QUIET-CANDIDATE! 1 T=
+s" undefine TDHO:HASH" E-CTOR-PROTECTED TDT-NEG
+\ eq-only families grow no hash surface.
+s" TDSV-NOH ( tdsv -- n ) TDSV:HASH" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ grammar: order stays deferred inside the list; unknown first token rejects;
+\ a sum variant named hash collides; hash-only ptr/field gates still fire.
+s" ENUM tdhb1 DERIVE eq order aa bb ;ENUM" E-TDECL-DERIVE TDT-NEG
+s" SUMTYPE tdhb2 0 DERIVE hash VARIANT hash n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdhb3 0 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DERIVE TDT-NEG
+s" PRODUCT tdhb4 0 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
 DIAG-BUFFER-OFF
 
 : REPORT ( -- )
