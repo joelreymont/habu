@@ -412,6 +412,18 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
    s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
 
+: GE-LAYOUT-BUFFER-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-SRC-RESET
+   s" test/layout-buffer.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-LAYOUT-BUFFER-SUITE ( -- )
+   GE-CANDIDATE$ s" layout-buffer suite on Habu-under-test"
+      GE-LAYOUT-BUFFER-SUITE-ON
+   s" bin/hb" s" layout-buffer suite on bin/hb"
+      GE-LAYOUT-BUFFER-SUITE-ON ;
+
 : GE-WIDE-STORE-SEAL-SUITE-ON ( ptr u8 n ptr u8 n -- )
    {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -1152,6 +1164,7 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TYPE-LINEAR-SUITE
    GE-TYPE-MATCH-SUITE
    GE-TYPE-LAYOUT-SUITE
+   GE-LAYOUT-BUFFER-SUITE
    GE-WIDE-STORE-SEAL-SUITE
    GE-TYPE-EXPORT-SUITE ;
 

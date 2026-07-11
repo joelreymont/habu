@@ -57,12 +57,9 @@ variable WSS-OUT-U
    S\" s\" WSS-ARMED\" type cr" WSS-LINE ;
 
 : WSS-NORMAL-BODY ( -- )
-   s" create WSS-MEM 2 cells allot" WSS-LINE
-   s" : WSS-MEM-P ( -- ptr wss-res<n,n> ) WSS-MEM ;" WSS-LINE
+   s" LAYOUT-BUFFER WSS-MEM wss-res<n,n> 1" WSS-LINE
    s" : WSS-NORMAL ( -- )" WSS-LINE
-   s"   WSS-PAYLOAD WSS--RES:OK WSS-MEM-P !" WSS-LINE
-   s"   WSS-MEM @ WSS-PAYLOAD <> if WSS-E-PAYLOAD throw then" WSS-LINE
-   s"   WSS-MEM cell+ @ 0 <> if WSS-E-TAG throw then ;" WSS-LINE
+   s"   WSS-PAYLOAD WSS--RES:OK 0 WSS-MEM ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-NORMAL" WSS-LINE ;
 
@@ -73,7 +70,7 @@ variable WSS-OUT-U
    SB$ ;
 
 : WSS-FIRST-BODY ( -- )
-   s" : WSS-FIRST-P ( -- ptr wss-res<n,n> ) data-base FRIEND-LATCH-CELL + ;" WSS-LINE
+   s" TRUSTED: WSS-FIRST-P ( -- ptr wss-res<n,n> ) data-base FRIEND-LATCH-CELL + ;" WSS-LINE
    s" : WSS-FIRST ( -- ) WSS-ZERO WSS-FIRST-P ! ;" WSS-LINE
    WSS-ARM-LINE
    s" WSS-FIRST" WSS-LINE ;
@@ -85,7 +82,7 @@ variable WSS-OUT-U
    SB$ ;
 
 : WSS-LATER-BODY ( -- )
-   s" : WSS-LATER-P ( -- ptr wss-res<n,n> )" WSS-LINE
+   s" TRUSTED: WSS-LATER-P ( -- ptr wss-res<n,n> )" WSS-LINE
    s"   data-base FRIEND-LATCH-CELL 1 cells - + ;" WSS-LINE
    s" : WSS-LATER ( -- ) WSS-ZERO WSS-LATER-P ! ;" WSS-LINE
    WSS-ARM-LINE

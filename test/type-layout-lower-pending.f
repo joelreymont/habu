@@ -128,14 +128,14 @@ WF-N@ 1 T=  0 WF-WIDTH@ 1 T=
 
 \ Layout memory operations record one operation-width fact at position 0.
 \ W=2 therefore triggers pass 2; the scalar address itself remains one cell.
-create TLP-MEM2 2 cells allot
-: TLP-MEM2-P ( -- ptr tlp-res<n,n> ) TLP-MEM2 ;
+LAYOUT-BUFFER TLP-MEM2-BUF tlp-res<n,n> 1
+: TLP-MEM2-P ( -- ptr tlp-res<n,n> ) 0 TLP-MEM2-BUF ;
 : TLP-STORE2 ( tlp-res<n,n> -- ) TLP-MEM2-P ! ;
 WF-N@ 1 T=  0 WF-TOKIX@ 2 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
 : TLP-FETCH2 ( -- tlp-res<n,n> ) TLP-MEM2-P @ ;
 WF-N@ 1 T=  0 WF-TOKIX@ 2 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
-create TLP-MEM4 4 cells allot
-: TLP-MEM4-P ( -- ptr tlp-mix<n,n> ) TLP-MEM4 ;
+LAYOUT-BUFFER TLP-MEM4-BUF tlp-mix<n,n> 1
+: TLP-MEM4-P ( -- ptr tlp-mix<n,n> ) 0 TLP-MEM4-BUF ;
 : TLP-STORE4 ( tlp-mix<n,n> -- ) TLP-MEM4-P ! ;
 WF-N@ 1 T=  0 WF-TOKIX@ 2 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 4 T=
 : TLP-FETCH4 ( -- tlp-mix<n,n> ) TLP-MEM4-P @ ;
@@ -284,13 +284,10 @@ TRUSTED: TLP-UN4 ( tlp-mix<n,n> -- n n n n ) ;
 : TLPX-STORE2 ( -- ) TLP-MK2 TLP-STORE2 ;
 : TLPX-FETCH2 ( -- n n ) TLP-FETCH2 TLP-UN2 ;
 TLPX-STORE2
-TLP-MEM2 @ 7 T=  TLP-MEM2 cell+ @ 1 T=
 TLPX-FETCH2 1 T= 7 T=
 : TLPX-STORE4 ( -- ) TLP-MK4 TLP-STORE4 ;
 : TLPX-FETCH4 ( -- n n n n ) TLP-FETCH4 TLP-UN4 ;
 TLPX-STORE4
-TLP-MEM4 @ 91 T=  TLP-MEM4 cell+ @ 92 T=
-TLP-MEM4 2 cells + @ 93 T=  TLP-MEM4 3 cells + @ 1 T=
 TLPX-FETCH4 1 T= 93 T= 92 T= 91 T=
 
 \ typed-local-lint: allow-bare-local

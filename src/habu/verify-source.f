@@ -469,6 +469,12 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
       BODY-APPEND
    AGAIN ;
 
+: RECORD-LAYOUT-BUFFER ( -- )
+   NEXT-SCAN {: name:ptr nameu:n :}
+   NEXT-SCAN {: type:ptr typeu:n :}
+   NEXT-SCAN {: count:ptr countu:n :}
+   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -567,6 +573,7 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN
+   a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict

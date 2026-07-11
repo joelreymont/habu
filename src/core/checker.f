@@ -1063,6 +1063,9 @@ variable TWALK-D
 \ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) fails
 \ closed through the same guards.
 variable LAYOUT-XPORT
+variable LAYOUT-INTRO
+variable LBUF-PEND-A
+variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -1131,31 +1134,16 @@ variable LLC-N
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
-\ Pointer-pointee bind (storable layouts S2): CUR-STRICT marks exactly the
-\ pairs under a T-PTR pointee (PAIR-STRICT's one call site is U-TYPE's T-PTR
-\ arm, and PAIR inherits the flag for its subterm pairs), and a POINTER is one
-\ cell whatever its pointee, so binding a var to a logical layout pointee never
-\ breaks the item-12 width discipline. Allow it for the storable memory tier —
-\ that is what lets a checked accessor
-\ certify `( -- ptr color ) VAR-NAME` against the variable's `-- ptr a` row,
-\ giving `!`/`@` a typed address source. Storage capacity remains the defining
-\ word's responsibility: W>1 accessors must point at W allocated cells. Hidden fields
-\ still never bind; row-level pairs (CUR-STRICT 0) keep the transport-only rule.
-: LAYOUT-PTR-BIND-OK? ( n n -- bool ) {: a:n b:n :}
-   CUR-STRICT @ 0= IF RES-FALSE EXIT THEN       \ only under a ptr pointee
-   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN
-   a LAYOUT-PARAM? IF
-      a T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
-      b ISVAR EXIT THEN
-   b LAYOUT-PARAM? IF
-      b T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
-      a ISVAR EXIT THEN
-   RES-FALSE ;
-
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   a b LAYOUT-PTR-BIND-OK? 0= ;
+   LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
+      a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
+         a LAYOUT-PARAM? b ISVAR and IF a T-RES LAYOUT-MEM-OK? 0= EXIT THEN
+         b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
+      THEN
+   THEN
+   RES-TRUE ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -1279,7 +1267,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
-   0 LAYOUT-XPORT !
+   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
@@ -2560,6 +2548,27 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    u SL !
    0 SI !
    PSIG ;
+
+\ Parse one type application for the generative LAYOUT-BUFFER definer. This is
+\ the allocation-certificate gate: only a closed, non-linear, addressable
+\ layout is admitted, and the exact family id/width are returned to the fixed
+\ definer implementation. Ordinary unification never receives this authority.
+variable LBI-T
+variable LBI-BAD
+
+: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool ) {: a:ptr u:n :}
+   NEW
+   SGBAD-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a SB!  u SL !  0 SI !
+   NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
+   SIG-TYPE T-RES LBI-T !
+   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
 
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
@@ -4153,6 +4162,11 @@ PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFENUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-DEFLAYOUT-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
 PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
@@ -4281,6 +4295,7 @@ variable DFER-END
 \ constructor word cannot be undefined; a new tail cannot certify into a
 \ constructor package (closed-but-callable, PLAN Package Shape).
 7111 constant E-CTOR-PROTECTED
+7121 constant E-CHECKER-LAYOUT-BUFFER
 variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
 variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
 variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
@@ -4562,6 +4577,9 @@ variable DFER-POS
    CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
+: CHECKER-DEFINED? ( ptr u8 n -- bool )
+   CHECKER-FIND-USIG ;
+
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
@@ -4572,6 +4590,52 @@ variable DFER-POS
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
+
+$1000 constant LBUF-SIG-CAP
+$7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
+create LBUF-SIG-BUF LBUF-SIG-CAP allot
+variable LBUF-SIG-U
+variable LBUF-SIG-I
+variable LBUF-COUNT-N
+
+: LBUF-SIG-C, ( n -- ) {: c:n :}
+   LBUF-SIG-U @ LBUF-SIG-CAP >= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   c LBUF-SIG-BUF LBUF-SIG-U @ + c!
+   LBUF-SIG-U @ 1 + LBUF-SIG-U ! ;
+
+: LBUF-SIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LBUF-SIG-I !
+   BEGIN LBUF-SIG-I @ u < WHILE
+      a LBUF-SIG-I @ + c@ LBUF-SIG-C,
+      LBUF-SIG-I @ 1 + LBUF-SIG-I !
+   REPEAT ;
+
+: CHECKER-LBUF-COUNT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   0 LBUF-COUNT-N !  0 LBUF-SIG-I !
+   BEGIN LBUF-SIG-I @ u < WHILE
+      a LBUF-SIG-I @ + c@ {: c:n :}
+      c 48 < c 58 >= or IF RES-FALSE EXIT THEN
+      c 48 - {: d:n :}
+      LBUF-COUNT-N @ LBUF-COUNT-MAX d - 10 / > IF RES-FALSE EXIT THEN
+      LBUF-COUNT-N @ 10 * d + LBUF-COUNT-N !
+      LBUF-SIG-I @ 1 + LBUF-SIG-I !
+   REPEAT
+   LBUF-COUNT-N @ 0 > ;
+
+: CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
+   0 LBUF-SIG-U !
+   s" n -- ptr " LBUF-SIG-APP
+   type typeu LBUF-SIG-APP
+   LBUF-SIG-BUF LBUF-SIG-U @ ;
+
+: CHECKER-DEFLAYOUT-BUFFER
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   2drop
+   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
@@ -6951,6 +7015,18 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
 
+\ Generative layout-buffer authorization. The sealed definer arms this around
+\ exactly one generated accessor evaluation. It admits only the accessor's
+\ boundary pointee refinement; ordinary ptr variables remain unable to acquire
+\ layout identity. Static preverification runs in a rollback scope, so the
+\ generated runtime definition remains the sole durable signature record.
+: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
+: LBUF-PEND-CLEAR ( -- ) 0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
+: LBUF-PEND-MATCH? ( -- bool )
+   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
@@ -6965,7 +7041,13 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
          CTOR-PEND-CLEAR                            \ single shot, even on reject
          CTOR-EXPECTED-ROW SUNI-COERCE
       ELSE
-         SGOUT @ SUNI-COERCE
+         LBUF-PEND-MATCH? IF
+            -1 LAYOUT-INTRO !
+            SGOUT @ SUNI-COERCE
+            0 LAYOUT-INTRO !
+         ELSE
+            SGOUT @ SUNI-COERCE
+         THEN
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)

@@ -507,7 +507,7 @@ s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
 \ A layout value crosses `!`/`@` through a `ptr family`
 \ address; the ADDRESS type carries the family identity, and a var may bind a
 \ width-1 non-linear layout pointee under a ptr spine (the typed-address seam:
-\ a checked accessor certifies against a variable's `-- ptr a` row). The
+\ only LAYOUT-BUFFER may introduce a family-typed pointer. The
 \ compiled one-cell ops are the exact W=1 lowering; pass 2 lowers W>1 from the
 \ token's width fact. Linear, open-arg, and untyped/mismatched addresses stay
 \ fail-closed.
@@ -516,7 +516,7 @@ SUMTYPE tdmemu 1
   VARIANT dos ;VARIANT
 ;SUMTYPE
 variable TDS1-MEM
-s" TDS1-VP ( -- ptr tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! -1 T=
+s" TDS1-VP ( -- ptr tdcolor ) TDS1-MEM" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-STORE ( tdcolor ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDS1-FETCH ( ptr tdcolor -- tdcolor ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDS1-RT ( tdcolor ptr tdcolor -- tdcolor ) tuck ! @" CHECK-QUIET-CANDIDATE! -1 T=
@@ -544,7 +544,8 @@ s" TDS2-WNOUT ( ptr tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-LIN ( tdmemu<tdown> ptr tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ executed round-trip: store an enum, fetch it, MATCH the fetched value.
-: TDS1-P ( -- ptr tdcolor ) TDS1-MEM ;
+LAYOUT-BUFFER TDS1-BUF tdcolor 1
+: TDS1-P ( -- ptr tdcolor ) 0 TDS1-BUF ;
 : TDS1-PUT ( tdcolor -- ) TDS1-P ! ;
 : TDS1-GET ( -- tdcolor ) TDS1-P @ ;
 : TDS1-CODE ( -- n )
@@ -556,9 +557,9 @@ s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 TDCOLOR:GREEN TDS1-PUT TDS1-CODE 1 T=
 TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
 
-\ Executed W=2 round-trip through an exactly-sized backing allocation.
-create TDS2-RES-MEM 2 cells allot
-: TDS2-RES-P ( -- ptr tdres<n,n> ) TDS2-RES-MEM ;
+\ Executed W=2 round-trip through sealed typed storage.
+LAYOUT-BUFFER TDS2-RES-BUF tdres<n,n> 1
+: TDS2-RES-P ( -- ptr tdres<n,n> ) 0 TDS2-RES-BUF ;
 : TDS2-RES-PUT ( tdres<n,n> -- ) TDS2-RES-P ! ;
 : TDS2-RES-GET ( -- tdres<n,n> ) TDS2-RES-P @ ;
 : TDS2-RES-SEED ( -- tdres<n,n> ) 37 TDRES:ERR ;
@@ -569,12 +570,10 @@ create TDS2-RES-MEM 2 cells allot
      err OF ENDOF
    ;MATCH ;
 TDS2-RES-WRITE TDS2-RES-VAL 37 T=
-TDS2-RES-MEM @ 37 T=
-TDS2-RES-MEM cell+ @ 1 T=
 
 \ Arbitrary W=4 family: both the full payload and zero-filled padding survive.
-create TDS2-MIX-MEM 4 cells allot
-: TDS2-MIX-P ( -- ptr tdmix<n,n> ) TDS2-MIX-MEM ;
+LAYOUT-BUFFER TDS2-MIX-BUF tdmix<n,n> 1
+: TDS2-MIX-P ( -- ptr tdmix<n,n> ) 0 TDS2-MIX-BUF ;
 : TDS2-MIX-PUT ( tdmix<n,n> -- ) TDS2-MIX-P ! ;
 : TDS2-MIX-GET ( -- tdmix<n,n> ) TDS2-MIX-P @ ;
 : TDS2-MIX-BIG ( -- tdmix<n,n> ) 91 92 93 TDMIX:BIG ;
@@ -588,10 +587,6 @@ create TDS2-MIX-MEM 4 cells allot
    ;MATCH ;
 TDS2-MIX-BIG! TDS2-MIX-SUM 276 T=
 TDS2-MIX-SMALL!
-TDS2-MIX-MEM @ 41 T=
-TDS2-MIX-MEM cell+ @ 0 T=
-TDS2-MIX-MEM 2 cells + @ 0 T=
-TDS2-MIX-MEM 3 cells + @ 0 T=
 TDS2-MIX-SUM 41 T=
 
 \ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03)
@@ -648,8 +643,8 @@ s" TDP-MEM-F ( ptr tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
 WF-N@ 1 T=  0 WF-TOKIX@ 1 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 3 T=
 s" TDP-MEM-MIX ( tdprec ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDP-MEM-N ( ptr tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
-create TDP-MEM 3 cells allot
-: TDP-P ( -- ptr tdprec ) TDP-MEM ;
+LAYOUT-BUFFER TDP-BUF tdprec 1
+: TDP-P ( -- ptr tdprec ) 0 TDP-BUF ;
 : TDP-PUT ( tdprec -- ) TDP-P ! ;
 : TDP-GET ( -- tdprec ) TDP-P @ ;
 : TDP-WRITE ( -- ) TDP-MK TDP-PUT ;
@@ -668,7 +663,6 @@ create TDP-MEM 3 cells allot
 : TDP-MEM-N@ ( -- n ) TDP-GET TDPREC:UNMAKE nip nip ;
 TDP-WRITE
 TDP-MEM-COL 2 T=  TDP-MEM-LIGHT 0 T=  TDP-MEM-N@ 7 T=
-TDP-MEM @ 2 T=  TDP-MEM cell+ @ 0 T=  TDP-MEM 2 cells + @ 7 T=
 \ out-of-tier fields keep the payload reject, transactionally rolled back:
 \ parametric (tdres, arity 2), wider zero-arity (tdpw, W = 2), and an enum in a
 \ SUM variant payload (the S3 tier); a self-referential field is instead recursive
