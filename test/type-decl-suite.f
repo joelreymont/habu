@@ -483,14 +483,14 @@ s" TD12-RIS-BAD ( n ptr u8 tdres<n,n> -- ) run-in-stack" CHECK-QUIET-CANDIDATE! 
 \ throw takes an n code: a layout value is not a throw code.
 s" TD12-THROW ( tdres<n,n> -- ) throw" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423) --------
-\ A width-1 (enum-tier) layout value crosses `!`/`@` through a `ptr family`
+\ --- storable layouts S1/S2 (dot habu-checker-capability-typed-a480c423) -----
+\ A layout value crosses `!`/`@` through a `ptr family`
 \ address; the ADDRESS type carries the family identity, and a var may bind a
 \ width-1 non-linear layout pointee under a ptr spine (the typed-address seam:
 \ a checked accessor certifies against a variable's `-- ptr a` row). The
-\ compiled one-cell ops are the exact lowering, so certification plus the
-\ executed round-trip below are the whole proof. W > 1, linear, open-arg, and
-\ untyped/mismatched addresses stay fail-closed (S2 / TFAM-11 pins).
+\ compiled one-cell ops are the exact W=1 lowering; pass 2 lowers W>1 from the
+\ token's width fact. Linear, open-arg, and untyped/mismatched addresses stay
+\ fail-closed.
 SUMTYPE tdmemu 1
   VARIANT uno ;VARIANT
   VARIANT dos ;VARIANT
@@ -511,9 +511,15 @@ s" TDS1-MIX ( tdlight ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 \ no n<->enum laundering in either direction.
 s" TDS1-NIN ( n ptr tdcolor -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-NOUT ( ptr tdcolor -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
-\ W > 1 store/fetch waits for the S2 width-aware engine legs.
-s" TDS1-WIDE ( tdres<n,n> ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDS1-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+\ W > 1 store/fetch certifies and records the operation bundle width at pos 0.
+s" TDS2-WIDE ( tdres<n,n> ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=  0 WF-TOKIX@ 1 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
+s" TDS2-WIDEF ( ptr tdres<n,n> -- tdres<n,n> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=  0 WF-TOKIX@ 1 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
+\ wide family mismatch and scalar laundering stay rejected.
+s" TDS2-WMIX ( tdres<n,n> ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNIN ( n ptr tdres<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDS2-WNOUT ( ptr tdres<n,n> -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
 \ linear / open args stay fail-closed even at width 1 (TFAM-11 rule).
 s" TDS1-LIN ( tdmemu<tdown> ptr tdmemu<tdown> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
@@ -529,6 +535,44 @@ s" TDS1-OPEN ( tdmemu<a> ptr tdmemu<a> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
    ;MATCH ;
 TDCOLOR:GREEN TDS1-PUT TDS1-CODE 1 T=
 TDCOLOR:BLUE TDS1-PUT TDS1-CODE 2 T=
+
+\ Executed W=2 round-trip through an exactly-sized backing allocation.
+create TDS2-RES-MEM 2 cells allot
+: TDS2-RES-P ( -- ptr tdres<n,n> ) TDS2-RES-MEM ;
+: TDS2-RES-PUT ( tdres<n,n> -- ) TDS2-RES-P ! ;
+: TDS2-RES-GET ( -- tdres<n,n> ) TDS2-RES-P @ ;
+: TDS2-RES-SEED ( -- tdres<n,n> ) 37 TDRES:ERR ;
+: TDS2-RES-WRITE ( -- ) TDS2-RES-SEED TDS2-RES-PUT ;
+: TDS2-RES-VAL ( -- n )
+   TDS2-RES-GET MATCH tdres
+     ok OF ENDOF
+     err OF ENDOF
+   ;MATCH ;
+TDS2-RES-WRITE TDS2-RES-VAL 37 T=
+TDS2-RES-MEM @ 37 T=
+TDS2-RES-MEM cell+ @ 1 T=
+
+\ Arbitrary W=4 family: both the full payload and zero-filled padding survive.
+create TDS2-MIX-MEM 4 cells allot
+: TDS2-MIX-P ( -- ptr tdmix<n,n> ) TDS2-MIX-MEM ;
+: TDS2-MIX-PUT ( tdmix<n,n> -- ) TDS2-MIX-P ! ;
+: TDS2-MIX-GET ( -- tdmix<n,n> ) TDS2-MIX-P @ ;
+: TDS2-MIX-BIG ( -- tdmix<n,n> ) 91 92 93 TDMIX:BIG ;
+: TDS2-MIX-SMALL ( -- tdmix<n,n> ) 41 TDMIX:SMALL ;
+: TDS2-MIX-BIG! ( -- ) TDS2-MIX-BIG TDS2-MIX-PUT ;
+: TDS2-MIX-SMALL! ( -- ) TDS2-MIX-SMALL TDS2-MIX-PUT ;
+: TDS2-MIX-SUM ( -- n )
+   TDS2-MIX-GET MATCH tdmix
+     small OF ENDOF
+     big OF + + ENDOF
+   ;MATCH ;
+TDS2-MIX-BIG! TDS2-MIX-SUM 276 T=
+TDS2-MIX-SMALL!
+TDS2-MIX-MEM @ 41 T=
+TDS2-MIX-MEM cell+ @ 0 T=
+TDS2-MIX-MEM 2 cells + @ 0 T=
+TDS2-MIX-MEM 3 cells + @ 0 T=
+TDS2-MIX-SUM 41 T=
 
 \ --- layout-kinded product fields S1 (dot habu-checker-capability-layout-4e7f1f03)
 \ An S1-tier layout family (sum/enum kind, arity 0, width 1) may type a PRODUCT
@@ -575,6 +619,36 @@ s" TDP4 ( tdprec -- tdcolor ) TDPREC:UNMAKE drop drop" CHECK-QUIET-CANDIDATE! -1
      blue OF 2 ENDOF
    ;MATCH ;
 TDP-CODE 2 T=
+\ Wide PRODUCT memory uses the same family-typed address contract and records
+\ its full W=3 bundle width. A different family or scalar result cannot cross
+\ the boundary even when the physical representation is cell-based.
+s" TDP-MEM-S ( tdprec ptr tdprec -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=  0 WF-TOKIX@ 1 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 3 T=
+s" TDP-MEM-F ( ptr tdprec -- tdprec ) @" CHECK-QUIET-CANDIDATE! -1 T=
+WF-N@ 1 T=  0 WF-TOKIX@ 1 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 3 T=
+s" TDP-MEM-MIX ( tdprec ptr tdmix<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDP-MEM-N ( ptr tdprec -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+create TDP-MEM 3 cells allot
+: TDP-P ( -- ptr tdprec ) TDP-MEM ;
+: TDP-PUT ( tdprec -- ) TDP-P ! ;
+: TDP-GET ( -- tdprec ) TDP-P @ ;
+: TDP-WRITE ( -- ) TDP-MK TDP-PUT ;
+: TDP-MEM-COL ( -- n )
+   TDP-GET TDPREC:UNMAKE drop drop MATCH tdcolor
+     red OF 0 ENDOF
+     green OF 1 ENDOF
+     blue OF 2 ENDOF
+   ;MATCH ;
+: TDP-MEM-LIGHT ( -- n )
+   TDP-GET TDPREC:UNMAKE drop nip MATCH tdlight
+     red OF 0 ENDOF
+     green OF 1 ENDOF
+     blue OF 2 ENDOF
+   ;MATCH ;
+: TDP-MEM-N@ ( -- n ) TDP-GET TDPREC:UNMAKE nip nip ;
+TDP-WRITE
+TDP-MEM-COL 2 T=  TDP-MEM-LIGHT 0 T=  TDP-MEM-N@ 7 T=
+TDP-MEM @ 2 T=  TDP-MEM cell+ @ 0 T=  TDP-MEM 2 cells + @ 7 T=
 \ out-of-tier fields keep the payload reject, transactionally rolled back:
 \ parametric (tdres, arity 2), wider zero-arity (tdpw, W = 2), and an enum in a
 \ SUM variant payload (the S3 tier); a self-referential field is instead recursive

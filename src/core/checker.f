@@ -1108,15 +1108,14 @@ variable LLC-N
       1 +
    REPEAT drop RES-FALSE ;
 
-\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): the
-\ memory tier a layout value may cross TODAY. Gate = closed non-linear args
-\ AND one-cell registry width (the enum tier): the compiled one-cell `!`/`@`
-\ are already the exact lowering for W = 1, so acceptance is checker-only.
-\ W > 1 waits for the S2 width-aware store/fetch engine legs; possibly-linear
-\ (incl. open-arg) stays rejected until TFAM 11 whole-bundle counting.
+\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): every
+\ closed non-linear layout with a physical cell may cross typed memory. W=1
+\ uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products have
+\ no addressable representation and reject. Possibly-linear, including open
+\ args that might later become linear, stays rejected until TFAM 11.
 : LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
-   t PARAM>FAM TFAM-WIDTH@* 1 = ;
+   t T-WIDTH 0 > ;
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
@@ -1129,15 +1128,15 @@ variable LLC-N
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
-\ Pointer-pointee bind (storable layouts S1): CUR-STRICT marks exactly the
+\ Pointer-pointee bind (storable layouts S2): CUR-STRICT marks exactly the
 \ pairs under a T-PTR pointee (PAIR-STRICT's one call site is U-TYPE's T-PTR
 \ arm, and PAIR inherits the flag for its subterm pairs), and a POINTER is one
 \ cell whatever its pointee, so binding a var to a logical layout pointee never
-\ breaks the item-12 width discipline. Allow it for the S1 memory tier only
-\ (LAYOUT-MEM-OK?: non-linear, W = 1) — that is what lets a checked accessor
+\ breaks the item-12 width discipline. Allow it for the storable memory tier —
+\ that is what lets a checked accessor
 \ certify `( -- ptr color ) VAR-NAME` against the variable's `-- ptr a` row,
-\ giving `!`/`@` a typed address source; the one-cell pointee also matches the
-\ one-cell reservation a `variable`/`create` row actually backs. Hidden fields
+\ giving `!`/`@` a typed address source. Storage capacity remains the defining
+\ word's responsibility: W>1 accessors must point at W allocated cells. Hidden fields
 \ still never bind; row-level pairs (CUR-STRICT 0) keep the transport-only rule.
 : LAYOUT-PTR-BIND-OK? ( n n -- bool ) {: a:n b:n :}
    CUR-STRICT @ 0= IF RES-FALSE EXIT THEN       \ only under a ptr pointee
@@ -5057,16 +5056,51 @@ variable FLD  variable FLI  variable FLO  variable FLC
 : ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
-\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): `!`/`@`
+\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
+\ Per checked definition the checker records one row for every operation whose
+\ lowering needs a logical layout width. Transport/locals rows use logical
+\ operand positions; layout-memory rows use position 0 as the operation's
+\ bundle width (the address itself stays one cell). An absent row means scalar
+\ lowering. Native and bootstrap emitters query the table by body-token index
+\ before emitting the operation. The table is per-CHECK scratch.
+BEGIN-STRUCTURE WF-REC
+   CELL +FIELD WF.TOK
+   CELL +FIELD WF.POS
+   CELL +FIELD WF.FAM
+   CELL +FIELD WF.W
+END-STRUCTURE
+128 constant WF-CAP
+create WFS WF-CAP WF-REC * allot
+variable WF-N
+variable WF-CURROW   variable WF-POS-I
+
+: WF-ROW@ ( n -- ptr a ) {: i:n :}
+   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
+   i WF-REC * WFS + ;
+: WF-N@ ( -- n ) WF-N @ ;
+: WF-TOKIX@ ( n -- n ) WF-ROW@ WF.TOK @ ;
+: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
+: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
+: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
+
+: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}
+   WF-N @ WF-CAP >= IF s" checker: width-fact table full" 76 die THEN
+   WF-N @ WF-REC * WFS + {: r:ptr :}
+   TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
+   WF-N @ 1 + WF-N ! ;
+
+: WF-MEM-RECORD ( n -- ) {: t:n :}
+   0 t PARAM>FAM t T-WIDTH WF-ADD ;
+
+\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): `!`/`@`
 \ through a `ptr family<..>` address move the pointee's whole logical value.
 \ The ADDRESS type picks the arm — family identity lives in the pointer, so a
 \ bare `ptr a` store of a layout value stays rejected, a mismatched family
 \ rejects in ordinary unification, an `n` cannot enter an enum slot, and a
-\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? gates the tier:
-\ W = 1 (enum) only, where the compiled one-cell `!`/`@` are already the exact
-\ lowering — W > 1 rejects until the S2 engine legs, linear/open-arg until
-\ TFAM 11. The effect rows push the family's hidden expansion (PUSH-LOGICAL),
-\ so the value side pairs hidden-to-hidden like every checked row cell.
+\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? admits every
+\ closed non-linear layout width; WF-MEM-RECORD gives pass 2 the registry width
+\ before CHECKER-STEP mutates the row. The effect rows push the family's hidden
+\ expansion, so the value side pairs hidden-to-hidden like every checked row.
 : LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF 0 RES-FALSE EXIT THEN
@@ -5079,6 +5113,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : LAYOUT-FETCH-STEP ( n -- ) {: t:n :}   \ ( ptr fam -- fam ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t WF-MEM-RECORD
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
@@ -5086,6 +5121,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t WF-MEM-RECORD
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH
@@ -5121,44 +5157,6 @@ variable FLD  variable FLI  variable FLO  variable FLC
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
-
-\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
-\ Per checked definition the checker records, for every whole-bundle transport
-\ op and locals capture whose logical operands include a layout value, one row
-\ per layout operand: (body token index, operand position 0=top, family-id,
-\ logical width from the registry). An absent row means every operand is one
-\ cell, so today's one-cell lowering stands. Native+Gforth emitters consume the
-\ table keyed by token index BEFORE emitting the op; the width is the REGISTRY
-\ logical width (sum: slots+tag), which becomes the physical width when item
-\ 12's LAYOUT-PUSH-FIELDS expansion lands with the width-aware lowering slice —
-\ emitters must not lower from these facts before that slice. The table is
-\ per-CHECK scratch (reset in CHECK-RESET, valid until the next CHECK), like
-\ the FAILTK diagnostics.
-BEGIN-STRUCTURE WF-REC
-   CELL +FIELD WF.TOK
-   CELL +FIELD WF.POS
-   CELL +FIELD WF.FAM
-   CELL +FIELD WF.W
-END-STRUCTURE
-128 constant WF-CAP
-create WFS WF-CAP WF-REC * allot
-variable WF-N
-variable WF-CURROW   variable WF-POS-I
-
-: WF-ROW@ ( n -- ptr a ) {: i:n :}
-   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
-   i WF-REC * WFS + ;
-: WF-N@ ( -- n ) WF-N @ ;
-: WF-TOKIX@ ( n -- n ) WF-ROW@ WF.TOK @ ;
-: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
-: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
-: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
-
-: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}   \ append one fact at the current token
-   WF-N @ WF-CAP >= IF s" checker: width-fact table full" 76 die THEN
-   WF-N @ WF-REC * WFS + {: r:ptr :}
-   TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
-   WF-N @ 1 + WF-N ! ;
 
 : ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN

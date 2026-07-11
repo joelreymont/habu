@@ -2393,7 +2393,9 @@ variable LP2CARVW  variable LP2LIVEW  variable LP2LIVEC  variable LP2SEQRST
 variable LKWTUCK3  variable LKWROT3  variable LKWMROT3
 variable LKW2DUP3  variable LKW2DROP3  variable LKW2SWAP3  variable LKW2OVER3
 variable LKW2TOR3  variable LKW2RFROM3  variable LKW2RFET3
+variable LKWAT2  variable LKWSTORE2
 variable LP2COPY  variable LP2DROPN  variable LP2REV  variable LP2ROT  variable LP2RS
+variable LP2FETCH  variable LP2STORE
 
 \ pass-2 body-token cursor: +1 per dispatched compile token (checker TOKIX
 \ parity — comments never reach the dispatch, string/parse-lit payloads are
@@ -3804,8 +3806,60 @@ s" em-compile-ret" s" --" TRUST
    rsdone LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
 
+\ LP2FETCH ( x5=width-cells ) : emit `@` for one layout bundle. Runtime pops
+\ the typed base address, reads memory in ascending slot order, and pushes
+\ slot0..tag so the tag is again the top physical cell.
+: EMIT-P2-FETCH ( -- )
+   LP2FETCH LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   $D1002273 C-EMITW                                  \ sub x19,x19,#8
+   $F940026A C-EMITW                                  \ ldr x10,[x19] : base
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   $F940014B C-EMITW                                  \ ldr x11,[x10]
+   $9100214A C-EMITW                                  \ add x10,x10,#8
+   $F900026B C-EMITW                                  \ str x11,[x19]
+   W-PUSH1 C-EMITW
+   $F1000529 C-EMITW                                  \ subs x9,x9,#1
+   $54FFFF61 C-EMITW                                  \ b.ne loop (-5)
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+\ LP2STORE ( x5=width-cells ) : emit `!` for one layout bundle. Runtime pops
+\ the typed base address, walks the live source bundle from slot0 upward, and
+\ writes memory in ascending order. Every destination cell passes the same
+\ two-band seal guard as scalar `!`; the fixed guard branch spans are encoded
+\ here because this helper emits them into the user word.
+: EMIT-P2-STORE ( -- )
+   LP2STORE LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   $D1002273 C-EMITW                                  \ sub x19,x19,#8
+   $F940026A C-EMITW                                  \ ldr x10,[x19] : dst
+   8 $D100026E LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x14,x19,#W*8
+   8 $D2800009 LIT64,  7 5 5 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,
+   $F940028D FRIEND-LATCH-CELL 8 / 10 lshift or C-EMITW   \ ldr x13,[x20,#latch]
+   $B400018D C-EMITW                                  \ cbz x13,write (+12)
+   $CB14014C C-EMITW                                  \ sub x12,x10,x20
+   $D100018D FRIEND-ARENA 10 lshift or C-EMITW
+   $F10001BF FRIEND-ARENA-LEN 10 lshift or C-EMITW
+   $540000A3 C-EMITW                                  \ b.lo trap (+5)
+   $D280000D PROT-REG-OFF 5 lshift or C-EMITW
+   $CB0D018D C-EMITW                                  \ sub x13,x12,x13
+   $F10001BF PROT-REG-LEN 10 lshift or C-EMITW
+   $54000082 C-EMITW                                  \ b.hs write (+4)
+   $D2800000 E-SEAL-VIOLATION 5 lshift or C-EMITW
+   SYS-EMIT-EXIT C-EMITW
+   SYS-EMIT-SVC C-EMITW
+   $F94001CF C-EMITW                                  \ ldr x15,[x14]
+   $F900014F C-EMITW                                  \ str x15,[x10]
+   $910021CE C-EMITW                                  \ add x14,x14,#8
+   $9100214A C-EMITW                                  \ add x10,x10,#8
+   $F1000529 C-EMITW                                  \ subs x9,x9,#1
+   $54FFFDC1 C-EMITW                                  \ b.ne guard (-18)
+   8 $D1000273 LIT64,  7 5 13 LSLI,  9 8 7 ORR,  LCEMIT LABEL@ BL,   \ sub x19,x19,#W*8
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
 : EMIT-P2-HELPERS ( -- )
-   EMIT-P2-COPY  EMIT-P2-DROPN  EMIT-P2-REV  EMIT-P2-ROT  EMIT-P2-RS ;
+   EMIT-P2-COPY  EMIT-P2-DROPN  EMIT-P2-REV  EMIT-P2-ROT  EMIT-P2-RS
+   EMIT-P2-FETCH  EMIT-P2-STORE ;
 
 \ keyword/checker-name bytes for the pass-2 dispatch (the shuffle-op and rs
 \ keyword names reuse the jit.f/loop-keyword labels).
@@ -3820,7 +3874,8 @@ s" em-compile-ret" s" --" TRUST
    LKWMROT3 LABEL@ LBL,   s" -rot" BYTES,   LKW2DUP3 LABEL@ LBL,  s" 2dup" BYTES,
    LKW2DROP3 LABEL@ LBL,  s" 2drop" BYTES,  LKW2SWAP3 LABEL@ LBL, s" 2swap" BYTES,
    LKW2OVER3 LABEL@ LBL,  s" 2over" BYTES,  LKW2TOR3 LABEL@ LBL,  s" 2>r" BYTES,
-   LKW2RFROM3 LABEL@ LBL, s" 2r>" BYTES,    LKW2RFET3 LABEL@ LBL, s" 2r@" BYTES, ;
+   LKW2RFROM3 LABEL@ LBL, s" 2r>" BYTES,    LKW2RFET3 LABEL@ LBL, s" 2r@" BYTES,
+   LKWAT2 LABEL@ LBL, s" @" BYTES,  LKWSTORE2 LABEL@ LBL, s" !" BYTES, ;
 
 : EM-P2-W-CELL ( n -- n )          \ DATA offset holding operand pos's width
    dup 0 = IF drop P2W0-CELL EXIT THEN
@@ -3913,6 +3968,10 @@ s" p2w-entry" s" label ptr a n n n --" TRUST
    9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  5 9 10 ADD,  6 1 MOVZ,  LP2RS LABEL@ BL, ;
 : EM-P2X-2RFET ( -- )
    9 DATA P2W0-CELL LDR,  10 DATA P2W1-CELL LDR,  5 9 10 ADD,  6 2 MOVZ,  LP2RS LABEL@ BL, ;
+: EM-P2X-FETCH ( -- )
+   5 DATA P2W0-CELL LDR,  LP2FETCH LABEL@ BL, ;
+: EM-P2X-STORE ( -- )
+   5 DATA P2W0-CELL LDR,  LP2STORE LABEL@ BL, ;
 
 \ the pass-2 width dispatch: sits between the local-reference dispatch (locals
 \ shadow op names, checker parity) and the keyword tiers, so a wide fact at any
@@ -3939,6 +3998,8 @@ s" p2w-entry" s" label ptr a n n n --" TRUST
    LMAIN LABEL@ LKW2TOR3   3 2 ['] EM-P2X-2TOR    P2W-ENTRY
    LMAIN LABEL@ LKW2RFROM3 3 2 ['] EM-P2X-2RFROM  P2W-ENTRY
    LMAIN LABEL@ LKW2RFET3  3 2 ['] EM-P2X-2RFET   P2W-ENTRY
+   LMAIN LABEL@ LKWAT2     1 1 ['] EM-P2X-FETCH   P2W-ENTRY
+   LMAIN LABEL@ LKWSTORE2  1 1 ['] EM-P2X-STORE   P2W-ENTRY
    notp2 LBL, ;
 s" em-compile-p2wide" s" --" TRUST
 
@@ -4865,7 +4926,9 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
    LBL LKW2TOR3 !  LBL LKW2RFROM3 !  LBL LKW2RFET3 !
-   LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS ! ;
+   LBL LKWAT2 !  LBL LKWSTORE2 !
+   LBL LP2COPY !  LBL LP2DROPN !  LBL LP2REV !  LBL LP2ROT !  LBL LP2RS !
+   LBL LP2FETCH !  LBL LP2STORE ! ;
 
 : EMIT-LABELS ( -- )
    EMIT-LABEL-CORE
