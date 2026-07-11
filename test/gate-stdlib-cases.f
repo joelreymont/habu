@@ -201,6 +201,7 @@ TEST:;SUITE
 
 TEST:SUITE float-parse
    lib/float-test.f
+   lib/fmath-test.f
 TEST:;SUITE
 
 TEST:SUITE fmt-numbers
@@ -259,6 +260,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/opt-test.f
    lib/ptx/ad-test.f
    lib/ptx/ad-dag-test.f
+   lib/ptx/ad-dag-eval-test.f
    lib/ptx/ad-saved-test.f
    lib/ptx/sentinel-test.f
    lib/ptx/cuda-driver-test.f

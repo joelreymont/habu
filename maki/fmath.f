@@ -1,38 +1,16 @@
-\ maki/fmath.f - transcendental floats by in-Habu range reduction (no libm, no
-\ engine prim): FEXP = 2^k * poly(r) with k = round(x/ln2), r = x - k*ln2. This is
-\ the in-Habu-poly route from habu-add-transcendental, unblocking the transformer
-\ activation suite (sigmoid/tanh/GELU/softmax) at CPU host scale, all numerically
-\ gradcheckable. Needs only core float prims. maki -> habu only.
+\ maki/fmath.f - transcendental activations (sigmoid/tanh/log) + FLN, built on the
+\ shared exp core FEXP (lib/fmath.f). The FEXP range-reduction core moved to
+\ lib/fmath.f so the PTX host AD evaluator can share it without a maki dependency
+\ (habu <- maki one-way). This file keeps the activation + VJP surface and FLN, all
+\ numerically gradcheckable. maki -> habu only.
+
+require lib/fmath.f
 
 package MAKI
 
-\ round-to-nearest signed int (f>s truncates toward zero, so bias by the sign)
-: FROUND ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;
-
-\ 2^n for signed int n (reference: |n| multiplies; n stays small after reduction)
-: F2^N ( n -- r )
-   dup 0< if  negate  1.0 swap 0 ?do 0.5 f* loop
-        else  1.0 swap 0 ?do 2.0 f* loop  then ;
-
-\ exp(r) for |r| <= ln2/2 via degree-6 Horner (error ~ r^7/5040 ~ 1e-8)
-: FEXP-POLY ( r -- r ) {: r:r :}
-   0.0013888889
-   r f*  0.0083333333 f+
-   r f*  0.0416666667 f+
-   r f*  0.1666666667 f+
-   r f*  0.5 f+
-   r f*  1.0 f+
-   r f*  1.0 f+ ;
-
-: FEXP-K ( r n -- r ) {: x:r k:n :}            \ exp(x) given k = round(x/ln2)
-   x  k s>f 0.6931471805599453 f*  f-  FEXP-POLY  k F2^N  f* ;
-
 public
 
-: FEXP ( r -- r ) {: x:r :}
-   x  x 1.4426950408889634 f* FROUND  FEXP-K ;
-
-\ EXP activation + VJP (exp'(x) = exp(x))
+\ EXP activation + VJP (exp'(x) = exp(x)); FEXP is the shared lib/fmath.f core
 : EXP-F   ( r -- r )    FEXP ;
 : EXP-BWD ( r r -- r ) {: dz:r x:r :}  dz  x FEXP  f* ;
 

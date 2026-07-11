@@ -38,7 +38,7 @@ public
 \   NLL(y, mu, logvar) = 0.5 * ( logvar + (y-mu)^2 * exp(-logvar) )
 
 \ precision = exp(-logvar)  (the inverse variance implied by the predicted logvar)
-: NLL-PREC ( r -- r ) {: lv:r :}  lv fnegate MAKI:FEXP ;
+: NLL-PREC ( r -- r ) {: lv:r :}  lv fnegate FEXP ;
 
 : NLL ( r r r -- r ) {: y:r mu:r lv:r :}
    y mu RES2  lv NLL-PREC  f*  lv f+  0.5 f* ;

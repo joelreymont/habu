@@ -18,6 +18,8 @@
 4 constant OP-BSUM      \ BLOCK-SUM  ( a -- )
 5 constant OP-BDIV      \ B/         ( a b -- )  a / b
 6 constant OP-DUP       \ fan-out
+7 constant OP-MUL       \ *.  ( a b -- )  a * b   (row * row, elementwise via EMIT-MUL)
+8 constant OP-ADD       \ +.  ( a b -- )  a + b   (row + row, elementwise via EMIT-ADD)
 
 32 constant AD-MAXN
 create AD-OP   AD-MAXN cells allot      \ node op code
@@ -95,6 +97,8 @@ variable AD-VSP
       OP-EXP  of 0 0= endof
       OP-BSUM of 0 0= endof
       OP-BDIV of 0 0= endof
+      OP-MUL  of 0 0= endof
+      OP-ADD  of 0 0= endof
       0 0= 0= swap
    endcase ;
 
@@ -138,6 +142,8 @@ variable AD-VSP
       OP-BSUM of OP-BSUM AD-DO-UNARY endof
       OP-BSUB of OP-BSUB AD-DO-BINARY endof
       OP-BDIV of OP-BDIV AD-DO-BINARY endof
+      OP-MUL  of OP-MUL  AD-DO-BINARY endof
+      OP-ADD  of OP-ADD  AD-DO-BINARY endof
       drop E-PTX-AD-UNKNOWN throw
    endcase ;
 
@@ -162,6 +168,8 @@ variable AD-VSP
       OP-BSUM of id AD-A@ AD-REG@ EMIT-BLOCK-SUM              id AD-REG! endof
       OP-BSUB of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B-    id AD-REG! endof
       OP-BDIV of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-B/    id AD-REG! endof
+      OP-MUL  of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-MUL   id AD-REG! endof
+      OP-ADD  of id AD-A@ AD-REG@ id AD-B@ AD-REG@ EMIT-ADD   id AD-REG! endof
       drop E-PTX-AD-UNKNOWN throw
    endcase ;
 
@@ -194,6 +202,16 @@ variable AD-VSP
    id AD-CT@ id AD-REG@ EMIT-MUL EMIT-BLOCK-SUM  id AD-B@ AD-REG@ EMIT-B/ EMIT-NEG
    id AD-B@ swap AD-ACC ;
 
+\ *. (y = a ⊙ b, both rows): da = ct ⊙ b ; db = ct ⊙ a  (row×row, no Sum: both
+\ inputs are tiles, so each cotangent stays a per-lane row, unlike B-'s uniform b)
+: AD-VJP-MUL ( n -- ) {: id:n :}
+   id AD-CT@  id AD-B@ AD-REG@  EMIT-MUL  id AD-A@ swap AD-ACC
+   id AD-CT@  id AD-A@ AD-REG@  EMIT-MUL  id AD-B@ swap AD-ACC ;
+\ +. (y = a + b, both rows): da = ct ; db = ct  (cotangent splits unchanged)
+: AD-VJP-ADD ( n -- ) {: id:n :}
+   id AD-A@  id AD-CT@  AD-ACC
+   id AD-B@  id AD-CT@  AD-ACC ;
+
 : AD-VJP ( n -- ) {: id :}
    id AD-OP@
    case
@@ -202,6 +220,8 @@ variable AD-VSP
       OP-EXP  of id AD-VJP-EXP  endof
       OP-BSUM of id AD-VJP-BSUM endof
       OP-BDIV of id AD-VJP-BDIV endof
+      OP-MUL  of id AD-VJP-MUL  endof
+      OP-ADD  of id AD-VJP-ADD  endof
       drop E-PTX-AD-UNKNOWN throw
    endcase ;
 

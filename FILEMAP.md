@@ -223,9 +223,13 @@ points stay listed.
 - `lib/ptx/opt-test.f` — per-pass before/after fixtures, idempotence,
   fma-refusal, and safety (saxpy/gelu/cg-mma semantics + count deltas).
 - `lib/ptx/ad-dag.f` — checked reverse-mode symbolic DAG builder for PTX row
-  kernels.
+  kernels (softmax primitives plus row×row `*.`/`+.`).
 - `lib/ptx/ad-dag-test.f` — checked validation tests for PTX AD DAG overflow,
-  underflow, unknown opcode, and non-singleton output rejection.
+  underflow, unknown opcode, non-singleton output, and `*.`/`+.` build/arity.
+- `lib/ptx/ad-dag-eval.f` — checked HOST numeric evaluator of the AD DAG
+  semantics (forward + reverse VJP over W host-float lanes, no PTX emission).
+- `lib/ptx/ad-dag-eval-test.f` — host gradcheck: analytic reverse vs central
+  finite difference for softmax, `*.`/`+.` fan-out, and mixed row/uniform pipelines.
 - `src/arch/arm64/disasm.f` — native ARM64 subset disassembler used by
   `tools/jitdump.f` and `tools/imagedisasm.f`.
 - `tools/jitdump-core.f` — reusable JIT code disassembly helpers.
@@ -684,6 +688,8 @@ points stay listed.
   progress, mutex-protected increments, and cooperative halt/join cleanup.
 - `lib/float.f` — checked decimal string to IEEE-double parsing (STR>FLOAT) with power-of-ten scaling.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.
+- `lib/fmath.f` — shared transcendental exp core (FEXP) by in-Habu range reduction; used by maki/fmath.f and lib/ptx/ad-dag-eval.f.
+- `lib/fmath-test.f` — known-value FEXP coverage across the range-reduction domain + central-difference check.
 - `lib/fmt.f` — checked number formatting into the string builder: unsigned/signed ints and fixed-decimal floats.
 - `lib/fmt-test.f` — focused coverage for integer and fixed-decimal float formatting and rounding.
 - `lib/sort.f` — in-place ascending heapsort of float cell arrays (O(n log n), no scratch buffer).

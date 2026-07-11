@@ -477,6 +477,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/opt-test.f" GSI-INCLUDE
    s" lib/ptx/ad-test.f" GSI-INCLUDE
    s" lib/ptx/ad-dag-test.f" GSI-INCLUDE
+   s" lib/ptx/ad-dag-eval-test.f" GSI-INCLUDE
    s" lib/ptx/ad-saved-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-NEG ( -- )

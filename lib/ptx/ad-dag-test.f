@@ -42,14 +42,31 @@ create ADT-OPS ADT-OPS-CAP cells allot
    $63 0 ADT-OP!
    ADT-OPS 1 AD-BUILD ;
 
+\ new ops: *. / +. build via AD-DO-BINARY (DUP DUP MUL MUL -> x^3, 3 real nodes)
+: ADT-XCUBE ( -- )
+   OP-DUP 0 ADT-OP!  OP-DUP 1 ADT-OP!  OP-MUL 2 ADT-OP!  OP-MUL 3 ADT-OP!
+   ADT-OPS 4 AD-BUILD ;
+: ADT-MUL-UNDERFLOW ( -- )   \ *. needs two operands; only the leaf is on the stack
+   OP-MUL 0 ADT-OP!
+   ADT-OPS 1 AD-BUILD ;
+: ADT-ADD-UNDERFLOW ( -- )   \ +. needs two operands; only the leaf is on the stack
+   OP-ADD 0 ADT-OP!
+   ADT-OPS 1 AD-BUILD ;
+
 ADT-SOFTMAX
 AD-N @ 6 T=
 AD-OUT @ 5 T=
 AD-VSP @ 0 T=
 
+ADT-XCUBE
+AD-N @ 3 T=
+AD-OUT @ 2 T=
+
 ' ADT-OVERFLOW E-PTX-AD-OVERFLOW TTHROWS
 ' ADT-UNDERFLOW E-PTX-AD-UNDERFLOW TTHROWS
 ' ADT-EXTRA-OUT E-PTX-AD-OUTPUT TTHROWS
 ' ADT-UNKNOWN E-PTX-AD-UNKNOWN TTHROWS
+' ADT-MUL-UNDERFLOW E-PTX-AD-UNDERFLOW TTHROWS
+' ADT-ADD-UNDERFLOW E-PTX-AD-UNDERFLOW TTHROWS
 
 T-REPORT
