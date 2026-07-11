@@ -77,3 +77,18 @@ word granularity await per-site owner reassignment (builder-emit ~210 named +
 habu2 fold, test-metaprog ~95 named + residuals, stdlib-boundary PTX/engine-id
 ~71 named, discharge-candidate 4) — per-site domain judgment, further bounded
 increments per the rules above.
+
+## Increment 2026-07-11b (discharge-candidate class resolved)
+
+The 4 `src/core/combinators.f` rows (TIMES/EACH/MAP/FOLD, combinators.f:20-34)
+are NOT dischargeable today: each re-executes a stored quotation per loop
+iteration (`r@ execute` / local-`q execute` inside `?do`), which types only
+under the multishot-quotation capability — the file's own boundary comment
+says exactly this and names the owner. Reassigned to
+`habu-multishot-quotations-typed-8832cace` (whose text lists these words) and
+re-classed `discharge-candidate` -> `stdlib-boundary` (the class definition is
+"believed checkable today", which the evidence contradicts; the tile-rows
+precedent classes capability-blocked library boundaries as stdlib-boundary
+owned by the capability dot). BI/TRI in the same file are already plain
+checked definitions — no rows. Zero placeholder discharge-candidate rows
+remain.

@@ -1028,10 +1028,10 @@ tools/check-core.f:CHECKER-DEFRECORD prim-axiom habu-primitive-effect-axiom-1119
 tools/check-core.f:CHECKER-SCOPE-START prim-axiom habu-primitive-effect-axiom-1119f176
 tools/check-core.f:CHECKER-SCOPE-DONE prim-axiom habu-primitive-effect-axiom-1119f176
 tools/check-core.f:CHECK! prim-axiom habu-primitive-effect-axiom-1119f176
-src/core/combinators.f:TIMES discharge-candidate habu-audit-trusted-inventory-3a950436
-src/core/combinators.f:EACH discharge-candidate habu-audit-trusted-inventory-3a950436
-src/core/combinators.f:MAP discharge-candidate habu-audit-trusted-inventory-3a950436
-src/core/combinators.f:FOLD discharge-candidate habu-audit-trusted-inventory-3a950436
+src/core/combinators.f:TIMES stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:EACH stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:MAP stdlib-boundary habu-multishot-quotations-typed-8832cace
+src/core/combinators.f:FOLD stdlib-boundary habu-multishot-quotations-typed-8832cace
 lib/ffi.f:FDEF-EVAL stdlib-boundary habu-typed-defining-words-aa224eb5
 lib/build.f:BUILD-CHECK-RAW stdlib-boundary habu-primitive-effect-axiom-1119f176
 lib/engine-id.f:ENGINE-SELF-MACOS stdlib-boundary habu-audit-trusted-inventory-3a950436
