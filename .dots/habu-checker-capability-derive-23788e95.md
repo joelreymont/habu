@@ -1,6 +1,6 @@
 ---
 title: "Checker capability: derive eq/order/hash for ADTs"
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-03T23:43:23.706621+02:00"

@@ -1,6 +1,6 @@
 ---
 title: "Switchover: PARSE-YMD (lib/date.f) value+flag -> option<n>"
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-07-10T13:13:22.000000+00:00"
