@@ -39,15 +39,24 @@ fixtures A-D). Remaining host-side legs, one commit each:
   row-append). Fixtures RS/TR/CC host-execute vs hand-computed; negatives TRY-RSDYN
   (runtime shape), TRY-BADPERM ([0,1]), TRY-PERM3 (rank-3). Files: maki/onnx/graph.f,
   maki/onnx/import.f, maki/onnx/import-test.f.
-  - **Slice / Gather import: REMAINING.** The MOVE-KIND table lowers them and the
-    executor proves them, but their ONNX operand semantics are extra import surface:
-    Slice needs starts/ends/axes/steps as INT64 constants (the OGIC table already exists;
-    read starts[0]/ends[0] into the slice attrs, validate axis 0 / step 1); Gather needs
-    an INT64 indices operand, but EX-GATHER reads FLOAT indices (EX-BUILD-IDX rounds),
-    so a float-vs-int64 operand bridge is needed first. Both currently stay the LOWER
-    rejection (E-MK-ONNX). Also remaining: INT64 int64_data (field 7) initializers (only
-    raw_data field 9 is decoded), Reshape -1 (infer) / 0 (copy) dims, and Transpose perm
-    honoring for rank>2 once the IR is >2D.
+  - **Slice / Gather / int64_data / Reshape infer: LANDED 2026-07-11 (fable
+    8a0a9fe0).** int64_data (field 7, packed AND unpacked varints, negative
+    two's-complement proven) decodes into OGIC alongside raw_data; both/neither
+    payload fails closed E-ONNX-DATA (TRY-I64BOTH/TRY-I64NONE). Reshape target
+    dims: 0 = copy input dim, exactly one -1 inferred by exact division
+    (RS-DIM/RS-RESOLVE; MODEL-RSI/RS0/RS7U/RSN7 host-executed; [-1,-1] and
+    non-dividing reject E-ONNX-SHAPE). Slice: starts/ends from OGIC (runtime
+    operand -> E-ONNX-DYNSHAPE), axes absent-or-[0], steps absent-or-[1], ONNX
+    clamp incl. negatives (SLICE-CLAMP; MODEL-SL/SLN host-executed); empty range
+    (s0>=s1) fails closed per v1 policy (TRY-SLEMPTY). Gather: axis absent-or-0;
+    INT64 indices resolved at import (GA-IDX: negative += rows, then strict
+    range check E-ONNX-SHAPE - the destruction review caught that the naive
+    int->float bridge silently folded -1 to row 0 via executor rounding; fixed
+    with MODEL-GAN [-1,0] fixture + TRY-GAOOR/TRY-GANEG negatives) then bridged
+    to a synthesized Kx1 f32 input slot (SYN-IVEC, SYN-CONST arena precedent) so
+    the executor is untouched. Slice+Gather outputs proven through FP-BUILD
+    (materialized movement output = own region). Still remaining here: Transpose
+    perm honoring for rank>2 once the IR is >2D.
 - **LEG C — Gemm attribute composition. LANDED.** The default affine form
   (alpha=beta=1, transA=transB=0) still lowers to the single-node OP-MATMUL /
   OP-LINEAR fast path; attributes now COMPOSE into a node chain instead of being
