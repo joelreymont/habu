@@ -228,16 +228,6 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    SIGKILL OUTCOME:SIGNALED PROC-OUTCOME>RC RC>N 137 T=
    OUTCOME:TIMEOUT PROC-OUTCOME>RC RC>N 137 T= ;
 
-: TEST-PROC-OUTCOME-PAIR ( -- )
-   7 OUTCOME:EXITED PROC-OUTCOME-PAIR 7 T= PROC-OUTCOME-EXIT T=
-   SIGKILL OUTCOME:SIGNALED PROC-OUTCOME-PAIR SIGKILL T= PROC-OUTCOME-SIGNAL T=
-   OUTCOME:TIMEOUT PROC-OUTCOME-PAIR SIGKILL T= PROC-OUTCOME-TIMEOUT T= ;
-
-: TEST-PROC-PAIR>RC ( -- )
-   PROC-OUTCOME-EXIT 7 PROC-PAIR>RC RC>N 7 T=
-   PROC-OUTCOME-SIGNAL SIGKILL PROC-PAIR>RC RC>N 137 T=
-   PROC-OUTCOME-TIMEOUT SIGKILL PROC-PAIR>RC RC>N 137 T= ;
-
 \ Negative checked regressions: the outcome is not a loose (kind code) pair,
 \ does not compare with `=`, and a raw pair cannot pose as one.
 : TEST-PROC-OUTCOME-TYPES ( -- )
@@ -245,7 +235,9 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    s" PTN1 ( n -- n n ) PROC-STATUS>OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN2 ( n n -- rc ) PROC-OUTCOME>RC" CHECK-QUIET-CANDIDATE! 0 T=
    s" PTN3 ( outcome outcome -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
-   s" PTN4 ( pid -- n n ) PROC-WAIT-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T= ;
+   s" PTN4 ( pid -- n n ) PROC-WAIT-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTN5 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len n n ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! 0 T=
+   s" PTP2 ( ptr u8 len ptr u8 len ptr u8 len ms -- len len outcome ) RUN-ARGV-CAPTURE-OUTCOME" CHECK-QUIET-CANDIDATE! -1 T= ;
 
 \ Regression for habu-wait-rc-masks-9ae37cd0: a signal-killed child must report
 \ 128+sig end-to-end through PROC-WAIT-RC, never a masked rc 0 (the retired raw
@@ -400,8 +392,6 @@ create PT-CAPTURE-HB-BUF FS-PATH-CAP allot
    TEST-PROC-WAIT-OUTCOME-EXIT
    TEST-PROC-WAIT-OUTCOME-SIGNAL
    TEST-PROC-OUTCOME>RC
-   TEST-PROC-OUTCOME-PAIR
-   TEST-PROC-PAIR>RC
    TEST-PROC-OUTCOME-TYPES
    TEST-PROC-WAIT-RC-SIGNAL
    TEST-WAIT-FAIL

@@ -550,8 +550,6 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	process	lib/process.f	word	PROC-WAIT-STATUS	(pid -- n)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return raw Darwin wait status or throw on wait failure
 1	process	lib/process.f	word	PROC-STATUS>OUTCOME	(n -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	decode raw wait status to the outcome sum: exited code or signaled sig
 1	process	lib/process.f	word	PROC-OUTCOME>RC	(outcome -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	flatten an outcome to historical rc with non-exits as 128 plus signal
-1	process	lib/process.f	word	PROC-OUTCOME-PAIR	(outcome -- n n)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy kind/code pair view for the -OUTCOME capture API boundary
-1	process	lib/process.f	word	PROC-PAIR>RC	(n n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	legacy pair rc flatten: exit code for exits, else 128 plus signal
 1	process	lib/process.f	word	PROC-STATUS>RC	(n -- rc)	lib/process-test.f	docs/stdlib.md	stdlib-process	active	map raw wait status to historical rc with signals as 128 plus signal
 1	process	lib/process.f	word	PROC-WAIT-OUTCOME	(pid -- outcome)	lib/process-test.f	docs/stdlib.md	stdlib-process	published	wait for a pid and return its completion outcome sum
 1	process	lib/process.f	word	PROC-REAP-ARM-OFF	(pid -- pid)	test/gate-pool-orphan-test.f	docs/stdlib.md	stdlib-process	active	default capture-reaper vector: arm nothing and return the no-reaper pid sentinel

@@ -14,3 +14,19 @@ minutes after the capture-state tree failed 2/2 during another lane's gate
 burst. The flake tracks ambient load (time), not tree content. run.f is
 immune (calibrated per-pool budgets). Localization tool (per above) still
 needed before any budget change.
+
+Interleaved A/B (2026-07-11, post outcome-sweep): 4 alternating pairs
+(sweep tip vs pristine derive-S2 master) all green in a quiet window,
+minutes after 3x consecutive reds on the tip during a lane gate burst
+(and, earlier, 3x reds vs 3x greens split the OTHER way). Reds track
+gate-burst windows regardless of tree; run.f with calibrated budgets
+never reds. Marker instrumentation (stderr PT-MARK trace) is the
+localization tool for the next red window: it pinpoints the throwing
+test; 6/6 instrumented runs stayed green this window.
+
+Heisenbug note: on the Derive-S3-rebased sweep tip, a red window (2x
+-2502) was followed IMMEDIATELY by 6/6 green instrumented runs (PT-MARK
+stderr markers) in the same 5-lane window; the marker build never
+reproduced. Either the fd2 writes perturb timing or bursts are shorter
+than a 6-run span. Next step stays: catch a red WITH markers to name
+the test. run.f passed on this exact tip in the same period.

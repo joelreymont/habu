@@ -1121,8 +1121,6 @@ PROC-PATHZ          ( ptr u8 len -- ptr u8 )
 PROC-WAIT-STATUS         ( pid -- n )
 PROC-STATUS>OUTCOME ( n -- outcome )
 PROC-OUTCOME>RC     ( outcome -- rc )
-PROC-OUTCOME-PAIR   ( outcome -- n n )
-PROC-PAIR>RC        ( n n -- rc )
 PROC-STATUS>RC      ( n -- rc )
 PROC-WAIT-OUTCOME        ( pid -- outcome )
 PROC-WAIT-RC             ( pid -- rc )
@@ -1279,8 +1277,8 @@ observes EOF. On timeout, it sends `SIGKILL` through the checked
 `PROC-KILL-RAW` boundary, waits for the child, closes owned fds, and then throws
 `E-PROC-TIMEOUT`. Truncation and other capture failures also clean up all owned
 fds and terminate/reap the active child before throwing a named process error.
-The `*-OUTCOME` capture variants return stdout length, stderr length, outcome
-kind, and outcome code. They classify timeout as `PROC-OUTCOME-TIMEOUT` instead
+The `*-OUTCOME` capture variants return stdout length, stderr length, and the
+`outcome` sum. They classify timeout as the `timeout` outcome instead
 of throwing `E-PROC-TIMEOUT`; output truncation and other harness failures still
 throw named process errors.
 `RUN-ARGV-STDIN-CAPTURE` additionally writes a bounded caller-provided stdin
