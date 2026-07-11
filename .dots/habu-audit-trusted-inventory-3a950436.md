@@ -120,3 +120,34 @@ builder-emit until that increment.
 
 Placeholder remainder after 2026-07-11b/c: builder-emit (~210 named + the
 habu2 fold) and test-metaprog (~95 named + set-check residuals) only.
+
+## Increment 2026-07-11d (builder-emit cluster resolved; 3 discharges)
+
+DISCHARGED (commit A, proven by probe + rewrite + full gate): CODE-BYTE+
+(icode.f:49), CRH-BYTE+ (crash.f:9), XREF-REC+ (xref.f:19) — plain
+pointer+offset arithmetic; `( ptr u8 n -- ptr u8 ) +` and
+`( ptr a n -- ptr a ) +` certify today. TRUSTED: -> : ; rows retired from
+both the classification block and the manifest (trust surface 496 -> 493).
+
+REASSIGNED (commit B):
+- 30 startup-image/argv raw-read rows -> habu-raw-self-path-4514ffd3:
+  src/os/env-base.f (19: ENV-DATA/ENV-DASH/ARGC/ARGV-BASE and the envp/apple
+  walkers — the same startup-vector reads the dot was minted for),
+  src/os/script-argv.f (7) and src/habu/bundle-argv.f (4) (SCRIPT-ARG-START/
+  SCRIPT-ARGC/SCRIPT-ARGV$ etc.: argv-vector views over the same startup
+  image).
+- 186 builder/engine rows (every remaining builder-emit named row plus the
+  deliberately-held src/habu/habu2.f fold) -> habu-builder-trust-rows-c5d41af6:
+  the dot's own mandate is the file-by-file TRUST->CHECKED conversion of the
+  builder emit/cast surface (~307 at its mint = this whole class), it already
+  owned three habu1.f rows, and its text names habu2.f as start-after-merge —
+  matching the fold hold. Evidence shape per file: raw-pointer casts into
+  engine records (AOT-A>U8, BFR-N>REC, XREF-N>U8), raw region accessors
+  (CODE/CRH/STB@/SBUF@/HB@/MK-SBUF@), asm/signal-frame emit entries
+  (c-crash-*/c-prof-*/fold-entry/vop-entry/fprim), engine eval/check
+  entrypoints (EVAL-HOST/CHECK-BODY/JIT-EVALUATE), image-layout casts and
+  constants (LINUX-VA>PTR/MACHO>N-PTR/IMAGE-TEXT-*/SNAP-EXTRA-*), image
+  dumper mmap mints (IMGD/IMG-MMAP-PTR).
+
+Placeholder remainder: test-metaprog only (~95 named rows + the set-check
+residuals) — increment 4.

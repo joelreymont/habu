@@ -23,3 +23,14 @@ boundaries persist): `linux-setpgid-self`, `spawn-darwin-zero-attr`,
 `spawn-darwin-attr-defaults` (landed with the setpgid prim + spawn
 group-leader change, 1ce2fb46). Same builder TRUST->CHECKED conversion class
 as the rest of this dot's scope.
+
+## Adopted rows (2026-07-11 audit increment 3)
+
+Owner-of-record for the full builder-emit classification surface (186 rows:
+every named row in icode/aot-*/build/crash/debug*/habu1/hide/jit/layout/
+maker/prof/snap*/stage2/stdin/treeshake/verify-source/xref/image-bytes/elf/
+os-layouts/macho/imagedisasm/imgdump/jitdump-core plus the held habu2.f
+fold) — reassigned from the audit placeholder with per-file evidence in
+habu-audit-trusted-inventory-3a950436. First conversion batch landed with the
+same increment: CODE-BYTE+/CRH-BYTE+/XREF-REC+ discharged to checked
+(pointer+offset arithmetic now certifies), trust surface 496 -> 493.
