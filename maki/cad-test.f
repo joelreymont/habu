@@ -113,6 +113,8 @@ MODEL-CAND: MCBAD-CAT ( x:4x8 -- y ) CONCAT ;                 MODEL-CAND$ EVAL:C
 \ ---- capture a toy FFN by running the body through the planning vocabulary --
 MODEL: FFN ( x:2x3 w1:3x4 b1:1x4 w2:4x5 b2:1x5 -- y ) LINEAR GELU LINEAR ;
 MODEL-DEFINED? TTRUE
+MODEL-CAPTURED? TTRUE                          \ capture adopts under captured provenance
+MODEL-IMPORTED? TFALSE
 MODEL-K 3 T=
 
 \ ---- LOWER: real node facts (op count + output shape/dtype/layout keys) -----
@@ -125,6 +127,8 @@ dup REPORT:SHAPE$  s" 2x5" T$=
 dup REPORT:DTYPE$  s" f32" T$=
 dup REPORT:LAYOUT$ s" row" T$=
 dup REPORT:RENDER CT-SAVE  s" report.model: FFN" CT-IN
+s" model.provenance: captured" CT-IN           \ every report renders its provenance
+s" model.provenance: imported" CT-NOTIN
 drop
 
 \ ---- the captured IR: op sequence + operand connectivity -------------------

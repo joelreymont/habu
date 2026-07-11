@@ -27,6 +27,15 @@
 \ model without a load-order cycle back into cad.f. OPTIMIZE-time shape binding
 \ (maki/cad.f BIND-SHAPES) rewrites slot extents (MIR-SLOT-SHAPE!) then re-propagates
 \ node extents (MIR-SHAPE!) and movement verdicts (MIR-ATTR!) in place.
+\
+\ The IR also carries its PROVENANCE (the `prov` family): which producer populated
+\ the table - MODEL: capture (maki/cad.f CAP-FINISH) or the ONNX importer
+\ (maki/onnx/import.f IMPORT). Provenance lives HERE, in the shared substrate both
+\ producers already require, so the consumer gates (maki/cad.f) never depend on the
+\ importer and the importer never depends on the command surface. MIR-RESET clears
+\ it to none atomically with the table, so a producer that throws mid-build leaves
+\ NO adopted model and a stale producer's arming is unreadable (the old cad.f
+\ MODEL-SET? cell survived an ONNX import - the fail-open this closes).
 
 require maki/op-kind.f
 require maki/op-registry.f
@@ -57,6 +66,22 @@ public
 : MIR-REF-INPUT? ( n -- bool )  0< ;
 : MIR-REF-SLOT   ( n -- n )  negate 1- ;       \ input ref -> slot
 : MIR-REF-NODE   ( n -- n )  ;                 \ node ref -> node index (identity)
+
+\ ---- model provenance (which producer populated the IR) ---------------------
+\ none: no adopted model; captured: MODEL: capture; imported: ONNX importer.
+\ DERIVE eq generates the typed identity compare MAKI-PROV:EQ ( prov prov -- bool ).
+ENUM prov DERIVE eq
+  none captured imported
+;ENUM
+
+\ named render boundary (the DT-KEY / LAY-KEY convention): exhaustive MATCH, so a
+\ bad tag is unrepresentable and no throw arm exists.
+: PROV-KEY ( prov -- ptr u8 n )
+   MATCH prov
+      none     OF s" none"     ENDOF
+      captured OF s" captured" ENDOF
+      imported OF s" imported" ENDOF
+   ;MATCH ;
 
 private
 
@@ -103,6 +128,11 @@ variable MIR-IS-N
 64  constant MIR-NAME-CAP
 create MI-NAME MIR-NAME-CAP allot   variable MI-NAME-U
 
+\ provenance cell: a family value, so it rides through this typed slot (a prov
+\ cannot bind into a local); reset to none with the table, set by the producers.
+variable MIR-PROV-V
+: MIR-PROV-AT ( -- ptr prov )  MIR-PROV-V ;
+
 \ pending-node staging (any-arity records with the fixed-arity ref pool)
 variable MIR-PEND-KIND
 variable MIR-PEND-OFF
@@ -132,10 +162,15 @@ public
 
 \ ---- lifecycle -------------------------------------------------------------
 : MIR-RESET ( -- )
-   0 MIR-N !  0 MIR-INS-U !  0 MIR-IS-N !  0 MIR-PEND-ON !  0 MI-NAME-U ! ;
+   0 MIR-N !  0 MIR-INS-U !  0 MIR-IS-N !  0 MIR-PEND-ON !  0 MI-NAME-U !
+   MAKI-PROV:NONE MIR-PROV-AT ! ;
 
 : MIR-N@ ( -- n )         MIR-N @ ;
 : MIR-IN-SLOTS@ ( -- n )  MIR-IS-N @ ;
+
+\ ---- provenance (a producer adopts the IR it just populated) -----------------
+: MIR-PROV@ ( -- prov )   MIR-PROV-AT @ ;
+: MIR-PROV! ( prov -- )   MIR-PROV-AT ! ;
 
 \ ---- model name (single source; cad.f MODEL: sets it, golden artifacts read it) ----
 : MIR-NAME! ( ptr u8 n -- ) {: a:ptr u:n :}

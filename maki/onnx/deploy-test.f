@@ -14,11 +14,16 @@
 \ (V-NOTRUN); the device run needs the Orin (maki/lower-model-device-test.f pattern).
 \ Fixtures are the import-test.f hand-encoded ModelProtos (maki/onnx/encode.f DSL).
 \
-\ Boundary fact (fail-closed): the CAD command surface (MAKI:LOWER / MAKI:CERTIFY /
-\ gates) does NOT adopt an imported model - only MODEL: capture arms it - so on a
-\ cleared model state both fail closed E-CAD-NOMODEL even with a fully-imported IR
-\ present. When a CAD adoption seam for imported models lands (cad.f-owned), these two
-\ negatives must be rewritten into positive LOWER/CERTIFY assertions. Load via maki/test.f.
+\ Adoption seam (dot habu-cad-f-imported): ONNX:IMPORT adopts the model it built by
+\ setting the shared model-IR provenance cell (maki/model-ir.f) to imported, so the
+\ CAD command surface runs LOWER/CERTIFY over it under its TRUE provenance - the
+\ deploy path IMPORT -> LOWER -> CERTIFY is asserted positive below. The fail-open
+\ regression: an armed MODEL: capture before an import must never leak - IMPORT's
+\ MIR reset clears provenance first and adoption is the atomic last step, so the
+\ report renders model.provenance: imported (never the stale captured model), and
+\ the capture-only BIND-SHAPES refuses by name (E-CAD-CAPTURE-ONLY). With NO model
+\ adopted at all (MODEL-CLEAR), commands still fail closed E-CAD-NOMODEL. Load via
+\ maki/test.f.
 
 require lib/test.f
 require lib/string.f
@@ -152,6 +157,7 @@ variable ODT-VA  variable ODT-VU
 : ODT-SAVE ( ptr u8 n -- )  ODT-VU ! ODT-VA ! ;
 : ODT$ ( -- ptr u8 n )  ODT-VA @ ODT-VU @ ;
 : ODT-IN ( ptr u8 n -- )  ODT$ 2swap CONTAINS? TTRUE ;            \ needle present
+: ODT-NOTIN ( ptr u8 n -- )  ODT$ 2swap CONTAINS? TFALSE ;        \ needle absent
 
 \ exactly-one: the needle occurs once (find it, then prove no second occurrence)
 : ODT-ONCE? ( ptr u8 n ptr u8 n -- bool ) {: ha:ptr hu:n na:ptr nu:n :}
@@ -170,9 +176,10 @@ variable ODT-VA  variable ODT-VU
 : ODT-CAP-RED ( -- )  PTX-CAPTURE-ON  0 MAKI:LRED-EMIT PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
 : ODT-CAP-MV  ( -- )  PTX-CAPTURE-ON  0 MAKI:LMV-EMIT  PTX-CAPTURE-OFF  PTX-CAPTURE$ ODT-SAVE ;
 
-\ ---- CAD-surface boundary probes (fail closed until the adoption seam lands) -----
+\ ---- CAD-surface boundary probes (no-model fail-closed + capture-only refusal) ----
 : TRY-CAD-LOWER   ( -- )  MAKI:LOWER drop ;
 : TRY-CAD-CERTIFY ( -- )  MAKI:CERTIFY drop ;
+: TRY-CAD-BIND    ( -- )  MAKI:BIND-SHAPES ;   \ the gate throws before any spec parses
 
 \ off-device the whole-model golden over the imported IR is an honest not-run; on-device
 \ the real run needs registered cubins (the device test's job), so the assertion skips there.
@@ -181,11 +188,43 @@ variable ODT-VA  variable ODT-VU
 
 T-RESET
 
-\ ---- boundary: imported IR alone does not arm the CAD command surface ------------
-MAKI:MODEL-CLEAR                               \ deterministic MODEL: state (suite-order-proof)
-MODEL-A  ONNX:ENC$ ONNX:IMPORT
+\ ---- boundary: NO adopted model (none provenance) still fails closed --------------
+MAKI:MODEL-CLEAR                               \ deterministic model state (suite-order-proof)
+MAKI:MODEL-DEFINED? TFALSE
 ' TRY-CAD-LOWER   E-CAD-NOMODEL TTHROWS
 ' TRY-CAD-CERTIFY E-CAD-NOMODEL TTHROWS
+
+\ ---- fail-open regression: an armed MODEL: capture must not leak onto an import ---
+\ Arm a captured model, then import: adoption must replace the provenance atomically,
+\ so LOWER reports the IMPORTED model (name + provenance row), never the stale capture.
+\ (MODEL: is a parsing definer, unreachable as a qualified name - reopen MAKI for it.)
+end-package
+package MAKI
+MODEL: ODT-STALE ( x:2x4 -- y ) GELU ;
+end-package
+package ONNX-DEPLOY-TEST
+MAKI:MODEL-CAPTURED? TTRUE
+MODEL-A  ONNX:ENC$ ONNX:IMPORT
+MAKI:MODEL-DEFINED? TTRUE
+MAKI:MODEL-CAPTURED? TFALSE
+MAKI:MODEL-IMPORTED? TTRUE
+
+\ ---- the deploy path: IMPORT -> LOWER -> CERTIFY, positive end-to-end -------------
+MAKI:LOWER
+dup REPORT:OPS-BEFORE@ 2 T=                    \ Gemm->linear + Relu: the imported node count
+dup REPORT:SHAPE$  s" 2x2" T$=
+dup REPORT:RENDER ODT-SAVE
+drop
+s" report.model: GR2"              ODT-IN      \ the imported graph's own name
+s" model.provenance: imported"     ODT-IN      \ ... under its true provenance
+s" model.provenance: captured"     ODT-NOTIN
+s" ODT-STALE"                      ODT-NOTIN   \ the stale capture is gone, not reported
+MAKI:CERTIFY
+dup MAKI:G-CERTIFY REPORT:GATE-TAG@ MAKI:V-PASS T=
+drop
+
+\ ---- capture-only commands refuse the imported model BY NAME ----------------------
+' TRY-CAD-BIND E-CAD-CAPTURE-ONLY TTHROWS
 
 \ ---- imported Gemm+Relu -> ONE matmul region -> the tiled-GEMM forward kernel ----
 MODEL-A  IMP!

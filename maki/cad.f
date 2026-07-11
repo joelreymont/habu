@@ -53,7 +53,17 @@
 \ GOLDEN/GRADCHECK are REAL on the host now; PROFILE stays honest not-run without a
 \ GPU. PROMOTE (CAD 7c gate set) refuses (E-CAD-GATE) unless CERTIFY passes, GOLDEN
 \ passes, and GRADCHECK did not FAIL (not-run clears it); PROFILE is mandatory-to-run
-\ but never blocks. maki -> habu only; cad owns -5020..-5029.
+\ but never blocks. maki -> habu only; cad owns -5020..-5029 and -5164.
+\
+\ Model adoption (dot habu-cad-f-imported): the IR records its PROVENANCE in the
+\ shared substrate (maki/model-ir.f `prov` cell) - none / captured (MODEL:) /
+\ imported (ONNX:IMPORT). Every command gates on it explicitly: the report/plan
+\ surface (LOWER/FUSE/MEMORY/TILE/CERTIFY/GOLDEN/GRADCHECK/PROFILE/TUNE/PROMOTE/
+\ OPTIMIZE/EXPLAIN) reads only IR facts and accepts BOTH producers; the
+\ MODEL:-specific BIND-SHAPES (positional signature rebinding - imported slots
+\ include initializers whose arena payloads are materialized at fixed extents)
+\ is capture-only and refuses an imported model with E-CAD-CAPTURE-ONLY. No
+\ provenance -> E-CAD-NOMODEL. Each report renders its model.provenance row.
 
 require lib/string.f
 require lib/float.f                 \ POW10: MODEL:/GOLDEN drives the float-tolerance golden compare
@@ -91,12 +101,13 @@ require maki/gradcheck.f
 -5162 constant E-CAD-BIND-SHAPE    \ malformed/zero spec dim or illegal re-propagated shape
 \ Capture-time param-operand shape legality uses -5163 (the -502x capture decade is full).
 -5163 constant E-CAD-PARAM-SHAPE   \ elementwise/linear param operand shape illegal for the op's broadcast class
+\ Imported-model adoption seam (-5164): capture-only commands refuse imported provenance.
+-5164 constant E-CAD-CAPTURE-ONLY  \ command requires MODEL: capture; the adopted model is imported
 
 package MAKI
 private
 
-variable MODEL-SET?                        \ 0 until a MODEL: succeeds
-                                           \ model NAME lives in the IR (MIR-NAME$)
+\ model state (name + provenance) lives in the IR (MIR-NAME$ / MIR-PROV@)
 
 64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
 create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n), order 0..N-1
@@ -211,10 +222,9 @@ private
 : CAP-HAS-VALUE? ( -- bool )  CAP-IN-N @ 0<>  CAP-OPS @ 0<> or ;   \ a running value exists
 
 : CAP-BEGIN ( -- )
-   TENSOR:TV-RESET  TENSOR:PLAN-RESET  MIR-RESET
+   TENSOR:TV-RESET  TENSOR:PLAN-RESET  MIR-RESET     \ MIR-RESET clears provenance to none
    0 CAP-IN-N !  1 CAP-IP !  0 CAP-OPS !
-   NT-RESET  CAP-PEND-RESET  MSRC-RESET
-   0 MODEL-SET? ! ;
+   NT-RESET  CAP-PEND-RESET  MSRC-RESET ;
 
 \ fresh throwaway capture-word name -> CAPNAME-BUF (redefinition is fatal, so mint per MODEL:)
 : CAP-GEN-NAME ( -- )
@@ -360,13 +370,24 @@ private
 : BRIDGE-PLAN ( -- )  TENSOR:PLAN-N@ 0 ?do i BRIDGE-NODE loop ;
 
 \ finish capture after the compiled body ran: no dangling reference, a non-empty plan, the
-\ param-operand shape pass (E-CAD-PARAM-SHAPE), then bridge the plan into the model IR.
+\ param-operand shape pass (E-CAD-PARAM-SHAPE), then bridge the plan into the model IR and
+\ adopt it (captured provenance) - the last step, so a throw above leaves NO adopted model.
 : CAP-FINISH ( -- )
    CAP-PEND-CNT 0 > if E-CAD-REF throw then         \ a named ref left unconsumed by any op
    TENSOR:PLAN-N@ 0= if E-CAD-EMPTY throw then             \ the compiled body captured no ops
    PLAN-SHP-ALL
    BRIDGE-PLAN
-   -1 MODEL-SET? ! ;
+   MAKI-PROV:CAPTURED MIR-PROV! ;
+
+\ ---- provenance gates (each command states which producers it accepts) -------
+\ NEED-MODEL: any adopted model - the report/plan surface reads only IR facts.
+\ NEED-CAPTURE: MODEL:-specific commands refuse an imported model BY NAME, never
+\ operate on it silently.
+: NEED-MODEL ( -- )
+   MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ if E-CAD-NOMODEL throw then ;
+: NEED-CAPTURE ( -- )
+   NEED-MODEL
+   MIR-PROV@ MAKI-PROV:IMPORTED MAKI-PROV:EQ if E-CAD-CAPTURE-ONLY throw then ;
 
 \ ---- MODEL: signature + body parser ----------------------------------------
 : PARSE-INT ( ptr u8 n -- n )
@@ -513,7 +534,9 @@ public
    CAP-FINISH ;
 
 : MODEL-CLEAR ( -- )  CAP-BEGIN ;
-: MODEL-DEFINED? ( -- bool )  MODEL-SET? @ 0= 0= ;
+: MODEL-DEFINED? ( -- bool )  MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ 0= ;
+: MODEL-CAPTURED? ( -- bool )  MIR-PROV@ MAKI-PROV:CAPTURED MAKI-PROV:EQ ;
+: MODEL-IMPORTED? ( -- bool )  MIR-PROV@ MAKI-PROV:IMPORTED MAKI-PROV:EQ ;
 : MODEL-NAME$ ( -- ptr u8 n )  MIR-NAME$ ;
 : MODEL-K ( -- n )  MIR-N@ ;
 
@@ -715,16 +738,26 @@ public
 \ extent, a wrong spec count, a malformed/zero spec, or an illegal re-propagated
 \ downstream shape all fail closed. On success node extents re-propagate over the IR
 \ and the fusion plan is dropped (FP-RESET) so FUSE/MEMORY/TILE re-plan.
+\ Capture-only: imported IR slots include initializers/synthesized constants whose
+\ arena payloads are already materialized at fixed extents, so positional signature
+\ rebinding is meaningless there - E-CAD-CAPTURE-ONLY (thrown before any spec parses).
 : BIND-SHAPES ( -- )
-   MODEL-SET? @ 0= if E-CAD-NOMODEL throw then
+   NEED-CAPTURE
    BS-PARSE  BS-BIND ;
 
 private
 
 \ ---- report builders (read model-IR facts, write the report) ---------------
-: CAD-BASE ( report -- report )                \ model name + real node counts
-   MODEL-SET? @ 0= if E-CAD-NOMODEL throw then
+\ every report renders its provenance row, so a reader can never mistake an
+\ imported model's report for a captured one (the fail-open this seam closes)
+: PROV-ROW+ ( report -- report )
+   SB-RESET  s" model.provenance: " SB-APPEND  MIR-PROV@ PROV-KEY SB-APPEND
+   SB$ REPORT:WARN+ ;
+
+: CAD-BASE ( report -- report )                \ model name + provenance + real node counts
+   NEED-MODEL
    MODEL-NAME$ REPORT:MODEL!
+   PROV-ROW+
    MODEL-K MODEL-K REPORT:OPS!
    MODEL-K REPORT:REGIONS!
    MIR-MAT-COUNT REPORT:MATERIALIZED! ;

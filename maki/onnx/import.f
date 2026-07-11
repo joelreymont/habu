@@ -40,6 +40,11 @@
 \ Fail closed: unresolved input E-ONNX-TOPO; rebound output name (SSA)
 \ E-ONNX-NAME; wrong input count E-ONNX-ARITY; arena overflow E-ONNX-CAP;
 \ accessor index E-ONNX-IDX (codes in maki/onnx/graph.f). maki -> habu only.
+\
+\ Adoption: a successful IMPORT sets the shared model-IR provenance cell to
+\ imported (maki/model-ir.f MIR-PROV!), atomically last after every validation,
+\ so the CAD command surface (maki/cad.f) runs LOWER/CERTIFY/... over the
+\ imported model under its true provenance; a failed IMPORT leaves none.
 
 require lib/prelude.f
 require lib/string.f
@@ -472,7 +477,11 @@ variable SYN-N
 
 public
 
-\ import a serialized ModelProto: parse, build the model IR, materialize weights
+\ import a serialized ModelProto: parse, build the model IR, materialize weights,
+\ then ADOPT the IR (imported provenance) as the last step. MIR-RESET clears the
+\ provenance to none first, so a throw anywhere in the build leaves NO adopted
+\ model - a previously captured MODEL: can never leak its arming onto this IR
+\ (the maki/cad.f gates read the same shared cell).
 : IMPORT ( ptr u8 n -- ) {: a:ptr u:n :}
    IMP-RESET  MAKI:MIR-RESET
    a u OG-PARSE
@@ -481,7 +490,8 @@ public
    OGI#  0 ?do  i IMP-INIT-1   loop
    a u IMP-MATERIALIZE
    OND#  0 ?do  i IMP-NODE     loop
-   IMP-CHECK-OUT ;
+   IMP-CHECK-OUT
+   MAKI-PROV:IMPORTED MAKI:MIR-PROV! ;
 
 \ import a .onnx file (the model buffer is an OS mapping, process-lifetime)
 : IMPORT-FILE ( ptr u8 n -- ) {: a:ptr u:n :}

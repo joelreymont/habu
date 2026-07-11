@@ -97,6 +97,21 @@ MIR-RENDER MT-SAVE
 s" node.0.op: reshape"    MT-IN
 s" node.0.verdict: free"  MT-IN
 
+\ ---- provenance: reset -> none; a producer adopts; reset clears it again -----
+\ (dot habu-cad-f-imported: MIR-RESET clearing this cell atomically with the table
+\ is what makes a stale producer's arming unreadable across an ONNX import)
+MIR-RESET
+MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
+MIR-PROV@ PROV-KEY s" none" T$=
+MAKI-PROV:CAPTURED MIR-PROV!
+MIR-PROV@ MAKI-PROV:CAPTURED MAKI-PROV:EQ TTRUE
+MIR-PROV@ PROV-KEY s" captured" T$=
+MAKI-PROV:IMPORTED MIR-PROV!
+MIR-PROV@ MAKI-PROV:IMPORTED MAKI-PROV:EQ TTRUE
+MIR-PROV@ PROV-KEY s" imported" T$=
+MIR-RESET
+MIR-PROV@ MAKI-PROV:NONE MAKI-PROV:EQ TTRUE
+
 \ ---- fail-closed probes -----------------------------------------------------
 : TRY-MIR-IDX     ( -- )  MIR-N@ MIR-OP@ drop ;
 \ (a bad op-kind tag is a checker reject now - pinned by the opkind negatives
@@ -157,6 +172,14 @@ s" MTX-DT-ASOP  ( n n opkind opkind -- n ) MIR-INPUT+" CHECK-QUIET-CANDIDATE! 0 
 s" MTX-EQ-OK    ( opkind opkind -- bool ) MAKI-OPKIND:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 s" MTX-EQ-DT    ( dtype opkind -- bool ) MAKI-OPKIND:EQ"  CHECK-QUIET-CANDIDATE! 0 T=
 s" MTX-EQ-N     ( n opkind -- bool ) MAKI-OPKIND:EQ"      CHECK-QUIET-CANDIDATE! 0 T=
+
+\ provenance family negatives: a raw n cannot adopt, the stored provenance cannot
+\ leak as n or as a foreign family, and the derived EQ takes prov only.
+s" MTX-PRV-OK   ( prov -- ) MIR-PROV!"                    CHECK-QUIET-CANDIDATE! -1 T=
+s" MTX-PRV-N    ( n -- ) MIR-PROV!"                       CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-PRV-NOUT ( -- n ) MIR-PROV@"                       CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-PRV-ASOP ( -- opkind ) MIR-PROV@"                  CHECK-QUIET-CANDIDATE! 0 T=
+s" MTX-PRV-EQN  ( n prov -- bool ) MAKI-PROV:EQ"          CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 
