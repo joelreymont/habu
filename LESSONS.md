@@ -89,6 +89,12 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **A typed pointee proves identity, not storage capacity:** wide ADT `!`/`@`
+  can refine `ptr a` to `ptr family` and lower from compile-time `W`, but a
+  plain `variable` still owns one cell; callers allocate `W` cells until
+  `LAYOUT-BUFFER` owns stride/bounds, W=0 rejects as non-addressable, and wide
+  `!` must run the two-band seal guard per destination cell so a later slot
+  cannot cross into protected memory after an unprotected base.
 - **A qualified def's engine->checker record call must key off the QUALIFIED
   name, and read it from a STABLE buffer:** every sig'd `: PKG:tail (..)` recorded
   twice at `;` — the hook cert under the qualified body-buffer name (correct) AND
