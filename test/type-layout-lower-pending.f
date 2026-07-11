@@ -178,6 +178,15 @@ variable GXT
 : GG ( n n -- ) {: ix:n want:n :}   \ golden: instruction ix of subject GXT
    GXT @ ix 4 * TLP-W32  want T= ;
 
+: TLP-EXIT-W32 ( -- n )
+   HB-TARGET-LINUX? if $D2800BC8 exit then
+   HB-TARGET-MACOS? if $D2800030 exit then
+   s" type-layout-lower: unknown target" 76 die ;
+: TLP-SVC-W32 ( -- n )
+   HB-TARGET-LINUX? if $D4000001 exit then
+   HB-TARGET-MACOS? if $D4001001 exit then
+   s" type-layout-lower: unknown target" 76 die ;
+
 s" TLP-DUP" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG                          \ prologue
 2 $D2800049 GG  3 $D100426A GG                          \ movz x9,#2 ; sub x10,x19,#16
@@ -238,7 +247,7 @@ s" TLP-STORE2-G" TLP-XT GXT !
 6 $F940128D GG  7 $B400018D GG  8 $CB14014C GG
 9 $D100818D GG  10 $F10241BF GG  11 $540000A3 GG
 12 $D287970D GG  13 $CB0D018D GG  14 $F11041BF GG
-15 $54000082 GG  16 $D2800A60 GG  17 $D2800030 GG  18 $D4001001 GG
+15 $54000082 GG  16 $D2800A60 GG  17 TLP-EXIT-W32 GG  18 TLP-SVC-W32 GG
 19 $F94001CF GG  20 $F900014F GG  21 $910021CE GG  22 $9100214A GG
 23 $F1000529 GG  24 $54FFFDC1 GG  25 $D1004273 GG
 26 $F94003FE GG  27 $910043FF GG  28 $D65F03C0 GG
