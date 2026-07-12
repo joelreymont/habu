@@ -1262,34 +1262,23 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-PTR-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one kernelParams pointer slot
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-VAL-SLOT	(n -- ptr n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	address of one library-owned kernelParams value cell
 1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-BUMP	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	active	advance the kernelParams count past one written slot
-
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a caller-owned kernel parameter pointer
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAM-N+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a scalar kernel parameter in library-owned storage
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address and count
-1	ffi-abi	lib/ffi-abi.f	word	FFI-KPARAMS>N	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address as a cell
-1	ffi-abi	lib/ffi-abi.f	word	CALL0	(n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with no arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL1	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with one cell argument
-1	ffi-abi	lib/ffi-abi.f	word	CALL2	(n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with two cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL3	(n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with three cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL4	(n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with four cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL5	(n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with five cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	CALL6	(n n n n n n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function pointer with six cell arguments
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLN	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function of any arity; arg cells preset via FFI-ARG!, spills past 8 to the stack
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI	(n n -- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning x0
-1	ffi-abi	lib/ffi-abi.f	word	FFI-CALLABI-R	(n n -- r)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	call a function with x0-x8, d0-d7, and prepacked stack spill, returning d0
-1	ffi-abi	lib/ffi-abi.f	word	>CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
-1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	checked dynamic loading layer over the AAPCS64 FFI ABI
-1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library by NUL-terminated path and flags, returning a handle
-1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol name in a handle to a function pointer
-1	ffi	lib/ffi.f	word	FFI:DEFINE	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	qualified package entry for generating a checked role-typed FFI binding
-1	ffi	lib/ffi.f	word	FFI:	(--)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	global syntax alias for generating a checked role-typed FFI binding
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM+	(ptr a --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a caller-owned kernel parameter pointer
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAM-VALUE+	(n --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	append a scalar kernel parameter in library-owned storage
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAMS	(-- ptr n n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address and count
+1	ffi-abi	lib/ffi-abi.f	word	FFI:KPARAMS>CELL	(-- n)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	return the kernelParams pointer-array address as a cell
+1	ffi-abi	lib/ffi-abi.f	word	FFI:CSTR	(ptr u8 n ptr u8 --)	lib/ffi-abi-test.f	docs/stdlib.md	stdlib-ffi-abi	published	copy a byte-string into a buffer and NUL-terminate it
+1	ffi	lib/ffi.f	module			lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility entry for the sealed FFI package
+1	ffi	lib/ffi-abi.f	word	FFI:NOW	(-- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	dlopen immediate-resolution flag
+1	ffi	lib/ffi-abi.f	word	FFI:DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	open a shared library through the package-scoped bounded loader buffer
+1	ffi	lib/ffi-abi.f	word	FFI:DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	published	resolve a symbol through the package-scoped bounded loader buffer
+1	ffi	lib/ffi.f	word	DLOPEN	(ptr u8 n -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility alias for FFI:DLOPEN
+1	ffi	lib/ffi.f	word	DLSYM	(n ptr u8 -- n)	lib/ffi-test.f	docs/stdlib.md	stdlib-ffi	active	compatibility alias for FFI:DLSYM
 1	fmath	lib/fmath.f	module			lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	shared transcendental exp core by in-Habu range reduction
 1	fmath	lib/fmath.f	word	FROUND	(r -- n)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	round a float to the nearest integer
 1	fmath	lib/fmath.f	word	F2^N	(n -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	two raised to a signed integer power
 1	fmath	lib/fmath.f	word	FEXP-POLY	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	degree-limited polynomial core for exp on the reduced range
 1	fmath	lib/fmath.f	word	FEXP-K	(r n -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	exp of x given its precomputed k = round(x/ln2)
 1	fmath	lib/fmath.f	word	FEXP	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	exponential of a float by range reduction
-++++++ muvynyyz 80a13843 "Check fused attention phases"
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range
