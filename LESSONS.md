@@ -3648,4 +3648,8 @@ unchanged (148855). Keys for milestone 2:
   against a dot that the other lane's epic owns or references, check master's
   recent commit subjects and the dot's blocker graph for an active claim; a
   one-minute `jj log -r 'master ~ fable::'` scan beats a duplicated lane.
+  Corollary (now standing practice): `dot on <id>` + commit + push at the
+  moment of dispatch — a pushed `active` status is the cross-lane claim
+  signal; `dot off` only at landing; parked dots go back to `open` so
+  `active` never lies.
 

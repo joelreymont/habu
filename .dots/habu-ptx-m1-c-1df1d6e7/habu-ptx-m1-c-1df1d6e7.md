@@ -1,6 +1,6 @@
 ---
 title: "PTX M1: C-ABI FFI + CUDA Driver harness"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-06-25T13:43:16.897180+02:00\""

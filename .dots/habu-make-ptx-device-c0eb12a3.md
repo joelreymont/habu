@@ -1,6 +1,6 @@
 ---
 title: Make PTX device proofs fail closed
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-06-27T15:32:50.869667+02:00\""

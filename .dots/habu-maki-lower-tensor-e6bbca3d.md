@@ -1,6 +1,6 @@
 ---
 title: "Maki: lower tensor ops onto Habu-PTX GPU kernels"
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-06-27T08:06:44.248329+02:00\""
