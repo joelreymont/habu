@@ -116,7 +116,7 @@ private
 \ model state (name + provenance) lives in the IR (MIR-NAME$ / MIR-PROV@)
 
 64 constant CAP-CAP                        \ max model inputs (matches model-ir slots)
-create CAP-INS CAP-CAP cells allot         \ declared input tensor handles (as n), order 0..N-1
+CAP-CAP LAYOUT-BUFFER CAP-IN-AT tensor     \ declared input tensor handles, order 0..N-1 ( n -- ptr tensor )
 variable CAP-IN-N                          \ number of declared inputs
 variable CAP-IP                            \ declared-input cursor: next input a param may drain (starts 1)
 variable CAP-OPS                           \ ops emitted so far (a running value exists once >0)
@@ -385,9 +385,8 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ Handles are nominal (no raw cast): resolve a plan tensor by IDENTITY against the
 \ declared inputs, then against committed plan outputs; an unknown handle fails
 \ closed (E-CAD-REF).
-: CAP-IN-A ( -- ptr tensor )  CAP-INS ;
-: CAP-IN! ( tensor n -- )  cells CAP-IN-A + ! ;
-: CAP-IN@ ( n -- tensor )  cells CAP-IN-A + @ ;
+: CAP-IN! ( tensor n -- )  CAP-IN-AT ! ;
+: CAP-IN@ ( n -- tensor )  CAP-IN-AT @ ;
 : CAP-IN-FIND ( tensor -- n bool ) {: t:tensor :}
    CAP-IN-N @ 0 ?do
       t i CAP-IN@ TENSOR:TV-EQUAL? if i true unloop exit then

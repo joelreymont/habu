@@ -111,6 +111,66 @@ s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
 here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
 
+\ ---- nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction ----
+TYPEFAMILY lbtk 0
+TYPEFAMILY lbtk2 0
+
+4 LAYOUT-BUFFER LBTK-AT lbtk
+
+TRUSTED: N>LBTK ( n -- lbtk ) ;
+TRUSTED: LBTK>N ( lbtk -- n ) ;
+
+: LBTK-GET ( n -- n )  LBTK-AT @ LBTK>N ;
+: LBTK-PUT ( n n -- ) {: v:n i:n :}  v N>LBTK i LBTK-AT ! ;
+: LBTK-LOW ( -- )  -1 LBTK-AT drop ;
+: LBTK-HIGH ( -- )  4 LBTK-AT drop ;
+: LBTK-LOW-RC ( -- n )  [: LBTK-LOW ;] catch ;
+: LBTK-HIGH-RC ( -- n )  [: LBTK-HIGH ;] catch ;
+
+\ zero image reads as family id 0 (every raw cell is a valid nominal id)
+0 LBTK-GET 0 T=
+3 LBTK-GET 0 T=
+\ typed round-trip through the generated accessor
+7 0 LBTK-PUT  9 3 LBTK-PUT
+0 LBTK-GET 7 T=
+3 LBTK-GET 9 T=
+\ bounds stay owned by the generated accessor
+LBTK-LOW-RC E-LAYOUT-BOUNDS T=
+LBTK-HIGH-RC E-LAYOUT-BOUNDS T=
+
+\ checker seam: typed round-trip certifies; raw and foreign-family reject
+s" LBTK-STORE ( lbtk ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+s" LBTK-FETCH ( ptr lbtk -- lbtk ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" LBTK-RAW-STORE ( n ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-RAW-FETCH ( ptr lbtk -- n ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-WRONG-STORE ( lbtk2 ptr lbtk -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-WRONG-FETCH ( ptr lbtk -- lbtk2 ) @" CHECK-QUIET-CANDIDATE! 0 T=
+\ pointee governance: no raw pointer acquires nominal identity (P1/P2 rejects)
+variable LBTK-RAW-CELL
+s" LBTK-VAR-P ( -- ptr lbtk ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-VAR-P2 ( -- ptr lbtk2 ) LBTK-RAW-CELL" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-DATA-P ( -- ptr lbtk ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-CAST ( ptr a -- ptr lbtk )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBTK-CELL+ ( ptr lbtk -- ptr lbtk ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
+\ value laundering through the typed cell rejects (typed-storage ST2 pin)
+s" LBTK-LAUNDER ( n -- lbtk ) 0 LBTK-AT ! 0 LBTK-AT @" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ rejected nominal-scalar declarations roll back allocation and define nothing
+\ (LAYOUT-BUFFER never touches the TFAM registry; dictionary + data space are
+\ the mutable state, pinned here like the layout-family duplicate case above)
+: LBTK-ZERO-DECL ( -- )  s" 0 LAYOUT-BUFFER LBTK-ZERO lbtk" INCLUDE-EVALUATE ;
+: LBTK-ZERO-RC ( -- n )  [: LBTK-ZERO-DECL ;] catch ;
+: LBTK-DUP-DECL ( -- )  s" 1 LAYOUT-BUFFER LBTK-AT lbtk" INCLUDE-EVALUATE ;
+: LBTK-DUP-RC ( -- n )  [: LBTK-DUP-DECL ;] catch ;
+: LBTK-ZERO-ABSENT? ( -- bool )  s" LBTK-ZERO" 0 search-wl 0= ;
+here LB-DP 0 ptr-field !
+LBTK-ZERO-RC E-LAYOUT-BUFFER T=
+here LB-DP 0 ptr-field @ = -1 T=
+LBTK-ZERO-ABSENT? -1 T=
+here LB-DP 0 ptr-field !
+LBTK-DUP-RC $4E T=
+here LB-DP 0 ptr-field @ = -1 T=
+
 : REPORT ( -- )
    #FAIL @ 0= if s" ok" type cr exit then
    #FAIL @ . s" layout-buffer failures" 1 die ;

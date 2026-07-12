@@ -97,18 +97,18 @@ private
 create LMM-INS      LMM-MAX-IN cells allot   \ ordered contraction operand refs (A, B, [bias])
 create LMM-NODE-REG LMM-NCAP cells allot     \ result %f register per region-member node
 variable LMM-NIN                              \ contraction operand count (2 or 3)
-variable LMM-MMNODE                           \ the single contraction node (matmul / linear)
-variable LMM-OUTNODE                          \ the single materialized region-output node
-variable LMM-RID                              \ region id being lowered (typed CAD-KIND:region cell)
+1 LAYOUT-BUFFER LMM-MMNODE CAD-KIND:node-id   \ the single contraction node (matmul / linear; typed 1-slot cell)
+1 LAYOUT-BUFFER LMM-OUTNODE CAD-KIND:node-id  \ the single materialized region-output node (typed 1-slot cell)
+1 LAYOUT-BUFFER LMM-RID CAD-KIND:region       \ region id being lowered (typed 1-slot cell)
 variable LMM-M  variable LMM-N  variable LMM-K \ C = A(MxK) . B(KxN)
 variable LMM-BLK                               \ 1 = shape fits the register-blocked 64x64 tile
 
 : LMM-REF! ( MIR:operand-ref n -- )  cells LMM-INS + ! ;
 : LMM-REF@ ( n -- MIR:operand-ref )  cells LMM-INS + @ ;
-: LMM-MMNODE! ( CAD-KIND:node-id -- )  LMM-MMNODE ! ;
-: LMM-MMNODE@ ( -- CAD-KIND:node-id )  LMM-MMNODE @ ;
-: LMM-OUTNODE! ( CAD-KIND:node-id -- )  LMM-OUTNODE ! ;
-: LMM-OUTNODE@ ( -- CAD-KIND:node-id )  LMM-OUTNODE @ ;
+: LMM-MMNODE! ( CAD-KIND:node-id -- )  0 LMM-MMNODE ! ;
+: LMM-MMNODE@ ( -- CAD-KIND:node-id )  0 LMM-MMNODE @ ;
+: LMM-OUTNODE! ( CAD-KIND:node-id -- )  0 LMM-OUTNODE ! ;
+: LMM-OUTNODE@ ( -- CAD-KIND:node-id )  0 LMM-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
 : LMM-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
@@ -181,7 +181,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 \ A dissolved FREE movement operand folds into the A-base K-loop offset (maki/move-view.f);
 \ a NON-movement interior producer is a compute prologue the epilogue-only v1 kernel cannot run.
 : LMM-CHECK-PROLOGUE ( -- )
-   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}  LMM-RID @ {: rid:CAD-KIND:region :}
+   LMM-MMNODE@ {: mm:CAD-KIND:node-id :}  0 LMM-RID @ {: rid:CAD-KIND:region :}
    mm MIR-IN-COUNT@ 0 ?do
       mm i MIR-INPUT-IDX MIR-IN@ {: ref:MIR:operand-ref :}
       ref MIR-REF-INPUT? 0= if
@@ -259,7 +259,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
 public
 : LMM-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                    \ validates FP-BUILD ran + rid range
-   rid LMM-RID !
+   rid 0 LMM-RID !
    rid LMM-CLASS-OK? 0= if E-LMM-NOTMM throw then
    rid LMM-CHECK-OPS
    rid LMM-FIND-MM
@@ -283,7 +283,7 @@ public
 : LMM-N@ ( -- n )         LMM-N @ ;
 : LMM-K@ ( -- n )         LMM-K @ ;
 : LMM-ELEMS ( -- n )      LMM-M @ LMM-N @ * ;
-: LMM-RID@ ( -- CAD-KIND:region )  LMM-RID @ ;
+: LMM-RID@ ( -- CAD-KIND:region )  0 LMM-RID @ ;
 : LMM-BLOCKED? ( -- bool ) LMM-BLK @ 0= 0= ;    \ register-blocked tile chosen for this shape?
 : LMM-OUT-TILE@ ( -- n )  LMM-BLK @ if MM-BM else LMM-TILE then ;  \ launch-grid output-tile edge
 
@@ -324,7 +324,7 @@ private
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node LMM-RID @ LMM-IN-REGION?  node LMM-MMNODE@ MIR-NODE= 0=  and
+      node 0 LMM-RID @ LMM-IN-REGION?  node LMM-MMNODE@ MIR-NODE= 0=  and
       node MIR-MOVE? 0= and if node LMM-EPI-NODE then
    loop ;
 
@@ -341,7 +341,7 @@ private
 
 \ ---- entry / regs / params (K inputs + output + M,N,K) ----------------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LMM-KNAME ( -- )  s" REGION_" CG-S LMM-RID @ RGN>RAW SB-U ;
+: LMM-KNAME ( -- )  s" REGION_" CG-S 0 LMM-RID @ RGN>RAW SB-U ;
 : LMM-OUT-BASE ( -- n )  LMM-NIN @ 1+ ;          \ rd index of p_out (rd1..rdK inputs, rd K+1 out)
 : LMM-ENTRY ( -- )
    SB-RESET

@@ -81,15 +81,15 @@ variable LLA-DEV variable LLA-CTX variable LLA-MOD variable LLA-FUNC
 \ ---- launch-local staging (populated per shape; the shared core reads only these) ----
 variable LLA-NIN                                    \ region input count
 variable LLA-ELEMS                                  \ output element count (rows*cols)
-variable LLA-OUT-NODE                               \ the region's materialized output node
+1 LAYOUT-BUFFER LLA-OUT-NODE CAD-KIND:node-id       \ the region's materialized output node (typed 1-slot cell)
 create LLA-IN-REF LLA-MAX-IN cells allot            \ per-input operand ref (RESOLVED to an input slot)
 create LLA-IN-ELEMS LLA-MAX-IN cells allot          \ per-input element count (heterogeneous buffers)
 variable LLA-PM  variable LLA-PN  variable LLA-PK   \ matmul u32 kernel params (M, N, K)
 variable LLA-CPA variable LLA-CPB                   \ movement copy-kernel u32 params (p_a, p_b)
 : LLA-IN-REF! ( MIR:operand-ref n -- )  cells LLA-IN-REF + ! ;
 : LLA-IN-REF@ ( n -- MIR:operand-ref )  cells LLA-IN-REF + @ ;
-: LLA-OUT-NODE! ( CAD-KIND:node-id -- )  LLA-OUT-NODE ! ;
-: LLA-STAGED-NODE@ ( -- CAD-KIND:node-id )  LLA-OUT-NODE @ ;
+: LLA-OUT-NODE! ( CAD-KIND:node-id -- )  0 LLA-OUT-NODE ! ;
+: LLA-STAGED-NODE@ ( -- CAD-KIND:node-id )  0 LLA-OUT-NODE @ ;
 
 \ ---- cubin path (the device tool assembles then hands the path here) --------
 : LLA-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -345,7 +345,7 @@ create MDL-CUBIN-LEN MDL-CAP cells allot            \ per-region cubin path leng
 create MDL-BUF       MDL-CAP cells allot            \ per-node device buffer (devptr int; 0 = none)
 create MDL-OWN       LLA-MAX-IN cells allot         \ per-input "uploaded (owned)" flag, current region
 variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variable MDL-NR
-variable MDL-PROBE-RID                             \ typed CAD-KIND:region cell carried into the lowerability probe (catch wants a ( -- ) body)
+1 LAYOUT-BUFFER MDL-PROBE-RID CAD-KIND:region      \ typed region cell carried into the lowerability probe (catch wants a ( -- ) body)
 
 \ region-indexed cubin tables: RGN>RAW is the one owner-file table-index boundary
 : MDL-CUBIN$ ( CAD-KIND:region -- ptr u8 n ) {: rid:CAD-KIND:region :}
@@ -491,8 +491,8 @@ public
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
       node MIR-MAT@ if
-         node FP-RID@ MDL-PROBE-RID !            \ typed region round-trips through the cell
-         [: MDL-PROBE-RID @ MDL-STAGE ;] catch 0<> if  false unloop exit  then
+         node FP-RID@ 0 MDL-PROBE-RID !          \ typed region round-trips through the cell (checker-enforced)
+         [: 0 MDL-PROBE-RID @ MDL-STAGE ;] catch 0<> if  false unloop exit  then
       then
    loop  true ;
 

@@ -96,6 +96,19 @@ s" cad-kind:design-id<> " DIAG?
 s" cad-kind:node-id<> " DIAG?
 DIAG-END
 
+\ Typed nominal-scalar cells: LAYOUT-BUFFER is the one pointer introduction.
+1 LAYOUT-BUFFER CKT-RID CAD-KIND:region
+
+s" CKT-PUT ( CAD-KIND:region -- ) 0 CKT-RID !" YES
+s" CKT-GET ( -- CAD-KIND:region ) 0 CKT-RID @" YES
+\ ST2 (habu-maki-typed-storage-2279c4b0) flipped: a raw n cannot launder
+\ through the typed cell into a nominal role.
+s" CKT-ST2 ( n -- CAD-KIND:region ) 0 CKT-RID ! 0 CKT-RID @" NO
+\ P1/P2 flipped: a plain variable never certifies as a nominal-scalar pointer.
+variable CKT-CELL
+s" CKT-P1 ( -- ptr CAD-KIND:region ) CKT-CELL" NO
+s" CKT-P2 ( -- ptr CAD-KIND:cols ) CKT-CELL" NO
+
 T-REPORT
 
 ;package

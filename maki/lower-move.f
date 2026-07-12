@@ -57,8 +57,8 @@ private
 
 create LMV-INS   LMV-MAX-IN cells allot   \ ordered buffer-operand refs (must be input slots)
 variable LMV-NIN                           \ buffer-operand count (1 or 2)
-variable LMV-NODE                          \ the movement node
-variable LMV-RID                           \ region id being lowered (typed CAD-KIND:region cell)
+1 LAYOUT-BUFFER LMV-NODE CAD-KIND:node-id  \ the movement node (typed 1-slot cell)
+1 LAYOUT-BUFFER LMV-RID CAD-KIND:region    \ region id being lowered (typed 1-slot cell)
 variable LMV-PA  variable LMV-PB  variable LMV-PN   \ kernel u32 params
 variable LMV-BUILT?
 
@@ -69,10 +69,10 @@ variable LMV-BUILT?
    cells LMV-INS + @ ;
 
 : LMV-NODE! ( CAD-KIND:node-id -- )
-   LMV-NODE ! ;
+   0 LMV-NODE ! ;
 
 : LMV-NODE@ ( -- CAD-KIND:node-id )
-   LMV-NODE @ ;
+   0 LMV-NODE @ ;
 
 \ ---- region membership -----------------------------------------------------
 : LMV-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
@@ -175,7 +175,7 @@ variable LMV-BUILT?
 public
 : LMV-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                          \ validates FP-BUILD ran + rid range
-   rid LMV-RID !
+   rid 0 LMV-RID !
    rid LMV-FIND-NODE
    LMV-COLLECT-INS
    LMV-SET-DIMS
@@ -192,13 +192,13 @@ public
 : LMV-ELEMS ( -- n )      LMV-CK LMV-PN @ ;
 : LMV-PA@ ( -- n )        LMV-CK LMV-PA @ ;
 : LMV-PB@ ( -- n )        LMV-CK LMV-PB @ ;
-: LMV-RID@ ( -- CAD-KIND:region )  LMV-CK LMV-RID @ ;
+: LMV-RID@ ( -- CAD-KIND:region )  LMV-CK 0 LMV-RID @ ;
 
 private
 
 \ ---- entry / regs / params (K buffers + out + a,b,n; cvta the pointers) ------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LMV-KNAME ( -- )  s" REGION_" CG-S LMV-RID @ RGN>RAW SB-U ;
+: LMV-KNAME ( -- )  s" REGION_" CG-S 0 LMV-RID @ RGN>RAW SB-U ;
 : LMV-OUT-BASE ( -- n )  LMV-NIN @ 1+ ;                \ rd index of p_out (rd1..rdK buffers)
 : LMV-ENTRY ( -- )
    SB-RESET

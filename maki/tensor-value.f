@@ -166,14 +166,14 @@ TRUSTED: TENSOR>RAW ( tensor -- n ) ;
 
 \ record table: one array per field so each keeps its own cell type (TV-DATA
 \ holds a pointer; TV-HAS holds n). Indexed by slot 0..TV-U-1. The enum-typed
-\ columns are generative LAYOUT-BUFFER columns (the only typed-layout pointer
-\ introduction form); the CAD-KIND cell-family columns publish typed slot
-\ accessors over plain cell arrays, so a raw n (or a foreign family) can never
-\ enter or leave a descriptor cell either way.
+\ and CAD-KIND cell-family columns are generative LAYOUT-BUFFER columns (the
+\ only typed pointer introduction form), so a raw n (or a foreign family) can
+\ never enter or leave a descriptor cell either way. A fresh column reads as
+\ id 0 of its family (LAYOUT-BUFFER zero image); TV-U guards liveness.
 create TV-DATA TV-CAP cells allot      \ data pointer (materialized tensors only)
-create TV-ROWS TV-CAP cells allot
-create TV-COLS TV-CAP cells allot
-create TV-SPACE TV-CAP cells allot     \ address-space fact
+TV-CAP LAYOUT-BUFFER TV-ROWS-AT  CAD-KIND:rows           \ rows column ( n -- ptr CAD-KIND:rows )
+TV-CAP LAYOUT-BUFFER TV-COLS-AT  CAD-KIND:cols           \ cols column ( n -- ptr CAD-KIND:cols )
+TV-CAP LAYOUT-BUFFER TV-SPACE-AT CAD-KIND:address-space  \ address-space column ( n -- ptr CAD-KIND:address-space )
 TV-CAP LAYOUT-BUFFER TV-DT-AT  dtype   \ dtype column ( n -- ptr dtype )
 TV-CAP LAYOUT-BUFFER TV-LAY-AT layout  \ layout column ( n -- ptr layout )
 TV-CAP LAYOUT-BUFFER TV-AL-AT  align   \ align column ( n -- ptr align )
@@ -182,11 +182,6 @@ variable TV-U                          \ free counter / live count
 variable TV-GEN                        \ store generation encoded into every handle
 
 $7FFFFFFFFFFFFF constant TV-GEN-MAX
-
-\ typed slot accessors for the CAD-KIND cell-family columns
-: TV-ROWS-AT ( n -- ptr CAD-KIND:rows )  cells TV-ROWS + ;
-: TV-COLS-AT ( n -- ptr CAD-KIND:cols )  cells TV-COLS + ;
-: TV-SPACE-AT ( n -- ptr CAD-KIND:address-space )  cells TV-SPACE + ;
 
 \ ---- alignment measurement ------------------------------------------------
 \ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited

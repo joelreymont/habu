@@ -1163,6 +1163,7 @@ variable TFC-I   variable TFC-J   variable TFC-ROW
 ' TFAM-CTOR-EXTEND? CTOR-EXTEND?-XT !  \ item 8: closed-package extra-tail reject
 ' TFAM-ARITY@  TFAM-ARITY-XT !
 ' TFAM-LAYOUT? TFAM-LAYOUT?-XT !   \ item 7: checker reaches the layout kind for its fail-closed guard
+' TFAM-CELL?   TFAM-CELL?-XT !     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
 ' TFAM-WIDTH@  TFAM-WIDTH-XT !     \ item 12: checker reads logical widths for the WF fact surface
 ' TFAM-CONSTRUCT-FAM  CONSTRUCT-FAM-XT !   \ item 9: construct family resolution (active package only)
 ' TFAM-CONSTRUCT-STEP CONSTRUCT-STEP-XT !  \ item 9: construct variant resolve + inline constructor effect

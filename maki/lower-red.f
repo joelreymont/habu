@@ -90,13 +90,13 @@ create LRED-IN-REG  LRED-MAX-IN cells allot   \ loaded %f tile register per exte
 create LRED-IN-BC   LRED-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LRED-NODE-REG LRED-NCAP cells allot    \ result %f register per region-member node
 variable LRED-NIN                              \ region input count
-variable LRED-OUTNODE                          \ the single materialized region-output node
-variable LRED-RID                              \ region id being lowered (typed CAD-KIND:region cell)
+1 LAYOUT-BUFFER LRED-OUTNODE CAD-KIND:node-id  \ the single materialized region-output node (typed 1-slot cell)
+1 LAYOUT-BUFFER LRED-RID CAD-KIND:region       \ region id being lowered (typed 1-slot cell)
 
 : LRED-REF! ( MIR:operand-ref n -- )  cells LRED-INS + ! ;
 : LRED-REF@ ( n -- MIR:operand-ref )  cells LRED-INS + @ ;
-: LRED-OUTNODE! ( CAD-KIND:node-id -- )  LRED-OUTNODE ! ;
-: LRED-OUTNODE@ ( -- CAD-KIND:node-id )  LRED-OUTNODE @ ;
+: LRED-OUTNODE! ( CAD-KIND:node-id -- )  0 LRED-OUTNODE ! ;
+: LRED-OUTNODE@ ( -- CAD-KIND:node-id )  0 LRED-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
 : LRED-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
@@ -222,7 +222,7 @@ variable LRED-RID                              \ region id being lowered (typed 
 public
 : LRED-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                    \ validates FP-BUILD ran + rid range
-   rid LRED-RID !
+   rid 0 LRED-RID !
    rid LRED-CLASS-OK? 0= if E-LRED-NOTRED throw then
    rid LRED-CHECK-OPS
    rid LRED-COLLECT-INS
@@ -238,7 +238,7 @@ public
 : LRED-ROWS@ ( -- CAD-KIND:rows )  LRED-OUTNODE@ MIR-ROWS@ ;
 : LRED-COLS@ ( -- CAD-KIND:cols )  LRED-OUTNODE@ MIR-COLS@ ;
 : LRED-ELEMS ( -- n )     LRED-ROWS@ LRED-COLS@ SHAPE-ELEMS DIM-RAW ;
-: LRED-RID@ ( -- CAD-KIND:region )  LRED-RID @ ;
+: LRED-RID@ ( -- CAD-KIND:region )  0 LRED-RID @ ;
 
 private
 
@@ -325,7 +325,7 @@ private
 : LRED-CHAIN ( -- )                              \ movement members emit no compute (folded)
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node LRED-RID @ LRED-IN-REGION? node MIR-MOVE? 0= and if node LRED-EMIT-NODE then
+      node 0 LRED-RID @ LRED-IN-REGION? node MIR-MOVE? 0= and if node LRED-EMIT-NODE then
    loop ;
 
 \ fold each dissolved movement input into a base-pointer offset (reshape 0 / slice r0*cols*4):
@@ -341,7 +341,7 @@ private
 
 \ ---- entry / regs / params scaffolding (K inputs + output + k) --------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LRED-KNAME ( -- )  s" REGION_" CG-S LRED-RID @ RGN>RAW SB-U ;
+: LRED-KNAME ( -- )  s" REGION_" CG-S 0 LRED-RID @ RGN>RAW SB-U ;
 : LRED-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LRED-KNAME s" (" CG-S

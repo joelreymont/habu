@@ -70,8 +70,8 @@ create LEW-IN-REG LEW-MAX-IN cells allot   \ loaded %f tile register per externa
 create LEW-IN-BC  LEW-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LEW-NODE-REG LEW-NCAP cells allot   \ result %f register per region-member node
 variable LEW-NIN                            \ region input count
-variable LEW-OUTNODE                        \ the single materialized region-output node
-variable LEW-RID                            \ region id being lowered (typed CAD-KIND:region cell)
+1 LAYOUT-BUFFER LEW-OUTNODE CAD-KIND:node-id \ the single materialized region-output node (typed 1-slot cell)
+1 LAYOUT-BUFFER LEW-RID CAD-KIND:region     \ region id being lowered (typed 1-slot cell)
 
 : LEW-REF! ( MIR:operand-ref n -- )
    cells LEW-INS + ! ;
@@ -80,10 +80,10 @@ variable LEW-RID                            \ region id being lowered (typed CAD
    cells LEW-INS + @ ;
 
 : LEW-OUTNODE! ( CAD-KIND:node-id -- )
-   LEW-OUTNODE ! ;
+   0 LEW-OUTNODE ! ;
 
 : LEW-OUTNODE@ ( -- CAD-KIND:node-id )
-   LEW-OUTNODE @ ;
+   0 LEW-OUTNODE @ ;
 
 \ ---- region membership + class ---------------------------------------------
 : LEW-IN-REGION? ( CAD-KIND:node-id CAD-KIND:region -- bool )  swap FP-RID@ FP-RGN= ;
@@ -192,7 +192,7 @@ variable LEW-RID                            \ region id being lowered (typed CAD
 public
 : LEW-ANALYZE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
    rid FP-REGION-MEMBERS drop                   \ validates FP-BUILD ran + rid range
-   rid LEW-RID !
+   rid 0 LEW-RID !
    rid LEW-EW-ONLY? 0= if E-LEW-NOTEW throw then
    rid LEW-CHECK-OPS
    rid LEW-COLLECT-INS
@@ -205,7 +205,7 @@ public
    i 0 < i LEW-NIN @ >= or if E-LEW-REG throw then  i LEW-REF@ ;
 : LEW-OUT-NODE@ ( -- CAD-KIND:node-id ) LEW-OUTNODE@ ;
 : LEW-ELEMS ( -- n )     LEW-OUT-ELEMS ;
-: LEW-RID@ ( -- CAD-KIND:region )  LEW-RID @ ;
+: LEW-RID@ ( -- CAD-KIND:region )  0 LEW-RID @ ;
 
 private
 
@@ -230,7 +230,7 @@ private
 
 \ ---- entry / regs / params scaffolding (K inputs + output + n) --------------
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
-: LEW-KNAME ( -- )  s" REGION_" CG-S LEW-RID @ RGN>RAW SB-U ;
+: LEW-KNAME ( -- )  s" REGION_" CG-S 0 LEW-RID @ RGN>RAW SB-U ;
 : LEW-ENTRY ( -- )
    SB-RESET
    s" .visible .entry " CG-S LEW-KNAME s" (" CG-S
@@ -313,7 +313,7 @@ private
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)
    MIR-N@ 0 ?do
       i MIR-NODE-ID {: node:CAD-KIND:node-id :}
-      node LEW-RID @ LEW-IN-REGION? node MIR-MOVE? 0= and if node LEW-EMIT-NODE then
+      node 0 LEW-RID @ LEW-IN-REGION? node MIR-MOVE? 0= and if node LEW-EMIT-NODE then
    loop ;
 
 \ fold each dissolved FREE movement input into a base-pointer offset (reshape 0 / slice

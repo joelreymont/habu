@@ -1347,6 +1347,8 @@ test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-permanent-owner-for-
 test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog habu-permanent-owner-for-83401fcc
 test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog habu-permanent-owner-for-83401fcc
 test/layout-buffer.f:LB-UN test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-buffer.f:N>LBTK test-metaprog habu-checker-layout-buf-f0058750
+test/layout-buffer.f:LBTK>N test-metaprog habu-checker-layout-buf-f0058750
 test/layout-valid-growth.f:NAME$ test-metaprog habu-permanent-owner-for-83401fcc
 test/layout-valid-growth.f:BUILD test-metaprog habu-permanent-owner-for-83401fcc
 test/layout-valid-guard-base.f:RAW test-metaprog habu-permanent-owner-for-83401fcc

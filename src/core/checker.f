@@ -372,6 +372,7 @@ PARAM-SCR-BOOT PARAM-SCR-P !    PARAM-SCR-INIT PARAM-SCR-CAP-V !
 variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -- id true | false )
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
+variable TFAM-CELL?-XT     0 TFAM-CELL?-XT !     \ ( id -- bool ) : family id is a scalar cell kind (TK-CELL)
 variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
 variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
@@ -490,6 +491,8 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
    TFAM-ARITY-XT @ dup 0= IF 2drop 0 ELSE execute THEN ;
 : TFAM-LAYOUT?* ( n -- bool )      \ 0 hook (registry not yet loaded) -> not a layout
    TFAM-LAYOUT?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
+: TFAM-CELL?* ( n -- bool )        \ 0 hook (registry not yet loaded) -> not a cell family
+   TFAM-CELL?-XT @ dup 0= IF 2drop RES-FALSE ELSE execute THEN ;
 : TFAM-WIDTH@* ( n -- n )          \ 0 hook (registry not yet loaded) -> one cell
    TFAM-WIDTH-XT @ dup 0= IF 2drop 1 ELSE execute THEN ;
 
@@ -976,6 +979,19 @@ variable TWALK-D
    t1 LAYOUT-PARAM? IF RES-TRUE EXIT THEN
    t2 LAYOUT-PARAM? ;
 
+\ A NOMINAL SCALAR is an arity-0 TK-CELL family T-PARAM (CAD-KIND ids and
+\ friends): one raw cell whose whole meaning is its family identity. Every raw
+\ bit pattern is a valid value of the family (id 0 included), so it lowers as a
+\ plain scalar cell; the family identity itself is introduction-governed like a
+\ layout — LAYOUT-BUFFER is the only checked source of `ptr <nominal-scalar>`.
+: NOM-SCALAR? ( n -- bool ) {: t0:n :}   \ term resolves to a nominal-scalar family param
+   t0 T-RES {: t:n :}
+   t TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   t PARAM>HID 0 > IF RES-FALSE EXIT THEN
+   t PARAM>FAM dup 0 < IF drop RES-FALSE EXIT THEN
+   dup TFAM-CELL?* 0= IF drop RES-FALSE EXIT THEN
+   TFAM-ARITY* 0 = ;
+
 \ T-WIDTH ( n -- n ) : logical width in stack cells of a resolved type term
 \ (docs §18 WIDTH function). Every non-layout term is one cell; a layout-family
 \ T-PARAM asks the registry (sum: slots+tag, enum: tag, product: field cells).
@@ -1134,8 +1150,22 @@ variable LLC-N
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
+\ Nominal-scalar pointee governance (mirror of the layout pointee-bind rule):
+\ inside a pointee (CUR-STRICT), a type variable may not absorb a nominal-scalar
+\ family — a raw pointer (variable/create/data-base) would acquire the family
+\ identity by ordinary unification, bypassing the LAYOUT-BUFFER introduction
+\ form. Only the armed generated-accessor window (LAYOUT-INTRO) may form that
+\ bind; nominal scalars are structurally non-linear W=1, so no mem-ok analog is
+\ needed. Value-position binds (CUR-STRICT 0) stay ordinary: a nominal scalar is
+\ a plain one-cell value everywhere else.
+: NOMPTR-BLOCK? ( n n -- bool ) {: a:n b:n :}
+   CUR-STRICT @ 0= IF RES-FALSE EXIT THEN
+   LAYOUT-INTRO @ 0 <> IF RES-FALSE EXIT THEN
+   a NOM-SCALAR? b ISVAR and IF RES-TRUE EXIT THEN
+   b NOM-SCALAR? a ISVAR and ;
+
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
-   a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
+   a b LAYOUT-EITHER? 0= IF a b NOMPTR-BLOCK? EXIT THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
    LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
       a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
@@ -2551,8 +2581,10 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
 
 \ Parse one type application for the generative LAYOUT-BUFFER definer. This is
 \ the allocation-certificate gate: only a closed, non-linear, addressable
-\ layout is admitted, and the exact family id/width are returned to the fixed
-\ definer implementation. Ordinary unification never receives this authority.
+\ layout — or an arity-0 nominal-scalar cell family (width 1, no variants,
+\ zero image = family id 0, a valid id) — is admitted, and the exact family
+\ id/width are returned to the fixed definer implementation. Ordinary
+\ unification never receives this authority.
 variable LBI-T
 variable LBI-BAD
 
@@ -2566,6 +2598,7 @@ variable LBI-BAD
    NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
    SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ HIDDEN-PARAM? IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ NOM-SCALAR? IF LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE EXIT THEN
    LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
    LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
@@ -5355,6 +5388,10 @@ variable WF-I
 \ closed non-linear layout width; WF-MEM-RECORD gives pass 2 the registry width
 \ before CHECKER-STEP mutates the row. The effect rows push the family's hidden
 \ expansion, so the value side pairs hidden-to-hidden like every checked row.
+\ A nominal-scalar pointee (arity-0 TK-CELL param) takes the same arm with
+\ param-to-param rows — NOMPTR-BLOCK? forbids the generic var route — but
+\ records no width fact: every raw cell is a valid value of the family, so it
+\ lowers as a plain scalar with no fetch-validation program.
 : LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF 0 RES-FALSE EXIT THEN
@@ -5362,12 +5399,12 @@ variable WF-I
    pt TAG T-PTR <> IF 0 RES-FALSE EXIT THEN
    pt PTR>INNER T-RES {: t:n :}
    t HIDDEN-PARAM? IF 0 RES-FALSE EXIT THEN
-   t LAYOUT-PARAM? 0= IF 0 RES-FALSE EXIT THEN
+   t LAYOUT-PARAM? t NOM-SCALAR? or 0= IF 0 RES-FALSE EXIT THEN
    t RES-TRUE ;
 
 : LAYOUT-FETCH-STEP ( n -- ) {: t:n :}   \ ( ptr fam -- fam ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   t WF-FETCH-FLAG WF-MEM-RECORD
+   t LAYOUT-PARAM? IF t WF-FETCH-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
@@ -5375,7 +5412,7 @@ variable WF-I
 
 : LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
-   t WF-STORE-FLAG WF-MEM-RECORD
+   t LAYOUT-PARAM? IF t WF-STORE-FLAG WF-MEM-RECORD THEN
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH

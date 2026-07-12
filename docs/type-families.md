@@ -1416,6 +1416,22 @@ Source generation completes before allocation, and a rejected generated
 definition rolls the allocation back. This is the only typed-layout pointer
 introduction form.
 
+**Nominal scalars.** An arity-0 CELL family (a nominal scalar such as the
+CAD-KIND ids) is also admitted, with width 1 and no variants: `LAYOUT-BUFFER`
+is likewise the only checked introduction of `ptr <nominal-scalar>`. Inside a
+pointee, a type variable may not absorb a nominal-scalar family outside the
+armed generated-accessor window (`NOMPTR-BLOCK?`, the mirror of the layout
+pointee-bind rule), so a plain `variable`, `create`, `data-base`, pointer
+arithmetic, or a `ptr a` cast never certifies as the family pointer, while
+value-position uses stay ordinary one-cell flow. Typed `!`/`@` take the same
+memory arm as layouts with param-to-param rows but record no width fact:
+every raw bit pattern is a valid value of a nominal-scalar family, so the
+operation lowers as a plain scalar cell with no fetch-validation program, and
+the zero image reads as family id 0 — a valid id, the same semantics as an
+enum column's zero image reading as its first variant. Cells that need a
+"no value yet" state keep a liveness guard beside the buffer, exactly as raw
+cells did.
+
 Zero initialization proves the initial image only. Untyped code can reconstruct
 a DATA address and corrupt tags through a raw alias, so typed fetch validates
 the root tag and every active nested tag before publishing the logical value.

@@ -15,22 +15,22 @@ variable MT-VA  variable MT-VU
 : MT-IN ( ptr u8 n -- )  MT-VA @ MT-VU @ 2swap CONTAINS? TTRUE ;
 
 \ ---- build a small IR:  LINEAR(x,w) -> GELU  --------------------------------
-variable MT-SX
-variable MT-SW
-variable MT-SU
-variable MT-N0
-variable MT-N1
+1 LAYOUT-BUFFER MT-SX MIR:input-slot
+1 LAYOUT-BUFFER MT-SW MIR:input-slot
+1 LAYOUT-BUFFER MT-SU MIR:input-slot
+1 LAYOUT-BUFFER MT-N0 CAD-KIND:node-id
+1 LAYOUT-BUFFER MT-N1 CAD-KIND:node-id
 
-: MT-SX! ( MIR:input-slot -- )  MT-SX ! ;
-: MT-SX@ ( -- MIR:input-slot )  MT-SX @ ;
-: MT-SW! ( MIR:input-slot -- )  MT-SW ! ;
-: MT-SW@ ( -- MIR:input-slot )  MT-SW @ ;
-: MT-SU! ( MIR:input-slot -- )  MT-SU ! ;
-: MT-SU@ ( -- MIR:input-slot )  MT-SU @ ;
-: MT-N0! ( CAD-KIND:node-id -- )  MT-N0 ! ;
-: MT-N0@ ( -- CAD-KIND:node-id )  MT-N0 @ ;
-: MT-N1! ( CAD-KIND:node-id -- )  MT-N1 ! ;
-: MT-N1@ ( -- CAD-KIND:node-id )  MT-N1 @ ;
+: MT-SX! ( MIR:input-slot -- )  0 MT-SX ! ;
+: MT-SX@ ( -- MIR:input-slot )  0 MT-SX @ ;
+: MT-SW! ( MIR:input-slot -- )  0 MT-SW ! ;
+: MT-SW@ ( -- MIR:input-slot )  0 MT-SW @ ;
+: MT-SU! ( MIR:input-slot -- )  0 MT-SU ! ;
+: MT-SU@ ( -- MIR:input-slot )  0 MT-SU @ ;
+: MT-N0! ( CAD-KIND:node-id -- )  0 MT-N0 ! ;
+: MT-N0@ ( -- CAD-KIND:node-id )  0 MT-N0 @ ;
+: MT-N1! ( CAD-KIND:node-id -- )  0 MT-N1 ! ;
+: MT-N1@ ( -- CAD-KIND:node-id )  0 MT-N1 @ ;
 
 : MT-SLOT= ( MIR:input-slot MIR:input-slot -- )
    MIR-SLOT= TTRUE ;
@@ -107,9 +107,9 @@ s" node.1.in: n0"      MT-IN
 s" input.2.shape: ?x?" MT-IN
 
 \ ---- movement node: attrs carry the verdict; render shows it ----------------
-variable MT-MV
-: MT-MV! ( CAD-KIND:node-id -- )  MT-MV ! ;
-: MT-MV@ ( -- CAD-KIND:node-id )  MT-MV @ ;
+1 LAYOUT-BUFFER MT-MV CAD-KIND:node-id
+: MT-MV! ( CAD-KIND:node-id -- )  0 MT-MV ! ;
+: MT-MV@ ( -- CAD-KIND:node-id )  0 MT-MV @ ;
 
 MIR-RESET
 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop            \ slot 0 = x (4x8)
