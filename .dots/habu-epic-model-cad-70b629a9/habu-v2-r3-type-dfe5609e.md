@@ -1,9 +1,10 @@
 ---
 title: "V2 R3: type model IR identities"
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-12T07:09:09.712242+02:00"
+created-at: "\"2026-07-12T07:09:09.712242+02:00\""
+closed-at: "2026-07-12T08:51:26.692245+02:00"
 blocks:
   - habu-v2-r3-declare-3fcdeebb
 ---

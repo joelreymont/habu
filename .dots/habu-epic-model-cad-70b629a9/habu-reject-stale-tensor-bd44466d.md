@@ -1,9 +1,10 @@
 ---
 title: Reject stale tensor handles after reset
-status: open
+status: closed
 priority: 2
 issue-type: task
-created-at: "2026-07-12T07:50:58.369561+02:00"
+created-at: "\"2026-07-12T07:50:58.369561+02:00\""
+closed-at: "2026-07-12T08:51:26.698841+02:00"
 blocks:
   - habu-v2-r3-type-9f89d1e9
 ---
