@@ -578,6 +578,21 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
+package CAE-PKG-DEFTYPE
+
+private
+
+: SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CAE-DTP" SB-APPEND CAE-LF
+   s" deftype cae-pkg-id" SB-APPEND CAE-LF
+   s" : CAE-PKG-GOOD ( n -- n ) >cae-pkg-id cae-pkg-id>N ;" SB-APPEND CAE-LF
+   s" : CAE-PKG-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   s" ;package" SB-APPEND CAE-LF
+   SB$ ;
+
+;package
+
 : CAE-DEFLINEAR-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" deflinear cae-lin" SB-APPEND CAE-LF
@@ -646,6 +661,17 @@ create CAE-LF-BYTE 10 c,
 : CAE-TEST-DEFTYPE-SUPPORT ( -- )
    s" deftype-support" CAE-CASE!
    CAE-DEFTYPE-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+package CAE-PKG-DEFTYPE
+
+public
+
+: TEST ( -- )
+   s" package-deftype-support" CAE-CASE!
+   SOURCE$
+   s" cae-pkg-good" s" cae-pkg-bad" CAE-CHECK-SUPPORT-PARITY ;
+
+;package
 
 : CAE-TEST-DEFLINEAR-SUPPORT ( -- )
    s" deflinear-support" CAE-CASE!
@@ -802,6 +828,7 @@ create CAE-LF-BYTE 10 c,
    s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
    s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
    s" deftype-support" [: CAE-TEST-DEFTYPE-SUPPORT ;] CAE-CASE-RUN
+   s" package-deftype-support" [: CAE-PKG-DEFTYPE:TEST ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
    s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN

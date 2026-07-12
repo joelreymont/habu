@@ -15,6 +15,10 @@
 $200 constant DTC-CAP
 create DTC-BUF DTC-CAP allot
 variable DTC-U
+variable DTC-NAME-OFF
+variable DTC-NAME-U
+variable DTC-SIG-OFF
+variable DTC-SIG-U
 
 : DTC-CLEAR ( -- ) 0 DTC-U ! ;
 
@@ -31,14 +35,42 @@ variable DTC-U
 \ construction, so this single boundary covers every deftype-derived pair.
 TRUSTED: DTC-EVAL ( -- ) DTC-BUF DTC-U @ evaluate ;
 
-: DEFTYPE-CAST-IN ( ptr u8 n -- ) {: a:ptr u:n :}   \ TRUSTED: >NAME ( n -- NAME ) ;
+: DTC-NAME$ ( -- ptr u8 n )
+   DTC-BUF DTC-NAME-OFF @ + DTC-NAME-U @ ;
+
+: DTC-SIG$ ( -- ptr u8 n )
+   DTC-BUF DTC-SIG-OFF @ + DTC-SIG-U @ ;
+
+: DTC-BEGIN ( -- )
    DTC-CLEAR
-   s" TRUSTED: >" DTC+  a u DTC+  s"  ( n -- " DTC+  a u DTC+  s"  ) ;" DTC+
+   s" TRUSTED: " DTC+
+   DTC-U @ DTC-NAME-OFF ! ;
+
+: DTC-NAME-END ( -- )
+   DTC-U @ DTC-NAME-OFF @ - DTC-NAME-U !
+   s"  ( " DTC+
+   DTC-U @ DTC-SIG-OFF ! ;
+
+: DTC-SIG-END ( -- )
+   DTC-U @ DTC-SIG-OFF @ - DTC-SIG-U !
+   s"  ) ;" DTC+ ;
+
+: DTC-BUILD-IN ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   DTC-BEGIN
+   s" >" DTC+ name nameu DTC+ DTC-NAME-END
+   s" n -- " DTC+ name nameu DTC+ DTC-SIG-END ;
+
+: DTC-BUILD-OUT ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   DTC-BEGIN
+   name nameu DTC+ s" >N" DTC+ DTC-NAME-END
+   name nameu DTC+ s"  -- n" DTC+ DTC-SIG-END ;
+
+: DEFTYPE-CAST-IN ( ptr u8 n -- )   \ TRUSTED: >NAME ( n -- NAME ) ;
+   DTC-BUILD-IN
    DTC-EVAL ;
 
-: DEFTYPE-CAST-OUT ( ptr u8 n -- ) {: a:ptr u:n :}  \ TRUSTED: NAME>N ( NAME -- n ) ;
-   DTC-CLEAR
-   s" TRUSTED: " DTC+  a u DTC+  s" >N ( " DTC+  a u DTC+  s"  -- n ) ;" DTC+
+: DEFTYPE-CAST-OUT ( ptr u8 n -- )   \ TRUSTED: NAME>N ( NAME -- n ) ;
+   DTC-BUILD-OUT
    DTC-EVAL ;
 
 : DEFTYPE ( -- )

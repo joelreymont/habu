@@ -3772,3 +3772,8 @@ unchanged (148855). Keys for milestone 2:
   "Last verified" to the local date after midnight CEST made pushed master red
   for the hours until UTC caught up. Check `date -u +%F` before any date roll,
   and pass that same UTC day to manual stale-status/trust-lint invocations.
+- **Replay generated words in the definer's active package section.** Native
+  `DEFTYPE` publishes its derived casts through the current private/public WID;
+  verifier replay that registers only the nominal leaves valid cast calls
+  undefined. Recreate both derived signatures before leaving that package mode,
+  so reopening works while cross-package and global lookup stay closed.

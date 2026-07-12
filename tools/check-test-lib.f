@@ -391,6 +391,58 @@ variable CKT-PAR-U
    s" TRUSTED: CKT-NOM-TRUSTED ( -- ) DEFLINEAR ( -- ) ;" SB-APPEND
    SB$ ;
 
+package CKT-PKG-DEFTYPE
+
+private
+
+: GOOD$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-DTP-PRIV" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-row-id" SB-APPEND $0a SB-APPEND-C
+   s" : PRIVATE-CAST ( n -- ckt-row-id ) >ckt-row-id ;" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" : ROUNDTRIP ( n -- n ) >ckt-row-id ckt-row-id>N ;" SB-APPEND $0a SB-APPEND-C
+   s" : HOLD ( ckt-row-id -- ckt-row-id ) {: x:ckt-row-id :} x ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKT-DTP-PRIV" SB-APPEND $0a SB-APPEND-C
+   s" : REOPEN ( n -- ckt-row-id ) PRIVATE-CAST ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKT-DTP-PUB" SB-APPEND $0a SB-APPEND-C
+   s" public" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-pub-id" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-PUB-ROUNDTRIP ( n -- n ) CKT-DTP-PUB:>ckt-pub-id CKT-DTP-PUB:ckt-pub-id>N ;" SB-APPEND
+   SB$ ;
+
+: CROSS$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-DTP-A" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-a-id" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" package CKT-DTP-B" SB-APPEND $0a SB-APPEND-C
+   s" : CROSS ( n -- ckt-a-id ) >ckt-a-id ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+: GLOBAL$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-DTP-HIDDEN" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-hidden-id" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND $0a SB-APPEND-C
+   s" : GLOBAL-LEAK ( n -- ckt-hidden-id ) >ckt-hidden-id ;" SB-APPEND
+   SB$ ;
+
+: DISTINCT$ ( -- ptr u8 n )
+   SB-RESET
+   s" package CKT-DTP-DIST" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-left-id" SB-APPEND $0a SB-APPEND-C
+   s" deftype ckt-right-id" SB-APPEND $0a SB-APPEND-C
+   s" : WRONG-ROLE ( n -- ckt-right-id ) >ckt-left-id ;" SB-APPEND $0a SB-APPEND-C
+   s" ;package" SB-APPEND
+   SB$ ;
+
+;package
+
 : CKT-SCAN-NOMINAL ( -- n )
    CHECKER-SCOPE-START
    [: CKT-LIST$ CHK-RUN-NOMINAL-FILE ;] catch {: rc:n :}
@@ -695,6 +747,40 @@ create CKT-BIG $2000 allot   variable CKT-BIG-U
    CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
    CKT-SCAN-NOMINAL 0 T= ;
 
+package CKT-PKG-DEFTYPE
+
+public
+
+: GOOD ( -- )
+   GOOD$ CKT-DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CROSS ( -- )
+   CROSS$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CKT-ERR erru s" >ckt-a-id" CONTAINS? TTRUE ;
+
+: GLOBAL ( -- )
+   GLOBAL$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CKT-ERR erru s" >ckt-hidden-id" CONTAINS? TTRUE ;
+
+: DISTINCT ( -- )
+   DISTINCT$ CKT-DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-right-id" CONTAINS? TTRUE
+   CKT-ERR erru s" ckt-left-id" CONTAINS? TTRUE ;
+
+;package
+
 : CKT-TEST-REQUIRE-FACADE ( -- )
    s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
@@ -931,6 +1017,10 @@ variable CKTP-DOC-U
    s" check/product-bad" [: CKT-TEST-PRODUCT-BAD ;] CKT-RUN
    s" check/product-all-errors" [: CKT-TEST-PRODUCT-ALL-ERRORS ;] CKT-RUN
    s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
+   s" check/package-deftype-good" [: CKT-PKG-DEFTYPE:GOOD ;] CKT-RUN
+   s" check/package-deftype-cross" [: CKT-PKG-DEFTYPE:CROSS ;] CKT-RUN
+   s" check/package-deftype-global" [: CKT-PKG-DEFTYPE:GLOBAL ;] CKT-RUN
+   s" check/package-deftype-distinct" [: CKT-PKG-DEFTYPE:DISTINCT ;] CKT-RUN
    s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
    s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
    s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
