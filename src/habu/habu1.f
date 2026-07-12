@@ -2744,7 +2744,9 @@ variable LPREF
 variable LADD
 variable LCOLD
 variable COLD-XT
+variable PROOF-XT
 0 COLD-XT !
+0 PROOF-XT !
 
 $C8DFFCA6 constant W-COUNT-LDAR
 $C89FFCA6 constant W-COUNT-STLR
@@ -2891,11 +2893,26 @@ public
 : PREFLIGHT-LABEL@ ( -- label )
    LPREF LABEL@ ;
 
+: PUBLIC-LABEL@ ( -- label )
+   LPUBQ LABEL@ ;
+
+: PRIVATE-LABEL@ ( -- label )
+   LPRIQ LABEL@ ;
+
+: ANY-LABEL@ ( -- label )
+   LANYQ LABEL@ ;
+
 : COLD-HOOK! ( [ -- ] -- )
    COLD-XT ! ;
 
 : COLD-HOOK ( -- )
    COLD-XT @ dup 0= if drop exit then execute ;
+
+: PROOF-HOOK! ( [ -- ] -- )
+   PROOF-XT ! ;
+
+: PROOF-HOOK ( -- )
+   PROOF-XT @ dup 0= if drop exit then execute ;
 
 : COLD-RESET ( -- )
    LBL {: loop:label :}
@@ -2925,6 +2942,7 @@ public
    LPRIQ LABEL@ OWNER-WID-PRI ROLE
    ANY
    PREFLIGHT
-   ADD-ROUTINE ;
+   ADD-ROUTINE
+   PROOF-HOOK ;
 
 ;package

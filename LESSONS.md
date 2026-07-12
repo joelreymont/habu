@@ -3647,3 +3647,10 @@ unchanged (148855). Keys for milestone 2:
 - **Materialize addresses beyond scaled-immediate reach.** A direct `LDRW` at a
   DATA offset above 16380 encoded the wrong cell and made a cold-reentry proof
   loop forever. Build the full address in a register before word loads/stores.
+- **Concurrency claims need emitted-code proof.** Single-thread behavior cannot
+  distinguish acquire/release instructions from ordinary loads/stores. Scan the
+  live emitted routine and pin acquire, atomic row store, release, and order.
+- **New stage sources belong in every source owner.** Add post-compiler seal
+  files to native builders, recovery composition, cache content keys, file
+  inventories, and tests together; one omitted path preserves authority or
+  reuses stale output.

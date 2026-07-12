@@ -90,6 +90,7 @@ SRC_COMMON=(
   src/habu/jit.f
   src/habu/habu2.f
   src/habu/xref.f
+  src/habu/owner-wid-emit-seal.f
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
 )

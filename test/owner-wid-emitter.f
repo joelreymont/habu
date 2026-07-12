@@ -4,6 +4,9 @@ package OWNER-WID-COLD-TEST
 
 0 0= constant YES
 0 0= 0= constant NO
+$C8DFFCA6 constant COUNT-LDAR
+$F90000AE constant ROW-STR
+$C89FFCA6 constant COUNT-STLR
 
 : ADD ( n n bool label -- ) {: pub:n pri:n want:bool fail:label :}
    9 pub LIT64,  9 G-PUSH
@@ -42,20 +45,76 @@ package OWNER-WID-COLD-TEST
    17 17 1 ADDI,
    17 255 CMPI,  C-LT loop BCOND, ;
 
+: POISON ( -- )
+   LBL {: loop:label :}
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   9 $300000003000 LIT64,
+   17 OWNER-WID-MAX MOVZ,
+   loop LBL,
+   9 5 0 STR,
+   5 5 OWNER-WID-ROW ADDI,
+   17 17 1 SUBI,
+   17 loop CBNZ,
+   9 OWNER-WID-MAX MOVZ,  9 DATA OWNER-WID-N-CELL STR, ;
+
+: ROWS-ZERO ( label -- ) {: fail:label :}
+   LBL {: loop:label :}
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   17 OWNER-WID-MAX MOVZ,
+   loop LBL,
+   9 5 0 LDR,  9 fail CBNZ,
+   5 5 OWNER-WID-ROW ADDI,
+   17 17 1 SUBI,
+   17 loop CBNZ, ;
+
 : REENTER ( label -- ) {: fail:label :}
    LBL {: ready:label :}
    END-A  15 4 0 LDRW,
    15 ready CBNZ,
-   9 $300000003000 LIT64,  9 DATA OWNER-WID-OFF STR,
-   9 $400000004000 LIT64,  9 DATA OWNER-WID-END OWNER-WID-ROW - STR,
-   9 2 MOVZ,  9 DATA OWNER-WID-N-CELL STR,
+   POISON
    15 1 MOVZ,  15 4 0 STRW,
    30 SP 0 LDR,  SP SP 16 ADDI,
    OWNER-WID-EMIT:COLD-LABEL@ B,
    ready LBL,
    0 fail COUNT=
-   0 0 fail ROW=
-   255 0 fail ROW= ;
+   fail ROWS-ZERO ;
+
+: W32@ ( ptr u8 -- n ) {: p:ptr :}
+   p c@  p 1 + c@ 8 lshift or  p 2 + c@ 16 lshift or  p 3 + c@ 24 lshift or ;
+
+: LABEL-A ( label -- ptr u8 )
+   LABEL>N cells LBLP + @ CW@ ;
+
+: HAS-W? ( ptr u8 ptr u8 n -- bool ) {: p:ptr e:ptr want:n :}
+   p e >= if NO exit then
+   p W32@ want = if YES exit then
+   p 4 + e want recurse ;
+
+: NEXT-PHASE ( n n -- n ) {: phase:n w:n :}
+   phase 0 = w COUNT-LDAR = and if 1 exit then
+   phase 1 = w ROW-STR = and if 2 exit then
+   phase 2 = w COUNT-STLR = and if 3 exit then
+   phase ;
+
+: ORDERED? ( ptr u8 ptr u8 n -- bool ) {: p:ptr e:ptr phase:n :}
+   p e >= if phase 3 = exit then
+   phase p W32@ NEXT-PHASE {: next:n :}
+   p 4 + e next recurse ;
+
+: PROOF-FAIL ( -- )
+   s" hb: owner-WID code proof failed" 70 die ;
+
+: PROOF ( -- )
+   OWNER-WID-EMIT:PUBLIC-LABEL@ LABEL-A
+   OWNER-WID-EMIT:PRIVATE-LABEL@ LABEL-A COUNT-LDAR HAS-W? 0= if PROOF-FAIL then
+   OWNER-WID-EMIT:PRIVATE-LABEL@ LABEL-A
+   OWNER-WID-EMIT:ANY-LABEL@ LABEL-A COUNT-LDAR HAS-W? 0= if PROOF-FAIL then
+   OWNER-WID-EMIT:ANY-LABEL@ LABEL-A
+   OWNER-WID-EMIT:PREFLIGHT-LABEL@ LABEL-A COUNT-LDAR HAS-W? 0= if PROOF-FAIL then
+   OWNER-WID-EMIT:PREFLIGHT-LABEL@ LABEL-A
+   OWNER-WID-EMIT:ADD-LABEL@ LABEL-A COUNT-LDAR HAS-W? 0= if PROOF-FAIL then
+   OWNER-WID-EMIT:ADD-LABEL@ LABEL-A
+   ASM-CP @ CW@ 0 ORDERED? 0= if PROOF-FAIL then ;
 
 : EMIT ( -- )
    LBL LBL LBL {: fail:label done:label msg:label :}
@@ -94,5 +153,6 @@ package OWNER-WID-COLD-TEST
    done LBL, ;
 
 ' EMIT OWNER-WID-EMIT:COLD-HOOK!
+' PROOF OWNER-WID-EMIT:PROOF-HOOK!
 
 ;package
