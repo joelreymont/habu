@@ -447,6 +447,9 @@ points stay listed.
   collective vocabulary (M6) plus the checked stable-softmax proof.
 - `lib/ptx/gemm-checked-test.f` / `lib/ptx/gemm-checked-neg-test.f` — checked
   tiled GEMM data-flow positive and negative regressions.
+- `lib/ptx/attention-checked-test.f` / `lib/ptx/attention-checked-neg-test.f` —
+  checked fused-attention matrix/phase proof, byte-stable emitter regression,
+  and phase/shape negative regressions.
 - `lib/ptx/cg.f` / `lib/ptx/cg-vec.f` / `lib/ptx/cg-collective.f` /
   `lib/ptx/cg-matmul.f` / `lib/ptx/cg-attention.f` — PTX codegen emit-mode
   lowering for tile ops: scalar, vectorized v4, row/collective, the

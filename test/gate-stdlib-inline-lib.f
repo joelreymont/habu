@@ -469,6 +469,7 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-smem-test.f" GSI-INCLUDE
    s" lib/ptx/tile-acc-test.f" GSI-INCLUDE
    s" lib/ptx/gemm-checked-test.f" GSI-INCLUDE
+   s" lib/ptx/attention-checked-test.f" GSI-INCLUDE
    s" lib/ptx/tile-v4-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
@@ -485,7 +486,8 @@ variable GSI-TL-FILE-A
    s" lib/ptx/tile-loop-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-smem-neg-test.f" GSI-INCLUDE
    s" lib/ptx/tile-acc-neg-test.f" GSI-INCLUDE
-   s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE ;
+   s" lib/ptx/gemm-checked-neg-test.f" GSI-INCLUDE
+   s" lib/ptx/attention-checked-neg-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-LIBS-PTX-TOOL ( -- )
    s" stdlib/lint-libs/ptx-toolchain" GSI-GROUP-SEQ GSI-GROUP-HEADER \ ( -- )

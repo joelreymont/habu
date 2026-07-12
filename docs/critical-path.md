@@ -31,9 +31,9 @@ Each rung depends on the rungs above it.
 | # | Step | Dots | State |
 |---|------|------|-------|
 | 1 | Barrier-safe grid model + shared-mem tile type | `habu-gemm-codegen-needs-0735e3ad`, `habu-checker-capability-typed-e0c76a02`, `habu-checker-capability-b-cb3b5ec1` | open |
-| 2 | Tiled GEMM as a checked `KERNEL:` body | `habu-tiled-gemm-codegen-76075375`, `habu-re-express-tiled-9cc4a73a` | open |
+| 2 | Tiled GEMM as a checked `KERNEL:` body | `habu-tiled-gemm-codegen-76075375`, `habu-re-express-tiled-9cc4a73a` | typed surface landed; tuning open |
 | 3 | Tensor-core MMA codegen (the compute roof) | `habu-tensor-core-mma-11f23a94` | open |
-| 4 | Parallel softmax + fused attention `KERNEL:` | `habu-ptx-m6-perf-6b979497`, `habu-fix-ptx-collective-997cfcce`, `habu-re-express-fused-09d77c22`, `habu-ptx-m11-attention-fa7b0598` | open/active |
+| 4 | Parallel softmax + fused attention `KERNEL:` | `habu-ptx-m6-perf-6b979497`, `habu-fix-ptx-collective-997cfcce`, `habu-re-express-fused-09d77c22`, `habu-ptx-m11-attention-fa7b0598` | checked phase surface landed; parallel/tuned path open |
 | 5 | Device gradcheck gate + scatter-add + transformer-block VJPs | `habu-ptx-ad-device-2b511851`, `habu-make-ptx-device-c0eb12a3`, `habu-ad-scatter-add-dc9a3184`, `habu-autograd-transformer-block-e2d41299` | open |
 | 6 | Cross-entropy loss kernel | `habu-ce-loss-kernel` (NEW) | proposed |
 | 7 | Adam + training loop | `habu-maki-adam-optimizer-de0b7af0`, `habu-maki-training-loop-5cc4a9a5` | open |

@@ -638,6 +638,15 @@ that source is explicitly certified; they are not stale-checked by the default
 | MM-B-REG | `n -- matrix<space-global,f32,extent-k,extent-n>` | GEMM codegen from-register cast for the B operand; shares K with A and N with C at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-C-REG | `n -- matrix<space-global,f32,extent-m,extent-n>` | GEMM codegen from-register cast for the C operand; ties output rows to A and output columns to B at the checked MM-CHECKED call site. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
 | MM-STATE | `matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> mmacc<f32,block-256,mask-live>` | GEMM codegen token shim: consumes the typed A/B/C matrix operands after checked setup emission and creates the phase/accumulator tokens used by checked `MM-K-LOOP` and `MM-STORE`. | `lib/ptx/gemm-checked-test.f`, `tools/ptx/saxpy-test.f` | lib/ptx/cg-matmul.f | 2026-06-30 |
+| Q-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for Q; the checked entry unifies its shape with K, V, and O. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| K-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for K; distinct entry word keeps the ABI role explicit while sharing the checked `[Q,D]` relation. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| V-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for V; the checked entry rejects a mismatched sequence or head dimension. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| O-REG | `n -- matrix<space-global,f32,extent-q,extent-d>` | Attention codegen from-register cast for O; the checked entry ties output shape to Q, K, and V. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| STATE | `matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> matrix<space-global,f32,q,d> -- attnctx<q,d,attn-stage-q> attnacc<f32,block-128,mask-live>` | Attention codegen token shim: consumes the four related matrices and creates the phase-indexed context and register-accumulator token. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| STAGE-Q | `attnctx<q,d,attn-stage-q> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-score> attnacc<f32,b,m>` | Target primitive for cooperative Q staging and its barrier; the nominal phase transition prevents score computation before staging. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| SCORE | `attnctx<q,d,attn-stage-score> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-softmax> attnacc<f32,b,m>` | Target primitive for the QK score reduction into shared memory; the accumulator and exact predecessor phase are preserved by the signature. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| SOFTMAX | `attnctx<q,d,attn-stage-softmax> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-output> attnacc<f32,b,m>` | Target primitive for stable in-place shared-memory softmax; it can only consume a completed score phase. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
+| OUTPUT | `attnctx<q,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<q,d,attn-stage-done> attnacc<f32,b,m>` | Target primitive for the PV reduction and global output store; FINISH accepts only its done-phase result. | `lib/ptx/attention-checked-test.f`, `lib/ptx/attention-checked-neg-test.f` | lib/ptx/cg-attention.f | 2026-07-12 |
 | CRH | `-- ptr u8` | Crash-handler header buffer is raw dictionary storage copied into signal-safe write output. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 |
 | linux-spawn-fail-n | `n --` | Linux child-side spawn failure reporter emits raw `write`/`exit_group` for the supplied failure-pipe fd register number. | `lib/process-test.f`, `test/run.f` | src/habu/habu1.f | 2026-06-29 |
 | BFR-BYTE@ | `ptr u8 n -- u8` | Refresh prelude byte reader over dictionary name bytes; raw record pointers are refined before this checked scanner can read them. | `tools/build-fixpoint-test.f`, `test/run.f` | src/habu/hide.f | 2026-06-29 |
@@ -1171,6 +1180,15 @@ lib/ptx/cg-matmul.f:MM-A-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-B-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-C-REG stdlib-boundary habu-re-express-tiled-9cc4a73a
 lib/ptx/cg-matmul.f:MM-STATE stdlib-boundary habu-re-express-tiled-9cc4a73a
+lib/ptx/cg-attention.f:Q-REG stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:K-REG stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:V-REG stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:O-REG stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:STATE stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:STAGE-Q stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:SCORE stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:SOFTMAX stdlib-boundary habu-permanent-owner-for-83401fcc
+lib/ptx/cg-attention.f:OUTPUT stdlib-boundary habu-permanent-owner-for-83401fcc
 lib/ptx/cg.f:SPAN-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg.f:UNIFORM-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
 lib/ptx/cg.f:PTR-REG stdlib-boundary habu-ptx-phantom-preserving-3df9db92
@@ -1254,17 +1272,17 @@ lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0e
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
 test/checker-assert.f:CHECK-QUIET-CANDIDATE! test-metaprog habu-primitive-effect-axiom-1119f176
-test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog habu-mirror-wide-lowering-00277897
-test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-mirror-wide-lowering-00277897
-test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog habu-mirror-wide-lowering-00277897
-test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog habu-mirror-wide-lowering-00277897
-test/layout-buffer.f:LB-UN test-metaprog habu-seal-family-ptr-bd08a403
-test/layout-valid-growth.f:NAME$ test-metaprog habu-validate-fetched-adt-702ce63f
-test/layout-valid-growth.f:BUILD test-metaprog habu-validate-fetched-adt-702ce63f
-test/layout-valid-guard-base.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
-test/layout-valid-guard-base.f:SET test-metaprog habu-validate-fetched-adt-702ce63f
-test/layout-valid-product-bad.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
-test/layout-valid-w1-bad.f:RAW test-metaprog habu-validate-fetched-adt-702ce63f
+test/bootstrap-wide-memory-src.f:BWM-UN2 test-metaprog habu-permanent-owner-for-83401fcc
+test/bootstrap-wide-memory-src.f:BWM-UN4 test-metaprog habu-permanent-owner-for-83401fcc
+test/bootstrap-wide-memory-src.f:BWM-XT test-metaprog habu-permanent-owner-for-83401fcc
+test/bootstrap-wide-memory-src.f:BWM-W32 test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-buffer.f:LB-UN test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-growth.f:NAME$ test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-growth.f:BUILD test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-guard-base.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-guard-base.f:SET test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-product-bad.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
+test/layout-valid-w1-bad.f:RAW test-metaprog habu-permanent-owner-for-83401fcc
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11-linear-99fa9990
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176

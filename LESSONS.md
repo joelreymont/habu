@@ -3548,3 +3548,9 @@ unchanged (148855). Keys for milestone 2:
 - **Repo-wide lint input buffers must grow from file size.** A fixed ceiling
   turns documentation growth into an unrelated lint failure; reuse a
   high-water allocation rounded by `MEM-ALLOC-64K-SPAN`.
+- **Protocol phases need registered nullary type families.** Free-form atoms in
+  parametric signatures fail stored-signature parsing; register each nominal
+  phase and thread it through the context family so skipped transitions reject.
+- **Package words still compete with immediate core syntax.** A packaged word
+  named `BEGIN` resolves as the control word while compiling a body; use a
+  domain verb such as `START` even when the package would otherwise disambiguate.

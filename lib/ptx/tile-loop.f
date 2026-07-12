@@ -1,9 +1,8 @@
 \ tile-loop.f - checked counted-loop combinator for tile-DSL kernel bodies.
 \
 \ Capability (a) of the typed-kernel gap (habu-checker-capability-typed): the
-\ K-reduction / streaming loop the flagship GEMM (lib/ptx/cg-matmul.f) and fused
-\ attention (lib/ptx/cg-attention.f) need but the tile DSL could not express - so those
-\ kernels are still raw-PTX UNCHECKED boundaries.
+\ K-reduction / streaming loop required by tiled GEMM and fused attention. It is
+\ the loop-invariant accumulator contract beneath their checked kernel surfaces.
 \
 \ TILE-LOOP applies an accumulator-preserving body `n` times. Its declared effect makes
 \ the body type `( tile<t,b,m> -- tile<t,b,m> )` (loop-invariant accumulator, element /

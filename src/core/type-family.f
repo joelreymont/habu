@@ -904,6 +904,13 @@ s" tile"       3 TFAM-REG-CELL
 s" acc"        3 TFAM-REG-CELL
 s" mmctx"      3 TFAM-REG-CELL
 s" mmacc"      3 TFAM-REG-CELL
+s" attnctx"    3 TFAM-REG-CELL
+s" attnacc"    3 TFAM-REG-CELL
+s" attn-stage-q"       0 TFAM-REG-CELL
+s" attn-stage-score"   0 TFAM-REG-CELL
+s" attn-stage-softmax" 0 TFAM-REG-CELL
+s" attn-stage-output"  0 TFAM-REG-CELL
+s" attn-stage-done"    0 TFAM-REG-CELL
 s" uniform"    1 TFAM-REG-CELL
 s" rowidx"     1 TFAM-REG-CELL
 

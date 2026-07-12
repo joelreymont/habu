@@ -103,6 +103,13 @@ compile-time header markers consumed before the checked kernel body. `lib/ptx/la
 provides checked host launch guards such as `PTX-ROW-LAUNCH-CHECK ( rows cols block -- )`
 so CUDA launch code rejects invalid row dimensions before calling the driver.
 
+`lib/ptx/cg-attention.f` publishes package `ATTN`. `ATTN:CHECKED` relates Q,
+K, V, and O as `[Q,D]` matrices and threads a nominal phase token through
+`ATTN:STAGE-Q`, `ATTN:SCORE`, `ATTN:SOFTMAX`, `ATTN:OUTPUT`, and
+`ATTN:FINISH`. Skipped or reordered phases and mismatched matrix shapes are
+checker errors. `ATTN:EMIT` runs that same checked body to produce the fused
+sm_87 PTX module.
+
 ## Array
 
 `lib/array.f` provides checked helpers for cell arrays. Public array helpers use
