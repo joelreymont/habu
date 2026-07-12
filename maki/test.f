@@ -156,6 +156,8 @@ TEST:SUITE maki/onnx/import-test.f
 TEST:;SUITE
 TEST:SUITE maki/onnx/deploy-test.f
 TEST:;SUITE
+TEST:SUITE maki/onnx/ort-ref-test.f
+TEST:;SUITE
 TEST:SUITE maki/eval-test.f
 TEST:;SUITE
 TEST:SUITE maki/fusion-test.f
@@ -189,6 +191,8 @@ TEST:;SUITE
 TEST:SUITE maki/from-scratch-test.f
 TEST:;SUITE
 TEST:SUITE maki/adam-train-test.f
+TEST:;SUITE
+TEST:SUITE maki/adam-torch-ref-test.f
 TEST:;SUITE
 TEST:SUITE maki/cuda-types-test.f
 TEST:;SUITE

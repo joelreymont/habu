@@ -157,21 +157,7 @@ create RG-DB2  SC-B2N cells allot
    loss ;
 
 \ ---- relative-L2 comparison --------------------------------------------------
-: RG-DIFF2 ( ptr a ptr a n -- r ) {: ap:ptr bp:ptr len:n :}
-   0.0  len 0 ?do  ap i T-GET  bp i T-GET  LOSS:RES2  f+  loop ;
-
-: RG-NORM2 ( ptr a n -- r ) {: bp:ptr len:n :}
-   0.0  len 0 ?do  bp i T-GET  0.0  LOSS:RES2  f+  loop ;
-
-\ ||a-b|| / ||b|| : relative L2 distance to the reference b
-: RG-REL ( ptr a ptr a n -- r ) {: ap:ptr bp:ptr len:n :}
-   ap bp len RG-DIFF2 fsqrt
-   bp len RG-NORM2 fsqrt
-   f/ ;
-
-: RG-REL1 ( r r -- r ) {: a:r b:r :}      \ |a-b|/|b| scalar relative error
-   a b f- fabs  b fabs  f/ ;
-
+\ ---- relative-L2 comparison: maki/array.f T-REL-L2 / T-REL1 -------------------
 \ analytic-vs-analytic in f64: only summation-order noise is tolerated
 : RG-TOL ( -- r )  0.00000001 ;
 
@@ -180,12 +166,12 @@ create RG-DB2  SC-B2N cells allot
 : RGT-STEP ( -- )
    AMT-GRADS {: l:r :}
    RG-GRADS  {: rl:r :}
-   l rl RG-REL1  RG-TOL f<  TTRUE
-   SC-X-SLOT  SC-GRAD-AT  RG-DX   SC-XN  RG-REL  RG-TOL f<  TTRUE
-   SC-W1-SLOT SC-GRAD-AT  RG-DW1  SC-W1N RG-REL  RG-TOL f<  TTRUE
-   SC-B1-SLOT SC-GRAD-AT  RG-DB1  SC-B1N RG-REL  RG-TOL f<  TTRUE
-   SC-W2-SLOT SC-GRAD-AT  RG-DW2  SC-W2N RG-REL  RG-TOL f<  TTRUE
-   SC-B2-SLOT SC-GRAD-AT  RG-DB2  SC-B2N RG-REL  RG-TOL f<  TTRUE
+   l rl T-REL1  RG-TOL f<  TTRUE
+   SC-X-SLOT  SC-GRAD-AT  RG-DX   SC-XN  T-REL-L2  RG-TOL f<  TTRUE
+   SC-W1-SLOT SC-GRAD-AT  RG-DW1  SC-W1N T-REL-L2  RG-TOL f<  TTRUE
+   SC-B1-SLOT SC-GRAD-AT  RG-DB1  SC-B1N T-REL-L2  RG-TOL f<  TTRUE
+   SC-W2-SLOT SC-GRAD-AT  RG-DW2  SC-W2N T-REL-L2  RG-TOL f<  TTRUE
+   SC-B2-SLOT SC-GRAD-AT  RG-DB2  SC-B2N T-REL-L2  RG-TOL f<  TTRUE
    AMT-APPLY ;
 
 variable RGT-L1               \ stashed final loss (determinism check)

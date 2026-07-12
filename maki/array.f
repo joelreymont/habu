@@ -27,3 +27,27 @@
    len 0 ?do
       abase i T-GET  bbase i T-GET  f+  abase i T-SET
    loop ;
+
+\ squared L2 distance: sum_i (a[i]-b[i])^2
+: T-DIST2 ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :}
+   0.0
+   len 0 ?do
+      abase i T-GET  bbase i T-GET  f-  dup f*  f+
+   loop ;
+
+\ squared L2 norm: sum_i b[i]^2
+: T-NORM2 ( ptr a n -- r ) {: bbase:ptr len:n :}
+   0.0
+   len 0 ?do
+      bbase i T-GET  dup f*  f+
+   loop ;
+
+\ ||a-b|| / ||b|| : relative L2 distance to the reference tensor b
+: T-REL-L2 ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :}
+   abase bbase len T-DIST2 fsqrt
+   bbase len T-NORM2 fsqrt
+   f/ ;
+
+\ |a-b| / |b| : scalar relative error against the reference b
+: T-REL1 ( r r -- r ) {: a:r b:r :}
+   a b f- fabs  b fabs  f/ ;
