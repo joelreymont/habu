@@ -1351,6 +1351,35 @@ TFFI 7 T=
 \ HOOK it returns the checker verdict instead of throwing, so the engine's
 \ reject-continue branch runs in-process.
 TRUSTED: ES-VERDICT-HOOK ( ptr u8 n -- n ) CHECK! ;
+
+\ CHECK! owns certificate publication, so an alternate hook cannot leave the
+\ previous wide definition's facts live when it accepts a scalar definition.
+package CERT-ALT-TEST
+
+SUMTYPE wide 0
+   VARIANT value n ;VARIANT
+;SUMTYPE
+1 LAYOUT-BUFFER BUF wide
+
+: PTR ( -- ptr wide ) 0 BUF ;
+: FETCH ( -- wide ) PTR @ ;
+
+end-package
+
+LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 1 T=
+s" CERT-BYTES-BAD ( -- ptr u8 n ) LOWER-CERT:BYTES" T-CHECK-REJECTS
+' ES-VERDICT-HOOK set-check
+
+package CERT-ALT-TEST
+
+: SCALAR ( n -- n ) 1 + ;
+
+end-package
+
+LOWER-CERT:CELL-COUNT 10 T=
+LOWER-CERT:NEEDS-CELL LOWER-CERT:CELL@ 0 T=
+LOWER-CERT:WF-COUNT-CELL LOWER-CERT:CELL@ 0 T=
+
 variable ES-CPX-DIAG
 variable ES-CPX-CP
 variable ES-CPX-ND
@@ -1360,7 +1389,6 @@ variable ES-CPX-ND
 \ the reject rollback must reclaim the name bytes too (CP := pre-name CP)
 : ES-CPX-BAD-EXT$ ( -- ptr u8 n ) s" : ES-CPX-BAD-EXTENDED-NAME 0 set-check ;" ;
 DIAGXT @ ES-CPX-DIAG !  0 DIAGXT !
-' ES-VERDICT-HOOK set-check
 cp@ ES-CPX-CP !  ndict@ ES-CPX-ND !
 ES-CPX-BAD$ evaluate
 s" cpx-reject-1" T-LABEL cp@ ES-CPX-CP @ T=
@@ -1375,7 +1403,7 @@ ES-CPX-BAD-EXT$ evaluate
 ES-CPX-BAD-EXT$ evaluate
 s" cpx-reject-ext-3" T-LABEL cp@ ES-CPX-CP @ T=
 s" cpx-reject-ext-ndict" T-LABEL ndict@ ES-CPX-ND @ T=
-' HOOK set-check
+LOWER-CERT-HOOK:INSTALL
 ES-CPX-DIAG @ DIAGXT !
 \ retry after rejects: the accepted definition lands on the reclaimed entry
 : ES-CPX-GOOD ( n -- n ) 1 + ;
@@ -1408,7 +1436,7 @@ ndict@ ES-HIDX-ND !  cp@ ES-HIDX-CP !
       ES-HIDX-CP @ cp!
    loop ;
 ES-HIDX-ROLLBACK-CHURN
-' HOOK set-check
+LOWER-CERT-HOOK:INSTALL
 s" hidx rollback churn terminates" T-LABEL
 7 7 T=
 

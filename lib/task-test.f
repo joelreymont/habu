@@ -60,7 +60,6 @@ create APP-CSTR3 $61 c, $62 c, $63 c, 0 c,
 create APP-CSTR4 $61 c, $62 c, $63 c, $64 c, 0 c,
 create APP-CSTR5 $61 c, $62 c, $63 c, $64 c, $65 c, 0 c,
 
-variable TASK-STRLEN-XT
 variable APP-ACQ-DONE
 variable APP-DET-DONE
 variable APP-SHARED
@@ -107,16 +106,17 @@ variable APP-BAD
    HB-TARGET-MACOS? if TASK-LIBSYSTEM exit then
    TASK-LIBC ;
 
-: TASK-STRLEN-READY ( -- )
-   TASK-STRLEN-XT @ 0= 0= if exit then
-   TASK-LIB-PATH RTLD-NOW DLOPEN dup 0= if E-TASK-DLOPEN throw then
-   TASK-SYM-STRLEN DLSYM dup 0= if E-TASK-DLSYM throw then
-   TASK-STRLEN-XT ! ;
+: TASK-STRLEN-LOAD ( -- n )
+   TASK-LIB-PATH FFI:NOW FFI:DLOPEN dup 0= if E-TASK-DLOPEN throw then
+   TASK-SYM-STRLEN FFI:DLSYM dup 0= if E-TASK-DLSYM throw then ;
 
-: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
-   cstr P>N 0 FFI-ARG!
+TASK-STRLEN-LOAD constant TASK-STRLEN-XT
+
+TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
+   FFI:RESET
+   cstr 0 FFI:READABLE!
    TASK:PAUSE
-   1 TASK-STRLEN-XT @ FFI-CALLN ;
+   FFI:ARGS FFI:REG-LENS 1 TASK-STRLEN-XT ffi-call-bounded ;
 
 : APP-BAD+ ( -- )
    1 APP-BAD atomic-add drop ;
@@ -218,7 +218,6 @@ variable APP-BAD
    APP-DET TASK:KILL ;
 
 : TASK-TEST-APP-SOAK ( -- )
-   TASK-STRLEN-READY
    APP-LOCK TASK:FACILITY-INIT
    APP-CYCLES 0 ?do
       APP-RESET

@@ -18,7 +18,7 @@ $B7 constant EM-AARCH64
 56 constant ELF-PHDR-SZ
 $400000 constant VMBASE
 $1000 constant CODE-OFF
-$100000 constant MPAGE
+$200000 constant MPAGE
 variable CODELEN
 create SCODE MPAGE allot
 2variable SIG-ID

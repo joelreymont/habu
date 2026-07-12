@@ -28,6 +28,10 @@ variable STR-PREV-A
 variable STR-PREV-U
 variable STR-LAST-A
 variable STR-LAST-U
+variable TOP-PREV-A
+variable TOP-PREV-U
+variable TOP-CUR-A
+variable TOP-CUR-U
 
 create BODY-BUF BODYBUF-CAP allot
 
@@ -469,6 +473,12 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
       BODY-APPEND
    AGAIN ;
 
+: RECORD-LAYOUT-BUFFER ( -- )
+   TOP-PREV-A @ TOP-PREV-U @ {: count:ptr countu:n :}
+   NEXT-SCAN {: name:ptr nameu:n :}
+   NEXT-SCAN {: type:ptr typeu:n :}
+   type typeu count countu name nameu CHECKER-DEFLAYOUT-BUFFER ;
+
 : RECORD-VALUE-RECORD ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing value-record name" 74 die THEN
@@ -567,6 +577,7 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN
+   a u s" LAYOUT-BUFFER" STR=CI IF RECORD-LAYOUT-BUFFER 0 0= EXIT THEN
    \ `constant` bakes one physical cell, so its trust is the one-cell `-- a`
    \ model — identical to native C-CONSTANT, all-errors (which funnels here),
    \ and public-signatures. This is the PERMANENT contract (TFAM 12 verdict
@@ -605,10 +616,13 @@ TRUSTED: TRUST-SIGNATURE ( ptr u8 n ptr u8 n -- )
 
 : VERIFY-SOURCE ( -- )
    0 SCAN-I !
+   0 TOP-PREV-A !  0 TOP-PREV-U !
    BEGIN
       NEXT-SCAN dup 0 > WHILE
+      2dup TOP-CUR-U ! TOP-CUR-A !
       2dup s" :" CORE-STR= IF 2drop VERIFY-DEFINITION ELSE
       2dup RECORD-DEFINER? IF 2drop ELSE 2drop THEN THEN
+      TOP-CUR-A @ TOP-PREV-A !  TOP-CUR-U @ TOP-PREV-U !
    REPEAT 2drop ;
 
 : THROW-RESULT ( n -- )

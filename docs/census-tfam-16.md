@@ -251,8 +251,9 @@ touches them (§3).
 
 ### 2e. FFI boundary — cell-only today; packed ABI descriptor is the future seam
 `lib/ffi.f` types foreign args through a per-arg **cell tag table**
-(`lib/ffi.f` `create FDEF-TAG FFI-MAX-ARGS cells allot`, tags `FDEF-N/PTR/NOM/
-VOID`); `lib/ffi-abi.f:5-10,56` passes "**prepacked cells**" (x0-x8/d0-d7 +
+(`lib/ffi.f` `FFI-MAX-ARGS LAYOUT-BUFFER FDEF-TAG kind`, variants
+`int`/`pointer`/`nominal`/`void`); `lib/ffi-abi.f:5-10,56` passes
+"**prepacked cells**" (x0-x8/d0-d7 +
 caller-packed stack spill). There is **no path to pass a layout-family value
 across FFI** — a multi-cell ADT would need the §22.2 packed descriptor
 (`LAY.SIZE`/`LAY.ALIGN`) to marshal as an ABI-stable struct. So FFI is a place a

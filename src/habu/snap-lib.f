@@ -125,7 +125,7 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 
 : SND-ZERO-EVAL-FRAMES ( -- )
    EVAL-FRAME
-   begin dup EVAL-FRAME $200 + < while
+   begin dup EVAL-FRAME EVAL-MAX-DEPTH EVAL-FRAME-SIZE * + < while
       dup SND-ZERO-SPAN-CELL
       8 +
    repeat drop ;

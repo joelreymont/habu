@@ -553,7 +553,15 @@ create BFT-CHECK-OFF-LINE
    BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
    BFT-READ-BUF u s" : ATOMA-FIELD" CONTAINS? TTRUE
    BFT-READ-BUF u s" 0 constant T-CON" CONTAINS? TTRUE
-   BFT-READ-BUF u s" ' HOOK set-check" CONTAINS? TTRUE
+   BFT-READ-BUF u s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
+   BFT-READ-BUF u s" undefine FULL-XT" FIND-SUB {: seal-base:n :}
+   BFT-READ-BUF u seal-base s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
+   BFT-READ-BUF u seal s" \ driver-io.f" BFT-FIND-AFTER {: driver:n :}
+   seal-base BFT-FOUND
+   seal BFT-FOUND
+   driver BFT-FOUND
+   seal-base seal < TTRUE
+   seal driver < TTRUE
    BFT-READ-BUF u BFT-CHECK-OFF-LINE$ CONTAINS? TFALSE
    BFT-READ-BUF u s\" s\" ASM-CODE\" s\" -- asm\" TRUST" CONTAINS? TFALSE
    BFT-READ-BUF u s" STDIN-OUT" CONTAINS? TTRUE ;
@@ -591,6 +599,20 @@ create BFT-CHECK-OFF-LINE
    BFT-ROOT BF-TMP!
    BF-SNAP-SOURCE
    BFT-SNAP BFT-READ {: u :}
+   BFT-READ-BUF u s" : SNAP-TAIL-MARK" FIND-SUB {: mark:n :}
+   BFT-READ-BUF u mark s" ' LOWER-CERT-HOOK:HOOK constant HOOK-XT" BFT-FIND-AFTER {: hook:n :}
+   BFT-READ-BUF u hook s" SEAL-FRIEND" BFT-FIND-AFTER {: seal:n :}
+   BFT-READ-BUF u seal s" : ASM-CODELEN!" BFT-FIND-AFTER {: build:n :}
+   BFT-READ-BUF u build s" SNAP-BUILD:HOOK-XT set-check" BFT-FIND-AFTER {: on:n :}
+   mark BFT-FOUND
+   hook BFT-FOUND
+   seal BFT-FOUND
+   build BFT-FOUND
+   on BFT-FOUND
+   mark hook < TTRUE
+   hook seal < TTRUE
+   seal build < TTRUE
+   build on < TTRUE
    BFT-READ-BUF u s" : ATOMA-FIELD ( n -- ptr ptr u8 )" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 )" CONTAINS? TTRUE
    BFT-READ-BUF u s" TRUSTED: INCLUDE-EVALUATE ( ptr u8 n -- )" CONTAINS? TTRUE
@@ -605,7 +627,7 @@ create BFT-CHECK-OFF-LINE
 \ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
 \ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
 \ (corrupt trailer). The snapshot binary is built through the WORKING runtime
-\ route the pipeline itself uses (hb-stdin < hb-snap-src -> hb-snap0, the
+\ route the pipeline itself uses (hb-stdin --build hb-snap-src -> hb-snap0, the
 \ BF-BUILD-SNAP-FROM-STDIN mechanism minus its certify gate: BF-CERTIFY-SNAP
 \ fails closed on snap.f's 0 set-check boundary until VERIFY:SOURCE-BUF
 \ honors injected set-check spans - dot habu-tfam-12-item-346f03c2).
@@ -634,7 +656,7 @@ create BFT-CHECK-OFF-LINE
 : BFT-SNAP0-BUILD ( -- )
    BF-SNAP-SOURCE
    s" hb-snap0" BF-REMOVE-TMP
-   s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0
+   s" hb-stdin" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
    s" hb-snap0" BF-CODESIGN-FORCE-TMP
    s" hb-snap0" BF-CHMOD-X-TMP ;
@@ -871,7 +893,8 @@ variable BFT-OVF-ERR-U
    s" cert-tfam" BF-RESET-OUT
    s" cert-tfam" s" src/core/util.f" BF-APPEND-SOURCE
    s" cert-tfam" s" src/core/structures.f" BF-APPEND-SOURCE
-   s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE ;
+   s" cert-tfam" s" src/core/checker.f" BF-APPEND-SOURCE
+   s" cert-tfam" s" src/core/lower-cert-base.f" BF-APPEND-SOURCE ;
 
 : BFT-TEST-CERTIFY-TFAM-PREFIX ( -- )
    BFT-ROOT BF-TMP!
@@ -887,7 +910,9 @@ variable BFT-OVF-ERR-U
    BF-TMP-RESET ;
 
 \ The stage2 and stdin build phases both emit into the one fixed `stage2-src`
-\ stage-input path (hb-stage reads that name), so BF-CERTIFY-STAGE2 and
+\ stage-input path. The first generation uses COMPILER-BUILD's verified
+\ `--build` route; later hb-stage generations read that same path. Therefore
+\ BF-CERTIFY-STAGE2 and
 \ BF-CERTIFY-STDIN read the same path at different times. Prove the certify path
 \ exists in each phase and that the stdin phase OVERWRITES it with distinct
 \ content — so BF-CERTIFY-STDIN certifies the stdin driver source, not stage2 twice.

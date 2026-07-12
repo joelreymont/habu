@@ -2,21 +2,76 @@
 
 # FIXME: Rewrite this to be concise without losing precision
 
-Last updated: 2026-07-11
+Last updated: 2026-07-12
 
-- **A failing `jj diff` with "sibling of the working copy's operation" mid-gate
-  means the snapshot you are gating may be EMPTY — back up edited files BEFORE
-  `jj workspace update-stale`:** update-stale RESETS the working copy (reverting
-  unsnapshotted edits) and can leave a divergent change twin; the non-empty twin
-  holds a possibly STALE snapshot, so restore from your own backups (they are
-  the exact gated bytes), abandon the twin, and re-run the cheap gates on the
-  restored tree. The 0-byte patch file written by the failed diff is the tell.
-- **MATCH arms may produce multiple values, and both arms must agree:** FL-SIG's
-  dot-split rewrote four dpos branch expressions into one MATCH whose arms each
-  push the (ilen fa flen) triple — the checker unifies multi-cell arm effects
-  fine. Diverging arms (`throw`/`exit`/usage-`die`) unify with any shape, so
-  option unwraps built on fail-closed reporters (GE-FAIL, BF-BUILD-RC die,
-  TR-USAGE) need no sentinel filler in the dead arm.
+- **Describe bootstrap parity at the implementation boundary:** when the
+  Gforth recovery host mirrors pass-2 lowering, calling parity merely
+  behavioral or claiming there is no mirror contradicts the code. Name the
+  mirrored lookup, validation, and emitter surfaces and prove the recovered
+  compiler with the same focused fixtures.
+
+- **Nested family payloads have two widths:** an SC-APP is one schema root but
+  occupies the referenced family's full physical `WIDTH`. Sum padding,
+  `SUMV-PAYCELLS`, product offsets, and constructor instantiation must all use
+  that physical width; enum parsing must reset both root and physical counters.
+- **Compute a nested tag offset once:** layout validation must pass the same
+  canonical offset to the root check and every variant guard. Re-deriving it
+  after cursor movement embedded offset zero in accessor certificates and
+  rejected valid inactive variants.
+- **A gate reference includes its fixture inventory:** adding child-load rows
+  without the files, `FILEMAP.md`, and trust ownership makes the full gate fail
+  at `E-FS-OPEN` before the intended assertion runs.
+- **Generated checked fixtures are language clients:** their emitted source
+  must obey lowercase family/variant grammar and use typed pointer conversions
+  plus `ffi-call-bounded`; generated strings do not excuse obsolete primitives
+  or untyped boundaries.
+- **Sink guards must preserve the sink ABI, not only reject bad addresses:**
+  adding an inline code-target guard to `LCEMIT` clobbered x12/x13, while
+  lowering callers keep placement state live across emission. Save and restore
+  every guard scratch register at the sink boundary, then prove mixed-width
+  locals through the cold bootstrap compiler; a valid target address alone does
+  not prove the guarded emitter is transparent.
+- **Exercise ephemeral compiler mappings while they are live:** a post-compile
+  protection test sees only an unmapped artifact. Trust only a syntax-simple raw
+  state accessor; keep the immediate probe, sink action, and cleanup assertion
+  checked. Enter pass-2 before the sink, use an invalid-fd `read` for non-mutating
+  neighbor probes, then assert the mapping state is zero after publication.
+- **Proof tables need arena growth when valid source length is not statically
+  bounded:** the pass-2 local-bind table capped every definition at 256 bind
+  occurrences even though branch joins keep the compiler's 64-live-local frame
+  bound intact. Keep the live frame fixed, but grow monotone replay evidence and
+  regress 257 sequential branch-scoped binds.
+- **Immutable artifacts need size-derived mappings, not a generous fixed band:**
+  a 64-KiB lowering blob imposed an undocumented certificate-size language
+  limit. Page-round the validated source plus evidence, mmap exactly that span,
+  protect it read-only during replay, and unmap it at transaction commit; keep
+  only its base and capacity in protected engine state.
+- **Consume package operations, not internal implementation words:** the check
+  driver duplicated `LOWER-CERT-HOOK` internals to report and classify a verdict.
+  Calling the public `LOWER-CERT-HOOK:HOOK` preserves one diagnostic/multi-error
+  contract and lets the reporter remain private; do not replace package scope
+  with global name prefixes or forwarding aliases.
+- **Replay cursors start from the producer's sequence origin, not the pass-mode
+  value:** `EM-P2-START` reused `x9=1` after enabling pass 2 and accidentally
+  initialized the certified local-bind cursor to row 1. Keep mode and cursor
+  initialization distinct; exact-consumption checks catch the tail mismatch,
+  but the wrong first width can already emit invalid frame accesses.
+- **A protected sink owns a byte interval, not an address:** start-only checks
+  let unaligned `!`, syscall buffers, and fixed mappings begin immediately below
+  compiler state and overwrite across its boundary. Pass the sink's real byte
+  length, reject `addr+len` wrap, and test half-open lower/upper neighbors. When
+  a compiler artifact is passed to `mprotect`, mmap it separately and round its
+  length to the largest supported target page (64 KiB on arm64 Linux); macOS's
+  16 KiB or a local Linux 4 KiB acceptance does not prove deployment safety. When
+  an engine layout offset grows past 16 bits, every emitted
+  load must use `LIT64,`; `MOVZ,` spills bit 16 into the shift field and silently
+  initializes the wrong address. Re-derive each sink's pop order too: `BPATCH32`
+  popped target into x9 but guarded x10 (the instruction word), so normal boot
+  exposed the wrong-register guard as a false overflow while the real target was
+  unprotected. Guarding `cp!` alone is insufficient: an allowed final-word CP
+  still lets the next defining word overrun. Put the code-interval check in
+  `LCEMIT` so every instruction write, including `CREATE` and `CONSTANT`, owns
+  the same fail-closed bound.
 - **Probe "over-conservative reject" claims by removing the guard and reading
   what breaks:** the TFAM 11 open-arg layout reject LOOKED like pure
   conservatism (scalar `( a -- a a ) dup` certifies + defers linearity to call
@@ -102,6 +157,30 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Checker Soundness
 
+- **Definer capacities are values, not syntax:** the original
+  `LAYOUT-BUFFER NAME family 16` grammar forced every caller to duplicate its
+  named capacity and add a drift assertion. `count LAYOUT-BUFFER NAME family`
+  lets runtime validation consume the authoritative value while source
+  preverification records only the count-independent accessor signature.
+- **A raw-storage API needs a validating ADT decoder, not a typed-pointer cast:**
+  maps intentionally expose caller-owned cells through `MAP-SLOT-FIELD`, so they
+  cannot promise representation integrity. Removing the dedicated state pointer
+  still matters: `MAP-SLOT-STATE@` now converts only raw 0/1/2 to constructors
+  and throws `E-BAD-TAG` otherwise, while the public nominal getter/setter prevent
+  accidental tag laundering in checked code.
+- **Make exit-only seal tests mutation-sensitive:** target the sealed latch with
+  a zero-valued ADT cell. If a wide-store loop omits a later guard or writes
+  before loading the latch, that store opens the seal and the child exits 0
+  instead of `E-SEAL-VIOLATION`; emit an armed marker immediately before the
+  sink so an earlier compile/setup exit cannot satisfy the rc assertion. Pair
+  this runtime probe with the lowering golden that pins STR after the full
+  address-range guard.
+- **A typed pointee proves identity, not storage capacity:** wide ADT `!`/`@`
+  can refine `ptr a` to `ptr family` and lower from compile-time `W`, but a
+  plain `variable` still owns one cell; callers allocate `W` cells until
+  `LAYOUT-BUFFER` owns stride/bounds, W=0 rejects as non-addressable, and wide
+  `!` must run the two-band seal guard per destination cell so a later slot
+  cannot cross into protected memory after an unprotected base.
 - **A qualified def's engine->checker record call must key off the QUALIFIED
   name, and read it from a STABLE buffer:** every sig'd `: PKG:tail (..)` recorded
   twice at `;` — the hook cert under the qualified body-buffer name (correct) AND
@@ -371,6 +450,11 @@ lesson — keep the specific word/code/path, cut the prose.
   `require src/core/sha256.f` reloaded `W32` and hit duplicate definition.
   The source-prefix builder now appends `provided` rows for every baked prefix
   path before user/test source runs.
+- **A new baked core file has two prefix owners, not one.** Native
+  `habu2.f`/fixpoint registration does not update the Gforth recovery compiler;
+  mirror its load, path, provide, and label rows in `bootstrap/cg/forth.fs`, and
+  concatenate it in `tools/bootstrap.sh`, or recovery-only consumers see an
+  undefined public word despite a green native prefix.
 - **Tasked engines need process-wide fatal exits:** Linux `exit(93)` terminates
   only the calling pthread, so checker/die paths can leave workers alive and
   make process captures time out. Native and bootstrap emitters must use
@@ -488,6 +572,16 @@ lesson — keep the specific word/code/path, cut the prose.
 
 ## Tool & Infra
 
+- **Evaluator depth must exceed legal include depth:** `LAYOUT-BUFFER` evaluates
+  one generated accessor while loading, so an included test on a legal dependency
+  chain reached `EVALD=8` and hit the native depth `BRK` although its focused run
+  passed. Reserve frames above task-user cells, derive snapshot clearing from
+  `EVAL-MAX-DEPTH`, and pin `EVAL-MAX-DEPTH > INCLUDE-MAX-DEPTH`.
+- **Keep lint classifier fixtures outside the linted implementation:** an inline
+  `s" LAYOUT-BUFFER DUP ..."` self-check in `shadow-lint.f` was later tokenized
+  as source by the live lint and reported its fixture name as a real primitive
+  shadow. Put classifier probes in the owning test entry so production scans
+  cannot reinterpret test strings as source definitions.
 - **Exit-status mapping must honor deliberate small codes, not flatten them:**
   fixing BTHROW's masked no-handler exit (`-2816 throw` exited 0 SILENTLY,
   `-2802` an aliased 14 — fail-open for any tool reading the rc) with an
@@ -3316,6 +3410,171 @@ unchanged (148855). Keys for milestone 2:
   variant path rejected family tails, but the family path never scanned prior
   variants, so identical names accepted in one order. Apply the same in-scope
   rule at both declaration gates and pin unrelated-package acceptance.
+- **Cache-hit tests must own the cache state that makes a hit possible.** An
+  object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
+  shared warm artifact may bypass object production entirely. Bind a fresh
+  gate-local cache before proving store, restore, or relink transitions.
+- **Typed layout pointers need a generative introduction boundary and fetch-
+  time validation.** Letting an ordinary `ptr a` unify with `ptr FAMILY`
+  proves neither extent nor continuing representation validity. A sealed
+  allocator must own count, stride, zero-image, and bounds; build its generated
+  source before allocation so generator failure cannot leak DATA. Raw aliases
+  can still corrupt a valid image, so every typed fetch must validate active
+  tags before publishing the bundle. Erase every one-shot authorization word
+  and backing cell after compiling its direct callers: a globally callable or
+  writable arming surface turns the boundary back into an unchecked cast.
+  Validate qualified-name grammar before allocation because native definer
+  failures exit rather than unwind `catch`.
+- **Compiler replay evidence must be immutable, source-bound, and consumed
+  exactly.** Publish a canonical certificate from the checker transaction,
+  freeze the checked source and certificate into a read-only compiler-owned
+  blob, key rows by source-byte offset, and require pass two to consume every
+  width/bind/fetch row once. A live checker lookup or token ordinal lets stale
+  state and alternate hooks change lowering after acceptance.
+- **Proof tables are arenas, not policy caps.** Width and fetch evidence scale
+  with source complexity; fixed row arrays turn a valid large definition into
+  an internal failure. Grow the producer tables and validate byte arithmetic at
+  the immutable consumer boundary.
+- **A growing boot-prefix list needs a growing pin manifest.** Adding core
+  dependencies while retaining a fixed file-count buffer makes recovery fail
+  before it can certify the new prefix. Store ordered per-file digests in a
+  byte-growing manifest; keep the independent exact row-count tripwire.
+- **Bootstrap-safe proof producers need an early fail-closed dispatcher.** The
+  checker can run before the full layout producer loads, so install a sealed
+  package dispatcher immediately after the checker; it may publish only the
+  canonical empty certificate until the full producer installs exactly once.
+  Define its checker-owned package only after `CHECKER-PACKAGE` exists in the
+  cold source stream, and add every new prefix dependency to the transitional
+  bootstrap stream; an older engine cannot load a path absent from its baked
+  prefix table.
+- **Seal the owner package, not only its authority words.** Undefining a
+  producer hook removes the old spelling but an unsealed package can republish
+  authority-shaped exports. The native reserved-name table, checker predicate,
+  and forge tests must cover every trusted package owner.
+- **Variant guards certify both the expected tag and its domain.** A guard row
+  without the certified variant limit cannot prove that a fetched tag belongs
+  to the family. Encode `{offset,tag,limit}`, validate `0 <= tag < limit`, and
+  reject malformed descriptors before pass two copies or executes them. Replay
+  must also reject an observed guard tag outside that domain before deciding
+  whether a guarded nested check is active.
+- **Primitive metadata keys include the defining package.** Package-scoped
+  words may share an unqualified name, so a primitive/effect registry keyed
+  only by spelling can attach the wrong contract. Resolve and record the exact
+  package-qualified producer identity.
+- **Package new seams; do not namespace-migrate an unrelated regression.** A
+  fixed-range test needed three literal updates, not a file-wide API rewrite.
+  Preserve established test helpers unless the feature actually changes their
+  boundary; put only the new helper surface behind a package.
+- **Generated assertions must respect interpret-mode control limits.** Habu's
+  top-level interpreter does not own compile-only `if`/`then`; emit a small
+  checked assertion word, then call it at top level.
+- **Generated failure branches need the full named-error contract.** A numeric
+  code alone does not satisfy `die`; emit the diagnostic string and code so the
+  assertion itself remains checked and the failure is attributable.
+- **Certificate operand positions follow the local-group capacity, not shuffle
+  arity.** The four `P2W` scratch cells bound only fixed-arity stack operators;
+  local bind evidence can name any of 64 group positions and must validate
+  against `TXN-LIVE-W-CAP`.
+- **A recovery vocabulary must never leak into the ambient search order.**
+  Leaving the private guard vocabulary active made its `BAND` helper shadow the
+  existing instruction emitter and crashed stage0 generation. Keep the legacy
+  global guard API unchanged; resolve private additions with balanced local
+  `also`/`previous` brackets at each call site.
+- **Recovery seal guards must use the native friend-latch boundary.** A second
+  prefix latch diverges from native self-hosting and can reject the compiler's
+  own baked package definitions. Mirror the single friend latch and its cold
+  prefix transition instead of adding another mutable authority bit.
+- **Seal source transitions at the interpreted token boundary.** A native
+  store emitted while assembling the source buffer runs before any prefix word;
+  append an idempotent seal token after the trusted prefix instead. Internal
+  builder binaries carry an emitter-only package flag and never become the
+  installed user engine.
+- **Writable extents become sound only in one explicit callee wrapper.** A
+  universal binding generator lets generated source mint trust and mutable XT
+  caches permit redirection. Keep each symbol in an audited `TRUSTED:` word,
+  fix every direction and extent there, and seal the package after definition.
+- **Writable extents belong to exact bindings, never callers.** A caller-selected
+  length can understate a foreign write or use zero to bypass protection. Reject
+  zero extents and have each binding install the callee contract's fixed size.
+- **Protecting publication does not protect package reopen.** Registering a
+  public WID blocks writes through defining sinks, but `package NAME` can still
+  reopen its private dictionary. Package lookup must reject every protected WID.
+- **Fixed test emitters are safer than universal patch wrappers.** Keep each raw
+  `patch32` boundary private to one fixture with fixed instructions; a checked
+  wrapper that accepts arbitrary instruction cells launders code-write authority.
+- **Bootstrap IR must grow outside the Gforth dictionary.** Raising a static
+  `create ... allot` cap steals space from later image buffers and turns code
+  growth into dictionary overflow. Keep the IR heap-backed and resize it with
+  checked arithmetic so compiler growth does not consume dictionary capacity.
+- **A signature may name only installed types.** Execution tokens are currently
+  checker scalars (`n`); spelling an undeclared `xt` role makes self-certification
+  fail even when the runtime cell is valid. Add a nominal role first or use the
+  primitive model's actual scalar contract.
+- **Compiler replay is not a user load.** Sealing before a generated compiler
+  payload blocked its own protected packages; leaving every load open would
+  expose the same authority to applications. Route only statically certified
+  payloads through `--build`, emit `SEAL-FRIEND` before their drivers, and keep
+  `--load`, stdin, baked source, and the REPL sealed before the first user token.
+- **Sealed packages invalidate reopen-based private tests.** Once a library owns
+  and seals a package, later tests cannot enter its private wordlist. Remove
+  tests for retired private machinery; test live public contracts without
+  reopening the owner package.
+- **Capacity guards may precede span guards.** A definition starting four bytes
+  below the code limit fails with the named code-space error before any emitted
+  write can reach the protected band. Assert the earliest valid invariant, not a
+  later sink guard that execution never reaches.
+- **Every typevar-indexed array must follow the live typevar capacity.** Turning
+  `MAXTV` into a growable high-water left render's fixed `SEEN` array behind;
+  its reset loop then filled adjacent hook cells with `-1`. Grow scratch arrays
+  to the live cap and reset their process-local pointers before snapshots.
+- **Gate retries need fresh `XDG_CACHE_HOME` and `HB_TMP` per attempt.** A
+  reused cache can replay a timeout-poisoned result; mint both directories
+  inside the retry loop.
+- **Overlay byte identity proves gate-tool migrations.** Run migrated and
+  baseline tools from separate source overlays on identical clean and dirty
+  inputs, then compare stdout, stderr, and exit status.
+- **Certify target text before building its generator.** A handwritten target
+  probe separates checker limitations from emitter failures before generation
+  adds another fault domain.
+- **Match structural shapes, not interned ids.** Intern order can change across
+  sessions; compare kind, arity, and payload positions unless the ids come from
+  the same registry snapshot.
+- **Back up divergent workspace edits before recovery.** `jj workspace
+  update-stale` rebuilds the working copy and can replace on-disk edits; verify
+  file ownership before restoring them on a fresh change.
+- **Check live sibling diffs before editing shared files.** A cheap ownership
+  check avoids semantic divergence and is preferable to workspace recovery.
+- **Run typed-local lint against the exact integration diff.** A focused branch
+  gate can miss an earlier untyped local retained in a squashed feature stack;
+  the final master-to-feature artifact is the commit proof.
+- **Repo-wide lint input buffers must grow from file size.** A fixed ceiling
+  turns documentation growth into an unrelated lint failure; reuse a
+  high-water allocation rounded by `MEM-ALLOC-64K-SPAN`.
+- **Protocol phases need registered nullary type families.** Free-form atoms in
+  parametric signatures fail stored-signature parsing; register each nominal
+  phase and thread it through the context family so skipped transitions reject.
+- **Package-owned CAD ids are arity-zero cell families, not global DEFTYPEs.**
+  `TYPEFAMILY id 0` already gives package-qualified family identity, typed
+  pointer storage, rollback, snapshots, replay, and qualified diagnostics.
+  `DEFTYPE` instead installs a global nominal plus general raw converter words;
+  keep authority-bearing raw refinement private to the validating owner.
+- **Package words still compete with immediate core syntax.** A packaged word
+  named `BEGIN` resolves as the control word while compiling a body; use a
+  domain verb such as `START` even when the package would otherwise disambiguate.
+
+- **A failing `jj diff` with "sibling of the working copy's operation" mid-gate
+  means the snapshot you are gating may be EMPTY — back up edited files BEFORE
+  `jj workspace update-stale`:** update-stale RESETS the working copy (reverting
+  unsnapshotted edits) and can leave a divergent change twin; the non-empty twin
+  holds a possibly STALE snapshot, so restore from your own backups (they are
+  the exact gated bytes), abandon the twin, and re-run the cheap gates on the
+  restored tree. The 0-byte patch file written by the failed diff is the tell.
+- **MATCH arms may produce multiple values, and both arms must agree:** FL-SIG's
+  dot-split rewrote four dpos branch expressions into one MATCH whose arms each
+  push the (ilen fa flen) triple — the checker unifies multi-cell arm effects
+  fine. Diverging arms (`throw`/`exit`/usage-`die`) unify with any shape, so
+  option unwraps built on fail-closed reporters (GE-FAIL, BF-BUILD-RC die,
+  TR-USAGE) need no sentinel filler in the dead arm.
 - **A lagging integration branch can carry a stale plan; check the authoritative
   version before building.** The Model IR descriptor swap was implemented from
   fable's copy of a dot whose plan master had already CORRECTED (the G-TAG "enum
@@ -3333,10 +3592,6 @@ unchanged (148855). Keys for milestone 2:
   bind rejects, and stack-discipline style never needs it. A missing capability
   blocks only the code shapes that require it, not the goal; prove the
   intersection empty before declaring work blocked.
-- **Cache-hit tests must own the cache state that makes a hit possible.** An
-  object-cache assertion run without `HABU_BUILD_CACHE` can only miss, while a
-  shared warm artifact may bypass object production entirely. Bind a fresh
-  gate-local cache before proving store, restore, or relink transitions.
 - **Snapshot main-workspace file writes with a jj command IMMEDIATELY, or an
   op-state repair will silently revert them.** Three dots created via `dot add`
   in the main workspace were lost this campaign: concurrent worker-workspace jj
@@ -3384,3 +3639,4 @@ unchanged (148855). Keys for milestone 2:
   commit. `jj file show -r master <file>` (and the ownership list in the task)
   before editing turns a would-be semantic divergence into a cheap
   STOP-and-report; the report is a deliverable, the recovery is pure cost.
+

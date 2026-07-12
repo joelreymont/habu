@@ -78,6 +78,7 @@ variable RNLT-NUM-U
    s" : LOOP ( -- ) ;" SB-APPEND RNLT-LF
    s" : CASE ( -- ) ;" SB-APPEND RNLT-LF
    s" : undefine ( -- ) ;" SB-APPEND RNLT-LF
+   s" 2 LAYOUT-BUFFER IF sample" SB-APPEND RNLT-LF
    SB$ ;
 
 : RNLT-CASE-SRC$ ( -- ptr u8 n )
@@ -91,6 +92,7 @@ variable RNLT-NUM-U
    s" : ;VARIANT ( -- ) ;" SB-APPEND RNLT-LF
    s" : ;sumtype ( -- ) ;" SB-APPEND RNLT-LF
    s" : Export ( -- ) ;" SB-APPEND RNLT-LF
+   s" : LAYOUT-BUFFER ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
 \ TFAM 9: construct/MATCH/;MATCH are reserved control forms — a definition may
@@ -197,7 +199,8 @@ variable RNLT-NUM-U
    RNLT-OUT outu s" `j`" CONTAINS? TTRUE
    RNLT-OUT outu s" `LOOP`" CONTAINS? TTRUE
    RNLT-OUT outu s" `CASE`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE ;
+   RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `IF`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-JSON ( -- )
    RNLT-RUN-CORE-JSON 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
@@ -216,7 +219,8 @@ variable RNLT-NUM-U
    RNLT-OUT outu s" `variant`" CONTAINS? TTRUE
    RNLT-OUT outu s" `;VARIANT`" CONTAINS? TTRUE
    RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `Export`" CONTAINS? TTRUE ;
+   RNLT-OUT outu s" `Export`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `LAYOUT-BUFFER`" CONTAINS? TTRUE ;
 
 : RNLT-TEST-LOADER ( -- )
    RNLT-LOADER$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}

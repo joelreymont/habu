@@ -41,11 +41,23 @@ IOP# @ constant #IOPS
 
 \ --- IR record storage ---
 5    constant /IC
-16384 constant MAX-IC
-create ICBUF MAX-IC /IC * cells allot
+16384 constant IC-INIT
+-1 1 rshift /IC / cell / 2 / constant IC-GROW-MAX
+variable IC-CAP
+variable ICBUF
 variable #IC
 
-: IC-ADDR ( i -- addr )  /IC * cells ICBUF + ;
+: IC-BYTES ( n -- n )  /IC * cells ;
+
+IC-INIT IC-CAP !
+IC-INIT IC-BYTES allocate throw ICBUF !
+
+: IC-GROW ( -- )
+   IC-CAP @ dup IC-GROW-MAX > if drop E-IC-OVERFLOW throw then
+   2* dup IC-BYTES ICBUF @ swap resize throw ICBUF !
+   IC-CAP ! ;
+
+: IC-ADDR ( i -- addr )  /IC * cells ICBUF @ + ;
 
 : IC-OP ( i -- op )  IC-ADDR @ ;
 
@@ -58,7 +70,7 @@ variable #IC
 : IC-D  ( i -- d )   IC-ADDR 4 cells + @ ;
 
 : IC, ( a b c d op -- )
-   #IC @ MAX-IC >= if E-IC-OVERFLOW throw then
+   #IC @ IC-CAP @ >= if IC-GROW then
    #IC @ IC-ADDR >r
    r@ !  r@ 4 cells + !  r@ 3 cells + !  r@ 2 cells + !  r> cell+ !
    1 #IC +! ;

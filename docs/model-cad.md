@@ -312,10 +312,10 @@ One hard-coded TF32 GEMM path first (sm_87, f32 in, tf32 MMA, f32 accum,
 64x64/64x128 CTA tile, 4 warps), then epilogues, double buffering, and
 shape-keyed search. Fragment/smem/warp/stage/barrier tokens as checked types.
 
-- Exists: dots `habu-tensor-core-mma`, `habu-re-express-tiled`,
-  `habu-checker-capability-typed-e0c76a02` (kernel loops/smem/accumulators),
-  `lib/ptx/tile-smem.f`, `lib/ptx/tile-acc.f`. No new dot; this plan adds
-  the schedule-object and gate integration requirements to those dots.
+- Exists: typed loop/shared-memory/accumulator families, checked GEMM, and the
+  package-scoped phase-indexed `ATTN:CHECKED` fused-attention surface. The
+  remaining work is schedule objects, online parallel softmax, and tuned
+  device evidence rather than an unchecked public kernel boundary.
 - CAD-PLAN 8.1 step 3 LANDED (2026-07-05): the hard-coded TF32 GEMM path is
   `lib/ptx/cg-mma.f` (`mma.sync.aligned.m16n8k8`, f32 accum, 64×64 CTA), emitted
   by `maki/lower-mm.f` LMM-MMA? when the matmul class is licensed at TF32.

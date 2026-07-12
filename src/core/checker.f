@@ -373,6 +373,7 @@ variable TFAM-RESOLVE-XT   0 TFAM-RESOLVE-XT !   \ ( pkg-a pkg-u name-a name-u -
 variable TFAM-ARITY-XT     0 TFAM-ARITY-XT !     \ ( id -- arity )
 variable TFAM-LAYOUT?-XT   0 TFAM-LAYOUT?-XT !   \ ( id -- bool ) : family id occupies an ADT layout
 variable TFAM-WIDTH-XT     0 TFAM-WIDTH-XT !     \ ( id -- n ) : logical width in stack cells (docs §18)
+variable TFAM-CON-LIN-XT   0 TFAM-CON-LIN-XT !   \ ( id -- bool ) : family schemas contain a concrete linear value
 variable CONSTRUCT-FAM-XT  0 CONSTRUCT-FAM-XT !  \ ( ptr u8 n -- n bool ) : item 9 construct family resolve, active package only
 variable CONSTRUCT-STEP-XT 0 CONSTRUCT-STEP-XT ! \ ( ptr u8 n n -- bool ) : item 9 construct variant resolve + step effect
 variable MATCH-FAM-XT      0 MATCH-FAM-XT !      \ ( ptr u8 n -- n bool ) : item 9 MATCH family resolve, signature scope
@@ -1062,6 +1063,9 @@ variable TWALK-D
 \ ?dup, control predicates, higher-order apply, con/ptr/atom pairings) fails
 \ closed through the same guards.
 variable LAYOUT-XPORT
+variable LAYOUT-INTRO
+variable LBUF-PEND-A
+variable LBUF-PEND-U   0 LBUF-PEND-U !
 
 \ Linear guard (dot: "possibly-linear layout copies reject until TFAM 11"): a
 \ layout whose family args contain a linear con — or an arg still unresolved,
@@ -1080,7 +1084,8 @@ variable LAYOUT-XPORT
    0 BEGIN dup p PARAM>ARGC < WHILE
       p over PARAM>ARG LAYOUT-ARG-LINEARISH? IF drop RES-TRUE EXIT THEN
       1 +
-   REPEAT drop RES-FALSE ;
+   REPEAT drop
+   p PARAM>FAM TFAM-CON-LIN-XT @ execute ;
 
 \ --- whole-bundle linear accounting (item 11, docs §19). A sum/enum whose type
 \ args include a linear con is ONE linear unit as a value: LAYOUT-LINEAR-COUNT
@@ -1100,6 +1105,7 @@ variable LLC-N
       p over PARAM>ARG LAYOUT-ARG-LIN-N LLC-N @ + LLC-N !
       1 +
    REPEAT drop
+   p PARAM>FAM TFAM-CON-LIN-XT @ execute IF LLC-N @ 1 + LLC-N ! THEN
    LLC-N @ ;
 : LAYOUT-LINEAR? ( n -- bool ) LAYOUT-LINEAR-COUNT 0 <> ;
 : LAYOUT-ARGS-OPEN? ( n -- bool ) {: p:n :}
@@ -1108,15 +1114,14 @@ variable LLC-N
       1 +
    REPEAT drop RES-FALSE ;
 
-\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): the
-\ memory tier a layout value may cross TODAY. Gate = closed non-linear args
-\ AND one-cell registry width (the enum tier): the compiled one-cell `!`/`@`
-\ are already the exact lowering for W = 1, so acceptance is checker-only.
-\ W > 1 waits for the S2 width-aware store/fetch engine legs; possibly-linear
-\ (incl. open-arg) stays rejected until TFAM 11 whole-bundle counting.
+\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): every
+\ closed non-linear layout with a physical cell may cross typed memory. W=1
+\ uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products have
+\ no addressable representation and reject. Possibly-linear, including open
+\ args that might later become linear, stays rejected until TFAM 11.
 : LAYOUT-MEM-OK? ( n -- bool ) {: t:n :}        \ resolved logical layout T-PARAM
    t LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
-   t PARAM>FAM TFAM-WIDTH@* 1 = ;
+   t T-WIDTH 0 > ;
 
 : LAYOUT-XPORT-ALLOW? ( n n -- bool ) {: a:n b:n :}
    LAYOUT-XPORT @ 0= IF RES-FALSE EXIT THEN     \ only inside a whole-bundle transport op
@@ -1129,31 +1134,16 @@ variable LLC-N
       a ISVAR EXIT THEN
    RES-FALSE ;                                  \ con/ptr/atom vs layout is never a bundle move
 
-\ Pointer-pointee bind (storable layouts S1): CUR-STRICT marks exactly the
-\ pairs under a T-PTR pointee (PAIR-STRICT's one call site is U-TYPE's T-PTR
-\ arm, and PAIR inherits the flag for its subterm pairs), and a POINTER is one
-\ cell whatever its pointee, so binding a var to a logical layout pointee never
-\ breaks the item-12 width discipline. Allow it for the S1 memory tier only
-\ (LAYOUT-MEM-OK?: non-linear, W = 1) — that is what lets a checked accessor
-\ certify `( -- ptr color ) VAR-NAME` against the variable's `-- ptr a` row,
-\ giving `!`/`@` a typed address source; the one-cell pointee also matches the
-\ one-cell reservation a `variable`/`create` row actually backs. Hidden fields
-\ still never bind; row-level pairs (CUR-STRICT 0) keep the transport-only rule.
-: LAYOUT-PTR-BIND-OK? ( n n -- bool ) {: a:n b:n :}
-   CUR-STRICT @ 0= IF RES-FALSE EXIT THEN       \ only under a ptr pointee
-   a HIDDEN-PARAM? b HIDDEN-PARAM? or IF RES-FALSE EXIT THEN
-   a LAYOUT-PARAM? IF
-      a T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
-      b ISVAR EXIT THEN
-   b LAYOUT-PARAM? IF
-      b T-RES LAYOUT-MEM-OK? 0= IF RES-FALSE EXIT THEN
-      a ISVAR EXIT THEN
-   RES-FALSE ;
-
 : LAYOUT-BLOCK? ( n n -- bool ) {: a:n b:n :}   \ a layout pairing this op may NOT form
    a b LAYOUT-EITHER? 0= IF RES-FALSE EXIT THEN
    a b LAYOUT-XPORT-ALLOW? IF RES-FALSE EXIT THEN
-   a b LAYOUT-PTR-BIND-OK? 0= ;
+   LAYOUT-INTRO @ 0 <> CUR-STRICT @ 0 <> and IF
+      a HIDDEN-PARAM? b HIDDEN-PARAM? or 0= IF
+         a LAYOUT-PARAM? b ISVAR and IF a T-RES LAYOUT-MEM-OK? 0= EXIT THEN
+         b LAYOUT-PARAM? a ISVAR and IF b T-RES LAYOUT-MEM-OK? 0= EXIT THEN
+      THEN
+   THEN
+   RES-TRUE ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -1277,7 +1267,7 @@ variable DEADERR  variable DEADTA  variable DEADTU
 
 : NEW ( -- )
    -1 OK ! 0 UNCK ! 0 SPN ! 0 USP ! TV-RESET 0 FV ! 0 QEN ! 0 PTRN !
-   0 LAYOUT-XPORT !
+   0 LAYOUT-XPORT !  0 LAYOUT-INTRO !
    TRAIL-RESET   0 TRIAL-DEPTH !   LIN-TAINT-RESET
    RIGID-RESET
    0 ATOMN ! 0 PARAMN ! 0 PARAM-SCR-N ! 0 PARG-N !
@@ -2559,6 +2549,27 @@ variable PD-IN variable PR-IN variable PD-OUT variable PR-OUT variable PD-BASE
    0 SI !
    PSIG ;
 
+\ Parse one type application for the generative LAYOUT-BUFFER definer. This is
+\ the allocation-certificate gate: only a closed, non-linear, addressable
+\ layout is admitted, and the exact family id/width are returned to the fixed
+\ definer implementation. Ordinary unification never receives this authority.
+variable LBI-T
+variable LBI-BAD
+
+: CHECKER-LAYOUT-INFO ( ptr u8 n -- n n bool ) {: a:ptr u:n :}
+   NEW
+   SGBAD-CLEAR
+   PKRESET NMAP-RESET ROWMAP-RESET FAM-RESET
+   a SB!  u SL !  0 SI !
+   NEXT-SIG-TOK dup 0= IF 2drop 0 0 RES-FALSE EXIT THEN
+   SIG-TYPE T-RES LBI-T !
+   NEXT-SIG-TOK dup 0 <> LBI-BAD ! 2drop
+   SGBAD @ 0 <> LBI-BAD @ 0 <> or IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ HIDDEN-PARAM? IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ LAYOUT-PARAM? 0= IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ LAYOUT-MEM-OK? 0= IF 0 0 RES-FALSE EXIT THEN
+   LBI-T @ PARAM>FAM  LBI-T @ T-WIDTH  RES-TRUE ;
+
 : VREC-ROOM ( -- )
    VREC-ENSURE ;
 
@@ -3819,7 +3830,7 @@ variable LMI
    then
    MK-QUOT ;
 
-256 constant PE-CAP
+$200 constant PE-CAP
 1 constant PE-ACTIVE
 2 constant PE-TRUSTED-ONLY       \ prim is a trust boundary: rejected from CHECKED code, TRUSTED: only
 
@@ -3898,6 +3909,8 @@ variable PRM-FIRST
 
 variable PE-NA
 variable PE-NU
+PTR-VARIABLE PE-PKG-A
+variable PE-PKG-U
 variable PE-BASE
 variable PE-DIN
 variable PE-DOUT
@@ -3925,15 +3938,25 @@ variable PE-EFF-ID
 : PRIM: ( -- )
    parse-name PE-OPEN ;
 
-: PE-CLOSE ( -- )
-   PE-NA@ PE-NU @ PE-SYM-OF PE-SYM-ID !
-   PE-SYM-ID @ CHECKER-REC-SYM !
+: PPRIM: ( -- )
+   parse-name PE-PKG-U ! PE-PKG-A !
+   parse-name PE-OPEN ;
+
+: PE-CLOSE-SYM ( n -- )
+   dup PE-SYM-ID ! CHECKER-REC-SYM !
    PE-DIN @ PE-DOUT @ PE-RIN @ PE-ROUT @ PE-HASR @
    E-BUILD-EFFECT PE-EFF-ID !
    PE-SYM-ID @ PE-EFF-ID @ PE-ACTIVE PRIM-ADD ;
 
+: PE-CLOSE ( -- )
+   PE-NA@ PE-NU @ PE-SYM-OF PE-CLOSE-SYM ;
+
 : PRIM; ( -- )
    PE-CLOSE ;
+
+: PPRIM; ( -- )
+   PE-PKG-A @ PE-PKG-U @ SYM-PUBLIC PE-NA@ PE-NU @ SYM-INTERN
+   PE-CLOSE-SYM ;
 
 : PE-IN ( n -- )
    PE-DIN @ MK-PUSH PE-DIN ! ;
@@ -3945,6 +3968,7 @@ variable PE-EFF-ID
 : PE-B ( -- n ) $62 VAR-OF ;
 : PE-C ( -- n ) $63 VAR-OF ;
 : PE-D ( -- n ) $64 VAR-OF ;
+: PE-E ( -- n ) $65 VAR-OF ;
 : PE-N ( -- n ) CC-N MK-CON ;
 : PE-F ( -- n ) CC-BOOL MK-CON ;
 : PE-R ( -- n ) CC-R MK-CON ;
@@ -3953,6 +3977,8 @@ variable PE-EFF-ID
 : PE-PTR-A ( -- n ) PE-A PE-PTR ;
 : PE-PTR-B ( -- n ) PE-B PE-PTR ;
 : PE-PTR-C ( -- n ) PE-C PE-PTR ;
+: PE-PTR-D ( -- n ) PE-D PE-PTR ;
+: PE-PTR-E ( -- n ) PE-E PE-PTR ;
 : PE-PTR-N ( -- n ) PE-N PE-PTR ;
 : PE-PTR-U8 ( -- n ) PE-U8 PE-PTR ;
 : PE-PTR-PTR-B ( -- n ) PE-B PE-PTR PE-PTR ;
@@ -4113,6 +4139,7 @@ PRIM: check@         PE-N PE-OUT PRIM;
 PRIM: ndict@         PE-N PE-OUT PRIM;
 PRIM: ndict!         PE-N PE-IN PRIM;
 PRIM: SEAL-CAPTURE   PRIM;
+PRIM: SEAL-FRIEND    PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
@@ -4151,6 +4178,12 @@ PRIM: CHECKER-DEFSUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFSUM-NOEND PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFENUM PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFPRODUCT PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LAYOUT-INFO PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PE-N PE-OUT PE-F PE-OUT PRIM;
+PRIM: CHECKER-DEFLAYOUT-BUFFER
+   PE-PTR-U8 PE-IN PE-N PE-IN  PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-LBUF-NAME-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+PRIM: CHECKER-DEFINED? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-N@ PE-N PE-OUT PRIM;
 PRIM: TFAM-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
 \ Public-signature metadata: registry accessors so the checked public-signatures
@@ -4167,15 +4200,47 @@ PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: SUMV-CTOR-PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
-PRIM: WF-TOKIX@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-OFF@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-FAM@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-WIDTH@ PE-N PE-IN  PE-N PE-OUT PRIM;
-PRIM: WF-WIDE? PE-N PE-OUT PRIM;
+PRIM: WF-TERM@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-FLAGS@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: WF-WIDE? PE-F PE-OUT PRIM;
+PRIM: WF-NEEDS-P2? PE-F PE-OUT PRIM;
 PRIM: WF-W-AT PE-N PE-IN  PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: wide-mark PRIM;
 PRIM: REC-WIDE-PUBLISH PRIM;
 PRIM: LOCW-HW@ PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM: LOCW-HW-N@ PE-N PE-OUT PRIM;
+PPRIM: LOWER-CERT MAGIC PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT VERSION PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT HEADER-CELLS PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT MAGIC-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT VERSION-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT TOTAL-BYTES-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT NEEDS-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT WF-COUNT-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT BIND-COUNT-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FETCH-COUNT-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FETCH-DATA-CELLS-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT WF-CELLS PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FETCH-CELLS PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT CHECK-CELLS PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT GUARD-CELLS PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FETCH-FLAG PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT STORE-FLAG PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT BODY-LEN-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT BODY-HASH-CELL PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FNV-OFFSET PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT FNV-PRIME PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT CELL-COUNT PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT CELL@ PE-N PE-IN PE-N PE-OUT PPRIM;
+PPRIM: LOWER-CERT BYTES PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
+PRIM-TRUSTED-ONLY!
+PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-CERT INSTALL PE-N PE-IN PPRIM;
+PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -4193,6 +4258,17 @@ PRIM: CHECKER-PRIVATE PRIM;
 PRIM: CHECKER-END-PACKAGE PRIM;
 PRIM: ffi-call       PE-PTR-A PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: ffi-call-n     PE-PTR-A PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: ffi-call-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: ffi-call-abi-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
+                           PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
+                           PE-N PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
+PRIM: ffi-call-abi-r-bounded PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN
+                             PE-PTR-D PE-IN PE-PTR-E PE-IN PE-N PE-IN PE-N PE-IN
+                             PE-R PE-OUT PRIM;
+PRIM-TRUSTED-ONLY!
 PRIM: ffi-call-abi   PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
                      PE-N PE-OUT PRIM;
 PRIM: ffi-call-abi-r PE-PTR-A PE-IN PE-PTR-B PE-IN PE-PTR-C PE-IN PE-N PE-IN PE-N PE-IN
@@ -4279,9 +4355,11 @@ variable DFER-END
 \ constructor word cannot be undefined; a new tail cannot certify into a
 \ constructor package (closed-but-callable, PLAN Package Shape).
 7111 constant E-CTOR-PROTECTED
+7121 constant E-CHECKER-LAYOUT-BUFFER
 variable CTOR-PKG?-XT      0 CTOR-PKG?-XT !
 variable CTOR-WORD?-XT     0 CTOR-WORD?-XT !
 variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
+
 : CHECKER-UNDEFINE-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    CTOR-WORD?-XT @ 0= IF EXIT THEN
    a u CTOR-WORD?-XT @ execute IF E-CTOR-PROTECTED throw THEN ;
@@ -4302,6 +4380,26 @@ variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
 : CHECKER-END-PACKAGE ( -- )
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
+
+TRUSTED: CHECKER-CERT-CALL ( ptr u8 n n n -- )
+   {: a:ptr u:n verdict:n xt:n :}
+   a u verdict xt execute ;
+
+package CHECKER-CERT
+
+variable PRODUCER-XT   0 PRODUCER-XT !
+
+public
+
+: INSTALL ( n -- )
+   PRODUCER-XT @ 0 <> if s" checker: lowering certificate producer already installed" 76 die then
+   PRODUCER-XT ! ;
+
+: PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
+   PRODUCER-XT @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
+   a u verdict PRODUCER-XT @ CHECKER-CERT-CALL ;
+
+end-package
 
 : CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CHECKER-COLON-N !
@@ -4333,6 +4431,7 @@ variable CTOR-EXTEND?-XT   0 CTOR-EXTEND?-XT !
    CHECKER-TA-FIELD ! ;
 
 variable CHECKER-QBAD-TOK
+$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 
 \ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
 \ colon keeps the token an ordinary name; a non-edge first colon with a second
@@ -4355,6 +4454,26 @@ variable CHECKER-QBAD-TOK
 
 : CHECKER-QTAIL$ ( -- ptr u8 n )
    CHECKER-TA@ CHECKER-TU @ ;
+
+: CHECKER-SEALED-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" checker-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" lower-cert" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" lower-cert-hook" CORE-STR=CI ;
+
+: CHECKER-LBUF-NAME-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHECKER-QUALIFIED? drop
+   CHECKER-QBAD-TOK @ 0 <> IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   data-base CK-SEAL-LATCH-OFF + @ 0 <> IF
+      a u CHECKER-QUALIFIED? IF
+         CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-CHECKER-LAYOUT-BUFFER throw THEN
+      THEN
+   THEN
+   CTOR-EXTEND?-XT @ 0 <> IF
+      a u CTOR-EXTEND?-XT @ execute IF E-CTOR-PROTECTED throw THEN
+   THEN ;
 
 \ typed-local-lint: allow-bare-local - a preserves ptr u8 role.
 : CHECKER-GLOBAL-SYM ( ptr u8 n -- n ) {: a u:n :}
@@ -4431,7 +4550,6 @@ variable CHECKER-QBAD-TOK
 \ call -RAW only after the ndict-watermark guard passes) reach -RAW unchanged.
 \ checker.f loads before layout.f, so the friend-arena latch offset and the seal
 \ exit code are mirrored here as named constants (both are foundational and stable).
-$20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 83 constant CK-E-SEAL-VIOLATION         \ = layout.f E-SEAL-VIOLATION
 
 : CHECKER-USIGS-TRUNCATE-FROM ( ptr u8 n -- )
@@ -4560,6 +4678,9 @@ variable DFER-POS
    CHK-CAND @ 0 <> IF RES-FALSE EXIT THEN
    CHECKER-REC-A@ CHECKER-REC-U@ CHECKER-FIND-USIG ;
 
+: CHECKER-DEFINED? ( ptr u8 n -- bool )
+   CHECKER-FIND-USIG ;
+
 : CHECKER-DUP-DEFINITION ( -- )
    $4E throw ;
 
@@ -4570,6 +4691,60 @@ variable DFER-POS
    na nu CHECKER-REC-NAME!
    CHECKER-CERT-DUP? IF CHECKER-DUP-DEFINITION THEN
    sa su CHECKER-REC-A@ CHECKER-REC-U@ USIG-ADD ;
+
+$1000 constant LBUF-SIG-CAP
+$7FFFFFFFFFFFFFFF constant LBUF-COUNT-MAX
+create LBUF-SIG-BUF LBUF-SIG-CAP allot
+variable LBUF-SIG-U
+variable LBUF-SIG-I
+variable LBUF-COUNT-N
+variable LBUF-INFO-W
+
+: LBUF-SIG-C, ( n -- ) {: c:n :}
+   LBUF-SIG-U @ LBUF-SIG-CAP >= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   c LBUF-SIG-BUF LBUF-SIG-U @ + c!
+   LBUF-SIG-U @ 1 + LBUF-SIG-U ! ;
+
+: LBUF-SIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LBUF-SIG-I !
+   BEGIN LBUF-SIG-I @ u < WHILE
+      a LBUF-SIG-I @ + c@ LBUF-SIG-C,
+      LBUF-SIG-I @ 1 + LBUF-SIG-I !
+   REPEAT ;
+
+: CHECKER-LBUF-COUNT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 0= IF RES-FALSE EXIT THEN
+   0 LBUF-COUNT-N !  0 LBUF-SIG-I !
+   BEGIN LBUF-SIG-I @ u < WHILE
+      a LBUF-SIG-I @ + c@ {: c:n :}
+      c 48 < c 58 >= or IF RES-FALSE EXIT THEN
+      c 48 - {: d:n :}
+      LBUF-COUNT-N @ LBUF-COUNT-MAX d - 10 / > IF RES-FALSE EXIT THEN
+      LBUF-COUNT-N @ 10 * d + LBUF-COUNT-N !
+      LBUF-SIG-I @ 1 + LBUF-SIG-I !
+   REPEAT
+   LBUF-COUNT-N @ 0 > ;
+
+: CHECKER-LBUF-EXTENT? ( n n -- bool ) {: count:n width:n :}
+   count 0 <= width 0 <= or IF RES-FALSE EXIT THEN
+   count LBUF-COUNT-MAX width / > IF RES-FALSE EXIT THEN
+   count width * LBUF-COUNT-MAX CELL / <= ;
+
+: CHECKER-LBUF-SIG$ ( ptr u8 n -- ptr u8 n ) {: type:ptr typeu:n :}
+   0 LBUF-SIG-U !
+   s" n -- ptr " LBUF-SIG-APP
+   type typeu LBUF-SIG-APP
+   LBUF-SIG-BUF LBUF-SIG-U @ ;
+
+: CHECKER-DEFLAYOUT-BUFFER
+   ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: type:ptr typeu:n count:ptr countu:n name:ptr nameu:n :}
+   name nameu CHECKER-LBUF-NAME-GUARD
+   type typeu CHECKER-LAYOUT-INFO 0= IF 2drop E-CHECKER-LAYOUT-BUFFER throw THEN
+   nip LBUF-INFO-W !
+   count countu CHECKER-LBUF-COUNT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   LBUF-COUNT-N @ LBUF-INFO-W @ CHECKER-LBUF-EXTENT? 0= IF E-CHECKER-LAYOUT-BUFFER throw THEN
+   type typeu CHECKER-LBUF-SIG$ name nameu CHECKER-USIG-CERT-ADD ;
 
 : CHECKER-USIG-CERT-CURRENT ( ptr u8 n -- ) {: na:ptr nu:n :}
    na nu CHECKER-REC-NAME!
@@ -4750,6 +4925,7 @@ variable REG-PERSIST-DELTA
 \ this cell; a 0 cell keeps the call a no-op before they load. Same late-binding
 \ shape the checker already uses for the source-check hook (`set-check`).
 variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
+variable REG-SCRATCH-SNAP-XT   0 REG-SCRATCH-SNAP-XT !
 
 : CHECKER-SNAPSHOT-PREPARE ( -- )
    TOKBUF-RESET
@@ -4761,7 +4937,8 @@ variable REG-EXT-PERSIST-XT   0 REG-EXT-PERSIST-XT !
    SYM-SNAPSHOT-PERSIST
    USIGS-SNAPSHOT-PERSIST
    NORET-SNAPSHOT-PERSIST
-   REG-EXT-PERSIST-XT @ dup 0= if drop else execute then ;
+   REG-EXT-PERSIST-XT @ dup 0= if drop else execute then
+   REG-SCRATCH-SNAP-XT @ dup 0= if drop else execute then ;
 
 : NORET-REC ( -- ptr a )
    NORET-END @ NORET-CELL ;
@@ -4888,15 +5065,10 @@ variable CURSYM
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
-: EXPORT-SEALED-PKG? ( ptr u8 n -- bool ) {: p:ptr pu:n :}
-   p pu s" tfam" CORE-STR=CI IF RES-TRUE EXIT THEN
-   p pu s" type" CORE-STR=CI IF RES-TRUE EXIT THEN
-   p pu s" match" CORE-STR=CI ;
-
 : EXPORT-SEAL-GUARD ( ptr u8 n -- ) {: a:ptr u:n :}
    data-base CK-SEAL-LATCH-OFF + @ 0= IF EXIT THEN
    a u CHECKER-QUALIFIED? 0= IF EXIT THEN
-   CHECKER-QPKG$ EXPORT-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
+   CHECKER-QPKG$ CHECKER-SEALED-PKG? IF E-EXPORT-SEALED throw THEN ;
 
 \ PRIM-FIRST-IDX, not PRIM-FIRST-SYM: the latter returns an effect OFFSET,
 \ and the first PES row legitimately lives at USIGS offset 0.
@@ -5057,16 +5229,116 @@ variable FLD  variable FLI  variable FLO  variable FLC
 : ROW-TOP-BYTE-PTR? ( n -- bool )
    R-RES dup TAG S-PUSH = IF P>TYPE BYTE-PTR? EXIT THEN drop RES-FALSE ;
 
-\ --- storable layouts S1 (dot habu-checker-capability-typed-a480c423): `!`/`@`
+\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
+\ Per checked definition the checker records one row for every operation whose
+\ lowering needs a logical layout width. Transport/locals rows use logical
+\ operand positions; layout-memory rows use position 0 as the operation's
+\ bundle width (the address itself stays one cell). An absent row means scalar
+\ lowering. Certificate consumers query the table by raw source-byte offset
+\ before emitting the operation. The table is per-CHECK scratch.
+BEGIN-STRUCTURE WF-REC
+   CELL +FIELD WF.OFF
+   CELL +FIELD WF.POS
+   CELL +FIELD WF.FAM
+   CELL +FIELD WF.W
+   CELL +FIELD WF.TERM
+   CELL +FIELD WF.FLAGS
+END-STRUCTURE
+$80 constant WF-INIT
+create WFS-BOOT WF-INIT WF-REC * allot
+PTR-VARIABLE WFS-P   WFS-BOOT WFS-P !
+variable WF-CAP  WF-INIT WF-CAP !
+variable WF-N
+variable WF-CURROW   variable WF-POS-I
+variable WF-I
+
+1 constant WF-FETCH-FLAG
+2 constant WF-STORE-FLAG
+
+: WFS ( -- ptr a ) WFS-P @ ;
+
+: WF-GROW-CAP ( n -- n ) {: need:n :}
+   $7FFFFFFFFFFFFFFF WF-REC / {: lim:n :}
+   need 0 <= need lim > or if s" checker: width-fact capacity overflow" 76 die then
+   WF-CAP @ lim 2 / <= if WF-CAP @ 2 * need max exit then
+   need ;
+
+: WF-ENSURE ( n -- ) {: need:n :}
+   need WF-CAP @ <= if exit then
+   need WF-GROW-CAP {: cap:n :}
+   WFS-P @ WF-CAP @ WF-REC * cap WF-REC * ARENA-BYTES-GROW WFS-P !
+   cap WF-CAP ! ;
+
+: WF-ROW ( n -- ptr a ) WF-REC * WFS + ;
+: WF-ROW@ ( n -- ptr a ) {: i:n :}
+   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
+   i WF-ROW ;
+: WF-N@ ( -- n ) WF-N @ ;
+: WF-OFF@ ( n -- n ) WF-ROW@ WF.OFF @ ;
+: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
+: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
+: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
+: WF-TERM@ ( n -- n ) WF-ROW@ WF.TERM @ ;
+: WF-FLAGS@ ( n -- n ) WF-ROW@ WF.FLAGS @ ;
+
+: WF-ROW-COPY ( n n -- ) {: src:n dst:n :}
+   src WF-ROW dst WF-ROW WF-REC ARENA-COPY ;
+
+: WF-KEY< ( n n n -- bool ) {: off:n pos:n row:n :}
+   off row WF-OFF@ < if RES-TRUE exit then
+   off row WF-OFF@ = pos row WF-POS@ < and ;
+
+: WF-KEY= ( n n n -- bool ) {: off:n pos:n row:n :}
+   off row WF-OFF@ = pos row WF-POS@ = and ;
+
+: WF-SAME? ( n n n n n -- bool ) {: fam:n term:n w:n flags:n row:n :}
+   fam row WF-FAM@ =
+   term row WF-TERM@ = and
+   w row WF-WIDTH@ = and
+   flags row WF-FLAGS@ = and ;
+
+: WF-SEEK-DONE? ( n n -- bool ) {: off:n pos:n :}
+   WF-I @ WF-N @ >= if RES-TRUE exit then
+   off pos WF-I @ WF-KEY< if RES-TRUE exit then
+   off pos WF-I @ WF-KEY= if RES-TRUE exit then
+   WF-I @ 1 + WF-I !
+   RES-FALSE ;
+
+: WF-ADD-FULL ( n n n n n -- ) {: pos:n fam:n term:n w:n flags:n :}
+   TSTART @ {: off:n :}
+   0 WF-I !
+   begin off pos WF-SEEK-DONE? until
+   WF-I @ WF-N @ < if
+      off pos WF-I @ WF-KEY= if
+         fam term w flags WF-I @ WF-SAME? 0= if s" checker: conflicting width fact" 76 die then
+         exit
+      then
+   then
+   WF-N @ 1 + WF-ENSURE
+   WF-N @ begin dup WF-I @ > while
+      dup 1 - over WF-ROW-COPY
+      1 -
+   repeat drop
+   WF-I @ WF-ROW {: r:ptr :}
+   off r WF.OFF !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
+   term r WF.TERM !  flags r WF.FLAGS !
+   WF-N @ 1 + WF-N ! ;
+
+: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}
+   pos fam 0 w 0 WF-ADD-FULL ;
+
+: WF-MEM-RECORD ( n n -- ) {: t:n flags:n :}
+   0 t PARAM>FAM t t T-WIDTH flags WF-ADD-FULL ;
+
+\ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): `!`/`@`
 \ through a `ptr family<..>` address move the pointee's whole logical value.
 \ The ADDRESS type picks the arm — family identity lives in the pointer, so a
 \ bare `ptr a` store of a layout value stays rejected, a mismatched family
 \ rejects in ordinary unification, an `n` cannot enter an enum slot, and a
-\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? gates the tier:
-\ W = 1 (enum) only, where the compiled one-cell `!`/`@` are already the exact
-\ lowering — W > 1 rejects until the S2 engine legs, linear/open-arg until
-\ TFAM 11. The effect rows push the family's hidden expansion (PUSH-LOGICAL),
-\ so the value side pairs hidden-to-hidden like every checked row cell.
+\ fetched value is born typed (never a bare n). LAYOUT-MEM-OK? admits every
+\ closed non-linear layout width; WF-MEM-RECORD gives pass 2 the registry width
+\ before CHECKER-STEP mutates the row. The effect rows push the family's hidden
+\ expansion, so the value side pairs hidden-to-hidden like every checked row.
 : LAYOUT-MEM-INNER ( -- n bool )   \ resolved DCUR top `ptr fam<..>` -> logical pointee
    DCUR @ R-RES {: node:n :}
    node TAG S-PUSH <> IF 0 RES-FALSE EXIT THEN
@@ -5079,6 +5351,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : LAYOUT-FETCH-STEP ( n -- ) {: t:n :}   \ ( ptr fam -- fam ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t WF-FETCH-FLAG WF-MEM-RECORD
    FRESH MK-ROW {: rest:n :}
    t MK-PTR rest MK-PUSH
    t rest PUSH-LOGICAL
@@ -5086,6 +5359,7 @@ variable FLD  variable FLI  variable FLO  variable FLC
 
 : LAYOUT-STORE-STEP ( n -- ) {: t:n :}   \ ( fam ptr fam -- ) from the pointee term
    t LAYOUT-MEM-OK? 0= IF 0 OK ! -1 FAILSET ! EXIT THEN
+   t WF-STORE-FLAG WF-MEM-RECORD
    FRESH MK-ROW {: rest:n :}
    t rest PUSH-LOGICAL
    t MK-PTR swap MK-PUSH
@@ -5121,44 +5395,6 @@ variable FLD  variable FLI  variable FLO  variable FLC
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
    CHECKER-QBAD-TOK @ 0 <> IF -1 QUALBAD ! THEN
    -1 UNDEFERR ! -1 UNCK ! THEN THEN ;
-
-\ --- item 12 width facts (the emitter fact surface, docs §17-18) -------------
-\ Per checked definition the checker records, for every whole-bundle transport
-\ op and locals capture whose logical operands include a layout value, one row
-\ per layout operand: (body token index, operand position 0=top, family-id,
-\ logical width from the registry). An absent row means every operand is one
-\ cell, so today's one-cell lowering stands. Native+Gforth emitters consume the
-\ table keyed by token index BEFORE emitting the op; the width is the REGISTRY
-\ logical width (sum: slots+tag), which becomes the physical width when item
-\ 12's LAYOUT-PUSH-FIELDS expansion lands with the width-aware lowering slice —
-\ emitters must not lower from these facts before that slice. The table is
-\ per-CHECK scratch (reset in CHECK-RESET, valid until the next CHECK), like
-\ the FAILTK diagnostics.
-BEGIN-STRUCTURE WF-REC
-   CELL +FIELD WF.TOK
-   CELL +FIELD WF.POS
-   CELL +FIELD WF.FAM
-   CELL +FIELD WF.W
-END-STRUCTURE
-128 constant WF-CAP
-create WFS WF-CAP WF-REC * allot
-variable WF-N
-variable WF-CURROW   variable WF-POS-I
-
-: WF-ROW@ ( n -- ptr a ) {: i:n :}
-   i 0 < i WF-N @ >= or IF s" checker: bad width-fact index" 76 die THEN
-   i WF-REC * WFS + ;
-: WF-N@ ( -- n ) WF-N @ ;
-: WF-TOKIX@ ( n -- n ) WF-ROW@ WF.TOK @ ;
-: WF-POS@ ( n -- n ) WF-ROW@ WF.POS @ ;
-: WF-FAM@ ( n -- n ) WF-ROW@ WF.FAM @ ;
-: WF-WIDTH@ ( n -- n ) WF-ROW@ WF.W @ ;
-
-: WF-ADD ( n n n -- ) {: pos:n fam:n w:n :}   \ append one fact at the current token
-   WF-N @ WF-CAP >= IF s" checker: width-fact table full" 76 die THEN
-   WF-N @ WF-REC * WFS + {: r:ptr :}
-   TOKIX @ r WF.TOK !  pos r WF.POS !  fam r WF.FAM !  w r WF.W !
-   WF-N @ 1 + WF-N ! ;
 
 : ROW-DROP-1 ( n -- n )            \ row below the top cell; die 76 if it is not a push
    R-RES dup TAG S-PUSH <> IF s" checker: hidden group underruns row" 76 die THEN
@@ -5221,17 +5457,24 @@ variable WF-CURROW   variable WF-POS-I
 \ recompiler (habu2.f EM-COMPILE-P2WIDE) calls these through the dictionary
 \ right after the check hook certifies a definition; the facts are that
 \ definition's per-CHECK scratch, still live until the next CHECK.
-: WF-WIDE? ( -- n )                \ 1 if any recorded fact is wider than one cell
+: WF-WIDE? ( -- bool )
    0 BEGIN dup WF-N @ < WHILE
-      dup WF-WIDTH@ 1 > IF drop 1 EXIT THEN
+      dup WF-WIDTH@ 1 > IF drop RES-TRUE EXIT THEN
       1 +
-   REPEAT drop 0 ;
-: WF-HIT? ( n n n -- bool ) {: i:n tok:n pos:n :}   \ row i records (tok,pos)?
-   i WF-TOKIX@ tok <> IF RES-FALSE EXIT THEN
-   i WF-POS@ pos = ;
-: WF-W-AT ( n n -- n ) {: tok:n pos:n :}   \ width of operand pos at body token tok (1 = scalar)
+   REPEAT drop RES-FALSE ;
+: WF-FETCH? ( n -- bool ) WF-FLAGS@ WF-FETCH-FLAG and 0 <> ;
+: WF-NEEDS-P2? ( -- bool )
+   WF-WIDE? IF RES-TRUE EXIT THEN
    0 BEGIN dup WF-N @ < WHILE
-      dup tok pos WF-HIT? IF WF-WIDTH@ EXIT THEN
+      dup WF-FETCH? IF drop RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop RES-FALSE ;
+: WF-HIT? ( n n n -- bool ) {: i:n off:n pos:n :}   \ row i records (off,pos)?
+   i WF-OFF@ off <> IF RES-FALSE EXIT THEN
+   i WF-POS@ pos = ;
+: WF-W-AT ( n n -- n ) {: off:n pos:n :}   \ width at raw source offset and operand position
+   0 BEGIN dup WF-N @ < WHILE
+      dup off pos WF-HIT? IF WF-WIDTH@ EXIT THEN
       1 +
    REPEAT drop 1 ;
 
@@ -5478,13 +5721,27 @@ variable #LOC  variable LMODE  variable LGRP  variable LROW  variable LCH  varia
 \ occurrence's FINAL width keyed by a monotone bind sequence that is never
 \ popped; LOCSEQIX maps a live index to its bind seq while the local is live
 \ (written at LOC-ADD, read at the group's :} bind).
-LOC-CAP 4 * constant LOC-HW-CAP    \ bind occurrences per definition, branch arms included
-create LOCW-HW LOC-HW-CAP cells allot
+LOC-CAP 4 * constant LOC-HW-INIT
+$0FFFFFFFFFFFFFFF constant LOC-HW-MAX-CELLS
+create LOC-HW-BOOT LOC-HW-INIT cells allot
+PTR-VARIABLE LOC-HW-P   LOC-HW-BOOT LOC-HW-P !
+variable LOC-HW-CAP     LOC-HW-INIT LOC-HW-CAP !
 create LOCSEQIX LOC-CAP cells allot
 variable LOCSEQ
+: LOC-HW ( -- ptr a ) LOC-HW-P @ ;
+: LOC-HW-GROW-CAP ( n -- n ) {: need:n :}
+   need 0 <= need LOC-HW-MAX-CELLS > or IF s" checker: local bind capacity overflow" 76 die THEN
+   LOC-HW-CAP @ LOC-HW-MAX-CELLS 2 / <= IF LOC-HW-CAP @ 2 * need max EXIT THEN
+   need ;
+: LOC-HW-ENSURE ( n -- ) {: need:n :}
+   need LOC-HW-CAP @ <= IF EXIT THEN
+   need LOC-HW-GROW-CAP {: cap:n :}
+   LOC-HW-P @ LOC-HW-CAP @ cells cap cells ARENA-BYTES-GROW LOC-HW-P !
+   cap LOC-HW-CAP ! ;
 : LOCW-HW@ ( n -- n ) {: s:n :}    \ final width of bind occurrence s (die 76 = pass-2 misalignment)
    s 0 <  s LOCSEQ @ >=  or IF s" checker: bad local bind sequence" 76 die THEN
-   s cells LOCW-HW + @ ;
+   s cells LOC-HW + @ ;
+: LOCW-HW-N@ ( -- n ) LOCSEQ @ ;
 \ Pass-2 live-width table: the width-aware recompiler (habu2.f EM-P2-CARVE /
 \ EM-P2-LOCREF) replays the certified body's {: groups in bind order — each
 \ carve consumes the next bind seq (P2-CARVE-W) and records that local's width
@@ -5567,18 +5824,19 @@ variable LCO
 \ definition whose local count or name width exceeds the compiler-matched frame
 \ was previously skipped by the checker (-1 UNCK !), hiding every stack error in
 \ it. LOCALBAD forces verdict 0 so the definition is rejected with a diagnostic.
-: LOC-ADD {: a u :}
+: LOC-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LCOLON
-   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or  LOCSEQ @ LOC-HW-CAP 1 - >  or IF
+   #LOC @ LOC-CAP 1 - >  LCO @ LOC-NAME-W >  or IF
      0 OK !  -1 FAILSET !  -1 LOCALBAD !
    ELSE
+     LOCSEQ @ 1 + LOC-HW-ENSURE
      #LOC @ LOC-SHOW-OFF!
      a  LOCNB #LOC @ LOC-NAME-W * +  LCO @ CCOPY
      LCO @ #LOC @ cells LOCLN + !
      FRESH MK-VAR #LOC @ cells LOCTV + !
      1 #LOC @ cells LOCW + !
      LOCSEQ @ #LOC @ cells LOCSEQIX + !    \ this bind's monotone sequence
-     1 LOCSEQ @ cells LOCW-HW + !
+     1 LOCSEQ @ cells LOC-HW + !
      LOCSEQ @ 1 + LOCSEQ !
      LCO @ u < IF
       a u #LOC @ LOC-ANN
@@ -5630,7 +5888,7 @@ variable LCO
    THEN
    gi XG-TERM0@ T-RES idx cells LOCTV + !
    XG-LEN gi cells + @ idx cells LOCW + !
-   XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOCW-HW + ! ;   \ final width at the bind seq
+   XG-LEN gi cells + @  idx cells LOCSEQIX + @ cells LOC-HW + ! ;   \ final width at the bind seq
 
 : LOC-SCALAR-BIND ( n n -- ) {: gi:n idx:n :}
    idx cells LOCTV + @  gi XG-TERM0@  UNIFY OK @ and OK ! ;
@@ -6950,6 +7208,17 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
       CTOR-PEND-I @ 1 + CTOR-PEND-I !
    REPEAT ;
 
+\ Generative layout-buffer authorization. xref.f erases every arming-state
+\ dictionary name after compiling the allocator and CHECK, leaving only their
+\ baked direct references. User source therefore cannot arm or mutate the
+\ one-shot boundary.
+: LBUF-PEND! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LBUF-PEND-A !  u LBUF-PEND-U ! ;
+: LBUF-PEND-CLEAR ( -- ) 0 LBUF-PEND-U !  0 LAYOUT-INTRO ! ;
+: LBUF-PEND-MATCH? ( -- bool )
+   LBUF-PEND-U @ 0 > NMU @ 0 > and 0= IF RES-FALSE EXIT THEN
+   LBUF-PEND-A @ LBUF-PEND-U @ NMA @ NMU @ CORE-STR=CI ;
+
 : CHECK {: a u :}   \ ( a u -- -1=certified | 0=rejected | 1=uncheckable )
    a u CHECK-RESET
    CHECK-SCAN
@@ -6964,7 +7233,13 @@ variable CTOR-PEND-N   variable CTOR-PEND-I
          CTOR-PEND-CLEAR                            \ single shot, even on reject
          CTOR-EXPECTED-ROW SUNI-COERCE
       ELSE
-         SGOUT @ SUNI-COERCE
+         LBUF-PEND-MATCH? IF
+            -1 LAYOUT-INTRO !
+            SGOUT @ SUNI-COERCE
+            0 LAYOUT-INTRO !
+         ELSE
+            SGOUT @ SUNI-COERCE
+         THEN
       THEN
       OK @ IF SGIN @ BROW !  SGOUT @ DCUR ! THEN    \ record the verified declared effect
    THEN                                        \ SUNI captures declared(exp)/inferred(act)
@@ -7156,7 +7431,12 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
 
 \ CHECK! ( a u -- flag ) : like CHECK but VERIFIES the body against a leading
 \ ( in -- out ) declared sig (rejects on mismatch). The standalone REPL hook.
-: CHECK! {: a u :}  -1 VSIG !  a u CHECK  0 VSIG ! ;
+: CHECK! ( ptr u8 n -- n ) {: a:ptr u:n :}
+   -1 VSIG !
+   a u CHECK {: verdict:n :}
+   0 VSIG !
+   a u verdict CHECKER-CERT:PRODUCE
+   verdict ;
 
 : DOES-DIN ( n -- n )
    FRESH MK-VAR MK-PTR swap MK-PUSH ;

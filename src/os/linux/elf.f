@@ -49,7 +49,7 @@ $401 constant ELF-R-AARCH64-GLOB-DAT
 1 constant DT-NEEDED
 30 constant DT-FLAGS
 8 constant DF-BIND-NOW
-$100000 constant MPAGE
+$200000 constant MPAGE
 variable CODELEN
 variable ELF-TEXT-SIZE
 
@@ -58,6 +58,8 @@ variable ELF-TEXT-SIZE
 \ stays the binding constraint, never a silent M-BOUNDS-RC throw from the
 \ byte cursor.
 : ELF-MSIZE-CHECK ( -- )
+   CODE-CAP-BYTES CODE-OFF + MPAGE <>
+   IF s" elf: code capacity differs from MPAGE" 73 die THEN
    MPAGE ELF-RW-SZ + MSIZE >
    IF s" elf: MSIZE below max image" 73 die THEN ;
 ELF-MSIZE-CHECK

@@ -45,7 +45,7 @@ s" MK-SBUF@" s" -- ptr u8" TRUST
 : MK-GO ( -- )
    MK-READ-SRC
    DRV-RETIRE-RELOADS
-   MK-SBUF@ MK-SLEN @ EMIT-FORTH
+   MK-SBUF@ MK-SLEN @ ENGINE-BUILD:BUILD
    s" hb" MK-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently

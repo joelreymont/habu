@@ -1,7 +1,7 @@
 \ softmax-launch.f - CHECKED on-device proof: launch the EMITTED SOFTMAX-ROWS
 \ kernel on the Orin and verify it against the CPU golden.
 \
-\ Fully checked Habu via lib/ffi.f (only P>N/N>P trusted). The cubin is produced
+\ Fully checked Habu via lib/ffi.f (only P>N trusted). The cubin is produced
 \ by the checked kernel itself (tools/ptx/softmax-cg.f + ptxas -arch=sm_87), so
 \ this closes the loop: the same body the ptx-stdlib gate certifies emits PTX
 \ that runs numerically correct on hardware. Self-contained: spawns bin/hb to emit

@@ -31,22 +31,47 @@ variable FFI-T-MATH
 : FFI-T-MATH-PATH ( -- ptr u8 )
    HB-TARGET-MACOS? if FFI-T-LIBSYSTEM exit then
    FFI-T-LIBM ;
-: FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH RTLD-NOW DLOPEN ;
-: FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name DLSYM ;
+: FFI-T-OPEN ( -- n )  FFI-T-LIB-PATH FFI:NOW FFI:DLOPEN ;
+: FFI-T-SYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-LIB @ name FFI:DLSYM ;
 : FFI-T-SYM$ ( ptr u8 n -- n ) {: name:ptr nameu:n :}
-   name nameu FFI-T-SYM-BUF >CSTR
-   FFI-T-LIB @ FFI-T-SYM-BUF DLSYM ;
-: FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH RTLD-NOW DLOPEN ;
-: FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name DLSYM ;
+   name nameu FFI-T-SYM-BUF FFI:CSTR
+   FFI-T-LIB @ FFI-T-SYM-BUF FFI:DLSYM ;
+: FFI-T-OPEN-MATH ( -- n )  FFI-T-MATH-PATH FFI:NOW FFI:DLOPEN ;
+: FFI-T-MSYM ( ptr u8 -- n ) {: name:ptr :}  FFI-T-MATH @ name FFI:DLSYM ;
 
 deftype ffi-dev
 deftype ffi-ctx
 
-FFI: FFI-T-STRLEN$ ( ptr u8 -- n ) FFI-T-SYM$ strlen FFI;
-FFI: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n ) FFI-T-SYM$ strncmp FFI;
-FFI: FFI-T-GETPID$ ( -- n ) FFI-T-SYM$ getpid FFI;
-FFI: FFI-T-CTX-SET ( ffi-ctx -- rc ) FFI-T-SYM$ getpid FFI;
-FFI: FFI-T-VOID$ ( -- ) FFI-T-SYM$ getpid FFI;   \ void return kind: result dropped
+TRUSTED: FFI-T-STRLEN$ ( ptr u8 -- n ) {: str:ptr :}
+   s" strlen" FFI-T-SYM$ {: fn:n :}
+   FFI:RESET
+   str 0 FFI:READABLE!
+   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+
+TRUSTED: FFI-T-STRNCMP$ ( ptr u8 ptr u8 n -- n )
+   {: a:ptr b:ptr len:n :}
+   s" strncmp" FFI-T-SYM$ {: fn:n :}
+   FFI:RESET
+   a 0 FFI:READABLE!
+   b 1 FFI:READABLE!
+   len 2 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
+
+TRUSTED: FFI-T-GETPID$ ( -- n )
+   s" getpid" FFI-T-SYM$ {: fn:n :}
+   FFI:RESET
+   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded ;
+
+TRUSTED: FFI-T-CTX-SET ( ffi-ctx -- rc ) {: ctx:ffi-ctx :}
+   s" getpid" FFI-T-SYM$ {: fn:n :}
+   FFI:RESET
+   ctx 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+
+TRUSTED: FFI-T-VOID$ ( -- )
+   s" getpid" FFI-T-SYM$ {: fn:n :}
+   FFI:RESET
+   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded drop ;
 
 : FFI-T-CHECK-PASSES ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -57,28 +82,75 @@ FFI: FFI-T-VOID$ ( -- ) FFI-T-SYM$ getpid FFI;   \ void return kind: result drop
 \ Leaf stub at cp@: x0 = x0+..+x7 + [sp+0] + [sp+8]; ret. Exercises ffi-call-n's
 \ register args + the 16-byte-aligned stack spill. Built inside a word so cp@ is
 \ the stable free code slot (a top-level cp@ patch would clobber the line buffer).
-: FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
-   $8B010000 fn       FFI-PATCH  $8B020000 fn $4 +  FFI-PATCH  $8B030000 fn $8 +  FFI-PATCH
-   $8B040000 fn $C +  FFI-PATCH  $8B050000 fn $10 + FFI-PATCH  $8B060000 fn $14 + FFI-PATCH
-   $8B070000 fn $18 + FFI-PATCH
-   $F94003E9 fn $1C + FFI-PATCH  $8B090000 fn $20 + FFI-PATCH
-   $F94007E9 fn $24 + FFI-PATCH  $8B090000 fn $28 + FFI-PATCH
-   $D65F03C0 fn $2C + FFI-PATCH  fn ;
+TRUSTED: FFI-T-SUM10 ( -- n ) cp@ {: fn:n :}
+   $8B010000 fn       patch32  $8B020000 fn $4 +  patch32  $8B030000 fn $8 +  patch32
+   $8B040000 fn $C +  patch32  $8B050000 fn $10 + patch32  $8B060000 fn $14 + patch32
+   $8B070000 fn $18 + patch32
+   $F94003E9 fn $1C + patch32  $8B090000 fn $20 + patch32
+   $F94007E9 fn $24 + patch32  $8B090000 fn $28 + patch32
+   $D65F03C0 fn $2C + patch32  fn ;
 
-: FFI-T-FSUM3 ( -- n ) cp@ {: fn:n :}
-   $1E612800 fn      FFI-PATCH  $1E622800 fn $4 + FFI-PATCH
-   $D65F03C0 fn $8 + FFI-PATCH  fn ;
+TRUSTED: FFI-T-FSUM3 ( -- n ) cp@ {: fn:n :}
+   $1E612800 fn      patch32  $1E622800 fn $4 + patch32
+   $D65F03C0 fn $8 + patch32  fn ;
 
-: FFI-T-FADD-X0 ( -- n ) cp@ {: fn:n :}
-   $9E620008 fn       FFI-PATCH  $1E682800 fn $4 + FFI-PATCH
-   $D65F03C0 fn $8 +  FFI-PATCH  fn ;
+TRUSTED: FFI-T-FADD-X0 ( -- n ) cp@ {: fn:n :}
+   $9E620008 fn       patch32  $1E682800 fn $4 + patch32
+   $D65F03C0 fn $8 +  patch32  fn ;
 
-: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
-   $F94003E9 fn       FFI-PATCH  $9E670128 fn $4 + FFI-PATCH
-   $1E682800 fn $8 +  FFI-PATCH  $D65F03C0 fn $C + FFI-PATCH  fn ;
+TRUSTED: FFI-T-FADD-FSTACK ( -- n ) cp@ {: fn:n :}
+   $F94003E9 fn       patch32  $9E670128 fn $4 + patch32
+   $1E682800 fn $8 +  patch32  $D65F03C0 fn $C + patch32  fn ;
 
-: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
-   $F9000100 fn FFI-PATCH  $D65F03C0 fn $4 + FFI-PATCH  fn ;
+TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
+   $F9000100 fn patch32  $D65F03C0 fn $4 + patch32  fn ;
+
+TRUSTED: FFI-T-STRLEN-LATE ( ptr u8 -- n ) {: str:ptr :}
+   FFI:RESET
+   str 0 FFI:READABLE!
+   FFI-T-STRLEN FFI-T-SYM {: fn:n :}
+   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
+
+TRUSTED: FFI-T-SUM10-CALL ( -- n )
+   FFI:RESET
+   10 0 ?do i 1+ i FFI:VALUE! loop
+   FFI:ARGS FFI:REG-LENS 10 FFI-T-SUM10 ffi-call-bounded ;
+
+TRUSTED: FFI-T-FSUM3-CALL ( -- r )
+   FFI:RESET
+   1.25 0 FFI:FLOAT!
+   2.5 1 FFI:FLOAT!
+   3.0 2 FFI:FLOAT!
+   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+   0 FFI-T-FSUM3 ffi-call-abi-r-bounded ;
+
+TRUSTED: FFI-T-FADD-X0-CALL ( -- r )
+   FFI:RESET
+   4 0 FFI:VALUE!
+   1.5 0 FFI:FLOAT!
+   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+   0 FFI-T-FADD-X0 ffi-call-abi-r-bounded ;
+
+TRUSTED: FFI-T-FADD-FSTACK-CALL ( -- r )
+   FFI:RESET
+   1.25 0 FFI:FLOAT!
+   2.75 0 FFI:STACK-FLOAT!
+   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+   1 FFI-T-FADD-FSTACK ffi-call-abi-r-bounded ;
+
+TRUSTED: FFI-T-X8-ABI-CALL ( ptr a -- n ) {: out:ptr :}
+   FFI:RESET
+   42 0 FFI:VALUE!
+   out 8 FFI:X8-WRITABLE!
+   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+   0 FFI-T-X8-STORE ffi-call-abi-bounded ;
+
+TRUSTED: FFI-T-SQRT-CALL ( r -- r ) {: value:r :}
+   FFI-T-SQRT FFI-T-MSYM {: fn:n :}
+   FFI:RESET
+   value 0 FFI:FLOAT!
+   FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
+   0 fn ffi-call-abi-r-bounded ;
 
 : FFI-RUN ( -- )
    T-RESET
@@ -89,20 +161,15 @@ FFI: FFI-T-VOID$ ( -- ) FFI-T-SYM$ getpid FFI;   \ void return kind: result drop
 
    FFI-T-STRLEN FFI-T-SYM 0 T<>                   \ dlsym resolved strlen
    FFI-T-SQRT FFI-T-MSYM 0 T<>
-   FFI-T-HELLO P>N  FFI-T-STRLEN FFI-T-SYM CALL1   5 T=   \ strlen("hello") == 5
-   FFI-T-HELLO FFI-T-STRLEN$ 5 T=                 \ generated typed wrapper
+   FFI-T-HELLO FFI-T-STRLEN$ 5 T=                 \ explicit typed wrapper
 
-   FFI-T-HELLO P>N FFI-T-HELP P>N 3  FFI-T-STRNCMP FFI-T-SYM CALL3  0 T=  \ strncmp("hello","help",3)==0
-   FFI-T-HELLO P>N FFI-T-HELP P>N 4  FFI-T-STRNCMP FFI-T-SYM CALL3  0 T<> \ first 4 differ ('l' vs 'p')
    FFI-T-HELLO FFI-T-HELP 3 FFI-T-STRNCMP$ 0 T=
    FFI-T-HELLO FFI-T-HELP 4 FFI-T-STRNCMP$ 0 T<>
 
-   FFI-T-GETPID FFI-T-SYM CALL0  0 T<>            \ getpid() > 0 (non-zero)
    FFI-T-GETPID$ 0 T<>
    FFI-T-VOID$  FFI-T-GETPID$ 0 T<>               \ void-return wrapper is stack-neutral
 
-   FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST >CSTR          \ build "world\0" then strlen==5
-   FFI-T-CSTR-DST P>N  FFI-T-STRLEN FFI-T-SYM CALL1  5 T=
+   FFI-T-CSTR-SRC 5 FFI-T-CSTR-DST FFI:CSTR       \ build "world\0" then strlen==5
    FFI-T-CSTR-DST FFI-T-STRLEN$ 5 T=
 
    s" FFI-T-ROLE-GOOD ( ffi-ctx -- rc ) FFI-T-CTX-SET" FFI-T-CHECK-PASSES
@@ -110,44 +177,26 @@ FFI: FFI-T-VOID$ ( -- ) FFI-T-SYM$ getpid FFI;   \ void return kind: result drop
 
    \ FFI-CALLN with INTERLEAVED resolve: fill the arg, THEN resolve via DLSYM.
    \ DLSYM uses its own FFI-DLBUF, so slot 0 survives -> strlen("hello")==5.
-   FFI-T-HELLO P>N 0 FFI-ARG!
-   1 FFI-T-STRLEN FFI-T-SYM FFI-CALLN  5 T=
+   FFI-T-HELLO FFI-T-STRLEN-LATE 5 T=
    \ 10-arg call: x0..x7 + 2 stack-spilled args, sum 1..10 == 55
-   1 0 FFI-ARG!  2 1 FFI-ARG!  3 2 FFI-ARG!  4 3 FFI-ARG!  5 4 FFI-ARG!
-   6 5 FFI-ARG!  7 6 FFI-ARG!  8 7 FFI-ARG!  9 8 FFI-ARG!  10 9 FFI-ARG!
-   10 FFI-T-SUM10 FFI-CALLN  55 T=
+   FFI-T-SUM10-CALL 55 T=
 
-   1.25 0 FFI-FARG!  2.5 1 FFI-FARG!  3.0 2 FFI-FARG!
-   0 FFI-T-FSUM3 FFI-CALLABI-R  6.75 f= T-ASSERT
+   FFI-T-FSUM3-CALL 6.75 f= T-ASSERT
+   FFI-T-FADD-X0-CALL 5.5 f= T-ASSERT
+   FFI-T-FADD-FSTACK-CALL 4.0 f= T-ASSERT
 
-   4 0 FFI-ARG!  1.5 0 FFI-FARG!
-   0 FFI-T-FADD-X0 FFI-CALLABI-R  5.5 f= T-ASSERT
-
-   1.25 0 FFI-FARG!  2.75 0 FFI-FSTACK!
-   1 FFI-T-FADD-FSTACK FFI-CALLABI-R  4.0 f= T-ASSERT
-
-   42 0 FFI-ARG!  FFI-T-X8-OUT P>N FFI-X8!
-   0 FFI-T-X8-STORE FFI-CALLABI drop
+   FFI-T-X8-OUT FFI-T-X8-ABI-CALL drop
    FFI-T-X8-OUT @ 42 T=
-   0 FFI-X8!
 
-   9.0 0 FFI-FARG!
-   0 FFI-T-SQRT FFI-T-MSYM FFI-CALLABI-R  3.0 f= T-ASSERT ;
+   9.0 FFI-T-SQRT-CALL 3.0 f= T-ASSERT
+
+   s" FFI-T-RAW ( ptr a ptr a n n -- n ) ffi-call-bounded" FFI-T-CHECK-REJECTS
+   s" FFI-T-RAW-ABI ( ptr a ptr a ptr a ptr a ptr a n n -- n ) ffi-call-abi-bounded" FFI-T-CHECK-REJECTS
+   s" FFI-T-LIE ( n -- ) 8 0 FFI:WRITABLE!" FFI-T-CHECK-REJECTS
+   s" FFI-T-MULTI ( ptr u8 n -- n n ) FFI:DLOPEN" FFI-T-CHECK-REJECTS
+   s" FFI:" 0 search-wl 0= TTRUE
+   s" CALL0" 0 search-wl 0= TTRUE ;
 
 FFI-RUN
-
-\ Kind-surface checked regressions (wave C: FDEF kinds are a PRIVATE ENUM).
-\ Inside the reopened package the family resolves: the positive baseline
-\ proves the rejects are type errors, and a raw n can no longer pose as a
-\ kind, a kind cannot launder back to n, and kinds do not compare with `=`.
-package FFI
-s" FFI-T-KPOS ( kind n -- ) FDEF-TAG!" FFI-T-CHECK-PASSES
-s" FFI-T-KNEG1 ( n n -- ) FDEF-TAG!" FFI-T-CHECK-REJECTS
-s" FFI-T-KNEG2 ( n -- n ) FDEF-TAG@" FFI-T-CHECK-REJECTS
-s" FFI-T-KNEG3 ( kind kind -- bool ) =" FFI-T-CHECK-REJECTS
-end-package
-\ Outside the package the private family never resolves, bare or qualified.
-s" FFI-T-KNEG4 ( kind -- ) drop" FFI-T-CHECK-REJECTS
-s" FFI-T-KNEG5 ( ffi:kind -- ) drop" FFI-T-CHECK-REJECTS
 
 T-REPORT

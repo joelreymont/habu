@@ -5,7 +5,6 @@ priority: 2
 issue-type: task
 created-at: "2026-07-04T00:20:50.079838+02:00"
 blocks:
-  - habu-checker-capability-typed-a480c423
   - habu-checker-capability-derive-23788e95
   - habu-checker-capability-layout-4e7f1f03
   - habu-typed-locals-for-b06b6707

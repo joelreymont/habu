@@ -317,6 +317,32 @@ variable BF-CERT-PATH-U
    out outu a u BF-APPEND-BYTES
    out outu BF-APPEND-LF ;
 
+package COMPILER-BUILD
+
+: ARGV ( ptr u8 n ptr u8 n -- ptr u8 ptr a ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   PROC-ARGV-RESET
+   s" --build" >LEN PROC-ARGV+
+   src srcu >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   BF-TMP$ >LEN PROC-ARGV+
+   exe exeu >LEN PROC-ARGV-PREPARE ;
+
+public
+
+: RUN ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   BF-PREPARE-ENV
+   exe exeu src srcu ARGV
+   PROC-ENV-PREPARE -1 >FD -1 >FD -1 >FD
+   PROC-SPAWN-ARGV-ENV-RAW BF-FINISH-PID ;
+
+: RUN-TMP ( ptr u8 n ptr u8 n -- n ) {: exe:ptr exeu:n src:ptr srcu:n :}
+   exe exeu BF-A$ src srcu BF-B$ RUN ;
+
+: SEAL ( ptr u8 n -- )
+   s" SEAL-FRIEND" BF-APPEND-LINE ;
+
+end-package
+
 : BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
    out outu s" s" BF-APPEND-BYTES
    out outu BF-DQ BF-APPEND-C
@@ -534,7 +560,7 @@ variable BF-CERT-PATH-U
    BF-SOURCE-HAS? if s" build-fixpoint: unsafe native emitter shape" BF-BUILD-RC die then ;
 
 \ habu2.f/habu1.f preflight history: the typed-shape/bare-locals asserts were
-\ retired for the blocking stage compile (`' HOOK set-check` checks every
+\ retired for the blocking stage compile (`LOWER-CERT-HOOK:INSTALL` checks every
 \ emitter word), and the final same-type codegen-role asserts (habu2
 \ `CLOC-MAIN LABEL@ B,` must-have / `CLOC-MAIN @ B ;` must-lack; habu1
 \ `14 SP SPAWN-ADESC-OFF SZA-I @ + STR,` must-have / `... + over + STR,`
@@ -544,7 +570,7 @@ variable BF-CERT-PATH-U
 \ descriptor-slot store progression, with corruption fixtures covering both
 \ historic bad forms.
 
-\ icode.f is emitted inside the check-off window (BFR-CHECK-OFF .. `' HOOK
+\ icode.f is emitted inside the check-off window (BFR-CHECK-OFF .. `' LOWER-CERT-HOOK:HOOK
 \ set-check`), so the stage compile does not check it -- but the BLOCKING
 \ BF-CERTIFY static scan covers its typed shape (VERIFY:SOURCE-BUF checks the
 \ whole emitted source, set-check windows included, and a reject now kills the
@@ -563,7 +589,7 @@ variable BF-CERT-PATH-U
 
 \ habu1.f/habu2.f preflight retired (see the history comment above BF-PREFLIGHT-ICODE):
 \ REG-PRIM/FPRIM/FPRIM-L/SPAWN-DUP2-ACTION/SPAWN-CHDIR-ACTION and friends are emitted
-\ after `' HOOK set-check` and so are compiled checked (a stack-effect regression fails
+\ after `LOWER-CERT-HOOK:INSTALL` and so are compiled checked (a stack-effect regression fails
 \ the stage compile, blocking); the residual same-type codegen roles the checker cannot
 \ express (label-relative branch fixup, spawn descriptor-slot store progression) are
 \ covered by the structural tools/codegen-role-test.f (gate suite codegen-role). Only
@@ -630,10 +656,13 @@ variable BF-CERT-PATH-U
    out outu s" src/core/util.f" BF-APPEND-SOURCE
    out outu s" src/core/structures.f" BF-APPEND-SOURCE
    out outu s" src/core/checker.f" BF-APPEND-SOURCE
+   out outu s" src/core/lower-cert-base.f" BF-APPEND-SOURCE
    out outu s" src/core/type-schema.f" BF-APPEND-SOURCE
    out outu s" src/core/type-family.f" BF-APPEND-SOURCE
    out outu s" src/core/render.f" BF-APPEND-SOURCE
    out outu s" src/core/sumtype.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/structures-effects.f" BF-APPEND-SOURCE ;
 
@@ -688,7 +717,9 @@ variable BF-CERT-PATH-U
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu s" src/habu/xref.f" BF-APPEND-SOURCE ;
+   out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
+   out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DRIVER-IO ( ptr u8 n -- ) {: out:ptr outu :}
    out outu s" src/habu/driver-io.f" BF-APPEND-SOURCE ;
@@ -697,7 +728,8 @@ variable BF-CERT-PATH-U
    out outu s" src/habu/hide.f" BF-APPEND-SOURCE
    out outu s" BFR-CHECK-OFF" BF-APPEND-LINE
    out outu BF-STAGE2-HIDE-DEFS
-   out outu BF-APPEND-CHECKER-BOOT ;
+   out outu BF-APPEND-CHECKER-BOOT
+   out outu s" LOWER-CERT-HOOK:INSTALL" BF-APPEND-LINE ;
 
 : BF-APPEND-STDIN-RUN-PRELUDE ( ptr u8 n -- ) {: out:ptr outu :}
    out outu BF-APPEND-RUN-PRELUDE ;
@@ -706,6 +738,7 @@ variable BF-CERT-PATH-U
    out outu BF-RESET-OUT
    out outu BF-APPEND-RUN-PRELUDE
    out outu BF-APPEND-COMMON
+   out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
@@ -713,6 +746,7 @@ variable BF-CERT-PATH-U
    out outu BF-RESET-OUT
    out outu BF-APPEND-RUN-PRELUDE
    out outu BF-APPEND-COMMON
+   out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
    out outu driver driveru BF-APPEND-SOURCE ;
 
@@ -721,6 +755,7 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-STDIN-RUN-PRELUDE
    out outu BF-APPEND-COMMON
    out outu BF-APPEND-INCLUDE
+   out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-DRIVER-IO
    out outu SDC-AOT$ BF-APPEND-SOURCE
    out outu driver driveru BF-APPEND-SOURCE ;
@@ -744,6 +779,8 @@ variable BF-CERT-PATH-U
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
+   out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV ;
 
 : BF-APPEND-TARGET-REPL-TERM ( ptr u8 n -- ) {: out:ptr outu:n :}
@@ -768,7 +805,6 @@ variable BF-CERT-PATH-U
    s" : SNAP-TAIL-MARK ( -- ) ;" BF-APPEND-LINE ;
 
 : BF-APPEND-SNAP-BUILD ( ptr u8 n -- ) {: out:ptr outu:n :}
-   out outu BF-APPEND-SNAP-MARK
    out outu s" src/arch/arm64/asm.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/icode.f" BF-APPEND-SOURCE
    out outu s" src/arch/arm64/mnem.f" BF-APPEND-SOURCE
@@ -790,6 +826,9 @@ variable BF-CERT-PATH-U
    out outu BF-APPEND-STDIN-RUN-PRELUDE
    out outu BF-APPEND-SNAP-KEEP
    out outu BF-APPEND-SNAP-REPL
+   out outu BF-APPEND-SNAP-MARK
+   out outu s" src/habu/snap-build.f" BF-APPEND-SOURCE
+   out outu COMPILER-BUILD:SEAL
    out outu BF-APPEND-SNAP-BUILD
    out outu driver driveru BF-APPEND-SOURCE ;
 
@@ -926,7 +965,7 @@ variable BF-CERT-PATH-U
 : BF-BOOTSTRAP-STAGE ( -- )
    s" stage2-got" BF-REMOVE-TMP
    s" hb-stage" BF-REMOVE-TMP
-   s" bin/hb" s" stage2-src" BF-A$ BF-RUN-LOAD-STAGE BF-RC0
+   s" bin/hb" s" stage2-src" BF-A$ COMPILER-BUILD:RUN BF-RC0
    s" stage2-got" BF-EXPECT
    s" stage2-got" s" hb-stage" BF-RENAME-TMP
    s" hb-stage" BF-CHMOD-X-TMP ;
@@ -998,7 +1037,7 @@ variable BF-CERT-PATH-U
    BF-CERTIFY-SNAP
    s" hb-snap0" BF-REMOVE-TMP
    s" hb-new" BF-REMOVE-TMP
-   s" hb-stdin" s" hb-snap-src" BF-RUN-ENV-TMP-INFILE BF-RC0
+   s" hb-stdin" s" hb-snap-src" COMPILER-BUILD:RUN-TMP BF-RC0
    s" hb-snap0" BF-EXPECT
    s" hb-snap0" s" hb-new" BF-RENAME-TMP
    s" hb-new" BF-CODESIGN-FORCE-TMP

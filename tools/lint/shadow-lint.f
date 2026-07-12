@@ -52,6 +52,7 @@ variable BAD  variable LI
    dup TOK s" constant" LINT-STR=CI IF drop 1 exit THEN
    dup TOK s" variable" LINT-STR=CI IF drop 1 exit THEN
    dup TOK s" create" LINT-STR=CI IF drop 1 exit THEN
+   dup TOK s" LAYOUT-BUFFER" LINT-STR=CI IF drop 1 exit THEN
    drop 0 ;
 
 : LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu k :}
@@ -77,8 +78,11 @@ variable BAD  variable LI
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
    s" src/core/util.f"      LINT-FILE   s" src/core/checker.f"   LINT-FILE
+   s" src/core/lower-cert-base.f" LINT-FILE
    s" src/core/type-schema.f" LINT-FILE s" src/core/type-family.f" LINT-FILE
    s" src/core/render.f"    LINT-FILE   s" src/core/roles.f"     LINT-FILE
+   s" src/core/layout-valid.f" LINT-FILE
+   s" src/core/lower-cert-seal.f" LINT-FILE
    s" src/core/bytes.f"     LINT-FILE
    s" src/core/exec-vector.f" LINT-FILE s" src/core/sha256.f"    LINT-FILE
    s" src/core/type-family-sha.f" LINT-FILE

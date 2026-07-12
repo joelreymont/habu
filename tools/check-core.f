@@ -943,7 +943,7 @@ variable CHK-TFAM-NAME-I
    s"  DIAG-FILE!" CHK-RUN-LN
    CHK-JSON @ if s" -1 JSON-DIAGS !" CHK-RUN-LN then
    s" : CHECK-F-HOOK ( ptr u8 n -- n )" CHK-RUN-LN
-   s"    CHECK! HOOK-REPORT-UNCHECKABLE dup -1 <> IF 70 throw THEN ;" CHK-RUN-LN
+   s"    LOWER-CERT-HOOK:HOOK ;" CHK-RUN-LN
    s" ' CHECK-F-HOOK set-check" CHK-RUN-LN ;
 
 : CHK-BUILD-RUN ( -- )

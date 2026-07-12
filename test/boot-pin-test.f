@@ -25,10 +25,15 @@ require tools/boot-pin.f
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-26 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 25 calls)
-                                    \ 22->26: +src/core/type-family.f +src/core/type-schema.f
-                                    \ +src/core/sumtype.f +src/core/type-family-sha.f (TFAM boot
-                                    \ prefix growth; user sign-off habu-boot-pin-sign-be74cfd3)
+31 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 30 calls)
+                                    \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
+                                    \ +type-family-sha.f (TFAM growth; user sign-off dot
+                                    \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
+                                    \ layout-buffer.f +layout-buffer-seal.f +layout-valid.f
+                                    \ +lower-cert-base.f +lower-cert-seal.f (wide-ADT stack +
+                                    \ LAYOUT-BUFFER + verified-lowering seals, tfam lane
+                                    \ 2026-07-12; growth surfaced to the user at merge).
+>>>>>>> conflict 1 of 1 ends
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex
@@ -61,7 +66,7 @@ variable BPT-OFF
    BPT-SBX BPT-SBX-U @ a u BPT-DST JOIN-PATH {: du:n :}
    a u BPT-DST du COPY-FILE-STREAM ;
 
-: BPT-SETUP-SBX ( -- )                                    \ fresh pristine copy of the 19 prefix files
+: BPT-SETUP-SBX ( -- )                                    \ fresh pristine target-specific prefix copy
    s" src/core" BPT-MKDIR
    s" src/os/macos" BPT-MKDIR
    s" src/habu" BPT-MKDIR

@@ -238,7 +238,7 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SB$ ;
 
 : GE-STAGE2-HOOK$ ( -- ptr u8 n )
-   s" ' HOOK set-check" ;
+   s" LOWER-CERT-HOOK:INSTALL" ;
 
 : GE-READ-BUILD-TMP ( ptr u8 n -- ptr u8 n ) {: name:ptr nameu:n :}
    name nameu BF-A$ FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
@@ -421,6 +421,198 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
 : GE-TYPE-LAYOUT-SUITE ( -- )
    GE-CANDIDATE$ s" type-layout suite on Habu-under-test" GE-TYPE-LAYOUT-SUITE-ON
    s" bin/hb" s" type-layout suite on bin/hb" GE-TYPE-LAYOUT-SUITE-ON ;
+
+: GE-LAYOUT-BUFFER-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-SRC-RESET
+   s" test/layout-buffer.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-LAYOUT-BUFFER-FORGE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/layout-buffer-forge.f" GE-SRC-FILE+
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   s" E-UNDEFINED: LBUF-PEND!" label labelu GE-EXPECT-ERR-HAS
+   SB-RESET s" LAYOUT-BUFFER-FORGE-ARMED" SB-APPEND GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LAYOUT-BUFFER-DEPTH-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/layout-buffer-depth.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-LAYOUT-VALID-BAD-ON ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n path:ptr pathu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   path pathu GE-SRC-FILE+
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   85 label labelu GE-EXPECT-RC
+   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS
+   SB-RESET s" LAYOUT-VALID-ARMED" SB-APPEND GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LAYOUT-VALID-BAD ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n base:ptr baseu:n :}
+   exe exeu s" test/layout-valid-w1-bad.f"
+      base baseu GE-LAYOUT-VALID-BAD-ON
+   exe exeu s" test/layout-valid-product-bad.f"
+      base baseu GE-LAYOUT-VALID-BAD-ON ;
+
+: GE-LAYOUT-VALID-GUARDS-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/layout-valid-guards.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-LAYOUT-VALID-GROWTH-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/layout-valid-growth.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-LAYOUT-VALID-GUARD-BAD-ON
+   ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n path:ptr pathu:n marker:ptr markeru:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   path pathu GE-SRC-FILE+
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   85 label labelu GE-EXPECT-RC
+   s" hb: bad layout tag" label labelu GE-EXPECT-ERR-HAS
+   SB-RESET marker markeru SB-APPEND GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LAYOUT-VALID-GUARD-BAD ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n base:ptr baseu:n :}
+   exe exeu s" test/layout-valid-active-bad.f"
+      s" LAYOUT-VALID-ACTIVE-ARMED" base baseu GE-LAYOUT-VALID-GUARD-BAD-ON
+   exe exeu s" test/layout-valid-root-bad.f"
+      s" LAYOUT-VALID-ROOT-ARMED" base baseu GE-LAYOUT-VALID-GUARD-BAD-ON ;
+
+: GE-LAYOUT-VALID-FORGE-ON
+   ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n path:ptr pathu:n word:ptr wordu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   path pathu GE-SRC-FILE+
+   exe exeu GE-SRC-BUF GE-SRC-U @ GE-TIMEOUT-MS GE-RUN-STDIN
+   70 label labelu GE-EXPECT-RC
+   SB-RESET s" E-UNDEFINED: " SB-APPEND word wordu SB-APPEND
+   SB$ label labelu GE-EXPECT-ERR-HAS
+   SB-RESET s" LAYOUT-VALID-FORGE-ARMED" SB-APPEND GE-SB-LF
+   SB$ label labelu GE-EXPECT-OUT ;
+
+: GE-LAYOUT-VALID-FORGE ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n base:ptr baseu:n :}
+   exe exeu s" test/layout-valid-hook-forge.f"
+      s" LAYOUT-VALID-RECORD-XT" base baseu GE-LAYOUT-VALID-FORGE-ON
+   exe exeu s" test/layout-valid-walk-forge.f"
+      s" VP-TERM-WALK-XT" base baseu GE-LAYOUT-VALID-FORGE-ON
+   exe exeu s" test/layout-valid-desc-forge.f"
+      s" LAYOUT-VALID-DESC-XT" base baseu GE-LAYOUT-VALID-FORGE-ON ;
+
+: GE-LAYOUT-BUFFER-SUITE ( -- )
+   GE-CANDIDATE$ s" layout-buffer suite on Habu-under-test"
+      GE-LAYOUT-BUFFER-SUITE-ON
+   GE-CANDIDATE$ s" layout-buffer capability sealed on Habu-under-test"
+      GE-LAYOUT-BUFFER-FORGE-ON
+   GE-CANDIDATE$ s" layout-buffer evaluator depth on Habu-under-test"
+      GE-LAYOUT-BUFFER-DEPTH-ON
+   GE-CANDIDATE$ s" typed fetch validation on Habu-under-test"
+      GE-LAYOUT-VALID-BAD
+   GE-CANDIDATE$ s" typed fetch guard semantics on Habu-under-test"
+      GE-LAYOUT-VALID-GUARDS-ON
+   GE-CANDIDATE$ s" typed fetch validator growth on Habu-under-test"
+      GE-LAYOUT-VALID-GROWTH-ON
+   GE-CANDIDATE$ s" typed fetch guard rejects on Habu-under-test"
+      GE-LAYOUT-VALID-GUARD-BAD
+   GE-CANDIDATE$ s" typed fetch validator sealed on Habu-under-test"
+      GE-LAYOUT-VALID-FORGE
+   s" bin/hb" s" layout-buffer suite on bin/hb"
+      GE-LAYOUT-BUFFER-SUITE-ON
+   s" bin/hb" s" layout-buffer capability sealed on bin/hb"
+      GE-LAYOUT-BUFFER-FORGE-ON
+   s" bin/hb" s" layout-buffer evaluator depth on bin/hb"
+      GE-LAYOUT-BUFFER-DEPTH-ON
+   s" bin/hb" s" typed fetch validation on bin/hb"
+      GE-LAYOUT-VALID-BAD
+   s" bin/hb" s" typed fetch guard semantics on bin/hb"
+      GE-LAYOUT-VALID-GUARDS-ON
+   s" bin/hb" s" typed fetch validator growth on bin/hb"
+      GE-LAYOUT-VALID-GROWTH-ON
+   s" bin/hb" s" typed fetch guard rejects on bin/hb"
+      GE-LAYOUT-VALID-GUARD-BAD
+   s" bin/hb" s" typed fetch validator sealed on bin/hb"
+      GE-LAYOUT-VALID-FORGE ;
+
+: GE-WIDE-STORE-SEAL-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/wide-store-seal.f" GE-SRC-FILE+
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-WIDE-STORE-SEAL-SUITE ( -- )
+   GE-CANDIDATE$ s" wide-store seal on Habu-under-test"
+      GE-WIDE-STORE-SEAL-SUITE-ON
+   s" bin/hb" s" wide-store seal on bin/hb"
+      GE-WIDE-STORE-SEAL-SUITE-ON ;
+
+: GE-PROTECTION-SPAN-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/protection-span.f" GE-SRC-FILE+
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: GE-PROTECTION-SPAN-SUITE ( -- )
+   GE-CANDIDATE$ s" protected write spans on Habu-under-test"
+      GE-PROTECTION-SPAN-SUITE-ON
+   s" bin/hb" s" protected write spans on bin/hb"
+      GE-PROTECTION-SPAN-SUITE-ON ;
+
+package GENG
+
+: LOWER-TXN-PROTECTION-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/lower-txn-protection.f" GE-SRC-FILE+
+   s" HABU_UNDER_TEST" >LEN exe exeu >LEN PROC-ENV+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+: TXN-LARGE-SUITE-ON ( ptr u8 n ptr u8 n -- )
+   {: exe:ptr exeu:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" test/lower-txn-large.f" GE-SRC-FILE+
+   exe exeu label labelu GE-SUITE-RUN ;
+
+public
+
+: LOWER-TXN-PROTECTION-SUITE ( -- )
+   GE-CANDIDATE$ s" active lowering transaction protection on Habu-under-test"
+      LOWER-TXN-PROTECTION-SUITE-ON
+   s" bin/hb" s" active lowering transaction protection on bin/hb"
+      LOWER-TXN-PROTECTION-SUITE-ON ;
+
+: TXN-LARGE-SUITE ( -- )
+   GE-CANDIDATE$ s" large lowering transaction on Habu-under-test"
+      TXN-LARGE-SUITE-ON
+   s" bin/hb" s" large lowering transaction on bin/hb"
+      TXN-LARGE-SUITE-ON ;
+
+end-package
 
 : GE-TYPE-EXPORT-SUITE-ON ( ptr u8 n ptr u8 n -- ) {: exe:ptr exeu:n label:ptr labelu:n :}
    GE-HB-RESET
@@ -1148,6 +1340,11 @@ variable GE-DFULL-I                 \ copy/definition loop index
    GE-TYPE-LINEAR-SUITE
    GE-TYPE-MATCH-SUITE
    GE-TYPE-LAYOUT-SUITE
+   GE-LAYOUT-BUFFER-SUITE
+   GE-WIDE-STORE-SEAL-SUITE
+   GE-PROTECTION-SPAN-SUITE
+   GENG:LOWER-TXN-PROTECTION-SUITE
+   GENG:TXN-LARGE-SUITE
    GE-TYPE-EXPORT-SUITE ;
 
 : GENG-VALIDATE-SLICE ( -- )

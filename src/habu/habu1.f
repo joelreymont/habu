@@ -5,6 +5,15 @@
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
+
+package ENGINE-BUILD
+variable ACTIVE
+: ACTIVE? ( -- bool ) ACTIVE @ ;
+: ARM ( -- ) 0 0= ACTIVE ! ;
+: DISARM ( -- ) 0 0= 0= ACTIVE ! ;
+public
+: BUILDING? ( -- bool ) ACTIVE? ;
+end-package
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
 $F9000269 constant W-PUSH0
@@ -13,23 +22,7 @@ $D2800009 constant W-MOVZ0
 $F2A00009 constant W-MOVK1
 $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
-\ --- item 12 slice 3b: pass-2 width-aware recompile state. Engine-private DATA
-\ cells in the freed low/high holes layout.f documents (old PKG-*/DEFER-*/TSIG
-\ slots relocated into the friend arena). The check hook certifies a definition,
-\ the emitter asks the checker for width facts, and a definition holding any
-\ wider-than-cell operand is recompiled from BODYBUF with width-aware transport
-\ lowering (habu2.f EM-COMPILE-P2WIDE / EM-P2-START).
-$27C0 constant P2-CELL       \ 0 = pass 1 (normal compile); 1 = width-aware pass 2
-$27C8 constant P2TOKIX-CELL  \ pass-2 body-token cursor (checker TOKIX parity; name = 0)
-$27D0 constant P2BODY0-CELL  \ BODYBUF offset of the first body token (after name+sig)
-$27D8 constant P2INP-CELL    \ saved INP across the pass-2 body re-run
-$27E0 constant P2INE-CELL    \ saved INE across the pass-2 body re-run
-$27E8 constant P2DP-CELL     \ DP watermark at definition start (rewound for pass 2)
-$2780 constant P2W0-CELL     \ width of transport operand 0 (stack top) at the cursor
-$2788 constant P2W1-CELL     \ operand 1
-$2790 constant P2W2-CELL     \ operand 2
-$2798 constant P2W3-CELL     \ operand 3
-$27A0 constant P2LOC0-CELL   \ LOCN at the current {: group start (pass-2 locals carve)
+\ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
 160 constant PRIM-CAP
 2048 constant PRIM-NAME-CAP
@@ -119,7 +112,7 @@ variable GD-MIN
    GD-MIN !  FPRIM  GD-RECORD ;
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN
-variable LCEMIT   variable LTOK   variable LPROT  variable LFLUSH variable LNCOUNT
+variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LFLUSH variable LNCOUNT
 variable LAOTCODE  variable LAOTDICT  variable LAOTCODELEN
 variable LAOTNREC  variable LAOTNSITE  variable LAOTSITES  variable LAOTNAMES
 variable LAOTNDSITE  variable LAOTDSITES  variable LAOTDATAD0  variable LAOTDATASIZE
@@ -149,37 +142,135 @@ variable LKWEXPORT variable LCHKEXPORT
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
 
-\ Friend-arena write guard (TFAM 2b-i). Emits a range check that traps
-\ fail-closed (exit E-SEAL-VIOLATION) when the runtime target address held in
-\ `n` (a register number) lands inside the sealed friend arena
-\ [DATA+FRIEND-ARENA, DATA+FRIEND-ARENA+latch). The latch (FRIEND-LATCH-CELL) is
-\ 0 while the engine loads its own canonical source, so the guard is inert during
-\ boot and becomes active once the cold prefix seals it. x12/x13 are scratch
-\ (free at every sink; stack values live in the XDS memory stack, never in
-\ registers across a prim). The BCOND makes the host body non-inlinable, so a
-\ guarded sink compiles to an out-of-line call, exactly like B-TASK-LIVE-GUARD /
-\ DP-CHECK. Defined here (before any sink, incl. the early BPOLL) so every
-\ writer can reach it.
-\ Two guarded bands (TFAM 2b-v): band 1 = crown-jewel friend arena
-\ [FRIEND-ARENA, +FRIEND-ARENA-LEN); band 2 = protected-WID registry and uncaught hook
-\ [PROT-REG-OFF, +PROT-REG-LEN). Both are inert while the latch is 0 (engine cold
-\ load) and fail-closed once sealed. x12 holds target-DATA across both checks; x13
-\ is per-check scratch.
-: PROT-GUARD ( n -- )                   \ n = register number holding the target address
+\ Emit one half-open interval-overlap test. x13 holds the checked span's end;
+\ x12 is scratch. The caller has already rejected address+length overflow.
+: GUARD-BAND ( n n n label -- ) {: addr:n off:n len:n trap:label :}
+   LBL {: skip:label :}
+   DREG off len + LIT64,  DREG DATA DREG ADD,   \ protected end
+   addr DREG CMP,  C-CS skip BCOND,             \ start >= protected end
+   DREG off LIT64,  DREG DATA DREG ADD,         \ protected start
+   EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
+   skip LBL, ;
+
+: GUARD-ADDR-BAND ( n n n label -- ) {: addr:n off:n len:n trap:label :}
+   DREG addr DATA SUB,
+   EREG off LIT64,  EREG DREG EREG SUB,
+   DREG len LIT64,
+   EREG DREG CMP,  C-CC trap BCOND, ;
+
+package GUARD
+
+: BLOB-SPAN ( n label -- ) {: addr:n trap:label :}
+   LBL {: skip:label :}
+   DREG DATA TXN-BLOB-A-CELL LDR,
+   DREG skip CBZ,
+   EREG DREG CMP,  C-LS skip BCOND,
+   EREG DATA TXN-BLOB-CAP-CELL LDR,
+   DREG DREG EREG ADD,
+   addr DREG CMP,  C-CC trap BCOND,
+   skip LBL, ;
+
+: BLOB-ADDR ( n label -- ) {: addr:n trap:label :}
+   LBL {: skip:label :}
+   DREG DATA TXN-BLOB-A-CELL LDR,
+   DREG skip CBZ,
+   EREG addr DREG SUB,
+   DREG DATA TXN-BLOB-CAP-CELL LDR,
+   EREG DREG CMP,  C-CC trap BCOND,
+   skip LBL, ;
+
+public
+
+: SPAN ( n label -- ) BLOB-SPAN ;
+: ADDR ( n label -- ) BLOB-ADDR ;
+
+end-package
+
+\ Span-aware protected-memory guard. addr and len name runtime registers. A
+\ zero-length write is inert. Any address+length wrap traps before the region
+\ tests, then every protected half-open interval is checked for intersection.
+\ The guard is inactive only while the canonical cold prefix owns the open
+\ friend latch. x12/x13 are the only clobbers.
+: GUARD-SPAN ( n n -- ) {: addr:n len:n :}
    LBL LBL {: ok:label trap:label :}
-   EREG DATA FRIEND-LATCH-CELL LDR,     \ x13 = latch (0 = friend/open)
-   EREG ok CBZ,                         \ open -> no guard (engine cold load)
-   DREG swap DATA SUB,                  \ x12 = target - DATA (region-relative offset)
-   EREG DREG FRIEND-ARENA SUBI,         \ x13 = offset - FRIEND-ARENA
-   EREG FRIEND-ARENA-LEN CMPI,          \ x13 <u FRIEND-ARENA-LEN -> in crown-jewel band
-   C-CC trap BCOND,
-   EREG PROT-REG-OFF MOVZ,              \ x13 = PROT-REG-OFF (> imm12: materialize)
-   EREG DREG EREG SUB,                  \ x13 = offset - PROT-REG-OFF
-   EREG PROT-REG-LEN CMPI,              \ x13 <u PROT-REG-LEN -> in protected metadata band
-   C-CC trap BCOND,
+   DREG DATA FRIEND-LATCH-CELL LDR,
+   DREG ok CBZ,
+   len ok CBZ,
+   EREG addr len ADD,                   \ checked end = start + length
+   EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
+   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
+   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
+   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
+   addr trap GUARD:SPAN
    ok B,
    trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+: PROT-GUARD ( n -- )
+   {: addr:n :}
+   LBL LBL {: ok:label trap:label :}
+   DREG DATA FRIEND-LATCH-CELL LDR,
+   DREG ok CBZ,
+   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
+   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
+   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
+   addr trap GUARD:ADDR
+   ok B,
+   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ A code emission target owns one aligned instruction inside the writable code
+\ interval [DBASE+DICT-SIZE, DBASE+REGION). This invariant is independent of
+\ the DATA protection latch: cp! may never redirect later LCEMIT writes into a
+\ DATA band. The existing $4000 end reserve bounds a complete definition after
+\ C-COLON-CODE-ROOM admits its first instruction.
+: GUARD-CODE-WORD ( n -- ) {: addr:n :}
+   LBL LBL {: ok:label trap:label :}
+   DREG DICT-SIZE LIT64,  DREG DBASE DREG ADD,
+   addr DREG CMP,  C-CC trap BCOND,
+   DREG REGION 4 - LIT64,  DREG DBASE DREG ADD,
+   addr DREG CMP,  C-HI trap BCOND,
+   EREG addr 3 ANDI,  EREG trap CBNZ,
+   ok B,
+   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+\ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
+\ legacy TCGETS/TCSETS pair predates _IOC direction bits and is handled
+\ explicitly; unknown unencoded requests fail closed instead of recovering an
+\ unknowable pointer extent. Runtime registers: x1=request, x2=argument.
+: GUARD-IOCTL ( -- )
+   LBL LBL LBL LBL {: legacy:label write:label done:label trap:label :}
+   HB-TARGET-LINUX? IF
+      7 $5401 LIT64,  1 7 CMP,  C-EQ legacy BCOND,
+      7 $5402 LIT64,  1 7 CMP,  C-EQ done BCOND,
+      8 1 30 LSRI,  7 8 3 ANDI,             \ _IOC_DIR
+      8 7 2 ANDI,  8 write CBNZ,             \ _IOC_READ: kernel writes
+      7 done CBNZ,                           \ _IOC_WRITE: kernel reads only
+      trap B,
+      legacy LBL,
+      7 36 MOVZ,  2 7 GUARD-SPAN
+      done B,
+      write LBL,
+      7 1 16 LSRI,  8 $3FFF LIT64,  7 7 8 AND,
+      7 done CBZ,
+      2 7 GUARD-SPAN
+   ELSE
+      8 $40000000 LIT64,  7 1 8 AND,         \ IOC_OUT: kernel writes
+      7 write CBNZ,
+      8 $A0000000 LIT64,  7 1 8 AND,         \ IOC_IN or IOC_VOID
+      7 done CBNZ,
+      trap B,
+      write LBL,
+      7 1 16 LSRI,  8 $1FFF LIT64,  7 7 8 AND,
+      7 done CBZ,
+      2 7 GUARD-SPAN
+   THEN
+   done B,
+   trap LBL,  0 E-SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   done LBL, ;
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
 : B+ ( -- )
@@ -625,7 +716,11 @@ s" linux-ignore-sigpipe" s" --" TRUST
 
 : BPOLL ( -- )                     \ ( fds nfds timeout -- rc ) rc=nready/0 or -1
    2 G-POP  1 G-POP  0 G-POP
-   0 PROT-GUARD                              \ x0 = pollfd array (revents written)
+   LBL LBL {: plen:label pguard:label :}
+   6 1 61 LSRI,  6 plen CBZ,                  \ nfds*8 overflow becomes an all-address span
+      6 0 MOVN,  pguard B,
+   plen LBL,  6 1 3 LSLI,
+   pguard LBL,  0 6 GUARD-SPAN                 \ pollfd array: nfds * 8 bytes
    LBL LNX-OK !
    LBL LNX-DONE !
    LBL LNX-PNEG !
@@ -1049,15 +1144,15 @@ s" spawn-darwin-finish" s" label label --" TRUST
    ok LBL, ;
 
 \ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
-\ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both carry
-\ PROT-GUARD on the address the sink redirects a write to, so a post-seal value
+\ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both guard
+\ the address or full span each sink redirects a write to, so a post-seal value
 \ landing in either sealed band fails closed at the sink (E-SEAL-VIOLATION), exactly
 \ like the raw-store guards — not via the incidental word-creation bounds check.
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
-: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A PROT-GUARD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
+: BCPSET ( -- ) B-TASK-LIVE-GUARD  A G-POP  A GUARD-CODE-WORD  CP A 0 ADDI, ;   \ ( addr -- ) set CP — forget code back to a mark
 : BNDSET ( -- ) B-TASK-LIVE-GUARD  A G-POP                                 \ ( n -- ) set NDICT — forget dict entries past a mark
-   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  B PROT-GUARD                  \ x10 = next-record addr DBASE+n*DREC
+   C DREC MOVZ,  B A C MUL,  B DBASE B ADD,  7 DREC MOVZ,  B 7 GUARD-SPAN
    NDICT A 0 ADDI, ;
 
 : BEPOCHSECONDS ( -- )
@@ -1276,29 +1371,29 @@ s" spawn-darwin-finish" s" label label --" TRUST
    A G-POP  A A 0 LDR,  A G-PUSH ;
 
 : BSTORE ( -- )
-   B G-POP A G-POP  B PROT-GUARD  A B 0 STR, ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  A B 0 STR, ;
 
 : BPTRFIELD ( -- )
    B G-POP  A G-POP  B B 3 LSLI,  A A B ADD,  A G-PUSH ;
 
 : BPLUSSTORE ( -- )
-   B G-POP A G-POP  B PROT-GUARD  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  C B 0 LDR,  C C A ADD,  C B 0 STR, ;
 
 : BCFETCH ( -- )
    A G-POP  A A 0 LDRB, A G-PUSH ;
 
 : BCSTORE ( -- )
-   B G-POP A G-POP  B PROT-GUARD  A B 0 STRB, ;
+   B G-POP A G-POP  7 1 MOVZ,  B 7 GUARD-SPAN  A B 0 STRB, ;
 
 \ Atomic primitives (ARMv8.1 LSE; Orin is ARMv8.2). A=x9 B=x10 C=x11.
 : BATFETCH ( -- )   \ atomic@ ( ptr a -- a ) : LDAR x9,[x9]
    A G-POP  $C8DFFD29 EMITW  A G-PUSH ;
 : BATSTORE ( -- )   \ atomic! ( a ptr a -- ) : STLR x9,[x10]
-   B G-POP A G-POP  B PROT-GUARD  $C89FFD49 EMITW ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  $C89FFD49 EMITW ;
 : BATADD ( -- )     \ atomic-add ( delta addr -- old ) : LDADDAL x9,x9,[x10]
-   B G-POP A G-POP  B PROT-GUARD  $F8E90149 EMITW  A G-PUSH ;
+   B G-POP A G-POP  7 8 MOVZ,  B 7 GUARD-SPAN  $F8E90149 EMITW  A G-PUSH ;
 : BATCAS ( -- )     \ atomic-cas ( expected new addr -- actual ) : CASAL x9,x10,[x11]
-   C G-POP B G-POP A G-POP  C PROT-GUARD  $C8E9FD6A EMITW  A G-PUSH ;
+   C G-POP B G-POP A G-POP  7 8 MOVZ,  C 7 GUARD-SPAN  $C8E9FD6A EMITW  A G-PUSH ;
 : BFENCE ( -- )     \ fence ( -- ) : DMB ISH
    $D5033BBF EMITW ;
 
@@ -1347,7 +1442,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
    DP-REG !
    LBL DP-LOW !
    LBL DP-HIGH !
-   5 DATA-START MOVZ,  5 DATA 5 ADD,
+   5 DATA-START LIT64,  5 DATA 5 ADD,
    DP-REG @ 5 CMP,  C-GE DP-LOW LABEL@ BCOND,
       0 76 MOVZ,  NR-EXIT-GROUP SYS,
    DP-LOW LABEL@ LBL,
@@ -1408,14 +1503,17 @@ s" spawn-darwin-finish" s" label label --" TRUST
    2 G-POP  1 G-POP  0 G-POP  NR-WRITE SYS,  SYS-PUSH ;
 
 : BREAD ( -- )
-   2 G-POP  1 G-POP  0 G-POP  1 PROT-GUARD  NR-READ SYS,  SYS-PUSH ;   \ x1 = kernel-written buffer
+   2 G-POP  1 G-POP  0 G-POP  1 2 GUARD-SPAN  NR-READ SYS,  SYS-PUSH ;
 
 : BIOCTL ( -- )
-   2 G-POP  1 G-POP  0 G-POP  2 PROT-GUARD  NR-IOCTL SYS,  SYS-PUSH ;  \ x2 = driver arg (may be written)
+   2 G-POP  1 G-POP  0 G-POP  GUARD-IOCTL  NR-IOCTL SYS,  SYS-PUSH ;
 
 : BMMAP ( -- )
    5 G-POP  4 G-POP  3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   0 PROT-GUARD                              \ MAP_FIXED must not remap the sealed arena
+   LBL {: notfixed:label :}
+   6 3 $10 ANDI,  6 notfixed CBZ,            \ only MAP_FIXED replaces an existing mapping
+      0 1 GUARD-SPAN                          \ x0 = address, x1 = mapping length
+   notfixed LBL,
    HB-TARGET-LINUX? IF OS-MMAP-FLAGS THEN
    NR-MMAP SYS,  SYS-PUSH ; \ ( addr len prot flags fd off -- addr|-1 )
 
@@ -1444,16 +1542,10 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
 \ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).
 \
-\ SEAL BOUNDARY (TFAM 2b-iii, cat 5): ffi-call and ffi-call-abi/-r carry NO arg
-\ count in their prim signatures, so a sound sealed-band guard (which must skip
-\ stale slots -- see BFFI-GUARD-ARGS) cannot be added without threading nargs
-\ through the prim ABI, i.e. changing the checker PRIM: signatures in
-\ src/core/checker.f. The checked FFI library therefore routes ALL its
-\ integer/pointer calls (CALL0-6, FFI-CALLN, DLOPEN/DLSYM) through the guarded
-\ ffi-call-n, so no checked path packs an unguarded pointer arg. Raw
-\ ffi-call/ffi-call-abi remain a named tested boundary for raw hand-packed
-\ argbufs; closing them soundly (nargs-carrying signatures) is dot
-\ habu-sound-seal-guard-d0b99483 (blocked on the checker.f owner).
+\ Every foreign-call primitive is checker-restricted to explicit TRUSTED:
+\ definitions. Sealed FFI bindings use ffi-call-bounded: one fixed schema entry
+\ per live argument, zero for scalar/read-only, and a whole-span guard for every
+\ writer before the foreign BLR. Mixed ABI uses the bounded variants below.
 : BFFI-LOAD-X0-X7 ( -- )
    0 15 0  LDR,   1 15 8  LDR,   2 15 16 LDR,   3 15 24 LDR,
    4 15 32 LDR,   5 15 40 LDR,   6 15 48 LDR,   7 15 56 LDR, ;
@@ -1517,22 +1609,20 @@ s" spawn-darwin-finish" s" label label --" TRUST
    BFFI-CALL-ABI-CORE
    9 0 FMOVDX,  9 G-PUSH ;
 
-\ Seal guard for FFI args (TFAM 2b-iii, cat 5 FFI-writer). PROT-GUARD every LIVE
-\ integer/pointer arg the trampoline is about to hand a foreign fn: if arg[i]
-\ points into a sealed band the callee could write through it, tampering a sealed
-\ cell -- so trap E-SEAL-VIOLATION BEFORE the BLR. Guards exactly [0..nargs), NOT
-\ the 8 registers ffi-call loads, so stale slots from a prior call cannot
-\ false-trap (the soundness reason ffi-call-n, which carries nargs, is the guarded
-\ trampoline). Precondition x14=nargs, x15=argbuf, x20=DATA (call before any x20
-\ repurpose). x9-x11 scratch here; PROT-GUARD adds x12/x13. Inert pre-seal (latch).
-: BFFI-GUARD-ARGS ( -- )
+\ Sealed foreign bindings carry one writable byte extent per live argument.
+\ Scalars and read-only pointers use zero; writable pointers are guarded as
+\ complete spans before the BLR. Preconditions: x14=nargs, x15=argbuf,
+\ x17=writable-length buffer, x20=DATA.
+: BFFI-GUARD-BOUNDS ( -- )
    LBL LBL {: loop:label done:label :}
    10 0 MOVZ,                                          \ x10 = i = 0
    loop LBL,
       10 14 CMP,  C-GE done BCOND,                     \ i >= nargs -> done
       11 10 3 LSLI,  11 15 11 ADD,                     \ x11 = argbuf + i*8
       9 11 0 LDR,                                      \ x9 = argbuf[i]
-      9 PROT-GUARD                                     \ trap if arg lands in a sealed band
+      11 10 3 LSLI,  11 17 11 ADD,
+      6 11 0 LDR,                                      \ x6 = writable extent
+      9 6 GUARD-SPAN
       10 10 1 ADDI,  loop B,
    done LBL, ;
 
@@ -1546,11 +1636,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 \ via a temp. Integer/pointer args only. Every live arg is PROT-GUARD'd before the
 \ call, so this is the sound sink for sealed-band pointers (the checked FFI library
 \ routes its integer/pointer calls here).
-: BFFI-CALL-N ( -- )
-   16 G-POP                                            \ x16 = fn
-   14 G-POP                                            \ x14 = nargs
-   15 G-POP                                            \ x15 = argbuf
-   BFFI-GUARD-ARGS                                     \ seal guard: [0..nargs) before x20 is repurposed
+: BFFI-CALL-N-CORE ( -- )
    20 SP $8 STR,                                       \ park caller x20 in frame slot
    20 SP 0 ADDI,                                       \ x20 = frame sp
    LBL FFI-SKIP !
@@ -1574,6 +1660,53 @@ s" spawn-darwin-finish" s" label label --" TRUST
    SP 20 0 ADDI,                                       \ restore sp from x20
    20 SP $8 LDR,                                       \ restore caller x20
    0 G-PUSH ;
+
+\ Raw unbounded FFI is checker-restricted to explicit TRUSTED: definitions.
+: BFFI-CALL-N ( -- )
+   16 G-POP  14 G-POP  15 G-POP
+   BFFI-CALL-N-CORE ;
+
+: BFFI-CALL-BOUNDED ( -- )
+   16 G-POP                                            \ x16 = fn
+   14 G-POP                                            \ x14 = nargs
+   17 G-POP                                            \ x17 = writable lengths
+   15 G-POP                                            \ x15 = argbuf
+   BFFI-GUARD-BOUNDS
+   BFFI-CALL-N-CORE ;
+
+\ Mixed-ABI bounded calls guard every integer register slot (x0..x8) and
+\ every caller-packed stack slot before the foreign branch.  The two extent
+\ tables are distinct because stack slot zero is not integer slot zero.
+: BFFI-CALL-ABI-BOUNDED-CORE ( -- )
+   16 G-POP                                            \ x16 = fn
+   14 G-POP                                            \ x14 = stack cell count
+   12 G-POP                                            \ x12 = stack extents
+   11 G-POP                                            \ x11 = x0..x8 extents
+   13 G-POP                                            \ x13 = prepacked stack cells
+   17 G-POP                                            \ x17 = FP argbuf
+   15 G-POP                                            \ x15 = integer argbuf
+   SP SP $40 SUBI,
+   15 SP 0 STR,  17 SP $8 STR,  13 SP $10 STR,  11 SP $18 STR,
+   12 SP $20 STR,  14 SP $28 STR,  16 SP $30 STR,
+   17 11 0 ADDI,  14 9 MOVZ,                          \ guard x0..x8
+   BFFI-GUARD-BOUNDS
+   15 SP $10 LDR,  17 SP $20 LDR,  14 SP $28 LDR,     \ guard stack slots
+   BFFI-GUARD-BOUNDS
+   15 SP 0 LDR,  15 G-PUSH
+   17 SP $8 LDR,  17 G-PUSH
+   13 SP $10 LDR,  13 G-PUSH
+   14 SP $28 LDR,  14 G-PUSH
+   16 SP $30 LDR,  16 G-PUSH
+   SP SP $40 ADDI,
+   BFFI-CALL-ABI-CORE ;
+
+: BFFI-CALL-ABI-BOUNDED ( -- )
+   BFFI-CALL-ABI-BOUNDED-CORE
+   0 G-PUSH ;
+
+: BFFI-CALL-ABI-R-BOUNDED ( -- )
+   BFFI-CALL-ABI-BOUNDED-CORE
+   9 0 FMOVDX,  9 G-PUSH ;
 
 : BOPENRD ( -- )
    A G-POP  A OS-OPEN-RD  SYS-PUSH ;
@@ -1614,7 +1747,7 @@ s" spawn-darwin-finish" s" label label --" TRUST
 
 : BREADLINK ( -- )
    3 G-POP  2 G-POP  1 G-POP
-   2 PROT-GUARD                              \ x2 = kernel-written link buffer
+   2 3 GUARD-SPAN                             \ x2 = kernel-written link buffer, x3 = length
    HB-TARGET-LINUX? IF 0 99 MOVN, ELSE 0 1 MOVN, THEN
    4 0 MOVZ,  5 0 MOVZ,
    NR-READLINKAT SYS,  SYS-PUSH ;
@@ -1644,7 +1777,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BSTAT64 ( -- )
    1 G-POP  0 G-POP
-   1 PROT-GUARD                              \ x1 = kernel-written statbuf
+   7 $90 MOVZ,  1 7 GUARD-SPAN               \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1662,7 +1795,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BLSTAT64 ( -- )
    1 G-POP  0 G-POP  2 0 MOVZ,  3 0 MOVZ,  4 0 MOVZ,  5 0 MOVZ,
-   1 PROT-GUARD                              \ x1 = kernel-written statbuf
+   7 $90 MOVZ,  1 7 GUARD-SPAN               \ x1 = kernel-written 144-byte statbuf
    LBL STAT-OK !
    LBL STAT-DONE !
    HB-TARGET-LINUX? IF
@@ -1680,7 +1813,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BGETDIRENTRIES64 ( -- )
    3 G-POP  2 G-POP  1 G-POP  0 G-POP
-   1 PROT-GUARD  3 PROT-GUARD                \ x1 = dirent buffer, x3 = basep (both written)
+   1 2 GUARD-SPAN  7 8 MOVZ,  3 7 GUARD-SPAN
    NR-GETDIRENTRIES64 SYS,  SYS-PUSH ;
 
 : C-FLUSH-X9-LINE ( -- )
@@ -1688,7 +1821,7 @@ s" linux-stat-fix" s" n --" TRUST
 
 : BPATCH32 ( -- )                \ ( w addr -- ): RW-flip, store, RX, cache-sync —
    A G-POP  B G-POP              \ all inside ENGINE text (a JIT-resident caller
-   B PROT-GUARD                  \ but never into the sealed friend arena
+   7 4 MOVZ,  A 7 GUARD-SPAN      \ x9 is the target; protect its exact 4-byte write
    SP SP 32 SUBI,                \ flipping the region would unmap ITSELF)
    A SP 8 STR,  B SP 16 STR,
    2 3 MOVZ,  LPROT LABEL@ BL,
@@ -1817,6 +1950,9 @@ s" linux-stat-fix" s" n --" TRUST
 \ the capture is monotonic and never lowers the watermark.
 : BSEALCAP ( -- )
    NDICT DATA SEAL-NDICT-CELL STR, ;
+
+: BSEALFRIEND ( -- )
+   9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
 
 \ wide-mark ( -- ): set DNAME-WIDE on the newest dictionary record - the word's
 \ recorded effect carries a wider-than-cell layout value, so interpret-mode
@@ -1960,6 +2096,7 @@ s" linux-stat-fix" s" n --" TRUST
    s" ndict@" ['] BNDICTFETCH FPRIM-L
    s" cp!" ['] BCPSET FPRIM-L   s" ndict!" ['] BNDSET FPRIM-L
    s" SEAL-CAPTURE" ['] BSEALCAP FPRIM-L
+   s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
@@ -1971,6 +2108,9 @@ s" linux-stat-fix" s" n --" TRUST
    s" mmap" ['] BMMAP FPRIM-L
    s" ffi-call" ['] BFFI-CALL FPRIM
    s" ffi-call-n" ['] BFFI-CALL-N FPRIM
+   s" ffi-call-bounded" ['] BFFI-CALL-BOUNDED FPRIM
+   s" ffi-call-abi-bounded" ['] BFFI-CALL-ABI-BOUNDED FPRIM
+   s" ffi-call-abi-r-bounded" ['] BFFI-CALL-ABI-R-BOUNDED FPRIM
    s" ffi-call-abi" ['] BFFI-CALL-ABI FPRIM
    s" ffi-call-abi-r" ['] BFFI-CALL-ABI-R FPRIM
    s" open-rd" ['] BOPENRD FPRIM-L
@@ -2090,7 +2230,11 @@ s" emit-prims" s" --" TRUST
 s" emit-fp-prims" s" --" TRUST
 
 : EMIT-CEMIT ( -- )
-   LCEMIT LABEL@ LBL,  9 28 0 STRW,  28 28 4 ADDI,  RET, ;
+   LCEMIT LABEL@ LBL,
+   SP SP 16 SUBI,  12 SP 0 STR,  13 SP 8 STR,
+   28 GUARD-CODE-WORD
+   12 SP 0 LDR,  13 SP 8 LDR,  SP SP 16 ADDI,
+   9 28 0 STRW,  28 28 4 ADDI,  RET, ;
 
 \ LBCAP ( -- ) : append TKA/TKL + ' ' to the body capture. LBCS ( x11=a x12=u )
 \ is the general entry (defining-word kind tokens). FATAL (exit 71) on overflow —
@@ -2143,7 +2287,11 @@ s" emit-fp-prims" s" --" TRUST
 
 : EMIT-PROT ( -- )
    LPROT LABEL@ LBL,
-   0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET, ;
+   0 DBASE 0 ADDI,  1 REGION LIT64,  NR-MPROTECT SYS,  RET,
+   \ Runtime lowering guard: x10=address, x11=byte length.
+   LBL dup LPROTSPAN ! LBL,
+   10 11 GUARD-SPAN
+   RET, ;
 
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is recorded in the protected-WID registry (PROT-WID-N-CELL entries of the

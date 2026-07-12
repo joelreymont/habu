@@ -1,6 +1,6 @@
 \ image.fs -- shared executable image buffer for bootstrap target writers.
 
-$120000 constant MSIZE
+$220000 constant MSIZE
 create MBUF MSIZE allot
 variable MP
 variable MLEN

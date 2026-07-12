@@ -21,6 +21,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 59  constant NR-PIPE
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT
+215 constant NR-MUNMAP
 24  constant NR-DUP2
 25  constant NR-FCNTL
 103 constant NR-SETITIMER

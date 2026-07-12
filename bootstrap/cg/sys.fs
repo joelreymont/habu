@@ -29,6 +29,7 @@ $32 constant MAP-ANON-PRIVATE-FIXED
 57  constant NR-CLOSE
 134 constant NR-SIGACTION
 226 constant NR-MPROTECT
+215 constant NR-MUNMAP
 103 constant NR-SETITIMER
 222 constant NR-MMAP
 220 constant NR-SPAWN
@@ -91,6 +92,7 @@ $1012 constant MAP-ANON-PRIVATE-FIXED
 6   constant NR-CLOSE
 46  constant NR-SIGACTION
 74  constant NR-MPROTECT
+$49 constant NR-MUNMAP
 83  constant NR-SETITIMER
 184 constant NR-SIGRETURN
 197 constant NR-MMAP

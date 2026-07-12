@@ -4,21 +4,20 @@
 \ SINK (! c! +! atomic* patch32 snap-rebase, syscall write buffers). The native
 \ engine (src/habu/habu1.f) carries the full sink set; the Gforth stage0 mirror
 \ (bootstrap/cg/forth.fs) is a strict SUBSET — it has no atomics, no snap-rebase,
-\ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls, no CHECKER-*
-\ registry mutators, and no package/public/private intrinsic (census-tfam-2b.md
-\ discrepancy 5). 2b-i already mirrored PROT-GUARD onto the sinks stage0 DOES
+\ no readlink/stat64/lstat64/getdirentries64/poll/ffi-call syscalls and no
+\ CHECKER-* registry mutators. 2b-i already mirrored GUARD-SPAN onto the sinks stage0 DOES
 \ have (BSTORE/BPLUSSTORE/BCSTORE, read/ioctl/mmap buffers, patch32) plus
-\ EMIT-SEAL-FRIEND on both cold-prefix entry paths, and test/seal.f runtime-proves
+\ EMIT-SEAL-FRIEND-TOKEN on both cold-prefix entry paths, and test/seal.f runtime-proves
 \ those traps against the sealed candidate.
 \
 \ Parity for the ABSENT surfaces cannot be "add a matching guard" — there is
 \ nothing to guard. Parity is proving the absence STAYS absent: a guard-bypass
 \ surface must not silently appear in the stage0 mirror unguarded. This fixture
 \ pins today's absence list (a named table, SAB-ABSENT-*) and scans the mirror
-\ source; any pinned surface that appears on a code line without a PROT-GUARD on
+\ source; any pinned surface that appears on a code line without a GUARD-SPAN on
 \ that line fails the gate closed, forcing a conscious decision (wire the guard +
 \ a seal trap fixture + re-pin) when someone extends stage0. It also pins the
-\ PRESENT seal machinery (the PROT-GUARD sink guards and the EMIT-SEAL-FRIEND
+\ PRESENT seal machinery (the GUARD-SPAN sink guards and the EMIT-SEAL-FRIEND
 \ entry seals) so a mirrored guard cannot be silently deleted.
 \
 \ Wordlist-creation (BWORDLIST/BSETCUR/BSETCHECK) and the execute/compile sinks
@@ -27,10 +26,9 @@
 \ dedicated `DATA <CELL> STR,` stores (LESSONS.md, TFAM 2b-i) or transfer control,
 \ never through a computed raw store, so the seal deliberately leaves them open
 \ (test/seal.f's positive forge proves post-seal defines/packages still work).
-\ Friend-scoping those definition/control surfaces is a checker/compiler-level
-\ capability = a later slice (2b-iii) on BOTH sides; there is no 2b-i-style latch
-\ parity to mirror for them here, so this fixture pins their guard-free status by
-\ omission (they are absent from the guarded-sink presence pins).
+\ Package scope and protected-WID membership are now present on both native and
+\ recovery paths. This fixture pins that registry separately from the remaining
+\ genuinely absent surfaces.
 \
 \ Scan model: comments are `\`-to-EOL (Gforth requires the backslash to be
 \ whitespace-delimited); forth.fs holds no backslash inside strings, so a
@@ -51,7 +49,7 @@ require lib/fs.f
 $40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
-10 constant SAB-GUARD-PINS              \ PROT-GUARD code sites: 1 def + 9 guarded sinks (incl cp!/ndict!)
+10 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines
 3 constant SAB-SEAL-PINS                \ EMIT-SEAL-FRIEND code sites: 1 def + 2 entry seals
 
 variable SAB-VIOL#                      \ unguarded surfaces found in the current scan
@@ -99,25 +97,10 @@ variable SAB-NAMES-LEN
    s" CHECKER-DEFLINEAR" SAB-NAME,  s" CHECKER-DEFRECORD" SAB-NAME,
    s" CHECKER-USIGS-TRUNCATE-FROM" SAB-NAME, ;
 
-: SAB-ADD-PACKAGE ( -- )
-   s" package" SAB-NAME,  s" public" SAB-NAME,  s" private" SAB-NAME,
-   s" end-package" SAB-NAME,  s" C-PACKAGE" SAB-NAME,  s" C-PUBLIC" SAB-NAME,
-   s" C-PRIVATE" SAB-NAME,  s" C-END-PACKAGE" SAB-NAME, ;
-
-\ TFAM 2b-v: the protected-WID registry (records the WIDs of sealed system /
-\ generated constructor PACKAGES, and gates the sealed-WID guards) is a native-only
-\ mechanism. Its precondition -- the package system -- is already pinned absent
-\ above, so the registry cannot exist in stage0; pin its cells/routines too so a
-\ registry cannot silently appear in the mirror without a conscious re-pin.
-: SAB-ADD-PROTWID ( -- )
-   s" PROT-WID-N-CELL" SAB-NAME,  s" PROT-WID-OFF" SAB-NAME,
-   s" LPROTWIDQ" SAB-NAME,  s" LAOTWIDGATE" SAB-NAME,
-   s" EM-AOT-REGISTER-PROT-WIDS" SAB-NAME, ;
-
 : SAB-INIT-NAMES ( -- )
    0 SAB-NAMES-LEN !
    SAB-ADD-ATOMICS  SAB-ADD-SNAP  SAB-ADD-SYSCALLS
-   SAB-ADD-CHECKER  SAB-ADD-PACKAGE  SAB-ADD-PROTWID ;
+   SAB-ADD-CHECKER ;
 
 \ --- comment stripping + substring scan ---
 
@@ -142,7 +125,7 @@ variable SAB-NAMES-LEN
 : SAB-SCAN-LINE ( ptr u8 n n -- ) {: a:ptr u:n line:n :}
    a u SAB-CODE-LEN {: codeu:n :}
    codeu 0 = if exit then
-   a codeu s" PROT-GUARD" CONTAINS? if exit then   \ guarded line: consciously allowed
+   a codeu s" GUARD-SPAN" CONTAINS? if exit then   \ guarded line: consciously allowed
    0 begin dup SAB-NAMES-LEN @ < while
       SAB-NAME-AT
       2dup a codeu 2swap CONTAINS? if
@@ -231,9 +214,9 @@ variable SAB-READY
    SAB-VIOL# @ 0 > TTRUE ;
 
 : SAB-SELF-GUARD-OK ( -- )
-   s" absent name on a PROT-GUARD line is an allowed guarded add" T-LABEL
+   s" absent name on a GUARD-SPAN line is an allowed guarded add" T-LABEL
    0 SAB-VIOL# !
-   s" : BX ( -- ) B G-POP A G-POP B PROT-GUARD atomic-add A B 0 STR, ;" SAB-SCAN-BUF
+   s" : BX ( -- ) B G-POP A G-POP B 7 GUARD-SPAN atomic-add A B 0 STR, ;" SAB-SCAN-BUF
    SAB-VIOL# @ 0 T= ;
 
 : SAB-SELF-COMMENT-OK ( -- )
@@ -260,15 +243,26 @@ variable SAB-READY
    SAB-VIOL# @ 0 T= ;
 
 : SAB-REAL-GUARDS ( -- )
-   s" stage0 raw-store/syscall PROT-GUARD sinks stay present" T-LABEL
-   SAB-FORTH$ s" PROT-GUARD" SAB-COUNT-CODE SAB-GUARD-PINS T=
+   s" stage0 raw-store/syscall GUARD-SPAN sinks stay present" T-LABEL
+   SAB-FORTH$ s" GUARD-SPAN" SAB-COUNT-CODE SAB-GUARD-PINS T=
    s" stage0 seal is emitted on both cold-prefix entry paths" T-LABEL
    SAB-FORTH$ s" EMIT-SEAL-FRIEND" SAB-COUNT-CODE SAB-SEAL-PINS T= ;
+
+: SAB-PRESENT ( ptr u8 n -- )
+   SAB-FORTH$ 2swap SAB-COUNT-CODE 0 > TTRUE ;
+
+: SAB-REAL-PROTWID ( -- )
+   s" stage0 package reopen uses the protected-WID registry" T-LABEL
+   s" PROT-WID-N-CELL" SAB-PRESENT
+   s" BPROTWIDADD" SAB-PRESENT
+   s" LPROTWIDQ" SAB-PRESENT
+   s" C-PACKAGE-PROT-GUARD" SAB-PRESENT ;
 
 : SAB-REAL-TESTS ( -- )
    SAB-LOAD-FORTH
    SAB-REAL-ABSENCE
-   SAB-REAL-GUARDS ;
+   SAB-REAL-GUARDS
+   SAB-REAL-PROTWID ;
 
 : SAB-MAIN ( -- )
    T-RESET

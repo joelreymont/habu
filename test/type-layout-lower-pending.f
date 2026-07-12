@@ -8,11 +8,11 @@
 \      the asserts after each pin the per-op fact the emitter consumes
 \      (operand position 0=top, family-id, registry logical width; absent row
 \      = one-cell operand).
-\   2. emitted-lowering goldens — exact u32 instruction sequences of five
+\   2. emitted-lowering goldens — exact u32 instruction sequences of six
 \      representative subjects, captured FROM the implemented pass-2 emitter
 \      (EM-COMPILE-P2WIDE / LP2COPY / LP2ROT / LP2RS / EM-P2-CARVE, habu2.f).
-\      The emitter is deterministic (the build's two-build byte-compare pins
-\      it), so the goldens are exact; they move only when the lowering does.
+\      The fetch validator's ASLR-dependent absolute call target is opcode-mask
+\      checked; every other word is exact and moves only when lowering does.
 \   3. execution rows — generated constructors (TLP--RES:ERR / TLP--MIX:BIG)
 \      seed the bundles in checked code, whole-bundle transports run at
 \      RUNTIME, and TRUSTED unpackers surface the cells for value asserts:
@@ -95,9 +95,9 @@ WF-N@ 1 T=  0 WF-POS@ 3 T=
 
 \ return-stack transfers: one fact per op, from the row the op consumes.
 : TLP-TOR ( tlp-res<n,n> -- tlp-res<n,n> ) >r r> ;
-WF-N@ 2 T=  0 WF-TOKIX@ 1 T=  1 WF-TOKIX@ 2 T=  1 WF-POS@ 0 T=
+WF-N@ 2 T=  0 WF-OFF@ 41 T=  1 WF-OFF@ 44 T=  1 WF-POS@ 0 T=
 : TLP-RAT ( tlp-res<n,n> -- tlp-res<n,n> tlp-res<n,n> ) >r r@ r> ;
-WF-N@ 3 T=  1 WF-TOKIX@ 2 T=  2 WF-TOKIX@ 3 T=
+WF-N@ 3 T=  1 WF-OFF@ 57 T=  2 WF-OFF@ 60 T=
 : TLP-2TOR ( tlp-res<n,n> n -- tlp-res<n,n> n ) 2>r 2r> ;
 WF-N@ 2 T=  0 WF-POS@ 1 T=  1 WF-POS@ 1 T=
 : TLP-2RAT ( tlp-res<n,n> n -- tlp-res<n,n> n tlp-res<n,n> n ) 2>r 2r@ 2r> ;
@@ -125,6 +125,28 @@ WF-N@ 2 T=
 \ a zero-payload enum-shaped sum is width 1: emitters keep one-cell lowering.
 : TLP-EN-DUP ( tlp-en -- tlp-en tlp-en ) dup ;
 WF-N@ 1 T=  0 WF-WIDTH@ 1 T=
+
+\ Layout memory operations record one operation-width fact at position 0.
+\ W=2 therefore triggers pass 2; the scalar address itself remains one cell.
+1 LAYOUT-BUFFER TLP-MEM2-BUF tlp-res<n,n>
+: TLP-MEM2-P ( -- ptr tlp-res<n,n> ) 0 TLP-MEM2-BUF ;
+: TLP-STORE2 ( tlp-res<n,n> -- ) TLP-MEM2-P ! ;
+WF-N@ 1 T=  0 WF-OFF@ 42 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
+: TLP-FETCH2 ( -- tlp-res<n,n> ) TLP-MEM2-P @ ;
+WF-N@ 1 T=  0 WF-OFF@ 42 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 2 T=
+1 LAYOUT-BUFFER TLP-MEM4-BUF tlp-mix<n,n>
+: TLP-MEM4-P ( -- ptr tlp-mix<n,n> ) 0 TLP-MEM4-BUF ;
+: TLP-STORE4 ( tlp-mix<n,n> -- ) TLP-MEM4-P ! ;
+WF-N@ 1 T=  0 WF-OFF@ 42 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 4 T=
+: TLP-FETCH4 ( -- tlp-mix<n,n> ) TLP-MEM4-P @ ;
+WF-N@ 1 T=  0 WF-OFF@ 42 T=  0 WF-POS@ 0 T=  0 WF-WIDTH@ 4 T=
+
+\ Address-input subjects keep the memory lowering golden free of embedded
+\ CREATE addresses. Their only body token is the wide memory operation.
+: TLP-STORE2-G ( tlp-res<n,n> ptr tlp-res<n,n> -- ) ! ;
+WF-N@ 1 T=  0 WF-OFF@ 50 T=  0 WF-WIDTH@ 2 T=
+: TLP-FETCH2-G ( ptr tlp-res<n,n> -- tlp-res<n,n> ) @ ;
+WF-N@ 1 T=  0 WF-OFF@ 50 T=  0 WF-WIDTH@ 2 T=
 
 \ ---------------------------------------------------------------------------
 \ emitted-lowering goldens: exact u32 sequences of five subjects, captured
@@ -155,6 +177,18 @@ TRUSTED: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
 variable GXT
 : GG ( n n -- ) {: ix:n want:n :}   \ golden: instruction ix of subject GXT
    GXT @ ix 4 * TLP-W32  want T= ;
+
+: GM ( n n n -- ) {: ix:n mask:n want:n :}   \ masked golden instruction
+   GXT @ ix 4 * TLP-W32 mask and  want T= ;
+
+: TLP-EXIT-W32 ( -- n )
+   HB-TARGET-LINUX? if $D2800BC8 exit then
+   HB-TARGET-MACOS? if $D2800030 exit then
+   s" type-layout-lower: unknown target" 76 die ;
+: TLP-SVC-W32 ( -- n )
+   HB-TARGET-LINUX? if $D4000001 exit then
+   HB-TARGET-MACOS? if $D4001001 exit then
+   s" type-layout-lower: unknown target" 76 die ;
 
 s" TLP-DUP" TLP-XT GXT !
 0 $D10043FF GG  1 $F90003FE GG                          \ prologue
@@ -206,6 +240,36 @@ s" TLP-LOCAL" TLP-XT GXT !
 15 $910083FF GG                                         \ drop-locals: add sp,#32
 16 $F94003FE GG  17 $910043FF GG  18 $D65F03C0 GG
 
+\ TLP-STORE2-G: pop the typed address, call the whole-span LPROTSPAN ABI before
+\ mutation, copy slot0 then tag, and pop both source cells.
+s" TLP-STORE2-G" TLP-XT GXT !
+0 $D10043FF GG  1 $F90003FE GG
+2 $D1002273 GG  3 $F940026A GG
+4 $D100426E GG  5 $D2800049 GG
+6 $D280020B GG
+7 $FFE0001F $D2800010 GM  8 $FFE0001F $F2A00010 GM
+9 $FFE0001F $F2C00010 GM  10 $FFFFFFFF $D63F0200 GM
+11 $F94001CF GG  12 $F900014F GG  13 $910021CE GG  14 $9100214A GG
+15 $F1000529 GG  16 $54FFFF61 GG  17 $D1004273 GG
+18 $F94003FE GG  19 $910043FF GG  20 $D65F03C0 GG
+
+\ TLP-FETCH2-G: validate the inline descriptor before the typed address is
+\ popped, then read slot0 and tag in canonical bundle order. The absolute call
+\ target changes under ASLR, so its four-instruction opcode shape is masked.
+s" TLP-FETCH2-G" TLP-XT GXT !
+0 $D10043FF GG  1 $F90003FE GG
+2 $FFE0001F $D2800010 GM  3 $FFE0001F $F2A00010 GM
+4 $FFE0001F $F2C00010 GM  5 $FFFFFFFF $D63F0200 GM
+6 $14000009 GG                                          \ branch over 8 descriptor u32s
+7 1 GG  8 0 GG                                           \ one check (u64 cell)
+9 1 GG  10 0 GG                                          \ tag at cell offset 1
+11 2 GG  12 0 GG                                         \ two declaration-order tags
+13 0 GG  14 0 GG                                         \ no ancestor guards
+15 $D1002273 GG  16 $F940026A GG  17 $D2800049 GG
+18 $F940014B GG  19 $9100214A GG  20 $F900026B GG  21 $91002273 GG
+22 $F1000529 GG  23 $54FFFF61 GG
+24 $F94003FE GG  25 $910043FF GG  26 $D65F03C0 GG
+
 \ ---------------------------------------------------------------------------
 \ execution rows: whole-bundle transports at RUNTIME. The seeds are the REAL
 \ generated constructors (item 8/11: `tlp-res` derives package TLP--RES,
@@ -223,6 +287,17 @@ TRUSTED: TLP-UN2 ( tlp-res<n,n> -- n n ) ;
 : TLP-MK4 ( -- tlp-mix<n,n> ) 91 92 93 TLP--MIX:BIG ;
 \ Tested boundary (TRUSTED): the matching 4-cell unpack.
 TRUSTED: TLP-UN4 ( tlp-mix<n,n> -- n n n n ) ;
+
+\ Executed memory lowering: constructor-produced bundles cross typed addresses
+\ and return with payload, padding, and tag order intact.
+: TLPX-STORE2 ( -- ) TLP-MK2 TLP-STORE2 ;
+: TLPX-FETCH2 ( -- n n ) TLP-FETCH2 TLP-UN2 ;
+TLPX-STORE2
+TLPX-FETCH2 1 T= 7 T=
+: TLPX-STORE4 ( -- ) TLP-MK4 TLP-STORE4 ;
+: TLPX-FETCH4 ( -- n n n n ) TLP-FETCH4 TLP-UN4 ;
+TLPX-STORE4
+TLPX-FETCH4 1 T= 93 T= 92 T= 91 T=
 
 \ typed-local-lint: allow-bare-local
 : TLPX-DUP ( -- n n n n ) TLP-MK2 dup {: a b :} a TLP-UN2 b TLP-UN2 ;
@@ -279,6 +354,20 @@ TLPX-MIX-SWAP 1 T= 93 T= 92 T= 91 T= 5 T=
 \ typed-local-lint: allow-bare-local
 : TLPX-LOCAL ( -- n n n n n n n n n ) 5 TLP-MK4 {: y:n z :} z TLP-UN4 y z TLP-UN4 ;
 TLPX-LOCAL 1 T= 93 T= 92 T= 91 T= 5 T= 1 T= 93 T= 92 T= 91 T=
+\ two distinct wide locals in one carve group pin declaration-order bind replay
+\ against operand-position-sorted width evidence.
+package TLP-LOCAL-TEST
+public
+\ typed-local-lint: allow-bare-local
+: DUAL ( -- n n n n n n )
+   TLP-MK2 TLP-MK4 {: r m :} r TLP-UN2 m TLP-UN4 ;
+\ typed-local-lint: allow-bare-local
+: DEEP ( -- n n n n n n )
+   TLP-MK2 1 2 3 4 {: r a:n b:n c:n d:n :}
+   a b c d r TLP-UN2 ;
+end-package
+TLP-LOCAL-TEST:DUAL 1 T= 93 T= 92 T= 91 T= 1 T= 7 T=
+TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 
 \ a wide local bound at TOP LEVEL and REFERENCED inside both arms of a branch.
 \ typed-local-lint: allow-bare-local

@@ -1,7 +1,7 @@
 \ cuda-launch.f - CHECKED on-device proof: LAUNCH a checked-emitted SAXPY kernel
 \ on the Orin GPU and verify the result against the CPU golden.
 \
-\ Fully checked Habu via lib/ffi.f (NO 0 set-check; only P>N/N>P trusted). The
+\ Fully checked Habu via lib/ffi.f (NO 0 set-check; only P>N trusted). The
 \ deprecated <=8-arg launch API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid)
 \ avoids cuLaunchKernel's 11 args; the real driver memory entry points are the
 \ _v2 symbols (the earlier INVALID_CONTEXT was symbol versioning). Prereq: cubin

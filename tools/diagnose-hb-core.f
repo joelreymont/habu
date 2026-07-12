@@ -69,10 +69,13 @@ variable CHECKED
    s" src/core/util.f" PREFIX-FILE
    s" src/core/structures.f" PREFIX-FILE
    s" src/core/checker.f" PREFIX-FILE
+   s" src/core/lower-cert-base.f" PREFIX-FILE
    s" src/core/type-schema.f" PREFIX-FILE
    s" src/core/type-family.f" PREFIX-FILE
    s" src/core/render.f" PREFIX-FILE
    s" src/core/sumtype.f" PREFIX-FILE
+   s" src/core/layout-buffer.f" PREFIX-FILE
+   s" src/core/layout-valid.f" PREFIX-FILE
    s" src/core/check-hook.f" PREFIX-FILE
    s" src/core/structures-effects.f" PREFIX-FILE
    s" src/core/roles.f" PREFIX-FILE
@@ -86,6 +89,8 @@ variable CHECKED
    s" src/core/type-family-sha.f" PREFIX-FILE
    s" src/core/combinators.f" PREFIX-FILE
    s" src/habu/xref.f" PREFIX-FILE
+   s" src/core/layout-buffer-seal.f" PREFIX-FILE
+   s" src/core/lower-cert-seal.f" PREFIX-FILE
    s" src/os/script-argv.f" PREFIX-FILE ;
 
 public

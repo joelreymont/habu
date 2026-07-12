@@ -25,7 +25,7 @@ $80000028 constant LC-MAIN
 $0C       constant LC-DYLIB
 $100000000 constant VMBASE
 $1000     constant CODE-OFF          \ entry file offset (slack below for codesign)
-$100000   constant MPAGE              \ maximum generated code window for builder images
+$200000   constant MPAGE              \ maximum generated executable window
 
 variable CODELEN
 create SCODE MPAGE allot              \ assembled-code scratch (grows with the standalone)

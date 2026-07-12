@@ -21,6 +21,7 @@ $52  constant NR-SETPGID
 $2A  constant NR-PIPE
 $2E  constant NR-SIGACTION
 $4A  constant NR-MPROTECT
+$49  constant NR-MUNMAP
 $5A  constant NR-DUP2
 $5C  constant NR-FCNTL
 $53  constant NR-SETITIMER

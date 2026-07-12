@@ -2,6 +2,7 @@ GATE-STDLIB-MAIN
 
 TEST:SUITE shadow-lint
    tools/lint/shadow-lint.f
+   tools/lint/shadow-lint-test.f
 TEST:;SUITE
 
 TEST:SUITE clobber-lint
@@ -252,6 +253,7 @@ TEST:SUITE ptx-stdlib
    lib/ptx/tile-smem-test.f
    lib/ptx/tile-acc-test.f
    lib/ptx/gemm-checked-test.f
+   lib/ptx/attention-checked-test.f
    lib/ptx/tile-v4-test.f
    lib/ptx/collective-test.f
    lib/ptx/autograd-test.f
@@ -282,6 +284,10 @@ TEST:;SUITE
 
 TEST:SUITE ptx-gemm-checked-neg
    lib/ptx/gemm-checked-neg-test.f
+TEST:;SUITE
+
+TEST:SUITE ptx-attention-checked-neg
+   lib/ptx/attention-checked-neg-test.f
 TEST:;SUITE
 
 TEST:SUITE ptx-autograd-neg

@@ -1,0 +1,118 @@
+\ layout-buffer.f - generative typed ADT storage and provenance regressions.
+
+require test/checker-assert.f
+
+variable #FAIL
+variable #CASE
+
+: T-FAIL ( -- )
+   [char] F emit #CASE @ .
+   #FAIL @ 1 + #FAIL ! ;
+
+: T= ( n n -- ) {: got:n want:n :}
+   #CASE @ 1 + #CASE !
+   got want <> if
+      T-FAIL s" expected " type want . s" got " type got . cr
+   then ;
+
+SUMTYPE lb-res 2
+   VARIANT ok a ;VARIANT
+   VARIANT err b ;VARIANT
+;SUMTYPE
+
+SUMTYPE lb-other 1
+   VARIANT some a ;VARIANT
+;SUMTYPE
+
+DEFLINEAR lb-linear
+SUMTYPE lb-owned 0
+   VARIANT hold lb-linear ;VARIANT
+;SUMTYPE
+
+3 LAYOUT-BUFFER LB-BUF lb-res<n,n>
+
+TRUSTED: LB-UN ( lb-res<n,n> -- n n ) ;
+
+: LB-GET ( n -- n n )
+   LB-BUF @ LB-UN ;
+
+: LB-PUT ( n n -- ) {: value:n index:n :}
+   value LB--RES:OK index LB-BUF ! ;
+
+: LB-LOW ( -- )
+   -1 LB-BUF drop ;
+
+: LB-HIGH ( -- )
+   3 LB-BUF drop ;
+
+: LB-LOW-RC ( -- n )
+   [: LB-LOW ;] catch ;
+
+: LB-HIGH-RC ( -- n )
+   [: LB-HIGH ;] catch ;
+
+variable LB-RAW
+create LB-RAW-WIDE 2 cells allot
+
+s" LB-CAST ( ptr a -- ptr lb-res<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-VAR-P ( -- ptr lb-res<n,n> ) LB-RAW" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-CREATE-P ( -- ptr lb-res<n,n> ) LB-RAW-WIDE" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-DATA-P ( -- ptr lb-res<n,n> ) data-base" CHECK-QUIET-CANDIDATE! 0 T=
+s" LBUF-PEND!" 0 search-wl 0= -1 T=
+s" LBUF-PEND-CLEAR" 0 search-wl 0= -1 T=
+s" LBUF-PEND-MATCH?" 0 search-wl 0= -1 T=
+s" LBUF-PEND-A" 0 search-wl 0= -1 T=
+s" LBUF-PEND-U" 0 search-wl 0= -1 T=
+s" LB-CELL+ ( ptr lb-res<n,n> -- ptr lb-res<n,n> ) cell+" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-BYTE ( ptr lb-res<n,n> -- ptr u8 )" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-WRONG-STORE ( lb-other<n> ptr lb-res<n,n> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" LB-WRONG-FETCH ( ptr lb-res<n,n> -- lb-other<n> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+
+0 LB-GET 0 T= 0 T=
+7 0 LB-PUT  8 1 LB-PUT  9 2 LB-PUT
+0 LB-GET 0 T= 7 T=
+1 LB-GET 0 T= 8 T=
+2 LB-GET 0 T= 9 T=
+
+LB-LOW-RC E-LAYOUT-BOUNDS T=
+LB-HIGH-RC E-LAYOUT-BOUNDS T=
+
+variable LB-EVAL-A
+variable LB-EVAL-U
+
+: LB-EVAL-RUN ( -- )
+   LB-EVAL-A @ LB-EVAL-U @ INCLUDE-EVALUATE ;
+
+: LB-EVAL ( ptr u8 n -- n )
+   LB-EVAL-U ! LB-EVAL-A !
+   [: LB-EVAL-RUN ;] catch ;
+
+s" 0 LAYOUT-BUFFER LB-ZERO lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+s" -1 LAYOUT-BUFFER LB-NEG lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+s" $7FFFFFFFFFFFFFFF LAYOUT-BUFFER LB-EXTENT lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+s" 1 LAYOUT-BUFFER LB-OPEN lb-res<a,a>" LB-EVAL E-LAYOUT-BUFFER T=
+s" 1 LAYOUT-BUFFER LB-LINEAR lb-owned" LB-EVAL E-LAYOUT-BUFFER T=
+
+PTR-VARIABLE LB-DP
+
+: LB-DUPLICATE ( -- )
+   s" 1 LAYOUT-BUFFER LB-BUF lb-res<n,n>" INCLUDE-EVALUATE ;
+
+: LB-DUP-RC ( -- n )
+   [: LB-DUPLICATE ;] catch ;
+
+here LB-DP 0 ptr-field !
+LB-DUP-RC $4E T=
+here LB-DP 0 ptr-field @ = -1 T=
+
+here LB-DP 0 ptr-field !
+s" 1 LAYOUT-BUFFER A:B:C lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+
+here LB-DP 0 ptr-field !
+s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
+
+: REPORT ( -- )
+   #FAIL @ 0= if s" ok" type cr exit then
+   #FAIL @ . s" layout-buffer failures" 1 die ;
+
+REPORT

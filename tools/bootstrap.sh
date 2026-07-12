@@ -90,6 +90,8 @@ SRC_COMMON=(
   src/habu/jit.f
   src/habu/habu2.f
   src/habu/xref.f
+  src/core/layout-buffer-seal.f
+  src/core/lower-cert-seal.f
 )
 
 emit_boot_hide() {
@@ -171,6 +173,8 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/checker.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/lower-cert-base.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/type-schema.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/type-family.f >> "$out"
@@ -179,11 +183,14 @@ emit_src() {
   printf '\n' >> "$out"
   cat src/core/sumtype.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/layout-buffer.f >> "$out"
+  cat src/core/layout-valid.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/check-hook.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/structures-effects.f >> "$out"
   printf '\n' >> "$out"
-  printf "' HOOK set-check\n" >> "$out"
+  printf "LOWER-CERT-HOOK:INSTALL\n" >> "$out"
   local f
   for f in "${SRC_COMMON[@]}"; do
     cat "$f" >> "$out"
@@ -203,8 +210,34 @@ emit_src() {
   printf '\n' >> "$out"
 }
 
+bootstrap_wide_gate() {
+  "$GF" test/bootstrap-wide-memory.fs
+
+  local src bin out err marker rc
+  for src in bootstrap-wide-interpret bootstrap-wide-tick; do
+    bin="$T/$src"
+    out="$T/$src.out"
+    err="$T/$src.err"
+    "$GF" -e "require $ROOT/test/nf.fs s\" $ROOT/test/$src-src.f\" slurp-file s\" $bin\" FORTH-EXE bye"
+    set +e
+    "$bin" >"$out" 2>"$err"
+    rc=$?
+    set -e
+    marker=""
+    if ! IFS= read -r marker < "$out"; then
+      marker=""
+    fi
+    if [[ "$rc" -ne 70 || "$marker" != "BOOTSTRAP-WIDE-ARMED" ]]; then
+      printf '%s: expected armed wide rejection rc=70; got rc=%s marker=%s\n' "$src" "$rc" "$marker" >&2
+      exit 75
+    fi
+  done
+}
+
+bootstrap_wide_gate
+
 emit_src "$T/stage2-src" src/habu/stage2.f
-"$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-EXE bye"
+"$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 
 emit_src "$T/stage2-src" src/habu/stage2.f native
 env HB_TMP="$T" "$T/hb-stage0" -- "$T"

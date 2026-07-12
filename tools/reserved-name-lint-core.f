@@ -113,7 +113,8 @@ variable RNL-NUM-I
 : RNL-DATA-DEFINER? ( n -- bool ) {: k :}
    k LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
    k LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" constant" LINT-STR=CI ;
+   k LEX-TOK s" constant" LINT-STR=CI if LINT-TRUE exit then
+   k LEX-TOK s" LAYOUT-BUFFER" LINT-STR=CI ;
 
 : RNL-RESERVED-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" if" LINT-STR=CI if LINT-TRUE exit then
@@ -168,6 +169,7 @@ variable RNL-NUM-I
    a u s" create" LINT-STR=CI if LINT-TRUE exit then
    a u s" variable" LINT-STR=CI if LINT-TRUE exit then
    a u s" constant" LINT-STR=CI if LINT-TRUE exit then
+   a u s" layout-buffer" LINT-STR=CI if LINT-TRUE exit then
    a u s" package" LINT-STR=CI if LINT-TRUE exit then
    a u s" public" LINT-STR=CI if LINT-TRUE exit then
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
