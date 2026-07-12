@@ -26,8 +26,8 @@ public
    fl ns GFLOPS-X1000 {: gflops:n :}
    gbs MEM-ROOF-GBS-X1000 UTIL-X1000 {: memu:n :}
    gflops FP32-ROOF-GFLOPS-X1000 UTIL-X1000 {: fpu:n :}
-   s" bytes=" type by U.0 s"  flops=" type fl U.0 cr
-   s" GB/s_x1000=" type gbs U.0 s"  mem_roof_util_x1000=" type memu U.0 cr
-   s" GFLOP/s_x1000=" type gflops U.0 s"  fp32_roof_util_x1000=" type fpu U.0 cr ;
+   s" bytes=" type by .U s"  flops=" type fl .U cr
+   s" GB/s_x1000=" type gbs .U s"  mem_roof_util_x1000=" type memu .U cr
+   s" GFLOP/s_x1000=" type gflops .U s"  fp32_roof_util_x1000=" type fpu .U cr ;
 
 end-package

@@ -1274,7 +1274,8 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fmt	lib/fmt.f	word	POW10I	(n -- n)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	active	ten raised to a nonnegative integer power as an integer
 1	fmt	lib/fmt.f	word	SB-FRAC	(n n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	active	append a fraction as k zero-padded digits
 1	fmt	lib/fmt.f	word	SB-FIX	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	append a float with k decimal places, round half-up
-1	fmt	lib/fmt.f	word	U.0	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
+1	fmt	lib/fmt.f	word	.U	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print an unsigned integer with no trailing space
+1	fmt	lib/fmt.f	word	.INT	(n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a signed integer with no trailing space
 1	fmt	lib/fmt.f	word	F.N	(r n --)	lib/fmt-test.f	docs/stdlib.md	stdlib-fmt	published	print a float with k decimal places
 1	stats	lib/stats.f	module			lib/stats-test.f	docs/stdlib.md	stdlib-stats	active	float-array summary statistics
 1	stats	lib/stats.f	word	FMIN2	(r r -- r)	lib/stats-test.f	docs/stdlib.md	stdlib-stats	published	minimum of two floats

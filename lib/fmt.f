@@ -48,6 +48,6 @@ variable FMT-DV
    k 0 > if FMT-DOT SB-APPEND-C  scaled ps mod k SB-FRAC then ;
 
 \ ---- direct printers (reset SB, build, emit) ------------------------------
-: U.0 ( n -- )    SB-RESET SB-U   SB$ type ;
-: .0 ( n -- )     SB-RESET SB-INT SB$ type ;
+: .U ( n -- )     SB-RESET SB-U   SB$ type ;   \ unsigned, no trailing space
+: .INT ( n -- )   SB-RESET SB-INT SB$ type ;   \ signed, no trailing space
 : F.N ( r n -- )  SB-RESET SB-FIX SB$ type ;

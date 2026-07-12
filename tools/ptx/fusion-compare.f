@@ -45,16 +45,16 @@ package PTXBW
    BW-N BW-ITERS * 3 * {: fl:n :}
    sax relu + {: ns:n :}
    s" kernel=UNFUSED-SAXPY-V4+RELU-V4" type
-   s"  work_items=" type BW-N U.0
+   s"  work_items=" type BW-N .U
    s"  kernels=2" type
-   s"  iters=" type BW-ITERS U.0 cr
-   s" gpu_elapsed_ns_sum=" type ns U.0 cr
+   s"  iters=" type BW-ITERS .U cr
+   s" gpu_elapsed_ns_sum=" type ns .U cr
    by fl ns PTXPROF:REPORT-METRICS ;
 
 : REPORT-SPEEDUP ( n n -- )
    {: unfused:n fused:n :}
    s" fusion_elapsed_ratio_x1000=" type
-   unfused 1000 * fused / U.0 cr ;
+   unfused 1000 * fused / .U cr ;
 
 : MAIN ( -- )
    RUN-SAXPY-V4 {: sax:n :}

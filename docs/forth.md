@@ -62,6 +62,17 @@ file.
   rule applies to published definition names (`:`, `TRUSTED:`, `KERNEL:`,
   `create`, `variable`, `constant`); lexical locals such as `{: i:n :}` remain
   legal and resolve local-first inside their definition.
+- **Do not define number-shaped words.** hb parses numeric literals BEFORE
+  dictionary lookup (pinned by `test/gate-dictionary-lib.f` GD-LITERAL-FIRST),
+  so a definition named like a literal — all digits (`42`), a float (`.0`,
+  `1.5`, `-.5`), or `$hex` (`$FF`) — is unreachable: every call site gets the
+  number. Names with a dot-digit tail (`U.0`) are also forbidden: one inserted
+  space silently turns the tail into a float literal, and generators misread
+  them as float spellings (the lib/fmt.f `.0`/`U.0` incident — since renamed to
+  `.INT`/`.U`). `tools/reserved-name-lint.f` rejects both classes as
+  `E-NUMERIC-DEFINITION`. Dot-letter printers (`.U`, `.INT`, `F.N`) and
+  digit-leading names that cannot parse as a number (`1STNZ`, `0<>`, `2DUP`)
+  remain legal.
 - **Prefer hex for numeric literals.** Use `$...` for byte values, masks,
   addresses, offsets, syscall/exit constants, instruction encodings, and other
   machine-adjacent numbers. Decimal is acceptable for small counts and ordinary

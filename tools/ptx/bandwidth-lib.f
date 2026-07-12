@@ -105,7 +105,7 @@ public
    {: ns:n :}
    BW-N BW-ITERS * BW-BPE @ * {: by:n :}
    BW-N BW-ITERS * BW-FPE @ * {: fl:n :}
-   s" elems_per_thread=" type BW-EPT @ U.0 cr
+   s" elems_per_thread=" type BW-EPT @ .U cr
    by fl ns PTXBENCH:REPORT-GPU ;
 
 : REPORT ( -- )

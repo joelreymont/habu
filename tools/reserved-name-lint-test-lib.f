@@ -14,6 +14,7 @@ create RNLT-CASE FS-PATH-CAP allot
 create RNLT-LOADER FS-PATH-CAP allot
 create RNLT-TFAM FS-PATH-CAP allot
 create RNLT-CONTROL FS-PATH-CAP allot
+create RNLT-NUM FS-PATH-CAP allot
 create RNLT-OUT RNLT-BUF-CAP allot
 
 variable RNLT-ROOT-U
@@ -23,6 +24,7 @@ variable RNLT-CASE-U
 variable RNLT-LOADER-U
 variable RNLT-TFAM-U
 variable RNLT-CONTROL-U
+variable RNLT-NUM-U
 
 : RNLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
@@ -49,6 +51,9 @@ variable RNLT-CONTROL-U
 : RNLT-CONTROL$ ( -- ptr u8 n )
    RNLT-CONTROL RNLT-CONTROL-U @ ;
 
+: RNLT-NUM$ ( -- ptr u8 n )
+   RNLT-NUM RNLT-NUM-U @ ;
+
 : RNLT-LF ( -- )
    $0A SB-APPEND-C ;
 
@@ -58,6 +63,12 @@ variable RNLT-CONTROL-U
    s" : LOCAL-IJ ( n n -- n ) {: i:n j:n :} i j + ;" SB-APPEND RNLT-LF
    s" variable IX" SB-APPEND RNLT-LF
    s" variable JX" SB-APPEND RNLT-LF
+   s" : .U ( n -- ) drop ;" SB-APPEND RNLT-LF        \ dot-letter: not a number
+   s" : .INT ( n -- ) drop ;" SB-APPEND RNLT-LF
+   s" : F.N ( r n -- ) drop fdrop ;" SB-APPEND RNLT-LF
+   s" : 1STNZ ( -- n ) 1 ;" SB-APPEND RNLT-LF        \ digit-leading, not number-shaped
+   s" : 0<> ( n -- bool ) 0 <> ;" SB-APPEND RNLT-LF
+   s" : 2UNIFY-OR ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
 : RNLT-BAD-SRC$ ( -- ptr u8 n )
@@ -91,6 +102,20 @@ variable RNLT-CONTROL-U
    s" : CONSTRUCT ( -- ) ;" SB-APPEND RNLT-LF
    SB$ ;
 
+\ Number-shaped names: the numeric parser wins over the dictionary
+\ (test/gate-dictionary-lib.f GD-LITERAL-FIRST), so these definitions are
+\ unreachable or float-confusable and must be rejected (the lib/fmt.f .0/U.0
+\ incident: a generator read `60 .0` as a float spelling).
+: RNLT-NUM-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : .0 ( n -- ) drop ;" SB-APPEND RNLT-LF
+   s" : U.0 ( n -- ) drop ;" SB-APPEND RNLT-LF
+   s" : 42 ( -- ) ;" SB-APPEND RNLT-LF
+   s" : -7 ( -- ) ;" SB-APPEND RNLT-LF
+   s" variable 1.5" SB-APPEND RNLT-LF
+   s" 1 constant $FF" SB-APPEND RNLT-LF
+   SB$ ;
+
 : RNLT-LOADER-SRC$ ( -- ptr u8 n )
    SB-RESET
    s" : include ( -- ) ;" SB-APPEND RNLT-LF
@@ -110,12 +135,14 @@ variable RNLT-CONTROL-U
    RNLT-ROOT$ s" loader.f" RNLT-LOADER JOIN-PATH RNLT-LOADER-U !
    RNLT-ROOT$ s" tfam.f" RNLT-TFAM JOIN-PATH RNLT-TFAM-U !
    RNLT-ROOT$ s" control.f" RNLT-CONTROL JOIN-PATH RNLT-CONTROL-U !
+   RNLT-ROOT$ s" numeric.f" RNLT-NUM JOIN-PATH RNLT-NUM-U !
    RNLT-GOOD$ RNLT-GOOD-SRC$ WRITE-ALL
    RNLT-BAD$ RNLT-BAD-SRC$ WRITE-ALL
    RNLT-CASE$ RNLT-CASE-SRC$ WRITE-ALL
    RNLT-LOADER$ RNLT-LOADER-SRC$ WRITE-ALL
    RNLT-TFAM$ RNLT-TFAM-SRC$ WRITE-ALL
-   RNLT-CONTROL$ RNLT-CONTROL-SRC$ WRITE-ALL ;
+   RNLT-CONTROL$ RNLT-CONTROL-SRC$ WRITE-ALL
+   RNLT-NUM$ RNLT-NUM-SRC$ WRITE-ALL ;
 
 : RNLT-CORE-SETUP ( bool -- ) {: json:bool :}
    RESERVED-NAME-LINT-RESET
@@ -135,6 +162,11 @@ variable RNLT-CONTROL-U
 : RNLT-RUN-CORE-JSON ( -- n n n )
    LINT-TRUE RNLT-CORE-SETUP
    RNLT-CASE$ s" <converted>" RESERVED-NAME-LINT-FILE-AS
+   RNLT-CORE-FINISH ;
+
+: RNLT-RUN-NUM-JSON ( -- n n n )
+   LINT-TRUE RNLT-CORE-SETUP
+   RNLT-NUM$ RESERVED-NAME-LINT-FILE
    RNLT-CORE-FINISH ;
 
 : RNLT-JSON-WORD-I$ ( -- ptr u8 n )
@@ -204,6 +236,24 @@ variable RNLT-CONTROL-U
    RNLT-OUT outu s" `;match`" CONTAINS? TTRUE
    RNLT-OUT outu s" `CONSTRUCT`" CONTAINS? TTRUE ;
 
+: RNLT-TEST-NUMERIC ( -- )
+   RNLT-NUM$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   RNLT-OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
+   RNLT-OUT outu s" `.0`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `U.0`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `42`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `-7`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `1.5`" CONTAINS? TTRUE
+   RNLT-OUT outu s" `$FF`" CONTAINS? TTRUE ;
+
+: RNLT-TEST-NUMERIC-JSON ( -- )
+   RNLT-RUN-NUM-JSON 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   RNLT-OUT outu s" schema_version" CONTAINS? TTRUE
+   RNLT-OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
+   RNLT-OUT outu s" U.0" CONTAINS? TTRUE ;
+
 : RNLT-MAIN ( -- )
    T-RESET
    RNLT-PREPARE
@@ -213,6 +263,8 @@ variable RNLT-CONTROL-U
    RNLT-TEST-LOADER
    RNLT-TEST-TFAM
    RNLT-TEST-CONTROL
+   RNLT-TEST-NUMERIC
+   RNLT-TEST-NUMERIC-JSON
    CLEANUP-RUN
    RNLT-ROOT$ EXISTS? TFALSE
    T-REPORT
