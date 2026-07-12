@@ -186,37 +186,102 @@ TOOLCHAIN:IDS 2 T=
 ' TN-ADOPT-NO-CFG  TOOLCHAIN:E-FACT TTHROWS
 ADOPT-A DEF-A TOOLCHAIN:ID= TTRUE                 \ a failed round leaves no state to contaminate this one
 
+;package
+
+\ Test-only invariant probes reopen the owner privately. None is exported by the
+\ production owner or reachable through a qualified name.
+package TOOLCHAIN
+private
+
+variable PROBE-ID
+
+: PROBE-DEF-A ( -- CAD-KIND:toolchain-id )
+   PTXAS s" 12.6.85" CUDA s" 580.65.06" s" -arch=sm_87" DEFINE ;
+
+: PROBE-DEF-Z ( -- CAD-KIND:toolchain-id )
+   PTXAS s" 99.9" CUDA s" 1.0" s" -arch=sm_90" DEFINE ;
+
+: PROBE-REFINEMENTS? ( CAD-KIND:toolchain-id -- bool )
+   {: id:CAD-KIND:toolchain-id :}
+   id ID>ROW ROW>ID id ID=
+   PTXAS CC-CK 0 = and
+   CUDA DRV-CK 0 = and ;
+
+: PROBE-HIT-GOOD? ( -- bool )
+   RESET PROBE-DEF-A {: id:CAD-KIND:toolchain-id :}
+   SB-RESET id CANONICAL+
+   id ID>ROW SB$ HIT-AGREES? ;
+
+: PROBE-HIT-BAD? ( -- bool )
+   RESET PROBE-DEF-A ID>ROW
+   s" cc=0005:ptxas;ver=0003:9.9;drv=0004:cuda;drvver=0001:1;cfg=0001:x"
+   HIT-AGREES? ;
+
+: PROBE-STALE-DO ( -- )
+   RESET PROBE-DEF-A TC>RAW PROBE-ID !
+   RESET PROBE-DEF-Z drop
+   PROBE-ID @ RAW>TC ID>ROW drop ;
+
+: PROBE-FORGE-GEN-DO ( -- )
+   TC-GEN @ 1+ TC-IX-BITS lshift RAW>TC ID>ROW drop ;
+
+: PROBE-FORGE-ROW-DO ( -- )
+   TC-GEN @ TC-IX-BITS lshift TC-N @ or RAW>TC ID>ROW drop ;
+
+: PROBE-ROW-NEG-DO  ( -- )  -1 ROW>ID drop ;
+: PROBE-ROW-HIGH-DO ( -- )  TC-N @ ROW>ID drop ;
+
+: PROBE-COLLIDE-DO ( -- )
+   RESET PROBE-DEF-A drop
+   SB-RESET
+   s" cc=0005:ptxas;ver=0003:9.9;drv=0004:cuda;drvver=0001:1;cfg=0001:x" SB-APPEND
+   0 DIG-HIT drop ;
+
+: PROBE-STALE-RC     ( -- n )  [: PROBE-STALE-DO ;]     catch ;
+: PROBE-FORGE-GEN-RC ( -- n )  [: PROBE-FORGE-GEN-DO ;] catch ;
+: PROBE-FORGE-ROW-RC ( -- n )  [: PROBE-FORGE-ROW-DO ;] catch ;
+: PROBE-ROW-NEG-RC   ( -- n )  [: PROBE-ROW-NEG-DO ;]   catch ;
+: PROBE-ROW-HIGH-RC  ( -- n )  [: PROBE-ROW-HIGH-DO ;]  catch ;
+: PROBE-COLLIDE-RC   ( -- n )  [: PROBE-COLLIDE-DO ;]   catch ;
+
+: PROBE-EPOCH-RC ( -- n )
+   TC-GEN @ {: old:n :}
+   TC-GEN-MAX TC-GEN !
+   [: RESET ;] catch {: rc:n :}
+   old TC-GEN !
+   rc ;
+
 \ ---- audited low-level seam -------------------------------------------------------
-TOOLCHAIN:RESET
-DEF-A drop
-DEF-A TOOLCHAIN:TEST-REFINEMENTS? TTRUE
-\ a digest hit is verified against the canonical form it claims to name, so a
-\ collision could never quietly hand back the wrong toolchain
-DEF-A COPY-A COPY-CAP TOOLCHAIN:CANONICAL-COPY COPY-A-U !
-DEF-A COPY-A COPY-A-U @ TOOLCHAIN:TEST-HIT-AGREES? TTRUE
-DEF-A s" cc=0005:ptxas;ver=0003:9.9;drv=0004:cuda;drvver=0001:1;cfg=0001:x"
-   TOOLCHAIN:TEST-HIT-AGREES? TFALSE
+RESET
+PROBE-DEF-A PROBE-REFINEMENTS? TTRUE
+PROBE-HIT-GOOD? TTRUE
+PROBE-HIT-BAD? TFALSE
 
 \ ---- regression: RESET retires every id it issued -------------------------------
 \ An id used to be a bare row index, so after RESET the next descriptor to take that
 \ row answered to it - the old id silently reported the new toolchain's facts. An id
 \ now carries the generation it was issued under, and RESET advances it.
-TOOLCHAIN:TEST-STALE-RC TOOLCHAIN:E-ID T=
+PROBE-STALE-RC E-ID T=
+
+\ a forged id is rejected before its row is indexed
+PROBE-FORGE-GEN-RC E-ID T=
+PROBE-FORGE-ROW-RC E-ID T=
+PROBE-ROW-NEG-RC   E-ID T=
+PROBE-ROW-HIGH-RC  E-ID T=
+
+\ the generation does not wrap: it is exhausted, not reissued under live ids
+PROBE-EPOCH-RC E-EPOCH T=
+
+;package
+
+package TOOLCHAIN-TEST
+
 TOOLCHAIN:IDS 1 T=                                \ the new generation has exactly one identity...
 DEF-Z SB-RESET TOOLCHAIN:VERSION+ SB$ s" 99.9" T$= \ ...and row 0 is DEF-Z, not the retired DEF-A
 
 \ the row is reused, the id is not: same facts, same row, a new generation
 TOOLCHAIN:RESET
 DEF-A TOOLCHAIN:RESET DEF-A TOOLCHAIN:ID= TFALSE            \ same row and facts, but a retired generation
-
-\ a forged id is rejected before its row is indexed
-TOOLCHAIN:TEST-FORGE-GEN-RC TOOLCHAIN:E-ID T=
-TOOLCHAIN:TEST-FORGE-ROW-RC TOOLCHAIN:E-ID T=
-TOOLCHAIN:TEST-ROW-NEG-RC   TOOLCHAIN:E-ID T=
-TOOLCHAIN:TEST-ROW-HIGH-RC  TOOLCHAIN:E-ID T=
-
-\ the generation does not wrap: it is exhausted, not reissued under live ids
-TOOLCHAIN:TEST-EPOCH-RC TOOLCHAIN:E-EPOCH T=
 TOOLCHAIN:RESET
 
 \ ---- fail closed: incomplete discovery facts ---------------------------------------
@@ -255,7 +320,16 @@ TOOLCHAIN:RESET
 ' TN-KNOWN-EMPTY TOOLCHAIN:E-DIGEST TTHROWS
 
 \ ---- fail closed: a digest hit that does not agree with the form it names -------------
-TOOLCHAIN:TEST-COLLIDE-RC TOOLCHAIN:E-COLLIDE T=
+;package
+
+package TOOLCHAIN
+private
+
+PROBE-COLLIDE-RC E-COLLIDE T=
+
+;package
+
+package TOOLCHAIN-TEST
 
 \ ---- the derived layout: a maximal descriptor is a valid one ---------------------------
 \ Every variable field at FACT-CAP must still render through SB and still intern, so a
@@ -372,6 +446,17 @@ s" TC-NEG-PRIV-DRV ( n -- TOOLCHAIN:driver ) TOOLCHAIN:RAW>DRV" UNDEF
 s" TC-NEG-PRIV-COMMIT ( n -- CAD-KIND:toolchain-id ) TOOLCHAIN:COMMIT" UNDEF
 s" TC-NEG-PRIV-ROW ( n -- CAD-KIND:toolchain-id ) TOOLCHAIN:ROW>ID" UNDEF
 s" TC-NEG-PRIV-ID-ROW ( CAD-KIND:toolchain-id -- n ) TOOLCHAIN:ID>ROW" UNDEF
+
+\ invariant probes exist only in this test file's private package reopen
+s" TC-NEG-TEST-REFINE ( CAD-KIND:toolchain-id -- bool ) TOOLCHAIN:TEST-REFINEMENTS?" UNDEF
+s" TC-NEG-TEST-HIT ( CAD-KIND:toolchain-id ptr u8 n -- bool ) TOOLCHAIN:TEST-HIT-AGREES?" UNDEF
+s" TC-NEG-TEST-STALE ( -- n ) TOOLCHAIN:TEST-STALE-RC" UNDEF
+s" TC-NEG-TEST-FORGE-GEN ( -- n ) TOOLCHAIN:TEST-FORGE-GEN-RC" UNDEF
+s" TC-NEG-TEST-FORGE-ROW ( -- n ) TOOLCHAIN:TEST-FORGE-ROW-RC" UNDEF
+s" TC-NEG-TEST-ROW-NEG ( -- n ) TOOLCHAIN:TEST-ROW-NEG-RC" UNDEF
+s" TC-NEG-TEST-ROW-HIGH ( -- n ) TOOLCHAIN:TEST-ROW-HIGH-RC" UNDEF
+s" TC-NEG-TEST-COLLIDE ( -- n ) TOOLCHAIN:TEST-COLLIDE-RC" UNDEF
+s" TC-NEG-TEST-EPOCH ( -- n ) TOOLCHAIN:TEST-EPOCH-RC" UNDEF
 
 T-REPORT
 
