@@ -234,6 +234,80 @@ Acceptance:
 - renderer and diagnostics preserve role names;
 - rollback, snapshots, source replay, and derived operations retain kinds.
 
+Design decision:
+
+- use public arity-zero `TYPEFAMILY` declarations in package `CAD-KIND`, not
+  `DEFTYPE` and not new checker tokens;
+- inside `CAD-KIND`, signatures use the unqualified lowercase family tail;
+  outside it, signatures use the qualified form
+  `CAD-KIND:design-id`, `CAD-KIND:node-id`, and so on;
+- do not publish universal `n` conversion words. The module that allocates,
+  decodes, or indexes a value owns a private audited refinement from its raw
+  representation after validating range, generation, schema, or provenance;
+- keep public Forth words uppercase. Lowercase spelling is reserved for the
+  type-family tokens required by the checker grammar;
+- reject `DEFTYPE` for this surface because its nominal registry is global and
+  its generated `>NAME` / `NAME>N` pair makes raw conversion generally
+  available. Those properties are useful for low-level scalar roles but do not
+  provide package-owned CAD authority.
+
+No checker extension is required for the kind declarations themselves. The
+existing family-id representation supplies nominal identity. Ordinary
+`ptr CAD-KIND:node-id` fetch/store preserves that identity; a node value cannot
+enter `ptr CAD-KIND:design-id`. Qualified diagnostics render the package and
+tail outside the owner package, while owner-local diagnostics render the tail.
+
+Registry and transaction contract:
+
+- `TFAM` stores `(package, visibility, lowercase tail, arity=0, TK-CELL)` and
+  signatures store the resolved family id rather than spelling;
+- `CHECKER-SCOPE-*` and `CHECK-CANDIDATE-*` restore the `TFAM` high-water,
+  interned-string, and package state through the installed rollback hooks;
+- `CHECKER-SNAPSHOT-PREPARE` persists grown `TFAM` stores and rejects snapshots
+  inside a live rollback frame;
+- native load, verify-source, check-core, and all-errors support replay all
+  recognize `TYPEFAMILY`, so a declaration has one source-replay meaning;
+- derived products/sums refer to the same family ids; encoders render a kind
+  only at the canonical wire boundary and decoders validate before refining.
+
+Required negative fixtures:
+
+~~~forth
+: BAD-ID ( CAD-KIND:design-id -- CAD-KIND:node-id ) ;
+: BAD-STORE ( CAD-KIND:node-id ptr CAD-KIND:design-id -- ) ! ;
+: BAD-STAGE ( CAD-KIND:artifact-id CAD-KIND:stage -- CAD-KIND:evidence-id ) ... ;
+~~~
+
+The first two already reject in direct probes with qualified expected/actual
+types. Implementation keeps those probes, adds package-local render assertions,
+and adds rollback, snapshot, source-replay, and canonical round-trip coverage.
+
+Migration order:
+
+1. declare and gate `CAD-KIND` without changing existing APIs;
+2. migrate graph identity and tensor descriptor kinds;
+3. migrate stage/effect/region and design/revision/pass identities;
+4. migrate artifact/evidence/target/toolchain identities;
+5. migrate storage and canonical encoders, then remove raw-handle conversions;
+6. fail the gate on any remaining public CAD handle or index spelled `n`.
+
+Tracked implementation slices:
+
+- package declarations and checker fixtures:
+  `habu-v2-r3-declare-3fcdeebb`;
+- model-IR node/reference identity: `habu-v2-r3-type-dfe5609e`;
+- tensor dimension/shape/dtype/layout identity:
+  `habu-v2-r3-type-9f89d1e9`;
+- stage/effect/region identity: `habu-v2-r3-type-5809bec6`;
+- design/revision/object/analysis/plan/pass/schema identity:
+  `habu-v2-r3-type-5a20bd12`;
+- artifact/evidence/target/toolchain identity:
+  `habu-v2-r3-type-2f60c17c`;
+- persistent storage and canonical codec preservation:
+  `habu-v2-r3-preserve-f081f2c9`;
+- final public-signature audit and raw-`n` handle lint:
+  `habu-v2-r3-forbid-23051b46`.
+
 ### R4. Constraint-Indexed Tensor Types
 
 Introduce the conceptual family:

@@ -494,6 +494,27 @@ TYPEFAMILY uniform 1
 
 This replaces hard-coded parser knowledge.
 
+An arity-zero `TYPEFAMILY` is a package-scoped nominal cell kind:
+
+```forth
+package CAD-KIND
+public
+TYPEFAMILY design-id 0
+TYPEFAMILY node-id 0
+end-package
+```
+
+Inside the package, signatures use `design-id`; outside, they use
+`CAD-KIND:design-id`. The resolved family id is the identity, so an equally
+spelled tail in another package does not unify. Ordinary typed `@` and `!`
+preserve the family through `ptr CAD-KIND:design-id` storage.
+
+Do not add universal `n` casts for authority-bearing ids. The allocator,
+decoder, or table owner keeps any raw-representation refinement private and
+validates its range, generation, schema, or provenance first. Use `DEFTYPE`
+only when a global nominal plus its generated raw converter pair is the desired
+contract.
+
 ### 9.2 `SUMTYPE`
 
 Syntax:

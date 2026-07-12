@@ -3551,6 +3551,11 @@ unchanged (148855). Keys for milestone 2:
 - **Protocol phases need registered nullary type families.** Free-form atoms in
   parametric signatures fail stored-signature parsing; register each nominal
   phase and thread it through the context family so skipped transitions reject.
+- **Package-owned CAD ids are arity-zero cell families, not global DEFTYPEs.**
+  `TYPEFAMILY id 0` already gives package-qualified family identity, typed
+  pointer storage, rollback, snapshots, replay, and qualified diagnostics.
+  `DEFTYPE` instead installs a global nominal plus general raw converter words;
+  keep authority-bearing raw refinement private to the validating owner.
 - **Package words still compete with immediate core syntax.** A packaged word
   named `BEGIN` resolves as the control word while compiling a body; use a
   domain verb such as `START` even when the package would otherwise disambiguate.
