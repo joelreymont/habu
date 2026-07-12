@@ -49,3 +49,26 @@ Reviews run as a PANEL of disjoint lenses (loss-hunt / acceptance probes /
 semantic attack / generalist), not one generalist. Fix rounds fan out one
 worker per disjoint finding cluster. Only the core contract, the merge commit
 itself, and the bookmark/push window are inherently serial.
+
+## STATUS 2026-07-12 evening (R3 merge landed)
+
+- fable@origin = 1842573c "Merge master R3 nominal kinds; keep enum dtype/layout":
+  master's Model-CAD V2 R3 campaign reconciled per the (closed) merge-policy dot -
+  CAD-KIND identity/index kinds adopted, fable's dtype/layout/opkind/align ENUMs
+  kept (strictly stronger; master's refine/raw converters dropped), 4-reviewer
+  destruction panel clean (0 crit/high/med), fix round added executor stale-id
+  negatives + MP-SLOT reset. Gates on the exact tree: maki 89 PASS, test/run.f
+  PASS, six lints + trust-lint 564/651/0 + inventory 969/0 + boot-pin 32 + stale +
+  typed-local all green. Crash lane also landed (internal-word gate, DNAME-INT;
+  bare U-TYPE now rc 70 diagnostic).
+- tfam ADOPTION: fable now CONTAINS master 441b834e entirely - their fable merge
+  is conflict-free adoption. Dots habu-for-tfam-boot-1a6fba72 (their boot-pin
+  tool is latently red until they merge) still open for them.
+- OPEN maki-lane queue: habu-maki-skey-typed-0cc6f543 (SKEY typed columns +
+  evidence rows; V2-supersession probe FIRST), habu-maki-audit-raw-25d3bf5e
+  (*-RAW boundary audit), habu-maki-apply-cad-27b7a7d7 (region kinds for fusion
+  path). Type-system-lane dots filed: habu-habu-certified-words-84e84eaf (FOO2),
+  habu-checker-in-body-af7cf855 (DSL openers), friend-latch note in
+  habu-seal-set-check-b3676b33.
+- PROTOCOL now in force: stage-then-fan-out (see amendment above) + dot claims
+  (dot on + push at dispatch; dots skill ~/.claude/skills/dots).
