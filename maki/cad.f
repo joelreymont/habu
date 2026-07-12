@@ -651,20 +651,19 @@ private
 : RB-SLICE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
    nd MIR-ATTR@ {: attr:n :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
-   attr MV-PA@ {: a:n :}  attr MV-PB@ {: b:n :}
-   a 0 < b r0 RB-REF-ROWS ROWS-RAW > or  a b > or if E-CAD-BIND-SHAPE throw then
-   b a -  r0 RB-REF-COLS COLS-RAW  SHAPE ;
+   attr MV-PA@ attr MV-PB@ r0 RB-REF-ROWS ROWS-WINDOW   \ range-checks [a,b) (E-MK-DIM)
+   r0 RB-REF-COLS ;
 : RB-CONCAT ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
    nd 1 MIR-INPUT-IDX MIR-IN@ {: r1:MIR:operand-ref :}
    r0 RB-REF-COLS r1 RB-REF-COLS COLS-EQUAL? 0= if E-CAD-BIND-SHAPE throw then
-   r0 RB-REF-ROWS ROWS-RAW r1 RB-REF-ROWS ROWS-RAW +
-   r0 RB-REF-COLS COLS-RAW  SHAPE ;
+   r0 RB-REF-ROWS r1 RB-REF-ROWS ROWS+                  \ checked overflow guard
+   r0 RB-REF-COLS ;
 : RB-GATHER ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
    nd 0 MIR-INPUT-IDX MIR-IN@ {: r0:MIR:operand-ref :}
    nd 1 MIR-INPUT-IDX MIR-IN@ {: r1:MIR:operand-ref :}
-   r1 RB-REF-ROWS r1 RB-REF-COLS SHAPE-ELEMS DIM-RAW
-   r0 RB-REF-COLS COLS-RAW  SHAPE ;
+   r1 RB-REF-ROWS r1 RB-REF-COLS SHAPE-ELEMS DIM>ROWS   \ owner role conversion
+   r0 RB-REF-COLS ;
 
 : RB-MOVE-SHAPE ( CAD-KIND:node-id -- CAD-KIND:rows CAD-KIND:cols ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind

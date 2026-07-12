@@ -238,4 +238,11 @@ ENUM dtype DERIVE eq
 : DIM>ROWS ( CAD-KIND:dim -- CAD-KIND:rows )
    DIM-RAW ROWS-REFINE ;
 
+\ owner-sanctioned slice extent: the [a,b) row window of a source extent.
+\ SUB-DIM rejects a<0 / b<a; the source bound rejects b>rows (E-MK-DIM).
+: ROWS-WINDOW ( n n CAD-KIND:rows -- CAD-KIND:rows )
+   {: a:n b:n src:CAD-KIND:rows :}
+   b src ROWS-RAW > if E-MK-DIM throw then
+   b a SUB-DIM ROWS-REFINE ;
+
 end-package
