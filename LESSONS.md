@@ -3639,4 +3639,13 @@ unchanged (148855). Keys for milestone 2:
   commit. `jj file show -r master <file>` (and the ownership list in the task)
   before editing turns a would-be semantic divergence into a cheap
   STOP-and-report; the report is a deliverable, the recovery is pure cost.
+- **Probe the other lane's in-flight work before dispatching against a shared
+  dot.** The S2 wide-store slice was implemented twice concurrently: a fable
+  worker built it from the dot while tfam landed the same slice on master
+  (same dot id, cited in the landed checker comment). The full lane (~284k
+  tokens, checker+engine+tests, all gates green) was retired unsalvaged —
+  master's landed form was equivalent-or-better. Before dispatching a worker
+  against a dot that the other lane's epic owns or references, check master's
+  recent commit subjects and the dot's blocker graph for an active claim; a
+  one-minute `jj log -r 'master ~ fable::'` scan beats a duplicated lane.
 
