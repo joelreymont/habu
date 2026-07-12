@@ -3670,6 +3670,12 @@ unchanged (148855). Keys for milestone 2:
   moment of dispatch — a pushed `active` status is the cross-lane claim
   signal; `dot off` only at landing; parked dots go back to `open` so
   `active` never lies.
+- **`dot off` breaks `trusted-inventory --strict` if TRUSTED.md rows cite the
+  dot.** Twice now: closing a dot archives its file (gitignored), and every
+  manifest row naming it as owner goes strict-red on the next gate. Before
+  `dot off`, `rg <dot-id> TRUSTED.md`; re-point rows to the live successor
+  owner (friend-latch dot for whitebox shims, the owning epic for campaign
+  casts) IN THE SAME COMMIT as the closure.
 - **Stage-then-fan-out beats one long worker on multi-file missions.** The R3
   reconciliation (50 files, ~2h) ran as a single agent; only the semantic core
   (the files where the policy decisions live and the API is fixed) needed one
