@@ -278,9 +278,15 @@ LAYOUT-CK
 \ ---- interned descriptor text -------------------------------------------------
 \ The arena holds TC-CAP maximal rows and COMMIT refuses a TC-CAP+1'th row, so this
 \ guard is unreachable through DEFINE / ADOPT. It stays because the bound is what makes
-\ that true, and the test drives it directly through the private seam.
+\ that true. ARENA-CK is factored so the test-only private package fixture can drive the
+\ exact guard without changing the live registry high-water.
+: ARENA-CK ( n n -- ) {: used:n add:n :}
+   used 0 < add 0 < or if E-CAP throw then
+   used TC-ARENA-CAP > if E-CAP throw then
+   add TC-ARENA-CAP used - > if E-CAP throw then ;
+
 : INTERN ( ptr u8 n -- n n ) {: a:ptr u:n :}
-   TC-ARENA-U @ u + TC-ARENA-CAP > if E-CAP throw then
+   TC-ARENA-U @ u ARENA-CK
    TC-ARENA-U @ {: off:n :}
    a  TC-ARENA off +  u BYTE-COPY
    off u + TC-ARENA-U !
@@ -568,10 +574,6 @@ variable TEST-ID
    s" cc=0005:ptxas;ver=0003:9.9;drv=0004:cuda;drvver=0001:1;cfg=0001:x" SB-APPEND
    0 DIG-HIT drop ;
 
-: TEST-ARENA-DO ( -- )
-   TC-ARENA-CAP TC-ARENA-U !
-   s" x" INTERN 2drop ;
-
 public
 
 : TEST-REFINEMENTS? ( CAD-KIND:toolchain-id -- bool )
@@ -590,11 +592,6 @@ public
 : TEST-ROW-NEG-RC    ( -- n )  [: TEST-ROW-NEG-DO ;]   catch ;
 : TEST-ROW-HIGH-RC   ( -- n )  [: TEST-ROW-HIGH-DO ;]  catch ;
 : TEST-COLLIDE-RC    ( -- n )  [: TEST-COLLIDE-DO ;]   catch ;
-
-: TEST-ARENA-RC ( -- n )
-   [: TEST-ARENA-DO ;] catch {: rc:n :}
-   0 TC-ARENA-U !
-   rc ;
 
 : TEST-EPOCH-RC ( -- n )
    TC-GEN @ {: old:n :}

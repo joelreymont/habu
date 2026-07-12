@@ -4,6 +4,10 @@
 
 Last updated: 2026-07-12
 
+- **Capacity tests must not corrupt the registry they validate:** factor the exact
+  bound check into a pure private guard and drive it from test-only package code;
+  never expose a production test word that rewrites a live arena high-water.
+
 - **Package privacy is not package sealing:** ordinary `package NAME` reopening can
   reach private words by design. Generated constructor packages are protected
   automatically, but a generic owner package needs a compiler-supported seal;

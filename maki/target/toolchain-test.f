@@ -1,7 +1,8 @@
 \ maki/target/toolchain-test.f - toolchain identity owner tests.
 \
-\ Low-level tests use TOOLCHAIN's bounded audited TEST-* seam; no test reopens the
-\ owner or receives a raw refinement, WID, mutable arena span, or owner state cell.
+\ Low-level tests use TOOLCHAIN's bounded audited TEST-* seam. The arena-capacity
+\ regression reopens the owner only inside this test image and calls its pure private
+\ guard; no public production word exposes or mutates arena state.
 \
 \ Regressions cover delimiter-injection aliasing, ids that outlive RESET, mutable
 \ projection aliases, and discovery rounds that previously shared partial state.
@@ -295,7 +296,41 @@ create BIGBUF $200 allot
 ' TN-TAB-FULL   TOOLCHAIN:E-CAP TTHROWS
 ' TN-FACT-BIG   TOOLCHAIN:E-CAP TTHROWS
 ' TN-COPY-SMALL TOOLCHAIN:E-CAP TTHROWS
-TOOLCHAIN:TEST-ARENA-RC TOOLCHAIN:E-CAP T=
+
+\ Preserve one complete identity across the private pure capacity probe. Canonical
+\ bytes cover every fact; the digest pins its identity name.
+TOOLCHAIN:RESET
+DEF-A COPY-A COPY-CAP TOOLCHAIN:DIGEST-COPY COPY-A-U !
+DEF-A COPY-B COPY-CAP TOOLCHAIN:CANONICAL-COPY COPY-B-U !
+TOOLCHAIN:IDS 1 T=
+
+;package
+
+package TOOLCHAIN
+private
+
+: CAP-PROBE ( -- )  TC-ARENA-CAP 1 ARENA-CK ;
+: CAP-PROBE-RC ( -- n )  [: CAP-PROBE ;] catch ;
+
+CAP-PROBE-RC E-CAP T=
+
+;package
+
+package TOOLCHAIN-TEST
+
+DEF-A SB-RESET TOOLCHAIN:DIGEST+ SB$ COPY-A COPY-A-U @ T$=
+DEF-A SB-RESET TOOLCHAIN:CANONICAL+ SB$ COPY-B COPY-B-U @ T$=
+COPY-A COPY-A-U @ TOOLCHAIN:LOOKUP DEF-A TOOLCHAIN:ID= TTRUE
+TOOLCHAIN:IDS 1 T=
+
+\ A later commit must neither overwrite nor detach the preserved row.
+DEF-CFG drop
+DEF-A SB-RESET TOOLCHAIN:DIGEST+ SB$ COPY-A COPY-A-U @ T$=
+DEF-A SB-RESET TOOLCHAIN:CANONICAL+ SB$ COPY-B COPY-B-U @ T$=
+COPY-A COPY-A-U @ TOOLCHAIN:LOOKUP DEF-A TOOLCHAIN:ID= TTRUE
+DEF-A SB-RESET TOOLCHAIN:VERSION+ SB$ s" 12.6.85" T$=
+DEF-CFG SB-RESET TOOLCHAIN:CONFIG+ SB$ s" -arch=sm_90" T$=
+TOOLCHAIN:IDS 2 T=
 
 TOOLCHAIN:RESET
 
