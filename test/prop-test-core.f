@@ -547,7 +547,7 @@ create AXBUF AXBUF-CAP allot
 
 \ ---- classification lists (folded lowercase, as stored in the symbol table) --
 : AX-GEN-LIST ( -- ptr u8 n )
-   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ locw-hw-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-needs-p2? wf-w-at lower-cert:magic lower-cert:version lower-cert:header-cells lower-cert:magic-cell lower-cert:version-cell lower-cert:total-bytes-cell lower-cert:needs-cell lower-cert:wf-count-cell lower-cert:bind-count-cell lower-cert:fetch-count-cell lower-cert:fetch-data-cells-cell lower-cert:wf-cells lower-cert:fetch-cells lower-cert:check-cells lower-cert:guard-cells lower-cert:fetch-flag lower-cert:store-flag lower-cert:body-len-cell lower-cert:body-hash-cell lower-cert:fnv-offset lower-cert:fnv-prime lower-cert:cell-count " ;
+   s"  dup drop swap over nip tuck rot -rot 2dup 2drop 2swap 2over + - * and or xor 1+ 1- negate invert 0= 0< = < > <> <= >= / mod /mod abs min max lshift rshift cells cell+ chars char+ depth here rbase cp@ dbase@ check@ ndict@ data-base get-current epoch-seconds mono-ns script-argc . u. emit cr space s>f wf-n@ locw-hw-n@ tfam-n@ sumv-n@ pf-n@ tf-str-u@ tf-pk-n@ schema-n@ schema-root-n@ wf-wide? wf-needs-p2? wf-w-at owner-wid-preflight? owner-wid-public? owner-wid-private? owner-wid? lower-cert:magic lower-cert:version lower-cert:header-cells lower-cert:magic-cell lower-cert:version-cell lower-cert:total-bytes-cell lower-cert:needs-cell lower-cert:wf-count-cell lower-cert:bind-count-cell lower-cert:fetch-count-cell lower-cert:fetch-data-cells-cell lower-cert:wf-cells lower-cert:fetch-cells lower-cert:check-cells lower-cert:guard-cells lower-cert:fetch-flag lower-cert:store-flag lower-cert:body-len-cell lower-cert:body-hash-cell lower-cert:fnv-offset lower-cert:fnv-prime lower-cert:cell-count " ;
 : AX-MEM-LIST ( -- ptr u8 n )
    s"  @ ! ptr-field +! c@ c! count rd32 core-str= core-str=ci tfam-ctor-word? type " ;
 : AX-FLOAT-LIST ( -- ptr u8 n )
@@ -579,14 +579,13 @@ create AXBUF AXBUF-CAP allot
 \ RECW latch and may call it — neither can run under census dummies.
 \ prot-wid-add mutates the sealed friend-band protected-WID registry (a
 \ seal-capture-class live seal mutation) and its overflow path exits the
-\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand. The
-\ owner-wid predicates observe the mutable protected owner registry; generic
-\ census stacks cannot supply a meaningful registry state, so they are
-\ state-dependent noexec axioms rather than pure generated cases.
+\ process (NR-EXIT-GROUP rc 84), so it can never take a dummy operand.
+\ The read-only owner-wid predicates are total over numeric dummy operands and
+\ stay difftested in AX-GEN-LIST against the valid cold-empty registry.
 \ tfam-ctor-word? is a pure registry-read predicate and stays difftested in
 \ AX-MEM-LIST (empty census registry -> false, one flag out).
 : AX-NOEXEC-C ( -- ptr u8 n )
-   s"  seal-capture seal-friend prot-wid-add owner-wid-preflight? owner-wid-public? owner-wid-private? owner-wid? wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
+   s"  seal-capture seal-friend prot-wid-add wf-tokix@ wf-off@ wf-pos@ wf-fam@ wf-width@ wf-term@ wf-flags@ tfam-width@ locw-hw@ p2-carve-w p2-live-w@ p2-live-cum@ p2-locseq-reset wide-mark rec-wide-publish layout-valid-desc-cell tfam-name$ tfam-arity@ tfam-kind@ tfam-public? tfam-derive-eq? tfam-derive-hash? tfam-var-start@ tfam-var-count@ sumv-name$ sumv-ctor-pkg$ lower-cert:cell@ lower-cert:bytes " ;
 
 : AX-CAT ( ptr u8 n -- n )
    2dup AX-HAS-QUOTE? if 2drop AX-NOEXEC exit then
