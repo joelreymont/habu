@@ -72,3 +72,25 @@ itself, and the bookmark/push window are inherently serial.
   habu-seal-set-check-b3676b33.
 - PROTOCOL now in force: stage-then-fan-out (see amendment above) + dot claims
   (dot on + push at dispatch; dots skill ~/.claude/skills/dots).
+
+## STATUS 2026-07-12 night: maki queue DRAINED
+
+fable@origin = 3e1d0eb1. Landed today after the R3 merge: internal-word gate
+(crash lane), eval v1.1 tokens + public-signatures fix, R3 nominal-kinds merge
+(89 suites), raw-projection confinement (+MV-PACK-SHAPE family), CAD-KIND:region
+across 13 files (+RB-* rebind confinement), concat-backward integration pins,
+typed launch-param seams (LMV-RC-PARAMS!/LLA-ROW-GRID). All via claimed dots,
+destruction-reviewed, exact-tree gates.
+
+OPEN maki dots, all gated: habu-maki-typed-storage-2279c4b0 (BLOCKED by checker
+capability habu-checker-layout-buf-f0058750: TK-CELL LAYOUT-BUFFER + governed
+ptr introduction - probe evidence inside); habu-maki-typed-seam-19483695 (M/N/K,
+after typed-storage, align with V2 dim-kind roadmap); habu-eval-real-gen
+(user/zed-gated). Type-system-lane dots owed by them: layout-buf-f0058750,
+certified-words-84e84eaf (FOO2), checker-in-body-af7cf855, diagnostic-renderer-
+66c3e741, seal-set-check-b3676b33 (friend latch; owns the 207 re-pointed shim
+rows). tfam also owes the fable merge (pure adoption now) - dot
+habu-for-tfam-boot-1a6fba72.
+
+No active claims held by this lane. Next session: check master movement, merge
+if needed per the window protocol, then pick up whichever gate lifts first.
