@@ -3619,3 +3619,11 @@ unchanged (148855). Keys for milestone 2:
   inspect the fetched remote dot file and use local `dot show` for the final
   pre-spawn owner/status verification. A local clean status does not prove the
   coordination bookmark contains the claim.
+- **Native primitive additions must grow the emitter registry deliberately.**
+  Five sealed-owner WID primitives crossed `src/habu/habu1.f`'s 160-row
+  `PRIM-CAP` and stopped fixpoint with `primitive registry full`; keep the
+  named capacity above the emitted primitive count and prove a fresh rebuild.
+- **Package-private helpers win unqualified lookup inside the package.** An
+  owner-registry test package's private `LF` shadowed the outer `SLV-LF`, so
+  multi-line forge source was concatenated and exited rc 74. Qualify the outer
+  helper explicitly when two builder scopes share a natural tail.

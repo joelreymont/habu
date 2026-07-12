@@ -24,7 +24,7 @@ $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
-160 constant PRIM-CAP
+192 constant PRIM-CAP
 2048 constant PRIM-NAME-CAP
 create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
@@ -199,7 +199,7 @@ public
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
@@ -213,7 +213,7 @@ public
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-ADDR-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap GUARD:ADDR
@@ -2734,3 +2734,123 @@ variable FIND-HMATCH
       THEN
       0 DCQ,
       1 + REPEAT drop ;
+
+package OWNER-WID-EMIT
+
+variable LPUBQ
+variable LPRIQ
+variable LANYQ
+variable LPREF
+
+: ROLE ( label n -- ) {: entry:label role:n :}
+   LBL LBL LBL {: loop:label next:label done:label :}
+   entry LBL,
+   13 0 MOVZ,
+   6 DATA OWNER-WID-N-CELL LDR,
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   loop LBL,
+      7 6 CMP,  C-GE done BCOND,
+      14 5 role LDRW,  14 9 CMP,  C-NE next BCOND,
+         13 1 MOVZ,  done B,
+      next LBL,
+      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
+   done LBL,  RET, ;
+
+: ANY ( -- )
+   LBL LBL LBL {: loop:label next:label done:label :}
+   LANYQ LABEL@ LBL,
+   13 0 MOVZ,
+   6 DATA OWNER-WID-N-CELL LDR,
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   loop LBL,
+      7 6 CMP,  C-GE done BCOND,
+      14 5 OWNER-WID-PUB LDRW,  14 9 CMP,  C-EQ done BCOND,
+      14 5 OWNER-WID-PRI LDRW,  14 9 CMP,  C-NE next BCOND,
+      done B,
+      next LBL,
+      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
+   done LBL,
+   LBL {: miss:label :}
+   7 6 CMP,  C-GE miss BCOND,
+      13 1 MOVZ,
+   miss LBL,  RET, ;
+
+: PREFLIGHT ( -- )
+   LBL LBL LBL LBL {: loop:label next:label ok:label done:label :}
+   LPREF LABEL@ LBL,
+   13 0 MOVZ,
+   11 OWNER-WID-MAX CMPI,  C-HI done BCOND,
+   6 DATA OWNER-WID-N-CELL LDR,
+   6 11 CMP,  C-GE done BCOND,
+   9 done CBZ,  10 done CBZ,
+   14 9 32 LSRI,  14 done CBNZ,
+   14 10 32 LSRI,  14 done CBNZ,
+   9 10 CMP,  C-EQ done BCOND,
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   loop LBL,
+      7 6 CMP,  C-GE ok BCOND,
+      14 5 OWNER-WID-PUB LDRW,
+      14 9 CMP,  C-EQ done BCOND,
+      14 10 CMP,  C-EQ done BCOND,
+      14 5 OWNER-WID-PRI LDRW,
+      14 9 CMP,  C-EQ done BCOND,
+      14 10 CMP,  C-EQ done BCOND,
+      next LBL,
+      5 5 OWNER-WID-ROW ADDI,  7 7 1 ADDI,  loop B,
+   ok LBL,  13 1 MOVZ,
+   done LBL,  RET, ;
+
+: BADD ( -- )
+   LBL {: done:label :}
+   10 G-POP  9 G-POP
+   11 OWNER-WID-MAX MOVZ,  LPREF LABEL@ BL,
+   13 done CBZ,
+   6 DATA OWNER-WID-N-CELL LDR,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   7 6 3 LSLI,  5 5 7 ADD,
+   9 5 OWNER-WID-PUB STRW,
+   10 5 OWNER-WID-PRI STRW,
+   6 6 1 ADDI,  6 DATA OWNER-WID-N-CELL STR,
+   13 1 MOVZ,
+   done LBL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BPRE? ( -- )
+   11 G-POP  10 G-POP  9 G-POP
+   LPREF LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BPUB? ( -- )
+   9 G-POP  LPUBQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BPRI? ( -- )
+   9 G-POP  LPRIQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BANY? ( -- )
+   9 G-POP  LANYQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+public
+
+: LABELS ( -- )
+   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF ! ;
+
+: PRIMS ( -- )
+   s" owner-wid-add" ['] BADD 2 GDEREF-F
+   s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F
+   s" owner-wid-public?" ['] BPUB? 1 GDEREF-F
+   s" owner-wid-private?" ['] BPRI? 1 GDEREF-F
+   s" owner-wid?" ['] BANY? 1 GDEREF-F ;
+
+: ROUTINES ( -- )
+   LPUBQ LABEL@ OWNER-WID-PUB ROLE
+   LPRIQ LABEL@ OWNER-WID-PRI ROLE
+   ANY
+   PREFLIGHT ;
+
+;package
