@@ -94,3 +94,16 @@ habu-for-tfam-boot-1a6fba72.
 
 No active claims held by this lane. Next session: check master movement, merge
 if needed per the window protocol, then pick up whichever gate lifts first.
+
+## CORRECTION 2026-07-12 late (user-directed): checker/engine dots are MINE to
+execute; the master<->fable merge is MINE in both directions. "Owed by the
+type-system lane" was deflection - the only genuinely-theirs item is the friend
+latch (their live claim habu-tfam-2b-sealed). CLAIMED and dispatching after the
+owner-seal merge window: habu-checker-layout-buf-f0058750 (TK-CELL
+LAYOUT-BUFFER), habu-habu-certified-words-84e84eaf (FOO2 min-in arity),
+habu-checker-in-body-af7cf855 (DSL openers), habu-checker-diagnostic-renderer-
+66c3e741 (garbled family names). MERGE PROTOCOL EXTENSION: after each master
+merge proves the full owning gates on the exact fable tree, FAST-FORWARD MASTER
+to fable and push (master-is-green rule: master moves only by verified-green ff
+from a branch; fable is that branch). This discharges habu-for-tfam-boot-
+1a6fba72 (master's latent boot-pin red) at the first ff.
