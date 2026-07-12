@@ -115,14 +115,14 @@ words on one path but explicit keyword-dispatch entries on the other.
 - `habu2.f:2992` `EM-INTERPRET-DEFINE-KEYWORDS` — the interpret-time keyword
   table. Each entry: `s" kw" KEEP? IF LMAIN LABEL@ LKW<X> <len> ['] C-<X>
   CF-ENTRY THEN`. Existing entries (:2993-3004): `package`->`C-PACKAGE`,
-  `public`->`C-PUBLIC`, `private`->`C-PRIVATE`, `end-package`->`C-END-PACKAGE`,
+  `public`->`C-PUBLIC`, `private`->`C-PRIVATE`, `;package`->`C-END-PACKAGE`,
   `trusted:`, `defer`, `create`, `variable`, `constant`, `'`, `char`,
   `immediate`. THIS is where `TYPEFAMILY`/`SUMTYPE`/`VARIANT`/`;VARIANT`/
   `;SUMTYPE` add native `KEEP?`-gated `CF-ENTRY` rows (need new `LKW*`
   labels + `C-*` handler words like C-PACKAGE).
 - `habu2.f:2941-2965` `C-PUBLIC` and `:2937?`..`C-PACKAGE`, `:2968` `C-PRIVATE`,
   `:2979` `C-END-PACKAGE` — the handler-word template: `C-TASK-LIVE-GUARD`, guard
-  on `PKG-PUB-CELL`, `C-CALL-CHECKER-PUBLIC/PRIVATE/END-PACKAGE`, update package
+  on `PKG-PUB-CELL`, `C-CALL-CHECKER-PUBLIC/PRIVATE/;package`, update package
   cells. Each is `s" c-x" s" --" TRUST` (uncheckable boundary). Family handlers
   follow this shape but must `parse-name`/scan the family name + body tokens.
 - `habu2.f:3021` `EM-INTERPRET-FIND` — ORDINARY dictionary lookup, runs only
@@ -136,7 +136,7 @@ words on one path but explicit keyword-dispatch entries on the other.
 
 - `verify-source.f:373` `RECORD-DEFINER? ( a u -- bool )` — the pure token-loop
   keyword dispatcher. Case-insensitive `STR=CI` chain: `package`->RECORD-PACKAGE,
-  `public`, `private`, `end-package`, `deftype`->RECORD-DEFTYPE,
+  `public`, `private`, `;package`, `deftype`->RECORD-DEFTYPE,
   `deflinear`->RECORD-DEFLINEAR, `value-record`->RECORD-VALUE-RECORD,
   `constant`/`create`/`variable`->TRUST-NEXT, `defer`, `trusted:`, `undefine`;
   falls through to `0 0= 0=` (false) for ordinary defs. THIS is the cleanest
@@ -173,7 +173,7 @@ words on one path but explicit keyword-dispatch entries on the other.
   `{:`/`:}`/`[:`/`;]`/char/[char]/immediate/postpone/compile,/does>/trusted:/
   trust/kernel:/check-does!.
 - `:153` `RNL-RESERVED-DEFINER?` — definers: create/variable/constant/**package/
-  public/private/end-package**/undefine. THIS is where item 6's five tokens
+  public/private/;package**/undefine. THIS is where item 6's five tokens
   (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `;VARIANT`, `;SUMTYPE`) are added,
   by the same `a u s" tok" LINT-STR=CI if LINT-TRUE exit then` pattern.
 - `:163` `RNL-RESERVED?` — the aggregator (control OR parser OR definer). Callers
@@ -292,7 +292,7 @@ Native engine package cells (compiled path) — `src/habu/habu2.f`:
 - `PKG-PUB-CELL`, `PKG-PRI-CELL`, `PKG-PARENT-CELL`, `PKG-REC-CELL`, `CUR-CELL`
   (used :1177-1182, :2744-2748, :2941-2965, :2986-2989). `C-PACKAGE`/`C-PUBLIC`/
   `C-PRIVATE`/`C-END-PACKAGE` (:2941-2990) update these and call
-  `C-CALL-CHECKER-PUBLIC/PRIVATE/END-PACKAGE` to keep the checker cells in sync.
+  `C-CALL-CHECKER-PUBLIC/PRIVATE/;package` to keep the checker cells in sync.
   Family handlers on this path read the same cells for the enclosing package.
 
 Verify-source path wrappers — `src/habu/verify-source.f:331-343`:

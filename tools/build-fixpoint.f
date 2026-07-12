@@ -341,7 +341,7 @@ public
 : SEAL ( ptr u8 n -- )
    s" SEAL-FRIEND" BF-APPEND-LINE ;
 
-end-package
+;package
 
 : BF-APPEND-HIDE-CALL ( ptr u8 n ptr u8 n ptr u8 n -- ) {: out:ptr outu:n name:ptr nameu:n word:ptr wordu:n :}
    out outu s" s" BF-APPEND-BYTES
@@ -484,6 +484,36 @@ end-package
    src srcu BF-PIN-FILE
    src srcu out outu BF-OUT$ BF-APPEND-FILE-STREAM
    out outu BF-APPEND-LF ;
+
+package BUILD-EXT
+
+variable PATH-A
+variable PATH-U
+
+: PATH-FIELD ( -- ptr ptr u8 )
+   PATH-A 0 ptr-field ;
+
+: PATH@ ( -- ptr u8 )
+   PATH-FIELD @ ;
+
+: CLEAR ( -- )
+   0 PATH-U ! ;
+
+: SET ( ptr u8 n -- )
+   PATH-U !
+   PATH-FIELD ! ;
+
+CLEAR
+
+public
+
+: ASSERT-EMPTY ( -- )
+   PATH-U @ 0 <> if s" build-fixpoint: production extension enabled" BF-BUILD-RC die then ;
+
+: APPEND ( ptr u8 n -- ) {: out:ptr outu:n :}
+   PATH-U @ 0 > if out outu PATH@ PATH-U @ BF-APPEND-SOURCE then ;
+
+;package
 
 : BF-READ-SOURCE ( ptr u8 n -- )
    BF-SOURCE-BUF BF-SOURCE-CAP READ-ALL BF-SOURCE-LEN ! ;
@@ -715,11 +745,13 @@ end-package
    out outu BF-APPEND-IMAGE-BYTES
    out outu BF-APPEND-TARGET-IMAGE
    out outu s" src/habu/habu1.f" BF-APPEND-SOURCE
+   out outu BUILD-EXT:APPEND
    out outu s" src/habu/prof.f" BF-APPEND-SOURCE
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
@@ -821,6 +853,7 @@ end-package
    out outu s" src/habu/regalloc.f" BF-APPEND-SOURCE
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
+   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
 : BF-EMIT-SNAP-RUN-SOURCE ( ptr u8 n ptr u8 n -- ) {: out:ptr outu:n driver:ptr driveru:n :}
@@ -1034,6 +1067,23 @@ end-package
    BF-STAGE-FIXPOINT
    BF-BUILD-STDIN-FROM-STAGE ;
 
+package BUILD-EXT
+
+private
+
+: OWNER-WID-ACT ( -- )
+   BF-BUILD-STDIN-FRESH ;
+
+public
+
+: OWNER-WID-STDIN ( -- )
+   s" test/owner-wid-emitter.f" SET
+   [: OWNER-WID-ACT ;] catch {: code:n :}
+   CLEAR
+   code 0 <> if code throw then ;
+
+;package
+
 : BF-BUILD-SNAP-FROM-STDIN ( -- )
    BF-SNAP-SOURCE
    BF-CERTIFY-SNAP
@@ -1048,9 +1098,11 @@ end-package
    s" snapshot image OK: candidate validated" type cr ;
 
 : BF-BUILD-ALL ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH ;
 
 : BF-BUILD-SNAP-FRESH ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-ALL
    BF-BUILD-SNAP-FROM-STDIN ;
 
@@ -1094,6 +1146,7 @@ end-package
    s" bin" [: BF-REMOVE-BIN-OTHER ;] WALK-FILES ;
 
 : BF-INSTALL ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-BUILD-STDIN-FRESH
    BF-INSTALL-HB
    BF-CLEAN-BIN
@@ -1267,6 +1320,7 @@ end-package
    SCRIPT-ARGC ;
 
 : BF-MAIN ( -- )
+   BUILD-EXT:ASSERT-EMPTY
    BF-PARSE-FORCE {: argn:n :}
    BF-PIN-RESET BF-PIN-ON!
    argn 0= if BF-BUILD-ALL-CACHED exit then
@@ -1336,3 +1390,15 @@ variable BF-FAIL-N
 : BF-CLI ( -- )
    [: BF-MAIN ;] catch {: rc:n :}
    rc 0 <> if rc BF-FAIL-DIE then ;
+
+\ Compiled callers retain direct xts; erase the mutable extension authority so
+\ reopening BUILD-EXT cannot select an arbitrary source file.
+package BUILD-EXT
+undefine SET
+undefine CLEAR
+undefine PATH@
+undefine PATH-FIELD
+undefine PATH-A
+undefine PATH-U
+undefine OWNER-WID-ACT
+;package

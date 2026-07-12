@@ -84,4 +84,4 @@ public
    err erru type cr
    E-PTX-EMIT throw ;
 
-end-package
+;package

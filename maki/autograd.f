@@ -48,4 +48,4 @@ public
 : MAX-F   ( r r -- r )     {: x:r y:r :}  x y f< if y else x then ;
 : MAX-BWD ( r r r -- r r ) {: dz:r x:r y:r :}  x y f< if 0.0 dz else dz 0.0 then ;
 
-end-package
+;package

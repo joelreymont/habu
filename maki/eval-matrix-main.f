@@ -36,6 +36,6 @@ public
    then
    MATRIX-RENDER type ;
 
-end-package
+;package
 
 EVAL:EM-MAIN

@@ -119,4 +119,4 @@ public
 
 PREC-RESET
 
-end-package
+;package

@@ -30,7 +30,8 @@
 \
 \ Alignment class: the most conservative model-input alignment the region reads
 \ (AL-16 when it reads no model input - compiler-allocated buffers are aligned by
-\ construction). Target is the "sm_87" v1 constant; the engine hash is the real
+\ construction). Target comes from its validated nominal descriptor; the engine
+\ hash is the real
 \ SHA-256 content key over bin/hb (lib/engine-id.f, resolved engine-side, lazy +
 \ cached); ptxas version is the honest "unprobed" placeholder (no ptxas is probed
 \ on a host without a device).
@@ -51,6 +52,7 @@ require lib/engine-id.f
 require maki/model-ir.f
 require maki/fusion-plan.f
 require maki/schedule.f
+require maki/target/target.f
 
 -5084 constant E-SK-REGION     \ region id out of range / empty
 -5085 constant E-SK-ALIGN      \ alignment class out of range (AL-* domain)
@@ -82,10 +84,11 @@ ENUM dimclass DERIVE eq
 \ dtype/layout (or any enum-field) role swap at construction is a CHECKER reject
 \ (the semantic-role hole the string key left open). DERIVE eq gives the typed
 \ identity MAKI-SKEY:EQ; every enum field family also derives eq (else the
-\ declaration throws). target / engine / ptxas are per-process invariants (one
-\ target, one engine build, one ptxas per running process): the in-memory key
-\ never spans them, so they live in the DURABLE render (SK-KEY$) ONLY and are not
-\ product fields. The persistent schedules.rows store stays keyed by that render
+\ declaration throws). target is the caller-supplied validated nominal descriptor
+\ id (maki/target/target.f) and engine / ptxas are per-process invariants (one
+\ engine build, one ptxas per running process): they live in the DURABLE render
+\ (SK-KEY$) ONLY and are not product fields - the field-eq == text-eq contract
+\ below is pinned per target. The persistent schedules.rows store stays keyed by that render
 \ (see the SK-GET/SK-PUT boundary note below). Fields (slot order, deepest first):
 \ rsig = FNV-1a region signature (n); rk/rm = representative rows class+magnitude;
 \ ck/cm = representative cols class+magnitude; dt/lay = representative dtype/layout;
@@ -212,7 +215,7 @@ private
 public
 
 \ ---- key field placeholders -------------------------------------------------
-: SK-TARGET$ ( -- ptr u8 n )  s" sm_87" ;         \ single supported target (v1)
+: SK-TARGET$ ( CAD-KIND:target-id -- ptr u8 n )  TARGET:LABEL$ ;
 \ Real engine content key: the SHA-256 of bin/hb, resolved engine-side from the
 \ kernel-provided self-path and hashed once on first request, then cached
 \ (lib/engine-id.f). It distinguishes schedules produced by different engine builds
@@ -231,18 +234,22 @@ public
 : SK-ALIGN$ ( CAD-KIND:region -- ptr u8 n )  SK-REGION-CK REGION-ALIGN AL-KEY ;
 
 \ ---- the full section 7.4 key as one "|"-joined string ----------------------
-: SK-KEY+ ( CAD-KIND:region -- ) {: r:CAD-KIND:region :}   \ append the key to SB (already reset)
+: SK-KEY+ ( CAD-KIND:region CAD-KIND:target-id -- )
+   {: r:CAD-KIND:region target:CAD-KIND:target-id :}   \ append the key to SB (already reset)
    r REGION-REP {: rep:CAD-KIND:node-id :}
    r RSIG SK-HEX+
    $7C SB-APPEND-C  rep MIR-ROWS@ rep MIR-COLS@ SHAPE-CLASS+
    $7C SB-APPEND-C  rep MIR-DTYPE-KEY  SB-APPEND
    $7C SB-APPEND-C  rep MIR-LAYOUT-KEY SB-APPEND
    $7C SB-APPEND-C  r REGION-ALIGN AL-KEY SB-APPEND
-   $7C SB-APPEND-C  SK-TARGET$ SB-APPEND
+   $7C SB-APPEND-C  target SK-TARGET$ SB-APPEND
    $7C SB-APPEND-C  SK-ENGINE$ SB-APPEND
    $7C SB-APPEND-C  SK-PTXAS$  SB-APPEND ;
 
-: SK-KEY$ ( CAD-KIND:region -- ptr u8 n )  SK-REGION-CK SB-RESET SK-KEY+ SB$ ;
+: SK-KEY$ ( CAD-KIND:region CAD-KIND:target-id -- ptr u8 n )
+   {: r:CAD-KIND:region target:CAD-KIND:target-id :}
+   r SK-REGION-CK drop  target TARGET:VALIDATE drop
+   SB-RESET r target SK-KEY+ SB$ ;
 
 \ ---- the typed section-7.4 key (the durable render's semantic twin) ----------
 \ SK-KEY builds the same eight facts SK-KEY+ renders, but as a typed `skey`
@@ -325,4 +332,4 @@ public
    e 0 < if -1 false exit then
    e cells SK-SEL + @  true ;
 
-end-package
+;package

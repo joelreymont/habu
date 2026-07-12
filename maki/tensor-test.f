@@ -119,4 +119,4 @@ s" TENSOR-NEG-WINDOW-AS-COLS ( n n CAD-KIND:rows -- CAD-KIND:cols ) MAKI:ROWS-WI
 
 T-REPORT
 
-end-package
+;package

@@ -30,4 +30,4 @@ package MAKI
 
 EVAL-AUTHOR-MAIN
 
-end-package
+;package

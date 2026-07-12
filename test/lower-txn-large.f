@@ -71,7 +71,7 @@ variable SRC-U
    s" public" LINE
    s" : RUN ( -- ) INIT 0 MEM SCAN drop ;" LINE
    s" private" LINE
-   s" end-package" LINE
+   s" ;package" LINE
    s" LTXN-LARGE:RUN" LINE
    s\" s\" lower-txn-large: ok\" type cr" LINE ;
 
@@ -89,6 +89,6 @@ public
 : RUN ( -- )
    SOURCE$ INCLUDE-EVALUATE ;
 
-end-package
+;package
 
 LOWER-TXN-LARGE-TEST:RUN

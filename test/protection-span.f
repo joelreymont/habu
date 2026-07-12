@@ -117,6 +117,6 @@ public
    T-REPORT
    s" protection-span: ok" type cr ;
 
-end-package
+;package
 
 PROTECTION-TEST:RUN

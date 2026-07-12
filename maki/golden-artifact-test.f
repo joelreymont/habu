@@ -120,4 +120,4 @@ GA-CHECK V-PASS T=
 STORE-RESET
 T-REPORT
 
-end-package
+;package

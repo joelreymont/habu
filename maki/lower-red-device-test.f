@@ -79,7 +79,7 @@ create LRD-QO  $1000 allot  create LRD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LRD-BEGIN
@@ -113,4 +113,4 @@ MODEL: SR ( x:4x8 s:1x1 -- y ) SCALE RMSNORM ;  FP-BUILD
 s" MODEL: SR ( x:4x8 s:1x1 -- y ) SCALE RMSNORM ;" LRD-GOLD1
 
 LRD-END
-end-package
+;package

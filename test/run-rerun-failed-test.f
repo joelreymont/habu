@@ -86,4 +86,4 @@ package RRF
 
 MAIN
 
-end-package
+;package

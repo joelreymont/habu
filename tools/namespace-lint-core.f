@@ -8,12 +8,12 @@
 \
 \ Scan: each maki/*.f source is TOKENIZEd (PARENS? on, so `\` line comments and
 \ `( )` stack comments are stripped and `s"` bodies stay single tokens), then the
-\ token stream is walked while tracking `package`/`end-package` depth. Every
+\ token stream is walked while tracking `package`/`;package` depth. Every
 \ defining word (`:`, `constant`, `variable`, `create`, `DEFTYPE`, `KERNEL:`, ...)
 \ seen at depth 0 names a global maki def; its name token is a finding unless
 \ whitelisted. Definer and package tokens match case-INSENSITIVELY: the dictionary
 \ is case-insensitive (docs/forth.md § Naming), so `CREATE BUF` defines a global
-\ and `END-PACKAGE` closes a package exactly like their lower-case spellings; a
+\ and `;package` closes a package exactly like their lower-case spellings; a
 \ case-sensitive scan is an evasion vector (this subsumed the retired
 \ tools/maki-ns-lint.f, whose one-package-per-file marker model could not express
 \ the multi-package subsystem files - dot habu-maki-ns-lint-reconcile).
@@ -152,6 +152,9 @@ variable NL-QI
    nptr nu NL-WHITELISTED? if exit then
    nptr nu NL-HIT ;
 
+: NL-PACKAGE-CLOSE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" ;package" LINT-STR=CI ;
+
 : NL-STEP ( n -- n ) {: i:n :}          \ handle token i, return next index
    i TOK {: tp:ptr tu:n :}
    NL-INSTR @ if                                     \ skip string bodies wholesale
@@ -159,7 +162,7 @@ variable NL-QI
       i 1+ exit then
    tp tu s" package" LINT-STR=CI if
       NL-DEPTH @ 1+ NL-DEPTH !  i 2 + exit then      \ skip the package name token
-   tp tu s" end-package" LINT-STR=CI if
+   tp tu NL-PACKAGE-CLOSE? if
       NL-DEPTH @ 1- NL-DEPTH !  i 1+ exit then
    NL-DEPTH @ 0= tp tu NL-DEF-WORD? and if
       i NL-DEF-AT  i 2 + exit then                   \ skip past the defined name

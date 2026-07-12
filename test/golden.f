@@ -159,4 +159,4 @@ public
    PATH$ READ-BUF CAP READ-ALL READ-U !
    NORM$ READ$ STR= dup 0= if MISMATCH. then ;
 
-end-package
+;package

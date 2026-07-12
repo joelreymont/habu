@@ -59,4 +59,4 @@ public
    dyb xb n  xb n LN-MEAN  LN-MEAN-DYC   xb n  xb n LN-MEAN  LN-STD  f/
    LN-DX! ;
 
-end-package
+;package

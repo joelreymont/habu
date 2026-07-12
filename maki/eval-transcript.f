@@ -300,4 +300,4 @@ public
    TS-CK-IDX TSL-TOKENS TS-SLOT @ 0= if TS-TOK-NONE exit then
    TS-TOKMODE @ ;
 
-end-package
+;package

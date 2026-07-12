@@ -49,4 +49,4 @@ LF @  2 *  L0 @  <   TTRUE                               \ ... by more than half
 
 T-REPORT
 
-end-package
+;package

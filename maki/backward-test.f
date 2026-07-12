@@ -263,4 +263,4 @@ BW-BUILD                                       \ 2nd build succeeds (pilot above
 
 T-REPORT
 
-end-package
+;package

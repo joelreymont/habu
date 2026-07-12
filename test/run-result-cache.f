@@ -103,4 +103,4 @@ public
    i PENDING-LEN @ >= if E-TBL-BOUNDS throw then
    PENDING-KEYS i KEY-HEX-U * + ;
 
-end-package
+;package

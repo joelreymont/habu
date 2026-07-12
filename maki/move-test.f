@@ -75,4 +75,4 @@ MV-DST 2 MV-CELL 7 T=                               \ row 0 = {7,8}
 
 T-REPORT
 
-end-package
+;package

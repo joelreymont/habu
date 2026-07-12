@@ -76,6 +76,7 @@ variable SL-DRIVER-U
    SL-TARGET-IMAGE
    s" src/habu/habu1.f src/habu/prof.f src/habu/regalloc.f " type
    s" src/habu/jit.f src/habu/habu2.f src/habu/xref.f " type
+   s" src/habu/owner-wid-emit-seal.f " type
    s" src/os/script-argv.f " type
    s" src/habu/driver-io.f " type ;
 

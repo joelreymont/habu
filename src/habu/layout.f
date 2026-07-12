@@ -75,8 +75,8 @@ $3000 constant LOCNAMES
 \ write buffers) carry the runtime range check. The old scattered slots were
 \ since reclaimed: $2780..$27A0/$27C0..$27E8 are free again after the pass-2
 \ transaction moved into TXN-STATE-OFF; $27A8 remains CMM-CELL below ($1A0 stays
-\ free). A SECOND guarded band (the
-\ protected-WID registry, PROT-REG-OFF below) is checked by the same PROT-GUARD.
+\ free). Two more guarded bands (the constructor protected-WID registry and the
+\ sealed-owner WID registry below) are checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
 \ checker/xref/stdlib source is even evaluated), so the watermark is captured
@@ -238,6 +238,26 @@ PROT-WID-OFF PROT-WID-MAX 4 * +  1 cells +  PROT-REG-OFF -  constant PROT-REG-LE
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
+\ --- sealed-owner WID registry: count plus atomic u32 (public,private) rows.
+\ This registry is distinct from the constructor protected-WID table above: owner
+\ role checks must distinguish callable public WIDs from inaccessible private WIDs,
+\ while constructor protection keeps its existing flat-table ABI. The band starts
+\ immediately after the sixteen evaluator frames ($43C0..$47C0) and ends before
+\ the lowering transaction at $5000. A 256-row table occupies $808 bytes and leaves
+\ $38 bytes of separation, so no runtime scratch range moves and old constructor
+\ offsets remain byte-for-byte stable. PROT-GUARD treats this as its own protected
+\ interval; the hidden mutator stores each aligned pair atomically, then
+\ release-publishes the count consumed by acquire scans. Cold entry clears the
+\ count and every row before any test-only build hook runs. ---
+$47C0 constant OWNER-WID-N-CELL
+$47C8 constant OWNER-WID-OFF
+8 constant OWNER-WID-ROW
+0 constant OWNER-WID-PUB
+4 constant OWNER-WID-PRI
+256 constant OWNER-WID-MAX
+OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
+OWNER-WID-N-CELL constant OWNER-REG-OFF
+OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 16384.

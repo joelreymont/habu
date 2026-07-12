@@ -86,4 +86,4 @@ MODEL: RBM ( x:0x4 r:2x4 -- y ) RELU RESIDUAL-ADD ;
 
 T-REPORT
 
-end-package
+;package

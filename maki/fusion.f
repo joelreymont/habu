@@ -76,4 +76,4 @@ public
    s" bye" SB-APPEND  10 SB-APPEND-C
    s" /tmp/fuse-driver.f" SB$ WRITE-ALL ;
 
-end-package
+;package

@@ -43,4 +43,4 @@ public
       deb dyb  idsb i T-GET f>s  i  dim  EMB-SCATTER-ROW!
    loop ;
 
-end-package
+;package

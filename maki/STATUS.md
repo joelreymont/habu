@@ -1,9 +1,9 @@
 # Maki — Status
 
-Maki is the ML framework layer on Habu + Habu-PTX. This is maki's own status doc,
-kept outside the Habu trust root and self-check. The root stale-status lint skips
-`maki/` because maki owns its own status once it is extracted from the Habu trust
-root; root Habu self-check counts still belong only in root `STATUS.md`.
+Maki is the ML framework layer on Habu + Habu-PTX. This is maki's own status doc.
+The repository trust lint audits `maki/` boundaries, while the native engine
+fixpoint and root stale-status counts remain separate. Root Habu self-check counts
+still belong only in root `STATUS.md`.
 
 ## Built
 

@@ -216,4 +216,4 @@ public
 : CK-LIVE@      ( -- n )  CK-CK  CK-B-N @ CK-IMAX @ +  MIR-N@ CK-NF @ -  + ;
 : CK-LIVE-FULL@ ( -- n )  CK-CK  MIR-N@ ;
 
-end-package
+;package

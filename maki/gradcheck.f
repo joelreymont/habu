@@ -207,4 +207,4 @@ public
 : GRADCHECK-INTO ( report -- report )
    GC-RUN {: v:n :}  GC-RE$ v G-GRADCHECK REPORT:GATE! ;
 
-end-package
+;package

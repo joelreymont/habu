@@ -136,7 +136,7 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
    PTXTC:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 ABL-BEGIN
@@ -158,4 +158,4 @@ s" == (B) sentinel: dropped copy-back [EW GELU 4x8] ==" type cr
 MODEL: ABLSN ( x:4x8 -- y ) GELU ;  FP-BUILD  ABL-SENT
 
 ABL-END
-end-package
+;package

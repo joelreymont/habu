@@ -276,4 +276,4 @@ s" LMVT-NEG-RC-RAW  ( n n -- ) LMV-RC-PARAMS!"                          CHECK-QU
 
 T-REPORT
 
-end-package
+;package

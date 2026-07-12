@@ -11,4 +11,4 @@ s" SAXPY-V4" LABEL!
 4 ELEMS-PER-THREAD!
 REPORT
 
-end-package
+;package

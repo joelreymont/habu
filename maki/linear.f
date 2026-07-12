@@ -45,4 +45,4 @@ public
    xb dyb dwb  rows inner cols  MATMUL-DW
    dyb dbb  rows cols  LINEAR-DB ;
 
-end-package
+;package

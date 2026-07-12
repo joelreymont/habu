@@ -41,4 +41,4 @@ public
    2dup s" Gather"    STR= if 2drop MAKI-OPKIND:GATHER    exit then
    2drop E-MK-ONNX throw ;
 
-end-package
+;package

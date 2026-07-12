@@ -88,7 +88,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LMD-BEGIN
@@ -130,4 +130,4 @@ MODEL: SM ( x:8x8 w:8x16 -- y ) SLICE:2..6 MATMUL ;  FP-BUILD
 s" MODEL: SM ( x:8x8 w:8x16 -- y ) SLICE:2..6 MATMUL ;" LMD-MM
 
 LMD-END
-end-package
+;package

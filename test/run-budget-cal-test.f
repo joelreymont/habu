@@ -97,4 +97,4 @@ package TRBC
 
 MAIN
 
-end-package
+;package

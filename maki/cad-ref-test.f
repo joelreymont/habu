@@ -142,4 +142,4 @@ EX-RESET  RQ 0 MIR-SLOT-ID EX-BIND  RK 1 MIR-SLOT-ID EX-BIND  EX-RUN
 
 T-REPORT
 
-end-package
+;package

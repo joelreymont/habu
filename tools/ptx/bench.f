@@ -251,4 +251,4 @@ public
 : REPORT ( n n n -- )
    REPORT-GPU ;
 
-end-package
+;package

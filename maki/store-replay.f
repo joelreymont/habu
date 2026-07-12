@@ -51,4 +51,4 @@ public
 : STORE-REPLAY-LOAD ( -- )
    [: SK-PUT ;] SCHED-LOAD ;
 
-end-package
+;package

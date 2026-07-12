@@ -271,4 +271,4 @@ OP-CAST   EX-OP-OK? TFALSE
 
 T-REPORT
 
-end-package
+;package

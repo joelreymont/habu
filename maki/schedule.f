@@ -258,4 +258,4 @@ public
    SB-RESET  s" region=" SB-APPEND  region SB-INT  $20 SB-APPEND-C
    fam cand CAND+  SB$ ;
 
-end-package
+;package

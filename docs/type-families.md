@@ -501,7 +501,7 @@ package CAD-KIND
 public
 TYPEFAMILY design-id 0
 TYPEFAMILY node-id 0
-end-package
+;package
 ```
 
 Inside the package, signatures use `design-id`; outside, they use

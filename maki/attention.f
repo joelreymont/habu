@@ -77,4 +77,4 @@ public
    dsb kb dqb  lc lc d  MATMUL
    dsb qb dkb  lc lc d  MM-TN ;
 
-end-package
+;package

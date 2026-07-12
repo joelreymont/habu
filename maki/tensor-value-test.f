@@ -210,7 +210,7 @@ s" TVT-OP-DT    ( dtype -- ) TENSOR:PLAN-OP-BEGIN"                     CHECK-QUI
 s" TVT-OP-NOUT  ( n -- n ) TENSOR:PLAN-OP@"                            CHECK-QUIET-CANDIDATE! 0 T=
 s" TVT-OP-ASDT  ( n -- dtype ) TENSOR:PLAN-OP@"                        CHECK-QUIET-CANDIDATE! 0 T=
 
-end-package
+;package
 
 \ ---- forged handles fail closed (owner-package probes over the raw boundary) -
 package TENSOR
@@ -232,10 +232,10 @@ TV-GEN-MAX TV-GEN !
 ' TV-RESET E-TV-GEN TTHROWS
 0 TV-GEN ! 0 TV-U !
 
-end-package
+;package
 
 package MAKI
 
 T-REPORT
 
-end-package
+;package

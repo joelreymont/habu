@@ -20,6 +20,6 @@ public
    s" NEG: fused attention rejects SCORE before STAGE-Q" type cr
    T-REPORT ;
 
-end-package
+;package
 
 ATTN-NEG-TEST:RUN

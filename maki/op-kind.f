@@ -119,4 +119,4 @@ ENUM opkind DERIVE eq
       gelu-bwd2       OF OP-GELU-BWD2       ENDOF
    ;MATCH ;
 
-end-package
+;package

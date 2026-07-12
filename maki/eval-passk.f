@@ -43,4 +43,4 @@ public
    k 0 ?do n c i PK-STEP loop
    PK-DEN @ PK-NUM @ - 1000 *  PK-DEN @ 2 / +  PK-DEN @ / ;
 
-end-package
+;package

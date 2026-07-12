@@ -95,4 +95,4 @@ public
    w WT-I32    = if pos 4 +  dup u > if E-PB-TRUNC throw then  exit then
    E-PB-WIRE throw ;
 
-end-package
+;package

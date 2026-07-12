@@ -48,4 +48,4 @@ package MAKI
 
 EVAL-PASSK-MAIN
 
-end-package
+;package

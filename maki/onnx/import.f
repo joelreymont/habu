@@ -597,4 +597,4 @@ public
    IMP-NODE-N @ 0= if E-ONNX-OUTPUT throw then
    IMP-NODE-N @ 1- IMP-NODE@ ;
 
-end-package
+;package

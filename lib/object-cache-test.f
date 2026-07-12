@@ -87,6 +87,6 @@ public
    CLEANUP-RUN
    T-REPORT ;
 
-end-package
+;package
 
 OBJSTORE-TEST:MAIN

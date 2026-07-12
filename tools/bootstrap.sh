@@ -90,6 +90,7 @@ SRC_COMMON=(
   src/habu/jit.f
   src/habu/habu2.f
   src/habu/xref.f
+  src/habu/owner-wid-emit-seal.f
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
 )
@@ -141,20 +142,25 @@ $3 constant BOOT-XREF-NAME-SLOT
 : BOOT-XREF-MATCH? ( ptr a ptr u8 n -- bool ) {: rec:ptr name:ptr u:n :}
    rec BOOT-XREF-NAME$ name u BOOT-XREF-STR=CI ;
 : BOOT-XREF-FIND-INDEX ( ptr u8 n -- n ) {: name:ptr u:n :}
-   ndict@ 1-
-   begin dup 0 >= while
+   0
+   begin dup ndict@ < while
       dup BOOT-XREF-REC name u BOOT-XREF-MATCH? if exit then
-      1-
+      1+
    repeat drop
    -1 ;
-: BOOT-HIDE-DICT-FROM ( ptr u8 n -- )
-   BOOT-XREF-FIND-INDEX dup 0 < if s" bootstrap: hide word not found" 76 die then
+: BOOT-MIN-FOUND ( n n -- n ) {: a:n b:n :}
+   a 0 < if b exit then
+   b 0 < if a exit then
+   a b < if a else b then ;
+: BOOT-HIDE-DICT-FROM-EARLIEST ( ptr u8 n ptr u8 n -- ) {: a:ptr u:n b:ptr v:n :}
+   a u BOOT-XREF-FIND-INDEX  b v BOOT-XREF-FIND-INDEX  BOOT-MIN-FOUND
+   dup 0 < if s" bootstrap: hide marker not found" 76 die then
    ndict! ;
 : BOOT-USIGS-RESET ( -- )
    0 BOOT-UEND!
    0 BOOT-USIG-END-PTR ! ;
 BOOT-USIGS-RESET
-s" SEQ" BOOT-HIDE-DICT-FROM
+s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST
 EOF
 }
 

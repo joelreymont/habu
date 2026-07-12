@@ -334,7 +334,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    s" package SLFPKG" SB-APPEND SLV-LF
    s" public" SB-APPEND SLV-LF
    s" : WIN ( -- n ) 7 ;" SB-APPEND SLV-LF
-   s" end-package" SB-APPEND SLV-LF
+   s" ;package" SB-APPEND SLV-LF
    s" TRUSTED: SLF-TRUSTX ( -- n ) 3 ;" SB-APPEND SLV-LF
    s" defer SLF-ACT ( -- n )" SB-APPEND SLV-LF
    s" : SLF-SETUP ( -- ) [: SLF-TRUSTX ;] is SLF-ACT ;" SB-APPEND SLV-LF
@@ -456,6 +456,171 @@ variable PWG-U
    s" : foo:BOGUS ; into a protected WID -> labeled exit 84 (--load)" T-LABEL
    SLV-PUBLISH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-PROT-PUBLISH ;
 
+package OWNER-WID-TEST
+
+$4000 constant CAP
+create BUF CAP allot
+variable USED
+
+: RESET ( -- )
+   0 USED ! ;
+
+: C+ ( n -- ) {: c:n :}
+   USED @ 1+ CAP > if E-FS-CAPACITY throw then
+   c BUF USED @ + c!
+   USED @ 1+ USED ! ;
+
+: $+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   USED @ u + CAP > if E-FS-CAPACITY throw then
+   a BUF USED @ + u BYTE-COPY
+   USED @ u + USED ! ;
+
+: LF ( -- )
+   10 C+ ;
+
+: HEADER ( -- )
+   s" require lib/test.f" $+ LF
+   s" T-RESET" $+ LF
+   s" package OWNER-WID-CHECK" $+ LF
+   s" variable PROT0" $+ LF
+   s" data-base PROT-WID-N-CELL + @ PROT0 !" $+ LF
+   s" public" $+ LF
+   s" : PREFLIGHT ( n n n -- bool ) owner-wid-preflight? ;" $+ LF
+   s" : PUBLIC? ( n -- bool ) owner-wid-public? ;" $+ LF
+   s" : PRIVATE? ( n -- bool ) owner-wid-private? ;" $+ LF
+   s" : MEMBER? ( n -- bool ) owner-wid? ;" $+ LF
+   s" : CONSTRUCTOR-ADDED? ( -- bool ) data-base PROT-WID-N-CELL + @ PROT0 @ 1+ = ;" $+ LF
+   s" ;package" $+ LF
+   s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
+   s" $1000 $2000 1 OWNER-WID-CHECK:PREFLIGHT TTRUE" $+ LF
+   s" $1000 $2000 0 OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" 0 $2000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 0 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $1000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $100000000 $2000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $100000000 OWNER-WID-MAX OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" $1000 $2000 OWNER-WID-MAX 1+ OWNER-WID-CHECK:PREFLIGHT TFALSE" $+ LF
+   s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF
+   s" data-base OWNER-WID-OFF + @ 0 T=" $+ LF ;
+
+: ROLES ( -- )
+   s" $1000 OWNER-WID-CHECK:PUBLIC? TFALSE" $+ LF
+   s" $2000 OWNER-WID-CHECK:PRIVATE? TFALSE" $+ LF
+   s" $1000 OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF
+   s" $10FF OWNER-WID-CHECK:PUBLIC? TFALSE" $+ LF
+   s" $20FF OWNER-WID-CHECK:PRIVATE? TFALSE" $+ LF
+   s" $10FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF
+   s" $20FF OWNER-WID-CHECK:MEMBER? TFALSE" $+ LF ;
+
+: CONSTRUCTOR ( -- )
+   \ Type-family and variant tails are lowercase system vocabulary.
+   s" SUMTYPE owf 1 VARIANT same a ;VARIANT ;SUMTYPE" $+ LF
+   s" OWNER-WID-CHECK:CONSTRUCTOR-ADDED? TTRUE" $+ LF
+   s" data-base OWNER-WID-N-CELL + @ 0 T=" $+ LF ;
+
+: SOURCE$ ( -- ptr u8 n )
+   RESET HEADER ROLES CONSTRUCTOR
+   s" T-REPORT" $+ LF
+   BUF USED @ ;
+
+public
+
+: ADD-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : OWT-FORGE ( n n -- bool ) owner-wid-add ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: ADD-LOOKUP-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/test.f" SB-APPEND SLV-LF
+   s" T-RESET" SB-APPEND SLV-LF
+   S\" s\" owner-wid-add\" 0 search-wl 0 T=" SB-APPEND SLV-LF
+   s" T-REPORT" SB-APPEND SLV-LF
+   SB$ ;
+
+: BAD$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: ins:ptr inu:n prim:ptr primu:n :}
+   SB-RESET
+   s" : OWT-BAD ( " SB-APPEND
+   ins inu SB-APPEND
+   s"  -- n ) " SB-APPEND
+   prim primu SB-APPEND
+   s"  ;" SB-APPEND SLV-LF
+   SB$ ;
+
+: ASSERT-ADD-HIDDEN ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ 70 T=
+   SLV-ERR$ s" owner-wid-add" CONTAINS? TTRUE ;
+
+: ASSERT-CHECKER-BOOL ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ 70 T=
+   SLV-ERR$ s" expected: n" CONTAINS? TTRUE
+   SLV-ERR$ s" actual: bool" CONTAINS? TTRUE ;
+
+: CHECKER-REJECTS ( -- )
+   s" n n n" s" owner-wid-preflight?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-public?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid-private?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL
+   s" n" s" owner-wid?" BAD$ SLV-RUN-LOAD ASSERT-CHECKER-BOOL ;
+
+: COUNT-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" $47C0 constant SLF-OWNER-N" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-N + 0 swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+: TABLE-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" $47C8 constant SLF-OWNER-ROWS" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-ROWS + 9 swap c!" SB-APPEND SLV-LF
+   SB$ ;
+
+: END-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" $4FC8 constant SLF-OWNER-END" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-END 1- + 0 swap c!" SB-APPEND SLV-LF
+   SB$ ;
+
+: PAST-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" $4FC8 constant SLF-OWNER-END" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-END + dup @ swap !" SB-APPEND SLV-LF
+   SB$ ;
+
+: FFI-FORGE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require lib/ffi.f" SB-APPEND SLV-LF
+   s" $47C0 constant SLF-OWNER-N" SB-APPEND SLV-LF
+   s" TRUSTED: OWF-RET ( -- n ) cp@ {: fn:n :} $D65F03C0 fn patch32 fn ;" SB-APPEND SLV-LF
+   s" TRUSTED: OWF-WRITE ( ptr a -- n ) {: p:ptr :} FFI:RESET p 16 0 FFI:WRITABLE! FFI:ARGS FFI:REG-LENS 1 OWF-RET ffi-call-bounded ;" SB-APPEND SLV-LF
+   s" data-base SLF-OWNER-N 8 - + OWF-WRITE drop" SB-APPEND SLV-LF
+   SB$ ;
+
+: LAYOUT ( -- )
+   OWNER-WID-N-CELL $47C0 T=
+   OWNER-WID-OFF OWNER-WID-N-CELL cell + T=
+   OWNER-WID-ROW 8 T=
+   OWNER-WID-PUB 0 T=
+   OWNER-WID-PRI 4 T=
+   EVAL-FRAME EVAL-MAX-DEPTH EVAL-FRAME-SIZE * + OWNER-WID-N-CELL <= TTRUE
+   OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + OWNER-WID-END T=
+   OWNER-WID-END TXN-STATE-OFF <= TTRUE ;
+
+: RUN ( -- )
+   s" checked source cannot call the internal owner-WID mutator" T-LABEL
+   ADD-FORGE$ SLV-RUN-LOAD ASSERT-ADD-HIDDEN
+   s" ordinary source cannot look up the internal owner-WID mutator" T-LABEL
+   ADD-LOOKUP-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" owner-WID query primitives retain exact checked bool effects" T-LABEL
+   CHECKER-REJECTS
+   s" owner WID registry layout fits before lowering state" T-LABEL
+   LAYOUT
+   s" owner-WID preflight and role queries are checked and read-only" T-LABEL
+   SOURCE$ SLV-RUN-LOAD SLV-ASSERT-OK ;
+
+;package
+
 : SLV-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-seal" TMPDIR-MKDIR {: a:ptr u:n :}
@@ -490,6 +655,12 @@ variable PWG-U
    SLV-BAND2-END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" ! into the uncaught-throw reporter hook traps" T-LABEL
    SLV-UNCGH-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" ! into the owner-WID count traps (band 3)" T-LABEL
+   OWNER-WID-TEST:COUNT-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" c! into the owner-WID table traps (band 3)" T-LABEL
+   OWNER-WID-TEST:TABLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" c! at the owner-WID band's last byte traps" T-LABEL
+   OWNER-WID-TEST:END-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 2 traps at the sink" T-LABEL
    SLV-CPSET-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" cp! redirecting emission into band 1 traps at the sink" T-LABEL
@@ -521,7 +692,9 @@ variable PWG-U
    s" FFI live pointer arg into band 1 traps before the call" T-LABEL
    SLV-FFI-B1-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
    s" FFI live pointer arg into band 2 traps before the call" T-LABEL
-   SLV-FFI-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
+   SLV-FFI-B2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL
+   s" FFI live pointer arg crossing owner-WID band traps before the call" T-LABEL
+   OWNER-WID-TEST:FFI-FORGE$ SLV-RUN-LOAD SLV-ASSERT-SEAL ;
 
 \ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
@@ -553,6 +726,8 @@ variable PWG-U
    SLV-HOLE-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" store one past band 2 ($40C8) stays writable" T-LABEL
    SLV-PAST-BAND2-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
+   s" store one past owner-WID band ($4FC8) stays writable" T-LABEL
+   OWNER-WID-TEST:PAST-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" legit cp!/ndict! FORGET round-trip still works" T-LABEL
    SLV-FORGET-FORGE$ SLV-RUN-LOAD SLV-ASSERT-OK
    s" FORGET-DEFS-FROM of a post-seal user mark still works" T-LABEL
@@ -571,6 +746,7 @@ variable PWG-U
    SLV-POSITIVES
    SLV-PWID-CAP
    SLV-PROT-PUBLISH
+   OWNER-WID-TEST:RUN
    SLV-CLEANUP
    T-REPORT
    s" seal-test: ok" type cr ;

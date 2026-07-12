@@ -304,4 +304,4 @@ CK-LIVE@ CK-LIVE-FULL@ < TTRUE                 \ peak STRICTLY lower (two interi
 
 T-REPORT
 
-end-package
+;package

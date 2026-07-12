@@ -138,7 +138,7 @@ public
 
 SM-INIT
 
-end-package
+;package
 
 \ This file is now the GRADE-SM LIBRARY (mirrors maki/eval-device.f). The device-golden
 \ test candidates moved to maki/eval-device-sm-test.f so the grader can be reused by

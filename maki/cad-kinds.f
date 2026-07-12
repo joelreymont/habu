@@ -32,4 +32,4 @@ TYPEFAMILY stage 0
 TYPEFAMILY effect 0
 TYPEFAMILY region 0
 
-end-package
+;package

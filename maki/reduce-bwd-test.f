@@ -40,4 +40,4 @@ RB-DST 0 RB-CELL 300 T=
 
 T-REPORT
 
-end-package
+;package

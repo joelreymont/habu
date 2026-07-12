@@ -49,4 +49,4 @@ SC-DST 4 SC-CELL 2 T=   SC-DST 5 SC-CELL 2 T=               \ row2 = ct1
 
 T-REPORT
 
-end-package
+;package

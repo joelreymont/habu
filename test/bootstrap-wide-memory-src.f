@@ -75,11 +75,11 @@ public
    BWM-MK2 1 2 3 4 {: r a:n b:n c:n d:n :}
    a b c d r BWM-UN2 ;
 : MARK ( -- n ) HIDDEN HIDDEN2 + ;
-end-package
+;package
 package BWM-NS-TEST
 public
 : DUAL ( -- n ) 17 ;
-end-package
+;package
 package BWM-TEST
 : ABSENT ( ptr u8 n -- )
    0 search-wl 0= if -1 else 0 then -1 BWM= ;
@@ -103,7 +103,7 @@ public
    s" BWM-LOCAL-TEST:DUAL" ABSENT
    s" BWM-LOCAL-TEST:HIDDEN" ABSENT
    s" BWM-LOCAL-TEST:HIDDEN2" ABSENT ;
-end-package
+;package
 \ typed-local-lint: allow-bare-local - family locals are not yet annotatable.
 : BWM-BR2 ( n -- n n ) 0 > if BWM-MK2 {: r :} r BWM-UN2
 \ typed-local-lint: allow-bare-local - family locals are not yet annotatable.

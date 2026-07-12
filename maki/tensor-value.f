@@ -137,7 +137,7 @@ ENUM align DERIVE eq
    AL-16 = if MAKI-ALIGN:A16 exit then
    E-TV-ALIGN throw ;
 
-end-package
+;package
 
 \ ---------------------------------------------------------------------------
 \ The stateful tensor-value store + descriptor plan builder is a real subsystem
@@ -414,4 +414,4 @@ public
    x TV-ROWS@ x TV-COLS@ w TV-COLS@ TYPED-LINEAR
    y ;
 
-end-package
+;package

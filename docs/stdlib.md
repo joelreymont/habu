@@ -1127,7 +1127,7 @@ before the final line of another counted byte string; when the source has no
 line break, insertion happens at the beginning. `COMMENT-EXPORTS` rewrites TOP-LEVEL lines
 whose first non-space byte sequence starts with `EXPORT ` by replacing leading
 whitespace with `\ `, preserving all other bytes. Lines inside a
-`package ... end-package`/`;package` block pass through untouched: there
+`package ... ;package`/`;package` block pass through untouched: there
 `EXPORT NAME` is the package re-export declaration, not the hb-build --repl
 directive (the line tracker counts line-leading openers/closers).
 

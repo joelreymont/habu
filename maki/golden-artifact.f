@@ -402,4 +402,4 @@ public
    GA-LOAD drop
    GA-VERDICT ;
 
-end-package
+;package

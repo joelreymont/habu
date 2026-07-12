@@ -19,4 +19,4 @@ package SHADOW-LINT-TOOL
 
 SLT-MAIN
 
-end-package
+;package

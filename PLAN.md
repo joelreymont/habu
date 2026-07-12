@@ -428,7 +428,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
      file rather than only the materialized temp loader, replaying all prior
      source-list entries before checking a later file so cross-file prefix state
      is preserved. Package
-     `public`/`private`/`end-package` state is part of the pre-scan/replay
+     `public`/`private`/`;package` state is part of the pre-scan/replay
      environment so package-local families are registered in the right scope.
      Invalid top-level family declarations and bad support signatures involving
      family types are collected as diagnostic units, not treated as unguarded

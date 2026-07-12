@@ -24,6 +24,6 @@ public
    a u s" st.global.f32 [%rd13],%f1;" CONTAINS? TTRUE
    T-REPORT ;
 
-end-package
+;package
 
 ATTN-CHECKED-TEST:RUN

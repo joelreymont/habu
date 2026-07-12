@@ -191,4 +191,4 @@ public
    TRF-BOUND? if  TRF-BEFORE TRF-AFTER REPORT:BYTES!  else  TRF-UNBOUND+  then
    TRF-GATHERED+ ;
 
-end-package
+;package

@@ -38,4 +38,4 @@ public
    lr w2 dw2  hid out *  T-SGD!
    lr b2 db2  out        T-SGD! ;
 
-end-package
+;package

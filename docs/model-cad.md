@@ -82,6 +82,12 @@ maki → habu; habu core never depends on maki.
 The REPL is host-resident. GPU execution happens through generated kernels.
 Device phases run on the Orin (sm_87); host phases run anywhere `bin/hb` runs.
 
+Target identity is semantic, not textual. `maki/target/target.f` owns immutable
+descriptors and validated nominal `CAD-KIND:target-id` values; equal capability
+facts intern to one identity while labels remain presentation metadata. Schedule
+keys consume the typed identity and render its stable label, preserving existing
+`sm_87` keys without allowing target/toolchain/artifact role swaps.
+
 ## Typed backbone (type families)
 
 Model CAD is the first large consumer of `docs/type-families.md`. Every plan,

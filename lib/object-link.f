@@ -797,4 +797,4 @@ public
    CHECK
    APPLY-RELOCS ;
 
-end-package
+;package

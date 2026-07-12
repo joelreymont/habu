@@ -73,4 +73,4 @@ T-RESET
 RUN-ALL
 T-REPORT
 
-end-package
+;package

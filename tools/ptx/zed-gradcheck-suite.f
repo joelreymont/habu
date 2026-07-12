@@ -174,4 +174,4 @@ variable AGS-PTX-U
 
 AGS-MAIN
 
-end-package
+;package

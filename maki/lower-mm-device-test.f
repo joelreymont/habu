@@ -103,7 +103,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LMD-BEGIN
@@ -130,4 +130,4 @@ MODEL: LGB ( x:64x64 w:64x64 b:1x64 -- y ) LINEAR GELU ;  FP-BUILD
 s" MODEL: LGB ( x:64x64 w:64x64 b:1x64 -- y ) LINEAR GELU ;" LMD-GOLD1-BIG
 
 LMD-END
-end-package
+;package

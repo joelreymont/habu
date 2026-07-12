@@ -13,7 +13,7 @@ variable ACTIVE
 : DISARM ( -- ) 0 0= 0= ACTIVE ! ;
 public
 : BUILDING? ( -- bool ) ACTIVE? ;
-end-package
+;package
 \ runtime instruction-word constants the JIT compiler stamps out
 $D65F03C0 constant W-RET
 $F9000269 constant W-PUSH0
@@ -24,7 +24,7 @@ $F2C00009 constant W-MOVK2
 $F2E00009 constant W-MOVK3
 \ Pass-2 transaction cells are defined as one protected band in layout.f.
 \ --- primitive registry (build-side, for the seed dictionary) ---
-160 constant PRIM-CAP
+192 constant PRIM-CAP
 2048 constant PRIM-NAME-CAP
 create PLBL PRIM-CAP cells allot   create PEL PRIM-CAP cells allot
 create PLEN PRIM-CAP cells allot   create PNAM PRIM-CAP cells allot
@@ -137,7 +137,7 @@ variable LKWQDO variable LKWPLOOP variable LKWJ variable LKWLEAVE variable LKWUN
 variable LKWCHAR variable LKWBCHAR
 variable LKWIMM variable LKWPOST variable LKWCOMPC
 variable LKWDOES variable LKWQUOT variable LKWSEMIQ variable LKWPACKAGE variable LKWPUBLIC
-variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWENDPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
+variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL variable LKWPRIVATE variable LKWSEMIPACKAGE variable LKWDUPDEF variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG
 variable LKWEXPORT variable LCHKEXPORT
 9 constant A   10 constant B   11 constant C
 12 constant DREG  13 constant EREG
@@ -184,7 +184,7 @@ public
 : SPAN ( n label -- ) BLOB-SPAN ;
 : ADDR ( n label -- ) BLOB-ADDR ;
 
-end-package
+;package
 
 \ Span-aware protected-memory guard. addr and len name runtime registers. A
 \ zero-length write is inert. Any address+length wrap traps before the region
@@ -199,7 +199,7 @@ end-package
    EREG addr len ADD,                   \ checked end = start + length
    EREG addr CMP,  C-CC trap BCOND,     \ unsigned wrap
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
@@ -213,7 +213,7 @@ end-package
    DREG DATA FRIEND-LATCH-CELL LDR,
    DREG ok CBZ,
    addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
+   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND  addr OWNER-REG-OFF OWNER-REG-LEN trap GUARD-ADDR-BAND
    addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap GUARD:ADDR
@@ -2754,3 +2754,215 @@ variable FIND-HMATCH
       THEN
       0 DCQ,
       1 + REPEAT drop ;
+
+package OWNER-WID-EMIT
+
+variable LPUBQ
+variable LPRIQ
+variable LANYQ
+variable LPREF
+variable LADD
+variable LCOLD
+variable COLD-XT
+variable PROOF-XT
+0 COLD-XT !
+0 PROOF-XT !
+
+$C8DFFCA6 constant W-COUNT-LDAR
+$C89FFCA6 constant W-COUNT-STLR
+
+: COUNT@, ( -- )
+   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   W-COUNT-LDAR EMITW ;
+
+: COUNT!, ( -- )
+   5 OWNER-WID-N-CELL MOVZ,  5 DATA 5 ADD,
+   W-COUNT-STLR EMITW ;
+
+: SCAN-INIT ( -- )
+   13 0 MOVZ,
+   COUNT@,
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD, ;
+
+: SCAN-NEXT ( label -- ) {: loop:label :}
+   5 5 OWNER-WID-ROW ADDI,
+   7 7 1 ADDI,
+   loop B, ;
+
+: ROLE-ROW ( label label n -- ) {: next:label done:label role:n :}
+   14 5 role LDRW,
+   14 9 CMP,  C-NE next BCOND,
+   13 1 MOVZ,
+   done B, ;
+
+: ROLE ( label n -- ) {: entry:label role:n :}
+   LBL LBL LBL {: loop:label next:label done:label :}
+   entry LBL,
+   SCAN-INIT
+   loop LBL,
+   7 6 CMP,  C-GE done BCOND,
+   next done role ROLE-ROW
+   next LBL,  loop SCAN-NEXT
+   done LBL,  RET, ;
+
+: ANY-ROW ( label label -- ) {: next:label done:label :}
+   14 5 OWNER-WID-PUB LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 5 OWNER-WID-PRI LDRW,
+   14 9 CMP,  C-NE next BCOND,
+   done B, ;
+
+: ANY-DONE ( -- )
+   LBL {: miss:label :}
+   7 6 CMP,  C-GE miss BCOND,
+   13 1 MOVZ,
+   miss LBL,  RET, ;
+
+: ANY ( -- )
+   LBL LBL LBL {: loop:label next:label done:label :}
+   LANYQ LABEL@ LBL,
+   SCAN-INIT
+   loop LBL,
+   7 6 CMP,  C-GE done BCOND,
+   next done ANY-ROW
+   next LBL,  loop SCAN-NEXT
+   done LBL,  ANY-DONE ;
+
+: PREFLIGHT-ARGS ( label -- ) {: done:label :}
+   13 0 MOVZ,
+   11 OWNER-WID-MAX CMPI,  C-HI done BCOND,
+   COUNT@,
+   6 11 CMP,  C-GE done BCOND,
+   9 done CBZ,  10 done CBZ,
+   14 9 32 LSRI,  14 done CBNZ,
+   14 10 32 LSRI,  14 done CBNZ,
+   9 10 CMP,  C-EQ done BCOND, ;
+
+: PREFLIGHT-ROW ( label -- ) {: done:label :}
+   14 5 OWNER-WID-PUB LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 10 CMP,  C-EQ done BCOND,
+   14 5 OWNER-WID-PRI LDRW,
+   14 9 CMP,  C-EQ done BCOND,
+   14 10 CMP,  C-EQ done BCOND, ;
+
+: PREFLIGHT ( -- )
+   LBL LBL LBL {: loop:label ok:label done:label :}
+   LPREF LABEL@ LBL,
+   done PREFLIGHT-ARGS
+   7 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   loop LBL,
+   7 6 CMP,  C-GE ok BCOND,
+   done PREFLIGHT-ROW
+   loop SCAN-NEXT
+   ok LBL,  13 1 MOVZ,
+   done LBL,  RET, ;
+
+: STORE-PAIR ( -- )
+   COUNT@,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   7 6 3 LSLI,  5 5 7 ADD,
+   14 10 32 LSLI,  14 14 9 ORR,
+   14 5 0 STR,
+   6 6 1 ADDI,
+   COUNT!, ;
+
+: ADD-BODY ( -- )
+   LBL {: done:label :}
+   10 G-POP  9 G-POP
+   11 OWNER-WID-MAX MOVZ,  LPREF LABEL@ BL,
+   13 done CBZ,
+   STORE-PAIR
+   13 1 MOVZ,
+   done LBL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: ADD-ROUTINE ( -- )
+   LADD LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   ADD-BODY
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: BPRE? ( -- )
+   11 G-POP  10 G-POP  9 G-POP
+   LPREF LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BPUB? ( -- )
+   9 G-POP  LPUBQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BPRI? ( -- )
+   9 G-POP  LPRIQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+: BANY? ( -- )
+   9 G-POP  LANYQ LABEL@ BL,
+   13 SP 13 SUB,  13 G-PUSH ;
+
+public
+
+: LABELS ( -- )
+   LBL LPUBQ !  LBL LPRIQ !  LBL LANYQ !  LBL LPREF !  LBL LADD !  LBL LCOLD ! ;
+
+: ADD-LABEL@ ( -- label )
+   LADD LABEL@ ;
+
+: PREFLIGHT-LABEL@ ( -- label )
+   LPREF LABEL@ ;
+
+: PUBLIC-LABEL@ ( -- label )
+   LPUBQ LABEL@ ;
+
+: PRIVATE-LABEL@ ( -- label )
+   LPRIQ LABEL@ ;
+
+: ANY-LABEL@ ( -- label )
+   LANYQ LABEL@ ;
+
+: COLD-HOOK! ( [ -- ] -- )
+   COLD-XT ! ;
+
+: COLD-HOOK ( -- )
+   COLD-XT @ dup 0= if drop exit then execute ;
+
+: PROOF-HOOK! ( [ -- ] -- )
+   PROOF-XT ! ;
+
+: PROOF-HOOK ( -- )
+   PROOF-XT @ dup 0= if drop exit then execute ;
+
+: COLD-RESET ( -- )
+   LBL {: loop:label :}
+   LCOLD LABEL@ LBL,
+   6 0 MOVZ,  COUNT!,
+   9 0 MOVZ,
+   5 OWNER-WID-OFF MOVZ,  5 DATA 5 ADD,
+   7 OWNER-WID-MAX MOVZ,
+   loop LBL,
+   9 5 0 STR,
+   5 5 OWNER-WID-ROW ADDI,
+   7 7 1 SUBI,
+   7 loop CBNZ,
+   COLD-HOOK ;
+
+: COLD-LABEL@ ( -- label )
+   LCOLD LABEL@ ;
+
+: PRIMS ( -- )
+   s" owner-wid-preflight?" ['] BPRE? 3 GDEREF-F
+   s" owner-wid-public?" ['] BPUB? 1 GDEREF-F
+   s" owner-wid-private?" ['] BPRI? 1 GDEREF-F
+   s" owner-wid?" ['] BANY? 1 GDEREF-F ;
+
+: ROUTINES ( -- )
+   LPUBQ LABEL@ OWNER-WID-PUB ROLE
+   LPRIQ LABEL@ OWNER-WID-PRI ROLE
+   ANY
+   PREFLIGHT
+   ADD-ROUTINE
+   PROOF-HOOK ;
+
+;package

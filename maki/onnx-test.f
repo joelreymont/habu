@@ -36,4 +36,4 @@ s" Gather"    ONNX:MOVE-KIND OPKIND>N OP-GATHER    T=
 
 T-REPORT
 
-end-package
+;package

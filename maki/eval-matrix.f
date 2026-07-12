@@ -202,4 +202,4 @@ public
    MX-ROW# @ 0 ?do i MXR-ROW loop
    MXO$ ;
 
-end-package
+;package

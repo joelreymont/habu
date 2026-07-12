@@ -13,4 +13,4 @@ package LAYOUT-VALID-GUARD
 1 READ
 s" ok" type cr
 
-end-package
+;package

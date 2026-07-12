@@ -134,4 +134,4 @@ public
 : SAVED-INTO ( report -- report )
    MIR-N@ 0 ?do  i MIR-NODE-ID SV-NODE-INTO  loop ;
 
-end-package
+;package

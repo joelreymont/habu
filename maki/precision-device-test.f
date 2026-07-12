@@ -92,7 +92,7 @@ variable PDT-PTX-U                                         \ correct-module text
    MDL-CUBINS-RESET  PTXTC:CUBIN$ 0 FP-REGION-ID MDL-CUBIN!    \ region 0 = the CORRECT cubin
    STORE-RESET
    PROMOTE drop
-   0 FP-REGION-ID SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                  \ verbatim evidence row
    ra ru s" golden=device-pass:tf32" CONTAINS? TTRUE
@@ -132,7 +132,7 @@ variable PDT-PTX-U                                         \ correct-module text
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 PDT-BEGIN
@@ -146,4 +146,4 @@ PDT-INVERSE
 PDT-RESET
 
 PDT-END
-end-package
+;package

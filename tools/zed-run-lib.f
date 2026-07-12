@@ -234,4 +234,4 @@ public
    2dup HAVE-TOOL? if 2drop exit then
    2drop E-ZED-TOOLCHAIN throw ;
 
-end-package
+;package

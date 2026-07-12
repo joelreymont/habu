@@ -257,7 +257,8 @@ variable BCG-LEN
    s" tools/bootstrap.sh" BCG-LOAD
    s" BOOT-USIGS-RESET" BCG-MUST-HAVE
    s" SEQ" BCG-MUST-HAVE
-   s" BOOT-HIDE-DICT-FROM" BCG-MUST-HAVE
+   s" IMK-NDICT0" BCG-MUST-HAVE                \ replay hides from util.f's FIRST record (the int-mark watermark), mirroring BFR-HIDE-DICT-FROM-EARLIEST
+   s" BOOT-HIDE-DICT-FROM-EARLIEST" BCG-MUST-HAVE
    s" T-CON" BCG-MUST-LACK ;
 
 : BCG-TEST-BOOTSTRAP-SMALL-BIN ( -- )

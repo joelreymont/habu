@@ -385,4 +385,4 @@ public
 DEFAULTS
 RESET
 
-end-package
+;package

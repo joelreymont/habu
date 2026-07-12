@@ -59,4 +59,4 @@ public
 : TT-SUM-BWD ( r ptr a n -- ) {: dz:r dxb:ptr len:n :}
    dz dxb len T-FILL ;
 
-end-package
+;package

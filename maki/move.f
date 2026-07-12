@@ -63,4 +63,4 @@ public
       s swap  d i  sc  MV-ROW                     \ ( sbase idx dbase i sc -- )
    loop ;
 
-end-package
+;package

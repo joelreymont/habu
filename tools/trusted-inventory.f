@@ -1336,4 +1336,4 @@ public
 
 MAIN
 
-end-package
+;package

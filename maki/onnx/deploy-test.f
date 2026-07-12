@@ -198,10 +198,10 @@ MAKI:MODEL-DEFINED? TFALSE
 \ Arm a captured model, then import: adoption must replace the provenance atomically,
 \ so LOWER reports the IMPORTED model (name + provenance row), never the stale capture.
 \ (MODEL: is a parsing definer, unreachable as a qualified name - reopen MAKI for it.)
-end-package
+;package
 package MAKI
 MODEL: ODT-STALE ( x:2x4 -- y ) GELU ;
-end-package
+;package
 package ONNX-DEPLOY-TEST
 MAKI:MODEL-CAPTURED? TTRUE
 MODEL-A  ONNX:ENC$ ONNX:IMPORT
@@ -295,4 +295,4 @@ ODT-OFFDEV-NOTRUN
 
 T-REPORT
 
-end-package
+;package

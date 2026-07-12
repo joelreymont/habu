@@ -137,4 +137,4 @@ s" ATX-KIND-N  ( n -- n ) ADJ-ID"        CHECK-QUIET-CANDIDATE!  0 T=
 
 T-REPORT
 
-end-package
+;package

@@ -80,4 +80,4 @@ RDX 1 T-GET  0.5 f+ f>s   0 T=                        \ x<0 -> 0
 
 T-REPORT
 
-end-package
+;package

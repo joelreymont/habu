@@ -128,4 +128,4 @@ public
 
 ' DISPATCH CHECKER-CERT:INSTALL
 
-end-package
+;package

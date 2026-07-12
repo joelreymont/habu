@@ -49,4 +49,4 @@ public
 : GELU-BWD  ( r r -- r ) {: dz:r x:r :}  dz  x GELU-GRAD   f* ;
 : GELU-BWD2 ( r r -- r ) {: dz:r x:r :}  dz  x GELU-GRAD2  f* ;
 
-end-package
+;package

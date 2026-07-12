@@ -99,4 +99,4 @@ s" OPX-DT    ( dtype -- n ) OPR-CLASS"       CHECK-QUIET-CANDIDATE!  0 T=
 
 T-REPORT
 
-end-package
+;package

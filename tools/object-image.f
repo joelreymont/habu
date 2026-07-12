@@ -75,4 +75,4 @@ public
    TEXT>ASM
    s" hb-obj" path pathu DRV-EMIT-IMAGE ;
 
-end-package
+;package

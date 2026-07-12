@@ -8,4 +8,4 @@ public
 
 ' LOWER-CERT-HOOK:HOOK constant HOOK-XT
 
-end-package
+;package

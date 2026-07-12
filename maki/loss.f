@@ -90,4 +90,4 @@ public
       d
    then ;
 
-end-package
+;package

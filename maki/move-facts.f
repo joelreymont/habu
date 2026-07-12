@@ -202,4 +202,4 @@ $FFFFF constant MV-PMASK     \ 20-bit param mask (max 1048575)
       gelu-bwd2       OF E-MV-TF throw ENDOF
    ;MATCH ;
 
-end-package
+;package

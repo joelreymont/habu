@@ -24,4 +24,4 @@ TRUSTED: RAW ( ptr lvp-pixel -- ptr n ) ;
 
 GO
 
-end-package
+;package

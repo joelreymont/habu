@@ -49,4 +49,4 @@ public
 : LOG-F   ( r -- r )    FLN ;
 : LOG-BWD ( r r -- r ) {: dz:r x:r :}  dz x f/ ;
 
-end-package
+;package

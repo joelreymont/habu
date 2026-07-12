@@ -162,7 +162,8 @@ s" MSIZE" s" -- n" TRUST
    s" tools/build-fixpoint.f" IBT-LOAD
    s" src/os/image-bytes.f" IBT-MUST-HAVE
    s" tools/srclist.f" IBT-LOAD
-   s" src/os/image-bytes.f " IBT-MUST-HAVE ;
+   s" src/os/image-bytes.f " IBT-MUST-HAVE
+   s" src/habu/owner-wid-emit-seal.f " IBT-MUST-HAVE ;
 
 : IBT-MAIN ( -- )
    T-RESET

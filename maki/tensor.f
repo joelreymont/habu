@@ -245,4 +245,4 @@ ENUM dtype DERIVE eq
    b src ROWS-RAW > if E-MK-DIM throw then
    b a SUB-DIM ROWS-REFINE ;
 
-end-package
+;package

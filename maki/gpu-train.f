@@ -32,4 +32,4 @@ public
 
 : WBITS ( n -- n )  WBUF swap T-GET F64>F32 ;      \ weight i as f32 bits (for assertions)
 
-end-package
+;package

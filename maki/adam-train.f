@@ -286,4 +286,4 @@ public
    ATN-FINAL@  ATN-INITIAL@ ATN-CONV-RATIO f*  f<
    ATN-FINAL@  ATN-CONV-THRESH  f<  and ;
 
-end-package
+;package

@@ -116,7 +116,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    drop
    s" == PROMOTE (evidence row) ==" type cr
    PROMOTE drop
-   0 FP-REGION-ID SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
+   0 FP-REGION-ID TARGET:SM87 SK-KEY$ EVID-GET {: ra:ptr ru:n found:bool :}
    found TTRUE
    ra ru type cr                                          \ verbatim evidence row
    ra ru s" golden=device-pass:f32" CONTAINS? TTRUE      \ device leg + its licensed precision
@@ -137,7 +137,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
    LMDM-DIR LMDM-DIR-U @ REMOVE-TREE
    T-REPORT ;
 
-end-package
+;package
 
 package MAKI
 LMDM-BEGIN
@@ -158,4 +158,4 @@ MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;  FP-BUILD
 s" MODEL: MGC ( x:4x8 b:4x8 -- y ) GELU CONCAT ;" LMDM-GOLD
 
 LMDM-END
-end-package
+;package

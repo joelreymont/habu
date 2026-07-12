@@ -39,15 +39,17 @@ require tools/namespace-lint-core.f
    s" layout-buffer BUF sample 2" NL-COUNT 1 T=
    \ upper-case package words still open/close scope: no false positive inside,
    \ and an upper-case closer must not leave the scan stuck at depth > 0
-   s" PACKAGE MK : F dup ; end-package"     NL-COUNT 0 T=
-   s" package MK END-PACKAGE : LATE dup ;"  NL-COUNT 1 T= ;
+   s" PACKAGE MK : F dup ; ;package"     NL-COUNT 0 T=
+   s" package MK ;package : LATE dup ;"  NL-COUNT 1 T=
+   s" package MK ;PaCkAgE : LATE dup ;"     NL-COUNT 1 T= ;
 
 : MNLT-SCOPE ( -- )
-   \ inside a package it is NOT a finding; after end-package it is again
-   s" package MK : SQUARE dup * ; end-package"   NL-COUNT 0 T=
-   s" package MK KERNEL: K dup ; end-package"    NL-COUNT 0 T=
-   s" package MK 2 LAYOUT-BUFFER BUF sample end-package" NL-COUNT 0 T=
-   s" package MK end-package : LATE dup ;"       NL-COUNT 1 T= ;
+   \ inside a package it is NOT a finding; after ;package it is again
+   s" package MK : SQUARE dup * ; ;package"   NL-COUNT 0 T=
+   s" package MK KERNEL: K dup ; ;package"    NL-COUNT 0 T=
+   s" package MK 2 LAYOUT-BUFFER BUF sample ;package" NL-COUNT 0 T=
+   s" package MK ;package : LATE dup ;"       NL-COUNT 1 T=
+   s" package MK end-package : LATE dup ;"    NL-COUNT 0 T= ;
 
 : MNLT-WHITELIST ( -- )
    \ E-* cross-cutting error constants are exempt

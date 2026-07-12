@@ -37,4 +37,4 @@ public
       1+
    repeat drop STR-FALSE ;
 
-end-package
+;package

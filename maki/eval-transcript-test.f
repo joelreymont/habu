@@ -196,4 +196,4 @@ package MAKI
 
 EVAL-TRANSCRIPT-MAIN
 
-end-package
+;package

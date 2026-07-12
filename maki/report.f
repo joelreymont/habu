@@ -102,7 +102,7 @@ ENUM costatus
 3 constant G-PROFILE
 4 constant G-N
 
-end-package
+;package
 
 package REPORT
 
@@ -640,4 +640,4 @@ public
    s" packet.profile"   MAKI:G-PROFILE   P-GATE
    OUT$ ;
 
-end-package
+;package

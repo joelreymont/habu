@@ -11,4 +11,4 @@ package LAYOUT-VALID-GUARD
 s" LAYOUT-VALID-ACTIVE-ARMED" type cr
 READ-ACTIVE
 
-end-package
+;package

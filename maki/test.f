@@ -168,6 +168,8 @@ TEST:SUITE maki/report-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-kinds-test.f
 TEST:;SUITE
+TEST:SUITE maki/target/target-test.f
+TEST:;SUITE
 TEST:SUITE maki/cad-test.f
 TEST:;SUITE
 TEST:SUITE maki/cad-bind-test.f
@@ -230,6 +232,6 @@ TEST:SUITE maki/device-smoke.f
 TEST:;SUITE
 TEST:;GROUP
 
-end-package
+;package
 
 TEST:RUN

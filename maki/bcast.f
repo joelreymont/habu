@@ -37,4 +37,4 @@ public
    br 1 ROWS-IS? bc 1 COLS-IS? and if BC-SCALAR exit then
    BC-ILLEGAL ;
 
-end-package
+;package

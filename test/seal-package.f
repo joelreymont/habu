@@ -79,10 +79,10 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 
 \ --- forge programs: each names its own reserved spelling under test. ---
 
-: SPK-PKG-FORGE$ ( ptr u8 n -- ptr u8 n )    \ `package <NAME>` + `end-package`
+: SPK-PKG-FORGE$ ( ptr u8 n -- ptr u8 n )    \ `package <NAME>` + `;package`
    SB-RESET
    s" package " SB-APPEND SB-APPEND SPK-LF
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-QUAL-FORGE$ ( ptr u8 n -- ptr u8 n )   \ `: <NAME>:W ( -- n ) 0 ;`
@@ -95,7 +95,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    s" package NOTSEALED" SPK-LINE
    s" public" SPK-LINE
    s" : W ( -- n ) 5 ;" SPK-LINE
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    s" NOTSEALED:W . cr" SPK-LINE
    SB$ ;
 
@@ -114,7 +114,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
 : SPK-OK-PREFIX-FORGE$ ( -- ptr u8 n )       \ reserved-prefix-but-longer package name
    SB-RESET
    s" package TFAMX" SPK-LINE
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-CTOR-WID-FORGE$ ( -- ptr u8 n )       \ generated ctor WID closes to later tails
@@ -132,7 +132,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SB-RESET
    s" require lib/ffi.f" SPK-LINE
    s" package FFI" SPK-LINE
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-FFI-REDIRECT$ ( -- ptr u8 n )
@@ -145,7 +145,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SB-RESET
    s" require lib/ptx/cuda-driver.f" SPK-LINE
    s" package CUDA" SPK-LINE
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-CUDA-REDIRECT$ ( -- ptr u8 n )
@@ -158,7 +158,7 @@ create SPK-EMPTY 1 allot             \ zero-length stdin
    SB-RESET
    s" require lib/task.f" SPK-LINE
    s" package TASK" SPK-LINE
-   s" end-package" SPK-LINE
+   s" ;package" SPK-LINE
    SB$ ;
 
 : SPK-TASK-REDIRECT$ ( -- ptr u8 n )

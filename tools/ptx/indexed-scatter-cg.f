@@ -105,4 +105,4 @@ KERNEL: INDEXED-STORE ( span<space-global,u32,extent-i> span<space-global,f32,ex
 
 MAIN
 
-end-package
+;package

@@ -4142,6 +4142,10 @@ PRIM: SEAL-CAPTURE   PRIM;
 PRIM: SEAL-FRIEND    PRIM;
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
+PRIM: owner-wid-preflight? PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: owner-wid-public?    PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: owner-wid-private?   PE-N PE-IN  PE-F PE-OUT PRIM;
+PRIM: owner-wid?           PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;
@@ -4411,7 +4415,7 @@ public
    PRODUCER-XT @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
    a u verdict PRODUCER-XT @ CHECKER-CERT-CALL ;
 
-end-package
+;package
 
 : CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    0 CHECKER-COLON-N !

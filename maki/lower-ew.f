@@ -383,11 +383,11 @@ public
    s" FP-BUILD"            LEW-D+ LEW-D-NL
    \ the child re-refines the rendered raw id (RGN>RAW is the render boundary)
    rid RGN>RAW LEW-D-INT  s"  FP-REGION-ID "  LEW-D+  emita emitu LEW-D+ LEW-D-NL
-   s" end-package"         LEW-D+ LEW-D-NL
+   s" ;package"            LEW-D+ LEW-D-NL
    pa pu  LEW-DRV LEW-DRV-U @  WRITE-ALL ;
 
 : LEW-WRITE-DRIVER ( ptr u8 n CAD-KIND:region ptr u8 n -- )
    {: ma:ptr mu:n rid:CAD-KIND:region pa:ptr pu:n :}
    ma mu  s" require maki/lower-ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
-end-package
+;package

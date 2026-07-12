@@ -4,6 +4,12 @@
 
 Last updated: 2026-07-12
 
+- **An optional lint root is an audit bypass:** `trust-lint` silently skipped
+  absent roots and audited only `src/` plus `lib/`, leaving 16 existing
+  `maki/` and `tools/` TRUST sites outside `TRUSTED.md`. Keep one explicit,
+  required root set, recurse over both `.f` and `.fs`, and regress nested
+  unmanifested sites by exact `file:line: word` diagnostics.
+
 - **Describe bootstrap parity at the implementation boundary:** when the
   Gforth recovery host mirrors pass-2 lowering, calling parity merely
   behavioral or claiming there is no mirror contradicts the code. Name the
@@ -1384,6 +1390,13 @@ lesson — keep the specific word/code/path, cut the prose.
   `$`, Forth punctuation). Handoff: leave the dot open, record commit + pending
   edits + definition-of-done in the committed doc, close only after the validated
   commit; add step-level child dots for in-progress work.
+- **Worker ownership starts with `dot on`, not the spawn call.** I dispatched
+  isolated workers while their dots still said `open`, so another orchestrator
+  could legally select the same work from `dot ready`. The blocking rule now
+  lives in `AGENTS.md`: record the agent/workspace, activate and publish the
+  exact leaf, synchronize, then re-verify immediately before dispatch. Keep it
+  active through review and integration, and close it only after the reviewed
+  commit and owning gates land. An unpushed active bit is not a cross-lane claim.
 - **Keep debugger docs in the agent index:** list `docs/debugging.md` (`.s`, watch
   cells, REPL `step`, breakpoints, `jitdump`, `imgdump`) in `FILEMAP.md`, guarded
   by `tools/filemap-lint.f`, so RCA starts with existing tools.
@@ -3356,7 +3369,7 @@ unchanged (148855). Keys for milestone 2:
   same-session fix.
 - **Token lints must match dictionary-significant words case-insensitively.**
   The dictionary is case-insensitive, so `CREATE BUF` defines a global and
-  `END-PACKAGE` closes a package exactly like the lower-case spellings — a
+  `;package` closes a package exactly like the lower-case spellings — a
   lint matching definers/`package` with `LINT-STR=` has both an evasion vector
   (upper `CREATE`, upper closer leaving depth stuck > 0 hides every later def)
   and a false-positive vector (upper opener not counted). Proven red-first in
@@ -3687,3 +3700,70 @@ unchanged (148855). Keys for milestone 2:
   disjoint finding cluster). Serial is only for: the core contract, the merge
   commit itself, and the gate-ladder/bookmark window.
 
+- **Give every native refresh a private `HB_TMP`.** A refresh overlapping other
+  build work surfaced `E-PROC-SPAWN`; the same source reached fixpoint in a fresh
+  artifact root. Isolate fixed-name build artifacts and avoid overlapping proof
+  builds before treating a process-launch failure as compiler corruption.
+- **Retire staged syntax across every token owner.** Removing a compiler keyword
+  is incomplete while verifiers, source analyzers, or lints still recognize it;
+  sweep those owners and require an exact `E-UNDEFINED` regression.
+- **Prove retired keywords against the exact candidate process.** In-process
+  `evaluate` can surface a caught checker throw, while a hardcoded `bin/hb` may
+  lag the candidate. Spawn `GE-HB$` and assert its rc plus diagnostic.
+- **Test private package authority by lookup, not candidate rejection.** An
+  undefined private qualified word makes a checker candidate uncheckable rather
+  than ill-typed. `search-wl` proves the authority is absent; negative candidates
+  remain for public cross-role calls whose signatures are visible.
+- **Assert append-only registries relative to their entry count.** Sequential
+  suites share one process, so an earlier consumer may intern valid objects.
+  Capture the starting count, then prove dedup preserves it and insertion adds one.
+- **Never interpolate Markdown backticks into a shell command.** Shell command
+  substitution executes them even inside a quoted argument. Pass dot text as
+  data or patch the generated record, then inspect the exact stored description.
+- **Keep worker prompts inside the claimed leaf.** A native-registry leaf may
+  expose lowercase engine primitives; package-scoped checked wrappers belong to
+  the dependent syntax/API leaf. Do not widen file ownership to impose the final
+  surface before its layer is ready.
+- **`dot on` is a transition, not an active-status probe.** Running it again on
+  an active dot rewrites quoted metadata. Activate once, publish the claim, then
+  inspect the fetched remote dot file and use local `dot show` for the final
+  pre-spawn owner/status verification. A local clean status does not prove the
+  coordination bookmark contains the claim.
+- **Native primitive additions must grow the emitter registry deliberately.**
+  Five sealed-owner WID primitives crossed `src/habu/habu1.f`'s 160-row
+  `PRIM-CAP` and stopped fixpoint with `primitive registry full`; keep the
+  named capacity above the emitted primitive count and prove a fresh rebuild.
+- **Package-private helpers win unqualified lookup inside the package.** An
+  owner-registry test package's private `LF` shadowed the outer `SLV-LF`, so
+  multi-line forge source was concatenated and exited rc 74. Qualify the outer
+  helper explicitly when two builder scopes share a natural tail.
+- **Test hidden native authority through a separate image, never a runtime
+  switch.** A build-time environment flag that publishes an internal mutator is
+  still a production backdoor. Compose an isolated, content-keyed test image
+  whose cold emitter calls the unpublished routine, and keep ordinary lookup
+  unable to name it.
+- **Isolate destructive build fixtures in a child process.** Resetting temp,
+  engine, pin, digest, and extension globals does not restore preexisting
+  caller state. Run the whole build in a child, assert its captured result, and
+  let process exit revoke every build capability and artifact pointer at once.
+- **Private package names are organization, not authority.** Packages reopen by
+  design, exposing private words to the reopened scope. After compiling exact
+  callers, `undefine` mutable capability names and prove reopen cannot recover
+  them.
+- **Publish append-only rows with an atomic row and release count.** Store each
+  aligned pair in one write, release-store the count last, and acquire-load it
+  before scans; clearing only the count on cold reentry leaves stale authority
+  material in raw DATA, so erase every reserved row too.
+- **Materialize addresses beyond scaled-immediate reach.** A direct `LDRW` at a
+  DATA offset above 16380 encoded the wrong cell and made a cold-reentry proof
+  loop forever. Build the full address in a register before word loads/stores.
+- **Concurrency claims need emitted-code proof.** Single-thread behavior cannot
+  distinguish acquire/release instructions from ordinary loads/stores. Scan the
+  live emitted routine and pin acquire, atomic row store, release, and order.
+- **New stage sources belong in every source owner.** Add post-compiler seal
+  files to native builders, recovery composition, cache content keys, file
+  inventories, and tests together; one omitted path preserves authority or
+  reuses stale output.
+- **Erase and verify package words in their owning WID.** Qualified names are
+  not entries in wordlist zero. Reopen the package, select `public` or `private`,
+  then `undefine` and `search-wl` each unqualified tail in `get-current`.

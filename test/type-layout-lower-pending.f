@@ -368,7 +368,7 @@ public
 : DEEP ( -- n n n n n n )
    TLP-MK2 1 2 3 4 {: r a:n b:n c:n d:n :}
    a b c d r TLP-UN2 ;
-end-package
+;package
 TLP-LOCAL-TEST:DUAL 1 T= 93 T= 92 T= 91 T= 1 T= 7 T=
 TLP-LOCAL-TEST:DEEP 1 T= 7 T= 4 T= 3 T= 2 T= 1 T=
 

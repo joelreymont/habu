@@ -73,7 +73,7 @@ PRODUCT mark 0
    FIELD refs n
 ;PRODUCT
 
-end-package
+;package
 
 package MAKI
 public
@@ -517,4 +517,4 @@ public
    MIR-N @ 0 ?do  i MIR-NODE-ID R-NODE  loop
    MO$ ;
 
-end-package
+;package

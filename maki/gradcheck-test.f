@@ -177,4 +177,4 @@ DET-ANALYTIC DET-FD GC-CLOSE? TTRUE
 
 T-REPORT
 
-end-package
+;package

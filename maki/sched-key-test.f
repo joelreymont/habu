@@ -15,6 +15,11 @@ package MAKI
 create KT-BUF KT-CAP allot  variable KT-BU
 : KT-COPY ( ptr u8 n -- ) {: a:ptr u:n :}  a KT-BUF u BYTE-COPY  u KT-BU ! ;
 : KT-BUF$ ( -- ptr u8 n )  KT-BUF KT-BU @ ;
+: KT-ALT-TARGET ( -- CAD-KIND:target-id )
+   s" sm_87-noasync"
+   TARGET:ISA-PTX 87 32 1024 49152
+   TARGET:CAP-ALL TARGET:CAP-ASYNC invert and TARGET:DESCRIPTOR
+   TARGET:REGISTER ;
 
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
@@ -72,7 +77,7 @@ T-RESET
 64  64  DIM-FEQ TTRUE      64  64  DIM-TXT= TTRUE      \ exact vs exact, same magnitude
 
 \ ---- key fields: honest v1 constants + the real engine content key -----------
-SK-TARGET$ s" sm_87"    T$=
+TARGET:SM87 SK-TARGET$ s" sm_87"    T$=
 SK-ENGINE$ ENGINE-KEY$  T$=              \ engine field is the real bin/hb content key
 SK-ENGINE$ nip 64       T=              \ a 64-char SHA-256 hex digest, not a placeholder
 SK-PTXAS$  s" unprobed"  T$=
@@ -82,11 +87,12 @@ SK-PTXAS$  s" unprobed"  T$=
 0 FP-REGION-ID SK-RSIG$ s" 431E24867468A764" T$=    \ deterministic FNV-1a signature
 \ exact full-key equality: copy the actual out (SK-KEY$ builds in the shared SB
 \ builder), then splice the binary-dependent engine key into the expected string.
-0 FP-REGION-ID SK-KEY$ KT-COPY
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ KT-COPY
 SB-RESET
 s" 431E24867468A764|2xp128+t|f32|row|al16|sm_87|" SB-APPEND
 ENGINE-KEY$ SB-APPEND  s" |unprobed" SB-APPEND
 KT-BUF$ SB$ STR= TTRUE
+0 FP-REGION-ID KT-ALT-TARGET SK-KEY$ KT-BUF$ STR= TFALSE   \ a different target -> different durable key
 0 FP-REGION-ID SK-ALIGN$ s" al16" T$=
 
 \ ---- typed schedule key (skey product): construction, identity, field roles --
@@ -154,21 +160,21 @@ s" SKN4 ( n n n dimclass n dtype layout align -- skey ) MAKI-SKEY:MAKE"        C
 \ ---- replay table: cad-5 store seam ----------------------------------------
 2 100 BUILD 0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL! FP-BUILD
 SK-TAB-RESET
-0 FP-REGION-ID SK-KEY$ SK-GET nip TFALSE             \ miss -> not found
-0 FP-REGION-ID SK-KEY$ SK-GET drop -1 T=             \ miss selection is -1 (use defaults)
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip TFALSE      \ miss -> not found
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop -1 T=      \ miss selection is -1 (use defaults)
 SK-TAB-COUNT 0 T=
-0 FP-REGION-ID SK-KEY$ 7 SK-PUT
-0 FP-REGION-ID SK-KEY$ SK-GET nip  TTRUE             \ now found
-0 FP-REGION-ID SK-KEY$ SK-GET drop 7 T=              \ roundtrips the stored selection
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 7 SK-PUT
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET nip  TTRUE      \ now found
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 7 T=       \ roundtrips the stored selection
 SK-TAB-COUNT 1 T=
-0 FP-REGION-ID SK-KEY$ 9 SK-PUT                      \ same key -> update in place
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ 9 SK-PUT               \ same key -> update in place
 SK-TAB-COUNT 1 T=
-0 FP-REGION-ID SK-KEY$ SK-GET drop 9 T=
+0 FP-REGION-ID TARGET:SM87 SK-KEY$ SK-GET drop 9 T=
 
 \ ---- fail-closed throws -----------------------------------------------------
 : PUTN ( n -- ) {: n:n :}  SB-RESET s" k" SB-APPEND n SB-INT SB$ n SK-PUT ;
 : TRY-FULL   ( -- )  SK-TAB-RESET 33 0 ?do i PUTN loop ;   \ 33 > SK-TAB-CAP (32)
-: TRY-REGION ( -- )  99 FP-REGION-ID SK-KEY$ 2drop ;        \ region 99 rejects at the id refinement
+: TRY-REGION ( -- )  99 FP-REGION-ID TARGET:SM87 SK-KEY$ 2drop ;   \ region 99 rejects at the id refinement
 : TRY-ALIGN  ( -- )  AL-N AL-KEY 2drop ;                    \ AL-N is out of the AL-* domain
 : TRY->ALIGN ( -- )  AL-N >ALIGN drop ;                     \ the n->align lift is fail-closed too
 ' TRY-FULL   E-SK-FULL   TTHROWS
@@ -182,7 +188,7 @@ SK-TAB-COUNT 1 T=
 \ revalidates against the CURRENT plan and throws E-SK-REGION.
 variable KT-STALE-R
 : KT-STALE-SET ( -- )  1 FP-REGION-ID KT-STALE-R ! ;
-: KT-TRY-STALE ( -- )  KT-STALE-R @ SK-KEY$ 2drop ;
+: KT-TRY-STALE ( -- )  KT-STALE-R @ TARGET:SM87 SK-KEY$ 2drop ;
 : KT-BUILD-2R ( -- )    \ gelu (region 0) + matmul (region 1: EW->MM is backend-refused)
    MIR-RESET
    4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
@@ -200,4 +206,4 @@ KT-STALE-SET
 
 T-REPORT
 
-end-package
+;package

@@ -314,4 +314,4 @@ TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
 
 TASK-TEST-RUN
 
-end-package
+;package

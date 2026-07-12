@@ -46,4 +46,4 @@ public
 : TT-HUBER-DY ( ptr a ptr a r ptr a n -- ) {: pb:ptr tb:ptr delta:r dyb:ptr len:n :}
    len 0 ?do  pb i T-GET  tb i T-GET  delta  HUBER-GRAD  dyb i T-SET  loop ;
 
-end-package
+;package

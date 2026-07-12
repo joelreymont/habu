@@ -224,4 +224,4 @@ FPT-DIAG-END
 
 T-REPORT
 
-end-package
+;package

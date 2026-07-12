@@ -397,4 +397,4 @@ public
 : FP-REPORT+ ( report -- report )
    FP-SPLIT-COUNT 0 ?do  i FP-SPLIT-ROW$ REPORT:SPLIT+  loop ;
 
-end-package
+;package

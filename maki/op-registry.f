@@ -288,4 +288,4 @@ OPR-BUILD
 \ second-order backward reference (maki/gelu.f GELU-BWD2 = dz * gelu''(x)).
 ' GELU-BWD2       OP-GELU-BWD2        cells R-REF + !
 
-end-package
+;package

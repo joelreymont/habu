@@ -46,7 +46,7 @@ subsystem name.
   throws on a hit), wired into the native gate lint slice as `maki-dep-lint` +
   `maki-dep-lint-fixtures`.
 - **Layered package namespaces (the runtime package feature, `docs/forth.md` "Packages").**
-  `package NAME` / `public` / `private` / `end-package` gives each module a real wordlist
+  `package NAME` / `public` / `private` / `;package` gives each module a real wordlist
   namespace; a bare `WORD` reference from habu core does not resolve, enforcing the one-way
   seam at the *dictionary* level. The layering:
   - **`MAKI` is the public interface** — model import, training, eval, and CPU reference
@@ -62,11 +62,10 @@ subsystem name.
     canonical future internal module — a future `package PTX`.
   - Cross-package calls use the qualified `PKG:WORD` form (or reopen the package for bare
     names). Cross-cutting error constants keep the global `E-MK-*` form.
-- **Fenced out of the trust root.** `maki/` is **not** in `TRUSTED.md`, **not** in
-  the byte-for-byte fixpoint, and **not** a native-gate dependency. It is
-  application Forth run by `bin/hb`, naturally outside the self-hosting fixpoint.
-- **Still strictly checked/typed Habu.** The fence excludes maki from the *trust
-  manifest*, not from the *checker*. Maki definitions use real typed effects and
+- **Audited application layer.** `maki/` is scanned by the repository trust lint
+  and every `TRUSTED:` boundary requires a `TRUSTED.md` row. It remains outside
+  the byte-for-byte engine fixpoint and is not a native-engine gate dependency.
+- **Strictly checked/typed Habu.** Maki definitions use real typed effects and
   are verified through maki's own `bin/hb --load` path.
 - **No host glue in `maki/`.** Maki implementation, tests, tooling, and reducers
   are checked Habu. Do not commit `.py` or other host-language helpers under
@@ -74,7 +73,7 @@ subsystem name.
 - **Extractable.** Treat the habu↔maki seam as an API even in-repo; extract `maki/`
   to its own repo when the Habu-PTX API stabilizes.
 
-## Maki Test Suite (outside the Habu trust root)
+## Maki Test Suite
 
 Maki runs through its own checked test-suite entry point. The suite lists only
 test files; each test declares its own `require` dependencies. The runner prints

@@ -41,4 +41,4 @@ WT XT TT 2 T-LOSS  1000.0 f* 0.5 f+ f>s  0 T= \ tensor loss -> ~0
 
 T-REPORT
 
-end-package
+;package

@@ -533,6 +533,10 @@ points stay listed.
   indexes, shape/layout domains, effects, and regions.
 - `maki/cad-kinds-test.f` — qualified identity, cross-role rejection, typed
   memory, and repair-diagnostic regressions for the nominal CAD kinds.
+- `maki/target/target.f` — immutable target descriptors, semantic interning,
+  canonical facts/digests, and the validated `CAD-KIND:target-id` owner API.
+- `maki/target/target-test.f` — target identity, descriptor validation,
+  round-trip, capability non-aliasing, role rejection, and privacy regressions.
 - `maki/cuda-types.f` — thin re-export of `lib/ptx/cuda-driver.f` preserving the
   historical maki spellings (cuda-* roles, `CUDA-HANDLE0`/`CUDA-RC0`, `E-MK-GPU`).
 - `maki/cuda-types-test.f` — runtime regressions for CUDA handle and rc
@@ -825,6 +829,17 @@ points stay listed.
   post-seal language features still update protected cells via engine primitives.
   `patch32`/`snap-rebase` are compiler-internal and hand-review only (noted in
   the file).
+- `test/owner-wid-emitter.f` — test-image-only cold emitter hook that drives the
+  unpublished owner-pair mutator through exact capacity and atomic rejection.
+- `src/habu/owner-wid-emit-seal.f` — post-xref erasure of every build-time
+  owner-registry label, hook, and mutable emitter capability.
+- `test/owner-wid-image.f` / `test/owner-wid-child.f` /
+  `test/owner-wid-internal.f` — native image builder, process-isolated build
+  worker, and owning parent runner for the cold owner-registry proof.
+- `test/owner-wid-build-forge.f` — negative package-reopen fixture proving the
+  exact owner proof builder cannot be redirected to arbitrary source.
+- `test/owner-wid-state.f` / `test/owner-wid-call.f` — read-only role/capacity
+  assertions and hostile unresolved-call fixture executed by that runner.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `E-SEAL-VIOLATION`

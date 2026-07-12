@@ -44,4 +44,4 @@ public
 : REPAIR-TOKENS@ ( -- n )  ER-TOKENS @ ;
 : REPAIR-GREEN? ( -- bool )  ER-GREEN @ ;      \ -1 (green) / 0 (not), already canonical
 
-end-package
+;package

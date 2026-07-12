@@ -290,4 +290,4 @@ variable ERR#
 
 MAIN
 
-end-package
+;package

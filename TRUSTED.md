@@ -152,7 +152,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-call-checker-package | `--` | Package keyword bridge pushes the package token to `CHECKER-PACKAGE`; raw dictionary lookup and generated call setup are outside Forth inference. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-call-checker-public | `--` | Public keyword bridge calls `CHECKER-PUBLIC` so checker signature scope follows runtime package scope. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-call-checker-private | `--` | Private keyword bridge calls `CHECKER-PRIVATE` so checker signature scope follows runtime package scope. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
-| c-call-checker-end-package | `--` | End-package keyword bridge calls `CHECKER-END-PACKAGE` before clearing runtime package cells. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| c-call-checker-end-package | `--` | ;package keyword bridge calls `CHECKER-END-PACKAGE` before clearing runtime package cells. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-fail | `n --` | Package keyword failure emitter prints the current token and exits with the supplied named error code; raw process exit is outside Forth stack inference. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-name-guard | `--` | Package namespace-name guard scans the current token in generated registers and rejects embedded namespace separators before dictionary mutation. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-package-new-private-wid | `--` | Package reopen helper allocates one private wordlist id and stores it in the existing namespace record; register and fixed-DATA effects are raw emitter state. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -170,7 +170,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-package-seal-guard | `--` | `package` keyword seal guard: when the friend latch is closed, matches the pending package name against the reserved-name table and fails closed before wordlist allocation. | `test/seal-package.f`, `test/run.f` | src/habu/habu2.f | 2026-07-04 |
 | c-public | `--` | Interpreter `public` keyword switches the active package's current wordlist to the exported public wordlist and syncs checker public mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | c-private | `--` | Interpreter `private` keyword switches the active package's current wordlist back to the private wordlist and syncs checker private mode. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
-| c-end-package | `--` | Interpreter `end-package` keyword restores the saved parent current wordlist and clears both runtime and checker package frames. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
+| c-end-package | `--` | Interpreter `;package` keyword restores the saved parent current wordlist and clears both runtime and checker package frames. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
 | em-interpret-define-keywords | `--` | Emits interpreter-mode defining-word dispatch cases grouped separately from literal and lookup fallback. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-string-keywords | `--` | Emits interpreter-mode string parsing-word dispatch cases. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-25 |
 | em-interpret-number | `label --` | Emits interpreter-mode number parsing and branches to the caller's not-number label on failure. | `tools/compiler-dispatch-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |
@@ -671,8 +671,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | INPUT-INDEX>RAW | `MIR:input-index -- n` | Private input-ordinal projection used only after the node handle is validated and before the node-local bound check. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | RAW>REF-POS | `n -- MIR:ref-pos` | Private flat-reference-table position refinement after signed and capacity validation. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
 | REF-POS>RAW | `MIR:ref-pos -- n` | Private flat-reference-table projection used only by bounded owner-table load/store helpers. | `maki/model-ir-test.f` | maki/model-ir.f | 2026-07-12 |
-| RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule, dot `habu-maki-apply-cad-27b7a7d7`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
-| RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (dot `habu-maki-apply-cad-27b7a7d7`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
+| RAW>RGN | `n -- CAD-KIND:region` | Private fusion-planner region refinement after `FP-CK` and the region-range validator prove the raw table position names a planned region (R3 owner-module rule; landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
+| RGN>RAW | `CAD-KIND:region -- n` | Private region projection used only by fusion-plan bounds revalidation, region-indexed owner tables, and the `REGION_<rid>` render boundaries; no public raw cast is exported (landed by the closed dot `habu-maki-apply-cad-27b7a7d7`, owned by `habu-epic-model-cad-70b629a9`). | `maki/fusion-plan-test.f` | maki/fusion-plan.f | 2026-07-12 |
+| RAW>TARGET-ID | `n -- CAD-KIND:target-id` | Private target-registry refinement after semantic descriptor validation, capacity validation, and append-only slot allocation. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
+| TARGET-ID>RAW | `CAD-KIND:target-id -- n` | Private target identity projection used only by bounds validation and owner-table access; no public raw conversion is exported. | `maki/target/target-test.f` | maki/target/target.f | 2026-07-12 |
 | DIM-REFINE | `n -- CAD-KIND:dim` | Private validated nominal representation boundary for tensor dimensions; tracked by `habu-v2-r3-type-9f89d1e9`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | DIM-RAW | `CAD-KIND:dim -- n` | Private dimension projection used only by checked shape algebra and numeric execution boundaries. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
 | ROWS-REFINE | `n -- CAD-KIND:rows` | Private validated row-role refinement; public construction goes through `SHAPE`. | `maki/tensor-test.f` | maki/tensor.f | 2026-07-12 |
@@ -686,6 +688,22 @@ that source is explicitly certified; they are not stale-checked by the default
 | TYPED-LINEAR | `ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols --` | Private adapter from nominal tensor descriptors to the legacy native `LINEAR` ABI; the typed caller validates all roles before this boundary. | `maki/tensor-value-test.f`, `maki/plan-compose-test.f` | maki/tensor-value.f | 2026-07-12 |
 | RAW>TENSOR | `n -- tensor` | Private tensor-handle refinement after generation and slot packing; no raw constructor is public. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
 | TENSOR>RAW | `tensor -- n` | Private tensor-handle projection used only for generation/slot validation and nominal equality. | `maki/tensor-value-test.f` | maki/tensor-value.f | 2026-07-12 |
+| CAP-COMPILE-RUN | `--` | Model-CAD capture boundary evaluates the generated checked model definition and invokes its dynamic-arity capture word after the active checker hook certifies the definition. | `maki/cad-test.f`, `maki/test.f` | maki/cad.f | 2026-07-12 |
+| CHECK-PASSES? | `ptr u8 n -- bool` | Evaluation harness temporarily suppresses diagnostics, invokes the checker on candidate source, and restores the diagnostic hook; raw checker state mutation is the metaprogramming boundary. | `maki/eval-test.f`, `maki/test.f` | maki/eval.f | 2026-07-12 |
+| JIT-EVALUATE | `ptr u8 n --` | JIT inspection CLI evaluates user-supplied source before resolving and disassembling the requested word; dynamic evaluation cannot be expressed by the checker. | `test/gate-debug.f` | tools/jitdump-core.f | 2026-07-12 |
+| CHECK! | `ptr u8 n -- n` | Shared lint prelude models the engine checker entrypoint so its fail-closed hook can compile checked before lint sources load. | `tools/trust-lint-test.f`, `test/run.f` | tools/lint/text.f | 2026-07-12 |
+| CGR-EVALUATE | `ptr u8 n --` | Code-role transformer evaluates normalized generated definitions only through its checked driver and converts failures into the tool's explicit evaluation error. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CGR-CHECK! | `ptr u8 n -- n` | Code-role transformer invokes the engine checker on extracted definitions before any dynamic compilation. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CGR-EVALUATE-UNCHECKED | `ptr u8 n --` | Post-certification compiler briefly disables the hook because the preceding checker pass already published the certified definition record; the hook is restored immediately afterward. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CGR-HOOK | `ptr u8 n -- n` | Code-role transformer fail-closed checker hook rejects every verdict except certification. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CGR-HOOK! | `--` | Code-role transformer reinstalls its named fail-closed hook after the audited post-certification compile window. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |
+| CHECK! | `ptr u8 n -- n` | Check driver models the engine checker entrypoint so its fail-closed source hook compiles checked. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| TYPE-RESERVED? | `ptr u8 n -- bool` | Check driver models the checker-owned reserved-type predicate used while validating generated source dependencies. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| CHECKER-DEFTYPE | `ptr u8 n --` | Check driver models the checker primitive that publishes a parsed nominal type in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| CHECKER-DEFLINEAR | `ptr u8 n --` | Check driver models the checker primitive that publishes parsed linearity metadata in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
+| CHECKER-SCOPE-DONE | `--` | Check driver closes the checker transaction and rolls back generated dependency effects after the checked child verdict. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 |
 
 ## Ratchet baseline
 
@@ -1296,8 +1314,8 @@ lib/test/snap.f:SNAP= test-metaprog habu-typed-depth-introspection-18f0efda
 lib/test/assert.f:TTHROWS-RAW test-metaprog habu-typed-depth-introspection-18f0efda
 maki/cad.f:CAP-COMPILE-RUN test-metaprog habu-primitive-effect-axiom-1119f176
 maki/eval.f:CHECK-PASSES? test-metaprog habu-primitive-effect-axiom-1119f176
-maki/fusion-plan.f:RAW>RGN prim-axiom habu-maki-apply-cad-27b7a7d7
-maki/fusion-plan.f:RGN>RAW prim-axiom habu-maki-apply-cad-27b7a7d7
+maki/fusion-plan.f:RAW>RGN prim-axiom habu-epic-model-cad-70b629a9
+maki/fusion-plan.f:RGN>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>NODE prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:NODE>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>SLOT prim-axiom habu-epic-model-cad-70b629a9
@@ -1308,6 +1326,8 @@ maki/model-ir.f:RAW>INPUT-INDEX prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:INPUT-INDEX>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:RAW>REF-POS prim-axiom habu-epic-model-cad-70b629a9
 maki/model-ir.f:REF-POS>RAW prim-axiom habu-epic-model-cad-70b629a9
+maki/target/target.f:RAW>TARGET-ID prim-axiom habu-epic-model-cad-70b629a9
+maki/target/target.f:TARGET-ID>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:RAW>TENSOR prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TENSOR>RAW prim-axiom habu-epic-model-cad-70b629a9
 maki/tensor-value.f:TYPED-LINEAR stdlib-boundary habu-epic-model-cad-70b629a9

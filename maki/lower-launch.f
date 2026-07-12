@@ -540,4 +540,4 @@ public
 \ device output element (f64 = the widened device f32) after LLA-RUN / LRED-RUN / LMM-RUN
 : LLA-OUT@ ( n -- r )  LLA-HOUT swap T-GET ;
 
-end-package
+;package

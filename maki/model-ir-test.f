@@ -271,4 +271,4 @@ s" MTX-PRV-EQN  ( n prov -- bool ) MAKI-PROV:EQ"          CHECK-QUIET-CANDIDATE!
 
 T-REPORT
 
-end-package
+;package
