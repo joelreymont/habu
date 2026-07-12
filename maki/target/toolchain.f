@@ -17,12 +17,32 @@
 \ identity. That is the whole point: the identity is a function of the facts, so it
 \ cannot silently alias a toolchain we did not actually run.
 \
+\ Injectivity (why fields are framed). The canonical form is what the digest names, so
+\ the rendering must be *injective*: distinct facts must never render the same bytes.
+\ A plain `k=v;k=v` rendering is not - a config of "x;cfg=y" and a driver version of
+\ "2;cfg=x" forge each other's field boundaries, and two genuinely different toolchains
+\ collapse onto one identity that reports facts neither was defined with. So every
+\ field is framed by its own exact byte length: `tag=LLLL:bytes`, LLLL being the length
+\ as LEN-DIGITS hex digits. A reader takes the length first and then exactly that many
+\ bytes, so no field's *content* can be read as another field's structure. Field order
+\ is fixed and the kinds render from a closed audited domain, so the form is a total
+\ injective function of the descriptor.
+\
 \ Identity refinement is private. RAW>TC / TC>RAW never leave this file, so no caller
 \ can turn an `n` into a CAD-KIND:toolchain-id (or read one back out as `n`) - the
 \ only ways in are DEFINE (typed facts) and ADOPT (audited discovery facts), and the
 \ only way to name an existing one is LOOKUP over its canonical digest. A target-id
 \ and a toolchain-id are both one cell and the checker keeps them apart; so do a
 \ compiler kind and a driver kind (TOOLCHAIN:compiler, TOOLCHAIN:driver).
+\
+\ Epochs (why an id is not a row index). RESET empties the table, so a bare row index
+\ would be resurrected by the next descriptor to take that row - an id handed out
+\ before the RESET would keep answering, naming whatever toolchain now occupies the
+\ row. An id is therefore (generation, row) packed into its one cell: RESET advances
+\ the generation, which retires every id issued under the old one. The generation does
+\ not wrap - exhausting it is E-TC-EPOCH, not a silent return to a generation whose
+\ ids are still held. Every id is checked for its generation *before* its row is used
+\ to index anything, so a stale, forged, or out-of-range id throws instead of reading.
 \
 \ Adapter seam (ADOPT). PTXTC discovers facts about the host: which ptxas is on the
 \ path, what it reports as its version, which driver is loaded, what flags we assemble
@@ -32,10 +52,18 @@
 \ exists: a missing fact is E-TC-FACT, a compiler or driver outside the audited domain
 \ is E-TC-KIND. Incomplete discovery therefore cannot produce a toolchain identity -
 \ it fails closed, which is what keeps "unprobed" from becoming a legitimate identity.
+\ A successful ADOPT *consumes* the staged facts, so a later partial restage cannot
+\ silently adopt a mix of fresh facts and facts left over from an earlier discovery.
 \
-\ Fail closed: a stale id (used after RESET), a malformed digest, an unknown digest,
-\ a digest that collides across two canonical forms, and a full table/arena are all
-\ named throws. maki -> habu only; toolchain owns -5260..-5266.
+\ Capacities are derived, not guessed: the canonical form of a maximal descriptor must
+\ fit the string builder (or a valid bounded fact would leak a foreign E-STR-CAPACITY
+\ instead of a named toolchain error), and the arena must hold TC-CAP maximal rows (so
+\ arena exhaustion is unreachable from DEFINE/ADOPT). LAYOUT-CK proves both at load.
+\
+\ Fail closed: a stale or forged id, an exhausted generation, a malformed digest, an
+\ unknown digest, a digest that collides across two canonical forms, an incomplete
+\ discovery, and a full table are all named throws.
+\ maki -> habu only; toolchain owns -5260..-5267.
 
 require lib/prelude.f
 require lib/string.f
@@ -45,10 +73,11 @@ require maki/cad-kinds.f
 -5260 constant E-TC-FACT     \ discovery fact missing/empty: no identity is derivable
 -5261 constant E-TC-KIND     \ compiler/driver outside the audited domain
 -5262 constant E-TC-CAP      \ toolchain table / string arena capacity exceeded
--5263 constant E-TC-ID       \ toolchain id outside the live table (stale after RESET)
+-5263 constant E-TC-ID       \ toolchain id stale (a retired generation), forged, or out of range
 -5264 constant E-TC-DIGEST   \ canonical digest text malformed (not 16 hex digits)
 -5265 constant E-TC-MISS     \ canonical digest names no interned toolchain
 -5266 constant E-TC-COLLIDE  \ two distinct canonical forms share one digest
+-5267 constant E-TC-EPOCH    \ generation space exhausted: no further RESET can retire live ids
 
 package TOOLCHAIN
 public
@@ -77,12 +106,58 @@ TRUSTED: CC>RAW  ( TOOLCHAIN:compiler -- n ) ;
 TRUSTED: RAW>DRV ( n -- TOOLCHAIN:driver ) ;
 TRUSTED: DRV>RAW ( TOOLCHAIN:driver -- n ) ;
 
-\ ---- descriptor table (one array per field; rows are immutable once written) --
+\ ---- primary caps -------------------------------------------------------------
+\ These two are the knobs. Everything else in the layout is derived from them, so
+\ raising a cap cannot silently outgrow the builder, the arena, or the id encoding.
 $20   constant TC-CAP          \ interned toolchain identities
-$2000 constant TC-ARENA-CAP    \ interned descriptor text (versions, config, canon)
 $100  constant FACT-CAP        \ longest single discovery fact
-$10   constant DIGEST-LEN      \ canonical digest render: 16 hex digits
 
+$10   constant KIND-NAME-CAP   \ longest audited kind name render
+$10   constant DIGEST-LEN      \ canonical digest render: 16 hex digits
+$4    constant LEN-DIGITS      \ a framed field's length prefix: 4 hex digits
+$3A   constant FRAME-SEP       \ ':' - ends a length prefix, begins the field bytes
+
+\ the longest field a length prefix can frame
+1 LEN-DIGITS 4 * lshift 1- constant LEN-LIMIT
+
+\ ---- id encoding: generation in the high bits, row index in the low bits --------
+$10 constant TC-IX-BITS
+1 TC-IX-BITS lshift 1- constant TC-IX-MASK      \ the row an id names
+TC-IX-MASK 1+          constant TC-IX-LIMIT     \ rows an id can address at all
+$20 constant TC-GEN-BITS
+1 TC-GEN-BITS lshift 1- constant TC-GEN-MAX     \ last generation; RESET past it throws
+
+\ ---- canonical field tags -------------------------------------------------------
+: TAG-CC$     ( -- ptr u8 n )  s" cc=" ;
+: TAG-VER$    ( -- ptr u8 n )  s" ;ver=" ;
+: TAG-DRV$    ( -- ptr u8 n )  s" ;drv=" ;
+: TAG-DRVVER$ ( -- ptr u8 n )  s" ;drvver=" ;
+: TAG-CFG$    ( -- ptr u8 n )  s" ;cfg=" ;
+
+5 constant CANON-FIELDS   \ cc, ver, drv, drvver, cfg
+2 constant CANON-KINDS    \ cc and drv render an audited kind name
+3 constant CANON-FACTS    \ ver, drvver and cfg each render a discovery fact
+
+\ derived from the tags themselves, so renaming a tag cannot desync the cap
+TAG-CC$ nip  TAG-VER$ nip +  TAG-DRV$ nip +  TAG-DRVVER$ nip +  TAG-CFG$ nip +
+   constant CANON-TAG-BYTES
+
+\ the longest canonical form a valid bounded descriptor can render
+CANON-TAG-BYTES
+CANON-FIELDS LEN-DIGITS 1+ *  +      \ each field: its length prefix and FRAME-SEP
+CANON-KINDS  KIND-NAME-CAP *  +
+CANON-FACTS  FACT-CAP *       +
+   constant CANON-CAP
+
+\ arena bytes one interned row can need: its canonical form, its three fact copies,
+\ and its digest render
+CANON-CAP  CANON-FACTS FACT-CAP *  +  DIGEST-LEN +  constant TC-ROW-CAP
+
+\ sized for TC-CAP maximal rows, which is what makes arena exhaustion unreachable
+\ from DEFINE / ADOPT
+TC-CAP TC-ROW-CAP * constant TC-ARENA-CAP
+
+\ ---- descriptor table (one array per field; rows are immutable once written) --
 create TC-ARENA TC-ARENA-CAP allot   variable TC-ARENA-U
 
 create TC-CC   TC-CAP cells allot    \ compiler kind (raw)
@@ -99,6 +174,7 @@ create TC-CNU  TC-CAP cells allot
 create TC-DGO  TC-CAP cells allot    \ canonical digest render span
 create TC-DGU  TC-CAP cells allot
 variable TC-N
+variable TC-GEN
 
 \ ---- descriptor staging (DEFINE's own record; the adapter has a separate one) --
 variable ST-CC
@@ -147,6 +223,28 @@ create FT-CFG   FACT-CAP allot   variable FT-CFG-U     \ assembler config
       E-TC-KIND throw
    endcase ;
 
+\ ---- the derived layout must actually hold ------------------------------------
+\ Run at load, so a future edit to FACT-CAP / TC-CAP / LEN-DIGITS / a kind name that
+\ breaks an assumption fails the load rather than leaking a foreign error (or an
+\ unframable field) at run time.
+: NAMES-CK ( -- )                          \ every audited kind name must be framable
+   CC-N 0 ?do
+      i CC-NAME$ nip KIND-NAME-CAP > if E-TC-CAP throw then
+   loop
+   DRV-N 0 ?do
+      i DRV-NAME$ nip KIND-NAME-CAP > if E-TC-CAP throw then
+   loop ;
+
+: LAYOUT-CK ( -- )
+   CANON-CAP SB-CAP > if E-TC-CAP throw then      \ the canonical form renders through SB
+   FACT-CAP LEN-LIMIT > if E-TC-CAP throw then    \ every field length is expressible
+   KIND-NAME-CAP LEN-LIMIT > if E-TC-CAP throw then
+   TC-CAP TC-IX-LIMIT > if E-TC-ID throw then     \ every row index fits an id
+   NAMES-CK ;
+
+LAYOUT-CK
+1 TC-GEN !                                 \ generation 0 names no id, so a zero cell is not one
+
 \ ---- kind validation + refinement --------------------------------------------
 : CC-CK ( TOOLCHAIN:compiler -- n )
    CC>RAW dup 0 < over CC-N >= or if E-TC-KIND throw then ;
@@ -164,14 +262,24 @@ create FT-CFG   FACT-CAP allot   variable FT-CFG-U     \ assembler config
    DRV-CUDA RAW>DRV ;
 
 \ ---- id validation + refinement ----------------------------------------------
-: ID-CK ( CAD-KIND:toolchain-id -- n )
-   TC>RAW dup 0 < over TC-N @ >= or if E-TC-ID throw then ;
+\ An id carries the generation it was issued under. Both directions validate before
+\ any row is indexed: a retired generation, a forged high bit, or a row past the live
+\ table throws rather than reading a row that is not the one the id was issued for.
+: ROW>ID ( n -- CAD-KIND:toolchain-id ) {: ix:n :}
+   ix 0 < ix TC-N @ >= or if E-TC-ID throw then
+   TC-GEN @ TC-IX-BITS lshift  ix or  RAW>TC ;
 
-: RAW-ID ( n -- CAD-KIND:toolchain-id )
-   dup 0 < over TC-N @ >= or if E-TC-ID throw then
-   RAW>TC ;
+: ID>ROW ( CAD-KIND:toolchain-id -- n ) {: id:CAD-KIND:toolchain-id :}
+   id TC>RAW {: v:n :}
+   v TC-IX-BITS rshift TC-GEN @ <> if E-TC-ID throw then   \ retired generation, or forged
+   v TC-IX-MASK and {: ix:n :}
+   ix TC-N @ >= if E-TC-ID throw then                      \ past the live table
+   ix ;
 
 \ ---- interned descriptor text -------------------------------------------------
+\ The arena holds TC-CAP maximal rows and COMMIT refuses a TC-CAP+1'th row, so this
+\ guard is unreachable through DEFINE / ADOPT. It stays because the bound is what makes
+\ that true, and the test drives it directly through the private seam.
 : INTERN ( ptr u8 n -- n n ) {: a:ptr u:n :}
    TC-ARENA-U @ u + TC-ARENA-CAP > if E-TC-CAP throw then
    TC-ARENA-U @ {: off:n :}
@@ -211,15 +319,30 @@ create FT-CFG   FACT-CAP allot   variable FT-CFG-U     \ assembler config
 : DIGHEX$ ( n -- ptr u8 n ) {: ix:n :}
    ix cells TC-DGO + @  ix cells TC-DGU + @  SPAN$ ;
 
-\ ---- canonical form -----------------------------------------------------------
-\ Field order is fixed, so the same facts always render the same bytes. This text
-\ is what gets digested, and it is kept per row as the audit surface for the id.
+\ ---- hex render ----------------------------------------------------------------
+: HEX-NIB ( n -- n )  $F and dup 10 < if $30 + else $37 + then ;
+
+: HEX+ ( n n -- ) {: v:n nd:n :}           \ v as nd hex digits, MSB first
+   nd 0 ?do  v  nd 1- i - 4 * rshift HEX-NIB SB-APPEND-C  loop ;
+
+\ ---- canonical form -------------------------------------------------------------
+\ Each field is framed by its own exact byte length, so a field's content cannot forge
+\ another field's boundary: a reader takes LEN-DIGITS hex digits, then FRAME-SEP, then
+\ exactly that many bytes. Field order is fixed, so the same facts always render the
+\ same bytes and different facts never render the same bytes. This text is what gets
+\ digested, and it is kept per row as the audit surface for the id.
+: FIELD+ ( ptr u8 n ptr u8 n -- ) {: t:ptr tu:n a:ptr u:n :}
+   t tu SB-APPEND
+   u LEN-DIGITS HEX+
+   FRAME-SEP SB-APPEND-C
+   a u SB-APPEND ;
+
 : CANON+ ( -- )
-   s" cc="      SB-APPEND   ST-CC  @ CC-NAME$  SB-APPEND
-   s" ;ver="    SB-APPEND   ST-CVER$          SB-APPEND
-   s" ;drv="    SB-APPEND   ST-DRV @ DRV-NAME$ SB-APPEND
-   s" ;drvver=" SB-APPEND   ST-DVER$          SB-APPEND
-   s" ;cfg="    SB-APPEND   ST-CFG$           SB-APPEND ;
+   TAG-CC$     ST-CC  @ CC-NAME$   FIELD+
+   TAG-VER$    ST-CVER$            FIELD+
+   TAG-DRV$    ST-DRV @ DRV-NAME$  FIELD+
+   TAG-DRVVER$ ST-DVER$            FIELD+
+   TAG-CFG$    ST-CFG$             FIELD+ ;
 
 \ ---- FNV-1a 64 over the canonical form ----------------------------------------
 $cbf29ce484222325 constant FNV-BASIS
@@ -234,12 +357,7 @@ $100000001b3      constant FNV-PRIME
 : DIGEST ( -- n )                          \ digest the canonical form now in SB
    FNV-BASIS SB$ FNV$ ;
 
-\ ---- digest render / parse (16 hex digits, MSB first) --------------------------
-: HEX-NIB ( n -- n )  $F and dup 10 < if $30 + else $37 + then ;
-
-: HEX+ ( n -- ) {: v:n :}
-   DIGEST-LEN 0 ?do  v  DIGEST-LEN 1- i - 4 * rshift HEX-NIB SB-APPEND-C  loop ;
-
+\ ---- digest parse (16 hex digits, MSB first) -----------------------------------
 : NIB-CK ( n -- ) {: c:n :}
    c $30 >= c $39 <= and if exit then
    c $41 >= c $46 <= and if exit then
@@ -284,13 +402,14 @@ $100000001b3      constant FNV-PRIME
    ST-CVER$  INTERN ix CVER!
    ST-DVER$  INTERN ix DVER!
    ST-CFG$   INTERN ix CFG!
-   SB-RESET dig HEX+ SB$ INTERN ix DIGHEX!
+   SB-RESET dig DIGEST-LEN HEX+ SB$ INTERN ix DIGHEX!
    ST-CC  @ ix CC!
    ST-DRV @ ix DRV!
    dig      ix DIG!
    ix 1+ TC-N !
-   ix RAW>TC ;
+   ix ROW>ID ;
 
+\ ---- staging: written whole by STAGE, consumed by exactly one DEFINE ------------
 : STAGE ( TOOLCHAIN:compiler ptr u8 n TOOLCHAIN:driver ptr u8 n ptr u8 n -- )
    {: cc:TOOLCHAIN:compiler cv:ptr cvu:n drv:TOOLCHAIN:driver dv:ptr dvu:n cf:ptr cfu:n :}
    cc  CC-CK  ST-CC  !
@@ -298,6 +417,11 @@ $100000001b3      constant FNV-PRIME
    cv cvu ST-CVER ST-CVER-U FACT!
    dv dvu ST-DVER ST-DVER-U FACT!
    cf cfu ST-CFG  ST-CFG-U  FACT! ;
+
+\ the fact lengths are what make a staged fact present; the kind cells are never read
+\ without a preceding STAGE writing them
+: STAGE-RESET ( -- )
+   0 ST-CVER-U !  0 ST-DVER-U !  0 ST-CFG-U ! ;
 
 \ every adapter fact must be present before any identity is derived from them
 : FACTS-CK ( -- )
@@ -324,6 +448,8 @@ public
    {: a:TOOLCHAIN:driver b:TOOLCHAIN:driver :}
    a DRV>RAW b DRV>RAW = ;
 
+\ Two ids name the same toolchain when they are the same (generation, row). Ids from
+\ retired generations therefore compare unequal to live ones, which is what they are.
 : ID= ( CAD-KIND:toolchain-id CAD-KIND:toolchain-id -- bool )
    {: a:CAD-KIND:toolchain-id b:CAD-KIND:toolchain-id :}
    a TC>RAW b TC>RAW = ;
@@ -331,14 +457,14 @@ public
 \ ---- definition ----------------------------------------------------------------
 \ The typed constructor. Equal facts collapse to the identity already interned for
 \ them; any changed version or config renders a different canonical form and so gets
-\ its own identity.
+\ its own identity. The staging record is consumed here, by exactly one DEFINE.
 : DEFINE ( TOOLCHAIN:compiler ptr u8 n TOOLCHAIN:driver ptr u8 n ptr u8 n -- CAD-KIND:toolchain-id )
    STAGE
    SB-RESET CANON+
    DIGEST {: dig:n :}
    dig FIND-DIG {: hit:n :}
-   hit 0 >= if hit DIG-HIT RAW-ID exit then
-   dig COMMIT ;
+   hit 0 >= if  hit DIG-HIT ROW>ID  else  dig COMMIT  then
+   STAGE-RESET ;
 
 \ ---- the audited PTXTC discovery adapter ----------------------------------------
 \ PTXTC (lib/ptx/toolchain.f) knows which ptxas it resolved and which flags it
@@ -354,6 +480,9 @@ public
 : FACT-DRIVER-VERSION!   ( ptr u8 n -- )  FT-DVER  FT-DVER-U  FACT! ;
 : FACT-CONFIG!           ( ptr u8 n -- )  FT-CFG   FT-CFG-U   FACT! ;
 
+\ A discovery is adopted exactly once. Clearing the staged facts on success is what
+\ makes a later partial restage fail closed (E-TC-FACT) instead of quietly adopting
+\ one fresh fact alongside four left over from the discovery already consumed.
 : ADOPT ( -- CAD-KIND:toolchain-id )
    FACTS-CK
    FT-PATH$  PATH>CC
@@ -361,34 +490,46 @@ public
    FT-DNAME$ NAME>DRV
    FT-DVER$
    FT-CFG$
-   DEFINE ;
+   DEFINE
+   FACTS-RESET ;
 
 \ ---- typed projections -----------------------------------------------------------
-: COMPILER@ ( CAD-KIND:toolchain-id -- TOOLCHAIN:compiler )  ID-CK CC@  RAW>CC ;
-: DRIVER@   ( CAD-KIND:toolchain-id -- TOOLCHAIN:driver )    ID-CK DRV@ RAW>DRV ;
+: COMPILER@ ( CAD-KIND:toolchain-id -- TOOLCHAIN:compiler )  ID>ROW CC@  RAW>CC ;
+: DRIVER@   ( CAD-KIND:toolchain-id -- TOOLCHAIN:driver )    ID>ROW DRV@ RAW>DRV ;
 
-: VERSION$        ( CAD-KIND:toolchain-id -- ptr u8 n )  ID-CK CVER$ ;
-: DRIVER-VERSION$ ( CAD-KIND:toolchain-id -- ptr u8 n )  ID-CK DVER$ ;
-: CONFIG$         ( CAD-KIND:toolchain-id -- ptr u8 n )  ID-CK CFG$ ;
-: CANONICAL$      ( CAD-KIND:toolchain-id -- ptr u8 n )  ID-CK CANON$ ;
+: VERSION$        ( CAD-KIND:toolchain-id -- ptr u8 n )  ID>ROW CVER$ ;
+: DRIVER-VERSION$ ( CAD-KIND:toolchain-id -- ptr u8 n )  ID>ROW DVER$ ;
+: CONFIG$         ( CAD-KIND:toolchain-id -- ptr u8 n )  ID>ROW CFG$ ;
+: CANONICAL$      ( CAD-KIND:toolchain-id -- ptr u8 n )  ID>ROW CANON$ ;
 
 \ The digest render is the identity's public name. It is interned with the rest of
 \ the descriptor, so two digests can be held and compared at once - a render into
 \ the shared string builder would alias the second call onto the first.
-: DIGEST$ ( CAD-KIND:toolchain-id -- ptr u8 n )  ID-CK DIGHEX$ ;
+: DIGEST$ ( CAD-KIND:toolchain-id -- ptr u8 n )  ID>ROW DIGHEX$ ;
 
 \ ---- typed lookup ------------------------------------------------------------------
+\ Both take a canonical digest render. A string that is not one is not an unknown
+\ toolchain, it is not a digest at all, so KNOWN? throws E-TC-DIGEST rather than
+\ answering false: a malformed name must not be reported as a legitimate miss.
 : KNOWN? ( ptr u8 n -- bool )
    HEX> FIND-DIG 0 >= ;
 
 : LOOKUP ( ptr u8 n -- CAD-KIND:toolchain-id )
    HEX> FIND-DIG {: hit:n :}
    hit 0 < if E-TC-MISS throw then
-   hit RAW>TC ;
+   hit ROW>ID ;
 
 : IDS ( -- n )  TC-N @ ;
 
+\ Empties the table and retires every id issued under the current generation. The
+\ generation does not wrap: past TC-GEN-MAX there is no generation left that can
+\ retire the ids still held, so RESET throws rather than reissuing one.
 : RESET ( -- )
-   0 TC-N !  0 TC-ARENA-U ! ;
+   TC-GEN @ TC-GEN-MAX >= if E-TC-EPOCH throw then
+   TC-GEN @ 1+ TC-GEN !
+   0 TC-N !
+   0 TC-ARENA-U !
+   FACTS-RESET
+   STAGE-RESET ;
 
 ;package
